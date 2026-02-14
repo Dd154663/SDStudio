@@ -41,3 +41,12 @@ dist
 
 # Windows reserved filename
 nul
+
+# 개인용 가이드 (공유 제외)
+GIT_GUIDE.txt
+
+# Claude Code 로컬 설정 (개인 경로 포함)
+.claude/
+
+# node-gyp 자동 생성 파일 (사용자 로컬 경로가 하드코딩됨)
+# src/native/build/ 는 이미 상위 "build" 규칙으로 제외됨
