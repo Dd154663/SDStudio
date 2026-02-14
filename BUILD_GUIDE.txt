@@ -1,0 +1,231 @@
+================================================================================
+SDStudio 3.5.0 Modified - 빌드 가이드 & 트러블슈팅
+(이전 세션의 클로드가 한 발자취들, 과거의 내가!)
+================================================================================
+
+이 문서는 SDStudio 3.5.0 소스 코드를 수정하고 빌드하는 과정에서 발생하는
+모든 문제와 해결법을 정리한 것입니다.
+
+================================================================================
+[0] 사전 요구사항
+================================================================================
+
+- Node.js (v18+ 권장, v24에서도 빌드 확인됨)
+- npm
+- Visual Studio 2022 Build Tools (C++ 워크로드, v143 도구 포함)
+- Python 3.x (node-gyp용)
+- Android Studio + Android SDK (APK 빌드 시)
+- Java 17 JDK (APK 빌드 시)
+
+================================================================================
+[1] 소스 코드 수정 사항 (Precise Reference + IP Check 제거)
+================================================================================
+
+(Precise Reference 관련 트러블은 이전 세션 클로드가 해결함!)
+
+================================================================================
+[2] PC (Electron) 빌드 방법
+================================================================================
+
+--- Step 1: npm install ---
+
+  cd C:\Users\ii011\Downloads\SDStudio-3.5.0
+  npm install --ignore-scripts --legacy-peer-deps
+
+주의: --ignore-scripts를 쓰면 네이티브 모듈이 빌드되지 않음.
+      이것은 의도적이며, 나중에 electron-builder가 자동으로 재빌드함.
+
+--- Step 2: 누락된 패키지 수동 설치 ---
+
+  npm install mobx --legacy-peer-deps
+  npm install libsodium-wrappers-sumo --legacy-peer-deps
+
+--- Step 3: libsodium-sumo ESM 모듈 복사 ---
+
+문제: libsodium-wrappers-sumo가 libsodium-sumo의 ESM 모듈을 참조하는데
+      경로가 맞지 않음.
+
+해결:
+  - 원본: node_modules/libsodium-sumo/dist/modules-sumo-esm/libsodium-sumo.mjs
+  - 복사 대상: node_modules/libsodium-wrappers-sumo/dist/modules-sumo-esm/libsodium-sumo.mjs
+  - 대상 디렉토리가 없으면 생성 후 복사
+
+--- Step 4: capacitor-background-mode 설치 ---
+
+문제: @anuradev/capacitor-background-mode가 package.json에
+      "file:externals/capacitor-background-mode"로 참조되어 있는데
+      externals 폴더가 비어있을 수 있음.
+
+해결:
+  cd externals
+  git clone https://github.com/angeloraso/capacitor-background-mode
+  cd ..
+  npm install --legacy-peer-deps
+
+--- Step 5: package.json 수정 (코드 서명 비활성화) ---
+
+문제: afterSign 스크립트와 코드 서명이 인증서 없이 실패함.
+
+해결: package.json에서 다음 수정:
+  - "build" 섹션 안의 "afterSign": ".erb/scripts/notarize.js" 줄 삭제
+  - "win" 섹션 안에 "signAndEditExecutable": false 추가
+
+수정 전:
+  "win": {
+    "target": ["nsis"]
+  },
+
+수정 후:
+  "win": {
+    "target": ["nsis"],
+    "signAndEditExecutable": false
+  },
+
+--- Step 6: 빌드 실행 ---
+
+  npm run package
+
+이 명령은 다음을 순서대로 실행:
+  1. dist 폴더 정리
+  2. webpack으로 main/renderer 빌드
+  3. electron-builder로 패키징 (네이티브 모듈 자동 재빌드 포함)
+  4. DLL 빌드
+
+결과물:
+  - 설치 파일: release/build/SDStudio Setup 3.5.0.exe
+  - 포터블 버전: release/build/win-unpacked/ (이 폴더째로 ZIP 배포 가능)
+
+================================================================================
+[3] 네이티브 모듈 (sdsnative) 관련 트러블슈팅
+================================================================================
+
+문제: "Cannot find module 'sdsnative'" 오류로 앱이 실행 안됨.
+
+원인: --ignore-scripts로 설치했기 때문에 C++ 네이티브 모듈이 빌드 안됨.
+
+해결: electron-builder의 npm run package가 자동으로 네이티브 모듈을
+      Electron용으로 재빌드함. 로그에 다음이 보여야 함:
+      "rebuilding native dependencies  dependencies=sdsnative@1.0.0, sharp@0.32.6"
+
+만약 자동 빌드가 안 되면 수동으로:
+
+  방법 A: release/app에서 직접 설치
+    cd release/app
+    npm install
+
+  방법 B: vcxproj 수정 후 MSBuild 직접 실행
+
+  문제: node-gyp가 ClangCL 도구를 사용하도록 생성하는데, 대부분의 환경에
+        ClangCL이 설치되어 있지 않음.
+
+  해결:
+    1. src/native/build/sdnative.vcxproj 파일에서
+       <PlatformToolset>ClangCL</PlatformToolset>
+       을
+       <PlatformToolset>v143</PlatformToolset>
+       으로 변경
+
+    2. MSBuild 직접 실행:
+       cd src/native/build
+       "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe" binding.sln -p:Configuration=Release -p:Platform=x64
+
+  주의: MSBuild 경로에 공백이 있으므로 반드시 따옴표로 감싸야 함.
+  주의: bash에서 /p: 옵션을 쓰면 경로로 해석됨. -p: 를 사용할 것.
+
+================================================================================
+[4] Android APK 빌드 방법
+================================================================================
+
+--- Step 1: npm install (위의 PC Step 1~4와 동일) ---
+
+--- Step 2: android/app/build.gradle 수정 ---
+
+문제 1: "Unknown Kotlin JVM target: 21" 오류
+
+해결: build.gradle 파일 최상단에 Kotlin 플러그인 추가 및 JVM 17 설정
+
+파일 최상단에 추가:
+  apply plugin: 'org.jetbrains.kotlin.android'
+
+android { } 블록 안에 추가:
+  compileOptions {
+      sourceCompatibility JavaVersion.VERSION_17
+      targetCompatibility JavaVersion.VERSION_17
+  }
+  kotlinOptions {
+      jvmTarget = '17'
+  }
+
+주의: apply plugin은 반드시 android { } 블록 *위에* 위치해야 함.
+      android 블록 안에 넣으면 kotlinOptions를 인식하지 못함.
+
+--- Step 3: local.properties 확인 ---
+
+android/local.properties 파일에 SDK 경로가 있는지 확인:
+  sdk.dir=C\:\\Users\\ii011\\AppData\\Local\\Android\\Sdk
+
+없으면 생성할 것.
+
+--- Step 4: 웹 빌드 + Capacitor Sync ---
+
+  npx vite build
+  npx cap sync android
+
+--- Step 5: APK 빌드 ---
+
+  cd android
+  ./gradlew assembleDebug
+
+결과물: android/app/build/outputs/apk/debug/app-debug.apk
+
+================================================================================
+[5] AlertWindow 수정 (UX 개선)
+================================================================================
+
+파일: src/renderer/componenets/AlertWindow.tsx
+
+문제: 빨간색 알림 메시지 박스가 표시되는 동안 다른 버튼 클릭이 불가능함.
+원인: fixed + w-full div가 전체 화면을 덮어서 이벤트를 가로챔.
+
+수정 내용:
+  1. 부모 div에 style={{ pointerEvents: 'none' }} 추가
+     → 메시지 박스 외 영역의 클릭이 뒤의 요소로 통과됨
+  2. 메시지 박스 div에 style={{ pointerEvents: 'auto' }} 추가
+     → 메시지 박스 자체는 클릭 가능 유지
+  3. 자동 사라짐 시간: 5000ms → 3000ms
+  4. 메시지 박스 아무 곳이나 클릭하면 즉시 닫히도록 onClick 핸들러 추가
+
+**일단 냅두고 나중에 할것(수정 명령이 없으면 무시하시오)
+
+================================================================================
+[6] 자주 발생하는 빌드 에러 요약
+================================================================================
+
+에러: "Cannot find module 'mobx'"
+해결: npm install mobx --legacy-peer-deps
+
+에러: "Cannot find module 'libsodium-wrappers-sumo'"
+해결: npm install libsodium-wrappers-sumo --legacy-peer-deps
+
+에러: libsodium-sumo.mjs 파일을 찾을 수 없음
+해결: 위의 Step 3 참조 (파일 수동 복사)
+
+에러: "@anuradev/capacitor-background-mode" 모듈 없음
+해결: externals 폴더에 git clone 후 npm install
+
+에러: "winCodeSign" 또는 코드 서명 관련 실패
+해결: package.json에서 afterSign 제거 + signAndEditExecutable: false
+
+에러: "Cannot find module 'sdsnative'"
+해결: npm run package로 빌드하면 자동 재빌드됨. 안 되면 위의 [3] 참조.
+
+에러: "ClangCL 빌드 도구를 찾을 수 없습니다" (MSB8020)
+해결: vcxproj에서 PlatformToolset을 ClangCL → v143 변경
+
+에러: "Unknown Kotlin JVM target: 21"
+해결: build.gradle에 JVM 17 설정 추가 (위의 [4] Step 2 참조)
+
+에러: "kotlinOptions not found"
+해결: apply plugin: 'org.jetbrains.kotlin.android'를 파일 최상단(android 블록 위)으로 이동
+
+================================================================================
