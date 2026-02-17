@@ -1,7 +1,7 @@
 import { imageService, taskQueueService, workFlowService } from '..';
 import { getImageDimensions } from '../../componenets/BrushTool';
 import { dataUriToBase64 } from '../ImageService';
-import { createSDPrompts } from '../PromptService';
+import { createSDPrompts, createSDCharacterPrompts } from '../PromptService';
 import { TaskParam } from '../TaskQueueService';
 import {
   AugmentJob,
@@ -162,6 +162,15 @@ const AugmentGenCreatePrompts = async (
   return await createSDPrompts(session, preset, shared, scene as Scene);
 };
 
+const AugmentGenCreateCharacterPrompts = async (
+  session: Session,
+  scene: GenericScene,
+  preset: any,
+  shared: any,
+) => {
+  return await createSDCharacterPrompts(session, preset, shared, scene as Scene);
+};
+
 export const AugmentGenDef = new WFDefBuilder('AugmentGen')
   .setTitle('이미지 수정')
   .setBackendType('image')
@@ -170,6 +179,7 @@ export const AugmentGenDef = new WFDefBuilder('AugmentGen')
   .setMetaVars(AugmentGenMeta.build())
   .setEditor(AugmentGenUI)
   .setCreatePrompt(AugmentGenCreatePrompts)
+  .setCreateCharacterPrompts(AugmentGenCreateCharacterPrompts)
   .setHandler(AugmentGenHandler)
   .build();
 

@@ -628,7 +628,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                         type="range"
                         step="0.01"
                         min="0"
-                        max="1"
+                        max="2"
                         value={reference.strength}
                         onChange={(e) => {
                           reference.strength = parseFloat(e.target.value);
@@ -654,7 +654,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                         type="range"
                         step="0.01"
                         min="0"
-                        max="1"
+                        max="2"
                         value={reference.fidelity}
                         onChange={(e) => {
                           reference.fidelity = parseFloat(e.target.value);
