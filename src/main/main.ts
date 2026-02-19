@@ -342,6 +342,12 @@ ipcMain.handle(
         lossless: true,
       });
     }
+    if (optimize === ImageOptimizeMethod.AVIF) {
+      instance = instance.avif({
+        quality: 50,
+        effort: 4,
+      });
+    }
     await instance.toFile(outputPath);
   },
 );

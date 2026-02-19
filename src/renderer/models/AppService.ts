@@ -442,10 +442,16 @@ export class AppState {
         }
       }
       if (opt !== 'original') {
+        const ext = opt === 'avif' ? '.avif' : '.webp';
+        const optimizeMethod = opt === 'lossy'
+          ? ImageOptimizeMethod.LOSSY
+          : opt === 'avif'
+            ? ImageOptimizeMethod.AVIF
+            : ImageOptimizeMethod.LOSSLESS;
         try {
           let done = 0;
           for (const item of paths) {
-            const outputPath = 'tmp/' + v4() + '.webp';
+            const outputPath = 'tmp/' + v4() + ext;
             appState.setProgressDialog({
               text: '이미지 크기 최적화 중..',
               done: done,
@@ -456,13 +462,10 @@ export class AppState {
               outputPath: outputPath,
               maxHeight: imageSize,
               maxWidth: imageSize,
-              optimize:
-                opt === 'lossy'
-                  ? ImageOptimizeMethod.LOSSY
-                  : ImageOptimizeMethod.LOSSLESS,
+              optimize: optimizeMethod,
             });
             item.path = outputPath;
-            item.name = item.name.substring(0, item.name.length - 4) + '.webp';
+            item.name = item.name.substring(0, item.name.length - 4) + ext;
             done++;
           }
         } catch (e: any) {
@@ -530,6 +533,7 @@ export class AppState {
     if (!isMobile) {
       optItems.push({ text: '무손실 webp 최적화', value: 'lossless' });
     }
+    optItems.push({ text: isMobile ? 'AVIF 최적화 (PC 권장)' : 'AVIF 최적화', value: 'avif' });
     const opt = await appState.pushDialogAsync({
       type: 'select',
       text: '이미지 크기 최적화 방법을 선택해주세요',

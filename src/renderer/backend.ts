@@ -13,6 +13,7 @@ export interface FileEntry {
 export enum ImageOptimizeMethod {
   LOSSY = 1,
   LOSSLESS = 2,
+  AVIF = 3,
 }
 
 export interface ResizeImageInput {

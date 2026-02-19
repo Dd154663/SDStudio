@@ -512,7 +512,9 @@ export class AndroidBackend extends Backend {
     });
 
     let outputBlob: any;
-    if (input.optimize === ImageOptimizeMethod.LOSSY) {
+    if (input.optimize === ImageOptimizeMethod.AVIF) {
+      outputBlob = await pica.toBlob(outputCanvas, 'image/avif', 0.5);
+    } else if (input.optimize === ImageOptimizeMethod.LOSSY) {
       outputBlob = await pica.toBlob(outputCanvas, 'image/webp', 0.8);
     } else {
       outputBlob = await pica.toBlob(outputCanvas, 'image/png', 0.9);
