@@ -81,6 +81,21 @@ export abstract class ResourceSyncService<
     }
   }
 
+  async rename(oldName: string, newName: string) {
+    if (!(oldName in this.resources)) throw new Error('Resource not found');
+    if (newName in this.resources) throw new Error('Resource already exists');
+    this.resources[newName] = this.resources[oldName];
+    delete this.resources[oldName];
+    this.disposes[newName] = this.disposes[oldName];
+    delete this.disposes[oldName];
+    if (oldName in this.dirty) {
+      this.dirty[newName] = this.dirty[oldName];
+      delete this.dirty[oldName];
+    }
+    await backend.renameFile(this.getPath(oldName), this.getPath(newName));
+    await this.update();
+  }
+
   getFast(name: string) {
     const rc = this.resources[name];
     if (!rc) {

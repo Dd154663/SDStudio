@@ -282,6 +282,10 @@ export class AppState {
           text: '프로젝트 백업 내보내기 (이미지 포함)',
           value: 'saveDeep',
         },
+        {
+          text: '✏️ 프로젝트 이름 수정',
+          value: 'rename',
+        },
       ],
 
       callback: async (value) => {
@@ -323,6 +327,27 @@ export class AppState {
         } else if (value === 'load') {
           const file = await getFirstFile();
           appState.handleFile(file as any);
+        } else if (value === 'rename') {
+          if (!appState.curSession) {
+            appState.pushMessage('프로젝트를 먼저 선택해주세요');
+            return;
+          }
+          appState.pushDialog({
+            type: 'input-confirm',
+            text: '새로운 프로젝트 이름을 입력해주세요',
+            callback: async (inputValue) => {
+              if (!inputValue) return;
+              if (sessionService.list().includes(inputValue)) {
+                appState.pushMessage('이미 존재하는 프로젝트 이름입니다.');
+                return;
+              }
+              const oldName = appState.curSession!.name;
+              await imageService.onRenameSession(oldName, inputValue);
+              await sessionService.rename(oldName, inputValue);
+              appState.curSession!.name = inputValue;
+              appState.pushMessage('프로젝트 이름이 변경되었습니다.');
+            },
+          });
         } else {
           appState.pushDialog({
             type: 'input-confirm',
@@ -368,6 +393,8 @@ export class AppState {
       fav: boolean,
       opt: string,
       imageSize: number,
+      separator: string,
+      replaceSpaces: boolean,
     ) => {
       const paths = [];
       await imageService.refreshBatch(this.curSession!);
@@ -395,19 +422,21 @@ export class AppState {
             images.push(cand);
           }
         }
+        const sceneName = replaceSpaces ? scene.name.replace(/ /g, '_') : scene.name;
+        const finalPrefix = replaceSpaces ? prefix.replace(/ /g, '_') : prefix;
         for (let i = 0; i < images.length; i++) {
           const path = images[i];
           if (images.length === 1) {
             paths.push({
               path:
                 imageService.getOutputDir(this.curSession!, scene) + '/' + path,
-              name: prefix + scene.name + '.png',
+              name: finalPrefix + sceneName + '.png',
             });
           } else {
             paths.push({
               path:
                 imageService.getOutputDir(this.curSession!, scene) + '/' + path,
-              name: prefix + scene.name + '.' + (i + 1).toString() + '.png',
+              name: finalPrefix + sceneName + separator + (i + 1).toString() + '.png',
             });
           }
         }
@@ -520,15 +549,31 @@ export class AppState {
         return;
       }
     }
+    const separatorInput = await appState.pushDialogAsync({
+      type: 'input-confirm',
+      text: '파일명 구분자를 입력해주세요 (기본값: .)',
+    });
+    if (separatorInput === undefined) return;
+    const separator = separatorInput || '.';
+    const spaceOpt = await appState.pushDialogAsync({
+      type: 'select',
+      text: '파일명의 띄어쓰기를 언더바(_)로 변환할까요?',
+      items: [
+        { text: '아니오 (원본 유지)', value: 'no' },
+        { text: '예 (띄어쓰기 → _)', value: 'yes' },
+      ],
+    });
+    if (!spaceOpt) return;
+    const replaceSpaces = spaceOpt === 'yes';
     if (format === 'normal') {
-      await exportImpl('', menu === 'fav', opt, imageSize);
+      await exportImpl('', menu === 'fav', opt, imageSize, separator, replaceSpaces);
     } else {
       appState.pushDialog({
         type: 'input-confirm',
         text: '캐릭터 이름을 입력해주세요',
         callback: async (prefix) => {
           if (!prefix) return;
-          await exportImpl(prefix + '.', menu === 'fav', opt, imageSize);
+          await exportImpl(prefix + separator, menu === 'fav', opt, imageSize, separator, replaceSpaces);
         },
       });
     }
@@ -823,6 +868,19 @@ export class AppState {
               );
           }
         }
+      } else if (value === 'sortScenes') {
+        const allScenes = this.curSession!.getScenes(type);
+        const selectedSet = new Set(selected.map(s => s.name));
+        const selectedSorted = [...selected].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        );
+        const indices = allScenes
+          .map((s, i) => selectedSet.has(s.name) ? i : -1)
+          .filter(i => i !== -1);
+        for (let i = 0; i < indices.length; i++) {
+          this.curSession!.moveScene(selectedSorted[i], indices[i]);
+        }
+        appState.pushMessage('씬 정렬 완료');
       } else {
         console.log('Not implemented');
       }
@@ -838,6 +896,7 @@ export class AppState {
         { text: '❌ 즐겨찾기 전부 해제', value: 'removeAllFav' },
         { text: '⭐ 상위 n등 즐겨찾기 지정', value: 'setFav' },
         { text: '🗂️ 씬 일괄 삭제', value: 'deleteScenes' },
+        { text: '🔤 씬 이름순 정렬', value: 'sortScenes' },
         { text: '⏹️ 예약 일괄 취소', value: 'cancelReservations' },
       ];
       if (isMobile) {

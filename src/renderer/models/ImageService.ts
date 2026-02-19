@@ -337,6 +337,26 @@ export class ImageService extends EventTarget {
     }
   }
 
+  async onRenameSession(oldName: string, newName: string) {
+    const cache = this.cache.cache;
+    const toDelete = [];
+    for (const key of cache.keys()) {
+      if (key.includes('/' + oldName + '/')) {
+        toDelete.push(key);
+      }
+    }
+    for (const key of toDelete) {
+      cache.delete(key);
+    }
+    for (const dir of ['outs', 'inpaints', 'vibes', 'references', 'inpaint_masks', 'inpaint_orgs']) {
+      try {
+        await backend.renameDir(dir + '/' + oldName, dir + '/' + newName);
+      } catch (e) {
+        // 폴더가 없을 수 있음
+      }
+    }
+  }
+
   async resizeImageBrowser(
     dataUrl: string,
     maxWidth: number,
