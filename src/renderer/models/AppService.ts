@@ -286,6 +286,12 @@ export class AppState {
           text: '✏️ 프로젝트 이름 수정',
           value: 'rename',
         },
+        {
+          text: appState.curSession && sessionService.isFavorite(appState.curSession.name)
+            ? '⭐ 즐겨찾기 해제'
+            : '⭐ 즐겨찾기 지정',
+          value: 'toggleFavorite',
+        },
       ],
 
       callback: async (value) => {
@@ -348,6 +354,14 @@ export class AppState {
               appState.pushMessage('프로젝트 이름이 변경되었습니다.');
             },
           });
+        } else if (value === 'toggleFavorite') {
+          if (!appState.curSession) {
+            appState.pushMessage('프로젝트를 먼저 선택해주세요');
+            return;
+          }
+          await sessionService.toggleFavorite(appState.curSession.name);
+          const isFav = sessionService.isFavorite(appState.curSession.name);
+          appState.pushMessage(isFav ? '즐겨찾기에 추가되었습니다' : '즐겨찾기가 해제되었습니다');
         } else {
           appState.pushDialog({
             type: 'input-confirm',

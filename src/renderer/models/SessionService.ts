@@ -24,8 +24,67 @@ import * as legacy from './legacy';
 const SESSION_SERVICE_INTERVAL = 5000;
 
 export class SessionService extends ResourceSyncService<Session> {
+  favorites: Set<string> = new Set();
+
   constructor() {
     super('projects', SESSION_SERVICE_INTERVAL);
+  }
+
+  async loadFavorites() {
+    try {
+      const str = await backend.readFile('favorites.json');
+      const arr = JSON.parse(str);
+      this.favorites = new Set(arr);
+    } catch (e) {
+      // 기존 projects/favorites.json에서 마이그레이션 시도
+      try {
+        const oldStr = await backend.readFile('projects/favorites.json');
+        const arr = JSON.parse(oldStr);
+        this.favorites = new Set(arr);
+        await this.saveFavorites();
+        await backend.renameFile('projects/favorites.json', 'projects/favorites.json.migrated');
+      } catch (e2) {
+        this.favorites = new Set();
+      }
+    }
+  }
+
+  async saveFavorites() {
+    await backend.writeFile('favorites.json', JSON.stringify([...this.favorites]));
+  }
+
+  async toggleFavorite(name: string) {
+    if (this.favorites.has(name)) {
+      this.favorites.delete(name);
+    } else {
+      this.favorites.add(name);
+    }
+    await this.saveFavorites();
+    await this.update();
+  }
+
+  isFavorite(name: string): boolean {
+    return this.favorites.has(name);
+  }
+
+  async run() {
+    await this.loadFavorites();
+    await super.run();
+  }
+
+  async delete(name: string) {
+    this.favorites.delete(name);
+    await this.saveFavorites();
+    await super.delete(name);
+  }
+
+  async rename(oldName: string, newName: string) {
+    if (this.favorites.has(oldName)) {
+      this.favorites.delete(oldName);
+      this.favorites.add(newName);
+      await this.saveFavorites();
+    }
+    await super.rename(oldName, newName);
   }
 
   async getHook(rc: Session, name: string) {

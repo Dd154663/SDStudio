@@ -151,7 +151,19 @@ const SessionSelect = observer(() => {
         <DropdownSelect
           menuPlacement="top"
           selectedOption={appState.curSession?.name}
-          options={sessionNames.map((name) => ({ label: name, value: name }))}
+          options={
+            [...sessionNames]
+              .sort((a, b) => {
+                const aFav = sessionService.isFavorite(a);
+                const bFav = sessionService.isFavorite(b);
+                if (aFav !== bFav) return aFav ? -1 : 1;
+                return a.localeCompare(b);
+              })
+              .map((name) => ({
+                label: sessionService.isFavorite(name) ? '⭐ ' + name : name,
+                value: name,
+              }))
+          }
           onSelect={selectSession}
         />
       </div>
