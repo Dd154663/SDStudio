@@ -685,17 +685,15 @@ export class AppState {
     const deleteScenes = async (selected: GenericScene[]) => {
       appState.pushDialog({
         type: 'confirm',
-        text: `정말로 선택한 ${selected.length}개의 씬을 삭제하시겠습니까? 이미지도 함께 삭제됩니다.`,
+        text: `정말로 선택한 ${selected.length}개의 씬을 삭제하시겠습니까? (휴지통으로 이동)`,
         callback: async () => {
+          const { trashService } = await import('.');
           for (const scene of selected) {
-            this.curSession!.removeScene(scene.type, scene.name);
-            await backend.trashFile(
-              imageService.getOutputDir(this.curSession!, scene),
-            );
+            await trashService.moveSceneToTrash(this.curSession!, scene);
           }
           appState.pushDialog({
             type: 'yes-only',
-            text: `${selected.length}개의 씬이 삭제되었습니다.`,
+            text: `${selected.length}개의 씬이 휴지통으로 이동되었습니다.`,
           });
         },
       });
@@ -756,7 +754,7 @@ export class AppState {
                           '/' +
                           x,
                       );
-                    await deleteImageFiles(this.curSession!, paths);
+                    await deleteImageFiles(this.curSession!, paths, scene);
                   }
                 },
               });
@@ -782,6 +780,7 @@ export class AppState {
                       await deleteImageFiles(
                         this.curSession!,
                         paths.slice(n).filter((x) => !isMain(scene, x)),
+                        scene,
                       );
                     }
                   }
@@ -804,6 +803,7 @@ export class AppState {
                     await deleteImageFiles(
                       this.curSession!,
                       paths.filter((x) => !isMain(scene, x)),
+                      scene,
                     );
                   }
                 },

@@ -47,9 +47,10 @@ export const AppContextMenu = observer(() => {
     } else if (id === 'delete') {
       appState.pushDialog({
         type: 'confirm',
-        text: '정말로 삭제하시겠습니까?',
-        callback: () => {
-          appState.curSession!.removeScene(ctx.scene.type, ctx.scene.name);
+        text: '정말로 삭제하시겠습니까? (휴지통으로 이동)',
+        callback: async () => {
+          const { trashService } = await import('../models');
+          await trashService.moveSceneToTrash(appState.curSession!, ctx.scene);
         },
       });
     }

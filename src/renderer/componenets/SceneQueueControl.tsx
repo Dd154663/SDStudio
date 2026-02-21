@@ -1,7 +1,7 @@
 import { memo, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { FloatView } from './FloatView';
 import SceneEditor from './SceneEditor';
-import { FaBookmark, FaEdit, FaPlus, FaRegCalendarTimes, FaSearch, FaTimes } from 'react-icons/fa';
+import { FaBookmark, FaEdit, FaPlus, FaRegCalendarTimes, FaSearch, FaTimes, FaTrash, FaTrashRestore } from 'react-icons/fa';
 import Tournament from './Tournament';
 import ResultViewer from './ResultViewer';
 import InPaintEditor from './InPaintEditor';
@@ -22,6 +22,7 @@ import {
   localAIService,
   zipService,
   workFlowService,
+  trashService,
 } from '../models';
 import {
   getMainImage,
@@ -333,6 +334,139 @@ export const SceneCell = observer(
     );
   },
 );
+
+// ===== SceneTrashView 컴포넌트 =====
+
+interface SceneTrashViewProps {
+  projectName: string;
+  onClose: () => void;
+}
+
+const SceneTrashView = ({ projectName, onClose }: SceneTrashViewProps) => {
+  const [deletedScenes, setDeletedScenes] = useState<
+    { name: string; type: string; deletedAt: number }[]
+  >([]);
+  const [loading, setLoading] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const items = await trashService.getDeletedScenes(projectName);
+      setDeletedScenes(items);
+    } catch (e) {
+      setDeletedScenes([]);
+    }
+    setLoading(false);
+  }, [projectName]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const formatDate = (ts: number) => {
+    if (!ts) return '알 수 없음';
+    const d = new Date(ts);
+    return (
+      d.toLocaleDateString() +
+      ' ' +
+      d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    );
+  };
+
+  const handleRestore = async (item: {
+    name: string;
+    type: string;
+    deletedAt: number;
+  }) => {
+    try {
+      await trashService.restoreScene(appState.curSession!, item.name);
+      appState.pushMessage(`씬 "${item.name}"이(가) 복원되었습니다.`);
+      await refresh();
+    } catch (e: any) {
+      appState.pushMessage(e.message || '씬 복원에 실패했습니다.');
+    }
+  };
+
+  const handlePermanentDelete = async (item: {
+    name: string;
+    type: string;
+    deletedAt: number;
+  }) => {
+    appState.pushDialog({
+      type: 'confirm',
+      text: `씬 "${item.name}"을(를) 영구 삭제하시겠습니까?`,
+      callback: async () => {
+        await trashService.permanentlyDeleteScene(
+          projectName,
+          item.name,
+          item.type,
+        );
+        await refresh();
+      },
+    });
+  };
+
+  if (deletedScenes.length === 0 && !loading) {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex-none p-3 border-b line-color flex items-center justify-between">
+          <span className="font-bold text-lg text-default">🗑️ 씬 휴지통</span>
+          <button className="round-button back-gray" onClick={onClose}>
+            닫기
+          </button>
+        </div>
+        <div className="flex-1 flex items-center justify-center text-gray-400 text-lg">
+          휴지통이 비어있습니다
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex-none p-3 border-b line-color flex items-center justify-between">
+        <span className="font-bold text-lg text-default">🗑️ 씬 휴지통</span>
+        <button className="round-button back-gray" onClick={onClose}>
+          닫기
+        </button>
+      </div>
+      <div className="flex-1 overflow-auto p-3">
+        <div className="flex flex-col gap-2">
+          {deletedScenes.map((item) => (
+            <div
+              key={item.name}
+              className="flex items-center gap-3 p-3 border border-gray-300 dark:border-slate-500 rounded bg-white dark:bg-slate-800"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-default truncate">
+                  {item.type === 'inpaint' ? '🎨 ' : '🖼️ '}
+                  {item.name}
+                </div>
+                <div className="text-sm text-gray-400">
+                  {item.type === 'inpaint' ? '인페인트' : '일반'} 씬 ·{' '}
+                  {formatDate(item.deletedAt)}
+                </div>
+              </div>
+              <button
+                className="round-button back-green flex-none"
+                onClick={() => handleRestore(item)}
+              >
+                <FaTrashRestore className="mr-1" />
+                복원
+              </button>
+              <button
+                className="round-button back-red flex-none"
+                onClick={() => handlePermanentDelete(item)}
+              >
+                영구삭제
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 interface QueueControlProps {
   type: 'scene' | 'inpaint';
@@ -774,6 +908,7 @@ const QueueControl = observer(
     const [sceneSearchQuery, setSceneSearchQuery] = useState('');
     const [showSceneSearch, setShowSceneSearch] = useState(false);
     const sceneSearchRef = useRef<HTMLInputElement>(null);
+    const [showSceneTrash, setShowSceneTrash] = useState(false);
 
     const [bmRev, setBmRev] = useState(0);
     useEffect(() => {
@@ -811,10 +946,18 @@ const QueueControl = observer(
           </FloatView>
         )}
         {resultViewer}
+        {showSceneTrash && (
+          <FloatView priority={1} onEscape={() => setShowSceneTrash(false)}>
+            <SceneTrashView
+              projectName={curSession.name}
+              onClose={() => setShowSceneTrash(false)}
+            />
+          </FloatView>
+        )}
         {panel}
         {!!showPannel && (
-          <div className="flex flex-none pb-2">
-            <div className="flex gap-1 md:gap-2">
+          <div className="flex flex-none pb-2 flex-wrap">
+            <div className="flex gap-1 md:gap-2 flex-wrap">
               <button className={`round-button back-sky`} onClick={addScene}>
                 씬 추가
               </button>
@@ -864,6 +1007,12 @@ const QueueControl = observer(
                 }}
               >
                 <FaBookmark />
+              </button>
+              <button
+                className={`round-button back-gray`}
+                onClick={() => setShowSceneTrash(true)}
+              >
+                <FaTrash />
               </button>
             </div>
             <div className="ml-auto mr-2 hidden md:block">

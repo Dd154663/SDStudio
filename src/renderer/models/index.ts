@@ -27,6 +27,7 @@ import { LocalAIService } from './LocalAIService';
 import { AppUpdateNoticeService } from './AppUpdateNoticeService';
 import { WorkFlowService } from './workflows/WorkFlowService';
 import { registerWorkFlows } from './workflows';
+import { TrashService } from './TrashService';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -53,6 +54,8 @@ export const sessionService = new SessionService();
 sessionService.run();
 
 export const imageService = new ImageService();
+
+export const trashService = new TrashService();
 
 export const imageDownloadService = new ImageDownloadService();
 

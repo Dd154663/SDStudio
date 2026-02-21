@@ -1004,16 +1004,14 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted }: Props) => {
             onClick={() => {
               appState.pushDialog({
                 type: 'confirm',
-                text: '정말로 해당 씬을 삭제하시겠습니까?',
+                text: '정말로 해당 씬을 삭제하시겠습니까? (휴지통으로 이동)',
                 callback: async () => {
-                  curSession!.removeScene(scene.type, scene.name);
+                  const { trashService } = await import('../models');
+                  await trashService.moveSceneToTrash(curSession!, scene);
                   onClosed();
                   if (onDeleted) {
                     onDeleted();
                   }
-                  await backend.trashFile(
-                    imageService.getOutputDir(curSession!, scene),
-                  );
                 },
               });
             }}

@@ -32,6 +32,7 @@ import {
   FaRegObjectGroup,
   FaStar,
   FaTrash,
+  FaTrashRestore,
 } from 'react-icons/fa';
 import { PromptHighlighter } from './SceneEditor';
 import QueueControl from './SceneQueueControl';
@@ -58,6 +59,7 @@ import {
   taskQueueService,
   workFlowService,
   imageDownloadService,
+  trashService,
 } from '../models';
 import { dataUriToBase64, deleteImageFiles } from '../models/ImageService';
 import { getResultDirectory } from '../models/SessionService';
@@ -66,6 +68,196 @@ import { extractPromptDataFromBase64 } from '../models/util';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
 import { DownloadDialog } from './DownloadDialog';
+import { Session, GenericScene as GenericSceneType } from '../models/types';
+
+// ===== TrashImageView 컴포넌트 =====
+
+interface TrashImageViewProps {
+  session: Session;
+  scene: GenericSceneType;
+  imageSize: number;
+}
+
+const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
+  const [trashImages, setTrashImages] = useState<{filename: string, deletedAt: number}[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const items = await trashService.getTrashImages(session, scene);
+      setTrashImages(items);
+      // 기존 선택 중 유효하지 않은 것 제거
+      setSelected(prev => {
+        const validNames = new Set(items.map(i => i.filename));
+        const next = new Set<string>();
+        prev.forEach(f => { if (validNames.has(f)) next.add(f); });
+        return next;
+      });
+    } catch (e) {
+      setTrashImages([]);
+    }
+    setLoading(false);
+  }, [session, scene]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  // 썸네일 로드
+  useEffect(() => {
+    const loadThumbnails = async () => {
+      const newThumbs: Record<string, string> = {};
+      for (const item of trashImages) {
+        const path = trashService.getTrashImagePath(session, scene, item.filename);
+        try {
+          const thumb = await imageService.fetchImageSmall(path, isMobile ? 200 : Math.min(imageSize, 400));
+          if (thumb) newThumbs[item.filename] = thumb;
+        } catch (e) {}
+      }
+      setThumbnails(newThumbs);
+    };
+    if (trashImages.length > 0) loadThumbnails();
+    else setThumbnails({});
+  }, [trashImages, session, scene, imageSize]);
+
+  const toggleSelect = (filename: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(filename)) next.delete(filename);
+      else next.add(filename);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    setSelected(new Set(trashImages.map(i => i.filename)));
+  };
+
+  const handleRestore = async () => {
+    if (selected.size === 0) return;
+    await trashService.restoreImages(session, scene, Array.from(selected));
+    await imageService.refresh(session, scene);
+    appState.pushMessage(selected.size + '장의 이미지가 복원되었습니다.');
+    setSelected(new Set());
+    await refresh();
+  };
+
+  const handlePermanentDelete = async () => {
+    if (selected.size === 0) return;
+    appState.pushDialog({
+      type: 'confirm',
+      text: selected.size + '장의 이미지를 영구 삭제하시겠습니까?',
+      callback: async () => {
+        await trashService.permanentlyDeleteImages(session, scene, Array.from(selected));
+        setSelected(new Set());
+        await refresh();
+      },
+    });
+  };
+
+  const handleEmptyTrash = async () => {
+    if (trashImages.length === 0) return;
+    appState.pushDialog({
+      type: 'confirm',
+      text: '휴지통을 비우시겠습니까? 모든 이미지가 영구 삭제됩니다.',
+      callback: async () => {
+        await trashService.emptyImageTrash(session, scene);
+        setSelected(new Set());
+        await refresh();
+      },
+    });
+  };
+
+  const formatDate = (ts: number) => {
+    if (!ts) return '알 수 없음';
+    const d = new Date(ts);
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  };
+
+  const cellSize = isMobile ? imageSize / 2.5 : Math.min(imageSize, 400);
+
+  if (trashImages.length === 0 && !loading) {
+    return (
+      <div className="flex items-center justify-center h-full text-gray-400 text-lg">
+        휴지통이 비어있습니다
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex-none p-2 flex gap-2 flex-wrap border-b line-color">
+        <button
+          className={`round-button back-green`}
+          onClick={handleRestore}
+          disabled={selected.size === 0}
+        >
+          <FaTrashRestore className="mr-1" />
+          선택 복원 ({selected.size})
+        </button>
+        <button
+          className={`round-button back-gray`}
+          onClick={selectAll}
+        >
+          전체 선택
+        </button>
+        <button
+          className={`round-button back-red`}
+          onClick={handlePermanentDelete}
+          disabled={selected.size === 0}
+        >
+          선택 영구삭제
+        </button>
+        <button
+          className={`round-button back-red ml-auto`}
+          onClick={handleEmptyTrash}
+        >
+          <FaTrash className="mr-1" />
+          휴지통 비우기
+        </button>
+      </div>
+      <div className="flex-1 overflow-auto">
+        <div className="flex flex-wrap gap-1 p-2">
+          {trashImages.map(item => {
+            const isSelected = selected.has(item.filename);
+            return (
+              <div
+                key={item.filename}
+                className={
+                  'relative cursor-pointer hover:brightness-95 active:brightness-90 ' +
+                  (isSelected ? 'ring-2 ring-sky-500' : '')
+                }
+                style={{ width: cellSize, height: cellSize }}
+                onClick={() => toggleSelect(item.filename)}
+              >
+                {thumbnails[item.filename] ? (
+                  <img
+                    src={thumbnails[item.filename]}
+                    className="w-full h-full object-contain bg-checkboard"
+                    draggable={false}
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-400">
+                    ...
+                  </div>
+                )}
+                {isSelected && (
+                  <div className="absolute left-0 top-0 z-10 bg-sky-500 opacity-40 w-full h-full" />
+                )}
+                <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs px-1 py-0.5 truncate">
+                  {formatDate(item.deletedAt)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 interface ImageGalleryProps {
   scene: GenericScene;
@@ -737,7 +929,7 @@ const ResultDetailView = observer(
                   type: 'confirm',
                   text: '정말로 파일을 삭제하시겠습니까?',
                   callback: async () => {
-                    await deleteImageFiles(curSession!, [paths[selectedIndex]]);
+                    await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
                   },
                 });
               }}
@@ -935,8 +1127,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     const [showDownloadDialog, setShowDownloadDialog] = useState<boolean>(false);
     const tabNames =
       scene.type === 'scene'
-        ? ['이미지', '즐겨찾기', '인페인트 씬']
-        : ['이미지', '즐겨찾기'];
+        ? ['이미지', '즐겨찾기', '휴지통', '인페인트 씬']
+        : ['이미지', '즐겨찾기', '휴지통'];
     useEffect(() => {
       imageService.refresh(curSession!, scene);
     }, []);
@@ -957,7 +1149,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
         setSelectedTab(0);
       },
       setInpaintTab: () => {
-        setSelectedTab(2);
+        setSelectedTab(3);
       },
     }));
 
@@ -1020,7 +1212,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               type: 'confirm',
               text: '정말로 모든 이미지를 삭제하시겠습니까?',
               callback: async () => {
-                await deleteImageFiles(curSession!, paths);
+                await deleteImageFiles(curSession!, paths, scene);
               },
             });
           } else if (value === 'n') {
@@ -1035,6 +1227,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                     paths
                       .slice(n)
                       .filter((x) => !isMainImage || !isMainImage(x)),
+                    scene,
                   );
                 }
               },
@@ -1047,6 +1240,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                 await deleteImageFiles(
                   curSession!,
                   paths.filter((x) => !isMainImage || !isMainImage(x)),
+                  scene,
                 );
               },
             });
@@ -1117,7 +1311,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             </span>
           </div>
           <div className="md:flex justify-between items-center mt-2 md:mt-4">
-            <div className="flex gap-2 md:gap-3">
+            <div className="flex gap-2 md:gap-3 flex-wrap">
               <button
                 className={`round-button back-sky`}
                 onClick={() => setTournament(true)}
@@ -1314,9 +1508,16 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             selectMode={selectMode}
             bookmarkedImagePath={bookmarkedImagePath}
           />
+          {selectedTab === 2 && (
+            <TrashImageView
+              session={curSession!}
+              scene={scene}
+              imageSize={imagesSizes[imageSize].size}
+            />
+          )}
           <QueueControl
             type="inpaint"
-            className={selectedTab === 2 ? 'px-1 md:px-4 ' : 'hidden'}
+            className={selectedTab === 3 ? 'px-1 md:px-4 ' : 'hidden'}
             onClose={(x) => {
               setSelectedTab(x);
             }}
@@ -1373,7 +1574,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           />
         </div>
         <div className="absolute gap-1 m-2 bottom-0 bg-white dark:bg-slate-800 p-1 right-0 opacity-30 hover:opacity-100 transition-all flex">
-          {selectedTab !== 2 &&
+          {selectedTab !== 2 && selectedTab !== 3 &&
             imagesSizes.map((size, index) => (
               <button
                 key={index}

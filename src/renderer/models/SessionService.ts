@@ -130,6 +130,9 @@ export class SessionService extends ResourceSyncService<Session> {
   async run() {
     await this.loadFavorites();
     await this.loadBookmarks();
+    const { trashService } = await import('.');
+    await trashService.loadTrash();
+    await trashService.autoCleanup();
     await super.run();
   }
 
@@ -144,6 +147,9 @@ export class SessionService extends ResourceSyncService<Session> {
       await this.saveBookmarks();
     }
     await super.delete(name);
+    // 휴지통에 삭제 시점 기록
+    const { trashService } = await import('.');
+    await trashService.moveProjectToTrash(name);
   }
 
   async rename(oldName: string, newName: string) {

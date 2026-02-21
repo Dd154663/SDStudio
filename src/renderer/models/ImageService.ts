@@ -683,15 +683,22 @@ export const deleteImageFiles = async (
   paths: string[],
   scene?: GenericScene,
 ) => {
-  for (const path of paths) {
-    try {
-      await backend.trashFile(path);
-    } catch (e) {}
-    await imageService.invalidateCache(path);
-  }
   if (scene) {
+    // 휴지통으로 이동
+    const { trashService } = await import('.');
+    await trashService.moveImagesToTrash(curSession, scene, paths);
+    for (const path of paths) {
+      await imageService.invalidateCache(path);
+    }
     await imageService.refresh(curSession, scene);
   } else {
+    // scene이 없는 경우 기존 동작 유지 (OS 휴지통)
+    for (const path of paths) {
+      try {
+        await backend.trashFile(path);
+      } catch (e) {}
+      await imageService.invalidateCache(path);
+    }
     await imageService.refreshBatch(curSession);
   }
 };

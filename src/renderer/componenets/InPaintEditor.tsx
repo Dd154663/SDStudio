@@ -143,9 +143,10 @@ const InPaintEditor = observer(
     const deleteScene = () => {
       appState.pushDialog({
         type: 'confirm',
-        text: '정말로 해당 씬을 삭제하시겠습니까?',
-        callback: () => {
-          curSession!.inpaints.delete(editingScene!.name);
+        text: '정말로 해당 씬을 삭제하시겠습니까? (휴지통으로 이동)',
+        callback: async () => {
+          const { trashService } = await import('../models');
+          await trashService.moveSceneToTrash(curSession!, editingScene!);
           onConfirm();
           onDelete();
         },
