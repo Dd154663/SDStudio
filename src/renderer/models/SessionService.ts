@@ -67,14 +67,82 @@ export class SessionService extends ResourceSyncService<Session> {
     return this.favorites.has(name);
   }
 
+  // 북마크 기능
+  private bookmarkData: {
+    scenes: Record<string, { name: string; type: string }>;
+    images: Record<string, string>;
+  } = { scenes: {}, images: {} };
+
+  async loadBookmarks() {
+    try {
+      const str = await backend.readFile('bookmarks.json');
+      const data = JSON.parse(str);
+      this.bookmarkData = {
+        scenes: data.scenes || {},
+        images: data.images || {},
+      };
+    } catch (e) {
+      this.bookmarkData = { scenes: {}, images: {} };
+    }
+  }
+
+  async saveBookmarks() {
+    await backend.writeFile('bookmarks.json', JSON.stringify(this.bookmarkData));
+    this.dispatchEvent(new CustomEvent('bookmark-updated'));
+  }
+
+  getSceneBookmark(projectName: string): { name: string; type: string } | undefined {
+    return this.bookmarkData.scenes[projectName];
+  }
+
+  isSceneBookmarked(projectName: string, sceneName: string): boolean {
+    return this.bookmarkData.scenes[projectName]?.name === sceneName;
+  }
+
+  async toggleSceneBookmark(projectName: string, sceneName: string, sceneType: string) {
+    const current = this.bookmarkData.scenes[projectName];
+    if (current?.name === sceneName) {
+      delete this.bookmarkData.scenes[projectName];
+    } else {
+      this.bookmarkData.scenes[projectName] = { name: sceneName, type: sceneType };
+    }
+    await this.saveBookmarks();
+  }
+
+  getImageBookmark(projectName: string, sceneName: string): string | undefined {
+    return this.bookmarkData.images[projectName + ':' + sceneName];
+  }
+
+  isImageBookmarked(projectName: string, sceneName: string, imageFilename: string): boolean {
+    return this.bookmarkData.images[projectName + ':' + sceneName] === imageFilename;
+  }
+
+  async toggleImageBookmark(projectName: string, sceneName: string, imageFilename: string) {
+    const key = projectName + ':' + sceneName;
+    if (this.bookmarkData.images[key] === imageFilename) {
+      delete this.bookmarkData.images[key];
+    } else {
+      this.bookmarkData.images[key] = imageFilename;
+    }
+    await this.saveBookmarks();
+  }
+
   async run() {
     await this.loadFavorites();
+    await this.loadBookmarks();
     await super.run();
   }
 
   async delete(name: string) {
     this.favorites.delete(name);
     await this.saveFavorites();
+    // 북마크 정리
+    delete this.bookmarkData.scenes[name];
+    const keysToDelete = Object.keys(this.bookmarkData.images).filter(k => k.startsWith(name + ':'));
+    keysToDelete.forEach(k => delete this.bookmarkData.images[k]);
+    if (keysToDelete.length > 0 || this.bookmarkData.scenes[name]) {
+      await this.saveBookmarks();
+    }
     await super.delete(name);
   }
 
@@ -84,6 +152,21 @@ export class SessionService extends ResourceSyncService<Session> {
       this.favorites.add(newName);
       await this.saveFavorites();
     }
+    // 북마크 마이그레이션
+    let bmChanged = false;
+    if (this.bookmarkData.scenes[oldName]) {
+      this.bookmarkData.scenes[newName] = this.bookmarkData.scenes[oldName];
+      delete this.bookmarkData.scenes[oldName];
+      bmChanged = true;
+    }
+    const imageKeys = Object.keys(this.bookmarkData.images).filter(k => k.startsWith(oldName + ':'));
+    imageKeys.forEach(k => {
+      const sceneName = k.substring(oldName.length + 1);
+      this.bookmarkData.images[newName + ':' + sceneName] = this.bookmarkData.images[k];
+      delete this.bookmarkData.images[k];
+      bmChanged = true;
+    });
+    if (bmChanged) await this.saveBookmarks();
     await super.rename(oldName, newName);
   }
 

@@ -56,6 +56,9 @@ export class AppState {
   @observable accessor externalImage: string | undefined = undefined;
   @observable accessor appliedCharacterPreset: string | undefined = undefined; // 현재 적용된 캐릭터 프리셋 이름
 
+  // 이미지 클립보드
+  @observable accessor imageClipboard: string[] = [];
+
   @action
   addMessage(message: string): void {
     this.messages.push(message);
@@ -77,6 +80,31 @@ export class AppState {
 
   pushDialog(dialog: Dialog) {
     this.dialogs.push(dialog);
+  }
+
+  copyImagesToClipboard(paths: string[]) {
+    this.imageClipboard = [...paths];
+    this.pushMessage(paths.length + '장의 이미지가 복사되었습니다.');
+  }
+
+  async pasteImagesFromClipboard(session: Session, scene: GenericScene) {
+    if (this.imageClipboard.length === 0) {
+      this.pushMessage('복사된 이미지가 없습니다.');
+      return;
+    }
+    const targetDir = imageService.getOutputDir(session, scene);
+    let copied = 0;
+    for (const srcPath of this.imageClipboard) {
+      try {
+        const filename = Date.now().toString() + '_' + copied + '.png';
+        await backend.copyFile(srcPath, targetDir + '/' + filename);
+        copied++;
+      } catch (e) {
+        console.error('이미지 붙여넣기 실패:', srcPath, e);
+      }
+    }
+    await imageService.refresh(session, scene);
+    this.pushMessage(copied + '장의 이미지가 붙여넣어졌습니다.');
   }
 
   pushDialogAsync(dialog: Dialog) {

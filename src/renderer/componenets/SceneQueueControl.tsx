@@ -1,7 +1,7 @@
-import { memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { FloatView } from './FloatView';
 import SceneEditor from './SceneEditor';
-import { FaEdit, FaPlus, FaRegCalendarTimes } from 'react-icons/fa';
+import { FaBookmark, FaEdit, FaPlus, FaRegCalendarTimes, FaSearch, FaTimes } from 'react-icons/fa';
 import Tournament from './Tournament';
 import ResultViewer from './ResultViewer';
 import InPaintEditor from './InPaintEditor';
@@ -52,6 +52,8 @@ interface SceneCellProps {
   setEditingScene?: (scene: GenericScene) => void;
   moveScene?: (scene: GenericScene, index: number) => void;
   style?: React.CSSProperties;
+  isBookmarked?: boolean;
+  onToggleBookmark?: () => void;
 }
 
 export const SceneCell = observer(
@@ -64,6 +66,8 @@ export const SceneCell = observer(
     curSession,
     cellSize,
     style,
+    isBookmarked,
+    onToggleBookmark,
   }: SceneCellProps) => {
     const { show, hideAll } = useContextMenu({
       id: ContextMenuType.Scene,
@@ -225,6 +229,7 @@ export const SceneCell = observer(
 
     return (
       <div
+        id={`scene-cell-${scene.type}-${scene.name}`}
         className={
           'relative m-2 p-1 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-500 ' +
           (isDragging ? 'opacity-0 no-touch ' : '') +
@@ -260,6 +265,7 @@ export const SceneCell = observer(
             className={'p-2 flex text-lg text-default ' + cellSizes3[cellSize]}
           >
             <div className="truncate flex-1">
+              {isBookmarked && <span className="text-orange-500">📌</span>}
               {emoji}
               {scene.name}
             </div>
@@ -312,6 +318,15 @@ export const SceneCell = observer(
             }}
           >
             <FaEdit />
+          </button>
+          <button
+            className={`round-button ${isBookmarked ? 'back-orange' : 'back-gray'}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleBookmark?.();
+            }}
+          >
+            <FaBookmark />
           </button>
         </div>
       </div>
@@ -756,6 +771,29 @@ const QueueControl = observer(
       SceneSelectorItem | undefined
     >(undefined);
 
+    const [sceneSearchQuery, setSceneSearchQuery] = useState('');
+    const [showSceneSearch, setShowSceneSearch] = useState(false);
+    const sceneSearchRef = useRef<HTMLInputElement>(null);
+
+    const [bmRev, setBmRev] = useState(0);
+    useEffect(() => {
+      const onBookmarkUpdated = () => setBmRev(r => r + 1);
+      sessionService.addEventListener('bookmark-updated', onBookmarkUpdated);
+      return () => sessionService.removeEventListener('bookmark-updated', onBookmarkUpdated);
+    }, []);
+    const sceneBookmark = sessionService.getSceneBookmark(curSession.name);
+
+    const toggleSceneSearch = useCallback(() => {
+      setShowSceneSearch((prev) => {
+        if (prev) {
+          setSceneSearchQuery('');
+        } else {
+          setTimeout(() => sceneSearchRef.current?.focus(), 50);
+        }
+        return !prev;
+      });
+    }, []);
+
     const moveScene = (draggingScene: GenericScene, targetIndex: number) => {
       curSession!.moveScene(draggingScene, targetIndex);
     };
@@ -800,6 +838,33 @@ const QueueControl = observer(
               >
                 대량 작업
               </button>
+              <button
+                className={`round-button ${showSceneSearch ? 'back-sky' : 'back-gray'}`}
+                onClick={toggleSceneSearch}
+              >
+                <FaSearch />
+              </button>
+              <button
+                className={`round-button ${sceneBookmark ? 'back-orange' : 'back-gray'}`}
+                onClick={() => {
+                  if (!sceneBookmark) {
+                    appState.pushMessage('북마크된 씬이 없습니다.');
+                    return;
+                  }
+                  if (sceneBookmark.type !== type) {
+                    appState.pushMessage('북마크된 씬은 ' + (sceneBookmark.type === 'scene' ? '일반' : '인페인트') + ' 탭에 있습니다.');
+                    return;
+                  }
+                  const el = document.getElementById(`scene-cell-${type}-${sceneBookmark.name}`);
+                  if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  } else {
+                    appState.pushMessage('북마크된 씬을 찾을 수 없습니다.');
+                  }
+                }}
+              >
+                <FaBookmark />
+              </button>
             </div>
             <div className="ml-auto mr-2 hidden md:block">
               <button
@@ -811,6 +876,34 @@ const QueueControl = observer(
             </div>
           </div>
         )}
+        {showSceneSearch && (
+          <div className="flex flex-none items-center gap-2 pb-2 px-1">
+            <FaSearch className="text-gray-400 flex-none" />
+            <input
+              ref={sceneSearchRef}
+              type="text"
+              className="flex-1 px-2 py-1 border border-gray-300 dark:border-slate-500 rounded bg-white dark:bg-slate-700 text-default outline-none focus:border-sky-500"
+              placeholder="씬 이름 검색..."
+              value={sceneSearchQuery}
+              onChange={(e) => setSceneSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setSceneSearchQuery('');
+                  setShowSceneSearch(false);
+                }
+              }}
+            />
+            <button
+              className="round-button back-gray"
+              onClick={() => {
+                setSceneSearchQuery('');
+                setShowSceneSearch(false);
+              }}
+            >
+              <FaTimes />
+            </button>
+          </div>
+        )}
         <div className="flex flex-1 overflow-hidden">
           <div className="flex flex-wrap overflow-auto justify-start items-start content-start">
             {curSession
@@ -818,6 +911,10 @@ const QueueControl = observer(
               .filter((x) => {
                 if (!filterFunc) return true;
                 return filterFunc(x);
+              })
+              .filter((x) => {
+                if (!sceneSearchQuery) return true;
+                return x.name.toLowerCase().includes(sceneSearchQuery.toLowerCase());
               })
               .map((scene) => (
                 <SceneCell
@@ -829,6 +926,8 @@ const QueueControl = observer(
                   setEditingScene={setEditingScene}
                   moveScene={moveScene}
                   curSession={curSession}
+                  isBookmarked={sessionService.isSceneBookmarked(curSession.name, scene.name)}
+                  onToggleBookmark={() => sessionService.toggleSceneBookmark(curSession.name, scene.name, scene.type)}
                 />
               ))}
           </div>

@@ -22,6 +22,7 @@ import Tournament from './Tournament';
 import {
   FaArrowLeft,
   FaArrowRight,
+  FaBookmark,
   FaCalendarTimes,
   FaCheck,
   FaDownload,
@@ -36,7 +37,7 @@ import { PromptHighlighter } from './SceneEditor';
 import QueueControl from './SceneQueueControl';
 import { FloatView } from './FloatView';
 import memoizeOne from 'memoize-one';
-import { FaPlus, FaRegSquareCheck } from 'react-icons/fa6';
+import { FaPlus, FaRegSquareCheck, FaCopy, FaPaste } from 'react-icons/fa6';
 import { useContextMenu } from 'react-contexify';
 import { useDrag, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
@@ -77,11 +78,13 @@ interface ImageGalleryProps {
   isHidden?: boolean;
   selectMode?: boolean;
   selectedImages: Set<string>;
+  bookmarkedImagePath?: string;
 }
 
 interface ImageGalleryRef {
   refresh: () => void;
   refeshImage(path: string): void;
+  scrollToIndex(index: number): void;
 }
 
 export const CellPreview = ({
@@ -140,6 +143,7 @@ const Cell = memo(
       onFilenameChange,
       imageSize,
       selectedImages,
+      bookmarkedImagePath,
     } = data as any;
 
     const { curSession } = appState;
@@ -189,6 +193,7 @@ const Cell = memo(
     }, [data, imageSize]);
 
     const isMain = !!(isMainImage && path && isMainImage(path));
+    const isBookmarked = !!(path && bookmarkedImagePath === path);
     let cellSize = isMobile ? imageSize / 2.5 : imageSize;
     if (isMobile && imageSize === 500) {
       cellSize = style.width;
@@ -334,6 +339,11 @@ const Cell = memo(
                   <FaStar />
                 </div>
               )}
+              {isBookmarked && (
+                <div className="absolute right-0 top-0 z-10 text-orange-500 m-2 text-md">
+                  <FaBookmark />
+                </div>
+              )}
               {selectedImages.has(path) && (
                 <div
                   className="absolute left-0 top-0 z-10 bg-sky-500 opacity-50 text-md w-full h-full"
@@ -389,6 +399,7 @@ const createItemData = memoizeOne(
     onFilenameChange,
     imageSize,
     selectedImages,
+    bookmarkedImagePath,
   ) => {
     return {
       scene,
@@ -401,6 +412,7 @@ const createItemData = memoizeOne(
       onFilenameChange,
       imageSize,
       selectedImages,
+      bookmarkedImagePath,
     };
   },
 );
@@ -417,6 +429,7 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
       selectMode,
       selectedImages,
       onFilenameChange,
+      bookmarkedImagePath,
     },
     ref,
   ) => {
@@ -426,6 +439,7 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
     const refreshImageFuncs = useRef(new Map<string, () => void>());
     const draggedIndex = useRef<number | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const gridRef = useRef<any>(null);
 
     useImperativeHandle(ref, () => ({
       refresh: () => {
@@ -435,6 +449,12 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
         const refresh = refreshImageFuncs.current.get(path);
         if (refresh) {
           refresh();
+        }
+      },
+      scrollToIndex: (index: number) => {
+        if (gridRef.current && columnCount > 0) {
+          const rowIndex = Math.floor(index / columnCount);
+          gridRef.current.scrollToItem({ rowIndex, align: 'center' });
         }
       },
     }));
@@ -471,6 +491,7 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
         className={'flex justify-center ' + (isHidden ? 'hidden' : '')}
       >
         <Grid
+          ref={gridRef}
           columnCount={columnCount}
           columnWidth={columnWidth}
           height={containerHeight}
@@ -489,6 +510,7 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
             onFilenameChange,
             imageSize,
             selectedImages,
+            bookmarkedImagePath,
           )}
           outerElementType={CustomScrollbarsVirtualGrid}
           overscanRowCount={overcountCounts[Math.ceil(imageSize / 200) - 1]}
@@ -656,6 +678,15 @@ const ResultDetailView = observer(
       id: ContextMenuType.Image,
     });
 
+    const [bmRev2, setBmRev2] = useState(0);
+    useEffect(() => {
+      const onBmUpdate = () => setBmRev2(r => r + 1);
+      sessionService.addEventListener('bookmark-updated', onBmUpdate);
+      return () => sessionService.removeEventListener('bookmark-updated', onBmUpdate);
+    }, []);
+    const currentFilename = paths[selectedIndex]?.split('/').pop();
+    const isImageBm = !!(currentFilename && sessionService.isImageBookmarked(curSession!.name, scene.name, currentFilename));
+
     return (
       <div className="z-10 bg-white dark:bg-slate-900 w-full h-full flex overflow-auto flex-col md:flex-row">
         <div className="flex-none md:w-1/3 p-2 md:p-4 overflow-y-auto">
@@ -712,6 +743,26 @@ const ResultDetailView = observer(
               }}
             >
               파일 삭제
+            </button>
+            <button
+              className={`round-button ${isImageBm ? 'back-orange' : 'back-gray'}`}
+              onClick={() => {
+                if (currentFilename) {
+                  sessionService.toggleImageBookmark(curSession!.name, scene.name, currentFilename);
+                }
+              }}
+            >
+              <FaBookmark className="mr-1" />
+              {isImageBm ? '북마크 해제' : '북마크'}
+            </button>
+            <button
+              className={`round-button back-sky`}
+              onClick={() => {
+                appState.copyImagesToClipboard([paths[selectedIndex]]);
+              }}
+            >
+              <FaCopy className="mr-1" />
+              이미지 복사
             </button>
             {buttons.map((button, index) => (
               <button
@@ -889,6 +940,17 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     useEffect(() => {
       imageService.refresh(curSession!, scene);
     }, []);
+
+    const [bmRev3, setBmRev3] = useState(0);
+    useEffect(() => {
+      const onBmUpdate = () => setBmRev3(r => r + 1);
+      sessionService.addEventListener('bookmark-updated', onBmUpdate);
+      return () => sessionService.removeEventListener('bookmark-updated', onBmUpdate);
+    }, []);
+    const bookmarkedImageFilename = sessionService.getImageBookmark(curSession!.name, scene.name);
+    const bookmarkedImagePath = bookmarkedImageFilename
+      ? imageService.getOutputDir(curSession!, scene) + '/' + bookmarkedImageFilename
+      : undefined;
 
     useImperativeHandle(ref, () => ({
       setImageTab: () => {
@@ -1126,6 +1188,31 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               >
                 <FaRegSquareCheck />
               </button>
+              {isMainImage && (
+                <button
+                  className={`round-button back-yellow`}
+                  title="즐겨찾기 이미지 일괄 선택"
+                  onClick={() => {
+                    const favPaths = paths.filter((p) => isMainImage!(p));
+                    if (favPaths.length === 0) {
+                      appState.pushMessage('즐겨찾기 이미지가 없습니다.');
+                      return;
+                    }
+                    if (!selectMode) {
+                      setSelectMode(true);
+                    }
+                    selectedImages.current.clear();
+                    for (const p of favPaths) {
+                      selectedImages.current.add(p);
+                    }
+                    gallaryRef.current?.refresh();
+                    gallaryRef2.current?.refresh();
+                    appState.pushMessage(favPaths.length + '장의 즐겨찾기 이미지가 선택되었습니다.');
+                  }}
+                >
+                  <FaStar />
+                </button>
+              )}
               <button
                 className={`round-button back-green`}
                 onClick={() => {
@@ -1141,12 +1228,61 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                 <FaDownload />
               </button>
               <button
+                className={`round-button back-sky`}
+                onClick={() => {
+                  if (selectMode && selectedImages.current.size > 0) {
+                    const selected = [...selectedImages.current];
+                    appState.copyImagesToClipboard(selected);
+                  } else {
+                    appState.copyImagesToClipboard(paths);
+                  }
+                }}
+              >
+                <FaCopy />
+              </button>
+              <button
+                className={`round-button ${appState.imageClipboard.length > 0 ? 'back-sky' : 'back-gray'}`}
+                onClick={() => {
+                  appState.pushDialog({
+                    type: 'confirm',
+                    text: appState.imageClipboard.length + '장의 이미지를 이 씬에 붙여넣으시겠습니까?',
+                    callback: async () => {
+                      await appState.pasteImagesFromClipboard(curSession!, scene);
+                    },
+                  });
+                }}
+              >
+                <FaPaste />
+              </button>
+              <button
                 className={`round-button back-red`}
                 onClick={() => {
                   onDeleteImages(scene);
                 }}
               >
                 <FaTrash />
+              </button>
+              <button
+                className={`round-button ${bookmarkedImageFilename ? 'back-orange' : 'back-gray'}`}
+                onClick={() => {
+                  if (!bookmarkedImageFilename) {
+                    appState.pushMessage('북마크된 이미지가 없습니다.');
+                    return;
+                  }
+                  const bmPath = imageService.getOutputDir(curSession!, scene) + '/' + bookmarkedImageFilename;
+                  const index = paths.indexOf(bmPath);
+                  if (index !== -1) {
+                    // 이미지 탭으로 전환 후 해당 위치로 스크롤
+                    setSelectedTab(0);
+                    setTimeout(() => {
+                      gallaryRef.current?.scrollToIndex(index);
+                    }, 50);
+                  } else {
+                    appState.pushMessage('북마크된 이미지를 찾을 수 없습니다.');
+                  }
+                }}
+              >
+                <FaBookmark />
               </button>
             </div>
             <span className="flex ml-auto gap-1 md:gap-2 mt-2 md:mt-0">
@@ -1176,6 +1312,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             selectedImages={selectedImages.current}
             onSelected={onSelected}
             selectMode={selectMode}
+            bookmarkedImagePath={bookmarkedImagePath}
           />
           <QueueControl
             type="inpaint"
@@ -1232,6 +1369,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             selectedImages={selectedImages.current}
             isHidden={selectedTab !== 1}
             onSelected={onSelected}
+            bookmarkedImagePath={bookmarkedImagePath}
           />
         </div>
         <div className="absolute gap-1 m-2 bottom-0 bg-white dark:bg-slate-800 p-1 right-0 opacity-30 hover:opacity-100 transition-all flex">
