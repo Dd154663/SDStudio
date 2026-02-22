@@ -629,19 +629,28 @@ export class AppState {
   }
 
   async exportPreset(session: Session, preset: any) {
-    let pngData;
-    if (preset.profile) {
-      pngData = dataUriToBase64(
-        (await imageService.fetchVibeImage(session, preset.profile))!,
-      );
-    } else {
-      pngData = await createImageWithText(832, 1216, preset.name);
+    try {
+      let pngData;
+      if (preset.profile) {
+        const vibeImage = await imageService.fetchVibeImage(session, preset.profile);
+        const base64 = vibeImage ? dataUriToBase64(vibeImage) : null;
+        // PNG base64는 반드시 iVBOR로 시작 (PNG 시그니처 89 50 4E 47)
+        if (base64 && base64.startsWith('iVBOR')) {
+          pngData = base64;
+        } else {
+          pngData = await createImageWithText(832, 1216, preset.name);
+        }
+      } else {
+        pngData = await createImageWithText(832, 1216, preset.name);
+      }
+      const newPngData = embedJSONInPNG(pngData, preset);
+      const path =
+        'exports/' + preset.name + '_' + Date.now().toString() + '.png';
+      await backend.writeDataFile(path, newPngData);
+      await backend.showFile(path);
+    } catch (e: any) {
+      appState.pushMessage('프리셋 내보내기 실패: ' + (e.message || e));
     }
-    const newPngData = embedJSONInPNG(pngData, preset);
-    const path =
-      'exports/' + preset.name + '_' + Date.now().toString() + '.png';
-    await backend.writeDataFile(path, newPngData);
-    await backend.showFile(path);
   }
 
   @action

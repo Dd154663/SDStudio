@@ -79,7 +79,7 @@ body {
 }
 
 .round-button {
-  @apply clickable select-none whitespace-nowrap hover:outline-4 hover:outline-sky-400 rounded-full px-2 py-1 md:px-4 md:py-1;
+  @apply clickable select-none whitespace-nowrap hover:outline-4 hover:outline-sky-400 rounded-full px-2 py-1 md:px-3 md:py-1;
 }
 
 .tab-button {
