@@ -397,6 +397,28 @@ export class TrashService extends EventTarget {
     await this.saveTrash();
   }
 
+  // ===== Expired project management =====
+
+  async getExpiredProjects(): Promise<{name: string, deletedAt: number}[]> {
+    this.ensureLoaded();
+    const now = Date.now();
+    const deleted = await this.getDeletedProjects();
+    return deleted.filter(p => (now - p.deletedAt) >= PROJECT_RETENTION_MS);
+  }
+
+  async deferProjects(names: string[]): Promise<void> {
+    this.ensureLoaded();
+    const now = Date.now();
+    for (const name of names) {
+      if (this.data.projects[name]) {
+        this.data.projects[name].deletedAt = now;
+      }
+    }
+    if (names.length > 0) {
+      await this.saveTrash();
+    }
+  }
+
   // ===== Auto-cleanup =====
 
   async autoCleanup(): Promise<void> {
@@ -426,16 +448,8 @@ export class TrashService extends EventTarget {
       }
     } catch (e) {}
 
-    // 1. Cleanup expired projects (30 days)
-    // getDeletedProjects already excludes orphans, so this is safe
-    const deletedProjects = await this.getDeletedProjects();
-    for (const proj of deletedProjects) {
-      const age = now - proj.deletedAt;
-      if (age >= PROJECT_RETENTION_MS) {
-        console.log('자동 정리: 프로젝트 ' + proj.name + ' 영구 삭제');
-        await this.permanentlyDeleteProject(proj.name);
-      }
-    }
+    // 1. Project cleanup is now handled by ExpiredProjectsDialog (user confirmation required)
+    //    See getExpiredProjects() and deferProjects()
 
     // 2. Cleanup expired scenes (14 days)
     const sceneKeys = Object.keys(this.data.scenes);

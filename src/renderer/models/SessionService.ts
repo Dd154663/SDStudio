@@ -133,6 +133,12 @@ export class SessionService extends ResourceSyncService<Session> {
     const { trashService } = await import('.');
     await trashService.loadTrash();
     await trashService.autoCleanup();
+    // 만료 프로젝트 감지 → UI 다이얼로그에 전달
+    const expired = await trashService.getExpiredProjects();
+    if (expired.length > 0) {
+      const { appState } = await import('./AppService');
+      appState.pendingExpiredProjects = expired;
+    }
     await super.run();
   }
 

@@ -59,6 +59,9 @@ export class AppState {
   // 이미지 클립보드
   @observable accessor imageClipboard: string[] = [];
 
+  // 만료 프로젝트 알림
+  @observable accessor pendingExpiredProjects: {name: string, deletedAt: number}[] = [];
+
   @action
   addMessage(message: string): void {
     this.messages.push(message);
