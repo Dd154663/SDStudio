@@ -989,12 +989,14 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted }: Props) => {
           <button
             className={`round-button back-sky`}
             onClick={async () => {
-              if (curName in curSession!.scenes) {
+              const trimmedName = curName.trimEnd();
+              if (!trimmedName) return;
+              if (trimmedName in curSession!.scenes) {
                 appState.pushMessage('해당 이름의 씬이 이미 존재합니다');
                 return;
               }
               const oldName = scene.name;
-              await renameScene(curSession!, scene.name, curName);
+              await renameScene(curSession!, scene.name, trimmedName);
             }}
           >
             이름 변경

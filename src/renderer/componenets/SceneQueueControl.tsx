@@ -528,21 +528,45 @@ const QueueControl = observer(
     };
     const addScene = () => {
       appState.pushDialog({
-        type: 'input-confirm',
-        text: '신규 씬 이름을 입력해주세요',
+        type: 'textarea-confirm',
+        text: '신규 씬 이름을 입력해주세요\n(줄바꿈으로 여러 씬을 동시에 추가할 수 있습니다)',
+        inputValue: '씬 이름 (한 줄에 하나씩)',
         callback: async (inputValue) => {
-          if (inputValue) {
-            const scenes = curSession.getScenes(type);
-            if (scenes.find((x) => x.name === inputValue)) {
-              appState.pushMessage('이미 존재하는 씬 이름입니다.');
-              return;
-            }
+          if (!inputValue) return;
+          const names = inputValue
+            .split('\n')
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0);
+          if (names.length === 0) return;
 
-            if (type === 'scene') {
+          const scenes = curSession.getScenes(type);
+          const existingNames = new Set(scenes.map((x) => x.name));
+          const duplicates = names.filter((n) => existingNames.has(n));
+          const seen = new Set<string>();
+          const inputDups: string[] = [];
+          for (const n of names) {
+            if (seen.has(n)) inputDups.push(n);
+            else seen.add(n);
+          }
+          if (duplicates.length > 0) {
+            appState.pushMessage(
+              '이미 존재하는 씬 이름: ' + duplicates.join(', '),
+            );
+            return;
+          }
+          if (inputDups.length > 0) {
+            appState.pushMessage(
+              '중복 입력된 이름: ' + [...new Set(inputDups)].join(', '),
+            );
+            return;
+          }
+
+          if (type === 'scene') {
+            for (const name of names) {
               curSession.addScene(
                 Scene.fromJSON({
                   type: 'scene',
-                  name: inputValue,
+                  name: name,
                   resolution: 'portrait',
                   slots: [
                     [
@@ -561,20 +585,22 @@ const QueueControl = observer(
                   game: undefined,
                 }),
               );
-            } else {
-              const menu = await appState.pushDialogAsync({
-                type: 'select',
-                text: '이미지 변형 방법을 선택해주세요',
-                items: workFlowService.i2iFlows.map((x) => ({
-                  text: (x.def.emoji ?? '') + x.def.title,
-                  value: x.getType(),
-                })),
-              });
-              if (!menu) return;
+            }
+          } else {
+            const menu = await appState.pushDialogAsync({
+              type: 'select',
+              text: '이미지 변형 방법을 선택해주세요',
+              items: workFlowService.i2iFlows.map((x) => ({
+                text: (x.def.emoji ?? '') + x.def.title,
+                value: x.getType(),
+              })),
+            });
+            if (!menu) return;
+            for (const name of names) {
               curSession.addScene(
                 InpaintScene.fromJSON({
                   type: 'inpaint',
-                  name: inputValue,
+                  name: name,
                   resolution: 'portrait',
                   workflowType: menu,
                   preset: workFlowService.buildPreset(menu).toJSON(),
@@ -939,7 +965,7 @@ const QueueControl = observer(
           <FloatView priority={0} onEscape={() => setSceneSelector(undefined)}>
             <SceneSelector
               text={sceneSelector.text}
-              scenes={curSession!.getScenes(type)}
+              scenes={sceneSelector.scenes ?? curSession!.getScenes(type)}
               onConfirm={sceneSelector.callback}
               getImage={getImage}
             />

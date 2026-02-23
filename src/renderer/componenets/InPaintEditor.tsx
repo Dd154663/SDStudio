@@ -187,6 +187,9 @@ const InPaintEditor = observer(
                 type="text"
                 className="gray-input flex-1"
                 value={editingScene.name}
+                onBlur={(e) => {
+                  editingScene.name = e.target.value.trimEnd();
+                }}
                 onChange={(e) => {
                   editingScene.name = e.target.value;
                 }}

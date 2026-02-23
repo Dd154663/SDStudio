@@ -566,6 +566,7 @@ export const renameScene = async (
   oldName: string,
   newName: string,
 ) => {
+  newName = newName.trimEnd();
   await imageService.onRenameScene(session, oldName, newName);
   const scene = session.scenes.get(oldName)!;
   scene.name = newName;

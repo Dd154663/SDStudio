@@ -21,6 +21,7 @@ import { action, observable } from 'mobx';
 import {
   CharacterPreset,
   GenericScene,
+  InpaintScene,
   ISession,
   isValidPieceLibrary,
   isValidSession,
@@ -45,6 +46,7 @@ export interface SceneSelectorItem {
   type: 'scene' | 'inpaint';
   text: string;
   callback: (scenes: GenericScene[]) => void;
+  scenes?: GenericScene[];
 }
 
 export class AppState {
@@ -953,6 +955,7 @@ export class AppState {
         { text: '🖥️ 해상도 변경 ', value: 'changeResolution' },
         { text: '❌ 즐겨찾기 전부 해제', value: 'removeAllFav' },
         { text: '⭐ 상위 n등 즐겨찾기 지정', value: 'setFav' },
+        { text: '📋 씬 내용 복제', value: 'copySceneContent' },
         { text: '🗂️ 씬 일괄 삭제', value: 'deleteScenes' },
         { text: '🔤 씬 이름순 정렬', value: 'sortScenes' },
         { text: '⏹️ 예약 일괄 취소', value: 'cancelReservations' },
@@ -966,6 +969,66 @@ export class AppState {
         graySelect: true,
         items: items,
         callback: (value, text) => {
+          if (value === 'copySceneContent') {
+            const allScenes = this.curSession!.getScenes(type);
+            if (allScenes.length < 2) {
+              appState.pushMessage('씬이 2개 이상 필요합니다.');
+              return;
+            }
+            appState.pushDialog({
+              type: 'dropdown',
+              text: '내용을 복사할 원본 씬을 선택해주세요',
+              items: allScenes.map((s) => ({ text: s.name, value: s.name })),
+              callback: (sourceName) => {
+                if (!sourceName) return;
+                const sourceScene = allScenes.find((s) => s.name === sourceName);
+                if (!sourceScene) return;
+                const targetScenes = allScenes.filter((s) => s.name !== sourceName);
+                setSceneSelector({
+                  type: type,
+                  text: `📋 내용 붙여넣기 (원본: ${sourceName})`,
+                  scenes: targetScenes,
+                  callback: (selected) => {
+                    setSceneSelector(undefined);
+                    if (selected.length === 0) return;
+                    appState.pushDialog({
+                      type: 'confirm',
+                      text: `원본 '${sourceName}'의 내용을 선택한 ${selected.length}개 씬에 덮어씌우시겠습니까?`,
+                      callback: () => {
+                        if (sourceScene.type === 'scene' && type === 'scene') {
+                          const src = sourceScene as Scene;
+                          const srcJSON = src.toJSON();
+                          for (const target of selected) {
+                            const t = target as Scene;
+                            t.slots = srcJSON.slots.map((slot) =>
+                              slot.map((piece) => PromptPiece.fromJSON(piece)),
+                            );
+                            t.meta = new Map(Object.entries(srcJSON.meta ?? {}));
+                            t.sceneCharacterPrompts = (srcJSON.sceneCharacterPrompts || []).map((cp) => ({
+                              ...cp,
+                              enabled: cp.enabled !== false,
+                            }));
+                            t.useSceneCharacterPrompts = srcJSON.useSceneCharacterPrompts || false;
+                            t.sceneCharacterUC = srcJSON.sceneCharacterUC || '';
+                          }
+                        } else if (sourceScene.type === 'inpaint' && type === 'inpaint') {
+                          const src = sourceScene as InpaintScene;
+                          const srcJSON = src.toJSON();
+                          for (const target of selected) {
+                            const t = target as InpaintScene;
+                            t.workflowType = srcJSON.workflowType;
+                            t.preset = srcJSON.preset && workFlowService.presetFromJSON(srcJSON.preset);
+                          }
+                        }
+                        appState.pushMessage(`${selected.length}개 씬에 내용이 복제되었습니다.`);
+                      },
+                    });
+                  },
+                });
+              },
+            });
+            return;
+          }
           setSceneSelector({
             type: type,
             text: text!,

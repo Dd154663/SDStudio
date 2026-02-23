@@ -9,7 +9,7 @@ export interface Dialog {
     | ((value?: string, text?: string) => void)
     | ((value?: string, text?: string) => Promise<void>);
   onCancel?: () => void;
-  type: 'confirm' | 'yes-only' | 'input-confirm' | 'select' | 'dropdown';
+  type: 'confirm' | 'yes-only' | 'input-confirm' | 'textarea-confirm' | 'select' | 'dropdown';
   inputValue?: string;
   green?: boolean;
   graySelect?: boolean;
@@ -25,6 +25,7 @@ const ConfirmWindow = observer(() => {
     if (currentDialog && currentDialog.callback) {
       currentDialog.callback(
         currentDialog.type === 'input-confirm' ||
+          currentDialog.type === 'textarea-confirm' ||
           currentDialog.type === 'dropdown'
           ? inputValue
           : undefined,
@@ -38,6 +39,7 @@ const ConfirmWindow = observer(() => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
+        if (curDialog?.type === 'textarea-confirm') return;
         if (curDialog) e.preventDefault();
         handleConfirm();
       }
@@ -62,6 +64,15 @@ const ConfirmWindow = observer(() => {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 className={`gray-input mt-4 mb-4`}
+              />
+            )}
+            {curDialog.type === 'textarea-confirm' && (
+              <textarea
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                className={`gray-input mt-4 mb-4 resize-none`}
+                rows={6}
+                placeholder={curDialog.inputValue}
               />
             )}
             <div
@@ -103,7 +114,7 @@ const ConfirmWindow = observer(() => {
                   확인
                 </button>
               )}
-              {curDialog.type === 'input-confirm' && (
+              {(curDialog.type === 'input-confirm' || curDialog.type === 'textarea-confirm') && (
                 <>
                   <button
                     className="mr-2 px-4 py-2 rounded back-sky clickable"
