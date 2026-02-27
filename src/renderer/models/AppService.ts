@@ -829,6 +829,8 @@ export class AppState {
         const options = Object.entries(resolutionMap)
           .filter((x) => !x[0].includes('small'))
           .map(([key, value]) => {
+            if (key === 'custom')
+              return { text: '커스텀 (직접 입력)', value: key };
             return {
               text: `${value.width}x${value.height}`,
               value: key,
@@ -840,6 +842,30 @@ export class AppState {
           items: options,
           callback: async (value?: string) => {
             if (!value) return;
+            if (value === 'custom') {
+              const width = await appState.pushDialogAsync({
+                type: 'input-confirm',
+                text: '해상도 너비를 입력해주세요',
+              });
+              if (width == null) return;
+              const height = await appState.pushDialogAsync({
+                type: 'input-confirm',
+                text: '해상도 높이를 입력해주세요',
+              });
+              if (height == null) return;
+              try {
+                const w = (parseInt(width) + 63) & ~63;
+                const h = (parseInt(height) + 63) & ~63;
+                for (const scene of selected) {
+                  scene.resolution = 'custom' as Resolution;
+                  scene.resolutionWidth = w;
+                  scene.resolutionHeight = h;
+                }
+              } catch (e: any) {
+                appState.pushMessage(e.message);
+              }
+              return;
+            }
             const action = () => {
               for (const scene of selected) {
                 scene.resolution = value as Resolution;
@@ -928,6 +954,12 @@ export class AppState {
               );
           }
         }
+      } else if (value === 'exportSceneNames') {
+        const names = selected.map((s) => s.name).join(', ');
+        const path = 'exports/scene_names_' + Date.now().toString() + '.txt';
+        await backend.writeFile(path, names);
+        await backend.showFile(path);
+        appState.pushMessage(`${selected.length}개 씬 이름을 내보냈습니다.`);
       } else if (value === 'sortScenes') {
         const allScenes = this.curSession!.getScenes(type);
         const selectedSet = new Set(selected.map(s => s.name));
@@ -956,6 +988,7 @@ export class AppState {
         { text: '❌ 즐겨찾기 전부 해제', value: 'removeAllFav' },
         { text: '⭐ 상위 n등 즐겨찾기 지정', value: 'setFav' },
         { text: '📋 씬 내용 복제', value: 'copySceneContent' },
+        { text: '📝 씬 이름 내보내기', value: 'exportSceneNames' },
         { text: '🗂️ 씬 일괄 삭제', value: 'deleteScenes' },
         { text: '🔤 씬 이름순 정렬', value: 'sortScenes' },
         { text: '⏹️ 예약 일괄 취소', value: 'cancelReservations' },
