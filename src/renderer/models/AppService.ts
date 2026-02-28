@@ -441,7 +441,7 @@ export class AppState {
       opt: string,
       imageSize: number,
       separator: string,
-      replaceSpaces: boolean,
+      charsToReplace: Set<string>,
     ) => {
       const paths = [];
       await imageService.refreshBatch(this.curSession!);
@@ -469,8 +469,16 @@ export class AppState {
             images.push(cand);
           }
         }
-        const sceneName = replaceSpaces ? scene.name.replace(/ /g, '_') : scene.name;
-        const finalPrefix = replaceSpaces ? prefix.replace(/ /g, '_') : prefix;
+        let sceneName = scene.name;
+        let finalPrefix = prefix;
+        if (charsToReplace.size > 0) {
+          const escaped = Array.from(charsToReplace).map(
+            (c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          ).join('|');
+          const regex = new RegExp(`(${escaped})+`, 'g');
+          sceneName = sceneName.replace(regex, separator);
+          finalPrefix = finalPrefix.replace(regex, separator);
+        }
         for (let i = 0; i < images.length; i++) {
           const path = images[i];
           if (images.length === 1) {
@@ -606,25 +614,44 @@ export class AppState {
     });
     if (separatorInput === undefined) return;
     const separator = separatorInput || '.';
-    const spaceOpt = await appState.pushDialogAsync({
-      type: 'select',
-      text: '파일명의 띄어쓰기를 언더바(_)로 변환할까요?',
-      items: [
-        { text: '아니오 (원본 유지)', value: 'no' },
-        { text: '예 (띄어쓰기 → _)', value: 'yes' },
-      ],
-    });
-    if (!spaceOpt) return;
-    const replaceSpaces = spaceOpt === 'yes';
+
+    // 씬 이름에서 특수문자 감지
+    const specialCharRegex = /[^a-zA-Z0-9가-힣ぁ-んァ-ヶ一-龥\u3000-\u303F]/g;
+    const detectedChars = new Set<string>();
+    const scenes = selected || this.curSession!.getScenes(type);
+    for (const s of scenes) {
+      const matches = s.name.match(specialCharRegex);
+      if (matches) matches.forEach((c) => detectedChars.add(c));
+    }
+
+    let charsToReplace = new Set<string>();
+    if (detectedChars.size > 0) {
+      const items = Array.from(detectedChars).map((c) => ({
+        text: c === ' ' ? '띄어쓰기' : `"${c}"`,
+        value: c,
+      }));
+      const result = await appState.pushDialogAsync({
+        type: 'checkbox',
+        text: `씬 이름에서 감지된 특수문자입니다.\n"${separator}" 로 변환할 문자를 선택해주세요:`,
+        items: items,
+      });
+      if (result === undefined) return;
+      try {
+        charsToReplace = new Set(JSON.parse(result));
+      } catch (e) {
+        // 파싱 실패 시 변환 없음
+      }
+    }
+
     if (format === 'normal') {
-      await exportImpl('', menu === 'fav', opt, imageSize, separator, replaceSpaces);
+      await exportImpl('', menu === 'fav', opt, imageSize, separator, charsToReplace);
     } else {
       appState.pushDialog({
         type: 'input-confirm',
         text: '캐릭터 이름을 입력해주세요',
         callback: async (prefix) => {
           if (!prefix) return;
-          await exportImpl(prefix + separator, menu === 'fav', opt, imageSize, separator, replaceSpaces);
+          await exportImpl(prefix + separator, menu === 'fav', opt, imageSize, separator, charsToReplace);
         },
       });
     }
@@ -955,7 +982,51 @@ export class AppState {
           }
         }
       } else if (value === 'exportSceneNames') {
-        const names = selected.map((s) => s.name).join(', ');
+        // 씬 이름에서 특수문자 구분자 감지
+        const specialCharRegex = /[^a-zA-Z0-9가-힣ぁ-んァ-ヶ一-龥\u3000-\u303F]/g;
+        const detectedChars = new Set<string>();
+        for (const s of selected) {
+          const matches = s.name.match(specialCharRegex);
+          if (matches) matches.forEach((c) => detectedChars.add(c));
+        }
+
+        let charsToReplace = new Set<string>();
+        let replacement = '_';
+        if (detectedChars.size > 0) {
+          const replacementInput = await appState.pushDialogAsync({
+            type: 'input-confirm',
+            text: '씬 이름의 특수문자를 변환할 대체 문자를 입력해주세요 (기본값: _)',
+          });
+          if (replacementInput === undefined) return;
+          replacement = replacementInput || '_';
+
+          const items = Array.from(detectedChars).map((c) => ({
+            text: c === ' ' ? '띄어쓰기' : `"${c}"`,
+            value: c,
+          }));
+          const result = await appState.pushDialogAsync({
+            type: 'checkbox',
+            text: `씬 이름에서 감지된 특수문자입니다.\n"${replacement}" 로 변환할 문자를 선택해주세요:`,
+            items: items,
+          });
+          if (result === undefined) return;
+          try {
+            charsToReplace = new Set(JSON.parse(result));
+          } catch (e) {
+            // 파싱 실패 시 변환 없음
+          }
+        }
+
+        let names: string;
+        if (charsToReplace.size > 0) {
+          const escaped = Array.from(charsToReplace).map(
+            (c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          ).join('|');
+          const regex = new RegExp(`(${escaped})+`, 'g');
+          names = selected.map((s) => s.name.replace(regex, replacement)).join(', ');
+        } else {
+          names = selected.map((s) => s.name).join(', ');
+        }
         const path = 'exports/scene_names_' + Date.now().toString() + '.txt';
         await backend.writeFile(path, names);
         await backend.showFile(path);

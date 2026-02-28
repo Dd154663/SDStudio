@@ -9,7 +9,7 @@ export interface Dialog {
     | ((value?: string, text?: string) => void)
     | ((value?: string, text?: string) => Promise<void>);
   onCancel?: () => void;
-  type: 'confirm' | 'yes-only' | 'input-confirm' | 'textarea-confirm' | 'select' | 'dropdown';
+  type: 'confirm' | 'yes-only' | 'input-confirm' | 'textarea-confirm' | 'select' | 'dropdown' | 'checkbox';
   inputValue?: string;
   green?: boolean;
   graySelect?: boolean;
@@ -18,21 +18,29 @@ export interface Dialog {
 
 const ConfirmWindow = observer(() => {
   const [inputValue, setInputValue] = useState<string>('');
+  const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
 
   const handleConfirm = () => {
     const currentDialog = appState.dialogs[appState.dialogs.length - 1];
     if (appState.dialogs.length > 0) appState.dialogs.pop();
     if (currentDialog && currentDialog.callback) {
-      currentDialog.callback(
-        currentDialog.type === 'input-confirm' ||
-          currentDialog.type === 'textarea-confirm' ||
-          currentDialog.type === 'dropdown'
-          ? inputValue
-          : undefined,
-        currentDialog.text,
-      );
+      if (currentDialog.type === 'checkbox') {
+        currentDialog.callback(
+          JSON.stringify(Array.from(checkedItems)),
+        );
+      } else {
+        currentDialog.callback(
+          currentDialog.type === 'input-confirm' ||
+            currentDialog.type === 'textarea-confirm' ||
+            currentDialog.type === 'dropdown'
+            ? inputValue
+            : undefined,
+          currentDialog.text,
+        );
+      }
     }
     setInputValue('');
+    setCheckedItems(new Set());
   };
 
   const curDialog = appState.dialogs[appState.dialogs.length - 1];
@@ -78,7 +86,7 @@ const ConfirmWindow = observer(() => {
             <div
               className={
                 'justify-end mt-4 ' +
-                (curDialog.type === 'select' || curDialog.type === 'dropdown'
+                (curDialog.type === 'select' || curDialog.type === 'dropdown' || curDialog.type === 'checkbox'
                   ? 'flex flex-col gap-2'
                   : 'flex')
               }
@@ -195,6 +203,51 @@ const ConfirmWindow = observer(() => {
                         if (curDialog.onCancel) curDialog.onCancel();
                         appState.dialogs.pop();
                         setInputValue('');
+                        setCheckedItems(new Set());
+                      }}
+                    >
+                      취소
+                    </button>
+                  </div>
+                </>
+              )}
+              {curDialog.type === 'checkbox' && (
+                <>
+                  <div className="flex flex-col gap-1 mt-2 mb-2 w-full">
+                    {curDialog.items!.map((item, idx) => (
+                      <label
+                        key={idx}
+                        className="flex items-center gap-2 px-3 py-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checkedItems.has(item.value)}
+                          onChange={(e) => {
+                            const next = new Set(checkedItems);
+                            if (e.target.checked) next.add(item.value);
+                            else next.delete(item.value);
+                            setCheckedItems(next);
+                          }}
+                          className="w-4 h-4 flex-shrink-0"
+                        />
+                        <span className="text-default">{item.text}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 mt-2 w-full">
+                    <button
+                      className="flex-1 px-4 py-2 rounded back-sky clickable"
+                      onClick={handleConfirm}
+                    >
+                      확인
+                    </button>
+                    <button
+                      className="flex-1 px-4 py-2 rounded back-gray clickable"
+                      onClick={() => {
+                        if (curDialog.onCancel) curDialog.onCancel();
+                        appState.dialogs.pop();
+                        setInputValue('');
+                        setCheckedItems(new Set());
                       }}
                     >
                       취소
