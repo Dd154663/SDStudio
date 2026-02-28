@@ -921,6 +921,52 @@ const QueueControl = observer(
               onFilenameChange={onFilenameChange}
               onEdit={onEdit}
               buttons={buttons}
+              onSampleExtract={type === 'scene' ? (seeds: number[]) => {
+                const sourceScene = displayScene;
+                gameService.refreshList(curSession!, sourceScene);
+                setDisplayScene(undefined);
+                const allScenes = curSession!.getScenes('scene');
+                const targetScenes = allScenes.filter((s) => s.name !== sourceScene.name);
+                if (targetScenes.length === 0) {
+                  appState.pushMessage('대상 씬이 없습니다.');
+                  return;
+                }
+                setSceneSelector({
+                  type: 'scene',
+                  text: `🎲 샘플 뽑기 (${seeds.length}개 시드)`,
+                  scenes: targetScenes,
+                  callback: (selected) => {
+                    setSceneSelector(undefined);
+                    if (selected.length === 0) return;
+                    appState.pushDialog({
+                      type: 'confirm',
+                      text: `${selected.length}개 씬에 ${seeds.length}개 시드로 각각 이미지를 생성하시겠습니까?\n(총 ${selected.length * seeds.length}장)`,
+                      callback: async () => {
+                        const workflow = curSession!.selectedWorkflow;
+                        if (!workflow) {
+                          appState.pushMessage('워크플로우가 선택되지 않았습니다.');
+                          return;
+                        }
+                        const [wfType, , shared] = curSession!.getCommonSetup(workflow);
+                        const originalSeed = shared?.seed;
+                        try {
+                          for (const targetScene of selected) {
+                            for (const seed of seeds) {
+                              if (shared) shared.seed = seed;
+                              await queueWorkflow(curSession!, workflow, targetScene, 1);
+                            }
+                          }
+                          appState.pushMessage(`${selected.length * seeds.length}개 이미지 생성이 예약되었습니다.`);
+                        } catch (e: any) {
+                          appState.pushMessage('샘플 뽑기 오류: ' + e.message);
+                        } finally {
+                          if (shared) shared.seed = originalSeed;
+                        }
+                      },
+                    });
+                  },
+                });
+              } : undefined}
             />
           </FloatView>
         );

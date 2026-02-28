@@ -25,6 +25,7 @@ import {
   FaBookmark,
   FaCalendarTimes,
   FaCheck,
+  FaDice,
   FaDownload,
   FaEdit,
   FaFolder,
@@ -1093,6 +1094,7 @@ interface ResultViewerProps {
   onEdit: (scene: GenericScene) => void;
   isMainImage?: (path: string) => boolean;
   starScene?: Scene;
+  onSampleExtract?: (seeds: number[]) => void;
 }
 
 const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
@@ -1104,6 +1106,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       starScene,
       isMainImage,
       buttons,
+      onSampleExtract,
     }: ResultViewerProps,
     ref,
   ) => {
@@ -1456,6 +1459,37 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               >
                 <FaTrash />
               </button>
+              {onSampleExtract && (
+                <button
+                  className={`round-button back-sky`}
+                  onClick={async () => {
+                    if (!selectMode || selectedImages.current.size === 0) {
+                      appState.pushMessage('이미지를 먼저 선택해주세요.');
+                      return;
+                    }
+                    const selectedPaths = Array.from(selectedImages.current);
+                    const seeds: number[] = [];
+                    for (const path of selectedPaths) {
+                      try {
+                        const image = await imageService.fetchImage(path);
+                        if (!image) continue;
+                        const base64 = dataUriToBase64(image);
+                        const job = await extractPromptDataFromBase64(base64);
+                        if (job?.seed) seeds.push(job.seed);
+                      } catch (e) {
+                        // 시드 추출 실패 시 스킵
+                      }
+                    }
+                    if (seeds.length === 0) {
+                      appState.pushMessage('선택한 이미지에서 시드를 추출할 수 없습니다.');
+                      return;
+                    }
+                    onSampleExtract(seeds);
+                  }}
+                >
+                  <FaDice />
+                </button>
+              )}
               <button
                 className={`round-button ${bookmarkedImageFilename ? 'back-orange' : 'back-gray'}`}
                 onClick={() => {
