@@ -59,54 +59,182 @@ export async function extractExifFromBase64(base64: string) {
   return exif;
 }
 
+const STEALTH_MAGIC = 'stealth_pngcomp';
+
+async function decompressGzip(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new DecompressionStream('gzip');
+  const writer = stream.writable.getWriter();
+  writer.write(data);
+  writer.close();
+  const reader = stream.readable.getReader();
+  const chunks: Uint8Array[] = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
+}
+
+function loadImageFromBase64(base64: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = `data:image/png;base64,${base64}`;
+  });
+}
+
+export async function extractMetadataFromAlpha(
+  base64: string,
+): Promise<any | undefined> {
+  try {
+    const img = await loadImageFromBase64(base64);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(img, 0, 0);
+    const imageData = ctx.getImageData(0, 0, img.width, img.height);
+    const pixels = imageData.data;
+    const width = img.width;
+    const height = img.height;
+
+    // Extract LSBs from alpha channel in column-major order
+    const totalPixels = width * height;
+    const bits = new Uint8Array(totalPixels);
+    let bitIdx = 0;
+    for (let x = 0; x < width; x++) {
+      for (let y = 0; y < height; y++) {
+        const idx = (y * width + x) * 4 + 3; // alpha channel
+        bits[bitIdx++] = pixels[idx] & 1;
+      }
+    }
+
+    // Pack bits into bytes (MSB first, same as np.packbits)
+    const byteLen = Math.ceil(totalPixels / 8);
+    const bytes = new Uint8Array(byteLen);
+    for (let i = 0; i < totalPixels; i++) {
+      if (bits[i]) {
+        bytes[Math.floor(i / 8)] |= 1 << (7 - (i % 8));
+      }
+    }
+
+    // Check magic string
+    const magicBytes = new TextEncoder().encode(STEALTH_MAGIC);
+    for (let i = 0; i < magicBytes.length; i++) {
+      if (bytes[i] !== magicBytes[i]) return undefined;
+    }
+
+    // Read 32-bit big-endian length (in bits)
+    let offset = STEALTH_MAGIC.length;
+    const lengthBits =
+      (bytes[offset] << 24) |
+      (bytes[offset + 1] << 16) |
+      (bytes[offset + 2] << 8) |
+      bytes[offset + 3];
+    offset += 4;
+    const lengthBytes = Math.ceil(lengthBits / 8);
+
+    // Extract and decompress gzip data
+    const compressed = bytes.slice(offset, offset + lengthBytes);
+    const decompressed = await decompressGzip(compressed);
+    const jsonString = new TextDecoder().decode(decompressed);
+    const metadata = JSON.parse(jsonString);
+
+    // The Comment field may be a nested JSON string
+    if (metadata['Comment'] && typeof metadata['Comment'] === 'string') {
+      metadata['Comment'] = JSON.parse(metadata['Comment']);
+    }
+
+    return metadata;
+  } catch (e) {
+    return undefined;
+  }
+}
+
+function parseCommentToJob(
+  data: any,
+): SDAbstractJob<string> | undefined {
+  if (!data || !data['prompt']) return undefined;
+  try {
+    const charPrompts = data['v4_prompt']['caption']['char_captions'].map(
+      (c: any) => c.char_caption,
+    );
+    const charPos = data['v4_prompt']['caption']['char_captions'].map(
+      (c: any) => c.centers[0],
+    );
+    const charUCs = data['v4_negative_prompt']['caption'][
+      'char_captions'
+    ].map((c: any) => c.char_caption);
+
+    const characterPrompts: CharacterPrompt[] = [];
+    for (let i = 0; i < charPrompts.length; i++) {
+      characterPrompts.push({
+        id: `${i}`,
+        prompt: charPrompts[i],
+        position: charPos[i],
+        uc: charUCs[i],
+      });
+    }
+    return {
+      prompt: data['prompt'],
+      seed: data['seed'],
+      promptGuidance: data['scale'],
+      cfgRescale: data['cfg_rescale'],
+      sampling: data['sampler'],
+      noiseSchedule: data['noise_schedule'],
+      steps: data['steps'],
+      uc: data['uc'],
+      vibes: [],
+      normalizeStrength: data['normalize_reference_strength_multiple'],
+      varietyPlus: data['skip_cfg_above_sigma'] ? true : false,
+      characterReferences: [],
+      backend: { type: 'NAI' },
+      useCoords: data['v4_prompt']['use_coords'],
+      legacyPromptConditioning: data['v4_negative_prompt']['legacy_uc'],
+      characterPrompts: characterPrompts,
+    };
+  } catch (e) {
+    return undefined;
+  }
+}
+
 export async function extractPromptDataFromBase64(
   base64: string,
 ): Promise<SDAbstractJob<string> | undefined> {
-  const exif = await extractExifFromBase64(base64);
-  const comment = exif['Comment'];
-  if (comment && comment.value) {
-    const data = JSON.parse(comment.value as string);
-
-    if (data['prompt']) {
-      const charPrompts = data['v4_prompt']['caption']['char_captions'].map(
-        (c: any) => c.char_caption,
-      );
-      const charPos = data['v4_prompt']['caption']['char_captions'].map(
-        (c: any) => c.centers[0],
-      );
-      const charUCs = data['v4_negative_prompt']['caption'][
-        'char_captions'
-      ].map((c: any) => c.char_caption);
-
-      const characterPrompts: CharacterPrompt[] = [];
-      for (let i = 0; i < charPrompts.length; i++) {
-        characterPrompts.push({
-          id: `${i}`,
-          prompt: charPrompts[i],
-          position: charPos[i],
-          uc: charUCs[i],
-        });
-      }
-      return {
-        prompt: data['prompt'],
-        seed: data['seed'],
-        promptGuidance: data['scale'],
-        cfgRescale: data['cfg_rescale'],
-        sampling: data['sampler'],
-        noiseSchedule: data['noise_schedule'],
-        steps: data['steps'],
-        uc: data['uc'],
-        vibes: [],
-        normalizeStrength: data['normalize_reference_strength_multiple'],
-        varietyPlus: data['skip_cfg_above_sigma'] ? true : false,
-        characterReferences: [],
-        backend: { type: 'NAI' },
-        useCoords: data['v4_prompt']['use_coords'],
-        legacyPromptConditioning: data['v4_negative_prompt']['legacy_uc'],
-        characterPrompts: characterPrompts,
-      };
+  // 1차: EXIF Comment에서 추출 시도
+  try {
+    const exif = await extractExifFromBase64(base64);
+    const comment = exif['Comment'];
+    if (comment && comment.value) {
+      const data = JSON.parse(comment.value as string);
+      const result = parseCommentToJob(data);
+      if (result) return result;
     }
+  } catch (e) {
+    // EXIF 추출 실패 — 스테가노그래피로 폴백
   }
+
+  // 2차: 알파 채널 스테가노그래피에서 추출 시도
+  try {
+    const metadata = await extractMetadataFromAlpha(base64);
+    if (metadata) {
+      const commentData = metadata['Comment'] || metadata;
+      const result = parseCommentToJob(commentData);
+      if (result) return result;
+    }
+  } catch (e) {
+    // 스테가노그래피 추출도 실패
+  }
+
   return undefined;
 }
 
