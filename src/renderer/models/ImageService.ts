@@ -63,9 +63,9 @@ export class ImageService extends EventTarget {
     super();
     this.images = {};
     this.inpaints = {};
-    this.cache = new LRUCache(IMAGE_CACHE_SIZE);
+    this.cache = new LRUCache(isMobile ? 64 : IMAGE_CACHE_SIZE);
     this.mutexes = {};
-    this.encodedVibeExistsCache = new LRUCache(ENCODED_VIBE_CACHE_SIZE);
+    this.encodedVibeExistsCache = new LRUCache(isMobile ? 32 : ENCODED_VIBE_CACHE_SIZE);
   }
 
   private async acquireMutex(path: string) {

@@ -328,6 +328,13 @@ input[type='number']::-webkit-outer-spin-button {
   animation-duration: 0.3s;
 }
 
+/* 모바일: 이미지 로드 애니메이션 비활성화 (성능 최적화) */
+@media (hover: none) and (pointer: coarse) {
+  .image-anime {
+    animation: none;
+  }
+}
+
 @keyframes show {
   from {
     opacity: 0;

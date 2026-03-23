@@ -57,8 +57,6 @@ export class NovelAiImageGenService implements ImageGenService {
 
     if (version === ModelVersion.V4Curated && model.match(/anime|i2i/))
       return resultModel + '-preview';
-    if (version === ModelVersion.V4_5 && model === Model.Inpaint)
-      return this.translateModel(Model.Inpaint, ModelVersion.V4);
     return resultModel;
   }
 
@@ -174,7 +172,7 @@ export class NovelAiImageGenService implements ImageGenService {
         prefer_brownian: true,
         autoSmea: false,
         legacy_uc: params.legacyPromptConditioning,
-        inpaintImg2ImgStrength: 1,
+        inpaintImg2ImgStrength: params.imageStrength,
         cfg_rescale: params.cfgRescale,
         add_original_image: params.originalImage ? true : false,
         normalize_reference_strength_multiple:
@@ -246,7 +244,13 @@ export class NovelAiImageGenService implements ImageGenService {
       body.parameters.mask = params.mask;
     }
     if (params.model === Model.Inpaint) {
-      body.parameters.extra_noise_seed = seed;
+      body.parameters.img2img = {
+        strength: params.imageStrength,
+        begin_from_sigma: null,
+        noise: 0,
+        extra_noise_seed: seed,
+        color_correct: true,
+      };
       if (params.sampling === Sampling.DDIM) {
         body.parameters.sampler = this.translateSampling(
           Sampling.KEulerAncestral,
@@ -254,8 +258,13 @@ export class NovelAiImageGenService implements ImageGenService {
       }
     }
     if (params.model === Model.I2I) {
-      body.parameters.extra_noise_seed = seed;
-      body.parameters.color_correct = true;
+      body.parameters.img2img = {
+        strength: params.imageStrength,
+        begin_from_sigma: null,
+        noise: params.noise,
+        extra_noise_seed: seed,
+        color_correct: true,
+      };
     }
     if (params.sampling == Sampling.KEulerAncestral) {
       body.parameters.deliberate_euler_ancestral_bug = false;

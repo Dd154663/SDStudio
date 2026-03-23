@@ -289,8 +289,7 @@ export const SDImageGenEasyDef = new WFDefBuilder('SDImageGenEasy')
 const SDInpaintPreset = new WFVarBuilder()
   .addImageVar('image')
   .addImageVar('mask')
-  .addIntVar('strength', 0, 1, 0.01, 0.7)
-  .addIntVar('noise', 0, 1, 0.01, 0)
+  .addIntVar('strength', 0, 1, 0.01, 1)
   .addIntVar('cfgRescale', 0, 1, 0.01, 0)
   .addIntVar('steps', 1, 50, 1, 28)
   .addIntVar('promptGuidance', 0, 10, 0.1, 5)
@@ -310,7 +309,6 @@ const SDInpaintPreset = new WFVarBuilder()
 const SDInpaintUI = wfiStack([
   wfiInlineInput('이미지', 'image', 'preset', 'flex-none'),
   wfiInlineInput('인페인트 강도', 'strength', 'preset', 'flex-none'),
-  wfiInlineInput('노이즈', 'noise', 'preset', 'flex-none'),
   wfiInlineInput(
     '비마스크 영역 편집 방지',
     'originalImage',
