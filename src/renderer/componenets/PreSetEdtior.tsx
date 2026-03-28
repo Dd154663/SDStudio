@@ -337,6 +337,7 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                         `round-button h-8 px-8 ml-auto ` +
                         (disabled ? 'back-gray' : 'back-red')
                       }
+                      title="바이브 삭제"
                       onClick={() => {
                         if (disabled) return;
                         setField(getField().filter((x: any) => x !== vibe));
@@ -606,6 +607,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                         `round-button h-8 px-4 ` +
                         (disabled ? 'back-gray' : 'back-red')
                       }
+                      title="레퍼런스 삭제"
                       onClick={() => {
                         if (disabled) return;
                         setField(getField().filter((x: any) => x !== reference));
@@ -1274,6 +1276,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                     curSession!.addPreset(newPreset);
                   }}
                   className="p-2 mx-1 icon-button bg-sky-500"
+                  title="그림체 복제"
                 >
                   <FaCopy />
                 </button>
@@ -1283,6 +1286,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                     await appState.exportPreset(curSession, option);
                   }}
                   className="p-2 mx-1 icon-button bg-orange-500"
+                  title="그림체 내보내기"
                 >
                   <FaShare />
                 </button>
@@ -1307,6 +1311,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                     });
                   }}
                   className="p-2 mx-1 icon-button bg-red-500"
+                  title="그림체 삭제"
                 >
                   <FaTrash />
                 </button>
@@ -1658,6 +1663,7 @@ const CharacterPromptEditor = observer(
                     </button>
                     <button
                       className="icon-button back-red"
+                      title="캐릭터 삭제"
                       onClick={() => removeCharacter(character.id)}
                     >
                       <FaTrash />

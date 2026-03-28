@@ -675,6 +675,15 @@ class AugmentTaskHandler implements TaskHandler {
   }
 }
 
+export interface TaskLog {
+  timestamp: number;
+  level: 'info' | 'warn' | 'error';
+  scene: string;
+  message: string;
+}
+
+const MAX_TASK_LOGS = 500;
+
 export class TaskQueueService extends EventTarget {
   queue: CircularQueue<Task>;
   handlers: TaskHandler[];
@@ -683,6 +692,7 @@ export class TaskQueueService extends EventTarget {
   sceneStats: { [sceneKey: string]: TaskStats };
   currentRun: TaskQueueRun | undefined;
   taskSet: { [key: string]: boolean };
+  taskLogs: TaskLog[] = [];
   constructor(handlers: TaskHandler[]) {
     super();
     this.handlers = handlers;
@@ -695,6 +705,17 @@ export class TaskQueueService extends EventTarget {
     }
     this.queue = new CircularQueue();
     this.taskSet = {};
+  }
+
+  addLog(level: TaskLog['level'], scene: string, message: string) {
+    this.taskLogs.push({ timestamp: Date.now(), level, scene, message });
+    if (this.taskLogs.length > MAX_TASK_LOGS) {
+      this.taskLogs.splice(0, this.taskLogs.length - MAX_TASK_LOGS);
+    }
+  }
+
+  clearLogs() {
+    this.taskLogs = [];
   }
 
   removeAllTasks() {
@@ -865,6 +886,22 @@ export class TaskQueueService extends EventTarget {
     delete this.taskSet[task.id!];
   }
 
+  private getRetryTimeoutMs(retryIndex: number): number {
+    if (retryIndex < 5) return 10 * 1000;
+    if (retryIndex < 10) return 30 * 1000;
+    return 120 * 1000;
+  }
+
+  private withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Timeout')), timeoutMs);
+      promise.then(
+        (v) => { clearTimeout(timer); resolve(v); },
+        (e) => { clearTimeout(timer); reject(e); },
+      );
+    });
+  }
+
   async runInternal(cur: TaskQueueRun) {
     this.dispatchProgress();
     const config = await backend.getConfig();
@@ -887,7 +924,8 @@ export class TaskQueueService extends EventTarget {
         }
         try {
           await handler.handleDelay(task, i, delayTime);
-          await handler.handleTask(task, cur);
+          const timeoutMs = this.getRetryTimeoutMs(i);
+          await this.withTimeout(handler.handleTask(task, cur), timeoutMs);
           const after = Date.now();
           this.timeEstimators[task.cls].addSample(after - before);
           done = true;
@@ -912,16 +950,31 @@ export class TaskQueueService extends EventTarget {
           this.dispatchEvent(new CustomEvent('complete', {}));
           this.dispatchProgress();
         } catch (e: any) {
+          const sceneName = task.params.scene?.name ?? '(unknown)';
           if (e.message === 'IP') {
+            this.addLog('error', sceneName, 'IP 변경 감지로 중단');
             this.dispatchEvent(new CustomEvent('ip-check-fail', {}));
             this.stop();
             return;
           }
-          this.dispatchEvent(
-            new CustomEvent('error', {
-              detail: { error: e.message, task: task },
-            }),
-          );
+          // 429 rate limit: 60초 대기 후 재시도
+          if (e.message && e.message.includes('429')) {
+            this.addLog('warn', sceneName, `요청 제한 (429) - 60초 대기 후 재시도 [${i + 1}/${numTries}]`);
+            console.log('Rate limited (429), waiting 60s before retry...');
+            this.dispatchEvent(
+              new CustomEvent('error', {
+                detail: { error: '요청 제한 (429) - 60초 대기 후 재시도', task: task },
+              }),
+            );
+            await sleep(60 * 1000);
+          } else {
+            this.addLog('error', sceneName, `${e.message} [${i + 1}/${numTries}]`);
+            this.dispatchEvent(
+              new CustomEvent('error', {
+                detail: { error: e.message, task: task },
+              }),
+            );
+          }
           console.error(e);
         }
         if (done) {
@@ -929,13 +982,19 @@ export class TaskQueueService extends EventTarget {
         }
       }
       if (!done) {
-        console.log('FATAL ERROR');
-        if (cur == this.currentRun) {
-          this.dispatchEvent(new CustomEvent('stop', {}));
-          this.currentRun = undefined;
-        }
+        // 실패한 태스크를 건너뛰고 다음 태스크로 진행
+        const sceneName = task.params.scene?.name ?? '(unknown)';
+        this.addLog('error', sceneName, `${numTries}회 재시도 실패 - 건너뜀`);
+        console.log('SKIPPING FAILED TASK:', task.params.scene?.name);
+        this.dispatchEvent(
+          new CustomEvent('error', {
+            detail: { error: '재시도 초과로 건너뜀', task: task },
+          }),
+        );
+        this.removeTaskInternal(task);
+        this.queue.dequeue();
         this.dispatchProgress();
-        return;
+        continue;
       }
     }
     if (cur == this.currentRun) {

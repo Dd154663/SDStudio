@@ -17,9 +17,9 @@ const AlertWindow = observer(() => {
   }, [messages]);
 
   return (
-    <div className="fixed flex justify-center w-full alert-window">
+    <div className="fixed flex justify-center w-full alert-window pointer-events-none">
       {messages.length > 0 && (
-        <div className="flex justify-between m-4 p-4 rounded-md shadow-xl bg-red-600	text-white w-3/4">
+        <div className="flex justify-between m-4 p-4 rounded-md shadow-xl bg-red-600	text-white w-3/4 pointer-events-auto">
           <div>{messages[messages.length - 1]}</div>
           <button
             onClick={() => {

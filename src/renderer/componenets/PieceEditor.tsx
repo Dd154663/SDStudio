@@ -334,6 +334,7 @@ const PieceEditor = observer(() => {
 
         <button
           className={`icon-button h-8 px-4 ml-auto`}
+          title="조각그룹 추가"
           onClick={async () => {
             appState.pushDialog({
               type: 'input-confirm',
@@ -389,6 +390,7 @@ const PieceEditor = observer(() => {
         </button>
         <button
           className={`icon-button h-8 px-4`}
+          title="조각그룹 삭제"
           onClick={async () => {
             if (!selectedPieceLibrary) return;
             appState.pushDialog({
@@ -426,6 +428,7 @@ const PieceEditor = observer(() => {
           ))}
           <button
             className="py-2 px-8 rounded-xl back-lllgray"
+            title="조각 추가"
             onClick={async () => {
               appState.pushDialog({
                 type: 'input-confirm',

@@ -1346,6 +1346,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               </button>
               <button
                 className={`round-button back-gray`}
+                title="예약 제거"
                 onClick={() => {
                   taskQueueService.removeTasksFromScene(scene);
                 }}
@@ -1354,6 +1355,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               </button>
               <button
                 className={`round-button back-orange`}
+                title="씬 편집"
                 onClick={() => {
                   onEdit(scene);
                 }}
@@ -1363,6 +1365,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               {!isMobile && (
                 <button
                   className={`round-button back-sky`}
+                  title="폴더 열기"
                   onClick={async () => {
                     await backend.showFile(
                       getResultDirectory(curSession!, scene),
@@ -1376,6 +1379,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                 className={
                   `round-button ` + (selectMode ? 'back-sky' : 'back-gray')
                 }
+                title="이미지 선택 모드"
                 onClick={() => {
                   if (selectMode) {
                     selectedImages.current.clear();
@@ -1412,12 +1416,11 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               )}
               <button
                 className={`round-button back-green`}
+                title="이미지 다운로드"
                 onClick={() => {
                   if (selectMode && selectedImages.current.size > 0) {
-                    // 선택 모드에서 선택된 이미지들 다운로드
                     setShowDownloadDialog(true);
                   } else {
-                    // 전체 이미지 다운로드 다이얼로그
                     setShowDownloadDialog(true);
                   }
                 }}
@@ -1426,6 +1429,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               </button>
               <button
                 className={`round-button back-sky`}
+                title="이미지 복사"
                 onClick={() => {
                   if (selectMode && selectedImages.current.size > 0) {
                     const selected = [...selectedImages.current];
@@ -1439,6 +1443,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               </button>
               <button
                 className={`round-button ${appState.imageClipboard.length > 0 ? 'back-sky' : 'back-gray'}`}
+                title="이미지 붙여넣기"
                 onClick={() => {
                   appState.pushDialog({
                     type: 'confirm',
@@ -1453,6 +1458,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               </button>
               <button
                 className={`round-button back-red`}
+                title="이미지 삭제"
                 onClick={() => {
                   onDeleteImages(scene);
                 }}
@@ -1462,6 +1468,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               {onSampleExtract && (
                 <button
                   className={`round-button back-sky`}
+                  title="샘플 뽑기 (시드 추출)"
                   onClick={async () => {
                     if (!selectMode || selectedImages.current.size === 0) {
                       appState.pushMessage('이미지를 먼저 선택해주세요.');
@@ -1492,6 +1499,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               )}
               <button
                 className={`round-button ${bookmarkedImageFilename ? 'back-orange' : 'back-gray'}`}
+                title="북마크된 이미지로 이동"
                 onClick={() => {
                   if (!bookmarkedImageFilename) {
                     appState.pushMessage('북마크된 이미지가 없습니다.');

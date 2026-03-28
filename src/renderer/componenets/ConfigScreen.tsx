@@ -6,11 +6,13 @@ import {
   localAIService,
   loginService,
   sessionService,
+  taskQueueService,
 } from '../models';
 import { Config, ImageEditor, RemoveBgQuality } from '../../main/config';
 import { observer } from 'mobx-react-lite';
 import { appState } from '../models/AppService';
 import { ModelVersion } from '../backends/imageGen';
+import { TaskLog } from '../models/TaskQueueService';
 
 interface ConfigScreenProps {
   onSave: () => void;
@@ -404,35 +406,123 @@ const ConfigScreen = observer(({ onSave }: ConfigScreenProps) => {
           />
           <span className="text-sm gray-label">{delayTime}ms</span>
         </div>
-        <button
-          className="mt-4 w-full back-sky py-2 rounded hover:brightness-95 active:brightness-90"
-          onClick={async () => {
-            const old = await backend.getConfig();
-            const config: Config = {
-              imageEditor: imageEditor as ImageEditor,
-              useCUDA: useGPU,
-              modelType: 'quality',
-              removeBgQuality: quality as RemoveBgQuality,
-              noIpCheck: noIpCheck,
-              refreshImage: refreshImage,
-              disableQuality: disableQuality,
-              whiteMode: whiteMode,
-              useLocalBgRemoval: useLocalBgRemoval,
-              modelVersion: modelVersion,
-              furryMode: furryMode,
-              delayTime: delayTime,
-            };
-            await backend.setConfig(config);
-            if (old.useCUDA !== useGPU) localAIService.modelChanged();
-            sessionService.configChanged();
-            onSave();
-          }}
-        >
-          저장
-        </button>
+        <div className="mt-4 flex gap-2">
+          <button
+            className="flex-1 back-sky py-2 rounded hover:brightness-95 active:brightness-90"
+            onClick={async () => {
+              const old = await backend.getConfig();
+              const config: Config = {
+                imageEditor: imageEditor as ImageEditor,
+                useCUDA: useGPU,
+                modelType: 'quality',
+                removeBgQuality: quality as RemoveBgQuality,
+                noIpCheck: noIpCheck,
+                refreshImage: refreshImage,
+                disableQuality: disableQuality,
+                whiteMode: whiteMode,
+                useLocalBgRemoval: useLocalBgRemoval,
+                modelVersion: modelVersion,
+                furryMode: furryMode,
+                delayTime: delayTime,
+              };
+              await backend.setConfig(config);
+              if (old.useCUDA !== useGPU) localAIService.modelChanged();
+              sessionService.configChanged();
+              onSave();
+            }}
+          >
+            저장
+          </button>
+          <TaskLogSection />
+        </div>
       </div>
     </div>
   );
 });
+
+const TaskLogSection = () => {
+  const [showDialog, setShowDialog] = useState(false);
+  const logs = taskQueueService.taskLogs;
+
+  const formatLog = (log: TaskLog) => {
+    const date = new Date(log.timestamp);
+    const time = date.toLocaleTimeString('ko-KR', { hour12: false });
+    const levelLabel = log.level === 'error' ? '[오류]' : log.level === 'warn' ? '[경고]' : '[정보]';
+    return `${time} ${levelLabel} [${log.scene}] ${log.message}`;
+  };
+
+  const downloadLogs = () => {
+    const text = logs.map(formatLog).join('\n');
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sdstudio-task-log-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <>
+      <button
+        className="back-gray py-2 px-3 rounded hover:brightness-95 active:brightness-90 text-sm whitespace-nowrap"
+        onClick={() => setShowDialog(true)}
+      >
+        로그
+      </button>
+      {showDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowDialog(false); }}
+        >
+          <div className="bg-white dark:bg-slate-700 rounded-lg shadow-xl w-[90vw] max-w-lg max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-slate-600">
+              <span className="font-bold text-default">작업 로그</span>
+              <button
+                className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-lg px-2"
+                onClick={() => setShowDialog(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 text-xs font-mono">
+              {logs.length === 0 ? (
+                <p className="text-gray-400 text-center py-4">로그가 없습니다.</p>
+              ) : (
+                [...logs].reverse().map((log, i) => (
+                  <div
+                    key={i}
+                    className={
+                      'py-0.5 ' +
+                      (log.level === 'error' ? 'text-red-500' : log.level === 'warn' ? 'text-yellow-500' : 'text-default')
+                    }
+                  >
+                    {formatLog(log)}
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="flex gap-2 p-3 border-t border-gray-200 dark:border-slate-600">
+              <button
+                className="flex-1 back-sky py-2 rounded text-sm hover:brightness-95 active:brightness-90"
+                onClick={downloadLogs}
+                disabled={logs.length === 0}
+              >
+                다운로드
+              </button>
+              <button
+                className="flex-1 back-gray py-2 rounded text-sm hover:brightness-95 active:brightness-90"
+                onClick={() => { taskQueueService.clearLogs(); }}
+                disabled={logs.length === 0}
+              >
+                초기화
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
 
 export default ConfigScreen;

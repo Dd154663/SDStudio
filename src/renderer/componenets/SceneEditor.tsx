@@ -259,6 +259,7 @@ export const BigPromptEditor = observer(
               {!taskQueueService.isRunning() ? (
                 <button
                   className={`round-button back-green h-8 w-16 md:w-36 flex items-center justify-center`}
+                  title="생성"
                   onClick={() => {
                     queuePrompt(getMiddlePrompt(), (path: string) => {
                       setPath(path);
@@ -270,6 +271,7 @@ export const BigPromptEditor = observer(
               ) : (
                 <button
                   className={`round-button back-red h-8 w-16 md:w-36 flex items-center justify-center`}
+                  title="중지"
                   onClick={() => {
                     taskQueueService.removeAllTasks();
                     taskQueueService.stop();
@@ -327,6 +329,7 @@ const CharacterPromptsEditor = observer(
                     <div className="flex items-center gap-2">
                       <button
                         className="icon-button back-red"
+                        title="캐릭터 프롬프트 삭제"
                         onClick={() => removePrompt(index)}
                       >
                         <FaTrash />

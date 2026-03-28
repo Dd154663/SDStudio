@@ -1,7 +1,7 @@
 import { memo, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { FloatView } from './FloatView';
 import SceneEditor from './SceneEditor';
-import { FaBookmark, FaEdit, FaPlus, FaRegCalendarTimes, FaSearch, FaTimes, FaTrash, FaTrashRestore } from 'react-icons/fa';
+import { FaBookmark, FaEdit, FaFileImage, FaPlus, FaRegCalendarTimes, FaSearch, FaStar, FaTimes, FaTrash, FaTrashRestore } from 'react-icons/fa';
 import Tournament from './Tournament';
 import ResultViewer from './ResultViewer';
 import InPaintEditor from './InPaintEditor';
@@ -281,20 +281,29 @@ export const SceneCell = observer(
             }
           >
             {image && (
-              <img
-                src={image}
-                draggable={false}
-                className={
-                  'w-auto h-auto object-scale-down z-0 bg-checkboard ' +
-                  cellSizes2[cellSize]
-                }
-              />
+              <div className="relative inline-block">
+                <img
+                  src={image}
+                  draggable={false}
+                  className={
+                    'w-auto h-auto object-scale-down z-0 bg-checkboard ' +
+                    cellSizes2[cellSize] +
+                    (scene.mains.length > 0 ? ' border-2 border-yellow-400' : '')
+                  }
+                />
+                {scene.mains.length > 0 && (
+                  <div className="absolute left-1 top-1 z-10 text-yellow-400 text-sm drop-shadow">
+                    <FaStar />
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
         <div className="w-full flex mt-auto justify-center items-center gap-1 md:gap-2 p-1 md:p-2">
           <button
             className={`round-button back-green`}
+            title="예약 추가"
             onClick={(e) => {
               e.stopPropagation();
               addToQueue(scene);
@@ -304,6 +313,7 @@ export const SceneCell = observer(
           </button>
           <button
             className={`round-button back-gray`}
+            title="예약 제거"
             onClick={(e) => {
               e.stopPropagation();
               removeFromQueue(scene);
@@ -313,6 +323,7 @@ export const SceneCell = observer(
           </button>
           <button
             className={`round-button back-orange`}
+            title="씬 편집"
             onClick={(e) => {
               e.stopPropagation();
               setEditingScene?.(scene);
@@ -322,6 +333,7 @@ export const SceneCell = observer(
           </button>
           <button
             className={`round-button ${isBookmarked ? 'back-orange' : 'back-gray'}`}
+            title="씬 북마크"
             onClick={(e) => {
               e.stopPropagation();
               onToggleBookmark?.();
@@ -1054,13 +1066,33 @@ const QueueControl = observer(
                 대량 작업
               </button>
               <button
+                className={`round-button back-gray`}
+                title="이미지 프롬프트 추출"
+                onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = 'image/png';
+                  input.onchange = (e: any) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      appState.handleFile(file);
+                    }
+                  };
+                  input.click();
+                }}
+              >
+                <FaFileImage />
+              </button>
+              <button
                 className={`round-button ${showSceneSearch ? 'back-sky' : 'back-gray'}`}
+                title="씬 검색"
                 onClick={toggleSceneSearch}
               >
                 <FaSearch />
               </button>
               <button
                 className={`round-button ${sceneBookmark ? 'back-orange' : 'back-gray'}`}
+                title="북마크된 씬으로 이동"
                 onClick={() => {
                   if (!sceneBookmark) {
                     appState.pushMessage('북마크된 씬이 없습니다.');
@@ -1082,6 +1114,7 @@ const QueueControl = observer(
               </button>
               <button
                 className={`round-button back-gray`}
+                title="씬 휴지통"
                 onClick={() => setShowSceneTrash(true)}
               >
                 <FaTrash />

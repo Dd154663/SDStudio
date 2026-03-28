@@ -303,6 +303,7 @@ const InPaintEditor = observer(
               {isMobile && (
                 <button
                   className={`rounded-full h-8 w-8 back-gray flex-none flex items-center justify-center clickable`}
+                  title="되돌리기"
                   onClick={() => {
                     brushTool.current!.undo();
                   }}
@@ -401,6 +402,7 @@ const InPaintEditor = observer(
             ) : (
               <button
                 className={`round-button back-red h-8 w-16 md:w-36 flex items-center justify-center`}
+                title="중지"
                 onClick={() => {
                   taskQueueService.removeAllTasks();
                   taskQueueService.stop();
