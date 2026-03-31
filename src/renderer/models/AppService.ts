@@ -1064,6 +1064,9 @@ export class AppState {
         { text: '🔤 씬 이름순 정렬', value: 'sortScenes' },
         { text: '⏹️ 예약 일괄 취소', value: 'cancelReservations' },
       ];
+      if (type === 'inpaint') {
+        items.push({ text: '🪞 이미지생성 탭 씬 이미지미러로 복제', value: 'mirrorDuplicate' });
+      }
       if (isMobile) {
         items = items.filter((x) => x.value !== 'removeBg');
       }
@@ -1073,6 +1076,72 @@ export class AppState {
         graySelect: true,
         items: items,
         callback: (value, text) => {
+          if (value === 'mirrorDuplicate') {
+            const imageGenScenes = this.curSession!.getScenes('scene');
+            if (imageGenScenes.length === 0) {
+              appState.pushMessage('이미지생성 씬이 없습니다.');
+              return;
+            }
+            setSceneSelector({
+              type: 'inpaint',
+              text: '🪞 미러로 복제할 이미지생성 씬 선택',
+              scenes: imageGenScenes,
+              callback: (selected) => {
+                setSceneSelector(undefined);
+                if (selected.length === 0) return;
+                appState.pushDialog({
+                  type: 'confirm',
+                  text: `선택한 ${selected.length}개 씬을 이미지미러 씬으로 복제하시겠습니까?`,
+                  callback: () => {
+                    let count = 0;
+                    for (const scene of selected) {
+                      const src = scene as Scene;
+                      const srcJSON = src.toJSON();
+                      // 이름 충돌 해결
+                      let name = src.name;
+                      if (this.curSession!.hasScene('inpaint', name)) {
+                        let i = 1;
+                        while (
+                          this.curSession!.hasScene('inpaint', `${name}_${i}`)
+                        )
+                          i++;
+                        name = `${name}_${i}`;
+                      }
+                      // SDMirror 프리셋 생성 + 중위 프롬프트 동기화
+                      const preset =
+                        workFlowService.buildPreset('SDMirror');
+                      if (
+                        srcJSON.slots.length > 0 &&
+                        srcJSON.slots[0].length > 0
+                      ) {
+                        preset.prompt = srcJSON.slots[0][0].prompt;
+                      }
+                      const newScene = InpaintScene.fromJSON({
+                        type: 'inpaint',
+                        name,
+                        workflowType: 'SDMirror',
+                        preset: preset.toJSON(),
+                        resolution: 'portrait',
+                        mains: [],
+                        imageMap: [],
+                        round: undefined,
+                        game: undefined,
+                        slots: srcJSON.slots,
+                      });
+                      if (newScene) {
+                        this.curSession!.addScene(newScene);
+                        count++;
+                      }
+                    }
+                    appState.pushMessage(
+                      `${count}개 씬이 이미지미러로 복제되었습니다.`,
+                    );
+                  },
+                });
+              },
+            });
+            return;
+          }
           if (value === 'copySceneContent') {
             const allScenes = this.curSession!.getScenes(type);
             if (allScenes.length < 2) {

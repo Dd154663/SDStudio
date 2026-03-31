@@ -4,6 +4,7 @@ import {
   SDImageGenDef,
   SDImageGenEasyDef,
   SDInpaintDef,
+  SDMirrorDef,
 } from './SDWorkFlow';
 import {
   WorkFlowCategoryFlag as WFF,
@@ -16,5 +17,6 @@ export function registerWorkFlows(service: WorkFlowService) {
   service.addWorkFlow(WFF.General, AugmentGenDef);
   service.addWorkFlow(WFF.I2I, SDInpaintDef);
   service.addWorkFlow(WFF.I2I, SDI2IDef);
+  service.addWorkFlow(WFF.I2I, SDMirrorDef);
   service.addWorkFlow(WFF.I2I, AugmentDef);
 }

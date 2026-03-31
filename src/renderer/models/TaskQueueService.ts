@@ -36,6 +36,7 @@ import {
 import { sleep } from './util';
 import { lowerPromptNode, toPARR } from './PromptService';
 import { dataUriToBase64 } from './ImageService';
+import { prepareMirrorCanvas } from './workflows/SDWorkFlow';
 import { getImageDimensions } from '../componenets/BrushTool';
 
 const FAST_TASK_TIME_ESTIMATOR_SAMPLE_COUNT = 16;
@@ -887,8 +888,7 @@ export class TaskQueueService extends EventTarget {
   }
 
   private getRetryTimeoutMs(retryIndex: number): number {
-    if (retryIndex < 5) return 10 * 1000;
-    if (retryIndex < 10) return 30 * 1000;
+    if (retryIndex < 10) return 60 * 1000;
     return 120 * 1000;
   }
 
@@ -1070,4 +1070,92 @@ export const queueI2IWorkflow = async (
     undefined,
     onComplete,
   );
+};
+
+export const queueMirrorWorkflow = async (
+  session: Session,
+  type: string,
+  preset: any,
+  scene: InpaintScene,
+  samples: number,
+  onComplete?: (path: string) => void,
+) => {
+  const def = workFlowService.getDef(type);
+
+  // 미러 이미지가 씬에 아직 설정되지 않았으면 세션 미러 이미지로 자동 생성
+  if (!preset.image) {
+    if (!session.mirrorImage) {
+      throw new Error('미러 이미지를 먼저 업로드해주세요.');
+    }
+    const srcData = await imageService.fetchVibeImage(
+      session,
+      session.mirrorImage,
+    );
+    if (!srcData) {
+      throw new Error('미러 이미지를 불러올 수 없습니다.');
+    }
+    const srcBase64 = dataUriToBase64(srcData);
+    const result = await prepareMirrorCanvas(srcBase64, session.mirrorMode || 'blank');
+    preset.image = await imageService.storeVibeImage(session, result.canvas);
+    preset.mask = await imageService.storeVibeImage(session, result.mask);
+    scene.resolution = 'custom';
+    scene.resolutionWidth = result.width;
+    scene.resolutionHeight = result.height;
+  }
+
+  if (scene.slots.length === 0) {
+    await def!.handler(
+      session,
+      scene,
+      { type: 'text', text: '' },
+      [],
+      preset,
+      undefined,
+      samples,
+      undefined,
+      onComplete,
+    );
+    return;
+  }
+
+  const combinations: string[][] = [];
+  const current: string[] = [];
+  const traverse = () => {
+    if (current.length === scene.slots.length) {
+      combinations.push([...current]);
+      return;
+    }
+    const level = current.length;
+    let hasEnabled = false;
+    for (const piece of scene.slots[level]) {
+      if (piece.enabled === undefined || piece.enabled) {
+        hasEnabled = true;
+        current.push(piece.prompt);
+        traverse();
+        current.pop();
+      }
+    }
+    if (!hasEnabled) {
+      current.push('');
+      traverse();
+      current.pop();
+    }
+  };
+  traverse();
+
+  for (const combo of combinations) {
+    const middlePrompt = combo.filter(Boolean).join(', ');
+    const mergedPreset = { ...preset, prompt: middlePrompt };
+    await def!.handler(
+      session,
+      scene,
+      { type: 'text', text: '' },
+      [],
+      mergedPreset,
+      undefined,
+      samples,
+      undefined,
+      onComplete,
+    );
+  }
 };

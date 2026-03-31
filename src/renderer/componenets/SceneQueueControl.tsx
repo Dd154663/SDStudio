@@ -29,7 +29,7 @@ import {
   dataUriToBase64,
   deleteImageFiles,
 } from '../models/ImageService';
-import { queueI2IWorkflow, queueWorkflow } from '../models/TaskQueueService';
+import { queueI2IWorkflow, queueMirrorWorkflow, queueWorkflow } from '../models/TaskQueueService';
 import {
   GenericScene,
   ContextMenuType,
@@ -40,7 +40,7 @@ import {
 import { extractPromptDataFromBase64 } from '../models/util';
 import { appState, SceneSelectorItem } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
-import { createInpaintPreset } from '../models/workflows/SDWorkFlow';
+import { createInpaintPreset, prepareMirrorCanvas } from '../models/workflows/SDWorkFlow';
 import { reaction } from 'mobx';
 import { oneTimeFlowMap, oneTimeFlows } from '../models/workflows/OneTimeFlows';
 
@@ -163,13 +163,24 @@ export const SceneCell = observer(
             appState.samples,
           );
         } else {
-          await queueI2IWorkflow(
-            curSession,
-            scene.workflowType,
-            scene.preset,
-            scene,
-            appState.samples,
-          );
+          const inpaintScene = scene as InpaintScene;
+          if (inpaintScene.workflowType === 'SDMirror') {
+            await queueMirrorWorkflow(
+              curSession,
+              inpaintScene.workflowType,
+              inpaintScene.preset,
+              inpaintScene,
+              appState.samples,
+            );
+          } else {
+            await queueI2IWorkflow(
+              curSession,
+              scene.workflowType,
+              scene.preset,
+              scene,
+              appState.samples,
+            );
+          }
         }
       } catch (e: any) {
         appState.pushMessage('프롬프트 에러: ' + e.message);
@@ -525,13 +536,24 @@ const QueueControl = observer(
               appState.samples,
             );
           } else {
-            await queueI2IWorkflow(
-              curSession,
-              scene.workflowType,
-              scene.preset,
-              scene,
-              appState.samples,
-            );
+            const inpaintScene = scene as InpaintScene;
+            if (inpaintScene.workflowType === 'SDMirror') {
+              await queueMirrorWorkflow(
+                curSession,
+                inpaintScene.workflowType,
+                inpaintScene.preset,
+                inpaintScene,
+                appState.samples,
+              );
+            } else {
+              await queueI2IWorkflow(
+                curSession,
+                scene.workflowType,
+                scene.preset,
+                scene,
+                appState.samples,
+              );
+            }
           }
         }
       } catch (e: any) {
@@ -634,9 +656,11 @@ const QueueControl = observer(
         if (!image) throw new Error('No image available');
         return image;
       } else {
+        const imgPath = scene.preset?.image || (scene.workflowType === 'SDMirror' ? curSession?.mirrorImage : undefined);
+        if (!imgPath) throw new Error('No image available');
         return await imageService.fetchVibeImage(
           curSession!,
-          scene.preset.image,
+          imgPath,
         );
       }
     };
@@ -676,22 +700,53 @@ const QueueControl = observer(
       const preset = job
         ? workFlowService.createPreset(workflowType, job)
         : workFlowService.buildPreset(workflowType);
-      preset.image = await imageService.storeVibeImage(curSession!, image);
-      const newScene = InpaintScene.fromJSON({
-        type: 'inpaint',
-        name: name,
-        workflowType: workflowType,
-        preset,
-        resolution: scene.resolution,
-        sceneRef: scene.type === 'scene' ? scene.name : undefined,
-        imageMap: [],
-        mains: [],
-        round: undefined,
-        game: undefined,
-      });
-      curSession!.addScene(newScene);
-      close();
-      setInpaintEditScene(newScene);
+
+      if (workflowType === 'SDMirror') {
+        // 미러: 세션 레벨 이미지 저장 + 합성 캔버스 생성
+        const storedPath = await imageService.storeVibeImage(curSession!, image);
+        curSession!.mirrorImage = storedPath;
+        const result = await prepareMirrorCanvas(image, curSession!.mirrorMode || 'blank');
+        preset.image = await imageService.storeVibeImage(curSession!, result.canvas);
+        preset.mask = await imageService.storeVibeImage(curSession!, result.mask);
+        const newScene = InpaintScene.fromJSON({
+          type: 'inpaint',
+          name: name,
+          workflowType: workflowType,
+          preset,
+          resolution: 'custom',
+          resolutionWidth: result.width,
+          resolutionHeight: result.height,
+          sceneRef: scene.type === 'scene' ? scene.name : undefined,
+          imageMap: [],
+          mains: [],
+          round: undefined,
+          game: undefined,
+        });
+        if (newScene) {
+          curSession!.addScene(newScene);
+          close();
+          setInpaintEditScene(newScene);
+        }
+      } else {
+        preset.image = await imageService.storeVibeImage(curSession!, image);
+        const newScene = InpaintScene.fromJSON({
+          type: 'inpaint',
+          name: name,
+          workflowType: workflowType,
+          preset,
+          resolution: scene.resolution,
+          sceneRef: scene.type === 'scene' ? scene.name : undefined,
+          imageMap: [],
+          mains: [],
+          round: undefined,
+          game: undefined,
+        });
+        if (newScene) {
+          curSession!.addScene(newScene);
+          close();
+          setInpaintEditScene(newScene);
+        }
+      }
     };
 
     const buttons: any =

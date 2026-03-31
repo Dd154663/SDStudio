@@ -178,6 +178,7 @@ export class ImageService extends EventTarget {
   }
 
   async fetchVibeImage(session: Session, name: string) {
+    if (!name) return null;
     const path =
       imageService.getVibesDir(session) + '/' + name.split('/').pop()!;
     return await this.fetchImage(path);

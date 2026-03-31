@@ -314,6 +314,7 @@ export interface IInpaintScene extends IAbstractScene {
   workflowType: string;
   preset?: any;
   sceneRef?: string;
+  slots?: IPromptPieceSlot[];
 }
 
 export class InpaintScene extends AbstractScene implements IInpaintScene {
@@ -321,12 +322,22 @@ export class InpaintScene extends AbstractScene implements IInpaintScene {
   @observable accessor workflowType: string = '';
   @observable accessor preset: any | undefined = undefined;
   @observable accessor sceneRef: string | undefined = undefined;
+  @observable accessor slots: PromptPieceSlot[] = [];
 
-  static fromJSON(json: IInpaintScene): InpaintScene {
+  static fromJSON(json: IInpaintScene): InpaintScene | null {
     const scene = new InpaintScene();
     Object.assign(scene, json);
     scene.type = 'inpaint';
-    scene.preset = json.preset && workFlowService.presetFromJSON(json.preset);
+    try {
+      scene.preset = json.preset && workFlowService.presetFromJSON(json.preset);
+      if (json.preset && !scene.preset) return null;
+    } catch (e) {
+      console.warn(`Failed to deserialize inpaint scene: ${json.name}`, e);
+      return null;
+    }
+    scene.slots = (json.slots || []).map((slot) =>
+      slot.map((piece) => PromptPiece.fromJSON(piece)),
+    );
     return scene;
   }
 
@@ -337,11 +348,14 @@ export class InpaintScene extends AbstractScene implements IInpaintScene {
       workflowType: this.workflowType,
       preset: this.preset?.toJSON(),
       sceneRef: this.sceneRef,
+      ...(this.slots.length > 0 && {
+        slots: this.slots.map((slot) => slot.map((piece) => piece.toJSON())),
+      }),
     };
   }
 }
 
-export function genericSceneFromJSON(json: IGenericScene): GenericScene {
+export function genericSceneFromJSON(json: IGenericScene): GenericScene | null {
   if (json.type === 'scene') {
     return Scene.fromJSON(json);
   }
@@ -366,6 +380,8 @@ export interface ISession {
   library: Record<string, IPieceLibrary>;
   presetShareds: Record<string, any>;
   characterPresets?: Record<string, ICharacterPreset>; // 캐릭터 프리셋
+  mirrorImage?: string; // 세션 레벨 미러 원본 이미지 (vibe storage 경로)
+  mirrorMode?: 'blank' | 'duplicate'; // 미러 캔버스 모드 (blank=우측 빈 캔버스, duplicate=우측 이미지 복제)
 }
 
 export class Session implements Serealizable {
@@ -379,6 +395,8 @@ export class Session implements Serealizable {
   @observable accessor library: Map<string, PieceLibrary> = new Map();
   @observable accessor presetShareds: Map<string, any> = new Map();
   @observable accessor characterPresets: Map<string, CharacterPreset> = new Map(); // 캐릭터 프리셋
+  @observable accessor mirrorImage: string | undefined = undefined;
+  @observable accessor mirrorMode: 'blank' | 'duplicate' = 'blank';
 
   constructor() {
     makeObservable(this);
@@ -526,14 +544,13 @@ export class Session implements Serealizable {
     session.presets = new Map(
       Object.entries(json.presets).map(([key, value]) => [
         key,
-        value.map((preset) => workFlowService.presetFromJSON(preset)),
+        value.map((preset) => workFlowService.presetFromJSON(preset)).filter(Boolean),
       ]),
     );
     session.inpaints = new Map(
-      Object.entries(json.inpaints).map(([key, value]) => [
-        key,
-        InpaintScene.fromJSON(value),
-      ]),
+      Object.entries(json.inpaints)
+        .map(([key, value]) => [key, InpaintScene.fromJSON(value)] as const)
+        .filter(([_, scene]) => scene !== null) as [string, InpaintScene][],
     );
     session.scenes = new Map(
       Object.entries(json.scenes).map(([key, value]) => [
@@ -560,6 +577,8 @@ export class Session implements Serealizable {
         CharacterPreset.fromJSON(value),
       ]),
     );
+    session.mirrorImage = json.mirrorImage;
+    session.mirrorMode = json.mirrorMode || 'blank';
     return session;
   }
 
@@ -609,6 +628,8 @@ export class Session implements Serealizable {
           value.toJSON(),
         ]),
       ),
+      mirrorImage: this.mirrorImage,
+      mirrorMode: this.mirrorMode,
     };
   }
 }

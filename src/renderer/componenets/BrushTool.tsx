@@ -72,6 +72,7 @@ interface Props {
   mask?: string;
   imageWidth: number;
   imageHeight: number;
+  onDrawEnd?: () => void;
 }
 
 export interface BrushToolRef {
@@ -164,13 +165,15 @@ function getChunksBetween(
 }
 
 const BrushTool = forwardRef<BrushToolRef, Props>(
-  ({ image, mask, imageWidth, imageHeight, brushSize }, ref) => {
+  ({ image, mask, imageWidth, imageHeight, brushSize, onDrawEnd }, ref) => {
     const canvasRef = useRef<any>(null);
     const [loaded, setLoaded] = useState(false);
     const brushingRef = useRef(true);
     const isDrawingRef = useRef(false);
     const lastPosRef = useRef({ x: -1, y: -1 });
     const curPosRef = useRef({ x: -1, y: -1 });
+    const onDrawEndRef = useRef(onDrawEnd);
+    onDrawEndRef.current = onDrawEnd;
     const historyRef = useRef<any>([]);
     const curImageRef = useRef<any>(undefined);
     const brushColor = 'rgba(0, 0, 255, 1)';
@@ -183,6 +186,7 @@ const BrushTool = forwardRef<BrushToolRef, Props>(
         curImageRef.current = imageData;
         ctx.putImageData(imageData, 0, 0);
         historyRef.current.pop();
+        onDrawEndRef.current?.();
       }
     };
 
@@ -327,6 +331,7 @@ const BrushTool = forwardRef<BrushToolRef, Props>(
             canvas.width,
             canvas.height,
           );
+          onDrawEndRef.current?.();
         }
         isDrawingRef.current = false;
         lastPosRef.current.x = -1;

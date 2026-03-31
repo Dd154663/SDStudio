@@ -89,7 +89,7 @@ export const PromptHighlighter = observer(
 );
 
 interface SlotEditorProps {
-  scene: Scene;
+  scene: { slots: PromptPieceSlot[] };
   big?: boolean;
 }
 
@@ -289,7 +289,7 @@ export const BigPromptEditor = observer(
 );
 
 interface SlotPieceProps {
-  scene: Scene;
+  scene: { slots: PromptPieceSlot[] };
   piece: PromptPiece;
   removePiece?: (piece: PromptPiece) => void;
   moveSlotPiece?: (from: string, to: string) => void;
@@ -698,7 +698,7 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
   );
 });
 
-const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
+export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
   useEffect(() => {
     for (const slot of scene.slots) {
       for (const piece of slot) {

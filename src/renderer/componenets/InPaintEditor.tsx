@@ -4,7 +4,7 @@ import BrushTool, {
   base64ToDataUri,
   getImageDimensions,
 } from './BrushTool';
-import { DropdownSelect } from './UtilComponents';
+import { DropdownSelect, TabComponent } from './UtilComponents';
 import { Resolution, resolutionMap } from '../backends/imageGen';
 import {
   FaArrowAltCircleLeft,
@@ -14,6 +14,9 @@ import {
   FaPlay,
   FaStop,
   FaUndo,
+  FaUpload,
+  FaImages,
+  FaPuzzlePiece,
 } from 'react-icons/fa';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import {
@@ -23,7 +26,7 @@ import {
   taskQueueService,
 } from '../models';
 import { dataUriToBase64 } from '../models/ImageService';
-import { InpaintScene } from '../models/types';
+import { InpaintScene, PromptPiece } from '../models/types';
 import { extractPromptDataFromBase64 } from '../models/util';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
@@ -31,7 +34,11 @@ import { InnerPreSetEditor } from './PreSetEdtior';
 import { reaction } from 'mobx';
 import { FloatView } from './FloatView';
 import { TaskProgressBar } from './TaskQueueControl';
-import { queueI2IWorkflow } from '../models/TaskQueueService';
+import { queueI2IWorkflow, queueMirrorWorkflow } from '../models/TaskQueueService';
+import { prepareMirrorCanvas } from '../models/workflows/SDWorkFlow';
+import PromptEditTextArea from './PromptEditTextArea';
+import { SlotEditor } from './SceneEditor';
+import { v4 as uuidv4 } from 'uuid';
 
 interface Props {
   editingScene: InpaintScene;
@@ -78,6 +85,122 @@ const InPaintEditor = observer(
     const [brushing, setBrushing] = useState(true);
     const [open, setOpen] = useState(false);
     const def = workFlowService.getDef(editingScene.workflowType);
+    const isMirror = editingScene.workflowType === 'SDMirror';
+    const globalPreset = isMirror && curSession?.selectedWorkflow
+      ? curSession.getCommonSetup(curSession.selectedWorkflow)[1]
+      : null;
+    const getMiddlePrompt = () => {
+      if (editingScene.slots.length > 0 && editingScene.slots[0].length > 0) {
+        return editingScene.slots[0][0].prompt;
+      }
+      return editingScene.preset.prompt || '';
+    };
+
+    const setMiddlePrompt = (txt: string) => {
+      editingScene.preset.prompt = txt;
+      if (editingScene.slots.length > 0 && editingScene.slots[0].length > 0) {
+        editingScene.slots[0][0].prompt = txt;
+      }
+    };
+
+    const ensureSlots = () => {
+      if (editingScene.slots.length === 0) {
+        editingScene.slots = [[
+          PromptPiece.fromJSON({
+            prompt: editingScene.preset.prompt || '',
+            characterPrompts: [],
+            enabled: true,
+            id: uuidv4(),
+          }),
+        ]];
+      }
+    };
+
+    const uploadMirrorImage = async () => {
+      // 모드 선택 다이얼로그
+      const selectedMode = await appState.pushDialogAsync({
+        type: 'select',
+        text: '미러 캔버스 모드를 선택해주세요',
+        items: [
+          { text: '빈 캔버스 (우측 빈 영역에 새로 생성)', value: 'blank' },
+          { text: '이미지 복제 (우측에 원본 복제 후 변형)', value: 'duplicate' },
+        ],
+      });
+      if (!selectedMode) return;
+      curSession!.mirrorMode = selectedMode as 'blank' | 'duplicate';
+
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = (reader.result as string).replace(
+            /^data:image\/[^;]+;base64,/,
+            '',
+          );
+          const storedPath = await imageService.storeVibeImage(
+            curSession!,
+            base64,
+          );
+          curSession!.mirrorImage = storedPath;
+          // 모든 미러 씬의 캔버스/마스크 초기화 (새 이미지로 재생성되도록)
+          for (const [, scene] of curSession!.inpaints) {
+            if (scene.workflowType === 'SDMirror' && scene !== editingScene) {
+              scene.preset.image = '';
+              scene.preset.mask = '';
+            }
+          }
+          await refreshMirrorCanvas();
+        };
+        reader.readAsDataURL(file);
+      };
+      input.click();
+    };
+
+    const refreshMirrorCanvas = async () => {
+      if (!curSession?.mirrorImage) return;
+      const srcData = await imageService.fetchVibeImage(
+        curSession!,
+        curSession.mirrorImage,
+      );
+      if (!srcData) return;
+      const srcBase64 = dataUriToBase64(srcData);
+      const result = await prepareMirrorCanvas(srcBase64, curSession!.mirrorMode || 'blank');
+      if (!editingScene.preset.image) {
+        editingScene.preset.image = await imageService.storeVibeImage(
+          curSession!,
+          result.canvas,
+        );
+      } else {
+        await imageService.writeVibeImage(
+          curSession!,
+          editingScene.preset.image,
+          result.canvas,
+        );
+      }
+      if (!editingScene.preset.mask) {
+        editingScene.preset.mask = await imageService.storeVibeImage(
+          curSession!,
+          result.mask,
+        );
+      } else {
+        await imageService.writeVibeImage(
+          curSession!,
+          editingScene.preset.mask,
+          result.mask,
+        );
+      }
+      editingScene.resolution = 'custom';
+      editingScene.resolutionWidth = result.width;
+      editingScene.resolutionHeight = result.height;
+      setImage(result.canvas);
+      setWidth(result.width);
+      setHeight(result.height);
+    };
+
     useEffect(() => {
       if (isMobile) {
         setBrushing(false);
@@ -101,12 +224,13 @@ const InPaintEditor = observer(
         }
       }
       async function loadMask() {
+        if (!editingScene.preset.mask) return;
         try {
           const data = await imageService.fetchVibeImage(
             curSession!,
             editingScene.preset.mask,
           );
-          setMask(dataUriToBase64(data!));
+          if (data) setMask(dataUriToBase64(data));
         } catch (e) {}
       }
       const dispose = reaction(
@@ -115,8 +239,12 @@ const InPaintEditor = observer(
           loadImage();
         },
       );
-      loadImage();
-      if (def.hasMask) loadMask();
+      if (isMirror && !editingScene.preset.image && curSession?.mirrorImage) {
+        refreshMirrorCanvas();
+      } else {
+        loadImage();
+      }
+      if (def?.hasMask) loadMask();
       else setBrushing(false);
       imageService.addEventListener('image-cache-invalidated', loadImage);
       return () => {
@@ -153,9 +281,19 @@ const InPaintEditor = observer(
       });
     };
 
+    const brushTool = useRef<BrushToolRef | null>(null);
+    // 브러시 스트로크 후 마스크 데이터를 캐싱 (언마운트 시 ref가 null이므로)
+    const cachedMaskRef = useRef<string | null>(null);
+
+    const onDrawEnd = () => {
+      if (brushTool.current) {
+        cachedMaskRef.current = brushTool.current.getMaskBase64();
+      }
+    };
+
     const saveMask = async () => {
-      if (def.hasMask) {
-        const mask = await brushTool.current!.getMaskBase64();
+      if (def?.hasMask && brushTool.current) {
+        const mask = brushTool.current.getMaskBase64();
         if (!editingScene.preset.mask) {
           editingScene.preset.mask = await imageService.storeVibeImage(
             curSession!,
@@ -168,15 +306,32 @@ const InPaintEditor = observer(
             mask,
           );
         }
+        cachedMaskRef.current = null; // 이미 저장됨
       }
     };
+
+    // 컴포넌트 언마운트 시 캐싱된 마스크 자동 저장 (ESC로 닫을 때도 마스크 유지)
+    useEffect(() => {
+      return () => {
+        const mask = cachedMaskRef.current;
+        const scene = editingScene;
+        const session = curSession;
+        if (def?.hasMask && session && mask) {
+          if (!scene.preset.mask) {
+            imageService.storeVibeImage(session, mask).then((path) => {
+              scene.preset.mask = path;
+            });
+          } else {
+            imageService.writeVibeImage(session, scene.preset.mask, mask);
+          }
+        }
+      };
+    }, [editingScene, def?.hasMask, curSession]);
 
     const confirm = async () => {
       await saveMask();
       onConfirm();
     };
-
-    const brushTool = useRef<BrushToolRef | null>(null);
     return (
       <div className="flex flex-col md:flex-row py-3 h-full w-full overflow-hidden">
         <div className="px-3 flex flex-col flex-none md:h-auto md:w-1/2 xl:w-1/3 gap-2 overflow-hidden">
@@ -257,17 +412,91 @@ const InPaintEditor = observer(
               </div>
             </div>
           </div>
+          {isMirror && (
+            <div className="flex flex-wrap gap-2 mt-1">
+              <button
+                className="round-button back-sky flex-none"
+                onClick={uploadMirrorImage}
+              >
+                <FaUpload className="inline mr-1" />
+                미러 이미지 {curSession?.mirrorImage ? '변경' : '업로드'}
+              </button>
+              {curSession?.mirrorImage && (
+                <span className="gray-label text-xs self-center">
+                  ✓ {curSession.mirrorMode === 'duplicate' ? '이미지 복제' : '빈 캔버스'} 모드
+                </span>
+              )}
+            </div>
+          )}
           {open && (
             <FloatView priority={1} onEscape={() => setOpen(false)}>
-              <InnerPreSetEditor
-                type={editingScene.workflowType}
-                preset={editingScene.preset}
-                shared={undefined}
-                element={workFlowService.getI2IEditor(
-                  editingScene.workflowType,
-                )}
-                middlePromptMode={false}
-              />
+              {isMirror && globalPreset ? (
+                <TabComponent
+                  tabs={[
+                    {
+                      label: '프롬프트 에디터',
+                      emoji: <FaImages />,
+                      content: (
+                        <div className="flex flex-col h-full overflow-auto p-2 gap-2">
+                          <div className="flex-none font-bold text-sub">상위 프롬프트 (전역):</div>
+                          <div className="flex-none h-20">
+                            <PromptEditTextArea
+                              value={globalPreset.frontPrompt || ''}
+                              onChange={(v: string) => { globalPreset.frontPrompt = v; }}
+                            />
+                          </div>
+                          <div className="flex-none font-bold text-sub">중간 프롬프트 (이 씬에만 적용됨):</div>
+                          <div className="flex-none h-20">
+                            <PromptEditTextArea
+                              value={getMiddlePrompt()}
+                              onChange={setMiddlePrompt}
+                            />
+                          </div>
+                          <div className="flex-none font-bold text-sub">하위 프롬프트 (전역):</div>
+                          <div className="flex-none h-20">
+                            <PromptEditTextArea
+                              value={globalPreset.backPrompt || ''}
+                              onChange={(v: string) => { globalPreset.backPrompt = v; }}
+                            />
+                          </div>
+                          <div className="flex-none font-bold text-sub">네거티브 프롬프트 (전역):</div>
+                          <div className="flex-none h-20">
+                            <PromptEditTextArea
+                              value={globalPreset.uc || ''}
+                              onChange={(v: string) => { globalPreset.uc = v; }}
+                            />
+                          </div>
+                          <InnerPreSetEditor
+                            type={editingScene.workflowType}
+                            preset={editingScene.preset}
+                            shared={undefined}
+                            element={workFlowService.getI2IEditor(
+                              editingScene.workflowType,
+                            )}
+                            middlePromptMode={false}
+                          />
+                        </div>
+                      ),
+                    },
+                    {
+                      label: '조합 에디터',
+                      emoji: <FaPuzzlePiece />,
+                      onClick: ensureSlots,
+                      content: <SlotEditor scene={editingScene} />,
+                    },
+                  ]}
+                />
+              ) : (
+                <InnerPreSetEditor
+                  type={editingScene.workflowType}
+                  preset={editingScene.preset}
+                  shared={undefined}
+                  element={workFlowService.getI2IEditor(
+                    editingScene.workflowType,
+                  )}
+                  middlePromptMode={false}
+                />
+              )}
             </FloatView>
           )}
           <div className="flex-none md:hidden mb-2">
@@ -278,17 +507,78 @@ const InPaintEditor = observer(
               씬 세팅 열기
             </button>
           </div>
-          <div className="flex-1 hidden md:block overflow-hidden">
-            <InnerPreSetEditor
-              nopad
-              type={editingScene.workflowType}
-              preset={editingScene.preset}
-              shared={undefined}
-              element={workFlowService.getI2IEditor(editingScene.workflowType)}
-              middlePromptMode={false}
-            />
-          </div>
-          {def.hasMask && (
+          {isMirror && globalPreset ? (
+            <div className="flex-1 hidden md:flex flex-col overflow-hidden">
+              <TabComponent
+                tabs={[
+                  {
+                    label: '프롬프트 에디터',
+                    emoji: <FaImages />,
+                    content: (
+                      <div className="flex flex-col h-full overflow-auto gap-1">
+                        <div className="flex-none font-bold text-sub">상위 프롬프트 (전역):</div>
+                        <div className="flex-none h-20">
+                          <PromptEditTextArea
+                            value={globalPreset.frontPrompt || ''}
+                            onChange={(v: string) => { globalPreset.frontPrompt = v; }}
+                          />
+                        </div>
+                        <div className="flex-none font-bold text-sub">중간 프롬프트 (이 씬에만 적용됨):</div>
+                        <div className="flex-none h-20">
+                          <PromptEditTextArea
+                            value={getMiddlePrompt()}
+                            onChange={setMiddlePrompt}
+                          />
+                        </div>
+                        <div className="flex-none font-bold text-sub">하위 프롬프트 (전역):</div>
+                        <div className="flex-none h-20">
+                          <PromptEditTextArea
+                            value={globalPreset.backPrompt || ''}
+                            onChange={(v: string) => { globalPreset.backPrompt = v; }}
+                          />
+                        </div>
+                        <div className="flex-none font-bold text-sub">네거티브 프롬프트 (전역):</div>
+                        <div className="flex-none h-20">
+                          <PromptEditTextArea
+                            value={globalPreset.uc || ''}
+                            onChange={(v: string) => { globalPreset.uc = v; }}
+                          />
+                        </div>
+                        <div className="flex-1 overflow-hidden min-h-0">
+                          <InnerPreSetEditor
+                            nopad
+                            type={editingScene.workflowType}
+                            preset={editingScene.preset}
+                            shared={undefined}
+                            element={workFlowService.getI2IEditor(editingScene.workflowType)}
+                            middlePromptMode={false}
+                          />
+                        </div>
+                      </div>
+                    ),
+                  },
+                  {
+                    label: '조합 에디터',
+                    emoji: <FaPuzzlePiece />,
+                    onClick: ensureSlots,
+                    content: <SlotEditor scene={editingScene} />,
+                  },
+                ]}
+              />
+            </div>
+          ) : (
+            <div className="flex-1 hidden md:block overflow-hidden">
+              <InnerPreSetEditor
+                nopad
+                type={editingScene.workflowType}
+                preset={editingScene.preset}
+                shared={undefined}
+                element={workFlowService.getI2IEditor(editingScene.workflowType)}
+                middlePromptMode={false}
+              />
+            </div>
+          )}
+          {def?.hasMask && (
             <div className="flex items-center gap-2 md:gap-4 md:ml-auto pb-2 overflow-hidden w-full">
               {
                 <button
@@ -339,7 +629,7 @@ const InPaintEditor = observer(
         <div className="flex flex-col flex-1 overflow-hidden">
           <div className="flex-1 overflow-hidden">
             <TransformWrapper
-              disabled={def.hasMask && brushing}
+              disabled={!!def?.hasMask && brushing}
               minScale={0.7}
               initialScale={0.7}
               centerOnInit={true}
@@ -352,6 +642,7 @@ const InPaintEditor = observer(
                   image={base64ToDataUri(image)}
                   imageWidth={width}
                   imageHeight={height}
+                  onDrawEnd={onDrawEnd}
                 />
               </TransformComponent>
               {!isMobile && def.hasMask && (
@@ -380,20 +671,39 @@ const InPaintEditor = observer(
               <button
                 className={`round-button back-green h-8 w-16 md:w-36 flex items-center justify-center`}
                 onClick={async () => {
+                  if (isMirror) {
+                    if (!curSession?.mirrorImage) {
+                      appState.pushMessage('미러 이미지를 먼저 업로드해주세요.');
+                      return;
+                    }
+                    await refreshMirrorCanvas();
+                  }
                   await saveMask();
-                  await queueI2IWorkflow(
-                    curSession!,
-                    editingScene.workflowType,
-                    editingScene.preset,
-                    editingScene,
-                    1,
-                    (path: string) => {
-                      (async () => {
-                        const data = await imageService.fetchImage(path);
-                        setImage(dataUriToBase64(data!));
-                      })();
-                    },
-                  );
+                  const onGenComplete = (path: string) => {
+                    (async () => {
+                      const data = await imageService.fetchImage(path);
+                      setImage(dataUriToBase64(data!));
+                    })();
+                  };
+                  if (isMirror) {
+                    await queueMirrorWorkflow(
+                      curSession!,
+                      editingScene.workflowType,
+                      editingScene.preset,
+                      editingScene,
+                      1,
+                      onGenComplete,
+                    );
+                  } else {
+                    await queueI2IWorkflow(
+                      curSession!,
+                      editingScene.workflowType,
+                      editingScene.preset,
+                      editingScene,
+                      1,
+                      onGenComplete,
+                    );
+                  }
                   taskQueueService.run();
                 }}
               >

@@ -35,7 +35,8 @@ export class WorkFlowService {
   presetFromJSON(json: any) {
     const wf = this.workflows.get(json.type);
     if (!wf) {
-      throw new Error(`Unknown workflow type: ${json.type}`);
+      console.warn(`Unknown workflow type: ${json.type}`);
+      return null;
     }
     return wf.presetFromJSON(json);
   }
@@ -94,7 +95,7 @@ export class WorkFlowService {
   }
 
   getDef(type: string) {
-    return this.workflows.get(type)!.def;
+    return this.workflows.get(type)?.def;
   }
 
   getVarDef(type: string, fieldType: WFFieldType, field: string) {
