@@ -716,6 +716,7 @@ const QueueControl = observer(
           resolution: 'custom',
           resolutionWidth: result.width,
           resolutionHeight: result.height,
+          mirrorCropX: result.cropX,
           sceneRef: scene.type === 'scene' ? scene.name : undefined,
           imageMap: [],
           mains: [],

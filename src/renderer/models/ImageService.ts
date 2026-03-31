@@ -707,3 +707,27 @@ export const deleteImageFiles = async (
 export const renameImage = async (oldPath: string, newPath: string) => {
   await imageService.renameImage(oldPath, newPath);
 };
+
+export function cropMirrorResultFromDataUri(dataUri: string, mirrorCropX?: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      // mirrorCropX가 유효하면 정확한 위치 사용, 해상도 불일치 시 폴백
+      const half = Math.floor(w / 2);
+      const cropX = (mirrorCropX && Math.abs(mirrorCropX - half) < 64)
+        ? mirrorCropX
+        : (half + 48);
+      const cropW = w - cropX;
+      const canvas = document.createElement('canvas');
+      canvas.width = cropW;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, cropX, 0, cropW, h, 0, 0, cropW, h);
+      resolve(canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, ''));
+    };
+    img.onerror = reject;
+    img.src = dataUri;
+  });
+}

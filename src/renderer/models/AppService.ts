@@ -10,7 +10,7 @@ import {
   zipService,
 } from '.';
 import { Dialog } from '../componenets/ConfirmWindow';
-import { dataUriToBase64, deleteImageFiles } from './ImageService';
+import { cropMirrorResultFromDataUri, dataUriToBase64, deleteImageFiles } from './ImageService';
 import {
   createImageWithText,
   embedJSONInPNG,
@@ -479,21 +479,22 @@ export class AppState {
           sceneName = sceneName.replace(regex, separator);
           finalPrefix = finalPrefix.replace(regex, separator);
         }
+        const isMirror = scene.type === 'inpaint' && (scene as InpaintScene).workflowType === 'SDMirror';
         for (let i = 0; i < images.length; i++) {
-          const path = images[i];
-          if (images.length === 1) {
-            paths.push({
-              path:
-                imageService.getOutputDir(this.curSession!, scene) + '/' + path,
-              name: finalPrefix + sceneName + '.png',
-            });
-          } else {
-            paths.push({
-              path:
-                imageService.getOutputDir(this.curSession!, scene) + '/' + path,
-              name: finalPrefix + sceneName + separator + (i + 1).toString() + '.png',
-            });
+          let imgPath = imageService.getOutputDir(this.curSession!, scene) + '/' + images[i];
+          if (isMirror) {
+            const imgData = await imageService.fetchImage(imgPath);
+            if (imgData) {
+              const cropped = await cropMirrorResultFromDataUri(imgData, (scene as InpaintScene).mirrorCropX);
+              const tmpPath = 'tmp/' + v4() + '.png';
+              await backend.writeDataFile(tmpPath, cropped);
+              imgPath = tmpPath;
+            }
           }
+          const name = images.length === 1
+            ? finalPrefix + sceneName + '.png'
+            : finalPrefix + sceneName + separator + (i + 1).toString() + '.png';
+          paths.push({ path: imgPath, name });
         }
       }
       if (opt !== 'original') {

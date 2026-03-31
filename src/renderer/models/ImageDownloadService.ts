@@ -1,9 +1,20 @@
 import { observable, action, makeObservable } from 'mobx';
 import { backend, imageService } from '.';
-import { GenericScene, Session, CharacterPreset } from './types';
+import { GenericScene, InpaintScene, Session, CharacterPreset } from './types';
+
+function getMirrorCropX(scene: GenericScene): number | undefined {
+  if (isMirrorScene(scene)) {
+    return (scene as InpaintScene).mirrorCropX;
+  }
+  return undefined;
+}
 import { appState } from './AppService';
-import { dataUriToBase64 } from './ImageService';
+import { cropMirrorResultFromDataUri, dataUriToBase64 } from './ImageService';
 import { DownloadSettings } from '../../main/config';
+
+function isMirrorScene(scene: GenericScene): boolean {
+  return scene.type === 'inpaint' && (scene as InpaintScene).workflowType === 'SDMirror';
+}
 
 /**
  * 파일명에 사용할 수 없는 특수문자를 안전한 문자로 치환
@@ -272,9 +283,14 @@ export class ImageDownloadService {
         throw new Error('이미지를 읽을 수 없습니다');
       }
 
+      // SDMirror 씬이면 우측 절반만 크롭
+      const base64 = isMirrorScene(scene)
+        ? await cropMirrorResultFromDataUri(imageData, getMirrorCropX(scene))
+        : dataUriToBase64(imageData);
+
       // 파일 저장 (절대 경로 사용)
       const fullPath = `${savePath}/${finalFilename}`;
-      await backend.writeDataFileAbsolute(fullPath, dataUriToBase64(imageData));
+      await backend.writeDataFileAbsolute(fullPath, base64);
 
       appState.pushMessage(`이미지가 저장되었습니다: ${finalFilename}`);
       return true;
@@ -357,9 +373,14 @@ export class ImageDownloadService {
             throw new Error('이미지를 읽을 수 없습니다');
           }
 
+          // SDMirror 씬이면 우측 절반만 크롭
+          const base64 = isMirrorScene(scene)
+            ? await cropMirrorResultFromDataUri(imageData, getMirrorCropX(scene))
+            : dataUriToBase64(imageData);
+
           // 파일 저장 (절대 경로 사용)
           const fullPath = `${savePath}/${finalFilename}`;
-          await backend.writeDataFileAbsolute(fullPath, dataUriToBase64(imageData));
+          await backend.writeDataFileAbsolute(fullPath, base64);
 
           result.success += 1;
         } catch (e) {

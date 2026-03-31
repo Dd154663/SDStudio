@@ -563,6 +563,7 @@ export async function prepareMirrorCanvas(
   mask: string;
   width: number;
   height: number;
+  cropX: number;
   downscaled?: boolean;
 }> {
   const img = new Image();
@@ -648,6 +649,7 @@ export async function prepareMirrorCanvas(
     mask: maskBase64,
     width: canvasWidth,
     height: canvasHeight,
+    cropX: inpaintStart,
     downscaled,
   };
 }

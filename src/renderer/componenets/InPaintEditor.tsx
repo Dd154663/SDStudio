@@ -196,6 +196,7 @@ const InPaintEditor = observer(
       editingScene.resolution = 'custom';
       editingScene.resolutionWidth = result.width;
       editingScene.resolutionHeight = result.height;
+      editingScene.mirrorCropX = result.cropX;
       setImage(result.canvas);
       setWidth(result.width);
       setHeight(result.height);

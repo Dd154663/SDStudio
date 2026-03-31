@@ -1101,6 +1101,7 @@ export const queueMirrorWorkflow = async (
     scene.resolution = 'custom';
     scene.resolutionWidth = result.width;
     scene.resolutionHeight = result.height;
+    scene.mirrorCropX = result.cropX;
   }
 
   if (scene.slots.length === 0) {
