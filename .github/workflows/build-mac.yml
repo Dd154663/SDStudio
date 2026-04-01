@@ -23,14 +23,9 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install --legacy-peer-deps --ignore-scripts
+        run: npm install --legacy-peer-deps || true
 
-      - name: Install native dependencies
-        run: |
-          cd src/native && npm install
-          npx electron-builder install-app-deps
-
-      - name: Build DLL
+      - name: Rebuild DLL
         run: npm run build:dll
 
       - name: Build
