@@ -17,7 +17,6 @@ import {
   FaTimes,
 } from 'react-icons/fa';
 import { Scrollbars } from 'react-custom-scrollbars-2';
-import { isMobile } from '../models';
 import { FaAnchor, FaOpencart, FaPerson } from 'react-icons/fa6';
 import { FloatView } from './FloatView';
 
@@ -333,9 +332,6 @@ export const CustomScrollbars = ({
       ref={refSetter}
       style={{ ...style, overflow: 'hidden' }}
       onScroll={onScroll}
-      autoHide={isMobile}
-      autoHideTimeout={800}
-      autoHideDuration={300}
       renderThumbVertical={({ style: thumbStyle, ...props }) => (
         <div
           {...props}
@@ -353,7 +349,6 @@ export const CustomScrollbars = ({
             bottom: 2,
             top: 2,
             borderRadius: 4,
-            ...(isMobile ? { zIndex: 10, position: 'absolute' } : {}),
           }}
         />
       )}
