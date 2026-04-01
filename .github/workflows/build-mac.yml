@@ -9,6 +9,7 @@ jobs:
   build-mac:
     runs-on: macos-latest
     strategy:
+      fail-fast: false
       matrix:
         arch: [x64, arm64]
 
@@ -22,7 +23,15 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
+        run: npm install --legacy-peer-deps --ignore-scripts
+
+      - name: Install native dependencies
+        run: |
+          cd src/native && npm install
+          npx electron-builder install-app-deps
+
+      - name: Build DLL
+        run: npm run build:dll
 
       - name: Build
         run: npm run build
