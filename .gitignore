@@ -44,6 +44,17 @@ nul
 
 # 개인용 가이드 (공유 제외)
 GIT_GUIDE.txt
+BUILD_GUIDE.txt
+SETUP_GUIDE.txt
+CLAUDE_BUILD_GUIDE.md
+
+# 일회성 스크립트
+scripts/
+
+# 태그 데이터 원본 (빌드에 불필요)
+assets/danbooru_*.csv
+assets/hf_*.csv
+assets/db_new.txt
 
 # Claude Code 로컬 설정 (개인 경로 포함)
 .claude/
