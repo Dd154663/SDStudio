@@ -61,7 +61,7 @@ const SDImageGenUI = wfiStack([
   wfiInlineInput('네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
   wfiInlineInput('시드', 'seed', 'shared', 'flex-none'),
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
-  wfiGroup('샘플링 설정', [
+  wfiGroup('샘플링/모델 설정', [
     wfiPush('top'),
     wfiInlineInput('스탭 수', 'steps', 'preset', 'flex-none'),
     wfiInlineInput(
@@ -128,7 +128,7 @@ const SDImageGenEasyInnerUI = wfiStack([
   wfiMiddlePlaceholderInput('중간 프롬프트 (이 창에만 적용됨)'),
   wfiInlineInput('하위 프롬프트', 'backPrompt', 'preset', 'flex-1'),
   wfiInlineInput('네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
-  wfiGroup('샘플링 설정', [
+  wfiGroup('샘플링/모델 설정', [
     wfiPush('top'),
     wfiInlineInput('스탭 수', 'steps', 'preset', 'flex-none'),
     wfiInlineInput(
@@ -318,7 +318,7 @@ const SDInpaintUI = wfiStack([
   wfiInlineInput('프롬프트', 'prompt', 'preset', 'flex-1'),
   wfiInlineInput('네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
-  wfiGroup('샘플링 설정', [
+  wfiGroup('샘플링/모델 설정', [
     wfiPush('top'),
     wfiInlineInput('스탭 수', 'steps', 'preset', 'flex-none'),
     wfiInlineInput(
@@ -457,7 +457,7 @@ const SDI2IUI = wfiStack([
   wfiInlineInput('프롬프트', 'prompt', 'preset', 'flex-1'),
   wfiInlineInput('네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
-  wfiGroup('샘플링 설정', [
+  wfiGroup('샘플링/모델 설정', [
     wfiPush('top'),
     wfiInlineInput('스탭 수', 'steps', 'preset', 'flex-none'),
     wfiInlineInput(
@@ -665,7 +665,7 @@ const SDMirrorUI = wfiStack([
     'flex-none',
   ),
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
-  wfiGroup('샘플링 설정', [
+  wfiGroup('샘플링/모델 설정', [
     wfiPush('top'),
     wfiInlineInput('스탭 수', 'steps', 'preset', 'flex-none'),
     wfiInlineInput(

@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { backend, promptService, sessionService } from '../models';
 import { DropdownSelect } from './UtilComponents';
+import Tooltip from './Tooltip';
 import PromptEditTextArea from './PromptEditTextArea';
 import {
   FaArrowCircleUp,
@@ -332,9 +333,9 @@ const PieceEditor = observer(() => {
           }}
         />
 
+        <Tooltip content="조각그룹 추가">
         <button
           className={`icon-button h-8 px-4 ml-auto`}
-          title="조각그룹 추가"
           onClick={async () => {
             appState.pushDialog({
               type: 'input-confirm',
@@ -361,15 +362,17 @@ const PieceEditor = observer(() => {
         >
           <FaPlus />
         </button>
+        </Tooltip>
+        <Tooltip content="와일드카드 .txt 파일 가져오기">
         <button
           className={`icon-button h-8 px-4 back-green`}
           onClick={() => {
             fileInputRef.current?.click();
           }}
-          title="와일드카드 .txt 파일 가져오기"
         >
           <FaFileImport />
         </button>
+        </Tooltip>
         <button
           className={`icon-button h-8 px-4`}
           onClick={async () => {
@@ -388,9 +391,9 @@ const PieceEditor = observer(() => {
         >
           <FaShare />
         </button>
+        <Tooltip content="조각그룹 삭제">
         <button
           className={`icon-button h-8 px-4`}
-          title="조각그룹 삭제"
           onClick={async () => {
             if (!selectedPieceLibrary) return;
             appState.pushDialog({
@@ -406,6 +409,7 @@ const PieceEditor = observer(() => {
         >
           <FaTrashAlt />
         </button>
+        </Tooltip>
       </div>
       {/* Drag and drop hint */}
       {isDraggingFile && (
@@ -426,9 +430,9 @@ const PieceEditor = observer(() => {
               movePiece={movePiece}
             />
           ))}
+          <Tooltip content="조각 추가">
           <button
             className="py-2 px-8 rounded-xl back-lllgray"
-            title="조각 추가"
             onClick={async () => {
               appState.pushDialog({
                 type: 'input-confirm',
@@ -453,6 +457,7 @@ const PieceEditor = observer(() => {
           >
             <FaPlus />
           </button>
+          </Tooltip>
         </div>
       )}
     </div>

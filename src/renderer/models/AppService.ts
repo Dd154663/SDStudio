@@ -64,6 +64,27 @@ export class AppState {
   // 만료 프로젝트 알림
   @observable accessor pendingExpiredProjects: {name: string, deletedAt: number}[] = [];
 
+  // 좌측 패널 상태
+  @observable accessor leftPanelWidth: number = (() => {
+    const saved = localStorage.getItem('sdstudio-left-panel-width');
+    return saved ? Math.max(250, Math.min(800, parseInt(saved, 10) || 400)) : 400;
+  })();
+  @observable accessor leftPanelCollapsed: boolean = (() => {
+    return localStorage.getItem('sdstudio-left-panel-collapsed') === 'true';
+  })();
+
+  @action
+  setLeftPanelWidth(w: number) {
+    this.leftPanelWidth = w;
+    localStorage.setItem('sdstudio-left-panel-width', String(w));
+  }
+
+  @action
+  toggleLeftPanel() {
+    this.leftPanelCollapsed = !this.leftPanelCollapsed;
+    localStorage.setItem('sdstudio-left-panel-collapsed', String(this.leftPanelCollapsed));
+  }
+
   @action
   addMessage(message: string): void {
     this.messages.push(message);

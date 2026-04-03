@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { DropdownSelect, Option } from './UtilComponents';
 import { FaPlus, FaShare, FaTrashAlt, FaTrashRestore, FaUserAlt, FaTimes } from 'react-icons/fa';
+import Tooltip from './Tooltip';
 import { sessionService, imageService, backend, zipService, workFlowService, trashService } from '../models';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
@@ -180,16 +181,19 @@ const SessionSelect = observer(() => {
       {appState.appliedCharacterPreset && (
         <div className="hidden md:flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900 rounded-lg text-sm">
           <FaUserAlt className="text-green-600 dark:text-green-400" size={12} />
-          <span className="text-green-700 dark:text-green-300 max-w-24 truncate" title={appState.appliedCharacterPreset}>
+          <Tooltip content={appState.appliedCharacterPreset ?? ''}>
+          <span className="text-green-700 dark:text-green-300 max-w-24 truncate">
             {appState.appliedCharacterPreset}
           </span>
+          </Tooltip>
+          <Tooltip content="캐릭터 프리셋 해제">
           <button
             className="ml-1 text-green-600 dark:text-green-400 hover:text-red-500 dark:hover:text-red-400"
             onClick={() => appState.clearAppliedCharacterPreset()}
-            title="캐릭터 프리셋 해제"
           >
             <FaTimes size={12} />
           </button>
+          </Tooltip>
         </div>
       )}
       
@@ -219,6 +223,7 @@ const SessionSelect = observer(() => {
       <button className={`icon-button nback-sky mx-1`} onClick={addSession}>
         <FaPlus size={18} />
       </button>
+      <Tooltip content="캐릭터 프리셋 관리">
       <button
         className={`icon-button nback-green mx-1`}
         onClick={() => {
@@ -228,10 +233,10 @@ const SessionSelect = observer(() => {
           }
           setShowCharacterPresets(true);
         }}
-        title="캐릭터 프리셋 관리"
       >
         <FaUserAlt size={18} />
       </button>
+      </Tooltip>
       <button
         className={`icon-button nback-orange mx-1`}
         onClick={() => {
@@ -243,13 +248,14 @@ const SessionSelect = observer(() => {
       <button className={`icon-button nback-red mx-1`} onClick={deleteSession}>
         <FaTrashAlt size={18} />{' '}
       </button>
+      <Tooltip content="프로젝트 휴지통">
       <button
         className={`icon-button nback-gray mx-1`}
         onClick={openProjectTrash}
-        title="프로젝트 휴지통"
       >
         <FaTrashRestore size={18} />
       </button>
+      </Tooltip>
     </div>
   );
 });

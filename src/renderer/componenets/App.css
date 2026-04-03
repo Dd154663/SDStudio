@@ -8,6 +8,33 @@
 body {
   font-size: 16px;
 }
+
+/* 전역 커스텀 스크롤바 (Electron/Chromium) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.45);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background-color: rgba(200, 200, 200, 0.25);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(200, 200, 200, 0.45);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
 @media screen and (max-width: 768px) {
   body {
     font-size: 14px;
@@ -16,6 +43,29 @@ body {
 
 body {
   font-family: 'Noto Sans KR', sans-serif;
+}
+
+/* 커스텀 타이틀바 */
+.titlebar-drag {
+  -webkit-app-region: drag;
+}
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
+}
+.window-control-btn {
+  @apply flex items-center justify-center w-11 h-8 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors;
+}
+.window-control-close:hover {
+  @apply bg-red-500 dark:bg-red-500 text-white dark:text-white;
+}
+
+/* 좌우 분할 스플리터 */
+.splitter-toggle-btn {
+  @apply flex items-center justify-center w-5 h-6 my-1 rounded
+    text-gray-400 dark:text-gray-500
+    hover:text-gray-700 dark:hover:text-gray-200
+    hover:bg-gray-200 dark:hover:bg-slate-700
+    transition-colors text-xs;
 }
 
 .line-color {
@@ -79,7 +129,15 @@ body {
 }
 
 .round-button {
-  @apply clickable select-none whitespace-nowrap hover:outline-4 hover:outline-sky-400 rounded-full px-2 py-1 md:px-3 md:py-1;
+  @apply clickable select-none whitespace-nowrap hover:outline-4 hover:outline-sky-400 rounded-full px-2 py-0.5 md:px-3 md:py-1;
+}
+
+.btn-sm {
+  @apply px-2 py-0.5 text-xs;
+}
+
+.btn-lg {
+  @apply px-4 py-1.5 text-base;
 }
 
 .tab-button {
@@ -537,4 +595,21 @@ input[type='number']::-webkit-outer-spin-button {
 
 .no-touch {
   touch-action: none;
+}
+
+/* 커스텀 툴팁 등장 애니메이션 */
+.tooltip-animate {
+  animation: tooltip-pop 150ms ease-out forwards;
+  transform-origin: top center;
+}
+
+@keyframes tooltip-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }

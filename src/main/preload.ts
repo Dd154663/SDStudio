@@ -48,7 +48,11 @@ export type Channels =
   | 'copy-image-to-clipboard'
   | 'lookup-tag'
   | 'write-data-file-absolute'
-  | 'exist-file-absolute';
+  | 'exist-file-absolute'
+  | 'window-minimize'
+  | 'window-maximize'
+  | 'window-close'
+  | 'window-is-maximized';
 
 const electronHandler = {
   ipcRenderer: {

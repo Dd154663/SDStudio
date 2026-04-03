@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useContext, useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
+import Tooltip from './Tooltip';
 import {
   FaPlus,
   FaTrash,
@@ -443,34 +444,38 @@ const CharacterPresetItem = observer(({
       <div className="flex items-center justify-between mb-2">
         <div className="font-medium text-lg">{preset.name}</div>
         <div className="flex gap-1">
+          <Tooltip content="씬에 적용">
           <button
             className="icon-button back-sky"
             onClick={onApply}
-            title="씬에 적용"
           >
             <FaCheck />
           </button>
+          </Tooltip>
+          <Tooltip content="편집">
           <button
             className="icon-button back-green"
             onClick={onEdit}
-            title="편집"
           >
             <FaEdit />
           </button>
+          </Tooltip>
+          <Tooltip content="복제">
           <button
             className="icon-button back-orange-500"
             onClick={onDuplicate}
-            title="복제"
           >
             <FaCopy />
           </button>
+          </Tooltip>
+          <Tooltip content="삭제">
           <button
             className="icon-button back-red"
             onClick={onDelete}
-            title="삭제"
           >
             <FaTrash />
           </button>
+          </Tooltip>
         </div>
       </div>
 

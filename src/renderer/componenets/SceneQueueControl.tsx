@@ -10,6 +10,7 @@ import { useDrag, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
 import { useContextMenu } from 'react-contexify';
 import SceneSelector from './SceneSelector';
+import Tooltip from './Tooltip';
 import { v4 } from 'uuid';
 import { ImageOptimizeMethod } from '../backend';
 import {
@@ -312,9 +313,9 @@ export const SceneCell = observer(
           </div>
         </div>
         <div className="w-full flex mt-auto justify-center items-center gap-1 md:gap-2 p-1 md:p-2">
+          <Tooltip content="예약 추가">
           <button
             className={`round-button back-green`}
-            title="예약 추가"
             onClick={(e) => {
               e.stopPropagation();
               addToQueue(scene);
@@ -322,9 +323,10 @@ export const SceneCell = observer(
           >
             <FaPlus />
           </button>
+          </Tooltip>
+          <Tooltip content="예약 제거">
           <button
             className={`round-button back-gray`}
-            title="예약 제거"
             onClick={(e) => {
               e.stopPropagation();
               removeFromQueue(scene);
@@ -332,9 +334,10 @@ export const SceneCell = observer(
           >
             <FaRegCalendarTimes />
           </button>
+          </Tooltip>
+          <Tooltip content="씬 편집">
           <button
             className={`round-button back-orange`}
-            title="씬 편집"
             onClick={(e) => {
               e.stopPropagation();
               setEditingScene?.(scene);
@@ -342,9 +345,10 @@ export const SceneCell = observer(
           >
             <FaEdit />
           </button>
+          </Tooltip>
+          <Tooltip content="씬 북마크">
           <button
             className={`round-button ${isBookmarked ? 'back-orange' : 'back-gray'}`}
-            title="씬 북마크"
             onClick={(e) => {
               e.stopPropagation();
               onToggleBookmark?.();
@@ -352,6 +356,7 @@ export const SceneCell = observer(
           >
             <FaBookmark />
           </button>
+          </Tooltip>
         </div>
       </div>
     );
@@ -1096,8 +1101,8 @@ const QueueControl = observer(
         )}
         {panel}
         {!!showPannel && (
-          <div className="flex flex-none pb-2 flex-wrap">
-            <div className="flex gap-1 md:gap-2 flex-wrap">
+          <div className="flex flex-none pb-1.5 flex-wrap">
+            <div className="flex gap-1 md:gap-1.5 flex-wrap items-center">
               <button className={`round-button back-sky`} onClick={addScene}>
                 씬 추가
               </button>
@@ -1121,9 +1126,9 @@ const QueueControl = observer(
               >
                 대량 작업
               </button>
+              <Tooltip content="이미지 프롬프트 추출">
               <button
                 className={`round-button back-gray`}
-                title="이미지 프롬프트 추출"
                 onClick={() => {
                   const input = document.createElement('input');
                   input.type = 'file';
@@ -1139,16 +1144,18 @@ const QueueControl = observer(
               >
                 <FaFileImage />
               </button>
+              </Tooltip>
+              <Tooltip content="씬 검색">
               <button
                 className={`round-button ${showSceneSearch ? 'back-sky' : 'back-gray'}`}
-                title="씬 검색"
                 onClick={toggleSceneSearch}
               >
                 <FaSearch />
               </button>
+              </Tooltip>
+              <Tooltip content="북마크된 씬으로 이동">
               <button
                 className={`round-button ${sceneBookmark ? 'back-orange' : 'back-gray'}`}
-                title="북마크된 씬으로 이동"
                 onClick={() => {
                   if (!sceneBookmark) {
                     appState.pushMessage('북마크된 씬이 없습니다.');
@@ -1168,13 +1175,15 @@ const QueueControl = observer(
               >
                 <FaBookmark />
               </button>
+              </Tooltip>
+              <Tooltip content="씬 휴지통">
               <button
                 className={`round-button back-gray`}
-                title="씬 휴지통"
                 onClick={() => setShowSceneTrash(true)}
               >
                 <FaTrash />
               </button>
+              </Tooltip>
             </div>
             <div className="ml-auto mr-2 hidden md:block">
               <button

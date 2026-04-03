@@ -33,6 +33,7 @@ import { CellPreview } from './ResultViewer';
 import { SlotPiece } from './SceneEditor';
 import { StackFixed, StackGrow, VerticalStack } from './LayoutComponents';
 import ProgressWindow, { ProgressDialog } from './ProgressWindow';
+import ResizableSplitter from './ResizableSplitter';
 import {
   taskQueueService,
   backend,
@@ -128,6 +129,19 @@ export const App = observer(() => {
       taskQueueService.stop();
     };
   }, []);
+
+  // Ctrl+B로 좌측 패널 토글
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'b') {
+        e.preventDefault();
+        appState.toggleLeftPanel();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const [darkMode, setDarkMode] = useState(false);
   const updatedIgnored = useRef<boolean>(false);
   useEffect(() => {
@@ -298,12 +312,22 @@ export const App = observer(() => {
               <StackGrow className="flex">
                 {appState.curSession && (
                   <>
-                    <StackGrow outerClassName="hidden md:block">
-                      <PreSetEditor
-                        key={appState.curSession.name}
-                        middlePromptMode={false}
-                      />
-                    </StackGrow>
+                    {!appState.leftPanelCollapsed && (
+                      <div
+                        style={{ width: appState.leftPanelWidth, minWidth: 250 }}
+                        className="flex-none overflow-hidden hidden md:block h-full"
+                      >
+                        <div className="h-full w-full overflow-hidden">
+                          <PreSetEditor
+                            key={appState.curSession.name}
+                            middlePromptMode={false}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex-none hidden md:flex">
+                      <ResizableSplitter />
+                    </div>
                     <StackGrow>
                       <TabComponent
                         key={appState.curSession.name}
@@ -319,17 +343,17 @@ export const App = observer(() => {
                   </>
                 )}
               </StackGrow>
+              <StackFixed>
+                <div className="px-3 py-2 border-t flex gap-3 items-center line-color">
+                  <div className="hidden md:block flex-1">
+                    <SessionSelect />
+                  </div>
+                  <div className="flex flex-none gap-4 ml-auto">
+                    <TaskQueueControl />
+                  </div>
+                </div>
+              </StackFixed>
             </VerticalStack>
-            <StackFixed>
-              <div className="px-3 py-2 border-t flex gap-3 items-center line-color">
-                <div className="hidden md:block flex-1">
-                  <SessionSelect />
-                </div>
-                <div className="flex flex-none gap-4 ml-auto">
-                  <TaskQueueControl />
-                </div>
-              </div>
-            </StackFixed>
           </FloatViewProvider>
         </ErrorBoundary>
         <AlertWindow />

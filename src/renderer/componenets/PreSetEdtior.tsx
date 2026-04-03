@@ -64,6 +64,10 @@ import {
   WorkFlowDef,
 } from '../models/workflows/WorkFlow';
 import { StackFixed, StackGrow, VerticalStack } from './LayoutComponents';
+import Tooltip from './Tooltip';
+import ModalOverlay from './ModalOverlay';
+import { FaCloudUploadAlt } from 'react-icons/fa';
+import { ModelVersion } from '../backends/imageGen';
 
 const ImageSelect = observer(({ input }: { input: WFIInlineInput }) => {
   const { curSession } = appState;
@@ -266,6 +270,13 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
       >
         <div className="flex-1 overflow-hidden">
           <div className="h-full overflow-auto">
+            {getField().length === 0 && (
+              <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500 p-8">
+                <FaCloudUploadAlt size={48} className="mb-4 opacity-60" />
+                <p className="text-base font-medium mb-1">이미지를 드래그하거나</p>
+                <p className="text-base font-medium">Ctrl+V로 붙여넣기 할 수 있습니다</p>
+              </div>
+            )}
             {getField().map((vibe: VibeItem) => (
               <div
                 key={vibe.path}
@@ -332,12 +343,12 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                     </div>
                   </div>
                   <div className="flex-none flex ml-auto mt-auto">
+                    <Tooltip content="바이브 삭제">
                     <button
                       className={
                         `round-button h-8 px-8 ml-auto ` +
                         (disabled ? 'back-gray' : 'back-red')
                       }
-                      title="바이브 삭제"
                       onClick={() => {
                         if (disabled) return;
                         setField(getField().filter((x: any) => x !== vibe));
@@ -345,6 +356,7 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                     >
                       <FaTrash />
                     </button>
+                    </Tooltip>
                   </div>
                 </div>
               </div>
@@ -352,9 +364,11 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
           </div>
         </div>
         <div className="flex-none mt-auto pt-2 flex flex-col gap-2">
-          <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
-            이미지를 드래그하거나 Ctrl+V로 붙여넣기 할 수 있습니다
-          </div>
+          {getField().length > 0 && (
+            <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
+              이미지를 드래그하거나 Ctrl+V로 붙여넣기 할 수 있습니다
+            </div>
+          )}
           <div className="flex gap-2 items-center">
             <FileUploadBase64
               notext
@@ -440,13 +454,14 @@ export const VibeButton = ({ input }: { input: WFIInlineInput }) => {
               onClick={handleImageClick}
             />
             {field.length > 1 && (
+              <Tooltip content="바이브 편집">
               <button
                 className="flex-none px-2 h-14 rounded-lg back-sky text-white text-xs hover:brightness-95 active:brightness-90"
                 onClick={handleOpenEditor}
-                title="바이브 편집"
               >
                 편집
               </button>
+              </Tooltip>
             )}
           </div>
         </div>
@@ -575,6 +590,13 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
       >
         <div className="flex-1 overflow-hidden">
           <div className="h-full overflow-auto">
+            {getField().length === 0 && (
+              <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500 p-8">
+                <FaCloudUploadAlt size={48} className="mb-4 opacity-60" />
+                <p className="text-base font-medium mb-1">이미지를 드래그하거나</p>
+                <p className="text-base font-medium">Ctrl+V로 붙여넣기 할 수 있습니다</p>
+              </div>
+            )}
             {getField().map((reference: ReferenceItem) => (
               <div
                 key={reference.path}
@@ -602,12 +624,12 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                         {reference.enabled !== false ? '활성화됨' : '비활성화됨'}
                       </button>
                     </div>
+                    <Tooltip content="레퍼런스 삭제">
                     <button
                       className={
                         `round-button h-8 px-4 ` +
                         (disabled ? 'back-gray' : 'back-red')
                       }
-                      title="레퍼런스 삭제"
                       onClick={() => {
                         if (disabled) return;
                         setField(getField().filter((x: any) => x !== reference));
@@ -615,6 +637,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                     >
                       <FaTrash />
                     </button>
+                    </Tooltip>
                   </div>
                   <div className="flex w-full md:flex-row flex-col items-center">
                     <div
@@ -714,9 +737,11 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
           </div>
         </div>
         <div className="flex-none mt-auto pt-2 flex flex-col gap-2">
-          <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
-            이미지를 드래그하거나 Ctrl+V로 붙여넣기 할 수 있습니다
-          </div>
+          {getField().length > 0 && (
+            <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
+              이미지를 드래그하거나 Ctrl+V로 붙여넣기 할 수 있습니다
+            </div>
+          )}
           <div className="flex gap-2 items-center">
             <FileUploadBase64
               notext
@@ -813,13 +838,14 @@ export const CharacterReferenceButton = ({ input }: { input: WFIInlineInput }) =
                 {enabledRefs.length === 0 ? '활성화된 이미지 없음' : '이미지 없음'}
               </div>
             )}
+            <Tooltip content="레퍼런스 편집">
             <button
               className="flex-none px-2 h-14 rounded-lg back-sky text-white text-xs hover:brightness-95 active:brightness-90"
               onClick={handleOpenEditor}
-              title="레퍼런스 편집"
             >
               편집
             </button>
+            </Tooltip>
           </div>
         </div>
       )}
@@ -940,7 +966,7 @@ const InnerEditor: React.FC<InnerEditorProps> = ({ type, shared, preset }) => {
   };
   return (
     <div className="flex flex-col h-full">
-      <div className="grow-0 pt-2 px-3 flex gap-3 items-center text-nowrap flex-wrap mb-2 md:mb-0">
+      <div className="grow-0 pt-1 px-2 flex gap-2 items-center text-nowrap flex-wrap mb-1 md:mb-0">
         <div className="flex items-center gap-2">
           <label className="gray-label">그림체 이름:</label>
           <input
@@ -1079,6 +1105,7 @@ const ProfilePreSetSelect = observer(({}) => {
           </div>
         ))}
         <div className="h-full relative flex-none flex flex-col gap-2">
+          <Tooltip content="새 그림체 추가">
           <div
             className="flex-1 w-10 flex m-4 items-center justify-center rounded-xl clickable back-lllgray"
             onClick={async () => {
@@ -1095,19 +1122,20 @@ const ProfilePreSetSelect = observer(({}) => {
               newPreset.name = name;
               presets.push(newPreset);
             }}
-            title="새 그림체 추가"
           >
             <FaPlus />
           </div>
+          </Tooltip>
+          <Tooltip content="여러 그림체 파일 가져오기">
           <div
             className="flex-1 w-10 flex m-4 items-center justify-center rounded-xl clickable back-lllgray"
             onClick={async () => {
               await appState.importMultiplePresets();
             }}
-            title="여러 그림체 파일 가져오기"
           >
             <FaFolderOpen />
           </div>
+          </Tooltip>
         </div>
       </div>
     </div>
@@ -1256,6 +1284,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                 >
                   <FaFont />
                 </button>
+                <Tooltip content="그림체 복제">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1276,20 +1305,22 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                     curSession!.addPreset(newPreset);
                   }}
                   className="p-2 mx-1 icon-button bg-sky-500"
-                  title="그림체 복제"
                 >
                   <FaCopy />
                 </button>
+                </Tooltip>
+                <Tooltip content="그림체 내보내기">
                 <button
                   onClick={async (e) => {
                     e.stopPropagation();
                     await appState.exportPreset(curSession, option);
                   }}
                   className="p-2 mx-1 icon-button bg-orange-500"
-                  title="그림체 내보내기"
                 >
                   <FaShare />
                 </button>
+                </Tooltip>
+                <Tooltip content="그림체 삭제">
                 <button
                   onClick={() => {
                     if (presets.length === 1) {
@@ -1311,10 +1342,10 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                     });
                   }}
                   className="p-2 mx-1 icon-button bg-red-500"
-                  title="그림체 삭제"
                 >
                   <FaTrash />
                 </button>
+                </Tooltip>
               </div>
             </li>
           ))}
@@ -1373,6 +1404,9 @@ interface IWFElementContext {
   setEditCharacters: (field: string | undefined) => void;
   showGroup?: string;
   setShowGroup: (group: string | undefined) => void;
+  showGroupOverlay?: string;
+  setShowGroupOverlay: (group: string | undefined) => void;
+  groupElement?: WFIGroup;
   getMiddlePrompt?: () => string;
   onMiddlePromptChange?: (txt: string) => void;
   getCharacterMiddlePrompt?: (index: number) => string;
@@ -1506,44 +1540,102 @@ const WFRPresetSelect = observer(({ element }: WFElementProps) => {
   return <PreSetSelect workflowType={type} />;
 });
 
+const GlobalModelSettings = observer(() => {
+  const [modelVersion, setModelVersion] = useState<ModelVersion>(ModelVersion.V4_5);
+  const [furryMode, setFurryMode] = useState(false);
+  const [disableQuality, setDisableQuality] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const config = await backend.getConfig();
+      setModelVersion(config.modelVersion ?? ModelVersion.V4_5);
+      setFurryMode(config.furryMode ?? false);
+      setDisableQuality(config.disableQuality ?? false);
+      setLoaded(true);
+    })();
+  }, []);
+
+  const saveConfig = async (updates: Record<string, any>) => {
+    const config = await backend.getConfig();
+    await backend.setConfig({ ...config, ...updates });
+    sessionService.configChanged();
+  };
+
+  if (!loaded) return null;
+
+  return (
+    <div className="mt-4 pt-4 border-t border-gray-200 dark:border-slate-600">
+      <div className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-3">
+        모델 설정 (전역)
+      </div>
+      <div className="space-y-3">
+        <div>
+          <label className="text-sm gray-label mb-1 block">NAI 모델 버전</label>
+          <DropdownSelect
+            selectedOption={modelVersion}
+            menuPlacement="auto"
+            options={[
+              { label: 'V4.5 Full', value: ModelVersion.V4_5 },
+              { label: 'V4.5 Curated', value: ModelVersion.V4_5Curated },
+              { label: 'V4 Full', value: ModelVersion.V4 },
+              { label: 'V4 Curated', value: ModelVersion.V4Curated },
+            ]}
+            onSelect={(opt) => {
+              setModelVersion(opt.value as ModelVersion);
+              saveConfig({ modelVersion: opt.value });
+            }}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="globalFurryMode"
+            checked={furryMode}
+            onChange={(e) => {
+              setFurryMode(e.target.checked);
+              saveConfig({ furryMode: e.target.checked });
+            }}
+          />
+          <label htmlFor="globalFurryMode" className="text-sm gray-label">
+            퍼리 모드 켜기
+          </label>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="globalDisableQuality"
+            checked={disableQuality}
+            onChange={(e) => {
+              setDisableQuality(e.target.checked);
+              saveConfig({ disableQuality: e.target.checked });
+            }}
+          />
+          <label htmlFor="globalDisableQuality" className="text-sm gray-label">
+            NAI 자동 퀄리티 태그 비활성화
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 const WFRGroup = observer(({ element }: WFElementProps) => {
   const grp = element as WFIGroup;
-  const { type, setShowGroup, showGroup, editVibe } =
+  const { editVibe, setShowGroupOverlay } =
     useContext(WFElementContext)!;
-  const { curGroup } = useContext(WFGroupContext)!;
   if (editVibe != undefined) {
     return <></>;
   }
   return (
-    <>
-      {grp.label !== showGroup && (
-        <button
-          className={`round-button back-gray h-8 w-full mt-2`}
-          onClick={() => {
-            setShowGroup(grp.label);
-          }}
-        >
-          {grp.label} 열기
-        </button>
-      )}
-      {grp.label === showGroup && (
-        <WFGroupContext.Provider value={{ curGroup: grp.label }}>
-          <VerticalStack>
-            {grp.inputs.map((x) => (
-              <WFRenderElement element={x} />
-            ))}
-            <button
-              className={`round-button back-gray h-8 w-full mt-2`}
-              onClick={() => {
-                setShowGroup(undefined);
-              }}
-            >
-              {grp.label} 닫기
-            </button>
-          </VerticalStack>
-        </WFGroupContext.Provider>
-      )}
-    </>
+    <button
+      className={`round-button back-gray h-8 w-full mt-2`}
+      onClick={() => {
+        setShowGroupOverlay(grp.label);
+      }}
+    >
+      {grp.label}
+    </button>
   );
 });
 
@@ -1559,11 +1651,14 @@ const WFRStack = observer(({ element }: WFElementProps) => {
 });
 
 const WFRPush = observer(({ element }: WFElementProps) => {
-  const { showGroup, editVibe } = useContext(WFElementContext)!;
+  const { showGroup, showGroupOverlay, editVibe } = useContext(WFElementContext)!;
   const { curGroup } = useContext(WFGroupContext)!;
   const push = element as WFIPush;
-  if (curGroup !== showGroup || editVibe != undefined) {
-    return <></>;
+  const isInOverlay = curGroup !== undefined && curGroup === showGroupOverlay;
+  if (!isInOverlay) {
+    if (curGroup !== showGroup || editVibe != undefined) {
+      return <></>;
+    }
   }
 
   if (push.direction === 'top') {
@@ -1653,21 +1748,23 @@ const CharacterPromptEditor = observer(
                     캐릭터 프롬프트
                   </div>
                   <div className="flex items-center gap-2">
+                    <Tooltip content={character.enabled !== false ? '비활성화' : '활성화'}>
                     <button
                       className={`round-button h-8 px-4 ${character.enabled !== false ? 'back-sky' : 'back-gray'}`}
                       onClick={() => toggleCharacter(character.id)}
-                      title={character.enabled !== false ? '비활성화' : '활성화'}
                     >
                       {character.enabled !== false ? <FaToggleOn className="mr-1" /> : <FaToggleOff className="mr-1" />}
                       {character.enabled !== false ? '활성화됨' : '비활성화됨'}
                     </button>
+                    </Tooltip>
+                    <Tooltip content="캐릭터 삭제">
                     <button
                       className="icon-button back-red"
-                      title="캐릭터 삭제"
                       onClick={() => removeCharacter(character.id)}
                     >
                       <FaTrash />
                     </button>
+                    </Tooltip>
                   </div>
                 </div>
                 <div className="mb-2">
@@ -1847,7 +1944,7 @@ export const CharacterButton = ({ input }: { input: WFIInlineInput }) => {
 };
 
 const WFRInline = observer(({ element }: WFElementProps) => {
-  const { editVibe, editCharacters, type, showGroup, preset, shared, meta } =
+  const { editVibe, editCharacters, type, showGroup, showGroupOverlay, preset, shared, meta } =
     useContext(WFElementContext)!;
   const { curGroup } = useContext(WFGroupContext)!;
   const input = element as WFIInlineInput;
@@ -1870,12 +1967,16 @@ const WFRInline = observer(({ element }: WFElementProps) => {
       meta![input.field] = val;
     }
   };
-  if (
-    curGroup !== showGroup ||
-    editVibe != undefined ||
-    editCharacters !== undefined
-  ) {
-    return <></>;
+  // 오버레이 내부에서는 curGroup이 설정됨 — showGroupOverlay와 비교
+  // 일반 인라인에서는 기존대로 showGroup과 비교
+  const isInOverlay = curGroup !== undefined && curGroup === showGroupOverlay;
+  if (!isInOverlay) {
+    if (
+      curGroup !== showGroup ||
+      editVibe != undefined
+    ) {
+      return <></>;
+    }
   }
   const key = `${type}_${preset.name}_${input.field}`;
   switch (field.type) {
@@ -1957,7 +2058,7 @@ const WFRInline = observer(({ element }: WFElementProps) => {
             key={key}
             selectedOption={getField()}
             disabled={false}
-            menuPlacement="top"
+            menuPlacement="auto"
             options={Object.values(Sampling).map((x) => ({
               label: x,
               value: x,
@@ -1975,7 +2076,7 @@ const WFRInline = observer(({ element }: WFElementProps) => {
             key={key}
             selectedOption={getField()}
             disabled={false}
-            menuPlacement="top"
+            menuPlacement="auto"
             options={Object.values(NoiseSchedule).map((x) => ({
               label: x,
               value: x,
@@ -2028,8 +2129,24 @@ export const PreSetEditorImpl = observer(
       undefined,
     );
     const [showGroup, setShowGroup] = useState<string | undefined>(undefined);
+    const [showGroupOverlay, setShowGroupOverlay] = useState<string | undefined>(undefined);
+
+    // element 트리에서 group 요소 찾기
+    const findGroupElement = (el: WFIElement): WFIGroup | undefined => {
+      if (el.type === 'group') return el as WFIGroup;
+      if (el.type === 'stack') {
+        for (const child of (el as WFIStack).inputs) {
+          const found = findGroupElement(child);
+          if (found) return found;
+        }
+      }
+      return undefined;
+    };
+    const groupElement = findGroupElement(element);
+
     useEffect(() => {
       setShowGroup(undefined);
+      setShowGroupOverlay(undefined);
     }, [type]);
     return (
       <StackGrow>
@@ -2046,6 +2163,9 @@ export const PreSetEditorImpl = observer(
             editCharacters: editCharacters,
             setEditCharacters: setEditCharacters,
             setShowGroup: setShowGroup,
+            showGroupOverlay: showGroupOverlay,
+            setShowGroupOverlay: setShowGroupOverlay,
+            groupElement: groupElement,
             type: type,
             middlePromptMode,
             getMiddlePrompt,
@@ -2057,6 +2177,17 @@ export const PreSetEditorImpl = observer(
           <WFGroupContext.Provider value={{}}>
             <VibeEditor disabled={false} />
             <CharacterReferenceEditor disabled={false} />
+            {!editVibe && !editCharacterReference && (
+              <WFRenderElement element={element} />
+            )}
+          </WFGroupContext.Provider>
+          {/* 캐릭터 프롬프트 오버레이 */}
+          <ModalOverlay
+            isOpen={!!editCharacters}
+            onClose={() => setEditCharacters(undefined)}
+            title="캐릭터 프롬프트"
+            width="max-w-2xl"
+          >
             {editCharacters && (
               <CharacterPromptEditor
                 input={
@@ -2071,10 +2202,23 @@ export const PreSetEditorImpl = observer(
                 }
               />
             )}
-            {!editVibe && !editCharacters && !editCharacterReference && (
-              <WFRenderElement element={element} />
+          </ModalOverlay>
+          {/* 샘플링/모델 설정 오버레이 */}
+          <ModalOverlay
+            isOpen={!!showGroupOverlay && !!groupElement}
+            onClose={() => setShowGroupOverlay(undefined)}
+            title={showGroupOverlay || ''}
+            width="max-w-xl"
+          >
+            {showGroupOverlay && groupElement && (
+              <WFGroupContext.Provider value={{ curGroup: showGroupOverlay }}>
+                {groupElement.inputs.map((x, i) => (
+                  <WFRenderElement key={i} element={x} />
+                ))}
+                <GlobalModelSettings />
+              </WFGroupContext.Provider>
             )}
-          </WFGroupContext.Provider>
+          </ModalOverlay>
         </WFElementContext.Provider>
       </StackGrow>
     );
@@ -2123,7 +2267,7 @@ export const InnerPreSetEditor = observer(
     nopad,
   }: InnerProps) => {
     return (
-      <VerticalStack className={nopad ? '' : 'p-3'}>
+      <VerticalStack className={nopad ? '' : 'p-2'}>
         <PreSetEditorImpl
           type={type}
           shared={shared}
@@ -2200,7 +2344,7 @@ const PreSetEditor = observer(
       workflowType &&
       shared &&
       curSession.selectedWorkflow!.presetName && (
-        <VerticalStack className="p-3">
+        <VerticalStack className="p-2">
           <StackFixed className="flex gap-2 items-center">
             <span className={'flex-none gray-label'}>작업모드: </span>
             <DropdownSelect

@@ -29,7 +29,7 @@ interface DropdownSelectProps<T> {
   selectedOption: T | undefined;
   options: Option<T>[];
   className?: string;
-  menuPlacement?: 'top' | 'bottom';
+  menuPlacement?: 'top' | 'bottom' | 'auto';
   onSelect: (option: Option<T>) => void;
   disabled?: boolean;
 }
@@ -54,6 +54,8 @@ export const DropdownSelect = <T,>({
       options={options}
       onChange={handleChange}
       menuPlacement={menuPlacement}
+      menuPortalTarget={document.body}
+      styles={{ menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
       isDisabled={disabled}
       className={'my-react-select-container w-full ' + (className ?? '')}
       classNamePrefix="my-react-select"

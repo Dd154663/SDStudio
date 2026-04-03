@@ -1,4 +1,5 @@
 import { useContext, useEffect, useRef, useState } from 'react';
+import Tooltip from './Tooltip';
 import BrushTool, {
   BrushToolRef,
   base64ToDataUri,
@@ -592,15 +593,16 @@ const InPaintEditor = observer(
                 </button>
               }
               {isMobile && (
+                <Tooltip content="되돌리기">
                 <button
                   className={`rounded-full h-8 w-8 back-gray flex-none flex items-center justify-center clickable`}
-                  title="되돌리기"
                   onClick={() => {
                     brushTool.current!.undo();
                   }}
                 >
                   <FaUndo />
                 </button>
+                </Tooltip>
               )}
               <label className="flex-none gray-label" htmlFor="brushSize">
                 {isMobile ? '' : '브러시 크기:'}{' '}
@@ -711,9 +713,9 @@ const InPaintEditor = observer(
                 <FaPlay size={15} />
               </button>
             ) : (
+              <Tooltip content="중지">
               <button
                 className={`round-button back-red h-8 w-16 md:w-36 flex items-center justify-center`}
-                title="중지"
                 onClick={() => {
                   taskQueueService.removeAllTasks();
                   taskQueueService.stop();
@@ -721,6 +723,7 @@ const InPaintEditor = observer(
               >
                 <FaStop size={15} />
               </button>
+              </Tooltip>
             )}
           </div>
         </div>

@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import Tooltip from './Tooltip';
 import {
   CustomScrollbars,
   DropdownSelect,
@@ -257,9 +258,9 @@ export const BigPromptEditor = observer(
               )}
               <TaskProgressBar fast />
               {!taskQueueService.isRunning() ? (
+                <Tooltip content="생성">
                 <button
                   className={`round-button back-green h-8 w-16 md:w-36 flex items-center justify-center`}
-                  title="생성"
                   onClick={() => {
                     queuePrompt(getMiddlePrompt(), (path: string) => {
                       setPath(path);
@@ -268,10 +269,11 @@ export const BigPromptEditor = observer(
                 >
                   <FaPlay size={15} />
                 </button>
+                </Tooltip>
               ) : (
+                <Tooltip content="중지">
                 <button
                   className={`round-button back-red h-8 w-16 md:w-36 flex items-center justify-center`}
-                  title="중지"
                   onClick={() => {
                     taskQueueService.removeAllTasks();
                     taskQueueService.stop();
@@ -279,6 +281,7 @@ export const BigPromptEditor = observer(
                 >
                   <FaStop size={15} />
                 </button>
+                </Tooltip>
               )}
             </div>
           </div>
@@ -327,13 +330,14 @@ const CharacterPromptsEditor = observer(
                       캐릭터 프롬프트
                     </div>
                     <div className="flex items-center gap-2">
+                      <Tooltip content="캐릭터 프롬프트 삭제">
                       <button
                         className="icon-button back-red"
-                        title="캐릭터 프롬프트 삭제"
                         onClick={() => removePrompt(index)}
                       >
                         <FaTrash />
                       </button>
+                      </Tooltip>
                     </div>
                   </div>
                   <div className="mb-2">
@@ -449,9 +453,9 @@ export const SlotPiece = observer(
               piece.enabled = e.currentTarget.checked;
             }}
           />
+          <Tooltip content="캐릭터 프롬프트 편집">
           <button
             className="active:brightness-90 hover:brightness-95 text-blue-600 dark:text-blue-400"
-            title="캐릭터 프롬프트 편집"
             onClick={() => {
               if (!moveSlotPiece) return;
               setShowCharacterPrompts(true);
@@ -464,6 +468,7 @@ export const SlotPiece = observer(
               </span>
             )}
           </button>
+          </Tooltip>
           <button
             className="active:brightness-90 hover:brightness-95 ml-auto text-red-500 dark:text-red-400"
             onClick={() => {

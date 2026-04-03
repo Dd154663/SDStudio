@@ -44,6 +44,7 @@ import { useContextMenu } from 'react-contexify';
 import { useDrag, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
 import { reaction, set } from 'mobx';
+import Tooltip from './Tooltip';
 import {
   CharacterPrompt,
   ContextMenuType,
@@ -1344,182 +1345,193 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               >
                 {!isMobile ? '예약 추가' : <FaPlus />}
               </button>
-              <button
-                className={`round-button back-gray`}
-                title="예약 제거"
-                onClick={() => {
-                  taskQueueService.removeTasksFromScene(scene);
-                }}
-              >
-                {!isMobile ? '예약 제거' : <FaCalendarTimes />}
-              </button>
-              <button
-                className={`round-button back-orange`}
-                title="씬 편집"
-                onClick={() => {
-                  onEdit(scene);
-                }}
-              >
-                {!isMobile ? '씬 편집' : <FaEdit />}
-              </button>
-              {!isMobile && (
+              <Tooltip content="예약 제거">
                 <button
-                  className={`round-button back-sky`}
-                  title="폴더 열기"
-                  onClick={async () => {
-                    await backend.showFile(
-                      getResultDirectory(curSession!, scene),
-                    );
-                  }}
-                >
-                  <FaFolder />
-                </button>
-              )}
-              <button
-                className={
-                  `round-button ` + (selectMode ? 'back-sky' : 'back-gray')
-                }
-                title="이미지 선택 모드"
-                onClick={() => {
-                  if (selectMode) {
-                    selectedImages.current.clear();
-                  }
-                  setSelectMode(!selectMode);
-                }}
-              >
-                <FaRegSquareCheck />
-              </button>
-              {isMainImage && (
-                <button
-                  className={`round-button back-yellow`}
-                  title="즐겨찾기 이미지 일괄 선택"
+                  className={`round-button back-gray`}
                   onClick={() => {
-                    const favPaths = paths.filter((p) => isMainImage!(p));
-                    if (favPaths.length === 0) {
-                      appState.pushMessage('즐겨찾기 이미지가 없습니다.');
-                      return;
-                    }
-                    if (!selectMode) {
-                      setSelectMode(true);
-                    }
-                    selectedImages.current.clear();
-                    for (const p of favPaths) {
-                      selectedImages.current.add(p);
-                    }
-                    gallaryRef.current?.refresh();
-                    gallaryRef2.current?.refresh();
-                    appState.pushMessage(favPaths.length + '장의 즐겨찾기 이미지가 선택되었습니다.');
+                    taskQueueService.removeTasksFromScene(scene);
                   }}
                 >
-                  <FaStar />
+                  {!isMobile ? '예약 제거' : <FaCalendarTimes />}
                 </button>
+              </Tooltip>
+              <Tooltip content="씬 편집">
+                <button
+                  className={`round-button back-orange`}
+                  onClick={() => {
+                    onEdit(scene);
+                  }}
+                >
+                  {!isMobile ? '씬 편집' : <FaEdit />}
+                </button>
+              </Tooltip>
+              {!isMobile && (
+                <Tooltip content="폴더 열기">
+                  <button
+                    className={`round-button back-sky`}
+                    onClick={async () => {
+                      await backend.showFile(
+                        getResultDirectory(curSession!, scene),
+                      );
+                    }}
+                  >
+                    <FaFolder />
+                  </button>
+                </Tooltip>
               )}
-              <button
-                className={`round-button back-green`}
-                title="이미지 다운로드"
-                onClick={() => {
-                  if (selectMode && selectedImages.current.size > 0) {
-                    setShowDownloadDialog(true);
-                  } else {
-                    setShowDownloadDialog(true);
+              <Tooltip content="이미지 선택 모드">
+                <button
+                  className={
+                    `round-button ` + (selectMode ? 'back-sky' : 'back-gray')
                   }
-                }}
-              >
-                <FaDownload />
-              </button>
-              <button
-                className={`round-button back-sky`}
-                title="이미지 복사"
-                onClick={() => {
-                  if (selectMode && selectedImages.current.size > 0) {
-                    const selected = [...selectedImages.current];
-                    appState.copyImagesToClipboard(selected);
-                  } else {
-                    appState.copyImagesToClipboard(paths);
-                  }
-                }}
-              >
-                <FaCopy />
-              </button>
-              <button
-                className={`round-button ${appState.imageClipboard.length > 0 ? 'back-sky' : 'back-gray'}`}
-                title="이미지 붙여넣기"
-                onClick={() => {
-                  appState.pushDialog({
-                    type: 'confirm',
-                    text: appState.imageClipboard.length + '장의 이미지를 이 씬에 붙여넣으시겠습니까?',
-                    callback: async () => {
-                      await appState.pasteImagesFromClipboard(curSession!, scene);
-                    },
-                  });
-                }}
-              >
-                <FaPaste />
-              </button>
-              <button
-                className={`round-button back-red`}
-                title="이미지 삭제"
-                onClick={() => {
-                  onDeleteImages(scene);
-                }}
-              >
-                <FaTrash />
-              </button>
-              {onSampleExtract && (
+                  onClick={() => {
+                    if (selectMode) {
+                      selectedImages.current.clear();
+                    }
+                    setSelectMode(!selectMode);
+                  }}
+                >
+                  <FaRegSquareCheck />
+                </button>
+              </Tooltip>
+              {isMainImage && (
+                <Tooltip content="즐겨찾기 이미지 일괄 선택">
+                  <button
+                    className={`round-button back-yellow`}
+                    onClick={() => {
+                      const favPaths = paths.filter((p) => isMainImage!(p));
+                      if (favPaths.length === 0) {
+                        appState.pushMessage('즐겨찾기 이미지가 없습니다.');
+                        return;
+                      }
+                      if (!selectMode) {
+                        setSelectMode(true);
+                      }
+                      selectedImages.current.clear();
+                      for (const p of favPaths) {
+                        selectedImages.current.add(p);
+                      }
+                      gallaryRef.current?.refresh();
+                      gallaryRef2.current?.refresh();
+                      appState.pushMessage(favPaths.length + '장의 즐겨찾기 이미지가 선택되었습니다.');
+                    }}
+                  >
+                    <FaStar />
+                  </button>
+                </Tooltip>
+              )}
+              <Tooltip content="이미지 다운로드">
+                <button
+                  className={`round-button back-green`}
+                  onClick={() => {
+                    if (selectMode && selectedImages.current.size > 0) {
+                      setShowDownloadDialog(true);
+                    } else {
+                      setShowDownloadDialog(true);
+                    }
+                  }}
+                >
+                  <FaDownload />
+                </button>
+              </Tooltip>
+              <Tooltip content="이미지 복사">
                 <button
                   className={`round-button back-sky`}
-                  title="샘플 뽑기 (시드 추출)"
-                  onClick={async () => {
-                    if (!selectMode || selectedImages.current.size === 0) {
-                      appState.pushMessage('이미지를 먼저 선택해주세요.');
-                      return;
+                  onClick={() => {
+                    if (selectMode && selectedImages.current.size > 0) {
+                      const selected = [...selectedImages.current];
+                      appState.copyImagesToClipboard(selected);
+                    } else {
+                      appState.copyImagesToClipboard(paths);
                     }
-                    const selectedPaths = Array.from(selectedImages.current);
-                    const seeds: number[] = [];
-                    for (const path of selectedPaths) {
-                      try {
-                        const image = await imageService.fetchImage(path);
-                        if (!image) continue;
-                        const base64 = dataUriToBase64(image);
-                        const job = await extractPromptDataFromBase64(base64);
-                        if (job?.seed) seeds.push(job.seed);
-                      } catch (e) {
-                        // 시드 추출 실패 시 스킵
-                      }
-                    }
-                    if (seeds.length === 0) {
-                      appState.pushMessage('선택한 이미지에서 시드를 추출할 수 없습니다.');
-                      return;
-                    }
-                    onSampleExtract(seeds);
                   }}
                 >
-                  <FaDice />
+                  <FaCopy />
                 </button>
+              </Tooltip>
+              <Tooltip content="이미지 붙여넣기">
+                <button
+                  className={`round-button ${appState.imageClipboard.length > 0 ? 'back-sky' : 'back-gray'}`}
+                  onClick={() => {
+                    appState.pushDialog({
+                      type: 'confirm',
+                      text: appState.imageClipboard.length + '장의 이미지를 이 씬에 붙여넣으시겠습니까?',
+                      callback: async () => {
+                        await appState.pasteImagesFromClipboard(curSession!, scene);
+                      },
+                    });
+                  }}
+                >
+                  <FaPaste />
+                </button>
+              </Tooltip>
+              <Tooltip content="이미지 삭제">
+                <button
+                  className={`round-button back-red`}
+                  onClick={() => {
+                    onDeleteImages(scene);
+                  }}
+                >
+                  <FaTrash />
+                </button>
+              </Tooltip>
+              {onSampleExtract && (
+                <Tooltip content="샘플 뽑기 (시드 추출)">
+                  <button
+                    className={`round-button back-sky`}
+                    onClick={async () => {
+                      if (!selectMode || selectedImages.current.size === 0) {
+                        appState.pushMessage('이미지를 먼저 선택해주세요.');
+                        return;
+                      }
+                      const selectedPaths = Array.from(selectedImages.current);
+                      const seeds: number[] = [];
+                      for (const path of selectedPaths) {
+                        try {
+                          const image = await imageService.fetchImage(path);
+                          if (!image) continue;
+                          const base64 = dataUriToBase64(image);
+                          const job = await extractPromptDataFromBase64(base64);
+                          if (job?.seed) seeds.push(job.seed);
+                        } catch (e) {
+                          // 시드 추출 실패 시 스킵
+                        }
+                      }
+                      if (seeds.length === 0) {
+                        appState.pushMessage('선택한 이미지에서 시드를 추출할 수 없습니다.');
+                        return;
+                      }
+                      onSampleExtract(seeds);
+                    }}
+                  >
+                    <FaDice />
+                  </button>
+                </Tooltip>
               )}
-              <button
-                className={`round-button ${bookmarkedImageFilename ? 'back-orange' : 'back-gray'}`}
-                title="북마크된 이미지로 이동"
-                onClick={() => {
-                  if (!bookmarkedImageFilename) {
-                    appState.pushMessage('북마크된 이미지가 없습니다.');
-                    return;
-                  }
-                  const bmPath = imageService.getOutputDir(curSession!, scene) + '/' + bookmarkedImageFilename;
-                  const index = paths.indexOf(bmPath);
-                  if (index !== -1) {
-                    // 이미지 탭으로 전환 후 해당 위치로 스크롤
-                    setSelectedTab(0);
-                    setTimeout(() => {
-                      gallaryRef.current?.scrollToIndex(index);
-                    }, 50);
-                  } else {
-                    appState.pushMessage('북마크된 이미지를 찾을 수 없습니다.');
-                  }
-                }}
-              >
-                <FaBookmark />
-              </button>
+              <Tooltip content="북마크된 이미지로 이동">
+                <button
+                  className={`round-button ${bookmarkedImageFilename ? 'back-orange' : 'back-gray'}`}
+                  onClick={() => {
+                    if (!bookmarkedImageFilename) {
+                      appState.pushMessage('북마크된 이미지가 없습니다.');
+                      return;
+                    }
+                    const bmPath = imageService.getOutputDir(curSession!, scene) + '/' + bookmarkedImageFilename;
+                    const index = paths.indexOf(bmPath);
+                    if (index !== -1) {
+                      // 이미지 탭으로 전환 후 해당 위치로 스크롤
+                      setSelectedTab(0);
+                      setTimeout(() => {
+                        gallaryRef.current?.scrollToIndex(index);
+                      }, 50);
+                    } else {
+                      appState.pushMessage('북마크된 이미지를 찾을 수 없습니다.');
+                    }
+                  }}
+                >
+                  <FaBookmark />
+                </button>
+              </Tooltip>
             </div>
             <span className="flex ml-auto gap-1 md:gap-2 mt-2 md:mt-0">
               {tabNames.map((tabName, index) => (

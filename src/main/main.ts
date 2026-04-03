@@ -108,6 +108,23 @@ let APP_DIR = DEFAULT_APP_DIR;
 let saveCompleted = false;
 let config: Config = {};
 
+ipcMain.handle('window-minimize', () => {
+  mainWindow?.minimize();
+});
+ipcMain.handle('window-maximize', () => {
+  if (mainWindow?.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow?.maximize();
+  }
+});
+ipcMain.handle('window-close', () => {
+  mainWindow?.close();
+});
+ipcMain.handle('window-is-maximized', () => {
+  return mainWindow?.isMaximized() ?? false;
+});
+
 ipcMain.handle('get-config', async (event) => {
   return config;
 });
@@ -777,6 +794,7 @@ const createWindow = async () => {
     height: height,
     minWidth: 1024,
     minHeight: 728,
+    frame: false,
     icon: getAssetPath('icon.png'),
     webPreferences: {
       preload: app.isPackaged

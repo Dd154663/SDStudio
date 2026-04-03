@@ -8,11 +8,14 @@ import {
   backend,
   taskQueueService,
   imageService,
+  isMobile,
 } from '../models';
+import { VscChromeMinimize, VscChromeMaximize, VscChromeRestore, VscChromeClose } from 'react-icons/vsc';
 
 const TobBar = () => {
   const [loggedIn, setLoggedIn] = useState(false);
   const [credits, setCredits] = useState(0);
+  const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
     const onChange = () => {
@@ -35,14 +38,40 @@ const TobBar = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (isMobile || !window.electron) return;
+    const checkMaximized = async () => {
+      try {
+        const max = await window.electron.ipcRenderer.invoke('window-is-maximized');
+        setIsMaximized(max);
+      } catch (e) {}
+    };
+    checkMaximized();
+    const onResize = () => checkMaximized();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const [settings, setSettings] = useState(false);
 
+  const handleMinimize = () => {
+    window.electron?.ipcRenderer.invoke('window-minimize');
+  };
+  const handleMaximize = () => {
+    window.electron?.ipcRenderer.invoke('window-maximize').then(() => {
+      window.electron?.ipcRenderer.invoke('window-is-maximized').then(setIsMaximized);
+    });
+  };
+  const handleClose = () => {
+    window.electron?.ipcRenderer.invoke('window-close');
+  };
+
   return (
-    <div className={'flex border-b line-color px-2 py-2 items-center'}>
-      <div className="gap-3 hidden md:flex text-sky-500 font-bold dark:text-white">
+    <div className="titlebar-drag flex border-b line-color px-2 py-1.5 items-center select-none">
+      <div className="titlebar-no-drag gap-3 hidden md:flex text-sky-500 font-bold dark:text-white">
         SDStudio
       </div>
-      <p className="ml-auto mr-2 hidden md:block">
+      <p className="ml-auto mr-2 hidden md:block titlebar-no-drag">
         {!loggedIn ? (
           <span className={`round-tag back-red`}>
             환경설정에서 로그인하세요
@@ -55,14 +84,14 @@ const TobBar = () => {
         )}
       </p>
       <button
-        className={`round-button back-sky`}
+        className={`titlebar-no-drag round-button back-sky`}
         onClick={() => {
           setSettings(true);
         }}
       >
         환경설정
       </button>
-      <p className="md:hidden ml-2">
+      <p className="md:hidden ml-2 titlebar-no-drag">
         {!loggedIn ? (
           <span className={`round-tag back-red`}>로그인 필요</span>
         ) : (
@@ -71,22 +100,43 @@ const TobBar = () => {
           </>
         )}
       </p>
-      <div className="ml-auto block md:hidden">
+      <div className="ml-auto block md:hidden titlebar-no-drag">
         <SessionSelect />
       </div>
+
+      {/* 윈도우 컨트롤 버튼 (PC only) */}
+      {!isMobile && (
+        <div className="titlebar-no-drag hidden md:flex items-center ml-2 -mr-1">
+          <button
+            className="window-control-btn"
+            onClick={handleMinimize}
+          >
+            <VscChromeMinimize size={16} />
+          </button>
+          <button
+            className="window-control-btn"
+            onClick={handleMaximize}
+          >
+            {isMaximized ? <VscChromeRestore size={16} /> : <VscChromeMaximize size={16} />}
+          </button>
+          <button
+            className="window-control-btn window-control-close"
+            onClick={handleClose}
+          >
+            <VscChromeClose size={16} />
+          </button>
+        </div>
+      )}
+
       {settings && (
-        <FloatView
-          priority={1}
-          onEscape={() => {
+        <ConfigScreen
+          onSave={() => {
             setSettings(false);
           }}
-        >
-          <ConfigScreen
-            onSave={() => {
-              setSettings(false);
-            }}
-          />
-        </FloatView>
+          onClose={() => {
+            setSettings(false);
+          }}
+        />
       )}
     </div>
   );
