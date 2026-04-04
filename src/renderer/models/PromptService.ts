@@ -1,4 +1,4 @@
-import { backend, isMobile, promptService } from '.';
+import { backend, isMobile, promptService, globalPieceService } from '.';
 import { NoiseSchedule, Sampling } from '../backends/imageGen';
 import {
   InpaintScene,
@@ -47,7 +47,7 @@ export class PromptService extends EventTarget {
           '올바르지 않은 조각 문법 "' + p + '" (' + errorInfo + ')',
         );
       }
-      const lib = session.library.get(parts[0]);
+      const lib = session.library.get(parts[0]) ?? globalPieceService.library.get(parts[0]);
       if (!lib) {
         throw new Error(
           '존재하지 않는 조각 모음 "' + p + '" (' + errorInfo + ')',
@@ -61,6 +61,19 @@ export class PromptService extends EventTarget {
     throw new Error('조각이 아닙니다 "' + p + '" (' + errorInfo + ')');
   }
 
+  isGlobal(p: string, session: Session): boolean {
+    if (p.charAt(0) !== '<' || p.charAt(p.length - 1) !== '>') {
+      return false;
+    }
+    const inner = p.substring(1, p.length - 1);
+    const parts = inner.split('.');
+    if (parts.length !== 2) return false;
+    // 로컬에 있으면 로컬 우선 → global이 아님
+    if (session.library.get(parts[0])) return false;
+    // 전역에만 있으면 global
+    return !!globalPieceService.library.get(parts[0]);
+  }
+
   isMulti(p: string, session: Session) {
     if (p.charAt(0) !== '<' || p.charAt(p.length - 1) !== '>') {
       return false;
@@ -70,7 +83,7 @@ export class PromptService extends EventTarget {
     if (parts.length !== 2) {
       return false;
     }
-    const lib = session.library.get(parts[0]);
+    const lib = session.library.get(parts[0]) ?? globalPieceService.library.get(parts[0]);
     if (!lib) {
       return false;
     }
@@ -529,9 +542,11 @@ export const highlightPrompt = (
           if (pword.startsWith('<') && pword.endsWith('>')) {
             try {
               promptService.tryExpandPiece(pword, session);
+              const isGlobal = promptService.isGlobal(pword, session);
               if (promptService.isMulti(pword, session))
-                classNames.push('syntax-multi-wildcard');
-              else classNames.push('syntax-wildcard');
+                classNames.push(isGlobal ? 'syntax-global-multi-wildcard' : 'syntax-multi-wildcard');
+              else
+                classNames.push(isGlobal ? 'syntax-global-wildcard' : 'syntax-wildcard');
 
               js =
                 'onmousemove="window.promptService.showPromptTooltip(\'' +

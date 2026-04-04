@@ -1,6 +1,7 @@
 import {
   backend,
   gameService,
+  globalPieceService,
   imageService,
   isMobile,
   localAIService,
@@ -63,6 +64,19 @@ export class AppState {
 
   // 만료 프로젝트 알림
   @observable accessor pendingExpiredProjects: {name: string, deletedAt: number}[] = [];
+
+  // 프롬프트조각 에디터 오버레이
+  @observable accessor pieceEditorOpen: boolean = false;
+
+  @action
+  openPieceEditor() {
+    this.pieceEditorOpen = true;
+  }
+
+  @action
+  closePieceEditor() {
+    this.pieceEditorOpen = false;
+  }
 
   // 좌측 패널 상태
   @observable accessor leftPanelWidth: number = (() => {
@@ -279,35 +293,58 @@ export class AppState {
       if (isValidSession(json)) {
         handleAddSession(json);
       } else if (isValidPieceLibrary(json)) {
-        if (!this.curSession) {
-          this.pushMessage('세션을 먼저 선택해주세요.');
-          return;
-        }
         if (!json.version) {
           json = migratePieceLibrary(json);
         }
-        if (!(json.name in this.curSession.library)) {
-          this.curSession.library.set(json.name, PieceLibrary.fromJSON(json));
-          sessionService.reloadPieceLibraryDB(this.curSession);
+        const importToTarget = (targetLibrary: Map<string, PieceLibrary>, scopeLabel: string) => {
+          if (!targetLibrary.has(json.name)) {
+            targetLibrary.set(json.name, PieceLibrary.fromJSON(json));
+            if (scopeLabel === '전역') globalPieceService.scheduleSave();
+            if (this.curSession) sessionService.reloadPieceLibraryDB(this.curSession);
+            this.pushDialog({
+              type: 'yes-only',
+              text: `조각모음을 ${scopeLabel}에 임포트 했습니다`,
+            });
+            return;
+          }
           this.pushDialog({
-            type: 'yes-only',
-            text: '조각모음을 임포트 했습니다',
+            type: 'input-confirm',
+            text: `${scopeLabel}에 동일한 이름의 조각그룹이 있습니다. 새 이름을 입력하세요.`,
+            callback: (value) => {
+              if (!value || value === '') return;
+              if (targetLibrary.has(value)) {
+                this.pushMessage('이미 존재하는 조각그룹 이름입니다.');
+                return;
+              }
+              json.name = value;
+              targetLibrary.set(value, PieceLibrary.fromJSON(json));
+              if (scopeLabel === '전역') globalPieceService.scheduleSave();
+              if (this.curSession) sessionService.reloadPieceLibraryDB(this.curSession);
+            },
           });
+        };
+
+        // 세션이 없으면 전역으로 바로 임포트
+        if (!this.curSession) {
+          importToTarget(globalPieceService.library, '전역');
           return;
         }
+
+        // 세션이 있으면 로컬/전역 선택
         this.pushDialog({
-          type: 'input-confirm',
-          text: '조각그룹을 임포트 합니다. 새 조각그룹 이름을 입력하세요.',
-          callback: (value) => {
-            if (!value || value === '') {
-              return;
+          type: 'select',
+          text: '조각그룹을 어디에 임포트하시겠습니까?',
+          items: [
+            { text: '현재 프로젝트 (로컬)', value: 'local' },
+            { text: '전역 (모든 프로젝트)', value: 'global' },
+          ],
+          callback: (scopeValue) => {
+            if (!scopeValue) return;
+            if (scopeValue === 'local') {
+              importToTarget(this.curSession!.library, '로컬');
+            } else {
+              importToTarget(globalPieceService.library, '전역');
             }
-            if (this.curSession!.library.has(value)) {
-              this.pushMessage('이미 존재하는 조각그룹 이름입니다.');
-              return;
-            }
-            json.name = value;
-            this.curSession!.library.set(value, PieceLibrary.fromJSON(json));
           },
         });
       }

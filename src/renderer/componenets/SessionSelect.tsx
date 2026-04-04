@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { DropdownSelect, Option } from './UtilComponents';
-import { FaPlus, FaShare, FaTrashAlt, FaTrashRestore, FaUserAlt, FaTimes } from 'react-icons/fa';
+import { FaPlus, FaPuzzlePiece, FaShare, FaTrashAlt, FaTrashRestore, FaUserAlt, FaTimes } from 'react-icons/fa';
 import Tooltip from './Tooltip';
 import { sessionService, imageService, backend, zipService, workFlowService, trashService } from '../models';
 import { appState } from '../models/AppService';
@@ -256,6 +256,13 @@ const SessionSelect = observer(() => {
         <FaTrashRestore size={18} />
       </button>
       </Tooltip>
+      <button
+        className="round-button back-green text-sm flex items-center gap-1 ml-1"
+        onClick={() => appState.openPieceEditor()}
+      >
+        <FaPuzzlePiece size={14} />
+        <span className="hidden md:inline">프롬프트조각</span>
+      </button>
     </div>
   );
 });

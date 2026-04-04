@@ -22,7 +22,8 @@ import ExpiredProjectsDialog from './ExpiredProjectsDialog';
 import QueueControl from './SceneQueueControl';
 import { FloatView, FloatViewProvider } from './FloatView';
 import { observer, useObserver } from 'mobx-react-lite';
-import { FaImages, FaPenFancy, FaPuzzlePiece } from 'react-icons/fa';
+import { FaImages, FaPenFancy } from 'react-icons/fa';
+import ModalOverlay from './ModalOverlay';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
@@ -259,11 +260,6 @@ export const App = observer(() => {
       content: <QueueControl type="inpaint" showPannel />,
       emoji: <FaPenFancy />,
     },
-    {
-      label: '프롬프트조각',
-      content: <PieceEditor />,
-      emoji: <FaPuzzlePiece />,
-    },
   ];
   return (
     <DndProvider
@@ -280,7 +276,7 @@ export const App = observer(() => {
           (darkMode ? 'dark' : '')
         }
       >
-        <div className="z-30">
+        <div className="z-[3000]">
           <DnDPreview />
         </div>
         <ErrorBoundary
@@ -363,6 +359,14 @@ export const App = observer(() => {
           <ProgressWindow dialog={appState.progressDialog} />
         )}
         <PromptTooltip />
+        <ModalOverlay
+          isOpen={appState.pieceEditorOpen}
+          onClose={() => appState.closePieceEditor()}
+          title="프롬프트조각"
+          width="max-w-3xl"
+        >
+          {appState.curSession && <PieceEditor />}
+        </ModalOverlay>
       </div>
     </DndProvider>
   );

@@ -203,7 +203,7 @@ body {
 
 .alert-window {
   position: fixed;
-  z-index: 3000;
+  z-index: 5000;
 }
 
 .prompt-full {
@@ -237,7 +237,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: 5000;
 }
 
 .brush-tool {
@@ -468,6 +468,20 @@ input[type='number']::-webkit-outer-spin-button {
   color: #22c55e;
   white-space: inherit;
   /* font-size: 1.05em; */
+  font-weight: 800;
+  word-break: inherit;
+}
+
+.syntax-global-wildcard {
+  color: #a855f7;
+  white-space: inherit;
+  word-break: inherit;
+  font-weight: 800;
+}
+
+.syntax-global-multi-wildcard {
+  color: #c084fc;
+  white-space: inherit;
   font-weight: 800;
   word-break: inherit;
 }

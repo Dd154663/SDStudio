@@ -461,12 +461,27 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async reloadPieceLibraryDB(session: Session) {
-    const res = [];
+    const res: string[] = [];
+    const localKeys = new Set<string>();
     for (const [k, v] of session.library.entries()) {
       for (const piece of v.pieces) {
-        res.push(k + '.' + piece.name);
+        const key = k + '.' + piece.name;
+        res.push(key);
+        localKeys.add(key);
       }
     }
+    // 전역 조각 추가 (로컬과 동명인 경우 스킵)
+    try {
+      const { globalPieceService } = await import('.');
+      for (const [k, v] of globalPieceService.library.entries()) {
+        for (const piece of v.pieces) {
+          const key = k + '.' + piece.name;
+          if (!localKeys.has(key)) {
+            res.push(key);
+          }
+        }
+      }
+    } catch (e) {}
     await backend.loadPiecesDB(res);
   }
 }

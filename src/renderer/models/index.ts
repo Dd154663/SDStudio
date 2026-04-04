@@ -28,6 +28,7 @@ import { AppUpdateNoticeService } from './AppUpdateNoticeService';
 import { WorkFlowService } from './workflows/WorkFlowService';
 import { registerWorkFlows } from './workflows';
 import { TrashService } from './TrashService';
+import { GlobalPieceService } from './GlobalPieceService';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -63,6 +64,9 @@ export const imageService = new ImageService();
 export const trashService = new TrashService();
 
 export const imageDownloadService = new ImageDownloadService();
+
+export const globalPieceService = new GlobalPieceService();
+globalPieceService.load();
 
 export const promptService = new PromptService();
 
