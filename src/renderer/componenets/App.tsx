@@ -149,6 +149,7 @@ export const App = observer(() => {
     const refreshDarkMode = async () => {
       const conf = await backend.getConfig();
       setDarkMode(!conf.whiteMode);
+      appState.classicSceneCard = conf.classicSceneCard ?? false;
     };
     refreshDarkMode();
     sessionService.addEventListener('config-changed', refreshDarkMode);

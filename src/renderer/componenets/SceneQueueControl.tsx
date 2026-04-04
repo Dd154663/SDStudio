@@ -143,9 +143,20 @@ export const SceneCell = observer(
       }
     }
 
+    const isClassic = appState.classicSceneCard;
+    const tabType = scene.type === 'inpaint' ? 'inpaint' : 'scene';
+    const cardStyle = curSession.sceneCardStyle?.[tabType] ?? 'portrait';
+    const aspectMap: Record<string, string> = {
+      portrait: 'aspect-[3/4]',
+      square: 'aspect-square',
+      landscape: 'aspect-[4/3]',
+    };
+    const aspectClass = aspectMap[cardStyle];
     const cellSizes = isMobile
       ? ['w-48 h-48', 'w-36 h-36', 'w-96 h-96']
-      : ['w-full h-48', 'w-full h-64', 'w-full h-96'];
+      : aspectClass
+        ? [`w-full ${aspectClass}`, `w-full ${aspectClass}`, `w-full ${aspectClass}`]
+        : ['w-full h-48', 'w-full h-64', 'w-full h-96'];
     const cellSizes3 = isMobile
       ? ['w-48', 'w-36', 'w-96']
       : ['', '', ''];
@@ -290,6 +301,106 @@ export const SceneCell = observer(
       };
     }, [scene]);
 
+    const cardRef = (node: any) => drag(drop(node));
+    const onContext = (e: any) => {
+      show({ event: e, props: { ctx: { type: 'scene', scene } } });
+    };
+    const onClickCard = (event: any) => {
+      if (isDragging) return;
+      setDisplayScene?.(scene);
+    };
+
+    // 공통 버튼 렌더
+    const renderButtons = (overlay?: boolean) => {
+      const btnClass = overlay
+        ? 'round-button scene-btn'
+        : 'round-button scene-btn';
+      const green = overlay ? 'bg-green-500 text-white' : 'back-green';
+      const gray = overlay ? 'bg-gray-500 text-white' : 'back-gray';
+      const orange = overlay ? 'bg-orange-500 text-white' : 'back-orange';
+      return (
+        <>
+          <Tooltip content="예약 추가">
+          <button className={`${btnClass} ${green}`}
+            onClick={(e) => { e.stopPropagation(); addToQueue(scene); }}>
+            <FaPlus />
+          </button>
+          </Tooltip>
+          <Tooltip content="예약 제거">
+          <button className={`${btnClass} ${gray}`}
+            onClick={(e) => { e.stopPropagation(); removeFromQueue(scene); }}>
+            <FaRegCalendarTimes />
+          </button>
+          </Tooltip>
+          <Tooltip content="씬 편집">
+          <button className={`${btnClass} ${orange}`}
+            onClick={(e) => { e.stopPropagation(); setEditingScene?.(scene); }}>
+            <FaEdit />
+          </button>
+          </Tooltip>
+          <Tooltip content="씬 북마크">
+          <button className={`${btnClass} ${isBookmarked ? orange : gray}`}
+            onClick={(e) => { e.stopPropagation(); onToggleBookmark?.(); }}>
+            <FaBookmark />
+          </button>
+          </Tooltip>
+        </>
+      );
+    };
+
+    if (isClassic) {
+      // ===== 클래식 디자인 =====
+      return (
+        <div
+          id={`scene-cell-${scene.type}-${scene.name}`}
+          className={
+            'relative m-2 p-1 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-500 ' +
+            (isDragging ? 'opacity-0 no-touch ' : '') +
+            (isOver ? ' outline outline-sky-500' : '')
+          }
+          style={style}
+          ref={cardRef}
+          onContextMenu={onContext}
+        >
+          {getSceneQueueCount(scene) > 0 && (
+            <span className="absolute right-0 bg-yellow-400 dark:bg-indigo-400 inline-block mr-3 px-2 py-1 text-center align-middle rounded-md font-bold text-white">
+              {getSceneQueueCount(scene)}
+            </span>
+          )}
+          <div className="-z-10 clickable bg-white dark:bg-slate-800" onClick={onClickCard}>
+            <div className={'p-2 flex text-lg text-default ' + cellSizes3[cellSize]}>
+              <div className="truncate flex-1">
+                {isBookmarked && <span className="text-orange-500">📌</span>}
+                {emoji}
+                {scene.name}
+              </div>
+              <div className="flex-none text-gray-400">
+                {gameService.getOutputs(curSession!, scene).length}{' '}
+              </div>
+            </div>
+            <div className={'relative image-cell overflow-hidden ' + cellSizes[cellSize]}>
+              {image && (
+                <div className="relative w-full h-full">
+                  <img src={image} draggable={false}
+                    className={'w-full h-full object-contain z-0' +
+                      (scene.mains.length > 0 ? ' border-2 border-yellow-400' : '')} />
+                  {scene.mains.length > 0 && (
+                    <div className="absolute left-1 top-1 z-10 text-yellow-400 text-sm drop-shadow">
+                      <FaStar />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="w-full flex mt-auto justify-center items-center gap-1 md:gap-2 p-1 md:p-2">
+            {renderButtons(false)}
+          </div>
+        </div>
+      );
+    }
+
+    // ===== 신규 디자인 =====
     return (
       <div
         id={`scene-cell-${scene.type}-${scene.name}`}
@@ -300,18 +411,8 @@ export const SceneCell = observer(
           (isOver ? ' ring-2 ring-sky-500' : '')
         }
         style={style}
-        ref={(node) => drag(drop(node))}
-        onContextMenu={(e) => {
-          show({
-            event: e,
-            props: {
-              ctx: {
-                type: 'scene',
-                scene: scene,
-              },
-            },
-          });
-        }}
+        ref={cardRef}
+        onContextMenu={onContext}
       >
         {getSceneQueueCount(scene) > 0 && (
           <span className="absolute left-2 top-2 z-20 bg-yellow-400 dark:bg-indigo-400 px-2 py-0.5 rounded-full text-sm font-bold text-white shadow">
@@ -322,27 +423,12 @@ export const SceneCell = observer(
         {!isMobile && (
           <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/40 transition-colors duration-200 z-10 pointer-events-none" />
         )}
-        <div
-          className="clickable bg-white dark:bg-slate-800"
-          onClick={(event) => {
-            if (isDragging) return;
-            setDisplayScene?.(scene);
-          }}
-        >
-          <div
-            className={
-              'relative image-cell overflow-hidden rounded-md ' + cellSizes[cellSize]
-            }
-          >
+        <div className="clickable bg-white dark:bg-slate-800" onClick={onClickCard}>
+          <div className={'relative image-cell overflow-hidden rounded-md ' + cellSizes[cellSize]}>
             {image && (
               <div className="relative w-full h-full">
-                <img
-                  src={image}
-                  draggable={false}
-                  className={
-                    'w-full h-full object-cover z-0'
-                  }
-                />
+                <img src={image} draggable={false}
+                  className="w-full h-full object-cover z-0" />
                 {scene.mains.length > 0 && (
                   <div className="absolute left-1 top-1 z-10 text-yellow-400 text-sm drop-shadow">
                     <FaStar />
@@ -365,101 +451,15 @@ export const SceneCell = observer(
             </div>
           </div>
         </div>
-        {/* PC 전용: 호버 시 버튼 (카드 레벨, 오버레이 위) */}
+        {/* PC 전용: 호버 시 버튼 */}
         {!isMobile && (
           <div className="absolute bottom-0 left-0 right-0 flex justify-center items-center gap-1.5 z-20 py-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <Tooltip content="예약 추가">
-            <button
-              className="round-button scene-btn bg-green-500 text-white"
-              onClick={(e) => {
-                e.stopPropagation();
-                addToQueue(scene);
-              }}
-            >
-              <FaPlus />
-            </button>
-            </Tooltip>
-            <Tooltip content="예약 제거">
-            <button
-              className="round-button scene-btn bg-gray-500 text-white"
-              onClick={(e) => {
-                e.stopPropagation();
-                removeFromQueue(scene);
-              }}
-            >
-              <FaRegCalendarTimes />
-            </button>
-            </Tooltip>
-            <Tooltip content="씬 편집">
-            <button
-              className="round-button scene-btn bg-orange-500 text-white"
-              onClick={(e) => {
-                e.stopPropagation();
-                setEditingScene?.(scene);
-              }}
-            >
-              <FaEdit />
-            </button>
-            </Tooltip>
-            <Tooltip content="씬 북마크">
-            <button
-              className={`round-button scene-btn ${isBookmarked ? 'bg-orange-500' : 'bg-gray-500'} text-white`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleBookmark?.();
-              }}
-            >
-              <FaBookmark />
-            </button>
-            </Tooltip>
+            {renderButtons(true)}
           </div>
         )}
         {/* 모바일 전용: 하단 버튼 */}
         <div className={`w-full flex mt-auto justify-center items-center gap-1 p-1 ${isMobile ? '' : 'md:hidden'}`}>
-          <Tooltip content="예약 추가">
-          <button
-            className={`round-button scene-btn back-green`}
-            onClick={(e) => {
-              e.stopPropagation();
-              addToQueue(scene);
-            }}
-          >
-            <FaPlus />
-          </button>
-          </Tooltip>
-          <Tooltip content="예약 제거">
-          <button
-            className={`round-button scene-btn back-gray`}
-            onClick={(e) => {
-              e.stopPropagation();
-              removeFromQueue(scene);
-            }}
-          >
-            <FaRegCalendarTimes />
-          </button>
-          </Tooltip>
-          <Tooltip content="씬 편집">
-          <button
-            className={`round-button scene-btn back-orange`}
-            onClick={(e) => {
-              e.stopPropagation();
-              setEditingScene?.(scene);
-            }}
-          >
-            <FaEdit />
-          </button>
-          </Tooltip>
-          <Tooltip content="씬 북마크">
-          <button
-            className={`round-button scene-btn ${isBookmarked ? 'back-orange' : 'back-gray'}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleBookmark?.();
-            }}
-          >
-            <FaBookmark />
-          </button>
-          </Tooltip>
+          {renderButtons(false)}
         </div>
       </div>
     );
@@ -1291,7 +1291,25 @@ const QueueControl = observer(
               </button>
               </Tooltip>
             </div>
-            <div className="ml-auto mr-2 hidden md:block">
+            <div className="ml-auto mr-2 hidden md:flex items-center gap-2">
+              {!appState.classicSceneCard && (
+                <select
+                  className="gray-input text-sm py-1 px-2"
+                  value={curSession.sceneCardStyle?.[type] ?? 'portrait'}
+                  onChange={(e) => {
+                    curSession.sceneCardStyle = {
+                      ...curSession.sceneCardStyle,
+                      [type]: e.target.value,
+                    };
+                    sessionService.dirty[curSession.name] = true;
+                  }}
+                >
+                  <option value="portrait">세로 3:4</option>
+                  <option value="square">정사각형</option>
+                  <option value="landscape">가로 4:3</option>
+                  <option value="fixedHeight">높이 고정</option>
+                </select>
+              )}
               <button
                 onClick={() => setCellSize((cellSize + 1) % 3)}
                 className={`round-button back-gray`}

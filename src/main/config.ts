@@ -42,4 +42,5 @@ export interface Config {
   furryMode?: boolean;
   downloadSettings?: DownloadSettings;
   imageSaveSettings?: ImageSaveSettings;
+  classicSceneCard?: boolean;
 }

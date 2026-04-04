@@ -65,6 +65,9 @@ export class AppState {
   // 만료 프로젝트 알림
   @observable accessor pendingExpiredProjects: {name: string, deletedAt: number}[] = [];
 
+  // 씬 카드 디자인 설정
+  @observable accessor classicSceneCard: boolean = false;
+
   // 프롬프트조각 에디터 오버레이
   @observable accessor pieceEditorOpen: boolean = false;
 

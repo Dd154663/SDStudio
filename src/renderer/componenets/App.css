@@ -11,16 +11,16 @@ body {
 
 /* 전역 커스텀 스크롤바 (Electron/Chromium) */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 24px;
+  height: 24px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background-color: rgba(0, 0, 0, 0.25);
-  border-radius: 4px;
-  border: 2px solid transparent;
+  border-radius: 12px;
+  border: 6px solid transparent;
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {

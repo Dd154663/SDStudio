@@ -277,12 +277,19 @@ const ExportsCleanupSection = () => {
 const OtherTab = ({
   whiteMode, setWhiteMode,
   delayTime, setDelayTime,
+  classicSceneCard, setClassicSceneCard,
 }: any) => (
   <div className="space-y-4">
     <div className="flex items-center gap-2">
       <input type="checkbox" id="cfgWhite" checked={whiteMode}
         onChange={(e) => setWhiteMode(e.target.checked)} />
       <label htmlFor="cfgWhite" className="text-sm gray-label">화이트 모드 켜기</label>
+    </div>
+    <hr className="border-gray-200 dark:border-slate-600" />
+    <div className="flex items-center gap-2">
+      <input type="checkbox" id="cfgClassicScene" checked={classicSceneCard}
+        onChange={(e) => setClassicSceneCard(e.target.checked)} />
+      <label htmlFor="cfgClassicScene" className="text-sm gray-label">클래식 씬 카드 디자인 사용</label>
     </div>
     <hr className="border-gray-200 dark:border-slate-600" />
     <div>
@@ -375,6 +382,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [useGPU, setUseGPU] = useState(false);
   const [whiteMode, setWhiteMode] = useState(false);
   const [delayTime, setDelayTime] = useState(0);
+  const [classicSceneCard, setClassicSceneCard] = useState(false);
   const [useLocalBgRemoval, setUseLocalBgRemoval] = useState(false);
   const [refreshImage, setRefreshImage] = useState(false);
   const [ready, setReady] = useState(false);
@@ -397,6 +405,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setRefreshImage(config.refreshImage ?? false);
       setUseLocalBgRemoval(config.useLocalBgRemoval ?? false);
       setDelayTime(config.delayTime ?? 0);
+      setClassicSceneCard(config.classicSceneCard ?? false);
       setSaveLocation(config.saveLocation ?? '');
     })();
     const checkReady = () => setReady(localAIService.ready);
@@ -498,9 +507,11 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       whiteMode: whiteMode,
       useLocalBgRemoval: useLocalBgRemoval,
       delayTime: delayTime,
+      classicSceneCard: classicSceneCard,
     };
     await backend.setConfig(config);
     if (old.useCUDA !== useGPU) localAIService.modelChanged();
+    appState.classicSceneCard = classicSceneCard;
     sessionService.configChanged();
     onSave();
   };
@@ -524,7 +535,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 2:
         return <StorageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage }} />;
       case 3:
-        return <OtherTab {...{ whiteMode, setWhiteMode, delayTime, setDelayTime }} />;
+        return <OtherTab {...{ whiteMode, setWhiteMode, delayTime, setDelayTime, classicSceneCard, setClassicSceneCard }} />;
       default:
         return null;
     }
