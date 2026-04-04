@@ -4,6 +4,7 @@ import {
   ImageAugmentInput,
   ImageGenInput,
   Model,
+  ModelVersion,
   NoiseSchedule,
   Resolution,
   Sampling,
@@ -397,6 +398,18 @@ class GenerateImageTaskHandler implements TaskHandler {
     const resol = job.overrideResolution
       ? job.overrideResolution
       : (task.params.scene!.resolution as Resolution);
+
+    // 모델 버전에 따른 바이브/캐릭터 레퍼런스 필터링
+    const appConfig = await backend.getConfig();
+    const curModelVersion = appConfig.modelVersion ?? ModelVersion.V4_5;
+    const isV4 = curModelVersion === ModelVersion.V4 || curModelVersion === ModelVersion.V4Curated;
+    const isV4_5 = curModelVersion === ModelVersion.V4_5 || curModelVersion === ModelVersion.V4_5Curated;
+
+    // v4: 캐릭터 레퍼런스 미지원 → 제거
+    const finalReferences = isV4 ? [] : references;
+    // v4.5: 캐릭터 레퍼런스가 있으면 바이브 비활성화
+    const finalVibes = (isV4_5 && finalReferences.length > 0) ? [] : vibes;
+
     const arg: ImageGenInput = {
       prompt: prompt,
       uc: job.uc,
@@ -408,7 +421,7 @@ class GenerateImageTaskHandler implements TaskHandler {
         task.params.scene!.resolutionHeight,
       ),
       sampling: job.sampling as Sampling,
-      vibes: vibes,
+      vibes: finalVibes,
       steps: job.steps,
       cfgRescale: job.cfgRescale,
       noiseSchedule: job.noiseSchedule as NoiseSchedule,
@@ -420,7 +433,7 @@ class GenerateImageTaskHandler implements TaskHandler {
       legacyPromptConditioning: job.legacyPromptConditioning,
       normalizeStrength: job.normalizeStrength,
       varietyPlus: job.varietyPlus,
-      characterReferences: references,
+      characterReferences: finalReferences,
       outputFilePath: outputFilePath,
       seed: job.seed,
     };

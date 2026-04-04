@@ -391,24 +391,35 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
 });
 
 export const VibeButton = ({ input }: { input: WFIInlineInput }) => {
-  const { editVibe, setEditVibe, preset, shared, meta } =
+  const { editVibe, setEditVibe, preset, shared, meta, modelVersion } =
     useContext(WFElementContext)!;
   const [activeIndex, setActiveIndex] = useState(0);
-  
+
   const getField = () => {
     if (input.fieldType === 'preset') return preset[input.field];
     if (input.fieldType === 'shared') return shared[input.field];
     return meta![input.field];
   };
+
+  // v4.5에서 캐릭터 레퍼런스에 이미지가 있으면 바이브 잠금
+  const hasCharacterReferences = (() => {
+    const refs = shared?.characterReferences;
+    if (!refs || !Array.isArray(refs)) return false;
+    return refs.some((ref: ReferenceItem) => ref.enabled !== false && ref.path);
+  })();
+  const isV4_5 = modelVersion === ModelVersion.V4_5 || modelVersion === ModelVersion.V4_5Curated;
+  const locked = isV4_5 && hasCharacterReferences;
+
   const onClick = () => {
+    if (locked) return;
     setEditVibe(input);
   };
 
   const handleImageClick = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    if (locked) return;
     const field = getField();
     if (field.length > 1) {
-      // Cycle through images on click
       setActiveIndex((prev: number) => (prev + 1) % field.length);
     } else {
       onClick();
@@ -417,28 +428,34 @@ export const VibeButton = ({ input }: { input: WFIInlineInput }) => {
 
   const handleOpenEditor = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (locked) return;
     onClick();
   };
 
-  // Reset active index if it's out of bounds
   const field = getField();
   const safeActiveIndex = field.length > 0 ? Math.min(activeIndex, field.length - 1) : 0;
-  
+
   return (
     <>
       {editVibe == undefined && getField().length === 0 && (
         <button
-          className={`round-button back-gray h-8 w-full flex mt-2`}
+          className={`round-button h-8 w-full flex mt-2 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
           onClick={onClick}
+          disabled={locked}
         >
-          <div className="flex-1">바이브 이미지 설정 열기</div>
+          <div className="flex-1">
+            {locked ? '바이브 이미지 설정 (캐릭터 레퍼런스 사용 중)' : '바이브 이미지 설정 열기'}
+          </div>
         </button>
       )}
       {editVibe == undefined && getField().length > 0 && (
-        <div className="w-full flex items-center mt-2">
+        <div className={'w-full flex items-center mt-2' + (locked ? ' opacity-50' : '')}>
           <div className={'flex-none mr-2 gray-label'}>
             바이브 설정:
-            {field.length > 1 && (
+            {locked && (
+              <span className="ml-1 text-xs text-red-400">(비활성)</span>
+            )}
+            {!locked && field.length > 1 && (
               <span className="ml-1 text-xs text-sky-500">
                 ({safeActiveIndex + 1}/{field.length})
               </span>
@@ -450,10 +467,10 @@ export const VibeButton = ({ input }: { input: WFIInlineInput }) => {
                 appState.curSession!,
                 getField()[safeActiveIndex].path,
               )}
-              className="flex-1 h-14 rounded-xl object-cover cursor-pointer hover:brightness-95 active:brightness-90"
+              className={'flex-1 h-14 rounded-xl object-cover' + (locked ? ' grayscale' : ' cursor-pointer hover:brightness-95 active:brightness-90')}
               onClick={handleImageClick}
             />
-            {field.length > 1 && (
+            {!locked && field.length > 1 && (
               <Tooltip content="바이브 편집">
               <button
                 className="flex-none px-2 h-14 rounded-lg back-sky text-white text-xs hover:brightness-95 active:brightness-90"
@@ -764,24 +781,30 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
 });
 
 export const CharacterReferenceButton = ({ input }: { input: WFIInlineInput }) => {
-  const { editCharacterReference, setEditCharacterReference, preset, shared, meta } =
+  const { editCharacterReference, setEditCharacterReference, preset, shared, meta, modelVersion } =
     useContext(WFElementContext)!;
   const [activeIndex, setActiveIndex] = useState(0);
-  
+
   const getField = () => {
     if (input.fieldType === 'preset') return preset[input.field] || [];
     if (input.fieldType === 'shared') return shared[input.field] || [];
     return meta![input.field] || [];
   };
+
+  // v4 모델은 캐릭터 레퍼런스 미지원
+  const isV4 = modelVersion === ModelVersion.V4 || modelVersion === ModelVersion.V4Curated;
+  const locked = isV4;
+
   const onClick = () => {
+    if (locked) return;
     setEditCharacterReference(input);
   };
 
   const handleImageClick = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    if (locked) return;
     const enabledRefs = getField().filter((ref: ReferenceItem) => ref.enabled !== false);
     if (enabledRefs.length > 1) {
-      // Cycle through enabled images on click
       setActiveIndex((prev: number) => (prev + 1) % enabledRefs.length);
     } else {
       onClick();
@@ -790,35 +813,41 @@ export const CharacterReferenceButton = ({ input }: { input: WFIInlineInput }) =
 
   const handleOpenEditor = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (locked) return;
     onClick();
   };
 
   const field = getField();
-  // Get only enabled references for display
   const enabledRefs = field.filter((ref: ReferenceItem) => ref.enabled !== false);
   const safeActiveIndex = enabledRefs.length > 0 ? Math.min(activeIndex, enabledRefs.length - 1) : 0;
-  
-  // Validate that the reference at safeActiveIndex has a valid path
+
   const currentReference = enabledRefs.length > 0 ? enabledRefs[safeActiveIndex] : null;
   const hasValidPath = currentReference && currentReference.path;
-  
+
   return (
     <>
       {editCharacterReference == undefined && field.length === 0 && (
         <button
-          className={`round-button back-gray h-8 w-full flex mt-2`}
+          className={`round-button h-8 w-full flex mt-2 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
           onClick={onClick}
+          disabled={locked}
         >
-          <div className="flex-1">캐릭터 레퍼런스 설정 열기</div>
+          <div className="flex-1">
+            {locked ? '캐릭터 레퍼런스 (v4 모델 미지원)' : '캐릭터 레퍼런스 설정 열기'}
+          </div>
         </button>
       )}
       {editCharacterReference == undefined && field.length > 0 && (
-        <div className="w-full flex items-center mt-2">
+        <div className={'w-full flex items-center mt-2' + (locked ? ' opacity-50' : '')}>
           <div className={'flex-none mr-2 gray-label'}>
             레퍼런스 설정:
-            <span className="ml-1 text-xs text-sky-500">
-              ({enabledRefs.length}/{field.length} 활성화)
-            </span>
+            {locked ? (
+              <span className="ml-1 text-xs text-red-400">(v4 미지원)</span>
+            ) : (
+              <span className="ml-1 text-xs text-sky-500">
+                ({enabledRefs.length}/{field.length} 활성화)
+              </span>
+            )}
           </div>
           <div className="flex-1 flex gap-1 items-center">
             {hasValidPath ? (
@@ -827,25 +856,27 @@ export const CharacterReferenceButton = ({ input }: { input: WFIInlineInput }) =
                   appState.curSession!,
                   currentReference.path,
                 )}
-                className="flex-1 h-14 rounded-xl object-cover cursor-pointer hover:brightness-95 active:brightness-90"
+                className={'flex-1 h-14 rounded-xl object-cover' + (locked ? ' grayscale' : ' cursor-pointer hover:brightness-95 active:brightness-90')}
                 onClick={handleImageClick}
               />
             ) : (
               <div
-                className="flex-1 h-14 rounded-xl bg-gray-200 dark:bg-gray-700 cursor-pointer hover:brightness-95 active:brightness-90 flex items-center justify-center text-gray-500"
+                className={'flex-1 h-14 rounded-xl bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500' + (locked ? '' : ' cursor-pointer hover:brightness-95 active:brightness-90')}
                 onClick={handleImageClick}
               >
-                {enabledRefs.length === 0 ? '활성화된 이미지 없음' : '이미지 없음'}
+                {locked ? 'v4 모델 미지원' : enabledRefs.length === 0 ? '활성화된 이미지 없음' : '이미지 없음'}
               </div>
             )}
-            <Tooltip content="레퍼런스 편집">
-            <button
-              className="flex-none px-2 h-14 rounded-lg back-sky text-white text-xs hover:brightness-95 active:brightness-90"
-              onClick={handleOpenEditor}
-            >
-              편집
-            </button>
-            </Tooltip>
+            {!locked && (
+              <Tooltip content="레퍼런스 편집">
+              <button
+                className="flex-none px-2 h-14 rounded-lg back-sky text-white text-xs hover:brightness-95 active:brightness-90"
+                onClick={handleOpenEditor}
+              >
+                편집
+              </button>
+              </Tooltip>
+            )}
           </div>
         </div>
       )}
@@ -1411,6 +1442,7 @@ interface IWFElementContext {
   onMiddlePromptChange?: (txt: string) => void;
   getCharacterMiddlePrompt?: (index: number) => string;
   onCharacterMiddlePromptChange?: (index: number, txt: string) => void;
+  modelVersion: ModelVersion;
 }
 
 interface WFElementProps {
@@ -2130,6 +2162,20 @@ export const PreSetEditorImpl = observer(
     );
     const [showGroup, setShowGroup] = useState<string | undefined>(undefined);
     const [showGroupOverlay, setShowGroupOverlay] = useState<string | undefined>(undefined);
+    const [modelVersion, setModelVersion] = useState<ModelVersion>(ModelVersion.V4_5);
+
+    useEffect(() => {
+      (async () => {
+        const config = await backend.getConfig();
+        setModelVersion(config.modelVersion ?? ModelVersion.V4_5);
+      })();
+      const onConfigChanged = async () => {
+        const config = await backend.getConfig();
+        setModelVersion(config.modelVersion ?? ModelVersion.V4_5);
+      };
+      sessionService.addEventListener('config-changed', onConfigChanged);
+      return () => sessionService.removeEventListener('config-changed', onConfigChanged);
+    }, []);
 
     // element 트리에서 group 요소 찾기
     const findGroupElement = (el: WFIElement): WFIGroup | undefined => {
@@ -2168,6 +2214,7 @@ export const PreSetEditorImpl = observer(
             groupElement: groupElement,
             type: type,
             middlePromptMode,
+            modelVersion,
             getMiddlePrompt,
             onMiddlePromptChange,
             getCharacterMiddlePrompt,
