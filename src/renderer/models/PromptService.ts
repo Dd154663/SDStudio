@@ -47,18 +47,64 @@ export class PromptService extends EventTarget {
           '올바르지 않은 조각 문법 "' + p + '" (' + errorInfo + ')',
         );
       }
-      const lib = session.library.get(parts[0]) ?? globalPieceService.library.get(parts[0]);
-      if (!lib) {
+      const localLib = session.library.get(parts[0]);
+      const globalLib = globalPieceService.library.get(parts[0]);
+      // 로컬 우선, 로컬에 조각이 없으면 전역 폴백
+      const piece = localLib?.pieces.find((x) => x.name === parts[1])
+        ?? globalLib?.pieces.find((x) => x.name === parts[1]);
+      if (!localLib && !globalLib) {
         throw new Error(
           '존재하지 않는 조각 모음 "' + p + '" (' + errorInfo + ')',
         );
       }
-      if (lib.pieces.find((x) => x.name === parts[1]) == null) {
+      if (!piece) {
         throw new Error('존재하지 않는 조각 "' + p + '" (' + errorInfo + ')');
       }
-      return lib.pieces.find((x) => x.name === parts[1])!.prompt;
+      return piece.prompt;
     }
     throw new Error('조각이 아닙니다 "' + p + '" (' + errorInfo + ')');
+  }
+
+  findMissingPieces(session: Session, scene: Scene | InpaintScene): { library: string; piece: string }[] {
+    const missing: { library: string; piece: string }[] = [];
+    const seen = new Set<string>();
+    const pieceRegex = /<([^<>]+\.[^<>]+)>/g;
+
+    // 씬의 모든 슬롯 프롬프트에서 <lib.piece> 패턴 수집
+    const prompts: string[] = [];
+    if (scene.type === 'scene') {
+      for (const slot of (scene as Scene).slots) {
+        for (const piece of slot) {
+          if (piece.prompt) prompts.push(piece.prompt);
+        }
+      }
+    }
+    if ('preset' in scene && scene.preset?.prompt) {
+      prompts.push(scene.preset.prompt);
+    }
+
+    for (const text of prompts) {
+      let match;
+      while ((match = pieceRegex.exec(text)) !== null) {
+        const inner = match[1];
+        const parts = inner.split('.');
+        if (parts.length !== 2) continue;
+        const key = parts[0] + '.' + parts[1];
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        const localLib = session.library.get(parts[0]);
+        const globalLib = globalPieceService.library.get(parts[0]);
+        const piece = localLib?.pieces.find((x) => x.name === parts[1])
+          ?? globalLib?.pieces.find((x) => x.name === parts[1]);
+        if (!localLib && !globalLib) {
+          missing.push({ library: parts[0], piece: parts[1] });
+        } else if (!piece) {
+          missing.push({ library: parts[0], piece: parts[1] });
+        }
+      }
+    }
+    return missing;
   }
 
   isGlobal(p: string, session: Session): boolean {
@@ -68,10 +114,12 @@ export class PromptService extends EventTarget {
     const inner = p.substring(1, p.length - 1);
     const parts = inner.split('.');
     if (parts.length !== 2) return false;
-    // 로컬에 있으면 로컬 우선 → global이 아님
-    if (session.library.get(parts[0])) return false;
-    // 전역에만 있으면 global
-    return !!globalPieceService.library.get(parts[0]);
+    const localLib = session.library.get(parts[0]);
+    // 로컬 라이브러리에 해당 조각이 있으면 로컬 → global 아님
+    if (localLib?.pieces.find((x) => x.name === parts[1])) return false;
+    // 전역에 해당 조각이 있으면 global
+    const globalLib = globalPieceService.library.get(parts[0]);
+    return !!globalLib?.pieces.find((x) => x.name === parts[1]);
   }
 
   isMulti(p: string, session: Session) {
@@ -83,11 +131,11 @@ export class PromptService extends EventTarget {
     if (parts.length !== 2) {
       return false;
     }
-    const lib = session.library.get(parts[0]) ?? globalPieceService.library.get(parts[0]);
-    if (!lib) {
-      return false;
-    }
-    return lib.pieces.find((x) => x.name === parts[1])?.multi ?? false;
+    const localLib = session.library.get(parts[0]);
+    const globalLib = globalPieceService.library.get(parts[0]);
+    const piece = localLib?.pieces.find((x) => x.name === parts[1])
+      ?? globalLib?.pieces.find((x) => x.name === parts[1]);
+    return piece?.multi ?? false;
   }
 
   parseWord(

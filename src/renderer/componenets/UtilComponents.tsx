@@ -189,12 +189,12 @@ export const TabComponent: React.FC<TabComponentProps> = ({
           'flex p-1 md:p-0 md:py-2 flex-none gap-2 items-center w-full mb-1 md:mb-0'
         }
       >
-        <div className="md:flex gap-1 w-full hidden">
+        <div className="md:flex gap-2 w-full hidden">
           {tabs.map((tab, index) => (
             <button
               key={index}
               className={
-                'active:brightness-90 hover:brightness-95 select-none h-8 px-1 md:px-2 text-xs md:text-sm ' +
+                'active:brightness-90 hover:brightness-95 select-none h-8 px-3 text-sm rounded-md transition-colors ' +
                 (index === activeTab ? `back-sky` : 'back-llgray')
               }
               onClick={() => handleTabClick(index)}
@@ -216,7 +216,7 @@ export const TabComponent: React.FC<TabComponentProps> = ({
             <button
               key={index}
               className={
-                'active:brightness-90 hover:brightness-95 select-none px-3 text-base h-10 ' +
+                'active:brightness-90 hover:brightness-95 select-none px-3 text-base h-10 rounded-md ' +
                 (index === activeTab ? `back-sky` : 'back-llgray')
               }
               onClick={() => handleTabClick(index)}

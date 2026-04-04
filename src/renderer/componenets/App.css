@@ -129,12 +129,16 @@ body {
 }
 
 .round-button {
-  @apply clickable select-none whitespace-nowrap hover:outline-4 hover:outline-sky-400 rounded-full px-3 py-1.5 md:px-3 md:py-1;
+  @apply clickable select-none whitespace-nowrap rounded-full px-3 py-1.5 md:px-3 md:py-1;
   min-width: 36px;
   min-height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: box-shadow 0.15s ease;
+}
+.round-button:hover {
+  box-shadow: inset 0 0 0 2px rgb(56, 189, 248);
 }
 @media (min-width: 768px) {
   .round-button {
@@ -165,7 +169,7 @@ body {
 }
 
 .gray-input {
-  @apply focus:border-0 focus:outline-0 rounded-none focus:outline-black bg-gray-200 dark:bg-slate-700 dark:text-white py-1 md:py-1.5 md:pl-2 md:pr-2 text-gray-900 placeholder:text-gray-400;
+  @apply focus:border-0 focus:outline-0 rounded-md focus:outline-black bg-gray-200 dark:bg-slate-700 dark:text-white py-1 md:py-1.5 md:pl-2 md:pr-2 text-gray-900 placeholder:text-gray-400;
 }
 
 @layer components {

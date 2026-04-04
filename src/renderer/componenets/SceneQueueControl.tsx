@@ -24,6 +24,7 @@ import {
   zipService,
   workFlowService,
   trashService,
+  promptService,
 } from '../models';
 import {
   getMainImage,
@@ -37,6 +38,8 @@ import {
   Scene,
   InpaintScene,
   Session,
+  PieceLibrary,
+  Piece,
 } from '../models/types';
 import { extractPromptDataFromBase64 } from '../models/util';
 import { appState, SceneSelectorItem } from '../models/AppService';
@@ -44,6 +47,61 @@ import { observer } from 'mobx-react-lite';
 import { createInpaintPreset, prepareMirrorCanvas } from '../models/workflows/SDWorkFlow';
 import { reaction } from 'mobx';
 import { oneTimeFlowMap, oneTimeFlows } from '../models/workflows/OneTimeFlows';
+
+const createMissingPiecesForSession = (
+  session: Session,
+  missing: { library: string; piece: string }[],
+) => {
+  for (const m of missing) {
+    let lib = session.library.get(m.library);
+    if (!lib) {
+      lib = new PieceLibrary();
+      lib.name = m.library;
+      session.library.set(m.library, lib);
+    }
+    if (!lib.pieces.find((x) => x.name === m.piece)) {
+      const piece = new Piece();
+      piece.name = m.piece;
+      lib.pieces.push(piece);
+    }
+  }
+  sessionService.dirty[session.name] = true;
+  sessionService.reloadPieceLibraryDB(session);
+};
+
+const queueScene = async (
+  session: Session,
+  scene: GenericScene,
+  samples: number,
+) => {
+  if (scene.type === 'scene') {
+    await queueWorkflow(
+      session,
+      session.selectedWorkflow!,
+      scene,
+      samples,
+    );
+  } else {
+    const inpaintScene = scene as InpaintScene;
+    if (inpaintScene.workflowType === 'SDMirror') {
+      await queueMirrorWorkflow(
+        session,
+        inpaintScene.workflowType,
+        inpaintScene.preset,
+        inpaintScene,
+        samples,
+      );
+    } else {
+      await queueI2IWorkflow(
+        session,
+        scene.workflowType,
+        scene.preset,
+        scene,
+        samples,
+      );
+    }
+  }
+};
 
 interface SceneCellProps {
   scene: GenericScene;
@@ -155,33 +213,24 @@ export const SceneCell = observer(
 
     const addToQueue = async (scene: GenericScene) => {
       try {
-        if (scene.type === 'scene') {
-          await queueWorkflow(
-            curSession,
-            appState.curSession?.selectedWorkflow!,
-            scene,
-            appState.samples,
-          );
-        } else {
-          const inpaintScene = scene as InpaintScene;
-          if (inpaintScene.workflowType === 'SDMirror') {
-            await queueMirrorWorkflow(
-              curSession,
-              inpaintScene.workflowType,
-              inpaintScene.preset,
-              inpaintScene,
-              appState.samples,
-            );
-          } else {
-            await queueI2IWorkflow(
-              curSession,
-              scene.workflowType,
-              scene.preset,
-              scene,
-              appState.samples,
-            );
-          }
+        const missing = promptService.findMissingPieces(curSession, scene);
+        if (missing.length > 0) {
+          const list = missing.map((m) => `<${m.library}.${m.piece}>`).join(', ');
+          appState.pushDialog({
+            type: 'confirm',
+            text: `존재하지 않는 프롬프트조각이 발견되었습니다:\n${list}\n\n로컬 프롬프트조각으로 새로 만들까요?\n(빈 조각이 생성되며, 내용은 직접 채워주세요)`,
+            callback: async () => {
+              createMissingPiecesForSession(curSession, missing);
+              try {
+                await queueScene(curSession, scene, appState.samples);
+              } catch (e: any) {
+                appState.pushMessage('프롬프트 에러: ' + e.message);
+              }
+            },
+          });
+          return;
         }
+        await queueScene(curSession, scene, appState.samples);
       } catch (e: any) {
         appState.pushMessage('프롬프트 에러: ' + e.message);
       }
@@ -529,35 +578,38 @@ const QueueControl = observer(
     }, [curSession]);
     const addAllToQueue = async () => {
       try {
-        for (const scene of curSession.getScenes(type)) {
-          if (scene.type === 'scene') {
-            await queueWorkflow(
-              curSession,
-              curSession.selectedWorkflow!,
-              scene,
-              appState.samples,
-            );
-          } else {
-            const inpaintScene = scene as InpaintScene;
-            if (inpaintScene.workflowType === 'SDMirror') {
-              await queueMirrorWorkflow(
-                curSession,
-                inpaintScene.workflowType,
-                inpaintScene.preset,
-                inpaintScene,
-                appState.samples,
-              );
-            } else {
-              await queueI2IWorkflow(
-                curSession,
-                scene.workflowType,
-                scene.preset,
-                scene,
-                appState.samples,
-              );
+        const scenes = curSession.getScenes(type);
+        const allMissing: { library: string; piece: string }[] = [];
+        for (const scene of scenes) {
+          const missing = promptService.findMissingPieces(curSession, scene);
+          for (const m of missing) {
+            if (!allMissing.find((x) => x.library === m.library && x.piece === m.piece)) {
+              allMissing.push(m);
             }
           }
         }
+        const doQueue = async () => {
+          for (const scene of scenes) {
+            try {
+              await queueScene(curSession, scene, appState.samples);
+            } catch (e: any) {
+              appState.pushMessage(`프롬프트 에러 (${scene.name}): ` + e.message);
+            }
+          }
+        };
+        if (allMissing.length > 0) {
+          const list = allMissing.map((m) => `<${m.library}.${m.piece}>`).join(', ');
+          appState.pushDialog({
+            type: 'confirm',
+            text: `존재하지 않는 프롬프트조각이 발견되었습니다:\n${list}\n\n로컬 프롬프트조각으로 새로 만들까요?\n(빈 조각이 생성되며, 내용은 직접 채워주세요)`,
+            callback: async () => {
+              createMissingPiecesForSession(curSession, allMissing);
+              await doQueue();
+            },
+          });
+          return;
+        }
+        await doQueue();
       } catch (e: any) {
         appState.pushMessage('프롬프트 에러: ' + e.message);
       }

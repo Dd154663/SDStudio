@@ -1395,8 +1395,8 @@ const PromptEditTextArea = observer(
           className={
             bgColor +
             (!fullScreen
-              ? ' overflow-hidden h-full relative'
-              : ' left-0 m-4 p-2 overflow-hidden fixed z-30 h-96 prompt-full')
+              ? ' overflow-hidden h-full relative rounded-md'
+              : ' left-0 m-4 p-2 overflow-hidden fixed z-30 h-96 prompt-full rounded-lg')
           }
         >
           <div className="absolute right-0 top-0 z-10">

@@ -67,11 +67,11 @@ const TobBar = () => {
   };
 
   return (
-    <div className="titlebar-drag flex border-b line-color px-2 py-1.5 items-center select-none">
+    <div className="titlebar-drag flex border-b line-color px-3 py-2 items-center select-none gap-2">
       <div className="titlebar-no-drag gap-3 hidden md:flex text-sky-500 font-bold dark:text-white">
         SDStudio
       </div>
-      <p className="ml-auto mr-2 hidden md:block titlebar-no-drag">
+      <p className="ml-auto mr-3 hidden md:block titlebar-no-drag">
         {!loggedIn ? (
           <span className={`round-tag back-red`}>
             환경설정에서 로그인하세요
