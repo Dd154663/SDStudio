@@ -83,8 +83,12 @@ export const SceneCell = observer(
       }
     }
 
-    const cellSizes = ['w-full h-48', 'w-full h-64', 'w-full h-96'];
-    const cellSizes3 = ['', '', ''];
+    const cellSizes = isMobile
+      ? ['w-48 h-48', 'w-36 h-36', 'w-96 h-96']
+      : ['w-full h-48', 'w-full h-64', 'w-full h-96'];
+    const cellSizes3 = isMobile
+      ? ['w-48', 'w-36', 'w-96']
+      : ['', '', ''];
 
     const curIndex = curSession.getScenes(scene.type).indexOf(scene);
     const [{ isDragging }, drag, preview] = useDrag(
@@ -1135,7 +1139,7 @@ const QueueControl = observer(
                   input.click();
                 }}
               >
-                <FaFileImage />
+                <FaFileImage size={18} />
               </button>
               </Tooltip>
               <Tooltip content="씬 검색">
@@ -1143,7 +1147,7 @@ const QueueControl = observer(
                 className={`round-button ${showSceneSearch ? 'back-sky' : 'back-gray'}`}
                 onClick={toggleSceneSearch}
               >
-                <FaSearch />
+                <FaSearch size={18} />
               </button>
               </Tooltip>
               <Tooltip content="북마크된 씬으로 이동">
@@ -1166,7 +1170,7 @@ const QueueControl = observer(
                   }
                 }}
               >
-                <FaBookmark />
+                <FaBookmark size={18} />
               </button>
               </Tooltip>
               <Tooltip content="씬 휴지통">
@@ -1174,7 +1178,7 @@ const QueueControl = observer(
                 className={`round-button back-gray`}
                 onClick={() => setShowSceneTrash(true)}
               >
-                <FaTrash />
+                <FaTrash size={18} />
               </button>
               </Tooltip>
             </div>

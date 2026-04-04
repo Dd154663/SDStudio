@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 
 import Select from 'react-select';
+import { isMobile } from '../models';
 import {
   FaAddressBook,
   FaAmilia,
@@ -57,6 +58,7 @@ export const DropdownSelect = <T,>({
       menuPortalTarget={document.body}
       styles={{ menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
       isDisabled={disabled}
+      isSearchable={!isMobile}
       className={'my-react-select-container w-full ' + (className ?? '')}
       classNamePrefix="my-react-select"
     />

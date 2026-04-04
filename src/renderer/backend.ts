@@ -24,6 +24,12 @@ export interface ResizeImageInput {
   optimize?: ImageOptimizeMethod;
 }
 
+export interface FileStatEntry {
+  name: string;
+  size: number;
+  mtime: number;
+}
+
 export abstract class Backend {
   abstract getConfig(): Promise<Config>;
   abstract setConfig(newConfig: Config): Promise<void>;
@@ -43,6 +49,7 @@ export abstract class Backend {
   abstract loadPiecesDB(pieces: string[]): Promise<void>;
   abstract searchPieces(word: string): Promise<any>;
   abstract listFiles(arg: string): Promise<string[]>;
+  abstract listFilesWithStats(arg: string): Promise<FileStatEntry[]>;
   abstract readFile(filename: string): Promise<string>;
   abstract writeFile(filename: string, data: string): Promise<void>;
   abstract copyFile(src: string, dest: string): Promise<void>;

@@ -48,12 +48,12 @@ export type Channels =
   | 'copy-image-to-clipboard'
   | 'lookup-tag'
   | 'write-data-file-absolute'
+  | 'list-files-with-stats'
   | 'exist-file-absolute'
   | 'window-minimize'
   | 'window-maximize'
   | 'window-close'
-  | 'window-is-maximized'
-  | 'window-set-mobile-mode';
+  | 'window-is-maximized';
 
 const electronHandler = {
   ipcRenderer: {

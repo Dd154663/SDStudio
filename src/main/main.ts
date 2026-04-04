@@ -124,18 +124,6 @@ ipcMain.handle('window-close', () => {
 ipcMain.handle('window-is-maximized', () => {
   return mainWindow?.isMaximized() ?? false;
 });
-ipcMain.handle('window-set-mobile-mode', (_event: any, enabled: boolean) => {
-  if (!mainWindow) return;
-  if (enabled) {
-    if (mainWindow.isMaximized()) mainWindow.unmaximize();
-    const bounds = mainWindow.getBounds();
-    mainWindow.setMaximumSize(768, 99999);
-    mainWindow.setBounds({ x: bounds.x, y: bounds.y, width: 768, height: bounds.height });
-  } else {
-    mainWindow.setMaximumSize(99999, 99999);
-  }
-});
-
 ipcMain.handle('get-config', async (event) => {
   return config;
 });
@@ -229,6 +217,26 @@ ipcMain.handle('search-pieces', async (event, word) => {
 
 ipcMain.handle('list-files', async (event, arg) => {
   return await listFilesInDirectory(APP_DIR + '/' + arg);
+});
+
+ipcMain.handle('list-files-with-stats', async (event, arg) => {
+  const dir = APP_DIR + '/' + arg;
+  try {
+    const files = await fs.readdir(dir);
+    const results = [];
+    for (const name of files) {
+      try {
+        const stat = await fs.stat(path.join(dir, name));
+        if (stat.isFile()) {
+          results.push({ name, size: stat.size, mtime: stat.mtimeMs });
+        }
+      } catch (_) {}
+    }
+    return results;
+  } catch (err: any) {
+    if (err.code === 'ENOENT') return [];
+    throw err;
+  }
 });
 
 ipcMain.handle('read-file', async (event, filename) => {

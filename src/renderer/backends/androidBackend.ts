@@ -35,6 +35,8 @@ import { WordTag } from '../models/Tags';
 
 const APP_DIR = '.SDStudio';
 let config: Config = {};
+let configLoaded = false;
+let configLoadPromise: Promise<void> | null = null;
 const pica = new Pica();
 
 function extname(filename: string): string {
@@ -119,6 +121,17 @@ export class AndroidBackend extends Backend {
       directory: Directory.Documents,
     });
     this.imageGenService = new NovelAiImageGenService(new AndroidFetcher());
+    configLoadPromise = (async () => {
+      try {
+        const data = await Filesystem.readFile({
+          path: `${APP_DIR}/config.json`,
+          directory: Directory.Documents,
+          encoding: Encoding.UTF8,
+        });
+        config = JSON.parse(data.data.toString());
+      } catch {}
+      configLoaded = true;
+    })();
     (async () => {
       if (await BackgroundMode.checkBatteryOptimizations()) {
         await BackgroundMode.requestDisableBatteryOptimizations();
@@ -147,6 +160,9 @@ export class AndroidBackend extends Backend {
   }
 
   async getConfig(): Promise<Config> {
+    if (!configLoaded && configLoadPromise) {
+      await configLoadPromise;
+    }
     return config;
   }
 
@@ -296,6 +312,24 @@ export class AndroidBackend extends Backend {
       directory: Directory.Documents,
     });
     return files.map((x) => x.name);
+  }
+
+  async listFilesWithStats(arg: string): Promise<any[]> {
+    try {
+      const { files } = await Filesystem.readdir({
+        path: `${APP_DIR}/${arg}`,
+        directory: Directory.Documents,
+      });
+      return files
+        .filter((x) => x.type === 'file')
+        .map((x) => ({
+          name: x.name,
+          size: x.size ?? 0,
+          mtime: x.mtime ?? 0,
+        }));
+    } catch {
+      return [];
+    }
   }
 
   async readFile(filename: string): Promise<string> {

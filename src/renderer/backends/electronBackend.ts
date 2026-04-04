@@ -126,6 +126,10 @@ export class ElectornBackend extends Backend {
     return await invoke('list-files', arg);
   }
 
+  async listFilesWithStats(arg: string): Promise<any[]> {
+    return await invoke('list-files-with-stats', arg);
+  }
+
   async readFile(filename: string): Promise<string> {
     return await invoke('read-file', filename);
   }

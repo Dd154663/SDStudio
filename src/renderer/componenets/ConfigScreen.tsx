@@ -162,11 +162,121 @@ const StorageTab = ({
   </div>
 );
 
+/* ── exports 폴더 정리 ── */
+const ExportsCleanupSection = () => {
+  const [files, setFiles] = useState<{ name: string; size: number; mtime: number }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
+  const [days, setDays] = useState(7);
+  const [loaded, setLoaded] = useState(false);
+
+  const loadFiles = useCallback(async () => {
+    setLoading(true);
+    try {
+      const stats = await backend.listFilesWithStats('exports');
+      stats.sort((a: any, b: any) => b.mtime - a.mtime);
+      setFiles(stats);
+      setLoaded(true);
+    } catch {
+      setFiles([]);
+      setLoaded(true);
+    }
+    setLoading(false);
+  }, []);
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
+  const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+  const now = Date.now();
+  const oldFiles = files.filter((f) => now - f.mtime > days * 24 * 60 * 60 * 1000);
+  const oldSize = oldFiles.reduce((sum, f) => sum + f.size, 0);
+
+  const deleteFiles = async (targets: { name: string }[]) => {
+    setCleaning(true);
+    for (const f of targets) {
+      try {
+        await backend.deleteFile('exports/' + f.name);
+      } catch {}
+    }
+    await loadFiles();
+    setCleaning(false);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <label className="block text-sm gray-label font-bold">exports 폴더 정리</label>
+        <button
+          className="text-xs back-gray px-2 py-0.5 rounded hover:brightness-95 active:brightness-90"
+          onClick={loadFiles}
+          disabled={loading}
+        >
+          {loading ? '조회 중...' : loaded ? '새로고침' : '조회'}
+        </button>
+      </div>
+      {loaded && (
+        <>
+          <div className="text-sm gray-label">
+            파일 {files.length}개 · 총 {formatSize(totalSize)}
+          </div>
+          {files.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  className="text-sm back-red px-3 py-1.5 rounded hover:brightness-95 active:brightness-90"
+                  onClick={() => {
+                    if (confirm(`exports 폴더의 모든 파일(${files.length}개, ${formatSize(totalSize)})을 삭제합니다.`)) {
+                      deleteFiles(files);
+                    }
+                  }}
+                  disabled={cleaning}
+                >
+                  전체 삭제
+                </button>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={days}
+                    onChange={(e) => setDays(Math.max(1, parseInt(e.target.value) || 7))}
+                    className="w-14 text-sm text-center border rounded px-1 py-1 back-gray"
+                  />
+                  <span className="text-sm gray-label">일 이전 파일만 삭제</span>
+                  <button
+                    className="text-sm back-orange px-3 py-1.5 rounded hover:brightness-95 active:brightness-90"
+                    onClick={() => {
+                      if (oldFiles.length === 0) {
+                        alert(`${days}일 이전 파일이 없습니다.`);
+                        return;
+                      }
+                      if (confirm(`${days}일 이전 파일 ${oldFiles.length}개(${formatSize(oldSize)})를 삭제합니다.`)) {
+                        deleteFiles(oldFiles);
+                      }
+                    }}
+                    disabled={cleaning || oldFiles.length === 0}
+                  >
+                    {oldFiles.length > 0 ? `${oldFiles.length}개 삭제` : '해당 없음'}
+                  </button>
+                </div>
+              </div>
+              {cleaning && <div className="text-sm text-sky-500">삭제 중...</div>}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
 /* ── 탭 4: 기타 설정 ── */
 const OtherTab = ({
   whiteMode, setWhiteMode,
   delayTime, setDelayTime,
-  mobileMode, setMobileModeState,
 }: any) => (
   <div className="space-y-4">
     <div className="flex items-center gap-2">
@@ -187,21 +297,8 @@ const OtherTab = ({
       </div>
     </div>
     <hr className="border-gray-200 dark:border-slate-600" />
-    {window.electron != null && (
-      <>
-        <div className="flex items-center gap-2">
-          <input type="checkbox" id="cfgMobileMode" checked={mobileMode}
-            onChange={(e) => setMobileModeState(e.target.checked)} />
-          <label htmlFor="cfgMobileMode" className="text-sm gray-label">
-            모바일 UI 모드 (디버그)
-          </label>
-        </div>
-        <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2 ml-6">
-          PC에서 모바일 레이아웃을 강제로 활성화합니다. 창 너비가 768px로 제한되며, 토글 시 앱이 리로드됩니다.
-        </p>
-        <hr className="border-gray-200 dark:border-slate-600" />
-      </>
-    )}
+    <ExportsCleanupSection />
+    <hr className="border-gray-200 dark:border-slate-600" />
     <TaskLogSection />
   </div>
 );
@@ -288,9 +385,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [password, setPassword] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const [saveLocation, setSaveLocation] = useState('');
-  const [mobileMode, setMobileModeLocal] = useState(
-    window.electron != null && localStorage.getItem('debugMobileMode') === 'true'
-  );
+  const mobileMode = isMobile;
 
   useEffect(() => {
     (async () => {
@@ -389,15 +484,6 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.pushDialog({ type: 'yes-only', text: '저장 위치 지정 완료. 프로그램을 껐다 켜주세요' });
   };
 
-  const setMobileModeState = async (enabled: boolean) => {
-    localStorage.setItem('debugMobileMode', enabled ? 'true' : 'false');
-    if (window.electron) {
-      await window.electron.ipcRenderer.invoke('window-set-mobile-mode', enabled);
-    }
-    // isMobile은 모듈 로드 시 결정되므로 리로드 필요
-    window.location.reload();
-  };
-
   const stageTexts = ['모델 다운로드 중...', '모델 가중치 다운로드 중...', '모델 압축 푸는 중...'];
 
   const handleSave = async () => {
@@ -422,12 +508,14 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const tabs = [
     { label: '로그인', icon: <FaUser size={14} /> },
     ...(!mobileMode ? [{ label: '이미지 편집', icon: <FaImage size={14} /> }] : []),
-    { label: '저장경로', icon: <FaFolder size={14} /> },
+    ...(!mobileMode ? [{ label: '저장경로', icon: <FaFolder size={14} /> }] : []),
     { label: '기타', icon: <FaCog size={14} /> },
   ];
 
   const getTabContent = (tabIdx: number) => {
-    const idx = mobileMode && tabIdx >= 1 ? tabIdx + 1 : tabIdx;
+    // 모바일: 탭 0=로그인, 1=기타 (이미지편집·저장경로 숨김)
+    // PC: 탭 0=로그인, 1=이미지편집, 2=저장경로, 3=기타
+    const idx = mobileMode && tabIdx >= 1 ? tabIdx + 2 : tabIdx;
     switch (idx) {
       case 0:
         return <LoginTab {...{ email, setEmail, password, setPassword, accessToken, setAccessToken, loggedIn, login, loginWithToken, roundTag }} />;
@@ -436,7 +524,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 2:
         return <StorageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage }} />;
       case 3:
-        return <OtherTab {...{ whiteMode, setWhiteMode, delayTime, setDelayTime, mobileMode, setMobileModeState }} />;
+        return <OtherTab {...{ whiteMode, setWhiteMode, delayTime, setDelayTime }} />;
       default:
         return null;
     }

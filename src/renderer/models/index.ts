@@ -33,12 +33,7 @@ import { GlobalPieceService } from './GlobalPieceService';
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
 
-export let isMobile = window.electron == null;
-
-// PC에서 모바일 UI 디버그 모드 (localStorage 기반, 리로드 후 적용)
-if (window.electron != null && localStorage.getItem('debugMobileMode') === 'true') {
-  isMobile = true;
-}
+export const isMobile = window.electron == null;
 
 export class ZipService extends EventTarget {
   isZipping: boolean;
