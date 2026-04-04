@@ -129,7 +129,23 @@ body {
 }
 
 .round-button {
-  @apply clickable select-none whitespace-nowrap hover:outline-4 hover:outline-sky-400 rounded-full px-2 py-0.5 md:px-3 md:py-1;
+  @apply clickable select-none whitespace-nowrap hover:outline-4 hover:outline-sky-400 rounded-full px-3 py-1.5 md:px-3 md:py-1;
+  min-width: 36px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (min-width: 768px) {
+  .round-button {
+    min-width: unset;
+    min-height: unset;
+  }
+}
+.round-button.scene-btn {
+  @apply px-2 py-1;
+  min-width: unset;
+  min-height: unset;
 }
 
 .btn-sm {

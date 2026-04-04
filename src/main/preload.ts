@@ -52,7 +52,8 @@ export type Channels =
   | 'window-minimize'
   | 'window-maximize'
   | 'window-close'
-  | 'window-is-maximized';
+  | 'window-is-maximized'
+  | 'window-set-mobile-mode';
 
 const electronHandler = {
   ipcRenderer: {

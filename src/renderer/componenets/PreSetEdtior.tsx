@@ -270,7 +270,7 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
       >
         <div className="flex-1 overflow-hidden">
           <div className="h-full overflow-auto">
-            {getField().length === 0 && (
+            {getField().length === 0 && !isMobile && (
               <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500 p-8">
                 <FaCloudUploadAlt size={48} className="mb-4 opacity-60" />
                 <p className="text-base font-medium mb-1">이미지를 드래그하거나</p>
@@ -364,7 +364,7 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
           </div>
         </div>
         <div className="flex-none mt-auto pt-2 flex flex-col gap-2">
-          {getField().length > 0 && (
+          {getField().length > 0 && !isMobile && (
             <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
               이미지를 드래그하거나 Ctrl+V로 붙여넣기 할 수 있습니다
             </div>
@@ -590,7 +590,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
       >
         <div className="flex-1 overflow-hidden">
           <div className="h-full overflow-auto">
-            {getField().length === 0 && (
+            {getField().length === 0 && !isMobile && (
               <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500 p-8">
                 <FaCloudUploadAlt size={48} className="mb-4 opacity-60" />
                 <p className="text-base font-medium mb-1">이미지를 드래그하거나</p>
@@ -737,7 +737,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
           </div>
         </div>
         <div className="flex-none mt-auto pt-2 flex flex-col gap-2">
-          {getField().length > 0 && (
+          {getField().length > 0 && !isMobile && (
             <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
               이미지를 드래그하거나 Ctrl+V로 붙여넣기 할 수 있습니다
             </div>

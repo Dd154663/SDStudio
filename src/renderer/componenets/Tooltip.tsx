@@ -77,35 +77,57 @@ const Tooltip = ({
 }: TooltipProps) => {
   const [visible, setVisible] = useState(false);
   const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
+  const [activePlacement, setActivePlacement] = useState(placement);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerRef = useRef<HTMLSpanElement>(null);
+  const placementRef = useRef(placement);
+
+  const showTooltip = useCallback(() => {
+    const el = triggerRef.current;
+    if (el) {
+      const child = el.firstElementChild as HTMLElement | null;
+      const rect = child
+        ? child.getBoundingClientRect()
+        : el.getBoundingClientRect();
+      setTriggerRect(rect);
+      setActivePlacement(placementRef.current);
+      setVisible(true);
+    }
+  }, []);
 
   const show = useCallback(() => {
-    timerRef.current = setTimeout(() => {
-      const el = triggerRef.current;
-      if (el) {
-        // display:contents makes the wrapper have no box, so use the first child's rect
-        const child = el.firstElementChild as HTMLElement | null;
-        const rect = child
-          ? child.getBoundingClientRect()
-          : el.getBoundingClientRect();
-        setTriggerRect(rect);
-        setVisible(true);
-      }
-    }, delay);
-  }, [delay]);
+    placementRef.current = placement;
+    timerRef.current = setTimeout(showTooltip, delay);
+  }, [delay, showTooltip, placement]);
 
   const hide = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
+    if (touchHideRef.current) {
+      clearTimeout(touchHideRef.current);
+      touchHideRef.current = null;
+    }
     setVisible(false);
   }, []);
+
+  // 모바일: 터치 시 즉시 표시 (상단), 1.5초 후 자동 숨김
+  const handleTouchStart = useCallback(() => {
+    placementRef.current = 'top';
+    showTooltip();
+    if (touchHideRef.current) clearTimeout(touchHideRef.current);
+    touchHideRef.current = setTimeout(() => {
+      setVisible(false);
+      touchHideRef.current = null;
+    }, 1500);
+  }, [showTooltip]);
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      if (touchHideRef.current) clearTimeout(touchHideRef.current);
     };
   }, []);
 
@@ -117,6 +139,8 @@ const Tooltip = ({
       onMouseEnter={show}
       onMouseLeave={hide}
       onMouseDown={hide}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={hide}
       className="contents"
     >
       {children}
@@ -124,7 +148,7 @@ const Tooltip = ({
         <TooltipPortal
           content={content}
           triggerRect={triggerRect}
-          placement={placement}
+          placement={activePlacement}
         />
       )}
     </span>

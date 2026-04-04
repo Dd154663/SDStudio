@@ -83,13 +83,8 @@ export const SceneCell = observer(
       }
     }
 
-    const cellSizes = ['w-48 h-48', 'w-36 h-36 md:w-64 md:h-64', 'w-96 h-96'];
-    const cellSizes2 = [
-      'max-w-48 max-h-48',
-      ' max-w-36 max-h-36 md:max-w-64 md:max-h-64',
-      'max-w-96 max-h-96',
-    ];
-    const cellSizes3 = ['w-48', 'w-36 md:w-64', ' w-96'];
+    const cellSizes = ['w-full h-48', 'w-full h-64', 'w-full h-96'];
+    const cellSizes3 = ['', '', ''];
 
     const curIndex = curSession.getScenes(scene.type).indexOf(scene);
     const [{ isDragging }, drag, preview] = useDrag(
@@ -288,18 +283,16 @@ export const SceneCell = observer(
           </div>
           <div
             className={
-              'relative image-cell flex-none overflow-hidden ' +
-              cellSizes[cellSize]
+              'relative image-cell overflow-hidden ' + cellSizes[cellSize]
             }
           >
             {image && (
-              <div className="relative inline-block">
+              <div className="relative w-full h-full">
                 <img
                   src={image}
                   draggable={false}
                   className={
-                    'w-auto h-auto object-scale-down z-0 bg-checkboard ' +
-                    cellSizes2[cellSize] +
+                    'w-full h-full object-contain z-0' +
                     (scene.mains.length > 0 ? ' border-2 border-yellow-400' : '')
                   }
                 />
@@ -315,7 +308,7 @@ export const SceneCell = observer(
         <div className="w-full flex mt-auto justify-center items-center gap-1 md:gap-2 p-1 md:p-2">
           <Tooltip content="예약 추가">
           <button
-            className={`round-button back-green`}
+            className={`round-button scene-btn back-green`}
             onClick={(e) => {
               e.stopPropagation();
               addToQueue(scene);
@@ -326,7 +319,7 @@ export const SceneCell = observer(
           </Tooltip>
           <Tooltip content="예약 제거">
           <button
-            className={`round-button back-gray`}
+            className={`round-button scene-btn back-gray`}
             onClick={(e) => {
               e.stopPropagation();
               removeFromQueue(scene);
@@ -337,7 +330,7 @@ export const SceneCell = observer(
           </Tooltip>
           <Tooltip content="씬 편집">
           <button
-            className={`round-button back-orange`}
+            className={`round-button scene-btn back-orange`}
             onClick={(e) => {
               e.stopPropagation();
               setEditingScene?.(scene);
@@ -348,7 +341,7 @@ export const SceneCell = observer(
           </Tooltip>
           <Tooltip content="씬 북마크">
           <button
-            className={`round-button ${isBookmarked ? 'back-orange' : 'back-gray'}`}
+            className={`round-button scene-btn ${isBookmarked ? 'back-orange' : 'back-gray'}`}
             onClick={(e) => {
               e.stopPropagation();
               onToggleBookmark?.();
@@ -1224,32 +1217,47 @@ const QueueControl = observer(
           </div>
         )}
         <div className="flex flex-1 overflow-hidden">
-          <div className="flex flex-wrap overflow-auto justify-start items-start content-start">
-            {curSession
-              .getScenes(type)
-              .filter((x) => {
-                if (!filterFunc) return true;
-                return filterFunc(x);
-              })
-              .filter((x) => {
-                if (!sceneSearchQuery) return true;
-                return x.name.toLowerCase().includes(sceneSearchQuery.toLowerCase());
-              })
-              .map((scene) => (
-                <SceneCell
-                  cellSize={showPannel || isMobile ? cellSize : 2}
-                  key={scene.name}
-                  scene={scene}
-                  getImage={getImage}
-                  setDisplayScene={setDisplayScene}
-                  setEditingScene={setEditingScene}
-                  moveScene={moveScene}
-                  curSession={curSession}
-                  isBookmarked={sessionService.isSceneBookmarked(curSession.name, scene.name)}
-                  onToggleBookmark={() => sessionService.toggleSceneBookmark(curSession.name, scene.name, scene.type)}
-                />
-              ))}
-          </div>
+          {(() => {
+            const effectiveCellSize = showPannel || isMobile ? cellSize : 2;
+            const minWidths = ['180px', '240px', '320px'];
+            const useGrid = !isMobile;
+            return (
+              <div
+                className={useGrid ? 'overflow-auto w-full content-start' : 'flex flex-wrap overflow-auto justify-start items-start content-start'}
+                style={useGrid ? {
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(auto-fill, minmax(${minWidths[effectiveCellSize]}, 1fr))`,
+                  alignItems: 'start',
+                  alignContent: 'start',
+                } : undefined}
+              >
+                {curSession
+                  .getScenes(type)
+                  .filter((x) => {
+                    if (!filterFunc) return true;
+                    return filterFunc(x);
+                  })
+                  .filter((x) => {
+                    if (!sceneSearchQuery) return true;
+                    return x.name.toLowerCase().includes(sceneSearchQuery.toLowerCase());
+                  })
+                  .map((scene) => (
+                    <SceneCell
+                      cellSize={effectiveCellSize}
+                      key={scene.name}
+                      scene={scene}
+                      getImage={getImage}
+                      setDisplayScene={setDisplayScene}
+                      setEditingScene={setEditingScene}
+                      moveScene={moveScene}
+                      curSession={curSession}
+                      isBookmarked={sessionService.isSceneBookmarked(curSession.name, scene.name)}
+                      onToggleBookmark={() => sessionService.toggleSceneBookmark(curSession.name, scene.name, scene.type)}
+                    />
+                  ))}
+              </div>
+            );
+          })()}
         </div>
       </div>
     );

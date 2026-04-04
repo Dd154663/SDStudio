@@ -166,6 +166,7 @@ const StorageTab = ({
 const OtherTab = ({
   whiteMode, setWhiteMode,
   delayTime, setDelayTime,
+  mobileMode, setMobileModeState,
 }: any) => (
   <div className="space-y-4">
     <div className="flex items-center gap-2">
@@ -186,6 +187,21 @@ const OtherTab = ({
       </div>
     </div>
     <hr className="border-gray-200 dark:border-slate-600" />
+    {window.electron != null && (
+      <>
+        <div className="flex items-center gap-2">
+          <input type="checkbox" id="cfgMobileMode" checked={mobileMode}
+            onChange={(e) => setMobileModeState(e.target.checked)} />
+          <label htmlFor="cfgMobileMode" className="text-sm gray-label">
+            모바일 UI 모드 (디버그)
+          </label>
+        </div>
+        <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2 ml-6">
+          PC에서 모바일 레이아웃을 강제로 활성화합니다. 창 너비가 768px로 제한되며, 토글 시 앱이 리로드됩니다.
+        </p>
+        <hr className="border-gray-200 dark:border-slate-600" />
+      </>
+    )}
     <TaskLogSection />
   </div>
 );
@@ -272,6 +288,9 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [password, setPassword] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const [saveLocation, setSaveLocation] = useState('');
+  const [mobileMode, setMobileModeLocal] = useState(
+    window.electron != null && localStorage.getItem('debugMobileMode') === 'true'
+  );
 
   useEffect(() => {
     (async () => {
@@ -370,6 +389,15 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.pushDialog({ type: 'yes-only', text: '저장 위치 지정 완료. 프로그램을 껐다 켜주세요' });
   };
 
+  const setMobileModeState = async (enabled: boolean) => {
+    localStorage.setItem('debugMobileMode', enabled ? 'true' : 'false');
+    if (window.electron) {
+      await window.electron.ipcRenderer.invoke('window-set-mobile-mode', enabled);
+    }
+    // isMobile은 모듈 로드 시 결정되므로 리로드 필요
+    window.location.reload();
+  };
+
   const stageTexts = ['모델 다운로드 중...', '모델 가중치 다운로드 중...', '모델 압축 푸는 중...'];
 
   const handleSave = async () => {
@@ -393,13 +421,13 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
 
   const tabs = [
     { label: '로그인', icon: <FaUser size={14} /> },
-    ...(!isMobile ? [{ label: '이미지 편집', icon: <FaImage size={14} /> }] : []),
+    ...(!mobileMode ? [{ label: '이미지 편집', icon: <FaImage size={14} /> }] : []),
     { label: '저장경로', icon: <FaFolder size={14} /> },
     { label: '기타', icon: <FaCog size={14} /> },
   ];
 
   const getTabContent = (tabIdx: number) => {
-    const idx = isMobile && tabIdx >= 1 ? tabIdx + 1 : tabIdx;
+    const idx = mobileMode && tabIdx >= 1 ? tabIdx + 1 : tabIdx;
     switch (idx) {
       case 0:
         return <LoginTab {...{ email, setEmail, password, setPassword, accessToken, setAccessToken, loggedIn, login, loginWithToken, roundTag }} />;
@@ -408,7 +436,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 2:
         return <StorageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage }} />;
       case 3:
-        return <OtherTab {...{ whiteMode, setWhiteMode, delayTime, setDelayTime }} />;
+        return <OtherTab {...{ whiteMode, setWhiteMode, delayTime, setDelayTime, mobileMode, setMobileModeState }} />;
       default:
         return null;
     }
