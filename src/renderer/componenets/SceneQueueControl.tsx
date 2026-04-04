@@ -114,6 +114,7 @@ interface SceneCellProps {
   style?: React.CSSProperties;
   isBookmarked?: boolean;
   onToggleBookmark?: () => void;
+  disableHover?: boolean;
 }
 
 export const SceneCell = observer(
@@ -128,6 +129,7 @@ export const SceneCell = observer(
     style,
     isBookmarked,
     onToggleBookmark,
+    disableHover,
   }: SceneCellProps) => {
     const { show, hideAll } = useContextMenu({
       id: ContextMenuType.Scene,
@@ -292,9 +294,10 @@ export const SceneCell = observer(
       <div
         id={`scene-cell-${scene.type}-${scene.name}`}
         className={
-          'relative m-2 p-1 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-500 ' +
+          (disableHover ? '' : 'group ') + 'relative m-1.5 p-1 rounded-lg bg-white dark:bg-slate-800 border-2 ' +
+          (scene.mains.length > 0 ? 'border-yellow-400 ' : 'border-gray-200 dark:border-slate-600 ') +
           (isDragging ? 'opacity-0 no-touch ' : '') +
-          (isOver ? ' outline outline-sky-500' : '')
+          (isOver ? ' ring-2 ring-sky-500' : '')
         }
         style={style}
         ref={(node) => drag(drop(node))}
@@ -311,32 +314,24 @@ export const SceneCell = observer(
         }}
       >
         {getSceneQueueCount(scene) > 0 && (
-          <span className="absolute right-0 bg-yellow-400 dark:bg-indigo-400 inline-block mr-3 px-2 py-1 text-center align-middle rounded-md font-bold text-white">
+          <span className="absolute left-2 top-2 z-20 bg-yellow-400 dark:bg-indigo-400 px-2 py-0.5 rounded-full text-sm font-bold text-white shadow">
             {getSceneQueueCount(scene)}
           </span>
         )}
+        {/* PC 전용: 카드 전체 어두운 오버레이 */}
+        {!isMobile && (
+          <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/40 transition-colors duration-200 z-10 pointer-events-none" />
+        )}
         <div
-          className="-z-10 clickable bg-white dark:bg-slate-800"
+          className="clickable bg-white dark:bg-slate-800"
           onClick={(event) => {
             if (isDragging) return;
             setDisplayScene?.(scene);
           }}
         >
           <div
-            className={'p-2 flex text-lg text-default ' + cellSizes3[cellSize]}
-          >
-            <div className="truncate flex-1">
-              {isBookmarked && <span className="text-orange-500">📌</span>}
-              {emoji}
-              {scene.name}
-            </div>
-            <div className="flex-none text-gray-400">
-              {gameService.getOutputs(curSession!, scene).length}{' '}
-            </div>
-          </div>
-          <div
             className={
-              'relative image-cell overflow-hidden ' + cellSizes[cellSize]
+              'relative image-cell overflow-hidden rounded-md ' + cellSizes[cellSize]
             }
           >
             {image && (
@@ -345,8 +340,7 @@ export const SceneCell = observer(
                   src={image}
                   draggable={false}
                   className={
-                    'w-full h-full object-contain z-0' +
-                    (scene.mains.length > 0 ? ' border-2 border-yellow-400' : '')
+                    'w-full h-full object-cover z-0'
                   }
                 />
                 {scene.mains.length > 0 && (
@@ -356,9 +350,72 @@ export const SceneCell = observer(
                 )}
               </div>
             )}
+            {/* 씬 이름 + 이미지 카운트 오버레이 */}
+            <div className="absolute bottom-0 left-0 right-0 z-[5] bg-gradient-to-t from-black/70 to-transparent px-2 pt-4 pb-1.5">
+              <div className="flex items-center text-sm text-white">
+                <div className="truncate flex-1 font-medium drop-shadow">
+                  {isBookmarked && <span className="text-orange-500 mr-0.5">📌</span>}
+                  {emoji}
+                  {scene.name}
+                </div>
+                <div className="flex-none ml-1 text-white/80 drop-shadow">
+                  {gameService.getOutputs(curSession!, scene).length}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-        <div className="w-full flex mt-auto justify-center items-center gap-1 md:gap-2 p-1 md:p-2">
+        {/* PC 전용: 호버 시 버튼 (카드 레벨, 오버레이 위) */}
+        {!isMobile && (
+          <div className="absolute bottom-0 left-0 right-0 flex justify-center items-center gap-1.5 z-20 py-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <Tooltip content="예약 추가">
+            <button
+              className="round-button scene-btn bg-green-500 text-white"
+              onClick={(e) => {
+                e.stopPropagation();
+                addToQueue(scene);
+              }}
+            >
+              <FaPlus />
+            </button>
+            </Tooltip>
+            <Tooltip content="예약 제거">
+            <button
+              className="round-button scene-btn bg-gray-500 text-white"
+              onClick={(e) => {
+                e.stopPropagation();
+                removeFromQueue(scene);
+              }}
+            >
+              <FaRegCalendarTimes />
+            </button>
+            </Tooltip>
+            <Tooltip content="씬 편집">
+            <button
+              className="round-button scene-btn bg-orange-500 text-white"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingScene?.(scene);
+              }}
+            >
+              <FaEdit />
+            </button>
+            </Tooltip>
+            <Tooltip content="씬 북마크">
+            <button
+              className={`round-button scene-btn ${isBookmarked ? 'bg-orange-500' : 'bg-gray-500'} text-white`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleBookmark?.();
+              }}
+            >
+              <FaBookmark />
+            </button>
+            </Tooltip>
+          </div>
+        )}
+        {/* 모바일 전용: 하단 버튼 */}
+        <div className={`w-full flex mt-auto justify-center items-center gap-1 p-1 ${isMobile ? '' : 'md:hidden'}`}>
           <Tooltip content="예약 추가">
           <button
             className={`round-button scene-btn back-green`}
@@ -1309,6 +1366,7 @@ const QueueControl = observer(
                       curSession={curSession}
                       isBookmarked={sessionService.isSceneBookmarked(curSession.name, scene.name)}
                       onToggleBookmark={() => sessionService.toggleSceneBookmark(curSession.name, scene.name, scene.type)}
+                      disableHover={!!(editingScene || displayScene)}
                     />
                   ))}
               </div>
