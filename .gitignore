@@ -61,3 +61,4 @@ assets/db_new.txt
 
 # node-gyp 자동 생성 파일 (사용자 로컬 경로가 하드코딩됨)
 # src/native/build/ 는 이미 상위 "build" 규칙으로 제외됨
+PROJECT_ARCHITECTURE.md
