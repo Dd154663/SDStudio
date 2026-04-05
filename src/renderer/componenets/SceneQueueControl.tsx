@@ -354,7 +354,7 @@ export const SceneCell = observer(
         <div
           id={`scene-cell-${scene.type}-${scene.name}`}
           className={
-            'relative m-2 p-1 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-500 ' +
+            'relative z-0 m-2 p-1 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-500 ' +
             (isDragging ? 'opacity-0 no-touch ' : '') +
             (isOver ? ' outline outline-sky-500' : '')
           }
@@ -405,7 +405,7 @@ export const SceneCell = observer(
       <div
         id={`scene-cell-${scene.type}-${scene.name}`}
         className={
-          (disableHover ? '' : 'group ') + 'relative m-1.5 p-1 rounded-lg bg-white dark:bg-slate-800 border-2 ' +
+          (disableHover ? '' : 'group ') + 'relative z-0 m-1.5 p-1 rounded-lg bg-white dark:bg-slate-800 border-2 ' +
           (scene.mains.length > 0 ? 'border-yellow-400 ' : 'border-gray-200 dark:border-slate-600 ') +
           (isDragging ? 'opacity-0 no-touch ' : '') +
           (isOver ? ' ring-2 ring-sky-500' : '')
