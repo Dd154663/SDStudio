@@ -71,6 +71,12 @@ export interface SDAbstractJob<T> extends AbstractJob {
   seed?: number;
 }
 
+export interface ImportableMetadata extends SDAbstractJob<string> {
+  vibeImageData?: string[];
+  referenceImageData?: string[];
+  resolution?: { width: number; height: number };
+}
+
 export interface SDJob extends SDAbstractJob<PromptNode> {
   type: 'sd';
 }
@@ -713,6 +719,153 @@ export const isValidPieceLibrary = (library: any) => {
     library.pieces
   );
 };
+
+export const isValidNAISPreset = (data: any) => {
+  return (
+    typeof data.name === 'string' &&
+    Array.isArray(data.scenes) &&
+    data.scenes.length > 0 &&
+    typeof data.scenes[0].scenePrompt === 'string'
+  );
+};
+
+export function extractNAISPieceNames(scenes: any[]): string[] {
+  const names = new Set<string>();
+  for (const scene of scenes) {
+    const prompt = scene.scenePrompt || '';
+    const matches = prompt.matchAll(/<([^.<>]+)>/g);
+    for (const m of matches) {
+      names.add(m[1]);
+    }
+  }
+  return Array.from(names);
+}
+
+export function convertNAISToSession(naisData: any, libraryName?: string): ISession {
+  const scenes: Record<string, IScene> = {};
+  for (const naisScene of naisData.scenes) {
+    let prompt = naisScene.scenePrompt || '';
+    if (libraryName) {
+      prompt = prompt.replace(/<([^.<>]+)>/g, `<${libraryName}.$1>`);
+    }
+    scenes[naisScene.name] = {
+      name: naisScene.name,
+      resolution: 'portrait' as Resolution,
+      imageMap: [],
+      mains: [],
+      type: 'scene',
+      slots: [
+        [
+          {
+            prompt,
+            characterPrompts: [],
+            id: crypto.randomUUID(),
+            enabled: true,
+          },
+        ],
+      ],
+      meta: {
+        SDImageGen: { type: 'SDImageGen' },
+        SDImageGenEasy: { type: 'SDImageGenEasy' },
+        mirrorMode: true,
+      },
+      sceneCharacterPrompts: [],
+      useSceneCharacterPrompts: false,
+      sceneCharacterUC: '',
+    } as any;
+  }
+
+  return {
+    name: naisData.name,
+    version: 1,
+    selectedWorkflow: {
+      workflowType: 'SDImageGen',
+      presetName: 'default',
+    },
+    presets: {
+      SDImageGenEasy: [
+        {
+          type: 'SDImageGenEasy',
+          cfgRescale: 0,
+          steps: 28,
+          promptGuidance: 5,
+          sampling: 'k_euler_ancestral',
+          frontPrompt: '',
+          backPrompt: '{best quality, amazing quality, very aesthetic, highres, incredibly absurdres}',
+          uc: 'worst quality, bad quality, displeasing, very displeasing, lowres, bad anatomy, bad hands, bad feet, extra digits, fewer digits, missing fingers',
+          noiseSchedule: 'karras',
+          useCoords: false,
+          legacyPromptConditioning: false,
+          varietyPlus: false,
+          name: 'default',
+          profile: '',
+          backend: { type: 'NAI' },
+        },
+      ],
+      AugmentGen: [
+        {
+          type: 'AugmentGen',
+          frontPrompt: '',
+          backPrompt: '',
+          name: 'default',
+          profile: '',
+          backend: { type: 'NAI' },
+        },
+      ],
+      SDImageGen: [
+        {
+          type: 'SDImageGen',
+          cfgRescale: 0,
+          steps: 28,
+          promptGuidance: 5,
+          sampling: 'k_euler_ancestral',
+          frontPrompt: '',
+          backPrompt: '{best quality, amazing quality, very aesthetic, highres, incredibly absurdres}',
+          uc: 'worst quality, bad quality, displeasing, very displeasing, lowres, bad anatomy, bad hands, bad feet, extra digits, fewer digits, missing fingers',
+          noiseSchedule: 'karras',
+          characterPrompts: [],
+          useCoords: false,
+          legacyPromptConditioning: false,
+          varietyPlus: false,
+          name: 'default',
+          profile: '',
+          backend: { type: 'NAI' },
+        },
+      ],
+    },
+    inpaints: {},
+    scenes,
+    library: {},
+    presetShareds: {
+      SDImageGenEasy: {
+        type: 'SDImageGenEasy',
+        vibes: [],
+        normalizeStrength: true,
+        seed: null,
+        characterReferences: [],
+        characterPrompt: '',
+        backgroundPrompt: '',
+        uc: '',
+        characterPrompts: [],
+      },
+      AugmentGen: {
+        type: 'AugmentGen',
+        image: '',
+        weaken: 5,
+        method: 'emotion',
+      },
+      SDImageGen: {
+        type: 'SDImageGen',
+        vibes: [],
+        normalizeStrength: true,
+        characterReferences: [],
+      },
+    },
+    characterPresets: {},
+    mirrorImage: '',
+    mirrorMode: 'blank',
+  } as any;
+}
 
 export interface CharacterPrompt<T = string> {
   id: string;

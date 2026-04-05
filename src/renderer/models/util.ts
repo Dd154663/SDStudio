@@ -1,5 +1,5 @@
 import ExifReader from 'exifreader';
-import { CharacterPrompt, SDAbstractJob, SDJob } from './types';
+import { CharacterPrompt, ImportableMetadata, SDAbstractJob, SDJob } from './types';
 
 export function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -162,28 +162,62 @@ export async function extractMetadataFromAlpha(
 
 function parseCommentToJob(
   data: any,
-): SDAbstractJob<string> | undefined {
+): ImportableMetadata | undefined {
   if (!data || !data['prompt']) return undefined;
   try {
-    const charPrompts = data['v4_prompt']['caption']['char_captions'].map(
-      (c: any) => c.char_caption,
-    );
-    const charPos = data['v4_prompt']['caption']['char_captions'].map(
-      (c: any) => c.centers[0],
-    );
-    const charUCs = data['v4_negative_prompt']['caption'][
-      'char_captions'
-    ].map((c: any) => c.char_caption);
-
-    const characterPrompts: CharacterPrompt[] = [];
-    for (let i = 0; i < charPrompts.length; i++) {
-      characterPrompts.push({
-        id: `${i}`,
-        prompt: charPrompts[i],
-        position: charPos[i],
-        uc: charUCs[i],
-      });
+    // v4 캐릭터 프롬프트 추출 (실패 시 빈 배열로 폴백)
+    let characterPrompts: CharacterPrompt[] = [];
+    let useCoords = false;
+    let legacyPromptConditioning = false;
+    try {
+      const charCaptions = data['v4_prompt']?.['caption']?.['char_captions'] || [];
+      const charUCCaptions = data['v4_negative_prompt']?.['caption']?.['char_captions'] || [];
+      for (let i = 0; i < charCaptions.length; i++) {
+        characterPrompts.push({
+          id: `${i}`,
+          prompt: charCaptions[i]?.char_caption ?? '',
+          position: charCaptions[i]?.centers?.[0],
+          uc: charUCCaptions[i]?.char_caption ?? '',
+        });
+      }
+      useCoords = data['v4_prompt']?.['use_coords'] ?? false;
+      legacyPromptConditioning = data['v4_negative_prompt']?.['legacy_uc'] ?? false;
+    } catch (e) {
+      // v4 포맷 없음 — 폴백
     }
+
+    // 바이브 트랜스퍼 데이터 추출
+    const vibeImages: string[] = data['reference_image_multiple'] || [];
+    const vibeStrengths: number[] = data['reference_strength_multiple'] || [];
+    const vibeInfos: number[] = data['reference_information_extracted_multiple'] || [];
+    const vibes = vibeStrengths.map((strength, i) => ({
+      path: '',
+      strength,
+      info: vibeInfos[i] ?? 1,
+    }));
+
+    // 캐릭터 레퍼런스 데이터 추출
+    const refImages: string[] = data['director_reference_images'] || [];
+    const refStrengths: number[] = data['director_reference_strength_values'] || [];
+    const refFidelities: number[] = (data['director_reference_secondary_strength_values'] || []).map(
+      (v: number) => 1 - v,
+    );
+    const refInfos: number[] = data['director_reference_information_extracted'] || [];
+    const refDescs: any[] = data['director_reference_descriptions'] || [];
+    const characterReferences = refStrengths.map((strength, i) => ({
+      path: '',
+      strength,
+      fidelity: refFidelities[i] ?? 1,
+      info: refInfos[i] ?? 1,
+      referenceType: (refDescs[i]?.caption?.base_caption || 'character') as 'character' | 'style' | 'character&style',
+      enabled: true,
+    }));
+
+    // 해상도 추출
+    const resolution = data['width'] && data['height']
+      ? { width: data['width'], height: data['height'] }
+      : undefined;
+
     return {
       prompt: data['prompt'],
       seed: data['seed'],
@@ -193,14 +227,17 @@ function parseCommentToJob(
       noiseSchedule: data['noise_schedule'],
       steps: data['steps'],
       uc: data['uc'],
-      vibes: [],
-      normalizeStrength: data['normalize_reference_strength_multiple'],
+      vibes,
+      normalizeStrength: data['normalize_reference_strength_multiple'] ?? true,
       varietyPlus: data['skip_cfg_above_sigma'] ? true : false,
-      characterReferences: [],
+      characterReferences,
       backend: { type: 'NAI' },
-      useCoords: data['v4_prompt']['use_coords'],
-      legacyPromptConditioning: data['v4_negative_prompt']['legacy_uc'],
-      characterPrompts: characterPrompts,
+      useCoords,
+      legacyPromptConditioning,
+      characterPrompts,
+      vibeImageData: vibeImages.length > 0 ? vibeImages : undefined,
+      referenceImageData: refImages.length > 0 ? refImages : undefined,
+      resolution,
     };
   } catch (e) {
     return undefined;
@@ -209,7 +246,7 @@ function parseCommentToJob(
 
 export async function extractPromptDataFromBase64(
   base64: string,
-): Promise<SDAbstractJob<string> | undefined> {
+): Promise<ImportableMetadata | undefined> {
   // 1차: EXIF Comment에서 추출 시도
   try {
     const exif = await extractExifFromBase64(base64);

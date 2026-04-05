@@ -165,7 +165,7 @@ export const App = observer(() => {
           text: '새로운 버전이 있습니다. 새로 다운 받으시겠습니까?',
           green: true,
           callback: () => {
-            backend.openWebPage('https://github.com/sunho/SDStudio/releases');
+            backend.openWebPage('https://github.com/Dd154663/SDStudio/releases');
           },
         });
         updatedIgnored.current = true;
@@ -210,7 +210,36 @@ export const App = observer(() => {
     };
   }, [appState.curSession]);
 
+  const [dragOverlay, setDragOverlay] = useState<string | null>(null);
+  const dragCounter = useRef(0);
   useEffect(() => {
+    const getDropDescription = (dataTransfer: DataTransfer): string | null => {
+      const items = dataTransfer.items;
+      if (!items || items.length === 0) return null;
+      const item = items[0];
+      if (item.kind !== 'file') return null;
+      const type = item.type;
+      if (type === 'image/png' || type === 'image/jpeg' || type === 'image/webp') {
+        return '이미지에서 프롬프트 메타데이터를 추출합니다';
+      }
+      if (type === 'application/json') {
+        return '프로젝트 또는 프롬프트조각을 임포트합니다';
+      }
+      // type이 빈 문자열일 수 있음 — 파일 이름 확장자로 추정
+      return null;
+    };
+
+    const handleDragEnter = (event: any) => {
+      event.preventDefault();
+      dragCounter.current++;
+      if (dragCounter.current === 1) {
+        const desc = getDropDescription(event.dataTransfer);
+        if (desc) {
+          setDragOverlay(desc);
+        }
+      }
+    };
+
     const handleDragOver = (event: any) => {
       event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
@@ -218,21 +247,30 @@ export const App = observer(() => {
 
     const handleDragLeave = (event: any) => {
       event.preventDefault();
+      dragCounter.current--;
+      if (dragCounter.current <= 0) {
+        dragCounter.current = 0;
+        setDragOverlay(null);
+      }
     };
 
     const handleDrop = (event: any) => {
       event.preventDefault();
       event.stopPropagation();
+      dragCounter.current = 0;
+      setDragOverlay(null);
       const file = event.dataTransfer.files[0];
       if (file) {
         appState.handleFile(file);
       }
     };
+    window.addEventListener('dragenter', handleDragEnter);
     window.addEventListener('dragover', handleDragOver);
     window.addEventListener('dragleave', handleDragLeave);
     window.addEventListener('drop', handleDrop);
 
     return () => {
+      window.removeEventListener('dragenter', handleDragEnter);
       window.removeEventListener('dragover', handleDragOver);
       window.removeEventListener('dragleave', handleDragLeave);
       window.removeEventListener('drop', handleDrop);
@@ -368,6 +406,24 @@ export const App = observer(() => {
         >
           {appState.curSession && <PieceEditor />}
         </ModalOverlay>
+        {dragOverlay && (
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+          >
+            <div className="bg-white dark:bg-slate-800 rounded-2xl px-8 py-6 shadow-2xl border-2 border-dashed border-sky-400 dark:border-sky-500 flex flex-col items-center gap-3">
+              <svg className="w-12 h-12 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v12m0 0l-4-4m4 4l4-4M4 18h16" />
+              </svg>
+              <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+                여기에 드랍하세요
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {dragOverlay}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </DndProvider>
   );

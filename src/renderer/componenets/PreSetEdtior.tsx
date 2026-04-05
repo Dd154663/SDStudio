@@ -151,7 +151,16 @@ const VibeImage = ({
           draggable={false}
         />
       )}
-      {!image && <div className={className} onClick={onClick}></div>}
+      {!image && (
+        <div
+          className={className + ' flex items-center justify-center bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600'}
+          onClick={onClick}
+        >
+          <span className="text-xs text-gray-500 dark:text-gray-400 text-center px-1 select-none">
+            NO IMAGE
+          </span>
+        </div>
+      )}
     </>
   );
 };

@@ -26,6 +26,10 @@ import {
   ISession,
   isValidPieceLibrary,
   isValidSession,
+  isValidNAISPreset,
+  extractNAISPieceNames,
+  convertNAISToSession,
+  Piece,
   PieceLibrary,
   PromptPiece,
   Scene,
@@ -295,34 +299,132 @@ export class AppState {
       };
       if (isValidSession(json)) {
         handleAddSession(json);
+      } else if (isValidNAISPreset(json)) {
+        const pieceNames = extractNAISPieceNames(json.scenes);
+        const doConvert = (libraryName?: string) => {
+          const converted = convertNAISToSession(json, libraryName);
+          if (libraryName && pieceNames.length > 0) {
+            converted.library[libraryName] = {
+              version: 1,
+              name: libraryName,
+              pieces: pieceNames.map((pieceName) => ({
+                name: pieceName,
+                prompt: '',
+              })),
+            };
+          }
+          handleAddSession(converted);
+        };
+        if (pieceNames.length > 0) {
+          this.pushDialog({
+            type: 'input-confirm',
+            text: 'NAIS 프리셋에서 조각이 감지되었습니다 (' + pieceNames.join(', ') + '). 사용할 프롬프트조각 라이브러리 이름을 입력해 주세요.',
+            callback: (value) => {
+              if (!value || value === '') {
+                doConvert();
+              } else {
+                doConvert(value);
+              }
+            },
+          });
+        } else {
+          doConvert();
+        }
       } else if (isValidPieceLibrary(json)) {
         if (!json.version) {
           json = migratePieceLibrary(json);
         }
         const importToTarget = (targetLibrary: Map<string, PieceLibrary>, scopeLabel: string) => {
-          if (!targetLibrary.has(json.name)) {
-            targetLibrary.set(json.name, PieceLibrary.fromJSON(json));
+          const afterImport = () => {
             if (scopeLabel === '전역') globalPieceService.scheduleSave();
             if (this.curSession) sessionService.reloadPieceLibraryDB(this.curSession);
+          };
+
+          if (!targetLibrary.has(json.name)) {
+            targetLibrary.set(json.name, PieceLibrary.fromJSON(json));
+            afterImport();
             this.pushDialog({
               type: 'yes-only',
               text: `조각모음을 ${scopeLabel}에 임포트 했습니다`,
             });
             return;
           }
+
+          const srcLib = PieceLibrary.fromJSON(json);
+          const targetLib = targetLibrary.get(json.name)!;
+          const srcNames = new Set(srcLib.pieces.map(p => p.name));
+          const tgtNames = new Set(targetLib.pieces.map(p => p.name));
+          const overlap = [...srcNames].filter(n => tgtNames.has(n));
+          const srcOnly = [...srcNames].filter(n => !tgtNames.has(n));
+          const tgtOnly = [...tgtNames].filter(n => !srcNames.has(n));
+
+          let detail = `${scopeLabel}에 "${json.name}" 조각그룹이 이미 존재합니다.\n\n`;
+          if (overlap.length > 0) detail += `겹치는 조각(${overlap.length}개): ${overlap.slice(0, 5).join(', ')}${overlap.length > 5 ? ' ...' : ''}\n`;
+          if (srcOnly.length > 0) detail += `임포트에만 있는 조각(${srcOnly.length}개): ${srcOnly.slice(0, 5).join(', ')}${srcOnly.length > 5 ? ' ...' : ''}\n`;
+          if (tgtOnly.length > 0) detail += `기존에만 있는 조각(${tgtOnly.length}개): ${tgtOnly.slice(0, 5).join(', ')}${tgtOnly.length > 5 ? ' ...' : ''}\n`;
+
+          const items: { text: string; value: string }[] = [];
+          if (overlap.length > 0) {
+            items.push({ text: '병합 (겹치는 조각 덮어쓰기)', value: 'merge-overwrite' });
+            items.push({ text: '병합 (겹치는 조각 건너뛰기)', value: 'merge-skip' });
+          } else {
+            items.push({ text: '병합 (양쪽 조각 모두 유지)', value: 'merge-skip' });
+          }
+          items.push({ text: '통째로 덮어쓰기 (기존 조각 모두 교체)', value: 'overwrite' });
+          items.push({ text: '새 이름으로 임포트', value: 'rename' });
+          items.push({ text: '취소', value: 'cancel' });
+
           this.pushDialog({
-            type: 'input-confirm',
-            text: `${scopeLabel}에 동일한 이름의 조각그룹이 있습니다. 새 이름을 입력하세요.`,
-            callback: (value) => {
-              if (!value || value === '') return;
-              if (targetLibrary.has(value)) {
-                this.pushMessage('이미 존재하는 조각그룹 이름입니다.');
-                return;
+            type: 'select',
+            text: detail,
+            items,
+            callback: (action) => {
+              if (!action || action === 'cancel') return;
+              if (action === 'merge-overwrite' || action === 'merge-skip') {
+                const overwriteDuplicates = action === 'merge-overwrite';
+                let added = 0, overwritten = 0, skipped = 0;
+                for (const srcPiece of srcLib.pieces) {
+                  const existingIdx = targetLib.pieces.findIndex(p => p.name === srcPiece.name);
+                  if (existingIdx >= 0) {
+                    if (overwriteDuplicates) {
+                      targetLib.pieces[existingIdx] = Piece.fromJSON(srcPiece.toJSON());
+                      overwritten++;
+                    } else {
+                      skipped++;
+                    }
+                  } else {
+                    targetLib.pieces.push(Piece.fromJSON(srcPiece.toJSON()));
+                    added++;
+                  }
+                }
+                afterImport();
+                const parts = [];
+                if (added > 0) parts.push(`${added}개 추가`);
+                if (overwritten > 0) parts.push(`${overwritten}개 덮어쓰기`);
+                if (skipped > 0) parts.push(`${skipped}개 건너뜀`);
+                this.pushMessage(`"${json.name}" 병합 완료: ${parts.join(', ')}`);
+              } else if (action === 'overwrite') {
+                targetLibrary.delete(json.name);
+                targetLibrary.set(json.name, srcLib);
+                afterImport();
+                this.pushMessage(`"${json.name}" 조각그룹을 덮어썼습니다`);
+              } else if (action === 'rename') {
+                this.pushDialog({
+                  type: 'input-confirm',
+                  text: '새 조각그룹 이름을 입력하세요',
+                  callback: (newName) => {
+                    if (!newName) return;
+                    if (targetLibrary.has(newName)) {
+                      this.pushMessage('이미 존재하는 이름입니다');
+                      return;
+                    }
+                    srcLib.name = newName;
+                    targetLibrary.set(newName, srcLib);
+                    afterImport();
+                    this.pushMessage(`"${newName}" 조각그룹을 ${scopeLabel}에 임포트 했습니다`);
+                  },
+                });
               }
-              json.name = value;
-              targetLibrary.set(value, PieceLibrary.fromJSON(json));
-              if (scopeLabel === '전역') globalPieceService.scheduleSave();
-              if (this.curSession) sessionService.reloadPieceLibraryDB(this.curSession);
             },
           });
         };
