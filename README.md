@@ -44,4 +44,5 @@ Stable Diffusion 계열 API와 모델을 사용하기 편하게 해주는 프론
 
 ## 크래딧
 
-이미지 씬 기능은 https://dendenai.xyz 의 프리셋 기능에서 파생되었습니다.
+- 원작: [sunho/SDStudio](https://github.com/sunho/SDStudio)
+- 이미지 씬 기능은 https://dendenai.xyz 의 프리셋 기능에서 파생되었습니다.

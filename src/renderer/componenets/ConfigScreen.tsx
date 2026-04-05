@@ -307,6 +307,24 @@ const OtherTab = ({
     <ExportsCleanupSection />
     <hr className="border-gray-200 dark:border-slate-600" />
     <TaskLogSection />
+    <hr className="border-gray-200 dark:border-slate-600" />
+    <div className="space-y-2">
+      <label className="block text-sm gray-label mb-1">정보</label>
+      <div className="flex flex-col gap-1 text-sm">
+        <a
+          className="text-sky-500 hover:text-sky-400 cursor-pointer"
+          onClick={() => backend.openWebPage('https://github.com/Dd154663/SDStudio')}
+        >
+          GitHub — Dd154663/SDStudio
+        </a>
+        <a
+          className="text-sky-500 hover:text-sky-400 cursor-pointer"
+          onClick={() => backend.openWebPage('https://github.com/sunho/SDStudio')}
+        >
+          원작 — sunho/SDStudio
+        </a>
+      </div>
+    </div>
   </div>
 );
 

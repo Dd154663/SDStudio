@@ -18,6 +18,12 @@
     "email": "ksunhokim123@gmail.com",
     "url": "https://sunho.io"
   },
+  "contributors": [
+    {
+      "name": "Dd154663",
+      "url": "https://github.com/Dd154663"
+    }
+  ],
   "main": "./src/main/main.ts",
   "version": "4.0.0",
   "scripts": {
@@ -315,7 +321,7 @@
     ],
     "publish": {
       "provider": "github",
-      "owner": "sunho",
+      "owner": "Dd154663",
       "repo": "SDStudio"
     }
   },
