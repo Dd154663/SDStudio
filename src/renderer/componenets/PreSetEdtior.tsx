@@ -2233,17 +2233,6 @@ export const PreSetEditorImpl = observer(
           <WFGroupContext.Provider value={{}}>
             <VibeEditor disabled={false} />
             <CharacterReferenceEditor disabled={false} />
-            {!editVibe && !editCharacterReference && (
-              <WFRenderElement element={element} />
-            )}
-          </WFGroupContext.Provider>
-          {/* 캐릭터 프롬프트 오버레이 */}
-          <ModalOverlay
-            isOpen={!!editCharacters}
-            onClose={() => setEditCharacters(undefined)}
-            title="캐릭터 프롬프트"
-            width="max-w-2xl"
-          >
             {editCharacters && (
               <CharacterPromptEditor
                 input={
@@ -2258,7 +2247,10 @@ export const PreSetEditorImpl = observer(
                 }
               />
             )}
-          </ModalOverlay>
+            {!editVibe && !editCharacters && !editCharacterReference && (
+              <WFRenderElement element={element} />
+            )}
+          </WFGroupContext.Provider>
           {/* 샘플링/모델 설정 오버레이 */}
           <ModalOverlay
             isOpen={!!showGroupOverlay && !!groupElement}
