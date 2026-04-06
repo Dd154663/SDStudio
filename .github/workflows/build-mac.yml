@@ -8,10 +8,6 @@ on:
 jobs:
   build-mac:
     runs-on: macos-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [x64, arm64]
 
     steps:
       - name: Checkout
@@ -20,27 +16,53 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '22'
 
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps || true
+      - name: Install python setuptools (node-gyp dependency)
+        run: python3 -m pip install setuptools --break-system-packages
 
-      - name: Rebuild DLL
-        run: npm run build:dll
+      - name: Install native module dependencies
+        run: |
+          cd src/native
+          npm install
+          cd ../..
 
-      - name: Build
-        run: npm run build
+      - name: Install sharp and rebuild native modules for darwin
+        run: |
+          cd release/app
+          npm uninstall sharp
+          npm install --platform=darwin --arch=x64 sharp@0.32.6
+          npm rebuild --platform=darwin --arch=arm64 sharp@0.32.6
+          npm rebuild --platform=darwin --arch=x64 fsevents
+          npm rebuild --platform=darwin --arch=x64 tar-fs
+          cd ../..
 
-      - name: Package (${{ matrix.arch }})
-        run: npx electron-builder build --mac --${{ matrix.arch }} --publish never
+      - name: Install project dependencies
+        run: npm install
+
+      - name: Build the application
+        run: npm run package
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - name: Upload artifact
+      - name: Get version
+        run: |
+          version=$(jq -r '.version' release/app/package.json)
+          echo "version=$version" >> $GITHUB_ENV
+
+      - name: Upload x64 DMG
         uses: actions/upload-artifact@v4
         with:
-          name: SDStudio-mac-${{ matrix.arch }}
-          path: release/build/*.dmg
+          name: SDStudio-mac-x64
+          path: release/build/*-mac-x64.dmg
+          if-no-files-found: warn
+
+      - name: Upload arm64 DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: SDStudio-mac-arm64
+          path: release/build/*-mac-arm64.dmg
+          if-no-files-found: warn
 
       - name: Upload to release
         if: github.event_name == 'release'
