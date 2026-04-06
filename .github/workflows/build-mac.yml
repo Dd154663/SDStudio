@@ -37,11 +37,27 @@ jobs:
           npm rebuild --platform=darwin --arch=x64 tar-fs
           cd ../..
 
-      - name: Install project dependencies
-        run: npm install --legacy-peer-deps
+      - name: Install project dependencies (skip postinstall)
+        run: npm install --legacy-peer-deps --ignore-scripts
 
-      - name: Build the application
-        run: npm run package
+      - name: Install electron-builder app deps
+        run: npx electron-builder install-app-deps
+
+      - name: Build capacitor-background-mode
+        run: |
+          cd externals/capacitor-background-mode
+          npm install --legacy-peer-deps
+          npm run build
+          cd ../..
+
+      - name: Build DLL
+        run: npm run build:dll
+
+      - name: Build application
+        run: npm run build
+
+      - name: Package
+        run: npx electron-builder build --mac --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
