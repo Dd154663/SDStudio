@@ -38,7 +38,7 @@ jobs:
           cd ../..
 
       - name: Install project dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Build the application
         run: npm run package
