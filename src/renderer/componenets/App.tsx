@@ -22,7 +22,7 @@ import ExpiredProjectsDialog from './ExpiredProjectsDialog';
 import QueueControl from './SceneQueueControl';
 import { FloatView, FloatViewProvider } from './FloatView';
 import { observer, useObserver } from 'mobx-react-lite';
-import { FaImages, FaPenFancy } from 'react-icons/fa';
+import { FaGlobe, FaImages, FaPenFancy } from 'react-icons/fa';
 import ModalOverlay from './ModalOverlay';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -32,6 +32,7 @@ import { usePreview } from 'react-dnd-preview';
 import React from 'react';
 import { CellPreview } from './ResultViewer';
 import { SlotPiece } from './SceneEditor';
+import EmbeddedBrowser from './EmbeddedBrowser';
 import { StackFixed, StackGrow, VerticalStack } from './LayoutComponents';
 import ProgressWindow, { ProgressDialog } from './ProgressWindow';
 import ResizableSplitter from './ResizableSplitter';
@@ -299,6 +300,12 @@ export const App = observer(() => {
       content: <QueueControl type="inpaint" showPannel />,
       emoji: <FaPenFancy />,
     },
+    ...(!isMobile ? [{
+      label: '웹 검색',
+      content: <EmbeddedBrowser />,
+      emoji: <FaGlobe />,
+      banToggle: true,
+    }] : []),
   ];
   return (
     <DndProvider
@@ -323,73 +330,80 @@ export const App = observer(() => {
             appState.pushMessage(`${error.message}`);
           }}
         >
-          <FloatViewProvider>
-            <AppContextMenu />
-            {appState.externalImage && (
-              <FloatView
-                onEscape={() => {
-                  appState.closeExternalImage();
-                }}
-                priority={1}
-              >
-                <ExternalImageView
-                  image={appState.externalImage}
-                  onClose={() => {
-                    appState.closeExternalImage();
-                  }}
-                />
-              </FloatView>
-            )}
-            <VerticalStack>
+          <VerticalStack>
+            {!isMobile && (
               <StackFixed>
                 <TobBar />
               </StackFixed>
-              <StackGrow className="flex">
-                {appState.curSession && (
-                  <>
-                    {!appState.leftPanelCollapsed && (
-                      <div
-                        style={{ width: appState.leftPanelWidth, minWidth: 250 }}
-                        className="flex-none overflow-hidden hidden md:block h-full"
-                      >
-                        <div className="h-full w-full overflow-hidden">
-                          <PreSetEditor
-                            key={appState.curSession.name}
-                            middlePromptMode={false}
-                          />
-                        </div>
-                      </div>
-                    )}
-                    <div className="flex-none hidden md:flex">
-                      <ResizableSplitter />
-                    </div>
-                    <StackGrow>
-                      <TabComponent
-                        key={appState.curSession.name}
-                        tabs={tabs}
-                        toggleView={
-                          <PreSetEditor
-                            key={appState.curSession.name + '2'}
-                            middlePromptMode={false}
-                          />
-                        }
-                      />
-                    </StackGrow>
-                  </>
+            )}
+            <StackGrow className="relative">
+              <FloatViewProvider>
+                <AppContextMenu />
+                {isMobile && <TobBar />}
+                {appState.externalImage && (
+                  <FloatView
+                    onEscape={() => {
+                      appState.closeExternalImage();
+                    }}
+                    priority={1}
+                  >
+                    <ExternalImageView
+                      image={appState.externalImage}
+                      onClose={() => {
+                        appState.closeExternalImage();
+                      }}
+                    />
+                  </FloatView>
                 )}
-              </StackGrow>
-              <StackFixed>
-                <div className="px-3 py-2 border-t flex gap-3 items-center line-color">
-                  <div className="hidden md:block flex-1">
-                    <SessionSelect />
-                  </div>
-                  <div className="flex flex-none gap-4 ml-auto">
-                    <TaskQueueControl />
-                  </div>
-                </div>
-              </StackFixed>
-            </VerticalStack>
-          </FloatViewProvider>
+                <VerticalStack>
+                  <StackGrow className="flex">
+                    {appState.curSession && (
+                      <>
+                        {!appState.leftPanelCollapsed && (
+                          <div
+                            style={{ width: appState.leftPanelWidth, minWidth: 250 }}
+                            className="flex-none overflow-hidden hidden md:block h-full"
+                          >
+                            <div className="h-full w-full overflow-hidden">
+                              <PreSetEditor
+                                key={appState.curSession.name}
+                                middlePromptMode={false}
+                              />
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex-none hidden md:flex">
+                          <ResizableSplitter />
+                        </div>
+                        <StackGrow>
+                          <TabComponent
+                            key={appState.curSession.name}
+                            tabs={tabs}
+                            toggleView={
+                              <PreSetEditor
+                                key={appState.curSession.name + '2'}
+                                middlePromptMode={false}
+                              />
+                            }
+                          />
+                        </StackGrow>
+                      </>
+                    )}
+                  </StackGrow>
+                  <StackFixed>
+                    <div className="px-3 py-2 border-t flex gap-3 items-center line-color">
+                      <div className="hidden md:block flex-1">
+                        <SessionSelect />
+                      </div>
+                      <div className="flex flex-none gap-4 ml-auto">
+                        <TaskQueueControl />
+                      </div>
+                    </div>
+                  </StackFixed>
+                </VerticalStack>
+              </FloatViewProvider>
+            </StackGrow>
+          </VerticalStack>
         </ErrorBoundary>
         <AlertWindow />
         <ConfirmWindow />

@@ -680,6 +680,19 @@ ipcMain.handle('lookup-tag', (event, word) => {
 });
 
 let localAIRunning = false;
+let localAIProcess: ReturnType<typeof spawn> | null = null;
+
+function killLocalAI() {
+  if (localAIProcess && localAIProcess.pid) {
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/F', '/T', '/PID', localAIProcess.pid.toString()], { windowsHide: true });
+    } else {
+      localAIProcess.kill();
+    }
+    localAIProcess = null;
+    localAIRunning = false;
+  }
+}
 
 const net = require('net');
 
@@ -715,7 +728,7 @@ async function findAvailablePort(startPort) {
 
 async function spawnLocalAI() {
   localAI.port = await findAvailablePort(5353);
-  const localaiProcess = spawn(
+  localAIProcess = spawn(
     path.join(APP_DIR, 'localai', 'localai'),
     ['--port', localAI.port.toString()],
     {
@@ -724,17 +737,10 @@ async function spawnLocalAI() {
     },
   );
   localAIRunning = true;
-  localaiProcess.on('close', (code) => {
+  localAIProcess.on('close', (code) => {
     localAIRunning = false;
+    localAIProcess = null;
   });
-
-  const killIt = () => {
-    localaiProcess.kill();
-  };
-  process.on('uncaughtException', killIt);
-  process.on('SIGINT', killIt);
-  process.on('SIGTERM', killIt);
-  mainWindow!.on('close', killIt);
 }
 
 ipcMain.handle('spawn-local-ai', async (event) => {
@@ -816,6 +822,7 @@ const createWindow = async () => {
     frame: false,
     icon: getAssetPath('icon.png'),
     webPreferences: {
+      webviewTag: true,
       preload: app.isPackaged
         ? path.join(__dirname, 'preload.js')
         : path.join(__dirname, '../../.erb/dll/preload.js'),
@@ -1001,6 +1008,10 @@ if (!gotTheLock) {
   /**
    * Add event listeners...
    */
+
+  app.on('before-quit', () => {
+    killLocalAI();
+  });
 
   app.on('window-all-closed', () => {
     // Respect the OSX convention of having the application in memory even
