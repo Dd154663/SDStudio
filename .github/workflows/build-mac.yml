@@ -50,9 +50,6 @@ jobs:
           npm run build
           cd ../..
 
-      - name: Build DLL
-        run: npm run build:dll
-
       - name: Build application
         run: npm run build
 
