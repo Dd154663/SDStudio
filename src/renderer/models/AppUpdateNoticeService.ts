@@ -2,13 +2,16 @@ import { backend } from '.';
 import { sleep } from './util';
 
 const UPDATE_SERVICE_INTERVAL = 240 * 1000;
+const DISMISSED_VERSION_KEY = 'sdstudio-update-dismissed-version';
 
 export class AppUpdateNoticeService extends EventTarget {
   current: string;
   outdated: boolean;
+  latestVersion: string;
   constructor() {
     super();
     this.current = '';
+    this.latestVersion = '';
     this.outdated = false;
     this.run();
   }
@@ -33,13 +36,34 @@ export class AppUpdateNoticeService extends EventTarget {
     }
   }
 
+  isDismissed(version: string): boolean {
+    try {
+      return localStorage.getItem(DISMISSED_VERSION_KEY) === version;
+    } catch {
+      return false;
+    }
+  }
+
+  dismissVersion(version: string) {
+    try {
+      localStorage.setItem(DISMISSED_VERSION_KEY, version);
+    } catch {}
+  }
+
+  async checkForUpdate(): Promise<{ outdated: boolean; latest: string }> {
+    if (this.current === '') this.current = await backend.getVersion();
+    const latest = (await this.getLatestRelease('Dd154663', 'SDStudio') ?? '').replace(/^v/, '');
+    const outdated = this.isOutdated(this.current, latest);
+    this.latestVersion = latest;
+    this.outdated = outdated;
+    return { outdated, latest };
+  }
+
   async run() {
     while (true) {
       try {
-        if (this.current === '') this.current = await backend.getVersion();
-        let latest = (await this.getLatestRelease('Dd154663', 'SDStudio') ?? '').replace(/^v/, '');
-        if (this.isOutdated(this.current, latest)) {
-          this.outdated = true;
+        const { outdated, latest } = await this.checkForUpdate();
+        if (outdated && !this.isDismissed(latest)) {
           this.dispatchEvent(new CustomEvent('updated', { detail: {} }));
         }
       } catch (e: any) {

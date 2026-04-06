@@ -145,7 +145,6 @@ export const App = observer(() => {
   }, []);
 
   const [darkMode, setDarkMode] = useState(false);
-  const updatedIgnored = useRef<boolean>(false);
   useEffect(() => {
     const refreshDarkMode = async () => {
       const conf = await backend.getConfig();
@@ -160,19 +159,26 @@ export const App = observer(() => {
   }, []);
   useEffect(() => {
     const handleUpdate = () => {
-      if (appUpdateNoticeService.outdated && !updatedIgnored.current) {
+      const latest = appUpdateNoticeService.latestVersion;
+      if (appUpdateNoticeService.outdated && !appUpdateNoticeService.isDismissed(latest)) {
         appState.pushDialog({
-          type: 'confirm',
-          text: '새로운 버전이 있습니다. 새로 다운 받으시겠습니까?',
+          type: 'select',
+          text: `새로운 버전(${latest})이 있습니다.\n새로 다운 받으시겠습니까?`,
           green: true,
-          callback: () => {
-            backend.openWebPage('https://github.com/Dd154663/SDStudio/releases');
+          items: [
+            { text: '다운로드 페이지 열기', value: 'open' },
+            { text: '다시 알리지 않음', value: 'dismiss' },
+          ],
+          callback: (value?: string) => {
+            if (value === 'open') {
+              backend.openWebPage('https://github.com/Dd154663/SDStudio/releases');
+            } else if (value === 'dismiss') {
+              appUpdateNoticeService.dismissVersion(latest);
+            }
           },
         });
-        updatedIgnored.current = true;
       }
     };
-    handleUpdate();
     appUpdateNoticeService.addEventListener('updated', handleUpdate);
     return () => {
       appUpdateNoticeService.removeEventListener('updated', handleUpdate);

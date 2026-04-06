@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
+  appUpdateNoticeService,
   backend,
   imageService,
   isMobile,
@@ -278,55 +279,106 @@ const OtherTab = ({
   whiteMode, setWhiteMode,
   delayTime, setDelayTime,
   classicSceneCard, setClassicSceneCard,
-}: any) => (
-  <div className="space-y-4">
-    <div className="flex items-center gap-2">
-      <input type="checkbox" id="cfgWhite" checked={whiteMode}
-        onChange={(e) => setWhiteMode(e.target.checked)} />
-      <label htmlFor="cfgWhite" className="text-sm gray-label">화이트 모드 켜기</label>
-    </div>
-    <hr className="border-gray-200 dark:border-slate-600" />
-    <div className="flex items-center gap-2">
-      <input type="checkbox" id="cfgClassicScene" checked={classicSceneCard}
-        onChange={(e) => setClassicSceneCard(e.target.checked)} />
-      <label htmlFor="cfgClassicScene" className="text-sm gray-label">클래식 씬 카드 디자인 사용</label>
-    </div>
-    <hr className="border-gray-200 dark:border-slate-600" />
-    <div>
-      <label className="block text-sm gray-label mb-1">
-        기본 지연 시간 조정 (0ms ~ 1000ms)
-      </label>
+}: any) => {
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true);
+    try {
+      const { outdated, latest } = await appUpdateNoticeService.checkForUpdate();
+      if (outdated) {
+        appState.pushDialog({
+          type: 'select',
+          text: `새로운 버전(${latest})이 있습니다.\n새로 다운 받으시겠습니까?`,
+          green: true,
+          items: [
+            { text: '다운로드 페이지 열기', value: 'open' },
+            { text: '다시 알리지 않음', value: 'dismiss' },
+          ],
+          callback: (value?: string) => {
+            if (value === 'open') {
+              backend.openWebPage('https://github.com/Dd154663/SDStudio/releases');
+            } else if (value === 'dismiss') {
+              appUpdateNoticeService.dismissVersion(latest);
+            }
+          },
+        });
+      } else {
+        appState.pushDialog({
+          type: 'yes-only',
+          text: `현재 최신 버전입니다. (${appUpdateNoticeService.current})`,
+        });
+      }
+    } catch (e) {
+      appState.pushDialog({
+        type: 'yes-only',
+        text: '업데이트 확인에 실패했습니다. 네트워크를 확인해주세요.',
+      });
+    }
+    setCheckingUpdate(false);
+  };
+
+  return (
+    <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <input type="range" min={0} max={1000} step={1}
-          value={delayTime} onChange={(e) => setDelayTime(parseInt(e.target.value))}
-          className="flex-1" />
-        <span className="text-sm gray-label w-14 text-right">{delayTime}ms</span>
+        <input type="checkbox" id="cfgWhite" checked={whiteMode}
+          onChange={(e) => setWhiteMode(e.target.checked)} />
+        <label htmlFor="cfgWhite" className="text-sm gray-label">화이트 모드 켜기</label>
+      </div>
+      <hr className="border-gray-200 dark:border-slate-600" />
+      <div className="flex items-center gap-2">
+        <input type="checkbox" id="cfgClassicScene" checked={classicSceneCard}
+          onChange={(e) => setClassicSceneCard(e.target.checked)} />
+        <label htmlFor="cfgClassicScene" className="text-sm gray-label">클래식 씬 카드 디자인 사용</label>
+      </div>
+      <hr className="border-gray-200 dark:border-slate-600" />
+      <div>
+        <label className="block text-sm gray-label mb-1">
+          기본 지연 시간 조정 (0ms ~ 1000ms)
+        </label>
+        <div className="flex items-center gap-2">
+          <input type="range" min={0} max={1000} step={1}
+            value={delayTime} onChange={(e) => setDelayTime(parseInt(e.target.value))}
+            className="flex-1" />
+          <span className="text-sm gray-label w-14 text-right">{delayTime}ms</span>
+        </div>
+      </div>
+      <hr className="border-gray-200 dark:border-slate-600" />
+      <ExportsCleanupSection />
+      <hr className="border-gray-200 dark:border-slate-600" />
+      <TaskLogSection />
+      <hr className="border-gray-200 dark:border-slate-600" />
+      <div className="space-y-2">
+        <label className="block text-sm gray-label mb-1">업데이트</label>
+        <button
+          className="px-3 py-1.5 text-sm back-sky rounded clickable disabled:opacity-50"
+          disabled={checkingUpdate}
+          onClick={handleCheckUpdate}
+        >
+          {checkingUpdate ? '확인 중...' : '업데이트 확인'}
+        </button>
+      </div>
+      <hr className="border-gray-200 dark:border-slate-600" />
+      <div className="space-y-2">
+        <label className="block text-sm gray-label mb-1">정보</label>
+        <div className="flex flex-col gap-1 text-sm">
+          <a
+            className="text-sky-500 hover:text-sky-400 cursor-pointer"
+            onClick={() => backend.openWebPage('https://github.com/Dd154663/SDStudio')}
+          >
+            GitHub — Dd154663/SDStudio
+          </a>
+          <a
+            className="text-sky-500 hover:text-sky-400 cursor-pointer"
+            onClick={() => backend.openWebPage('https://github.com/sunho/SDStudio')}
+          >
+            원작 — sunho/SDStudio
+          </a>
+        </div>
       </div>
     </div>
-    <hr className="border-gray-200 dark:border-slate-600" />
-    <ExportsCleanupSection />
-    <hr className="border-gray-200 dark:border-slate-600" />
-    <TaskLogSection />
-    <hr className="border-gray-200 dark:border-slate-600" />
-    <div className="space-y-2">
-      <label className="block text-sm gray-label mb-1">정보</label>
-      <div className="flex flex-col gap-1 text-sm">
-        <a
-          className="text-sky-500 hover:text-sky-400 cursor-pointer"
-          onClick={() => backend.openWebPage('https://github.com/Dd154663/SDStudio')}
-        >
-          GitHub — Dd154663/SDStudio
-        </a>
-        <a
-          className="text-sky-500 hover:text-sky-400 cursor-pointer"
-          onClick={() => backend.openWebPage('https://github.com/sunho/SDStudio')}
-        >
-          원작 — sunho/SDStudio
-        </a>
-      </div>
-    </div>
-  </div>
-);
+  );
+};
 
 /* ── 작업 로그 ── */
 const TaskLogSection = () => {
