@@ -129,10 +129,15 @@ export class KeyboardShortcutService {
   }
 
   static keyDisplayName(key: string): string {
-    return key
-      .replace('Ctrl', '⌃')
-      .replace('Shift', '⇧')
-      .replace('Alt', '⌥')
+    const isMac = navigator.platform.toUpperCase().includes('MAC');
+    let result = key;
+    if (isMac) {
+      result = result
+        .replace('Ctrl', '⌘')
+        .replace('Shift', '⇧')
+        .replace('Alt', '⌥');
+    }
+    return result
       .replace('ArrowLeft', '←')
       .replace('ArrowRight', '→')
       .replace('ArrowUp', '↑')
