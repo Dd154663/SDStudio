@@ -353,12 +353,63 @@ export const App = observer(() => {
           }}
         >
           <VerticalStack>
-            <StackFixed>
-              <TobBar />
-            </StackFixed>
+            {!isMobile && (
+              <StackFixed>
+                <TobBar />
+              </StackFixed>
+            )}
             <StackGrow className="relative">
               <FloatViewProvider>
                 <AppContextMenu />
+                <div className="h-full w-full flex flex-col overflow-hidden">
+                  {isMobile && <div className="flex-none"><TobBar /></div>}
+                  <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                    <StackGrow className="flex">
+                      {appState.curSession && (
+                        <>
+                          {!appState.leftPanelCollapsed && (
+                            <div
+                              style={{ width: appState.leftPanelWidth, minWidth: 250 }}
+                              className="flex-none overflow-hidden hidden md:block h-full"
+                            >
+                              <div className="h-full w-full overflow-hidden">
+                                <PreSetEditor
+                                  key={appState.curSession.name}
+                                  middlePromptMode={false}
+                                />
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex-none hidden md:flex">
+                            <ResizableSplitter />
+                          </div>
+                          <StackGrow>
+                            <TabComponent
+                              key={appState.curSession.name}
+                              tabs={tabs}
+                              toggleView={
+                                <PreSetEditor
+                                  key={appState.curSession.name + '2'}
+                                  middlePromptMode={false}
+                                />
+                              }
+                            />
+                          </StackGrow>
+                        </>
+                      )}
+                    </StackGrow>
+                    <StackFixed>
+                      <div className="px-3 py-2 border-t flex gap-3 items-center line-color">
+                        <div className="hidden md:block flex-1">
+                          <SessionSelect />
+                        </div>
+                        <div className="flex flex-none gap-4 ml-auto">
+                          <TaskQueueControl />
+                        </div>
+                      </div>
+                    </StackFixed>
+                  </div>
+                </div>
                 {appState.externalImage && (
                   <FloatView
                     onEscape={() => {
@@ -374,52 +425,6 @@ export const App = observer(() => {
                     />
                   </FloatView>
                 )}
-                <VerticalStack>
-                  <StackGrow className="flex">
-                    {appState.curSession && (
-                      <>
-                        {!appState.leftPanelCollapsed && (
-                          <div
-                            style={{ width: appState.leftPanelWidth, minWidth: 250 }}
-                            className="flex-none overflow-hidden hidden md:block h-full"
-                          >
-                            <div className="h-full w-full overflow-hidden">
-                              <PreSetEditor
-                                key={appState.curSession.name}
-                                middlePromptMode={false}
-                              />
-                            </div>
-                          </div>
-                        )}
-                        <div className="flex-none hidden md:flex">
-                          <ResizableSplitter />
-                        </div>
-                        <StackGrow>
-                          <TabComponent
-                            key={appState.curSession.name}
-                            tabs={tabs}
-                            toggleView={
-                              <PreSetEditor
-                                key={appState.curSession.name + '2'}
-                                middlePromptMode={false}
-                              />
-                            }
-                          />
-                        </StackGrow>
-                      </>
-                    )}
-                  </StackGrow>
-                  <StackFixed>
-                    <div className="px-3 py-2 border-t flex gap-3 items-center line-color">
-                      <div className="hidden md:block flex-1">
-                        <SessionSelect />
-                      </div>
-                      <div className="flex flex-none gap-4 ml-auto">
-                        <TaskQueueControl />
-                      </div>
-                    </div>
-                  </StackFixed>
-                </VerticalStack>
               </FloatViewProvider>
             </StackGrow>
           </VerticalStack>
