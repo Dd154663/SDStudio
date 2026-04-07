@@ -353,15 +353,12 @@ export const App = observer(() => {
           }}
         >
           <VerticalStack>
-            {!isMobile && (
-              <StackFixed>
-                <TobBar />
-              </StackFixed>
-            )}
+            <StackFixed>
+              <TobBar />
+            </StackFixed>
             <StackGrow className="relative">
               <FloatViewProvider>
                 <AppContextMenu />
-                {isMobile && <TobBar />}
                 {appState.externalImage && (
                   <FloatView
                     onEscape={() => {
