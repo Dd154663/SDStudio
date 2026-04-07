@@ -19,7 +19,9 @@ import {
   FaFolder,
   FaCog,
   FaTimes,
+  FaKeyboard,
 } from 'react-icons/fa';
+import { keyboardShortcutService, KeyboardShortcutService } from '../models/KeyboardShortcutService';
 
 interface ConfigScreenProps {
   onSave: () => void;
@@ -442,6 +444,116 @@ const TaskLogSection = () => {
   );
 };
 
+/* ── 탭: 키 바인딩 (PC only) ── */
+const KeyBindingsTab = () => {
+  const [bindings, setBindings] = useState(keyboardShortcutService?.getAllActions() ?? []);
+  const [recordingAction, setRecordingAction] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<string | null>(null);
+
+  const refreshBindings = () => {
+    setBindings(keyboardShortcutService?.getAllActions() ?? []);
+  };
+
+  useEffect(() => {
+    if (!recordingAction) return;
+    const handler = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const normalized = KeyboardShortcutService.normalizeKey(e);
+      if (!normalized) return; // 수정자만 누른 경우
+
+      // Escape로 취소
+      if (e.key === 'Escape') {
+        setRecordingAction(null);
+        setConflict(null);
+        return;
+      }
+
+      // 충돌 확인
+      const conflictLabel = keyboardShortcutService.findConflict(normalized, recordingAction);
+      if (conflictLabel) {
+        setConflict(`"${conflictLabel}" 단축키와 충돌합니다`);
+        return;
+      }
+
+      keyboardShortcutService.setBinding(recordingAction, normalized);
+      setRecordingAction(null);
+      setConflict(null);
+      refreshBindings();
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [recordingAction]);
+
+  const categoryLabel = (cat: string) => cat === 'global' ? '전역' : '뷰어';
+
+  return (
+    <div className="flex flex-col" style={{ maxHeight: '50vh' }}>
+      <div className="text-sm text-gray-500 dark:text-gray-400 mb-2 flex-none">
+        "변경" 클릭 후 키 조합 입력. Esc로 취소.
+      </div>
+      {conflict && (
+        <div className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded mb-2 flex-none">
+          {conflict}
+        </div>
+      )}
+      <div className="overflow-y-auto flex-1 space-y-1" style={{ minHeight: 0 }}>
+        {bindings.map((action) => (
+          <div key={action.id} className="flex items-center gap-2 py-1.5 border-b border-gray-100 dark:border-slate-700">
+            <span className="flex-1 text-sm text-gray-700 dark:text-gray-200 min-w-0 truncate">
+              {action.label}
+              <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">
+                ({categoryLabel(action.category)})
+              </span>
+            </span>
+            <span className="text-sm font-mono bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 px-2 py-0.5 rounded text-center flex-shrink-0" style={{ minWidth: '70px' }}>
+              {recordingAction === action.id
+                ? '입력 대기...'
+                : KeyboardShortcutService.keyDisplayName(action.currentKey)}
+            </span>
+            <button
+              className={`text-xs px-2 py-1 rounded transition-colors flex-shrink-0 ${
+                recordingAction === action.id
+                  ? 'back-red text-white'
+                  : 'back-sky'
+              }`}
+              onClick={() => {
+                setConflict(null);
+                setRecordingAction(recordingAction === action.id ? null : action.id);
+              }}
+            >
+              {recordingAction === action.id ? '취소' : '변경'}
+            </button>
+            <button
+              className="text-xs px-1.5 py-1 rounded back-gray flex-shrink-0"
+              title="기본값으로 초기화"
+              onClick={() => {
+                keyboardShortcutService.resetBinding(action.id);
+                setConflict(null);
+                refreshBindings();
+              }}
+            >
+              ↺
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="pt-2 flex-none">
+        <button
+          className="text-sm px-3 py-1.5 rounded back-gray"
+          onClick={() => {
+            keyboardShortcutService.resetToDefaults();
+            setConflict(null);
+            refreshBindings();
+          }}
+        >
+          전체 초기화
+        </button>
+      </div>
+    </div>
+  );
+};
+
 /* ── 메인 ConfigScreen ── */
 const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const { curSession } = appState;
@@ -507,6 +619,12 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     window.addEventListener('keydown', handleEscape, true);
     return () => window.removeEventListener('keydown', handleEscape, true);
   }, [handleEscape]);
+
+  // 단축키 시스템에 ConfigScreen 열림 상태 전달
+  useEffect(() => {
+    appState.configScreenOpen = true;
+    return () => { appState.configScreenOpen = false; };
+  }, []);
 
   const roundTag = 'text-white text-xs px-2 py-1 rounded-full';
 
@@ -591,11 +709,12 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     ...(!mobileMode ? [{ label: '이미지 편집', icon: <FaImage size={14} /> }] : []),
     ...(!mobileMode ? [{ label: '저장경로', icon: <FaFolder size={14} /> }] : []),
     { label: '기타', icon: <FaCog size={14} /> },
+    ...(!mobileMode ? [{ label: '키 바인딩', icon: <FaKeyboard size={14} /> }] : []),
   ];
 
   const getTabContent = (tabIdx: number) => {
-    // 모바일: 탭 0=로그인, 1=기타 (이미지편집·저장경로 숨김)
-    // PC: 탭 0=로그인, 1=이미지편집, 2=저장경로, 3=기타
+    // 모바일: 탭 0=로그인, 1=기타 (이미지편집·저장경로·키바인딩 숨김)
+    // PC: 탭 0=로그인, 1=이미지편집, 2=저장경로, 3=기타, 4=키바인딩
     const idx = mobileMode && tabIdx >= 1 ? tabIdx + 2 : tabIdx;
     switch (idx) {
       case 0:
@@ -606,6 +725,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
         return <StorageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage }} />;
       case 3:
         return <OtherTab {...{ whiteMode, setWhiteMode, delayTime, setDelayTime, classicSceneCard, setClassicSceneCard }} />;
+      case 4:
+        return <KeyBindingsTab />;
       default:
         return null;
     }
@@ -623,7 +744,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       onClick={onClose}
     >
       <div
-        className="w-[90vw] max-w-lg max-h-[85vh] bg-white dark:bg-slate-800 rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-slate-600"
+        className={'w-[90vw] max-w-lg bg-white dark:bg-slate-800 rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-slate-600 ' + (mobileMode ? 'max-h-[90vh]' : 'max-h-[85vh]')}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 헤더 */}
@@ -654,23 +775,39 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
             </button>
           ))}
         </div>
-        {/* 탭 콘텐츠 — CSS Grid로 모든 탭을 같은 셀에 겹쳐 높이 통일 */}
-        <div className="flex-1 overflow-auto p-5" style={{ minHeight: 0 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-            {tabs.map((_, i) => (
-              <div
-                key={i}
-                style={{
-                  gridRow: 1,
-                  gridColumn: 1,
-                  visibility: activeTab === i ? 'visible' : 'hidden',
-                }}
-              >
-                {getTabContent(i)}
+        {/* 탭 콘텐츠 — CSS Grid로 모든 탭을 같은 셀에 겹쳐 높이 통일 (키 바인딩 제외) */}
+        {(() => {
+          const keyBindingsIdx = !mobileMode ? tabs.length - 1 : -1;
+          const isKeyBindingsTab = activeTab === keyBindingsIdx;
+          return (
+            <div className="flex-1 overflow-auto p-5" style={{ minHeight: 0 }}>
+              {/* 일반 탭들: Grid로 높이 통일 */}
+              <div style={{
+                display: isKeyBindingsTab ? 'none' : 'grid',
+                gridTemplateColumns: '1fr',
+                gridTemplateRows: '1fr',
+              }}>
+                {tabs.map((_, i) => {
+                  if (i === keyBindingsIdx) return null;
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        gridRow: 1,
+                        gridColumn: 1,
+                        visibility: activeTab === i ? 'visible' : 'hidden',
+                      }}
+                    >
+                      {getTabContent(i)}
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
-        </div>
+              {/* 키 바인딩 탭: 독립 렌더링 */}
+              {isKeyBindingsTab && getTabContent(keyBindingsIdx)}
+            </div>
+          );
+        })()}
         {/* 저장 버튼 */}
         <div className="flex-none p-4 border-t border-gray-200 dark:border-slate-600">
           <button className="w-full back-sky py-2.5 rounded-lg hover:brightness-95 active:brightness-90 font-medium"

@@ -46,6 +46,7 @@ import {
   isMobile,
 } from '../models';
 import { appState } from '../models/AppService';
+import { keyboardShortcutService } from '../models/KeyboardShortcutService';
 import { AppContextMenu } from './AppContextMenu';
 
 import { configure } from 'mobx';
@@ -132,16 +133,31 @@ export const App = observer(() => {
     };
   }, []);
 
-  // Ctrl+B로 좌측 패널 토글
+  // 단축키 이벤트 수신
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === 'b') {
-        e.preventDefault();
-        appState.toggleLeftPanel();
+    const handler = (e: Event) => {
+      const action = (e as CustomEvent).detail?.action;
+      switch (action) {
+        case 'toggle-left-panel':
+          appState.toggleLeftPanel();
+          break;
+        case 'toggle-project-favorite':
+          if (appState.curSession) {
+            sessionService.toggleFavorite(appState.curSession.name).then(() => {
+              const isFav = sessionService.isFavorite(appState.curSession!.name);
+              appState.pushMessage(isFav ? '즐겨찾기에 추가되었습니다' : '즐겨찾기에서 제거되었습니다');
+            });
+          }
+          break;
+        case 'open-piece-editor':
+          if (appState.curSession) {
+            appState.openPieceEditor();
+          }
+          break;
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('shortcut-action', handler);
+    return () => window.removeEventListener('shortcut-action', handler);
   }, []);
 
   const [darkMode, setDarkMode] = useState(false);

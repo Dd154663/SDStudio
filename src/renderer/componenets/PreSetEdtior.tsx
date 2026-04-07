@@ -2203,6 +2203,18 @@ export const PreSetEditorImpl = observer(
       setShowGroup(undefined);
       setShowGroupOverlay(undefined);
     }, [type]);
+
+    // 단축키에서 샘플링/모델 설정 열기 이벤트 수신
+    useEffect(() => {
+      const handler = (e: Event) => {
+        const action = (e as CustomEvent).detail?.action;
+        if (action === 'open-sampling-settings' && groupElement) {
+          setShowGroupOverlay('샘플링/모델 설정');
+        }
+      };
+      window.addEventListener('shortcut-action', handler);
+      return () => window.removeEventListener('shortcut-action', handler);
+    }, [groupElement]);
     return (
       <StackGrow>
         <WFElementContext.Provider

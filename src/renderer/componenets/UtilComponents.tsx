@@ -182,6 +182,20 @@ export const TabComponent: React.FC<TabComponentProps> = ({
     setActiveTab(index);
   };
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const action = (e as CustomEvent).detail?.action;
+      if (typeof action === 'string' && action.startsWith('tab-')) {
+        const tabIndex = parseInt(action.split('-')[1], 10) - 1;
+        if (tabIndex >= 0 && tabIndex < tabs.length) {
+          handleTabClick(tabIndex);
+        }
+      }
+    };
+    window.addEventListener('shortcut-action', handler);
+    return () => window.removeEventListener('shortcut-action', handler);
+  }, [tabs]);
+
   return (
     <div className="h-full flex flex-col px-1 md:p-2">
       <div

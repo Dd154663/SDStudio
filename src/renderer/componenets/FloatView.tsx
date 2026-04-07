@@ -10,6 +10,7 @@ import React, {
 import { FaTimes } from 'react-icons/fa';
 import { App as CapacitorApp } from '@capacitor/app';
 import { isMobile } from '../models';
+import { appState } from '../models/AppService';
 
 interface FloatView {
   id: number;
@@ -47,10 +48,12 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = ({
 
   const registerView = (view: FloatView) => {
     setViews((prevViews) => [...prevViews, view].sort((a, b) => b.id - a.id));
+    appState.incrementFloatView();
   };
 
   const unregisterView = (id: number) => {
     setViews((prevViews) => prevViews.filter((view) => view.id !== id));
+    appState.decrementFloatView();
   };
 
   const closeTopView = () => {

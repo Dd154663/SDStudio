@@ -633,6 +633,7 @@ const QueueControl = observer(
     useEffect(() => {
       imageService.refreshBatch(curSession!);
     }, [curSession]);
+
     const addAllToQueue = async () => {
       try {
         const scenes = curSession.getScenes(type);
@@ -671,6 +672,19 @@ const QueueControl = observer(
         appState.pushMessage('프롬프트 에러: ' + e.message);
       }
     };
+
+    // 단축키에서 모든 씬 예약 이벤트 수신
+    useEffect(() => {
+      const handler = (e: Event) => {
+        const action = (e as CustomEvent).detail?.action;
+        if (action === 'queue-all-scenes') {
+          addAllToQueue();
+        }
+      };
+      window.addEventListener('shortcut-action', handler);
+      return () => window.removeEventListener('shortcut-action', handler);
+    }, [curSession, type]);
+
     const addScene = () => {
       appState.pushDialog({
         type: 'textarea-confirm',

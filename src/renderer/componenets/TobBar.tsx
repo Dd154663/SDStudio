@@ -54,6 +54,18 @@ const TobBar = () => {
 
   const [settings, setSettings] = useState(false);
 
+  // 단축키에서 환경설정 열기 이벤트 수신
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const action = (e as CustomEvent).detail?.action;
+      if (action === 'open-config') {
+        setSettings(true);
+      }
+    };
+    window.addEventListener('shortcut-action', handler);
+    return () => window.removeEventListener('shortcut-action', handler);
+  }, []);
+
   const handleMinimize = () => {
     window.electron?.ipcRenderer.invoke('window-minimize');
   };

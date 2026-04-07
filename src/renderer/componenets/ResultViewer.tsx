@@ -738,6 +738,12 @@ const ResultDetailView = observer(
     onClose,
   }: ResultDetailViewProps) => {
     const { curSession } = appState;
+
+    // 단축키 시스템에 ResultViewer 열림 상태 전달
+    useEffect(() => {
+      appState.resultViewerOpen = true;
+      return () => { appState.resultViewerOpen = false; };
+    }, []);
     const [selectedIndex, setSelectedIndex] =
       useState<number>(initialSelectedIndex);
     const [paths, setPaths] = useState<string[]>(getPaths());
@@ -832,6 +838,36 @@ const ResultDetailView = observer(
           });
         }
       };
+      const handleShortcut = (e: Event) => {
+        const action = (e as CustomEvent).detail?.action;
+        if (action === 'prev-image') {
+          setSelectedIndex((selectedIndex - 1 + paths.length) % paths.length);
+        } else if (action === 'next-image') {
+          setSelectedIndex((selectedIndex + 1) % paths.length);
+        } else if (action === 'delete-image') {
+          appState.pushDialog({
+            type: 'confirm',
+            text: '정말로 파일을 삭제하시겠습니까?',
+            callback: async () => {
+              await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
+            },
+          });
+        } else if (action === 'toggle-favorite') {
+          const path = paths[selectedIndex].split('/').pop()!;
+          if (scene.mains.includes(path)) {
+            scene.mains.splice(scene.mains.indexOf(path), 1);
+          } else {
+            scene.mains.push(path);
+          }
+        } else if (action === 'save-image') {
+          imageDownloadService.downloadSingleImage(
+            curSession!,
+            scene,
+            paths[selectedIndex],
+            appState.getAppliedCharacterPreset(),
+          );
+        }
+      };
       const refreshPaths = () => {
         const newPaths = getPaths();
         if (newPaths.length === 0) onClose();
@@ -848,11 +884,13 @@ const ResultDetailView = observer(
         }
       };
       window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('shortcut-action', handleShortcut);
       sessionService.addEventListener('main-image-updated', rerender);
       imageService.addEventListener('image-cache-invalidated', fetchImage);
       gameService.addEventListener('updated', refreshPaths);
       return () => {
         window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('shortcut-action', handleShortcut);
         sessionService.removeEventListener('main-image-updated', rerender);
         imageService.removeEventListener('image-cache-invalidated', fetchImage);
         gameService.removeEventListener('updated', refreshPaths);

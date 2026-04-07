@@ -75,6 +75,21 @@ export class AppState {
   // 프롬프트조각 에디터 오버레이
   @observable accessor pieceEditorOpen: boolean = false;
 
+  // 단축키 시스템용 상태
+  @observable accessor floatViewCount: number = 0;
+  @observable accessor resultViewerOpen: boolean = false;
+  @observable accessor configScreenOpen: boolean = false;
+
+  @action
+  incrementFloatView() {
+    this.floatViewCount++;
+  }
+
+  @action
+  decrementFloatView() {
+    this.floatViewCount = Math.max(0, this.floatViewCount - 1);
+  }
+
   @action
   openPieceEditor() {
     this.pieceEditorOpen = true;
