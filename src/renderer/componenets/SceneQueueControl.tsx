@@ -1101,7 +1101,7 @@ const QueueControl = observer(
         return (
           <FloatView
             priority={2}
-            showToolbar={false}
+            showToolbar
             onEscape={() => {
               gameService.refreshList(curSession!, displayScene);
               setDisplayScene(undefined);
