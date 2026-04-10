@@ -8,10 +8,12 @@ export class AppUpdateNoticeService extends EventTarget {
   current: string;
   outdated: boolean;
   latestVersion: string;
+  notifiedVersion: string;
   constructor() {
     super();
     this.current = '';
     this.latestVersion = '';
+    this.notifiedVersion = '';
     this.outdated = false;
     this.run();
   }
@@ -63,7 +65,8 @@ export class AppUpdateNoticeService extends EventTarget {
     while (true) {
       try {
         const { outdated, latest } = await this.checkForUpdate();
-        if (outdated && !this.isDismissed(latest)) {
+        if (outdated && !this.isDismissed(latest) && this.notifiedVersion !== latest) {
+          this.notifiedVersion = latest;
           this.dispatchEvent(new CustomEvent('updated', { detail: {} }));
         }
       } catch (e: any) {
