@@ -357,9 +357,17 @@ class GenerateImageTaskHandler implements TaskHandler {
               return null;
             }
             // fetchReferenceImage returns base64 data, but it may have data URI prefix
-            const base64Image = imageData.includes(',')
+            const rawBase64 = imageData.includes(',')
               ? dataUriToBase64(imageData)
               : imageData;
+
+            // NAI Precise Reference 스펙: 3채널 RGB(JPEG) 필요.
+            // 이미 저장 시점에 JPEG로 저장된 경우 재인코딩해도 사실상 무손실에 가깝고,
+            // 기존에 RGBA PNG로 저장된 레거시 레퍼런스도 이 단계에서 변환되어 호환됨.
+            // 참고: sunanakgo/NAIS2 processCharacterImage, DNT-LAB/NAIA _letterbox
+            const base64Image = await imageService.reencodeReferenceForApi(
+              rawBase64,
+            );
 
             // 캐시에 저장
             run.cachedReferences!.set(cacheKey, {

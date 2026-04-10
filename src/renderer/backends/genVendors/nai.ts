@@ -269,7 +269,14 @@ export class NovelAiImageGenService implements ImageGenService {
     if (params.sampling == Sampling.KEulerAncestral) {
       body.parameters.deliberate_euler_ancestral_bug = false;
     }
-    if (params.varietyPlus) {
+    // Variety+ (skip_cfg_above_sigma) must be disabled when Precise/Character
+    // Reference is used. NAI 공식 사이트는 Char Ref 켜면 Variety+를 UI에서
+    // 자동 해제하므로 두 파라미터가 동시 전송되지 않음. SDStudio에서 두
+    // 파라미터를 동시에 보내면 서버가 깨진 결과물을 생성함.
+    // 참고: DNT-LAB/NAIA_novel_ai_entrypoint 의 _apply_character_reference
+    // (params.pop("skip_cfg_above_sigma", None))
+    const hasValidCharRef = (validCharacterReferences?.length ?? 0) > 0;
+    if (params.varietyPlus && !hasValidCharRef) {
       let sigmaCoef: number;
       switch (config.modelVersion) {
         case ModelVersion.V4_5:
@@ -289,6 +296,10 @@ export class NovelAiImageGenService implements ImageGenService {
       const resPixels = resolutionValue.width * resolutionValue.height;
       const pixelRatio = resPixels / defaultPixels;
       body.parameters.skip_cfg_above_sigma = sigmaCoef * pixelRatio ** 0.5;
+    } else if (hasValidCharRef) {
+      // Belt-and-suspenders: 디폴트가 null이긴 하지만, 혹시 다른 경로에서
+      // 값이 주입되어도 여기서 확실히 제거.
+      body.parameters.skip_cfg_above_sigma = null;
     }
     if (params.characterPrompts?.length) {
       const center = { x: 0.5, y: 0.5 };

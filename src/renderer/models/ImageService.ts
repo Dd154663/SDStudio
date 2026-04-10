@@ -399,11 +399,43 @@ export class ImageService extends EventTarget {
     const h = Math.floor(scale * img.height);
     const x = Math.floor((canvasWidth - w) / 2);
     const y = Math.floor((canvasHeight - h) / 2);
-  
+
     ctx.fillStyle = 'black';
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
     ctx.drawImage(img, x, y, w, h);
-    return canvas.toDataURL('image/png').split(',')[1];
+    // NAI Precise Reference 스펙: 3채널 RGB 필요. HTML Canvas는 항상 RGBA이므로
+    // alpha 채널을 포함하지 않는 JPEG 0.95로 인코딩하여 RGBA→RGB 변환.
+    // 참고: sunanakgo/NAIS2 processCharacterImage, DNT-LAB/NAIA _letterbox
+    return canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
+  }
+
+  /**
+   * 이미 저장된 레퍼런스 이미지(base64)를 NAI API 전송용 JPEG 3채널로 재인코딩.
+   * 기존 사용자가 업로드한 RGBA PNG 레퍼런스를 재업로드 없이 호환시키기 위해
+   * 생성 시점에 호출. letterbox는 수행하지 않음 (저장 시점에 이미 완료됨).
+   */
+  async reencodeReferenceForApi(data: string): Promise<string> {
+    try {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return data;
+      const img = new Image();
+      img.src = base64ToDataUri(data);
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+      canvas.width = img.width;
+      canvas.height = img.height;
+      // alpha 픽셀이 투명한 경우를 대비해 검정 배경 채움 (letterbox 색상과 일치).
+      ctx.fillStyle = 'black';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+      return canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
+    } catch (e) {
+      console.warn('Failed to re-encode reference image as JPEG:', e);
+      return data;
+    }
   }
 
   chooseReferenceResolution(width: number, height: number) {
