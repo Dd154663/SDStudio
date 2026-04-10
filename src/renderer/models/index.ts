@@ -29,6 +29,7 @@ import { WorkFlowService } from './workflows/WorkFlowService';
 import { registerWorkFlows } from './workflows';
 import { TrashService } from './TrashService';
 import { GlobalPieceService } from './GlobalPieceService';
+import { GlobalPresetService } from './GlobalPresetService';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -63,6 +64,9 @@ export const imageDownloadService = new ImageDownloadService();
 export const globalPieceService = new GlobalPieceService();
 globalPieceService.load();
 
+export const globalPresetService = new GlobalPresetService();
+globalPresetService.load();
+
 export const promptService = new PromptService();
 
 export const taskQueueService = new TaskQueueService(taskHandlers);
@@ -80,6 +84,7 @@ window.imageService = imageService;
 window.imageDownloadService = imageDownloadService;
 window.taskQueueService = taskQueueService;
 window.loginService = loginService;
+window.globalPresetService = globalPresetService;
 
 backend.onClose(() => {
   (async () => {

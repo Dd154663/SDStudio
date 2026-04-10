@@ -487,15 +487,51 @@ export class SessionService extends ResourceSyncService<Session> {
 }
 
 export async function importDefaultPresets(session: Session) {
-  if (!session.presets.has('SDImageGenEasy')) {
-    session.presets.set('SDImageGenEasy', []);
+  // 글로벌 프리셋 서비스에서 "기본" 플래그 지정된 것들을 먼저 시도
+  // 순환 임포트 방지를 위해 동적 import 사용
+  let hadGlobalDefaults = false;
+  try {
+    const mod = await import('.');
+    const globalPresetService = (mod as any).globalPresetService;
+    if (globalPresetService) {
+      if (!globalPresetService.loaded) {
+        await globalPresetService.load();
+      }
+      const easyDefaults = globalPresetService.getDefaults('SDImageGenEasy');
+      const genDefaults = globalPresetService.getDefaults('SDImageGen');
+      for (const entry of [...easyDefaults, ...genDefaults]) {
+        try {
+          await globalPresetService.instantiateIntoSession(session, entry.id);
+          hadGlobalDefaults = true;
+        } catch (e) {
+          console.warn(
+            'Failed to instantiate global default preset:',
+            entry?.name,
+            e,
+          );
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('GlobalPresetService unavailable during session init:', e);
   }
-  const images = await Promise.all(
-    defaultassets.map((x) => fetch(x).then((res) => res.blob())),
-  );
-  for (const image of images) {
-    const datauri = await blobToDataUri(image);
-    await importPreset(session, dataUriToBase64(datauri));
+
+  // Fallback: SDImageGenEasy 프리셋이 비어있으면 기존 defaultassets 시드
+  // (신규 설치 첫 실행 UX 보존)
+  const hasEasyPresets =
+    session.presets.has('SDImageGenEasy') &&
+    session.presets.get('SDImageGenEasy')!.length > 0;
+  if (!hasEasyPresets) {
+    if (!session.presets.has('SDImageGenEasy')) {
+      session.presets.set('SDImageGenEasy', []);
+    }
+    const images = await Promise.all(
+      defaultassets.map((x) => fetch(x).then((res) => res.blob())),
+    );
+    for (const image of images) {
+      const datauri = await blobToDataUri(image);
+      await importPreset(session, dataUriToBase64(datauri));
+    }
   }
 }
 function blobToDataUri(blob: Blob): Promise<string> {
@@ -542,11 +578,13 @@ export function readJSONFromPNG(base64PNG: string) {
   }
 }
 
-export async function importPreset(session: Session, base64: string) {
-  let json = readJSONFromPNG(base64);
-  if (!json || !json.type || !json.name) {
-    return undefined;
-  }
+/**
+ * 레거시 프리셋 JSON을 현재 스키마로 정규화.
+ * - type === 'style' 이면 SDImageGenEasy로 변환
+ * - 다른 타입이면 그대로 반환
+ */
+export function normalizePresetJson(json: any): any {
+  if (!json || !json.type) return json;
   if (json.type === 'style') {
     const newJson: any = {};
     newJson.type = 'SDImageGenEasy';
@@ -560,8 +598,17 @@ export async function importPreset(session: Session, base64: string) {
     newJson.backPrompt = json.backPrompt;
     newJson.uc = json.uc;
     newJson.steps = json.steps ?? 28;
-    json = newJson;
+    return newJson;
   }
+  return json;
+}
+
+export async function importPreset(session: Session, base64: string) {
+  let json = readJSONFromPNG(base64);
+  if (!json || !json.type || !json.name) {
+    return undefined;
+  }
+  json = normalizePresetJson(json);
   const path = await imageService.storeVibeImage(session, base64);
   json.profile = path;
   const preset = workFlowService.presetFromJSON(json);

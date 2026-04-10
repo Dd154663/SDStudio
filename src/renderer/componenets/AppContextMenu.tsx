@@ -238,6 +238,9 @@ export const AppContextMenu = observer(() => {
       deleteStyle(props.ctx as StyleContextAlt);
     } else if (id === 'edit') {
       editStyle(props.ctx as StyleContextAlt);
+    } else if (id === 'to-global') {
+      const ctx = props.ctx as StyleContextAlt;
+      appState.exportPresetToGlobal(ctx.session, ctx.preset);
     }
   };
   return (
@@ -303,6 +306,9 @@ export const AppContextMenu = observer(() => {
       <Menu id={ContextMenuType.Style}>
         <Item id="export" onClick={handleStyleItemClick}>
           해당 그림체 내보내기
+        </Item>
+        <Item id="to-global" onClick={handleStyleItemClick}>
+          글로벌 프리셋으로 저장
         </Item>
         <Item id="edit" onClick={handleStyleItemClick}>
           해당 그림체 편집

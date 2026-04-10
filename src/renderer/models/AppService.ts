@@ -2,6 +2,7 @@ import {
   backend,
   gameService,
   globalPieceService,
+  globalPresetService,
   imageService,
   isMobile,
   localAIService,
@@ -10,6 +11,8 @@ import {
   workFlowService,
   zipService,
 } from '.';
+import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
+import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { Dialog } from '../componenets/ConfirmWindow';
 import { cropMirrorResultFromDataUri, dataUriToBase64, deleteImageFiles } from './ImageService';
 import {
@@ -17,6 +20,8 @@ import {
   embedJSONInPNG,
   importPreset,
   importPresets,
+  normalizePresetJson,
+  readJSONFromPNG,
 } from './SessionService';
 import { action, observable } from 'mobx';
 import {
@@ -206,19 +211,7 @@ export class AppState {
         reader.onload = async (e: any) => {
           try {
             const base64 = dataUriToBase64(e.target.result);
-            const preset = await importPreset(this.curSession!, base64);
-            if (preset) {
-              this.curSession!.selectedWorkflow = {
-                workflowType: preset.type,
-                presetName: preset.name,
-              };
-              this.pushDialog({
-                type: 'yes-only',
-                text: '그림체를 임포트 했습니다',
-              });
-            } else {
-              this.externalImage = base64;
-            }
+            await this.handlePngImport(base64);
           } catch (e) {}
         };
         reader.readAsDataURL(file);
@@ -858,6 +851,182 @@ export class AppState {
       await backend.showFile(path);
     } catch (e: any) {
       appState.pushMessage('프리셋 내보내기 실패: ' + (e.message || e));
+    }
+  }
+
+  // ---------------- PNG 임포트 분기 ----------------
+
+  /**
+   * PNG base64 데이터를 받아서 사용자에게 임포트 방식을 물어본다.
+   * - 메타데이터에 유효한 프리셋이 있고 글로벌 지원 타입이면:
+   *     [현재 세션으로 / 글로벌 프리셋으로 / 프롬프트만 추출]
+   * - 프리셋이 있지만 글로벌 지원 외 타입이면:
+   *     [현재 세션으로 / 프롬프트만 추출]
+   * - 프리셋이 없으면 기존대로 externalImage (프롬프트 추출 뷰)
+   */
+  async handlePngImport(base64: string): Promise<void> {
+    if (!this.curSession) return;
+    const session = this.curSession;
+
+    let meta: any = null;
+    try {
+      meta = readJSONFromPNG(base64);
+    } catch (e) {
+      meta = null;
+    }
+
+    if (meta) {
+      meta = normalizePresetJson(meta);
+    }
+
+    const hasPreset = !!(meta && meta.type && meta.name);
+    const isGlobalSupported =
+      hasPreset &&
+      (SUPPORTED_GLOBAL_PRESET_TYPES as readonly string[]).includes(meta.type);
+
+    if (!hasPreset) {
+      // 프리셋 메타 없음 → 프롬프트 추출 뷰로
+      this.externalImage = base64;
+      return;
+    }
+
+    const items: { text: string; value: string }[] = [
+      {
+        text: `현재 세션의 프리셋으로 가져오기`,
+        value: 'session',
+      },
+    ];
+    if (isGlobalSupported) {
+      items.push({
+        text: '글로벌 프리셋으로 저장',
+        value: 'global',
+      });
+    }
+    items.push({
+      text: '프롬프트만 추출 (프리셋 저장 안 함)',
+      value: 'extract',
+    });
+
+    const presetLabel = meta.name ? `"${meta.name}" ` : '';
+    const typeLabel = isGlobalSupported
+      ? meta.type === 'SDImageGenEasy'
+        ? ' (그림체 이지모드)'
+        : ' (그림체)'
+      : ` (${meta.type})`;
+
+    this.pushDialog({
+      type: 'select',
+      text: `이미지에서 ${presetLabel}프리셋${typeLabel}을(를) 발견했습니다.\n어떻게 가져올까요?`,
+      items,
+      callback: async (option?: string) => {
+        if (!option) return;
+        if (option === 'session') {
+          try {
+            const preset = await importPreset(session, base64);
+            if (preset) {
+              session.selectedWorkflow = {
+                workflowType: preset.type,
+                presetName: preset.name,
+              };
+              this.pushDialog({
+                type: 'yes-only',
+                text: `"${preset.name}" 프리셋을 현재 세션에 가져왔습니다.`,
+              });
+            } else {
+              this.externalImage = base64;
+            }
+          } catch (e: any) {
+            this.pushMessage('세션 임포트 실패: ' + (e.message || e));
+          }
+        } else if (option === 'global') {
+          try {
+            const entry = await globalPresetService.importFromPng(base64);
+            if (entry) {
+              this.pushDialog({
+                type: 'yes-only',
+                text: `"${entry.name}" 프리셋을 글로벌 프리셋에 저장했습니다.`,
+              });
+            } else {
+              this.pushMessage('글로벌 프리셋 저장 실패: 유효하지 않은 메타데이터');
+            }
+          } catch (e: any) {
+            this.pushMessage('글로벌 프리셋 저장 실패: ' + (e.message || e));
+          }
+        } else if (option === 'extract') {
+          this.externalImage = base64;
+        }
+      },
+    });
+  }
+
+  // ---------------- 글로벌 프리셋 헬퍼 ----------------
+
+  async exportPresetToGlobal(session: Session, preset: any): Promise<void> {
+    try {
+      const entry = await globalPresetService.addFromSessionPreset(
+        session,
+        preset,
+      );
+      this.pushMessage(`글로벌 프리셋에 추가: ${entry.name}`);
+    } catch (e: any) {
+      this.pushMessage('글로벌로 내보내기 실패: ' + (e.message || e));
+    }
+  }
+
+  async importGlobalPresetIntoSession(
+    session: Session,
+    globalId: string,
+  ): Promise<void> {
+    try {
+      const preset = await globalPresetService.instantiateIntoSession(
+        session,
+        globalId,
+      );
+      if (preset) {
+        session.selectedWorkflow = {
+          workflowType: preset.type,
+          presetName: preset.name,
+        };
+        this.pushMessage(`세션에 추가: ${preset.name}`);
+      }
+    } catch (e: any) {
+      this.pushMessage('가져오기 실패: ' + (e.message || e));
+    }
+  }
+
+  @observable accessor globalPresetPicker:
+    | { workflowType: GlobalPresetType; onSelect: (id: string) => void }
+    | undefined = undefined;
+
+  @action
+  openGlobalPresetPicker(workflowType: GlobalPresetType): void {
+    if (!this.curSession) {
+      this.pushMessage('세션을 먼저 선택해주세요.');
+      return;
+    }
+    const session = this.curSession;
+    this.globalPresetPicker = {
+      workflowType,
+      onSelect: async (id: string) => {
+        this.globalPresetPicker = undefined;
+        await this.importGlobalPresetIntoSession(session, id);
+      },
+    };
+  }
+
+  @action
+  closeGlobalPresetPicker(): void {
+    this.globalPresetPicker = undefined;
+  }
+
+  async exportGlobalPresetToPng(entry: IGlobalPresetEntry): Promise<void> {
+    try {
+      const path =
+        'exports/' + entry.name + '_' + Date.now().toString() + '.png';
+      await globalPresetService.exportToPng(entry.id, path);
+      await backend.showFile(path);
+    } catch (e: any) {
+      this.pushMessage('내보내기 실패: ' + (e.message || e));
     }
   }
 

@@ -217,27 +217,29 @@ export const TabComponent: React.FC<TabComponentProps> = ({
             </button>
           ))}
         </div>
-        <div className="flex md:hidden gap-1 w-full">
+        <div className="flex md:hidden gap-1 w-full items-center">
           {!tabs[activeTab].banToggle && toggleView && (
             <button
-              className="active:brightness-90 hover:brightness-95 select-none h-10 md:hidden text-sm back-llgray px-3 flex justify-center items-center mr-auto"
+              className="active:brightness-90 hover:brightness-95 select-none h-10 md:hidden text-sm back-llgray px-3 flex justify-center items-center"
               onClick={() => setToggleViewOpen(!toggleViewOpen)}
             >
               {toggleViewOpen ? '프롬프트 닫기' : '프롬프트 열기'}
             </button>
           )}
-          {tabs.map((tab, index) => (
-            <button
-              key={index}
-              className={
-                'active:brightness-90 hover:brightness-95 select-none px-3 text-base h-10 rounded-md ' +
-                (index === activeTab ? `back-sky` : 'back-llgray')
-              }
-              onClick={() => handleTabClick(index)}
-            >
-              {tab.emoji}
-            </button>
-          ))}
+          <div className="flex gap-1 ml-auto">
+            {tabs.map((tab, index) => (
+              <button
+                key={index}
+                className={
+                  'active:brightness-90 hover:brightness-95 select-none px-3 text-base h-10 rounded-md ' +
+                  (index === activeTab ? `back-sky` : 'back-llgray')
+                }
+                onClick={() => handleTabClick(index)}
+              >
+                {tab.emoji}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       <div className="flex-1 overflow-hidden relative">

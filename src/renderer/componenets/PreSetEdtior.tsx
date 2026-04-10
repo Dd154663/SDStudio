@@ -16,6 +16,7 @@ import {
   FaImage,
   FaPlus,
   FaShare,
+  FaStar,
   FaTrash,
   FaTrashAlt,
   FaUserAlt,
@@ -1176,6 +1177,16 @@ const ProfilePreSetSelect = observer(({}) => {
             <FaFolderOpen />
           </div>
           </Tooltip>
+          <Tooltip content="글로벌 프리셋에서 가져오기">
+          <div
+            className="flex-1 w-10 flex m-4 items-center justify-center rounded-xl clickable back-lllgray"
+            onClick={() => {
+              appState.openGlobalPresetPicker('SDImageGenEasy');
+            }}
+          >
+            <FaStar />
+          </div>
+          </Tooltip>
         </div>
       </div>
     </div>
@@ -1276,6 +1287,18 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
       >
         <FaPlus />
       </button>
+      {workflowType === 'SDImageGen' && (
+        <Tooltip content="글로벌 프리셋에서 가져오기">
+          <button
+            className={`icon-button`}
+            onClick={() => {
+              appState.openGlobalPresetPicker('SDImageGen');
+            }}
+          >
+            <FaStar />
+          </button>
+        </Tooltip>
+      )}
       {isOpen && (
         <ul className="left-0 top-10 absolute max-h-60 z-20 w-full mt-1 bg-white border-2 border-gray-300 dark:border-slate-600 rounded-md shadow-lg overflow-auto dark:bg-slate-700">
           {presets.map((option) => (
@@ -1360,6 +1383,20 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                   <FaShare />
                 </button>
                 </Tooltip>
+                {(workflowType === 'SDImageGen' ||
+                  workflowType === 'SDImageGenEasy') && (
+                  <Tooltip content="글로벌 프리셋으로 저장">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        appState.exportPresetToGlobal(curSession, option);
+                      }}
+                      className="p-2 mx-1 icon-button bg-yellow-500"
+                    >
+                      <FaStar />
+                    </button>
+                  </Tooltip>
+                )}
                 <Tooltip content="그림체 삭제">
                 <button
                   onClick={() => {

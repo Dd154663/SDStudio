@@ -22,7 +22,8 @@ import ExpiredProjectsDialog from './ExpiredProjectsDialog';
 import QueueControl from './SceneQueueControl';
 import { FloatView, FloatViewProvider } from './FloatView';
 import { observer, useObserver } from 'mobx-react-lite';
-import { FaGlobe, FaImages, FaPenFancy } from 'react-icons/fa';
+import { FaGlobe, FaImages, FaPenFancy, FaStar } from 'react-icons/fa';
+import { GlobalPresetTab, GlobalPresetPickerOverlay } from './GlobalPresetTab';
 import ModalOverlay from './ModalOverlay';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -311,6 +312,23 @@ export const App = observer(() => {
     };
   }, [appState.curSession]);
 
+  // 글로벌 프리셋 손상 복구 알림
+  useEffect(() => {
+    const handler = (e: any) => {
+      const backupName = e.detail?.backupName;
+      appState.pushDialog({
+        type: 'yes-only',
+        text:
+          '글로벌 프리셋 파일이 손상되어 빈 상태로 초기화되었습니다.' +
+          (backupName ? `\n\n백업: ${backupName}` : ''),
+      });
+    };
+    window.globalPresetService?.addEventListener('corrupted', handler);
+    return () => {
+      window.globalPresetService?.removeEventListener('corrupted', handler);
+    };
+  }, []);
+
   const tabs = [
     {
       label: '이미지생성',
@@ -321,6 +339,12 @@ export const App = observer(() => {
       label: '이미지변형',
       content: <QueueControl type="inpaint" showPannel />,
       emoji: <FaPenFancy />,
+    },
+    {
+      label: '글로벌 프리셋',
+      content: <GlobalPresetTab />,
+      emoji: <FaStar />,
+      banToggle: true,
     },
     ...(!isMobile ? [{
       label: '웹 검색',
@@ -432,6 +456,7 @@ export const App = observer(() => {
         <AlertWindow />
         <ConfirmWindow />
         <ExpiredProjectsDialog />
+        <GlobalPresetPickerOverlay />
         {appState.progressDialog && (
           <ProgressWindow dialog={appState.progressDialog} />
         )}

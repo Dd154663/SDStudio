@@ -5,7 +5,7 @@ import { base64ToDataUri } from './BrushTool';
 import { PromptHighlighter } from './SceneEditor';
 import { extractPromptDataFromBase64 } from '../models/util';
 import { appState } from '../models/AppService';
-import { imageService, workFlowService } from '../models';
+import { imageService, workFlowService, globalPresetService } from '../models';
 import { Sampling } from '../backends/imageGen';
 import { runInAction } from 'mobx';
 import { FaTimes } from 'react-icons/fa';
@@ -80,11 +80,21 @@ export const ExternalImageView = observer(
 
       try {
         const session = appState.curSession;
-        const isNew = target.startsWith('new-');
-        let presetType = target === 'new-easy' ? 'SDImageGenEasy' : 'SDImageGen';
+        const isGlobal = target.startsWith('new-global-');
+        const isNew = target.startsWith('new-') && !isGlobal;
+        let presetType =
+          target === 'new-easy' || target === 'new-global-easy'
+            ? 'SDImageGenEasy'
+            : target === 'new-normal' || target === 'new-global-normal'
+              ? 'SDImageGen'
+              : 'SDImageGen';
 
         let preset: any;
-        if (isNew) {
+        if (isGlobal) {
+          // 글로벌 프리셋 대상 — 메모리상에서만 빌드, 세션엔 넣지 않음
+          preset = workFlowService.buildPreset(presetType);
+          preset.name = 'external image';
+        } else if (isNew) {
           preset = workFlowService.buildPreset(presetType);
           preset.name = 'external image';
         } else if (target === 'current') {
@@ -99,13 +109,13 @@ export const ExternalImageView = observer(
         runInAction(() => {
           if (options.prompt) {
             preset.frontPrompt = job.prompt ?? '';
-            if (isNew) preset.backPrompt = '';
+            if (isNew || isGlobal) preset.backPrompt = '';
           }
           if (options.uc) {
             preset.uc = job.uc ?? '';
           }
           if (options.characters && hasCharacters) {
-            if (options.charactersAppend && !isNew) {
+            if (options.charactersAppend && !isNew && !isGlobal) {
               preset.characterPrompts = [
                 ...(preset.characterPrompts || []),
                 ...job.characterPrompts.map((cp, i) => ({
@@ -128,6 +138,28 @@ export const ExternalImageView = observer(
             preset.legacyPromptConditioning = job.legacyPromptConditioning ?? false;
           }
         });
+
+        // 글로벌 프리셋 대상: shared state(시드/바이브/캐릭터 레퍼런스)는 저장 안 함
+        // (글로벌 프리셋은 그림체 설정만 저장. 시드/바이브/레퍼런스는 세션 단위 데이터)
+        if (isGlobal) {
+          try {
+            const entry = await globalPresetService.addFromPresetAndImage(
+              preset,
+              image,
+              preset.name,
+            );
+            appState.pushDialog({
+              type: 'yes-only',
+              text: `"${entry.name}" 프리셋을 글로벌에 저장했습니다.`,
+            });
+            onClose();
+          } catch (e: any) {
+            appState.pushMessage(
+              '글로벌 저장 실패: ' + (e?.message || e),
+            );
+          }
+          return;
+        }
 
         // 시드는 presetShared에 저장
         if (options.seed && job.seed != null) {
@@ -298,12 +330,28 @@ export const ExternalImageView = observer(
                       value={target}
                       onChange={(e) => setTarget(e.target.value)}
                     >
-                      <option value="new-normal">새 일반 사전설정</option>
-                      <option value="new-easy">새 이지모드 사전설정</option>
-                      {appState.curSession?.selectedWorkflow && (
-                        <option value="current">현재 사전설정에 적용</option>
-                      )}
+                      <optgroup label="현재 세션">
+                        <option value="new-normal">새 일반 사전설정</option>
+                        <option value="new-easy">새 이지모드 사전설정</option>
+                        {appState.curSession?.selectedWorkflow && (
+                          <option value="current">현재 사전설정에 적용</option>
+                        )}
+                      </optgroup>
+                      <optgroup label="글로벌 프리셋">
+                        <option value="new-global-normal">
+                          새 글로벌 그림체
+                        </option>
+                        <option value="new-global-easy">
+                          새 글로벌 그림체 (이지모드)
+                        </option>
+                      </optgroup>
                     </select>
+                    {target.startsWith('new-global-') && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-snug">
+                        ⓘ 글로벌 프리셋은 그림체 설정(프롬프트·파라미터)만 저장됩니다.
+                        시드·바이브·캐릭터 레퍼런스는 저장되지 않습니다.
+                      </p>
+                    )}
                   </div>
 
                   {/* 프롬프트 */}
