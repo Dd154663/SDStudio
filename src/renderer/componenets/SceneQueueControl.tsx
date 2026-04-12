@@ -115,6 +115,7 @@ interface SceneCellProps {
   isBookmarked?: boolean;
   onToggleBookmark?: () => void;
   disableHover?: boolean;
+  isFocused?: boolean;
 }
 
 export const SceneCell = observer(
@@ -130,6 +131,7 @@ export const SceneCell = observer(
     isBookmarked,
     onToggleBookmark,
     disableHover,
+    isFocused,
   }: SceneCellProps) => {
     const { show, hideAll } = useContextMenu({
       id: ContextMenuType.Scene,
@@ -348,6 +350,8 @@ export const SceneCell = observer(
       );
     };
 
+    const focusRing = isFocused ? ' outline outline-4 outline-sky-400 outline-offset-2' : '';
+
     if (isClassic) {
       // ===== 클래식 디자인 =====
       return (
@@ -356,7 +360,8 @@ export const SceneCell = observer(
           className={
             'relative z-0 m-2 p-1 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-500 ' +
             (isDragging ? 'opacity-0 no-touch ' : '') +
-            (isOver ? ' outline outline-sky-500' : '')
+            (isOver ? ' outline outline-sky-500' : '') +
+            focusRing
           }
           style={style}
           ref={cardRef}
@@ -408,7 +413,8 @@ export const SceneCell = observer(
           (disableHover ? '' : 'group ') + 'relative z-0 m-1.5 p-1 rounded-lg bg-white dark:bg-slate-800 border-2 ' +
           (scene.mains.length > 0 ? 'border-yellow-400 ' : 'border-gray-200 dark:border-slate-600 ') +
           (isDragging ? 'opacity-0 no-touch ' : '') +
-          (isOver ? ' ring-2 ring-sky-500' : '')
+          (isOver ? ' ring-2 ring-sky-500' : '') +
+          focusRing
         }
         style={style}
         ref={cardRef}
@@ -621,6 +627,12 @@ const QueueControl = observer(
       undefined,
     );
     const [cellSize, setCellSize] = useState(1);
+    const [focusedSceneIndex, setFocusedSceneIndex] = useState<number | null>(null);
+    const gridContainerRef = useRef<HTMLDivElement>(null);
+    const [sceneSearchQuery, setSceneSearchQuery] = useState('');
+    const [showSceneSearch, setShowSceneSearch] = useState(false);
+    const sceneSearchRef = useRef<HTMLInputElement>(null);
+
     useEffect(() => {
       const onProgressUpdated = () => {
         rerender({});
@@ -684,6 +696,94 @@ const QueueControl = observer(
       window.addEventListener('shortcut-action', handler);
       return () => window.removeEventListener('shortcut-action', handler);
     }, [curSession, type]);
+
+    // --- 씬 카드 키보드 네비게이션 ---
+    const getFilteredScenes = useCallback(() => {
+      return curSession
+        .getScenes(type)
+        .filter((x) => !filterFunc || filterFunc(x))
+        .filter(
+          (x) =>
+            !sceneSearchQuery ||
+            x.name.toLowerCase().includes(sceneSearchQuery.toLowerCase()),
+        );
+    }, [curSession, type, filterFunc, sceneSearchQuery]);
+
+    const getGridColumnCount = useCallback((): number => {
+      if (!gridContainerRef.current) return 1;
+      const style = window.getComputedStyle(gridContainerRef.current);
+      const cols = style.gridTemplateColumns;
+      if (!cols || cols === 'none') return 1;
+      return cols.split(' ').length;
+    }, []);
+
+    useEffect(() => {
+      if (isMobile) return;
+      const sceneNavHandler = (e: Event) => {
+        const action = (e as CustomEvent).detail?.action;
+        if (!action || typeof action !== 'string' || !action.startsWith('scene-'))
+          return;
+        // 비활성 탭의 QueueControl은 무시 (display:none이면 offsetParent가 null)
+        if (
+          !gridContainerRef.current ||
+          gridContainerRef.current.offsetParent === null
+        )
+          return;
+        const scenes = getFilteredScenes();
+        if (scenes.length === 0) return;
+
+        if (
+          action === 'scene-left' ||
+          action === 'scene-right' ||
+          action === 'scene-up' ||
+          action === 'scene-down'
+        ) {
+          let idx = focusedSceneIndex ?? -1;
+          if (idx < 0 || idx >= scenes.length) {
+            setFocusedSceneIndex(0);
+            return;
+          }
+          const cols = getGridColumnCount();
+          let next = idx;
+          if (action === 'scene-left') next = Math.max(0, idx - 1);
+          else if (action === 'scene-right')
+            next = Math.min(scenes.length - 1, idx + 1);
+          else if (action === 'scene-up') next = Math.max(0, idx - cols);
+          else if (action === 'scene-down')
+            next = Math.min(scenes.length - 1, idx + cols);
+          setFocusedSceneIndex(next);
+        } else if (action === 'scene-open-images') {
+          if (focusedSceneIndex != null && focusedSceneIndex < scenes.length) {
+            setDisplayScene(scenes[focusedSceneIndex]);
+          }
+        } else if (action === 'scene-open-editor') {
+          if (focusedSceneIndex != null && focusedSceneIndex < scenes.length) {
+            setEditingScene(scenes[focusedSceneIndex]);
+          }
+        }
+      };
+      window.addEventListener('shortcut-action', sceneNavHandler);
+      return () =>
+        window.removeEventListener('shortcut-action', sceneNavHandler);
+    }, [
+      focusedSceneIndex,
+      getFilteredScenes,
+      getGridColumnCount,
+      setDisplayScene,
+      setEditingScene,
+    ]);
+
+    // 포커스된 씬 자동 스크롤
+    useEffect(() => {
+      if (focusedSceneIndex == null) return;
+      const scenes = getFilteredScenes();
+      const scene = scenes[focusedSceneIndex];
+      if (!scene) return;
+      const el = document.getElementById(
+        `scene-cell-${scene.type}-${scene.name}`,
+      );
+      if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }, [focusedSceneIndex, getFilteredScenes]);
 
     const addScene = () => {
       appState.pushDialog({
@@ -1170,9 +1270,6 @@ const QueueControl = observer(
       SceneSelectorItem | undefined
     >(undefined);
 
-    const [sceneSearchQuery, setSceneSearchQuery] = useState('');
-    const [showSceneSearch, setShowSceneSearch] = useState(false);
-    const sceneSearchRef = useRef<HTMLInputElement>(null);
     const [showSceneTrash, setShowSceneTrash] = useState(false);
 
     const [bmRev, setBmRev] = useState(0);
@@ -1366,8 +1463,10 @@ const QueueControl = observer(
             const effectiveCellSize = showPannel || isMobile ? cellSize : 2;
             const minWidths = ['180px', '240px', '320px'];
             const useGrid = !isMobile;
+            const renderedScenes = getFilteredScenes();
             return (
               <div
+                ref={gridContainerRef}
                 className={useGrid ? 'overflow-auto w-full content-start' : 'flex flex-wrap overflow-auto justify-start items-start content-start'}
                 style={useGrid ? {
                   display: 'grid',
@@ -1376,17 +1475,7 @@ const QueueControl = observer(
                   alignContent: 'start',
                 } : undefined}
               >
-                {curSession
-                  .getScenes(type)
-                  .filter((x) => {
-                    if (!filterFunc) return true;
-                    return filterFunc(x);
-                  })
-                  .filter((x) => {
-                    if (!sceneSearchQuery) return true;
-                    return x.name.toLowerCase().includes(sceneSearchQuery.toLowerCase());
-                  })
-                  .map((scene) => (
+                {renderedScenes.map((scene, sceneIdx) => (
                     <SceneCell
                       cellSize={effectiveCellSize}
                       key={scene.name}
@@ -1399,6 +1488,7 @@ const QueueControl = observer(
                       isBookmarked={sessionService.isSceneBookmarked(curSession.name, scene.name)}
                       onToggleBookmark={() => sessionService.toggleSceneBookmark(curSession.name, scene.name, scene.type)}
                       disableHover={!!(editingScene || displayScene)}
+                      isFocused={focusedSceneIndex === sceneIdx}
                     />
                   ))}
               </div>

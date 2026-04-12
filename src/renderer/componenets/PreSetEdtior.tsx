@@ -501,12 +501,33 @@ interface CharacterReferenceEditorProps {
   disabled: boolean;
 }
 
+// 레퍼런스 기본값 localStorage 키
+const REF_DEFAULT_STRENGTH_KEY = 'sdstudio-ref-default-strength';
+const REF_DEFAULT_FIDELITY_KEY = 'sdstudio-ref-default-fidelity';
+const REF_DEFAULT_TYPE_KEY = 'sdstudio-ref-default-type';
+
+export function getRefDefaults() {
+  return {
+    strength: parseFloat(localStorage.getItem(REF_DEFAULT_STRENGTH_KEY) || '0.6'),
+    fidelity: parseFloat(localStorage.getItem(REF_DEFAULT_FIDELITY_KEY) || '1.0'),
+    referenceType: (localStorage.getItem(REF_DEFAULT_TYPE_KEY) || 'character') as
+      'character' | 'style' | 'character&style',
+  };
+}
+
 export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferenceEditorProps) => {
   const { curSession } = appState;
   const { preset, shared, editCharacterReference, setEditCharacterReference, meta } =
     useContext(WFElementContext)!;
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const [showDefaults, setShowDefaults] = useState(false);
+  const [refDefaults, setRefDefaults] = useState(getRefDefaults);
+
+  const updateDefault = (key: string, value: string) => {
+    localStorage.setItem(key, value);
+    setRefDefaults(getRefDefaults());
+  };
 
   const getField = () => {
     if (editCharacterReference!.fieldType === 'preset') return preset[editCharacterReference!.field];
@@ -521,13 +542,14 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
   const referenceChange = async (reference: string) => {
     if (!reference) return;
     const path = await imageService.storeReferenceImage(curSession!, reference);
+    const defaults = getRefDefaults();
     getField().push(
       ReferenceItem.fromJSON({
         path: path,
         info: 1.0,
-        strength: 0.6,
-        fidelity: 1.0,
-        referenceType: 'character'
+        strength: defaults.strength,
+        fidelity: defaults.fidelity,
+        referenceType: defaults.referenceType,
       }),
     );
   };
@@ -617,6 +639,56 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
       >
         <div className="flex-1 overflow-hidden">
           <div className="h-full overflow-auto">
+            {/* 기본값 설정 섹션 */}
+            <div className="mx-2 mt-2 mb-1">
+              <button
+                className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex items-center gap-1"
+                onClick={() => setShowDefaults(!showDefaults)}
+              >
+                {showDefaults ? '▾' : '▸'} 새 레퍼런스 기본값 설정
+              </button>
+              {showDefaults && (
+                <div className="mt-2 p-3 bg-gray-100 dark:bg-slate-700 rounded-lg space-y-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="gray-label w-20 flex-none">Strength:</span>
+                    <input
+                      type="range"
+                      className="flex-1"
+                      min="0" max="2" step="0.01"
+                      value={refDefaults.strength}
+                      onChange={(e) => updateDefault(REF_DEFAULT_STRENGTH_KEY, e.target.value)}
+                    />
+                    <span className="w-10 text-center text-default">{refDefaults.strength.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="gray-label w-20 flex-none">Fidelity:</span>
+                    <input
+                      type="range"
+                      className="flex-1"
+                      min="0" max="2" step="0.01"
+                      value={refDefaults.fidelity}
+                      onChange={(e) => updateDefault(REF_DEFAULT_FIDELITY_KEY, e.target.value)}
+                    />
+                    <span className="w-10 text-center text-default">{refDefaults.fidelity.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="gray-label w-20 flex-none">유형:</span>
+                    {(['character', 'style', 'character&style'] as const).map((t) => (
+                      <label key={t} className="flex items-center gap-1 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="ref-default-type"
+                          checked={refDefaults.referenceType === t}
+                          onChange={() => updateDefault(REF_DEFAULT_TYPE_KEY, t)}
+                          className="accent-sky-500"
+                        />
+                        <span className="text-default">{t}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             {getField().length === 0 && !isMobile && (
               <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500 p-8">
                 <FaCloudUploadAlt size={48} className="mb-4 opacity-60" />

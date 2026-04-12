@@ -4,7 +4,7 @@ import { isMobile } from '.';
 export interface ShortcutAction {
   id: string;
   label: string;
-  category: 'global' | 'viewer';
+  category: 'global' | 'viewer' | 'scene';
   defaultKey: string;
 }
 
@@ -15,6 +15,14 @@ const ACTIONS: ShortcutAction[] = [
   { id: 'prev-image', label: '이전 이미지', category: 'viewer', defaultKey: 'ArrowLeft' },
   { id: 'next-image', label: '다음 이미지', category: 'viewer', defaultKey: 'ArrowRight' },
   { id: 'delete-image', label: '이미지 삭제', category: 'viewer', defaultKey: 'Delete' },
+
+  // 씬 네비게이션 액션 (씬 그리드가 보일 때, FloatView 닫혀 있을 때)
+  { id: 'scene-left', label: '이전 씬', category: 'scene', defaultKey: 'ArrowLeft' },
+  { id: 'scene-right', label: '다음 씬', category: 'scene', defaultKey: 'ArrowRight' },
+  { id: 'scene-up', label: '위 씬', category: 'scene', defaultKey: 'ArrowUp' },
+  { id: 'scene-down', label: '아래 씬', category: 'scene', defaultKey: 'ArrowDown' },
+  { id: 'scene-open-images', label: '씬 이미지 보기', category: 'scene', defaultKey: 'Enter' },
+  { id: 'scene-open-editor', label: '씬 편집', category: 'scene', defaultKey: 'Tab' },
 
   // 전역 액션
   { id: 'tab-1', label: '이미지생성 탭', category: 'global', defaultKey: 'Ctrl+1' },
@@ -32,7 +40,7 @@ const STORAGE_KEY = 'sdstudio-key-bindings';
 
 export class KeyboardShortcutService {
   private userBindings: Record<string, string> = {};
-  private keyToAction: Map<string, string> = new Map();
+  private keyToAction: Map<string, string[]> = new Map();
 
   constructor() {
     this.loadBindings();
@@ -59,7 +67,9 @@ export class KeyboardShortcutService {
     for (const action of ACTIONS) {
       const key = this.userBindings[action.id] ?? action.defaultKey;
       if (key) {
-        this.keyToAction.set(key, action.id);
+        const existing = this.keyToAction.get(key) || [];
+        existing.push(action.id);
+        this.keyToAction.set(key, existing);
       }
     }
   }
@@ -98,8 +108,11 @@ export class KeyboardShortcutService {
   }
 
   findConflict(key: string, excludeActionId?: string): string | undefined {
+    const excludeAction = ACTIONS.find((a) => a.id === excludeActionId);
     for (const action of ACTIONS) {
       if (action.id === excludeActionId) continue;
+      // 다른 카테고리 간 같은 키는 충돌이 아님 (우선순위로 분기)
+      if (excludeAction && action.category !== excludeAction.category) continue;
       const bound = this.getBinding(action.id);
       if (bound === key) return action.label;
     }
@@ -166,33 +179,43 @@ export class KeyboardShortcutService {
     const normalized = KeyboardShortcutService.normalizeKey(e);
     if (!normalized) return;
 
-    const actionId = this.keyToAction.get(normalized);
-    if (!actionId) return;
-
-    const action = this.getActionDef(actionId);
-    if (!action) return;
+    const actionIds = this.keyToAction.get(normalized);
+    if (!actionIds || actionIds.length === 0) return;
 
     // 공통 억제: input/textarea 포커스
     if (this.isInputFocused()) return;
 
-    if (action.category === 'viewer') {
-      // 뷰어 액션: ResultViewer 열려있을 때만 허용
-      if (!appState.resultViewerOpen) return;
-      // 다이얼로그 열려있으면 억제
-      if (appState.dialogs.length > 0) return;
-    } else {
-      // 전역 액션: FloatView/다이얼로그/ConfigScreen/PieceEditor 열려있으면 억제
-      if (appState.floatViewCount > 0) return;
-      if (appState.dialogs.length > 0) return;
-      if (appState.configScreenOpen) return;
-      if (appState.pieceEditorOpen) return;
-    }
+    // 같은 키에 여러 카테고리 액션이 매핑될 수 있음 (예: ArrowLeft = viewer:prev-image + scene:scene-left)
+    // ACTIONS 배열 정의 순서(viewer → scene → global)가 우선순위를 결정:
+    // 뷰어가 열려 있으면 viewer 액션이 먼저 통과, 아니면 scene/global로 폴스루
+    for (const actionId of actionIds) {
+      const action = this.getActionDef(actionId);
+      if (!action) continue;
 
-    e.preventDefault();
-    e.stopPropagation();
-    window.dispatchEvent(
-      new CustomEvent('shortcut-action', { detail: { action: actionId } }),
-    );
+      if (action.category === 'viewer') {
+        if (!appState.resultViewerOpen) continue;
+        if (appState.dialogs.length > 0) continue;
+      } else if (action.category === 'scene') {
+        if (appState.floatViewCount > 0) continue;
+        if (appState.dialogs.length > 0) continue;
+        if (appState.configScreenOpen) continue;
+        if (appState.pieceEditorOpen) continue;
+      } else {
+        // global
+        if (appState.floatViewCount > 0) continue;
+        if (appState.dialogs.length > 0) continue;
+        if (appState.configScreenOpen) continue;
+        if (appState.pieceEditorOpen) continue;
+      }
+
+      // 첫 번째로 조건을 통과한 액션 실행
+      e.preventDefault();
+      e.stopPropagation();
+      window.dispatchEvent(
+        new CustomEvent('shortcut-action', { detail: { action: actionId } }),
+      );
+      return;
+    }
   };
 
   install() {

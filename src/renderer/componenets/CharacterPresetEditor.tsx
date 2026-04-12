@@ -26,6 +26,7 @@ import { appState } from '../models/AppService';
 import { FileUploadBase64 } from './UtilComponents';
 import PromptEditTextArea from './PromptEditTextArea';
 import { FloatView } from './FloatView';
+import { getRefDefaults } from './PreSetEdtior';
 
 // 바이브 이미지 컴포넌트
 const VibeImage = ({
@@ -120,11 +121,13 @@ const CharacterPresetInnerEditor = observer(({
   const handleReferenceChange = async (reference: string) => {
     if (!reference) return;
     const path = await imageService.storeReferenceImage(curSession!, reference);
+    const defaults = getRefDefaults();
     const newRef = ReferenceItem.fromJSON({
       path: path,
       info: 1.0,
-      strength: 1.0,
-      description: 'character',
+      strength: defaults.strength,
+      fidelity: defaults.fidelity,
+      referenceType: defaults.referenceType,
     }) as ReferenceItem;
     setCharacterReferences([...characterReferences, newRef]);
   };
