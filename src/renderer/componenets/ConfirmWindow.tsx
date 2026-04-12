@@ -56,7 +56,7 @@ const ConfirmWindow = observer(() => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [inputValue, appState.dialogs]);
+  }, [inputValue, checkedItems, appState.dialogs]);
 
   return (
     <>

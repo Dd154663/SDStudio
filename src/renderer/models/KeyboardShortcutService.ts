@@ -23,6 +23,9 @@ const ACTIONS: ShortcutAction[] = [
   { id: 'scene-down', label: '아래 씬', category: 'scene', defaultKey: 'ArrowDown' },
   { id: 'scene-open-images', label: '씬 이미지 보기', category: 'scene', defaultKey: 'Enter' },
   { id: 'scene-open-editor', label: '씬 편집', category: 'scene', defaultKey: 'Tab' },
+  { id: 'scene-queue-add', label: '포커스 씬 예약 추가', category: 'scene', defaultKey: 'Ctrl+A' },
+  { id: 'queue-run', label: '예약 실행', category: 'scene', defaultKey: 'Space' },
+  { id: 'queue-clear', label: '모든 씬 예약 취소', category: 'scene', defaultKey: 'Ctrl+D' },
 
   // 전역 액션
   { id: 'tab-1', label: '이미지생성 탭', category: 'global', defaultKey: 'Ctrl+1' },

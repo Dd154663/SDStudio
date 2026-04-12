@@ -721,7 +721,8 @@ const QueueControl = observer(
       if (isMobile) return;
       const sceneNavHandler = (e: Event) => {
         const action = (e as CustomEvent).detail?.action;
-        if (!action || typeof action !== 'string' || !action.startsWith('scene-'))
+        if (!action || typeof action !== 'string') return;
+        if (!action.startsWith('scene-') && action !== 'queue-run' && action !== 'queue-clear')
           return;
         // 비활성 탭의 QueueControl은 무시 (display:none이면 offsetParent가 null)
         if (
@@ -760,6 +761,17 @@ const QueueControl = observer(
           if (focusedSceneIndex != null && focusedSceneIndex < scenes.length) {
             setEditingScene(scenes[focusedSceneIndex]);
           }
+        } else if (action === 'scene-queue-add') {
+          if (focusedSceneIndex != null && focusedSceneIndex < scenes.length) {
+            const scene = scenes[focusedSceneIndex];
+            queueScene(curSession, scene, appState.samples).catch((e: any) => {
+              appState.pushMessage('프롬프트 에러: ' + e.message);
+            });
+          }
+        } else if (action === 'queue-run') {
+          taskQueueService.run();
+        } else if (action === 'queue-clear') {
+          taskQueueService.removeAllTasks();
         }
       };
       window.addEventListener('shortcut-action', sceneNavHandler);
