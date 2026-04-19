@@ -15,8 +15,42 @@ export function cleanPARR(parr: PARR): PARR {
   return parr.map((p) => p.trim());
 }
 
+/**
+ * ##주석## 블록 제거.
+ * - 여러 줄, 콤마 포함 가능 (non-greedy)
+ * - 짝이 맞지 않는 단일 `##` 는 리터럴로 유지
+ * - API 송신 직전에만 제거. 저장 데이터는 원문 유지.
+ */
+export function stripPromptComments(str: string): string {
+  return str.replace(/##[\s\S]*?##/g, '');
+}
+
 export function toPARR(str: string) {
-  return cleanPARR(str.replace('\n', ',').split(',')).filter((x) => x !== '');
+  return cleanPARR(
+    stripPromptComments(str).replace('\n', ',').split(','),
+  ).filter((x) => x !== '');
+}
+
+/**
+ * 프롬프트 문자열에 포함된 `<group.name>` 조각 참조를 전개하고 주석을 제거한
+ * 최종 문자열 반환. UC(네거티브 프롬프트)처럼 toPARR/parseWord 파이프라인을
+ * 직접 거치지 않는 필드에 사용.
+ *
+ * 조각 참조가 잘못됐거나 사이클이 있으면 예외 발생 — 긍정 프롬프트와 동일한 동작.
+ */
+export function expandPieces(
+  text: string,
+  session: Session | undefined,
+  scene: Scene | InpaintScene | undefined,
+): string {
+  if (!text) return '';
+  const tokens = toPARR(text); // 내부에서 stripPromptComments 처리됨
+  if (tokens.length === 0) return '';
+  const node: PromptNode = {
+    type: 'group',
+    children: tokens.map((w) => promptService.parseWord(w, session, scene)),
+  };
+  return lowerPromptNode(node);
 }
 
 export class PromptService extends EventTarget {
@@ -519,7 +553,27 @@ export const highlightPrompt = (
   text: string,
   lineHighlight: boolean = false,
 ) => {
-  let [parenFine, lastPos] = parenCheck(text);
+  // 주석 범위 수집 (원본 text 기준 절대 오프셋)
+  const commentRanges: Array<[number, number]> = [];
+  const commentRegex = /##[\s\S]*?##/g;
+  let commentMatch: RegExpExecArray | null;
+  while ((commentMatch = commentRegex.exec(text)) !== null) {
+    commentRanges.push([
+      commentMatch.index,
+      commentMatch.index + commentMatch[0].length,
+    ]);
+  }
+  const overlapsComment = (wordStart: number, wordEnd: number): boolean =>
+    commentRanges.some(([s, e]) => s < wordEnd && e > wordStart);
+
+  // 괄호 검사는 주석 영역을 공백으로 대체한 텍스트에서 수행
+  // (주석 내부 괄호가 오류로 집계되지 않도록)
+  const parenCheckText = commentRanges.length === 0
+    ? text
+    : text.split('').map((c, i) =>
+        commentRanges.some(([s, e]) => i >= s && i < e) ? ' ' : c,
+      ).join('');
+  let [parenFine, lastPos] = parenCheck(parenCheckText);
   let offset = 0;
   const words = text
     .split('\n')
@@ -531,7 +585,24 @@ export const highlightPrompt = (
             return word;
           }
           if (word === ',') {
+            // 콤마가 주석 영역 내부면 주석 스타일
+            const isInComment = overlapsComment(offset, offset + 1);
+            offset += 0; // 기존 로직과 맞춤 (콤마는 offset 증가 안 함 — 다음 단어의 +1에 포함)
+            if (isInComment) {
+              return '<span class="syntax-comment">,</span>';
+            }
             return word;
+          }
+          // 단어가 주석 영역과 겹치면 통째로 주석 스타일
+          const wordStart = offset;
+          const wordEnd = offset + word.length;
+          if (overlapsComment(wordStart, wordEnd)) {
+            const escaped = word
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;');
+            offset += word.length + 1;
+            return `<span class="syntax-comment">${escaped}</span>`;
           }
           const classNames = [];
           let leftTrimPos = 0;

@@ -135,6 +135,7 @@ export const ExternalImageView = observer(
             preset.cfgRescale = job.cfgRescale ?? 0;
             preset.useCoords = job.useCoords ?? false;
             preset.varietyPlus = job.varietyPlus ?? false;
+            preset.deliberateEulerAncestralBug = job.deliberateEulerAncestralBug ?? false;
             preset.legacyPromptConditioning = job.legacyPromptConditioning ?? false;
           }
         });
@@ -510,6 +511,7 @@ export const ExternalImageView = observer(
                       <div><span className="text-gray-500 dark:text-gray-400">Sampler:</span> <span className="text-gray-800 dark:text-gray-200">{job.sampling}</span></div>
                       <div><span className="text-gray-500 dark:text-gray-400">Noise:</span> <span className="text-gray-800 dark:text-gray-200">{job.noiseSchedule}</span></div>
                       <div><span className="text-gray-500 dark:text-gray-400">Variety+:</span> <span className="text-gray-800 dark:text-gray-200">{job.varietyPlus ? 'ON' : 'OFF'}</span></div>
+                      <div><span className="text-gray-500 dark:text-gray-400">Euler A Bug:</span> <span className="text-gray-800 dark:text-gray-200">{job.deliberateEulerAncestralBug ? 'ON' : 'OFF'}</span></div>
                       <div><span className="text-gray-500 dark:text-gray-400">Coords:</span> <span className="text-gray-800 dark:text-gray-200">{job.useCoords ? 'ON' : 'OFF'}</span></div>
                       <div><span className="text-gray-500 dark:text-gray-400">Legacy UC:</span> <span className="text-gray-800 dark:text-gray-200">{job.legacyPromptConditioning ? 'ON' : 'OFF'}</span></div>
                     </div>

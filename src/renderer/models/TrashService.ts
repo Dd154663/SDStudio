@@ -179,6 +179,55 @@ export class TrashService extends EventTarget {
     }
   }
 
+  // ===== Project-wide image trash (all active scenes) =====
+
+  /**
+   * 현재 프로젝트(세션)의 모든 활성 씬에 대해 이미지 휴지통 집계
+   * 휴지통에 들어간 씬의 이미지는 포함하지 않음 (activeScenes만 순회)
+   */
+  async countProjectImageTrash(
+    session: Session,
+  ): Promise<{ totalImages: number; scenesWithTrash: number }> {
+    let totalImages = 0;
+    let scenesWithTrash = 0;
+    const allScenes: GenericScene[] = [
+      ...session.getScenes('scene'),
+      ...session.getScenes('inpaint'),
+    ];
+    for (const scene of allScenes) {
+      const items = await this.getTrashImages(session, scene);
+      if (items.length > 0) {
+        totalImages += items.length;
+        scenesWithTrash += 1;
+      }
+    }
+    return { totalImages, scenesWithTrash };
+  }
+
+  /**
+   * 현재 프로젝트(세션)의 모든 활성 씬에 대해 이미지 휴지통을 영구 비움
+   * 반환값: 영구삭제된 이미지 총개수
+   */
+  async emptyProjectImageTrash(session: Session): Promise<number> {
+    let total = 0;
+    const allScenes: GenericScene[] = [
+      ...session.getScenes('scene'),
+      ...session.getScenes('inpaint'),
+    ];
+    for (const scene of allScenes) {
+      const items = await this.getTrashImages(session, scene);
+      if (items.length > 0) {
+        await this.permanentlyDeleteImages(
+          session,
+          scene,
+          items.map((i) => i.filename),
+        );
+        total += items.length;
+      }
+    }
+    return total;
+  }
+
   // ===== Scene trash =====
 
   private sceneKey(projectName: string, sceneName: string): string {

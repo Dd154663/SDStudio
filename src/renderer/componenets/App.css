@@ -447,6 +447,13 @@ input[type='number']::-webkit-outer-spin-button {
   word-break: inherit;
 }
 
+.syntax-comment {
+  @apply text-gray-400 dark:text-gray-500;
+  font-style: italic;
+  white-space: inherit;
+  word-break: inherit;
+}
+
 .syntax-strong {
   font-weight: 800;
   white-space: inherit;

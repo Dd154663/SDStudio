@@ -4,13 +4,28 @@ import { isMobile } from '.';
 export interface ShortcutAction {
   id: string;
   label: string;
-  category: 'global' | 'viewer' | 'scene';
+  category: 'global' | 'viewer' | 'scene' | 'image-grid';
   defaultKey: string;
 }
 
 const ACTIONS: ShortcutAction[] = [
+  // 이미지 그리드 액션 (씬 내 이미지 리스트가 보일 때, 상세 창은 닫힘)
+  { id: 'image-left', label: '왼쪽 이미지', category: 'image-grid', defaultKey: 'ArrowLeft' },
+  { id: 'image-right', label: '오른쪽 이미지', category: 'image-grid', defaultKey: 'ArrowRight' },
+  { id: 'image-up', label: '위 이미지', category: 'image-grid', defaultKey: 'ArrowUp' },
+  { id: 'image-down', label: '아래 이미지', category: 'image-grid', defaultKey: 'ArrowDown' },
+  { id: 'image-open-detail', label: '상세 보기', category: 'image-grid', defaultKey: 'Enter' },
+  { id: 'image-toggle-favorite', label: '즐겨찾기 토글', category: 'image-grid', defaultKey: 'Ctrl+F' },
+  { id: 'image-toggle-bookmark', label: '북마크 토글', category: 'image-grid', defaultKey: 'Ctrl+B' },
+  { id: 'image-delete', label: '이미지 삭제', category: 'image-grid', defaultKey: 'Delete' },
+  { id: 'image-tab-1', label: '이미지 탭', category: 'image-grid', defaultKey: 'Ctrl+1' },
+  { id: 'image-tab-2', label: '즐겨찾기 탭', category: 'image-grid', defaultKey: 'Ctrl+2' },
+  { id: 'image-tab-3', label: '휴지통 탭', category: 'image-grid', defaultKey: 'Ctrl+3' },
+  { id: 'image-tab-4', label: '인페인트 씬 탭', category: 'image-grid', defaultKey: 'Ctrl+4' },
+
   // 뷰어 액션 (ResultViewer가 열려 있을 때만 작동)
-  { id: 'toggle-favorite', label: '즐겨찾기 토글', category: 'viewer', defaultKey: 'Ctrl+D' },
+  { id: 'toggle-favorite', label: '즐겨찾기 토글', category: 'viewer', defaultKey: 'Ctrl+F' },
+  { id: 'toggle-bookmark', label: '북마크 토글', category: 'viewer', defaultKey: 'Ctrl+B' },
   { id: 'save-image', label: '이미지 저장', category: 'viewer', defaultKey: 'Ctrl+S' },
   { id: 'prev-image', label: '이전 이미지', category: 'viewer', defaultKey: 'ArrowLeft' },
   { id: 'next-image', label: '다음 이미지', category: 'viewer', defaultKey: 'ArrowRight' },
@@ -24,6 +39,7 @@ const ACTIONS: ShortcutAction[] = [
   { id: 'scene-open-images', label: '씬 이미지 보기', category: 'scene', defaultKey: 'Enter' },
   { id: 'scene-open-editor', label: '씬 편집', category: 'scene', defaultKey: 'Tab' },
   { id: 'scene-queue-add', label: '포커스 씬 예약 추가', category: 'scene', defaultKey: 'Ctrl+A' },
+  { id: 'scene-toggle-bookmark', label: '씬 북마크 토글', category: 'scene', defaultKey: 'Ctrl+B' },
   { id: 'queue-run', label: '예약 실행', category: 'scene', defaultKey: 'Space' },
   { id: 'queue-clear', label: '모든 씬 예약 취소', category: 'scene', defaultKey: 'Ctrl+D' },
 
@@ -31,7 +47,7 @@ const ACTIONS: ShortcutAction[] = [
   { id: 'tab-1', label: '이미지생성 탭', category: 'global', defaultKey: 'Ctrl+1' },
   { id: 'tab-2', label: '이미지변형 탭', category: 'global', defaultKey: 'Ctrl+2' },
   { id: 'tab-3', label: '웹 검색 탭', category: 'global', defaultKey: 'Ctrl+3' },
-  { id: 'toggle-left-panel', label: '좌측 패널 토글', category: 'global', defaultKey: 'Ctrl+B' },
+  { id: 'toggle-left-panel', label: '좌측 패널 토글', category: 'global', defaultKey: 'Ctrl+Q' },
   { id: 'queue-all-scenes', label: '모든 씬 예약', category: 'global', defaultKey: 'Ctrl+G' },
   { id: 'toggle-project-favorite', label: '프로젝트 즐겨찾기 토글', category: 'global', defaultKey: 'Ctrl+F' },
   { id: 'open-sampling-settings', label: '샘플링/모델 설정 열기', category: 'global', defaultKey: 'Ctrl+M' },
@@ -110,12 +126,33 @@ export class KeyboardShortcutService {
     }));
   }
 
+  /**
+   * 카테고리별 충돌 범위(scope) 계산.
+   * 활성화 조건이 동일한 카테고리들은 같은 scope로 묶여 충돌 검사됨.
+   * - 'main': 메인 씬 리스트 화면 (global + scene)
+   * - 'image-grid': 씬 내 이미지 그리드 (image-grid)
+   * - 'viewer': 이미지 상세 창 (viewer)
+   */
+  static getConflictScope(category: string): string {
+    if (category === 'viewer') return 'viewer';
+    if (category === 'image-grid') return 'image-grid';
+    return 'main'; // global + scene
+  }
+
   findConflict(key: string, excludeActionId?: string): string | undefined {
     const excludeAction = ACTIONS.find((a) => a.id === excludeActionId);
+    const excludeScope = excludeAction
+      ? KeyboardShortcutService.getConflictScope(excludeAction.category)
+      : null;
     for (const action of ACTIONS) {
       if (action.id === excludeActionId) continue;
-      // 다른 카테고리 간 같은 키는 충돌이 아님 (우선순위로 분기)
-      if (excludeAction && action.category !== excludeAction.category) continue;
+      // 다른 scope 간 같은 키는 충돌이 아님 (활성화 조건이 상호배타적이라 공존 가능)
+      if (
+        excludeScope !== null &&
+        KeyboardShortcutService.getConflictScope(action.category) !== excludeScope
+      ) {
+        continue;
+      }
       const bound = this.getBinding(action.id);
       if (bound === key) return action.label;
     }
@@ -195,7 +232,10 @@ export class KeyboardShortcutService {
       const action = this.getActionDef(actionId);
       if (!action) continue;
 
-      if (action.category === 'viewer') {
+      if (action.category === 'image-grid') {
+        if (!appState.imageGridFocusable) continue;
+        if (appState.dialogs.length > 0) continue;
+      } else if (action.category === 'viewer') {
         if (!appState.resultViewerOpen) continue;
         if (appState.dialogs.length > 0) continue;
       } else if (action.category === 'scene') {

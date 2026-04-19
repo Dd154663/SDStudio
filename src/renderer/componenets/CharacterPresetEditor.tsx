@@ -243,7 +243,7 @@ const CharacterPresetInnerEditor = observer(({
   };
 
   return (
-    <div className="flex flex-col h-full p-4 overflow-hidden">
+    <div className="flex flex-col h-full p-4 overflow-hidden text-default">
       <div className="flex-none mb-4">
         <div className="flex items-center gap-2 mb-2">
           <label className="gray-label flex-none">프리셋 이름:</label>
@@ -452,7 +452,7 @@ const CharacterPresetItem = observer(({
   const { curSession } = appState;
 
   return (
-    <div className="border rounded-lg p-3 mb-2 hover:bg-gray-50 dark:hover:bg-slate-700">
+    <div className="border rounded-lg p-3 mb-2 hover:bg-gray-50 dark:hover:bg-slate-700 text-default">
       <div className="flex items-center justify-between mb-2">
         <div className="font-medium text-lg">{preset.name}</div>
         <div className="flex gap-1">
@@ -613,7 +613,7 @@ export const CharacterPresetEditor = observer(({
 
   // 목록 모드
   return (
-    <div className="flex flex-col h-full p-4">
+    <div className="flex flex-col h-full p-4 text-default">
       <div className="flex-none flex items-center justify-between mb-4">
         <div className="text-lg font-medium">
           <FaUserAlt className="inline mr-2" />
@@ -664,7 +664,7 @@ export const CharacterPresetFloatEditor = observer(({
 }: CharacterPresetFloatEditorProps) => {
   return (
     <FloatView priority={1} onEscape={onClose}>
-      <div className="w-full h-full flex flex-col">
+      <div className="w-full h-full flex flex-col text-default">
         <div className="flex-none flex items-center justify-between p-3 border-b">
           <div className="text-lg font-medium">캐릭터 프리셋 관리</div>
           <button

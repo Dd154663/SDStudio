@@ -134,6 +134,7 @@ export interface ImageGenInput {
   legacyPromptConditioning?: boolean;
   normalizeStrength?: boolean;
   varietyPlus?: boolean;
+  deliberateEulerAncestralBug?: boolean;
   characterPrompts?: string[];
   characterUCs?: string[];
   characterPositions?: CharacterPosition[];

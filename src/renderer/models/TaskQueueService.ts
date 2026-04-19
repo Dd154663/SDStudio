@@ -35,7 +35,7 @@ import {
   Session,
 } from './types';
 import { sleep } from './util';
-import { lowerPromptNode, toPARR } from './PromptService';
+import { expandPieces, lowerPromptNode, toPARR } from './PromptService';
 import { dataUriToBase64 } from './ImageService';
 import { prepareMirrorCanvas } from './workflows/SDWorkFlow';
 import { getImageDimensions } from '../componenets/BrushTool';
@@ -420,7 +420,7 @@ class GenerateImageTaskHandler implements TaskHandler {
 
     const arg: ImageGenInput = {
       prompt: prompt,
-      uc: job.uc,
+      uc: expandPieces(job.uc, task.params.session, task.params.scene),
       model: Model.Anime,
       originalImage: true,
       resolution: lowerResolution(
@@ -441,6 +441,7 @@ class GenerateImageTaskHandler implements TaskHandler {
       legacyPromptConditioning: job.legacyPromptConditioning,
       normalizeStrength: job.normalizeStrength,
       varietyPlus: job.varietyPlus,
+      deliberateEulerAncestralBug: job.deliberateEulerAncestralBug,
       characterReferences: finalReferences,
       outputFilePath: outputFilePath,
       seed: job.seed,
@@ -448,7 +449,13 @@ class GenerateImageTaskHandler implements TaskHandler {
     if (job.characterPrompts?.length) {
       for (const character of job.characterPrompts) {
         arg.characterPrompts?.push(lowerPromptNode(character.prompt));
-        arg.characterUCs?.push(character.uc);
+        arg.characterUCs?.push(
+          expandPieces(
+            character.uc,
+            task.params.session,
+            task.params.scene,
+          ),
+        );
         arg.characterPositions?.push(character.position);
       }
     }

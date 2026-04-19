@@ -267,7 +267,8 @@ export class NovelAiImageGenService implements ImageGenService {
       };
     }
     if (params.sampling == Sampling.KEulerAncestral) {
-      body.parameters.deliberate_euler_ancestral_bug = false;
+      body.parameters.deliberate_euler_ancestral_bug =
+        params.deliberateEulerAncestralBug ?? false;
     }
     // Variety+ (skip_cfg_above_sigma) must be disabled when Precise/Character
     // Reference is used. NAI 공식 사이트는 Char Ref 켜면 Variety+를 UI에서

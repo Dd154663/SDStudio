@@ -63,6 +63,7 @@ export interface SDAbstractJob<T> extends AbstractJob {
   legacyPromptConditioning: boolean;
   normalizeStrength: boolean;
   varietyPlus: boolean;
+  deliberateEulerAncestralBug?: boolean;
   characterReferences: IReferenceItem[];
   noiseSchedule: string;
   backend: ModelBackend;
@@ -797,6 +798,7 @@ export function convertNAISToSession(naisData: any, libraryName?: string): ISess
           useCoords: false,
           legacyPromptConditioning: false,
           varietyPlus: false,
+          deliberateEulerAncestralBug: false,
           name: 'default',
           profile: '',
           backend: { type: 'NAI' },
@@ -827,6 +829,7 @@ export function convertNAISToSession(naisData: any, libraryName?: string): ISess
           useCoords: false,
           legacyPromptConditioning: false,
           varietyPlus: false,
+          deliberateEulerAncestralBug: false,
           name: 'default',
           profile: '',
           backend: { type: 'NAI' },

@@ -1,7 +1,7 @@
 import { memo, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { FloatView } from './FloatView';
 import SceneEditor from './SceneEditor';
-import { FaBookmark, FaEdit, FaFileImage, FaPlus, FaRegCalendarTimes, FaSearch, FaStar, FaTimes, FaTrash, FaTrashRestore } from 'react-icons/fa';
+import { FaBookmark, FaBroom, FaEdit, FaFileImage, FaPlus, FaRegCalendarTimes, FaSearch, FaStar, FaTimes, FaTrash, FaTrashRestore } from 'react-icons/fa';
 import Tournament from './Tournament';
 import ResultViewer from './ResultViewer';
 import InPaintEditor from './InPaintEditor';
@@ -768,6 +768,15 @@ const QueueControl = observer(
               appState.pushMessage('프롬프트 에러: ' + e.message);
             });
           }
+        } else if (action === 'scene-toggle-bookmark') {
+          if (focusedSceneIndex != null && focusedSceneIndex < scenes.length) {
+            const scene = scenes[focusedSceneIndex];
+            sessionService.toggleSceneBookmark(
+              curSession.name,
+              scene.name,
+              scene.type,
+            );
+          }
         } else if (action === 'queue-run') {
           taskQueueService.run();
         } else if (action === 'queue-clear') {
@@ -1355,6 +1364,14 @@ const QueueControl = observer(
               >
                 대량 작업
               </button>
+              <button
+                className={`round-button back-gray`}
+                onClick={() => {
+                  appState.openChangeResolutionMenu(type, setSceneSelector);
+                }}
+              >
+                {isMobile ? '해상도' : '해상도 변경'}
+              </button>
               <Tooltip content="이미지 프롬프트 추출">
               <button
                 className={`round-button back-gray`}
@@ -1411,6 +1428,14 @@ const QueueControl = observer(
                 onClick={() => setShowSceneTrash(true)}
               >
                 <FaTrash size={18} />
+              </button>
+              </Tooltip>
+              <Tooltip content="모든 씬 내 삭제한 이미지 일괄 비우기">
+              <button
+                className={`round-button back-gray`}
+                onClick={() => appState.emptyProjectImageTrashWithConfirm()}
+              >
+                <FaBroom size={18} />
               </button>
               </Tooltip>
             </div>

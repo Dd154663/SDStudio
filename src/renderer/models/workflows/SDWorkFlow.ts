@@ -45,7 +45,8 @@ const SDImageGenPreset = new WFVarBuilder()
   .addCharacterPromptsVar('characterPrompts', [])
   .addBoolVar('useCoords', false)
   .addBoolVar('legacyPromptConditioning', false)
-  .addBoolVar('varietyPlus', false);
+  .addBoolVar('varietyPlus', false)
+  .addBoolVar('deliberateEulerAncestralBug', false);
 
 const SDImageGenShared = new WFVarBuilder()
   .addVibeSetVar('vibes')
@@ -87,6 +88,12 @@ const SDImageGenUI = wfiStack([
       'flex-none',
     ),
     wfiInlineInput('Variety+', 'varietyPlus', 'preset', 'flex-none'),
+    wfiInlineInput(
+      'Deliberate Euler Ancestral Bug',
+      'deliberateEulerAncestralBug',
+      'preset',
+      'flex-none',
+    ),
   ]),
   wfiInlineInput('바이브 설정', 'vibes', 'shared', 'flex-none'),
   wfiInlineInput('캐릭터 레퍼런스', 'characterReferences', 'shared', 'flex-none'),
@@ -103,7 +110,8 @@ const SDImageGenEasyPreset = new WFVarBuilder()
   .addNoiseScheduleVar('noiseSchedule', NoiseSchedule.Karras)
   .addBoolVar('useCoords', false)
   .addBoolVar('legacyPromptConditioning', false)
-  .addBoolVar('varietyPlus', false);
+  .addBoolVar('varietyPlus', false)
+  .addBoolVar('deliberateEulerAncestralBug', false);
 
 const SDImageGenEasyShared = SDImageGenShared.clone()
   .addPromptVar('characterPrompt', '')
@@ -154,6 +162,12 @@ const SDImageGenEasyInnerUI = wfiStack([
       'flex-none',
     ),
     wfiInlineInput('Variety+', 'varietyPlus', 'preset', 'flex-none'),
+    wfiInlineInput(
+      'Deliberate Euler Ancestral Bug',
+      'deliberateEulerAncestralBug',
+      'preset',
+      'flex-none',
+    ),
   ]),
 ]);
 
@@ -212,6 +226,7 @@ const SDImageGenHandler = async (
     legacyPromptConditioning: preset.legacyPromptConditioning,
     normalizeStrength: shared.normalizeStrength,
     varietyPlus: preset.varietyPlus,
+    deliberateEulerAncestralBug: preset.deliberateEulerAncestralBug,
     characterReferences: (shared.characterReferences || []).filter((ref: any) => ref.enabled !== false),
     noiseSchedule: preset.noiseSchedule,
     backend: preset.backend,
@@ -303,6 +318,7 @@ const SDInpaintPreset = new WFVarBuilder()
   .addBoolVar('legacyPromptConditioning', false)
   .addBoolVar('normalizeStrength', true)
   .addBoolVar('varietyPlus', false)
+  .addBoolVar('deliberateEulerAncestralBug', false)
   .addVibeSetVar('vibes')
   .addNullIntVar('seed');
 
@@ -344,6 +360,12 @@ const SDInpaintUI = wfiStack([
       'flex-none',
     ),
     wfiInlineInput('Variety+', 'varietyPlus', 'preset', 'flex-none'),
+    wfiInlineInput(
+      'Deliberate Euler Ancestral Bug',
+      'deliberateEulerAncestralBug',
+      'preset',
+      'flex-none',
+    ),
   ]),
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
   // wfiInlineInput('시드', 'seed', true, 'flex-none'),
@@ -387,6 +409,7 @@ const createSDI2IHandler = (type: string) => {
       legacyPromptConditioning: preset.legacyPromptConditioning,
       normalizeStrength: preset.normalizeStrength,
       varietyPlus: preset.varietyPlus,
+      deliberateEulerAncestralBug: preset.deliberateEulerAncestralBug,
       noiseSchedule: preset.noiseSchedule,
       characterReferences: preset.characterReferences || [],
       backend: preset.backend,
@@ -429,6 +452,7 @@ export function createInpaintPreset(
   preset.legacyPromptConditioning = job.legacyPromptConditioning;
   preset.normalizeStrength = job.normalizeStrength;
   preset.varietyPlus = job.varietyPlus;
+  preset.deliberateEulerAncestralBug = job.deliberateEulerAncestralBug ?? false;
   return preset;
 }
 
@@ -483,6 +507,12 @@ const SDI2IUI = wfiStack([
       'flex-none',
     ),
     wfiInlineInput('Variety+', 'varietyPlus', 'preset', 'flex-none'),
+    wfiInlineInput(
+      'Deliberate Euler Ancestral Bug',
+      'deliberateEulerAncestralBug',
+      'preset',
+      'flex-none',
+    ),
   ]),
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
   wfiInlineInput('캐릭터 레퍼런스', 'characterReferences', 'preset', 'flex-none'),
@@ -508,6 +538,7 @@ export function createI2IPreset(
   preset.legacyPromptConditioning = job.legacyPromptConditioning;
   preset.normalizeStrength = job.normalizeStrength;
   preset.varietyPlus = job.varietyPlus;
+  preset.deliberateEulerAncestralBug = job.deliberateEulerAncestralBug ?? false;
   preset.characterPrompts = job.characterPrompts;
   return preset;
 }
@@ -691,6 +722,12 @@ const SDMirrorUI = wfiStack([
       'flex-none',
     ),
     wfiInlineInput('Variety+', 'varietyPlus', 'preset', 'flex-none'),
+    wfiInlineInput(
+      'Deliberate Euler Ancestral Bug',
+      'deliberateEulerAncestralBug',
+      'preset',
+      'flex-none',
+    ),
   ]),
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
 ]);
@@ -755,6 +792,7 @@ export function createMirrorPreset(
   preset.legacyPromptConditioning = job.legacyPromptConditioning;
   preset.normalizeStrength = job.normalizeStrength;
   preset.varietyPlus = job.varietyPlus;
+  preset.deliberateEulerAncestralBug = job.deliberateEulerAncestralBug ?? false;
   return preset;
 }
 

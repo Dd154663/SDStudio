@@ -273,12 +273,15 @@ interface ImageGalleryProps {
   selectMode?: boolean;
   selectedImages: Set<string>;
   bookmarkedImagePath?: string;
+  focusedIndex?: number | null;
 }
 
 interface ImageGalleryRef {
   refresh: () => void;
   refeshImage(path: string): void;
   scrollToIndex(index: number): void;
+  getColumnCount(): number;
+  getItemCount(): number;
 }
 
 export const CellPreview = ({
@@ -338,11 +341,13 @@ const Cell = memo(
       imageSize,
       selectedImages,
       bookmarkedImagePath,
+      focusedIndex,
     } = data as any;
 
     const { curSession } = appState;
     const index = rowIndex * columnCount + columnIndex;
     const path = filePaths[index];
+    const isFocused = focusedIndex === index;
 
     const [image, setImage] = useState<string | undefined>(undefined);
     const [_, forceUpdate] = useState<{}>({});
@@ -484,11 +489,13 @@ const Cell = memo(
     return (
       <div
         key={index.toString() + path + imageSize.toString()}
+        id={`image-cell-${index}`}
         style={style}
         className={
           'image-cell relative hover:brightness-95 active:brightness-90 bg-white dark:bg-slate-900 cursor-pointer ' +
           (isDragging ? 'opacity-0 no-touch' : '') +
-          (isOver ? ' border-2 border-sky-500' : '')
+          (isOver ? ' border-2 border-sky-500' : '') +
+          (isFocused ? ' outline outline-4 outline-sky-400 outline-offset-[-4px] z-10' : '')
         }
         draggable
         onClick={() => {
@@ -594,6 +601,7 @@ const createItemData = memoizeOne(
     imageSize,
     selectedImages,
     bookmarkedImagePath,
+    focusedIndex,
   ) => {
     return {
       scene,
@@ -607,6 +615,7 @@ const createItemData = memoizeOne(
       imageSize,
       selectedImages,
       bookmarkedImagePath,
+      focusedIndex,
     };
   },
 );
@@ -624,6 +633,7 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
       selectedImages,
       onFilenameChange,
       bookmarkedImagePath,
+      focusedIndex,
     },
     ref,
   ) => {
@@ -651,6 +661,8 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
           gridRef.current.scrollToItem({ rowIndex, align: 'center' });
         }
       },
+      getColumnCount: () => columnCount,
+      getItemCount: () => filePaths.length,
     }));
 
     useEffect(() => {
@@ -705,6 +717,7 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
             imageSize,
             selectedImages,
             bookmarkedImagePath,
+            focusedIndex ?? null,
           )}
           outerElementType={CustomScrollbarsVirtualGrid}
           overscanRowCount={overcountCounts[Math.ceil(imageSize / 200) - 1]}
@@ -858,6 +871,15 @@ const ResultDetailView = observer(
             scene.mains.splice(scene.mains.indexOf(path), 1);
           } else {
             scene.mains.push(path);
+          }
+        } else if (action === 'toggle-bookmark') {
+          const filename = paths[selectedIndex]?.split('/').pop();
+          if (filename) {
+            sessionService.toggleImageBookmark(
+              curSession!.name,
+              scene.name,
+              filename,
+            );
           }
         } else if (action === 'save-image') {
           imageDownloadService.downloadSingleImage(
@@ -1302,6 +1324,134 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
         : paths.filter((path) => isMainImage && isMainImage(path));
     };
 
+    // ===== 이미지 그리드 키보드 네비게이션 =====
+    const [focusedImageIndex, setFocusedImageIndex] = useState<number | null>(
+      null,
+    );
+
+    const activePaths =
+      selectedTab === 0
+        ? paths
+        : selectedTab === 1
+          ? paths.filter((p) => isMainImage && isMainImage(p))
+          : [];
+    const activeGalleryRef = selectedTab === 0 ? gallaryRef : gallaryRef2;
+
+    // image-grid 카테고리 활성화 조건 동기화
+    // 탭 전환 단축키(Ctrl+1/2/3/4)는 모든 탭에서 동작해야 하므로 selectedTab을 조건에서 제외.
+    // 그리드 조작(방향키/즐겨찾기/북마크/삭제/상세 보기)은 핸들러 내부에서 selectedTab 가드 적용.
+    useEffect(() => {
+      const active = !isMobile && selectedImageIndex == null;
+      appState.imageGridFocusable = active;
+      return () => {
+        appState.imageGridFocusable = false;
+      };
+    }, [selectedImageIndex]);
+
+    // 탭 변경 시 포커스 리셋
+    useEffect(() => {
+      setFocusedImageIndex(null);
+    }, [selectedTab]);
+
+    // 포커스 이미지를 화면 안으로 스크롤
+    useEffect(() => {
+      if (focusedImageIndex != null) {
+        activeGalleryRef.current?.scrollToIndex(focusedImageIndex);
+      }
+    }, [focusedImageIndex]);
+
+    // 단축키 핸들러
+    useEffect(() => {
+      const onShortcut = (e: Event) => {
+        const action = (e as CustomEvent).detail?.action as string | undefined;
+        if (!action?.startsWith('image-')) return;
+
+        // 탭 전환 — 모든 탭에서 작동 (count/selectedTab 가드 전에 처리)
+        if (
+          action === 'image-tab-1' ||
+          action === 'image-tab-2' ||
+          action === 'image-tab-3' ||
+          action === 'image-tab-4'
+        ) {
+          const tabIdx =
+            action === 'image-tab-1'
+              ? 0
+              : action === 'image-tab-2'
+                ? 1
+                : action === 'image-tab-3'
+                  ? 2
+                  : 3;
+          // 인페인트 씬 탭(3)은 scene 타입 전용
+          if (tabIdx === 3 && scene.type !== 'scene') return;
+          setSelectedTab(tabIdx);
+          return;
+        }
+
+        // 이하 그리드 조작은 이미지/즐겨찾기 탭에서만 의미 있음
+        if (selectedTab !== 0 && selectedTab !== 1) return;
+
+        const count = activePaths.length;
+        const cols = activeGalleryRef.current?.getColumnCount() ?? 1;
+        if (count === 0) return;
+
+        // 첫 입력 시 포커스 0으로 초기화 (방향키에 한해)
+        if (
+          focusedImageIndex == null &&
+          (action === 'image-left' ||
+            action === 'image-right' ||
+            action === 'image-up' ||
+            action === 'image-down')
+        ) {
+          setFocusedImageIndex(0);
+          return;
+        }
+
+        if (focusedImageIndex == null) return;
+        const i = focusedImageIndex;
+
+        if (action === 'image-left') {
+          setFocusedImageIndex(Math.max(0, i - 1));
+        } else if (action === 'image-right') {
+          setFocusedImageIndex(Math.min(count - 1, i + 1));
+        } else if (action === 'image-up') {
+          setFocusedImageIndex(Math.max(0, i - cols));
+        } else if (action === 'image-down') {
+          setFocusedImageIndex(Math.min(count - 1, i + cols));
+        } else if (action === 'image-open-detail') {
+          // activePaths[i]의 원본 paths 내 인덱스로 전환 (ResultDetailView는 전체 paths 기준)
+          const originalIdx = paths.indexOf(activePaths[i]);
+          if (originalIdx >= 0) setSelectedImageIndex(originalIdx);
+        } else if (action === 'image-toggle-favorite') {
+          const filename = activePaths[i].split('/').pop()!;
+          if (scene.mains.includes(filename)) {
+            scene.mains.splice(scene.mains.indexOf(filename), 1);
+          } else {
+            scene.mains.push(filename);
+          }
+        } else if (action === 'image-toggle-bookmark') {
+          const filename = activePaths[i].split('/').pop()!;
+          sessionService.toggleImageBookmark(
+            curSession!.name,
+            scene.name,
+            filename,
+          );
+        } else if (action === 'image-delete') {
+          appState.pushDialog({
+            type: 'confirm',
+            text: '정말로 파일을 삭제하시겠습니까?',
+            callback: async () => {
+              await deleteImageFiles(curSession!, [activePaths[i]], scene);
+              const newCount = count - 1;
+              if (newCount === 0) setFocusedImageIndex(null);
+              else setFocusedImageIndex(Math.min(i, newCount - 1));
+            },
+          });
+        }
+      };
+      window.addEventListener('shortcut-action', onShortcut);
+      return () => window.removeEventListener('shortcut-action', onShortcut);
+    }, [focusedImageIndex, activePaths, paths, scene, selectedTab, curSession]);
+
     let emoji = '';
     let title = '';
     if (scene.type === 'inpaint') {
@@ -1599,6 +1749,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             onSelected={onSelected}
             selectMode={selectMode}
             bookmarkedImagePath={bookmarkedImagePath}
+            focusedIndex={selectedTab === 0 ? focusedImageIndex : null}
           />
           {selectedTab === 2 && (
             <TrashImageView
@@ -1663,6 +1814,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             isHidden={selectedTab !== 1}
             onSelected={onSelected}
             bookmarkedImagePath={bookmarkedImagePath}
+            focusedIndex={selectedTab === 1 ? focusedImageIndex : null}
           />
         </div>
         <div className="absolute gap-1 m-2 bottom-0 bg-white dark:bg-slate-800 p-1 right-0 opacity-30 hover:opacity-100 transition-all flex">

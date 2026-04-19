@@ -83,6 +83,7 @@ export class AppState {
   // 단축키 시스템용 상태
   @observable accessor floatViewCount: number = 0;
   @observable accessor resultViewerOpen: boolean = false;
+  @observable accessor imageGridFocusable: boolean = false;
   @observable accessor configScreenOpen: boolean = false;
 
   @action
@@ -1200,65 +1201,6 @@ export class AppState {
             }
           },
         });
-      } else if (value === 'changeResolution') {
-        const options = Object.entries(resolutionMap)
-          .filter((x) => !x[0].includes('small'))
-          .map(([key, value]) => {
-            if (key === 'custom')
-              return { text: '커스텀 (직접 입력)', value: key };
-            return {
-              text: `${value.width}x${value.height}`,
-              value: key,
-            };
-          });
-        appState.pushDialog({
-          type: 'dropdown',
-          text: '변경할 해상도를 선택해주세요',
-          items: options,
-          callback: async (value?: string) => {
-            if (!value) return;
-            if (value === 'custom') {
-              const width = await appState.pushDialogAsync({
-                type: 'input-confirm',
-                text: '해상도 너비를 입력해주세요',
-              });
-              if (width == null) return;
-              const height = await appState.pushDialogAsync({
-                type: 'input-confirm',
-                text: '해상도 높이를 입력해주세요',
-              });
-              if (height == null) return;
-              try {
-                const w = (parseInt(width) + 63) & ~63;
-                const h = (parseInt(height) + 63) & ~63;
-                for (const scene of selected) {
-                  scene.resolution = 'custom' as Resolution;
-                  scene.resolutionWidth = w;
-                  scene.resolutionHeight = h;
-                }
-              } catch (e: any) {
-                appState.pushMessage(e.message);
-              }
-              return;
-            }
-            const action = () => {
-              for (const scene of selected) {
-                scene.resolution = value as Resolution;
-              }
-            };
-            if (value.includes('large') || value.includes('wallpaper')) {
-              appState.pushDialog({
-                text: 'Anlas를 소모하는 해상도 입니다. 계속하겠습니까?',
-                type: 'confirm',
-                callback: () => {
-                  action();
-                },
-              });
-            } else {
-              action();
-            }
-          },
-        });
       } else if (value === 'removeAllFav') {
         appState.pushDialog({
           type: 'confirm',
@@ -1403,7 +1345,6 @@ export class AppState {
         { text: '🔪 즐겨찾기 이미지 배경 제거', value: 'removeBg' },
         { text: '🔄 즐겨찾기 이미지 변형', value: 'transform' },
         { text: '🗑️ 이미지 삭제', value: 'removeImage' },
-        { text: '🖥️ 해상도 변경 ', value: 'changeResolution' },
         { text: '❌ 즐겨찾기 전부 해제', value: 'removeAllFav' },
         { text: '⭐ 상위 n등 즐겨찾기 지정', value: 'setFav' },
         { text: '📋 씬 내용 복제', value: 'copySceneContent' },
@@ -1562,6 +1503,106 @@ export class AppState {
       });
     };
     openMenu();
+  }
+
+  @action
+  openChangeResolutionMenu(
+    type: 'scene' | 'inpaint',
+    setSceneSelector: (item: SceneSelectorItem | undefined) => void,
+  ) {
+    setSceneSelector({
+      type: type,
+      text: '🖥️ 해상도 변경할 씬 선택',
+      callback: async (selected) => {
+        setSceneSelector(undefined);
+        if (selected.length === 0) return;
+        const options = Object.entries(resolutionMap)
+          .filter((x) => !x[0].includes('small'))
+          .map(([key, value]) => {
+            if (key === 'custom')
+              return { text: '커스텀 (직접 입력)', value: key };
+            return {
+              text: `${value.width}x${value.height}`,
+              value: key,
+            };
+          });
+        appState.pushDialog({
+          type: 'dropdown',
+          text: '변경할 해상도를 선택해주세요',
+          items: options,
+          callback: async (value?: string) => {
+            if (!value) return;
+            if (value === 'custom') {
+              const width = await appState.pushDialogAsync({
+                type: 'input-confirm',
+                text: '해상도 너비를 입력해주세요',
+              });
+              if (width == null) return;
+              const height = await appState.pushDialogAsync({
+                type: 'input-confirm',
+                text: '해상도 높이를 입력해주세요',
+              });
+              if (height == null) return;
+              try {
+                const w = (parseInt(width) + 63) & ~63;
+                const h = (parseInt(height) + 63) & ~63;
+                for (const scene of selected) {
+                  scene.resolution = 'custom' as Resolution;
+                  scene.resolutionWidth = w;
+                  scene.resolutionHeight = h;
+                }
+              } catch (e: any) {
+                appState.pushMessage(e.message);
+              }
+              return;
+            }
+            const action = () => {
+              for (const scene of selected) {
+                scene.resolution = value as Resolution;
+              }
+            };
+            if (value.includes('large') || value.includes('wallpaper')) {
+              appState.pushDialog({
+                text: 'Anlas를 소모하는 해상도 입니다. 계속하겠습니까?',
+                type: 'confirm',
+                callback: () => {
+                  action();
+                },
+              });
+            } else {
+              action();
+            }
+          },
+        });
+      },
+    });
+  }
+
+  @action
+  async emptyProjectImageTrashWithConfirm() {
+    if (!this.curSession) return;
+    const { trashService } = await import('.');
+    const { totalImages, scenesWithTrash } =
+      await trashService.countProjectImageTrash(this.curSession);
+    if (totalImages === 0) {
+      this.pushMessage('삭제된 이미지가 없습니다.');
+      return;
+    }
+    appState.pushDialog({
+      type: 'confirm',
+      text:
+        `이 프로젝트의 ${scenesWithTrash}개 씬에서 삭제된 이미지 ` +
+        `${totalImages}개를 영구 삭제하시겠습니까? (복원 불가)`,
+      callback: async () => {
+        const deleted = await trashService.emptyProjectImageTrash(
+          this.curSession!,
+        );
+        appState.pushDialog({
+          type: 'yes-only',
+          text: `${deleted}개의 이미지가 영구 삭제되었습니다.`,
+        });
+      },
+    });
   }
 
   closeExternalImage() {

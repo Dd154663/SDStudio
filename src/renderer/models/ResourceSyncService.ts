@@ -196,12 +196,14 @@ export abstract class ResourceSyncService<
             fillEmptyVar(preset, 'useCoords', false);
             fillEmptyVar(preset, 'legacyPromptConditioning', false);
             fillEmptyVar(preset, 'varietyPlus', false);
+            fillEmptyVar(preset, 'deliberateEulerAncestralBug', false);
           } break;
         case 'SDImageGenEasy':
           for (const preset of value) {
             fillEmptyVar(preset, 'useCoords', false);
             fillEmptyVar(preset, 'legacyPromptConditioning', false);
             fillEmptyVar(preset, 'varietyPlus', false);
+            fillEmptyVar(preset, 'deliberateEulerAncestralBug', false);
           } break;
         case 'SDInpaint':
           for (const preset of value) {
@@ -209,6 +211,7 @@ export abstract class ResourceSyncService<
             fillEmptyVar(preset, 'useCoords', false);
             fillEmptyVar(preset, 'legacyPromptConditioning', false);
             fillEmptyVar(preset, 'varietyPlus', false);
+            fillEmptyVar(preset, 'deliberateEulerAncestralBug', false);
           } break;
         case 'SDI2I':
           for (const preset of value) {
@@ -216,6 +219,7 @@ export abstract class ResourceSyncService<
             fillEmptyVar(preset, 'useCoords', false);
             fillEmptyVar(preset, 'legacyPromptConditioning', false);
             fillEmptyVar(preset, 'varietyPlus', false);
+            fillEmptyVar(preset, 'deliberateEulerAncestralBug', false);
             fillEmptyVar(preset, 'characterReferences', []);
           } break;
       }

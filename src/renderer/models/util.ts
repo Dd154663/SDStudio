@@ -230,6 +230,7 @@ function parseCommentToJob(
       vibes,
       normalizeStrength: data['normalize_reference_strength_multiple'] ?? true,
       varietyPlus: data['skip_cfg_above_sigma'] ? true : false,
+      deliberateEulerAncestralBug: data['deliberate_euler_ancestral_bug'] ?? false,
       characterReferences,
       backend: { type: 'NAI' },
       useCoords,
