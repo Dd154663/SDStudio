@@ -557,6 +557,22 @@ export class ImageService extends EventTarget {
     let files = await backend.listFiles(this.getOutputDir(session, scene));
     files = files.filter((x: string) => x.endsWith('.png'));
     files.sort(naturalSort);
+
+    // 방어: 기존 imageMap에 항목이 있었는데 파일시스템에서 0개가 반환된 경우
+    // 디렉토리 일시 접근 불가(백신, 파일 잠금, 네트워크 지연 등)일 가능성이 높으므로
+    // imageMap을 초기화하지 않고 기존 상태를 유지한다.
+    if (files.length === 0 && scene.imageMap.length > 0) {
+      // 캐시만 기존 imageMap 기준으로 갱신
+      target[session.name][scene.name] = [...scene.imageMap];
+      if (emitEvent)
+        this.dispatchEvent(
+          new CustomEvent('updated', {
+            detail: { batch: false, session, scene },
+          }),
+        );
+      return;
+    }
+
     for (const file of files) {
       fileSet[file] = true;
     }

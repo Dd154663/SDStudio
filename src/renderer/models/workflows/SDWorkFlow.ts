@@ -28,6 +28,7 @@ import {
   defaultFPrompt,
   defaultUC,
   lowerPromptNode,
+  toPARR,
 } from '../PromptService';
 import { imageService, promptService, taskQueueService, workFlowService } from '..';
 import { TaskParam } from '../TaskQueueService';
@@ -196,8 +197,15 @@ const SDImageGenHandler = async (
   if (useSceneCharacterPrompts) {
     // 씬 전용 캐릭터 프롬프트 사용
     allCharacterPrompts = sceneObj.sceneCharacterPrompts || [];
-    // 씬 전용 캐릭터 프롬프트는 이미 prompt 필드에 텍스트가 있으므로 PromptNode로 변환
-    finalCharacterPrompts = allCharacterPrompts.map(cp => ({ type: 'text', text: cp.prompt } as PromptNode));
+    // 씬 전용 캐릭터 프롬프트도 toPARR + parseWord를 통해 프롬프트조각(<group.name>) 확장
+    finalCharacterPrompts = allCharacterPrompts.map(cp => {
+      const tokens = toPARR(cp.prompt);
+      const node: PromptNode = {
+        type: 'group',
+        children: tokens.map(w => promptService.parseWord(w, session, scene as Scene)),
+      };
+      return node;
+    });
   } else {
     // 기존 공유/프리셋 캐릭터 프롬프트 사용
     allCharacterPrompts = shared.type === 'SDImageGenEasy'

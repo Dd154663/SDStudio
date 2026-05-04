@@ -52,6 +52,7 @@ import { AppContextMenu } from './AppContextMenu';
 
 import { configure } from 'mobx';
 import { ExternalImageView } from './ExternalImageView';
+import FindReplaceDialog from './FindReplaceDialog';
 configure({
   enforceActions: 'never',
 });
@@ -153,6 +154,11 @@ export const App = observer(() => {
         case 'open-piece-editor':
           if (appState.curSession) {
             appState.openPieceEditor();
+          }
+          break;
+        case 'find-replace':
+          if (appState.curSession) {
+            appState.openFindReplace();
           }
           break;
       }
@@ -469,6 +475,7 @@ export const App = observer(() => {
         >
           {appState.curSession && <PieceEditor />}
         </ModalOverlay>
+        <FindReplaceDialog />
         {dragOverlay && (
           <div
             className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none"

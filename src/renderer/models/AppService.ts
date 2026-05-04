@@ -80,6 +80,9 @@ export class AppState {
   // 프롬프트조각 에디터 오버레이
   @observable accessor pieceEditorOpen: boolean = false;
 
+  // 찾기 및 변환 다이얼로그
+  @observable accessor findReplaceOpen: boolean = false;
+
   // 단축키 시스템용 상태
   @observable accessor floatViewCount: number = 0;
   @observable accessor resultViewerOpen: boolean = false;
@@ -104,6 +107,16 @@ export class AppState {
   @action
   closePieceEditor() {
     this.pieceEditorOpen = false;
+  }
+
+  @action
+  openFindReplace() {
+    this.findReplaceOpen = true;
+  }
+
+  @action
+  closeFindReplace() {
+    this.findReplaceOpen = false;
   }
 
   // 좌측 패널 상태

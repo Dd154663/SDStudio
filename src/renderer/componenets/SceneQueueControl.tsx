@@ -1,7 +1,7 @@
 import { memo, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { FloatView } from './FloatView';
 import SceneEditor from './SceneEditor';
-import { FaBookmark, FaBroom, FaEdit, FaFileImage, FaPlus, FaRegCalendarTimes, FaSearch, FaStar, FaTimes, FaTrash, FaTrashRestore } from 'react-icons/fa';
+import { FaBookmark, FaBroom, FaEdit, FaExchangeAlt, FaFileImage, FaPlus, FaRegCalendarTimes, FaSearch, FaStar, FaTimes, FaTrash, FaTrashRestore } from 'react-icons/fa';
 import Tournament from './Tournament';
 import ResultViewer from './ResultViewer';
 import InPaintEditor from './InPaintEditor';
@@ -1436,6 +1436,14 @@ const QueueControl = observer(
                 onClick={() => appState.emptyProjectImageTrashWithConfirm()}
               >
                 <FaBroom size={18} />
+              </button>
+              </Tooltip>
+              <Tooltip content="찾기 및 변환 (Ctrl+H)">
+              <button
+                className={`round-button back-gray`}
+                onClick={() => appState.openFindReplace()}
+              >
+                <FaExchangeAlt size={18} />
               </button>
               </Tooltip>
             </div>

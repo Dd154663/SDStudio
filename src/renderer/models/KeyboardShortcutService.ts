@@ -53,6 +53,7 @@ const ACTIONS: ShortcutAction[] = [
   { id: 'open-sampling-settings', label: '샘플링/모델 설정 열기', category: 'global', defaultKey: 'Ctrl+M' },
   { id: 'open-piece-editor', label: '프롬프트조각 열기', category: 'global', defaultKey: 'Ctrl+P' },
   { id: 'open-config', label: '환경설정 열기', category: 'global', defaultKey: 'Ctrl+,' },
+  { id: 'find-replace', label: '찾기 및 변환', category: 'global', defaultKey: 'Ctrl+H' },
 ];
 
 const STORAGE_KEY = 'sdstudio-key-bindings';
@@ -243,12 +244,14 @@ export class KeyboardShortcutService {
         if (appState.dialogs.length > 0) continue;
         if (appState.configScreenOpen) continue;
         if (appState.pieceEditorOpen) continue;
+        if (appState.findReplaceOpen) continue;
       } else {
         // global
         if (appState.floatViewCount > 0) continue;
         if (appState.dialogs.length > 0) continue;
         if (appState.configScreenOpen) continue;
         if (appState.pieceEditorOpen) continue;
+        if (appState.findReplaceOpen) continue;
       }
 
       // 첫 번째로 조건을 통과한 액션 실행
