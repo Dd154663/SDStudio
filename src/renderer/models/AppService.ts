@@ -1618,6 +1618,96 @@ export class AppState {
     });
   }
 
+  @action
+  async recoverProjectImages() {
+    if (!this.curSession) return;
+    const session = this.curSession;
+
+    // outs/<세션명>/ 디렉토리에서 씬 폴더 목록 조회
+    let sceneDirs: string[] = [];
+    try {
+      const entries = await backend.listFiles('outs/' + session.name);
+      // 디렉토리만 필터링 (확장자 없는 항목 = 디렉토리)
+      sceneDirs = entries.filter((e: string) => !e.includes('.'));
+    } catch {
+      // outs 디렉토리 자체가 없으면 복구할 것 없음
+    }
+
+    if (sceneDirs.length === 0) {
+      this.pushDialog({
+        type: 'yes-only',
+        text: '파일시스템에서 복구할 이미지 폴더를 찾지 못했습니다.',
+      });
+      return;
+    }
+
+    // 현재 세션에 없는 씬 폴더 찾기
+    let recoveredScenes = 0;
+    let recoveredImages = 0;
+
+    for (const dirName of sceneDirs) {
+      // 해당 폴더에 PNG 파일이 있는지 확인
+      let pngFiles: string[] = [];
+      try {
+        const files = await backend.listFiles('outs/' + session.name + '/' + dirName);
+        pngFiles = files.filter((f: string) => f.endsWith('.png'));
+      } catch {
+        continue;
+      }
+      if (pngFiles.length === 0) continue;
+
+      if (!session.scenes.has(dirName)) {
+        // 씬이 JSON에서 사라진 경우: 빈 씬 생성
+        session.addScene(
+          Scene.fromJSON({
+            type: 'scene',
+            name: dirName,
+            resolution: 'portrait',
+            slots: [
+              [
+                {
+                  id: v4(),
+                  prompt: '',
+                  characterPrompts: [],
+                  enabled: true,
+                },
+              ],
+            ],
+            mains: [],
+            imageMap: [],
+            meta: {},
+          } as any),
+        );
+        recoveredScenes++;
+      }
+
+      // 씬의 imageMap이 비어있지만 파일은 있는 경우도 카운트
+      const scene = session.scenes.get(dirName);
+      if (scene && scene.imageMap.length === 0 && pngFiles.length > 0) {
+        recoveredImages += pngFiles.length;
+      }
+    }
+
+    // refreshBatch로 모든 씬의 imageMap 갱신 (파일시스템에서 재발견)
+    await imageService.refreshBatch(session);
+
+    // 결과 보고
+    if (recoveredScenes === 0 && recoveredImages === 0) {
+      this.pushDialog({
+        type: 'yes-only',
+        text: '모든 씬의 이미지가 정상입니다. 복구할 항목이 없습니다.',
+      });
+    } else {
+      const parts: string[] = [];
+      if (recoveredScenes > 0) parts.push(`${recoveredScenes}개 씬 복원`);
+      if (recoveredImages > 0) parts.push(`${recoveredImages}개 이미지 재연결`);
+      this.pushDialog({
+        type: 'yes-only',
+        text: `복구 완료: ${parts.join(', ')}`,
+      });
+    }
+  }
+
   closeExternalImage() {
     this.externalImage = undefined;
   }

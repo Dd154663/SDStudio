@@ -162,6 +162,19 @@ const StorageTab = ({
         onChange={(e) => setRefreshImage(e.target.checked)} />
       <label htmlFor="cfgRefresh" className="text-sm gray-label">이미지 폴더 직접 편집 감지</label>
     </div>
+    <hr className="border-gray-200 dark:border-slate-600" />
+    <div>
+      <label className="block text-sm font-semibold gray-label mb-1">이미지 복구 (실험적 기능)</label>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+        이미지 파일은 존재하지만 프로그램에서 보이지 않는 경우, 파일시스템을 스캔하여 누락된 씬과 이미지를 재연결합니다.
+      </p>
+      <button
+        className="px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium transition-colors"
+        onClick={() => appState.recoverProjectImages()}
+      >
+        현재 프로젝트 이미지 복구
+      </button>
+    </div>
   </div>
 );
 
