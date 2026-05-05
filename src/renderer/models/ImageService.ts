@@ -548,6 +548,7 @@ export class ImageService extends EventTarget {
     session: Session,
     scene: GenericScene,
     emitEvent: boolean = true,
+    guardEmpty: boolean = false,
   ) {
     const target = scene.type === 'scene' ? this.images : this.inpaints;
     if (!(session.name in target)) {
@@ -558,11 +559,10 @@ export class ImageService extends EventTarget {
     files = files.filter((x: string) => x.endsWith('.png'));
     files.sort(naturalSort);
 
-    // 방어: 기존 imageMap에 항목이 있었는데 파일시스템에서 0개가 반환된 경우
-    // 디렉토리 일시 접근 불가(백신, 파일 잠금, 네트워크 지연 등)일 가능성이 높으므로
-    // imageMap을 초기화하지 않고 기존 상태를 유지한다.
-    if (files.length === 0 && scene.imageMap.length > 0) {
-      // 캐시만 기존 imageMap 기준으로 갱신
+    // 방어 (refreshBatch 전용): 기존 imageMap에 항목이 있었는데 파일시스템에서
+    // 0개가 반환된 경우, 디렉토리 일시 접근 불가일 가능성이 높으므로 기존 상태 유지.
+    // 개별 refresh(삭제 후 등)에서는 guardEmpty=false로 호출하여 정상 반영.
+    if (guardEmpty && files.length === 0 && scene.imageMap.length > 0) {
       target[session.name][scene.name] = [...scene.imageMap];
       if (emitEvent)
         this.dispatchEvent(
@@ -602,12 +602,12 @@ export class ImageService extends EventTarget {
   async refreshBatch(session: Session) {
     for (const scene of session.scenes.values()) {
       try {
-        await this.refresh(session, scene, false);
+        await this.refresh(session, scene, false, true);
       } catch (e) {}
     }
     for (const scene of session.inpaints.values()) {
       try {
-        await this.refresh(session, scene, false);
+        await this.refresh(session, scene, false, true);
       } catch (e) {}
     }
     this.dispatchEvent(
