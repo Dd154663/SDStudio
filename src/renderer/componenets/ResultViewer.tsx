@@ -494,8 +494,7 @@ const Cell = memo(
         className={
           'image-cell relative hover:brightness-95 active:brightness-90 bg-white dark:bg-slate-900 cursor-pointer ' +
           (isDragging ? 'opacity-0 no-touch' : '') +
-          (isOver ? ' border-2 border-sky-500' : '') +
-          (isFocused ? ' outline outline-4 outline-sky-400 outline-offset-[-4px] z-10' : '')
+          (isOver ? ' border-2 border-sky-500' : '')
         }
         draggable
         onClick={() => {
@@ -575,6 +574,9 @@ const Cell = memo(
               )}
             </div>
           </>
+        )}
+        {isFocused && (
+          <div className="absolute inset-0 border-4 border-sky-400 z-20 pointer-events-none rounded-sm" />
         )}
       </div>
     );

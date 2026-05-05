@@ -1,4 +1,4 @@
-import React, { ReactNode, useEffect, useCallback } from 'react';
+import React, { ReactNode, useEffect, useCallback, useRef } from 'react';
 import { FaTimes } from 'react-icons/fa';
 
 interface ModalOverlayProps {
@@ -16,6 +16,8 @@ const ModalOverlay = ({
   children,
   width = 'max-w-xl',
 }: ModalOverlayProps) => {
+  const mouseDownOnBackdrop = useRef(false);
+
   const handleEscape = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -44,11 +46,21 @@ const ModalOverlay = ({
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
       }}
-      onClick={onClose}
+      onMouseDown={(e) => {
+        // mousedown이 backdrop 자체에서 시작된 경우만 기록
+        mouseDownOnBackdrop.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        // mousedown도 backdrop에서 시작되고 click도 backdrop인 경우에만 닫기
+        // (드래그로 밖에 나갔다 놓는 경우 방지)
+        if (e.target === e.currentTarget && mouseDownOnBackdrop.current) {
+          onClose();
+        }
+        mouseDownOnBackdrop.current = false;
+      }}
     >
       <div
         className={`${width} w-[90vw] max-h-[85vh] bg-white dark:bg-slate-800 rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-slate-600`}
-        onClick={(e) => e.stopPropagation()}
       >
         {/* 타이틀 바 */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-slate-600 flex-none">
