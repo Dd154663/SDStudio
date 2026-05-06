@@ -178,8 +178,8 @@ const StorageTab = ({
   </div>
 );
 
-/* ── exports 폴더 정리 ── */
-const ExportsCleanupSection = () => {
+/* ── 폴더 정리 공통 컴포넌트 ── */
+const FolderCleanupSection = ({ folder, label, description }: { folder: string; label: string; description?: string }) => {
   const [files, setFiles] = useState<{ name: string; size: number; mtime: number }[]>([]);
   const [loading, setLoading] = useState(false);
   const [cleaning, setCleaning] = useState(false);
@@ -189,7 +189,7 @@ const ExportsCleanupSection = () => {
   const loadFiles = useCallback(async () => {
     setLoading(true);
     try {
-      const stats = await backend.listFilesWithStats('exports');
+      const stats = await backend.listFilesWithStats(folder);
       stats.sort((a: any, b: any) => b.mtime - a.mtime);
       setFiles(stats);
       setLoaded(true);
@@ -198,7 +198,7 @@ const ExportsCleanupSection = () => {
       setLoaded(true);
     }
     setLoading(false);
-  }, []);
+  }, [folder]);
 
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
@@ -215,7 +215,7 @@ const ExportsCleanupSection = () => {
     setCleaning(true);
     for (const f of targets) {
       try {
-        await backend.deleteFile('exports/' + f.name);
+        await backend.deleteFile(folder + '/' + f.name);
       } catch {}
     }
     await loadFiles();
@@ -225,7 +225,7 @@ const ExportsCleanupSection = () => {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <label className="block text-sm gray-label font-bold">exports 폴더 정리</label>
+        <label className="block text-sm gray-label font-bold">{label}</label>
         <button
           className="text-xs back-gray px-2 py-0.5 rounded hover:brightness-95 active:brightness-90"
           onClick={loadFiles}
@@ -234,6 +234,7 @@ const ExportsCleanupSection = () => {
           {loading ? '조회 중...' : loaded ? '새로고침' : '조회'}
         </button>
       </div>
+      {description && <div className="text-xs text-gray-400 dark:text-gray-500">{description}</div>}
       {loaded && (
         <>
           <div className="text-sm gray-label">
@@ -245,7 +246,7 @@ const ExportsCleanupSection = () => {
                 <button
                   className="text-sm back-red px-3 py-1.5 rounded hover:brightness-95 active:brightness-90"
                   onClick={() => {
-                    if (confirm(`exports 폴더의 모든 파일(${files.length}개, ${formatSize(totalSize)})을 삭제합니다.`)) {
+                    if (confirm(`${label}의 모든 파일(${files.length}개, ${formatSize(totalSize)})을 삭제합니다.`)) {
                       deleteFiles(files);
                     }
                   }}
@@ -359,7 +360,9 @@ const OtherTab = ({
         </div>
       </div>
       <hr className="border-gray-200 dark:border-slate-600" />
-      <ExportsCleanupSection />
+      <FolderCleanupSection folder="exports" label="exports 폴더 정리" />
+      <hr className="border-gray-200 dark:border-slate-600" />
+      <FolderCleanupSection folder="tmp" label="tmp 폴더 정리" description="이미지 내보내기 시 생성되는 임시 파일이 저장됩니다." />
       <hr className="border-gray-200 dark:border-slate-600" />
       <TaskLogSection />
       <hr className="border-gray-200 dark:border-slate-600" />
@@ -832,39 +835,27 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
             </button>
           ))}
         </div>
-        {/* 탭 콘텐츠 — CSS Grid로 모든 탭을 같은 셀에 겹쳐 높이 통일 (키 바인딩 제외) */}
-        {(() => {
-          const keyBindingsIdx = !mobileMode ? tabs.length - 1 : -1;
-          const isKeyBindingsTab = activeTab === keyBindingsIdx;
-          return (
-            <div className="flex-1 overflow-auto p-5" style={{ minHeight: 0 }}>
-              {/* 일반 탭들: Grid로 높이 통일 */}
-              <div style={{
-                display: isKeyBindingsTab ? 'none' : 'grid',
-                gridTemplateColumns: '1fr',
-                gridTemplateRows: '1fr',
-              }}>
-                {tabs.map((_, i) => {
-                  if (i === keyBindingsIdx) return null;
-                  return (
-                    <div
-                      key={i}
-                      style={{
-                        gridRow: 1,
-                        gridColumn: 1,
-                        visibility: activeTab === i ? 'visible' : 'hidden',
-                      }}
-                    >
-                      {getTabContent(i)}
-                    </div>
-                  );
-                })}
+        {/* 탭 콘텐츠 — CSS Grid로 모든 탭을 같은 셀에 겹쳐 높이 통일 */}
+        <div className="flex-1 overflow-auto p-5" style={{ minHeight: 0 }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr',
+            gridTemplateRows: '1fr',
+          }}>
+            {tabs.map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  gridRow: 1,
+                  gridColumn: 1,
+                  visibility: activeTab === i ? 'visible' : 'hidden',
+                }}
+              >
+                {getTabContent(i)}
               </div>
-              {/* 키 바인딩 탭: 독립 렌더링 */}
-              {isKeyBindingsTab && getTabContent(keyBindingsIdx)}
-            </div>
-          );
-        })()}
+            ))}
+          </div>
+        </div>
         {/* 저장 버튼 */}
         <div className="flex-none p-4 border-t border-gray-200 dark:border-slate-600">
           <button className="w-full back-sky py-2.5 rounded-lg hover:brightness-95 active:brightness-90 font-medium"
