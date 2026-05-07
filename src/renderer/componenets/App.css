@@ -454,6 +454,39 @@ input[type='number']::-webkit-outer-spin-button {
   word-break: inherit;
 }
 
+.syntax-weight-emphasis {
+  background-color: rgba(239, 68, 68, 0.15);
+  border-radius: 2px;
+  white-space: inherit;
+  word-break: inherit;
+}
+
+.syntax-weight-deemphasis {
+  background-color: rgba(59, 130, 246, 0.15);
+  border-radius: 2px;
+  white-space: inherit;
+  word-break: inherit;
+}
+
+.syntax-weight-negative {
+  background-color: rgba(107, 114, 128, 0.2);
+  border-radius: 2px;
+  white-space: inherit;
+  word-break: inherit;
+}
+
+:is(.dark) .syntax-weight-emphasis {
+  background-color: rgba(239, 68, 68, 0.2);
+}
+
+:is(.dark) .syntax-weight-deemphasis {
+  background-color: rgba(59, 130, 246, 0.2);
+}
+
+:is(.dark) .syntax-weight-negative {
+  background-color: rgba(107, 114, 128, 0.3);
+}
+
 .syntax-strong {
   font-weight: 800;
   white-space: inherit;

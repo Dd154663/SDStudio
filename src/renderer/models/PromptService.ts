@@ -566,6 +566,62 @@ export const highlightPrompt = (
   const overlapsComment = (wordStart: number, wordEnd: number): boolean =>
     commentRanges.some(([s, e]) => s < wordEnd && e > wordStart);
 
+  // ── 가중치 하이라이트용: 각 문자 위치의 bracket depth 계산 ──
+  // {}: +1 depth, []: -1 depth per pair
+  const weightDepth = new Int8Array(text.length); // 양수=강조, 음수=약화
+  {
+    let curly = 0;  // {} depth
+    let square = 0; // [] depth
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (c === '{') curly++;
+      else if (c === '}') curly = Math.max(0, curly - 1);
+      else if (c === '[') square++;
+      else if (c === ']') square = Math.max(0, square - 1);
+      weightDepth[i] = curly - square;
+    }
+  }
+  // (number)::tag:: 패턴의 범위와 가중치
+  const explicitWeightRanges: Array<{ start: number; end: number; weight: number }> = [];
+  const ewRegex = /(-?\d+(?:\.\d+)?)::[\s\S]*?::/g;
+  let ewMatch: RegExpExecArray | null;
+  while ((ewMatch = ewRegex.exec(text)) !== null) {
+    explicitWeightRanges.push({
+      start: ewMatch.index,
+      end: ewMatch.index + ewMatch[0].length,
+      weight: parseFloat(ewMatch[1]),
+    });
+  }
+  /** 해당 offset 범위의 가중치 상태 반환: 'emphasis' | 'deemphasis' | 'negative' | null */
+  const getWeightClass = (wordStart: number, wordEnd: number): string | null => {
+    // 주석 영역 내부면 가중치 무시
+    if (overlapsComment(wordStart, wordEnd)) return null;
+    // (number)::tag:: 명시적 가중치 우선 (overlap 판정 — 앞뒤 공백 포함 가능)
+    for (const ew of explicitWeightRanges) {
+      if (ew.start < wordEnd && ew.end > wordStart) {
+        if (ew.weight < 0) return 'syntax-weight-negative';
+        if (ew.weight < 1) return 'syntax-weight-deemphasis';
+        if (ew.weight > 1) return 'syntax-weight-emphasis';
+        return null; // weight === 1
+      }
+    }
+    // bracket depth 기반 (단어 첫 비공백 문자 위치)
+    let samplePos = wordStart;
+    for (let i = wordStart; i < wordEnd; i++) {
+      const c = text[i];
+      if (c !== ' ' && c !== '{' && c !== '}' && c !== '[' && c !== ']') {
+        samplePos = i;
+        break;
+      }
+    }
+    if (samplePos < text.length) {
+      const depth = weightDepth[samplePos];
+      if (depth > 0) return 'syntax-weight-emphasis';
+      if (depth < 0) return 'syntax-weight-deemphasis';
+    }
+    return null;
+  };
+
   // 괄호 검사는 주석 영역을 공백으로 대체한 텍스트에서 수행
   // (주석 내부 괄호가 오류로 집계되지 않도록)
   const parenCheckText = commentRanges.length === 0
@@ -591,18 +647,41 @@ export const highlightPrompt = (
             if (isInComment) {
               return '<span class="syntax-comment">,</span>';
             }
+            // 콤마가 가중치 영역 내부면 가중치 배경 적용
+            const commaWeight = getWeightClass(offset, offset + 1);
+            if (commaWeight) {
+              return `<span class="${commaWeight}">,</span>`;
+            }
             return word;
           }
-          // 단어가 주석 영역과 겹치면 통째로 주석 스타일
+          // 단어가 주석 영역과 겹치면 주석 부분만 정확히 주석 스타일 적용
           const wordStart = offset;
           const wordEnd = offset + word.length;
           if (overlapsComment(wordStart, wordEnd)) {
-            const escaped = word
-              .replace(/&/g, '&amp;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;');
+            let result = '';
+            let i = 0;
+            while (i < word.length) {
+              const absPos = wordStart + i;
+              const inComment = commentRanges.some(([s, e]) => absPos >= s && absPos < e);
+              let j = i + 1;
+              while (j < word.length) {
+                const nextInComment = commentRanges.some(([s, e]) => (wordStart + j) >= s && (wordStart + j) < e);
+                if (nextInComment !== inComment) break;
+                j++;
+              }
+              const segment = word.slice(i, j)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+              if (inComment) {
+                result += `<span class="syntax-comment">${segment}</span>`;
+              } else {
+                result += segment;
+              }
+              i = j;
+            }
             offset += word.length + 1;
-            return `<span class="syntax-comment">${escaped}</span>`;
+            return result;
           }
           const classNames = [];
           let leftTrimPos = 0;
@@ -652,12 +731,18 @@ export const highlightPrompt = (
                 pword +
                 '\', event)" onmouseout="window.promptService.clearPromptTooltip()"';
           }
+          // 가중치 하이라이트 (배경색만, 폰트 변경 없음)
+          const wClass = getWeightClass(wordStart + leftTrimPos, wordStart + rightTrimPos + 1);
+          if (wClass) {
+            classNames.push(wClass);
+          }
           if (pword.startsWith('[') && pword.endsWith(']')) {
             classNames.push('syntax-weak');
           }
           if (pword.startsWith('{') && pword.endsWith('}')) {
             classNames.push('syntax-strong');
           }
+
           if (pword.startsWith('<') && pword.endsWith('>')) {
             try {
               promptService.tryExpandPiece(pword, session);
@@ -676,10 +761,14 @@ export const highlightPrompt = (
             }
           }
           pword = pword.replace('<', '&lt;').replace('>', '&gt');
-          let res = `<span ${js} class="${classNames.join(' ')}">`;
-          if (classNames.length === 0) res = '';
-          res += `${word.substring(0, leftTrimPos)}${pword}${word.substring(rightTrimPos + 1, word.length)}`;
-          if (classNames.length !== 0) res += '</span>';
+          const leading = word.substring(0, leftTrimPos);
+          const trailing = word.substring(rightTrimPos + 1, word.length);
+          let res: string;
+          if (classNames.length === 0) {
+            res = `${leading}${pword}${trailing}`;
+          } else {
+            res = `${leading}<span ${js} class="${classNames.join(' ')}">${pword}</span>${trailing}`;
+          }
           offset += word.length + 1;
           return res;
         })
