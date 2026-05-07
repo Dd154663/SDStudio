@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { observer } from 'mobx-react-lite';
 import { appState } from '../models/AppService';
+import { backend } from '../models';
 import ModalOverlay from './ModalOverlay';
 import { FaSearch, FaExchangeAlt, FaPlus } from 'react-icons/fa';
 import { Scene, CharacterPreset } from '../models/types';
@@ -257,6 +258,50 @@ const InsertTab = () => {
   const [insertComplete, setInsertComplete] = useState<number | null>(null);
   const [sceneFilter, setSceneFilter] = useState('');
 
+  // 태그 자동완성
+  const [acTags, setAcTags] = useState<any[]>([]);
+  const [acSelected, setAcSelected] = useState(0);
+  const acCntRef = useRef(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const closeAc = () => { setAcTags([]); setAcSelected(0); };
+
+  const handleInsertInput = (value: string) => {
+    setInsertText(value);
+    setInsertComplete(null);
+    // 마지막 콤마 이후의 현재 단어 추출
+    const lastComma = value.lastIndexOf(',');
+    const curWord = value.substring(lastComma + 1).trim();
+    if (!curWord) { closeAc(); return; }
+    acCntRef.current++;
+    const myId = acCntRef.current;
+    backend.searchTags(curWord).then((tags: any[]) => {
+      if (myId !== acCntRef.current) return;
+      if (tags.length > 0) { setAcTags(tags.slice(0, 8)); setAcSelected(0); }
+      else closeAc();
+    });
+  };
+
+  const acceptAcTag = (idx: number) => {
+    const tag = acTags[idx];
+    const tagWord = tag.redirect?.trim() !== 'null' ? tag.redirect?.trim() : tag.word;
+    // 마지막 콤마 이후를 교체
+    const lastComma = insertText.lastIndexOf(',');
+    const before = lastComma >= 0 ? insertText.substring(0, lastComma + 1) + ' ' : '';
+    setInsertText(before + tagWord);
+    closeAc();
+    inputRef.current?.focus();
+  };
+
+  const handleInsertKeyDown = (e: React.KeyboardEvent) => {
+    if (acTags.length > 0) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setAcSelected((s) => (s + 1) % acTags.length); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setAcSelected((s) => (s - 1 + acTags.length) % acTags.length); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); acceptAcTag(acSelected); return; }
+      if (e.key === 'Escape') { e.preventDefault(); closeAc(); return; }
+    }
+  };
+
   // 씬 리스트가 변경되면 선택 초기화
   useEffect(() => {
     setSelectedScenes(new Set(sceneList));
@@ -362,9 +407,30 @@ const InsertTab = () => {
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">삽입할 텍스트</label>
         <div className="relative">
           <FaPlus className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={12} />
-          <input type="text" placeholder="태그 입력 (예: 1girl, masterpiece)" value={insertText}
-            onChange={(e) => { setInsertText(e.target.value); setInsertComplete(null); }}
+          <input ref={inputRef} type="text" placeholder="태그 입력 (예: 1girl, masterpiece)" value={insertText}
+            onChange={(e) => handleInsertInput(e.target.value)}
+            onKeyDown={handleInsertKeyDown}
+            onBlur={() => setTimeout(closeAc, 150)}
             className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
+          {acTags.length > 0 && (
+            <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-slate-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg overflow-hidden">
+              {acTags.map((tag, i) => (
+                <div key={tag.word + i}
+                  onMouseDown={(e) => { e.preventDefault(); acceptAcTag(i); }}
+                  className={`px-3 py-1.5 text-sm cursor-pointer flex justify-between ${
+                    i === acSelected
+                      ? 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-600'
+                  }`}>
+                  <span className="truncate">{tag.word}</span>
+                  {tag.count != null && <span className="text-xs text-gray-400 ml-2 flex-none">{tag.count}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+          태그 삽입 시 구분자(,)는 삽입 위치에 맞게 자동으로 추가됩니다.
         </div>
       </div>
 
