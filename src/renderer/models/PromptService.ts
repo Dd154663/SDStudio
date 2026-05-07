@@ -763,9 +763,13 @@ export const highlightPrompt = (
           pword = pword.replace('<', '&lt;').replace('>', '&gt');
           const leading = word.substring(0, leftTrimPos);
           const trailing = word.substring(rightTrimPos + 1, word.length);
+          // 가중치 범위 내 공백은 하이라이트에 포함 (연속된 시각 피드백)
+          const leadingInWeight = wClass && leftTrimPos > 0 && getWeightClass(wordStart, wordStart + leftTrimPos) !== null;
           let res: string;
           if (classNames.length === 0) {
             res = `${leading}${pword}${trailing}`;
+          } else if (leadingInWeight) {
+            res = `<span ${js} class="${classNames.join(' ')}">${leading}${pword}</span>${trailing}`;
           } else {
             res = `${leading}<span ${js} class="${classNames.join(' ')}">${pword}</span>${trailing}`;
           }

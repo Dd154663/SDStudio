@@ -298,7 +298,11 @@ class CursorMemorizeEditor {
     while (startIdx > 0 && !',\n'.includes(curText[startIdx - 1])) {
       startIdx--;
     }
-    return curText.substring(startIdx, start).trim();
+    let endIdx = start;
+    while (endIdx < curText.length && !',\n'.includes(curText[endIdx])) {
+      endIdx++;
+    }
+    return curText.substring(startIdx, endIdx).trim();
   }
 
   setCurWord(word: string) {
@@ -309,9 +313,14 @@ class CursorMemorizeEditor {
       while (startIdx > 0 && !',\n'.includes(curText[startIdx - 1])) {
         startIdx--;
       }
+      // 커서 오른쪽도 콤마/개행까지 포함하여 전체 단어 영역을 교체
+      let endIdx = start;
+      while (endIdx < curText.length && !',\n'.includes(curText[endIdx])) {
+        endIdx++;
+      }
       if (startIdx !== 0 && curText[startIdx - 1] !== '\n') word = ' ' + word;
       this.updateCurText(
-        curText.substring(0, startIdx) + word + curText.substring(start),
+        curText.substring(0, startIdx) + word + curText.substring(endIdx),
       );
       this.updateDOM(this.curText, startIdx, false);
       this.compositionBuffer = [];
@@ -859,17 +868,29 @@ function useLatest(value: any) {
 }
 
 function trimByBraces(str: string) {
+  // (숫자)::tag:: 형식의 가중치 접두어/접미어 제거
+  str = str.replace(/^-?\d+(?:\.\d+)?::/, '');
+  str = str.replace(/::$/, '');
+  // {[]} 괄호 및 artist: 접두어 제거
   str = str.replace(/^[{\[]*(artist:)?/, '');
-  str = str.replace(/[}\]]*S$/, '');
+  str = str.replace(/[}\]]*$/, '');
   return str;
 }
 
 function replaceMiddleWord(str: string, newWord: string) {
-  let trimmedLeft = str.match(/^[{\[]*(artist:)?/)
-    ? str.match(/^[{\[]*(artist:)?/)![0]
-    : '';
-  let trimmedRight = str.match(/[}\]]*$/) ? str.match(/[}\]]*$/)![0] : '';
-  return trimmedLeft + newWord + trimmedRight;
+  // 가중치 접두어/접미어 보존: (숫자)::내용::
+  const wpMatch = str.match(/^(-?\d+(?:\.\d+)?::)/);
+  const weightPrefix = wpMatch ? wpMatch[1] : '';
+  const hasSuffix = weightPrefix && str.endsWith('::');
+  const inner = hasSuffix
+    ? str.substring(weightPrefix.length, str.length - 2)
+    : str.substring(weightPrefix.length);
+  // 괄호 보존: {[내용]}
+  const leftMatch = inner.match(/^[{\[]*(artist:)?/);
+  const trimmedLeft = leftMatch ? leftMatch[0] : '';
+  const rightMatch = inner.match(/[}\]]*$/);
+  const trimmedRight = rightMatch ? rightMatch[0] : '';
+  return weightPrefix + trimmedLeft + newWord + trimmedRight + (hasSuffix ? '::' : '');
 }
 
 interface EditTextAreaProps {
@@ -1075,7 +1096,11 @@ const NativeEditTextArea = observer(
         while (startIdx > 0 && !',\n'.includes(curText[startIdx - 1])) {
           startIdx--;
         }
-        return curText.substring(startIdx, start).trim();
+        let endIdx = start;
+        while (endIdx < curText.length && !',\n'.includes(curText[endIdx])) {
+          endIdx++;
+        }
+        return curText.substring(startIdx, endIdx).trim();
       };
 
       const renderText = () => {
@@ -1137,7 +1162,14 @@ const NativeEditTextArea = observer(
         textareaRef.current.addEventListener('focus', onFocus);
         textareaRef.current.addEventListener('blur', onBlur);
 
-        handleInput();
+        // 초기 렌더링 (자동완성 트리거 없이 하이라이트만)
+        {
+          const text = textareaRef.current.value;
+          highlightRef.current.innerHTML =
+            highlight(text, getCurWord(), false) + '<span></span><br>';
+          pushHistory();
+          onUpdated(text);
+        }
 
         const handleWindowMouseDown = (e: any) => {
           closeAutoComplete();
@@ -1166,10 +1198,14 @@ const NativeEditTextArea = observer(
           while (startIdx > 0 && !',\n'.includes(curText[startIdx - 1])) {
             startIdx--;
           }
+          let endIdx = start;
+          while (endIdx < curText.length && !',\n'.includes(curText[endIdx])) {
+            endIdx++;
+          }
           if (startIdx !== 0 && curText[startIdx - 1] !== '\n')
             word = ' ' + word;
           const newText =
-            curText.substring(0, startIdx) + word + curText.substring(start);
+            curText.substring(0, startIdx) + word + curText.substring(endIdx);
           textareaRef.current.value = newText;
           onUpdated(newText);
           textareaRef.current.selectionEnd = startIdx + word.length;
