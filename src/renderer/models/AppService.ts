@@ -77,6 +77,11 @@ export class AppState {
   // 씬 카드 디자인 설정
   @observable accessor classicSceneCard: boolean = false;
 
+  // 자동완성 모드: false=커서 왼쪽만(기본), true=콤마 사이 전체 단어
+  @observable accessor fullWordAutoComplete: boolean = (() => {
+    return localStorage.getItem('sdstudio-full-word-autocomplete') === 'true';
+  })();
+
   // 프롬프트조각 에디터 오버레이
   @observable accessor pieceEditorOpen: boolean = false;
 

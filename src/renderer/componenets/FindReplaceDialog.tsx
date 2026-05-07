@@ -254,7 +254,7 @@ const InsertTab = () => {
   const [insertText, setInsertText] = useState('');
   const [position, setPosition] = useState<'prepend' | 'append'>('append');
   const [slotTarget, setSlotTarget] = useState<'all' | number>('all');
-  const [selectedScenes, setSelectedScenes] = useState<Set<string>>(new Set(sceneList));
+  const [selectedScenes, setSelectedScenes] = useState<Set<string>>(new Set());
   const [insertComplete, setInsertComplete] = useState<number | null>(null);
   const [sceneFilter, setSceneFilter] = useState('');
 
@@ -304,7 +304,7 @@ const InsertTab = () => {
 
   // 씬 리스트가 변경되면 선택 초기화
   useEffect(() => {
-    setSelectedScenes(new Set(sceneList));
+    setSelectedScenes(new Set());
   }, [sceneList.length]);
 
   const maxSlotRow = useMemo(() => {

@@ -295,6 +295,7 @@ const OtherTab = ({
   whiteMode, setWhiteMode,
   delayTime, setDelayTime,
   classicSceneCard, setClassicSceneCard,
+  fullWordAc, setFullWordAc,
 }: any) => {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
 
@@ -346,6 +347,12 @@ const OtherTab = ({
         <input type="checkbox" id="cfgClassicScene" checked={classicSceneCard}
           onChange={(e) => setClassicSceneCard(e.target.checked)} />
         <label htmlFor="cfgClassicScene" className="text-sm gray-label">클래식 씬 카드 디자인 사용</label>
+      </div>
+      <hr className="border-gray-200 dark:border-slate-600" />
+      <div className="flex items-center gap-2">
+        <input type="checkbox" id="cfgFullWordAc" checked={fullWordAc}
+          onChange={(e) => setFullWordAc(e.target.checked)} />
+        <label htmlFor="cfgFullWordAc" className="text-sm gray-label">자동완성 시 콤마 사이 전체 단어 사용</label>
       </div>
       <hr className="border-gray-200 dark:border-slate-600" />
       <div>
@@ -625,6 +632,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [whiteMode, setWhiteMode] = useState(false);
   const [delayTime, setDelayTime] = useState(0);
   const [classicSceneCard, setClassicSceneCard] = useState(false);
+  const [fullWordAc, setFullWordAc] = useState(appState.fullWordAutoComplete);
   const [useLocalBgRemoval, setUseLocalBgRemoval] = useState(false);
   const [refreshImage, setRefreshImage] = useState(false);
   const [ready, setReady] = useState(false);
@@ -760,6 +768,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     await backend.setConfig(config);
     if (old.useCUDA !== useGPU) localAIService.modelChanged();
     appState.classicSceneCard = classicSceneCard;
+    appState.fullWordAutoComplete = fullWordAc;
+    localStorage.setItem('sdstudio-full-word-autocomplete', fullWordAc ? 'true' : 'false');
     sessionService.configChanged();
     onSave();
   };
@@ -784,7 +794,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 2:
         return <StorageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage }} />;
       case 3:
-        return <OtherTab {...{ whiteMode, setWhiteMode, delayTime, setDelayTime, classicSceneCard, setClassicSceneCard }} />;
+        return <OtherTab {...{ whiteMode, setWhiteMode, delayTime, setDelayTime, classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc }} />;
       case 4:
         return <KeyBindingsTab />;
       default:

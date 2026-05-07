@@ -298,11 +298,16 @@ class CursorMemorizeEditor {
     while (startIdx > 0 && !',\n'.includes(curText[startIdx - 1])) {
       startIdx--;
     }
-    let endIdx = start;
-    while (endIdx < curText.length && !',\n'.includes(curText[endIdx])) {
-      endIdx++;
+    if (appState.fullWordAutoComplete) {
+      // 콤마 사이 전체 단어 모드
+      let endIdx = start;
+      while (endIdx < curText.length && !',\n'.includes(curText[endIdx])) {
+        endIdx++;
+      }
+      return curText.substring(startIdx, endIdx).trim();
     }
-    return curText.substring(startIdx, endIdx).trim();
+    // 기본: 커서 왼쪽만
+    return curText.substring(startIdx, start).trim();
   }
 
   setCurWord(word: string) {
@@ -313,10 +318,15 @@ class CursorMemorizeEditor {
       while (startIdx > 0 && !',\n'.includes(curText[startIdx - 1])) {
         startIdx--;
       }
-      // 커서 오른쪽도 콤마/개행까지 포함하여 전체 단어 영역을 교체
-      let endIdx = start;
-      while (endIdx < curText.length && !',\n'.includes(curText[endIdx])) {
-        endIdx++;
+      if (appState.fullWordAutoComplete) {
+        // 전체 단어 모드: 커서 오른쪽도 포함하여 교체
+        var endIdx = start;
+        while (endIdx < curText.length && !',\n'.includes(curText[endIdx])) {
+          endIdx++;
+        }
+      } else {
+        // 기본 모드: 커서 왼쪽만 교체 (오른쪽 텍스트 보존)
+        var endIdx = start;
       }
       if (startIdx !== 0 && curText[startIdx - 1] !== '\n') word = ' ' + word;
       this.updateCurText(
@@ -1096,11 +1106,14 @@ const NativeEditTextArea = observer(
         while (startIdx > 0 && !',\n'.includes(curText[startIdx - 1])) {
           startIdx--;
         }
-        let endIdx = start;
-        while (endIdx < curText.length && !',\n'.includes(curText[endIdx])) {
-          endIdx++;
+        if (appState.fullWordAutoComplete) {
+          let endIdx = start;
+          while (endIdx < curText.length && !',\n'.includes(curText[endIdx])) {
+            endIdx++;
+          }
+          return curText.substring(startIdx, endIdx).trim();
         }
-        return curText.substring(startIdx, endIdx).trim();
+        return curText.substring(startIdx, start).trim();
       };
 
       const renderText = () => {
@@ -1198,9 +1211,14 @@ const NativeEditTextArea = observer(
           while (startIdx > 0 && !',\n'.includes(curText[startIdx - 1])) {
             startIdx--;
           }
-          let endIdx = start;
-          while (endIdx < curText.length && !',\n'.includes(curText[endIdx])) {
-            endIdx++;
+          let endIdx: number;
+          if (appState.fullWordAutoComplete) {
+            endIdx = start;
+            while (endIdx < curText.length && !',\n'.includes(curText[endIdx])) {
+              endIdx++;
+            }
+          } else {
+            endIdx = start;
           }
           if (startIdx !== 0 && curText[startIdx - 1] !== '\n')
             word = ' ' + word;
