@@ -221,9 +221,25 @@ export class AndroidBackend extends Backend {
       path: `${APP_DIR}/${arg}`,
       directory: Directory.Documents,
     });
-    await Share.share({
-      url: urlRes.uri,
+    // 다운로드에 저장 vs 공유 선택
+    const choice = await new Promise<string | undefined>((resolve) => {
+      const { appState } = require('../models/AppService');
+      appState.pushDialog({
+        type: 'select',
+        text: '파일 내보내기가 완료되었습니다.',
+        items: [
+          { text: '다운로드에 저장', value: 'download' },
+          { text: '공유', value: 'share' },
+        ],
+        callback: (value?: string) => resolve(value),
+        onCancel: () => resolve(undefined),
+      });
     });
+    if (choice === 'download') {
+      await this.copyToDownloads(arg);
+    } else if (choice === 'share') {
+      await Share.share({ url: urlRes.uri });
+    }
   }
 
   async copyToDownloads(path: string): Promise<void> {

@@ -26,6 +26,7 @@ import {
   cyclingSessionService,
   taskQueueService,
   backend,
+  isMobile,
 } from '../models';
 import { appState } from '../models/AppService';
 import { FaPlay, FaPause, FaStop, FaSync, FaDownload, FaUpload } from 'react-icons/fa';
@@ -187,14 +188,14 @@ const CharacterPresetCard = observer(({
         (isOver ? 'border-sky-400 ring-2 ring-sky-400 ' : 'border-gray-200 dark:border-slate-600 ')
       }
     >
-      {/* 이미지 영역 */}
-      <div className="relative overflow-hidden aspect-[3/4]" onClick={onEdit}>
+      {/* 이미지 영역 (모바일: 클릭 비활성화 — 편집 버튼 사용) */}
+      <div className="relative overflow-hidden aspect-[3/4]" onClick={() => { if (!isMobile) onEdit(); }}>
         <CardImage
           preset={preset}
           className="w-full h-full object-cover"
         />
-        {/* 호버 오버레이 */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors duration-200 pointer-events-none" />
+        {/* 호버 오버레이 (PC: 호버 시, 모바일: 상단만 상시) */}
+        <div className="absolute inset-0 bg-black/0 md:group-hover:bg-black/40 transition-colors duration-200 pointer-events-none" />
         {/* 그라디언트 텍스트 오버레이 */}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-2.5 pt-6 pb-2">
           <div className="text-sm text-white font-medium drop-shadow truncate">
@@ -208,8 +209,8 @@ const CharacterPresetCard = observer(({
           </div>
         </div>
       </div>
-      {/* 호버 액션 버튼 (순차 생성 모드에서는 숨김) */}
-      {!hideActions && <div className="absolute top-0 left-0 right-0 flex justify-center items-center gap-1 z-20 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+      {/* 액션 버튼 (PC: 호버 시 표시, 모바일: 항상 표시, 순차 생성 모드: 숨김) */}
+      {!hideActions && <div className="absolute top-0 left-0 right-0 flex justify-center items-center gap-1 z-20 py-1.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">
         {isEasyMode && (
           <Tooltip content="이지모드 적용">
             <button
@@ -570,15 +571,15 @@ const CharacterPresetInnerEditor = observer(({
           </div>
         )}
         {vibes.map((vibe, index) => (
-          <div key={vibe.path + index} className="border border-gray-300 dark:border-gray-600 mt-2 p-2 flex gap-2 items-start rounded-lg">
+          <div key={vibe.path + index} className="border border-gray-300 dark:border-gray-600 mt-2 p-2 flex md:flex-row flex-col gap-2 items-start rounded-lg">
             <VibeImage
               path={imageService.getVibeImagePath(curSession!, vibe.path)}
               className="flex-none w-28 h-28 object-cover rounded"
             />
             <div className="flex flex-col gap-2 w-full min-w-0">
-              <div className="flex w-full items-center">
-                <div className="whitespace-nowrap flex-none mr-2 gray-label">정보 추출률 (IS):</div>
-                <div className="flex flex-1 gap-1 min-w-0">
+              <div className="flex w-full items-center md:flex-row flex-col">
+                <div className="whitespace-nowrap flex-none mr-auto md:mr-2 gray-label">정보 추출률 (IS):</div>
+                <div className="flex flex-1 md:w-auto w-full gap-1">
                   <input className="flex-1 min-w-0" type="range" step="0.01" min="0" max="1"
                     value={vibe.info}
                     onChange={(e) => updateVibeField(index, 'info', parseFloat(e.target.value))}
@@ -586,9 +587,9 @@ const CharacterPresetInnerEditor = observer(({
                   <EditableSliderValue value={vibe.info} min={0} max={1} onChange={(v) => updateVibeField(index, 'info', v)} />
                 </div>
               </div>
-              <div className="flex w-full items-center">
-                <div className="whitespace-nowrap flex-none mr-2 gray-label">레퍼런스 강도 (RS):</div>
-                <div className="flex flex-1 gap-1 min-w-0">
+              <div className="flex w-full items-center md:flex-row flex-col">
+                <div className="whitespace-nowrap flex-none mr-auto md:mr-2 gray-label">레퍼런스 강도 (RS):</div>
+                <div className="flex flex-1 md:w-auto w-full gap-1">
                   <input className="flex-1 min-w-0" type="range" step="0.01" min="0" max="1"
                     value={vibe.strength}
                     onChange={(e) => updateVibeField(index, 'strength', parseFloat(e.target.value))}
@@ -638,7 +639,7 @@ const CharacterPresetInnerEditor = observer(({
         {characterReferences.map((ref, index) => (
           <div
             key={ref.path + index}
-            className={`mt-2 p-2 flex gap-2 items-start rounded-lg ${
+            className={`mt-2 p-2 flex md:flex-row flex-col gap-2 items-start rounded-lg ${
               ref.enabled !== false
                 ? 'border border-sky-500 bg-sky-50 dark:bg-sky-900/20'
                 : 'border border-gray-300 dark:border-gray-600 opacity-60'
@@ -675,9 +676,9 @@ const CharacterPresetInnerEditor = observer(({
                 </Tooltip>
               </div>
               {/* Strength */}
-              <div className="flex w-full items-center">
-                <div className="whitespace-nowrap flex-none mr-2 gray-label">Strength:</div>
-                <div className="flex flex-1 gap-1 min-w-0">
+              <div className="flex w-full items-center md:flex-row flex-col">
+                <div className="whitespace-nowrap flex-none mr-auto md:mr-2 gray-label">Strength:</div>
+                <div className="flex flex-1 md:w-auto w-full gap-1">
                   <input className="flex-1 min-w-0" type="range" step="0.01" min="0" max="2"
                     value={ref.strength}
                     onChange={(e) => updateRefField(index, 'strength', parseFloat(e.target.value))}
@@ -686,9 +687,9 @@ const CharacterPresetInnerEditor = observer(({
                 </div>
               </div>
               {/* Fidelity */}
-              <div className="flex w-full items-center">
-                <div className="whitespace-nowrap flex-none mr-2 gray-label">Fidelity:</div>
-                <div className="flex flex-1 gap-1 min-w-0">
+              <div className="flex w-full items-center md:flex-row flex-col">
+                <div className="whitespace-nowrap flex-none mr-auto md:mr-2 gray-label">Fidelity:</div>
+                <div className="flex flex-1 md:w-auto w-full gap-1">
                   <input className="flex-1 min-w-0" type="range" step="0.01" min="0" max="2"
                     value={ref.fidelity}
                     onChange={(e) => updateRefField(index, 'fidelity', parseFloat(e.target.value))}
@@ -837,13 +838,28 @@ async function exportCharacterPresets(session: any) {
   }
 
   const jsonStr = JSON.stringify(exportData);
-  const blob = new Blob([jsonStr], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = session.name + '_character_presets.json';
-  a.click();
-  URL.revokeObjectURL(url);
+  const fileName = session.name + '_character_presets.json';
+
+  if (isMobile) {
+    // 모바일: Capacitor Filesystem으로 저장 후 Share
+    try {
+      const outPath = 'exports/' + fileName;
+      await backend.writeFile(outPath, jsonStr);
+      await backend.showFile(outPath);
+    } catch (e: any) {
+      appState.pushMessage('내보내기 실패: ' + e.message);
+      return;
+    }
+  } else {
+    // PC: Blob 다운로드
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
   appState.pushMessage(`${presets.length}개 캐릭터 프리셋을 내보냈습니다`);
 }
 
@@ -1189,7 +1205,7 @@ export const CharacterPresetEditor = observer(({
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+              gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(180px, 1fr))',
               gap: '0.75rem',
               alignContent: 'start',
             }}
