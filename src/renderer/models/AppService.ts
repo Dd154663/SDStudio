@@ -52,6 +52,16 @@ import {
   queueRemoveBg,
 } from './workflows/OneTimeFlows';
 
+export interface ExportPreset {
+  name: string;
+  menu: 'fav' | 'all';
+  format: 'normal' | 'prefix';
+  prefix: string;
+  opt: 'original' | 'lossy' | 'lossless' | 'avif';
+  imageSize: number;
+  separator: string;
+}
+
 export interface SceneSelectorItem {
   type: 'scene' | 'inpaint';
   text: string;
@@ -95,6 +105,9 @@ export class AppState {
 
   // 찾기 및 변환 다이얼로그
   @observable accessor findReplaceOpen: boolean = false;
+  @observable accessor exportPresetManagerOpen: boolean = false;
+  lastExportType: 'scene' | 'inpaint' = 'scene';
+  lastExportSelected?: GenericScene[];
 
   // 단축키 시스템용 상태
   @observable accessor floatViewCount: number = 0;
@@ -130,6 +143,16 @@ export class AppState {
   @action
   closeFindReplace() {
     this.findReplaceOpen = false;
+  }
+
+  @action
+  openExportPresetManager() {
+    this.exportPresetManagerOpen = true;
+  }
+
+  @action
+  closeExportPresetManager() {
+    this.exportPresetManagerOpen = false;
   }
 
   // 좌측 패널 상태
@@ -632,7 +655,63 @@ export class AppState {
       },
     });
   }
+  // ── 내보내기 프리셋 헬퍼 ──
+  loadExportPresets(): ExportPreset[] {
+    try {
+      const raw = localStorage.getItem('sdstudio-export-presets');
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  }
+
+  saveExportPresets(presets: ExportPreset[]) {
+    localStorage.setItem('sdstudio-export-presets', JSON.stringify(presets));
+  }
+
+  private formatExportPresetLabel(p: ExportPreset): string {
+    const parts: string[] = [p.name];
+    const detail: string[] = [];
+    detail.push(p.menu === 'fav' ? '즐겨찾기' : '전체');
+    if (p.format === 'prefix' && p.prefix) detail.push(`캐릭터: ${p.prefix}`);
+    if (p.opt !== 'original') detail.push(`${p.opt}·${p.imageSize}px`);
+    else detail.push('원본');
+    return `${p.name}  (${detail.join(', ')})`;
+  }
+
+  private async detectSpecialChars(
+    type: 'scene' | 'inpaint',
+    selected: GenericScene[] | undefined,
+    separator: string,
+  ): Promise<Set<string> | undefined> {
+    const specialCharRegex = /[^a-zA-Z0-9가-힣ぁ-んァ-ヶ一-龥　-〿]/g;
+    const detectedChars = new Set<string>();
+    const scenes = selected || this.curSession!.getScenes(type);
+    for (const s of scenes) {
+      const matches = s.name.match(specialCharRegex);
+      if (matches) matches.forEach((c) => detectedChars.add(c));
+    }
+
+    let charsToReplace = new Set<string>();
+    if (detectedChars.size > 0) {
+      const items = Array.from(detectedChars).map((c) => ({
+        text: c === ' ' ? '띄어쓰기' : `"${c}"`,
+        value: c,
+      }));
+      const result = await appState.pushDialogAsync({
+        type: 'checkbox',
+        text: `씬 이름에서 감지된 특수문자입니다.\n"${separator}" 로 변환할 문자를 선택해주세요:`,
+        items: items,
+      });
+      if (result === undefined) return undefined; // 취소
+      try {
+        charsToReplace = new Set(JSON.parse(result));
+      } catch (e) {}
+    }
+    return charsToReplace;
+  }
+
   async exportPackage(type: 'scene' | 'inpaint', selected?: GenericScene[]) {
+    this.lastExportType = type;
+    this.lastExportSelected = selected;
     const exportImpl = async (
       prefix: string,
       fav: boolean,
@@ -772,6 +851,42 @@ export class AppState {
       await backend.showFile(outFilePath);
       appState.setProgressDialog(undefined);
     };
+
+    // ── 프리셋 선택 또는 직접 설정 (항상 표시) ──
+    const presets = this.loadExportPresets();
+    const presetItems: { text: string; value: string }[] = presets.map((p: ExportPreset, i: number) => ({
+      text: p.name,
+      value: `preset_${i}`,
+    }));
+    presetItems.push({ text: '⚙️ 프리셋 관리', value: '_manage' });
+    presetItems.push({ text: '── 직접 설정으로 내보내기 ──', value: '_manual' });
+
+    const choice = await appState.pushDialogAsync({
+      type: 'select',
+      text: '내보내기 방법을 선택해주세요',
+      items: presetItems,
+    });
+    if (!choice) return;
+
+    if (choice === '_manage') {
+      this.openExportPresetManager();
+      return;
+    }
+
+    if (choice.startsWith('preset_')) {
+      const idx = parseInt(choice.split('_')[1]);
+      const ep = presets[idx];
+      if (!ep) return;
+      const charsToReplace = await this.detectSpecialChars(type, selected, ep.separator);
+      if (charsToReplace === undefined) return;
+      const epPrefix = ep.format === 'prefix' && ep.prefix
+        ? ep.prefix + ep.separator : '';
+      await exportImpl(epPrefix, ep.menu === 'fav', ep.opt, ep.imageSize, ep.separator, charsToReplace);
+      return;
+    }
+    // '_manual' → 아래 기존 다이얼로그 체인
+
+    // ── 기존 다이얼로그 체인 (직접 설정) ──
     const menu = await appState.pushDialogAsync({
       type: 'select',
       text: '내보낼 이미지를 선택해주세요',
@@ -825,46 +940,23 @@ export class AppState {
     if (separatorInput === undefined) return;
     const separator = separatorInput || '.';
 
-    // 씬 이름에서 특수문자 감지
-    const specialCharRegex = /[^a-zA-Z0-9가-힣ぁ-んァ-ヶ一-龥\u3000-\u303F]/g;
-    const detectedChars = new Set<string>();
-    const scenes = selected || this.curSession!.getScenes(type);
-    for (const s of scenes) {
-      const matches = s.name.match(specialCharRegex);
-      if (matches) matches.forEach((c) => detectedChars.add(c));
-    }
+    // 특수문자 감지 (공통 헬퍼 사용)
+    // 특수문자 감지 (공통 헬퍼 사용)
+    const charsToReplace = await this.detectSpecialChars(type, selected, separator);
+    if (charsToReplace === undefined) return;
 
-    let charsToReplace = new Set<string>();
-    if (detectedChars.size > 0) {
-      const items = Array.from(detectedChars).map((c) => ({
-        text: c === ' ' ? '띄어쓰기' : `"${c}"`,
-        value: c,
-      }));
-      const result = await appState.pushDialogAsync({
-        type: 'checkbox',
-        text: `씬 이름에서 감지된 특수문자입니다.\n"${separator}" 로 변환할 문자를 선택해주세요:`,
-        items: items,
-      });
-      if (result === undefined) return;
-      try {
-        charsToReplace = new Set(JSON.parse(result));
-      } catch (e) {
-        // 파싱 실패 시 변환 없음
-      }
-    }
-
-    if (format === 'normal') {
-      await exportImpl('', menu === 'fav', opt, imageSize, separator, charsToReplace);
-    } else {
-      appState.pushDialog({
+    // 캐릭터 이름 입력 또는 바로 내보내기
+    let prefix = '';
+    if (format === 'prefix') {
+      const inputPrefix = await appState.pushDialogAsync({
         type: 'input-confirm',
         text: '캐릭터 이름을 입력해주세요',
-        callback: async (prefix) => {
-          if (!prefix) return;
-          await exportImpl(prefix + separator, menu === 'fav', opt, imageSize, separator, charsToReplace);
-        },
       });
+      if (!inputPrefix) return;
+      prefix = inputPrefix + separator;
     }
+
+    await exportImpl(prefix, menu === 'fav', opt, imageSize, separator, charsToReplace);
   }
 
   async exportPreset(session: Session, preset: any) {

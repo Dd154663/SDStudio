@@ -53,6 +53,7 @@ import { AppContextMenu } from './AppContextMenu';
 import { configure } from 'mobx';
 import { ExternalImageView } from './ExternalImageView';
 import FindReplaceDialog from './FindReplaceDialog';
+import ExportPresetManager from './ExportPresetManager';
 configure({
   enforceActions: 'never',
 });
@@ -476,6 +477,7 @@ export const App = observer(() => {
           {appState.curSession && <PieceEditor />}
         </ModalOverlay>
         <FindReplaceDialog />
+        <ExportPresetManager />
         {dragOverlay && (
           <div
             className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none"
