@@ -215,11 +215,14 @@ export const App = observer(() => {
       },
     );
     const removeZipProgressListener = backend.onZipProgress((progress: any) => {
-      appState.exportProgress = {
-        text: '압축파일 생성 중..',
-        done: progress.done,
-        total: progress.total,
-      };
+      // exportProgress가 이미 클리어된 후 늦게 도착하는 이벤트 무시
+      if (appState.exportProgress) {
+        appState.exportProgress = {
+          text: '압축파일 생성 중..',
+          done: progress.done,
+          total: progress.total,
+        };
+      }
     });
     const removeImageChangedListener = backend.onImageChanged(
       async (path: string) => {
@@ -257,6 +260,12 @@ export const App = observer(() => {
         return '프로젝트 또는 프롬프트조각을 임포트합니다';
       }
       // type이 빈 문자열일 수 있음 — 파일 이름 확장자로 추정
+      if (items.length > 0) {
+        const file = dataTransfer.files?.[0];
+        if (file && file.name.endsWith('.tar')) {
+          return '프로젝트 백업을 불러옵니다';
+        }
+      }
       return null;
     };
 

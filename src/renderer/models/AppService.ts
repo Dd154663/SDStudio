@@ -257,6 +257,16 @@ export class AppState {
   }
 
   handleFile(file: File) {
+    if (file.name.endsWith('.tar')) {
+      // tar 파일 — 프로젝트 백업 불러오기
+      const filePath = (file as any).path;
+      if (!filePath) {
+        this.pushMessage('tar 파일 경로를 가져올 수 없습니다');
+        return;
+      }
+      this.handleTarImport(filePath);
+      return;
+    }
     if (file.type === 'application/json') {
       const reader = new FileReader();
       reader.onload = (e: any) => {
@@ -1007,6 +1017,39 @@ export class AppState {
    *     [현재 세션으로 / 프롬프트만 추출]
    * - 프리셋이 없으면 기존대로 externalImage (프롬프트 추출 뷰)
    */
+  async handleTarImport(tarPath: string): Promise<void> {
+    this.pushDialog({
+      type: 'input-confirm',
+      text: '프로젝트 백업을 불러옵니다.\n새 프로젝트 이름을 입력하세요.',
+      callback: async (inputValue) => {
+        if (!inputValue) return;
+        if (inputValue in sessionService.list()) {
+          this.pushMessage('이미 존재하는 프로젝트 이름입니다.');
+          return;
+        }
+        this.setProgressDialog({
+          text: '프로젝트 백업을 불러오는 중입니다...',
+          done: 0,
+          total: 1,
+        });
+        try {
+          await sessionService.importSessionDeep(tarPath, inputValue);
+        } catch (e: any) {
+          this.setProgressDialog(undefined);
+          this.pushMessage('백업 불러오기 실패: ' + e.message);
+          return;
+        }
+        this.setProgressDialog(undefined);
+        this.pushDialog({
+          type: 'yes-only',
+          text: '프로젝트 백업을 불러왔습니다.',
+        });
+        const sess = await sessionService.get(inputValue);
+        this.curSession = sess;
+      },
+    });
+  }
+
   async handlePngImport(base64: string): Promise<void> {
     if (!this.curSession) return;
     const session = this.curSession;

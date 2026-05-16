@@ -335,6 +335,14 @@ export class SessionService extends ResourceSyncService<Session> {
         name: 'vibes/' + vibe,
       });
     }
+    const references = await ignoreError(backend.listFiles('references/' + session.name));
+    for (const ref of references) {
+      if (!ref.endsWith('.png')) continue;
+      entries.push({
+        path: 'references/' + session.name + '/' + ref,
+        name: 'references/' + ref,
+      });
+    }
     entries.push({ path: projFile, name: 'project.json' });
     if (zipService.isZipping) {
       throw new Error('Already zipping');
@@ -411,6 +419,11 @@ export class SessionService extends ResourceSyncService<Session> {
     }
     try {
       await backend.renameDir(path + '/vibes', 'vibes/' + session.name);
+    } catch (e) {
+      console.error(e);
+    }
+    try {
+      await backend.renameDir(path + '/references', 'references/' + session.name);
     } catch (e) {
       console.error(e);
     }

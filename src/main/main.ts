@@ -185,6 +185,10 @@ ipcMain.handle('zip-files', async (event, files, outPath) => {
     });
     done++;
   }
+  mainWindow!.webContents.send('zip-progress', {
+    done: files.length,
+    total: files.length,
+  });
   pack.finalize();
 });
 
