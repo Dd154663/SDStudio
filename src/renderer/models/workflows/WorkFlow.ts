@@ -294,6 +294,8 @@ function materializeWFObj(type: string, vars: WFVar[]) {
         obj[key] = (json[key] || [])
           .filter((x: any) => x && x.path)
           .map((x: any) => ReferenceItem.fromJSON(x));
+      } else if (params[key].type === 'characterPrompts') {
+        obj[key] = json[key] || [];
       } else {
         obj[key] = json[key];
       }

@@ -405,10 +405,10 @@ export const createSDCharacterPrompts = async (
   shared: any,
   scene: Scene,
 ) => {
-  const characterPrompts =
-    shared.type === 'SDImageGenEasy'
-      ? shared.characterPrompts
-      : preset.characterPrompts;
+  const sharedCPs = shared.characterPrompts || [];
+  const characterPrompts = sharedCPs.length > 0
+    ? sharedCPs
+    : (preset.characterPrompts || []);
   if (!characterPrompts || characterPrompts.length === 0) return [];
 
   return await dfsPrompts(

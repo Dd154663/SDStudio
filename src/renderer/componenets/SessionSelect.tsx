@@ -7,7 +7,8 @@ import { sessionService, imageService, backend, zipService, workFlowService, tra
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
 import { CharacterPresetFloatEditor } from './CharacterPresetEditor';
-import { CharacterPreset, VibeItem, ReferenceItem } from '../models/types';
+import { CharacterPreset, CharacterPrompt, VibeItem, ReferenceItem } from '../models/types';
+import { v4 as uuidv4 } from 'uuid';
 import { runInAction } from 'mobx';
 
 const SessionSelect = observer(() => {
@@ -118,61 +119,66 @@ const SessionSelect = observer(() => {
       {showCharacterPresets && appState.curSession && (
         <CharacterPresetFloatEditor
           onClose={() => setShowCharacterPresets(false)}
-          onApplyPreset={(preset: CharacterPreset) => {
+          onApplyPreset={(preset: CharacterPreset, mode: 'easy' | 'character') => {
             const curSession = appState.curSession;
             if (!curSession) return;
-            
-            // 현재 선택된 워크플로우 타입 가져오기
+
             const workflowType = curSession.selectedWorkflow?.workflowType;
             if (!workflowType) {
               appState.pushMessage('워크플로우를 먼저 선택해주세요');
               return;
             }
-            
-            // shared 설정 가져오기
+
+            // Mode 1: 이지모드 적용 (SDImageGenEasy 전용)
+            if (mode === 'easy') {
+              if (workflowType !== 'SDImageGenEasy') {
+                appState.pushMessage('이지모드 적용은 "이미지 생성 (이지모드)" 워크플로우에서만 사용 가능합니다');
+                return;
+              }
+            }
+
             let shared = curSession.presetShareds.get(workflowType);
             if (!shared) {
               shared = workFlowService.buildShared(workflowType);
               curSession.presetShareds.set(workflowType, shared);
             }
-            
-            // MobX runInAction으로 모든 변경사항을 한 번에 적용
+
             runInAction(() => {
-              // 프리셋 값 적용
-              // 바이브 트랜스퍼 적용
               if (preset.vibes && preset.vibes.length > 0) {
                 shared.vibes = preset.vibes.map((v: VibeItem) => VibeItem.fromJSON(v.toJSON()));
               }
-              
-              // 캐릭터 레퍼런스 적용
               if (preset.characterReferences && preset.characterReferences.length > 0) {
                 shared.characterReferences = preset.characterReferences.map((r: ReferenceItem) => ReferenceItem.fromJSON(r.toJSON()));
               }
-              
-              // SDImageGenEasy의 경우 characterPrompt와 backgroundPrompt 필드 적용
-              if (workflowType === 'SDImageGenEasy') {
-                // 캐릭터 관련 태그 적용
+
+              if (mode === 'easy') {
                 if (preset.characterPrompt) {
                   shared.characterPrompt = preset.characterPrompt;
                 }
-                
-                // 배경 관련 태그 적용
                 if (preset.backgroundPrompt) {
                   shared.backgroundPrompt = preset.backgroundPrompt;
                 }
-                
-                // 태그 밴 리스트 적용
                 if (preset.characterUC) {
                   shared.uc = preset.characterUC;
                 }
+              } else {
+                // Mode 2: 캐릭터 프롬프트 적용 (기존 프리셋 항목 교체)
+                const newEntry: CharacterPrompt = {
+                  id: uuidv4(),
+                  prompt: preset.characterPrompt || '',
+                  uc: preset.characterUC || '',
+                  position: { x: 0, y: 0 },
+                  enabled: true,
+                };
+                shared.characterPrompts = [newEntry];
               }
-              
-              // 적용된 프리셋 이름 저장
+
               appState.setAppliedCharacterPreset(preset.name);
             });
-            
+
             setShowCharacterPresets(false);
-            appState.pushMessage(`"${preset.name}" 프리셋이 적용되었습니다`);
+            const modeLabel = mode === 'easy' ? '이지모드' : '캐릭터 프롬프트';
+            appState.pushMessage(`"${preset.name}" 프리셋이 ${modeLabel}로 적용되었습니다`);
           }}
         />
       )}

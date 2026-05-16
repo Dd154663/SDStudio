@@ -53,7 +53,9 @@ const SDImageGenShared = new WFVarBuilder()
   .addVibeSetVar('vibes')
   .addBoolVar('normalizeStrength', true)
   .addNullIntVar('seed')
-  .addCharacterReferenceVar('characterReferences');
+  .addCharacterReferenceVar('characterReferences')
+  .addCharacterPromptsVar('characterPrompts', [])
+  .addStringVar('_appliedPresetName', '');
 
 const SDImageGenUI = wfiStack([
   wfiPresetSelect(),
@@ -117,8 +119,7 @@ const SDImageGenEasyPreset = new WFVarBuilder()
 const SDImageGenEasyShared = SDImageGenShared.clone()
   .addPromptVar('characterPrompt', '')
   .addPromptVar('backgroundPrompt', '')
-  .addPromptVar('uc', '')
-  .addCharacterPromptsVar('characterPrompts', []);
+  .addPromptVar('uc', '');
 
 const SDImageGenEasyUI = wfiStack([
   wfiProfilePresetSelect(),
@@ -208,9 +209,10 @@ const SDImageGenHandler = async (
     });
   } else {
     // 기존 공유/프리셋 캐릭터 프롬프트 사용
-    allCharacterPrompts = shared.type === 'SDImageGenEasy'
-      ? shared.characterPrompts
-      : preset.characterPrompts;
+    const sharedCPs = shared.characterPrompts || [];
+    allCharacterPrompts = sharedCPs.length > 0
+      ? sharedCPs
+      : (preset.characterPrompts || []);
     finalCharacterPrompts = characterPrompts;
   }
   

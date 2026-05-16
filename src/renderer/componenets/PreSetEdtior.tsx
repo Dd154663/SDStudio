@@ -1884,8 +1884,53 @@ const CharacterPromptEditor = observer(
       return null;
     }
 
+    const sharedCPs = shared?.characterPrompts || [];
+    const hasSharedPresetCPs = input.fieldType === 'preset' && sharedCPs.length > 0;
+
     return (
       <div className="w-full h-full overflow-hidden flex flex-col">
+        {hasSharedPresetCPs && sharedCPs.map((cp: CharacterPrompt, idx: number) => (
+          <div key={cp.id || idx} className={`flex-none mx-3 mt-3 p-2 border rounded-lg ${cp.enabled === false ? 'opacity-60 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/30' : 'border-green-300 dark:border-green-600 bg-green-50 dark:bg-green-900/20'}`}>
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-sm font-medium text-green-700 dark:text-green-400">
+                캐릭터 프리셋 적용 중
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  className={`round-button h-6 px-2 text-xs ${cp.enabled !== false ? 'back-green' : 'back-gray'}`}
+                  onClick={() => {
+                    const updated = sharedCPs.map((c: CharacterPrompt, i: number) =>
+                      i === idx ? { ...c, enabled: c.enabled === false ? true : false } : c
+                    );
+                    shared.characterPrompts = updated;
+                  }}
+                >
+                  {cp.enabled !== false ? '활성화' : '비활성화'}
+                </button>
+                <button
+                  className="round-button h-6 px-2 text-xs back-red"
+                  onClick={() => {
+                    shared.characterPrompts = sharedCPs.filter((_: any, i: number) => i !== idx);
+                  }}
+                >
+                  삭제
+                </button>
+              </div>
+            </div>
+            <div className="text-xs text-gray-600 dark:text-gray-400 mb-0.5">캐릭터 프롬프트:</div>
+            <div className="text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-700 p-1.5 rounded font-mono whitespace-pre-wrap break-all mb-1">
+              {cp.prompt || '(비어 있음)'}
+            </div>
+            {cp.uc && (
+              <>
+                <div className="text-xs text-gray-600 dark:text-gray-400 mb-0.5">네거티브 프롬프트:</div>
+                <div className="text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-700 p-1.5 rounded font-mono whitespace-pre-wrap break-all">
+                  {cp.uc}
+                </div>
+              </>
+            )}
+          </div>
+        ))}
         <div className="flex-1 overflow-hidden">
           <div className="h-full overflow-auto">
             {getField().map((character: CharacterPrompt, i: number) => (
@@ -2040,7 +2085,7 @@ const CharacterPromptEditor = observer(
   },
 );
 
-export const CharacterButton = ({ input }: { input: WFIInlineInput }) => {
+export const CharacterButton = observer(({ input }: { input: WFIInlineInput }) => {
   const { editCharacters, setEditCharacters, preset, shared, meta } =
     useContext(WFElementContext)!;
 
@@ -2057,10 +2102,13 @@ export const CharacterButton = ({ input }: { input: WFIInlineInput }) => {
   const field = getField();
   const enabledCount = field.filter((c: CharacterPrompt) => c.enabled !== false).length;
   const totalCount = field.length;
+  const sharedCPs = shared?.characterPrompts || [];
+  const hasPresetApplied = input.fieldType === 'preset' && sharedCPs.length > 0;
+  const anyCharacters = field.length > 0 || hasPresetApplied;
 
   return (
     <>
-      {editCharacters === undefined && field.length === 0 && (
+      {editCharacters === undefined && !anyCharacters && (
         <button
           className={`round-button back-gray h-8 w-full flex mt-2`}
           onClick={onClick}
@@ -2071,10 +2119,10 @@ export const CharacterButton = ({ input }: { input: WFIInlineInput }) => {
           </div>
         </button>
       )}
-      {editCharacters === undefined && field.length > 0 && (
+      {editCharacters === undefined && anyCharacters && (
         <div className="w-full mt-2">
           <button
-            className="round-button back-sky h-8 w-full flex justify-between items-center"
+            className={`round-button ${hasPresetApplied ? 'back-green' : 'back-sky'} h-8 w-full flex justify-between items-center`}
             onClick={onClick}
           >
             <div className="flex items-center">
@@ -2082,16 +2130,23 @@ export const CharacterButton = ({ input }: { input: WFIInlineInput }) => {
               <span>캐릭터 프롬프트 열기</span>
             </div>
             <div className="flex flex-wrap gap-1">
-              <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-green-800">
-                {enabledCount}/{totalCount} 활성화
-              </span>
+              {hasPresetApplied && (
+                <span className="px-2 py-0.5 text-xs rounded-full bg-white/30">
+                  프리셋 적용 중
+                </span>
+              )}
+              {totalCount > 0 && (
+                <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-green-800">
+                  {enabledCount}/{totalCount} 활성화
+                </span>
+              )}
             </div>
           </button>
         </div>
       )}
     </>
   );
-};
+});
 
 const WFRInline = observer(({ element }: WFElementProps) => {
   const { editVibe, editCharacters, type, showGroup, showGroupOverlay, preset, shared, meta } =

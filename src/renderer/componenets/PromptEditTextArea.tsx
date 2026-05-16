@@ -829,7 +829,7 @@ const PromptAutoComplete = ({
       onMouseDown={(e) => {
         e.stopPropagation();
       }}
-      className="fixed bg-white border border-gray-300 rounded-lg shadow-lg z-30"
+      className="fixed bg-white border border-gray-300 rounded-lg shadow-lg z-30 text-gray-900"
       style={{
         display:
           tags.length > 0 && (clientX !== 0 || clientY !== 0)

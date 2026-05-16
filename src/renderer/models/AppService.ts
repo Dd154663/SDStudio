@@ -66,7 +66,15 @@ export class AppState {
   @observable accessor samples: number = 10;
   @observable accessor progressDialog: ProgressDialog | undefined = undefined;
   @observable accessor externalImage: string | undefined = undefined;
-  @observable accessor appliedCharacterPreset: string | undefined = undefined; // 현재 적용된 캐릭터 프리셋 이름
+  /** 현재 적용된 캐릭터 프리셋 이름 (shared에서 읽음 — 영속화됨) */
+  get appliedCharacterPreset(): string | undefined {
+    const session = this.curSession;
+    if (!session) return undefined;
+    const workflowType = session.selectedWorkflow?.workflowType;
+    if (!workflowType) return undefined;
+    const shared = session.presetShareds.get(workflowType);
+    return shared?._appliedPresetName || undefined;
+  }
 
   // 이미지 클립보드
   @observable accessor imageClipboard: string[] = [];
@@ -659,8 +667,15 @@ export class AppState {
             images.push(cand);
           }
         }
+        // 캐릭터 프리셋 파일명 옵션 적용
+        const characterPreset = this.getAppliedCharacterPreset();
+        const presetPrefix = characterPreset?.filenamePrefix || '';
+        const presetSuffix = characterPreset?.filenameSuffix || '';
+
         let sceneName = scene.name;
         let finalPrefix = prefix;
+        let finalPresetPrefix = presetPrefix ? presetPrefix + separator : '';
+        let finalPresetSuffix = presetSuffix ? separator + presetSuffix : '';
         if (charsToReplace.size > 0) {
           const escaped = Array.from(charsToReplace).map(
             (c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -668,6 +683,8 @@ export class AppState {
           const regex = new RegExp(`(${escaped})+`, 'g');
           sceneName = sceneName.replace(regex, separator);
           finalPrefix = finalPrefix.replace(regex, separator);
+          finalPresetPrefix = finalPresetPrefix.replace(regex, separator);
+          finalPresetSuffix = finalPresetSuffix.replace(regex, separator);
         }
         const isMirror = scene.type === 'inpaint' && (scene as InpaintScene).workflowType === 'SDMirror';
         for (let i = 0; i < images.length; i++) {
@@ -681,9 +698,11 @@ export class AppState {
               imgPath = tmpPath;
             }
           }
+          // 파일명: [presetPrefix_][manualPrefix_]sceneName[_presetSuffix][_index].png
+          const baseName = finalPresetPrefix + finalPrefix + sceneName + finalPresetSuffix;
           const name = images.length === 1
-            ? finalPrefix + sceneName + '.png'
-            : finalPrefix + sceneName + separator + (i + 1).toString() + '.png';
+            ? baseName + '.png'
+            : baseName + separator + (i + 1).toString() + '.png';
           paths.push({ path: imgPath, name });
         }
       }
@@ -1719,7 +1738,14 @@ export class AppState {
 
   @action
   setAppliedCharacterPreset(presetName: string | undefined) {
-    this.appliedCharacterPreset = presetName;
+    const session = this.curSession;
+    if (!session) return;
+    const workflowType = session.selectedWorkflow?.workflowType;
+    if (!workflowType) return;
+    const shared = session.presetShareds.get(workflowType);
+    if (shared) {
+      shared._appliedPresetName = presetName || '';
+    }
   }
 
   @action
@@ -1735,13 +1761,16 @@ export class AppState {
     // 프리셋에서 적용된 값들 초기화
     shared.vibes = [];
     shared.characterReferences = [];
+    if (shared.characterPrompts) {
+      shared.characterPrompts = [];
+    }
     if (workflowType === 'SDImageGenEasy') {
       shared.characterPrompt = '';
       shared.backgroundPrompt = '';
       shared.uc = '';
     }
     
-    this.appliedCharacterPreset = undefined;
+    shared._appliedPresetName = '';
     this.pushMessage('캐릭터 프리셋이 해제되었습니다');
   }
 

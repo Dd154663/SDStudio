@@ -278,15 +278,20 @@ const CharacterPresetInnerEditor = observer(({
           />
         </div>
 
-        {/* 배경 프롬프트 */}
-        <div className="mb-4">
-          <div className="gray-label mb-2">배경 프롬프트:</div>
-          <PromptEditTextArea
-            value={backgroundPrompt}
-            onChange={setBackgroundPrompt}
-            disabled={false}
-          />
-        </div>
+        {/* 배경 프롬프트 - 레거시 (읽기 전용) */}
+        {backgroundPrompt && (
+          <div className="mb-4 p-3 border rounded-lg border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20">
+            <div className="text-sm font-medium text-amber-600 dark:text-amber-400 mb-1">
+              Legacy: 배경 프롬프트
+            </div>
+            <div className="text-sm text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 p-2 rounded font-mono whitespace-pre-wrap break-all">
+              {backgroundPrompt}
+            </div>
+            <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+              이 필드는 더 이상 편집할 수 없습니다. 이지모드 적용 시에만 기존 값이 사용됩니다.
+            </div>
+          </div>
+        )}
 
         {/* 바이브 트랜스퍼 */}
         <div
@@ -438,16 +443,20 @@ interface CharacterPresetItemProps {
   preset: CharacterPreset;
   onEdit: () => void;
   onDelete: () => void;
-  onApply: () => void;
+  onApplyEasy: () => void;
+  onApplyCharacter: () => void;
   onDuplicate: () => void;
+  isEasyMode: boolean;
 }
 
 const CharacterPresetItem = observer(({
   preset,
   onEdit,
   onDelete,
-  onApply,
+  onApplyEasy,
+  onApplyCharacter,
   onDuplicate,
+  isEasyMode,
 }: CharacterPresetItemProps) => {
   const { curSession } = appState;
 
@@ -456,12 +465,21 @@ const CharacterPresetItem = observer(({
       <div className="flex items-center justify-between mb-2">
         <div className="font-medium text-lg">{preset.name}</div>
         <div className="flex gap-1">
-          <Tooltip content="씬에 적용">
+          <Tooltip content={isEasyMode ? '이지모드 적용' : '이지모드 전용'}>
           <button
             className="icon-button back-sky"
-            onClick={onApply}
+            onClick={onApplyEasy}
+            disabled={!isEasyMode}
           >
-            <FaCheck />
+            <FaFont />
+          </button>
+          </Tooltip>
+          <Tooltip content="캐릭터 프롬프트 적용">
+          <button
+            className="icon-button back-yellow"
+            onClick={onApplyCharacter}
+          >
+            <FaUserAlt />
           </button>
           </Tooltip>
           <Tooltip content="편집">
@@ -496,9 +514,11 @@ const CharacterPresetItem = observer(({
         <div className="truncate mb-1">
           <span className="font-medium">캐릭터:</span> {preset.characterPrompt || '(없음)'}
         </div>
-        <div className="truncate mb-1">
-          <span className="font-medium">배경:</span> {preset.backgroundPrompt || '(없음)'}
-        </div>
+        {preset.backgroundPrompt && (
+          <div className="truncate mb-1 text-amber-600 dark:text-amber-400">
+            <span className="font-medium">[레거시] 배경:</span> {preset.backgroundPrompt}
+          </div>
+        )}
         <div className="flex gap-2">
           <span>바이브: {preset.vibes.length}개</span>
           <span>레퍼런스: {preset.characterReferences.length}개</span>
@@ -530,7 +550,7 @@ const CharacterPresetItem = observer(({
 
 // 메인 캐릭터 프리셋 에디터 컴포넌트
 interface CharacterPresetEditorProps {
-  onApplyPreset?: (preset: CharacterPreset) => void;
+  onApplyPreset?: (preset: CharacterPreset, mode: 'easy' | 'character') => void;
 }
 
 export const CharacterPresetEditor = observer(({
@@ -591,11 +611,15 @@ export const CharacterPresetEditor = observer(({
     curSession.addCharacterPreset(copy);
   };
 
-  const handleApply = (preset: CharacterPreset) => {
+  const handleApplyEasy = (preset: CharacterPreset) => {
     if (onApplyPreset) {
-      onApplyPreset(preset);
-    } else {
-      appState.pushMessage(`"${preset.name}" 프리셋이 적용되었습니다`);
+      onApplyPreset(preset, 'easy');
+    }
+  };
+
+  const handleApplyCharacter = (preset: CharacterPreset) => {
+    if (onApplyPreset) {
+      onApplyPreset(preset, 'character');
     }
   };
 
@@ -642,8 +666,10 @@ export const CharacterPresetEditor = observer(({
               preset={preset}
               onEdit={() => handleEdit(preset)}
               onDelete={() => handleDelete(preset)}
-              onApply={() => handleApply(preset)}
+              onApplyEasy={() => handleApplyEasy(preset)}
+              onApplyCharacter={() => handleApplyCharacter(preset)}
               onDuplicate={() => handleDuplicate(preset)}
+              isEasyMode={curSession?.selectedWorkflow?.workflowType === 'SDImageGenEasy'}
             />
           ))
         )}
@@ -655,7 +681,7 @@ export const CharacterPresetEditor = observer(({
 // FloatView로 감싼 캐릭터 프리셋 에디터
 interface CharacterPresetFloatEditorProps {
   onClose: () => void;
-  onApplyPreset?: (preset: CharacterPreset) => void;
+  onApplyPreset?: (preset: CharacterPreset, mode: 'easy' | 'character') => void;
 }
 
 export const CharacterPresetFloatEditor = observer(({

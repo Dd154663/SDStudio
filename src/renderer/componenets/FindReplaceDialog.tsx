@@ -18,15 +18,18 @@ type SearchScope = 'scene' | 'character';
 function collectResults(
   query: string,
   scopes: Record<SearchScope, boolean>,
+  selectedScenes?: Set<string>,
 ): SearchResult[] {
   const session = appState.curSession;
   if (!session || !query) return [];
 
   const results: SearchResult[] = [];
   const q = query;
+  const hasFilter = selectedScenes != null && selectedScenes.size > 0;
 
   if (scopes.scene) {
     for (const scene of session.scenes.values()) {
+      if (hasFilter && !selectedScenes!.has(scene.name)) continue;
       const sceneName = scene.name;
       scene.slots.forEach((slot, si) => {
         slot.forEach((piece, pi) => {
@@ -53,6 +56,7 @@ function collectResults(
 
   if (scopes.character) {
     for (const scene of session.scenes.values()) {
+      if (hasFilter && !selectedScenes!.has(scene.name)) continue;
       if (!scene.sceneCharacterPrompts?.length) continue;
       const sceneName = scene.name;
       scene.sceneCharacterPrompts.forEach((cp, i) => {
@@ -80,6 +84,7 @@ function collectResults(
       }
     }
 
+    // 캐릭터 프리셋은 씬에 소속되지 않으므로 씬 필터와 무관하게 항상 검색
     for (const preset of session.characterPresets.values()) {
       const pName = preset.name;
       if (preset.characterPrompt.includes(q)) {
@@ -134,19 +139,62 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
    찾기/변환 탭
    ═══════════════════════════════════════════════════════════════════ */
 const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInputElement> }) => {
+  const session = appState.curSession;
+  const sceneList = useMemo(() => {
+    if (!session) return [];
+    return Array.from(session.scenes.values()).map((s) => s.name);
+  }, [session, session?.scenes.size]);
+
   const [searchText, setSearchText] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const [scopes, setScopes] = useState<Record<SearchScope, boolean>>({ scene: true, character: true });
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searched, setSearched] = useState(false);
   const [replaceComplete, setReplaceComplete] = useState<number | null>(null);
+  const [selectedScenes, setSelectedScenes] = useState<Set<string>>(() => new Set(sceneList));
+  const [sceneFilter, setSceneFilter] = useState('');
+
+  // 씬 리스트가 변경되면 전체 선택으로 초기화
+  useEffect(() => {
+    setSelectedScenes(new Set(sceneList));
+  }, [sceneList.length]);
+
+  const filteredSceneList = useMemo(() => {
+    if (!sceneFilter.trim()) return sceneList;
+    const q = sceneFilter.toLowerCase();
+    return sceneList.filter((name) => name.toLowerCase().includes(q));
+  }, [sceneList, sceneFilter]);
+
+  const toggleScene = (name: string) => {
+    setSelectedScenes((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+    setSearched(false); setResults([]); setReplaceComplete(null);
+  };
+
+  const toggleAll = () => {
+    const target = filteredSceneList;
+    const allSelected = target.every((name) => selectedScenes.has(name));
+    setSelectedScenes((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        target.forEach((name) => next.delete(name));
+      } else {
+        target.forEach((name) => next.add(name));
+      }
+      return next;
+    });
+    setSearched(false); setResults([]); setReplaceComplete(null);
+  };
 
   const doSearch = useCallback(() => {
     if (!searchText.trim()) return;
-    setResults(collectResults(searchText, scopes));
+    setResults(collectResults(searchText, scopes, selectedScenes));
     setSearched(true);
     setReplaceComplete(null);
-  }, [searchText, scopes]);
+  }, [searchText, scopes, selectedScenes]);
 
   const doReplaceAll = useCallback(() => {
     if (results.length === 0) return;
@@ -157,9 +205,9 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
       if (cur !== next) { r.setText(next); replaced++; }
     }
     setReplaceComplete(replaced);
-    setResults(collectResults(searchText, scopes));
+    setResults(collectResults(searchText, scopes, selectedScenes));
     setSearched(true);
-  }, [results, searchText, replaceText, scopes]);
+  }, [results, searchText, replaceText, scopes, selectedScenes]);
 
   const toggleScope = (scope: SearchScope) => {
     setScopes((prev) => ({ ...prev, [scope]: !prev[scope] }));
@@ -178,6 +226,32 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
           <input type="checkbox" checked={scopes.character} onChange={() => toggleScope('character')} className="rounded border-gray-300 dark:border-gray-600" />
           <span className="text-sm text-gray-700 dark:text-gray-300">캐릭터 프롬프트</span>
         </label>
+      </div>
+
+      {/* 씬 선택 */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">씬 선택</span>
+          <button onClick={toggleAll} className="text-xs text-sky-500 hover:text-sky-600">
+            {filteredSceneList.every((n) => selectedScenes.has(n)) ? '전체 해제' : '전체 선택'}
+            {sceneFilter.trim() && ` (${filteredSceneList.length}개)`}
+          </button>
+        </div>
+        <input type="text" placeholder="씬 이름 검색..." value={sceneFilter}
+          onChange={(e) => setSceneFilter(e.target.value)}
+          className="w-full mb-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
+        <div className="max-h-36 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-2 space-y-1">
+          {filteredSceneList.map((name) => (
+            <label key={name} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 rounded px-1 py-0.5">
+              <input type="checkbox" checked={selectedScenes.has(name)} onChange={() => toggleScene(name)}
+                className="rounded border-gray-300 dark:border-gray-600" />
+              <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{name}</span>
+            </label>
+          ))}
+          {filteredSceneList.length === 0 && (
+            <div className="text-xs text-gray-400 py-1">일치하는 씬이 없습니다</div>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
@@ -234,8 +308,8 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
       )}
 
       <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-        프로젝트 내 모든 씬의 텍스트를 검색하고 일괄 변환합니다.
-        조각 이름(&lt;그룹.이름&gt;)도 리터럴 텍스트로 검색 가능합니다.
+        선택한 씬의 텍스트를 검색하고 일괄 변환합니다.
+        캐릭터 프리셋은 씬 선택과 무관하게 항상 검색됩니다.
       </div>
     </div>
   );
@@ -253,7 +327,7 @@ const InsertTab = () => {
 
   const [insertText, setInsertText] = useState('');
   const [position, setPosition] = useState<'prepend' | 'append'>('append');
-  const [slotTarget, setSlotTarget] = useState<'all' | number>('all');
+  const [slotTarget, setSlotTarget] = useState<'all' | number>(0);
   const [selectedScenes, setSelectedScenes] = useState<Set<string>>(new Set());
   const [insertComplete, setInsertComplete] = useState<number | null>(null);
   const [sceneFilter, setSceneFilter] = useState('');
