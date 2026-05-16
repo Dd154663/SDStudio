@@ -28,6 +28,7 @@ import { AppUpdateNoticeService } from './AppUpdateNoticeService';
 import { WorkFlowService } from './workflows/WorkFlowService';
 import { registerWorkFlows } from './workflows';
 import { TrashService } from './TrashService';
+import { CyclingSessionService } from './CyclingSessionService';
 import { GlobalPieceService } from './GlobalPieceService';
 import { GlobalPresetService } from './GlobalPresetService';
 
@@ -98,3 +99,5 @@ appUpdateNoticeService.run();
 
 export const localAIService = new LocalAIService();
 localAIService.statsModels();
+
+export const cyclingSessionService = new CyclingSessionService();

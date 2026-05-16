@@ -3,7 +3,7 @@ import { FaSpinner } from 'react-icons/fa';
 import { FaPlay, FaRegCalendarTimes, FaStop } from 'react-icons/fa';
 import { FaTimes } from 'react-icons/fa';
 import { FaRegClock } from 'react-icons/fa';
-import { taskQueueService } from '../models';
+import { taskQueueService, cyclingSessionService } from '../models';
 import { Task } from '../models/TaskQueueService';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
@@ -230,6 +230,8 @@ const TaskQueueControl = observer(({}) => {
     };
   }, []);
 
+  const cyclingActive = cyclingSessionService.state === 'running' || cyclingSessionService.state === 'paused';
+
   return (
     <div className="flex gap-2 md:gap-4 items-center">
       {showList && (
@@ -238,6 +240,14 @@ const TaskQueueControl = observer(({}) => {
             setShowList(false);
           }}
         />
+      )}
+      {cyclingActive && (
+        <div className="hidden md:flex items-center gap-1 px-2 py-1 bg-sky-100 dark:bg-sky-900/30 rounded-lg text-xs whitespace-nowrap">
+          <span className="text-sky-600 dark:text-sky-400">🔄</span>
+          <span className="text-sky-700 dark:text-sky-300">
+            순차 ({cyclingSessionService.completedPresets + 1}/{cyclingSessionService.totalPresets})
+          </span>
+        </div>
       )}
       <div className="whitespace-nowrap">
         <span className="whitespace-nowrap text-default">개수:</span>
