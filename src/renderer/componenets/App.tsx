@@ -215,11 +215,11 @@ export const App = observer(() => {
       },
     );
     const removeZipProgressListener = backend.onZipProgress((progress: any) => {
-      appState.setProgressDialog({
+      appState.exportProgress = {
         text: '압축파일 생성 중..',
         done: progress.done,
         total: progress.total,
-      });
+      };
     });
     const removeImageChangedListener = backend.onImageChanged(
       async (path: string) => {
@@ -464,6 +464,23 @@ export const App = observer(() => {
             </StackGrow>
           </VerticalStack>
         </ErrorBoundary>
+        {/* 내보내기 진행 플로팅 위젯 (비차단형) */}
+        {appState.exportProgress && (
+          <div className="fixed bottom-16 right-4 z-[1000] bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-gray-200 dark:border-slate-600 p-3 min-w-[220px]">
+            <div className="text-sm font-medium text-gray-800 dark:text-gray-100 mb-1.5">
+              💾 {appState.exportProgress.text}
+            </div>
+            <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-sky-500 rounded-full transition-all"
+                style={{ width: `${(appState.exportProgress.done / Math.max(appState.exportProgress.total, 1)) * 100}%` }}
+              />
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              {appState.exportProgress.done}/{appState.exportProgress.total}
+            </div>
+          </div>
+        )}
         <AlertWindow />
         <ConfirmWindow />
         <ExpiredProjectsDialog />

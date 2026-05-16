@@ -112,6 +112,9 @@ export class AppState {
   // 모달 오버레이 카운터 (열린 ModalOverlay 수 추적)
   @observable accessor modalOverlayCount: number = 0;
 
+  // 내보내기 진행 상태 (비차단형 — ProgressWindow 대신 플로팅 위젯 사용)
+  @observable accessor exportProgress: ProgressDialog | undefined = undefined;
+
   @action
   incrementModalOverlay() {
     this.modalOverlayCount++;
@@ -809,11 +812,11 @@ export class AppState {
           let done = 0;
           for (const item of paths) {
             const outputPath = 'tmp/' + v4() + ext;
-            appState.setProgressDialog({
+            appState.exportProgress = {
               text: '이미지 크기 최적화 중..',
               done: done,
               total: paths.length,
-            });
+            };
             await backend.resizeImage({
               inputPath: item.path,
               outputPath: outputPath,
@@ -827,15 +830,15 @@ export class AppState {
           }
         } catch (e: any) {
           appState.pushMessage(e.message);
-          appState.setProgressDialog(undefined);
+          appState.exportProgress = undefined;
           return;
         }
       }
-      appState.setProgressDialog({
+      appState.exportProgress = {
         text: '이미지 압축파일 생성중..',
         done: 0,
         total: 1,
-      });
+      };
       const outFilePath =
         'exports/' +
         this.curSession!.name +
@@ -847,22 +850,19 @@ export class AppState {
           type: 'yes-only',
           text: '이미 다른 이미지 내보내기가 진행중입니다',
         });
+        appState.exportProgress = undefined;
         return;
       }
       try {
         await zipService.zipFiles(paths, outFilePath);
       } catch (e: any) {
         appState.pushMessage(e.message);
-        appState.setProgressDialog(undefined);
+        appState.exportProgress = undefined;
         return;
       }
-      appState.setProgressDialog(undefined);
-      appState.pushDialog({
-        type: 'yes-only',
-        text: '이미지 내보내기가 완료되었습니다',
-      });
+      appState.exportProgress = undefined;
+      appState.pushMessage('이미지 내보내기가 완료되었습니다');
       await backend.showFile(outFilePath);
-      appState.setProgressDialog(undefined);
     };
 
     // ── 프리셋 선택 또는 직접 설정 (항상 표시) ──

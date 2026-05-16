@@ -808,8 +808,29 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted }: Props) => {
     rerender({});
   }
 
+  const curNameRef = useRef('');
   useEffect(() => {
     setCurName(scene.name);
+    curNameRef.current = scene.name;
+  }, [scene]);
+
+  // 씬 이름 변경 ref 동기화
+  useEffect(() => {
+    curNameRef.current = curName;
+  }, [curName]);
+
+  // 컴포넌트 언마운트(편집 창 닫기) 시 이름이 바뀌었으면 자동 적용
+  useEffect(() => {
+    return () => {
+      const trimmedName = curNameRef.current.trimEnd();
+      if (trimmedName && trimmedName !== scene.name) {
+        if (curSession!.hasScene(scene.type, trimmedName)) {
+          appState.pushMessage('해당 이름의 씬이 이미 존재하여 이름 변경이 적용되지 않았습니다');
+          return;
+        }
+        renameScene(curSession!, scene.name, trimmedName);
+      }
+    };
   }, [scene]);
 
   const getMiddlePrompt = () => {
