@@ -25,9 +25,10 @@ import {
   imageService,
   cyclingSessionService,
   taskQueueService,
+  backend,
 } from '../models';
 import { appState } from '../models/AppService';
-import { FaPlay, FaPause, FaStop, FaSync } from 'react-icons/fa';
+import { FaPlay, FaPause, FaStop, FaSync, FaDownload, FaUpload } from 'react-icons/fa';
 import { FileUploadBase64 } from './UtilComponents';
 import PromptEditTextArea from './PromptEditTextArea';
 import ModalOverlay from './ModalOverlay';
@@ -780,6 +781,136 @@ const CharacterPresetInnerEditor = observer(({
   );
 });
 
+// ─── 캐릭터 프리셋 내보내기/불러오기 ─────────────────────────
+
+interface ExportedPresetData {
+  version: 1;
+  presets: (ICharacterPreset & {
+    vibeImages?: { filename: string; data: string }[];
+    referenceImages?: { filename: string; data: string }[];
+    representativeImageData?: string;
+  })[];
+}
+
+async function exportCharacterPresets(session: any) {
+  const presets = session.getCharacterPresets() as CharacterPreset[];
+  if (presets.length === 0) {
+    appState.pushMessage('내보낼 캐릭터 프리셋이 없습니다');
+    return;
+  }
+
+  const exportData: ExportedPresetData = { version: 1, presets: [] };
+
+  for (const preset of presets) {
+    const json: any = preset.toJSON();
+
+    // 바이브 이미지 데이터 포함
+    json.vibeImages = [];
+    for (const vibe of preset.vibes) {
+      try {
+        const path = imageService.getVibeImagePath(session, vibe.path);
+        const data = await backend.readDataFile(path);
+        json.vibeImages.push({ filename: vibe.path.split('/').pop()!, data });
+      } catch (e) {}
+    }
+
+    // 레퍼런스 이미지 데이터 포함
+    json.referenceImages = [];
+    for (const ref of preset.characterReferences) {
+      try {
+        const path = imageService.getReferenceImagePath(session, ref.path);
+        const data = await backend.readDataFile(path);
+        json.referenceImages.push({ filename: ref.path.split('/').pop()!, data });
+      } catch (e) {}
+    }
+
+    // 대표 이미지 데이터 포함
+    if (preset.representativeImage) {
+      try {
+        const path = imageService.getVibeImagePath(session, preset.representativeImage);
+        const data = await backend.readDataFile(path);
+        json.representativeImageData = data;
+      } catch (e) {}
+    }
+
+    exportData.presets.push(json);
+  }
+
+  const jsonStr = JSON.stringify(exportData);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = session.name + '_character_presets.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  appState.pushMessage(`${presets.length}개 캐릭터 프리셋을 내보냈습니다`);
+}
+
+async function importCharacterPresets(session: any, file: File) {
+  const text = await file.text();
+  let data: ExportedPresetData;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    appState.pushMessage('올바른 캐릭터 프리셋 파일이 아닙니다');
+    return;
+  }
+
+  if (!data.presets || !Array.isArray(data.presets)) {
+    appState.pushMessage('올바른 캐릭터 프리셋 파일이 아닙니다');
+    return;
+  }
+
+  let imported = 0;
+  for (const presetJson of data.presets) {
+    // 바이브 이미지 복원 (원래 파일명으로 직접 저장)
+    if (presetJson.vibeImages) {
+      for (const img of presetJson.vibeImages) {
+        try {
+          const path = imageService.getVibesDir(session) + '/' + img.filename;
+          await backend.writeDataFile(path, img.data);
+        } catch (e) {}
+      }
+    }
+
+    // 레퍼런스 이미지 복원
+    if (presetJson.referenceImages) {
+      for (const img of presetJson.referenceImages) {
+        try {
+          const path = imageService.getReferenceDir(session) + '/' + img.filename;
+          await backend.writeDataFile(path, img.data);
+        } catch (e) {}
+      }
+    }
+
+    // 대표 이미지 복원
+    if (presetJson.representativeImageData && presetJson.representativeImage) {
+      try {
+        const path = imageService.getVibesDir(session) + '/' + presetJson.representativeImage;
+        await backend.writeDataFile(path, presetJson.representativeImageData);
+      } catch (e) {}
+    }
+
+    // 임시 필드 제거 후 프리셋 생성
+    delete presetJson.vibeImages;
+    delete presetJson.referenceImages;
+    delete presetJson.representativeImageData;
+
+    const preset = CharacterPreset.fromJSON(presetJson as ICharacterPreset);
+
+    // 중복 이름 처리
+    while (session.hasCharacterPreset(preset.name)) {
+      preset.name = preset.name + '_1';
+    }
+
+    session.addCharacterPreset(preset);
+    imported++;
+  }
+
+  appState.pushMessage(`${imported}개 캐릭터 프리셋을 불러왔습니다`);
+}
+
 // ─── 메인 프리셋 매니저 (목록/편집 전환) ───────────────────────
 interface CharacterPresetEditorProps {
   onApplyPreset?: (preset: CharacterPreset, mode: 'easy' | 'character') => void;
@@ -990,22 +1121,55 @@ export const CharacterPresetEditor = observer(({
   // 카드 그리드 모드
   return (
     <div className="text-default">
-      {/* 순차 생성 모드 토글 */}
-      {presets.length >= 2 && (
-        <div className="mb-3 flex items-center justify-between">
-          <button
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
-              cyclingMode
-                ? 'bg-sky-500 text-white'
-                : 'bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500'
-            }`}
-            onClick={() => cyclingMode ? exitCyclingMode() : enterCyclingMode()}
-          >
-            <FaSync size={11} />
-            {cyclingMode ? '순차 생성 모드 끄기' : '순차 생성 모드'}
-          </button>
+      {/* 상단 컨트롤 */}
+      <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          {presets.length >= 2 && (
+            <button
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                cyclingMode
+                  ? 'bg-sky-500 text-white'
+                  : 'bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500'
+              }`}
+              onClick={() => cyclingMode ? exitCyclingMode() : enterCyclingMode()}
+            >
+              <FaSync size={11} />
+              {cyclingMode ? '순차 생성 모드 끄기' : '순차 생성 모드'}
+            </button>
+          )}
         </div>
-      )}
+        <div className="flex items-center gap-2">
+          {presets.length > 0 && (
+            <Tooltip content="모든 프리셋 내보내기">
+              <button
+                className="px-3 py-1.5 rounded-lg text-sm bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500 transition-colors flex items-center gap-1.5"
+                onClick={() => exportCharacterPresets(curSession)}
+              >
+                <FaDownload size={11} />
+                내보내기
+              </button>
+            </Tooltip>
+          )}
+          <Tooltip content="프리셋 파일 불러오기">
+            <label className="px-3 py-1.5 rounded-lg text-sm bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500 transition-colors flex items-center gap-1.5 cursor-pointer">
+              <FaUpload size={11} />
+              불러오기
+              <input
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    await importCharacterPresets(curSession, file);
+                    e.target.value = '';
+                  }
+                }}
+              />
+            </label>
+          </Tooltip>
+        </div>
+      </div>
 
       {presets.length === 0 ? (
         <div className="text-center py-12">
