@@ -916,8 +916,8 @@ export class TaskQueueService extends EventTarget {
   }
 
   private getRetryTimeoutMs(retryIndex: number): number {
-    if (retryIndex < 10) return 60 * 1000;
-    return 120 * 1000;
+    if (retryIndex < 10) return 120 * 1000;
+    return 180 * 1000;
   }
 
   private withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {

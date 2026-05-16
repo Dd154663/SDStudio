@@ -26,6 +26,7 @@ import {
   FaFolderOpen,
 } from 'react-icons/fa';
 import { FloatView } from './FloatView';
+import { useDrag, useDrop } from 'react-dnd';
 import { v4 } from 'uuid';
 import { BigPromptEditor, SlotPiece } from './SceneEditor';
 import { useContextMenu } from 'react-contexify';
@@ -176,6 +177,7 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
     useContext(WFElementContext)!;
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const presetLocked = !!appState.appliedCharacterPreset && editVibe?.fieldType === 'shared';
 
   const getField = () => {
     if (editVibe!.fieldType === 'preset') return preset[editVibe!.field];
@@ -353,20 +355,24 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                     </div>
                   </div>
                   <div className="flex-none flex ml-auto mt-auto">
-                    <Tooltip content="바이브 삭제">
-                    <button
-                      className={
-                        `round-button h-8 px-8 ml-auto ` +
-                        (disabled ? 'back-gray' : 'back-red')
-                      }
-                      onClick={() => {
-                        if (disabled) return;
-                        setField(getField().filter((x: any) => x !== vibe));
-                      }}
-                    >
-                      <FaTrash />
-                    </button>
-                    </Tooltip>
+                    {presetLocked ? (
+                      <div className="text-xs text-gray-400 dark:text-gray-500 px-2">🔒 프리셋 잠금</div>
+                    ) : (
+                      <Tooltip content="바이브 삭제">
+                      <button
+                        className={
+                          `round-button h-8 px-8 ml-auto ` +
+                          (disabled ? 'back-gray' : 'back-red')
+                        }
+                        onClick={() => {
+                          if (disabled) return;
+                          setField(getField().filter((x: any) => x !== vibe));
+                        }}
+                      >
+                        <FaTrash />
+                      </button>
+                      </Tooltip>
+                    )}
                   </div>
                 </div>
               </div>
@@ -380,11 +386,13 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
             </div>
           )}
           <div className="flex gap-2 items-center">
-            <FileUploadBase64
-              notext
-              disabled={disabled}
-              onFileSelect={vibeChange}
-            ></FileUploadBase64>
+            {!presetLocked && (
+              <FileUploadBase64
+                notext
+                disabled={disabled}
+                onFileSelect={vibeChange}
+              ></FileUploadBase64>
+            )}
             <button
               className={`round-button back-gray h-8 w-full`}
               onClick={() => {
@@ -523,6 +531,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [showDefaults, setShowDefaults] = useState(false);
   const [refDefaults, setRefDefaults] = useState(getRefDefaults);
+  const presetLocked = !!appState.appliedCharacterPreset && editCharacterReference?.fieldType === 'shared';
 
   const updateDefault = (key: string, value: string) => {
     localStorage.setItem(key, value);
@@ -711,32 +720,38 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                 <div className="flex flex-col gap-2 w-full">
                   <div className="flex w-full items-center justify-between">
                     <div className="flex gap-2 items-center">
+                      {presetLocked ? (
+                        <div className="text-xs text-gray-400 dark:text-gray-500">🔒 프리셋 잠금</div>
+                      ) : (
+                        <button
+                          className={`round-button h-8 px-4 ${reference.enabled !== false ? 'back-sky' : 'back-gray'}`}
+                          onClick={() => {
+                            if (disabled) return;
+                            reference.enabled = reference.enabled === false;
+                          }}
+                          disabled={disabled}
+                        >
+                          {reference.enabled !== false ? <FaToggleOn className="mr-1" /> : <FaToggleOff className="mr-1" />}
+                          {reference.enabled !== false ? '활성화됨' : '비활성화됨'}
+                        </button>
+                      )}
+                    </div>
+                    {!presetLocked && (
+                      <Tooltip content="레퍼런스 삭제">
                       <button
-                        className={`round-button h-8 px-4 ${reference.enabled !== false ? 'back-sky' : 'back-gray'}`}
+                        className={
+                          `round-button h-8 px-4 ` +
+                          (disabled ? 'back-gray' : 'back-red')
+                        }
                         onClick={() => {
                           if (disabled) return;
-                          reference.enabled = reference.enabled === false;
+                          setField(getField().filter((x: any) => x !== reference));
                         }}
-                        disabled={disabled}
                       >
-                        {reference.enabled !== false ? <FaToggleOn className="mr-1" /> : <FaToggleOff className="mr-1" />}
-                        {reference.enabled !== false ? '활성화됨' : '비활성화됨'}
+                        <FaTrash />
                       </button>
-                    </div>
-                    <Tooltip content="레퍼런스 삭제">
-                    <button
-                      className={
-                        `round-button h-8 px-4 ` +
-                        (disabled ? 'back-gray' : 'back-red')
-                      }
-                      onClick={() => {
-                        if (disabled) return;
-                        setField(getField().filter((x: any) => x !== reference));
-                      }}
-                    >
-                      <FaTrash />
-                    </button>
-                    </Tooltip>
+                      </Tooltip>
+                    )}
                   </div>
                   <div className="flex w-full md:flex-row flex-col items-center">
                     <div
@@ -842,11 +857,13 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
             </div>
           )}
           <div className="flex gap-2 items-center">
-            <FileUploadBase64
-              notext
-              disabled={disabled}
-              onFileSelect={referenceChange}
-            ></FileUploadBase64>
+            {!presetLocked && (
+              <FileUploadBase64
+                notext
+                disabled={disabled}
+                onFileSelect={referenceChange}
+              ></FileUploadBase64>
+            )}
             <button
               className={`round-button back-gray h-8 w-full`}
               onClick={() => {
@@ -1132,6 +1149,82 @@ const InnerEditor: React.FC<InnerEditorProps> = ({ type, shared, preset }) => {
   );
 };
 
+// 드래그 가능한 프리셋 카드
+const DraggablePresetCard = observer(({
+  presetItem,
+  index,
+  isSelected,
+  type,
+  curSession,
+  onSelect,
+  onContextMenu,
+}: {
+  presetItem: any;
+  index: number;
+  isSelected: boolean;
+  type: string;
+  curSession: any;
+  onSelect: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+}) => {
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  const [{ isDragging }, drag] = useDrag(() => ({
+    type: 'preset-card',
+    item: { index },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  }), [index]);
+
+  const [{ isOver }, drop] = useDrop(() => ({
+    accept: 'preset-card',
+    drop: (item: { index: number }) => {
+      if (item.index !== index) {
+        curSession.movePreset(type, item.index, index);
+        item.index = index;
+      }
+    },
+    collect: (monitor) => ({
+      isOver: monitor.isOver(),
+    }),
+  }), [index, type, curSession]);
+
+  drag(drop(ref));
+
+  return (
+    <div
+      ref={ref}
+      className={
+        'h-full relative flex-none hover:brightness-95 active:brightness-90 cursor-pointer transition-opacity ' +
+        (isSelected ? 'border-2 border-sky-500' : 'border-2 line-color') +
+        (isDragging ? ' opacity-30' : '') +
+        (isOver ? ' ring-2 ring-sky-400' : '')
+      }
+      onContextMenu={onContextMenu}
+      onClick={onSelect}
+    >
+      {presetItem.profile && (
+        <VibeImage
+          path={
+            imageService.getVibesDir(curSession) +
+            '/' +
+            presetItem.profile.split('/').pop()!
+          }
+          className="w-auto h-full"
+        />
+      )}
+      {!presetItem.profile && <div className="w-40 h-full"></div>}
+      <div
+        className="absolute bottom-0 right-0 bg-gray-700 opacity-80 text-sm text-white p-1 rounded-xl m-2 truncate select-none"
+        style={{ maxWidth: '90%' }}
+      >
+        {presetItem.name}
+      </div>
+    </div>
+  );
+});
+
 const ProfilePreSetSelect = observer(({}) => {
   const { curSession } = appState;
   const { preset, type, shared, middlePromptMode } =
@@ -1171,13 +1264,20 @@ const ProfilePreSetSelect = observer(({}) => {
         </FloatView>
       )}
       <div className="h-full w-full flex overflow-auto gap-2">
-        {presets.map((x) => (
-          <div
-            className={
-              'h-full relative flex-none hover:brightness-95 active:brightness-90 cursor-pointer ' +
-              (x == preset ? 'border-2 border-sky-500' : 'border-2 line-color')
-            }
+        {presets.map((x, i) => (
+          <DraggablePresetCard
             key={x.name}
+            presetItem={x}
+            index={i}
+            isSelected={x === preset}
+            type={type}
+            curSession={curSession!}
+            onSelect={() => {
+              curSession!.selectedWorkflow = {
+                workflowType: type,
+                presetName: x.name,
+              };
+            }}
             onContextMenu={(e) => {
               show({
                 event: e,
@@ -1191,31 +1291,7 @@ const ProfilePreSetSelect = observer(({}) => {
                 },
               });
             }}
-            onClick={() => {
-              curSession!.selectedWorkflow = {
-                workflowType: type,
-                presetName: x.name,
-              };
-            }}
-          >
-            {x.profile && (
-              <VibeImage
-                path={
-                  imageService.getVibesDir(curSession!) +
-                  '/' +
-                  x.profile.split('/').pop()!
-                }
-                className="w-auto h-full"
-              />
-            )}
-            {!x.profile && <div className="w-40 h-full"></div>}
-            <div
-              className="absolute bottom-0 right-0 bg-gray-700 opacity-80 text-sm text-white p-1 rounded-xl m-2 truncate select-none"
-              style={{ maxWidth: '90%' }}
-            >
-              {x.name}
-            </div>
-          </div>
+          />
         ))}
         <div className="h-full relative flex-none flex flex-col gap-2">
           <Tooltip content="새 그림체 추가">
@@ -1890,31 +1966,13 @@ const CharacterPromptEditor = observer(
     return (
       <div className="w-full h-full overflow-hidden flex flex-col">
         {hasSharedPresetCPs && sharedCPs.map((cp: CharacterPrompt, idx: number) => (
-          <div key={cp.id || idx} className={`flex-none mx-3 mt-3 p-2 border rounded-lg ${cp.enabled === false ? 'opacity-60 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/30' : 'border-green-300 dark:border-green-600 bg-green-50 dark:bg-green-900/20'}`}>
+          <div key={cp.id || idx} className={`flex-none mx-3 mt-3 p-2 border rounded-lg border-green-300 dark:border-green-600 bg-green-50 dark:bg-green-900/20`}>
             <div className="flex items-center justify-between mb-1">
               <div className="text-sm font-medium text-green-700 dark:text-green-400">
-                캐릭터 프리셋 적용 중
+                🔒 캐릭터 프리셋 적용 중
               </div>
-              <div className="flex items-center gap-1">
-                <button
-                  className={`round-button h-6 px-2 text-xs ${cp.enabled !== false ? 'back-green' : 'back-gray'}`}
-                  onClick={() => {
-                    const updated = sharedCPs.map((c: CharacterPrompt, i: number) =>
-                      i === idx ? { ...c, enabled: c.enabled === false ? true : false } : c
-                    );
-                    shared.characterPrompts = updated;
-                  }}
-                >
-                  {cp.enabled !== false ? '활성화' : '비활성화'}
-                </button>
-                <button
-                  className="round-button h-6 px-2 text-xs back-red"
-                  onClick={() => {
-                    shared.characterPrompts = sharedCPs.filter((_: any, i: number) => i !== idx);
-                  }}
-                >
-                  삭제
-                </button>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                프리셋 해제 시 함께 제거됩니다
               </div>
             </div>
             <div className="text-xs text-gray-600 dark:text-gray-400 mb-0.5">캐릭터 프롬프트:</div>

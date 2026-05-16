@@ -28,6 +28,7 @@ import { appState } from '../models/AppService';
 import { FileUploadBase64 } from './UtilComponents';
 import PromptEditTextArea from './PromptEditTextArea';
 import ModalOverlay from './ModalOverlay';
+import { useDrag, useDrop } from 'react-dnd';
 import { getRefDefaults } from './PreSetEdtior';
 
 // ─── 바이브 이미지 컴포넌트 ────────────────────────────────────
@@ -125,25 +126,61 @@ const CardImage = observer(({
 // ─── 프리셋 카드 ──────────────────────────────────────────────
 interface CharacterPresetCardProps {
   preset: CharacterPreset;
+  index: number;
   onEdit: () => void;
   onDelete: () => void;
   onApplyEasy: () => void;
   onApplyCharacter: () => void;
   onDuplicate: () => void;
+  onMove: (fromIndex: number, toIndex: number) => void;
   isEasyMode: boolean;
 }
 
 const CharacterPresetCard = observer(({
   preset,
+  index,
   onEdit,
   onDelete,
   onApplyEasy,
   onApplyCharacter,
   onDuplicate,
+  onMove,
   isEasyMode,
 }: CharacterPresetCardProps) => {
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  const [{ isDragging }, drag] = useDrag(() => ({
+    type: 'character-preset-card',
+    item: { index },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  }), [index]);
+
+  const [{ isOver }, drop] = useDrop(() => ({
+    accept: 'character-preset-card',
+    drop: (item: { index: number }) => {
+      if (item.index !== index) {
+        onMove(item.index, index);
+        item.index = index;
+      }
+    },
+    collect: (monitor) => ({
+      isOver: monitor.isOver(),
+    }),
+  }), [index, onMove]);
+
+  drag(drop(ref));
+
   return (
-    <div className="group relative rounded-lg bg-white dark:bg-slate-800 border-2 border-gray-200 dark:border-slate-600 overflow-hidden cursor-pointer transition-shadow hover:shadow-lg">
+    <div
+      ref={ref}
+      className={
+        'group relative rounded-lg bg-white dark:bg-slate-800 border-2 overflow-hidden cursor-pointer transition-all hover:shadow-lg ' +
+        (isDragging ? 'opacity-30 ' : '') +
+        (isOver ? 'border-sky-400 ring-2 ring-sky-400 ' : 'border-gray-200 dark:border-slate-600 ')
+      }
+    >
       {/* 이미지 영역 */}
       <div className="relative overflow-hidden aspect-[3/4]" onClick={onEdit}>
         <CardImage
@@ -859,15 +896,17 @@ export const CharacterPresetEditor = observer(({
           </div>
 
           {/* 프리셋 카드들 */}
-          {presets.map((preset) => (
+          {presets.map((preset, i) => (
             <CharacterPresetCard
               key={preset.name}
               preset={preset}
+              index={i}
               onEdit={() => handleEdit(preset)}
               onDelete={() => handleDelete(preset)}
               onApplyEasy={() => handleApplyEasy(preset)}
               onApplyCharacter={() => handleApplyCharacter(preset)}
               onDuplicate={() => handleDuplicate(preset)}
+              onMove={(from, to) => curSession.moveCharacterPreset(from, to)}
               isEasyMode={isEasyMode}
             />
           ))}

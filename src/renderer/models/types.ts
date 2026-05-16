@@ -461,6 +461,19 @@ export class Session implements Serealizable {
     }
   }
 
+  @action
+  movePreset(type: string, fromIndex: number, toIndex: number) {
+    const presetList = this.presets.get(type);
+    if (!presetList) return;
+    if (fromIndex < 0 || fromIndex >= presetList.length) return;
+    if (toIndex < 0 || toIndex >= presetList.length) return;
+    if (fromIndex === toIndex) return;
+    const [moved] = presetList.splice(fromIndex, 1);
+    presetList.splice(toIndex, 0, moved);
+    // MobX 반응성 트리거를 위해 새 배열로 교체
+    this.presets.set(type, [...presetList]);
+  }
+
   hasPreset(type: string, name: string): boolean {
     return (
       this.presets.get(type)?.some((preset) => preset.name === name) ?? false
@@ -546,6 +559,17 @@ export class Session implements Serealizable {
   @action
   removeCharacterPreset(name: string): void {
     this.characterPresets.delete(name);
+  }
+
+  @action
+  moveCharacterPreset(fromIndex: number, toIndex: number): void {
+    const entries = Array.from(this.characterPresets.entries());
+    if (fromIndex < 0 || fromIndex >= entries.length) return;
+    if (toIndex < 0 || toIndex >= entries.length) return;
+    if (fromIndex === toIndex) return;
+    const [moved] = entries.splice(fromIndex, 1);
+    entries.splice(toIndex, 0, moved);
+    this.characterPresets = new Map(entries);
   }
 
   static fromJSON(json: ISession): Session {
