@@ -264,6 +264,8 @@ export const App = observer(() => {
       event.preventDefault();
       dragCounter.current++;
       if (dragCounter.current === 1) {
+        // 모달 오버레이가 열려 있으면 메타데이터 드래그 안내를 표시하지 않음
+        if (appState.modalOverlayCount > 0) return;
         const desc = getDropDescription(event.dataTransfer);
         if (desc) {
           setDragOverlay(desc);
@@ -290,6 +292,8 @@ export const App = observer(() => {
       event.stopPropagation();
       dragCounter.current = 0;
       setDragOverlay(null);
+      // 모달 오버레이가 열려 있으면 메타데이터 처리도 차단
+      if (appState.modalOverlayCount > 0) return;
       const file = event.dataTransfer.files[0];
       if (file) {
         appState.handleFile(file);

@@ -936,6 +936,8 @@ export interface ICharacterPreset {
   // 파일명 옵션 (옵셔널 - 하위 호환성 유지)
   filenamePrefix?: string;  // 다운로드 시 파일명 접두사
   filenameSuffix?: string;  // 다운로드 시 파일명 접미사
+  // 대표 이미지 (옵셔널 - vibes 디렉토리 내 파일명)
+  representativeImage?: string;
 }
 
 export class CharacterPreset implements ICharacterPreset {
@@ -948,6 +950,8 @@ export class CharacterPreset implements ICharacterPreset {
   // 파일명 옵션 (옵셔널 - 하위 호환성 유지)
   @observable accessor filenamePrefix: string = '';
   @observable accessor filenameSuffix: string = '';
+  // 대표 이미지 (옵셔널 - vibes 디렉토리 내 파일명)
+  @observable accessor representativeImage: string = '';
 
   static fromJSON(json: ICharacterPreset): CharacterPreset {
     const preset = new CharacterPreset();
@@ -960,6 +964,7 @@ export class CharacterPreset implements ICharacterPreset {
     // 파일명 옵션 로드 (하위 호환성: 없으면 빈 문자열)
     preset.filenamePrefix = json.filenamePrefix || '';
     preset.filenameSuffix = json.filenameSuffix || '';
+    preset.representativeImage = json.representativeImage || '';
     return preset;
   }
 
@@ -974,6 +979,7 @@ export class CharacterPreset implements ICharacterPreset {
       // 파일명 옵션 저장 (빈 문자열이면 undefined로 저장하여 JSON 크기 최소화)
       filenamePrefix: this.filenamePrefix || undefined,
       filenameSuffix: this.filenameSuffix || undefined,
+      representativeImage: this.representativeImage || undefined,
     };
   }
 }

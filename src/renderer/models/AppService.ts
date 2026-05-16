@@ -109,6 +109,19 @@ export class AppState {
   lastExportType: 'scene' | 'inpaint' = 'scene';
   lastExportSelected?: GenericScene[];
 
+  // 모달 오버레이 카운터 (열린 ModalOverlay 수 추적)
+  @observable accessor modalOverlayCount: number = 0;
+
+  @action
+  incrementModalOverlay() {
+    this.modalOverlayCount++;
+  }
+
+  @action
+  decrementModalOverlay() {
+    this.modalOverlayCount = Math.max(0, this.modalOverlayCount - 1);
+  }
+
   // 단축키 시스템용 상태
   @observable accessor floatViewCount: number = 0;
   @observable accessor resultViewerOpen: boolean = false;
