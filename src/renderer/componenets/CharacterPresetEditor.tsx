@@ -32,7 +32,7 @@ import { FileUploadBase64 } from './UtilComponents';
 import PromptEditTextArea from './PromptEditTextArea';
 import ModalOverlay from './ModalOverlay';
 import { useDrag, useDrop } from 'react-dnd';
-import { getRefDefaults } from './PreSetEdtior';
+import { getRefDefaults, EditableSliderValue } from './PreSetEdtior';
 
 // ─── 바이브 이미지 컴포넌트 ────────────────────────────────────
 const VibeImage = ({
@@ -582,7 +582,7 @@ const CharacterPresetInnerEditor = observer(({
                     value={vibe.info}
                     onChange={(e) => updateVibeField(index, 'info', parseFloat(e.target.value))}
                   />
-                  <div className="w-11 flex-none text-lg text-center back-lllgray">{vibe.info}</div>
+                  <EditableSliderValue value={vibe.info} min={0} max={1} onChange={(v) => updateVibeField(index, 'info', v)} />
                 </div>
               </div>
               <div className="flex w-full items-center">
@@ -592,7 +592,7 @@ const CharacterPresetInnerEditor = observer(({
                     value={vibe.strength}
                     onChange={(e) => updateVibeField(index, 'strength', parseFloat(e.target.value))}
                   />
-                  <div className="w-11 flex-none text-lg text-center back-lllgray">{vibe.strength}</div>
+                  <EditableSliderValue value={vibe.strength} min={0} max={1} onChange={(v) => updateVibeField(index, 'strength', v)} />
                 </div>
               </div>
               <div className="flex justify-end mt-auto">
@@ -681,7 +681,7 @@ const CharacterPresetInnerEditor = observer(({
                     value={ref.strength}
                     onChange={(e) => updateRefField(index, 'strength', parseFloat(e.target.value))}
                   />
-                  <div className="w-11 flex-none text-lg text-center back-lllgray">{ref.strength}</div>
+                  <EditableSliderValue value={ref.strength} min={0} max={2} onChange={(v) => updateRefField(index, 'strength', v)} />
                 </div>
               </div>
               {/* Fidelity */}
@@ -692,7 +692,7 @@ const CharacterPresetInnerEditor = observer(({
                     value={ref.fidelity}
                     onChange={(e) => updateRefField(index, 'fidelity', parseFloat(e.target.value))}
                   />
-                  <div className="w-11 flex-none text-lg text-center back-lllgray">{ref.fidelity}</div>
+                  <EditableSliderValue value={ref.fidelity} min={0} max={2} onChange={(v) => updateRefField(index, 'fidelity', v)} />
                 </div>
               </div>
               {/* 레퍼런스 타입 */}

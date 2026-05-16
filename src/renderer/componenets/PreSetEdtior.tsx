@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import * as mobx from 'mobx';
 import {
   TextAreaWithUndo,
@@ -167,6 +167,77 @@ const VibeImage = ({
   );
 };
 
+// 클릭 시 직접 입력 가능한 슬라이더 값 표시 컴포넌트
+export const EditableSliderValue = ({
+  value,
+  min,
+  max,
+  onChange,
+  disabled,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  onChange: (val: number) => void;
+  disabled?: boolean;
+}) => {
+  const [editing, setEditing] = useState(false);
+  const [inputValue, setInputValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const startEditing = () => {
+    if (disabled) return;
+    setEditing(true);
+    setInputValue(String(value));
+  };
+
+  const commitValue = () => {
+    setEditing(false);
+    const parsed = parseFloat(inputValue);
+    if (isNaN(parsed)) return;
+    const clamped = Math.round(Math.min(max, Math.max(min, parsed)) * 100) / 100;
+    onChange(clamped);
+  };
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        className="w-14 flex-none text-sm text-center border border-sky-400 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 outline-none px-0.5 py-0.5"
+        value={inputValue}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (/^[0-9]*\.?[0-9]*$/.test(v)) {
+            setInputValue(v);
+          }
+        }}
+        onBlur={commitValue}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commitValue();
+          if (e.key === 'Escape') setEditing(false);
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      className="w-11 flex-none text-lg text-center back-lllgray cursor-pointer hover:ring-2 hover:ring-sky-400 rounded transition-all"
+      onClick={startEditing}
+      title="클릭하여 직접 입력"
+    >
+      {value}
+    </div>
+  );
+};
+
 interface VibeEditorProps {
   disabled: boolean;
 }
@@ -323,9 +394,13 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                         }}
                         disabled={disabled}
                       />
-                      <div className="w-11 flex-none text-lg text-center back-lllgray">
-                        {vibe.info}
-                      </div>
+                      <EditableSliderValue
+                        value={vibe.info}
+                        min={0}
+                        max={1}
+                        onChange={(v) => { vibe.info = v; }}
+                        disabled={disabled}
+                      />
                     </div>
                   </div>
                   <div className="flex w-full md:flex-row flex-col items-center">
@@ -349,9 +424,13 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                         }}
                         disabled={disabled}
                       />
-                      <div className="w-11 flex-none text-lg text-center back-lllgray">
-                        {vibe.strength}
-                      </div>
+                      <EditableSliderValue
+                        value={vibe.strength}
+                        min={0}
+                        max={1}
+                        onChange={(v) => { vibe.strength = v; }}
+                        disabled={disabled}
+                      />
                     </div>
                   </div>
                   <div className="flex-none flex ml-auto mt-auto">
@@ -774,9 +853,13 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                         }}
                         disabled={disabled}
                       />
-                      <div className="w-11 flex-none text-lg text-center back-lllgray">
-                        {reference.strength}
-                      </div>
+                      <EditableSliderValue
+                        value={reference.strength}
+                        min={0}
+                        max={2}
+                        onChange={(v) => { reference.strength = v; }}
+                        disabled={disabled}
+                      />
                     </div>
                   </div>
                   <div className="flex w-full md:flex-row flex-col items-center">
@@ -800,9 +883,13 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                         }}
                         disabled={disabled}
                       />
-                      <div className="w-11 flex-none text-lg text-center back-lllgray">
-                        {reference.fidelity}
-                      </div>
+                      <EditableSliderValue
+                        value={reference.fidelity}
+                        min={0}
+                        max={2}
+                        onChange={(v) => { reference.fidelity = v; }}
+                        disabled={disabled}
+                      />
                     </div>
                   </div>
                   <div className="flex w-full md:flex-row flex-col items-center mt-2">
