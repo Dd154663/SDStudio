@@ -1934,6 +1934,29 @@ export class AppState {
   }
 
   /**
+   * 프로젝트 로드 시 삭제된 캐릭터 프리셋이 적용 중인 상태를 정리
+   */
+  cleanupOrphanedPresetApplication() {
+    if (!this.curSession) return;
+
+    // 모든 워크플로우 타입의 presetShareds를 순회
+    for (const [, shared] of this.curSession.presetShareds) {
+      if (!shared || !shared._appliedPresetName) continue;
+
+      const presetName = shared._appliedPresetName;
+      if (!this.curSession.hasCharacterPreset(presetName)) {
+        // 존재하지 않는 프리셋이 적용 중 → 정리
+        shared.vibes = [];
+        shared.characterReferences = [];
+        if (shared.characterPrompts) {
+          shared.characterPrompts = [];
+        }
+        shared._appliedPresetName = '';
+      }
+    }
+  }
+
+  /**
    * 여러 그림체 파일을 한번에 가져오기
    */
   async importMultiplePresets() {

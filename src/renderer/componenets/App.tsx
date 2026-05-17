@@ -326,6 +326,7 @@ export const App = observer(() => {
     if (appState.curSession) {
       sessionService.reloadPieceLibraryDB(appState.curSession);
       imageService.refreshBatch(appState.curSession);
+      appState.cleanupOrphanedPresetApplication();
     }
     return () => {
       window.curSession = undefined;

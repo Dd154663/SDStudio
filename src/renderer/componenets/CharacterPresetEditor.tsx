@@ -1038,6 +1038,10 @@ export const CharacterPresetEditor = observer(({
       type: 'confirm',
       text: `"${preset.name}" 프리셋을 삭제하시겠습니까?`,
       callback: () => {
+        // 삭제하려는 프리셋이 현재 적용 중이면 먼저 해제
+        if (appState.appliedCharacterPreset === preset.name) {
+          appState.clearAppliedCharacterPreset();
+        }
         curSession.removeCharacterPreset(preset.name);
       },
     });
