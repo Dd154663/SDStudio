@@ -55,7 +55,7 @@ import {
 export interface ExportPreset {
   name: string;
   menu: 'fav' | 'all';
-  format: 'normal' | 'prefix';
+  format: 'normal' | 'prefix' | 'prefix_ask';
   prefix: string;
   opt: 'original' | 'lossy' | 'lossless' | 'avif';
   imageSize: number;
@@ -698,6 +698,7 @@ export class AppState {
     const detail: string[] = [];
     detail.push(p.menu === 'fav' ? '즐겨찾기' : '전체');
     if (p.format === 'prefix' && p.prefix) detail.push(`캐릭터: ${p.prefix}`);
+    if (p.format === 'prefix_ask') detail.push('캐릭터: 직접 입력');
     if (p.opt !== 'original') detail.push(`${p.opt}·${p.imageSize}px`);
     else detail.push('원본');
     return `${p.name}  (${detail.join(', ')})`;
@@ -902,8 +903,17 @@ export class AppState {
       if (!ep) return;
       const charsToReplace = await this.detectSpecialChars(type, selected, ep.separator);
       if (charsToReplace === undefined) return;
-      const epPrefix = ep.format === 'prefix' && ep.prefix
-        ? ep.prefix + ep.separator : '';
+      let epPrefix = '';
+      if (ep.format === 'prefix' && ep.prefix) {
+        epPrefix = ep.prefix + ep.separator;
+      } else if (ep.format === 'prefix_ask') {
+        const inputName = await appState.pushDialogAsync({
+          type: 'input-confirm',
+          text: '캐릭터 이름을 입력해주세요',
+        });
+        if (!inputName) return;
+        epPrefix = inputName + ep.separator;
+      }
       await exportImpl(epPrefix, ep.menu === 'fav', ep.opt, ep.imageSize, ep.separator, charsToReplace);
       return;
     }

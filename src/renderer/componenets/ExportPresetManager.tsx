@@ -14,6 +14,7 @@ const menuOptions = [
 const formatOptions = [
   { value: 'normal' as const, label: '(씬이름).(번호).png' },
   { value: 'prefix' as const, label: '(캐릭터).(씬이름).(번호)' },
+  { value: 'prefix_ask' as const, label: '(캐릭터).(씬이름).(번호) - 이름 직접 입력' },
 ];
 
 const getOptOptions = () => {
@@ -32,7 +33,7 @@ const getOptOptions = () => {
 interface FormState {
   name: string;
   menu: 'fav' | 'all' | undefined;
-  format: 'normal' | 'prefix' | undefined;
+  format: 'normal' | 'prefix' | 'prefix_ask' | undefined;
   prefix: string;
   opt: 'original' | 'lossy' | 'lossless' | 'avif' | undefined;
   imageSize: number;
