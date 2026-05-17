@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { DropdownSelect, Option } from './UtilComponents';
 import { FaPlus, FaPuzzlePiece, FaShare, FaTrashAlt, FaTrashRestore, FaUserAlt, FaTimes } from 'react-icons/fa';
 import Tooltip from './Tooltip';
-import { sessionService, imageService, backend, zipService, workFlowService, trashService } from '../models';
+import { sessionService, imageService, backend, zipService, workFlowService, trashService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
 import { CharacterPresetFloatEditor } from './CharacterPresetEditor';
@@ -144,23 +144,18 @@ const SessionSelect = observer(() => {
             }
 
             runInAction(() => {
-              if (preset.vibes && preset.vibes.length > 0) {
-                shared.vibes = preset.vibes.map((v: VibeItem) => VibeItem.fromJSON(v.toJSON()));
-              }
-              if (preset.characterReferences && preset.characterReferences.length > 0) {
-                shared.characterReferences = preset.characterReferences.map((r: ReferenceItem) => ReferenceItem.fromJSON(r.toJSON()));
-              }
+              // 이전 프리셋 데이터를 먼저 초기화한 뒤 새 프리셋 적용
+              shared.vibes = preset.vibes && preset.vibes.length > 0
+                ? preset.vibes.map((v: VibeItem) => VibeItem.fromJSON(v.toJSON()))
+                : [];
+              shared.characterReferences = preset.characterReferences && preset.characterReferences.length > 0
+                ? preset.characterReferences.map((r: ReferenceItem) => ReferenceItem.fromJSON(r.toJSON()))
+                : [];
 
               if (mode === 'easy') {
-                if (preset.characterPrompt) {
-                  shared.characterPrompt = preset.characterPrompt;
-                }
-                if (preset.backgroundPrompt) {
-                  shared.backgroundPrompt = preset.backgroundPrompt;
-                }
-                if (preset.characterUC) {
-                  shared.uc = preset.characterUC;
-                }
+                shared.characterPrompt = preset.characterPrompt || '';
+                shared.backgroundPrompt = preset.backgroundPrompt || '';
+                shared.uc = preset.characterUC || '';
               } else {
                 // Mode 2: 캐릭터 프롬프트 적용 (기존 프리셋 항목 교체)
                 const newEntry: CharacterPrompt = {
@@ -229,12 +224,31 @@ const SessionSelect = observer(() => {
       <button className={`icon-button nback-sky mx-1`} onClick={addSession}>
         <FaPlus size={18} />
       </button>
-      <Tooltip content="캐릭터 프리셋 관리">
+      <Tooltip content={appState.appliedCharacterPreset ? `프리셋: ${appState.appliedCharacterPreset} (길게 눌러 해제)` : '캐릭터 프리셋 관리'}>
       <button
-        className={`icon-button nback-green mx-1`}
+        className={`icon-button mx-1 ${appState.appliedCharacterPreset ? 'back-green' : 'nback-green'}`}
         onClick={() => {
           if (!appState.curSession) {
             appState.pushMessage('프로젝트를 먼저 선택해주세요');
+            return;
+          }
+          // 모바일 + 프리셋 적용 중: 해제/관리 선택
+          if (isMobile && appState.appliedCharacterPreset) {
+            appState.pushDialog({
+              type: 'select',
+              text: `"${appState.appliedCharacterPreset}" 프리셋이 적용 중입니다.`,
+              items: [
+                { text: '프리셋 해제', value: 'clear' },
+                { text: '프리셋 관리 열기', value: 'manage' },
+              ],
+              callback: (value?: string) => {
+                if (value === 'clear') {
+                  appState.clearAppliedCharacterPreset();
+                } else if (value === 'manage') {
+                  setShowCharacterPresets(true);
+                }
+              },
+            });
             return;
           }
           setShowCharacterPresets(true);
