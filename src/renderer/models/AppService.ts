@@ -747,7 +747,7 @@ export class AppState {
       separator: string,
       charsToReplace: Set<string>,
     ) => {
-      const paths = [];
+      let paths: { path: string; name: string }[] = [];
       await imageService.refreshBatch(this.curSession!);
       const scenes = selected ?? this.curSession!.getScenes(type);
       for (const scene of scenes) {
@@ -819,15 +819,17 @@ export class AppState {
           : opt === 'avif'
             ? ImageOptimizeMethod.AVIF
             : ImageOptimizeMethod.LOSSLESS;
-        try {
-          let done = 0;
-          for (const item of paths) {
-            const outputPath = 'tmp/' + v4() + ext;
-            appState.exportProgress = {
-              text: '이미지 크기 최적화 중..',
-              done: done,
-              total: paths.length,
-            };
+        let done = 0;
+        let failCount = 0;
+        const validPaths: typeof paths = [];
+        for (const item of paths) {
+          const outputPath = 'tmp/' + v4() + ext;
+          appState.exportProgress = {
+            text: '이미지 크기 최적화 중..',
+            done: done,
+            total: paths.length,
+          };
+          try {
             await backend.resizeImage({
               inputPath: item.path,
               outputPath: outputPath,
@@ -837,10 +839,19 @@ export class AppState {
             });
             item.path = outputPath;
             item.name = item.name.substring(0, item.name.length - 4) + ext;
-            done++;
+            validPaths.push(item);
+          } catch (e: any) {
+            failCount++;
+            console.error('이미지 최적화 실패:', item.path, e.message);
           }
-        } catch (e: any) {
-          appState.pushMessage(e.message);
+          done++;
+        }
+        paths = validPaths;
+        if (failCount > 0) {
+          appState.pushMessage(`${failCount}개 이미지 최적화 실패 (건너뜀)`);
+        }
+        if (paths.length === 0) {
+          appState.pushMessage('최적화 가능한 이미지가 없습니다');
           appState.exportProgress = undefined;
           return;
         }

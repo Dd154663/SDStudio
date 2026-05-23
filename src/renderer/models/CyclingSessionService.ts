@@ -81,7 +81,7 @@ export class CyclingSessionService {
   }
 
   @action
-  private advanceToNextPreset() {
+  private async advanceToNextPreset() {
     this.currentPresetIndex++;
 
     if (this.currentPresetIndex >= this.presetQueue.length) {
@@ -100,6 +100,13 @@ export class CyclingSessionService {
 
     // 프리셋 적용
     this.applyPreset(preset);
+
+    // 프리셋 전환 쿨다운 (첫 프리셋 제외 — API 레이트 리밋 방지)
+    if (this.currentPresetIndex > 0) {
+      appState.pushMessage(`다음 프리셋 "${preset.name}" 준비 중 (5초 대기)...`);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      if (this.state !== 'running') return; // 대기 중 취소된 경우
+    }
 
     // 씬 큐잉 + 실행
     this.queueAllScenes();
