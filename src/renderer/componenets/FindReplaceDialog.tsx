@@ -1,10 +1,11 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { observer } from 'mobx-react-lite';
+import { v4 as uuidv4 } from 'uuid';
 import { appState } from '../models/AppService';
 import { backend } from '../models';
 import ModalOverlay from './ModalOverlay';
 import { FaSearch, FaExchangeAlt, FaPlus } from 'react-icons/fa';
-import { Scene, CharacterPreset } from '../models/types';
+import { Scene, CharacterPreset, PromptPiece } from '../models/types';
 
 /** 검색 결과 한 건 */
 interface SearchResult {
@@ -327,7 +328,7 @@ const InsertTab = () => {
 
   const [insertText, setInsertText] = useState('');
   const [position, setPosition] = useState<'prepend' | 'append'>('append');
-  const [slotTarget, setSlotTarget] = useState<'all' | number>(0);
+  const [slotTarget, setSlotTarget] = useState<'all' | 'new-column' | number>(0);
   const [selectedScenes, setSelectedScenes] = useState<Set<string>>(new Set());
   const [insertComplete, setInsertComplete] = useState<number | null>(null);
   const [sceneFilter, setSceneFilter] = useState('');
@@ -395,7 +396,9 @@ const InsertTab = () => {
     let count = 0;
     for (const scene of session.scenes.values()) {
       if (!selectedScenes.has(scene.name)) continue;
-      if (slotTarget === 'all') {
+      if (slotTarget === 'new-column') {
+        count++; // 씬당 새 열 1개
+      } else if (slotTarget === 'all') {
         for (const slot of scene.slots) {
           count += slot.length;
         }
@@ -446,6 +449,19 @@ const InsertTab = () => {
 
     for (const scene of session.scenes.values()) {
       if (!selectedScenes.has(scene.name)) continue;
+
+      if (slotTarget === 'new-column') {
+        // 새 열(슬롯)을 맨 뒤에 추가
+        const newPiece = PromptPiece.fromJSON({
+          prompt: insertText.trim(),
+          characterPrompts: [],
+          enabled: true,
+          id: uuidv4(),
+        });
+        scene.slots.push([newPiece]);
+        applied++;
+        continue;
+      }
 
       const targetSlots = slotTarget === 'all'
         ? scene.slots
@@ -525,14 +541,19 @@ const InsertTab = () => {
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">대상:</span>
           <select
-            value={slotTarget === 'all' ? 'all' : String(slotTarget)}
-            onChange={(e) => setSlotTarget(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+            value={slotTarget === 'all' ? 'all' : slotTarget === 'new-column' ? 'new-column' : String(slotTarget)}
+            onChange={(e) => {
+              const v = e.target.value;
+              setSlotTarget(v === 'all' ? 'all' : v === 'new-column' ? 'new-column' : Number(v));
+              setInsertComplete(null);
+            }}
             className="text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 px-2 py-1"
           >
             <option value="all">모든 슬롯</option>
             {Array.from({ length: maxSlotRow }, (_, i) => (
-              <option key={i} value={i}>행 {i + 1}만</option>
+              <option key={i} value={i}>열 {i + 1}만</option>
             ))}
+            <option value="new-column">새 열로 추가</option>
           </select>
         </div>
       </div>
@@ -567,7 +588,9 @@ const InsertTab = () => {
       <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-600">
         <span className="text-sm text-gray-500 dark:text-gray-400">
           {insertText.trim()
-            ? <><span className="text-sky-500 font-bold">{affectedCount}</span>개 슬롯에 적용 예정</>
+            ? slotTarget === 'new-column'
+              ? <><span className="text-sky-500 font-bold">{affectedCount}</span>개 씬에 새 열 추가 예정</>
+              : <><span className="text-sky-500 font-bold">{affectedCount}</span>개 슬롯에 적용 예정</>
             : '삽입할 텍스트를 입력하세요'}
         </span>
         <button onClick={doInsert} disabled={!insertText.trim() || affectedCount === 0}
@@ -578,7 +601,9 @@ const InsertTab = () => {
 
       {insertComplete !== null && (
         <div className="text-sm text-green-600 dark:text-green-400 font-medium">
-          ✓ {insertComplete}개 슬롯에 텍스트가 삽입되었습니다
+          ✓ {slotTarget === 'new-column'
+            ? `${insertComplete}개 씬에 새 열이 추가되었습니다`
+            : `${insertComplete}개 슬롯에 텍스트가 삽입되었습니다`}
         </div>
       )}
     </div>

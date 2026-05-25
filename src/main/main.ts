@@ -164,42 +164,54 @@ ipcMain.handle('zip-files', async (event, files, outPath) => {
   }));
   await fs.mkdir(dir, { recursive: true });
   const pack = tarStream.pack();
-
-  pack.pipe(fsSync.createWriteStream(APP_DIR + '/' + outPath));
-  let done = 0;
-  for (const file of files) {
+  const writeStream = fsSync.createWriteStream(APP_DIR + '/' + outPath);
+  pack.pipe(writeStream);
+  try {
+    let done = 0;
+    for (const file of files) {
+      mainWindow!.webContents.send('zip-progress', {
+        done: done,
+        total: files.length,
+      });
+      await new Promise((resolve, reject) => {
+        const srcPath = file.path;
+        const destPath = file.name;
+        const size = fsSync.statSync(srcPath).size;
+        const stream = fsSync.createReadStream(srcPath);
+        const entry = pack.entry({ name: destPath, size: size });
+        stream.on('error', reject);
+        entry.on('error', reject);
+        entry.on('finish', resolve);
+        stream.pipe(entry);
+      });
+      done++;
+    }
     mainWindow!.webContents.send('zip-progress', {
-      done: done,
+      done: files.length,
       total: files.length,
     });
-    await new Promise((resolve, reject) => {
-      const srcPath = file.path;
-      const destPath = file.name;
-      const size = fsSync.statSync(srcPath).size;
-      const stream = fsSync.createReadStream(srcPath);
-      const entry = pack.entry({ name: destPath, size: size });
-      stream.on('error', reject);
-      entry.on('error', reject);
-      entry.on('finish', resolve);
-      stream.pipe(entry);
-    });
-    done++;
+    pack.finalize();
+  } catch (e: any) {
+    console.error('zip-files error:', e);
+    pack.destroy();
+    writeStream.destroy();
+    throw new Error('압축 중 오류: ' + (e.message || e));
   }
-  mainWindow!.webContents.send('zip-progress', {
-    done: files.length,
-    total: files.length,
-  });
-  pack.finalize();
 });
 
 ipcMain.handle('unzip-files', async (event, zipPath, outPath) => {
-  outPath = APP_DIR + '/' + outPath;
-  await fs.mkdir(outPath, { recursive: true });
-  const stream = fsSync.createReadStream(zipPath).pipe(tar.extract(outPath));
-  await new Promise((resolve, reject) => {
-    stream.on('finish', resolve);
-    stream.on('error', reject);
-  });
+  try {
+    outPath = APP_DIR + '/' + outPath;
+    await fs.mkdir(outPath, { recursive: true });
+    const stream = fsSync.createReadStream(zipPath).pipe(tar.extract(outPath));
+    await new Promise((resolve, reject) => {
+      stream.on('finish', resolve);
+      stream.on('error', reject);
+    });
+  } catch (e: any) {
+    console.error('unzip-files error:', e);
+    throw new Error('압축 해제 중 오류: ' + (e.message || e));
+  }
 });
 
 ipcMain.handle('search-tags', async (event, word) => {
@@ -363,32 +375,37 @@ ipcMain.handle('download', async (event, url, dest, filename) => {
 ipcMain.handle(
   'resize-image',
   async (event, { inputPath, outputPath, maxWidth, maxHeight, optimize }) => {
-    inputPath = APP_DIR + '/' + inputPath;
-    outputPath = APP_DIR + '/' + outputPath;
-    const dir = path.dirname(outputPath);
-    await fs.mkdir(dir, { recursive: true });
-    let instance = sharp(inputPath).resize(maxWidth, maxHeight, {
-      fit: sharp.fit.inside,
-      withoutEnlargement: true,
-    });
-    if (optimize === ImageOptimizeMethod.LOSSY) {
-      instance = instance.webp({
-        quality: 80,
-        lossless: false,
+    try {
+      inputPath = APP_DIR + '/' + inputPath;
+      outputPath = APP_DIR + '/' + outputPath;
+      const dir = path.dirname(outputPath);
+      await fs.mkdir(dir, { recursive: true });
+      let instance = sharp(inputPath).resize(maxWidth, maxHeight, {
+        fit: sharp.fit.inside,
+        withoutEnlargement: true,
       });
+      if (optimize === ImageOptimizeMethod.LOSSY) {
+        instance = instance.webp({
+          quality: 80,
+          lossless: false,
+        });
+      }
+      if (optimize === ImageOptimizeMethod.LOSSLESS) {
+        instance = instance.webp({
+          lossless: true,
+        });
+      }
+      if (optimize === ImageOptimizeMethod.AVIF) {
+        instance = instance.avif({
+          quality: 50,
+          effort: 4,
+        });
+      }
+      await instance.toFile(outputPath);
+    } catch (e: any) {
+      console.error('resize-image error:', e);
+      throw new Error('이미지 리사이즈 실패: ' + (e.message || e));
     }
-    if (optimize === ImageOptimizeMethod.LOSSLESS) {
-      instance = instance.webp({
-        lossless: true,
-      });
-    }
-    if (optimize === ImageOptimizeMethod.AVIF) {
-      instance = instance.avif({
-        quality: 50,
-        effort: 4,
-      });
-    }
-    await instance.toFile(outputPath);
   },
 );
 
@@ -651,31 +668,43 @@ ipcMain.handle('unwatch-image', async (event, inputPath) => {
 });
 
 ipcMain.handle('load-model', async (event, modelPath) => {
-  modelPath = path.resolve(path.join(APP_DIR, modelPath));
-  await localAI.loadModel(modelPath, config.useCUDA ?? false);
+  try {
+    modelPath = path.resolve(path.join(APP_DIR, modelPath));
+    await localAI.loadModel(modelPath, config.useCUDA ?? false);
+  } catch (e: any) {
+    console.error('load-model error:', e);
+    throw new Error('모델 로드 실패: ' + (e.message || e));
+  }
 });
 
 ipcMain.handle('extract-zip', async (event, zipPath, outPath) => {
-  const platform = os.platform();
+  try {
+    const platform = os.platform();
 
-  if (platform === 'win32') {
-    const dir = path.join(APP_DIR, outPath);
-    const zip = new StreamZip.async({ file: path.join(APP_DIR, zipPath) });
-
-    let numExtracted = 0;
-    const entries = Object.values(await zip.entries());
-    zip.on('extract', (entry: any, file: any) => {
-      numExtracted++;
-      mainWindow!.webContents.send('download-progress', {
-        percent: numExtracted / entries.length,
-      });
-    });
-    await fs.mkdir(dir, { recursive: true });
-    await zip.extract(null, dir);
-    await zip.close();
-  } else {
-    const command = `unzip -o "${APP_DIR}/${zipPath}" -d "${APP_DIR}/${outPath}"`;
-    await execPromise(command);
+    if (platform === 'win32') {
+      const dir = path.join(APP_DIR, outPath);
+      const zip = new StreamZip.async({ file: path.join(APP_DIR, zipPath) });
+      try {
+        let numExtracted = 0;
+        const entries = Object.values(await zip.entries());
+        zip.on('extract', (entry: any, file: any) => {
+          numExtracted++;
+          mainWindow!.webContents.send('download-progress', {
+            percent: numExtracted / entries.length,
+          });
+        });
+        await fs.mkdir(dir, { recursive: true });
+        await zip.extract(null, dir);
+      } finally {
+        await zip.close();
+      }
+    } else {
+      const command = `unzip -o "${APP_DIR}/${zipPath}" -d "${APP_DIR}/${outPath}"`;
+      await execPromise(command);
+    }
+  } catch (e: any) {
+    console.error('extract-zip error:', e);
+    throw new Error('ZIP 해제 실패: ' + (e.message || e));
   }
 });
 
@@ -766,12 +795,17 @@ const qualityMap: any = {
 };
 
 ipcMain.handle('remove-bg', async (event, inputImageBase64, outputPath) => {
-  outputPath = path.join(APP_DIR, outputPath);
-  await localAI.runModel(
-    inputImageBase64,
-    qualityMap[config.removeBgQuality ?? 'normal'],
-    outputPath,
-  );
+  try {
+    outputPath = path.join(APP_DIR, outputPath);
+    await localAI.runModel(
+      inputImageBase64,
+      qualityMap[config.removeBgQuality ?? 'normal'],
+      outputPath,
+    );
+  } catch (e: any) {
+    console.error('remove-bg error:', e);
+    throw new Error('배경 제거 실패: ' + (e.message || e));
+  }
 });
 
 if (process.env.NODE_ENV === 'production') {

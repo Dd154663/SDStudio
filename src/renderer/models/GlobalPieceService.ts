@@ -36,6 +36,14 @@ export class GlobalPieceService {
     this.saveTimeout = setTimeout(() => this.save(), 2000);
   }
 
+  async flushSave() {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    await this.save();
+  }
+
   @action
   addLibrary(name: string, lib: PieceLibrary) {
     this.library.set(name, lib);

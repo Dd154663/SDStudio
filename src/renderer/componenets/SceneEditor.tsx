@@ -29,6 +29,7 @@ import {
   FaToggleOn,
   FaToggleOff,
   FaEdit,
+  FaQuestionCircle,
 } from 'react-icons/fa';
 import Denque from 'denque';
 import { writeFileSync } from 'original-fs';
@@ -715,9 +716,15 @@ export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
   }, [scene]);
 
   const removePiece = (slot: PromptPieceSlot, pieceIndex: number) => {
+    // 1열 1행 슬롯은 프롬프트 에디터와 연동되므로 삭제 불가
+    const slotIndex = scene.slots.indexOf(slot);
+    if (slotIndex === 0 && pieceIndex === 0) {
+      appState.pushMessage('첫 번째 슬롯(1열 1행)은 프롬프트 에디터와 연동되어 삭제할 수 없습니다');
+      return;
+    }
     slot.splice(pieceIndex, 1);
     if (slot.length === 0) {
-      scene.slots.splice(scene.slots.indexOf(slot), 1);
+      scene.slots.splice(slotIndex, 1);
     }
   };
 
@@ -745,52 +752,61 @@ export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
   };
 
   return (
-    <div className="flex w-full">
-      {scene.slots.map((slot, slotIndex) => (
-        <div key={slotIndex}>
-          {slot.map((piece, pieceIndex) => (
-            <SlotPiece
-              key={piece.id!}
-              scene={scene}
-              piece={piece}
-              removePiece={(piece: PromptPiece) =>
-                removePiece(slot, slot.indexOf(piece)!)
-              }
-              moveSlotPiece={moveSlotPiece}
-            />
-          ))}
-          <button
-            className="p-2 m-2 w-14 back-lllgray clickable rounded-xl flex justify-center"
-            onClick={() => {
-              slot.push(
-                PromptPiece.fromJSON({
-                  prompt: '',
-                  characterPrompts: [],
-                  enabled: true,
-                  id: uuidv4(),
-                }),
-              );
-            }}
-          >
-            <FaPlus />
-          </button>
-        </div>
-      ))}
-      <button
-        className="p-2 m-2 h-14 flex items-center back-lllgray clickable rounded-xl"
-        onClick={() => {
-          scene.slots.push([
-            PromptPiece.fromJSON({
-              prompt: '',
-              characterPrompts: [],
-              enabled: true,
-              id: uuidv4(),
-            }),
-          ]);
-        }}
-      >
-        <FaPlus />
-      </button>
+    <div className="flex flex-col w-full">
+      <div className="flex items-center gap-1 px-2 pt-1 pb-0.5">
+        <Tooltip content={"각 열의 프롬프트를 조합하여 열×행의 모든 경우의 수만큼 이미지를 생성합니다.\n열 추가: 오른쪽 + 버튼 | 행 추가: 열 하단 + 버튼"}>
+          <span className="text-yellow-500 dark:text-yellow-400 cursor-help" onMouseDown={(e) => e.stopPropagation()}>
+            <FaQuestionCircle size={15} />
+          </span>
+        </Tooltip>
+      </div>
+      <div className="flex w-full">
+        {scene.slots.map((slot, slotIndex) => (
+          <div key={slotIndex}>
+            {slot.map((piece, pieceIndex) => (
+              <SlotPiece
+                key={piece.id!}
+                scene={scene}
+                piece={piece}
+                removePiece={(piece: PromptPiece) =>
+                  removePiece(slot, slot.indexOf(piece)!)
+                }
+                moveSlotPiece={moveSlotPiece}
+              />
+            ))}
+            <button
+              className="p-2 m-2 w-14 back-lllgray clickable rounded-xl flex justify-center"
+              onClick={() => {
+                slot.push(
+                  PromptPiece.fromJSON({
+                    prompt: '',
+                    characterPrompts: [],
+                    enabled: true,
+                    id: uuidv4(),
+                  }),
+                );
+              }}
+            >
+              <FaPlus />
+            </button>
+          </div>
+        ))}
+        <button
+          className="p-2 m-2 h-14 flex items-center back-lllgray clickable rounded-xl"
+          onClick={() => {
+            scene.slots.push([
+              PromptPiece.fromJSON({
+                prompt: '',
+                characterPrompts: [],
+                enabled: true,
+                id: uuidv4(),
+              }),
+            ]);
+          }}
+        >
+          <FaPlus />
+        </button>
+      </div>
     </div>
   );
 });

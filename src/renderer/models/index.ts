@@ -89,8 +89,15 @@ window.globalPresetService = globalPresetService;
 
 backend.onClose(() => {
   (async () => {
-    await sessionService.saveAll();
-    await backend.close();
+    try {
+      await sessionService.saveAll();
+      await globalPresetService.flushSave();
+      await globalPieceService.flushSave();
+    } catch (e) {
+      console.error('종료 시 저장 실패:', e);
+    } finally {
+      await backend.close();
+    }
   })();
 });
 
