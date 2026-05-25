@@ -23,18 +23,7 @@ const ExpiredProjectsDialog = observer(() => {
     });
   }, [projects]);
 
-  // ESC key handler
-  useEffect(() => {
-    if (projects.length === 0) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        deferAll();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [projects.length, deferAll]);
+  // ESC 키로 닫기 비활성화 — 명시적 버튼 클릭 필요
 
   if (projects.length === 0) return null;
 
@@ -92,9 +81,6 @@ const ExpiredProjectsDialog = observer(() => {
   return (
     <div
       className="fixed inset-0 flex items-center justify-center confirm-window"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) deferAll();
-      }}
     >
       <div className="flex flex-col m-4 p-4 rounded-md shadow-xl bg-white dark:bg-slate-800 text-black w-[28rem] max-h-[80vh]">
         <div className="text-center text-default font-bold mb-2">

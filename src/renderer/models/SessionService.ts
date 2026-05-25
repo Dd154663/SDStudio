@@ -132,13 +132,21 @@ export class SessionService extends ResourceSyncService<Session> {
     await this.loadBookmarks();
     const { trashService } = await import('.');
     await trashService.loadTrash();
-    await trashService.autoCleanup();
-    // 만료 프로젝트 감지 → UI 다이얼로그에 전달
+
+    // 만료 프로젝트 감지 → UI 다이얼로그에 전달 (가볍게 체크만)
     const expired = await trashService.getExpiredProjects();
     if (expired.length > 0) {
       const { appState } = await import('./AppService');
       appState.pendingExpiredProjects = expired;
     }
+
+    // autoCleanup은 앱 시작을 블로킹하지 않도록 지연 실행
+    setTimeout(() => {
+      trashService.autoCleanup().catch((e) => {
+        console.error('휴지통 자동 정리 실패:', e);
+      });
+    }, 10000);
+
     await super.run();
   }
 

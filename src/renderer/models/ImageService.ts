@@ -600,16 +600,13 @@ export class ImageService extends EventTarget {
   }
 
   async refreshBatch(session: Session) {
-    for (const scene of session.scenes.values()) {
-      try {
-        await this.refresh(session, scene, false, true);
-      } catch (e) {}
-    }
-    for (const scene of session.inpaints.values()) {
-      try {
-        await this.refresh(session, scene, false, true);
-      } catch (e) {}
-    }
+    const allScenes: GenericScene[] = [
+      ...session.scenes.values(),
+      ...session.inpaints.values(),
+    ];
+    await Promise.allSettled(
+      allScenes.map((scene) => this.refresh(session, scene, false, true)),
+    );
     this.dispatchEvent(
       new CustomEvent('updated', { detail: { batch: true, session } }),
     );
