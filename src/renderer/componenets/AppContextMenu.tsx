@@ -36,10 +36,88 @@ export const AppContextMenu = observer(() => {
     const curSession = appState.curSession;
     curSession!.moveScene(ctx.scene, curSession!.scenes.size - 1);
   };
+  const copySceneToProject = async (ctx: SceneContextAlt) => {
+    const curName = appState.curSession!.name;
+    const allProjects = sessionService.list().filter((n) => n !== curName);
+    if (allProjects.length === 0) {
+      appState.pushMessage('복사할 다른 프로젝트가 없습니다');
+      return;
+    }
+
+    // 1) 대상 프로젝트 선택
+    const targetName = await appState.pushDialogAsync({
+      text: '씬을 복사할 프로젝트를 선택하세요',
+      type: 'dropdown',
+      items: allProjects.map((n) => ({ text: n, value: n })),
+    });
+    if (!targetName) return;
+
+    // 2) 복사 모드 선택
+    const mode = await appState.pushDialogAsync({
+      text: '복사 방식을 선택하세요',
+      type: 'select',
+      items: [
+        { text: '설정만 복사 (슬롯, 프롬프트 등)', value: 'config' },
+        { text: '이미지 포함 복사', value: 'with-images' },
+      ],
+    });
+    if (!mode) return;
+
+    // 3) 대상 세션 로드
+    const targetSession = await sessionService.get(targetName);
+    if (!targetSession) {
+      appState.pushMessage('프로젝트를 불러올 수 없습니다');
+      return;
+    }
+
+    // 4) 씬 복제
+    const newScene = genericSceneFromJSON(ctx.scene.toJSON());
+    // 이름 충돌 방지
+    let cnt = 0;
+    const baseName = newScene.name;
+    const newNameFn = () => baseName + (cnt === 0 ? '' : '_' + cnt);
+    while (targetSession.hasScene(newScene.type, newNameFn())) {
+      cnt++;
+    }
+    newScene.name = newNameFn();
+
+    if (mode === 'config') {
+      // 설정만 복사 — 이미지 참조 제거
+      newScene.imageMap = [];
+      newScene.mains = [];
+      targetSession.addScene(newScene);
+      appState.pushMessage(`씬 "${newScene.name}"이(가) "${targetName}" 프로젝트에 복사되었습니다`);
+    } else {
+      // 이미지 포함 복사
+      const srcDir = imageService.getOutputDir(appState.curSession!, ctx.scene);
+      const dstDir = imageService.getOutputDir(targetSession, newScene);
+
+      // 대상 디렉토리 생성을 위해 먼저 씬 추가
+      targetSession.addScene(newScene);
+
+      // 이미지 파일 복사
+      const allImages = [...ctx.scene.imageMap];
+      let copied = 0;
+      for (const img of allImages) {
+        try {
+          await backend.copyFile(srcDir + '/' + img, dstDir + '/' + img);
+          copied++;
+        } catch (e) {
+          console.error('이미지 복사 실패:', img, e);
+        }
+      }
+      appState.pushMessage(
+        `씬 "${newScene.name}"이(가) "${targetName}" 프로젝트에 복사되었습니다 (이미지 ${copied}장)`
+      );
+    }
+  };
+
   const handleSceneItemClick = ({ id, props }: any) => {
     const ctx = props.ctx as SceneContextAlt;
     if (id === 'duplicate') {
       duplicateScene(ctx);
+    } else if (id === 'copy-to-project') {
+      copySceneToProject(ctx);
     } else if (id === 'move-front') {
       moveSceneFront(ctx);
     } else if (id === 'move-back') {
@@ -248,6 +326,9 @@ export const AppContextMenu = observer(() => {
       <Menu id={ContextMenuType.Scene}>
         <Item id="duplicate" onClick={handleSceneItemClick}>
           해당 씬 복제
+        </Item>
+        <Item id="copy-to-project" onClick={handleSceneItemClick}>
+          다른 프로젝트로 씬 복사
         </Item>
         <Item id="move-front" onClick={handleSceneItemClick}>
           해당 씬 맨 위로

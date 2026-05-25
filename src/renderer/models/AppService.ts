@@ -39,6 +39,7 @@ import {
   PromptPiece,
   Scene,
   Session,
+  genericSceneFromJSON,
 } from './types';
 import { extractPromptDataFromBase64, getFirstFile } from './util';
 import { ImageOptimizeMethod } from '../backend';
@@ -1554,6 +1555,7 @@ export class AppState {
         { text: '❌ 즐겨찾기 전부 해제', value: 'removeAllFav' },
         { text: '⭐ 상위 n등 즐겨찾기 지정', value: 'setFav' },
         { text: '📋 씬 내용 복제', value: 'copySceneContent' },
+        { text: '📦 다른 프로젝트로 씬 복사', value: 'copyToProject' },
         { text: '📝 씬 이름 내보내기', value: 'exportSceneNames' },
         { text: '🗂️ 씬 일괄 삭제', value: 'deleteScenes' },
         { text: '🔤 씬 이름순 정렬', value: 'sortScenes' },
@@ -1689,6 +1691,89 @@ export class AppState {
                           }
                         }
                         appState.pushMessage(`${selected.length}개 씬에 내용이 복제되었습니다.`);
+                      },
+                    });
+                  },
+                });
+              },
+            });
+            return;
+          }
+          if (value === 'copyToProject') {
+            const curName = this.curSession!.name;
+            const allProjects = sessionService.list().filter((n) => n !== curName);
+            if (allProjects.length === 0) {
+              appState.pushMessage('복사할 다른 프로젝트가 없습니다');
+              return;
+            }
+            setSceneSelector({
+              type: type,
+              text: '📦 다른 프로젝트로 복사할 씬 선택',
+              callback: (selected) => {
+                setSceneSelector(undefined);
+                if (selected.length === 0) return;
+
+                appState.pushDialog({
+                  text: '씬을 복사할 프로젝트를 선택하세요',
+                  type: 'dropdown',
+                  items: allProjects.map((n) => ({ text: n, value: n })),
+                  callback: (targetName) => {
+                    if (!targetName) return;
+
+                    appState.pushDialog({
+                      text: '복사 방식을 선택하세요',
+                      type: 'select',
+                      items: [
+                        { text: '설정만 복사 (슬롯, 프롬프트 등)', value: 'config' },
+                        { text: '이미지 포함 복사', value: 'with-images' },
+                      ],
+                      callback: async (mode) => {
+                        if (!mode) return;
+
+                        const targetSession = await sessionService.get(targetName);
+                        if (!targetSession) {
+                          appState.pushMessage('프로젝트를 불러올 수 없습니다');
+                          return;
+                        }
+
+                        let totalCopied = 0;
+                        let totalImages = 0;
+                        for (const scene of selected) {
+                          const newScene = genericSceneFromJSON(scene.toJSON());
+                          let cnt = 0;
+                          const baseName = newScene.name;
+                          const newNameFn = () => baseName + (cnt === 0 ? '' : '_' + cnt);
+                          while (targetSession.hasScene(newScene.type, newNameFn())) {
+                            cnt++;
+                          }
+                          newScene.name = newNameFn();
+
+                          if (mode === 'config') {
+                            newScene.imageMap = [];
+                            newScene.mains = [];
+                          }
+
+                          targetSession.addScene(newScene);
+
+                          if (mode === 'with-images' && scene.imageMap.length > 0) {
+                            const srcDir = imageService.getOutputDir(appState.curSession!, scene);
+                            const dstDir = imageService.getOutputDir(targetSession, newScene);
+                            for (const img of scene.imageMap) {
+                              try {
+                                await backend.copyFile(srcDir + '/' + img, dstDir + '/' + img);
+                                totalImages++;
+                              } catch (e) {
+                                console.error('이미지 복사 실패:', img, e);
+                              }
+                            }
+                          }
+                          totalCopied++;
+                        }
+
+                        const msg = mode === 'with-images'
+                          ? `${totalCopied}개 씬이 "${targetName}" 프로젝트에 복사되었습니다 (이미지 ${totalImages}장)`
+                          : `${totalCopied}개 씬이 "${targetName}" 프로젝트에 복사되었습니다`;
+                        appState.pushMessage(msg);
                       },
                     });
                   },
