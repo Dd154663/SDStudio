@@ -43,4 +43,5 @@ export interface Config {
   downloadSettings?: DownloadSettings;
   imageSaveSettings?: ImageSaveSettings;
   classicSceneCard?: boolean;
+  exportConcurrency?: number;
 }

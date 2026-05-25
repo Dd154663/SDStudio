@@ -822,32 +822,51 @@ export class AppState {
             : ImageOptimizeMethod.LOSSLESS;
         let done = 0;
         let failCount = 0;
-        const validPaths: typeof paths = [];
-        for (const item of paths) {
-          const outputPath = 'tmp/' + v4() + ext;
-          appState.exportProgress = {
-            text: '이미지 크기 최적화 중..',
-            done: done,
-            total: paths.length,
-          };
-          try {
-            await backend.resizeImage({
-              inputPath: item.path,
-              outputPath: outputPath,
-              maxHeight: imageSize,
-              maxWidth: imageSize,
-              optimize: optimizeMethod,
-            });
-            item.path = outputPath;
-            item.name = item.name.substring(0, item.name.length - 4) + ext;
-            validPaths.push(item);
-          } catch (e: any) {
-            failCount++;
-            console.error('이미지 최적화 실패:', item.path, e.message);
+        const config = await backend.getConfig();
+        const CONCURRENCY = Math.max(1, Math.min(4, config.exportConcurrency ?? (isMobile ? 2 : 4)));
+        const results: (typeof paths[0] | null)[] = new Array(paths.length).fill(null);
+
+        appState.exportProgress = {
+          text: '이미지 크기 최적화 중..',
+          done: 0,
+          total: paths.length,
+        };
+
+        // 동시 실행 수 제한 병렬 처리
+        const queue = paths.map((item, idx) => ({ item, idx }));
+        const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+          while (queue.length > 0) {
+            const task = queue.shift();
+            if (!task) break;
+            const { item, idx } = task;
+            const outputPath = 'tmp/' + v4() + ext;
+            try {
+              await backend.resizeImage({
+                inputPath: item.path,
+                outputPath: outputPath,
+                maxHeight: imageSize,
+                maxWidth: imageSize,
+                optimize: optimizeMethod,
+              });
+              results[idx] = {
+                path: outputPath,
+                name: item.name.substring(0, item.name.length - 4) + ext,
+              };
+            } catch (e: any) {
+              failCount++;
+              console.error('이미지 최적화 실패:', item.path, e.message);
+            }
+            done++;
+            appState.exportProgress = {
+              text: '이미지 크기 최적화 중..',
+              done: done,
+              total: paths.length,
+            };
           }
-          done++;
-        }
-        paths = validPaths;
+        });
+        await Promise.all(workers);
+
+        paths = results.filter((r): r is typeof paths[0] => r !== null);
         if (failCount > 0) {
           appState.pushMessage(`${failCount}개 이미지 최적화 실패 (건너뜀)`);
         }

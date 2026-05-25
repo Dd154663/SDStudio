@@ -296,6 +296,7 @@ const OtherTab = ({
   delayTime, setDelayTime,
   classicSceneCard, setClassicSceneCard,
   fullWordAc, setFullWordAc,
+  exportConcurrency, setExportConcurrency,
 }: any) => {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
 
@@ -362,9 +363,24 @@ const OtherTab = ({
         <div className="flex items-center gap-2">
           <input type="range" min={0} max={1000} step={1}
             value={delayTime} onChange={(e) => setDelayTime(parseInt(e.target.value))}
-            className="flex-1" />
-          <span className="text-sm gray-label w-14 text-right">{delayTime}ms</span>
+            className="flex-1 min-w-0" />
+          <span className="text-sm gray-label w-14 text-right flex-none">{delayTime}ms</span>
         </div>
+      </div>
+      <hr className="border-gray-200 dark:border-slate-600" />
+      <div>
+        <label className="block text-sm gray-label mb-1">
+          이미지 최적화 병렬 처리 수 (1 ~ 4)
+        </label>
+        <div className="flex items-center gap-2">
+          <input type="range" min={1} max={4} step={1}
+            value={exportConcurrency} onChange={(e) => setExportConcurrency(parseInt(e.target.value))}
+            className="flex-1 min-w-0" />
+          <span className="text-sm gray-label w-14 text-right flex-none">{exportConcurrency}</span>
+        </div>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+          높을수록 내보내기가 빠르지만 CPU 사용량이 증가합니다.{isMobile ? ' 모바일은 1~2 권장.' : ''}
+        </p>
       </div>
       <hr className="border-gray-200 dark:border-slate-600" />
       <FolderCleanupSection folder="exports" label="exports 폴더 정리" />
@@ -633,6 +649,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [delayTime, setDelayTime] = useState(0);
   const [classicSceneCard, setClassicSceneCard] = useState(false);
   const [fullWordAc, setFullWordAc] = useState(appState.fullWordAutoComplete);
+  const [exportConcurrency, setExportConcurrency] = useState(isMobile ? 2 : 4);
   const [useLocalBgRemoval, setUseLocalBgRemoval] = useState(false);
   const [refreshImage, setRefreshImage] = useState(false);
   const [ready, setReady] = useState(false);
@@ -656,6 +673,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setUseLocalBgRemoval(config.useLocalBgRemoval ?? false);
       setDelayTime(config.delayTime ?? 0);
       setClassicSceneCard(config.classicSceneCard ?? false);
+      setExportConcurrency(config.exportConcurrency ?? (isMobile ? 2 : 4));
       setSaveLocation(config.saveLocation ?? '');
     })();
     const checkReady = () => setReady(localAIService.ready);
@@ -764,6 +782,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       useLocalBgRemoval: useLocalBgRemoval,
       delayTime: delayTime,
       classicSceneCard: classicSceneCard,
+      exportConcurrency: exportConcurrency,
     };
     await backend.setConfig(config);
     if (old.useCUDA !== useGPU) localAIService.modelChanged();
@@ -794,7 +813,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 2:
         return <StorageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage }} />;
       case 3:
-        return <OtherTab {...{ whiteMode, setWhiteMode, delayTime, setDelayTime, classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc }} />;
+        return <OtherTab {...{ whiteMode, setWhiteMode, delayTime, setDelayTime, classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, exportConcurrency, setExportConcurrency }} />;
       case 4:
         return <KeyBindingsTab />;
       default:
@@ -814,7 +833,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       onClick={onClose}
     >
       <div
-        className={'w-[90vw] max-w-lg bg-white dark:bg-slate-800 rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-slate-600 ' + (mobileMode ? 'max-h-[90vh]' : 'max-h-[85vh]')}
+        className={'w-[90vw] max-w-xl bg-white dark:bg-slate-800 rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-slate-600 ' + (mobileMode ? 'max-h-[90vh]' : 'max-h-[85vh]')}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 헤더 */}
