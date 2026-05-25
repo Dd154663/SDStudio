@@ -675,18 +675,19 @@ export class ImageService extends EventTarget {
 
   async checkEncodedVibeImage(session: Session, path: string, info: number) {
     const vibePath = this.getEncodedVibeImagePath(session, path, info);
-    
+
     // 캐시에서 먼저 확인 (성능 최적화)
     const cached = this.encodedVibeExistsCache.get(vibePath);
     if (cached !== null) {
       return cached;
     }
-    
+
     // 캐시에 없으면 파일 시스템 확인
     const exists = await backend.existFile(vibePath);
     this.encodedVibeExistsCache.set(vibePath, exists);
     return exists;
   }
+
 }
 
 export function base64ToDataUri(data: string) {

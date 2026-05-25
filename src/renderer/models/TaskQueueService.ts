@@ -20,6 +20,7 @@ import {
   taskQueueService,
   workFlowService,
 } from '.';
+import { appState } from './AppService';
 import {
   AbstractJob,
   AugmentJob,
@@ -273,10 +274,10 @@ class GenerateImageTaskHandler implements TaskHandler {
     if (!run.cachedReferences) run.cachedReferences = new Map();
 
     // 바이브 이미지 처리 - 캐싱 적용
-    const vibes = await Promise.all(
+    const allVibes = await Promise.all(
       job.vibes.map(async (vibe) => {
         const cacheKey = `${vibe.path}:${vibe.info}`;
-        
+
         // 캐시에서 먼저 확인
         if (run.cachedVibes!.has(cacheKey)) {
           const cached = run.cachedVibes!.get(cacheKey)!;
@@ -287,40 +288,57 @@ class GenerateImageTaskHandler implements TaskHandler {
           };
         }
 
-        // 캐시에 없으면 로딩
-        const isEncoded = await imageService.checkEncodedVibeImage(
-          task.params.session,
-          vibe.path,
-          vibe.info,
-        );
-        if (!isEncoded) {
-          await imageService.encodeVibeImage(
+        try {
+          // 캐시에 없으면 로딩
+          const isEncoded = await imageService.checkEncodedVibeImage(
             task.params.session,
             vibe.path,
             vibe.info,
           );
+          if (!isEncoded) {
+            await imageService.encodeVibeImage(
+              task.params.session,
+              vibe.path,
+              vibe.info,
+            );
+          }
+          let encoded =
+            (await imageService.fetchEncodedVibeImage(
+              task.params.session,
+              vibe.path,
+              vibe.info,
+            )) || '';
+          encoded = dataUriToBase64(encoded);
+
+          if (!encoded) {
+            console.warn(`바이브 이미지 인코딩 실패 (파일 손상 가능): ${vibe.path}`);
+            appState.pushMessage(`바이브 이미지를 불러올 수 없습니다 (${vibe.path}). 이미지를 다시 첨부해주세요.`);
+            return null;
+          }
+
+          // 캐시에 저장
+          run.cachedVibes!.set(cacheKey, {
+            image: encoded,
+            info: vibe.info,
+            strength: vibe.strength,
+          });
+
+          return {
+            image: encoded,
+            info: vibe.info,
+            strength: vibe.strength,
+          };
+        } catch (e) {
+          console.warn(`바이브 이미지 처리 오류 (${vibe.path}):`, e);
+          appState.pushMessage(`바이브 이미지 처리 실패 (${vibe.path}). 이미지를 다시 첨부해주세요.`);
+          return null;
         }
-        let encoded =
-          (await imageService.fetchEncodedVibeImage(
-            task.params.session,
-            vibe.path,
-            vibe.info,
-          )) || '';
-        encoded = dataUriToBase64(encoded);
-
-        // 캐시에 저장
-        run.cachedVibes!.set(cacheKey, {
-          image: encoded,
-          info: vibe.info,
-          strength: vibe.strength,
-        });
-
-        return {
-          image: encoded,
-          info: vibe.info,
-          strength: vibe.strength,
-        };
       }),
+    );
+    // 손상된 바이브 제외하고 정상 바이브만 사용
+    const vibes = allVibes.filter(
+      (v): v is { image: string; info: number; strength: number } =>
+        v !== null && !!v.image && v.image.length > 0,
     );
 
     // 캐릭터 레퍼런스 이미지 처리 - 캐싱 적용

@@ -171,6 +171,7 @@ const SessionSelect = observer(() => {
               appState.setAppliedCharacterPreset(preset.name);
             });
 
+
             setShowCharacterPresets(false);
             const modeLabel = mode === 'easy' ? '이지모드' : '캐릭터 프롬프트';
             appState.pushMessage(`"${preset.name}" 프리셋이 ${modeLabel}로 적용되었습니다`);
