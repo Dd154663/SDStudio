@@ -405,10 +405,10 @@ export const createSDCharacterPrompts = async (
   shared: any,
   scene: Scene,
 ) => {
+  // 프리셋 + 공유 캐릭터 프롬프트 병합 (다중 캐릭터 지원)
+  const presetCPs = preset.characterPrompts || [];
   const sharedCPs = shared.characterPrompts || [];
-  const characterPrompts = sharedCPs.length > 0
-    ? sharedCPs
-    : (preset.characterPrompts || []);
+  const characterPrompts = [...presetCPs, ...sharedCPs];
   if (!characterPrompts || characterPrompts.length === 0) return [];
 
   return await dfsPrompts(

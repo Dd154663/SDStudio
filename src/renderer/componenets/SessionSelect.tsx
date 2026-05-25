@@ -144,28 +144,47 @@ const SessionSelect = observer(() => {
             }
 
             runInAction(() => {
-              // 이전 프리셋 데이터를 먼저 초기화한 뒤 새 프리셋 적용
-              shared.vibes = preset.vibes && preset.vibes.length > 0
-                ? preset.vibes.map((v: VibeItem) => VibeItem.fromJSON(v.toJSON()))
-                : [];
-              shared.characterReferences = preset.characterReferences && preset.characterReferences.length > 0
-                ? preset.characterReferences.map((r: ReferenceItem) => ReferenceItem.fromJSON(r.toJSON()))
-                : [];
+              // 이전 프리셋에서 추가된 항목 제거 (사용자 직접 추가 항목은 유지)
+              const prevVibes = (shared.vibes || []).filter((v: VibeItem) => !v.fromPreset);
+              const prevRefs = (shared.characterReferences || []).filter((r: ReferenceItem) => !r.fromPreset);
+
+              // 프리셋의 바이브/레퍼런스를 태그 붙여서 추가
+              const presetVibes = (preset.vibes || []).map((v: VibeItem) => {
+                const item = VibeItem.fromJSON(v.toJSON());
+                item.fromPreset = preset.name;
+                return item;
+              });
+              const presetRefs = (preset.characterReferences || []).map((r: ReferenceItem) => {
+                const item = ReferenceItem.fromJSON(r.toJSON());
+                item.fromPreset = preset.name;
+                return item;
+              });
+
+              shared.vibes = [...prevVibes, ...presetVibes];
+              shared.characterReferences = [...prevRefs, ...presetRefs];
 
               if (mode === 'easy') {
                 shared.characterPrompt = preset.characterPrompt || '';
                 shared.backgroundPrompt = preset.backgroundPrompt || '';
                 shared.uc = preset.characterUC || '';
               } else {
-                // Mode 2: 캐릭터 프롬프트 적용 (기존 프리셋 항목 교체)
-                const newEntry: CharacterPrompt = {
-                  id: uuidv4(),
-                  prompt: preset.characterPrompt || '',
-                  uc: preset.characterUC || '',
-                  position: { x: 0, y: 0 },
-                  enabled: true,
-                };
-                shared.characterPrompts = [newEntry];
+                // 이전 프리셋 캐릭터 프롬프트 제거 (사용자 항목 유지)
+                const prevPrompts = (shared.characterPrompts || []).filter(
+                  (cp: CharacterPrompt) => !cp.fromPreset
+                );
+                if (preset.characterPrompt || preset.characterUC) {
+                  const newEntry: CharacterPrompt = {
+                    id: uuidv4(),
+                    prompt: preset.characterPrompt || '',
+                    uc: preset.characterUC || '',
+                    position: { x: 0, y: 0 },
+                    enabled: true,
+                    fromPreset: preset.name,
+                  };
+                  shared.characterPrompts = [...prevPrompts, newEntry];
+                } else {
+                  shared.characterPrompts = prevPrompts;
+                }
               }
 
               appState.setAppliedCharacterPreset(preset.name);

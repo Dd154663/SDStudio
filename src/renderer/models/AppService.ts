@@ -2024,25 +2024,26 @@ export class AppState {
   @action
   clearAppliedCharacterPreset() {
     if (!this.curSession) return;
-    
+
     const workflowType = this.curSession.selectedWorkflow?.workflowType;
     if (!workflowType) return;
-    
+
     const shared = this.curSession.presetShareds.get(workflowType);
     if (!shared) return;
-    
-    // 프리셋에서 적용된 값들 초기화
-    shared.vibes = [];
-    shared.characterReferences = [];
+
+    // 프리셋에서 추가된 항목만 제거 (사용자 직접 추가 항목은 유지)
+    shared.vibes = (shared.vibes || []).filter((v: any) => !v.fromPreset);
+    shared.characterReferences = (shared.characterReferences || []).filter((r: any) => !r.fromPreset);
     if (shared.characterPrompts) {
-      shared.characterPrompts = [];
+      shared.characterPrompts = shared.characterPrompts.filter((cp: any) => !cp.fromPreset);
     }
+
     if (workflowType === 'SDImageGenEasy') {
       shared.characterPrompt = '';
       shared.backgroundPrompt = '';
       shared.uc = '';
     }
-    
+
     shared._appliedPresetName = '';
     this.pushMessage('캐릭터 프리셋이 해제되었습니다');
   }
@@ -2064,19 +2065,30 @@ export class AppState {
   cleanupOrphanedPresetApplication() {
     if (!this.curSession) return;
 
-    // 모든 워크플로우 타입의 presetShareds를 순회
     for (const [, shared] of this.curSession.presetShareds) {
-      if (!shared || !shared._appliedPresetName) continue;
+      if (!shared) continue;
 
       const presetName = shared._appliedPresetName;
-      if (!this.curSession.hasCharacterPreset(presetName)) {
-        // 존재하지 않는 프리셋이 적용 중 → 정리
-        shared.vibes = [];
-        shared.characterReferences = [];
+
+      if (presetName && !this.curSession.hasCharacterPreset(presetName)) {
+        // 존재하지 않는 프리셋이 적용 중 → 프리셋 태그 항목만 정리
+        shared.vibes = (shared.vibes || []).filter((v: any) => !v.fromPreset);
+        shared.characterReferences = (shared.characterReferences || []).filter((r: any) => !r.fromPreset);
         if (shared.characterPrompts) {
-          shared.characterPrompts = [];
+          shared.characterPrompts = shared.characterPrompts.filter((cp: any) => !cp.fromPreset);
         }
         shared._appliedPresetName = '';
+      }
+
+      // 캐릭터 프롬프트 중복 제거 (이전 버전 오염 데이터 정리)
+      if (shared.characterPrompts && shared.characterPrompts.length > 1) {
+        const seen = new Set<string>();
+        shared.characterPrompts = shared.characterPrompts.filter((cp: any) => {
+          const key = (cp.prompt || '') + '\0' + (cp.uc || '');
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
       }
     }
   }

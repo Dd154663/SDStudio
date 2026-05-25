@@ -208,11 +208,10 @@ const SDImageGenHandler = async (
       return node;
     });
   } else {
-    // 기존 공유/프리셋 캐릭터 프롬프트 사용
+    // 프리셋 + 공유 캐릭터 프롬프트 병합 (다중 캐릭터 지원)
+    const presetCPs = preset.characterPrompts || [];
     const sharedCPs = shared.characterPrompts || [];
-    allCharacterPrompts = sharedCPs.length > 0
-      ? sharedCPs
-      : (preset.characterPrompts || []);
+    allCharacterPrompts = [...presetCPs, ...sharedCPs];
     finalCharacterPrompts = characterPrompts;
   }
   
