@@ -2046,8 +2046,97 @@ const CharacterPromptEditor = observer(
     const sharedCPs = shared?.characterPrompts || [];
     const hasSharedPresetCPs = input.fieldType === 'preset' && sharedCPs.length > 0;
 
+    const [showCoordMap, setShowCoordMap] = useState(false);
+    const allChars = [...getField(), ...(hasSharedPresetCPs ? sharedCPs : [])];
+    const coordMapRef = useRef<HTMLDivElement>(null);
+    const [draggingId, setDraggingId] = useState<string | null>(null);
+
+    const handleCoordPointer = (e: React.PointerEvent, charId: string, isDown = false) => {
+      const rect = coordMapRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+      // shared(프리셋) 캐릭터는 위치 조정 불가
+      const inField = getField().find((c: CharacterPrompt) => c.id === charId);
+      if (inField) {
+        updateCharacter(charId, { position: { x, y } });
+      }
+      if (isDown) {
+        setDraggingId(charId);
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      }
+    };
+
+    const charColors = ['#38bdf8', '#f472b6', '#a78bfa', '#fb923c', '#4ade80', '#facc15', '#f87171', '#94a3b8'];
+
     return (
       <div className="w-full h-full overflow-hidden flex flex-col">
+        <div className="flex-none mx-3 mt-3 flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="useCoords"
+            checked={preset.useCoords ?? false}
+            onChange={(e) => { preset.useCoords = e.target.checked; }}
+          />
+          <label htmlFor="useCoords" className="text-sm gray-label cursor-pointer">캐릭터 위치 지정 모드</label>
+        </div>
+        {preset.useCoords && allChars.length > 0 && (
+          <div className="flex-none mx-3 mt-2">
+            <button
+              className="text-xs text-sky-500 hover:text-sky-400 mb-1"
+              onClick={() => setShowCoordMap(!showCoordMap)}
+            >
+              {showCoordMap ? '▼ 좌표평면 접기' : '▶ 좌표평면 펼치기'}
+            </button>
+            {showCoordMap && (
+              <div
+                ref={coordMapRef}
+                className="relative w-full bg-gray-100 dark:bg-slate-700 border border-gray-300 dark:border-slate-500 rounded select-none overflow-hidden"
+                style={{ aspectRatio: '4 / 3' }}
+                onPointerMove={(e) => {
+                  if (draggingId) handleCoordPointer(e, draggingId);
+                }}
+                onPointerUp={() => setDraggingId(null)}
+              >
+                {/* 9등분 격자선 */}
+                <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 300 300" preserveAspectRatio="none">
+                  <line x1="100" y1="0" x2="100" y2="300" stroke="currentColor" className="text-gray-200 dark:text-slate-600" strokeWidth="0.5" />
+                  <line x1="200" y1="0" x2="200" y2="300" stroke="currentColor" className="text-gray-200 dark:text-slate-600" strokeWidth="0.5" />
+                  <line x1="0" y1="100" x2="300" y2="100" stroke="currentColor" className="text-gray-200 dark:text-slate-600" strokeWidth="0.5" />
+                  <line x1="0" y1="200" x2="300" y2="200" stroke="currentColor" className="text-gray-200 dark:text-slate-600" strokeWidth="0.5" />
+                </svg>
+                {/* 캐릭터 마커 */}
+                {allChars.map((c: CharacterPrompt, i: number) => {
+                  const isFromPreset = !!(c as any).fromPreset;
+                  const color = charColors[i % charColors.length];
+                  return (
+                    <div
+                      key={c.id}
+                      className="absolute"
+                      style={{
+                        left: `${(c.position?.x ?? 0.5) * 100}%`,
+                        top: `${(c.position?.y ?? 0.5) * 100}%`,
+                        transform: 'translate(-50%, -50%)',
+                        cursor: isFromPreset ? 'default' : 'grab',
+                        zIndex: draggingId === c.id ? 10 : 1,
+                      }}
+                      onPointerDown={(e) => {
+                        if (!isFromPreset) handleCoordPointer(e, c.id, true);
+                      }}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-900 shadow-lg flex items-center justify-center text-xs font-bold text-white"
+                        style={{ backgroundColor: color, opacity: c.enabled === false ? 0.4 : 1 }}
+                      >
+                        {i + 1}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
         {hasSharedPresetCPs && sharedCPs.map((cp: CharacterPrompt, idx: number) => (
           <div key={cp.id || idx} className={`flex-none mx-3 mt-3 p-2 border rounded-lg border-green-300 dark:border-green-600 bg-green-50 dark:bg-green-900/20`}>
             <div className="flex items-center justify-between mb-1">
@@ -2142,63 +2231,9 @@ const CharacterPromptEditor = observer(
                   />
                 </div>
                 {preset.useCoords && (
-                  <div className="flex w-full items-center md:flex-row flex-col gap-2">
-                    <div
-                      className={
-                        'whitespace-nowrap flex-none mr-auto md:mr-0 gray-label'
-                      }
-                    >
-                      X 위치:
-                    </div>
-                    <div className="flex flex-1 md:w-auto w-full gap-1">
-                      <input
-                        className="flex-1"
-                        type="range"
-                        step="0.01"
-                        min="0"
-                        max="1"
-                        value={character.position?.x}
-                        onChange={(e) =>
-                          updateCharacter(character.id, {
-                            position: {
-                              ...character.position,
-                              x: parseFloat(e.target.value),
-                            },
-                          })
-                        }
-                      />
-                      <div className="w-11 flex-none text-lg text-center back-lllgray">
-                        {character.position?.x?.toFixed(2)}
-                      </div>
-                    </div>
-                    <div
-                      className={
-                        'whitespace-nowrap flex-none mr-auto md:mr-0 gray-label'
-                      }
-                    >
-                      Y 위치:
-                    </div>
-                    <div className="flex flex-1 md:w-auto w-full gap-1">
-                      <input
-                        className="flex-1"
-                        type="range"
-                        step="0.01"
-                        min="0"
-                        max="1"
-                        value={character.position?.y}
-                        onChange={(e) =>
-                          updateCharacter(character.id, {
-                            position: {
-                              ...character.position,
-                              y: parseFloat(e.target.value),
-                            },
-                          })
-                        }
-                      />
-                      <div className="w-11 flex-none text-lg text-center back-lllgray">
-                        {character.position?.y?.toFixed(2)}
-                      </div>
-                    </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: charColors[i % charColors.length] }} />
+                    위치: ({character.position?.x?.toFixed(2)}, {character.position?.y?.toFixed(2)})
                   </div>
                 )}
               </div>

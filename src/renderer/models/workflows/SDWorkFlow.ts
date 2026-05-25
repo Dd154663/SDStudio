@@ -77,7 +77,6 @@ const SDImageGenUI = wfiStack([
     wfiInlineInput('샘플링', 'sampling', 'preset', 'flex-none'),
     wfiInlineInput('노이즈 스케줄', 'noiseSchedule', 'preset', 'flex-none'),
     wfiInlineInput('CFG 리스케일', 'cfgRescale', 'preset', 'flex-none'),
-    wfiInlineInput('캐릭터 위치 지정', 'useCoords', 'preset', 'flex-none'),
     wfiInlineInput(
       'Legacy Prompt Conditioning 모드',
       'legacyPromptConditioning',
@@ -150,7 +149,6 @@ const SDImageGenEasyInnerUI = wfiStack([
     wfiInlineInput('샘플링', 'sampling', 'preset', 'flex-none'),
     wfiInlineInput('노이즈 스케줄', 'noiseSchedule', 'preset', 'flex-none'),
     wfiInlineInput('CFG 리스케일', 'cfgRescale', 'preset', 'flex-none'),
-    wfiInlineInput('캐릭터 위치 지정', 'useCoords', 'preset', 'flex-none'),
     wfiInlineInput(
       'Legacy Prompt Conditioning 모드',
       'legacyPromptConditioning',
@@ -355,7 +353,6 @@ const SDInpaintUI = wfiStack([
     wfiInlineInput('샘플링', 'sampling', 'preset', 'flex-none'),
     wfiInlineInput('노이즈 스케줄', 'noiseSchedule', 'preset', 'flex-none'),
     wfiInlineInput('CFG 리스케일', 'cfgRescale', 'preset', 'flex-none'),
-    wfiInlineInput('캐릭터 위치 지정', 'useCoords', 'preset', 'flex-none'),
     wfiInlineInput(
       'Legacy Prompt Conditioning 모드',
       'legacyPromptConditioning',
@@ -502,7 +499,6 @@ const SDI2IUI = wfiStack([
     wfiInlineInput('샘플링', 'sampling', 'preset', 'flex-none'),
     wfiInlineInput('노이즈 스케줄', 'noiseSchedule', 'preset', 'flex-none'),
     wfiInlineInput('CFG 리스케일', 'cfgRescale', 'preset', 'flex-none'),
-    wfiInlineInput('캐릭터 위치 지정', 'useCoords', 'preset', 'flex-none'),
     wfiInlineInput(
       'Legacy Prompt Conditioning 모드',
       'legacyPromptConditioning',
@@ -717,7 +713,6 @@ const SDMirrorUI = wfiStack([
     wfiInlineInput('샘플링', 'sampling', 'preset', 'flex-none'),
     wfiInlineInput('노이즈 스케줄', 'noiseSchedule', 'preset', 'flex-none'),
     wfiInlineInput('CFG 리스케일', 'cfgRescale', 'preset', 'flex-none'),
-    wfiInlineInput('캐릭터 위치 지정', 'useCoords', 'preset', 'flex-none'),
     wfiInlineInput(
       'Legacy Prompt Conditioning 모드',
       'legacyPromptConditioning',
