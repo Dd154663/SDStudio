@@ -177,7 +177,7 @@ const SessionSelect = observer(() => {
                     id: uuidv4(),
                     prompt: preset.characterPrompt || '',
                     uc: preset.characterUC || '',
-                    position: { x: 0, y: 0 },
+                    position: { x: 0.5, y: 0.5 },
                     enabled: true,
                     fromPreset: preset.name,
                   };
