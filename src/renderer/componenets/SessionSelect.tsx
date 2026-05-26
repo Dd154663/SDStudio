@@ -224,11 +224,12 @@ const SessionSelect = observer(() => {
         </div>
       )}
       
-      <span className="hidden md:inline whitespace-nowrap text-sub">
-        프로젝트:{' '}
-      </span>
-      <div className="md:max-w-80 flex-1 min-w-40 flex items-center gap-1">
-        <div className="flex-1">
+      {/* 프로젝트 선택 영역: 모바일에서 1행 전체, PC에서는 인라인 */}
+      <div className="flex items-center gap-1 w-full md:w-auto md:flex-1 md:max-w-80 min-w-0">
+        <span className="hidden md:inline whitespace-nowrap text-sub">
+          프로젝트:{' '}
+        </span>
+        <div className="flex-1 min-w-0">
           <DropdownSelect
             menuPlacement="top"
             selectedOption={appState.curSession?.name}
@@ -248,15 +249,12 @@ const SessionSelect = observer(() => {
             onSelect={selectSession}
           />
         </div>
-        <button className="md:hidden flex-none p-1.5 text-gray-400 hover:text-sky-400" onClick={() => setShowProjectBrowser(true)}>
-          <FaThLarge size={14} />
+        <Tooltip content="프로젝트 탐색">
+        <button className={`icon-button nback-sky mx-1`} onClick={() => setShowProjectBrowser(true)}>
+          <FaThLarge size={16} />
         </button>
+        </Tooltip>
       </div>
-      <Tooltip content="프로젝트 탐색">
-      <button className={`hidden md:flex icon-button nback-sky mx-1`} onClick={() => setShowProjectBrowser(true)}>
-        <FaThLarge size={16} />
-      </button>
-      </Tooltip>
       <button className={`icon-button nback-sky mx-1`} onClick={addSession}>
         <FaPlus size={18} />
       </button>
