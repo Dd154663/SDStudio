@@ -112,7 +112,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
 
   useEffect(() => {
     setSessionNames(sessionService.list());
-    setTimeout(() => filterRef.current?.focus(), 100);
+    if (!isMobile) setTimeout(() => filterRef.current?.focus(), 100);
   }, []);
 
   const recentProjects = getRecentProjects().filter((n) => sessionNames.includes(n));

@@ -37,6 +37,16 @@ body {
   width: 24px;
   height: 24px;
 }
+@media (max-width: 767px) {
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-thumb {
+    border: none;
+    border-radius: 2px;
+  }
+}
 ::-webkit-scrollbar-track {
   background: transparent;
 }

@@ -254,7 +254,7 @@ const FolderCleanupSection = ({ folder, label, description }: { folder: string; 
                 >
                   전체 삭제
                 </button>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 flex-wrap">
                   <input
                     type="number"
                     min={1}
@@ -263,7 +263,7 @@ const FolderCleanupSection = ({ folder, label, description }: { folder: string; 
                     onChange={(e) => setDays(Math.max(1, parseInt(e.target.value) || 7))}
                     className="w-14 text-sm text-center border rounded px-1 py-1 back-gray"
                   />
-                  <span className="text-sm gray-label">일 이전 파일만 삭제</span>
+                  <span className="text-sm gray-label whitespace-nowrap">일 이전만</span>
                   <button
                     className="text-sm back-orange px-3 py-1.5 rounded hover:brightness-95 active:brightness-90"
                     onClick={() => {
@@ -380,7 +380,7 @@ const OtherTab = ({
           <input type="range" min={0} max={1000} step={1}
             value={delayTime} onChange={(e) => setDelayTime(parseInt(e.target.value))}
             className="flex-1 min-w-0" />
-          <span className="text-sm gray-label w-14 text-right flex-none">{delayTime}ms</span>
+          <span className="text-sm gray-label w-12 text-right flex-none">{delayTime}ms</span>
         </div>
       </div>
       <hr className="border-gray-200 dark:border-slate-600" />
@@ -856,7 +856,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
         onClick={(e) => e.stopPropagation()}
       >
         {/* 헤더 */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-slate-600 flex-none">
+        <div className="flex items-center justify-between px-3 md:px-5 py-3 border-b border-gray-200 dark:border-slate-600 flex-none">
           <h1 className="text-base font-semibold text-gray-800 dark:text-gray-100">환경설정</h1>
           <button
             className="p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-500 dark:text-gray-400 transition-colors"
@@ -884,7 +884,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
           ))}
         </div>
         {/* 탭 콘텐츠 — CSS Grid로 모든 탭을 같은 셀에 겹쳐 높이 통일 */}
-        <div className="flex-1 overflow-auto p-5" style={{ minHeight: 0 }}>
+        <div className="flex-1 overflow-auto px-3 py-4 md:p-5 overflow-x-hidden" style={{ minHeight: 0 }}>
           <div style={{
             display: 'grid',
             gridTemplateColumns: '1fr',
@@ -905,7 +905,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
           </div>
         </div>
         {/* 저장 버튼 */}
-        <div className="flex-none p-4 border-t border-gray-200 dark:border-slate-600">
+        <div className="flex-none px-3 py-4 md:p-4 border-t border-gray-200 dark:border-slate-600">
           <button className="w-full back-sky py-2.5 rounded-lg hover:brightness-95 active:brightness-90 font-medium"
             onClick={handleSave}>
             저장
