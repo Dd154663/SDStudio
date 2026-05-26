@@ -751,8 +751,8 @@ export class AppState {
       let paths: { path: string; name: string }[] = [];
       await imageService.refreshBatch(this.curSession!);
       const scenes = selected ?? this.curSession!.getScenes(type);
+      await Promise.allSettled(scenes.map((s) => gameService.refreshList(this.curSession!, s)));
       for (const scene of scenes) {
-        await gameService.refreshList(this.curSession!, scene);
         const cands = gameService.getOutputs(this.curSession!, scene);
         const imageMap: any = {};
         cands.forEach((x) => {

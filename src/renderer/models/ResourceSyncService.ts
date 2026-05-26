@@ -127,29 +127,32 @@ export abstract class ResourceSyncService<
   }
 
   async update() {
-    for (const name of Object.keys(this.dirty)) {
-      if (!(name in this.resources)) continue;
-      const l = this.getFast(name);
-      if (l) {
-        await backend.writeFile(
+    const writes = Object.keys(this.dirty)
+      .filter((name) => name in this.resources)
+      .map((name) => {
+        const l = this.getFast(name);
+        if (!l) return null;
+        return backend.writeFile(
           this.resourceDir + '/' + name + '.json',
           JSON.stringify(l.toJSON()),
         );
-      }
-    }
+      })
+      .filter(Boolean);
+    await Promise.allSettled(writes);
     this.dirty = {};
     this.resourceList = await this.getList();
     this.dispatchEvent(new CustomEvent('listupdated', {}));
   }
 
   async saveAll() {
-    for (const name of Object.keys(this.resources)) {
+    const writes = Object.keys(this.resources).map((name) => {
       const l = this.resources[name];
-      await backend.writeFile(
+      return backend.writeFile(
         this.resourceDir + '/' + name + '.json',
         JSON.stringify(l.toJSON()),
       );
-    }
+    });
+    await Promise.allSettled(writes);
   }
 
   async createFrom(name: string, value: any) {

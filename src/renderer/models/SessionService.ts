@@ -291,24 +291,37 @@ export class SessionService extends ResourceSyncService<Session> {
 
     const projFile = 'projects/' + session.name + '.json';
     const entries: FileEntry[] = [];
-    for (const scene of session.scenes.values()) {
-      const images = await ignoreError(
-        backend.listFiles('outs/' + session.name + '/' + scene.name),
-      );
-      for (const image of images) {
+
+    // 모든 디렉토리를 병렬로 스캔
+    const sceneNames = Array.from(session.scenes.values()).map((s) => s.name);
+    const inpaintNames = Array.from(session.inpaints.values()).map((s) => s.name);
+
+    const [sceneResults, inpaintResults, inpaintOrgs, inpaintMasks, vibes, references] = await Promise.all([
+      // 씬별 이미지 (병렬)
+      Promise.all(sceneNames.map(async (name) => ({
+        name,
+        files: await ignoreError(backend.listFiles('outs/' + session.name + '/' + name)),
+      }))),
+      // 인페인트별 이미지 (병렬)
+      Promise.all(inpaintNames.map(async (name) => ({
+        name,
+        files: await ignoreError(backend.listFiles('inpaints/' + session.name + '/' + name)),
+      }))),
+      ignoreError(backend.listFiles('inpaint_orgs/' + session.name)),
+      ignoreError(backend.listFiles('inpaint_masks/' + session.name)),
+      ignoreError(backend.listFiles('vibes/' + session.name)),
+      ignoreError(backend.listFiles('references/' + session.name)),
+    ]);
+
+    for (const { name, files } of sceneResults) {
+      for (const image of files) {
         if (!image.endsWith('.png')) continue;
         entries.push({
-          path: 'outs/' + session.name + '/' + scene.name + '/' + image,
-          name: 'outs/' + scene.name + '/' + image,
+          path: 'outs/' + session.name + '/' + name + '/' + image,
+          name: 'outs/' + name + '/' + image,
         });
       }
     }
-    const inpaintOrgs = await ignoreError(
-      backend.listFiles('inpaint_orgs/' + session.name),
-    );
-    const inpaintMasks = await ignoreError(
-      backend.listFiles('inpaint_masks/' + session.name),
-    );
     for (const image of inpaintOrgs) {
       if (!image.endsWith('.png')) continue;
       entries.push({
@@ -323,19 +336,15 @@ export class SessionService extends ResourceSyncService<Session> {
         name: 'inpaint_masks/' + image,
       });
     }
-    for (const inpaint of session.inpaints.values()) {
-      const inpaints = await ignoreError(
-        backend.listFiles('inpaints/' + session.name + '/' + inpaint.name),
-      );
-      for (const image of inpaints) {
+    for (const { name, files } of inpaintResults) {
+      for (const image of files) {
         if (!image.endsWith('.png')) continue;
         entries.push({
-          path: 'inpaints/' + session.name + '/' + inpaint.name + '/' + image,
-          name: 'inpaints/' + inpaint.name + '/' + image,
+          path: 'inpaints/' + session.name + '/' + name + '/' + image,
+          name: 'inpaints/' + name + '/' + image,
         });
       }
     }
-    const vibes = await ignoreError(backend.listFiles('vibes/' + session.name));
     for (const vibe of vibes) {
       if (!vibe.endsWith('.png')) continue;
       entries.push({
@@ -343,7 +352,6 @@ export class SessionService extends ResourceSyncService<Session> {
         name: 'vibes/' + vibe,
       });
     }
-    const references = await ignoreError(backend.listFiles('references/' + session.name));
     for (const ref of references) {
       if (!ref.endsWith('.png')) continue;
       entries.push({
