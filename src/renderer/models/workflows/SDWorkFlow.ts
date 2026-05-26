@@ -194,9 +194,11 @@ const SDImageGenHandler = async (
   let finalCharacterPrompts: PromptNode[];
   
   if (useSceneCharacterPrompts) {
-    // 씬 전용 캐릭터 프롬프트 사용
-    allCharacterPrompts = sceneObj.sceneCharacterPrompts || [];
-    // 씬 전용 캐릭터 프롬프트도 toPARR + parseWord를 통해 프롬프트조각(<group.name>) 확장
+    // 씬 전용 + shared(프리셋) 캐릭터 프롬프트 병합
+    const sceneCPs = sceneObj.sceneCharacterPrompts || [];
+    const sharedCPs = shared.characterPrompts || [];
+    allCharacterPrompts = [...sceneCPs, ...sharedCPs];
+    // 씬 전용 프롬프트는 직접 파싱, shared 프롬프트도 동일하게 파싱
     finalCharacterPrompts = allCharacterPrompts.map(cp => {
       const tokens = toPARR(cp.prompt);
       const node: PromptNode = {

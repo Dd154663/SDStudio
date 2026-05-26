@@ -490,7 +490,13 @@ interface SceneCharacterPromptEditorProps {
   scene: Scene;
 }
 
+const sceneCharColors = ['#38bdf8', '#f472b6', '#a78bfa', '#fb923c', '#4ade80', '#facc15', '#f87171', '#94a3b8'];
+
 const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEditorProps) => {
+  const [showCoordMap, setShowCoordMap] = useState(false);
+  const coordMapRef = useRef<HTMLDivElement>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+
   const addCharacter = () => {
     const newCharacter: CharacterPrompt = {
       id: uuidv4(),
@@ -518,6 +524,18 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
     );
   };
 
+  const handleCoordPointer = (e: React.PointerEvent, charId: string, isDown = false) => {
+    const rect = coordMapRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    updateCharacter(charId, { position: { x, y } });
+    if (isDown) {
+      setDraggingId(charId);
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    }
+  };
+
   const characters = scene.sceneCharacterPrompts || [];
   const enabledCount = characters.filter(c => c.enabled !== false).length;
 
@@ -525,7 +543,7 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
     <div className="flex flex-col h-full p-4 overflow-hidden">
       <div className="flex-none mb-4">
         <div className="flex items-center justify-between mb-2">
-          <div className="text-lg font-medium">
+          <div className="text-lg font-medium text-gray-800 dark:text-gray-100">
             <FaUser className="inline mr-2" />
             씬 전용 캐릭터 프롬프트
           </div>
@@ -539,7 +557,7 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
                 }}
                 className="w-4 h-4"
               />
-              <span className="text-sm">씬 전용 캐릭터 프롬프트 사용</span>
+              <span className="text-sm text-gray-700 dark:text-gray-300">씬 전용 캐릭터 프롬프트 사용</span>
             </label>
           </div>
         </div>
@@ -557,6 +575,60 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
           </div>
         )}
       </div>
+
+      {/* 좌표평면 */}
+      {characters.length > 0 && (
+        <div className="flex-none mb-3">
+          <button
+            className="text-xs text-sky-500 hover:text-sky-400 mb-1"
+            onClick={() => setShowCoordMap(!showCoordMap)}
+          >
+            {showCoordMap ? '▼ 좌표평면 접기' : '▶ 좌표평면 펼치기'}
+          </button>
+          {showCoordMap && (
+            <div
+              ref={coordMapRef}
+              className="relative bg-gray-100 dark:bg-slate-700 border border-gray-300 dark:border-slate-500 rounded select-none overflow-hidden"
+              style={{ aspectRatio: '4 / 3', maxWidth: '360px' }}
+              onPointerMove={(e) => {
+                if (draggingId) handleCoordPointer(e, draggingId);
+              }}
+              onPointerUp={() => setDraggingId(null)}
+            >
+              <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 300 300" preserveAspectRatio="none">
+                <line x1="100" y1="0" x2="100" y2="300" stroke="currentColor" className="text-gray-200 dark:text-slate-600" strokeWidth="0.5" />
+                <line x1="200" y1="0" x2="200" y2="300" stroke="currentColor" className="text-gray-200 dark:text-slate-600" strokeWidth="0.5" />
+                <line x1="0" y1="100" x2="300" y2="100" stroke="currentColor" className="text-gray-200 dark:text-slate-600" strokeWidth="0.5" />
+                <line x1="0" y1="200" x2="300" y2="200" stroke="currentColor" className="text-gray-200 dark:text-slate-600" strokeWidth="0.5" />
+              </svg>
+              {characters.map((c, i) => {
+                const color = sceneCharColors[i % sceneCharColors.length];
+                return (
+                  <div
+                    key={c.id}
+                    className="absolute"
+                    style={{
+                      left: `${(c.position?.x ?? 0.5) * 100}%`,
+                      top: `${(c.position?.y ?? 0.5) * 100}%`,
+                      transform: 'translate(-50%, -50%)',
+                      cursor: 'grab',
+                      zIndex: draggingId === c.id ? 10 : 1,
+                    }}
+                    onPointerDown={(e) => handleCoordPointer(e, c.id, true)}
+                  >
+                    <div
+                      className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-900 shadow-lg flex items-center justify-center text-xs font-bold text-white"
+                      style={{ backgroundColor: color, opacity: c.enabled === false ? 0.4 : 1 }}
+                    >
+                      {i + 1}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex-1 overflow-auto">
         {characters.length === 0 ? (
@@ -578,7 +650,8 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium">캐릭터 {index + 1}</span>
+                    <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: sceneCharColors[index % sceneCharColors.length] }}>{index + 1}</div>
+                    <span className="font-medium text-gray-800 dark:text-gray-100">캐릭터 프롬프트</span>
                     <button
                       className={`round-button h-7 px-3 text-sm ${
                         character.enabled !== false ? 'back-sky' : 'back-gray'
@@ -626,49 +699,9 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
                   />
                 </div>
 
-                <div className="flex gap-4">
-                  <div className="flex-1">
-                    <label className="block text-sm font-medium mb-1 gray-label">
-                      X 위치: {character.position?.x?.toFixed(2) || '0.50'}
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={character.position?.x || 0.5}
-                      onChange={(e) =>
-                        updateCharacter(character.id, {
-                          position: {
-                            ...character.position,
-                            x: parseFloat(e.target.value),
-                          },
-                        })
-                      }
-                      className="w-full"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <label className="block text-sm font-medium mb-1 gray-label">
-                      Y 위치: {character.position?.y?.toFixed(2) || '0.50'}
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={character.position?.y || 0.5}
-                      onChange={(e) =>
-                        updateCharacter(character.id, {
-                          position: {
-                            ...character.position,
-                            y: parseFloat(e.target.value),
-                          },
-                        })
-                      }
-                      className="w-full"
-                    />
-                  </div>
+                <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+                  <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: sceneCharColors[index % sceneCharColors.length] }} />
+                  위치: ({character.position?.x?.toFixed(2) || '0.50'}, {character.position?.y?.toFixed(2) || '0.50'})
                 </div>
               </div>
             ))}
@@ -686,7 +719,7 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
             캐릭터 추가
           </button>
         </div>
-        
+
         {/* 씬 전용 캐릭터 네거티브 프롬프트 (전체) */}
         <div className="mt-4">
           <label className="block text-sm font-medium mb-1 gray-label">
