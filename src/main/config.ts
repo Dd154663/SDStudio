@@ -44,4 +44,5 @@ export interface Config {
   imageSaveSettings?: ImageSaveSettings;
   classicSceneCard?: boolean;
   exportConcurrency?: number;
+  trueDark?: boolean;
 }

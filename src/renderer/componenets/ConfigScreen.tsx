@@ -293,6 +293,7 @@ const FolderCleanupSection = ({ folder, label, description }: { folder: string; 
 /* ── 탭 4: 기타 설정 ── */
 const OtherTab = ({
   whiteMode, setWhiteMode,
+  trueDark, setTrueDark,
   delayTime, setDelayTime,
   classicSceneCard, setClassicSceneCard,
   fullWordAc, setFullWordAc,
@@ -338,10 +339,25 @@ const OtherTab = ({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <input type="checkbox" id="cfgWhite" checked={whiteMode}
-          onChange={(e) => setWhiteMode(e.target.checked)} />
-        <label htmlFor="cfgWhite" className="text-sm gray-label">화이트 모드 켜기</label>
+      <div>
+        <label className="block text-sm gray-label mb-2">테마</label>
+        <div className="flex flex-col gap-1.5">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="themeMode" checked={!whiteMode && !trueDark}
+              onChange={() => { setWhiteMode(false); setTrueDark(false); }} />
+            <span className="text-sm gray-label">다크 모드</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="themeMode" checked={trueDark && !whiteMode}
+              onChange={() => { setWhiteMode(false); setTrueDark(true); }} />
+            <span className="text-sm gray-label">트루 다크 모드</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="themeMode" checked={whiteMode}
+              onChange={() => { setWhiteMode(true); setTrueDark(false); }} />
+            <span className="text-sm gray-label">화이트 모드</span>
+          </label>
+        </div>
       </div>
       <hr className="border-gray-200 dark:border-slate-600" />
       <div className="flex items-center gap-2">
@@ -649,6 +665,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [delayTime, setDelayTime] = useState(0);
   const [classicSceneCard, setClassicSceneCard] = useState(false);
   const [fullWordAc, setFullWordAc] = useState(appState.fullWordAutoComplete);
+  const [trueDark, setTrueDark] = useState(false);
   const [exportConcurrency, setExportConcurrency] = useState(isMobile ? 2 : 4);
   const [useLocalBgRemoval, setUseLocalBgRemoval] = useState(false);
   const [refreshImage, setRefreshImage] = useState(false);
@@ -673,6 +690,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setUseLocalBgRemoval(config.useLocalBgRemoval ?? false);
       setDelayTime(config.delayTime ?? 0);
       setClassicSceneCard(config.classicSceneCard ?? false);
+      setTrueDark(config.trueDark ?? false);
       setExportConcurrency(config.exportConcurrency ?? (isMobile ? 2 : 4));
       setSaveLocation(config.saveLocation ?? '');
     })();
@@ -783,6 +801,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       delayTime: delayTime,
       classicSceneCard: classicSceneCard,
       exportConcurrency: exportConcurrency,
+      trueDark: trueDark,
     };
     await backend.setConfig(config);
     if (old.useCUDA !== useGPU) localAIService.modelChanged();
@@ -813,7 +832,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 2:
         return <StorageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage }} />;
       case 3:
-        return <OtherTab {...{ whiteMode, setWhiteMode, delayTime, setDelayTime, classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, exportConcurrency, setExportConcurrency }} />;
+        return <OtherTab {...{ whiteMode, setWhiteMode, trueDark, setTrueDark, delayTime, setDelayTime, classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, exportConcurrency, setExportConcurrency }} />;
       case 4:
         return <KeyBindingsTab />;
       default:

@@ -5,6 +5,29 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── 트루 다크 모드 오버라이드 ── */
+.true-dark.dark\:bg-slate-900,
+.true-dark .dark\:bg-slate-900 {
+  background-color: #0a0a0a !important;
+}
+.true-dark .dark\:bg-slate-800,
+.true-dark.dark\:bg-slate-800 {
+  background-color: #121212 !important;
+}
+.true-dark .dark\:bg-slate-700,
+.true-dark.dark\:bg-slate-700 {
+  background-color: #1a1a1a !important;
+}
+.true-dark .dark\:border-slate-600,
+.true-dark .dark\:border-slate-700,
+.true-dark .dark\:border-gray-600,
+.true-dark .dark\:border-gray-700 {
+  border-color: #2a2a2a !important;
+}
+.true-dark .line-color {
+  border-color: #2a2a2a !important;
+}
+
 body {
   font-size: 16px;
 }

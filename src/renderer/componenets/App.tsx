@@ -169,10 +169,12 @@ export const App = observer(() => {
   }, []);
 
   const [darkMode, setDarkMode] = useState(false);
+  const [trueDark, setTrueDark] = useState(false);
   useEffect(() => {
     const refreshDarkMode = async () => {
       const conf = await backend.getConfig();
       setDarkMode(!conf.whiteMode);
+      setTrueDark(conf.trueDark ?? false);
       appState.classicSceneCard = conf.classicSceneCard ?? false;
     };
     refreshDarkMode();
@@ -386,7 +388,7 @@ export const App = observer(() => {
       <div
         className={
           'flex flex-col relative h-screen w-screen bg-white dark:bg-slate-900 ' +
-          (darkMode ? 'dark' : '')
+          (darkMode ? 'dark' : '') + (trueDark && darkMode ? ' true-dark' : '')
         }
       >
         <div className="z-[3000]">
