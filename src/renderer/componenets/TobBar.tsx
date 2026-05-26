@@ -95,24 +95,32 @@ const TobBar = () => {
           </>
         )}
       </p>
+      {/* PC: 환경설정 버튼 (가로 배치) */}
       <button
-        className={`titlebar-no-drag round-button back-sky`}
+        className={`titlebar-no-drag round-button back-sky hidden md:inline-flex`}
         onClick={() => {
           setSettings(true);
         }}
       >
         환경설정
       </button>
-      <p className="md:hidden ml-2 titlebar-no-drag">
+      {/* Mobile: 환경설정 + 크레딧 세로 배치 (가로 공간 절약) */}
+      <div className="md:hidden flex flex-col items-center gap-0.5 titlebar-no-drag flex-none">
+        <button
+          className="round-button back-sky text-xs !px-2 !py-0.5 !min-w-0 !min-h-0"
+          onClick={() => {
+            setSettings(true);
+          }}
+        >
+          환경설정
+        </button>
         {!loggedIn ? (
-          <span className={`round-tag back-red`}>로그인 필요</span>
+          <span className="round-tag back-red text-xs !px-2 !py-0">로그인필요</span>
         ) : (
-          <>
-            <span className={`round-tag back-yellow mr-2`}>{credits}</span>
-          </>
+          <span className="round-tag back-yellow text-xs !px-2 !py-0">{credits}</span>
         )}
-      </p>
-      <div className="ml-auto block md:hidden titlebar-no-drag">
+      </div>
+      <div className="ml-auto block md:hidden titlebar-no-drag flex-1 min-w-0">
         <SessionSelect />
       </div>
 

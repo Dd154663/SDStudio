@@ -227,28 +227,33 @@ const SessionSelect = observer(() => {
       <span className="hidden md:inline whitespace-nowrap text-sub">
         프로젝트:{' '}
       </span>
-      <div className="md:max-w-80 flex-1 min-w-40">
-        <DropdownSelect
-          menuPlacement="top"
-          selectedOption={appState.curSession?.name}
-          options={
-            [...sessionNames]
-              .sort((a, b) => {
-                const aFav = sessionService.isFavorite(a);
-                const bFav = sessionService.isFavorite(b);
-                if (aFav !== bFav) return aFav ? -1 : 1;
-                return a.localeCompare(b);
-              })
-              .map((name) => ({
-                label: sessionService.isFavorite(name) ? '⭐ ' + name : name,
-                value: name,
-              }))
-          }
-          onSelect={selectSession}
-        />
+      <div className="md:max-w-80 flex-1 min-w-40 flex items-center gap-1">
+        <div className="flex-1">
+          <DropdownSelect
+            menuPlacement="top"
+            selectedOption={appState.curSession?.name}
+            options={
+              [...sessionNames]
+                .sort((a, b) => {
+                  const aFav = sessionService.isFavorite(a);
+                  const bFav = sessionService.isFavorite(b);
+                  if (aFav !== bFav) return aFav ? -1 : 1;
+                  return a.localeCompare(b);
+                })
+                .map((name) => ({
+                  label: sessionService.isFavorite(name) ? '⭐ ' + name : name,
+                  value: name,
+                }))
+            }
+            onSelect={selectSession}
+          />
+        </div>
+        <button className="md:hidden flex-none p-1.5 text-gray-400 hover:text-sky-400" onClick={() => setShowProjectBrowser(true)}>
+          <FaThLarge size={14} />
+        </button>
       </div>
       <Tooltip content="프로젝트 탐색">
-      <button className={`icon-button nback-sky mx-1`} onClick={() => setShowProjectBrowser(true)}>
+      <button className={`hidden md:flex icon-button nback-sky mx-1`} onClick={() => setShowProjectBrowser(true)}>
         <FaThLarge size={16} />
       </button>
       </Tooltip>
