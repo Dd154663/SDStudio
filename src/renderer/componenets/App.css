@@ -37,16 +37,6 @@ body {
   width: 24px;
   height: 24px;
 }
-@media (max-width: 767px) {
-  ::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
-  }
-  ::-webkit-scrollbar-thumb {
-    border: none;
-    border-radius: 2px;
-  }
-}
 ::-webkit-scrollbar-track {
   background: transparent;
 }
@@ -67,6 +57,17 @@ body {
 }
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+/* 모바일: 스크롤바 축소 (글로벌 규칙 이후에 선언하여 override) */
+@media (max-width: 767px) {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    border: 1px solid transparent;
+    border-radius: 4px;
+  }
 }
 @media screen and (max-width: 768px) {
   body {

@@ -2098,7 +2098,7 @@ const CharacterPromptEditor = observer(
               <div
                 ref={coordMapRef}
                 className="relative w-full bg-gray-100 dark:bg-slate-700 border border-gray-300 dark:border-slate-500 rounded select-none overflow-hidden"
-                style={{ aspectRatio: '4 / 3' }}
+                style={{ aspectRatio: '4 / 3', touchAction: 'none' }}
                 onPointerMove={(e) => {
                   if (draggingId) handleCoordPointer(e, draggingId);
                 }}

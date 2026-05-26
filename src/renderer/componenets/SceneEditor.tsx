@@ -589,7 +589,7 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
             <div
               ref={coordMapRef}
               className="relative bg-gray-100 dark:bg-slate-700 border border-gray-300 dark:border-slate-500 rounded select-none overflow-hidden"
-              style={{ aspectRatio: '4 / 3', maxWidth: '360px' }}
+              style={{ aspectRatio: '4 / 3', maxWidth: '360px', touchAction: 'none' }}
               onPointerMove={(e) => {
                 if (draggingId) handleCoordPointer(e, draggingId);
               }}
