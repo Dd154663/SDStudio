@@ -99,14 +99,17 @@ const DnDPreview = () => {
   style['transformOrigin'] = 'center';
   let res: any = null;
   if (itemType === 'scene') {
-    const { scene, curSession, getImage, cellSize } = item as any;
+    const { scene, curSession, getImage, cellSize, cardWidth } = item as any;
+    const sceneStyle = cardWidth
+      ? { ...style, width: cardWidth + 'px' }
+      : style;
     res = (
       <SceneCell
         scene={scene}
         curSession={curSession}
         getImage={getImage}
         cellSize={cellSize}
-        style={style}
+        style={sceneStyle}
       />
     );
   } else if (itemType === 'image') {

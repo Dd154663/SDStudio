@@ -164,10 +164,14 @@ export const SceneCell = observer(
       : ['', '', ''];
 
     const curIndex = curSession.getScenes(scene.type).indexOf(scene);
+    const cardElRef = useRef<HTMLDivElement | null>(null);
     const [{ isDragging }, drag, preview] = useDrag(
       () => ({
         type: 'scene',
-        item: { scene, curIndex, getImage, curSession, cellSize },
+        item: () => {
+          const cardWidth = cardElRef.current?.offsetWidth;
+          return { scene, curIndex, getImage, curSession, cellSize, cardWidth };
+        },
         collect: (monitor) => {
           const diff = monitor.getDifferenceFromInitialOffset();
           if (diff) {
@@ -303,7 +307,10 @@ export const SceneCell = observer(
       };
     }, [scene]);
 
-    const cardRef = (node: any) => drag(drop(node));
+    const cardRef = (node: any) => {
+      cardElRef.current = node;
+      drag(drop(node));
+    };
     const onContext = (e: any) => {
       show({ event: e, props: { ctx: { type: 'scene', scene } } });
     };
