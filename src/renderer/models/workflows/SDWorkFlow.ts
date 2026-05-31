@@ -236,10 +236,14 @@ const SDImageGenHandler = async (
     normalizeStrength: shared.normalizeStrength,
     varietyPlus: preset.varietyPlus,
     deliberateEulerAncestralBug: preset.deliberateEulerAncestralBug,
-    characterReferences: (shared.characterReferences || []).filter((ref: any) => ref.enabled !== false),
+    // 예약 시점 스냅샷: 이후 프리셋에서 레퍼런스를 토글/삭제/수정해도
+    // 이미 예약된 작업에는 영향이 없도록 메타데이터를 깊은 복사한다.
+    characterReferences: (shared.characterReferences || [])
+      .filter((ref: any) => ref.enabled !== false)
+      .map((ref: any) => (ref.toJSON ? ref.toJSON() : { ...ref })),
     noiseSchedule: preset.noiseSchedule,
     backend: preset.backend,
-    vibes: shared.vibes,
+    vibes: (shared.vibes || []).map((v: any) => (v.toJSON ? v.toJSON() : { ...v })),
     seed: shared.seed,
   };
   
@@ -419,9 +423,10 @@ const createSDI2IHandler = (type: string) => {
       varietyPlus: preset.varietyPlus,
       deliberateEulerAncestralBug: preset.deliberateEulerAncestralBug,
       noiseSchedule: preset.noiseSchedule,
-      characterReferences: preset.characterReferences || [],
+      // 예약 시점 스냅샷 (깊은 복사) — 위 핸들러와 동일한 이유
+      characterReferences: (preset.characterReferences || []).map((ref: any) => (ref.toJSON ? ref.toJSON() : { ...ref })),
       backend: preset.backend,
-      vibes: preset.vibes || [],
+      vibes: (preset.vibes || []).map((v: any) => (v.toJSON ? v.toJSON() : { ...v })),
       strength: preset.strength,
       noise: preset.noise,
       overrideResolution: preset.overrideResolution,
