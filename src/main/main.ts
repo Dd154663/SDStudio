@@ -946,9 +946,10 @@ const createWindow = async () => {
   });
 
   mainWindow.on('close', (e) => {
-    if (saveCompleted) {
+    // 저장이 끝나기 전이면 창 닫기를 막고 렌더러에 저장을 위임한다.
+    // 렌더러가 저장을 마치면 invoke('close')로 saveCompleted=true 후 다시 닫는다.
+    if (!saveCompleted) {
       e.preventDefault();
-    } else {
       mainWindow!.webContents.send('close');
     }
   });

@@ -2062,9 +2062,13 @@ const CharacterPromptEditor = observer(
         updateCharacter(charId, { position: { x, y } });
       } else {
         // shared(캐릭터 프리셋) 캐릭터 프롬프트에서 찾기
+        // in-place 변형은 자동 저장 reaction이 추적하지 못하므로 배열을 재할당한다.
         const inShared = sharedCPs.find((c: CharacterPrompt) => c.id === charId);
         if (inShared) {
-          inShared.position = { x, y };
+          shared.characterPrompts = (shared.characterPrompts || []).map(
+            (c: CharacterPrompt) =>
+              c.id === charId ? { ...c, position: { x, y } } : c,
+          );
         }
       }
       if (isDown) {
