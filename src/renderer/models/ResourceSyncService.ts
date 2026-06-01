@@ -13,6 +13,8 @@ export abstract class ResourceSyncService<
   resources: { [name: string]: T };
   dirty: { [name: string]: boolean };
   resourceList: string[];
+  folderList: string[];
+  folderMap: { [name: string]: string | null };
   disposes: { [name: string]: () => void };
   resourceDir: string;
   updateInterval: number;
@@ -25,6 +27,8 @@ export abstract class ResourceSyncService<
     this.disposes = {};
     this.resourceDir = resourceDir;
     this.resourceList = [];
+    this.folderList = [];
+    this.folderMap = {};
     this.updateInterval = interval;
     this.running = true;
     (async () => {
@@ -66,17 +70,28 @@ export abstract class ResourceSyncService<
   }
 
   getPath(name: string) {
-    return this.resourceDir + '/' + name + '.json';
+    // 폴더에 속한 프로젝트는 projects/폴더/이름.json, 아니면 projects/이름.json
+    const folder = this.folderMap[name];
+    return folder
+      ? this.resourceDir + '/' + folder + '/' + name + '.json'
+      : this.resourceDir + '/' + name + '.json';
+  }
+
+  getFolderOf(name: string): string | null {
+    return this.folderMap[name] ?? null;
+  }
+
+  listFolders(): string[] {
+    return this.folderList.slice();
   }
 
   async delete(name: string) {
     if (name in this.resources) {
       delete this.resources[name];
       this.disposes[name]();
-      await backend.renameFile(
-        this.resourceDir + '/' + name + '.json',
-        this.resourceDir + '/' + name + '.deleted',
-      );
+      const src = this.getPath(name);
+      await backend.renameFile(src, src.replace(/\.json$/, '.deleted'));
+      delete this.folderMap[name];
       await this.update();
     }
   }
@@ -84,6 +99,8 @@ export abstract class ResourceSyncService<
   async rename(oldName: string, newName: string) {
     if (!(oldName in this.resources)) throw new Error('Resource not found');
     if (newName in this.resources) throw new Error('Resource already exists');
+    // 폴더값이 바뀌기 전에 원본 경로를 먼저 캡처한다.
+    const srcPath = this.getPath(oldName);
     this.resources[newName] = this.resources[oldName];
     delete this.resources[oldName];
     this.disposes[newName] = this.disposes[oldName];
@@ -92,7 +109,12 @@ export abstract class ResourceSyncService<
       this.dirty[newName] = this.dirty[oldName];
       delete this.dirty[oldName];
     }
-    await backend.renameFile(this.getPath(oldName), this.getPath(newName));
+    // 이름이 바뀌어도 같은 폴더에 유지
+    if (oldName in this.folderMap) {
+      this.folderMap[newName] = this.folderMap[oldName];
+      delete this.folderMap[oldName];
+    }
+    await backend.renameFile(srcPath, this.getPath(newName));
     await this.update();
   }
 
@@ -107,9 +129,14 @@ export abstract class ResourceSyncService<
   async get(name: string): Promise<T | undefined> {
     if (!(name in this.resources)) {
       try {
-        const str = await backend.readFile(
-          this.resourceDir + '/' + name + '.json',
-        );
+        let str: string;
+        try {
+          str = await backend.readFile(this.getPath(name));
+        } catch (readErr) {
+          // folderMap이 아직 최신이 아닐 수 있음 → 목록 재스캔 후 재시도
+          this.resourceList = await this.getList();
+          str = await backend.readFile(this.getPath(name));
+        }
         let obj = JSON.parse(str);
         obj = await this.migrate(obj);
         obj = await this.fillEmptyPresetVars(obj);
@@ -133,7 +160,7 @@ export abstract class ResourceSyncService<
         const l = this.getFast(name);
         if (!l) return null;
         return backend.writeFile(
-          this.resourceDir + '/' + name + '.json',
+          this.getPath(name),
           JSON.stringify(l.toJSON()),
         );
       })
@@ -148,7 +175,7 @@ export abstract class ResourceSyncService<
     const writes = Object.keys(this.resources).map((name) => {
       const l = this.resources[name];
       return backend.writeFile(
-        this.resourceDir + '/' + name + '.json',
+        this.getPath(name),
         JSON.stringify(l.toJSON()),
       );
     });
@@ -181,10 +208,47 @@ export abstract class ResourceSyncService<
   }
 
   private async getList() {
-    const sessions = await backend.listFiles(this.resourceDir);
-    return sessions
-      .filter((x: string) => x.endsWith('.json'))
-      .map((x: string) => x.substring(0, x.length - 5));
+    // depth=1 스캔: 루트의 *.json = 미분류 프로젝트, 하위 폴더의 *.json = 폴더 소속.
+    // listFiles(파일+디렉토리) - listFilesWithStats(파일만) = 폴더 목록.
+    const entries = await backend.listFiles(this.resourceDir);
+    const rootStats = await backend.listFilesWithStats(this.resourceDir);
+    const rootFileSet = new Set(rootStats.map((s: any) => s.name));
+    const dirs = entries.filter(
+      (e: string) => !rootFileSet.has(e) && !e.startsWith('.'),
+    );
+
+    const newMap: { [name: string]: string | null } = {};
+    const names: string[] = [];
+
+    // 루트(미분류) 프로젝트
+    for (const fname of rootFileSet) {
+      if (!fname.endsWith('.json')) continue;
+      const name = fname.substring(0, fname.length - 5);
+      if (name in newMap) continue;
+      newMap[name] = null;
+      names.push(name);
+    }
+
+    // 폴더별 프로젝트
+    for (const dir of dirs) {
+      let stats: any[] = [];
+      try {
+        stats = await backend.listFilesWithStats(this.resourceDir + '/' + dir);
+      } catch (e) {
+        stats = [];
+      }
+      for (const s of stats) {
+        if (!s.name.endsWith('.json')) continue;
+        const name = s.name.substring(0, s.name.length - 5);
+        if (name in newMap) continue; // 동명 충돌 시 루트 우선
+        newMap[name] = dir;
+        names.push(name);
+      }
+    }
+
+    this.folderList = dirs.slice();
+    this.folderMap = newMap;
+    return names;
   }
 
   private async fillEmptyPresetVars(obj: any) {

@@ -67,6 +67,88 @@ export class SessionService extends ResourceSyncService<Session> {
     return this.favorites.has(name);
   }
 
+  // ===== 폴더 API (단일 레벨, 실제 디렉토리) =====
+
+  private folderDirPath(folder: string): string {
+    return 'projects/' + folder;
+  }
+
+  async createFolder(folder: string): Promise<void> {
+    folder = folder.trim();
+    if (!folder || folder.includes('/') || folder.startsWith('.')) {
+      throw new Error('폴더 이름에 / 를 쓸 수 없습니다.');
+    }
+    if (this.folderList.includes(folder)) {
+      throw new Error('이미 존재하는 폴더입니다.');
+    }
+    if (this.resourceList.includes(folder)) {
+      throw new Error('같은 이름의 프로젝트가 있어 폴더를 만들 수 없습니다.');
+    }
+    // .keep 파일을 써서 빈 폴더를 만든다 (write-file이 부모 폴더를 생성).
+    await backend.writeFile(this.folderDirPath(folder) + '/.keep', '');
+    await this.update();
+  }
+
+  async renameFolder(oldName: string, newName: string): Promise<void> {
+    newName = newName.trim();
+    if (!newName || newName.includes('/') || newName.startsWith('.')) {
+      throw new Error('폴더 이름에 / 를 쓸 수 없습니다.');
+    }
+    if (!this.folderList.includes(oldName)) {
+      throw new Error('폴더를 찾을 수 없습니다.');
+    }
+    if (oldName === newName) return;
+    if (this.folderList.includes(newName)) {
+      throw new Error('이미 존재하는 폴더입니다.');
+    }
+    if (this.resourceList.includes(newName)) {
+      throw new Error('같은 이름의 프로젝트가 있습니다.');
+    }
+    await backend.renameDir(
+      this.folderDirPath(oldName),
+      this.folderDirPath(newName),
+    );
+    // 폴더맵 즉시 반영 (update()의 재스캔 전에도 일관성 유지)
+    for (const [name, f] of Object.entries(this.folderMap)) {
+      if (f === oldName) this.folderMap[name] = newName;
+    }
+    await this.update();
+  }
+
+  // 비파괴적 삭제: 안의 프로젝트는 루트(미분류)로 옮기고 폴더만 제거한다.
+  async deleteFolder(folder: string): Promise<void> {
+    if (!this.folderList.includes(folder)) {
+      throw new Error('폴더를 찾을 수 없습니다.');
+    }
+    const projectsInFolder = Object.keys(this.folderMap).filter(
+      (n) => this.folderMap[n] === folder,
+    );
+    for (const name of projectsInFolder) {
+      await this.moveToFolder(name, null);
+    }
+    await backend.deleteDir(this.folderDirPath(folder));
+    await this.update();
+  }
+
+  // 프로젝트를 폴더로 이동 (null = 루트/미분류). 실제 .json 파일을 옮긴다.
+  async moveToFolder(name: string, targetFolder: string | null): Promise<void> {
+    const current = this.folderMap[name] ?? null;
+    if (current === targetFolder) return;
+    if (targetFolder !== null) {
+      if (targetFolder.includes('/')) {
+        throw new Error('잘못된 폴더 이름입니다.');
+      }
+      if (!this.folderList.includes(targetFolder)) {
+        throw new Error('대상 폴더가 없습니다.');
+      }
+    }
+    const srcPath = this.getPath(name);
+    this.folderMap[name] = targetFolder;
+    const destPath = this.getPath(name);
+    await backend.renameFile(srcPath, destPath);
+    await this.update();
+  }
+
   // 북마크 기능
   private bookmarkData: {
     scenes: Record<string, { name: string; type: string }>;
@@ -127,9 +209,111 @@ export class SessionService extends ResourceSyncService<Session> {
     await this.saveBookmarks();
   }
 
+  // ===== 썸네일 캐시 (사이드카: thumbnails.json) =====
+  // 프로젝트 카드 썸네일을 (씬, 파일명) 참조로 캐시해, 탐색 시 세션 풀로딩을 피한다.
+  private thumbnailData: Record<string, { scene: string; image: string }> = {};
+  private thumbnailSaveTimer: any = null;
+
+  async loadThumbnails() {
+    try {
+      const str = await backend.readFile('thumbnails.json');
+      this.thumbnailData = JSON.parse(str) || {};
+    } catch (e) {
+      this.thumbnailData = {};
+    }
+  }
+
+  async saveThumbnails() {
+    await backend.writeFile(
+      'thumbnails.json',
+      JSON.stringify(this.thumbnailData),
+    );
+  }
+
+  private scheduleThumbnailSave() {
+    if (this.thumbnailSaveTimer) clearTimeout(this.thumbnailSaveTimer);
+    this.thumbnailSaveTimer = setTimeout(() => {
+      this.saveThumbnails().catch(() => {});
+    }, 1000);
+  }
+
+  getThumbnailRef(
+    project: string,
+  ): { scene: string; image: string } | undefined {
+    return this.thumbnailData[project];
+  }
+
+  setThumbnailRef(project: string, scene: string, image: string) {
+    this.thumbnailData[project] = { scene, image };
+    this.scheduleThumbnailSave();
+  }
+
+  clearThumbnailRef(project: string) {
+    if (project in this.thumbnailData) {
+      delete this.thumbnailData[project];
+      this.scheduleThumbnailSave();
+    }
+  }
+
+  private async firstOutputImage(
+    project: string,
+    sceneName: string,
+  ): Promise<string | undefined> {
+    try {
+      const files = await backend.listFiles('outs/' + project + '/' + sceneName);
+      return (files || []).find((f: string) => f.endsWith('.png'));
+    } catch (e) {
+      return undefined;
+    }
+  }
+
+  // 캐시 미스 시 1회 해석. 로드된 세션이면 인메모리 정보를, 아니면 원본 JSON을
+  // 직접 읽어(메모리에 상주시키지 않음) 첫 씬의 대표/첫 이미지를 찾는다.
+  async resolveThumbnail(
+    name: string,
+  ): Promise<{ scene: string; image: string } | undefined> {
+    if (name in this.resources) {
+      const scenes = Array.from(this.resources[name].scenes.values());
+      if (!scenes.length) return undefined;
+      const scene = scenes[0];
+      if (scene.mains && scene.mains.length) {
+        return { scene: scene.name, image: scene.mains[0] };
+      }
+      const images = imageService.getOutputs(this.resources[name], scene);
+      if (images && images.length) {
+        return { scene: scene.name, image: images[0] };
+      }
+      const png = await this.firstOutputImage(name, scene.name);
+      return png ? { scene: scene.name, image: png } : undefined;
+    }
+    try {
+      const raw = JSON.parse(await backend.readFile(this.getPath(name)));
+      const sceneKeys = Object.keys(raw.scenes || {});
+      if (!sceneKeys.length) return undefined;
+      const sceneName = sceneKeys[0];
+      const mains = raw.scenes[sceneName]?.mains || [];
+      if (mains.length) return { scene: sceneName, image: mains[0] };
+      const png = await this.firstOutputImage(name, sceneName);
+      return png ? { scene: sceneName, image: png } : undefined;
+    } catch (e) {
+      return undefined;
+    }
+  }
+
+  // 종료 시: 로드된(작업한) 세션의 자동 썸네일만 재해석해 갱신
+  async refreshLoadedThumbnails() {
+    for (const name of Object.keys(this.resources)) {
+      try {
+        const ref = await this.resolveThumbnail(name);
+        if (ref) this.thumbnailData[name] = ref;
+      } catch (e) {}
+    }
+  }
+
   async run() {
     await this.loadFavorites();
     await this.loadBookmarks();
+    await this.loadThumbnails();
     const { trashService } = await import('.');
     await trashService.loadTrash();
 
@@ -153,6 +337,8 @@ export class SessionService extends ResourceSyncService<Session> {
   async delete(name: string) {
     this.favorites.delete(name);
     await this.saveFavorites();
+    // 썸네일 캐시 정리
+    this.clearThumbnailRef(name);
     // 북마크 정리
     delete this.bookmarkData.scenes[name];
     const keysToDelete = Object.keys(this.bookmarkData.images).filter(k => k.startsWith(name + ':'));
@@ -172,6 +358,12 @@ export class SessionService extends ResourceSyncService<Session> {
       this.favorites.add(newName);
       await this.saveFavorites();
     }
+    // 썸네일 캐시 마이그레이션
+    if (this.thumbnailData[oldName]) {
+      this.thumbnailData[newName] = this.thumbnailData[oldName];
+      delete this.thumbnailData[oldName];
+      this.scheduleThumbnailSave();
+    }
     // 북마크 마이그레이션
     let bmChanged = false;
     if (this.bookmarkData.scenes[oldName]) {
@@ -188,6 +380,33 @@ export class SessionService extends ResourceSyncService<Session> {
     });
     if (bmChanged) await this.saveBookmarks();
     await super.rename(oldName, newName);
+  }
+
+  // 종료 시 빠른 저장: saveAll()은 로드된 세션이 많으면(프로젝트 탐색을 열면
+  // 전체가 로드됨) 10~20초가 걸린다. 편집은 사실상 현재 세션에서만 일어나므로
+  // dirty(변경 표시)된 것 + 현재 세션만 저장한다. (디바운스로 아직 dirty 표시가
+  // 안 된 현재 세션의 마지막 편집분도 현재 세션을 항상 포함해 보존됨)
+  async flushOnClose() {
+    const names = new Set<string>(
+      Object.keys(this.dirty).filter((n) => n in this.resources),
+    );
+    try {
+      const { appState } = await import('./AppService');
+      const cur = appState.curSession?.name;
+      if (cur && cur in this.resources) names.add(cur);
+    } catch (e) {}
+    const writes = [...names].map((name) =>
+      backend.writeFile(
+        this.getPath(name),
+        JSON.stringify(this.resources[name].toJSON()),
+      ),
+    );
+    await Promise.allSettled(writes);
+    // 종료 시 작업한 세션의 자동 썸네일 갱신
+    try {
+      await this.refreshLoadedThumbnails();
+      await this.saveThumbnails();
+    } catch (e) {}
   }
 
   async getHook(rc: Session, name: string) {

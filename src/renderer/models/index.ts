@@ -90,7 +90,7 @@ window.globalPresetService = globalPresetService;
 backend.onClose(() => {
   (async () => {
     try {
-      await sessionService.saveAll();
+      await sessionService.flushOnClose();
       await globalPresetService.flushSave();
       await globalPieceService.flushSave();
     } catch (e) {
