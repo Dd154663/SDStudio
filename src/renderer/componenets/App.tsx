@@ -181,6 +181,7 @@ export const App = observer(() => {
       setDarkMode(!conf.whiteMode);
       setTrueDark(conf.trueDark ?? false);
       appState.classicSceneCard = conf.classicSceneCard ?? false;
+      appState.legacyProjectMode = conf.legacyProjectMode ?? false;
     };
     refreshDarkMode();
     sessionService.addEventListener('config-changed', refreshDarkMode);

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { DropdownSelect, Option } from './UtilComponents';
-import { FaPlus, FaPuzzlePiece, FaShare, FaThLarge, FaTrashAlt, FaTrashRestore, FaUserAlt, FaTimes, FaBars } from 'react-icons/fa';
+import { FaPlus, FaPuzzlePiece, FaShare, FaThLarge, FaTrashAlt, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown } from 'react-icons/fa';
 import { pushRecentProject } from './ProjectBrowser';
 import Tooltip from './Tooltip';
 import { sessionService, imageService, backend, zipService, workFlowService, trashService, isMobile } from '../models';
@@ -222,39 +222,66 @@ const SessionSelect = observer(() => {
       
       {/* 프로젝트 선택 영역: 모바일에서 1행 전체, PC에서는 인라인 */}
       <div className="flex items-center gap-1 w-full md:w-auto md:flex-1 md:max-w-80 min-w-0">
-        <span className="hidden md:inline whitespace-nowrap text-sub">
-          프로젝트:{' '}
-        </span>
-        <Tooltip content="프로젝트 목록(폴더)">
-          <button
-            className="icon-button nback-sky flex-none"
-            onClick={() => {
-              appState.projectDrawerOpen = true;
-            }}
-          >
-            <FaBars size={16} />
-          </button>
-        </Tooltip>
-        <div className="flex-1 min-w-0">
-          <DropdownSelect
-            menuPlacement="top"
-            selectedOption={appState.curSession?.name}
-            options={
-              [...sessionNames]
-                .sort((a, b) => {
-                  const aFav = sessionService.isFavorite(a);
-                  const bFav = sessionService.isFavorite(b);
-                  if (aFav !== bFav) return aFav ? -1 : 1;
-                  return a.localeCompare(b);
-                })
-                .map((name) => ({
-                  label: sessionService.isFavorite(name) ? '⭐ ' + name : name,
-                  value: name,
-                }))
-            }
-            onSelect={selectSession}
-          />
-        </div>
+        {appState.legacyProjectMode ? (
+          <>
+            <Tooltip content="프로젝트 목록(폴더)">
+              <button
+                className="icon-button nback-sky flex-none bg-sky-100 dark:bg-sky-900/50 ring-1 ring-sky-300 dark:ring-sky-700"
+                onClick={() => {
+                  appState.projectDrawerOpen = true;
+                }}
+              >
+                <FaBars size={16} />
+              </button>
+            </Tooltip>
+            <span className="hidden md:inline whitespace-nowrap text-sub">
+              프로젝트:{' '}
+            </span>
+            <div className="flex-1 min-w-0">
+              <DropdownSelect
+                menuPlacement="top"
+                selectedOption={appState.curSession?.name}
+                options={
+                  [...sessionNames]
+                    .sort((a, b) => {
+                      const aFav = sessionService.isFavorite(a);
+                      const bFav = sessionService.isFavorite(b);
+                      if (aFav !== bFav) return aFav ? -1 : 1;
+                      return a.localeCompare(b);
+                    })
+                    .map((name) => ({
+                      label: sessionService.isFavorite(name) ? '⭐ ' + name : name,
+                      value: name,
+                    }))
+                }
+                onSelect={selectSession}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <span className="hidden md:inline whitespace-nowrap text-sub">
+              프로젝트:{' '}
+            </span>
+            <Tooltip content="프로젝트 목록 열기 (폴더 드로어)">
+              <button
+                className="flex-1 min-w-0 flex items-center gap-2 px-3 py-1.5 rounded-lg border border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-900/40 text-gray-800 dark:text-gray-100 hover:bg-sky-100 dark:hover:bg-sky-900/70 transition-colors"
+                onClick={() => {
+                  appState.projectDrawerOpen = true;
+                }}
+              >
+                <FaBars size={14} className="flex-none text-sky-500 dark:text-sky-300" />
+                <span className="truncate flex-1 text-left text-sm">
+                  {appState.curSession
+                    ? (sessionService.isFavorite(appState.curSession.name) ? '⭐ ' : '') +
+                      appState.curSession.name
+                    : '프로젝트 선택'}
+                </span>
+                <FaChevronDown size={12} className="flex-none text-gray-400" />
+              </button>
+            </Tooltip>
+          </>
+        )}
         <Tooltip content="프로젝트 탐색">
         <button className={`icon-button nback-sky mx-1`} onClick={() => { appState.projectBrowserOpen = true; }}>
           <FaThLarge size={16} />

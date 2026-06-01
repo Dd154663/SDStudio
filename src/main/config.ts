@@ -43,6 +43,7 @@ export interface Config {
   downloadSettings?: DownloadSettings;
   imageSaveSettings?: ImageSaveSettings;
   classicSceneCard?: boolean;
+  legacyProjectMode?: boolean;
   exportConcurrency?: number;
   trueDark?: boolean;
 }

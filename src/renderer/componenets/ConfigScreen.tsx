@@ -296,6 +296,7 @@ const OtherTab = ({
   trueDark, setTrueDark,
   delayTime, setDelayTime,
   classicSceneCard, setClassicSceneCard,
+  legacyProjectMode, setLegacyProjectMode,
   fullWordAc, setFullWordAc,
   exportConcurrency, setExportConcurrency,
 }: any) => {
@@ -370,6 +371,17 @@ const OtherTab = ({
         <input type="checkbox" id="cfgFullWordAc" checked={fullWordAc}
           onChange={(e) => setFullWordAc(e.target.checked)} />
         <label htmlFor="cfgFullWordAc" className="text-sm gray-label">자동완성 시 콤마 사이 전체 단어 사용</label>
+      </div>
+      <hr className="border-gray-200 dark:border-slate-600" />
+      <div>
+        <div className="flex items-center gap-2">
+          <input type="checkbox" id="cfgLegacyProject" checked={legacyProjectMode}
+            onChange={(e) => setLegacyProjectMode(e.target.checked)} />
+          <label htmlFor="cfgLegacyProject" className="text-sm gray-label">레거시 프로젝트 모드</label>
+        </div>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-6">
+          켜면 기존 프로젝트 선택 드롭다운을 유지합니다(드로어·드롭다운·그리드 공존). 끄면 드롭다운 대신 드로어 열기 버튼으로 표시됩니다.
+        </p>
       </div>
       <hr className="border-gray-200 dark:border-slate-600" />
       <div>
@@ -664,6 +676,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [whiteMode, setWhiteMode] = useState(false);
   const [delayTime, setDelayTime] = useState(0);
   const [classicSceneCard, setClassicSceneCard] = useState(false);
+  const [legacyProjectMode, setLegacyProjectMode] = useState(false);
   const [fullWordAc, setFullWordAc] = useState(appState.fullWordAutoComplete);
   const [trueDark, setTrueDark] = useState(false);
   const [exportConcurrency, setExportConcurrency] = useState(isMobile ? 2 : 4);
@@ -690,6 +703,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setUseLocalBgRemoval(config.useLocalBgRemoval ?? false);
       setDelayTime(config.delayTime ?? 0);
       setClassicSceneCard(config.classicSceneCard ?? false);
+      setLegacyProjectMode(config.legacyProjectMode ?? false);
       setTrueDark(config.trueDark ?? false);
       setExportConcurrency(config.exportConcurrency ?? (isMobile ? 2 : 4));
       setSaveLocation(config.saveLocation ?? '');
@@ -800,12 +814,14 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       useLocalBgRemoval: useLocalBgRemoval,
       delayTime: delayTime,
       classicSceneCard: classicSceneCard,
+      legacyProjectMode: legacyProjectMode,
       exportConcurrency: exportConcurrency,
       trueDark: trueDark,
     };
     await backend.setConfig(config);
     if (old.useCUDA !== useGPU) localAIService.modelChanged();
     appState.classicSceneCard = classicSceneCard;
+    appState.legacyProjectMode = legacyProjectMode;
     appState.fullWordAutoComplete = fullWordAc;
     localStorage.setItem('sdstudio-full-word-autocomplete', fullWordAc ? 'true' : 'false');
     sessionService.configChanged();
@@ -832,7 +848,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 2:
         return <StorageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage }} />;
       case 3:
-        return <OtherTab {...{ whiteMode, setWhiteMode, trueDark, setTrueDark, delayTime, setDelayTime, classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, exportConcurrency, setExportConcurrency }} />;
+        return <OtherTab {...{ whiteMode, setWhiteMode, trueDark, setTrueDark, delayTime, setDelayTime, classicSceneCard, setClassicSceneCard, legacyProjectMode, setLegacyProjectMode, fullWordAc, setFullWordAc, exportConcurrency, setExportConcurrency }} />;
       case 4:
         return <KeyBindingsTab />;
       default:

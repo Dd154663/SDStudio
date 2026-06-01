@@ -99,6 +99,10 @@ export class AppState {
   // 씬 카드 디자인 설정
   @observable accessor classicSceneCard: boolean = false;
 
+  // 레거시 프로젝트 모드: true면 기존 드롭다운 선택 UI 유지(드로어/드롭다운/그리드 공존),
+  // false(기본)면 드롭다운을 제거하고 드로어 트리거로 전환
+  @observable accessor legacyProjectMode: boolean = false;
+
   // 자동완성 모드: false=커서 왼쪽만(기본), true=콤마 사이 전체 단어
   @observable accessor fullWordAutoComplete: boolean = (() => {
     return localStorage.getItem('sdstudio-full-word-autocomplete') === 'true';
