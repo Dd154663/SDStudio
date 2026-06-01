@@ -112,6 +112,12 @@ export class SessionService extends ResourceSyncService<Session> {
     for (const [name, f] of Object.entries(this.folderMap)) {
       if (f === oldName) this.folderMap[name] = newName;
     }
+    // 폴더 색상 마이그레이션
+    if (this.folderColors[oldName]) {
+      this.folderColors[newName] = this.folderColors[oldName];
+      delete this.folderColors[oldName];
+      await this.saveFolderColors();
+    }
     await this.update();
   }
 
@@ -127,6 +133,11 @@ export class SessionService extends ResourceSyncService<Session> {
       await this.moveToFolder(name, null);
     }
     await backend.deleteDir(this.folderDirPath(folder));
+    // 폴더 색상 정리
+    if (this.folderColors[folder]) {
+      delete this.folderColors[folder];
+      await this.saveFolderColors();
+    }
     await this.update();
   }
 
@@ -147,6 +158,38 @@ export class SessionService extends ResourceSyncService<Session> {
     const destPath = this.getPath(name);
     await backend.renameFile(srcPath, destPath);
     await this.update();
+  }
+
+  // ===== 폴더 색상 (사이드카: folderColors.json) =====
+  // 폴더 이름 → 색상(hex 문자열). 미지정 폴더는 undefined.
+  private folderColors: Record<string, string> = {};
+
+  async loadFolderColors() {
+    try {
+      const str = await backend.readFile('folderColors.json');
+      this.folderColors = JSON.parse(str) || {};
+    } catch (e) {
+      this.folderColors = {};
+    }
+  }
+
+  async saveFolderColors() {
+    await backend.writeFile(
+      'folderColors.json',
+      JSON.stringify(this.folderColors),
+    );
+  }
+
+  getFolderColor(folder: string): string | undefined {
+    return this.folderColors[folder];
+  }
+
+  async setFolderColor(folder: string, color: string | null) {
+    if (color) this.folderColors[folder] = color;
+    else delete this.folderColors[folder];
+    await this.saveFolderColors();
+    // listupdated 디스패치로 드로어/브라우저가 즉시 재렌더되도록 한다.
+    this.dispatchEvent(new CustomEvent('listupdated', {}));
   }
 
   // 북마크 기능
@@ -314,6 +357,7 @@ export class SessionService extends ResourceSyncService<Session> {
     await this.loadFavorites();
     await this.loadBookmarks();
     await this.loadThumbnails();
+    await this.loadFolderColors();
     const { trashService } = await import('.');
     await trashService.loadTrash();
 

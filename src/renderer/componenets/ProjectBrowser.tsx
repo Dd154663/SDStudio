@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
-import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck } from 'react-icons/fa';
+import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck, FaBars } from 'react-icons/fa';
 import { sessionService, imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import ModalOverlay from './ModalOverlay';
@@ -374,6 +374,12 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
     }
   }, [refresh]);
 
+  // 드로어로 전환 (그리드 닫고 좌측 드로어 열기)
+  const openDrawer = useCallback(() => {
+    onClose();
+    appState.projectDrawerOpen = true;
+  }, [onClose]);
+
   const handleNewFolder = useCallback(async () => {
     const value = await appState.pushDialogAsync({
       type: 'input-confirm',
@@ -432,46 +438,66 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
     <ModalOverlay isOpen={true} onClose={onClose} title="프로젝트 탐색" width="max-w-3xl md:max-w-6xl">
       <div className="flex flex-col md:flex-row gap-3" style={{ maxHeight: '70vh' }}>
         {/* 폴더 내비게이션 (PC: 좌측 세로 / 모바일: 상단 가로 스크롤) */}
-        <div className="flex md:flex-col gap-1.5 overflow-x-auto md:overflow-y-auto md:w-48 md:flex-none flex-none pb-1 md:pb-0">
-          <NavItem
-            active={view === 'all'}
-            onClick={() => setView('all')}
-            icon={<FaFolder className="opacity-70" size={13} />}
-            label="전체"
-            count={countIn('all')}
-          />
-          <NavItem
-            active={view === 'fav'}
-            onClick={() => setView('fav')}
-            icon={<FaStar className="text-yellow-400" size={13} />}
-            label="즐겨찾기"
-            count={countIn('fav')}
-          />
-          <NavItem
-            active={view === 'unfiled'}
-            onClick={() => setView('unfiled')}
-            icon={<FaFolder className="opacity-40" size={13} />}
-            label="미분류"
-            count={countIn('unfiled')}
-          />
-          {folders.map((f) => (
+        <div className="flex md:flex-col gap-1.5 md:w-48 md:flex-none flex-none md:min-h-0">
+          {/* 스크롤 영역: 폴더 목록 */}
+          <div className="flex md:flex-col gap-1.5 overflow-x-auto md:overflow-y-auto flex-1 min-w-0 md:min-h-0 pb-1 md:pb-0">
             <NavItem
-              key={f}
-              active={view === f}
-              onClick={() => setView(f)}
-              onMenu={() => handleFolderMenu(f)}
-              icon={<FaFolder className="text-sky-400" size={13} />}
-              label={f}
-              count={countIn(f)}
+              active={view === 'all'}
+              onClick={() => setView('all')}
+              icon={<FaFolder className="opacity-70" size={13} />}
+              label="전체"
+              count={countIn('all')}
             />
-          ))}
+            <NavItem
+              active={view === 'fav'}
+              onClick={() => setView('fav')}
+              icon={<FaStar className="text-yellow-400" size={13} />}
+              label="즐겨찾기"
+              count={countIn('fav')}
+            />
+            <NavItem
+              active={view === 'unfiled'}
+              onClick={() => setView('unfiled')}
+              icon={<FaFolder className="opacity-40" size={13} />}
+              label="미분류"
+              count={countIn('unfiled')}
+            />
+            {folders.map((f) => (
+              <NavItem
+                key={f}
+                active={view === f}
+                onClick={() => setView(f)}
+                onMenu={() => handleFolderMenu(f)}
+                icon={
+                  <FaFolder
+                    size={13}
+                    style={{
+                      color:
+                        sessionService.getFolderColor(f) || '#38bdf8',
+                    }}
+                  />
+                }
+                label={f}
+                count={countIn(f)}
+              />
+            ))}
+            <button
+              onClick={handleNewFolder}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none border border-dashed border-gray-300 dark:border-slate-500 text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"
+              title="새 폴더"
+            >
+              <FaPlus size={11} />
+              <span>새 폴더</span>
+            </button>
+          </div>
+          {/* 좌하단: 드로어로 보기 */}
           <button
-            onClick={handleNewFolder}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none border border-dashed border-gray-300 dark:border-slate-500 text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"
-            title="새 폴더"
+            onClick={openDrawer}
+            className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 md:mt-1"
+            title="좌측 드로어로 보기"
           >
-            <FaPlus size={11} />
-            <span>새 폴더</span>
+            <FaBars size={13} />
+            <span>드로어로 보기</span>
           </button>
         </div>
 
