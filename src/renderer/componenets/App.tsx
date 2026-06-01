@@ -9,6 +9,8 @@ import {
   useRef,
 } from 'react';
 import SessionSelect from './SessionSelect';
+import ProjectDrawer from './ProjectDrawer';
+import ProjectBrowser from './ProjectBrowser';
 import PreSetEditor from './PreSetEdtior';
 import SceneQueuControl, { SceneCell } from './SceneQueueControl';
 import TaskQueueControl from './TaskQueueControl';
@@ -411,6 +413,14 @@ export const App = observer(() => {
             <StackGrow className="relative">
               <FloatViewProvider>
                 <AppContextMenu />
+                <ProjectDrawer />
+                {appState.projectBrowserOpen && (
+                  <ProjectBrowser
+                    onClose={() => {
+                      appState.projectBrowserOpen = false;
+                    }}
+                  />
+                )}
                 <div className="h-full w-full flex flex-col overflow-hidden">
                   {isMobile && <div className="flex-none"><TobBar /></div>}
                   <div className="flex-1 min-h-0 flex flex-col overflow-hidden">

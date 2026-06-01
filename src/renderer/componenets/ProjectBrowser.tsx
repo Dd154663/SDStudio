@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
-import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV } from 'react-icons/fa';
+import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck } from 'react-icons/fa';
 import { sessionService, imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import ModalOverlay from './ModalOverlay';
@@ -92,6 +92,7 @@ const ProjectCard = ({
   name,
   isFav,
   isActive,
+  isSelected,
   folder,
   onSelect,
   onToggleFav,
@@ -100,6 +101,7 @@ const ProjectCard = ({
   name: string;
   isFav: boolean;
   isActive: boolean;
+  isSelected?: boolean;
   folder: string | null;
   onSelect: () => void;
   onToggleFav: () => void;
@@ -108,15 +110,26 @@ const ProjectCard = ({
   return (
     <div
       className={`cursor-pointer rounded-lg border-2 overflow-hidden transition-all hover:brightness-95 active:brightness-90 ${
-        isActive
-          ? 'border-sky-500 ring-2 ring-sky-300'
-          : isFav
-            ? 'border-yellow-400'
-            : 'border-gray-200 dark:border-slate-600'
+        isSelected
+          ? 'border-sky-500 ring-2 ring-sky-400'
+          : isActive
+            ? 'border-sky-500 ring-2 ring-sky-300'
+            : isFav
+              ? 'border-yellow-400'
+              : 'border-gray-200 dark:border-slate-600'
       }`}
       onClick={onSelect}
     >
-      <ProjectThumbnail name={name} />
+      <div className="relative">
+        <ProjectThumbnail name={name} />
+        {isSelected && (
+          <div className="absolute inset-0 bg-sky-500/30 p-1">
+            <div className="bg-sky-500 text-white rounded-full w-5 h-5 flex items-center justify-center">
+              <FaCheck size={10} />
+            </div>
+          </div>
+        )}
+      </div>
       <div className="px-2 py-1.5 bg-white dark:bg-slate-800 flex items-center gap-1">
         <button
           className="flex-none text-sm"
@@ -195,6 +208,8 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
   const [sessionNames, setSessionNames] = useState<string[]>([]);
   const [view, setView] = useState<FolderView>('all');
   const [, setVersion] = useState(0);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const filterRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(() => {
@@ -264,6 +279,73 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
     sessionService.toggleFavorite(name);
     refresh();
   }, [refresh]);
+
+  // A1: 현재 폴더 뷰에 새 프로젝트 생성 (폴더 뷰가 아니면 루트)
+  const createProjectInView = useCallback(async () => {
+    const folder =
+      view !== 'all' && view !== 'fav' && view !== 'unfiled' ? view : null;
+    const name = await appState.pushDialogAsync({
+      type: 'input-confirm',
+      text: folder ? `"${folder}" 폴더에 새 프로젝트 이름` : '신규 프로젝트 이름',
+    });
+    if (!name) return;
+    if (sessionService.list().includes(name)) {
+      appState.pushMessage('이미 존재하는 프로젝트 이름입니다.');
+      return;
+    }
+    try {
+      await sessionService.add(name);
+      if (folder) {
+        try {
+          await sessionService.moveToFolder(name, folder);
+        } catch (e) {}
+      }
+      refresh();
+      appState.pushMessage(`프로젝트 "${name}"을(를) 만들었습니다.`);
+    } catch (e: any) {
+      appState.pushMessage(e.message || '프로젝트 생성에 실패했습니다.');
+    }
+  }, [view, refresh]);
+
+  // A3: 다중 선택 일괄 이동
+  const toggleSelect = useCallback((name: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }, []);
+
+  const exitSelect = useCallback(() => {
+    setSelectMode(false);
+    setSelected(new Set());
+  }, []);
+
+  const bulkMove = useCallback(async () => {
+    const count = selected.size;
+    if (count === 0) return;
+    const folderList = [...sessionService.listFolders()].sort(naturalCmp);
+    const items: { text: string; value: string }[] = [
+      { text: '📤 미분류로 이동', value: '__root__' },
+      ...folderList.map((f) => ({ text: '📁 ' + f, value: f })),
+    ];
+    const target = await appState.pushDialogAsync({
+      type: 'select',
+      text: `선택한 ${count}개 프로젝트 이동`,
+      items,
+    });
+    if (!target) return;
+    const folder = target === '__root__' ? null : target;
+    for (const name of selected) {
+      try {
+        await sessionService.moveToFolder(name, folder);
+      } catch (e) {}
+    }
+    exitSelect();
+    refresh();
+    appState.pushMessage(`${count}개 프로젝트를 이동했습니다.`);
+  }, [selected, exitSelect, refresh]);
 
   // 프로젝트를 폴더로 이동 (선택 다이얼로그)
   const moveProject = useCallback(async (name: string) => {
@@ -407,9 +489,60 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
             />
           </div>
 
+          {/* 액션 바: 새 프로젝트 / 다중 선택 */}
+          <div className="flex items-center gap-2 flex-none">
+            {!selectMode ? (
+              <>
+                <button
+                  onClick={createProjectInView}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm bg-sky-500 hover:bg-sky-600 text-white"
+                >
+                  <FaPlus size={11} />
+                  새 프로젝트
+                  {view !== 'all' && view !== 'fav' && view !== 'unfiled' && (
+                    <span className="opacity-80">· 📁{view}</span>
+                  )}
+                </button>
+                <div className="flex-1" />
+                <button
+                  onClick={() => setSelectMode(true)}
+                  className="px-2.5 py-1.5 rounded-lg text-sm bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600"
+                >
+                  선택
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-sm text-sky-600 dark:text-sky-400 font-medium">
+                  {selected.size}개 선택
+                </span>
+                <button
+                  onClick={() => setSelected(new Set(filtered))}
+                  className="px-2 py-1.5 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"
+                >
+                  전체 선택
+                </button>
+                <div className="flex-1" />
+                <button
+                  onClick={bulkMove}
+                  disabled={selected.size === 0}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm bg-sky-500 hover:bg-sky-600 text-white disabled:opacity-40"
+                >
+                  <FaFolder size={12} /> 폴더로 이동
+                </button>
+                <button
+                  onClick={exitSelect}
+                  className="px-2.5 py-1.5 rounded-lg text-sm bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600"
+                >
+                  취소
+                </button>
+              </>
+            )}
+          </div>
+
           <div className="flex-1 overflow-y-auto min-h-0">
-            {/* 최근 프로젝트 (전체 뷰 + 검색 없을 때만) */}
-            {view === 'all' && !filter.trim() && recentProjects.length > 0 && (
+            {/* 최근 프로젝트 (전체 뷰 + 검색 없을 때만, 선택 모드 제외) */}
+            {view === 'all' && !filter.trim() && !selectMode && recentProjects.length > 0 && (
               <div className="mb-4">
                 <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">최근 프로젝트</div>
                 <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
@@ -446,8 +579,11 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                       name={name}
                       isFav={sessionService.isFavorite(name)}
                       isActive={curName === name}
+                      isSelected={selectMode && selected.has(name)}
                       folder={sessionService.getFolderOf(name)}
-                      onSelect={() => selectProject(name)}
+                      onSelect={() =>
+                        selectMode ? toggleSelect(name) : selectProject(name)
+                      }
                       onToggleFav={() => toggleFav(name)}
                       onMove={() => moveProject(name)}
                     />

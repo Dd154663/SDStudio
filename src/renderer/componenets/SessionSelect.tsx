@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { DropdownSelect, Option } from './UtilComponents';
-import { FaPlus, FaPuzzlePiece, FaShare, FaThLarge, FaTrashAlt, FaTrashRestore, FaUserAlt, FaTimes } from 'react-icons/fa';
-import ProjectBrowser, { pushRecentProject } from './ProjectBrowser';
+import { FaPlus, FaPuzzlePiece, FaShare, FaThLarge, FaTrashAlt, FaTrashRestore, FaUserAlt, FaTimes, FaBars } from 'react-icons/fa';
+import { pushRecentProject } from './ProjectBrowser';
 import Tooltip from './Tooltip';
 import { sessionService, imageService, backend, zipService, workFlowService, trashService, isMobile } from '../models';
 import { appState } from '../models/AppService';
@@ -15,7 +15,6 @@ import { runInAction } from 'mobx';
 const SessionSelect = observer(() => {
   const [sessionNames, setSessionNames] = useState<string[]>([]);
   const [showCharacterPresets, setShowCharacterPresets] = useState(false);
-  const [showProjectBrowser, setShowProjectBrowser] = useState(false);
   useEffect(() => {
     const onListUpdated = () => {
       setSessionNames(sessionService.list());
@@ -119,9 +118,6 @@ const SessionSelect = observer(() => {
 
   return (
     <div className="flex gap-2 items-center w-full flex-wrap">
-      {showProjectBrowser && (
-        <ProjectBrowser onClose={() => setShowProjectBrowser(false)} />
-      )}
       {showCharacterPresets && appState.curSession && (
         <CharacterPresetFloatEditor
           onClose={() => setShowCharacterPresets(false)}
@@ -229,6 +225,16 @@ const SessionSelect = observer(() => {
         <span className="hidden md:inline whitespace-nowrap text-sub">
           프로젝트:{' '}
         </span>
+        <Tooltip content="프로젝트 목록(폴더)">
+          <button
+            className="icon-button nback-sky flex-none"
+            onClick={() => {
+              appState.projectDrawerOpen = true;
+            }}
+          >
+            <FaBars size={16} />
+          </button>
+        </Tooltip>
         <div className="flex-1 min-w-0">
           <DropdownSelect
             menuPlacement="top"
@@ -250,7 +256,7 @@ const SessionSelect = observer(() => {
           />
         </div>
         <Tooltip content="프로젝트 탐색">
-        <button className={`icon-button nback-sky mx-1`} onClick={() => setShowProjectBrowser(true)}>
+        <button className={`icon-button nback-sky mx-1`} onClick={() => { appState.projectBrowserOpen = true; }}>
           <FaThLarge size={16} />
         </button>
         </Tooltip>

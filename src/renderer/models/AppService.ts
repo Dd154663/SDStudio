@@ -77,6 +77,9 @@ export class AppState {
   @observable accessor samples: number = 10;
   @observable accessor progressDialog: ProgressDialog | undefined = undefined;
   @observable accessor externalImage: string | undefined = undefined;
+  // 프로젝트 좌측 드로어 / 그리드 탐색기 모달 열림 상태 (앱 전역)
+  @observable accessor projectDrawerOpen: boolean = false;
+  @observable accessor projectBrowserOpen: boolean = false;
   /** 현재 적용된 캐릭터 프리셋 이름 (shared에서 읽음 — 영속화됨) */
   get appliedCharacterPreset(): string | undefined {
     const session = this.curSession;
