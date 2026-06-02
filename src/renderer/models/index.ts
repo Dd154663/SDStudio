@@ -31,6 +31,7 @@ import { TrashService } from './TrashService';
 import { CyclingSessionService } from './CyclingSessionService';
 import { GlobalPieceService } from './GlobalPieceService';
 import { GlobalPresetService } from './GlobalPresetService';
+import { GlobalCharacterPresetService } from './GlobalCharacterPresetService';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -72,6 +73,9 @@ globalPieceService.load();
 export const globalPresetService = new GlobalPresetService();
 globalPresetService.load();
 
+export const globalCharacterPresetService = new GlobalCharacterPresetService();
+globalCharacterPresetService.load();
+
 export const promptService = new PromptService();
 
 export const taskQueueService = new TaskQueueService(taskHandlers);
@@ -97,6 +101,7 @@ backend.onClose(() => {
       await sessionService.flushOnClose();
       await globalPresetService.flushSave();
       await globalPieceService.flushSave();
+      await globalCharacterPresetService.flushSave();
     } catch (e) {
       console.error('종료 시 저장 실패:', e);
     } finally {

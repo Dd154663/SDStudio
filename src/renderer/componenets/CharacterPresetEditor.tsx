@@ -27,14 +27,38 @@ import {
   taskQueueService,
   backend,
   isMobile,
+  globalCharacterPresetService,
 } from '../models';
 import { appState } from '../models/AppService';
-import { FaPlay, FaPause, FaStop, FaSync, FaDownload, FaUpload } from 'react-icons/fa';
+import { FaPlay, FaPause, FaStop, FaSync, FaDownload, FaUpload, FaGlobe, FaUsers, FaCloudUploadAlt, FaCloudDownloadAlt } from 'react-icons/fa';
+import type { IGlobalCharacterPresetEntry } from '../models/GlobalCharacterPresetService';
 import { FileUploadBase64 } from './UtilComponents';
 import PromptEditTextArea from './PromptEditTextArea';
 import ModalOverlay from './ModalOverlay';
 import { useDrag, useDrop } from 'react-dnd';
 import { getRefDefaults, EditableSliderValue } from './PreSetEdtior';
+
+// 프리셋 편집기의 이미지 저장/표시 백엔드 (로컬=세션 디렉터리, 글로벌=글로벌 디렉터리)
+export interface PresetImageBackend {
+  storeVibe: (base64: string) => Promise<string>;
+  storeReference: (base64: string) => Promise<string>;
+  vibePath: (token: string) => string;
+  referencePath: (token: string) => string;
+}
+
+const makeSessionImageBackend = (session: any): PresetImageBackend => ({
+  storeVibe: (b) => imageService.storeVibeImage(session, b),
+  storeReference: (b) => imageService.storeReferenceImage(session, b),
+  vibePath: (t) => imageService.getVibeImagePath(session, t),
+  referencePath: (t) => imageService.getReferenceImagePath(session, t),
+});
+
+const globalImageBackend: PresetImageBackend = {
+  storeVibe: (b) => globalCharacterPresetService.storeVibeForEditor(b),
+  storeReference: (b) => globalCharacterPresetService.storeReferenceForEditor(b),
+  vibePath: (t) => globalCharacterPresetService.getImagePath(t),
+  referencePath: (t) => globalCharacterPresetService.getImagePath(t),
+};
 
 // ─── 바이브 이미지 컴포넌트 ────────────────────────────────────
 const VibeImage = ({
@@ -138,6 +162,7 @@ interface CharacterPresetCardProps {
   onApplyCharacter: () => void;
   onDuplicate: () => void;
   onMove: (fromIndex: number, toIndex: number) => void;
+  onCopyToGlobal?: () => void;
   isEasyMode: boolean;
   hideActions?: boolean;
 }
@@ -151,6 +176,7 @@ const CharacterPresetCard = observer(({
   onApplyCharacter,
   onDuplicate,
   onMove,
+  onCopyToGlobal,
   isEasyMode,
   hideActions,
 }: CharacterPresetCardProps) => {
@@ -245,6 +271,16 @@ const CharacterPresetCard = observer(({
             <FaCopy size={12} />
           </button>
         </Tooltip>
+        {onCopyToGlobal && (
+          <Tooltip content="글로벌로 복사">
+            <button
+              className="w-8 h-8 rounded-full bg-purple-500 hover:bg-purple-600 text-white flex items-center justify-center shadow-lg transition-colors"
+              onClick={(e) => { e.stopPropagation(); onCopyToGlobal(); }}
+            >
+              <FaCloudUploadAlt size={13} />
+            </button>
+          </Tooltip>
+        )}
         <Tooltip content="삭제">
           <button
             className="w-8 h-8 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-lg transition-colors"
@@ -258,12 +294,198 @@ const CharacterPresetCard = observer(({
   );
 });
 
+// ─── 글로벌 캐릭터 프리셋 카드 (보라색) ───────────────────────
+const GlobalCardImage = ({
+  entry,
+  className,
+}: {
+  entry: IGlobalCharacterPresetEntry;
+  className: string;
+}) => {
+  const [img, setImg] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const p: any = entry.preset;
+      const file =
+        p.representativeImage ||
+        p.characterReferences?.[0]?.path ||
+        p.vibes?.[0]?.path;
+      if (!file) {
+        if (!cancelled) setImg(null);
+        return;
+      }
+      const data = await globalCharacterPresetService.fetchImageData(file);
+      if (!cancelled) setImg(data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [entry]);
+  if (img) {
+    return <img src={img} className={className} draggable={false} />;
+  }
+  return (
+    <div
+      className={
+        className +
+        ' flex flex-col items-center justify-center bg-purple-50 dark:bg-purple-900/20'
+      }
+    >
+      <FaUserAlt className="text-3xl text-purple-300 dark:text-purple-500 mb-1" />
+      <span className="text-xs text-purple-400 dark:text-purple-300 truncate max-w-full px-2">
+        {entry.name}
+      </span>
+    </div>
+  );
+};
+
+const GlobalCharacterPresetCard = ({
+  entry,
+  index,
+  isEasyMode,
+  onApplyEasy,
+  onApplyCharacter,
+  onLoad,
+  onEdit,
+  onDuplicate,
+  onDelete,
+  onMove,
+}: {
+  entry: IGlobalCharacterPresetEntry;
+  index: number;
+  isEasyMode: boolean;
+  onApplyEasy: () => void;
+  onApplyCharacter: () => void;
+  onLoad: () => void;
+  onEdit: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  onMove: (fromIndex: number, toIndex: number) => void;
+}) => {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [{ isDragging }, drag] = useDrag(
+    () => ({
+      type: 'global-character-preset-card',
+      item: { index },
+      collect: (monitor) => ({ isDragging: monitor.isDragging() }),
+    }),
+    [index],
+  );
+  const [{ isOver }, drop] = useDrop(
+    () => ({
+      accept: 'global-character-preset-card',
+      drop: (item: { index: number }) => {
+        if (item.index !== index) {
+          onMove(item.index, index);
+          item.index = index;
+        }
+      },
+      collect: (monitor) => ({ isOver: monitor.isOver() }),
+    }),
+    [index, onMove],
+  );
+  drag(drop(ref));
+
+  const p: any = entry.preset;
+  const vcount = p.vibes?.length || 0;
+  const rcount = p.characterReferences?.length || 0;
+  return (
+    <div
+      ref={ref}
+      className={
+        'group relative rounded-lg bg-white dark:bg-slate-800 border-2 overflow-hidden transition-all hover:shadow-lg ' +
+        (isDragging ? 'opacity-30 ' : '') +
+        (isOver
+          ? 'border-purple-400 ring-2 ring-purple-400 '
+          : 'border-purple-300 dark:border-purple-600 ')
+      }
+    >
+      <div
+        className="relative overflow-hidden aspect-[3/4]"
+        onClick={() => { if (!isMobile) onEdit(); }}
+      >
+        <GlobalCardImage entry={entry} className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-black/0 md:group-hover:bg-black/40 transition-colors duration-200 pointer-events-none" />
+        <div className="absolute top-1.5 left-1.5 bg-purple-500 text-white text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow z-10">
+          <FaGlobe size={9} />
+          글로벌
+        </div>
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-2.5 pt-6 pb-2">
+          <div className="text-sm text-white font-medium drop-shadow truncate">
+            {entry.name}
+          </div>
+          <div className="text-xs text-white/70 drop-shadow">
+            {vcount > 0 && `V:${vcount}`}
+            {vcount > 0 && rcount > 0 && ' '}
+            {rcount > 0 && `R:${rcount}`}
+            {vcount === 0 && rcount === 0 && '이미지 없음'}
+          </div>
+        </div>
+        <div className="absolute top-0 left-0 right-0 flex flex-wrap justify-center items-center gap-1 z-20 py-1.5 px-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">
+          {isEasyMode && (
+            <Tooltip content="불러와서 이지모드 적용">
+              <button
+                className="w-8 h-8 rounded-full bg-sky-500 hover:bg-sky-600 text-white flex items-center justify-center shadow-lg transition-colors"
+                onClick={(e) => { e.stopPropagation(); onApplyEasy(); }}
+              >
+                <FaFont size={12} />
+              </button>
+            </Tooltip>
+          )}
+          <Tooltip content="불러와서 캐릭터 프롬프트 적용">
+            <button
+              className="w-8 h-8 rounded-full bg-yellow-500 hover:bg-yellow-600 text-white flex items-center justify-center shadow-lg transition-colors"
+              onClick={(e) => { e.stopPropagation(); onApplyCharacter(); }}
+            >
+              <FaUserAlt size={12} />
+            </button>
+          </Tooltip>
+          <Tooltip content="프로젝트로 불러오기">
+            <button
+              className="w-8 h-8 rounded-full bg-purple-500 hover:bg-purple-600 text-white flex items-center justify-center shadow-lg transition-colors"
+              onClick={(e) => { e.stopPropagation(); onLoad(); }}
+            >
+              <FaCloudDownloadAlt size={13} />
+            </button>
+          </Tooltip>
+          <Tooltip content="편집">
+            <button
+              className="w-8 h-8 rounded-full bg-green-500 hover:bg-green-600 text-white flex items-center justify-center shadow-lg transition-colors"
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+            >
+              <FaEdit size={12} />
+            </button>
+          </Tooltip>
+          <Tooltip content="복제">
+            <button
+              className="w-8 h-8 rounded-full bg-orange-500 hover:bg-orange-600 text-white flex items-center justify-center shadow-lg transition-colors"
+              onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
+            >
+              <FaCopy size={12} />
+            </button>
+          </Tooltip>
+          <Tooltip content="삭제">
+            <button
+              className="w-8 h-8 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-lg transition-colors"
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            >
+              <FaTrash size={12} />
+            </button>
+          </Tooltip>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── 편집 폼 ─────────────────────────────────────────────────
 interface CharacterPresetInnerEditorProps {
   preset: CharacterPreset;
   onSave: (preset: CharacterPreset) => void;
   onCancel: () => void;
   isNew: boolean;
+  imageBackend: PresetImageBackend;
 }
 
 const CharacterPresetInnerEditor = observer(({
@@ -271,8 +493,8 @@ const CharacterPresetInnerEditor = observer(({
   onSave,
   onCancel,
   isNew,
+  imageBackend,
 }: CharacterPresetInnerEditorProps) => {
-  const { curSession } = appState;
   const [name, setName] = useState(preset.name);
   const [characterPrompt, setCharacterPrompt] = useState(preset.characterPrompt);
   const [characterUC, setCharacterUC] = useState(preset.characterUC);
@@ -294,7 +516,7 @@ const CharacterPresetInnerEditor = observer(({
   // 바이브 이미지 추가
   const handleVibeChange = async (vibe: string) => {
     if (!vibe) return;
-    const path = await imageService.storeVibeImage(curSession!, vibe);
+    const path = await imageBackend.storeVibe(vibe);
     const newVibe = VibeItem.fromJSON({ path: path, info: 1.0, strength: 0.6 });
     setVibes((prev) => [...prev, newVibe]);
   };
@@ -302,7 +524,7 @@ const CharacterPresetInnerEditor = observer(({
   // 캐릭터 레퍼런스 이미지 추가
   const handleReferenceChange = async (reference: string) => {
     if (!reference) return;
-    const path = await imageService.storeReferenceImage(curSession!, reference);
+    const path = await imageBackend.storeReference(reference);
     const defaults = getRefDefaults();
     const newRef = ReferenceItem.fromJSON({
       path: path,
@@ -357,7 +579,7 @@ const CharacterPresetInnerEditor = observer(({
   // 대표 이미지 업로드
   const handleRepImageUpload = async (base64: string) => {
     if (!base64) return;
-    const path = await imageService.storeVibeImage(curSession!, base64);
+    const path = await imageBackend.storeVibe(base64);
     setRepresentativeImage(path);
   };
 
@@ -448,9 +670,9 @@ const CharacterPresetInnerEditor = observer(({
       <div className="mb-4 p-3 border border-gray-200 dark:border-gray-600 rounded-lg">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">대표 이미지</div>
         <div className="flex items-start gap-3">
-          {representativeImage && curSession ? (
+          {representativeImage ? (
             <VibeImage
-              path={imageService.getVibeImagePath(curSession, representativeImage)}
+              path={imageBackend.vibePath(representativeImage)}
               className="w-20 h-20 object-cover rounded-lg flex-none"
             />
           ) : (
@@ -498,8 +720,8 @@ const CharacterPresetInnerEditor = observer(({
                 <VibeImage
                   path={
                     item.type === 'vibe'
-                      ? imageService.getVibeImagePath(curSession!, item.path)
-                      : imageService.getReferenceImagePath(curSession!, item.path)
+                      ? imageBackend.vibePath(item.path)
+                      : imageBackend.referencePath(item.path)
                   }
                   className="w-14 h-14 object-cover"
                 />
@@ -573,7 +795,7 @@ const CharacterPresetInnerEditor = observer(({
         {vibes.map((vibe, index) => (
           <div key={vibe.path + index} className="border border-gray-300 dark:border-gray-600 mt-2 p-2 flex md:flex-row flex-col gap-2 items-start rounded-lg">
             <VibeImage
-              path={imageService.getVibeImagePath(curSession!, vibe.path)}
+              path={imageBackend.vibePath(vibe.path)}
               className="flex-none w-28 h-28 object-cover rounded"
             />
             <div className="flex flex-col gap-2 w-full min-w-0">
@@ -646,7 +868,7 @@ const CharacterPresetInnerEditor = observer(({
             }`}
           >
             <VibeImage
-              path={imageService.getReferenceImagePath(curSession!, ref.path)}
+              path={imageBackend.referencePath(ref.path)}
               className="flex-none w-28 h-28 object-cover rounded"
             />
             <div className="flex flex-col gap-2 w-full min-w-0">
@@ -938,6 +1160,17 @@ export const CharacterPresetEditor = observer(({
   const { curSession } = appState;
   const [editingPreset, setEditingPreset] = useState<CharacterPreset | null>(null);
   const [isNew, setIsNew] = useState(false);
+  const [editTarget, setEditTarget] = useState<'local' | 'global'>('local');
+  const [editGlobalId, setEditGlobalId] = useState<string | null>(null);
+  // 로컬/글로벌 뷰 전환
+  const [globalView, setGlobalView] = useState(false);
+  const [, setGlobalVersion] = useState(0);
+  useEffect(() => {
+    const onChanged = () => setGlobalVersion((v) => v + 1);
+    globalCharacterPresetService.addEventListener('changed', onChanged);
+    return () =>
+      globalCharacterPresetService.removeEventListener('changed', onChanged);
+  }, []);
   // 순차 생성 모드
   const [cyclingMode, setCyclingMode] = useState(false);
   const [selectedPresets, setSelectedPresets] = useState<Set<string>>(new Set());
@@ -1008,29 +1241,66 @@ export const CharacterPresetEditor = observer(({
   const handleAddNew = () => {
     const newPreset = new CharacterPreset();
     newPreset.name = '새 캐릭터 프리셋';
+    setEditTarget('local');
+    setEditGlobalId(null);
     setEditingPreset(newPreset);
     setIsNew(true);
   };
 
   const handleEdit = (preset: CharacterPreset) => {
     const copy = CharacterPreset.fromJSON(preset.toJSON());
+    setEditTarget('local');
+    setEditGlobalId(null);
     setEditingPreset(copy);
     setIsNew(false);
   };
 
-  const handleSave = (preset: CharacterPreset) => {
-    if (isNew) {
-      curSession.addCharacterPreset(preset);
+  const handleAddNewGlobal = () => {
+    const newPreset = new CharacterPreset();
+    newPreset.name = '새 글로벌 프리셋';
+    setEditTarget('global');
+    setEditGlobalId(null);
+    setEditingPreset(newPreset);
+    setIsNew(true);
+  };
+
+  const handleEditGlobal = (entry: IGlobalCharacterPresetEntry) => {
+    const copy = CharacterPreset.fromJSON(
+      JSON.parse(JSON.stringify(entry.preset)),
+    );
+    setEditTarget('global');
+    setEditGlobalId(entry.id);
+    setEditingPreset(copy);
+    setIsNew(false);
+  };
+
+  const handleSave = async (preset: CharacterPreset) => {
+    if (editTarget === 'global') {
+      try {
+        if (isNew) {
+          await globalCharacterPresetService.addPresetObject(preset);
+        } else if (editGlobalId) {
+          await globalCharacterPresetService.updateEntry(editGlobalId, preset);
+        }
+      } catch (e: any) {
+        appState.pushMessage(e.message || '글로벌 프리셋 저장 실패');
+      }
     } else {
-      curSession.updateCharacterPreset(editingPreset!.name, preset);
+      if (isNew) {
+        curSession.addCharacterPreset(preset);
+      } else {
+        curSession.updateCharacterPreset(editingPreset!.name, preset);
+      }
     }
     setEditingPreset(null);
     setIsNew(false);
+    setEditGlobalId(null);
   };
 
   const handleCancel = () => {
     setEditingPreset(null);
     setIsNew(false);
+    setEditGlobalId(null);
   };
 
   const handleDelete = (preset: CharacterPreset) => {
@@ -1061,6 +1331,76 @@ export const CharacterPresetEditor = observer(({
     if (onApplyPreset) onApplyPreset(preset, 'character');
   };
 
+  // ─── 글로벌 캐릭터 프리셋 ───
+  const handleCopyToGlobal = async (preset: CharacterPreset) => {
+    try {
+      await globalCharacterPresetService.addFromSessionPreset(curSession, preset);
+      appState.pushMessage(`"${preset.name}"을(를) 글로벌로 복사했습니다`);
+    } catch (e: any) {
+      appState.pushMessage(e.message || '글로벌 복사에 실패했습니다');
+    }
+  };
+
+  const handleLoadGlobal = async (entry: IGlobalCharacterPresetEntry) => {
+    try {
+      const p = await globalCharacterPresetService.instantiateIntoSession(
+        curSession,
+        entry.id,
+      );
+      appState.pushMessage(`"${p.name}"을(를) 프로젝트로 불러왔습니다`);
+    } catch (e: any) {
+      appState.pushMessage(e.message || '불러오기에 실패했습니다');
+    }
+  };
+
+  const handleRenameGlobal = (entry: IGlobalCharacterPresetEntry) => {
+    appState.pushDialog({
+      type: 'input-confirm',
+      text: '새 글로벌 프리셋 이름을 입력해주세요',
+      callback: async (v?: string) => {
+        if (!v) return;
+        try {
+          await globalCharacterPresetService.rename(entry.id, v);
+        } catch (e: any) {
+          appState.pushMessage(e.message || '이름 변경에 실패했습니다');
+        }
+      },
+    });
+  };
+
+  const handleDeleteGlobal = (entry: IGlobalCharacterPresetEntry) => {
+    appState.pushDialog({
+      type: 'confirm',
+      text: `글로벌 프리셋 "${entry.name}"을(를) 삭제하시겠습니까?\n(이 작업은 모든 프로젝트에 영향을 줍니다)`,
+      callback: async () => {
+        await globalCharacterPresetService.delete(entry.id);
+      },
+    });
+  };
+
+  const handleDuplicateGlobal = (entry: IGlobalCharacterPresetEntry) => {
+    globalCharacterPresetService.duplicateEntry(entry.id);
+  };
+
+  // 글로벌 프리셋 적용: 현재 프로젝트로 자동 불러온 뒤(이미지 복사) 적용
+  const handleApplyGlobal = async (
+    entry: IGlobalCharacterPresetEntry,
+    mode: 'easy' | 'character',
+  ) => {
+    try {
+      const local = await globalCharacterPresetService.instantiateIntoSession(
+        curSession,
+        entry.id,
+      );
+      if (onApplyPreset) onApplyPreset(local, mode);
+      appState.pushMessage(`"${entry.name}"을(를) 불러와 적용했습니다`);
+    } catch (e: any) {
+      appState.pushMessage(e.message || '적용에 실패했습니다');
+    }
+  };
+
+  const globalEntries = globalCharacterPresetService.list();
+
   // 편집 모드
   if (editingPreset) {
     return (
@@ -1069,6 +1409,11 @@ export const CharacterPresetEditor = observer(({
         onSave={handleSave}
         onCancel={handleCancel}
         isNew={isNew}
+        imageBackend={
+          editTarget === 'global'
+            ? globalImageBackend
+            : makeSessionImageBackend(curSession)
+        }
       />
     );
   }
@@ -1144,7 +1489,22 @@ export const CharacterPresetEditor = observer(({
       {/* 상단 컨트롤 */}
       <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          {presets.length >= 2 && (
+          {/* 로컬/글로벌 전환 토글 */}
+          <button
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+              globalView
+                ? 'bg-purple-500 text-white'
+                : 'bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500'
+            }`}
+            onClick={() => {
+              if (!globalView && cyclingMode) exitCyclingMode();
+              setGlobalView(!globalView);
+            }}
+          >
+            {globalView ? <FaGlobe size={12} /> : <FaUsers size={12} />}
+            {globalView ? '글로벌' : '로컬'}
+          </button>
+          {!globalView && presets.length >= 2 && (
             <button
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
                 cyclingMode
@@ -1159,7 +1519,7 @@ export const CharacterPresetEditor = observer(({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {presets.length > 0 && (
+          {!globalView && presets.length > 0 && (
             <Tooltip content="모든 프리셋 내보내기">
               <button
                 className="px-3 py-1.5 rounded-lg text-sm bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500 transition-colors flex items-center gap-1.5"
@@ -1170,28 +1530,69 @@ export const CharacterPresetEditor = observer(({
               </button>
             </Tooltip>
           )}
-          <Tooltip content="프리셋 파일 불러오기">
-            <label className="px-3 py-1.5 rounded-lg text-sm bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500 transition-colors flex items-center gap-1.5 cursor-pointer">
-              <FaUpload size={11} />
-              불러오기
-              <input
-                type="file"
-                accept=".json"
-                className="hidden"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    await importCharacterPresets(curSession, file);
-                    e.target.value = '';
-                  }
-                }}
-              />
-            </label>
-          </Tooltip>
+          {!globalView && (
+            <Tooltip content="프리셋 파일 불러오기">
+              <label className="px-3 py-1.5 rounded-lg text-sm bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500 transition-colors flex items-center gap-1.5 cursor-pointer">
+                <FaUpload size={11} />
+                불러오기
+                <input
+                  type="file"
+                  accept=".json"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      await importCharacterPresets(curSession, file);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+              </label>
+            </Tooltip>
+          )}
         </div>
       </div>
 
-      {presets.length === 0 ? (
+      {globalView ? (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile
+              ? 'repeat(2, 1fr)'
+              : 'repeat(auto-fill, minmax(180px, 1fr))',
+            gap: '0.75rem',
+            alignContent: 'start',
+          }}
+        >
+          {/* 새 글로벌 프리셋 카드 */}
+          <div
+            className="rounded-lg border-2 border-dashed border-purple-300 dark:border-purple-600 hover:border-purple-500 cursor-pointer flex flex-col items-center justify-center aspect-[3/4] transition-colors group"
+            onClick={handleAddNewGlobal}
+          >
+            <FaPlus className="text-2xl text-purple-400 dark:text-purple-500 group-hover:text-purple-600 transition-colors mb-2" />
+            <span className="text-sm text-purple-400 dark:text-purple-500 group-hover:text-purple-600 transition-colors">
+              새 글로벌 프리셋
+            </span>
+          </div>
+          {globalEntries.map((entry, i) => (
+            <GlobalCharacterPresetCard
+              key={entry.id}
+              entry={entry}
+              index={i}
+              isEasyMode={isEasyMode}
+              onApplyEasy={() => handleApplyGlobal(entry, 'easy')}
+              onApplyCharacter={() => handleApplyGlobal(entry, 'character')}
+              onLoad={() => handleLoadGlobal(entry)}
+              onEdit={() => handleEditGlobal(entry)}
+              onDuplicate={() => handleDuplicateGlobal(entry)}
+              onDelete={() => handleDeleteGlobal(entry)}
+              onMove={(from, to) =>
+                globalCharacterPresetService.reorder(from, to)
+              }
+            />
+          ))}
+        </div>
+      ) : presets.length === 0 ? (
         <div className="text-center py-12">
           <FaUserAlt className="text-4xl mx-auto mb-3 text-gray-300 dark:text-gray-600" />
           <div className="text-gray-500 dark:text-gray-400 mb-1">캐릭터 프리셋이 없습니다</div>
@@ -1253,6 +1654,7 @@ export const CharacterPresetEditor = observer(({
                   onApplyCharacter={() => handleApplyCharacter(preset)}
                   onDuplicate={() => handleDuplicate(preset)}
                   onMove={(from, to) => curSession.moveCharacterPreset(from, to)}
+                  onCopyToGlobal={() => handleCopyToGlobal(preset)}
                   isEasyMode={isEasyMode}
                   hideActions={cyclingMode}
                 />
