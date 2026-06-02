@@ -46,8 +46,12 @@ export class ZipService extends EventTarget {
 
   async zipFiles(files: FileEntry[], outPath: string) {
     this.isZipping = true;
-    await backend.zipFiles(files, outPath);
-    this.isZipping = false;
+    try {
+      await backend.zipFiles(files, outPath);
+    } finally {
+      // 예외가 나도 잠금이 영구 고착되지 않도록 항상 해제
+      this.isZipping = false;
+    }
   }
 }
 

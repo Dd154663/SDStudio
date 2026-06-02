@@ -689,6 +689,525 @@ export class AppState {
       },
     });
   }
+  // ===== 폴더 단위 내보내기/불러오기 =====
+  // 프로젝트 메뉴와 동일하지만 범위를 폴더 전체로 확장한다.
+  // - 불러오기: 가져온 프로젝트를 해당 폴더로 이동
+  // - 내보내기: 폴더 내 프로젝트를 개별 내보낸 뒤 한 번 더 묶어 폴더째 압축
+  private projectsInFolder(folder: string): string[] {
+    return sessionService
+      .list()
+      .filter((n) => sessionService.getFolderOf(n) === folder)
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }
+
+  folderBackupMenu(folder: string) {
+    appState.pushDialog({
+      type: 'select',
+      text: `폴더 "${folder}"`,
+      items: [
+        { text: '파일 불러오기', value: 'load' },
+        { text: '프로젝트 백업 불러오기', value: 'loadDeep' },
+        { text: '프로젝트 파일 내보내기 (이미지 미포함)', value: 'save' },
+        { text: '프로젝트 백업 내보내기 (이미지 포함)', value: 'saveDeep' },
+        { text: '🖼️ 이미지 내보내기', value: 'saveImages' },
+      ],
+      callback: async (value) => {
+        if (value === 'save') await appState.folderExportShallow(folder);
+        else if (value === 'saveDeep') await appState.folderExportDeep(folder);
+        else if (value === 'saveImages') await appState.folderExportImages(folder);
+        else if (value === 'load') await appState.folderImportFile(folder);
+        else if (value === 'loadDeep') appState.folderImportDeep(folder);
+      },
+    });
+  }
+
+  async folderExportShallow(folder: string) {
+    const names = this.projectsInFolder(folder);
+    if (names.length === 0) {
+      appState.pushMessage('폴더에 프로젝트가 없습니다.');
+      return;
+    }
+    if (zipService.isZipping) {
+      appState.pushMessage('이미 내보내기 작업이 진행중입니다.');
+      return;
+    }
+    appState.setProgressDialog({ text: '프로젝트 파일 내보내는 중..', done: 0, total: names.length });
+    const tmpDir = 'tmp/' + v4();
+    const entries: { path: string; name: string }[] = [];
+    let done = 0;
+    for (const name of names) {
+      try {
+        const session = await sessionService.get(name);
+        if (session) {
+          const proj = await sessionService.exportSessionShallow(session);
+          const p = tmpDir + '/' + name + '.json';
+          await backend.writeFile(p, JSON.stringify(proj));
+          entries.push({ path: p, name: name + '.json' });
+        }
+      } catch (e) {}
+      appState.setProgressDialog({ text: '프로젝트 파일 내보내는 중..', done: ++done, total: names.length });
+    }
+    if (entries.length === 0) {
+      appState.setProgressDialog(undefined);
+      appState.pushMessage('내보낼 프로젝트가 없습니다.');
+      return;
+    }
+    appState.setProgressDialog({ text: '압축 파일 생성중..', done: 0, total: 1 });
+    const outPath = 'exports/' + folder + '_projects_' + Date.now() + '.tar';
+    try {
+      await zipService.zipFiles(entries, outPath);
+    } catch (e: any) {
+      appState.setProgressDialog(undefined);
+      appState.pushMessage(e.message);
+      return;
+    }
+    appState.setProgressDialog(undefined);
+    appState.pushDialog({ type: 'yes-only', text: `폴더 "${folder}" 내보내기가 완료되었습니다. (${entries.length}개)` });
+    await backend.showFile(outPath);
+  }
+
+  async folderExportDeep(folder: string) {
+    const names = this.projectsInFolder(folder);
+    if (names.length === 0) {
+      appState.pushMessage('폴더에 프로젝트가 없습니다.');
+      return;
+    }
+    if (zipService.isZipping) {
+      appState.pushMessage('이미 내보내기 작업이 진행중입니다.');
+      return;
+    }
+    appState.setProgressDialog({ text: '프로젝트 백업 생성중..', done: 0, total: names.length });
+    const tmpDir = 'tmp/' + v4();
+    const entries: { path: string; name: string }[] = [];
+    let done = 0;
+    for (const name of names) {
+      try {
+        const session = await sessionService.get(name);
+        if (session) {
+          const tarPath = tmpDir + '/' + name + '.tar';
+          await sessionService.exportSessionDeep(session, tarPath);
+          entries.push({ path: tarPath, name: name + '.tar' });
+        }
+      } catch (e) {}
+      appState.setProgressDialog({ text: '프로젝트 백업 생성중..', done: ++done, total: names.length });
+    }
+    if (entries.length === 0) {
+      appState.setProgressDialog(undefined);
+      appState.pushMessage('내보낼 프로젝트가 없습니다.');
+      return;
+    }
+    appState.setProgressDialog({ text: '압축 파일 생성중..', done: 0, total: 1 });
+    const outPath = 'exports/' + folder + '_backup_' + Date.now() + '.tar';
+    try {
+      await zipService.zipFiles(entries, outPath);
+    } catch (e: any) {
+      appState.setProgressDialog(undefined);
+      appState.pushMessage(e.message);
+      return;
+    }
+    appState.setProgressDialog(undefined);
+    appState.pushDialog({ type: 'yes-only', text: `폴더 "${folder}" 백업이 완료되었습니다. (${entries.length}개)` });
+    await backend.showFile(outPath);
+  }
+
+  folderImportDeep(folder: string) {
+    appState.pushDialog({
+      type: 'input-confirm',
+      text: '새로운 프로젝트 이름을 입력해주세요',
+      callback: async (inputValue) => {
+        if (!inputValue) return;
+        if (sessionService.list().includes(inputValue)) {
+          appState.pushMessage('이미 존재하는 프로젝트 이름입니다.');
+          return;
+        }
+        const tarPath = await backend.selectFile();
+        if (!tarPath) return;
+        appState.setProgressDialog({ text: '프로젝트 백업을 불러오는 중입니다...', done: 0, total: 1 });
+        try {
+          await sessionService.importSessionDeep(tarPath, inputValue);
+        } catch (e: any) {
+          appState.setProgressDialog(undefined);
+          appState.pushMessage(e.message);
+          return;
+        }
+        try {
+          await sessionService.moveToFolder(inputValue, folder);
+        } catch (e) {}
+        appState.setProgressDialog(undefined);
+        appState.pushDialog({ type: 'yes-only', text: `"${folder}" 폴더로 백업을 불러왔습니다.` });
+      },
+    });
+  }
+
+  // 파일 불러오기: 가져온 직후 새로 생긴 프로젝트(들)를 폴더로 이동
+  async folderImportFile(folder: string) {
+    const before = new Set(sessionService.list());
+    const file = await getFirstFile();
+    if (!file) return;
+    appState.handleFile(file as any);
+    const newNames = await this.waitForNewProjects(before, 20000);
+    if (newNames.length === 0) return;
+    for (const n of newNames) {
+      try {
+        await sessionService.moveToFolder(n, folder);
+      } catch (e) {}
+    }
+    appState.pushMessage(`"${folder}" 폴더로 ${newNames.length}개 불러왔습니다.`);
+  }
+
+  // listupdated를 감시해 새로 추가된 프로젝트 이름을 모아 반환 (타임아웃 보호)
+  private waitForNewProjects(before: Set<string>, timeout: number): Promise<string[]> {
+    return new Promise((resolve) => {
+      let settled = false;
+      let settleTimer: any = null;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        sessionService.removeEventListener('listupdated', onUpd);
+        clearTimeout(timeoutTimer);
+        if (settleTimer) clearTimeout(settleTimer);
+        resolve(sessionService.list().filter((n) => !before.has(n)));
+      };
+      const onUpd = () => {
+        if (sessionService.list().some((n) => !before.has(n))) {
+          if (settleTimer) clearTimeout(settleTimer);
+          settleTimer = setTimeout(finish, 700);
+        }
+      };
+      const timeoutTimer = setTimeout(finish, timeout);
+      sessionService.addEventListener('listupdated', onUpd);
+    });
+  }
+
+  // 특정 세션의 이미지들을 (선택적 최적화까지 수행하여) 압축 엔트리 목록으로 만든다.
+  // exportPackage의 단일 이미지 내보내기 로직을 세션 인자형으로 재구성한 것.
+  private async buildSessionImageEntries(
+    session: Session,
+    type: 'scene' | 'inpaint',
+    prefix: string,
+    fav: boolean,
+    opt: string,
+    imageSize: number,
+    separator: string,
+    charsToReplace: Set<string>,
+  ): Promise<{ path: string; name: string }[]> {
+    let paths: { path: string; name: string }[] = [];
+    await imageService.refreshBatch(session);
+    const scenes = session.getScenes(type);
+    await Promise.allSettled(scenes.map((s) => gameService.refreshList(session, s)));
+    for (const scene of scenes) {
+      const cands = gameService.getOutputs(session, scene);
+      const imageMap: any = {};
+      cands.forEach((x) => {
+        imageMap[x] = true;
+      });
+      const images: string[] = [];
+      if (fav) {
+        if (scene.mains.length) {
+          for (const main of scene.mains) if (imageMap[main]) images.push(main);
+        } else if (cands.length) {
+          images.push(cands[0]);
+        }
+      } else {
+        for (const cand of cands) images.push(cand);
+      }
+      const characterPreset = this.getAppliedCharacterPreset();
+      const presetPrefix = characterPreset?.filenamePrefix || '';
+      const presetSuffix = characterPreset?.filenameSuffix || '';
+      let sceneName = scene.name;
+      let finalPrefix = prefix;
+      let finalPresetPrefix = presetPrefix ? presetPrefix + separator : '';
+      let finalPresetSuffix = presetSuffix ? separator + presetSuffix : '';
+      if (charsToReplace.size > 0) {
+        const escaped = Array.from(charsToReplace)
+          .map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+          .join('|');
+        const regex = new RegExp(`(${escaped})+`, 'g');
+        sceneName = sceneName.replace(regex, separator);
+        finalPrefix = finalPrefix.replace(regex, separator);
+        finalPresetPrefix = finalPresetPrefix.replace(regex, separator);
+        finalPresetSuffix = finalPresetSuffix.replace(regex, separator);
+      }
+      const isMirror =
+        scene.type === 'inpaint' &&
+        (scene as InpaintScene).workflowType === 'SDMirror';
+      for (let i = 0; i < images.length; i++) {
+        let imgPath = imageService.getOutputDir(session, scene) + '/' + images[i];
+        if (isMirror) {
+          const imgData = await imageService.fetchImage(imgPath);
+          if (imgData) {
+            const cropped = await cropMirrorResultFromDataUri(
+              imgData,
+              (scene as InpaintScene).mirrorCropX,
+            );
+            const tmpPath = 'tmp/' + v4() + '.png';
+            await backend.writeDataFile(tmpPath, cropped);
+            imgPath = tmpPath;
+          }
+        }
+        const baseName = finalPresetPrefix + finalPrefix + sceneName + finalPresetSuffix;
+        const name =
+          images.length === 1
+            ? baseName + '.png'
+            : baseName + separator + (i + 1).toString() + '.png';
+        paths.push({ path: imgPath, name });
+      }
+    }
+    if (opt !== 'original') {
+      const ext = opt === 'avif' ? '.avif' : '.webp';
+      const optimizeMethod =
+        opt === 'lossy'
+          ? ImageOptimizeMethod.LOSSY
+          : opt === 'avif'
+            ? ImageOptimizeMethod.AVIF
+            : ImageOptimizeMethod.LOSSLESS;
+      let done = 0;
+      let failCount = 0;
+      const config = await backend.getConfig();
+      const CONCURRENCY = Math.max(
+        1,
+        Math.min(4, config.exportConcurrency ?? (isMobile ? 2 : 4)),
+      );
+      const results: ({ path: string; name: string } | null)[] = new Array(
+        paths.length,
+      ).fill(null);
+      appState.exportProgress = {
+        text: '이미지 크기 최적화 중..',
+        done: 0,
+        total: paths.length,
+      };
+      const queue = paths.map((item, idx) => ({ item, idx }));
+      const workers = Array.from(
+        { length: Math.min(CONCURRENCY, queue.length) },
+        async () => {
+          while (queue.length > 0) {
+            const task = queue.shift();
+            if (!task) break;
+            const { item, idx } = task;
+            const outputPath = 'tmp/' + v4() + ext;
+            try {
+              await backend.resizeImage({
+                inputPath: item.path,
+                outputPath: outputPath,
+                maxHeight: imageSize,
+                maxWidth: imageSize,
+                optimize: optimizeMethod,
+              });
+              results[idx] = {
+                path: outputPath,
+                name: item.name.substring(0, item.name.length - 4) + ext,
+              };
+            } catch (e: any) {
+              failCount++;
+              console.error('이미지 최적화 실패:', item.path, e.message);
+            }
+            done++;
+            appState.exportProgress = {
+              text: '이미지 크기 최적화 중..',
+              done: done,
+              total: paths.length,
+            };
+          }
+        },
+      );
+      await Promise.all(workers);
+      paths = results.filter(
+        (r): r is { path: string; name: string } => r !== null,
+      );
+      if (failCount > 0) {
+        appState.pushMessage(`${failCount}개 이미지 최적화 실패 (건너뜀)`);
+      }
+    }
+    return paths;
+  }
+
+  // 폴더 일괄 이미지 내보내기: 프로젝트별 이미지를 모아 한 압축 파일로
+  // (프로젝트별 하위 폴더로 구분). 옵션은 폴더당 1회만 입력(프리셋 지원).
+  async folderExportImages(folder: string) {
+    const names = this.projectsInFolder(folder);
+    if (names.length === 0) {
+      appState.pushMessage('폴더에 프로젝트가 없습니다.');
+      return;
+    }
+    const opts = await this.askFolderImageOptions();
+    if (!opts) return;
+
+    // 폴더 내 모든 프로젝트의 씬 이름을 모아 특수문자 변환 여부를 한 번 질의
+    const sceneNames: string[] = [];
+    for (const name of names) {
+      try {
+        const session = await sessionService.get(name);
+        if (session) {
+          for (const s of session.getScenes('scene')) sceneNames.push(s.name);
+        }
+      } catch (e) {}
+    }
+    const charsToReplace = await this.detectSpecialCharsFromNames(
+      sceneNames,
+      opts.separator,
+    );
+    if (charsToReplace === undefined) return; // 취소
+
+    if (zipService.isZipping) {
+      appState.pushMessage('이미 내보내기 작업이 진행중입니다.');
+      return;
+    }
+    const allEntries: { path: string; name: string }[] = [];
+    let i = 0;
+    for (const name of names) {
+      appState.exportProgress = {
+        text: `이미지 수집 중.. (${name})`,
+        done: i,
+        total: names.length,
+      };
+      try {
+        const session = await sessionService.get(name);
+        if (session) {
+          const entries = await this.buildSessionImageEntries(
+            session,
+            'scene',
+            opts.prefix,
+            opts.fav,
+            opts.opt,
+            opts.imageSize,
+            opts.separator,
+            charsToReplace,
+          );
+          for (const e of entries) {
+            allEntries.push({ path: e.path, name: name + '/' + e.name });
+          }
+        }
+      } catch (e) {}
+      i++;
+    }
+    if (allEntries.length === 0) {
+      appState.exportProgress = undefined;
+      appState.pushMessage('내보낼 이미지가 없습니다.');
+      return;
+    }
+    appState.exportProgress = {
+      text: '이미지 압축파일 생성중..',
+      done: 0,
+      total: 1,
+    };
+    const outPath = 'exports/' + folder + '_images_' + Date.now() + '.tar';
+    try {
+      await zipService.zipFiles(allEntries, outPath);
+    } catch (e: any) {
+      appState.exportProgress = undefined;
+      appState.pushMessage(e.message);
+      return;
+    }
+    appState.exportProgress = undefined;
+    appState.pushDialog({
+      type: 'yes-only',
+      text: `폴더 "${folder}" 이미지 내보내기가 완료되었습니다. (${allEntries.length}장)`,
+    });
+    await backend.showFile(outPath);
+  }
+
+  // 이미지 내보내기 옵션을 한 번 입력 받는다 (프리셋 또는 직접 설정).
+  // 특수문자 치환은 폴더 일괄에서는 생략(빈 Set 사용).
+  private async askFolderImageOptions(): Promise<
+    { prefix: string; fav: boolean; opt: string; imageSize: number; separator: string } | undefined
+  > {
+    const presets = this.loadExportPresets();
+    const presetItems: { text: string; value: string }[] = presets.map(
+      (p: ExportPreset, idx: number) => ({ text: p.name, value: `preset_${idx}` }),
+    );
+    presetItems.push({ text: '⚙️ 프리셋 관리', value: '_manage' });
+    presetItems.push({ text: '── 직접 설정으로 내보내기 ──', value: '_manual' });
+    const choice = await appState.pushDialogAsync({
+      type: 'select',
+      text: '내보내기 방법을 선택해주세요',
+      items: presetItems,
+    });
+    if (!choice) return undefined;
+    if (choice === '_manage') {
+      this.openExportPresetManager();
+      return undefined;
+    }
+    if (choice.startsWith('preset_')) {
+      const ep = presets[parseInt(choice.split('_')[1])];
+      if (!ep) return undefined;
+      let epPrefix = '';
+      if (ep.format === 'prefix' && ep.prefix) {
+        epPrefix = ep.prefix + ep.separator;
+      } else if (ep.format === 'prefix_ask') {
+        const inputName = await appState.pushDialogAsync({
+          type: 'input-confirm',
+          text: '캐릭터 이름을 입력해주세요',
+        });
+        if (!inputName) return undefined;
+        epPrefix = inputName + ep.separator;
+      }
+      return {
+        prefix: epPrefix,
+        fav: ep.menu === 'fav',
+        opt: ep.opt,
+        imageSize: ep.imageSize,
+        separator: ep.separator,
+      };
+    }
+    // 직접 설정
+    const menu = await appState.pushDialogAsync({
+      type: 'select',
+      text: '내보낼 이미지를 선택해주세요',
+      items: [
+        { text: '즐겨찾기 이미지만 내보내기', value: 'fav' },
+        { text: '모든 이미지 전부 내보내기', value: 'all' },
+      ],
+    });
+    if (!menu) return undefined;
+    const format = await appState.pushDialogAsync({
+      type: 'select',
+      text: '파일 이름 형식을 선택해주세요',
+      items: [
+        { text: '(씬이름).(이미지 번호).png', value: 'normal' },
+        { text: '(캐릭터 이름).(씬이름).(이미지 번호)', value: 'prefix' },
+      ],
+    });
+    if (!format) return undefined;
+    const optItems = [
+      { text: '원본', value: 'original' },
+      { text: '저손실 webp 최적화 (에셋용 권장)', value: 'lossy' },
+    ];
+    if (!isMobile) optItems.push({ text: '무손실 webp 최적화', value: 'lossless' });
+    optItems.push({ text: isMobile ? 'AVIF 최적화 (PC 권장)' : 'AVIF 최적화', value: 'avif' });
+    const opt = await appState.pushDialogAsync({
+      type: 'select',
+      text: '이미지 크기 최적화 방법을 선택해주세요',
+      items: optItems,
+    });
+    if (!opt) return undefined;
+    let imageSize = 0;
+    if (opt !== 'original') {
+      const inputImageSize = await appState.pushDialogAsync({
+        type: 'input-confirm',
+        text: '이미지 픽셀 크기를 결정해주세요 (추천값 1024)',
+      });
+      if (!inputImageSize) return undefined;
+      imageSize = parseInt(inputImageSize);
+      if (isNaN(imageSize)) return undefined;
+    }
+    const separatorInput = await appState.pushDialogAsync({
+      type: 'input-confirm',
+      text: '파일명 구분자를 입력해주세요 (기본값: .)',
+    });
+    if (separatorInput === undefined) return undefined;
+    const separator = separatorInput || '.';
+    let prefix = '';
+    if (format === 'prefix') {
+      const inputPrefix = await appState.pushDialogAsync({
+        type: 'input-confirm',
+        text: '캐릭터 이름을 입력해주세요',
+      });
+      if (!inputPrefix) return undefined;
+      prefix = inputPrefix + separator;
+    }
+    return { prefix, fav: menu === 'fav', opt, imageSize, separator };
+  }
+
   // ── 내보내기 프리셋 헬퍼 ──
   loadExportPresets(): ExportPreset[] {
     try {
@@ -717,11 +1236,20 @@ export class AppState {
     selected: GenericScene[] | undefined,
     separator: string,
   ): Promise<Set<string> | undefined> {
+    const scenes = selected || this.curSession!.getScenes(type);
+    return this.detectSpecialCharsFromNames(scenes.map((s) => s.name), separator);
+  }
+
+  // 씬 이름 목록에서 특수문자를 감지하고, 있으면 구분자 변환 여부를 한 번 묻는다.
+  // 반환: 변환할 문자 Set (없으면 빈 Set), 사용자가 취소하면 undefined.
+  private async detectSpecialCharsFromNames(
+    sceneNames: string[],
+    separator: string,
+  ): Promise<Set<string> | undefined> {
     const specialCharRegex = /[^a-zA-Z0-9가-힣ぁ-んァ-ヶ一-龥　-〿]/g;
     const detectedChars = new Set<string>();
-    const scenes = selected || this.curSession!.getScenes(type);
-    for (const s of scenes) {
-      const matches = s.name.match(specialCharRegex);
+    for (const nm of sceneNames) {
+      const matches = nm.match(specialCharRegex);
       if (matches) matches.forEach((c) => detectedChars.add(c));
     }
 

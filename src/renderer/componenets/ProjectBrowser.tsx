@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
-import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck, FaBars, FaPen, FaTrashAlt, FaTimes, FaPalette } from 'react-icons/fa';
+import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck, FaBars, FaPen, FaTrashAlt, FaTimes, FaPalette, FaFileExport } from 'react-icons/fa';
 import { sessionService, imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import ModalOverlay from './ModalOverlay';
@@ -194,6 +194,7 @@ const NavItem = ({
   dropping,
   dragging,
   tint,
+  onExport,
   onColor,
   colorActive,
   onRename,
@@ -218,6 +219,7 @@ const NavItem = ({
   dropping?: boolean;
   dragging?: boolean;
   tint?: string;
+  onExport?: () => void;
   onColor?: () => void;
   colorActive?: boolean;
   onRename?: () => void;
@@ -302,6 +304,21 @@ const NavItem = ({
           {count}
         </span>
       )}
+      {onExport && (
+        <span
+          role="button"
+          title="폴더 내보내기/불러오기"
+          onClick={(e) => {
+            e.stopPropagation();
+            onExport();
+          }}
+          className={`ml-0.5 flex-none opacity-60 hover:opacity-100 ${
+            active ? 'text-white' : 'hover:text-amber-500'
+          }`}
+        >
+          <FaFileExport size={11} />
+        </span>
+      )}
       {onColor && (
         <span
           role="button"
@@ -374,6 +391,20 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
     sessionService.addEventListener('listupdated', onUpdate);
     return () => sessionService.removeEventListener('listupdated', onUpdate);
   }, [refresh]);
+
+  // Ctrl+E로 닫기: 그리드는 검색창 자동 포커스 때문에 전역 단축키가 억제되므로
+  // 그리드가 열려 있을 때의 닫기 토글은 여기서 직접 처리한다.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
 
   const folders = sessionService.getOrderedFolders();
 
@@ -723,6 +754,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                 label={f}
                 count={countIn(f)}
                 tint={folderColor}
+                onExport={() => appState.folderBackupMenu(f)}
                 onColor={() => setColorPickerFor(picking ? null : f)}
                 colorActive={picking}
                 onRename={() => startRename(f)}

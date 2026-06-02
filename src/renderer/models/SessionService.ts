@@ -614,7 +614,8 @@ export class SessionService extends ResourceSyncService<Session> {
       }
     };
 
-    const projFile = 'projects/' + session.name + '.json';
+    // 폴더에 속한 프로젝트는 projects/<폴더>/<이름>.json 이므로 폴더 인식 경로 사용
+    const projFile = this.getPath(session.name);
     const entries: FileEntry[] = [];
 
     // 모든 디렉토리를 병렬로 스캔

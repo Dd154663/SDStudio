@@ -14,6 +14,7 @@ import {
   FaCheck,
   FaPen,
   FaTrashAlt,
+  FaFileExport,
 } from 'react-icons/fa';
 import { sessionService, imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
@@ -767,6 +768,13 @@ const ProjectDrawer = observer(() => {
                         <span className="text-xs text-gray-400 font-normal flex-none">
                           {projects.length}
                         </span>
+                      </button>
+                      <button
+                        onClick={() => appState.folderBackupMenu(f)}
+                        title="폴더 내보내기/불러오기"
+                        className="p-1.5 rounded-md flex-none text-gray-400 hover:text-amber-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                      >
+                        <FaFileExport size={14} />
                       </button>
                       <button
                         onClick={() =>

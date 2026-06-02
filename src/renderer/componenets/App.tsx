@@ -167,6 +167,12 @@ export const App = observer(() => {
             appState.openFindReplace();
           }
           break;
+        case 'open-project-drawer':
+          appState.projectDrawerOpen = !appState.projectDrawerOpen;
+          break;
+        case 'open-project-grid':
+          appState.projectBrowserOpen = !appState.projectBrowserOpen;
+          break;
       }
     };
     window.addEventListener('shortcut-action', handler);
