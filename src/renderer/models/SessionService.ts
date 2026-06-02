@@ -118,6 +118,12 @@ export class SessionService extends ResourceSyncService<Session> {
       delete this.folderColors[oldName];
       await this.saveFolderColors();
     }
+    // 폴더 순서 마이그레이션
+    const orderIdx = this.folderOrder.indexOf(oldName);
+    if (orderIdx >= 0) {
+      this.folderOrder[orderIdx] = newName;
+      await this.saveFolderOrder();
+    }
     await this.update();
   }
 
@@ -137,6 +143,11 @@ export class SessionService extends ResourceSyncService<Session> {
     if (this.folderColors[folder]) {
       delete this.folderColors[folder];
       await this.saveFolderColors();
+    }
+    // 폴더 순서 정리
+    if (this.folderOrder.includes(folder)) {
+      this.folderOrder = this.folderOrder.filter((f) => f !== folder);
+      await this.saveFolderOrder();
     }
     await this.update();
   }
@@ -182,6 +193,56 @@ export class SessionService extends ResourceSyncService<Session> {
 
   getFolderColor(folder: string): string | undefined {
     return this.folderColors[folder];
+  }
+
+  // ===== 폴더 정렬 순서 (사이드카: folderOrder.json) =====
+  // 드로어/그리드가 공유하는 사용자 지정 폴더 순서.
+  private folderOrder: string[] = [];
+
+  async loadFolderOrder() {
+    try {
+      const str = await backend.readFile('folderOrder.json');
+      this.folderOrder = JSON.parse(str) || [];
+    } catch (e) {
+      this.folderOrder = [];
+    }
+  }
+
+  async saveFolderOrder() {
+    await backend.writeFile(
+      'folderOrder.json',
+      JSON.stringify(this.folderOrder),
+    );
+  }
+
+  // 저장된 순서를 우선 적용하고, 순서에 없는 폴더는 뒤에 자연정렬로 덧붙인다.
+  getOrderedFolders(): string[] {
+    const all = this.folderList.slice();
+    const known = this.folderOrder.filter((f) => all.includes(f));
+    const knownSet = new Set(known);
+    const rest = all
+      .filter((f) => !knownSet.has(f))
+      .sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
+      );
+    return [...known, ...rest];
+  }
+
+  async setFolderOrder(order: string[]) {
+    // 실제 존재하는 폴더만, 중복 제거하여 저장 + 빠진 폴더는 뒤에 덧붙임
+    const all = new Set(this.folderList);
+    const seen = new Set<string>();
+    const cleaned: string[] = [];
+    for (const f of order) {
+      if (all.has(f) && !seen.has(f)) {
+        seen.add(f);
+        cleaned.push(f);
+      }
+    }
+    for (const f of this.folderList) if (!seen.has(f)) cleaned.push(f);
+    this.folderOrder = cleaned;
+    await this.saveFolderOrder();
+    this.dispatchEvent(new CustomEvent('listupdated', {}));
   }
 
   async setFolderColor(folder: string, color: string | null) {
@@ -358,6 +419,7 @@ export class SessionService extends ResourceSyncService<Session> {
     await this.loadBookmarks();
     await this.loadThumbnails();
     await this.loadFolderColors();
+    await this.loadFolderOrder();
     const { trashService } = await import('.');
     await trashService.loadTrash();
 
