@@ -214,14 +214,21 @@ const CharacterPresetCard = observer(({
         (isOver ? 'border-sky-400 ring-2 ring-sky-400 ' : 'border-gray-200 dark:border-slate-600 ')
       }
     >
-      {/* 이미지 영역 (모바일: 클릭 비활성화 — 편집 버튼 사용) */}
-      <div className="relative overflow-hidden aspect-[3/4]" onClick={() => { if (!isMobile) onEdit(); }}>
+      {/* 이미지 영역 (탭/클릭 = 편집. 편집 버튼은 제거하고 카드 탭으로 통일) */}
+      <div className="relative overflow-hidden aspect-[3/4]" onClick={() => onEdit()}>
         <CardImage
           preset={preset}
           className="w-full h-full object-cover"
         />
         {/* 호버 오버레이 (PC: 호버 시, 모바일: 상단만 상시) */}
         <div className="absolute inset-0 bg-black/0 md:group-hover:bg-black/40 transition-colors duration-200 pointer-events-none" />
+        {/* 편집 힌트: 카드 탭/클릭 = 편집. 매우 흐릿한 편집 아이콘 (장식용, 순차 생성 모드 제외) */}
+        {!hideActions && (
+          <FaEdit
+            size={30}
+            className="absolute left-1/2 bottom-14 -translate-x-1/2 text-white/30 drop-shadow pointer-events-none z-10"
+          />
+        )}
         {/* 그라디언트 텍스트 오버레이 */}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-2.5 pt-6 pb-2">
           <div className="text-sm text-white font-medium drop-shadow truncate">
@@ -253,14 +260,6 @@ const CharacterPresetCard = observer(({
             onClick={(e) => { e.stopPropagation(); onApplyCharacter(); }}
           >
             <FaUserAlt size={12} />
-          </button>
-        </Tooltip>
-        <Tooltip content="편집">
-          <button
-            className="w-8 h-8 rounded-full bg-green-500 hover:bg-green-600 text-white flex items-center justify-center shadow-lg transition-colors"
-            onClick={(e) => { e.stopPropagation(); onEdit(); }}
-          >
-            <FaEdit size={12} />
           </button>
         </Tooltip>
         <Tooltip content="복제">
@@ -411,7 +410,7 @@ const GlobalCharacterPresetCard = ({
         className="relative overflow-hidden aspect-[3/4]"
         onClick={() => {
           if (cyclingMode) onToggleSelect?.();
-          else if (!isMobile) onEdit();
+          else onEdit();
         }}
       >
         <GlobalCardImage entry={entry} className="w-full h-full object-cover" />
@@ -434,6 +433,13 @@ const GlobalCharacterPresetCard = ({
             </div>
           </div>
         )}
+        {/* 편집 힌트: 카드 탭/클릭 = 편집. 매우 흐릿한 편집 아이콘 (장식용, 순차 생성 모드 제외) */}
+        {!cyclingMode && (
+          <FaEdit
+            size={30}
+            className="absolute left-1/2 bottom-14 -translate-x-1/2 text-white/30 drop-shadow pointer-events-none z-10"
+          />
+        )}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-2.5 pt-6 pb-2">
           <div className="text-sm text-white font-medium drop-shadow truncate">
             {entry.name}
@@ -445,7 +451,7 @@ const GlobalCharacterPresetCard = ({
             {vcount === 0 && rcount === 0 && '이미지 없음'}
           </div>
         </div>
-        <div className={`absolute top-0 left-0 right-0 flex flex-wrap justify-center items-center gap-1 z-20 py-1.5 px-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200 ${cyclingMode ? 'hidden' : ''}`}>
+        <div className={`absolute top-0 left-0 right-0 flex justify-center items-center gap-1 z-20 py-1.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200 ${cyclingMode ? 'hidden' : ''}`}>
           {isEasyMode && (
             <Tooltip content="불러와서 이지모드 적용">
               <button
@@ -470,14 +476,6 @@ const GlobalCharacterPresetCard = ({
               onClick={(e) => { e.stopPropagation(); onLoad(); }}
             >
               <FaCloudDownloadAlt size={13} />
-            </button>
-          </Tooltip>
-          <Tooltip content="편집">
-            <button
-              className="w-8 h-8 rounded-full bg-green-500 hover:bg-green-600 text-white flex items-center justify-center shadow-lg transition-colors"
-              onClick={(e) => { e.stopPropagation(); onEdit(); }}
-            >
-              <FaEdit size={12} />
             </button>
           </Tooltip>
           <Tooltip content="복제">
