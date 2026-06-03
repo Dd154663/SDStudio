@@ -452,9 +452,12 @@ export class SessionService extends ResourceSyncService<Session> {
     if (keysToDelete.length > 0 || this.bookmarkData.scenes[name]) {
       await this.saveBookmarks();
     }
+    // 같은 이름의 기존 휴지통 항목을 먼저 정리 (동명 프로젝트 재삭제 시 충돌/덮어쓰기 방지).
+    // 이렇게 해야 super.delete 의 .json → .deleted rename 대상이 비어 있어 플랫폼 무관하게 안전.
+    const { trashService } = await import('.');
+    await trashService.purgeDeletedProject(name);
     await super.delete(name);
     // 휴지통에 삭제 시점 기록
-    const { trashService } = await import('.');
     await trashService.moveProjectToTrash(name);
   }
 

@@ -95,16 +95,27 @@ const ProjectRow = observer(
             {selected && <FaCheck size={9} />}
           </span>
         ) : (
-          <FaStar
-            size={13}
-            className={`flex-none ${
-              isFav
-                ? 'text-yellow-400'
-                : active
-                  ? 'text-sky-100'
-                  : 'text-gray-300 dark:text-slate-600'
-            }`}
-          />
+          <span
+            role="button"
+            title={isFav ? '즐겨찾기 해제' : '즐겨찾기'}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              sessionService.toggleFavorite(name);
+            }}
+            className="flex-none -m-1 p-1 rounded cursor-pointer hover:bg-black/10 dark:hover:bg-white/10"
+          >
+            <FaStar
+              size={13}
+              className={`${
+                isFav
+                  ? 'text-yellow-400'
+                  : active
+                    ? 'text-sky-100'
+                    : 'text-gray-300 dark:text-slate-600'
+              }`}
+            />
+          </span>
         )}
         <span className="truncate flex-1">{name}</span>
         {folder && (

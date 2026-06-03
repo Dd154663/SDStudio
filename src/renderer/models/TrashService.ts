@@ -367,6 +367,83 @@ export class TrashService extends EventTarget {
 
   // ===== Project trash =====
 
+  // projects 루트 + 1단계 폴더 디렉터리 경로 목록.
+  // (SessionService.getList 의 폴더 탐지 패턴과 동일: listFiles[파일+디렉토리] - listFilesWithStats[파일만] = 폴더)
+  private async getProjectDirs(): Promise<string[]> {
+    let entries: string[] = [];
+    let rootStats: any[] = [];
+    try {
+      entries = await backend.listFiles('projects');
+      rootStats = await backend.listFilesWithStats('projects');
+    } catch (e) {
+      return ['projects'];
+    }
+    const rootFileSet = new Set(rootStats.map((s: any) => s.name));
+    const dirs = entries.filter(
+      (e: string) => !rootFileSet.has(e) && !e.startsWith('.'),
+    );
+    return ['projects', ...dirs.map((d) => 'projects/' + d)];
+  }
+
+  // 주어진 확장자(.json / .deleted)를 가진 프로젝트 파일을 루트 + 폴더에서 모두 찾아
+  // 이름 → 전체경로 맵으로 반환한다. (동명은 루트 우선)
+  private async scanProjectFiles(suffix: string): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    const dirs = await this.getProjectDirs();
+    for (const dir of dirs) {
+      let stats: any[] = [];
+      try {
+        stats = await backend.listFilesWithStats(dir);
+      } catch (e) {
+        stats = [];
+      }
+      for (const s of stats) {
+        if (s.name.endsWith(suffix)) {
+          const name = s.name.substring(0, s.name.length - suffix.length);
+          if (!map.has(name)) map.set(name, dir + '/' + s.name);
+        }
+      }
+    }
+    return map;
+  }
+
+  // 특정 이름의 .deleted 파일 전체 경로(루트+폴더, 중복 위치 포함)를 찾는다.
+  private async findAllDeletedPaths(name: string): Promise<string[]> {
+    const target = name + '.deleted';
+    const dirs = await this.getProjectDirs();
+    const result: string[] = [];
+    for (const dir of dirs) {
+      let stats: any[] = [];
+      try {
+        stats = await backend.listFilesWithStats(dir);
+      } catch (e) {
+        stats = [];
+      }
+      if (stats.some((s: any) => s.name === target)) {
+        result.push(dir + '/' + target);
+      }
+    }
+    return result;
+  }
+
+  // 같은 이름의 기존 휴지통(.deleted) 항목을 모두 제거한다.
+  // 동명 프로젝트를 재삭제하기 직전에 호출 → "최신 1개만 유지"를 보장하고
+  // 플랫폼별 rename 덮어쓰기/오류 불확실성을 제거한다.
+  // 이미지 디렉터리(outs/<이름> 등)는 이름 공유이므로 건드리지 않는다.
+  async purgeDeletedProject(name: string): Promise<void> {
+    this.ensureLoaded();
+    const paths = await this.findAllDeletedPaths(name);
+    for (const p of paths) {
+      try {
+        await backend.deleteFile(p);
+      } catch (e) {}
+    }
+    if (this.data.projects[name]) {
+      delete this.data.projects[name];
+      await this.saveTrash();
+    }
+  }
+
   async moveProjectToTrash(projectName: string): Promise<void> {
     this.ensureLoaded();
     this.data.projects[projectName] = { deletedAt: Date.now() };
@@ -375,39 +452,41 @@ export class TrashService extends EventTarget {
 
   async getDeletedProjects(): Promise<{name: string, deletedAt: number}[]> {
     this.ensureLoaded();
-    let files: string[];
-    try {
-      files = await backend.listFiles('projects');
-    } catch (e) {
-      return [];
-    }
-    const jsonSet = new Set(
-      files.filter((f: string) => f.endsWith('.json'))
-        .map((f: string) => f.substring(0, f.length - '.json'.length))
-    );
-    const deletedFiles = files
-      .filter((f: string) => f.endsWith('.deleted'))
-      .map((f: string) => f.substring(0, f.length - '.deleted'.length))
-      // Exclude orphan .deleted files where an active .json also exists
-      .filter((name: string) => !jsonSet.has(name));
+    // 루트 + 폴더 하위까지 .deleted / .json 을 모두 스캔 (폴더 소속 프로젝트 포함)
+    const deletedMap = await this.scanProjectFiles('.deleted');
+    const activeMap = await this.scanProjectFiles('.json');
 
-    return deletedFiles.map((name: string) => ({
-      name,
-      deletedAt: this.data.projects[name]?.deletedAt || 0,
-    }));
+    const result: { name: string; deletedAt: number }[] = [];
+    for (const name of deletedMap.keys()) {
+      // 동명의 활성 .json 이 있으면 orphan 이므로 제외
+      if (activeMap.has(name)) continue;
+      result.push({
+        name,
+        deletedAt: this.data.projects[name]?.deletedAt || 0,
+      });
+    }
+    return result;
   }
 
   async restoreProject(name: string): Promise<void> {
     this.ensureLoaded();
-    // Safety: if .json already exists, don't overwrite — just remove the orphan .deleted
-    const activeExists = await backend.existFile('projects/' + name + '.json');
-    if (activeExists) {
-      // Orphan .deleted: just delete it, the active project is fine
-      try {
-        await backend.deleteFile('projects/' + name + '.deleted');
-      } catch (e) {}
+    const deletedMap = await this.scanProjectFiles('.deleted');
+    const activeMap = await this.scanProjectFiles('.json');
+    const deletedPath = deletedMap.get(name);
+
+    if (activeMap.has(name)) {
+      // Orphan .deleted: 활성 프로젝트가 있으니 .deleted 만 제거
+      if (deletedPath) {
+        try {
+          await backend.deleteFile(deletedPath);
+        } catch (e) {}
+      }
+    } else if (deletedPath) {
+      // 같은 위치(폴더 포함)에 .json 으로 되돌린다 → 폴더 소속도 복원됨
+      const jsonPath = deletedPath.replace(/\.deleted$/, '.json');
+      await backend.renameFile(deletedPath, jsonPath);
     } else {
-      await backend.renameFile('projects/' + name + '.deleted', 'projects/' + name + '.json');
+      throw new Error('프로젝트를 휴지통에서 찾을 수 없습니다');
     }
     delete this.data.projects[name];
     await this.saveTrash();
@@ -416,17 +495,23 @@ export class TrashService extends EventTarget {
   async permanentlyDeleteProject(name: string): Promise<void> {
     this.ensureLoaded();
 
-    // CRITICAL: Check if an active .json exists for this project.
+    // CRITICAL: Check if an active .json exists for this project (루트/폴더 모두).
     // If both .json and .deleted coexist (legacy duplicate), only remove
     // the .deleted file — NEVER touch the directories.
-    const activeExists = await backend.existFile('projects/' + name + '.json');
+    const deletedMap = await this.scanProjectFiles('.deleted');
+    const activeMap = await this.scanProjectFiles('.json');
+    const deletedPath = deletedMap.get(name);
+    const activeExists = activeMap.has(name);
 
-    // Delete the .deleted file
-    try {
-      await backend.deleteFile('projects/' + name + '.deleted');
-    } catch (e) {}
+    // Delete the .deleted file (위치 무관)
+    if (deletedPath) {
+      try {
+        await backend.deleteFile(deletedPath);
+      } catch (e) {}
+    }
 
-    // Only delete directories if there is NO active project with same name
+    // Only delete directories if there is NO active project with same name.
+    // 이미지 디렉터리는 폴더와 무관하게 이름 기준(outs/<이름> 등)이므로 그대로 유효.
     if (!activeExists) {
       for (const dir of ['outs', 'inpaints', 'vibes', 'inpaint_masks', 'inpaint_orgs']) {
         try {
@@ -474,25 +559,22 @@ export class TrashService extends EventTarget {
     this.ensureLoaded();
     const now = Date.now();
 
-    // 0. Silently clean orphan .deleted files (where .json also exists)
+    // 0. Silently clean orphan .deleted files (where .json also exists) — 폴더 포함
     try {
-      const allFiles = await backend.listFiles('projects');
-      const jsonSet = new Set(
-        allFiles.filter((f: string) => f.endsWith('.json'))
-          .map((f: string) => f.substring(0, f.length - '.json'.length))
-      );
-      const orphanDeleted = allFiles
-        .filter((f: string) => f.endsWith('.deleted'))
-        .map((f: string) => f.substring(0, f.length - '.deleted'.length))
-        .filter((name: string) => jsonSet.has(name));
-      for (const name of orphanDeleted) {
-        console.log('자동 정리: orphan .deleted 파일 제거 (활성 프로젝트 존재) - ' + name);
-        try {
-          await backend.deleteFile('projects/' + name + '.deleted');
-        } catch (e) {}
-        delete this.data.projects[name];
+      const deletedMap = await this.scanProjectFiles('.deleted');
+      const activeMap = await this.scanProjectFiles('.json');
+      let changed = false;
+      for (const [name, path] of deletedMap) {
+        if (activeMap.has(name)) {
+          console.log('자동 정리: orphan .deleted 파일 제거 (활성 프로젝트 존재) - ' + name);
+          try {
+            await backend.deleteFile(path);
+          } catch (e) {}
+          delete this.data.projects[name];
+          changed = true;
+        }
       }
-      if (orphanDeleted.length > 0) {
+      if (changed) {
         await this.saveTrash();
       }
     } catch (e) {}
@@ -517,16 +599,13 @@ export class TrashService extends EventTarget {
       }
     }
 
-    // 3. Cleanup expired images (3 days)
-    let projectFiles: string[];
+    // 3. Cleanup expired images (3 days) — 폴더 소속 프로젝트 포함
+    let activeProjects: string[];
     try {
-      projectFiles = await backend.listFiles('projects');
+      activeProjects = Array.from((await this.scanProjectFiles('.json')).keys());
     } catch (e) {
       return;
     }
-    const activeProjects = projectFiles
-      .filter((f: string) => f.endsWith('.json'))
-      .map((f: string) => f.substring(0, f.length - 5));
 
     for (const projectName of activeProjects) {
       for (const imgDir of ['outs', 'inpaints']) {
