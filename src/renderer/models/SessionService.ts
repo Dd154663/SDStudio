@@ -608,7 +608,12 @@ export class SessionService extends ResourceSyncService<Session> {
     return sess;
   }
 
-  async exportSessionDeep(session: Session, outPath: string) {
+  // 프로젝트 깊은 백업에 포함할 파일 엔트리 목록을 만든다.
+  // prefix를 주면 아카이브 내부 경로 앞에 붙는다 (폴더 백업에서 프로젝트별 네임스페이스용).
+  async buildSessionDeepEntries(
+    session: Session,
+    prefix: string = '',
+  ): Promise<FileEntry[]> {
     const ignoreError = async (f: Promise<any>) => {
       try {
         return await f;
@@ -647,7 +652,7 @@ export class SessionService extends ResourceSyncService<Session> {
         if (!image.endsWith('.png')) continue;
         entries.push({
           path: 'outs/' + session.name + '/' + name + '/' + image,
-          name: 'outs/' + name + '/' + image,
+          name: prefix + 'outs/' + name + '/' + image,
         });
       }
     }
@@ -655,14 +660,14 @@ export class SessionService extends ResourceSyncService<Session> {
       if (!image.endsWith('.png')) continue;
       entries.push({
         path: 'inpaint_orgs/' + session.name + '/' + image,
-        name: 'inpaint_orgs/' + image,
+        name: prefix + 'inpaint_orgs/' + image,
       });
     }
     for (const image of inpaintMasks) {
       if (!image.endsWith('.png')) continue;
       entries.push({
         path: 'inpaint_masks/' + session.name + '/' + image,
-        name: 'inpaint_masks/' + image,
+        name: prefix + 'inpaint_masks/' + image,
       });
     }
     for (const { name, files } of inpaintResults) {
@@ -670,7 +675,7 @@ export class SessionService extends ResourceSyncService<Session> {
         if (!image.endsWith('.png')) continue;
         entries.push({
           path: 'inpaints/' + session.name + '/' + name + '/' + image,
-          name: 'inpaints/' + name + '/' + image,
+          name: prefix + 'inpaints/' + name + '/' + image,
         });
       }
     }
@@ -678,17 +683,22 @@ export class SessionService extends ResourceSyncService<Session> {
       if (!vibe.endsWith('.png')) continue;
       entries.push({
         path: 'vibes/' + session.name + '/' + vibe,
-        name: 'vibes/' + vibe,
+        name: prefix + 'vibes/' + vibe,
       });
     }
     for (const ref of references) {
       if (!ref.endsWith('.png')) continue;
       entries.push({
         path: 'references/' + session.name + '/' + ref,
-        name: 'references/' + ref,
+        name: prefix + 'references/' + ref,
       });
     }
-    entries.push({ path: projFile, name: 'project.json' });
+    entries.push({ path: projFile, name: prefix + 'project.json' });
+    return entries;
+  }
+
+  async exportSessionDeep(session: Session, outPath: string) {
+    const entries = await this.buildSessionDeepEntries(session, '');
     if (zipService.isZipping) {
       throw new Error('Already zipping');
     }
@@ -732,45 +742,33 @@ export class SessionService extends ResourceSyncService<Session> {
     }
     const path = 'tmp/' + v4();
     await backend.unzipFiles(tarpath, path);
+    await this.importSessionDeepFromDir(path, name);
+  }
+
+  // 이미 추출된 디렉터리(project.json + outs/vibes/... 하위 포함)로부터 프로젝트를 복원한다.
+  // 폴더 백업 불러오기에서 한 아카이브를 1회 추출한 뒤 프로젝트별로 재사용한다.
+  async importSessionDeepFromDir(dir: string, name: string) {
+    if (name in this.resources) {
+      throw new Error('Resource already exists');
+    }
     const session: Session = JSON.parse(
-      await backend.readFile(path + '/project.json'),
+      await backend.readFile(dir + '/project.json'),
     );
     session.name = name;
-    try {
-      await backend.renameDir(path + '/outs', 'outs/' + session.name);
-    } catch (e) {
-      console.error(e);
-    }
-    try {
-      await backend.renameDir(path + '/inpaints', 'inpaints/' + session.name);
-    } catch (e) {
-      console.error(e);
-    }
-    try {
-      await backend.renameDir(
-        path + '/inpaint_orgs',
-        'inpaint_orgs/' + session.name,
-      );
-    } catch (e) {
-      console.error(e);
-    }
-    try {
-      await backend.renameDir(
-        path + '/inpaint_masks',
-        'inpaint_masks/' + session.name,
-      );
-    } catch (e) {
-      console.error(e);
-    }
-    try {
-      await backend.renameDir(path + '/vibes', 'vibes/' + session.name);
-    } catch (e) {
-      console.error(e);
-    }
-    try {
-      await backend.renameDir(path + '/references', 'references/' + session.name);
-    } catch (e) {
-      console.error(e);
+    const moves: [string, string][] = [
+      [dir + '/outs', 'outs/' + name],
+      [dir + '/inpaints', 'inpaints/' + name],
+      [dir + '/inpaint_orgs', 'inpaint_orgs/' + name],
+      [dir + '/inpaint_masks', 'inpaint_masks/' + name],
+      [dir + '/vibes', 'vibes/' + name],
+      [dir + '/references', 'references/' + name],
+    ];
+    for (const [src, dest] of moves) {
+      try {
+        await backend.renameDir(src, dest);
+      } catch (e) {
+        // 해당 디렉터리가 없을 수 있음(이미지 없는 프로젝트 등) → 무시
+      }
     }
     await this.createFrom(name, session);
   }

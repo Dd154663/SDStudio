@@ -144,25 +144,28 @@ const ConfirmWindow = observer(() => {
               )}
               {curDialog.type === 'select' && (
                 <>
-                  {curDialog.items!.map((item, idx) => (
-                    <button
-                      key={idx}
-                      className={
-                        'w-full px-4 py-2 rounded mr-2 clickable ' +
-                        (curDialog.graySelect ? 'back-lgray' : 'back-sky')
-                      }
-                      onClick={() => {
-                        appState.dialogs.pop();
-                        if (curDialog.callback) {
-                          curDialog.callback!(item.value, item.text);
+                  {/* 항목이 많아지면 화면 밖으로 잘리지 않도록 스크롤 영역으로 감싼다 */}
+                  <div className="flex flex-col gap-2 max-h-[55vh] overflow-y-auto">
+                    {curDialog.items!.map((item, idx) => (
+                      <button
+                        key={idx}
+                        className={
+                          'w-full px-4 py-2 rounded clickable shrink-0 ' +
+                          (curDialog.graySelect ? 'back-lgray' : 'back-sky')
                         }
-                      }}
-                    >
-                      {item.text}
-                    </button>
-                  ))}
+                        onClick={() => {
+                          appState.dialogs.pop();
+                          if (curDialog.callback) {
+                            curDialog.callback!(item.value, item.text);
+                          }
+                        }}
+                      >
+                        {item.text}
+                      </button>
+                    ))}
+                  </div>
                   <button
-                    className="w-full px-4 py-2 clickable rounded back-gray"
+                    className="w-full px-4 py-2 clickable rounded back-gray shrink-0"
                     onClick={() => {
                       if (curDialog.onCancel) curDialog.onCancel();
                       appState.dialogs.pop();
@@ -213,11 +216,11 @@ const ConfirmWindow = observer(() => {
               )}
               {curDialog.type === 'checkbox' && (
                 <>
-                  <div className="flex flex-col gap-1 mt-2 mb-2 w-full">
+                  <div className="flex flex-col gap-1 mt-2 mb-2 w-full max-h-[50vh] overflow-y-auto">
                     {curDialog.items!.map((item, idx) => (
                       <label
                         key={idx}
-                        className="flex items-center gap-2 px-3 py-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
+                        className="flex items-center gap-2 px-3 py-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 shrink-0"
                       >
                         <input
                           type="checkbox"

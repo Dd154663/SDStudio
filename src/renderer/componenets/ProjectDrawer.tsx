@@ -369,15 +369,54 @@ const ProjectDrawer = observer(() => {
   };
 
   const deleteFolderConfirm = (f: string) => {
+    const cleanup = () => {
+      if (editingFolder === f) cancelRename();
+    };
+    const count = sessionService
+      .list()
+      .filter((n) => sessionService.getFolderOf(n) === f).length;
+    // 빈 폴더 → 단순 확인
+    if (count === 0) {
+      appState.pushDialog({
+        type: 'confirm',
+        text: `폴더 "${f}"를 삭제할까요?`,
+        callback: async () => {
+          try {
+            await sessionService.deleteFolder(f);
+            cleanup();
+          } catch (e: any) {
+            appState.pushMessage(e.message || '폴더 삭제에 실패했습니다.');
+          }
+        },
+      });
+      return;
+    }
+    // 프로젝트가 있는 폴더 → 삭제 방식 선택
     appState.pushDialog({
-      type: 'confirm',
-      text: `폴더 "${f}"를 삭제할까요?\n안의 프로젝트는 삭제되지 않고 "미분류"로 이동됩니다.`,
-      callback: async () => {
-        try {
-          await sessionService.deleteFolder(f);
-          if (editingFolder === f) cancelRename();
-        } catch (e: any) {
-          appState.pushMessage(e.message || '폴더 삭제에 실패했습니다.');
+      type: 'select',
+      text: `폴더 "${f}" 삭제 (${count}개 프로젝트)`,
+      items: [
+        { text: '폴더만 삭제 (프로젝트는 미분류로 이동)', value: 'folderOnly' },
+        { text: '⚠️ 폴더와 프로젝트 모두 삭제', value: 'withProjects' },
+      ],
+      callback: async (value) => {
+        if (value === 'folderOnly') {
+          try {
+            await sessionService.deleteFolder(f);
+            cleanup();
+          } catch (e: any) {
+            appState.pushMessage(e.message || '폴더 삭제에 실패했습니다.');
+          }
+        } else if (value === 'withProjects') {
+          // 위험 동작 → 2차 확인
+          appState.pushDialog({
+            type: 'confirm',
+            text: `정말 폴더 "${f}"와 그 안의 ${count}개 프로젝트를 모두 삭제할까요?\n프로젝트는 휴지통으로 이동되어 복구할 수 있습니다.`,
+            callback: async () => {
+              await appState.deleteFolderWithProjects(f);
+              cleanup();
+            },
+          });
         }
       },
     });
