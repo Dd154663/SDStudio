@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
-import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck, FaBars, FaPen, FaTrashAlt, FaTimes, FaPalette, FaFileExport } from 'react-icons/fa';
+import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck, FaPen, FaTrashAlt, FaTimes, FaPalette, FaFileExport } from 'react-icons/fa';
 import { sessionService, imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import ModalOverlay from './ModalOverlay';
@@ -199,6 +199,8 @@ const NavItem = ({
   colorActive,
   onRename,
   onDelete,
+  onAddProject,
+  onMenu,
   editing,
   editValue,
   onEditChange,
@@ -224,6 +226,8 @@ const NavItem = ({
   colorActive?: boolean;
   onRename?: () => void;
   onDelete?: () => void;
+  onAddProject?: () => void;
+  onMenu?: () => void;
   editing?: boolean;
   editValue?: string;
   onEditChange?: (v: string) => void;
@@ -304,61 +308,91 @@ const NavItem = ({
           {count}
         </span>
       )}
-      {onExport && (
+      {onMenu && isMobile ? (
+        /* 모바일: ⋮ 메뉴 버튼 하나로 폴더 동작 5종 노출 */
         <span
           role="button"
-          title="폴더 내보내기/불러오기"
+          title="폴더 메뉴"
           onClick={(e) => {
             e.stopPropagation();
-            onExport();
+            onMenu();
           }}
-          className={`ml-0.5 flex-none opacity-60 hover:opacity-100 ${
-            active ? 'text-white' : 'hover:text-amber-500'
-          }`}
+          className={`ml-1 flex-none px-1.5 py-0.5 ${active ? 'text-white' : 'text-gray-500 dark:text-gray-300'}`}
         >
-          <FaFileExport size={11} />
+          <FaEllipsisV size={15} />
         </span>
-      )}
-      {onColor && (
-        <span
-          role="button"
-          title="폴더 색상"
-          onClick={(e) => {
-            e.stopPropagation();
-            onColor();
-          }}
-          className={`ml-0.5 flex-none opacity-60 hover:opacity-100 ${
-            active ? 'text-white' : colorActive ? 'text-sky-500 opacity-100' : ''
-          }`}
-        >
-          <FaPalette size={12} />
-        </span>
-      )}
-      {onRename && (
-        <span
-          role="button"
-          title="이름 편집"
-          onClick={(e) => {
-            e.stopPropagation();
-            onRename();
-          }}
-          className={`flex-none opacity-60 hover:opacity-100 ${active ? 'text-white' : ''}`}
-        >
-          <FaPen size={11} />
-        </span>
-      )}
-      {onDelete && (
-        <span
-          role="button"
-          title="폴더 삭제"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          className={`flex-none opacity-60 hover:opacity-100 ${active ? 'text-white' : 'hover:text-red-500'}`}
-        >
-          <FaTrashAlt size={11} />
-        </span>
+      ) : (
+        <>
+          {onExport && (
+            <span
+              role="button"
+              title="폴더 내보내기/불러오기"
+              onClick={(e) => {
+                e.stopPropagation();
+                onExport();
+              }}
+              className={`ml-0.5 flex-none opacity-60 hover:opacity-100 ${
+                active ? 'text-white' : 'hover:text-amber-500'
+              }`}
+            >
+              <FaFileExport size={11} />
+            </span>
+          )}
+          {onColor && (
+            <span
+              role="button"
+              title="폴더 색상"
+              onClick={(e) => {
+                e.stopPropagation();
+                onColor();
+              }}
+              className={`ml-0.5 flex-none opacity-60 hover:opacity-100 ${
+                active ? 'text-white' : colorActive ? 'text-sky-500 opacity-100' : ''
+              }`}
+            >
+              <FaPalette size={12} />
+            </span>
+          )}
+          {onRename && (
+            <span
+              role="button"
+              title="이름 편집"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRename();
+              }}
+              className={`flex-none opacity-60 hover:opacity-100 ${active ? 'text-white' : ''}`}
+            >
+              <FaPen size={11} />
+            </span>
+          )}
+          {onDelete && (
+            <span
+              role="button"
+              title="폴더 삭제"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              className={`flex-none opacity-60 hover:opacity-100 ${active ? 'text-white' : 'hover:text-red-500'}`}
+            >
+              <FaTrashAlt size={11} />
+            </span>
+          )}
+          {onAddProject && (
+            <span
+              role="button"
+              title="이 폴더에 새 프로젝트"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddProject();
+              }}
+              className={`flex-none opacity-60 hover:opacity-100 ${active ? 'text-white' : 'hover:text-sky-500'}`}
+            >
+              <FaPlus size={11} />
+            </span>
+          )}
+        </>
       )}
     </button>
   );
@@ -488,6 +522,50 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
     }
   }, [view, refresh]);
 
+  // 특정 폴더에 새 프로젝트 생성 (메뉴/버튼 공용)
+  const createProjectInFolder = useCallback(async (folder: string) => {
+    const name = await appState.pushDialogAsync({
+      type: 'input-confirm',
+      text: `"${folder}" 폴더에 새 프로젝트 이름`,
+    });
+    if (!name) return;
+    if (sessionService.list().includes(name)) {
+      appState.pushMessage('이미 존재하는 프로젝트 이름입니다.');
+      return;
+    }
+    try {
+      await sessionService.add(name);
+      try {
+        await sessionService.moveToFolder(name, folder);
+      } catch (e) {}
+      refresh();
+      appState.pushMessage(`프로젝트 "${name}"을(를) 만들었습니다.`);
+    } catch (e: any) {
+      appState.pushMessage(e.message || '프로젝트 생성에 실패했습니다.');
+    }
+  }, [refresh]);
+
+  // 모바일: 폴더마다 ⋮ 메뉴 (데스크톱은 인라인 버튼 유지)
+  const openFolderMenu = async (f: string) => {
+    const v = await appState.pushDialogAsync({
+      type: 'select',
+      text: `폴더 "${f}"`,
+      items: [
+        { text: '📤 내보내기/불러오기', value: 'export' },
+        { text: '🎨 색상 변경', value: 'color' },
+        { text: '✏️ 이름 편집', value: 'rename' },
+        { text: '🗑️ 폴더 삭제', value: 'delete' },
+        { text: '➕ 이 폴더에 새 프로젝트', value: 'add' },
+      ],
+    });
+    if (!v) return;
+    if (v === 'export') appState.folderBackupMenu(f);
+    else if (v === 'color') setColorPickerFor((p) => (p === f ? null : f));
+    else if (v === 'rename') startRename(f);
+    else if (v === 'delete') deleteFolderConfirm(f);
+    else if (v === 'add') createProjectInFolder(f);
+  };
+
   // A3: 다중 선택 일괄 이동
   const toggleSelect = useCallback((name: string) => {
     setSelected((prev) => {
@@ -554,12 +632,6 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
       appState.pushMessage(e.message || '폴더 이동에 실패했습니다.');
     }
   }, [refresh]);
-
-  // 드로어로 전환 (그리드 닫고 좌측 드로어 열기)
-  const openDrawer = useCallback(() => {
-    onClose();
-    appState.projectDrawerOpen = true;
-  }, [onClose]);
 
   // ===== 드래그&드롭 =====
   const canDropOnFolder = useCallback(
@@ -759,6 +831,8 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                 colorActive={picking}
                 onRename={() => startRename(f)}
                 onDelete={() => deleteFolderConfirm(f)}
+                onAddProject={() => createProjectInFolder(f)}
+                onMenu={() => openFolderMenu(f)}
                 editing={editingFolder === f}
                 editValue={editValue}
                 onEditChange={setEditValue}
@@ -831,15 +905,6 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
               <span>새 폴더</span>
             </button>
           </div>
-          {/* 좌하단: 드로어로 보기 */}
-          <button
-            onClick={openDrawer}
-            className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none md:w-full bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 md:mt-1"
-            title="좌측 드로어로 보기"
-          >
-            <FaBars size={13} />
-            <span>드로어로 보기</span>
-          </button>
         </div>
 
         {/* 검색 + 그리드 */}

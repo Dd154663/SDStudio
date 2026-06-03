@@ -8,13 +8,13 @@ import {
   FaPlus,
   FaChevronDown,
   FaChevronRight,
-  FaThLarge,
   FaPalette,
   FaFolderPlus,
   FaCheck,
   FaPen,
   FaTrashAlt,
   FaFileExport,
+  FaEllipsisV,
 } from 'react-icons/fa';
 import { sessionService, imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
@@ -383,9 +383,25 @@ const ProjectDrawer = observer(() => {
     });
   };
 
-  const openGrid = () => {
-    close();
-    appState.projectBrowserOpen = true;
+  // 모바일: 폴더마다 ⋮ 메뉴 (데스크톱은 인라인 버튼 유지)
+  const openFolderMenu = async (f: string) => {
+    const v = await appState.pushDialogAsync({
+      type: 'select',
+      text: `폴더 "${f}"`,
+      items: [
+        { text: '📤 내보내기/불러오기', value: 'export' },
+        { text: '🎨 색상 변경', value: 'color' },
+        { text: '✏️ 이름 편집', value: 'rename' },
+        { text: '🗑️ 폴더 삭제', value: 'delete' },
+        { text: '➕ 이 폴더에 새 프로젝트', value: 'add' },
+      ],
+    });
+    if (!v) return;
+    if (v === 'export') appState.folderBackupMenu(f);
+    else if (v === 'color') setColorPickerFor((p) => (p === f ? null : f));
+    else if (v === 'rename') startRename(f);
+    else if (v === 'delete') deleteFolderConfirm(f);
+    else if (v === 'add') createProject(f);
   };
 
   // ===== 드래그&드롭 =====
@@ -601,13 +617,6 @@ const ProjectDrawer = observer(() => {
           >
             <FaFolderPlus size={14} /> 폴더
           </button>
-          <button
-            onClick={openGrid}
-            title="그리드로 보기"
-            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
-          >
-            <FaThLarge size={14} /> 그리드
-          </button>
         </div>
         )}
 
@@ -780,47 +789,60 @@ const ProjectDrawer = observer(() => {
                           {projects.length}
                         </span>
                       </button>
-                      <button
-                        onClick={() => appState.folderBackupMenu(f)}
-                        title="폴더 내보내기/불러오기"
-                        className="p-1.5 rounded-md flex-none text-gray-400 hover:text-amber-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-                      >
-                        <FaFileExport size={14} />
-                      </button>
-                      <button
-                        onClick={() =>
-                          setColorPickerFor(picking ? null : f)
-                        }
-                        title="폴더 색상"
-                        className={`p-2 rounded-md flex-none transition-colors ${
-                          picking
-                            ? 'bg-gray-200 dark:bg-slate-600 text-sky-500'
-                            : 'text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        <FaPalette size={15} />
-                      </button>
-                      <button
-                        onClick={() => startRename(f)}
-                        title="이름 편집"
-                        className="p-2 rounded-md flex-none text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-                      >
-                        <FaPen size={15} />
-                      </button>
-                      <button
-                        onClick={() => deleteFolderConfirm(f)}
-                        title="폴더 삭제"
-                        className="p-2 rounded-md flex-none text-gray-400 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-                      >
-                        <FaTrashAlt size={15} />
-                      </button>
-                      <button
-                        onClick={() => createProject(f)}
-                        title="이 폴더에 새 프로젝트"
-                        className="p-2 rounded-md flex-none text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-                      >
-                        <FaPlus size={15} />
-                      </button>
+                      {isMobile ? (
+                        /* 모바일: ⋮ 메뉴 하나로 폴더 동작 5종 노출 */
+                        <button
+                          onClick={() => openFolderMenu(f)}
+                          title="폴더 메뉴"
+                          className="p-2 rounded-md flex-none text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                        >
+                          <FaEllipsisV size={16} />
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => appState.folderBackupMenu(f)}
+                            title="폴더 내보내기/불러오기"
+                            className="p-1.5 rounded-md flex-none text-gray-400 hover:text-amber-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                          >
+                            <FaFileExport size={14} />
+                          </button>
+                          <button
+                            onClick={() =>
+                              setColorPickerFor(picking ? null : f)
+                            }
+                            title="폴더 색상"
+                            className={`p-2 rounded-md flex-none transition-colors ${
+                              picking
+                                ? 'bg-gray-200 dark:bg-slate-600 text-sky-500'
+                                : 'text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700'
+                            }`}
+                          >
+                            <FaPalette size={15} />
+                          </button>
+                          <button
+                            onClick={() => startRename(f)}
+                            title="이름 편집"
+                            className="p-2 rounded-md flex-none text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                          >
+                            <FaPen size={15} />
+                          </button>
+                          <button
+                            onClick={() => deleteFolderConfirm(f)}
+                            title="폴더 삭제"
+                            className="p-2 rounded-md flex-none text-gray-400 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                          >
+                            <FaTrashAlt size={15} />
+                          </button>
+                          <button
+                            onClick={() => createProject(f)}
+                            title="이 폴더에 새 프로젝트"
+                            className="p-2 rounded-md flex-none text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                          >
+                            <FaPlus size={15} />
+                          </button>
+                        </>
+                      )}
                     </div>
                     )}
                     {picking && (
