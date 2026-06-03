@@ -775,6 +775,62 @@ export class SessionService extends ResourceSyncService<Session> {
     await this.createFrom(name, session);
   }
 
+  // 디렉터리를 하위까지 재귀 복사한다. (copyFile + listFiles 재사용, 새 IPC 불필요)
+  // 소스가 없으면 조용히 건너뛴다.
+  private async copyDirRecursive(srcDir: string, destDir: string) {
+    let entries: string[] = [];
+    try {
+      entries = await backend.listFiles(srcDir);
+    } catch (e) {
+      return;
+    }
+    if (!entries || entries.length === 0) return;
+    // listFiles(파일+디렉토리) vs listFilesWithStats(파일만) → 디렉터리 구분
+    let fileStats: any[] = [];
+    try {
+      fileStats = await backend.listFilesWithStats(srcDir);
+    } catch (e) {
+      fileStats = [];
+    }
+    const fileSet = new Set(fileStats.map((s: any) => s.name));
+    for (const entry of entries) {
+      if (fileSet.has(entry)) {
+        try {
+          await backend.copyFile(srcDir + '/' + entry, destDir + '/' + entry);
+        } catch (e) {}
+      } else {
+        // 하위 디렉터리 → 재귀
+        await this.copyDirRecursive(srcDir + '/' + entry, destDir + '/' + entry);
+      }
+    }
+  }
+
+  // 프로젝트를 이미지 포함하여 앱 내에서 복제한다.
+  // (프로젝트 백업 내보내기 → 재임포트와 동일한 결과: JSON + 모든 이미지 디렉터리)
+  async duplicateSessionDeep(session: Session, newName: string) {
+    if (newName in this.resources) {
+      throw new Error('Resource already exists');
+    }
+    // 이미지 디렉터리는 이름 기준(outs/<이름> 등)이므로 이름만 바꿔 통째 복사
+    const imageDirs = [
+      'outs',
+      'inpaints',
+      'vibes',
+      'references',
+      'inpaint_orgs',
+      'inpaint_masks',
+    ];
+    for (const dir of imageDirs) {
+      await this.copyDirRecursive(
+        dir + '/' + session.name,
+        dir + '/' + newName,
+      );
+    }
+    const json = session.toJSON();
+    json.name = newName;
+    await this.createFrom(newName, json);
+  }
+
   async migrateSession(session: ISession) {
     const types = ['SDImageGen', 'SDImageGenEasy'];
     for (const type of types) {

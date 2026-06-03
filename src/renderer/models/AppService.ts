@@ -571,6 +571,10 @@ export class AppState {
           value: 'saveDeep',
         },
         {
+          text: '📑 프로젝트 복제',
+          value: 'duplicate',
+        },
+        {
           text: '✏️ 프로젝트 이름 수정',
           value: 'rename',
         },
@@ -621,6 +625,8 @@ export class AppState {
         } else if (value === 'load') {
           const file = await getFirstFile();
           appState.handleFile(file as any);
+        } else if (value === 'duplicate') {
+          await this.duplicateProject();
         } else if (value === 'rename') {
           if (!appState.curSession) {
             appState.pushMessage('프로젝트를 먼저 선택해주세요');
@@ -689,6 +695,62 @@ export class AppState {
       },
     });
   }
+  // 현재 프로젝트를 앱 내에서 복제한다. (이미지 포함/미포함 2택)
+  // 결과적으로 "내보내기 후 재임포트"와 동일하며 기존 export/import 동작을 재사용한다.
+  // 미포함 = exportSessionShallow → importSessionShallow
+  // 포함  = duplicateSessionDeep (JSON + 모든 이미지 디렉터리 복사)
+  async duplicateProject() {
+    const cur = appState.curSession;
+    if (!cur) {
+      appState.pushMessage('프로젝트를 먼저 선택해주세요');
+      return;
+    }
+    const mode = await appState.pushDialogAsync({
+      type: 'select',
+      text: '복제 방식을 선택해주세요',
+      items: [
+        { text: '이미지 포함', value: 'deep' },
+        { text: '이미지 미포함', value: 'shallow' },
+      ],
+    });
+    if (!mode) return;
+
+    // "(원본 이름) Copy" — 충돌 시 번호 부여
+    const existing = sessionService.list();
+    const base = cur.name + ' Copy';
+    let newName = base;
+    let i = 2;
+    while (existing.includes(newName)) {
+      newName = `${base} (${i})`;
+      i++;
+    }
+    // 원본이 폴더 소속이면 같은 폴더에 복제
+    const folder = sessionService.getFolderOf(cur.name);
+
+    appState.setProgressDialog({ text: '프로젝트 복제 중...', done: 0, total: 1 });
+    try {
+      if (mode === 'shallow') {
+        const proj = await sessionService.exportSessionShallow(cur);
+        await sessionService.importSessionShallow(proj, newName);
+      } else {
+        await sessionService.duplicateSessionDeep(cur, newName);
+      }
+      if (folder) {
+        try {
+          await sessionService.moveToFolder(newName, folder);
+        } catch (e) {}
+      }
+    } catch (e: any) {
+      appState.setProgressDialog(undefined);
+      appState.pushMessage(e.message || '프로젝트 복제에 실패했습니다.');
+      return;
+    }
+    appState.setProgressDialog(undefined);
+    const sess = await sessionService.get(newName);
+    if (sess) this.curSession = sess;
+    appState.pushMessage(`"${newName}" (으)로 복제되었습니다.`);
+  }
+
   // ===== 폴더 단위 내보내기/불러오기 =====
   // 프로젝트 메뉴와 동일하지만 범위를 폴더 전체로 확장한다.
   // - 불러오기: 가져온 프로젝트를 해당 폴더로 이동
