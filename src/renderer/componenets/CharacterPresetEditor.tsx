@@ -351,6 +351,9 @@ const GlobalCharacterPresetCard = ({
   onDuplicate,
   onDelete,
   onMove,
+  cyclingMode = false,
+  selected = false,
+  onToggleSelect,
 }: {
   entry: IGlobalCharacterPresetEntry;
   index: number;
@@ -362,6 +365,9 @@ const GlobalCharacterPresetCard = ({
   onDuplicate: () => void;
   onDelete: () => void;
   onMove: (fromIndex: number, toIndex: number) => void;
+  cyclingMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) => {
   const ref = React.useRef<HTMLDivElement>(null);
   const [{ isDragging }, drag] = useDrag(
@@ -403,7 +409,10 @@ const GlobalCharacterPresetCard = ({
     >
       <div
         className="relative overflow-hidden aspect-[3/4]"
-        onClick={() => { if (!isMobile) onEdit(); }}
+        onClick={() => {
+          if (cyclingMode) onToggleSelect?.();
+          else if (!isMobile) onEdit();
+        }}
       >
         <GlobalCardImage entry={entry} className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-black/0 md:group-hover:bg-black/40 transition-colors duration-200 pointer-events-none" />
@@ -411,6 +420,20 @@ const GlobalCharacterPresetCard = ({
           <FaGlobe size={9} />
           글로벌
         </div>
+        {cyclingMode && (
+          <div
+            className="absolute top-2 right-2 z-30 cursor-pointer"
+            onClick={(e) => { e.stopPropagation(); onToggleSelect?.(); }}
+          >
+            <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
+              selected
+                ? 'bg-purple-500 border-purple-500 text-white'
+                : 'bg-white/80 dark:bg-slate-800/80 border-gray-300 dark:border-gray-500'
+            }`}>
+              {selected && <FaCheck size={12} />}
+            </div>
+          </div>
+        )}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-2.5 pt-6 pb-2">
           <div className="text-sm text-white font-medium drop-shadow truncate">
             {entry.name}
@@ -422,7 +445,7 @@ const GlobalCharacterPresetCard = ({
             {vcount === 0 && rcount === 0 && '이미지 없음'}
           </div>
         </div>
-        <div className="absolute top-0 left-0 right-0 flex flex-wrap justify-center items-center gap-1 z-20 py-1.5 px-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">
+        <div className={`absolute top-0 left-0 right-0 flex flex-wrap justify-center items-center gap-1 z-20 py-1.5 px-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200 ${cyclingMode ? 'hidden' : ''}`}>
           {isEasyMode && (
             <Tooltip content="불러와서 이지모드 적용">
               <button
@@ -1174,9 +1197,12 @@ export const CharacterPresetEditor = observer(({
   // 순차 생성 모드
   const [cyclingMode, setCyclingMode] = useState(false);
   const [selectedPresets, setSelectedPresets] = useState<Set<string>>(new Set());
+  const [selectedGlobalIds, setSelectedGlobalIds] = useState<Set<string>>(new Set());
   const [selectedScenes, setSelectedScenes] = useState<Set<string>>(new Set());
   const [cyclingSamples, setCyclingSamples] = useState(10);
   const [sceneFilter, setSceneFilter] = useState('');
+  // 프로젝트 파일 생성 모드: 프리셋마다 현재 프로젝트를 복제해 새 프로젝트로 생성
+  const [projectFileMode, setProjectFileMode] = useState(false);
 
   const cyclingState = cyclingSessionService.state;
 
@@ -1196,16 +1222,20 @@ export const CharacterPresetEditor = observer(({
   }, [scenes, sceneFilter]);
 
   // 순차 생성 모드 진입 시 모든 선택 해제 (기본값)
+  // 글로벌 뷰에서는 프로젝트 파일 생성 모드를 기본 ON (요청 핵심 동작)
   const enterCyclingMode = () => {
     setCyclingMode(true);
     setSelectedPresets(new Set());
+    setSelectedGlobalIds(new Set());
     setSelectedScenes(new Set());
     setSceneFilter('');
+    setProjectFileMode(globalView);
   };
 
   const exitCyclingMode = () => {
     setCyclingMode(false);
     setSelectedPresets(new Set());
+    setSelectedGlobalIds(new Set());
     setSelectedScenes(new Set());
     setSceneFilter('');
   };
@@ -1217,6 +1247,13 @@ export const CharacterPresetEditor = observer(({
     setSelectedPresets(next);
   };
 
+  const toggleGlobalSelection = (id: string) => {
+    const next = new Set(selectedGlobalIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedGlobalIds(next);
+  };
+
   const toggleSceneSelection = (name: string) => {
     const next = new Set(selectedScenes);
     if (next.has(name)) next.delete(name);
@@ -1224,10 +1261,32 @@ export const CharacterPresetEditor = observer(({
     setSelectedScenes(next);
   };
 
+  const selectedCyclingCount = globalView
+    ? selectedGlobalIds.size
+    : selectedPresets.size;
+
   const startCycling = () => {
-    const selectedPresetList = presets.filter((p) => selectedPresets.has(p.name));
     const selectedSceneList = scenes.filter((s) => selectedScenes.has(s.name));
-    if (selectedPresetList.length === 0) {
+    // 현재 뷰에 따라 큐 항목(디스크립터) 구성
+    const items = globalView
+      ? globalEntries
+          .filter((e) => selectedGlobalIds.has(e.id))
+          .map((e) => ({
+            kind: 'global' as const,
+            name: e.name,
+            preset: CharacterPreset.fromJSON(
+              JSON.parse(JSON.stringify(e.preset)),
+            ),
+            globalId: e.id,
+          }))
+      : presets
+          .filter((p) => selectedPresets.has(p.name))
+          .map((p) => ({
+            kind: 'local' as const,
+            name: p.name,
+            preset: p,
+          }));
+    if (items.length === 0) {
       appState.pushMessage('프리셋을 하나 이상 선택해주세요');
       return;
     }
@@ -1235,7 +1294,13 @@ export const CharacterPresetEditor = observer(({
       appState.pushMessage('씬을 하나 이상 선택해주세요');
       return;
     }
-    cyclingSessionService.start(curSession, selectedPresetList, selectedSceneList, cyclingSamples);
+    cyclingSessionService.start(
+      curSession,
+      items,
+      selectedSceneList,
+      cyclingSamples,
+      { projectFileMode },
+    );
   };
 
   const handleAddNew = () => {
@@ -1497,18 +1562,18 @@ export const CharacterPresetEditor = observer(({
                 : 'bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500'
             }`}
             onClick={() => {
-              if (!globalView && cyclingMode) exitCyclingMode();
+              if (cyclingMode) exitCyclingMode();
               setGlobalView(!globalView);
             }}
           >
             {globalView ? <FaGlobe size={12} /> : <FaUsers size={12} />}
             {globalView ? '글로벌' : '로컬'}
           </button>
-          {!globalView && presets.length >= 2 && (
+          {(globalView ? globalEntries.length >= 2 : presets.length >= 2) && (
             <button
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
                 cyclingMode
-                  ? 'bg-sky-500 text-white'
+                  ? (globalView ? 'bg-purple-500 text-white' : 'bg-sky-500 text-white')
                   : 'bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500'
               }`}
               onClick={() => cyclingMode ? exitCyclingMode() : enterCyclingMode()}
@@ -1564,22 +1629,27 @@ export const CharacterPresetEditor = observer(({
             alignContent: 'start',
           }}
         >
-          {/* 새 글로벌 프리셋 카드 */}
-          <div
-            className="rounded-lg border-2 border-dashed border-purple-300 dark:border-purple-600 hover:border-purple-500 cursor-pointer flex flex-col items-center justify-center aspect-[3/4] transition-colors group"
-            onClick={handleAddNewGlobal}
-          >
-            <FaPlus className="text-2xl text-purple-400 dark:text-purple-500 group-hover:text-purple-600 transition-colors mb-2" />
-            <span className="text-sm text-purple-400 dark:text-purple-500 group-hover:text-purple-600 transition-colors">
-              새 글로벌 프리셋
-            </span>
-          </div>
+          {/* 새 글로벌 프리셋 카드 (순차 생성 모드가 아닐 때만) */}
+          {!cyclingMode && (
+            <div
+              className="rounded-lg border-2 border-dashed border-purple-300 dark:border-purple-600 hover:border-purple-500 cursor-pointer flex flex-col items-center justify-center aspect-[3/4] transition-colors group"
+              onClick={handleAddNewGlobal}
+            >
+              <FaPlus className="text-2xl text-purple-400 dark:text-purple-500 group-hover:text-purple-600 transition-colors mb-2" />
+              <span className="text-sm text-purple-400 dark:text-purple-500 group-hover:text-purple-600 transition-colors">
+                새 글로벌 프리셋
+              </span>
+            </div>
+          )}
           {globalEntries.map((entry, i) => (
             <GlobalCharacterPresetCard
               key={entry.id}
               entry={entry}
               index={i}
               isEasyMode={isEasyMode}
+              cyclingMode={cyclingMode}
+              selected={selectedGlobalIds.has(entry.id)}
+              onToggleSelect={() => toggleGlobalSelection(entry.id)}
               onApplyEasy={() => handleApplyGlobal(entry, 'easy')}
               onApplyCharacter={() => handleApplyGlobal(entry, 'character')}
               onLoad={() => handleLoadGlobal(entry)}
@@ -1606,7 +1676,6 @@ export const CharacterPresetEditor = observer(({
           </button>
         </div>
       ) : (
-        <>
           <div
             style={{
               display: 'grid',
@@ -1661,9 +1730,9 @@ export const CharacterPresetEditor = observer(({
               </div>
             ))}
           </div>
-
-          {/* 순차 생성 설정 패널 */}
-          {cyclingMode && (
+      )}
+      {/* 순차 생성 설정 패널 (로컬/글로벌 공통) */}
+      {cyclingMode && (
             <div className="mt-4 p-3 border border-gray-200 dark:border-gray-600 rounded-lg">
               {/* 씬 선택 */}
               <div className="mb-3">
@@ -1709,10 +1778,25 @@ export const CharacterPresetEditor = observer(({
                   )}
                 </div>
               </div>
+              {/* 프로젝트 파일 생성 모드 토글 */}
+              <label className="flex items-start gap-2 mb-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={projectFileMode}
+                  onChange={(e) => setProjectFileMode(e.target.checked)}
+                  className="mt-0.5 rounded border-gray-300 dark:border-gray-600"
+                />
+                <span className="text-sm text-gray-700 dark:text-gray-300">
+                  <span className="font-medium">프로젝트 파일 생성으로 동작</span>
+                  <span className="block text-xs text-gray-500 dark:text-gray-400">
+                    각 프리셋을 프리셋 이름의 새 프로젝트로 복제(이미지 미포함)해 생성합니다. 원본 프로젝트는 그대로 유지됩니다.
+                  </span>
+                </span>
+              </label>
               {/* 생성 수 + 시작 버튼 */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <div className="text-sm text-gray-600 dark:text-gray-400">
-                  프리셋: <span className="font-medium text-gray-800 dark:text-gray-200">{selectedPresets.size}개</span>
+                  프리셋: <span className="font-medium text-gray-800 dark:text-gray-200">{selectedCyclingCount}개</span>
                 </div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">
                   씬: <span className="font-medium text-gray-800 dark:text-gray-200">{selectedScenes.size}개</span>
@@ -1729,9 +1813,11 @@ export const CharacterPresetEditor = observer(({
                   />
                 </div>
                 <button
-                  className="ml-auto px-4 py-1.5 rounded-lg bg-green-500 hover:bg-green-600 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
+                  className={`ml-auto px-4 py-1.5 rounded-lg text-white text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                    globalView ? 'bg-purple-500 hover:bg-purple-600' : 'bg-green-500 hover:bg-green-600'
+                  }`}
                   onClick={startCycling}
-                  disabled={selectedPresets.size === 0 || selectedScenes.size === 0}
+                  disabled={selectedCyclingCount === 0 || selectedScenes.size === 0}
                 >
                   <FaPlay size={10} />
                   순차 생성 시작
@@ -1739,8 +1825,6 @@ export const CharacterPresetEditor = observer(({
               </div>
             </div>
           )}
-        </>
-      )}
     </div>
   );
 });

@@ -7,15 +7,37 @@ import {
   VibeItem,
   ReferenceItem,
 } from './types';
-import { taskQueueService, workFlowService } from '.';
+import {
+  taskQueueService,
+  workFlowService,
+  sessionService,
+  imageService,
+  globalCharacterPresetService,
+  backend,
+} from '.';
+import { dataUriToBase64 } from './ImageService';
 import { queueWorkflow } from './TaskQueueService';
 import { appState } from './AppService';
 
 export type CyclingState = 'idle' | 'running' | 'paused' | 'completed';
 
+// 순차 생성 큐 항목. 로컬/글로벌 프리셋을 모두 표현한다.
+export interface CyclingItem {
+  kind: 'local' | 'global';
+  name: string;
+  preset: CharacterPreset; // 표시 및 로컬 적용용
+  globalId?: string; // kind === 'global' 일 때 글로벌 엔트리 id
+}
+
+export interface CyclingOptions {
+  // ON이면 프리셋마다 현재 프로젝트를 복제(이미지 미포함)해 프리셋 이름의 새 프로젝트를 만들고
+  // 그 프로젝트에 적용·생성한다. OFF면 기존처럼 현재 프로젝트 하나에 갈아끼우며 생성.
+  projectFileMode: boolean;
+}
+
 export class CyclingSessionService {
   @observable accessor state: CyclingState = 'idle';
-  @observable accessor presetQueue: CharacterPreset[] = [];
+  @observable accessor presetQueue: CyclingItem[] = [];
   @observable accessor currentPresetIndex: number = -1;
   @observable accessor totalPresets: number = 0;
   @observable accessor completedPresets: number = 0;
@@ -25,6 +47,7 @@ export class CyclingSessionService {
   private scenes: GenericScene[] = [];
   private samples: number = 1;
   private workflowType: string = '';
+  private projectFileMode: boolean = false;
   private stopHandler: (() => void) | null = null;
   private disposers: (() => void)[] = [];
 
@@ -35,12 +58,13 @@ export class CyclingSessionService {
   @action
   start(
     session: Session,
-    presets: CharacterPreset[],
+    items: CyclingItem[],
     scenes: GenericScene[],
     samples: number,
+    options?: CyclingOptions,
   ) {
     if (this.state === 'running') return;
-    if (presets.length === 0 || scenes.length === 0) return;
+    if (items.length === 0 || scenes.length === 0) return;
 
     const workflowType = session.selectedWorkflow?.workflowType;
     if (!workflowType) return;
@@ -55,8 +79,9 @@ export class CyclingSessionService {
     this.scenes = [...scenes];
     this.samples = samples;
     this.workflowType = workflowType;
-    this.presetQueue = [...presets];
-    this.totalPresets = presets.length;
+    this.projectFileMode = options?.projectFileMode ?? false;
+    this.presetQueue = [...items];
+    this.totalPresets = items.length;
     this.completedPresets = 0;
     this.currentPresetIndex = -1;
     this.state = 'running';
@@ -65,16 +90,20 @@ export class CyclingSessionService {
     this.stopHandler = this.onQueueStop.bind(this);
     taskQueueService.addEventListener('stop', this.stopHandler);
 
-    // 안전장치: 세션 변경 감시
-    const sessionDisposer = reaction(
-      () => appState.curSession,
-      (newSession) => {
-        if (newSession !== this.session && this.state !== 'idle') {
-          this.cancel();
-        }
-      },
-    );
-    this.disposers.push(sessionDisposer);
+    // 안전장치: 세션 변경 감시.
+    // 프로젝트 파일 모드에서는 생성 대상이 curSession이 아니므로(백그라운드),
+    // 사용자가 원본에서 다른 프로젝트로 이동해도 취소되면 안 된다 → 등록하지 않음.
+    if (!this.projectFileMode) {
+      const sessionDisposer = reaction(
+        () => appState.curSession,
+        (newSession) => {
+          if (newSession !== this.session && this.state !== 'idle') {
+            this.cancel();
+          }
+        },
+      );
+      this.disposers.push(sessionDisposer);
+    }
 
     // 첫 프리셋으로 진행
     this.advanceToNextPreset();
@@ -95,30 +124,136 @@ export class CyclingSessionService {
       return;
     }
 
-    const preset = this.presetQueue[this.currentPresetIndex];
-    this.currentPresetName = preset.name;
-
-    // 프리셋 적용
-    this.applyPreset(preset);
+    const desc = this.presetQueue[this.currentPresetIndex];
+    this.currentPresetName = desc.name;
 
     // 프리셋 전환 쿨다운 (첫 프리셋 제외 — API 레이트 리밋 방지)
     if (this.currentPresetIndex > 0) {
-      appState.pushMessage(`다음 프리셋 "${preset.name}" 준비 중 (5초 대기)...`);
+      appState.pushMessage(`다음 프리셋 "${desc.name}" 준비 중 (5초 대기)...`);
       await new Promise((resolve) => setTimeout(resolve, 5000));
       if (this.state !== 'running') return; // 대기 중 취소된 경우
     }
 
-    // 씬 큐잉 + 실행
-    this.queueAllScenes();
+    try {
+      if (this.projectFileMode) {
+        await this.runProjectFilePreset(desc);
+      } else {
+        await this.runInPlacePreset(desc);
+      }
+    } catch (e: any) {
+      appState.pushMessage(
+        `프리셋 "${desc.name}" 처리 실패: ${e?.message || e}`,
+      );
+      if (this.state !== 'running') return;
+      // 실패해도 다음 프리셋으로 진행
+      this.completedPresets++;
+      this.advanceToNextPreset();
+    }
   }
 
-  private applyPreset(preset: CharacterPreset) {
+  // 기존 동작: 현재 프로젝트 하나에 프리셋을 갈아끼우며 생성
+  private async runInPlacePreset(desc: CyclingItem) {
     if (!this.session) return;
+    let preset = desc.preset;
+    if (desc.kind === 'global' && desc.globalId) {
+      // 글로벌 이미지를 현재 세션에 실체화한 프리셋을 적용
+      preset = await globalCharacterPresetService.instantiateIntoSession(
+        this.session,
+        desc.globalId,
+      );
+    }
+    this.applyPreset(preset, this.session);
+    await this.queueScenes(this.session, this.scenes);
+  }
 
-    let shared = this.session.presetShareds.get(this.workflowType);
+  // 프로젝트 파일 모드: 프리셋마다 현재 프로젝트를 복제해 새 프로젝트에 적용·생성
+  private async runProjectFilePreset(desc: CyclingItem) {
+    if (!this.session) return;
+    const folder = sessionService.getFolderOf(this.session.name);
+    const newName = this.uniqueProjectName(desc.name);
+
+    // 이미지 미포함 복제 (프로젝트 파일 내보내기와 동일)
+    const iSession = await sessionService.exportSessionShallow(this.session);
+    await sessionService.importSessionShallow(iSession, newName);
+    if (folder) await sessionService.moveToFolder(newName, folder);
+
+    const newSession = sessionService.getFast(newName);
+    if (!newSession) throw new Error('새 프로젝트 생성 실패');
+
+    // shallow 복제는 JSON 토큰만 복사하고 이미지 파일은 복사하지 않으므로,
+    // 캐릭터 프리셋(바이브/레퍼런스) 이미지 디렉터리를 새 세션으로 복사한다.
+    // 이렇게 해야 새 프로젝트의 "캐릭터 프리셋 관리"에서 이미지가 깨지지 않고,
+    // 복사된 로컬 프리셋을 재적용해도 정상 동작한다.
+    await this.copyImageDir(
+      imageService.getVibesDir(this.session),
+      imageService.getVibesDir(newSession),
+    );
+    await this.copyImageDir(
+      imageService.getReferenceDir(this.session),
+      imageService.getReferenceDir(newSession),
+    );
+    appState.pushMessage(`'${newName}' 프로젝트 생성됨`);
+
+    // 적용 프리셋 결정
+    let preset: CharacterPreset;
+    if (desc.kind === 'global' && desc.globalId) {
+      // 글로벌 이미지는 세션 외부(global_char_images)에 있으므로 새 세션에 실체화
+      preset = await globalCharacterPresetService.instantiateIntoSession(
+        newSession,
+        desc.globalId,
+      );
+    } else {
+      // 로컬 프리셋은 이미지 디렉터리를 복사했으므로 원본 토큰이 새 세션에서 해석됨
+      preset = desc.preset;
+    }
+    this.applyPreset(preset, newSession);
+
+    // 선택 씬을 새 세션 기준으로 매핑해 큐잉
+    const mapped: GenericScene[] = [];
+    for (const s of this.scenes) {
+      const sc = newSession.scenes.get(s.name);
+      if (sc) mapped.push(sc);
+    }
+    await this.queueScenes(newSession, mapped);
+  }
+
+  // 현재 프로젝트와 같은 이름이 없도록 고유한 프로젝트 이름을 만든다.
+  private uniqueProjectName(base: string): string {
+    let name = (base || '프리셋').trim() || '프리셋';
+    if (!sessionService.resourceList.includes(name)) return name;
+    let i = 2;
+    while (sessionService.resourceList.includes(`${name} (${i})`)) i++;
+    return `${name} (${i})`;
+  }
+
+  // 한 이미지 디렉터리(평면)의 모든 파일을 다른 디렉터리로 복사한다.
+  // 파일명(=토큰)을 그대로 유지하므로 프리셋 JSON의 이미지 참조가 그대로 해석된다.
+  // (encoded 같은 하위 디렉터리 엔트리는 readDataFile 실패로 자연히 건너뛴다 — 생성 시 재생성됨)
+  private async copyImageDir(srcDir: string, destDir: string) {
+    let files: string[] = [];
+    try {
+      files = await backend.listFiles(srcDir);
+    } catch (e) {
+      return; // 소스 디렉터리가 없으면 복사할 것도 없음
+    }
+    for (const f of files) {
+      try {
+        const data = await backend.readDataFile(srcDir + '/' + f);
+        if (data) {
+          await backend.writeDataFile(destDir + '/' + f, dataUriToBase64(data));
+        }
+      } catch (e) {}
+    }
+  }
+
+  private applyPreset(preset: CharacterPreset, target: Session) {
+    const workflowType = target.selectedWorkflow?.workflowType;
+    if (!workflowType) return;
+
+    let shared = target.presetShareds.get(workflowType);
     if (!shared) {
-      shared = workFlowService.buildShared(this.workflowType);
-      this.session.presetShareds.set(this.workflowType, shared);
+      shared = workFlowService.buildShared(workflowType);
+      target.presetShareds.set(workflowType, shared);
     }
 
     // 이전 프리셋 항목 제거 (사용자 직접 추가 항목 유지)
@@ -161,13 +296,13 @@ export class CyclingSessionService {
     shared._appliedPresetName = preset.name;
   }
 
-  private async queueAllScenes() {
-    if (!this.session || !this.session.selectedWorkflow) return;
+  private async queueScenes(target: Session, scenes: GenericScene[]) {
+    if (!target.selectedWorkflow) return;
 
-    for (const scene of this.scenes) {
+    for (const scene of scenes) {
       await queueWorkflow(
-        this.session,
-        this.session.selectedWorkflow,
+        target,
+        target.selectedWorkflow,
         scene,
         this.samples,
       );
@@ -230,6 +365,7 @@ export class CyclingSessionService {
     this.session = null;
     this.scenes = [];
     this.currentPresetName = '';
+    this.projectFileMode = false;
   }
 
   // ─── 대기 중 프리셋 관리 (중간 수정) ───────────────────────
@@ -258,14 +394,14 @@ export class CyclingSessionService {
   }
 
   @action
-  addQueuedPreset(preset: CharacterPreset) {
-    this.presetQueue.push(preset);
+  addQueuedPreset(item: CyclingItem) {
+    this.presetQueue.push(item);
     this.presetQueue = [...this.presetQueue];
     this.totalPresets = this.presetQueue.length;
   }
 
   // 남은 프리셋 목록 (현재 이후)
-  get remainingPresets(): CharacterPreset[] {
+  get remainingPresets(): CyclingItem[] {
     if (this.currentPresetIndex < 0) return this.presetQueue;
     return this.presetQueue.slice(this.currentPresetIndex + 1);
   }
