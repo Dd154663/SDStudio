@@ -273,12 +273,16 @@ export const App = observer(() => {
       if (type === 'application/json') {
         return '프로젝트 또는 프롬프트조각을 임포트합니다';
       }
-      // type이 빈 문자열일 수 있음 — 파일 이름 확장자로 추정
-      if (items.length > 0) {
-        const file = dataTransfer.files?.[0];
-        if (file && file.name.endsWith('.tar')) {
-          return '프로젝트 백업을 불러옵니다';
-        }
+      // tar 백업(프로젝트/폴더). 드래그 중에는 보안상 파일명(dataTransfer.files)을 읽을 수 없고,
+      // tar 의 MIME 도 환경마다 application/x-tar 또는 빈 문자열로 다르게 보고된다.
+      // → MIME 타입 기준으로 안내(드롭 시 handleTarImport 가 폴더/프로젝트 백업을 정확히 구분).
+      if (
+        type === 'application/x-tar' ||
+        type === 'application/x-gtar' ||
+        type === 'application/tar' ||
+        type === '' // 확장자/타입 미상 — tar 등 백업 파일 가능성
+      ) {
+        return '프로젝트 또는 폴더 백업을 불러옵니다';
       }
       return null;
     };

@@ -563,6 +563,10 @@ export class AppState {
           value: 'loadDeep',
         },
         {
+          text: '📦 폴더 백업 불러오기',
+          value: 'loadFolder',
+        },
+        {
           text: '프로젝트 파일 내보내기 (이미지 미포함)',
           value: 'save',
         },
@@ -625,6 +629,8 @@ export class AppState {
         } else if (value === 'load') {
           const file = await getFirstFile();
           appState.handleFile(file as any);
+        } else if (value === 'loadFolder') {
+          await appState.folderBackupImport();
         } else if (value === 'duplicate') {
           await this.duplicateProject();
         } else if (value === 'rename') {
@@ -885,6 +891,7 @@ export class AppState {
   }
 
   // 불러오기: 폴더 백업 아카이브를 선택 → 매니페스트 인식 → 폴더 새로 만들고 프로젝트 전체 복원.
+  // 폴더 탭 / 프로젝트 메뉴 등 어디서나 호출 가능.
   async folderBackupImport() {
     const tarPath = await backend.selectFile();
     if (!tarPath) return;
@@ -900,20 +907,38 @@ export class AppState {
     }
 
     // 매니페스트 파싱 — 폴더 백업 파일인지 인식
-    let manifest: any = null;
-    try {
-      manifest = JSON.parse(await backend.readFile(root + '/_folder.json'));
-    } catch (e) {}
-    if (
-      !manifest ||
-      manifest.type !== 'sdstudio-folder-backup' ||
-      !Array.isArray(manifest.projects)
-    ) {
+    const manifest = await this.readFolderBackupManifest(root);
+    if (!manifest) {
       appState.setProgressDialog(undefined);
       try { await backend.deleteDir(root); } catch (e) {}
       appState.pushMessage('폴더 백업 파일이 아닙니다.');
       return;
     }
+    await this.restoreFolderBackupFromDir(root, manifest);
+  }
+
+  // 추출된 디렉터리에서 폴더 백업 매니페스트를 읽고 유효성 검증. 폴더 백업이 아니면 null.
+  private async readFolderBackupManifest(root: string): Promise<any | null> {
+    let manifest: any = null;
+    try {
+      manifest = JSON.parse(await backend.readFile(root + '/_folder.json'));
+    } catch (e) {
+      return null;
+    }
+    if (
+      !manifest ||
+      manifest.type !== 'sdstudio-folder-backup' ||
+      !Array.isArray(manifest.projects)
+    ) {
+      return null;
+    }
+    return manifest;
+  }
+
+  // 이미 추출된 디렉터리(root)와 매니페스트로 폴더와 하위 프로젝트를 복원한다.
+  // (folderBackupImport / 드래그&드롭 임포트가 공용으로 사용)
+  private async restoreFolderBackupFromDir(root: string, manifest: any) {
+    appState.setProgressDialog({ text: '폴더 백업을 불러오는 중입니다...', done: 0, total: 1 });
 
     // 폴더 이름 결정 (충돌 시 번호 부여)
     const baseFolder = (manifest.folder || '폴더').toString().trim() || '폴더';
@@ -1753,13 +1778,51 @@ export class AppState {
    * - 프리셋이 없으면 기존대로 externalImage (프롬프트 추출 뷰)
    */
   async handleTarImport(tarPath: string): Promise<void> {
+    // tar 내용을 한 번 추출해 폴더 백업 / 프로젝트 백업을 정확히 구분한다.
+    // (드래그&드롭으로 들어온 tar 가 폴더 백업일 수도, 프로젝트 백업일 수도 있음)
+    const root = 'tmp/' + v4();
+    this.setProgressDialog({ text: '백업 파일을 확인하는 중...', done: 0, total: 1 });
+    try {
+      await backend.unzipFiles(tarPath, root);
+    } catch (e: any) {
+      this.setProgressDialog(undefined);
+      this.pushMessage('압축 해제에 실패했습니다.');
+      return;
+    }
+    this.setProgressDialog(undefined);
+
+    // 1) 폴더 백업 (_folder.json 매니페스트) → 폴더째 복원
+    const manifest = await this.readFolderBackupManifest(root);
+    if (manifest) {
+      await this.restoreFolderBackupFromDir(root, manifest);
+      return;
+    }
+
+    // 2) 프로젝트 백업 (project.json 존재) → 단일 프로젝트로 복원
+    let isProject = false;
+    try {
+      isProject = await backend.existFile(root + '/project.json');
+    } catch (e) {}
+    if (!isProject) {
+      try { await backend.deleteDir(root); } catch (e) {}
+      this.pushMessage('인식할 수 없는 백업 파일입니다.');
+      return;
+    }
+
     this.pushDialog({
       type: 'input-confirm',
       text: '프로젝트 백업을 불러옵니다.\n새 프로젝트 이름을 입력하세요.',
+      onCancel: async () => {
+        try { await backend.deleteDir(root); } catch (e) {}
+      },
       callback: async (inputValue) => {
-        if (!inputValue) return;
-        if (inputValue in sessionService.list()) {
+        if (!inputValue) {
+          try { await backend.deleteDir(root); } catch (e) {}
+          return;
+        }
+        if (sessionService.list().includes(inputValue)) {
           this.pushMessage('이미 존재하는 프로젝트 이름입니다.');
+          try { await backend.deleteDir(root); } catch (e) {}
           return;
         }
         this.setProgressDialog({
@@ -1768,12 +1831,14 @@ export class AppState {
           total: 1,
         });
         try {
-          await sessionService.importSessionDeep(tarPath, inputValue);
+          await sessionService.importSessionDeepFromDir(root, inputValue);
         } catch (e: any) {
           this.setProgressDialog(undefined);
           this.pushMessage('백업 불러오기 실패: ' + e.message);
+          try { await backend.deleteDir(root); } catch (e2) {}
           return;
         }
+        try { await backend.deleteDir(root); } catch (e) {}
         this.setProgressDialog(undefined);
         this.pushDialog({
           type: 'yes-only',
