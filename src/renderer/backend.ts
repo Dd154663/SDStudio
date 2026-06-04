@@ -87,4 +87,11 @@ export abstract class Backend {
   abstract onZipProgress(callback: (progress: any) => void): () => void;
   abstract onImageChanged(callback: (path: string) => void): () => void;
   abstract onClose(callback: () => void): () => void;
+
+  // 모바일 백그라운드(포그라운드 서비스) 알림 내용 갱신.
+  // 기본은 no-op이며 안드로이드 백엔드에서만 실제 구현한다.
+  async updateBackgroundNotification(
+    _title: string,
+    _text: string,
+  ): Promise<void> {}
 }

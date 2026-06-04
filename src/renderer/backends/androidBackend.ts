@@ -133,9 +133,33 @@ export class AndroidBackend extends Backend {
       configLoaded = true;
     })();
     (async () => {
-      if (await BackgroundMode.checkBatteryOptimizations()) {
-        await BackgroundMode.requestDisableBatteryOptimizations();
-      }
+      // 알림 권한 요청 (Android 13+). 권한이 없으면 포그라운드 서비스 알림이 표시되지 않아
+      // 서비스가 더 쉽게 종료될 수 있으므로 먼저 요청한다.
+      try {
+        await BackgroundMode.requestNotificationsPermission();
+      } catch (e) {}
+      // 포그라운드 서비스 알림 초기 내용 설정
+      try {
+        await BackgroundMode.setSettings({
+          title: 'SDStudio',
+          text: '백그라운드 실행 준비됨',
+          channelName: '백그라운드 생성',
+          channelDescription: '이미지 생성 진행 상태',
+          resume: true,
+          // 주의: 이 플러그인의 silent=true 는 "알림 자체를 표시하지 않음"을 의미한다.
+          // (소리 없음이 아님 — 채널은 IMPORTANCE_LOW 라 어차피 무음)
+          // 백그라운드 알림이 보여야 하므로 반드시 false.
+          silent: false,
+          hidden: false,
+          showWhen: false,
+        });
+      } catch (e) {}
+      try {
+        const battery = await BackgroundMode.checkBatteryOptimizations();
+        if (!battery.disabled) {
+          await BackgroundMode.requestDisableBatteryOptimizations();
+        }
+      } catch (e) {}
       await BackgroundMode.enable();
       await BackgroundMode.disableWebViewOptimizations();
     })();
@@ -174,6 +198,13 @@ export class AndroidBackend extends Backend {
       directory: Directory.Documents,
       encoding: Encoding.UTF8,
     });
+  }
+
+  // 포그라운드 서비스 알림 내용 갱신 (생성 진행 상태 표시)
+  async updateBackgroundNotification(title: string, text: string): Promise<void> {
+    try {
+      await BackgroundMode.setSettings({ title, text });
+    } catch (e) {}
   }
 
   async getVersion(): Promise<string> {
