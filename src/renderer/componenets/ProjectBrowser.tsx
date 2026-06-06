@@ -4,6 +4,7 @@ import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck, FaPen, FaTras
 import { sessionService, imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import ModalOverlay from './ModalOverlay';
+import Tooltip from './Tooltip';
 
 const RECENT_KEY = 'sdstudio-recent-projects';
 const RECENT_MAX = 5;
@@ -153,6 +154,7 @@ const ProjectCard = ({
         )}
       </div>
       <div className="px-2 py-2 bg-white dark:bg-slate-800 flex items-center gap-1">
+        <Tooltip content={isFav ? '즐겨찾기 해제' : '즐겨찾기'}>
         <button
           className="flex-none text-sm"
           onClick={(e) => {
@@ -162,10 +164,11 @@ const ProjectCard = ({
         >
           <FaStar className={isFav ? 'text-yellow-400' : 'text-gray-300 dark:text-slate-600'} size={15} />
         </button>
+        </Tooltip>
         <span className="text-[15px] text-gray-800 dark:text-gray-100 truncate flex-1">{name}</span>
+        <Tooltip content="폴더로 이동">
         <button
           className="flex-none text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-0.5"
-          title="폴더로 이동"
           onClick={(e) => {
             e.stopPropagation();
             onMove();
@@ -173,6 +176,7 @@ const ProjectCard = ({
         >
           <FaEllipsisV size={14} />
         </button>
+        </Tooltip>
       </div>
     </div>
   );
@@ -255,9 +259,9 @@ const NavItem = ({
           onClick={(e) => e.stopPropagation()}
           className="w-24 md:w-auto md:flex-1 min-w-0 bg-transparent outline-none text-gray-900 dark:text-gray-100 text-sm"
         />
+        <Tooltip content="저장">
         <span
           role="button"
-          title="저장"
           onClick={(e) => {
             e.stopPropagation();
             onEditCommit?.();
@@ -266,9 +270,10 @@ const NavItem = ({
         >
           <FaCheck size={13} />
         </span>
+        </Tooltip>
+        <Tooltip content="취소">
         <span
           role="button"
-          title="취소"
           onClick={(e) => {
             e.stopPropagation();
             onEditCancel?.();
@@ -277,6 +282,7 @@ const NavItem = ({
         >
           <FaTimes size={13} />
         </span>
+        </Tooltip>
       </div>
     );
   }
@@ -310,9 +316,9 @@ const NavItem = ({
       )}
       {onMenu && isMobile ? (
         /* 모바일: ⋮ 메뉴 버튼 하나로 폴더 동작 5종 노출 */
+        <Tooltip content="폴더 메뉴">
         <span
           role="button"
-          title="폴더 메뉴"
           onClick={(e) => {
             e.stopPropagation();
             onMenu();
@@ -321,12 +327,13 @@ const NavItem = ({
         >
           <FaEllipsisV size={15} />
         </span>
+        </Tooltip>
       ) : (
         <>
           {onExport && (
+            <Tooltip content="폴더 내보내기/불러오기">
             <span
               role="button"
-              title="폴더 내보내기/불러오기"
               onClick={(e) => {
                 e.stopPropagation();
                 onExport();
@@ -337,11 +344,12 @@ const NavItem = ({
             >
               <FaFileExport size={11} />
             </span>
+            </Tooltip>
           )}
           {onColor && (
+            <Tooltip content="폴더 색상">
             <span
               role="button"
-              title="폴더 색상"
               onClick={(e) => {
                 e.stopPropagation();
                 onColor();
@@ -352,11 +360,12 @@ const NavItem = ({
             >
               <FaPalette size={12} />
             </span>
+            </Tooltip>
           )}
           {onRename && (
+            <Tooltip content="이름 편집">
             <span
               role="button"
-              title="이름 편집"
               onClick={(e) => {
                 e.stopPropagation();
                 onRename();
@@ -365,11 +374,12 @@ const NavItem = ({
             >
               <FaPen size={11} />
             </span>
+            </Tooltip>
           )}
           {onDelete && (
+            <Tooltip content="폴더 삭제">
             <span
               role="button"
-              title="폴더 삭제"
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete();
@@ -378,11 +388,12 @@ const NavItem = ({
             >
               <FaTrashAlt size={11} />
             </span>
+            </Tooltip>
           )}
           {onAddProject && (
+            <Tooltip content="이 폴더에 새 프로젝트">
             <span
               role="button"
-              title="이 폴더에 새 프로젝트"
               onClick={(e) => {
                 e.stopPropagation();
                 onAddProject();
@@ -391,6 +402,7 @@ const NavItem = ({
             >
               <FaPlus size={11} />
             </span>
+            </Tooltip>
           )}
         </>
       )}
@@ -711,6 +723,17 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
     } catch (e) {}
   }, []);
 
+  // 커스텀 컬러 피커 전용: 크로뮴은 색상 팝업을 드래그하는 동안 change 이벤트가
+  // 연속 발생하므로, 패널을 닫지 않고(input 언마운트 → 팝업 닫힘 방지) 저장만
+  // 디바운스한다. 이렇게 해야 슬라이더로 색을 자유롭게 조정할 수 있다.
+  const customColorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pickCustomColor = useCallback((folder: string, c: string) => {
+    if (customColorTimer.current) clearTimeout(customColorTimer.current);
+    customColorTimer.current = setTimeout(() => {
+      sessionService.setFolderColor(folder, c).catch(() => {});
+    }, 200);
+  }, []);
+
   // ===== 폴더 인라인 이름 편집 / 삭제 =====
   const startRename = useCallback((folder: string) => {
     setColorPickerFor(null);
@@ -930,6 +953,29 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                   >
                     기본
                   </button>
+                  {/* 직접 색상 선택 (네이티브 컬러 피커) */}
+                  <label
+                    title="직접 색상 선택"
+                    className="relative w-6 h-6 rounded-full flex-none cursor-pointer overflow-hidden border border-gray-300 dark:border-slate-500 transition-transform hover:scale-110"
+                    style={{
+                      background:
+                        'conic-gradient(red, orange, yellow, lime, cyan, blue, magenta, red)',
+                    }}
+                  >
+                    <input
+                      type="color"
+                      defaultValue={
+                        /^#[0-9a-fA-F]{6}$/.test(folderColor)
+                          ? folderColor
+                          : '#0ea5e9'
+                      }
+                      onInput={(e) =>
+                        pickCustomColor(f, e.currentTarget.value)
+                      }
+                      onChange={(e) => pickCustomColor(f, e.target.value)}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                  </label>
                 </div>
               )}
               </div>
@@ -938,7 +984,6 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
             <button
               onClick={handleNewFolder}
               className="flex items-center justify-center md:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none md:w-full border border-dashed border-gray-300 dark:border-slate-500 text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"
-              title="새 폴더"
             >
               <FaPlus size={11} />
               <span>새 폴더</span>

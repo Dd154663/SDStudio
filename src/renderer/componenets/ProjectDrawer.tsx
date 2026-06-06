@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import {
   FaTimes,
@@ -18,6 +18,7 @@ import {
 } from 'react-icons/fa';
 import { sessionService, imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
+import Tooltip from './Tooltip';
 import { pushRecentProject } from './ProjectBrowser';
 
 const naturalCmp = (a: string, b: string) =>
@@ -95,9 +96,9 @@ const ProjectRow = observer(
             {selected && <FaCheck size={9} />}
           </span>
         ) : (
+          <Tooltip content={isFav ? '즐겨찾기 해제' : '즐겨찾기'}>
           <span
             role="button"
-            title={isFav ? '즐겨찾기 해제' : '즐겨찾기'}
             onClick={(e) => {
               e.stopPropagation();
               e.preventDefault();
@@ -116,6 +117,7 @@ const ProjectRow = observer(
               }`}
             />
           </span>
+          </Tooltip>
         )}
         <span className="truncate flex-1">{name}</span>
         {folder && (
@@ -146,6 +148,8 @@ const ProjectDrawer = observer(() => {
   const [colorPickerFor, setColorPickerFor] = useState<string | null>(null);
   const [editingFolder, setEditingFolder] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  // 커스텀 컬러 피커 저장 디바운스 타이머 (훅 규칙: 조기 반환 이전에 선언)
+  const customColorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 선택 모드(다중 선택 → 폴더 일괄 이동)
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -330,6 +334,16 @@ const ProjectDrawer = observer(() => {
     try {
       await sessionService.setFolderColor(f, c);
     } catch (e) {}
+  };
+
+  // 커스텀 컬러 피커 전용: 크로뮴은 색상 팝업을 드래그하는 동안 change 이벤트가
+  // 연속 발생하므로, 패널을 닫지 않고(input 언마운트 → 팝업 닫힘 방지) 저장만
+  // 디바운스한다. 이렇게 해야 슬라이더로 색을 자유롭게 조정할 수 있다.
+  const pickCustomColor = (f: string, c: string) => {
+    if (customColorTimer.current) clearTimeout(customColorTimer.current);
+    customColorTimer.current = setTimeout(() => {
+      sessionService.setFolderColor(f, c).catch(() => {});
+    }, 200);
   };
 
   // ===== 폴더 인라인 이름 편집 / 삭제 =====
@@ -649,13 +663,14 @@ const ProjectDrawer = observer(() => {
           >
             <FaPlus size={12} /> 새 프로젝트
           </button>
+          <Tooltip content="새 폴더 만들기">
           <button
             onClick={createFolder}
-            title="새 폴더 만들기"
             className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
           >
             <FaFolderPlus size={14} /> 폴더
           </button>
+          </Tooltip>
         </div>
         )}
 
@@ -781,20 +796,22 @@ const ProjectDrawer = observer(() => {
                           }}
                           className="flex-1 min-w-0 bg-white dark:bg-slate-700 border border-sky-400 rounded px-2 py-1.5 text-[15px] text-gray-900 dark:text-gray-100 outline-none"
                         />
+                        <Tooltip content="저장">
                         <button
                           onClick={commitRename}
-                          title="저장"
                           className="p-2 rounded-md flex-none text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700"
                         >
                           <FaCheck size={15} />
                         </button>
+                        </Tooltip>
+                        <Tooltip content="취소">
                         <button
                           onClick={cancelRename}
-                          title="취소"
                           className="p-2 rounded-md flex-none text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"
                         >
                           <FaTimes size={15} />
                         </button>
+                        </Tooltip>
                       </div>
                     ) : (
                     <div className="flex items-center gap-0.5 pl-1.5 pr-1">
@@ -830,27 +847,29 @@ const ProjectDrawer = observer(() => {
                       </button>
                       {isMobile ? (
                         /* 모바일: ⋮ 메뉴 하나로 폴더 동작 5종 노출 */
+                        <Tooltip content="폴더 메뉴">
                         <button
                           onClick={() => openFolderMenu(f)}
-                          title="폴더 메뉴"
                           className="p-2 rounded-md flex-none text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                         >
                           <FaEllipsisV size={16} />
                         </button>
+                        </Tooltip>
                       ) : (
                         <>
+                          <Tooltip content="폴더 내보내기/불러오기">
                           <button
                             onClick={() => appState.folderBackupMenu(f)}
-                            title="폴더 내보내기/불러오기"
                             className="p-1.5 rounded-md flex-none text-gray-400 hover:text-amber-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                           >
                             <FaFileExport size={14} />
                           </button>
+                          </Tooltip>
+                          <Tooltip content="폴더 색상">
                           <button
                             onClick={() =>
                               setColorPickerFor(picking ? null : f)
                             }
-                            title="폴더 색상"
                             className={`p-2 rounded-md flex-none transition-colors ${
                               picking
                                 ? 'bg-gray-200 dark:bg-slate-600 text-sky-500'
@@ -859,27 +878,31 @@ const ProjectDrawer = observer(() => {
                           >
                             <FaPalette size={15} />
                           </button>
+                          </Tooltip>
+                          <Tooltip content="이름 편집">
                           <button
                             onClick={() => startRename(f)}
-                            title="이름 편집"
                             className="p-2 rounded-md flex-none text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                           >
                             <FaPen size={15} />
                           </button>
+                          </Tooltip>
+                          <Tooltip content="폴더 삭제">
                           <button
                             onClick={() => deleteFolderConfirm(f)}
-                            title="폴더 삭제"
                             className="p-2 rounded-md flex-none text-gray-400 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                           >
                             <FaTrashAlt size={15} />
                           </button>
+                          </Tooltip>
+                          <Tooltip content="이 폴더에 새 프로젝트">
                           <button
                             onClick={() => createProject(f)}
-                            title="이 폴더에 새 프로젝트"
                             className="p-2 rounded-md flex-none text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                           >
                             <FaPlus size={15} />
                           </button>
+                          </Tooltip>
                         </>
                       )}
                     </div>
@@ -909,6 +932,27 @@ const ProjectDrawer = observer(() => {
                         >
                           기본
                         </button>
+                        {/* 직접 색상 선택 (네이티브 컬러 피커) */}
+                        <label
+                          title="직접 색상 선택"
+                          className="relative w-7 h-7 rounded-full flex-none cursor-pointer overflow-hidden border border-gray-300 dark:border-slate-500 transition-transform hover:scale-110"
+                          style={{
+                            background:
+                              'conic-gradient(red, orange, yellow, lime, cyan, blue, magenta, red)',
+                          }}
+                        >
+                          <input
+                            type="color"
+                            defaultValue={
+                              /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#0ea5e9'
+                            }
+                            onInput={(e) =>
+                              pickCustomColor(f, e.currentTarget.value)
+                            }
+                            onChange={(e) => pickCustomColor(f, e.target.value)}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          />
+                        </label>
                       </div>
                     )}
                     {isOpen && (
