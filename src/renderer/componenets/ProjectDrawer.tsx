@@ -19,6 +19,7 @@ import {
 import { sessionService, imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import Tooltip from './Tooltip';
+import MobileColorPicker from './MobileColorPicker';
 import { pushRecentProject } from './ProjectBrowser';
 
 const naturalCmp = (a: string, b: string) =>
@@ -932,27 +933,40 @@ const ProjectDrawer = observer(() => {
                         >
                           기본
                         </button>
-                        {/* 직접 색상 선택 (네이티브 컬러 피커) */}
-                        <label
-                          title="직접 색상 선택"
-                          className="relative w-7 h-7 rounded-full flex-none cursor-pointer overflow-hidden border border-gray-300 dark:border-slate-500 transition-transform hover:scale-110"
-                          style={{
-                            background:
-                              'conic-gradient(red, orange, yellow, lime, cyan, blue, magenta, red)',
-                          }}
-                        >
-                          <input
-                            type="color"
-                            defaultValue={
+                        {/* 직접 색상 선택: 데스크톱은 OS 네이티브 피커, 모바일은
+                            빈약한 WebView 다이얼로그 대신 내장 HSL 피커 사용 */}
+                        {!isMobile ? (
+                          <label
+                            title="직접 색상 선택"
+                            className="relative w-7 h-7 rounded-full flex-none cursor-pointer overflow-hidden border border-gray-300 dark:border-slate-500 transition-transform hover:scale-110"
+                            style={{
+                              background:
+                                'conic-gradient(red, orange, yellow, lime, cyan, blue, magenta, red)',
+                            }}
+                          >
+                            <input
+                              type="color"
+                              defaultValue={
+                                /^#[0-9a-fA-F]{6}$/.test(color)
+                                  ? color
+                                  : '#0ea5e9'
+                              }
+                              onInput={(e) =>
+                                pickCustomColor(f, e.currentTarget.value)
+                              }
+                              onChange={(e) => pickCustomColor(f, e.target.value)}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            />
+                          </label>
+                        ) : (
+                          <MobileColorPicker
+                            initial={
                               /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#0ea5e9'
                             }
-                            onInput={(e) =>
-                              pickCustomColor(f, e.currentTarget.value)
-                            }
-                            onChange={(e) => pickCustomColor(f, e.target.value)}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            onChange={(hex) => pickCustomColor(f, hex)}
+                            onClose={() => setColorPickerFor(null)}
                           />
-                        </label>
+                        )}
                       </div>
                     )}
                     {isOpen && (
