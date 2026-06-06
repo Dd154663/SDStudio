@@ -16,15 +16,20 @@ export abstract class ResourceSyncService<
   folderList: string[];
   folderMap: { [name: string]: string | null };
   disposes: { [name: string]: () => void };
+  // 파일 이동/이름변경/삭제가 진행 중인 리소스 이름. 진행 중에는 주기 flush 가 해당
+  // 이름을 건드리지 않아(경로가 바뀌는 중) 잘못된 위치로 중복 저장되는 경쟁을 막는다.
+  _inFlight: Set<string>;
   resourceDir: string;
   updateInterval: number;
   running: boolean;
   dummy: T | undefined;
+  #visibilityWired = false;
   constructor(resourceDir: string, interval: number) {
     super();
     this.resources = {};
     this.dirty = {};
     this.disposes = {};
+    this._inFlight = new Set();
     this.resourceDir = resourceDir;
     this.resourceList = [];
     this.folderList = [];
@@ -87,11 +92,14 @@ export abstract class ResourceSyncService<
 
   async delete(name: string) {
     if (name in this.resources) {
+      const src = this.getPath(name);
       delete this.resources[name];
       this.disposes[name]();
-      const src = this.getPath(name);
-      await backend.renameFile(src, src.replace(/\.json$/, '.deleted'));
-      delete this.folderMap[name];
+      delete this.dirty[name];
+      await this.guardInFlight([name], async () => {
+        await backend.renameFile(src, src.replace(/\.json$/, '.deleted'));
+        delete this.folderMap[name];
+      });
       await this.update();
     }
   }
@@ -114,7 +122,9 @@ export abstract class ResourceSyncService<
       this.folderMap[newName] = this.folderMap[oldName];
       delete this.folderMap[oldName];
     }
-    await backend.renameFile(srcPath, this.getPath(newName));
+    await this.guardInFlight([oldName, newName], async () => {
+      await backend.renameFile(srcPath, this.getPath(newName));
+    });
     await this.update();
   }
 
@@ -153,9 +163,27 @@ export abstract class ResourceSyncService<
     return this.resources[name];
   }
 
-  async update() {
-    const writes = Object.keys(this.dirty)
-      .filter((name) => name in this.resources)
+  // 주어진 이름들을 작업 동안 in-flight 로 표시해 주기 flush 와의 경쟁(경로가 바뀌는
+  // 중에 잘못된 위치로 중복 저장되는 문제)을 차단한다.
+  protected async guardInFlight<R>(
+    names: string[],
+    fn: () => Promise<R>,
+  ): Promise<R> {
+    for (const n of names) this._inFlight.add(n);
+    try {
+      return await fn();
+    } finally {
+      for (const n of names) this._inFlight.delete(n);
+    }
+  }
+
+  // dirty 리소스를 디스크에 저장한다(목록 재스캔 없음). in-flight 이름은 건너뛴다.
+  protected async flush() {
+    const names = Object.keys(this.dirty).filter(
+      (name) => name in this.resources && !this._inFlight.has(name),
+    );
+    if (names.length === 0) return;
+    const writes = names
       .map((name) => {
         const l = this.getFast(name);
         if (!l) return null;
@@ -166,9 +194,25 @@ export abstract class ResourceSyncService<
       })
       .filter(Boolean);
     await Promise.allSettled(writes);
-    this.dirty = {};
+    // 실제로 저장한 이름만 dirty 해제 (in-flight 로 건너뛴 건 다음 기회에 저장).
+    for (const name of names) delete this.dirty[name];
+  }
+
+  // flush + 목록 재스캔. 추가/삭제/이름변경/이동 등 목록이 바뀌는 작업이 호출한다.
+  async update() {
+    await this.flush();
     this.resourceList = await this.getList();
     this.dispatchEvent(new CustomEvent('listupdated', {}));
+  }
+
+  private hasPendingWrites(): boolean {
+    return Object.keys(this.dirty).some(
+      (name) => name in this.resources && !this._inFlight.has(name),
+    );
+  }
+
+  private isHidden(): boolean {
+    return typeof document !== 'undefined' && document.hidden === true;
   }
 
   async saveAll() {
@@ -194,9 +238,40 @@ export abstract class ResourceSyncService<
   }
 
   async run() {
+    // 최초 1회 전체 스캔으로 목록을 로드한다.
+    await this.update();
+
+    // 가시성 변화 대응: 백그라운드 진입 시 즉시 저장(편집 유실 방지),
+    // 복귀 시 재스캔. (모바일에서 백그라운드 중 강제 종료되어도 직전 편집을 보존)
+    if (typeof document !== 'undefined' && !this.#visibilityWired) {
+      this.#visibilityWired = true;
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          this.flush().catch(() => {});
+        } else {
+          this.update().catch(() => {});
+        }
+      });
+    }
+
+    let idleTicks = 0;
     while (this.running) {
-      await this.update();
       await sleep(this.updateInterval);
+      if (!this.running) break;
+      // 백그라운드면 디스크 작업을 멈춰 배터리/IO 를 아낀다(가시성 기반).
+      if (this.isHidden()) continue;
+      try {
+        if (this.hasPendingWrites()) {
+          // 편집 자동저장은 즉시(재스캔 없이) 처리한다.
+          await this.flush();
+        }
+        // 목록을 바꾸는 작업은 자체적으로 update() 를 호출하므로, 주기 재스캔은
+        // 외부 변경 대비 안전망일 뿐 → 약 20초마다 1회만 수행(활동 기반 절감).
+        if (++idleTicks >= 4) {
+          idleTicks = 0;
+          await this.update();
+        }
+      } catch (e) {}
     }
   }
 

@@ -104,14 +104,21 @@ export class SessionService extends ResourceSyncService<Session> {
     if (this.resourceList.includes(newName)) {
       throw new Error('같은 이름의 프로젝트가 있습니다.');
     }
-    await backend.renameDir(
-      this.folderDirPath(oldName),
-      this.folderDirPath(newName),
+    // 폴더 이동(renameDir, Windows 에선 copy+rmdir 로 시간이 걸림) 동안 해당 폴더
+    // 소속 프로젝트들을 in-flight 로 보호해 주기 flush 가 잘못된 경로로 저장하지 않게 한다.
+    const affected = Object.keys(this.folderMap).filter(
+      (n) => this.folderMap[n] === oldName,
     );
-    // 폴더맵 즉시 반영 (update()의 재스캔 전에도 일관성 유지)
-    for (const [name, f] of Object.entries(this.folderMap)) {
-      if (f === oldName) this.folderMap[name] = newName;
-    }
+    await this.guardInFlight(affected, async () => {
+      await backend.renameDir(
+        this.folderDirPath(oldName),
+        this.folderDirPath(newName),
+      );
+      // 폴더맵 즉시 반영 (update()의 재스캔 전에도 일관성 유지)
+      for (const [name, f] of Object.entries(this.folderMap)) {
+        if (f === oldName) this.folderMap[name] = newName;
+      }
+    });
     // 폴더 색상 마이그레이션
     if (this.folderColors[oldName]) {
       this.folderColors[newName] = this.folderColors[oldName];
@@ -165,9 +172,11 @@ export class SessionService extends ResourceSyncService<Session> {
       }
     }
     const srcPath = this.getPath(name);
-    this.folderMap[name] = targetFolder;
-    const destPath = this.getPath(name);
-    await backend.renameFile(srcPath, destPath);
+    await this.guardInFlight([name], async () => {
+      this.folderMap[name] = targetFolder;
+      const destPath = this.getPath(name);
+      await backend.renameFile(srcPath, destPath);
+    });
     await this.update();
   }
 
@@ -742,7 +751,14 @@ export class SessionService extends ResourceSyncService<Session> {
     }
     const path = 'tmp/' + v4();
     await backend.unzipFiles(tarpath, path);
-    await this.importSessionDeepFromDir(path, name);
+    try {
+      await this.importSessionDeepFromDir(path, name);
+    } finally {
+      // 복사 방식이므로 성공/실패와 무관하게 임시 추출물을 정리한다.
+      try {
+        await backend.deleteDir(path);
+      } catch (e) {}
+    }
   }
 
   // 이미 추출된 디렉터리(project.json + outs/vibes/... 하위 포함)로부터 프로젝트를 복원한다.
@@ -755,7 +771,9 @@ export class SessionService extends ResourceSyncService<Session> {
       await backend.readFile(dir + '/project.json'),
     );
     session.name = name;
-    const moves: [string, string][] = [
+    // 이동(renameDir) 대신 복사 후 검증: 원본(임시 디렉터리)을 보존하므로 중간에
+    // 실패해도 데이터가 흩어지거나 유실되지 않는다(부분 복원 방지).
+    const copies: [string, string][] = [
       [dir + '/outs', 'outs/' + name],
       [dir + '/inpaints', 'inpaints/' + name],
       [dir + '/inpaint_orgs', 'inpaint_orgs/' + name],
@@ -763,23 +781,47 @@ export class SessionService extends ResourceSyncService<Session> {
       [dir + '/vibes', 'vibes/' + name],
       [dir + '/references', 'references/' + name],
     ];
-    for (const [src, dest] of moves) {
-      try {
-        await backend.renameDir(src, dest);
-      } catch (e) {
-        // 해당 디렉터리가 없을 수 있음(이미지 없는 프로젝트 등) → 무시
+    const createdDests: string[] = [];
+    try {
+      for (const [src, dest] of copies) {
+        // 소스 디렉터리가 없으면(해당 타입 이미지 없음) 건너뛴다.
+        let exists = true;
+        try {
+          await backend.listFiles(src);
+        } catch (e) {
+          exists = false;
+        }
+        if (!exists) continue;
+        // strict=true: 실제 복사 실패 시 예외를 던져 반쪽짜리 임포트를 막는다.
+        await this.copyDirRecursive(src, dest, true);
+        createdDests.push(dest);
       }
+      await this.createFrom(name, session);
+    } catch (e) {
+      // 부분 실패 롤백: 이번에 만든 대상 이미지 디렉터리를 정리한다.
+      // (원본 임시 디렉터리는 호출부가 정리한다)
+      for (const dest of createdDests) {
+        try {
+          await backend.deleteDir(dest);
+        } catch (e2) {}
+      }
+      throw e;
     }
-    await this.createFrom(name, session);
   }
 
   // 디렉터리를 하위까지 재귀 복사한다. (copyFile + listFiles 재사용, 새 IPC 불필요)
   // 소스가 없으면 조용히 건너뛴다.
-  private async copyDirRecursive(srcDir: string, destDir: string) {
+  // strict=true 이면 복사 실패 시 예외를 던진다(부분 복원 방지용). 기본은 기존처럼 무시.
+  private async copyDirRecursive(
+    srcDir: string,
+    destDir: string,
+    strict = false,
+  ) {
     let entries: string[] = [];
     try {
       entries = await backend.listFiles(srcDir);
     } catch (e) {
+      if (strict) throw e;
       return;
     }
     if (!entries || entries.length === 0) return;
@@ -788,6 +830,7 @@ export class SessionService extends ResourceSyncService<Session> {
     try {
       fileStats = await backend.listFilesWithStats(srcDir);
     } catch (e) {
+      if (strict) throw e;
       fileStats = [];
     }
     const fileSet = new Set(fileStats.map((s: any) => s.name));
@@ -795,10 +838,16 @@ export class SessionService extends ResourceSyncService<Session> {
       if (fileSet.has(entry)) {
         try {
           await backend.copyFile(srcDir + '/' + entry, destDir + '/' + entry);
-        } catch (e) {}
+        } catch (e) {
+          if (strict) throw e;
+        }
       } else {
         // 하위 디렉터리 → 재귀
-        await this.copyDirRecursive(srcDir + '/' + entry, destDir + '/' + entry);
+        await this.copyDirRecursive(
+          srcDir + '/' + entry,
+          destDir + '/' + entry,
+          strict,
+        );
       }
     }
   }

@@ -100,6 +100,9 @@ const SessionSelect = observer(() => {
     if (action === 'restore') {
       try {
         await trashService.restoreProject(selected);
+        // 복원은 .deleted→.json 파일만 바꾸므로 목록 재스캔을 즉시 트리거한다.
+        // (주기 재스캔이 활동 기반으로 완화되어 자동 반영이 지연될 수 있음)
+        await sessionService.update();
         appState.pushMessage(`프로젝트 "${selected}"이(가) 복원되었습니다.`);
       } catch (e: any) {
         appState.pushMessage(e.message || '프로젝트 복원에 실패했습니다.');
