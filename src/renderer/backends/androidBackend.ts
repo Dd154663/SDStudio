@@ -23,6 +23,7 @@ import { NovelAiFetcher, NovelAiImageGenService } from './genVendors/nai';
 import FetchService from './fecthService';
 import JSZip from 'jszip';
 import { BackgroundMode } from '@anuradev/capacitor-background-mode';
+import { App as CapacitorApp } from '@capacitor/app';
 import { TagDB } from './tagDB';
 // @ts-ignore
 import DBCSV from '../../../assets/db.txt';
@@ -138,31 +139,32 @@ export class AndroidBackend extends Backend {
       try {
         await BackgroundMode.requestNotificationsPermission();
       } catch (e) {}
-      // 포그라운드 서비스 알림 초기 내용 설정
-      try {
-        await BackgroundMode.setSettings({
-          title: 'SDStudio',
-          text: '백그라운드 실행 준비됨',
-          channelName: '백그라운드 생성',
-          channelDescription: '이미지 생성 진행 상태',
-          resume: true,
-          // 주의: 이 플러그인의 silent=true 는 "알림 자체를 표시하지 않음"을 의미한다.
-          // (소리 없음이 아님 — 채널은 IMPORTANCE_LOW 라 어차피 무음)
-          // 백그라운드 알림이 보여야 하므로 반드시 false.
-          silent: false,
-          hidden: false,
-          showWhen: false,
-        });
-      } catch (e) {}
       try {
         const battery = await BackgroundMode.checkBatteryOptimizations();
         if (!battery.disabled) {
           await BackgroundMode.requestDisableBatteryOptimizations();
         }
       } catch (e) {}
-      await BackgroundMode.enable();
-      await BackgroundMode.disableWebViewOptimizations();
+      // 포그라운드 서비스 설정 + enable. 최초 1회는 안내용 기본 문구 포함.
+      await this.ensureBackgroundMode(true);
+      try {
+        await BackgroundMode.disableWebViewOptimizations();
+      } catch (e) {}
     })();
+
+    // 견고화: 앱이 포그라운드로 돌아올 때마다 백그라운드 모드를 재적용한다.
+    // 최초 실행은 권한 다이얼로그가 enable() 타이밍을 자연스럽게 맞춰주지만, 2번째
+    // 실행(콜드 스타트, 다이얼로그 없음)에서는 enable()/설정이 다음 백그라운드 전환에
+    // 안정적으로 반영되지 않아 알림이 뜨지 않는 문제가 있었다. resume 마다 재적용하면
+    // 다음 백그라운드 진입 직전에 항상 신선한 상태가 보장된다.
+    // (text 는 생략 → 진행 중 생성 알림 문구를 덮어쓰지 않음)
+    try {
+      CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+        if (isActive) {
+          this.ensureBackgroundMode(false).catch(() => {});
+        }
+      });
+    } catch (e) {}
 
     (async () => {
       this.tagDBId = (await TagDB.createDB({ name: 'tags' })).id;
@@ -200,10 +202,39 @@ export class AndroidBackend extends Backend {
     });
   }
 
+  // 포그라운드 서비스 설정 적용 + enable. (resume/시작/생성 시 반복 호출되어 자가복구)
+  // includeText=true 면 안내용 기본 문구도 설정(최초 1회). false 면 현재 진행 문구 보존.
+  private async ensureBackgroundMode(includeText: boolean): Promise<void> {
+    try {
+      const settings: any = {
+        channelName: '백그라운드 생성',
+        channelDescription: '이미지 생성 진행 상태',
+        resume: true,
+        // 주의: 이 플러그인의 silent=true 는 "알림 자체를 표시하지 않음"을 의미한다.
+        // (소리 없음이 아님 — 채널은 IMPORTANCE_LOW 라 어차피 무음)
+        // 백그라운드 알림이 보여야 하므로 반드시 false.
+        silent: false,
+        hidden: false,
+        showWhen: false,
+      };
+      if (includeText) {
+        settings.title = 'SDStudio';
+        settings.text = '백그라운드 실행 준비됨';
+      }
+      await BackgroundMode.setSettings(settings);
+    } catch (e) {}
+    try {
+      await BackgroundMode.enable();
+    } catch (e) {}
+  }
+
   // 포그라운드 서비스 알림 내용 갱신 (생성 진행 상태 표시)
   async updateBackgroundNotification(title: string, text: string): Promise<void> {
     try {
-      await BackgroundMode.setSettings({ title, text });
+      // 생성 시작 시점에 백그라운드 모드가 확실히 활성화되도록 자가복구(enable 포함).
+      // (2번째 실행 이후 알림 미동작 대비 — 어느 경로로든 생성 직전에 establish 보장)
+      await BackgroundMode.setSettings({ title, text, silent: false });
+      await BackgroundMode.enable();
     } catch (e) {}
   }
 
