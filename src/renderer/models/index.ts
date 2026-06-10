@@ -33,6 +33,7 @@ import { GlobalPieceService } from './GlobalPieceService';
 import { GlobalPresetService } from './GlobalPresetService';
 import { GlobalCharacterPresetService } from './GlobalCharacterPresetService';
 import { BackgroundNotificationService } from './BackgroundNotificationService';
+import { BackgroundKeepAliveService } from './BackgroundKeepAliveService';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -122,3 +123,7 @@ export const cyclingSessionService = new CyclingSessionService();
 // 모바일 백그라운드 포그라운드 서비스 알림에 생성 진행 상태를 표시
 export const backgroundNotificationService = new BackgroundNotificationService();
 backgroundNotificationService.start();
+
+// 모바일 백그라운드 생성 중 Chromium 페이지 동결 우회 (무음 오디오 keep-alive)
+export const backgroundKeepAliveService = new BackgroundKeepAliveService();
+backgroundKeepAliveService.start();
