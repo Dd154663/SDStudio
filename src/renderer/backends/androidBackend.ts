@@ -279,13 +279,13 @@ export class AndroidBackend extends Backend {
   }
 
   async showFile(arg: string): Promise<void> {
+    const { appState } = require('../models/AppService');
     const urlRes = await Filesystem.getUri({
       path: `${APP_DIR}/${arg}`,
       directory: Directory.Documents,
     });
     // 다운로드에 저장 vs 공유 선택
     const choice = await new Promise<string | undefined>((resolve) => {
-      const { appState } = require('../models/AppService');
       appState.pushDialog({
         type: 'select',
         text: '파일 내보내기가 완료되었습니다.',
@@ -298,22 +298,31 @@ export class AndroidBackend extends Backend {
       });
     });
     if (choice === 'download') {
-      await this.copyToDownloads(arg);
+      try {
+        await this.copyToDownloads(arg);
+      } catch (e: any) {
+        appState.pushMessage('다운로드 폴더 복사 실패: ' + (e?.message || e));
+      }
     } else if (choice === 'share') {
       await Share.share({ url: urlRes.uri });
     }
   }
 
   async copyToDownloads(path: string): Promise<void> {
-    const file = await Filesystem.readFile({
-      path: `${APP_DIR}/${path}`,
+    // 파일 내용을 base64 문자열로 JS까지 왕복시키면 대용량 파일(원본 PNG 다수를 묶은
+    // tar 등 수백 MB)에서 네이티브 힙 OOM으로 앱이 크래시하므로, 데이터를 브리지에
+    // 태우지 않는 네이티브 파일 복사(Filesystem.copy)로 처리한다.
+    try {
+      await Filesystem.mkdir({
+        path: 'Download',
+        directory: Directory.ExternalStorage,
+      });
+    } catch (e) {}
+    await Filesystem.copy({
+      from: `${APP_DIR}/${path}`,
       directory: Directory.Documents,
-    });
-    await Filesystem.writeFile({
-      path: 'Download/' + path.split('/').pop()!,
-      data: file.data,
-      directory: Directory.ExternalStorage,
-      recursive: true,
+      to: 'Download/' + path.split('/').pop()!,
+      toDirectory: Directory.ExternalStorage,
     });
     await ZipService.showDownloads({});
   }

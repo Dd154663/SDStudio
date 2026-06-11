@@ -12,12 +12,23 @@ import com.getcapacitor.Logger;
 
 import io.sunho.SDStudio.SDSNative;
 import io.sunho.SDStudio.FetchService;
-import ee.smmv.trace.ExceptionHandler;
 
 public class MainActivity extends BridgeActivity {
   @Override
   public void onCreate(Bundle savedInstanceState) {
-    ExceptionHandler.register(this.getApplicationContext(), "https://ip.sunho.kim/stacktrace");
+    // 과거 원격 스택트레이스 로거(ExceptionHandler.register)가 남긴 크래시 파일 정리.
+    // 해당 라이브러리는 앱 시작 시 저장된 크래시 파일을 Apache HttpClient(API 28+에서
+    // OS에서 제거됨)로 전송하려다 또 크래시 → 새 크래시 파일 저장 → 무한 크래시 루프를
+    // 만들었으므로 제거함. 루프에 빠진 기존 설치본 복구를 위해 잔존 파일도 지운다.
+    try {
+      java.io.File dir = getApplicationContext().getDir("stacktraces", 0);
+      java.io.File[] leftovers = dir.listFiles();
+      if (leftovers != null) {
+        for (java.io.File f : leftovers) f.delete();
+      }
+    } catch (Exception e) {
+      Logger.error("stacktraces cleanup failed: " + e.getMessage());
+    }
     registerPlugin(FetchService.class);
     registerPlugin(ImageResizer.class);
     registerPlugin(ZipService.class);
