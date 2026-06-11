@@ -94,7 +94,6 @@
   "dependencies": {
     "@anuradev/capacitor-background-mode": "file:externals/capacitor-background-mode",
     "@capacitor-community/file-opener": "^6.0.0",
-    "@capacitor-community/http": "^1.4.1",
     "@capacitor/android": "^6.1.0",
     "@capacitor/app": "^6.0.0",
     "@capacitor/clipboard": "^6.0.0",
