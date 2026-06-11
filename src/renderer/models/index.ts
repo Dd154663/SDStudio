@@ -34,6 +34,7 @@ import { GlobalPresetService } from './GlobalPresetService';
 import { GlobalCharacterPresetService } from './GlobalCharacterPresetService';
 import { BackgroundNotificationService } from './BackgroundNotificationService';
 import { BackgroundKeepAliveService } from './BackgroundKeepAliveService';
+import { ProjectSizeService } from './ProjectSizeService';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -68,6 +69,9 @@ export const imageService = new ImageService();
 export const trashService = new TrashService();
 
 export const imageDownloadService = new ImageDownloadService();
+
+// 프로젝트별 용량 수동 계산 (시작 시 로드 없음 — 설정 화면에서 지연 로드)
+export const projectSizeService = new ProjectSizeService();
 
 export const globalPieceService = new GlobalPieceService();
 globalPieceService.load();

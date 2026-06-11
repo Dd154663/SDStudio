@@ -15,12 +15,14 @@ import {
   FaTrashAlt,
   FaFileExport,
   FaEllipsisV,
+  FaHdd,
 } from 'react-icons/fa';
 import { sessionService, imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import Tooltip from './Tooltip';
 import MobileColorPicker from './MobileColorPicker';
 import { pushRecentProject } from './ProjectBrowser';
+import StorageManageModal from './StorageManageModal';
 
 const naturalCmp = (a: string, b: string) =>
   a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
@@ -151,6 +153,8 @@ const ProjectDrawer = observer(() => {
   const [editValue, setEditValue] = useState('');
   // 커스텀 컬러 피커 저장 디바운스 타이머 (훅 규칙: 조기 반환 이전에 선언)
   const customColorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 저장 공간 관리 모달
+  const [storageOpen, setStorageOpen] = useState(false);
   // 선택 모드(다중 선택 → 폴더 일괄 이동)
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -672,6 +676,14 @@ const ProjectDrawer = observer(() => {
             <FaFolderPlus size={14} /> 폴더
           </button>
           </Tooltip>
+          <Tooltip content="프로젝트 저장 공간 관리">
+          <button
+            onClick={() => setStorageOpen(true)}
+            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
+          >
+            <FaHdd size={14} /> 관리
+          </button>
+          </Tooltip>
         </div>
         )}
 
@@ -1052,6 +1064,21 @@ const ProjectDrawer = observer(() => {
           )}
         </div>
       </div>
+      {/* 저장 공간 관리 모달.
+          - 드로어 패널은 transform이 걸려 있어(fixed가 패널 기준이 됨) 루트에 렌더링.
+          - 루트의 onClick={close}로 전파되지 않도록 차단. */}
+      {storageOpen && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <StorageManageModal
+            isOpen={storageOpen}
+            onClose={() => setStorageOpen(false)}
+            onJump={(name) => {
+              setStorageOpen(false);
+              selectProject(name);
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 });
