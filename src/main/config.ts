@@ -46,4 +46,6 @@ export interface Config {
   legacyProjectMode?: boolean;
   exportConcurrency?: number;
   trueDark?: boolean;
+  // 아티스트 태깅의 WD 태거 모델 선택 (기본 wd-swinv2)
+  wdTaggerModel?: 'wd-swinv2' | 'wd-eva02';
 }

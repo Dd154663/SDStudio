@@ -247,7 +247,7 @@ export class ElectornBackend extends Backend {
 
   async analyzeArtistTags(arg: {
     imageBase64: string;
-    model: 'wd' | 'kaloscope';
+    model: 'kaloscope' | 'wd-swinv2' | 'wd-eva02';
   }): Promise<any> {
     return await invoke('artist-analyze', arg);
   }

@@ -86,7 +86,7 @@ export abstract class Backend {
   // 아티스트 태깅 (로컬 ONNX 추론, 데스크톱 전용)
   abstract analyzeArtistTags(arg: {
     imageBase64: string;
-    model: 'wd' | 'kaloscope';
+    model: 'kaloscope' | 'wd-swinv2' | 'wd-eva02';
   }): Promise<any>;
   abstract onDownloadProgress(callback: (progress: any) => void): () => void;
   abstract onZipProgress(callback: (progress: any) => void): () => void;

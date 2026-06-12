@@ -381,7 +381,7 @@ const artistTagCsvCache: Map<string, any> = new Map();
 ipcMain.handle('artist-analyze', async (event, arg) => {
   const { imageBase64, model } = arg as {
     imageBase64: string;
-    model: 'wd' | 'kaloscope';
+    model: 'kaloscope' | 'wd-swinv2' | 'wd-eva02';
   };
   const ort = require('onnxruntime-node');
   const modelsDir = path.join(APP_DIR, 'models');
@@ -464,11 +464,14 @@ ipcMain.handle('artist-analyze', async (event, arg) => {
     };
   }
 
-  // WD tagger 전처리: 흰 배경 정사각 패딩 → 448 리사이즈 → BGR → NHWC float32 0-255
-  // (SmilingWolf wd-v3 표준 전처리, 로컬 검증 완료)
+  // WD tagger 전처리: 흰 배경 정사각 패딩 → 448 리사이즈(bicubic) → BGR → NHWC float32 0-255
+  // (SmilingWolf wd-v3 표준 전처리)
+  // 주의: sharp는 체인 호출 순서가 아니라 내부 고정 순서로 연산을 적용해
+  // 한 파이프라인에서는 resize가 extend보다 먼저 실행된다 → 패딩과 리사이즈를
+  // 반드시 두 단계로 분리해야 함 (합치면 비정사각 출력이 나와 결과가 망가짐)
   const meta = await sharp(imgBuf).metadata();
   const side = Math.max(meta.width!, meta.height!);
-  const { data } = await sharp(imgBuf)
+  const padded = await sharp(imgBuf)
     .flatten({ background: { r: 255, g: 255, b: 255 } })
     .extend({
       top: Math.floor((side - meta.height!) / 2),
@@ -477,16 +480,26 @@ ipcMain.handle('artist-analyze', async (event, arg) => {
       right: Math.ceil((side - meta.width!) / 2),
       background: { r: 255, g: 255, b: 255 },
     })
-    .resize(SIZE, SIZE, { fit: 'fill' })
+    .toBuffer();
+  const { data, info } = await sharp(padded)
+    .resize(SIZE, SIZE, { fit: 'fill', kernel: 'cubic' })
     .raw()
     .toBuffer({ resolveWithObject: true });
+  if (info.width !== SIZE || info.height !== SIZE || info.channels !== 3) {
+    throw new Error(
+      `전처리 결과 크기 오류: ${info.width}x${info.height}x${info.channels}`,
+    );
+  }
   const f = new Float32Array(SIZE * SIZE * 3);
   for (let i = 0; i < SIZE * SIZE; i++) {
     f[i * 3 + 0] = data[i * 3 + 2]; // B
     f[i * 3 + 1] = data[i * 3 + 1]; // G
     f[i * 3 + 2] = data[i * 3 + 0]; // R
   }
-  const session = await getSession('wd-eva02-large-v3.onnx');
+  // WD 두 모델은 전처리·태그 CSV가 동일하고 onnx 파일만 다름
+  const session = await getSession(
+    model === 'wd-eva02' ? 'wd-eva02-large-v3.onnx' : 'wd-swinv2-v3.onnx',
+  );
   const out = await session.run({
     [session.inputNames[0]]: new ort.Tensor('float32', f, [1, SIZE, SIZE, 3]),
   });

@@ -688,7 +688,7 @@ export class AndroidBackend extends Backend {
 
   async analyzeArtistTags(arg: {
     imageBase64: string;
-    model: 'wd' | 'kaloscope';
+    model: 'kaloscope' | 'wd-swinv2' | 'wd-eva02';
   }): Promise<any> {
     throw new Error('데스크톱 전용 기능입니다');
   }
