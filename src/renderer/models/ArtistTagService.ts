@@ -26,11 +26,11 @@ export const ARTIST_MODELS: Record<
     sizeText: '약 700MB',
     files: [
       {
-        url: 'https://github.com/Dd154663/SDStudio/releases/download/models/kaloscope_2-0.onnx',
+        url: 'https://huggingface.co/DraconicDragon/Kaloscope-onnx/resolve/main/v2.0/kaloscope_2-0.onnx?download=true',
         name: 'kaloscope_2-0.onnx',
       },
       {
-        url: 'https://github.com/Dd154663/SDStudio/releases/download/models/kaloscope_class_mapping.csv',
+        url: 'https://huggingface.co/DraconicDragon/Kaloscope-onnx/resolve/main/v2.0/class_mapping.csv?download=true',
         name: 'kaloscope_class_mapping.csv',
       },
     ],
