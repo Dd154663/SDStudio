@@ -83,6 +83,11 @@ export abstract class Backend {
     inputImageBase64: string,
     outputPath: string,
   ): Promise<void>;
+  // 아티스트 태깅 (로컬 ONNX 추론, 데스크톱 전용)
+  abstract analyzeArtistTags(arg: {
+    imageBase64: string;
+    model: 'wd' | 'kaloscope';
+  }): Promise<any>;
   abstract onDownloadProgress(callback: (progress: any) => void): () => void;
   abstract onZipProgress(callback: (progress: any) => void): () => void;
   abstract onImageChanged(callback: (path: string) => void): () => void;

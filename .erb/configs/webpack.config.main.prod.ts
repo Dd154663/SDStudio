@@ -89,6 +89,7 @@ const configuration: webpack.Configuration = {
     'exiftool-vendored.exe': 'commonjs exiftool-vendored.exe',
     'tar-fs': 'commonjs tar-fs',
     'tar-stream': 'commonjs tar-stream',
+    'onnxruntime-node': 'commonjs onnxruntime-node',
   },
 };
 

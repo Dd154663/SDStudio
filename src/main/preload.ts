@@ -50,6 +50,7 @@ export type Channels =
   | 'write-data-file-absolute'
   | 'list-files-with-stats'
   | 'exist-file-absolute'
+  | 'artist-analyze'
   | 'window-minimize'
   | 'window-maximize'
   | 'window-close'

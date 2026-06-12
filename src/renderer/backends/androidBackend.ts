@@ -686,6 +686,13 @@ export class AndroidBackend extends Backend {
     return;
   }
 
+  async analyzeArtistTags(arg: {
+    imageBase64: string;
+    model: 'wd' | 'kaloscope';
+  }): Promise<any> {
+    throw new Error('데스크톱 전용 기능입니다');
+  }
+
   async selectDir(): Promise<string | undefined> {
     return undefined;
   }

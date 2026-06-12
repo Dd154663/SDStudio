@@ -245,6 +245,13 @@ export class ElectornBackend extends Backend {
     await invoke('remove-bg', inputImageBase64, outputPath);
   }
 
+  async analyzeArtistTags(arg: {
+    imageBase64: string;
+    model: 'wd' | 'kaloscope';
+  }): Promise<any> {
+    return await invoke('artist-analyze', arg);
+  }
+
   onDownloadProgress(
     callback: (progress: any) => void | Promise<void>,
   ): () => void {

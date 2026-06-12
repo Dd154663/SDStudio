@@ -1,7 +1,8 @@
 import { memo, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { FloatView } from './FloatView';
 import SceneEditor from './SceneEditor';
-import { FaBookmark, FaBroom, FaEdit, FaExchangeAlt, FaFileImage, FaPlus, FaRegCalendarTimes, FaSearch, FaStar, FaTimes, FaTrash, FaTrashRestore } from 'react-icons/fa';
+import { FaBookmark, FaBroom, FaEdit, FaExchangeAlt, FaFileImage, FaPaintBrush, FaPlus, FaRegCalendarTimes, FaSearch, FaStar, FaTimes, FaTrash, FaTrashRestore } from 'react-icons/fa';
+import ArtistTagModal from './ArtistTagModal';
 import Tournament from './Tournament';
 import ResultViewer from './ResultViewer';
 import InPaintEditor from './InPaintEditor';
@@ -1299,6 +1300,8 @@ const QueueControl = observer(
     >(undefined);
 
     const [showSceneTrash, setShowSceneTrash] = useState(false);
+    // 아티스트 태깅 모달 (데스크톱 전용)
+    const [showArtistTag, setShowArtistTag] = useState(false);
 
     const [bmRev, setBmRev] = useState(0);
     useEffect(() => {
@@ -1343,6 +1346,12 @@ const QueueControl = observer(
               onClose={() => setShowSceneTrash(false)}
             />
           </FloatView>
+        )}
+        {showArtistTag && (
+          <ArtistTagModal
+            isOpen={showArtistTag}
+            onClose={() => setShowArtistTag(false)}
+          />
         )}
         {panel}
         {!!showPannel && (
@@ -1398,6 +1407,16 @@ const QueueControl = observer(
                 <FaFileImage size={18} />
               </button>
               </Tooltip>
+              {!isMobile && (
+                <Tooltip content="아티스트 태깅 (그림체 분석)">
+                <button
+                  className={`round-button back-gray`}
+                  onClick={() => setShowArtistTag(true)}
+                >
+                  <FaPaintBrush size={18} />
+                </button>
+                </Tooltip>
+              )}
               <Tooltip content="씬 검색">
               <button
                 className={`round-button ${showSceneSearch ? 'back-sky' : 'back-gray'}`}

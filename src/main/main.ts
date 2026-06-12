@@ -372,6 +372,157 @@ ipcMain.handle('download', async (event, url, dest, filename) => {
   }
 });
 
+// ===== 아티스트 태깅: 로컬 ONNX 추론 (WD tagger / Kaloscope) =====
+// onnxruntime-node는 시작 비용을 피하려고 핸들러 안에서 지연 require 한다.
+// 세션/CSV는 경로 기준으로 캐시 (모델 파일은 APP_DIR/models/).
+const artistTagSessions: Map<string, any> = new Map();
+const artistTagCsvCache: Map<string, any> = new Map();
+
+ipcMain.handle('artist-analyze', async (event, arg) => {
+  const { imageBase64, model } = arg as {
+    imageBase64: string;
+    model: 'wd' | 'kaloscope';
+  };
+  const ort = require('onnxruntime-node');
+  const modelsDir = path.join(APP_DIR, 'models');
+
+  const getSession = async (file: string) => {
+    const p = path.join(modelsDir, file);
+    if (!fsSync.existsSync(p)) {
+      throw new Error('모델 파일이 없습니다: ' + file);
+    }
+    if (!artistTagSessions.has(p)) {
+      artistTagSessions.set(p, await ort.InferenceSession.create(p));
+    }
+    return artistTagSessions.get(p);
+  };
+
+  const imgBuf = Buffer.from(imageBase64, 'base64');
+  const SIZE = 448;
+
+  if (model === 'kaloscope') {
+    // 전처리: timm 표준 평가 변환 재현 (HF 데모 Space와 동일 결과를 내기 위함) —
+    // 모델 cfg crop_pct=0.9 → 짧은 변을 497(=floor(448/0.9))로 비율 유지 리사이즈(bicubic)
+    // 후 448 중앙 크롭 → RGB /255 → ImageNet 정규화 → NCHW
+    const SCALE = Math.floor(SIZE / 0.9); // 497
+    const off = Math.floor((SCALE - SIZE) / 2);
+    const { data } = await sharp(imgBuf)
+      .removeAlpha()
+      .resize(SCALE, SCALE, { fit: 'cover', kernel: 'cubic' })
+      .extract({ left: off, top: off, width: SIZE, height: SIZE })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const mean = [0.485, 0.456, 0.406];
+    const std = [0.229, 0.224, 0.225];
+    const f = new Float32Array(3 * SIZE * SIZE);
+    for (let i = 0; i < SIZE * SIZE; i++) {
+      for (let c = 0; c < 3; c++) {
+        f[c * SIZE * SIZE + i] = (data[i * 3 + c] / 255 - mean[c]) / std[c];
+      }
+    }
+    const session = await getSession('kaloscope_2-0.onnx');
+    const out = await session.run({
+      [session.inputNames[0]]: new ort.Tensor('float32', f, [1, 3, SIZE, SIZE]),
+    });
+    const logits = out[session.outputNames[0]].data;
+
+    // softmax → top-20
+    let mx = -Infinity;
+    for (const v of logits) if (v > mx) mx = v;
+    let sum = 0;
+    const exps = new Float64Array(logits.length);
+    for (let i = 0; i < logits.length; i++) {
+      exps[i] = Math.exp(logits[i] - mx);
+      sum += exps[i];
+    }
+
+    // class_mapping.csv: class_id,class_name (이름이 작은따옴표로 감싸인 경우 있음)
+    const csvPath = path.join(modelsDir, 'kaloscope_class_mapping.csv');
+    let names = artistTagCsvCache.get(csvPath);
+    if (!names) {
+      names = {} as any;
+      const lines = (await fs.readFile(csvPath, 'utf-8')).split('\n');
+      for (let i = 1; i < lines.length; i++) {
+        const l = lines[i].trim();
+        if (!l) continue;
+        const ci = l.indexOf(',');
+        const id = parseInt(l.slice(0, ci));
+        let nm = l.slice(ci + 1);
+        if (nm.startsWith("'") && nm.endsWith("'")) nm = nm.slice(1, -1);
+        names[id] = nm;
+      }
+      artistTagCsvCache.set(csvPath, names);
+    }
+    const idx = Array.from({ length: logits.length }, (_: any, i: number) => i)
+      .sort((a, b) => exps[b] - exps[a])
+      .slice(0, 20);
+    return {
+      artists: idx.map((i) => ({
+        tag: names[i] ?? String(i),
+        score: exps[i] / sum,
+      })),
+    };
+  }
+
+  // WD tagger 전처리: 흰 배경 정사각 패딩 → 448 리사이즈 → BGR → NHWC float32 0-255
+  // (SmilingWolf wd-v3 표준 전처리, 로컬 검증 완료)
+  const meta = await sharp(imgBuf).metadata();
+  const side = Math.max(meta.width!, meta.height!);
+  const { data } = await sharp(imgBuf)
+    .flatten({ background: { r: 255, g: 255, b: 255 } })
+    .extend({
+      top: Math.floor((side - meta.height!) / 2),
+      bottom: Math.ceil((side - meta.height!) / 2),
+      left: Math.floor((side - meta.width!) / 2),
+      right: Math.ceil((side - meta.width!) / 2),
+      background: { r: 255, g: 255, b: 255 },
+    })
+    .resize(SIZE, SIZE, { fit: 'fill' })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const f = new Float32Array(SIZE * SIZE * 3);
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    f[i * 3 + 0] = data[i * 3 + 2]; // B
+    f[i * 3 + 1] = data[i * 3 + 1]; // G
+    f[i * 3 + 2] = data[i * 3 + 0]; // R
+  }
+  const session = await getSession('wd-eva02-large-v3.onnx');
+  const out = await session.run({
+    [session.inputNames[0]]: new ort.Tensor('float32', f, [1, SIZE, SIZE, 3]),
+  });
+  const probs = out[session.outputNames[0]].data;
+
+  // selected_tags.csv: tag_id,name,category,count (category 9=rating, 0=general, 4=character)
+  const csvPath = path.join(modelsDir, 'wd_selected_tags.csv');
+  let tags = artistTagCsvCache.get(csvPath);
+  if (!tags) {
+    tags = [] as any[];
+    const lines = (await fs.readFile(csvPath, 'utf-8')).split('\n');
+    for (let i = 1; i < lines.length; i++) {
+      const l = lines[i].trim();
+      if (!l) continue;
+      const parts = l.split(',');
+      tags.push({ name: parts[1], category: parseInt(parts[2]) });
+    }
+    artistTagCsvCache.set(csvPath, tags);
+  }
+  const rating: any[] = [];
+  const general: any[] = [];
+  const character: any[] = [];
+  for (let i = 0; i < tags.length; i++) {
+    const p = probs[i];
+    if (tags[i].category === 9) rating.push({ tag: tags[i].name, score: p });
+    else if (tags[i].category === 0 && p >= 0.35)
+      general.push({ tag: tags[i].name, score: p });
+    else if (tags[i].category === 4 && p >= 0.85)
+      character.push({ tag: tags[i].name, score: p });
+  }
+  rating.sort((a, b) => b.score - a.score);
+  general.sort((a, b) => b.score - a.score);
+  character.sort((a, b) => b.score - a.score);
+  return { rating, general, character };
+});
+
 ipcMain.handle(
   'resize-image',
   async (event, { inputPath, outputPath, maxWidth, maxHeight, optimize }) => {
