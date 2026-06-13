@@ -31,6 +31,27 @@ function generateId() {
   return 'bm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
 }
 
+// Electron 기본 UA에는 "Electron/..."·앱이름 토큰이 박혀 있어 Cloudflare 봇 차단이
+// 인증 챌린지를 무한 리다이렉트시킨다. 이 토큰들을 제거한 정상 Chrome UA를 쓴다.
+const CLEAN_USER_AGENT = (() => {
+  const fallback =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36';
+  try {
+    const ua = navigator.userAgent
+      .replace(/\s*Electron\/[^\s]+/i, '')
+      .replace(/\s*sdstudio\/[^\s]+/i, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    return ua && /Chrome\//.test(ua) ? ua : fallback;
+  } catch {
+    return fallback;
+  }
+})();
+
+// 짧은 시간에 과도한 네비게이션 = Cloudflare 챌린지 루프로 간주
+const LOOP_WINDOW_MS = 3000;
+const LOOP_THRESHOLD = 10;
+
 interface BookmarkDialogProps {
   mode: 'add' | 'edit';
   initialLabel: string;
@@ -115,6 +136,8 @@ const DesktopBrowser: React.FC = () => {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>(loadBookmarks);
   const [dialog, setDialog] = useState<{ mode: 'add' | 'edit'; bookmark?: Bookmark } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; bookmark: Bookmark } | null>(null);
+  const [loopBlocked, setLoopBlocked] = useState(false);
+  const navTimesRef = useRef<number[]>([]);
 
   const updateNavState = useCallback(() => {
     const wv = webviewRef.current;
@@ -133,6 +156,19 @@ const DesktopBrowser: React.FC = () => {
       setUrl(e.url);
       setInputUrl(e.url);
       updateNavState();
+      // Cloudflare 챌린지 무한 루프 감지: 3초 내 과도한 네비게이션이면 로딩 중단 + 안내
+      const now = Date.now();
+      const times = navTimesRef.current.filter((t) => now - t < LOOP_WINDOW_MS);
+      times.push(now);
+      navTimesRef.current = times;
+      if (times.length >= LOOP_THRESHOLD) {
+        navTimesRef.current = [];
+        try {
+          wv.stop();
+        } catch {}
+        setLoading(false);
+        setLoopBlocked(true);
+      }
     };
 
     const onStartLoading = () => setLoading(true);
@@ -178,6 +214,8 @@ const DesktopBrowser: React.FC = () => {
     }
     const wv = webviewRef.current;
     if (wv) {
+      navTimesRef.current = [];
+      setLoopBlocked(false);
       wv.loadURL(finalUrl);
     }
   };
@@ -276,14 +314,34 @@ const DesktopBrowser: React.FC = () => {
       </div>
 
       {/* webview */}
-      <div className="flex-1">
+      <div className="flex-1 relative">
         <webview
           ref={webviewRef}
           src={url}
           partition="persist:browser"
           allowpopups=""
+          useragent={CLEAN_USER_AGENT}
           style={{ width: '100%', height: '100%' }}
         />
+        {/* Cloudflare 인증 루프 감지 시 안내 배너 */}
+        {loopBlocked && (
+          <div className="absolute top-0 left-0 right-0 z-10 m-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 shadow-lg flex items-start gap-3">
+            <div className="flex-1 text-sm text-amber-800 dark:text-amber-200 leading-snug">
+              인증(Cloudflare) 페이지가 반복 새로고침되어 로딩을 멈췄습니다.
+              잠시 후 다시 시도하거나, 다른 주소로 이동해 보세요.
+            </div>
+            <button
+              className="flex-none px-3 py-1.5 text-sm back-sky rounded"
+              onClick={() => {
+                navTimesRef.current = [];
+                setLoopBlocked(false);
+                webviewRef.current?.reload();
+              }}
+            >
+              다시 시도
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 우클릭 컨텍스트 메뉴 */}
