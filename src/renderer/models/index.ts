@@ -77,6 +77,11 @@ export const projectSizeService = new ProjectSizeService();
 // 아티스트 태깅 (데스크톱 전용, 시작 시 비용 없음 — 모달에서 지연 사용)
 export const artistTagService = new ArtistTagService();
 
+// 내보내기 프리셋을 localStorage → exportPresets.json(로컬 파일)로 이관 + 로드.
+// (시작 후 비동기 — 파일 없으면 localStorage에서 1회 비파괴 이관)
+// 동적 import: AppService 조기 평가로 초기화 순서가 바뀌지 않도록 index 본문 이후로 미룸.
+import('./AppService').then((m) => m.appState.initExportPresets());
+
 export const globalPieceService = new GlobalPieceService();
 globalPieceService.load();
 

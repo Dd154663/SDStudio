@@ -1393,7 +1393,47 @@ export class AppState {
   }
 
   // ── 내보내기 프리셋 헬퍼 ──
+  // 저장 위치: APP_DIR/exportPresets.json (로컬 파일 — 백업에 포함됨).
+  // 과거엔 localStorage('sdstudio-export-presets')에 저장돼 비-로컬 데이터였고
+  // 모바일 데이터 삭제 시 함께 증발하며 백업에도 안 담겼다. 파일로 이관한다.
+  // sync API(loadExportPresets) 유지를 위해 인메모리 캐시 + 파일 라이트스루.
+  private exportPresetsCache: ExportPreset[] | null = null;
+  private exportPresetsLoaded = false;
+
+  // 시작 시 1회 호출(index.ts). 파일을 읽고, 없으면 localStorage에서 비파괴 이관한다.
+  async initExportPresets(): Promise<void> {
+    if (this.exportPresetsLoaded) return;
+    let presets: ExportPreset[] | null = null;
+    try {
+      const raw = await backend.readFile('exportPresets.json');
+      presets = JSON.parse(raw);
+    } catch {
+      // 파일 없음 → localStorage 마이그레이션 시도 (1회, 비파괴)
+      try {
+        const ls = localStorage.getItem('sdstudio-export-presets');
+        if (ls) {
+          presets = JSON.parse(ls);
+          // 파일로 이관. localStorage 원본은 롤백 안전망으로 남겨둔다(삭제하지 않음).
+          await backend.writeFile(
+            'exportPresets.json',
+            JSON.stringify(presets),
+          );
+          console.log(
+            '[Migration] 내보내기 프리셋 localStorage → exportPresets.json 이관 완료',
+          );
+        }
+      } catch {}
+    }
+    // 로드 도중 saveExportPresets가 먼저 일어났다면(loaded=true) 덮어쓰지 않는다.
+    if (!this.exportPresetsLoaded) {
+      this.exportPresetsCache = presets ?? [];
+      this.exportPresetsLoaded = true;
+    }
+  }
+
   loadExportPresets(): ExportPreset[] {
+    if (this.exportPresetsCache !== null) return this.exportPresetsCache;
+    // 아직 디스크 로드 전 — localStorage로 즉시 대응(동기)해 회귀를 막는다.
     try {
       const raw = localStorage.getItem('sdstudio-export-presets');
       return raw ? JSON.parse(raw) : [];
@@ -1401,7 +1441,13 @@ export class AppState {
   }
 
   saveExportPresets(presets: ExportPreset[]) {
-    localStorage.setItem('sdstudio-export-presets', JSON.stringify(presets));
+    this.exportPresetsCache = presets;
+    this.exportPresetsLoaded = true; // 이후 늦은 init 로드가 덮어쓰지 못하게
+    backend.writeFile('exportPresets.json', JSON.stringify(presets)).catch(
+      (e) => {
+        console.error('내보내기 프리셋 저장 실패:', e);
+      },
+    );
   }
 
   private formatExportPresetLabel(p: ExportPreset): string {
