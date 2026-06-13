@@ -438,6 +438,18 @@ export class GlobalPresetService extends EventTarget {
     this.dispatchEvent(new CustomEvent('changed', {}));
   }
 
+  // 프리셋 내용(프롬프트·샘플링 설정 등) 부분 갱신. profile/이름은 별도 메서드 사용.
+  @action
+  async updatePreset(id: string, patch: Record<string, any>): Promise<void> {
+    const entry = this.get(id);
+    if (!entry) throw new Error('프리셋을 찾을 수 없습니다');
+    entry.preset = { ...(entry.preset || {}), ...patch };
+    entry.updatedAt = Date.now();
+    this.presets = [...this.presets];
+    this.scheduleSave();
+    this.dispatchEvent(new CustomEvent('changed', {}));
+  }
+
   @action
   async setDefault(id: string, value: boolean): Promise<void> {
     const entry = this.get(id);

@@ -80,14 +80,11 @@ export const ExternalImageView = observer(
 
       try {
         const session = appState.curSession;
-        const isGlobal = target.startsWith('new-global-');
+        const isGlobal = target.startsWith('new-global');
         const isNew = target.startsWith('new-') && !isGlobal;
+        // 통합 글로벌 프리셋은 풍부한 타입(SDImageGen)으로 저장하고, 적용 시 현재 모드로 변환된다.
         let presetType =
-          target === 'new-easy' || target === 'new-global-easy'
-            ? 'SDImageGenEasy'
-            : target === 'new-normal' || target === 'new-global-normal'
-              ? 'SDImageGen'
-              : 'SDImageGen';
+          target === 'new-easy' ? 'SDImageGenEasy' : 'SDImageGen';
 
         let preset: any;
         if (isGlobal) {
@@ -339,15 +336,10 @@ export const ExternalImageView = observer(
                         )}
                       </optgroup>
                       <optgroup label="글로벌 프리셋">
-                        <option value="new-global-normal">
-                          새 글로벌 그림체
-                        </option>
-                        <option value="new-global-easy">
-                          새 글로벌 그림체 (이지모드)
-                        </option>
+                        <option value="new-global">새 글로벌 그림체</option>
                       </optgroup>
                     </select>
-                    {target.startsWith('new-global-') && (
+                    {target.startsWith('new-global') && (
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-snug">
                         ⓘ 글로벌 프리셋은 그림체 설정(프롬프트·파라미터)만 저장됩니다.
                         시드·바이브·캐릭터 레퍼런스는 저장되지 않습니다.
