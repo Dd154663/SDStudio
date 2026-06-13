@@ -14,7 +14,7 @@ interface SearchResult {
   setText: (v: string) => void;
 }
 
-type SearchScope = 'scene' | 'character';
+type SearchScope = 'scene' | 'character' | 'preset';
 
 function collectResults(
   query: string,
@@ -84,7 +84,9 @@ function collectResults(
         });
       }
     }
+  }
 
+  if (scopes.preset) {
     // 캐릭터 프리셋은 씬에 소속되지 않으므로 씬 필터와 무관하게 항상 검색
     for (const preset of session.characterPresets.values()) {
       const pName = preset.name;
@@ -148,7 +150,7 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
 
   const [searchText, setSearchText] = useState('');
   const [replaceText, setReplaceText] = useState('');
-  const [scopes, setScopes] = useState<Record<SearchScope, boolean>>({ scene: true, character: true });
+  const [scopes, setScopes] = useState<Record<SearchScope, boolean>>({ scene: true, character: true, preset: false });
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searched, setSearched] = useState(false);
   const [replaceComplete, setReplaceComplete] = useState<number | null>(null);
@@ -226,6 +228,10 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
         <label className="flex items-center gap-1.5 cursor-pointer">
           <input type="checkbox" checked={scopes.character} onChange={() => toggleScope('character')} className="rounded border-gray-300 dark:border-gray-600" />
           <span className="text-sm text-gray-700 dark:text-gray-300">캐릭터 프롬프트</span>
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked={scopes.preset} onChange={() => toggleScope('preset')} className="rounded border-gray-300 dark:border-gray-600" />
+          <span className="text-sm text-gray-700 dark:text-gray-300">캐릭터 프리셋</span>
         </label>
       </div>
 
@@ -310,7 +316,7 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
 
       <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
         선택한 씬의 텍스트를 검색하고 일괄 변환합니다.
-        캐릭터 프리셋은 씬 선택과 무관하게 항상 검색됩니다.
+        캐릭터 프리셋은 씬 선택과 무관하며, '캐릭터 프리셋' 검색 범위를 끄면 제외됩니다.
       </div>
     </div>
   );
