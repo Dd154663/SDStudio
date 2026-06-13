@@ -360,9 +360,11 @@ export const GlobalPresetTab = observer(() => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // 통합: 이지/일반 구분 없이 하나의 라이브러리 + 검색/정렬
+  const [query, setQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'recent' | 'name' | 'default'>('recent');
 
-  const easyPresets = globalPresetService.list('SDImageGenEasy');
-  const genPresets = globalPresetService.list('SDImageGen');
+  const allPresets = globalPresetService.list();
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -542,7 +544,24 @@ export const GlobalPresetTab = observer(() => {
     exitMultiSelect();
   };
 
-  const total = easyPresets.length + genPresets.length;
+  const total = allPresets.length;
+  const q = query.trim().toLowerCase();
+  let visible = q
+    ? allPresets.filter((p) => p.name.toLowerCase().includes(q))
+    : allPresets.slice();
+  visible = [...visible].sort((a, b) => {
+    if (sortBy === 'name')
+      return a.name.localeCompare(b.name, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
+    if (sortBy === 'default')
+      return (
+        (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0) ||
+        (b.updatedAt || 0) - (a.updatedAt || 0)
+      );
+    return (b.updatedAt || 0) - (a.updatedAt || 0); // recent
+  });
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-white dark:bg-slate-900">
@@ -613,9 +632,26 @@ export const GlobalPresetTab = observer(() => {
           </>
         )}
         <div className="flex-1" />
-        <div className="text-sm text-gray-600 dark:text-gray-300">
-          총 {total}개 (그림체(이지모드) {easyPresets.length} / 그림체{' '}
-          {genPresets.length})
+        {/* 검색 */}
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="프리셋 검색..."
+          className="px-3 py-2 text-base rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sky-400 w-44"
+        />
+        {/* 정렬 */}
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as any)}
+          className="px-2 py-2 text-base rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
+        >
+          <option value="recent">최근 수정순</option>
+          <option value="name">이름순</option>
+          <option value="default">기본 우선</option>
+        </select>
+        <div className="text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
+          {q ? `검색 ${visible.length} / 총 ${total}개` : `총 ${total}개`}
         </div>
       </div>
 
@@ -633,53 +669,28 @@ export const GlobalPresetTab = observer(() => {
           </div>
         )}
 
-        {/* 그림체(이지모드) 섹션 */}
-        {easyPresets.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-xl font-bold mb-4 text-default border-b-2 border-gray-300 dark:border-slate-600 pb-2">
-              그림체 (이지모드)
-            </h2>
-            <div className="flex flex-wrap gap-4">
-              {easyPresets.map((entry) => (
-                <EasyCard
-                  key={entry.id}
-                  entry={entry}
-                  selected={selectedIds.has(entry.id)}
-                  multiSelectMode={multiSelectMode}
-                  onToggleSelect={() => toggleSelect(entry.id)}
-                  onImportToSession={() => handleImportToSession(entry)}
-                  onToggleDefault={() => handleToggleDefault(entry)}
-                  onRename={() => handleRename(entry)}
-                  onExport={() => handleExport(entry)}
-                  onDelete={() => handleDelete(entry)}
-                />
-              ))}
-            </div>
+        {/* 통합 카드 그리드 (이지/일반 구분 없음) */}
+        {total > 0 && visible.length === 0 && (
+          <div className="text-center text-gray-500 dark:text-gray-400 py-10">
+            "{query}" 검색 결과가 없습니다.
           </div>
         )}
-
-        {/* 그림체 섹션 */}
-        {genPresets.length > 0 && (
-          <div>
-            <h2 className="text-xl font-bold mb-4 text-default border-b-2 border-gray-300 dark:border-slate-600 pb-2">
-              그림체
-            </h2>
-            <div>
-              {genPresets.map((entry) => (
-                <GenRow
-                  key={entry.id}
-                  entry={entry}
-                  selected={selectedIds.has(entry.id)}
-                  multiSelectMode={multiSelectMode}
-                  onToggleSelect={() => toggleSelect(entry.id)}
-                  onImportToSession={() => handleImportToSession(entry)}
-                  onToggleDefault={() => handleToggleDefault(entry)}
-                  onRename={() => handleRename(entry)}
-                  onExport={() => handleExport(entry)}
-                  onDelete={() => handleDelete(entry)}
-                />
-              ))}
-            </div>
+        {visible.length > 0 && (
+          <div className="flex flex-wrap gap-4">
+            {visible.map((entry) => (
+              <EasyCard
+                key={entry.id}
+                entry={entry}
+                selected={selectedIds.has(entry.id)}
+                multiSelectMode={multiSelectMode}
+                onToggleSelect={() => toggleSelect(entry.id)}
+                onImportToSession={() => handleImportToSession(entry)}
+                onToggleDefault={() => handleToggleDefault(entry)}
+                onRename={() => handleRename(entry)}
+                onExport={() => handleExport(entry)}
+                onDelete={() => handleDelete(entry)}
+              />
+            ))}
           </div>
         )}
       </div>
@@ -694,7 +705,8 @@ export const GlobalPresetTab = observer(() => {
 export const GlobalPresetPickerOverlay = observer(() => {
   const picker = appState.globalPresetPicker;
   if (!picker) return null;
-  const entries = globalPresetService.list(picker.workflowType);
+  // 통합: 전체 글로벌 프리셋을 보여주고, 선택 시 현재 모드로 자동 변환해 적용한다.
+  const entries = globalPresetService.list();
   const displayName =
     picker.workflowType === 'SDImageGenEasy' ? '그림체 (이지모드)' : '그림체';
 
@@ -709,7 +721,7 @@ export const GlobalPresetPickerOverlay = observer(() => {
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold text-default">
-            글로벌 프리셋에서 가져오기 — {displayName}
+            글로벌 프리셋에서 가져오기 <span className="text-sm font-normal text-gray-500 dark:text-gray-400">(→ {displayName}로 적용)</span>
           </h2>
           <button
             className="icon-button p-2 text-default"
@@ -723,7 +735,7 @@ export const GlobalPresetPickerOverlay = observer(() => {
             <div className="text-center text-gray-500 dark:text-gray-400 p-8 text-lg">
               저장된 글로벌 프리셋이 없습니다.
             </div>
-          ) : picker.workflowType === 'SDImageGenEasy' ? (
+          ) : (
             <div className="flex flex-wrap gap-4">
               {entries.map((entry) => (
                 <div
@@ -747,23 +759,6 @@ export const GlobalPresetPickerOverlay = observer(() => {
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div>
-              {entries.map((entry) => (
-                <button
-                  key={entry.id}
-                  className="w-full flex items-center gap-3 p-3 border-2 rounded-lg mb-2 text-left hover:bg-gray-100 dark:hover:bg-slate-700 border-gray-300 dark:border-slate-600"
-                  onClick={() => picker.onSelect(entry.id)}
-                >
-                  {entry.isDefault && (
-                    <FaStar className="text-orange-500" size={20} />
-                  )}
-                  <span className="flex-1 truncate text-default text-base font-medium">
-                    {entry.name}
-                  </span>
-                </button>
               ))}
             </div>
           )}

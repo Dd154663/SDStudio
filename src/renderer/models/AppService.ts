@@ -2635,11 +2635,13 @@ export class AppState {
   async importGlobalPresetIntoSession(
     session: Session,
     globalId: string,
+    targetType?: GlobalPresetType,
   ): Promise<void> {
     try {
       const preset = await globalPresetService.instantiateIntoSession(
         session,
         globalId,
+        targetType,
       );
       if (preset) {
         session.selectedWorkflow = {
@@ -2668,7 +2670,8 @@ export class AppState {
       workflowType,
       onSelect: async (id: string) => {
         this.globalPresetPicker = undefined;
-        await this.importGlobalPresetIntoSession(session, id);
+        // 통합: 어떤 글로벌 프리셋이든 현재 모드(workflowType)로 변환해 적용
+        await this.importGlobalPresetIntoSession(session, id, workflowType);
       },
     };
   }
