@@ -1467,9 +1467,150 @@ const IntSliderInput = ({
   );
 };
 
+const PreSetBulkManageModal = observer(
+  ({
+    workflowType,
+    onClose,
+  }: {
+    workflowType: string;
+    onClose: () => void;
+  }) => {
+    const curSession = appState.curSession!;
+    const presets = curSession.presets.get(workflowType)!;
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [filter, setFilter] = useState('');
+
+    const filtered = React.useMemo(() => {
+      if (!filter.trim()) return presets;
+      const q = filter.toLowerCase();
+      return presets.filter((p) => p.name.toLowerCase().includes(q));
+    }, [presets, filter, presets.length]);
+
+    const toggle = (name: string) => {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(name)) next.delete(name);
+        else next.add(name);
+        return next;
+      });
+    };
+
+    const allSelected =
+      filtered.length > 0 && filtered.every((p) => selected.has(p.name));
+
+    const toggleAll = () => {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (allSelected) filtered.forEach((p) => next.delete(p.name));
+        else filtered.forEach((p) => next.add(p.name));
+        return next;
+      });
+    };
+
+    const doDelete = () => {
+      if (selected.size === 0) return;
+      if (selected.size >= presets.length) {
+        appState.pushMessage('최소 1개의 사전 세팅은 남겨야 합니다');
+        return;
+      }
+      appState.pushDialog({
+        type: 'confirm',
+        text: `선택한 ${selected.size}개의 사전 세팅을 삭제하시겠습니까? 되돌릴 수 없습니다.`,
+        callback: () => {
+          const names = Array.from(selected);
+          const curName = curSession.selectedWorkflow?.presetName;
+          for (const name of names) {
+            curSession.removePreset(workflowType, name);
+          }
+          // 현재 선택 중인 사전 세팅이 삭제되었으면 첫 항목으로 재설정
+          if (curName && names.includes(curName)) {
+            const remaining = curSession.presets.get(workflowType)!;
+            curSession.selectedWorkflow = {
+              workflowType,
+              presetName: remaining.length > 0 ? remaining[0].name : undefined,
+            };
+          }
+          setSelected(new Set());
+        },
+      });
+    };
+
+    return (
+      <ModalOverlay
+        isOpen={true}
+        onClose={onClose}
+        title="사전 세팅 일괄 삭제"
+        width="max-w-lg"
+      >
+        <div className="flex flex-col gap-3">
+          <input
+            type="text"
+            placeholder="이름으로 검색..."
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+          />
+          <div className="flex items-center justify-between">
+            <button
+              onClick={toggleAll}
+              className="text-xs text-sky-500 hover:text-sky-600"
+            >
+              {allSelected ? '전체 해제' : '전체 선택'}
+              {filter.trim() && ` (${filtered.length}개)`}
+            </button>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              전체 {presets.length}개
+            </span>
+          </div>
+          <div className="max-h-72 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-2 space-y-0.5">
+            {filtered.map((p) => (
+              <label
+                key={p.name}
+                className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 rounded px-1 py-0.5"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(p.name)}
+                  onChange={() => toggle(p.name)}
+                  className="rounded border-gray-300 dark:border-gray-600"
+                />
+                <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                  {p.name}
+                  {curSession.selectedWorkflow?.presetName === p.name && (
+                    <span className="ml-2 text-xs text-sky-500">(현재 선택)</span>
+                  )}
+                </span>
+              </label>
+            ))}
+            {filtered.length === 0 && (
+              <div className="text-xs text-gray-400 py-1">
+                일치하는 사전 세팅이 없습니다
+              </div>
+            )}
+          </div>
+          <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-600">
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              <span className="text-red-500 font-bold">{selected.size}</span>개
+              선택됨
+            </span>
+            <button
+              onClick={doDelete}
+              disabled={selected.size === 0}
+              className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 text-white text-sm font-medium transition-colors"
+            >
+              선택 삭제
+            </button>
+          </div>
+        </div>
+      </ModalOverlay>
+    );
+  },
+);
+
 const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
   const curSession = appState.curSession!;
   const [isOpen, setIsOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const clicked = React.useRef(false);
   const presets = curSession.presets.get(workflowType)!;
   const { preset } = useContext(WFElementContext)!;
@@ -1529,6 +1670,20 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
             <FaStar />
           </button>
         </Tooltip>
+      )}
+      <Tooltip content="사전 세팅 일괄 삭제">
+        <button
+          className={`icon-button`}
+          onClick={() => setBulkOpen(true)}
+        >
+          <FaTrashAlt />
+        </button>
+      </Tooltip>
+      {bulkOpen && (
+        <PreSetBulkManageModal
+          workflowType={workflowType}
+          onClose={() => setBulkOpen(false)}
+        />
       )}
       {isOpen && (
         <ul className="left-0 top-10 absolute max-h-60 z-20 w-full mt-1 bg-white border-2 border-gray-300 dark:border-slate-600 rounded-md shadow-lg overflow-auto dark:bg-slate-700">
