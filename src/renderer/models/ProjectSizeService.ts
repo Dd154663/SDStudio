@@ -164,4 +164,21 @@ export class ProjectSizeService {
   cancelBulk(): void {
     this.bulkCancelled = true;
   }
+
+  // 전체 백업(이미지 포함) 예상 용량(바이트). 백업 시작 전 경고용.
+  // 모든 프로젝트의 이미지/데이터 디렉터리 + project.json + 글로벌 이미지
+  // 디렉터리를 재귀 합산한다. (dirSize 재사용 — '저장 공간 관리'와 동일 로직)
+  async estimateFullBackupBytes(names: string[]): Promise<number> {
+    let total = 0;
+    for (const name of names) {
+      for (const p of IMAGE_DIR_PREFIXES) {
+        total += await this.dirSize(p + name);
+      }
+      total += await this.projectJsonSize(name);
+    }
+    for (const g of ['global_vibes', 'global_char_images']) {
+      total += await this.dirSize(g);
+    }
+    return total;
+  }
 }

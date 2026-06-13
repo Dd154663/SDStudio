@@ -7,6 +7,7 @@ import {
   imageService,
   isMobile,
   localAIService,
+  projectSizeService,
   sessionService,
   taskQueueService,
   trashService,
@@ -1041,6 +1042,32 @@ export class AppState {
       return;
     }
     const allNames = mode === 'settings' ? [] : sessionService.list();
+
+    // 이미지 포함 백업은 용량이 클 수 있으니, 시작 전 예상 용량을 계산해 한 번 더 확인.
+    // ('저장 공간 관리'의 용량 계산 로직 재사용)
+    if (mode === 'full' && allNames.length > 0) {
+      appState.setProgressDialog({ text: '백업 용량 확인중..', done: 0, total: 1 });
+      let bytes = 0;
+      try {
+        bytes = await projectSizeService.estimateFullBackupBytes(allNames);
+      } catch (e) {
+        console.error('백업 용량 계산 실패:', e);
+      }
+      appState.setProgressDialog(undefined);
+      const fmt = (b: number) => {
+        if (b < 1024) return b + ' B';
+        if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+        if (b < 1024 * 1024 * 1024) return (b / (1024 * 1024)).toFixed(1) + ' MB';
+        return (b / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+      };
+      const ans = await appState.pushDialogAsync({
+        type: 'select',
+        text: `이미지를 포함한 전체 백업의 예상 용량은 약 ${fmt(bytes)} 입니다.\n용량이 클 수 있으니 저장 공간을 확인하세요.\n계속할까요?`,
+        items: [{ text: '계속 진행', value: 'yes' }],
+      });
+      if (ans !== 'yes') return;
+    }
+
     const entries: { path: string; name: string }[] = [];
     const projects: { name: string; folder: string | null }[] = [];
 
