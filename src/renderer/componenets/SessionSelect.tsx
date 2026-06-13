@@ -68,7 +68,15 @@ const SessionSelect = observer(() => {
   };
 
   const openProjectTrash = async () => {
-    const deletedProjects = await trashService.getDeletedProjects();
+    let deletedProjects;
+    try {
+      deletedProjects = await trashService.getDeletedProjects();
+    } catch (e: any) {
+      appState.pushMessage(
+        '휴지통 목록을 불러오지 못했습니다 (파일 접근 오류). 잠시 후 다시 시도해주세요.',
+      );
+      return;
+    }
     if (deletedProjects.length === 0) {
       appState.pushMessage('프로젝트 휴지통이 비어있습니다.');
       return;

@@ -369,15 +369,14 @@ export class TrashService extends EventTarget {
 
   // projects 루트 + 1단계 폴더 디렉터리 경로 목록.
   // (SessionService.getList 의 폴더 탐지 패턴과 동일: listFiles[파일+디렉토리] - listFilesWithStats[파일만] = 폴더)
+  // 주의: listFiles/listFilesWithStats 는 폴더 부재(ENOENT)면 [] 를 반환하고,
+  // 그 외(잠금/권한 등 EBUSY/EPERM)면 throw 한다. 과거엔 여기서 throw 를 삼켜
+  // ['projects'] 로 격하했는데, 그러면 폴더 소속 프로젝트를 못 보고 "활성 없음"
+  // 으로 오판해 활성 이미지가 삭제될 수 있었다. 이제 에러를 그대로 전파하고,
+  // 파괴적 경로(permanentlyDeleteProject)가 "불확실하면 보존" 하도록 한다.
   private async getProjectDirs(): Promise<string[]> {
-    let entries: string[] = [];
-    let rootStats: any[] = [];
-    try {
-      entries = await backend.listFiles('projects');
-      rootStats = await backend.listFilesWithStats('projects');
-    } catch (e) {
-      return ['projects'];
-    }
+    const entries = await backend.listFiles('projects');
+    const rootStats = await backend.listFilesWithStats('projects');
     const rootFileSet = new Set(rootStats.map((s: any) => s.name));
     const dirs = entries.filter(
       (e: string) => !rootFileSet.has(e) && !e.startsWith('.'),
@@ -391,12 +390,9 @@ export class TrashService extends EventTarget {
     const map = new Map<string, string>();
     const dirs = await this.getProjectDirs();
     for (const dir of dirs) {
-      let stats: any[] = [];
-      try {
-        stats = await backend.listFilesWithStats(dir);
-      } catch (e) {
-        stats = [];
-      }
+      // ENOENT 는 [] 로 흡수되고, 실제 에러(잠금/권한)는 throw 된다.
+      // 여기서 삼키면 활성 프로젝트를 "없음" 으로 오판 → 활성 이미지 오삭제 위험.
+      const stats = await backend.listFilesWithStats(dir);
       for (const s of stats) {
         if (s.name.endsWith(suffix)) {
           const name = s.name.substring(0, s.name.length - suffix.length);
@@ -407,21 +403,37 @@ export class TrashService extends EventTarget {
     return map;
   }
 
+  // scanProjectFiles 와 독립적인 2차 가드: 활성 .json 이 실제로 존재하는지 직접 확인.
+  // 루트(projects/<이름>.json)와 모든 폴더 경로를 점검한다.
+  // getProjectDirs 가 throw 하면(스캔 불가) 호출부에서 "불확실 → 보존" 으로 처리한다.
+  private async activeProjectFileExists(name: string): Promise<boolean> {
+    if (await backend.existFile('projects/' + name + '.json')) return true;
+    const dirs = await this.getProjectDirs();
+    for (const dir of dirs) {
+      if (dir === 'projects') continue;
+      if (await backend.existFile(dir + '/' + name + '.json')) return true;
+    }
+    return false;
+  }
+
   // 특정 이름의 .deleted 파일 전체 경로(루트+폴더, 중복 위치 포함)를 찾는다.
+  // .deleted 파일 정리/조회 보조. 스캔 실패 시 [] 를 반환해 정리를 건너뛴다.
+  // (이 함수는 .deleted 파일 경로만 다루며 이미지 디렉터리와 무관하므로,
+  //  실패 시 스킵해도 데이터 안전에는 영향이 없다.)
   private async findAllDeletedPaths(name: string): Promise<string[]> {
     const target = name + '.deleted';
-    const dirs = await this.getProjectDirs();
     const result: string[] = [];
-    for (const dir of dirs) {
-      let stats: any[] = [];
-      try {
-        stats = await backend.listFilesWithStats(dir);
-      } catch (e) {
-        stats = [];
+    try {
+      const dirs = await this.getProjectDirs();
+      for (const dir of dirs) {
+        const stats = await backend.listFilesWithStats(dir);
+        if (stats.some((s: any) => s.name === target)) {
+          result.push(dir + '/' + target);
+        }
       }
-      if (stats.some((s: any) => s.name === target)) {
-        result.push(dir + '/' + target);
-      }
+    } catch (e) {
+      console.error('.deleted 경로 스캔 실패 — 정리 건너뜀:', name, e);
+      return [];
     }
     return result;
   }
@@ -495,24 +507,58 @@ export class TrashService extends EventTarget {
   async permanentlyDeleteProject(name: string): Promise<void> {
     this.ensureLoaded();
 
-    // CRITICAL: Check if an active .json exists for this project (루트/폴더 모두).
-    // If both .json and .deleted coexist (legacy duplicate), only remove
-    // the .deleted file — NEVER touch the directories.
-    const deletedMap = await this.scanProjectFiles('.deleted');
-    const activeMap = await this.scanProjectFiles('.json');
-    const deletedPath = deletedMap.get(name);
-    const activeExists = activeMap.has(name);
+    // CRITICAL: 같은 이름의 활성 .json 이 있으면(루트/폴더 어디든) 이미지 디렉터리를
+    // 절대 지우지 않는다. 이미지 디렉터리는 이름 기준(outs/<이름> 등)이라 동명의
+    // 새 프로젝트와 폴더를 공유하기 때문이다(삭제 후 동명 재생성 시 오삭제 위험).
+    //
+    // 활성 여부 판정은 파일 스캔에 의존하는데, 스캔이 실패(폴더 잠금/권한/동기화 등)하면
+    // "활성 없음" 으로 오판할 수 있다. 이 경우 안전을 위해 디렉터리 삭제를 건너뛴다.
+    let deletedPath: string | undefined;
+    let activeExists = false;
+    let scanOk = true;
+    try {
+      const deletedMap = await this.scanProjectFiles('.deleted');
+      const activeMap = await this.scanProjectFiles('.json');
+      deletedPath = deletedMap.get(name);
+      activeExists = activeMap.has(name);
+    } catch (e) {
+      console.error(
+        '프로젝트 영구삭제: 활성 여부 스캔 실패 — 이미지 디렉터리 보존:',
+        name,
+        e,
+      );
+      scanOk = false;
+    }
 
-    // Delete the .deleted file (위치 무관)
+    // .deleted 파일 제거 (스캔으로 경로를 확인한 경우에만)
     if (deletedPath) {
       try {
         await backend.deleteFile(deletedPath);
       } catch (e) {}
     }
 
-    // Only delete directories if there is NO active project with same name.
-    // 이미지 디렉터리는 폴더와 무관하게 이름 기준(outs/<이름> 등)이므로 그대로 유효.
-    if (!activeExists) {
+    // 디렉터리를 지워도 되는지 최종 판정.
+    // (1) 스캔이 성공했고, (2) 활성 .json 이 없으며,
+    // (3) 스캔과 독립적인 직접 재확인에서도 활성 .json 이 없을 때만 삭제한다.
+    let safeToDeleteDirs = scanOk && !activeExists;
+    if (safeToDeleteDirs) {
+      try {
+        if (await this.activeProjectFileExists(name)) {
+          // 스캔은 비었다고 했지만 실제 파일이 존재 → 삭제 중단
+          safeToDeleteDirs = false;
+        }
+      } catch (e) {
+        // 재확인 자체가 실패 → 불확실하므로 삭제 중단
+        console.error(
+          '프로젝트 영구삭제: 활성 .json 재확인 실패 — 이미지 디렉터리 보존:',
+          name,
+          e,
+        );
+        safeToDeleteDirs = false;
+      }
+    }
+
+    if (safeToDeleteDirs) {
       for (const dir of ['outs', 'inpaints', 'vibes', 'inpaint_masks', 'inpaint_orgs']) {
         try {
           await backend.deleteDir(dir + '/' + name);
@@ -536,7 +582,15 @@ export class TrashService extends EventTarget {
   async getExpiredProjects(): Promise<{name: string, deletedAt: number}[]> {
     this.ensureLoaded();
     const now = Date.now();
-    const deleted = await this.getDeletedProjects();
+    // 스캔 실패 시(폴더 잠금/권한/동기화 등) 만료 목록을 비워 시작을 막지 않고,
+    // 불확실한 상태에서 만료 다이얼로그를 띄워 삭제를 유도하지 않는다.
+    let deleted: { name: string; deletedAt: number }[];
+    try {
+      deleted = await this.getDeletedProjects();
+    } catch (e) {
+      console.error('만료 프로젝트 조회 실패 — 이번 실행은 건너뜀:', e);
+      return [];
+    }
     return deleted.filter(p => (now - p.deletedAt) >= PROJECT_RETENTION_MS);
   }
 
