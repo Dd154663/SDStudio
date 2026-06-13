@@ -1,6 +1,7 @@
 import {
   backend,
   gameService,
+  globalCharacterPresetService,
   globalPieceService,
   globalPresetService,
   imageService,
@@ -8,6 +9,7 @@ import {
   localAIService,
   sessionService,
   taskQueueService,
+  trashService,
   workFlowService,
   zipService,
 } from '.';
@@ -69,6 +71,23 @@ export interface SceneSelectorItem {
   callback: (scenes: GenericScene[]) => void;
   scenes?: GenericScene[];
 }
+
+// 전체 백업에 담는 전역 설정 파일. (백업엔 전부 담되, 설정 병합 복원 시
+// trash.json / folderOrder.json 은 의도적으로 제외 — 아래 mergeSettingsFromDir 참조)
+const FULL_BACKUP_SETTINGS_FILES = [
+  'favorites.json',
+  'bookmarks.json',
+  'thumbnails.json',
+  'folderColors.json',
+  'folderOrder.json',
+  'trash.json',
+  'exportPresets.json',
+  'global_presets.json',
+  'global_pieces.json',
+  'global_character_presets.json',
+];
+// 글로벌 프리셋/캐릭터가 참조하는 이미지 디렉터리 (플랫, 파일만)
+const FULL_BACKUP_SETTINGS_IMAGE_DIRS = ['global_vibes', 'global_char_images'];
 
 export class AppState {
   @observable accessor curSession: Session | undefined = undefined;
@@ -992,6 +1011,587 @@ export class AppState {
       type: 'yes-only',
       text: `폴더 "${folderName}"(으)로 ${restored}/${total}개 프로젝트를 복원했습니다.`,
     });
+  }
+
+  // ===== 전체 백업 (모든 프로젝트 + 전역 설정, 단일 아카이브) =====
+  // 어떤 삭제 버그에도 사용자를 지키는 최종 안전망. 프로젝트 드로어 상단에서 호출.
+  fullBackupMenu() {
+    appState.pushDialog({
+      type: 'select',
+      text: '전체 백업',
+      items: [
+        { text: '📦 백업 만들기 (이미지 포함)', value: 'export_full' },
+        { text: '📦 백업 만들기 (이미지 제외)', value: 'export_noimg' },
+        { text: '⚙️ 백업 만들기 (설정만)', value: 'export_settings' },
+        { text: '📥 백업 불러오기', value: 'import' },
+      ],
+      callback: async (value) => {
+        if (value === 'export_full') await this.fullBackupExport('full');
+        else if (value === 'export_noimg') await this.fullBackupExport('noimg');
+        else if (value === 'export_settings')
+          await this.fullBackupExport('settings');
+        else if (value === 'import') await this.fullBackupImport();
+      },
+    });
+  }
+
+  async fullBackupExport(mode: 'full' | 'noimg' | 'settings') {
+    if (zipService.isZipping) {
+      appState.pushMessage('이미 내보내기 작업이 진행중입니다.');
+      return;
+    }
+    const allNames = mode === 'settings' ? [] : sessionService.list();
+    const entries: { path: string; name: string }[] = [];
+    const projects: { name: string; folder: string | null }[] = [];
+
+    if (mode !== 'settings') {
+      appState.setProgressDialog({
+        text: '백업 생성중..',
+        done: 0,
+        total: allNames.length,
+      });
+      let done = 0;
+      for (const name of allNames) {
+        try {
+          const session = await sessionService.get(name);
+          if (session) {
+            let projEntries = await sessionService.buildSessionDeepEntries(
+              session,
+              name + '/',
+            );
+            if (mode === 'noimg') {
+              // 생성 이미지(outs/inpaints)만 제외. vibe/참조/인페인트 원본·마스크는 유지.
+              const prefixLen = (name + '/').length;
+              projEntries = projEntries.filter((e) => {
+                const rel = e.name.substring(prefixLen);
+                return !(rel.startsWith('outs/') || rel.startsWith('inpaints/'));
+              });
+            }
+            entries.push(...projEntries);
+            projects.push({ name, folder: sessionService.getFolderOf(name) });
+          }
+        } catch (e) {}
+        appState.setProgressDialog({
+          text: '백업 생성중..',
+          done: ++done,
+          total: allNames.length,
+        });
+      }
+    }
+
+    // 전역 설정 (모든 모드 포함)
+    appState.setProgressDialog({ text: '설정 수집중..', done: 0, total: 1 });
+    const settingsEntries = await this.buildSettingsEntries();
+    entries.push(...settingsEntries);
+
+    if (entries.length === 0) {
+      appState.setProgressDialog(undefined);
+      appState.pushMessage('백업할 데이터가 없습니다.');
+      return;
+    }
+
+    const folders = sessionService.listFolders().map((f) => ({
+      name: f,
+      color: sessionService.getFolderColor(f) || null,
+    }));
+    const manifest = {
+      type: 'sdstudio-full-backup',
+      version: 1,
+      mode,
+      createdAt: Date.now(),
+      projects,
+      folders,
+      folderOrder: sessionService.getOrderedFolders(),
+    };
+    const tmpManifest = 'tmp/' + v4() + '.json';
+    await backend.writeFile(tmpManifest, JSON.stringify(manifest));
+    entries.push({ path: tmpManifest, name: '_backup.json' });
+
+    appState.setProgressDialog({ text: '압축 파일 생성중..', done: 0, total: 1 });
+    const dateStr = new Date()
+      .toISOString()
+      .replace(/[:.]/g, '-')
+      .slice(0, 19);
+    const outPath = 'exports/sdstudio-backup-' + mode + '-' + dateStr + '.tar';
+    try {
+      await zipService.zipFiles(entries, outPath);
+    } catch (e: any) {
+      appState.setProgressDialog(undefined);
+      appState.pushMessage(e.message);
+      return;
+    }
+    appState.setProgressDialog(undefined);
+    appState.pushDialog({
+      type: 'yes-only',
+      text:
+        mode === 'settings'
+          ? '설정 백업이 완료되었습니다.'
+          : `전체 백업이 완료되었습니다. (${projects.length}개 프로젝트${
+              mode === 'noimg' ? ', 이미지 제외' : ''
+            })`,
+    });
+    try {
+      await backend.showFile(outPath);
+    } catch (e) {}
+  }
+
+  // 전역 설정 파일 + 글로벌 이미지 디렉터리를 __settings__/ 네임스페이스 엔트리로.
+  private async buildSettingsEntries(): Promise<
+    { path: string; name: string }[]
+  > {
+    const entries: { path: string; name: string }[] = [];
+    for (const file of FULL_BACKUP_SETTINGS_FILES) {
+      try {
+        if (await backend.existFile(file)) {
+          entries.push({ path: file, name: '__settings__/' + file });
+        }
+      } catch (e) {}
+    }
+    for (const dir of FULL_BACKUP_SETTINGS_IMAGE_DIRS) {
+      // listFilesWithStats = 파일만 반환(디렉터리 제외) → zip이 디렉터리를 읽다 EISDIR 나는 것 방지
+      let stats: any[] = [];
+      try {
+        stats = await backend.listFilesWithStats(dir);
+      } catch (e) {
+        stats = [];
+      }
+      for (const s of stats) {
+        if (s.name.startsWith('.')) continue;
+        entries.push({
+          path: dir + '/' + s.name,
+          name: '__settings__/' + dir + '/' + s.name,
+        });
+      }
+    }
+    return entries;
+  }
+
+  async fullBackupImport() {
+    const tarPath = await backend.selectFile();
+    if (!tarPath) return;
+    appState.setProgressDialog({
+      text: '백업을 확인하는 중입니다...',
+      done: 0,
+      total: 1,
+    });
+    const root = 'tmp/' + v4();
+    try {
+      await backend.unzipFiles(tarPath, root);
+    } catch (e: any) {
+      appState.setProgressDialog(undefined);
+      appState.pushMessage('압축 해제에 실패했습니다.');
+      return;
+    }
+    let manifest: any = null;
+    try {
+      manifest = JSON.parse(await backend.readFile(root + '/_backup.json'));
+    } catch (e) {}
+    appState.setProgressDialog(undefined);
+    if (!manifest || manifest.type !== 'sdstudio-full-backup') {
+      try {
+        await backend.deleteDir(root);
+      } catch (e) {}
+      appState.pushMessage('전체 백업 파일이 아닙니다.');
+      return;
+    }
+    const mode: 'full' | 'noimg' | 'settings' =
+      manifest.mode === 'settings'
+        ? 'settings'
+        : manifest.mode === 'noimg'
+          ? 'noimg'
+          : 'full';
+    const projCount = Array.isArray(manifest.projects)
+      ? manifest.projects.length
+      : 0;
+    const cleanup = async () => {
+      try {
+        await backend.deleteDir(root);
+      } catch (e) {}
+    };
+
+    // 설정만 모드: 충돌 정책 불필요 — 병합만.
+    if (mode === 'settings') {
+      const ans = await appState.pushDialogAsync({
+        type: 'select',
+        text: '설정 백업을 불러옵니다.\n현재 데이터는 보존되며, 백업의 설정이 병합됩니다(덮어쓰지 않음).\n계속할까요?',
+        items: [{ text: '계속 진행', value: 'yes' }],
+      });
+      if (ans !== 'yes') {
+        await cleanup();
+        return;
+      }
+      await this.restoreFullBackupFromDir(root, manifest, mode, 'rename');
+      return;
+    }
+
+    // 전체/이미지제외: 동명 프로젝트 처리 방식 선택.
+    // 단, 이미지 없는 백업(noimg)은 덮어쓰기 금지 — 기존 이미지가 사라지고
+    // 이미지 없는 버전으로 대체돼 순손실이 되기 때문.
+    const policyItems: { text: string; value: string }[] = [
+      { text: '동명은 새 이름 (2)로 복원 (권장)', value: 'rename' },
+      { text: '동명은 건너뛰기', value: 'skip' },
+    ];
+    if (mode !== 'noimg') {
+      policyItems.push({
+        text: '⚠️ 동명을 덮어쓰기 (기존 영구 삭제)',
+        value: 'overwrite',
+      });
+    }
+    const choice = await appState.pushDialogAsync({
+      type: 'select',
+      text:
+        `전체 백업을 불러옵니다. (${projCount}개 프로젝트)\n이름이 같은 프로젝트가 있을 때 처리 방식을 선택하세요.` +
+        (mode === 'noimg'
+          ? '\n(이미지 없는 백업이라 덮어쓰기는 제공되지 않습니다.)'
+          : ''),
+      items: policyItems,
+    });
+    if (!choice || choice === 'cancel') {
+      await cleanup();
+      return;
+    }
+    const policy = choice as 'rename' | 'skip' | 'overwrite';
+
+    // 덮어쓰기는 파괴적 — 두 번 더 확인.
+    if (policy === 'overwrite') {
+      const c1 = await appState.pushDialogAsync({
+        type: 'select',
+        text: '⚠️ 덮어쓰기: 이름이 같은 기존 프로젝트와 그 이미지가 영구 삭제되고 백업으로 대체됩니다.\n정말로 진행할까요?',
+        items: [{ text: '예, 덮어씁니다', value: 'yes' }],
+      });
+      if (c1 !== 'yes') {
+        await cleanup();
+        return;
+      }
+      const c2 = await appState.pushDialogAsync({
+        type: 'select',
+        text: '정말 정말로 진행할까요?\n이 작업은 되돌릴 수 없습니다.',
+        items: [{ text: '예, 확실합니다', value: 'yes' }],
+      });
+      if (c2 !== 'yes') {
+        await cleanup();
+        return;
+      }
+    }
+
+    await this.restoreFullBackupFromDir(root, manifest, mode, policy);
+  }
+
+  private async restoreFullBackupFromDir(
+    root: string,
+    manifest: any,
+    mode: 'full' | 'noimg' | 'settings',
+    policy: 'rename' | 'skip' | 'overwrite',
+  ) {
+    try {
+      if (mode !== 'settings') {
+        // 1. 폴더 먼저 생성 (+색상)
+        if (Array.isArray(manifest.folders)) {
+          for (const f of manifest.folders) {
+            if (!f || !f.name) continue;
+            if (!sessionService.listFolders().includes(f.name)) {
+              try {
+                await sessionService.createFolder(f.name);
+              } catch (e) {}
+            }
+            if (f.color) {
+              try {
+                await sessionService.setFolderColor(f.name, f.color);
+              } catch (e) {}
+            }
+          }
+        }
+        // 2. 프로젝트 복원 (이름 충돌 시 새 이름 — 덮어쓰지 않음)
+        const projects = Array.isArray(manifest.projects)
+          ? manifest.projects
+          : [];
+        const total = projects.length;
+        let done = 0;
+        let restored = 0;
+        let skipped = 0;
+        let overwritten = 0;
+        for (const p of projects) {
+          const origName = typeof p === 'string' ? p : p.name;
+          const folder = typeof p === 'string' ? null : p.folder ?? null;
+          if (!origName) {
+            done++;
+            continue;
+          }
+          appState.setProgressDialog({ text: '프로젝트 복원중..', done, total });
+          let pname = origName;
+          const exists = sessionService.list().includes(origName);
+          if (exists) {
+            if (policy === 'skip') {
+              skipped++;
+              done++;
+              continue;
+            }
+            if (policy === 'overwrite' && mode !== 'noimg') {
+              // 기존 동명 프로젝트를 완전히 제거(.json + 이미지 디렉터리)한 뒤 복원.
+              // delete로 .json→.deleted + 메모리 제거 → permanentlyDeleteProject가
+              // 활성 .json이 없어진 상태에서 .deleted와 이미지 디렉터리를 정리한다.
+              try {
+                if (appState.curSession?.name === origName) {
+                  appState.curSession = undefined;
+                }
+                await sessionService.delete(origName);
+                await trashService.permanentlyDeleteProject(origName);
+                overwritten++;
+              } catch (e) {
+                console.error('덮어쓰기용 기존 프로젝트 제거 실패:', origName, e);
+              }
+              pname = origName;
+            } else {
+              // rename: 빈 이름이 나올 때까지 (n) 부여
+              let j = 2;
+              while (sessionService.list().includes(pname)) {
+                pname = `${origName} (${j})`;
+                j++;
+              }
+            }
+          }
+          try {
+            await sessionService.importSessionDeepFromDir(
+              root + '/' + origName,
+              pname,
+            );
+            if (folder && sessionService.listFolders().includes(folder)) {
+              try {
+                await sessionService.moveToFolder(pname, folder);
+              } catch (e) {}
+            }
+            restored++;
+          } catch (e) {
+            console.error('백업 프로젝트 복원 실패:', origName, e);
+          }
+          done++;
+        }
+        // 3. 폴더 순서 (전체 복원에서만 반영)
+        if (Array.isArray(manifest.folderOrder) && manifest.folderOrder.length) {
+          try {
+            await sessionService.setFolderOrder(manifest.folderOrder);
+          } catch (e) {}
+        }
+        appState.setProgressDialog({ text: '설정 병합중..', done: 0, total: 1 });
+        await this.mergeSettingsFromDir(root + '/__settings__');
+        appState.setProgressDialog(undefined);
+        const extra: string[] = [];
+        if (skipped > 0) extra.push(`${skipped}개 건너뜀`);
+        if (overwritten > 0) extra.push(`${overwritten}개 덮어씀`);
+        appState.pushDialog({
+          type: 'yes-only',
+          text:
+            `${restored}/${total}개 프로젝트와 설정을 복원했습니다.` +
+            (extra.length ? `\n(${extra.join(', ')})` : ''),
+        });
+      } else {
+        appState.setProgressDialog({ text: '설정 병합중..', done: 0, total: 1 });
+        await this.mergeSettingsFromDir(root + '/__settings__');
+        appState.setProgressDialog(undefined);
+        appState.pushDialog({ type: 'yes-only', text: '설정을 병합했습니다.' });
+      }
+    } finally {
+      try {
+        await backend.deleteDir(root);
+      } catch (e) {}
+    }
+  }
+
+  // 설정 병합: 디스크 실데이터가 진실. 현재 값을 덮어쓰지 않고(union/fill),
+  // 실재하지 않는 프로젝트/폴더 참조는 버린다(prune). trash.json/folderOrder는 제외.
+  private async mergeSettingsFromDir(dir: string) {
+    const readJson = async (name: string): Promise<any | null> => {
+      try {
+        return JSON.parse(await backend.readFile(dir + '/' + name));
+      } catch (e) {
+        return null;
+      }
+    };
+    const existingProjects = new Set(sessionService.list());
+    const existingFolders = new Set(sessionService.listFolders());
+
+    // 즐겨찾기: 존재하는 프로젝트만 union
+    try {
+      const fav = await readJson('favorites.json');
+      if (Array.isArray(fav)) {
+        let changed = false;
+        for (const n of fav) {
+          if (existingProjects.has(n) && !sessionService.favorites.has(n)) {
+            sessionService.favorites.add(n);
+            changed = true;
+          }
+        }
+        if (changed) await sessionService.saveFavorites();
+      }
+    } catch (e) {}
+
+    // 내보내기 프리셋: 이름 기준 union (현재 우선)
+    try {
+      const ep = await readJson('exportPresets.json');
+      if (Array.isArray(ep)) {
+        const cur = appState.loadExportPresets();
+        const names = new Set(cur.map((p: any) => p.name));
+        let added = false;
+        for (const p of ep) {
+          if (p && p.name && !names.has(p.name)) {
+            cur.push(p);
+            names.add(p.name);
+            added = true;
+          }
+        }
+        if (added) appState.saveExportPresets(cur);
+      }
+    } catch (e) {}
+
+    // 폴더 색상: 존재 폴더 중 색상 없는 것만 채움
+    try {
+      const fc = await readJson('folderColors.json');
+      if (fc && typeof fc === 'object') {
+        for (const [folder, color] of Object.entries(fc)) {
+          if (
+            existingFolders.has(folder) &&
+            color &&
+            !sessionService.getFolderColor(folder)
+          ) {
+            try {
+              await sessionService.setFolderColor(folder, color as string);
+            } catch (e) {}
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 썸네일: 존재 프로젝트 중 참조 없는 것만 채움
+    try {
+      const th = await readJson('thumbnails.json');
+      if (th && typeof th === 'object') {
+        for (const [proj, ref] of Object.entries(th as any)) {
+          if (
+            existingProjects.has(proj) &&
+            ref &&
+            (ref as any).scene &&
+            (ref as any).image &&
+            !sessionService.getThumbnailRef(proj)
+          ) {
+            sessionService.setThumbnailRef(
+              proj,
+              (ref as any).scene,
+              (ref as any).image,
+            );
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 북마크: 존재 프로젝트 중 없는 것만 채움
+    try {
+      const bm = await readJson('bookmarks.json');
+      if (bm && typeof bm === 'object') {
+        const scenes = bm.scenes || {};
+        for (const [proj, b] of Object.entries(scenes as any)) {
+          if (
+            existingProjects.has(proj) &&
+            b &&
+            (b as any).name &&
+            !sessionService.getSceneBookmark(proj)
+          ) {
+            await sessionService.toggleSceneBookmark(
+              proj,
+              (b as any).name,
+              (b as any).type || 'scene',
+            );
+          }
+        }
+        const images = bm.images || {};
+        for (const [key, filename] of Object.entries(images as any)) {
+          const idx = key.indexOf(':');
+          if (idx < 0) continue;
+          const proj = key.substring(0, idx);
+          const scene = key.substring(idx + 1);
+          if (
+            existingProjects.has(proj) &&
+            filename &&
+            !sessionService.getImageBookmark(proj, scene)
+          ) {
+            await sessionService.toggleImageBookmark(
+              proj,
+              scene,
+              filename as string,
+            );
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 글로벌 라이브러리: 현재 비어 있을 때만 통째 채택(이미지 포함).
+    // 채워져 있으면 보존(깊은 id-병합은 후속 작업).
+    await this.adoptGlobalsIfEmpty(dir);
+
+    // trash.json, folderOrder.json: 설정 병합에서 의도적으로 제외
+  }
+
+  private async adoptGlobalsIfEmpty(dir: string) {
+    const copyImages = async (sub: string) => {
+      // 파일만 (디렉터리 제외)
+      let stats: any[] = [];
+      try {
+        stats = await backend.listFilesWithStats(dir + '/' + sub);
+      } catch (e) {
+        return;
+      }
+      for (const s of stats) {
+        if (s.name.startsWith('.')) continue;
+        try {
+          if (!(await backend.existFile(sub + '/' + s.name))) {
+            await backend.copyFile(
+              dir + '/' + sub + '/' + s.name,
+              sub + '/' + s.name,
+            );
+          }
+        } catch (e) {}
+      }
+    };
+    // 글로벌 프리셋
+    try {
+      if (
+        globalPresetService.list().length === 0 &&
+        (await backend.existFile(dir + '/global_presets.json'))
+      ) {
+        await copyImages('global_vibes');
+        await backend.copyFile(
+          dir + '/global_presets.json',
+          'global_presets.json',
+        );
+        await globalPresetService.load();
+      }
+    } catch (e) {}
+    // 글로벌 프롬프트 조각
+    try {
+      if (
+        globalPieceService.library.size === 0 &&
+        (await backend.existFile(dir + '/global_pieces.json'))
+      ) {
+        await backend.copyFile(
+          dir + '/global_pieces.json',
+          'global_pieces.json',
+        );
+        await globalPieceService.load();
+      }
+    } catch (e) {}
+    // 글로벌 캐릭터 프리셋
+    try {
+      if (
+        globalCharacterPresetService.presets.length === 0 &&
+        (await backend.existFile(dir + '/global_character_presets.json'))
+      ) {
+        await copyImages('global_char_images');
+        await backend.copyFile(
+          dir + '/global_character_presets.json',
+          'global_character_presets.json',
+        );
+        await globalCharacterPresetService.load();
+      }
+    } catch (e) {}
   }
 
   folderImportDeep(folder: string) {

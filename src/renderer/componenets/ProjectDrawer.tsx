@@ -16,6 +16,7 @@ import {
   FaFileExport,
   FaEllipsisV,
   FaHdd,
+  FaFileArchive,
 } from 'react-icons/fa';
 import { sessionService, imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
@@ -682,6 +683,14 @@ const ProjectDrawer = observer(() => {
             className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
           >
             <FaHdd size={14} /> 관리
+          </button>
+          </Tooltip>
+          <Tooltip content="전체 백업 / 복원">
+          <button
+            onClick={() => appState.fullBackupMenu()}
+            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
+          >
+            <FaFileArchive size={14} /> 백업
           </button>
           </Tooltip>
         </div>
