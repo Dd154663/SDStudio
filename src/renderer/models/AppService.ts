@@ -93,7 +93,9 @@ const FULL_BACKUP_SETTINGS_IMAGE_DIRS = ['global_vibes', 'global_char_images'];
 
 export class AppState {
   @observable accessor curSession: Session | undefined = undefined;
-  @observable accessor messages: string[] = [];
+  // 토스트 메시지: 각 항목이 고유 id를 가져 개별 타이머/개별 닫기가 가능하다.
+  @observable accessor messages: { id: number; text: string }[] = [];
+  private messageIdCounter = 0;
   @observable accessor dialogs: Dialog[] = [];
   @observable accessor samples: number = 10;
   @observable accessor progressDialog: ProgressDialog | undefined = undefined;
@@ -223,7 +225,17 @@ export class AppState {
 
   @action
   addMessage(message: string): void {
-    this.messages.push(message);
+    this.messages.push({ id: ++this.messageIdCounter, text: message });
+    // 폭주 방지: 최대 8개만 유지(오래된 것부터 제거)
+    if (this.messages.length > 8) {
+      this.messages.splice(0, this.messages.length - 8);
+    }
+  }
+
+  @action
+  removeMessage(id: number): void {
+    const idx = this.messages.findIndex((m) => m.id === id);
+    if (idx >= 0) this.messages.splice(idx, 1);
   }
 
   @action
@@ -237,7 +249,7 @@ export class AppState {
   }
 
   pushMessage(msg: string) {
-    this.messages.push(msg);
+    this.addMessage(msg);
   }
 
   pushDialog(dialog: Dialog) {
