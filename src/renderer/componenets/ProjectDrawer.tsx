@@ -665,32 +665,32 @@ const ProjectDrawer = observer(() => {
         <div className="px-3 py-2.5 flex gap-2 flex-none">
           <button
             onClick={() => createProject(null)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-lg text-sm font-medium bg-sky-500 hover:bg-sky-600 text-white transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-lg text-sm font-medium bg-sky-500 hover:bg-sky-600 text-white transition-colors whitespace-nowrap"
           >
             <FaPlus size={12} /> 새 프로젝트
           </button>
           <Tooltip content="새 폴더 만들기">
           <button
             onClick={createFolder}
-            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
+            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
           >
-            <FaFolderPlus size={14} /> 폴더
+            <FaFolderPlus size={14} /> <span className="hidden md:inline">폴더</span>
           </button>
           </Tooltip>
           <Tooltip content="프로젝트 저장 공간 관리">
           <button
             onClick={() => setStorageOpen(true)}
-            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
+            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
           >
-            <FaHdd size={14} /> 관리
+            <FaHdd size={14} /> <span className="hidden md:inline">관리</span>
           </button>
           </Tooltip>
           <Tooltip content="전체 백업 / 복원">
           <button
             onClick={() => appState.fullBackupMenu()}
-            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
+            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
           >
-            <FaFileArchive size={14} /> 백업
+            <FaFileArchive size={14} /> <span className="hidden md:inline">백업</span>
           </button>
           </Tooltip>
         </div>
