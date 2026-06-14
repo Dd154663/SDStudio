@@ -15,6 +15,8 @@ import {
   FaPen,
   FaFileArchive,
   FaFileImport,
+  FaCheckSquare,
+  FaSquare,
 } from 'react-icons/fa';
 import { artistLibraryService, imageService, backend } from '../models';
 import { IArtistEntry, IArtistImage } from '../models/ArtistLibraryService';
@@ -203,6 +205,22 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
             <button className="icon-button back-gray !rounded-md px-3 py-1.5" title="즐겨찾기" onClick={() => artistLibraryService.toggleFavorite(artist.id)}>
               {artist.favorite ? <FaHeart className="text-red-500" /> : <FaRegHeart />}
             </button>
+            <button
+              className="icon-button bg-red-500 text-white !rounded-md px-3 py-1.5"
+              title="작가 삭제"
+              onClick={() => {
+                appState.pushDialog({
+                  type: 'confirm',
+                  text: `"${artist.name}" 작가를 삭제하시겠습니까?\n첨부된 이미지도 함께 삭제됩니다.`,
+                  callback: () => {
+                    artistLibraryService.deleteArtist(artist.id);
+                    onClose();
+                  },
+                });
+              }}
+            >
+              <FaTrash />
+            </button>
           </div>
 
           <div className="flex flex-col md:flex-row gap-4">
@@ -297,12 +315,30 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
 });
 
 // ─── 카드 ───
-const ArtistCard = observer(({ artist, onOpen }: { artist: IArtistEntry; onOpen: () => void }) => {
+const ArtistCard = observer(({
+  artist,
+  onOpen,
+  multiSelectMode,
+  selected,
+  onToggleSelect,
+}: {
+  artist: IArtistEntry;
+  onOpen: () => void;
+  multiSelectMode: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
+}) => {
   const thumb = artist.images[0];
+  const handleClick = () => { if (multiSelectMode) onToggleSelect(); else onOpen(); };
   return (
-    <div className="flex-none w-[calc(50%-8px)] md:w-60 rounded-lg overflow-hidden flex flex-col border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:border-sky-400 transition-colors">
+    <div className={
+      'flex-none w-[calc(50%-8px)] md:w-60 rounded-lg overflow-hidden flex flex-col border bg-white dark:bg-slate-800 transition-colors ' +
+      (selected
+        ? 'border-sky-500 ring-2 ring-inset ring-sky-500'
+        : 'border-gray-300 dark:border-slate-600 hover:border-sky-400')
+    }>
       {/* 대표 이미지 */}
-      <div className="relative w-full aspect-[3/4] md:aspect-auto md:h-72 bg-gray-100 dark:bg-slate-700 cursor-pointer" onClick={onOpen}>
+      <div className="relative w-full aspect-[3/4] md:aspect-auto md:h-72 bg-gray-100 dark:bg-slate-700 cursor-pointer" onClick={handleClick}>
         {thumb ? (
           <ArtistImage path={thumb.path} className="w-full h-full" />
         ) : (
@@ -311,11 +347,16 @@ const ArtistCard = observer(({ artist, onOpen }: { artist: IArtistEntry; onOpen:
         {artist.images.length > 0 && (
           <span className="absolute top-2 right-2 text-xs bg-black/60 text-white rounded-md px-2 py-0.5">{artist.images.length}장</span>
         )}
+        {multiSelectMode && (
+          <div className="absolute top-2 left-2 bg-white dark:bg-slate-800 rounded p-1 shadow">
+            {selected ? <FaCheckSquare className="text-sky-500" size={20} /> : <FaSquare className="text-gray-400" size={20} />}
+          </div>
+        )}
       </div>
       {/* 이름 + 큰 액션 버튼 */}
       <div className="p-2.5">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate cursor-pointer" onClick={onOpen}>{artist.name}</span>
+          <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate cursor-pointer" onClick={handleClick}>{artist.name}</span>
           <div className="flex gap-1.5 flex-none">
             <button
               title="작가 태그 복사"
@@ -365,6 +406,34 @@ const ArtistLibraryTab = observer(() => {
   const [sortBy, setSortBy] = useState<SortKey>('recent');
   const [favOnly, setFavOnly] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const exitMultiSelect = () => {
+    setMultiSelectMode(false);
+    setSelectedIds(new Set());
+  };
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const doBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    appState.pushDialog({
+      type: 'confirm',
+      text: `선택한 ${selectedIds.size}명의 작가를 삭제하시겠습니까?\n첨부된 이미지도 함께 삭제됩니다.`,
+      callback: async () => {
+        for (const id of Array.from(selectedIds)) {
+          await artistLibraryService.deleteArtist(id);
+        }
+        exitMultiSelect();
+      },
+    });
+  };
 
   const newArtist = async () => {
     const name = await appState.pushDialogAsync({ type: 'input-confirm', text: '작가 이름을 입력하세요 (예: suko mugi)' });
@@ -409,6 +478,24 @@ const ArtistLibraryTab = observer(() => {
         <button className="round-button back-gray px-3 py-2 text-sm flex items-center gap-1" title="백업 파일에서 복원 (동명 처리 선택)" onClick={() => appState.artistLibraryBackupImport()}>
           <FaFileImport size={13} /> 복원
         </button>
+        {!multiSelectMode ? (
+          <button className="round-button back-gray px-3 py-2 text-sm" onClick={() => setMultiSelectMode(true)}>
+            멀티선택
+          </button>
+        ) : (
+          <>
+            <button
+              className="round-button bg-red-500 hover:bg-red-600 text-white px-3 py-2 text-sm flex items-center gap-1 disabled:opacity-50"
+              disabled={selectedIds.size === 0}
+              onClick={doBulkDelete}
+            >
+              <FaTrash size={12} /> 선택 삭제 ({selectedIds.size})
+            </button>
+            <button className="round-button back-gray px-3 py-2 text-sm" onClick={exitMultiSelect}>
+              취소
+            </button>
+          </>
+        )}
       </div>
 
       {/* 본문 */}
@@ -418,10 +505,17 @@ const ArtistLibraryTab = observer(() => {
         ) : (
           <div className="flex flex-wrap gap-4 items-start">
             {list.map((a) => (
-              <ArtistCard key={a.id} artist={a} onOpen={() => setOpenId(a.id)} />
+              <ArtistCard
+                key={a.id}
+                artist={a}
+                multiSelectMode={multiSelectMode}
+                selected={selectedIds.has(a.id)}
+                onToggleSelect={() => toggleSelect(a.id)}
+                onOpen={() => setOpenId(a.id)}
+              />
             ))}
-            {/* 항상 그리드 끝에 추가 카드 (마우스 기동 최소화) */}
-            <AddArtistCard onClick={newArtist} />
+            {/* 항상 그리드 끝에 추가 카드 (멀티선택 중엔 숨김) */}
+            {!multiSelectMode && <AddArtistCard onClick={newArtist} />}
           </div>
         )}
       </div>
