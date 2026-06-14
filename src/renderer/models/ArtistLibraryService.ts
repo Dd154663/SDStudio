@@ -263,6 +263,104 @@ export class ArtistLibraryService extends EventTarget {
     this.scheduleSave();
   }
 
+  // ---------- 백업 / 복원 ----------
+
+  // 백업 tar에 담을 엔트리(라이브러리 JSON + 모든 작가 이미지) 목록.
+  async buildBackupEntries(): Promise<{ path: string; name: string }[]> {
+    const entries: { path: string; name: string }[] = [
+      { path: ARTIST_LIBRARY_FILE, name: 'artist_library.json' },
+    ];
+    for (const a of this.artists) {
+      for (const img of a.images) {
+        try {
+          if (await backend.existFile(img.path)) {
+            // img.path = 'artist_library/<id>/<imgId>.png' — 그대로 보존
+            entries.push({ path: img.path, name: img.path });
+          }
+        } catch (e) {}
+      }
+    }
+    return entries;
+  }
+
+  // 압축 해제된 백업 폴더에서 작가를 병합 복원. 이름 충돌은 policy에 따라 처리.
+  @action
+  async restoreFromBackupDir(
+    root: string,
+    policy: 'rename' | 'skip' | 'overwrite',
+  ): Promise<{ added: number; skipped: number; overwritten: number }> {
+    let store: any;
+    try {
+      store = JSON.parse(await backend.readFile(root + '/artist_library.json'));
+    } catch (e) {
+      throw new Error('백업에 작가 라이브러리 데이터가 없습니다');
+    }
+    // 태그 프리셋은 union 병합
+    if (Array.isArray(store?.tagPresets)) {
+      for (const t of store.tagPresets) {
+        if (typeof t === 'string' && !this.tagPresets.includes(t)) {
+          this.tagPresets = [...this.tagPresets, t];
+        }
+      }
+    }
+    const list = Array.isArray(store?.artists) ? store.artists : [];
+    let added = 0;
+    let skipped = 0;
+    let overwritten = 0;
+    for (const src of list) {
+      if (!src || !src.name) continue;
+      let name = src.name as string;
+      const existing = this.artists.find((a) => a.name === name);
+      if (existing) {
+        if (policy === 'skip') {
+          skipped++;
+          continue;
+        }
+        if (policy === 'overwrite') {
+          await this.deleteArtist(existing.id); // 엔트리 + 이미지 폴더 제거
+          overwritten++;
+        } else {
+          let i = 2;
+          while (this.artists.some((a) => a.name === name)) {
+            name = `${src.name} (${i})`;
+            i++;
+          }
+        }
+      }
+      // 이미지는 새 id 폴더로 복사
+      const newId = uuidv4();
+      const newImages: IArtistImage[] = [];
+      const srcImages = Array.isArray(src.images) ? src.images : [];
+      for (const img of srcImages) {
+        if (!img || !img.path) continue;
+        const srcPath = root + '/' + img.path;
+        try {
+          if (await backend.existFile(srcPath)) {
+            const imgId = uuidv4();
+            const dest = ARTIST_LIBRARY_DIR + '/' + newId + '/' + imgId + '.png';
+            await backend.copyFile(srcPath, dest);
+            newImages.push({ id: imgId, path: dest });
+          }
+        } catch (e) {}
+      }
+      const entry: IArtistEntry = {
+        id: newId,
+        name,
+        images: newImages,
+        tags: Array.isArray(src.tags)
+          ? src.tags.filter((t: any) => typeof t === 'string')
+          : [],
+        favorite: !!src.favorite,
+        createdAt: src.createdAt || Date.now(),
+        updatedAt: Date.now(),
+      };
+      this.artists = [...this.artists, entry];
+      added++;
+    }
+    this.scheduleSave();
+    return { added, skipped, overwritten };
+  }
+
   // ---------- search ----------
 
   // 이름 또는 태그에 질의가 포함되는 작가만 반환.

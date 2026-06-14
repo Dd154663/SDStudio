@@ -14,6 +14,8 @@ import {
   FaSquare,
   FaFileUpload,
   FaPen,
+  FaFileArchive,
+  FaFileImport,
 } from 'react-icons/fa';
 import {
   backend,
@@ -118,7 +120,8 @@ const EasyCard = observer(
         className={
           // 테두리 폭은 항상 border-2 로 고정(선택 시 크기 변화 방지).
           // 선택 강조는 레이아웃에 영향 없는 안쪽 ring(ring-inset)으로 표현.
-          'relative flex-none group rounded-lg overflow-hidden flex flex-col border-2 ' +
+          // 모바일은 한 줄에 2개(50%-half gap), 데스크톱은 고정폭.
+          'relative flex-none w-[calc(50%-8px)] md:w-64 group rounded-lg overflow-hidden flex flex-col border-2 ' +
           (selected
             ? 'border-sky-500 ring-2 ring-inset ring-sky-500'
             : 'border-gray-300 dark:border-slate-600')
@@ -138,7 +141,7 @@ const EasyCard = observer(
         >
           <GlobalVibeImage
             profile={entry.profile}
-            className="w-56 h-80 md:w-64 md:h-96 object-cover"
+            className="w-full aspect-[3/4] md:aspect-auto md:h-96 object-cover"
           />
           {/* 이름 배지 */}
           <div
@@ -245,50 +248,52 @@ const EasyCard = observer(
           )}
         </div>
 
-        {/* 모바일 전용 액션 바 (항상 노출) */}
+        {/* 모바일 전용 액션 바 (항상 노출, 좁은 카드라 다단 배치 + 큰 터치 타깃) */}
         {!multiSelectMode && isMobile && (
-          <div className="flex gap-1 p-2 bg-gray-100 dark:bg-slate-800 border-t border-gray-300 dark:border-slate-600">
+          <div className="flex flex-col gap-1.5 p-2 bg-gray-100 dark:bg-slate-800 border-t border-gray-300 dark:border-slate-600">
             <button
-              className="flex-1 round-button back-sky text-sm py-2 font-medium"
+              className="w-full round-button back-sky text-sm py-2.5 font-medium"
               onClick={onImportToSession}
             >
               불러오기
             </button>
-            <button
-              className="icon-button bg-orange-500 p-2 rounded text-white"
-              onClick={onToggleDefault}
-              title={entry.isDefault ? '기본 해제' : '기본으로 지정'}
-            >
-              {entry.isDefault ? <FaStar size={16} /> : <FaRegStar size={16} />}
-            </button>
-            <button
-              className="icon-button bg-green-500 p-2 rounded text-white"
-              onClick={onRename}
-              title="이름 변경"
-            >
-              <FaFont size={16} />
-            </button>
-            <button
-              className="icon-button bg-indigo-500 p-2 rounded text-white"
-              onClick={onEdit}
-              title="편집"
-            >
-              <FaPen size={16} />
-            </button>
-            <button
-              className="icon-button bg-sky-500 p-2 rounded text-white"
-              onClick={onExport}
-              title="내보내기"
-            >
-              <FaShare size={16} />
-            </button>
-            <button
-              className="icon-button bg-red-500 p-2 rounded text-white"
-              onClick={onDelete}
-              title="삭제"
-            >
-              <FaTrash size={16} />
-            </button>
+            <div className="grid grid-cols-3 gap-1.5">
+              <button
+                className="icon-button bg-orange-500 py-2.5 rounded text-white flex items-center justify-center"
+                onClick={onToggleDefault}
+                title={entry.isDefault ? '기본 해제' : '기본으로 지정'}
+              >
+                {entry.isDefault ? <FaStar size={18} /> : <FaRegStar size={18} />}
+              </button>
+              <button
+                className="icon-button bg-green-500 py-2.5 rounded text-white flex items-center justify-center"
+                onClick={onRename}
+                title="이름 변경"
+              >
+                <FaFont size={18} />
+              </button>
+              <button
+                className="icon-button bg-indigo-500 py-2.5 rounded text-white flex items-center justify-center"
+                onClick={onEdit}
+                title="편집"
+              >
+                <FaPen size={18} />
+              </button>
+              <button
+                className="icon-button bg-sky-500 py-2.5 rounded text-white flex items-center justify-center"
+                onClick={onExport}
+                title="내보내기"
+              >
+                <FaShare size={18} />
+              </button>
+              <button
+                className="icon-button bg-red-500 py-2.5 rounded text-white flex items-center justify-center"
+                onClick={onDelete}
+                title="삭제"
+              >
+                <FaTrash size={18} />
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -857,6 +862,24 @@ export const GlobalPresetTab = observer(() => {
             e.target.value = '';
           }}
         />
+        <Tooltip content="글로벌 프리셋 전체를 tar 파일로 백업">
+          <button
+            className="round-button back-gray flex items-center gap-2 px-4 py-2 text-base"
+            onClick={() => appState.globalPresetBackupExport()}
+          >
+            <FaFileArchive size={16} />
+            <span>백업</span>
+          </button>
+        </Tooltip>
+        <Tooltip content="백업 파일에서 글로벌 프리셋 복원 (동명 처리 선택)">
+          <button
+            className="round-button back-gray flex items-center gap-2 px-4 py-2 text-base"
+            onClick={() => appState.globalPresetBackupImport()}
+          >
+            <FaFileImport size={16} />
+            <span>복원</span>
+          </button>
+        </Tooltip>
         <button
           className={
             'round-button px-4 py-2 text-base ' +

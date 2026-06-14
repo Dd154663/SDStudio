@@ -1,6 +1,6 @@
 import { observer } from 'mobx-react-lite';
 import { getSnapshot } from 'mobx-state-tree';
-import { Item, Menu } from 'react-contexify';
+import { Item, Menu, Separator } from 'react-contexify';
 import { sessionService, backend, imageService, isMobile, imageDownloadService } from '../models';
 import { appState } from '../models/AppService';
 import { dataUriToBase64, deleteImageFiles } from '../models/ImageService';
@@ -251,6 +251,16 @@ export const AppContextMenu = observer(() => {
       );
     }
   };
+  const saveImageAsGlobalPreset = async (ctx: any) => {
+    const path = Array.isArray(ctx.path) ? ctx.path[0] : ctx.path;
+    if (!path) return;
+    await appState.saveImageAsGlobalPreset(path);
+  };
+  const saveImageToArtistLibrary = async (ctx: any) => {
+    const path = Array.isArray(ctx.path) ? ctx.path[0] : ctx.path;
+    if (!path) return;
+    await appState.saveImageToArtistLibrary(path);
+  };
   const handleImageItemClick = ({ id, props }: any) => {
     const ctx2: GallaryImageContextAlt = {
       ...props.ctx,
@@ -269,6 +279,10 @@ export const AppContextMenu = observer(() => {
       deleteImg(ctx2);
     } else if (id === 'download') {
       downloadImage(ctx2);
+    } else if (id === 'save-global') {
+      saveImageAsGlobalPreset(ctx2);
+    } else if (id === 'save-artist') {
+      saveImageToArtistLibrary(ctx2);
     }
   };
   const handleImageItemClick2 = ({ id, props }: any) => {
@@ -286,6 +300,10 @@ export const AppContextMenu = observer(() => {
       transformImage(props.ctx);
     } else if (id === 'download') {
       downloadImage(props.ctx);
+    } else if (id === 'save-global') {
+      saveImageAsGlobalPreset(props.ctx);
+    } else if (id === 'save-artist') {
+      saveImageToArtistLibrary(props.ctx);
     }
   };
   const exportStyle = async (ctx: StyleContextAlt) => {
@@ -364,6 +382,13 @@ export const AppContextMenu = observer(() => {
             클립보드로 이미지 복사
           </Item>
         )}
+        <Separator />
+        <Item id="save-global" onClick={handleImageItemClick2}>
+          글로벌 프리셋으로 저장
+        </Item>
+        <Item id="save-artist" onClick={handleImageItemClick2}>
+          작가 라이브러리에 저장
+        </Item>
       </Menu>
       <Menu id={ContextMenuType.Image}>
         <Item id="download" onClick={handleImageItemClick}>
@@ -383,6 +408,13 @@ export const AppContextMenu = observer(() => {
             클립보드로 이미지 복사
           </Item>
         )}
+        <Separator />
+        <Item id="save-global" onClick={handleImageItemClick}>
+          글로벌 프리셋으로 저장
+        </Item>
+        <Item id="save-artist" onClick={handleImageItemClick}>
+          작가 라이브러리에 저장
+        </Item>
       </Menu>
       <Menu id={ContextMenuType.Style}>
         <Item id="export" onClick={handleStyleItemClick}>

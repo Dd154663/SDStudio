@@ -13,6 +13,8 @@ import {
   FaFileAlt,
   FaStar,
   FaPen,
+  FaFileArchive,
+  FaFileImport,
 } from 'react-icons/fa';
 import { artistLibraryService, imageService, backend } from '../models';
 import { IArtistEntry, IArtistImage } from '../models/ArtistLibraryService';
@@ -285,9 +287,9 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
 const ArtistCard = observer(({ artist, onOpen }: { artist: IArtistEntry; onOpen: () => void }) => {
   const thumb = artist.images[0];
   return (
-    <div className="flex-none w-52 md:w-60 rounded-lg overflow-hidden flex flex-col border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:border-sky-400 transition-colors">
+    <div className="flex-none w-[calc(50%-8px)] md:w-60 rounded-lg overflow-hidden flex flex-col border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:border-sky-400 transition-colors">
       {/* 대표 이미지 */}
-      <div className="relative w-full h-64 md:h-72 bg-gray-100 dark:bg-slate-700 cursor-pointer" onClick={onOpen}>
+      <div className="relative w-full aspect-[3/4] md:aspect-auto md:h-72 bg-gray-100 dark:bg-slate-700 cursor-pointer" onClick={onOpen}>
         {thumb ? (
           <ArtistImage path={thumb.path} className="w-full h-full" />
         ) : (
@@ -334,7 +336,7 @@ const ArtistCard = observer(({ artist, onOpen }: { artist: IArtistEntry; onOpen:
 // ─── 그리드 끝 "새 작가 추가" 카드 ───
 const AddArtistCard = ({ onClick }: { onClick: () => void }) => (
   <button
-    className="flex-none w-52 md:w-60 self-stretch min-h-[20rem] rounded-lg border-2 border-dashed border-gray-300 dark:border-slate-600 flex flex-col items-center justify-center text-gray-400 hover:border-sky-400 hover:text-sky-500 transition-colors"
+    className="flex-none w-[calc(50%-8px)] md:w-60 self-stretch min-h-[16rem] rounded-lg border-2 border-dashed border-gray-300 dark:border-slate-600 flex flex-col items-center justify-center text-gray-400 hover:border-sky-400 hover:text-sky-500 transition-colors"
     onClick={onClick}
   >
     <FaPlus size={30} />
@@ -387,6 +389,12 @@ const ArtistLibraryTab = observer(() => {
         </button>
         <button className="round-button back-sky px-4 py-2 text-sm flex items-center gap-1" onClick={newArtist}>
           <FaPlus size={12} /> 새 작가
+        </button>
+        <button className="round-button back-gray px-3 py-2 text-sm flex items-center gap-1" title="작가 라이브러리 전체 백업" onClick={() => appState.artistLibraryBackupExport()}>
+          <FaFileArchive size={13} /> 백업
+        </button>
+        <button className="round-button back-gray px-3 py-2 text-sm flex items-center gap-1" title="백업 파일에서 복원 (동명 처리 선택)" onClick={() => appState.artistLibraryBackupImport()}>
+          <FaFileImport size={13} /> 복원
         </button>
       </div>
 

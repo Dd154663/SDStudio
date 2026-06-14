@@ -4,6 +4,7 @@ import {
   globalCharacterPresetService,
   globalPieceService,
   globalPresetService,
+  artistLibraryService,
   imageService,
   isMobile,
   localAIService,
@@ -1011,6 +1012,192 @@ export class AppState {
     appState.pushDialog({
       type: 'yes-only',
       text: `폴더 "${folderName}"(으)로 ${restored}/${total}개 프로젝트를 복원했습니다.`,
+    });
+  }
+
+  // ===== 라이브러리 단위 백업/복원 (글로벌 프리셋 · 작가 라이브러리) =====
+
+  // 복원 시 이름 충돌 처리 방식을 묻는다. 덮어쓰기는 파괴적이라 2번 더 확인.
+  private async askLibraryBackupPolicy(
+    label: string,
+  ): Promise<'rename' | 'skip' | 'overwrite' | undefined> {
+    const choice = await appState.pushDialogAsync({
+      type: 'select',
+      text: `${label} 백업을 불러옵니다.\n이름이 같은 항목이 있을 때 처리 방식을 선택하세요.`,
+      items: [
+        { text: '동명은 새 이름 (2)로 불러오기 (권장)', value: 'rename' },
+        { text: '동명은 건너뛰기', value: 'skip' },
+        { text: '⚠️ 동명을 덮어쓰기 (기존 영구 삭제)', value: 'overwrite' },
+      ],
+    });
+    if (!choice || choice === 'cancel') return undefined;
+    if (choice === 'overwrite') {
+      const c1 = await appState.pushDialogAsync({
+        type: 'select',
+        text: '⚠️ 덮어쓰기: 이름이 같은 기존 항목이 영구 삭제되고 백업으로 대체됩니다.\n정말로 진행할까요?',
+        items: [{ text: '예, 덮어씁니다', value: 'yes' }],
+      });
+      if (c1 !== 'yes') return undefined;
+      const c2 = await appState.pushDialogAsync({
+        type: 'select',
+        text: '정말 정말로 진행할까요?\n이 작업은 되돌릴 수 없습니다.',
+        items: [{ text: '예, 확실합니다', value: 'yes' }],
+      });
+      if (c2 !== 'yes') return undefined;
+    }
+    return choice as 'rename' | 'skip' | 'overwrite';
+  }
+
+  private async libraryBackupExport(opts: {
+    label: string;
+    manifestType: string;
+    fileBase: string;
+    isEmpty: boolean;
+    buildEntries: () => Promise<{ path: string; name: string }[]>;
+  }) {
+    if (zipService.isZipping) {
+      appState.pushMessage('이미 내보내기 작업이 진행중입니다.');
+      return;
+    }
+    if (opts.isEmpty) {
+      appState.pushMessage(`${opts.label}이(가) 비어 있어 백업할 내용이 없습니다.`);
+      return;
+    }
+    appState.setProgressDialog({ text: '백업 생성중..', done: 0, total: 1 });
+    let entries: { path: string; name: string }[];
+    try {
+      entries = await opts.buildEntries();
+    } catch (e: any) {
+      appState.setProgressDialog(undefined);
+      appState.pushMessage('백업 생성 실패: ' + (e.message || e));
+      return;
+    }
+    const manifest = {
+      type: opts.manifestType,
+      version: 1,
+      createdAt: Date.now(),
+    };
+    const tmpManifest = 'tmp/' + v4() + '.json';
+    await backend.writeFile(tmpManifest, JSON.stringify(manifest));
+    entries.push({ path: tmpManifest, name: '_manifest.json' });
+    const dateStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const outPath = `exports/sdstudio-${opts.fileBase}-${dateStr}.tar`;
+    try {
+      await zipService.zipFiles(entries, outPath);
+    } catch (e: any) {
+      appState.setProgressDialog(undefined);
+      appState.pushMessage(e.message);
+      return;
+    }
+    appState.setProgressDialog(undefined);
+    appState.pushDialog({
+      type: 'yes-only',
+      text: `${opts.label} 백업이 완료되었습니다.`,
+    });
+    try {
+      await backend.showFile(outPath);
+    } catch (e) {}
+  }
+
+  private async libraryBackupImport(opts: {
+    label: string;
+    manifestType: string;
+    restore: (
+      root: string,
+      policy: 'rename' | 'skip' | 'overwrite',
+    ) => Promise<{ added: number; skipped: number; overwritten: number }>;
+  }) {
+    const tarPath = await backend.selectFile();
+    if (!tarPath) return;
+    appState.setProgressDialog({ text: '백업을 확인하는 중..', done: 0, total: 1 });
+    const root = 'tmp/' + v4();
+    try {
+      await backend.unzipFiles(tarPath, root);
+    } catch (e) {
+      appState.setProgressDialog(undefined);
+      appState.pushMessage('압축 해제에 실패했습니다.');
+      return;
+    }
+    let manifest: any = null;
+    try {
+      manifest = JSON.parse(await backend.readFile(root + '/_manifest.json'));
+    } catch (e) {}
+    appState.setProgressDialog(undefined);
+    const cleanup = async () => {
+      try {
+        await backend.deleteDir(root);
+      } catch (e) {}
+    };
+    if (!manifest || manifest.type !== opts.manifestType) {
+      await cleanup();
+      appState.pushMessage(`${opts.label} 백업 파일이 아닙니다.`);
+      return;
+    }
+    const policy = await this.askLibraryBackupPolicy(opts.label);
+    if (!policy) {
+      await cleanup();
+      return;
+    }
+    appState.setProgressDialog({ text: '복원중..', done: 0, total: 1 });
+    let res: { added: number; skipped: number; overwritten: number };
+    try {
+      res = await opts.restore(root, policy);
+    } catch (e: any) {
+      appState.setProgressDialog(undefined);
+      await cleanup();
+      appState.pushMessage('복원 실패: ' + (e.message || e));
+      return;
+    }
+    appState.setProgressDialog(undefined);
+    await cleanup();
+    const extra: string[] = [];
+    if (res.skipped > 0) extra.push(`${res.skipped}개 건너뜀`);
+    if (res.overwritten > 0) extra.push(`${res.overwritten}개 덮어씀`);
+    appState.pushDialog({
+      type: 'yes-only',
+      text:
+        `${opts.label} ${res.added}개를 불러왔습니다.` +
+        (extra.length ? `\n(${extra.join(', ')})` : ''),
+    });
+  }
+
+  async globalPresetBackupExport() {
+    await globalPresetService.flushSave(); // 디스크 JSON 최신화 후 백업
+    await this.libraryBackupExport({
+      label: '글로벌 프리셋',
+      manifestType: 'sdstudio-global-presets',
+      fileBase: 'global-presets',
+      isEmpty: globalPresetService.presets.length === 0,
+      buildEntries: () => globalPresetService.buildBackupEntries(),
+    });
+  }
+
+  async globalPresetBackupImport() {
+    await this.libraryBackupImport({
+      label: '글로벌 프리셋',
+      manifestType: 'sdstudio-global-presets',
+      restore: (root, policy) =>
+        globalPresetService.restoreFromBackupDir(root, policy),
+    });
+  }
+
+  async artistLibraryBackupExport() {
+    await artistLibraryService.flushSave(); // 디스크 JSON 최신화 후 백업
+    await this.libraryBackupExport({
+      label: '작가 라이브러리',
+      manifestType: 'sdstudio-artist-library',
+      fileBase: 'artist-library',
+      isEmpty: artistLibraryService.artists.length === 0,
+      buildEntries: () => artistLibraryService.buildBackupEntries(),
+    });
+  }
+
+  async artistLibraryBackupImport() {
+    await this.libraryBackupImport({
+      label: '작가 라이브러리',
+      manifestType: 'sdstudio-artist-library',
+      restore: (root, policy) =>
+        artistLibraryService.restoreFromBackupDir(root, policy),
     });
   }
 
@@ -2616,6 +2803,97 @@ export class AppState {
         }
       },
     });
+  }
+
+  // ---------------- 이미지 → 글로벌 프리셋 / 작가 라이브러리 저장 ----------------
+
+  // 생성 이미지 우클릭 → "글로벌 프리셋으로 저장": 이름 입력 후 메타데이터 추출해 저장.
+  async saveImageAsGlobalPreset(path: string): Promise<void> {
+    try {
+      const dataUri = await backend.readDataFile(path);
+      if (!dataUri) {
+        this.pushMessage('이미지를 읽을 수 없습니다.');
+        return;
+      }
+      const base64 = dataUriToBase64(dataUri);
+      const name = await this.pushDialogAsync({
+        type: 'input-confirm',
+        text: '글로벌 프리셋 이름을 입력하세요',
+      });
+      if (!name) return;
+      const entry = await globalPresetService.addImageAsPreset(base64, name);
+      this.pushDialog({
+        type: 'yes-only',
+        text: `"${entry.name}" 글로벌 프리셋으로 저장했습니다.`,
+      });
+    } catch (e: any) {
+      this.pushMessage('글로벌 프리셋 저장 실패: ' + (e.message || e));
+    }
+  }
+
+  // 생성 이미지 우클릭 → "작가 라이브러리에 저장": 새 작가 / 기존 작가 선택.
+  async saveImageToArtistLibrary(path: string): Promise<void> {
+    try {
+      const dataUri = await backend.readDataFile(path);
+      if (!dataUri) {
+        this.pushMessage('이미지를 읽을 수 없습니다.');
+        return;
+      }
+      const base64 = dataUriToBase64(dataUri);
+      const hasArtists = artistLibraryService.artists.length > 0;
+      const mode = await this.pushDialogAsync({
+        type: 'select',
+        text: '작가 라이브러리에 어떻게 저장할까요?',
+        items: [
+          { text: '새 작가로 추가', value: 'new' },
+          ...(hasArtists
+            ? [{ text: '기존 작가에 이미지 추가', value: 'existing' }]
+            : []),
+        ],
+      });
+      if (!mode || mode === 'cancel') return;
+
+      let artistId: string | undefined;
+      let artistName = '';
+      if (mode === 'new') {
+        const name = await this.pushDialogAsync({
+          type: 'input-confirm',
+          text: '작가 이름을 입력하세요 (예: suko mugi)',
+        });
+        if (!name) return;
+        const a = artistLibraryService.createArtist(name);
+        if (!a) {
+          this.pushMessage('작가 생성에 실패했습니다.');
+          return;
+        }
+        artistId = a.id;
+        artistName = a.name;
+      } else {
+        const id = await this.pushDialogAsync({
+          type: 'select',
+          text: '어느 작가에 이미지를 추가할까요?',
+          items: artistLibraryService.artists.map((a) => ({
+            text: `${a.name} (${a.images.length}장)`,
+            value: a.id,
+          })),
+        });
+        if (!id || id === 'cancel') return;
+        const a = artistLibraryService.getArtist(id);
+        if (!a) {
+          this.pushMessage('작가를 찾을 수 없습니다.');
+          return;
+        }
+        artistId = a.id;
+        artistName = a.name;
+      }
+      await artistLibraryService.addImage(artistId!, base64);
+      this.pushDialog({
+        type: 'yes-only',
+        text: `"${artistName}"에 이미지를 추가했습니다.`,
+      });
+    } catch (e: any) {
+      this.pushMessage('작가 라이브러리 저장 실패: ' + (e.message || e));
+    }
   }
 
   // ---------------- 글로벌 프리셋 헬퍼 ----------------

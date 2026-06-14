@@ -468,6 +468,129 @@ export class GlobalPresetService extends EventTarget {
     return await this.addFromPresetAndImage(preset, base64, preset.name);
   }
 
+  // 이미지 1장을 받아 메타데이터에서 프롬프트/세팅을 추출하고, 지정 이름으로 글로벌 프리셋 저장.
+  // (메타데이터가 없어도 이미지를 대표로 한 빈 프리셋으로 저장)
+  @action
+  async addImageAsPreset(
+    base64: string,
+    name: string,
+  ): Promise<IGlobalPresetEntry> {
+    const job = await extractPromptDataFromBase64(base64);
+    const preset: any = workFlowService.buildPreset('SDImageGen');
+    preset.name = name;
+    preset.frontPrompt = job?.prompt ?? '';
+    preset.backPrompt = '';
+    preset.uc = job?.uc ?? '';
+    if ((job?.characterPrompts?.length ?? 0) > 0) {
+      preset.characterPrompts = job.characterPrompts;
+    }
+    if (job) {
+      preset.sampling = job.sampling ?? preset.sampling;
+      preset.steps = job.steps ?? preset.steps;
+      preset.noiseSchedule = job.noiseSchedule ?? preset.noiseSchedule;
+      preset.promptGuidance = job.promptGuidance ?? preset.promptGuidance;
+      preset.cfgRescale = job.cfgRescale ?? preset.cfgRescale;
+      preset.useCoords = job.useCoords ?? preset.useCoords;
+      preset.varietyPlus = job.varietyPlus ?? preset.varietyPlus;
+      preset.deliberateEulerAncestralBug =
+        job.deliberateEulerAncestralBug ?? preset.deliberateEulerAncestralBug;
+      preset.legacyPromptConditioning =
+        job.legacyPromptConditioning ?? preset.legacyPromptConditioning;
+    }
+    return await this.addFromPresetAndImage(preset, base64, name);
+  }
+
+  // ---------- 백업 / 복원 ----------
+
+  // 백업 tar에 담을 엔트리(글로벌 프리셋 JSON + 프로필 이미지) 목록.
+  async buildBackupEntries(): Promise<{ path: string; name: string }[]> {
+    const entries: { path: string; name: string }[] = [
+      { path: GLOBAL_PRESETS_FILE, name: 'global_presets.json' },
+    ];
+    for (const e of this.presets) {
+      if (!e.profile) continue;
+      const p = this.getProfilePath(e.profile);
+      try {
+        if (await backend.existFile(p)) {
+          entries.push({
+            path: p,
+            name: 'global_vibes/' + e.profile.split('/').pop(),
+          });
+        }
+      } catch (err) {}
+    }
+    return entries;
+  }
+
+  // 압축 해제된 백업 폴더에서 프리셋을 병합 복원. 이름 충돌은 policy에 따라 처리.
+  @action
+  async restoreFromBackupDir(
+    root: string,
+    policy: 'rename' | 'skip' | 'overwrite',
+  ): Promise<{ added: number; skipped: number; overwritten: number }> {
+    let store: any;
+    try {
+      store = JSON.parse(await backend.readFile(root + '/global_presets.json'));
+    } catch (e) {
+      throw new Error('백업에 글로벌 프리셋 데이터가 없습니다');
+    }
+    const list = Array.isArray(store?.presets) ? store.presets : [];
+    let added = 0;
+    let skipped = 0;
+    let overwritten = 0;
+    for (const src of list) {
+      if (!src || !src.name || !src.workflowType) continue;
+      let name = src.name as string;
+      const existing = this.presets.find((p) => p.name === name);
+      if (existing) {
+        if (policy === 'skip') {
+          skipped++;
+          continue;
+        }
+        if (policy === 'overwrite') {
+          await this.delete(existing.id); // 엔트리 + 프로필 이미지 제거
+          overwritten++;
+        } else {
+          let i = 2;
+          while (this.presets.some((p) => p.name === name)) {
+            name = `${src.name} (${i})`;
+            i++;
+          }
+        }
+      }
+      // 프로필 이미지 복사 (새 파일명으로 — 기존과 충돌 없음)
+      let newProfile: string | undefined;
+      if (src.profile) {
+        const srcPath =
+          root + '/global_vibes/' + String(src.profile).split('/').pop();
+        try {
+          if (await backend.existFile(srcPath)) {
+            const filename = uuidv4() + '.png';
+            await backend.copyFile(srcPath, GLOBAL_VIBES_DIR + '/' + filename);
+            newProfile = filename;
+          }
+        } catch (e) {}
+      }
+      const json = src.preset ?? {};
+      if (json && 'profile' in json) delete json.profile;
+      const entry: IGlobalPresetEntry = {
+        id: uuidv4(),
+        name,
+        workflowType: src.workflowType,
+        isDefault: false, // 복원 항목은 기본 지정 해제 (기본 중복 방지)
+        createdAt: src.createdAt || Date.now(),
+        updatedAt: Date.now(),
+        profile: newProfile,
+        preset: json,
+      };
+      this.presets = [...this.presets, entry];
+      added++;
+    }
+    this.scheduleSave();
+    this.dispatchEvent(new CustomEvent('changed', {}));
+    return { added, skipped, overwritten };
+  }
+
   @action
   async rename(id: string, newName: string): Promise<void> {
     const entry = this.get(id);
