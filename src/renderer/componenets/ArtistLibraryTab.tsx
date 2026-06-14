@@ -187,6 +187,19 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
             <button className="back-sky !rounded-md px-3 py-1.5 text-sm" onClick={() => copyText('artist:' + artist.name, '작가 태그를 복사했습니다')}>
               <FaCopy className="inline mr-1" size={12} />복사
             </button>
+            <button
+              className="icon-button back-gray !rounded-md px-3 py-1.5"
+              title="작가 이름 변경"
+              onClick={async () => {
+                const newName = await appState.pushDialogAsync({
+                  type: 'input-confirm',
+                  text: `새 작가 이름을 입력하세요 (현재: ${artist.name})`,
+                });
+                if (newName) artistLibraryService.renameArtist(artist.id, newName);
+              }}
+            >
+              <FaPen />
+            </button>
             <button className="icon-button back-gray !rounded-md px-3 py-1.5" title="즐겨찾기" onClick={() => artistLibraryService.toggleFavorite(artist.id)}>
               {artist.favorite ? <FaHeart className="text-red-500" /> : <FaRegHeart />}
             </button>
