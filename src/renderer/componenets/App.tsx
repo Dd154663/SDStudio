@@ -24,7 +24,7 @@ import ExpiredProjectsDialog from './ExpiredProjectsDialog';
 import QueueControl from './SceneQueueControl';
 import { FloatView, FloatViewProvider } from './FloatView';
 import { observer, useObserver } from 'mobx-react-lite';
-import { FaGlobe, FaImages, FaPenFancy, FaStar } from 'react-icons/fa';
+import { FaGlobe, FaImages, FaPenFancy, FaStar, FaPalette } from 'react-icons/fa';
 import { GlobalPresetTab, GlobalPresetPickerOverlay } from './GlobalPresetTab';
 import ModalOverlay from './ModalOverlay';
 import { DndProvider } from 'react-dnd';
@@ -36,6 +36,7 @@ import React from 'react';
 import { CellPreview } from './ResultViewer';
 import { SlotPiece } from './SceneEditor';
 import EmbeddedBrowser from './EmbeddedBrowser';
+import ArtistLibraryTab from './ArtistLibraryTab';
 import { StackFixed, StackGrow, VerticalStack } from './LayoutComponents';
 import ProgressWindow, { ProgressDialog } from './ProgressWindow';
 import ResizableSplitter from './ResizableSplitter';
@@ -383,6 +384,12 @@ export const App = observer(() => {
       label: '글로벌 프리셋',
       content: <GlobalPresetTab />,
       emoji: <FaStar />,
+      banToggle: true,
+    },
+    {
+      label: '작가 라이브러리',
+      content: <ArtistLibraryTab />,
+      emoji: <FaPalette />,
       banToggle: true,
     },
     ...(!isMobile ? [{

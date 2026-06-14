@@ -36,6 +36,7 @@ import { BackgroundNotificationService } from './BackgroundNotificationService';
 import { BackgroundKeepAliveService } from './BackgroundKeepAliveService';
 import { ProjectSizeService } from './ProjectSizeService';
 import { ArtistTagService } from './ArtistTagService';
+import { ArtistLibraryService } from './ArtistLibraryService';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -91,6 +92,9 @@ globalPresetService.load();
 export const globalCharacterPresetService = new GlobalCharacterPresetService();
 globalCharacterPresetService.load();
 
+export const artistLibraryService = new ArtistLibraryService();
+artistLibraryService.load();
+
 export const promptService = new PromptService();
 
 export const taskQueueService = new TaskQueueService(taskHandlers);
@@ -119,6 +123,7 @@ backend.onClose(() => {
       await globalPresetService.flushSave();
       await globalPieceService.flushSave();
       await globalCharacterPresetService.flushSave();
+      await artistLibraryService.flushSave();
       await taskQueueService.flushSaveLogs();
     } catch (e) {
       console.error('종료 시 저장 실패:', e);
