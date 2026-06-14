@@ -314,6 +314,13 @@
         "!**/node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**"
       ]
     },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
     "linux": {
       "target": [
         "AppImage"
