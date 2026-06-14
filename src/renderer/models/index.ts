@@ -94,6 +94,8 @@ globalCharacterPresetService.load();
 export const promptService = new PromptService();
 
 export const taskQueueService = new TaskQueueService(taskHandlers);
+// 이전 실행에서 저장된 작업 로그 복원(비동기 — 파일 없으면 무시).
+taskQueueService.loadLogs();
 
 export const loginService = new LoginService();
 
@@ -117,6 +119,7 @@ backend.onClose(() => {
       await globalPresetService.flushSave();
       await globalPieceService.flushSave();
       await globalCharacterPresetService.flushSave();
+      await taskQueueService.flushSaveLogs();
     } catch (e) {
       console.error('종료 시 저장 실패:', e);
     } finally {

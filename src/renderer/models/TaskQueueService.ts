@@ -730,6 +730,7 @@ export interface TaskLog {
 }
 
 const MAX_TASK_LOGS = 500;
+const TASK_LOGS_FILE = 'task_logs.json';
 
 export class TaskQueueService extends EventTarget {
   queue: CircularQueue<Task>;
@@ -740,6 +741,8 @@ export class TaskQueueService extends EventTarget {
   currentRun: TaskQueueRun | undefined;
   taskSet: { [key: string]: boolean };
   taskLogs: TaskLog[] = [];
+  private logsLoaded = false;
+  private logsSaveTimer: any = null;
   constructor(handlers: TaskHandler[]) {
     super();
     this.handlers = handlers;
@@ -759,10 +762,51 @@ export class TaskQueueService extends EventTarget {
     if (this.taskLogs.length > MAX_TASK_LOGS) {
       this.taskLogs.splice(0, this.taskLogs.length - MAX_TASK_LOGS);
     }
+    this.scheduleSaveLogs();
   }
 
   clearLogs() {
     this.taskLogs = [];
+    // 파일도 즉시 비운다.
+    this.flushSaveLogs();
+  }
+
+  // 시작 시 1회 호출(index.ts). 이전 실행에서 저장된 로그를 복원한다.
+  async loadLogs(): Promise<void> {
+    if (this.logsLoaded) return;
+    let restored: TaskLog[] = [];
+    try {
+      const raw = await backend.readFile(TASK_LOGS_FILE);
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) restored = arr;
+    } catch {
+      // 파일 없음 — 무시
+    }
+    if (!this.logsLoaded) {
+      // 로드 도중 새로 쌓인 로그(this.taskLogs)는 복원분 뒤에 이어 붙인다.
+      this.taskLogs = [...restored, ...this.taskLogs].slice(-MAX_TASK_LOGS);
+      this.logsLoaded = true;
+    }
+  }
+
+  private scheduleSaveLogs() {
+    if (this.logsSaveTimer) return; // 이미 예약됨 — 1.5초 윈도우로 묶어 쓴다.
+    this.logsSaveTimer = setTimeout(() => {
+      this.logsSaveTimer = null;
+      this.flushSaveLogs();
+    }, 1500);
+  }
+
+  async flushSaveLogs(): Promise<void> {
+    if (this.logsSaveTimer) {
+      clearTimeout(this.logsSaveTimer);
+      this.logsSaveTimer = null;
+    }
+    try {
+      await backend.writeFile(TASK_LOGS_FILE, JSON.stringify(this.taskLogs));
+    } catch (e) {
+      console.error('작업 로그 저장 실패:', e);
+    }
   }
 
   removeAllTasks() {

@@ -456,9 +456,13 @@ const TaskLogSection = () => {
 
   const formatLog = (log: TaskLog) => {
     const date = new Date(log.timestamp);
+    const day =
+      String(date.getMonth() + 1).padStart(2, '0') +
+      '-' +
+      String(date.getDate()).padStart(2, '0');
     const time = date.toLocaleTimeString('ko-KR', { hour12: false });
     const levelLabel = log.level === 'error' ? '[오류]' : log.level === 'warn' ? '[경고]' : '[정보]';
-    return `${time} ${levelLabel} [${log.scene}] ${log.message}`;
+    return `${day} ${time} ${levelLabel} [${log.scene}] ${log.message}`;
   };
 
   const downloadLogs = () => {
