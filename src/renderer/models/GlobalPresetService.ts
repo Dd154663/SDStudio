@@ -9,6 +9,7 @@ import {
   normalizePresetJson,
   createImageWithText,
 } from './SessionService';
+import { extractPromptDataFromBase64 } from './util';
 
 const GLOBAL_PRESETS_FILE = 'global_presets.json';
 const GLOBAL_VIBES_DIR = 'global_vibes';
@@ -418,6 +419,53 @@ export class GlobalPresetService extends EventTarget {
     this.scheduleSave();
     this.dispatchEvent(new CustomEvent('changed', {}));
     return entry;
+  }
+
+  /**
+   * PNG을 글로벌 프리셋으로 가져온다.
+   *  1) 정식 글로벌 프리셋 내보내기 이미지면 그대로 저장 (importFromPng)
+   *  2) 아니면 NAI 생성 메타데이터(프롬프트)가 있는 경우, 프롬프트를 추출해
+   *     그림체(SDImageGen) 프리셋으로 구성 후 저장 — "이미지 프롬프트 추출" 재활용
+   * 둘 다 해당되지 않으면 undefined.
+   */
+  @action
+  async importFromImage(
+    base64: string,
+  ): Promise<IGlobalPresetEntry | undefined> {
+    // 1) 정식 글로벌 프리셋 내보내기 이미지
+    try {
+      const entry = await this.importFromPng(base64);
+      if (entry) return entry;
+    } catch (e) {
+      // importFromPng은 글로벌 외 프리셋 타입 메타에 대해 throw할 수 있음
+      // → 아래 메타데이터 추출 폴백으로 계속 진행
+    }
+
+    // 2) NAI 생성 메타데이터에서 프롬프트 추출
+    const job = await extractPromptDataFromBase64(base64);
+    if (!job || !job.prompt) return undefined;
+
+    const preset: any = workFlowService.buildPreset('SDImageGen');
+    preset.name = 'external image';
+    preset.frontPrompt = job.prompt ?? '';
+    preset.backPrompt = '';
+    preset.uc = job.uc ?? '';
+    if ((job.characterPrompts?.length ?? 0) > 0) {
+      preset.characterPrompts = job.characterPrompts;
+    }
+    preset.sampling = job.sampling ?? preset.sampling;
+    preset.steps = job.steps ?? preset.steps;
+    preset.noiseSchedule = job.noiseSchedule ?? preset.noiseSchedule;
+    preset.promptGuidance = job.promptGuidance ?? preset.promptGuidance;
+    preset.cfgRescale = job.cfgRescale ?? preset.cfgRescale;
+    preset.useCoords = job.useCoords ?? preset.useCoords;
+    preset.varietyPlus = job.varietyPlus ?? preset.varietyPlus;
+    preset.deliberateEulerAncestralBug =
+      job.deliberateEulerAncestralBug ?? preset.deliberateEulerAncestralBug;
+    preset.legacyPromptConditioning =
+      job.legacyPromptConditioning ?? preset.legacyPromptConditioning;
+
+    return await this.addFromPresetAndImage(preset, base64, preset.name);
   }
 
   @action

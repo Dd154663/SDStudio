@@ -656,7 +656,7 @@ export const GlobalPresetTab = observer(() => {
       try {
         const buf = await file.arrayBuffer();
         const base64 = Buffer.from(buf).toString('base64');
-        const entry = await globalPresetService.importFromPng(base64);
+        const entry = await globalPresetService.importFromImage(base64);
         if (entry) ok++;
         else {
           fail++;
@@ -837,13 +837,15 @@ export const GlobalPresetTab = observer(() => {
     <div className="flex flex-col h-full w-full overflow-hidden bg-white dark:bg-slate-900">
       {/* 상단 툴바 */}
       <div className="flex-none p-3 border-b border-gray-300 dark:border-slate-600 flex flex-wrap gap-3 items-center bg-gray-50 dark:bg-slate-800">
-        <button
-          className="round-button back-sky flex items-center gap-2 px-4 py-2 text-base"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <FaFileUpload size={18} />
-          <span>PNG 가져오기</span>
-        </button>
+        <Tooltip content="글로벌 프리셋 이미지뿐 아니라, 프롬프트 메타데이터가 있는 PNG도 그림체 프리셋으로 가져옵니다.">
+          <button
+            className="round-button back-sky flex items-center gap-2 px-4 py-2 text-base"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <FaFileUpload size={18} />
+            <span>PNG 가져오기</span>
+          </button>
+        </Tooltip>
         <input
           type="file"
           accept="image/png"
