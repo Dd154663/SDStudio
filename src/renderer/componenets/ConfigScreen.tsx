@@ -22,6 +22,7 @@ import {
   FaKeyboard,
 } from 'react-icons/fa';
 import { keyboardShortcutService, KeyboardShortcutService } from '../models/KeyboardShortcutService';
+import ModalOverlay from './ModalOverlay';
 
 interface ConfigScreenProps {
   onSave: () => void;
@@ -301,6 +302,7 @@ const OtherTab = ({
   exportConcurrency, setExportConcurrency,
 }: any) => {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [showRickroll, setShowRickroll] = useState(false);
 
   const handleCheckUpdate = async () => {
     setCheckingUpdate(true);
@@ -444,7 +446,43 @@ const OtherTab = ({
             원작 — sunho/SDStudio
           </a>
         </div>
+        <button
+          className="mt-2 px-3 py-1.5 text-sm font-bold rounded clickable text-white bg-gradient-to-r from-fuchsia-500 via-rose-500 to-orange-400 hover:brightness-110 shadow"
+          onClick={() => setShowRickroll(true)}
+        >
+          🎁 비밀 버튼 (누르지 마시오)
+        </button>
       </div>
+      {showRickroll && (
+        <ModalOverlay
+          isOpen={true}
+          onClose={() => setShowRickroll(false)}
+          title="🎉 축하합니다!"
+          width="max-w-2xl"
+        >
+          <div className="w-full aspect-video rounded-lg overflow-hidden bg-black">
+            {/* file:// 출처에서는 iframe/embed 임베드가 YouTube에 막히므로(에러 150/153),
+                데스크톱은 임베드가 아닌 전체 watch 페이지를 webview(최상위 네비게이션)로 띄운다.
+                모바일(Capacitor)은 정상 출처라 iframe 임베드가 허용됨. */}
+            {!isMobile ? (
+              <webview
+                src="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                allowpopups=""
+                style={{ width: '100%', height: '100%' }}
+              />
+            ) : (
+              <iframe
+                className="w-full h-full"
+                src="https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1&rel=0"
+                title="rickroll"
+                frameBorder={0}
+                allow="autoplay; encrypted-media; fullscreen"
+                allowFullScreen
+              />
+            )}
+          </div>
+        </ModalOverlay>
+      )}
     </div>
   );
 };
