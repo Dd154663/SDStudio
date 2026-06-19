@@ -12,6 +12,7 @@ import {
   ContextMenuType,
   genericSceneFromJSON,
   GallaryImageContextAlt,
+  GenericScene,
 } from '../models/types';
 import { oneTimeFlowMap, oneTimeFlows } from '../models/workflows/OneTimeFlows';
 import { extractPromptDataFromBase64 } from '../models/util';
@@ -37,16 +38,24 @@ export const AppContextMenu = observer(() => {
     curSession!.moveScene(ctx.scene, curSession!.scenes.size - 1);
   };
   const copySceneToProject = async (ctx: SceneContextAlt) => {
-    const curName = appState.curSession!.name;
+    await copyScenesToProject([ctx.scene]);
+  };
+
+  const copyScenesToProject = async (scenes: GenericScene[]) => {
+    const session = appState.curSession;
+    if (!session || scenes.length === 0) return;
+    const curName = session.name;
     const allProjects = sessionService.list().filter((n) => n !== curName);
     if (allProjects.length === 0) {
       appState.pushMessage('복사할 다른 프로젝트가 없습니다');
       return;
     }
 
+    const countLabel = scenes.length > 1 ? `선택한 ${scenes.length}개 씬을` : '씬을';
+
     // 1) 대상 프로젝트 선택
     const targetName = await appState.pushDialogAsync({
-      text: '씬을 복사할 프로젝트를 선택하세요',
+      text: `${countLabel} 복사할 프로젝트를 선택하세요`,
       type: 'dropdown',
       items: allProjects.map((n) => ({ text: n, value: n })),
     });
@@ -70,45 +79,52 @@ export const AppContextMenu = observer(() => {
       return;
     }
 
-    // 4) 씬 복제
-    const newScene = genericSceneFromJSON(ctx.scene.toJSON());
-    // 이름 충돌 방지
-    let cnt = 0;
-    const baseName = newScene.name;
-    const newNameFn = () => baseName + (cnt === 0 ? '' : '_' + cnt);
-    while (targetSession.hasScene(newScene.type, newNameFn())) {
-      cnt++;
-    }
-    newScene.name = newNameFn();
+    let totalCopiedImages = 0;
+    let successCount = 0;
 
-    if (mode === 'config') {
-      // 설정만 복사 — 이미지 참조 제거
-      newScene.imageMap = [];
-      newScene.mains = [];
-      targetSession.addScene(newScene);
-      appState.pushMessage(`씬 "${newScene.name}"이(가) "${targetName}" 프로젝트에 복사되었습니다`);
-    } else {
-      // 이미지 포함 복사
-      const srcDir = imageService.getOutputDir(appState.curSession!, ctx.scene);
-      const dstDir = imageService.getOutputDir(targetSession, newScene);
-
-      // 대상 디렉토리 생성을 위해 먼저 씬 추가
-      targetSession.addScene(newScene);
-
-      // 이미지 파일 복사
-      const allImages = [...ctx.scene.imageMap];
-      let copied = 0;
-      for (const img of allImages) {
-        try {
-          await backend.copyFile(srcDir + '/' + img, dstDir + '/' + img);
-          copied++;
-        } catch (e) {
-          console.error('이미지 복사 실패:', img, e);
-        }
+    for (const srcScene of scenes) {
+      // 4) 씬 복제
+      const newScene = genericSceneFromJSON(srcScene.toJSON());
+      if (!newScene) continue;
+      let cnt = 0;
+      const baseName = newScene.name;
+      const newNameFn = () => baseName + (cnt === 0 ? '' : '_' + cnt);
+      while (targetSession.hasScene(newScene.type, newNameFn())) {
+        cnt++;
       }
-      appState.pushMessage(
-        `씬 "${newScene.name}"이(가) "${targetName}" 프로젝트에 복사되었습니다 (이미지 ${copied}장)`
-      );
+      newScene.name = newNameFn();
+
+      if (mode === 'config') {
+        newScene.imageMap = [];
+        newScene.mains = [];
+        targetSession.addScene(newScene);
+        successCount++;
+      } else {
+        const srcDir = imageService.getOutputDir(session, srcScene);
+        const dstDir = imageService.getOutputDir(targetSession, newScene);
+        targetSession.addScene(newScene);
+
+        const allImages = [...srcScene.imageMap];
+        let copied = 0;
+        for (const img of allImages) {
+          try {
+            await backend.copyFile(srcDir + '/' + img, dstDir + '/' + img);
+            copied++;
+          } catch (e) {
+            console.error('이미지 복사 실패:', img, e);
+          }
+        }
+        totalCopiedImages += copied;
+        successCount++;
+      }
+    }
+
+    if (successCount > 1) {
+      const imgMsg = mode === 'with-images' ? ` (이미지 ${totalCopiedImages}장)` : '';
+      appState.pushMessage(`${successCount}개 씬을 "${targetName}" 프로젝트에 복사했습니다${imgMsg}`);
+    } else if (successCount === 1) {
+      const imgMsg = mode === 'with-images' ? ` (이미지 ${totalCopiedImages}장)` : '';
+      appState.pushMessage(`씬을 "${targetName}" 프로젝트에 복사했습니다${imgMsg}`);
     }
   };
 
@@ -117,21 +133,125 @@ export const AppContextMenu = observer(() => {
     if (id === 'duplicate') {
       duplicateScene(ctx);
     } else if (id === 'copy-to-project') {
+      const selectedNames = appState.selectedScenes;
+      if (selectedNames.size > 1) {
+        const session = appState.curSession;
+        if (session) {
+          const selectedScenes: GenericScene[] = [];
+          for (const name of selectedNames) {
+            const scene = session.scenes.get(name) || session.inpaints.get(name);
+            if (scene) selectedScenes.push(scene);
+          }
+          if (selectedScenes.length > 0) {
+            copyScenesToProject(selectedScenes);
+            return;
+          }
+        }
+      }
       copySceneToProject(ctx);
     } else if (id === 'move-front') {
       moveSceneFront(ctx);
     } else if (id === 'move-back') {
       moveSceneBack(ctx);
     } else if (id === 'delete') {
-      appState.pushDialog({
-        type: 'confirm',
-        text: '정말로 삭제하시겠습니까? (휴지통으로 이동)',
-        callback: async () => {
-          const { trashService } = await import('../models');
-          await trashService.moveSceneToTrash(appState.curSession!, ctx.scene);
-        },
-      });
+      const selectedNames = appState.selectedScenes;
+      if (selectedNames.size > 1) {
+        appState.pushDialog({
+          type: 'confirm',
+          text: `선택한 ${selectedNames.size}개 씬을 삭제할까요? (휴지통으로 이동)`,
+          callback: async () => {
+            const { trashService } = await import('../models');
+            const session = appState.curSession;
+            if (!session) return;
+            for (const name of selectedNames) {
+              const scene = session.scenes.get(name) || session.inpaints.get(name);
+              if (scene) {
+                try { await trashService.moveSceneToTrash(session, scene); } catch (e) {}
+              }
+            }
+            appState.clearSceneSelection();
+          },
+        });
+      } else {
+        appState.pushDialog({
+          type: 'confirm',
+          text: '정말로 삭제하시겠습니까? (휴지통으로 이동)',
+          callback: async () => {
+            const { trashService } = await import('../models');
+            await trashService.moveSceneToTrash(appState.curSession!, ctx.scene);
+          },
+        });
+      }
+    } else if (id === 'delete-all-selected-images') {
+      deleteAllImagesFromSelected(false);
+    } else if (id === 'delete-all-selected-images-except-fav') {
+      deleteAllImagesFromSelected(true);
     }
+  };
+  const deleteAllImagesFromSelected = async (excludeFav: boolean) => {
+    const session = appState.curSession;
+    if (!session) return;
+    const selectedNames = appState.selectedScenes;
+    if (selectedNames.size === 0) {
+      appState.pushMessage('선택된 씬이 없습니다.');
+      return;
+    }
+
+    const scenes: { scene: any; paths: string[] }[] = [];
+    let totalImages = 0;
+
+    for (const name of selectedNames) {
+      const scene = session.scenes.get(name) || session.inpaints.get(name);
+      if (!scene) continue;
+      if (!scene.imageMap || scene.imageMap.length === 0) continue;
+
+      const dir = imageService.getOutputDir(session, scene);
+      let paths = scene.imageMap.map((img: string) => dir + '/' + img);
+
+      if (excludeFav && scene.mains) {
+        const favs = new Set(scene.mains);
+        paths = paths.filter((p: string) => {
+          const filename = p.split('/').pop()!;
+          return !favs.has(filename);
+        });
+      }
+
+      if (paths.length > 0) {
+        scenes.push({ scene, paths });
+        totalImages += paths.length;
+      }
+    }
+
+    if (totalImages === 0) {
+      appState.pushMessage('삭제할 이미지가 없습니다.');
+      return;
+    }
+
+    const label = excludeFav ? '즐겨찾기 제외 ' : '';
+    const doBatchDelete = async () => {
+      appState.setProgressDialog({ text: '이미지 삭제 중...', done: 0, total: scenes.length });
+      let done = 0;
+      for (const { scene, paths } of scenes) {
+        try {
+          await deleteImageFiles(session, paths, scene);
+        } catch (e) {
+          console.error('이미지 삭제 실패:', e);
+        }
+        appState.setProgressDialog({ text: '이미지 삭제 중...', done: ++done, total: scenes.length });
+      }
+      appState.setProgressDialog(undefined);
+      appState.pushMessage(`${scenes.length}개 씬에서 ${totalImages}장의 이미지를 삭제했습니다.`);
+    };
+    if (appState.skipImageDeleteConfirm) {
+      await doBatchDelete();
+      return;
+    }
+    appState.pushDialog({
+      type: 'confirm',
+      text: `${selectedNames.size}개 씬에서 ${label}${totalImages}장의 이미지를 삭제할까요?`,
+      showSkipConfirm: true,
+      callback: doBatchDelete,
+    });
   };
   const duplicateImage = async (ctx: GallaryImageContextAlt) => {
     if (!ctx.scene) return;
@@ -193,12 +313,18 @@ export const AppContextMenu = observer(() => {
     }
   };
   const deleteImg = async (ctx: GallaryImageContextAlt) => {
+    const doDelete = async () => {
+      await deleteImageFiles(appState.curSession!, ctx.path, ctx.scene);
+    };
+    if (appState.skipImageDeleteConfirm) {
+      await doDelete();
+      return;
+    }
     appState.pushDialog({
       type: 'confirm',
       text: '정말로 삭제하시겠습니까?',
-      callback: async () => {
-        await deleteImageFiles(appState.curSession!, ctx.path, ctx.scene);
-      },
+      showSkipConfirm: true,
+      callback: doDelete,
     });
   };
   const downloadImage = async (ctx: GallaryImageContextAlt) => {
@@ -346,7 +472,9 @@ export const AppContextMenu = observer(() => {
           해당 씬 복제
         </Item>
         <Item id="copy-to-project" onClick={handleSceneItemClick}>
-          다른 프로젝트로 씬 복사
+          {appState.selectedScenes.size > 1
+            ? `선택한 씬(${appState.selectedScenes.size}) 복사`
+            : '다른 프로젝트로 씬 복사'}
         </Item>
         <Item id="move-front" onClick={handleSceneItemClick}>
           해당 씬 맨 위로
@@ -355,7 +483,16 @@ export const AppContextMenu = observer(() => {
           해당 씬 맨 뒤로
         </Item>
         <Item id="delete" onClick={handleSceneItemClick}>
-          해당 씬 삭제
+          {appState.selectedScenes.size > 1
+            ? `선택한 씬(${appState.selectedScenes.size}) 삭제`
+            : '해당 씬 삭제'}
+        </Item>
+        <Separator />
+        <Item id="delete-all-selected-images" onClick={handleSceneItemClick}>
+          선택한 씬 이미지 모두 삭제
+        </Item>
+        <Item id="delete-all-selected-images-except-fav" onClick={handleSceneItemClick}>
+          선택한 씬 이미지 모두 삭제 (즐겨찾기 제외)
         </Item>
       </Menu>
       <Menu id={ContextMenuType.GallaryImage}>

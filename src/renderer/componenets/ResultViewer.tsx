@@ -342,6 +342,8 @@ const Cell = memo(
       selectedImages,
       bookmarkedImagePath,
       focusedIndex,
+      onCellEnter,
+      onCellLeave,
     } = data as any;
 
     const { curSession } = appState;
@@ -504,6 +506,8 @@ const Cell = memo(
             }
           }
         }}
+        onMouseEnter={() => onCellEnter?.(index)}
+        onMouseLeave={() => onCellLeave?.(index)}
         ref={(node) => drag(drop(node))}
       >
         {path && image && (
@@ -604,6 +608,8 @@ const createItemData = memoizeOne(
     selectedImages,
     bookmarkedImagePath,
     focusedIndex,
+    onCellEnter,
+    onCellLeave,
   ) => {
     return {
       scene,
@@ -618,6 +624,8 @@ const createItemData = memoizeOne(
       selectedImages,
       bookmarkedImagePath,
       focusedIndex,
+      onCellEnter,
+      onCellLeave,
     };
   },
 );
@@ -644,6 +652,7 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
     const [containerHeight, setContainerHeight] = useState(0);
     const refreshImageFuncs = useRef(new Map<string, () => void>());
     const draggedIndex = useRef<number | null>(null);
+    const hoveredIndexRef = useRef<number | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const gridRef = useRef<any>(null);
 
@@ -692,6 +701,37 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
       ? [4, 2, 1]
       : [32, 16, 8];
 
+    const onCellEnter = useCallback((index: number) => {
+      hoveredIndexRef.current = index;
+    }, []);
+    const onCellLeave = useCallback((index: number) => {
+      if (hoveredIndexRef.current === index) {
+        hoveredIndexRef.current = null;
+      }
+    }, []);
+
+    useEffect(() => {
+      const handleKey = (e: KeyboardEvent) => {
+        if (e.key !== 'f' && e.key !== 'F') return;
+        if (isHidden) return;
+        const idx = hoveredIndexRef.current;
+        if (idx == null || idx >= filePaths.length) return;
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return;
+        e.preventDefault();
+        const path = filePaths[idx];
+        if (!path) return;
+        const filename = path.split('/').pop()!;
+        if (scene.mains.includes(filename)) {
+          scene.mains.splice(scene.mains.indexOf(filename), 1);
+        } else {
+          scene.mains.push(filename);
+        }
+      };
+      window.addEventListener('keydown', handleKey);
+      return () => window.removeEventListener('keydown', handleKey);
+    }, [filePaths, scene, isHidden]);
+
     return (
       <div
         ref={containerRef}
@@ -720,6 +760,8 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
             selectedImages,
             bookmarkedImagePath,
             focusedIndex ?? null,
+            onCellEnter,
+            onCellLeave,
           )}
           outerElementType={CustomScrollbarsVirtualGrid}
           overscanRowCount={overcountCounts[Math.ceil(imageSize / 200) - 1]}
@@ -834,38 +876,40 @@ const ResultDetailView = observer(
       };
       fetchImage();
       filenameRef.current = paths[selectedIndex].split('/').pop()!;
-      const handleKeyDown = (e: KeyboardEvent) => {
+      const handleKeyDown = async (e: KeyboardEvent) => {
         if (e.key === 'ArrowLeft') {
           setSelectedIndex((selectedIndex - 1 + paths.length) % paths.length);
         } else if (e.key === 'ArrowRight') {
           setSelectedIndex((selectedIndex + 1) % paths.length);
         } else if (e.key === 'Delete' || e.key === 'Backspace') {
+          const doDel = async () => {
+            await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
+          };
+          if (appState.skipImageDeleteConfirm) { await doDel(); return; }
           appState.pushDialog({
             type: 'confirm',
             text: '정말로 파일을 삭제하시겠습니까?',
-            callback: async () => {
-              await deleteImageFiles(
-                curSession!,
-                [paths[selectedIndex]],
-                scene,
-              );
-            },
+            showSkipConfirm: true,
+            callback: doDel,
           });
         }
       };
-      const handleShortcut = (e: Event) => {
+      const handleShortcut = async (e: Event) => {
         const action = (e as CustomEvent).detail?.action;
         if (action === 'prev-image') {
           setSelectedIndex((selectedIndex - 1 + paths.length) % paths.length);
         } else if (action === 'next-image') {
           setSelectedIndex((selectedIndex + 1) % paths.length);
         } else if (action === 'delete-image') {
+          const doDel = async () => {
+            await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
+          };
+          if (appState.skipImageDeleteConfirm) { await doDel(); return; }
           appState.pushDialog({
             type: 'confirm',
             text: '정말로 파일을 삭제하시겠습니까?',
-            callback: async () => {
-              await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
-            },
+            showSkipConfirm: true,
+            callback: doDel,
           });
         } else if (action === 'toggle-favorite') {
           const path = paths[selectedIndex].split('/').pop()!;
@@ -989,12 +1033,15 @@ const ResultDetailView = observer(
             <button
               className={`round-button back-red`}
               onClick={() => {
+                const doDel = async () => {
+                  await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
+                };
+                if (appState.skipImageDeleteConfirm) { doDel(); return; }
                 appState.pushDialog({
                   type: 'confirm',
                   text: '정말로 파일을 삭제하시겠습니까?',
-                  callback: async () => {
-                    await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
-                  },
+                  showSkipConfirm: true,
+                  callback: doDel,
                 });
               }}
             >
@@ -1272,14 +1319,17 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             value: 'fav',
           },
         ],
-        callback: (value) => {
+        callback: async (value) => {
           if (value === 'all') {
+            const doDel = async () => {
+              await deleteImageFiles(curSession!, paths, scene);
+            };
+            if (appState.skipImageDeleteConfirm) { await doDel(); return; }
             appState.pushDialog({
               type: 'confirm',
               text: '정말로 모든 이미지를 삭제하시겠습니까?',
-              callback: async () => {
-                await deleteImageFiles(curSession!, paths, scene);
-              },
+              showSkipConfirm: true,
+              callback: doDel,
             });
           } else if (value === 'n') {
             appState.pushDialog({
@@ -1299,16 +1349,19 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               },
             });
           } else {
+            const doDel = async () => {
+              await deleteImageFiles(
+                curSession!,
+                paths.filter((x) => !isMainImage || !isMainImage(x)),
+                scene,
+              );
+            };
+            if (appState.skipImageDeleteConfirm) { await doDel(); return; }
             appState.pushDialog({
               type: 'confirm',
               text: '정말로 즐겨찾기 외 모든 이미지를 삭제하시겠습니까?',
-              callback: async () => {
-                await deleteImageFiles(
-                  curSession!,
-                  paths.filter((x) => !isMainImage || !isMainImage(x)),
-                  scene,
-                );
-              },
+              showSkipConfirm: true,
+              callback: doDel,
             });
           }
         },

@@ -102,18 +102,45 @@ const DnDPreview = () => {
   style['transformOrigin'] = 'center';
   let res: any = null;
   if (itemType === 'scene') {
-    const { scene, curSession, getImage, cellSize, cardWidth } = item as any;
+    const { scene, curSession, getImage, cellSize, cardWidth, selectedSceneNames } = item as any;
     const sceneStyle = cardWidth
       ? { ...style, width: cardWidth + 'px' }
       : style;
+    const count = selectedSceneNames?.length || 0;
     res = (
-      <SceneCell
-        scene={scene}
-        curSession={curSession}
-        getImage={getImage}
-        cellSize={cellSize}
-        style={sceneStyle}
-      />
+      <div style={{ position: 'relative' }}>
+        <SceneCell
+          scene={scene}
+          curSession={curSession}
+          getImage={getImage}
+          cellSize={cellSize}
+          style={sceneStyle}
+        />
+        {count > 1 && (
+          <div
+            style={{
+              position: 'absolute',
+              top: -4,
+              right: -4,
+              backgroundColor: '#0ea5e9',
+              color: '#fff',
+              borderRadius: '9999px',
+              width: 20,
+              height: 20,
+              fontSize: 11,
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+              zIndex: 10,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+            }}
+          >
+            {count}
+          </div>
+        )}
+      </div>
     );
   } else if (itemType === 'image') {
     const { path, cellSize, imageSize } = item as any;

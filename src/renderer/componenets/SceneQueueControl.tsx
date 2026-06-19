@@ -1,18 +1,44 @@
-import { memo, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import {
+  memo,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from 'react';
+import {
+  FaBookmark,
+  FaBroom,
+  FaEdit,
+  FaExchangeAlt,
+  FaFileImage,
+  FaPaintBrush,
+  FaPlus,
+  FaQuestion,
+  FaRegCalendarTimes,
+  FaSearch,
+  FaStar,
+  FaTimes,
+  FaTrash,
+  FaTrashRestore,
+} from 'react-icons/fa';
+import { useDrag, useDrop } from 'react-dnd';
+import { getEmptyImage } from 'react-dnd-html5-backend';
+import { useContextMenu } from 'react-contexify';
+import { v4 } from 'uuid';
+import { observer } from 'mobx-react-lite';
+import { reaction } from 'mobx';
 import { FloatView } from './FloatView';
 import SceneEditor from './SceneEditor';
-import { FaBookmark, FaBroom, FaEdit, FaExchangeAlt, FaFileImage, FaPaintBrush, FaPlus, FaRegCalendarTimes, FaSearch, FaStar, FaTimes, FaTrash, FaTrashRestore } from 'react-icons/fa';
 import ArtistTagModal from './ArtistTagModal';
 import Tournament from './Tournament';
 import ResultViewer from './ResultViewer';
 import InPaintEditor from './InPaintEditor';
+import ShortcutCheatsheet from './ShortcutCheatsheet';
 import { base64ToDataUri } from './BrushTool';
-import { useDrag, useDrop } from 'react-dnd';
-import { getEmptyImage } from 'react-dnd-html5-backend';
-import { useContextMenu } from 'react-contexify';
 import SceneSelector from './SceneSelector';
 import Tooltip from './Tooltip';
-import { v4 } from 'uuid';
 import { ImageOptimizeMethod } from '../backend';
 import {
   isMobile,
@@ -32,7 +58,11 @@ import {
   dataUriToBase64,
   deleteImageFiles,
 } from '../models/ImageService';
-import { queueI2IWorkflow, queueMirrorWorkflow, queueWorkflow } from '../models/TaskQueueService';
+import {
+  queueI2IWorkflow,
+  queueMirrorWorkflow,
+  queueWorkflow,
+} from '../models/TaskQueueService';
 import {
   GenericScene,
   ContextMenuType,
@@ -44,9 +74,10 @@ import {
 } from '../models/types';
 import { extractPromptDataFromBase64 } from '../models/util';
 import { appState, SceneSelectorItem } from '../models/AppService';
-import { observer } from 'mobx-react-lite';
-import { createInpaintPreset, prepareMirrorCanvas } from '../models/workflows/SDWorkFlow';
-import { reaction } from 'mobx';
+import {
+  createInpaintPreset,
+  prepareMirrorCanvas,
+} from '../models/workflows/SDWorkFlow';
 import { oneTimeFlowMap, oneTimeFlows } from '../models/workflows/OneTimeFlows';
 
 const createMissingPiecesForSession = (
@@ -76,12 +107,7 @@ const queueScene = async (
   samples: number,
 ) => {
   if (scene.type === 'scene') {
-    await queueWorkflow(
-      session,
-      session.selectedWorkflow!,
-      scene,
-      samples,
-    );
+    await queueWorkflow(session, session.selectedWorkflow!, scene, samples);
   } else {
     const inpaintScene = scene as InpaintScene;
     if (inpaintScene.workflowType === 'SDMirror') {
@@ -104,6 +130,22 @@ const queueScene = async (
   }
 };
 
+function getSelectedSceneNames(session: Session): string[] {
+  const names = Array.from(appState.selectedScenes);
+  const sceneOrder = new Map(
+    session.getScenes('scene').map((s, i) => [s.name, i]),
+  );
+  const inpaintOrder = new Map(
+    session.getScenes('inpaint').map((s, i) => [s.name, i]),
+  );
+  names.sort(
+    (a, b) =>
+      (sceneOrder.get(a) ?? inpaintOrder.get(a) ?? 0) -
+      (sceneOrder.get(b) ?? inpaintOrder.get(b) ?? 0),
+  );
+  return names;
+}
+
 interface SceneCellProps {
   scene: GenericScene;
   curSession: Session;
@@ -112,6 +154,7 @@ interface SceneCellProps {
   setDisplayScene?: (scene: GenericScene) => void;
   setEditingScene?: (scene: GenericScene) => void;
   moveScene?: (scene: GenericScene, index: number) => void;
+  moveScenes?: (scenes: GenericScene[], targetIndex: number) => void;
   style?: React.CSSProperties;
   isBookmarked?: boolean;
   onToggleBookmark?: () => void;
@@ -125,6 +168,7 @@ export const SceneCell = observer(
     getImage,
     setDisplayScene,
     moveScene,
+    moveScenes,
     setEditingScene,
     curSession,
     cellSize,
@@ -138,6 +182,9 @@ export const SceneCell = observer(
       id: ContextMenuType.Scene,
     });
     const [image, setImage] = useState<string | undefined>(undefined);
+    const [previewIndex, setPreviewIndex] = useState(-1);
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const [isHovered, setIsHovered] = useState(false);
     let emoji = '';
     if (scene.type === 'inpaint') {
       const def = workFlowService.getDef(scene.workflowType);
@@ -158,11 +205,88 @@ export const SceneCell = observer(
     const cellSizes = isMobile
       ? ['w-48 h-48', 'w-36 h-36', 'w-96 h-96']
       : aspectClass
-        ? [`w-full ${aspectClass}`, `w-full ${aspectClass}`, `w-full ${aspectClass}`]
+        ? [
+            `w-full ${aspectClass}`,
+            `w-full ${aspectClass}`,
+            `w-full ${aspectClass}`,
+          ]
         : ['w-full h-48', 'w-full h-64', 'w-full h-96'];
-    const cellSizes3 = isMobile
-      ? ['w-48', 'w-36', 'w-96']
-      : ['', '', ''];
+    const cellSizes3 = isMobile ? ['w-48', 'w-36', 'w-96'] : ['', '', ''];
+
+    const outputs = gameService.getOutputs(curSession!, scene);
+    const totalImages = outputs.length;
+    const currentPreviewIsFavorite =
+      previewIndex >= 0 && previewIndex < totalImages
+        ? scene.mains.includes(outputs[previewIndex])
+        : scene.mains.length > 0;
+
+    const isInputFocusedLocal = useCallback(() => {
+      const el = document.activeElement;
+      if (!el) return false;
+      const tag = el.tagName.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return true;
+      if ((el as HTMLElement).isContentEditable) return true;
+      return false;
+    }, []);
+
+    useEffect(() => {
+      if (previewIndex >= 0 && previewIndex < totalImages) {
+        const filename = outputs[previewIndex];
+        const dir = imageService.getOutputDir(curSession!, scene);
+        imageService
+          .fetchImageSmall(`${dir}/${filename}`, 500)
+          .then(setPreviewImage)
+          .catch(() => setPreviewImage(null));
+      } else {
+        setPreviewImage(null);
+      }
+    }, [previewIndex, totalImages, curSession, scene]);
+
+    useEffect(() => {
+      if (!isHovered) return;
+      const handler = (e: KeyboardEvent) => {
+        if (isInputFocusedLocal()) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+        if (e.key === 'a' || e.key === 'A' || e.key === ',') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (totalImages === 0) return;
+          setPreviewIndex((prev) => {
+            if (prev <= 0) return totalImages - 1;
+            return prev - 1;
+          });
+        } else if (e.key === 'd' || e.key === 'D' || e.key === '.') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (totalImages === 0) return;
+          setPreviewIndex((prev) => {
+            if (prev < 0 || prev >= totalImages - 1) return 0;
+            return prev + 1;
+          });
+        } else if (e.key === 'f' || e.key === 'F') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (previewIndex < 0 || previewIndex >= totalImages) return;
+          const filename = outputs[previewIndex];
+          const idx = scene.mains.indexOf(filename);
+          if (idx !== -1) {
+            scene.mains.splice(idx, 1);
+          } else {
+            scene.mains.push(filename);
+          }
+        }
+      };
+      window.addEventListener('keydown', handler, true);
+      return () => window.removeEventListener('keydown', handler, true);
+    }, [
+      isHovered,
+      previewIndex,
+      totalImages,
+      outputs,
+      scene,
+      isInputFocusedLocal,
+    ]);
 
     const curIndex = curSession.getScenes(scene.type).indexOf(scene);
     const cardElRef = useRef<HTMLDivElement | null>(null);
@@ -171,7 +295,20 @@ export const SceneCell = observer(
         type: 'scene',
         item: () => {
           const cardWidth = cardElRef.current?.offsetWidth;
-          return { scene, curIndex, getImage, curSession, cellSize, cardWidth };
+          const isSelected = appState.selectedScenes.has(scene.name);
+          const selectedSceneNames =
+            isSelected && appState.selectedScenes.size > 1
+              ? getSelectedSceneNames(curSession)
+              : [];
+          return {
+            scene,
+            curIndex,
+            getImage,
+            curSession,
+            cellSize,
+            cardWidth,
+            selectedSceneNames,
+          };
         },
         collect: (monitor) => {
           const diff = monitor.getDifferenceFromInitialOffset();
@@ -222,8 +359,24 @@ export const SceneCell = observer(
         }) {},
         drop: (item: any, monitor) => {
           if (!isMobile || true) {
-            const { scene: droppedScene, curIndex: droppedIndex } = item;
             const overIndex = curSession.getScenes(scene.type).indexOf(scene);
+            if (
+              item.selectedSceneNames &&
+              item.selectedSceneNames.length > 1 &&
+              moveScenes
+            ) {
+              const selectedScenes: GenericScene[] = [];
+              for (const name of item.selectedSceneNames) {
+                const s =
+                  curSession.scenes.get(name) || curSession.inpaints.get(name);
+                if (s) selectedScenes.push(s);
+              }
+              if (selectedScenes.length > 0) {
+                moveScenes(selectedScenes, overIndex);
+                return;
+              }
+            }
+            const { scene: droppedScene } = item;
             moveScene!(droppedScene, overIndex);
           }
         },
@@ -235,7 +388,9 @@ export const SceneCell = observer(
       try {
         const missing = promptService.findMissingPieces(curSession, scene);
         if (missing.length > 0) {
-          const list = missing.map((m) => `<${m.library}.${m.piece}>`).join(', ');
+          const list = missing
+            .map((m) => `<${m.library}.${m.piece}>`)
+            .join(', ');
           appState.pushDialog({
             type: 'confirm',
             text: `존재하지 않는 프롬프트조각이 발견되었습니다:\n${list}\n\n로컬 프롬프트조각으로 새로 만들까요?\n(빈 조각이 생성되며, 내용은 직접 채워주세요)`,
@@ -244,7 +399,7 @@ export const SceneCell = observer(
               try {
                 await queueScene(curSession, scene, appState.samples);
               } catch (e: any) {
-                appState.pushMessage('프롬프트 에러: ' + e.message);
+                appState.pushMessage(`프롬프트 에러: ${e.message}`);
               }
             },
           });
@@ -252,7 +407,7 @@ export const SceneCell = observer(
         }
         await queueScene(curSession, scene, appState.samples);
       } catch (e: any) {
-        appState.pushMessage('프롬프트 에러: ' + e.message);
+        appState.pushMessage(`프롬프트 에러: ${e.message}`);
       }
     };
 
@@ -317,6 +472,11 @@ export const SceneCell = observer(
     };
     const onClickCard = (event: any) => {
       if (isDragging) return;
+      if (event.ctrlKey) {
+        appState.toggleSceneSelection(scene.name);
+        return;
+      }
+      appState.clearSceneSelection();
       setDisplayScene?.(scene);
     };
 
@@ -331,75 +491,126 @@ export const SceneCell = observer(
       return (
         <>
           <Tooltip content="예약 추가">
-          <button className={`${btnClass} ${green}`}
-            onClick={(e) => { e.stopPropagation(); addToQueue(scene); }}>
-            <FaPlus />
-          </button>
+            <button
+              className={`${btnClass} ${green}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                addToQueue(scene);
+              }}
+            >
+              <FaPlus />
+            </button>
           </Tooltip>
           <Tooltip content="예약 제거">
-          <button className={`${btnClass} ${gray}`}
-            onClick={(e) => { e.stopPropagation(); removeFromQueue(scene); }}>
-            <FaRegCalendarTimes />
-          </button>
+            <button
+              className={`${btnClass} ${gray}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                removeFromQueue(scene);
+              }}
+            >
+              <FaRegCalendarTimes />
+            </button>
           </Tooltip>
           <Tooltip content="씬 편집">
-          <button className={`${btnClass} ${orange}`}
-            onClick={(e) => { e.stopPropagation(); setEditingScene?.(scene); }}>
-            <FaEdit />
-          </button>
+            <button
+              className={`${btnClass} ${orange}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingScene?.(scene);
+              }}
+            >
+              <FaEdit />
+            </button>
           </Tooltip>
           <Tooltip content="씬 북마크">
-          <button className={`${btnClass} ${isBookmarked ? orange : gray}`}
-            onClick={(e) => { e.stopPropagation(); onToggleBookmark?.(); }}>
-            <FaBookmark />
-          </button>
+            <button
+              className={`${btnClass} ${isBookmarked ? orange : gray}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleBookmark?.();
+              }}
+            >
+              <FaBookmark />
+            </button>
           </Tooltip>
         </>
       );
     };
 
-    const focusRing = isFocused ? ' outline outline-4 outline-sky-400 outline-offset-2' : '';
+    const focusRing = isFocused
+      ? ' outline outline-4 outline-sky-400 outline-offset-2'
+      : '';
+    const isSelected = appState.selectedScenes.has(scene.name);
 
     if (isClassic) {
       // ===== 클래식 디자인 =====
       return (
         <div
           id={`scene-cell-${scene.type}-${scene.name}`}
-          className={
-            'relative z-0 m-2 p-1 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-500 ' +
-            (isDragging ? 'opacity-0 no-touch ' : '') +
-            (isOver ? ' outline outline-sky-500' : '') +
-            focusRing
-          }
+          className={`relative z-0 m-[10.5px] p-1 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-500 ${
+            isDragging ? 'opacity-0 no-touch ' : ''
+          }${isOver ? ' outline outline-sky-500' : ''}${
+            isSelected
+              ? ' ring-2 ring-sky-500 bg-sky-50 dark:bg-sky-900/20'
+              : ''
+          }${focusRing}`}
           style={style}
           ref={cardRef}
           onContextMenu={onContext}
+          onMouseEnter={() => {
+            if (!isMobile) setIsHovered(true);
+          }}
+          onMouseLeave={() => {
+            setIsHovered(false);
+            setPreviewIndex(-1);
+          }}
         >
           {getSceneQueueCount(scene) > 0 && (
             <span className="absolute right-0 bg-yellow-400 dark:bg-indigo-400 inline-block mr-3 px-2 py-1 text-center align-middle rounded-md font-bold text-white">
               {getSceneQueueCount(scene)}
             </span>
           )}
-          <div className="-z-10 clickable bg-white dark:bg-slate-800" onClick={onClickCard}>
-            <div className={'p-2 flex text-lg text-default ' + cellSizes3[cellSize]}>
+          <div
+            className="-z-10 clickable bg-white dark:bg-slate-800"
+            onClick={onClickCard}
+          >
+            <div
+              className={`p-2 flex text-lg text-default ${cellSizes3[cellSize]}`}
+            >
               <div className="truncate flex-1">
                 {isBookmarked && <span className="text-orange-500">📌</span>}
                 {emoji}
                 {scene.name}
               </div>
               <div className="flex-none text-gray-400">
-                {gameService.getOutputs(curSession!, scene).length}{' '}
+                {previewIndex >= 0
+                  ? `${previewIndex + 1}/${totalImages}`
+                  : totalImages}{' '}
               </div>
             </div>
-            <div className={'relative image-cell overflow-hidden ' + cellSizes[cellSize]}>
-              {image && (
+            <div
+              className={`relative image-cell overflow-hidden ${cellSizes[cellSize]}`}
+            >
+              {(previewImage || image) && (
                 <div className="relative w-full h-full">
-                  <img src={image} draggable={false}
-                    className={'w-full h-full object-contain z-0' +
-                      (scene.mains.length > 0 ? ' border-2 border-yellow-400' : '')} />
-                  {scene.mains.length > 0 && (
-                    <div className="absolute left-1 top-1 z-10 text-yellow-400 text-sm drop-shadow">
+                  <img
+                    src={previewImage || image}
+                    draggable={false}
+                    className={`w-full h-full object-contain z-0${
+                      currentPreviewIsFavorite
+                        ? ' border-2 border-yellow-400'
+                        : ''
+                    }`}
+                  />
+                  {currentPreviewIsFavorite && (
+                    <div className="absolute left-1 top-1 z-10 text-yellow-400 text-sm drop-shadow flex items-center gap-1">
                       <FaStar />
+                      {scene.mains.length > 1 && (
+                        <span className="bg-black/70 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold leading-none">
+                          {scene.mains.length}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -417,35 +628,59 @@ export const SceneCell = observer(
     return (
       <div
         id={`scene-cell-${scene.type}-${scene.name}`}
-        className={
-          (disableHover ? '' : 'group ') + 'relative z-0 m-1.5 p-1 rounded-lg bg-white dark:bg-slate-800 border-2 ' +
-          (scene.mains.length > 0 ? 'border-yellow-400 ' : 'border-gray-200 dark:border-slate-600 ') +
-          (isDragging ? 'opacity-0 no-touch ' : '') +
-          (isOver ? ' ring-2 ring-sky-500' : '') +
-          focusRing
-        }
+        className={`${disableHover ? '' : 'group '}relative z-0 m-[8.5px] p-1 rounded-lg bg-white dark:bg-slate-800 border-2 ${
+          currentPreviewIsFavorite
+            ? 'border-yellow-400 '
+            : isSelected
+              ? 'border-sky-500 '
+              : 'border-gray-200 dark:border-slate-600 '
+        }${isDragging ? 'opacity-0 no-touch ' : ''}${
+          isOver ? ' ring-2 ring-sky-500' : ''
+        }${isSelected ? ' ring-2 ring-sky-400' : ''}${focusRing}`}
         style={style}
         ref={cardRef}
         onContextMenu={onContext}
+        onMouseEnter={() => {
+          if (!isMobile) setIsHovered(true);
+        }}
+        onMouseLeave={() => {
+          setIsHovered(false);
+          setPreviewIndex(-1);
+        }}
       >
+        {/* 선택 모드: 파란 오버레이 */}
+        {isSelected && (
+          <div className="absolute inset-0 rounded-lg bg-sky-500/25 z-10 pointer-events-none" />
+        )}
         {getSceneQueueCount(scene) > 0 && (
           <span className="absolute left-2 top-2 z-20 bg-yellow-400 dark:bg-indigo-400 px-2 py-0.5 rounded-full text-sm font-bold text-white shadow">
             {getSceneQueueCount(scene)}
           </span>
         )}
-        {/* PC 전용: 카드 전체 어두운 오버레이 */}
-        {!isMobile && (
-          <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/40 transition-colors duration-200 z-10 pointer-events-none" />
-        )}
-        <div className="clickable bg-white dark:bg-slate-800" onClick={onClickCard}>
-          <div className={'relative image-cell overflow-hidden rounded-md ' + cellSizes[cellSize]}>
-            {image && (
+        <div
+          className="clickable bg-white dark:bg-slate-800"
+          onClick={onClickCard}
+        >
+          <div
+            className={`relative image-cell overflow-hidden rounded-md ${
+              cellSizes[cellSize]
+            }`}
+          >
+            {(previewImage || image) && (
               <div className="relative w-full h-full">
-                <img src={image} draggable={false}
-                  className="w-full h-full object-cover z-0" />
-                {scene.mains.length > 0 && (
-                  <div className="absolute left-1 top-1 z-10 text-yellow-400 text-sm drop-shadow">
+                <img
+                  src={previewImage || image}
+                  draggable={false}
+                  className="w-full h-full object-cover z-0"
+                />
+                {currentPreviewIsFavorite && (
+                  <div className="absolute left-1 top-1 z-10 text-yellow-400 text-sm drop-shadow flex items-center gap-1">
                     <FaStar />
+                    {scene.mains.length > 1 && (
+                      <span className="bg-black/70 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold leading-none">
+                        {scene.mains.length}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -454,12 +689,16 @@ export const SceneCell = observer(
             <div className="absolute bottom-0 left-0 right-0 z-[5] bg-gradient-to-t from-black/70 to-transparent px-2 pt-4 pb-1.5">
               <div className="flex items-center text-sm text-white">
                 <div className="truncate flex-1 font-medium drop-shadow">
-                  {isBookmarked && <span className="text-orange-500 mr-0.5">📌</span>}
+                  {isBookmarked && (
+                    <span className="text-orange-500 mr-0.5">📌</span>
+                  )}
                   {emoji}
                   {scene.name}
                 </div>
                 <div className="flex-none ml-1 text-white/80 drop-shadow">
-                  {gameService.getOutputs(curSession!, scene).length}
+                  {previewIndex >= 0
+                    ? `${previewIndex + 1}/${totalImages}`
+                    : totalImages}
                 </div>
               </div>
             </div>
@@ -472,7 +711,9 @@ export const SceneCell = observer(
           </div>
         )}
         {/* 모바일 전용: 하단 버튼 */}
-        <div className={`w-full flex mt-auto justify-center items-center gap-1 p-1 ${isMobile ? '' : 'md:hidden'}`}>
+        <div
+          className={`w-full flex mt-auto justify-center items-center gap-1 p-1 ${isMobile ? '' : 'md:hidden'}`}
+        >
           {renderButtons(false)}
         </div>
       </div>
@@ -487,7 +728,7 @@ interface SceneTrashViewProps {
   onClose: () => void;
 }
 
-const SceneTrashView = ({ projectName, onClose }: SceneTrashViewProps) => {
+function SceneTrashView({ projectName, onClose }: SceneTrashViewProps) {
   const [deletedScenes, setDeletedScenes] = useState<
     { name: string; type: string; deletedAt: number }[]
   >([]);
@@ -511,11 +752,10 @@ const SceneTrashView = ({ projectName, onClose }: SceneTrashViewProps) => {
   const formatDate = (ts: number) => {
     if (!ts) return '알 수 없음';
     const d = new Date(ts);
-    return (
-      d.toLocaleDateString() +
-      ' ' +
-      d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    );
+    return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
   };
 
   const handleRestore = async (item: {
@@ -588,7 +828,9 @@ const SceneTrashView = ({ projectName, onClose }: SceneTrashViewProps) => {
                   {item.name}
                 </div>
                 <div className="text-sm text-gray-400">
-                  {item.type === 'inpaint' ? '인페인트' : '일반'} 씬 ·{' '}
+                  {item.type === 'inpaint' ? '인페인트' : '일반'}
+{' '}
+씬 ·{' '}
                   {formatDate(item.deletedAt)}
                 </div>
               </div>
@@ -611,7 +853,7 @@ const SceneTrashView = ({ projectName, onClose }: SceneTrashViewProps) => {
       </div>
     </div>
   );
-};
+}
 
 interface QueueControlProps {
   type: 'scene' | 'inpaint';
@@ -635,11 +877,23 @@ const QueueControl = observer(
       undefined,
     );
     const [cellSize, setCellSize] = useState(1);
-    const [focusedSceneIndex, setFocusedSceneIndex] = useState<number | null>(null);
+    const [focusedSceneIndex, setFocusedSceneIndex] = useState<number | null>(
+      null,
+    );
     const gridContainerRef = useRef<HTMLDivElement>(null);
     const [sceneSearchQuery, setSceneSearchQuery] = useState('');
     const [showSceneSearch, setShowSceneSearch] = useState(false);
+    const [showCheatsheet, setShowCheatsheet] = useState(true);
     const sceneSearchRef = useRef<HTMLInputElement>(null);
+    const [dragBox, setDragBox] = useState<{
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      deselect: boolean;
+    } | null>(null);
+    const isDraggingRef = useRef(false);
+    const wasDraggingRef = useRef(false);
 
     useEffect(() => {
       const onProgressUpdated = () => {
@@ -661,7 +915,11 @@ const QueueControl = observer(
         for (const scene of scenes) {
           const missing = promptService.findMissingPieces(curSession, scene);
           for (const m of missing) {
-            if (!allMissing.find((x) => x.library === m.library && x.piece === m.piece)) {
+            if (
+              !allMissing.find(
+                (x) => x.library === m.library && x.piece === m.piece,
+              )
+            ) {
               allMissing.push(m);
             }
           }
@@ -671,12 +929,16 @@ const QueueControl = observer(
             try {
               await queueScene(curSession, scene, appState.samples);
             } catch (e: any) {
-              appState.pushMessage(`프롬프트 에러 (${scene.name}): ` + e.message);
+              appState.pushMessage(
+                `프롬프트 에러 (${scene.name}): ${e.message}`,
+              );
             }
           }
         };
         if (allMissing.length > 0) {
-          const list = allMissing.map((m) => `<${m.library}.${m.piece}>`).join(', ');
+          const list = allMissing
+            .map((m) => `<${m.library}.${m.piece}>`)
+            .join(', ');
           appState.pushDialog({
             type: 'confirm',
             text: `존재하지 않는 프롬프트조각이 발견되었습니다:\n${list}\n\n로컬 프롬프트조각으로 새로 만들까요?\n(빈 조각이 생성되며, 내용은 직접 채워주세요)`,
@@ -689,7 +951,7 @@ const QueueControl = observer(
         }
         await doQueue();
       } catch (e: any) {
-        appState.pushMessage('프롬프트 에러: ' + e.message);
+        appState.pushMessage(`프롬프트 에러: ${e.message}`);
       }
     };
 
@@ -698,12 +960,67 @@ const QueueControl = observer(
       const handler = (e: Event) => {
         const action = (e as CustomEvent).detail?.action;
         if (action === 'queue-all-scenes') {
-          addAllToQueue();
+          if (appState.selectedScenes.size > 0) {
+            addSelectedToQueue();
+          } else {
+            addAllToQueue();
+          }
         }
       };
       window.addEventListener('shortcut-action', handler);
       return () => window.removeEventListener('shortcut-action', handler);
     }, [curSession, type]);
+
+    const addSelectedToQueue = async () => {
+      const selectedNames = appState.selectedScenes;
+      const scenes = curSession
+        .getScenes(type)
+        .filter((s) => selectedNames.has(s.name));
+      if (scenes.length === 0) return;
+      try {
+        const allMissing: { library: string; piece: string }[] = [];
+        for (const scene of scenes) {
+          const missing = promptService.findMissingPieces(curSession, scene);
+          for (const m of missing) {
+            if (
+              !allMissing.find(
+                (x) => x.library === m.library && x.piece === m.piece,
+              )
+            ) {
+              allMissing.push(m);
+            }
+          }
+        }
+        const doQueue = async () => {
+          for (const scene of scenes) {
+            try {
+              await queueScene(curSession, scene, appState.samples);
+            } catch (e: any) {
+              appState.pushMessage(
+                `프롬프트 에러 (${scene.name}): ${e.message}`,
+              );
+            }
+          }
+        };
+        if (allMissing.length > 0) {
+          const list = allMissing
+            .map((m) => `<${m.library}.${m.piece}>`)
+            .join(', ');
+          appState.pushDialog({
+            type: 'confirm',
+            text: `존재하지 않는 프롬프트조각이 발견되었습니다:\n${list}\n\n로컬 프롬프트조각으로 새로 만들까요?\n(빈 조각이 생성되며, 내용은 직접 채워주세요)`,
+            callback: async () => {
+              createMissingPiecesForSession(curSession, allMissing);
+              await doQueue();
+            },
+          });
+          return;
+        }
+        await doQueue();
+      } catch (e: any) {
+        appState.pushMessage(`프롬프트 에러: ${e.message}`);
+      }
+    };
 
     // --- 씬 카드 키보드 네비게이션 ---
     const getFilteredScenes = useCallback(() => {
@@ -716,6 +1033,110 @@ const QueueControl = observer(
             x.name.toLowerCase().includes(sceneSearchQuery.toLowerCase()),
         );
     }, [curSession, type, filterFunc, sceneSearchQuery]);
+
+    const gridScrollRef = useRef({ left: 0, top: 0 });
+
+    const handleGridMouseDown = (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      // 카드 위에서 시작된 드래그는 react-dnd 씬 재정렬로 처리 (네이티브 HTML5 드래그가 mousemove를 중단시킴)
+      if (e.target !== e.currentTarget) return;
+      const el = gridContainerRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      gridScrollRef.current = { left: el.scrollLeft, top: el.scrollTop };
+      setDragBox({
+        x1: e.clientX - r.left + el.scrollLeft,
+        y1: e.clientY - r.top + el.scrollTop,
+        x2: e.clientX - r.left + el.scrollLeft,
+        y2: e.clientY - r.top + el.scrollTop,
+        deselect: e.shiftKey || e.ctrlKey,
+      });
+      isDraggingRef.current = false;
+      wasDraggingRef.current = false;
+    };
+
+    const handleGridMouseMove = (e: React.MouseEvent) => {
+      if (!dragBox) return;
+      const el = gridContainerRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const dx = Math.abs(
+        e.clientX - (dragBox.x1 + r.left - gridScrollRef.current.left),
+      );
+      const dy = Math.abs(
+        e.clientY - (dragBox.y1 + r.top - gridScrollRef.current.top),
+      );
+      if (dx > 3 || dy > 3) isDraggingRef.current = true;
+      if (!isDraggingRef.current) return;
+      setDragBox((prev) =>
+        prev
+          ? {
+              ...prev,
+              x2: e.clientX - r.left + el.scrollLeft,
+              y2: e.clientY - r.top + el.scrollTop,
+            }
+          : null,
+      );
+    };
+
+    const handleGridMouseUp = () => {
+      if (!dragBox) return;
+      wasDraggingRef.current = isDraggingRef.current;
+      if (isDraggingRef.current) {
+        const left = Math.min(dragBox.x1, dragBox.x2);
+        const right = Math.max(dragBox.x1, dragBox.x2);
+        const top = Math.min(dragBox.y1, dragBox.y2);
+        const bottom = Math.max(dragBox.y1, dragBox.y2);
+        const selected: string[] = [];
+        const scenes = getFilteredScenes();
+        const el = gridContainerRef.current;
+        if (el) {
+          const cr = el.getBoundingClientRect();
+          const sl = el.scrollLeft;
+          const st = el.scrollTop;
+          for (const scene of scenes) {
+            const cell = document.getElementById(
+              `scene-cell-${scene.type}-${scene.name}`,
+            );
+            if (!cell) continue;
+            const cc = cell.getBoundingClientRect();
+            const cx = cc.left - cr.left + sl;
+            const cy = cc.top - cr.top + st;
+            const cw = cc.width;
+            const ch = cc.height;
+            if (left < cx + cw && right > cx && top < cy + ch && bottom > cy) {
+              selected.push(scene.name);
+            }
+          }
+        }
+        if (selected.length > 0) {
+          if (dragBox.deselect) {
+            appState.removeScenesFromSelection(selected);
+          } else {
+            appState.addScenesToSelection(selected);
+          }
+        }
+      }
+      setDragBox(null);
+      isDraggingRef.current = false;
+    };
+
+    const handleGridMouseLeave = () => {
+      if (dragBox) {
+        handleGridMouseUp();
+      }
+    };
+
+    const handleGridClick = (e: React.MouseEvent) => {
+      // 드래그 직후 발생하는 click은 무시 (mouseup에서 이미 선택 처리됨)
+      if (wasDraggingRef.current) {
+        wasDraggingRef.current = false;
+        return;
+      }
+      if (e.target === gridContainerRef.current) {
+        appState.clearSceneSelection();
+      }
+    };
 
     const getGridColumnCount = useCallback((): number => {
       if (!gridContainerRef.current) return 1;
@@ -730,7 +1151,11 @@ const QueueControl = observer(
       const sceneNavHandler = (e: Event) => {
         const action = (e as CustomEvent).detail?.action;
         if (!action || typeof action !== 'string') return;
-        if (!action.startsWith('scene-') && action !== 'queue-run' && action !== 'queue-clear')
+        if (
+          !action.startsWith('scene-') &&
+          action !== 'queue-run' &&
+          action !== 'queue-clear'
+        )
           return;
         // 비활성 탭의 QueueControl은 무시 (display:none이면 offsetParent가 null)
         if (
@@ -747,7 +1172,7 @@ const QueueControl = observer(
           action === 'scene-up' ||
           action === 'scene-down'
         ) {
-          let idx = focusedSceneIndex ?? -1;
+          const idx = focusedSceneIndex ?? -1;
           if (idx < 0 || idx >= scenes.length) {
             setFocusedSceneIndex(0);
             return;
@@ -773,7 +1198,7 @@ const QueueControl = observer(
           if (focusedSceneIndex != null && focusedSceneIndex < scenes.length) {
             const scene = scenes[focusedSceneIndex];
             queueScene(curSession, scene, appState.samples).catch((e: any) => {
-              appState.pushMessage('프롬프트 에러: ' + e.message);
+              appState.pushMessage(`프롬프트 에러: ${e.message}`);
             });
           }
         } else if (action === 'scene-toggle-bookmark') {
@@ -801,6 +1226,58 @@ const QueueControl = observer(
       setDisplayScene,
       setEditingScene,
     ]);
+
+    const isInputFocused = useCallback(() => {
+      const el = document.activeElement;
+      if (!el) return false;
+      const tag = el.tagName.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return true;
+      if ((el as HTMLElement).isContentEditable) return true;
+      return false;
+    }, []);
+
+    useEffect(() => {
+      const handler = (e: KeyboardEvent) => {
+        if (isInputFocused()) return;
+
+        if (
+          (e.key === 'h' || e.key === 'H') &&
+          !e.ctrlKey &&
+          !e.metaKey &&
+          !e.altKey &&
+          !e.shiftKey
+        ) {
+          e.preventDefault();
+          setShowCheatsheet((prev) => !prev);
+          return;
+        }
+
+        if (appState.floatViewCount > 0) return;
+        if (appState.dialogs.length > 0) return;
+        if (appState.configScreenOpen) return;
+        if (appState.pieceEditorOpen) return;
+        if (appState.findReplaceOpen) return;
+
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+        const scenes = getFilteredScenes();
+        if (scenes.length === 0) return;
+
+        if (e.key === 'a' || e.key === 'A' || e.key === ',') {
+          e.preventDefault();
+          let idx = focusedSceneIndex ?? -1;
+          if (idx < 0) idx = 0;
+          setFocusedSceneIndex(Math.max(0, idx - 1));
+        } else if (e.key === 'd' || e.key === 'D' || e.key === '.') {
+          e.preventDefault();
+          let idx = focusedSceneIndex ?? -1;
+          if (idx < 0) idx = 0;
+          setFocusedSceneIndex(Math.min(scenes.length - 1, idx + 1));
+        }
+      };
+      window.addEventListener('keydown', handler);
+      return () => window.removeEventListener('keydown', handler);
+    }, [focusedSceneIndex, getFilteredScenes, isInputFocused]);
 
     // 포커스된 씬 자동 스크롤
     useEffect(() => {
@@ -838,13 +1315,13 @@ const QueueControl = observer(
           }
           if (duplicates.length > 0) {
             appState.pushMessage(
-              '이미 존재하는 씬 이름: ' + duplicates.join(', '),
+              `이미 존재하는 씬 이름: ${duplicates.join(', ')}`,
             );
             return;
           }
           if (inputDups.length > 0) {
             appState.pushMessage(
-              '중복 입력된 이름: ' + [...new Set(inputDups)].join(', '),
+              `중복 입력된 이름: ${[...new Set(inputDups)].join(', ')}`,
             );
             return;
           }
@@ -854,7 +1331,7 @@ const QueueControl = observer(
               curSession.addScene(
                 Scene.fromJSON({
                   type: 'scene',
-                  name: name,
+                  name,
                   resolution: 'portrait',
                   slots: [
                     [
@@ -888,7 +1365,7 @@ const QueueControl = observer(
               curSession.addScene(
                 InpaintScene.fromJSON({
                   type: 'inpaint',
-                  name: name,
+                  name,
                   resolution: 'portrait',
                   workflowType: menu,
                   preset: workFlowService.buildPreset(menu).toJSON(),
@@ -909,14 +1386,14 @@ const QueueControl = observer(
         const image = await getMainImage(curSession!, scene as Scene, 500);
         if (!image) throw new Error('No image available');
         return image;
-      } else {
-        const imgPath = scene.preset?.image || (scene.workflowType === 'SDMirror' ? curSession?.mirrorImage : undefined);
-        if (!imgPath) throw new Error('No image available');
-        return await imageService.fetchVibeImage(
-          curSession!,
-          imgPath,
-        );
       }
+      const imgPath =
+        scene.preset?.image ||
+        (scene.workflowType === 'SDMirror'
+          ? curSession?.mirrorImage
+          : undefined);
+      if (!imgPath) throw new Error('No image available');
+      return await imageService.fetchVibeImage(curSession!, imgPath);
     };
 
     const cellSizes = ['스몰뷰', '미디엄뷰', '라지뷰'];
@@ -957,15 +1434,27 @@ const QueueControl = observer(
 
       if (workflowType === 'SDMirror') {
         // 미러: 세션 레벨 이미지 저장 + 합성 캔버스 생성
-        const storedPath = await imageService.storeVibeImage(curSession!, image);
+        const storedPath = await imageService.storeVibeImage(
+          curSession!,
+          image,
+        );
         curSession!.mirrorImage = storedPath;
-        const result = await prepareMirrorCanvas(image, curSession!.mirrorMode || 'blank');
-        preset.image = await imageService.storeVibeImage(curSession!, result.canvas);
-        preset.mask = await imageService.storeVibeImage(curSession!, result.mask);
+        const result = await prepareMirrorCanvas(
+          image,
+          curSession!.mirrorMode || 'blank',
+        );
+        preset.image = await imageService.storeVibeImage(
+          curSession!,
+          result.canvas,
+        );
+        preset.mask = await imageService.storeVibeImage(
+          curSession!,
+          result.mask,
+        );
         const newScene = InpaintScene.fromJSON({
           type: 'inpaint',
-          name: name,
-          workflowType: workflowType,
+          name,
+          workflowType,
           preset,
           resolution: 'custom',
           resolutionWidth: result.width,
@@ -986,8 +1475,8 @@ const QueueControl = observer(
         preset.image = await imageService.storeVibeImage(curSession!, image);
         const newScene = InpaintScene.fromJSON({
           type: 'inpaint',
-          name: name,
-          workflowType: workflowType,
+          name,
+          workflowType,
           preset,
           resolution: scene.resolution,
           sceneRef: scene.type === 'scene' ? scene.name : undefined,
@@ -1060,10 +1549,10 @@ const QueueControl = observer(
                 }
                 await backend.copyFile(
                   path,
-                  imageService.getImageDir(curSession!, orgScene) +
-                    '/' +
-                    Date.now().toString() +
-                    '.png',
+                  `${imageService.getImageDir(
+                    curSession!,
+                    orgScene,
+                  )}/${Date.now().toString()}.png`,
                 );
                 imageService.refresh(curSession!, orgScene);
                 setDisplayScene(undefined);
@@ -1102,7 +1591,7 @@ const QueueControl = observer(
           const method = await appState.pushDialogAsync({
             type: 'select',
             text: '변형 씬에서 사용할 방법을 선택해주세요',
-            items: items,
+            items,
           });
           if (!method) return;
           await createInpaintScene(scene, method, path, close);
@@ -1160,46 +1649,45 @@ const QueueControl = observer(
             )}
           </>
         );
-      } else {
-        return (
-          <>
-            {inpaintEditScene && (
-              <FloatView
-                priority={3}
-                onEscape={() => setInpaintEditScene(undefined)}
-              >
-                <InPaintEditor
-                  editingScene={inpaintEditScene}
-                  onConfirm={() => {
-                    setInpaintEditScene(undefined);
-                  }}
-                  onDelete={() => {}}
-                />
-              </FloatView>
-            )}
-            {(editingScene || adding) && (
-              <FloatView
-                priority={2}
-                onEscape={() => {
+      }
+      return (
+        <>
+          {inpaintEditScene && (
+            <FloatView
+              priority={3}
+              onEscape={() => setInpaintEditScene(undefined)}
+            >
+              <InPaintEditor
+                editingScene={inpaintEditScene}
+                onConfirm={() => {
+                  setInpaintEditScene(undefined);
+                }}
+                onDelete={() => {}}
+              />
+            </FloatView>
+          )}
+          {(editingScene || adding) && (
+            <FloatView
+              priority={2}
+              onEscape={() => {
+                setEditingScene(undefined);
+                setAdding(false);
+              }}
+            >
+              <InPaintEditor
+                editingScene={editingScene as InpaintScene}
+                onConfirm={() => {
                   setEditingScene(undefined);
                   setAdding(false);
                 }}
-              >
-                <InPaintEditor
-                  editingScene={editingScene as InpaintScene}
-                  onConfirm={() => {
-                    setEditingScene(undefined);
-                    setAdding(false);
-                  }}
-                  onDelete={() => {
-                    setDisplayScene(undefined);
-                  }}
-                />
-              </FloatView>
-            )}
-          </>
-        );
-      }
+                onDelete={() => {
+                  setDisplayScene(undefined);
+                }}
+              />
+            </FloatView>
+          )}
+        </>
+      );
     }, [editingScene, inpaintEditScene, adding]);
 
     const onEdit = async (scene: GenericScene) => {
@@ -1243,52 +1731,70 @@ const QueueControl = observer(
               onFilenameChange={onFilenameChange}
               onEdit={onEdit}
               buttons={buttons}
-              onSampleExtract={type === 'scene' ? (seeds: number[]) => {
-                const sourceScene = displayScene;
-                gameService.refreshList(curSession!, sourceScene);
-                setDisplayScene(undefined);
-                const allScenes = curSession!.getScenes('scene');
-                const targetScenes = allScenes.filter((s) => s.name !== sourceScene.name);
-                if (targetScenes.length === 0) {
-                  appState.pushMessage('대상 씬이 없습니다.');
-                  return;
-                }
-                setSceneSelector({
-                  type: 'scene',
-                  text: `🎲 샘플 뽑기 (${seeds.length}개 시드)`,
-                  scenes: targetScenes,
-                  callback: (selected) => {
-                    setSceneSelector(undefined);
-                    if (selected.length === 0) return;
-                    appState.pushDialog({
-                      type: 'confirm',
-                      text: `${selected.length}개 씬에 ${seeds.length}개 시드로 각각 이미지를 생성하시겠습니까?\n(총 ${selected.length * seeds.length}장)`,
-                      callback: async () => {
-                        const workflow = curSession!.selectedWorkflow;
-                        if (!workflow) {
-                          appState.pushMessage('워크플로우가 선택되지 않았습니다.');
-                          return;
-                        }
-                        const [wfType, , shared] = curSession!.getCommonSetup(workflow);
-                        const originalSeed = shared?.seed;
-                        try {
-                          for (const targetScene of selected) {
-                            for (const seed of seeds) {
-                              if (shared) shared.seed = seed;
-                              await queueWorkflow(curSession!, workflow, targetScene, 1);
-                            }
-                          }
-                          appState.pushMessage(`${selected.length * seeds.length}개 이미지 생성이 예약되었습니다.`);
-                        } catch (e: any) {
-                          appState.pushMessage('샘플 뽑기 오류: ' + e.message);
-                        } finally {
-                          if (shared) shared.seed = originalSeed;
-                        }
-                      },
-                    });
-                  },
-                });
-              } : undefined}
+              onSampleExtract={
+                type === 'scene'
+                  ? (seeds: number[]) => {
+                      const sourceScene = displayScene;
+                      gameService.refreshList(curSession!, sourceScene);
+                      setDisplayScene(undefined);
+                      const allScenes = curSession!.getScenes('scene');
+                      const targetScenes = allScenes.filter(
+                        (s) => s.name !== sourceScene.name,
+                      );
+                      if (targetScenes.length === 0) {
+                        appState.pushMessage('대상 씬이 없습니다.');
+                        return;
+                      }
+                      setSceneSelector({
+                        type: 'scene',
+                        text: `🎲 샘플 뽑기 (${seeds.length}개 시드)`,
+                        scenes: targetScenes,
+                        callback: (selected) => {
+                          setSceneSelector(undefined);
+                          if (selected.length === 0) return;
+                          appState.pushDialog({
+                            type: 'confirm',
+                            text: `${selected.length}개 씬에 ${seeds.length}개 시드로 각각 이미지를 생성하시겠습니까?\n(총 ${selected.length * seeds.length}장)`,
+                            callback: async () => {
+                              const workflow = curSession!.selectedWorkflow;
+                              if (!workflow) {
+                                appState.pushMessage(
+                                  '워크플로우가 선택되지 않았습니다.',
+                                );
+                                return;
+                              }
+                              const [wfType, , shared] =
+                                curSession!.getCommonSetup(workflow);
+                              const originalSeed = shared?.seed;
+                              try {
+                                for (const targetScene of selected) {
+                                  for (const seed of seeds) {
+                                    if (shared) shared.seed = seed;
+                                    await queueWorkflow(
+                                      curSession!,
+                                      workflow,
+                                      targetScene,
+                                      1,
+                                    );
+                                  }
+                                }
+                                appState.pushMessage(
+                                  `${selected.length * seeds.length}개 이미지 생성이 예약되었습니다.`,
+                                );
+                              } catch (e: any) {
+                                appState.pushMessage(
+                                  `샘플 뽑기 오류: ${e.message}`,
+                                );
+                              } finally {
+                                if (shared) shared.seed = originalSeed;
+                              }
+                            },
+                          });
+                        },
+                      });
+                    }
+                  : undefined
+              }
             />
           </FloatView>
         );
@@ -1305,9 +1811,13 @@ const QueueControl = observer(
 
     const [bmRev, setBmRev] = useState(0);
     useEffect(() => {
-      const onBookmarkUpdated = () => setBmRev(r => r + 1);
+      const onBookmarkUpdated = () => setBmRev((r) => r + 1);
       sessionService.addEventListener('bookmark-updated', onBookmarkUpdated);
-      return () => sessionService.removeEventListener('bookmark-updated', onBookmarkUpdated);
+      return () =>
+        sessionService.removeEventListener(
+          'bookmark-updated',
+          onBookmarkUpdated,
+        );
     }, []);
     const sceneBookmark = sessionService.getSceneBookmark(curSession.name);
 
@@ -1326,8 +1836,47 @@ const QueueControl = observer(
       curSession!.moveScene(draggingScene, targetIndex);
     };
 
+    const moveScenes = (
+      selectedScenes: GenericScene[],
+      targetIndex: number,
+    ) => {
+      if (!curSession || selectedScenes.length === 0) return;
+      const stype = selectedScenes[0].type;
+      const allScenes = curSession.getScenes(stype);
+      const selectedSet = new Set(selectedScenes.map((s) => s.name));
+
+      // 선택된 씬들을 제외한 나머지 목록
+      const remaining = allScenes.filter((s) => !selectedSet.has(s.name));
+
+      // targetIndex에서 선택된 씬들 중 앞에 있던 것들을 보정
+      let offset = 0;
+      for (let i = 0; i < targetIndex && i < allScenes.length; i++) {
+        if (selectedSet.has(allScenes[i].name)) offset++;
+      }
+      const insertAt = targetIndex - offset;
+
+      // 선택된 씬들을 현재 순서대로 유지하면서 삽입
+      const sorted = selectedScenes.sort(
+        (a, b) => allScenes.indexOf(a) - allScenes.indexOf(b),
+      );
+      for (let i = 0; i < sorted.length; i++) {
+        remaining.splice(insertAt + i, 0, sorted[i]);
+      }
+
+      // 맵 재구성
+      const final = remaining.reduce((acc: Map<string, GenericScene>, s) => {
+        acc.set(s.name, s);
+        return acc;
+      }, new Map()) as any;
+      if (stype === 'scene') {
+        curSession.scenes = final;
+      } else {
+        curSession.inpaints = final;
+      }
+    };
+
     return (
-      <div className={'flex flex-col h-full ' + (className ?? '')}>
+      <div className={`flex flex-col h-full ${className ?? ''}`}>
         {sceneSelector && (
           <FloatView priority={0} onEscape={() => setSceneSelector(undefined)}>
             <SceneSelector
@@ -1357,23 +1906,30 @@ const QueueControl = observer(
         {!!showPannel && (
           <div className="flex flex-none pb-1.5 flex-wrap">
             <div className="flex gap-1 md:gap-1.5 flex-wrap items-center">
-              <button className={`round-button back-sky`} onClick={addScene}>
+              <button className="round-button back-sky" onClick={addScene}>
                 씬 추가
               </button>
               <button
-                className={`round-button back-sky`}
-                onClick={addAllToQueue}
+                className="round-button back-sky"
+                onClick={
+                  appState.selectedScenes.size > 0
+                    ? addSelectedToQueue
+                    : addAllToQueue
+                }
               >
-                모두 예약추가
+                {appState.selectedScenes.size > 0
+                  ? `선택 씬 예약추가 (${appState.selectedScenes.size})`
+                  : '모두 예약추가'}
               </button>
               <button
-                className={`round-button back-gray`}
+                className="round-button back-gray"
                 onClick={() => appState.exportPackage(type)}
               >
-                {isMobile ? '' : '이미지 '}내보내기
+                {isMobile ? '' : '이미지 '}
+                내보내기
               </button>
               <button
-                className={`round-button back-gray`}
+                className="round-button back-gray"
                 onClick={() => {
                   appState.openBatchProcessMenu(type, setSceneSelector);
                 }}
@@ -1381,7 +1937,23 @@ const QueueControl = observer(
                 대량 작업
               </button>
               <button
-                className={`round-button back-gray`}
+                className={`round-button ${appState.selectedScenes.size > 0 ? 'back-sky' : 'back-gray'}`}
+                onClick={() => {
+                  if (appState.selectedScenes.size === 0) {
+                    appState.pushMessage(
+                      'Ctrl+클릭 또는 드래그로 씬을 선택하세요.',
+                    );
+                    return;
+                  }
+                  appState.clearSceneSelection();
+                }}
+              >
+                {appState.selectedScenes.size > 0
+                  ? `선택 (${appState.selectedScenes.size}) ✕`
+                  : '다중 선택'}
+              </button>
+              <button
+                className="round-button back-gray"
                 onClick={() => {
                   appState.openChangeResolutionMenu(type, setSceneSelector);
                 }}
@@ -1389,88 +1961,106 @@ const QueueControl = observer(
                 {isMobile ? '해상도' : '해상도 변경'}
               </button>
               <Tooltip content="이미지 프롬프트 추출">
-              <button
-                className={`round-button back-gray`}
-                onClick={() => {
-                  const input = document.createElement('input');
-                  input.type = 'file';
-                  input.accept = 'image/png';
-                  input.onchange = (e: any) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      appState.handleFile(file);
-                    }
-                  };
-                  input.click();
-                }}
-              >
-                <FaFileImage size={18} />
-              </button>
+                <button
+                  className="round-button back-gray"
+                  onClick={() => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'image/png';
+                    input.onchange = (e: any) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        appState.handleFile(file);
+                      }
+                    };
+                    input.click();
+                  }}
+                >
+                  <FaFileImage size={18} />
+                </button>
               </Tooltip>
               {!isMobile && (
                 <Tooltip content="아티스트 태깅 (그림체 분석)">
-                <button
-                  className={`round-button back-gray`}
-                  onClick={() => setShowArtistTag(true)}
-                >
-                  <FaPaintBrush size={18} />
-                </button>
+                  <button
+                    className="round-button back-gray"
+                    onClick={() => setShowArtistTag(true)}
+                  >
+                    <FaPaintBrush size={18} />
+                  </button>
                 </Tooltip>
               )}
               <Tooltip content="씬 검색">
-              <button
-                className={`round-button ${showSceneSearch ? 'back-sky' : 'back-gray'}`}
-                onClick={toggleSceneSearch}
-              >
-                <FaSearch size={18} />
-              </button>
+                <button
+                  className={`round-button ${showSceneSearch ? 'back-sky' : 'back-gray'}`}
+                  onClick={toggleSceneSearch}
+                >
+                  <FaSearch size={18} />
+                </button>
               </Tooltip>
               <Tooltip content="북마크된 씬으로 이동">
-              <button
-                className={`round-button ${sceneBookmark ? 'back-orange' : 'back-gray'}`}
-                onClick={() => {
-                  if (!sceneBookmark) {
-                    appState.pushMessage('북마크된 씬이 없습니다.');
-                    return;
-                  }
-                  if (sceneBookmark.type !== type) {
-                    appState.pushMessage('북마크된 씬은 ' + (sceneBookmark.type === 'scene' ? '일반' : '인페인트') + ' 탭에 있습니다.');
-                    return;
-                  }
-                  const el = document.getElementById(`scene-cell-${type}-${sceneBookmark.name}`);
-                  if (el) {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  } else {
-                    appState.pushMessage('북마크된 씬을 찾을 수 없습니다.');
-                  }
-                }}
-              >
-                <FaBookmark size={18} />
-              </button>
+                <button
+                  className={`round-button ${sceneBookmark ? 'back-orange' : 'back-gray'}`}
+                  onClick={() => {
+                    if (!sceneBookmark) {
+                      appState.pushMessage('북마크된 씬이 없습니다.');
+                      return;
+                    }
+                    if (sceneBookmark.type !== type) {
+                      appState.pushMessage(
+                        `북마크된 씬은 ${
+                          sceneBookmark.type === 'scene' ? '일반' : '인페인트'
+                        } 탭에 있습니다.`,
+                      );
+                      return;
+                    }
+                    const el = document.getElementById(
+                      `scene-cell-${type}-${sceneBookmark.name}`,
+                    );
+                    if (el) {
+                      el.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center',
+                      });
+                    } else {
+                      appState.pushMessage('북마크된 씬을 찾을 수 없습니다.');
+                    }
+                  }}
+                >
+                  <FaBookmark size={18} />
+                </button>
               </Tooltip>
               <Tooltip content="씬 휴지통">
-              <button
-                className={`round-button back-gray`}
-                onClick={() => setShowSceneTrash(true)}
-              >
-                <FaTrash size={18} />
-              </button>
+                <button
+                  className="round-button back-gray"
+                  onClick={() => setShowSceneTrash(true)}
+                >
+                  <FaTrash size={18} />
+                </button>
               </Tooltip>
               <Tooltip content="모든 씬 내 삭제한 이미지 일괄 비우기">
-              <button
-                className={`round-button back-gray`}
-                onClick={() => appState.emptyProjectImageTrashWithConfirm()}
-              >
-                <FaBroom size={18} />
-              </button>
+                <button
+                  className="round-button back-gray"
+                  onClick={() => appState.emptyProjectImageTrashWithConfirm()}
+                >
+                  <FaBroom size={18} />
+                </button>
               </Tooltip>
               <Tooltip content="찾기 및 변환 (Ctrl+H)">
-              <button
-                className={`round-button back-gray`}
-                onClick={() => appState.openFindReplace()}
-              >
-                <FaExchangeAlt size={18} />
-              </button>
+                <button
+                  className="round-button back-gray"
+                  onClick={() => appState.openFindReplace()}
+                >
+                  <FaExchangeAlt size={18} />
+                </button>
+              </Tooltip>
+              <Tooltip content="단축키 도움말">
+                <button
+                  className="round-button back-gray"
+                  onClick={() => setShowCheatsheet((prev) => !prev)}
+                >
+                  <FaQuestion size={14} />
+                  <span className="ml-1 text-xs hidden lg:inline">H</span>
+                </button>
               </Tooltip>
             </div>
             <div className="ml-auto mr-2 hidden md:flex items-center gap-2">
@@ -1494,7 +2084,7 @@ const QueueControl = observer(
               )}
               <button
                 onClick={() => setCellSize((cellSize + 1) % 3)}
-                className={`round-button back-gray`}
+                className="round-button back-gray"
               >
                 {cellSizes[cellSize]}
               </button>
@@ -1538,34 +2128,73 @@ const QueueControl = observer(
             return (
               <div
                 ref={gridContainerRef}
-                className={useGrid ? 'overflow-auto w-full content-start' : 'flex flex-wrap overflow-auto justify-start items-start content-start'}
-                style={useGrid ? {
-                  display: 'grid',
-                  gridTemplateColumns: `repeat(auto-fill, minmax(${minWidths[effectiveCellSize]}, 1fr))`,
-                  alignItems: 'start',
-                  alignContent: 'start',
-                } : undefined}
+                className={
+                  useGrid
+                    ? 'overflow-auto w-full content-start relative'
+                    : 'flex flex-wrap overflow-auto justify-start items-start content-start relative'
+                }
+                style={
+                  useGrid
+                    ? {
+                        display: 'grid',
+                        gridTemplateColumns: `repeat(auto-fill, minmax(${minWidths[effectiveCellSize]}, 1fr))`,
+                        alignItems: 'start',
+                        alignContent: 'start',
+                      }
+                    : undefined
+                }
+                onMouseDown={handleGridMouseDown}
+                onMouseMove={handleGridMouseMove}
+                onMouseUp={handleGridMouseUp}
+                onMouseLeave={handleGridMouseLeave}
+                onClick={handleGridClick}
               >
+                {dragBox && isDraggingRef.current && (
+                  <div
+                    className="absolute bg-sky-500/30 border-2 border-sky-500 rounded pointer-events-none z-50"
+                    style={{
+                      left: Math.min(dragBox.x1, dragBox.x2),
+                      top: Math.min(dragBox.y1, dragBox.y2),
+                      width: Math.abs(dragBox.x2 - dragBox.x1),
+                      height: Math.abs(dragBox.y2 - dragBox.y1),
+                    }}
+                  />
+                )}
                 {renderedScenes.map((scene, sceneIdx) => (
-                    <SceneCell
-                      cellSize={effectiveCellSize}
-                      key={scene.name}
-                      scene={scene}
-                      getImage={getImage}
-                      setDisplayScene={setDisplayScene}
-                      setEditingScene={setEditingScene}
-                      moveScene={moveScene}
-                      curSession={curSession}
-                      isBookmarked={sessionService.isSceneBookmarked(curSession.name, scene.name)}
-                      onToggleBookmark={() => sessionService.toggleSceneBookmark(curSession.name, scene.name, scene.type)}
-                      disableHover={!!(editingScene || displayScene)}
-                      isFocused={focusedSceneIndex === sceneIdx}
-                    />
-                  ))}
+                  <SceneCell
+                    cellSize={effectiveCellSize}
+                    key={scene.name}
+                    scene={scene}
+                    getImage={getImage}
+                    setDisplayScene={setDisplayScene}
+                    setEditingScene={setEditingScene}
+                    moveScene={moveScene}
+                    moveScenes={moveScenes}
+                    curSession={curSession}
+                    isBookmarked={sessionService.isSceneBookmarked(
+                      curSession.name,
+                      scene.name,
+                    )}
+                    onToggleBookmark={() =>
+                      sessionService.toggleSceneBookmark(
+                        curSession.name,
+                        scene.name,
+                        scene.type,
+                      )}
+                    disableHover={!!(editingScene || displayScene)}
+                    isFocused={focusedSceneIndex === sceneIdx}
+                  />
+                ))}
               </div>
             );
           })()}
         </div>
+        {showCheatsheet && (
+          <ShortcutCheatsheet
+            scope="scene"
+            onClose={() => setShowCheatsheet(false)}
+          />
+        )}
       </div>
     );
   },

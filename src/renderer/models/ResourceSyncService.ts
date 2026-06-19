@@ -107,8 +107,9 @@ export abstract class ResourceSyncService<
   async rename(oldName: string, newName: string) {
     if (!(oldName in this.resources)) throw new Error('Resource not found');
     if (newName in this.resources) throw new Error('Resource already exists');
-    // 폴더값이 바뀌기 전에 원본 경로를 먼저 캡처한다.
     const srcPath = this.getPath(oldName);
+    // 이름이 바뀌어도 같은 폴더에 유지이므로 dest는 oldName을 newName으로만 교체
+    const destPath = srcPath.replace(new RegExp(`/${oldName}\\.json$`), `/${newName}.json`);
     this.resources[newName] = this.resources[oldName];
     delete this.resources[oldName];
     this.disposes[newName] = this.disposes[oldName];
@@ -117,14 +118,14 @@ export abstract class ResourceSyncService<
       this.dirty[newName] = this.dirty[oldName];
       delete this.dirty[oldName];
     }
-    // 이름이 바뀌어도 같은 폴더에 유지
+    await this.guardInFlight([oldName, newName], async () => {
+      await backend.renameFile(srcPath, destPath);
+    });
+    // 성공 후에만 folderMap 업데이트
     if (oldName in this.folderMap) {
       this.folderMap[newName] = this.folderMap[oldName];
       delete this.folderMap[oldName];
     }
-    await this.guardInFlight([oldName, newName], async () => {
-      await backend.renameFile(srcPath, this.getPath(newName));
-    });
     await this.update();
   }
 
@@ -282,46 +283,47 @@ export abstract class ResourceSyncService<
     );
   }
 
-  private async getList() {
-    // depth=1 스캔: 루트의 *.json = 미분류 프로젝트, 하위 폴더의 *.json = 폴더 소속.
-    // listFiles(파일+디렉토리) - listFilesWithStats(파일만) = 폴더 목록.
-    const entries = await backend.listFiles(this.resourceDir);
-    const rootStats = await backend.listFilesWithStats(this.resourceDir);
-    const rootFileSet = new Set(rootStats.map((s: any) => s.name));
-    const dirs = entries.filter(
-      (e: string) => !rootFileSet.has(e) && !e.startsWith('.'),
+  private async getListDir(
+    dirPath: string,
+    basePath: string,
+    newMap: { [name: string]: string | null },
+    names: string[],
+    folderAcc: string[],
+  ): Promise<void> {
+    const entries = await backend.listFiles(dirPath);
+    const stats = await backend.listFilesWithStats(dirPath);
+    const fileSet = new Set(stats.map((s: any) => s.name));
+    const subdirs = entries.filter(
+      (e: string) => !fileSet.has(e) && !e.startsWith('.'),
     );
 
-    const newMap: { [name: string]: string | null } = {};
-    const names: string[] = [];
-
-    // 루트(미분류) 프로젝트
-    for (const fname of rootFileSet) {
+    for (const fname of fileSet) {
       if (!fname.endsWith('.json')) continue;
       const name = fname.substring(0, fname.length - 5);
       if (name in newMap) continue;
-      newMap[name] = null;
+      newMap[name] = basePath || null;
       names.push(name);
     }
 
-    // 폴더별 프로젝트
-    for (const dir of dirs) {
-      let stats: any[] = [];
+    for (const sub of subdirs) {
+      const childPath = basePath ? basePath + '/' + sub : sub;
+      folderAcc.push(childPath);
       try {
-        stats = await backend.listFilesWithStats(this.resourceDir + '/' + dir);
+        await this.getListDir(dirPath + '/' + sub, childPath, newMap, names, folderAcc);
       } catch (e) {
-        stats = [];
-      }
-      for (const s of stats) {
-        if (!s.name.endsWith('.json')) continue;
-        const name = s.name.substring(0, s.name.length - 5);
-        if (name in newMap) continue; // 동명 충돌 시 루트 우선
-        newMap[name] = dir;
-        names.push(name);
+        // inaccessible subdir — skip but still list as folder
       }
     }
+  }
 
-    this.folderList = dirs.slice();
+  private async getList() {
+    const newMap: { [name: string]: string | null } = {};
+    const names: string[] = [];
+    const folderList: string[] = [];
+
+    await this.getListDir(this.resourceDir, '', newMap, names, folderList);
+
+    this.folderList = folderList;
     this.folderMap = newMap;
     return names;
   }
@@ -329,44 +331,47 @@ export abstract class ResourceSyncService<
   private async fillEmptyPresetVars(obj: any) {
     let updated = false;
 
-    Object.entries(obj.presets).forEach(([key, value]: [string, any]) => {
-      value = value as object[]
-      switch (key) {
-        case 'SDImageGen':
-          for (const preset of value) {
-            fillEmptyVar(preset, 'characterPrompts', []);
-            fillEmptyVar(preset, 'useCoords', false);
-            fillEmptyVar(preset, 'legacyPromptConditioning', false);
-            fillEmptyVar(preset, 'varietyPlus', false);
-            fillEmptyVar(preset, 'deliberateEulerAncestralBug', false);
-          } break;
-        case 'SDImageGenEasy':
-          for (const preset of value) {
-            fillEmptyVar(preset, 'useCoords', false);
-            fillEmptyVar(preset, 'legacyPromptConditioning', false);
-            fillEmptyVar(preset, 'varietyPlus', false);
-            fillEmptyVar(preset, 'deliberateEulerAncestralBug', false);
-          } break;
-        case 'SDInpaint':
-          for (const preset of value) {
-            fillEmptyVar(preset, 'characterPrompts', []);
-            fillEmptyVar(preset, 'useCoords', false);
-            fillEmptyVar(preset, 'legacyPromptConditioning', false);
-            fillEmptyVar(preset, 'varietyPlus', false);
-            fillEmptyVar(preset, 'deliberateEulerAncestralBug', false);
-          } break;
-        case 'SDI2I':
-          for (const preset of value) {
-            fillEmptyVar(preset, 'characterPrompts', []);
-            fillEmptyVar(preset, 'useCoords', false);
-            fillEmptyVar(preset, 'legacyPromptConditioning', false);
-            fillEmptyVar(preset, 'varietyPlus', false);
-            fillEmptyVar(preset, 'deliberateEulerAncestralBug', false);
-            fillEmptyVar(preset, 'characterReferences', []);
-          } break;
-      }
-    });
-    Object.entries(obj.presetShareds).forEach(([key, value]: [string, any]) => {
+    if (obj.presets && typeof obj.presets === 'object') {
+      Object.entries(obj.presets).forEach(([key, value]: [string, any]) => {
+        value = value as object[]
+        switch (key) {
+          case 'SDImageGen':
+            for (const preset of value) {
+              fillEmptyVar(preset, 'characterPrompts', []);
+              fillEmptyVar(preset, 'useCoords', false);
+              fillEmptyVar(preset, 'legacyPromptConditioning', false);
+              fillEmptyVar(preset, 'varietyPlus', false);
+              fillEmptyVar(preset, 'deliberateEulerAncestralBug', false);
+            } break;
+          case 'SDImageGenEasy':
+            for (const preset of value) {
+              fillEmptyVar(preset, 'useCoords', false);
+              fillEmptyVar(preset, 'legacyPromptConditioning', false);
+              fillEmptyVar(preset, 'varietyPlus', false);
+              fillEmptyVar(preset, 'deliberateEulerAncestralBug', false);
+            } break;
+          case 'SDInpaint':
+            for (const preset of value) {
+              fillEmptyVar(preset, 'characterPrompts', []);
+              fillEmptyVar(preset, 'useCoords', false);
+              fillEmptyVar(preset, 'legacyPromptConditioning', false);
+              fillEmptyVar(preset, 'varietyPlus', false);
+              fillEmptyVar(preset, 'deliberateEulerAncestralBug', false);
+            } break;
+          case 'SDI2I':
+            for (const preset of value) {
+              fillEmptyVar(preset, 'characterPrompts', []);
+              fillEmptyVar(preset, 'useCoords', false);
+              fillEmptyVar(preset, 'legacyPromptConditioning', false);
+              fillEmptyVar(preset, 'varietyPlus', false);
+              fillEmptyVar(preset, 'deliberateEulerAncestralBug', false);
+              fillEmptyVar(preset, 'characterReferences', []);
+            } break;
+        }
+      });
+    }
+    if (obj.presetShareds && typeof obj.presetShareds === 'object') {
+      Object.entries(obj.presetShareds).forEach(([key, value]: [string, any]) => {
       switch (key) {
         case 'SDImageGen':
           fillEmptyVar(value, 'normalizeStrength', true);
@@ -380,6 +385,7 @@ export abstract class ResourceSyncService<
         case 'SDInpaint':
       }
     });
+    }
 
     if (updated)
       await this.update();

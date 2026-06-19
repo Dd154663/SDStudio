@@ -1,10 +1,12 @@
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useContextMenu } from 'react-contexify';
+import { FaQuestion } from 'react-icons/fa';
+import { observer } from 'mobx-react-lite';
 import { gameService, sessionService, backend, imageService } from '../models';
 import { shuffleArray } from '../models/GameService';
 import { Scene, InpaintScene, ContextMenuType, Player } from '../models/types';
 import { appState } from '../models/AppService';
-import { observer } from 'mobx-react-lite';
+import ShortcutCheatsheet from './ShortcutCheatsheet';
 
 interface TournamentProps {
   scene: Scene | InpaintScene;
@@ -17,9 +19,25 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
   const [players, setPlayers] = useState<string[]>([]);
   const lock = useRef(false);
   const [finalRank, setFinalRank] = useState(-1);
+    const [showCheatsheet, setShowCheatsheet] = useState(true);
+
+  const nextMatchRef = useRef<() => void>(() => {});
+  const resetRanksRef = useRef<() => void>(() => {});
+  const playersRef = useRef<string[]>([]);
+  const lockRef = useRef(lock);
   const { show } = useContextMenu({
     id: ContextMenuType.Image,
   });
+
+  const isInputFocused = useCallback(() => {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'input' || tag === 'textarea') return true;
+    if ((el as HTMLElement).isContentEditable) return true;
+    return false;
+  }, []);
+
   const loadRoundInitial = () => {
     const [finalizedRank, newRound] = gameService.nextRound(scene.game!);
     if (!scene.round) {
@@ -98,6 +116,81 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
     sessionUpdated();
   };
   const sessionUpdated = () => {};
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (isInputFocused()) return;
+
+      if (
+        (e.key === 'h' || e.key === 'H') &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !e.shiftKey
+      ) {
+        e.preventDefault();
+        setShowCheatsheet((prev) => !prev);
+        return;
+      }
+
+      if (
+        e.key === '/' &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !e.shiftKey
+      ) {
+        e.preventDefault();
+        resetRanksRef.current();
+        return;
+      }
+
+      if (!playersRef.current.length || lockRef.current.current) return;
+
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      const r = scene.round!;
+      if (!r) return;
+
+      if (e.key === 'a' || e.key === 'A' || e.key === ',') {
+        e.preventDefault();
+        r.winMask[r.curPlayer] = true;
+        r.winMask[r.curPlayer + 1] = false;
+        nextMatchRef.current();
+      } else if (e.key === 'd' || e.key === 'D' || e.key === '.') {
+        e.preventDefault();
+        r.winMask[r.curPlayer] = false;
+        r.winMask[r.curPlayer + 1] = true;
+        nextMatchRef.current();
+      } else if (
+        e.key === 'w' ||
+        e.key === 'W' ||
+        e.key === 'k' ||
+        e.key === 'K'
+      ) {
+        e.preventDefault();
+        r.winMask[r.curPlayer] = true;
+        r.winMask[r.curPlayer + 1] = true;
+        nextMatchRef.current();
+      } else if (
+        e.key === 's' ||
+        e.key === 'S' ||
+        e.key === 'l' ||
+        e.key === 'L'
+      ) {
+        e.preventDefault();
+        r.winMask[r.curPlayer] = false;
+        r.winMask[r.curPlayer + 1] = false;
+        nextMatchRef.current();
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        resetRanksRef.current();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isInputFocused, scene]);
+
   useEffect(() => {
     setPlayers([]);
     setImages([]);
@@ -117,7 +210,7 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
         }
         loadRoundInitial();
       } catch (e: any) {
-        appState.pushMessage('Error: ' + e.message);
+        appState.pushMessage(`Error: ${e.message}`);
       }
     })();
   }, [scene]);
@@ -127,14 +220,14 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
       (async () => {
         try {
           const p0 = (await imageService.fetchImage(
-            imageService.getOutputDir(curSession!, scene) + '/' + players[0],
+            `${imageService.getOutputDir(curSession!, scene)}/${players[0]}`,
           ))!;
           const p1 = (await imageService.fetchImage(
-            imageService.getOutputDir(curSession!, scene) + '/' + players[1],
+            `${imageService.getOutputDir(curSession!, scene)}/${players[1]}`,
           ))!;
           setImages([p0, p1]);
         } catch (e: any) {
-          appState.pushMessage('Image load error: ' + e.message);
+          appState.pushMessage(`Image load error: ${e.message}`);
           setImages([]);
         }
       })();
@@ -144,11 +237,11 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
         (async () => {
           try {
             const p0 = (await imageService.fetchImage(
-              imageService.getOutputDir(curSession!, scene) + '/' + first.path,
+              `${imageService.getOutputDir(curSession!, scene)}/${first.path}`,
             ))!;
             setImages([p0]);
           } catch (e: any) {
-            appState.pushMessage('Image load error: ' + e.message);
+            appState.pushMessage(`Image load error: ${e.message}`);
             setImages([]);
           }
         })();
@@ -171,7 +264,7 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
           scene.round = undefined;
           loadRoundInitial();
         } catch (e: any) {
-          appState.pushMessage('Error: ' + e.message);
+          appState.pushMessage(`Error: ${e.message}`);
         }
       },
     });
@@ -205,24 +298,43 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
     await backend.showFile(path);
   };
   const round = scene.round!;
+
+  nextMatchRef.current = nextMatch;
+  resetRanksRef.current = resetRanks;
+  playersRef.current = players;
+
   return (
     <div className="flex flex-col w-full h-full">
       <div className="p-2 md:p-4 flex flex-none gap-2 items-center text-default">
-        {!!players.length ? (
+        {players.length ? (
           <span className="font-bold text-xl">
-            {finalRank + 1}위 결정 이상형 월드컵 {getCurWinRank()} (
-            {Math.floor(round.curPlayer / 2) + 1}/
-            {Math.floor(round.players.length / 2)})
-          </span>
+            {finalRank + 1}
+위 결정 이상형 월드컵{getCurWinRank()}
+{' '}
+(
+{Math.floor(round.curPlayer / 2) + 1}
+/
+{Math.floor(round.players.length / 2)}
+)
+</span>
         ) : (
           <span className="font-bold text-xl">모든 순위가 확정되었습니다</span>
         )}
+        <div className="flex-1" />
+        <button
+          className="text-default opacity-50 hover:opacity-100 transition-opacity cursor-pointer flex items-center gap-1"
+          onClick={() => setShowCheatsheet((prev) => !prev)}
+          title="단축키 도움말 (H)"
+        >
+          <FaQuestion size={14} />
+          <span className="text-xs hidden lg:inline">H</span>
+        </button>
       </div>
       <div className="px-2 pb-2 md:px-4 md:pb-4 flex flex-none gap-2 w-full border-b line-color flex-wrap">
-        <button className={`round-button back-sky`} onClick={showFolder}>
+        <button className="round-button back-sky" onClick={showFolder}>
           결과 폴더 열기
         </button>
-        <button className={`round-button back-red`} onClick={resetRanks}>
+        <button className="round-button back-red" onClick={resetRanks}>
           순위 초기화
         </button>
         <button
@@ -236,15 +348,15 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
               ]);
             }
           }}
-          className={`round-button back-gray`}
+          className="round-button back-gray"
         >
           실행취소
         </button>
-        <button className={`round-button back-orange`} onClick={reroll}>
+        <button className="round-button back-orange" onClick={reroll}>
           대진 리롤
         </button>
         <button
-          className={`round-button back-orange`}
+          className="round-button back-orange"
           onClick={() => {
             if (players.length && !lock.current) {
               round.winMask[round.curPlayer] = false;
@@ -256,7 +368,7 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
           둘다 패배 처리
         </button>
         <button
-          className={`round-button back-orange`}
+          className="round-button back-orange"
           onClick={() => {
             if (players.length && !lock.current) {
               round.winMask[round.curPlayer] = true;
@@ -281,9 +393,7 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
                     nextMatch();
                   }
                 }}
-                className={
-                  'active:brightness-90 hover:brightness-95 cursor-pointer imageSmall '
-                }
+                className="active:brightness-90 hover:brightness-95 cursor-pointer imageSmall "
                 src={images[0]}
                 onContextMenu={(e) => {
                   show({
@@ -291,17 +401,17 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
                     props: {
                       ctx: {
                         type: 'image',
-                        path:
-                          imageService.getOutputDir(curSession!, scene) +
-                          '/' +
-                          players[0],
+                        path: `${imageService.getOutputDir(
+                          curSession!,
+                          scene,
+                        )}/${players[0]}`,
                       },
                     },
                   });
                 }}
               />
             </div>
-            <div className="bg-gray-300 dark:bg-slate-700 h-px w-full md:w-px md:h-full flex-none"></div>
+            <div className="bg-gray-300 dark:bg-slate-700 h-px w-full md:w-px md:h-full flex-none" />
             <div className="flex-1 justify-center items-center flex overflow-hidden">
               <img
                 draggable={false}
@@ -312,9 +422,7 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
                     nextMatch();
                   }
                 }}
-                className={
-                  'active:brightness-90 hover:brightness-95 cursor-pointer imageSmall'
-                }
+                className="active:brightness-90 hover:brightness-95 cursor-pointer imageSmall"
                 src={images[1]}
                 onContextMenu={(e) => {
                   show({
@@ -322,10 +430,10 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
                     props: {
                       ctx: {
                         type: 'image',
-                        path:
-                          imageService.getOutputDir(curSession!, scene) +
-                          '/' +
-                          players[1],
+                        path: `${imageService.getOutputDir(
+                          curSession!,
+                          scene,
+                        )}/${players[1]}`,
                       },
                     },
                   });
@@ -345,6 +453,12 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
           </div>
         )}
       </div>
+      {showCheatsheet && (
+        <ShortcutCheatsheet
+          scope="tournament"
+          onClose={() => setShowCheatsheet(false)}
+        />
+      )}
     </div>
   );
 });

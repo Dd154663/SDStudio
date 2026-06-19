@@ -310,7 +310,8 @@ ipcMain.handle('rename-file', async (event, oldfile, newfile) => {
   const newPath = path.join(APP_DIR, newfile);
   watchHandles.delete(oldPath);
   watchHandles.delete(newPath);
-  return await fs.rename(APP_DIR + '/' + oldfile, APP_DIR + '/' + newfile);
+  await fs.mkdir(path.dirname(newPath), { recursive: true });
+  return await fs.rename(oldPath, newPath);
 });
 
 ipcMain.handle('rename-dir', async (event, oldfile, newfile) => {
@@ -318,9 +319,12 @@ ipcMain.handle('rename-dir', async (event, oldfile, newfile) => {
 
   if (platform === 'win32') {
     // What the fuck windows
-    await fsExtra.copy(APP_DIR + '/' + oldfile, APP_DIR + '/' + newfile);
+    const newDir = APP_DIR + '/' + newfile;
+    await fs.mkdir(path.dirname(newDir), { recursive: true });
+    await fsExtra.copy(APP_DIR + '/' + oldfile, newDir);
     await fsExtra.rmdir(APP_DIR + '/' + oldfile, { recursive: true });
   } else {
+    await fs.mkdir(path.dirname(APP_DIR + '/' + newfile), { recursive: true });
     return await fs.rename(APP_DIR + '/' + oldfile, APP_DIR + '/' + newfile);
   }
 });

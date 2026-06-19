@@ -97,7 +97,7 @@ export class AppState {
   @observable accessor messages: { id: number; text: string }[] = [];
   private messageIdCounter = 0;
   @observable accessor dialogs: Dialog[] = [];
-  @observable accessor samples: number = 10;
+  @observable accessor samples: number = 1;
   @observable accessor progressDialog: ProgressDialog | undefined = undefined;
   @observable accessor externalImage: string | undefined = undefined;
   // 프로젝트 좌측 드로어 / 그리드 탐색기 모달 열림 상태 (앱 전역)
@@ -115,6 +115,39 @@ export class AppState {
 
   // 이미지 클립보드
   @observable accessor imageClipboard: string[] = [];
+
+  // 씬 다중 선택 (Ctrl+클릭 or 드래그)
+  @observable accessor selectedScenes: Set<string> = new Set();
+
+  // 이미지 삭제 확인 건너뛰기 (세션 스코프)
+  @observable accessor skipImageDeleteConfirm: boolean = false;
+
+  @action
+  toggleSceneSelection(name: string) {
+    const next = new Set(this.selectedScenes);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    this.selectedScenes = next;
+  }
+
+  @action
+  addScenesToSelection(names: string[]) {
+    const next = new Set(this.selectedScenes);
+    for (const name of names) next.add(name);
+    this.selectedScenes = next;
+  }
+
+  @action
+  removeScenesFromSelection(names: string[]) {
+    const next = new Set(this.selectedScenes);
+    for (const name of names) next.delete(name);
+    this.selectedScenes = next;
+  }
+
+  @action
+  clearSceneSelection() {
+    this.selectedScenes = new Set();
+  }
 
   // 만료 프로젝트 알림
   @observable accessor pendingExpiredProjects: {name: string, deletedAt: number}[] = [];
@@ -805,7 +838,7 @@ export class AppState {
   // 핵심: 프로젝트를 먼저 미분류(루트)로 옮긴 뒤 삭제해야 .deleted 가 루트에 생겨
   //       폴더 디렉터리 제거(deleteDir) 후에도 휴지통에 보존된다.
   async deleteFolderWithProjects(folder: string) {
-    const names = this.projectsInFolder(folder);
+    const names = sessionService.getProjectsInFolder(folder);
     appState.setProgressDialog({ text: '프로젝트 삭제중..', done: 0, total: names.length });
     let done = 0;
     for (const name of names) {
@@ -857,7 +890,7 @@ export class AppState {
   // 내보내기: 폴더 내 모든 프로젝트의 파일을 <프로젝트명>/ 네임스페이스로 하나의 tar에 담고
   //           매니페스트(_folder.json)를 포함해 폴더 백업임을 표시한다.
   async folderBackupExport(folder: string) {
-    const names = this.projectsInFolder(folder);
+    const names = sessionService.getProjectsInFolder(folder);
     if (names.length === 0) {
       appState.pushMessage('폴더에 프로젝트가 없습니다.');
       return;
@@ -2034,7 +2067,7 @@ export class AppState {
   // 폴더 일괄 이미지 내보내기: 프로젝트별 이미지를 모아 한 압축 파일로
   // (프로젝트별 하위 폴더로 구분). 옵션은 폴더당 1회만 입력(프리셋 지원).
   async folderExportImages(folder: string) {
-    const names = this.projectsInFolder(folder);
+    const names = sessionService.getProjectsInFolder(folder);
     if (names.length === 0) {
       appState.pushMessage('폴더에 프로젝트가 없습니다.');
       return;
@@ -3082,22 +3115,25 @@ export class AppState {
           ],
           callback: async (menu) => {
             if (menu === 'all') {
+              const doDel = async () => {
+                for (const scene of selected) {
+                  const paths = gameService
+                    .getOutputs(this.curSession!, scene)
+                    .map(
+                      (x) =>
+                        imageService.getOutputDir(this.curSession!, scene!) +
+                        '/' +
+                        x,
+                    );
+                  await deleteImageFiles(this.curSession!, paths, scene);
+                }
+              };
+              if (this.skipImageDeleteConfirm) { await doDel(); return; }
               appState.pushDialog({
                 type: 'confirm',
                 text: '정말로 모든 이미지를 삭제하시겠습니까?',
-                callback: async () => {
-                  for (const scene of selected) {
-                    const paths = gameService
-                      .getOutputs(this.curSession!, scene)
-                      .map(
-                        (x) =>
-                          imageService.getOutputDir(this.curSession!, scene!) +
-                          '/' +
-                          x,
-                      );
-                    await deleteImageFiles(this.curSession!, paths, scene);
-                  }
-                },
+                showSkipConfirm: true,
+                callback: doDel,
               });
             } else if (menu === 'n') {
               appState.pushDialog({
@@ -3128,26 +3164,34 @@ export class AppState {
                 },
               });
             } else if (menu === 'fav') {
+              const doDel = async () => {
+                for (const scene of selected) {
+                  const paths = gameService
+                    .getOutputs(this.curSession!, scene)
+                    .map(
+                      (x) =>
+                        imageService.getOutputDir(this.curSession!, scene!) +
+                        '/' +
+                        x,
+                    );
+                  const isMain = (scene: GenericScene, img: string) => {
+                    if (!scene.mains) return false;
+                    const filename = img.split('/').pop()!;
+                    return scene.mains.includes(filename);
+                  };
+                  await deleteImageFiles(
+                    this.curSession!,
+                    paths.filter((x) => !isMain(scene, x)),
+                    scene,
+                  );
+                }
+              };
+              if (this.skipImageDeleteConfirm) { await doDel(); return; }
               appState.pushDialog({
                 type: 'confirm',
                 text: '정말로 즐겨찾기 외 모든 이미지를 삭제하시겠습니까?',
-                callback: async () => {
-                  for (const scene of selected) {
-                    const paths = gameService
-                      .getOutputs(this.curSession!, scene)
-                      .map(
-                        (x) =>
-                          imageService.getOutputDir(this.curSession!, scene!) +
-                          '/' +
-                          x,
-                      );
-                    await deleteImageFiles(
-                      this.curSession!,
-                      paths.filter((x) => !isMain(scene, x)),
-                      scene,
-                    );
-                  }
-                },
+                showSkipConfirm: true,
+                callback: doDel,
               });
             }
           },
