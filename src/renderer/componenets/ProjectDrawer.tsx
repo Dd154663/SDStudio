@@ -383,6 +383,7 @@ const ProjectDrawer = observer(() => {
       appState.curSession = session;
       pushRecentProject(name);
     }
+    close();
   };
 
   const createProject = async (folder: string | null) => {
@@ -412,6 +413,7 @@ const ProjectDrawer = observer(() => {
         appState.curSession = session;
         pushRecentProject(name);
       }
+      close();
     } catch (e: any) {
       appState.pushMessage(e.message || '프로젝트 생성에 실패했습니다.');
     }
@@ -827,7 +829,15 @@ const ProjectDrawer = observer(() => {
   };
 
   return (
-    <div className="fixed inset-0 titlebar-no-drag" style={{ zIndex: 2100 }}>
+    <div
+      className="fixed inset-0 titlebar-no-drag"
+      style={{ zIndex: 2100 }}
+      onClick={() => {
+        // 떠 있는 컨텍스트 툴바를 닫는 클릭이면 드로어는 유지하고 툴바만 닫는다.
+        if (toolbar) return;
+        close();
+      }}
+    >
       <div
         className="absolute inset-0"
         style={{
@@ -835,7 +845,6 @@ const ProjectDrawer = observer(() => {
           opacity: shown ? 1 : 0,
           transition: 'opacity 0.26s ease',
         }}
-        onClick={close}
       />
       <div
         className="absolute left-0 top-0 h-full w-[90vw] max-w-[400px] bg-white dark:bg-slate-800 shadow-2xl border-r border-gray-200 dark:border-slate-600 flex flex-col"
