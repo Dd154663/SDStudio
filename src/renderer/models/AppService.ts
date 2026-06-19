@@ -194,6 +194,8 @@ export class AppState {
   @observable accessor resultViewerOpen: boolean = false;
   @observable accessor imageGridFocusable: boolean = false;
   @observable accessor configScreenOpen: boolean = false;
+  @observable accessor showSceneCheatsheet: boolean = true;
+  @observable accessor showTournamentCheatsheet: boolean = true;
 
   @action
   incrementFloatView() {

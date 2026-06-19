@@ -883,7 +883,7 @@ const QueueControl = observer(
     const gridContainerRef = useRef<HTMLDivElement>(null);
     const [sceneSearchQuery, setSceneSearchQuery] = useState('');
     const [showSceneSearch, setShowSceneSearch] = useState(false);
-    const [showCheatsheet, setShowCheatsheet] = useState(true);
+    const showCheatsheet = appState.showSceneCheatsheet;
     const sceneSearchRef = useRef<HTMLInputElement>(null);
     const [dragBox, setDragBox] = useState<{
       x1: number;
@@ -1248,7 +1248,7 @@ const QueueControl = observer(
           !e.shiftKey
         ) {
           e.preventDefault();
-          setShowCheatsheet((prev) => !prev);
+          appState.showSceneCheatsheet = !appState.showSceneCheatsheet;
           return;
         }
 
@@ -2056,7 +2056,9 @@ const QueueControl = observer(
               <Tooltip content="단축키 도움말">
                 <button
                   className="round-button back-gray"
-                  onClick={() => setShowCheatsheet((prev) => !prev)}
+                  onClick={() => {
+                    appState.showSceneCheatsheet = !appState.showSceneCheatsheet;
+                  }}
                 >
                   <FaQuestion size={14} />
                   <span className="ml-1 text-xs hidden lg:inline">H</span>
@@ -2192,7 +2194,9 @@ const QueueControl = observer(
         {showCheatsheet && (
           <ShortcutCheatsheet
             scope="scene"
-            onClose={() => setShowCheatsheet(false)}
+            onClose={() => {
+              appState.showSceneCheatsheet = false;
+            }}
           />
         )}
       </div>
