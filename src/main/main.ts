@@ -1117,10 +1117,45 @@ const createWindow = async () => {
 
   contextMenu({
     window: mainWindow,
+    // danbooru 태그는 일반 구글 검색이 무의미하므로 기본 "구글 검색" 항목을 끈다.
+    showSearchWithGoogle: false,
+    // 기본 메뉴 항목 한글화
+    labels: {
+      cut: '잘라내기',
+      copy: '복사',
+      paste: '붙여넣기',
+      selectAll: '전체 선택',
+      copyLink: '링크 주소 복사',
+      copyImage: '이미지 복사',
+      copyImageAddress: '이미지 주소 복사',
+      saveImage: '이미지 저장',
+      saveImageAs: '다른 이름으로 이미지 저장',
+      inspect: '검사',
+      learnSpelling: '맞춤법에 추가',
+      lookUpSelection: '“{selection}” 찾아보기',
+    },
     prepend: (defaultActions, params, browserWindow) => {
       console.log(params.mediaType);
       console.log(params.altText);
       console.log(params.titleText);
+      // 텍스트 드래그 선택 시: danbooru 태그 검색 (앱 내 웹 검색 탭으로 전달)
+      if (
+        params.selectionText &&
+        params.selectionText.trim() &&
+        params.mediaType !== 'image'
+      ) {
+        return [
+          {
+            label: 'Danbooru로 검색',
+            click: () => {
+              mainWindow!.webContents.send(
+                'danbooru-search',
+                params.selectionText,
+              );
+            },
+          },
+        ];
+      }
       const handleContextAlt = (altContext: any) => {
         if (altContext.type === 'image') {
           return [

@@ -17,12 +17,14 @@ import {
   FaFileImport,
   FaCheckSquare,
   FaSquare,
+  FaGlobe,
 } from 'react-icons/fa';
 import { artistLibraryService, imageService, backend } from '../models';
 import { IArtistEntry, IArtistImage } from '../models/ArtistLibraryService';
 import { appState } from '../models/AppService';
 import { dataUriToBase64 } from '../models/ImageService';
 import { extractPromptDataFromBase64 } from '../models/util';
+import Tooltip from './Tooltip';
 import ModalOverlay from './ModalOverlay';
 
 const copyText = async (text: string, msg: string) => {
@@ -189,25 +191,28 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
             <button className="back-sky !rounded-md px-3 py-1.5 text-sm" onClick={() => copyText('artist:' + artist.name, '작가 태그를 복사했습니다')}>
               <FaCopy className="inline mr-1" size={12} />복사
             </button>
-            <button
-              className="icon-button back-gray !rounded-md px-3 py-1.5"
-              title="작가 이름 변경"
-              onClick={async () => {
-                const newName = await appState.pushDialogAsync({
-                  type: 'input-confirm',
-                  text: `새 작가 이름을 입력하세요 (현재: ${artist.name})`,
-                });
-                if (newName) artistLibraryService.renameArtist(artist.id, newName);
-              }}
-            >
-              <FaPen />
-            </button>
-            <button className="icon-button back-gray !rounded-md px-3 py-1.5" title="즐겨찾기" onClick={() => artistLibraryService.toggleFavorite(artist.id)}>
-              {artist.favorite ? <FaHeart className="text-red-500" /> : <FaRegHeart />}
-            </button>
+            <Tooltip content="작가 이름 변경">
+              <button
+                className="icon-button back-gray !rounded-md px-3 py-1.5"
+                onClick={async () => {
+                  const newName = await appState.pushDialogAsync({
+                    type: 'input-confirm',
+                    text: `새 작가 이름을 입력하세요 (현재: ${artist.name})`,
+                  });
+                  if (newName) artistLibraryService.renameArtist(artist.id, newName);
+                }}
+              >
+                <FaPen />
+              </button>
+            </Tooltip>
+            <Tooltip content="즐겨찾기">
+              <button className="icon-button back-gray !rounded-md px-3 py-1.5" onClick={() => artistLibraryService.toggleFavorite(artist.id)}>
+                {artist.favorite ? <FaHeart className="text-red-500" /> : <FaRegHeart />}
+              </button>
+            </Tooltip>
+            <Tooltip content="작가 삭제">
             <button
               className="icon-button bg-red-500 text-white !rounded-md px-3 py-1.5"
-              title="작가 삭제"
               onClick={() => {
                 appState.pushDialog({
                   type: 'confirm',
@@ -221,6 +226,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
             >
               <FaTrash />
             </button>
+            </Tooltip>
           </div>
 
           <div className="flex flex-col md:flex-row gap-4">
@@ -358,20 +364,30 @@ const ArtistCard = observer(({
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate cursor-pointer" onClick={handleClick}>{artist.name}</span>
           <div className="flex gap-1.5 flex-none">
-            <button
-              title="작가 태그 복사"
-              className="p-2 rounded-lg text-gray-500 dark:text-gray-300 hover:bg-sky-100 dark:hover:bg-sky-900/40 hover:text-sky-500 transition-colors"
-              onClick={(e) => { e.stopPropagation(); copyText('artist:' + artist.name, '작가 태그를 복사했습니다'); }}
-            >
-              <FaCopy size={18} />
-            </button>
-            <button
-              title="즐겨찾기"
-              className="p-2 rounded-lg text-gray-500 dark:text-gray-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
-              onClick={(e) => { e.stopPropagation(); artistLibraryService.toggleFavorite(artist.id); }}
-            >
-              {artist.favorite ? <FaHeart size={18} className="text-red-500" /> : <FaRegHeart size={18} className="hover:text-red-500" />}
-            </button>
+            <Tooltip content="작가 태그 복사">
+              <button
+                className="p-2 rounded-lg text-gray-500 dark:text-gray-300 hover:bg-sky-100 dark:hover:bg-sky-900/40 hover:text-sky-500 transition-colors"
+                onClick={(e) => { e.stopPropagation(); copyText('artist:' + artist.name, '작가 태그를 복사했습니다'); }}
+              >
+                <FaCopy size={18} />
+              </button>
+            </Tooltip>
+            <Tooltip content="Danbooru에서 검색">
+              <button
+                className="p-2 rounded-lg text-gray-500 dark:text-gray-300 hover:bg-sky-100 dark:hover:bg-sky-900/40 hover:text-sky-500 transition-colors"
+                onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('danbooru-search-request', { detail: { text: artist.name } })); }}
+              >
+                <FaGlobe size={18} />
+              </button>
+            </Tooltip>
+            <Tooltip content="즐겨찾기">
+              <button
+                className="p-2 rounded-lg text-gray-500 dark:text-gray-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                onClick={(e) => { e.stopPropagation(); artistLibraryService.toggleFavorite(artist.id); }}
+              >
+                {artist.favorite ? <FaHeart size={18} className="text-red-500" /> : <FaRegHeart size={18} className="hover:text-red-500" />}
+              </button>
+            </Tooltip>
           </div>
         </div>
         {artist.tags.length > 0 && (
@@ -472,12 +488,16 @@ const ArtistLibraryTab = observer(() => {
         <button className="round-button back-sky px-4 py-2 text-sm flex items-center gap-1" onClick={newArtist}>
           <FaPlus size={12} /> 새 작가
         </button>
-        <button className="round-button back-gray px-3 py-2 text-sm flex items-center gap-1" title="작가 라이브러리 전체 백업" onClick={() => appState.artistLibraryBackupExport()}>
-          <FaFileArchive size={13} /> 백업
-        </button>
-        <button className="round-button back-gray px-3 py-2 text-sm flex items-center gap-1" title="백업 파일에서 복원 (동명 처리 선택)" onClick={() => appState.artistLibraryBackupImport()}>
-          <FaFileImport size={13} /> 복원
-        </button>
+        <Tooltip content="작가 라이브러리 전체 백업">
+          <button className="round-button back-gray px-3 py-2 text-sm flex items-center gap-1" onClick={() => appState.artistLibraryBackupExport()}>
+            <FaFileArchive size={13} /> 백업
+          </button>
+        </Tooltip>
+        <Tooltip content="백업 파일에서 복원 (동명 처리 선택)">
+          <button className="round-button back-gray px-3 py-2 text-sm flex items-center gap-1" onClick={() => appState.artistLibraryBackupImport()}>
+            <FaFileImport size={13} /> 복원
+          </button>
+        </Tooltip>
         {!multiSelectMode ? (
           <button className="round-button back-gray px-3 py-2 text-sm" onClick={() => setMultiSelectMode(true)}>
             멀티선택

@@ -7,6 +7,7 @@ import {
   createContext,
   useState,
   useRef,
+  useCallback,
 } from 'react';
 import SessionSelect from './SessionSelect';
 import ProjectDrawer from './ProjectDrawer';
@@ -51,6 +52,7 @@ import {
 } from '../models';
 import { appState } from '../models/AppService';
 import { keyboardShortcutService } from '../models/KeyboardShortcutService';
+import { buildDanbooruSearchUrl } from '../models/util';
 import { AppContextMenu } from './AppContextMenu';
 
 import { configure } from 'mobx';
@@ -426,6 +428,61 @@ export const App = observer(() => {
       banToggle: true,
     }] : []),
   ];
+
+  // 텍스트 드래그 → "Danbooru로 검색"
+  const goDanbooruSearch = useCallback(
+    (text: string) => {
+      const url = buildDanbooruSearchUrl(text);
+      if (!url) return;
+      if (isMobile) {
+        // 모바일: 기본 브라우저로 열기
+        backend.openWebPage(url);
+        return;
+      }
+      // PC: 앱 내 웹 검색 탭으로 전환 후 danbooru 검색 페이지로 이동
+      window.dispatchEvent(
+        new CustomEvent('danbooru-navigate', { detail: { url } }),
+      );
+      window.dispatchEvent(
+        new CustomEvent('shortcut-action', {
+          detail: { action: `tab-${tabs.length}` },
+        }),
+      );
+    },
+    [tabs.length],
+  );
+
+  useEffect(() => {
+    // PC: 메인 프로세스 컨텍스트 메뉴에서 IPC로 선택 텍스트 전달
+    const removeIpc = backend.onDanbooruSearch((text: string) =>
+      goDanbooruSearch(text),
+    );
+    // 앱 내부(작가 라이브러리 카드 등)에서 직접 요청하는 danbooru 검색
+    const handleRequest = (e: Event) => {
+      const text = (e as CustomEvent).detail?.text;
+      if (text) goDanbooruSearch(text);
+    };
+    window.addEventListener('danbooru-search-request', handleRequest);
+    // 모바일: 네이티브 선택 메뉴 대신 contextmenu(롱프레스) 이벤트로 직접 처리
+    let removeCtx: (() => void) | undefined;
+    if (isMobile) {
+      const handler = (e: Event) => {
+        const sel = window.getSelection?.()?.toString() ?? '';
+        if (sel.trim()) {
+          e.preventDefault();
+          goDanbooruSearch(sel);
+        }
+      };
+      document.addEventListener('contextmenu', handler);
+      removeCtx = () => document.removeEventListener('contextmenu', handler);
+    }
+    return () => {
+      removeIpc();
+      removeCtx?.();
+      window.removeEventListener('danbooru-search-request', handleRequest);
+    };
+  }, [goDanbooruSearch]);
+
   return (
     <DndProvider
       backend={isMobile ? TouchBackend : HTML5Backend}

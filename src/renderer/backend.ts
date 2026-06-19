@@ -92,6 +92,8 @@ export abstract class Backend {
   abstract onZipProgress(callback: (progress: any) => void): () => void;
   abstract onImageChanged(callback: (path: string) => void): () => void;
   abstract onClose(callback: () => void): () => void;
+  // 텍스트 드래그 후 우클릭 → "Danbooru로 검색" (데스크톱 전용, 모바일은 no-op)
+  abstract onDanbooruSearch(callback: (text: string) => void): () => void;
 
   // 모바일 백그라운드(포그라운드 서비스) 알림 내용 갱신.
   // 기본은 no-op이며 안드로이드 백엔드에서만 실제 구현한다.

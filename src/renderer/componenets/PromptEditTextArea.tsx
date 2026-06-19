@@ -667,6 +667,20 @@ class CursorMemorizeEditor {
   async handleBeforeInput(e: any) {
     e.preventDefault();
     await mutex.runExclusive(async () => {
+      // 우클릭 메뉴의 "잘라내기"(webContents.cut)는 beforeinput(deleteByCut)으로 들어온다.
+      // 네이티브 cut 이 클립보드 복사는 이미 수행하므로, 여기선 선택 영역 삭제만 처리한다.
+      // (이 처리가 없으면 복사만 되고 삭제가 안 돼 "복사처럼" 동작했음)
+      if (e.inputType === 'deleteByCut') {
+        const [start, end] = this.getCaretPosition();
+        if (start === end) return;
+        this.pushHistory();
+        this.updateCurText(
+          this.curText.substring(0, start) + this.curText.substring(end),
+        );
+        this.updateDOM(this.curText, start);
+        await this.setCaretPosition([start, start]);
+        return;
+      }
       const koreanRegex = /[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/g;
       if (koreanRegex.test(e.data || '')) return;
       if (!e.data) return;

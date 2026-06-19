@@ -300,6 +300,10 @@ export class ElectornBackend extends Backend {
     return window.electron.ipcRenderer.on('close', callback);
   }
 
+  onDanbooruSearch(callback: (text: string) => void | Promise<void>): () => void {
+    return window.electron.ipcRenderer.on('danbooru-search', callback);
+  }
+
   async copyImageToClipboard(imagePath: string): Promise<void> {
     await invoke('copy-image-to-clipboard', imagePath);
   }

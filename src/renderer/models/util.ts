@@ -5,6 +5,36 @@ export function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// danbooru 미러(웹 검색 탭 기본값과 동일)
+export const DANBOORU_MIRROR = 'https://hijiribe.donmai.us';
+
+// 드래그한 프롬프트 텍스트를 danbooru 태그 검색 URL로 변환한다.
+// - 쉼표는 NAI 프롬프트의 태그 구분자 → danbooru에선 공백이 태그 구분자이므로 분리 후 공백으로 결합
+// - 태그 내부 공백은 언더바(_)로 치환 (danbooru는 태그 내부 공백을 허용하지 않음)
+// - danbooru에 없는 문법 요소(::, <>, {}, [], (), 가중치 숫자, artist:)는 제거
+export function buildDanbooruSearchUrl(rawText: string): string | null {
+  if (!rawText) return null;
+  const tags = rawText
+    .split(',')
+    .map((tag) => {
+      let t = tag;
+      t = t.replace(/<[^>]*>/g, ' '); // <...> 블록 제거 (lora 등)
+      t = t.replace(/-?\d*\.?\d+\s*::/g, ' '); // 1.3:: 형태 가중치 제거
+      t = t.replace(/::/g, ' '); // 남은 :: 제거
+      // "artist:" 접두 제거. 드래그 시 앞부분을 덜 잡아 "artist"의 일부만 남는 경우
+      // (rtist:/tist:/ist:/st:/t:)도 "artist"의 접미사이므로 함께 제거한다.
+      t = t.replace(/^\s*(?:artist|rtist|tist|ist|st|t):\s*/i, '');
+      t = t.replace(/:\s*-?\d*\.?\d+/g, ' '); // :1.2 형태 가중치 제거
+      t = t.replace(/[{}\[\]<>|]/g, ' '); // {} [] <> | 등 문법 제거 (소괄호 ()는 danbooru 태그에서 쓰이므로 보존)
+      t = t.trim().replace(/\s+/g, '_'); // 태그 내부 공백 → 언더바
+      t = t.replace(/^_+|_+$/g, ''); // 가장자리 언더바 정리
+      return t;
+    })
+    .filter((t) => t.length > 0);
+  if (tags.length === 0) return null;
+  return `${DANBOORU_MIRROR}/posts?tags=${encodeURIComponent(tags.join(' '))}`;
+}
+
 export async function getPlatform() {
   const platform = window.navigator.platform;
   if (platform.startsWith('Win')) return 'windows';

@@ -715,6 +715,11 @@ export class AndroidBackend extends Backend {
     return () => {};
   }
 
+  // 모바일은 네이티브 텍스트 선택 메뉴를 쓰지 않고 contextmenu 이벤트로 직접 처리하므로 no-op
+  onDanbooruSearch(callback: (text: string) => void): () => void {
+    return () => {};
+  }
+
   async copyImageToClipboard(imagePath: string): Promise<void> {
     const dataUri = await this.readDataFile(imagePath);
     await Clipboard.write({

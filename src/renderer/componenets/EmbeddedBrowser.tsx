@@ -214,6 +214,16 @@ const DesktopBrowser: React.FC = () => {
     };
   }, [updateNavState]);
 
+  // 외부(텍스트 드래그 → Danbooru로 검색)에서 navigate 요청 수신
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const url = (e as CustomEvent).detail?.url;
+      if (url) navigate(url);
+    };
+    window.addEventListener('danbooru-navigate', handler);
+    return () => window.removeEventListener('danbooru-navigate', handler);
+  }, []);
+
   // 컨텍스트 메뉴 외부 클릭 시 닫기
   useEffect(() => {
     if (!contextMenu) return;
