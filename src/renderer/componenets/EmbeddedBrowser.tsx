@@ -49,8 +49,8 @@ const CLEAN_USER_AGENT = (() => {
 })();
 
 // 짧은 시간에 과도한 네비게이션 = Cloudflare 챌린지 루프로 간주
-const LOOP_WINDOW_MS = 3000;
-const LOOP_THRESHOLD = 10;
+const LOOP_WINDOW_MS = 2000;
+const LOOP_THRESHOLD = 5;
 
 interface BookmarkDialogProps {
   mode: 'add' | 'edit';
@@ -128,8 +128,8 @@ declare global {
 
 const DesktopBrowser: React.FC = () => {
   const webviewRef = useRef<any>(null);
-  const [url, setUrl] = useState('https://hijiribe.donmai.us/');
-  const [inputUrl, setInputUrl] = useState('https://hijiribe.donmai.us/');
+  const [url, setUrl] = useState('about:blank');
+  const [inputUrl, setInputUrl] = useState('about:blank');
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -183,11 +183,26 @@ const DesktopBrowser: React.FC = () => {
       }
     };
 
+    const onFailLoad = (e: any) => {
+      if (e.errorCode === -3) return;
+      const now = Date.now();
+      const times = navTimesRef.current.filter((t) => now - t < LOOP_WINDOW_MS);
+      times.push(now);
+      navTimesRef.current = times;
+      if (times.length >= LOOP_THRESHOLD) {
+        navTimesRef.current = [];
+        try { wv.stop(); } catch {}
+        setLoading(false);
+        setLoopBlocked(true);
+      }
+    };
+
     wv.addEventListener('did-navigate', onNavigate);
     wv.addEventListener('did-navigate-in-page', onNavigate);
     wv.addEventListener('did-start-loading', onStartLoading);
     wv.addEventListener('did-stop-loading', onStopLoading);
     wv.addEventListener('new-window', onNewWindow);
+    wv.addEventListener('did-fail-load', onFailLoad);
 
     return () => {
       wv.removeEventListener('did-navigate', onNavigate);
@@ -195,6 +210,7 @@ const DesktopBrowser: React.FC = () => {
       wv.removeEventListener('did-start-loading', onStartLoading);
       wv.removeEventListener('did-stop-loading', onStopLoading);
       wv.removeEventListener('new-window', onNewWindow);
+      wv.removeEventListener('did-fail-load', onFailLoad);
     };
   }, [updateNavState]);
 

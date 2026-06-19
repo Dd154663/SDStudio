@@ -41,6 +41,11 @@ export class TrashService extends EventTarget {
   // ===== Core persistence =====
 
   async loadTrash(): Promise<void> {
+    if (!(await backend.existFile(TRASH_FILE))) {
+      this.data = { scenes: {}, projects: {} };
+      this.loaded = true;
+      return;
+    }
     try {
       const str = await backend.readFile(TRASH_FILE);
       const parsed = JSON.parse(str);
@@ -672,6 +677,7 @@ export class TrashService extends EventTarget {
         for (const sceneDir of sceneDirs) {
           if (sceneDir === IMAGE_TRASH_DIR || sceneDir.startsWith('.')) continue;
           const trashMetaPath = imgDir + '/' + projectName + '/' + sceneDir + '/' + IMAGE_TRASH_DIR + '/' + TRASH_META_FILE;
+          if (!(await backend.existFile(trashMetaPath))) continue;
           try {
             const metaStr = await backend.readFile(trashMetaPath);
             const meta: TrashImageMeta = JSON.parse(metaStr);

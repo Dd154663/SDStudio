@@ -14,16 +14,21 @@ export interface Dialog {
   green?: boolean;
   graySelect?: boolean;
   items?: { text: string; value: string }[];
+  showSkipConfirm?: boolean;
 }
 
 const ConfirmWindow = observer(() => {
   const [inputValue, setInputValue] = useState<string>('');
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
+  const [skipConfirm, setSkipConfirm] = useState(false);
 
   const handleConfirm = () => {
     const currentDialog = appState.dialogs[appState.dialogs.length - 1];
     if (appState.dialogs.length > 0) appState.dialogs.pop();
     if (currentDialog && currentDialog.callback) {
+      if (currentDialog.showSkipConfirm && skipConfirm) {
+        appState.skipImageDeleteConfirm = true;
+      }
       if (currentDialog.type === 'checkbox') {
         currentDialog.callback(
           JSON.stringify(Array.from(checkedItems)),
@@ -41,6 +46,7 @@ const ConfirmWindow = observer(() => {
     }
     setInputValue('');
     setCheckedItems(new Set());
+    setSkipConfirm(false);
   };
 
   const curDialog = appState.dialogs[appState.dialogs.length - 1];
@@ -93,6 +99,17 @@ const ConfirmWindow = observer(() => {
             >
               {curDialog.type === 'confirm' && (
                 <>
+                  {curDialog.showSkipConfirm && (
+                    <label className="flex items-center gap-2 mt-3 text-sm text-gray-500 dark:text-gray-400 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={skipConfirm}
+                        onChange={(e) => setSkipConfirm(e.target.checked)}
+                        className="w-4 h-4 rounded accent-sky-500"
+                      />
+                      이번 세션에서 다시 묻지 않음
+                    </label>
+                  )}
                   <button
                     className={
                       'mr-2 px-4 py-2 rounded clickable ' +
@@ -102,12 +119,13 @@ const ConfirmWindow = observer(() => {
                   >
                     확인
                   </button>
-                  <button
+                   <button
                     className="px-4 py-2 rounded back-gray clickable "
                     onClick={() => {
                       if (curDialog.onCancel) curDialog.onCancel();
                       appState.dialogs.pop();
                       setInputValue('');
+                      setSkipConfirm(false);
                     }}
                   >
                     취소

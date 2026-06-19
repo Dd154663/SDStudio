@@ -31,21 +31,27 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async loadFavorites() {
+    if (!(await backend.existFile('favorites.json'))) {
+      // 기존 projects/favorites.json에서 마이그레이션 시도
+      if (await backend.existFile('projects/favorites.json')) {
+        try {
+          const oldStr = await backend.readFile('projects/favorites.json');
+          const arr = JSON.parse(oldStr);
+          this.favorites = new Set(Array.isArray(arr) ? arr : []);
+          await this.saveFavorites();
+          await backend.renameFile('projects/favorites.json', 'projects/favorites.json.migrated');
+          return;
+        } catch (e) {}
+      }
+      this.favorites = new Set();
+      return;
+    }
     try {
       const str = await backend.readFile('favorites.json');
       const arr = JSON.parse(str);
-      this.favorites = new Set(arr);
+      this.favorites = new Set(Array.isArray(arr) ? arr : []);
     } catch (e) {
-      // 기존 projects/favorites.json에서 마이그레이션 시도
-      try {
-        const oldStr = await backend.readFile('projects/favorites.json');
-        const arr = JSON.parse(oldStr);
-        this.favorites = new Set(arr);
-        await this.saveFavorites();
-        await backend.renameFile('projects/favorites.json', 'projects/favorites.json.migrated');
-      } catch (e2) {
-        this.favorites = new Set();
-      }
+      this.favorites = new Set();
     }
   }
 
@@ -67,80 +73,181 @@ export class SessionService extends ResourceSyncService<Session> {
     return this.favorites.has(name);
   }
 
-  // ===== 폴더 API (단일 레벨, 실제 디렉토리) =====
+  // ===== 폴더 API (중첩 폴더 지원, 실제 디렉토리) =====
 
   private folderDirPath(folder: string): string {
     return 'projects/' + folder;
   }
 
+  // 폴더 경로에서 마지막 세그먼트만 추출 (표시용)
+  folderLeafName(path: string): string {
+    if (typeof path !== 'string') return '';
+    const parts = path.split('/');
+    return parts[parts.length - 1];
+  }
+
+  // 부모 폴더 경로 반환 (없으면 null)
+  folderParentPath(path: string): string | null {
+    if (typeof path !== 'string') return null;
+    const idx = path.lastIndexOf('/');
+    return idx >= 0 ? path.substring(0, idx) : null;
+  }
+
+  // 특정 폴더의 직계 자식 폴더 목록
+  getChildFolders(parentPath: string): string[] {
+    if (!parentPath) {
+      // 루트: / 가 없는 폴더들
+      return this.folderList.filter((f) => !f.includes('/'));
+    }
+    const prefix = parentPath + '/';
+    return this.folderList.filter(
+      (f) => f.startsWith(prefix) && f.indexOf('/', prefix.length) === -1,
+    );
+  }
+
+  // 폴더와 그 하위에 속한 프로젝트 목록
+  getProjectsInFolder(folder: string): string[] {
+    return Object.keys(this.folderMap).filter((n) => {
+      const f = this.folderMap[n];
+      return f === folder || (f !== null && f.startsWith(folder + '/'));
+    });
+  }
+
+  // 중첩 폴더를 포함한 하위 폴더 목록
+  private getDescendantFolders(folder: string): string[] {
+    const prefix = folder + '/';
+    return this.folderList.filter(
+      (f) => f === folder || f.startsWith(prefix),
+    );
+  }
+
   async createFolder(folder: string): Promise<void> {
+    if (typeof folder !== 'string') throw new Error('올바른 폴더 이름을 입력하세요.');
     folder = folder.trim();
-    if (!folder || folder.includes('/') || folder.startsWith('.')) {
-      throw new Error('폴더 이름에 / 를 쓸 수 없습니다.');
+    if (!folder || folder.startsWith('.')) {
+      throw new Error('올바른 폴더 이름을 입력하세요.');
+    }
+    // 각 세그먼트 검증
+    const segments = folder.split('/');
+    for (const seg of segments) {
+      if (!seg || seg.startsWith('.')) {
+        throw new Error('폴더 이름은 .으로 시작할 수 없습니다: ' + seg);
+      }
     }
     if (this.folderList.includes(folder)) {
       throw new Error('이미 존재하는 폴더입니다.');
     }
-    if (this.resourceList.includes(folder)) {
+    if (this.resourceList.includes(segments[segments.length - 1])) {
       throw new Error('같은 이름의 프로젝트가 있어 폴더를 만들 수 없습니다.');
     }
-    // .keep 파일을 써서 빈 폴더를 만든다 (write-file이 부모 폴더를 생성).
+    // 부모 폴더가 존재하는지 확인 (루트가 아닌 경우)
+    const parent = this.folderParentPath(folder);
+    if (parent !== null) {
+      // 부모 폴더 경로를 따라가며 없는 중간 폴더는 자동 생성
+      const ancestors: string[] = [];
+      let cur = parent;
+      while (cur) {
+        if (!this.folderList.includes(cur)) {
+          ancestors.unshift(cur);
+        }
+        cur = this.folderParentPath(cur);
+      }
+      for (const anc of ancestors) {
+        await backend.writeFile(this.folderDirPath(anc) + '/.keep', '');
+      }
+    }
     await backend.writeFile(this.folderDirPath(folder) + '/.keep', '');
     await this.update();
   }
 
   async renameFolder(oldName: string, newName: string): Promise<void> {
     newName = newName.trim();
-    if (!newName || newName.includes('/') || newName.startsWith('.')) {
-      throw new Error('폴더 이름에 / 를 쓸 수 없습니다.');
+    if (!newName || newName.startsWith('.')) {
+      throw new Error('올바른 폴더 이름을 입력하세요.');
     }
     if (!this.folderList.includes(oldName)) {
       throw new Error('폴더를 찾을 수 없습니다.');
     }
     if (oldName === newName) return;
+
+    // 새 경로가 기존 폴더와 충돌하는지 확인
     if (this.folderList.includes(newName)) {
       throw new Error('이미 존재하는 폴더입니다.');
     }
-    if (this.resourceList.includes(newName)) {
+    if (this.resourceList.includes(this.folderLeafName(newName))) {
       throw new Error('같은 이름의 프로젝트가 있습니다.');
     }
-    // 폴더 이동(renameDir, Windows 에선 copy+rmdir 로 시간이 걸림) 동안 해당 폴더
-    // 소속 프로젝트들을 in-flight 로 보호해 주기 flush 가 잘못된 경로로 저장하지 않게 한다.
-    const affected = Object.keys(this.folderMap).filter(
-      (n) => this.folderMap[n] === oldName,
+
+    // 리네임 범위 결정: oldName이 부모 폴더면 자식들도 경로 변경
+    const oldPrefix = oldName + '/';
+    const affectedProjects = Object.keys(this.folderMap).filter(
+      (n) => {
+        const f = this.folderMap[n];
+        return f === oldName || (f !== null && f.startsWith(oldPrefix));
+      },
     );
-    await this.guardInFlight(affected, async () => {
+    const affectedFolders = this.folderList.filter(
+      (f) => f === oldName || f.startsWith(oldPrefix),
+    );
+
+    await this.guardInFlight(affectedProjects, async () => {
       await backend.renameDir(
         this.folderDirPath(oldName),
         this.folderDirPath(newName),
       );
-      // 폴더맵 즉시 반영 (update()의 재스캔 전에도 일관성 유지)
+      // 폴더맵 즉시 반영: oldName → newName, oldName/child → newName/child
       for (const [name, f] of Object.entries(this.folderMap)) {
-        if (f === oldName) this.folderMap[name] = newName;
+        if (f === oldName) {
+          this.folderMap[name] = newName;
+        } else if (f !== null && f.startsWith(oldPrefix)) {
+          this.folderMap[name] = newName + f.substring(oldName.length);
+        }
       }
     });
+
     // 폴더 색상 마이그레이션
-    if (this.folderColors[oldName]) {
-      this.folderColors[newName] = this.folderColors[oldName];
-      delete this.folderColors[oldName];
-      await this.saveFolderColors();
+    for (const f of affectedFolders) {
+      const newKey = newName + f.substring(oldName.length);
+      if (this.folderColors[f]) {
+        this.folderColors[newKey] = this.folderColors[f];
+        delete this.folderColors[f];
+      }
     }
+    await this.saveFolderColors();
+
     // 폴더 순서 마이그레이션
-    const orderIdx = this.folderOrder.indexOf(oldName);
-    if (orderIdx >= 0) {
-      this.folderOrder[orderIdx] = newName;
-      await this.saveFolderOrder();
+    for (let i = 0; i < this.folderOrder.length; i++) {
+      const f = this.folderOrder[i];
+      if (f === oldName) {
+        this.folderOrder[i] = newName;
+      } else if (f.startsWith(oldPrefix)) {
+        this.folderOrder[i] = newName + f.substring(oldName.length);
+      }
     }
+    await this.saveFolderOrder();
+
     await this.update();
   }
 
   // 비파괴적 삭제: 안의 프로젝트는 루트(미분류)로 옮기고 폴더만 제거한다.
+  // 하위 폴더가 있으면 먼저 자식 폴더들을 삭제한다.
   async deleteFolder(folder: string): Promise<void> {
     if (!this.folderList.includes(folder)) {
       throw new Error('폴더를 찾을 수 없습니다.');
     }
+    // 하위 폴더 먼저 삭제 (깊은 순서로)
+    const descendants = this.getDescendantFolders(folder)
+      .filter((f) => f !== folder)
+      .sort((a, b) => b.split('/').length - a.split('/').length);
+    for (const child of descendants) {
+      await this.deleteFolder(child);
+    }
+    // 해당 폴더 및 하위 폴더에 있는 프로젝트를 루트로
     const projectsInFolder = Object.keys(this.folderMap).filter(
-      (n) => this.folderMap[n] === folder,
+      (n) => {
+        const f = this.folderMap[n];
+        return f === folder || (f !== null && f.startsWith(folder + '/'));
+      },
     );
     for (const name of projectsInFolder) {
       await this.moveToFolder(name, null);
@@ -164,20 +271,144 @@ export class SessionService extends ResourceSyncService<Session> {
     const current = this.folderMap[name] ?? null;
     if (current === targetFolder) return;
     if (targetFolder !== null) {
-      if (targetFolder.includes('/')) {
-        throw new Error('잘못된 폴더 이름입니다.');
-      }
       if (!this.folderList.includes(targetFolder)) {
         throw new Error('대상 폴더가 없습니다.');
       }
     }
     const srcPath = this.getPath(name);
     await this.guardInFlight([name], async () => {
-      this.folderMap[name] = targetFolder;
-      const destPath = this.getPath(name);
+      const destPath = targetFolder
+        ? this.resourceDir + '/' + targetFolder + '/' + name + '.json'
+        : this.resourceDir + '/' + name + '.json';
       await backend.renameFile(srcPath, destPath);
+      this.folderMap[name] = targetFolder;
     });
     await this.update();
+  }
+
+  // ===== 폴더 복제 (재귀적: 하위 폴더/프로젝트 모두 복제) =====
+  async cloneFolder(sourceFolder: string, targetFolder: string, withImages: boolean = false): Promise<void> {
+    if (!this.folderList.includes(sourceFolder)) {
+      throw new Error('원본 폴더를 찾을 수 없습니다.');
+    }
+    targetFolder = targetFolder.trim();
+    if (!targetFolder || targetFolder.startsWith('.')) {
+      throw new Error('올바른 폴더 이름을 입력하세요.');
+    }
+    if (this.folderList.includes(targetFolder)) {
+      throw new Error('이미 존재하는 폴더입니다.');
+    }
+
+    // 재귀적으로 모든 프로젝트 수집 (하위 폴더 포함)
+    const projectNames = this.getProjectsInFolder(sourceFolder);
+    if (projectNames.length === 0) {
+      throw new Error('원본 폴더에 복제할 프로젝트가 없습니다.');
+    }
+
+    // 하위 폴더 구조 파악 및 대상에 미리 생성
+    const subFolders = new Set<string>();
+    for (const name of projectNames) {
+      const f = this.folderMap[name];
+      if (f && f !== sourceFolder && f.startsWith(sourceFolder + '/')) {
+        subFolders.add(f);
+      }
+    }
+    // 상위부터 정렬해 createFolder가 부모→자식 순으로 생성되도록
+    const sortedSubFolders = Array.from(subFolders).sort();
+
+    // 대상 루트 폴더 생성
+    await this.createFolder(targetFolder);
+
+    // 하위 폴더 생성 (경로 치환)
+    for (const sub of sortedSubFolders) {
+      const rel = sub.substring(sourceFolder.length + 1);
+      const targetSub = targetFolder + '/' + rel;
+      if (!this.folderList.includes(targetSub)) {
+        try { await this.createFolder(targetSub); } catch (e) {}
+      }
+    }
+
+    let cloned = 0;
+    let totalImages = 0;
+    for (const origName of projectNames) {
+      const session = await this.get(origName);
+      if (!session) continue;
+
+      const existing = this.list();
+      let newName = origName;
+      if (existing.includes(newName)) {
+        let i = 2;
+        while (existing.includes(`${origName} (${i})`)) {
+          i++;
+        }
+        newName = `${origName} (${i})`;
+      }
+
+      // 대상 하위 폴더 결정
+      const origFolder = this.folderMap[origName];
+      const destFolder = origFolder && origFolder !== sourceFolder
+        ? targetFolder + origFolder.substring(sourceFolder.length)
+        : targetFolder;
+
+      try {
+        const proj = await this.exportSessionShallow(session);
+        await this.importSessionShallow(proj, newName);
+        await this.moveToFolder(newName, destFolder);
+
+        // 이미지 포함 복사 (휴지통 제외)
+        if (withImages) {
+          const imgCopyDirs: { src: string; dst: string }[] = [];
+          // outs/<project>/<scene>/  +  inpaints/<project>/<scene>/
+          for (const dirPrefix of ['outs', 'inpaints']) {
+            let sceneDirs: string[];
+            try { sceneDirs = await backend.listFiles(dirPrefix + '/' + origName); } catch (e) { continue; }
+            for (const sd of sceneDirs) {
+              if (sd === '.trash' || sd.startsWith('.')) continue;
+              imgCopyDirs.push({
+                src: dirPrefix + '/' + origName + '/' + sd,
+                dst: dirPrefix + '/' + newName + '/' + sd,
+              });
+            }
+          }
+          // inpaint_orgs, inpaint_masks, vibes, references
+          for (const flatDir of ['inpaint_orgs', 'inpaint_masks', 'vibes', 'references']) {
+            let files: string[];
+            try { files = await backend.listFiles(flatDir + '/' + origName); } catch (e) { continue; }
+            for (const f of files) {
+              if (f.startsWith('.')) continue;
+              try {
+                await backend.copyFile(flatDir + '/' + origName + '/' + f, flatDir + '/' + newName + '/' + f);
+                totalImages++;
+              } catch (e) {}
+            }
+          }
+          // scene/inpaint directories
+          for (const { src, dst } of imgCopyDirs) {
+            let files: string[];
+            try { files = await backend.listFiles(src); } catch (e) { continue; }
+            for (const f of files) {
+              if (f.startsWith('.')) continue;
+              try {
+                await backend.copyFile(src + '/' + f, dst + '/' + f);
+                totalImages++;
+              } catch (e) {}
+            }
+          }
+        }
+
+        cloned++;
+      } catch (e) {
+        console.error('폴더 복제 중 프로젝트 실패:', origName, e);
+      }
+    }
+
+    if (cloned === 0) {
+      try { await this.deleteFolder(targetFolder); } catch (e) {}
+      throw new Error('복제할 수 있는 프로젝트가 없습니다.');
+    }
+
+    const imgMsg = withImages ? ` (이미지 ${totalImages}장 포함)` : '';
+    return; // 결과 메시지는 호출부에서 pushMessage
   }
 
   // ===== 폴더 색상 (사이드카: folderColors.json) =====
@@ -185,6 +416,10 @@ export class SessionService extends ResourceSyncService<Session> {
   private folderColors: Record<string, string> = {};
 
   async loadFolderColors() {
+    if (!(await backend.existFile('folderColors.json'))) {
+      this.folderColors = {};
+      return;
+    }
     try {
       const str = await backend.readFile('folderColors.json');
       this.folderColors = JSON.parse(str) || {};
@@ -209,6 +444,10 @@ export class SessionService extends ResourceSyncService<Session> {
   private folderOrder: string[] = [];
 
   async loadFolderOrder() {
+    if (!(await backend.existFile('folderOrder.json'))) {
+      this.folderOrder = [];
+      return;
+    }
     try {
       const str = await backend.readFile('folderOrder.json');
       this.folderOrder = JSON.parse(str) || [];
@@ -269,12 +508,16 @@ export class SessionService extends ResourceSyncService<Session> {
   } = { scenes: {}, images: {} };
 
   async loadBookmarks() {
+    if (!(await backend.existFile('bookmarks.json'))) {
+      this.bookmarkData = { scenes: {}, images: {} };
+      return;
+    }
     try {
       const str = await backend.readFile('bookmarks.json');
       const data = JSON.parse(str);
       this.bookmarkData = {
-        scenes: data.scenes || {},
-        images: data.images || {},
+        scenes: data?.scenes || {},
+        images: data?.images || {},
       };
     } catch (e) {
       this.bookmarkData = { scenes: {}, images: {} };
@@ -328,6 +571,10 @@ export class SessionService extends ResourceSyncService<Session> {
   private thumbnailSaveTimer: any = null;
 
   async loadThumbnails() {
+    if (!(await backend.existFile('thumbnails.json'))) {
+      this.thumbnailData = {};
+      return;
+    }
     try {
       const str = await backend.readFile('thumbnails.json');
       this.thumbnailData = JSON.parse(str) || {};
