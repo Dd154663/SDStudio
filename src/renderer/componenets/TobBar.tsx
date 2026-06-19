@@ -20,11 +20,19 @@ const TobBar = () => {
   useEffect(() => {
     const onChange = () => {
       setLoggedIn(loginService.loggedIn);
+      if (!loginService.loggedIn) {
+        setCredits(0);
+        return;
+      }
       (async () => {
         try {
           const credits = await backend.getRemainCredits();
           setCredits(credits);
-        } catch (e) {}
+        } catch (e) {
+          // 로그인 표기는 ON인데 크레딧 조회가 실패 → 토큰 만료 의심 → 재검증
+          // (만료면 OFF로 전환, 네트워크 일시 오류면 상태 유지)
+          loginService.refresh();
+        }
       })();
     };
     onChange();

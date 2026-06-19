@@ -163,10 +163,15 @@ export interface EncodeVibeImageInput {
   info: number;
 }
 
+// 로그인(토큰) 검증 결과.
+// - valid: 토큰 유효 / invalid: 만료·무효(인증 거부) / error: 네트워크 등 불확실(상태 유지)
+export type LoginValidity = 'valid' | 'invalid' | 'error';
+
 export interface ImageGenService {
   login(email: string, password: string): Promise<{ accessToken: string }>;
   generateImage(token: string, params: ImageGenInput): Promise<string>;
   augmentImage(token: string, params: ImageAugmentInput): Promise<string>;
   getRemainCredits(token: string): Promise<number>;
   encodeVibeImage(token: string, params: EncodeVibeImageInput): Promise<string>;
+  validateToken(token: string): Promise<LoginValidity>;
 }

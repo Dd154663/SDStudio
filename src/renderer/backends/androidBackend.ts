@@ -4,6 +4,7 @@ import {
   ImageAugmentInput,
   ImageGenInput,
   ImageGenService,
+  LoginValidity,
 } from './imageGen';
 import {
   Backend,
@@ -270,6 +271,16 @@ export class AndroidBackend extends Backend {
 
   async loginWithToken(token: string): Promise<void> {
     await this.writeFile('TOKEN.txt', token);
+  }
+
+  async validateLogin(): Promise<LoginValidity> {
+    let token: string;
+    try {
+      token = await this.readFile('TOKEN.txt');
+    } catch (e) {
+      return 'invalid'; // 토큰 파일 없음 → 로그아웃
+    }
+    return await this.imageGenService.validateToken(token);
   }
 
   async encodeVibeImage(arg: EncodeVibeImageInput): Promise<string> {

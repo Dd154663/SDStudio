@@ -7,6 +7,7 @@ import {
   ImageAugmentInput,
   ModelVersion,
   EncodeVibeImageInput,
+  LoginValidity,
 } from '../imageGen';
 
 import JSZip from 'jszip';
@@ -367,6 +368,26 @@ export class NovelAiImageGenService implements ImageGenService {
     const res = await reponse.json();
     const steps = res['subscription']['trainingStepsLeft'];
     return steps['fixedTrainingStepsLeft'] + steps['purchasedTrainingSteps'];
+  }
+
+  // 토큰이 NovelAI에서 실제로 유효한지 검증한다.
+  // 401/403(인증 거부) → 'invalid', 200 → 'valid', 그 외(네트워크/서버 오류) → 'error'.
+  async validateToken(token: string): Promise<LoginValidity> {
+    if (!token || !token.trim()) return 'invalid';
+    try {
+      const response = await fetch(this.apiEndpoint + '/user/data', {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (response.ok) return 'valid';
+      if (response.status === 401 || response.status === 403) return 'invalid';
+      return 'error'; // 5xx 등 일시 오류 → 상태 유지
+    } catch (e) {
+      return 'error'; // 네트워크 오류 → 상태 유지
+    }
   }
 
   async augmentImage(authorization: string, params: ImageAugmentInput) {

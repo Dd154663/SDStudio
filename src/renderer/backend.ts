@@ -3,6 +3,7 @@ import {
   EncodeVibeImageInput,
   ImageAugmentInput,
   ImageGenInput,
+  LoginValidity,
 } from './backends/imageGen';
 
 export interface FileEntry {
@@ -39,6 +40,8 @@ export abstract class Backend {
   abstract augmentImage(arg: ImageAugmentInput): Promise<void>;
   abstract login(email: string, password: string): Promise<void>;
   abstract loginWithToken(token: string): Promise<void>;
+  // 저장된 토큰이 실제로 유효한지 NovelAI API로 검증 (단순 파일 존재 확인이 아님)
+  abstract validateLogin(): Promise<LoginValidity>;
   abstract encodeVibeImage(arg: EncodeVibeImageInput): Promise<string>;
   abstract showFile(arg: string): Promise<void>;
   abstract copyToDownloads(path: string): Promise<void>;
