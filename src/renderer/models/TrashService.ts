@@ -932,7 +932,7 @@ export class TrashService extends EventTarget {
     this.ensureLoaded();
     const deleted = await this.getDeletedProjects();
     for (const p of deleted) {
-      await this.emptyProjectTrashDirs(p.name);
+      await this.permanentlyDeleteProject(p.name);
     }
   }
 
