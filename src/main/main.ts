@@ -337,15 +337,16 @@ ipcMain.handle('rename-dir', async (event, oldfile, newfile) => {
     return;
   }
 
+  const normOldPath = path.normalize(oldPath);
   // Release watcher handles to prevent EPERM
   for (const [dir, handle] of dirWatchHandles.entries()) {
-    if (dir === oldPath || dir.startsWith(oldPath + path.sep) || dir.startsWith(oldPath + '/')) {
+    if (dir === normOldPath || dir.startsWith(normOldPath + path.sep)) {
       await handle.close();
       dirWatchHandles.delete(dir);
     }
   }
   for (const curPath of watchHandles.keys()) {
-    if (curPath.startsWith(oldPath + path.sep) || curPath.startsWith(oldPath + '/')) {
+    if (curPath.startsWith(normOldPath + path.sep)) {
       watchHandles.delete(curPath);
     }
   }
@@ -389,15 +390,16 @@ ipcMain.handle('delete-dir', async (event, filename) => {
   if (!(await fsExtra.pathExists(dirPath))) {
     return;
   }
+  const normDirPath = path.normalize(dirPath);
   // Release watcher handles to prevent EPERM
   for (const [dir, handle] of dirWatchHandles.entries()) {
-    if (dir === dirPath || dir.startsWith(dirPath + path.sep) || dir.startsWith(dirPath + '/')) {
+    if (dir === normDirPath || dir.startsWith(normDirPath + path.sep)) {
       await handle.close();
       dirWatchHandles.delete(dir);
     }
   }
   for (const curPath of watchHandles.keys()) {
-    if (curPath.startsWith(dirPath + path.sep) || curPath.startsWith(dirPath + '/')) {
+    if (curPath.startsWith(normDirPath + path.sep)) {
       watchHandles.delete(curPath);
     }
   }
