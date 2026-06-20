@@ -320,7 +320,8 @@ async function safeRemove(dirPath: string, retries = 10, delay = 100) {
     try {
       await fsExtra.remove(dirPath);
       return;
-    } catch (err) {
+    } catch (err: any) {
+      if (err.code === 'ENOENT') return;
       if (i === retries - 1) throw err;
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
@@ -334,6 +335,19 @@ ipcMain.handle('rename-dir', async (event, oldfile, newfile) => {
 
   if (!(await fsExtra.pathExists(oldPath))) {
     return;
+  }
+
+  // Release watcher handles to prevent EPERM
+  for (const [dir, handle] of dirWatchHandles.entries()) {
+    if (dir === oldPath || dir.startsWith(oldPath + path.sep) || dir.startsWith(oldPath + '/')) {
+      await handle.close();
+      dirWatchHandles.delete(dir);
+    }
+  }
+  for (const curPath of watchHandles.keys()) {
+    if (curPath.startsWith(oldPath + path.sep) || curPath.startsWith(oldPath + '/')) {
+      watchHandles.delete(curPath);
+    }
   }
 
   if (platform === 'win32') {
@@ -375,6 +389,19 @@ ipcMain.handle('delete-dir', async (event, filename) => {
   if (!(await fsExtra.pathExists(dirPath))) {
     return;
   }
+  // Release watcher handles to prevent EPERM
+  for (const [dir, handle] of dirWatchHandles.entries()) {
+    if (dir === dirPath || dir.startsWith(dirPath + path.sep) || dir.startsWith(dirPath + '/')) {
+      await handle.close();
+      dirWatchHandles.delete(dir);
+    }
+  }
+  for (const curPath of watchHandles.keys()) {
+    if (curPath.startsWith(dirPath + path.sep) || curPath.startsWith(dirPath + '/')) {
+      watchHandles.delete(curPath);
+    }
+  }
+
   if (os.platform() === 'win32') {
     return await safeRemove(dirPath);
   } else {
