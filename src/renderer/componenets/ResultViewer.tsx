@@ -83,7 +83,9 @@ interface TrashImageViewProps {
 }
 
 const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
-  const [trashImages, setTrashImages] = useState<{filename: string, deletedAt: number}[]>([]);
+  const [trashImages, setTrashImages] = useState<
+    { filename: string; deletedAt: number }[]
+  >([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -94,10 +96,12 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
       const items = await trashService.getTrashImages(session, scene);
       setTrashImages(items);
       // 기존 선택 중 유효하지 않은 것 제거
-      setSelected(prev => {
-        const validNames = new Set(items.map(i => i.filename));
+      setSelected((prev) => {
+        const validNames = new Set(items.map((i) => i.filename));
         const next = new Set<string>();
-        prev.forEach(f => { if (validNames.has(f)) next.add(f); });
+        prev.forEach((f) => {
+          if (validNames.has(f)) next.add(f);
+        });
         return next;
       });
     } catch (e) {
@@ -115,9 +119,16 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
     const loadThumbnails = async () => {
       const newThumbs: Record<string, string> = {};
       for (const item of trashImages) {
-        const path = trashService.getTrashImagePath(session, scene, item.filename);
+        const path = trashService.getTrashImagePath(
+          session,
+          scene,
+          item.filename,
+        );
         try {
-          const thumb = await imageService.fetchImageSmall(path, isMobile ? 200 : Math.min(imageSize, 400));
+          const thumb = await imageService.fetchImageSmall(
+            path,
+            isMobile ? 200 : Math.min(imageSize, 400),
+          );
           if (thumb) newThumbs[item.filename] = thumb;
         } catch (e) {}
       }
@@ -128,7 +139,7 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
   }, [trashImages, session, scene, imageSize]);
 
   const toggleSelect = (filename: string) => {
-    setSelected(prev => {
+    setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(filename)) next.delete(filename);
       else next.add(filename);
@@ -137,7 +148,7 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
   };
 
   const selectAll = () => {
-    setSelected(new Set(trashImages.map(i => i.filename)));
+    setSelected(new Set(trashImages.map((i) => i.filename)));
   };
 
   const handleRestore = async () => {
@@ -155,7 +166,11 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
       type: 'confirm',
       text: selected.size + '장의 이미지를 영구 삭제하시겠습니까?',
       callback: async () => {
-        await trashService.permanentlyDeleteImages(session, scene, Array.from(selected));
+        await trashService.permanentlyDeleteImages(
+          session,
+          scene,
+          Array.from(selected),
+        );
         setSelected(new Set());
         await refresh();
       },
@@ -178,7 +193,11 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
   const formatDate = (ts: number) => {
     if (!ts) return '알 수 없음';
     const d = new Date(ts);
-    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    return (
+      d.toLocaleDateString() +
+      ' ' +
+      d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    );
   };
 
   const cellSize = isMobile ? imageSize / 2.5 : Math.min(imageSize, 400);
@@ -202,10 +221,7 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
           <FaTrashRestore className="mr-1" />
           선택 복원 ({selected.size})
         </button>
-        <button
-          className={`round-button back-gray`}
-          onClick={selectAll}
-        >
+        <button className={`round-button back-gray`} onClick={selectAll}>
           전체 선택
         </button>
         <button
@@ -225,7 +241,7 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
       </div>
       <div className="flex-1 overflow-auto">
         <div className="flex flex-wrap gap-1 p-2">
-          {trashImages.map(item => {
+          {trashImages.map((item) => {
             const isSelected = selected.has(item.filename);
             return (
               <div
@@ -713,9 +729,7 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
     }
     const columnCount = Math.max(1, Math.floor(containerWidth / columnWidth));
     // preload 4 pages
-    const overcountCounts = isMobile
-      ? [4, 2, 1]
-      : [32, 16, 8];
+    const overcountCounts = isMobile ? [4, 2, 1] : [32, 16, 8];
 
     const onCellEnter = useCallback((index: number) => {
       hoveredIndexRef.current = index;
@@ -733,7 +747,12 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
         const idx = hoveredIndexRef.current;
         if (idx == null || idx >= filePaths.length) return;
         const tag = (e.target as HTMLElement)?.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return;
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          (e.target as HTMLElement)?.isContentEditable
+        )
+          return;
         e.preventDefault();
         const path = filePaths[idx];
         if (!path) return;
@@ -845,7 +864,10 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
       <div
         ref={containerRef}
         style={{ width: '100%', height: '100%' }}
-        className={'flex justify-center relative select-none ' + (isHidden ? 'hidden' : '')}
+        className={
+          'flex justify-center relative select-none ' +
+          (isHidden ? 'hidden' : '')
+        }
         onMouseDown={handleGridMouseDown}
         onMouseMove={handleGridMouseMove}
         onMouseUp={handleGridMouseUp}
@@ -924,7 +946,9 @@ const ResultDetailView = observer(
     // 단축키 시스템에 ResultViewer 열림 상태 전달
     useEffect(() => {
       appState.resultViewerOpen = true;
-      return () => { appState.resultViewerOpen = false; };
+      return () => {
+        appState.resultViewerOpen = false;
+      };
     }, []);
     const [selectedIndex, setSelectedIndex] =
       useState<number>(initialSelectedIndex);
@@ -947,6 +971,7 @@ const ResultDetailView = observer(
     const [_, forceUpdate] = useState<{}>({});
     useEffect(() => {
       const fetchImage = async () => {
+        if (!paths[selectedIndex]) return;
         try {
           let base64Image = await imageService.fetchImage(
             paths[selectedIndex],
@@ -1010,7 +1035,10 @@ const ResultDetailView = observer(
           const doDel = async () => {
             await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
           };
-          if (appState.skipImageDeleteConfirm) { await doDel(); return; }
+          if (appState.skipImageDeleteConfirm) {
+            await doDel();
+            return;
+          }
           appState.pushDialog({
             type: 'confirm',
             text: '정말로 파일을 삭제하시겠습니까?',
@@ -1029,7 +1057,10 @@ const ResultDetailView = observer(
           const doDel = async () => {
             await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
           };
-          if (appState.skipImageDeleteConfirm) { await doDel(); return; }
+          if (appState.skipImageDeleteConfirm) {
+            await doDel();
+            return;
+          }
           appState.pushDialog({
             type: 'confirm',
             text: '정말로 파일을 삭제하시겠습니까?',
@@ -1072,6 +1103,8 @@ const ResultDetailView = observer(
           );
           if (newIndex !== -1) {
             setSelectedIndex(newIndex);
+          } else {
+            setSelectedIndex((prev) => Math.min(prev, newPaths.length - 1));
           }
           setPaths(newPaths);
         }
@@ -1105,12 +1138,22 @@ const ResultDetailView = observer(
 
     const [bmRev2, setBmRev2] = useState(0);
     useEffect(() => {
-      const onBmUpdate = () => setBmRev2(r => r + 1);
+      const onBmUpdate = () => setBmRev2((r) => r + 1);
       sessionService.addEventListener('bookmark-updated', onBmUpdate);
-      return () => sessionService.removeEventListener('bookmark-updated', onBmUpdate);
+      return () =>
+        sessionService.removeEventListener('bookmark-updated', onBmUpdate);
     }, []);
     const currentFilename = paths[selectedIndex]?.split('/').pop();
-    const isImageBm = !!(currentFilename && sessionService.isImageBookmarked(curSession!.name, scene.name, currentFilename));
+    const isImageBm = !!(
+      currentFilename &&
+      sessionService.isImageBookmarked(
+        curSession!.name,
+        scene.name,
+        currentFilename,
+      )
+    );
+
+    if (!paths[selectedIndex]) return null;
 
     return (
       <div className="z-10 bg-white dark:bg-slate-900 w-full h-full flex overflow-auto flex-col md:flex-row">
@@ -1159,9 +1202,16 @@ const ResultDetailView = observer(
               className={`round-button back-red`}
               onClick={() => {
                 const doDel = async () => {
-                  await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
+                  await deleteImageFiles(
+                    curSession!,
+                    [paths[selectedIndex]],
+                    scene,
+                  );
                 };
-                if (appState.skipImageDeleteConfirm) { doDel(); return; }
+                if (appState.skipImageDeleteConfirm) {
+                  doDel();
+                  return;
+                }
                 appState.pushDialog({
                   type: 'confirm',
                   text: '정말로 파일을 삭제하시겠습니까?',
@@ -1176,7 +1226,11 @@ const ResultDetailView = observer(
               className={`round-button ${isImageBm ? 'back-orange' : 'back-gray'}`}
               onClick={() => {
                 if (currentFilename) {
-                  sessionService.toggleImageBookmark(curSession!.name, scene.name, currentFilename);
+                  sessionService.toggleImageBookmark(
+                    curSession!.name,
+                    scene.name,
+                    currentFilename,
+                  );
                 }
               }}
             >
@@ -1362,7 +1416,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     ];
     const [imageSize, setImageSize] = useState<number>(1);
     const [selectedTab, setSelectedTab] = useState<number>(0);
-    const [showDownloadDialog, setShowDownloadDialog] = useState<boolean>(false);
+    const [showDownloadDialog, setShowDownloadDialog] =
+      useState<boolean>(false);
     const tabNames =
       scene.type === 'scene'
         ? ['이미지', '즐겨찾기', '휴지통', '인페인트 씬']
@@ -1373,13 +1428,19 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
 
     const [bmRev3, setBmRev3] = useState(0);
     useEffect(() => {
-      const onBmUpdate = () => setBmRev3(r => r + 1);
+      const onBmUpdate = () => setBmRev3((r) => r + 1);
       sessionService.addEventListener('bookmark-updated', onBmUpdate);
-      return () => sessionService.removeEventListener('bookmark-updated', onBmUpdate);
+      return () =>
+        sessionService.removeEventListener('bookmark-updated', onBmUpdate);
     }, []);
-    const bookmarkedImageFilename = sessionService.getImageBookmark(curSession!.name, scene.name);
+    const bookmarkedImageFilename = sessionService.getImageBookmark(
+      curSession!.name,
+      scene.name,
+    );
     const bookmarkedImagePath = bookmarkedImageFilename
-      ? imageService.getOutputDir(curSession!, scene) + '/' + bookmarkedImageFilename
+      ? imageService.getOutputDir(curSession!, scene) +
+        '/' +
+        bookmarkedImageFilename
       : undefined;
 
     useImperativeHandle(ref, () => ({
@@ -1484,7 +1545,10 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       let counter = 0;
       for (const path of selectedImages.current) {
         const tmp = path.slice(0, path.lastIndexOf('/'));
-        await backend.copyFile(path, tmp + '/' + Date.now().toString() + '_' + counter++ + '.png');
+        await backend.copyFile(
+          path,
+          tmp + '/' + Date.now().toString() + '_' + counter++ + '.png',
+        );
       }
       imageService.refresh(curSession!, scene);
       appState.pushDialog({
@@ -1551,7 +1615,10 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             const doDel = async () => {
               await deleteImageFiles(curSession!, paths, scene);
             };
-            if (appState.skipImageDeleteConfirm) { await doDel(); return; }
+            if (appState.skipImageDeleteConfirm) {
+              await doDel();
+              return;
+            }
             appState.pushDialog({
               type: 'confirm',
               text: '정말로 모든 이미지를 삭제하시겠습니까?',
@@ -1583,7 +1650,10 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                 scene,
               );
             };
-            if (appState.skipImageDeleteConfirm) { await doDel(); return; }
+            if (appState.skipImageDeleteConfirm) {
+              await doDel();
+              return;
+            }
             appState.pushDialog({
               type: 'confirm',
               text: '정말로 즐겨찾기 외 모든 이미지를 삭제하시겠습니까?',
@@ -1883,7 +1953,10 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                       }
                       gallaryRef.current?.refresh();
                       gallaryRef2.current?.refresh();
-                      appState.pushMessage(favPaths.length + '장의 즐겨찾기 이미지가 선택되었습니다.');
+                      appState.pushMessage(
+                        favPaths.length +
+                          '장의 즐겨찾기 이미지가 선택되었습니다.',
+                      );
                     }}
                   >
                     <FaStar />
@@ -1925,9 +1998,14 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                   onClick={() => {
                     appState.pushDialog({
                       type: 'confirm',
-                      text: appState.imageClipboard.length + '장의 이미지를 이 씬에 붙여넣으시겠습니까?',
+                      text:
+                        appState.imageClipboard.length +
+                        '장의 이미지를 이 씬에 붙여넣으시겠습니까?',
                       callback: async () => {
-                        await appState.pasteImagesFromClipboard(curSession!, scene);
+                        await appState.pasteImagesFromClipboard(
+                          curSession!,
+                          scene,
+                        );
                       },
                     });
                   }}
@@ -1996,7 +2074,9 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                         }
                       }
                       if (seeds.length === 0) {
-                        appState.pushMessage('선택한 이미지에서 시드를 추출할 수 없습니다.');
+                        appState.pushMessage(
+                          '선택한 이미지에서 시드를 추출할 수 없습니다.',
+                        );
                         return;
                       }
                       onSampleExtract(seeds);
@@ -2014,7 +2094,10 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                       appState.pushMessage('북마크된 이미지가 없습니다.');
                       return;
                     }
-                    const bmPath = imageService.getOutputDir(curSession!, scene) + '/' + bookmarkedImageFilename;
+                    const bmPath =
+                      imageService.getOutputDir(curSession!, scene) +
+                      '/' +
+                      bookmarkedImageFilename;
                     const index = paths.indexOf(bmPath);
                     if (index !== -1) {
                       // 이미지 탭으로 전환 후 해당 위치로 스크롤
@@ -2023,7 +2106,9 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                         gallaryRef.current?.scrollToIndex(index);
                       }, 50);
                     } else {
-                      appState.pushMessage('북마크된 이미지를 찾을 수 없습니다.');
+                      appState.pushMessage(
+                        '북마크된 이미지를 찾을 수 없습니다.',
+                      );
                     }
                   }}
                 >
@@ -2097,24 +2182,24 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             </FloatView>
           )}
           {showDownloadDialog && (
-      <DownloadDialog
-        session={curSession!}
-        scene={scene}
-        imagePaths={
-          selectMode && selectedImages.current.size > 0
-            ? Array.from(selectedImages.current)
-            : paths
-        }
-        characterPreset={appState.getAppliedCharacterPreset()}
-        onClose={() => setShowDownloadDialog(false)}
-        onDownloadComplete={() => {
-          if (selectMode) {
-            selectedImages.current.clear();
-            setSelectMode(false);
-          }
-        }}
-      />
-    )}
+            <DownloadDialog
+              session={curSession!}
+              scene={scene}
+              imagePaths={
+                selectMode && selectedImages.current.size > 0
+                  ? Array.from(selectedImages.current)
+                  : paths
+              }
+              characterPreset={appState.getAppliedCharacterPreset()}
+              onClose={() => setShowDownloadDialog(false)}
+              onDownloadComplete={() => {
+                if (selectMode) {
+                  selectedImages.current.clear();
+                  setSelectMode(false);
+                }
+              }}
+            />
+          )}
           <ImageGallery
             scene={scene}
             ref={gallaryRef2}
@@ -2132,7 +2217,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           />
         </div>
         <div className="absolute gap-1 m-2 bottom-0 bg-white dark:bg-slate-800 p-1 right-0 opacity-30 hover:opacity-100 transition-all flex">
-          {selectedTab !== 2 && selectedTab !== 3 &&
+          {selectedTab !== 2 &&
+            selectedTab !== 3 &&
             imagesSizes.map((size, index) => (
               <button
                 key={index}
