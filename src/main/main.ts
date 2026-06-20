@@ -1327,7 +1327,7 @@ async function initFolder() {
   }
 }
 
-init();
+const initPromise = init();
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -1359,7 +1359,8 @@ if (!gotTheLock) {
 
   app
     .whenReady()
-    .then(() => {
+    .then(async () => {
+      await initPromise;
       createWindow();
       app.on('activate', () => {
         // On macOS it's common to re-create a window in the app when the
