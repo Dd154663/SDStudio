@@ -109,7 +109,11 @@ export abstract class ResourceSyncService<
     if (newName in this.resources) throw new Error('Resource already exists');
     const srcPath = this.getPath(oldName);
     // 이름이 바뀌어도 같은 폴더에 유지이므로 dest는 oldName을 newName으로만 교체
-    const destPath = srcPath.replace(new RegExp(`/${oldName}\\.json$`), `/${newName}.json`);
+    const suffix = `/${oldName}.json`;
+    const destPath = srcPath.endsWith(suffix)
+      ? srcPath.slice(0, -suffix.length) + `/${newName}.json`
+      : srcPath;
+    
     this.resources[newName] = this.resources[oldName];
     delete this.resources[oldName];
     this.disposes[newName] = this.disposes[oldName];
