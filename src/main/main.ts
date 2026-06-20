@@ -296,6 +296,13 @@ ipcMain.handle('write-data-file', async (event, filename, data) => {
 
   if (filename.toLowerCase().endsWith('.avif')) {
     try {
+      let pngMeta = null;
+      try {
+        pngMeta = await exiftool.read(tmpFile);
+      } catch (e: any) {
+        console.error('Could not read metadata from temp file:', e.message);
+      }
+
       await sharp(tmpFile)
         .withMetadata()
         .avif({
@@ -304,6 +311,14 @@ ipcMain.handle('write-data-file', async (event, filename, data) => {
         })
         .toFile(finalPath);
       await fs.unlink(tmpFile);
+
+      if (pngMeta) {
+        try {
+          await exiftool.write(finalPath, pngMeta);
+        } catch (e: any) {
+          console.error('Could not write metadata to AVIF:', e.message);
+        }
+      }
     } catch (e: any) {
       console.error('AVIF conversion failed, falling back to PNG:', e.message);
       const pngPath = finalPath.replace(/\.avif$/i, '.png');
@@ -321,6 +336,13 @@ ipcMain.handle('convert-png-to-avif', async (event, pngPath) => {
   const fullAvifPath = fullPngPath.replace(/\.png$/i, '.avif');
   if (!fullPngPath.toLowerCase().endsWith('.png')) return false;
   try {
+    let pngMeta = null;
+    try {
+      pngMeta = await exiftool.read(fullPngPath);
+    } catch (e: any) {
+      console.error('Could not read metadata from PNG:', e.message);
+    }
+
     await sharp(fullPngPath)
       .withMetadata()
       .avif({
@@ -328,6 +350,15 @@ ipcMain.handle('convert-png-to-avif', async (event, pngPath) => {
         effort: 2,
       })
       .toFile(fullAvifPath);
+
+    if (pngMeta) {
+      try {
+        await exiftool.write(fullAvifPath, pngMeta);
+      } catch (e: any) {
+        console.error('Could not write metadata to AVIF:', e.message);
+      }
+    }
+
     await fs.unlink(fullPngPath);
     return true;
   } catch (e: any) {
@@ -677,10 +708,20 @@ ipcMain.handle(
       outputPath = APP_DIR + '/' + outputPath;
       const dir = path.dirname(outputPath);
       await fs.mkdir(dir, { recursive: true });
+
+      let inputMeta = null;
+      if (optimize === ImageOptimizeMethod.AVIF) {
+        try {
+          inputMeta = await exiftool.read(inputPath);
+        } catch (e: any) {
+          console.error('Could not read metadata for resize:', e.message);
+        }
+      }
+
       let instance = sharp(inputPath).resize(maxWidth, maxHeight, {
         fit: sharp.fit.inside,
         withoutEnlargement: true,
-      });
+      }).withMetadata();
       if (optimize === ImageOptimizeMethod.LOSSY) {
         instance = instance.webp({
           quality: 80,
@@ -699,6 +740,14 @@ ipcMain.handle(
         });
       }
       await instance.toFile(outputPath);
+
+      if (inputMeta) {
+        try {
+          await exiftool.write(outputPath, inputMeta);
+        } catch (e: any) {
+          console.error('Could not write metadata to resized AVIF:', e.message);
+        }
+      }
     } catch (e: any) {
       console.error('resize-image error:', e);
       throw new Error('이미지 리사이즈 실패: ' + (e.message || e));
