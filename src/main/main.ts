@@ -315,6 +315,7 @@ ipcMain.handle('rename-file', async (event, oldfile, newfile) => {
 });
 
 async function safeRemove(dirPath: string, retries = 10, delay = 100) {
+  if (!(await fsExtra.pathExists(dirPath))) return;
   for (let i = 0; i < retries; i++) {
     try {
       await fsExtra.remove(dirPath);
@@ -331,13 +332,20 @@ ipcMain.handle('rename-dir', async (event, oldfile, newfile) => {
   const oldPath = APP_DIR + '/' + oldfile;
   const newPath = APP_DIR + '/' + newfile;
 
+  if (!(await fsExtra.pathExists(oldPath))) {
+    return;
+  }
+
   if (platform === 'win32') {
     await fs.mkdir(path.dirname(newPath), { recursive: true });
     for (let i = 0; i < 10; i++) {
       try {
         await fs.rename(oldPath, newPath);
         return;
-      } catch (e) {
+      } catch (e: any) {
+        if (e.code === 'ENOENT') {
+          return;
+        }
         if (i === 9) {
           await fsExtra.copy(oldPath, newPath);
           await safeRemove(oldPath);
@@ -348,7 +356,13 @@ ipcMain.handle('rename-dir', async (event, oldfile, newfile) => {
     }
   } else {
     await fs.mkdir(path.dirname(newPath), { recursive: true });
-    return await fs.rename(oldPath, newPath);
+    try {
+      await fs.rename(oldPath, newPath);
+    } catch (e: any) {
+      if (e.code !== 'ENOENT') {
+        throw e;
+      }
+    }
   }
 });
 
@@ -358,10 +372,19 @@ ipcMain.handle('delete-file', async (event, filename) => {
 
 ipcMain.handle('delete-dir', async (event, filename) => {
   const dirPath = APP_DIR + '/' + filename;
+  if (!(await fsExtra.pathExists(dirPath))) {
+    return;
+  }
   if (os.platform() === 'win32') {
     return await safeRemove(dirPath);
   } else {
-    return await fs.rmdir(dirPath, { recursive: true });
+    try {
+      return await fs.rmdir(dirPath, { recursive: true });
+    } catch (e: any) {
+      if (e.code !== 'ENOENT') {
+        throw e;
+      }
+    }
   }
 });
 
