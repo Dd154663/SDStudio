@@ -950,7 +950,12 @@ export class AppState {
 
       // 현재 열린 프로젝트가 변환 대상 폴더에 속해있다면 이미지 캐시 리프레시
       if (appState.curSession && names.includes(appState.curSession.name)) {
-        imageService.refreshBatch(appState.curSession);
+        await imageService.refreshBatch(appState.curSession);
+        // 변환된 PNG→AVIF 경로의 이미지 캐시 무효화 및 썸네일 즉시 갱신
+        pngFilesToConvert.forEach((pngPath) => {
+          const avifPath = pngPath.replace(/\.png$/i, '.avif');
+          imageService.invalidateCache(avifPath).catch(() => {});
+        });
       }
 
       appState.pushMessage(
