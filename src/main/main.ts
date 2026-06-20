@@ -286,6 +286,52 @@ ipcMain.handle('read-data-file', async (event, arg) => {
   return await readFileAsDataURL(APP_DIR + '/' + arg);
 });
 
+function extractPNGCommentExif(pngBuffer: Buffer): Buffer | null {
+  if (pngBuffer.length < 8) return null;
+  if (pngBuffer[0] !== 0x89 || pngBuffer[1] !== 0x50 ||
+      pngBuffer[2] !== 0x4E || pngBuffer[3] !== 0x47) return null;
+
+  let offset = 8;
+  while (offset + 12 <= pngBuffer.length) {
+    const length = pngBuffer.readUInt32BE(offset);
+    const type = pngBuffer.toString('ascii', offset + 4, offset + 8);
+
+    if (type === 'tEXt' || type === 'iTXt') {
+      const dataStart = offset + 8;
+      const chunkData = pngBuffer.slice(dataStart, dataStart + length);
+      const nullIdx = chunkData.indexOf(0);
+      if (nullIdx !== -1) {
+        const keyword = chunkData.toString('latin1', 0, nullIdx);
+        if (keyword === 'Comment') {
+          const commentText = chunkData.toString('latin1', nullIdx + 1);
+          const header = Buffer.from('UNICODE\0', 'ascii');
+          const commentLE = Buffer.from(commentText, 'utf16le');
+          const userCommentData = Buffer.concat([header, commentLE]);
+          const dataLen = userCommentData.length;
+
+          const exifBuf = Buffer.alloc(26 + dataLen);
+          let pos = 0;
+          exifBuf.write('II', pos, 'ascii'); pos += 2;
+          exifBuf.writeUInt16LE(0x002A, pos); pos += 2;
+          exifBuf.writeUInt32LE(8, pos); pos += 4;
+          exifBuf.writeUInt16LE(1, pos); pos += 2;
+          exifBuf.writeUInt16LE(0x9286, pos); pos += 2;
+          exifBuf.writeUInt16LE(7, pos); pos += 2;
+          exifBuf.writeUInt32LE(dataLen, pos); pos += 4;
+          exifBuf.writeUInt32LE(26, pos); pos += 4;
+          exifBuf.writeUInt32LE(0, pos); pos += 4;
+          userCommentData.copy(exifBuf, pos);
+
+          return exifBuf;
+        }
+      }
+    }
+
+    offset += 12 + length;
+  }
+  return null;
+}
+
 ipcMain.handle('write-data-file', async (event, filename, data) => {
   const binaryData = Buffer.from(data, 'base64');
   const dir = path.dirname(APP_DIR + '/' + filename);
@@ -296,29 +342,19 @@ ipcMain.handle('write-data-file', async (event, filename, data) => {
 
   if (filename.toLowerCase().endsWith('.avif')) {
     try {
-      let pngMeta = null;
-      try {
-        pngMeta = await exiftool.read(tmpFile);
-      } catch (e: any) {
-        console.error('Could not read metadata from temp file:', e.message);
-      }
+      const commentExif = extractPNGCommentExif(binaryData);
 
-      await sharp(tmpFile)
-        .withMetadata()
+      let sharpInstance = sharp(tmpFile).withMetadata();
+      if (commentExif) {
+        sharpInstance = sharpInstance.withMetadata({ exif: commentExif });
+      }
+      await sharpInstance
         .avif({
           quality: config.avifQuality ?? 75,
           effort: 2,
         })
         .toFile(finalPath);
       await fs.unlink(tmpFile);
-
-      if (pngMeta) {
-        try {
-          await exiftool.write(finalPath, pngMeta);
-        } catch (e: any) {
-          console.error('Could not write metadata to AVIF:', e.message);
-        }
-      }
     } catch (e: any) {
       console.error('AVIF conversion failed, falling back to PNG:', e.message);
       const pngPath = finalPath.replace(/\.avif$/i, '.png');
@@ -336,28 +372,24 @@ ipcMain.handle('convert-png-to-avif', async (event, pngPath) => {
   const fullAvifPath = fullPngPath.replace(/\.png$/i, '.avif');
   if (!fullPngPath.toLowerCase().endsWith('.png')) return false;
   try {
-    let pngMeta = null;
+    let commentExif: Buffer | null = null;
     try {
-      pngMeta = await exiftool.read(fullPngPath);
+      const pngBuffer = await fs.readFile(fullPngPath);
+      commentExif = extractPNGCommentExif(pngBuffer);
     } catch (e: any) {
-      console.error('Could not read metadata from PNG:', e.message);
+      console.error('Could not read PNG for metadata:', e.message);
     }
 
-    await sharp(fullPngPath)
-      .withMetadata()
+    let sharpInstance = sharp(fullPngPath).withMetadata();
+    if (commentExif) {
+      sharpInstance = sharpInstance.withMetadata({ exif: commentExif });
+    }
+    await sharpInstance
       .avif({
         quality: config.avifQuality ?? 75,
         effort: 2,
       })
       .toFile(fullAvifPath);
-
-    if (pngMeta) {
-      try {
-        await exiftool.write(fullAvifPath, pngMeta);
-      } catch (e: any) {
-        console.error('Could not write metadata to AVIF:', e.message);
-      }
-    }
 
     await fs.unlink(fullPngPath);
     return true;
@@ -709,12 +741,13 @@ ipcMain.handle(
       const dir = path.dirname(outputPath);
       await fs.mkdir(dir, { recursive: true });
 
-      let inputMeta = null;
-      if (optimize === ImageOptimizeMethod.AVIF) {
+      let commentExif: Buffer | null = null;
+      if (optimize === ImageOptimizeMethod.AVIF && inputPath.toLowerCase().endsWith('.png')) {
         try {
-          inputMeta = await exiftool.read(inputPath);
+          const pngBuffer = await fs.readFile(inputPath);
+          commentExif = extractPNGCommentExif(pngBuffer);
         } catch (e: any) {
-          console.error('Could not read metadata for resize:', e.message);
+          console.error('Could not read PNG metadata for resize:', e.message);
         }
       }
 
@@ -734,20 +767,15 @@ ipcMain.handle(
         });
       }
       if (optimize === ImageOptimizeMethod.AVIF) {
+        if (commentExif) {
+          instance = instance.withMetadata({ exif: commentExif });
+        }
         instance = instance.avif({
           quality: 50,
           effort: 4,
         });
       }
       await instance.toFile(outputPath);
-
-      if (inputMeta) {
-        try {
-          await exiftool.write(outputPath, inputMeta);
-        } catch (e: any) {
-          console.error('Could not write metadata to resized AVIF:', e.message);
-        }
-      }
     } catch (e: any) {
       console.error('resize-image error:', e);
       throw new Error('이미지 리사이즈 실패: ' + (e.message || e));
