@@ -75,6 +75,8 @@ function getMimeType(filePath: any) {
       return 'image/jpeg';
     case '.png':
       return 'image/png';
+    case '.avif':
+      return 'image/avif';
     case '.gif':
       return 'image/gif';
     case '.pdf':
@@ -274,6 +276,12 @@ ipcMain.handle('copy-file', async (event, src, dest) => {
   await fs.copyFile(APP_DIR + '/' + src, APP_DIR + '/' + dest);
 });
 
+ipcMain.handle('copy-file-to-absolute', async (event, srcRelative, destAbsolute) => {
+  const dir = path.dirname(destAbsolute);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.copyFile(APP_DIR + '/' + srcRelative, destAbsolute);
+});
+
 ipcMain.handle('read-data-file', async (event, arg) => {
   return await readFileAsDataURL(APP_DIR + '/' + arg);
 });
@@ -282,9 +290,50 @@ ipcMain.handle('write-data-file', async (event, filename, data) => {
   const binaryData = Buffer.from(data, 'base64');
   const dir = path.dirname(APP_DIR + '/' + filename);
   await fs.mkdir(dir, { recursive: true });
+  const finalPath = APP_DIR + '/' + filename;
   const tmpFile = APP_DIR + '/' + uuidv4();
   await fs.writeFile(tmpFile, binaryData);
-  await fs.rename(tmpFile, APP_DIR + '/' + filename, { recursive: true });
+
+  if (filename.toLowerCase().endsWith('.avif')) {
+    try {
+      await sharp(tmpFile)
+        .withMetadata()
+        .avif({
+          quality: config.avifQuality ?? 75,
+          effort: 2,
+        })
+        .toFile(finalPath);
+      await fs.unlink(tmpFile);
+    } catch (e: any) {
+      console.error('AVIF conversion failed, falling back to PNG:', e.message);
+      const pngPath = finalPath.replace(/\.avif$/i, '.png');
+      try {
+        await fs.rename(tmpFile, pngPath);
+      } catch (_) {}
+    }
+  } else {
+    await fs.rename(tmpFile, finalPath, { recursive: true });
+  }
+});
+
+ipcMain.handle('convert-png-to-avif', async (event, pngPath) => {
+  const fullPngPath = APP_DIR + '/' + pngPath;
+  const fullAvifPath = fullPngPath.replace(/\.png$/i, '.avif');
+  if (!fullPngPath.toLowerCase().endsWith('.png')) return false;
+  try {
+    await sharp(fullPngPath)
+      .withMetadata()
+      .avif({
+        quality: config.avifQuality ?? 75,
+        effort: 2,
+      })
+      .toFile(fullAvifPath);
+    await fs.unlink(fullPngPath);
+    return true;
+  } catch (e: any) {
+    console.error(`Failed to convert ${pngPath} to AVIF:`, e.message);
+    return false;
+  }
 });
 
 ipcMain.handle('write-data-file-absolute', async (event, absolutePath, data) => {
@@ -314,18 +363,70 @@ ipcMain.handle('rename-file', async (event, oldfile, newfile) => {
   return await fs.rename(oldPath, newPath);
 });
 
+async function safeRemove(dirPath: string, retries = 10, delay = 100) {
+  if (!(await fsExtra.pathExists(dirPath))) return;
+  for (let i = 0; i < retries; i++) {
+    try {
+      await fsExtra.remove(dirPath);
+      return;
+    } catch (err: any) {
+      if (err.code === 'ENOENT') return;
+      if (i === retries - 1) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 ipcMain.handle('rename-dir', async (event, oldfile, newfile) => {
   const platform = os.platform();
+  const oldPath = APP_DIR + '/' + oldfile;
+  const newPath = APP_DIR + '/' + newfile;
+
+  if (!(await fsExtra.pathExists(oldPath))) {
+    return;
+  }
+
+  const normOldPath = path.normalize(oldPath);
+  // Release watcher handles to prevent EPERM
+  for (const [dir, handle] of dirWatchHandles.entries()) {
+    if (dir === normOldPath || dir.startsWith(normOldPath + path.sep)) {
+      await handle.close();
+      dirWatchHandles.delete(dir);
+    }
+  }
+  for (const curPath of watchHandles.keys()) {
+    if (curPath.startsWith(normOldPath + path.sep)) {
+      watchHandles.delete(curPath);
+    }
+  }
 
   if (platform === 'win32') {
-    // What the fuck windows
-    const newDir = APP_DIR + '/' + newfile;
-    await fs.mkdir(path.dirname(newDir), { recursive: true });
-    await fsExtra.copy(APP_DIR + '/' + oldfile, newDir);
-    await fsExtra.rmdir(APP_DIR + '/' + oldfile, { recursive: true });
+    await fs.mkdir(path.dirname(newPath), { recursive: true });
+    for (let i = 0; i < 10; i++) {
+      try {
+        await fs.rename(oldPath, newPath);
+        return;
+      } catch (e: any) {
+        if (e.code === 'ENOENT') {
+          return;
+        }
+        if (i === 9) {
+          await fsExtra.copy(oldPath, newPath);
+          await safeRemove(oldPath);
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+    }
   } else {
-    await fs.mkdir(path.dirname(APP_DIR + '/' + newfile), { recursive: true });
-    return await fs.rename(APP_DIR + '/' + oldfile, APP_DIR + '/' + newfile);
+    await fs.mkdir(path.dirname(newPath), { recursive: true });
+    try {
+      await fs.rename(oldPath, newPath);
+    } catch (e: any) {
+      if (e.code !== 'ENOENT') {
+        throw e;
+      }
+    }
   }
 });
 
@@ -334,7 +435,35 @@ ipcMain.handle('delete-file', async (event, filename) => {
 });
 
 ipcMain.handle('delete-dir', async (event, filename) => {
-  return await fs.rmdir(APP_DIR + '/' + filename, { recursive: true });
+  const dirPath = APP_DIR + '/' + filename;
+  if (!(await fsExtra.pathExists(dirPath))) {
+    return;
+  }
+  const normDirPath = path.normalize(dirPath);
+  // Release watcher handles to prevent EPERM
+  for (const [dir, handle] of dirWatchHandles.entries()) {
+    if (dir === normDirPath || dir.startsWith(normDirPath + path.sep)) {
+      await handle.close();
+      dirWatchHandles.delete(dir);
+    }
+  }
+  for (const curPath of watchHandles.keys()) {
+    if (curPath.startsWith(normDirPath + path.sep)) {
+      watchHandles.delete(curPath);
+    }
+  }
+
+  if (os.platform() === 'win32') {
+    return await safeRemove(dirPath);
+  } else {
+    try {
+      return await fs.rmdir(dirPath, { recursive: true });
+    } catch (e: any) {
+      if (e.code !== 'ENOENT') {
+        throw e;
+      }
+    }
+  }
 });
 
 ipcMain.handle('trash-file', async (event, filename) => {
@@ -1198,7 +1327,7 @@ async function initFolder() {
   }
 }
 
-init();
+const initPromise = init();
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -1230,7 +1359,8 @@ if (!gotTheLock) {
 
   app
     .whenReady()
-    .then(() => {
+    .then(async () => {
+      await initPromise;
       createWindow();
       app.on('activate', () => {
         // On macOS it's common to re-create a window in the app when the

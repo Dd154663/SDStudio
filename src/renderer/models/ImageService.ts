@@ -556,7 +556,7 @@ export class ImageService extends EventTarget {
     }
     const fileSet: any = {};
     let files = await backend.listFiles(this.getOutputDir(session, scene));
-    files = files.filter((x: string) => x.endsWith('.png'));
+    files = files.filter((x: string) => x.endsWith('.png') || x.endsWith('.avif'));
     files.sort(naturalSort);
 
     // 방어 (refreshBatch 전용): 기존 imageMap에 항목이 있었는데 파일시스템에서

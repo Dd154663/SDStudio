@@ -252,8 +252,9 @@ class GenerateImageTaskHandler implements TaskHandler {
     const config = await backend.getConfig();
     let prompt = lowerPromptNode(job.prompt!);
     console.log('lowered prompt: ' + prompt);
+    const ext = config.autoConvertAvif ? '.avif' : '.png';
     const outputFilePath =
-      task.params.outputPath + '/' + Date.now().toString() + '.png';
+      task.params.outputPath + '/' + Date.now().toString() + ext;
     if (prompt === '') {
       prompt = '1girl';
     }
@@ -598,8 +599,10 @@ class RemoveBgTaskHandler implements TaskHandler {
   }
 
   async handleTask(task: Task, run: TaskQueueRun) {
+    const config = await backend.getConfig();
+    const ext = config.autoConvertAvif ? '.avif' : '.png';
     const outputFilePath =
-      task.params.outputPath + '/' + Date.now().toString() + '.png';
+      task.params.outputPath + '/' + Date.now().toString() + ext;
     const job = task.params.job as AugmentJob;
     await localAIService.removeBg(job.image!, outputFilePath);
     if (task.params.onComplete) task.params.onComplete(outputFilePath);
@@ -653,8 +656,10 @@ class AugmentTaskHandler implements TaskHandler {
   }
 
   async handleTask(task: Task, run: TaskQueueRun) {
+    const config = await backend.getConfig();
+    const ext = config.autoConvertAvif ? '.avif' : '.png';
     const outputFilePath =
-      task.params.outputPath + '/' + Date.now().toString() + '.png';
+      task.params.outputPath + '/' + Date.now().toString() + ext;
     const job = task.params.job as AugmentJob;
     let prompt = lowerPromptNode(job.prompt!);
     const params: ImageAugmentInput = {

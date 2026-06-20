@@ -99,4 +99,7 @@ export abstract class Backend {
     _title: string,
     _text: string,
   ): Promise<void> {}
+
+  abstract convertPngToAvif(pngPath: string): Promise<boolean>;
+  abstract copyFileToAbsolute(srcRelative: string, destAbsolute: string): Promise<void>;
 }

@@ -19,7 +19,7 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
   const [players, setPlayers] = useState<string[]>([]);
   const lock = useRef(false);
   const [finalRank, setFinalRank] = useState(-1);
-    const [showCheatsheet, setShowCheatsheet] = useState(true);
+  const showCheatsheet = appState.showTournamentCheatsheet;
 
   const nextMatchRef = useRef<() => void>(() => {});
   const resetRanksRef = useRef<() => void>(() => {});
@@ -129,7 +129,7 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
         !e.shiftKey
       ) {
         e.preventDefault();
-        setShowCheatsheet((prev) => !prev);
+        appState.showTournamentCheatsheet = !appState.showTournamentCheatsheet;
         return;
       }
 
@@ -201,7 +201,7 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
           scene.game = await gameService.createGame(path);
         }
         let files = await backend.listFiles(path);
-        files = files.filter((f: string) => f.endsWith('.png'));
+        files = files.filter((f: string) => f.endsWith('.png') || f.endsWith('.avif'));
         if (scene.game!.length !== files.length) {
           appState.pushDialog({
             type: 'yes-only',
@@ -323,7 +323,9 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
         <div className="flex-1" />
         <button
           className="text-default opacity-50 hover:opacity-100 transition-opacity cursor-pointer flex items-center gap-1"
-          onClick={() => setShowCheatsheet((prev) => !prev)}
+          onClick={() => {
+            appState.showTournamentCheatsheet = !appState.showTournamentCheatsheet;
+          }}
           title="단축키 도움말 (H)"
         >
           <FaQuestion size={14} />
@@ -456,7 +458,9 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
       {showCheatsheet && (
         <ShortcutCheatsheet
           scope="tournament"
-          onClose={() => setShowCheatsheet(false)}
+          onClose={() => {
+            appState.showTournamentCheatsheet = false;
+          }}
         />
       )}
     </div>
