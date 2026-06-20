@@ -75,6 +75,8 @@ function getMimeType(filePath: any) {
       return 'image/jpeg';
     case '.png':
       return 'image/png';
+    case '.avif':
+      return 'image/avif';
     case '.gif':
       return 'image/gif';
     case '.pdf':
@@ -274,6 +276,12 @@ ipcMain.handle('copy-file', async (event, src, dest) => {
   await fs.copyFile(APP_DIR + '/' + src, APP_DIR + '/' + dest);
 });
 
+ipcMain.handle('copy-file-to-absolute', async (event, srcRelative, destAbsolute) => {
+  const dir = path.dirname(destAbsolute);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.copyFile(APP_DIR + '/' + srcRelative, destAbsolute);
+});
+
 ipcMain.handle('read-data-file', async (event, arg) => {
   return await readFileAsDataURL(APP_DIR + '/' + arg);
 });
@@ -282,9 +290,50 @@ ipcMain.handle('write-data-file', async (event, filename, data) => {
   const binaryData = Buffer.from(data, 'base64');
   const dir = path.dirname(APP_DIR + '/' + filename);
   await fs.mkdir(dir, { recursive: true });
+  const finalPath = APP_DIR + '/' + filename;
   const tmpFile = APP_DIR + '/' + uuidv4();
   await fs.writeFile(tmpFile, binaryData);
-  await fs.rename(tmpFile, APP_DIR + '/' + filename, { recursive: true });
+
+  if (filename.toLowerCase().endsWith('.avif')) {
+    try {
+      await sharp(tmpFile)
+        .withMetadata()
+        .avif({
+          quality: config.avifQuality ?? 75,
+          effort: 2,
+        })
+        .toFile(finalPath);
+      await fs.unlink(tmpFile);
+    } catch (e: any) {
+      console.error('AVIF conversion failed, falling back to PNG:', e.message);
+      const pngPath = finalPath.replace(/\.avif$/i, '.png');
+      try {
+        await fs.rename(tmpFile, pngPath);
+      } catch (_) {}
+    }
+  } else {
+    await fs.rename(tmpFile, finalPath, { recursive: true });
+  }
+});
+
+ipcMain.handle('convert-png-to-avif', async (event, pngPath) => {
+  const fullPngPath = APP_DIR + '/' + pngPath;
+  const fullAvifPath = fullPngPath.replace(/\.png$/i, '.avif');
+  if (!fullPngPath.toLowerCase().endsWith('.png')) return false;
+  try {
+    await sharp(fullPngPath)
+      .withMetadata()
+      .avif({
+        quality: config.avifQuality ?? 75,
+        effort: 2,
+      })
+      .toFile(fullAvifPath);
+    await fs.unlink(fullPngPath);
+    return true;
+  } catch (e: any) {
+    console.error(`Failed to convert ${pngPath} to AVIF:`, e.message);
+    return false;
+  }
 });
 
 ipcMain.handle('write-data-file-absolute', async (event, absolutePath, data) => {

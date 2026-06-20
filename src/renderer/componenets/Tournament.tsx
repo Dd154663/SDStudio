@@ -201,7 +201,7 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
           scene.game = await gameService.createGame(path);
         }
         let files = await backend.listFiles(path);
-        files = files.filter((f: string) => f.endsWith('.png'));
+        files = files.filter((f: string) => f.endsWith('.png') || f.endsWith('.avif'));
         if (scene.game!.length !== files.length) {
           appState.pushDialog({
             type: 'yes-only',

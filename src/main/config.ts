@@ -48,4 +48,8 @@ export interface Config {
   trueDark?: boolean;
   // 아티스트 태깅의 WD 태거 모델 선택 (기본 wd-swinv2)
   wdTaggerModel?: 'wd-swinv2' | 'wd-eva02';
+  // 생성 이미지 자동 AVIF 변환 (PNG → AVIF, 용량 80~90% 감소)
+  autoConvertAvif?: boolean;
+  avifQuality?: number;
+  skipAvifConfirm?: boolean;
 }

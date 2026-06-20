@@ -19,6 +19,8 @@ import {
   FaHdd,
   FaFileArchive,
   FaCopy,
+  FaCompressArrowsAlt,
+  FaRecycle,
 } from 'react-icons/fa';
 import { sessionService, imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
@@ -26,6 +28,7 @@ import Tooltip from './Tooltip';
 import MobileColorPicker from './MobileColorPicker';
 import { pushRecentProject } from './ProjectBrowser';
 import StorageManageModal from './StorageManageModal';
+import ProjectTrashModal from './ProjectTrashModal';
 
 const naturalCmp = (a: string, b: string) =>
   a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
@@ -218,6 +221,9 @@ const ProjectDrawer = observer(() => {
   const customColorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 저장 공간 관리 모달
   const [storageOpen, setStorageOpen] = useState(false);
+  // 프로젝트 휴지통 관리 모달
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashProjectName, setTrashProjectName] = useState('');
   // 선택 모드(다중 선택 → 폴더 일괄 이동)
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -599,6 +605,7 @@ const ProjectDrawer = observer(() => {
         { text: '🎨 색상 변경', value: 'color' },
         { text: '✏️ 이름 편집', value: 'rename' },
         { text: '🗑️ 폴더 삭제', value: 'delete' },
+        { text: '🗜️ 모든 PNG를 AVIF로 일괄 변환', value: 'convert-avif' },
         { text: '➕ 이 폴더에 새 프로젝트', value: 'add' },
         { text: '📂 이 폴더에 서브폴더', value: 'subfolder' },
       ],
@@ -609,6 +616,7 @@ const ProjectDrawer = observer(() => {
     else if (v === 'color') setColorPickerFor((p) => (p === f ? null : f));
     else if (v === 'rename') startRename(f);
     else if (v === 'delete') deleteFolderConfirm(f);
+    else if (v === 'convert-avif') appState.convertFolderToAvif(f);
     else if (v === 'add') createProject(f);
     else if (v === 'subfolder') createFolder(f);
   };
@@ -1361,6 +1369,18 @@ const ProjectDrawer = observer(() => {
           />
         </div>
       )}
+      {trashOpen && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <ProjectTrashModal
+            isOpen={trashOpen}
+            projectName={trashProjectName}
+            onClose={() => {
+              setTrashOpen(false);
+              setTrashProjectName('');
+            }}
+          />
+        </div>
+      )}
       {toolbar &&
         createPortal(
           toolbar.type === 'folder' ? (
@@ -1414,6 +1434,17 @@ const ProjectDrawer = observer(() => {
                   className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <FaPen size={15} />
+                </button>
+              </Tooltip>
+              <Tooltip content="모든 PNG를 AVIF로 일괄 변환">
+                <button
+                  onClick={() => {
+                    appState.convertFolderToAvif(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <FaCompressArrowsAlt size={15} />
                 </button>
               </Tooltip>
               <Tooltip content="폴더 삭제">
@@ -1488,6 +1519,18 @@ const ProjectDrawer = observer(() => {
                   className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <FaPen size={15} />
+                </button>
+              </Tooltip>
+              <Tooltip content="휴지통 관리">
+                <button
+                  onClick={() => {
+                    setTrashProjectName(toolbar.name);
+                    setTrashOpen(true);
+                    setToolbar(null);
+                  }}
+                  className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <FaRecycle size={15} />
                 </button>
               </Tooltip>
               <Tooltip content="프로젝트 삭제">

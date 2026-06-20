@@ -137,8 +137,10 @@ const ImageEditTab = ({
 
 /* ── 탭 3: 이미지 및 데이터 저장경로 ── */
 const StorageTab = ({
-  saveLocation, selectFolder, clearImageCache,
+  saveLocation, selectFolder, clearImageCache, emptyProjectTrash,
   refreshImage, setRefreshImage,
+  autoConvertAvif, setAutoConvertAvif,
+  avifQuality, setAvifQuality,
 }: any) => (
   <div className="space-y-4">
     <div>
@@ -154,7 +156,12 @@ const StorageTab = ({
     <hr className="border-gray-200 dark:border-slate-600" />
     <button className="w-full back-red py-2 rounded hover:brightness-95 active:brightness-90"
       onClick={clearImageCache}>
-      이미지 캐시 초기화
+      이미지 캐시 초기화 (fastcache 폴더 정리)
+    </button>
+    <hr className="border-gray-200 dark:border-slate-600" />
+    <button className="w-full back-red py-2 rounded hover:brightness-95 active:brightness-90"
+      onClick={emptyProjectTrash}>
+      현재 프로젝트 휴지통 비우기 (.trash 폴더 정리)
     </button>
     <hr className="border-gray-200 dark:border-slate-600" />
     <div className="flex items-center gap-2">
@@ -162,6 +169,23 @@ const StorageTab = ({
         onChange={(e) => setRefreshImage(e.target.checked)} />
       <label htmlFor="cfgRefresh" className="text-sm gray-label">이미지 폴더 직접 편집 감지</label>
     </div>
+    <hr className="border-gray-200 dark:border-slate-600" />
+    <div className="flex items-center gap-2">
+      <input type="checkbox" id="cfgAvif" checked={autoConvertAvif}
+        onChange={(e) => setAutoConvertAvif(e.target.checked)} />
+      <label htmlFor="cfgAvif" className="text-sm gray-label">
+        생성 이미지 AVIF 자동 변환 (용량 80~90% 감소)
+      </label>
+    </div>
+    {autoConvertAvif && (
+      <div className="ml-6 flex items-center gap-2">
+        <label className="text-xs gray-label">품질:</label>
+        <input type="range" min="30" max="100" value={avifQuality}
+          onChange={(e) => setAvifQuality(parseInt(e.target.value))}
+          className="flex-1" />
+        <span className="text-xs gray-label w-8">{avifQuality}</span>
+      </div>
+    )}
     <hr className="border-gray-200 dark:border-slate-600" />
     <div>
       <label className="block text-sm font-semibold gray-label mb-1">이미지 복구 (실험적 기능)</label>
@@ -686,6 +710,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [exportConcurrency, setExportConcurrency] = useState(isMobile ? 2 : 4);
   const [useLocalBgRemoval, setUseLocalBgRemoval] = useState(false);
   const [refreshImage, setRefreshImage] = useState(false);
+  const [autoConvertAvif, setAutoConvertAvif] = useState(false);
+  const [avifQuality, setAvifQuality] = useState(75);
   const [ready, setReady] = useState(false);
   const [quality, setQuality] = useState('');
   const [progress, setProgress] = useState(0);
@@ -711,6 +737,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setTrueDark(config.trueDark ?? false);
       setExportConcurrency(config.exportConcurrency ?? (isMobile ? 2 : 4));
       setSaveLocation(config.saveLocation ?? '');
+      setAutoConvertAvif(config.autoConvertAvif ?? false);
+      setAvifQuality(config.avifQuality ?? 75);
     })();
     const checkReady = () => setReady(localAIService.ready);
     const onProgress = (e: any) => setProgress(e.detail.percent);
@@ -783,14 +811,42 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const clearImageCache = async () => {
     if (!curSession) return;
     appState.pushMessage('이미지 캐시 초기화 시작');
-    for (const scene of Object.values(curSession.scenes)) {
+    
+    // 1. 활성 메인 씬 & 인페인트 씬의 fastcache 삭제
+    const allActiveScenes = [
+      ...curSession.getScenes('scene'),
+      ...curSession.getScenes('inpaint'),
+    ];
+    for (const scene of allActiveScenes) {
       try {
         await backend.deleteDir(imageService.getImageDir(curSession, scene) + '/fastcache');
       } catch (e) {}
     }
+
+    // 2. 삭제된 메인 씬 & 인페인트 씬의 fastcache 삭제 (outs/project/.trash 및 inpaints/project/.trash)
+    for (const baseDir of ['outs', 'inpaints']) {
+      const sceneTrashParent = `${baseDir}/${curSession.name}/.trash`;
+      try {
+        if (await backend.existFile(sceneTrashParent)) {
+          const deletedSceneDirs = await backend.listFiles(sceneTrashParent);
+          for (const sceneName of deletedSceneDirs) {
+            if (sceneName.startsWith('.') || sceneName === '.gitkeep') continue;
+            try {
+              await backend.deleteDir(`${sceneTrashParent}/${sceneName}/fastcache`);
+            } catch (e) {}
+          }
+        }
+      } catch (e) {}
+    }
+
     imageService.cache.cache.clear();
     await imageService.refreshBatch(curSession);
     appState.pushDialog({ type: 'yes-only', text: '이미지 캐시 초기화 완료' });
+  };
+
+  const emptyProjectTrash = async () => {
+    if (!curSession) return;
+    await appState.emptyProjectImageTrashWithConfirm();
   };
 
   const selectFolder = async () => {
@@ -821,6 +877,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       legacyProjectMode: legacyProjectMode,
       exportConcurrency: exportConcurrency,
       trueDark: trueDark,
+      autoConvertAvif: autoConvertAvif,
+      avifQuality: avifQuality,
     };
     await backend.setConfig(config);
     if (old.useCUDA !== useGPU) localAIService.modelChanged();
@@ -850,7 +908,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 1:
         return <ImageEditTab {...{ imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 2:
-        return <StorageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage }} />;
+        return <StorageTab {...{ saveLocation, selectFolder, clearImageCache, emptyProjectTrash, refreshImage, setRefreshImage, autoConvertAvif, setAutoConvertAvif, avifQuality, setAvifQuality }} />;
       case 3:
         return <OtherTab {...{ whiteMode, setWhiteMode, trueDark, setTrueDark, delayTime, setDelayTime, classicSceneCard, setClassicSceneCard, legacyProjectMode, setLegacyProjectMode, fullWordAc, setFullWordAc, exportConcurrency, setExportConcurrency }} />;
       case 4:
