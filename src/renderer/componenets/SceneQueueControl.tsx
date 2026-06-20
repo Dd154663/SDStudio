@@ -867,9 +867,16 @@ const QueueControl = observer(
   ({ type, className, showPannel, filterFunc, onClose }: QueueControlProps) => {
     const curSession = appState.curSession!;
     const [_, rerender] = useState<{}>({});
-    const [editingScene, setEditingScene] = useState<GenericScene | undefined>(
+    const [editingScene, _setEditingScene] = useState<GenericScene | undefined>(
       undefined,
     );
+    const [editingSceneTab, setEditingSceneTab] = useState<number | undefined>(
+      undefined,
+    );
+    const setEditingScene = (scene: GenericScene | undefined, tabIndex?: number) => {
+      _setEditingScene(scene);
+      setEditingSceneTab(tabIndex);
+    };
     const [inpaintEditScene, setInpaintEditScene] = useState<
       InpaintScene | undefined
     >(undefined);
@@ -907,6 +914,21 @@ const QueueControl = observer(
     useEffect(() => {
       imageService.refreshBatch(curSession!);
     }, [curSession]);
+
+    useEffect(() => {
+      const handleOpenEditor = (e: Event) => {
+        const { scene: reqScene, tabIndex } = (e as CustomEvent).detail || {};
+        if (reqScene && reqScene.type === type) {
+          if (gridContainerRef.current && gridContainerRef.current.offsetParent !== null) {
+            setEditingScene(reqScene, tabIndex);
+          }
+        }
+      };
+      sessionService.addEventListener('open-scene-editor', handleOpenEditor);
+      return () => {
+        sessionService.removeEventListener('open-scene-editor', handleOpenEditor);
+      };
+    }, [type]);
 
     const addAllToQueue = async () => {
       try {
@@ -1636,6 +1658,7 @@ const QueueControl = observer(
               >
                 <SceneEditor
                   scene={editingScene as Scene}
+                  initialTab={editingSceneTab}
                   onClosed={() => {
                     setEditingScene(undefined);
                   }}
