@@ -32,6 +32,8 @@ const IMAGE_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;    // 3 days
 const SCENE_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;   // 14 days
 const PROJECT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;  // 30 days
 
+const PROJECT_DATA_DIRS = ['outs', 'inpaints', 'vibes', 'inpaint_masks', 'inpaint_orgs'];
+
 // --- Service class ---
 
 export class TrashService extends EventTarget {
@@ -690,6 +692,21 @@ export class TrashService extends EventTarget {
     this.ensureLoaded();
     this.data.projects[projectName] = { deletedAt: Date.now() };
     await this.saveTrash();
+
+    for (const dir of PROJECT_DATA_DIRS) {
+      const src = dir + '/' + projectName;
+      const dest = dir + '/.trash/' + projectName;
+      try {
+        await backend.writeFile(dir + '/.trash/.gitkeep', '');
+      } catch (_) {}
+      try {
+        await backend.renameDir(src, dest);
+      } catch (e: any) {
+        if (e.code !== 'ENOENT' && !(e.message || '').includes('ENOENT')) {
+          console.error(`프로젝트 디렉토리 휴지통 이동 실패 (${src}):`, e);
+        }
+      }
+    }
   }
 
   async getDeletedProjects(): Promise<{name: string, deletedAt: number}[]> {
@@ -712,6 +729,24 @@ export class TrashService extends EventTarget {
 
   async restoreProject(name: string): Promise<void> {
     this.ensureLoaded();
+
+    // 먼저 .trash 에서 데이터 디렉토리를 원래 위치로 복원
+    for (const dir of PROJECT_DATA_DIRS) {
+      const trashPath = dir + '/.trash/' + name;
+      const origPath = dir + '/' + name;
+      try {
+        if (await backend.existFile(trashPath)) {
+          if (await backend.existFile(origPath)) {
+            console.warn(`Restore conflict: ${origPath} already exists, skipping dir restore`);
+          } else {
+            await backend.renameDir(trashPath, origPath);
+          }
+        }
+      } catch (e) {
+        console.error(`디렉토리 복원 실패 (${trashPath}):`, e);
+      }
+    }
+
     const deletedMap = await this.scanProjectFiles('.deleted');
     const activeMap = await this.scanProjectFiles('.json');
     const deletedPath = deletedMap.get(name);
@@ -789,9 +824,12 @@ export class TrashService extends EventTarget {
     }
 
     if (safeToDeleteDirs) {
-      for (const dir of ['outs', 'inpaints', 'vibes', 'inpaint_masks', 'inpaint_orgs']) {
+      for (const dir of PROJECT_DATA_DIRS) {
         try {
           await backend.deleteDir(dir + '/' + name);
+        } catch (e) {}
+        try {
+          await backend.deleteDir(dir + '/.trash/' + name);
         } catch (e) {}
       }
     }
@@ -834,6 +872,67 @@ export class TrashService extends EventTarget {
     }
     if (names.length > 0) {
       await this.saveTrash();
+    }
+  }
+
+  // ===== Project trash dir management =====
+
+  async getTrashedProjectsWithSize(): Promise<{name: string; deletedAt: number; size: number}[]> {
+    this.ensureLoaded();
+    const deleted = await this.getDeletedProjects();
+    const result: {name: string; deletedAt: number; size: number}[] = [];
+
+    for (const p of deleted) {
+      let totalSize = 0;
+      for (const dir of PROJECT_DATA_DIRS) {
+        const trashDir = dir + '/.trash/' + p.name;
+        try {
+          if (await backend.existFile(trashDir)) {
+            totalSize += await this.calcDirSizeRecursive(trashDir);
+          }
+        } catch (e) {}
+      }
+      result.push({ name: p.name, deletedAt: p.deletedAt, size: totalSize });
+    }
+    return result;
+  }
+
+  private async calcDirSizeRecursive(dirPath: string): Promise<number> {
+    let total = 0;
+    try {
+      const stats = await backend.listFilesWithStats(dirPath);
+      for (const s of stats) {
+        total += s.size || 0;
+      }
+      const entries = await backend.listFiles(dirPath);
+      for (const entry of entries) {
+        if (entry.startsWith('.') || entry === 'fastcache') continue;
+        const subPath = dirPath + '/' + entry;
+        try {
+          const subStats = await backend.listFilesWithStats(subPath);
+          if (subStats.length > 0 || (await backend.listFiles(subPath)).length > 0) {
+            total += await this.calcDirSizeRecursive(subPath);
+          }
+        } catch (e) {}
+      }
+    } catch (e) {}
+    return total;
+  }
+
+  async emptyProjectTrashDirs(name: string): Promise<void> {
+    this.ensureLoaded();
+    for (const dir of PROJECT_DATA_DIRS) {
+      try {
+        await backend.deleteDir(dir + '/.trash/' + name);
+      } catch (e) {}
+    }
+  }
+
+  async emptyAllProjectTrashDirs(): Promise<void> {
+    this.ensureLoaded();
+    const deleted = await this.getDeletedProjects();
+    for (const p of deleted) {
+      await this.emptyProjectTrashDirs(p.name);
     }
   }
 
