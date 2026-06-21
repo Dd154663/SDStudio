@@ -1,63 +1,78 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { observer } from 'mobx-react-lite';
 import { appState, ExportPreset } from '../models/AppService';
-import { isMobile } from '../models';
+import { backend, isMobile } from '../models';
 import ModalOverlay from './ModalOverlay';
-import { DropdownSelect } from './UtilComponents';
-import { FaPlus, FaTrash } from 'react-icons/fa';
+import { DropdownSelect, Option } from './UtilComponents';
+import { FaPlus, FaTrash, FaFolderOpen } from 'react-icons/fa';
 
-const menuOptions = [
-  { value: 'fav' as const, label: '즐겨찾기 이미지만' },
-  { value: 'all' as const, label: '모든 이미지 전부' },
+type MenuType = 'fav' | 'all';
+type PatternType = 'folder.project.scene' | 'project.scene';
+type OutputModeType = 'tar' | 'files';
+type OptType = 'original' | 'lossy' | 'lossless' | 'avif';
+
+const menuOptions: Option<MenuType>[] = [
+  { value: 'fav', label: '즐겨찾기 이미지만' },
+  { value: 'all', label: '모든 이미지 전부' },
 ];
 
-const formatOptions = [
-  { value: 'normal' as const, label: '(씬이름).(번호).png' },
-  { value: 'prefix' as const, label: '(캐릭터).(씬이름).(번호)' },
-  { value: 'prefix_ask' as const, label: '(캐릭터).(씬이름).(번호) - 이름 직접 입력' },
+const patternOptions: Option<PatternType>[] = [
+  { value: 'folder.project.scene', label: '(folder명).(프로젝트).(씬).(번호)' },
+  { value: 'project.scene', label: '(프로젝트).(씬).(번호)' },
 ];
 
-const getOptOptions = () => {
-  const opts = [
-    { value: 'original' as const, label: '원본' },
-    { value: 'lossy' as const, label: '저손실 webp 최적화' },
+const outputModeOptions: Option<OutputModeType>[] = [
+  { value: 'tar', label: '.tar 압축파일' },
+  { value: 'files', label: '개별 이미지 파일' },
+];
+
+const getOptOptions = (): Option<OptType>[] => {
+  const opts: Option<OptType>[] = [
+    { value: 'original', label: '원본' },
+    { value: 'lossy', label: '저손실 webp 최적화' },
   ];
   if (!isMobile) {
-    opts.push({ value: 'lossless' as const, label: '무손실 webp 최적화' });
+    opts.push({ value: 'lossless', label: '무손실 webp 최적화' });
   }
-  opts.push({ value: 'avif' as const, label: 'AVIF 최적화' });
+  opts.push({ value: 'avif', label: 'AVIF 최적화' });
   return opts;
 };
 
-// 편집 폼 상태 — 드롭다운은 미선택(undefined) 상태로 시작
+// 드롭다운은 미선택(undefined) 상태로 시작
 interface FormState {
   name: string;
-  menu: 'fav' | 'all' | undefined;
-  format: 'normal' | 'prefix' | 'prefix_ask' | undefined;
-  prefix: string;
-  opt: 'original' | 'lossy' | 'lossless' | 'avif' | undefined;
+  menu: MenuType | undefined;
+  filenamePattern: PatternType | undefined;
+  outputMode: OutputModeType | undefined;
+  targetFolder: string;
+  useProjectRelativePath: boolean;
+  opt: OptType | undefined;
   imageSize: number;
-  separator: string;
+  isDefault: boolean;
 }
 
 const emptyForm = (): FormState => ({
   name: '',
   menu: undefined,
-  format: undefined,
-  prefix: '',
+  filenamePattern: undefined,
+  outputMode: undefined,
+  targetFolder: '',
+  useProjectRelativePath: true,
   opt: undefined,
   imageSize: 1024,
-  separator: '',
+  isDefault: false,
 });
 
 const presetToForm = (p: ExportPreset): FormState => ({
   name: p.name,
   menu: p.menu,
-  format: p.format,
-  prefix: p.prefix,
+  filenamePattern: p.filenamePattern,
+  outputMode: p.outputMode,
+  targetFolder: p.targetFolder,
+  useProjectRelativePath: p.useProjectRelativePath,
   opt: p.opt,
   imageSize: p.imageSize,
-  separator: p.separator,
+  isDefault: p.isDefault ?? false,
 });
 
 const ExportPresetManager = observer(() => {
@@ -79,8 +94,6 @@ const ExportPresetManager = observer(() => {
 
   const onClose = () => {
     appState.closeExportPresetManager();
-    const type = appState.lastExportType || 'scene';
-    setTimeout(() => appState.exportPackage(type), 100);
   };
 
   const selectPreset = (idx: number) => {
@@ -96,8 +109,8 @@ const ExportPresetManager = observer(() => {
   const isFormValid = (): boolean => {
     if (!form.name.trim()) return false;
     if (form.menu === undefined) return false;
-    if (form.format === undefined) return false;
-    if (form.format === 'prefix' && !form.prefix.trim()) return false;
+    if (form.filenamePattern === undefined) return false;
+    if (form.outputMode === undefined) return false;
     if (form.opt === undefined) return false;
     if (form.opt !== 'original' && (!form.imageSize || form.imageSize <= 0)) return false;
     return true;
@@ -108,18 +121,25 @@ const ExportPresetManager = observer(() => {
     const preset: ExportPreset = {
       name: form.name.trim(),
       menu: form.menu!,
-      format: form.format!,
-      prefix: form.prefix,
+      filenamePattern: form.filenamePattern!,
+      outputMode: form.outputMode!,
+      targetFolder: form.targetFolder,
+      useProjectRelativePath: form.useProjectRelativePath,
       opt: form.opt!,
       imageSize: form.imageSize,
-      separator: form.separator,
+      isDefault: form.isDefault,
     };
-    const updated = [...presets];
+    let updated = [...presets];
+    // 기본 프리셋은 하나만 유지
+    if (preset.isDefault) {
+      updated = updated.map((p) => ({ ...p, isDefault: false }));
+    }
     if (editingIndex !== null) {
       updated[editingIndex] = preset;
     } else {
       updated.push(preset);
     }
+    // 첫 번째 프리셋이고 기본 지정이 없으면 자동으로 기본으로 간주(quickExport fallback)
     setPresets(updated);
     appState.saveExportPresets(updated);
     if (editingIndex === null) {
@@ -140,8 +160,19 @@ const ExportPresetManager = observer(() => {
     }
   };
 
+  const selectTargetFolder = async () => {
+    const folder = await backend.selectDir();
+    if (folder) {
+      setForm({ ...form, targetFolder: folder });
+    }
+  };
+
+  const clearTargetFolder = () => {
+    setForm({ ...form, targetFolder: '' });
+  };
+
   return (
-    <ModalOverlay isOpen={true} onClose={onClose} title="내보내기 프리셋 관리" width="max-w-lg">
+    <ModalOverlay isOpen={true} onClose={onClose} title="export 프리셋 관리" width="max-w-lg">
       <div className="flex flex-col gap-4">
         {/* 새 프리셋 버튼 */}
         <button
@@ -166,7 +197,7 @@ const ExportPresetManager = observer(() => {
                 }`}
               >
                 <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                  {p.name}
+                  {p.name} {p.isDefault && <span className="text-sky-500 text-xs">(기본)</span>}
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); deletePreset(i); }}
@@ -187,7 +218,7 @@ const ExportPresetManager = observer(() => {
 
           {/* 프리셋 이름 */}
           <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-24">이름 *</label>
+            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-28">이름 *</label>
             <input
               type="text"
               value={form.name}
@@ -197,52 +228,107 @@ const ExportPresetManager = observer(() => {
             />
           </div>
 
+          {/* 기본 프리셋 */}
+          <div className="flex items-center gap-3">
+            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-28">기본 프리셋</label>
+            <input
+              type="checkbox"
+              checked={form.isDefault}
+              onChange={(e) => setForm({ ...form, isDefault: e.target.checked })}
+              id="cfgDefaultPreset"
+            />
+            <label htmlFor="cfgDefaultPreset" className="text-sm text-gray-600 dark:text-gray-400">
+              빠른 export 버튼에 사용
+            </label>
+          </div>
+
           {/* 이미지 범위 */}
           <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-24">이미지 범위 *</label>
+            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-28">이미지 범위 *</label>
             <div className="flex-1">
               <DropdownSelect
-                selectedOption={form.menu !== undefined ? menuOptions.find((o) => o.value === form.menu) : undefined}
+                selectedOption={form.menu}
                 options={menuOptions}
-                onSelect={(o: any) => setForm({ ...form, menu: o.value })}
+                onSelect={(o) => setForm({ ...form, menu: o.value })}
               />
             </div>
           </div>
 
           {/* 파일명 형식 */}
           <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-24">파일명 형식 *</label>
+            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-28">파일명 형식 *</label>
             <div className="flex-1">
               <DropdownSelect
-                selectedOption={form.format !== undefined ? formatOptions.find((o) => o.value === form.format) : undefined}
-                options={formatOptions}
-                onSelect={(o: any) => setForm({ ...form, format: o.value })}
+                selectedOption={form.filenamePattern}
+                options={patternOptions}
+                onSelect={(o) => setForm({ ...form, filenamePattern: o.value })}
               />
             </div>
           </div>
 
-          {/* 캐릭터 이름 (format=prefix 시) */}
-          {form.format === 'prefix' && (
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-24">캐릭터 이름 *</label>
-              <input
-                type="text"
-                value={form.prefix}
-                onChange={(e) => setForm({ ...form, prefix: e.target.value })}
-                placeholder="캐릭터 이름"
-                className="flex-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+          {/* 출력 형태 */}
+          <div className="flex items-center gap-3">
+            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-28">출력 형태 *</label>
+            <div className="flex-1">
+              <DropdownSelect
+                selectedOption={form.outputMode}
+                options={outputModeOptions}
+                onSelect={(o) => setForm({ ...form, outputMode: o.value })}
               />
             </div>
-          )}
+          </div>
+
+          {/* 목표 folder */}
+          <div className="flex items-center gap-3">
+            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-28">목표 folder</label>
+            <div className="flex-1 flex gap-2">
+              <input
+                type="text"
+                value={form.targetFolder}
+                onChange={(e) => setForm({ ...form, targetFolder: e.target.value })}
+                placeholder="비워두면 전역 기본 folder 사용"
+                className="flex-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              />
+              <button
+                onClick={selectTargetFolder}
+                className="px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-slate-600 text-gray-600 dark:text-gray-300"
+                title="folder 선택"
+              >
+                <FaFolderOpen size={14} />
+              </button>
+              {form.targetFolder && (
+                <button
+                  onClick={clearTargetFolder}
+                  className="px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-slate-600 text-xs text-gray-600 dark:text-gray-300"
+                >
+                  지우기
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 상대 경로 사용 */}
+          <div className="flex items-center gap-3">
+            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-28">상대 경로</label>
+            <input
+              type="checkbox"
+              checked={form.useProjectRelativePath}
+              onChange={(e) => setForm({ ...form, useProjectRelativePath: e.target.checked })}
+              id="cfgRelativePath"
+            />
+            <label htmlFor="cfgRelativePath" className="text-sm text-gray-600 dark:text-gray-400">
+              프로젝트 상위 folder 구조로 export
+            </label>
+          </div>
 
           {/* 최적화 방법 */}
           <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-24">최적화 *</label>
+            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-28">최적화 *</label>
             <div className="flex-1">
               <DropdownSelect
-                selectedOption={form.opt !== undefined ? optOptions.find((o) => o.value === form.opt) : undefined}
+                selectedOption={form.opt}
                 options={optOptions}
-                onSelect={(o: any) => setForm({ ...form, opt: o.value })}
+                onSelect={(o) => setForm({ ...form, opt: o.value })}
               />
             </div>
           </div>
@@ -250,7 +336,7 @@ const ExportPresetManager = observer(() => {
           {/* 이미지 크기 (opt≠original 시) */}
           {form.opt !== undefined && form.opt !== 'original' && (
             <div className="flex items-center gap-3">
-              <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-24">이미지 크기 *</label>
+              <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-28">이미지 크기 *</label>
               <input
                 type="number"
                 value={form.imageSize}
@@ -261,18 +347,6 @@ const ExportPresetManager = observer(() => {
               <span className="text-xs text-gray-400">px</span>
             </div>
           )}
-
-          {/* 구분자 — 텍스트 입력, 빈 칸 허용 */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-24">파일명 구분자</label>
-            <input
-              type="text"
-              value={form.separator}
-              onChange={(e) => setForm({ ...form, separator: e.target.value })}
-              placeholder="비워두면 구분자 없음"
-              className="flex-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
-            />
-          </div>
 
           {/* 저장 버튼 */}
           <div className="flex justify-end pt-2">

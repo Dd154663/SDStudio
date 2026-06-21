@@ -1952,6 +1952,13 @@ const QueueControl = observer(
                 내보내기
               </button>
               <button
+                className="round-button back-sky"
+                onClick={() => appState.quickExportPackage(type)}
+                title="quick export"
+              >
+                ⚡ quick export
+              </button>
+              <button
                 className="round-button back-gray"
                 onClick={() => {
                   appState.openBatchProcessMenu(type, setSceneSelector);

@@ -141,6 +141,7 @@ const StorageTab = ({
   refreshImage, setRefreshImage,
   autoConvertAvif, setAutoConvertAvif,
   avifQuality, setAvifQuality,
+  defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder,
 }: any) => (
   <div className="space-y-4">
     <div>
@@ -153,6 +154,25 @@ const StorageTab = ({
       onClick={selectFolder}>
       이미지 및 데이터 저장 위치 변경
     </button>
+    <hr className="border-gray-200 dark:border-slate-600" />
+    <div>
+      <label className="block text-sm font-semibold gray-label mb-1">기본 export folder</label>
+      <div className="text-sm text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-slate-700 rounded px-3 py-2 break-all">
+        {defaultExportFolder || '미설정 (프리셋별 폴더를 사용하세요)'}
+      </div>
+    </div>
+    <div className="flex gap-2">
+      <button className="flex-1 back-green py-2 rounded hover:brightness-95 active:brightness-90"
+        onClick={selectDefaultExportFolder}>
+        기본 export folder 지정
+      </button>
+      {defaultExportFolder && (
+        <button className="px-3 back-gray py-2 rounded hover:brightness-95 active:brightness-90"
+          onClick={() => setDefaultExportFolder('')}>
+          지우기
+        </button>
+      )}
+    </div>
     <hr className="border-gray-200 dark:border-slate-600" />
     <button className="w-full back-red py-2 rounded hover:brightness-95 active:brightness-90"
       onClick={clearImageCache}>
@@ -720,6 +740,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [password, setPassword] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const [saveLocation, setSaveLocation] = useState('');
+  const [defaultExportFolder, setDefaultExportFolder] = useState('');
   const mobileMode = isMobile;
 
   useEffect(() => {
@@ -737,6 +758,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setTrueDark(config.trueDark ?? false);
       setExportConcurrency(config.exportConcurrency ?? (isMobile ? 2 : 4));
       setSaveLocation(config.saveLocation ?? '');
+      setDefaultExportFolder(config.defaultExportFolder ?? '');
       setAutoConvertAvif(config.autoConvertAvif ?? false);
       setAvifQuality(config.avifQuality ?? 75);
     })();
@@ -859,6 +881,12 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.pushDialog({ type: 'yes-only', text: '저장 위치 지정 완료. 프로그램을 껐다 켜주세요' });
   };
 
+  const selectDefaultExportFolder = async () => {
+    const folder = await backend.selectDir();
+    if (!folder) return;
+    setDefaultExportFolder(folder);
+  };
+
   const stageTexts = ['모델 다운로드 중...', '모델 가중치 다운로드 중...', '모델 압축 푸는 중...'];
 
   const handleSave = async () => {
@@ -877,6 +905,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       legacyProjectMode: legacyProjectMode,
       exportConcurrency: exportConcurrency,
       trueDark: trueDark,
+      defaultExportFolder: defaultExportFolder || undefined,
       autoConvertAvif: autoConvertAvif,
       avifQuality: avifQuality,
     };
@@ -908,7 +937,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 1:
         return <ImageEditTab {...{ imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 2:
-        return <StorageTab {...{ saveLocation, selectFolder, clearImageCache, emptyProjectTrash, refreshImage, setRefreshImage, autoConvertAvif, setAutoConvertAvif, avifQuality, setAvifQuality }} />;
+        return <StorageTab {...{ saveLocation, selectFolder, clearImageCache, emptyProjectTrash, refreshImage, setRefreshImage, autoConvertAvif, setAutoConvertAvif, avifQuality, setAvifQuality, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder }} />;
       case 3:
         return <OtherTab {...{ whiteMode, setWhiteMode, trueDark, setTrueDark, delayTime, setDelayTime, classicSceneCard, setClassicSceneCard, legacyProjectMode, setLegacyProjectMode, fullWordAc, setFullWordAc, exportConcurrency, setExportConcurrency }} />;
       case 4:

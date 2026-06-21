@@ -148,7 +148,8 @@ ipcMain.handle('open-web-page', async (event, url) => {
 });
 
 ipcMain.handle('show-file', async (event, arg) => {
-  shell.showItemInFolder(path.join(APP_DIR, arg));
+  const filePath = path.isAbsolute(arg) ? arg : path.join(APP_DIR, arg);
+  shell.showItemInFolder(filePath);
 });
 
 const AdmZip = require('adm-zip');

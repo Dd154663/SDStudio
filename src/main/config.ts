@@ -45,6 +45,8 @@ export interface Config {
   classicSceneCard?: boolean;
   legacyProjectMode?: boolean;
   exportConcurrency?: number;
+  /** 이미지 export 시 기본 목표 폴더 (프리셋에 지정되지 않았을 때 사용) */
+  defaultExportFolder?: string;
   trueDark?: boolean;
   // 아티스트 태깅의 WD 태거 모델 선택 (기본 wd-swinv2)
   wdTaggerModel?: 'wd-swinv2' | 'wd-eva02';

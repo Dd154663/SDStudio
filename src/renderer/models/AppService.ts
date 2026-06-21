@@ -23,7 +23,6 @@ import {
   createImageWithText,
   embedJSONInPNG,
   importPreset,
-  importPresets,
   normalizePresetJson,
   readJSONFromPNG,
 } from './SessionService';
@@ -52,20 +51,20 @@ import { Resolution, resolutionMap } from '../backends/imageGen';
 import { ProgressDialog } from '../componenets/ProgressWindow';
 import { migratePieceLibrary } from './legacy';
 import {
+  buildExportFileName,
+  ExportPresetV2,
+  migrateExportPreset,
+  resolveExportTargetFolder,
+  sanitizeFilenamePart,
+} from './exportPresetUtils';
+import type { FilenamePattern, OutputMode } from './exportPresetUtils';
+import {
   oneTimeFlowMap,
   oneTimeFlows,
   queueRemoveBg,
 } from './workflows/OneTimeFlows';
 
-export interface ExportPreset {
-  name: string;
-  menu: 'fav' | 'all';
-  format: 'normal' | 'prefix' | 'prefix_ask';
-  prefix: string;
-  opt: 'original' | 'lossy' | 'lossless' | 'avif';
-  imageSize: number;
-  separator: string;
-}
+export type ExportPreset = ExportPresetV2;
 
 export interface SceneSelectorItem {
   type: 'scene' | 'inpaint';
@@ -2064,12 +2063,11 @@ export class AppState {
   private async buildSessionImageEntries(
     session: Session,
     type: 'scene' | 'inpaint',
-    prefix: string,
     fav: boolean,
     opt: string,
     imageSize: number,
-    separator: string,
-    charsToReplace: Set<string>,
+    filenamePattern: FilenamePattern,
+    folderName: string,
   ): Promise<{ path: string; name: string }[]> {
     let paths: { path: string; name: string }[] = [];
     await imageService.refreshBatch(session);
@@ -2091,23 +2089,6 @@ export class AppState {
       } else {
         for (const cand of cands) images.push(cand);
       }
-      const characterPreset = this.getAppliedCharacterPreset();
-      const presetPrefix = characterPreset?.filenamePrefix || '';
-      const presetSuffix = characterPreset?.filenameSuffix || '';
-      let sceneName = scene.name;
-      let finalPrefix = prefix;
-      let finalPresetPrefix = presetPrefix ? presetPrefix + separator : '';
-      let finalPresetSuffix = presetSuffix ? separator + presetSuffix : '';
-      if (charsToReplace.size > 0) {
-        const escaped = Array.from(charsToReplace)
-          .map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-          .join('|');
-        const regex = new RegExp(`(${escaped})+`, 'g');
-        sceneName = sceneName.replace(regex, separator);
-        finalPrefix = finalPrefix.replace(regex, separator);
-        finalPresetPrefix = finalPresetPrefix.replace(regex, separator);
-        finalPresetSuffix = finalPresetSuffix.replace(regex, separator);
-      }
       const isMirror =
         scene.type === 'inpaint' &&
         (scene as InpaintScene).workflowType === 'SDMirror';
@@ -2125,16 +2106,21 @@ export class AppState {
             imgPath = tmpPath;
           }
         }
-        const baseName = finalPresetPrefix + finalPrefix + sceneName + finalPresetSuffix;
-        const name =
-          images.length === 1
-            ? baseName + '.png'
-            : baseName + separator + (i + 1).toString() + '.png';
+        const sourceExt = images[i].split('.').pop() || 'png';
+        const ext = opt === 'original' ? sourceExt : opt === 'avif' ? 'avif' : 'webp';
+        const name = buildExportFileName(
+          filenamePattern,
+          folderName,
+          session.name,
+          scene.name,
+          i + 1,
+          ext,
+        );
         paths.push({ path: imgPath, name });
       }
     }
     if (opt !== 'original') {
-      const ext = opt === 'avif' ? '.avif' : '.webp';
+      const targetExt = opt === 'avif' ? '.avif' : '.webp';
       const optimizeMethod =
         opt === 'lossy'
           ? ImageOptimizeMethod.LOSSY
@@ -2164,7 +2150,7 @@ export class AppState {
             const task = queue.shift();
             if (!task) break;
             const { item, idx } = task;
-            const outputPath = 'tmp/' + v4() + ext;
+            const outputPath = 'tmp/' + v4() + targetExt;
             try {
               await backend.resizeImage({
                 inputPath: item.path,
@@ -2175,7 +2161,7 @@ export class AppState {
               });
               results[idx] = {
                 path: outputPath,
-                name: item.name.substring(0, item.name.length - 4) + ext,
+                name: item.name.replace(/\.[^.]+$/, '') + targetExt,
               };
             } catch (e: any) {
               failCount++;
@@ -2212,22 +2198,6 @@ export class AppState {
     const opts = await this.askFolderImageOptions();
     if (!opts) return;
 
-    // 폴더 내 모든 프로젝트의 씬 이름을 모아 특수문자 변환 여부를 한 번 질의
-    const sceneNames: string[] = [];
-    for (const name of names) {
-      try {
-        const session = await sessionService.get(name);
-        if (session) {
-          for (const s of session.getScenes('scene')) sceneNames.push(s.name);
-        }
-      } catch (e) {}
-    }
-    const charsToReplace = await this.detectSpecialCharsFromNames(
-      sceneNames,
-      opts.separator,
-    );
-    if (charsToReplace === undefined) return; // 취소
-
     if (zipService.isZipping) {
       appState.pushMessage('이미 내보내기 작업이 진행중입니다.');
       return;
@@ -2246,12 +2216,11 @@ export class AppState {
           const entries = await this.buildSessionImageEntries(
             session,
             'scene',
-            opts.prefix,
             opts.fav,
             opts.opt,
             opts.imageSize,
-            opts.separator,
-            charsToReplace,
+            'project.scene',
+            '',
           );
           for (const e of entries) {
             allEntries.push({ path: e.path, name: name + '/' + e.name });
@@ -2266,7 +2235,7 @@ export class AppState {
       return;
     }
     appState.exportProgress = {
-      text: '이미지 압축파일 생성중..',
+      text: '이미지 압축파일 생성중....',
       done: 0,
       total: 1,
     };
@@ -2289,7 +2258,7 @@ export class AppState {
   // 이미지 내보내기 옵션을 한 번 입력 받는다 (프리셋 또는 직접 설정).
   // 특수문자 치환은 폴더 일괄에서는 생략(빈 Set 사용).
   private async askFolderImageOptions(): Promise<
-    { prefix: string; fav: boolean; opt: string; imageSize: number; separator: string } | undefined
+    { fav: boolean; opt: string; imageSize: number } | undefined
   > {
     const presets = this.loadExportPresets();
     const presetItems: { text: string; value: string }[] = presets.map(
@@ -2310,23 +2279,10 @@ export class AppState {
     if (choice.startsWith('preset_')) {
       const ep = presets[parseInt(choice.split('_')[1])];
       if (!ep) return undefined;
-      let epPrefix = '';
-      if (ep.format === 'prefix' && ep.prefix) {
-        epPrefix = ep.prefix + ep.separator;
-      } else if (ep.format === 'prefix_ask') {
-        const inputName = await appState.pushDialogAsync({
-          type: 'input-confirm',
-          text: '캐릭터 이름을 입력해주세요',
-        });
-        if (!inputName) return undefined;
-        epPrefix = inputName + ep.separator;
-      }
       return {
-        prefix: epPrefix,
         fav: ep.menu === 'fav',
         opt: ep.opt,
         imageSize: ep.imageSize,
-        separator: ep.separator,
       };
     }
     // 직접 설정
@@ -2339,15 +2295,6 @@ export class AppState {
       ],
     });
     if (!menu) return undefined;
-    const format = await appState.pushDialogAsync({
-      type: 'select',
-      text: '파일 이름 형식을 선택해주세요',
-      items: [
-        { text: '(씬이름).(이미지 번호).png', value: 'normal' },
-        { text: '(캐릭터 이름).(씬이름).(이미지 번호)', value: 'prefix' },
-      ],
-    });
-    if (!format) return undefined;
     const optItems = [
       { text: '원본', value: 'original' },
       { text: '저손실 webp 최적화 (에셋용 권장)', value: 'lossy' },
@@ -2370,22 +2317,7 @@ export class AppState {
       imageSize = parseInt(inputImageSize);
       if (isNaN(imageSize)) return undefined;
     }
-    const separatorInput = await appState.pushDialogAsync({
-      type: 'input-confirm',
-      text: '파일명 구분자를 입력해주세요 (기본값: .)',
-    });
-    if (separatorInput === undefined) return undefined;
-    const separator = separatorInput || '.';
-    let prefix = '';
-    if (format === 'prefix') {
-      const inputPrefix = await appState.pushDialogAsync({
-        type: 'input-confirm',
-        text: '캐릭터 이름을 입력해주세요',
-      });
-      if (!inputPrefix) return undefined;
-      prefix = inputPrefix + separator;
-    }
-    return { prefix, fav: menu === 'fav', opt, imageSize, separator };
+    return { fav: menu === 'fav', opt, imageSize };
   }
 
   // ── 내보내기 프리셋 헬퍼 ──
@@ -2400,6 +2332,7 @@ export class AppState {
   async initExportPresets(): Promise<void> {
     if (this.exportPresetsLoaded) return;
     let presets: ExportPreset[] | null = null;
+    let shouldWriteBack = false;
     try {
       const raw = await backend.readFile('exportPresets.json');
       presets = JSON.parse(raw);
@@ -2409,16 +2342,22 @@ export class AppState {
         const ls = localStorage.getItem('sdstudio-export-presets');
         if (ls) {
           presets = JSON.parse(ls);
-          // 파일로 이관. localStorage 원본은 롤백 안전망으로 남겨둔다(삭제하지 않음).
-          await backend.writeFile(
-            'exportPresets.json',
-            JSON.stringify(presets),
-          );
-          console.log(
-            '[Migration] 내보내기 프리셋 localStorage → exportPresets.json 이관 완료',
-          );
+          shouldWriteBack = true;
         }
       } catch {}
+    }
+    // 구형 프리셋 형식을 새 형식으로 마이그레이션
+    if (presets) {
+      const migrated = presets.map((p) => migrateExportPreset(p));
+      const hasLegacy = migrated.some((p, i) => p !== presets![i]);
+      if (hasLegacy) {
+        presets = migrated;
+        shouldWriteBack = true;
+        console.log('[Migration] 구형 export 프리셋 → 신형 프리셋 마이그레이션 완료');
+      }
+    }
+    if (shouldWriteBack && presets) {
+      await backend.writeFile('exportPresets.json', JSON.stringify(presets));
     }
     // 로드 도중 saveExportPresets가 먼저 일어났다면(loaded=true) 덮어쓰지 않는다.
     if (!this.exportPresetsLoaded) {
@@ -2429,10 +2368,10 @@ export class AppState {
 
   loadExportPresets(): ExportPreset[] {
     if (this.exportPresetsCache !== null) return this.exportPresetsCache;
-    // 아직 디스크 로드 전 — localStorage로 즉시 대응(동기)해 회귀를 막는다.
     try {
       const raw = localStorage.getItem('sdstudio-export-presets');
-      return raw ? JSON.parse(raw) : [];
+      if (!raw) return [];
+      return JSON.parse(raw).map((p: any) => migrateExportPreset(p));
     } catch { return []; }
   }
 
@@ -2447,13 +2386,13 @@ export class AppState {
   }
 
   private formatExportPresetLabel(p: ExportPreset): string {
-    const parts: string[] = [p.name];
     const detail: string[] = [];
     detail.push(p.menu === 'fav' ? '즐겨찾기' : '전체');
-    if (p.format === 'prefix' && p.prefix) detail.push(`캐릭터: ${p.prefix}`);
-    if (p.format === 'prefix_ask') detail.push('캐릭터: 직접 입력');
+    detail.push(p.filenamePattern === 'folder.project.scene' ? 'with folder prefix' : 'project only');
+    detail.push(p.outputMode === 'tar' ? 'tar 압축' : '개별 이미지');
     if (p.opt !== 'original') detail.push(`${p.opt}·${p.imageSize}px`);
     else detail.push('원본');
+    if (p.isDefault) detail.push('기본');
     return `${p.name}  (${detail.join(', ')})`;
   }
 
@@ -2498,180 +2437,116 @@ export class AppState {
     return charsToReplace;
   }
 
-  async exportPackage(type: 'scene' | 'inpaint', selected?: GenericScene[]) {
+  private getDefaultExportPreset(): ExportPreset | undefined {
+    const presets = this.loadExportPresets();
+    return presets.find((p) => p.isDefault) ?? presets[0];
+  }
+
+  async quickExportPackage(type: 'scene' | 'inpaint', selected?: GenericScene[]) {
     this.lastExportType = type;
     this.lastExportSelected = selected;
-    const exportImpl = async (
-      prefix: string,
-      fav: boolean,
-      opt: string,
-      imageSize: number,
-      separator: string,
-      charsToReplace: Set<string>,
-    ) => {
-      let paths: { path: string; name: string }[] = [];
-      await imageService.refreshBatch(this.curSession!);
-      const scenes = selected ?? this.curSession!.getScenes(type);
-      await Promise.allSettled(scenes.map((s) => gameService.refreshList(this.curSession!, s)));
-      for (const scene of scenes) {
-        const cands = gameService.getOutputs(this.curSession!, scene);
-        const imageMap: any = {};
-        cands.forEach((x) => {
-          imageMap[x] = true;
-        });
-        const images = [];
-        if (fav) {
-          if (scene.mains.length) {
-            for (const main of scene.mains) {
-              if (imageMap[main]) images.push(main);
-            }
-          } else {
-            if (cands.length) {
-              images.push(cands[0]);
-            }
-          }
-        } else {
-          for (const cand of cands) {
-            images.push(cand);
-          }
-        }
-        // 캐릭터 프리셋 파일명 옵션 적용
-        const characterPreset = this.getAppliedCharacterPreset();
-        const presetPrefix = characterPreset?.filenamePrefix || '';
-        const presetSuffix = characterPreset?.filenameSuffix || '';
+    const preset = this.getDefaultExportPreset();
+    if (!preset) {
+      appState.pushMessage('먼저 내보내기 프리셋을 설정해주세요.');
+      this.openExportPresetManager();
+      return;
+    }
+    const config = await backend.getConfig();
+    const projectFolder = sessionService.getFolderOf(this.curSession!.name);
+    const targetFolder = resolveExportTargetFolder(preset, projectFolder, config.defaultExportFolder);
+    if (!targetFolder) {
+      appState.pushMessage('내보내기 목표 폴더가 설정되지 않았습니다. 환경설정 또는 프리셋에서 지정해주세요.');
+      return;
+    }
+    await this.executeExportPreset(type, selected, preset, targetFolder);
+  }
 
-        let sceneName = scene.name;
-        let finalPrefix = prefix;
-        let finalPresetPrefix = presetPrefix ? presetPrefix + separator : '';
-        let finalPresetSuffix = presetSuffix ? separator + presetSuffix : '';
-        if (charsToReplace.size > 0) {
-          const escaped = Array.from(charsToReplace).map(
-            (c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-          ).join('|');
-          const regex = new RegExp(`(${escaped})+`, 'g');
-          sceneName = sceneName.replace(regex, separator);
-          finalPrefix = finalPrefix.replace(regex, separator);
-          finalPresetPrefix = finalPresetPrefix.replace(regex, separator);
-          finalPresetSuffix = finalPresetSuffix.replace(regex, separator);
-        }
-        const isMirror = scene.type === 'inpaint' && (scene as InpaintScene).workflowType === 'SDMirror';
-        for (let i = 0; i < images.length; i++) {
-          let imgPath = imageService.getOutputDir(this.curSession!, scene) + '/' + images[i];
-          if (isMirror) {
-            const imgData = await imageService.fetchImage(imgPath);
-            if (imgData) {
-              const cropped = await cropMirrorResultFromDataUri(imgData, (scene as InpaintScene).mirrorCropX);
-              const tmpPath = 'tmp/' + v4() + '.png';
-              await backend.writeDataFile(tmpPath, cropped);
-              imgPath = tmpPath;
-            }
-          }
-          // 파일명: [presetPrefix_][manualPrefix_]sceneName[_presetSuffix][_index].png
-          const baseName = finalPresetPrefix + finalPrefix + sceneName + finalPresetSuffix;
-          const name = images.length === 1
-            ? baseName + '.png'
-            : baseName + separator + (i + 1).toString() + '.png';
-          paths.push({ path: imgPath, name });
-        }
-      }
-      if (opt !== 'original') {
-        const ext = opt === 'avif' ? '.avif' : '.webp';
-        const optimizeMethod = opt === 'lossy'
-          ? ImageOptimizeMethod.LOSSY
-          : opt === 'avif'
-            ? ImageOptimizeMethod.AVIF
-            : ImageOptimizeMethod.LOSSLESS;
-        let done = 0;
-        let failCount = 0;
-        const config = await backend.getConfig();
-        const CONCURRENCY = Math.max(1, Math.min(4, config.exportConcurrency ?? (isMobile ? 2 : 4)));
-        const results: (typeof paths[0] | null)[] = new Array(paths.length).fill(null);
-
-        appState.exportProgress = {
-          text: '이미지 크기 최적화 중..',
-          done: 0,
-          total: paths.length,
-        };
-
-        // 동시 실행 수 제한 병렬 처리
-        const queue = paths.map((item, idx) => ({ item, idx }));
-        const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
-          while (queue.length > 0) {
-            const task = queue.shift();
-            if (!task) break;
-            const { item, idx } = task;
-            const outputPath = 'tmp/' + v4() + ext;
-            try {
-              await backend.resizeImage({
-                inputPath: item.path,
-                outputPath: outputPath,
-                maxHeight: imageSize,
-                maxWidth: imageSize,
-                optimize: optimizeMethod,
-              });
-              results[idx] = {
-                path: outputPath,
-                name: item.name.substring(0, item.name.length - 4) + ext,
-              };
-            } catch (e: any) {
-              failCount++;
-              console.error('이미지 최적화 실패:', item.path, e.message);
-            }
-            done++;
-            appState.exportProgress = {
-              text: '이미지 크기 최적화 중..',
-              done: done,
-              total: paths.length,
-            };
-          }
-        });
-        await Promise.all(workers);
-
-        paths = results.filter((r): r is typeof paths[0] => r !== null);
-        if (failCount > 0) {
-          appState.pushMessage(`${failCount}개 이미지 최적화 실패 (건너뜀)`);
-        }
-        if (paths.length === 0) {
-          appState.pushMessage('최적화 가능한 이미지가 없습니다');
-          appState.exportProgress = undefined;
-          return;
-        }
-      }
-      appState.exportProgress = {
-        text: '이미지 압축파일 생성중..',
-        done: 0,
-        total: 1,
-      };
-      const outFilePath =
-        'exports/' +
-        this.curSession!.name +
-        '_main_images_' +
-        Date.now().toString() +
-        '.tar';
+  private async executeExportPreset(
+    type: 'scene' | 'inpaint',
+    selected: GenericScene[] | undefined,
+    preset: ExportPreset,
+    targetFolder: string,
+  ) {
+    const session = this.curSession!;
+    const projectFolder = sessionService.getFolderOf(session.name);
+    const folderName = projectFolder ? sessionService.folderLeafName(projectFolder) : '';
+    const entries = await this.buildSessionImageEntries(
+      session,
+      type,
+      preset.menu === 'fav',
+      preset.opt,
+      preset.imageSize,
+      preset.filenamePattern,
+      folderName,
+    );
+    if (entries.length === 0) {
+      appState.pushMessage('내보내낼 이미지가 없습니다.');
+      return;
+    }
+    const safeProjectName = sanitizeFilenamePart(session.name);
+    if (preset.outputMode === 'tar') {
+      const tarName = `${safeProjectName}_main_images_${Date.now()}.tar`;
+      const relativeTarPath = `exports/${tarName}`;
       if (zipService.isZipping) {
-        appState.pushDialog({
-          type: 'yes-only',
-          text: '이미 다른 이미지 내보내기가 진행중입니다',
-        });
-        appState.exportProgress = undefined;
+        appState.pushDialog({ type: 'yes-only', text: '이미 다른 이미지 내보내기가 진행중입니다' });
         return;
       }
+      appState.exportProgress = { text: '이미지 압축파일 생성중....', done: 0, total: 1 };
       try {
-        await zipService.zipFiles(paths, outFilePath);
+        await zipService.zipFiles(entries, relativeTarPath);
       } catch (e: any) {
         appState.pushMessage(e.message);
         appState.exportProgress = undefined;
         return;
       }
       appState.exportProgress = undefined;
+      const destAbsolute = `${targetFolder}/${tarName}`;
+      try {
+        await backend.copyFileToAbsolute(relativeTarPath, destAbsolute);
+        await backend.deleteFile(relativeTarPath);
+      } catch (e: any) {
+        appState.pushMessage('내보내기 폴더로 복사 실패: ' + e.message);
+        return;
+      }
       appState.pushMessage('이미지 내보내기가 완료되었습니다');
-      await backend.showFile(outFilePath);
-    };
+      await backend.showFile(destAbsolute);
+    } else {
+      const outputFolderName = `${safeProjectName}_${Date.now()}`;
+      const baseDest = `${targetFolder}/${outputFolderName}`;
+      appState.exportProgress = { text: '이미지 복사 중....', done: 0, total: entries.length };
+      let done = 0;
+      let failCount = 0;
+      for (const item of entries) {
+        try {
+          await backend.copyFileToAbsolute(item.path, `${baseDest}/${item.name}`);
+        } catch (e: any) {
+          failCount++;
+          console.error('이미지 복사 실패:', item.path, e.message);
+        }
+        done++;
+        appState.exportProgress = { text: '이미지 복사 중....', done, total: entries.length };
+      }
+      appState.exportProgress = undefined;
+      if (failCount > 0) {
+        appState.pushMessage(`${failCount}개 이미지 복사 실패 (걸너뜀)`);
+      }
+      if (done === failCount) {
+        appState.pushMessage('내보내낼 이미지가 없습니다.');
+        return;
+      }
+      appState.pushMessage('이미지 내보내기가 완료되었습니다');
+      await backend.showFile(baseDest);
+    }
+  }
 
-    // ── 프리셋 선택 또는 직접 설정 (항상 표시) ──
+  async exportPackage(type: 'scene' | 'inpaint', selected?: GenericScene[]) {
+    this.lastExportType = type;
+    this.lastExportSelected = selected;
+
+    // ── 프리셋 선택 또는 직접 설정 ──
     const presets = this.loadExportPresets();
     const presetItems: { text: string; value: string }[] = presets.map((p: ExportPreset, i: number) => ({
-      text: p.name,
+      text: this.formatExportPresetLabel(p),
       value: `preset_${i}`,
     }));
     presetItems.push({ text: '⚙️ 프리셋 관리', value: '_manage' });
@@ -2689,29 +2564,21 @@ export class AppState {
       return;
     }
 
+    const config = await backend.getConfig();
+    const projectFolder = sessionService.getFolderOf(this.curSession!.name);
+
     if (choice.startsWith('preset_')) {
       const idx = parseInt(choice.split('_')[1]);
       const ep = presets[idx];
       if (!ep) return;
-      const charsToReplace = await this.detectSpecialChars(type, selected, ep.separator);
-      if (charsToReplace === undefined) return;
-      let epPrefix = '';
-      if (ep.format === 'prefix' && ep.prefix) {
-        epPrefix = ep.prefix + ep.separator;
-      } else if (ep.format === 'prefix_ask') {
-        const inputName = await appState.pushDialogAsync({
-          type: 'input-confirm',
-          text: '캐릭터 이름을 입력해주세요',
-        });
-        if (!inputName) return;
-        epPrefix = inputName + ep.separator;
+      const targetFolder = resolveExportTargetFolder(ep, projectFolder, config.defaultExportFolder);
+      if (!targetFolder) {
+        appState.pushMessage('내보내기 목표 폴더가 설정되지 않았습니다. 환경설정 또는 프리셋에서 지정해주세요.');
+        return;
       }
-      await exportImpl(epPrefix, ep.menu === 'fav', ep.opt, ep.imageSize, ep.separator, charsToReplace);
+      await this.executeExportPreset(type, selected, ep, targetFolder);
       return;
     }
-    // '_manual' → 아래 기존 다이얼로그 체인
-
-    // ── 기존 다이얼로그 체인 (직접 설정) ──
     const menu = await appState.pushDialogAsync({
       type: 'select',
       text: '내보낼 이미지를 선택해주세요',
@@ -2721,15 +2588,7 @@ export class AppState {
       ],
     });
     if (!menu) return;
-    const format = await appState.pushDialogAsync({
-      type: 'select',
-      text: '파일 이름 형식을 선택해주세요',
-      items: [
-        { text: '(씬이름).(이미지 번호).png', value: 'normal' },
-        { text: '(캐릭터 이름).(씬이름).(이미지 번호)', value: 'prefix' },
-      ],
-    });
-    if (!format) return;
+
 
     const optItems = [
       { text: '원본', value: 'original' },
@@ -2758,30 +2617,22 @@ export class AppState {
         return;
       }
     }
-    const separatorInput = await appState.pushDialogAsync({
-      type: 'input-confirm',
-      text: '파일명 구분자를 입력해주세요 (기본값: .)',
-    });
-    if (separatorInput === undefined) return;
-    const separator = separatorInput || '.';
-
-    // 특수문자 감지 (공통 헬퍼 사용)
-    // 특수문자 감지 (공통 헬퍼 사용)
-    const charsToReplace = await this.detectSpecialChars(type, selected, separator);
-    if (charsToReplace === undefined) return;
-
-    // 캐릭터 이름 입력 또는 바로 내보내기
-    let prefix = '';
-    if (format === 'prefix') {
-      const inputPrefix = await appState.pushDialogAsync({
-        type: 'input-confirm',
-        text: '캐릭터 이름을 입력해주세요',
-      });
-      if (!inputPrefix) return;
-      prefix = inputPrefix + separator;
+    const tempPreset: ExportPreset = {
+      name: 'manual',
+      menu: menu as 'fav' | 'all',
+      filenamePattern: 'project.scene',
+      outputMode: 'files',
+      targetFolder: '',
+      useProjectRelativePath: false,
+      opt: opt as ExportPreset['opt'],
+      imageSize,
+    };
+    const targetFolder = resolveExportTargetFolder(tempPreset, projectFolder, config.defaultExportFolder);
+    if (!targetFolder) {
+      appState.pushMessage('내보내기 목표 폴더가 설정되지 않았습니다. 환경설정에서 기본 내보내기 폴더를 지정해주세요.');
+      return;
     }
-
-    await exportImpl(prefix, menu === 'fav', opt, imageSize, separator, charsToReplace);
+    await this.executeExportPreset(type, selected, tempPreset, targetFolder);
   }
 
   async exportPreset(session: Session, preset: any) {
