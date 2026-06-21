@@ -678,13 +678,17 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const gridRef = useRef<any>(null);
 
-    const [dragBox, setDragBox] = useState<{
+    type DragBox = {
       x1: number;
       y1: number;
       x2: number;
       y2: number;
       deselect: boolean;
-    } | null>(null);
+    };
+    const [dragBox, setDragBox] = useState<DragBox | null>(null);
+    // 드래그 중 window 리스너가 최신 좌표를 읽을 수 있도록 ref 로도 동기화한다.
+    const dragBoxRef = useRef<DragBox | null>(null);
+    const [isSelecting, setIsSelecting] = useState(false);
     const isDraggingRef = useRef(false);
     const wasDraggingRef = useRef(false);
 
@@ -767,81 +771,104 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
       return () => window.removeEventListener('keydown', handleKey);
     }, [filePaths, scene, isHidden]);
 
+    // clientX/Y 를 컨테이너 기준 좌표로 변환 + 컨테이너 범위로 클램프.
+    // (그리드 밖으로 끌어도 드래그가 유지되며, 박스는 가장자리에 머문다)
+    const toContainerXY = (clientX: number, clientY: number) => {
+      const el = containerRef.current!;
+      const r = el.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(clientX - r.left, r.width)),
+        y: Math.max(0, Math.min(clientY - r.top, r.height)),
+      };
+    };
+
     const handleGridMouseDown = (e: React.MouseEvent) => {
       if (e.button !== 0) return;
-      if ((e.target as HTMLElement).closest('.image-cell')) return;
-      const el = containerRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      setDragBox({
-        x1: e.clientX - r.left,
-        y1: e.clientY - r.top,
-        x2: e.clientX - r.left,
-        y2: e.clientY - r.top,
+      const target = e.target as HTMLElement;
+      if (target.closest('.image-cell')) return;
+      // 스크롤바 위에서는 박스 선택을 시작하지 않는다(스크롤 동작 방해 금지)
+      if (target.closest('.scrollbar-thumb') || target.closest('.scrollbar-track'))
+        return;
+      if (!containerRef.current) return;
+      const { x, y } = toContainerXY(e.clientX, e.clientY);
+      const start: DragBox = {
+        x1: x,
+        y1: y,
+        x2: x,
+        y2: y,
         deselect: e.shiftKey || e.ctrlKey,
-      });
+      };
+      dragBoxRef.current = start;
+      setDragBox(start);
       isDraggingRef.current = false;
       wasDraggingRef.current = false;
+      // 드래그 추적을 window 로 넘긴다(아래 useEffect). 그리드를 벗어나도
+      // 드래그가 끊기지 않고, 실제 mouseup 에서만 종료된다.
+      setIsSelecting(true);
     };
 
-    const handleGridMouseMove = (e: React.MouseEvent) => {
-      if (!dragBox) return;
-      const el = containerRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const dx = Math.abs(e.clientX - (dragBox.x1 + r.left));
-      const dy = Math.abs(e.clientY - (dragBox.y1 + r.top));
-      if (dx > 3 || dy > 3) isDraggingRef.current = true;
-      if (!isDraggingRef.current) return;
-      setDragBox((prev) =>
-        prev
-          ? {
-              ...prev,
-              x2: e.clientX - r.left,
-              y2: e.clientY - r.top,
-            }
-          : null,
-      );
-    };
+    // 박스 선택 진행: window 레벨에서 추적해 프롬프트/스크롤 영역에 닿아도
+    // 드래그가 중도 취소되지 않게 한다.
+    useEffect(() => {
+      if (!isSelecting) return;
 
-    const handleGridMouseUp = () => {
-      if (!dragBox) return;
-      wasDraggingRef.current = isDraggingRef.current;
-      if (isDraggingRef.current) {
-        const left = Math.min(dragBox.x1, dragBox.x2);
-        const right = Math.max(dragBox.x1, dragBox.x2);
-        const top = Math.min(dragBox.y1, dragBox.y2);
-        const bottom = Math.max(dragBox.y1, dragBox.y2);
-        const selected: string[] = [];
+      const onMove = (e: MouseEvent) => {
+        const start = dragBoxRef.current;
         const el = containerRef.current;
-        if (el) {
-          const cr = el.getBoundingClientRect();
-          filePaths.forEach((path, index) => {
-            const cell = document.getElementById(`image-cell-${index}`);
-            if (!cell) return;
-            const cc = cell.getBoundingClientRect();
-            const cx = cc.left - cr.left;
-            const cy = cc.top - cr.top;
-            const cw = cc.width;
-            const ch = cc.height;
-            if (left < cx + cw && right > cx && top < cy + ch && bottom > cy) {
-              selected.push(path);
-            }
-          });
-        }
-        if (selected.length > 0 && onSelectedImagesChange) {
-          onSelectedImagesChange(selected, dragBox.deselect);
-        }
-      }
-      setDragBox(null);
-      isDraggingRef.current = false;
-    };
+        if (!start || !el) return;
+        const r = el.getBoundingClientRect();
+        const dx = Math.abs(e.clientX - (start.x1 + r.left));
+        const dy = Math.abs(e.clientY - (start.y1 + r.top));
+        if (dx > 3 || dy > 3) isDraggingRef.current = true;
+        if (!isDraggingRef.current) return;
+        const { x, y } = toContainerXY(e.clientX, e.clientY);
+        const next: DragBox = { ...start, x2: x, y2: y };
+        dragBoxRef.current = next;
+        setDragBox(next);
+      };
 
-    const handleGridMouseLeave = () => {
-      if (dragBox) {
-        handleGridMouseUp();
-      }
-    };
+      const onUp = () => {
+        wasDraggingRef.current = isDraggingRef.current;
+        const box = dragBoxRef.current;
+        if (isDraggingRef.current && box) {
+          const left = Math.min(box.x1, box.x2);
+          const right = Math.max(box.x1, box.x2);
+          const top = Math.min(box.y1, box.y2);
+          const bottom = Math.max(box.y1, box.y2);
+          const selected: string[] = [];
+          const el = containerRef.current;
+          if (el) {
+            const cr = el.getBoundingClientRect();
+            filePaths.forEach((path, index) => {
+              const cell = document.getElementById(`image-cell-${index}`);
+              if (!cell) return;
+              const cc = cell.getBoundingClientRect();
+              const cx = cc.left - cr.left;
+              const cy = cc.top - cr.top;
+              const cw = cc.width;
+              const ch = cc.height;
+              if (left < cx + cw && right > cx && top < cy + ch && bottom > cy) {
+                selected.push(path);
+              }
+            });
+          }
+          if (selected.length > 0 && onSelectedImagesChange) {
+            onSelectedImagesChange(selected, box.deselect);
+          }
+        }
+        dragBoxRef.current = null;
+        setDragBox(null);
+        isDraggingRef.current = false;
+        setIsSelecting(false);
+      };
+
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+      return () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+    }, [isSelecting, filePaths, onSelectedImagesChange]);
 
     const handleGridClick = (e: React.MouseEvent) => {
       if (wasDraggingRef.current) {
@@ -869,9 +896,6 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
           (isHidden ? 'hidden' : '')
         }
         onMouseDown={handleGridMouseDown}
-        onMouseMove={handleGridMouseMove}
-        onMouseUp={handleGridMouseUp}
-        onMouseLeave={handleGridMouseLeave}
         onClick={handleGridClick}
       >
         <Grid

@@ -885,13 +885,18 @@ const QueueControl = observer(
     const [showSceneSearch, setShowSceneSearch] = useState(false);
     const showCheatsheet = appState.showSceneCheatsheet;
     const sceneSearchRef = useRef<HTMLInputElement>(null);
-    const [dragBox, setDragBox] = useState<{
+    type SceneDragBox = {
       x1: number;
       y1: number;
       x2: number;
       y2: number;
       deselect: boolean;
-    } | null>(null);
+    };
+    const [dragBox, setDragBox] = useState<SceneDragBox | null>(null);
+    // 드래그 중 window 리스너가 최신 좌표를 읽도록 ref 로도 동기화
+    const dragBoxRef = useRef<SceneDragBox | null>(null);
+    const dragStartClientRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+    const [isSelecting, setIsSelecting] = useState(false);
     const isDraggingRef = useRef(false);
     const wasDraggingRef = useRef(false);
 
@@ -1034,98 +1039,108 @@ const QueueControl = observer(
         );
     }, [curSession, type, filterFunc, sceneSearchQuery]);
 
-    const gridScrollRef = useRef({ left: 0, top: 0 });
+
+    // clientX/Y → 그리드 콘텐츠 좌표(스크롤 포함). 뷰포트 범위로 클램프해서
+    // 그리드를 벗어나도 박스가 가장자리에 머물고 드래그가 유지되게 한다.
+    const toGridContentXY = (clientX: number, clientY: number) => {
+      const el = gridContainerRef.current!;
+      const r = el.getBoundingClientRect();
+      const vx = Math.max(0, Math.min(clientX - r.left, r.width));
+      const vy = Math.max(0, Math.min(clientY - r.top, r.height));
+      return { x: vx + el.scrollLeft, y: vy + el.scrollTop };
+    };
 
     const handleGridMouseDown = (e: React.MouseEvent) => {
       if (e.button !== 0) return;
       // 카드 위에서 시작된 드래그는 react-dnd 씬 재정렬로 처리 (네이티브 HTML5 드래그가 mousemove를 중단시킴)
       if (e.target !== e.currentTarget) return;
-      const el = gridContainerRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      gridScrollRef.current = { left: el.scrollLeft, top: el.scrollTop };
-      setDragBox({
-        x1: e.clientX - r.left + el.scrollLeft,
-        y1: e.clientY - r.top + el.scrollTop,
-        x2: e.clientX - r.left + el.scrollLeft,
-        y2: e.clientY - r.top + el.scrollTop,
+      if (!gridContainerRef.current) return;
+      const { x, y } = toGridContentXY(e.clientX, e.clientY);
+      const start: SceneDragBox = {
+        x1: x,
+        y1: y,
+        x2: x,
+        y2: y,
         deselect: e.shiftKey || e.ctrlKey,
-      });
+      };
+      dragBoxRef.current = start;
+      dragStartClientRef.current = { x: e.clientX, y: e.clientY };
+      setDragBox(start);
       isDraggingRef.current = false;
       wasDraggingRef.current = false;
+      // 추적을 window 로 넘긴다(아래 useEffect): 그리드를 벗어나(프롬프트/스플리터/
+      // 스크롤 영역에 닿아도) 드래그가 끊기지 않고 실제 mouseup 에서만 끝난다.
+      setIsSelecting(true);
     };
 
-    const handleGridMouseMove = (e: React.MouseEvent) => {
-      if (!dragBox) return;
-      const el = gridContainerRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const dx = Math.abs(
-        e.clientX - (dragBox.x1 + r.left - gridScrollRef.current.left),
-      );
-      const dy = Math.abs(
-        e.clientY - (dragBox.y1 + r.top - gridScrollRef.current.top),
-      );
-      if (dx > 3 || dy > 3) isDraggingRef.current = true;
-      if (!isDraggingRef.current) return;
-      setDragBox((prev) =>
-        prev
-          ? {
-              ...prev,
-              x2: e.clientX - r.left + el.scrollLeft,
-              y2: e.clientY - r.top + el.scrollTop,
+    // 씬 박스 선택 진행: window 레벨 추적으로 영역 충돌 시 중도 취소 방지
+    useEffect(() => {
+      if (!isSelecting) return;
+
+      const onMove = (e: MouseEvent) => {
+        const start = dragBoxRef.current;
+        if (!start || !gridContainerRef.current) return;
+        const dx = Math.abs(e.clientX - dragStartClientRef.current.x);
+        const dy = Math.abs(e.clientY - dragStartClientRef.current.y);
+        if (dx > 3 || dy > 3) isDraggingRef.current = true;
+        if (!isDraggingRef.current) return;
+        const { x, y } = toGridContentXY(e.clientX, e.clientY);
+        const next: SceneDragBox = { ...start, x2: x, y2: y };
+        dragBoxRef.current = next;
+        setDragBox(next);
+      };
+
+      const onUp = () => {
+        wasDraggingRef.current = isDraggingRef.current;
+        const box = dragBoxRef.current;
+        if (isDraggingRef.current && box) {
+          const left = Math.min(box.x1, box.x2);
+          const right = Math.max(box.x1, box.x2);
+          const top = Math.min(box.y1, box.y2);
+          const bottom = Math.max(box.y1, box.y2);
+          const selected: string[] = [];
+          const scenes = getFilteredScenes();
+          const el = gridContainerRef.current;
+          if (el) {
+            const cr = el.getBoundingClientRect();
+            const sl = el.scrollLeft;
+            const st = el.scrollTop;
+            for (const scene of scenes) {
+              const cell = document.getElementById(
+                `scene-cell-${scene.type}-${scene.name}`,
+              );
+              if (!cell) continue;
+              const cc = cell.getBoundingClientRect();
+              const cx = cc.left - cr.left + sl;
+              const cy = cc.top - cr.top + st;
+              const cw = cc.width;
+              const ch = cc.height;
+              if (left < cx + cw && right > cx && top < cy + ch && bottom > cy) {
+                selected.push(scene.name);
+              }
             }
-          : null,
-      );
-    };
-
-    const handleGridMouseUp = () => {
-      if (!dragBox) return;
-      wasDraggingRef.current = isDraggingRef.current;
-      if (isDraggingRef.current) {
-        const left = Math.min(dragBox.x1, dragBox.x2);
-        const right = Math.max(dragBox.x1, dragBox.x2);
-        const top = Math.min(dragBox.y1, dragBox.y2);
-        const bottom = Math.max(dragBox.y1, dragBox.y2);
-        const selected: string[] = [];
-        const scenes = getFilteredScenes();
-        const el = gridContainerRef.current;
-        if (el) {
-          const cr = el.getBoundingClientRect();
-          const sl = el.scrollLeft;
-          const st = el.scrollTop;
-          for (const scene of scenes) {
-            const cell = document.getElementById(
-              `scene-cell-${scene.type}-${scene.name}`,
-            );
-            if (!cell) continue;
-            const cc = cell.getBoundingClientRect();
-            const cx = cc.left - cr.left + sl;
-            const cy = cc.top - cr.top + st;
-            const cw = cc.width;
-            const ch = cc.height;
-            if (left < cx + cw && right > cx && top < cy + ch && bottom > cy) {
-              selected.push(scene.name);
+          }
+          if (selected.length > 0) {
+            if (box.deselect) {
+              appState.removeScenesFromSelection(selected);
+            } else {
+              appState.addScenesToSelection(selected);
             }
           }
         }
-        if (selected.length > 0) {
-          if (dragBox.deselect) {
-            appState.removeScenesFromSelection(selected);
-          } else {
-            appState.addScenesToSelection(selected);
-          }
-        }
-      }
-      setDragBox(null);
-      isDraggingRef.current = false;
-    };
+        dragBoxRef.current = null;
+        setDragBox(null);
+        isDraggingRef.current = false;
+        setIsSelecting(false);
+      };
 
-    const handleGridMouseLeave = () => {
-      if (dragBox) {
-        handleGridMouseUp();
-      }
-    };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+      return () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+    }, [isSelecting, getFilteredScenes]);
 
     const handleGridClick = (e: React.MouseEvent) => {
       // 드래그 직후 발생하는 click은 무시 (mouseup에서 이미 선택 처리됨)
@@ -2146,9 +2161,6 @@ const QueueControl = observer(
                     : undefined
                 }
                 onMouseDown={handleGridMouseDown}
-                onMouseMove={handleGridMouseMove}
-                onMouseUp={handleGridMouseUp}
-                onMouseLeave={handleGridMouseLeave}
                 onClick={handleGridClick}
               >
                 {dragBox && isDraggingRef.current && (
