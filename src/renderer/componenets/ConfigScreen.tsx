@@ -60,11 +60,11 @@ const LoginTab = ({
     <hr className="border-gray-200 dark:border-slate-600" />
     <div>
       <label className="block text-sm font-semibold gray-label mb-2">
-        액세스 토큰으로 로그인 (구글 연동 계정용)
+        API 토큰으로 로그인 (구글 연동 계정용)
       </label>
       <div className="flex gap-2 mb-2">
         <input className="gray-input block flex-1" type="password"
-          placeholder="액세스 토큰을 붙여넣으세요"
+          placeholder="API 토큰을 붙여넣으세요"
           value={accessToken} onChange={(e) => setAccessToken(e.target.value)} />
       </div>
       <div className="flex items-center">
@@ -74,6 +74,35 @@ const LoginTab = ({
           토큰 로그인
         </button>
       </div>
+    </div>
+    <hr className="border-gray-200 dark:border-slate-600" />
+    {/* 토큰 로그인 권장 가이드 */}
+    <div className="rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/40 p-4 text-sm text-gray-700 dark:text-gray-200">
+      <p className="font-semibold mb-1">💡 토큰 로그인을 권장합니다</p>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 leading-relaxed">
+        NovelAI 측 문제로 이메일/비밀번호 로그인이 실패할 수 있습니다. 더 안정적인 <b>API 토큰</b> 로그인을 권장합니다.
+      </p>
+      <p className="font-medium mb-1">토큰 발급 방법</p>
+      <ol className="list-decimal list-inside space-y-1 mb-3 leading-relaxed text-gray-700 dark:text-gray-200">
+        <li>
+          <a
+            className="text-sky-500 hover:text-sky-400 cursor-pointer underline"
+            onClick={() => backend.openWebPage('https://novelai.net')}
+          >
+            NovelAI 공식 웹사이트
+          </a>
+          에 로그인
+        </li>
+        <li>좌측 사이드바의 톱니바퀴 아이콘 (User Settings) 클릭</li>
+        <li>Account 탭으로 이동</li>
+        <li>"Get Persistent API Token" 버튼 클릭</li>
+        <li>프롬프트가 표시됨. 처음 생성해도 "overwrite" 메시지가 뜰 수 있으며 이는 정상</li>
+        <li>복사 아이콘으로 토큰을 클립보드에 복사</li>
+      </ol>
+      <p className="font-medium mb-1">로그인 방법</p>
+      <ol className="list-decimal list-inside space-y-1 leading-relaxed text-gray-700 dark:text-gray-200">
+        <li>위 "API 토큰으로 로그인" 칸에 복사한 토큰을 붙여넣고 [토큰 로그인] 클릭</li>
+      </ol>
     </div>
   </div>
 );
@@ -807,7 +836,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const loginWithToken = async () => {
     try {
       if (!accessToken.trim()) {
-        appState.pushMessage('액세스 토큰을 입력해주세요.');
+        appState.pushMessage('API 토큰을 입력해주세요.');
         return;
       }
       await loginService.loginWithToken(accessToken.trim());

@@ -112,7 +112,21 @@ export class NovelAiImageGenService implements ImageGenService {
         }),
       });
       if (!reponse.ok) {
-        throw new Error('HTTP error:' + reponse.status);
+        // 서버가 준 실제 사유를 함께 노출한다. NAI 측 오류/점검 등을 사용자가 바로 알 수 있다.
+        // 응답 본문이 JSON이면 message 필드만 뽑아 읽기 쉽게 보여준다.
+        let detail = '';
+        try {
+          const text = await reponse.text();
+          try {
+            detail = JSON.parse(text)?.message || text;
+          } catch (_) {
+            detail = text;
+          }
+        } catch (_) {}
+        if (detail) console.error('NAI 로그인 실패:', reponse.status, detail);
+        throw new Error(
+          'HTTP error:' + reponse.status + (detail ? ' / ' + detail : ''),
+        );
       }
       return await reponse.json();
     } catch (error: any) {
