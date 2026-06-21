@@ -288,6 +288,44 @@ export const SceneCell = observer(
       isInputFocusedLocal,
     ]);
 
+    // 키보드 포커스된 씬의 이미지 넘기기/즐겨찾기.
+    // 부모(SceneQueueControl)가 A/D/F 를 이 이벤트로 디스패치한다. 마우스 호버 셀은
+    // 위의 capture 핸들러가 stopPropagation 으로 선점하므로, 호버가 항상 우선된다.
+    useEffect(() => {
+      const handler = (e: Event) => {
+        const detail = (e as CustomEvent).detail;
+        if (!detail) return;
+        if (detail.sceneName !== scene.name || detail.sceneType !== scene.type)
+          return;
+        if (detail.action === 'prev') {
+          if (totalImages === 0) return;
+          setPreviewIndex((prev) => (prev <= 0 ? totalImages - 1 : prev - 1));
+        } else if (detail.action === 'next') {
+          if (totalImages === 0) return;
+          setPreviewIndex((prev) =>
+            prev < 0 || prev >= totalImages - 1 ? 0 : prev + 1,
+          );
+        } else if (detail.action === 'fav') {
+          if (previewIndex < 0 || previewIndex >= totalImages) return;
+          const filename = outputs[previewIndex];
+          const idx = scene.mains.indexOf(filename);
+          if (idx !== -1) {
+            scene.mains.splice(idx, 1);
+          } else {
+            scene.mains.push(filename);
+          }
+        }
+      };
+      window.addEventListener('scene-image-nav', handler);
+      return () => window.removeEventListener('scene-image-nav', handler);
+    }, [scene, totalImages, outputs, previewIndex]);
+
+    // 키보드 포커스가 떠나고 호버도 아니면 미리보기를 초기화한다.
+    // (포커스가 다른 씬으로 이동했을 때 이전 미리보기 잔상이 남지 않도록)
+    useEffect(() => {
+      if (!isFocused && !isHovered) setPreviewIndex(-1);
+    }, [isFocused, isHovered]);
+
     const curIndex = curSession.getScenes(scene.type).indexOf(scene);
     const cardElRef = useRef<HTMLDivElement | null>(null);
     const [{ isDragging }, drag, preview] = useDrag(
@@ -1278,16 +1316,34 @@ const QueueControl = observer(
         const scenes = getFilteredScenes();
         if (scenes.length === 0) return;
 
+        // A/D(,/.)=현재 이미지 이전/다음, F=즐겨찾기 토글.
+        // 씬 포커스 이동은 방향키(scene-left/right/up/down) 전담이다.
+        // 키보드 포커스된 씬에 대해서만 동작하며, 마우스 호버 셀이 있으면 그 셀의
+        // capture 핸들러가 이 이벤트를 선점하므로 호버가 우선된다.
+        const hasFocus =
+          focusedSceneIndex != null &&
+          focusedSceneIndex >= 0 &&
+          focusedSceneIndex < scenes.length;
+        const dispatchImageNav = (action: 'prev' | 'next' | 'fav') => {
+          const s = scenes[focusedSceneIndex!];
+          window.dispatchEvent(
+            new CustomEvent('scene-image-nav', {
+              detail: { sceneType: s.type, sceneName: s.name, action },
+            }),
+          );
+        };
         if (e.key === 'a' || e.key === 'A' || e.key === ',') {
+          if (!hasFocus) return;
           e.preventDefault();
-          let idx = focusedSceneIndex ?? -1;
-          if (idx < 0) idx = 0;
-          setFocusedSceneIndex(Math.max(0, idx - 1));
+          dispatchImageNav('prev');
         } else if (e.key === 'd' || e.key === 'D' || e.key === '.') {
+          if (!hasFocus) return;
           e.preventDefault();
-          let idx = focusedSceneIndex ?? -1;
-          if (idx < 0) idx = 0;
-          setFocusedSceneIndex(Math.min(scenes.length - 1, idx + 1));
+          dispatchImageNav('next');
+        } else if (e.key === 'f' || e.key === 'F') {
+          if (!hasFocus) return;
+          e.preventDefault();
+          dispatchImageNav('fav');
         }
       };
       window.addEventListener('keydown', handler);
