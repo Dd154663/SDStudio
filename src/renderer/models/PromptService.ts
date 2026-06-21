@@ -38,6 +38,13 @@ export function toPARR(str: string) {
  *
  * 조각 참조가 잘못됐거나 사이클이 있으면 예외 발생 — 긍정 프롬프트와 동일한 동작.
  */
+// 중첩 조각(조각 안에서 다른 조각 참조) 안전장치.
+// - 순환(A→…→A)은 경로 기반 visited 로 차단 (무한 재귀 방지)
+// - 아래 두 값은 순환이 아닌 병적 케이스(깊은 사슬/조합 폭발)에 대한 보수적 상한.
+//   정상 사용은 보통 몇 단계뿐이라 한참 못 미친다.
+const MAX_PIECE_DEPTH = 50; // 조각 중첩 최대 깊이(사슬 길이)
+const MAX_PIECE_EXPANSIONS = 10000; // 한 단어 확장에서 펼친 총 조각 수(조합 폭발 방지)
+
 export function expandPieces(
   text: string,
   session: Session | undefined,
@@ -177,9 +184,14 @@ export class PromptService extends EventTarget {
     session: Session | undefined = undefined,
     scene: InpaintScene | Scene | undefined = undefined,
     visited: { [key: string]: boolean } | undefined = undefined,
+    depth: number = 0,
+    counter: { count: number } | undefined = undefined,
   ): PromptNode {
     if (!visited) {
       visited = {};
+    }
+    if (!counter) {
+      counter = { count: 0 };
     }
     if (word.charAt(0) === '<' && word.charAt(word.length - 1) === '>') {
       if (!session) {
@@ -189,34 +201,57 @@ export class PromptService extends EventTarget {
         type: 'group',
         children: [],
       };
+      // 순환 차단: 현재 확장 경로(조상)에 이미 있는 조각이면 무한 재귀 → 차단.
+      // visited 는 진입 시 표시하고 종료 시 해제(백트래킹)하므로, 순환이 아닌
+      // 형제/재사용 위치에서 같은 조각을 다시 쓰는 것은 허용된다.
       if (visited[word]) {
-        throw new Error('Cyclic detected at ' + word);
+        throw new Error('순환 조각 참조 감지: ' + word);
+      }
+      // 보수적 상한: 깊은 사슬 / 조합 폭발로부터 보호
+      if (depth >= MAX_PIECE_DEPTH) {
+        throw new Error(
+          `조각 중첩이 너무 깊습니다 (최대 ${MAX_PIECE_DEPTH}단계): ${word}`,
+        );
+      }
+      if (++counter.count > MAX_PIECE_EXPANSIONS) {
+        throw new Error(
+          `조각 확장이 너무 많습니다 (순환·과도한 중첩 의심): ${word}`,
+        );
       }
       visited[word] = true;
-      if (this.isMulti(word, session)) {
-        const expanded = this.tryExpandPiece(word, session, scene);
-        const lines = expanded.split('\n');
-        const randNode: PromptRandomNode = {
-          type: 'random',
-          options: [],
-        };
-        for (const line of lines) {
-          const parr = toPARR(line);
-          const newNode: PromptGroupNode = {
-            type: 'group',
-            children: [],
+      try {
+        if (this.isMulti(word, session)) {
+          const expanded = this.tryExpandPiece(word, session, scene);
+          const lines = expanded.split('\n');
+          const randNode: PromptRandomNode = {
+            type: 'random',
+            options: [],
           };
-          for (const p of parr) {
-            newNode.children.push(this.parseWord(p, session, scene, visited));
+          for (const line of lines) {
+            const parr = toPARR(line);
+            const newNode: PromptGroupNode = {
+              type: 'group',
+              children: [],
+            };
+            for (const p of parr) {
+              newNode.children.push(
+                this.parseWord(p, session, scene, visited, depth + 1, counter),
+              );
+            }
+            randNode.options.push(newNode);
           }
-          randNode.options.push(newNode);
+          res.children.push(randNode);
+        } else {
+          let newp = toPARR(this.tryExpandPiece(word, session, scene));
+          for (const p of newp) {
+            res.children.push(
+              this.parseWord(p, session, scene, visited, depth + 1, counter),
+            );
+          }
         }
-        res.children.push(randNode);
-      } else {
-        let newp = toPARR(this.tryExpandPiece(word, session, scene));
-        for (const p of newp) {
-          res.children.push(this.parseWord(p, session, scene, visited));
-        }
+      } finally {
+        // 백트래킹: 이 조각을 떠나면 경로에서 제거해 재사용을 허용
+        delete visited[word];
       }
       return res;
     } else {
