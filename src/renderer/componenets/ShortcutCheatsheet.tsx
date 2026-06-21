@@ -7,14 +7,16 @@ interface ShortcutEntry {
 }
 
 const SCENE_SHORTCUTS: ShortcutEntry[] = [
-  { keys: ['A', ','], desc: '이전 씬 / 호버 시 이전 이미지' },
-  { keys: ['D', '.'], desc: '다음 씬 / 호버 시 다음 이미지' },
-  { keys: ['F'], desc: '호버 중 현재 이미지 즐겨찾기 토글' },
-  { keys: ['←', '→', '↑', '↓'], desc: '씬 이동' },
+  { keys: ['←', '→', '↑', '↓'], desc: '씬 포커스 이동' },
+  { keys: ['A', ','], desc: '포커스/호버 씬 이전 이미지' },
+  { keys: ['D', '.'], desc: '포커스/호버 씬 다음 이미지' },
+  { keys: ['F'], desc: '포커스/호버 씬 현재 이미지 즐겨찾기 토글' },
   { keys: ['Enter'], desc: '씬 이미지 보기' },
   { keys: ['Tab'], desc: '씬 편집' },
+  { keys: ['Ctrl+S'], desc: '포커스 씬 선택 토글' },
+  { keys: ['Ctrl+X'], desc: '선택 모드 취소' },
+  { keys: ['Ctrl+A'], desc: '포커스/선택 씬 예약 추가' },
   { keys: ['Space'], desc: '예약 실행' },
-  { keys: ['Ctrl+A'], desc: '포커스 씬 예약 추가' },
   { keys: ['Ctrl+D'], desc: '모든 예약 취소' },
   { keys: ['Ctrl+B'], desc: '씬 북마크 토글' },
   { keys: ['H'], desc: '단축키 도움말' },

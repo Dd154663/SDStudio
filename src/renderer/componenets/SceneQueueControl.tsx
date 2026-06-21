@@ -1248,12 +1248,26 @@ const QueueControl = observer(
             setEditingScene(scenes[focusedSceneIndex]);
           }
         } else if (action === 'scene-queue-add') {
-          if (focusedSceneIndex != null && focusedSceneIndex < scenes.length) {
+          // 다중 선택 상태면 선택된 씬 전체를, 아니면 포커스된 씬만 예약
+          if (appState.selectedScenes.size > 0) {
+            addSelectedToQueue();
+          } else if (
+            focusedSceneIndex != null &&
+            focusedSceneIndex < scenes.length
+          ) {
             const scene = scenes[focusedSceneIndex];
             queueScene(curSession, scene, appState.samples).catch((e: any) => {
               appState.pushMessage(`프롬프트 에러: ${e.message}`);
             });
           }
+        } else if (action === 'scene-toggle-select') {
+          // 포커스된 씬을 다중 선택에 토글
+          if (focusedSceneIndex != null && focusedSceneIndex < scenes.length) {
+            appState.toggleSceneSelection(scenes[focusedSceneIndex].name);
+          }
+        } else if (action === 'scene-clear-select') {
+          // 선택 모드 취소(전체 선택 해제)
+          appState.clearSceneSelection();
         } else if (action === 'scene-toggle-bookmark') {
           if (focusedSceneIndex != null && focusedSceneIndex < scenes.length) {
             const scene = scenes[focusedSceneIndex];
