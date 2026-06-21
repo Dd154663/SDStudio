@@ -1,7 +1,7 @@
 import extractChunks from 'png-chunks-extract';
 import { Buffer } from 'buffer';
 import { v4 } from 'uuid';
-import { backend, imageService, workFlowService, zipService } from '.';
+import { backend, imageService, workFlowService, zipService, sessionService } from '.';
 import { FileEntry } from '../backend';
 import defaultassets from '../defaultassets';
 import { dataUriToBase64 } from './ImageService';
@@ -760,18 +760,99 @@ export class SessionService extends ResourceSyncService<Session> {
       const cur = appState.curSession?.name;
       if (cur && cur in this.resources) names.add(cur);
     } catch (e) {}
-    const writes = [...names].map((name) =>
-      backend.writeFile(
-        this.getPath(name),
-        JSON.stringify(this.resources[name].toJSON()),
-      ),
+    await Promise.allSettled(
+      [...names].map((name) => this.writeResource(name)),
     );
-    await Promise.allSettled(writes);
     // 종료 시 작업한 세션의 자동 썸네일 갱신
     try {
       await this.refreshLoadedThumbnails();
       await this.saveThumbnails();
     } catch (e) {}
+  }
+
+  // 같은 앱 실행 중 같은 프로젝트에 손실 경고를 한 번만 띄우기 위한 집합
+  #lossGuardWarned = new Set<string>();
+
+  // 손실 방지 가드(차단 + 자동 백업).
+  // 저장하려는 세션이, 디스크의 outs/inpaints 폴더(실제 씬 흔적 — 강제 종료에도
+  // 살아남음)에 비해 "이미지가 있는 씬"을 잃어버렸으면, 그 쓰기를 차단하고 기존
+  // 파일을 .bak 으로 백업한다. 강제 종료 후 기본(default) 세션이 실제 프로젝트를
+  // 덮어쓰는 등의 유실로부터 보호한다.
+  // 주의: 정상 삭제/이름변경/병합은 모두 outs 폴더를 .trash 로 옮기거나 함께
+  // 이동하므로(아래 점(.) 제외 규칙), 오탐이 발생하지 않는다.
+  protected async guardResourceWrite(
+    name: string,
+    payload: string,
+  ): Promise<'ok' | 'skip'> {
+    let json: ISession;
+    try {
+      json = JSON.parse(payload);
+    } catch (e) {
+      return 'ok'; // 파싱 불가 시 가드 미적용(정상 저장 방해 안 함)
+    }
+    const sceneNames = new Set(Object.keys(json.scenes || {}));
+    const inpaintNames = new Set(Object.keys(json.inpaints || {}));
+
+    const missing = [
+      ...(await this.findScenesWithImagesMissing('outs', name, sceneNames)),
+      ...(await this.findScenesWithImagesMissing(
+        'inpaints',
+        name,
+        inpaintNames,
+      )),
+    ];
+    if (missing.length === 0) return 'ok';
+
+    // 실제 이미지가 있는 씬이 저장 대상에서 빠짐 = 데이터 유실 의심 → 차단 + 백업
+    console.error(
+      `[유실 방지] "${name}" 자동 저장 차단: outs/inpaints 에 이미지가 있으나 세션에 없는 씬:`,
+      missing,
+    );
+    try {
+      const path = this.getPath(name);
+      if (await backend.existFile(path)) {
+        await backend.copyFile(path, path + '.bak');
+      }
+    } catch (e) {}
+
+    if (!this.#lossGuardWarned.has(name)) {
+      this.#lossGuardWarned.add(name);
+      try {
+        const { appState } = await import('./AppService');
+        appState.pushMessage(
+          `데이터 유실이 감지되어 "${name}" 자동 저장을 막았습니다. 앱을 재시작하면 복구됩니다.`,
+        );
+      } catch (e) {}
+    }
+    return 'skip';
+  }
+
+  // dir(outs|inpaints)/project 의 실제 씬 폴더 중, present 에 없고 이미지(.png)가
+  // 있는 폴더 이름들을 반환한다. 점(.)으로 시작하는 항목(.trash 등 삭제/시스템
+  // 폴더)은 제외해 정상 삭제로 인한 오탐을 막는다.
+  private async findScenesWithImagesMissing(
+    dir: string,
+    project: string,
+    present: Set<string>,
+  ): Promise<string[]> {
+    let entries: string[];
+    try {
+      entries = await backend.listFiles(dir + '/' + project);
+    } catch (e) {
+      return []; // 폴더 없음 = 비교 대상 없음
+    }
+    const missing: string[] = [];
+    for (const entry of entries) {
+      if (entry.startsWith('.')) continue;
+      if (present.has(entry)) continue;
+      try {
+        const files = await backend.listFiles(dir + '/' + project + '/' + entry);
+        if (files.some((f) => f.endsWith('.png'))) missing.push(entry);
+      } catch (e) {
+        // 폴더가 아니거나 접근 불가 → 보수적으로 무시(오탐 방지)
+      }
+    }
+    return missing;
   }
 
   async getHook(rc: Session, name: string) {
@@ -1341,11 +1422,19 @@ export const renameScene = async (
   newName: string,
 ) => {
   newName = newName.trimEnd();
-  await imageService.onRenameScene(session, oldName, newName);
-  const scene = session.scenes.get(oldName)!;
-  scene.name = newName;
-  session.scenes.delete(oldName);
-  session.scenes.set(newName, scene);
+  // 폴더 이동(onRenameScene)과 Map 갱신 사이에 주기 flush 가 끼면, 손실 방지 가드가
+  // "newName 폴더는 있는데 세션엔 없다"고 오인할 수 있다. 작업 동안 세션을 in-flight 로
+  // 표시해 그 사이 자동 저장이 해당 세션을 건너뛰게 한다.
+  sessionService._inFlight.add(session.name);
+  try {
+    await imageService.onRenameScene(session, oldName, newName);
+    const scene = session.scenes.get(oldName)!;
+    scene.name = newName;
+    session.scenes.delete(oldName);
+    session.scenes.set(newName, scene);
+  } finally {
+    sessionService._inFlight.delete(session.name);
+  }
 };
 
 // 씬 병합: sourceName 씬을 기존 targetName 씬으로 합친다.

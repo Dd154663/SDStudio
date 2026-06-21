@@ -144,15 +144,7 @@ export abstract class ResourceSyncService<
   async get(name: string): Promise<T | undefined> {
     if (!(name in this.resources)) {
       try {
-        let str: string;
-        try {
-          str = await backend.readFile(this.getPath(name));
-        } catch (readErr) {
-          // folderMap이 아직 최신이 아닐 수 있음 → 목록 재스캔 후 재시도
-          this.resourceList = await this.getList();
-          str = await backend.readFile(this.getPath(name));
-        }
-        let obj = JSON.parse(str);
+        let obj = await this.readResourceJSON(name);
         obj = await this.migrate(obj);
         obj = await this.fillEmptyPresetVars(obj);
         this.resources[name] = this.dummy!.fromJSON(obj);
@@ -166,6 +158,35 @@ export abstract class ResourceSyncService<
       }
     }
     return this.resources[name];
+  }
+
+  // 메인 파일을 읽어 파싱한다. 메인이 손상/누락이면 .bak 백업에서 복구를 시도한다.
+  // (.bak 은 손실 방지 가드가 위험한 쓰기를 막을 때 보존해 둔 직전 정상본)
+  private async readResourceJSON(name: string): Promise<any> {
+    const readAndParse = async (path: string) => {
+      let str: string;
+      try {
+        str = await backend.readFile(path);
+      } catch (readErr) {
+        // folderMap이 아직 최신이 아닐 수 있음 → 목록 재스캔 후 재시도
+        this.resourceList = await this.getList();
+        str = await backend.readFile(this.getPath(name));
+      }
+      return JSON.parse(str);
+    };
+    try {
+      return await readAndParse(this.getPath(name));
+    } catch (mainErr) {
+      // 메인 파일 손상/누락 → .bak 복구 시도
+      try {
+        const bak = await backend.readFile(this.getPath(name) + '.bak');
+        const obj = JSON.parse(bak);
+        console.warn(`[복구] "${name}" 메인 파일 로드 실패 → .bak 에서 복구`);
+        return obj;
+      } catch (bakErr) {
+        throw mainErr;
+      }
+    }
   }
 
   // 주어진 이름들을 작업 동안 in-flight 로 표시해 주기 flush 와의 경쟁(경로가 바뀌는
@@ -182,24 +203,62 @@ export abstract class ResourceSyncService<
     }
   }
 
+  // 모든 리소스 저장이 거쳐 가는 단일 지점. 직렬화 → 손실 방지 가드 → 쓰기.
+  // 하위 클래스는 guardResourceWrite 를 오버라이드해 위험한 쓰기를 막을 수 있다.
+  protected async writeResource(name: string): Promise<void> {
+    const rc = this.resources[name];
+    if (!rc) return;
+    let payload: string;
+    try {
+      // 직렬화 오류(손상된 리소스 등)가 다른 리소스 저장을 막지 않도록 분리
+      payload = JSON.stringify(rc.toJSON());
+    } catch (e) {
+      console.error('writeResource 직렬화 실패:', name, e);
+      return;
+    }
+    let decision: 'ok' | 'skip' = 'ok';
+    try {
+      decision = await this.guardResourceWrite(name, payload);
+    } catch (e) {
+      // 가드 자체의 오류는 정상 저장을 막지 않는다
+      decision = 'ok';
+    }
+    if (decision === 'skip') return;
+    await backend.writeFile(this.getPath(name), payload);
+  }
+
+  // 손실 방지 훅. 기본은 항상 허용. SessionService 가 오버라이드해
+  // outs/inpaints 폴더(실제 씬 흔적)와 대조하여 위험한 쓰기를 차단한다.
+  protected async guardResourceWrite(
+    _name: string,
+    _payload: string,
+  ): Promise<'ok' | 'skip'> {
+    return 'ok';
+  }
+
   // dirty 리소스를 디스크에 저장한다(목록 재스캔 없음). in-flight 이름은 건너뛴다.
   protected async flush() {
     const names = Object.keys(this.dirty).filter(
       (name) => name in this.resources && !this._inFlight.has(name),
     );
     if (names.length === 0) return;
-    const writes = names
-      .map((name) => {
-        const l = this.getFast(name);
-        if (!l) return null;
-        return backend.writeFile(
-          this.getPath(name),
-          JSON.stringify(l.toJSON()),
-        );
-      })
-      .filter(Boolean);
-    await Promise.allSettled(writes);
-    // 실제로 저장한 이름만 dirty 해제 (in-flight 로 건너뛴 건 다음 기회에 저장).
+    await Promise.allSettled(names.map((name) => this.writeResource(name)));
+    // 실제로 시도한 이름만 dirty 해제 (in-flight 로 건너뛴 건 다음 기회에 저장).
+    for (const name of names) delete this.dirty[name];
+  }
+
+  // 강제 종료 위험 시점(모바일 백그라운드 진입 등)에 호출한다.
+  // 주기 flush 는 dirty + 디바운스(updateInterval) 에 의존하므로, "직전 편집"이 아직
+  // dirty 로 잡히기 전이라면 저장되지 않는다. 백그라운드에서 OS 에 강제 종료되면 그
+  // 편집(예: 방금 만든 씬)이 통째로 유실된다. 이를 막기 위해 dirty/디바운스 상태와
+  // 무관하게 메모리에 로드된 모든 리소스의 현재 상태를 즉시 저장한다.
+  // (경로 변경 경쟁을 피하려고 in-flight 인 이름만 제외)
+  async flushAllNow() {
+    const names = Object.keys(this.resources).filter(
+      (name) => !this._inFlight.has(name),
+    );
+    if (names.length === 0) return;
+    await Promise.allSettled(names.map((name) => this.writeResource(name)));
     for (const name of names) delete this.dirty[name];
   }
 
@@ -221,14 +280,9 @@ export abstract class ResourceSyncService<
   }
 
   async saveAll() {
-    const writes = Object.keys(this.resources).map((name) => {
-      const l = this.resources[name];
-      return backend.writeFile(
-        this.getPath(name),
-        JSON.stringify(l.toJSON()),
-      );
-    });
-    await Promise.allSettled(writes);
+    await Promise.allSettled(
+      Object.keys(this.resources).map((name) => this.writeResource(name)),
+    );
   }
 
   async createFrom(name: string, value: any) {
@@ -252,7 +306,9 @@ export abstract class ResourceSyncService<
       this.#visibilityWired = true;
       document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
-          this.flush().catch(() => {});
+          // 백그라운드 진입 = 언제든 강제 종료될 수 있는 시점.
+          // 디바운스로 아직 dirty 가 안 된 직전 편집까지 포함해 전체를 강제 저장한다.
+          this.flushAllNow().catch(() => {});
         } else {
           this.update().catch(() => {});
         }
