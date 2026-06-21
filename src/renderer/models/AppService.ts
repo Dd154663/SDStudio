@@ -952,10 +952,30 @@ export class AppState {
       if (appState.curSession && names.includes(appState.curSession.name)) {
         await imageService.refreshBatch(appState.curSession);
         // 변환된 PNG→AVIF 경로의 이미지 캐시 무효화 및 썸네일 즉시 갱신
-        pngFilesToConvert.forEach((pngPath) => {
+        for (const pngPath of pngFilesToConvert) {
           const avifPath = pngPath.replace(/\.png$/i, '.avif');
+          imageService.invalidateCache(pngPath).catch(() => {});
           imageService.invalidateCache(avifPath).catch(() => {});
-        });
+          // 북마크 및 썸네일 참조 업데이트
+          const parts = pngPath.split('/');
+          if (parts.length >= 3) {
+            const projectName = parts[1];
+            const sceneName = parts[2];
+            const pngFilename = parts[parts.length - 1];
+            const avifFilename = pngFilename.replace(/\.png$/i, '.avif');
+            // 이미지 북마크: PNG → AVIF로 이전
+            const bookmarked = sessionService.getImageBookmark(projectName, sceneName);
+            if (bookmarked === pngFilename) {
+              sessionService.toggleImageBookmark(projectName, sceneName, pngFilename).catch(() => {});
+              sessionService.toggleImageBookmark(projectName, sceneName, avifFilename).catch(() => {});
+            }
+            // 프로젝트 썸네일 참조: PNG → AVIF로 이전
+            const thumbRef = sessionService.getThumbnailRef(projectName);
+            if (thumbRef && thumbRef.scene === sceneName && thumbRef.image === pngFilename) {
+              sessionService.setThumbnailRef(projectName, sceneName, avifFilename);
+            }
+          }
+        }
       }
 
       appState.pushMessage(

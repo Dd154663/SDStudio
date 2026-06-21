@@ -58,6 +58,18 @@ const FAST_TASK_DEFAULT_ESTIMATE =
   (RANDOM_DELAY_STD * 1000) / 2 +
   1000;
 
+async function resolveActualOutputPath(expectedPath: string): Promise<string> {
+  if (await backend.existFile(expectedPath)) return expectedPath;
+  if (expectedPath.toLowerCase().endsWith('.avif')) {
+    const pngPath = expectedPath.replace(/\.avif$/i, '.png');
+    if (await backend.existFile(pngPath)) return pngPath;
+  } else if (expectedPath.toLowerCase().endsWith('.png')) {
+    const avifPath = expectedPath.replace(/\.png$/i, '.avif');
+    if (await backend.existFile(avifPath)) return avifPath;
+  }
+  return expectedPath;
+}
+
 export interface TaskParam {
   session: Session;
   job: Job;
@@ -502,8 +514,10 @@ class GenerateImageTaskHandler implements TaskHandler {
       job.seed = stepSeed(job.seed);
     }
 
+    const actualPath = await resolveActualOutputPath(outputFilePath);
+
     if (task.params.onComplete) {
-      task.params.onComplete(outputFilePath);
+      task.params.onComplete(actualPath);
     }
 
     if (task.params.scene != null) {
@@ -511,13 +525,13 @@ class GenerateImageTaskHandler implements TaskHandler {
         imageService.onAddInPaint(
           task.params.session,
           task.params.scene.name,
-          outputFilePath,
+          actualPath,
         );
       } else {
         imageService.onAddImage(
           task.params.session,
           task.params.scene.name,
-          outputFilePath,
+          actualPath,
         );
       }
     }
@@ -605,11 +619,12 @@ class RemoveBgTaskHandler implements TaskHandler {
       task.params.outputPath + '/' + Date.now().toString() + ext;
     const job = task.params.job as AugmentJob;
     await localAIService.removeBg(job.image!, outputFilePath);
-    if (task.params.onComplete) task.params.onComplete(outputFilePath);
+    const actualPath = await resolveActualOutputPath(outputFilePath);
+    if (task.params.onComplete) task.params.onComplete(actualPath);
     imageService.onAddImage(
       task.params.session,
       task.params.scene!.name,
-      outputFilePath,
+      actualPath,
     );
     return true;
   }
@@ -671,18 +686,19 @@ class AugmentTaskHandler implements TaskHandler {
       image: job.image,
     };
     await backend.augmentImage(params);
-    if (task.params.onComplete) task.params.onComplete(outputFilePath);
+    const actualPath = await resolveActualOutputPath(outputFilePath);
+    if (task.params.onComplete) task.params.onComplete(actualPath);
     if (task.params.scene.type === 'inpaint') {
       imageService.onAddInPaint(
         task.params.session,
         task.params.scene.name,
-        outputFilePath,
+        actualPath,
       );
     } else {
       imageService.onAddImage(
         task.params.session,
         task.params.scene.name,
-        outputFilePath,
+        actualPath,
       );
     }
     return true;
