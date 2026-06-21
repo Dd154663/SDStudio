@@ -53,7 +53,7 @@ import {
 } from '../models';
 import { getMainImagePath } from '../models/ImageService';
 import { highlightPrompt, lowerPromptNode } from '../models/PromptService';
-import { renameScene } from '../models/SessionService';
+import { renameScene, mergeScene } from '../models/SessionService';
 import {
   Scene,
   PromptPiece,
@@ -874,7 +874,9 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted }: Props) => {
       const trimmedName = curNameRef.current.trimEnd();
       if (trimmedName && trimmedName !== scene.name) {
         if (curSession!.hasScene(scene.type, trimmedName)) {
-          appState.pushMessage('해당 이름의 씬이 이미 존재하여 이름 변경이 적용되지 않았습니다');
+          appState.pushMessage(
+            '같은 이름의 씬이 이미 있어 이름 변경이 취소되었습니다. (병합하려면 "이름 변경" 버튼을 사용하세요)',
+          );
           return;
         }
         renameScene(curSession!, scene.name, trimmedName);
@@ -1069,11 +1071,36 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted }: Props) => {
             onClick={async () => {
               const trimmedName = curName.trimEnd();
               if (!trimmedName) return;
-              if (trimmedName in curSession!.scenes) {
-                appState.pushMessage('해당 이름의 씬이 이미 존재합니다');
+              if (trimmedName === scene.name) return;
+              // 중복 이름 검사 (scenes는 Map이므로 hasScene으로 검사해야 함)
+              if (curSession!.hasScene(scene.type, trimmedName)) {
+                // 중복 시 병합/취소 선택. 확인을 누르면 병합한다.
+                appState.pushDialog({
+                  type: 'confirm',
+                  green: false,
+                  text:
+                    `"${trimmedName}" 씬이 이미 존재합니다.\n두 씬을 병합할까요?\n\n` +
+                    `• 이미지: 두 씬의 이미지가 "${trimmedName}" 씬으로 합쳐집니다\n` +
+                    `• 프롬프트/설정: 기존 "${trimmedName}" 씬의 것을 유지하고,\n  지금 편집 중인 씬의 프롬프트는 사라집니다\n\n` +
+                    `이 작업은 되돌릴 수 없습니다.`,
+                  callback: async () => {
+                    try {
+                      await mergeScene(curSession!, scene.name, trimmedName);
+                      // 병합 후 편집 중인(사라진) 씬의 에디터를 닫는다.
+                      // 언마운트 시 자동 이름 변경이 다시 트리거되지 않도록 ref를 원상태로 둔다.
+                      curNameRef.current = scene.name;
+                      appState.pushMessage(`"${trimmedName}" 씬으로 병합했습니다`);
+                      onClosed();
+                      if (onDeleted) onDeleted();
+                    } catch (e: any) {
+                      appState.pushMessage(
+                        '씬 병합 중 오류가 발생했습니다: ' + (e?.message ?? e),
+                      );
+                    }
+                  },
+                });
                 return;
               }
-              const oldName = scene.name;
               await renameScene(curSession!, scene.name, trimmedName);
             }}
           >

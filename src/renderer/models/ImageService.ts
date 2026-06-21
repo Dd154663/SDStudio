@@ -338,6 +338,89 @@ export class ImageService extends EventTarget {
     }
   }
 
+  // 씬 병합: sourceName 씬 폴더의 이미지를 targetName 씬 폴더로 옮긴다.
+  // - 파일명이 충돌하면 접미사를 붙여 재지정하므로 이미지 손실은 없다.
+  // - 복사에 성공한 원본 파일만 삭제하므로, 일부 실패해도 원본이 보존된다.
+  // 반환값: 옮긴 이미지 수
+  async mergeSceneImages(
+    session: Session,
+    sourceName: string,
+    targetName: string,
+  ): Promise<number> {
+    let moved = 0;
+    for (const imgDir of imageDirList) {
+      const srcDir = imgDir + '/' + session.name + '/' + sourceName;
+      const dstDir = imgDir + '/' + session.name + '/' + targetName;
+
+      let files: string[];
+      try {
+        files = (await backend.listFiles(srcDir)).filter((x) =>
+          x.endsWith('.png'),
+        );
+      } catch (e) {
+        continue; // source 폴더가 없으면 건너뜀
+      }
+      if (files.length === 0) continue;
+
+      // 대상 폴더의 기존 파일명(충돌 검사용)
+      const taken = new Set<string>();
+      try {
+        for (const f of await backend.listFiles(dstDir)) {
+          if (f.endsWith('.png')) taken.add(f);
+        }
+      } catch (e) {
+        /* 대상 폴더가 아직 없을 수 있음 */
+      }
+
+      for (const file of files) {
+        // 파일명 충돌 시 "_merged{n}" 접미사로 회피
+        let dstName = file;
+        if (taken.has(dstName)) {
+          const dot = file.lastIndexOf('.');
+          const base = dot >= 0 ? file.slice(0, dot) : file;
+          const ext = dot >= 0 ? file.slice(dot) : '';
+          let i = 1;
+          while (taken.has(`${base}_merged${i}${ext}`)) i++;
+          dstName = `${base}_merged${i}${ext}`;
+        }
+        try {
+          await backend.copyFile(srcDir + '/' + file, dstDir + '/' + dstName);
+          taken.add(dstName);
+          moved++;
+          // 복사 성공한 원본만 삭제 (실패분은 보존)
+          try {
+            await backend.deleteFile(srcDir + '/' + file);
+          } catch (e) {
+            /* 원본 삭제 실패는 무시 */
+          }
+        } catch (e) {
+          console.error('씬 병합 이미지 복사 실패:', file, e);
+        }
+      }
+
+      // 비워진 source 폴더 정리 (남은 파일이 있으면 deleteDir가 실패할 수 있음 → 무시)
+      try {
+        await backend.deleteDir(srcDir);
+      } catch (e) {
+        /* 무시 */
+      }
+    }
+
+    // source 씬 관련 캐시 무효화
+    const cache = this.cache.cache;
+    const toDelete: string[] = [];
+    for (const key of cache.keys()) {
+      for (const imgDir of imageDirList.concat(maskDirList)) {
+        if (key.startsWith(imgDir + '/' + session.name + '/' + sourceName)) {
+          toDelete.push(key);
+        }
+      }
+    }
+    for (const key of toDelete) cache.delete(key);
+
+    return moved;
+  }
+
   async onRenameSession(oldName: string, newName: string) {
     const cache = this.cache.cache;
     const toDelete = [];

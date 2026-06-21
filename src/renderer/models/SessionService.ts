@@ -1348,6 +1348,23 @@ export const renameScene = async (
   session.scenes.set(newName, scene);
 };
 
+// 씬 병합: sourceName 씬을 기존 targetName 씬으로 합친다.
+// - 이미지: source → target 폴더로 이동(파일명 충돌 시 재지정, 손실 없음)
+// - 프롬프트/설정: 기존(target) 씬 것을 유지하고 source 씬은 제거한다.
+export const mergeScene = async (
+  session: Session,
+  sourceName: string,
+  targetName: string,
+) => {
+  if (sourceName === targetName) return;
+  const target = session.scenes.get(targetName);
+  if (!target) return;
+  await imageService.mergeSceneImages(session, sourceName, targetName);
+  session.scenes.delete(sourceName);
+  // 합쳐진 이미지가 target 씬에 즉시 반영되도록 갱신
+  await imageService.refresh(session, target);
+};
+
 export function createImageWithText(
   width: number,
   height: number,
