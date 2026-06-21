@@ -130,7 +130,19 @@ export const AppContextMenu = observer(() => {
 
   const handleSceneItemClick = ({ id, props }: any) => {
     const ctx = props.ctx as SceneContextAlt;
-    if (id === 'duplicate') {
+    if (id === 'edit-prompt') {
+      sessionService.dispatchEvent(
+        new CustomEvent('open-scene-editor', {
+          detail: { scene: ctx.scene, tabIndex: 0 },
+        }),
+      );
+    } else if (id === 'edit-combination') {
+      sessionService.dispatchEvent(
+        new CustomEvent('open-scene-editor', {
+          detail: { scene: ctx.scene, tabIndex: 1 },
+        }),
+      );
+    } else if (id === 'duplicate') {
       duplicateScene(ctx);
     } else if (id === 'copy-to-project') {
       const selectedNames = appState.selectedScenes;
@@ -468,6 +480,13 @@ export const AppContextMenu = observer(() => {
   return (
     <>
       <Menu id={ContextMenuType.Scene}>
+        <Item id="edit-prompt" onClick={handleSceneItemClick}>
+          씬 편집기로
+        </Item>
+        <Item id="edit-combination" onClick={handleSceneItemClick}>
+          조합 에디터로
+        </Item>
+        <Separator />
         <Item id="duplicate" onClick={handleSceneItemClick}>
           해당 씬 복제
         </Item>

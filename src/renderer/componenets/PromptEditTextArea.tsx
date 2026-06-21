@@ -655,6 +655,7 @@ class CursorMemorizeEditor {
       if (e.key === 'Escape') {
         e.preventDefault();
         if (this.autocomplete) {
+          e.stopPropagation();
           this.onEsc();
         } else {
           this.flushCompositon(this.previousRange);
@@ -1278,7 +1279,13 @@ const NativeEditTextArea = observer(
                 } else if (e.key === 'Enter') {
                   if (isAutoComplete.current) e.preventDefault();
                   onEnter();
-                } else if (e.key === 'Escape') onEsc();
+                } else if (e.key === 'Escape') {
+                  if (isAutoComplete.current) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }
+                  onEsc();
+                }
                 else if (
                   (e.key === 'z' || e.key === 'Z') &&
                   (e.metaKey || e.ctrlKey)

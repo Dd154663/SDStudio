@@ -20,6 +20,7 @@ import {
   FaFileArchive,
   FaCopy,
   FaCompressArrowsAlt,
+  FaRecycle,
 } from 'react-icons/fa';
 import { sessionService, imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
@@ -27,6 +28,8 @@ import Tooltip from './Tooltip';
 import MobileColorPicker from './MobileColorPicker';
 import { pushRecentProject } from './ProjectBrowser';
 import StorageManageModal from './StorageManageModal';
+import ProjectTrashModal from './ProjectTrashModal';
+import ProjectTrashListModal from './ProjectTrashListModal';
 
 const naturalCmp = (a: string, b: string) =>
   a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
@@ -219,6 +222,11 @@ const ProjectDrawer = observer(() => {
   const customColorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 저장 공간 관리 모달
   const [storageOpen, setStorageOpen] = useState(false);
+  // 프로젝트 휴지통 관리 모달
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashProjectName, setTrashProjectName] = useState('');
+  // 전체 휴지통 목록 모달
+  const [trashListOpen, setTrashListOpen] = useState(false);
   // 선택 모드(다중 선택 → 폴더 일괄 이동)
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -841,7 +849,7 @@ const ProjectDrawer = observer(() => {
         onClick={close}
       />
       <div
-        className="absolute left-0 top-0 h-full w-[90vw] max-w-[400px] bg-white dark:bg-slate-800 shadow-2xl border-r border-gray-200 dark:border-slate-600 flex flex-col"
+        className="absolute left-0 top-0 h-full w-[90vw] max-w-[440px] bg-white dark:bg-slate-800 shadow-2xl border-r border-gray-200 dark:border-slate-600 flex flex-col"
         style={{
           transform: shown ? 'translateX(0)' : 'translateX(-100%)',
           transition: 'transform 0.26s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -949,6 +957,14 @@ const ProjectDrawer = observer(() => {
               >
                 <FaFileArchive size={14} />{' '}
                 <span className="hidden md:inline">백업</span>
+              </button>
+            </Tooltip>
+            <Tooltip content="휴지통 관리">
+              <button
+                onClick={() => setTrashListOpen(true)}
+                className="flex items-center justify-center px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
+              >
+                <FaTrashAlt size={14} />
               </button>
             </Tooltip>
           </div>
@@ -1364,6 +1380,26 @@ const ProjectDrawer = observer(() => {
           />
         </div>
       )}
+      {trashOpen && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <ProjectTrashModal
+            isOpen={trashOpen}
+            projectName={trashProjectName}
+            onClose={() => {
+              setTrashOpen(false);
+              setTrashProjectName('');
+            }}
+          />
+        </div>
+      )}
+      {trashListOpen && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <ProjectTrashListModal
+            isOpen={trashListOpen}
+            onClose={() => setTrashListOpen(false)}
+          />
+        </div>
+      )}
       {toolbar &&
         createPortal(
           toolbar.type === 'folder' ? (
@@ -1502,6 +1538,18 @@ const ProjectDrawer = observer(() => {
                   className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <FaPen size={15} />
+                </button>
+              </Tooltip>
+              <Tooltip content="휴지통 관리">
+                <button
+                  onClick={() => {
+                    setTrashProjectName(toolbar.name);
+                    setTrashOpen(true);
+                    setToolbar(null);
+                  }}
+                  className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <FaRecycle size={15} />
                 </button>
               </Tooltip>
               <Tooltip content="프로젝트 삭제">
