@@ -867,6 +867,141 @@ export class AppState {
     );
   }
 
+  async convertFolderToAvif(folder: string) {
+    const config = await backend.getConfig();
+    const leafName = sessionService.folderLeafName(folder);
+    const ignoreError = async <T>(p: Promise<T>): Promise<T[] | T> => {
+      try { return await p; } catch (e) { return []; }
+    };
+
+    const executeConversion = async () => {
+      const names = sessionService.getProjectsInFolder(folder);
+      const pngFilesToConvert: string[] = [];
+
+      appState.setProgressDialog({ text: '변환할 파일 수집 중...', done: 0, total: 1 });
+      for (const name of names) {
+        const session = await sessionService.get(name);
+        if (!session) continue;
+        const sceneNames = Array.from(session.scenes.values()).map((s) => s.name);
+        const inpaintNames = Array.from(session.inpaints.values()).map((s) => s.name);
+
+        const sceneResults = await Promise.all(
+          sceneNames.map(async (scene) => ({
+            name: scene,
+            files: (await ignoreError(backend.listFiles(`outs/${name}/${scene}`))) as string[],
+          }))
+        );
+        const inpaintResults = await Promise.all(
+          inpaintNames.map(async (inpaint) => ({
+            name: inpaint,
+            files: (await ignoreError(backend.listFiles(`inpaints/${name}/${inpaint}`))) as string[],
+          }))
+        );
+
+        for (const { name: scene, files } of sceneResults) {
+          for (const image of files || []) {
+            if (image.toLowerCase().endsWith('.png')) {
+              pngFilesToConvert.push(`outs/${name}/${scene}/${image}`);
+            }
+          }
+        }
+        for (const { name: inpaint, files } of inpaintResults) {
+          for (const image of files || []) {
+            if (image.toLowerCase().endsWith('.png')) {
+              pngFilesToConvert.push(`inpaints/${name}/${inpaint}/${image}`);
+            }
+          }
+        }
+      }
+
+      if (pngFilesToConvert.length === 0) {
+        appState.setProgressDialog(undefined);
+        appState.pushMessage(`폴더 "${leafName}"에 변환할 PNG 파일이 없습니다.`);
+        return;
+      }
+
+      let converted = 0;
+      let failed = 0;
+      let doneCount = 0;
+      const CONCURRENCY = Math.max(1, Math.min(8, config.exportConcurrency ?? (isMobile ? 2 : 6)));
+      
+      const queue = [...pngFilesToConvert];
+      const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+        while (queue.length > 0) {
+          const png = queue.shift();
+          if (!png) break;
+
+          const success = await backend.convertPngToAvif(png);
+          if (success) converted++;
+          else failed++;
+          
+          doneCount++;
+          appState.setProgressDialog({
+            text: `PNG → AVIF 고속 변환 중... (${doneCount}/${pngFilesToConvert.length})\n${png}`,
+            done: doneCount,
+            total: pngFilesToConvert.length,
+          });
+        }
+      });
+
+      await Promise.all(workers);
+
+      appState.setProgressDialog(undefined);
+
+      // 현재 열린 프로젝트가 변환 대상 폴더에 속해있다면 이미지 캐시 리프레시
+      if (appState.curSession && names.includes(appState.curSession.name)) {
+        await imageService.refreshBatch(appState.curSession);
+        // 변환된 PNG→AVIF 경로의 이미지 캐시 무효화 및 썸네일 즉시 갱신
+        for (const pngPath of pngFilesToConvert) {
+          const avifPath = pngPath.replace(/\.png$/i, '.avif');
+          imageService.invalidateCache(pngPath).catch(() => {});
+          imageService.invalidateCache(avifPath).catch(() => {});
+          // 북마크 및 썸네일 참조 업데이트
+          const parts = pngPath.split('/');
+          if (parts.length >= 3) {
+            const projectName = parts[1];
+            const sceneName = parts[2];
+            const pngFilename = parts[parts.length - 1];
+            const avifFilename = pngFilename.replace(/\.png$/i, '.avif');
+            // 이미지 북마크: PNG → AVIF로 이전
+            const bookmarked = sessionService.getImageBookmark(projectName, sceneName);
+            if (bookmarked === pngFilename) {
+              sessionService.toggleImageBookmark(projectName, sceneName, pngFilename).catch(() => {});
+              sessionService.toggleImageBookmark(projectName, sceneName, avifFilename).catch(() => {});
+            }
+            // 프로젝트 썸네일 참조: PNG → AVIF로 이전
+            const thumbRef = sessionService.getThumbnailRef(projectName);
+            if (thumbRef && thumbRef.scene === sceneName && thumbRef.image === pngFilename) {
+              sessionService.setThumbnailRef(projectName, sceneName, avifFilename);
+            }
+          }
+        }
+      }
+
+      appState.pushMessage(
+        `폴더 "${leafName}" 변환 완료: ${converted}개 성공${failed > 0 ? `, ${failed}개 실패` : ''}`
+      );
+    };
+
+    if (config.skipAvifConfirm) {
+      executeConversion();
+    } else {
+      appState.pushDialog({
+        type: 'confirm',
+        text: `폴더 "${leafName}" 내의 모든 생성 PNG 파일을 AVIF로 변환하시겠습니까?\n(원본 PNG는 삭제되며, 이 작업은 되돌릴 수 없습니다)`,
+        showSkipConfirm: true,
+        skipConfirmText: '앞으로 묻지 않기',
+        callback: async (_, __, skipConfirm) => {
+          if (skipConfirm) {
+            config.skipAvifConfirm = true;
+            await backend.setConfig(config);
+          }
+          executeConversion();
+        }
+      });
+    }
+  }
+
   folderBackupMenu(folder: string) {
     appState.pushDialog({
       type: 'select',
@@ -3718,7 +3853,7 @@ export class AppState {
       let pngFiles: string[] = [];
       try {
         const files = await backend.listFiles('outs/' + session.name + '/' + dirName);
-        pngFiles = files.filter((f: string) => f.endsWith('.png'));
+        pngFiles = files.filter((f: string) => f.endsWith('.png') || f.endsWith('.avif'));
       } catch {
         continue;
       }

@@ -129,7 +129,7 @@ export class TrashService extends EventTarget {
     } catch (e) {
       return [];
     }
-    files = files.filter((f: string) => f.endsWith('.png'));
+    files = files.filter((f: string) => f.endsWith('.png') || f.endsWith('.avif'));
     return files.map((f: string) => ({
       filename: f,
       deletedAt: meta[f] || 0,

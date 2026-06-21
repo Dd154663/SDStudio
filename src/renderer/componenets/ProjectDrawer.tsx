@@ -19,6 +19,7 @@ import {
   FaHdd,
   FaFileArchive,
   FaCopy,
+  FaCompressArrowsAlt,
 } from 'react-icons/fa';
 import { sessionService, imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
@@ -599,6 +600,7 @@ const ProjectDrawer = observer(() => {
         { text: '🎨 색상 변경', value: 'color' },
         { text: '✏️ 이름 편집', value: 'rename' },
         { text: '🗑️ 폴더 삭제', value: 'delete' },
+        { text: '🗜️ 모든 PNG를 AVIF로 일괄 변환', value: 'convert-avif' },
         { text: '➕ 이 폴더에 새 프로젝트', value: 'add' },
         { text: '📂 이 폴더에 서브폴더', value: 'subfolder' },
       ],
@@ -609,6 +611,7 @@ const ProjectDrawer = observer(() => {
     else if (v === 'color') setColorPickerFor((p) => (p === f ? null : f));
     else if (v === 'rename') startRename(f);
     else if (v === 'delete') deleteFolderConfirm(f);
+    else if (v === 'convert-avif') appState.convertFolderToAvif(f);
     else if (v === 'add') createProject(f);
     else if (v === 'subfolder') createFolder(f);
   };
@@ -1414,6 +1417,17 @@ const ProjectDrawer = observer(() => {
                   className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <FaPen size={15} />
+                </button>
+              </Tooltip>
+              <Tooltip content="모든 PNG를 AVIF로 일괄 변환">
+                <button
+                  onClick={() => {
+                    appState.convertFolderToAvif(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <FaCompressArrowsAlt size={15} />
                 </button>
               </Tooltip>
               <Tooltip content="폴더 삭제">
