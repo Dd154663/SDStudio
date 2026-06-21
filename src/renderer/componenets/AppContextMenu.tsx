@@ -1,7 +1,15 @@
 import { observer } from 'mobx-react-lite';
 import { getSnapshot } from 'mobx-state-tree';
 import { Item, Menu, Separator } from 'react-contexify';
-import { sessionService, backend, imageService, isMobile, imageDownloadService } from '../models';
+import {
+  sessionService,
+  backend,
+  imageService,
+  isMobile,
+  imageDownloadService,
+  promptService,
+  taskQueueService,
+} from '../models';
 import { appState } from '../models/AppService';
 import { dataUriToBase64, deleteImageFiles } from '../models/ImageService';
 import { createImageWithText, embedJSONInPNG } from '../models/SessionService';
@@ -13,9 +21,18 @@ import {
   genericSceneFromJSON,
   GallaryImageContextAlt,
   GenericScene,
+  PieceLibrary,
+  Piece,
+  Session,
+  InpaintScene,
 } from '../models/types';
 import { oneTimeFlowMap, oneTimeFlows } from '../models/workflows/OneTimeFlows';
 import { extractPromptDataFromBase64 } from '../models/util';
+import {
+  queueI2IWorkflow,
+  queueMirrorWorkflow,
+  queueWorkflow,
+} from '../models/TaskQueueService';
 
 export const AppContextMenu = observer(() => {
   const duplicateScene = async (ctx: SceneContextAlt) => {
@@ -51,7 +68,8 @@ export const AppContextMenu = observer(() => {
       return;
     }
 
-    const countLabel = scenes.length > 1 ? `선택한 ${scenes.length}개 씬을` : '씬을';
+    const countLabel =
+      scenes.length > 1 ? `선택한 ${scenes.length}개 씬을` : '씬을';
 
     // 1) 대상 프로젝트 선택
     const targetName = await appState.pushDialogAsync({
@@ -120,13 +138,145 @@ export const AppContextMenu = observer(() => {
     }
 
     if (successCount > 1) {
-      const imgMsg = mode === 'with-images' ? ` (이미지 ${totalCopiedImages}장)` : '';
-      appState.pushMessage(`${successCount}개 씬을 "${targetName}" 프로젝트에 복사했습니다${imgMsg}`);
+      const imgMsg =
+        mode === 'with-images' ? ` (이미지 ${totalCopiedImages}장)` : '';
+      appState.pushMessage(
+        `${successCount}개 씬을 "${targetName}" 프로젝트에 복사했습니다${imgMsg}`,
+      );
     } else if (successCount === 1) {
-      const imgMsg = mode === 'with-images' ? ` (이미지 ${totalCopiedImages}장)` : '';
-      appState.pushMessage(`씬을 "${targetName}" 프로젝트에 복사했습니다${imgMsg}`);
+      const imgMsg =
+        mode === 'with-images' ? ` (이미지 ${totalCopiedImages}장)` : '';
+      appState.pushMessage(
+        `씬을 "${targetName}" 프로젝트에 복사했습니다${imgMsg}`,
+      );
     }
   };
+
+  /* eslint-disable no-restricted-syntax, no-await-in-loop */
+  const createMissingPiecesForSession = (
+    session: Session,
+    missing: { library: string; piece: string }[],
+  ) => {
+    for (const m of missing) {
+      let lib = session.library.get(m.library);
+      if (!lib) {
+        lib = new PieceLibrary();
+        lib.name = m.library;
+        session.library.set(m.library, lib);
+      }
+      if (!lib.pieces.find((x) => x.name === m.piece)) {
+        const piece = new Piece();
+        piece.name = m.piece;
+        lib.pieces.push(piece);
+      }
+    }
+    sessionService.dirty[session.name] = true;
+    sessionService.reloadPieceLibraryDB(session);
+  };
+
+  const queueScene = async (
+    session: Session,
+    scene: GenericScene,
+    samples: number,
+  ) => {
+    if (scene.type === 'scene') {
+      await queueWorkflow(session, session.selectedWorkflow!, scene, samples);
+    } else {
+      const inpaintScene = scene as InpaintScene;
+      if (inpaintScene.workflowType === 'SDMirror') {
+        await queueMirrorWorkflow(
+          session,
+          inpaintScene.workflowType,
+          inpaintScene.preset,
+          inpaintScene,
+          samples,
+        );
+      } else {
+        await queueI2IWorkflow(
+          session,
+          scene.workflowType,
+          scene.preset,
+          scene,
+          samples,
+        );
+      }
+    }
+  };
+
+  const addScenesToQueue = async (
+    session: Session,
+    type: 'scene' | 'inpaint',
+    selectedOnly: boolean,
+  ) => {
+    try {
+      let scenes = session.getScenes(type);
+      if (selectedOnly) {
+        const selectedNames = appState.selectedScenes;
+        scenes = scenes.filter((s) => selectedNames.has(s.name));
+      }
+      if (scenes.length === 0) return;
+
+      const allMissing: { library: string; piece: string }[] = [];
+      for (const scene of scenes) {
+        const missing = promptService.findMissingPieces(session, scene);
+        for (const m of missing) {
+          if (
+            !allMissing.find(
+              (x) => x.library === m.library && x.piece === m.piece,
+            )
+          ) {
+            allMissing.push(m);
+          }
+        }
+      }
+
+      const doQueue = async () => {
+        for (const scene of scenes) {
+          try {
+            await queueScene(session, scene, appState.samples);
+          } catch (e: any) {
+            appState.pushMessage(`프롬프트 에러 (${scene.name}): ${e.message}`);
+          }
+        }
+      };
+
+      if (allMissing.length > 0) {
+        const list = allMissing
+          .map((m) => `<${m.library}.${m.piece}>`)
+          .join(', ');
+        appState.pushDialog({
+          type: 'confirm',
+          text: `존재하지 않는 프롬프트조각이 발견되었습니다:\n${list}\n\n로컬 프롬프트조각으로 새로 만들까요?\n(빈 조각이 생성되며, 내용은 직접 채워주세요)`,
+          callback: async () => {
+            createMissingPiecesForSession(session, allMissing);
+            await doQueue();
+          },
+        });
+        return;
+      }
+      await doQueue();
+    } catch (e: any) {
+      appState.pushMessage(`프롬프트 에러: ${e.message}`);
+    }
+  };
+
+  const removeScenesFromQueue = (
+    session: Session,
+    type: 'scene' | 'inpaint',
+    selectedOnly: boolean,
+  ) => {
+    let scenes = session.getScenes(type);
+    if (selectedOnly) {
+      const selectedNames = appState.selectedScenes;
+      scenes = scenes.filter((s) => selectedNames.has(s.name));
+    }
+    if (scenes.length === 0) return;
+
+    for (const scene of scenes) {
+      taskQueueService.removeTasksFromScene(scene);
+    }
+  };
+  /* eslint-enable no-restricted-syntax, no-await-in-loop */
 
   const handleSceneItemClick = ({ id, props }: any) => {
     const ctx = props.ctx as SceneContextAlt;
@@ -151,7 +301,8 @@ export const AppContextMenu = observer(() => {
         if (session) {
           const selectedScenes: GenericScene[] = [];
           for (const name of selectedNames) {
-            const scene = session.scenes.get(name) || session.inpaints.get(name);
+            const scene =
+              session.scenes.get(name) || session.inpaints.get(name);
             if (scene) selectedScenes.push(scene);
           }
           if (selectedScenes.length > 0) {
@@ -176,9 +327,12 @@ export const AppContextMenu = observer(() => {
             const session = appState.curSession;
             if (!session) return;
             for (const name of selectedNames) {
-              const scene = session.scenes.get(name) || session.inpaints.get(name);
+              const scene =
+                session.scenes.get(name) || session.inpaints.get(name);
               if (scene) {
-                try { await trashService.moveSceneToTrash(session, scene); } catch (e) {}
+                try {
+                  await trashService.moveSceneToTrash(session, scene);
+                } catch (e) {}
               }
             }
             appState.clearSceneSelection();
@@ -190,7 +344,10 @@ export const AppContextMenu = observer(() => {
           text: '정말로 삭제하시겠습니까? (휴지통으로 이동)',
           callback: async () => {
             const { trashService } = await import('../models');
-            await trashService.moveSceneToTrash(appState.curSession!, ctx.scene);
+            await trashService.moveSceneToTrash(
+              appState.curSession!,
+              ctx.scene,
+            );
           },
         });
       }
@@ -198,6 +355,24 @@ export const AppContextMenu = observer(() => {
       deleteAllImagesFromSelected(false);
     } else if (id === 'delete-all-selected-images-except-fav') {
       deleteAllImagesFromSelected(true);
+    } else if (id === 'queue-add-all-or-selected') {
+      const session = appState.curSession;
+      if (session) {
+        addScenesToQueue(
+          session,
+          ctx.scene.type,
+          appState.selectedScenes.size > 0,
+        );
+      }
+    } else if (id === 'queue-remove-all-or-selected') {
+      const session = appState.curSession;
+      if (session) {
+        removeScenesFromQueue(
+          session,
+          ctx.scene.type,
+          appState.selectedScenes.size > 0,
+        );
+      }
     }
   };
   const deleteAllImagesFromSelected = async (excludeFav: boolean) => {
@@ -241,7 +416,11 @@ export const AppContextMenu = observer(() => {
 
     const label = excludeFav ? '즐겨찾기 제외 ' : '';
     const doBatchDelete = async () => {
-      appState.setProgressDialog({ text: '이미지 삭제 중...', done: 0, total: scenes.length });
+      appState.setProgressDialog({
+        text: '이미지 삭제 중...',
+        done: 0,
+        total: scenes.length,
+      });
       let done = 0;
       for (const { scene, paths } of scenes) {
         try {
@@ -249,10 +428,16 @@ export const AppContextMenu = observer(() => {
         } catch (e) {
           console.error('이미지 삭제 실패:', e);
         }
-        appState.setProgressDialog({ text: '이미지 삭제 중...', done: ++done, total: scenes.length });
+        appState.setProgressDialog({
+          text: '이미지 삭제 중...',
+          done: ++done,
+          total: scenes.length,
+        });
       }
       appState.setProgressDialog(undefined);
-      appState.pushMessage(`${scenes.length}개 씬에서 ${totalImages}장의 이미지를 삭제했습니다.`);
+      appState.pushMessage(
+        `${scenes.length}개 씬에서 ${totalImages}장의 이미지를 삭제했습니다.`,
+      );
     };
     if (appState.skipImageDeleteConfirm) {
       await doBatchDelete();
@@ -487,6 +672,17 @@ export const AppContextMenu = observer(() => {
           조합 에디터로
         </Item>
         <Separator />
+        <Item id="queue-add-all-or-selected" onClick={handleSceneItemClick}>
+          {appState.selectedScenes.size > 0
+            ? `선택한 씬 예약 추가 (${appState.selectedScenes.size})`
+            : '모든 씬 예약 추가'}
+        </Item>
+        <Item id="queue-remove-all-or-selected" onClick={handleSceneItemClick}>
+          {appState.selectedScenes.size > 0
+            ? `선택한 씬 예약 제거 (${appState.selectedScenes.size})`
+            : '모든 씬 예약 제거'}
+        </Item>
+        <Separator />
         <Item id="duplicate" onClick={handleSceneItemClick}>
           해당 씬 복제
         </Item>
@@ -510,7 +706,10 @@ export const AppContextMenu = observer(() => {
         <Item id="delete-all-selected-images" onClick={handleSceneItemClick}>
           선택한 씬 이미지 모두 삭제
         </Item>
-        <Item id="delete-all-selected-images-except-fav" onClick={handleSceneItemClick}>
+        <Item
+          id="delete-all-selected-images-except-fav"
+          onClick={handleSceneItemClick}
+        >
           선택한 씬 이미지 모두 삭제 (즐겨찾기 제외)
         </Item>
       </Menu>
