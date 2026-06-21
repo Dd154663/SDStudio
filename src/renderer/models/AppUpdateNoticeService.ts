@@ -15,7 +15,6 @@ export class AppUpdateNoticeService extends EventTarget {
     this.latestVersion = '';
     this.notifiedVersion = '';
     this.outdated = false;
-    this.run();
   }
   async getLatestRelease(repoOwner: string, repoName: string) {
     const url = `https://api.github.com/repos/${repoOwner}/${repoName}/releases/latest`;

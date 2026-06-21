@@ -1122,6 +1122,10 @@ export class SessionService extends ResourceSyncService<Session> {
     }
     const json = session.toJSON();
     json.name = newName;
+    const folder = this.getFolderOf(session.name);
+    if (folder) {
+      this.folderMap[newName] = folder;
+    }
     await this.createFrom(newName, json);
   }
 

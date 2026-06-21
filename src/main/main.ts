@@ -314,18 +314,70 @@ ipcMain.handle('rename-file', async (event, oldfile, newfile) => {
   return await fs.rename(oldPath, newPath);
 });
 
+async function safeRemove(dirPath: string, retries = 10, delay = 100) {
+  if (!(await fsExtra.pathExists(dirPath))) return;
+  for (let i = 0; i < retries; i++) {
+    try {
+      await fsExtra.remove(dirPath);
+      return;
+    } catch (err: any) {
+      if (err.code === 'ENOENT') return;
+      if (i === retries - 1) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 ipcMain.handle('rename-dir', async (event, oldfile, newfile) => {
   const platform = os.platform();
+  const oldPath = APP_DIR + '/' + oldfile;
+  const newPath = APP_DIR + '/' + newfile;
+
+  if (!(await fsExtra.pathExists(oldPath))) {
+    return;
+  }
+
+  const normOldPath = path.normalize(oldPath);
+  // Release watcher handles to prevent EPERM
+  for (const [dir, handle] of dirWatchHandles.entries()) {
+    if (dir === normOldPath || dir.startsWith(normOldPath + path.sep)) {
+      await handle.close();
+      dirWatchHandles.delete(dir);
+    }
+  }
+  for (const curPath of watchHandles.keys()) {
+    if (curPath.startsWith(normOldPath + path.sep)) {
+      watchHandles.delete(curPath);
+    }
+  }
 
   if (platform === 'win32') {
-    // What the fuck windows
-    const newDir = APP_DIR + '/' + newfile;
-    await fs.mkdir(path.dirname(newDir), { recursive: true });
-    await fsExtra.copy(APP_DIR + '/' + oldfile, newDir);
-    await fsExtra.rmdir(APP_DIR + '/' + oldfile, { recursive: true });
+    await fs.mkdir(path.dirname(newPath), { recursive: true });
+    for (let i = 0; i < 10; i++) {
+      try {
+        await fs.rename(oldPath, newPath);
+        return;
+      } catch (e: any) {
+        if (e.code === 'ENOENT') {
+          return;
+        }
+        if (i === 9) {
+          await fsExtra.copy(oldPath, newPath);
+          await safeRemove(oldPath);
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+    }
   } else {
-    await fs.mkdir(path.dirname(APP_DIR + '/' + newfile), { recursive: true });
-    return await fs.rename(APP_DIR + '/' + oldfile, APP_DIR + '/' + newfile);
+    await fs.mkdir(path.dirname(newPath), { recursive: true });
+    try {
+      await fs.rename(oldPath, newPath);
+    } catch (e: any) {
+      if (e.code !== 'ENOENT') {
+        throw e;
+      }
+    }
   }
 });
 
@@ -334,7 +386,35 @@ ipcMain.handle('delete-file', async (event, filename) => {
 });
 
 ipcMain.handle('delete-dir', async (event, filename) => {
-  return await fs.rmdir(APP_DIR + '/' + filename, { recursive: true });
+  const dirPath = APP_DIR + '/' + filename;
+  if (!(await fsExtra.pathExists(dirPath))) {
+    return;
+  }
+  const normDirPath = path.normalize(dirPath);
+  // Release watcher handles to prevent EPERM
+  for (const [dir, handle] of dirWatchHandles.entries()) {
+    if (dir === normDirPath || dir.startsWith(normDirPath + path.sep)) {
+      await handle.close();
+      dirWatchHandles.delete(dir);
+    }
+  }
+  for (const curPath of watchHandles.keys()) {
+    if (curPath.startsWith(normDirPath + path.sep)) {
+      watchHandles.delete(curPath);
+    }
+  }
+
+  if (os.platform() === 'win32') {
+    return await safeRemove(dirPath);
+  } else {
+    try {
+      return await fs.rmdir(dirPath, { recursive: true });
+    } catch (e: any) {
+      if (e.code !== 'ENOENT') {
+        throw e;
+      }
+    }
+  }
 });
 
 ipcMain.handle('trash-file', async (event, filename) => {
@@ -1198,7 +1278,7 @@ async function initFolder() {
   }
 }
 
-init();
+const initPromise = init();
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -1230,7 +1310,8 @@ if (!gotTheLock) {
 
   app
     .whenReady()
-    .then(() => {
+    .then(async () => {
+      await initPromise;
       createWindow();
       app.on('activate', () => {
         // On macOS it's common to re-create a window in the app when the

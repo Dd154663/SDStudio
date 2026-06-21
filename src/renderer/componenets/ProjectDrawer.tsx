@@ -109,20 +109,20 @@ const ProjectRow = observer(
             className="flex-1 min-w-0 bg-white dark:bg-slate-700 border border-sky-400 rounded px-2 py-1.5 text-[15px] text-gray-900 dark:text-gray-100 outline-none"
           />
           <Tooltip content="저장">
-          <button
-            onClick={onEditCommit}
-            className="p-2 rounded-md flex-none text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700"
-          >
-            <FaCheck size={15} />
-          </button>
+            <button
+              onClick={onEditCommit}
+              className="p-2 rounded-md flex-none text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700"
+            >
+              <FaCheck size={15} />
+            </button>
           </Tooltip>
           <Tooltip content="취소">
-          <button
-            onClick={onEditCancel}
-            className="p-2 rounded-md flex-none text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"
-          >
-            <FaTimes size={15} />
-          </button>
+            <button
+              onClick={onEditCancel}
+              className="p-2 rounded-md flex-none text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"
+            >
+              <FaTimes size={15} />
+            </button>
           </Tooltip>
         </div>
       );
@@ -132,8 +132,14 @@ const ProjectRow = observer(
         onClick={onSelect}
         onContextMenu={onContextMenu}
         draggable={dndEnabled}
-        onDragStart={(e: React.DragEvent) => { e.stopPropagation(); onDragStart(e); }}
-        onDragEnd={(e: React.DragEvent) => { e.stopPropagation(); onDragEnd(e); }}
+        onDragStart={(e: React.DragEvent) => {
+          e.stopPropagation();
+          onDragStart(e);
+        }}
+        onDragEnd={(e: React.DragEvent) => {
+          e.stopPropagation();
+          onDragEnd(e);
+        }}
         style={dragging ? { opacity: 0.4 } : undefined}
         className={`w-full flex items-center gap-2 px-2.5 py-2.5 rounded-md text-[15px] text-left transition-colors ${
           highlighted
@@ -153,26 +159,26 @@ const ProjectRow = observer(
           </span>
         ) : (
           <Tooltip content={isFav ? '즐겨찾기 해제' : '즐겨찾기'}>
-          <span
-            role="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              sessionService.toggleFavorite(name);
-            }}
-            className="flex-none -m-1 p-1 rounded cursor-pointer hover:bg-black/10 dark:hover:bg-white/10"
-          >
-            <FaStar
-              size={13}
-              className={`${
-                isFav
-                  ? 'text-yellow-400'
-                  : active
-                    ? 'text-sky-100'
-                    : 'text-gray-300 dark:text-slate-600'
-              }`}
-            />
-          </span>
+            <span
+              role="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                sessionService.toggleFavorite(name);
+              }}
+              className="flex-none -m-1 p-1 rounded cursor-pointer hover:bg-black/10 dark:hover:bg-white/10"
+            >
+              <FaStar
+                size={13}
+                className={`${
+                  isFav
+                    ? 'text-yellow-400'
+                    : active
+                      ? 'text-sky-100'
+                      : 'text-gray-300 dark:text-slate-600'
+                }`}
+              />
+            </span>
           </Tooltip>
         )}
         <span className="truncate flex-1">{name}</span>
@@ -184,7 +190,9 @@ const ProjectRow = observer(
           >
             <FaFolder
               size={10}
-              style={!active && folderColor ? { color: folderColor } : undefined}
+              style={
+                !active && folderColor ? { color: folderColor } : undefined
+              }
             />
             <span className="max-w-[80px] truncate">{folder}</span>
           </span>
@@ -307,8 +315,9 @@ const ProjectDrawer = observer(() => {
     if (!toolbar) return;
     const close = () => setToolbar(null);
     const onMouseDown = (e: MouseEvent) => {
-      const el = document.getElementById('floating-folder-toolbar')
-        || document.getElementById('floating-project-toolbar');
+      const el =
+        document.getElementById('floating-folder-toolbar') ||
+        document.getElementById('floating-project-toolbar');
       if (el && !el.contains(e.target as Node)) close();
     };
     const onKey = (e: KeyboardEvent) => {
@@ -379,7 +388,9 @@ const ProjectDrawer = observer(() => {
   const createProject = async (folder: string | null) => {
     const name = await appState.pushDialogAsync({
       type: 'input-confirm',
-      text: folder ? `"${folder}" 폴더에 새 프로젝트 이름` : '신규 프로젝트 이름',
+      text: folder
+        ? `"${folder}" 폴더에 새 프로젝트 이름`
+        : '신규 프로젝트 이름',
     });
     if (!name) return;
     if (sessionService.list().includes(name)) {
@@ -415,7 +426,9 @@ const ProjectDrawer = observer(() => {
       text: hint,
     });
     if (!value) return;
-    const fullPath = parentPath ? parentPath + '/' + value.trim() : value.trim();
+    const fullPath = parentPath
+      ? parentPath + '/' + value.trim()
+      : value.trim();
     try {
       await sessionService.createFolder(fullPath);
       setExpanded((prev) => {
@@ -560,7 +573,11 @@ const ProjectDrawer = observer(() => {
     const parent = sessionService.folderParentPath(sourceFolder);
     const targetPath = parent ? parent + '/' + value.trim() : value.trim();
     try {
-      appState.setProgressDialog({ text: '폴더 복제 중...', done: 0, total: 1 });
+      appState.setProgressDialog({
+        text: '폴더 복제 중...',
+        done: 0,
+        total: 1,
+      });
       await sessionService.cloneFolder(sourceFolder, targetPath, withImages);
       appState.setProgressDialog(undefined);
       appState.pushMessage(`"${value.trim}" 폴더로 복제되었습니다.`);
@@ -736,8 +753,13 @@ const ProjectDrawer = observer(() => {
     onEditCommit: commitProjectRename,
     onEditCancel: cancelProjectRename,
     onEditKeyDown: (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') { e.preventDefault(); commitProjectRename(); }
-      else if (e.key === 'Escape') { e.preventDefault(); cancelProjectRename(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commitProjectRename();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelProjectRename();
+      }
     },
   });
 
@@ -772,7 +794,7 @@ const ProjectDrawer = observer(() => {
     const newName = editProjectValue.trim();
     setEditingProject(null);
     if (!old || !newName || old === newName) return;
-      if (sessionService.list().includes(newName)) {
+    if (sessionService.list().includes(newName)) {
       const conflictFolder = sessionService.getFolderOf(newName);
       const where = conflictFolder ? `"${conflictFolder}" 폴더에 ` : '';
       appState.pushMessage(`같은 이름의 프로젝트가 ${where}이미 존재합니다.`);
@@ -781,6 +803,10 @@ const ProjectDrawer = observer(() => {
     await sessionService.get(old);
     await imageService.onRenameSession(old, newName);
     await sessionService.rename(old, newName);
+    const sess = sessionService.resources[newName];
+    if (sess) {
+      sess.name = newName;
+    }
     appState.pushMessage('프로젝트 이름이 변경되었습니다.');
   };
 
@@ -809,6 +835,7 @@ const ProjectDrawer = observer(() => {
           opacity: shown ? 1 : 0,
           transition: 'opacity 0.26s ease',
         }}
+        onClick={close}
       />
       <div
         className="absolute left-0 top-0 h-full w-[90vw] max-w-[400px] bg-white dark:bg-slate-800 shadow-2xl border-r border-gray-200 dark:border-slate-600 flex flex-col"
@@ -887,38 +914,41 @@ const ProjectDrawer = observer(() => {
             </button>
           </div>
         ) : (
-        <div className="px-3 py-2.5 flex gap-2 flex-none">
-          <button
-            onClick={() => createProject(null)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-lg text-sm font-medium bg-sky-500 hover:bg-sky-600 text-white transition-colors whitespace-nowrap"
-          >
-            <FaPlus size={12} /> 새 프로젝트
-          </button>
-          <Tooltip content="새 폴더 만들기">
-          <button
-            onClick={() => createFolder()}
-            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
-          >
-            <FaFolderPlus size={14} /> <span className="hidden md:inline">폴더</span>
-          </button>
-          </Tooltip>
-          <Tooltip content="프로젝트 저장 공간 관리">
-          <button
-            onClick={() => setStorageOpen(true)}
-            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
-          >
-            <FaHdd size={14} /> <span className="hidden md:inline">관리</span>
-          </button>
-          </Tooltip>
-          <Tooltip content="전체 백업 / 복원">
-          <button
-            onClick={() => appState.fullBackupMenu()}
-            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
-          >
-            <FaFileArchive size={14} /> <span className="hidden md:inline">백업</span>
-          </button>
-          </Tooltip>
-        </div>
+          <div className="px-3 py-2.5 flex gap-2 flex-none">
+            <button
+              onClick={() => createProject(null)}
+              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-lg text-sm font-medium bg-sky-500 hover:bg-sky-600 text-white transition-colors whitespace-nowrap"
+            >
+              <FaPlus size={12} /> 새 프로젝트
+            </button>
+            <Tooltip content="새 폴더 만들기">
+              <button
+                onClick={() => createFolder()}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
+              >
+                <FaFolderPlus size={14} />{' '}
+                <span className="hidden md:inline">폴더</span>
+              </button>
+            </Tooltip>
+            <Tooltip content="프로젝트 저장 공간 관리">
+              <button
+                onClick={() => setStorageOpen(true)}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
+              >
+                <FaHdd size={14} />{' '}
+                <span className="hidden md:inline">관리</span>
+              </button>
+            </Tooltip>
+            <Tooltip content="전체 백업 / 복원">
+              <button
+                onClick={() => appState.fullBackupMenu()}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
+              >
+                <FaFileArchive size={14} />{' '}
+                <span className="hidden md:inline">백업</span>
+              </button>
+            </Tooltip>
+          </div>
         )}
 
         {/* 목록 */}
@@ -954,9 +984,15 @@ const ProjectDrawer = observer(() => {
                     className="w-full flex items-center gap-2 pl-1.5 pr-2 py-2.5 text-[15px] font-semibold text-gray-700 dark:text-gray-200"
                   >
                     {expanded.has('__favorites__') ? (
-                      <FaChevronDown size={12} className="flex-none text-gray-400" />
+                      <FaChevronDown
+                        size={12}
+                        className="flex-none text-gray-400"
+                      />
                     ) : (
-                      <FaChevronRight size={12} className="flex-none text-gray-400" />
+                      <FaChevronRight
+                        size={12}
+                        className="flex-none text-gray-400"
+                      />
                     )}
                     <span
                       className="flex items-center justify-center w-7 h-7 rounded-md flex-none"
@@ -972,7 +1008,11 @@ const ProjectDrawer = observer(() => {
                   {expanded.has('__favorites__') && (
                     <div className="pl-3 pb-1">
                       {favs.map((n) => (
-                        <ProjectRow key={'fav-' + n} showFolder {...rowProps(n)} />
+                        <ProjectRow
+                          key={'fav-' + n}
+                          showFolder
+                          {...rowProps(n)}
+                        />
                       ))}
                     </div>
                   )}
@@ -982,7 +1022,10 @@ const ProjectDrawer = observer(() => {
               {/* 폴더들 */}
               {(() => {
                 const rootFolders = folders.filter((f) => !f.includes('/'));
-                const renderFolderNode = (f: string, depth: number): React.ReactNode => {
+                const renderFolderNode = (
+                  f: string,
+                  depth: number,
+                ): React.ReactNode => {
                   const projects = folderToProjects.get(f) || [];
                   const childFolders = sessionService.getChildFolders(f);
                   const isOpen = expanded.has(f);
@@ -993,7 +1036,8 @@ const ProjectDrawer = observer(() => {
                   const folderDragging =
                     drag?.type === 'folder' && drag.name === f;
                   const leafName = sessionService.folderLeafName(f);
-                  const indentStyle = depth > 0 ? { marginLeft: `${depth * 14}px` } : undefined;
+                  const indentStyle =
+                    depth > 0 ? { marginLeft: `${depth * 14}px` } : undefined;
                   return (
                     <div
                       key={f}
@@ -1026,7 +1070,9 @@ const ProjectDrawer = observer(() => {
                       }}
                       onDragLeave={(e) => {
                         e.stopPropagation();
-                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                        if (
+                          !e.currentTarget.contains(e.relatedTarget as Node)
+                        ) {
                           setDropTarget((t) => (t === f ? null : t));
                         }
                       }}
@@ -1060,66 +1106,76 @@ const ProjectDrawer = observer(() => {
                             className="flex-1 min-w-0 bg-white dark:bg-slate-700 border border-sky-400 rounded px-2 py-1.5 text-[15px] text-gray-900 dark:text-gray-100 outline-none"
                           />
                           <Tooltip content="저장">
-                          <button
-                            onClick={commitRename}
-                            className="p-2 rounded-md flex-none text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700"
-                          >
-                            <FaCheck size={15} />
-                          </button>
+                            <button
+                              onClick={commitRename}
+                              className="p-2 rounded-md flex-none text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700"
+                            >
+                              <FaCheck size={15} />
+                            </button>
                           </Tooltip>
                           <Tooltip content="취소">
-                          <button
-                            onClick={cancelRename}
-                            className="p-2 rounded-md flex-none text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"
-                          >
-                            <FaTimes size={15} />
-                          </button>
+                            <button
+                              onClick={cancelRename}
+                              className="p-2 rounded-md flex-none text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"
+                            >
+                              <FaTimes size={15} />
+                            </button>
                           </Tooltip>
                         </div>
                       ) : (
-                      <div className="flex items-center gap-0.5 pl-1.5 pr-1">
-                        <button
-                          onClick={() => toggleFolder(f)}
-                          draggable={dndEnabled && !selectMode}
-                          onDragStart={(e) => {
-                            setDrag({ type: 'folder', name: f });
-                            e.dataTransfer.effectAllowed = 'move';
-                            e.stopPropagation();
-                          }}
-                          onDragEnd={(e) => {
-                            e.stopPropagation();
-                            setDrag(null);
-                            setDropTarget(null);
-                          }}
-                          className="flex-1 flex items-center gap-2 px-1 py-2.5 text-[15px] font-semibold text-gray-700 dark:text-gray-200 min-w-0"
-                        >
-                          {isOpen ? (
-                            <FaChevronDown size={12} className="flex-none text-gray-400" />
-                          ) : (
-                            <FaChevronRight size={12} className="flex-none text-gray-400" />
-                          )}
-                          <span
-                            className="flex items-center justify-center w-7 h-7 rounded-md flex-none"
-                            style={{ backgroundColor: withAlpha(color, '26') }}
-                          >
-                            <FaFolder size={14} style={{ color }} />
-                          </span>
-                          <span className="truncate flex-1 text-left">{leafName}</span>
-                          <span className="text-xs text-gray-400 font-normal flex-none">
-                            {projects.length}
-                          </span>
-                        </button>
-                        {isMobile && (
-                          <Tooltip content="폴더 메뉴">
+                        <div className="flex items-center gap-0.5 pl-1.5 pr-1">
                           <button
-                            onClick={() => openFolderMenu(f)}
-                            className="p-2 rounded-md flex-none text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                            onClick={() => toggleFolder(f)}
+                            draggable={dndEnabled && !selectMode}
+                            onDragStart={(e) => {
+                              setDrag({ type: 'folder', name: f });
+                              e.dataTransfer.effectAllowed = 'move';
+                              e.stopPropagation();
+                            }}
+                            onDragEnd={(e) => {
+                              e.stopPropagation();
+                              setDrag(null);
+                              setDropTarget(null);
+                            }}
+                            className="flex-1 flex items-center gap-2 px-1 py-2.5 text-[15px] font-semibold text-gray-700 dark:text-gray-200 min-w-0"
                           >
-                            <FaEllipsisV size={16} />
+                            {isOpen ? (
+                              <FaChevronDown
+                                size={12}
+                                className="flex-none text-gray-400"
+                              />
+                            ) : (
+                              <FaChevronRight
+                                size={12}
+                                className="flex-none text-gray-400"
+                              />
+                            )}
+                            <span
+                              className="flex items-center justify-center w-7 h-7 rounded-md flex-none"
+                              style={{
+                                backgroundColor: withAlpha(color, '26'),
+                              }}
+                            >
+                              <FaFolder size={14} style={{ color }} />
+                            </span>
+                            <span className="truncate flex-1 text-left">
+                              {leafName}
+                            </span>
+                            <span className="text-xs text-gray-400 font-normal flex-none">
+                              {projects.length}
+                            </span>
                           </button>
-                          </Tooltip>
-                        )}
-                      </div>
+                          {isMobile && (
+                            <Tooltip content="폴더 메뉴">
+                              <button
+                                onClick={() => openFolderMenu(f)}
+                                className="p-2 rounded-md flex-none text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                              >
+                                <FaEllipsisV size={16} />
+                              </button>
+                            </Tooltip>
+                          )}
+                        </div>
                       )}
                       {picking && (
                         <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 bg-gray-50 dark:bg-slate-700/50 rounded-md mx-1 mb-1">
@@ -1165,14 +1221,18 @@ const ProjectDrawer = observer(() => {
                                 onInput={(e) =>
                                   pickCustomColor(f, e.currentTarget.value)
                                 }
-                                onChange={(e) => pickCustomColor(f, e.target.value)}
+                                onChange={(e) =>
+                                  pickCustomColor(f, e.target.value)
+                                }
                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                               />
                             </label>
                           ) : (
                             <MobileColorPicker
                               initial={
-                                /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#0ea5e9'
+                                /^#[0-9a-fA-F]{6}$/.test(color)
+                                  ? color
+                                  : '#0ea5e9'
                               }
                               onChange={(hex) => pickCustomColor(f, hex)}
                               onClose={() => setColorPickerFor(null)}
@@ -1182,7 +1242,8 @@ const ProjectDrawer = observer(() => {
                       )}
                       {isOpen && (
                         <div className="pb-1">
-                          {projects.length === 0 && childFolders.length === 0 ? (
+                          {projects.length === 0 &&
+                          childFolders.length === 0 ? (
                             <div className="text-xs text-gray-400 px-2 py-1.5">
                               비어 있음
                             </div>
@@ -1195,7 +1256,9 @@ const ProjectDrawer = observer(() => {
                               ))}
                             </>
                           )}
-                          {childFolders.map((child) => renderFolderNode(child, depth + 1))}
+                          {childFolders.map((child) =>
+                            renderFolderNode(child, depth + 1),
+                          )}
                         </div>
                       )}
                     </div>
@@ -1212,63 +1275,71 @@ const ProjectDrawer = observer(() => {
                 const unfiledDropping =
                   dropTarget === '__unfiled__' && canDropUnfiled;
                 return (
-              <div
-                className="mb-1 rounded-md transition-shadow"
-                style={{
-                  borderLeft: '3px solid #94a3b8',
-                  boxShadow: unfiledDropping
-                    ? 'inset 0 0 0 2px #94a3b8'
-                    : undefined,
-                  backgroundColor: unfiledDropping ? '#94a3b826' : '#94a3b812',
-                }}
-                onDragOver={(e) => {
-                  if (canDropUnfiled) {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'move';
-                    setDropTarget('__unfiled__');
-                  }
-                }}
-                onDragLeave={(e) => {
-                  e.stopPropagation();
-                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                    setDropTarget((t) => (t === '__unfiled__' ? null : t));
-                  }
-                }}
-                onDrop={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  handleUnfiledDrop();
-                }}
-              >
-                <button
-                  onClick={() => toggleFolder('__unfiled__')}
-                  className="w-full flex items-center gap-2 pl-1.5 pr-2 py-2.5 text-[15px] font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  {expanded.has('__unfiled__') ? (
-                    <FaChevronDown size={11} className="flex-none text-gray-400" />
-                  ) : (
-                    <FaChevronRight size={11} className="flex-none text-gray-400" />
-                  )}
-                  <span
-                    className="flex items-center justify-center w-7 h-7 rounded-md flex-none"
-                    style={{ backgroundColor: withAlpha('#94a3b8', '26') }}
+                  <div
+                    className="mb-1 rounded-md transition-shadow"
+                    style={{
+                      borderLeft: '3px solid #94a3b8',
+                      boxShadow: unfiledDropping
+                        ? 'inset 0 0 0 2px #94a3b8'
+                        : undefined,
+                      backgroundColor: unfiledDropping
+                        ? '#94a3b826'
+                        : '#94a3b812',
+                    }}
+                    onDragOver={(e) => {
+                      if (canDropUnfiled) {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        setDropTarget('__unfiled__');
+                      }
+                    }}
+                    onDragLeave={(e) => {
+                      e.stopPropagation();
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                        setDropTarget((t) => (t === '__unfiled__' ? null : t));
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      handleUnfiledDrop();
+                    }}
                   >
-                    <FaFolder className="text-gray-400" size={14} />
-                  </span>
-                  <span className="flex-1 text-left">미분류</span>
-                  <span className="text-xs text-gray-400 font-normal">
-                    {unfiled.length}
-                  </span>
-                </button>
-                {expanded.has('__unfiled__') && (
-                  <div className="pl-3 pb-1">
-                    {unfiled.map((n) => (
-                      <ProjectRow key={n} {...rowProps(n)} />
-                    ))}
+                    <button
+                      onClick={() => toggleFolder('__unfiled__')}
+                      className="w-full flex items-center gap-2 pl-1.5 pr-2 py-2.5 text-[15px] font-semibold text-gray-700 dark:text-gray-200"
+                    >
+                      {expanded.has('__unfiled__') ? (
+                        <FaChevronDown
+                          size={11}
+                          className="flex-none text-gray-400"
+                        />
+                      ) : (
+                        <FaChevronRight
+                          size={11}
+                          className="flex-none text-gray-400"
+                        />
+                      )}
+                      <span
+                        className="flex items-center justify-center w-7 h-7 rounded-md flex-none"
+                        style={{ backgroundColor: withAlpha('#94a3b8', '26') }}
+                      >
+                        <FaFolder className="text-gray-400" size={14} />
+                      </span>
+                      <span className="flex-1 text-left">미분류</span>
+                      <span className="text-xs text-gray-400 font-normal">
+                        {unfiled.length}
+                      </span>
+                    </button>
+                    {expanded.has('__unfiled__') && (
+                      <div className="pl-3 pb-1">
+                        {unfiled.map((n) => (
+                          <ProjectRow key={n} {...rowProps(n)} />
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
                 );
               })()}
             </>
@@ -1293,76 +1364,144 @@ const ProjectDrawer = observer(() => {
       {toolbar &&
         createPortal(
           toolbar.type === 'folder' ? (
-          <div
-            id="floating-folder-toolbar"
-            className="fixed z-[9999] flex items-center gap-0.5 p-1.5 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-gray-200 dark:border-slate-600"
-            style={{ left: toolbar.x, top: toolbar.y }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <Tooltip content="내보내기/불러오기">
-              <button onClick={() => { appState.folderBackupMenu(toolbar.name); setToolbar(null); }} className="p-2 rounded-md text-gray-400 hover:text-amber-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
-                <FaFileExport size={14} />
-              </button>
-            </Tooltip>
-            <Tooltip content="폴더 복제">
-              <button onClick={() => { cloneFolder(toolbar.name); setToolbar(null); }} className="p-2 rounded-md text-gray-400 hover:text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
-                <FaCopy size={14} />
-              </button>
-            </Tooltip>
-            <Tooltip content="폴더 색상">
-              <button onClick={() => { setColorPickerFor((p) => p === toolbar.name ? null : toolbar.name); setToolbar(null); }} className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
-                <FaPalette size={15} />
-              </button>
-            </Tooltip>
-            <Tooltip content="이름 편집">
-              <button onClick={() => { startRename(toolbar.name); setToolbar(null); }} className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
-                <FaPen size={15} />
-              </button>
-            </Tooltip>
-            <Tooltip content="폴더 삭제">
-              <button onClick={() => { deleteFolderConfirm(toolbar.name); setToolbar(null); }} className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
-                <FaTrashAlt size={15} />
-              </button>
-            </Tooltip>
-            <Tooltip content="새 프로젝트">
-              <button onClick={() => { createProject(toolbar.name); setToolbar(null); }} className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
-                <FaPlus size={15} />
-              </button>
-            </Tooltip>
-            <Tooltip content="서브폴더 만들기">
-              <button onClick={() => { createFolder(toolbar.name); setToolbar(null); }} className="p-2 rounded-md text-gray-400 hover:text-indigo-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
-                <FaFolderPlus size={13} />
-              </button>
-            </Tooltip>
-          </div>
+            <div
+              id="floating-folder-toolbar"
+              className="fixed z-[9999] flex items-center gap-0.5 p-1.5 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-gray-200 dark:border-slate-600"
+              style={{ left: toolbar.x, top: toolbar.y }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <Tooltip content="내보내기/불러오기">
+                <button
+                  onClick={() => {
+                    appState.folderBackupMenu(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="p-2 rounded-md text-gray-400 hover:text-amber-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <FaFileExport size={14} />
+                </button>
+              </Tooltip>
+              <Tooltip content="폴더 복제">
+                <button
+                  onClick={() => {
+                    cloneFolder(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="p-2 rounded-md text-gray-400 hover:text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <FaCopy size={14} />
+                </button>
+              </Tooltip>
+              <Tooltip content="폴더 색상">
+                <button
+                  onClick={() => {
+                    setColorPickerFor((p) =>
+                      p === toolbar.name ? null : toolbar.name,
+                    );
+                    setToolbar(null);
+                  }}
+                  className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <FaPalette size={15} />
+                </button>
+              </Tooltip>
+              <Tooltip content="이름 편집">
+                <button
+                  onClick={() => {
+                    startRename(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <FaPen size={15} />
+                </button>
+              </Tooltip>
+              <Tooltip content="폴더 삭제">
+                <button
+                  onClick={() => {
+                    deleteFolderConfirm(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <FaTrashAlt size={15} />
+                </button>
+              </Tooltip>
+              <Tooltip content="새 프로젝트">
+                <button
+                  onClick={() => {
+                    createProject(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <FaPlus size={15} />
+                </button>
+              </Tooltip>
+              <Tooltip content="서브폴더 만들기">
+                <button
+                  onClick={() => {
+                    createFolder(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="p-2 rounded-md text-gray-400 hover:text-indigo-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <FaFolderPlus size={13} />
+                </button>
+              </Tooltip>
+            </div>
           ) : (
-          <div
-            id="floating-project-toolbar"
-            className="fixed z-[9999] flex items-center gap-0.5 p-1.5 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-gray-200 dark:border-slate-600"
-            style={{ left: toolbar.x, top: toolbar.y }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <Tooltip content="내보내기/불러오기">
-              <button onClick={() => { handleProjectExportImport(toolbar.name); setToolbar(null); }} className="p-2 rounded-md text-gray-400 hover:text-amber-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
-                <FaFileExport size={14} />
-              </button>
-            </Tooltip>
-            <Tooltip content="프로젝트 복제">
-              <button onClick={() => { handleProjectClone(toolbar.name); setToolbar(null); }} className="p-2 rounded-md text-gray-400 hover:text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
-                <FaCopy size={14} />
-              </button>
-            </Tooltip>
-            <Tooltip content="이름 편집">
-              <button onClick={() => { handleProjectRename(toolbar.name); setToolbar(null); }} className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
-                <FaPen size={15} />
-              </button>
-            </Tooltip>
-            <Tooltip content="프로젝트 삭제">
-              <button onClick={() => { handleProjectDelete(toolbar.name); setToolbar(null); }} className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
-                <FaTrashAlt size={15} />
-              </button>
-            </Tooltip>
-          </div>
+            <div
+              id="floating-project-toolbar"
+              className="fixed z-[9999] flex items-center gap-0.5 p-1.5 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-gray-200 dark:border-slate-600"
+              style={{ left: toolbar.x, top: toolbar.y }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <Tooltip content="내보내기/불러오기">
+                <button
+                  onClick={() => {
+                    handleProjectExportImport(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="p-2 rounded-md text-gray-400 hover:text-amber-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <FaFileExport size={14} />
+                </button>
+              </Tooltip>
+              <Tooltip content="프로젝트 복제">
+                <button
+                  onClick={() => {
+                    handleProjectClone(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="p-2 rounded-md text-gray-400 hover:text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <FaCopy size={14} />
+                </button>
+              </Tooltip>
+              <Tooltip content="이름 편집">
+                <button
+                  onClick={() => {
+                    handleProjectRename(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <FaPen size={15} />
+                </button>
+              </Tooltip>
+              <Tooltip content="프로젝트 삭제">
+                <button
+                  onClick={() => {
+                    handleProjectDelete(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <FaTrashAlt size={15} />
+                </button>
+              </Tooltip>
+            </div>
           ),
           document.body,
         )}
