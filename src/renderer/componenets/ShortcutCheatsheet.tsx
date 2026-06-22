@@ -23,6 +23,19 @@ const SCENE_SHORTCUTS: ShortcutEntry[] = [
   { keys: ['H'], desc: '단축키 도움말' },
 ];
 
+const IMAGE_GRID_SHORTCUTS: ShortcutEntry[] = [
+  { keys: ['←', '→', '↑', '↓'], desc: '이미지 포커스 이동' },
+  { keys: ['Enter'], desc: '상세 보기' },
+  { keys: ['Ctrl+F'], desc: '즐겨찾기 토글' },
+  { keys: ['Ctrl+B'], desc: '북마크 토글' },
+  { keys: ['Ctrl+S'], desc: '선택 모드 진입 + 포커스 이미지 선택 토글' },
+  { keys: ['S'], desc: '선택 모드에서 포커스 이미지 선택 토글' },
+  { keys: ['Ctrl+X'], desc: '선택 모드 취소' },
+  { keys: ['Del'], desc: '이미지 삭제' },
+  { keys: ['Ctrl+1', 'Ctrl+2', 'Ctrl+3', 'Ctrl+4'], desc: '탭 전환' },
+  { keys: ['H'], desc: '단축키 도움말' },
+];
+
 const TOURNAMENT_SHORTCUTS: ShortcutEntry[] = [
   { keys: ['A', ','], desc: '왼쪽 우승' },
   { keys: ['D', '.'], desc: '오른쪽 우승' },
@@ -33,12 +46,17 @@ const TOURNAMENT_SHORTCUTS: ShortcutEntry[] = [
 ];
 
 interface ShortcutCheatsheetProps {
-  scope: 'scene' | 'tournament';
+  scope: 'scene' | 'tournament' | 'image-grid';
   onClose: () => void;
 }
 
 function ShortcutCheatsheet({ scope, onClose }: ShortcutCheatsheetProps) {
-  const shortcuts = scope === 'scene' ? SCENE_SHORTCUTS : TOURNAMENT_SHORTCUTS;
+  const shortcuts =
+    scope === 'scene'
+      ? SCENE_SHORTCUTS
+      : scope === 'image-grid'
+        ? IMAGE_GRID_SHORTCUTS
+        : TOURNAMENT_SHORTCUTS;
   const panelRef = useRef<HTMLDivElement>(null);
 
   return (

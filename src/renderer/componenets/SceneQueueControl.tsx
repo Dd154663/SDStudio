@@ -1318,6 +1318,8 @@ const QueueControl = observer(
           !e.altKey &&
           !e.shiftKey
         ) {
+          // 이미지 그리드 등 플로팅 뷰가 열려 있으면 그쪽 도움말(ResultViewer)이 담당
+          if (appState.floatViewCount > 0) return;
           e.preventDefault();
           appState.showSceneCheatsheet = !appState.showSceneCheatsheet;
           return;
@@ -2305,7 +2307,7 @@ const QueueControl = observer(
             );
           })()}
         </div>
-        {showCheatsheet && (
+        {!isMobile && showCheatsheet && appState.floatViewCount === 0 && (
           <ShortcutCheatsheet
             scope="scene"
             onClose={() => {

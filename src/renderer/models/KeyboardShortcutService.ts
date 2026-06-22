@@ -17,6 +17,8 @@ const ACTIONS: ShortcutAction[] = [
   { id: 'image-open-detail', label: '상세 보기', category: 'image-grid', defaultKey: 'Enter' },
   { id: 'image-toggle-favorite', label: '즐겨찾기 토글', category: 'image-grid', defaultKey: 'Ctrl+F' },
   { id: 'image-toggle-bookmark', label: '북마크 토글', category: 'image-grid', defaultKey: 'Ctrl+B' },
+  { id: 'image-toggle-select', label: '선택 모드 진입/포커스 이미지 선택 토글', category: 'image-grid', defaultKey: 'Ctrl+S' },
+  { id: 'image-clear-select', label: '선택 모드 취소', category: 'image-grid', defaultKey: 'Ctrl+X' },
   { id: 'image-delete', label: '이미지 삭제', category: 'image-grid', defaultKey: 'Delete' },
   { id: 'image-tab-1', label: '이미지 탭', category: 'image-grid', defaultKey: 'Ctrl+1' },
   { id: 'image-tab-2', label: '즐겨찾기 탭', category: 'image-grid', defaultKey: 'Ctrl+2' },

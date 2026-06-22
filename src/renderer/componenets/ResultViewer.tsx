@@ -19,6 +19,7 @@ import ResizeObserver from 'resize-observer-polyfill';
 import { userInfo } from 'os';
 import { CustomScrollbars } from './UtilComponents';
 import Tournament from './Tournament';
+import ShortcutCheatsheet from './ShortcutCheatsheet';
 import {
   FaArrowLeft,
   FaArrowRight,
@@ -1426,6 +1427,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     const { curSession, samples } = appState;
     const [_, forceUpdate] = useState<{}>({});
     const [selectMode, setSelectMode] = useState<boolean>(false);
+    const [showImageCheatsheet, setShowImageCheatsheet] =
+      useState<boolean>(false);
     const [tournament, setTournament] = useState<boolean>(false);
     const selectedImages = useRef(new Set<string>());
     const [selectedImageIndex, setSelectedImageIndex] = useState<
@@ -1770,6 +1773,36 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
         const cols = activeGalleryRef.current?.getColumnCount() ?? 1;
         if (count === 0) return;
 
+        const toggleSelectAt = (idx: number) => {
+          const path = activePaths[idx];
+          if (selectedImages.current.has(path)) {
+            selectedImages.current.delete(path);
+          } else {
+            selectedImages.current.add(path);
+          }
+          gallaryRef.current?.refeshImage(path);
+          gallaryRef2.current?.refeshImage(path);
+          forceUpdate({});
+        };
+
+        // 선택 모드 진입/취소는 포커스가 없어도 동작 (씬 그리드와 동일 UX)
+        if (action === 'image-clear-select') {
+          selectedImages.current.clear();
+          setSelectMode(false);
+          gallaryRef.current?.refresh();
+          gallaryRef2.current?.refresh();
+          forceUpdate({});
+          return;
+        }
+        if (action === 'image-toggle-select') {
+          // 모드 진입 후엔 수정자 없는 S만으로 토글이 이어진다(아래 keydown 핸들러).
+          if (!selectMode) setSelectMode(true);
+          const idx = focusedImageIndex ?? 0;
+          if (focusedImageIndex == null) setFocusedImageIndex(0);
+          toggleSelectAt(idx);
+          return;
+        }
+
         // 첫 입력 시 포커스 0으로 초기화 (방향키에 한해)
         if (
           focusedImageIndex == null &&
@@ -1826,7 +1859,77 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       };
       window.addEventListener('shortcut-action', onShortcut);
       return () => window.removeEventListener('shortcut-action', onShortcut);
-    }, [focusedImageIndex, activePaths, paths, scene, selectedTab, curSession]);
+    }, [
+      focusedImageIndex,
+      activePaths,
+      paths,
+      scene,
+      selectedTab,
+      curSession,
+      selectMode,
+    ]);
+
+    // 선택 모드(Ctrl+S로 진입)에서 수정자 없는 S로 포커스 이미지 선택 토글.
+    // 모드 밖에서는 실수 선택을 막기 위해 무시한다(씬 그리드와 동일 UX).
+    useEffect(() => {
+      const handler = (e: KeyboardEvent) => {
+        if (e.key !== 's' && e.key !== 'S') return;
+        if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+        if (isMobile) return;
+        if (selectedImageIndex != null) return; // 상세 보기 열림
+        if (selectedTab !== 0 && selectedTab !== 1) return;
+        if (!selectMode || focusedImageIndex == null) return;
+        const el = document.activeElement;
+        if (el) {
+          const tag = el.tagName.toLowerCase();
+          if (
+            tag === 'input' ||
+            tag === 'textarea' ||
+            (el as HTMLElement).isContentEditable
+          )
+            return;
+        }
+        if (focusedImageIndex >= activePaths.length) return;
+        e.preventDefault();
+        const path = activePaths[focusedImageIndex];
+        if (selectedImages.current.has(path)) {
+          selectedImages.current.delete(path);
+        } else {
+          selectedImages.current.add(path);
+        }
+        gallaryRef.current?.refeshImage(path);
+        gallaryRef2.current?.refeshImage(path);
+        forceUpdate({});
+      };
+      window.addEventListener('keydown', handler);
+      return () => window.removeEventListener('keydown', handler);
+    }, [selectMode, focusedImageIndex, activePaths, selectedTab, selectedImageIndex]);
+
+    // H로 이미지 그리드 전용 단축키 도움말 토글.
+    // 토너먼트/상세 보기 중에는 각자의 도움말이 우선하므로 무시한다.
+    useEffect(() => {
+      const handler = (e: KeyboardEvent) => {
+        if (e.key !== 'h' && e.key !== 'H') return;
+        if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+        if (isMobile) return;
+        if (tournament || selectedImageIndex != null) return;
+        const el = document.activeElement;
+        if (el) {
+          const tag = el.tagName.toLowerCase();
+          if (
+            tag === 'input' ||
+            tag === 'textarea' ||
+            (el as HTMLElement).isContentEditable
+          )
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        setShowImageCheatsheet((v) => !v);
+      };
+      window.addEventListener('keydown', handler, true);
+      return () => window.removeEventListener('keydown', handler, true);
+    }, [tournament, selectedImageIndex]);
 
     let emoji = '';
     let title = '';
@@ -1837,6 +1940,12 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
 
     return (
       <div className="w-full h-full flex flex-col">
+        {!isMobile && showImageCheatsheet && !tournament && (
+          <ShortcutCheatsheet
+            scope="image-grid"
+            onClose={() => setShowImageCheatsheet(false)}
+          />
+        )}
         {tournament && (
           <FloatView
             priority={2}
