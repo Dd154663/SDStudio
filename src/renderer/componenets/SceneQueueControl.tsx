@@ -510,7 +510,8 @@ export const SceneCell = observer(
     };
     const onClickCard = (event: any) => {
       if (isDragging) return;
-      if (event.ctrlKey) {
+      // PC: Ctrl+클릭 / 모바일: 선택 모드 활성 시 탭 → 선택 토글 (그리드 안 열림)
+      if (event.ctrlKey || (isMobile && appState.sceneSelectionMode)) {
         appState.toggleSceneSelection(scene.name);
         return;
       }
@@ -2022,8 +2023,23 @@ const QueueControl = observer(
                 대량 작업
               </button>
               <button
-                className={`round-button ${appState.selectedScenes.size > 0 ? 'back-sky' : 'back-gray'}`}
+                className={`round-button ${
+                  (isMobile ? appState.sceneSelectionMode : appState.selectedScenes.size > 0)
+                    ? 'back-sky'
+                    : 'back-gray'
+                }`}
                 onClick={() => {
+                  if (isMobile) {
+                    // 모바일: 선택 모드 토글. 끌 때는 선택도 해제한다.
+                    if (appState.sceneSelectionMode) {
+                      appState.sceneSelectionMode = false;
+                      appState.clearSceneSelection();
+                    } else {
+                      appState.sceneSelectionMode = true;
+                    }
+                    return;
+                  }
+                  // PC: 선택이 있으면 해제, 없으면 선택 방법 안내
                   if (appState.selectedScenes.size === 0) {
                     appState.pushMessage(
                       'Ctrl+클릭 또는 드래그로 씬을 선택하세요.',
@@ -2033,9 +2049,13 @@ const QueueControl = observer(
                   appState.clearSceneSelection();
                 }}
               >
-                {appState.selectedScenes.size > 0
-                  ? `선택 (${appState.selectedScenes.size}) ✕`
-                  : '다중 선택'}
+                {isMobile
+                  ? appState.sceneSelectionMode
+                    ? `선택 모드 (${appState.selectedScenes.size}) ✕`
+                    : '다중 선택'
+                  : appState.selectedScenes.size > 0
+                    ? `선택 (${appState.selectedScenes.size}) ✕`
+                    : '다중 선택'}
               </button>
               <button
                 className="round-button back-gray"

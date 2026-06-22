@@ -119,6 +119,10 @@ export class AppState {
   // 씬 다중 선택 (Ctrl+클릭 or 드래그)
   @observable accessor selectedScenes: Set<string> = new Set();
 
+  // 모바일 전용: 씬 다중 선택 모드. 켜지면 씬 탭이 이미지 그리드 열기 대신
+  // 선택 토글로 동작한다. (PC 는 Ctrl+클릭/드래그/Ctrl+S 로 선택하므로 미사용)
+  @observable accessor sceneSelectionMode: boolean = false;
+
   // 이미지 삭제 확인 건너뛰기 (세션 스코프)
   @observable accessor skipImageDeleteConfirm: boolean = false;
 
