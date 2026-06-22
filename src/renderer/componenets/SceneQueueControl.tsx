@@ -1311,6 +1311,15 @@ const QueueControl = observer(
       const handler = (e: KeyboardEvent) => {
         if (isInputFocused()) return;
 
+        // 비활성 탭(display:none)의 QueueControl 인스턴스는 무시.
+        // scene·inpaint 탭이 동시 마운트되므로 가드가 없으면 H 토글이 두 번
+        // 일어나 상쇄(열기/닫기 불능)된다. offsetParent는 display:none이면 null.
+        if (
+          !gridContainerRef.current ||
+          gridContainerRef.current.offsetParent === null
+        )
+          return;
+
         if (
           (e.key === 'h' || e.key === 'H') &&
           !e.ctrlKey &&
@@ -2172,17 +2181,19 @@ const QueueControl = observer(
                   <FaExchangeAlt size={18} />
                 </button>
               </Tooltip>
-              <Tooltip content="단축키 도움말">
-                <button
-                  className="round-button back-gray"
-                  onClick={() => {
-                    appState.showSceneCheatsheet = !appState.showSceneCheatsheet;
-                  }}
-                >
-                  <FaQuestion size={14} />
-                  <span className="ml-1 text-xs hidden lg:inline">H</span>
-                </button>
-              </Tooltip>
+              {!isMobile && (
+                <Tooltip content="단축키 도움말">
+                  <button
+                    className="round-button back-gray"
+                    onClick={() => {
+                      appState.showSceneCheatsheet = !appState.showSceneCheatsheet;
+                    }}
+                  >
+                    <FaQuestion size={14} />
+                    <span className="ml-1 text-xs hidden lg:inline">H</span>
+                  </button>
+                </Tooltip>
+              )}
             </div>
             <div className="ml-auto mr-2 hidden md:flex items-center gap-2">
               {!appState.classicSceneCard && (
