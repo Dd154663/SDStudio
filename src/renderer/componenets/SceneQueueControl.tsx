@@ -1262,13 +1262,16 @@ const QueueControl = observer(
             });
           }
         } else if (action === 'scene-toggle-select') {
-          // 포커스된 씬을 다중 선택에 토글
+          // 선택 모드 진입 + 포커스된 씬을 다중 선택에 토글.
+          // 모드 진입 후엔 수정자 없는 S 키만으로 토글이 이어진다(아래 keydown 핸들러).
           if (focusedSceneIndex != null && focusedSceneIndex < scenes.length) {
+            appState.sceneSelectionMode = true;
             appState.toggleSceneSelection(scenes[focusedSceneIndex].name);
           }
         } else if (action === 'scene-clear-select') {
-          // 선택 모드 취소(전체 선택 해제)
+          // 선택 모드 취소(전체 선택 해제 + 모드 종료)
           appState.clearSceneSelection();
+          appState.sceneSelectionMode = false;
         } else if (action === 'scene-toggle-bookmark') {
           if (focusedSceneIndex != null && focusedSceneIndex < scenes.length) {
             const scene = scenes[focusedSceneIndex];
@@ -1347,6 +1350,14 @@ const QueueControl = observer(
             }),
           );
         };
+        if (e.key === 's' || e.key === 'S') {
+          // 선택 모드(Ctrl+S로 진입)에서는 수정자 없는 S만으로 포커스 씬 선택 토글.
+          // 모드 밖에서는 실수 선택을 막기 위해 무시한다.
+          if (!appState.sceneSelectionMode || !hasFocus) return;
+          e.preventDefault();
+          appState.toggleSceneSelection(scenes[focusedSceneIndex!].name);
+          return;
+        }
         if (e.key === 'a' || e.key === 'A' || e.key === ',') {
           if (!hasFocus) return;
           e.preventDefault();
@@ -2039,14 +2050,15 @@ const QueueControl = observer(
                     }
                     return;
                   }
-                  // PC: 선택이 있으면 해제, 없으면 선택 방법 안내
+                  // PC: 선택이 있으면 해제(키보드 선택 모드도 종료), 없으면 선택 방법 안내
                   if (appState.selectedScenes.size === 0) {
                     appState.pushMessage(
-                      'Ctrl+클릭 또는 드래그로 씬을 선택하세요.',
+                      'Ctrl+S(선택 모드)·Ctrl+클릭·드래그로 씬을 선택하세요. 모드 진입 후엔 S로 토글.',
                     );
                     return;
                   }
                   appState.clearSceneSelection();
+                  appState.sceneSelectionMode = false;
                 }}
               >
                 {isMobile

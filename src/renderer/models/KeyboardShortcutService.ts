@@ -39,7 +39,7 @@ const ACTIONS: ShortcutAction[] = [
   { id: 'scene-open-images', label: '씬 이미지 보기', category: 'scene', defaultKey: 'Enter' },
   { id: 'scene-open-editor', label: '씬 편집', category: 'scene', defaultKey: 'Tab' },
   { id: 'scene-queue-add', label: '포커스/선택 씬 예약 추가', category: 'scene', defaultKey: 'Ctrl+A' },
-  { id: 'scene-toggle-select', label: '포커스 씬 선택 토글', category: 'scene', defaultKey: 'Ctrl+S' },
+  { id: 'scene-toggle-select', label: '선택 모드 진입/포커스 씬 선택 토글', category: 'scene', defaultKey: 'Ctrl+S' },
   { id: 'scene-clear-select', label: '선택 모드 취소', category: 'scene', defaultKey: 'Ctrl+X' },
   { id: 'scene-toggle-bookmark', label: '씬 북마크 토글', category: 'scene', defaultKey: 'Ctrl+B' },
   { id: 'queue-run', label: '예약 실행', category: 'scene', defaultKey: 'Space' },
