@@ -395,7 +395,7 @@ const createSDI2IHandler = (type: string) => {
     meta?: any,
     onComplete?: (img: string) => void,
   ) => {
-    const image = preset.image.endsWith('.png')
+    const image = (preset.image.endsWith('.png') || preset.image.endsWith('.avif'))
       ? dataUriToBase64(
           (await imageService.fetchVibeImage(session, preset.image))!,
         )

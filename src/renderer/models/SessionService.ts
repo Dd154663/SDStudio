@@ -621,7 +621,7 @@ export class SessionService extends ResourceSyncService<Session> {
   ): Promise<string | undefined> {
     try {
       const files = await backend.listFiles('outs/' + project + '/' + sceneName);
-      return (files || []).find((f: string) => f.endsWith('.png'));
+      return (files || []).find((f: string) => f.endsWith('.png') || f.endsWith('.avif'));
     } catch (e) {
       return undefined;
     }
@@ -986,7 +986,7 @@ export class SessionService extends ResourceSyncService<Session> {
 
     for (const { name, files } of sceneResults) {
       for (const image of files) {
-        if (!image.endsWith('.png')) continue;
+        if (!image.endsWith('.png') && !image.endsWith('.avif')) continue;
         entries.push({
           path: 'outs/' + session.name + '/' + name + '/' + image,
           name: prefix + 'outs/' + name + '/' + image,
@@ -1009,7 +1009,7 @@ export class SessionService extends ResourceSyncService<Session> {
     }
     for (const { name, files } of inpaintResults) {
       for (const image of files) {
-        if (!image.endsWith('.png')) continue;
+        if (!image.endsWith('.png') && !image.endsWith('.avif')) continue;
         entries.push({
           path: 'inpaints/' + session.name + '/' + name + '/' + image,
           name: prefix + 'inpaints/' + name + '/' + image,

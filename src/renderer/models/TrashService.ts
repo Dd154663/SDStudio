@@ -32,6 +32,8 @@ const IMAGE_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;    // 3 days
 const SCENE_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;   // 14 days
 const PROJECT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;  // 30 days
 
+const PROJECT_DATA_DIRS = ['outs', 'inpaints', 'vibes', 'inpaint_masks', 'inpaint_orgs'];
+
 // --- Service class ---
 
 export class TrashService extends EventTarget {
@@ -129,7 +131,7 @@ export class TrashService extends EventTarget {
     } catch (e) {
       return [];
     }
-    files = files.filter((f: string) => f.endsWith('.png'));
+    files = files.filter((f: string) => f.endsWith('.png') || f.endsWith('.avif'));
     return files.map((f: string) => ({
       filename: f,
       deletedAt: meta[f] || 0,
@@ -231,6 +233,231 @@ export class TrashService extends EventTarget {
       }
     }
     return total;
+  }
+
+  // ===== Project-wide full trash manager =====
+
+  async getAllProjectTrashFiles(projectName: string): Promise<{
+    path: string;
+    filename: string;
+    sceneName: string;
+    isSceneDeleted: boolean;
+    size: number;
+    mtime: number;
+  }[]> {
+    this.ensureLoaded();
+    const result: any[] = [];
+    const { sessionService } = await import('.');
+    const session = await sessionService.get(projectName);
+    const activeScenes = session
+      ? [
+          ...session.getScenes('scene'),
+          ...session.getScenes('inpaint'),
+        ]
+      : [];
+
+    // 1. 활성 씬 내의 이미지 휴지통 스캔
+    for (const scene of activeScenes) {
+      for (const baseDir of ['outs', 'inpaints']) {
+        const trashDir = `${baseDir}/${projectName}/${scene.name}/${IMAGE_TRASH_DIR}`;
+        try {
+          if (await backend.existFile(trashDir)) {
+            const stats = await backend.listFilesWithStats(trashDir);
+            for (const s of stats) {
+              if (s.name === TRASH_META_FILE || s.name.startsWith('.')) continue;
+              if (s.name.endsWith('.png') || s.name.endsWith('.avif')) {
+                result.push({
+                  path: `${trashDir}/${s.name}`,
+                  filename: s.name,
+                  sceneName: scene.name,
+                  isSceneDeleted: false,
+                  size: s.size,
+                  mtime: s.mtime,
+                });
+              }
+            }
+          }
+        } catch (e) {}
+      }
+    }
+
+    // 2. 삭제된 씬 자체의 이미지 스캔
+    for (const baseDir of ['outs', 'inpaints']) {
+      const sceneTrashParent = `${baseDir}/${projectName}/${IMAGE_TRASH_DIR}`;
+      try {
+        if (await backend.existFile(sceneTrashParent)) {
+          const deletedSceneDirs = await backend.listFiles(sceneTrashParent);
+          for (const sceneName of deletedSceneDirs) {
+            if (sceneName.startsWith('.') || sceneName === '.gitkeep') continue;
+            const deletedSceneDir = `${sceneTrashParent}/${sceneName}`;
+            
+            // 2-A. 삭제된 씬의 메인 이미지들 스캔 (씬 폴더 바로 밑)
+            try {
+              const stats = await backend.listFilesWithStats(deletedSceneDir);
+              for (const s of stats) {
+                if (s.name.startsWith('.') || s.name === 'fastcache' || s.name === IMAGE_TRASH_DIR) continue;
+                if (s.name.endsWith('.png') || s.name.endsWith('.avif')) {
+                  result.push({
+                    path: `${deletedSceneDir}/${s.name}`,
+                    filename: s.name,
+                    sceneName: sceneName,
+                    isSceneDeleted: true,
+                    size: s.size,
+                    mtime: s.mtime,
+                  });
+                }
+              }
+            } catch (e) {}
+
+            // 2-B. 삭제된 씬 내부의 이미지 휴지통 스캔 (.trash 폴더 밑)
+            const nestedTrashDir = `${deletedSceneDir}/${IMAGE_TRASH_DIR}`;
+            try {
+              if (await backend.existFile(nestedTrashDir)) {
+                const stats = await backend.listFilesWithStats(nestedTrashDir);
+                for (const s of stats) {
+                  if (s.name === TRASH_META_FILE || s.name.startsWith('.')) continue;
+                  if (s.name.endsWith('.png') || s.name.endsWith('.avif')) {
+                    result.push({
+                      path: `${nestedTrashDir}/${s.name}`,
+                      filename: s.name,
+                      sceneName: sceneName,
+                      isSceneDeleted: true,
+                      size: s.size,
+                      mtime: s.mtime,
+                    });
+                  }
+                }
+              }
+            } catch (e) {}
+          }
+        }
+      } catch (e) {}
+    }
+
+    return result;
+  }
+
+  async restoreProjectTrashItems(
+    projectName: string,
+    items: { path: string; filename: string; sceneName: string; isSceneDeleted: boolean }[],
+  ): Promise<void> {
+    const { sessionService } = await import('.');
+    const session = await sessionService.get(projectName);
+    if (!session) throw new Error('프로젝트를 찾을 수 없습니다.');
+
+    const activeSceneItems = items.filter(i => !i.isSceneDeleted);
+    const deletedSceneItems = items.filter(i => i.isSceneDeleted);
+
+    // 1. 활성 씬 이미지 복원
+    const activeGroups = new Map<string, string[]>();
+    for (const item of activeSceneItems) {
+      if (!activeGroups.has(item.sceneName)) activeGroups.set(item.sceneName, []);
+      activeGroups.get(item.sceneName)!.push(item.filename);
+    }
+    for (const [sceneName, filenames] of activeGroups.entries()) {
+      const scene = session.scenes.get(sceneName) || session.inpaints.get(sceneName);
+      if (scene) {
+        await this.restoreImages(session, scene, filenames);
+      }
+    }
+
+    // 2. 삭제된 씬 복원 (씬을 복원하면 해당 씬 폴더 전체가 복원됩니다)
+    const deletedSceneNames = Array.from(new Set(deletedSceneItems.map(i => i.sceneName)));
+    for (const sceneName of deletedSceneNames) {
+      try {
+        await this.restoreScene(session, sceneName);
+      } catch (e) {
+        console.error(`씬 ${sceneName} 복원 실패:`, e);
+      }
+    }
+  }
+
+  async permanentlyDeleteProjectTrashItems(
+    projectName: string,
+    items: { path: string; filename: string; sceneName: string; isSceneDeleted: boolean }[],
+  ): Promise<void> {
+    const { sessionService } = await import('.');
+    const session = await sessionService.get(projectName);
+
+    const activeSceneItems = items.filter(i => !i.isSceneDeleted);
+    const deletedSceneItems = items.filter(i => i.isSceneDeleted);
+
+    // 1. 활성 씬 이미지 영구 삭제 (메타데이터 정리 포함)
+    const activeGroups = new Map<string, string[]>();
+    for (const item of activeSceneItems) {
+      if (!activeGroups.has(item.sceneName)) activeGroups.set(item.sceneName, []);
+      activeGroups.get(item.sceneName)!.push(item.filename);
+    }
+    if (session) {
+      for (const [sceneName, filenames] of activeGroups.entries()) {
+        const scene = session.scenes.get(sceneName) || session.inpaints.get(sceneName);
+        if (scene) {
+          await this.permanentlyDeleteImages(session, scene, filenames);
+        }
+      }
+    }
+
+    // 2. 삭제된 씬 내 파일 개별 삭제
+    const deletedScenesToCheck = new Set<string>();
+    for (const item of deletedSceneItems) {
+      try {
+        await backend.deleteFile(item.path);
+        
+        // 부모 씬 폴더 경로 계산: baseDir/projectName/.trash/sceneName
+        const parts = item.path.split('/');
+        parts.pop(); // 파일명 제거
+        if (parts[parts.length - 1] === IMAGE_TRASH_DIR) {
+          parts.pop(); // '.trash' 폴더명 제거
+        }
+        deletedScenesToCheck.add(parts.join('/'));
+      } catch (e) {
+        console.error('파일 영구 삭제 실패:', item.path, e);
+      }
+    }
+
+    // 파일이 전부 삭제된 빈 씬 폴더 정리
+    for (const sceneDir of deletedScenesToCheck) {
+      try {
+        let hasFiles = false;
+        if (await backend.existFile(sceneDir)) {
+          const files = await backend.listFiles(sceneDir);
+          for (const f of files) {
+            if (f === IMAGE_TRASH_DIR) {
+              const nestedFiles = await backend.listFiles(`${sceneDir}/${IMAGE_TRASH_DIR}`);
+              if (nestedFiles.filter(nf => !nf.startsWith('.')).length > 0) {
+                hasFiles = true;
+                break;
+              }
+            } else if (f === 'fastcache') {
+              // fastcache 폴더는 무시
+            } else if (!f.startsWith('.')) {
+              hasFiles = true;
+              break;
+            }
+          }
+        }
+        if (!hasFiles) {
+          await backend.deleteDir(sceneDir);
+        }
+      } catch (e) {}
+    }
+  }
+
+  async moveProjectTrashItemsToExternal(
+    projectName: string,
+    items: { path: string; filename: string; sceneName: string; isSceneDeleted: boolean }[],
+    destFolder: string,
+  ): Promise<void> {
+    for (const item of items) {
+      const destPath = destFolder + '/' + item.filename;
+      try {
+        await backend.copyFileToAbsolute(item.path, destPath);
+        await this.permanentlyDeleteProjectTrashItems(projectName, [item]);
+      } catch (e: any) {
+        console.error(`외부 폴더 이동 실패: ${item.filename}`, e);
+        throw new Error(`파일 이동 중 오류가 발생했습니다: ${e.message}`);
+      }
+    }
   }
 
   // ===== Scene trash =====
@@ -465,6 +692,21 @@ export class TrashService extends EventTarget {
     this.ensureLoaded();
     this.data.projects[projectName] = { deletedAt: Date.now() };
     await this.saveTrash();
+
+    for (const dir of PROJECT_DATA_DIRS) {
+      const src = dir + '/' + projectName;
+      const dest = dir + '/.trash/' + projectName;
+      try {
+        await backend.writeFile(dir + '/.trash/.gitkeep', '');
+      } catch (_) {}
+      try {
+        await backend.renameDir(src, dest);
+      } catch (e: any) {
+        if (e.code !== 'ENOENT' && !(e.message || '').includes('ENOENT')) {
+          console.error(`프로젝트 디렉토리 휴지통 이동 실패 (${src}):`, e);
+        }
+      }
+    }
   }
 
   async getDeletedProjects(): Promise<{name: string, deletedAt: number}[]> {
@@ -487,6 +729,24 @@ export class TrashService extends EventTarget {
 
   async restoreProject(name: string): Promise<void> {
     this.ensureLoaded();
+
+    // 먼저 .trash 에서 데이터 디렉토리를 원래 위치로 복원
+    for (const dir of PROJECT_DATA_DIRS) {
+      const trashPath = dir + '/.trash/' + name;
+      const origPath = dir + '/' + name;
+      try {
+        if (await backend.existFile(trashPath)) {
+          if (await backend.existFile(origPath)) {
+            console.warn(`Restore conflict: ${origPath} already exists, skipping dir restore`);
+          } else {
+            await backend.renameDir(trashPath, origPath);
+          }
+        }
+      } catch (e) {
+        console.error(`디렉토리 복원 실패 (${trashPath}):`, e);
+      }
+    }
+
     const deletedMap = await this.scanProjectFiles('.deleted');
     const activeMap = await this.scanProjectFiles('.json');
     const deletedPath = deletedMap.get(name);
@@ -564,9 +824,12 @@ export class TrashService extends EventTarget {
     }
 
     if (safeToDeleteDirs) {
-      for (const dir of ['outs', 'inpaints', 'vibes', 'inpaint_masks', 'inpaint_orgs']) {
+      for (const dir of PROJECT_DATA_DIRS) {
         try {
           await backend.deleteDir(dir + '/' + name);
+        } catch (e) {}
+        try {
+          await backend.deleteDir(dir + '/.trash/' + name);
         } catch (e) {}
       }
     }
@@ -609,6 +872,67 @@ export class TrashService extends EventTarget {
     }
     if (names.length > 0) {
       await this.saveTrash();
+    }
+  }
+
+  // ===== Project trash dir management =====
+
+  async getTrashedProjectsWithSize(): Promise<{name: string; deletedAt: number; size: number}[]> {
+    this.ensureLoaded();
+    const deleted = await this.getDeletedProjects();
+    const result: {name: string; deletedAt: number; size: number}[] = [];
+
+    for (const p of deleted) {
+      let totalSize = 0;
+      for (const dir of PROJECT_DATA_DIRS) {
+        const trashDir = dir + '/.trash/' + p.name;
+        try {
+          if (await backend.existFile(trashDir)) {
+            totalSize += await this.calcDirSizeRecursive(trashDir);
+          }
+        } catch (e) {}
+      }
+      result.push({ name: p.name, deletedAt: p.deletedAt, size: totalSize });
+    }
+    return result;
+  }
+
+  private async calcDirSizeRecursive(dirPath: string): Promise<number> {
+    let total = 0;
+    try {
+      const stats = await backend.listFilesWithStats(dirPath);
+      for (const s of stats) {
+        total += s.size || 0;
+      }
+      const entries = await backend.listFiles(dirPath);
+      for (const entry of entries) {
+        if (entry.startsWith('.') || entry === 'fastcache') continue;
+        const subPath = dirPath + '/' + entry;
+        try {
+          const subStats = await backend.listFilesWithStats(subPath);
+          if (subStats.length > 0 || (await backend.listFiles(subPath)).length > 0) {
+            total += await this.calcDirSizeRecursive(subPath);
+          }
+        } catch (e) {}
+      }
+    } catch (e) {}
+    return total;
+  }
+
+  async emptyProjectTrashDirs(name: string): Promise<void> {
+    this.ensureLoaded();
+    for (const dir of PROJECT_DATA_DIRS) {
+      try {
+        await backend.deleteDir(dir + '/.trash/' + name);
+      } catch (e) {}
+    }
+  }
+
+  async emptyAllProjectTrashDirs(): Promise<void> {
+    this.ensureLoaded();
+    const deleted = await this.getDeletedProjects();
+    for (const p of deleted) {
+      await this.permanentlyDeleteProject(p.name);
     }
   }
 

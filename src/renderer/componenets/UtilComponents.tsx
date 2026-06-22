@@ -167,20 +167,26 @@ interface TabComponentProps {
   toggleView?: React.ReactNode;
   className?: string;
   left?: boolean;
+  defaultActiveTab?: number;
 }
 
 export const TabComponent: React.FC<TabComponentProps> = ({
   left,
   tabs,
   toggleView,
+  defaultActiveTab = 0,
 }) => {
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState(defaultActiveTab);
   const [toggleViewOpen, setToggleViewOpen] = useState(false);
 
   const handleTabClick = (index: number) => {
     tabs[index].onClick?.();
     setActiveTab(index);
   };
+
+  useEffect(() => {
+    setActiveTab(defaultActiveTab);
+  }, [defaultActiveTab]);
 
   useEffect(() => {
     const handler = (e: Event) => {

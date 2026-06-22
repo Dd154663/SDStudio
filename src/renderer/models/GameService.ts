@@ -121,7 +121,7 @@ export class GameService extends EventTarget {
 
   async createGame(path: string) {
     let files = await backend.listFiles(path);
-    files = files.filter((x: string) => x.endsWith('.png'));
+    files = files.filter((x: string) => x.endsWith('.png') || x.endsWith('.avif'));
     return files.map((x: string) => ({
       path: x,
       rank: files.length - 1,

@@ -30,7 +30,7 @@ const { exiftool } = require('exiftool-vendored');
 const chokidar = require('chokidar');
 import webpackPaths from '../../.erb/configs/webpack.paths';
 import { Config } from './config';
-import { spawn } from 'child_process';
+import { spawn, execFile } from 'child_process';
 import fsExtra from 'fs-extra';
 import LocalAIService from './localai';
 const StreamZip = require('node-stream-zip');
@@ -75,6 +75,8 @@ function getMimeType(filePath: any) {
       return 'image/jpeg';
     case '.png':
       return 'image/png';
+    case '.avif':
+      return 'image/avif';
     case '.gif':
       return 'image/gif';
     case '.pdf':
@@ -146,7 +148,8 @@ ipcMain.handle('open-web-page', async (event, url) => {
 });
 
 ipcMain.handle('show-file', async (event, arg) => {
-  shell.showItemInFolder(path.join(APP_DIR, arg));
+  const filePath = path.isAbsolute(arg) ? arg : path.join(APP_DIR, arg);
+  shell.showItemInFolder(filePath);
 });
 
 const AdmZip = require('adm-zip');
@@ -274,17 +277,113 @@ ipcMain.handle('copy-file', async (event, src, dest) => {
   await fs.copyFile(APP_DIR + '/' + src, APP_DIR + '/' + dest);
 });
 
+ipcMain.handle('copy-file-to-absolute', async (event, srcRelative, destAbsolute) => {
+  const dir = path.dirname(destAbsolute);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.copyFile(APP_DIR + '/' + srcRelative, destAbsolute);
+});
+
 ipcMain.handle('read-data-file', async (event, arg) => {
   return await readFileAsDataURL(APP_DIR + '/' + arg);
 });
+
+const PYTHON_AVIF_SCRIPT = app.isPackaged
+  ? path.join(process.resourcesPath, 'tools', 'convert_avif.py')
+  : path.join(__dirname, '../../tools', 'convert_avif.py');
+
+function convertWithPython(
+  pngPath: string,
+  avifPath: string,
+  quality: number,
+  comment?: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const args = [PYTHON_AVIF_SCRIPT, pngPath, avifPath, String(quality)];
+    if (comment) {
+      args.push(comment);
+    }
+    console.log('[AVIF] spawn:', 'python', args.join(' '));
+    const proc = spawn('python', args);
+    let stderr = '';
+    proc.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
+    proc.on('error', (err) => {
+      console.error('[AVIF spawn error]', err.message);
+      reject(new Error(err.message));
+    });
+    proc.on('close', (code) => {
+      if (stderr) console.error('[AVIF stderr]', stderr);
+      if (code !== 0) {
+        reject(new Error(stderr || `exit code ${code}`));
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+function extractPNGCommentText(pngBuffer: Buffer): string | null {
+  if (pngBuffer.length < 8) return null;
+  if (pngBuffer[0] !== 0x89 || pngBuffer[1] !== 0x50 ||
+      pngBuffer[2] !== 0x4E || pngBuffer[3] !== 0x47) return null;
+
+  let offset = 8;
+  while (offset + 12 <= pngBuffer.length) {
+    const length = pngBuffer.readUInt32BE(offset);
+    const type = pngBuffer.toString('ascii', offset + 4, offset + 8);
+
+    if (type === 'tEXt' || type === 'iTXt') {
+      const dataStart = offset + 8;
+      const chunkData = pngBuffer.slice(dataStart, dataStart + length);
+      const nullIdx = chunkData.indexOf(0);
+      if (nullIdx !== -1) {
+        const keyword = chunkData.toString('latin1', 0, nullIdx);
+        if (keyword === 'Comment') {
+          return chunkData.toString('latin1', nullIdx + 1);
+        }
+      }
+    }
+
+    offset += 12 + length;
+  }
+  return null;
+}
 
 ipcMain.handle('write-data-file', async (event, filename, data) => {
   const binaryData = Buffer.from(data, 'base64');
   const dir = path.dirname(APP_DIR + '/' + filename);
   await fs.mkdir(dir, { recursive: true });
-  const tmpFile = APP_DIR + '/' + uuidv4();
+  const finalPath = APP_DIR + '/' + filename;
+  const tmpFile = APP_DIR + '/' + uuidv4() + '.png';
   await fs.writeFile(tmpFile, binaryData);
-  await fs.rename(tmpFile, APP_DIR + '/' + filename, { recursive: true });
+
+  if (filename.toLowerCase().endsWith('.avif')) {
+    try {
+      await convertWithPython(tmpFile, finalPath, config.avifQuality ?? 75);
+      await fs.unlink(tmpFile);
+    } catch (e: any) {
+      console.error('AVIF conversion failed, falling back to PNG:', e.message);
+      const pngPath = finalPath.replace(/\.avif$/i, '.png');
+      try {
+        await fs.rename(tmpFile, pngPath);
+      } catch (_) {}
+    }
+  } else {
+    await fs.rename(tmpFile, finalPath, { recursive: true });
+  }
+});
+
+ipcMain.handle('convert-png-to-avif', async (event, pngPath) => {
+  const fullPngPath = APP_DIR + '/' + pngPath;
+  const fullAvifPath = fullPngPath.replace(/\.png$/i, '.avif');
+  if (!fullPngPath.toLowerCase().endsWith('.png')) return false;
+  try {
+    await convertWithPython(fullPngPath, fullAvifPath, config.avifQuality ?? 75);
+    await fs.unlink(fullPngPath);
+    return true;
+  } catch (e: any) {
+    console.error(`Failed to convert ${pngPath} to AVIF:`, e.message);
+    return false;
+  }
 });
 
 ipcMain.handle('write-data-file-absolute', async (event, absolutePath, data) => {
@@ -628,28 +727,48 @@ ipcMain.handle(
       outputPath = APP_DIR + '/' + outputPath;
       const dir = path.dirname(outputPath);
       await fs.mkdir(dir, { recursive: true });
-      let instance = sharp(inputPath).resize(maxWidth, maxHeight, {
-        fit: sharp.fit.inside,
-        withoutEnlargement: true,
-      });
-      if (optimize === ImageOptimizeMethod.LOSSY) {
-        instance = instance.webp({
-          quality: 80,
-          lossless: false,
-        });
+
+      if (optimize === ImageOptimizeMethod.AVIF && inputPath.toLowerCase().endsWith('.png')) {
+        let commentText: string | null = null;
+        try {
+          const pngBuffer = await fs.readFile(inputPath);
+          commentText = extractPNGCommentText(pngBuffer);
+        } catch (e: any) {
+          console.error('Could not read PNG metadata for resize:', e.message);
+        }
+
+        const tmpPng = outputPath.replace(/\.avif$/i, '.resize.png');
+        await sharp(inputPath)
+          .resize(maxWidth, maxHeight, {
+            fit: sharp.fit.inside,
+            withoutEnlargement: true,
+          })
+          .png()
+          .toFile(tmpPng);
+
+        try {
+          await convertWithPython(tmpPng, outputPath, 50, commentText ?? undefined);
+        } finally {
+          try { await fs.unlink(tmpPng); } catch (_) {}
+        }
+      } else {
+        let instance = sharp(inputPath).resize(maxWidth, maxHeight, {
+          fit: sharp.fit.inside,
+          withoutEnlargement: true,
+        }).withMetadata();
+        if (optimize === ImageOptimizeMethod.LOSSY) {
+          instance = instance.webp({
+            quality: 80,
+            lossless: false,
+          });
+        }
+        if (optimize === ImageOptimizeMethod.LOSSLESS) {
+          instance = instance.webp({
+            lossless: true,
+          });
+        }
+        await instance.toFile(outputPath);
       }
-      if (optimize === ImageOptimizeMethod.LOSSLESS) {
-        instance = instance.webp({
-          lossless: true,
-        });
-      }
-      if (optimize === ImageOptimizeMethod.AVIF) {
-        instance = instance.avif({
-          quality: 50,
-          effort: 4,
-        });
-      }
-      await instance.toFile(outputPath);
     } catch (e: any) {
       console.error('resize-image error:', e);
       throw new Error('이미지 리사이즈 실패: ' + (e.message || e));

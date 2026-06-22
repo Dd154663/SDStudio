@@ -222,8 +222,13 @@ export class ImageService extends EventTarget {
         const res = this.cache.get(path);
         return res;
       }
-      // 파일 존재 여부 먼저 확인하여 불필요한 오류 로그 방지
-      const exists = await backend.existFile(path);
+      let exists = false;
+      for (let i = 0; i < 3; i++) {
+        exists = await backend.existFile(path);
+        if (exists) break;
+        if (path.includes('fastcache')) break;
+        if (i < 2) await new Promise((r) => setTimeout(r, 100));
+      }
       if (!exists) {
         return null;
       }
@@ -248,7 +253,12 @@ export class ImageService extends EventTarget {
         return resizedImageData;
       }
       // 캐시된 작은 이미지가 없음 - 원본 파일 존재 여부 확인 후 리사이즈 시도
-      const originalExists = await backend.existFile(path);
+      let originalExists = false;
+      for (let i = 0; i < 3; i++) {
+        originalExists = await backend.existFile(path);
+        if (originalExists) break;
+        if (i < 2) await new Promise((r) => setTimeout(r, 100));
+      }
       if (!originalExists) {
         // 원본 파일이 없으면 null 반환 (오류 로그 방지)
         return null;
@@ -639,7 +649,7 @@ export class ImageService extends EventTarget {
     }
     const fileSet: any = {};
     let files = await backend.listFiles(this.getOutputDir(session, scene));
-    files = files.filter((x: string) => x.endsWith('.png'));
+    files = files.filter((x: string) => x.endsWith('.png') || x.endsWith('.avif'));
     files.sort(naturalSort);
 
     // 방어 (refreshBatch 전용): 기존 imageMap에 항목이 있었는데 파일시스템에서
@@ -672,7 +682,16 @@ export class ImageService extends EventTarget {
     scene.imageMap = newImageMap;
     target[session.name][scene.name] = [...scene.imageMap];
     if (scene.type === 'scene') {
-      scene.mains = scene.mains.filter((x: string) => x in fileSet);
+      scene.mains = scene.mains
+        .map((x: string) => {
+          if (x in fileSet) return x;
+          if (x.endsWith('.png')) {
+            const avifName = x.replace(/\.png$/i, '.avif');
+            if (avifName in fileSet) return avifName;
+          }
+          return null;
+        })
+        .filter((x): x is string => x !== null);
     }
     if (emitEvent)
       this.dispatchEvent(

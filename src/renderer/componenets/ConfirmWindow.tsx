@@ -6,8 +6,8 @@ import { observer } from 'mobx-react-lite';
 export interface Dialog {
   text: string;
   callback?:
-    | ((value?: string, text?: string) => void)
-    | ((value?: string, text?: string) => Promise<void>);
+    | ((value?: string, text?: string, skipConfirm?: boolean) => void)
+    | ((value?: string, text?: string, skipConfirm?: boolean) => Promise<void>);
   onCancel?: () => void;
   type: 'confirm' | 'yes-only' | 'input-confirm' | 'textarea-confirm' | 'select' | 'dropdown' | 'checkbox';
   inputValue?: string;
@@ -15,6 +15,7 @@ export interface Dialog {
   graySelect?: boolean;
   items?: { text: string; value: string }[];
   showSkipConfirm?: boolean;
+  skipConfirmText?: string;
 }
 
 const ConfirmWindow = observer(() => {
@@ -41,6 +42,7 @@ const ConfirmWindow = observer(() => {
             ? inputValue
             : undefined,
           currentDialog.text,
+          skipConfirm,
         );
       }
     }
@@ -107,7 +109,7 @@ const ConfirmWindow = observer(() => {
                         onChange={(e) => setSkipConfirm(e.target.checked)}
                         className="w-4 h-4 rounded accent-sky-500"
                       />
-                      이번 세션에서 다시 묻지 않음
+                      {curDialog.skipConfirmText || '이번 세션에서 다시 묻지 않음'}
                     </label>
                   )}
                   <button

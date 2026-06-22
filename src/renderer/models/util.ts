@@ -89,6 +89,104 @@ export async function extractExifFromBase64(base64: string) {
   return exif;
 }
 
+function decodeEXIFUserComment(value: unknown): string | null {
+  if (!(value instanceof Uint8Array) && !Array.isArray(value)) return null;
+  const bytes = Array.isArray(value) ? new Uint8Array(value) : value;
+  if (bytes.length < 8) return null;
+
+  // Check the first 8 bytes prefix
+  const prefixBytes = bytes.slice(0, 8);
+  const prefix = String.fromCharCode(...prefixBytes);
+
+  if (prefix.startsWith('UNICODE\0')) {
+    const decoder = new TextDecoder('utf-16be');
+    return decoder.decode(bytes.slice(8));
+  } else if (prefix.startsWith('ASCII\0\0\0')) {
+    const decoder = new TextDecoder('utf-8');
+    return decoder.decode(bytes.slice(8));
+  }
+
+  // Fallback: search for first null byte (similar to original implementation)
+  for (let i = 0; i < bytes.length - 1; i++) {
+    if (bytes[i] === 0) {
+      // Try utf-16be
+      try {
+        const decoder = new TextDecoder('utf-16be');
+        const text = decoder.decode(bytes.slice(i + 1));
+        const trimmed = text.trim();
+        if (trimmed.startsWith('{') || trimmed.startsWith('Comment')) {
+          return text;
+        }
+      } catch (e) {
+        /* ignore */
+      }
+
+      // Try utf-8
+      try {
+        const decoder = new TextDecoder('utf-8');
+        const text = decoder.decode(bytes.slice(i + 1));
+        const trimmed = text.trim();
+        if (trimmed.startsWith('{') || trimmed.startsWith('Comment')) {
+          return text;
+        }
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  }
+
+  // Last resort fallback
+  try {
+    const decoder = new TextDecoder('utf-8');
+    return decoder.decode(bytes);
+  } catch (e) {
+    /* ignore */
+  }
+
+  return null;
+}
+
+function extractFirstJSONBlock(str: string): any {
+  const start = str.indexOf('{');
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < str.length; i++) {
+    const char = str[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (char === '\\') {
+      escape = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (char === '{') {
+        depth++;
+      } else if (char === '}') {
+        depth--;
+        if (depth === 0) {
+          const candidate = str.slice(start, i + 1);
+          try {
+            return JSON.parse(candidate);
+          } catch (e) {
+            // Keep searching
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
 const STEALTH_MAGIC = 'stealth_pngcomp';
 
 async function decompressGzip(data: Uint8Array): Promise<Uint8Array> {
@@ -278,7 +376,7 @@ function parseCommentToJob(
 export async function extractPromptDataFromBase64(
   base64: string,
 ): Promise<ImportableMetadata | undefined> {
-  // 1차: EXIF Comment에서 추출 시도
+  // 1차: EXIF Comment에서 추출 시도 (PNG tEXt/Comment)
   try {
     const exif = await extractExifFromBase64(base64);
     const comment = exif['Comment'];
@@ -289,6 +387,36 @@ export async function extractPromptDataFromBase64(
     }
   } catch (e) {
     // EXIF 추출 실패 — 스테가노그래피로 폴백
+  }
+
+  // 1.5차: EXIF UserComment에서 추출 시도 (AVIF 등)
+  try {
+    const exif = await extractExifFromBase64(base64);
+    const uc: any = exif.UserComment;
+    if (uc && uc.value) {
+      const text = decodeEXIFUserComment(uc.value);
+      if (text) {
+        let data = extractFirstJSONBlock(text);
+        if (data && typeof data === 'object') {
+          // If UserComment contains a nested "Comment" key which is a JSON string (e.g. from NovelAI/piexif)
+          if (
+            data.Comment &&
+            typeof data.Comment === 'string' &&
+            data.Comment.trim().startsWith('{')
+          ) {
+            try {
+              data = JSON.parse(data.Comment);
+            } catch (e) {
+              /* ignore parse error */
+            }
+          }
+          const result = parseCommentToJob(data);
+          if (result) return result;
+        }
+      }
+    }
+  } catch (e) {
+    // UserComment 파싱 실패
   }
 
   // 2차: 알파 채널 스테가노그래피에서 추출 시도

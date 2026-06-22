@@ -55,6 +55,8 @@ function getMimeType(filePath: any) {
       return 'image/jpeg';
     case 'png':
       return 'image/png';
+    case 'avif':
+      return 'image/avif';
     case 'gif':
       return 'image/gif';
     case 'pdf':
@@ -736,5 +738,13 @@ export class AndroidBackend extends Backend {
     await Clipboard.write({
       image: dataUri,
     });
+  }
+
+  async convertPngToAvif(pngPath: string): Promise<boolean> {
+    return false;
+  }
+
+  async copyFileToAbsolute(srcRelative: string, destAbsolute: string): Promise<void> {
+    throw new Error('Not supported on Android');
   }
 }

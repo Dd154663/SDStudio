@@ -165,6 +165,14 @@ export class ElectornBackend extends Backend {
     await invoke('write-data-file-absolute', absolutePath, data);
   }
 
+  async convertPngToAvif(pngPath: string): Promise<boolean> {
+    return await invoke('convert-png-to-avif', pngPath);
+  }
+
+  async copyFileToAbsolute(srcRelative: string, destAbsolute: string): Promise<void> {
+    await invoke('copy-file-to-absolute', srcRelative, destAbsolute);
+  }
+
   async existFileAbsolute(absolutePath: string): Promise<boolean> {
     return await invoke('exist-file-absolute', absolutePath);
   }
