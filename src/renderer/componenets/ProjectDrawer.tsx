@@ -61,6 +61,7 @@ const ProjectRow = observer(
     onDragStart,
     onDragEnd,
     onContextMenu,
+    onMenu,
     editing,
     editValue,
     onEditChange,
@@ -78,6 +79,7 @@ const ProjectRow = observer(
     onDragStart: (e: React.DragEvent) => void;
     onDragEnd: (e: React.DragEvent) => void;
     onContextMenu?: (e: React.MouseEvent) => void;
+    onMenu?: () => void;
     editing?: boolean;
     editValue?: string;
     onEditChange?: (v: string) => void;
@@ -130,7 +132,9 @@ const ProjectRow = observer(
     return (
       <button
         onClick={onSelect}
-        onContextMenu={onContextMenu}
+        onContextMenu={isMobile ? undefined : onContextMenu}
+        data-drag-type={selectMode ? undefined : 'project'}
+        data-drag-name={selectMode ? undefined : name}
         draggable={dndEnabled}
         onDragStart={(e: React.DragEvent) => {
           e.stopPropagation();
@@ -195,6 +199,24 @@ const ProjectRow = observer(
               }
             />
             <span className="max-w-[80px] truncate">{folder}</span>
+          </span>
+        )}
+        {isMobile && !selectMode && onMenu && (
+          <span
+            role="button"
+            aria-label="프로젝트 메뉴"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onMenu();
+            }}
+            className={`flex-none -mr-1 p-1.5 rounded ${
+              active
+                ? 'text-sky-100 hover:bg-white/15'
+                : 'text-gray-400 hover:bg-black/10 dark:hover:bg-white/10'
+            }`}
+          >
+            <FaEllipsisV size={15} />
           </span>
         )}
       </button>
@@ -330,8 +352,6 @@ const ProjectDrawer = observer(() => {
       window.removeEventListener('keydown', onKey, true);
     };
   }, [toolbar]);
-
-  if (!render) return null;
 
   const close = () => {
     appState.projectDrawerOpen = false;
@@ -615,6 +635,25 @@ const ProjectDrawer = observer(() => {
     else if (v === 'subfolder') createFolder(f);
   };
 
+  // 모바일: 프로젝트 행의 메뉴 아이콘에서 여는 액션 메뉴(폴더 메뉴와 동일 패턴)
+  const openProjectMenu = async (n: string) => {
+    const v = await appState.pushDialogAsync({
+      type: 'select',
+      text: `프로젝트 "${n}"`,
+      items: [
+        { text: '📤 내보내기/불러오기', value: 'export' },
+        { text: '📋 프로젝트 복제', value: 'clone' },
+        { text: '✏️ 이름 편집', value: 'rename' },
+        { text: '🗑️ 프로젝트 삭제', value: 'delete' },
+      ],
+    });
+    if (!v) return;
+    if (v === 'export') handleProjectExportImport(n);
+    else if (v === 'clone') handleProjectClone(n);
+    else if (v === 'rename') handleProjectRename(n);
+    else if (v === 'delete') handleProjectDelete(n);
+  };
+
   // ===== 드래그&드롭 =====
   const reorderFolders = (moved: string, target: string) => {
     if (moved === target) return;
@@ -680,6 +719,227 @@ const ProjectDrawer = observer(() => {
     (drag.type === 'project'
       ? sessionService.getFolderOf(drag.name) !== f
       : drag.name !== f && !f.startsWith(drag.name + '/'));
+
+  // ===== 모바일 터치 드래그 (롱프레스로 잡아 폴더로 이동/재정렬) =====
+  // PC는 HTML5 draggable을 그대로 쓰지만 그것은 터치를 지원하지 않으므로, 모바일은 별도
+  // 터치 핸들러로 구현한다. 드롭 처리는 기존 handleFolderDrop/handleUnfiledDrop 재사용.
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
+  const touchApiRef = useRef({
+    handleFolderDrop,
+    handleUnfiledDrop,
+    setDrag,
+    setDropTarget,
+  });
+  touchApiRef.current = {
+    handleFolderDrop,
+    handleUnfiledDrop,
+    setDrag,
+    setDropTarget,
+  };
+
+  useEffect(() => {
+    if (!isMobile) return;
+    type Cand = { type: 'project' | 'folder'; name: string };
+    const st = {
+      cand: null as Cand | null,
+      startX: 0,
+      startY: 0,
+      timer: null as ReturnType<typeof setTimeout> | null,
+      grabbed: false,
+      ghost: null as HTMLElement | null,
+      target: null as string | null, // 폴더명 | '__unfiled__' | null
+      lastX: 0,
+      lastY: 0,
+      raf: null as number | null,
+    };
+    let suppressClick = false;
+
+    const canDrop = (
+      cand: Cand,
+      kind: 'folder' | 'unfiled',
+      f?: string,
+    ): boolean => {
+      if (kind === 'unfiled')
+        return (
+          cand.type === 'project' &&
+          sessionService.getFolderOf(cand.name) !== null
+        );
+      if (!f) return false;
+      return cand.type === 'project'
+        ? sessionService.getFolderOf(cand.name) !== f
+        : cand.name !== f && !f.startsWith(cand.name + '/');
+    };
+
+    const moveGhost = (x: number, y: number) => {
+      if (st.ghost)
+        st.ghost.style.transform = `translate(${x + 12}px, ${y - 14}px)`;
+    };
+
+    const autoScroll = () => {
+      st.raf = requestAnimationFrame(autoScroll);
+      const sc = listScrollRef.current;
+      if (!sc || !st.grabbed) return;
+      const r = sc.getBoundingClientRect();
+      const edge = 52;
+      if (st.lastY < r.top + edge) sc.scrollTop -= 9;
+      else if (st.lastY > r.bottom - edge) sc.scrollTop += 9;
+    };
+
+    const hitTest = (x: number, y: number) => {
+      const el = document.elementFromPoint(x, y) as HTMLElement | null;
+      let target: string | null = null;
+      const folderEl = el?.closest('[data-drop-folder]') as HTMLElement | null;
+      if (folderEl && st.cand) {
+        const f = folderEl.getAttribute('data-drop-folder')!;
+        if (canDrop(st.cand, 'folder', f)) target = f;
+      }
+      if (!target) {
+        const unfiledEl = el?.closest(
+          '[data-drop-unfiled]',
+        ) as HTMLElement | null;
+        if (unfiledEl && st.cand && canDrop(st.cand, 'unfiled'))
+          target = '__unfiled__';
+      }
+      if (target !== st.target) {
+        st.target = target;
+        touchApiRef.current.setDropTarget(target);
+      }
+    };
+
+    const begin = () => {
+      if (!st.cand) return;
+      st.grabbed = true;
+      touchApiRef.current.setDrag({ type: st.cand.type, name: st.cand.name });
+      const label =
+        st.cand.type === 'folder'
+          ? sessionService.folderLeafName(st.cand.name)
+          : st.cand.name;
+      const g = document.createElement('div');
+      g.textContent = label;
+      g.style.cssText =
+        'position:fixed;left:0;top:0;z-index:99999;pointer-events:none;' +
+        'padding:8px 12px;border-radius:10px;font-size:14px;font-weight:600;' +
+        'color:#fff;background:#0ea5e9;box-shadow:0 6px 16px rgba(0,0,0,.35);' +
+        'max-width:60vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' +
+        'will-change:transform;';
+      document.body.appendChild(g);
+      st.ghost = g;
+      moveGhost(st.lastX, st.lastY);
+      try {
+        navigator.vibrate?.(15);
+      } catch {}
+      st.raf = requestAnimationFrame(autoScroll);
+    };
+
+    const cleanupTransient = () => {
+      if (st.timer) {
+        clearTimeout(st.timer);
+        st.timer = null;
+      }
+      if (st.raf) {
+        cancelAnimationFrame(st.raf);
+        st.raf = null;
+      }
+      if (st.ghost) {
+        st.ghost.remove();
+        st.ghost = null;
+      }
+      st.cand = null;
+      st.grabbed = false;
+      st.target = null;
+    };
+
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) {
+        cleanupTransient();
+        return;
+      }
+      const t = e.touches[0];
+      const src = (e.target as HTMLElement)?.closest?.(
+        '[data-drag-type]',
+      ) as HTMLElement | null;
+      if (!src) return;
+      const name = src.getAttribute('data-drag-name') || '';
+      if (!name) return;
+      st.cand = {
+        type: src.getAttribute('data-drag-type') as 'project' | 'folder',
+        name,
+      };
+      st.startX = st.lastX = t.clientX;
+      st.startY = st.lastY = t.clientY;
+      st.timer = setTimeout(begin, 320);
+    };
+
+    const onMove = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!t) return;
+      st.lastX = t.clientX;
+      st.lastY = t.clientY;
+      if (st.grabbed) {
+        e.preventDefault(); // 드래그 중 스크롤 방지
+        moveGhost(t.clientX, t.clientY);
+        hitTest(t.clientX, t.clientY);
+        return;
+      }
+      if (st.cand && st.timer) {
+        const dx = Math.abs(t.clientX - st.startX);
+        const dy = Math.abs(t.clientY - st.startY);
+        if (dx > 10 || dy > 10) {
+          // 손가락이 움직임 → 스크롤로 간주, 드래그 후보 취소
+          clearTimeout(st.timer);
+          st.timer = null;
+          st.cand = null;
+        }
+      }
+    };
+
+    const onEnd = (e: TouchEvent) => {
+      if (st.grabbed) {
+        e.preventDefault();
+        const target = st.target;
+        const cand = st.cand;
+        if (target && cand) {
+          if (target === '__unfiled__')
+            touchApiRef.current.handleUnfiledDrop();
+          else touchApiRef.current.handleFolderDrop(target);
+        } else {
+          touchApiRef.current.setDrag(null);
+          touchApiRef.current.setDropTarget(null);
+        }
+        // 드래그 직후 합성 click이 프로젝트를 열지 않도록 잠깐 억제
+        suppressClick = true;
+        setTimeout(() => {
+          suppressClick = false;
+        }, 500);
+      }
+      cleanupTransient();
+    };
+
+    const onClick = (e: MouseEvent) => {
+      if (suppressClick) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('touchstart', onStart, { passive: true });
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd, { passive: false });
+    document.addEventListener('touchcancel', onEnd, { passive: false });
+    document.addEventListener('click', onClick, true);
+    return () => {
+      document.removeEventListener('touchstart', onStart);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+      document.removeEventListener('touchcancel', onEnd);
+      document.removeEventListener('click', onClick, true);
+      cleanupTransient();
+    };
+  }, []);
+
+  // 드로어가 닫혀 있으면 여기서 렌더 종료. 모든 훅 호출 이후이므로 훅 순서가 안전하다
+  // (터치 드래그용 useRef/useEffect를 조기 return보다 앞에 두기 위해 위치를 내렸다).
+  if (!render) return null;
 
   // ===== 선택 모드 (다중 선택 → 폴더 일괄 이동) =====
   const toggleSelect = (n: string) => {
@@ -749,6 +1009,7 @@ const ProjectDrawer = observer(() => {
       const y = Math.min(e.clientY, window.innerHeight - 100);
       setToolbar({ type: 'project', name: n, x, y });
     },
+    onMenu: () => openProjectMenu(n),
     editing: editingProject === n,
     editValue: editingProject === n ? editProjectValue : '',
     onEditChange: setEditProjectValue,
@@ -961,7 +1222,10 @@ const ProjectDrawer = observer(() => {
         )}
 
         {/* 목록 */}
-        <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-3">
+        <div
+          ref={listScrollRef}
+          className="flex-1 overflow-y-auto min-h-0 px-2 pb-3"
+        >
           {searching ? (
             <div>
               <div className="px-1 py-1 text-xs text-gray-500 dark:text-gray-400">
@@ -1050,6 +1314,7 @@ const ProjectDrawer = observer(() => {
                   return (
                     <div
                       key={f}
+                      data-drop-folder={f}
                       className="mb-1.5 rounded-md transition-shadow"
                       style={{
                         borderLeft: `3px solid ${color}`,
@@ -1062,13 +1327,23 @@ const ProjectDrawer = observer(() => {
                         opacity: folderDragging ? 0.4 : undefined,
                         ...indentStyle,
                       }}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const x = Math.min(e.clientX, window.innerWidth - 56);
-                        const y = Math.min(e.clientY, window.innerHeight - 290);
-                        setToolbar({ type: 'folder', name: f, x, y });
-                      }}
+                      onContextMenu={
+                        isMobile
+                          ? undefined
+                          : (e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const x = Math.min(
+                                e.clientX,
+                                window.innerWidth - 56,
+                              );
+                              const y = Math.min(
+                                e.clientY,
+                                window.innerHeight - 290,
+                              );
+                              setToolbar({ type: 'folder', name: f, x, y });
+                            }
+                      }
                       onDragOver={(e) => {
                         if (drag && canDropOnFolder(f)) {
                           e.stopPropagation();
@@ -1135,6 +1410,8 @@ const ProjectDrawer = observer(() => {
                         <div className="flex items-center gap-0.5 pl-1.5 pr-1">
                           <button
                             onClick={() => toggleFolder(f)}
+                            data-drag-type={selectMode ? undefined : 'folder'}
+                            data-drag-name={selectMode ? undefined : f}
                             draggable={dndEnabled && !selectMode}
                             onDragStart={(e) => {
                               setDrag({ type: 'folder', name: f });
@@ -1285,6 +1562,7 @@ const ProjectDrawer = observer(() => {
                   dropTarget === '__unfiled__' && canDropUnfiled;
                 return (
                   <div
+                    data-drop-unfiled="1"
                     className="mb-1 rounded-md transition-shadow"
                     style={{
                       borderLeft: '3px solid #94a3b8',
