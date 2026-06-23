@@ -24,7 +24,6 @@ import {
   FaArrowLeft,
   FaArrowRight,
   FaBookmark,
-  FaCalendarTimes,
   FaCheck,
   FaDice,
   FaDownload,
@@ -42,7 +41,7 @@ import { PromptHighlighter } from './SceneEditor';
 import QueueControl from './SceneQueueControl';
 import { FloatView } from './FloatView';
 import memoizeOne from 'memoize-one';
-import { FaPlus, FaRegSquareCheck, FaCopy, FaPaste } from 'react-icons/fa6';
+import { FaRegSquareCheck, FaCopy, FaPaste } from 'react-icons/fa6';
 import { useContextMenu } from 'react-contexify';
 import { useDrag, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
@@ -68,7 +67,6 @@ import {
 } from '../models';
 import { dataUriToBase64, deleteImageFiles } from '../models/ImageService';
 import { getResultDirectory } from '../models/SessionService';
-import { queueI2IWorkflow, queueWorkflow } from '../models/TaskQueueService';
 import { extractPromptDataFromBase64 } from '../models/util';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
@@ -1184,21 +1182,23 @@ const ResultDetailView = observer(
       <div className="z-10 bg-white dark:bg-slate-900 w-full h-full flex overflow-auto flex-col md:flex-row">
         <div className="flex-none md:w-1/3 p-2 md:p-4 overflow-y-auto">
           <div className="flex gap-2 md:gap-3 mb-2 md:mb-6 flex-wrap w-full">
-            <button
-              className={`round-button back-green`}
-              onClick={async () => {
-                // 다운로드 다이얼로그 열기
-                await imageDownloadService.downloadSingleImage(
-                  curSession!,
-                  scene,
-                  paths[selectedIndex],
-                  appState.getAppliedCharacterPreset(),
-                );
-              }}
-            >
-              <FaDownload className="mr-1" />
-              다운로드
-            </button>
+            {!isMobile && (
+              <button
+                className={`round-button back-green`}
+                onClick={async () => {
+                  // 다운로드 다이얼로그 열기
+                  await imageDownloadService.downloadSingleImage(
+                    curSession!,
+                    scene,
+                    paths[selectedIndex],
+                    appState.getAppliedCharacterPreset(),
+                  );
+                }}
+              >
+                <FaDownload className="mr-1" />
+                다운로드
+              </button>
+            )}
             <button
               className={`round-button back-sky`}
               onClick={async () => {
@@ -1995,39 +1995,6 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               >
                 이상형 월드컵
               </button>
-              <button
-                className={`round-button back-green`}
-                onClick={async () => {
-                  if (scene.type === 'scene') {
-                    await queueWorkflow(
-                      curSession!,
-                      curSession!.selectedWorkflow!,
-                      scene,
-                      appState.samples,
-                    );
-                  } else {
-                    await queueI2IWorkflow(
-                      curSession!,
-                      scene.workflowType,
-                      scene.preset,
-                      scene,
-                      appState.samples,
-                    );
-                  }
-                }}
-              >
-                {!isMobile ? '예약 추가' : <FaPlus />}
-              </button>
-              <Tooltip content="예약 제거">
-                <button
-                  className={`round-button back-gray`}
-                  onClick={() => {
-                    taskQueueService.removeTasksFromScene(scene);
-                  }}
-                >
-                  {!isMobile ? '예약 제거' : <FaCalendarTimes />}
-                </button>
-              </Tooltip>
               <Tooltip content="씬 편집">
                 <button
                   className={`round-button back-orange`}
@@ -2092,7 +2059,11 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                       );
                     }}
                   >
-                    <FaStar />
+                    {/* 즐겨찾기 '선택' 헬퍼: 별+체크 배지로 토글 버튼(순수 별)과 구분 */}
+                    <span className="relative inline-flex items-center justify-center">
+                      <FaStar />
+                      <FaCheck className="absolute -right-1.5 -bottom-1 text-[9px]" />
+                    </span>
                   </button>
                 </Tooltip>
               )}
