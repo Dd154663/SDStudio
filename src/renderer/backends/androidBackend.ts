@@ -329,12 +329,33 @@ export class AndroidBackend extends Backend {
         directory: Directory.ExternalStorage,
       });
     } catch (e) {}
+    const fileName = path.split('/').pop()!;
+    const destRel = 'Download/' + fileName;
     await Filesystem.copy({
       from: `${APP_DIR}/${path}`,
       directory: Directory.Documents,
-      to: 'Download/' + path.split('/').pop()!,
+      to: destRel,
       toDirectory: Directory.ExternalStorage,
     });
+    // Filesystem.copy는 디스크에만 쓰고 MediaStore에 등록하지 않아(targetSdk 34 + 모든 파일
+    // 접근) 갤러리/파일앱에서 안 보인다. 이미지 파일이면 미디어스캔으로 MediaStore에 등록한다.
+    const mime = (() => {
+      const ext = fileName.split('.').pop()!.toLowerCase();
+      if (ext === 'png') return 'image/png';
+      if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+      if (ext === 'webp') return 'image/webp';
+      return null; // 이미지가 아니면(zip/tar 등) 스캔하지 않음
+    })();
+    if (mime) {
+      try {
+        const uriRes = await Filesystem.getUri({
+          path: destRel,
+          directory: Directory.ExternalStorage,
+        });
+        const absPath = uriRes.uri.replace(/^file:\/\//, '');
+        await ZipService.scanMedia({ path: absPath, mime });
+      } catch (e) {}
+    }
     await ZipService.showDownloads({});
   }
 

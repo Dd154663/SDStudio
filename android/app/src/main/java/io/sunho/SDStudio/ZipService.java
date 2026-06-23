@@ -5,6 +5,7 @@ import static androidx.core.content.ContextCompat.startActivity;
 import android.app.DownloadManager;
 import android.content.Context;
 import android.database.Cursor;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
@@ -118,6 +119,34 @@ public class ZipService extends Plugin {
       call.resolve();
     } catch (IOException e) {
       call.reject("Failed to unzip files", e);
+    }
+  }
+
+  // 다운로드한 파일을 MediaStore에 등록한다. targetSdk 34 + 모든 파일 접근 환경에서
+  // Filesystem.copy는 디스크에 직접 쓰기만 하고 MediaStore에 등록하지 않아 갤러리/파일앱에
+  // 노출되지 않는다. 명시적 미디어스캔으로 이미지로 등록해 노출시킨다.
+  @PluginMethod
+  public void scanMedia(PluginCall call) {
+    String path = call.getString("path");
+    String mime = call.getString("mime", "image/png");
+    if (path == null) {
+      call.reject("path must be provided");
+      return;
+    }
+    try {
+      MediaScannerConnection.scanFile(
+        getContext(),
+        new String[]{ path },
+        new String[]{ mime },
+        (scannedPath, uri) -> {
+          JSObject ret = new JSObject();
+          ret.put("path", scannedPath);
+          ret.put("uri", uri != null ? uri.toString() : null);
+          call.resolve(ret);
+        }
+      );
+    } catch (Exception e) {
+      call.reject("Failed to scan media", e);
     }
   }
 
