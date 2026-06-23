@@ -25,7 +25,7 @@ import ExpiredProjectsDialog from './ExpiredProjectsDialog';
 import QueueControl from './SceneQueueControl';
 import { FloatView, FloatViewProvider } from './FloatView';
 import { observer, useObserver } from 'mobx-react-lite';
-import { FaGlobe, FaImages, FaPenFancy, FaStar, FaPalette } from 'react-icons/fa';
+import { FaGlobe, FaImages, FaPenFancy, FaStar, FaPalette, FaSearch } from 'react-icons/fa';
 import { GlobalPresetTab, GlobalPresetPickerOverlay } from './GlobalPresetTab';
 import ModalOverlay from './ModalOverlay';
 import { DndProvider } from 'react-dnd';
@@ -429,6 +429,9 @@ export const App = observer(() => {
     }] : []),
   ];
 
+  // 모바일: 선택 텍스트가 있을 때 화면 하단에 띄우는 'Danbooru 검색' 칩의 검색어
+  const [danbooruSel, setDanbooruSel] = useState<string | null>(null);
+
   // 텍스트 드래그 → "Danbooru로 검색"
   const goDanbooruSearch = useCallback(
     (text: string) => {
@@ -463,25 +466,57 @@ export const App = observer(() => {
       if (text) goDanbooruSearch(text);
     };
     window.addEventListener('danbooru-search-request', handleRequest);
-    // 모바일: 네이티브 선택 메뉴 대신 contextmenu(롱프레스) 이벤트로 직접 처리
-    let removeCtx: (() => void) | undefined;
-    if (isMobile) {
-      const handler = (e: Event) => {
-        const sel = window.getSelection?.()?.toString() ?? '';
-        if (sel.trim()) {
-          e.preventDefault();
-          goDanbooruSearch(sel);
-        }
-      };
-      document.addEventListener('contextmenu', handler);
-      removeCtx = () => document.removeEventListener('contextmenu', handler);
-    }
     return () => {
       removeIpc();
-      removeCtx?.();
       window.removeEventListener('danbooru-search-request', handleRequest);
     };
   }, [goDanbooruSearch]);
+
+  // 모바일: 롱프레스로 텍스트를 선택하면 자동 검색하지 않고(네이티브 복사/붙여넣기 메뉴 보존),
+  // 선택 영역 근처에 'Danbooru 검색' 버튼을 띄워 사용자가 명시적으로 탭할 때만 검색한다.
+  // selectionchange는 일부 안드로이드 WebView에서 신뢰도가 낮아, contextmenu(롱프레스)·
+  // touchend(손 뗀 직후)도 함께 트리거로 사용한다.
+  useEffect(() => {
+    if (!isMobile) return;
+    const update = () => {
+      // 모바일 프롬프트 에디터는 실제 <textarea>(NativeEditTextArea)이므로 선택 텍스트는
+      // window.getSelection()이 아니라 textarea.value의 selectionStart~End 구간에 있다.
+      const el = document.activeElement as HTMLTextAreaElement | null;
+      let text = '';
+      if (
+        el &&
+        (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') &&
+        el.selectionStart != null &&
+        el.selectionEnd != null &&
+        el.selectionEnd > el.selectionStart
+      ) {
+        text = (el.value || '')
+          .substring(el.selectionStart, el.selectionEnd)
+          .trim();
+      } else {
+        // contenteditable 등(혹시 다른 입력 영역)
+        const selection = window.getSelection?.();
+        const t = selection?.toString().trim() ?? '';
+        if (selection && !selection.isCollapsed && t) text = t;
+      }
+      setDanbooruSel(text && buildDanbooruSearchUrl(text) ? text : null);
+    };
+    // contextmenu는 preventDefault 하지 않는다(네이티브 선택 메뉴 보존).
+    document.addEventListener('selectionchange', update);
+    document.addEventListener('contextmenu', update);
+    document.addEventListener('touchend', update);
+    // 키보드 표시/숨김(visualViewport 변화) 시 칩 위치를 다시 계산해 키보드 위에 유지.
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', update);
+    vv?.addEventListener('scroll', update);
+    return () => {
+      document.removeEventListener('selectionchange', update);
+      document.removeEventListener('contextmenu', update);
+      document.removeEventListener('touchend', update);
+      vv?.removeEventListener('resize', update);
+      vv?.removeEventListener('scroll', update);
+    };
+  }, []);
 
   return (
     <DndProvider
@@ -501,6 +536,50 @@ export const App = observer(() => {
         <div className="z-[3000]">
           <DnDPreview />
         </div>
+        {isMobile && danbooruSel && (
+          <button
+            data-danbooru-search-btn
+            className="fixed z-[6000] left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-900/95 text-gray-50 text-sm font-medium border border-white/10 shadow-xl backdrop-blur-sm whitespace-nowrap select-none active:scale-95 transition-transform"
+            style={{
+              // visualViewport로 키보드 높이를 인식해 키보드 바로 위에 배치(없으면 화면 하단).
+              bottom:
+                (window.visualViewport
+                  ? Math.max(
+                      0,
+                      window.innerHeight -
+                        window.visualViewport.height -
+                        window.visualViewport.offsetTop,
+                    )
+                  : 0) + 16,
+            }}
+            // pointerdown에서 선택 해제/포커스 이동을 막고 검색을 실행한다(탭 즉시 선택이
+            // 사라지면 click 전에 버튼이 언마운트될 수 있으므로 pointerdown 사용).
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const text = danbooruSel;
+              // 검색 후 버튼이 다시 뜨지 않도록 활성 textarea 선택을 접는다.
+              const el = document.activeElement as HTMLTextAreaElement | null;
+              if (
+                el &&
+                (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') &&
+                el.selectionStart != null
+              ) {
+                try {
+                  el.setSelectionRange(el.selectionStart, el.selectionStart);
+                } catch {}
+              }
+              setDanbooruSel(null);
+              goDanbooruSearch(text);
+            }}
+          >
+            <FaSearch size={12} className="opacity-80" />
+            <span>Danbooru 검색</span>
+            <span className="max-w-[40vw] truncate text-sky-300/90 font-normal">
+              {danbooruSel}
+            </span>
+          </button>
+        )}
         <ErrorBoundary
           onErr={(error, errorInfo) => {
             appState.pushMessage(`${error.message}`);
