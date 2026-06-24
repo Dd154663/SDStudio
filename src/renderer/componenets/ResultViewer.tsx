@@ -24,6 +24,7 @@ import {
   FaArrowLeft,
   FaArrowRight,
   FaBookmark,
+  FaCalendarTimes,
   FaCheck,
   FaDice,
   FaDownload,
@@ -41,7 +42,7 @@ import { PromptHighlighter } from './SceneEditor';
 import QueueControl from './SceneQueueControl';
 import { FloatView } from './FloatView';
 import memoizeOne from 'memoize-one';
-import { FaRegSquareCheck, FaCopy, FaPaste } from 'react-icons/fa6';
+import { FaPlus, FaRegSquareCheck, FaCopy, FaPaste } from 'react-icons/fa6';
 import { useContextMenu } from 'react-contexify';
 import { useDrag, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
@@ -65,6 +66,7 @@ import {
   imageDownloadService,
   trashService,
 } from '../models';
+import { queueI2IWorkflow, queueWorkflow } from '../models/TaskQueueService';
 import { dataUriToBase64, deleteImageFiles } from '../models/ImageService';
 import { getResultDirectory } from '../models/SessionService';
 import { extractPromptDataFromBase64 } from '../models/util';
@@ -1995,6 +1997,39 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               >
                 이상형 월드컵
               </button>
+              <button
+                className={`round-button back-green`}
+                onClick={async () => {
+                  if (scene.type === 'scene') {
+                    await queueWorkflow(
+                      curSession!,
+                      curSession!.selectedWorkflow!,
+                      scene,
+                      appState.samples,
+                    );
+                  } else {
+                    await queueI2IWorkflow(
+                      curSession!,
+                      scene.workflowType,
+                      scene.preset,
+                      scene,
+                      appState.samples,
+                    );
+                  }
+                }}
+              >
+                {!isMobile ? '예약 추가' : <FaPlus />}
+              </button>
+              <Tooltip content="예약 제거">
+                <button
+                  className={`round-button back-gray`}
+                  onClick={() => {
+                    taskQueueService.removeTasksFromScene(scene);
+                  }}
+                >
+                  {!isMobile ? '예약 제거' : <FaCalendarTimes />}
+                </button>
+              </Tooltip>
               <Tooltip content="씬 편집">
                 <button
                   className={`round-button back-orange`}
