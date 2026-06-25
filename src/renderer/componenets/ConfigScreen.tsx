@@ -20,6 +20,7 @@ import {
   FaCog,
   FaTimes,
   FaKeyboard,
+  FaWrench,
 } from 'react-icons/fa';
 import { keyboardShortcutService, KeyboardShortcutService } from '../models/KeyboardShortcutService';
 import ModalOverlay from './ModalOverlay';
@@ -208,6 +209,35 @@ const StorageTab = ({
   </div>
 );
 
+/* ── 탭(모바일 전용): 이미지 복구 ──
+   데스크탑은 '저장경로' 탭에 같은 기능이 있으나, 모바일은 그 탭을 숨기므로
+   복구 기능만 떼어 별도 탭으로 제공한다. recoverProjectImages()는 백엔드 공용
+   메서드(listFiles/refreshBatch)만 사용하므로 모바일에서도 그대로 동작한다. */
+const RecoveryTab = () => (
+  <div className="space-y-4">
+    <div>
+      <label className="block text-sm font-semibold gray-label mb-1">
+        이미지 복구 (실험적 기능)
+      </label>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+        이미지 파일은 존재하지만 프로그램에서 보이지 않는 경우(씬에 이미지 개수만
+        뜨고 썸네일이 비어 있는 등), 파일시스템을 다시 스캔하여 누락된 씬과
+        이미지를 재연결합니다.
+      </p>
+      <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">
+        ⚠️ 저장소 접근이 안정된 상태에서 실행하세요. 파일을 읽지 못하는 순간에는
+        복구가 동작하지 않을 수 있습니다. 이 기능은 파일을 삭제하지 않습니다.
+      </p>
+      <button
+        className="px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium transition-colors"
+        onClick={() => appState.recoverProjectImages()}
+      >
+        현재 프로젝트 이미지 복구
+      </button>
+    </div>
+  </div>
+);
+
 /* ── 폴더 정리 공통 컴포넌트 ── */
 const FolderCleanupSection = ({ folder, label, description }: { folder: string; label: string; description?: string }) => {
   const [files, setFiles] = useState<{ name: string; size: number; mtime: number }[]>([]);
@@ -327,6 +357,7 @@ const OtherTab = ({
   delayTime, setDelayTime,
   classicSceneCard, setClassicSceneCard,
   legacyProjectMode, setLegacyProjectMode,
+  storageWriteGuard, setStorageWriteGuard,
   fullWordAc, setFullWordAc,
   exportConcurrency, setExportConcurrency,
 }: any) => {
@@ -412,6 +443,17 @@ const OtherTab = ({
         </div>
         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-6">
           켜면 기존 프로젝트 선택 드롭다운을 유지합니다(드로어·드롭다운·그리드 공존). 끄면 드롭다운 대신 드로어 열기 버튼으로 표시됩니다.
+        </p>
+      </div>
+      <hr className="border-gray-200 dark:border-slate-600" />
+      <div>
+        <div className="flex items-center gap-2">
+          <input type="checkbox" id="cfgStorageGuard" checked={storageWriteGuard}
+            onChange={(e) => setStorageWriteGuard(e.target.checked)} />
+          <label htmlFor="cfgStorageGuard" className="text-sm gray-label">저장소 불안정 시 자동 저장 보호 (권장)</label>
+        </div>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-6">
+          저장소 접근이 일시적으로 불안정할 때 자동 저장을 잠시 멈춰 데이터 손상을 막습니다. 멈춘 동안의 직전 편집은 저장이 미뤄질 수 있습니다(접근이 회복되면 자동 재개). 꺼도 손상 방지 가드는 항상 동작합니다.
         </p>
       </div>
       <hr className="border-gray-200 dark:border-slate-600" />
@@ -748,6 +790,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [delayTime, setDelayTime] = useState(0);
   const [classicSceneCard, setClassicSceneCard] = useState(false);
   const [legacyProjectMode, setLegacyProjectMode] = useState(false);
+  const [storageWriteGuard, setStorageWriteGuard] = useState(true);
   const [fullWordAc, setFullWordAc] = useState(appState.fullWordAutoComplete);
   const [trueDark, setTrueDark] = useState(false);
   const [exportConcurrency, setExportConcurrency] = useState(isMobile ? 2 : 4);
@@ -775,6 +818,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setDelayTime(config.delayTime ?? 0);
       setClassicSceneCard(config.classicSceneCard ?? false);
       setLegacyProjectMode(config.legacyProjectMode ?? false);
+      setStorageWriteGuard(config.storageWriteGuard ?? true);
       setTrueDark(config.trueDark ?? false);
       setExportConcurrency(config.exportConcurrency ?? (isMobile ? 2 : 4));
       setSaveLocation(config.saveLocation ?? '');
@@ -886,6 +930,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       delayTime: delayTime,
       classicSceneCard: classicSceneCard,
       legacyProjectMode: legacyProjectMode,
+      storageWriteGuard: storageWriteGuard,
       exportConcurrency: exportConcurrency,
       trueDark: trueDark,
     };
@@ -893,34 +938,39 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     if (old.useCUDA !== useGPU) localAIService.modelChanged();
     appState.classicSceneCard = classicSceneCard;
     appState.legacyProjectMode = legacyProjectMode;
+    appState.storageWriteGuard = storageWriteGuard;
     appState.fullWordAutoComplete = fullWordAc;
     localStorage.setItem('sdstudio-full-word-autocomplete', fullWordAc ? 'true' : 'false');
     sessionService.configChanged();
     onSave();
   };
 
+  // key 기반 탭 정의(표시 순서 = 배열 순서). 숫자 오프셋 매핑 대신 key 로 콘텐츠를
+  // 고르므로, 플랫폼별로 탭을 끼우거나 빼도 매핑이 어긋나지 않는다.
   const tabs = [
-    { label: '로그인', icon: <FaUser size={14} /> },
-    ...(!mobileMode ? [{ label: '이미지 편집', icon: <FaImage size={14} /> }] : []),
-    ...(!mobileMode ? [{ label: '저장경로', icon: <FaFolder size={14} /> }] : []),
-    { label: '기타', icon: <FaCog size={14} /> },
-    ...(!mobileMode ? [{ label: '키 바인딩', icon: <FaKeyboard size={14} /> }] : []),
+    { key: 'login', label: '로그인', icon: <FaUser size={14} /> },
+    ...(!mobileMode ? [{ key: 'imageEdit', label: '이미지 편집', icon: <FaImage size={14} /> }] : []),
+    ...(!mobileMode ? [{ key: 'storage', label: '저장경로', icon: <FaFolder size={14} /> }] : []),
+    { key: 'other', label: '기타', icon: <FaCog size={14} /> },
+    // 복구는 모바일 전용 탭(데스크탑은 '저장경로' 탭 안에 동일 기능 존재)
+    ...(mobileMode ? [{ key: 'recovery', label: '복구', icon: <FaWrench size={14} /> }] : []),
+    ...(!mobileMode ? [{ key: 'keybindings', label: '키 바인딩', icon: <FaKeyboard size={14} /> }] : []),
   ];
 
   const getTabContent = (tabIdx: number) => {
-    // 모바일: 탭 0=로그인, 1=기타 (이미지편집·저장경로·키바인딩 숨김)
-    // PC: 탭 0=로그인, 1=이미지편집, 2=저장경로, 3=기타, 4=키바인딩
-    const idx = mobileMode && tabIdx >= 1 ? tabIdx + 2 : tabIdx;
-    switch (idx) {
-      case 0:
+    const key = tabs[tabIdx]?.key;
+    switch (key) {
+      case 'login':
         return <LoginTab {...{ email, setEmail, password, setPassword, accessToken, setAccessToken, loggedIn, login, loginWithToken, roundTag }} />;
-      case 1:
+      case 'imageEdit':
         return <ImageEditTab {...{ imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
-      case 2:
+      case 'storage':
         return <StorageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage }} />;
-      case 3:
-        return <OtherTab {...{ whiteMode, setWhiteMode, trueDark, setTrueDark, delayTime, setDelayTime, classicSceneCard, setClassicSceneCard, legacyProjectMode, setLegacyProjectMode, fullWordAc, setFullWordAc, exportConcurrency, setExportConcurrency }} />;
-      case 4:
+      case 'other':
+        return <OtherTab {...{ whiteMode, setWhiteMode, trueDark, setTrueDark, delayTime, setDelayTime, classicSceneCard, setClassicSceneCard, legacyProjectMode, setLegacyProjectMode, storageWriteGuard, setStorageWriteGuard, fullWordAc, setFullWordAc, exportConcurrency, setExportConcurrency }} />;
+      case 'recovery':
+        return <RecoveryTab />;
+      case 'keybindings':
         return <KeyBindingsTab />;
       default:
         return null;

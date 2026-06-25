@@ -46,6 +46,9 @@ export interface Config {
   legacyProjectMode?: boolean;
   exportConcurrency?: number;
   trueDark?: boolean;
+  // 저장소(스토리지) 접근이 불안정할 때 자동 저장을 일시정지해 데이터 손상을 막는다.
+  // 기본 ON. OFF 시 항상 저장을 시도(불안정 시 손상 위험은 있으나 작업 롤백 체감은 없음).
+  storageWriteGuard?: boolean;
   // 아티스트 태깅의 WD 태거 모델 선택 (기본 wd-swinv2)
   wdTaggerModel?: 'wd-swinv2' | 'wd-eva02';
 }

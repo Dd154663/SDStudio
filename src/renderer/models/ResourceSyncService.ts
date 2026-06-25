@@ -205,16 +205,18 @@ export abstract class ResourceSyncService<
 
   // 모든 리소스 저장이 거쳐 가는 단일 지점. 직렬화 → 손실 방지 가드 → 쓰기.
   // 하위 클래스는 guardResourceWrite 를 오버라이드해 위험한 쓰기를 막을 수 있다.
-  protected async writeResource(name: string): Promise<void> {
+  // 반환: 'done' = 처리 완료(저장됨 또는 재시도 무의미) → dirty 해제,
+  //       'retry' = 일시적 사유로 건너뜀(저장소 불안정 등) → dirty 유지하고 다음에 재시도.
+  protected async writeResource(name: string): Promise<'done' | 'retry'> {
     const rc = this.resources[name];
-    if (!rc) return;
+    if (!rc) return 'done';
     let payload: string;
     try {
       // 직렬화 오류(손상된 리소스 등)가 다른 리소스 저장을 막지 않도록 분리
       payload = JSON.stringify(rc.toJSON());
     } catch (e) {
       console.error('writeResource 직렬화 실패:', name, e);
-      return;
+      return 'done'; // 재시도해도 동일 → dirty 해제(무한 재시도 방지)
     }
     let decision: 'ok' | 'skip' = 'ok';
     try {
@@ -223,8 +225,9 @@ export abstract class ResourceSyncService<
       // 가드 자체의 오류는 정상 저장을 막지 않는다
       decision = 'ok';
     }
-    if (decision === 'skip') return;
+    if (decision === 'skip') return 'retry';
     await backend.writeFile(this.getPath(name), payload);
+    return 'done';
   }
 
   // 손실 방지 훅. 기본은 항상 허용. SessionService 가 오버라이드해
@@ -242,9 +245,16 @@ export abstract class ResourceSyncService<
       (name) => name in this.resources && !this._inFlight.has(name),
     );
     if (names.length === 0) return;
-    await Promise.allSettled(names.map((name) => this.writeResource(name)));
-    // 실제로 시도한 이름만 dirty 해제 (in-flight 로 건너뛴 건 다음 기회에 저장).
-    for (const name of names) delete this.dirty[name];
+    const results = await Promise.allSettled(
+      names.map((name) => this.writeResource(name)),
+    );
+    // 'retry'(저장소 불안정 등으로 건너뜀)는 dirty 유지 → 접근 회복 시 자동 재시도.
+    // 그 외(저장 완료/in-flight 미포함)는 dirty 해제.
+    names.forEach((name, i) => {
+      const r = results[i];
+      if (r.status === 'fulfilled' && r.value === 'retry') return;
+      delete this.dirty[name];
+    });
   }
 
   // 강제 종료 위험 시점(모바일 백그라운드 진입 등)에 호출한다.
@@ -258,8 +268,14 @@ export abstract class ResourceSyncService<
       (name) => !this._inFlight.has(name),
     );
     if (names.length === 0) return;
-    await Promise.allSettled(names.map((name) => this.writeResource(name)));
-    for (const name of names) delete this.dirty[name];
+    const results = await Promise.allSettled(
+      names.map((name) => this.writeResource(name)),
+    );
+    names.forEach((name, i) => {
+      const r = results[i];
+      if (r.status === 'fulfilled' && r.value === 'retry') return;
+      delete this.dirty[name];
+    });
   }
 
   // flush + 목록 재스캔. 추가/삭제/이름변경/이동 등 목록이 바뀌는 작업이 호출한다.

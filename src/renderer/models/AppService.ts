@@ -99,6 +99,8 @@ export class AppState {
   @observable accessor dialogs: Dialog[] = [];
   @observable accessor samples: number = 1;
   @observable accessor progressDialog: ProgressDialog | undefined = undefined;
+  // 이미지 복구 진행 중 재진입 가드(중복 터치로 스캔이 동시에 두 번 도는 것 차단)
+  private recovering = false;
   @observable accessor externalImage: string | undefined = undefined;
   // 프로젝트 좌측 드로어 / 그리드 탐색기 모달 열림 상태 (앱 전역)
   @observable accessor projectDrawerOpen: boolean = false;
@@ -162,6 +164,10 @@ export class AppState {
   // 레거시 프로젝트 모드: true면 기존 드롭다운 선택 UI 유지(드로어/드롭다운/그리드 공존),
   // false(기본)면 드롭다운을 제거하고 드로어 트리거로 전환
   @observable accessor legacyProjectMode: boolean = false;
+
+  // 저장소 접근 불안정 시 자동 저장 일시정지(서킷 브레이커). true(기본)면 보호 활성.
+  // ConfigScreen 저장/부팅 시 config.storageWriteGuard 값으로 갱신된다.
+  @observable accessor storageWriteGuard: boolean = true;
 
   // 자동완성 모드: false=커서 왼쪽만(기본), true=콤마 사이 전체 단어
   @observable accessor fullWordAutoComplete: boolean = (() => {
@@ -3692,92 +3698,129 @@ export class AppState {
 
   @action
   async recoverProjectImages() {
+    // 중복 터치 차단: 첫 await 이전에 동기적으로 가드를 세워, 스캔이 두 번 도는 것을 막는다.
+    if (this.recovering) return;
     if (!this.curSession) return;
     const session = this.curSession;
+    this.recovering = true;
+    // 전체화면 차단 오버레이(progressDialog)를 띄워 스캔/로딩 중 다른 입력을 막는다.
+    this.setProgressDialog({ text: '이미지 복구 준비 중...', done: 0, total: 1 });
 
-    // outs/<세션명>/ 디렉토리에서 씬 폴더 목록 조회
-    let sceneDirs: string[] = [];
+    let resultText: string;
     try {
-      const entries = await backend.listFiles('outs/' + session.name);
-      // 디렉토리만 필터링 (확장자 없는 항목 = 디렉토리)
-      sceneDirs = entries.filter((e: string) => !e.includes('.'));
-    } catch {
-      // outs 디렉토리 자체가 없으면 복구할 것 없음
-    }
-
-    if (sceneDirs.length === 0) {
-      this.pushDialog({
-        type: 'yes-only',
-        text: '파일시스템에서 복구할 이미지 폴더를 찾지 못했습니다.',
-      });
-      return;
-    }
-
-    // 현재 세션에 없는 씬 폴더 찾기
-    let recoveredScenes = 0;
-    let recoveredImages = 0;
-
-    for (const dirName of sceneDirs) {
-      // 해당 폴더에 PNG 파일이 있는지 확인
-      let pngFiles: string[] = [];
+      // outs/<세션명>/ 디렉토리에서 씬 폴더 목록 조회
+      let sceneDirs: string[] = [];
       try {
-        const files = await backend.listFiles('outs/' + session.name + '/' + dirName);
-        pngFiles = files.filter((f: string) => f.endsWith('.png'));
+        const entries = await backend.listFiles('outs/' + session.name);
+        // 디렉토리만 필터링 (확장자 없는 항목 = 디렉토리)
+        sceneDirs = entries.filter((e: string) => !e.includes('.'));
       } catch {
-        continue;
-      }
-      if (pngFiles.length === 0) continue;
-
-      if (!session.scenes.has(dirName)) {
-        // 씬이 JSON에서 사라진 경우: 빈 씬 생성
-        session.addScene(
-          Scene.fromJSON({
-            type: 'scene',
-            name: dirName,
-            resolution: 'portrait',
-            slots: [
-              [
-                {
-                  id: v4(),
-                  prompt: '',
-                  characterPrompts: [],
-                  enabled: true,
-                },
-              ],
-            ],
-            mains: [],
-            imageMap: [],
-            meta: {},
-          } as any),
-        );
-        recoveredScenes++;
+        // outs 디렉토리 자체가 없으면 복구할 것 없음
       }
 
-      // 씬의 imageMap이 비어있지만 파일은 있는 경우도 카운트
-      const scene = session.scenes.get(dirName);
-      if (scene && scene.imageMap.length === 0 && pngFiles.length > 0) {
-        recoveredImages += pngFiles.length;
+      if (sceneDirs.length === 0) {
+        resultText = '파일시스템에서 복구할 이미지 폴더를 찾지 못했습니다.';
+      } else {
+        // 현재 세션에 없는 씬 폴더 찾기
+        let recoveredScenes = 0;
+        let recoveredImages = 0;
+
+        this.setProgressDialog({
+          text: '이미지 복구 중...',
+          done: 0,
+          total: sceneDirs.length,
+        });
+        for (let i = 0; i < sceneDirs.length; i++) {
+          const dirName = sceneDirs[i];
+          // 해당 폴더에 PNG 파일이 있는지 확인
+          let pngFiles: string[] = [];
+          try {
+            const files = await backend.listFiles(
+              'outs/' + session.name + '/' + dirName,
+            );
+            pngFiles = files.filter((f: string) => f.endsWith('.png'));
+          } catch {
+            this.setProgressDialog({
+              text: '이미지 복구 중...',
+              done: i + 1,
+              total: sceneDirs.length,
+            });
+            continue;
+          }
+          if (pngFiles.length === 0) {
+            this.setProgressDialog({
+              text: '이미지 복구 중...',
+              done: i + 1,
+              total: sceneDirs.length,
+            });
+            continue;
+          }
+
+          if (!session.scenes.has(dirName)) {
+            // 씬이 JSON에서 사라진 경우: 빈 씬 생성
+            session.addScene(
+              Scene.fromJSON({
+                type: 'scene',
+                name: dirName,
+                resolution: 'portrait',
+                slots: [
+                  [
+                    {
+                      id: v4(),
+                      prompt: '',
+                      characterPrompts: [],
+                      enabled: true,
+                    },
+                  ],
+                ],
+                mains: [],
+                imageMap: [],
+                meta: {},
+              } as any),
+            );
+            recoveredScenes++;
+          }
+
+          // 씬의 imageMap이 비어있지만 파일은 있는 경우도 카운트
+          const scene = session.scenes.get(dirName);
+          if (scene && scene.imageMap.length === 0 && pngFiles.length > 0) {
+            recoveredImages += pngFiles.length;
+          }
+          this.setProgressDialog({
+            text: '이미지 복구 중...',
+            done: i + 1,
+            total: sceneDirs.length,
+          });
+        }
+
+        // refreshBatch로 모든 씬의 imageMap 갱신 (파일시스템에서 재발견)
+        this.setProgressDialog({
+          text: '이미지 재연결 중...',
+          done: sceneDirs.length,
+          total: sceneDirs.length,
+        });
+        await imageService.refreshBatch(session);
+
+        // 결과 메시지 구성
+        if (recoveredScenes === 0 && recoveredImages === 0) {
+          resultText = '모든 씬의 이미지가 정상입니다. 복구할 항목이 없습니다.';
+        } else {
+          const parts: string[] = [];
+          if (recoveredScenes > 0) parts.push(`${recoveredScenes}개 씬 복원`);
+          if (recoveredImages > 0) parts.push(`${recoveredImages}개 이미지 재연결`);
+          resultText = `복구 완료: ${parts.join(', ')}`;
+        }
       }
+    } catch (e) {
+      resultText = '복구 중 오류가 발생했습니다.';
+    } finally {
+      // 오버레이를 먼저 닫고(입력 차단 해제) 가드를 푼다.
+      this.setProgressDialog(undefined);
+      this.recovering = false;
     }
 
-    // refreshBatch로 모든 씬의 imageMap 갱신 (파일시스템에서 재발견)
-    await imageService.refreshBatch(session);
-
-    // 결과 보고
-    if (recoveredScenes === 0 && recoveredImages === 0) {
-      this.pushDialog({
-        type: 'yes-only',
-        text: '모든 씬의 이미지가 정상입니다. 복구할 항목이 없습니다.',
-      });
-    } else {
-      const parts: string[] = [];
-      if (recoveredScenes > 0) parts.push(`${recoveredScenes}개 씬 복원`);
-      if (recoveredImages > 0) parts.push(`${recoveredImages}개 이미지 재연결`);
-      this.pushDialog({
-        type: 'yes-only',
-        text: `복구 완료: ${parts.join(', ')}`,
-      });
-    }
+    // 결과는 오버레이가 닫힌 뒤 표시한다.
+    this.pushDialog({ type: 'yes-only', text: resultText });
   }
 
   closeExternalImage() {

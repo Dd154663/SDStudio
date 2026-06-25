@@ -773,6 +773,11 @@ export class SessionService extends ResourceSyncService<Session> {
   // 같은 앱 실행 중 같은 프로젝트에 손실 경고를 한 번만 띄우기 위한 집합
   #lossGuardWarned = new Set<string>();
 
+  // 저장소 건강 프로브 결과의 짧은 캐시(같은 flush 안에서 중복 listFiles 방지)
+  #storageProbe: { at: number; unstable: boolean } | null = null;
+  // 불안정 상태 전이 시에만 로깅하기 위한 플래그(로그 스팸 방지)
+  #storageUnstableActive = false;
+
   // 손실 방지 가드(차단 + 자동 백업).
   // 저장하려는 세션이, 디스크의 outs/inpaints 폴더(실제 씬 흔적 — 강제 종료에도
   // 살아남음)에 비해 "이미지가 있는 씬"을 잃어버렸으면, 그 쓰기를 차단하고 기존
@@ -784,6 +789,15 @@ export class SessionService extends ResourceSyncService<Session> {
     name: string,
     payload: string,
   ): Promise<'ok' | 'skip'> {
+    // 서킷 브레이커(토글 ON, 기본): 저장소 접근이 불안정하면 이번 쓰기를 건너뛴다.
+    // 'skip' 은 dirty 를 유지하므로 접근이 회복되면 자동으로 재시도된다.
+    try {
+      const { appState } = await import('./AppService');
+      if (appState.storageWriteGuard && (await this.checkStorageUnstable())) {
+        return 'skip';
+      }
+    } catch (e) {}
+
     let json: ISession;
     try {
       json = JSON.parse(payload);
@@ -808,13 +822,34 @@ export class SessionService extends ResourceSyncService<Session> {
       `[유실 방지] "${name}" 자동 저장 차단: outs/inpaints 에 이미지가 있으나 세션에 없는 씬:`,
       missing,
     );
+    // ④ 백업 클로버 방지: 현재 main 이 기존 .bak 보다 "빈약"하면(씬 수가 적으면)
+    // 덮어쓰지 않는다. 이미 축소된 main 이 멀쩡한 복구본(.bak)을 덮어쓰는 사고를 막는다.
     try {
       const path = this.getPath(name);
       if (await backend.existFile(path)) {
-        await backend.copyFile(path, path + '.bak');
+        const bakPath = path + '.bak';
+        const mainCount = this.countResourceScenes(await backend.readFile(path));
+        let bakCount = -1;
+        if (await backend.existFile(bakPath)) {
+          try {
+            bakCount = this.countResourceScenes(await backend.readFile(bakPath));
+          } catch (e) {}
+        }
+        if (mainCount >= bakCount) {
+          await backend.copyFile(path, bakPath);
+        } else {
+          this.addSystemLog(
+            'warn',
+            `"${name}" 기존 백업(.bak)이 더 풍부하여 덮어쓰기를 건너뜀(복구본 보존)`,
+          );
+        }
       }
     } catch (e) {}
 
+    this.addSystemLog(
+      'error',
+      `데이터 유실 의심 — "${name}" 자동 저장 차단(세션에 없는 이미지 씬: ${missing.join(', ')})`,
+    );
     if (!this.#lossGuardWarned.has(name)) {
       this.#lossGuardWarned.add(name);
       try {
@@ -825,6 +860,67 @@ export class SessionService extends ResourceSyncService<Session> {
       } catch (e) {}
     }
     return 'skip';
+  }
+
+  // 저장소(프로젝트 디렉터리)가 일시적으로 접근 불가인지 휴리스틱 판단.
+  // 메모리엔 프로젝트가 있는데 디스크의 목록을 못 읽거나(throw) 0개면 불안정으로 본다.
+  // 같은 flush 사이클 내 중복 listFiles 를 막기 위해 1초간 결과를 캐시한다.
+  private async checkStorageUnstable(): Promise<boolean> {
+    const now = Date.now();
+    let unstable: boolean;
+    if (this.#storageProbe && now - this.#storageProbe.at < 1000) {
+      unstable = this.#storageProbe.unstable;
+    } else {
+      const loadedCount = Object.keys(this.resources).length;
+      if (loadedCount === 0) {
+        unstable = false; // 비교 기준 없음 → 판단 보류(정상 취급)
+      } else {
+        try {
+          const onDisk = await backend.listFiles(this.resourceDir);
+          // 메모리엔 프로젝트가 있는데 디스크 목록이 0개 = 접근 이상
+          unstable = onDisk.length === 0;
+        } catch (e) {
+          unstable = true; // 디렉터리 자체를 못 읽음 = 접근 이상
+        }
+      }
+      this.#storageProbe = { at: now, unstable };
+    }
+    // 상태 전이 시에만 로깅(스팸 방지)
+    if (unstable && !this.#storageUnstableActive) {
+      this.#storageUnstableActive = true;
+      this.addSystemLog(
+        'warn',
+        '저장소 접근이 불안정하여 자동 저장을 일시정지합니다(접근 회복 시 재개).',
+      );
+    } else if (!unstable && this.#storageUnstableActive) {
+      this.#storageUnstableActive = false;
+      this.addSystemLog('info', '저장소 접근이 회복되어 자동 저장을 재개합니다.');
+    }
+    return unstable;
+  }
+
+  // JSON 문자열에서 씬+인페인트 개수를 센다. 파싱 불가(손상)면 -1(가장 빈약하게 취급).
+  private countResourceScenes(raw: string): number {
+    try {
+      const j = JSON.parse(raw);
+      return (
+        Object.keys(j.scenes || {}).length +
+        Object.keys(j.inpaints || {}).length
+      );
+    } catch (e) {
+      return -1;
+    }
+  }
+
+  // 환경설정의 작업 로그 뷰어에 기록(저장소 관련 진단). 동적 import 로 순환 의존 회피.
+  private async addSystemLog(
+    level: 'info' | 'warn' | 'error',
+    message: string,
+  ) {
+    try {
+      const { taskQueueService } = await import('.');
+      taskQueueService.addLog(level, '저장소', message);
+    } catch (e) {}
   }
 
   // dir(outs|inpaints)/project 의 실제 씬 폴더 중, present 에 없고 이미지(.png)가

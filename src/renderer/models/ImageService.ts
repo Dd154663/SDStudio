@@ -647,6 +647,15 @@ export class ImageService extends EventTarget {
     // 개별 refresh(삭제 후 등)에서는 guardEmpty=false로 호출하여 정상 반영.
     if (guardEmpty && files.length === 0 && scene.imageMap.length > 0) {
       target[session.name][scene.name] = [...scene.imageMap];
+      // 읽기 실패/접근 불가 의심: 디스크 0개인데 기존 목록은 N개 → 로그로 남겨 진단 가능하게.
+      try {
+        const { taskQueueService } = await import('.');
+        taskQueueService.addLog(
+          'warn',
+          '저장소',
+          `"${session.name}/${scene.name}" 이미지 폴더를 읽지 못해 기존 목록(${scene.imageMap.length}장)을 유지했습니다. 저장소 접근을 확인하세요.`,
+        );
+      } catch (e) {}
       if (emitEvent)
         this.dispatchEvent(
           new CustomEvent('updated', {
