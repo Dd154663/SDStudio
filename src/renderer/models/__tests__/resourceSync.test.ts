@@ -23,7 +23,7 @@ class FakeResource {
 }
 
 class TestService extends ResourceSyncService<FakeResource> {
-  public guardDecision: 'ok' | 'skip' = 'ok';
+  public guardDecision: 'ok' | 'skip' | 'skip-keep' = 'ok';
   constructor() {
     super('projects', 999999);
   }
@@ -34,7 +34,7 @@ class TestService extends ResourceSyncService<FakeResource> {
   migrate(rc: any) {
     return rc;
   }
-  protected async guardResourceWrite(): Promise<'ok' | 'skip'> {
+  protected async guardResourceWrite(): Promise<'ok' | 'skip' | 'skip-keep'> {
     return this.guardDecision;
   }
   // 보호 메서드/필드 테스트 접근용 헬퍼
@@ -55,7 +55,18 @@ beforeEach(() => {
 });
 
 describe('ResourceSyncService flush/writeResource 재시도 로직', () => {
-  test("가드가 'skip' 이면 저장하지 않고 dirty 를 유지한다(회복 시 재시도)", async () => {
+  test("'skip-keep'(일시적 보류) 이면 저장하지 않고 dirty 를 유지한다(회복 시 재시도)", async () => {
+    const svc = new TestService();
+    svc.setResource('p1', { name: 'p1', scenes: {} });
+    svc.guardDecision = 'skip-keep';
+
+    await svc.runFlush();
+
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(svc.isDirty('p1')).toBe(true); // dirty 유지(재시도)
+  });
+
+  test("'skip'(구조적 드롭) 이면 저장도 안 하고 dirty 도 해제한다(재시도 스핀 없음)", async () => {
     const svc = new TestService();
     svc.setResource('p1', { name: 'p1', scenes: {} });
     svc.guardDecision = 'skip';
@@ -63,10 +74,10 @@ describe('ResourceSyncService flush/writeResource 재시도 로직', () => {
     await svc.runFlush();
 
     expect(writeFile).not.toHaveBeenCalled();
-    expect(svc.isDirty('p1')).toBe(true); // dirty 유지
+    expect(svc.isDirty('p1')).toBe(false); // dirty 해제 → 매 사이클 재시도 안 함
   });
 
-  test("가드가 'ok' 이면 저장하고 dirty 를 해제한다", async () => {
+  test("'ok' 이면 저장하고 dirty 를 해제한다", async () => {
     const svc = new TestService();
     svc.setResource('p1', { name: 'p1', scenes: {} });
     svc.guardDecision = 'ok';
@@ -77,11 +88,11 @@ describe('ResourceSyncService flush/writeResource 재시도 로직', () => {
     expect(svc.isDirty('p1')).toBe(false); // dirty 해제
   });
 
-  test('skip 으로 멈췄다가 ok 로 회복되면 그때 저장된다(자동 재개)', async () => {
+  test("'skip-keep' 으로 멈췄다가 'ok' 로 회복되면 그때 저장된다(자동 재개)", async () => {
     const svc = new TestService();
     svc.setResource('p1', { name: 'p1', scenes: {} });
 
-    svc.guardDecision = 'skip';
+    svc.guardDecision = 'skip-keep';
     await svc.runFlush();
     expect(writeFile).not.toHaveBeenCalled();
     expect(svc.isDirty('p1')).toBe(true);

@@ -95,12 +95,12 @@ describe('checkStorageUnstable', () => {
 });
 
 describe('서킷 브레이커', () => {
-  test('토글 ON + 저장소 불안정 → skip (파싱 전에 차단)', async () => {
+  test('토글 ON + 저장소 불안정 → skip-keep (보류, dirty 유지)', async () => {
     const svc = makeSvc();
     (appState as any).storageWriteGuard = true;
     backend.listFiles.mockResolvedValue([]); // projects 0개 = 불안정
     const decision = await svc.guardResourceWrite('p1', sessionJson(['a']));
-    expect(decision).toBe('skip');
+    expect(decision).toBe('skip-keep');
   });
 
   test('토글 OFF → 불안정해도 서킷 브레이커는 통과한다', async () => {
@@ -113,62 +113,71 @@ describe('서킷 브레이커', () => {
   });
 });
 
-describe('유실 감지 + 백업 클로버 방지', () => {
-  // listFiles 를 경로별로 분기
-  const wireFs = (opts: {
-    projects: string[];
-    outsScenes: string[];
-    pngScenes: string[]; // .png 가 있는 씬 폴더 이름
-  }) => {
+describe('유실 감지: 붕괴만 차단, 찌꺼기는 허용', () => {
+  // listFiles 를 경로별로 분기. outsScenes 각각에 .png 가 있다고 가정.
+  const wireFs = (opts: { projects: string[]; outsScenes: string[] }) => {
     backend.listFiles.mockImplementation(async (p: string) => {
       if (p === 'projects') return opts.projects;
       if (p === 'outs/p1') return opts.outsScenes;
-      if (p.startsWith('outs/p1/')) {
-        const scene = p.substring('outs/p1/'.length);
-        return opts.pngScenes.includes(scene) ? ['001.png'] : [];
-      }
+      if (p.startsWith('outs/p1/')) return ['001.png']; // 모든 씬 폴더에 이미지 있음
       if (p === 'inpaints/p1') return [];
       return [];
     });
   };
 
-  test('outs 에 이미지 있는 씬이 세션에 없으면 skip(유실 차단) + 에러 로그', async () => {
+  test('찌꺼기(세션 정상 + 고아 1개) → 차단하지 않고 ok + 안내 토스트', async () => {
     const svc = makeSvc();
-    wireFs({ projects: ['p1.json'], outsScenes: ['sceneA'], pngScenes: ['sceneA'] });
-    backend.existFile.mockResolvedValue(false); // .bak/main 없음(백업 단계 단순화)
+    // 세션 2개(a,b) / outs 3개(a,b,orphan) → 누락 1 ≤ present 2 = 찌꺼기
+    wireFs({ projects: ['p1.json'], outsScenes: ['a', 'b', 'orphan'] });
+    backend.existFile.mockResolvedValue(false);
 
-    // 세션엔 sceneA 가 없음 → 유실 의심
-    const decision = await svc.guardResourceWrite('p1', sessionJson(['other']));
+    const decision = await svc.guardResourceWrite('p1', sessionJson(['a', 'b']));
+
+    expect(decision).toBe('ok'); // 저장 허용(앱 사용 안 막음)
+    expect(backend.copyFile).not.toHaveBeenCalled(); // 백업도 안 함
+    expect(
+      (appState as any).pushMessage.mock.calls.some((c: any[]) =>
+        String(c[0]).includes('복구'),
+      ),
+    ).toBe(true); // 안내 토스트는 뜸
+  });
+
+  test('붕괴(세션 1개 + outs 다수) → skip(차단) + 백업', async () => {
+    const svc = makeSvc();
+    // 세션 1개(default) / outs 3개 → 누락 3 > present 1 = 붕괴
+    wireFs({ projects: ['p1.json'], outsScenes: ['a', 'b', 'c'] });
+    backend.existFile.mockResolvedValue(false);
+
+    const decision = await svc.guardResourceWrite('p1', sessionJson(['default']));
 
     expect(decision).toBe('skip');
+    // addSystemLog 는 fire-and-forget(동적 import 체인) → 대기 후 검사
+    await new Promise((r) => setTimeout(r, 0));
     expect(
       addLog.mock.calls.some(
-        (c) => c[0] === 'error' && String(c[2]).includes('유실'),
+        (c) => c[0] === 'error' && String(c[2]).includes('붕괴'),
       ),
     ).toBe(true);
   });
 
-  test('현재 main 이 기존 .bak 보다 빈약하면 .bak 을 덮어쓰지 않는다', async () => {
+  test('붕괴 + 현재 main 이 기존 .bak 보다 빈약하면 .bak 을 덮어쓰지 않는다', async () => {
     const svc = makeSvc();
-    wireFs({ projects: ['p1.json'], outsScenes: ['sceneA'], pngScenes: ['sceneA'] });
-    backend.existFile.mockResolvedValue(true); // main, .bak 모두 존재
+    wireFs({ projects: ['p1.json'], outsScenes: ['a', 'b', 'c'] }); // 붕괴 유도
+    backend.existFile.mockResolvedValue(true);
     backend.readFile.mockImplementation(async (p: string) => {
       if (p === 'projects/p1.json') return sessionJson(['a']); // main: 1개(빈약)
-      if (p === 'projects/p1.json.bak') return sessionJson(['a', 'b', 'c']); // .bak: 3개(풍부)
+      if (p === 'projects/p1.json.bak') return sessionJson(['a', 'b', 'c']); // .bak: 3개
       return '{}';
     });
 
-    await svc.guardResourceWrite('p1', sessionJson(['other']));
+    await svc.guardResourceWrite('p1', sessionJson(['default']));
 
     expect(backend.copyFile).not.toHaveBeenCalled(); // .bak 보존
-    expect(
-      addLog.mock.calls.some((c) => String(c[2]).includes('백업')),
-    ).toBe(true);
   });
 
-  test('현재 main 이 기존 .bak 보다 풍부하면 .bak 을 갱신한다', async () => {
+  test('붕괴 + 현재 main 이 기존 .bak 보다 풍부하면 .bak 을 갱신한다', async () => {
     const svc = makeSvc();
-    wireFs({ projects: ['p1.json'], outsScenes: ['sceneA'], pngScenes: ['sceneA'] });
+    wireFs({ projects: ['p1.json'], outsScenes: ['a', 'b', 'c'] }); // 붕괴 유도
     backend.existFile.mockResolvedValue(true);
     backend.readFile.mockImplementation(async (p: string) => {
       if (p === 'projects/p1.json') return sessionJson(['a', 'b', 'c']); // main: 3개
@@ -176,7 +185,7 @@ describe('유실 감지 + 백업 클로버 방지', () => {
       return '{}';
     });
 
-    await svc.guardResourceWrite('p1', sessionJson(['other']));
+    await svc.guardResourceWrite('p1', sessionJson(['default']));
 
     expect(backend.copyFile).toHaveBeenCalledWith(
       'projects/p1.json',

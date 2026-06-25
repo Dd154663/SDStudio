@@ -788,13 +788,13 @@ export class SessionService extends ResourceSyncService<Session> {
   protected async guardResourceWrite(
     name: string,
     payload: string,
-  ): Promise<'ok' | 'skip'> {
-    // 서킷 브레이커(토글 ON, 기본): 저장소 접근이 불안정하면 이번 쓰기를 건너뛴다.
-    // 'skip' 은 dirty 를 유지하므로 접근이 회복되면 자동으로 재시도된다.
+  ): Promise<'ok' | 'skip' | 'skip-keep'> {
+    // 서킷 브레이커(토글 ON, 기본): 저장소 접근이 불안정하면 이번 쓰기를 보류한다.
+    // 'skip-keep' 은 dirty 를 유지하므로 접근이 회복되면 자동으로 재시도된다.
     try {
       const { appState } = await import('./AppService');
       if (appState.storageWriteGuard && (await this.checkStorageUnstable())) {
-        return 'skip';
+        return 'skip-keep';
       }
     } catch (e) {}
 
@@ -817,9 +817,36 @@ export class SessionService extends ResourceSyncService<Session> {
     ];
     if (missing.length === 0) return 'ok';
 
-    // 실제 이미지가 있는 씬이 저장 대상에서 빠짐 = 데이터 유실 의심 → 차단 + 백업
+    // outs 에 있지만 세션에 없는 이미지 씬 발견. 두 경우를 구분한다:
+    //  - "찌꺼기": 세션은 멀쩡한데 안 쓰는 고아 폴더 몇 개 → 차단하면 과잉(앱 사용 막음).
+    //  - "붕괴": 세션이 default 수준으로 무너져 디스크의 풀 프로젝트를 덮어쓸 위험
+    //           (지킬 씬보다 잃을 씬이 더 많음) → 이때만 차단 + 백업.
+    const presentCount = sceneNames.size + inpaintNames.size;
+    const isCollapse = missing.length > presentCount;
+
+    // 안내 토스트(프로젝트당 1회): 차단/허용 공통. 복구 기능으로 유도(겁주지 않음).
+    if (!this.#lossGuardWarned.has(name)) {
+      this.#lossGuardWarned.add(name);
+      try {
+        const { appState } = await import('./AppService');
+        appState.pushMessage(
+          '복구 가능한 이미지가 감지되었습니다. 이미지 복구 기능을 사용해 보세요.',
+        );
+      } catch (e) {}
+    }
+
+    if (!isCollapse) {
+      // 찌꺼기 수준 → 차단하지 않고 정상 저장(앱 사용을 막지 않음). 진단 로그만.
+      this.addSystemLog(
+        'info',
+        `"${name}" 세션에 연결되지 않은 이미지 폴더 감지: ${missing.join(', ')} (복구 탭으로 재연결 가능)`,
+      );
+      return 'ok';
+    }
+
+    // 붕괴 의심 → 백업(클로버 방지) 후 차단(드롭). 디스크의 풀 프로젝트 보존.
     console.error(
-      `[유실 방지] "${name}" 자동 저장 차단: outs/inpaints 에 이미지가 있으나 세션에 없는 씬:`,
+      `[유실 방지] "${name}" 자동 저장 차단(세션 붕괴 의심): 세션 ${presentCount}개 / 누락 ${missing.length}개`,
       missing,
     );
     // ④ 백업 클로버 방지: 현재 main 이 기존 .bak 보다 "빈약"하면(씬 수가 적으면)
@@ -848,17 +875,8 @@ export class SessionService extends ResourceSyncService<Session> {
 
     this.addSystemLog(
       'error',
-      `데이터 유실 의심 — "${name}" 자동 저장 차단(세션에 없는 이미지 씬: ${missing.join(', ')})`,
+      `데이터 유실 의심(세션 붕괴) — "${name}" 자동 저장 차단(세션 ${presentCount}개 / 누락: ${missing.join(', ')})`,
     );
-    if (!this.#lossGuardWarned.has(name)) {
-      this.#lossGuardWarned.add(name);
-      try {
-        const { appState } = await import('./AppService');
-        appState.pushMessage(
-          `데이터 유실이 감지되어 "${name}" 자동 저장을 막았습니다. 앱을 재시작하면 복구됩니다.`,
-        );
-      } catch (e) {}
-    }
     return 'skip';
   }
 

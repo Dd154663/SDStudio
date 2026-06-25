@@ -218,24 +218,27 @@ export abstract class ResourceSyncService<
       console.error('writeResource 직렬화 실패:', name, e);
       return 'done'; // 재시도해도 동일 → dirty 해제(무한 재시도 방지)
     }
-    let decision: 'ok' | 'skip' = 'ok';
+    let decision: 'ok' | 'skip' | 'skip-keep' = 'ok';
     try {
       decision = await this.guardResourceWrite(name, payload);
     } catch (e) {
       // 가드 자체의 오류는 정상 저장을 막지 않는다
       decision = 'ok';
     }
-    if (decision === 'skip') return 'retry';
+    // 'skip'      = 구조적 사유로 차단(드롭) → dirty 해제, 재시도 안 함(스핀 방지)
+    // 'skip-keep' = 일시적 사유로 보류(저장소 불안정) → dirty 유지, 회복 시 재시도
+    if (decision === 'skip') return 'done';
+    if (decision === 'skip-keep') return 'retry';
     await backend.writeFile(this.getPath(name), payload);
     return 'done';
   }
 
   // 손실 방지 훅. 기본은 항상 허용. SessionService 가 오버라이드해
-  // outs/inpaints 폴더(실제 씬 흔적)와 대조하여 위험한 쓰기를 차단한다.
+  // outs/inpaints 폴더(실제 씬 흔적)와 대조하여 위험한 쓰기를 막을 수 있다.
   protected async guardResourceWrite(
     _name: string,
     _payload: string,
-  ): Promise<'ok' | 'skip'> {
+  ): Promise<'ok' | 'skip' | 'skip-keep'> {
     return 'ok';
   }
 
