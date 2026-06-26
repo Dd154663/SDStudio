@@ -38,6 +38,7 @@ import { ProjectSizeService } from './ProjectSizeService';
 import { ArtistTagService } from './ArtistTagService';
 import { ArtistLibraryService } from './ArtistLibraryService';
 import { BackupService } from './BackupService';
+import { BatchProcessService } from './BatchProcessService';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -98,6 +99,9 @@ artistLibraryService.load();
 
 // 백업/내보내기/가져오기 (AppService 에서 분리). 생성자 비용 없음.
 export const backupService = new BackupService();
+
+// 배치 처리/해상도 변경 (AppService 에서 분리). 생성자 비용 없음.
+export const batchProcessService = new BatchProcessService();
 
 export const promptService = new PromptService();
 
