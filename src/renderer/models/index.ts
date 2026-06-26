@@ -37,6 +37,7 @@ import { BackgroundKeepAliveService } from './BackgroundKeepAliveService';
 import { ProjectSizeService } from './ProjectSizeService';
 import { ArtistTagService } from './ArtistTagService';
 import { ArtistLibraryService } from './ArtistLibraryService';
+import { BackupService } from './BackupService';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -94,6 +95,9 @@ globalCharacterPresetService.load();
 
 export const artistLibraryService = new ArtistLibraryService();
 artistLibraryService.load();
+
+// 백업/내보내기/가져오기 (AppService 에서 분리). 생성자 비용 없음.
+export const backupService = new BackupService();
 
 export const promptService = new PromptService();
 
