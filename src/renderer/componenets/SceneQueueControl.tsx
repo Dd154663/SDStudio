@@ -2037,6 +2037,13 @@ const QueueControl = observer(
                 내보내기
               </button>
               <button
+                className="round-button back-sky"
+                onClick={() => appState.quickExportPackage(type)}
+                title="기본 프리셋으로 한 번에 내보내기"
+              >
+                ⚡{isMobile ? '' : ' 빠른 export'}
+              </button>
+              <button
                 className="round-button back-gray"
                 onClick={() => {
                   appState.openBatchProcessMenu(type, setSceneSelector);

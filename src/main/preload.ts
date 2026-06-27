@@ -16,6 +16,7 @@ export type Channels =
   | 'write-data-file'
   | 'read-data-file'
   | 'copy-file'
+  | 'copy-file-absolute'
   | 'close'
   | 'show-file'
   | 'zip-files'

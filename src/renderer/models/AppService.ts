@@ -67,6 +67,21 @@ export interface ExportPreset {
   opt: 'original' | 'lossy' | 'lossless' | 'avif';
   imageSize: number;
   separator: string;
+  // ── 신규 옵션 (모두 선택적 — 구형 프리셋은 그대로 동작, 마이그레이션 불필요) ──
+  /** 파일명 패턴: 'scene'(기본=현행) / 프로젝트명 / 폴더명+프로젝트명 접두 */
+  filenamePattern?: 'scene' | 'project.scene' | 'folder.project.scene';
+  /** 출력 형태: 'tar'(기본, 압축파일) / 'files'(개별 이미지 파일) */
+  outputMode?: 'tar' | 'files';
+  /** 캐릭터 프리셋 접두/접미사 적용 여부 (미설정 시 true = 적용) */
+  applyCharacterAffix?: boolean;
+  /** 켜면 씬 이름 특수문자를 묻지 않고 전부 구분자로 자동 변환 (기본 false) */
+  autoConvertSeparator?: boolean;
+  /** 데스크톱 전용: 내보내기 목표 폴더(절대경로). 빈값이면 글로벌 기본 폴더 사용 */
+  targetFolder?: string;
+  /** 데스크톱 전용: 목표 폴더 아래 프로젝트 폴더 경로로 하위 폴더 생성 */
+  useProjectRelativePath?: boolean;
+  /** ⚡ 빠른 export 버튼이 사용할 기본 프리셋 여부 */
+  isDefault?: boolean;
 }
 
 export interface SceneSelectorItem {
@@ -632,8 +647,9 @@ export class AppState {
   initExportPresets() { return exportPresetService.initExportPresets(); }
   loadExportPresets() { return exportPresetService.loadExportPresets(); }
   saveExportPresets(presets: ExportPreset[]) { return exportPresetService.saveExportPresets(presets); }
-  detectSpecialCharsFromNames(sceneNames: string[], separator: string) { return exportPresetService.detectSpecialCharsFromNames(sceneNames, separator); }
+  detectSpecialCharsFromNames(sceneNames: string[], separator: string, autoConvert = false) { return exportPresetService.detectSpecialCharsFromNames(sceneNames, separator, autoConvert); }
   exportPackage(type: 'scene' | 'inpaint', selected?: GenericScene[]) { return exportPresetService.exportPackage(type, selected); }
+  quickExportPackage(type: 'scene' | 'inpaint', selected?: GenericScene[]) { return exportPresetService.quickExportPackage(type, selected); }
   exportPreset(session: Session, preset: any) { return exportPresetService.exportPreset(session, preset); }
 
 

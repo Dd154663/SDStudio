@@ -499,6 +499,12 @@ export class AndroidBackend extends Backend {
     });
   }
 
+  async copyFileToAbsolute(src: string, absoluteDest: string): Promise<void> {
+    // 모바일은 임의 절대 경로 쓰기가 제한적이라 목표 폴더 export 를 지원하지 않는다.
+    // (UI 에서 데스크톱 전용으로 막혀 있어 정상 흐름에선 호출되지 않음)
+    throw new Error('모바일에서는 목표 폴더 내보내기를 지원하지 않습니다.');
+  }
+
   async readDataFile(arg: string): Promise<string> {
     const data = await Filesystem.readFile({
       path: `${APP_DIR}/${arg}`,

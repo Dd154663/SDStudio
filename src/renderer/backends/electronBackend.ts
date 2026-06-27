@@ -153,6 +153,10 @@ export class ElectornBackend extends Backend {
     await invoke('copy-file', src, dest);
   }
 
+  async copyFileToAbsolute(src: string, absoluteDest: string): Promise<void> {
+    await invoke('copy-file-absolute', src, absoluteDest);
+  }
+
   async readDataFile(arg: string): Promise<string> {
     return await invoke('read-data-file', arg);
   }

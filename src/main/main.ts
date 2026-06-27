@@ -146,7 +146,9 @@ ipcMain.handle('open-web-page', async (event, url) => {
 });
 
 ipcMain.handle('show-file', async (event, arg) => {
-  shell.showItemInFolder(path.join(APP_DIR, arg));
+  // 절대경로(목표 폴더 export 결과)면 그대로, 아니면 APP_DIR 기준 상대경로로 해석.
+  const filePath = path.isAbsolute(arg) ? arg : path.join(APP_DIR, arg);
+  shell.showItemInFolder(filePath);
 });
 
 const AdmZip = require('adm-zip');
@@ -272,6 +274,13 @@ ipcMain.handle('copy-file', async (event, src, dest) => {
   const dir = path.dirname(APP_DIR + '/' + dest);
   await fs.mkdir(dir, { recursive: true });
   await fs.copyFile(APP_DIR + '/' + src, APP_DIR + '/' + dest);
+});
+
+// src(APP_DIR 상대) → 절대경로 dest 로 복사. 데스크톱 export 목표 폴더용.
+ipcMain.handle('copy-file-absolute', async (event, src, absoluteDest) => {
+  const dir = path.dirname(absoluteDest);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.copyFile(APP_DIR + '/' + src, absoluteDest);
 });
 
 ipcMain.handle('read-data-file', async (event, arg) => {

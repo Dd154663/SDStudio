@@ -45,6 +45,8 @@ export interface Config {
   classicSceneCard?: boolean;
   legacyProjectMode?: boolean;
   exportConcurrency?: number;
+  /** 이미지 export 시 기본 목표 폴더(데스크톱 전용 — 프리셋에 폴더가 없을 때 사용) */
+  defaultExportFolder?: string;
   trueDark?: boolean;
   // 저장소(스토리지) 접근이 불안정할 때 자동 저장을 일시정지해 데이터 손상을 막는다.
   // 기본 ON. OFF 시 항상 저장을 시도(불안정 시 손상 위험은 있으나 작업 롤백 체감은 없음).

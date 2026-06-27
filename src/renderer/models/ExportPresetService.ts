@@ -59,6 +59,12 @@ import {
 } from './workflows/OneTimeFlows';
 import { appState } from './AppService';
 import type { ExportPreset } from './AppService';
+import {
+  buildPatternPrefix,
+  resolveExportTargetFolder,
+  sanitizeFilenamePart,
+} from './exportPresetUtils';
+import type { FilenamePattern } from './exportPresetUtils';
 
 export class ExportPresetService {
   // ── 내보내기 프리셋 헬퍼 ──
@@ -134,16 +140,23 @@ export class ExportPresetService {
     type: 'scene' | 'inpaint',
     selected: GenericScene[] | undefined,
     separator: string,
+    autoConvert = false,
   ): Promise<Set<string> | undefined> {
     const scenes = selected || appState.curSession!.getScenes(type);
-    return this.detectSpecialCharsFromNames(scenes.map((s) => s.name), separator);
+    return this.detectSpecialCharsFromNames(
+      scenes.map((s) => s.name),
+      separator,
+      autoConvert,
+    );
   }
 
   // 씬 이름 목록에서 특수문자를 감지하고, 있으면 구분자 변환 여부를 한 번 묻는다.
+  // autoConvert=true 면 묻지 않고 감지된 특수문자 전부를 변환 대상으로 반환.
   // 반환: 변환할 문자 Set (없으면 빈 Set), 사용자가 취소하면 undefined.
   async detectSpecialCharsFromNames(
     sceneNames: string[],
     separator: string,
+    autoConvert = false,
   ): Promise<Set<string> | undefined> {
     const specialCharRegex = /[^a-zA-Z0-9가-힣ぁ-んァ-ヶ一-龥　-〿]/g;
     const detectedChars = new Set<string>();
@@ -154,6 +167,8 @@ export class ExportPresetService {
 
     let charsToReplace = new Set<string>();
     if (detectedChars.size > 0) {
+      // 자동 변환: 묻지 않고 감지된 특수문자 전부를 구분자로 변환
+      if (autoConvert) return detectedChars;
       const items = Array.from(detectedChars).map((c) => ({
         text: c === ' ' ? '띄어쓰기' : `"${c}"`,
         value: c,
@@ -171,7 +186,11 @@ export class ExportPresetService {
     return charsToReplace;
   }
 
-  async exportPackage(type: 'scene' | 'inpaint', selected?: GenericScene[]) {
+  async exportPackage(
+    type: 'scene' | 'inpaint',
+    selected?: GenericScene[],
+    presetOverride?: ExportPreset,
+  ) {
     appState.lastExportType = type;
     appState.lastExportSelected = selected;
     const exportImpl = async (
@@ -181,11 +200,28 @@ export class ExportPresetService {
       imageSize: number,
       separator: string,
       charsToReplace: Set<string>,
+      filenamePattern: FilenamePattern | undefined,
+      applyCharacterAffix: boolean,
+      targetFolder: string | null,
+      outputMode: 'tar' | 'files',
     ) => {
       let paths: { path: string; name: string }[] = [];
       await imageService.refreshBatch(appState.curSession!);
       const scenes = selected ?? appState.curSession!.getScenes(type);
       await Promise.allSettled(scenes.map((s) => gameService.refreshList(appState.curSession!, s)));
+
+      // 파일명 패턴 프리픽스(프로젝트/폴더명) — export 1회당 고정
+      const patternProjectName = appState.curSession!.name;
+      const patternFolderPath = sessionService.getFolderOf(patternProjectName);
+      const patternFolderName = patternFolderPath
+        ? sessionService.folderLeafName(patternFolderPath)
+        : '';
+      const patternPrefix = buildPatternPrefix(
+        filenamePattern,
+        patternFolderName,
+        patternProjectName,
+        separator,
+      );
       for (const scene of scenes) {
         const cands = gameService.getOutputs(appState.curSession!, scene);
         const imageMap: any = {};
@@ -208,8 +244,10 @@ export class ExportPresetService {
             images.push(cand);
           }
         }
-        // 캐릭터 프리셋 파일명 옵션 적용
-        const characterPreset = appState.getAppliedCharacterPreset();
+        // 캐릭터 프리셋 파일명 옵션 적용 (토글 off 면 접두/접미사 미적용)
+        const characterPreset = applyCharacterAffix
+          ? appState.getAppliedCharacterPreset()
+          : null;
         const presetPrefix = characterPreset?.filenamePrefix || '';
         const presetSuffix = characterPreset?.filenameSuffix || '';
 
@@ -239,8 +277,9 @@ export class ExportPresetService {
               imgPath = tmpPath;
             }
           }
-          // 파일명: [presetPrefix_][manualPrefix_]sceneName[_presetSuffix][_index].png
-          const baseName = finalPresetPrefix + finalPrefix + sceneName + finalPresetSuffix;
+          // 파일명: [patternPrefix][presetPrefix_][manualPrefix_]sceneName[_presetSuffix][_index].png
+          const baseName =
+            patternPrefix + finalPresetPrefix + finalPrefix + sceneName + finalPresetSuffix;
           const name = images.length === 1
             ? baseName + '.png'
             : baseName + separator + (i + 1).toString() + '.png';
@@ -310,6 +349,54 @@ export class ExportPresetService {
           return;
         }
       }
+
+      // ── 개별 파일 출력(무압축): 목표 폴더가 있으면 그 아래, 없으면 exports/ 하위에 저장 ──
+      if (outputMode === 'files') {
+        const outDirName =
+          sanitizeFilenamePart(appState.curSession!.name) +
+          '_' +
+          Date.now().toString();
+        const baseDest = targetFolder
+          ? `${targetFolder}/${outDirName}`
+          : `exports/${outDirName}`;
+        appState.exportProgress = {
+          text: '이미지 복사 중..',
+          done: 0,
+          total: paths.length,
+        };
+        let copied = 0;
+        let copyFail = 0;
+        for (const item of paths) {
+          try {
+            if (targetFolder) {
+              await backend.copyFileToAbsolute(item.path, `${baseDest}/${item.name}`);
+            } else {
+              await backend.copyFile(item.path, `${baseDest}/${item.name}`);
+            }
+          } catch (e: any) {
+            copyFail++;
+            console.error('이미지 복사 실패:', item.path, e.message);
+          }
+          copied++;
+          appState.exportProgress = {
+            text: '이미지 복사 중..',
+            done: copied,
+            total: paths.length,
+          };
+        }
+        appState.exportProgress = undefined;
+        if (copyFail > 0) {
+          appState.pushMessage(`${copyFail}개 이미지 복사 실패 (건너뜀)`);
+        }
+        if (copyFail === paths.length) {
+          appState.pushMessage('내보낼 이미지가 없습니다');
+          return;
+        }
+        appState.pushMessage('이미지 내보내기가 완료되었습니다');
+        await backend.showFile(baseDest);
+        return;
+      }
+
       appState.exportProgress = {
         text: '이미지 압축파일 생성중..',
         done: 0,
@@ -337,9 +424,68 @@ export class ExportPresetService {
         return;
       }
       appState.exportProgress = undefined;
+      // 목표 폴더 지정 시(데스크톱) tar 를 그 폴더로 복사 후 원본(exports/) 정리
+      if (targetFolder) {
+        const tarName = outFilePath.split('/').pop()!;
+        const dest = `${targetFolder}/${tarName}`;
+        try {
+          await backend.copyFileToAbsolute(outFilePath, dest);
+          await backend.deleteFile(outFilePath);
+          appState.pushMessage('이미지 내보내기가 완료되었습니다');
+          await backend.showFile(dest);
+          return;
+        } catch (e: any) {
+          appState.pushMessage(
+            '목표 폴더로 복사 실패: ' + (e.message || e) + ' (exports 폴더에 보관됨)',
+          );
+          await backend.showFile(outFilePath);
+          return;
+        }
+      }
       appState.pushMessage('이미지 내보내기가 완료되었습니다');
       await backend.showFile(outFilePath);
     };
+
+    // 프리셋 1개를 실행 (선택/빠른 export 공용). 캐릭터 이름 입력·특수문자·목표폴더 해석 포함.
+    const runPreset = async (ep: ExportPreset) => {
+      const charsToReplace = await this.detectSpecialChars(
+        type,
+        selected,
+        ep.separator,
+        ep.autoConvertSeparator === true,
+      );
+      if (charsToReplace === undefined) return;
+      let epPrefix = '';
+      if (ep.format === 'prefix' && ep.prefix) {
+        epPrefix = ep.prefix + ep.separator;
+      } else if (ep.format === 'prefix_ask') {
+        const inputName = await appState.pushDialogAsync({
+          type: 'input-confirm',
+          text: '캐릭터 이름을 입력해주세요',
+        });
+        if (!inputName) return;
+        epPrefix = inputName + ep.separator;
+      }
+      const targetFolder = await this.resolveTargetFolderFor(ep);
+      await exportImpl(
+        epPrefix,
+        ep.menu === 'fav',
+        ep.opt,
+        ep.imageSize,
+        ep.separator,
+        charsToReplace,
+        ep.filenamePattern,
+        ep.applyCharacterAffix !== false,
+        targetFolder,
+        ep.outputMode === 'files' ? 'files' : 'tar',
+      );
+    };
+
+    // 빠른 export: 선택 다이얼로그를 건너뛰고 지정된 프리셋을 바로 실행
+    if (presetOverride) {
+      await runPreset(presetOverride);
+      return;
+    }
 
     // ── 프리셋 선택 또는 직접 설정 (항상 표시) ──
     const presets = this.loadExportPresets();
@@ -366,20 +512,7 @@ export class ExportPresetService {
       const idx = parseInt(choice.split('_')[1]);
       const ep = presets[idx];
       if (!ep) return;
-      const charsToReplace = await this.detectSpecialChars(type, selected, ep.separator);
-      if (charsToReplace === undefined) return;
-      let epPrefix = '';
-      if (ep.format === 'prefix' && ep.prefix) {
-        epPrefix = ep.prefix + ep.separator;
-      } else if (ep.format === 'prefix_ask') {
-        const inputName = await appState.pushDialogAsync({
-          type: 'input-confirm',
-          text: '캐릭터 이름을 입력해주세요',
-        });
-        if (!inputName) return;
-        epPrefix = inputName + ep.separator;
-      }
-      await exportImpl(epPrefix, ep.menu === 'fav', ep.opt, ep.imageSize, ep.separator, charsToReplace);
+      await runPreset(ep);
       return;
     }
     // '_manual' → 아래 기존 다이얼로그 체인
@@ -454,7 +587,46 @@ export class ExportPresetService {
       prefix = inputPrefix + separator;
     }
 
-    await exportImpl(prefix, menu === 'fav', opt, imageSize, separator, charsToReplace);
+    // 직접 설정 export 는 현행 동작 유지 (패턴=씬, 캐릭터접두사 적용, 목표폴더 없음, tar)
+    await exportImpl(
+      prefix,
+      menu === 'fav',
+      opt,
+      imageSize,
+      separator,
+      charsToReplace,
+      'scene',
+      true,
+      null,
+      'tar',
+    );
+  }
+
+  // ⚡ 빠른 export: isDefault 로 지정된 프리셋을 선택 다이얼로그 없이 바로 실행.
+  async quickExportPackage(type: 'scene' | 'inpaint', selected?: GenericScene[]) {
+    const presets = this.loadExportPresets();
+    const def = presets.find((p) => p.isDefault);
+    if (!def) {
+      appState.pushMessage(
+        '빠른 export 기본 프리셋이 없습니다. 프리셋 관리에서 "기본 프리셋"을 지정해주세요.',
+      );
+      return;
+    }
+    await this.exportPackage(type, selected, def);
+  }
+
+  // 프리셋의 목표 폴더(절대경로) 해석. 모바일은 임의 폴더 export 미지원이라 항상 null.
+  private async resolveTargetFolderFor(
+    preset: ExportPreset,
+  ): Promise<string | null> {
+    if (isMobile) return null;
+    const config = await backend.getConfig();
+    const projectFolder = sessionService.getFolderOf(appState.curSession!.name);
+    return resolveExportTargetFolder(
+      preset,
+      projectFolder,
+      config.defaultExportFolder,
+    );
   }
 
   async exportPreset(session: Session, preset: any) {

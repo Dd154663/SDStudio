@@ -56,6 +56,8 @@ export abstract class Backend {
   abstract readFile(filename: string): Promise<string>;
   abstract writeFile(filename: string, data: string): Promise<void>;
   abstract copyFile(src: string, dest: string): Promise<void>;
+  // src(APP_DIR 상대경로)를 절대경로 dest 로 복사. 데스크톱 export 목표 폴더용.
+  abstract copyFileToAbsolute(src: string, absoluteDest: string): Promise<void>;
   abstract readDataFile(arg: string): Promise<string>;
   abstract writeDataFile(filename: string, data: string): Promise<void>;
   abstract writeDataFileAbsolute(absolutePath: string, data: string): Promise<void>;
