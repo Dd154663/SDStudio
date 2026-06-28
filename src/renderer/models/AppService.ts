@@ -20,6 +20,7 @@ import {
 } from '.';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
+import { isOutputImageFile, isImportImageMime } from './imageFormats';
 import { Dialog } from '../componenets/ConfirmWindow';
 import { cropMirrorResultFromDataUri, dataUriToBase64, deleteImageFiles } from './ImageService';
 import {
@@ -316,7 +317,9 @@ export class AppState {
     let copied = 0;
     for (const srcPath of this.imageClipboard) {
       try {
-        const filename = Date.now().toString() + '_' + copied + '.png';
+        // 원본 확장자 보존(webp/png) — 고정 .png 로 붙여넣으면 내용/확장자 불일치
+        const ext = srcPath.split('.').pop() || 'png';
+        const filename = Date.now().toString() + '_' + copied + '.' + ext;
         await backend.copyFile(srcPath, targetDir + '/' + filename);
         copied++;
       } catch (e) {
@@ -365,7 +368,9 @@ export class AppState {
         }
       };
       reader.readAsText(file);
-    } else if (file.type === 'image/png') {
+    } else if (isImportImageMime(file.type)) {
+      // png/webp/jpeg 등 임포트 가능한 이미지 → 메타데이터 추출 (handlePngImport 가
+      // png 가 아니면 readJSONFromPNG 실패 후 externalImage 프롬프트 추출 뷰로 폴백).
       if (!this.curSession) {
         return;
       }
@@ -823,6 +828,7 @@ export class AppState {
   // ── 배치 처리: BatchProcessService 로 분리됨 (UI 호환 위임) ──
   openBatchProcessMenu(type: 'scene' | 'inpaint', setSceneSelector: (item: SceneSelectorItem | undefined) => void) { return batchProcessService.openBatchProcessMenu(type, setSceneSelector); }
   openChangeResolutionMenu(type: 'scene' | 'inpaint', setSceneSelector: (item: SceneSelectorItem | undefined) => void) { return batchProcessService.openChangeResolutionMenu(type, setSceneSelector); }
+  openConvertToWebpMenu(type: 'scene' | 'inpaint', setSceneSelector: (item: SceneSelectorItem | undefined) => void) { return batchProcessService.openConvertToWebpMenu(type, setSceneSelector); }
 
 
   @action
@@ -894,7 +900,7 @@ export class AppState {
             const files = await backend.listFiles(
               'outs/' + session.name + '/' + dirName,
             );
-            pngFiles = files.filter((f: string) => f.endsWith('.png'));
+            pngFiles = files.filter(isOutputImageFile);
           } catch {
             this.setProgressDialog({
               text: '이미지 복구 중...',

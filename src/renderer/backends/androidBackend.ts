@@ -55,6 +55,8 @@ function getMimeType(filePath: any) {
       return 'image/jpeg';
     case 'png':
       return 'image/png';
+    case 'webp':
+      return 'image/webp';
     case 'gif':
       return 'image/gif';
     case 'pdf':
@@ -503,6 +505,11 @@ export class AndroidBackend extends Backend {
     // 모바일은 임의 절대 경로 쓰기가 제한적이라 목표 폴더 export 를 지원하지 않는다.
     // (UI 에서 데스크톱 전용으로 막혀 있어 정상 흐름에선 호출되지 않음)
     throw new Error('모바일에서는 목표 폴더 내보내기를 지원하지 않습니다.');
+  }
+
+  async convertToWebp(src: string, dest: string, quality: number): Promise<void> {
+    // WebP 변환은 sharp(Node 전용) 기반이라 데스크톱 전용. 모바일은 미지원.
+    throw new Error('모바일에서는 WebP 변환을 지원하지 않습니다.');
   }
 
   async readDataFile(arg: string): Promise<string> {

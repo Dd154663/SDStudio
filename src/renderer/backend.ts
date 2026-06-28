@@ -58,6 +58,8 @@ export abstract class Backend {
   abstract copyFile(src: string, dest: string): Promise<void>;
   // src(APP_DIR 상대경로)를 절대경로 dest 로 복사. 데스크톱 export 목표 폴더용.
   abstract copyFileToAbsolute(src: string, absoluteDest: string): Promise<void>;
+  // 생성 이미지 PNG(src) → WebP(dest) 변환. NAI 프롬프트 메타데이터를 EXIF 로 이월. 데스크톱 전용.
+  abstract convertToWebp(src: string, dest: string, quality: number): Promise<void>;
   abstract readDataFile(arg: string): Promise<string>;
   abstract writeDataFile(filename: string, data: string): Promise<void>;
   abstract writeDataFileAbsolute(absolutePath: string, data: string): Promise<void>;

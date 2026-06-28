@@ -53,6 +53,7 @@ import {
 import { appState } from '../models/AppService';
 import { keyboardShortcutService } from '../models/KeyboardShortcutService';
 import { buildDanbooruSearchUrl } from '../models/util';
+import { isImportImageMime } from '../models/imageFormats';
 import { AppContextMenu } from './AppContextMenu';
 
 import { configure } from 'mobx';
@@ -298,7 +299,7 @@ export const App = observer(() => {
       const item = items[0];
       if (item.kind !== 'file') return null;
       const type = item.type;
-      if (type === 'image/png' || type === 'image/jpeg' || type === 'image/webp') {
+      if (isImportImageMime(type)) {
         return '이미지에서 프롬프트 메타데이터를 추출합니다';
       }
       if (type === 'application/json') {

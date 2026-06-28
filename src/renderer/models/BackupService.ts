@@ -46,6 +46,7 @@ import {
 } from './types';
 import { extractPromptDataFromBase64, getFirstFile } from './util';
 import { ImageOptimizeMethod } from '../backend';
+import { isOptimizedImageFile } from './imageFormats';
 import { v4 } from 'uuid';
 import { Resolution, resolutionMap } from '../backends/imageGen';
 import { ProgressDialog } from '../componenets/ProgressWindow';
@@ -1449,15 +1450,43 @@ export class BackupService {
             imgPath = tmpPath;
           }
         }
+        // 확장자는 최종 출력 바이트에 맞춘다: 원본=소스 확장자(webp/png), 최적화=opt(webp/avif).
+        const outExt =
+          opt === 'original'
+            ? imgPath.split('.').pop() || 'png'
+            : opt === 'avif'
+              ? 'avif'
+              : 'webp';
         const baseName = finalPresetPrefix + finalPrefix + sceneName + finalPresetSuffix;
         const name =
           images.length === 1
-            ? baseName + '.png'
-            : baseName + separator + (i + 1).toString() + '.png';
+            ? baseName + '.' + outExt
+            : baseName + separator + (i + 1).toString() + '.' + outExt;
         paths.push({ path: imgPath, name });
       }
     }
     if (opt !== 'original') {
+      // 이중 최적화 가드: 이미 최적화(webp/avif)된 소스가 섞여 있으면 묻는다.
+      const alreadyOptCount = paths.filter((p) =>
+        isOptimizedImageFile(p.path),
+      ).length;
+      let skipAlreadyOpt = false;
+      if (alreadyOptCount > 0) {
+        const choice = await appState.pushDialogAsync({
+          type: 'select',
+          text: `선택한 이미지 중 ${alreadyOptCount}개가 이미 최적화(webp/avif)되어 있습니다.\n다시 최적화하면 화질이 저하될 수 있습니다. 어떻게 할까요?`,
+          items: [
+            { text: '이미 최적화된 것은 원본 유지', value: 'skip' },
+            { text: '전부 다시 최적화', value: 'all' },
+            { text: '취소', value: 'cancel' },
+          ],
+        });
+        if (!choice || choice === 'cancel') {
+          appState.exportProgress = undefined;
+          return;
+        }
+        skipAlreadyOpt = choice === 'skip';
+      }
       const ext = opt === 'avif' ? '.avif' : '.webp';
       const optimizeMethod =
         opt === 'lossy'
@@ -1488,6 +1517,21 @@ export class BackupService {
             const task = queue.shift();
             if (!task) break;
             const { item, idx } = task;
+            // 원본 유지 선택 시: 이미 최적화된 소스는 재인코딩 없이 그대로(확장자 일치)
+            if (skipAlreadyOpt && isOptimizedImageFile(item.path)) {
+              const srcExt = item.path.split('.').pop() || 'webp';
+              results[idx] = {
+                path: item.path,
+                name: item.name.replace(/\.[^.]+$/, '.' + srcExt),
+              };
+              done++;
+              appState.exportProgress = {
+                text: '이미지 크기 최적화 중..',
+                done: done,
+                total: paths.length,
+              };
+              continue;
+            }
             const outputPath = 'tmp/' + v4() + ext;
             try {
               await backend.resizeImage({
@@ -1499,7 +1543,8 @@ export class BackupService {
               });
               results[idx] = {
                 path: outputPath,
-                name: item.name.substring(0, item.name.length - 4) + ext,
+                // name 은 이미 최종 확장자(.webp/.avif)를 갖고 있으므로 그대로 사용
+                name: item.name,
               };
             } catch (e: any) {
               failCount++;

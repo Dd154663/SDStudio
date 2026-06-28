@@ -73,6 +73,7 @@ import {
   Piece,
 } from '../models/types';
 import { extractPromptDataFromBase64 } from '../models/util';
+import { IMPORT_IMAGE_ACCEPT } from '../models/imageFormats';
 import { appState, SceneSelectorItem } from '../models/AppService';
 import {
   createInpaintPreset,
@@ -2095,13 +2096,24 @@ const QueueControl = observer(
               >
                 {isMobile ? '해상도' : '해상도 변경'}
               </button>
+              {!isMobile && (
+                <button
+                  className="round-button back-gray"
+                  onClick={() => {
+                    appState.openConvertToWebpMenu(type, setSceneSelector);
+                  }}
+                  title="선택 씬의 PNG를 WebP로 변환(용량 절감, 메타데이터 보존)"
+                >
+                  WebP 변환
+                </button>
+              )}
               <Tooltip content="이미지 프롬프트 추출">
                 <button
                   className="round-button back-gray"
                   onClick={() => {
                     const input = document.createElement('input');
                     input.type = 'file';
-                    input.accept = 'image/png';
+                    input.accept = IMPORT_IMAGE_ACCEPT;
                     input.onchange = (e: any) => {
                       const file = e.target.files?.[0];
                       if (file) {

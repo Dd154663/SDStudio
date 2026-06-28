@@ -24,6 +24,7 @@ import { IArtistEntry, IArtistImage } from '../models/ArtistLibraryService';
 import { appState } from '../models/AppService';
 import { dataUriToBase64 } from '../models/ImageService';
 import { extractPromptDataFromBase64 } from '../models/util';
+import { IMPORT_IMAGE_ACCEPT } from '../models/imageFormats';
 import Tooltip from './Tooltip';
 import ModalOverlay from './ModalOverlay';
 
@@ -250,7 +251,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                   onClick={() => fileRef.current?.click()}>
                   <FaPlus />
                 </button>
-                <input type="file" accept="image/png" multiple ref={fileRef} className="hidden"
+                <input type="file" accept={IMPORT_IMAGE_ACCEPT} multiple ref={fileRef} className="hidden"
                   onChange={(e) => { if (e.target.files) addImages(e.target.files); e.target.value = ''; }} />
               </div>
               {selected && (

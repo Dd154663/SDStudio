@@ -1,6 +1,7 @@
 import { observable, action } from 'mobx';
 import { v4 as uuidv4 } from 'uuid';
 import { backend } from '.';
+import { imageExtFromBase64 } from './imageFormats';
 
 // 작가 라이브러리 전역 데이터.
 // 프로젝트(세션)와 무관하게 앱 루트의 artist_library.json + artist_library/ 폴더에 저장.
@@ -173,7 +174,8 @@ export class ArtistLibraryService extends EventTarget {
     const a = this.getArtist(id);
     if (!a) return;
     const imageId = uuidv4();
-    const path = ARTIST_LIBRARY_DIR + '/' + id + '/' + imageId + '.png';
+    const ext = imageExtFromBase64(base64);
+    const path = ARTIST_LIBRARY_DIR + '/' + id + '/' + imageId + '.' + ext;
     try {
       await backend.writeDataFile(path, base64);
     } catch (e) {
@@ -337,7 +339,10 @@ export class ArtistLibraryService extends EventTarget {
         try {
           if (await backend.existFile(srcPath)) {
             const imgId = uuidv4();
-            const dest = ARTIST_LIBRARY_DIR + '/' + newId + '/' + imgId + '.png';
+            // 원본 확장자 보존(.png/.webp 등) — 고정 .png 로 복사하면 MIME 어긋남
+            const srcExt = img.path.split('.').pop() || 'png';
+            const dest =
+              ARTIST_LIBRARY_DIR + '/' + newId + '/' + imgId + '.' + srcExt;
             await backend.copyFile(srcPath, dest);
             newImages.push({ id: imgId, path: dest });
           }

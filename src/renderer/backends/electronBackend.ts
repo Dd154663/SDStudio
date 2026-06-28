@@ -157,6 +157,10 @@ export class ElectornBackend extends Backend {
     await invoke('copy-file-absolute', src, absoluteDest);
   }
 
+  async convertToWebp(src: string, dest: string, quality: number): Promise<void> {
+    await invoke('convert-to-webp', src, dest, quality);
+  }
+
   async readDataFile(arg: string): Promise<string> {
     return await invoke('read-data-file', arg);
   }

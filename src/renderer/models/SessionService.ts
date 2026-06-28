@@ -7,6 +7,7 @@ import defaultassets from '../defaultassets';
 import { dataUriToBase64 } from './ImageService';
 import { defaultUC } from './PromptService';
 import { ResourceSyncService } from './ResourceSyncService';
+import { isOutputImageFile } from './imageFormats';
 import {
   PromptPieceSlot,
   GenericScene,
@@ -621,7 +622,7 @@ export class SessionService extends ResourceSyncService<Session> {
   ): Promise<string | undefined> {
     try {
       const files = await backend.listFiles('outs/' + project + '/' + sceneName);
-      return (files || []).find((f: string) => f.endsWith('.png'));
+      return (files || []).find(isOutputImageFile);
     } catch (e) {
       return undefined;
     }
@@ -961,7 +962,7 @@ export class SessionService extends ResourceSyncService<Session> {
       if (present.has(entry)) continue;
       try {
         const files = await backend.listFiles(dir + '/' + project + '/' + entry);
-        if (files.some((f) => f.endsWith('.png'))) missing.push(entry);
+        if (files.some(isOutputImageFile)) missing.push(entry);
       } catch (e) {
         // 폴더가 아니거나 접근 불가 → 보수적으로 무시(오탐 방지)
       }
@@ -1100,7 +1101,7 @@ export class SessionService extends ResourceSyncService<Session> {
 
     for (const { name, files } of sceneResults) {
       for (const image of files) {
-        if (!image.endsWith('.png')) continue;
+        if (!isOutputImageFile(image)) continue;
         entries.push({
           path: 'outs/' + session.name + '/' + name + '/' + image,
           name: prefix + 'outs/' + name + '/' + image,
@@ -1123,7 +1124,7 @@ export class SessionService extends ResourceSyncService<Session> {
     }
     for (const { name, files } of inpaintResults) {
       for (const image of files) {
-        if (!image.endsWith('.png')) continue;
+        if (!isOutputImageFile(image)) continue;
         entries.push({
           path: 'inpaints/' + session.name + '/' + name + '/' + image,
           name: prefix + 'inpaints/' + name + '/' + image,

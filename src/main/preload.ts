@@ -17,6 +17,7 @@ export type Channels =
   | 'read-data-file'
   | 'copy-file'
   | 'copy-file-absolute'
+  | 'convert-to-webp'
   | 'close'
   | 'show-file'
   | 'zip-files'

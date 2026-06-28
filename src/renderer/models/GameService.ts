@@ -1,5 +1,6 @@
 import { backend, imageService } from '.';
 import { Game, GenericScene, Round, Session } from './types';
+import { isOutputImageFile } from './imageFormats';
 
 export const sortGame = (game: Game) => {
   game.sort((a, b) => {
@@ -121,7 +122,7 @@ export class GameService extends EventTarget {
 
   async createGame(path: string) {
     let files = await backend.listFiles(path);
-    files = files.filter((x: string) => x.endsWith('.png'));
+    files = files.filter(isOutputImageFile);
     return files.map((x: string) => ({
       path: x,
       rank: files.length - 1,

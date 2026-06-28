@@ -257,7 +257,9 @@ export const AppContextMenu = observer(() => {
     if (!ctx.scene) return;
     for (const path of ctx.path) {
       const tmp = path.slice(0, path.lastIndexOf('/'));
-      await backend.copyFile(path, tmp + '/' + Date.now().toString() + '.png');
+      // 원본 확장자 보존(webp/png) — 고정 .png 로 복제하면 내용/확장자 불일치
+      const ext = path.split('.').pop() || 'png';
+      await backend.copyFile(path, tmp + '/' + Date.now().toString() + '.' + ext);
     }
     imageService.refresh(appState.curSession!, ctx.scene);
     appState.pushDialog({

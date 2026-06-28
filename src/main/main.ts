@@ -25,6 +25,7 @@ import MenuBuilder from './menu';
 import { resolveHtmlPath } from './util';
 import { v4 as uuidv4 } from 'uuid';
 const sharp = require('sharp');
+const ExifReader = require('exifreader');
 const native = require('sdsnative');
 const { exiftool } = require('exiftool-vendored');
 const chokidar = require('chokidar');
@@ -75,6 +76,8 @@ function getMimeType(filePath: any) {
       return 'image/jpeg';
     case '.png':
       return 'image/png';
+    case '.webp':
+      return 'image/webp';
     case '.gif':
       return 'image/gif';
     case '.pdf':
@@ -281,6 +284,30 @@ ipcMain.handle('copy-file-absolute', async (event, src, absoluteDest) => {
   const dir = path.dirname(absoluteDest);
   await fs.mkdir(dir, { recursive: true });
   await fs.copyFile(APP_DIR + '/' + src, absoluteDest);
+});
+
+// 생성 이미지 PNG → WebP 변환 (NAI 프롬프트 메타데이터를 EXIF ImageDescription 으로 이월).
+// 원본 PNG tEXt 'Comment'(NAI 생성정보 JSON)를 추출해 webp EXIF 에 박는다.
+ipcMain.handle('convert-to-webp', async (event, srcRel, destRel, quality) => {
+  const srcAbs = APP_DIR + '/' + srcRel;
+  const destAbs = APP_DIR + '/' + destRel;
+  const buf = await fs.readFile(srcAbs);
+  let comment: string | null = null;
+  try {
+    const tags = ExifReader.load(buf);
+    const c = tags['Comment'];
+    if (c) comment = (c.value ?? c.description ?? '').toString() || null;
+  } catch (e) {
+    // 메타데이터 없음 — EXIF 없이 변환 진행
+  }
+  await fs.mkdir(path.dirname(destAbs), { recursive: true });
+  let pipeline = sharp(buf).webp({ quality: quality ?? 80 });
+  if (comment) {
+    pipeline = pipeline.withMetadata({
+      exif: { IFD0: { ImageDescription: comment } },
+    });
+  }
+  await pipeline.toFile(destAbs);
 });
 
 ipcMain.handle('read-data-file', async (event, arg) => {

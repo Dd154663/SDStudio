@@ -278,12 +278,20 @@ function parseCommentToJob(
 export async function extractPromptDataFromBase64(
   base64: string,
 ): Promise<ImportableMetadata | undefined> {
-  // 1차: EXIF Comment에서 추출 시도
+  // 1차: EXIF 에서 추출 시도.
+  //  - PNG: tEXt 'Comment' 에 NAI JSON
+  //  - WebP/AVIF: 변환 시 EXIF 'ImageDescription' 으로 이월됨 (sharp withMetadata)
   try {
     const exif = await extractExifFromBase64(base64);
-    const comment = exif['Comment'];
-    if (comment && comment.value) {
-      const data = JSON.parse(comment.value as string);
+    const raw =
+      (exif['Comment'] && (exif['Comment'].value as string)) ||
+      (exif['ImageDescription'] &&
+        ((exif['ImageDescription'].value as any) ??
+          exif['ImageDescription'].description));
+    if (raw) {
+      const data = JSON.parse(
+        Array.isArray(raw) ? (raw as any[]).join('') : (raw as string),
+      );
       const result = parseCommentToJob(data);
       if (result) return result;
     }

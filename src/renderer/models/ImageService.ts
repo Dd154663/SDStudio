@@ -2,6 +2,7 @@ import { cast } from 'mobx-state-tree';
 import { backend, isMobile, gameService, imageService } from '.';
 import { GenericScene, InpaintScene, Scene, Session } from './types';
 import { assert } from './util';
+import { isOutputImageFile } from './imageFormats';
 import { v4 } from 'uuid';
 
 export const supportedImageSizes = [200, 400, 500];
@@ -354,9 +355,7 @@ export class ImageService extends EventTarget {
 
       let files: string[];
       try {
-        files = (await backend.listFiles(srcDir)).filter((x) =>
-          x.endsWith('.png'),
-        );
+        files = (await backend.listFiles(srcDir)).filter(isOutputImageFile);
       } catch (e) {
         continue; // source 폴더가 없으면 건너뜀
       }
@@ -366,7 +365,7 @@ export class ImageService extends EventTarget {
       const taken = new Set<string>();
       try {
         for (const f of await backend.listFiles(dstDir)) {
-          if (f.endsWith('.png')) taken.add(f);
+          if (isOutputImageFile(f)) taken.add(f);
         }
       } catch (e) {
         /* 대상 폴더가 아직 없을 수 있음 */
@@ -639,7 +638,7 @@ export class ImageService extends EventTarget {
     }
     const fileSet: any = {};
     let files = await backend.listFiles(this.getOutputDir(session, scene));
-    files = files.filter((x: string) => x.endsWith('.png'));
+    files = files.filter(isOutputImageFile);
     files.sort(naturalSort);
 
     // 방어 (refreshBatch 전용): 기존 imageMap에 항목이 있었는데 파일시스템에서

@@ -1,6 +1,7 @@
 import { backend } from '.';
 import { GenericScene, IInpaintScene, IScene, Session, genericSceneFromJSON } from './types';
 import { imageService } from '.';
+import { isOutputImageFile } from './imageFormats';
 
 // --- Type definitions ---
 
@@ -129,7 +130,7 @@ export class TrashService extends EventTarget {
     } catch (e) {
       return [];
     }
-    files = files.filter((f: string) => f.endsWith('.png'));
+    files = files.filter(isOutputImageFile);
     return files.map((f: string) => ({
       filename: f,
       deletedAt: meta[f] || 0,

@@ -4,6 +4,7 @@ import { FaQuestion } from 'react-icons/fa';
 import { observer } from 'mobx-react-lite';
 import { gameService, sessionService, backend, imageService } from '../models';
 import { shuffleArray } from '../models/GameService';
+import { isOutputImageFile } from '../models/imageFormats';
 import { Scene, InpaintScene, ContextMenuType, Player } from '../models/types';
 import { appState } from '../models/AppService';
 import ShortcutCheatsheet from './ShortcutCheatsheet';
@@ -201,7 +202,7 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
           scene.game = await gameService.createGame(path);
         }
         let files = await backend.listFiles(path);
-        files = files.filter((f: string) => f.endsWith('.png'));
+        files = files.filter(isOutputImageFile);
         if (scene.game!.length !== files.length) {
           appState.pushDialog({
             type: 'yes-only',

@@ -627,7 +627,7 @@ export class BatchProcessService {
     };
     openMenu();
   }
-
+
   openChangeResolutionMenu(
     type: 'scene' | 'inpaint',
     setSceneSelector: (item: SceneSelectorItem | undefined) => void,
@@ -698,5 +698,107 @@ export class BatchProcessService {
         });
       },
     });
+  }
+
+  // 생성 이미지 PNG → WebP 일괄 변환 (데스크톱 전용, 사후 변환).
+  // 프롬프트 메타데이터는 EXIF 로 이월되고 원본 PNG 는 복구 가능한 휴지통으로 이동한다.
+  openConvertToWebpMenu(
+    type: 'scene' | 'inpaint',
+    setSceneSelector: (item: SceneSelectorItem | undefined) => void,
+  ) {
+    if (isMobile) {
+      appState.pushMessage('WebP 변환은 데스크톱에서만 지원됩니다.');
+      return;
+    }
+    setSceneSelector({
+      type: type,
+      text: '🗜️ WebP로 변환할 씬 선택',
+      callback: async (selected) => {
+        setSceneSelector(undefined);
+        if (selected.length === 0) return;
+
+        const qInput = await appState.pushDialogAsync({
+          type: 'input-confirm',
+          text: 'WebP 품질을 입력해주세요 (1~100, 기본 80)',
+        });
+        if (qInput === undefined) return;
+        let quality = 80;
+        const q = parseInt(qInput);
+        if (!isNaN(q) && q >= 1 && q <= 100) quality = q;
+
+        appState.pushDialog({
+          type: 'confirm',
+          text: `선택한 ${selected.length}개 씬의 PNG 이미지를 WebP(품질 ${quality})로 변환합니다.\n프롬프트 메타데이터는 보존되며, 원본 PNG는 복구 가능한 휴지통으로 이동합니다. 계속할까요?`,
+          callback: async () => {
+            await this.runWebpConversion(selected, quality);
+          },
+        });
+      },
+    });
+  }
+
+  private async runWebpConversion(selected: GenericScene[], quality: number) {
+    const session = appState.curSession!;
+    await imageService.refreshBatch(session);
+    await Promise.allSettled(
+      selected.map((s) => gameService.refreshList(session, s)),
+    );
+
+    let total = 0;
+    for (const scene of selected) {
+      total += gameService
+        .getOutputs(session, scene)
+        .filter((c) => c.toLowerCase().endsWith('.png')).length;
+    }
+    if (total === 0) {
+      appState.pushMessage('변환할 PNG 이미지가 없습니다.');
+      return;
+    }
+
+    let done = 0;
+    let fail = 0;
+    appState.setProgressDialog({ text: 'WebP 변환 중...', done: 0, total });
+
+    for (const scene of selected) {
+      const dir = imageService.getOutputDir(session, scene);
+      const pngs = gameService
+        .getOutputs(session, scene)
+        .filter((c) => c.toLowerCase().endsWith('.png'));
+      for (const png of pngs) {
+        const webp = png.replace(/\.png$/i, '.webp');
+        try {
+          await backend.convertToWebp(
+            dir + '/' + png,
+            dir + '/' + webp,
+            quality,
+          );
+          // 씬 데이터의 파일명 참조 3곳 갱신 (imageMap/mains/game) — 누락 시 이미지 유실/즐겨찾기 깨짐
+          scene.imageMap = scene.imageMap.map((x) => (x === png ? webp : x));
+          scene.mains = scene.mains.map((x) => (x === png ? webp : x));
+          if (scene.game) {
+            for (const player of scene.game) {
+              if (player.path === png) player.path = webp;
+            }
+          }
+          // 원본 PNG 는 복구 가능한 휴지통으로 이동
+          await backend.trashFile(dir + '/' + png);
+          await imageService.invalidateCache(dir + '/' + png);
+        } catch (e: any) {
+          fail++;
+          console.error('WebP 변환 실패:', dir + '/' + png, e?.message || e);
+        }
+        done++;
+        appState.setProgressDialog({ text: 'WebP 변환 중...', done, total });
+      }
+    }
+
+    appState.setProgressDialog(undefined);
+    await imageService.refreshBatch(session);
+    await Promise.allSettled(
+      selected.map((s) => gameService.refreshList(session, s)),
+    );
+    appState.pushMessage(
+      `WebP 변환 완료: ${done - fail}개 성공${fail ? `, ${fail}개 실패(원본 유지)` : ''}`,
+    );
   }
 }

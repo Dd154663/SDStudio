@@ -11,6 +11,7 @@ function getMirrorCropX(scene: GenericScene): number | undefined {
 import { appState } from './AppService';
 import { cropMirrorResultFromDataUri, dataUriToBase64 } from './ImageService';
 import { DownloadSettings } from '../../main/config';
+import { imageExtFromBase64 } from './imageFormats';
 
 function isMirrorScene(scene: GenericScene): boolean {
   return scene.type === 'inpaint' && (scene as InpaintScene).workflowType === 'SDMirror';
@@ -269,14 +270,6 @@ export class ImageDownloadService {
         });
       }
 
-      // 중복 처리
-      let finalFilename: string;
-      if (this.settings.autoNumbering && !this.settings.overwriteExisting) {
-        finalFilename = await getUniqueFilename(savePath, baseFilename, 'png', true);
-      } else {
-        finalFilename = `${baseFilename}.png`;
-      }
-
       // 이미지 데이터 읽기
       const imageData = await imageService.fetchImage(imagePath);
       if (!imageData) {
@@ -287,6 +280,17 @@ export class ImageDownloadService {
       const base64 = isMirrorScene(scene)
         ? await cropMirrorResultFromDataUri(imageData, getMirrorCropX(scene))
         : dataUriToBase64(imageData);
+
+      // 확장자는 실제 바이트에 맞춘다(webp/png; 미러 크롭은 png)
+      const ext = imageExtFromBase64(base64);
+
+      // 중복 처리
+      let finalFilename: string;
+      if (this.settings.autoNumbering && !this.settings.overwriteExisting) {
+        finalFilename = await getUniqueFilename(savePath, baseFilename, ext, true);
+      } else {
+        finalFilename = `${baseFilename}.${ext}`;
+      }
 
       // 파일 저장 (절대 경로 사용)
       const fullPath = `${savePath}/${finalFilename}`;
@@ -354,19 +358,6 @@ export class ImageDownloadService {
             index: index + 1,
           });
 
-          // 중복 처리
-          let finalFilename: string;
-          if (this.settings.autoNumbering && !this.settings.overwriteExisting) {
-            finalFilename = await getUniqueFilename(
-              savePath!,
-              baseFilename,
-              'png',
-              true,
-            );
-          } else {
-            finalFilename = `${baseFilename}.png`;
-          }
-
           // 이미지 데이터 읽기
           const imageData = await imageService.fetchImage(imagePath);
           if (!imageData) {
@@ -377,6 +368,22 @@ export class ImageDownloadService {
           const base64 = isMirrorScene(scene)
             ? await cropMirrorResultFromDataUri(imageData, getMirrorCropX(scene))
             : dataUriToBase64(imageData);
+
+          // 확장자는 실제 바이트에 맞춘다(webp/png; 미러 크롭은 png)
+          const ext = imageExtFromBase64(base64);
+
+          // 중복 처리
+          let finalFilename: string;
+          if (this.settings.autoNumbering && !this.settings.overwriteExisting) {
+            finalFilename = await getUniqueFilename(
+              savePath!,
+              baseFilename,
+              ext,
+              true,
+            );
+          } else {
+            finalFilename = `${baseFilename}.${ext}`;
+          }
 
           // 파일 저장 (절대 경로 사용)
           const fullPath = `${savePath}/${finalFilename}`;
