@@ -30,6 +30,7 @@ import { v4 } from 'uuid';
 import { observer } from 'mobx-react-lite';
 import { reaction } from 'mobx';
 import { FloatView } from './FloatView';
+import ModalOverlay from './ModalOverlay';
 import SceneEditor from './SceneEditor';
 import ArtistTagModal from './ArtistTagModal';
 import Tournament from './Tournament';
@@ -765,10 +766,9 @@ export const SceneCell = observer(
 
 interface SceneTrashViewProps {
   projectName: string;
-  onClose: () => void;
 }
 
-function SceneTrashView({ projectName, onClose }: SceneTrashViewProps) {
+function SceneTrashView({ projectName }: SceneTrashViewProps) {
   const [deletedScenes, setDeletedScenes] = useState<
     { name: string; type: string; deletedAt: number }[]
   >([]);
@@ -833,64 +833,44 @@ function SceneTrashView({ projectName, onClose }: SceneTrashViewProps) {
 
   if (deletedScenes.length === 0 && !loading) {
     return (
-      <div className="flex flex-col h-full">
-        <div className="flex-none p-3 border-b line-color flex items-center justify-between">
-          <span className="font-bold text-lg text-default">🗑️ 씬 휴지통</span>
-          <button className="round-button back-gray" onClick={onClose}>
-            닫기
-          </button>
-        </div>
-        <div className="flex-1 flex items-center justify-center text-gray-400 text-lg">
-          휴지통이 비어있습니다
-        </div>
+      <div className="text-center text-gray-400 text-lg py-10">
+        휴지통이 비어있습니다
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-none p-3 border-b line-color flex items-center justify-between">
-        <span className="font-bold text-lg text-default">🗑️ 씬 휴지통</span>
-        <button className="round-button back-gray" onClick={onClose}>
-          닫기
-        </button>
-      </div>
-      <div className="flex-1 overflow-auto p-3">
-        <div className="flex flex-col gap-2">
-          {deletedScenes.map((item) => (
-            <div
-              key={item.name}
-              className="flex items-center gap-3 p-3 border border-gray-300 dark:border-slate-500 rounded bg-white dark:bg-slate-800"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-default truncate">
-                  {item.type === 'inpaint' ? '🎨 ' : '🖼️ '}
-                  {item.name}
-                </div>
-                <div className="text-sm text-gray-400">
-                  {item.type === 'inpaint' ? '인페인트' : '일반'}
-{' '}
-씬 ·{' '}
-                  {formatDate(item.deletedAt)}
-                </div>
-              </div>
-              <button
-                className="round-button back-green flex-none"
-                onClick={() => handleRestore(item)}
-              >
-                <FaTrashRestore className="mr-1" />
-                복원
-              </button>
-              <button
-                className="round-button back-red flex-none"
-                onClick={() => handlePermanentDelete(item)}
-              >
-                영구삭제
-              </button>
+    <div className="flex flex-col gap-2">
+      {deletedScenes.map((item) => (
+        <div
+          key={item.name}
+          className="flex items-center gap-3 p-3 border border-gray-300 dark:border-slate-500 rounded bg-white dark:bg-slate-800"
+        >
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-default truncate">
+              {item.type === 'inpaint' ? '🎨 ' : '🖼️ '}
+              {item.name}
             </div>
-          ))}
+            <div className="text-sm text-gray-400">
+              {item.type === 'inpaint' ? '인페인트' : '일반'} 씬 ·{' '}
+              {formatDate(item.deletedAt)}
+            </div>
+          </div>
+          <button
+            className="round-button back-green flex-none"
+            onClick={() => handleRestore(item)}
+          >
+            <FaTrashRestore className="mr-1" />
+            복원
+          </button>
+          <button
+            className="round-button back-red flex-none"
+            onClick={() => handlePermanentDelete(item)}
+          >
+            영구삭제
+          </button>
         </div>
-      </div>
+      ))}
     </div>
   );
 }
@@ -1997,14 +1977,13 @@ const QueueControl = observer(
           </FloatView>
         )}
         {resultViewer}
-        {showSceneTrash && (
-          <FloatView priority={1} onEscape={() => setShowSceneTrash(false)}>
-            <SceneTrashView
-              projectName={curSession.name}
-              onClose={() => setShowSceneTrash(false)}
-            />
-          </FloatView>
-        )}
+        <ModalOverlay
+          isOpen={showSceneTrash}
+          onClose={() => setShowSceneTrash(false)}
+          title="🗑️ 씬 휴지통"
+        >
+          <SceneTrashView projectName={curSession.name} />
+        </ModalOverlay>
         {showArtistTag && (
           <ArtistTagModal
             isOpen={showArtistTag}

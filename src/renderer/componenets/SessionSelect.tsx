@@ -1,7 +1,8 @@
 import * as React from 'react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { DropdownSelect, Option } from './UtilComponents';
-import { FaPlus, FaPuzzlePiece, FaShare, FaThLarge, FaTrashAlt, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown } from 'react-icons/fa';
+import ModalOverlay from './ModalOverlay';
+import { FaPlus, FaPuzzlePiece, FaShare, FaThLarge, FaTrash, FaTrashAlt, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown } from 'react-icons/fa';
 import { pushRecentProject } from './ProjectBrowser';
 import Tooltip from './Tooltip';
 import { sessionService, imageService, backend, zipService, workFlowService, trashService, isMobile } from '../models';
@@ -12,9 +13,135 @@ import { CharacterPreset, CharacterPrompt, VibeItem, ReferenceItem } from '../mo
 import { v4 as uuidv4 } from 'uuid';
 import { runInAction } from 'mobx';
 
+// ===== ProjectTrashView 컴포넌트 (씬 휴지통 SceneTrashView 패턴 재사용) =====
+function ProjectTrashView() {
+  const [deletedProjects, setDeletedProjects] = useState<
+    { name: string; deletedAt: number }[]
+  >([]);
+  const [loading, setLoading] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const items = await trashService.getDeletedProjects();
+      items.sort((a, b) => b.deletedAt - a.deletedAt);
+      setDeletedProjects(items);
+    } catch (e) {
+      appState.pushMessage(
+        '휴지통 목록을 불러오지 못했습니다 (파일 접근 오류). 잠시 후 다시 시도해주세요.',
+      );
+      setDeletedProjects([]);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const formatDate = (ts: number) => {
+    if (!ts) return '알 수 없음';
+    const d = new Date(ts);
+    return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
+  };
+
+  const handleRestore = async (name: string) => {
+    try {
+      await trashService.restoreProject(name);
+      // 복원은 .deleted→.json 파일만 바꾸므로 목록 재스캔을 즉시 트리거한다.
+      await sessionService.update();
+      appState.pushMessage(`프로젝트 "${name}"이(가) 복원되었습니다.`);
+      await refresh();
+    } catch (e: any) {
+      appState.pushMessage(e.message || '프로젝트 복원에 실패했습니다.');
+    }
+  };
+
+  const handlePermanentDelete = (name: string) => {
+    appState.pushDialog({
+      type: 'confirm',
+      text: `"${name}" 프로젝트를 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
+      callback: async () => {
+        await trashService.permanentlyDeleteProject(name);
+        appState.pushMessage(`프로젝트 "${name}"이(가) 영구 삭제되었습니다.`);
+        await refresh();
+      },
+    });
+  };
+
+  const handleEmptyAll = () => {
+    appState.pushDialog({
+      type: 'confirm',
+      text: `휴지통의 모든 프로젝트(${deletedProjects.length}개)를 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
+      callback: async () => {
+        for (const p of deletedProjects) {
+          try {
+            await trashService.permanentlyDeleteProject(p.name);
+          } catch (e) {}
+        }
+        appState.pushMessage('프로젝트 휴지통을 비웠습니다.');
+        await refresh();
+      },
+    });
+  };
+
+  const isEmpty = deletedProjects.length === 0 && !loading;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {deletedProjects.length > 0 && (
+        <div className="flex justify-end mb-1">
+          <button className="round-button back-red" onClick={handleEmptyAll}>
+            <FaTrash className="mr-1" />
+            모두 비우기
+          </button>
+        </div>
+      )}
+      {isEmpty ? (
+        <div className="text-center text-gray-400 text-lg py-10">
+          휴지통이 비어있습니다
+        </div>
+      ) : (
+        deletedProjects.map((item) => (
+          <div
+            key={item.name}
+            className="flex items-center gap-3 p-3 border border-gray-300 dark:border-slate-500 rounded bg-white dark:bg-slate-800"
+          >
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-default truncate">
+                📁 {item.name}
+              </div>
+              <div className="text-sm text-gray-400">
+                삭제일 · {formatDate(item.deletedAt)}
+              </div>
+            </div>
+            <button
+              className="round-button back-green flex-none"
+              onClick={() => handleRestore(item.name)}
+            >
+              <FaTrashRestore className="mr-1" />
+              복원
+            </button>
+            <button
+              className="round-button back-red flex-none"
+              onClick={() => handlePermanentDelete(item.name)}
+            >
+              영구삭제
+            </button>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
 const SessionSelect = observer(() => {
   const [sessionNames, setSessionNames] = useState<string[]>([]);
   const [showCharacterPresets, setShowCharacterPresets] = useState(false);
+  const [showProjectTrash, setShowProjectTrash] = useState(false);
   useEffect(() => {
     const onListUpdated = () => {
       setSessionNames(sessionService.list());
@@ -65,66 +192,6 @@ const SessionSelect = observer(() => {
         appState.curSession = undefined;
       },
     });
-  };
-
-  const openProjectTrash = async () => {
-    let deletedProjects;
-    try {
-      deletedProjects = await trashService.getDeletedProjects();
-    } catch (e: any) {
-      appState.pushMessage(
-        '휴지통 목록을 불러오지 못했습니다 (파일 접근 오류). 잠시 후 다시 시도해주세요.',
-      );
-      return;
-    }
-    if (deletedProjects.length === 0) {
-      appState.pushMessage('프로젝트 휴지통이 비어있습니다.');
-      return;
-    }
-    const items = deletedProjects.map((p) => {
-      const d = new Date(p.deletedAt);
-      const dateStr = p.deletedAt
-        ? d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : '알 수 없음';
-      return {
-        text: p.name + ' (' + dateStr + ')',
-        value: p.name,
-      };
-    });
-    const selected = await appState.pushDialogAsync({
-      type: 'select',
-      text: '복원 또는 영구삭제할 프로젝트를 선택하세요',
-      items: items,
-    });
-    if (!selected) return;
-    const action = await appState.pushDialogAsync({
-      type: 'select',
-      text: `"${selected}" 프로젝트에 대해 수행할 작업을 선택하세요`,
-      items: [
-        { text: '프로젝트 복원', value: 'restore' },
-        { text: '영구 삭제', value: 'delete' },
-      ],
-    });
-    if (action === 'restore') {
-      try {
-        await trashService.restoreProject(selected);
-        // 복원은 .deleted→.json 파일만 바꾸므로 목록 재스캔을 즉시 트리거한다.
-        // (주기 재스캔이 활동 기반으로 완화되어 자동 반영이 지연될 수 있음)
-        await sessionService.update();
-        appState.pushMessage(`프로젝트 "${selected}"이(가) 복원되었습니다.`);
-      } catch (e: any) {
-        appState.pushMessage(e.message || '프로젝트 복원에 실패했습니다.');
-      }
-    } else if (action === 'delete') {
-      appState.pushDialog({
-        type: 'confirm',
-        text: `"${selected}" 프로젝트를 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
-        callback: async () => {
-          await trashService.permanentlyDeleteProject(selected);
-          appState.pushMessage(`프로젝트 "${selected}"이(가) 영구 삭제되었습니다.`);
-        },
-      });
-    }
   };
 
   return (
@@ -349,7 +416,7 @@ const SessionSelect = observer(() => {
       <Tooltip content="프로젝트 휴지통">
       <button
         className={`icon-button nback-gray mx-1`}
-        onClick={openProjectTrash}
+        onClick={() => setShowProjectTrash(true)}
       >
         <FaTrashRestore size={18} />
       </button>
@@ -361,6 +428,13 @@ const SessionSelect = observer(() => {
         <FaPuzzlePiece size={18} />
         <span className="hidden md:inline">프롬프트조각</span>
       </button>
+      <ModalOverlay
+        isOpen={showProjectTrash}
+        onClose={() => setShowProjectTrash(false)}
+        title="🗑️ 프로젝트 휴지통"
+      >
+        <ProjectTrashView />
+      </ModalOverlay>
     </div>
   );
 });
