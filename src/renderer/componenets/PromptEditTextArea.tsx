@@ -1453,9 +1453,9 @@ const PromptEditTextArea = observer(
       };
     }, []);
 
-    let bgColor = whiteBg
-      ? 'bg-gray-100 dark:bg-slate-700'
-      : 'bg-gray-200 dark:bg-slate-700';
+    // 입력창 배경 토큰(--c-input-bg)을 따라 커스터마이징 반영. 기본값은 기존 외형과
+    // 동일(다크=slate-700, 라이트=gray-200). 전체화면은 기존 흰/슬레이트 유지.
+    let bgColor = 'bg-[var(--c-input-bg)]';
     if (fullScreen) bgColor = 'bg-white dark:bg-slate-600 shadow-lg';
 
     return (

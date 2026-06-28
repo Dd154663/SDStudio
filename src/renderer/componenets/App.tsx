@@ -54,6 +54,7 @@ import { appState } from '../models/AppService';
 import { keyboardShortcutService } from '../models/KeyboardShortcutService';
 import { buildDanbooruSearchUrl } from '../models/util';
 import { isImportImageMime } from '../models/imageFormats';
+import { buildThemeVars } from '../models/uiTheme';
 import { AppContextMenu } from './AppContextMenu';
 
 import { configure } from 'mobx';
@@ -212,11 +213,15 @@ export const App = observer(() => {
 
   const [darkMode, setDarkMode] = useState(false);
   const [trueDark, setTrueDark] = useState(false);
+  const [themeOverrides, setThemeOverrides] = useState<Record<string, string>>(
+    {},
+  );
   useEffect(() => {
     const refreshDarkMode = async () => {
       const conf = await backend.getConfig();
       setDarkMode(!conf.whiteMode);
       setTrueDark(conf.trueDark ?? false);
+      setThemeOverrides(buildThemeVars(conf.uiTheme));
       appState.classicSceneCard = conf.classicSceneCard ?? false;
       appState.legacyProjectMode = conf.legacyProjectMode ?? false;
       appState.storageWriteGuard = conf.storageWriteGuard ?? true;
@@ -531,8 +536,14 @@ export const App = observer(() => {
     >
       <div
         className={
-          'flex flex-col relative h-screen w-screen bg-white dark:bg-slate-900 ' +
+          'flex flex-col relative h-screen w-screen ' +
           (darkMode ? 'dark' : '') + (trueDark && darkMode ? ' true-dark' : '')
+        }
+        style={
+          {
+            backgroundColor: 'var(--c-surface)',
+            ...themeOverrides,
+          } as React.CSSProperties
         }
       >
         <div className="z-[3000]">

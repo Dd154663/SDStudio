@@ -9,7 +9,8 @@ import {
   sessionService,
   taskQueueService,
 } from '../models';
-import { Config, ImageEditor, RemoveBgQuality } from '../../main/config';
+import { Config, ImageEditor, RemoveBgQuality, UiThemeConfig } from '../../main/config';
+import { buildThemeVars, isHex6 } from '../models/uiTheme';
 import { observer } from 'mobx-react-lite';
 import { appState } from '../models/AppService';
 import { TaskLog } from '../models/TaskQueueService';
@@ -21,9 +22,11 @@ import {
   FaTimes,
   FaKeyboard,
   FaWrench,
+  FaPalette,
 } from 'react-icons/fa';
 import { keyboardShortcutService, KeyboardShortcutService } from '../models/KeyboardShortcutService';
 import ModalOverlay from './ModalOverlay';
+import MobileColorPicker from './MobileColorPicker';
 
 interface ConfigScreenProps {
   onSave: () => void;
@@ -802,6 +805,273 @@ const KeyBindingsTab = () => {
 };
 
 /* ── 메인 ConfigScreen ── */
+// 색 한 칸 선택 UI: 데스크톱=네이티브 색 피커, 모바일=MobileColorPicker(상위에서 띄움).
+const ColorField = ({
+  label,
+  value,
+  def,
+  onChange,
+  onMobilePick,
+}: {
+  label: string;
+  value?: string;
+  def: string; // 미설정 시 스와치에 보일 기본색(피커 시작점)
+  onChange: (hex: string | undefined) => void;
+  onMobilePick: (initial: string, onChange: (hex: string) => void) => void;
+}) => {
+  const isSet = isHex6(value);
+  const shown = isSet ? (value as string) : def;
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-sm gray-label flex-1">{label}</span>
+      {isSet && <span className="text-xs text-gray-400">{value}</span>}
+      {!isMobile ? (
+        <label
+          className="relative w-7 h-7 rounded-full flex-none cursor-pointer overflow-hidden border border-gray-300 dark:border-slate-500"
+          style={{ backgroundColor: shown }}
+        >
+          <input
+            type="color"
+            defaultValue={shown}
+            onInput={(e) => onChange(e.currentTarget.value)}
+            onChange={(e) => onChange(e.target.value)}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          />
+        </label>
+      ) : (
+        <button
+          className="w-7 h-7 rounded-full flex-none border border-gray-300 dark:border-slate-500"
+          style={{ backgroundColor: shown }}
+          onClick={() => onMobilePick(shown, onChange)}
+        />
+      )}
+      {isSet && (
+        <button
+          className="round-button back-gray btn-sm flex-none"
+          onClick={() => onChange(undefined)}
+        >
+          초기화
+        </button>
+      )}
+    </div>
+  );
+};
+
+const CustomizationTab = ({
+  uiTheme,
+  setUiTheme,
+}: {
+  uiTheme: UiThemeConfig;
+  setUiTheme: React.Dispatch<React.SetStateAction<UiThemeConfig>>;
+}) => {
+  const [mobilePicker, setMobilePicker] = useState<{
+    initial: string;
+    onChange: (hex: string) => void;
+  } | null>(null);
+
+  const patch = (p: Partial<UiThemeConfig>) =>
+    setUiTheme((prev) => ({ ...prev, ...p }));
+  const patchBtn = (p: Partial<NonNullable<UiThemeConfig['buttons']>>) =>
+    setUiTheme((prev) => ({ ...prev, buttons: { ...prev.buttons, ...p } }));
+  const onMobilePick = (initial: string, onChange: (hex: string) => void) =>
+    setMobilePicker({ initial, onChange });
+
+  // 저장 전 실시간 미리보기용 CSS 변수(실제 적용과 동일한 파생 함수).
+  const previewVars = buildThemeVars(uiTheme);
+  const unify = !!uiTheme.unifyButtons;
+
+  return (
+    <div className="space-y-5">
+      <div className="text-sm gray-label">
+        UI 색을 직접 지정합니다. 지정하지 않은 항목은 기본 테마(다크/라이트)를 따릅니다.
+        아래 미리보기로 즉시 확인하고, <b>저장</b>하면 앱 전체에 적용됩니다.
+      </div>
+
+      {/* ── 실시간 미리보기 ── */}
+      <div>
+        <label className="block text-sm gray-label mb-2">미리보기</label>
+        <div
+          className="rounded-lg border line-color p-4 space-y-3"
+          style={
+            { ...previewVars, backgroundColor: 'var(--c-surface)' } as React.CSSProperties
+          }
+        >
+          <div className="text-default text-sm font-semibold">제목 텍스트</div>
+          <div className="text-sub text-xs">부가 설명 텍스트입니다.</div>
+          <input
+            className="gray-input w-full rounded px-2 py-1.5 text-sm"
+            placeholder="테스트 입력창"
+            readOnly
+          />
+          <div className="flex flex-wrap gap-2">
+            {unify ? (
+              <>
+                <button className="round-button back-sky btn-sm">강조</button>
+                <button className="round-button back-gray btn-sm">일반</button>
+                <button className="round-button back-red btn-sm">삭제</button>
+              </>
+            ) : (
+              <>
+                <button className="round-button back-green btn-sm">추가</button>
+                <button className="round-button back-sky btn-sm">강조</button>
+                <button className="round-button back-orange btn-sm">편집</button>
+                <button className="round-button back-gray btn-sm">일반</button>
+                <button className="round-button back-red btn-sm">삭제</button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 테마(배경/입력/텍스트) ── */}
+      <div className="space-y-3">
+        <div className="text-sm font-semibold gray-label">테마</div>
+        <ColorField
+          label="배경색"
+          value={uiTheme.surface}
+          def="#ffffff"
+          onChange={(v) => patch({ surface: v })}
+          onMobilePick={onMobilePick}
+        />
+        <ColorField
+          label="입력창 배경"
+          value={uiTheme.inputBg}
+          def="#e5e7eb"
+          onChange={(v) => patch({ inputBg: v })}
+          onMobilePick={onMobilePick}
+        />
+        <div>
+          <label className="block text-sm gray-label mb-2">텍스트 패턴</label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className={`round-button btn-sm ${uiTheme.textPattern === 'light' ? 'back-sky' : 'back-gray'}`}
+              onClick={() => patch({ textPattern: 'light' })}
+            >
+              밝은 배경용 (검은 텍스트)
+            </button>
+            <button
+              className={`round-button btn-sm ${uiTheme.textPattern === 'dark' ? 'back-sky' : 'back-gray'}`}
+              onClick={() => patch({ textPattern: 'dark' })}
+            >
+              어두운 배경용 (흰 텍스트)
+            </button>
+            {uiTheme.textPattern && (
+              <button
+                className="round-button back-gray btn-sm"
+                onClick={() => patch({ textPattern: undefined })}
+              >
+                초기화
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 버튼 색 ── */}
+      <div className="space-y-3">
+        <div className="text-sm font-semibold gray-label">버튼 색</div>
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            className="w-4 h-4"
+            checked={unify}
+            onChange={(e) => patch({ unifyButtons: e.target.checked })}
+          />
+          <span className="text-sm gray-label">
+            버튼 색 통합 — 강조 / 일반 / 위험 3색으로 단순화
+          </span>
+        </label>
+        <div className="text-xs text-gray-400">
+          {unify
+            ? '여러 색으로 흩어진 버튼을 3가지 역할 색으로 합칩니다. (삭제는 위험색 유지)'
+            : '색별로 따로 지정합니다. 미설정 시 기본 테마 색을 씁니다.'}
+        </div>
+
+        {unify ? (
+          <div className="flex flex-col gap-2">
+            <ColorField
+              label="강조색 (추가·주요·편집 버튼)"
+              value={uiTheme.accent}
+              def="#0ea5e9"
+              onChange={(v) => patch({ accent: v })}
+              onMobilePick={onMobilePick}
+            />
+            <ColorField
+              label="일반색 (보조 버튼)"
+              value={uiTheme.neutral}
+              def="#6b7280"
+              onChange={(v) => patch({ neutral: v })}
+              onMobilePick={onMobilePick}
+            />
+            <ColorField
+              label="위험색 (삭제 버튼)"
+              value={uiTheme.danger}
+              def="#ef4444"
+              onChange={(v) => patch({ danger: v })}
+              onMobilePick={onMobilePick}
+            />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <ColorField
+              label="추가 버튼 (초록)"
+              value={uiTheme.buttons?.green}
+              def="#22c55e"
+              onChange={(v) => patchBtn({ green: v })}
+              onMobilePick={onMobilePick}
+            />
+            <ColorField
+              label="강조 버튼 (하늘)"
+              value={uiTheme.buttons?.sky}
+              def="#0ea5e9"
+              onChange={(v) => patchBtn({ sky: v })}
+              onMobilePick={onMobilePick}
+            />
+            <ColorField
+              label="편집 버튼 (주황)"
+              value={uiTheme.buttons?.orange}
+              def="#f97316"
+              onChange={(v) => patchBtn({ orange: v })}
+              onMobilePick={onMobilePick}
+            />
+            <ColorField
+              label="일반 버튼 (회색)"
+              value={uiTheme.buttons?.gray}
+              def="#6b7280"
+              onChange={(v) => patchBtn({ gray: v })}
+              onMobilePick={onMobilePick}
+            />
+            <ColorField
+              label="삭제 버튼 (빨강)"
+              value={uiTheme.buttons?.red}
+              def="#ef4444"
+              onChange={(v) => patchBtn({ red: v })}
+              onMobilePick={onMobilePick}
+            />
+          </div>
+        )}
+      </div>
+
+      {isMobile && mobilePicker && (
+        <MobileColorPicker
+          initial={mobilePicker.initial}
+          onChange={mobilePicker.onChange}
+          onClose={() => setMobilePicker(null)}
+        />
+      )}
+
+      <div className="pt-2 border-t line-color">
+        <button
+          className="round-button back-red btn-sm"
+          onClick={() => setUiTheme({})}
+        >
+          전체 초기화
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const { curSession } = appState;
   const [activeTab, setActiveTab] = useState(0);
@@ -828,6 +1098,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [accessToken, setAccessToken] = useState('');
   const [saveLocation, setSaveLocation] = useState('');
   const [defaultExportFolder, setDefaultExportFolder] = useState('');
+  const [uiTheme, setUiTheme] = useState<UiThemeConfig>({});
   const mobileMode = isMobile;
 
   useEffect(() => {
@@ -847,6 +1118,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setExportConcurrency(config.exportConcurrency ?? (isMobile ? 2 : 4));
       setSaveLocation(config.saveLocation ?? '');
       setDefaultExportFolder(config.defaultExportFolder ?? '');
+      setUiTheme(config.uiTheme ?? {});
     })();
     const checkReady = () => setReady(localAIService.ready);
     const onProgress = (e: any) => setProgress(e.detail.percent);
@@ -965,6 +1237,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       exportConcurrency: exportConcurrency,
       defaultExportFolder: defaultExportFolder || undefined,
       trueDark: trueDark,
+      uiTheme: uiTheme,
     };
     await backend.setConfig(config);
     if (old.useCUDA !== useGPU) localAIService.modelChanged();
@@ -984,6 +1257,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     ...(!mobileMode ? [{ key: 'imageEdit', label: '이미지 편집', icon: <FaImage size={14} /> }] : []),
     ...(!mobileMode ? [{ key: 'storage', label: '저장경로', icon: <FaFolder size={14} /> }] : []),
     { key: 'other', label: '기타', icon: <FaCog size={14} /> },
+    { key: 'customization', label: '커스터마이징', icon: <FaPalette size={14} /> },
     // 복구는 모바일 전용 탭(데스크탑은 '저장경로' 탭 안에 동일 기능 존재)
     ...(mobileMode ? [{ key: 'recovery', label: '복구', icon: <FaWrench size={14} /> }] : []),
     ...(!mobileMode ? [{ key: 'keybindings', label: '키 바인딩', icon: <FaKeyboard size={14} /> }] : []),
@@ -1000,6 +1274,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
         return <StorageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder }} />;
       case 'other':
         return <OtherTab {...{ whiteMode, setWhiteMode, trueDark, setTrueDark, delayTime, setDelayTime, classicSceneCard, setClassicSceneCard, legacyProjectMode, setLegacyProjectMode, storageWriteGuard, setStorageWriteGuard, fullWordAc, setFullWordAc, exportConcurrency, setExportConcurrency }} />;
+      case 'customization':
+        return <CustomizationTab {...{ uiTheme, setUiTheme }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':

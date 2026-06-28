@@ -53,4 +53,27 @@ export interface Config {
   storageWriteGuard?: boolean;
   // 아티스트 태깅의 WD 태거 모델 선택 (기본 wd-swinv2)
   wdTaggerModel?: 'wd-swinv2' | 'wd-eva02';
+  // UI 테마 커스터마이징(구조화 의도). 미설정 시 기본 테마(다크/라이트).
+  // 실제 적용 CSS 변수는 buildThemeVars(uiTheme.ts)로 파생 — 단일 출처.
+  uiTheme?: UiThemeConfig;
+}
+
+// UI 색 커스터마이징의 "의도"를 저장(파생값이 아닌 원본). 전부 옵셔널=하위호환.
+export interface UiThemeConfig {
+  surface?: string; // 배경색 (#rrggbb)
+  inputBg?: string; // 입력창 배경
+  textPattern?: 'light' | 'dark'; // 텍스트/아이콘 흑백 패턴(미설정=테마 기본)
+  unifyButtons?: boolean; // 버튼 색 통합(역할 3색) 모드 on/off
+  // 통합 모드(unifyButtons=true)에서의 역할별 색
+  accent?: string; // 강조(초록/하늘/주황 버튼 통합)
+  neutral?: string; // 일반(회색 버튼)
+  danger?: string; // 위험(빨강 버튼=삭제)
+  // 개별 모드(unifyButtons=false)에서의 색별 지정
+  buttons?: {
+    green?: string;
+    sky?: string;
+    orange?: string;
+    gray?: string;
+    red?: string;
+  };
 }

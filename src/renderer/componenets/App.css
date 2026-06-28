@@ -28,6 +28,45 @@
   border-color: #2a2a2a !important;
 }
 
+/* ── 시맨틱 색 토큰 (테마 커스터마이징 토대) ──
+   기본값은 현재 외형과 1:1 동일. 라이트=:root / 다크=.dark / 트루다크=.true-dark(델타만).
+   사용자 커스텀은 추후 루트 style 로 --c-* 를 덮어쓴다(Phase 1-3). */
+:root {
+  --c-surface: #ffffff;
+  --c-text: #000000;
+  --c-text-sub: #000000;
+  --c-line: #cbd5e1; /* slate-300 */
+  --c-input-bg: #e5e7eb; /* gray-200 */
+  --c-input-text: #111827; /* gray-900 */
+  --c-icon-text: #4b5563; /* gray-600 */
+  --c-green-bg: #22c55e;  --c-green-fg: #ffffff;
+  --c-sky-bg: #0ea5e9;    --c-sky-fg: #ffffff;
+  --c-red-bg: #ef4444;    --c-red-fg: #ffffff;
+  --c-gray-bg: #6b7280;   --c-gray-fg: #ffffff;
+  --c-orange-bg: #f97316; --c-orange-fg: #ffffff;
+  --c-yellow-bg: #eab308; --c-yellow-fg: #ffffff; /* yellow-500 */
+}
+.dark {
+  --c-surface: #0f172a; /* slate-900 */
+  --c-text: #ffffff;
+  --c-text-sub: #e2e8f0; /* slate-200 */
+  --c-line: #334155; /* slate-700 */
+  --c-input-bg: #334155; /* slate-700 */
+  --c-input-text: #ffffff;
+  --c-icon-text: #ffffff;
+  --c-green-bg: rgba(45, 212, 191, 0.25);  --c-green-fg: #2dd4bf;  /* teal-400 */
+  --c-sky-bg: rgba(56, 189, 248, 0.25);    --c-sky-fg: #38bdf8;    /* sky-400 */
+  --c-red-bg: rgba(248, 113, 113, 0.25);   --c-red-fg: #f87171;    /* red-400 */
+  --c-gray-bg: rgba(156, 163, 175, 0.25);  --c-gray-fg: #e5e7eb;   /* gray-200 */
+  --c-orange-bg: rgba(251, 146, 60, 0.25); --c-orange-fg: #fed7aa; /* orange-200 */
+  --c-yellow-bg: rgba(129, 140, 248, 0.25); --c-yellow-fg: #818cf8; /* indigo-400 */
+}
+.true-dark {
+  --c-surface: #0a0a0a;
+  --c-line: #2a2a2a;
+  --c-input-bg: #1a1a1a;
+}
+
 body {
   font-size: 16px;
 }
@@ -103,15 +142,15 @@ body {
 }
 
 .line-color {
-  @apply border-slate-300 dark:border-slate-700;
+  border-color: var(--c-line);
 }
 
 .text-default {
-  @apply text-black dark:text-white;
+  color: var(--c-text);
 }
 
 .text-sub {
-  @apply text-black dark:text-slate-200;
+  color: var(--c-text-sub);
 }
 
 .round-tag {
@@ -123,23 +162,28 @@ body {
 }
 
 .back-yellow {
-  @apply bg-yellow-500 text-white dark:bg-indigo-400/25 dark:text-indigo-400;
+  background-color: var(--c-yellow-bg);
+  color: var(--c-yellow-fg);
 }
 
 .back-green {
-  @apply bg-green-500 text-white dark:bg-teal-400/25 dark:text-teal-400;
+  background-color: var(--c-green-bg);
+  color: var(--c-green-fg);
 }
 
 .back-sky {
-  @apply bg-sky-500 text-white dark:bg-sky-400/25 dark:text-sky-400;
+  background-color: var(--c-sky-bg);
+  color: var(--c-sky-fg);
 }
 
 .back-red {
-  @apply bg-red-500 text-white dark:bg-red-400/25 dark:text-red-400;
+  background-color: var(--c-red-bg);
+  color: var(--c-red-fg);
 }
 
 .back-gray {
-  @apply bg-gray-500 text-white dark:bg-gray-400/25 dark:text-gray-200;
+  background-color: var(--c-gray-bg);
+  color: var(--c-gray-fg);
 }
 
 .back-llgray {
@@ -155,7 +199,8 @@ body {
 }
 
 .back-orange {
-  @apply bg-orange-500 text-white dark:bg-orange-400/25 dark:text-orange-200;
+  background-color: var(--c-orange-bg);
+  color: var(--c-orange-fg);
 }
 
 .clickable {
@@ -199,11 +244,14 @@ body {
 }
 
 .icon-button {
-  @apply active:brightness-90 hover:brightness-95 select-none whitespace-nowrap rounded-full text-gray-600 dark:text-white p-1;
+  @apply active:brightness-90 hover:brightness-95 select-none whitespace-nowrap rounded-full p-1;
+  color: var(--c-icon-text);
 }
 
 .gray-input {
-  @apply focus:border-0 focus:outline-0 rounded-md focus:outline-black bg-gray-200 dark:bg-slate-700 dark:text-white py-1 md:py-1.5 md:pl-2 md:pr-2 text-gray-900 placeholder:text-gray-400;
+  @apply focus:border-0 focus:outline-0 rounded-md focus:outline-black py-1 md:py-1.5 md:pl-2 md:pr-2 placeholder:text-gray-400;
+  background-color: var(--c-input-bg);
+  color: var(--c-input-text);
 }
 
 @layer components {
