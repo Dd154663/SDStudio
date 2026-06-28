@@ -99,7 +99,7 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = ({
           {views.map((view) => (
             <div
               key={view.id}
-              className="bg-white dark:bg-slate-900 h-full w-full"
+              className="bg-[var(--c-surface)] h-full w-full"
               style={{ position: 'absolute', zIndex: view.id }}
             >
               <div className="flex flex-col h-full w-full">

@@ -515,7 +515,7 @@ const Cell = memo(
         id={`image-cell-${index}`}
         style={style}
         className={
-          'image-cell relative hover:brightness-95 active:brightness-90 bg-white dark:bg-slate-900 cursor-pointer ' +
+          'image-cell relative hover:brightness-95 active:brightness-90 bg-[var(--c-surface)] cursor-pointer ' +
           (isDragging ? 'opacity-0 no-touch' : '') +
           (isOver ? ' border-2 border-sky-500' : '')
         }
@@ -1181,7 +1181,7 @@ const ResultDetailView = observer(
     if (!paths[selectedIndex]) return null;
 
     return (
-      <div className="z-10 bg-white dark:bg-slate-900 w-full h-full flex overflow-auto flex-col md:flex-row">
+      <div className="z-10 bg-[var(--c-surface)] w-full h-full flex overflow-auto flex-col md:flex-row">
         <div className="flex-none md:w-1/3 p-2 md:p-4 overflow-y-auto">
           <div className="flex gap-2 md:gap-3 mb-2 md:mb-6 flex-wrap w-full">
             {!isMobile && (
@@ -2355,7 +2355,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             onClearSelection={onClearSelection}
           />
         </div>
-        <div className="absolute gap-1 m-2 bottom-0 bg-white dark:bg-slate-800 p-1 right-0 opacity-30 hover:opacity-100 transition-all flex">
+        <div className="absolute gap-1 m-2 bottom-0 bg-[var(--c-surface-2)] p-1 right-0 opacity-30 hover:opacity-100 transition-all flex">
           {selectedTab !== 2 &&
             selectedTab !== 3 &&
             imagesSizes.map((size, index) => (
