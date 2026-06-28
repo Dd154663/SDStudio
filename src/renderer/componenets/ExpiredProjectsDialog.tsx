@@ -125,7 +125,7 @@ const ExpiredProjectsDialog = observer(() => {
                 <span className="flex-1 text-sm text-default truncate">
                   {proj.name}
                 </span>
-                <span className="text-xs text-gray-500 dark:text-gray-400 flex-none">
+                <span className="text-xs text-muted flex-none">
                   {dateStr} ({days}일 경과)
                 </span>
               </label>

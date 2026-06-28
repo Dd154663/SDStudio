@@ -81,13 +81,13 @@ const LoginTab = ({
     </div>
     <hr className="border-gray-200 dark:border-slate-600" />
     {/* 토큰 로그인 권장 가이드 */}
-    <div className="rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/40 p-4 text-sm text-gray-700 dark:text-gray-200">
+    <div className="rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/40 p-4 text-sm text-body">
       <p className="font-semibold mb-1">💡 토큰 로그인을 권장합니다</p>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 leading-relaxed">
+      <p className="text-xs text-muted mb-3 leading-relaxed">
         NovelAI 측 문제로 이메일/비밀번호 로그인이 실패할 수 있습니다. 더 안정적인 <b>API 토큰</b> 로그인을 권장합니다.
       </p>
       <p className="font-medium mb-1">토큰 발급 방법</p>
-      <ol className="list-decimal list-inside space-y-1 mb-3 leading-relaxed text-gray-700 dark:text-gray-200">
+      <ol className="list-decimal list-inside space-y-1 mb-3 leading-relaxed text-body">
         <li>
           <a
             className="text-sky-500 hover:text-sky-400 cursor-pointer underline"
@@ -104,7 +104,7 @@ const LoginTab = ({
         <li>복사 아이콘으로 토큰을 클립보드에 복사</li>
       </ol>
       <p className="font-medium mb-1">로그인 방법</p>
-      <ol className="list-decimal list-inside space-y-1 leading-relaxed text-gray-700 dark:text-gray-200">
+      <ol className="list-decimal list-inside space-y-1 leading-relaxed text-body">
         <li>위 "API 토큰으로 로그인" 칸에 복사한 토큰을 붙여넣고 [토큰 로그인] 클릭</li>
       </ol>
     </div>
@@ -189,7 +189,7 @@ const StorageTab = ({
     <hr className="border-gray-200 dark:border-slate-600" />
     <div>
       <label className="block text-sm font-semibold gray-label mb-1">기본 내보내기 폴더</label>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+      <p className="text-xs text-muted mb-2">
         내보내기 프리셋에 폴더가 지정되지 않았을 때 사용할 기본 폴더입니다.
       </p>
       <div className="text-sm text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-slate-700 rounded px-3 py-2 break-all">
@@ -222,7 +222,7 @@ const StorageTab = ({
     <hr className="border-gray-200 dark:border-slate-600" />
     <div>
       <label className="block text-sm font-semibold gray-label mb-1">이미지 복구 (실험적 기능)</label>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+      <p className="text-xs text-muted mb-2">
         이미지 파일은 존재하지만 프로그램에서 보이지 않는 경우, 파일시스템을 스캔하여 누락된 씬과 이미지를 재연결합니다.
       </p>
       <button
@@ -245,7 +245,7 @@ const RecoveryTab = () => (
       <label className="block text-sm font-semibold gray-label mb-1">
         이미지 복구 (실험적 기능)
       </label>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+      <p className="text-xs text-muted mb-2">
         이미지 파일은 존재하지만 프로그램에서 보이지 않는 경우(씬에 이미지 개수만
         뜨고 썸네일이 비어 있는 등), 파일시스템을 다시 스캔하여 누락된 씬과
         이미지를 재연결합니다.
@@ -320,7 +320,7 @@ const FolderCleanupSection = ({ folder, label, description }: { folder: string; 
           {loading ? '조회 중...' : loaded ? '새로고침' : '조회'}
         </button>
       </div>
-      {description && <div className="text-xs text-gray-400 dark:text-gray-500">{description}</div>}
+      {description && <div className="text-xs text-faint">{description}</div>}
       {loaded && (
         <>
           <div className="text-sm gray-label">
@@ -467,7 +467,7 @@ const OtherTab = ({
             onChange={(e) => setLegacyProjectMode(e.target.checked)} />
           <label htmlFor="cfgLegacyProject" className="text-sm gray-label">레거시 프로젝트 모드</label>
         </div>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-6">
+        <p className="text-xs text-faint mt-1 ml-6">
           켜면 기존 프로젝트 선택 드롭다운을 유지합니다(드로어·드롭다운·그리드 공존). 끄면 드롭다운 대신 드로어 열기 버튼으로 표시됩니다.
         </p>
       </div>
@@ -478,7 +478,7 @@ const OtherTab = ({
             onChange={(e) => setStorageWriteGuard(e.target.checked)} />
           <label htmlFor="cfgStorageGuard" className="text-sm gray-label">저장소 불안정 시 자동 저장 보호 (권장)</label>
         </div>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-6">
+        <p className="text-xs text-faint mt-1 ml-6">
           저장소 접근이 일시적으로 불안정할 때 자동 저장을 잠시 멈춰 데이터 손상을 막습니다. 멈춘 동안의 직전 편집은 저장이 미뤄질 수 있습니다(접근이 회복되면 자동 재개). 꺼도 손상 방지 가드는 항상 동작합니다.
         </p>
       </div>
@@ -505,7 +505,7 @@ const OtherTab = ({
             className="flex-1 min-w-0" />
           <span className="text-sm gray-label w-14 text-right flex-none">{exportConcurrency}</span>
         </div>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+        <p className="text-xs text-faint mt-1">
           높을수록 내보내기가 빠르지만 CPU 사용량이 증가합니다.{isMobile ? ' 모바일은 1~2 권장.' : ''}
         </p>
       </div>
@@ -721,11 +721,11 @@ const KeyBindingsTab = () => {
       key={action.id}
       className="flex items-center gap-2 py-1.5 border-b border-gray-100 dark:border-slate-700"
     >
-      <span className="flex-1 text-sm text-gray-700 dark:text-gray-200 min-w-0 truncate">
+      <span className="flex-1 text-sm text-body min-w-0 truncate">
         {action.label}
       </span>
       <span
-        className="text-sm font-mono bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 px-2 py-0.5 rounded text-center flex-shrink-0"
+        className="text-sm font-mono bg-gray-100 dark:bg-slate-700 text-body px-2 py-0.5 rounded text-center flex-shrink-0"
         style={{ minWidth: '70px' }}
       >
         {recordingAction === action.id
@@ -759,7 +759,7 @@ const KeyBindingsTab = () => {
 
   return (
     <div className="flex flex-col" style={{ maxHeight: '50vh' }}>
-      <div className="text-sm text-gray-500 dark:text-gray-400 mb-2 flex-none">
+      <div className="text-sm text-muted mb-2 flex-none">
         "변경" 클릭 후 키 조합 입력. Esc로 취소. 그룹 내부에서만 키 충돌
         검사됩니다 (다른 그룹은 동작 상황이 달라 같은 키를 써도 OK).
       </div>
@@ -779,7 +779,7 @@ const KeyBindingsTab = () => {
                 <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">
                   {group.title}
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
+                <div className="text-xs text-muted">
                   {group.hint}
                 </div>
               </div>
@@ -1317,7 +1317,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
         <div className="flex items-center justify-between px-3 md:px-5 py-3 border-b border-gray-200 dark:border-slate-600 flex-none">
           <h1 className="text-base font-semibold text-gray-800 dark:text-gray-100">환경설정</h1>
           <button
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-500 dark:text-gray-400 transition-colors"
+            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors"
             onClick={onClose}
           >
             <FaTimes size={16} />
@@ -1332,7 +1332,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
                 'flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors border-b-2 ' +
                 (activeTab === i
                   ? 'border-sky-500 text-sky-600 dark:text-sky-400'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200')
+                  : 'border-transparent text-muted hover:text-gray-700 dark:hover:text-gray-200')
               }
               onClick={() => setActiveTab(i)}
             >

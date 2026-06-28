@@ -102,7 +102,7 @@ const VibeImage = ({
           className={className + ' flex items-center justify-center bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600'}
           onClick={onClick}
         >
-          <span className="text-xs text-gray-500 dark:text-gray-400 text-center px-1 select-none">
+          <span className="text-xs text-muted text-center px-1 select-none">
             NO IMAGE
           </span>
         </div>
@@ -144,8 +144,8 @@ const CardImage = observer(({
   // 4. 플레이스홀더
   return (
     <div className={className + ' flex flex-col items-center justify-center bg-gray-100 dark:bg-slate-700'}>
-      <FaUserAlt className="text-3xl text-gray-400 dark:text-gray-500 mb-1" />
-      <span className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-full px-2">
+      <FaUserAlt className="text-3xl text-faint mb-1" />
+      <span className="text-xs text-faint truncate max-w-full px-2">
         {preset.name}
       </span>
     </div>
@@ -667,7 +667,7 @@ const CharacterPresetInnerEditor = observer(({
       {/* 상단 바 — 돌아가기만 */}
       <div className="flex items-center mb-4">
         <button
-          className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+          className="flex items-center gap-1.5 text-sm text-muted hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
           onClick={onCancel}
         >
           <FaArrowLeft size={12} />
@@ -698,7 +698,7 @@ const CharacterPresetInnerEditor = observer(({
             />
           ) : (
             <div className="w-20 h-20 flex items-center justify-center bg-gray-100 dark:bg-slate-700 rounded-lg flex-none border border-dashed border-gray-300 dark:border-gray-600">
-              <FaUserAlt className="text-gray-400 dark:text-gray-500" />
+              <FaUserAlt className="text-faint" />
             </div>
           )}
           <div className="flex flex-col gap-1.5">
@@ -809,7 +809,7 @@ const CharacterPresetInnerEditor = observer(({
           />
         </div>
         {vibes.length === 0 && (
-          <div className="text-center py-4 text-sm text-gray-400 dark:text-gray-500">
+          <div className="text-center py-4 text-sm text-faint">
             드래그하거나 클릭하여 이미지 추가
           </div>
         )}
@@ -875,7 +875,7 @@ const CharacterPresetInnerEditor = observer(({
           />
         </div>
         {characterReferences.length === 0 && (
-          <div className="text-center py-4 text-sm text-gray-400 dark:text-gray-500">
+          <div className="text-center py-4 text-sm text-faint">
             드래그하거나 클릭하여 이미지 추가
           </div>
         )}
@@ -1015,7 +1015,7 @@ const CharacterPresetInnerEditor = observer(({
           {isNew ? '프리셋 추가' : '프리셋 저장'}
         </button>
         <button
-          className="flex-1 px-4 py-2 rounded-lg bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-gray-200 text-sm transition-colors"
+          className="flex-1 px-4 py-2 rounded-lg bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-body text-sm transition-colors"
           onClick={onCancel}
         >
           취소
@@ -1505,7 +1505,7 @@ export const CharacterPresetEditor = observer(({
           </div>
           {/* 남은 프리셋 목록 */}
           {cyclingSessionService.remainingPresets.length > 0 && (
-            <div className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            <div className="text-xs text-muted mb-3">
               남은 프리셋: {cyclingSessionService.remainingPresets.map((p) => p.name).join(', ')}
             </div>
           )}
@@ -1557,7 +1557,7 @@ export const CharacterPresetEditor = observer(({
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
               globalView
                 ? 'bg-purple-500 text-white'
-                : 'bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500'
+                : 'bg-gray-200 dark:bg-slate-600 text-body hover:bg-gray-300 dark:hover:bg-slate-500'
             }`}
             onClick={() => {
               if (cyclingMode) exitCyclingMode();
@@ -1572,7 +1572,7 @@ export const CharacterPresetEditor = observer(({
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
                 cyclingMode
                   ? (globalView ? 'bg-purple-500 text-white' : 'bg-sky-500 text-white')
-                  : 'bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500'
+                  : 'bg-gray-200 dark:bg-slate-600 text-body hover:bg-gray-300 dark:hover:bg-slate-500'
               }`}
               onClick={() => cyclingMode ? exitCyclingMode() : enterCyclingMode()}
             >
@@ -1585,7 +1585,7 @@ export const CharacterPresetEditor = observer(({
           {!globalView && presets.length > 0 && (
             <Tooltip content="모든 프리셋 내보내기">
               <button
-                className="px-3 py-1.5 rounded-lg text-sm bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500 transition-colors flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-lg text-sm bg-gray-200 dark:bg-slate-600 text-body hover:bg-gray-300 dark:hover:bg-slate-500 transition-colors flex items-center gap-1.5"
                 onClick={() => exportCharacterPresets(curSession)}
               >
                 <FaDownload size={11} />
@@ -1595,7 +1595,7 @@ export const CharacterPresetEditor = observer(({
           )}
           {!globalView && (
             <Tooltip content="프리셋 파일 불러오기">
-              <label className="px-3 py-1.5 rounded-lg text-sm bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500 transition-colors flex items-center gap-1.5 cursor-pointer">
+              <label className="px-3 py-1.5 rounded-lg text-sm bg-gray-200 dark:bg-slate-600 text-body hover:bg-gray-300 dark:hover:bg-slate-500 transition-colors flex items-center gap-1.5 cursor-pointer">
                 <FaUpload size={11} />
                 불러오기
                 <input
@@ -1663,8 +1663,8 @@ export const CharacterPresetEditor = observer(({
       ) : presets.length === 0 ? (
         <div className="text-center py-12">
           <FaUserAlt className="text-4xl mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-          <div className="text-gray-500 dark:text-gray-400 mb-1">캐릭터 프리셋이 없습니다</div>
-          <div className="text-sm text-gray-400 dark:text-gray-500 mb-4">새 프리셋을 추가해보세요</div>
+          <div className="text-muted mb-1">캐릭터 프리셋이 없습니다</div>
+          <div className="text-sm text-faint mb-4">새 프리셋을 추가해보세요</div>
           <button
             className="px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-600 text-white text-sm font-medium transition-colors"
             onClick={handleAddNew}
@@ -1688,8 +1688,8 @@ export const CharacterPresetEditor = observer(({
                 className="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-sky-400 dark:hover:border-sky-500 cursor-pointer flex flex-col items-center justify-center aspect-[3/4] transition-colors group"
                 onClick={handleAddNew}
               >
-                <FaPlus className="text-2xl text-gray-400 dark:text-gray-500 group-hover:text-sky-500 transition-colors mb-2" />
-                <span className="text-sm text-gray-400 dark:text-gray-500 group-hover:text-sky-500 transition-colors">
+                <FaPlus className="text-2xl text-faint group-hover:text-sky-500 transition-colors mb-2" />
+                <span className="text-sm text-faint group-hover:text-sky-500 transition-colors">
                   새 프리셋
                 </span>
               </div>
@@ -1786,7 +1786,7 @@ export const CharacterPresetEditor = observer(({
                 />
                 <span className="text-sm text-gray-700 dark:text-gray-300">
                   <span className="font-medium">프로젝트 파일 생성으로 동작</span>
-                  <span className="block text-xs text-gray-500 dark:text-gray-400">
+                  <span className="block text-xs text-muted">
                     각 프리셋을 프리셋 이름의 새 프로젝트로 복제(이미지 미포함)해 생성합니다. 원본 프로젝트는 그대로 유지됩니다.
                   </span>
                 </span>

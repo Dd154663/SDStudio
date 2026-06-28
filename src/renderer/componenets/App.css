@@ -36,7 +36,9 @@
   --c-surface-2: #ffffff; /* 패널/카드 (라이트는 루트와 동일) */
   --c-text: #000000;
   --c-text-sub: #000000;
-  --c-text-label: #374151; /* gray-700 (gray-label 전용 — 라이트에서 sub보다 옅음) */
+  --c-text-label: #374151; /* gray-700 (본문/라벨) */
+  --c-text-muted: #6b7280; /* gray-500 (보조 텍스트 L2) */
+  --c-text-faint: #9ca3af; /* gray-400 (흐린 텍스트/아이콘 L3) */
   --c-line: #cbd5e1; /* slate-300 */
   --c-input-bg: #e5e7eb; /* gray-200 */
   --c-input-text: #111827; /* gray-900 */
@@ -53,7 +55,9 @@
   --c-surface-2: #1e293b; /* slate-800 (루트보다 한 단계 위) */
   --c-text: #ffffff;
   --c-text-sub: #e2e8f0; /* slate-200 */
-  --c-text-label: #e2e8f0; /* slate-200 (다크는 sub와 동일) */
+  --c-text-label: #e2e8f0; /* slate-200 (본문/라벨) */
+  --c-text-muted: #9ca3af; /* gray-400 (보조 L2 — 다크는 더 옅음) */
+  --c-text-faint: #6b7280; /* gray-500 (흐림 L3 — 다크는 더 어두움) */
   --c-line: #334155; /* slate-700 */
   --c-input-bg: #334155; /* slate-700 */
   --c-input-text: #ffffff;
@@ -156,6 +160,19 @@ body {
 
 .text-sub {
   color: var(--c-text-sub);
+}
+
+/* 텍스트 강조 사다리(색만 지정 — font-weight 등과 충돌 없음). 적응형 스케일 토큰 사용. */
+.text-body {
+  color: var(--c-text-label);
+}
+
+.text-muted {
+  color: var(--c-text-muted);
+}
+
+.text-faint {
+  color: var(--c-text-faint);
 }
 
 .round-tag {

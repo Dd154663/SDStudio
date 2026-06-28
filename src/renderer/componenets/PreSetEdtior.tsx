@@ -158,7 +158,7 @@ const VibeImage = ({
           className={className + ' flex items-center justify-center bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600'}
           onClick={onClick}
         >
-          <span className="text-xs text-gray-500 dark:text-gray-400 text-center px-1 select-none">
+          <span className="text-xs text-muted text-center px-1 select-none">
             NO IMAGE
           </span>
         </div>
@@ -354,7 +354,7 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
         <div className="flex-1 overflow-hidden">
           <div className="h-full overflow-auto">
             {getField().length === 0 && !isMobile && (
-              <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500 p-8">
+              <div className="flex flex-col items-center justify-center h-full text-faint p-8">
                 <FaCloudUploadAlt size={48} className="mb-4 opacity-60" />
                 <p className="text-base font-medium mb-1">이미지를 드래그하거나</p>
                 <p className="text-base font-medium">Ctrl+V로 붙여넣기 할 수 있습니다</p>
@@ -435,7 +435,7 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                   </div>
                   <div className="flex-none flex ml-auto mt-auto">
                     {isPresetActive && vibe.fromPreset ? (
-                      <div className="text-xs text-gray-400 dark:text-gray-500 px-2">🔒 프리셋</div>
+                      <div className="text-xs text-faint px-2">🔒 프리셋</div>
                     ) : (
                       <Tooltip content="바이브 삭제">
                       <button
@@ -460,7 +460,7 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
         </div>
         <div className="flex-none mt-auto pt-2 flex flex-col gap-2">
           {getField().length > 0 && !isMobile && (
-            <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
+            <div className="text-xs text-muted text-center">
               이미지를 드래그하거나 Ctrl+V로 붙여넣기 할 수 있습니다
             </div>
           )}
@@ -728,7 +728,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
             {/* 기본값 설정 섹션 */}
             <div className="mx-2 mt-2 mb-1">
               <button
-                className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex items-center gap-1"
+                className="text-xs text-muted hover:text-gray-700 dark:hover:text-gray-200 flex items-center gap-1"
                 onClick={() => setShowDefaults(!showDefaults)}
               >
                 {showDefaults ? '▾' : '▸'} 새 레퍼런스 기본값 설정
@@ -776,7 +776,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
               )}
             </div>
             {getField().length === 0 && !isMobile && (
-              <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500 p-8">
+              <div className="flex flex-col items-center justify-center h-full text-faint p-8">
                 <FaCloudUploadAlt size={48} className="mb-4 opacity-60" />
                 <p className="text-base font-medium mb-1">이미지를 드래그하거나</p>
                 <p className="text-base font-medium">Ctrl+V로 붙여넣기 할 수 있습니다</p>
@@ -798,7 +798,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                   <div className="flex w-full items-center justify-between">
                     <div className="flex gap-2 items-center">
                       {isPresetActive && reference.fromPreset ? (
-                        <div className="text-xs text-gray-400 dark:text-gray-500">🔒 프리셋</div>
+                        <div className="text-xs text-faint">🔒 프리셋</div>
                       ) : (
                         <button
                           className={`round-button h-8 px-4 ${reference.enabled !== false ? 'back-sky' : 'back-gray'}`}
@@ -937,7 +937,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
         </div>
         <div className="flex-none mt-auto pt-2 flex flex-col gap-2">
           {getField().length > 0 && !isMobile && (
-            <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
+            <div className="text-xs text-muted text-center">
               이미지를 드래그하거나 Ctrl+V로 붙여넣기 할 수 있습니다
             </div>
           )}
@@ -1558,7 +1558,7 @@ const PreSetBulkManageModal = observer(
               {allSelected ? '전체 해제' : '전체 선택'}
               {filter.trim() && ` (${filtered.length}개)`}
             </button>
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+            <span className="text-xs text-muted">
               전체 {presets.length}개
             </span>
           </div>
@@ -2309,7 +2309,7 @@ const CharacterPromptEditor = observer(
                 <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: charColors[idx % charColors.length] }}>{idx + 1}</div>
                 🔒 캐릭터 프리셋 적용 중
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">
+              <div className="text-xs text-muted">
                 프리셋 해제 시 함께 제거됩니다
               </div>
             </div>
@@ -2398,7 +2398,7 @@ const CharacterPromptEditor = observer(
                   />
                 </div>
                 {preset.useCoords && (
-                  <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 mt-1">
+                  <div className="flex items-center gap-2 text-xs text-faint mt-1">
                     <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: charColors[((hasSharedPresetCPs ? sharedCPs.length : 0) + i) % charColors.length] }} />
                     위치: ({character.position?.x?.toFixed(2)}, {character.position?.y?.toFixed(2)})
                   </div>

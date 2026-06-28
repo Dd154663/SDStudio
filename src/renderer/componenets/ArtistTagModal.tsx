@@ -32,7 +32,7 @@ const TagTextSection = ({
         <div className="text-sm font-semibold gray-label">{title}</div>
       )}
       {items.length === 0 ? (
-        <div className="text-xs text-gray-400 dark:text-gray-500">(없음)</div>
+        <div className="text-xs text-faint">(없음)</div>
       ) : (
         <div className="space-y-2">
           <textarea
@@ -52,7 +52,7 @@ const TagTextSection = ({
             >
               모두 복사
             </button>
-            <div className="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed">
+            <div className="text-[11px] text-faint leading-relaxed">
               {items
                 .map(
                   (x) =>
@@ -95,7 +95,7 @@ const ModelInstallCard = observer(({ model }: { model: ArtistModelKey }) => {
   const otherBusy = artistTagService.downloading !== null && !busy;
   return (
     <div className="space-y-2">
-      <div className="text-xs text-gray-400 dark:text-gray-500">
+      <div className="text-xs text-faint">
         이 분석을 사용하려면 모델 설치가 필요합니다. (다운로드 {def.sizeText})
       </div>
       {busy && (
@@ -211,7 +211,7 @@ const ArtistTagModal = observer(
     };
 
     const placeholder = (
-      <div className="text-xs text-gray-400 dark:text-gray-500">
+      <div className="text-xs text-faint">
         이미지를 첨부하고 [분석]을 누르면 결과가 표시됩니다.
       </div>
     );
@@ -252,7 +252,7 @@ const ArtistTagModal = observer(
                         'px-2.5 py-1 text-xs transition-colors ' +
                         (wdKey === m.key
                           ? 'bg-sky-500 text-white'
-                          : 'bg-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700')
+                          : 'bg-transparent text-muted hover:bg-gray-100 dark:hover:bg-slate-700')
                       }
                       onClick={() => {
                         if (wdKey !== m.key) {
@@ -317,7 +317,7 @@ const ArtistTagModal = observer(
                   className="max-h-72 max-w-full object-contain rounded-md py-2"
                 />
               ) : (
-                <div className="text-center text-sm text-gray-400 dark:text-gray-500 px-4 py-6">
+                <div className="text-center text-sm text-faint px-4 py-6">
                   이미지를 클릭해 선택하거나,
                   <br />
                   끌어다 놓거나, Ctrl+V로

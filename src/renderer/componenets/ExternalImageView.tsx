@@ -296,12 +296,12 @@ export const ExternalImageView = observer(
           <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-slate-600 flex-none">
             <div>
               <h1 className="text-base font-semibold text-gray-800 dark:text-gray-100">메타데이터 불러오기</h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              <p className="text-xs text-muted mt-0.5">
                 이미지에서 생성 설정을 추출하여 프리셋에 적용합니다.
               </p>
             </div>
             <button
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-500 dark:text-gray-400 transition-colors"
+              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors"
               onClick={onClose}
             >
               <FaTimes size={16} />
@@ -313,7 +313,7 @@ export const ExternalImageView = observer(
             {/* 왼쪽: 설정 패널 */}
             <div className="flex-1 overflow-y-auto p-4 md:p-5">
               {!job && (
-                <div className="text-gray-500 dark:text-gray-400 text-sm py-8 text-center">
+                <div className="text-muted text-sm py-8 text-center">
                   메타데이터를 추출하는 중...
                 </div>
               )}
@@ -322,7 +322,7 @@ export const ExternalImageView = observer(
                 <>
                   {/* 적용 대상 */}
                   <div className="mb-4">
-                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">적용할 프리셋</label>
+                    <label className="text-xs font-medium text-muted mb-1 block">적용할 프리셋</label>
                     <select
                       className="gray-input text-sm py-1.5 px-2 w-full"
                       value={target}
@@ -340,7 +340,7 @@ export const ExternalImageView = observer(
                       </optgroup>
                     </select>
                     {target.startsWith('new-global') && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-snug">
+                      <p className="text-xs text-muted mt-1.5 leading-snug">
                         ⓘ 글로벌 프리셋은 그림체 설정(프롬프트·파라미터)만 저장됩니다.
                         시드·바이브·캐릭터 레퍼런스는 저장되지 않습니다.
                       </p>
@@ -379,7 +379,7 @@ export const ExternalImageView = observer(
                     disabled={!hasCharacters}
                     right={
                       hasCharacters && options.characters && !target.startsWith('new-') ? (
-                        <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                        <label className="flex items-center gap-1 text-xs text-muted">
                           <input
                             type="checkbox"
                             checked={options.charactersAppend}
@@ -393,12 +393,12 @@ export const ExternalImageView = observer(
                   >
                     {job.characterPrompts.map((cp) => (
                       <div key={cp.id} className="mb-2 p-2.5 bg-gray-100 dark:bg-slate-700 rounded-lg text-sm">
-                        <div className="text-gray-500 dark:text-gray-400 text-xs mb-1">
+                        <div className="text-muted text-xs mb-1">
                           Pos: ({cp.position?.[0]?.toFixed(2) ?? '-'}, {cp.position?.[1]?.toFixed(2) ?? '-'})
                         </div>
                         <div className="text-gray-800 dark:text-gray-200 break-words">{cp.prompt}</div>
                         {cp.uc && (
-                          <div className="text-gray-500 dark:text-gray-400 mt-1 break-words text-xs">UC: {cp.uc}</div>
+                          <div className="text-muted mt-1 break-words text-xs">UC: {cp.uc}</div>
                         )}
                       </div>
                     ))}
@@ -412,7 +412,7 @@ export const ExternalImageView = observer(
                     disabled={!hasVibes}
                     right={
                       hasVibes && options.vibes && !target.startsWith('new-') ? (
-                        <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                        <label className="flex items-center gap-1 text-xs text-muted">
                           <input
                             type="checkbox"
                             checked={options.vibesAppend}
@@ -432,7 +432,7 @@ export const ExternalImageView = observer(
                               src={`data:image/png;base64,${img}`}
                               className="w-16 h-16 object-cover rounded-md border border-gray-200 dark:border-slate-600"
                             />
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            <div className="text-xs text-muted mt-1">
                               S:{job.vibes[i]?.strength?.toFixed(2)} I:{job.vibes[i]?.info?.toFixed(2)}
                             </div>
                           </div>
@@ -440,12 +440,12 @@ export const ExternalImageView = observer(
                       </div>
                     ) : hasVibes ? (
                       <div className="text-sm text-gray-600 dark:text-gray-300">
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                        <p className="text-xs text-muted mb-2">
                           원본 이미지는 없지만, 인코딩된 바이브 데이터를 복원합니다.
                         </p>
                         {job.vibes.map((v, i) => (
                           <div key={i} className="flex items-center gap-3 py-1.5 px-2.5 bg-gray-100 dark:bg-slate-700 rounded-lg mb-1.5">
-                            <div className="w-10 h-10 rounded bg-gray-300 dark:bg-slate-600 flex items-center justify-center text-xs text-gray-500 dark:text-gray-400 flex-none">
+                            <div className="w-10 h-10 rounded bg-gray-300 dark:bg-slate-600 flex items-center justify-center text-xs text-muted flex-none">
                               데이터
                             </div>
                             <div className="text-xs text-gray-600 dark:text-gray-300">
@@ -475,14 +475,14 @@ export const ExternalImageView = observer(
                                   src={`data:image/png;base64,${img}`}
                                   className="w-16 h-16 object-cover rounded-md border border-gray-200 dark:border-slate-600"
                                 />
-                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                <div className="text-xs text-muted mt-1">
                                   S:{job.characterReferences[i]?.strength?.toFixed(2)}
                                 </div>
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                          <div className="text-xs text-muted">
                             원본 이미지는 없지만, 인코딩된 레퍼런스 데이터를 복원합니다.
                           </div>
                         )}
@@ -497,15 +497,15 @@ export const ExternalImageView = observer(
                     onChange={(v) => setOpt('settings', v)}
                   >
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-                      <div><span className="text-gray-500 dark:text-gray-400">Steps:</span> <span className="text-gray-800 dark:text-gray-200">{job.steps}</span></div>
-                      <div><span className="text-gray-500 dark:text-gray-400">CFG:</span> <span className="text-gray-800 dark:text-gray-200">{job.promptGuidance}</span></div>
-                      <div><span className="text-gray-500 dark:text-gray-400">Rescale:</span> <span className="text-gray-800 dark:text-gray-200">{job.cfgRescale}</span></div>
-                      <div><span className="text-gray-500 dark:text-gray-400">Sampler:</span> <span className="text-gray-800 dark:text-gray-200">{job.sampling}</span></div>
-                      <div><span className="text-gray-500 dark:text-gray-400">Noise:</span> <span className="text-gray-800 dark:text-gray-200">{job.noiseSchedule}</span></div>
-                      <div><span className="text-gray-500 dark:text-gray-400">Variety+:</span> <span className="text-gray-800 dark:text-gray-200">{job.varietyPlus ? 'ON' : 'OFF'}</span></div>
-                      <div><span className="text-gray-500 dark:text-gray-400">Euler A Bug:</span> <span className="text-gray-800 dark:text-gray-200">{job.deliberateEulerAncestralBug ? 'ON' : 'OFF'}</span></div>
-                      <div><span className="text-gray-500 dark:text-gray-400">Coords:</span> <span className="text-gray-800 dark:text-gray-200">{job.useCoords ? 'ON' : 'OFF'}</span></div>
-                      <div><span className="text-gray-500 dark:text-gray-400">Legacy UC:</span> <span className="text-gray-800 dark:text-gray-200">{job.legacyPromptConditioning ? 'ON' : 'OFF'}</span></div>
+                      <div><span className="text-muted">Steps:</span> <span className="text-gray-800 dark:text-gray-200">{job.steps}</span></div>
+                      <div><span className="text-muted">CFG:</span> <span className="text-gray-800 dark:text-gray-200">{job.promptGuidance}</span></div>
+                      <div><span className="text-muted">Rescale:</span> <span className="text-gray-800 dark:text-gray-200">{job.cfgRescale}</span></div>
+                      <div><span className="text-muted">Sampler:</span> <span className="text-gray-800 dark:text-gray-200">{job.sampling}</span></div>
+                      <div><span className="text-muted">Noise:</span> <span className="text-gray-800 dark:text-gray-200">{job.noiseSchedule}</span></div>
+                      <div><span className="text-muted">Variety+:</span> <span className="text-gray-800 dark:text-gray-200">{job.varietyPlus ? 'ON' : 'OFF'}</span></div>
+                      <div><span className="text-muted">Euler A Bug:</span> <span className="text-gray-800 dark:text-gray-200">{job.deliberateEulerAncestralBug ? 'ON' : 'OFF'}</span></div>
+                      <div><span className="text-muted">Coords:</span> <span className="text-gray-800 dark:text-gray-200">{job.useCoords ? 'ON' : 'OFF'}</span></div>
+                      <div><span className="text-muted">Legacy UC:</span> <span className="text-gray-800 dark:text-gray-200">{job.legacyPromptConditioning ? 'ON' : 'OFF'}</span></div>
                     </div>
                   </CheckboxRow>
 

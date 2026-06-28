@@ -263,7 +263,7 @@ const ExportPresetManager = observer(() => {
         {/* 새 프리셋 버튼 */}
         <button
           onClick={newPreset}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-sky-400 dark:hover:border-sky-500 text-gray-500 dark:text-gray-400 hover:text-sky-500 transition-colors text-sm"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-sky-400 dark:hover:border-sky-500 text-muted hover:text-sky-500 transition-colors text-sm"
         >
           <FaPlus size={12} />
           새 프리셋 추가
@@ -496,16 +496,16 @@ const ExportPresetManager = observer(() => {
           {/* 목표 폴더 (데스크톱 전용 — 모바일은 임의 폴더 저장 미지원) */}
           {!isMobile && (
             <div className="space-y-2 border-t border-gray-200 dark:border-gray-600 pt-3">
-              <div className="text-xs text-gray-500 dark:text-gray-400">
+              <div className="text-xs text-muted">
                 내보내기 목표 폴더 (비우면 환경설정의 기본 폴더 사용)
               </div>
-              <div className="text-sm text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-slate-700 rounded px-3 py-2 break-all">
+              <div className="text-sm text-body bg-gray-100 dark:bg-slate-700 rounded px-3 py-2 break-all">
                 {form.targetFolder || '미설정'}
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={selectTargetFolder}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-sm text-body hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors"
                 >
                   <FaFolderOpen size={12} />
                   폴더 선택
@@ -513,7 +513,7 @@ const ExportPresetManager = observer(() => {
                 {form.targetFolder && (
                   <button
                     onClick={() => setForm({ ...form, targetFolder: '' })}
-                    className="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors"
+                    className="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-sm text-muted hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors"
                   >
                     지우기
                   </button>

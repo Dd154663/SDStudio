@@ -119,7 +119,7 @@ function collectResults(
 
 function HighlightMatch({ text, query }: { text: string; query: string }) {
   const idx = text.indexOf(query);
-  if (idx === -1) return <span className="text-gray-500 dark:text-gray-400 text-xs truncate">{text}</span>;
+  if (idx === -1) return <span className="text-muted text-xs truncate">{text}</span>;
 
   const ctxLen = 20;
   const start = Math.max(0, idx - ctxLen);
@@ -131,9 +131,9 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
 
   return (
     <span className="text-xs break-all">
-      <span className="text-gray-500 dark:text-gray-400">{before}</span>
+      <span className="text-muted">{before}</span>
       <span className="bg-yellow-200 dark:bg-yellow-700 text-gray-900 dark:text-gray-100 font-semibold rounded px-0.5">{match}</span>
-      <span className="text-gray-500 dark:text-gray-400">{after}</span>
+      <span className="text-muted">{after}</span>
     </span>
   );
 }
@@ -314,7 +314,7 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
         </div>
       )}
 
-      <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+      <div className="text-xs text-faint mt-1">
         선택한 씬의 텍스트를 검색하고 일괄 변환합니다.
         캐릭터 프리셋은 씬 선택과 무관하며, '캐릭터 프리셋' 검색 범위를 끄면 제외됩니다.
       </div>
@@ -525,7 +525,7 @@ const InsertTab = () => {
             </div>
           )}
         </div>
-        <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+        <div className="text-xs text-faint mt-1">
           태그 삽입 시 구분자(,)는 삽입 위치에 맞게 자동으로 추가됩니다.
         </div>
       </div>
@@ -592,7 +592,7 @@ const InsertTab = () => {
 
       {/* 미리보기 + 적용 */}
       <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-600">
-        <span className="text-sm text-gray-500 dark:text-gray-400">
+        <span className="text-sm text-muted">
           {insertText.trim()
             ? slotTarget === 'new-column'
               ? <><span className="text-sky-500 font-bold">{affectedCount}</span>개 씬에 새 열 추가 예정</>
@@ -642,7 +642,7 @@ const FindReplaceDialog = observer(() => {
             className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
               activeTab === 'find'
                 ? 'bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 border-b-2 border-sky-500'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                : 'text-muted hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
             찾기 / 변환
@@ -652,7 +652,7 @@ const FindReplaceDialog = observer(() => {
             className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
               activeTab === 'insert'
                 ? 'bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 border-b-2 border-sky-500'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                : 'text-muted hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
             일괄 삽입

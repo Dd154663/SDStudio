@@ -100,7 +100,7 @@ const ConfirmWindow = observer(() => {
               {curDialog.type === 'confirm' && (
                 <>
                   {curDialog.showSkipConfirm && (
-                    <label className="flex items-center gap-2 mt-3 text-sm text-gray-500 dark:text-gray-400 cursor-pointer select-none">
+                    <label className="flex items-center gap-2 mt-3 text-sm text-muted cursor-pointer select-none">
                       <input
                         type="checkbox"
                         checked={skipConfirm}

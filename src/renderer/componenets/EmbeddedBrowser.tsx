@@ -72,7 +72,7 @@ const BookmarkDialog: React.FC<BookmarkDialogProps> = ({ mode, initialLabel, ini
           {mode === 'add' ? '즐겨찾기 추가' : '즐겨찾기 편집'}
         </h3>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 dark:text-gray-400">이름</label>
+          <label className="text-xs text-muted">이름</label>
           <input
             className="border rounded px-2 py-1 text-sm dark:bg-slate-700 dark:border-slate-600 dark:text-gray-100"
             placeholder="표시할 이름"
@@ -82,7 +82,7 @@ const BookmarkDialog: React.FC<BookmarkDialogProps> = ({ mode, initialLabel, ini
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 dark:text-gray-400">URL</label>
+          <label className="text-xs text-muted">URL</label>
           <input
             className="border rounded px-2 py-1 text-sm dark:bg-slate-700 dark:border-slate-600 dark:text-gray-100"
             placeholder="https://..."
@@ -295,7 +295,7 @@ const DesktopBrowser: React.FC = () => {
           </button>
         ))}
         <button
-          className="flex-none text-xs px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-gray-400"
+          className="flex-none text-xs px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-muted"
           onClick={() => setDialog({ mode: 'add' })}
           title="즐겨찾기 추가"
         >

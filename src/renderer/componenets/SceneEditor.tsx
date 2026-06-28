@@ -562,7 +562,7 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
             </label>
           </div>
         </div>
-        <div className="text-sm text-gray-500 dark:text-gray-400">
+        <div className="text-sm text-muted">
           이 씬에서만 사용할 캐릭터 프롬프트를 직접 입력하세요.
           {scene.useSceneCharacterPrompts
             ? ' (활성화됨 - 공유 캐릭터 프롬프트 대신 이 프롬프트가 사용됩니다)'
@@ -700,7 +700,7 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
                   />
                 </div>
 
-                <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+                <div className="flex items-center gap-2 text-xs text-faint">
                   <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: sceneCharColors[index % sceneCharColors.length] }} />
                   위치: ({character.position?.x?.toFixed(2) || '0.50'}, {character.position?.y?.toFixed(2) || '0.50'})
                 </div>

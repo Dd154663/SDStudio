@@ -702,7 +702,7 @@ const PieceEditor = observer(() => {
 
       {/* 빈 상태 */}
       {!curPieceLibrary && libraryOptions.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-12 text-gray-400 dark:text-gray-500">
+        <div className="flex flex-col items-center justify-center py-12 text-faint">
           <FaPuzzlePiece size={48} className="mb-4 opacity-30" />
           <p className="text-lg mb-2">조각그룹이 없습니다</p>
           <p className="text-sm mb-4">조각그룹을 추가하거나 와일드카드 파일을 가져오세요</p>
@@ -719,7 +719,7 @@ const PieceEditor = observer(() => {
 
       {/* 라이브러리 미선택 상태 (라이브러리는 있지만 선택 안 함) */}
       {!curPieceLibrary && libraryOptions.length > 0 && (
-        <div className="flex flex-col items-center justify-center py-12 text-gray-400 dark:text-gray-500">
+        <div className="flex flex-col items-center justify-center py-12 text-faint">
           <p className="text-sm">위 드롭다운에서 조각그룹을 선택하세요</p>
         </div>
       )}

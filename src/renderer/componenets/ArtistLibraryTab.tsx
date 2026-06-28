@@ -90,7 +90,7 @@ const TagPresetManageModal = observer(({ onClose }: { onClose: () => void }) => 
             <span className="text-sm text-gray-400">프리셋이 없습니다.</span>
           )}
           {artistLibraryService.tagPresets.map((t) => (
-            <span key={t} className="flex items-center gap-1 text-sm px-2 py-1 rounded-md bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200">
+            <span key={t} className="flex items-center gap-1 text-sm px-2 py-1 rounded-md bg-gray-100 dark:bg-slate-700 text-body">
               {t}
               <button className="text-gray-400 hover:text-red-500" onClick={() => artistLibraryService.removeTagPreset(t)}>
                 <FaTrash size={11} />
@@ -138,7 +138,7 @@ const PromptView = observer(({ path }: { path: string }) => {
       {prompt && (
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-gray-500 dark:text-gray-400">프롬프트</span>
+            <span className="text-xs text-muted">프롬프트</span>
             <button className="text-xs text-sky-500 hover:text-sky-600" onClick={() => copyText(prompt, '프롬프트를 복사했습니다')}>
               <FaCopy className="inline mr-1" size={10} />복사
             </button>
@@ -149,7 +149,7 @@ const PromptView = observer(({ path }: { path: string }) => {
       {uc && (
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-gray-500 dark:text-gray-400">네거티브</span>
+            <span className="text-xs text-muted">네거티브</span>
             <button className="text-xs text-sky-500 hover:text-sky-600" onClick={() => copyText(uc, '네거티브를 복사했습니다')}>
               <FaCopy className="inline mr-1" size={10} />복사
             </button>
@@ -274,7 +274,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
 
             {/* 우: 태그 */}
             <div className="flex-1 min-w-0">
-              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">태그</div>
+              <div className="text-xs text-muted mb-1">태그</div>
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {artist.tags.length === 0 && <span className="text-xs text-gray-400">태그 없음</span>}
                 {artist.tags.map((t) => (
@@ -292,7 +292,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                 onKeyDown={(e) => { if (e.key === 'Enter') { artistLibraryService.addTag(artist.id, tagInput); setTagInput(''); } }}
               />
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-gray-500 dark:text-gray-400">태그 프리셋 (클릭해서 추가)</span>
+                <span className="text-xs text-muted">태그 프리셋 (클릭해서 추가)</span>
                 <button className="text-xs text-sky-500 hover:text-sky-600" onClick={() => setManagePreset(true)}>
                   <FaPen className="inline mr-1" size={9} />관리
                 </button>

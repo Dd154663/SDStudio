@@ -77,7 +77,7 @@ const ModalOverlay = ({
             {title}
           </h2>
           <button
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-500 dark:text-gray-400 transition-colors"
+            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors"
             onClick={onClose}
           >
             <FaTimes size={16} />

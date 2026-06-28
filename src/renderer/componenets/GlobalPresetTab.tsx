@@ -77,7 +77,7 @@ const GlobalVibeImage = observer(
           ' flex items-center justify-center bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600'
         }
       >
-        <span className="text-xs text-gray-500 dark:text-gray-400 text-center px-1 select-none">
+        <span className="text-xs text-muted text-center px-1 select-none">
           NO IMAGE
         </span>
       </div>
@@ -953,7 +953,7 @@ export const GlobalPresetTab = observer(() => {
       {/* 본문 */}
       <div className="flex-1 overflow-auto p-6">
         {total === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400">
+          <div className="flex flex-col items-center justify-center h-full text-muted">
             <p className="mb-2 text-lg">글로벌 프리셋이 비어있습니다.</p>
             <p className="text-sm">
               세션 프리셋을 우클릭하여 "글로벌 프리셋으로 저장"하거나,
@@ -966,7 +966,7 @@ export const GlobalPresetTab = observer(() => {
 
         {/* 통합 카드 그리드 (이지/일반 구분 없음) */}
         {total > 0 && visible.length === 0 && (
-          <div className="text-center text-gray-500 dark:text-gray-400 py-10">
+          <div className="text-center text-muted py-10">
             "{query}" 검색 결과가 없습니다.
           </div>
         )}
@@ -1023,7 +1023,7 @@ export const GlobalPresetPickerOverlay = observer(() => {
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold text-default">
-            글로벌 프리셋에서 가져오기 <span className="text-sm font-normal text-gray-500 dark:text-gray-400">(→ {displayName}로 적용)</span>
+            글로벌 프리셋에서 가져오기 <span className="text-sm font-normal text-muted">(→ {displayName}로 적용)</span>
           </h2>
           <button
             className="icon-button p-2 text-default"
@@ -1034,7 +1034,7 @@ export const GlobalPresetPickerOverlay = observer(() => {
         </div>
         <div className="flex-1 overflow-auto">
           {entries.length === 0 ? (
-            <div className="text-center text-gray-500 dark:text-gray-400 p-8 text-lg">
+            <div className="text-center text-muted p-8 text-lg">
               저장된 글로벌 프리셋이 없습니다.
             </div>
           ) : (

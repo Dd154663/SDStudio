@@ -100,7 +100,7 @@ const SceneSelector: React.FC<SceneSelectorProps> = ({
 
   return (
     <div className="p-2 md:p-4 flex flex-col h-full">
-      <div className="flex items-center gap-2 text-gray-700 dark:text-gray-200 flex-none">
+      <div className="flex items-center gap-2 text-body flex-none">
         <FaObjectGroup className="text-lg md:text-xl" />
         <div className="text-lg md:text-xl flex flex-col md:flex-row md:gap-2">
           {' '}

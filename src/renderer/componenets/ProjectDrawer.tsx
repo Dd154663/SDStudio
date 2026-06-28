@@ -1125,13 +1125,13 @@ const ProjectDrawer = observer(() => {
             {!selectMode && (
               <button
                 onClick={() => setSelectMode(true)}
-                className="text-sm px-2.5 py-1 rounded-md bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600"
+                className="text-sm px-2.5 py-1 rounded-md bg-gray-100 dark:bg-slate-700 text-body hover:bg-gray-200 dark:hover:bg-slate-600"
               >
                 선택
               </button>
             )}
             <button
-              className="p-1.5 rounded-md hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-500 dark:text-gray-400"
+              className="p-1.5 rounded-md hover:bg-gray-200 dark:hover:bg-slate-600 text-muted"
               onClick={close}
             >
               <FaTimes size={18} />
@@ -1178,7 +1178,7 @@ const ProjectDrawer = observer(() => {
             </button>
             <button
               onClick={exitSelect}
-              className="px-2.5 py-1.5 rounded-lg text-sm bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600"
+              className="px-2.5 py-1.5 rounded-lg text-sm bg-gray-100 dark:bg-slate-700 text-body hover:bg-gray-200 dark:hover:bg-slate-600"
             >
               취소
             </button>
@@ -1194,7 +1194,7 @@ const ProjectDrawer = observer(() => {
             <Tooltip content="새 폴더 만들기">
               <button
                 onClick={() => createFolder()}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-body hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
               >
                 <FaFolderPlus size={14} />{' '}
                 <span className="hidden md:inline">폴더</span>
@@ -1203,7 +1203,7 @@ const ProjectDrawer = observer(() => {
             <Tooltip content="프로젝트 저장 공간 관리">
               <button
                 onClick={() => setStorageOpen(true)}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-body hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
               >
                 <FaHdd size={14} />{' '}
                 <span className="hidden md:inline">관리</span>
@@ -1212,7 +1212,7 @@ const ProjectDrawer = observer(() => {
             <Tooltip content="전체 백업 / 복원">
               <button
                 onClick={() => appState.fullBackupMenu()}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-body hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
               >
                 <FaFileArchive size={14} />{' '}
                 <span className="hidden md:inline">백업</span>
@@ -1228,7 +1228,7 @@ const ProjectDrawer = observer(() => {
         >
           {searching ? (
             <div>
-              <div className="px-1 py-1 text-xs text-gray-500 dark:text-gray-400">
+              <div className="px-1 py-1 text-xs text-muted">
                 검색 결과 ({searchResults.length})
               </div>
               {searchResults.length === 0 ? (
@@ -1254,7 +1254,7 @@ const ProjectDrawer = observer(() => {
                 >
                   <button
                     onClick={() => toggleFolder('__favorites__')}
-                    className="w-full flex items-center gap-2 pl-1.5 pr-2 py-2.5 text-[15px] font-semibold text-gray-700 dark:text-gray-200"
+                    className="w-full flex items-center gap-2 pl-1.5 pr-2 py-2.5 text-[15px] font-semibold text-body"
                   >
                     {expanded.has('__favorites__') ? (
                       <FaChevronDown
@@ -1423,7 +1423,7 @@ const ProjectDrawer = observer(() => {
                               setDrag(null);
                               setDropTarget(null);
                             }}
-                            className="flex-1 flex items-center gap-2 px-1 py-2.5 text-[15px] font-semibold text-gray-700 dark:text-gray-200 min-w-0"
+                            className="flex-1 flex items-center gap-2 px-1 py-2.5 text-[15px] font-semibold text-body min-w-0"
                           >
                             {isOpen ? (
                               <FaChevronDown
@@ -1595,7 +1595,7 @@ const ProjectDrawer = observer(() => {
                   >
                     <button
                       onClick={() => toggleFolder('__unfiled__')}
-                      className="w-full flex items-center gap-2 pl-1.5 pr-2 py-2.5 text-[15px] font-semibold text-gray-700 dark:text-gray-200"
+                      className="w-full flex items-center gap-2 pl-1.5 pr-2 py-2.5 text-[15px] font-semibold text-body"
                     >
                       {expanded.has('__unfiled__') ? (
                         <FaChevronDown

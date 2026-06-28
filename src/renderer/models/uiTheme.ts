@@ -6,16 +6,37 @@ import { UiThemeConfig } from '../../main/config';
 const HEX6 = /^#[0-9a-fA-F]{6}$/;
 export const isHex6 = (v: string | undefined): v is string => !!v && HEX6.test(v);
 
+function parseHex(hex: string): [number, number, number] | null {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex.trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function toHex(r: number, g: number, b: number): string {
+  const c = (x: number) =>
+    Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, '0');
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+
+// 두 색을 t(0~1) 비율로 선형 보간. 적응형 텍스트 스케일(기준색↔배경색)의 핵심.
+export function mix(a: string, b: string, t: number): string {
+  const ca = parseHex(a);
+  const cb = parseHex(b);
+  if (!ca || !cb) return a;
+  return toHex(
+    ca[0] + (cb[0] - ca[0]) * t,
+    ca[1] + (cb[1] - ca[1]) * t,
+    ca[2] + (cb[2] - ca[2]) * t,
+  );
+}
+
 // 배경색의 상대 휘도로 가독성 있는 전경(텍스트/아이콘) 색을 자동 결정.
 export function readableFg(hex: string): string {
-  const m = /^#([0-9a-fA-F]{6})$/.exec(hex.trim());
-  if (!m) return '#ffffff';
-  const n = parseInt(m[1], 16);
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
+  const c = parseHex(hex);
+  if (!c) return '#ffffff';
   // sRGB 가중 휘도 (대략). 임계값은 경험적으로 가독성 좋은 지점.
-  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
   return lum > 150 ? '#000000' : '#ffffff';
 }
 
@@ -32,17 +53,25 @@ export function buildThemeVars(t?: UiThemeConfig): Record<string, string> {
     vars['--c-input-text'] = readableFg(t.inputBg);
   }
 
-  // 텍스트 패턴: 본문/부가/아이콘 색을 흑백 한 세트로 일괄 전환(배경 가독성 보장).
-  if (t.textPattern === 'light') {
-    vars['--c-text'] = '#000000';
-    vars['--c-text-sub'] = '#334155'; // slate-700
-    vars['--c-text-label'] = '#374151'; // gray-700
-    vars['--c-icon-text'] = '#4b5563'; // gray-600
-  } else if (t.textPattern === 'dark') {
-    vars['--c-text'] = '#ffffff';
-    vars['--c-text-sub'] = '#e2e8f0'; // slate-200
-    vars['--c-text-label'] = '#e2e8f0'; // slate-200
-    vars['--c-icon-text'] = '#ffffff';
+  // 텍스트 패턴: 강조 텍스트(기준색)부터 본문→보조→흐림까지 한 사다리를 적응형으로 파생.
+  // 각 단계 = 기준색을 배경색 쪽으로 mix(t↑일수록 옅음). 배경을 커스텀(예: 핑크)하면
+  // 보조/흐림 텍스트도 그 배경 쪽으로 물들어 자연스러운 대비를 유지한다.
+  if (t.textPattern) {
+    const base = t.textPattern === 'light' ? '#000000' : '#ffffff';
+    // 파생 기준 배경: 커스텀 surface 우선, 없으면 패턴 기본 배경.
+    const bg = isHex6(t.surface)
+      ? t.surface
+      : t.textPattern === 'light'
+        ? '#ffffff'
+        : '#0f172a';
+    // 라이트(어두운 글자)는 옅어지는 폭을 더 크게, 다크(밝은 글자)는 작게.
+    const k = t.textPattern === 'light' ? 1 : 0.7;
+    vars['--c-text'] = base;
+    vars['--c-text-sub'] = mix(base, bg, 0.18 * k);
+    vars['--c-text-label'] = mix(base, bg, 0.28 * k);
+    vars['--c-text-muted'] = mix(base, bg, 0.5 * k);
+    vars['--c-text-faint'] = mix(base, bg, 0.68 * k);
+    vars['--c-icon-text'] = mix(base, bg, 0.42 * k);
   }
 
   const setBtn = (name: string, color?: string) => {

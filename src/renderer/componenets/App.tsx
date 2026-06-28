@@ -695,7 +695,7 @@ export const App = observer(() => {
                 style={{ width: `${(appState.exportProgress.done / Math.max(appState.exportProgress.total, 1)) * 100}%` }}
               />
             </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <div className="text-xs text-muted mt-1">
               {appState.exportProgress.done}/{appState.exportProgress.total}
             </div>
           </div>
@@ -730,7 +730,7 @@ export const App = observer(() => {
               <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">
                 여기에 드랍하세요
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-muted">
                 {dragOverlay}
               </p>
             </div>

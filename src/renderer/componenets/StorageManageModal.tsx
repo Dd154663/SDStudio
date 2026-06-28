@@ -98,7 +98,7 @@ const StorageManageModal = observer(
                 </span>
               )}
             </div>
-            <div className="text-xs text-gray-400 dark:text-gray-500">
+            <div className="text-xs text-faint">
               프로젝트별 차지 용량(이미지 포함)을 계산합니다. 부하를 피하기 위해
               자동으로 계산하지 않으며, 계산 결과는 저장되어 다음에도 표시됩니다.
               3GB 이상 프로젝트는 붉게 강조됩니다.
@@ -152,12 +152,12 @@ const StorageManageModal = observer(
                       >
                         {formatBytes(e.bytes)}
                       </span>
-                      <span className="text-[11px] text-gray-400 dark:text-gray-500 flex-none w-12 text-right hidden sm:block">
+                      <span className="text-[11px] text-faint flex-none w-12 text-right hidden sm:block">
                         {formatAgo(e.at)}
                       </span>
                     </>
                   ) : (
-                    <span className="text-xs text-gray-400 dark:text-gray-500 flex-none">
+                    <span className="text-xs text-faint flex-none">
                       계산 안 됨
                     </span>
                   )}
@@ -178,7 +178,7 @@ const StorageManageModal = observer(
               );
             })}
             {names.length === 0 && (
-              <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">
+              <div className="text-sm text-faint text-center py-6">
                 프로젝트가 없습니다.
               </div>
             )}

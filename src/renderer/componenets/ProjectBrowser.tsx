@@ -309,7 +309,7 @@ const NavItem = ({
       }${
         active
           ? 'bg-sky-500 text-white'
-          : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600'
+          : 'bg-gray-100 dark:bg-slate-700 text-body hover:bg-gray-200 dark:hover:bg-slate-600'
       }`}
     >
       {icon}
@@ -1166,7 +1166,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                 <div className="flex-1" />
                 <button
                   onClick={() => setSelectMode(true)}
-                  className="px-2.5 py-1.5 rounded-lg text-sm bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600"
+                  className="px-2.5 py-1.5 rounded-lg text-sm bg-gray-100 dark:bg-slate-700 text-body hover:bg-gray-200 dark:hover:bg-slate-600"
                 >
                   선택
                 </button>
@@ -1192,7 +1192,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                 </button>
                 <button
                   onClick={exitSelect}
-                  className="px-2.5 py-1.5 rounded-lg text-sm bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600"
+                  className="px-2.5 py-1.5 rounded-lg text-sm bg-gray-100 dark:bg-slate-700 text-body hover:bg-gray-200 dark:hover:bg-slate-600"
                 >
                   취소
                 </button>
@@ -1204,7 +1204,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
             {/* 최근 프로젝트 (전체 뷰 + 검색 없을 때만, 선택 모드 제외) */}
             {view === 'all' && !filter.trim() && !selectMode && recentProjects.length > 0 && (
               <div className="mb-4">
-                <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">최근 프로젝트</div>
+                <div className="text-xs font-medium text-muted mb-2">최근 프로젝트</div>
                 <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
                   {recentProjects.map((name) => (
                     <ProjectCard
@@ -1234,7 +1234,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
 
             {/* 프로젝트 그리드 */}
             <div>
-              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+              <div className="text-xs font-medium text-muted mb-2">
                 {filter.trim() ? `검색 결과 (${filtered.length})` : `프로젝트 (${filtered.length})`}
               </div>
               {filtered.length === 0 ? (
