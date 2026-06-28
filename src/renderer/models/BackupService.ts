@@ -6,7 +6,6 @@ import {
   globalPresetService,
   artistLibraryService,
   imageService,
-  isMobile,
   localAIService,
   projectSizeService,
   sessionService,
@@ -15,6 +14,7 @@ import {
   workFlowService,
   zipService,
 } from '.';
+import { platform, buildImageOptimizeOptions } from './platform';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { Dialog } from '../componenets/ConfirmWindow';
@@ -1499,7 +1499,7 @@ export class BackupService {
       const config = await backend.getConfig();
       const CONCURRENCY = Math.max(
         1,
-        Math.min(4, config.exportConcurrency ?? (isMobile ? 2 : 4)),
+        Math.min(4, config.exportConcurrency ?? platform.exportConcurrency),
       );
       const results: ({ path: string; name: string } | null)[] = new Array(
         paths.length,
@@ -1717,12 +1717,7 @@ export class BackupService {
       ],
     });
     if (!format) return undefined;
-    const optItems = [
-      { text: '원본', value: 'original' },
-      { text: '저손실 webp 최적화 (에셋용 권장)', value: 'lossy' },
-    ];
-    if (!isMobile) optItems.push({ text: '무손실 webp 최적화', value: 'lossless' });
-    optItems.push({ text: isMobile ? 'AVIF 최적화 (PC 권장)' : 'AVIF 최적화', value: 'avif' });
+    const optItems = buildImageOptimizeOptions();
     const opt = await appState.pushDialogAsync({
       type: 'select',
       text: '이미지 크기 최적화 방법을 선택해주세요',

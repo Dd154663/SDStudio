@@ -1,5 +1,6 @@
 import { cast } from 'mobx-state-tree';
 import { backend, isMobile, gameService, imageService } from '.';
+import { platform } from './platform';
 import { GenericScene, InpaintScene, Scene, Session } from './types';
 import { assert } from './util';
 import { isOutputImageFile } from './imageFormats';
@@ -8,9 +9,6 @@ import { v4 } from 'uuid';
 export const supportedImageSizes = [200, 400, 500];
 const imageDirList = ['outs', 'inpaints'];
 const maskDirList = ['inpaint_masks', 'inpaint_orgs'];
-
-const IMAGE_CACHE_SIZE = 256;
-const ENCODED_VIBE_CACHE_SIZE = 128;
 
 const naturalSort = (a: string, b: string) => {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
@@ -64,9 +62,9 @@ export class ImageService extends EventTarget {
     super();
     this.images = {};
     this.inpaints = {};
-    this.cache = new LRUCache(isMobile ? 64 : IMAGE_CACHE_SIZE);
+    this.cache = new LRUCache(platform.imageCacheSize);
     this.mutexes = {};
-    this.encodedVibeExistsCache = new LRUCache(isMobile ? 32 : ENCODED_VIBE_CACHE_SIZE);
+    this.encodedVibeExistsCache = new LRUCache(platform.encodedVibeCacheSize);
   }
 
   private async acquireMutex(path: string) {

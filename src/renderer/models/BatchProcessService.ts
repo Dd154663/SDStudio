@@ -7,7 +7,6 @@ import {
   globalPresetService,
   artistLibraryService,
   imageService,
-  isMobile,
   localAIService,
   projectSizeService,
   sessionService,
@@ -16,6 +15,7 @@ import {
   workFlowService,
   zipService,
 } from '.';
+import { platform } from './platform';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { Dialog } from '../componenets/ConfirmWindow';
@@ -396,7 +396,7 @@ export class BatchProcessService {
       if (type === 'inpaint') {
         items.push({ text: '🪞 이미지생성 탭 씬 이미지미러로 복제', value: 'mirrorDuplicate' });
       }
-      if (isMobile) {
+      if (!platform.supportsRemoveBg) {
         items = items.filter((x) => x.value !== 'removeBg');
       }
       appState.pushDialog({
@@ -706,7 +706,7 @@ export class BatchProcessService {
     type: 'scene' | 'inpaint',
     setSceneSelector: (item: SceneSelectorItem | undefined) => void,
   ) {
-    if (isMobile) {
+    if (!platform.supportsWebpConvert) {
       appState.pushMessage('WebP 변환은 데스크톱에서만 지원됩니다.');
       return;
     }

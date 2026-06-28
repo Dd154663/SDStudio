@@ -8,7 +8,6 @@ import {
   globalPresetService,
   artistLibraryService,
   imageService,
-  isMobile,
   localAIService,
   projectSizeService,
   sessionService,
@@ -17,6 +16,7 @@ import {
   workFlowService,
   zipService,
 } from '.';
+import { platform, buildImageOptimizeOptions } from './platform';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { Dialog } from '../componenets/ConfirmWindow';
@@ -325,7 +325,7 @@ export class ExportPresetService {
         let done = 0;
         let failCount = 0;
         const config = await backend.getConfig();
-        const CONCURRENCY = Math.max(1, Math.min(4, config.exportConcurrency ?? (isMobile ? 2 : 4)));
+        const CONCURRENCY = Math.max(1, Math.min(4, config.exportConcurrency ?? platform.exportConcurrency));
         const results: (typeof paths[0] | null)[] = new Array(paths.length).fill(null);
 
         appState.exportProgress = {
@@ -582,14 +582,7 @@ export class ExportPresetService {
     });
     if (!format) return;
 
-    const optItems = [
-      { text: '원본', value: 'original' },
-      { text: '저손실 webp 최적화 (에셋용 권장)', value: 'lossy' },
-    ];
-    if (!isMobile) {
-      optItems.push({ text: '무손실 webp 최적화', value: 'lossless' });
-    }
-    optItems.push({ text: isMobile ? 'AVIF 최적화 (PC 권장)' : 'AVIF 최적화', value: 'avif' });
+    const optItems = buildImageOptimizeOptions();
     const opt = await appState.pushDialogAsync({
       type: 'select',
       text: '이미지 크기 최적화 방법을 선택해주세요',
@@ -664,7 +657,7 @@ export class ExportPresetService {
   private async resolveTargetFolderFor(
     preset: ExportPreset,
   ): Promise<string | null> {
-    if (isMobile) return null;
+    if (!platform.supportsTargetFolder) return null;
     const config = await backend.getConfig();
     const projectFolder = sessionService.getFolderOf(appState.curSession!.name);
     return resolveExportTargetFolder(
