@@ -544,7 +544,7 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
     <div className="flex flex-col h-full p-4 overflow-hidden">
       <div className="flex-none mb-4">
         <div className="flex items-center justify-between mb-2">
-          <div className="text-lg font-medium text-gray-800 dark:text-gray-100">
+          <div className="text-lg font-medium text-default">
             <FaUser className="inline mr-2" />
             씬 전용 캐릭터 프롬프트
           </div>
@@ -652,7 +652,7 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: sceneCharColors[index % sceneCharColors.length] }}>{index + 1}</div>
-                    <span className="font-medium text-gray-800 dark:text-gray-100">캐릭터 프롬프트</span>
+                    <span className="font-medium text-default">캐릭터 프롬프트</span>
                     <button
                       className={`round-button h-7 px-3 text-sm ${
                         character.enabled !== false ? 'back-sky' : 'back-gray'

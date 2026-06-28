@@ -166,7 +166,7 @@ const ProjectCard = ({
           <FaStar className={isFav ? 'text-yellow-400' : 'text-gray-300 dark:text-slate-600'} size={15} />
         </button>
         </Tooltip>
-        <span className="text-[15px] text-gray-800 dark:text-gray-100 truncate flex-1">{name}</span>
+        <span className="text-[15px] text-default truncate flex-1">{name}</span>
         <Tooltip content="폴더로 이동">
         <button
           className="flex-none text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-0.5"
@@ -262,7 +262,7 @@ const NavItem = ({
             }
           }}
           onClick={(e) => e.stopPropagation()}
-          className="w-24 md:w-auto md:flex-1 min-w-0 bg-transparent outline-none text-gray-900 dark:text-gray-100 text-sm"
+          className="w-24 md:w-auto md:flex-1 min-w-0 bg-transparent outline-none text-default text-sm"
         />
         <Tooltip content="저장">
         <span
@@ -328,7 +328,7 @@ const NavItem = ({
             e.stopPropagation();
             onMenu();
           }}
-          className={`ml-1 flex-none px-1.5 py-0.5 ${active ? 'text-white' : 'text-gray-500 dark:text-gray-300'}`}
+          className={`ml-1 flex-none px-1.5 py-0.5 ${active ? 'text-white' : 'text-muted'}`}
         >
           <FaEllipsisV size={15} />
         </span>
@@ -1127,7 +1127,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
             })()}
             <button
               onClick={handleNewFolder}
-              className="flex items-center justify-center md:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none md:w-full border border-dashed border-gray-300 dark:border-slate-500 text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"
+              className="flex items-center justify-center md:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none md:w-full border border-dashed border-gray-300 dark:border-slate-500 text-muted hover:bg-gray-100 dark:hover:bg-slate-700"
             >
               <FaPlus size={11} />
               <span>새 폴더</span>
@@ -1145,7 +1145,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
               placeholder="프로젝트 검색..."
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
             />
           </div>
 
@@ -1178,7 +1178,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                 </span>
                 <button
                   onClick={() => setSelected(new Set(filtered))}
-                  className="px-2 py-1.5 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"
+                  className="px-2 py-1.5 rounded-lg text-sm text-muted hover:bg-gray-100 dark:hover:bg-slate-700"
                 >
                   전체 선택
                 </button>

@@ -686,7 +686,7 @@ export const App = observer(() => {
         {/* 내보내기 진행 플로팅 위젯 (비차단형) */}
         {appState.exportProgress && (
           <div className="fixed bottom-16 right-4 z-[1000] bg-[var(--c-surface-2)] rounded-lg shadow-xl border border-gray-200 dark:border-slate-600 p-3 min-w-[220px]">
-            <div className="text-sm font-medium text-gray-800 dark:text-gray-100 mb-1.5">
+            <div className="text-sm font-medium text-default mb-1.5">
               💾 {appState.exportProgress.text}
             </div>
             <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
@@ -727,7 +727,7 @@ export const App = observer(() => {
               <svg className="w-12 h-12 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v12m0 0l-4-4m4 4l4-4M4 18h16" />
               </svg>
-              <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+              <p className="text-lg font-semibold text-default">
                 여기에 드랍하세요
               </p>
               <p className="text-sm text-muted">

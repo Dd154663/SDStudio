@@ -183,7 +183,7 @@ export const DownloadDialog = observer(
           <div className="p-4 max-h-96 overflow-y-auto">
             {/* 저장 경로 */}
             <div className="mb-4">
-              <label className="text-sm text-gray-600 dark:text-gray-400 mb-1 block">
+              <label className="text-sm text-muted mb-1 block">
                 저장 경로:
               </label>
               <div className="flex gap-2">
@@ -207,7 +207,7 @@ export const DownloadDialog = observer(
             {/* 파일명 (단일 이미지인 경우) */}
             {isSingleImage && (
               <div className="mb-4">
-                <label className="text-sm text-gray-600 dark:text-gray-400 mb-1 block">
+                <label className="text-sm text-muted mb-1 block">
                   파일명 (비워두면 자동 생성):
                 </label>
                 <input
@@ -225,7 +225,7 @@ export const DownloadDialog = observer(
             <div className="mb-4 p-3 bg-gray-100 dark:bg-slate-700 rounded">
               <div className="flex items-center gap-2 mb-2">
                 <FaEye className="text-gray-500" />
-                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                <span className="text-sm font-medium text-muted">
                   파일명 미리보기:
                 </span>
               </div>
@@ -256,7 +256,7 @@ export const DownloadDialog = observer(
             {!isSingleImage && (
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                  <span className="text-sm text-muted">
                     다운로드할 이미지 선택 ({selectedImages.size}/
                     {imagePaths.length}):
                   </span>
@@ -277,7 +277,7 @@ export const DownloadDialog = observer(
                       className={`w-8 h-8 rounded flex items-center justify-center text-sm ${
                         selectedImages.has(i)
                           ? 'bg-sky-500 text-white'
-                          : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-300'
+                          : 'bg-gray-200 dark:bg-slate-600 text-muted'
                       }`}
                       onClick={() => toggleImageSelection(i)}
                       disabled={isDownloading}
@@ -292,7 +292,7 @@ export const DownloadDialog = observer(
             {/* 설정 토글 */}
             <div className="mb-4">
               <button
-                className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                className="flex items-center gap-2 text-sm text-muted hover:text-gray-800 dark:hover:text-gray-200"
                 onClick={() => setShowSettings(!showSettings)}
               >
                 <FaCog />
@@ -358,7 +358,7 @@ export const DownloadDialog = observer(
 
                   {/* 기본 접두사 */}
                   <div>
-                    <label className="text-sm text-gray-600 dark:text-gray-400 mb-1 block">
+                    <label className="text-sm text-muted mb-1 block">
                       기본 접두사:
                     </label>
                     <input
@@ -378,7 +378,7 @@ export const DownloadDialog = observer(
 
                   {/* 기본 접미사 */}
                   <div>
-                    <label className="text-sm text-gray-600 dark:text-gray-400 mb-1 block">
+                    <label className="text-sm text-muted mb-1 block">
                       기본 접미사:
                     </label>
                     <input
@@ -403,10 +403,10 @@ export const DownloadDialog = observer(
             {isDownloading && imageDownloadService.isDownloading && (
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                  <span className="text-sm text-muted">
                     다운로드 중...
                   </span>
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                  <span className="text-sm text-muted">
                     {Math.round(imageDownloadService.downloadProgress)}%
                   </span>
                 </div>

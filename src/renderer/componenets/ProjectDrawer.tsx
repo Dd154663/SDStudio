@@ -108,7 +108,7 @@ const ProjectRow = observer(
             value={editValue}
             onChange={(e) => onEditChange?.(e.target.value)}
             onKeyDown={onEditKeyDown}
-            className="flex-1 min-w-0 bg-white dark:bg-slate-700 border border-sky-400 rounded px-2 py-1.5 text-[15px] text-gray-900 dark:text-gray-100 outline-none"
+            className="flex-1 min-w-0 bg-white dark:bg-slate-700 border border-sky-400 rounded px-2 py-1.5 text-[15px] text-default outline-none"
           />
           <Tooltip content="저장">
             <button
@@ -148,7 +148,7 @@ const ProjectRow = observer(
         className={`w-full flex items-center gap-2 px-2.5 py-2.5 rounded-md text-[15px] text-left transition-colors ${
           highlighted
             ? 'bg-sky-500 text-white shadow-sm'
-            : 'hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-800 dark:text-gray-100'
+            : 'hover:bg-gray-100 dark:hover:bg-slate-700 text-default'
         }`}
       >
         {selectMode ? (
@@ -1118,7 +1118,7 @@ const ProjectDrawer = observer(() => {
       >
         {/* 헤더 */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-slate-600 flex-none">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+          <h2 className="text-lg font-semibold text-default">
             프로젝트
           </h2>
           <div className="flex items-center gap-2">
@@ -1151,7 +1151,7 @@ const ProjectDrawer = observer(() => {
               placeholder="프로젝트 검색..."
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
             />
           </div>
         </div>
@@ -1164,7 +1164,7 @@ const ProjectDrawer = observer(() => {
             </span>
             <button
               onClick={selectAllVisible}
-              className="px-2 py-1.5 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"
+              className="px-2 py-1.5 rounded-lg text-sm text-muted hover:bg-gray-100 dark:hover:bg-slate-700"
             >
               전체 선택
             </button>
@@ -1387,7 +1387,7 @@ const ProjectDrawer = observer(() => {
                                 cancelRename();
                               }
                             }}
-                            className="flex-1 min-w-0 bg-white dark:bg-slate-700 border border-sky-400 rounded px-2 py-1.5 text-[15px] text-gray-900 dark:text-gray-100 outline-none"
+                            className="flex-1 min-w-0 bg-white dark:bg-slate-700 border border-sky-400 rounded px-2 py-1.5 text-[15px] text-default outline-none"
                           />
                           <Tooltip content="저장">
                             <button
@@ -1455,7 +1455,7 @@ const ProjectDrawer = observer(() => {
                             <Tooltip content="폴더 메뉴">
                               <button
                                 onClick={() => openFolderMenu(f)}
-                                className="p-2 rounded-md flex-none text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                                className="p-2 rounded-md flex-none text-muted hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                               >
                                 <FaEllipsisV size={16} />
                               </button>

@@ -132,7 +132,7 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
   return (
     <span className="text-xs break-all">
       <span className="text-muted">{before}</span>
-      <span className="bg-yellow-200 dark:bg-yellow-700 text-gray-900 dark:text-gray-100 font-semibold rounded px-0.5">{match}</span>
+      <span className="bg-yellow-200 dark:bg-yellow-700 text-default font-semibold rounded px-0.5">{match}</span>
       <span className="text-muted">{after}</span>
     </span>
   );
@@ -246,7 +246,7 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
         </div>
         <input type="text" placeholder="씬 이름 검색..." value={sceneFilter}
           onChange={(e) => setSceneFilter(e.target.value)}
-          className="w-full mb-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
+          className="w-full mb-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
         <div className="max-h-36 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-2 space-y-1">
           {filteredSceneList.map((name) => (
             <label key={name} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 rounded px-1 py-0.5">
@@ -267,7 +267,7 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
           <input ref={searchInputRef} type="text" placeholder="검색어 입력..." value={searchText}
             onChange={(e) => { setSearchText(e.target.value); setSearched(false); setReplaceComplete(null); }}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } }}
-            className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
         </div>
         <button onClick={doSearch} disabled={!searchText.trim()}
           className="px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 text-white text-sm font-medium transition-colors flex-none">검색</button>
@@ -301,7 +301,7 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
               <input type="text" placeholder="변환할 텍스트 (빈칸 = 삭제)" value={replaceText}
                 onChange={(e) => { setReplaceText(e.target.value); setReplaceComplete(null); }}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doReplaceAll(); } }}
-                className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
+                className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
             </div>
             <button onClick={doReplaceAll}
               className="px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium transition-colors flex-none">모두 변환</button>
@@ -507,7 +507,7 @@ const InsertTab = () => {
             onChange={(e) => handleInsertInput(e.target.value)}
             onKeyDown={handleInsertKeyDown}
             onBlur={() => setTimeout(closeAc, 150)}
-            className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
           {acTags.length > 0 && (
             <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-slate-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg overflow-hidden">
               {acTags.map((tag, i) => (
@@ -553,7 +553,7 @@ const InsertTab = () => {
               setSlotTarget(v === 'all' ? 'all' : v === 'new-column' ? 'new-column' : Number(v));
               setInsertComplete(null);
             }}
-            className="text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 px-2 py-1"
+            className="text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default px-2 py-1"
           >
             <option value="all">모든 슬롯</option>
             {Array.from({ length: maxSlotRow }, (_, i) => (
@@ -575,7 +575,7 @@ const InsertTab = () => {
         </div>
         <input type="text" placeholder="씬 이름 검색..." value={sceneFilter}
           onChange={(e) => setSceneFilter(e.target.value)}
-          className="w-full mb-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
+          className="w-full mb-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
         <div className="max-h-36 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-2 space-y-1">
           {filteredSceneList.map((name) => (
             <label key={name} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 rounded px-1 py-0.5">

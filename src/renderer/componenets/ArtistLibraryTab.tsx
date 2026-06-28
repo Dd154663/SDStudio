@@ -143,7 +143,7 @@ const PromptView = observer(({ path }: { path: string }) => {
               <FaCopy className="inline mr-1" size={10} />복사
             </button>
           </div>
-          <div className="text-xs p-2 rounded bg-gray-100 dark:bg-slate-700 text-gray-800 dark:text-gray-100 break-words max-h-32 overflow-auto">{prompt}</div>
+          <div className="text-xs p-2 rounded bg-gray-100 dark:bg-slate-700 text-default break-words max-h-32 overflow-auto">{prompt}</div>
         </div>
       )}
       {uc && (
@@ -154,7 +154,7 @@ const PromptView = observer(({ path }: { path: string }) => {
               <FaCopy className="inline mr-1" size={10} />복사
             </button>
           </div>
-          <div className="text-xs p-2 rounded bg-gray-100 dark:bg-slate-700 text-gray-800 dark:text-gray-100 break-words max-h-24 overflow-auto">{uc}</div>
+          <div className="text-xs p-2 rounded bg-gray-100 dark:bg-slate-700 text-default break-words max-h-24 overflow-auto">{uc}</div>
         </div>
       )}
     </div>
@@ -188,7 +188,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
         <div className="flex flex-col gap-3">
           {/* 작가 태그 + 즐겨찾기 */}
           <div className="flex items-center gap-2">
-            <span className="flex-1 text-sm font-mono px-2 py-1.5 rounded bg-gray-100 dark:bg-slate-700 text-gray-800 dark:text-gray-100 truncate">artist:{artist.name}</span>
+            <span className="flex-1 text-sm font-mono px-2 py-1.5 rounded bg-gray-100 dark:bg-slate-700 text-default truncate">artist:{artist.name}</span>
             <button className="back-sky !rounded-md px-3 py-1.5 text-sm" onClick={() => copyText('artist:' + artist.name, '작가 태그를 복사했습니다')}>
               <FaCopy className="inline mr-1" size={12} />복사
             </button>
@@ -305,7 +305,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                   const has = artist.tags.includes(t);
                   return (
                     <button key={t} disabled={has}
-                      className={'text-xs px-2.5 py-1 rounded-full border ' + (has ? 'border-gray-200 dark:border-slate-700 text-gray-300 dark:text-gray-600' : 'border-gray-300 dark:border-slate-500 text-gray-600 dark:text-gray-300 hover:border-sky-500 hover:text-sky-500')}
+                      className={'text-xs px-2.5 py-1 rounded-full border ' + (has ? 'border-gray-200 dark:border-slate-700 text-gray-300 dark:text-gray-600' : 'border-gray-300 dark:border-slate-500 text-muted hover:border-sky-500 hover:text-sky-500')}
                       onClick={() => artistLibraryService.addTag(artist.id, t)}>
                       + {t}
                     </button>
@@ -363,11 +363,11 @@ const ArtistCard = observer(({
       {/* 이름 + 큰 액션 버튼 */}
       <div className="p-2.5">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate cursor-pointer" onClick={handleClick}>{artist.name}</span>
+          <span className="text-sm font-medium text-default truncate cursor-pointer" onClick={handleClick}>{artist.name}</span>
           <div className="flex gap-1.5 flex-none">
             <Tooltip content="작가 태그 복사">
               <button
-                className="p-2 rounded-lg text-gray-500 dark:text-gray-300 hover:bg-sky-100 dark:hover:bg-sky-900/40 hover:text-sky-500 transition-colors"
+                className="p-2 rounded-lg text-muted hover:bg-sky-100 dark:hover:bg-sky-900/40 hover:text-sky-500 transition-colors"
                 onClick={(e) => { e.stopPropagation(); copyText('artist:' + artist.name, '작가 태그를 복사했습니다'); }}
               >
                 <FaCopy size={18} />
@@ -375,7 +375,7 @@ const ArtistCard = observer(({
             </Tooltip>
             <Tooltip content="Danbooru에서 검색">
               <button
-                className="p-2 rounded-lg text-gray-500 dark:text-gray-300 hover:bg-sky-100 dark:hover:bg-sky-900/40 hover:text-sky-500 transition-colors"
+                className="p-2 rounded-lg text-muted hover:bg-sky-100 dark:hover:bg-sky-900/40 hover:text-sky-500 transition-colors"
                 onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('danbooru-search-request', { detail: { text: artist.name } })); }}
               >
                 <FaGlobe size={18} />
@@ -383,7 +383,7 @@ const ArtistCard = observer(({
             </Tooltip>
             <Tooltip content="즐겨찾기">
               <button
-                className="p-2 rounded-lg text-gray-500 dark:text-gray-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                className="p-2 rounded-lg text-muted hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
                 onClick={(e) => { e.stopPropagation(); artistLibraryService.toggleFavorite(artist.id); }}
               >
                 {artist.favorite ? <FaHeart size={18} className="text-red-500" /> : <FaRegHeart size={18} className="hover:text-red-500" />}
@@ -394,7 +394,7 @@ const ArtistCard = observer(({
         {artist.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
             {artist.tags.slice(0, 4).map((t) => (
-              <span key={t} className="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300">{t}</span>
+              <span key={t} className="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-700 text-muted">{t}</span>
             ))}
             {artist.tags.length > 4 && <span className="text-[11px] text-gray-400">+{artist.tags.length - 4}</span>}
           </div>
@@ -475,7 +475,7 @@ const ArtistLibraryTab = observer(() => {
       <div className="flex-none p-3 border-b border-gray-200 dark:border-slate-600 flex flex-wrap gap-2 items-center bg-gray-50 dark:bg-slate-800">
         <div className="relative flex-1 min-w-[180px]">
           <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
-          <input className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sky-400"
+          <input className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-sm text-default focus:outline-none focus:ring-2 focus:ring-sky-400"
             placeholder="작가 이름 · 태그로 검색…" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         <select className="gray-input text-sm" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)}>

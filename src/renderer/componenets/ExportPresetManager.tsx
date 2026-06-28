@@ -294,10 +294,10 @@ const ExportPresetManager = observer(() => {
                       if (e.key === 'Enter') commitRename();
                       else if (e.key === 'Escape') cancelRename();
                     }}
-                    className="flex-1 min-w-0 px-2 py-1 rounded border border-sky-400 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                    className="flex-1 min-w-0 px-2 py-1 rounded border border-sky-400 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                   />
                 ) : (
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate flex items-center gap-1">
+                  <div className="text-sm font-medium text-default truncate flex items-center gap-1">
                     {p.isDefault && <span title="빠른 export 기본 프리셋">⚡</span>}
                     {p.name}
                   </div>
@@ -343,19 +343,19 @@ const ExportPresetManager = observer(() => {
 
           {/* 프리셋 이름 */}
           <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-24">이름 *</label>
+            <label className="text-sm text-muted flex-none w-24">이름 *</label>
             <input
               type="text"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="프리셋 이름"
-              className="flex-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="flex-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
             />
           </div>
 
           {/* 이미지 범위 */}
           <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-24">이미지 범위 *</label>
+            <label className="text-sm text-muted flex-none w-24">이미지 범위 *</label>
             <div className="flex-1 min-w-0">
               <DropdownSelect
                 selectedOption={form.menu}
@@ -367,7 +367,7 @@ const ExportPresetManager = observer(() => {
 
           {/* 파일명 형식 */}
           <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-24">파일명 형식 *</label>
+            <label className="text-sm text-muted flex-none w-24">파일명 형식 *</label>
             <div className="flex-1 min-w-0">
               <DropdownSelect
                 selectedOption={form.format}
@@ -379,7 +379,7 @@ const ExportPresetManager = observer(() => {
 
           {/* 파일명 패턴 (프로젝트/폴더 접두) */}
           <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-24">파일명 패턴</label>
+            <label className="text-sm text-muted flex-none w-24">파일명 패턴</label>
             <div className="flex-1 min-w-0">
               <DropdownSelect
                 selectedOption={form.filenamePattern}
@@ -391,7 +391,7 @@ const ExportPresetManager = observer(() => {
 
           {/* 출력 형태 (tar / 개별 파일) */}
           <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-24">출력 형태</label>
+            <label className="text-sm text-muted flex-none w-24">출력 형태</label>
             <div className="flex-1 min-w-0">
               <DropdownSelect
                 selectedOption={form.outputMode}
@@ -404,13 +404,13 @@ const ExportPresetManager = observer(() => {
           {/* 캐릭터 이름 (format=prefix 시) */}
           {form.format === 'prefix' && (
             <div className="flex items-center gap-3">
-              <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-24">캐릭터 이름 *</label>
+              <label className="text-sm text-muted flex-none w-24">캐릭터 이름 *</label>
               <input
                 type="text"
                 value={form.prefix}
                 onChange={(e) => setForm({ ...form, prefix: e.target.value })}
                 placeholder="캐릭터 이름"
-                className="flex-1 min-w-0 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="flex-1 min-w-0 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
               />
             </div>
           )}
@@ -430,7 +430,7 @@ const ExportPresetManager = observer(() => {
 
           {/* 최적화 방법 */}
           <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-24">최적화 *</label>
+            <label className="text-sm text-muted flex-none w-24">최적화 *</label>
             <div className="flex-1 min-w-0">
               <DropdownSelect
                 selectedOption={form.opt}
@@ -443,13 +443,13 @@ const ExportPresetManager = observer(() => {
           {/* 이미지 크기 (opt≠original 시) */}
           {form.opt !== undefined && form.opt !== 'original' && (
             <div className="flex items-center gap-3">
-              <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-24">이미지 크기 *</label>
+              <label className="text-sm text-muted flex-none w-24">이미지 크기 *</label>
               <input
                 type="number"
                 value={form.imageSize}
                 onChange={(e) => setForm({ ...form, imageSize: parseInt(e.target.value) || 0 })}
                 placeholder="1024"
-                className="flex-1 min-w-0 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="flex-1 min-w-0 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
               />
               <span className="text-xs text-gray-400">px</span>
             </div>
@@ -457,13 +457,13 @@ const ExportPresetManager = observer(() => {
 
           {/* 구분자 — 텍스트 입력, 빈 칸 허용 */}
           <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-600 dark:text-gray-400 flex-none w-24">파일명 구분자</label>
+            <label className="text-sm text-muted flex-none w-24">파일명 구분자</label>
             <input
               type="text"
               value={form.separator}
               onChange={(e) => setForm({ ...form, separator: e.target.value })}
               placeholder="비워두면 구분자 없음"
-              className="flex-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="flex-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
             />
           </div>
 

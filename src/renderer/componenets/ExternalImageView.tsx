@@ -269,7 +269,7 @@ export const ExternalImageView = observer(
             disabled={disabled}
             className="w-4 h-4 accent-sky-500 flex-none"
           />
-          <span className="font-semibold text-sm text-gray-800 dark:text-gray-100 flex-1">{label}</span>
+          <span className="font-semibold text-sm text-default flex-1">{label}</span>
           {right}
         </div>
         {checked && !disabled && children && (
@@ -295,7 +295,7 @@ export const ExternalImageView = observer(
           {/* 헤더 */}
           <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-slate-600 flex-none">
             <div>
-              <h1 className="text-base font-semibold text-gray-800 dark:text-gray-100">메타데이터 불러오기</h1>
+              <h1 className="text-base font-semibold text-default">메타데이터 불러오기</h1>
               <p className="text-xs text-muted mt-0.5">
                 이미지에서 생성 설정을 추출하여 프리셋에 적용합니다.
               </p>
@@ -396,7 +396,7 @@ export const ExternalImageView = observer(
                         <div className="text-muted text-xs mb-1">
                           Pos: ({cp.position?.[0]?.toFixed(2) ?? '-'}, {cp.position?.[1]?.toFixed(2) ?? '-'})
                         </div>
-                        <div className="text-gray-800 dark:text-gray-200 break-words">{cp.prompt}</div>
+                        <div className="text-body break-words">{cp.prompt}</div>
                         {cp.uc && (
                           <div className="text-muted mt-1 break-words text-xs">UC: {cp.uc}</div>
                         )}
@@ -439,7 +439,7 @@ export const ExternalImageView = observer(
                         ))}
                       </div>
                     ) : hasVibes ? (
-                      <div className="text-sm text-gray-600 dark:text-gray-300">
+                      <div className="text-sm text-muted">
                         <p className="text-xs text-muted mb-2">
                           원본 이미지는 없지만, 인코딩된 바이브 데이터를 복원합니다.
                         </p>
@@ -448,7 +448,7 @@ export const ExternalImageView = observer(
                             <div className="w-10 h-10 rounded bg-gray-300 dark:bg-slate-600 flex items-center justify-center text-xs text-muted flex-none">
                               데이터
                             </div>
-                            <div className="text-xs text-gray-600 dark:text-gray-300">
+                            <div className="text-xs text-muted">
                               <div>강도 (RS): {v.strength?.toFixed(2)}</div>
                               <div>정보 (IS): {v.info?.toFixed(2)}</div>
                             </div>
@@ -462,7 +462,7 @@ export const ExternalImageView = observer(
                   {hasCharRefs && (
                     <div className="mb-2.5 rounded-lg border border-gray-200 dark:border-slate-600 p-3">
                       <div className="flex items-center gap-2.5">
-                        <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">
+                        <span className="font-semibold text-sm text-default">
                           캐릭터 레퍼런스 ({job.characterReferences.length}개)
                         </span>
                       </div>
@@ -497,15 +497,15 @@ export const ExternalImageView = observer(
                     onChange={(v) => setOpt('settings', v)}
                   >
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-                      <div><span className="text-muted">Steps:</span> <span className="text-gray-800 dark:text-gray-200">{job.steps}</span></div>
-                      <div><span className="text-muted">CFG:</span> <span className="text-gray-800 dark:text-gray-200">{job.promptGuidance}</span></div>
-                      <div><span className="text-muted">Rescale:</span> <span className="text-gray-800 dark:text-gray-200">{job.cfgRescale}</span></div>
-                      <div><span className="text-muted">Sampler:</span> <span className="text-gray-800 dark:text-gray-200">{job.sampling}</span></div>
-                      <div><span className="text-muted">Noise:</span> <span className="text-gray-800 dark:text-gray-200">{job.noiseSchedule}</span></div>
-                      <div><span className="text-muted">Variety+:</span> <span className="text-gray-800 dark:text-gray-200">{job.varietyPlus ? 'ON' : 'OFF'}</span></div>
-                      <div><span className="text-muted">Euler A Bug:</span> <span className="text-gray-800 dark:text-gray-200">{job.deliberateEulerAncestralBug ? 'ON' : 'OFF'}</span></div>
-                      <div><span className="text-muted">Coords:</span> <span className="text-gray-800 dark:text-gray-200">{job.useCoords ? 'ON' : 'OFF'}</span></div>
-                      <div><span className="text-muted">Legacy UC:</span> <span className="text-gray-800 dark:text-gray-200">{job.legacyPromptConditioning ? 'ON' : 'OFF'}</span></div>
+                      <div><span className="text-muted">Steps:</span> <span className="text-body">{job.steps}</span></div>
+                      <div><span className="text-muted">CFG:</span> <span className="text-body">{job.promptGuidance}</span></div>
+                      <div><span className="text-muted">Rescale:</span> <span className="text-body">{job.cfgRescale}</span></div>
+                      <div><span className="text-muted">Sampler:</span> <span className="text-body">{job.sampling}</span></div>
+                      <div><span className="text-muted">Noise:</span> <span className="text-body">{job.noiseSchedule}</span></div>
+                      <div><span className="text-muted">Variety+:</span> <span className="text-body">{job.varietyPlus ? 'ON' : 'OFF'}</span></div>
+                      <div><span className="text-muted">Euler A Bug:</span> <span className="text-body">{job.deliberateEulerAncestralBug ? 'ON' : 'OFF'}</span></div>
+                      <div><span className="text-muted">Coords:</span> <span className="text-body">{job.useCoords ? 'ON' : 'OFF'}</span></div>
+                      <div><span className="text-muted">Legacy UC:</span> <span className="text-body">{job.legacyPromptConditioning ? 'ON' : 'OFF'}</span></div>
                     </div>
                   </CheckboxRow>
 

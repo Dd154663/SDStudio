@@ -343,7 +343,7 @@ const SessionSelect = observer(() => {
             </span>
             <Tooltip content="프로젝트 목록 열기 (폴더 드로어)">
               <button
-                className="flex-1 min-w-0 flex items-center gap-2 px-3 py-1.5 rounded-lg border border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-900/40 text-gray-800 dark:text-gray-100 hover:bg-sky-100 dark:hover:bg-sky-900/70 transition-colors"
+                className="flex-1 min-w-0 flex items-center gap-2 px-3 py-1.5 rounded-lg border border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-900/40 text-default hover:bg-sky-100 dark:hover:bg-sky-900/70 transition-colors"
                 onClick={() => {
                   appState.projectDrawerOpen = true;
                 }}

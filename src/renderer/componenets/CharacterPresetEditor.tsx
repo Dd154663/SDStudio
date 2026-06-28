@@ -679,7 +679,7 @@ const CharacterPresetInnerEditor = observer(({
       <div className="mb-4">
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">프리셋 이름 *</label>
         <input
-          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -783,7 +783,7 @@ const CharacterPresetInnerEditor = observer(({
           <div className="text-sm font-medium text-amber-600 dark:text-amber-400 mb-1">
             Legacy: 배경 프롬프트
           </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 p-2 rounded font-mono whitespace-pre-wrap break-all">
+          <div className="text-sm text-muted bg-gray-100 dark:bg-slate-700 p-2 rounded font-mono whitespace-pre-wrap break-all">
             {backgroundPrompt}
           </div>
           <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
@@ -899,7 +899,7 @@ const CharacterPresetInnerEditor = observer(({
                   className={`text-sm px-3 py-1 rounded flex items-center gap-1 transition-colors ${
                     ref.enabled !== false
                       ? 'bg-sky-500 text-white'
-                      : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-300'
+                      : 'bg-gray-200 dark:bg-slate-600 text-muted'
                   }`}
                   onClick={() => updateRefField(index, 'enabled', ref.enabled === false)}
                 >
@@ -976,20 +976,20 @@ const CharacterPresetInnerEditor = observer(({
         {showFilenameOptions && (
           <div className="mt-3 space-y-3">
             <div>
-              <label className="text-sm text-gray-600 dark:text-gray-400 mb-1 block">파일명 접두사:</label>
+              <label className="text-sm text-muted mb-1 block">파일명 접두사:</label>
               <input
                 type="text"
-                className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                 value={filenamePrefix}
                 onChange={(e) => setFilenamePrefix(e.target.value)}
                 placeholder="예: 캐릭터이름"
               />
             </div>
             <div>
-              <label className="text-sm text-gray-600 dark:text-gray-400 mb-1 block">파일명 접미사:</label>
+              <label className="text-sm text-muted mb-1 block">파일명 접미사:</label>
               <input
                 type="text"
-                className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                 value={filenameSuffix}
                 onChange={(e) => setFilenameSuffix(e.target.value)}
                 placeholder="예: 표정"
@@ -1757,7 +1757,7 @@ export const CharacterPresetEditor = observer(({
                   placeholder="씬 이름 검색..."
                   value={sceneFilter}
                   onChange={(e) => setSceneFilter(e.target.value)}
-                  className="w-full mb-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                  className="w-full mb-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                 />
                 <div className="max-h-36 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-2 space-y-1">
                   {filteredScenes.map((scene) => (
@@ -1793,21 +1793,21 @@ export const CharacterPresetEditor = observer(({
               </label>
               {/* 생성 수 + 시작 버튼 */}
               <div className="flex items-center gap-3 flex-wrap">
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  프리셋: <span className="font-medium text-gray-800 dark:text-gray-200">{selectedCyclingCount}개</span>
+                <div className="text-sm text-muted">
+                  프리셋: <span className="font-medium text-body">{selectedCyclingCount}개</span>
                 </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  씬: <span className="font-medium text-gray-800 dark:text-gray-200">{selectedScenes.size}개</span>
+                <div className="text-sm text-muted">
+                  씬: <span className="font-medium text-body">{selectedScenes.size}개</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">생성 수:</span>
+                  <span className="text-sm text-muted">생성 수:</span>
                   <input
                     type="number"
                     min={1}
                     max={100}
                     value={cyclingSamples}
                     onChange={(e) => setCyclingSamples(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-16 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                    className="w-16 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                   />
                 </div>
                 <button

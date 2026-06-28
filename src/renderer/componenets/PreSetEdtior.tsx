@@ -210,7 +210,7 @@ export const EditableSliderValue = ({
     return (
       <input
         ref={inputRef}
-        className="w-14 flex-none text-sm text-center border border-sky-400 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 outline-none px-0.5 py-0.5"
+        className="w-14 flex-none text-sm text-center border border-sky-400 rounded bg-white dark:bg-slate-700 text-default outline-none px-0.5 py-0.5"
         value={inputValue}
         onChange={(e) => {
           const v = e.target.value;
@@ -1548,7 +1548,7 @@ const PreSetBulkManageModal = observer(
             placeholder="이름으로 검색..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+            className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
           />
           <div className="flex items-center justify-between">
             <button
@@ -2030,7 +2030,7 @@ const GlobalModelSettings = observer(() => {
 
   return (
     <div className="mt-4 pt-4 border-t border-gray-200 dark:border-slate-600">
-      <div className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-3">
+      <div className="text-sm font-semibold text-muted mb-3">
         모델 설정 (전역)
       </div>
       <div className="space-y-3">
@@ -2313,13 +2313,13 @@ const CharacterPromptEditor = observer(
                 프리셋 해제 시 함께 제거됩니다
               </div>
             </div>
-            <div className="text-xs text-gray-600 dark:text-gray-400 mb-0.5">캐릭터 프롬프트:</div>
+            <div className="text-xs text-muted mb-0.5">캐릭터 프롬프트:</div>
             <div className="text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-700 p-1.5 rounded font-mono whitespace-pre-wrap break-all mb-1">
               {cp.prompt || '(비어 있음)'}
             </div>
             {cp.uc && (
               <>
-                <div className="text-xs text-gray-600 dark:text-gray-400 mb-0.5">네거티브 프롬프트:</div>
+                <div className="text-xs text-muted mb-0.5">네거티브 프롬프트:</div>
                 <div className="text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-700 p-1.5 rounded font-mono whitespace-pre-wrap break-all">
                   {cp.uc}
                 </div>
