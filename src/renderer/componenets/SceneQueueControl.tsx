@@ -541,7 +541,7 @@ export const SceneCell = observer(
       return (
         <div
           id={`scene-cell-${scene.type}-${scene.name}`}
-          className={`relative z-0 m-[10.5px] p-1 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-500 ${
+          className={`relative z-0 m-[10.5px] p-1 bg-[var(--c-surface-2)] border border-gray-300 dark:border-slate-500 ${
             isDragging ? 'opacity-0 no-touch ' : ''
           }${isOver ? ' outline outline-sky-500' : ''}${
             isSelected
@@ -565,7 +565,7 @@ export const SceneCell = observer(
             </span>
           )}
           <div
-            className="-z-10 clickable bg-white dark:bg-slate-800"
+            className="-z-10 clickable bg-[var(--c-surface-2)]"
             onClick={onClickCard}
           >
             <div
@@ -621,7 +621,7 @@ export const SceneCell = observer(
     return (
       <div
         id={`scene-cell-${scene.type}-${scene.name}`}
-        className={`${disableHover ? '' : 'group '}relative z-0 m-[8.5px] p-1 rounded-lg bg-white dark:bg-slate-800 border-2 ${
+        className={`${disableHover ? '' : 'group '}relative z-0 m-[8.5px] p-1 rounded-lg bg-[var(--c-surface-2)] border-2 ${
           currentPreviewIsFavorite
             ? 'border-yellow-400 '
             : isSelected
@@ -651,7 +651,7 @@ export const SceneCell = observer(
           </span>
         )}
         <div
-          className="clickable bg-white dark:bg-slate-800"
+          className="clickable bg-[var(--c-surface-2)]"
           onClick={onClickCard}
         >
           <div
@@ -796,7 +796,7 @@ function SceneTrashView({ projectName }: SceneTrashViewProps) {
       {deletedScenes.map((item) => (
         <div
           key={item.name}
-          className="flex items-center gap-3 p-3 border border-gray-300 dark:border-slate-500 rounded bg-white dark:bg-slate-800"
+          className="flex items-center gap-3 p-3 border border-gray-300 dark:border-slate-500 rounded bg-[var(--c-surface-2)]"
         >
           <div className="flex-1 min-w-0">
             <div className="font-bold text-default truncate">

@@ -903,6 +903,12 @@ const CustomizationTab = ({
             placeholder="테스트 입력창"
             readOnly
           />
+          <div
+            className="rounded-md border line-color p-2"
+            style={{ backgroundColor: 'var(--c-surface-2)' }}
+          >
+            <span className="gray-label text-xs">패널 / 카드 샘플</span>
+          </div>
           <div className="flex flex-wrap gap-2">
             {unify ? (
               <>
@@ -931,6 +937,13 @@ const CustomizationTab = ({
           value={uiTheme.surface}
           def="#ffffff"
           onChange={(v) => patch({ surface: v })}
+          onMobilePick={onMobilePick}
+        />
+        <ColorField
+          label="패널/카드 배경"
+          value={uiTheme.surface2}
+          def="#ffffff"
+          onChange={(v) => patch({ surface2: v })}
           onMobilePick={onMobilePick}
         />
         <ColorField

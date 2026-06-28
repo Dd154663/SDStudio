@@ -26,6 +26,7 @@ export function buildThemeVars(t?: UiThemeConfig): Record<string, string> {
   if (!t) return vars;
 
   if (isHex6(t.surface)) vars['--c-surface'] = t.surface;
+  if (isHex6(t.surface2)) vars['--c-surface-2'] = t.surface2;
   if (isHex6(t.inputBg)) {
     vars['--c-input-bg'] = t.inputBg;
     vars['--c-input-text'] = readableFg(t.inputBg);
@@ -35,10 +36,12 @@ export function buildThemeVars(t?: UiThemeConfig): Record<string, string> {
   if (t.textPattern === 'light') {
     vars['--c-text'] = '#000000';
     vars['--c-text-sub'] = '#334155'; // slate-700
+    vars['--c-text-label'] = '#374151'; // gray-700
     vars['--c-icon-text'] = '#4b5563'; // gray-600
   } else if (t.textPattern === 'dark') {
     vars['--c-text'] = '#ffffff';
     vars['--c-text-sub'] = '#e2e8f0'; // slate-200
+    vars['--c-text-label'] = '#e2e8f0'; // slate-200
     vars['--c-icon-text'] = '#ffffff';
   }
 

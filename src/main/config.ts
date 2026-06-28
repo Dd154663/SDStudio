@@ -61,6 +61,7 @@ export interface Config {
 // UI 색 커스터마이징의 "의도"를 저장(파생값이 아닌 원본). 전부 옵셔널=하위호환.
 export interface UiThemeConfig {
   surface?: string; // 배경색 (#rrggbb)
+  surface2?: string; // 패널/카드 배경(루트보다 한 단계 올라온 표면)
   inputBg?: string; // 입력창 배경
   textPattern?: 'light' | 'dark'; // 텍스트/아이콘 흑백 패턴(미설정=테마 기본)
   unifyButtons?: boolean; // 버튼 색 통합(역할 3색) 모드 on/off
