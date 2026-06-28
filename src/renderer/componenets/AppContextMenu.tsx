@@ -16,6 +16,10 @@ import {
 } from '../models/types';
 import { oneTimeFlowMap, oneTimeFlows } from '../models/workflows/OneTimeFlows';
 import { extractPromptDataFromBase64 } from '../models/util';
+import {
+  addScenesToQueue,
+  removeScenesFromQueue,
+} from '../models/sceneQueueActions';
 
 export const AppContextMenu = observer(() => {
   const duplicateScene = async (ctx: SceneContextAlt) => {
@@ -186,6 +190,24 @@ export const AppContextMenu = observer(() => {
       deleteAllImagesFromSelected(false);
     } else if (id === 'delete-all-selected-images-except-fav') {
       deleteAllImagesFromSelected(true);
+    } else if (id === 'queue-add-all-or-selected') {
+      const session = appState.curSession;
+      if (session) {
+        addScenesToQueue(
+          session,
+          ctx.scene.type,
+          appState.selectedScenes.size > 0,
+        );
+      }
+    } else if (id === 'queue-remove-all-or-selected') {
+      const session = appState.curSession;
+      if (session) {
+        removeScenesFromQueue(
+          session,
+          ctx.scene.type,
+          appState.selectedScenes.size > 0,
+        );
+      }
     }
   };
   const deleteAllImagesFromSelected = async (excludeFav: boolean) => {
@@ -470,6 +492,17 @@ export const AppContextMenu = observer(() => {
   return (
     <>
       <Menu id={ContextMenuType.Scene}>
+        <Item id="queue-add-all-or-selected" onClick={handleSceneItemClick}>
+          {appState.selectedScenes.size > 0
+            ? `선택한 씬 예약 추가 (${appState.selectedScenes.size})`
+            : '모든 씬 예약 추가'}
+        </Item>
+        <Item id="queue-remove-all-or-selected" onClick={handleSceneItemClick}>
+          {appState.selectedScenes.size > 0
+            ? `선택한 씬 예약 제거 (${appState.selectedScenes.size})`
+            : '모든 씬 예약 제거'}
+        </Item>
+        <Separator />
         <Item id="duplicate" onClick={handleSceneItemClick}>
           해당 씬 복제
         </Item>

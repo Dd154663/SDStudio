@@ -59,19 +59,18 @@ import {
   dataUriToBase64,
   deleteImageFiles,
 } from '../models/ImageService';
+import { queueWorkflow } from '../models/TaskQueueService';
 import {
-  queueI2IWorkflow,
-  queueMirrorWorkflow,
-  queueWorkflow,
-} from '../models/TaskQueueService';
+  addScenesToQueue,
+  createMissingPiecesForSession,
+  queueScene,
+} from '../models/sceneQueueActions';
 import {
   GenericScene,
   ContextMenuType,
   Scene,
   InpaintScene,
   Session,
-  PieceLibrary,
-  Piece,
 } from '../models/types';
 import { extractPromptDataFromBase64 } from '../models/util';
 import { IMPORT_IMAGE_ACCEPT } from '../models/imageFormats';
@@ -82,55 +81,8 @@ import {
 } from '../models/workflows/SDWorkFlow';
 import { oneTimeFlowMap, oneTimeFlows } from '../models/workflows/OneTimeFlows';
 
-const createMissingPiecesForSession = (
-  session: Session,
-  missing: { library: string; piece: string }[],
-) => {
-  for (const m of missing) {
-    let lib = session.library.get(m.library);
-    if (!lib) {
-      lib = new PieceLibrary();
-      lib.name = m.library;
-      session.library.set(m.library, lib);
-    }
-    if (!lib.pieces.find((x) => x.name === m.piece)) {
-      const piece = new Piece();
-      piece.name = m.piece;
-      lib.pieces.push(piece);
-    }
-  }
-  sessionService.dirty[session.name] = true;
-  sessionService.reloadPieceLibraryDB(session);
-};
-
-const queueScene = async (
-  session: Session,
-  scene: GenericScene,
-  samples: number,
-) => {
-  if (scene.type === 'scene') {
-    await queueWorkflow(session, session.selectedWorkflow!, scene, samples);
-  } else {
-    const inpaintScene = scene as InpaintScene;
-    if (inpaintScene.workflowType === 'SDMirror') {
-      await queueMirrorWorkflow(
-        session,
-        inpaintScene.workflowType,
-        inpaintScene.preset,
-        inpaintScene,
-        samples,
-      );
-    } else {
-      await queueI2IWorkflow(
-        session,
-        scene.workflowType,
-        scene.preset,
-        scene,
-        samples,
-      );
-    }
-  }
-};
+// createMissingPiecesForSession / queueScene 는 models/sceneQueueActions.ts 로 이전
+// (AppContextMenu 우클릭 메뉴와 공유 — 중복 제거)
 
 function getSelectedSceneNames(session: Session): string[] {
   const names = Array.from(appState.selectedScenes);
@@ -933,52 +885,7 @@ const QueueControl = observer(
       imageService.refreshBatch(curSession!);
     }, [curSession]);
 
-    const addAllToQueue = async () => {
-      try {
-        const scenes = curSession.getScenes(type);
-        const allMissing: { library: string; piece: string }[] = [];
-        for (const scene of scenes) {
-          const missing = promptService.findMissingPieces(curSession, scene);
-          for (const m of missing) {
-            if (
-              !allMissing.find(
-                (x) => x.library === m.library && x.piece === m.piece,
-              )
-            ) {
-              allMissing.push(m);
-            }
-          }
-        }
-        const doQueue = async () => {
-          for (const scene of scenes) {
-            try {
-              await queueScene(curSession, scene, appState.samples);
-            } catch (e: any) {
-              appState.pushMessage(
-                `프롬프트 에러 (${scene.name}): ${e.message}`,
-              );
-            }
-          }
-        };
-        if (allMissing.length > 0) {
-          const list = allMissing
-            .map((m) => `<${m.library}.${m.piece}>`)
-            .join(', ');
-          appState.pushDialog({
-            type: 'confirm',
-            text: `존재하지 않는 프롬프트조각이 발견되었습니다:\n${list}\n\n로컬 프롬프트조각으로 새로 만들까요?\n(빈 조각이 생성되며, 내용은 직접 채워주세요)`,
-            callback: async () => {
-              createMissingPiecesForSession(curSession, allMissing);
-              await doQueue();
-            },
-          });
-          return;
-        }
-        await doQueue();
-      } catch (e: any) {
-        appState.pushMessage(`프롬프트 에러: ${e.message}`);
-      }
-    };
+    const addAllToQueue = () => addScenesToQueue(curSession, type, false);
 
     // 단축키에서 모든 씬 예약 이벤트 수신
     useEffect(() => {
@@ -996,56 +903,7 @@ const QueueControl = observer(
       return () => window.removeEventListener('shortcut-action', handler);
     }, [curSession, type]);
 
-    const addSelectedToQueue = async () => {
-      const selectedNames = appState.selectedScenes;
-      const scenes = curSession
-        .getScenes(type)
-        .filter((s) => selectedNames.has(s.name));
-      if (scenes.length === 0) return;
-      try {
-        const allMissing: { library: string; piece: string }[] = [];
-        for (const scene of scenes) {
-          const missing = promptService.findMissingPieces(curSession, scene);
-          for (const m of missing) {
-            if (
-              !allMissing.find(
-                (x) => x.library === m.library && x.piece === m.piece,
-              )
-            ) {
-              allMissing.push(m);
-            }
-          }
-        }
-        const doQueue = async () => {
-          for (const scene of scenes) {
-            try {
-              await queueScene(curSession, scene, appState.samples);
-            } catch (e: any) {
-              appState.pushMessage(
-                `프롬프트 에러 (${scene.name}): ${e.message}`,
-              );
-            }
-          }
-        };
-        if (allMissing.length > 0) {
-          const list = allMissing
-            .map((m) => `<${m.library}.${m.piece}>`)
-            .join(', ');
-          appState.pushDialog({
-            type: 'confirm',
-            text: `존재하지 않는 프롬프트조각이 발견되었습니다:\n${list}\n\n로컬 프롬프트조각으로 새로 만들까요?\n(빈 조각이 생성되며, 내용은 직접 채워주세요)`,
-            callback: async () => {
-              createMissingPiecesForSession(curSession, allMissing);
-              await doQueue();
-            },
-          });
-          return;
-        }
-        await doQueue();
-      } catch (e: any) {
-        appState.pushMessage(`프롬프트 에러: ${e.message}`);
-      }
-    };
+    const addSelectedToQueue = () => addScenesToQueue(curSession, type, true);
 
     // --- 씬 카드 키보드 네비게이션 ---
     const getFilteredScenes = useCallback(() => {
