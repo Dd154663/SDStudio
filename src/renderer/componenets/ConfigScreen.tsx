@@ -775,7 +775,7 @@ const KeyBindingsTab = () => {
         {groups.map((group, idx) =>
           group.items.length === 0 ? null : (
             <div key={group.title} className={idx > 0 ? 'mt-4' : ''}>
-              <div className="sticky top-0 bg-white dark:bg-slate-800 py-1.5 px-1 border-b-2 border-sky-400 dark:border-sky-500 z-10">
+              <div className="sticky top-0 bg-[var(--c-surface-2)] py-1.5 px-1 border-b-2 border-sky-400 dark:border-sky-500 z-10">
                 <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">
                   {group.title}
                 </div>
@@ -1310,7 +1310,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       onClick={onClose}
     >
       <div
-        className={'w-[90vw] max-w-xl bg-white dark:bg-slate-800 rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-slate-600 ' + (mobileMode ? 'max-h-[90vh]' : 'max-h-[85vh]')}
+        className={'w-[90vw] max-w-xl bg-[var(--c-surface-2)] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-slate-600 ' + (mobileMode ? 'max-h-[90vh]' : 'max-h-[85vh]')}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 헤더 */}

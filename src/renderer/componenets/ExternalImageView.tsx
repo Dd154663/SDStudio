@@ -289,7 +289,7 @@ export const ExternalImageView = observer(
         onClick={onClose}
       >
         <div
-          className="w-[95vw] max-w-5xl max-h-[90vh] bg-white dark:bg-slate-800 rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-slate-600"
+          className="w-[95vw] max-w-5xl max-h-[90vh] bg-[var(--c-surface-2)] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-slate-600"
           onClick={(e) => e.stopPropagation()}
         >
           {/* 헤더 */}

@@ -154,7 +154,7 @@ const ProjectCard = ({
           </div>
         )}
       </div>
-      <div className="px-2 py-2 bg-white dark:bg-slate-800 flex items-center gap-1">
+      <div className="px-2 py-2 bg-[var(--c-surface-2)] flex items-center gap-1">
         <Tooltip content={isFav ? '즐겨찾기 해제' : '즐겨찾기'}>
         <button
           className="flex-none text-sm"

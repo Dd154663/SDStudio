@@ -339,7 +339,7 @@ const ArtistCard = observer(({
   const handleClick = () => { if (multiSelectMode) onToggleSelect(); else onOpen(); };
   return (
     <div className={
-      'flex-none w-[calc(50%-8px)] md:w-60 rounded-lg overflow-hidden flex flex-col border bg-white dark:bg-slate-800 transition-colors ' +
+      'flex-none w-[calc(50%-8px)] md:w-60 rounded-lg overflow-hidden flex flex-col border bg-[var(--c-surface-2)] transition-colors ' +
       (selected
         ? 'border-sky-500 ring-2 ring-inset ring-sky-500'
         : 'border-gray-300 dark:border-slate-600 hover:border-sky-400')
@@ -355,7 +355,7 @@ const ArtistCard = observer(({
           <span className="absolute top-2 right-2 text-xs bg-black/60 text-white rounded-md px-2 py-0.5">{artist.images.length}장</span>
         )}
         {multiSelectMode && (
-          <div className="absolute top-2 left-2 bg-white dark:bg-slate-800 rounded p-1 shadow">
+          <div className="absolute top-2 left-2 bg-[var(--c-surface-2)] rounded p-1 shadow">
             {selected ? <FaCheckSquare className="text-sky-500" size={20} /> : <FaSquare className="text-gray-400" size={20} />}
           </div>
         )}
@@ -470,7 +470,7 @@ const ArtistLibraryTab = observer(() => {
   const total = artistLibraryService.artists.length;
 
   return (
-    <div className="w-full h-full flex flex-col bg-white dark:bg-slate-900 overflow-hidden">
+    <div className="w-full h-full flex flex-col bg-[var(--c-surface)] overflow-hidden">
       {/* 툴바 */}
       <div className="flex-none p-3 border-b border-gray-200 dark:border-slate-600 flex flex-wrap gap-2 items-center bg-gray-50 dark:bg-slate-800">
         <div className="relative flex-1 min-w-[180px]">

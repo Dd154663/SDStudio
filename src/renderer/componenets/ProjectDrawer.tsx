@@ -1108,7 +1108,7 @@ const ProjectDrawer = observer(() => {
         }}
       />
       <div
-        className="absolute left-0 top-0 h-full w-[90vw] max-w-[400px] bg-white dark:bg-slate-800 shadow-2xl border-r border-gray-200 dark:border-slate-600 flex flex-col"
+        className="absolute left-0 top-0 h-full w-[90vw] max-w-[400px] bg-[var(--c-surface-2)] shadow-2xl border-r border-gray-200 dark:border-slate-600 flex flex-col"
         style={{
           transform: shown ? 'translateX(0)' : 'translateX(-100%)',
           transition: 'transform 0.26s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -1653,7 +1653,7 @@ const ProjectDrawer = observer(() => {
           toolbar.type === 'folder' ? (
             <div
               id="floating-folder-toolbar"
-              className="fixed z-[9999] flex items-center gap-0.5 p-1.5 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-gray-200 dark:border-slate-600"
+              className="fixed z-[9999] flex items-center gap-0.5 p-1.5 bg-[var(--c-surface-2)] rounded-lg shadow-xl border border-gray-200 dark:border-slate-600"
               style={{ left: toolbar.x, top: toolbar.y }}
               onMouseDown={(e) => e.stopPropagation()}
             >
@@ -1740,7 +1740,7 @@ const ProjectDrawer = observer(() => {
           ) : (
             <div
               id="floating-project-toolbar"
-              className="fixed z-[9999] flex items-center gap-0.5 p-1.5 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-gray-200 dark:border-slate-600"
+              className="fixed z-[9999] flex items-center gap-0.5 p-1.5 bg-[var(--c-surface-2)] rounded-lg shadow-xl border border-gray-200 dark:border-slate-600"
               style={{ left: toolbar.x, top: toolbar.y }}
               onMouseDown={(e) => e.stopPropagation()}
             >

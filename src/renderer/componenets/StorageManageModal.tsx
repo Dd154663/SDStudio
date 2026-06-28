@@ -69,7 +69,7 @@ const StorageManageModal = observer(
       >
         <div className="space-y-3">
           {/* 컨트롤 (모달 콘텐츠 스크롤 시에도 상단 고정) */}
-          <div className="sticky -top-5 z-10 bg-white dark:bg-slate-800 pt-1 pb-2 space-y-2">
+          <div className="sticky -top-5 z-10 bg-[var(--c-surface-2)] pt-1 pb-2 space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
               {bulk ? (
                 <>

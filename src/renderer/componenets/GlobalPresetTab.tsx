@@ -161,7 +161,7 @@ const EasyCard = observer(
           )}
           {/* 멀티선택 체크박스 */}
           {multiSelectMode && (
-            <div className="absolute top-2 right-2 bg-white dark:bg-slate-800 rounded p-2 shadow-lg">
+            <div className="absolute top-2 right-2 bg-[var(--c-surface-2)] rounded p-2 shadow-lg">
               {selected ? (
                 <FaCheckSquare className="text-sky-500" size={22} />
               ) : (
@@ -328,7 +328,7 @@ const GenRow = observer(
     return (
       <div
         className={
-          'flex flex-col gap-2 p-3 border-2 rounded-lg mb-2 bg-white dark:bg-slate-800 ' +
+          'flex flex-col gap-2 p-3 border-2 rounded-lg mb-2 bg-[var(--c-surface-2)] ' +
           (selected
             ? 'border-sky-500 bg-sky-50 dark:bg-sky-900'
             : 'border-gray-300 dark:border-slate-600')
@@ -472,7 +472,7 @@ const GlobalPresetEditModal = observer(
         onClick={onClose}
       >
         <div
-          className="bg-white dark:bg-slate-800 rounded-lg p-5 max-w-2xl w-11/12 max-h-[88vh] flex flex-col shadow-2xl text-default"
+          className="bg-[var(--c-surface-2)] rounded-lg p-5 max-w-2xl w-11/12 max-h-[88vh] flex flex-col shadow-2xl text-default"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between mb-3 flex-none">
@@ -839,7 +839,7 @@ export const GlobalPresetTab = observer(() => {
   });
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden bg-white dark:bg-slate-900">
+    <div className="flex flex-col h-full w-full overflow-hidden bg-[var(--c-surface)]">
       {/* 상단 툴바 */}
       <div className="flex-none p-3 border-b border-gray-300 dark:border-slate-600 flex flex-wrap gap-3 items-center bg-gray-50 dark:bg-slate-800">
         <Tooltip content="글로벌 프리셋 이미지뿐 아니라, 프롬프트 메타데이터가 있는 PNG도 그림체 프리셋으로 가져옵니다.">
@@ -1018,7 +1018,7 @@ export const GlobalPresetPickerOverlay = observer(() => {
       onClick={() => appState.closeGlobalPresetPicker()}
     >
       <div
-        className="bg-white dark:bg-slate-800 rounded-lg p-6 max-w-5xl w-11/12 max-h-[85vh] flex flex-col shadow-2xl"
+        className="bg-[var(--c-surface-2)] rounded-lg p-6 max-w-5xl w-11/12 max-h-[85vh] flex flex-col shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">

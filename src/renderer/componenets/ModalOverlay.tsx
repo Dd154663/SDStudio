@@ -69,7 +69,7 @@ const ModalOverlay = ({
       }}
     >
       <div
-        className={`${width} w-[90vw] max-h-[85vh] bg-white dark:bg-slate-800 rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-slate-600`}
+        className={`${width} w-[90vw] max-h-[85vh] bg-[var(--c-surface-2)] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-slate-600`}
       >
         {/* 타이틀 바 */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-slate-600 flex-none">

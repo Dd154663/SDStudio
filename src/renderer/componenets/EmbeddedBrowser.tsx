@@ -67,7 +67,7 @@ const BookmarkDialog: React.FC<BookmarkDialogProps> = ({ mode, initialLabel, ini
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-lg p-4 w-80 flex flex-col gap-3 shadow-xl" onClick={e => e.stopPropagation()}>
+      <div className="bg-[var(--c-surface-2)] rounded-lg p-4 w-80 flex flex-col gap-3 shadow-xl" onClick={e => e.stopPropagation()}>
         <h3 className="font-semibold text-gray-900 dark:text-gray-100">
           {mode === 'add' ? '즐겨찾기 추가' : '즐겨찾기 편집'}
         </h3>
@@ -373,7 +373,7 @@ const DesktopBrowser: React.FC = () => {
       {/* 우클릭 컨텍스트 메뉴 */}
       {contextMenu && (
         <div
-          className="fixed z-50 bg-white dark:bg-slate-800 border dark:border-slate-600 rounded-lg shadow-xl py-1 min-w-[120px]"
+          className="fixed z-50 bg-[var(--c-surface-2)] border dark:border-slate-600 rounded-lg shadow-xl py-1 min-w-[120px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
