@@ -69,6 +69,7 @@ interface Props {
   scene: Scene;
   onClosed: () => void;
   onDeleted?: () => void;
+  initialTab?: number;
 }
 interface PromptHighlighterProps {
   text: string;
@@ -844,7 +845,7 @@ export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
   );
 });
 
-const SceneEditor = observer(({ scene, onClosed, onDeleted }: Props) => {
+const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props) => {
   const { curSession } = appState;
   const [_, rerender] = useState<{}>({});
   const [curName, setCurName] = useState('');
@@ -1128,6 +1129,7 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted }: Props) => {
         </div>
         <div className="flex-1 overflow-hidden">
           <TabComponent
+            defaultActiveTab={initialTab}
             tabs={[
               {
                 label: '프롬프트 에디터',
