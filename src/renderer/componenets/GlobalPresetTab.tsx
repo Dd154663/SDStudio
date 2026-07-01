@@ -472,7 +472,7 @@ const GlobalPresetEditModal = observer(
         onClick={onClose}
       >
         <div
-          className="bg-[var(--c-surface-2)] rounded-lg p-5 max-w-2xl w-11/12 max-h-[88vh] flex flex-col shadow-2xl text-default"
+          className="bg-[var(--c-zone)] rounded-lg p-5 max-w-2xl w-11/12 max-h-[88vh] flex flex-col shadow-2xl text-default"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between mb-3 flex-none">
@@ -1018,7 +1018,7 @@ export const GlobalPresetPickerOverlay = observer(() => {
       onClick={() => appState.closeGlobalPresetPicker()}
     >
       <div
-        className="bg-[var(--c-surface-2)] rounded-lg p-6 max-w-5xl w-11/12 max-h-[85vh] flex flex-col shadow-2xl"
+        className="bg-[var(--c-zone)] rounded-lg p-6 max-w-5xl w-11/12 max-h-[85vh] flex flex-col shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">

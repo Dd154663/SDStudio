@@ -620,7 +620,7 @@ const TaskLogSection = () => {
       {showDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
           onClick={(e) => { if (e.target === e.currentTarget) setShowDialog(false); }}>
-          <div className="bg-white dark:bg-slate-700 rounded-lg shadow-xl w-[90vw] max-w-lg max-h-[80vh] flex flex-col">
+          <div className="bg-[var(--c-zone)] rounded-lg shadow-xl w-[90vw] max-w-lg max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-slate-600">
               <span className="font-bold text-default">작업 로그</span>
               <button className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-lg px-2"
@@ -1337,7 +1337,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       onClick={onClose}
     >
       <div
-        className={'w-[90vw] max-w-xl bg-[var(--c-surface-2)] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-slate-600 ' + (mobileMode ? 'max-h-[90vh]' : 'max-h-[85vh]')}
+        className={'w-[90vw] max-w-xl bg-[var(--c-zone)] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-slate-600 ' + (mobileMode ? 'max-h-[90vh]' : 'max-h-[85vh]')}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 헤더 */}

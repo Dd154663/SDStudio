@@ -62,13 +62,13 @@ function ShortcutCheatsheet({ scope, onClose }: ShortcutCheatsheetProps) {
   return (
     <div
       ref={panelRef}
-      className="fixed right-3 top-12 z-[9999] shadow-2xl rounded-lg border border-gray-500 bg-gray-900/95 text-gray-200 text-xs min-w-[210px] select-none"
+      className="fixed right-3 top-12 z-[9999] shadow-2xl rounded-lg border line-color bg-[var(--c-zone)] text-body text-xs min-w-[210px] select-none"
     >
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-600">
-        <span className="font-bold text-sm text-white">단축키 도움말</span>
+      <div className="flex items-center justify-between px-3 py-2 border-b line-color">
+        <span className="font-bold text-sm text-default">단축키 도움말</span>
         <button
           type="button"
-          className="text-gray-400 hover:text-white transition-colors cursor-pointer"
+          className="text-muted hover:text-default transition-colors cursor-pointer"
           onClick={onClose}
         >
           <FaTimes size={12} />
@@ -80,14 +80,14 @@ function ShortcutCheatsheet({ scope, onClose }: ShortcutCheatsheetProps) {
             key={entry.desc}
             className="flex items-center justify-between gap-3"
           >
-            <span className="text-gray-400 whitespace-nowrap">
+            <span className="text-muted whitespace-nowrap">
               {entry.desc}
             </span>
             <span className="flex gap-1">
               {entry.keys.map((k) => (
                 <kbd
                   key={k}
-                  className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-100 font-mono text-[11px] border border-gray-500 leading-none"
+                  className="px-1.5 py-0.5 rounded bg-[var(--c-input-bg)] text-[var(--c-input-text)] font-mono text-[11px] border line-color leading-none"
                 >
                   {k}
                 </kbd>

@@ -82,7 +82,7 @@ const ExpiredProjectsDialog = observer(() => {
     <div
       className="fixed inset-0 flex items-center justify-center confirm-window"
     >
-      <div className="flex flex-col m-4 p-4 rounded-md shadow-xl bg-[var(--c-surface-2)] text-black w-[28rem] max-h-[80vh]">
+      <div className="flex flex-col m-4 p-4 rounded-md shadow-xl bg-[var(--c-zone)] text-black w-[28rem] max-h-[80vh]">
         <div className="text-center text-default font-bold mb-2">
           만료된 프로젝트 정리
         </div>
