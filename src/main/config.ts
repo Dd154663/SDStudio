@@ -63,6 +63,9 @@ export interface UiThemeConfig {
   surface?: string; // 배경색 (#rrggbb)
   surface2?: string; // 패널/카드 배경(루트보다 한 단계 올라온 표면)
   inputBg?: string; // 입력창 배경
+  // 구분 구역 배경: 폴더 등 "색 대비가 중요한" 영역. 미설정 시 커스텀 배경 색조를 따라가지
+  // 않고 기본 테마(명도) 고정 → 어떤 커스텀 테마에서도 텍스트·식별색 대비 유지. 수동 지정 가능.
+  zoneBg?: string;
   textPattern?: 'light' | 'dark'; // 텍스트/아이콘 흑백 패턴(미설정=테마 기본)
   unifyButtons?: boolean; // 버튼 색 통합(역할 3색) 모드 on/off
   // 통합 모드(unifyButtons=true)에서의 역할별 색

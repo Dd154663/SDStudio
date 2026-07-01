@@ -725,7 +725,7 @@ const KeyBindingsTab = () => {
         {action.label}
       </span>
       <span
-        className="text-sm font-mono bg-gray-100 dark:bg-slate-700 text-body px-2 py-0.5 rounded text-center flex-shrink-0"
+        className="text-sm font-mono bg-[var(--c-input-bg)] text-body px-2 py-0.5 rounded text-center flex-shrink-0"
         style={{ minWidth: '70px' }}
       >
         {recordingAction === action.id
@@ -909,6 +909,20 @@ const CustomizationTab = ({
           >
             <span className="gray-label text-xs">패널 / 카드 샘플</span>
           </div>
+          <div
+            className="rounded-md p-2"
+            style={{ backgroundColor: 'var(--c-zone)' }}
+          >
+            <div
+              className="rounded p-1.5"
+              style={{
+                borderLeft: '3px solid #facc15',
+                backgroundColor: '#facc1512',
+              }}
+            >
+              <span className="text-body text-xs">구분 구역(드로어) + 폴더 샘플</span>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2">
             {unify ? (
               <>
@@ -953,6 +967,19 @@ const CustomizationTab = ({
           onChange={(v) => patch({ inputBg: v })}
           onMobilePick={onMobilePick}
         />
+        <div>
+          <ColorField
+            label="구분 구역 배경 (드로어 등)"
+            value={uiTheme.zoneBg}
+            def="#eceff4"
+            onChange={(v) => patch({ zoneBg: v })}
+            onMobilePick={onMobilePick}
+          />
+          <p className="text-xs text-muted mt-1">
+            프로젝트 드로어처럼 색 강조(폴더 등)가 올라가는 바탕. 미설정 시 배경 색조를
+            따르지 않고 기본 테마로 고정돼, 폴더 색과 텍스트가 항상 잘 보입니다.
+          </p>
+        </div>
         <div>
           <label className="block text-sm gray-label mb-2">텍스트 패턴</label>
           <div className="flex flex-wrap gap-2">

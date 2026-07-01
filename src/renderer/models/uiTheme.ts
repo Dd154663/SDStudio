@@ -74,6 +74,16 @@ export function buildThemeVars(t?: UiThemeConfig): Record<string, string> {
     vars['--c-icon-text'] = mix(base, bg, 0.42 * k);
   }
 
+  // 구분 구역 배경(--c-zone): 폴더 등 색 대비가 중요한 영역. 커스텀 배경 "색조"는 따라가지
+  // 않고, 텍스트 패턴의 "명도"만 맞춰(라이트=옅은 중립/다크=짙은 중립) 어떤 커스텀 테마에서도
+  // 텍스트·식별색 대비가 깨지지 않게 고정한다. 사용자가 직접 지정하면 그 값을 우선.
+  // (미설정 + 패턴 없음 → App.css의 모드별 기본값을 그대로 사용)
+  if (isHex6(t.zoneBg)) {
+    vars['--c-zone'] = t.zoneBg;
+  } else if (t.textPattern) {
+    vars['--c-zone'] = t.textPattern === 'light' ? '#eceff4' : '#1e293b';
+  }
+
   const setBtn = (name: string, color?: string) => {
     if (!isHex6(color)) return;
     vars[`--c-${name}-bg`] = color;

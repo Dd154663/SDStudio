@@ -45,7 +45,7 @@ const FOLDER_COLORS = [
 ];
 const DEFAULT_FOLDER_COLOR = '#0ea5e9';
 
-// hex 색상에 알파를 붙여 옅은 배경을 만든다.
+// hex 색상에 알파를 붙여 옅은 배경을 만든다. (아이콘 배지/드롭 피드백 등 소형 색 강조용)
 const withAlpha = (hex: string, alpha: string) => hex + alpha;
 
 // 프로젝트 행. 모듈 레벨 컴포넌트(안정적 정체성)라 드래그 중 리렌더에도 언마운트되지 않는다.
@@ -108,7 +108,7 @@ const ProjectRow = observer(
             value={editValue}
             onChange={(e) => onEditChange?.(e.target.value)}
             onKeyDown={onEditKeyDown}
-            className="flex-1 min-w-0 bg-white dark:bg-slate-700 border border-sky-400 rounded px-2 py-1.5 text-[15px] text-default outline-none"
+            className="flex-1 min-w-0 bg-[var(--c-surface)] border border-sky-400 rounded px-2 py-1.5 text-[15px] text-default outline-none"
           />
           <Tooltip content="저장">
             <button
@@ -1108,7 +1108,7 @@ const ProjectDrawer = observer(() => {
         }}
       />
       <div
-        className="absolute left-0 top-0 h-full w-[90vw] max-w-[400px] bg-[var(--c-surface-2)] shadow-2xl border-r border-gray-200 dark:border-slate-600 flex flex-col"
+        className="absolute left-0 top-0 h-full w-[90vw] max-w-[400px] bg-[var(--c-zone)] shadow-2xl border-r border-gray-200 dark:border-slate-600 flex flex-col"
         style={{
           transform: shown ? 'translateX(0)' : 'translateX(-100%)',
           transition: 'transform 0.26s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -1125,7 +1125,7 @@ const ProjectDrawer = observer(() => {
             {!selectMode && (
               <button
                 onClick={() => setSelectMode(true)}
-                className="text-sm px-2.5 py-1 rounded-md bg-gray-100 dark:bg-slate-700 text-body hover:bg-gray-200 dark:hover:bg-slate-600"
+                className="text-sm px-2.5 py-1 rounded-md btn-neutral text-body"
               >
                 선택
               </button>
@@ -1151,7 +1151,7 @@ const ProjectDrawer = observer(() => {
               placeholder="프로젝트 검색..."
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
             />
           </div>
         </div>
@@ -1178,7 +1178,7 @@ const ProjectDrawer = observer(() => {
             </button>
             <button
               onClick={exitSelect}
-              className="px-2.5 py-1.5 rounded-lg text-sm bg-gray-100 dark:bg-slate-700 text-body hover:bg-gray-200 dark:hover:bg-slate-600"
+              className="px-2.5 py-1.5 rounded-lg text-sm btn-neutral text-body"
             >
               취소
             </button>
@@ -1194,7 +1194,7 @@ const ProjectDrawer = observer(() => {
             <Tooltip content="새 폴더 만들기">
               <button
                 onClick={() => createFolder()}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-body hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap"
               >
                 <FaFolderPlus size={14} />{' '}
                 <span className="hidden md:inline">폴더</span>
@@ -1203,7 +1203,7 @@ const ProjectDrawer = observer(() => {
             <Tooltip content="프로젝트 저장 공간 관리">
               <button
                 onClick={() => setStorageOpen(true)}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-body hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap"
               >
                 <FaHdd size={14} />{' '}
                 <span className="hidden md:inline">관리</span>
@@ -1212,7 +1212,7 @@ const ProjectDrawer = observer(() => {
             <Tooltip content="전체 백업 / 복원">
               <button
                 onClick={() => appState.fullBackupMenu()}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-700 text-body hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors whitespace-nowrap"
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap"
               >
                 <FaFileArchive size={14} />{' '}
                 <span className="hidden md:inline">백업</span>
@@ -1387,7 +1387,7 @@ const ProjectDrawer = observer(() => {
                                 cancelRename();
                               }
                             }}
-                            className="flex-1 min-w-0 bg-white dark:bg-slate-700 border border-sky-400 rounded px-2 py-1.5 text-[15px] text-default outline-none"
+                            className="flex-1 min-w-0 bg-[var(--c-surface)] border border-sky-400 rounded px-2 py-1.5 text-[15px] text-default outline-none"
                           />
                           <Tooltip content="저장">
                             <button
@@ -1464,7 +1464,7 @@ const ProjectDrawer = observer(() => {
                         </div>
                       )}
                       {picking && (
-                        <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 bg-gray-50 dark:bg-slate-700/50 rounded-md mx-1 mb-1">
+                        <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 bg-[var(--c-surface)] rounded-md mx-1 mb-1">
                           {FOLDER_COLORS.map((c) => {
                             const selected = color === c;
                             return (
@@ -1484,7 +1484,7 @@ const ProjectDrawer = observer(() => {
                           })}
                           <button
                             onClick={() => pickColor(f, null)}
-                            className="px-2 h-7 rounded-md text-xs flex-none bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500"
+                            className="px-2 h-7 rounded-md text-xs flex-none btn-neutral text-gray-600 dark:text-gray-200"
                           >
                             기본
                           </button>
