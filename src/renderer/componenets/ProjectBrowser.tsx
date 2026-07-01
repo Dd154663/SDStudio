@@ -87,7 +87,7 @@ const ProjectThumbnail = ({ name }: { name: string }) => {
 
   if (!image) {
     return (
-      <div className="w-full aspect-[3/4] bg-gray-100 dark:bg-slate-700 rounded-md" />
+      <div className="w-full aspect-[3/4] bg-[var(--c-surface)] rounded-md" />
     );
   }
   return (
@@ -246,7 +246,7 @@ const NavItem = ({
   // 인라인 편집 모드: 라벨이 입력창으로 바뀌고 저장(V)/취소 버튼 노출
   if (editing) {
     return (
-      <div className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[15px] whitespace-nowrap flex-none md:w-full bg-white dark:bg-slate-700 ring-2 ring-sky-400">
+      <div className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[15px] whitespace-nowrap flex-none md:w-full bg-[var(--c-surface)] ring-2 ring-sky-400">
         {icon}
         <input
           autoFocus
@@ -309,7 +309,7 @@ const NavItem = ({
       }${
         active
           ? 'bg-sky-500 text-white'
-          : 'bg-gray-100 dark:bg-slate-700 text-body hover:bg-gray-200 dark:hover:bg-slate-600'
+          : 'btn-neutral text-body'
       }`}
     >
       {icon}
@@ -1057,7 +1057,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                   dragging={drag?.type === 'folder' && drag.name === f}
                 />
                 {picking && (
-                  <div className="flex flex-wrap items-center gap-1.5 px-2 py-2 rounded-lg bg-gray-50 dark:bg-slate-700/50 w-[12rem] md:w-full">
+                  <div className="flex flex-wrap items-center gap-1.5 px-2 py-2 rounded-lg bg-[var(--c-surface)] w-[12rem] md:w-full">
                     {FOLDER_COLORS.map((c) => {
                       const selected = folderColor === c;
                       return (
@@ -1077,7 +1077,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                     })}
                     <button
                       onClick={() => pickColor(f, null)}
-                      className="px-2 h-6 rounded-md text-xs flex-none bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500"
+                      className="px-2 h-6 rounded-md text-xs flex-none btn-neutral text-gray-600 dark:text-gray-200"
                     >
                       기본
                     </button>
@@ -1145,7 +1145,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
               placeholder="프로젝트 검색..."
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
             />
           </div>
 
@@ -1166,7 +1166,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                 <div className="flex-1" />
                 <button
                   onClick={() => setSelectMode(true)}
-                  className="px-2.5 py-1.5 rounded-lg text-sm bg-gray-100 dark:bg-slate-700 text-body hover:bg-gray-200 dark:hover:bg-slate-600"
+                  className="px-2.5 py-1.5 rounded-lg text-sm btn-neutral text-body"
                 >
                   선택
                 </button>
@@ -1192,7 +1192,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                 </button>
                 <button
                   onClick={exitSelect}
-                  className="px-2.5 py-1.5 rounded-lg text-sm bg-gray-100 dark:bg-slate-700 text-body hover:bg-gray-200 dark:hover:bg-slate-600"
+                  className="px-2.5 py-1.5 rounded-lg text-sm btn-neutral text-body"
                 >
                   취소
                 </button>

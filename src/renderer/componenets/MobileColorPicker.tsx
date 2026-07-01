@@ -147,7 +147,7 @@ export default function MobileColorPicker({
         <div className="flex justify-end pt-0.5">
           <button
             onClick={onClose}
-            className="px-3 py-1 rounded-md text-sm bg-gray-200 dark:bg-slate-600 text-body hover:bg-gray-300 dark:hover:bg-slate-500"
+            className="px-3 py-1 rounded-md text-sm btn-neutral text-body"
           >
             닫기
           </button>

@@ -99,7 +99,7 @@ const VibeImage = ({
       )}
       {!image && (
         <div
-          className={className + ' flex items-center justify-center bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600'}
+          className={className + ' flex items-center justify-center bg-[var(--c-surface)] border border-gray-300 dark:border-gray-600'}
           onClick={onClick}
         >
           <span className="text-xs text-muted text-center px-1 select-none">
@@ -143,7 +143,7 @@ const CardImage = observer(({
 
   // 4. 플레이스홀더
   return (
-    <div className={className + ' flex flex-col items-center justify-center bg-gray-100 dark:bg-slate-700'}>
+    <div className={className + ' flex flex-col items-center justify-center bg-[var(--c-surface)]'}>
       <FaUserAlt className="text-3xl text-faint mb-1" />
       <span className="text-xs text-faint truncate max-w-full px-2">
         {preset.name}
@@ -679,7 +679,7 @@ const CharacterPresetInnerEditor = observer(({
       <div className="mb-4">
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">프리셋 이름 *</label>
         <input
-          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -697,7 +697,7 @@ const CharacterPresetInnerEditor = observer(({
               className="w-20 h-20 object-cover rounded-lg flex-none"
             />
           ) : (
-            <div className="w-20 h-20 flex items-center justify-center bg-gray-100 dark:bg-slate-700 rounded-lg flex-none border border-dashed border-gray-300 dark:border-gray-600">
+            <div className="w-20 h-20 flex items-center justify-center bg-[var(--c-surface)] rounded-lg flex-none border border-dashed border-gray-300 dark:border-gray-600">
               <FaUserAlt className="text-faint" />
             </div>
           )}
@@ -727,7 +727,7 @@ const CharacterPresetInnerEditor = observer(({
         </div>
         {/* 바이브/레퍼런스 이미지 선택기 */}
         {showRepImagePicker && selectableImages.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-2 p-2 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+          <div className="mt-2 flex flex-wrap gap-2 p-2 bg-[var(--c-surface)] rounded-lg">
             {selectableImages.map((item, i) => (
               <div
                 key={item.path + i}
@@ -783,7 +783,7 @@ const CharacterPresetInnerEditor = observer(({
           <div className="text-sm font-medium text-amber-600 dark:text-amber-400 mb-1">
             Legacy: 배경 프롬프트
           </div>
-          <div className="text-sm text-muted bg-gray-100 dark:bg-slate-700 p-2 rounded font-mono whitespace-pre-wrap break-all">
+          <div className="text-sm text-muted bg-[var(--c-surface)] p-2 rounded font-mono whitespace-pre-wrap break-all">
             {backgroundPrompt}
           </div>
           <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
@@ -884,7 +884,7 @@ const CharacterPresetInnerEditor = observer(({
             key={ref.path + index}
             className={`mt-2 p-2 flex md:flex-row flex-col gap-2 items-start rounded-lg ${
               ref.enabled !== false
-                ? 'border border-sky-500 bg-sky-50 dark:bg-sky-900/20'
+                ? 'border border-sky-500 bg-[var(--c-surface-2)]'
                 : 'border border-gray-300 dark:border-gray-600 opacity-60'
             }`}
           >
@@ -979,7 +979,7 @@ const CharacterPresetInnerEditor = observer(({
               <label className="text-sm text-muted mb-1 block">파일명 접두사:</label>
               <input
                 type="text"
-                className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                 value={filenamePrefix}
                 onChange={(e) => setFilenamePrefix(e.target.value)}
                 placeholder="예: 캐릭터이름"
@@ -989,13 +989,13 @@ const CharacterPresetInnerEditor = observer(({
               <label className="text-sm text-muted mb-1 block">파일명 접미사:</label>
               <input
                 type="text"
-                className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                 value={filenameSuffix}
                 onChange={(e) => setFilenameSuffix(e.target.value)}
                 placeholder="예: 표정"
               />
             </div>
-            <div className="text-xs text-gray-500 bg-gray-100 dark:bg-slate-700 p-2 rounded">
+            <div className="text-xs text-gray-500 bg-[var(--c-surface)] p-2 rounded">
               <div className="font-medium mb-1">파일명 미리보기:</div>
               <code className="text-sky-600 dark:text-sky-400">
                 {getFilenamePreview()}
@@ -1015,7 +1015,7 @@ const CharacterPresetInnerEditor = observer(({
           {isNew ? '프리셋 추가' : '프리셋 저장'}
         </button>
         <button
-          className="flex-1 px-4 py-2 rounded-lg bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-body text-sm transition-colors"
+          className="flex-1 px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
           onClick={onCancel}
         >
           취소
@@ -1497,7 +1497,7 @@ export const CharacterPresetEditor = observer(({
             {' '}({cyclingSessionService.completedPresets + 1}/{cyclingSessionService.totalPresets})
           </div>
           {/* 진행률 바 */}
-          <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full mb-3">
+          <div className="w-full h-2 bg-[var(--c-surface)] rounded-full mb-3">
             <div
               className="h-full bg-sky-500 rounded-full transition-all"
               style={{ width: `${(cyclingSessionService.completedPresets / cyclingSessionService.totalPresets) * 100}%` }}
@@ -1557,7 +1557,7 @@ export const CharacterPresetEditor = observer(({
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
               globalView
                 ? 'bg-purple-500 text-white'
-                : 'bg-gray-200 dark:bg-slate-600 text-body hover:bg-gray-300 dark:hover:bg-slate-500'
+                : 'btn-neutral text-body'
             }`}
             onClick={() => {
               if (cyclingMode) exitCyclingMode();
@@ -1572,7 +1572,7 @@ export const CharacterPresetEditor = observer(({
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
                 cyclingMode
                   ? (globalView ? 'bg-purple-500 text-white' : 'bg-sky-500 text-white')
-                  : 'bg-gray-200 dark:bg-slate-600 text-body hover:bg-gray-300 dark:hover:bg-slate-500'
+                  : 'btn-neutral text-body'
               }`}
               onClick={() => cyclingMode ? exitCyclingMode() : enterCyclingMode()}
             >
@@ -1585,7 +1585,7 @@ export const CharacterPresetEditor = observer(({
           {!globalView && presets.length > 0 && (
             <Tooltip content="모든 프리셋 내보내기">
               <button
-                className="px-3 py-1.5 rounded-lg text-sm bg-gray-200 dark:bg-slate-600 text-body hover:bg-gray-300 dark:hover:bg-slate-500 transition-colors flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5"
                 onClick={() => exportCharacterPresets(curSession)}
               >
                 <FaDownload size={11} />
@@ -1595,7 +1595,7 @@ export const CharacterPresetEditor = observer(({
           )}
           {!globalView && (
             <Tooltip content="프리셋 파일 불러오기">
-              <label className="px-3 py-1.5 rounded-lg text-sm bg-gray-200 dark:bg-slate-600 text-body hover:bg-gray-300 dark:hover:bg-slate-500 transition-colors flex items-center gap-1.5 cursor-pointer">
+              <label className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 cursor-pointer">
                 <FaUpload size={11} />
                 불러오기
                 <input
@@ -1757,7 +1757,7 @@ export const CharacterPresetEditor = observer(({
                   placeholder="씬 이름 검색..."
                   value={sceneFilter}
                   onChange={(e) => setSceneFilter(e.target.value)}
-                  className="w-full mb-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                  className="w-full mb-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                 />
                 <div className="max-h-36 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-2 space-y-1">
                   {filteredScenes.map((scene) => (
@@ -1807,7 +1807,7 @@ export const CharacterPresetEditor = observer(({
                     max={100}
                     value={cyclingSamples}
                     onChange={(e) => setCyclingSamples(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-16 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                    className="w-16 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                   />
                 </div>
                 <button

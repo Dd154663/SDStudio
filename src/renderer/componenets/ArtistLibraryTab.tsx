@@ -62,7 +62,7 @@ const ArtistImage = observer(
       return <img className={(className || '') + ' object-cover'} src={image} draggable={false} onClick={onClick} />;
     }
     return (
-      <div className={(className || '') + ' flex items-center justify-center bg-gray-200 dark:bg-slate-700'} onClick={onClick}>
+      <div className={(className || '') + ' flex items-center justify-center bg-[var(--c-surface)]'} onClick={onClick}>
         <FaImage className="text-gray-400" />
       </div>
     );
@@ -90,7 +90,7 @@ const TagPresetManageModal = observer(({ onClose }: { onClose: () => void }) => 
             <span className="text-sm text-gray-400">프리셋이 없습니다.</span>
           )}
           {artistLibraryService.tagPresets.map((t) => (
-            <span key={t} className="flex items-center gap-1 text-sm px-2 py-1 rounded-md bg-gray-100 dark:bg-slate-700 text-body">
+            <span key={t} className="flex items-center gap-1 text-sm px-2 py-1 rounded-md bg-[var(--c-surface)] text-body">
               {t}
               <button className="text-gray-400 hover:text-red-500" onClick={() => artistLibraryService.removeTagPreset(t)}>
                 <FaTrash size={11} />
@@ -143,7 +143,7 @@ const PromptView = observer(({ path }: { path: string }) => {
               <FaCopy className="inline mr-1" size={10} />복사
             </button>
           </div>
-          <div className="text-xs p-2 rounded bg-gray-100 dark:bg-slate-700 text-default break-words max-h-32 overflow-auto">{prompt}</div>
+          <div className="text-xs p-2 rounded bg-[var(--c-surface)] text-default break-words max-h-32 overflow-auto">{prompt}</div>
         </div>
       )}
       {uc && (
@@ -154,7 +154,7 @@ const PromptView = observer(({ path }: { path: string }) => {
               <FaCopy className="inline mr-1" size={10} />복사
             </button>
           </div>
-          <div className="text-xs p-2 rounded bg-gray-100 dark:bg-slate-700 text-default break-words max-h-24 overflow-auto">{uc}</div>
+          <div className="text-xs p-2 rounded bg-[var(--c-surface)] text-default break-words max-h-24 overflow-auto">{uc}</div>
         </div>
       )}
     </div>
@@ -188,7 +188,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
         <div className="flex flex-col gap-3">
           {/* 작가 태그 + 즐겨찾기 */}
           <div className="flex items-center gap-2">
-            <span className="flex-1 text-sm font-mono px-2 py-1.5 rounded bg-gray-100 dark:bg-slate-700 text-default truncate">artist:{artist.name}</span>
+            <span className="flex-1 text-sm font-mono px-2 py-1.5 rounded bg-[var(--c-surface)] text-default truncate">artist:{artist.name}</span>
             <button className="back-sky !rounded-md px-3 py-1.5 text-sm" onClick={() => copyText('artist:' + artist.name, '작가 태그를 복사했습니다')}>
               <FaCopy className="inline mr-1" size={12} />복사
             </button>
@@ -233,7 +233,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
           <div className="flex flex-col md:flex-row gap-4">
             {/* 좌: 이미지 */}
             <div className="flex-1 min-w-0">
-              <div className="w-full aspect-[3/4] rounded-lg overflow-hidden bg-gray-100 dark:bg-slate-800 flex items-center justify-center">
+              <div className="w-full aspect-[3/4] rounded-lg overflow-hidden bg-[var(--c-surface)] flex items-center justify-center">
                 {selected ? (
                   <ArtistImage path={selected.path} className="w-full h-full" />
                 ) : (
@@ -345,7 +345,7 @@ const ArtistCard = observer(({
         : 'border-gray-300 dark:border-slate-600 hover:border-sky-400')
     }>
       {/* 대표 이미지 */}
-      <div className="relative w-full aspect-[3/4] md:aspect-auto md:h-72 bg-gray-100 dark:bg-slate-700 cursor-pointer" onClick={handleClick}>
+      <div className="relative w-full aspect-[3/4] md:aspect-auto md:h-72 bg-[var(--c-surface)] cursor-pointer" onClick={handleClick}>
         {thumb ? (
           <ArtistImage path={thumb.path} className="w-full h-full" />
         ) : (
@@ -394,7 +394,7 @@ const ArtistCard = observer(({
         {artist.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
             {artist.tags.slice(0, 4).map((t) => (
-              <span key={t} className="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-700 text-muted">{t}</span>
+              <span key={t} className="text-[11px] px-1.5 py-0.5 rounded bg-[var(--c-surface)] text-muted">{t}</span>
             ))}
             {artist.tags.length > 4 && <span className="text-[11px] text-gray-400">+{artist.tags.length - 4}</span>}
           </div>
@@ -472,10 +472,10 @@ const ArtistLibraryTab = observer(() => {
   return (
     <div className="w-full h-full flex flex-col bg-[var(--c-surface)] overflow-hidden">
       {/* 툴바 */}
-      <div className="flex-none p-3 border-b border-gray-200 dark:border-slate-600 flex flex-wrap gap-2 items-center bg-gray-50 dark:bg-slate-800">
+      <div className="flex-none p-3 border-b border-gray-200 dark:border-slate-600 flex flex-wrap gap-2 items-center bg-[var(--c-surface)]">
         <div className="relative flex-1 min-w-[180px]">
           <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
-          <input className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-sm text-default focus:outline-none focus:ring-2 focus:ring-sky-400"
+          <input className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-sm text-default focus:outline-none focus:ring-2 focus:ring-sky-400"
             placeholder="작가 이름 · 태그로 검색…" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         <select className="gray-input text-sm" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)}>

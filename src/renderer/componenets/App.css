@@ -43,6 +43,7 @@
   --c-input-bg: #e5e7eb; /* gray-200 */
   --c-input-text: #111827; /* gray-900 */
   --c-icon-text: #4b5563; /* gray-600 */
+  --c-zone: #eceff4; /* 구분 구역(폴더 등). 커스텀 배경 색조 미추종 = 대비 보장 */
   --c-green-bg: #22c55e;  --c-green-fg: #ffffff;
   --c-sky-bg: #0ea5e9;    --c-sky-fg: #ffffff;
   --c-red-bg: #ef4444;    --c-red-fg: #ffffff;
@@ -62,6 +63,7 @@
   --c-input-bg: #334155; /* slate-700 */
   --c-input-text: #ffffff;
   --c-icon-text: #ffffff;
+  --c-zone: #1e293b; /* 구분 구역(폴더 등) */
   --c-green-bg: rgba(45, 212, 191, 0.25);  --c-green-fg: #2dd4bf;  /* teal-400 */
   --c-sky-bg: rgba(56, 189, 248, 0.25);    --c-sky-fg: #38bdf8;    /* sky-400 */
   --c-red-bg: rgba(248, 113, 113, 0.25);   --c-red-fg: #f87171;    /* red-400 */
@@ -74,6 +76,7 @@
   --c-surface-2: #121212; /* dark:bg-slate-800 트루다크 오버라이드와 동일 */
   --c-line: #2a2a2a;
   --c-input-bg: #1a1a1a;
+  --c-zone: #1a1a1a; /* 구분 구역(폴더 등) */
 }
 
 body {
@@ -226,6 +229,20 @@ body {
   color: var(--c-orange-fg);
 }
 
+/* 표면 추종 보조 버튼 (D타입): 액센트가 아니라 입력창 배경 음영을 따라가는
+   은은한 중립 버튼. 폴더/관리/백업 등. hover는 brightness로 커스텀 색도 자동 추종.
+   라이트=어둡게, 다크/트루다크=밝게(.dark가 true-dark에도 적용됨). */
+.btn-neutral {
+  background-color: var(--c-input-bg);
+  transition: filter 0.15s ease;
+}
+.btn-neutral:hover {
+  filter: brightness(0.95);
+}
+.dark .btn-neutral:hover {
+  filter: brightness(1.15);
+}
+
 .clickable {
   @apply active:brightness-75 hover:brightness-90 cursor-pointer select-none;
 }
@@ -281,7 +298,7 @@ body {
   /* .my-react-select-container {
   } */
   .my-react-select-container .my-react-select__control {
-    @apply bg-white dark:bg-slate-700 border-2 border-gray-500 dark:border-slate-700 hover:border-gray-500 dark:hover:border-slate-500;
+    @apply bg-[var(--c-input-bg)] border-2 border-gray-500 dark:border-slate-700 hover:border-gray-500 dark:hover:border-slate-500;
   }
 
   .my-react-select-container .my-react-select__control--is-focused {
@@ -289,11 +306,11 @@ body {
   }
 
   .my-react-select-container .my-react-select__menu {
-    @apply bg-white dark:bg-slate-700 border-2 border-white dark:border-slate-600;
+    @apply bg-[var(--c-input-bg)] border-2 border-white dark:border-slate-600;
   }
 
   .my-react-select-container .my-react-select__option {
-    @apply text-neutral-600 dark:text-neutral-200 bg-white hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-800;
+    @apply text-[var(--c-input-text)] bg-[var(--c-input-bg)] hover:bg-slate-200 dark:hover:bg-slate-800;
   }
   /* .my-react-select-container .my-react-select__option--is-focused {
     @apply bg-neutral-200 dark:bg-neutral-800;
@@ -306,7 +323,7 @@ body {
   .my-react-select-container .my-react-select__input-container,
   .my-react-select-container .my-react-select__placeholder,
   .my-react-select-container .my-react-select__single-value {
-    @apply text-black dark:text-neutral-200;
+    @apply text-[var(--c-input-text)];
   }
 }
 

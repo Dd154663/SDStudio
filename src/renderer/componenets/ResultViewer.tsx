@@ -261,7 +261,7 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
                     draggable={false}
                   />
                 ) : (
-                  <div className="w-full h-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-400">
+                  <div className="w-full h-full bg-[var(--c-surface)] flex items-center justify-center text-gray-400">
                     ...
                   </div>
                 )}

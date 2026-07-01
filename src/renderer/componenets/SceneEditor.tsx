@@ -82,7 +82,7 @@ export const PromptHighlighter = observer(
     return (
       <div
         className={
-          'max-w-full break-words bg-gray-200 dark:bg-slate-700 ' +
+          'max-w-full break-words bg-[var(--c-input-bg)] ' +
           (className ?? '')
         }
         dangerouslySetInnerHTML={{ __html: highlightPrompt(curSession!, text) }}
@@ -589,7 +589,7 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
           {showCoordMap && (
             <div
               ref={coordMapRef}
-              className="relative bg-gray-100 dark:bg-slate-700 border border-gray-300 dark:border-slate-500 rounded select-none overflow-hidden"
+              className="relative bg-[var(--c-surface)] border border-gray-300 dark:border-slate-500 rounded select-none overflow-hidden"
               style={{ aspectRatio: '4 / 3', maxWidth: '360px', touchAction: 'none' }}
               onPointerMove={(e) => {
                 if (draggingId) handleCoordPointer(e, draggingId);

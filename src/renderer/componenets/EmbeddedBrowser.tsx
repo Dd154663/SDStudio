@@ -74,7 +74,7 @@ const BookmarkDialog: React.FC<BookmarkDialogProps> = ({ mode, initialLabel, ini
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted">이름</label>
           <input
-            className="border rounded px-2 py-1 text-sm dark:bg-slate-700 dark:border-slate-600 dark:text-gray-100"
+            className="border rounded px-2 py-1 text-sm bg-[var(--c-input-bg)] dark:border-slate-600 text-[var(--c-input-text)]"
             placeholder="표시할 이름"
             value={label}
             onChange={e => setLabel(e.target.value)}
@@ -84,7 +84,7 @@ const BookmarkDialog: React.FC<BookmarkDialogProps> = ({ mode, initialLabel, ini
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted">URL</label>
           <input
-            className="border rounded px-2 py-1 text-sm dark:bg-slate-700 dark:border-slate-600 dark:text-gray-100"
+            className="border rounded px-2 py-1 text-sm bg-[var(--c-input-bg)] dark:border-slate-600 text-[var(--c-input-text)]"
             placeholder="https://..."
             value={url}
             onChange={e => setUrl(e.target.value)}
@@ -326,7 +326,7 @@ const DesktopBrowser: React.FC = () => {
           <FaRedo size={12} className={loading ? 'animate-spin' : ''} />
         </button>
         <input
-          className="flex-1 text-sm px-2 py-1 border rounded dark:bg-slate-700 dark:border-slate-600 dark:text-gray-100"
+          className="flex-1 text-sm px-2 py-1 border rounded bg-[var(--c-input-bg)] dark:border-slate-600 text-[var(--c-input-text)]"
           value={inputUrl}
           onChange={e => setInputUrl(e.target.value)}
           onKeyDown={handleKeyDown}

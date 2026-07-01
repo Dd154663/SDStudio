@@ -155,7 +155,7 @@ const VibeImage = ({
       )}
       {!image && (
         <div
-          className={className + ' flex items-center justify-center bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600'}
+          className={className + ' flex items-center justify-center bg-[var(--c-surface)] border border-gray-300 dark:border-gray-600'}
           onClick={onClick}
         >
           <span className="text-xs text-muted text-center px-1 select-none">
@@ -210,7 +210,7 @@ export const EditableSliderValue = ({
     return (
       <input
         ref={inputRef}
-        className="w-14 flex-none text-sm text-center border border-sky-400 rounded bg-white dark:bg-slate-700 text-default outline-none px-0.5 py-0.5"
+        className="w-14 flex-none text-sm text-center border border-sky-400 rounded bg-[var(--c-input-bg)] text-default outline-none px-0.5 py-0.5"
         value={inputValue}
         onChange={(e) => {
           const v = e.target.value;
@@ -734,7 +734,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                 {showDefaults ? '▾' : '▸'} 새 레퍼런스 기본값 설정
               </button>
               {showDefaults && (
-                <div className="mt-2 p-3 bg-gray-100 dark:bg-slate-700 rounded-lg space-y-3 text-sm">
+                <div className="mt-2 p-3 bg-[var(--c-surface)] rounded-lg space-y-3 text-sm">
                   <div className="flex items-center gap-2">
                     <span className="gray-label w-20 flex-none">Strength:</span>
                     <input
@@ -785,7 +785,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
             {getField().map((reference: ReferenceItem) => (
               <div
                 key={reference.path}
-                className={`border mt-2 p-2 flex gap-2 items-begin ${reference.enabled !== false ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20' : 'border-gray-300 opacity-60'}`}
+                className={`border mt-2 p-2 flex gap-2 items-begin ${reference.enabled !== false ? 'border-sky-500 bg-[var(--c-surface-2)]' : 'border-gray-300 opacity-60'}`}
               >
                 <VibeImage
                   path={
@@ -1043,7 +1043,7 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
               />
             ) : (
               <div
-                className={'flex-1 h-14 rounded-xl bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500' + (locked ? '' : ' cursor-pointer hover:brightness-95 active:brightness-90')}
+                className={'flex-1 h-14 rounded-xl bg-[var(--c-surface)] flex items-center justify-center text-gray-500' + (locked ? '' : ' cursor-pointer hover:brightness-95 active:brightness-90')}
                 onClick={handleImageClick}
               >
                 {locked ? 'v4 모델 미지원' : enabledRefs.length === 0 ? '활성화된 이미지 없음' : '이미지 없음'}
@@ -1548,7 +1548,7 @@ const PreSetBulkManageModal = observer(
             placeholder="이름으로 검색..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+            className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
           />
           <div className="flex items-center justify-between">
             <button
@@ -1690,7 +1690,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
           {presets.map((option) => (
             <li
               key={option.name}
-              className="text-default flex items-center justify-between p-2 clickable bg-white dark:bg-slate-700"
+              className="text-default flex items-center justify-between p-2 clickable bg-[var(--c-surface)]"
             >
               <button
                 onClick={() => {
@@ -2256,7 +2256,7 @@ const CharacterPromptEditor = observer(
             {showCoordMap && (
               <div
                 ref={coordMapRef}
-                className="relative w-full bg-gray-100 dark:bg-slate-700 border border-gray-300 dark:border-slate-500 rounded select-none overflow-hidden"
+                className="relative w-full bg-[var(--c-surface)] border border-gray-300 dark:border-slate-500 rounded select-none overflow-hidden"
                 style={{ aspectRatio: '4 / 3', touchAction: 'none' }}
                 onPointerMove={(e) => {
                   if (draggingId) handleCoordPointer(e, draggingId);
@@ -2314,13 +2314,13 @@ const CharacterPromptEditor = observer(
               </div>
             </div>
             <div className="text-xs text-muted mb-0.5">캐릭터 프롬프트:</div>
-            <div className="text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-700 p-1.5 rounded font-mono whitespace-pre-wrap break-all mb-1">
+            <div className="text-xs text-gray-700 dark:text-gray-300 bg-[var(--c-surface)] p-1.5 rounded font-mono whitespace-pre-wrap break-all mb-1">
               {cp.prompt || '(비어 있음)'}
             </div>
             {cp.uc && (
               <>
                 <div className="text-xs text-muted mb-0.5">네거티브 프롬프트:</div>
-                <div className="text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-700 p-1.5 rounded font-mono whitespace-pre-wrap break-all">
+                <div className="text-xs text-gray-700 dark:text-gray-300 bg-[var(--c-surface)] p-1.5 rounded font-mono whitespace-pre-wrap break-all">
                   {cp.uc}
                 </div>
               </>
@@ -2332,7 +2332,7 @@ const CharacterPromptEditor = observer(
             {getField().map((character: CharacterPrompt, i: number) => (
               <div
                 key={character.id}
-                className={`border rounded-md mt-3 p-3 ${character.enabled === false ? 'opacity-60 border-gray-300' : 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'}`}
+                className={`border rounded-md mt-3 p-3 ${character.enabled === false ? 'opacity-60 border-gray-300' : 'border-sky-500 bg-[var(--c-surface-2)]'}`}
               >
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2 gray-label">

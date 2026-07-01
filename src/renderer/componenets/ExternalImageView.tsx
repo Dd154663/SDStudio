@@ -392,7 +392,7 @@ export const ExternalImageView = observer(
                     }
                   >
                     {job.characterPrompts.map((cp) => (
-                      <div key={cp.id} className="mb-2 p-2.5 bg-gray-100 dark:bg-slate-700 rounded-lg text-sm">
+                      <div key={cp.id} className="mb-2 p-2.5 bg-[var(--c-surface)] rounded-lg text-sm">
                         <div className="text-muted text-xs mb-1">
                           Pos: ({cp.position?.[0]?.toFixed(2) ?? '-'}, {cp.position?.[1]?.toFixed(2) ?? '-'})
                         </div>
@@ -444,7 +444,7 @@ export const ExternalImageView = observer(
                           원본 이미지는 없지만, 인코딩된 바이브 데이터를 복원합니다.
                         </p>
                         {job.vibes.map((v, i) => (
-                          <div key={i} className="flex items-center gap-3 py-1.5 px-2.5 bg-gray-100 dark:bg-slate-700 rounded-lg mb-1.5">
+                          <div key={i} className="flex items-center gap-3 py-1.5 px-2.5 bg-[var(--c-surface)] rounded-lg mb-1.5">
                             <div className="w-10 h-10 rounded bg-gray-300 dark:bg-slate-600 flex items-center justify-center text-xs text-muted flex-none">
                               데이터
                             </div>
@@ -529,7 +529,7 @@ export const ExternalImageView = observer(
             </div>
 
             {/* 오른쪽: 이미지 프리뷰 */}
-            <div className="hidden md:flex flex-none w-72 lg:w-80 border-l border-gray-200 dark:border-slate-600 items-center justify-center bg-gray-50 dark:bg-slate-900 p-3">
+            <div className="hidden md:flex flex-none w-72 lg:w-80 border-l border-gray-200 dark:border-slate-600 items-center justify-center bg-[var(--c-surface)] p-3">
               {image && (
                 <img
                   src={base64ToDataUri(image)}

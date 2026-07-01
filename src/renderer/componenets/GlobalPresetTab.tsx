@@ -74,7 +74,7 @@ const GlobalVibeImage = observer(
       <div
         className={
           className +
-          ' flex items-center justify-center bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600'
+          ' flex items-center justify-center bg-[var(--c-surface)] border border-gray-300 dark:border-gray-600'
         }
       >
         <span className="text-xs text-muted text-center px-1 select-none">
@@ -250,7 +250,7 @@ const EasyCard = observer(
 
         {/* 모바일 전용 액션 바 (항상 노출, 좁은 카드라 다단 배치 + 큰 터치 타깃) */}
         {!multiSelectMode && isMobile && (
-          <div className="flex flex-col gap-1.5 p-2 bg-gray-100 dark:bg-slate-800 border-t border-gray-300 dark:border-slate-600">
+          <div className="flex flex-col gap-1.5 p-2 bg-[var(--c-surface)] border-t border-gray-300 dark:border-slate-600">
             <button
               className="w-full round-button back-sky text-sm py-2.5 font-medium"
               onClick={onImportToSession}
@@ -464,7 +464,7 @@ const GlobalPresetEditModal = observer(
     };
 
     const numCls =
-      'mt-1 w-full px-2 py-1.5 rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-default';
+      'mt-1 w-full px-2 py-1.5 rounded border border-gray-300 dark:border-slate-600 bg-[var(--c-input-bg)] text-default';
 
     return (
       <div
@@ -486,7 +486,7 @@ const GlobalPresetEditModal = observer(
             <div>
               <label className="text-sm font-medium mb-1 block">이름 *</label>
               <input
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 text-default"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-[var(--c-input-bg)] text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 text-default"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
@@ -841,7 +841,7 @@ export const GlobalPresetTab = observer(() => {
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-[var(--c-surface)]">
       {/* 상단 툴바 */}
-      <div className="flex-none p-3 border-b border-gray-300 dark:border-slate-600 flex flex-wrap gap-3 items-center bg-gray-50 dark:bg-slate-800">
+      <div className="flex-none p-3 border-b border-gray-300 dark:border-slate-600 flex flex-wrap gap-3 items-center bg-[var(--c-surface)]">
         <Tooltip content="글로벌 프리셋 이미지뿐 아니라, 프롬프트 메타데이터가 있는 PNG도 그림체 프리셋으로 가져옵니다.">
           <button
             className="round-button back-sky flex items-center gap-2 px-4 py-2 text-base"
@@ -933,13 +933,13 @@ export const GlobalPresetTab = observer(() => {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="프리셋 검색..."
-          className="px-3 py-2 text-base rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-default focus:outline-none focus:ring-2 focus:ring-sky-400 w-44"
+          className="px-3 py-2 text-base rounded border border-gray-300 dark:border-slate-600 bg-[var(--c-input-bg)] text-default focus:outline-none focus:ring-2 focus:ring-sky-400 w-44"
         />
         {/* 정렬 */}
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as any)}
-          className="px-2 py-2 text-base rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-default"
+          className="px-2 py-2 text-base rounded border border-gray-300 dark:border-slate-600 bg-[var(--c-input-bg)] text-default"
         >
           <option value="recent">최근 수정순</option>
           <option value="name">이름순</option>
