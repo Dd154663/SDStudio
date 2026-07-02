@@ -24,6 +24,12 @@ export abstract class ResourceSyncService<
   running: boolean;
   dummy: T | undefined;
   #visibilityWired = false;
+  // 역직렬화 템플릿(dummy) 준비 프로미스. get()/createFrom() 이 이를 기다려
+  // "생성자 직후 아직 dummy 가 없는" 부팅 직후 창에서의 실패(클릭 무반응)를 막는다.
+  #dummyPromise: Promise<T> | null = null;
+  // 이름별 로딩 중 프로미스. 같은 리소스를 동시에 get() 하면 한 번만 읽고
+  // 인스턴스도 하나만 만든다(중복 인스턴스로 인한 편집 유실/reaction 누수 방지).
+  #loading: Map<string, Promise<T | undefined>> = new Map();
   constructor(resourceDir: string, interval: number) {
     super();
     this.resources = {};
@@ -36,9 +42,27 @@ export abstract class ResourceSyncService<
     this.folderMap = {};
     this.updateInterval = interval;
     this.running = true;
-    (async () => {
-      this.dummy = await this.createDefault('dummy');
-    })();
+    // 미리 준비를 시작하되, 실패해도 unhandled rejection 이 되지 않게 한다
+    // (실패 시 ensureDummy 가 다음 호출에서 재시도).
+    this.ensureDummy().catch(() => {});
+  }
+
+  // dummy 템플릿을 보장한다. 준비 전이면 기다리고, 이전 시도가 실패했으면 재시도.
+  protected ensureDummy(): Promise<T> {
+    if (this.dummy) return Promise.resolve(this.dummy);
+    if (!this.#dummyPromise) {
+      this.#dummyPromise = Promise.resolve(this.createDefault('dummy')).then(
+        (d) => {
+          this.dummy = d;
+          return d;
+        },
+        (e) => {
+          this.#dummyPromise = null; // 다음 호출에서 재시도
+          throw e;
+        },
+      );
+    }
+    return this.#dummyPromise;
   }
 
   abstract createDefault(name: string): T | Promise<T>;
@@ -49,7 +73,12 @@ export abstract class ResourceSyncService<
     if (name in this.resources) {
       throw new Error('Resource already exists');
     }
-    this.resources[name] = await this.createDefault(name);
+    const created = await this.createDefault(name);
+    if (name in this.resources) {
+      // createDefault(프리셋 시딩 등) 대기 중 다른 경로가 같은 이름을 등록한 경우
+      throw new Error('Resource already exists');
+    }
+    this.resources[name] = created;
     await this.onAdded(name);
     this.#markUpdated(name);
     await this.update();
@@ -142,22 +171,38 @@ export abstract class ResourceSyncService<
   }
 
   async get(name: string): Promise<T | undefined> {
-    if (!(name in this.resources)) {
+    if (name in this.resources) {
+      return this.resources[name];
+    }
+    // 동시 호출 디듀프: 이미 로딩 중이면 그 결과를 공유한다.
+    // (둘 다 파일을 읽어 인스턴스를 2개 만들면, UI 가 붙잡은 쪽과 저장되는 쪽이
+    // 갈라져 편집이 유실되고 mobx reaction 도 누수된다)
+    const pending = this.#loading.get(name);
+    if (pending) return pending;
+    const load = (async (): Promise<T | undefined> => {
       try {
         let obj = await this.readResourceJSON(name);
         obj = await this.migrate(obj);
         obj = await this.fillEmptyPresetVars(obj);
-        this.resources[name] = this.dummy!.fromJSON(obj);
-        await this.onAdded(name);
-        this.dispatchEvent(
-          new CustomEvent<{ name: string }>('fetched', { detail: { name } }),
-        );
+        const dummy = await this.ensureDummy();
+        // 로딩 중 add()/createFrom() 으로 이미 등록됐다면 그쪽 인스턴스를 존중
+        if (!(name in this.resources)) {
+          this.resources[name] = dummy.fromJSON(obj);
+          await this.onAdded(name);
+          this.dispatchEvent(
+            new CustomEvent<{ name: string }>('fetched', { detail: { name } }),
+          );
+        }
+        return this.resources[name];
       } catch (e: any) {
         console.error('get library error:', e);
         return undefined;
+      } finally {
+        this.#loading.delete(name);
       }
-    }
-    return this.resources[name];
+    })();
+    this.#loading.set(name, load);
+    return load;
   }
 
   // 메인 파일을 읽어 파싱한다. 메인이 손상/누락이면 .bak 백업에서 복구를 시도한다.
@@ -309,7 +354,12 @@ export abstract class ResourceSyncService<
       throw new Error('Resource already exists');
     }
     value = await this.migrate(value);
-    this.resources[name] = this.dummy!.fromJSON(value);
+    const dummy = await this.ensureDummy();
+    if (name in this.resources) {
+      // migrate/dummy 대기 중 다른 경로가 같은 이름을 등록한 경우
+      throw new Error('Resource already exists');
+    }
+    this.resources[name] = dummy.fromJSON(value);
     await this.onAdded(name);
     this.#markUpdated(name);
     await this.update();

@@ -983,8 +983,10 @@ export class SessionService extends ResourceSyncService<Session> {
 
   async migrate(rc: any) {
     if (!rc.version) {
+      // 폴더 소속 프로젝트도 손상 복구(readResourceJSON)가 찾는 위치와 같은
+      // 경로(getPath + .bak)에 백업해야 실제 복구에 쓰일 수 있다.
       await backend.writeFile(
-        'projects/' + rc.name + '.json.bak',
+        this.getPath(rc.name) + '.bak',
         JSON.stringify(rc),
       );
       rc = await legacy.migrateSession(rc);
@@ -1022,7 +1024,12 @@ export class SessionService extends ResourceSyncService<Session> {
       library: {},
       presetShareds: {},
     });
-    await importDefaultPresets(newSession);
+    // dummy 는 역직렬화 템플릿(fromJSON 용)으로만 쓰이므로 프리셋 시딩이 불필요.
+    // 시딩하면 매 부팅 기본 에셋을 fetch 하고 vibes/dummy/ 에 쓰레기 PNG 가
+    // 무한 누적되며 부팅도 느려진다.
+    if (name !== 'dummy') {
+      await importDefaultPresets(newSession);
+    }
     return newSession;
   }
 
