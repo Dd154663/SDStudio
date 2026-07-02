@@ -697,6 +697,7 @@ export enum ContextMenuType {
   Image = 'image',
   Scene = 'scene',
   Style = 'style',
+  HistoryImage = 'history_image',
 }
 
 export interface ImageContextAlt {
@@ -723,6 +724,11 @@ export interface StyleContextAlt {
   preset: any;
   container: any;
   session: Session;
+}
+
+export interface HistoryImageContextAlt {
+  type: 'history_image';
+  entry: import('./ImageHistoryService').GenerationHistoryEntry;
 }
 
 export type ContextAlt = ImageContextAlt | SceneContextAlt | StyleContextAlt;

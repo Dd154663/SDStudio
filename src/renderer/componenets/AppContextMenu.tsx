@@ -1,7 +1,7 @@
 import { observer } from 'mobx-react-lite';
 import { getSnapshot } from 'mobx-state-tree';
 import { Item, Menu, Separator } from 'react-contexify';
-import { sessionService, backend, imageService, isMobile, imageDownloadService } from '../models';
+import { sessionService, backend, imageService, isMobile, imageDownloadService, imageHistoryService } from '../models';
 import { appState } from '../models/AppService';
 import { dataUriToBase64, deleteImageFiles } from '../models/ImageService';
 import { createImageWithText, embedJSONInPNG } from '../models/SessionService';
@@ -13,6 +13,7 @@ import {
   genericSceneFromJSON,
   GallaryImageContextAlt,
   GenericScene,
+  HistoryImageContextAlt,
 } from '../models/types';
 import { oneTimeFlowMap, oneTimeFlows } from '../models/workflows/OneTimeFlows';
 import { extractPromptDataFromBase64 } from '../models/util';
@@ -489,6 +490,68 @@ export const AppContextMenu = observer(() => {
   const editStyle = async (ctx: StyleContextAlt) => {
     sessionService.styleEdit(ctx.preset, ctx.container);
   };
+  // ── 히스토리 사이드바 이미지 메뉴 ──
+  // 히스토리는 타 프로젝트 항목이 있을 수 있어 curSession 대신 resolve()로 세션/씬을 얻는다.
+  // (비활성 세션의 mains 토글 등도 ResourceSyncService가 자동 저장)
+  const historyFavImage = async (ctx: HistoryImageContextAlt) => {
+    const resolved = await imageHistoryService.resolve(ctx.entry);
+    if (!resolved) return;
+    const { scene } = resolved;
+    const filename = ctx.entry.filename;
+    if (scene.mains.includes(filename)) {
+      scene.mains.splice(scene.mains.indexOf(filename), 1);
+    } else {
+      scene.mains.push(filename);
+    }
+  };
+  const historyDownloadImage = async (ctx: HistoryImageContextAlt) => {
+    const resolved = await imageHistoryService.resolve(ctx.entry);
+    if (!resolved) return;
+    const { session, scene } = resolved;
+    const characterPreset =
+      session === appState.curSession
+        ? appState.getAppliedCharacterPreset()
+        : undefined;
+    await imageDownloadService.downloadSingleImage(
+      session,
+      scene,
+      ctx.entry.path,
+      characterPreset,
+    );
+  };
+  const historyDeleteImage = async (ctx: HistoryImageContextAlt) => {
+    const resolved = await imageHistoryService.resolve(ctx.entry);
+    if (!resolved) return;
+    const { session, scene } = resolved;
+    const doDelete = async () => {
+      await deleteImageFiles(session, [ctx.entry.path], scene);
+      imageHistoryService.remove(ctx.entry.id);
+    };
+    if (appState.skipImageDeleteConfirm) {
+      await doDelete();
+      return;
+    }
+    appState.pushDialog({
+      type: 'confirm',
+      text: '정말로 삭제하시겠습니까?',
+      showSkipConfirm: true,
+      callback: doDelete,
+    });
+  };
+  const handleHistoryItemClick = ({ id, props }: any) => {
+    const ctx = props.ctx as HistoryImageContextAlt;
+    if (id === 'goto-scene') {
+      imageHistoryService.navigateTo(ctx.entry, { openGrid: false });
+    } else if (id === 'open-grid') {
+      imageHistoryService.navigateTo(ctx.entry, { openGrid: true });
+    } else if (id === 'fav') {
+      historyFavImage(ctx);
+    } else if (id === 'download') {
+      historyDownloadImage(ctx);
+    } else if (id === 'delete') {
+      historyDeleteImage(ctx);
+    }
+  };
   const handleStyleItemClick = ({ id, props }: any) => {
     if (id === 'export') {
       exportStyle(props.ctx as StyleContextAlt);
@@ -605,6 +668,24 @@ export const AppContextMenu = observer(() => {
         </Item>
         <Item id="save-artist" onClick={handleImageItemClick}>
           작가 라이브러리에 저장
+        </Item>
+      </Menu>
+      <Menu id={ContextMenuType.HistoryImage}>
+        <Item id="goto-scene" onClick={handleHistoryItemClick}>
+          해당 씬으로 이동
+        </Item>
+        <Item id="open-grid" onClick={handleHistoryItemClick}>
+          이미지 그리드에서 보기
+        </Item>
+        <Item id="fav" onClick={handleHistoryItemClick}>
+          즐겨찾기 토글
+        </Item>
+        <Item id="download" onClick={handleHistoryItemClick}>
+          이미지 다운로드
+        </Item>
+        <Separator />
+        <Item id="delete" onClick={handleHistoryItemClick}>
+          해당 이미지 삭제
         </Item>
       </Menu>
       <Menu id={ContextMenuType.Style}>

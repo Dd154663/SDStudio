@@ -1411,6 +1411,8 @@ interface ResultViewerProps {
   isMainImage?: (path: string) => boolean;
   starScene?: Scene;
   onSampleExtract?: (seeds: number[]) => void;
+  // 히스토리 사이드바에서 특정 이미지로 점프할 때 포커스할 파일명
+  focusFilename?: string;
 }
 
 const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
@@ -1423,6 +1425,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       isMainImage,
       buttons,
       onSampleExtract,
+      focusFilename,
     }: ResultViewerProps,
     ref,
   ) => {
@@ -1496,6 +1499,16 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       .map(
         (path) => imageService.getOutputDir(curSession!, scene) + '/' + path,
       );
+    // 히스토리 → 특정 이미지 포커스: 그리드를 해당 이미지 위치로 스크롤
+    useEffect(() => {
+      if (!focusFilename) return;
+      const idx = paths.findIndex((p) => p.endsWith('/' + focusFilename));
+      if (idx >= 0) {
+        const t = setTimeout(() => gallaryRef.current?.scrollToIndex(idx), 100);
+        return () => clearTimeout(t);
+      }
+    }, [focusFilename]);
+
     const onSelected = useCallback(
       (index: any) => {
         if (selectMode) {

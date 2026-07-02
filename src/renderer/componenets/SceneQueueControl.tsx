@@ -858,6 +858,10 @@ const QueueControl = observer(
     const [displayScene, setDisplayScene] = useState<GenericScene | undefined>(
       undefined,
     );
+    // 히스토리에서 "이 이미지가 있는 그리드 열기" 요청 시 포커스할 파일명
+    const [displayFocus, setDisplayFocus] = useState<string | undefined>(
+      undefined,
+    );
     const [cellSize, setCellSize] = useState(1);
     const [focusedSceneIndex, setFocusedSceneIndex] = useState<number | null>(
       null,
@@ -917,6 +921,35 @@ const QueueControl = observer(
         );
       };
     }, [type]);
+
+    // 히스토리 사이드바 → 해당 씬 이미지 그리드 열기 (+특정 이미지 포커스)
+    useEffect(() => {
+      const handleOpenViewer = (e: Event) => {
+        const { sceneType, sceneName, filename } =
+          (e as CustomEvent).detail || {};
+        if (sceneType !== type) return;
+        // 보이는 탭 인스턴스만 반응 (open-scene-editor와 동일한 가드)
+        if (
+          !gridContainerRef.current ||
+          gridContainerRef.current.offsetParent === null
+        )
+          return;
+        const scene =
+          type === 'scene'
+            ? curSession!.scenes.get(sceneName)
+            : curSession!.inpaints.get(sceneName);
+        if (!scene) return;
+        setDisplayFocus(filename);
+        setDisplayScene(scene);
+      };
+      sessionService.addEventListener('open-result-viewer', handleOpenViewer);
+      return () => {
+        sessionService.removeEventListener(
+          'open-result-viewer',
+          handleOpenViewer,
+        );
+      };
+    }, [type, curSession]);
 
     const addAllToQueue = () => addScenesToQueue(curSession, type, false);
 
@@ -1703,11 +1736,13 @@ const QueueControl = observer(
             onEscape={() => {
               gameService.refreshList(curSession!, displayScene);
               setDisplayScene(undefined);
+              setDisplayFocus(undefined);
             }}
           >
             <ResultViewer
               ref={resultViewerRef}
               scene={displayScene}
+              focusFilename={displayFocus}
               isMainImage={isMainImage}
               onFilenameChange={onFilenameChange}
               onEdit={onEdit}
@@ -1780,7 +1815,7 @@ const QueueControl = observer(
           </FloatView>
         );
       return <></>;
-    }, [displayScene]);
+    }, [displayScene, displayFocus]);
 
     const [sceneSelector, setSceneSelector] = useState<
       SceneSelectorItem | undefined

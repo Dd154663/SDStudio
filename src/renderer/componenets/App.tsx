@@ -12,6 +12,7 @@ import {
 import SessionSelect from './SessionSelect';
 import ProjectDrawer from './ProjectDrawer';
 import ProjectBrowser from './ProjectBrowser';
+import { ImageHistoryPanel, ImageHistoryDrawer } from './ImageHistory';
 import PreSetEditor from './PreSetEdtior';
 import SceneQueuControl, { SceneCell } from './SceneQueueControl';
 import TaskQueueControl from './TaskQueueControl';
@@ -204,6 +205,13 @@ export const App = observer(() => {
           break;
         case 'open-project-grid':
           appState.projectBrowserOpen = !appState.projectBrowserOpen;
+          break;
+        case 'toggle-history-panel':
+          if (isMobile) {
+            appState.historyDrawerOpen = !appState.historyDrawerOpen;
+          } else {
+            appState.toggleHistoryPanel();
+          }
           break;
       }
     };
@@ -608,6 +616,7 @@ export const App = observer(() => {
               <FloatViewProvider>
                 <AppContextMenu />
                 <ProjectDrawer />
+                {isMobile && <ImageHistoryDrawer />}
                 {appState.projectBrowserOpen && (
                   <ProjectBrowser
                     onClose={() => {
@@ -651,6 +660,7 @@ export const App = observer(() => {
                           </StackGrow>
                         </>
                       )}
+                      <ImageHistoryPanel />
                     </StackGrow>
                     <StackFixed>
                       <div className="px-3 py-2 border-t flex gap-3 items-center line-color">

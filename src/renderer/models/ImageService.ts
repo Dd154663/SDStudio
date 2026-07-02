@@ -714,6 +714,18 @@ export class ImageService extends EventTarget {
     session.scenes.get(scene)?.imageMap.push(path.split('/').pop()!);
     if (isMobile)
       for (const size of supportedImageSizes) this.fetchImageSmall(path, size);
+    // 생성 히스토리 수집용 — 새로 추가된 이미지의 경로까지 전달('updated'에는 없음)
+    this.dispatchEvent(
+      new CustomEvent('image-added', {
+        detail: {
+          session,
+          sceneType: 'scene',
+          sceneName: scene,
+          filename: path.split('/').pop()!,
+          path,
+        },
+      }),
+    );
     this.dispatchEvent(
       new CustomEvent('updated', {
         detail: { batch: false, session, scene: session.scenes.get(scene) },
@@ -734,6 +746,17 @@ export class ImageService extends EventTarget {
     session.inpaints.get(scene)?.imageMap.push(path.split('/').pop()!);
     if (isMobile)
       for (const size of supportedImageSizes) this.fetchImageSmall(path, size);
+    this.dispatchEvent(
+      new CustomEvent('image-added', {
+        detail: {
+          session,
+          sceneType: 'inpaint',
+          sceneName: scene,
+          filename: path.split('/').pop()!,
+          path,
+        },
+      }),
+    );
     this.dispatchEvent(
       new CustomEvent('updated', {
         detail: { batch: false, session, scene: session.inpaints.get(scene) },

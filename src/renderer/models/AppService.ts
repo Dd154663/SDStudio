@@ -270,6 +270,23 @@ export class AppState {
     localStorage.setItem('sdstudio-left-panel-collapsed', String(this.leftPanelCollapsed));
   }
 
+  // 우측 히스토리 패널 (PC push). 기본 접힘 — 기존 레이아웃 불변.
+  @observable accessor historyPanelCollapsed: boolean = (() => {
+    return localStorage.getItem('sdstudio-history-panel-collapsed') !== 'false';
+  })();
+
+  @action
+  toggleHistoryPanel() {
+    this.historyPanelCollapsed = !this.historyPanelCollapsed;
+    localStorage.setItem(
+      'sdstudio-history-panel-collapsed',
+      String(this.historyPanelCollapsed),
+    );
+  }
+
+  // 모바일 우측 히스토리 드로어 (비영속)
+  @observable accessor historyDrawerOpen: boolean = false;
+
   @action
   addMessage(message: string): void {
     this.messages.push({ id: ++this.messageIdCounter, text: message });
