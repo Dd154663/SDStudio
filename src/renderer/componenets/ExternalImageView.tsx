@@ -260,7 +260,7 @@ export const ExternalImageView = observer(
       children?: React.ReactNode;
       right?: React.ReactNode;
     }) => (
-      <div className={'mb-2.5 rounded-lg border border-gray-200 dark:border-slate-600 p-3' + (disabled ? ' opacity-40' : '')}>
+      <div className={'mb-2.5 rounded-lg border line-color p-3' + (disabled ? ' opacity-40' : '')}>
         <div className="flex items-center gap-2.5">
           <input
             type="checkbox"
@@ -289,11 +289,11 @@ export const ExternalImageView = observer(
         onClick={onClose}
       >
         <div
-          className="w-[95vw] max-w-5xl max-h-[90vh] bg-[var(--c-zone)] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-slate-600"
+          className="w-[95vw] max-w-5xl max-h-[90vh] bg-[var(--c-zone)] rounded-xl shadow-2xl flex flex-col overflow-hidden border line-color"
           onClick={(e) => e.stopPropagation()}
         >
           {/* 헤더 */}
-          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-slate-600 flex-none">
+          <div className="flex items-center justify-between px-5 py-3 border-b line-color flex-none">
             <div>
               <h1 className="text-base font-semibold text-default">메타데이터 불러오기</h1>
               <p className="text-xs text-muted mt-0.5">
@@ -430,7 +430,7 @@ export const ExternalImageView = observer(
                           <div key={i} className="text-center">
                             <img
                               src={`data:image/png;base64,${img}`}
-                              className="w-16 h-16 object-cover rounded-md border border-gray-200 dark:border-slate-600"
+                              className="w-16 h-16 object-cover rounded-md border line-color"
                             />
                             <div className="text-xs text-muted mt-1">
                               S:{job.vibes[i]?.strength?.toFixed(2)} I:{job.vibes[i]?.info?.toFixed(2)}
@@ -460,7 +460,7 @@ export const ExternalImageView = observer(
 
                   {/* 캐릭터 레퍼런스 */}
                   {hasCharRefs && (
-                    <div className="mb-2.5 rounded-lg border border-gray-200 dark:border-slate-600 p-3">
+                    <div className="mb-2.5 rounded-lg border line-color p-3">
                       <div className="flex items-center gap-2.5">
                         <span className="font-semibold text-sm text-default">
                           캐릭터 레퍼런스 ({job.characterReferences.length}개)
@@ -473,7 +473,7 @@ export const ExternalImageView = observer(
                               <div key={i} className="text-center">
                                 <img
                                   src={`data:image/png;base64,${img}`}
-                                  className="w-16 h-16 object-cover rounded-md border border-gray-200 dark:border-slate-600"
+                                  className="w-16 h-16 object-cover rounded-md border line-color"
                                 />
                                 <div className="text-xs text-muted mt-1">
                                   S:{job.characterReferences[i]?.strength?.toFixed(2)}
@@ -529,7 +529,7 @@ export const ExternalImageView = observer(
             </div>
 
             {/* 오른쪽: 이미지 프리뷰 */}
-            <div className="hidden md:flex flex-none w-72 lg:w-80 border-l border-gray-200 dark:border-slate-600 items-center justify-center bg-[var(--c-surface)] p-3">
+            <div className="hidden md:flex flex-none w-72 lg:w-80 border-l line-color items-center justify-center bg-[var(--c-surface)] p-3">
               {image && (
                 <img
                   src={base64ToDataUri(image)}
@@ -541,7 +541,7 @@ export const ExternalImageView = observer(
           </div>
 
           {/* 하단 버튼 */}
-          <div className="flex-none p-4 border-t border-gray-200 dark:border-slate-600">
+          <div className="flex-none p-4 border-t line-color">
             <button
               className="w-full back-sky py-2.5 rounded-lg hover:brightness-95 active:brightness-90 font-medium"
               onClick={applyImport}

@@ -74,7 +74,7 @@ const BookmarkDialog: React.FC<BookmarkDialogProps> = ({ mode, initialLabel, ini
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted">이름</label>
           <input
-            className="border rounded px-2 py-1 text-sm bg-[var(--c-input-bg)] dark:border-slate-600 text-[var(--c-input-text)]"
+            className="border rounded px-2 py-1 text-sm bg-[var(--c-input-bg)] line-color text-[var(--c-input-text)]"
             placeholder="표시할 이름"
             value={label}
             onChange={e => setLabel(e.target.value)}
@@ -84,7 +84,7 @@ const BookmarkDialog: React.FC<BookmarkDialogProps> = ({ mode, initialLabel, ini
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted">URL</label>
           <input
-            className="border rounded px-2 py-1 text-sm bg-[var(--c-input-bg)] dark:border-slate-600 text-[var(--c-input-text)]"
+            className="border rounded px-2 py-1 text-sm bg-[var(--c-input-bg)] line-color text-[var(--c-input-text)]"
             placeholder="https://..."
             value={url}
             onChange={e => setUrl(e.target.value)}
@@ -326,7 +326,7 @@ const DesktopBrowser: React.FC = () => {
           <FaRedo size={12} className={loading ? 'animate-spin' : ''} />
         </button>
         <input
-          className="flex-1 text-sm px-2 py-1 border rounded bg-[var(--c-input-bg)] dark:border-slate-600 text-[var(--c-input-text)]"
+          className="flex-1 text-sm px-2 py-1 border rounded bg-[var(--c-input-bg)] line-color text-[var(--c-input-text)]"
           value={inputUrl}
           onChange={e => setInputUrl(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -373,7 +373,7 @@ const DesktopBrowser: React.FC = () => {
       {/* 우클릭 컨텍스트 메뉴 */}
       {contextMenu && (
         <div
-          className="fixed z-50 bg-[var(--c-surface-2)] border dark:border-slate-600 rounded-lg shadow-xl py-1 min-w-[120px]"
+          className="fixed z-50 bg-[var(--c-surface-2)] border line-color rounded-lg shadow-xl py-1 min-w-[120px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button

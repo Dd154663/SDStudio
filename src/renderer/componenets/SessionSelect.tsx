@@ -108,7 +108,7 @@ function ProjectTrashView() {
         deletedProjects.map((item) => (
           <div
             key={item.name}
-            className="flex items-center gap-3 p-3 border border-gray-300 dark:border-slate-500 rounded bg-[var(--c-surface-2)]"
+            className="flex items-center gap-3 p-3 border line-color rounded bg-[var(--c-surface-2)]"
           >
             <div className="flex-1 min-w-0">
               <div className="font-bold text-default truncate">

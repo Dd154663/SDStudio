@@ -95,14 +95,14 @@ export default function MobileColorPicker({
     >
       <div className="flex items-center gap-2">
         <div
-          className="w-8 h-8 rounded-md flex-none border border-gray-300 dark:border-slate-500"
+          className="w-8 h-8 rounded-md flex-none border line-color"
           style={{ backgroundColor: preview }}
         />
         <input
           value={hexText}
           onChange={(e) => onHexInput(e.target.value)}
           spellCheck={false}
-          className="w-24 px-2 py-1 rounded-md text-sm bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-500 text-default outline-none"
+          className="w-24 px-2 py-1 rounded-md text-sm bg-white dark:bg-slate-700 border line-color text-default outline-none"
         />
       </div>
       <div className="flex flex-col gap-2">

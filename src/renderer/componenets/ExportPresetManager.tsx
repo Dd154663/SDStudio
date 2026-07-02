@@ -263,7 +263,7 @@ const ExportPresetManager = observer(() => {
         {/* 새 프리셋 버튼 */}
         <button
           onClick={newPreset}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-sky-400 dark:hover:border-sky-500 text-muted hover:text-sky-500 transition-colors text-sm"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-dashed line-color hover:border-sky-400 dark:hover:border-sky-500 text-muted hover:text-sky-500 transition-colors text-sm"
         >
           <FaPlus size={12} />
           새 프리셋 추가
@@ -271,7 +271,7 @@ const ExportPresetManager = observer(() => {
 
         {/* 프리셋 목록 */}
         {presets.length > 0 && (
-          <div className="max-h-40 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg divide-y divide-gray-100 dark:divide-gray-700">
+          <div className="max-h-40 overflow-y-auto border line-color rounded-lg divide-y divide-[color:var(--c-line)]">
             {presets.map((p, i) => (
               <div
                 key={i}
@@ -336,7 +336,7 @@ const ExportPresetManager = observer(() => {
         )}
 
         {/* 편집 폼 */}
-        <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 space-y-3">
+        <div className="border line-color rounded-lg p-4 space-y-3">
           <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             {editingIndex !== null ? `"${presets[editingIndex]?.name}" 편집` : '새 프리셋'}
           </div>
@@ -349,7 +349,7 @@ const ExportPresetManager = observer(() => {
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="프리셋 이름"
-              className="flex-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="flex-1 px-3 py-1.5 rounded border line-color bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
             />
           </div>
 
@@ -410,7 +410,7 @@ const ExportPresetManager = observer(() => {
                 value={form.prefix}
                 onChange={(e) => setForm({ ...form, prefix: e.target.value })}
                 placeholder="캐릭터 이름"
-                className="flex-1 min-w-0 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
               />
             </div>
           )}
@@ -449,7 +449,7 @@ const ExportPresetManager = observer(() => {
                 value={form.imageSize}
                 onChange={(e) => setForm({ ...form, imageSize: parseInt(e.target.value) || 0 })}
                 placeholder="1024"
-                className="flex-1 min-w-0 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
               />
               <span className="text-xs text-gray-400">px</span>
             </div>
@@ -463,7 +463,7 @@ const ExportPresetManager = observer(() => {
               value={form.separator}
               onChange={(e) => setForm({ ...form, separator: e.target.value })}
               placeholder="비워두면 구분자 없음"
-              className="flex-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="flex-1 px-3 py-1.5 rounded border line-color bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
             />
           </div>
 
@@ -495,7 +495,7 @@ const ExportPresetManager = observer(() => {
 
           {/* 목표 폴더 (데스크톱 전용 — 모바일은 임의 폴더 저장 미지원) */}
           {!isMobile && (
-            <div className="space-y-2 border-t border-gray-200 dark:border-gray-600 pt-3">
+            <div className="space-y-2 border-t line-color pt-3">
               <div className="text-xs text-muted">
                 내보내기 목표 폴더 (비우면 환경설정의 기본 폴더 사용)
               </div>
@@ -505,7 +505,7 @@ const ExportPresetManager = observer(() => {
               <div className="flex gap-2">
                 <button
                   onClick={selectTargetFolder}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-sm text-body hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded border line-color text-sm text-body hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors"
                 >
                   <FaFolderOpen size={12} />
                   폴더 선택
@@ -513,7 +513,7 @@ const ExportPresetManager = observer(() => {
                 {form.targetFolder && (
                   <button
                     onClick={() => setForm({ ...form, targetFolder: '' })}
-                    className="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-sm text-muted hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors"
+                    className="px-3 py-1.5 rounded border line-color text-sm text-muted hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors"
                   >
                     지우기
                   </button>

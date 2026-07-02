@@ -685,7 +685,7 @@ export const App = observer(() => {
         </ErrorBoundary>
         {/* 내보내기 진행 플로팅 위젯 (비차단형) */}
         {appState.exportProgress && (
-          <div className="fixed bottom-16 right-4 z-[1000] bg-[var(--c-surface-2)] rounded-lg shadow-xl border border-gray-200 dark:border-slate-600 p-3 min-w-[220px]">
+          <div className="fixed bottom-16 right-4 z-[1000] bg-[var(--c-surface-2)] rounded-lg shadow-xl border line-color p-3 min-w-[220px]">
             <div className="text-sm font-medium text-default mb-1.5">
               💾 {appState.exportProgress.text}
             </div>

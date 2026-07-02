@@ -541,7 +541,7 @@ export const SceneCell = observer(
       return (
         <div
           id={`scene-cell-${scene.type}-${scene.name}`}
-          className={`relative z-0 m-[10.5px] p-1 bg-[var(--c-surface-2)] border border-gray-300 dark:border-slate-500 ${
+          className={`relative z-0 m-[10.5px] p-1 bg-[var(--c-surface-2)] border line-color ${
             isDragging ? 'opacity-0 no-touch ' : ''
           }${isOver ? ' outline outline-sky-500' : ''}${
             isSelected
@@ -626,7 +626,7 @@ export const SceneCell = observer(
             ? 'border-yellow-400 '
             : isSelected
               ? 'border-sky-500 '
-              : 'border-gray-200 dark:border-slate-600 '
+              : 'line-color '
         }${isDragging ? 'opacity-0 no-touch ' : ''}${
           isOver ? ' ring-2 ring-sky-500' : ''
         }${isSelected ? ' ring-2 ring-sky-400' : ''}${focusRing}`}
@@ -796,7 +796,7 @@ function SceneTrashView({ projectName }: SceneTrashViewProps) {
       {deletedScenes.map((item) => (
         <div
           key={item.name}
-          className="flex items-center gap-3 p-3 border border-gray-300 dark:border-slate-500 rounded bg-[var(--c-surface-2)]"
+          className="flex items-center gap-3 p-3 border line-color rounded bg-[var(--c-surface-2)]"
         >
           <div className="flex-1 min-w-0">
             <div className="font-bold text-default truncate">
@@ -2119,7 +2119,7 @@ const QueueControl = observer(
             <input
               ref={sceneSearchRef}
               type="text"
-              className="flex-1 px-2 py-1 border border-gray-300 dark:border-slate-500 rounded bg-white dark:bg-slate-700 text-default outline-none focus:border-sky-500"
+              className="flex-1 px-2 py-1 border line-color rounded bg-white dark:bg-slate-700 text-default outline-none focus:border-sky-500"
               placeholder="씬 이름 검색..."
               value={sceneSearchQuery}
               onChange={(e) => setSceneSearchQuery(e.target.value)}

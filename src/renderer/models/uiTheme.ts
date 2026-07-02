@@ -72,7 +72,11 @@ export function buildThemeVars(t?: UiThemeConfig): Record<string, string> {
     vars['--c-text-muted'] = mix(base, bg, 0.5 * k);
     vars['--c-text-faint'] = mix(base, bg, 0.68 * k);
     vars['--c-icon-text'] = mix(base, bg, 0.42 * k);
+    // 테두리/구분선(--c-line): 텍스트 사다리 끝보다 더 배경에 녹는 옅은 선.
+    // 배경을 커스텀하면 선도 그쪽으로 물들어 자연스럽다. 수동 지정이 있으면 아래에서 덮어씀.
+    vars['--c-line'] = mix(base, bg, t.textPattern === 'light' ? 0.8 : 0.85);
   }
+  if (isHex6(t.lineColor)) vars['--c-line'] = t.lineColor;
 
   // 구분 구역 배경(--c-zone): 폴더 등 색 대비가 중요한 영역. 커스텀 배경 "색조"는 따라가지
   // 않고, 텍스트 패턴의 "명도"만 맞춰(라이트=옅은 중립/다크=짙은 중립) 어떤 커스텀 테마에서도

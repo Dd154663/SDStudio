@@ -140,7 +140,7 @@ const ProjectCard = ({
             ? 'border-sky-500 ring-2 ring-sky-300'
             : isFav
               ? 'border-yellow-400'
-              : 'border-gray-200 dark:border-slate-600'
+              : 'line-color'
       }`}
       onClick={onSelect}
     >
@@ -1086,7 +1086,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                     {!isMobile ? (
                       <label
                         title="직접 색상 선택"
-                        className="relative w-6 h-6 rounded-full flex-none cursor-pointer overflow-hidden border border-gray-300 dark:border-slate-500 transition-transform hover:scale-110"
+                        className="relative w-6 h-6 rounded-full flex-none cursor-pointer overflow-hidden border line-color transition-transform hover:scale-110"
                         style={{
                           background:
                             'conic-gradient(red, orange, yellow, lime, cyan, blue, magenta, red)',
@@ -1127,7 +1127,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
             })()}
             <button
               onClick={handleNewFolder}
-              className="flex items-center justify-center md:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none md:w-full border border-dashed border-gray-300 dark:border-slate-500 text-muted hover:bg-gray-100 dark:hover:bg-slate-700"
+              className="flex items-center justify-center md:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none md:w-full border border-dashed line-color text-muted hover:bg-gray-100 dark:hover:bg-slate-700"
             >
               <FaPlus size={11} />
               <span>새 폴더</span>
@@ -1145,7 +1145,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
               placeholder="프로젝트 검색..."
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
             />
           </div>
 

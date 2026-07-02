@@ -155,7 +155,7 @@ const VibeImage = ({
       )}
       {!image && (
         <div
-          className={className + ' flex items-center justify-center bg-[var(--c-surface)] border border-gray-300 dark:border-gray-600'}
+          className={className + ' flex items-center justify-center bg-[var(--c-surface)] border line-color'}
           onClick={onClick}
         >
           <span className="text-xs text-muted text-center px-1 select-none">
@@ -363,7 +363,7 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
             {getField().map((vibe: VibeItem) => (
               <div
                 key={vibe.path}
-                className="border border-gray-300 mt-2 p-2 flex gap-2 items-begin"
+                className="border line-color mt-2 p-2 flex gap-2 items-begin"
               >
                 <VibeImage
                   path={
@@ -785,7 +785,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
             {getField().map((reference: ReferenceItem) => (
               <div
                 key={reference.path}
-                className={`border mt-2 p-2 flex gap-2 items-begin ${reference.enabled !== false ? 'border-sky-500 bg-[var(--c-surface-2)]' : 'border-gray-300 opacity-60'}`}
+                className={`border mt-2 p-2 flex gap-2 items-begin ${reference.enabled !== false ? 'border-sky-500 bg-[var(--c-surface-2)]' : 'line-color opacity-60'}`}
               >
                 <VibeImage
                   path={
@@ -1548,7 +1548,7 @@ const PreSetBulkManageModal = observer(
             placeholder="이름으로 검색..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+            className="w-full px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
           />
           <div className="flex items-center justify-between">
             <button
@@ -1562,7 +1562,7 @@ const PreSetBulkManageModal = observer(
               전체 {presets.length}개
             </span>
           </div>
-          <div className="max-h-72 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-2 space-y-0.5">
+          <div className="max-h-72 overflow-y-auto border line-color rounded-lg p-2 space-y-0.5">
             {filtered.map((p) => (
               <label
                 key={p.name}
@@ -1572,7 +1572,7 @@ const PreSetBulkManageModal = observer(
                   type="checkbox"
                   checked={selected.has(p.name)}
                   onChange={() => toggle(p.name)}
-                  className="rounded border-gray-300 dark:border-gray-600"
+                  className="rounded line-color"
                 />
                 <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
                   {p.name}
@@ -1588,7 +1588,7 @@ const PreSetBulkManageModal = observer(
               </div>
             )}
           </div>
-          <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-600">
+          <div className="flex items-center justify-between pt-2 border-t line-color">
             <span className="text-sm text-gray-700 dark:text-gray-300">
               <span className="text-red-500 font-bold">{selected.size}</span>개
               선택됨
@@ -1686,7 +1686,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
         />
       )}
       {isOpen && (
-        <ul className="left-0 top-10 absolute max-h-60 z-20 w-full mt-1 bg-white border-2 border-gray-300 dark:border-slate-600 rounded-md shadow-lg overflow-auto dark:bg-slate-700">
+        <ul className="left-0 top-10 absolute max-h-60 z-20 w-full mt-1 bg-white border-2 line-color rounded-md shadow-lg overflow-auto dark:bg-slate-700">
           {presets.map((option) => (
             <li
               key={option.name}
@@ -2029,7 +2029,7 @@ const GlobalModelSettings = observer(() => {
   if (!loaded) return null;
 
   return (
-    <div className="mt-4 pt-4 border-t border-gray-200 dark:border-slate-600">
+    <div className="mt-4 pt-4 border-t line-color">
       <div className="text-sm font-semibold text-muted mb-3">
         모델 설정 (전역)
       </div>
@@ -2256,7 +2256,7 @@ const CharacterPromptEditor = observer(
             {showCoordMap && (
               <div
                 ref={coordMapRef}
-                className="relative w-full bg-[var(--c-surface)] border border-gray-300 dark:border-slate-500 rounded select-none overflow-hidden"
+                className="relative w-full bg-[var(--c-surface)] border line-color rounded select-none overflow-hidden"
                 style={{ aspectRatio: '4 / 3', touchAction: 'none' }}
                 onPointerMove={(e) => {
                   if (draggingId) handleCoordPointer(e, draggingId);
@@ -2332,7 +2332,7 @@ const CharacterPromptEditor = observer(
             {getField().map((character: CharacterPrompt, i: number) => (
               <div
                 key={character.id}
-                className={`border rounded-md mt-3 p-3 ${character.enabled === false ? 'opacity-60 border-gray-300' : 'border-sky-500 bg-[var(--c-surface-2)]'}`}
+                className={`border rounded-md mt-3 p-3 ${character.enabled === false ? 'opacity-60 line-color' : 'border-sky-500 bg-[var(--c-surface-2)]'}`}
               >
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2 gray-label">

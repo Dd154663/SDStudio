@@ -18,12 +18,6 @@
 .true-dark.dark\:bg-slate-700 {
   background-color: #1a1a1a !important;
 }
-.true-dark .dark\:border-slate-600,
-.true-dark .dark\:border-slate-700,
-.true-dark .dark\:border-gray-600,
-.true-dark .dark\:border-gray-700 {
-  border-color: #2a2a2a !important;
-}
 .true-dark .line-color {
   border-color: #2a2a2a !important;
 }
@@ -298,7 +292,8 @@ body {
   /* .my-react-select-container {
   } */
   .my-react-select-container .my-react-select__control {
-    @apply bg-[var(--c-input-bg)] border-2 border-gray-500 dark:border-slate-700 hover:border-gray-500 dark:hover:border-slate-500;
+    /* 기본 테두리는 --c-line 추종. (라이트 hover는 원래 base와 동일=무변화였어서 제거) */
+    @apply bg-[var(--c-input-bg)] border-2 border-[color:var(--c-line)] dark:hover:border-slate-500;
   }
 
   .my-react-select-container .my-react-select__control--is-focused {
@@ -306,7 +301,7 @@ body {
   }
 
   .my-react-select-container .my-react-select__menu {
-    @apply bg-[var(--c-input-bg)] border-2 border-white dark:border-slate-600;
+    @apply bg-[var(--c-input-bg)] border-2 border-[color:var(--c-line)];
   }
 
   .my-react-select-container .my-react-select__option {

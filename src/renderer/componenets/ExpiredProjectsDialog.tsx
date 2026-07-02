@@ -93,7 +93,7 @@ const ExpiredProjectsDialog = observer(() => {
         </div>
 
         {/* Select all */}
-        <label className="flex items-center gap-2 px-2 py-1 cursor-pointer text-default text-sm border-b dark:border-slate-600">
+        <label className="flex items-center gap-2 px-2 py-1 cursor-pointer text-default text-sm border-b line-color">
           <input
             type="checkbox"
             checked={allSelected}

@@ -163,7 +163,7 @@ export const DownloadDialog = observer(
       <FloatView priority={2} onEscape={onClose}>
         <div className="w-full max-w-lg mx-auto bg-[var(--c-zone)] rounded-lg shadow-xl overflow-hidden">
           {/* 헤더 */}
-          <div className="flex items-center justify-between p-4 border-b dark:border-slate-700">
+          <div className="flex items-center justify-between p-4 border-b line-color">
             <div className="flex items-center gap-2">
               <FaDownload className="text-sky-500" />
               <span className="font-medium text-default">
@@ -270,7 +270,7 @@ export const DownloadDialog = observer(
                       : '전체 선택'}
                   </button>
                 </div>
-                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 border rounded dark:border-slate-600">
+                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 border rounded line-color">
                   {imagePaths.map((_, i) => (
                     <button
                       key={i}
@@ -301,7 +301,7 @@ export const DownloadDialog = observer(
               </button>
 
               {showSettings && (
-                <div className="mt-3 p-3 border rounded dark:border-slate-600 space-y-3">
+                <div className="mt-3 p-3 border rounded line-color space-y-3">
                   {/* 자동 넘버링 */}
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -423,7 +423,7 @@ export const DownloadDialog = observer(
           </div>
 
           {/* 푸터 */}
-          <div className="flex gap-2 p-4 border-t dark:border-slate-700">
+          <div className="flex gap-2 p-4 border-t line-color">
             <button
               className="round-button back-green flex-1 h-10"
               onClick={isSingleImage ? handleSingleDownload : handleBatchDownload}

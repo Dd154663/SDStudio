@@ -1108,7 +1108,7 @@ const ProjectDrawer = observer(() => {
         }}
       />
       <div
-        className="absolute left-0 top-0 h-full w-[90vw] max-w-[400px] bg-[var(--c-zone)] shadow-2xl border-r border-gray-200 dark:border-slate-600 flex flex-col"
+        className="absolute left-0 top-0 h-full w-[90vw] max-w-[400px] bg-[var(--c-zone)] shadow-2xl border-r line-color flex flex-col"
         style={{
           transform: shown ? 'translateX(0)' : 'translateX(-100%)',
           transition: 'transform 0.26s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -1117,7 +1117,7 @@ const ProjectDrawer = observer(() => {
         onClick={(e) => e.stopPropagation()}
       >
         {/* 헤더 */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-slate-600 flex-none">
+        <div className="flex items-center justify-between px-4 py-3 border-b line-color flex-none">
           <h2 className="text-lg font-semibold text-default">
             프로젝트
           </h2>
@@ -1151,7 +1151,7 @@ const ProjectDrawer = observer(() => {
               placeholder="프로젝트 검색..."
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="w-full pl-9 pr-3 py-2.5 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
             />
           </div>
         </div>
@@ -1491,7 +1491,7 @@ const ProjectDrawer = observer(() => {
                           {!isMobile ? (
                             <label
                               title="직접 색상 선택"
-                              className="relative w-7 h-7 rounded-full flex-none cursor-pointer overflow-hidden border border-gray-300 dark:border-slate-500 transition-transform hover:scale-110"
+                              className="relative w-7 h-7 rounded-full flex-none cursor-pointer overflow-hidden border line-color transition-transform hover:scale-110"
                               style={{
                                 background:
                                   'conic-gradient(red, orange, yellow, lime, cyan, blue, magenta, red)',
@@ -1653,7 +1653,7 @@ const ProjectDrawer = observer(() => {
           toolbar.type === 'folder' ? (
             <div
               id="floating-folder-toolbar"
-              className="fixed z-[9999] flex items-center gap-0.5 p-1.5 bg-[var(--c-surface-2)] rounded-lg shadow-xl border border-gray-200 dark:border-slate-600"
+              className="fixed z-[9999] flex items-center gap-0.5 p-1.5 bg-[var(--c-surface-2)] rounded-lg shadow-xl border line-color"
               style={{ left: toolbar.x, top: toolbar.y }}
               onMouseDown={(e) => e.stopPropagation()}
             >
@@ -1740,7 +1740,7 @@ const ProjectDrawer = observer(() => {
           ) : (
             <div
               id="floating-project-toolbar"
-              className="fixed z-[9999] flex items-center gap-0.5 p-1.5 bg-[var(--c-surface-2)] rounded-lg shadow-xl border border-gray-200 dark:border-slate-600"
+              className="fixed z-[9999] flex items-center gap-0.5 p-1.5 bg-[var(--c-surface-2)] rounded-lg shadow-xl border line-color"
               style={{ left: toolbar.x, top: toolbar.y }}
               onMouseDown={(e) => e.stopPropagation()}
             >

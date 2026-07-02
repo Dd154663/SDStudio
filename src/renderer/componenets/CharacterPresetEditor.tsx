@@ -99,7 +99,7 @@ const VibeImage = ({
       )}
       {!image && (
         <div
-          className={className + ' flex items-center justify-center bg-[var(--c-surface)] border border-gray-300 dark:border-gray-600'}
+          className={className + ' flex items-center justify-center bg-[var(--c-surface)] border line-color'}
           onClick={onClick}
         >
           <span className="text-xs text-muted text-center px-1 select-none">
@@ -211,7 +211,7 @@ const CharacterPresetCard = observer(({
       className={
         'group relative rounded-lg bg-[var(--c-surface-2)] border-2 overflow-hidden cursor-pointer transition-all hover:shadow-lg ' +
         (isDragging ? 'opacity-30 ' : '') +
-        (isOver ? 'border-sky-400 ring-2 ring-sky-400 ' : 'border-gray-200 dark:border-slate-600 ')
+        (isOver ? 'border-sky-400 ring-2 ring-sky-400 ' : 'line-color ')
       }
     >
       {/* 이미지 영역 (탭/클릭 = 편집. 편집 버튼은 제거하고 카드 탭으로 통일) */}
@@ -427,7 +427,7 @@ const GlobalCharacterPresetCard = ({
             <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
               selected
                 ? 'bg-purple-500 border-purple-500 text-white'
-                : 'bg-white/80 dark:bg-slate-800/80 border-gray-300 dark:border-gray-500'
+                : 'bg-white/80 dark:bg-slate-800/80 line-color'
             }`}>
               {selected && <FaCheck size={12} />}
             </div>
@@ -679,7 +679,7 @@ const CharacterPresetInnerEditor = observer(({
       <div className="mb-4">
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">프리셋 이름 *</label>
         <input
-          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+          className="w-full px-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -688,7 +688,7 @@ const CharacterPresetInnerEditor = observer(({
       </div>
 
       {/* 대표 이미지 */}
-      <div className="mb-4 p-3 border border-gray-200 dark:border-gray-600 rounded-lg">
+      <div className="mb-4 p-3 border line-color rounded-lg">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">대표 이미지</div>
         <div className="flex items-start gap-3">
           {representativeImage ? (
@@ -697,7 +697,7 @@ const CharacterPresetInnerEditor = observer(({
               className="w-20 h-20 object-cover rounded-lg flex-none"
             />
           ) : (
-            <div className="w-20 h-20 flex items-center justify-center bg-[var(--c-surface)] rounded-lg flex-none border border-dashed border-gray-300 dark:border-gray-600">
+            <div className="w-20 h-20 flex items-center justify-center bg-[var(--c-surface)] rounded-lg flex-none border border-dashed line-color">
               <FaUserAlt className="text-faint" />
             </div>
           )}
@@ -794,7 +794,7 @@ const CharacterPresetInnerEditor = observer(({
 
       {/* 바이브 트랜스퍼 */}
       <div
-        className={`mb-4 p-3 border rounded-lg transition-colors ${isDraggingVibe ? 'ring-2 ring-sky-500 bg-sky-50 dark:bg-sky-900/20 border-sky-400' : 'border-gray-200 dark:border-gray-600'}`}
+        className={`mb-4 p-3 border rounded-lg transition-colors ${isDraggingVibe ? 'ring-2 ring-sky-500 bg-sky-50 dark:bg-sky-900/20 border-sky-400' : 'line-color'}`}
         onDragEnter={handleVibeDragEnter}
         onDragLeave={handleVibeDragLeave}
         onDragOver={handleVibeDragOver}
@@ -814,7 +814,7 @@ const CharacterPresetInnerEditor = observer(({
           </div>
         )}
         {vibes.map((vibe, index) => (
-          <div key={vibe.path + index} className="border border-gray-300 dark:border-gray-600 mt-2 p-2 flex md:flex-row flex-col gap-2 items-start rounded-lg">
+          <div key={vibe.path + index} className="border line-color mt-2 p-2 flex md:flex-row flex-col gap-2 items-start rounded-lg">
             <VibeImage
               path={imageBackend.vibePath(vibe.path)}
               className="flex-none w-28 h-28 object-cover rounded"
@@ -860,7 +860,7 @@ const CharacterPresetInnerEditor = observer(({
 
       {/* 캐릭터 레퍼런스 */}
       <div
-        className={`mb-4 p-3 border rounded-lg transition-colors ${isDraggingRef ? 'ring-2 ring-sky-500 bg-sky-50 dark:bg-sky-900/20 border-sky-400' : 'border-gray-200 dark:border-gray-600'}`}
+        className={`mb-4 p-3 border rounded-lg transition-colors ${isDraggingRef ? 'ring-2 ring-sky-500 bg-sky-50 dark:bg-sky-900/20 border-sky-400' : 'line-color'}`}
         onDragEnter={handleRefDragEnter}
         onDragLeave={handleRefDragLeave}
         onDragOver={handleRefDragOver}
@@ -885,7 +885,7 @@ const CharacterPresetInnerEditor = observer(({
             className={`mt-2 p-2 flex md:flex-row flex-col gap-2 items-start rounded-lg ${
               ref.enabled !== false
                 ? 'border border-sky-500 bg-[var(--c-surface-2)]'
-                : 'border border-gray-300 dark:border-gray-600 opacity-60'
+                : 'border line-color opacity-60'
             }`}
           >
             <VibeImage
@@ -963,7 +963,7 @@ const CharacterPresetInnerEditor = observer(({
       </div>
 
       {/* 파일명 옵션 (옵셔널 섹션) */}
-      <div className="mb-4 p-3 border border-gray-200 dark:border-gray-600 rounded-lg">
+      <div className="mb-4 p-3 border line-color rounded-lg">
         <div
           className="flex items-center justify-between cursor-pointer"
           onClick={() => setShowFilenameOptions(!showFilenameOptions)}
@@ -979,7 +979,7 @@ const CharacterPresetInnerEditor = observer(({
               <label className="text-sm text-muted mb-1 block">파일명 접두사:</label>
               <input
                 type="text"
-                className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="w-full px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                 value={filenamePrefix}
                 onChange={(e) => setFilenamePrefix(e.target.value)}
                 placeholder="예: 캐릭터이름"
@@ -989,7 +989,7 @@ const CharacterPresetInnerEditor = observer(({
               <label className="text-sm text-muted mb-1 block">파일명 접미사:</label>
               <input
                 type="text"
-                className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="w-full px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                 value={filenameSuffix}
                 onChange={(e) => setFilenameSuffix(e.target.value)}
                 placeholder="예: 표정"
@@ -1006,7 +1006,7 @@ const CharacterPresetInnerEditor = observer(({
       </div>
 
       {/* 하단 저장 버튼 */}
-      <div className="flex gap-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+      <div className="flex gap-2 pt-2 border-t line-color">
         <button
           className="flex-1 px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-600 text-white text-sm font-medium transition-colors"
           onClick={handleSave}
@@ -1685,7 +1685,7 @@ export const CharacterPresetEditor = observer(({
             {/* 새 프리셋 카드 (순회 모드가 아닐 때만) */}
             {!cyclingMode && (
               <div
-                className="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-sky-400 dark:hover:border-sky-500 cursor-pointer flex flex-col items-center justify-center aspect-[3/4] transition-colors group"
+                className="rounded-lg border-2 border-dashed line-color hover:border-sky-400 dark:hover:border-sky-500 cursor-pointer flex flex-col items-center justify-center aspect-[3/4] transition-colors group"
                 onClick={handleAddNew}
               >
                 <FaPlus className="text-2xl text-faint group-hover:text-sky-500 transition-colors mb-2" />
@@ -1706,7 +1706,7 @@ export const CharacterPresetEditor = observer(({
                     <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
                       selectedPresets.has(preset.name)
                         ? 'bg-sky-500 border-sky-500 text-white'
-                        : 'bg-white/80 dark:bg-slate-800/80 border-gray-300 dark:border-gray-500'
+                        : 'bg-white/80 dark:bg-slate-800/80 line-color'
                     }`}>
                       {selectedPresets.has(preset.name) && <FaCheck size={12} />}
                     </div>
@@ -1731,7 +1731,7 @@ export const CharacterPresetEditor = observer(({
       )}
       {/* 순차 생성 설정 패널 (로컬/글로벌 공통) */}
       {cyclingMode && (
-            <div className="mt-4 p-3 border border-gray-200 dark:border-gray-600 rounded-lg">
+            <div className="mt-4 p-3 border line-color rounded-lg">
               {/* 씬 선택 */}
               <div className="mb-3">
                 <div className="flex items-center justify-between mb-1">
@@ -1757,16 +1757,16 @@ export const CharacterPresetEditor = observer(({
                   placeholder="씬 이름 검색..."
                   value={sceneFilter}
                   onChange={(e) => setSceneFilter(e.target.value)}
-                  className="w-full mb-1 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                  className="w-full mb-1 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                 />
-                <div className="max-h-36 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-2 space-y-1">
+                <div className="max-h-36 overflow-y-auto border line-color rounded-lg p-2 space-y-1">
                   {filteredScenes.map((scene) => (
                     <label key={scene.name} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 rounded px-1 py-0.5">
                       <input
                         type="checkbox"
                         checked={selectedScenes.has(scene.name)}
                         onChange={() => toggleSceneSelection(scene.name)}
-                        className="rounded border-gray-300 dark:border-gray-600"
+                        className="rounded line-color"
                       />
                       <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{scene.name}</span>
                     </label>
@@ -1782,7 +1782,7 @@ export const CharacterPresetEditor = observer(({
                   type="checkbox"
                   checked={projectFileMode}
                   onChange={(e) => setProjectFileMode(e.target.checked)}
-                  className="mt-0.5 rounded border-gray-300 dark:border-gray-600"
+                  className="mt-0.5 rounded line-color"
                 />
                 <span className="text-sm text-gray-700 dark:text-gray-300">
                   <span className="font-medium">프로젝트 파일 생성으로 동작</span>
@@ -1807,7 +1807,7 @@ export const CharacterPresetEditor = observer(({
                     max={100}
                     value={cyclingSamples}
                     onChange={(e) => setCyclingSamples(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-16 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                    className="w-16 px-2 py-1 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                   />
                 </div>
                 <button

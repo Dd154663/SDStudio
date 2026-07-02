@@ -1319,7 +1319,7 @@ const ResultDetailView = observer(
             {characterPrompts.map((prompt, index) => (
               <div
                 key={index}
-                className="w-full mb-4 border border-gray-200 dark:border-gray-700 rounded-md p-3"
+                className="w-full mb-4 border line-color rounded-md p-3"
               >
                 <div className="gray-label">캐릭터 프롬프트 </div>
                 <PromptHighlighter

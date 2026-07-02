@@ -192,7 +192,7 @@ const TaskQueueList = ({ onClose }: { onClose?: () => void }) => {
           {tasks.map((task, i) => (
             <div
               key={i}
-              className="flex mt-2 items-center gap-2 p-2 border-gray-300 dark:border-slate-500 border mx-2 rounded-lg"
+              className="flex mt-2 items-center gap-2 p-2 line-color border mx-2 rounded-lg"
             >
               <div className="flex-none ">{getEmoji(task)}</div>
               <div className="flex-1 truncate text-default">

@@ -79,7 +79,7 @@ const ResultPanel = ({
   extra?: React.ReactNode;
   children: React.ReactNode;
 }) => (
-  <div className="rounded-lg border border-gray-200 dark:border-slate-600 p-3 space-y-2">
+  <div className="rounded-lg border line-color p-3 space-y-2">
     <div className="flex items-center justify-between gap-2 flex-wrap">
       <div className="text-sm font-semibold gray-label">{title}</div>
       {extra}
@@ -239,7 +239,7 @@ const ArtistTagModal = observer(
             <ResultPanel
               title="WD 태그 분석"
               extra={
-                <div className="flex rounded-md overflow-hidden border border-gray-300 dark:border-slate-600">
+                <div className="flex rounded-md overflow-hidden border line-color">
                   {(
                     [
                       { key: 'wd-swinv2', label: 'SwinV2 (권장)' },
@@ -294,7 +294,7 @@ const ArtistTagModal = observer(
               className={`relative rounded-lg border-2 border-dashed transition-colors cursor-pointer flex items-center justify-center min-h-[180px] ${
                 dragOver
                   ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/30'
-                  : 'border-gray-300 dark:border-slate-600 hover:border-sky-400'
+                  : 'line-color hover:border-sky-400'
               }`}
               onClick={pickFile}
               onDragOver={(e) => {

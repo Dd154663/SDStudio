@@ -247,7 +247,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                     <ArtistImage path={img.path} className="w-full h-full" onClick={() => { setSelectedId(img.id); setShowPrompt(false); }} />
                   </div>
                 ))}
-                <button className="w-14 h-14 rounded border border-dashed border-gray-300 dark:border-slate-500 flex items-center justify-center text-gray-400 hover:text-sky-500"
+                <button className="w-14 h-14 rounded border border-dashed line-color flex items-center justify-center text-gray-400 hover:text-sky-500"
                   onClick={() => fileRef.current?.click()}>
                   <FaPlus />
                 </button>
@@ -305,7 +305,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                   const has = artist.tags.includes(t);
                   return (
                     <button key={t} disabled={has}
-                      className={'text-xs px-2.5 py-1 rounded-full border ' + (has ? 'border-gray-200 dark:border-slate-700 text-gray-300 dark:text-gray-600' : 'border-gray-300 dark:border-slate-500 text-muted hover:border-sky-500 hover:text-sky-500')}
+                      className={'text-xs px-2.5 py-1 rounded-full border ' + (has ? 'line-color text-gray-300 dark:text-gray-600' : 'line-color text-muted hover:border-sky-500 hover:text-sky-500')}
                       onClick={() => artistLibraryService.addTag(artist.id, t)}>
                       + {t}
                     </button>
@@ -342,7 +342,7 @@ const ArtistCard = observer(({
       'flex-none w-[calc(50%-8px)] md:w-60 rounded-lg overflow-hidden flex flex-col border bg-[var(--c-surface-2)] transition-colors ' +
       (selected
         ? 'border-sky-500 ring-2 ring-inset ring-sky-500'
-        : 'border-gray-300 dark:border-slate-600 hover:border-sky-400')
+        : 'line-color hover:border-sky-400')
     }>
       {/* 대표 이미지 */}
       <div className="relative w-full aspect-[3/4] md:aspect-auto md:h-72 bg-[var(--c-surface)] cursor-pointer" onClick={handleClick}>
@@ -407,7 +407,7 @@ const ArtistCard = observer(({
 // ─── 그리드 끝 "새 작가 추가" 카드 ───
 const AddArtistCard = ({ onClick }: { onClick: () => void }) => (
   <button
-    className="flex-none w-[calc(50%-8px)] md:w-60 self-stretch min-h-[16rem] rounded-lg border-2 border-dashed border-gray-300 dark:border-slate-600 flex flex-col items-center justify-center text-gray-400 hover:border-sky-400 hover:text-sky-500 transition-colors"
+    className="flex-none w-[calc(50%-8px)] md:w-60 self-stretch min-h-[16rem] rounded-lg border-2 border-dashed line-color flex flex-col items-center justify-center text-gray-400 hover:border-sky-400 hover:text-sky-500 transition-colors"
     onClick={onClick}
   >
     <FaPlus size={30} />
@@ -472,10 +472,10 @@ const ArtistLibraryTab = observer(() => {
   return (
     <div className="w-full h-full flex flex-col bg-[var(--c-surface)] overflow-hidden">
       {/* 툴바 */}
-      <div className="flex-none p-3 border-b border-gray-200 dark:border-slate-600 flex flex-wrap gap-2 items-center bg-[var(--c-surface)]">
+      <div className="flex-none p-3 border-b line-color flex flex-wrap gap-2 items-center bg-[var(--c-surface)]">
         <div className="relative flex-1 min-w-[180px]">
           <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
-          <input className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-[var(--c-input-bg)] text-sm text-default focus:outline-none focus:ring-2 focus:ring-sky-400"
+          <input className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-sm text-default focus:outline-none focus:ring-2 focus:ring-sky-400"
             placeholder="작가 이름 · 태그로 검색…" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         <select className="gray-input text-sm" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)}>

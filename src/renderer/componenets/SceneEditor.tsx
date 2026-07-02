@@ -589,7 +589,7 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
           {showCoordMap && (
             <div
               ref={coordMapRef}
-              className="relative bg-[var(--c-surface)] border border-gray-300 dark:border-slate-500 rounded select-none overflow-hidden"
+              className="relative bg-[var(--c-surface)] border line-color rounded select-none overflow-hidden"
               style={{ aspectRatio: '4 / 3', maxWidth: '360px', touchAction: 'none' }}
               onPointerMove={(e) => {
                 if (draggingId) handleCoordPointer(e, draggingId);
@@ -646,7 +646,7 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
                 className={`border rounded-lg p-4 transition-all ${
                   character.enabled !== false
                     ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
-                    : 'border-gray-300 opacity-60'
+                    : 'line-color opacity-60'
                 }`}
               >
                 <div className="flex items-center justify-between mb-3">

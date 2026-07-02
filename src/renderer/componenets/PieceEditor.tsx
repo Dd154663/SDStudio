@@ -98,7 +98,7 @@ export const PieceCell = observer(
     return (
       <div
         className={
-          'p-3 bg-[var(--c-surface-2)] border border-gray-300 dark:border-slate-500 my-2 rounded-lg ' +
+          'p-3 bg-[var(--c-surface-2)] border line-color my-2 rounded-lg ' +
           (isDragging ? 'opacity-0' : '')
         }
         style={style ? { ...style, width: width } : {}}

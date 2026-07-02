@@ -61,7 +61,7 @@ const LoginTab = ({
         </button>
       </div>
     </div>
-    <hr className="border-gray-200 dark:border-slate-600" />
+    <hr className="line-color" />
     <div>
       <label className="block text-sm font-semibold gray-label mb-2">
         API 토큰으로 로그인 (구글 연동 계정용)
@@ -79,9 +79,9 @@ const LoginTab = ({
         </button>
       </div>
     </div>
-    <hr className="border-gray-200 dark:border-slate-600" />
+    <hr className="line-color" />
     {/* 토큰 로그인 권장 가이드 */}
-    <div className="rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/40 p-4 text-sm text-body">
+    <div className="rounded-lg border line-color bg-gray-50 dark:bg-slate-700/40 p-4 text-sm text-body">
       <p className="font-semibold mb-1">💡 토큰 로그인을 권장합니다</p>
       <p className="text-xs text-muted mb-3 leading-relaxed">
         NovelAI 측 문제로 이메일/비밀번호 로그인이 실패할 수 있습니다. 더 안정적인 <b>API 토큰</b> 로그인을 권장합니다.
@@ -121,14 +121,14 @@ const ImageEditTab = ({
   <div className="space-y-4">
     <div>
       <label className="block text-sm font-semibold gray-label mb-1">선호 이미지 편집기</label>
-      <select className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+      <select className="mt-1 block w-full rounded-md line-color shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         value={imageEditor} onChange={(e) => setImageEditor(e.target.value)}>
         <option value="photoshop">포토샵</option>
         <option value="gimp">GIMP</option>
         <option value="mspaint">그림판</option>
       </select>
     </div>
-    <hr className="border-gray-200 dark:border-slate-600" />
+    <hr className="line-color" />
     <div className="flex items-center gap-2">
       <input type="checkbox" id="cfgLocalBg" checked={useLocalBgRemoval}
         onChange={(e) => setUseLocalBgRemoval(e.target.checked)} />
@@ -155,7 +155,7 @@ const ImageEditTab = ({
         </div>
         <div>
           <label className="block text-sm gray-label mb-1">배경 제거 퀄리티</label>
-          <select className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          <select className="mt-1 block w-full rounded-md line-color shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
             value={quality} onChange={(e) => setQuality(e.target.value)}>
             <option value="low">낮음</option>
             <option value="normal">보통</option>
@@ -186,7 +186,7 @@ const StorageTab = ({
       onClick={selectFolder}>
       이미지 및 데이터 저장 위치 변경
     </button>
-    <hr className="border-gray-200 dark:border-slate-600" />
+    <hr className="line-color" />
     <div>
       <label className="block text-sm font-semibold gray-label mb-1">기본 내보내기 폴더</label>
       <p className="text-xs text-muted mb-2">
@@ -208,18 +208,18 @@ const StorageTab = ({
         </button>
       )}
     </div>
-    <hr className="border-gray-200 dark:border-slate-600" />
+    <hr className="line-color" />
     <button className="w-full back-red py-2 rounded hover:brightness-95 active:brightness-90"
       onClick={clearImageCache}>
       이미지 캐시 초기화
     </button>
-    <hr className="border-gray-200 dark:border-slate-600" />
+    <hr className="line-color" />
     <div className="flex items-center gap-2">
       <input type="checkbox" id="cfgRefresh" checked={refreshImage}
         onChange={(e) => setRefreshImage(e.target.checked)} />
       <label htmlFor="cfgRefresh" className="text-sm gray-label">이미지 폴더 직접 편집 감지</label>
     </div>
-    <hr className="border-gray-200 dark:border-slate-600" />
+    <hr className="line-color" />
     <div>
       <label className="block text-sm font-semibold gray-label mb-1">이미지 복구 (실험적 기능)</label>
       <p className="text-xs text-muted mb-2">
@@ -448,19 +448,19 @@ const OtherTab = ({
           </label>
         </div>
       </div>
-      <hr className="border-gray-200 dark:border-slate-600" />
+      <hr className="line-color" />
       <div className="flex items-center gap-2">
         <input type="checkbox" id="cfgClassicScene" checked={classicSceneCard}
           onChange={(e) => setClassicSceneCard(e.target.checked)} />
         <label htmlFor="cfgClassicScene" className="text-sm gray-label">클래식 씬 카드 디자인 사용</label>
       </div>
-      <hr className="border-gray-200 dark:border-slate-600" />
+      <hr className="line-color" />
       <div className="flex items-center gap-2">
         <input type="checkbox" id="cfgFullWordAc" checked={fullWordAc}
           onChange={(e) => setFullWordAc(e.target.checked)} />
         <label htmlFor="cfgFullWordAc" className="text-sm gray-label">자동완성 시 콤마 사이 전체 단어 사용</label>
       </div>
-      <hr className="border-gray-200 dark:border-slate-600" />
+      <hr className="line-color" />
       <div>
         <div className="flex items-center gap-2">
           <input type="checkbox" id="cfgLegacyProject" checked={legacyProjectMode}
@@ -471,7 +471,7 @@ const OtherTab = ({
           켜면 기존 프로젝트 선택 드롭다운을 유지합니다(드로어·드롭다운·그리드 공존). 끄면 드롭다운 대신 드로어 열기 버튼으로 표시됩니다.
         </p>
       </div>
-      <hr className="border-gray-200 dark:border-slate-600" />
+      <hr className="line-color" />
       <div>
         <div className="flex items-center gap-2">
           <input type="checkbox" id="cfgStorageGuard" checked={storageWriteGuard}
@@ -482,7 +482,7 @@ const OtherTab = ({
           저장소 접근이 일시적으로 불안정할 때 자동 저장을 잠시 멈춰 데이터 손상을 막습니다. 멈춘 동안의 직전 편집은 저장이 미뤄질 수 있습니다(접근이 회복되면 자동 재개). 꺼도 손상 방지 가드는 항상 동작합니다.
         </p>
       </div>
-      <hr className="border-gray-200 dark:border-slate-600" />
+      <hr className="line-color" />
       <div>
         <label className="block text-sm gray-label mb-1">
           기본 지연 시간 조정 (0ms ~ 1000ms)
@@ -494,7 +494,7 @@ const OtherTab = ({
           <span className="text-sm gray-label w-12 text-right flex-none">{delayTime}ms</span>
         </div>
       </div>
-      <hr className="border-gray-200 dark:border-slate-600" />
+      <hr className="line-color" />
       <div>
         <label className="block text-sm gray-label mb-1">
           이미지 최적화 병렬 처리 수 (1 ~ 4)
@@ -509,13 +509,13 @@ const OtherTab = ({
           높을수록 내보내기가 빠르지만 CPU 사용량이 증가합니다.{isMobile ? ' 모바일은 1~2 권장.' : ''}
         </p>
       </div>
-      <hr className="border-gray-200 dark:border-slate-600" />
+      <hr className="line-color" />
       <FolderCleanupSection folder="exports" label="exports 폴더 정리" />
-      <hr className="border-gray-200 dark:border-slate-600" />
+      <hr className="line-color" />
       <FolderCleanupSection folder="tmp" label="tmp 폴더 정리" description="이미지 내보내기 시 생성되는 임시 파일이 저장됩니다." />
-      <hr className="border-gray-200 dark:border-slate-600" />
+      <hr className="line-color" />
       <TaskLogSection />
-      <hr className="border-gray-200 dark:border-slate-600" />
+      <hr className="line-color" />
       <div className="space-y-2">
         <label className="block text-sm gray-label mb-1">업데이트</label>
         <button
@@ -526,7 +526,7 @@ const OtherTab = ({
           {checkingUpdate ? '확인 중...' : '업데이트 확인'}
         </button>
       </div>
-      <hr className="border-gray-200 dark:border-slate-600" />
+      <hr className="line-color" />
       <div className="space-y-2">
         <label className="block text-sm gray-label mb-1">정보</label>
         <div className="flex flex-col gap-1 text-sm">
@@ -621,7 +621,7 @@ const TaskLogSection = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
           onClick={(e) => { if (e.target === e.currentTarget) setShowDialog(false); }}>
           <div className="bg-[var(--c-zone)] rounded-lg shadow-xl w-[90vw] max-w-lg max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-slate-600">
+            <div className="flex items-center justify-between p-3 border-b line-color">
               <span className="font-bold text-default">작업 로그</span>
               <button className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-lg px-2"
                 onClick={() => setShowDialog(false)}>✕</button>
@@ -637,7 +637,7 @@ const TaskLogSection = () => {
                   ))
               }
             </div>
-            <div className="flex gap-2 p-3 border-t border-gray-200 dark:border-slate-600">
+            <div className="flex gap-2 p-3 border-t line-color">
               <button className="flex-1 back-sky py-2 rounded text-sm hover:brightness-95 active:brightness-90"
                 onClick={downloadLogs} disabled={logs.length === 0}>다운로드</button>
               <button className="flex-1 back-gray py-2 rounded text-sm hover:brightness-95 active:brightness-90"
@@ -719,7 +719,7 @@ const KeyBindingsTab = () => {
   const renderBindingRow = (action: (typeof bindings)[number]) => (
     <div
       key={action.id}
-      className="flex items-center gap-2 py-1.5 border-b border-gray-100 dark:border-slate-700"
+      className="flex items-center gap-2 py-1.5 border-b line-color"
     >
       <span className="flex-1 text-sm text-body min-w-0 truncate">
         {action.label}
@@ -827,7 +827,7 @@ const ColorField = ({
       {isSet && <span className="text-xs text-gray-400">{value}</span>}
       {!isMobile ? (
         <label
-          className="relative w-7 h-7 rounded-full flex-none cursor-pointer overflow-hidden border border-gray-300 dark:border-slate-500"
+          className="relative w-7 h-7 rounded-full flex-none cursor-pointer overflow-hidden border line-color"
           style={{ backgroundColor: shown }}
         >
           <input
@@ -840,7 +840,7 @@ const ColorField = ({
         </label>
       ) : (
         <button
-          className="w-7 h-7 rounded-full flex-none border border-gray-300 dark:border-slate-500"
+          className="w-7 h-7 rounded-full flex-none border line-color"
           style={{ backgroundColor: shown }}
           onClick={() => onMobilePick(shown, onChange)}
         />
@@ -978,6 +978,19 @@ const CustomizationTab = ({
           <p className="text-xs text-muted mt-1">
             프로젝트 드로어처럼 색 강조(폴더 등)가 올라가는 바탕. 미설정 시 배경 색조를
             따르지 않고 기본 테마로 고정돼, 폴더 색과 텍스트가 항상 잘 보입니다.
+          </p>
+        </div>
+        <div>
+          <ColorField
+            label="테두리/구분선 색"
+            value={uiTheme.lineColor}
+            def="#cbd5e1"
+            onChange={(v) => patch({ lineColor: v })}
+            onMobilePick={onMobilePick}
+          />
+          <p className="text-xs text-muted mt-1">
+            입력창·패널·목록 사이의 얇은 선. 미설정 시 텍스트 패턴과 배경색에 맞춰
+            자동으로 옅게 파생됩니다.
           </p>
         </div>
         <div>
@@ -1337,11 +1350,11 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       onClick={onClose}
     >
       <div
-        className={'w-[90vw] max-w-xl bg-[var(--c-zone)] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-slate-600 ' + (mobileMode ? 'max-h-[90vh]' : 'max-h-[85vh]')}
+        className={'w-[90vw] max-w-xl bg-[var(--c-zone)] rounded-xl shadow-2xl flex flex-col overflow-hidden border line-color ' + (mobileMode ? 'max-h-[90vh]' : 'max-h-[85vh]')}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 헤더 */}
-        <div className="flex items-center justify-between px-3 md:px-5 py-3 border-b border-gray-200 dark:border-slate-600 flex-none">
+        <div className="flex items-center justify-between px-3 md:px-5 py-3 border-b line-color flex-none">
           <h1 className="text-base font-semibold text-default">환경설정</h1>
           <button
             className="p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors"
@@ -1351,7 +1364,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
           </button>
         </div>
         {/* 탭 바 */}
-        <div className="flex border-b border-gray-200 dark:border-slate-600 px-2 flex-none">
+        <div className="flex border-b line-color px-2 flex-none">
           {tabs.map((tab, i) => (
             <button
               key={tab.label}
@@ -1390,7 +1403,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
           </div>
         </div>
         {/* 저장 버튼 */}
-        <div className="flex-none px-3 py-4 md:p-4 border-t border-gray-200 dark:border-slate-600">
+        <div className="flex-none px-3 py-4 md:p-4 border-t line-color">
           <button className="w-full back-sky py-2.5 rounded-lg hover:brightness-95 active:brightness-90 font-medium"
             onClick={handleSave}>
             저장
