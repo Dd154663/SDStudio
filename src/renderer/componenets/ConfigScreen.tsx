@@ -32,18 +32,18 @@ interface ConfigScreenProps {
 
 /* ── 탭 1: 로그인 ── */
 const LoginTab = ({
-  email, setEmail, password, setPassword,
   accessToken, setAccessToken,
-  loggedIn, login, loginWithToken, roundTag,
+  loggedIn, loginWithToken, roundTag,
 }: any) => (
   <div className="space-y-5">
     <div>
-      <label className="block text-sm font-semibold gray-label mb-2">NAI 로그인</label>
+      <label className="block text-sm font-semibold gray-label mb-2">
+        API 토큰으로 로그인
+      </label>
       <div className="flex gap-2 mb-2">
-        <input className="gray-input block flex-1" type="text" placeholder="이메일"
-          value={email} onChange={(e) => setEmail(e.target.value)} />
-        <input className="gray-input block flex-1" type="password" placeholder="암호"
-          value={password} onChange={(e) => setPassword(e.target.value)} />
+        <input className="gray-input block flex-1" type="password"
+          placeholder="API 토큰을 붙여넣으세요"
+          value={accessToken} onChange={(e) => setAccessToken(e.target.value)} />
       </div>
       <div className="flex items-center">
         <p className="flex items-center gap-1">
@@ -53,36 +53,14 @@ const LoginTab = ({
             : <span className={`${roundTag} back-red`}>No</span>}
         </p>
         <button className="back-sky py-1 px-3 rounded hover:brightness-95 active:brightness-90 ml-auto"
-          onClick={login}>
-          로그인
-        </button>
-      </div>
-    </div>
-    <hr className="border-gray-200 dark:border-slate-600" />
-    <div>
-      <label className="block text-sm font-semibold gray-label mb-2">
-        API 토큰으로 로그인 (구글 연동 계정용)
-      </label>
-      <div className="flex gap-2 mb-2">
-        <input className="gray-input block flex-1" type="password"
-          placeholder="API 토큰을 붙여넣으세요"
-          value={accessToken} onChange={(e) => setAccessToken(e.target.value)} />
-      </div>
-      <div className="flex items-center">
-        <p className="text-xs gray-label opacity-70">NovelAI에서 발급받은 토큰을 입력하세요</p>
-        <button className="back-sky py-1 px-3 rounded hover:brightness-95 active:brightness-90 ml-auto"
           onClick={loginWithToken}>
           토큰 로그인
         </button>
       </div>
     </div>
     <hr className="border-gray-200 dark:border-slate-600" />
-    {/* 토큰 로그인 권장 가이드 */}
+    {/* 토큰 발급/로그인 가이드 */}
     <div className="rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/40 p-4 text-sm text-gray-700 dark:text-gray-200">
-      <p className="font-semibold mb-1">💡 토큰 로그인을 권장합니다</p>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 leading-relaxed">
-        NovelAI 측 문제로 이메일/비밀번호 로그인이 실패할 수 있습니다. 더 안정적인 <b>API 토큰</b> 로그인을 권장합니다.
-      </p>
       <p className="font-medium mb-1">토큰 발급 방법</p>
       <ol className="list-decimal list-inside space-y-1 mb-3 leading-relaxed text-gray-700 dark:text-gray-200">
         <li>
@@ -800,8 +778,6 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [quality, setQuality] = useState('');
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState(0);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const [saveLocation, setSaveLocation] = useState('');
   const mobileMode = isMobile;
@@ -868,14 +844,6 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     loginService.addEventListener('change', onChange);
     return () => loginService.removeEventListener('change', onChange);
   }, []);
-
-  const login = async () => {
-    try {
-      await loginService.login(email, password);
-    } catch (err: any) {
-      appState.pushMessage('로그인 실패:' + err.message);
-    }
-  };
 
   const loginWithToken = async () => {
     try {
@@ -961,7 +929,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     const key = tabs[tabIdx]?.key;
     switch (key) {
       case 'login':
-        return <LoginTab {...{ email, setEmail, password, setPassword, accessToken, setAccessToken, loggedIn, login, loginWithToken, roundTag }} />;
+        return <LoginTab {...{ accessToken, setAccessToken, loggedIn, loginWithToken, roundTag }} />;
       case 'imageEdit':
         return <ImageEditTab {...{ imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 'storage':
