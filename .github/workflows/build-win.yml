@@ -14,7 +14,8 @@ defaults:
 
 jobs:
   build-win:
-    runs-on: windows-latest
+    # windows-latest(2025)의 VS2026(v18)을 node-gyp가 아직 인식 못함 → VS2022가 있는 이미지로 고정
+    runs-on: windows-2022
 
     steps:
       - name: Checkout
