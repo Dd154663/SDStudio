@@ -16,13 +16,13 @@ import { appState } from '../models/AppService';
 import { TaskLog } from '../models/TaskQueueService';
 import {
   FaUser,
-  FaImage,
   FaFolder,
   FaCog,
   FaTimes,
   FaKeyboard,
   FaWrench,
   FaPalette,
+  FaSlidersH,
 } from 'react-icons/fa';
 import { keyboardShortcutService, KeyboardShortcutService } from '../models/KeyboardShortcutService';
 import ModalOverlay from './ModalOverlay';
@@ -213,6 +213,15 @@ const StorageTab = ({
   </div>
 );
 
+/* ── 탭: 저장/이미지 (저장경로 + 이미지 편집 병합) ── */
+const StorageImageTab = (props: any) => (
+  <div className="space-y-4">
+    <StorageTab {...props} />
+    <hr className="line-color" />
+    <ImageEditTab {...props} />
+  </div>
+);
+
 /* ── 탭(모바일 전용): 이미지 복구 ──
    데스크탑은 '저장경로' 탭에 같은 기능이 있으나, 모바일은 그 탭을 숨기므로
    복구 기능만 떼어 별도 탭으로 제공한다. recoverProjectImages()는 백엔드 공용
@@ -354,15 +363,10 @@ const FolderCleanupSection = ({ folder, label, description }: { folder: string; 
   );
 };
 
-/* ── 탭 4: 기타 설정 ── */
-const OtherTab = ({
-  whiteMode, setWhiteMode,
-  trueDark, setTrueDark,
+/* ── 탭: 시스템 (기술·진단·정보) ── */
+const SystemTab = ({
   delayTime, setDelayTime,
-  classicSceneCard, setClassicSceneCard,
-  legacyProjectMode, setLegacyProjectMode,
   storageWriteGuard, setStorageWriteGuard,
-  fullWordAc, setFullWordAc,
   exportConcurrency, setExportConcurrency,
 }: any) => {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -406,50 +410,6 @@ const OtherTab = ({
 
   return (
     <div className="space-y-4">
-      <div>
-        <label className="block text-sm gray-label mb-2">테마</label>
-        <div className="flex flex-col gap-1.5">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="themeMode" checked={!whiteMode && !trueDark}
-              onChange={() => { setWhiteMode(false); setTrueDark(false); }} />
-            <span className="text-sm gray-label">다크 모드</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="themeMode" checked={trueDark && !whiteMode}
-              onChange={() => { setWhiteMode(false); setTrueDark(true); }} />
-            <span className="text-sm gray-label">트루 다크 모드</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="themeMode" checked={whiteMode}
-              onChange={() => { setWhiteMode(true); setTrueDark(false); }} />
-            <span className="text-sm gray-label">화이트 모드</span>
-          </label>
-        </div>
-      </div>
-      <hr className="line-color" />
-      <div className="flex items-center gap-2">
-        <input type="checkbox" id="cfgClassicScene" checked={classicSceneCard}
-          onChange={(e) => setClassicSceneCard(e.target.checked)} />
-        <label htmlFor="cfgClassicScene" className="text-sm gray-label">클래식 씬 카드 디자인 사용</label>
-      </div>
-      <hr className="line-color" />
-      <div className="flex items-center gap-2">
-        <input type="checkbox" id="cfgFullWordAc" checked={fullWordAc}
-          onChange={(e) => setFullWordAc(e.target.checked)} />
-        <label htmlFor="cfgFullWordAc" className="text-sm gray-label">자동완성 시 콤마 사이 전체 단어 사용</label>
-      </div>
-      <hr className="line-color" />
-      <div>
-        <div className="flex items-center gap-2">
-          <input type="checkbox" id="cfgLegacyProject" checked={legacyProjectMode}
-            onChange={(e) => setLegacyProjectMode(e.target.checked)} />
-          <label htmlFor="cfgLegacyProject" className="text-sm gray-label">레거시 프로젝트 모드</label>
-        </div>
-        <p className="text-xs text-faint mt-1 ml-6">
-          켜면 기존 프로젝트 선택 드롭다운을 유지합니다(드로어·드롭다운·그리드 공존). 끄면 드롭다운 대신 드로어 열기 버튼으로 표시됩니다.
-        </p>
-      </div>
-      <hr className="line-color" />
       <div>
         <div className="flex items-center gap-2">
           <input type="checkbox" id="cfgStorageGuard" checked={storageWriteGuard}
@@ -561,6 +521,38 @@ const OtherTab = ({
     </div>
   );
 };
+
+/* ── 탭: 개인 설정 (취향 토글) ── */
+const PersonalTab = ({
+  classicSceneCard, setClassicSceneCard,
+  fullWordAc, setFullWordAc,
+  legacyProjectMode, setLegacyProjectMode,
+}: any) => (
+  <div className="space-y-4">
+    <div className="flex items-center gap-2">
+      <input type="checkbox" id="cfgClassicScene" checked={classicSceneCard}
+        onChange={(e) => setClassicSceneCard(e.target.checked)} />
+      <label htmlFor="cfgClassicScene" className="text-sm gray-label">클래식 씬 카드 디자인 사용</label>
+    </div>
+    <hr className="line-color" />
+    <div className="flex items-center gap-2">
+      <input type="checkbox" id="cfgFullWordAc" checked={fullWordAc}
+        onChange={(e) => setFullWordAc(e.target.checked)} />
+      <label htmlFor="cfgFullWordAc" className="text-sm gray-label">자동완성 시 콤마 사이 전체 단어 사용</label>
+    </div>
+    <hr className="line-color" />
+    <div>
+      <div className="flex items-center gap-2">
+        <input type="checkbox" id="cfgLegacyProject" checked={legacyProjectMode}
+          onChange={(e) => setLegacyProjectMode(e.target.checked)} />
+        <label htmlFor="cfgLegacyProject" className="text-sm gray-label">레거시 프로젝트 모드</label>
+      </div>
+      <p className="text-xs text-faint mt-1 ml-6">
+        켜면 기존 프로젝트 선택 드롭다운을 유지합니다(드로어·드롭다운·그리드 공존). 끄면 드롭다운 대신 드로어 열기 버튼으로 표시됩니다.
+      </p>
+    </div>
+  </div>
+);
 
 /* ── 작업 로그 ── */
 const TaskLogSection = () => {
@@ -838,10 +830,9 @@ const ColorField = ({
 const CustomizationTab = ({
   uiTheme,
   setUiTheme,
-}: {
-  uiTheme: UiThemeConfig;
-  setUiTheme: React.Dispatch<React.SetStateAction<UiThemeConfig>>;
-}) => {
+  whiteMode, setWhiteMode,
+  trueDark, setTrueDark,
+}: any) => {
   const [mobilePicker, setMobilePicker] = useState<{
     initial: string;
     onChange: (hex: string) => void;
@@ -864,6 +855,29 @@ const CustomizationTab = ({
         UI 색을 직접 지정합니다. 지정하지 않은 항목은 기본 테마(다크/라이트)를 따릅니다.
         아래 미리보기로 즉시 확인하고, <b>저장</b>하면 앱 전체에 적용됩니다.
       </div>
+
+      {/* ── 기본 테마 (base 모드) ── */}
+      <div>
+        <label className="block text-sm gray-label mb-2">기본 테마</label>
+        <div className="flex flex-col gap-1.5">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="themeMode" checked={!whiteMode && !trueDark}
+              onChange={() => { setWhiteMode(false); setTrueDark(false); }} />
+            <span className="text-sm gray-label">다크 모드</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="themeMode" checked={trueDark && !whiteMode}
+              onChange={() => { setWhiteMode(false); setTrueDark(true); }} />
+            <span className="text-sm gray-label">트루 다크 모드</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="themeMode" checked={whiteMode}
+              onChange={() => { setWhiteMode(true); setTrueDark(false); }} />
+            <span className="text-sm gray-label">화이트 모드</span>
+          </label>
+        </div>
+      </div>
+      <hr className="line-color" />
 
       {/* ── 실시간 미리보기 ── */}
       <div>
@@ -1275,11 +1289,11 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   // 고르므로, 플랫폼별로 탭을 끼우거나 빼도 매핑이 어긋나지 않는다.
   const tabs = [
     { key: 'login', label: '로그인', icon: <FaUser size={14} /> },
-    ...(!mobileMode ? [{ key: 'imageEdit', label: '이미지 편집', icon: <FaImage size={14} /> }] : []),
-    ...(!mobileMode ? [{ key: 'storage', label: '저장경로', icon: <FaFolder size={14} /> }] : []),
-    { key: 'other', label: '기타', icon: <FaCog size={14} /> },
-    { key: 'customization', label: '커스터마이징', icon: <FaPalette size={14} /> },
-    // 복구는 모바일 전용 탭(데스크탑은 '저장경로' 탭 안에 동일 기능 존재)
+    { key: 'customization', label: '테마', icon: <FaPalette size={14} /> },
+    ...(!mobileMode ? [{ key: 'storage', label: '저장/이미지', icon: <FaFolder size={14} /> }] : []),
+    { key: 'system', label: '시스템', icon: <FaCog size={14} /> },
+    { key: 'personal', label: '개인 설정', icon: <FaSlidersH size={14} /> },
+    // 복구는 모바일 전용 탭(데스크탑은 '저장/이미지' 탭 안에 동일 기능 존재)
     ...(mobileMode ? [{ key: 'recovery', label: '복구', icon: <FaWrench size={14} /> }] : []),
     ...(!mobileMode ? [{ key: 'keybindings', label: '키 바인딩', icon: <FaKeyboard size={14} /> }] : []),
   ];
@@ -1289,14 +1303,14 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     switch (key) {
       case 'login':
         return <LoginTab {...{ accessToken, setAccessToken, loggedIn, loginWithToken, roundTag }} />;
-      case 'imageEdit':
-        return <ImageEditTab {...{ imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 'storage':
-        return <StorageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder }} />;
-      case 'other':
-        return <OtherTab {...{ whiteMode, setWhiteMode, trueDark, setTrueDark, delayTime, setDelayTime, classicSceneCard, setClassicSceneCard, legacyProjectMode, setLegacyProjectMode, storageWriteGuard, setStorageWriteGuard, fullWordAc, setFullWordAc, exportConcurrency, setExportConcurrency }} />;
+        return <StorageImageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
+      case 'system':
+        return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency }} />;
+      case 'personal':
+        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode }} />;
       case 'customization':
-        return <CustomizationTab {...{ uiTheme, setUiTheme }} />;
+        return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':
