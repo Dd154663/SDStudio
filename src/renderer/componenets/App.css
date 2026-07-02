@@ -18,9 +18,8 @@
 .true-dark.dark\:bg-slate-700 {
   background-color: #1a1a1a !important;
 }
-.true-dark .line-color {
-  border-color: #2a2a2a !important;
-}
+/* (제거됨) .true-dark .line-color !important 오버라이드 — 트루다크 기본값은 아래
+   토큰 블록의 --c-line이 담당하고, 커스텀 라인 색이 트루다크에서도 이기도록 한다. */
 
 /* ── 시맨틱 색 토큰 (테마 커스터마이징 토대) ──
    기본값은 현재 외형과 1:1 동일. 라이트=:root / 다크=.dark / 트루다크=.true-dark(델타만).
