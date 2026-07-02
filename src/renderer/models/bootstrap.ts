@@ -14,6 +14,7 @@ import {
   backgroundKeepAliveService,
 } from '.';
 import { appState } from './AppService';
+import { persistService } from './PersistenceService';
 
 // ── 명시적 부트 시퀀스 ──
 // 앱의 모든 비동기 초기화가 여기서 "정해진 순서"로 일어난다.
@@ -103,6 +104,8 @@ function registerOnCloseFlush() {
         await globalCharacterPresetService.flushSave();
         await artistLibraryService.flushSave();
         await taskQueueService.flushSaveLogs();
+        // 쓰기 파이프라인에 남아 있는(대기/진행 중) 저장까지 전부 디스크에 반영
+        await persistService.flushAll();
       } catch (e) {
         console.error('종료 시 저장 실패:', e);
       } finally {

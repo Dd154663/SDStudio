@@ -1,4 +1,5 @@
 import { backend } from '.';
+import { persistService } from './PersistenceService';
 import { sleep } from './util';
 import { reaction } from 'mobx';
 
@@ -272,7 +273,9 @@ export abstract class ResourceSyncService<
     // 'skip-keep' = 일시적 사유로 보류(저장소 불안정) → dirty 유지, 회복 시 재시도
     if (decision === 'skip') return 'done';
     if (decision === 'skip-keep') return 'retry';
-    await backend.writeFile(this.getPath(name), payload);
+    // 쓰기 파이프라인 경유 — 같은 파일에 대한 동시 저장(주기/가시성/종료 flush)이
+    // 순서 보장 + 최신본 병합으로 처리된다.
+    await persistService.write(this.getPath(name), payload);
     return 'done';
   }
 

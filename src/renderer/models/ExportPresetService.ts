@@ -1,3 +1,4 @@
+import { persistService } from './PersistenceService';
 import {
   batchProcessService,
   backupService,
@@ -90,7 +91,7 @@ export class ExportPresetService {
         if (ls) {
           presets = JSON.parse(ls);
           // 파일로 이관. localStorage 원본은 롤백 안전망으로 남겨둔다(삭제하지 않음).
-          await backend.writeFile(
+          await persistService.write(
             'exportPresets.json',
             JSON.stringify(presets),
           );
@@ -119,7 +120,7 @@ export class ExportPresetService {
   saveExportPresets(presets: ExportPreset[]) {
     this.exportPresetsCache = presets;
     this.exportPresetsLoaded = true; // 이후 늦은 init 로드가 덮어쓰지 못하게
-    backend.writeFile('exportPresets.json', JSON.stringify(presets)).catch(
+    persistService.write('exportPresets.json', JSON.stringify(presets)).catch(
       (e) => {
         console.error('내보내기 프리셋 저장 실패:', e);
       },

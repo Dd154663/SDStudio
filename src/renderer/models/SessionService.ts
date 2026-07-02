@@ -7,6 +7,7 @@ import defaultassets from '../defaultassets';
 import { dataUriToBase64 } from './ImageService';
 import { defaultUC } from './PromptService';
 import { ResourceSyncService } from './ResourceSyncService';
+import { persistService } from './PersistenceService';
 import { isOutputImageFile } from './imageFormats';
 import {
   PromptPieceSlot,
@@ -57,7 +58,7 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async saveFavorites() {
-    await backend.writeFile('favorites.json', JSON.stringify([...this.favorites]));
+    await persistService.write('favorites.json', JSON.stringify([...this.favorites]));
   }
 
   async toggleFavorite(name: string) {
@@ -430,7 +431,7 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async saveFolderColors() {
-    await backend.writeFile(
+    await persistService.write(
       'folderColors.json',
       JSON.stringify(this.folderColors),
     );
@@ -458,7 +459,7 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async saveFolderOrder() {
-    await backend.writeFile(
+    await persistService.write(
       'folderOrder.json',
       JSON.stringify(this.folderOrder),
     );
@@ -526,7 +527,7 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async saveBookmarks() {
-    await backend.writeFile('bookmarks.json', JSON.stringify(this.bookmarkData));
+    await persistService.write('bookmarks.json', JSON.stringify(this.bookmarkData));
     this.dispatchEvent(new CustomEvent('bookmark-updated'));
   }
 
@@ -585,7 +586,7 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async saveThumbnails() {
-    await backend.writeFile(
+    await persistService.write(
       'thumbnails.json',
       JSON.stringify(this.thumbnailData),
     );
