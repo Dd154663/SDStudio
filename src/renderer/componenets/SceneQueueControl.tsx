@@ -951,6 +951,22 @@ const QueueControl = observer(
       };
     }, [type, curSession]);
 
+    // 히스토리 "해당 씬으로 이동" 등에서 열린 그리드를 외부에서 닫는 이벤트
+    // (숨은 탭 인스턴스 포함 — 가드 없이 모두 닫는다)
+    useEffect(() => {
+      const handleCloseViewer = () => {
+        setDisplayScene(undefined);
+        setDisplayFocus(undefined);
+      };
+      sessionService.addEventListener('close-result-viewer', handleCloseViewer);
+      return () => {
+        sessionService.removeEventListener(
+          'close-result-viewer',
+          handleCloseViewer,
+        );
+      };
+    }, []);
+
     const addAllToQueue = () => addScenesToQueue(curSession, type, false);
 
     // 단축키에서 모든 씬 예약 이벤트 수신
@@ -1731,6 +1747,8 @@ const QueueControl = observer(
       if (displayScene)
         return (
           <FloatView
+            // 씬 고유 key: 열린 채 다른 씬으로 바뀔 때 리마운트시켜 마운트 refresh·탭 상태를 초기화
+            key={displayScene.type + '-' + displayScene.name}
             priority={2}
             showToolbar
             onEscape={() => {

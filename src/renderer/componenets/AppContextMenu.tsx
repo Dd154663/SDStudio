@@ -366,6 +366,18 @@ export const AppContextMenu = observer(() => {
   };
   const downloadImage = async (ctx: GallaryImageContextAlt) => {
     if (!ctx.scene) return;
+    if (isMobile) {
+      // 모바일은 폴더 선택 불가 → Download 폴더 복사 경로 (downloadSingleImage 미동작 버그 우회)
+      for (const p of ctx.path) {
+        await backend.copyToDownloads(p);
+      }
+      appState.pushMessage(
+        ctx.path.length > 1
+          ? `${ctx.path.length}장을 다운로드 폴더에 저장했습니다`
+          : '다운로드 폴더에 저장했습니다',
+      );
+      return;
+    }
     const characterPreset = appState.getAppliedCharacterPreset();
     if (ctx.path.length === 1) {
       // 단일 이미지 다운로드
@@ -493,18 +505,14 @@ export const AppContextMenu = observer(() => {
   // ── 히스토리 사이드바 이미지 메뉴 ──
   // 히스토리는 타 프로젝트 항목이 있을 수 있어 curSession 대신 resolve()로 세션/씬을 얻는다.
   // (비활성 세션의 mains 토글 등도 ResourceSyncService가 자동 저장)
-  const historyFavImage = async (ctx: HistoryImageContextAlt) => {
-    const resolved = await imageHistoryService.resolve(ctx.entry);
-    if (!resolved) return;
-    const { scene } = resolved;
-    const filename = ctx.entry.filename;
-    if (scene.mains.includes(filename)) {
-      scene.mains.splice(scene.mains.indexOf(filename), 1);
-    } else {
-      scene.mains.push(filename);
-    }
-  };
   const historyDownloadImage = async (ctx: HistoryImageContextAlt) => {
+    if (isMobile) {
+      // 모바일은 폴더 선택이 불가능해 downloadSingleImage가 동작하지 않음 —
+      // Download 폴더 복사(+미디어 스캔) 경로 사용
+      await backend.copyToDownloads(ctx.entry.path);
+      appState.pushMessage('다운로드 폴더에 저장했습니다');
+      return;
+    }
     const resolved = await imageHistoryService.resolve(ctx.entry);
     if (!resolved) return;
     const { session, scene } = resolved;
@@ -545,7 +553,7 @@ export const AppContextMenu = observer(() => {
     } else if (id === 'open-grid') {
       imageHistoryService.navigateTo(ctx.entry, { openGrid: true });
     } else if (id === 'fav') {
-      historyFavImage(ctx);
+      imageHistoryService.toggleFavorite(ctx.entry);
     } else if (id === 'download') {
       historyDownloadImage(ctx);
     } else if (id === 'delete') {

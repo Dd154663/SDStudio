@@ -82,6 +82,19 @@ export class ImageHistoryService {
     });
   }
 
+  // 조용한 조회(부수효과 없음): 셀의 즐겨찾기 표시 등 렌더용
+  async resolveQuiet(
+    entry: GenerationHistoryEntry,
+  ): Promise<{ session: Session; scene: GenericScene } | null> {
+    const session = await sessionService.get(entry.sessionName);
+    const scene =
+      entry.sceneType === 'scene'
+        ? session?.scenes.get(entry.sceneName)
+        : session?.inpaints.get(entry.sceneName);
+    if (!session || !scene) return null;
+    return { session, scene };
+  }
+
   // 클릭 시점 검증: 세션 로드 + 씬 존재 확인. 실패하면 항목 제거 후 null.
   async resolve(
     entry: GenerationHistoryEntry,
@@ -98,6 +111,20 @@ export class ImageHistoryService {
       return null;
     }
     return { session, scene };
+  }
+
+  // 이미지 즐겨찾기(메인) 토글 — 썸네일 탭/클릭과 컨텍스트 메뉴 공용.
+  // scene.mains는 mobx 옵저버블이라 observer 셀이 자동 갱신되고,
+  // 비활성 세션의 변경도 ResourceSyncService가 자동 저장한다.
+  async toggleFavorite(entry: GenerationHistoryEntry): Promise<void> {
+    const resolved = await this.resolve(entry);
+    if (!resolved) return;
+    const { scene } = resolved;
+    if (scene.mains.includes(entry.filename)) {
+      scene.mains.splice(scene.mains.indexOf(entry.filename), 1);
+    } else {
+      scene.mains.push(entry.filename);
+    }
   }
 
   // 좌클릭/컨텍스트 메뉴 "해당 씬으로 이동" 공용 진입점.
@@ -129,6 +156,10 @@ export class ImageHistoryService {
         }),
       );
     } else {
+      // 열려 있는 이미지 그리드(ResultViewer)를 먼저 닫아야 스크롤이 보인다
+      sessionService.dispatchEvent(new CustomEvent('close-result-viewer'));
+      // 오버레이 언마운트가 반영된 다음 프레임에 스크롤
+      await new Promise((r) => setTimeout(r, 0));
       cell.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }
