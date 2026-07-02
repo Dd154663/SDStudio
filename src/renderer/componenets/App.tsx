@@ -13,6 +13,7 @@ import SessionSelect from './SessionSelect';
 import ProjectDrawer from './ProjectDrawer';
 import ProjectBrowser from './ProjectBrowser';
 import { ImageHistoryPanel, ImageHistoryDrawer, ImageHistoryHandle } from './ImageHistory';
+import QuickModeTab from './QuickModeTab';
 import PreSetEditor from './PreSetEdtior';
 import SceneQueuControl, { SceneCell } from './SceneQueueControl';
 import TaskQueueControl from './TaskQueueControl';
@@ -26,7 +27,7 @@ import ExpiredProjectsDialog from './ExpiredProjectsDialog';
 import QueueControl from './SceneQueueControl';
 import { FloatView, FloatViewProvider } from './FloatView';
 import { observer, useObserver } from 'mobx-react-lite';
-import { FaGlobe, FaImages, FaPenFancy, FaStar, FaPalette, FaSearch } from 'react-icons/fa';
+import { FaGlobe, FaImages, FaPenFancy, FaStar, FaPalette, FaSearch, FaBolt } from 'react-icons/fa';
 import { GlobalPresetTab, GlobalPresetPickerOverlay } from './GlobalPresetTab';
 import ModalOverlay from './ModalOverlay';
 import { DndProvider } from 'react-dnd';
@@ -435,6 +436,12 @@ export const App = observer(() => {
       content: <ArtistLibraryTab />,
       emoji: <FaPalette />,
       banToggle: true,
+    },
+    {
+      // NAI풍 즉시 생성 화면. banToggle 미설정 → 모바일에서 공용 "프롬프트 열기" 사용
+      label: '퀵 생성',
+      content: <QuickModeTab />,
+      emoji: <FaBolt />,
     },
     ...(!isMobile ? [{
       label: '웹 검색',
