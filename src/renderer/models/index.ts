@@ -64,7 +64,11 @@ export class ZipService extends EventTarget {
 export const zipService = new ZipService();
 
 export const sessionService = new SessionService();
-sessionService.run();
+// run() 은 자동 저장 루프라 보통 반환되지 않는다. 만에 하나 부팅 단계에서
+// 거부되면 unhandled rejection 으로 조용히 사라지지 않도록 로그를 남긴다.
+sessionService.run().catch((e) => {
+  console.error('세션 서비스 시작 실패(자동 저장 미가동 위험):', e);
+});
 
 export const imageService = new ImageService();
 

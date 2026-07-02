@@ -671,27 +671,35 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async run() {
-    await this.loadFavorites();
-    await this.loadBookmarks();
-    await this.loadThumbnails();
-    await this.loadFolderColors();
-    await this.loadFolderOrder();
-    const { trashService } = await import('.');
-    await trashService.loadTrash();
+    // 사전 로드(즐겨찾기/북마크/휴지통 등)가 어떤 이유로 실패하더라도
+    // super.run()(주기 자동 저장 루프 + 백그라운드 진입 시 강제 저장 훅)에는
+    // 반드시 도달해야 한다. 여기서 죽으면 앱은 멀쩡해 보여도 이후 편집이
+    // 디스크에 저장되지 않아 통째로 유실된다.
+    try {
+      await this.loadFavorites();
+      await this.loadBookmarks();
+      await this.loadThumbnails();
+      await this.loadFolderColors();
+      await this.loadFolderOrder();
+      const { trashService } = await import('.');
+      await trashService.loadTrash();
 
-    // 만료 프로젝트 감지 → UI 다이얼로그에 전달 (가볍게 체크만)
-    const expired = await trashService.getExpiredProjects();
-    if (expired.length > 0) {
-      const { appState } = await import('./AppService');
-      appState.pendingExpiredProjects = expired;
+      // 만료 프로젝트 감지 → UI 다이얼로그에 전달 (가볍게 체크만)
+      const expired = await trashService.getExpiredProjects();
+      if (expired.length > 0) {
+        const { appState } = await import('./AppService');
+        appState.pendingExpiredProjects = expired;
+      }
+
+      // autoCleanup은 앱 시작을 블로킹하지 않도록 지연 실행
+      setTimeout(() => {
+        trashService.autoCleanup().catch((e) => {
+          console.error('휴지통 자동 정리 실패:', e);
+        });
+      }, 10000);
+    } catch (e) {
+      console.error('세션 서비스 사전 로드 실패(자동 저장 루프는 계속 시작):', e);
     }
-
-    // autoCleanup은 앱 시작을 블로킹하지 않도록 지연 실행
-    setTimeout(() => {
-      trashService.autoCleanup().catch((e) => {
-        console.error('휴지통 자동 정리 실패:', e);
-      });
-    }, 10000);
 
     await super.run();
   }

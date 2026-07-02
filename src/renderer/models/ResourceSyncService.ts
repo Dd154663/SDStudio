@@ -316,8 +316,32 @@ export abstract class ResourceSyncService<
   }
 
   async run() {
+    // 리소스 디렉터리 보장(.keep 파일): 신규 설치 등으로 projects/ 가 없으면
+    //  - PC: 첫 프로젝트 저장이 손실 방지 가드의 "디스크 목록 0개 = 저장소 불안정"
+    //    판정에 걸려 보류되는데, 그 디렉터리를 만들 유일한 쓰기가 바로 그 보류된
+    //    쓰기라 영영 저장되지 않는 교착이 된다.
+    //  - 모바일: 없는 디렉터리의 목록 조회가 예외를 던져 아래 초기 스캔이 실패한다.
+    // .keep 하나를 두면 디렉터리가 항상 존재하고 목록도 항상 1개 이상이라 두 문제가
+    // 모두 사라진다. (점으로 시작하는 파일이라 목록 스캔/가드에서 무시됨)
+    try {
+      if (!(await backend.existFile(this.resourceDir + '/.keep'))) {
+        await backend.writeFile(this.resourceDir + '/.keep', '');
+      }
+    } catch (e) {
+      console.error('리소스 디렉터리 준비 실패:', e);
+    }
+
     // 최초 1회 전체 스캔으로 목록을 로드한다.
-    await this.update();
+    // 실패해도 루프는 반드시 시작해야 한다 — 여기서 죽으면 주기 자동 저장과
+    // visibilitychange 강제 저장 훅이 아예 설치되지 않아 이후 편집이 통째로
+    // 유실된다(특히 모바일 강제 종료 시). 스캔은 아래 루프가 재시도한다.
+    let initialScanFailed = false;
+    try {
+      await this.update();
+    } catch (e) {
+      initialScanFailed = true;
+      console.error('초기 리소스 목록 스캔 실패(주기 루프에서 재시도):', e);
+    }
 
     // 가시성 변화 대응: 백그라운드 진입 시 즉시 저장(편집 유실 방지),
     // 복귀 시 재스캔. (모바일에서 백그라운드 중 강제 종료되어도 직전 편집을 보존)
@@ -334,7 +358,8 @@ export abstract class ResourceSyncService<
       });
     }
 
-    let idleTicks = 0;
+    // 초기 스캔이 실패했으면 첫 틱에서 바로 재스캔하도록 카운터를 당겨 둔다.
+    let idleTicks = initialScanFailed ? 3 : 0;
     while (this.running) {
       await sleep(this.updateInterval);
       if (!this.running) break;
