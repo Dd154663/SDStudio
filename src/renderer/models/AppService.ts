@@ -284,6 +284,17 @@ export class AppState {
     );
   }
 
+  // 히스토리 목록 열 수 (1열=크게 / 2열=조밀). PC 패널·모바일 드로어 공용.
+  @observable accessor historyColumns: 1 | 2 = (() => {
+    return localStorage.getItem('sdstudio-history-columns') === '1' ? 1 : 2;
+  })();
+
+  @action
+  toggleHistoryColumns() {
+    this.historyColumns = this.historyColumns === 2 ? 1 : 2;
+    localStorage.setItem('sdstudio-history-columns', String(this.historyColumns));
+  }
+
   // 모바일 우측 히스토리 드로어 (비영속)
   @observable accessor historyDrawerOpen: boolean = false;
 

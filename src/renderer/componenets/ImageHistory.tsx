@@ -1,7 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useContextMenu } from 'react-contexify';
-import { FaChevronLeft, FaChevronRight, FaStar, FaTimes } from 'react-icons/fa';
+import {
+  FaChevronLeft,
+  FaChevronRight,
+  FaSquare,
+  FaStar,
+  FaThLarge,
+  FaTimes,
+} from 'react-icons/fa';
 import { imageHistoryService, imageService } from '../models';
 import { GenerationHistoryEntry } from '../models/ImageHistoryService';
 import { appState } from '../models/AppService';
@@ -31,7 +38,8 @@ const HistoryImageCell = observer(
       let canceled = false;
       (async () => {
         try {
-          const base64 = await imageService.fetchImageSmall(entry.path, 200);
+          // 400px 썸네일: fastcache 사전 생성 크기라 추가 비용 없음 (200은 1열/고DPI에서 열화)
+          const base64 = await imageService.fetchImageSmall(entry.path, 400);
           if (canceled) return;
           if (!base64) {
             // 파일이 사라진 항목은 히스토리에서 제거
@@ -91,9 +99,25 @@ const HistoryImageCell = observer(
   },
 );
 
-// PC/모바일 공용 목록 (2열 그리드, 최신순)
+// PC/모바일 공용 열 수 토글 버튼 (헤더용) — 클릭하면 1열↔2열 전환
+const HistoryColumnsToggle = observer(() => {
+  const cols = appState.historyColumns;
+  return (
+    <Tooltip content={cols === 2 ? '1열로 크게 보기' : '2열로 조밀하게 보기'}>
+      <button
+        className="icon-button"
+        onClick={() => appState.toggleHistoryColumns()}
+      >
+        {cols === 2 ? <FaSquare size={13} /> : <FaThLarge size={13} />}
+      </button>
+    </Tooltip>
+  );
+});
+
+// PC/모바일 공용 목록 (1열/2열 그리드 토글, 최신순)
 const HistoryList = observer(() => {
   const entries = imageHistoryService.entries;
+  const cols = appState.historyColumns;
 
   // 탭/클릭 = 즐겨찾기 토글 (씬 이동·그리드 열기는 우클릭/롱프레스 메뉴 전담)
   const onClickEntry = (entry: GenerationHistoryEntry) => {
@@ -108,7 +132,12 @@ const HistoryList = observer(() => {
     );
   }
   return (
-    <div className="flex-1 overflow-y-auto p-2 grid grid-cols-2 gap-1.5 content-start">
+    <div
+      className={
+        'flex-1 overflow-y-auto p-2 grid gap-1.5 content-start ' +
+        (cols === 2 ? 'grid-cols-2' : 'grid-cols-1')
+      }
+    >
       {entries.map((entry) => (
         <HistoryImageCell
           key={entry.id}
@@ -158,8 +187,9 @@ export const ImageHistoryPanel = observer(() => {
           className="flex flex-col h-full border-l line-color bg-[var(--c-surface-2)]"
           style={{ width: 240 }}
         >
-          <div className="flex-none px-3 py-2 border-b line-color text-sm font-semibold gray-label">
-            히스토리
+          <div className="flex-none px-3 py-2 border-b line-color flex items-center justify-between">
+            <span className="text-sm font-semibold gray-label">히스토리</span>
+            <HistoryColumnsToggle />
           </div>
           <HistoryList />
         </div>
@@ -302,14 +332,17 @@ export const ImageHistoryDrawer = observer(() => {
       >
         <div className="flex items-center justify-between px-4 py-3 border-b line-color flex-none">
           <h2 className="text-lg font-semibold text-default">히스토리</h2>
-          <button
-            className="icon-button"
-            onClick={() => {
-              appState.historyDrawerOpen = false;
-            }}
-          >
-            <FaTimes size={18} />
-          </button>
+          <div className="flex items-center gap-3">
+            <HistoryColumnsToggle />
+            <button
+              className="icon-button"
+              onClick={() => {
+                appState.historyDrawerOpen = false;
+              }}
+            >
+              <FaTimes size={18} />
+            </button>
+          </div>
         </div>
         <HistoryList />
       </div>
