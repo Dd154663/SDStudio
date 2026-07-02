@@ -18,8 +18,20 @@ export const platform = {
 
   // --- 튜닝 상수 ---
   imageCacheSize: isMobile ? 64 : 256,
+  // 이미지 캐시 총 용량 상한(문자 수 ≈ base64 바이트). 썸네일(수십 KB)과
+  // 원본(수 MB)이 한 캐시에 섞여 있어 개수 제한만으로는 원본이 몰릴 때
+  // 메모리가 수백 MB 까지 커질 수 있다 → 용량으로도 제한.
+  imageCacheBytes: isMobile ? 32 * 1024 * 1024 : 128 * 1024 * 1024,
   encodedVibeCacheSize: isMobile ? 32 : 128,
   exportConcurrency: isMobile ? 2 : 4,
+  // 씬 카드 썸네일 크기. 모바일에서 500 요청은 fastcache 를 거치지 않고
+  // "원본 통째 로드"로 우회되는데(ImageService.fetchImageSmall 분기),
+  // 씬 그리드는 가상화가 없어 전체 씬의 원본이 메모리에 올라간다 → 400 사용.
+  sceneThumbSize: isMobile ? 400 : 500,
+  // 모바일 생성 직후 사전 생성할 썸네일 크기. 500은 모바일에서 원본 로드로
+  // 우회되므로(위와 동일) 사전 생성 대상에서 제외 — 원본을 LRU 에 불필요하게
+  // 올려 다른 캐시를 밀어내는 낭비를 막는다.
+  pregenThumbSizes: [200, 400],
 
   // --- 능력 플래그 (데스크톱 전용 기능) ---
   supportsLosslessWebp: !isMobile, // sharp 무손실 webp 최적화

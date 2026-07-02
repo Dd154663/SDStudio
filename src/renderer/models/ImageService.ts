@@ -16,11 +16,21 @@ const naturalSort = (a: string, b: string) => {
 
 class LRUCache<K, V> {
   limit: number;
+  // 개수와 별개로 총 용량(문자 수 ≈ base64 바이트)도 제한한다.
+  // 썸네일(수십 KB)과 원본(수 MB)이 한 캐시에 섞여 있어, 개수 제한만으로는
+  // 원본이 몰릴 때 메모리가 수백 MB 까지 커질 수 있기 때문.
+  byteLimit?: number;
+  totalBytes = 0;
   cache: Map<K, V>;
 
-  constructor(limit: number) {
+  constructor(limit: number, byteLimit?: number) {
     this.limit = limit;
+    this.byteLimit = byteLimit;
     this.cache = new Map<K, V>();
+  }
+
+  private sizeOf(value: V): number {
+    return typeof value === 'string' ? value.length : 1;
   }
 
   get(key: K): V | null {
@@ -35,17 +45,30 @@ class LRUCache<K, V> {
 
   set(key: K, value: V): void {
     if (this.cache.has(key)) {
+      this.totalBytes -= this.sizeOf(this.cache.get(key)!);
       this.cache.delete(key);
-    } else if (this.cache.size >= this.limit) {
-      const firstKey = this.cache.keys().next().value;
-      if (firstKey !== undefined) {
-        this.cache.delete(firstKey);
-      }
     }
     this.cache.set(key, value);
+    this.totalBytes += this.sizeOf(value);
+    // 개수 또는 용량 초과 시 오래된 것부터 축출.
+    // (size > 1 조건: 방금 넣은 항목 하나가 용량을 넘어도 그것만은 유지)
+    while (
+      this.cache.size > this.limit ||
+      (this.byteLimit !== undefined &&
+        this.totalBytes > this.byteLimit &&
+        this.cache.size > 1)
+    ) {
+      const firstKey = this.cache.keys().next().value;
+      if (firstKey === undefined) break;
+      this.totalBytes -= this.sizeOf(this.cache.get(firstKey)!);
+      this.cache.delete(firstKey);
+    }
   }
 
   delete(key: K): void {
+    if (this.cache.has(key)) {
+      this.totalBytes -= this.sizeOf(this.cache.get(key)!);
+    }
     this.cache.delete(key);
   }
 }
@@ -62,7 +85,7 @@ export class ImageService extends EventTarget {
     super();
     this.images = {};
     this.inpaints = {};
-    this.cache = new LRUCache(platform.imageCacheSize);
+    this.cache = new LRUCache(platform.imageCacheSize, platform.imageCacheBytes);
     this.mutexes = {};
     this.encodedVibeExistsCache = new LRUCache(platform.encodedVibeCacheSize);
   }
@@ -315,7 +338,7 @@ export class ImageService extends EventTarget {
       }
     }
     for (const key of toDelete) {
-      cache.delete(key);
+      this.cache.delete(key); // 외부 delete 사용 (용량 회계 유지)
     }
     for (const imgDir of imageDirList) {
       const oldPath = imgDir + '/' + session.name + '/' + oldName;
@@ -413,7 +436,7 @@ export class ImageService extends EventTarget {
         }
       }
     }
-    for (const key of toDelete) cache.delete(key);
+    for (const key of toDelete) this.cache.delete(key); // 용량 회계 유지
 
     return moved;
   }
@@ -427,7 +450,7 @@ export class ImageService extends EventTarget {
       }
     }
     for (const key of toDelete) {
-      cache.delete(key);
+      this.cache.delete(key); // 외부 delete 사용 (용량 회계 유지)
     }
     for (const dir of ['outs', 'inpaints', 'vibes', 'references', 'inpaint_masks', 'inpaint_orgs']) {
       try {
@@ -713,7 +736,7 @@ export class ImageService extends EventTarget {
     ]);
     session.scenes.get(scene)?.imageMap.push(path.split('/').pop()!);
     if (isMobile)
-      for (const size of supportedImageSizes) this.fetchImageSmall(path, size);
+      for (const size of platform.pregenThumbSizes) this.fetchImageSmall(path, size);
     // 생성 히스토리 수집용 — 새로 추가된 이미지의 경로까지 전달('updated'에는 없음)
     this.dispatchEvent(
       new CustomEvent('image-added', {
@@ -745,7 +768,7 @@ export class ImageService extends EventTarget {
     ].concat([path.split('/').pop()!]);
     session.inpaints.get(scene)?.imageMap.push(path.split('/').pop()!);
     if (isMobile)
-      for (const size of supportedImageSizes) this.fetchImageSmall(path, size);
+      for (const size of platform.pregenThumbSizes) this.fetchImageSmall(path, size);
     this.dispatchEvent(
       new CustomEvent('image-added', {
         detail: {

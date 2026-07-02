@@ -74,6 +74,7 @@ import {
 } from '../models/types';
 import { extractPromptDataFromBase64 } from '../models/util';
 import { IMPORT_IMAGE_ACCEPT } from '../models/imageFormats';
+import { platform } from '../models/platform';
 import { appState, SceneSelectorItem } from '../models/AppService';
 import {
   createInpaintPreset,
@@ -188,7 +189,7 @@ export const SceneCell = observer(
         const filename = outputs[previewIndex];
         const dir = imageService.getOutputDir(curSession!, scene);
         imageService
-          .fetchImageSmall(`${dir}/${filename}`, 500)
+          .fetchImageSmall(`${dir}/${filename}`, platform.sceneThumbSize)
           .then(setPreviewImage)
           .catch(() => setPreviewImage(null));
       } else {
@@ -1412,7 +1413,12 @@ const QueueControl = observer(
 
     const getImage = async (scene: GenericScene) => {
       if (scene.type === 'scene') {
-        const image = await getMainImage(curSession!, scene as Scene, 500);
+        // 모바일에서 500 은 원본 로드로 우회되므로 platform 상수 사용 (씬 전체가 마운트되는 그리드)
+        const image = await getMainImage(
+          curSession!,
+          scene as Scene,
+          platform.sceneThumbSize,
+        );
         if (!image) throw new Error('No image available');
         return image;
       }
