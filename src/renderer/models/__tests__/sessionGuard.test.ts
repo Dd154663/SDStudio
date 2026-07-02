@@ -36,7 +36,11 @@ import { appState } from '../AppService';
 const makeSvc = () => {
   const svc = new SessionService() as any;
   // 메모리에 프로젝트가 1개 로드돼 있다고 가정(checkStorageUnstable 비교 기준)
-  svc.resources['p1'] = { toJSON: () => ({}) };
+  svc.entries.set('p1', {
+    state: 'ready',
+    dirty: false,
+    instance: { toJSON: () => ({}) },
+  });
   return svc;
 };
 

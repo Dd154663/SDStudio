@@ -2148,7 +2148,7 @@ const QueueControl = observer(
                       ...curSession.sceneCardStyle,
                       [type]: e.target.value,
                     };
-                    sessionService.dirty[curSession.name] = true;
+                    sessionService.markDirty(curSession.name);
                   }}
                 >
                   <option value="portrait">세로 3:4</option>
