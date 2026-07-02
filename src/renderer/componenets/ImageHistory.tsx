@@ -151,6 +151,22 @@ export const ImageHistoryPanel = observer(() => {
   );
 });
 
+// 모바일 우측 가장자리 손잡이 — 어떤 FloatView/모달 위에서도 항상 보이는 드로어 진입점
+export const ImageHistoryHandle = observer(() => {
+  if (appState.historyDrawerOpen) return null;
+  return (
+    <button
+      className="fixed right-0 top-1/2 -translate-y-1/2 md:hidden flex items-center justify-center w-6 h-14 rounded-l-md border border-r-0 line-color bg-[var(--c-surface-2)] opacity-70 active:opacity-100"
+      style={{ zIndex: 2200 }}
+      onClick={() => {
+        appState.historyDrawerOpen = true;
+      }}
+    >
+      <FaChevronLeft size={11} className="text-faint" />
+    </button>
+  );
+});
+
 // 모바일 우측 오버레이 드로어 (ProjectDrawer의 애니메이션 패턴 미러)
 export const ImageHistoryDrawer = observer(() => {
   const open = appState.historyDrawerOpen;

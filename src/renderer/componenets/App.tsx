@@ -12,7 +12,7 @@ import {
 import SessionSelect from './SessionSelect';
 import ProjectDrawer from './ProjectDrawer';
 import ProjectBrowser from './ProjectBrowser';
-import { ImageHistoryPanel, ImageHistoryDrawer } from './ImageHistory';
+import { ImageHistoryPanel, ImageHistoryDrawer, ImageHistoryHandle } from './ImageHistory';
 import PreSetEditor from './PreSetEdtior';
 import SceneQueuControl, { SceneCell } from './SceneQueueControl';
 import TaskQueueControl from './TaskQueueControl';
@@ -612,11 +612,15 @@ export const App = observer(() => {
                 <TobBar />
               </StackFixed>
             )}
-            <StackGrow className="relative">
+            <StackGrow className="flex">
+              {/* FloatView가 덮는 범위를 이 relative 컨테이너로 한정 —
+                  우측 히스토리 패널은 형제라서 어떤 FloatView가 떠도 항상 접근 가능 */}
+              <div className="relative flex-1 min-w-0 h-full">
               <FloatViewProvider>
                 <AppContextMenu />
                 <ProjectDrawer />
                 {isMobile && <ImageHistoryDrawer />}
+                {isMobile && <ImageHistoryHandle />}
                 {appState.projectBrowserOpen && (
                   <ProjectBrowser
                     onClose={() => {
@@ -660,7 +664,6 @@ export const App = observer(() => {
                           </StackGrow>
                         </>
                       )}
-                      <ImageHistoryPanel />
                     </StackGrow>
                     <StackFixed>
                       <div className="px-3 py-2 border-t flex gap-3 items-center line-color">
@@ -690,6 +693,8 @@ export const App = observer(() => {
                   </FloatView>
                 )}
               </FloatViewProvider>
+              </div>
+              <ImageHistoryPanel />
             </StackGrow>
           </VerticalStack>
         </ErrorBoundary>

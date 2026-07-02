@@ -11,8 +11,6 @@ import {
   isMobile,
 } from '../models';
 import { VscChromeMinimize, VscChromeMaximize, VscChromeRestore, VscChromeClose } from 'react-icons/vsc';
-import { FaHistory } from 'react-icons/fa';
-import { appState } from '../models/AppService';
 
 const TobBar = () => {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -134,17 +132,6 @@ const TobBar = () => {
       </div>
       <div className="ml-auto block md:hidden titlebar-no-drag flex-1 min-w-0">
         <SessionSelect />
-      </div>
-      {/* Mobile: 히스토리 드로어 열기 */}
-      <div className="md:hidden titlebar-no-drag flex-none">
-        <button
-          className="icon-button"
-          onClick={() => {
-            appState.historyDrawerOpen = true;
-          }}
-        >
-          <FaHistory size={18} />
-        </button>
       </div>
 
       {/* 윈도우 컨트롤 버튼 (PC only) */}
