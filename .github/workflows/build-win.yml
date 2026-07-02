@@ -1,0 +1,70 @@
+name: Build Windows Portable
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-win:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install native module dependencies
+        run: |
+          cd src/native
+          npm ci
+
+      - name: Build capacitor-background-mode
+        run: |
+          cd externals/capacitor-background-mode
+          npm ci
+          npm run build
+
+      - name: Install project dependencies (skip postinstall)
+        run: npm ci --legacy-peer-deps --ignore-scripts
+
+      - name: Install electron-builder app deps
+        run: npx electron-builder install-app-deps
+
+      - name: Build application
+        run: npm run build
+
+      - name: Package (win-unpacked)
+        run: npx electron-builder build --win --dir --publish never
+
+      - name: Get version
+        run: echo "version=$(jq -r '.version' release/app/package.json)" >> $GITHUB_ENV
+
+      - name: Zip portable
+        run: |
+          cd release/build
+          7z a "SDStudio-${{ env.version }}-win-portable.zip" win-unpacked
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SDStudio-${{ env.version }}-win-portable
+          path: release/build/SDStudio-*-win-portable.zip
+          if-no-files-found: error
+
+      - name: Upload to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/build/SDStudio-*-win-portable.zip
