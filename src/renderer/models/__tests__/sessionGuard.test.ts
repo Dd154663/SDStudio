@@ -26,6 +26,12 @@ jest.mock('../AppService', () => ({
   appState: { storageWriteGuard: true, pushMessage: jest.fn() },
 }));
 
+// SessionService 는 appState 를 순환 게이트(appStateRef.getAppState)로 접근한다
+// → 위 AppService mock 의 appState 로 연결
+jest.mock('../appStateRef', () => ({
+  getAppState: () => require('../AppService').appState,
+}));
+
 // 생성자가 비동기로 createDefault → importDefaultPresets(fetch) 를 호출하는데
 // jsdom 엔 fetch 가 없어 크래시한다. 기본 에셋을 빈 배열로 만들어 fetch 경로 차단.
 jest.mock('../../defaultassets', () => ({ __esModule: true, default: [] }));

@@ -18,6 +18,7 @@ import {
   workFlowService,
   zipService,
 } from '.';
+import { setAppState } from './appStateRef';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { isOutputImageFile, isImportImageMime } from './imageFormats';
@@ -855,7 +856,6 @@ export class AppState {
   @action
   async emptyProjectImageTrashWithConfirm() {
     if (!this.curSession) return;
-    const { trashService } = await import('.');
     const { totalImages, scenesWithTrash } =
       await trashService.countProjectImageTrash(this.curSession);
     if (totalImages === 0) {
@@ -1191,3 +1191,5 @@ export class AppState {
 }
 
 export const appState = new AppState();
+// 순환 import 게이트에 자기 등록 — 서비스들은 getAppState() 로 접근한다
+setAppState(appState);

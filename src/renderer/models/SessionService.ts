@@ -1,7 +1,18 @@
 import extractChunks from 'png-chunks-extract';
 import { Buffer } from 'buffer';
 import { v4 } from 'uuid';
-import { backend, imageService, workFlowService, zipService, sessionService } from '.';
+import {
+  backend,
+  imageService,
+  workFlowService,
+  zipService,
+  sessionService,
+  trashService,
+  taskQueueService,
+  globalPieceService,
+  globalPresetService,
+} from '.';
+import { getAppState } from './appStateRef';
 import { FileEntry } from '../backend';
 import defaultassets from '../defaultassets';
 import { dataUriToBase64 } from './ImageService';
@@ -684,14 +695,12 @@ export class SessionService extends ResourceSyncService<Session> {
       await this.loadThumbnails();
       await this.loadFolderColors();
       await this.loadFolderOrder();
-      const { trashService } = await import('.');
       await trashService.loadTrash();
 
       // 만료 프로젝트 감지 → UI 다이얼로그에 전달 (가볍게 체크만)
       const expired = await trashService.getExpiredProjects();
       if (expired.length > 0) {
-        const { appState } = await import('./AppService');
-        appState.pendingExpiredProjects = expired;
+        getAppState().pendingExpiredProjects = expired;
       }
 
       // autoCleanup은 앱 시작을 블로킹하지 않도록 지연 실행
@@ -721,7 +730,6 @@ export class SessionService extends ResourceSyncService<Session> {
     }
     // 같은 이름의 기존 휴지통 항목을 먼저 정리 (동명 프로젝트 재삭제 시 충돌/덮어쓰기 방지).
     // 이렇게 해야 super.delete 의 .json → .deleted rename 대상이 비어 있어 플랫폼 무관하게 안전.
-    const { trashService } = await import('.');
     await trashService.purgeDeletedProject(name);
     await super.delete(name);
     // 휴지통에 삭제 시점 기록
@@ -765,8 +773,7 @@ export class SessionService extends ResourceSyncService<Session> {
   async flushOnClose() {
     const names = new Set<string>(this.dirtyNames());
     try {
-      const { appState } = await import('./AppService');
-      const cur = appState.curSession?.name;
+      const cur = getAppState().curSession?.name;
       if (cur && this.isLoaded(cur)) names.add(cur);
     } catch (e) {}
     await Promise.allSettled(
@@ -801,7 +808,7 @@ export class SessionService extends ResourceSyncService<Session> {
     // 서킷 브레이커(토글 ON, 기본): 저장소 접근이 불안정하면 이번 쓰기를 보류한다.
     // 'skip-keep' 은 dirty 를 유지하므로 접근이 회복되면 자동으로 재시도된다.
     try {
-      const { appState } = await import('./AppService');
+      const appState = getAppState();
       if (appState.storageWriteGuard && (await this.checkStorageUnstable())) {
         return 'skip-keep';
       }
@@ -837,8 +844,7 @@ export class SessionService extends ResourceSyncService<Session> {
     if (!this.#lossGuardWarned.has(name)) {
       this.#lossGuardWarned.add(name);
       try {
-        const { appState } = await import('./AppService');
-        appState.pushMessage(
+        getAppState().pushMessage(
           '복구 가능한 이미지가 감지되었습니다. 이미지 복구 기능을 사용해 보세요.',
         );
       } catch (e) {}
@@ -945,7 +951,6 @@ export class SessionService extends ResourceSyncService<Session> {
     message: string,
   ) {
     try {
-      const { taskQueueService } = await import('.');
       taskQueueService.addLog(level, '저장소', message);
     } catch (e) {}
   }
@@ -1395,7 +1400,6 @@ export class SessionService extends ResourceSyncService<Session> {
     }
     // 전역 조각 추가 (로컬과 동명인 경우 스킵)
     try {
-      const { globalPieceService } = await import('.');
       for (const [k, v] of globalPieceService.library.entries()) {
         for (const piece of v.pieces) {
           const key = k + '.' + piece.name;
@@ -1414,8 +1418,6 @@ export async function importDefaultPresets(session: Session) {
   // 순환 임포트 방지를 위해 동적 import 사용
   let hadGlobalDefaults = false;
   try {
-    const mod = await import('.');
-    const globalPresetService = (mod as any).globalPresetService;
     if (globalPresetService) {
       if (!globalPresetService.loaded) {
         await globalPresetService.load();
