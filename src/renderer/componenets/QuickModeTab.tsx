@@ -53,6 +53,9 @@ const QuickModeTab = observer(() => {
   const [sceneStats, setSceneStats] = useState({ done: 0, total: 0 });
   const [autoOn, setAutoOn] = useState(false);
   const autoRef = useRef(false);
+  // 직전 자동 사이클에서 실제로 생성이 성공했는지 추적.
+  // 지속 실패(토큰 만료·Anlas 소진 등) 시 실패→재예약→실패의 무한 루프(오류 요청 폭주)를 막는다.
+  const producedRef = useRef(false);
 
   // ── 최신 이미지 경로 유지 (default 씬의 가장 최근 생성작) ──
   const refreshLatest = useCallback(() => {
@@ -133,9 +136,21 @@ const QuickModeTab = observer(() => {
 
   // ── 자동 모드: 큐 자연 완료 시 다음 1장 재예약 (CyclingSessionService 패턴) ──
   useEffect(() => {
+    const onComplete = () => {
+      producedRef.current = true;
+    };
     const onStop = () => {
       if (!autoRef.current) return;
       if (!taskQueueService.isEmpty()) return; // 수동 정지 등은 재예약하지 않음
+      // 큐가 비었는데 성공한 생성이 하나도 없다 = 태스크가 재시도 초과로 전부
+      // 건너뛰어진 것("완료"가 아니라 "실패"). 재예약하면 무한 루프가 되므로 중지.
+      if (!producedRef.current) {
+        autoRef.current = false;
+        setAutoOn(false);
+        appState.pushMessage('생성이 계속 실패하여 자동 생성을 중지했습니다');
+        return;
+      }
+      producedRef.current = false; // 다음 사이클 판정을 위해 리셋
       (async () => {
         try {
           const scene = ensureDefaultScene(curSession);
@@ -148,8 +163,10 @@ const QuickModeTab = observer(() => {
         }
       })();
     };
+    taskQueueService.addEventListener('complete', onComplete);
     taskQueueService.addEventListener('stop', onStop);
     return () => {
+      taskQueueService.removeEventListener('complete', onComplete);
       taskQueueService.removeEventListener('stop', onStop);
       autoRef.current = false;
     };
@@ -178,6 +195,7 @@ const QuickModeTab = observer(() => {
   const startAuto = async () => {
     if (!guardCycling()) return;
     autoRef.current = true;
+    producedRef.current = false; // 첫 사이클부터 성공 여부 판정
     setAutoOn(true);
     await startOnce();
   };

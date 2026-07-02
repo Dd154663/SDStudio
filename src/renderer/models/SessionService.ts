@@ -706,27 +706,35 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async delete(name: string) {
-    this.favorites.delete(name);
-    await this.saveFavorites();
-    // 썸네일 캐시 정리
-    this.clearThumbnailRef(name);
-    // 북마크 정리
-    delete this.bookmarkData.scenes[name];
-    const keysToDelete = Object.keys(this.bookmarkData.images).filter(k => k.startsWith(name + ':'));
-    keysToDelete.forEach(k => delete this.bookmarkData.images[k]);
-    if (keysToDelete.length > 0 || this.bookmarkData.scenes[name]) {
-      await this.saveBookmarks();
-    }
     // 같은 이름의 기존 휴지통 항목을 먼저 정리 (동명 프로젝트 재삭제 시 충돌/덮어쓰기 방지).
     // 이렇게 해야 super.delete 의 .json → .deleted rename 대상이 비어 있어 플랫폼 무관하게 안전.
     const { trashService } = await import('.');
     await trashService.purgeDeletedProject(name);
+    // 실제 삭제(파일 rename)를 먼저 수행 — 여기서 실패하면 프로젝트가 남으므로
+    // 즐겨찾기/북마크/썸네일 등 메타데이터도 건드리지 않고 그대로 보존한다.
     await super.delete(name);
+    // 이하 메타데이터 정리 (프로젝트는 이미 삭제 완료)
+    this.favorites.delete(name);
+    await this.saveFavorites();
+    // 썸네일 캐시 정리
+    this.clearThumbnailRef(name);
+    // 북마크 정리 (hadSceneBookmarks: 삭제 전에 존재 여부를 기억해야 저장 조건이 맞음)
+    const hadSceneBookmarks = !!this.bookmarkData.scenes[name];
+    delete this.bookmarkData.scenes[name];
+    const keysToDelete = Object.keys(this.bookmarkData.images).filter(k => k.startsWith(name + ':'));
+    keysToDelete.forEach(k => delete this.bookmarkData.images[k]);
+    if (keysToDelete.length > 0 || hadSceneBookmarks) {
+      await this.saveBookmarks();
+    }
     // 휴지통에 삭제 시점 기록
     await trashService.moveProjectToTrash(name);
   }
 
   async rename(oldName: string, newName: string) {
+    // 실제 이름변경(파일 rename)을 먼저 수행 — 여기서 실패하면 이름이 그대로이므로
+    // 즐겨찾기/북마크/썸네일 등 메타데이터도 건드리지 않고 그대로 보존한다.
+    await super.rename(oldName, newName);
+    // 이하 메타데이터 마이그레이션 (이름변경은 이미 완료)
     if (this.favorites.has(oldName)) {
       this.favorites.delete(oldName);
       this.favorites.add(newName);
@@ -753,7 +761,6 @@ export class SessionService extends ResourceSyncService<Session> {
       bmChanged = true;
     });
     if (bmChanged) await this.saveBookmarks();
-    await super.rename(oldName, newName);
   }
 
   // 종료 시 빠른 저장: saveAll()은 로드된 세션이 많으면(프로젝트 탐색을 열면

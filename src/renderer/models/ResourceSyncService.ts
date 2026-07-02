@@ -122,13 +122,16 @@ export abstract class ResourceSyncService<
   async delete(name: string) {
     if (name in this.resources) {
       const src = this.getPath(name);
+      // 파일 처리를 먼저 하고, 성공한 뒤에만 메모리 상태를 정리한다.
+      // (실패 시 메모리·디스크가 모두 이전 상태로 남아 불일치가 생기지 않음.
+      //  in-flight 가드가 이 동안의 주기 flush 를 차단한다)
+      await this.guardInFlight([name], async () => {
+        await backend.renameFile(src, src.replace(/\.json$/, '.deleted'));
+      });
       delete this.resources[name];
       this.disposes[name]();
       delete this.dirty[name];
-      await this.guardInFlight([name], async () => {
-        await backend.renameFile(src, src.replace(/\.json$/, '.deleted'));
-        delete this.folderMap[name];
-      });
+      delete this.folderMap[name];
       await this.update();
     }
   }
@@ -142,7 +145,14 @@ export abstract class ResourceSyncService<
     const destPath = srcPath.endsWith(suffix)
       ? srcPath.slice(0, -suffix.length) + `/${newName}.json`
       : srcPath;
-    
+
+    // 파일 이동을 먼저 하고, 성공한 뒤에만 메모리 상태를 옮긴다.
+    // (실패 시 이전 상태 그대로 — 메모리만 새 이름이 되어 다음 flush 가
+    //  루트 경로에 중복 저장하는 분열을 방지. in-flight 가드가 그 동안의
+    //  주기 flush 를 차단한다)
+    await this.guardInFlight([oldName, newName], async () => {
+      await backend.renameFile(srcPath, destPath);
+    });
     this.resources[newName] = this.resources[oldName];
     delete this.resources[oldName];
     this.disposes[newName] = this.disposes[oldName];
@@ -151,10 +161,6 @@ export abstract class ResourceSyncService<
       this.dirty[newName] = this.dirty[oldName];
       delete this.dirty[oldName];
     }
-    await this.guardInFlight([oldName, newName], async () => {
-      await backend.renameFile(srcPath, destPath);
-    });
-    // 성공 후에만 folderMap 업데이트
     if (oldName in this.folderMap) {
       this.folderMap[newName] = this.folderMap[oldName];
       delete this.folderMap[oldName];
