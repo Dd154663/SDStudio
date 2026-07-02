@@ -42,9 +42,7 @@ export abstract class ResourceSyncService<
     this.folderMap = {};
     this.updateInterval = interval;
     this.running = true;
-    // 미리 준비를 시작하되, 실패해도 unhandled rejection 이 되지 않게 한다
-    // (실패 시 ensureDummy 가 다음 호출에서 재시도).
-    this.ensureDummy().catch(() => {});
+    // 생성자에서는 IO/비동기 작업을 시작하지 않는다 — 준비는 init()(부트스트랩)에서.
   }
 
   // dummy 템플릿을 보장한다. 준비 전이면 기다리고, 이전 시도가 실패했으면 재시도.
@@ -365,7 +363,13 @@ export abstract class ResourceSyncService<
     await this.update();
   }
 
-  async run() {
+  // 초기 스캔 실패 여부 — runLoop 가 첫 틱에 바로 재스캔하도록 신호를 남긴다.
+  #initialScanFailed = false;
+
+  // ── 부팅 1회 초기화 (부트스트랩이 완료를 기다리는 구간) ──
+  // 디렉터리 보장 + 역직렬화 템플릿 준비 + 초기 스캔 + 가시성 저장 훅.
+  // 자동 저장 루프는 runLoop() 로 분리 — 부트스트랩이 init 완료 후 비차단으로 시작한다.
+  async init() {
     // 리소스 디렉터리 보장(.keep 파일): 신규 설치 등으로 projects/ 가 없으면
     //  - PC: 첫 프로젝트 저장이 손실 방지 가드의 "디스크 목록 0개 = 저장소 불안정"
     //    판정에 걸려 보류되는데, 그 디렉터리를 만들 유일한 쓰기가 바로 그 보류된
@@ -381,15 +385,17 @@ export abstract class ResourceSyncService<
       console.error('리소스 디렉터리 준비 실패:', e);
     }
 
+    // 역직렬화 템플릿 워밍업 (실패 시 get()/createFrom() 에서 재시도)
+    await this.ensureDummy().catch(() => {});
+
     // 최초 1회 전체 스캔으로 목록을 로드한다.
-    // 실패해도 루프는 반드시 시작해야 한다 — 여기서 죽으면 주기 자동 저장과
+    // 실패해도 부팅은 계속되어야 한다 — 여기서 죽으면 주기 자동 저장과
     // visibilitychange 강제 저장 훅이 아예 설치되지 않아 이후 편집이 통째로
-    // 유실된다(특히 모바일 강제 종료 시). 스캔은 아래 루프가 재시도한다.
-    let initialScanFailed = false;
+    // 유실된다(특히 모바일 강제 종료 시). 스캔은 runLoop 가 재시도한다.
     try {
       await this.update();
     } catch (e) {
-      initialScanFailed = true;
+      this.#initialScanFailed = true;
       console.error('초기 리소스 목록 스캔 실패(주기 루프에서 재시도):', e);
     }
 
@@ -407,9 +413,12 @@ export abstract class ResourceSyncService<
         }
       });
     }
+  }
 
+  // ── 주기 자동 저장 루프 (반환하지 않음 — 비차단으로 시작할 것) ──
+  async runLoop() {
     // 초기 스캔이 실패했으면 첫 틱에서 바로 재스캔하도록 카운터를 당겨 둔다.
-    let idleTicks = initialScanFailed ? 3 : 0;
+    let idleTicks = this.#initialScanFailed ? 3 : 0;
     while (this.running) {
       await sleep(this.updateInterval);
       if (!this.running) break;
@@ -428,6 +437,12 @@ export abstract class ResourceSyncService<
         }
       } catch (e) {}
     }
+  }
+
+  // 호환용: init + 자동 저장 루프를 순서대로 실행 (단독 사용/테스트 시)
+  async run() {
+    await this.init();
+    await this.runLoop();
   }
 
   #markUpdated(name: string) {

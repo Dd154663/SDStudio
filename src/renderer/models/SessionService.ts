@@ -671,9 +671,9 @@ export class SessionService extends ResourceSyncService<Session> {
     }
   }
 
-  async run() {
+  async init() {
     // 사전 로드(즐겨찾기/북마크/휴지통 등)가 어떤 이유로 실패하더라도
-    // super.run()(주기 자동 저장 루프 + 백그라운드 진입 시 강제 저장 훅)에는
+    // super.init()(초기 스캔 + 백그라운드 진입 시 강제 저장 훅)에는
     // 반드시 도달해야 한다. 여기서 죽으면 앱은 멀쩡해 보여도 이후 편집이
     // 디스크에 저장되지 않아 통째로 유실된다.
     try {
@@ -699,10 +699,10 @@ export class SessionService extends ResourceSyncService<Session> {
         });
       }, 10000);
     } catch (e) {
-      console.error('세션 서비스 사전 로드 실패(자동 저장 루프는 계속 시작):', e);
+      console.error('세션 서비스 사전 로드 실패(초기화는 계속 진행):', e);
     }
 
-    await super.run();
+    await super.init();
   }
 
   async delete(name: string) {

@@ -6,9 +6,9 @@ export class LoginService extends EventTarget {
   constructor() {
     super();
     this.loggedIn = false;
-    // 프로그램 시작 시 1회 실제 토큰 검증 (로그인 끊김은 드물어 상시 폴링은 하지 않는다).
+    // 시작 시 1회 토큰 검증은 bootstrap 이 refresh() 를 호출해 수행한다
+    // (생성자에서 네트워크 IO 를 시작하지 않는다 — 부팅 순서 보장).
     // 세션 도중 만료는 TobBar의 크레딧 조회 실패 시 재검증으로 잡힌다.
-    this.refresh();
   }
 
   async login(email: string, password: string) {

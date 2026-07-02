@@ -68,12 +68,10 @@ export class ZipService extends EventTarget {
 
 export const zipService = new ZipService();
 
+// ⚠️ 이 모듈은 "싱글톤 생성 + 순수(동기) 배선"만 담당한다.
+// 비동기 IO 를 동반하는 초기화(로드/스캔/루프 시작)는 전부 bootstrap.ts 의
+// bootstrapApp() 이 명시적 순서로 수행한다 — 모듈 평가 시점 사이드이펙트 금지.
 export const sessionService = new SessionService();
-// run() 은 자동 저장 루프라 보통 반환되지 않는다. 만에 하나 부팅 단계에서
-// 거부되면 unhandled rejection 으로 조용히 사라지지 않도록 로그를 남긴다.
-sessionService.run().catch((e) => {
-  console.error('세션 서비스 시작 실패(자동 저장 미가동 위험):', e);
-});
 
 export const imageService = new ImageService();
 
@@ -87,22 +85,13 @@ export const projectSizeService = new ProjectSizeService();
 // 아티스트 태깅 (데스크톱 전용, 시작 시 비용 없음 — 모달에서 지연 사용)
 export const artistTagService = new ArtistTagService();
 
-// 내보내기 프리셋을 localStorage → exportPresets.json(로컬 파일)로 이관 + 로드.
-// (시작 후 비동기 — 파일 없으면 localStorage에서 1회 비파괴 이관)
-// 동적 import: AppService 조기 평가로 초기화 순서가 바뀌지 않도록 index 본문 이후로 미룸.
-import('./AppService').then((m) => m.appState.initExportPresets());
-
 export const globalPieceService = new GlobalPieceService();
-globalPieceService.load();
 
 export const globalPresetService = new GlobalPresetService();
-globalPresetService.load();
 
 export const globalCharacterPresetService = new GlobalCharacterPresetService();
-globalCharacterPresetService.load();
 
 export const artistLibraryService = new ArtistLibraryService();
-artistLibraryService.load();
 
 // 백업/내보내기/가져오기 (AppService 에서 분리). 생성자 비용 없음.
 export const backupService = new BackupService();
@@ -116,8 +105,6 @@ export const exportPresetService = new ExportPresetService();
 export const promptService = new PromptService();
 
 export const taskQueueService = new TaskQueueService(taskHandlers);
-// 이전 실행에서 저장된 작업 로그 복원(비동기 — 파일 없으면 무시).
-taskQueueService.loadLogs();
 
 export const loginService = new LoginService();
 
@@ -137,35 +124,14 @@ window.taskQueueService = taskQueueService;
 window.loginService = loginService;
 window.globalPresetService = globalPresetService;
 
-backend.onClose(() => {
-  (async () => {
-    try {
-      await sessionService.flushOnClose();
-      await globalPresetService.flushSave();
-      await globalPieceService.flushSave();
-      await globalCharacterPresetService.flushSave();
-      await artistLibraryService.flushSave();
-      await taskQueueService.flushSaveLogs();
-    } catch (e) {
-      console.error('종료 시 저장 실패:', e);
-    } finally {
-      await backend.close();
-    }
-  })();
-});
-
 export const appUpdateNoticeService = new AppUpdateNoticeService();
-appUpdateNoticeService.run();
 
 export const localAIService = new LocalAIService();
-localAIService.statsModels();
 
 export const cyclingSessionService = new CyclingSessionService();
 
 // 모바일 백그라운드 포그라운드 서비스 알림에 생성 진행 상태를 표시
 export const backgroundNotificationService = new BackgroundNotificationService();
-backgroundNotificationService.start();
 
 // 모바일 백그라운드 생성 중 Chromium 페이지 동결 우회 (무음 오디오 keep-alive)
 export const backgroundKeepAliveService = new BackgroundKeepAliveService();
-backgroundKeepAliveService.start();
