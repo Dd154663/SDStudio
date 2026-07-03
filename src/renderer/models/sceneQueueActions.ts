@@ -34,7 +34,7 @@ export const createMissingPiecesForSession = (
       lib.pieces.push(piece);
     }
   }
-  sessionService.dirty[session.name] = true;
+  sessionService.markDirty(session.name);
   sessionService.reloadPieceLibraryDB(session);
 };
 

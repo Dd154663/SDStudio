@@ -1,5 +1,6 @@
 import { action, observable } from 'mobx';
 import { imageService, sessionService } from '.';
+import { getAppState } from './appStateRef';
 import { GenericScene, Session } from './types';
 
 // 최근 생성 이미지 히스토리 (우측 사이드바용).
@@ -105,8 +106,7 @@ export class ImageHistoryService {
         ? session?.scenes.get(entry.sceneName)
         : session?.inpaints.get(entry.sceneName);
     if (!session || !scene) {
-      const { appState } = await import('./AppService');
-      appState.pushMessage('원본 씬을 찾을 수 없어 히스토리에서 제거했습니다');
+      getAppState().pushMessage('원본 씬을 찾을 수 없어 히스토리에서 제거했습니다');
       this.remove(entry.id);
       return null;
     }
@@ -136,8 +136,7 @@ export class ImageHistoryService {
     const resolved = await this.resolve(entry);
     if (!resolved) return;
     const { session } = resolved;
-    // AppService는 지연 import (models 초기화 순서 유지 관례)
-    const { appState } = await import('./AppService');
+    const appState = getAppState();
     if (appState.curSession?.name !== session.name) {
       // 타 프로젝트 항목 → 프로젝트 전환 (ProjectDrawer.selectProject와 동일 패턴)
       imageService.refreshBatch(session);

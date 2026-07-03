@@ -1,4 +1,6 @@
 import {
+  Fragment,
+  ReactNode,
   memo,
   useContext,
   useEffect,
@@ -75,6 +77,7 @@ import {
 import { extractPromptDataFromBase64 } from '../models/util';
 import { IMPORT_IMAGE_ACCEPT } from '../models/imageFormats';
 import { platform } from '../models/platform';
+import { sceneToolbarRegistry } from '../models/uiLayout';
 import { appState, SceneSelectorItem } from '../models/AppService';
 import {
   createInpaintPreset,
@@ -1915,6 +1918,236 @@ const QueueControl = observer(
       }
     };
 
+    // ── 씬 툴바 버튼 바인딩: 레지스트리 id → 실제 버튼 노드 ──
+    // 구성·순서는 sceneToolbarRegistry(models/uiLayout.ts)가 결정한다.
+    // (향후 UI 커스터마이징이 이 지점에서 사용자 지정 순서/숨김을 적용할 예정)
+    const toolbarButtons: Record<string, ReactNode> = {
+      'add-scene': (
+        <button className="round-button back-sky" onClick={addScene}>
+          씬 추가
+        </button>
+      ),
+      'queue-add': (
+        <button
+          className="round-button back-sky"
+          onClick={
+            appState.selectedScenes.size > 0
+              ? addSelectedToQueue
+              : addAllToQueue
+          }
+        >
+          {appState.selectedScenes.size > 0
+            ? `선택 씬 예약추가 (${appState.selectedScenes.size})`
+            : '모두 예약추가'}
+        </button>
+      ),
+      'export-images': (
+        <button
+          className="round-button back-gray"
+          onClick={() => appState.exportPackage(type)}
+        >
+          {isMobile ? '' : '이미지 '}
+          내보내기
+        </button>
+      ),
+      'quick-export': (
+        <button
+          className="round-button back-sky"
+          onClick={() => appState.quickExportPackage(type)}
+          title="기본 프리셋으로 한 번에 내보내기"
+        >
+          ⚡{isMobile ? '' : ' 빠른 export'}
+        </button>
+      ),
+      'batch-process': (
+        <button
+          className="round-button back-gray"
+          onClick={() => {
+            appState.openBatchProcessMenu(type, setSceneSelector);
+          }}
+        >
+          대량 작업
+        </button>
+      ),
+      'multi-select': (
+        <button
+          className={`round-button ${
+            (isMobile ? appState.sceneSelectionMode : appState.selectedScenes.size > 0)
+              ? 'back-sky'
+              : 'back-gray'
+          }`}
+          onClick={() => {
+            if (isMobile) {
+              // 모바일: 선택 모드 토글. 끌 때는 선택도 해제한다.
+              if (appState.sceneSelectionMode) {
+                appState.sceneSelectionMode = false;
+                appState.clearSceneSelection();
+              } else {
+                appState.sceneSelectionMode = true;
+              }
+              return;
+            }
+            // PC: 선택이 있으면 해제(키보드 선택 모드도 종료), 없으면 선택 방법 안내
+            if (appState.selectedScenes.size === 0) {
+              appState.pushMessage(
+                'Ctrl+S(선택 모드)·Ctrl+클릭·드래그로 씬을 선택하세요. 모드 진입 후엔 S로 토글.',
+              );
+              return;
+            }
+            appState.clearSceneSelection();
+            appState.sceneSelectionMode = false;
+          }}
+        >
+          {isMobile
+            ? appState.sceneSelectionMode
+              ? `선택 모드 (${appState.selectedScenes.size}) ✕`
+              : '다중 선택'
+            : appState.selectedScenes.size > 0
+              ? `선택 (${appState.selectedScenes.size}) ✕`
+              : '다중 선택'}
+        </button>
+      ),
+      'change-resolution': (
+        <button
+          className="round-button back-gray"
+          onClick={() => {
+            appState.openChangeResolutionMenu(type, setSceneSelector);
+          }}
+        >
+          {isMobile ? '해상도' : '해상도 변경'}
+        </button>
+      ),
+      'webp-convert': !isMobile && (
+        <button
+          className="round-button back-gray"
+          onClick={() => {
+            appState.openConvertToWebpMenu(type, setSceneSelector);
+          }}
+          title="선택 씬의 PNG를 WebP로 변환(용량 절감, 메타데이터 보존)"
+        >
+          WebP 변환
+        </button>
+      ),
+      'import-image': (
+        <Tooltip content="이미지 프롬프트 추출">
+          <button
+            className="round-button back-gray"
+            onClick={() => {
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = IMPORT_IMAGE_ACCEPT;
+              input.onchange = (e: any) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  appState.handleFile(file);
+                }
+              };
+              input.click();
+            }}
+          >
+            <FaFileImage size={18} />
+          </button>
+        </Tooltip>
+      ),
+      'artist-tag': !isMobile && (
+        <Tooltip content="아티스트 태깅 (그림체 분석)">
+          <button
+            className="round-button back-gray"
+            onClick={() => setShowArtistTag(true)}
+          >
+            <FaPaintBrush size={18} />
+          </button>
+        </Tooltip>
+      ),
+      'scene-search': (
+        <Tooltip content="씬 검색">
+          <button
+            className={`round-button ${showSceneSearch ? 'back-sky' : 'back-gray'}`}
+            onClick={toggleSceneSearch}
+          >
+            <FaSearch size={18} />
+          </button>
+        </Tooltip>
+      ),
+      'bookmark-jump': (
+        <Tooltip content="북마크된 씬으로 이동">
+          <button
+            className={`round-button ${sceneBookmark ? 'back-orange' : 'back-gray'}`}
+            onClick={() => {
+              if (!sceneBookmark) {
+                appState.pushMessage('북마크된 씬이 없습니다.');
+                return;
+              }
+              if (sceneBookmark.type !== type) {
+                appState.pushMessage(
+                  `북마크된 씬은 ${
+                    sceneBookmark.type === 'scene' ? '일반' : '인페인트'
+                  } 탭에 있습니다.`,
+                );
+                return;
+              }
+              const el = document.getElementById(
+                `scene-cell-${type}-${sceneBookmark.name}`,
+              );
+              if (el) {
+                el.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'center',
+                });
+              } else {
+                appState.pushMessage('북마크된 씬을 찾을 수 없습니다.');
+              }
+            }}
+          >
+            <FaBookmark size={18} />
+          </button>
+        </Tooltip>
+      ),
+      'scene-trash': (
+        <Tooltip content="씬 휴지통">
+          <button
+            className="round-button back-gray"
+            onClick={() => setShowSceneTrash(true)}
+          >
+            <FaTrash size={18} />
+          </button>
+        </Tooltip>
+      ),
+      'empty-image-trash': (
+        <Tooltip content="모든 씬 내 삭제한 이미지 일괄 비우기">
+          <button
+            className="round-button back-gray"
+            onClick={() => appState.emptyProjectImageTrashWithConfirm()}
+          >
+            <FaBroom size={18} />
+          </button>
+        </Tooltip>
+      ),
+      'find-replace': (
+        <Tooltip content="찾기 및 변환 (Ctrl+H)">
+          <button
+            className="round-button back-gray"
+            onClick={() => appState.openFindReplace()}
+          >
+            <FaExchangeAlt size={18} />
+          </button>
+        </Tooltip>
+      ),
+      'shortcut-help': !isMobile && (
+        <Tooltip content="단축키 도움말">
+          <button
+            className="round-button back-gray"
+            onClick={() => {
+              appState.showSceneCheatsheet = !appState.showSceneCheatsheet;
+            }}
+          >
+            <FaQuestion size={14} />
+            <span className="ml-1 text-xs hidden lg:inline">H</span>
+          </button>
+        </Tooltip>
+      ),
+    };
+
     return (
       <div className={`flex flex-col h-full ${className ?? ''}`}>
         {sceneSelector && (
@@ -1945,204 +2178,9 @@ const QueueControl = observer(
         {!!showPannel && (
           <div className="flex flex-none pb-1.5 flex-wrap">
             <div className="flex gap-1 md:gap-1.5 flex-wrap items-center">
-              <button className="round-button back-sky" onClick={addScene}>
-                씬 추가
-              </button>
-              <button
-                className="round-button back-sky"
-                onClick={
-                  appState.selectedScenes.size > 0
-                    ? addSelectedToQueue
-                    : addAllToQueue
-                }
-              >
-                {appState.selectedScenes.size > 0
-                  ? `선택 씬 예약추가 (${appState.selectedScenes.size})`
-                  : '모두 예약추가'}
-              </button>
-              <button
-                className="round-button back-gray"
-                onClick={() => appState.exportPackage(type)}
-              >
-                {isMobile ? '' : '이미지 '}
-                내보내기
-              </button>
-              <button
-                className="round-button back-sky"
-                onClick={() => appState.quickExportPackage(type)}
-                title="기본 프리셋으로 한 번에 내보내기"
-              >
-                ⚡{isMobile ? '' : ' 빠른 export'}
-              </button>
-              <button
-                className="round-button back-gray"
-                onClick={() => {
-                  appState.openBatchProcessMenu(type, setSceneSelector);
-                }}
-              >
-                대량 작업
-              </button>
-              <button
-                className={`round-button ${
-                  (isMobile ? appState.sceneSelectionMode : appState.selectedScenes.size > 0)
-                    ? 'back-sky'
-                    : 'back-gray'
-                }`}
-                onClick={() => {
-                  if (isMobile) {
-                    // 모바일: 선택 모드 토글. 끌 때는 선택도 해제한다.
-                    if (appState.sceneSelectionMode) {
-                      appState.sceneSelectionMode = false;
-                      appState.clearSceneSelection();
-                    } else {
-                      appState.sceneSelectionMode = true;
-                    }
-                    return;
-                  }
-                  // PC: 선택이 있으면 해제(키보드 선택 모드도 종료), 없으면 선택 방법 안내
-                  if (appState.selectedScenes.size === 0) {
-                    appState.pushMessage(
-                      'Ctrl+S(선택 모드)·Ctrl+클릭·드래그로 씬을 선택하세요. 모드 진입 후엔 S로 토글.',
-                    );
-                    return;
-                  }
-                  appState.clearSceneSelection();
-                  appState.sceneSelectionMode = false;
-                }}
-              >
-                {isMobile
-                  ? appState.sceneSelectionMode
-                    ? `선택 모드 (${appState.selectedScenes.size}) ✕`
-                    : '다중 선택'
-                  : appState.selectedScenes.size > 0
-                    ? `선택 (${appState.selectedScenes.size}) ✕`
-                    : '다중 선택'}
-              </button>
-              <button
-                className="round-button back-gray"
-                onClick={() => {
-                  appState.openChangeResolutionMenu(type, setSceneSelector);
-                }}
-              >
-                {isMobile ? '해상도' : '해상도 변경'}
-              </button>
-              {!isMobile && (
-                <button
-                  className="round-button back-gray"
-                  onClick={() => {
-                    appState.openConvertToWebpMenu(type, setSceneSelector);
-                  }}
-                  title="선택 씬의 PNG를 WebP로 변환(용량 절감, 메타데이터 보존)"
-                >
-                  WebP 변환
-                </button>
-              )}
-              <Tooltip content="이미지 프롬프트 추출">
-                <button
-                  className="round-button back-gray"
-                  onClick={() => {
-                    const input = document.createElement('input');
-                    input.type = 'file';
-                    input.accept = IMPORT_IMAGE_ACCEPT;
-                    input.onchange = (e: any) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        appState.handleFile(file);
-                      }
-                    };
-                    input.click();
-                  }}
-                >
-                  <FaFileImage size={18} />
-                </button>
-              </Tooltip>
-              {!isMobile && (
-                <Tooltip content="아티스트 태깅 (그림체 분석)">
-                  <button
-                    className="round-button back-gray"
-                    onClick={() => setShowArtistTag(true)}
-                  >
-                    <FaPaintBrush size={18} />
-                  </button>
-                </Tooltip>
-              )}
-              <Tooltip content="씬 검색">
-                <button
-                  className={`round-button ${showSceneSearch ? 'back-sky' : 'back-gray'}`}
-                  onClick={toggleSceneSearch}
-                >
-                  <FaSearch size={18} />
-                </button>
-              </Tooltip>
-              <Tooltip content="북마크된 씬으로 이동">
-                <button
-                  className={`round-button ${sceneBookmark ? 'back-orange' : 'back-gray'}`}
-                  onClick={() => {
-                    if (!sceneBookmark) {
-                      appState.pushMessage('북마크된 씬이 없습니다.');
-                      return;
-                    }
-                    if (sceneBookmark.type !== type) {
-                      appState.pushMessage(
-                        `북마크된 씬은 ${
-                          sceneBookmark.type === 'scene' ? '일반' : '인페인트'
-                        } 탭에 있습니다.`,
-                      );
-                      return;
-                    }
-                    const el = document.getElementById(
-                      `scene-cell-${type}-${sceneBookmark.name}`,
-                    );
-                    if (el) {
-                      el.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'center',
-                      });
-                    } else {
-                      appState.pushMessage('북마크된 씬을 찾을 수 없습니다.');
-                    }
-                  }}
-                >
-                  <FaBookmark size={18} />
-                </button>
-              </Tooltip>
-              <Tooltip content="씬 휴지통">
-                <button
-                  className="round-button back-gray"
-                  onClick={() => setShowSceneTrash(true)}
-                >
-                  <FaTrash size={18} />
-                </button>
-              </Tooltip>
-              <Tooltip content="모든 씬 내 삭제한 이미지 일괄 비우기">
-                <button
-                  className="round-button back-gray"
-                  onClick={() => appState.emptyProjectImageTrashWithConfirm()}
-                >
-                  <FaBroom size={18} />
-                </button>
-              </Tooltip>
-              <Tooltip content="찾기 및 변환 (Ctrl+H)">
-                <button
-                  className="round-button back-gray"
-                  onClick={() => appState.openFindReplace()}
-                >
-                  <FaExchangeAlt size={18} />
-                </button>
-              </Tooltip>
-              {!isMobile && (
-                <Tooltip content="단축키 도움말">
-                  <button
-                    className="round-button back-gray"
-                    onClick={() => {
-                      appState.showSceneCheatsheet = !appState.showSceneCheatsheet;
-                    }}
-                  >
-                    <FaQuestion size={14} />
-                    <span className="ml-1 text-xs hidden lg:inline">H</span>
-                  </button>
-                </Tooltip>
-              )}
+              {sceneToolbarRegistry.map(({ id }) => (
+                <Fragment key={id}>{toolbarButtons[id]}</Fragment>
+              ))}
             </div>
             <div className="ml-auto mr-2 hidden md:flex items-center gap-2">
               {!appState.classicSceneCard && (
@@ -2154,7 +2192,7 @@ const QueueControl = observer(
                       ...curSession.sceneCardStyle,
                       [type]: e.target.value,
                     };
-                    sessionService.dirty[curSession.name] = true;
+                    sessionService.markDirty(curSession.name);
                   }}
                 >
                   <option value="portrait">세로 3:4</option>

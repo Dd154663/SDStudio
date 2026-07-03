@@ -230,7 +230,7 @@ export const App = observer(() => {
       const conf = await backend.getConfig();
       setDarkMode(!conf.whiteMode);
       setTrueDark(conf.trueDark ?? false);
-      setThemeOverrides(buildThemeVars(conf.uiTheme));
+      setThemeOverrides(buildThemeVars(conf.uiTheme, !!conf.whiteMode));
       appState.classicSceneCard = conf.classicSceneCard ?? false;
       appState.legacyProjectMode = conf.legacyProjectMode ?? false;
       appState.storageWriteGuard = conf.storageWriteGuard ?? true;
@@ -613,6 +613,14 @@ export const App = observer(() => {
             appState.pushMessage(`${error.message}`);
           }}
         >
+          {/* 부팅 게이트: bootstrapApp() 완료 전에는 메인 UI 를 마운트하지 않아
+              "서비스 준비 전 사용" 류 race 를 원천 차단한다 (완료 후 항상 열림) */}
+          {!appState.bootReady ? (
+            <div className="flex-1 h-full w-full flex flex-col items-center justify-center gap-3">
+              <div className="w-8 h-8 rounded-full border-2 border-[color:var(--c-line)] border-t-sky-500 animate-spin" />
+              <div className="text-sub text-sm">SDStudio 시작 중…</div>
+            </div>
+          ) : (
           <VerticalStack>
             {!isMobile && (
               <StackFixed>
@@ -704,6 +712,7 @@ export const App = observer(() => {
               <ImageHistoryPanel />
             </StackGrow>
           </VerticalStack>
+          )}
         </ErrorBoundary>
         {/* 내보내기 진행 플로팅 위젯 (비차단형) */}
         {appState.exportProgress && (

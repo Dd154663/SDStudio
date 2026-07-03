@@ -15,6 +15,9 @@ export interface Dialog {
   graySelect?: boolean;
   items?: { text: string; value: string }[];
   showSkipConfirm?: boolean;
+  // confirm 타입의 버튼 라벨 교체 (미지정 시 확인/취소)
+  confirmText?: string;
+  cancelText?: string;
 }
 
 const ConfirmWindow = observer(() => {
@@ -117,7 +120,7 @@ const ConfirmWindow = observer(() => {
                     }
                     onClick={handleConfirm}
                   >
-                    확인
+                    {curDialog.confirmText ?? '확인'}
                   </button>
                    <button
                     className="px-4 py-2 rounded back-gray clickable "
@@ -128,7 +131,7 @@ const ConfirmWindow = observer(() => {
                       setSkipConfirm(false);
                     }}
                   >
-                    취소
+                    {curDialog.cancelText ?? '취소'}
                   </button>
                 </>
               )}

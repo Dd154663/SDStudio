@@ -1,4 +1,5 @@
 import { v4 } from 'uuid';
+import { persistService } from './PersistenceService';
 import {
   convertResolution,
   ImageAugmentInput,
@@ -285,7 +286,7 @@ export class TaskQueueService extends EventTarget {
       this.logsSaveTimer = null;
     }
     try {
-      await backend.writeFile(TASK_LOGS_FILE, JSON.stringify(this.taskLogs));
+      await persistService.write(TASK_LOGS_FILE, JSON.stringify(this.taskLogs));
     } catch (e) {
       console.error('작업 로그 저장 실패:', e);
     }

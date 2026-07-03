@@ -1,4 +1,5 @@
 import { observable, action } from 'mobx';
+import { persistService } from './PersistenceService';
 import { v4 as uuidv4 } from 'uuid';
 import { backend, imageService, workFlowService } from '.';
 import { Session } from './types';
@@ -101,7 +102,7 @@ export class GlobalPresetService extends EventTarget {
     // 원본 백업 (있을 때만)
     try {
       const cur = await backend.readFile(GLOBAL_PRESETS_FILE);
-      await backend.writeFile(
+      await persistService.write(
         GLOBAL_PRESETS_FILE + '.bak-unify-' + Date.now(),
         cur,
       );
@@ -157,12 +158,12 @@ export class GlobalPresetService extends EventTarget {
     const data = JSON.stringify(store);
     const tmp = GLOBAL_PRESETS_FILE + '.tmp';
     try {
-      await backend.writeFile(tmp, data);
+      await persistService.write(tmp, data);
       await backend.renameFile(tmp, GLOBAL_PRESETS_FILE);
     } catch (e) {
       // Fallback: direct write if atomic rename fails
       try {
-        await backend.writeFile(GLOBAL_PRESETS_FILE, data);
+        await persistService.write(GLOBAL_PRESETS_FILE, data);
       } catch (e2) {
         console.error('Failed to save global presets:', e2);
       }

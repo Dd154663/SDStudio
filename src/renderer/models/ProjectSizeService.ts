@@ -1,4 +1,5 @@
 import { observable, makeObservable, runInAction } from 'mobx';
+import { persistService } from './PersistenceService';
 import { backend, sessionService } from '.';
 
 export interface ProjectSizeEntry {
@@ -66,7 +67,7 @@ export class ProjectSizeService {
 
   private async save(): Promise<void> {
     try {
-      await backend.writeFile(
+      await persistService.write(
         SIDECAR_PATH,
         JSON.stringify({ version: 1, entries: this.entries }),
       );

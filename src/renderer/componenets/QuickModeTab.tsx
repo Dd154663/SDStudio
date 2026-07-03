@@ -39,7 +39,7 @@ function ensureDefaultScene(session: Session): Scene {
         game: undefined,
       }),
     );
-    sessionService.dirty[session.name] = true;
+    sessionService.markDirty(session.name);
     scene = session.scenes.get(DEFAULT_SCENE)!;
   }
   return scene;

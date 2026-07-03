@@ -105,7 +105,6 @@ export class BatchProcessService {
         type: 'confirm',
         text: `정말로 선택한 ${selected.length}개의 씬을 삭제하시겠습니까? (휴지통으로 이동)`,
         callback: async () => {
-          const { trashService } = await import('.');
           for (const scene of selected) {
             await trashService.moveSceneToTrash(appState.curSession!, scene);
           }

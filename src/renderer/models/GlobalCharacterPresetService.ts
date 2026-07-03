@@ -1,4 +1,5 @@
 import { observable, action } from 'mobx';
+import { persistService } from './PersistenceService';
 import { v4 as uuidv4 } from 'uuid';
 import { backend, imageService } from '.';
 import { Session, CharacterPreset, ICharacterPreset } from './types';
@@ -59,11 +60,11 @@ export class GlobalCharacterPresetService extends EventTarget {
     const data = JSON.stringify(store);
     const tmp = GLOBAL_CHAR_PRESETS_FILE + '.tmp';
     try {
-      await backend.writeFile(tmp, data);
+      await persistService.write(tmp, data);
       await backend.renameFile(tmp, GLOBAL_CHAR_PRESETS_FILE);
     } catch (e) {
       try {
-        await backend.writeFile(GLOBAL_CHAR_PRESETS_FILE, data);
+        await persistService.write(GLOBAL_CHAR_PRESETS_FILE, data);
       } catch (e2) {
         console.error('Failed to save global character presets:', e2);
       }

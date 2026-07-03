@@ -166,7 +166,8 @@ export class ImageDownloadService {
 
   constructor() {
     makeObservable(this);
-    this.loadSettings();
+    // 설정 로드는 bootstrap 이 loadSettings() 를 호출해 수행한다
+    // (생성자에서 IO 를 시작하지 않는다 — 부팅 순서 보장).
   }
 
   /**

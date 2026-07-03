@@ -1066,7 +1066,7 @@ const ProjectDrawer = observer(() => {
     await sessionService.get(old);
     await imageService.onRenameSession(old, newName);
     await sessionService.rename(old, newName);
-    const sess = sessionService.resources[newName];
+    const sess = sessionService.getLoaded(newName);
     if (sess) {
       sess.name = newName;
     }

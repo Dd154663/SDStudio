@@ -1,12 +1,24 @@
 import extractChunks from 'png-chunks-extract';
 import { Buffer } from 'buffer';
 import { v4 } from 'uuid';
-import { backend, imageService, workFlowService, zipService, sessionService } from '.';
+import {
+  backend,
+  imageService,
+  workFlowService,
+  zipService,
+  sessionService,
+  trashService,
+  taskQueueService,
+  globalPieceService,
+  globalPresetService,
+} from '.';
+import { getAppState } from './appStateRef';
 import { FileEntry } from '../backend';
 import defaultassets from '../defaultassets';
 import { dataUriToBase64 } from './ImageService';
 import { defaultUC } from './PromptService';
 import { ResourceSyncService } from './ResourceSyncService';
+import { persistService } from './PersistenceService';
 import { isOutputImageFile } from './imageFormats';
 import {
   PromptPieceSlot,
@@ -57,7 +69,7 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async saveFavorites() {
-    await backend.writeFile('favorites.json', JSON.stringify([...this.favorites]));
+    await persistService.write('favorites.json', JSON.stringify([...this.favorites]));
   }
 
   async toggleFavorite(name: string) {
@@ -191,7 +203,7 @@ export class SessionService extends ResourceSyncService<Session> {
       (f) => f === oldName || f.startsWith(oldPrefix),
     );
 
-    await this.guardInFlight(affectedProjects, async () => {
+    await this.withLock(affectedProjects, async () => {
       await backend.renameDir(
         this.folderDirPath(oldName),
         this.folderDirPath(newName),
@@ -277,7 +289,7 @@ export class SessionService extends ResourceSyncService<Session> {
       }
     }
     const srcPath = this.getPath(name);
-    await this.guardInFlight([name], async () => {
+    await this.withLock([name], async () => {
       const destPath = targetFolder
         ? this.resourceDir + '/' + targetFolder + '/' + name + '.json'
         : this.resourceDir + '/' + name + '.json';
@@ -430,7 +442,7 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async saveFolderColors() {
-    await backend.writeFile(
+    await persistService.write(
       'folderColors.json',
       JSON.stringify(this.folderColors),
     );
@@ -458,7 +470,7 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async saveFolderOrder() {
-    await backend.writeFile(
+    await persistService.write(
       'folderOrder.json',
       JSON.stringify(this.folderOrder),
     );
@@ -526,7 +538,7 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async saveBookmarks() {
-    await backend.writeFile('bookmarks.json', JSON.stringify(this.bookmarkData));
+    await persistService.write('bookmarks.json', JSON.stringify(this.bookmarkData));
     this.dispatchEvent(new CustomEvent('bookmark-updated'));
   }
 
@@ -585,7 +597,7 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async saveThumbnails() {
-    await backend.writeFile(
+    await persistService.write(
       'thumbnails.json',
       JSON.stringify(this.thumbnailData),
     );
@@ -633,14 +645,15 @@ export class SessionService extends ResourceSyncService<Session> {
   async resolveThumbnail(
     name: string,
   ): Promise<{ scene: string; image: string } | undefined> {
-    if (name in this.resources) {
-      const scenes = Array.from(this.resources[name].scenes.values());
+    const loaded = this.getLoaded(name);
+    if (loaded) {
+      const scenes = Array.from(loaded.scenes.values());
       if (!scenes.length) return undefined;
       const scene = scenes[0];
       if (scene.mains && scene.mains.length) {
         return { scene: scene.name, image: scene.mains[0] };
       }
-      const images = imageService.getOutputs(this.resources[name], scene);
+      const images = imageService.getOutputs(loaded, scene);
       if (images && images.length) {
         return { scene: scene.name, image: images[0] };
       }
@@ -663,7 +676,7 @@ export class SessionService extends ResourceSyncService<Session> {
 
   // 종료 시: 로드된(작업한) 세션의 자동 썸네일만 재해석해 갱신
   async refreshLoadedThumbnails() {
-    for (const name of Object.keys(this.resources)) {
+    for (const name of this.loadedNames()) {
       try {
         const ref = await this.resolveThumbnail(name);
         if (ref) this.thumbnailData[name] = ref;
@@ -671,9 +684,9 @@ export class SessionService extends ResourceSyncService<Session> {
     }
   }
 
-  async run() {
+  async init() {
     // 사전 로드(즐겨찾기/북마크/휴지통 등)가 어떤 이유로 실패하더라도
-    // super.run()(주기 자동 저장 루프 + 백그라운드 진입 시 강제 저장 훅)에는
+    // super.init()(초기 스캔 + 백그라운드 진입 시 강제 저장 훅)에는
     // 반드시 도달해야 한다. 여기서 죽으면 앱은 멀쩡해 보여도 이후 편집이
     // 디스크에 저장되지 않아 통째로 유실된다.
     try {
@@ -682,14 +695,12 @@ export class SessionService extends ResourceSyncService<Session> {
       await this.loadThumbnails();
       await this.loadFolderColors();
       await this.loadFolderOrder();
-      const { trashService } = await import('.');
       await trashService.loadTrash();
 
       // 만료 프로젝트 감지 → UI 다이얼로그에 전달 (가볍게 체크만)
       const expired = await trashService.getExpiredProjects();
       if (expired.length > 0) {
-        const { appState } = await import('./AppService');
-        appState.pendingExpiredProjects = expired;
+        getAppState().pendingExpiredProjects = expired;
       }
 
       // autoCleanup은 앱 시작을 블로킹하지 않도록 지연 실행
@@ -699,16 +710,15 @@ export class SessionService extends ResourceSyncService<Session> {
         });
       }, 10000);
     } catch (e) {
-      console.error('세션 서비스 사전 로드 실패(자동 저장 루프는 계속 시작):', e);
+      console.error('세션 서비스 사전 로드 실패(초기화는 계속 진행):', e);
     }
 
-    await super.run();
+    await super.init();
   }
 
   async delete(name: string) {
     // 같은 이름의 기존 휴지통 항목을 먼저 정리 (동명 프로젝트 재삭제 시 충돌/덮어쓰기 방지).
     // 이렇게 해야 super.delete 의 .json → .deleted rename 대상이 비어 있어 플랫폼 무관하게 안전.
-    const { trashService } = await import('.');
     await trashService.purgeDeletedProject(name);
     // 실제 삭제(파일 rename)를 먼저 수행 — 여기서 실패하면 프로젝트가 남으므로
     // 즐겨찾기/북마크/썸네일 등 메타데이터도 건드리지 않고 그대로 보존한다.
@@ -768,13 +778,10 @@ export class SessionService extends ResourceSyncService<Session> {
   // dirty(변경 표시)된 것 + 현재 세션만 저장한다. (디바운스로 아직 dirty 표시가
   // 안 된 현재 세션의 마지막 편집분도 현재 세션을 항상 포함해 보존됨)
   async flushOnClose() {
-    const names = new Set<string>(
-      Object.keys(this.dirty).filter((n) => n in this.resources),
-    );
+    const names = new Set<string>(this.dirtyNames());
     try {
-      const { appState } = await import('./AppService');
-      const cur = appState.curSession?.name;
-      if (cur && cur in this.resources) names.add(cur);
+      const cur = getAppState().curSession?.name;
+      if (cur && this.isLoaded(cur)) names.add(cur);
     } catch (e) {}
     await Promise.allSettled(
       [...names].map((name) => this.writeResource(name)),
@@ -808,7 +815,7 @@ export class SessionService extends ResourceSyncService<Session> {
     // 서킷 브레이커(토글 ON, 기본): 저장소 접근이 불안정하면 이번 쓰기를 보류한다.
     // 'skip-keep' 은 dirty 를 유지하므로 접근이 회복되면 자동으로 재시도된다.
     try {
-      const { appState } = await import('./AppService');
+      const appState = getAppState();
       if (appState.storageWriteGuard && (await this.checkStorageUnstable())) {
         return 'skip-keep';
       }
@@ -844,8 +851,7 @@ export class SessionService extends ResourceSyncService<Session> {
     if (!this.#lossGuardWarned.has(name)) {
       this.#lossGuardWarned.add(name);
       try {
-        const { appState } = await import('./AppService');
-        appState.pushMessage(
+        getAppState().pushMessage(
           '복구 가능한 이미지가 감지되었습니다. 이미지 복구 기능을 사용해 보세요.',
         );
       } catch (e) {}
@@ -905,7 +911,7 @@ export class SessionService extends ResourceSyncService<Session> {
     if (this.#storageProbe && now - this.#storageProbe.at < 1000) {
       unstable = this.#storageProbe.unstable;
     } else {
-      const loadedCount = Object.keys(this.resources).length;
+      const loadedCount = this.loadedNames().length;
       if (loadedCount === 0) {
         unstable = false; // 비교 기준 없음 → 판단 보류(정상 취급)
       } else {
@@ -952,7 +958,6 @@ export class SessionService extends ResourceSyncService<Session> {
     message: string,
   ) {
     try {
-      const { taskQueueService } = await import('.');
       taskQueueService.addLog(level, '저장소', message);
     } catch (e) {}
   }
@@ -1180,7 +1185,7 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async importSessionShallow(session: ISession, name: string) {
-    if (name in this.resources) {
+    if (this.isLoaded(name)) {
       throw new Error('Resource already exists');
     }
     session.name = name;
@@ -1211,7 +1216,7 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async importSessionDeep(tarpath: string, name: string) {
-    if (name in this.resources) {
+    if (this.isLoaded(name)) {
       throw new Error('Resource already exists');
     }
     const path = 'tmp/' + v4();
@@ -1229,7 +1234,7 @@ export class SessionService extends ResourceSyncService<Session> {
   // 이미 추출된 디렉터리(project.json + outs/vibes/... 하위 포함)로부터 프로젝트를 복원한다.
   // 폴더 백업 불러오기에서 한 아카이브를 1회 추출한 뒤 프로젝트별로 재사용한다.
   async importSessionDeepFromDir(dir: string, name: string) {
-    if (name in this.resources) {
+    if (this.isLoaded(name)) {
       throw new Error('Resource already exists');
     }
     const session: Session = JSON.parse(
@@ -1320,7 +1325,7 @@ export class SessionService extends ResourceSyncService<Session> {
   // 프로젝트를 이미지 포함하여 앱 내에서 복제한다.
   // (프로젝트 백업 내보내기 → 재임포트와 동일한 결과: JSON + 모든 이미지 디렉터리)
   async duplicateSessionDeep(session: Session, newName: string) {
-    if (newName in this.resources) {
+    if (this.isLoaded(newName)) {
       throw new Error('Resource already exists');
     }
     // 이미지 디렉터리는 이름 기준(outs/<이름> 등)이므로 이름만 바꿔 통째 복사
@@ -1402,7 +1407,6 @@ export class SessionService extends ResourceSyncService<Session> {
     }
     // 전역 조각 추가 (로컬과 동명인 경우 스킵)
     try {
-      const { globalPieceService } = await import('.');
       for (const [k, v] of globalPieceService.library.entries()) {
         for (const piece of v.pieces) {
           const key = k + '.' + piece.name;
@@ -1421,8 +1425,6 @@ export async function importDefaultPresets(session: Session) {
   // 순환 임포트 방지를 위해 동적 import 사용
   let hadGlobalDefaults = false;
   try {
-    const mod = await import('.');
-    const globalPresetService = (mod as any).globalPresetService;
     if (globalPresetService) {
       if (!globalPresetService.loaded) {
         await globalPresetService.load();
@@ -1562,16 +1564,13 @@ export const renameScene = async (
   // 폴더 이동(onRenameScene)과 Map 갱신 사이에 주기 flush 가 끼면, 손실 방지 가드가
   // "newName 폴더는 있는데 세션엔 없다"고 오인할 수 있다. 작업 동안 세션을 in-flight 로
   // 표시해 그 사이 자동 저장이 해당 세션을 건너뛰게 한다.
-  sessionService._inFlight.add(session.name);
-  try {
+  await sessionService.withLock([session.name], async () => {
     await imageService.onRenameScene(session, oldName, newName);
     const scene = session.scenes.get(oldName)!;
     scene.name = newName;
     session.scenes.delete(oldName);
     session.scenes.set(newName, scene);
-  } finally {
-    sessionService._inFlight.delete(session.name);
-  }
+  });
 };
 
 // 씬 병합: sourceName 씬을 기존 targetName 씬으로 합친다.

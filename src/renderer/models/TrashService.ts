@@ -1,4 +1,5 @@
 import { backend } from '.';
+import { persistService } from './PersistenceService';
 import { GenericScene, IInpaintScene, IScene, Session, genericSceneFromJSON } from './types';
 import { imageService } from '.';
 import { isOutputImageFile } from './imageFormats';
@@ -61,7 +62,7 @@ export class TrashService extends EventTarget {
   }
 
   async saveTrash(): Promise<void> {
-    await backend.writeFile(TRASH_FILE, JSON.stringify(this.data));
+    await persistService.write(TRASH_FILE, JSON.stringify(this.data));
     this.dispatchEvent(new CustomEvent('trash-updated'));
   }
 
@@ -93,7 +94,7 @@ export class TrashService extends EventTarget {
 
   private async saveImageTrashMeta(session: Session, scene: GenericScene, meta: TrashImageMeta): Promise<void> {
     // writeFile auto-creates parent directories
-    await backend.writeFile(this.getImageTrashMetaPath(session, scene), JSON.stringify(meta));
+    await persistService.write(this.getImageTrashMetaPath(session, scene), JSON.stringify(meta));
   }
 
   async moveImagesToTrash(session: Session, scene: GenericScene, fullPaths: string[]): Promise<void> {
@@ -696,7 +697,7 @@ export class TrashService extends EventTarget {
               }
             }
             if (metaChanged) {
-              await backend.writeFile(trashMetaPath, JSON.stringify(meta));
+              await persistService.write(trashMetaPath, JSON.stringify(meta));
             }
           } catch (e) {
             // No trash meta = no trash images to clean

@@ -1578,7 +1578,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       }
       if (gallaryRef.current) gallaryRef.current.refresh();
       if (gallaryRef2.current) gallaryRef2.current.refresh();
-      sessionService.dirty[curSession!.name] = true;
+      sessionService.markDirty(curSession!.name);
       forceUpdate({});
     }, [scene, curSession]);
 

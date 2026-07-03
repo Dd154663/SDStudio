@@ -18,6 +18,7 @@ import {
   workFlowService,
   zipService,
 } from '.';
+import { setAppState } from './appStateRef';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { isOutputImageFile, isImportImageMime } from './imageFormats';
@@ -94,6 +95,10 @@ export interface SceneSelectorItem {
 
 
 export class AppState {
+  // 부팅 완료 여부 — bootstrapApp() 이 모든 준비(설정·세션 스캔·로컬 데이터 로드)를
+  // 마치면 true. App 이 이 값으로 메인 UI 마운트를 게이트해 "준비 전 사용" race 를
+  // 원천 차단한다. (부팅이 일부 실패해도 앱은 뜬다 — bootstrap 이 finally 로 보장)
+  @observable accessor bootReady: boolean = false;
   @observable accessor curSession: Session | undefined = undefined;
   // 토스트 메시지: 각 항목이 고유 id를 가져 개별 타이머/개별 닫기가 가능하다.
   @observable accessor messages: { id: number; text: string }[] = [];
@@ -862,7 +867,6 @@ export class AppState {
   @action
   async emptyProjectImageTrashWithConfirm() {
     if (!this.curSession) return;
-    const { trashService } = await import('.');
     const { totalImages, scenesWithTrash } =
       await trashService.countProjectImageTrash(this.curSession);
     if (totalImages === 0) {
@@ -1198,3 +1202,5 @@ export class AppState {
 }
 
 export const appState = new AppState();
+// 순환 import 게이트에 자기 등록 — 서비스들은 getAppState() 로 접근한다
+setAppState(appState);

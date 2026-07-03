@@ -1,5 +1,12 @@
 import { cast } from 'mobx-state-tree';
-import { backend, isMobile, gameService, imageService } from '.';
+import {
+  backend,
+  isMobile,
+  gameService,
+  imageService,
+  taskQueueService,
+  trashService,
+} from '.';
 import { platform } from './platform';
 import { GenericScene, InpaintScene, Scene, Session } from './types';
 import { assert } from './util';
@@ -669,7 +676,6 @@ export class ImageService extends EventTarget {
       target[session.name][scene.name] = [...scene.imageMap];
       // 읽기 실패/접근 불가 의심: 디스크 0개인데 기존 목록은 N개 → 로그로 남겨 진단 가능하게.
       try {
-        const { taskQueueService } = await import('.');
         taskQueueService.addLog(
           'warn',
           '저장소',
@@ -867,7 +873,6 @@ export const deleteImageFiles = async (
 ) => {
   if (scene) {
     // 휴지통으로 이동
-    const { trashService } = await import('.');
     await trashService.moveImagesToTrash(curSession, scene, paths);
     for (const path of paths) {
       await imageService.invalidateCache(path);

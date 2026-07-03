@@ -1,4 +1,5 @@
 import { observable, action } from 'mobx';
+import { persistService } from './PersistenceService';
 import { PieceLibrary, IPieceLibrary } from './types';
 import { backend } from '.';
 
@@ -28,7 +29,7 @@ export class GlobalPieceService {
     for (const [key, value] of this.library.entries()) {
       json[key] = value.toJSON();
     }
-    await backend.writeFile(GLOBAL_PIECES_FILE, JSON.stringify(json));
+    await persistService.write(GLOBAL_PIECES_FILE, JSON.stringify(json));
   }
 
   scheduleSave() {

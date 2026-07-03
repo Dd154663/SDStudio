@@ -42,7 +42,11 @@ export function readableFg(hex: string): string {
 
 // UiThemeConfig → 루트(또는 미리보기 컨테이너) style 에 주입할 --c-* 변수 맵.
 // 미설정/유효하지 않은 값은 건너뛰어, 해당 토큰은 기본 테마 값을 그대로 따른다.
-export function buildThemeVars(t?: UiThemeConfig): Record<string, string> {
+// baseIsLight: 기본 테마가 화이트 모드인지(버튼 명암 문맥의 최종 폴백).
+export function buildThemeVars(
+  t?: UiThemeConfig,
+  baseIsLight?: boolean,
+): Record<string, string> {
   const vars: Record<string, string> = {};
   if (!t) return vars;
 
@@ -98,10 +102,23 @@ export function buildThemeVars(t?: UiThemeConfig): Record<string, string> {
     vars['--c-zone'] = t.textPattern === 'light' ? '#eceff4' : '#1e293b';
   }
 
+  // 버튼 색 파생의 명암 문맥: 텍스트 패턴 > 커스텀 배경 명도 > 기본 테마(라이트/다크)
+  const btnLight = t.textPattern
+    ? t.textPattern === 'light'
+    : isHex6(t.surface)
+      ? readableFg(t.surface) === '#000000'
+      : (baseIsLight ?? false);
+
   const setBtn = (name: string, color?: string) => {
     if (!isHex6(color)) return;
-    vars[`--c-${name}-bg`] = color;
-    vars[`--c-${name}-fg`] = readableFg(color);
+    const c = parseHex(color)!;
+    // 기본 테마(다크)의 버튼 언어를 따른다: 지정색을 원색 그대로 칠하지 않고
+    // 옅은 반투명 틴트 배경으로 파생해 색이 튀지 않게 한다.
+    vars[`--c-${name}-bg`] =
+      `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${btnLight ? 0.2 : 0.25})`;
+    // 텍스트는 지정색 색조를 따르지 않는다 — 유색 배경 위 반투명 틴트에서
+    // 색조 텍스트는 가독성이 떨어지므로, 명암 문맥에 따른 불투명 흑/백 고정.
+    vars[`--c-${name}-fg`] = btnLight ? '#000000' : '#ffffff';
   };
 
   if (t.unifyButtons) {
