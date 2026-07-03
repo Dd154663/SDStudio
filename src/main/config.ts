@@ -53,6 +53,10 @@ export interface Config {
   storageWriteGuard?: boolean;
   // 아티스트 태깅의 WD 태거 모델 선택 (기본 wd-swinv2)
   wdTaggerModel?: 'wd-swinv2' | 'wd-eva02';
+  // 모바일 권한 안내 모달에서 '거절'을 선택 — 해당 권한을 다시 묻지 않는다.
+  // (안내에서 '확인' 후 시스템 창에서 거부한 경우는 플래그를 세우지 않아 다음 부팅 때 재안내)
+  notifPermissionDeclined?: boolean;
+  batteryPermissionDeclined?: boolean;
   // UI 테마 커스터마이징(구조화 의도). 미설정 시 기본 테마(다크/라이트).
   // 실제 적용 CSS 변수는 buildThemeVars(uiTheme.ts)로 파생 — 단일 출처.
   uiTheme?: UiThemeConfig;

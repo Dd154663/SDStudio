@@ -137,17 +137,10 @@ export class AndroidBackend extends Backend {
       configLoaded = true;
     })();
     (async () => {
-      // 알림 권한 요청 (Android 13+). 권한이 없으면 포그라운드 서비스 알림이 표시되지 않아
-      // 서비스가 더 쉽게 종료될 수 있으므로 먼저 요청한다.
-      try {
-        await BackgroundMode.requestNotificationsPermission();
-      } catch (e) {}
-      try {
-        const battery = await BackgroundMode.checkBatteryOptimizations();
-        if (!battery.disabled) {
-          await BackgroundMode.requestDisableBatteryOptimizations();
-        }
-      } catch (e) {}
+      // 알림 권한·배터리 최적화 제외는 여기서 자동 요청하지 않는다 —
+      // 부팅 완료 후 안내 모달(models/mobilePermissions.ts)에서 사용자가
+      // '확인'을 눌렀을 때만 시스템 창을 연다. (로딩과 겹쳐 자동 노출 →
+      // 무심코 터치로 스킵 → 알림 권한 2회 거부 시 영구 차단되는 문제 방지)
       // 포그라운드 서비스 설정 + enable. 최초 1회는 안내용 기본 문구 포함.
       await this.ensureBackgroundMode(true);
       try {
@@ -156,10 +149,10 @@ export class AndroidBackend extends Backend {
     })();
 
     // 견고화: 앱이 포그라운드로 돌아올 때마다 백그라운드 모드를 재적용한다.
-    // 최초 실행은 권한 다이얼로그가 enable() 타이밍을 자연스럽게 맞춰주지만, 2번째
-    // 실행(콜드 스타트, 다이얼로그 없음)에서는 enable()/설정이 다음 백그라운드 전환에
-    // 안정적으로 반영되지 않아 알림이 뜨지 않는 문제가 있었다. resume 마다 재적용하면
-    // 다음 백그라운드 진입 직전에 항상 신선한 상태가 보장된다.
+    // 콜드 스타트 직후의 enable()/설정은 다음 백그라운드 전환에 안정적으로
+    // 반영되지 않아 알림이 뜨지 않는 문제가 있었다. resume 마다 재적용하면
+    // 다음 백그라운드 진입 직전에 항상 신선한 상태가 보장된다. (권한 안내
+    // 모달로 알림 권한이 부팅 뒤 늦게 허용되는 경우도 이 경로가 흡수한다)
     // (text 는 생략 → 진행 중 생성 알림 문구를 덮어쓰지 않음)
     try {
       CapacitorApp.addListener('appStateChange', ({ isActive }) => {

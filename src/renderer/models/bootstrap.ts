@@ -15,6 +15,7 @@ import {
 } from '.';
 import { appState } from './AppService';
 import { persistService } from './PersistenceService';
+import { runMobilePermissionOnboarding } from './mobilePermissions';
 
 // ── 명시적 부트 시퀀스 ──
 // 앱의 모든 비동기 초기화가 여기서 "정해진 순서"로 일어난다.
@@ -90,6 +91,8 @@ export async function bootstrapApp(): Promise<void> {
   // 모바일 포그라운드 알림 / 백그라운드 동결 우회
   Promise.resolve(backgroundNotificationService.start()).catch(() => {});
   Promise.resolve(backgroundKeepAliveService.start()).catch(() => {});
+  // 모바일 권한 안내(알림/배터리) — 메인 UI 위에 순차 모달, '확인' 시에만 시스템 창
+  runMobilePermissionOnboarding().catch(() => {});
 }
 
 // 앱 종료 시 저장되지 않은 편집을 마지막으로 저장한다.
