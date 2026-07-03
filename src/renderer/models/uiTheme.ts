@@ -112,19 +112,13 @@ export function buildThemeVars(
   const setBtn = (name: string, color?: string) => {
     if (!isHex6(color)) return;
     const c = parseHex(color)!;
-    const lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
     // 기본 테마(다크)의 버튼 언어를 따른다: 지정색을 원색 그대로 칠하지 않고
-    // 옅은 반투명 틴트 배경 + 색조 텍스트로 파생해 색이 튀지 않게 한다.
+    // 옅은 반투명 틴트 배경으로 파생해 색이 튀지 않게 한다.
     vars[`--c-${name}-bg`] =
       `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${btnLight ? 0.2 : 0.25})`;
-    // 텍스트는 지정색의 색조를 유지하되, 배경 명암 대비가 부족한 쪽만 보정
-    vars[`--c-${name}-fg`] = btnLight
-      ? lum > 140
-        ? mix(color, '#000000', 0.45)
-        : color
-      : lum < 100
-        ? mix(color, '#ffffff', 0.45)
-        : color;
+    // 텍스트는 지정색 색조를 따르지 않는다 — 유색 배경 위 반투명 틴트에서
+    // 색조 텍스트는 가독성이 떨어지므로, 명암 문맥에 따른 불투명 흑/백 고정.
+    vars[`--c-${name}-fg`] = btnLight ? '#000000' : '#ffffff';
   };
 
   if (t.unifyButtons) {
