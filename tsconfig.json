@@ -1,6 +1,9 @@
 {
   "compilerOptions": {
     "incremental": true,
+    // 외부 패키지 .d.ts 는 타입 검사에서 제외 — node_modules 의 라이브러리 간
+    // 타입 충돌(우리 코드와 무관)이 오류 수를 오염시키는 것을 막고 검사도 빨라진다.
+    "skipLibCheck": true,
     "target": "es2022",
     "module": "commonjs",
     "lib": ["dom", "es2022"],

@@ -36,6 +36,7 @@
     "postinstall": "ts-node .erb/scripts/check-native-dep.js && electron-builder install-app-deps && npm run build:dll",
     "lint": "cross-env NODE_ENV=development eslint . --ext .js,.jsx,.ts,.tsx",
     "test": "jest",
+    "typecheck": "tsc --noEmit",
     "package-cross": "ts-node ./.erb/scripts/clean.js dist && npm run build && electron-builder build -w --x64 --publish never && npm run build:dll",
     "package": "cross-env ts-node ./.erb/scripts/clean.js dist && npm run build && electron-builder build --publish never && npm run build:dll",
     "rebuild": "cross-env electron-rebuild --parallel --types prod,dev,optional --module-dir release/app",
