@@ -136,6 +136,26 @@ export class AndroidBackend extends Backend {
       } catch {}
       configLoaded = true;
     })();
+    // 원자 쓰기(tmp+rename)가 쓰기와 rename 사이 강제 종료로 남긴 고아 tmp 정리.
+    // tmp 는 항상 uuid v4 파일명(확장자 없음)이라 정확히 그 형태만 지운다. (비차단)
+    (async () => {
+      const uuidName =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      try {
+        const { files } = await Filesystem.readdir({
+          path: APP_DIR,
+          directory: Directory.Documents,
+        });
+        for (const f of files) {
+          if (f.type === 'file' && uuidName.test(f.name)) {
+            await Filesystem.deleteFile({
+              path: `${APP_DIR}/${f.name}`,
+              directory: Directory.Documents,
+            }).catch(() => {});
+          }
+        }
+      } catch (e) {}
+    })();
     (async () => {
       // 알림 권한·배터리 최적화 제외는 여기서 자동 요청하지 않는다 —
       // 부팅 완료 후 안내 모달(models/mobilePermissions.ts)에서 사용자가
@@ -190,12 +210,9 @@ export class AndroidBackend extends Backend {
 
   async setConfig(newConfig: Config): Promise<void> {
     config = newConfig;
-    await Filesystem.writeFile({
-      path: `${APP_DIR}/config.json`,
-      data: JSON.stringify(config),
-      directory: Directory.Documents,
-      encoding: Encoding.UTF8,
-    });
+    // writeFile 경유 = tmp+rename(+.bak) 원자 쓰기 — 직접 쓰기는 강제 종료 시
+    // 파일이 반쯤 쓰여 파손되고, 로드가 조용히 실패해 설정 전체가 초기화된다.
+    await this.writeFile('config.json', JSON.stringify(config));
   }
 
   // 포그라운드 서비스 설정 적용 + enable. (resume/시작/생성 시 반복 호출되어 자가복구)
@@ -471,6 +488,17 @@ export class AndroidBackend extends Backend {
       directory: Directory.Documents,
       encoding: Encoding.UTF8,
     });
+    // Capacitor 의 rename 은 "대상 삭제 후 renameTo" 라 교체가 원자적이지 않다 —
+    // 삭제와 rename 사이에 강제 종료되면 파일이 통째로 사라진다. 기존 파일을 먼저
+    // .bak 으로 물려 두는 2단계 교체로, 어느 시점에 죽어도 본문 또는 .bak 중
+    // 하나는 반드시 남는다 (.bak 은 프로젝트 로드 실패 시 자동 복구에 사용됨).
+    try {
+      await Filesystem.rename({
+        from: `${APP_DIR}/${filename}`,
+        to: `${APP_DIR}/${filename}.bak`,
+        directory: Directory.Documents,
+      });
+    } catch (e) {} // 기존 파일 없음(첫 저장) 등 — 무시
     await Filesystem.rename({
       from: tmpFile,
       to: `${APP_DIR}/${filename}`,

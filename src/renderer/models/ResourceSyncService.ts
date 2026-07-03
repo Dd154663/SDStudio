@@ -19,6 +19,9 @@ interface ResourceEntry<T> {
   instance?: T; // ready/busy 에서 존재. busy 는 미로드 이름의 락일 수도 있어 없을 수 있음
   load?: Promise<T | undefined>; // loading 일 때의 공유 로드 프로미스
   dirty: boolean; // 저장 필요 여부
+  // 변경 세대 카운터 — markDirty 마다 증가. flush 가 "쓰기 시작 시점의 세대"와
+  // 비교해, 쓰기 도중 들어온 편집의 dirty 를 실수로 지우지 않게 한다.
+  seq: number;
   dispose?: () => void; // 변경 감지 reaction 해제자
 }
 
@@ -79,6 +82,7 @@ export abstract class ResourceSyncService<
     const e = this.entries.get(name);
     if (!e || !e.instance) return;
     e.dirty = true;
+    e.seq++;
     this.dispatchEvent(
       new CustomEvent<{ name: string }>('updated', { detail: { name } }),
     );
@@ -129,7 +133,7 @@ export abstract class ResourceSyncService<
   private async attach(name: string, instance: T) {
     let e = this.entries.get(name);
     if (!e) {
-      e = { state: 'ready', dirty: false };
+      e = { state: 'ready', dirty: false, seq: 0 };
       this.entries.set(name, e);
     }
     e.instance = instance;
@@ -172,6 +176,9 @@ export abstract class ResourceSyncService<
     if (!e?.instance) return;
     const src = this.getPath(name);
     await this.withLock([name], async () => {
+      // busy 전환 전에 이미 큐에 들어간 이 파일의 쓰기를 먼저 소진
+      // (rename 뒤에 잔여 쓰기가 파일을 되살리는 것을 방지)
+      await persistService.flushPath(src).catch(() => {});
       // 파일 이동이 성공한 경우에만 메모리에서 제거 (실패 시 상태 불일치 방지)
       await backend.renameFile(src, src.replace(/\.json$/, '.deleted'));
       e.dispose?.();
@@ -194,6 +201,8 @@ export abstract class ResourceSyncService<
       : srcPath;
 
     await this.withLock([oldName, newName], async () => {
+      // busy 전환 전에 이미 큐에 들어간 옛 경로 쓰기를 먼저 소진
+      await persistService.flushPath(srcPath).catch(() => {});
       await backend.renameFile(srcPath, destPath);
       // 파일 이동 성공 후에만 메모리 이동 — 락 안이라 그 사이 flush 가 끼지 않는다
       this.entries.delete(oldName);
@@ -254,7 +263,7 @@ export abstract class ResourceSyncService<
     })();
     let e = this.entries.get(name);
     if (!e) {
-      e = { state: 'loading', dirty: false };
+      e = { state: 'loading', dirty: false, seq: 0 };
       this.entries.set(name, e);
     }
     e.load = load;
@@ -290,36 +299,58 @@ export abstract class ResourceSyncService<
     }
   }
 
+  // 이름별 락 체인 — 같은 이름의 withLock 을 도착 순서대로 직렬화한다.
+  // (없으면 동시 진입 시 먼저 끝난 쪽이 busy 를 풀어, 아직 진행 중인 두 번째
+  //  작업 도중에 flush 가 끼어드는 구멍이 생긴다)
+  #lockChains: Map<string, Promise<void>> = new Map();
+
   // 주어진 이름들을 작업 동안 busy 상태로 전환해 주기 flush 와의 경쟁(경로가 바뀌는
   // 중에 잘못된 위치로 중복 저장되는 문제)을 차단한다.
   // 미로드 이름(폴더 이동 등으로 파일만 있는 프로젝트)도 잠글 수 있다 — 자리표시자
   // 엔트리를 만들고 작업이 끝나면 정리한다.
   async withLock<R>(names: string[], fn: () => Promise<R>): Promise<R> {
-    // 로딩 중인 이름은 로드가 끝난 뒤에 잠근다
-    // (로드 완료 코드가 busy 상태를 ready 로 덮어써 락이 풀리는 것을 방지)
-    for (const n of names) {
-      const e = this.entries.get(n);
-      if (e?.load) await e.load.catch(() => {});
-    }
-    const created: string[] = [];
-    for (const n of names) {
-      let e = this.entries.get(n);
-      if (!e) {
-        e = { state: 'busy', dirty: false };
-        this.entries.set(n, e);
-        created.push(n);
-      } else {
-        e.state = 'busy';
-      }
-    }
+    // 상호배제: 같은 이름의 앞선 락이 모두 끝난 뒤에 진입한다.
+    // (앞선 락 조회와 체인 등록 사이에 await 가 없어 원자적 — 교착 불가)
+    const prevs = names
+      .map((n) => this.#lockChains.get(n))
+      .filter(Boolean) as Promise<void>[];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    for (const n of names) this.#lockChains.set(n, gate);
     try {
-      return await fn();
-    } finally {
+      await Promise.all(prevs);
+
+      // 로딩 중인 이름은 로드가 끝난 뒤에 잠근다
+      // (로드 완료 코드가 busy 상태를 ready 로 덮어써 락이 풀리는 것을 방지)
       for (const n of names) {
         const e = this.entries.get(n);
-        if (!e) continue; // 작업 중 엔트리가 제거됨 (delete 등)
-        if (!e.instance && created.includes(n)) this.entries.delete(n);
-        else e.state = 'ready';
+        if (e?.load) await e.load.catch(() => {});
+      }
+      const created: string[] = [];
+      for (const n of names) {
+        let e = this.entries.get(n);
+        if (!e) {
+          e = { state: 'busy', dirty: false, seq: 0 };
+          this.entries.set(n, e);
+          created.push(n);
+        } else {
+          e.state = 'busy';
+        }
+      }
+      try {
+        return await fn();
+      } finally {
+        for (const n of names) {
+          const e = this.entries.get(n);
+          if (!e) continue; // 작업 중 엔트리가 제거됨 (delete 등)
+          if (!e.instance && created.includes(n)) this.entries.delete(n);
+          else e.state = 'ready';
+        }
+      }
+    } finally {
+      release();
+      for (const n of names) {
+        if (this.#lockChains.get(n) === gate) this.#lockChains.delete(n);
       }
     }
   }
@@ -350,8 +381,16 @@ export abstract class ResourceSyncService<
     // 'skip-keep' = 일시적 사유로 보류(저장소 불안정) → dirty 유지, 회복 시 재시도
     if (decision === 'skip') return 'done';
     if (decision === 'skip-keep') return 'retry';
+    // 가드 대기(디렉터리 조회 — 길 수 있음) 동안 삭제/이름변경이 완료됐을 수 있다.
+    // 쓰기 직전에 상태를 재확인하지 않으면 옛/루트 경로로 계산된 getPath 에 써서
+    // "삭제한 프로젝트 부활 / 이름변경 시 옛 이름 중복 파일" 이 생긴다.
+    const cur = this.entries.get(name);
+    if (!cur || cur.instance !== rc) return 'done'; // 삭제/이름변경됨 — 쓰지 않음
+    if (cur.state !== 'ready') return 'retry'; // 경로 변경 진행 중 — 다음에 재시도
     // 쓰기 파이프라인 경유 — 같은 파일에 대한 동시 저장(주기/가시성/종료 flush)이
     // 순서 보장 + 최신본 병합으로 처리된다.
+    // (이 재확인과 write 의 큐 등록 사이엔 await 가 없어, 이후 시작되는 경로 변경은
+    //  rename 직전의 persistService.flushPath 가 이 쓰기를 먼저 소진한다)
     await persistService.write(this.getPath(name), payload);
     return 'done';
   }
@@ -367,21 +406,23 @@ export abstract class ResourceSyncService<
 
   // dirty 리소스를 디스크에 저장한다(목록 재스캔 없음). busy(경로 변경 중)는 건너뛴다.
   protected async flush() {
-    const names: string[] = [];
+    const targets: { name: string; seq: number }[] = [];
     for (const [n, e] of this.entries) {
-      if (e.dirty && e.instance && e.state === 'ready') names.push(n);
+      if (e.dirty && e.instance && e.state === 'ready')
+        targets.push({ name: n, seq: e.seq });
     }
-    if (names.length === 0) return;
+    if (targets.length === 0) return;
     const results = await Promise.allSettled(
-      names.map((name) => this.writeResource(name)),
+      targets.map((t) => this.writeResource(t.name)),
     );
     // 'retry'(저장소 불안정 등으로 건너뜀)는 dirty 유지 → 접근 회복 시 자동 재시도.
-    // 그 외(저장 완료)는 dirty 해제.
-    names.forEach((name, i) => {
+    // 그 외(저장 완료)는 dirty 해제 — 단, 쓰기 도중 새 편집이 들어왔으면(세대 증가)
+    // dirty 를 유지해 그 편집이 다음 flush 에서 반드시 저장되게 한다.
+    targets.forEach((t, i) => {
       const r = results[i];
       if (r.status === 'fulfilled' && r.value === 'retry') return;
-      const e = this.entries.get(name);
-      if (e) e.dirty = false;
+      const e = this.entries.get(t.name);
+      if (e && e.seq === t.seq) e.dirty = false;
     });
   }
 
@@ -392,19 +433,20 @@ export abstract class ResourceSyncService<
   // 무관하게 메모리에 로드된 모든 리소스의 현재 상태를 즉시 저장한다.
   // (경로 변경 경쟁을 피하려고 in-flight 인 이름만 제외)
   async flushAllNow() {
-    const names: string[] = [];
+    const targets: { name: string; seq: number }[] = [];
     for (const [n, e] of this.entries) {
-      if (e.instance && e.state === 'ready') names.push(n);
+      if (e.instance && e.state === 'ready')
+        targets.push({ name: n, seq: e.seq });
     }
-    if (names.length === 0) return;
+    if (targets.length === 0) return;
     const results = await Promise.allSettled(
-      names.map((name) => this.writeResource(name)),
+      targets.map((t) => this.writeResource(t.name)),
     );
-    names.forEach((name, i) => {
+    targets.forEach((t, i) => {
       const r = results[i];
       if (r.status === 'fulfilled' && r.value === 'retry') return;
-      const e = this.entries.get(name);
-      if (e) e.dirty = false;
+      const e = this.entries.get(t.name);
+      if (e && e.seq === t.seq) e.dirty = false;
     });
   }
 

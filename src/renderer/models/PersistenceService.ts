@@ -59,6 +59,15 @@ export class PersistenceService {
     }
   }
 
+  // 특정 경로의 대기·진행 중 쓰기가 모두 디스크에 반영될 때까지 기다린다.
+  // (삭제/이름변경 등 경로가 바뀌는 작업이 파일 rename 직전에 호출 —
+  //  옛 경로로 향하던 잔여 쓰기가 rename 뒤에 파일을 되살리는 것을 방지)
+  async flushPath(path: string): Promise<void> {
+    while (this.#pumps.has(path)) {
+      await this.#pumps.get(path)!.catch(() => {});
+    }
+  }
+
   // 대기·진행 중인 모든 쓰기가 끝날 때까지 기다린다 (종료 flush 용).
   // 기다리는 동안 새로 들어온 쓰기까지 포함해 큐가 완전히 빌 때까지 반복한다.
   async flushAll(): Promise<void> {

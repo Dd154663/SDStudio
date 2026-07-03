@@ -133,11 +133,11 @@ ipcMain.handle('get-config', async (event) => {
 
 ipcMain.handle('set-config', async (event, newConfig) => {
   config = newConfig;
-  await fs.writeFile(
-    path.join(DEFAULT_APP_DIR, 'config.json'),
-    JSON.stringify(config),
-    'utf-8',
-  );
+  // tmp+rename 원자 쓰기 — 직접 쓰기는 강제 종료 시 파일이 반쯤 쓰여 파손되고,
+  // 다음 부팅의 로드가 조용히 실패해 설정 전체가 기본값으로 초기화된다.
+  const tmpFile = path.join(DEFAULT_APP_DIR, uuidv4());
+  await fs.writeFile(tmpFile, JSON.stringify(config), 'utf-8');
+  await fs.rename(tmpFile, path.join(DEFAULT_APP_DIR, 'config.json'));
 });
 
 ipcMain.handle('get-version', async (event) => {
@@ -1329,6 +1329,19 @@ async function initFolder() {
     APP_DIR = config.saveLocation;
   }
   await fs.mkdir(APP_DIR, { recursive: true });
+  // 원자 쓰기(tmp+rename)가 쓰기와 rename 사이 강제 종료로 남긴 고아 tmp 파일 정리.
+  // tmp 는 항상 uuid v4 파일명(확장자 없음)이라 정확히 그 형태만 지운다.
+  const uuidName = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  for (const dir of new Set([APP_DIR, DEFAULT_APP_DIR])) {
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const ent of entries) {
+        if (ent.isFile() && uuidName.test(ent.name)) {
+          await fs.rm(path.join(dir, ent.name)).catch(() => {});
+        }
+      }
+    } catch (e) {}
+  }
   if (config.refreshImage) {
     const handle = chokidar.watch(APP_DIR, {
       persistent: true,

@@ -204,6 +204,11 @@ export class SessionService extends ResourceSyncService<Session> {
     );
 
     await this.withLock(affectedProjects, async () => {
+      // busy 전환 전에 큐에 들어간 각 프로젝트 파일의 잔여 쓰기를 먼저 소진
+      // (디렉터리 이동 뒤에 옛 경로로 파일이 되살아나는 것을 방지)
+      for (const n of affectedProjects) {
+        await persistService.flushPath(this.getPath(n)).catch(() => {});
+      }
       await backend.renameDir(
         this.folderDirPath(oldName),
         this.folderDirPath(newName),
@@ -290,6 +295,8 @@ export class SessionService extends ResourceSyncService<Session> {
     }
     const srcPath = this.getPath(name);
     await this.withLock([name], async () => {
+      // busy 전환 전에 큐에 들어간 옛 경로 쓰기를 먼저 소진
+      await persistService.flushPath(srcPath).catch(() => {});
       const destPath = targetFolder
         ? this.resourceDir + '/' + targetFolder + '/' + name + '.json'
         : this.resourceDir + '/' + name + '.json';

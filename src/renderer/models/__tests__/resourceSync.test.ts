@@ -44,6 +44,7 @@ class TestService extends ResourceSyncService<FakeResource> {
     (this as any).entries.set(name, {
       state: 'ready',
       dirty: true,
+      seq: 0,
       instance: new FakeResource(data),
     });
   }
@@ -142,5 +143,45 @@ describe('리소스 수명주기 상태 머신', () => {
       expect((svc as any).entries.get('ghost')?.state).toBe('busy');
     });
     expect((svc as any).entries.has('ghost')).toBe(false);
+  });
+
+  test('같은 이름의 withLock 은 도착 순서대로 직렬화된다(동시 진입 없음)', async () => {
+    const svc = new TestService();
+    svc.setResource('p1', { name: 'p1', scenes: {} });
+    const order: string[] = [];
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((r) => (releaseFirst = r));
+    const first = svc.withLock(['p1'], async () => {
+      order.push('A-시작');
+      await firstGate; // 첫 작업을 인위적으로 붙잡아 둔다
+      order.push('A-끝');
+    });
+    const second = svc.withLock(['p1'], async () => {
+      order.push('B-시작');
+    });
+    // 두 번째 락이 먼저 끝났는지 겨루게 한 뒤 첫 락을 풀어 준다
+    await Promise.resolve();
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(order).toEqual(['A-시작', 'A-끝', 'B-시작']); // B 는 A 완료 후에만 진입
+  });
+
+  test('flush 의 가드 대기 중 삭제가 완료되면 옛 경로로 쓰지 않는다(부활 방지)', async () => {
+    const svc = new TestService();
+    svc.setResource('p1', { name: 'p1', scenes: {} });
+    // 가드를 인위적으로 붙잡아 "flush 수집 후 ~ 쓰기 전" 창을 크게 연다
+    let releaseGuard!: () => void;
+    const guardGate = new Promise<void>((r) => (releaseGuard = r));
+    (svc as any).guardResourceWrite = async () => {
+      await guardGate;
+      return 'ok';
+    };
+    const flushing = svc.runFlush();
+    await Promise.resolve(); // flush 가 가드에 진입하도록 양보
+    await svc.delete('p1'); // 그 사이 삭제 완료 (renameFile mock 즉시 성공)
+    releaseGuard();
+    await flushing;
+    const paths = writeFile.mock.calls.map((c: any[]) => c[0]);
+    expect(paths).not.toContain('projects/p1.json'); // 삭제된 파일 재생성 없음
   });
 });
