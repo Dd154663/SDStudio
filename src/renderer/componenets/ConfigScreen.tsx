@@ -11,6 +11,7 @@ import {
 } from '../models';
 import { Config, ImageEditor, RemoveBgQuality, UiThemeConfig } from '../../main/config';
 import { buildThemeVars, isHex6 } from '../models/uiTheme';
+import { themeTemplates } from '../models/themeTemplates';
 import { observer } from 'mobx-react-lite';
 import { appState } from '../models/AppService';
 import { TaskLog } from '../models/TaskQueueService';
@@ -827,6 +828,45 @@ const ColorField = ({
   );
 };
 
+// 테마 템플릿의 라이트/다크 변형 1개 = 클릭 칩. 칩 자체를 변형의 배경색으로 칠하고
+// 대표색 점(패널/강조/일반/위험)을 함께 보여, 적용 전에 색감을 예상할 수 있게 한다.
+const TemplateVariantChip = ({
+  variant,
+  label,
+  onApply,
+}: {
+  variant: UiThemeConfig;
+  label: string;
+  onApply: () => void;
+}) => (
+  <button
+    className="flex items-center justify-center gap-1.5 flex-1 rounded-full border line-color px-2.5 py-1.5 clickable"
+    style={{ backgroundColor: variant.surface }}
+    onClick={onApply}
+  >
+    <span
+      className="text-xs font-medium"
+      style={{ color: variant.textPattern === 'light' ? '#000000' : '#ffffff' }}
+    >
+      {label}
+    </span>
+    <span className="flex gap-1">
+      {[variant.surface2, variant.accent, variant.neutral, variant.danger].map(
+        (c, i) => (
+          <span
+            key={i}
+            className="w-3 h-3 rounded-full flex-none"
+            style={{
+              backgroundColor: c,
+              boxShadow: 'inset 0 0 0 1px rgba(128,128,128,.4)',
+            }}
+          />
+        ),
+      )}
+    </span>
+  </button>
+);
+
 const CustomizationTab = ({
   uiTheme,
   setUiTheme,
@@ -848,6 +888,14 @@ const CustomizationTab = ({
   // 저장 전 실시간 미리보기용 CSS 변수(실제 적용과 동일한 파생 함수).
   const previewVars = buildThemeVars(uiTheme);
   const unify = !!uiTheme.unifyButtons;
+
+  // 템플릿 적용: 색 설정을 통째로 교체하고, 미설정 토큰의 폴백이 어긋나지 않도록
+  // 기본 테마(라이트=화이트/다크=다크)도 변형에 맞춘다. 저장 전이라 되돌리기 자유.
+  const applyTemplate = (v: UiThemeConfig, mode: 'light' | 'dark') => {
+    setUiTheme({ ...v });
+    setWhiteMode(mode === 'light');
+    setTrueDark(false);
+  };
 
   return (
     <div className="space-y-5">
@@ -875,6 +923,41 @@ const CustomizationTab = ({
               onChange={() => { setWhiteMode(true); setTrueDark(false); }} />
             <span className="text-sm gray-label">화이트 모드</span>
           </label>
+        </div>
+      </div>
+      <hr className="line-color" />
+
+      {/* ── 테마 템플릿 ── */}
+      <div>
+        <label className="block text-sm gray-label mb-1">테마 템플릿</label>
+        <p className="text-xs text-muted mb-2">
+          누르면 아래 색 설정 전체가 템플릿 값으로 바뀝니다(기존 커스텀 색은 덮어씀).
+          미리보기로 확인 후 <b>저장</b>해야 적용됩니다.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {themeTemplates.map((tpl) => (
+            <div key={tpl.name} className="rounded-md border line-color p-2">
+              <div className="text-sm text-default mb-1.5">
+                {tpl.emoji} {tpl.name}
+              </div>
+              <div className="flex gap-2">
+                {tpl.light && (
+                  <TemplateVariantChip
+                    variant={tpl.light}
+                    label="라이트"
+                    onApply={() => applyTemplate(tpl.light!, 'light')}
+                  />
+                )}
+                {tpl.dark && (
+                  <TemplateVariantChip
+                    variant={tpl.dark}
+                    label="다크"
+                    onApply={() => applyTemplate(tpl.dark!, 'dark')}
+                  />
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
       <hr className="line-color" />
