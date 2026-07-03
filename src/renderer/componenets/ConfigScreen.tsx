@@ -886,13 +886,18 @@ const CustomizationTab = ({
     setMobilePicker({ initial, onChange });
 
   // 저장 전 실시간 미리보기용 CSS 변수(실제 적용과 동일한 파생 함수).
-  const previewVars = buildThemeVars(uiTheme);
+  const previewVars = buildThemeVars(uiTheme, whiteMode);
   const unify = !!uiTheme.unifyButtons;
 
   // 템플릿 적용: 색 설정을 통째로 교체하고, 미설정 토큰의 폴백이 어긋나지 않도록
   // 기본 테마(라이트=화이트/다크=다크)도 변형에 맞춘다. 저장 전이라 되돌리기 자유.
+  // 버튼 통합 토글은 사용자 선택을 유지한다 — 템플릿은 역할 3색만 채워 두므로
+  // 나중에 토글을 켜도 테마에 맞는 버튼 색이 적용된다.
   const applyTemplate = (v: UiThemeConfig, mode: 'light' | 'dark') => {
-    setUiTheme({ ...v });
+    setUiTheme((prev: UiThemeConfig) => ({
+      ...v,
+      unifyButtons: prev.unifyButtons,
+    }));
     setWhiteMode(mode === 'light');
     setTrueDark(false);
   };

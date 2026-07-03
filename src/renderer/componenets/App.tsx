@@ -230,7 +230,7 @@ export const App = observer(() => {
       const conf = await backend.getConfig();
       setDarkMode(!conf.whiteMode);
       setTrueDark(conf.trueDark ?? false);
-      setThemeOverrides(buildThemeVars(conf.uiTheme));
+      setThemeOverrides(buildThemeVars(conf.uiTheme, !!conf.whiteMode));
       appState.classicSceneCard = conf.classicSceneCard ?? false;
       appState.legacyProjectMode = conf.legacyProjectMode ?? false;
       appState.storageWriteGuard = conf.storageWriteGuard ?? true;

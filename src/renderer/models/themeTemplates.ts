@@ -6,9 +6,11 @@ import { UiThemeConfig } from '../../main/config';
 //
 // 색 선정 원칙:
 //  - 라이트/다크 변형은 같은 색조(hue) 패턴에 밝기 패턴만 다르게.
-//  - 정의는 핵심 토큰만: 배경/패널/입력창 + 텍스트 패턴 + 역할 3색(통합 모드).
+//  - 정의는 핵심 토큰만: 배경/패널/입력창 + 텍스트 패턴 + 역할 3색.
 //    구분선·보조 텍스트·구분 구역은 buildThemeVars 가 배경/패턴에서 자동 파생.
 //  - danger 는 어느 테마에서도 "위험(삭제)"로 읽히도록 붉은 계열 유지.
+//  - 버튼 통합(unifyButtons) 토글은 템플릿이 건드리지 않는다(사용자 선택 존중).
+//    역할 3색은 항상 담아 두므로, 나중에 토글을 켜면 테마에 맞는 색이 즉시 적용된다.
 
 export interface ThemeTemplate {
   name: string;
@@ -30,7 +32,6 @@ const variant = (
   surface2,
   inputBg,
   textPattern,
-  unifyButtons: true,
   accent,
   neutral,
   danger,
