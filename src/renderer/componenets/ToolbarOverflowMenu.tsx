@@ -1,9 +1,17 @@
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { ReactNode, useEffect, useRef } from 'react';
 import { useDrag, useDragLayer } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
+import { observer } from 'mobx-react-lite';
 import ModalOverlay from './ModalOverlay';
 import { isMobile } from '../models';
-import { LONG_PRESS_MS, ToolbarDragItem, hapticTick } from './ToolbarDnd';
+import {
+  LONG_PRESS_MS,
+  ToolbarDragItem,
+  ToolbarGroup,
+  armToolbarDrag,
+  disarmToolbarDrag,
+  isMenuDragArmed,
+} from './ToolbarDnd';
 
 // 툴바 ⋯(더보기) 메뉴. 행은 "기존 버튼 노드 그대로 + 레지스트리 이름 라벨" —
 // 버튼의 onClick 을 한 줄도 재배선하지 않고, 아이콘 전용 버튼도 메뉴에선
@@ -53,6 +61,7 @@ const MenuRow = ({
       canDrag: !!dndType,
       collect: (m) => ({ isDragging: m.isDragging() }),
       end: (_item, monitor) => {
+        disarmToolbarDrag();
         // 밖으로 빼기/숨기기 성공 → 메뉴 닫기. 취소(빈 곳에 놓음)면 메뉴 복귀.
         if (monitor.didDrop()) onClose();
       },
@@ -64,8 +73,10 @@ const MenuRow = ({
   }, [preview]);
   drag(rowRef);
 
-  // 모바일 롱프레스 잡힘 즉시 피드백 (하이라이트+햅틱) — 드래그 시작(첫 이동) 전에도
-  const [armed, setArmed] = useState(false);
+  // 모바일 롱프레스 잡힘 — 전역 잡힘 상태를 세워 그 순간 모달 숨김·툴바 하이라이트·
+  // 흔들림·숨김 존·햅틱이 전부 즉시 시작된다 (드래그 첫 이동을 기다리지 않음).
+  // dndType = 'toolbar-btn/<group>' 이므로 그룹을 역산한다.
+  const group = dndType?.split('/')[1] as ToolbarGroup | undefined;
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearArmTimer = () => {
     if (armTimer.current) {
@@ -74,17 +85,16 @@ const MenuRow = ({
     }
   };
   const onTouchStart = () => {
-    if (!dndType || !isMobile) return;
+    if (!dndType || !group || !isMobile) return;
     clearArmTimer();
     armTimer.current = setTimeout(() => {
       armTimer.current = null;
-      setArmed(true);
-      hapticTick();
+      armToolbarDrag(group, item.id, 'menu');
     }, LONG_PRESS_MS);
   };
   const onTouchEndOrCancel = () => {
     clearArmTimer();
-    setArmed(false);
+    if (!isDragging) disarmToolbarDrag();
   };
 
   return (
@@ -96,11 +106,7 @@ const MenuRow = ({
       onTouchCancel={onTouchEndOrCancel}
       className={
         'flex items-center gap-3 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-black/5 dark:hover:bg-white/10' +
-        (isDragging
-          ? ' opacity-30'
-          : armed
-            ? ' bg-black/10 dark:bg-white/15 scale-[1.02] transition-transform'
-            : '')
+        (isDragging ? ' opacity-30' : '')
       }
       onClick={(e) => {
         const target = e.target as HTMLElement;
@@ -120,7 +126,7 @@ const MenuRow = ({
   );
 };
 
-const ToolbarOverflowMenu = ({
+const ToolbarOverflowMenu = observer(({
   isOpen,
   onClose,
   title,
@@ -130,13 +136,15 @@ const ToolbarOverflowMenu = ({
 }: ToolbarOverflowMenuProps) => {
   const popRef = useRef<HTMLDivElement>(null);
 
-  // 이 메뉴의 행이 드래그 중인지 — 메뉴를 시각 숨김해 드롭 타깃(툴바)을 노출
-  const dragActive = useDragLayer(
+  // 이 메뉴의 행이 드래그 중이거나 롱프레스로 "잡힌" 순간 — 메뉴를 시각 숨김해
+  // 드롭 타깃(툴바)을 노출. 잡힘만으로도 숨겨야 피드백이 즉시 시작된다.
+  const dragging = useDragLayer(
     (monitor) =>
       !!dndType &&
       monitor.isDragging() &&
       monitor.getItemType() === dndType,
   );
+  const dragActive = dragging || isMenuDragArmed(dndType);
 
   // 데스크톱 팝오버: 외부 클릭/Escape 로 닫기.
   // 경계는 팝오버의 부모(⋯ 버튼을 포함한 relative 래퍼) — ⋯ 재클릭 시
@@ -193,6 +201,6 @@ const ToolbarOverflowMenu = ({
       {rows}
     </div>
   );
-};
+});
 
 export default ToolbarOverflowMenu;

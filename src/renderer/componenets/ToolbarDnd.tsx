@@ -24,6 +24,7 @@ export const toolbarDndType = (group: ToolbarGroup) => `toolbar-btn/${group}`;
 export const toolbarDragUi = observable({
   armed: null as ToolbarGroup | null,
   armedId: null as string | null,
+  armedFrom: null as 'inline' | 'menu' | null,
 });
 
 export const LONG_PRESS_MS = 400; // App.tsx DndProvider 의 delayTouchStart 와 동일 값
@@ -42,10 +43,15 @@ export async function hapticTick() {
   }
 }
 
-export function armToolbarDrag(group: ToolbarGroup, id: string) {
+export function armToolbarDrag(
+  group: ToolbarGroup,
+  id: string,
+  from: 'inline' | 'menu',
+) {
   runInAction(() => {
     toolbarDragUi.armed = group;
     toolbarDragUi.armedId = id;
+    toolbarDragUi.armedFrom = from;
   });
   hapticTick();
 }
@@ -55,7 +61,19 @@ export function disarmToolbarDrag() {
   runInAction(() => {
     toolbarDragUi.armed = null;
     toolbarDragUi.armedId = null;
+    toolbarDragUi.armedFrom = null;
   });
+}
+
+// ⋯ 메뉴가 "시각 숨김"돼야 하는 잡힘 상태인지 (dndType 문자열 기준) —
+// 메뉴 행을 잡는 순간(드래그 이동 전) 모달을 치워 드롭 타깃(툴바)을 노출한다.
+export function isMenuDragArmed(dndType?: string): boolean {
+  return (
+    !!dndType &&
+    toolbarDragUi.armed !== null &&
+    toolbarDndType(toolbarDragUi.armed) === dndType &&
+    toolbarDragUi.armedFrom === 'menu'
+  );
 }
 
 export interface ToolbarDragItem {
@@ -90,12 +108,15 @@ export async function applyToolbarPlacement(
   }
 }
 
-// 이 그룹의 드래그 상태 — active(흔들림·유령 ⋯·숨김 존), from(행 하이라이트 분기)
+// 이 그룹의 드래그 상태 — active(흔들림·유령 ⋯·숨김 존), from(행 하이라이트 분기).
+// 실제 드래그(react-dnd) 이전이라도 롱프레스 "잡힘"이면 active 로 취급해
+// 잡히는 순간부터 모든 피드백(빨간 행 테두리·숨김 존 포함)이 시작되게 한다.
+// (mobx observable 을 읽으므로 호출 컴포넌트는 observer 여야 함 — 현재 전부 observer)
 export function useToolbarDragState(group: ToolbarGroup): {
   active: boolean;
   from?: 'inline' | 'menu';
 } {
-  return useDragLayer((monitor) => {
+  const layer = useDragLayer((monitor) => {
     const active =
       monitor.isDragging() && monitor.getItemType() === toolbarDndType(group);
     return {
@@ -105,6 +126,11 @@ export function useToolbarDragState(group: ToolbarGroup): {
         : undefined,
     };
   });
+  if (layer.active) return layer;
+  if (toolbarDragUi.armed === group) {
+    return { active: true, from: toolbarDragUi.armedFrom ?? 'inline' };
+  }
+  return layer;
 }
 
 export function useToolbarDragActive(group: ToolbarGroup): boolean {
@@ -162,7 +188,7 @@ export const DraggableToolbarButton = observer(
       clearArmTimer();
       armTimer.current = setTimeout(() => {
         armTimer.current = null;
-        armToolbarDrag(group, id);
+        armToolbarDrag(group, id, 'inline');
       }, LONG_PRESS_MS);
     };
     const onTouchEndOrCancel = () => {
