@@ -14,18 +14,19 @@ const registry: ToolbarButtonMeta[] = [
   { id: 's1', name: '세컨더리1', tier: 'secondary' },
   { id: 'o1', name: '오버플로1', tier: 'overflow' },
   { id: 'pc1', name: 'PC전용(secondary)', pcOnly: true, tier: 'secondary' },
+  { id: 'm1', name: '모바일프라이머리1', tier: 'mobile-primary' },
   { id: 'p2', name: '프라이머리2', tier: 'primary' },
 ];
 
 describe('resolveToolbar — 기본 등급 (오버라이드 없음)', () => {
-  it('PC: primary+secondary 인라인, overflow 는 메뉴', () => {
+  it('PC: primary+secondary 인라인, overflow+mobile-primary 는 메뉴', () => {
     const r = resolveToolbar(registry, undefined, false);
     expect(r.inline).toEqual(['p1', 's1', 'pc1', 'p2']);
-    expect(r.menu).toEqual(['o1']);
+    expect(r.menu).toEqual(['o1', 'm1']);
   });
-  it('모바일: primary 만 인라인, secondary+overflow 는 메뉴, pcOnly 완전 제외', () => {
+  it('모바일: primary+mobile-primary 인라인, secondary+overflow 는 메뉴, pcOnly 완전 제외', () => {
     const r = resolveToolbar(registry, undefined, true);
-    expect(r.inline).toEqual(['p1', 'p2']);
+    expect(r.inline).toEqual(['p1', 'm1', 'p2']);
     expect(r.menu).toEqual(['s1', 'o1']);
     expect([...r.inline, ...r.menu]).not.toContain('pc1');
   });
@@ -39,7 +40,7 @@ describe('resolveToolbar — 기본 등급 (오버라이드 없음)', () => {
 describe('resolveToolbar — classic 롤백', () => {
   it('전 버튼을 레지스트리 순서로 인라인, 메뉴 없음', () => {
     const r = resolveToolbar(registry, { classic: true }, false);
-    expect(r.inline).toEqual(['p1', 's1', 'o1', 'pc1', 'p2']);
+    expect(r.inline).toEqual(['p1', 's1', 'o1', 'pc1', 'm1', 'p2']);
     expect(r.menu).toEqual([]);
   });
   it('buttons 오버라이드가 있어도 무시한다', () => {
@@ -48,7 +49,7 @@ describe('resolveToolbar — classic 롤백', () => {
       { classic: true, buttons: { p1: 'hidden', o1: 'pinned' } },
       false,
     );
-    expect(r.inline).toEqual(['p1', 's1', 'o1', 'pc1', 'p2']);
+    expect(r.inline).toEqual(['p1', 's1', 'o1', 'pc1', 'm1', 'p2']);
   });
   it('모바일에서도 pcOnly 를 필터하지 않는다 (기존 렌더와 100% 동일 계약)', () => {
     const r = resolveToolbar(registry, { classic: true }, true);
@@ -113,7 +114,9 @@ describe('레지스트리 계약', () => {
   });
   it('모든 항목에 tier 가 있다', () => {
     for (const b of [...sceneToolbarRegistry, ...projectToolbarRegistry]) {
-      expect(['primary', 'secondary', 'overflow']).toContain(b.tier);
+      expect(['primary', 'secondary', 'mobile-primary', 'overflow']).toContain(
+        b.tier,
+      );
     }
   });
 });

@@ -6,9 +6,10 @@
 import { UiToolbarConfig } from '../../main/config';
 
 // 기본 노출 등급: primary=모바일·PC 모두 툴바 인라인 / secondary=PC 는 인라인,
-// 모바일은 ⋯ 메뉴 / overflow=양쪽 모두 ⋯ 메뉴.
+// 모바일은 ⋯ 메뉴 / mobile-primary=모바일은 인라인, PC 는 ⋯ 메뉴(secondary 의 미러) /
+// overflow=양쪽 모두 ⋯ 메뉴.
 // 증식 차단 규칙: 앞으로 새 기능 버튼은 기본 overflow 로 추가한다(툴바는 더 자라지 않는다).
-export type ToolbarTier = 'primary' | 'secondary' | 'overflow';
+export type ToolbarTier = 'primary' | 'secondary' | 'mobile-primary' | 'overflow';
 
 export interface ToolbarButtonMeta {
   id: string;
@@ -24,12 +25,13 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'add-scene', name: '씬 추가', tier: 'primary' },
   { id: 'queue-add', name: '예약 추가', tier: 'primary' },
   { id: 'export-images', name: '이미지 내보내기', tier: 'secondary' },
-  { id: 'quick-export', name: '빠른 export', tier: 'secondary' },
-  { id: 'batch-process', name: '대량 작업', tier: 'secondary' },
+  { id: 'quick-export', name: '빠른 export', tier: 'primary' },
+  { id: 'batch-process', name: '대량 작업', tier: 'primary' },
   { id: 'multi-select', name: '다중 선택', tier: 'primary' },
   { id: 'change-resolution', name: '해상도 변경', tier: 'secondary' },
   { id: 'webp-convert', name: 'WebP 변환', pcOnly: true, tier: 'overflow' },
-  { id: 'import-image', name: '이미지 프롬프트 추출', tier: 'overflow' },
+  // 모바일 실사용 빈도가 높아 모바일만 인라인 (PC 는 기존대로 ⋯ 메뉴)
+  { id: 'import-image', name: '이미지 프롬프트 추출', tier: 'mobile-primary' },
   { id: 'artist-tag', name: '아티스트 태깅', pcOnly: true, tier: 'overflow' },
   { id: 'scene-search', name: '씬 검색', tier: 'primary' },
   { id: 'bookmark-jump', name: '북마크된 씬으로 이동', tier: 'secondary' },
@@ -84,7 +86,11 @@ export function resolveToolbar(
       continue;
     }
     // 'default' → tier 규칙
-    if (b.tier === 'primary' || (b.tier === 'secondary' && !isMobile)) {
+    if (
+      b.tier === 'primary' ||
+      (b.tier === 'secondary' && !isMobile) ||
+      (b.tier === 'mobile-primary' && isMobile)
+    ) {
       inline.push(b.id);
     } else {
       menu.push(b.id);

@@ -24,6 +24,7 @@ interface ToolbarLayoutEditorProps {
 const defaultPlaceLabel = (b: ToolbarButtonMeta, mobileMode: boolean) => {
   if (b.tier === 'primary') return '툴바';
   if (b.tier === 'secondary') return mobileMode ? '메뉴' : '툴바';
+  if (b.tier === 'mobile-primary') return mobileMode ? '툴바' : '메뉴';
   return '메뉴';
 };
 
