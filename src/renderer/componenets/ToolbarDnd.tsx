@@ -1,7 +1,9 @@
 import React, { ReactNode, useEffect, useRef } from 'react';
 import { useDrag, useDragLayer, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
-import { backend } from '../models';
+import { observable, runInAction } from 'mobx';
+import { observer } from 'mobx-react-lite';
+import { backend, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import { ToolbarButtonPlacement, UiToolbarConfig } from '../../main/config';
 
@@ -15,6 +17,34 @@ import { ToolbarButtonPlacement, UiToolbarConfig } from '../../main/config';
 export type ToolbarGroup = 'scene' | 'project';
 
 export const toolbarDndType = (group: ToolbarGroup) => `toolbar-btn/${group}`;
+
+// 롱프레스 "잡힘" 상태 — TouchBackend 는 딜레이(400ms) 뒤 첫 이동에서야 드래그를
+// 시작하므로, 그것만으로는 잡힌 순간의 피드백이 없다. 같은 400ms 타이머로 잡힘을
+// 따로 추적해 즉시 흔들림+햅틱을 낸다 (PC 마우스 드래그는 즉시라 불필요).
+export const toolbarDragUi = observable({
+  armed: null as ToolbarGroup | null,
+  armedId: null as string | null,
+});
+
+export const LONG_PRESS_MS = 400; // App.tsx DndProvider 의 delayTouchStart 와 동일 값
+
+export function armToolbarDrag(group: ToolbarGroup, id: string) {
+  runInAction(() => {
+    toolbarDragUi.armed = group;
+    toolbarDragUi.armedId = id;
+  });
+  try {
+    navigator.vibrate?.(20); // 잡힘 햅틱 (AndroidManifest VIBRATE 권한 필요)
+  } catch {}
+}
+
+export function disarmToolbarDrag() {
+  if (toolbarDragUi.armed === null && toolbarDragUi.armedId === null) return;
+  runInAction(() => {
+    toolbarDragUi.armed = null;
+    toolbarDragUi.armedId = null;
+  });
+}
 
 export interface ToolbarDragItem {
   id: string;
@@ -70,53 +100,89 @@ export function useToolbarDragActive(group: ToolbarGroup): boolean {
 }
 
 // 인라인 버튼 래퍼 — 기존 버튼 JSX 를 감싸 드래그 소스만 부여(핸들러 재배선 없음).
-// disabled=클래식 툴바 등. 드래그 중엔 자신은 반투명, 같은 그룹의 나머지는 흔들림.
-export const DraggableToolbarButton = ({
-  group,
-  id,
-  name,
-  disabled,
-  children,
-}: {
-  group: ToolbarGroup;
-  id: string;
-  name: string;
-  disabled?: boolean;
-  children: ReactNode;
-}) => {
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const [{ isDragging }, drag, preview] = useDrag(
-    () => ({
-      type: toolbarDndType(group),
-      item: (): ToolbarDragItem => ({
-        id,
-        name,
-        from: 'inline',
-        node: children,
-        width: wrapRef.current?.offsetWidth,
+// disabled=클래식 툴바 등. 롱프레스 잡힘 즉시 자신은 확대, 같은 그룹은 흔들림.
+export const DraggableToolbarButton = observer(
+  ({
+    group,
+    id,
+    name,
+    disabled,
+    children,
+  }: {
+    group: ToolbarGroup;
+    id: string;
+    name: string;
+    disabled?: boolean;
+    children: ReactNode;
+  }) => {
+    const wrapRef = useRef<HTMLDivElement | null>(null);
+    const [{ isDragging }, drag, preview] = useDrag(
+      () => ({
+        type: toolbarDndType(group),
+        item: (): ToolbarDragItem => ({
+          id,
+          name,
+          from: 'inline',
+          node: children,
+          width: wrapRef.current?.offsetWidth,
+        }),
+        canDrag: !disabled,
+        collect: (m) => ({ isDragging: m.isDragging() }),
+        end: () => disarmToolbarDrag(),
       }),
-      canDrag: !disabled,
-      collect: (m) => ({ isDragging: m.isDragging() }),
-    }),
-    [group, id, name, disabled, children],
-  );
-  useEffect(() => {
-    preview(getEmptyImage(), { captureDraggingState: true });
-  }, [preview]);
-  drag(wrapRef);
-  const active = useToolbarDragActive(group);
-  return (
-    <div
-      ref={wrapRef}
-      className={
-        (isDragging ? 'opacity-30 ' : '') +
-        (active && !isDragging && !disabled ? 'toolbar-wiggle' : '')
+      [group, id, name, disabled, children],
+    );
+    useEffect(() => {
+      preview(getEmptyImage(), { captureDraggingState: true });
+    }, [preview]);
+    drag(wrapRef);
+
+    // 모바일 롱프레스 잡힘 감지 — 400ms 전에 움직이면(스크롤 의도) 취소
+    const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const clearArmTimer = () => {
+      if (armTimer.current) {
+        clearTimeout(armTimer.current);
+        armTimer.current = null;
       }
-    >
-      {children}
-    </div>
-  );
-};
+    };
+    const onTouchStart = () => {
+      if (disabled || !isMobile) return;
+      clearArmTimer();
+      armTimer.current = setTimeout(() => {
+        armTimer.current = null;
+        armToolbarDrag(group, id);
+      }, LONG_PRESS_MS);
+    };
+    const onTouchEndOrCancel = () => {
+      clearArmTimer();
+      if (!isDragging) disarmToolbarDrag();
+    };
+
+    const active = useToolbarDragActive(group);
+    const armed = toolbarDragUi.armed === group;
+    const armedSelf = armed && toolbarDragUi.armedId === id;
+    return (
+      <div
+        ref={wrapRef}
+        onTouchStart={onTouchStart}
+        onTouchMove={clearArmTimer}
+        onTouchEnd={onTouchEndOrCancel}
+        onTouchCancel={onTouchEndOrCancel}
+        className={
+          isDragging
+            ? 'opacity-30'
+            : armedSelf
+              ? 'scale-110 drop-shadow-md transition-transform'
+              : (active || armed) && !disabled
+                ? 'toolbar-wiggle'
+                : undefined
+        }
+      >
+        {children}
+      </div>
+    );
+  },
+);
 
 // ⋯ 버튼(또는 유령 ⋯) 드롭 래퍼 — 놓으면 메뉴로
 export const ToolbarMenuDropTarget = ({

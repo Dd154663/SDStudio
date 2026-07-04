@@ -1,9 +1,9 @@
-import { ReactNode, useEffect, useRef } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { useDrag, useDragLayer } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
 import ModalOverlay from './ModalOverlay';
 import { isMobile } from '../models';
-import { ToolbarDragItem } from './ToolbarDnd';
+import { LONG_PRESS_MS, ToolbarDragItem } from './ToolbarDnd';
 
 // 툴바 ⋯(더보기) 메뉴. 행은 "기존 버튼 노드 그대로 + 레지스트리 이름 라벨" —
 // 버튼의 onClick 을 한 줄도 재배선하지 않고, 아이콘 전용 버튼도 메뉴에선
@@ -63,12 +63,46 @@ const MenuRow = ({
     preview(getEmptyImage(), { captureDraggingState: true });
   }, [preview]);
   drag(rowRef);
+
+  // 모바일 롱프레스 잡힘 즉시 피드백 (하이라이트+햅틱) — 드래그 시작(첫 이동) 전에도
+  const [armed, setArmed] = useState(false);
+  const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearArmTimer = () => {
+    if (armTimer.current) {
+      clearTimeout(armTimer.current);
+      armTimer.current = null;
+    }
+  };
+  const onTouchStart = () => {
+    if (!dndType || !isMobile) return;
+    clearArmTimer();
+    armTimer.current = setTimeout(() => {
+      armTimer.current = null;
+      setArmed(true);
+      try {
+        navigator.vibrate?.(20);
+      } catch {}
+    }, LONG_PRESS_MS);
+  };
+  const onTouchEndOrCancel = () => {
+    clearArmTimer();
+    setArmed(false);
+  };
+
   return (
     <div
       ref={rowRef}
+      onTouchStart={onTouchStart}
+      onTouchMove={clearArmTimer}
+      onTouchEnd={onTouchEndOrCancel}
+      onTouchCancel={onTouchEndOrCancel}
       className={
         'flex items-center gap-3 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-black/5 dark:hover:bg-white/10' +
-        (isDragging ? ' opacity-30' : '')
+        (isDragging
+          ? ' opacity-30'
+          : armed
+            ? ' bg-black/10 dark:bg-white/15 scale-[1.02] transition-transform'
+            : '')
       }
       onClick={(e) => {
         const target = e.target as HTMLElement;

@@ -1446,7 +1446,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       onClick={onClose}
     >
       <div
-        className={'w-[90vw] max-w-xl bg-[var(--c-zone)] rounded-xl shadow-2xl flex flex-col overflow-hidden border line-color ' + (mobileMode ? 'max-h-[90vh]' : 'max-h-[85vh]')}
+        className={'w-[90vw] max-w-xl md:max-w-2xl bg-[var(--c-zone)] rounded-xl shadow-2xl flex flex-col overflow-hidden border line-color ' + (mobileMode ? 'max-h-[90vh]' : 'max-h-[85vh]')}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 헤더 */}
@@ -1459,8 +1459,19 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
             <FaTimes size={16} />
           </button>
         </div>
-        {/* 탭 바 — 모바일에서 탭이 많아도 줄바꿈 대신 가로 스크롤 */}
-        <div className="flex flex-nowrap overflow-x-auto no-scrollbars border-b line-color px-2 flex-none">
+        {/* 탭 바 — 탭이 많아도 줄바꿈 대신 가로 스크롤.
+            모바일=스크롤바 숨김(스와이프) / PC=얇은 스크롤바 표기 + Shift 없이 휠로 이동 */}
+        <div
+          className={
+            'flex flex-nowrap overflow-x-auto border-b line-color px-2 flex-none ' +
+            (mobileMode ? 'no-scrollbars' : 'thin-hscroll')
+          }
+          onWheel={(e) => {
+            if (!mobileMode && e.deltaY) {
+              e.currentTarget.scrollLeft += e.deltaY;
+            }
+          }}
+        >
           {tabs.map((tab, i) => (
             <button
               key={tab.label}

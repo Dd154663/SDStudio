@@ -49,4 +49,6 @@
 
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
   <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <!-- 툴바 버튼 롱프레스 잡힘 햅틱 (navigator.vibrate) — 일반 권한, 사용자 프롬프트 없음 -->
+  <uses-permission android:name="android.permission.VIBRATE" />
 </manifest>

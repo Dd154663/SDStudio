@@ -748,6 +748,11 @@ input[type='number']::-webkit-outer-spin-button {
   animation: toolbar-wiggle 0.25s ease-in-out infinite;
 }
 
+/* 가로 스크롤 영역의 얇은 스크롤바 (환경설정 탭 바 등 — 존재를 알리되 방해 안 되게) */
+.thin-hscroll::-webkit-scrollbar {
+  height: 5px;
+}
+
 .scrollbar-thumb {
   border-radius: 4px;
   background-color: rgba(0, 0, 0, 0.45);
