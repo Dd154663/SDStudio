@@ -2390,6 +2390,18 @@ const QueueControl = observer(
                     }}
                   />
                 )}
+                {renderedScenes.length === 0 && (
+                  <div className="w-full col-span-full py-16 flex flex-col items-center justify-center gap-1 text-faint text-sm select-none">
+                    {sceneSearchQuery.trim() ? (
+                      <span>검색 결과가 없습니다</span>
+                    ) : (
+                      <>
+                        <span>아직 씬이 없습니다</span>
+                        <span>상단 툴바의 [씬 추가] 버튼으로 첫 씬을 만들어 보세요</span>
+                      </>
+                    )}
+                  </div>
+                )}
                 {renderedScenes.map((scene, sceneIdx) => (
                   <SceneCell
                     cellSize={effectiveCellSize}

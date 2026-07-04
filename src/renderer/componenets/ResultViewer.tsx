@@ -295,6 +295,8 @@ interface ImageGalleryProps {
   focusedIndex?: number | null;
   onSelectedImagesChange?: (paths: string[], deselect: boolean) => void;
   onClearSelection?: () => void;
+  emptyText?: string;
+  emptyHint?: string;
 }
 
 interface ImageGalleryRef {
@@ -667,6 +669,8 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
       focusedIndex,
       onSelectedImagesChange,
       onClearSelection,
+      emptyText,
+      emptyHint,
     },
     ref,
   ) => {
@@ -929,6 +933,12 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
         >
           {Cell}
         </Grid>
+        {filePaths.length === 0 && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-faint text-sm select-none pointer-events-none">
+            <span>{emptyText ?? '이미지가 없습니다'}</span>
+            {emptyHint && <span>{emptyHint}</span>}
+          </div>
+        )}
         {dragBox && isDraggingRef.current && (
           <div
             className="absolute bg-sky-500/30 border-2 border-sky-500 rounded pointer-events-none z-50"
@@ -2299,6 +2309,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             focusedIndex={selectedTab === 0 ? focusedImageIndex : null}
             onSelectedImagesChange={onSelectedImagesChange}
             onClearSelection={onClearSelection}
+            emptyText="아직 생성된 이미지가 없습니다"
+            emptyHint="씬을 예약하면 생성된 이미지가 여기에 표시됩니다"
           />
           {selectedTab === 2 && (
             <TrashImageView
@@ -2366,6 +2378,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             focusedIndex={selectedTab === 1 ? focusedImageIndex : null}
             onSelectedImagesChange={onSelectedImagesChange}
             onClearSelection={onClearSelection}
+            emptyText="즐겨찾기한 이미지가 없습니다"
+            emptyHint="이미지에 ★(즐겨찾기)를 지정하면 여기에 모입니다"
           />
         </div>
         <div className="absolute gap-1 m-2 bottom-0 bg-[var(--c-surface-2)] p-1 right-0 opacity-30 hover:opacity-100 transition-all flex">
