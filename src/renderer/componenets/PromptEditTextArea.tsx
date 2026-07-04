@@ -801,16 +801,16 @@ const PromptAutoComplete = ({
       <div
         ref={tagsRef.current[index]}
         className={
-          'hover:brightness-95 active:brightness-90 cursor-pointer ' +
+          'hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer ' +
           (index === selectedTag
-            ? 'flex items-center p-1 bg-gray-200'
-            : 'flex bg-white items-center p-1')
+            ? 'flex items-center p-1 bg-black/10 dark:bg-white/15'
+            : 'flex items-center p-1')
         }
         style={style}
         key={index}
         onMouseDown={() => onSelectTag(index)}
       >
-        <span className="text-gray-600 mr-1 flex-none">
+        <span className="text-muted mr-1 flex-none">
           {tags[index].word.startsWith('<') ? (
             <FaStar></FaStar>
           ) : (
@@ -828,7 +828,7 @@ const PromptAutoComplete = ({
               )
             : tags[index].word}
           {tags[index].redirect.trim() !== 'null' && (
-            <span className="text-gray-400">→{tags[index].redirect}</span>
+            <span className="text-faint">→{tags[index].redirect}</span>
           )}
         </div>
         {!tags[index].word.startsWith('<') && (
@@ -844,7 +844,7 @@ const PromptAutoComplete = ({
       onMouseDown={(e) => {
         e.stopPropagation();
       }}
-      className="fixed bg-white border border-gray-300 rounded-lg shadow-lg z-30 text-gray-900"
+      className="fixed bg-[var(--c-zone)] border line-color rounded-lg shadow-lg z-30 text-default"
       style={{
         display:
           tags.length > 0 && (clientX !== 0 || clientY !== 0)
