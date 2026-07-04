@@ -367,7 +367,9 @@ export class NovelAiImageGenService implements ImageGenService {
   }
 
   async getRemainCredits(token: string) {
-    const url = this.apiEndpoint;
+    // 2026-07 NovelAI 정책 변경: 서드파티 도구의 api.novelai.net 호출을 400 으로
+    // 거부("update to the image URL") → 사용자 정보도 image.novelai.net 으로 호출.
+    const url = this.apiEndpoint2;
     const headers = {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
@@ -389,7 +391,9 @@ export class NovelAiImageGenService implements ImageGenService {
   async validateToken(token: string): Promise<LoginValidity> {
     if (!token || !token.trim()) return 'invalid';
     try {
-      const response = await fetch(this.apiEndpoint + '/user/data', {
+      // getRemainCredits 와 동일 사유로 image.novelai.net 사용 (api.novelai.net 은
+      // 서드파티에 400 을 반환해 'error' 판정 → 로그인 상태가 영영 갱신되지 않았음)
+      const response = await fetch(this.apiEndpoint2 + '/user/data', {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${token}`,
