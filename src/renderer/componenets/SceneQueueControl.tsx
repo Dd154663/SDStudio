@@ -16,6 +16,7 @@ import {
   FaEdit,
   FaEllipsisH,
   FaExchangeAlt,
+  FaFileExport,
   FaFileImage,
   FaPaintBrush,
   FaPlus,
@@ -24,6 +25,7 @@ import {
   FaRegCalendarTimes,
   FaSearch,
   FaStar,
+  FaTasks,
   FaTimes,
   FaTrash,
   FaTrashRestore,
@@ -1927,13 +1929,14 @@ const QueueControl = observer(
 
     // ── 씬 툴바 버튼 바인딩: 레지스트리 id → 실제 버튼 노드 ──
     // 구성·순서는 sceneToolbarRegistry(models/uiLayout.ts)가 결정한다.
-    // (향후 UI 커스터마이징이 이 지점에서 사용자 지정 순서/숨김을 적용할 예정)
+    // 모바일은 텍스트 대신 아이콘으로 폭을 줄인다(줄 밀림 방지). 단 클래식 툴바
+    // 토글이 켜지면 예전처럼 텍스트로 표시(mobileIcon=false).
+    const mobileIcon = isMobile && !appState.uiToolbar.classic;
     const toolbarButtons: Record<string, ReactNode> = {
-      // 모바일은 텍스트 대신 아이콘 — primary 버튼들이 1줄에 들어가도록 (줄 밀림 방지)
       'add-scene': (
         <Tooltip content="씬 추가">
           <button className="round-button back-sky" onClick={addScene}>
-            {isMobile ? <FaPlus size={18} /> : '씬 추가'}
+            {mobileIcon ? <FaPlus size={18} /> : '씬 추가'}
           </button>
         </Tooltip>
       ),
@@ -1947,7 +1950,7 @@ const QueueControl = observer(
                 : addAllToQueue
             }
           >
-            {isMobile ? (
+            {mobileIcon ? (
               // 예약제거(달력✕, 씬 카드)와 짝을 이루는 달력+ 아이콘. 선택 중엔 수 병기
               <>
                 <FaRegCalendarPlus size={18} />
@@ -1966,13 +1969,21 @@ const QueueControl = observer(
         </Tooltip>
       ),
       'export-images': (
-        <button
-          className="round-button back-gray"
-          onClick={() => appState.exportPackage(type)}
-        >
-          {isMobile ? '' : '이미지 '}
-          내보내기
-        </button>
+        <Tooltip content="이미지 내보내기">
+          <button
+            className="round-button back-gray"
+            onClick={() => appState.exportPackage(type)}
+          >
+            {mobileIcon ? (
+              <FaFileExport size={18} />
+            ) : (
+              <>
+                {isMobile ? '' : '이미지 '}
+                내보내기
+              </>
+            )}
+          </button>
+        </Tooltip>
       ),
       'quick-export': (
         <button
@@ -1984,14 +1995,16 @@ const QueueControl = observer(
         </button>
       ),
       'batch-process': (
-        <button
-          className="round-button back-gray"
-          onClick={() => {
-            appState.openBatchProcessMenu(type, setSceneSelector);
-          }}
-        >
-          대량 작업
-        </button>
+        <Tooltip content="대량 작업">
+          <button
+            className="round-button back-gray"
+            onClick={() => {
+              appState.openBatchProcessMenu(type, setSceneSelector);
+            }}
+          >
+            {mobileIcon ? <FaTasks size={18} /> : '대량 작업'}
+          </button>
+        </Tooltip>
       ),
       'multi-select': (
         <Tooltip content="다중 선택">
@@ -2023,7 +2036,7 @@ const QueueControl = observer(
               appState.sceneSelectionMode = false;
             }}
           >
-            {isMobile ? (
+            {mobileIcon ? (
               // 아이콘 + 선택 수. 활성(선택 모드) 상태는 배경색(back-sky)으로 표시
               <>
                 <FaCheckSquare size={18} />
@@ -2034,6 +2047,10 @@ const QueueControl = observer(
                     </span>
                   )}
               </>
+            ) : isMobile ? (
+              appState.sceneSelectionMode
+                ? `선택 모드 (${appState.selectedScenes.size}) ✕`
+                : '다중 선택'
             ) : appState.selectedScenes.size > 0 ? (
               `선택 (${appState.selectedScenes.size}) ✕`
             ) : (
