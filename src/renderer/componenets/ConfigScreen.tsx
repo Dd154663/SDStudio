@@ -9,7 +9,9 @@ import {
   sessionService,
   taskQueueService,
 } from '../models';
-import { Config, ImageEditor, RemoveBgQuality, UiThemeConfig } from '../../main/config';
+import { Config, ImageEditor, RemoveBgQuality, UiThemeConfig, UiToolbarConfig } from '../../main/config';
+import ToolbarLayoutEditor from './ToolbarLayoutEditor';
+import { sceneToolbarRegistry } from '../models/uiLayout';
 import { buildThemeVars, isHex6 } from '../models/uiTheme';
 import { themeTemplates } from '../models/themeTemplates';
 import { observer } from 'mobx-react-lite';
@@ -873,6 +875,7 @@ const CustomizationTab = ({
   setUiTheme,
   whiteMode, setWhiteMode,
   trueDark, setTrueDark,
+  uiToolbar, setUiToolbar,
 }: any) => {
   const [mobilePicker, setMobilePicker] = useState<{
     initial: string;
@@ -1194,6 +1197,19 @@ const CustomizationTab = ({
         />
       )}
 
+      {/* 툴바 버튼 구성 — 색과 달리 실시간 미리보기 아님(저장 시 반영) */}
+      <div className="pt-3 border-t line-color">
+        <div className="text-sm font-semibold text-default mb-2">
+          툴바 버튼 구성
+        </div>
+        <ToolbarLayoutEditor
+          value={uiToolbar}
+          onChange={setUiToolbar}
+          groups={[{ title: '씬 툴바', registry: sceneToolbarRegistry }]}
+          mobileMode={isMobile}
+        />
+      </div>
+
       <div className="pt-2 border-t line-color">
         <button
           className="round-button back-red btn-sm"
@@ -1231,6 +1247,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [saveLocation, setSaveLocation] = useState('');
   const [defaultExportFolder, setDefaultExportFolder] = useState('');
   const [uiTheme, setUiTheme] = useState<UiThemeConfig>({});
+  const [uiToolbar, setUiToolbar] = useState<UiToolbarConfig>({});
   const mobileMode = isMobile;
 
   useEffect(() => {
@@ -1251,6 +1268,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setSaveLocation(config.saveLocation ?? '');
       setDefaultExportFolder(config.defaultExportFolder ?? '');
       setUiTheme(config.uiTheme ?? {});
+      setUiToolbar(config.uiToolbar ?? {});
     })();
     const checkReady = () => setReady(localAIService.ready);
     const onProgress = (e: any) => setProgress(e.detail.percent);
@@ -1362,11 +1380,13 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       defaultExportFolder: defaultExportFolder || undefined,
       trueDark: trueDark,
       uiTheme: uiTheme,
+      uiToolbar: uiToolbar,
     };
     await backend.setConfig(config);
     if (old.useCUDA !== useGPU) localAIService.modelChanged();
     appState.classicSceneCard = classicSceneCard;
     appState.legacyProjectMode = legacyProjectMode;
+    appState.uiToolbar = uiToolbar;
     appState.storageWriteGuard = storageWriteGuard;
     appState.fullWordAutoComplete = fullWordAc;
     localStorage.setItem('sdstudio-full-word-autocomplete', fullWordAc ? 'true' : 'false');
@@ -1399,7 +1419,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'personal':
         return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode }} />;
       case 'customization':
-        return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark }} />;
+        return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark, uiToolbar, setUiToolbar }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':

@@ -1,0 +1,119 @@
+import {
+  ToolbarButtonPlacement,
+  UiToolbarConfig,
+} from '../../main/config';
+import { ToolbarButtonMeta } from '../models/uiLayout';
+
+// 환경설정 → 테마 탭의 "툴바 버튼 구성" 에디터.
+// 상단 클래식 롤백 토글 + 레지스트리별 버튼 배치 select 목록.
+// 저장은 ConfigScreen 의 handleSave 흐름(저장 시 반영) — 실시간 미리보기 아님.
+
+export interface ToolbarEditorGroup {
+  title: string;
+  registry: ToolbarButtonMeta[];
+}
+
+interface ToolbarLayoutEditorProps {
+  value: UiToolbarConfig;
+  onChange: (v: UiToolbarConfig) => void;
+  groups: ToolbarEditorGroup[];
+  mobileMode: boolean;
+}
+
+// 미설정('default') 시 실제로 놓이는 곳 — select 라벨 힌트용
+const defaultPlaceLabel = (b: ToolbarButtonMeta, mobileMode: boolean) => {
+  if (b.tier === 'primary') return '툴바';
+  if (b.tier === 'secondary') return mobileMode ? '메뉴' : '툴바';
+  return '메뉴';
+};
+
+const ToolbarLayoutEditor = ({
+  value,
+  onChange,
+  groups,
+  mobileMode,
+}: ToolbarLayoutEditorProps) => {
+  const setPlacement = (id: string, placement: ToolbarButtonPlacement) => {
+    const buttons = { ...(value.buttons ?? {}) };
+    if (placement === 'default') {
+      // 기본으로 되돌린 항목은 키 제거 — config 비대화·잔재 방지
+      delete buttons[id];
+    } else {
+      buttons[id] = placement;
+    }
+    onChange({
+      ...value,
+      buttons: Object.keys(buttons).length > 0 ? buttons : undefined,
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="cfgClassicToolbar"
+            checked={!!value.classic}
+            onChange={(e) =>
+              onChange({ ...value, classic: e.target.checked || undefined })
+            }
+          />
+          <label htmlFor="cfgClassicToolbar" className="text-sm gray-label">
+            클래식 툴바 사용 (이전 배치로 되돌리기)
+          </label>
+        </div>
+        <p className="text-xs text-faint mt-1 ml-6">
+          켜면 모든 버튼을 예전처럼 툴바에 나란히 표시합니다(⋯ 메뉴·아래 개별
+          설정 무시). 이 설정은 저장 시 반영됩니다.
+        </p>
+      </div>
+
+      <div className={value.classic ? 'opacity-50 pointer-events-none' : ''}>
+        {groups.map((group) => (
+          <div key={group.title} className="mb-3">
+            <div className="text-sm font-semibold text-default mb-1.5">
+              {group.title}
+            </div>
+            <div className="space-y-1">
+              {group.registry
+                .filter((b) => !(mobileMode && b.pcOnly))
+                .map((b) => (
+                  <div key={b.id} className="flex items-center gap-2">
+                    <span className="text-sm text-body flex-1 min-w-0 truncate">
+                      {b.name}
+                    </span>
+                    <select
+                      className="gray-input text-sm py-1 px-2 flex-none"
+                      value={value.buttons?.[b.id] ?? 'default'}
+                      onChange={(e) =>
+                        setPlacement(
+                          b.id,
+                          e.target.value as ToolbarButtonPlacement,
+                        )
+                      }
+                    >
+                      <option value="default">
+                        기본 ({defaultPlaceLabel(b, mobileMode)})
+                      </option>
+                      <option value="pinned">툴바 고정</option>
+                      <option value="menu">⋯ 메뉴로</option>
+                      <option value="hidden">숨김</option>
+                    </select>
+                  </div>
+                ))}
+            </div>
+          </div>
+        ))}
+        <button
+          className="round-button back-gray btn-sm"
+          onClick={() => onChange({ ...value, buttons: undefined })}
+        >
+          버튼 배치 초기화
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default ToolbarLayoutEditor;
