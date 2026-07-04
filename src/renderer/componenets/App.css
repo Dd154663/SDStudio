@@ -732,6 +732,22 @@ input[type='number']::-webkit-outer-spin-button {
   }
 }
 
+/* 툴바 버튼 드래그(재배치 모드) 중 같은 줄 버튼들의 흔들림 표시 */
+@keyframes toolbar-wiggle {
+  0% {
+    transform: rotate(-2deg);
+  }
+  50% {
+    transform: rotate(2deg);
+  }
+  100% {
+    transform: rotate(-2deg);
+  }
+}
+.toolbar-wiggle {
+  animation: toolbar-wiggle 0.25s ease-in-out infinite;
+}
+
 .scrollbar-thumb {
   border-radius: 4px;
   background-color: rgba(0, 0, 0, 0.45);

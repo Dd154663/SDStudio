@@ -12,6 +12,14 @@ import { CharacterPresetFloatEditor } from './CharacterPresetEditor';
 import { CharacterPreset, CharacterPrompt, VibeItem, ReferenceItem } from '../models/types';
 import { projectToolbarRegistry, resolveToolbar } from '../models/uiLayout';
 import ToolbarOverflowMenu from './ToolbarOverflowMenu';
+import {
+  DraggableToolbarButton,
+  ToolbarHideZone,
+  ToolbarMenuDropTarget,
+  toolbarDndType,
+  useToolbarDragActive,
+  useToolbarRowDrop,
+} from './ToolbarDnd';
 import { v4 as uuidv4 } from 'uuid';
 import { runInAction } from 'mobx';
 
@@ -146,6 +154,9 @@ const SessionSelect = observer(() => {
   const [showProjectTrash, setShowProjectTrash] = useState(false);
   // 프로젝트 바 ⋯(더보기) 오버플로 메뉴
   const [showProjectMenu, setShowProjectMenu] = useState(false);
+  // 툴바 버튼 드래그 재배치 (클래식 툴바에선 비활성)
+  const toolbarDragActive = useToolbarDragActive('project');
+  const toolbarRowDrop = useToolbarRowDrop('project');
   useEffect(() => {
     const onListUpdated = () => {
       setSessionNames(sessionService.list());
@@ -285,7 +296,11 @@ const SessionSelect = observer(() => {
   );
 
   return (
-    <div className="flex gap-2 items-center w-full flex-wrap">
+    // 행 전체가 드롭 타깃 — 메뉴에서 끌어다 놓으면 인라인 고정(pinned)
+    <div
+      ref={toolbarRowDrop as any}
+      className="flex gap-2 items-center w-full flex-wrap"
+    >
       {showCharacterPresets && appState.curSession && (
         <CharacterPresetFloatEditor
           onClose={() => setShowCharacterPresets(false)}
@@ -463,24 +478,40 @@ const SessionSelect = observer(() => {
         </Tooltip>
       </div>
       {toolbarLayout.inline.map((id) => (
-        <React.Fragment key={id}>{toolbarButtons[id]}</React.Fragment>
+        <DraggableToolbarButton
+          key={id}
+          group="project"
+          id={id}
+          name={projectToolbarRegistry.find((b) => b.id === id)!.name}
+          disabled={!!appState.uiToolbar.classic}
+        >
+          {toolbarButtons[id]}
+        </DraggableToolbarButton>
       ))}
-      {toolbarLayout.menu.length > 0 && (
+      {(toolbarLayout.menu.length > 0 || toolbarDragActive) && (
+        // 메뉴가 비어도 드래그 중엔 반투명 유령 ⋯(드롭 타깃)로 나타난다
         <div className="relative">
-          <Tooltip content="더보기">
-            <button
-              className={`icon-button ${showProjectMenu ? 'nback-sky' : 'nback-gray'} mx-1`}
-              onClick={() => setShowProjectMenu(!showProjectMenu)}
-            >
-              <FaEllipsisH size={18} />
-            </button>
-          </Tooltip>
+          <ToolbarMenuDropTarget group="project">
+            <Tooltip content="더보기">
+              <button
+                className={`icon-button ${showProjectMenu ? 'nback-sky' : 'nback-gray'} mx-1${toolbarLayout.menu.length === 0 ? ' opacity-40' : ''}`}
+                onClick={() => {
+                  if (toolbarLayout.menu.length > 0)
+                    setShowProjectMenu(!showProjectMenu);
+                }}
+              >
+                <FaEllipsisH size={18} />
+              </button>
+            </Tooltip>
+          </ToolbarMenuDropTarget>
           <ToolbarOverflowMenu
             isOpen={showProjectMenu}
             onClose={() => setShowProjectMenu(false)}
             title="프로젝트 메뉴"
             dropUp
-
+            dndType={
+              appState.uiToolbar.classic ? undefined : toolbarDndType('project')
+            }
             items={toolbarLayout.menu.map((id) => ({
               id,
               name: projectToolbarRegistry.find((b) => b.id === id)!.name,
@@ -489,6 +520,7 @@ const SessionSelect = observer(() => {
           />
         </div>
       )}
+      <ToolbarHideZone group="project" />
       <ModalOverlay
         isOpen={showProjectTrash}
         onClose={() => setShowProjectTrash(false)}

@@ -84,6 +84,14 @@ import { IMPORT_IMAGE_ACCEPT } from '../models/imageFormats';
 import { platform } from '../models/platform';
 import { resolveToolbar, sceneToolbarRegistry } from '../models/uiLayout';
 import ToolbarOverflowMenu from './ToolbarOverflowMenu';
+import {
+  DraggableToolbarButton,
+  ToolbarHideZone,
+  ToolbarMenuDropTarget,
+  toolbarDndType,
+  useToolbarDragActive,
+  useToolbarRowDrop,
+} from './ToolbarDnd';
 import { appState, SceneSelectorItem } from '../models/AppService';
 import {
   createInpaintPreset,
@@ -1860,6 +1868,9 @@ const QueueControl = observer(
     const [showArtistTag, setShowArtistTag] = useState(false);
     // 툴바 ⋯(더보기) 오버플로 메뉴
     const [showToolbarMenu, setShowToolbarMenu] = useState(false);
+    // 툴바 버튼 드래그 재배치 (클래식 툴바에선 비활성)
+    const toolbarDragActive = useToolbarDragActive('scene');
+    const toolbarRowDrop = useToolbarRowDrop('scene');
 
     const [bmRev, setBmRev] = useState(0);
     useEffect(() => {
@@ -2236,8 +2247,10 @@ const QueueControl = observer(
         {panel}
         {!!showPannel && (
           <div className="flex flex-none pb-1.5 flex-wrap">
-            {/* 모바일(비클래식): 줄바꿈 대신 가로 스크롤 — 어떤 기기 폭에서도 1줄 보장 */}
+            {/* 모바일(비클래식): 줄바꿈 대신 가로 스크롤 — 어떤 기기 폭에서도 1줄 보장.
+                행 전체가 드롭 타깃(놓으면 인라인 고정) */}
             <div
+              ref={toolbarRowDrop as any}
               className={`flex gap-1 md:gap-1.5 items-center ${
                 mobileIcon
                   ? 'flex-nowrap overflow-x-auto no-scrollbars min-w-0 max-w-full [&>*]:flex-none'
@@ -2245,11 +2258,20 @@ const QueueControl = observer(
               }`}
             >
               {toolbarLayout.inline.map((id) => (
-                <Fragment key={id}>{toolbarButtons[id]}</Fragment>
+                <DraggableToolbarButton
+                  key={id}
+                  group="scene"
+                  id={id}
+                  name={sceneToolbarRegistry.find((b) => b.id === id)!.name}
+                  disabled={!!appState.uiToolbar.classic}
+                >
+                  {toolbarButtons[id]}
+                </DraggableToolbarButton>
               ))}
-              {toolbarLayout.menu.length > 0 && (
+              {(toolbarLayout.menu.length > 0 || toolbarDragActive) && (
                 // 모바일 가로 스크롤에서도 ⋯ 는 우측에 항상 노출(sticky) —
                 // 끝까지 스크롤하면 제자리에 자연 합류. PC 는 팝오버 앵커용 relative.
+                // 메뉴가 비어도 드래그 중엔 반투명 유령 ⋯(드롭 타깃)로 나타난다.
                 <div
                   className={
                     mobileIcon
@@ -2257,14 +2279,19 @@ const QueueControl = observer(
                       : 'relative'
                   }
                 >
-                  <Tooltip content="더보기">
-                    <button
-                      className={`round-button ${showToolbarMenu ? 'back-sky' : 'back-gray'}`}
-                      onClick={() => setShowToolbarMenu(!showToolbarMenu)}
-                    >
-                      <FaEllipsisH size={18} />
-                    </button>
-                  </Tooltip>
+                  <ToolbarMenuDropTarget group="scene">
+                    <Tooltip content="더보기">
+                      <button
+                        className={`round-button ${showToolbarMenu ? 'back-sky' : 'back-gray'}${toolbarLayout.menu.length === 0 ? ' opacity-40' : ''}`}
+                        onClick={() => {
+                          if (toolbarLayout.menu.length > 0)
+                            setShowToolbarMenu(!showToolbarMenu);
+                        }}
+                      >
+                        <FaEllipsisH size={18} />
+                      </button>
+                    </Tooltip>
+                  </ToolbarMenuDropTarget>
                   {/* PC 팝오버는 relative 앵커 안에서 렌더. 모바일 메뉴(ModalOverlay)는
                       sticky 가 만드는 스태킹 컨텍스트에 갇히면 씬 그리드에 덮이므로 바깥에서 렌더 */}
                   {!isMobile && (
@@ -2272,6 +2299,11 @@ const QueueControl = observer(
                       isOpen={showToolbarMenu}
                       onClose={() => setShowToolbarMenu(false)}
                       title="더보기"
+                      dndType={
+                        appState.uiToolbar.classic
+                          ? undefined
+                          : toolbarDndType('scene')
+                      }
                       items={toolbarLayout.menu.map((id) => ({
                         id,
                         name: sceneToolbarRegistry.find((b) => b.id === id)!.name,
@@ -2289,6 +2321,11 @@ const QueueControl = observer(
                 isOpen={showToolbarMenu}
                 onClose={() => setShowToolbarMenu(false)}
                 title="더보기"
+                dndType={
+                  appState.uiToolbar.classic
+                    ? undefined
+                    : toolbarDndType('scene')
+                }
                 items={toolbarLayout.menu.map((id) => ({
                   id,
                   name: sceneToolbarRegistry.find((b) => b.id === id)!.name,
@@ -2296,6 +2333,7 @@ const QueueControl = observer(
                 }))}
               />
             )}
+            <ToolbarHideZone group="scene" />
             <div className="ml-auto mr-2 hidden md:flex items-center gap-2">
               {!appState.classicSceneCard && (
                 <select

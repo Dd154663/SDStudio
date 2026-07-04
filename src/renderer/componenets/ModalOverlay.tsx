@@ -8,6 +8,9 @@ interface ModalOverlayProps {
   title: string;
   children: ReactNode;
   width?: string;
+  // 마운트는 유지한 채 시각적으로만 숨김 — 내용물이 드래그 소스일 때
+  // 드래그 도중 언마운트하면 드래그가 끊기므로 이 경로를 쓴다.
+  hidden?: boolean;
 }
 
 const ModalOverlay = ({
@@ -16,6 +19,7 @@ const ModalOverlay = ({
   title,
   children,
   width = 'max-w-xl',
+  hidden,
 }: ModalOverlayProps) => {
   const mouseDownOnBackdrop = useRef(false);
 
@@ -48,7 +52,10 @@ const ModalOverlay = ({
 
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center"
+      className={
+        'fixed inset-0 flex items-center justify-center' +
+        (hidden ? ' opacity-0 pointer-events-none' : '')
+      }
       style={{
         zIndex: 2000,
         backgroundColor: 'rgba(0, 0, 0, 0.3)',

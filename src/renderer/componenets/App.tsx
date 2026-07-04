@@ -162,6 +162,20 @@ const DnDPreview = () => {
     res = <PieceCell {...(item as any)} style={style} />;
   } else if (itemType === 'slot') {
     res = <SlotPiece {...(item as any)} style={style} />;
+  } else if (
+    typeof itemType === 'string' &&
+    itemType.startsWith('toolbar-btn/')
+  ) {
+    // 툴바 버튼 재배치 드래그 — 반투명 이름 알약 프리뷰
+    const { name } = item as any;
+    res = (
+      <div
+        className="round-button back-sky shadow-xl"
+        style={{ ...style, opacity: 0.85 }}
+      >
+        {name}
+      </div>
+    );
   } else {
     return <></>;
   }
