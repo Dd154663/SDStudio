@@ -16,6 +16,7 @@ import {
 import { appState } from './AppService';
 import { persistService } from './PersistenceService';
 import { runMobilePermissionOnboarding } from './mobilePermissions';
+import { waitForStorageAccess } from './storagePermissionGate';
 
 // ── 명시적 부트 시퀀스 ──
 // 앱의 모든 비동기 초기화가 여기서 "정해진 순서"로 일어난다.
@@ -43,6 +44,16 @@ export async function bootstrapApp(): Promise<void> {
       registerOnCloseFlush();
     } catch (e) {
       console.error('종료 훅 등록 실패:', e);
+    }
+
+    // 0.5) [안드로이드] 저장소 접근 가능해질 때까지 대기 — MainActivity 의
+    //     '모든 파일 접근' 설정 화면과 부팅이 경합하면 아래 모든 로드가
+    //     권한 오류로 빈 값이 되고, 이후 저장이 기존 데이터를 덮어쓴다.
+    //     (데스크톱은 즉시 통과)
+    try {
+      await waitForStorageAccess();
+    } catch (e) {
+      console.error('저장소 권한 게이트 실패(진행):', e);
     }
 
     // 1) 설정 로드 보장 (이후 단계·컴포넌트가 config 를 안전하게 읽는다)

@@ -57,6 +57,14 @@ export class TrashService extends EventTarget {
       };
     } catch (e) {
       this.data = { scenes: {}, projects: {} };
+      if (!(e instanceof SyntaxError)) {
+        // IO 오류(저장소 권한 등): loaded 를 세우지 않는다 → ensureLoaded 가
+        // 모든 휴지통 경유 작업(씬 삭제 포함)을 명확한 오류로 차단.
+        // 빈 데이터로 saveTrash 하면 기존 휴지통 기록이 통째로 사라지고,
+        // 기록 없이 씬을 삭제하면 복원이 불가능해지기 때문이다.
+        console.error('trash.json 로드 실패(IO) — 휴지통 동작 차단:', e);
+        return;
+      }
     }
     this.loaded = true;
   }

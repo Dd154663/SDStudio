@@ -39,11 +39,32 @@ const SESSION_SERVICE_INTERVAL = 5000;
 export class SessionService extends ResourceSyncService<Session> {
   favorites: Set<string> = new Set();
 
+  // 메타 파일(즐겨찾기/북마크 등) 로드가 IO 오류(저장소 권한 등)로 실패한 경우
+  // 해당 파일의 저장을 차단한다 — 빈 메모리 상태를 디스크에 되써서 기존 데이터를
+  // 지우는 것을 막는 안전벨트 (씬 유실 가드와 같은 철학). 파싱 오류(SyntaxError,
+  // 파손 파일)는 기존대로 빈 값 재시작을 허용한다.
+  private metaLoadFailed = new Set<string>();
+
+  // IO 오류면 저장 차단 플래그를 세운다. true 반환 = 차단 상태.
+  private markMetaLoadError(file: string, e: unknown): boolean {
+    if (e instanceof SyntaxError) return false;
+    this.metaLoadFailed.add(file);
+    console.error(`${file} 로드 실패(IO) — 덮어쓰기 방지 위해 저장 차단:`, e);
+    return true;
+  }
+
+  private metaSaveBlocked(file: string): boolean {
+    if (!this.metaLoadFailed.has(file)) return false;
+    console.warn(`${file} 저장 건너뜀 — 부팅 로드 실패 상태(기존 파일 보호)`);
+    return true;
+  }
+
   constructor() {
     super('projects', SESSION_SERVICE_INTERVAL);
   }
 
   async loadFavorites() {
+    this.metaLoadFailed.delete('favorites.json');
     if (!(await backend.existFile('favorites.json'))) {
       // 기존 projects/favorites.json에서 마이그레이션 시도
       if (await backend.existFile('projects/favorites.json')) {
@@ -65,10 +86,12 @@ export class SessionService extends ResourceSyncService<Session> {
       this.favorites = new Set(Array.isArray(arr) ? arr : []);
     } catch (e) {
       this.favorites = new Set();
+      this.markMetaLoadError('favorites.json', e);
     }
   }
 
   async saveFavorites() {
+    if (this.metaSaveBlocked('favorites.json')) return;
     await persistService.write('favorites.json', JSON.stringify([...this.favorites]));
   }
 
@@ -436,6 +459,7 @@ export class SessionService extends ResourceSyncService<Session> {
   private folderColors: Record<string, string> = {};
 
   async loadFolderColors() {
+    this.metaLoadFailed.delete('folderColors.json');
     if (!(await backend.existFile('folderColors.json'))) {
       this.folderColors = {};
       return;
@@ -445,10 +469,12 @@ export class SessionService extends ResourceSyncService<Session> {
       this.folderColors = JSON.parse(str) || {};
     } catch (e) {
       this.folderColors = {};
+      this.markMetaLoadError('folderColors.json', e);
     }
   }
 
   async saveFolderColors() {
+    if (this.metaSaveBlocked('folderColors.json')) return;
     await persistService.write(
       'folderColors.json',
       JSON.stringify(this.folderColors),
@@ -464,6 +490,7 @@ export class SessionService extends ResourceSyncService<Session> {
   private folderOrder: string[] = [];
 
   async loadFolderOrder() {
+    this.metaLoadFailed.delete('folderOrder.json');
     if (!(await backend.existFile('folderOrder.json'))) {
       this.folderOrder = [];
       return;
@@ -473,10 +500,12 @@ export class SessionService extends ResourceSyncService<Session> {
       this.folderOrder = JSON.parse(str) || [];
     } catch (e) {
       this.folderOrder = [];
+      this.markMetaLoadError('folderOrder.json', e);
     }
   }
 
   async saveFolderOrder() {
+    if (this.metaSaveBlocked('folderOrder.json')) return;
     await persistService.write(
       'folderOrder.json',
       JSON.stringify(this.folderOrder),
@@ -528,6 +557,7 @@ export class SessionService extends ResourceSyncService<Session> {
   } = { scenes: {}, images: {} };
 
   async loadBookmarks() {
+    this.metaLoadFailed.delete('bookmarks.json');
     if (!(await backend.existFile('bookmarks.json'))) {
       this.bookmarkData = { scenes: {}, images: {} };
       return;
@@ -541,10 +571,12 @@ export class SessionService extends ResourceSyncService<Session> {
       };
     } catch (e) {
       this.bookmarkData = { scenes: {}, images: {} };
+      this.markMetaLoadError('bookmarks.json', e);
     }
   }
 
   async saveBookmarks() {
+    if (this.metaSaveBlocked('bookmarks.json')) return;
     await persistService.write('bookmarks.json', JSON.stringify(this.bookmarkData));
     this.dispatchEvent(new CustomEvent('bookmark-updated'));
   }
@@ -591,6 +623,7 @@ export class SessionService extends ResourceSyncService<Session> {
   private thumbnailSaveTimer: any = null;
 
   async loadThumbnails() {
+    this.metaLoadFailed.delete('thumbnails.json');
     if (!(await backend.existFile('thumbnails.json'))) {
       this.thumbnailData = {};
       return;
@@ -600,10 +633,12 @@ export class SessionService extends ResourceSyncService<Session> {
       this.thumbnailData = JSON.parse(str) || {};
     } catch (e) {
       this.thumbnailData = {};
+      this.markMetaLoadError('thumbnails.json', e);
     }
   }
 
   async saveThumbnails() {
+    if (this.metaSaveBlocked('thumbnails.json')) return;
     await persistService.write(
       'thumbnails.json',
       JSON.stringify(this.thumbnailData),

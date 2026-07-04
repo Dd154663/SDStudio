@@ -619,7 +619,9 @@ export const App = observer(() => {
           {!appState.bootReady ? (
             <div className="flex-1 h-full w-full flex flex-col items-center justify-center gap-3">
               <div className="w-8 h-8 rounded-full border-2 border-[color:var(--c-line)] border-t-sky-500 animate-spin" />
-              <div className="text-sub text-sm">SDStudio 시작 중…</div>
+              <div className="text-sub text-sm whitespace-pre-line text-center px-6">
+                {appState.bootStatusMessage || 'SDStudio 시작 중…'}
+              </div>
             </div>
           ) : (
           <VerticalStack>

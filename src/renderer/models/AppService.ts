@@ -100,6 +100,8 @@ export class AppState {
   // 마치면 true. App 이 이 값으로 메인 UI 마운트를 게이트해 "준비 전 사용" race 를
   // 원천 차단한다. (부팅이 일부 실패해도 앱은 뜬다 — bootstrap 이 finally 로 보장)
   @observable accessor bootReady: boolean = false;
+  // 부팅 대기 화면의 보조 안내 문구 (예: 저장소 권한 대기). 빈 문자열 = 기본 문구.
+  @observable accessor bootStatusMessage: string = '';
   @observable accessor curSession: Session | undefined = undefined;
   // 토스트 메시지: 각 항목이 고유 id를 가져 개별 타이머/개별 닫기가 가능하다.
   @observable accessor messages: { id: number; text: string }[] = [];

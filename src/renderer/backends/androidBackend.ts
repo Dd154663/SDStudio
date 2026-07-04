@@ -38,6 +38,7 @@ import { WordTag } from '../models/Tags';
 const APP_DIR = '.SDStudio';
 let config: Config = {};
 let configLoaded = false;
+let configLoadFailed = false; // 읽기 실패(권한 등) — 게이트 통과 후 재읽기 대상
 let configLoadPromise: Promise<void> | null = null;
 const pica = new Pica();
 
@@ -133,7 +134,11 @@ export class AndroidBackend extends Backend {
           encoding: Encoding.UTF8,
         });
         config = JSON.parse(data.data.toString());
-      } catch {}
+      } catch {
+        // 파일 없음(첫 실행)일 수도, 저장소 권한 미허용일 수도 있다.
+        // 후자는 게이트(storagePermissionGate)가 권한 확보 후 재읽기로 복구.
+        configLoadFailed = true;
+      }
       configLoaded = true;
     })();
     // 원자 쓰기(tmp+rename)가 쓰기와 rename 사이 강제 종료로 남긴 고아 tmp 정리.
@@ -206,6 +211,25 @@ export class AndroidBackend extends Backend {
       await configLoadPromise;
     }
     return config;
+  }
+
+  // 생성자 시점 config 읽기가 실패(저장소 권한 미허용 등)했다면 재읽기.
+  // storagePermissionGate 가 권한 확보 직후 호출한다 — 빈 config 로 세션이
+  // 진행돼 setConfig 가 기존 설정을 덮어쓰는 유실을 막는다.
+  async reloadConfigIfFailed(): Promise<void> {
+    if (configLoadPromise) await configLoadPromise;
+    if (!configLoadFailed) return;
+    try {
+      const data = await Filesystem.readFile({
+        path: `${APP_DIR}/config.json`,
+        directory: Directory.Documents,
+        encoding: Encoding.UTF8,
+      });
+      config = JSON.parse(data.data.toString());
+      configLoadFailed = false;
+    } catch {
+      // 진짜 파일 없음(첫 실행) — 빈 config 그대로 진행
+    }
   }
 
   async setConfig(newConfig: Config): Promise<void> {
