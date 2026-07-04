@@ -39,6 +39,18 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'shortcut-help', name: '단축키 도움말', pcOnly: true, tier: 'overflow' },
 ];
 
+// 프로젝트 바 (프로젝트 선택기 옆 버튼들) — SessionSelect.tsx 가 사용.
+// 프로젝트 선택기(드로어 버튼·드롭다운)와 그 옆의 '프로젝트 탐색' 버튼은
+// 선택기 컨테이너에 고정(정체성 컨트롤 + 모바일 1행 유지)이라 레지스트리 비대상.
+export const projectToolbarRegistry: ToolbarButtonMeta[] = [
+  { id: 'add-session', name: '신규 프로젝트', tier: 'primary' },
+  { id: 'character-presets', name: '캐릭터 프리셋 관리', tier: 'secondary' },
+  { id: 'backup-export', name: '프로젝트 백업/내보내기', tier: 'overflow' },
+  { id: 'delete-session', name: '프로젝트 삭제', tier: 'overflow' },
+  { id: 'project-trash', name: '프로젝트 휴지통', tier: 'overflow' },
+  { id: 'piece-editor', name: '프롬프트조각', tier: 'secondary' },
+];
+
 // 레지스트리 + 사용자 설정 → 실제 배치를 해석하는 단일 출처(순수 함수).
 // - classic=true: 계층화 이전과 100% 동일 렌더 — 전 버튼을 레지스트리 순서로 인라인,
 //   buttons 오버라이드 무시. pcOnly 도 필터하지 않는다(기존 렌더는 pcOnly id 도 map 하고

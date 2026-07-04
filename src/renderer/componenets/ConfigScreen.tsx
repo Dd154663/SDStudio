@@ -11,7 +11,7 @@ import {
 } from '../models';
 import { Config, ImageEditor, RemoveBgQuality, UiThemeConfig, UiToolbarConfig } from '../../main/config';
 import ToolbarLayoutEditor from './ToolbarLayoutEditor';
-import { sceneToolbarRegistry } from '../models/uiLayout';
+import { projectToolbarRegistry, sceneToolbarRegistry } from '../models/uiLayout';
 import { buildThemeVars, isHex6 } from '../models/uiTheme';
 import { themeTemplates } from '../models/themeTemplates';
 import { observer } from 'mobx-react-lite';
@@ -1205,7 +1205,10 @@ const CustomizationTab = ({
         <ToolbarLayoutEditor
           value={uiToolbar}
           onChange={setUiToolbar}
-          groups={[{ title: '씬 툴바', registry: sceneToolbarRegistry }]}
+          groups={[
+            { title: '씬 툴바', registry: sceneToolbarRegistry },
+            { title: '프로젝트 바', registry: projectToolbarRegistry },
+          ]}
           mobileMode={isMobile}
         />
       </div>

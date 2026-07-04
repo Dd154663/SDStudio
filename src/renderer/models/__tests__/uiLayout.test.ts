@@ -2,6 +2,7 @@
 // uiLayout.ts 는 config 타입만 import 하므로 별도 mock 없이 직접 import 한다.
 
 import {
+  projectToolbarRegistry,
   resolveToolbar,
   sceneToolbarRegistry,
   ToolbarButtonMeta,
@@ -103,13 +104,15 @@ describe('resolveToolbar — 사용자 오버라이드', () => {
   });
 });
 
-describe('sceneToolbarRegistry 계약', () => {
-  it('id 중복이 없다 (config 저장 키)', () => {
-    const ids = sceneToolbarRegistry.map((b) => b.id);
+describe('레지스트리 계약', () => {
+  it('전 레지스트리 합집합에 id 중복이 없다 (config.buttons 공용 저장 키)', () => {
+    const ids = [...sceneToolbarRegistry, ...projectToolbarRegistry].map(
+      (b) => b.id,
+    );
     expect(new Set(ids).size).toBe(ids.length);
   });
   it('모든 항목에 tier 가 있다', () => {
-    for (const b of sceneToolbarRegistry) {
+    for (const b of [...sceneToolbarRegistry, ...projectToolbarRegistry]) {
       expect(['primary', 'secondary', 'overflow']).toContain(b.tier);
     }
   });

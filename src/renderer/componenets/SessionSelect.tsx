@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { DropdownSelect, Option } from './UtilComponents';
 import ModalOverlay from './ModalOverlay';
-import { FaPlus, FaPuzzlePiece, FaShare, FaThLarge, FaTrash, FaTrashAlt, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown } from 'react-icons/fa';
+import { FaEllipsisH, FaPlus, FaPuzzlePiece, FaShare, FaThLarge, FaTrash, FaTrashAlt, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown } from 'react-icons/fa';
 import { pushRecentProject } from './ProjectBrowser';
 import Tooltip from './Tooltip';
 import { sessionService, imageService, backend, zipService, workFlowService, trashService, isMobile } from '../models';
@@ -10,6 +10,8 @@ import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
 import { CharacterPresetFloatEditor } from './CharacterPresetEditor';
 import { CharacterPreset, CharacterPrompt, VibeItem, ReferenceItem } from '../models/types';
+import { projectToolbarRegistry, resolveToolbar } from '../models/uiLayout';
+import ToolbarOverflowMenu from './ToolbarOverflowMenu';
 import { v4 as uuidv4 } from 'uuid';
 import { runInAction } from 'mobx';
 
@@ -142,6 +144,8 @@ const SessionSelect = observer(() => {
   const [sessionNames, setSessionNames] = useState<string[]>([]);
   const [showCharacterPresets, setShowCharacterPresets] = useState(false);
   const [showProjectTrash, setShowProjectTrash] = useState(false);
+  // 프로젝트 바 ⋯(더보기) 오버플로 메뉴
+  const [showProjectMenu, setShowProjectMenu] = useState(false);
   useEffect(() => {
     const onListUpdated = () => {
       setSessionNames(sessionService.list());
@@ -193,6 +197,92 @@ const SessionSelect = observer(() => {
       },
     });
   };
+
+  // ── 프로젝트 바 버튼 바인딩: 레지스트리 id → 실제 버튼 노드 ──
+  // 구성·배치는 projectToolbarRegistry + resolveToolbar 가 결정한다.
+  const toolbarButtons: Record<string, React.ReactNode> = {
+    'add-session': (
+      <button className={`icon-button nback-sky mx-1`} onClick={addSession}>
+        <FaPlus size={18} />
+      </button>
+    ),
+    'character-presets': (
+      <Tooltip content={appState.appliedCharacterPreset ? `프리셋: ${appState.appliedCharacterPreset} (길게 눌러 해제)` : '캐릭터 프리셋 관리'}>
+      <button
+        className={`icon-button mx-1 ${appState.appliedCharacterPreset ? 'back-green' : 'nback-green'}`}
+        onClick={() => {
+          if (!appState.curSession) {
+            appState.pushMessage('프로젝트를 먼저 선택해주세요');
+            return;
+          }
+          // 모바일 + 프리셋 적용 중: 해제/관리 선택
+          if (isMobile && appState.appliedCharacterPreset) {
+            appState.pushDialog({
+              type: 'select',
+              text: `"${appState.appliedCharacterPreset}" 프리셋이 적용 중입니다.`,
+              items: [
+                { text: '프리셋 해제', value: 'clear' },
+                { text: '프리셋 관리 열기', value: 'manage' },
+              ],
+              callback: (value?: string) => {
+                if (value === 'clear') {
+                  appState.clearAppliedCharacterPreset();
+                } else if (value === 'manage') {
+                  setShowCharacterPresets(true);
+                }
+              },
+            });
+            return;
+          }
+          setShowCharacterPresets(true);
+        }}
+      >
+        <FaUserAlt size={18} />
+      </button>
+      </Tooltip>
+    ),
+    'backup-export': (
+      <button
+        className={`icon-button nback-orange mx-1`}
+        onClick={() => {
+          appState.projectBackupMenu();
+        }}
+      >
+        <FaShare />
+      </button>
+    ),
+    'delete-session': (
+      <button className={`icon-button nback-red mx-1`} onClick={deleteSession}>
+        <FaTrashAlt size={18} />{' '}
+      </button>
+    ),
+    'project-trash': (
+      <Tooltip content="프로젝트 휴지통">
+      <button
+        className={`icon-button nback-gray mx-1`}
+        onClick={() => setShowProjectTrash(true)}
+      >
+        <FaTrashRestore size={18} />
+      </button>
+      </Tooltip>
+    ),
+    'piece-editor': (
+      <button
+        className="round-button back-green flex items-center gap-1 ml-1"
+        onClick={() => appState.openPieceEditor()}
+      >
+        <FaPuzzlePiece size={18} />
+        <span className="hidden md:inline">프롬프트조각</span>
+      </button>
+    ),
+  };
+
+  // 사용자 설정(appState.uiToolbar, observable)에 따라 인라인/⋯메뉴 배치 결정
+  const toolbarLayout = resolveToolbar(
+    projectToolbarRegistry,
+    appState.uiToolbar,
+    isMobile,
+  );
 
   return (
     <div className="flex gap-2 items-center w-full flex-wrap">
@@ -366,68 +456,31 @@ const SessionSelect = observer(() => {
         </button>
         </Tooltip>
       </div>
-      <button className={`icon-button nback-sky mx-1`} onClick={addSession}>
-        <FaPlus size={18} />
-      </button>
-      <Tooltip content={appState.appliedCharacterPreset ? `프리셋: ${appState.appliedCharacterPreset} (길게 눌러 해제)` : '캐릭터 프리셋 관리'}>
-      <button
-        className={`icon-button mx-1 ${appState.appliedCharacterPreset ? 'back-green' : 'nback-green'}`}
-        onClick={() => {
-          if (!appState.curSession) {
-            appState.pushMessage('프로젝트를 먼저 선택해주세요');
-            return;
-          }
-          // 모바일 + 프리셋 적용 중: 해제/관리 선택
-          if (isMobile && appState.appliedCharacterPreset) {
-            appState.pushDialog({
-              type: 'select',
-              text: `"${appState.appliedCharacterPreset}" 프리셋이 적용 중입니다.`,
-              items: [
-                { text: '프리셋 해제', value: 'clear' },
-                { text: '프리셋 관리 열기', value: 'manage' },
-              ],
-              callback: (value?: string) => {
-                if (value === 'clear') {
-                  appState.clearAppliedCharacterPreset();
-                } else if (value === 'manage') {
-                  setShowCharacterPresets(true);
-                }
-              },
-            });
-            return;
-          }
-          setShowCharacterPresets(true);
-        }}
-      >
-        <FaUserAlt size={18} />
-      </button>
-      </Tooltip>
-      <button
-        className={`icon-button nback-orange mx-1`}
-        onClick={() => {
-          appState.projectBackupMenu();
-        }}
-      >
-        <FaShare />
-      </button>
-      <button className={`icon-button nback-red mx-1`} onClick={deleteSession}>
-        <FaTrashAlt size={18} />{' '}
-      </button>
-      <Tooltip content="프로젝트 휴지통">
-      <button
-        className={`icon-button nback-gray mx-1`}
-        onClick={() => setShowProjectTrash(true)}
-      >
-        <FaTrashRestore size={18} />
-      </button>
-      </Tooltip>
-      <button
-        className="round-button back-green flex items-center gap-1 ml-1"
-        onClick={() => appState.openPieceEditor()}
-      >
-        <FaPuzzlePiece size={18} />
-        <span className="hidden md:inline">프롬프트조각</span>
-      </button>
+      {toolbarLayout.inline.map((id) => (
+        <React.Fragment key={id}>{toolbarButtons[id]}</React.Fragment>
+      ))}
+      {toolbarLayout.menu.length > 0 && (
+        <div className="relative">
+          <Tooltip content="더보기">
+            <button
+              className={`icon-button ${showProjectMenu ? 'nback-sky' : 'nback-gray'} mx-1`}
+              onClick={() => setShowProjectMenu(!showProjectMenu)}
+            >
+              <FaEllipsisH size={18} />
+            </button>
+          </Tooltip>
+          <ToolbarOverflowMenu
+            isOpen={showProjectMenu}
+            onClose={() => setShowProjectMenu(false)}
+            title="프로젝트 메뉴"
+            items={toolbarLayout.menu.map((id) => ({
+              id,
+              name: projectToolbarRegistry.find((b) => b.id === id)!.name,
+              node: toolbarButtons[id],
+            }))}
+          />
+        </div>
+      )}
       <ModalOverlay
         isOpen={showProjectTrash}
         onClose={() => setShowProjectTrash(false)}
