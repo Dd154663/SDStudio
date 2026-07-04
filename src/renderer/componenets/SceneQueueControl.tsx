@@ -2236,12 +2236,27 @@ const QueueControl = observer(
         {panel}
         {!!showPannel && (
           <div className="flex flex-none pb-1.5 flex-wrap">
-            <div className="flex gap-1 md:gap-1.5 flex-wrap items-center">
+            {/* 모바일(비클래식): 줄바꿈 대신 가로 스크롤 — 어떤 기기 폭에서도 1줄 보장 */}
+            <div
+              className={`flex gap-1 md:gap-1.5 items-center ${
+                mobileIcon
+                  ? 'flex-nowrap overflow-x-auto no-scrollbars min-w-0 max-w-full [&>*]:flex-none'
+                  : 'flex-wrap'
+              }`}
+            >
               {toolbarLayout.inline.map((id) => (
                 <Fragment key={id}>{toolbarButtons[id]}</Fragment>
               ))}
               {toolbarLayout.menu.length > 0 && (
-                <div className="relative">
+                // 모바일 가로 스크롤에서도 ⋯ 는 우측에 항상 노출(sticky) —
+                // 끝까지 스크롤하면 제자리에 자연 합류. PC 는 팝오버 앵커용 relative.
+                <div
+                  className={
+                    mobileIcon
+                      ? 'sticky right-0 bg-[var(--c-surface)] pl-1'
+                      : 'relative'
+                  }
+                >
                   <Tooltip content="더보기">
                     <button
                       className={`round-button ${showToolbarMenu ? 'back-sky' : 'back-gray'}`}
@@ -2250,21 +2265,37 @@ const QueueControl = observer(
                       <FaEllipsisH size={18} />
                     </button>
                   </Tooltip>
-                  <ToolbarOverflowMenu
-                    isOpen={showToolbarMenu}
-                    onClose={() => setShowToolbarMenu(false)}
-                    title="더보기"
-                    items={toolbarLayout.menu.map((id) => ({
-                      id,
-                      name: sceneToolbarRegistry.find((b) => b.id === id)!.name,
-                      // 노드를 캐시하지 않고 매 렌더 참조 — 상태 의존 라벨
-                      // ("선택 씬 예약추가 (N)" 등)이 메뉴가 열린 채로도 갱신되도록
-                      node: toolbarButtons[id],
-                    }))}
-                  />
+                  {/* PC 팝오버는 relative 앵커 안에서 렌더. 모바일 메뉴(ModalOverlay)는
+                      sticky 가 만드는 스태킹 컨텍스트에 갇히면 씬 그리드에 덮이므로 바깥에서 렌더 */}
+                  {!isMobile && (
+                    <ToolbarOverflowMenu
+                      isOpen={showToolbarMenu}
+                      onClose={() => setShowToolbarMenu(false)}
+                      title="더보기"
+                      items={toolbarLayout.menu.map((id) => ({
+                        id,
+                        name: sceneToolbarRegistry.find((b) => b.id === id)!.name,
+                        // 노드를 캐시하지 않고 매 렌더 참조 — 상태 의존 라벨
+                        // ("선택 씬 예약추가 (N)" 등)이 메뉴가 열린 채로도 갱신되도록
+                        node: toolbarButtons[id],
+                      }))}
+                    />
+                  )}
                 </div>
               )}
             </div>
+            {isMobile && toolbarLayout.menu.length > 0 && (
+              <ToolbarOverflowMenu
+                isOpen={showToolbarMenu}
+                onClose={() => setShowToolbarMenu(false)}
+                title="더보기"
+                items={toolbarLayout.menu.map((id) => ({
+                  id,
+                  name: sceneToolbarRegistry.find((b) => b.id === id)!.name,
+                  node: toolbarButtons[id],
+                }))}
+              />
+            )}
             <div className="ml-auto mr-2 hidden md:flex items-center gap-2">
               {!appState.classicSceneCard && (
                 <select

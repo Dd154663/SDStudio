@@ -11,8 +11,11 @@ import {
   isMobile,
 } from '../models';
 import { VscChromeMinimize, VscChromeMaximize, VscChromeRestore, VscChromeClose } from 'react-icons/vsc';
+import { FaCog } from 'react-icons/fa';
+import { appState } from '../models/AppService';
+import { observer } from 'mobx-react-lite';
 
-const TobBar = () => {
+const TobBar = observer(() => {
   const [loggedIn, setLoggedIn] = useState(false);
   const [credits, setCredits] = useState(0);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -114,22 +117,40 @@ const TobBar = () => {
           환경설정
         </button>
       </div>
-      {/* Mobile: 환경설정 + 크레딧 세로 배치 (가로 공간 절약) */}
-      <div className="md:hidden flex flex-col items-center gap-1 titlebar-no-drag flex-none">
-        <button
-          className="round-button back-sky text-sm !px-3 !py-1 !min-w-0 !min-h-0"
-          onClick={() => {
-            setSettings(true);
-          }}
-        >
-          환경설정
-        </button>
-        {!loggedIn ? (
-          <span className="round-tag back-red text-sm !px-3 !py-1">로그인필요</span>
-        ) : (
-          <span className="round-tag back-yellow text-sm !px-3 !py-1">{credits}</span>
-        )}
-      </div>
+      {/* Mobile: 기본 = ⚙ 아이콘+크레딧 인라인(1줄 다이어트) / 클래식 툴바 = 기존 세로 배치 */}
+      {appState.uiToolbar.classic ? (
+        <div className="md:hidden flex flex-col items-center gap-1 titlebar-no-drag flex-none">
+          <button
+            className="round-button back-sky text-sm !px-3 !py-1 !min-w-0 !min-h-0"
+            onClick={() => {
+              setSettings(true);
+            }}
+          >
+            환경설정
+          </button>
+          {!loggedIn ? (
+            <span className="round-tag back-red text-sm !px-3 !py-1">로그인필요</span>
+          ) : (
+            <span className="round-tag back-yellow text-sm !px-3 !py-1">{credits}</span>
+          )}
+        </div>
+      ) : (
+        <div className="md:hidden flex items-center gap-1.5 titlebar-no-drag flex-none">
+          <button
+            className="icon-button nback-sky flex-none"
+            onClick={() => {
+              setSettings(true);
+            }}
+          >
+            <FaCog size={18} />
+          </button>
+          {!loggedIn ? (
+            <span className="round-tag back-red text-sm !px-2 !py-1">로그인필요</span>
+          ) : (
+            <span className="round-tag back-yellow text-sm !px-2 !py-1">{credits}</span>
+          )}
+        </div>
+      )}
       <div className="ml-auto block md:hidden titlebar-no-drag flex-1 min-w-0">
         <SessionSelect />
       </div>
@@ -170,6 +191,6 @@ const TobBar = () => {
       )}
     </div>
   );
-};
+});
 
 export default TobBar;

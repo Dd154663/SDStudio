@@ -388,8 +388,14 @@ const SessionSelect = observer(() => {
         </div>
       )}
       
-      {/* 프로젝트 선택 영역: 모바일에서 1행 전체, PC에서는 인라인 */}
-      <div className="flex items-center gap-1 w-full md:w-auto md:flex-1 md:max-w-80 min-w-0">
+      {/* 프로젝트 선택 영역: 기본 = 버튼과 한 줄 공유(폭 변동은 truncate가 흡수, 최소폭 미달 시 버튼이 다음 줄로 래핑) / 클래식 = 모바일 1행 전체 */}
+      <div
+        className={`flex items-center gap-1 ${
+          appState.uiToolbar.classic
+            ? 'w-full md:w-auto md:flex-1 md:max-w-80 min-w-0'
+            : 'flex-1 min-w-[9rem] md:min-w-0 md:max-w-80'
+        }`}
+      >
         {appState.legacyProjectMode ? (
           <>
             <Tooltip content="프로젝트 목록(폴더)">
