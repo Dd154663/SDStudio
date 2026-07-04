@@ -33,9 +33,9 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'artist-tag', name: '아티스트 태깅', pcOnly: true, tier: 'overflow' },
   { id: 'scene-search', name: '씬 검색', tier: 'primary' },
   { id: 'bookmark-jump', name: '북마크된 씬으로 이동', tier: 'secondary' },
-  { id: 'scene-trash', name: '씬 휴지통', tier: 'secondary' },
+  { id: 'scene-trash', name: '씬 휴지통', tier: 'overflow' },
   { id: 'empty-image-trash', name: '삭제 이미지 일괄 비우기', tier: 'overflow' },
-  { id: 'find-replace', name: '찾기 및 변환', tier: 'overflow' },
+  { id: 'find-replace', name: '찾기 및 변환', tier: 'secondary' },
   { id: 'shortcut-help', name: '단축키 도움말', pcOnly: true, tier: 'overflow' },
 ];
 

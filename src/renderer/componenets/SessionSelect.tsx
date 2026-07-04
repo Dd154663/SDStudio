@@ -473,6 +473,8 @@ const SessionSelect = observer(() => {
             isOpen={showProjectMenu}
             onClose={() => setShowProjectMenu(false)}
             title="프로젝트 메뉴"
+            dropUp
+
             items={toolbarLayout.menu.map((id) => ({
               id,
               name: projectToolbarRegistry.find((b) => b.id === id)!.name,

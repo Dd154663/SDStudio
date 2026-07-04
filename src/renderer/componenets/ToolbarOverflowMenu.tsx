@@ -19,6 +19,9 @@ interface ToolbarOverflowMenuProps {
   onClose: () => void;
   title: string;
   items: OverflowMenuItem[];
+  // 데스크톱 팝오버를 앵커 위로 펼침 — 화면 하단 툴바(프로젝트 바 등)에서
+  // 아래로 열면 뷰포트 밖으로 잘리므로 그 경우 true 로.
+  dropUp?: boolean;
 }
 
 const MenuRow = ({
@@ -56,6 +59,7 @@ const ToolbarOverflowMenu = ({
   onClose,
   title,
   items,
+  dropUp,
 }: ToolbarOverflowMenuProps) => {
   const popRef = useRef<HTMLDivElement>(null);
 
@@ -102,7 +106,7 @@ const ToolbarOverflowMenu = ({
   return (
     <div
       ref={popRef}
-      className="absolute top-full left-0 mt-1 z-50 min-w-[240px] max-w-[80vw] max-h-[60vh] overflow-auto rounded-xl border line-color bg-[var(--c-zone)] shadow-2xl p-2"
+      className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 z-50 min-w-[240px] max-w-[80vw] max-h-[60vh] overflow-auto rounded-xl border line-color bg-[var(--c-zone)] shadow-2xl p-2`}
     >
       {rows}
     </div>
