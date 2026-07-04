@@ -735,17 +735,17 @@ input[type='number']::-webkit-outer-spin-button {
 /* 툴바 버튼 드래그(재배치 모드) 중 같은 줄 버튼들의 흔들림 표시 */
 @keyframes toolbar-wiggle {
   0% {
-    transform: rotate(-2deg);
+    transform: rotate(-3.5deg) translateY(-0.5px);
   }
   50% {
-    transform: rotate(2deg);
+    transform: rotate(3.5deg) translateY(0.5px);
   }
   100% {
-    transform: rotate(-2deg);
+    transform: rotate(-3.5deg) translateY(-0.5px);
   }
 }
 .toolbar-wiggle {
-  animation: toolbar-wiggle 0.25s ease-in-out infinite;
+  animation: toolbar-wiggle 0.22s ease-in-out infinite;
 }
 
 /* 가로 스크롤 영역의 얇은 스크롤바 (환경설정 탭 바 등 — 존재를 알리되 방해 안 되게) */

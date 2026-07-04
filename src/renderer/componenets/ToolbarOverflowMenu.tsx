@@ -3,7 +3,7 @@ import { useDrag, useDragLayer } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
 import ModalOverlay from './ModalOverlay';
 import { isMobile } from '../models';
-import { LONG_PRESS_MS, ToolbarDragItem } from './ToolbarDnd';
+import { LONG_PRESS_MS, ToolbarDragItem, hapticTick } from './ToolbarDnd';
 
 // 툴바 ⋯(더보기) 메뉴. 행은 "기존 버튼 노드 그대로 + 레지스트리 이름 라벨" —
 // 버튼의 onClick 을 한 줄도 재배선하지 않고, 아이콘 전용 버튼도 메뉴에선
@@ -79,9 +79,7 @@ const MenuRow = ({
     armTimer.current = setTimeout(() => {
       armTimer.current = null;
       setArmed(true);
-      try {
-        navigator.vibrate?.(20);
-      } catch {}
+      hapticTick();
     }, LONG_PRESS_MS);
   };
   const onTouchEndOrCancel = () => {

@@ -28,14 +28,26 @@ export const toolbarDragUi = observable({
 
 export const LONG_PRESS_MS = 400; // App.tsx DndProvider 의 delayTouchStart 와 동일 값
 
+// 잡힘 햅틱 — navigator.vibrate 는 Android WebView 미구현이라 Capacitor Haptics
+// 네이티브 경로를 쓴다 (VIBRATE 권한은 AndroidManifest 에 있음). 실패 시 무시.
+export async function hapticTick() {
+  if (!isMobile) return;
+  try {
+    const { Haptics, ImpactStyle } = await import('@capacitor/haptics');
+    await Haptics.impact({ style: ImpactStyle.Medium });
+  } catch {
+    try {
+      navigator.vibrate?.(30);
+    } catch {}
+  }
+}
+
 export function armToolbarDrag(group: ToolbarGroup, id: string) {
   runInAction(() => {
     toolbarDragUi.armed = group;
     toolbarDragUi.armedId = id;
   });
-  try {
-    navigator.vibrate?.(20); // 잡힘 햅틱 (AndroidManifest VIBRATE 권한 필요)
-  } catch {}
+  hapticTick();
 }
 
 export function disarmToolbarDrag() {
