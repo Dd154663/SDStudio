@@ -17,7 +17,8 @@ import {
   ToolbarHideZone,
   ToolbarMenuDropTarget,
   toolbarDndType,
-  useToolbarDragActive,
+  toolbarRowHighlightClass,
+  useToolbarDragState,
   useToolbarRowDrop,
 } from './ToolbarDnd';
 import { v4 as uuidv4 } from 'uuid';
@@ -155,8 +156,10 @@ const SessionSelect = observer(() => {
   // 프로젝트 바 ⋯(더보기) 오버플로 메뉴
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   // 툴바 버튼 드래그 재배치 (클래식 툴바에선 비활성)
-  const toolbarDragActive = useToolbarDragActive('project');
-  const toolbarRowDrop = useToolbarRowDrop('project');
+  const toolbarDrag = useToolbarDragState('project');
+  const toolbarDragActive = toolbarDrag.active;
+  const { drop: toolbarRowDrop, isOver: toolbarRowOver } =
+    useToolbarRowDrop('project');
   useEffect(() => {
     const onListUpdated = () => {
       setSessionNames(sessionService.list());
@@ -299,7 +302,7 @@ const SessionSelect = observer(() => {
     // 행 전체가 드롭 타깃 — 메뉴에서 끌어다 놓으면 인라인 고정(pinned)
     <div
       ref={toolbarRowDrop as any}
-      className="flex gap-2 items-center w-full flex-wrap"
+      className={`flex gap-2 items-center w-full flex-wrap${toolbarRowHighlightClass(toolbarDrag, toolbarRowOver)}`}
     >
       {showCharacterPresets && appState.curSession && (
         <CharacterPresetFloatEditor

@@ -44,7 +44,12 @@ const MenuRow = ({
   const [{ isDragging }, drag, preview] = useDrag(
     () => ({
       type: dndType ?? '__toolbar-menu-row-disabled__',
-      item: { id: item.id, name: item.name } as ToolbarDragItem,
+      item: {
+        id: item.id,
+        name: item.name,
+        from: 'menu',
+        node: item.node,
+      } as ToolbarDragItem,
       canDrag: !!dndType,
       collect: (m) => ({ isDragging: m.isDragging() }),
       end: (_item, monitor) => {

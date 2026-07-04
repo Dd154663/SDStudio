@@ -89,7 +89,8 @@ import {
   ToolbarHideZone,
   ToolbarMenuDropTarget,
   toolbarDndType,
-  useToolbarDragActive,
+  toolbarRowHighlightClass,
+  useToolbarDragState,
   useToolbarRowDrop,
 } from './ToolbarDnd';
 import { appState, SceneSelectorItem } from '../models/AppService';
@@ -1869,8 +1870,10 @@ const QueueControl = observer(
     // 툴바 ⋯(더보기) 오버플로 메뉴
     const [showToolbarMenu, setShowToolbarMenu] = useState(false);
     // 툴바 버튼 드래그 재배치 (클래식 툴바에선 비활성)
-    const toolbarDragActive = useToolbarDragActive('scene');
-    const toolbarRowDrop = useToolbarRowDrop('scene');
+    const toolbarDrag = useToolbarDragState('scene');
+    const toolbarDragActive = toolbarDrag.active;
+    const { drop: toolbarRowDrop, isOver: toolbarRowOver } =
+      useToolbarRowDrop('scene');
 
     const [bmRev, setBmRev] = useState(0);
     useEffect(() => {
@@ -2255,7 +2258,7 @@ const QueueControl = observer(
                 mobileIcon
                   ? 'flex-nowrap overflow-x-auto no-scrollbars min-w-0 max-w-full [&>*]:flex-none'
                   : 'flex-wrap'
-              }`}
+              }${toolbarRowHighlightClass(toolbarDrag, toolbarRowOver)}`}
             >
               {toolbarLayout.inline.map((id) => (
                 <DraggableToolbarButton

@@ -166,14 +166,16 @@ const DnDPreview = () => {
     typeof itemType === 'string' &&
     itemType.startsWith('toolbar-btn/')
   ) {
-    // 툴바 버튼 재배치 드래그 — 반투명 이름 알약 프리뷰
-    const { name } = item as any;
+    // 툴바 버튼 재배치 드래그 — 실제 버튼 노드 그대로(원래 너비 유지) 반투명 프리뷰
+    const { name, node, width } = item as any;
     res = (
       <div
-        className="round-button back-sky shadow-xl"
-        style={{ ...style, opacity: 0.85 }}
+        className="pointer-events-none"
+        style={{ ...style, ...(width ? { width } : {}), opacity: 0.85 }}
       >
-        {name}
+        {node ?? (
+          <div className="round-button back-sky shadow-xl">{name}</div>
+        )}
       </div>
     );
   } else {
