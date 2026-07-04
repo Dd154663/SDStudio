@@ -60,6 +60,22 @@ export interface Config {
   // UI 테마 커스터마이징(구조화 의도). 미설정 시 기본 테마(다크/라이트).
   // 실제 적용 CSS 변수는 buildThemeVars(uiTheme.ts)로 파생 — 단일 출처.
   uiTheme?: UiThemeConfig;
+  // 툴바 버튼 배치 커스터마이징. 미설정 시 레지스트리(uiLayout.ts)의 기본 등급.
+  // 배치 해석은 resolveToolbar(uiLayout.ts)가 단일 출처.
+  uiToolbar?: UiToolbarConfig;
+}
+
+// 버튼 하나의 사용자 배치: 'default'=레지스트리 기본 등급을 따름 /
+// 'pinned'=툴바 고정 / 'menu'=⋯ 오버플로 메뉴로 / 'hidden'=숨김
+export type ToolbarButtonPlacement = 'default' | 'pinned' | 'menu' | 'hidden';
+
+// 툴바 배치 커스터마이징의 "의도"(원본). 전부 옵셔널=하위호환.
+// buttons 의 키는 uiLayout.ts 레지스트리의 버튼 id(전 영역 공용, 배포 후 불변 계약).
+export interface UiToolbarConfig {
+  // 클래식 툴바(계층화 도입 이전 배치)로 롤백. true 면 계층화·오버플로 메뉴·
+  // buttons 오버라이드를 전부 무시하고 모든 버튼을 인라인 렌더(기존 사용자 안심용).
+  classic?: boolean;
+  buttons?: Record<string, ToolbarButtonPlacement>;
 }
 
 // UI 색 커스터마이징의 "의도"를 저장(파생값이 아닌 원본). 전부 옵셔널=하위호환.
