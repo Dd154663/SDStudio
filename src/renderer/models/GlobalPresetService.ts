@@ -483,7 +483,7 @@ export class GlobalPresetService extends EventTarget {
     preset.backPrompt = '';
     preset.uc = job?.uc ?? '';
     if ((job?.characterPrompts?.length ?? 0) > 0) {
-      preset.characterPrompts = job.characterPrompts;
+      preset.characterPrompts = job!.characterPrompts;
     }
     if (job) {
       preset.sampling = job.sampling ?? preset.sampling;

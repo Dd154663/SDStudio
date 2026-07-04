@@ -356,7 +356,7 @@ export class NovelAiImageGenService implements ImageGenService {
       body,
       headers,
     );
-    const zip = await JSZip.loadAsync(Buffer.from(arrayBuffer));
+    const zip = await JSZip.loadAsync(arrayBuffer);
     const zipEntries = Object.keys(zip.files);
     if (zipEntries.length === 0) {
       throw new Error('No entries found in the ZIP file');
@@ -440,7 +440,7 @@ export class NovelAiImageGenService implements ImageGenService {
       body,
       headers,
     );
-    const zip = await JSZip.loadAsync(Buffer.from(arrayBuffer));
+    const zip = await JSZip.loadAsync(arrayBuffer);
     const zipEntries = Object.keys(zip.files);
     if (zipEntries.length === 0) {
       throw new Error('No entries found in the ZIP file');

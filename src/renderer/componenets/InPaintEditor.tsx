@@ -85,7 +85,7 @@ const InPaintEditor = observer(
     const [brushSize, setBrushSize] = useState(brushSizeSaved);
     const [brushing, setBrushing] = useState(true);
     const [open, setOpen] = useState(false);
-    const def = workFlowService.getDef(editingScene.workflowType);
+    const def = workFlowService.getDef(editingScene.workflowType)!;
     const isMirror = editingScene.workflowType === 'SDMirror';
     const globalPreset = isMirror && curSession?.selectedWorkflow
       ? curSession.getCommonSetup(curSession.selectedWorkflow)[1]

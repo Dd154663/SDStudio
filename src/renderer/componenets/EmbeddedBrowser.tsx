@@ -113,18 +113,11 @@ const BookmarkDialog: React.FC<BookmarkDialogProps> = ({ mode, initialLabel, ini
   );
 };
 
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      webview: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
-        src?: string;
-        partition?: string;
-        allowpopups?: string;
-        useragent?: string;
-      };
-    }
-  }
-}
+// webview 태그 타입은 @types/react 내장(WebViewHTMLAttributes)을 사용한다.
+// 단 allowpopups 는 boolean 으로 선언돼 있지만 React 런타임은 unknown 속성에
+// boolean true 를 주면 attribute 를 아예 렌더하지 않으므로, Electron 이 인식하는
+// 빈 문자열 attribute 형태를 유지하기 위해 아래 캐스트를 공용으로 쓴다.
+export const WEBVIEW_ALLOWPOPUPS = { allowpopups: '' } as unknown as { allowpopups?: boolean };
 
 const DesktopBrowser: React.FC = () => {
   const webviewRef = useRef<any>(null);
@@ -345,7 +338,7 @@ const DesktopBrowser: React.FC = () => {
           ref={webviewRef}
           src={url}
           partition="persist:browser"
-          allowpopups=""
+          {...WEBVIEW_ALLOWPOPUPS}
           useragent={CLEAN_USER_AGENT}
           style={{ width: '100%', height: '100%' }}
         />

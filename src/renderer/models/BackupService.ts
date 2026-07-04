@@ -1395,7 +1395,8 @@ export class BackupService {
     imageSize: number,
     separator: string,
     charsToReplace: Set<string>,
-  ): Promise<{ path: string; name: string }[]> {
+    // undefined = 재최적화 확인 다이얼로그에서 사용자가 취소한 경우 (해당 세션 건너뜀)
+  ): Promise<{ path: string; name: string }[] | undefined> {
     let paths: { path: string; name: string }[] = [];
     await imageService.refreshBatch(session);
     const scenes = session.getScenes(type);
@@ -1622,7 +1623,7 @@ export class BackupService {
             opts.separator,
             charsToReplace,
           );
-          for (const e of entries) {
+          for (const e of entries ?? []) {
             allEntries.push({ path: e.path, name: name + '/' + e.name });
           }
         }

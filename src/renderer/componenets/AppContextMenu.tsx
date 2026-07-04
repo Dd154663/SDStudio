@@ -24,7 +24,8 @@ import {
 
 export const AppContextMenu = observer(() => {
   const duplicateScene = async (ctx: SceneContextAlt) => {
-    const newScene = genericSceneFromJSON(ctx.scene.toJSON());
+    // 살아있는 씬의 toJSON() 재역직렬화라 null(프리셋 역직렬화 실패)이 나올 수 없다
+    const newScene = genericSceneFromJSON(ctx.scene.toJSON())!;
     let cnt = 0;
     const newName = () =>
       newScene.name + '_copy' + (cnt === 0 ? '' : cnt.toString());

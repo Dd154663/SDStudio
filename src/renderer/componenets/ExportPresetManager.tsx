@@ -29,7 +29,7 @@ const outputModeOptions = [
 ];
 
 const getOptOptions = () => {
-  const opts = [
+  const opts: { value: 'original' | 'lossy' | 'lossless' | 'avif'; label: string }[] = [
     { value: 'original' as const, label: '원본' },
     { value: 'lossy' as const, label: '저손실 webp 최적화' },
   ];

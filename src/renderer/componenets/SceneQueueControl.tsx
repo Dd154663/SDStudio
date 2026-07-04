@@ -726,7 +726,7 @@ interface SceneTrashViewProps {
 
 function SceneTrashView({ projectName }: SceneTrashViewProps) {
   const [deletedScenes, setDeletedScenes] = useState<
-    { name: string; type: string; deletedAt: number }[]
+    { name: string; type: 'scene' | 'inpaint'; deletedAt: number }[]
   >([]);
   const [loading, setLoading] = useState(false);
 
@@ -770,7 +770,7 @@ function SceneTrashView({ projectName }: SceneTrashViewProps) {
 
   const handlePermanentDelete = async (item: {
     name: string;
-    type: string;
+    type: 'scene' | 'inpaint';
     deletedAt: number;
   }) => {
     appState.pushDialog({
@@ -1396,6 +1396,7 @@ const QueueControl = observer(
             if (!menu) return;
             for (const name of names) {
               curSession.addScene(
+                // 방금 buildPreset 으로 만든 프리셋이라 역직렬화 실패(null)가 불가능
                 InpaintScene.fromJSON({
                   type: 'inpaint',
                   name,
@@ -1406,7 +1407,7 @@ const QueueControl = observer(
                   imageMap: [],
                   round: undefined,
                   game: undefined,
-                }),
+                })!,
               );
             }
           }

@@ -158,7 +158,7 @@ export class SessionService extends ResourceSyncService<Session> {
     if (parent !== null) {
       // 부모 폴더 경로를 따라가며 없는 중간 폴더는 자동 생성
       const ancestors: string[] = [];
-      let cur = parent;
+      let cur: string | null = parent;
       while (cur) {
         if (!this.folderList.includes(cur)) {
           ancestors.unshift(cur);
@@ -1484,7 +1484,8 @@ function blobToDataUri(blob: Blob): Promise<string> {
 
 export function embedJSONInPNG(inputBase64: string, jsonData: any) {
   const inputBuffer = Buffer.from(inputBase64, 'base64');
-  const chunks = extractChunks(inputBuffer);
+  // buffer 폴리필의 Buffer 는 Uint8Array 서브클래스 — 제네릭 표기 차이만 있어 캐스트
+  const chunks = extractChunks(inputBuffer as unknown as Uint8Array);
 
   const jsonTextChunk = PngChunk.encode(
     'tEXt',
@@ -1499,7 +1500,7 @@ export function embedJSONInPNG(inputBase64: string, jsonData: any) {
 export function readJSONFromPNG(base64PNG: string) {
   try {
     const buffer = Buffer.from(base64PNG, 'base64');
-    const chunks = extractChunks(buffer);
+    const chunks = extractChunks(buffer as unknown as Uint8Array);
     const jsonChunk = chunks.find((chunk) => chunk.name === 'tEXt');
     if (jsonChunk) {
       let base64JsonData = Buffer.from(jsonChunk.data).toString();

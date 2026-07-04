@@ -99,7 +99,7 @@ export class WorkFlowService {
   }
 
   getVarDef(type: string, fieldType: WFFieldType, field: string) {
-    const def = this.getDef(type);
+    const def = this.getDef(type)!;
     if (fieldType === 'preset') {
       return def.presetVars.find((v) => v.name === field);
     } else if (fieldType === 'shared') {

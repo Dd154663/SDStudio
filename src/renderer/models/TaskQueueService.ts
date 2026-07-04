@@ -620,7 +620,7 @@ export const queueI2IWorkflow = async (
   samples: number,
   onComplete?: (path: string) => void,
 ) => {
-  const def = workFlowService.getDef(type);
+  const def = workFlowService.getDef(type)!;
   console.log('queueI2IWorkflow', type, preset, scene, samples, onComplete);
   await def.handler(
     session,

@@ -413,6 +413,27 @@ export class AndroidBackend extends Backend {
     return result.files[0].path;
   }
 
+  async selectFiles(options?: {
+    filters?: { name: string; extensions: string[] }[];
+  }): Promise<string[]> {
+    // FilePicker 기본 limit=0(무제한)이라 다중 선택 지원.
+    // 데스크톱 필터(extensions)는 안드로이드 문서 선택기의 MIME 방식과 달라
+    // PNG 프리셋 가져오기 용도에 맞춰 image/png 로 고정한다.
+    const result = await FilePicker.pickFiles({
+      types: ['image/png'],
+    });
+    return result.files
+      .map((f) => f.path)
+      .filter((p): p is string => !!p);
+  }
+
+  async readBinaryFile(filePath: string): Promise<string> {
+    // FilePicker 가 돌려준 절대 URI(file:// 또는 content://)를 그대로 읽는다.
+    // encoding 미지정 → base64 문자열 반환 (electronBackend 와 동일 계약).
+    const data = await Filesystem.readFile({ path: filePath });
+    return data.data.toString();
+  }
+
   async searchTags(word: string): Promise<any> {
     const args = { id: this.tagDBId!, query: word };
     return (await TagDB.search(args)).results;

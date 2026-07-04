@@ -55,9 +55,11 @@ const ProjectThumbnail = ({ name }: { name: string }) => {
     let cancelled = false;
     const fetchByRef = async (ref: { scene: string; image: string }) => {
       try {
-        return await imageService.fetchImageSmall(
-          'outs/' + name + '/' + ref.scene + '/' + ref.image,
-          200,
+        return (
+          (await imageService.fetchImageSmall(
+            'outs/' + name + '/' + ref.scene + '/' + ref.image,
+            200,
+          )) ?? undefined
         );
       } catch {
         return undefined;

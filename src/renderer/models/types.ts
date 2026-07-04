@@ -245,7 +245,9 @@ export class AbstractScene implements IAbstractScene {
   @observable.shallow accessor imageMap: string[] = [];
   @observable accessor mains: string[] = [];
 
-  static fromJSON(json: IAbstractScene): AbstractScene {
+  // 반환 타입에 null 포함: InpaintScene.fromJSON 이 역직렬화 실패 시 null 을
+  // 반환하므로 서브클래스 정적 시그니처와의 호환을 위해 필요.
+  static fromJSON(json: IAbstractScene): AbstractScene | null {
     const scene = new AbstractScene();
     scene.name = json.name;
     scene.resolution = json.resolution;
@@ -521,7 +523,7 @@ export class Session implements Serealizable {
     const type = flow.workflowType;
     const preset = flow.presetName && this.getPreset(type, flow.presetName);
     const shared = this.presetShareds.get(type);
-    const def = workFlowService.getDef(type);
+    const def = workFlowService.getDef(type)!;
     return [type, preset, shared, def];
   }
 

@@ -1013,11 +1013,11 @@ function killLocalAI() {
 
 const net = require('net');
 
-function checkPort(port) {
+function checkPort(port: number) {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
 
-    server.once('error', (err) => {
+    server.once('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
         resolve(false); // Port is in use
       } else {
@@ -1035,7 +1035,7 @@ function checkPort(port) {
   });
 }
 
-async function findAvailablePort(startPort) {
+async function findAvailablePort(startPort: number) {
   let port = startPort;
   while (!(await checkPort(port))) {
     port++;

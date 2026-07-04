@@ -570,7 +570,8 @@ export class BatchProcessService {
                         let totalCopied = 0;
                         let totalImages = 0;
                         for (const scene of selected) {
-                          const newScene = genericSceneFromJSON(scene.toJSON());
+                          // 살아있는 씬의 toJSON() 재역직렬화라 null 이 나올 수 없다
+                          const newScene = genericSceneFromJSON(scene.toJSON())!;
                           let cnt = 0;
                           const baseName = newScene.name;
                           const newNameFn = () => baseName + (cnt === 0 ? '' : '_' + cnt);

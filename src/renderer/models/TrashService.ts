@@ -341,6 +341,10 @@ export class TrashService extends EventTarget {
 
     // Re-add scene to session
     const restoredScene = genericSceneFromJSON(entry.sceneData);
+    if (!restoredScene) {
+      // 워크플로우 프리셋 역직렬화 실패 — 세션을 건드리지 않고 중단(휴지통 항목은 보존됨)
+      throw new Error('씬 데이터를 복원할 수 없습니다: ' + sceneName);
+    }
     session.addScene(restoredScene);
 
     // Remove from trash

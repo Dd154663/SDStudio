@@ -17,7 +17,7 @@ class ElectronFetcher implements NovelAiFetcher {
     url: string,
     body: any,
     headers: any,
-  ): Promise<Uint8Array> {
+  ): Promise<ArrayBuffer> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
       controller.abort();
@@ -33,7 +33,7 @@ class ElectronFetcher implements NovelAiFetcher {
       console.error(await response.json());
       throw new Error(`Failed to fetch: ${response.status}`);
     }
-    return new Uint8Array(await response.arrayBuffer());
+    return await response.arrayBuffer();
   }
 }
 

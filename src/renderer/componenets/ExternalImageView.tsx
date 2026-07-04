@@ -394,7 +394,7 @@ export const ExternalImageView = observer(
                     {job.characterPrompts.map((cp) => (
                       <div key={cp.id} className="mb-2 p-2.5 bg-[var(--c-surface)] rounded-lg text-sm">
                         <div className="text-muted text-xs mb-1">
-                          Pos: ({cp.position?.[0]?.toFixed(2) ?? '-'}, {cp.position?.[1]?.toFixed(2) ?? '-'})
+                          Pos: ({cp.position?.x?.toFixed(2) ?? '-'}, {cp.position?.y?.toFixed(2) ?? '-'})
                         </div>
                         <div className="text-body break-words">{cp.prompt}</div>
                         {cp.uc && (

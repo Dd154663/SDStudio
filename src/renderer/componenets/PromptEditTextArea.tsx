@@ -947,7 +947,7 @@ interface EditTextAreaRef {
 }
 
 const EmulatedEditTextArea = observer(
-  forwardRef<EditTextAreaRef, any>(
+  forwardRef<EditTextAreaRef, EditTextAreaProps>(
     (
       {
         value,

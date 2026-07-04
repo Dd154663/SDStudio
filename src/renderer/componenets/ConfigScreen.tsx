@@ -503,7 +503,8 @@ const SystemTab = ({
             {!isMobile ? (
               <webview
                 src="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-                allowpopups=""
+                // allowpopups 는 빈 문자열 attribute 여야 렌더됨(boolean true 는 React 가 무시)
+                {...({ allowpopups: '' } as unknown as { allowpopups?: boolean })}
                 style={{ width: '100%', height: '100%' }}
               />
             ) : (
@@ -879,9 +880,9 @@ const CustomizationTab = ({
   } | null>(null);
 
   const patch = (p: Partial<UiThemeConfig>) =>
-    setUiTheme((prev) => ({ ...prev, ...p }));
+    setUiTheme((prev: UiThemeConfig) => ({ ...prev, ...p }));
   const patchBtn = (p: Partial<NonNullable<UiThemeConfig['buttons']>>) =>
-    setUiTheme((prev) => ({ ...prev, buttons: { ...prev.buttons, ...p } }));
+    setUiTheme((prev: UiThemeConfig) => ({ ...prev, buttons: { ...prev.buttons, ...p } }));
   const onMobilePick = (initial: string, onChange: (hex: string) => void) =>
     setMobilePicker({ initial, onChange });
 

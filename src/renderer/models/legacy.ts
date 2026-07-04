@@ -20,7 +20,8 @@ export const defaultUC = `worst quality, bad quality, displeasing, very displeas
 
 function readJSONFromPNG(base64PNG: string) {
   const buffer = Buffer.from(base64PNG, 'base64');
-  const chunks = extractChunks(buffer);
+  // buffer 폴리필의 Buffer 는 Uint8Array 서브클래스 — 제네릭 표기 차이만 있어 캐스트
+  const chunks = extractChunks(buffer as unknown as Uint8Array);
   const jsonChunk = chunks.find((chunk) => chunk.name === 'tEXt');
   if (jsonChunk) {
     let base64JsonData = Buffer.from(jsonChunk.data).toString();
@@ -460,6 +461,8 @@ function migratePromptPiece(piece: any): IPromptPiece {
     prompt: piece.prompt,
     id: piece.id ?? v4(),
     enabled: piece.enabled,
+    // 구버전 데이터에는 없던 필드 — PromptPiece.fromJSON 의 정규화와 동일하게 빈 배열
+    characterPrompts: piece.characterPrompts ?? [],
   };
 }
 
