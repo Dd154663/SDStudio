@@ -42,12 +42,14 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
 // 프로젝트 바 (프로젝트 선택기 옆 버튼들) — SessionSelect.tsx 가 사용.
 // 프로젝트 선택기(드로어 버튼·드롭다운)와 그 옆의 '프로젝트 탐색' 버튼은
 // 선택기 컨테이너에 고정(정체성 컨트롤 + 모바일 1행 유지)이라 레지스트리 비대상.
+// PC 하단 바는 공간이 넉넉해 기본값 = 전부 인라인(⋯ 없음, 메뉴 보내기는 사용자 선택).
+// 모바일만 다이어트: primary 외 전부 ⋯ 메뉴 (secondary = PC 인라인·모바일 메뉴).
 export const projectToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'add-session', name: '신규 프로젝트', tier: 'primary' },
   { id: 'character-presets', name: '캐릭터 프리셋 관리', tier: 'secondary' },
-  { id: 'backup-export', name: '프로젝트 백업/내보내기', tier: 'overflow' },
-  { id: 'delete-session', name: '프로젝트 삭제', tier: 'overflow' },
-  { id: 'project-trash', name: '프로젝트 휴지통', tier: 'overflow' },
+  { id: 'backup-export', name: '프로젝트 백업/내보내기', tier: 'secondary' },
+  { id: 'delete-session', name: '프로젝트 삭제', tier: 'secondary' },
+  { id: 'project-trash', name: '프로젝트 휴지통', tier: 'secondary' },
   { id: 'piece-editor', name: '프롬프트조각', tier: 'secondary' },
 ];
 
