@@ -12,6 +12,7 @@ import {
 import {
   FaBookmark,
   FaBroom,
+  FaCheckSquare,
   FaEdit,
   FaEllipsisH,
   FaExchangeAlt,
@@ -19,6 +20,7 @@ import {
   FaPaintBrush,
   FaPlus,
   FaQuestion,
+  FaRegCalendarPlus,
   FaRegCalendarTimes,
   FaSearch,
   FaStar,
@@ -1927,24 +1929,41 @@ const QueueControl = observer(
     // 구성·순서는 sceneToolbarRegistry(models/uiLayout.ts)가 결정한다.
     // (향후 UI 커스터마이징이 이 지점에서 사용자 지정 순서/숨김을 적용할 예정)
     const toolbarButtons: Record<string, ReactNode> = {
+      // 모바일은 텍스트 대신 아이콘 — primary 버튼들이 1줄에 들어가도록 (줄 밀림 방지)
       'add-scene': (
-        <button className="round-button back-sky" onClick={addScene}>
-          씬 추가
-        </button>
+        <Tooltip content="씬 추가">
+          <button className="round-button back-sky" onClick={addScene}>
+            {isMobile ? <FaPlus size={18} /> : '씬 추가'}
+          </button>
+        </Tooltip>
       ),
       'queue-add': (
-        <button
-          className="round-button back-sky"
-          onClick={
-            appState.selectedScenes.size > 0
-              ? addSelectedToQueue
-              : addAllToQueue
-          }
-        >
-          {appState.selectedScenes.size > 0
-            ? `선택 씬 예약추가 (${appState.selectedScenes.size})`
-            : '모두 예약추가'}
-        </button>
+        <Tooltip content="예약 추가">
+          <button
+            className="round-button back-sky"
+            onClick={
+              appState.selectedScenes.size > 0
+                ? addSelectedToQueue
+                : addAllToQueue
+            }
+          >
+            {isMobile ? (
+              // 예약제거(달력✕, 씬 카드)와 짝을 이루는 달력+ 아이콘. 선택 중엔 수 병기
+              <>
+                <FaRegCalendarPlus size={18} />
+                {appState.selectedScenes.size > 0 && (
+                  <span className="ml-1 text-xs">
+                    {appState.selectedScenes.size}
+                  </span>
+                )}
+              </>
+            ) : appState.selectedScenes.size > 0 ? (
+              `선택 씬 예약추가 (${appState.selectedScenes.size})`
+            ) : (
+              '모두 예약추가'
+            )}
+          </button>
+        </Tooltip>
       ),
       'export-images': (
         <button
@@ -1975,42 +1994,53 @@ const QueueControl = observer(
         </button>
       ),
       'multi-select': (
-        <button
-          className={`round-button ${
-            (isMobile ? appState.sceneSelectionMode : appState.selectedScenes.size > 0)
-              ? 'back-sky'
-              : 'back-gray'
-          }`}
-          onClick={() => {
-            if (isMobile) {
-              // 모바일: 선택 모드 토글. 끌 때는 선택도 해제한다.
-              if (appState.sceneSelectionMode) {
-                appState.sceneSelectionMode = false;
-                appState.clearSceneSelection();
-              } else {
-                appState.sceneSelectionMode = true;
+        <Tooltip content="다중 선택">
+          <button
+            className={`round-button ${
+              (isMobile ? appState.sceneSelectionMode : appState.selectedScenes.size > 0)
+                ? 'back-sky'
+                : 'back-gray'
+            }`}
+            onClick={() => {
+              if (isMobile) {
+                // 모바일: 선택 모드 토글. 끌 때는 선택도 해제한다.
+                if (appState.sceneSelectionMode) {
+                  appState.sceneSelectionMode = false;
+                  appState.clearSceneSelection();
+                } else {
+                  appState.sceneSelectionMode = true;
+                }
+                return;
               }
-              return;
-            }
-            // PC: 선택이 있으면 해제(키보드 선택 모드도 종료), 없으면 선택 방법 안내
-            if (appState.selectedScenes.size === 0) {
-              appState.pushMessage(
-                'Ctrl+S(선택 모드)·Ctrl+클릭·드래그로 씬을 선택하세요. 모드 진입 후엔 S로 토글.',
-              );
-              return;
-            }
-            appState.clearSceneSelection();
-            appState.sceneSelectionMode = false;
-          }}
-        >
-          {isMobile
-            ? appState.sceneSelectionMode
-              ? `선택 모드 (${appState.selectedScenes.size}) ✕`
-              : '다중 선택'
-            : appState.selectedScenes.size > 0
-              ? `선택 (${appState.selectedScenes.size}) ✕`
-              : '다중 선택'}
-        </button>
+              // PC: 선택이 있으면 해제(키보드 선택 모드도 종료), 없으면 선택 방법 안내
+              if (appState.selectedScenes.size === 0) {
+                appState.pushMessage(
+                  'Ctrl+S(선택 모드)·Ctrl+클릭·드래그로 씬을 선택하세요. 모드 진입 후엔 S로 토글.',
+                );
+                return;
+              }
+              appState.clearSceneSelection();
+              appState.sceneSelectionMode = false;
+            }}
+          >
+            {isMobile ? (
+              // 아이콘 + 선택 수. 활성(선택 모드) 상태는 배경색(back-sky)으로 표시
+              <>
+                <FaCheckSquare size={18} />
+                {appState.sceneSelectionMode &&
+                  appState.selectedScenes.size > 0 && (
+                    <span className="ml-1 text-xs">
+                      {appState.selectedScenes.size}
+                    </span>
+                  )}
+              </>
+            ) : appState.selectedScenes.size > 0 ? (
+              `선택 (${appState.selectedScenes.size}) ✕`
+            ) : (
+              '다중 선택'
+            )}
+          </button>
+        </Tooltip>
       ),
       'change-resolution': (
         <button
