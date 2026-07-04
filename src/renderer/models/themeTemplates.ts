@@ -1,4 +1,5 @@
 import { UiThemeConfig } from '../../main/config';
+import { mix } from './uiTheme';
 
 // ── 테마 템플릿 (환경설정 > 테마 탭의 샘플 팔레트) ──
 // 템플릿 = 미리 만들어 둔 UiThemeConfig 값 세트. 적용은 편집 상태를 이 값으로
@@ -30,7 +31,10 @@ const variant = (
 ): UiThemeConfig => ({
   surface,
   surface2,
-  inputBg,
+  // 입력창은 유색 배경이면 텍스트 가시성이 떨어진다 — 기본 테마의 무채색
+  // (라이트 gray-200 / 다크 slate-700)을 기준으로 테마 색조를 25%만 섞어
+  // "아주 옅은 틴트"로 파생한다. 사용자가 직접 지정한 색은 이 경로를 안 탄다.
+  inputBg: mix(textPattern === 'light' ? '#e5e7eb' : '#334155', inputBg, 0.25),
   textPattern,
   accent,
   neutral,
