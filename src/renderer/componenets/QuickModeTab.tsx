@@ -1,17 +1,17 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
+import { useContextMenu } from 'react-contexify';
 import { v4 } from 'uuid';
 import {
   cyclingSessionService,
   gameService,
-  imageHistoryService,
   imageService,
   sessionService,
   taskQueueService,
 } from '../models';
 import { appState } from '../models/AppService';
 import { queueScene } from '../models/sceneQueueActions';
-import { Scene, Session } from '../models/types';
+import { ContextMenuType, Scene, Session } from '../models/types';
 
 // 퀵 모드 탭 — NAI 공식 웹풍의 즉시 생성 화면.
 // 중앙에 default 씬의 최신 생성 이미지를 크게 표시하고, 생성 버튼 하나로
@@ -244,21 +244,28 @@ const QuickModeTab = observer(() => {
     else startOnce();
   };
 
-  // 이미지 클릭 → default 씬 그리드 열기 (히스토리 내비게이션 재사용)
-  const openGrid = () => {
+  // 이미지 우클릭/롱프레스 → 히스토리 이미지 메뉴 재사용
+  // (씬으로 이동·그리드 보기·즐겨찾기·다운로드·삭제 — AppContextMenu.HistoryImage)
+  // 클릭(탭)은 의도적으로 무동작: 오터치로 그리드에 끌려가는 문제 방지.
+  const { show: showImageMenu } = useContextMenu({
+    id: ContextMenuType.HistoryImage,
+  });
+  const onImageContext = (e: React.MouseEvent) => {
     if (!latestPath) return;
-    imageHistoryService.navigateTo(
-      {
-        id: latestPath,
-        sessionName: curSession.name,
-        sceneType: 'scene',
-        sceneName: DEFAULT_SCENE,
-        filename: latestPath.split('/').pop()!,
-        path: latestPath,
-        createdAt: 0,
-      },
-      { openGrid: true },
-    );
+    e.preventDefault();
+    const entry = {
+      id: latestPath,
+      sessionName: curSession.name,
+      sceneType: 'scene' as const,
+      sceneName: DEFAULT_SCENE,
+      filename: latestPath.split('/').pop()!,
+      path: latestPath,
+      createdAt: 0,
+    };
+    showImageMenu({
+      event: e,
+      props: { ctx: { type: 'history_image', entry } },
+    });
   };
 
   const progressText =
@@ -266,13 +273,10 @@ const QuickModeTab = observer(() => {
 
   return (
     <div className="h-full w-full flex flex-col">
-      {/* 중앙 대형 이미지 */}
+      {/* 중앙 대형 이미지 — 클릭 무동작, 우클릭/롱프레스로 메뉴 */}
       <div
-        className={
-          'flex-1 min-h-0 relative flex items-center justify-center p-2' +
-          (image ? ' cursor-pointer' : '')
-        }
-        onClick={openGrid}
+        className="flex-1 min-h-0 relative flex items-center justify-center p-2"
+        onContextMenu={onImageContext}
       >
         {image ? (
           <img
