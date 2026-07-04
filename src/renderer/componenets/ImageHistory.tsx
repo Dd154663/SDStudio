@@ -30,6 +30,9 @@ const HistoryImageCell = observer(
     onClick: () => void;
   }) => {
     const [image, setImage] = useState<string | undefined>(undefined);
+    // 출력 해상도 비율 반영용 (로드 전엔 1:1 자리표시) — 히스토리 엔트리에는
+    // 해상도 메타가 없어 이미지 실측(naturalWidth/Height)으로 얻는다
+    const [ratio, setRatio] = useState<number | undefined>(undefined);
     // 즐겨찾기 표시용 scene (mobx 노드 — mains 변경 시 observer가 자동 갱신)
     const [scene, setScene] = useState<GenericScene | undefined>(undefined);
     const { show } = useContextMenu({ id: ContextMenuType.HistoryImage });
@@ -74,15 +77,22 @@ const HistoryImageCell = observer(
       >
         <div
           className={
-            'relative w-full aspect-square rounded overflow-hidden bg-[var(--c-input-bg)] flex items-center justify-center' +
+            'relative w-full rounded overflow-hidden bg-[var(--c-input-bg)] flex items-center justify-center' +
             (isFav ? ' border-2 border-yellow-400' : '')
           }
+          style={{ aspectRatio: ratio ?? 1 }}
         >
           {image && (
             <img
               src={image}
               draggable={false}
               className="w-full h-full object-cover"
+              onLoad={(e) => {
+                const im = e.currentTarget;
+                if (im.naturalWidth > 0 && im.naturalHeight > 0) {
+                  setRatio(im.naturalWidth / im.naturalHeight);
+                }
+              }}
             />
           )}
           {isFav && (
@@ -302,19 +312,19 @@ export const ImageHistoryDrawer = observer(() => {
 
   if (!render) return null;
   return (
-    <div
-      className="fixed inset-0 titlebar-no-drag"
-      style={{ zIndex: 2100 }}
-      onClick={() => {
-        appState.historyDrawerOpen = false;
-      }}
-    >
+    <div className="fixed inset-0 titlebar-no-drag" style={{ zIndex: 2100 }}>
+      {/* 닫기는 배경(dim) 클릭에만 연결 — 패널에서 stopPropagation 을 쓰면
+          내부 터치가 document 까지 버블되지 않아 contexify 컨텍스트 메뉴가
+          바깥 터치로 안 닫히는 버그가 생긴다 (모바일 롱프레스 메뉴) */}
       <div
         className="absolute inset-0"
         style={{
           backgroundColor: 'rgba(0,0,0,0.35)',
           opacity: shown ? 1 : 0,
           transition: 'opacity 0.26s ease',
+        }}
+        onClick={() => {
+          appState.historyDrawerOpen = false;
         }}
       />
       <div
@@ -324,7 +334,6 @@ export const ImageHistoryDrawer = observer(() => {
           transition: 'transform 0.26s cubic-bezier(0.4, 0, 0.2, 1)',
           willChange: 'transform',
         }}
-        onClick={(e) => e.stopPropagation()}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
