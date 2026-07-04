@@ -26,6 +26,7 @@ import {
   FaWrench,
   FaPalette,
   FaSlidersH,
+  FaThLarge,
 } from 'react-icons/fa';
 import { keyboardShortcutService, KeyboardShortcutService } from '../models/KeyboardShortcutService';
 import ModalOverlay from './ModalOverlay';
@@ -875,7 +876,6 @@ const CustomizationTab = ({
   setUiTheme,
   whiteMode, setWhiteMode,
   trueDark, setTrueDark,
-  uiToolbar, setUiToolbar,
 }: any) => {
   const [mobilePicker, setMobilePicker] = useState<{
     initial: string;
@@ -1197,22 +1197,6 @@ const CustomizationTab = ({
         />
       )}
 
-      {/* 툴바 버튼 구성 — 색과 달리 실시간 미리보기 아님(저장 시 반영) */}
-      <div className="pt-3 border-t line-color">
-        <div className="text-sm font-semibold text-default mb-2">
-          툴바 버튼 구성
-        </div>
-        <ToolbarLayoutEditor
-          value={uiToolbar}
-          onChange={setUiToolbar}
-          groups={[
-            { title: '씬 툴바', registry: sceneToolbarRegistry },
-            { title: '프로젝트 바', registry: projectToolbarRegistry },
-          ]}
-          mobileMode={isMobile}
-        />
-      </div>
-
       <div className="pt-2 border-t line-color">
         <button
           className="round-button back-red btn-sm"
@@ -1224,6 +1208,21 @@ const CustomizationTab = ({
     </div>
   );
 };
+
+/* ── 탭: 툴바 버튼 구성 (테마 탭에서 분리 — 두 기능이 한 탭에 있으면 스크롤이 과도) ── */
+const ToolbarTab = ({ uiToolbar, setUiToolbar }: any) => (
+  <div className="space-y-5">
+    <ToolbarLayoutEditor
+      value={uiToolbar}
+      onChange={setUiToolbar}
+      groups={[
+        { title: '씬 툴바', registry: sceneToolbarRegistry },
+        { title: '프로젝트 바', registry: projectToolbarRegistry },
+      ]}
+      mobileMode={isMobile}
+    />
+  </div>
+);
 
 const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const { curSession } = appState;
@@ -1402,6 +1401,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const tabs = [
     { key: 'login', label: '로그인', icon: <FaUser size={14} /> },
     { key: 'customization', label: '테마', icon: <FaPalette size={14} /> },
+    { key: 'toolbar', label: '툴바', icon: <FaThLarge size={14} /> },
     ...(!mobileMode ? [{ key: 'storage', label: '저장/이미지', icon: <FaFolder size={14} /> }] : []),
     { key: 'system', label: '시스템', icon: <FaCog size={14} /> },
     { key: 'personal', label: '개인 설정', icon: <FaSlidersH size={14} /> },
@@ -1422,7 +1422,9 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'personal':
         return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode }} />;
       case 'customization':
-        return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark, uiToolbar, setUiToolbar }} />;
+        return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark }} />;
+      case 'toolbar':
+        return <ToolbarTab {...{ uiToolbar, setUiToolbar }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':
@@ -1457,13 +1459,13 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
             <FaTimes size={16} />
           </button>
         </div>
-        {/* 탭 바 */}
-        <div className="flex border-b line-color px-2 flex-none">
+        {/* 탭 바 — 모바일에서 탭이 많아도 줄바꿈 대신 가로 스크롤 */}
+        <div className="flex flex-nowrap overflow-x-auto no-scrollbars border-b line-color px-2 flex-none">
           {tabs.map((tab, i) => (
             <button
               key={tab.label}
               className={
-                'flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors border-b-2 ' +
+                'flex flex-none items-center gap-1.5 px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ' +
                 (activeTab === i
                   ? 'border-sky-500 text-sky-600 dark:text-sky-400'
                   : 'border-transparent text-muted hover:text-gray-700 dark:hover:text-gray-200')
