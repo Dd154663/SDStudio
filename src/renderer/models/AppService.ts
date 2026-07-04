@@ -19,6 +19,7 @@ import {
   zipService,
 } from '.';
 import { setAppState } from './appStateRef';
+import type { UiToolbarConfig } from '../../main/config';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { isOutputImageFile, isImportImageMime } from './imageFormats';
@@ -171,6 +172,10 @@ export class AppState {
   // 레거시 프로젝트 모드: true면 기존 드롭다운 선택 UI 유지(드로어/드롭다운/그리드 공존),
   // false(기본)면 드롭다운을 제거하고 드로어 트리거로 전환
   @observable accessor legacyProjectMode: boolean = false;
+
+  // 툴바 버튼 배치 커스터마이징(config.uiToolbar 미러). 빈 객체 = 기본 등급.
+  // 배치 해석은 resolveToolbar(uiLayout.ts) 단일 출처.
+  @observable accessor uiToolbar: UiToolbarConfig = {};
 
   // 저장소 접근 불안정 시 자동 저장 일시정지(서킷 브레이커). true(기본)면 보호 활성.
   // ConfigScreen 저장/부팅 시 config.storageWriteGuard 값으로 갱신된다.

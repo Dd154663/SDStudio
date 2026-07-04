@@ -13,6 +13,7 @@ import {
   FaBookmark,
   FaBroom,
   FaEdit,
+  FaEllipsisH,
   FaExchangeAlt,
   FaFileImage,
   FaPaintBrush,
@@ -77,7 +78,8 @@ import {
 import { extractPromptDataFromBase64 } from '../models/util';
 import { IMPORT_IMAGE_ACCEPT } from '../models/imageFormats';
 import { platform } from '../models/platform';
-import { sceneToolbarRegistry } from '../models/uiLayout';
+import { resolveToolbar, sceneToolbarRegistry } from '../models/uiLayout';
+import ToolbarOverflowMenu from './ToolbarOverflowMenu';
 import { appState, SceneSelectorItem } from '../models/AppService';
 import {
   createInpaintPreset,
@@ -1852,6 +1854,8 @@ const QueueControl = observer(
     const [showSceneTrash, setShowSceneTrash] = useState(false);
     // 아티스트 태깅 모달 (데스크톱 전용)
     const [showArtistTag, setShowArtistTag] = useState(false);
+    // 툴바 ⋯(더보기) 오버플로 메뉴
+    const [showToolbarMenu, setShowToolbarMenu] = useState(false);
 
     const [bmRev, setBmRev] = useState(0);
     useEffect(() => {
@@ -2149,6 +2153,13 @@ const QueueControl = observer(
       ),
     };
 
+    // 사용자 설정(appState.uiToolbar, observable)에 따라 인라인/⋯메뉴 배치 결정
+    const toolbarLayout = resolveToolbar(
+      sceneToolbarRegistry,
+      appState.uiToolbar,
+      isMobile,
+    );
+
     return (
       <div className={`flex flex-col h-full ${className ?? ''}`}>
         {sceneSelector && (
@@ -2179,9 +2190,33 @@ const QueueControl = observer(
         {!!showPannel && (
           <div className="flex flex-none pb-1.5 flex-wrap">
             <div className="flex gap-1 md:gap-1.5 flex-wrap items-center">
-              {sceneToolbarRegistry.map(({ id }) => (
+              {toolbarLayout.inline.map((id) => (
                 <Fragment key={id}>{toolbarButtons[id]}</Fragment>
               ))}
+              {toolbarLayout.menu.length > 0 && (
+                <div className="relative">
+                  <Tooltip content="더보기">
+                    <button
+                      className={`round-button ${showToolbarMenu ? 'back-sky' : 'back-gray'}`}
+                      onClick={() => setShowToolbarMenu(!showToolbarMenu)}
+                    >
+                      <FaEllipsisH size={18} />
+                    </button>
+                  </Tooltip>
+                  <ToolbarOverflowMenu
+                    isOpen={showToolbarMenu}
+                    onClose={() => setShowToolbarMenu(false)}
+                    title="더보기"
+                    items={toolbarLayout.menu.map((id) => ({
+                      id,
+                      name: sceneToolbarRegistry.find((b) => b.id === id)!.name,
+                      // 노드를 캐시하지 않고 매 렌더 참조 — 상태 의존 라벨
+                      // ("선택 씬 예약추가 (N)" 등)이 메뉴가 열린 채로도 갱신되도록
+                      node: toolbarButtons[id],
+                    }))}
+                  />
+                </div>
+              )}
             </div>
             <div className="ml-auto mr-2 hidden md:flex items-center gap-2">
               {!appState.classicSceneCard && (

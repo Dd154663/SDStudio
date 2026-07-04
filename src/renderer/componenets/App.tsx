@@ -234,6 +234,7 @@ export const App = observer(() => {
       appState.classicSceneCard = conf.classicSceneCard ?? false;
       appState.legacyProjectMode = conf.legacyProjectMode ?? false;
       appState.storageWriteGuard = conf.storageWriteGuard ?? true;
+      appState.uiToolbar = conf.uiToolbar ?? {};
     };
     refreshDarkMode();
     sessionService.addEventListener('config-changed', refreshDarkMode);
