@@ -1,6 +1,7 @@
 import React, { ReactNode, useEffect, useCallback, useRef } from 'react';
 import { FaTimes } from 'react-icons/fa';
 import { appState } from '../models/AppService';
+import { backStackService } from '../models/BackStackService';
 
 interface ModalOverlayProps {
   isOpen: boolean;
@@ -22,6 +23,18 @@ const ModalOverlay = ({
   hidden,
 }: ModalOverlayProps) => {
   const mouseDownOnBackdrop = useRef(false);
+
+  // 안드로이드 뒤로가기로 이 모달을 닫는다. onClose 는 매 렌더마다 새 함수일 수
+  // 있으므로 ref 로 최신값을 보관하고, 백스택 push/remove 는 isOpen 전환 시에만
+  // 실행해 스택 순서가 렌더로 흔들리지 않게 한다.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handle = backStackService.push(() => onCloseRef.current());
+    return () => handle.remove();
+  }, [isOpen]);
 
   const handleEscape = useCallback(
     (e: KeyboardEvent) => {

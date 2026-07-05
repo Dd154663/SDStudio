@@ -22,6 +22,7 @@ import {
 } from 'react-icons/fa';
 import { sessionService, imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
+import { backStackService } from '../models/BackStackService';
 import Tooltip from './Tooltip';
 import MobileColorPicker from './MobileColorPicker';
 import { pushRecentProject } from './ProjectBrowser';
@@ -270,6 +271,15 @@ const ProjectDrawer = observer(() => {
     sessionService.addEventListener('listupdated', onUpdate);
     return () => sessionService.removeEventListener('listupdated', onUpdate);
   }, [refresh]);
+
+  // 안드로이드 뒤로가기로 드로어 닫기
+  useEffect(() => {
+    if (!open) return;
+    const handle = backStackService.push(() => {
+      appState.projectDrawerOpen = false;
+    });
+    return () => handle.remove();
+  }, [open]);
 
   // 열림/닫힘 트랜지션 제어
   useEffect(() => {

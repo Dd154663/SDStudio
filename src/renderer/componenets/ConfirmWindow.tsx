@@ -1,6 +1,7 @@
 import { useContext, useEffect, useState } from 'react';
 import { DropdownSelect } from './UtilComponents';
 import { appState } from '../models/AppService';
+import { backStackService } from '../models/BackStackService';
 import { observer } from 'mobx-react-lite';
 
 export interface Dialog {
@@ -66,6 +67,19 @@ const ConfirmWindow = observer(() => {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [inputValue, checkedItems, appState.dialogs]);
+
+  // 안드로이드 뒤로가기로 최상단 다이얼로그를 취소한다. 다이얼로그는
+  // appState.dialogs 배열로 쌓이므로 length 가 바뀔 때마다 백스택 항목을
+  // 최상단으로 갱신하고, onClose 는 호출 시점의 top 을 취소한다(취소 콜백 포함).
+  useEffect(() => {
+    if (appState.dialogs.length === 0) return;
+    const handle = backStackService.push(() => {
+      const top = appState.dialogs[appState.dialogs.length - 1];
+      if (top?.onCancel) top.onCancel();
+      appState.dialogs.pop();
+    });
+    return () => handle.remove();
+  }, [appState.dialogs.length]);
 
   return (
     <>

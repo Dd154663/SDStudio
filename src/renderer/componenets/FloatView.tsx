@@ -8,9 +8,8 @@ import React, {
   useRef,
 } from 'react';
 import { FaTimes } from 'react-icons/fa';
-import { App as CapacitorApp } from '@capacitor/app';
-import { isMobile } from '../models';
 import { appState } from '../models/AppService';
+import { backStackService, BackStackHandle } from '../models/BackStackService';
 
 interface FloatView {
   id: number;
@@ -45,15 +44,27 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = ({
   children,
 }) => {
   const [views, setViews] = useState<FloatView[]>([]);
+  // 뷰별 백스택 핸들 보관 (id → handle). 안드로이드 뒤로가기가 중앙 백스택을
+  // 통해 최상단 뷰부터 닫도록 각 뷰를 push 하고, 닫힐 때 remove 한다.
+  const backHandles = useRef<Map<number, BackStackHandle>>(new Map());
 
   const registerView = (view: FloatView) => {
     setViews((prevViews) => [...prevViews, view].sort((a, b) => b.id - a.id));
     appState.incrementFloatView();
+    backHandles.current.set(
+      view.id,
+      backStackService.push(() => view.onEscape?.()),
+    );
   };
 
   const unregisterView = (id: number) => {
     setViews((prevViews) => prevViews.filter((view) => view.id !== id));
     appState.decrementFloatView();
+    const handle = backHandles.current.get(id);
+    if (handle) {
+      handle.remove();
+      backHandles.current.delete(id);
+    }
   };
 
   const closeTopView = () => {
@@ -69,22 +80,18 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = ({
     }
   };
 
-  const handleBackButton = (e: any) => {
-    if (views.length > 0) {
-      closeTopView();
-    } else {
-      CapacitorApp.minimizeApp();
-    }
-  };
-
   useEffect(() => {
     document.addEventListener('keydown', handleEscape);
-    if (isMobile) CapacitorApp.addListener('backButton', handleBackButton);
     return () => {
       document.removeEventListener('keydown', handleEscape);
-      if (isMobile) CapacitorApp.removeAllListeners();
     };
   }, [views]);
+
+  // 안드로이드 뒤로가기 리스너를 부팅 직후 한 번 등록해 둔다. 오버레이가
+  // 하나도 없을 때 뒤로가기를 눌러도 앱이 종료되지 않고 최소화되도록.
+  useEffect(() => {
+    backStackService.init();
+  }, []);
 
   return (
     <FloatViewContext.Provider value={{ registerView, unregisterView }}>

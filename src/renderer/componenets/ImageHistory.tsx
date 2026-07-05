@@ -12,6 +12,7 @@ import {
 import { imageHistoryService, imageService } from '../models';
 import { GenerationHistoryEntry } from '../models/ImageHistoryService';
 import { appState } from '../models/AppService';
+import { backStackService } from '../models/BackStackService';
 import { ContextMenuType, GenericScene } from '../models/types';
 import Tooltip from './Tooltip';
 
@@ -285,6 +286,15 @@ export const ImageHistoryDrawer = observer(() => {
       const t = setTimeout(() => setRender(false), 260);
       return () => clearTimeout(t);
     }
+  }, [open]);
+
+  // 안드로이드 뒤로가기로 드로어 닫기
+  useEffect(() => {
+    if (!open) return;
+    const handle = backStackService.push(() => {
+      appState.historyDrawerOpen = false;
+    });
+    return () => handle.remove();
   }, [open]);
 
   // 드로어 위에서 좌→우 스와이프하면 닫기 (수평 우세 + 40px 임계)
