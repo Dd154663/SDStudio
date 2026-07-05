@@ -224,7 +224,7 @@ export const CharacterPresetEditor = observer(({
   const cyclingState = cyclingSessionService.state;
 
   if (!curSession) {
-    return <div className="p-4 text-gray-500">세션을 선택해주세요</div>;
+    return <div className="p-4 text-muted">세션을 선택해주세요</div>;
   }
 
   const presets = curSession.getCharacterPresets();
@@ -791,7 +791,7 @@ export const CharacterPresetEditor = observer(({
                     </label>
                   ))}
                   {filteredScenes.length === 0 && (
-                    <div className="text-xs text-gray-400 py-1">일치하는 씬이 없습니다</div>
+                    <div className="text-xs text-faint py-1">일치하는 씬이 없습니다</div>
                   )}
                 </div>
               </div>

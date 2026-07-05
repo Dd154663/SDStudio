@@ -256,14 +256,14 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
             </label>
           ))}
           {filteredSceneList.length === 0 && (
-            <div className="text-xs text-gray-400 py-1">일치하는 씬이 없습니다</div>
+            <div className="text-xs text-faint py-1">일치하는 씬이 없습니다</div>
           )}
         </div>
       </div>
 
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
-          <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+          <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" size={14} />
           <input ref={searchInputRef} type="text" placeholder="검색어 입력..." value={searchText}
             onChange={(e) => { setSearchText(e.target.value); setSearched(false); setReplaceComplete(null); }}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } }}
@@ -278,7 +278,7 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
           <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
             {results.length > 0
               ? <><span className="text-sky-500 font-bold">{results.length}</span>개 검색됨</>
-              : <span className="text-gray-400">검색 결과가 없습니다</span>}
+              : <span className="text-faint">검색 결과가 없습니다</span>}
           </div>
           {results.length > 0 && (
             <div className="max-h-48 overflow-y-auto border line-color rounded-lg divide-y divide-[color:var(--c-line)]">
@@ -297,7 +297,7 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
         <div className="flex flex-col gap-2 pt-2 border-t line-color">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
-              <FaExchangeAlt className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+              <FaExchangeAlt className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" size={14} />
               <input type="text" placeholder="변환할 텍스트 (빈칸 = 삭제)" value={replaceText}
                 onChange={(e) => { setReplaceText(e.target.value); setReplaceComplete(null); }}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doReplaceAll(); } }}
@@ -493,7 +493,7 @@ const InsertTab = () => {
   };
 
   if (!session || sceneList.length === 0) {
-    return <div className="text-sm text-gray-400">씬이 없습니다.</div>;
+    return <div className="text-sm text-faint">씬이 없습니다.</div>;
   }
 
   return (
@@ -502,7 +502,7 @@ const InsertTab = () => {
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">삽입할 텍스트</label>
         <div className="relative">
-          <FaPlus className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={12} />
+          <FaPlus className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" size={12} />
           <input ref={inputRef} type="text" placeholder="태그 입력 (예: 1girl, masterpiece)" value={insertText}
             onChange={(e) => handleInsertInput(e.target.value)}
             onKeyDown={handleInsertKeyDown}
@@ -519,7 +519,7 @@ const InsertTab = () => {
                       : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-600'
                   }`}>
                   <span className="truncate">{tag.word}</span>
-                  {tag.count != null && <span className="text-xs text-gray-400 ml-2 flex-none">{tag.count}</span>}
+                  {tag.count != null && <span className="text-xs text-faint ml-2 flex-none">{tag.count}</span>}
                 </div>
               ))}
             </div>
@@ -585,7 +585,7 @@ const InsertTab = () => {
             </label>
           ))}
           {filteredSceneList.length === 0 && (
-            <div className="text-xs text-gray-400 py-1">일치하는 씬이 없습니다</div>
+            <div className="text-xs text-faint py-1">일치하는 씬이 없습니다</div>
           )}
         </div>
       </div>

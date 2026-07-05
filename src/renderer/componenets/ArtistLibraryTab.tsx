@@ -63,7 +63,7 @@ const ArtistImage = observer(
     }
     return (
       <div className={(className || '') + ' flex items-center justify-center bg-[var(--c-surface)]'} onClick={onClick}>
-        <FaImage className="text-gray-400" />
+        <FaImage className="text-faint" />
       </div>
     );
   },
@@ -87,12 +87,12 @@ const TagPresetManageModal = observer(({ onClose }: { onClose: () => void }) => 
         </div>
         <div className="flex flex-wrap gap-2">
           {artistLibraryService.tagPresets.length === 0 && (
-            <span className="text-sm text-gray-400">프리셋이 없습니다.</span>
+            <span className="text-sm text-faint">프리셋이 없습니다.</span>
           )}
           {artistLibraryService.tagPresets.map((t) => (
             <span key={t} className="flex items-center gap-1 text-sm px-2 py-1 rounded-md bg-[var(--c-surface)] text-body">
               {t}
-              <button className="text-gray-400 hover:text-red-500" onClick={() => artistLibraryService.removeTagPreset(t)}>
+              <button className="text-faint hover:text-red-500" onClick={() => artistLibraryService.removeTagPreset(t)}>
                 <FaTrash size={11} />
               </button>
             </span>
@@ -131,8 +131,8 @@ const PromptView = observer(({ path }: { path: string }) => {
     return () => { cancelled = true; };
   }, [path]);
 
-  if (loading) return <div className="text-xs text-gray-400 py-2">프롬프트 추출 중...</div>;
-  if (!prompt && !uc) return <div className="text-xs text-gray-400 py-2">이 이미지에서 프롬프트 메타데이터를 찾지 못했습니다.</div>;
+  if (loading) return <div className="text-xs text-faint py-2">프롬프트 추출 중...</div>;
+  if (!prompt && !uc) return <div className="text-xs text-faint py-2">이 이미지에서 프롬프트 메타데이터를 찾지 못했습니다.</div>;
   return (
     <div className="flex flex-col gap-2 mt-2">
       {prompt && (
@@ -237,7 +237,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                 {selected ? (
                   <ArtistImage path={selected.path} className="w-full h-full" />
                 ) : (
-                  <div className="text-gray-400 text-sm">이미지가 없습니다</div>
+                  <div className="text-faint text-sm">이미지가 없습니다</div>
                 )}
               </div>
               {/* 썸네일 스트립 */}
@@ -247,7 +247,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                     <ArtistImage path={img.path} className="w-full h-full" onClick={() => { setSelectedId(img.id); setShowPrompt(false); }} />
                   </div>
                 ))}
-                <button className="w-14 h-14 rounded border border-dashed line-color flex items-center justify-center text-gray-400 hover:text-sky-500"
+                <button className="w-14 h-14 rounded border border-dashed line-color flex items-center justify-center text-faint hover:text-sky-500"
                   onClick={() => fileRef.current?.click()}>
                   <FaPlus />
                 </button>
@@ -276,7 +276,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
             <div className="flex-1 min-w-0">
               <div className="text-xs text-muted mb-1">태그</div>
               <div className="flex flex-wrap gap-1.5 mb-2">
-                {artist.tags.length === 0 && <span className="text-xs text-gray-400">태그 없음</span>}
+                {artist.tags.length === 0 && <span className="text-xs text-faint">태그 없음</span>}
                 {artist.tags.map((t) => (
                   <span key={t} className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300">
                     {t}
@@ -299,7 +299,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {artistLibraryService.tagPresets.length === 0 && (
-                  <span className="text-xs text-gray-400">프리셋 없음 — "관리"에서 추가</span>
+                  <span className="text-xs text-faint">프리셋 없음 — "관리"에서 추가</span>
                 )}
                 {artistLibraryService.tagPresets.map((t) => {
                   const has = artist.tags.includes(t);
@@ -349,14 +349,14 @@ const ArtistCard = observer(({
         {thumb ? (
           <ArtistImage path={thumb.path} className="w-full h-full" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-gray-400"><FaImage size={30} /></div>
+          <div className="w-full h-full flex items-center justify-center text-faint"><FaImage size={30} /></div>
         )}
         {artist.images.length > 0 && (
           <span className="absolute top-2 right-2 text-xs bg-black/60 text-white rounded-md px-2 py-0.5">{artist.images.length}장</span>
         )}
         {multiSelectMode && (
           <div className="absolute top-2 left-2 bg-[var(--c-surface-2)] rounded p-1 shadow">
-            {selected ? <FaCheckSquare className="text-sky-500" size={20} /> : <FaSquare className="text-gray-400" size={20} />}
+            {selected ? <FaCheckSquare className="text-sky-500" size={20} /> : <FaSquare className="text-faint" size={20} />}
           </div>
         )}
       </div>
@@ -396,7 +396,7 @@ const ArtistCard = observer(({
             {artist.tags.slice(0, 4).map((t) => (
               <span key={t} className="text-[11px] px-1.5 py-0.5 rounded bg-[var(--c-surface)] text-muted">{t}</span>
             ))}
-            {artist.tags.length > 4 && <span className="text-[11px] text-gray-400">+{artist.tags.length - 4}</span>}
+            {artist.tags.length > 4 && <span className="text-[11px] text-faint">+{artist.tags.length - 4}</span>}
           </div>
         )}
       </div>
@@ -407,7 +407,7 @@ const ArtistCard = observer(({
 // ─── 그리드 끝 "새 작가 추가" 카드 ───
 const AddArtistCard = ({ onClick }: { onClick: () => void }) => (
   <button
-    className="flex-none w-[calc(50%-8px)] md:w-60 self-stretch min-h-[16rem] rounded-lg border-2 border-dashed line-color flex flex-col items-center justify-center text-gray-400 hover:border-sky-400 hover:text-sky-500 transition-colors"
+    className="flex-none w-[calc(50%-8px)] md:w-60 self-stretch min-h-[16rem] rounded-lg border-2 border-dashed line-color flex flex-col items-center justify-center text-faint hover:border-sky-400 hover:text-sky-500 transition-colors"
     onClick={onClick}
   >
     <FaPlus size={30} />
@@ -474,7 +474,7 @@ const ArtistLibraryTab = observer(() => {
       {/* 툴바 */}
       <div className="flex-none p-3 border-b line-color flex flex-wrap gap-2 items-center bg-[var(--c-surface)]">
         <div className="relative flex-1 min-w-[180px]">
-          <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
+          <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" size={13} />
           <input className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-sm text-default focus:outline-none focus:ring-2 focus:ring-sky-400"
             placeholder="작가 이름 · 태그로 검색…" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
@@ -522,7 +522,7 @@ const ArtistLibraryTab = observer(() => {
       {/* 본문 */}
       <div className="flex-1 overflow-auto p-4">
         {total > 0 && list.length === 0 ? (
-          <div className="text-center text-gray-400 py-10">검색 결과가 없습니다.</div>
+          <div className="text-center text-faint py-10">검색 결과가 없습니다.</div>
         ) : (
           <div className="flex flex-wrap gap-4 items-start">
             {list.map((a) => (

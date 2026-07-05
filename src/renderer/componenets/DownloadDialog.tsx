@@ -224,7 +224,7 @@ export const DownloadDialog = observer(
             {/* 파일명 미리보기 */}
             <div className="mb-4 p-3 bg-gray-100 dark:bg-slate-700 rounded">
               <div className="flex items-center gap-2 mb-2">
-                <FaEye className="text-gray-500" />
+                <FaEye className="text-muted" />
                 <span className="text-sm font-medium text-muted">
                   파일명 미리보기:
                 </span>
@@ -244,7 +244,7 @@ export const DownloadDialog = observer(
                     </code>
                   ))}
                   {imagePaths.length > 3 && (
-                    <span className="text-gray-500 text-sm">
+                    <span className="text-muted text-sm">
                       ... 외 {imagePaths.length - 3}개
                     </span>
                   )}

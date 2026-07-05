@@ -603,7 +603,7 @@ const TaskLogSection = () => {
             </div>
             <div className="flex-1 overflow-y-auto p-3 text-xs font-mono">
               {logs.length === 0
-                ? <p className="text-gray-400 text-center py-4">로그가 없습니다.</p>
+                ? <p className="text-faint text-center py-4">로그가 없습니다.</p>
                 : [...logs].reverse().map((log, i) => (
                     <div key={i} className={'py-0.5 ' +
                       (log.level === 'error' ? 'text-red-500' : log.level === 'warn' ? 'text-yellow-500' : 'text-default')}>
@@ -799,7 +799,7 @@ const ColorField = ({
   return (
     <div className="flex items-center gap-3">
       <span className="text-sm gray-label flex-1">{label}</span>
-      {isSet && <span className="text-xs text-gray-400">{value}</span>}
+      {isSet && <span className="text-xs text-faint">{value}</span>}
       {!isMobile ? (
         <label
           className="relative w-7 h-7 rounded-full flex-none cursor-pointer overflow-hidden border line-color"
@@ -1118,7 +1118,7 @@ const CustomizationTab = ({
             버튼 색 통합 — 강조 / 일반 / 위험 3색으로 단순화
           </span>
         </label>
-        <div className="text-xs text-gray-400">
+        <div className="text-xs text-faint">
           {unify
             ? '여러 색으로 흩어진 버튼을 3가지 역할 색으로 합칩니다. (삭제는 위험색 유지)'
             : '색별로 따로 지정합니다. 미설정 시 기본 테마 색을 씁니다.'}

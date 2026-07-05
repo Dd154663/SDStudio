@@ -488,7 +488,7 @@ export const CharacterPresetInnerEditor = observer(({
           onClick={() => setShowFilenameOptions(!showFilenameOptions)}
         >
           <div className="text-sm font-medium text-gray-700 dark:text-gray-300">파일명 옵션 (선택사항)</div>
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-muted">
             {showFilenameOptions ? '▼' : '▶'}
           </span>
         </div>
@@ -514,7 +514,7 @@ export const CharacterPresetInnerEditor = observer(({
                 placeholder="예: 표정"
               />
             </div>
-            <div className="text-xs text-gray-500 bg-[var(--c-surface)] p-2 rounded">
+            <div className="text-xs text-muted bg-[var(--c-surface)] p-2 rounded">
               <div className="font-medium mb-1">파일명 미리보기:</div>
               <code className="text-sky-600 dark:text-sky-400">
                 {getFilenamePreview()}

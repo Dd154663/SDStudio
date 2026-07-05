@@ -310,7 +310,7 @@ const ExportPresetManager = observer(() => {
                     className={`p-1.5 rounded transition-colors ${
                       renamingIndex === i
                         ? 'text-sky-500 bg-sky-50 dark:bg-sky-900/20'
-                        : 'text-gray-400 hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/20'
+                        : 'text-faint hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/20'
                     }`}
                   >
                     <FaPen size={11} />
@@ -318,14 +318,14 @@ const ExportPresetManager = observer(() => {
                   <button
                     title="복제"
                     onClick={(e) => { e.stopPropagation(); duplicatePreset(i); }}
-                    className="p-1.5 rounded text-gray-400 hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/20 transition-colors"
+                    className="p-1.5 rounded text-faint hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/20 transition-colors"
                   >
                     <FaCopy size={11} />
                   </button>
                   <button
                     title="삭제"
                     onClick={(e) => { e.stopPropagation(); requestDeletePreset(i); }}
-                    className="p-1.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    className="p-1.5 rounded text-faint hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   >
                     <FaTrash size={11} />
                   </button>
@@ -451,7 +451,7 @@ const ExportPresetManager = observer(() => {
                 placeholder="1024"
                 className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
               />
-              <span className="text-xs text-gray-400">px</span>
+              <span className="text-xs text-faint">px</span>
             </div>
           )}
 

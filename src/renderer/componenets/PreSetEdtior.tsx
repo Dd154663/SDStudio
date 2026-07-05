@@ -640,7 +640,7 @@ const PreSetBulkManageModal = observer(
               </label>
             ))}
             {filtered.length === 0 && (
-              <div className="text-xs text-gray-400 py-1">
+              <div className="text-xs text-faint py-1">
                 일치하는 사전 세팅이 없습니다
               </div>
             )}

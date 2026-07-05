@@ -205,7 +205,7 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
 
   if (trashImages.length === 0 && !loading) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-400 text-lg">
+      <div className="flex items-center justify-center h-full text-faint text-lg">
         휴지통이 비어있습니다
       </div>
     );
@@ -261,7 +261,7 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
                     draggable={false}
                   />
                 ) : (
-                  <div className="w-full h-full bg-[var(--c-surface)] flex items-center justify-center text-gray-400">
+                  <div className="w-full h-full bg-[var(--c-surface)] flex items-center justify-center text-faint">
                     ...
                   </div>
                 )}
@@ -908,7 +908,7 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
           columnCount={columnCount}
           columnWidth={columnWidth}
           height={containerHeight}
-          className={'bg-gray-100 ' + (isHidden ? 'hidden' : '')}
+          className={'bg-[var(--c-zone)] ' + (isHidden ? 'hidden' : '')}
           rowCount={Math.ceil(filePaths.length / columnCount)}
           rowHeight={rowHeight}
           width={columnCount * columnWidth}
@@ -1384,7 +1384,7 @@ const ResultDetailView = observer(
           )}
           <div className="absolute bottom-0 md:bottom-auto right-0 md:top-10 flex gap-3 p-4 w-full md:w-auto">
             <button
-              className={`round-button  ml-0 md:ml-auto h-10 md:h-8 w-20 md:w-auto bg-gray-300 text-gray-700 mr-auto md:mr-0 text-xl md:text-base`}
+              className={`round-button  ml-0 md:ml-auto h-10 md:h-8 w-20 md:w-auto bg-[var(--c-input-bg)] text-body mr-auto md:mr-0 text-xl md:text-base`}
               onClick={() => {
                 setSelectedIndex(
                   (selectedIndex - 1 + paths.length) % paths.length,
@@ -1394,7 +1394,7 @@ const ResultDetailView = observer(
               <FaArrowLeft />
             </button>
             <button
-              className={`round-button h-10 md:h-8 w-20 md:w-auto bg-gray-300 text-xl text-gray-700 md:text-base`}
+              className={`round-button h-10 md:h-8 w-20 md:w-auto bg-[var(--c-input-bg)] text-xl text-body md:text-base`}
               onClick={() => {
                 setSelectedIndex((selectedIndex + 1) % paths.length);
               }}

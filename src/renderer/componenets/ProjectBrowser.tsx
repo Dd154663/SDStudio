@@ -171,7 +171,7 @@ const ProjectCard = ({
         <span className="text-[15px] text-default truncate flex-1">{name}</span>
         <Tooltip content="폴더로 이동">
         <button
-          className="flex-none text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-0.5"
+          className="flex-none text-faint hover:text-gray-700 dark:hover:text-gray-200 px-0.5"
           onClick={(e) => {
             e.stopPropagation();
             onMove();
@@ -285,7 +285,7 @@ const NavItem = ({
             e.stopPropagation();
             onEditCancel?.();
           }}
-          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 px-0.5"
+          className="text-faint hover:text-gray-600 dark:hover:text-gray-200 px-0.5"
         >
           <FaTimes size={13} />
         </span>
@@ -317,7 +317,7 @@ const NavItem = ({
       {icon}
       <span className="truncate min-w-0 max-w-[7rem] md:max-w-none md:flex-1 text-left">{label}</span>
       {count != null && (
-        <span className={`text-xs flex-none ${active ? 'text-sky-100' : 'text-gray-400 dark:text-gray-400'}`}>
+        <span className={`text-xs flex-none ${active ? 'text-sky-100' : 'text-faint dark:text-faint'}`}>
           {count}
         </span>
       )}
@@ -1006,7 +1006,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                   icon={
                     hasChildren ? (
                       <span className="flex items-center gap-0.5">
-                        {isOpen ? <FaChevronDown size={10} className="flex-none text-gray-400" /> : <FaChevronRight size={10} className="flex-none text-gray-400" />}
+                        {isOpen ? <FaChevronDown size={10} className="flex-none text-faint" /> : <FaChevronRight size={10} className="flex-none text-faint" />}
                         <FaFolder size={14} style={{ color: folderColor }} />
                       </span>
                     ) : (
@@ -1140,7 +1140,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
         {/* 검색 + 그리드 */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0 gap-3">
           <div className="relative flex-none">
-            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" size={14} />
             <input
               ref={filterRef}
               type="text"
@@ -1240,7 +1240,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                 {filter.trim() ? `검색 결과 (${filtered.length})` : `프로젝트 (${filtered.length})`}
               </div>
               {filtered.length === 0 ? (
-                <div className="text-sm text-gray-400 text-center py-8">
+                <div className="text-sm text-faint text-center py-8">
                   {filter.trim() ? '검색 결과가 없습니다' : '프로젝트가 없습니다'}
                 </div>
               ) : (

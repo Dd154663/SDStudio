@@ -122,7 +122,7 @@ const ProjectRow = observer(
           <Tooltip content="취소">
             <button
               onClick={onEditCancel}
-              className="p-2 rounded-md flex-none text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"
+              className="p-2 rounded-md flex-none text-faint hover:bg-gray-100 dark:hover:bg-slate-700"
             >
               <FaTimes size={15} />
             </button>
@@ -190,7 +190,7 @@ const ProjectRow = observer(
         {folder && (
           <span
             className={`text-xs flex-none flex items-center gap-1 ${
-              active ? 'text-sky-100' : 'text-gray-400'
+              active ? 'text-sky-100' : 'text-faint'
             }`}
           >
             <FaFolder
@@ -214,7 +214,7 @@ const ProjectRow = observer(
             className={`flex-none -mr-1 p-1.5 rounded ${
               active
                 ? 'text-sky-100 hover:bg-white/15'
-                : 'text-gray-400 hover:bg-black/10 dark:hover:bg-white/10'
+                : 'text-faint hover:bg-black/10 dark:hover:bg-white/10'
             }`}
           >
             <FaEllipsisV size={15} />
@@ -1153,7 +1153,7 @@ const ProjectDrawer = observer(() => {
         <div className="px-3 pt-3 flex-none">
           <div className="relative">
             <FaSearch
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-faint"
               size={13}
             />
             <input
@@ -1242,7 +1242,7 @@ const ProjectDrawer = observer(() => {
                 검색 결과 ({searchResults.length})
               </div>
               {searchResults.length === 0 ? (
-                <div className="text-sm text-gray-400 text-center py-6">
+                <div className="text-sm text-faint text-center py-6">
                   결과가 없습니다
                 </div>
               ) : (
@@ -1269,12 +1269,12 @@ const ProjectDrawer = observer(() => {
                     {expanded.has('__favorites__') ? (
                       <FaChevronDown
                         size={12}
-                        className="flex-none text-gray-400"
+                        className="flex-none text-faint"
                       />
                     ) : (
                       <FaChevronRight
                         size={12}
-                        className="flex-none text-gray-400"
+                        className="flex-none text-faint"
                       />
                     )}
                     <span
@@ -1284,7 +1284,7 @@ const ProjectDrawer = observer(() => {
                       <FaStar className="text-yellow-400" size={14} />
                     </span>
                     <span className="flex-1 text-left">즐겨찾기</span>
-                    <span className="text-xs text-gray-400 font-normal">
+                    <span className="text-xs text-faint font-normal">
                       {favs.length}
                     </span>
                   </button>
@@ -1410,7 +1410,7 @@ const ProjectDrawer = observer(() => {
                           <Tooltip content="취소">
                             <button
                               onClick={cancelRename}
-                              className="p-2 rounded-md flex-none text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"
+                              className="p-2 rounded-md flex-none text-faint hover:bg-gray-100 dark:hover:bg-slate-700"
                             >
                               <FaTimes size={15} />
                             </button>
@@ -1438,12 +1438,12 @@ const ProjectDrawer = observer(() => {
                             {isOpen ? (
                               <FaChevronDown
                                 size={12}
-                                className="flex-none text-gray-400"
+                                className="flex-none text-faint"
                               />
                             ) : (
                               <FaChevronRight
                                 size={12}
-                                className="flex-none text-gray-400"
+                                className="flex-none text-faint"
                               />
                             )}
                             <span
@@ -1457,7 +1457,7 @@ const ProjectDrawer = observer(() => {
                             <span className="truncate flex-1 text-left">
                               {leafName}
                             </span>
-                            <span className="text-xs text-gray-400 font-normal flex-none">
+                            <span className="text-xs text-faint font-normal flex-none">
                               {projects.length}
                             </span>
                           </button>
@@ -1540,7 +1540,7 @@ const ProjectDrawer = observer(() => {
                         <div className="pb-1">
                           {projects.length === 0 &&
                           childFolders.length === 0 ? (
-                            <div className="text-xs text-gray-400 px-2 py-1.5">
+                            <div className="text-xs text-faint px-2 py-1.5">
                               비어 있음
                             </div>
                           ) : (
@@ -1610,22 +1610,22 @@ const ProjectDrawer = observer(() => {
                       {expanded.has('__unfiled__') ? (
                         <FaChevronDown
                           size={11}
-                          className="flex-none text-gray-400"
+                          className="flex-none text-faint"
                         />
                       ) : (
                         <FaChevronRight
                           size={11}
-                          className="flex-none text-gray-400"
+                          className="flex-none text-faint"
                         />
                       )}
                       <span
                         className="flex items-center justify-center w-7 h-7 rounded-md flex-none"
                         style={{ backgroundColor: withAlpha('#94a3b8', '26') }}
                       >
-                        <FaFolder className="text-gray-400" size={14} />
+                        <FaFolder className="text-faint" size={14} />
                       </span>
                       <span className="flex-1 text-left">미분류</span>
-                      <span className="text-xs text-gray-400 font-normal">
+                      <span className="text-xs text-faint font-normal">
                         {unfiled.length}
                       </span>
                     </button>
@@ -1673,7 +1673,7 @@ const ProjectDrawer = observer(() => {
                     appState.folderBackupMenu(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-gray-400 hover:text-amber-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="p-2 rounded-md text-faint hover:text-amber-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <FaFileExport size={14} />
                 </button>
@@ -1684,7 +1684,7 @@ const ProjectDrawer = observer(() => {
                     cloneFolder(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-gray-400 hover:text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="p-2 rounded-md text-faint hover:text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <FaCopy size={14} />
                 </button>
@@ -1697,7 +1697,7 @@ const ProjectDrawer = observer(() => {
                     );
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="p-2 rounded-md text-faint hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <FaPalette size={15} />
                 </button>
@@ -1708,7 +1708,7 @@ const ProjectDrawer = observer(() => {
                     startRename(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="p-2 rounded-md text-faint hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <FaPen size={15} />
                 </button>
@@ -1719,7 +1719,7 @@ const ProjectDrawer = observer(() => {
                     deleteFolderConfirm(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="p-2 rounded-md text-faint hover:text-red-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <FaTrashAlt size={15} />
                 </button>
@@ -1730,7 +1730,7 @@ const ProjectDrawer = observer(() => {
                     createProject(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="p-2 rounded-md text-faint hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <FaPlus size={15} />
                 </button>
@@ -1741,7 +1741,7 @@ const ProjectDrawer = observer(() => {
                     createFolder(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-gray-400 hover:text-indigo-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="p-2 rounded-md text-faint hover:text-indigo-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <FaFolderPlus size={13} />
                 </button>
@@ -1760,7 +1760,7 @@ const ProjectDrawer = observer(() => {
                     handleProjectExportImport(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-gray-400 hover:text-amber-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="p-2 rounded-md text-faint hover:text-amber-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <FaFileExport size={14} />
                 </button>
@@ -1771,7 +1771,7 @@ const ProjectDrawer = observer(() => {
                     handleProjectClone(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-gray-400 hover:text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="p-2 rounded-md text-faint hover:text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <FaCopy size={14} />
                 </button>
@@ -1782,7 +1782,7 @@ const ProjectDrawer = observer(() => {
                     handleProjectRename(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-gray-400 hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="p-2 rounded-md text-faint hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <FaPen size={15} />
                 </button>
@@ -1793,7 +1793,7 @@ const ProjectDrawer = observer(() => {
                     handleProjectDelete(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="p-2 rounded-md text-faint hover:text-red-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <FaTrashAlt size={15} />
                 </button>

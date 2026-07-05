@@ -165,7 +165,7 @@ const EasyCard = observer(
               {selected ? (
                 <FaCheckSquare className="text-sky-500" size={22} />
               ) : (
-                <FaSquare className="text-gray-400" size={22} />
+                <FaSquare className="text-faint" size={22} />
               )}
             </div>
           )}
@@ -344,7 +344,7 @@ const GenRow = observer(
               {selected ? (
                 <FaCheckSquare className="text-sky-500" size={22} />
               ) : (
-                <FaSquare className="text-gray-400" size={22} />
+                <FaSquare className="text-faint" size={22} />
               )}
             </button>
           )}
@@ -356,7 +356,7 @@ const GenRow = observer(
             {entry.isDefault ? (
               <FaStar className="text-orange-500" size={22} />
             ) : (
-              <FaRegStar className="text-gray-400" size={22} />
+              <FaRegStar className="text-faint" size={22} />
             )}
           </button>
           <span className="flex-1 truncate text-default text-base font-medium">

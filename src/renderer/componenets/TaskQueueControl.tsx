@@ -180,7 +180,7 @@ const TaskQueueList = ({ onClose }: { onClose?: () => void }) => {
   return (
     <div className="absolute bottom-0 mb-14 md:mb-20 bg-white dark:bg-slate-700 w-60 md:w-96 z-20 shadow-lg prog-list flex flex-col overflow-hidden">
       <button
-        className="ml-auto mt-2 mr-2 text-gray-500 hover:text-gray-700 flex-none"
+        className="ml-auto mt-2 mr-2 text-muted hover:text-gray-700 flex-none"
         onClick={() => {
           onClose?.();
         }}

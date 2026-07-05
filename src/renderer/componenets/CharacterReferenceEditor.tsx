@@ -475,7 +475,7 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
               />
             ) : (
               <div
-                className={'flex-1 h-14 rounded-xl bg-[var(--c-surface)] flex items-center justify-center text-gray-500' + (locked ? '' : ' cursor-pointer hover:brightness-95 active:brightness-90')}
+                className={'flex-1 h-14 rounded-xl bg-[var(--c-surface)] flex items-center justify-center text-muted' + (locked ? '' : ' cursor-pointer hover:brightness-95 active:brightness-90')}
                 onClick={handleImageClick}
               >
                 {locked ? 'v4 모델 미지원' : enabledRefs.length === 0 ? '활성화된 이미지 없음' : '이미지 없음'}

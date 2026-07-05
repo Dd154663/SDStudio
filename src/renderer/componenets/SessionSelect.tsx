@@ -112,7 +112,7 @@ function ProjectTrashView() {
         </div>
       )}
       {isEmpty ? (
-        <div className="text-center text-gray-400 text-lg py-10">
+        <div className="text-center text-faint text-lg py-10">
           휴지통이 비어있습니다
         </div>
       ) : (
@@ -125,7 +125,7 @@ function ProjectTrashView() {
               <div className="font-bold text-default truncate">
                 📁 {item.name}
               </div>
-              <div className="text-sm text-gray-400">
+              <div className="text-sm text-faint">
                 삭제일 · {formatDate(item.deletedAt)}
               </div>
             </div>
@@ -469,7 +469,7 @@ const SessionSelect = observer(() => {
                       appState.curSession.name
                     : '프로젝트 선택'}
                 </span>
-                <FaChevronDown size={12} className="flex-none text-gray-400" />
+                <FaChevronDown size={12} className="flex-none text-faint" />
               </button>
             </Tooltip>
           </>

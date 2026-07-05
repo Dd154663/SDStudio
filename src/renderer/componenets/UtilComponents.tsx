@@ -332,7 +332,7 @@ export const TextAreaWithUndo = ({
   };
   return (
     <textarea
-      className="clear-textarea h-full w-full bg-gray-200 p-2"
+      className="clear-textarea h-full w-full bg-[var(--c-input-bg)] p-2"
       ref={textAreaRef}
       onChange={handleChange}
     />

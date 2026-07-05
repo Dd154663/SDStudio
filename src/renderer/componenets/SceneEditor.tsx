@@ -633,7 +633,7 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
 
       <div className="flex-1 overflow-auto">
         {characters.length === 0 ? (
-          <div className="text-center text-gray-500 py-8">
+          <div className="text-center text-muted py-8">
             <FaUser className="text-4xl mx-auto mb-2 opacity-50" />
             <div>캐릭터 프롬프트가 없습니다</div>
             <div className="text-sm mt-1">아래 버튼을 눌러 캐릭터를 추가하세요</div>

@@ -595,7 +595,7 @@ export const SceneCell = observer(
                 {emoji}
                 {scene.name}
               </div>
-              <div className="flex-none text-gray-400">
+              <div className="flex-none text-faint">
                 {previewIndex >= 0
                   ? `${previewIndex + 1}/${totalImages}`
                   : totalImages}{' '}
@@ -804,7 +804,7 @@ function SceneTrashView({ projectName }: SceneTrashViewProps) {
 
   if (deletedScenes.length === 0 && !loading) {
     return (
-      <div className="text-center text-gray-400 text-lg py-10">
+      <div className="text-center text-faint text-lg py-10">
         휴지통이 비어있습니다
       </div>
     );
@@ -822,7 +822,7 @@ function SceneTrashView({ projectName }: SceneTrashViewProps) {
               {item.type === 'inpaint' ? '🎨 ' : '🖼️ '}
               {item.name}
             </div>
-            <div className="text-sm text-gray-400">
+            <div className="text-sm text-faint">
               {item.type === 'inpaint' ? '인페인트' : '일반'} 씬 ·{' '}
               {formatDate(item.deletedAt)}
             </div>
@@ -2367,7 +2367,7 @@ const QueueControl = observer(
         )}
         {showSceneSearch && (
           <div className="flex flex-none items-center gap-2 pb-2 px-1">
-            <FaSearch className="text-gray-400 flex-none" />
+            <FaSearch className="text-faint flex-none" />
             <input
               ref={sceneSearchRef}
               type="text"
