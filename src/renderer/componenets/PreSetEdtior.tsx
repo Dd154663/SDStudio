@@ -610,7 +610,7 @@ const PreSetBulkManageModal = observer(
           <div className="flex items-center justify-between">
             <button
               onClick={toggleAll}
-              className="text-xs text-sky-500 hover:text-sky-600"
+              className="text-xs btn-link"
             >
               {allSelected ? '전체 해제' : '전체 선택'}
               {filter.trim() && ` (${filtered.length}개)`}
@@ -653,7 +653,7 @@ const PreSetBulkManageModal = observer(
             <button
               onClick={doDelete}
               disabled={selected.size === 0}
-              className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 text-white text-sm font-medium transition-colors"
+              className="px-4 py-2 rounded-lg btn-solid-red disabled:bg-gray-300 dark:disabled:bg-gray-600 text-sm font-medium transition-colors"
             >
               선택 삭제
             </button>
@@ -786,7 +786,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                       option.name = newName;
                     }
                   }}
-                  className="p-2 mx-1 icon-button bg-green-500"
+                  className="p-2 mx-1 icon-button btn-solid-green"
                 >
                   <FaFont />
                 </button>
@@ -810,7 +810,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                     newPreset.name = newName;
                     curSession!.addPreset(newPreset);
                   }}
-                  className="p-2 mx-1 icon-button bg-sky-500"
+                  className="p-2 mx-1 icon-button btn-solid-sky"
                 >
                   <FaCopy />
                 </button>
@@ -821,7 +821,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                     e.stopPropagation();
                     await appState.exportPreset(curSession, option);
                   }}
-                  className="p-2 mx-1 icon-button bg-orange-500"
+                  className="p-2 mx-1 icon-button btn-solid-orange"
                 >
                   <FaShare />
                 </button>
@@ -834,7 +834,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                         e.stopPropagation();
                         appState.exportPresetToGlobal(curSession, option);
                       }}
-                      className="p-2 mx-1 icon-button bg-yellow-500"
+                      className="p-2 mx-1 icon-button btn-solid-yellow"
                     >
                       <FaStar />
                     </button>
@@ -861,7 +861,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                       },
                     });
                   }}
-                  className="p-2 mx-1 icon-button bg-red-500"
+                  className="p-2 mx-1 icon-button btn-solid-red"
                 >
                   <FaTrash />
                 </button>

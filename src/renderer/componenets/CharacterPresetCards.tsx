@@ -229,7 +229,7 @@ export const CharacterPresetCard = observer(({
         {isEasyMode && (
           <Tooltip content="이지모드 적용">
             <button
-              className="w-8 h-8 rounded-full bg-sky-500 hover:bg-sky-600 text-white flex items-center justify-center shadow-lg transition-colors"
+              className="w-8 h-8 rounded-full btn-solid-sky flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onApplyEasy(); }}
             >
               <FaFont size={12} />
@@ -238,7 +238,7 @@ export const CharacterPresetCard = observer(({
         )}
         <Tooltip content="캐릭터 프롬프트 적용">
           <button
-            className="w-8 h-8 rounded-full bg-yellow-500 hover:bg-yellow-600 text-white flex items-center justify-center shadow-lg transition-colors"
+            className="w-8 h-8 rounded-full btn-solid-yellow flex items-center justify-center shadow-lg transition-colors"
             onClick={(e) => { e.stopPropagation(); onApplyCharacter(); }}
           >
             <FaUserAlt size={12} />
@@ -246,7 +246,7 @@ export const CharacterPresetCard = observer(({
         </Tooltip>
         <Tooltip content="복제">
           <button
-            className="w-8 h-8 rounded-full bg-orange-500 hover:bg-orange-600 text-white flex items-center justify-center shadow-lg transition-colors"
+            className="w-8 h-8 rounded-full btn-solid-orange flex items-center justify-center shadow-lg transition-colors"
             onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
           >
             <FaCopy size={12} />
@@ -255,7 +255,7 @@ export const CharacterPresetCard = observer(({
         {onCopyToGlobal && (
           <Tooltip content="글로벌로 복사">
             <button
-              className="w-8 h-8 rounded-full bg-purple-500 hover:bg-purple-600 text-white flex items-center justify-center shadow-lg transition-colors"
+              className="w-8 h-8 rounded-full btn-solid-purple flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onCopyToGlobal(); }}
             >
               <FaCloudUploadAlt size={13} />
@@ -264,7 +264,7 @@ export const CharacterPresetCard = observer(({
         )}
         <Tooltip content="삭제">
           <button
-            className="w-8 h-8 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-lg transition-colors"
+            className="w-8 h-8 rounded-full btn-solid-red flex items-center justify-center shadow-lg transition-colors"
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
           >
             <FaTrash size={12} />
@@ -437,7 +437,7 @@ export const GlobalCharacterPresetCard = ({
           {isEasyMode && (
             <Tooltip content="불러와서 이지모드 적용">
               <button
-                className="w-8 h-8 rounded-full bg-sky-500 hover:bg-sky-600 text-white flex items-center justify-center shadow-lg transition-colors"
+                className="w-8 h-8 rounded-full btn-solid-sky flex items-center justify-center shadow-lg transition-colors"
                 onClick={(e) => { e.stopPropagation(); onApplyEasy(); }}
               >
                 <FaFont size={12} />
@@ -446,7 +446,7 @@ export const GlobalCharacterPresetCard = ({
           )}
           <Tooltip content="불러와서 캐릭터 프롬프트 적용">
             <button
-              className="w-8 h-8 rounded-full bg-yellow-500 hover:bg-yellow-600 text-white flex items-center justify-center shadow-lg transition-colors"
+              className="w-8 h-8 rounded-full btn-solid-yellow flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onApplyCharacter(); }}
             >
               <FaUserAlt size={12} />
@@ -454,7 +454,7 @@ export const GlobalCharacterPresetCard = ({
           </Tooltip>
           <Tooltip content="프로젝트로 불러오기">
             <button
-              className="w-8 h-8 rounded-full bg-purple-500 hover:bg-purple-600 text-white flex items-center justify-center shadow-lg transition-colors"
+              className="w-8 h-8 rounded-full btn-solid-purple flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onLoad(); }}
             >
               <FaCloudDownloadAlt size={13} />
@@ -462,7 +462,7 @@ export const GlobalCharacterPresetCard = ({
           </Tooltip>
           <Tooltip content="복제">
             <button
-              className="w-8 h-8 rounded-full bg-orange-500 hover:bg-orange-600 text-white flex items-center justify-center shadow-lg transition-colors"
+              className="w-8 h-8 rounded-full btn-solid-orange flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
             >
               <FaCopy size={12} />
@@ -470,7 +470,7 @@ export const GlobalCharacterPresetCard = ({
           </Tooltip>
           <Tooltip content="삭제">
             <button
-              className="w-8 h-8 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-lg transition-colors"
+              className="w-8 h-8 rounded-full btn-solid-red flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onDelete(); }}
             >
               <FaTrash size={12} />

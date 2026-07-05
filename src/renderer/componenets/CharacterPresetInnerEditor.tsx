@@ -527,7 +527,7 @@ export const CharacterPresetInnerEditor = observer(({
       {/* 하단 저장 버튼 */}
       <div className="flex gap-2 pt-2 border-t line-color">
         <button
-          className="flex-1 px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-600 text-white text-sm font-medium transition-colors"
+          className="flex-1 px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
           onClick={handleSave}
         >
           <FaCheck className="inline mr-1.5" size={11} />

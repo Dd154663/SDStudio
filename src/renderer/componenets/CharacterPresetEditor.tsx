@@ -532,7 +532,7 @@ export const CharacterPresetEditor = observer(({
           <div className="flex gap-2">
             {cyclingState === 'running' ? (
               <button
-                className="px-4 py-1.5 rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
+                className="px-4 py-1.5 rounded-lg btn-solid-yellow text-sm font-medium transition-colors flex items-center gap-1.5"
                 onClick={() => {
                   taskQueueService.stop();
                 }}
@@ -542,7 +542,7 @@ export const CharacterPresetEditor = observer(({
               </button>
             ) : (
               <button
-                className="px-4 py-1.5 rounded-lg bg-green-500 hover:bg-green-600 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
+                className="px-4 py-1.5 rounded-lg btn-solid-green text-sm font-medium transition-colors flex items-center gap-1.5"
                 onClick={() => cyclingSessionService.resume()}
               >
                 <FaPlay size={10} />
@@ -550,7 +550,7 @@ export const CharacterPresetEditor = observer(({
               </button>
             )}
             <button
-              className="px-4 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
+              className="px-4 py-1.5 rounded-lg btn-solid-red text-sm font-medium transition-colors flex items-center gap-1.5"
               onClick={() => {
                 taskQueueService.stop();
                 cyclingSessionService.cancel();
@@ -685,7 +685,7 @@ export const CharacterPresetEditor = observer(({
           <div className="text-muted mb-1">캐릭터 프리셋이 없습니다</div>
           <div className="text-sm text-faint mb-4">새 프리셋을 추가해보세요</div>
           <button
-            className="px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-600 text-white text-sm font-medium transition-colors"
+            className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
             onClick={handleAddNew}
           >
             <FaPlus className="inline mr-1.5" size={11} />
@@ -765,7 +765,7 @@ export const CharacterPresetEditor = observer(({
                       targets.forEach((n) => allSelected ? next.delete(n) : next.add(n));
                       setSelectedScenes(next);
                     }}
-                    className="text-xs text-sky-500 hover:text-sky-600"
+                    className="text-xs btn-link"
                   >
                     {filteredScenes.every((s) => selectedScenes.has(s.name)) ? '전체 해제' : '전체 선택'}
                     {sceneFilter.trim() && ` (${filteredScenes.length}개)`}

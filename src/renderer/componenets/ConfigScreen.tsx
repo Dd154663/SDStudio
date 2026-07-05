@@ -59,7 +59,7 @@ const LoginTab = ({
             ? <span className={`${roundTag} back-green`}>Yes</span>
             : <span className={`${roundTag} back-red`}>No</span>}
         </p>
-        <button className="back-sky py-1 px-3 rounded hover:brightness-95 active:brightness-90 ml-auto"
+        <button className="btn back-sky py-1 px-3 rounded ml-auto"
           onClick={loginWithToken}>
           토큰 로그인
         </button>
@@ -117,7 +117,7 @@ const ImageEditTab = ({
       <label htmlFor="cfgLocalBg" className="text-sm gray-label">로컬 배경 제거 모델 사용</label>
     </div>
     {!ready && (
-      <button className="w-full back-green py-2 rounded hover:brightness-95 active:brightness-90"
+      <button className="btn w-full back-green py-2 rounded"
         onClick={() => { if (!localAIService.downloading) localAIService.download(); }}>
         {!localAIService.downloading
           ? '로컬 배경 제거 모델 설치'
@@ -164,7 +164,7 @@ const StorageTab = ({
         {saveLocation || '기본 위치'}
       </div>
     </div>
-    <button className="w-full back-green py-2 rounded hover:brightness-95 active:brightness-90"
+    <button className="btn w-full back-green py-2 rounded"
       onClick={selectFolder}>
       이미지 및 데이터 저장 위치 변경
     </button>
@@ -179,19 +179,19 @@ const StorageTab = ({
       </div>
     </div>
     <div className="flex gap-2">
-      <button className="flex-1 back-green py-2 rounded hover:brightness-95 active:brightness-90"
+      <button className="btn flex-1 back-green py-2 rounded"
         onClick={selectDefaultExportFolder}>
         기본 내보내기 폴더 지정
       </button>
       {defaultExportFolder && (
-        <button className="px-3 back-gray py-2 rounded hover:brightness-95 active:brightness-90"
+        <button className="btn px-3 back-gray py-2 rounded"
           onClick={() => setDefaultExportFolder('')}>
           지우기
         </button>
       )}
     </div>
     <hr className="line-color" />
-    <button className="w-full back-red py-2 rounded hover:brightness-95 active:brightness-90"
+    <button className="btn w-full back-red py-2 rounded"
       onClick={clearImageCache}>
       이미지 캐시 초기화
     </button>
@@ -208,7 +208,7 @@ const StorageTab = ({
         이미지 파일은 존재하지만 프로그램에서 보이지 않는 경우, 파일시스템을 스캔하여 누락된 씬과 이미지를 재연결합니다.
       </p>
       <button
-        className="px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium transition-colors"
+        className="px-4 py-2 rounded-lg btn-solid-orange text-sm font-medium transition-colors"
         onClick={() => appState.recoverProjectImages()}
       >
         현재 프로젝트 이미지 복구
@@ -246,7 +246,7 @@ const RecoveryTab = () => (
         복구가 동작하지 않을 수 있습니다. 이 기능은 파일을 삭제하지 않습니다.
       </p>
       <button
-        className="px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium transition-colors"
+        className="px-4 py-2 rounded-lg btn-solid-orange text-sm font-medium transition-colors"
         onClick={() => appState.recoverProjectImages()}
       >
         현재 프로젝트 이미지 복구
@@ -304,7 +304,7 @@ const FolderCleanupSection = ({ folder, label, description }: { folder: string; 
       <div className="flex items-center gap-2">
         <label className="block text-sm gray-label font-bold">{label}</label>
         <button
-          className="text-xs back-gray px-2 py-0.5 rounded hover:brightness-95 active:brightness-90"
+          className="btn text-xs back-gray px-2 py-0.5 rounded"
           onClick={loadFiles}
           disabled={loading}
         >
@@ -321,7 +321,7 @@ const FolderCleanupSection = ({ folder, label, description }: { folder: string; 
             <div className="space-y-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <button
-                  className="text-sm back-red px-3 py-1.5 rounded hover:brightness-95 active:brightness-90"
+                  className="btn text-sm back-red px-3 py-1.5 rounded"
                   onClick={() => {
                     if (confirm(`${label}의 모든 파일(${files.length}개, ${formatSize(totalSize)})을 삭제합니다.`)) {
                       deleteFiles(files);
@@ -342,7 +342,7 @@ const FolderCleanupSection = ({ folder, label, description }: { folder: string; 
                   />
                   <span className="text-sm gray-label whitespace-nowrap">일 이전만</span>
                   <button
-                    className="text-sm back-orange px-3 py-1.5 rounded hover:brightness-95 active:brightness-90"
+                    className="btn text-sm back-orange px-3 py-1.5 rounded"
                     onClick={() => {
                       if (oldFiles.length === 0) {
                         alert(`${days}일 이전 파일이 없습니다.`);
@@ -588,7 +588,7 @@ const TaskLogSection = () => {
 
   return (
     <>
-      <button className="w-full back-gray py-2 rounded hover:brightness-95 active:brightness-90 text-sm"
+      <button className="btn w-full back-gray py-2 rounded text-sm"
         onClick={() => setShowDialog(true)}>
         작업 로그 보기
       </button>
@@ -613,9 +613,9 @@ const TaskLogSection = () => {
               }
             </div>
             <div className="flex gap-2 p-3 border-t line-color">
-              <button className="flex-1 back-sky py-2 rounded text-sm hover:brightness-95 active:brightness-90"
+              <button className="btn flex-1 back-sky py-2 rounded text-sm"
                 onClick={downloadLogs} disabled={logs.length === 0}>다운로드</button>
-              <button className="flex-1 back-gray py-2 rounded text-sm hover:brightness-95 active:brightness-90"
+              <button className="btn flex-1 back-gray py-2 rounded text-sm"
                 onClick={() => taskQueueService.clearLogs()} disabled={logs.length === 0}>초기화</button>
             </div>
           </div>
@@ -1511,7 +1511,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
         </div>
         {/* 저장 버튼 */}
         <div className="flex-none px-3 py-4 md:p-4 border-t line-color">
-          <button className="w-full back-sky py-2.5 rounded-lg hover:brightness-95 active:brightness-90 font-medium"
+          <button className="btn w-full back-sky py-2.5 rounded-lg font-medium"
             onClick={handleSave}>
             저장
           </button>

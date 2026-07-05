@@ -239,7 +239,7 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
       <div>
         <div className="flex items-center justify-between mb-1">
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">씬 선택</span>
-          <button onClick={toggleAll} className="text-xs text-sky-500 hover:text-sky-600">
+          <button onClick={toggleAll} className="text-xs btn-link">
             {filteredSceneList.every((n) => selectedScenes.has(n)) ? '전체 해제' : '전체 선택'}
             {sceneFilter.trim() && ` (${filteredSceneList.length}개)`}
           </button>
@@ -270,7 +270,7 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
             className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
         </div>
         <button onClick={doSearch} disabled={!searchText.trim()}
-          className="px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 text-white text-sm font-medium transition-colors flex-none">검색</button>
+          className="px-4 py-2 rounded-lg btn-solid-sky disabled:bg-gray-300 dark:disabled:bg-gray-600 text-sm font-medium transition-colors flex-none">검색</button>
       </div>
 
       {searched && (
@@ -304,7 +304,7 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
                 className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
             </div>
             <button onClick={doReplaceAll}
-              className="px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium transition-colors flex-none">모두 변환</button>
+              className="px-4 py-2 rounded-lg btn-solid-orange text-sm font-medium transition-colors flex-none">모두 변환</button>
           </div>
           {replaceComplete !== null && (
             <div className="text-sm text-green-600 dark:text-green-400 font-medium">
@@ -568,7 +568,7 @@ const InsertTab = () => {
       <div>
         <div className="flex items-center justify-between mb-1">
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">씬 선택</span>
-          <button onClick={toggleAll} className="text-xs text-sky-500 hover:text-sky-600">
+          <button onClick={toggleAll} className="text-xs btn-link">
             {filteredSceneList.every((n) => selectedScenes.has(n)) ? '전체 해제' : '전체 선택'}
             {sceneFilter.trim() && ` (${filteredSceneList.length}개)`}
           </button>
@@ -600,7 +600,7 @@ const InsertTab = () => {
             : '삽입할 텍스트를 입력하세요'}
         </span>
         <button onClick={doInsert} disabled={!insertText.trim() || affectedCount === 0}
-          className="px-4 py-2 rounded-lg bg-green-500 hover:bg-green-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 text-white text-sm font-medium transition-colors">
+          className="px-4 py-2 rounded-lg btn-solid-green disabled:bg-gray-300 dark:disabled:bg-gray-600 text-sm font-medium transition-colors">
           적용
         </button>
       </div>

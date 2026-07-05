@@ -543,7 +543,7 @@ export const ExternalImageView = observer(
           {/* 하단 버튼 */}
           <div className="flex-none p-4 border-t line-color">
             <button
-              className="w-full back-sky py-2.5 rounded-lg hover:brightness-95 active:brightness-90 font-medium"
+              className="w-full btn back-sky py-2.5 rounded-lg font-medium"
               onClick={applyImport}
               disabled={importing || !job}
             >

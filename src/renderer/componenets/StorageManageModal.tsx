@@ -77,7 +77,7 @@ const StorageManageModal = observer(
                     계산 중... {bulk.done}/{bulk.total}
                   </span>
                   <button
-                    className="text-sm back-red px-3 py-1 rounded hover:brightness-95 active:brightness-90"
+                    className="text-sm btn back-red px-3 py-1 rounded"
                     onClick={() => projectSizeService.cancelBulk()}
                   >
                     중지
@@ -85,7 +85,7 @@ const StorageManageModal = observer(
                 </>
               ) : (
                 <button
-                  className="text-sm back-sky px-3 py-1 rounded hover:brightness-95 active:brightness-90 disabled:opacity-50"
+                  className="text-sm btn back-sky px-3 py-1 rounded disabled:opacity-50"
                   onClick={() => projectSizeService.calculateAll(sorted)}
                   disabled={names.length === 0}
                 >
@@ -162,14 +162,14 @@ const StorageManageModal = observer(
                     </span>
                   )}
                   <button
-                    className="text-xs back-gray px-2 py-1 rounded flex-none hover:brightness-95 active:brightness-90 disabled:opacity-50"
+                    className="text-xs btn back-gray px-2 py-1 rounded flex-none disabled:opacity-50"
                     disabled={busy || !!bulk}
                     onClick={() => projectSizeService.calculate(n)}
                   >
                     {busy ? '...' : e ? '↻' : '계산'}
                   </button>
                   <button
-                    className="text-xs back-sky px-2 py-1 rounded flex-none hover:brightness-95 active:brightness-90"
+                    className="text-xs btn back-sky px-2 py-1 rounded flex-none"
                     onClick={() => onJump(n)}
                   >
                     이동

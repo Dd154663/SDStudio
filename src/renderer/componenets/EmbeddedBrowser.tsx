@@ -279,7 +279,7 @@ const DesktopBrowser: React.FC = () => {
         {bookmarks.map(bm => (
           <button
             key={bm.id}
-            className="flex-none text-xs px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-slate-700 whitespace-nowrap max-w-[120px] truncate text-gray-700 dark:text-gray-300"
+            className="flex-none text-xs px-2 py-1 rounded btn-ghost whitespace-nowrap max-w-[120px] truncate text-gray-700 dark:text-gray-300"
             onClick={() => navigate(bm.url)}
             onContextMenu={(e) => handleBookmarkContextMenu(e, bm)}
             title={bm.url}
@@ -288,7 +288,7 @@ const DesktopBrowser: React.FC = () => {
           </button>
         ))}
         <button
-          className="flex-none text-xs px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-muted"
+          className="flex-none text-xs px-2 py-1 rounded btn-ghost text-muted"
           onClick={() => setDialog({ mode: 'add' })}
           title="즐겨찾기 추가"
         >
@@ -299,21 +299,21 @@ const DesktopBrowser: React.FC = () => {
       {/* 네비게이션 바 */}
       <div className="flex-none flex items-center gap-1 px-2 py-1 border-b line-color">
         <button
-          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-30 text-gray-700 dark:text-gray-300"
+          className="p-1.5 rounded btn-ghost disabled:opacity-30 text-gray-700 dark:text-gray-300"
           disabled={!canGoBack}
           onClick={() => webviewRef.current?.goBack()}
         >
           <FaArrowLeft size={12} />
         </button>
         <button
-          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-30 text-gray-700 dark:text-gray-300"
+          className="p-1.5 rounded btn-ghost disabled:opacity-30 text-gray-700 dark:text-gray-300"
           disabled={!canGoForward}
           onClick={() => webviewRef.current?.goForward()}
         >
           <FaArrowRight size={12} />
         </button>
         <button
-          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-300"
+          className="p-1.5 rounded btn-ghost text-gray-700 dark:text-gray-300"
           onClick={() => loading ? webviewRef.current?.stop() : webviewRef.current?.reload()}
         >
           <FaRedo size={12} className={loading ? 'animate-spin' : ''} />
@@ -370,13 +370,13 @@ const DesktopBrowser: React.FC = () => {
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
-            className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-300 flex items-center gap-2"
+            className="w-full text-left px-3 py-1.5 text-sm btn-ghost text-gray-700 dark:text-gray-300 flex items-center gap-2"
             onClick={() => { setDialog({ mode: 'edit', bookmark: contextMenu.bookmark }); setContextMenu(null); }}
           >
             <FaPen size={10} /> 편집
           </button>
           <button
-            className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-slate-700 text-red-500 flex items-center gap-2"
+            className="w-full text-left px-3 py-1.5 text-sm btn-ghost text-red-500 flex items-center gap-2"
             onClick={() => handleDeleteBookmark(contextMenu.bookmark.id)}
           >
             <FaTrash size={10} /> 삭제

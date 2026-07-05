@@ -139,7 +139,7 @@ const PromptView = observer(({ path }: { path: string }) => {
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs text-muted">프롬프트</span>
-            <button className="text-xs text-sky-500 hover:text-sky-600" onClick={() => copyText(prompt, '프롬프트를 복사했습니다')}>
+            <button className="text-xs btn-link" onClick={() => copyText(prompt, '프롬프트를 복사했습니다')}>
               <FaCopy className="inline mr-1" size={10} />복사
             </button>
           </div>
@@ -150,7 +150,7 @@ const PromptView = observer(({ path }: { path: string }) => {
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs text-muted">네거티브</span>
-            <button className="text-xs text-sky-500 hover:text-sky-600" onClick={() => copyText(uc, '네거티브를 복사했습니다')}>
+            <button className="text-xs btn-link" onClick={() => copyText(uc, '네거티브를 복사했습니다')}>
               <FaCopy className="inline mr-1" size={10} />복사
             </button>
           </div>
@@ -293,7 +293,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
               />
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs text-muted">태그 프리셋 (클릭해서 추가)</span>
-                <button className="text-xs text-sky-500 hover:text-sky-600" onClick={() => setManagePreset(true)}>
+                <button className="text-xs btn-link" onClick={() => setManagePreset(true)}>
                   <FaPen className="inline mr-1" size={9} />관리
                 </button>
               </div>
@@ -506,7 +506,7 @@ const ArtistLibraryTab = observer(() => {
         ) : (
           <>
             <button
-              className="round-button bg-red-500 hover:bg-red-600 text-white px-3 py-2 text-sm flex items-center gap-1 disabled:opacity-50"
+              className="round-button btn-solid-red px-3 py-2 text-sm flex items-center gap-1 disabled:opacity-50"
               disabled={selectedIds.size === 0}
               onClick={doBulkDelete}
             >

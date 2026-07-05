@@ -44,7 +44,7 @@ const TagTextSection = ({
           />
           <div className="flex items-start gap-2">
             <button
-              className="text-xs back-gray px-2 py-0.5 rounded flex-none hover:brightness-95 active:brightness-90"
+              className="text-xs btn back-gray px-2 py-0.5 rounded flex-none"
               onClick={() => {
                 navigator.clipboard.writeText(text);
                 appState.pushMessage(`${items.length}개 태그 복사됨`);
@@ -107,7 +107,7 @@ const ModelInstallCard = observer(({ model }: { model: ArtistModelKey }) => {
         </div>
       )}
       <button
-        className="text-sm back-sky px-3 py-1.5 rounded hover:brightness-95 active:brightness-90 disabled:opacity-50"
+        className="text-sm btn back-sky px-3 py-1.5 rounded disabled:opacity-50"
         disabled={busy || otherBusy}
         onClick={() => {
           artistTagService.download(model).catch((e: any) => {
@@ -328,7 +328,7 @@ const ArtistTagModal = observer(
             </div>
 
             <button
-              className="w-full back-sky py-2 rounded-lg hover:brightness-95 active:brightness-90 disabled:opacity-50 font-medium"
+              className="w-full btn back-sky py-2 rounded-lg disabled:opacity-50 font-medium"
               disabled={!imageUri || analyzing || !anyInstalled}
               onClick={analyze}
             >

@@ -216,14 +216,14 @@ const SessionSelect = observer(() => {
   // 구성·배치는 projectToolbarRegistry + resolveToolbar 가 결정한다.
   const toolbarButtons: Record<string, React.ReactNode> = {
     'add-session': (
-      <button className={`icon-button nback-sky mx-1`} onClick={addSession}>
+      <button className={`icon-button mx-1`} onClick={addSession}>
         <FaPlus size={18} />
       </button>
     ),
     'character-presets': (
       <Tooltip content={appState.appliedCharacterPreset ? `프리셋: ${appState.appliedCharacterPreset} (길게 눌러 해제)` : '캐릭터 프리셋 관리'}>
       <button
-        className={`icon-button mx-1 ${appState.appliedCharacterPreset ? 'back-green' : 'nback-green'}`}
+        className={`icon-button mx-1 ${appState.appliedCharacterPreset ? 'back-green' : ''}`}
         onClick={() => {
           if (!appState.curSession) {
             appState.pushMessage('프로젝트를 먼저 선택해주세요');
@@ -257,7 +257,7 @@ const SessionSelect = observer(() => {
     ),
     'backup-export': (
       <button
-        className={`icon-button nback-orange mx-1`}
+        className={`icon-button mx-1`}
         onClick={() => {
           appState.projectBackupMenu();
         }}
@@ -266,14 +266,14 @@ const SessionSelect = observer(() => {
       </button>
     ),
     'delete-session': (
-      <button className={`icon-button nback-red mx-1`} onClick={deleteSession}>
+      <button className={`icon-button mx-1`} onClick={deleteSession}>
         <FaTrashAlt size={18} />{' '}
       </button>
     ),
     'project-trash': (
       <Tooltip content="프로젝트 휴지통">
       <button
-        className={`icon-button nback-gray mx-1`}
+        className={`icon-button mx-1`}
         onClick={() => setShowProjectTrash(true)}
       >
         <FaTrashRestore size={18} />
@@ -418,7 +418,7 @@ const SessionSelect = observer(() => {
           <>
             <Tooltip content="프로젝트 목록(폴더)">
               <button
-                className="icon-button nback-sky flex-none bg-sky-100 dark:bg-sky-900/50 ring-1 ring-sky-300 dark:ring-sky-700"
+                className="icon-button flex-none bg-sky-100 dark:bg-sky-900/50 ring-1 ring-sky-300 dark:ring-sky-700"
                 onClick={() => {
                   appState.projectDrawerOpen = true;
                 }}
@@ -475,7 +475,7 @@ const SessionSelect = observer(() => {
           </>
         )}
         <Tooltip content="프로젝트 탐색">
-        <button className={`icon-button nback-sky mx-1`} onClick={() => { appState.projectBrowserOpen = true; }}>
+        <button className={`icon-button mx-1`} onClick={() => { appState.projectBrowserOpen = true; }}>
           <FaThLarge size={16} />
         </button>
         </Tooltip>
@@ -497,7 +497,7 @@ const SessionSelect = observer(() => {
           <ToolbarMenuDropTarget group="project">
             <Tooltip content="더보기">
               <button
-                className={`icon-button ${showProjectMenu ? 'nback-sky' : 'nback-gray'} mx-1${toolbarLayout.menu.length === 0 ? ' opacity-40' : ''}`}
+                className={`icon-button mx-1${toolbarLayout.menu.length === 0 ? ' opacity-40' : ''}`}
                 onClick={() => {
                   if (toolbarLayout.menu.length > 0)
                     setShowProjectMenu(!showProjectMenu);

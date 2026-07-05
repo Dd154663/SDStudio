@@ -281,6 +281,63 @@ body {
   color: var(--c-icon-text);
 }
 
+/* ── #12 버튼 언어 통일 ─────────────────────────────────────
+   원칙: 기존 모양 100% 유지 — 화면마다 반복되던 하드코딩만 클래스로 흡수.
+   색은 back-*(테마 추종) 또는 btn-solid-*(의도적 원색 유지), 크기는 px/py 조합. */
+
+/* 공통 상태 1: 키보드 포커스 링 (마우스 클릭에는 나타나지 않음) */
+.round-button:focus-visible,
+.icon-button:focus-visible,
+.tab-button:focus-visible,
+.btn-neutral:focus-visible,
+.btn:focus-visible,
+.btn-ghost:focus-visible,
+.btn-link:focus-visible {
+  outline: 2px solid rgb(56, 189, 248);
+  outline-offset: 1px;
+}
+
+/* 공통 상태 2: 비활성 */
+.round-button:disabled,
+.icon-button:disabled,
+.tab-button:disabled,
+.btn-neutral:disabled,
+.btn:disabled,
+.btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* .btn — 직사각 버튼 베이스(다이얼로그·설정 화면 언어).
+   back-* py-2 rounded hover:brightness… 인라인 반복의 공용화.
+   라운딩·패딩은 사용처 유틸(rounded/rounded-lg, px/py) 유지 — 유틸과 속성이
+   겹치면 CSS 순서에 따라 오버라이드가 깨지므로 여기선 상호작용만 정의한다. */
+.btn {
+  @apply select-none hover:brightness-95 active:brightness-90;
+  transition: filter 0.15s ease;
+}
+
+/* .btn-solid-* — 솔리드 원색 버튼(bg-{색}-500 hover:600 text-white) 캡슐화.
+   다크에서도 원색을 유지하는 기존 결정(P1.5 컬러버튼 유지)을 그대로 담는다. */
+.btn-solid-sky { @apply bg-sky-500 hover:bg-sky-600 text-white; }
+.btn-solid-green { @apply bg-green-500 hover:bg-green-600 text-white; }
+.btn-solid-red { @apply bg-red-500 hover:bg-red-600 text-white; }
+.btn-solid-orange { @apply bg-orange-500 hover:bg-orange-600 text-white; }
+.btn-solid-yellow { @apply bg-yellow-500 hover:bg-yellow-600 text-white; }
+.btn-solid-indigo { @apply bg-indigo-500 hover:bg-indigo-600 text-white; }
+.btn-solid-purple { @apply bg-purple-500 hover:bg-purple-600 text-white; }
+
+/* .btn-ghost — 배경 없는 아이콘/텍스트 버튼의 hover 배경 공용화.
+   패딩·라운딩(p-2 rounded-md 등)과 hover:text-* 액센트는 사용처에서 조합 */
+.btn-ghost {
+  @apply transition-colors hover:bg-gray-100 dark:hover:bg-slate-700;
+}
+
+/* .btn-link — 텍스트 링크형 버튼 */
+.btn-link {
+  @apply text-sky-500 hover:text-sky-600;
+}
+
 .gray-input {
   @apply focus:border-0 focus:outline-0 rounded-md focus:outline-black py-1 md:py-1.5 md:pl-2 md:pr-2 placeholder:text-gray-400;
   background-color: var(--c-input-bg);

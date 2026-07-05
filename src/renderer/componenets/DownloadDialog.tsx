@@ -261,7 +261,7 @@ export const DownloadDialog = observer(
                     {imagePaths.length}):
                   </span>
                   <button
-                    className="text-sm text-sky-500 hover:text-sky-600"
+                    className="text-sm btn-link"
                     onClick={toggleSelectAll}
                     disabled={isDownloading}
                   >

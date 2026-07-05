@@ -1129,7 +1129,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
             })()}
             <button
               onClick={handleNewFolder}
-              className="flex items-center justify-center md:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none md:w-full border border-dashed line-color text-muted hover:bg-gray-100 dark:hover:bg-slate-700"
+              className="btn-ghost flex items-center justify-center md:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none md:w-full border border-dashed line-color text-muted"
             >
               <FaPlus size={11} />
               <span>새 폴더</span>
@@ -1157,7 +1157,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
               <>
                 <button
                   onClick={createProjectInView}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm bg-sky-500 hover:bg-sky-600 text-white"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm btn-solid-sky"
                 >
                   <FaPlus size={11} />
                   새 프로젝트
@@ -1180,7 +1180,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                 </span>
                 <button
                   onClick={() => setSelected(new Set(filtered))}
-                  className="px-2 py-1.5 rounded-lg text-sm text-muted hover:bg-gray-100 dark:hover:bg-slate-700"
+                  className="btn-ghost px-2 py-1.5 rounded-lg text-sm text-muted"
                 >
                   전체 선택
                 </button>
@@ -1188,7 +1188,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                 <button
                   onClick={bulkMove}
                   disabled={selected.size === 0}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm bg-sky-500 hover:bg-sky-600 text-white disabled:opacity-40"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm btn-solid-sky disabled:opacity-40"
                 >
                   <FaFolder size={12} /> 폴더로 이동
                 </button>

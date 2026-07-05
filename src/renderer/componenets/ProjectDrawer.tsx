@@ -114,7 +114,7 @@ const ProjectRow = observer(
           <Tooltip content="저장">
             <button
               onClick={onEditCommit}
-              className="p-2 rounded-md flex-none text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700"
+              className="btn-ghost p-2 rounded-md flex-none text-green-500"
             >
               <FaCheck size={15} />
             </button>
@@ -122,7 +122,7 @@ const ProjectRow = observer(
           <Tooltip content="취소">
             <button
               onClick={onEditCancel}
-              className="p-2 rounded-md flex-none text-faint hover:bg-gray-100 dark:hover:bg-slate-700"
+              className="btn-ghost p-2 rounded-md flex-none text-faint"
             >
               <FaTimes size={15} />
             </button>
@@ -1174,7 +1174,7 @@ const ProjectDrawer = observer(() => {
             </span>
             <button
               onClick={selectAllVisible}
-              className="px-2 py-1.5 rounded-lg text-sm text-muted hover:bg-gray-100 dark:hover:bg-slate-700"
+              className="btn-ghost px-2 py-1.5 rounded-lg text-sm text-muted"
             >
               전체 선택
             </button>
@@ -1182,7 +1182,7 @@ const ProjectDrawer = observer(() => {
             <button
               onClick={bulkMove}
               disabled={selected.size === 0}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm bg-sky-500 hover:bg-sky-600 text-white disabled:opacity-40"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm btn-solid-sky disabled:opacity-40"
             >
               <FaFolder size={12} /> 이동
             </button>
@@ -1197,7 +1197,7 @@ const ProjectDrawer = observer(() => {
           <div className="px-3 py-2.5 flex gap-2 flex-none">
             <button
               onClick={() => createProject(null)}
-              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-lg text-sm font-medium bg-sky-500 hover:bg-sky-600 text-white transition-colors whitespace-nowrap"
+              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-lg text-sm font-medium btn-solid-sky whitespace-nowrap"
             >
               <FaPlus size={12} /> 새 프로젝트
             </button>
@@ -1402,7 +1402,7 @@ const ProjectDrawer = observer(() => {
                           <Tooltip content="저장">
                             <button
                               onClick={commitRename}
-                              className="p-2 rounded-md flex-none text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700"
+                              className="btn-ghost p-2 rounded-md flex-none text-green-500"
                             >
                               <FaCheck size={15} />
                             </button>
@@ -1410,7 +1410,7 @@ const ProjectDrawer = observer(() => {
                           <Tooltip content="취소">
                             <button
                               onClick={cancelRename}
-                              className="p-2 rounded-md flex-none text-faint hover:bg-gray-100 dark:hover:bg-slate-700"
+                              className="btn-ghost p-2 rounded-md flex-none text-faint"
                             >
                               <FaTimes size={15} />
                             </button>
@@ -1465,7 +1465,7 @@ const ProjectDrawer = observer(() => {
                             <Tooltip content="폴더 메뉴">
                               <button
                                 onClick={() => openFolderMenu(f)}
-                                className="p-2 rounded-md flex-none text-muted hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                                className="btn-ghost p-2 rounded-md flex-none text-muted"
                               >
                                 <FaEllipsisV size={16} />
                               </button>
@@ -1673,7 +1673,7 @@ const ProjectDrawer = observer(() => {
                     appState.folderBackupMenu(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-faint hover:text-amber-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-amber-500"
                 >
                   <FaFileExport size={14} />
                 </button>
@@ -1684,7 +1684,7 @@ const ProjectDrawer = observer(() => {
                     cloneFolder(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-faint hover:text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-green-500"
                 >
                   <FaCopy size={14} />
                 </button>
@@ -1697,7 +1697,7 @@ const ProjectDrawer = observer(() => {
                     );
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-faint hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
                 >
                   <FaPalette size={15} />
                 </button>
@@ -1708,7 +1708,7 @@ const ProjectDrawer = observer(() => {
                     startRename(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-faint hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
                 >
                   <FaPen size={15} />
                 </button>
@@ -1719,7 +1719,7 @@ const ProjectDrawer = observer(() => {
                     deleteFolderConfirm(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-faint hover:text-red-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-red-500"
                 >
                   <FaTrashAlt size={15} />
                 </button>
@@ -1730,7 +1730,7 @@ const ProjectDrawer = observer(() => {
                     createProject(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-faint hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
                 >
                   <FaPlus size={15} />
                 </button>
@@ -1741,7 +1741,7 @@ const ProjectDrawer = observer(() => {
                     createFolder(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-faint hover:text-indigo-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-indigo-500"
                 >
                   <FaFolderPlus size={13} />
                 </button>
@@ -1760,7 +1760,7 @@ const ProjectDrawer = observer(() => {
                     handleProjectExportImport(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-faint hover:text-amber-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-amber-500"
                 >
                   <FaFileExport size={14} />
                 </button>
@@ -1771,7 +1771,7 @@ const ProjectDrawer = observer(() => {
                     handleProjectClone(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-faint hover:text-green-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-green-500"
                 >
                   <FaCopy size={14} />
                 </button>
@@ -1782,7 +1782,7 @@ const ProjectDrawer = observer(() => {
                     handleProjectRename(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-faint hover:text-sky-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
                 >
                   <FaPen size={15} />
                 </button>
@@ -1793,7 +1793,7 @@ const ProjectDrawer = observer(() => {
                     handleProjectDelete(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="p-2 rounded-md text-faint hover:text-red-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-red-500"
                 >
                   <FaTrashAlt size={15} />
                 </button>

@@ -137,7 +137,7 @@ const TobBar = observer(() => {
       ) : (
         <div className="md:hidden flex items-center gap-1.5 titlebar-no-drag flex-none">
           <button
-            className="icon-button nback-sky flex-none"
+            className="icon-button flex-none"
             onClick={() => {
               setSettings(true);
             }}

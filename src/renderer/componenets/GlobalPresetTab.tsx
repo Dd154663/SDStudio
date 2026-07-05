@@ -176,7 +176,7 @@ const EasyCard = observer(
           {/* PC: 중앙 큰 불러오기 버튼 (솔리드 — 어둠 레이어와 무관하게 선명) */}
           {!multiSelectMode && !isMobile && (
             <button
-              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex items-center gap-2 whitespace-nowrap px-5 py-2.5 rounded-lg bg-sky-500 hover:bg-sky-600 text-white text-base font-semibold shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex items-center gap-2 whitespace-nowrap px-5 py-2.5 rounded-lg btn-solid-sky text-base font-semibold shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200"
               onClick={(e) => {
                 e.stopPropagation();
                 onImportToSession();
@@ -191,7 +191,7 @@ const EasyCard = observer(
             <div className="absolute bottom-0 left-0 right-0 z-20 flex justify-center items-center gap-2 py-2.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
               <Tooltip content={entry.isDefault ? '기본 해제' : '기본으로 지정'}>
                 <button
-                  className="icon-button bg-orange-500 hover:bg-orange-600 p-3 !rounded-lg text-white shadow-lg"
+                  className="icon-button btn-solid-orange p-3 !rounded-lg shadow-lg"
                   onClick={(e) => {
                     e.stopPropagation();
                     onToggleDefault();
@@ -202,7 +202,7 @@ const EasyCard = observer(
               </Tooltip>
               <Tooltip content="이름 변경">
                 <button
-                  className="icon-button bg-green-500 hover:bg-green-600 p-3 !rounded-lg text-white shadow-lg"
+                  className="icon-button btn-solid-green p-3 !rounded-lg shadow-lg"
                   onClick={(e) => {
                     e.stopPropagation();
                     onRename();
@@ -213,7 +213,7 @@ const EasyCard = observer(
               </Tooltip>
               <Tooltip content="편집 (프롬프트·설정·대표 이미지)">
                 <button
-                  className="icon-button bg-indigo-500 hover:bg-indigo-600 p-3 !rounded-lg text-white shadow-lg"
+                  className="icon-button btn-solid-indigo p-3 !rounded-lg shadow-lg"
                   onClick={(e) => {
                     e.stopPropagation();
                     onEdit();
@@ -224,7 +224,7 @@ const EasyCard = observer(
               </Tooltip>
               <Tooltip content="PNG로 내보내기">
                 <button
-                  className="icon-button bg-sky-500 hover:bg-sky-600 p-3 !rounded-lg text-white shadow-lg"
+                  className="icon-button btn-solid-sky p-3 !rounded-lg shadow-lg"
                   onClick={(e) => {
                     e.stopPropagation();
                     onExport();
@@ -235,7 +235,7 @@ const EasyCard = observer(
               </Tooltip>
               <Tooltip content="삭제">
                 <button
-                  className="icon-button bg-red-500 hover:bg-red-600 p-3 !rounded-lg text-white shadow-lg"
+                  className="icon-button btn-solid-red p-3 !rounded-lg shadow-lg"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDelete();
@@ -259,35 +259,35 @@ const EasyCard = observer(
             </button>
             <div className="grid grid-cols-3 gap-1.5">
               <button
-                className="icon-button bg-orange-500 py-2.5 rounded text-white flex items-center justify-center"
+                className="icon-button btn-solid-orange py-2.5 rounded flex items-center justify-center"
                 onClick={onToggleDefault}
                 title={entry.isDefault ? '기본 해제' : '기본으로 지정'}
               >
                 {entry.isDefault ? <FaStar size={18} /> : <FaRegStar size={18} />}
               </button>
               <button
-                className="icon-button bg-green-500 py-2.5 rounded text-white flex items-center justify-center"
+                className="icon-button btn-solid-green py-2.5 rounded flex items-center justify-center"
                 onClick={onRename}
                 title="이름 변경"
               >
                 <FaFont size={18} />
               </button>
               <button
-                className="icon-button bg-indigo-500 py-2.5 rounded text-white flex items-center justify-center"
+                className="icon-button btn-solid-indigo py-2.5 rounded flex items-center justify-center"
                 onClick={onEdit}
                 title="편집"
               >
                 <FaPen size={18} />
               </button>
               <button
-                className="icon-button bg-sky-500 py-2.5 rounded text-white flex items-center justify-center"
+                className="icon-button btn-solid-sky py-2.5 rounded flex items-center justify-center"
                 onClick={onExport}
                 title="내보내기"
               >
                 <FaShare size={18} />
               </button>
               <button
-                className="icon-button bg-red-500 py-2.5 rounded text-white flex items-center justify-center"
+                className="icon-button btn-solid-red py-2.5 rounded flex items-center justify-center"
                 onClick={onDelete}
                 title="삭제"
               >
@@ -375,7 +375,7 @@ const GenRow = observer(
           <div className="flex gap-2 md:ml-auto">
             <Tooltip content="이름 변경">
               <button
-                className="icon-button bg-green-500 p-3 rounded text-white"
+                className="icon-button btn-solid-green p-3 rounded"
                 onClick={onRename}
               >
                 <FaFont size={16} />
@@ -383,7 +383,7 @@ const GenRow = observer(
             </Tooltip>
             <Tooltip content="PNG로 내보내기">
               <button
-                className="icon-button bg-sky-500 p-3 rounded text-white"
+                className="icon-button btn-solid-sky p-3 rounded"
                 onClick={onExport}
               >
                 <FaShare size={16} />
@@ -391,7 +391,7 @@ const GenRow = observer(
             </Tooltip>
             <Tooltip content="삭제">
               <button
-                className="icon-button bg-red-500 p-3 rounded text-white"
+                className="icon-button btn-solid-red p-3 rounded"
                 onClick={onDelete}
               >
                 <FaTrash size={16} />
