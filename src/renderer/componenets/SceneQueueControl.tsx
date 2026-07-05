@@ -2371,7 +2371,7 @@ const QueueControl = observer(
             <input
               ref={sceneSearchRef}
               type="text"
-              className="flex-1 px-2 py-1 border line-color rounded bg-white dark:bg-slate-700 text-default outline-none focus:border-sky-500"
+              className="flex-1 px-2 py-1 border line-color rounded bg-[var(--c-input-bg)] text-default outline-none focus:border-sky-500"
               placeholder="씬 이름 검색..."
               value={sceneSearchQuery}
               onChange={(e) => setSceneSearchQuery(e.target.value)}

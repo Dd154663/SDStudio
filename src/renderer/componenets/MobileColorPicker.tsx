@@ -102,7 +102,7 @@ export default function MobileColorPicker({
           value={hexText}
           onChange={(e) => onHexInput(e.target.value)}
           spellCheck={false}
-          className="w-24 px-2 py-1 rounded-md text-sm bg-white dark:bg-slate-700 border line-color text-default outline-none"
+          className="w-24 px-2 py-1 rounded-md text-sm bg-[var(--c-input-bg)] border line-color text-default outline-none"
         />
       </div>
       <div className="flex flex-col gap-2">

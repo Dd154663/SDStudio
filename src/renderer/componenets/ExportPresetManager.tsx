@@ -294,7 +294,7 @@ const ExportPresetManager = observer(() => {
                       if (e.key === 'Enter') commitRename();
                       else if (e.key === 'Escape') cancelRename();
                     }}
-                    className="flex-1 min-w-0 px-2 py-1 rounded border border-sky-400 bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                    className="flex-1 min-w-0 px-2 py-1 rounded border border-sky-400 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                   />
                 ) : (
                   <div className="text-sm font-medium text-default truncate flex items-center gap-1">
@@ -349,7 +349,7 @@ const ExportPresetManager = observer(() => {
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="프리셋 이름"
-              className="flex-1 px-3 py-1.5 rounded border line-color bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="flex-1 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
             />
           </div>
 
@@ -410,7 +410,7 @@ const ExportPresetManager = observer(() => {
                 value={form.prefix}
                 onChange={(e) => setForm({ ...form, prefix: e.target.value })}
                 placeholder="캐릭터 이름"
-                className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
               />
             </div>
           )}
@@ -449,7 +449,7 @@ const ExportPresetManager = observer(() => {
                 value={form.imageSize}
                 onChange={(e) => setForm({ ...form, imageSize: parseInt(e.target.value) || 0 })}
                 placeholder="1024"
-                className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
               />
               <span className="text-xs text-faint">px</span>
             </div>
@@ -463,7 +463,7 @@ const ExportPresetManager = observer(() => {
               value={form.separator}
               onChange={(e) => setForm({ ...form, separator: e.target.value })}
               placeholder="비워두면 구분자 없음"
-              className="flex-1 px-3 py-1.5 rounded border line-color bg-white dark:bg-slate-700 text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="flex-1 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
             />
           </div>
 
