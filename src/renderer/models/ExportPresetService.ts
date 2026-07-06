@@ -438,7 +438,10 @@ export class ExportPresetService {
           appState.pushMessage('내보낼 이미지가 없습니다');
           return;
         }
-        appState.pushMessage('이미지 내보내기가 완료되었습니다');
+        appState.pushDialog({
+          type: 'yes-only',
+          text: '이미지 내보내기가 완료되었습니다.',
+        });
         await backend.showFile(baseDest);
         return;
       }
@@ -477,7 +480,10 @@ export class ExportPresetService {
         try {
           await backend.copyFileToAbsolute(outFilePath, dest);
           await backend.deleteFile(outFilePath);
-          appState.pushMessage('이미지 내보내기가 완료되었습니다');
+          appState.pushDialog({
+          type: 'yes-only',
+          text: '이미지 내보내기가 완료되었습니다.',
+        });
           await backend.showFile(dest);
           return;
         } catch (e: any) {
@@ -488,7 +494,10 @@ export class ExportPresetService {
           return;
         }
       }
-      appState.pushMessage('이미지 내보내기가 완료되었습니다');
+      appState.pushDialog({
+        type: 'yes-only',
+        text: '이미지 내보내기가 완료되었습니다.',
+      });
       await backend.showFile(outFilePath);
     };
 
