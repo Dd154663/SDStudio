@@ -7,6 +7,7 @@ import {
   LoginValidity,
 } from './imageGen';
 import { Backend, FileEntry, ResizeImageInput } from '../backend';
+import { assertDeletableDirPath } from './dataPathGuard';
 import { NovelAiFetcher, NovelAiImageGenService } from './genVendors/nai';
 import { ImageContextAlt, SceneContextAlt } from '../models/types';
 
@@ -190,6 +191,8 @@ export class ElectornBackend extends Backend {
   }
 
   async deleteDir(filename: string): Promise<void> {
+    // 데이터 루트/비정상 경로 삭제 거부 (2026-07-06 outs 전체 증발 사고 방지)
+    assertDeletableDirPath(filename);
     await invoke('delete-dir', filename);
   }
 
