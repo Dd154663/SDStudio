@@ -5,6 +5,8 @@ export interface ProgressDialog {
   text: string;
   done: number;
   total: number;
+  // 내보내기 완료 표시(우하단 위젯을 "완료"로 전환). 진행 중에는 미설정.
+  completed?: boolean;
 }
 
 interface Props {

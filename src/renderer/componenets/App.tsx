@@ -743,18 +743,36 @@ export const App = observer(() => {
         {/* 내보내기 진행 플로팅 위젯 (비차단형) */}
         {appState.exportProgress && (
           <div className="fixed bottom-16 right-4 z-[1000] bg-[var(--c-surface-2)] rounded-lg shadow-xl border line-color p-3 min-w-[220px]">
-            <div className="text-sm font-medium text-default mb-1.5">
-              💾 {appState.exportProgress.text}
-            </div>
-            <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-sky-500 rounded-full transition-all"
-                style={{ width: `${(appState.exportProgress.done / Math.max(appState.exportProgress.total, 1)) * 100}%` }}
-              />
-            </div>
-            <div className="text-xs text-muted mt-1">
-              {appState.exportProgress.done}/{appState.exportProgress.total}
-            </div>
+            {appState.exportProgress.completed ? (
+              // 완료 상태(PC): 진행바 대신 완료 표시 + 확인 버튼. 15초 후 자동 소멸.
+              <div className="flex items-center gap-2">
+                <span className="flex-none text-green-500 text-lg">✓</span>
+                <span className="flex-1 text-sm font-medium text-default">
+                  {appState.exportProgress.text}
+                </span>
+                <button
+                  className="round-button back-gray flex-none text-sm px-3 h-8"
+                  onClick={() => appState.dismissExportComplete()}
+                >
+                  확인
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="text-sm font-medium text-default mb-1.5">
+                  💾 {appState.exportProgress.text}
+                </div>
+                <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-sky-500 rounded-full transition-all"
+                    style={{ width: `${(appState.exportProgress.done / Math.max(appState.exportProgress.total, 1)) * 100}%` }}
+                  />
+                </div>
+                <div className="text-xs text-muted mt-1">
+                  {appState.exportProgress.done}/{appState.exportProgress.total}
+                </div>
+              </>
+            )}
           </div>
         )}
         <AlertWindow />

@@ -386,6 +386,30 @@ export class AppState {
     this.progressDialog = dialog;
   }
 
+  // 내보내기 완료 표시. 모바일은 파일 열기/공유 시트가 완료를 알리므로 별도 표시하지
+  // 않는다(중복 방지). PC는 우하단 위젯을 "완료"로 전환하고 15초 뒤 자동 소멸시킨다.
+  private exportCompleteTimer: any = undefined;
+  showExportComplete(text: string = '내보내기 완료') {
+    if (isMobile) {
+      this.exportProgress = undefined;
+      return;
+    }
+    this.exportProgress = { text, done: 1, total: 1, completed: true };
+    if (this.exportCompleteTimer) clearTimeout(this.exportCompleteTimer);
+    this.exportCompleteTimer = setTimeout(() => {
+      // 그 사이 새 내보내기가 시작됐으면(진행 위젯이면) 건드리지 않는다.
+      if (this.exportProgress?.completed) this.exportProgress = undefined;
+      this.exportCompleteTimer = undefined;
+    }, 15000);
+  }
+  dismissExportComplete() {
+    if (this.exportCompleteTimer) {
+      clearTimeout(this.exportCompleteTimer);
+      this.exportCompleteTimer = undefined;
+    }
+    this.exportProgress = undefined;
+  }
+
   handleFile(file: File) {
     if (file.name.endsWith('.tar')) {
       // tar 파일 — 프로젝트 백업 불러오기
