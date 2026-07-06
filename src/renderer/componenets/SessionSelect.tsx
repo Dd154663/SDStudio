@@ -10,7 +10,7 @@ import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
 import { CharacterPresetFloatEditor } from './CharacterPresetEditor';
 import { CharacterPreset, CharacterPrompt, VibeItem, ReferenceItem } from '../models/types';
-import { projectToolbarRegistry, resolveToolbar } from '../models/uiLayout';
+import { TOOLBAR_VIEW_MAIN, resolveToolbarView } from '../models/uiLayout';
 import ToolbarOverflowMenu from './ToolbarOverflowMenu';
 import {
   DraggableToolbarButton,
@@ -213,7 +213,7 @@ const SessionSelect = observer(() => {
   };
 
   // ── 프로젝트 바 버튼 바인딩: 레지스트리 id → 실제 버튼 노드 ──
-  // 구성·배치는 projectToolbarRegistry + resolveToolbar 가 결정한다.
+  // 구성·배치는 TOOLBAR_VIEW_MAIN 의 'project' 영역 + resolveToolbarView 가 결정한다.
   const toolbarButtons: Record<string, React.ReactNode> = {
     'add-session': (
       <button className={`icon-button mx-1`} onClick={addSession}>
@@ -291,12 +291,23 @@ const SessionSelect = observer(() => {
     ),
   };
 
-  // 사용자 설정(appState.uiToolbar, observable)에 따라 인라인/⋯메뉴 배치 결정
-  const toolbarLayout = resolveToolbar(
-    projectToolbarRegistry,
+  // 사용자 설정(appState.uiToolbar, observable)에 따라 인라인/⋯메뉴 배치 결정.
+  // 편집 모드 v2: resolveToolbarView 가 전 영역을 해석 → 이 컴포넌트의 'project' 영역만 사용.
+  const projectView = resolveToolbarView(
+    TOOLBAR_VIEW_MAIN,
     appState.uiToolbar,
     isMobile,
   );
+  const projectAreaResolved = projectView.find((a) => a.area === 'project');
+  const toolbarLayout = {
+    inline: projectAreaResolved?.inline ?? [],
+    menu: projectAreaResolved?.menu ?? [],
+  };
+  // 커스터마이징 이름(레지스트리 라벨) 조회용 — 'project' 영역 레지스트리
+  const projectRegistry =
+    TOOLBAR_VIEW_MAIN.find((r) => r.area === 'project')?.registry ?? [];
+  const projectName = (id: string) =>
+    projectRegistry.find((b) => b.id === id)?.name ?? id;
 
   return (
     // 행 전체가 드롭 타깃 — 메뉴에서 끌어다 놓으면 인라인 고정(pinned)
@@ -480,12 +491,14 @@ const SessionSelect = observer(() => {
         </button>
         </Tooltip>
       </div>
-      {toolbarLayout.inline.map((id) => (
+      {toolbarLayout.inline.map((id, i) => (
         <DraggableToolbarButton
           key={id}
           group="project"
           id={id}
-          name={projectToolbarRegistry.find((b) => b.id === id)!.name}
+          name={projectName(id)}
+          area="project"
+          index={i}
           disabled={!!appState.uiToolbar.classic}
         >
           {toolbarButtons[id]}
@@ -517,7 +530,7 @@ const SessionSelect = observer(() => {
             }
             items={toolbarLayout.menu.map((id) => ({
               id,
-              name: projectToolbarRegistry.find((b) => b.id === id)!.name,
+              name: projectName(id),
               node: toolbarButtons[id],
             }))}
           />

@@ -6,6 +6,11 @@ import { observer } from 'mobx-react-lite';
 import { backend, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import { ToolbarButtonPlacement, UiToolbarConfig } from '../../main/config';
+import {
+  TOOLBAR_VIEW_MAIN,
+  ToolbarMove,
+  moveToolbarButton,
+} from '../models/uiLayout';
 
 // 툴바 버튼 드래그 커스터마이징 공용 부품.
 // 드래그는 기존 uiToolbar.buttons 오버라이드('pinned'|'menu'|'hidden')를 조작하는
@@ -81,24 +86,29 @@ export interface ToolbarDragItem {
   name: string;
   // 어디서 잡았는지 — 행 하이라이트("여기 놓으면 빼내짐")는 메뉴발 드래그에만 표시
   from: 'inline' | 'menu';
+  // 이 버튼의 홈 영역(TOOLBAR_VIEW_MAIN 의 area). 순서 재배열(인덱스 드롭)은
+  // 같은 area 안에서만 허용 — 드롭 타깃의 canDrop 이 item.area 로 판정한다.
+  // (Phase B 에서 portable 크로스 이동이 열리면 이 검사를 완화한다)
+  area?: string;
   // 드래그 프리뷰용: 실제 버튼 JSX 그대로 + 원래 너비 (이름 알약로 바뀌면 혼동)
   node?: ReactNode;
   width?: number;
 }
 
-// 배치 변경을 즉시 반영 + config 저장.
-// (환경설정을 열면 최신 config 를 읽으므로 에디터에도 자동 반영된다)
-export async function applyToolbarPlacement(
-  id: string,
-  placement: ToolbarButtonPlacement,
-): Promise<void> {
-  const buttons = { ...(appState.uiToolbar.buttons ?? {}) };
-  if (placement === 'default') delete buttons[id];
-  else buttons[id] = placement;
-  const next: UiToolbarConfig = {
-    ...appState.uiToolbar,
-    buttons: Object.keys(buttons).length > 0 ? buttons : undefined,
-  };
+// TOOLBAR_VIEW_MAIN 에서 이 버튼 id 의 홈 영역(area)을 찾는다. 없으면 undefined.
+function homeAreaOf(id: string): string | undefined {
+  for (const { area, registry } of TOOLBAR_VIEW_MAIN) {
+    if (registry.some((b) => b.id === id)) return area;
+  }
+  return undefined;
+}
+
+// 배치/순서 변경의 단일 관문 — moveToolbarButton(순수함수)이 계산한 다음
+// uiToolbar 를 즉시 반영 + config 저장. (환경설정을 열면 최신 config 를 읽으므로
+// 에디터에도 자동 반영된다). v2 areas 와 v1 buttons 는 moveToolbarButton 이 함께
+// 갱신(dual-write)하므로 두 스키마가 어긋나지 않는다.
+export async function applyToolbarMove(move: ToolbarMove): Promise<void> {
+  const next = moveToolbarButton(TOOLBAR_VIEW_MAIN, appState.uiToolbar, move);
   appState.uiToolbar = next;
   try {
     const config = await backend.getConfig();
@@ -106,6 +116,20 @@ export async function applyToolbarPlacement(
   } catch (e) {
     console.error('툴바 배치 저장 실패:', e);
   }
+}
+
+// 기존 배치 API(핀 고정·메뉴로·숨김·기본) — 내부는 applyToolbarMove 위임으로
+// 재구현해 모든 배치 변경이 moveToolbarButton 을 경유하게 한다. 홈 영역은
+// TOOLBAR_VIEW_MAIN 에서 id 로 판정(없으면 조용히 무시 = 과거 잔재 id 안전).
+export async function applyToolbarPlacement(
+  id: string,
+  placement: ToolbarButtonPlacement,
+): Promise<void> {
+  const toArea = homeAreaOf(id);
+  if (!toArea) return;
+  const slot: ToolbarMove['slot'] =
+    placement === 'pinned' ? 'inline' : placement;
+  await applyToolbarMove({ id, toArea, slot });
 }
 
 // 이 그룹의 드래그 상태 — active(흔들림·유령 ⋯·숨김 존), from(행 하이라이트 분기).
@@ -137,19 +161,29 @@ export function useToolbarDragActive(group: ToolbarGroup): boolean {
   return useToolbarDragState(group).active;
 }
 
-// 인라인 버튼 래퍼 — 기존 버튼 JSX 를 감싸 드래그 소스만 부여(핸들러 재배선 없음).
+// 인라인 버튼 래퍼 — 기존 버튼 JSX 를 감싸 드래그 소스 + (순서 재배열용) 드롭 타깃.
 // disabled=클래식 툴바 등. 롱프레스 잡힘 즉시 자신은 확대, 같은 그룹은 흔들림.
+// area = 이 버튼의 홈 영역(TOOLBAR_VIEW_MAIN 의 area). index = 현재 inline 배열상 위치.
+// 같은 area 의 다른 버튼을 이 버튼 위로 끌어오면 가로 중점 기준 앞/뒤에 삽입한다
+// (canDrop 이 item.area === 자기 area 만 수락 — 교차 영역은 Phase B 예정).
 export const DraggableToolbarButton = observer(
   ({
     group,
     id,
     name,
+    area,
+    index,
     disabled,
     children,
   }: {
     group: ToolbarGroup;
     id: string;
     name: string;
+    // 홈 영역 — 순서 재배열 삽입 대상 영역이자 같은 영역 수락 판정 기준
+    area: string;
+    // 현재 inline 배열에서의 위치 — 삽입은 앵커(id 기준)로 처리하므로 로직에는
+    // 안 쓰이지만, 렌더 순서가 바뀔 때 드롭 타깃 재생성을 보장하는 키로 유지
+    index: number;
     disabled?: boolean;
     children: ReactNode;
   }) => {
@@ -161,6 +195,7 @@ export const DraggableToolbarButton = observer(
           id,
           name,
           from: 'inline',
+          area,
           node: children,
           width: wrapRef.current?.offsetWidth,
         }),
@@ -168,12 +203,53 @@ export const DraggableToolbarButton = observer(
         collect: (m) => ({ isDragging: m.isDragging() }),
         end: () => disarmToolbarDrag(),
       }),
-      [group, id, name, disabled, children],
+      [group, id, name, area, disabled, children],
     );
+
+    // 순서 재배열 드롭 타깃 — 같은 area 의 버튼만 수락. hover 시 커서가 이 버튼의
+    // 가로 중점보다 왼쪽이면 앞(이 index), 오른쪽이면 뒤(index+1)에 삽입.
+    // 자기 자신 위로의 드롭은 무시(변화 없음). before 는 좌/우 보더 강조에 쓴다.
+    const [{ isOverInsert, insertBefore }, dropInsert] = useDrop(
+      () => ({
+        accept: toolbarDndType(group),
+        canDrop: (item: ToolbarDragItem) =>
+          item.area === area && item.id !== id,
+        drop: (item: ToolbarDragItem, monitor) => {
+          if (monitor.didDrop()) return;
+          if (item.area !== area || item.id === id) return;
+          const rect = wrapRef.current?.getBoundingClientRect();
+          const client = monitor.getClientOffset();
+          const before =
+            rect && client ? client.x < rect.left + rect.width / 2 : true;
+          // 앵커 기반 삽입("이 버튼의 앞/뒤") — 숫자 인덱스는 같은 배열 내 이동 시
+          // 제거 오프셋, 모바일 pcOnly 필터로 렌더/정규 배열이 어긋나는 문제가 있어
+          // moveToolbarButton 이 제거 후 배열에서 앵커를 찾아 삽입한다.
+          applyToolbarMove({
+            id: item.id,
+            toArea: area,
+            slot: 'inline',
+            anchor: { id, side: before ? 'before' : 'after' },
+          });
+        },
+        collect: (m) => {
+          const item = m.getItem() as ToolbarDragItem | null;
+          const over =
+            m.isOver({ shallow: true }) && m.canDrop() && !!item;
+          const client = m.getClientOffset();
+          const rect = wrapRef.current?.getBoundingClientRect();
+          const before =
+            rect && client ? client.x < rect.left + rect.width / 2 : true;
+          return { isOverInsert: over, insertBefore: before };
+        },
+      }),
+      [group, id, area, index],
+    );
+
     useEffect(() => {
       preview(getEmptyImage(), { captureDraggingState: true });
     }, [preview]);
-    drag(wrapRef);
+    // 드래그 소스 + 드롭 타깃을 같은 래퍼에 부착
+    drag(dropInsert(wrapRef));
 
     // 모바일 롱프레스 잡힘 감지 — 400ms 전에 움직이면(스크롤 의도) 취소
     const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -199,6 +275,12 @@ export const DraggableToolbarButton = observer(
     const active = useToolbarDragActive(group);
     const armed = toolbarDragUi.armed === group;
     const armedSelf = armed && toolbarDragUi.armedId === id;
+    // 삽입 위치 표시 — 커서 쪽 보더 강조(기존 하이라이트 색조 sky 계열과 일관).
+    const insertClass = isOverInsert
+      ? insertBefore
+        ? ' border-l-2 border-sky-400 rounded-l'
+        : ' border-r-2 border-sky-400 rounded-r'
+      : '';
     return (
       <div
         ref={wrapRef}
@@ -207,13 +289,13 @@ export const DraggableToolbarButton = observer(
         onTouchEnd={onTouchEndOrCancel}
         onTouchCancel={onTouchEndOrCancel}
         className={
-          isDragging
+          (isDragging
             ? 'opacity-30'
             : armedSelf
               ? 'scale-110 drop-shadow-md transition-transform'
               : (active || armed) && !disabled
                 ? 'toolbar-wiggle'
-                : undefined
+                : '') + insertClass
         }
       >
         {children}

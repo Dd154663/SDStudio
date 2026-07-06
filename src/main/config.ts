@@ -75,6 +75,14 @@ export interface Config {
 // 'pinned'=툴바 고정 / 'menu'=⋯ 오버플로 메뉴로 / 'hidden'=숨김
 export type ToolbarButtonPlacement = 'default' | 'pinned' | 'menu' | 'hidden';
 
+// 한 영역(scene·project 등)의 배치 순서. 배열 순서가 곧 렌더 순서.
+// 배열의 원소는 uiLayout.ts 레지스트리의 버튼 id. schema=2(편집 모드)에서 사용.
+export interface UiToolbarAreaLayout {
+  inline?: string[]; // 인라인 배치 순서
+  menu?: string[]; // ⋯메뉴 배치 순서
+  hidden?: string[]; // 숨김
+}
+
 // 툴바 배치 커스터마이징의 "의도"(원본). 전부 옵셔널=하위호환.
 // buttons 의 키는 uiLayout.ts 레지스트리의 버튼 id(전 영역 공용, 배포 후 불변 계약).
 export interface UiToolbarConfig {
@@ -82,6 +90,11 @@ export interface UiToolbarConfig {
   // buttons 오버라이드를 전부 무시하고 모든 버튼을 인라인 렌더(기존 사용자 안심용).
   classic?: boolean;
   buttons?: Record<string, ToolbarButtonPlacement>;
+  // schema=2(편집 모드): 영역별 순서 정보를 areas 에 저장. 미설정(v1)이면 buttons+tier
+  // 규칙으로 폴백. 롤백 안전: 구버전 앱은 areas/schema 를 무시하고 buttons 만 읽으므로
+  // 크래시 없이 "순서만 잃고 배치 의도는 유지"된다(moveToolbarButton 의 dual-write).
+  areas?: Record<string, UiToolbarAreaLayout>;
+  schema?: 2;
 }
 
 // UI 색 커스터마이징의 "의도"를 저장(파생값이 아닌 원본). 전부 옵셔널=하위호환.

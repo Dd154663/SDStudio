@@ -82,7 +82,7 @@ import {
 import { extractPromptDataFromBase64 } from '../models/util';
 import { IMPORT_IMAGE_ACCEPT } from '../models/imageFormats';
 import { platform } from '../models/platform';
-import { resolveToolbar, sceneToolbarRegistry } from '../models/uiLayout';
+import { TOOLBAR_VIEW_MAIN, resolveToolbarView } from '../models/uiLayout';
 import ToolbarOverflowMenu from './ToolbarOverflowMenu';
 import {
   DraggableToolbarButton,
@@ -1971,7 +1971,7 @@ const QueueControl = observer(
     };
 
     // ── 씬 툴바 버튼 바인딩: 레지스트리 id → 실제 버튼 노드 ──
-    // 구성·순서는 sceneToolbarRegistry(models/uiLayout.ts)가 결정한다.
+    // 구성·순서는 TOOLBAR_VIEW_MAIN 의 'scene' 영역(models/uiLayout.ts)이 결정한다.
     // 모바일은 텍스트 대신 아이콘으로 폭을 줄인다(줄 밀림 방지). 단 클래식 툴바
     // 토글이 켜지면 예전처럼 텍스트로 표시(mobileIcon=false).
     const mobileIcon = isMobile && !appState.uiToolbar.classic;
@@ -2243,12 +2243,23 @@ const QueueControl = observer(
       ),
     };
 
-    // 사용자 설정(appState.uiToolbar, observable)에 따라 인라인/⋯메뉴 배치 결정
-    const toolbarLayout = resolveToolbar(
-      sceneToolbarRegistry,
+    // 사용자 설정(appState.uiToolbar, observable)에 따라 인라인/⋯메뉴 배치 결정.
+    // 편집 모드 v2: resolveToolbarView 가 전 영역을 해석 → 이 컴포넌트의 'scene' 영역만 사용.
+    const sceneView = resolveToolbarView(
+      TOOLBAR_VIEW_MAIN,
       appState.uiToolbar,
       isMobile,
     );
+    const sceneArea = sceneView.find((a) => a.area === 'scene');
+    const toolbarLayout = {
+      inline: sceneArea?.inline ?? [],
+      menu: sceneArea?.menu ?? [],
+    };
+    // 커스터마이징 이름(레지스트리 라벨) 조회용 — 'scene' 영역 레지스트리
+    const sceneRegistry =
+      TOOLBAR_VIEW_MAIN.find((r) => r.area === 'scene')?.registry ?? [];
+    const sceneName = (id: string) =>
+      sceneRegistry.find((b) => b.id === id)?.name ?? id;
 
     return (
       <div className={`flex flex-col h-full ${className ?? ''}`}>
@@ -2289,12 +2300,14 @@ const QueueControl = observer(
                   : 'flex-wrap'
               }${toolbarRowHighlightClass(toolbarDrag, toolbarRowOver)}`}
             >
-              {toolbarLayout.inline.map((id) => (
+              {toolbarLayout.inline.map((id, i) => (
                 <DraggableToolbarButton
                   key={id}
                   group="scene"
                   id={id}
-                  name={sceneToolbarRegistry.find((b) => b.id === id)!.name}
+                  name={sceneName(id)}
+                  area="scene"
+                  index={i}
                   disabled={!!appState.uiToolbar.classic}
                 >
                   {toolbarButtons[id]}
@@ -2338,7 +2351,7 @@ const QueueControl = observer(
                       }
                       items={toolbarLayout.menu.map((id) => ({
                         id,
-                        name: sceneToolbarRegistry.find((b) => b.id === id)!.name,
+                        name: sceneName(id),
                         // 노드를 캐시하지 않고 매 렌더 참조 — 상태 의존 라벨
                         // ("선택 씬 예약추가 (N)" 등)이 메뉴가 열린 채로도 갱신되도록
                         node: toolbarButtons[id],
@@ -2360,7 +2373,7 @@ const QueueControl = observer(
                 }
                 items={toolbarLayout.menu.map((id) => ({
                   id,
-                  name: sceneToolbarRegistry.find((b) => b.id === id)!.name,
+                  name: sceneName(id),
                   node: toolbarButtons[id],
                 }))}
               />
