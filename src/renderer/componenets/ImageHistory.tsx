@@ -279,8 +279,17 @@ export const ImageHistoryDrawer = observer(() => {
   useEffect(() => {
     if (open) {
       setRender(true);
-      const id = requestAnimationFrame(() => setShown(true));
-      return () => cancelAnimationFrame(id);
+      // 초기 상태(translateX 100%)가 실제로 페인트된 다음 프레임에 shown 을 켜야
+      // 슬라이드 전환이 발동한다. 단일 rAF 는 페인트 이전에 실행될 수 있어(레이스)
+      // 열기 애니메이션이 씹혔다 → 더블 rAF 로 한 프레임 뒤로 미룬다.
+      let raf2 = 0;
+      const raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setShown(true));
+      });
+      return () => {
+        cancelAnimationFrame(raf1);
+        cancelAnimationFrame(raf2);
+      };
     } else {
       setShown(false);
       const t = setTimeout(() => setRender(false), 260);
