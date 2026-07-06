@@ -22,6 +22,8 @@ export interface ToolbarButtonMeta {
   // PC(데스크톱)에서만 존재하는 버튼 — 모바일 커스터마이징 목록에서 제외용
   pcOnly?: boolean;
   tier: ToolbarTier;
+  // 문맥 독립(appState만 의존) 버튼만 — 크로스 영역 이동 허용 표식. 공유 JSX는 PortableToolbarButtons.tsx
+  portable?: boolean;
 }
 
 // 씬 툴바 (이미지생성/이미지변형 탭 상단) — SceneQueueControl.tsx 가 사용
@@ -40,8 +42,8 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'scene-search', name: '씬 검색', tier: 'primary' },
   { id: 'bookmark-jump', name: '북마크된 씬으로 이동', tier: 'secondary' },
   { id: 'scene-trash', name: '씬 휴지통', tier: 'overflow' },
-  { id: 'empty-image-trash', name: '삭제 이미지 일괄 비우기', tier: 'overflow' },
-  { id: 'find-replace', name: '찾기 및 변환', tier: 'secondary' },
+  { id: 'empty-image-trash', name: '삭제 이미지 일괄 비우기', tier: 'overflow', portable: true },
+  { id: 'find-replace', name: '찾기 및 변환', tier: 'secondary', portable: true },
   { id: 'shortcut-help', name: '단축키 도움말', pcOnly: true, tier: 'overflow' },
 ];
 
@@ -53,10 +55,10 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
 export const projectToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'add-session', name: '신규 프로젝트', tier: 'primary' },
   { id: 'character-presets', name: '캐릭터 프리셋 관리', tier: 'primary' },
-  { id: 'backup-export', name: '프로젝트 백업/내보내기', tier: 'primary' },
+  { id: 'backup-export', name: '프로젝트 백업/내보내기', tier: 'primary', portable: true },
   { id: 'delete-session', name: '프로젝트 삭제', tier: 'primary' },
   { id: 'project-trash', name: '프로젝트 휴지통', tier: 'primary' },
-  { id: 'piece-editor', name: '프롬프트조각', tier: 'primary' },
+  { id: 'piece-editor', name: '프롬프트조각', tier: 'primary', portable: true },
 ];
 
 // 레지스트리 + 사용자 설정 → 실제 배치를 해석하는 단일 출처(순수 함수).
@@ -143,35 +145,95 @@ function tierPlacement(
 
 // 여러 영역을 한 번에 해석. registries 와 같은 순서·같은 길이의 배열을 반환한다.
 // - classic: 각 영역 레지스트리 순서 전부 inline(모바일이면 pcOnly 제외), menu=[].
-// - areas 없는 영역: 기존 resolveToolbar 결과 그대로(v1 폴백, 100% 동일).
-// - areas 있는 영역: inline/menu 배열 순서 그대로 사용하되 stale·타영역·hidden·
-//   (모바일)pcOnly 를 걸러내고, 배열에 없는 신규 버튼은 tier 폴백으로 뒤에 편입.
+// - areas 없는 영역: 기존 resolveToolbar 결과에서 "전역상 타 영역에 배정된 id"만 제거
+//   (부분 areas 상태에서 홈 폴백이 크로스 배정 id 를 중복 렌더하는 걸 막는 핵심).
+// - areas 있는 영역: 배열 순서 그대로 사용하되 이 영역에 "배정된" id 만 채용(stale·
+//   비portable 타영역 무시), hidden·(모바일)pcOnly 필터, 이어서 전역 미배정 홈 버튼만
+//   tier 폴백으로 뒤에 편입.
+//
+// 크로스 영역 해석은 "전역(View 단위) 배정"으로 처리한다. portable 버튼이 타 영역
+// areas 에 실려 있으면 그 영역에만 렌더되고 홈 영역엔 나타나지 않아야 한다(중복 렌더가
+// 최악의 버그). 1차 스캔으로 id→배정영역 을 확정한 뒤 2차에서 렌더를 생성한다.
 export function resolveToolbarView(
   registries: ToolbarRegistryEntry[],
   overrides: UiToolbarConfig | undefined,
   isMobile: boolean,
 ): ToolbarAreaResolved[] {
-  return registries.map(({ area, registry }) => {
-    const areaLayout = overrides?.areas?.[area];
-    // classic 또는 areas 미설정 → 기존 resolveToolbar 로 위임(v1 동작 100% 동일).
-    if (overrides?.classic || !areaLayout) {
+  // classic 은 크로스 무시하고 각자 홈에 전부 inline(v1 위임과 동일).
+  if (overrides?.classic) {
+    return registries.map(({ area, registry }) => {
       const r = resolveToolbar(registry, overrides, isMobile);
       return { area, inline: r.inline, menu: r.menu };
+    });
+  }
+
+  // 이 View 내에서 id → 홈 영역. 유효성·portable 판정용(어느 레지스트리에든 있으면 meta).
+  const homeByeId = new Map<string, string>();
+  const metaByeId = new Map<string, ToolbarButtonMeta>();
+  for (const { area, registry } of registries) {
+    for (const b of registry) {
+      if (!metaByeId.has(b.id)) {
+        metaByeId.set(b.id, b);
+        homeByeId.set(b.id, area);
+      }
+    }
+  }
+
+  // ── 1차 스캔: id → 배정영역 확정(먼저 배정된 영역이 승리, 이후 중복 무시) ──
+  // 유효 조건: View 에 meta 존재 && (홈영역 === 이 영역 || meta.portable === true).
+  // stale·비portable 타영역 id 는 배정 기록 없이 무시.
+  // 유효성은 metaByeId(View 전역)로 판정하므로 이 영역 레지스트리엔 국한하지 않는다.
+  const assignedArea = new Map<string, string>();
+  for (const { area } of registries) {
+    const areaLayout = overrides?.areas?.[area];
+    if (!areaLayout) continue; // areas 없는 영역은 배정 스캔 대상 아님(홈 폴백은 2차에서)
+    const scan = (ids: string[] | undefined) => {
+      for (const id of ids ?? []) {
+        const meta = metaByeId.get(id);
+        if (!meta) continue; // stale id 무시
+        if (assignedArea.has(id)) continue; // 이미 배정됨(먼저 배정된 영역 승리)
+        const home = homeByeId.get(id);
+        if (home === area || meta.portable === true) {
+          assignedArea.set(id, area);
+        }
+        // 홈≠이 영역 && 비portable → 배정 기록 없이 무시
+      }
+    };
+    scan(areaLayout.inline);
+    scan(areaLayout.menu);
+    scan(areaLayout.hidden);
+  }
+
+  // ── 2차 렌더 생성 ──
+  return registries.map(({ area, registry }) => {
+    const areaLayout = overrides?.areas?.[area];
+
+    // areas 없는 영역 → v1 resolveToolbar 결과에서 전역상 타 영역에 배정된 id 제거.
+    if (!areaLayout) {
+      const r = resolveToolbar(registry, overrides, isMobile);
+      const takenElsewhere = (id: string) => {
+        const a = assignedArea.get(id);
+        return a !== undefined && a !== area;
+      };
+      return {
+        area,
+        inline: r.inline.filter((id) => !takenElsewhere(id)),
+        menu: r.menu.filter((id) => !takenElsewhere(id)),
+      };
     }
 
+    // areas 있는 영역 → 배열 순서대로, 이 영역에 배정된 id 만 채용.
     const inline: string[] = [];
     const menu: string[] = [];
     const placed = new Set<string>();
-    // 이 영역 레지스트리에 실제로 있는 id 만 유효(stale·타영역 id 무시).
-    const metaById = new Map(registry.map((b) => [b.id, b]));
     const hidden = new Set(areaLayout.hidden ?? []);
 
     const takeList = (ids: string[] | undefined, into: string[]) => {
       for (const id of ids ?? []) {
-        const meta = metaById.get(id);
-        if (!meta) continue; // stale·타영역 id 무시
-        if (placed.has(id)) continue; // 중복 방지(같은 id 가 inline·menu 양쪽에 있을 때)
+        if (assignedArea.get(id) !== area) continue; // 이 영역에 배정된 id 만
+        if (placed.has(id)) continue; // 중복 방지(inline·menu 양쪽에 있을 때)
         if (hidden.has(id)) continue; // hidden 배열에 있으면 제외
+        const meta = metaByeId.get(id)!; // 배정됐으면 meta 존재 보장
         if (isMobile && meta.pcOnly) continue; // 모바일에서 pcOnly 제외
         into.push(id);
         placed.add(id);
@@ -180,10 +242,11 @@ export function resolveToolbarView(
     takeList(areaLayout.inline, inline);
     takeList(areaLayout.menu, menu);
 
-    // 배열 어디에도 없는(신규) 버튼 → v1 buttons 오버라이드 우선, 없으면 tier 폴백.
-    // 레지스트리 순서대로 뒤에 append.
+    // 홈 레지스트리 버튼 중 전역 어디에도 배정 안 된 것만 → v1 buttons 오버라이드 우선,
+    // 없으면 tier 폴백. 레지스트리 순서대로 뒤에 append.
     for (const b of registry) {
       if (placed.has(b.id)) continue;
+      if (assignedArea.has(b.id)) continue; // 전역상 이미 어딘가에 배정됨
       if (hidden.has(b.id)) continue;
       if (isMobile && b.pcOnly) continue;
       const ov = overrides?.buttons?.[b.id];
@@ -214,52 +277,100 @@ export interface ToolbarMove {
   anchor?: { id: string; side: 'before' | 'after' };
 }
 
-// 한 영역의 정규 배치(PC 기준 전체 집합)를 inline/menu/hidden 배열로 전개.
-// areas 있으면 그대로+미배치 tier 폴백 편입, 없으면 v1 buttons+tier 파생.
+// View 전체(모든 영역)를 한 번에 정규 배치(PC 기준 전체 집합)로 전개.
+// resolveToolbarView 의 전역 배정 규칙과 동일하게 View 단위로 처리해야 크로스 배정이
+// 보존된다: 영역별 독립 정규화라면 무관한 버튼 이동 시 홈 영역 폴백이 크로스 배정된
+// portable id 를 홈에 다시 추가해 양쪽 중복이 생긴다.
+// - 배열 채용: 각 영역 areas 배열에서 "그 영역에 배정된 id"만(assignedArea 규칙).
+// - 폴백: 전역 어디에도 배정 안 된 홈 버튼만 → 홈 영역에 v1 buttons 우선/tier 폴백.
 // pcOnly 도 포함(저장 데이터는 항상 PC 기준 전체 — 모바일 필터는 렌더 시점에만).
-function canonicalizeArea(
-  registry: ToolbarButtonMeta[],
+function canonicalizeView(
+  registries: ToolbarRegistryEntry[],
   overrides: UiToolbarConfig | undefined,
-  areaLayout: UiToolbarAreaLayout | undefined,
-): { inline: string[]; menu: string[]; hidden: string[] } {
-  const inline: string[] = [];
-  const menu: string[] = [];
-  const hidden: string[] = [];
-  const placed = new Set<string>();
-  const metaById = new Map(registry.map((b) => [b.id, b]));
-  const hiddenSet = new Set(areaLayout?.hidden ?? []);
+): Map<string, { inline: string[]; menu: string[]; hidden: string[] }> {
+  // id → 홈 영역·meta(View 전역, 먼저 등장한 레지스트리가 홈).
+  const homeByeId = new Map<string, string>();
+  const metaByeId = new Map<string, ToolbarButtonMeta>();
+  for (const { area, registry } of registries) {
+    for (const b of registry) {
+      if (!metaByeId.has(b.id)) {
+        metaByeId.set(b.id, b);
+        homeByeId.set(b.id, area);
+      }
+    }
+  }
 
-  const takeList = (ids: string[] | undefined, into: string[]) => {
-    for (const id of ids ?? []) {
-      if (!metaById.has(id)) continue; // stale·타영역 id 무시
-      if (placed.has(id)) continue;
-      into.push(id);
-      placed.add(id);
-    }
-  };
-  if (areaLayout) {
-    takeList(areaLayout.inline, inline);
-    takeList(areaLayout.menu, menu);
-    takeList(areaLayout.hidden, hidden);
+  // 1차 스캔: id → 배정영역(먼저 배정된 영역 승리). resolveToolbarView 와 동일 규칙.
+  const assignedArea = new Map<string, string>();
+  for (const { area } of registries) {
+    const areaLayout = overrides?.areas?.[area];
+    if (!areaLayout) continue;
+    const scan = (ids: string[] | undefined) => {
+      for (const id of ids ?? []) {
+        const meta = metaByeId.get(id);
+        if (!meta) continue; // stale id 무시
+        if (assignedArea.has(id)) continue; // 이미 배정됨
+        const home = homeByeId.get(id);
+        if (home === area || meta.portable === true) {
+          assignedArea.set(id, area);
+        }
+      }
+    };
+    scan(areaLayout.inline);
+    scan(areaLayout.menu);
+    scan(areaLayout.hidden);
   }
-  // 미배치(신규) 버튼 → v1 buttons 오버라이드 우선, 없으면 tier 폴백(PC 기준).
-  for (const b of registry) {
-    if (placed.has(b.id)) continue;
-    const ov = overrides?.buttons?.[b.id];
-    if (ov === 'hidden') {
-      hidden.push(b.id);
-    } else if (ov === 'pinned') {
-      inline.push(b.id);
-    } else if (ov === 'menu') {
-      menu.push(b.id);
-    } else if (tierPlacement(b, false) === 'inline') {
-      inline.push(b.id);
-    } else {
-      menu.push(b.id);
+
+  // 2차: 영역별 배치 전개.
+  const result = new Map<
+    string,
+    { inline: string[]; menu: string[]; hidden: string[] }
+  >();
+  const placed = new Set<string>();
+  for (const { area } of registries) {
+    const areaLayout = overrides?.areas?.[area];
+    const inline: string[] = [];
+    const menu: string[] = [];
+    const hidden: string[] = [];
+    const takeList = (ids: string[] | undefined, into: string[]) => {
+      for (const id of ids ?? []) {
+        if (assignedArea.get(id) !== area) continue; // 이 영역에 배정된 id 만
+        if (placed.has(id)) continue;
+        into.push(id);
+        placed.add(id);
+      }
+    };
+    if (areaLayout) {
+      takeList(areaLayout.inline, inline);
+      takeList(areaLayout.menu, menu);
+      takeList(areaLayout.hidden, hidden);
     }
-    placed.add(b.id);
+    result.set(area, { inline, menu, hidden });
   }
-  return { inline, menu, hidden };
+
+  // 폴백: 전역 미배정 홈 버튼만 홈 영역에 v1 buttons 우선/tier 폴백(PC 기준).
+  for (const { area, registry } of registries) {
+    const lists = result.get(area)!;
+    for (const b of registry) {
+      if (placed.has(b.id)) continue;
+      if (assignedArea.has(b.id)) continue; // 전역상 이미 어딘가에 배정됨
+      if (homeByeId.get(b.id) !== area) continue; // 홈 영역에서만 폴백 편입
+      const ov = overrides?.buttons?.[b.id];
+      if (ov === 'hidden') {
+        lists.hidden.push(b.id);
+      } else if (ov === 'pinned') {
+        lists.inline.push(b.id);
+      } else if (ov === 'menu') {
+        lists.menu.push(b.id);
+      } else if (tierPlacement(b, false) === 'inline') {
+        lists.inline.push(b.id);
+      } else {
+        lists.menu.push(b.id);
+      }
+      placed.add(b.id);
+    }
+  }
+  return result;
 }
 
 // 버튼 하나를 이동시킨 다음 uiToolbar 전체를 반환하는 순수 함수(원본 불변, 새 객체).
@@ -286,24 +397,13 @@ export function moveToolbarButton(
   if (!meta || homeArea === undefined) {
     return overrides ?? {};
   }
-  // 타 영역 이동 가드: portable 아니면 거부(Phase A 엔 portable 필드 없음 → 사실상
-  // 같은 영역 내 이동만 허용). meta 에 portable 이 붙는 Phase B 대비 미리 작성.
-  const portable = (meta as ToolbarButtonMeta & { portable?: boolean }).portable;
-  if (move.toArea !== homeArea && portable !== true) {
+  // 타 영역 이동 가드: portable 아니면 거부(비portable 은 같은 영역 내 이동만 허용).
+  if (move.toArea !== homeArea && meta.portable !== true) {
     return overrides ?? {};
   }
 
-  // 각 영역을 정규화한다(PC 기준 전체 집합).
-  const canon = new Map<
-    string,
-    { inline: string[]; menu: string[]; hidden: string[] }
-  >();
-  for (const { area, registry } of registries) {
-    canon.set(
-      area,
-      canonicalizeArea(registry, overrides, overrides?.areas?.[area]),
-    );
-  }
+  // View 전체를 한 번에 정규화한다(PC 기준 전체 집합, 크로스 배정 보존).
+  const canon = canonicalizeView(registries, overrides);
 
   // 모든 영역의 모든 배열에서 id 제거.
   for (const lists of canon.values()) {

@@ -287,6 +287,12 @@ body {
   min-width: unset;
   min-height: unset;
 }
+/* 씬 툴바 행 버튼 높이 균일화(2026-07-06 피드백) — 텍스트 버튼(줄높이 24px+패딩=32px)과
+   아이콘 버튼(18px 아이콘+패딩=26px)의 콘텐츠 높이 차이를 행 스코프 고정 높이로 맞춘다.
+   모바일은 .round-button 의 min-height:36px 가 height 보다 우선하므로 영향 없음. */
+.scene-toolbar-row .round-button {
+  height: 2rem;
+}
 
 .btn-sm {
   @apply px-2 py-0.5 text-xs;

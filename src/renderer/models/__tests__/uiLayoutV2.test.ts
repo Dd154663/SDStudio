@@ -278,3 +278,167 @@ describe('moveToolbarButton', () => {
     expect(view.find((v) => v.area === SCENE)!.inline).toContain('scene-search');
   });
 });
+
+// ── Phase B: portable 버튼의 크로스 영역 이동/해석 ──────────────────────────
+// find-replace(scene 홈, portable), backup-export/piece-editor(project 홈, portable),
+// add-scene(scene 홈, 비portable) 을 케이스로 사용.
+describe('resolveToolbarView — 크로스 영역(portable)', () => {
+  it('B1a. portable id 를 타 영역 areas 에 배정하면 그 영역에 렌더, 홈엔 없음 (양쪽 areas 존재)', () => {
+    // find-replace(scene 홈)를 project.inline 에 배정. scene 에도 areas 항목 존재.
+    const ov: UiToolbarConfig = {
+      schema: 2,
+      areas: {
+        [SCENE]: { inline: ['add-scene'], menu: [], hidden: [] },
+        [PROJECT]: { inline: ['find-replace', 'add-session'], menu: [], hidden: [] },
+      },
+    };
+    const view = resolveToolbarView(registries, ov, false);
+    const scene = view.find((v) => v.area === SCENE)!;
+    const project = view.find((v) => v.area === PROJECT)!;
+    expect(project.inline).toContain('find-replace');
+    expect(scene.inline).not.toContain('find-replace');
+    expect(scene.menu).not.toContain('find-replace');
+    // 중복 없음(전역 단 하나).
+    const all = [...scene.inline, ...scene.menu, ...project.inline, ...project.menu];
+    expect(all.filter((x) => x === 'find-replace')).toHaveLength(1);
+  });
+
+  it('B1b. 부분 areas — scene 에 areas 항목이 없어도 project 로 배정된 find-replace 는 scene 홈 폴백에서 제외', () => {
+    // scene areas 미설정(v1 폴백) + project 에만 find-replace 배정.
+    const ov: UiToolbarConfig = {
+      schema: 2,
+      areas: {
+        [PROJECT]: { inline: ['find-replace'], menu: [], hidden: [] },
+      },
+    };
+    const view = resolveToolbarView(registries, ov, false);
+    const scene = view.find((v) => v.area === SCENE)!;
+    const project = view.find((v) => v.area === PROJECT)!;
+    expect(project.inline).toContain('find-replace');
+    // scene 은 v1 폴백이지만 크로스 배정된 id 는 제거돼야 함(중복 방지 핵심).
+    expect(scene.inline).not.toContain('find-replace');
+    expect(scene.menu).not.toContain('find-replace');
+  });
+
+  it('B2. 비portable id 를 타 영역 배열에 넣어도 무시되고 홈(scene) 폴백으로 렌더', () => {
+    // add-scene(scene 홈, 비portable)을 project.inline 에 배정 시도.
+    const ov: UiToolbarConfig = {
+      schema: 2,
+      areas: {
+        [PROJECT]: { inline: ['add-scene', 'add-session'], menu: [], hidden: [] },
+      },
+    };
+    const view = resolveToolbarView(registries, ov, false);
+    const scene = view.find((v) => v.area === SCENE)!;
+    const project = view.find((v) => v.area === PROJECT)!;
+    // project 에는 안 나타남(비portable → 배정 안 됨).
+    expect(project.inline).not.toContain('add-scene');
+    // scene 홈 폴백으로 렌더(primary → inline).
+    expect(scene.inline).toContain('add-scene');
+  });
+
+  it('B6. classic=true 면 크로스 무시하고 각자 홈에 전부 inline', () => {
+    const ov: UiToolbarConfig = {
+      classic: true,
+      schema: 2,
+      areas: {
+        [PROJECT]: { inline: ['find-replace'], menu: [], hidden: [] },
+      },
+    };
+    const view = resolveToolbarView(registries, ov, false);
+    const scene = view.find((v) => v.area === SCENE)!;
+    const project = view.find((v) => v.area === PROJECT)!;
+    // classic → 각 영역 레지스트리 전부 inline, 크로스 배정 무시.
+    expect(scene.inline).toEqual(sceneToolbarRegistry.map((b) => b.id));
+    expect(project.inline).toEqual(projectToolbarRegistry.map((b) => b.id));
+    // find-replace 는 scene 홈에 그대로.
+    expect(scene.inline).toContain('find-replace');
+  });
+});
+
+describe('moveToolbarButton — 크로스 영역(portable)', () => {
+  it('B3. portable 버튼의 크로스 이동 성공 — areas 갱신·홈에서 사라짐·dual-write·중복 없음', () => {
+    // find-replace(scene 홈, portable)를 project.inline 으로 이동.
+    const next = moveToolbarButton(registries, undefined, {
+      id: 'find-replace',
+      toArea: PROJECT,
+      slot: 'inline',
+      index: 0,
+    });
+    // project.inline 에 삽입.
+    expect(next.areas?.[PROJECT]?.inline?.[0]).toBe('find-replace');
+    // scene 의 어느 배열에도 없음.
+    const s = next.areas?.[SCENE];
+    expect(s?.inline).not.toContain('find-replace');
+    expect(s?.menu).not.toContain('find-replace');
+    expect(s?.hidden).not.toContain('find-replace');
+    // dual-write: inline → 'pinned'.
+    expect(next.buttons?.['find-replace']).toBe('pinned');
+    // 해석 결과 중복 없음.
+    const view = resolveToolbarView(registries, next, false);
+    const scene = view.find((v) => v.area === SCENE)!;
+    const project = view.find((v) => v.area === PROJECT)!;
+    expect(scene.inline).not.toContain('find-replace');
+    expect(scene.menu).not.toContain('find-replace');
+    expect(project.inline).toContain('find-replace');
+    const all = [...scene.inline, ...scene.menu, ...project.inline, ...project.menu];
+    expect(all.filter((x) => x === 'find-replace')).toHaveLength(1);
+  });
+
+  it('B4. 크로스 배정 상태에서 무관한 버튼 이동 후에도 크로스 배정 보존 + 중복 없음 (회귀)', () => {
+    // 1) find-replace 를 project 로 크로스 이동.
+    const crossed = moveToolbarButton(registries, undefined, {
+      id: 'find-replace',
+      toArea: PROJECT,
+      slot: 'inline',
+      index: 0,
+    });
+    // 2) 무관한 버튼(scene 내 add-scene)을 scene 내에서 이동.
+    const after = moveToolbarButton(registries, crossed, {
+      id: 'add-scene',
+      toArea: SCENE,
+      slot: 'menu',
+      index: 0,
+    });
+    // find-replace 는 여전히 project 에만, scene 엔 없음(중복 재유입 없음).
+    expect(after.areas?.[PROJECT]?.inline).toContain('find-replace');
+    const s = after.areas?.[SCENE];
+    expect(s?.inline).not.toContain('find-replace');
+    expect(s?.menu).not.toContain('find-replace');
+    expect(s?.hidden).not.toContain('find-replace');
+    // 해석 결과에서도 중복 없음.
+    const view = resolveToolbarView(registries, after, false);
+    const scene = view.find((v) => v.area === SCENE)!;
+    const project = view.find((v) => v.area === PROJECT)!;
+    const all = [...scene.inline, ...scene.menu, ...project.inline, ...project.menu];
+    expect(all.filter((x) => x === 'find-replace')).toHaveLength(1);
+    expect(project.inline).toContain('find-replace');
+  });
+
+  it('B5. 크로스 배정 후 slot=default 로 초기화하면 홈 영역 tier 폴백으로 복귀', () => {
+    const crossed = moveToolbarButton(registries, undefined, {
+      id: 'find-replace',
+      toArea: PROJECT,
+      slot: 'inline',
+      index: 0,
+    });
+    const reset = moveToolbarButton(registries, crossed, {
+      id: 'find-replace',
+      toArea: SCENE, // 홈으로 초기화
+      slot: 'default',
+    });
+    // buttons 키 삭제.
+    expect(reset.buttons?.['find-replace']).toBeUndefined();
+    // project·scene 배열 어디에도 명시 배치 없음.
+    expect(reset.areas?.[PROJECT]?.inline).not.toContain('find-replace');
+    const s = reset.areas?.[SCENE];
+    expect(s?.inline).not.toContain('find-replace');
+    expect(s?.menu).not.toContain('find-replace');
+    // 해석 시 scene 홈 tier 폴백(find-replace 는 secondary → PC inline)으로 복귀.
+    const view = resolveToolbarView(registries, reset, false);
+    const scene = view.find((v) => v.area === SCENE)!;
+    const project = view.find((v) => v.area === PROJECT)!;
+    expect(scene.inline).toContain('find-replace');
+    expect(project.inline).not.toContain('find-replace');
+  });
+});

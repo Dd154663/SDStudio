@@ -11,6 +11,7 @@ import {
   armToolbarDrag,
   disarmToolbarDrag,
   isMenuDragArmed,
+  metaOf,
 } from './ToolbarDnd';
 
 // 툴바 ⋯(더보기) 메뉴. 행은 "기존 버튼 노드 그대로 + 레지스트리 이름 라벨" —
@@ -37,16 +38,22 @@ interface ToolbarOverflowMenuProps {
   dropUp?: boolean;
   // 행 드래그 아웃용 react-dnd 아이템 타입 (미지정 = 드래그 비활성, 클래식 등)
   dndType?: string;
+  // 이 메뉴가 속한 툴바 영역 — 타입이 View 공유('toolbar-btn/main')가 되면서
+  // dndType 에서 그룹을 역산할 수 없어 명시로 받는다. 드래그 item.area(표시 영역)와
+  // 모바일 롱프레스 잡힘(armToolbarDrag)에 사용. dndType 지정 시 함께 지정할 것.
+  group?: ToolbarGroup;
 }
 
 const MenuRow = ({
   item,
   onClose,
   dndType,
+  group,
 }: {
   item: OverflowMenuItem;
   onClose: () => void;
   dndType?: string;
+  group?: ToolbarGroup;
 }) => {
   const rowRef = useRef<HTMLDivElement>(null);
   const [{ isDragging }, drag, preview] = useDrag(
@@ -56,6 +63,10 @@ const MenuRow = ({
         id: item.id,
         name: item.name,
         from: 'menu',
+        // 표시 영역(이 메뉴의 영역) — DraggableToolbarButton 의 item.area 와 동일
+        // 의미. 드롭 타깃의 canDrop(재배열=같은 area / 크로스=portable)이 판정한다.
+        area: group,
+        portable: metaOf(item.id)?.portable === true,
         node: item.node,
       } as ToolbarDragItem,
       canDrag: !!dndType,
@@ -66,7 +77,7 @@ const MenuRow = ({
         if (monitor.didDrop()) onClose();
       },
     }),
-    [dndType, item.id, item.name, onClose],
+    [dndType, group, item.id, item.name, onClose],
   );
   useEffect(() => {
     preview(getEmptyImage(), { captureDraggingState: true });
@@ -75,8 +86,7 @@ const MenuRow = ({
 
   // 모바일 롱프레스 잡힘 — 전역 잡힘 상태를 세워 그 순간 모달 숨김·툴바 하이라이트·
   // 흔들림·숨김 존·햅틱이 전부 즉시 시작된다 (드래그 첫 이동을 기다리지 않음).
-  // dndType = 'toolbar-btn/<group>' 이므로 그룹을 역산한다.
-  const group = dndType?.split('/')[1] as ToolbarGroup | undefined;
+  // 그룹은 명시 prop(group) — 타입은 View 공유라 역산 불가.
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearArmTimer = () => {
     if (armTimer.current) {
@@ -133,6 +143,7 @@ const ToolbarOverflowMenu = observer(({
   items,
   dropUp,
   dndType,
+  group,
 }: ToolbarOverflowMenuProps) => {
   const popRef = useRef<HTMLDivElement>(null);
 
@@ -173,7 +184,13 @@ const ToolbarOverflowMenu = observer(({
   const rows = (
     <div className="flex flex-col gap-1">
       {items.map((item) => (
-        <MenuRow key={item.id} item={item} onClose={onClose} dndType={dndType} />
+        <MenuRow
+          key={item.id}
+          item={item}
+          onClose={onClose}
+          dndType={dndType}
+          group={group}
+        />
       ))}
     </div>
   );

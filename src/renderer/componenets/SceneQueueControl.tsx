@@ -11,11 +11,9 @@ import {
 } from 'react';
 import {
   FaBookmark,
-  FaBroom,
   FaCheckSquare,
   FaEdit,
   FaEllipsisH,
-  FaExchangeAlt,
   FaFileExport,
   FaFileImage,
   FaPaintBrush,
@@ -93,6 +91,7 @@ import {
   useToolbarDragState,
   useToolbarRowDrop,
 } from './ToolbarDnd';
+import { portableToolbarButtons } from './PortableToolbarButtons';
 import { appState, SceneSelectorItem } from '../models/AppService';
 import {
   createInpaintPreset,
@@ -1902,7 +1901,7 @@ const QueueControl = observer(
     const toolbarDrag = useToolbarDragState('scene');
     const toolbarDragActive = toolbarDrag.active;
     const { drop: toolbarRowDrop, isOver: toolbarRowOver } =
-      useToolbarRowDrop('scene');
+      useToolbarRowDrop('scene', 'scene');
 
     const [bmRev, setBmRev] = useState(0);
     useEffect(() => {
@@ -2208,26 +2207,6 @@ const QueueControl = observer(
           </button>
         </Tooltip>
       ),
-      'empty-image-trash': (
-        <Tooltip content="모든 씬 내 삭제한 이미지 일괄 비우기">
-          <button
-            className="round-button back-gray"
-            onClick={() => appState.emptyProjectImageTrashWithConfirm()}
-          >
-            <FaBroom size={18} />
-          </button>
-        </Tooltip>
-      ),
-      'find-replace': (
-        <Tooltip content="찾기 및 변환 (Ctrl+H)">
-          <button
-            className="round-button back-gray"
-            onClick={() => appState.openFindReplace()}
-          >
-            <FaExchangeAlt size={18} />
-          </button>
-        </Tooltip>
-      ),
       'shortcut-help': !isMobile && (
         <Tooltip content="단축키 도움말">
           <button
@@ -2242,6 +2221,11 @@ const QueueControl = observer(
         </Tooltip>
       ),
     };
+    // portable 공유 버튼(find-replace·empty-image-trash 등) — 크로스 영역 렌더용.
+    // variant='scene': 타 영역발 버튼도 씬 툴바 표준 스타일(배경형)로 적응 렌더.
+    const shared = portableToolbarButtons({ mobileIcon, variant: 'scene' });
+    const buttonNode = (id: string): ReactNode =>
+      toolbarButtons[id] ?? shared[id];
 
     // 사용자 설정(appState.uiToolbar, observable)에 따라 인라인/⋯메뉴 배치 결정.
     // 편집 모드 v2: resolveToolbarView 가 전 영역을 해석 → 이 컴포넌트의 'scene' 영역만 사용.
@@ -2255,11 +2239,15 @@ const QueueControl = observer(
       inline: sceneArea?.inline ?? [],
       menu: sceneArea?.menu ?? [],
     };
-    // 커스터마이징 이름(레지스트리 라벨) 조회용 — 'scene' 영역 레지스트리
-    const sceneRegistry =
-      TOOLBAR_VIEW_MAIN.find((r) => r.area === 'scene')?.registry ?? [];
-    const sceneName = (id: string) =>
-      sceneRegistry.find((b) => b.id === id)?.name ?? id;
+    // 커스터마이징 이름(레지스트리 라벨) 조회용 — 크로스 영역 id(portable)의
+    // 이름도 표시해야 하므로 View 전체 레지스트리에서 찾는다.
+    const sceneName = (id: string) => {
+      for (const { registry } of TOOLBAR_VIEW_MAIN) {
+        const found = registry.find((b) => b.id === id);
+        if (found) return found.name;
+      }
+      return id;
+    };
 
     return (
       <div className={`flex flex-col h-full ${className ?? ''}`}>
@@ -2294,7 +2282,7 @@ const QueueControl = observer(
                 행 전체가 드롭 타깃(놓으면 인라인 고정) */}
             <div
               ref={toolbarRowDrop as any}
-              className={`flex gap-1 md:gap-1.5 items-center ${
+              className={`scene-toolbar-row flex gap-1 md:gap-1.5 items-center ${
                 mobileIcon
                   ? 'flex-nowrap overflow-x-auto no-scrollbars min-w-0 max-w-full [&>*]:flex-none'
                   : 'flex-wrap'
@@ -2310,7 +2298,7 @@ const QueueControl = observer(
                   index={i}
                   disabled={!!appState.uiToolbar.classic}
                 >
-                  {toolbarButtons[id]}
+                  {buttonNode(id)}
                 </DraggableToolbarButton>
               ))}
               {(toolbarLayout.menu.length > 0 || toolbarDragActive) && (
@@ -2324,7 +2312,7 @@ const QueueControl = observer(
                       : 'relative'
                   }
                 >
-                  <ToolbarMenuDropTarget group="scene">
+                  <ToolbarMenuDropTarget group="scene" area="scene">
                     <Tooltip content="더보기">
                       <button
                         className={`round-button ${showToolbarMenu ? 'back-sky' : 'back-gray'}${toolbarLayout.menu.length === 0 ? ' opacity-40' : ''}`}
@@ -2344,6 +2332,7 @@ const QueueControl = observer(
                       isOpen={showToolbarMenu}
                       onClose={() => setShowToolbarMenu(false)}
                       title="더보기"
+                      group="scene"
                       dndType={
                         appState.uiToolbar.classic
                           ? undefined
@@ -2354,7 +2343,7 @@ const QueueControl = observer(
                         name: sceneName(id),
                         // 노드를 캐시하지 않고 매 렌더 참조 — 상태 의존 라벨
                         // ("선택 씬 예약추가 (N)" 등)이 메뉴가 열린 채로도 갱신되도록
-                        node: toolbarButtons[id],
+                        node: buttonNode(id),
                       }))}
                     />
                   )}
@@ -2366,6 +2355,7 @@ const QueueControl = observer(
                 isOpen={showToolbarMenu}
                 onClose={() => setShowToolbarMenu(false)}
                 title="더보기"
+                group="scene"
                 dndType={
                   appState.uiToolbar.classic
                     ? undefined
@@ -2374,7 +2364,7 @@ const QueueControl = observer(
                 items={toolbarLayout.menu.map((id) => ({
                   id,
                   name: sceneName(id),
-                  node: toolbarButtons[id],
+                  node: buttonNode(id),
                 }))}
               />
             )}

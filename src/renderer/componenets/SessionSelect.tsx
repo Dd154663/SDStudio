@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { DropdownSelect, Option } from './UtilComponents';
 import ModalOverlay from './ModalOverlay';
-import { FaEllipsisH, FaPlus, FaPuzzlePiece, FaShare, FaThLarge, FaTrash, FaTrashAlt, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown } from 'react-icons/fa';
+import { FaEllipsisH, FaPlus, FaThLarge, FaTrash, FaTrashAlt, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown } from 'react-icons/fa';
 import { pushRecentProject } from './ProjectBrowser';
 import Tooltip from './Tooltip';
 import { sessionService, imageService, backend, zipService, workFlowService, trashService, isMobile } from '../models';
@@ -21,6 +21,7 @@ import {
   useToolbarDragState,
   useToolbarRowDrop,
 } from './ToolbarDnd';
+import { portableToolbarButtons } from './PortableToolbarButtons';
 import { v4 as uuidv4 } from 'uuid';
 import { runInAction } from 'mobx';
 
@@ -159,7 +160,7 @@ const SessionSelect = observer(() => {
   const toolbarDrag = useToolbarDragState('project');
   const toolbarDragActive = toolbarDrag.active;
   const { drop: toolbarRowDrop, isOver: toolbarRowOver } =
-    useToolbarRowDrop('project');
+    useToolbarRowDrop('project', 'project');
   useEffect(() => {
     const onListUpdated = () => {
       setSessionNames(sessionService.list());
@@ -255,16 +256,6 @@ const SessionSelect = observer(() => {
       </button>
       </Tooltip>
     ),
-    'backup-export': (
-      <button
-        className={`icon-button mx-1`}
-        onClick={() => {
-          appState.projectBackupMenu();
-        }}
-      >
-        <FaShare />
-      </button>
-    ),
     'delete-session': (
       <button className={`icon-button mx-1`} onClick={deleteSession}>
         <FaTrashAlt size={18} />{' '}
@@ -280,16 +271,13 @@ const SessionSelect = observer(() => {
       </button>
       </Tooltip>
     ),
-    'piece-editor': (
-      <button
-        className="round-button back-green flex items-center gap-1 ml-1"
-        onClick={() => appState.openPieceEditor()}
-      >
-        <FaPuzzlePiece size={18} />
-        <span className="hidden md:inline">프롬프트조각</span>
-      </button>
-    ),
   };
+  // portable 공유 버튼(backup-export·piece-editor 등) — 크로스 영역 렌더용.
+  // 프로젝트 바는 모바일 아이콘 축약 개념이 없어 mobileIcon=false(현 렌더와 동일).
+  // variant='project': 타 영역발 버튼도 프로젝트 바 표준(무배경 icon-button)으로 적응.
+  const shared = portableToolbarButtons({ mobileIcon: false, variant: 'project' });
+  const buttonNode = (id: string): React.ReactNode =>
+    toolbarButtons[id] ?? shared[id];
 
   // 사용자 설정(appState.uiToolbar, observable)에 따라 인라인/⋯메뉴 배치 결정.
   // 편집 모드 v2: resolveToolbarView 가 전 영역을 해석 → 이 컴포넌트의 'project' 영역만 사용.
@@ -303,11 +291,15 @@ const SessionSelect = observer(() => {
     inline: projectAreaResolved?.inline ?? [],
     menu: projectAreaResolved?.menu ?? [],
   };
-  // 커스터마이징 이름(레지스트리 라벨) 조회용 — 'project' 영역 레지스트리
-  const projectRegistry =
-    TOOLBAR_VIEW_MAIN.find((r) => r.area === 'project')?.registry ?? [];
-  const projectName = (id: string) =>
-    projectRegistry.find((b) => b.id === id)?.name ?? id;
+  // 커스터마이징 이름(레지스트리 라벨) 조회용 — 크로스 영역 id(portable)의
+  // 이름도 표시해야 하므로 View 전체 레지스트리에서 찾는다.
+  const projectName = (id: string) => {
+    for (const { registry } of TOOLBAR_VIEW_MAIN) {
+      const found = registry.find((b) => b.id === id);
+      if (found) return found.name;
+    }
+    return id;
+  };
 
   return (
     // 행 전체가 드롭 타깃 — 메뉴에서 끌어다 놓으면 인라인 고정(pinned)
@@ -501,13 +493,13 @@ const SessionSelect = observer(() => {
           index={i}
           disabled={!!appState.uiToolbar.classic}
         >
-          {toolbarButtons[id]}
+          {buttonNode(id)}
         </DraggableToolbarButton>
       ))}
       {(toolbarLayout.menu.length > 0 || toolbarDragActive) && (
         // 메뉴가 비어도 드래그 중엔 반투명 유령 ⋯(드롭 타깃)로 나타난다
         <div className="relative">
-          <ToolbarMenuDropTarget group="project">
+          <ToolbarMenuDropTarget group="project" area="project">
             <Tooltip content="더보기">
               <button
                 className={`icon-button mx-1${toolbarLayout.menu.length === 0 ? ' opacity-40' : ''}`}
@@ -525,13 +517,14 @@ const SessionSelect = observer(() => {
             onClose={() => setShowProjectMenu(false)}
             title="프로젝트 메뉴"
             dropUp
+            group="project"
             dndType={
               appState.uiToolbar.classic ? undefined : toolbarDndType('project')
             }
             items={toolbarLayout.menu.map((id) => ({
               id,
               name: projectName(id),
-              node: toolbarButtons[id],
+              node: buttonNode(id),
             }))}
           />
         </div>

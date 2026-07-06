@@ -8,6 +8,7 @@ import { appState } from '../models/AppService';
 import { ToolbarButtonPlacement, UiToolbarConfig } from '../../main/config';
 import {
   TOOLBAR_VIEW_MAIN,
+  ToolbarButtonMeta,
   ToolbarMove,
   moveToolbarButton,
 } from '../models/uiLayout';
@@ -21,7 +22,12 @@ import {
 
 export type ToolbarGroup = 'scene' | 'project';
 
-export const toolbarDndType = (group: ToolbarGroup) => `toolbar-btn/${group}`;
+// DnD 아이템 타입을 View(메인 화면) 단위로 공유한다 — 씬·프로젝트 영역이 같은
+// 타입을 쓰므로 서로의 드롭 타깃이 accept 대상이 된다. 실제 "이 드롭을 받을지"는
+// 각 타깃의 canDrop(item.area===자기 area 또는 item.portable)이 판정한다.
+// group 인자는 호출부 호환을 위해 유지하되 반환값은 고정 상수다.
+const TOOLBAR_VIEW_MAIN_DND_TYPE = 'toolbar-btn/main';
+export const toolbarDndType = (_group: ToolbarGroup) => TOOLBAR_VIEW_MAIN_DND_TYPE;
 
 // 롱프레스 "잡힘" 상태 — TouchBackend 는 딜레이(400ms) 뒤 첫 이동에서야 드래그를
 // 시작하므로, 그것만으로는 잡힌 순간의 피드백이 없다. 같은 400ms 타이머로 잡힘을
@@ -88,8 +94,10 @@ export interface ToolbarDragItem {
   from: 'inline' | 'menu';
   // 이 버튼의 홈 영역(TOOLBAR_VIEW_MAIN 의 area). 순서 재배열(인덱스 드롭)은
   // 같은 area 안에서만 허용 — 드롭 타깃의 canDrop 이 item.area 로 판정한다.
-  // (Phase B 에서 portable 크로스 이동이 열리면 이 검사를 완화한다)
   area?: string;
+  // portable 버튼(문맥 독립)만 타 영역 드롭을 허용한다. 드롭 타깃의 canDrop 이
+  // item.area===자기 area(재배열) 또는 item.portable(크로스 삽입)을 수락한다.
+  portable?: boolean;
   // 드래그 프리뷰용: 실제 버튼 JSX 그대로 + 원래 너비 (이름 알약로 바뀌면 혼동)
   node?: ReactNode;
   width?: number;
@@ -99,6 +107,16 @@ export interface ToolbarDragItem {
 function homeAreaOf(id: string): string | undefined {
   for (const { area, registry } of TOOLBAR_VIEW_MAIN) {
     if (registry.some((b) => b.id === id)) return area;
+  }
+  return undefined;
+}
+
+// TOOLBAR_VIEW_MAIN 전체에서 이 버튼 id 의 meta 를 찾는다. 없으면 undefined.
+// (⋯메뉴 행 드래그도 portable 판정에 사용 — ToolbarOverflowMenu 가 import)
+export function metaOf(id: string): ToolbarButtonMeta | undefined {
+  for (const { registry } of TOOLBAR_VIEW_MAIN) {
+    const found = registry.find((b) => b.id === id);
+    if (found) return found;
   }
   return undefined;
 }
@@ -141,13 +159,18 @@ export function useToolbarDragState(group: ToolbarGroup): {
   from?: 'inline' | 'menu';
 } {
   const layer = useDragLayer((monitor) => {
+    const item = monitor.getItem() as ToolbarDragItem | null;
+    // 타입은 View 공유라 아이템 타입만으로는 부족 — 이 그룹이 "수락 가능한"
+    // 드래그일 때만 active(흔들림·유령 ⋯·숨김 존). 즉 같은 area(재배열) 또는
+    // portable(크로스 삽입). 타 영역의 비-portable 드래그엔 반응하지 않는다.
+    const acceptable = !!item && (item.area === group || item.portable === true);
     const active =
-      monitor.isDragging() && monitor.getItemType() === toolbarDndType(group);
+      monitor.isDragging() &&
+      monitor.getItemType() === toolbarDndType(group) &&
+      acceptable;
     return {
       active,
-      from: active
-        ? (monitor.getItem() as ToolbarDragItem | null)?.from
-        : undefined,
+      from: active ? item?.from : undefined,
     };
   });
   if (layer.active) return layer;
@@ -196,6 +219,7 @@ export const DraggableToolbarButton = observer(
           name,
           from: 'inline',
           area,
+          portable: metaOf(id)?.portable === true,
           node: children,
           width: wrapRef.current?.offsetWidth,
         }),
@@ -212,11 +236,14 @@ export const DraggableToolbarButton = observer(
     const [{ isOverInsert, insertBefore }, dropInsert] = useDrop(
       () => ({
         accept: toolbarDndType(group),
+        // 같은 area(재배열) 또는 portable(타 영역에서 크로스 삽입) 수락.
+        // 어느 쪽이든 toArea 는 이 버튼의 area 이므로 아래 앵커 삽입 로직은 동일.
         canDrop: (item: ToolbarDragItem) =>
-          item.area === area && item.id !== id,
+          (item.area === area || item.portable === true) && item.id !== id,
         drop: (item: ToolbarDragItem, monitor) => {
           if (monitor.didDrop()) return;
-          if (item.area !== area || item.id === id) return;
+          if ((item.area !== area && item.portable !== true) || item.id === id)
+            return;
           const rect = wrapRef.current?.getBoundingClientRect();
           const client = monitor.getClientOffset();
           const before =
@@ -304,23 +331,35 @@ export const DraggableToolbarButton = observer(
   },
 );
 
-// ⋯ 버튼(또는 유령 ⋯) 드롭 래퍼 — 놓으면 메뉴로
+// ⋯ 버튼(또는 유령 ⋯) 드롭 래퍼 — 놓으면 메뉴로.
+// area = 이 ⋯ 가 속한 영역(소비처에서 전달). 크로스 드롭은 이 area 의 메뉴로 이동.
 export const ToolbarMenuDropTarget = ({
   group,
+  area,
   children,
 }: {
   group: ToolbarGroup;
+  area: string;
   children: ReactNode;
 }) => {
   const [{ isOver, canDrop }, drop] = useDrop(
     () => ({
       accept: toolbarDndType(group),
+      // 같은 area(자기 영역 메뉴로) 또는 portable(타 영역 메뉴로) 수락.
+      canDrop: (item: ToolbarDragItem) =>
+        item.area === area || item.portable === true,
       drop: (item: ToolbarDragItem) => {
-        applyToolbarPlacement(item.id, 'menu');
+        if (item.area === area) {
+          // 자기 영역 → 홈 기준 배치 API 유지(기존 동작 그대로).
+          applyToolbarPlacement(item.id, 'menu');
+        } else if (item.portable === true) {
+          // 크로스 → 이 영역의 메뉴로 직접 이동.
+          applyToolbarMove({ id: item.id, toArea: area, slot: 'menu' });
+        }
       },
       collect: (m) => ({ isOver: m.isOver(), canDrop: m.canDrop() }),
     }),
-    [group],
+    [group, area],
   );
   return (
     <div
@@ -337,20 +376,33 @@ export const ToolbarMenuDropTarget = ({
 // 툴바 행 전체 드롭 — 놓으면 인라인 고정(pinned). 안쪽 타깃(⋯)이 이미 처리한
 // 드롭은 didDrop 으로 건너뛴다. 반환된 drop ref 를 행 컨테이너에 부착해 사용.
 // isOver 는 행 하이라이트("이 영역에 놓으면 빼내짐") 피드백용.
-export function useToolbarRowDrop(group: ToolbarGroup): {
+// area = 이 행이 속한 영역(소비처에서 전달). 크로스 드롭은 이 area 로 인라인 편입.
+export function useToolbarRowDrop(
+  group: ToolbarGroup,
+  area: string,
+): {
   drop: ReturnType<typeof useDrop>[1];
   isOver: boolean;
 } {
   const [{ isOver }, drop] = useDrop(
     () => ({
       accept: toolbarDndType(group),
+      // 같은 area(인라인 고정) 또는 portable(타 영역에서 이 행으로) 수락.
+      canDrop: (item: ToolbarDragItem) =>
+        item.area === area || item.portable === true,
       drop: (item: ToolbarDragItem, monitor) => {
         if (monitor.didDrop()) return;
-        applyToolbarPlacement(item.id, 'pinned');
+        if (item.area === area) {
+          // 자기 영역 → 홈 기준 배치 API 유지(기존 동작 그대로).
+          applyToolbarPlacement(item.id, 'pinned');
+        } else if (item.portable === true) {
+          // 크로스 → 이 영역의 인라인 맨 뒤로 편입.
+          applyToolbarMove({ id: item.id, toArea: area, slot: 'inline' });
+        }
       },
       collect: (m) => ({ isOver: m.isOver({ shallow: true }) }),
     }),
-    [group],
+    [group, area],
   );
   return { drop, isOver };
 }
@@ -369,11 +421,23 @@ export function toolbarRowHighlightClass(
 
 // 드래그 중에만 화면 하단에 나타나는 "여기로 끌어서 숨기기" 존.
 // --z-dnd-hint: 시각 숨김된 메뉴 모달(--z-modal)보다 위, 드래그 프리뷰(--z-dnd-preview)보다 아래.
+// 타입이 View 공유라 존이 씬·프로젝트 양쪽에 중복 표시될 수 있으므로, 드래그
+// 아이템의 홈 영역(item.area)이 이 그룹일 때만 렌더/수락한다(숨김=홈 배치 초기화).
 export const ToolbarHideZone = ({ group }: { group: ToolbarGroup }) => {
   const active = useToolbarDragActive(group);
+  const isHome = useDragLayer((monitor) => {
+    const item = monitor.getItem() as ToolbarDragItem | null;
+    return (
+      monitor.isDragging() &&
+      monitor.getItemType() === toolbarDndType(group) &&
+      !!item &&
+      item.area === group
+    );
+  });
   const [{ isOver }, drop] = useDrop(
     () => ({
       accept: toolbarDndType(group),
+      canDrop: (item: ToolbarDragItem) => item.area === group,
       drop: (item: ToolbarDragItem) => {
         applyToolbarPlacement(item.id, 'hidden');
       },
@@ -381,7 +445,10 @@ export const ToolbarHideZone = ({ group }: { group: ToolbarGroup }) => {
     }),
     [group],
   );
-  if (!active) return null;
+  // 실제 드래그 전(롱프레스 armed) 단계엔 useDragLayer 아이템이 없어 isHome=false 가
+  // 되므로, armed 그룹이 이 그룹이면(=홈) 표시하도록 함께 판정.
+  const armedHome = toolbarDragUi.armed === group;
+  if (!active || (!isHome && !armedHome)) return null;
   return (
     <div
       ref={drop as any}
