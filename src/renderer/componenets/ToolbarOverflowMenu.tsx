@@ -4,6 +4,7 @@ import { getEmptyImage } from 'react-dnd-html5-backend';
 import { observer } from 'mobx-react-lite';
 import ModalOverlay from './ModalOverlay';
 import { isMobile } from '../models';
+import { appState } from '../models/AppService';
 import {
   LONG_PRESS_MS,
   ToolbarDragItem,
@@ -119,6 +120,13 @@ const MenuRow = ({
         (isDragging ? ' opacity-30' : '')
       }
       onClick={(e) => {
+        // 편집 모드 중에는 행 클릭(버튼 위임→닫기)을 흡수 — 메뉴 항목의 기능
+        // 오발 방지. 드래그·롱프레스로 밖으로 빼내는 경로는 그대로 동작한다.
+        if (appState.editMode) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         const target = e.target as HTMLElement;
         if (!target.closest('button')) {
           // 라벨/여백 클릭 → 행 안의 실제 버튼으로 위임.

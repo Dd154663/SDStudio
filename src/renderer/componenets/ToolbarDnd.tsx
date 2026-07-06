@@ -177,6 +177,12 @@ export function useToolbarDragState(group: ToolbarGroup): {
   if (toolbarDragUi.armed === group) {
     return { active: true, from: toolbarDragUi.armedFrom ?? 'inline' };
   }
+  // 편집 모드 동안은 드래그가 없어도 상시 active — 흔들림·유령 ⋯·숨김 존이
+  // 항상 보여 "드래그로 편집할 수 있음"을 안내한다. from 은 undefined 유지
+  // (빨간 "빼내짐" 행 하이라이트는 메뉴발 드래그 전용 — 기존 조건 그대로).
+  if (appState.editMode) {
+    return { active: true, from: undefined };
+  }
   return layer;
 }
 
@@ -315,6 +321,16 @@ export const DraggableToolbarButton = observer(
         onTouchMove={clearArmTimer}
         onTouchEnd={onTouchEndOrCancel}
         onTouchCancel={onTouchEndOrCancel}
+        // 편집 모드 중 버튼 기능 오발 방지 — 클릭을 캡처 단계에서 흡수.
+        // 드래그는 click 이벤트가 아니라 영향 없음(재배열은 그대로 동작).
+        onClickCapture={
+          appState.editMode
+            ? (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }
+            : undefined
+        }
         className={
           (isDragging
             ? 'opacity-30'
@@ -423,7 +439,7 @@ export function toolbarRowHighlightClass(
 // --z-dnd-hint: 시각 숨김된 메뉴 모달(--z-modal)보다 위, 드래그 프리뷰(--z-dnd-preview)보다 아래.
 // 타입이 View 공유라 존이 씬·프로젝트 양쪽에 중복 표시될 수 있으므로, 드래그
 // 아이템의 홈 영역(item.area)이 이 그룹일 때만 렌더/수락한다(숨김=홈 배치 초기화).
-export const ToolbarHideZone = ({ group }: { group: ToolbarGroup }) => {
+export const ToolbarHideZone = observer(({ group }: { group: ToolbarGroup }) => {
   const active = useToolbarDragActive(group);
   const isHome = useDragLayer((monitor) => {
     const item = monitor.getItem() as ToolbarDragItem | null;
@@ -446,9 +462,10 @@ export const ToolbarHideZone = ({ group }: { group: ToolbarGroup }) => {
     [group],
   );
   // 실제 드래그 전(롱프레스 armed) 단계엔 useDragLayer 아이템이 없어 isHome=false 가
-  // 되므로, armed 그룹이 이 그룹이면(=홈) 표시하도록 함께 판정.
+  // 되므로, armed 그룹이 이 그룹이면(=홈) 표시하도록 함께 판정. 편집 모드 상시 표시도
+  // 드래그 아이템이 없어 isHome 을 못 읽으므로 자기 그룹 존을 항상 노출한다.
   const armedHome = toolbarDragUi.armed === group;
-  if (!active || (!isHome && !armedHome)) return null;
+  if (!active || (!isHome && !armedHome && !appState.editMode)) return null;
   return (
     <div
       ref={drop as any}
@@ -463,4 +480,4 @@ export const ToolbarHideZone = ({ group }: { group: ToolbarGroup }) => {
       여기로 끌어서 숨기기
     </div>
   );
-};
+});

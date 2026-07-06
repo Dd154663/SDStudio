@@ -191,6 +191,10 @@ export class AppState {
   // 배치 해석은 resolveLayout(layoutTemplates.ts) 단일 출처. 부팅 시 로드는 App.tsx 담당.
   @observable accessor uiLayoutSlots: UiLayoutSlots = {};
 
+  // 편집 모드(PC 전용): 화면에서 UI 배치 직접 조작. EditModeShell 이 켜져 있는 동안
+  // 툴바 버튼은 클릭 대신 드래그 편집 대상이 된다.
+  @observable accessor editMode = false;
+
   // 저장소 접근 불안정 시 자동 저장 일시정지(서킷 브레이커). true(기본)면 보호 활성.
   // ConfigScreen 저장/부팅 시 config.storageWriteGuard 값으로 갱신된다.
   @observable accessor storageWriteGuard: boolean = true;

@@ -44,7 +44,10 @@ const BottomBar = observer(
         <div className="flex flex-none gap-4 items-center ml-auto">
           {/* 분리 핸들(PC 전용). 분리 상태면 컨트롤은 위젯이 대신 표시하므로 숨김. */}
           {!genDetached && (
-            <div className="flex flex-none items-center gap-2">
+            <div
+              data-slot="gencontrol"
+              className="flex flex-none items-center gap-2"
+            >
               <span className="hidden md:flex">
                 <GenControlHandle />
               </span>

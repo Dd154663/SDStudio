@@ -17,6 +17,7 @@ import PreSetEditor from './PreSetEdtior';
 import SceneQueuControl, { SceneCell } from './SceneQueueControl';
 import BottomBar from './BottomBar';
 import { GenControlFloating } from './GenControlWidget';
+import EditModeShell from './EditModeShell';
 import { resolveLayout } from '../models/layoutTemplates';
 import TobBar from './TobBar';
 import AlertWindow from './AlertWindow';
@@ -590,6 +591,7 @@ export const App = observer(() => {
         <>
           {!appState.leftPanelCollapsed && (
             <div
+              data-slot="preset"
               style={{ width: appState.leftPanelWidth, minWidth: 250 }}
               className={
                 'flex-none overflow-hidden hidden md:block h-full ' + presetOrder
@@ -777,6 +779,7 @@ export const App = observer(() => {
                   order 를 주며, 래퍼가 상시 존재하므로 패널 인스턴스는 재마운트되지 않는다.
                   래퍼 자신이 hidden md:flex 라 모바일에서는 기존과 동일하게 미렌더된다. */}
               <div
+                data-slot="history"
                 className={
                   'flex-none hidden md:flex h-full ' +
                   (resolvedLayout.historySide === 'left' ? 'order-1' : 'order-3')
@@ -796,6 +799,8 @@ export const App = observer(() => {
             resolvedLayout.genControl === 'floating') && (
             <GenControlFloating />
           )}
+        {/* 편집 모드 셸(PC 전용). 진입점이 PC 전용이지만 만약을 위해 !isMobile 가드. */}
+        {!isMobile && appState.editMode && <EditModeShell />}
         {/* 내보내기 진행 플로팅 위젯 (비차단형) */}
         {appState.exportProgress && (
           <div className="fixed bottom-16 right-4 z-[var(--z-widget)] bg-[var(--c-surface-2)] rounded-lg shadow-xl border line-color p-3 min-w-[220px]">

@@ -1255,13 +1255,47 @@ const LayoutWireframe = ({ variant }: { variant: 'classic' | 'compact' }) => {
   );
 };
 
-const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, mobileMode }: any) => (
+const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, mobileMode, onClose }: any) => (
   <div className="space-y-5">
     <div>
       <label className="block text-sm gray-label mb-1">화면 배치</label>
       <p className="text-xs text-muted">
         작업 화면의 하단 바 위치를 바꿉니다. 누르고 <b>저장</b>하면 적용됩니다.
       </p>
+    </div>
+
+    {/* 편집 모드 진입점(PC 전용) — 실제 화면 위에서 버튼·패널 배치를 드래그로 조정.
+        모바일은 클래식 강제라 비활성 + "PC 전용" 표시(위 템플릿 칩과 동일 패턴). */}
+    <div>
+      <button
+        type="button"
+        disabled={mobileMode}
+        onClick={() => {
+          if (mobileMode) return;
+          appState.editMode = true;
+          // 기존 닫기 경로(onClose)를 그대로 태운다.
+          onClose();
+        }}
+        className={
+          'flex w-full items-center gap-3 rounded-md border p-2.5 text-left clickable line-color ' +
+          (mobileMode ? 'opacity-50 cursor-not-allowed ' : '')
+        }
+      >
+        <FaSlidersH size={16} className="flex-none text-muted" />
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm text-default">화면에서 직접 편집</span>
+            {mobileMode && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--c-zone)] text-muted flex-none">
+                PC 전용
+              </span>
+            )}
+          </div>
+          <div className="text-xs text-muted mt-0.5">
+            실제 화면에서 버튼·패널 배치를 드래그로 조정합니다
+          </div>
+        </div>
+      </button>
     </div>
 
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1518,7 +1552,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'toolbar':
         return <ToolbarTab {...{ uiToolbar, setUiToolbar }} />;
       case 'layout':
-        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, mobileMode }} />;
+        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, mobileMode, onClose }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':
