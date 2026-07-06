@@ -47,6 +47,7 @@ BUILD_GUIDE.txt
 SETUP_GUIDE.txt
 CLAUDE_BUILD_GUIDE.md
 SPEC_GUIDE.md
+guides/
 
 # 일회성 스크립트
 scripts/
