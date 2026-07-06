@@ -755,8 +755,36 @@ const PromptAutoComplete = ({
     return <FaBox />;
   };
   useEffect(() => {
-    setPosX(clientX);
-    setPosY(clientY + 22);
+    // 팝업 높이(아래 style/List 의 200px 과 동일해야 함)와 캐럿과의 간격.
+    const POPUP_HEIGHT = 200;
+    const GAP = 22;
+    const reposition = () => {
+      setPosX(clientX);
+      // visualViewport 는 모바일 소프트 키보드가 올라오면 그만큼 줄어든다.
+      // 이를 이용해 팝업이 키보드(또는 화면 하단)에 가리는지 판단한다.
+      const vv = window.visualViewport;
+      const visibleTop = vv ? vv.offsetTop : 0;
+      const visibleBottom = visibleTop + (vv ? vv.height : window.innerHeight);
+      let y = clientY + GAP;
+      if (y + POPUP_HEIGHT > visibleBottom) {
+        // 아래로 펼치면 잘리는 경우 캐럿 위로 뒤집는다.
+        const above = clientY - GAP - POPUP_HEIGHT;
+        y =
+          above >= visibleTop
+            ? above
+            : Math.max(visibleTop, visibleBottom - POPUP_HEIGHT);
+      }
+      setPosY(y);
+    };
+    reposition();
+    // 팝업이 떠 있는 동안 키보드가 나타나거나 뷰포트가 스크롤되면 위치를 다시 계산.
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', reposition);
+    vv?.addEventListener('scroll', reposition);
+    return () => {
+      vv?.removeEventListener('resize', reposition);
+      vv?.removeEventListener('scroll', reposition);
+    };
   }, [clientX, clientY]);
   useEffect(() => {
     setMatchMasks(tags.map((tag) => calcGapMatch(curWord, tag.word).path));
