@@ -994,6 +994,8 @@ const ResultDetailView = observer(
     const filenameRef = useRef<string>(filename);
     const [image, setImage] = useState<string | undefined>(undefined);
     const watchedImages = useRef(new Set<string>());
+    // 모바일 좌우 스와이프로 이미지 전환. 시작 좌표를 저장해 끝점과 비교한다.
+    const touchStart = useRef<{ x: number; y: number } | null>(null);
     const [middlePrompt, setMiddlePrompt] = useState<string>('');
     const [characterPrompts, setCharacterPrompts] = useState<CharacterPrompt[]>(
       [],
@@ -1361,7 +1363,37 @@ const ResultDetailView = observer(
             </div>
           </div>
         </div>
-        <div className="flex-1 overflow-auto">
+        <div
+          className="flex-1 overflow-auto"
+          onTouchStart={(e) => {
+            if (e.touches.length !== 1) {
+              touchStart.current = null;
+              return;
+            }
+            touchStart.current = {
+              x: e.touches[0].clientX,
+              y: e.touches[0].clientY,
+            };
+          }}
+          onTouchEnd={(e) => {
+            const start = touchStart.current;
+            touchStart.current = null;
+            if (!start || paths.length < 2) return;
+            const t = e.changedTouches[0];
+            const dx = t.clientX - start.x;
+            const dy = t.clientY - start.y;
+            // 명확한 가로 스와이프만 처리(세로 스크롤/핀치와 충돌 방지):
+            // 이동 50px 이상 + 가로가 세로보다 우세할 때.
+            if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+            if (dx < 0) {
+              setSelectedIndex((selectedIndex + 1) % paths.length);
+            } else {
+              setSelectedIndex(
+                (selectedIndex - 1 + paths.length) % paths.length,
+              );
+            }
+          }}
+        >
           {image && (
             <img
               src={image}
