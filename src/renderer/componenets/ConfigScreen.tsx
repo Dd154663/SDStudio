@@ -1250,6 +1250,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [defaultExportFolder, setDefaultExportFolder] = useState('');
   const [uiTheme, setUiTheme] = useState<UiThemeConfig>({});
   const [uiToolbar, setUiToolbar] = useState<UiToolbarConfig>({});
+  // 미저장 변경 감지 기준 — 로드/저장 시점의 config 스냅샷 (#17)
+  const [savedCfg, setSavedCfg] = useState<Config | null>(null);
   const mobileMode = isMobile;
 
   useEffect(() => {
@@ -1271,6 +1273,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setDefaultExportFolder(config.defaultExportFolder ?? '');
       setUiTheme(config.uiTheme ?? {});
       setUiToolbar(config.uiToolbar ?? {});
+      setSavedCfg(config);
     })();
     const checkReady = () => setReady(localAIService.ready);
     const onProgress = (e: any) => setProgress(e.detail.percent);
@@ -1385,6 +1388,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiToolbar: uiToolbar,
     };
     await backend.setConfig(config);
+    setSavedCfg(config);
     if (old.useCUDA !== useGPU) localAIService.modelChanged();
     appState.classicSceneCard = classicSceneCard;
     appState.legacyProjectMode = legacyProjectMode;
@@ -1434,6 +1438,28 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     }
   };
 
+  // 미저장 변경 여부 (#17) — handleSave 가 저장하는 필드만 비교(로드 시와 같은 기본값 적용).
+  // saveLocation 은 선택 즉시 저장되므로 제외. 객체(uiTheme/uiToolbar)는 JSON 직렬화 비교.
+  const dirty =
+    savedCfg != null &&
+    (imageEditor !== (savedCfg.imageEditor ?? 'photoshop') ||
+      useGPU !== (savedCfg.useCUDA ?? false) ||
+      quality !== (savedCfg.removeBgQuality ?? 'normal') ||
+      refreshImage !== (savedCfg.refreshImage ?? false) ||
+      whiteMode !== (savedCfg.whiteMode ?? false) ||
+      useLocalBgRemoval !== (savedCfg.useLocalBgRemoval ?? false) ||
+      delayTime !== (savedCfg.delayTime ?? 0) ||
+      classicSceneCard !== (savedCfg.classicSceneCard ?? false) ||
+      legacyProjectMode !== (savedCfg.legacyProjectMode ?? false) ||
+      storageWriteGuard !== (savedCfg.storageWriteGuard ?? true) ||
+      exportConcurrency !== (savedCfg.exportConcurrency ?? (isMobile ? 2 : 4)) ||
+      (defaultExportFolder || '') !== (savedCfg.defaultExportFolder ?? '') ||
+      trueDark !== (savedCfg.trueDark ?? false) ||
+      // fullWordAc 는 config 파일이 아니라 appState+localStorage 저장 — 저장 시 appState 가 갱신되므로 그것과 비교
+      fullWordAc !== appState.fullWordAutoComplete ||
+      JSON.stringify(uiTheme) !== JSON.stringify(savedCfg.uiTheme ?? {}) ||
+      JSON.stringify(uiToolbar) !== JSON.stringify(savedCfg.uiToolbar ?? {}));
+
   return (
     <div
       className="fixed inset-0 flex items-center justify-center"
@@ -1446,9 +1472,18 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       onClick={onClose}
     >
       <div
-        className={'w-[90vw] max-w-xl md:max-w-2xl bg-[var(--c-zone)] rounded-xl shadow-2xl flex flex-col overflow-hidden border line-color ' + (mobileMode ? 'max-h-[90vh]' : 'max-h-[85vh]')}
+        className={'relative w-[90vw] max-w-xl md:max-w-2xl bg-[var(--c-zone)] rounded-xl shadow-2xl flex flex-col overflow-hidden border line-color ' + (mobileMode ? 'max-h-[90vh]' : 'max-h-[85vh]')}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* 미저장 변경 표시 (#17) — 헤더 중앙 빈 공간 위 절대배치 오버레이.
+            흐름에 끼우면 열릴 때마다 내용이 밀리므로 absolute + pointer-events-none 로
+            레이아웃·클릭에 영향 0. 닫기를 막지 않는 안내 전용. */}
+        {dirty && (
+          <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-10 pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap shadow-sm bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-900/80 dark:text-amber-200 dark:border-amber-600">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-300" />
+            저장 안 된 변경
+          </div>
+        )}
         {/* 헤더 */}
         <div className="flex items-center justify-between px-3 md:px-5 py-3 border-b line-color flex-none">
           <h1 className="text-base font-semibold text-default">환경설정</h1>
