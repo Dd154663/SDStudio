@@ -15,6 +15,7 @@ import { appState } from '../models/AppService';
 import { backStackService } from '../models/BackStackService';
 import { ContextMenuType, GenericScene } from '../models/types';
 import Tooltip from './Tooltip';
+import { toolbarDragUi } from './ToolbarDnd';
 
 // 최근 생성 이미지 히스토리 사이드바.
 // PC: 우측 밀어내기(push) 패널 — 펼치면 중앙 영역이 그만큼 줄어듦.
@@ -222,6 +223,9 @@ export const ImageHistoryHandle = observer(() => {
     let tracking = false;
     const onStart = (e: TouchEvent) => {
       if (appState.historyDrawerOpen || e.touches.length !== 1) return;
+      // 우측 끝 툴바 버튼을 롱프레스로 잡아 정리(드래그)하는 중이면 스와이프로
+      // 오인해 드로어가 열리지 않도록 무시한다.
+      if (toolbarDragUi.armed !== null) return;
       const t = e.touches[0];
       if (t.clientX < window.innerWidth - 32) return; // 가장자리 32px에서 시작한 터치만
       startX = t.clientX;
@@ -230,6 +234,11 @@ export const ImageHistoryHandle = observer(() => {
     };
     const onMove = (e: TouchEvent) => {
       if (!tracking || e.touches.length !== 1) return;
+      // 터치 시작 후(400ms 뒤) 툴바 드래그가 잡히면 여기서 추적을 중단한다.
+      if (toolbarDragUi.armed !== null) {
+        tracking = false;
+        return;
+      }
       const t = e.touches[0];
       const dx = t.clientX - startX;
       const dy = t.clientY - startY;

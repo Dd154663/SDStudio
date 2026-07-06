@@ -1319,7 +1319,14 @@ const ProjectDrawer = observer(() => {
                   depth: number,
                 ): React.ReactNode => {
                   const projects = folderToProjects.get(f) || [];
-                  const childFolders = sessionService.getChildFolders(f);
+                  // 서브폴더도 사용자 지정 순서(folderOrder)를 따르도록 정렬한다.
+                  // getChildFolders 는 folderList 순이라 그대로 쓰면 순서변경이 반영 안 됨.
+                  const childFolders = sessionService
+                    .getChildFolders(f)
+                    .slice()
+                    .sort((a, b) => folders.indexOf(a) - folders.indexOf(b));
+                  // 헤더 카운트는 하위 폴더에 속한 프로젝트까지 포함한 전체 개수.
+                  const totalCount = sessionService.getProjectsInFolder(f).length;
                   const isOpen = expanded.has(f);
                   const color =
                     sessionService.getFolderColor(f) || DEFAULT_FOLDER_COLOR;
@@ -1467,7 +1474,7 @@ const ProjectDrawer = observer(() => {
                               {leafName}
                             </span>
                             <span className="text-xs text-faint font-normal flex-none">
-                              {projects.length}
+                              {totalCount}
                             </span>
                           </button>
                           {isMobile && (

@@ -445,9 +445,13 @@ body {
 }
 
 @media screen and (max-width: 768px) {
+  /* 모바일은 h-96(24rem) 고정 높이가 화면을 넘겨 하단이 잘리므로, 화면 비율
+     기준으로 낮춰 하단 여백(키보드 노출 대비)을 확보한다. */
   .prompt-full {
     width: 90vw;
     left: 0;
+    top: 14vh;
+    height: 56vh;
   }
 }
 

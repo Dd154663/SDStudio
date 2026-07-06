@@ -1482,9 +1482,10 @@ const PromptEditTextArea = observer(
     }, []);
 
     // 입력창 배경 토큰(--c-input-bg)을 따라 커스터마이징 반영. 기본값은 기존 외형과
-    // 동일(다크=slate-700, 라이트=gray-200). 전체화면은 기존 흰/슬레이트 유지.
+    // 동일(다크=slate-700, 라이트=gray-200). 전체화면(확장 창)도 동일 토큰을 써서
+    // 테마 커스터마이징이 그대로 반영되도록 한다(그림자만 추가).
     let bgColor = 'bg-[var(--c-input-bg)]';
-    if (fullScreen) bgColor = 'bg-white dark:bg-slate-600 shadow-lg';
+    if (fullScreen) bgColor = 'bg-[var(--c-input-bg)] shadow-lg';
 
     return (
       <>

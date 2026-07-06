@@ -751,6 +751,46 @@ export const CharacterPresetEditor = observer(({
       {/* 순차 생성 설정 패널 (로컬/글로벌 공통) */}
       {cyclingMode && (
             <div className="mt-4 p-3 border line-color rounded-lg">
+              {/* 프리셋 선택 (씬 선택과 동일한 전체 선택/해제 제공) */}
+              <div className="mb-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    프리셋 선택 (
+                    {globalView ? selectedGlobalIds.size : selectedPresets.size}/
+                    {globalView ? globalEntries.length : presets.length})
+                  </span>
+                  <button
+                    onClick={() => {
+                      if (globalView) {
+                        const all =
+                          globalEntries.length > 0 &&
+                          globalEntries.every((e) => selectedGlobalIds.has(e.id));
+                        setSelectedGlobalIds(
+                          new Set<string>(all ? [] : globalEntries.map((e) => e.id)),
+                        );
+                      } else {
+                        const all =
+                          presets.length > 0 &&
+                          presets.every((p) => selectedPresets.has(p.name));
+                        setSelectedPresets(
+                          new Set<string>(all ? [] : presets.map((p) => p.name)),
+                        );
+                      }
+                    }}
+                    className="text-xs btn-link"
+                  >
+                    {(
+                      globalView
+                        ? globalEntries.length > 0 &&
+                          globalEntries.every((e) => selectedGlobalIds.has(e.id))
+                        : presets.length > 0 &&
+                          presets.every((p) => selectedPresets.has(p.name))
+                    )
+                      ? '전체 해제'
+                      : '전체 선택'}
+                  </button>
+                </div>
+              </div>
               {/* 씬 선택 */}
               <div className="mb-3">
                 <div className="flex items-center justify-between mb-1">
