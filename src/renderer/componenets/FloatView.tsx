@@ -99,7 +99,7 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = ({
       {!!views.length && (
         <div
           className={
-            'top-0 absolute w-full z-10 float-view ' +
+            'top-0 absolute w-full z-[var(--z-float-view)] float-view ' +
             (views[0].showToolbar ? 'show-toolbar' : 'h-full')
           }
         >

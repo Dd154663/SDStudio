@@ -1,5 +1,5 @@
 :root {
-  --contexify-zIndex: 5000; /* 히스토리 드로어(2100)·모달(2000) 위 — 컨텍스트 메뉴는 항상 위 */
+  --contexify-zIndex: var(--z-context-menu); /* 층위 사다리(App.css :root) 참조 — 컨텍스트 메뉴는 항상 위 */
   --contexify-menu-minWidth: 220px;
   --contexify-menu-padding: 6px;
   --contexify-menu-radius: 6px;

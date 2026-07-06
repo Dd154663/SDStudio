@@ -872,7 +872,7 @@ const PromptAutoComplete = ({
       onMouseDown={(e) => {
         e.stopPropagation();
       }}
-      className="fixed bg-[var(--c-zone)] border line-color rounded-lg shadow-lg z-30 text-default"
+      className="fixed bg-[var(--c-zone)] border line-color rounded-lg shadow-lg z-[var(--z-prompt-popup)] text-default"
       style={{
         display:
           tags.length > 0 && (clientX !== 0 || clientY !== 0)
@@ -1498,7 +1498,7 @@ const PromptEditTextArea = observer(
             bgColor +
             (!fullScreen
               ? ' overflow-hidden h-full relative rounded-md'
-              : ' left-0 m-4 p-2 overflow-hidden fixed z-30 h-96 prompt-full rounded-lg')
+              : ' left-0 m-4 p-2 overflow-hidden fixed z-[var(--z-prompt-popup)] h-96 prompt-full rounded-lg')
           }
         >
           <div className="absolute right-0 top-0 z-10">
@@ -1550,7 +1550,7 @@ const PromptEditTextArea = observer(
         />
         {fullScreen && (
           <div
-            className="fixed bg-black opacity-15 w-screen h-screen top-0 left-0 z-20"
+            className="fixed bg-black opacity-15 w-screen h-screen top-0 left-0 z-[var(--z-prompt-back)]"
             onClick={() => {
               setFullScreen(false);
             }}

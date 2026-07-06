@@ -15,7 +15,7 @@ const Tooltip = ({ text, x, y }: Props) => {
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     color: 'white',
     pointerEvents: 'none',
-    zIndex: 9999,
+    zIndex: 'var(--z-tooltip)',
     left: `${x}px`,
     top: `${y}px`,
   };

@@ -256,7 +256,7 @@ export const ImageHistoryHandle = observer(() => {
   return (
     <button
       className="fixed right-0 top-1/2 -translate-y-1/2 md:hidden flex items-center justify-center w-6 h-14 rounded-l-md border border-r-0 line-color bg-[var(--c-surface-2)] opacity-70 active:opacity-100"
-      style={{ zIndex: 2200 }}
+      style={{ zIndex: 'var(--z-drawer-handle)' }}
       onClick={() => {
         appState.historyDrawerOpen = !open;
       }}
@@ -331,7 +331,7 @@ export const ImageHistoryDrawer = observer(() => {
 
   if (!render) return null;
   return (
-    <div className="fixed inset-0 titlebar-no-drag" style={{ zIndex: 2100 }}>
+    <div className="fixed inset-0 titlebar-no-drag" style={{ zIndex: 'var(--z-drawer)' }}>
       {/* 닫기는 배경(dim) 클릭에만 연결 — 패널에서 stopPropagation 을 쓰면
           내부 터치가 document 까지 버블되지 않아 contexify 컨텍스트 메뉴가
           바깥 터치로 안 닫히는 버그가 생긴다 (모바일 롱프레스 메뉴) */}

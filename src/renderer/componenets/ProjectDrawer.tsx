@@ -836,7 +836,7 @@ const ProjectDrawer = observer(() => {
       const g = document.createElement('div');
       g.textContent = label;
       g.style.cssText =
-        'position:fixed;left:0;top:0;z-index:99999;pointer-events:none;' +
+        'position:fixed;left:0;top:0;z-index:var(--z-drag-ghost);pointer-events:none;' +
         'padding:8px 12px;border-radius:10px;font-size:14px;font-weight:600;' +
         'color:#fff;background:#0ea5e9;box-shadow:0 6px 16px rgba(0,0,0,.35);' +
         'max-width:60vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' +
@@ -1111,7 +1111,7 @@ const ProjectDrawer = observer(() => {
   return (
     <div
       className="fixed inset-0 titlebar-no-drag"
-      style={{ zIndex: 2100 }}
+      style={{ zIndex: 'var(--z-drawer)' }}
       onClick={() => {
         // 떠 있는 컨텍스트 툴바를 닫는 클릭이면 드로어는 유지하고 툴바만 닫는다.
         if (toolbar) return;
@@ -1672,7 +1672,7 @@ const ProjectDrawer = observer(() => {
           toolbar.type === 'folder' ? (
             <div
               id="floating-folder-toolbar"
-              className="fixed z-[9999] flex items-center gap-0.5 p-1.5 bg-[var(--c-surface-2)] rounded-lg shadow-xl border line-color"
+              className="fixed z-[var(--z-context-menu)] flex items-center gap-0.5 p-1.5 bg-[var(--c-surface-2)] rounded-lg shadow-xl border line-color"
               style={{ left: toolbar.x, top: toolbar.y }}
               onMouseDown={(e) => e.stopPropagation()}
             >
@@ -1759,7 +1759,7 @@ const ProjectDrawer = observer(() => {
           ) : (
             <div
               id="floating-project-toolbar"
-              className="fixed z-[9999] flex items-center gap-0.5 p-1.5 bg-[var(--c-surface-2)] rounded-lg shadow-xl border line-color"
+              className="fixed z-[var(--z-context-menu)] flex items-center gap-0.5 p-1.5 bg-[var(--c-surface-2)] rounded-lg shadow-xl border line-color"
               style={{ left: toolbar.x, top: toolbar.y }}
               onMouseDown={(e) => e.stopPropagation()}
             >

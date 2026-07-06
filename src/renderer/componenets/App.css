@@ -5,6 +5,30 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── z-index 층위 사다리 (단일 출처) ──
+   전역(fixed/전체화면)으로 경쟁하는 오버레이는 반드시 아래 토큰만 사용한다.
+   사용법: Tailwind는 z-[var(--z-modal)], 인라인은 zIndex: 'var(--z-modal)'.
+   컴포넌트 내부(relative 부모 안) 배지·장식용 z-0~z-50 은 로컬 경쟁이므로 그대로 둔다.
+   새 오버레이를 추가할 땐 아래에서 알맞은 층을 고르고, 층이 없으면 토큰을 추가한다. */
+:root {
+  --z-float-view: 100;    /* 전체화면 서브뷰(FloatView: 상세 뷰어 등) */
+  --z-widget: 1000;       /* 비차단 위젯: 내보내기 진행/완료, 작업 큐 목록 */
+  --z-prompt-back: 1400;  /* 프롬프트 확장 편집기 백드롭 */
+  --z-prompt-popup: 1500; /* 프롬프트 확장 편집기·자동완성 팝업 (위젯 위, 모달 아래) */
+  --z-modal: 2000;        /* 모달(ModalOverlay·환경설정·탭 내 자체 모달) */
+  --z-drawer: 2100;       /* 슬라이드 드로어(프로젝트·이미지 히스토리) — 모달 위 */
+  --z-drawer-handle: 2200;/* 드로어 가장자리 손잡이 버튼 */
+  --z-dnd-hint: 2500;     /* 툴바 편집 안내 배너 (숨긴 메뉴 모달 위, 프리뷰 아래) */
+  --z-dnd-preview: 3000;  /* 드래그 프리뷰 레이어 */
+  --z-toast: 5000;        /* 토스트 알림 */
+  --z-confirm: 5100;      /* 확인창·진행창 — 토스트 위 */
+  --z-context-menu: 5200; /* 컨텍스트 메뉴·플로팅 툴바 — 항상 위 (탭하면 닫히는 일시 요소) */
+  --z-kbd-action: 6000;   /* 모바일 키보드 위 액션 버튼(단부루 검색) */
+  --z-tooltip: 9000;      /* 툴팁·치트시트·드롭다운 포털 */
+  --z-drag-overlay: 9500; /* 파일 드랍 전체화면 오버레이 */
+  --z-drag-ghost: 9999;   /* 드래그 고스트(커서 추종) — 최상위 */
+}
+
 /* ── 트루 다크 모드 오버라이드 ── */
 .true-dark.dark\:bg-slate-900,
 .true-dark .dark\:bg-slate-900 {
@@ -386,7 +410,7 @@ body {
   /* 제스처 내비게이션 바가 있는 기기(edge-to-edge)에서 토스트가 바에 가리지 않도록
      safe-area 만큼 더 띄운다. inset이 0인 기기에선 기존 56px 그대로(무회귀). */
   bottom: calc(56px + env(safe-area-inset-bottom));
-  z-index: 5000;
+  z-index: var(--z-toast);
 }
 
 /* 가로 스크롤은 허용하되 스크롤바는 숨긴다(모바일 탭바 등). */
@@ -445,7 +469,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 5000;
+  z-index: var(--z-confirm);
   /* 노치/제스처바가 있는 기기에서 중앙 다이얼로그가 시스템 UI에 가리지 않도록
      safe-area 만큼 안쪽 여백(box-sizing: border-box라 100vh 유지). inset 0이면 무회귀. */
   padding: env(safe-area-inset-top) env(safe-area-inset-right)

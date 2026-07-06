@@ -56,7 +56,7 @@ const TooltipPortal = ({
       ref={tooltipRef}
       className="fixed pointer-events-none whitespace-pre-wrap max-w-xs tooltip-animate"
       style={{
-        zIndex: 9999,
+        zIndex: 'var(--z-tooltip)',
         left: pos ? pos.left : -9999,
         top: pos ? pos.top : -9999,
       }}

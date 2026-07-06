@@ -56,7 +56,7 @@ export const DropdownSelect = <T,>({
       onChange={handleChange}
       menuPlacement={menuPlacement}
       menuPortalTarget={document.body}
-      styles={{ menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
+      styles={{ menuPortal: (base) => ({ ...base, zIndex: 'var(--z-tooltip)' }) }}
       isDisabled={disabled}
       isSearchable={!isMobile}
       className={'my-react-select-container w-full ' + (className ?? '')}

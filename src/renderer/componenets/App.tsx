@@ -578,13 +578,13 @@ export const App = observer(() => {
           } as React.CSSProperties
         }
       >
-        <div className="z-[3000]">
+        <div className="z-[var(--z-dnd-preview)]">
           <DnDPreview />
         </div>
         {isMobile && danbooruSel && (
           <button
             data-danbooru-search-btn
-            className="fixed z-[6000] left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-900/95 text-gray-50 text-sm font-medium border border-white/10 shadow-xl backdrop-blur-sm whitespace-nowrap select-none active:scale-95 transition-transform"
+            className="fixed z-[var(--z-kbd-action)] left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-900/95 text-gray-50 text-sm font-medium border border-white/10 shadow-xl backdrop-blur-sm whitespace-nowrap select-none active:scale-95 transition-transform"
             style={{
               // visualViewport로 키보드 높이를 인식해 키보드 바로 위에 배치(없으면 화면 하단).
               bottom:
@@ -742,7 +742,7 @@ export const App = observer(() => {
         </ErrorBoundary>
         {/* 내보내기 진행 플로팅 위젯 (비차단형) */}
         {appState.exportProgress && (
-          <div className="fixed bottom-16 right-4 z-[1000] bg-[var(--c-surface-2)] rounded-lg shadow-xl border line-color p-3 min-w-[220px]">
+          <div className="fixed bottom-16 right-4 z-[var(--z-widget)] bg-[var(--c-surface-2)] rounded-lg shadow-xl border line-color p-3 min-w-[220px]">
             {appState.exportProgress.completed ? (
               // 완료 상태(PC): 진행바 대신 완료 표시 + 확인 버튼. 15초 후 자동 소멸.
               <div className="flex items-center gap-2">
@@ -795,7 +795,7 @@ export const App = observer(() => {
         <ExportPresetManager />
         {dragOverlay && (
           <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none"
+            className="fixed inset-0 z-[var(--z-drag-overlay)] flex items-center justify-center pointer-events-none"
             style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
           >
             <div className="bg-[var(--c-surface-2)] rounded-2xl px-8 py-6 shadow-2xl border-2 border-dashed border-sky-400 dark:border-sky-500 flex flex-col items-center gap-3">

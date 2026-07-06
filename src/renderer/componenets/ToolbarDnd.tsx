@@ -286,7 +286,7 @@ export function toolbarRowHighlightClass(
 }
 
 // 드래그 중에만 화면 하단에 나타나는 "여기로 끌어서 숨기기" 존.
-// z-2500: 시각 숨김된 메뉴 모달(2000)보다 위, 드래그 프리뷰 레이어(3000)보다 아래.
+// --z-dnd-hint: 시각 숨김된 메뉴 모달(--z-modal)보다 위, 드래그 프리뷰(--z-dnd-preview)보다 아래.
 export const ToolbarHideZone = ({ group }: { group: ToolbarGroup }) => {
   const active = useToolbarDragActive(group);
   const [{ isOver }, drop] = useDrop(
@@ -304,7 +304,7 @@ export const ToolbarHideZone = ({ group }: { group: ToolbarGroup }) => {
     <div
       ref={drop as any}
       className={
-        'fixed bottom-6 left-1/2 -translate-x-1/2 z-[2500] px-5 py-2.5 rounded-full ' +
+        'fixed bottom-6 left-1/2 -translate-x-1/2 z-[var(--z-dnd-hint)] px-5 py-2.5 rounded-full ' +
         'border-2 border-dashed text-sm select-none transition-colors ' +
         (isOver
           ? 'border-red-400 bg-red-500/20 text-red-500 dark:text-red-300'
