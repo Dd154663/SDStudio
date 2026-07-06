@@ -252,6 +252,9 @@ const ProjectDrawer = observer(() => {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   // 열린 폴더의 "여기에 넣기" 존 위에 폴더를 올렸을 때의 대상(서브폴더 중첩용)
   const [nestTarget, setNestTarget] = useState<string | null>(null);
+  // dragstart에서 한 틱 미룬 setDrag 타이머 — dragend가 먼저 오면 취소해
+  // 드래그 상태가 유령으로 남지 않게 한다
+  const dragStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [toolbar, setToolbar] = useState<{
     type: 'folder' | 'project';
     name: string;
@@ -1098,11 +1101,19 @@ const ProjectDrawer = observer(() => {
     selected: selected.has(n),
     onSelect: () => (selectMode ? toggleSelect(n) : selectProject(n)),
     onDragStart: (e: React.DragEvent) => {
-      setDrag({ type: 'project', name: n });
       e.dataTransfer.effectAllowed = 'move';
       e.stopPropagation();
+      // Chromium은 dragstart 처리 중 레이아웃 변화로 원본이 밀리면 드래그를
+      // 즉시 취소한다. setDrag 리렌더(넣기 존 삽입 등)를 드래그 확정 뒤로 미룬다.
+      dragStartTimerRef.current = setTimeout(() =>
+        setDrag({ type: 'project', name: n }),
+      );
     },
     onDragEnd: () => {
+      if (dragStartTimerRef.current) {
+        clearTimeout(dragStartTimerRef.current);
+        dragStartTimerRef.current = null;
+      }
       setDrag(null);
       setDropTarget(null);
       setNestTarget(null);
@@ -1526,12 +1537,21 @@ const ProjectDrawer = observer(() => {
                             data-drag-name={selectMode ? undefined : f}
                             draggable={dndEnabled && !selectMode}
                             onDragStart={(e) => {
-                              setDrag({ type: 'folder', name: f });
                               e.dataTransfer.effectAllowed = 'move';
                               e.stopPropagation();
+                              // setDrag가 위쪽 펼침 폴더들에 "넣기 존"을 삽입해
+                              // 이 폴더가 아래로 밀리면 Chromium이 드래그를 즉시
+                              // 취소한다 → 리렌더를 드래그 확정 뒤로 미룬다.
+                              dragStartTimerRef.current = setTimeout(() =>
+                                setDrag({ type: 'folder', name: f }),
+                              );
                             }}
                             onDragEnd={(e) => {
                               e.stopPropagation();
+                              if (dragStartTimerRef.current) {
+                                clearTimeout(dragStartTimerRef.current);
+                                dragStartTimerRef.current = null;
+                              }
                               setDrag(null);
                               setDropTarget(null);
                               setNestTarget(null);
