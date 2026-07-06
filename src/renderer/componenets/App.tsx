@@ -700,7 +700,14 @@ export const App = observer(() => {
                       )}
                     </StackGrow>
                     <StackFixed>
-                      <div className="px-3 py-2 border-t flex gap-3 items-center line-color">
+                      <div
+                        className="px-3 pt-2 border-t flex gap-3 items-center line-color"
+                        style={{
+                          // 제스처바가 있는 기기에서 실행/중지 버튼이 바에 가리지 않도록
+                          // 기존 하단 여백(0.5rem)에 safe-area 를 더한다(inset 0이면 기존과 동일).
+                          paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))',
+                        }}
+                      >
                         <div className="hidden md:block flex-1">
                           <SessionSelect />
                         </div>

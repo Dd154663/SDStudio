@@ -383,8 +383,19 @@ body {
   /* 상단에 두면 (1)타이틀바(-webkit-app-region: drag)와 겹쳐 X 클릭이 OS에
      가로채이고 (2)상단 버튼 줄을 덮는다. 하단엔 드래그 영역이 없어 두 문제가 모두
      사라지므로 토스트를 하단 중앙에 배치한다. 하단 footer 바를 가리지 않도록 여백 확보. */
-  bottom: 56px;
+  /* 제스처 내비게이션 바가 있는 기기(edge-to-edge)에서 토스트가 바에 가리지 않도록
+     safe-area 만큼 더 띄운다. inset이 0인 기기에선 기존 56px 그대로(무회귀). */
+  bottom: calc(56px + env(safe-area-inset-bottom));
   z-index: 5000;
+}
+
+/* 가로 스크롤은 허용하되 스크롤바는 숨긴다(모바일 탭바 등). */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* 토스트 등장: 아래에서 위로 올라오며 불투명도 증가 */
@@ -435,6 +446,10 @@ body {
   justify-content: center;
   align-items: center;
   z-index: 5000;
+  /* 노치/제스처바가 있는 기기에서 중앙 다이얼로그가 시스템 UI에 가리지 않도록
+     safe-area 만큼 안쪽 여백(box-sizing: border-box라 100vh 유지). inset 0이면 무회귀. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 .brush-tool {
