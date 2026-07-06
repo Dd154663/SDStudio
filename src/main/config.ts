@@ -69,6 +69,18 @@ export interface Config {
   // PC 전용 플로팅 생성 컨트롤(TaskQueueControl)의 분리 여부·위치.
   // detached=true면 하단바에서 떼어내 화면 위 플로팅 카드로 표시(모바일 무시).
   genWidget?: { detached?: boolean; x?: number; y?: number };
+  // 레이아웃 슬롯 개인화 — 템플릿(uiLayoutTemplate) 기본값 위에 얹는 오버라이드.
+  // 전부 옵셔널: 미설정 = 템플릿 기본 = 기존 동작(롤백 안전).
+  // 해석은 resolveLayout(layoutTemplates.ts)가 단일 출처.
+  uiLayoutSlots?: UiLayoutSlots;
+}
+
+// 레이아웃 슬롯 개인화 — 템플릿(uiLayoutTemplate) 기본값 위에 얹는 오버라이드.
+// 전부 옵셔널: 미설정 = 템플릿 기본 = 기존 동작(롤백 안전).
+export interface UiLayoutSlots {
+  historySide?: 'left' | 'right'; // 이미지 히스토리 패널 (기본 right)
+  presetSide?: 'left' | 'right'; // 프리셋 에디터 패널 (기본 left)
+  genControl?: 'docked' | 'floating'; // 생성 컨트롤 (기본 docked, compact 는 floating)
 }
 
 // 버튼 하나의 사용자 배치: 'default'=레지스트리 기본 등급을 따름 /

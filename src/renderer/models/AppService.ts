@@ -19,7 +19,7 @@ import {
   zipService,
 } from '.';
 import { setAppState } from './appStateRef';
-import type { Config, UiToolbarConfig } from '../../main/config';
+import type { Config, UiToolbarConfig, UiLayoutSlots } from '../../main/config';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { isOutputImageFile, isImportImageMime } from './imageFormats';
@@ -186,6 +186,10 @@ export class AppState {
   // PC 전용 플로팅 생성 컨트롤(config.genWidget 미러). 빈 객체 = 부착 상태(기본).
   // detached 여부·위치는 GenControlWidget.tsx 가 조작·저장한다.
   @observable accessor genWidget: NonNullable<Config['genWidget']> = {};
+
+  // 레이아웃 슬롯 개인화(config.uiLayoutSlots 미러). 빈 객체 = 템플릿 기본(기존 동작).
+  // 배치 해석은 resolveLayout(layoutTemplates.ts) 단일 출처. 부팅 시 로드는 App.tsx 담당.
+  @observable accessor uiLayoutSlots: UiLayoutSlots = {};
 
   // 저장소 접근 불안정 시 자동 저장 일시정지(서킷 브레이커). true(기본)면 보호 활성.
   // ConfigScreen 저장/부팅 시 config.storageWriteGuard 값으로 갱신된다.

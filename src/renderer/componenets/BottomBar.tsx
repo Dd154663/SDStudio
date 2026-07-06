@@ -11,9 +11,20 @@ import { BottomBarPlacement } from '../models/layoutTemplates';
 // 레이아웃 템플릿(배치 변경) 대비로 App.tsx 인라인에서 분리 — 기본(bottom) 모양·클래스는 기존과 동일.
 // 컴팩트 템플릿(bottomBar:'none')에서는 App.tsx 가 이 컴포넌트를 아예 렌더하지 않는다.
 // appState.genWidget.detached 를 구독하므로 observer 로 감싼다.
-const BottomBar = observer(({ placement }: { placement?: BottomBarPlacement }) => {
-  // 분리 상태(PC 전용)면 하단바 쪽 컨트롤은 렌더하지 않는다 — 플로팅 위젯이 대신 표시.
-  const genDetached = !isMobile && appState.genWidget.detached === true;
+const BottomBar = observer(
+  ({
+    placement,
+    genControl,
+  }: {
+    placement?: BottomBarPlacement;
+    genControl?: 'docked' | 'floating';
+  }) => {
+  // 분리 상태(PC 전용)이거나 슬롯이 floating 이면 하단바 쪽 컨트롤을 렌더하지 않는다.
+  // — 플로팅 위젯이 대신 표시. floating 슬롯인데 detached=false 인 상태에서
+  //   하단바 컨트롤과 플로팅 위젯이 중복 렌더되는 것을 막는다.
+  const genDetached =
+    !isMobile &&
+    (appState.genWidget.detached === true || genControl === 'floating');
 
   // 기본(bottom): 기존 하단 가로바. data-gen-dock = 플로팅 위젯 재부착 히트 영역.
   return (
@@ -44,6 +55,7 @@ const BottomBar = observer(({ placement }: { placement?: BottomBarPlacement }) =
       </div>
     </StackFixed>
   );
-});
+  },
+);
 
 export default BottomBar;

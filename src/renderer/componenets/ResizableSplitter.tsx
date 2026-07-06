@@ -4,7 +4,9 @@ import { appState } from '../models/AppService';
 import { FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 import Tooltip from './Tooltip';
 
-const ResizableSplitter = observer(() => {
+// reversed: 프리셋 패널이 오른쪽 슬롯(presetSide='right')일 때 true —
+// 스플리터가 패널의 왼쪽에 놓이므로 드래그 델타·접기 화살표 방향을 반전한다.
+const ResizableSplitter = observer(({ reversed }: { reversed?: boolean }) => {
   const isDragging = useRef(false);
   const splitterRef = useRef<HTMLDivElement>(null);
 
@@ -19,7 +21,7 @@ const ResizableSplitter = observer(() => {
 
     const onMouseMove = (ev: MouseEvent) => {
       if (!isDragging.current) return;
-      const delta = ev.clientX - startX;
+      const delta = (ev.clientX - startX) * (reversed ? -1 : 1);
       const maxWidth = Math.floor(window.innerWidth * 0.6);
       const newWidth = Math.max(250, Math.min(maxWidth, startWidth + delta));
       appState.setLeftPanelWidth(newWidth);
@@ -37,7 +39,7 @@ const ResizableSplitter = observer(() => {
     document.addEventListener('mouseup', onMouseUp);
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
-  }, []);
+  }, [reversed]);
 
   const toggleCollapse = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -63,9 +65,11 @@ const ResizableSplitter = observer(() => {
         onClick={toggleCollapse}
         onMouseDown={(e) => e.stopPropagation()}
       >
+        {/* 화살표 = 패널이 이동할 방향: 펼치기(collapsed)는 패널 쪽으로,
+            접기는 패널 반대쪽으로. reversed(프리셋 우측)면 좌우 반전 */}
         {appState.leftPanelCollapsed
-          ? <FaChevronRight size={10} />
-          : <FaChevronLeft size={10} />
+          ? (reversed ? <FaChevronLeft size={10} /> : <FaChevronRight size={10} />)
+          : (reversed ? <FaChevronRight size={10} /> : <FaChevronLeft size={10} />)
         }
       </button>
       </Tooltip>

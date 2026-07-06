@@ -4,9 +4,20 @@
 // 실제 배치(JSX)는 App.tsx 가 resolveLayout 의 결과를 소비해 결정한다 — 인라인에서
 // 직접 배치 분기를 만들지 않는다(배치 해석은 이 모듈이 단일 출처).
 
+import type { UiLayoutSlots } from '../../main/config';
+
 // 하단바(세션 선택 + 실행/중지 컨트롤)의 배치:
 //   'bottom'=화면 하단 가로 바(클래식) / 'none'=하단바 미렌더(컴팩트).
 export type BottomBarPlacement = 'bottom' | 'none';
+
+// 히스토리/프리셋 패널의 좌우 배치, 생성 컨트롤의 부착/플로팅.
+export type PanelSide = 'left' | 'right';
+export type GenControlPlacement = 'docked' | 'floating';
+
+// 히스토리/프리셋 패널은 두 템플릿 모두 기본이 같으므로(오른쪽/왼쪽)
+// 템플릿 필드로 두지 않고 상수 기본값으로 관리한다(슬롯 오버라이드로만 변경).
+const DEFAULT_HISTORY_SIDE: PanelSide = 'right';
+const DEFAULT_PRESET_SIDE: PanelSide = 'left';
 
 export interface LayoutTemplateMeta {
   id: string; // 불변 계약(config 저장 키): 'classic' | 'compact'
@@ -14,6 +25,9 @@ export interface LayoutTemplateMeta {
   name: string;
   description: string;
   bottomBar: BottomBarPlacement;
+  // 생성 컨트롤 기본 배치. classic='docked' / compact='floating'
+  // (컴팩트는 하단바가 없어 이미 플로팅 강제였음).
+  genControl: GenControlPlacement;
   // false → 모바일에서는 resolveLayout 이 classic 으로 강제 폴백(모바일 일관성 보장)
   mobileAllowed: boolean;
 }
@@ -24,6 +38,7 @@ export const layoutTemplates: LayoutTemplateMeta[] = [
     name: '클래식',
     description: '하단 가로 바 — 계층화 이전과 동일한 기본 배치.',
     bottomBar: 'bottom',
+    genControl: 'docked',
     mobileAllowed: true,
   },
   {
@@ -32,47 +47,73 @@ export const layoutTemplates: LayoutTemplateMeta[] = [
     description:
       '하단 바를 없애 세로 공간을 넓힙니다. 프로젝트 선택은 상단 바로, 생성 컨트롤은 떠 있는 위젯으로 이동합니다.',
     bottomBar: 'none',
+    genControl: 'floating',
     mobileAllowed: false,
   },
 ];
 
-// resolveLayout 이 App.tsx 로 넘기는 해석 결과. 지금은 하단바 위치뿐이고,
-// panelSide/historySide 등 추가 슬롯은 2차(미러 템플릿·자유 편집)에서 병렬 추가한다.
+// resolveLayout 이 App.tsx 로 넘기는 해석 결과. 하단바 위치 + 개인화 슬롯.
 export interface ResolvedLayout {
   id: string;
   bottomBar: BottomBarPlacement;
   // 세션(프로젝트) 선택을 상단 바로 올릴지 — 컴팩트는 하단바가 없어 상단으로 이동.
   // bottomBar==='none' 에서 파생되지만, 소비처 가독성을 위해 명시 필드로 노출한다.
   sessionSelectTop: boolean;
+  // 이미지 히스토리 패널 좌/우 (기본 right).
+  historySide: PanelSide;
+  // 프리셋 에디터 패널 좌/우 (기본 left).
+  presetSide: PanelSide;
+  // 생성 컨트롤 부착/플로팅 (템플릿 기본 위에 슬롯 오버라이드).
+  genControl: GenControlPlacement;
+}
+
+// 타입 밖 문자열이 stale 하게 저장돼 있던 경우를 걸러내는 검증기(잘못된 값=무시하고 기본값).
+function coercePanelSide(v: unknown, fallback: PanelSide): PanelSide {
+  return v === 'left' || v === 'right' ? v : fallback;
+}
+function coerceGenControl(
+  v: unknown,
+  fallback: GenControlPlacement,
+): GenControlPlacement {
+  return v === 'docked' || v === 'floating' ? v : fallback;
 }
 
 // 레지스트리 + 사용자 설정 → 실제 배치를 해석하는 단일 출처(순수 함수, resolveToolbar 선례 미러).
 // - 미지정/미존재 id → classic 폴백(stale id 조용히 무시).
 // - mobileAllowed=false && isMobile → classic 강제(모바일 일관성 보장).
 // - 그 외 → 해당 템플릿 그대로.
+// slots(3번째 인자, 옵셔널)는 템플릿 기본값 위에 얹는 개인화 오버라이드.
+// - 모바일이면 slots 전부 무시(템플릿도 classic 강제 — 기존 규칙 유지).
+// - 잘못된 값(타입 밖 문자열)은 무시하고 기본값(stale 안전).
 export function resolveLayout(
   templateId: string | undefined,
   isMobile: boolean,
+  slots?: UiLayoutSlots,
 ): ResolvedLayout {
   const classic = layoutTemplates[0];
   const meta = layoutTemplates.find((t) => t.id === templateId);
-  if (!meta) {
-    return {
-      id: classic.id,
-      bottomBar: classic.bottomBar,
-      sessionSelectTop: classic.bottomBar === 'none',
-    };
+
+  // 실제로 적용할 템플릿(미존재 id·모바일 비허용 → classic 폴백).
+  const effective = !meta || (isMobile && !meta.mobileAllowed) ? classic : meta;
+
+  // 기본값: 상수(history/preset) + 템플릿(genControl).
+  let historySide: PanelSide = DEFAULT_HISTORY_SIDE;
+  let presetSide: PanelSide = DEFAULT_PRESET_SIDE;
+  let genControl: GenControlPlacement = effective.genControl;
+
+  // slots 오버라이드는 PC 에서만(모바일은 일관성 위해 전부 무시).
+  if (slots && !isMobile) {
+    historySide = coercePanelSide(slots.historySide, historySide);
+    presetSide = coercePanelSide(slots.presetSide, presetSide);
+    genControl = coerceGenControl(slots.genControl, genControl);
   }
-  if (isMobile && !meta.mobileAllowed) {
-    return {
-      id: classic.id,
-      bottomBar: classic.bottomBar,
-      sessionSelectTop: classic.bottomBar === 'none',
-    };
-  }
+
   return {
-    id: meta.id,
-    bottomBar: meta.bottomBar,
-    sessionSelectTop: meta.bottomBar === 'none',
+    id: effective.id,
+    bottomBar: effective.bottomBar,
+    sessionSelectTop: effective.bottomBar === 'none',
+    historySide,
+    presetSide,
+    genControl,
   };
 }

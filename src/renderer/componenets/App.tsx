@@ -254,6 +254,7 @@ export const App = observer(() => {
       appState.uiToolbar = conf.uiToolbar ?? {};
       appState.uiLayoutTemplate = conf.uiLayoutTemplate ?? 'classic';
       appState.genWidget = conf.genWidget ?? {};
+      appState.uiLayoutSlots = conf.uiLayoutSlots ?? {};
     };
     refreshDarkMode();
     sessionService.addEventListener('config-changed', refreshDarkMode);
@@ -562,9 +563,25 @@ export const App = observer(() => {
 
   // 레이아웃 템플릿 해석은 렌더당 1회 — observer 라 uiLayoutTemplate 변경 시 자동 재렌더된다.
   // 모바일은 resolveLayout 내부에서 항상 classic('bottom') 강제.
-  const resolvedLayout = resolveLayout(appState.uiLayoutTemplate, isMobile);
+  const resolvedLayout = resolveLayout(
+    appState.uiLayoutTemplate,
+    isMobile,
+    appState.uiLayoutSlots,
+  );
   const bottomBarPlacement = resolvedLayout.bottomBar;
 
+  // 슬롯 기반 좌/우 전환은 CSS order 유틸로만 처리한다(SPEC_GUIDE §6-2 계약).
+  // DOM 순서·부모·key 는 절대 바꾸지 않아 콘텐츠 상태 유실(재마운트)을 막는다.
+  //  - 중앙 콘텐츠: 항상 order-2 고정
+  //  - 왼쪽(기본): 프리셋 order-1, 스플리터 order-1(동순위 → DOM 순서상 프리셋 뒤=사이),
+  //    결과 프리셋 | 스플리터 | 중앙.
+  //  - 오른쪽: 프리셋 order-4, 스플리터 order-3 → 중앙(2) | 스플리터(3) | 프리셋(4).
+  //    스플리터는 항상 프리셋의 "중앙 쪽" 모서리에 인접(스플리터·프리셋 형제 관계 유지).
+  //  - 히스토리 패널: 바깥 행에서 별도 처리(아래 ImageHistoryPanel order 참고)
+  // 모바일에서는 프리셋 패널/스플리터가 md:hidden·md:flex 로 미렌더되므로 order 는 영향 없음.
+  const presetRight = resolvedLayout.presetSide === 'right';
+  const presetOrder = presetRight ? 'order-4' : 'order-1';
+  const splitterOrder = presetRight ? 'order-3' : 'order-1';
   // 좌패널·스플리터·탭 콘텐츠는 어떤 배치에서도 동일한 부모 체인에 남긴다
   // (재마운트 방지). 배치에 따라 이 조각을 감싸는 래퍼만 달라진다 — 콘텐츠 JSX 는 여기 1회만 정의.
   const mainStackContent = (
@@ -574,7 +591,9 @@ export const App = observer(() => {
           {!appState.leftPanelCollapsed && (
             <div
               style={{ width: appState.leftPanelWidth, minWidth: 250 }}
-              className="flex-none overflow-hidden hidden md:block h-full"
+              className={
+                'flex-none overflow-hidden hidden md:block h-full ' + presetOrder
+              }
             >
               <div className="h-full w-full overflow-hidden">
                 <PreSetEditor
@@ -584,10 +603,15 @@ export const App = observer(() => {
               </div>
             </div>
           )}
-          <div className="flex-none hidden md:flex">
-            <ResizableSplitter />
+          {/* 프리셋이 오른쪽이면 스플리터가 프리셋 왼쪽에 놓여 드래그 델타
+              방향이 반대 — reversed 로 반전 처리(접기 화살표 방향 포함) */}
+          <div className={'flex-none hidden md:flex ' + splitterOrder}>
+            <ResizableSplitter reversed={presetRight} />
           </div>
-          <StackGrow>
+          {/* order 는 flex 아이템인 "바깥" div 에 줘야 한다 — StackGrow 의
+              className 은 안쪽 div 라 outerClassName 사용(안 그러면 order:0 으로
+              중앙이 맨 앞에 가서 프리셋이 오른쪽으로 밀린다, 2026-07-06 실기 버그) */}
+          <StackGrow outerClassName="order-2">
             <TabComponent
               key={appState.curSession.name}
               tabs={tabs}
@@ -695,8 +719,10 @@ export const App = observer(() => {
             )}
             <StackGrow className="flex">
               {/* FloatView가 덮는 범위를 이 relative 컨테이너로 한정 —
-                  우측 히스토리 패널은 형제라서 어떤 FloatView가 떠도 항상 접근 가능 */}
-              <div className="relative flex-1 min-w-0 h-full">
+                  우측 히스토리 패널은 형제라서 어떤 FloatView가 떠도 항상 접근 가능.
+                  historySide 슬롯은 이 두 형제(콘텐츠 블록 order-2 / 히스토리 패널)
+                  의 CSS order 로만 좌/우를 바꾼다 — DOM 순서·부모는 불변(재마운트 방지). */}
+              <div className="relative flex-1 min-w-0 h-full order-2">
               <FloatViewProvider>
                 <AppContextMenu />
                 <ProjectDrawer />
@@ -722,7 +748,10 @@ export const App = observer(() => {
                     // 기본(bottom): 콘텐츠 아래 하단 가로바 — 기존 DOM 과 동일.
                     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                       {mainStackContent}
-                      <BottomBar placement={bottomBarPlacement} />
+                      <BottomBar
+                        placement={bottomBarPlacement}
+                        genControl={resolvedLayout.genControl}
+                      />
                     </div>
                   )}
                 </div>
@@ -743,7 +772,18 @@ export const App = observer(() => {
                 )}
               </FloatViewProvider>
               </div>
-              <ImageHistoryPanel />
+              {/* 히스토리 패널의 좌/우는 이 래퍼의 CSS order 로만 바꾼다(기본 right=order-3).
+                  ImageHistoryPanel 은 담당 밖(className 고정)이라 항상 존재하는 이 래퍼로
+                  order 를 주며, 래퍼가 상시 존재하므로 패널 인스턴스는 재마운트되지 않는다.
+                  래퍼 자신이 hidden md:flex 라 모바일에서는 기존과 동일하게 미렌더된다. */}
+              <div
+                className={
+                  'flex-none hidden md:flex h-full ' +
+                  (resolvedLayout.historySide === 'left' ? 'order-1' : 'order-3')
+                }
+              >
+                <ImageHistoryPanel />
+              </div>
             </StackGrow>
           </VerticalStack>
           )}
@@ -751,7 +791,9 @@ export const App = observer(() => {
         {/* 분리형 생성 컨트롤 위젯 (PC 전용).
             분리 상태이거나, 컴팩트 템플릿(하단바 없음)이면 항상 플로팅으로 표시. */}
         {!isMobile &&
-          (appState.genWidget.detached || bottomBarPlacement === 'none') && (
+          (appState.genWidget.detached ||
+            bottomBarPlacement === 'none' ||
+            resolvedLayout.genControl === 'floating') && (
             <GenControlFloating />
           )}
         {/* 내보내기 진행 플로팅 위젯 (비차단형) */}
