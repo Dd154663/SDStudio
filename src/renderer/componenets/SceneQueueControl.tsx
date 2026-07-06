@@ -802,6 +802,27 @@ function SceneTrashView({ projectName }: SceneTrashViewProps) {
     });
   };
 
+  // 프로젝트 휴지통과 동일하게 "모두 비우기"를 제공(휴지통 3종 기능 일관성).
+  const handleEmptyAll = () => {
+    appState.pushDialog({
+      type: 'confirm',
+      text: `휴지통의 모든 씬(${deletedScenes.length}개)을 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
+      callback: async () => {
+        for (const item of deletedScenes) {
+          try {
+            await trashService.permanentlyDeleteScene(
+              projectName,
+              item.name,
+              item.type,
+            );
+          } catch (e) {}
+        }
+        appState.pushMessage('씬 휴지통을 비웠습니다.');
+        await refresh();
+      },
+    });
+  };
+
   if (deletedScenes.length === 0 && !loading) {
     return (
       <div className="text-center text-faint text-lg py-10">
@@ -812,6 +833,14 @@ function SceneTrashView({ projectName }: SceneTrashViewProps) {
 
   return (
     <div className="flex flex-col gap-2">
+      {deletedScenes.length > 0 && (
+        <div className="flex justify-end mb-1">
+          <button className="round-button back-red" onClick={handleEmptyAll}>
+            <FaTrash className="mr-1" />
+            모두 비우기
+          </button>
+        </div>
+      )}
       {deletedScenes.map((item) => (
         <div
           key={item.name}
