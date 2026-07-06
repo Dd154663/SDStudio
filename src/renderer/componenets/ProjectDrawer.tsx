@@ -250,6 +250,8 @@ const ProjectDrawer = observer(() => {
     name: string;
   } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  // 열린 폴더의 "여기에 넣기" 존 위에 폴더를 올렸을 때의 대상(서브폴더 중첩용)
+  const [nestTarget, setNestTarget] = useState<string | null>(null);
   const [toolbar, setToolbar] = useState<{
     type: 'folder' | 'project';
     name: string;
@@ -696,24 +698,32 @@ const ProjectDrawer = observer(() => {
     }
   };
 
-  // 폴더 헤더에 드롭: 폴더면 재부모화 or 순서변경, 프로젝트면 폴더로 이동
+  // 폴더 헤더에 드롭 = 순서변경(같은 부모) 또는 형제로 재배치(다른 부모).
+  // 서브폴더로 "넣기"는 열린 폴더의 넣기 존(handleNestDrop)이 담당한다.
+  // 프로젝트면 그 폴더로 이동.
   const handleFolderDrop = async (targetFolder: string) => {
     const d = drag;
     setDrag(null);
     setDropTarget(null);
+    setNestTarget(null);
     if (!d) return;
     if (d.type === 'folder') {
       const source = d.name;
       if (source === targetFolder) return;
+      // 자기 자신/하위로는 이동 불가
+      if (targetFolder.startsWith(source + '/')) return;
       const srcParent = sessionService.folderParentPath(source);
       const tgtParent = sessionService.folderParentPath(targetFolder);
       if (srcParent === tgtParent) {
         reorderFolders(source, targetFolder);
       } else {
+        // 다른 부모: target과 형제가 되도록 부모를 옮긴 뒤 그 자리에 배치.
+        // (루트 폴더 헤더에 서브폴더를 떨구면 루트로 빠져나오는 등)
         const leaf = sessionService.folderLeafName(source);
-        const newPath = targetFolder + '/' + leaf;
+        const newPath = tgtParent ? tgtParent + '/' + leaf : leaf;
         try {
           await sessionService.renameFolder(source, newPath);
+          reorderFolders(newPath, targetFolder);
         } catch (e: any) {
           appState.pushMessage(e?.message || '폴더 이동에 실패했습니다.');
         }
@@ -721,23 +731,66 @@ const ProjectDrawer = observer(() => {
     } else moveProjectTo(d.name, targetFolder);
   };
 
-  // 미분류 헤더에 드롭: 프로젝트만 (폴더에서 빼내기)
-  const handleUnfiledDrop = () => {
+  // 열린 폴더의 "여기에 넣기" 존에 드롭 = 그 폴더의 서브폴더로 중첩.
+  const handleNestDrop = async (targetFolder: string) => {
     const d = drag;
     setDrag(null);
     setDropTarget(null);
-    if (!d || d.type !== 'project') return;
-    moveProjectTo(d.name, null);
+    setNestTarget(null);
+    if (!d) return;
+    if (d.type === 'folder') {
+      // 자기 자신/하위로 넣기, 이미 그 폴더의 자식이면 무시
+      if (
+        d.name === targetFolder ||
+        targetFolder.startsWith(d.name + '/') ||
+        sessionService.folderParentPath(d.name) === targetFolder
+      )
+        return;
+      const leaf = sessionService.folderLeafName(d.name);
+      try {
+        await sessionService.renameFolder(d.name, targetFolder + '/' + leaf);
+      } catch (e: any) {
+        appState.pushMessage(e?.message || '폴더 이동에 실패했습니다.');
+      }
+    } else moveProjectTo(d.name, targetFolder);
+  };
+
+  // 미분류 헤더에 드롭: 프로젝트는 루트(미분류)로, 서브폴더는 루트로 빼내기.
+  const handleUnfiledDrop = async () => {
+    const d = drag;
+    setDrag(null);
+    setDropTarget(null);
+    setNestTarget(null);
+    if (!d) return;
+    if (d.type === 'project') {
+      moveProjectTo(d.name, null);
+    } else {
+      const parent = sessionService.folderParentPath(d.name);
+      if (parent === null) return; // 이미 루트
+      const leaf = sessionService.folderLeafName(d.name);
+      try {
+        await sessionService.renameFolder(d.name, leaf);
+      } catch (e: any) {
+        appState.pushMessage(e?.message || '폴더 이동에 실패했습니다.');
+      }
+    }
   };
 
   const dndEnabled = !isMobile;
 
-  // 드롭 가능 여부 판정 (시각 피드백용)
+  // 폴더 헤더 드롭(순서/재배치) 가능 여부 판정 (시각 피드백용)
   const canDropOnFolder = (f: string) =>
     drag != null &&
     (drag.type === 'project'
       ? sessionService.getFolderOf(drag.name) !== f
       : drag.name !== f && !f.startsWith(drag.name + '/'));
+
+  // 열린 폴더 안에 서브폴더로 넣기 가능 여부 (넣기 존 표시·판정용)
+  const canNestInto = (f: string) =>
+    drag?.type === 'folder' &&
+    drag.name !== f &&
+    !f.startsWith(drag.name + '/') &&
+    sessionService.folderParentPath(drag.name) !== f;
 
   // ===== 모바일 터치 드래그 (롱프레스로 잡아 폴더로 이동/재정렬) =====
   // PC는 HTML5 draggable을 그대로 쓰지만 그것은 터치를 지원하지 않으므로, 모바일은 별도
@@ -745,15 +798,19 @@ const ProjectDrawer = observer(() => {
   const listScrollRef = useRef<HTMLDivElement | null>(null);
   const touchApiRef = useRef({
     handleFolderDrop,
+    handleNestDrop,
     handleUnfiledDrop,
     setDrag,
     setDropTarget,
+    setNestTarget,
   });
   touchApiRef.current = {
     handleFolderDrop,
+    handleNestDrop,
     handleUnfiledDrop,
     setDrag,
     setDropTarget,
+    setNestTarget,
   };
 
   useEffect(() => {
@@ -779,15 +836,21 @@ const ProjectDrawer = observer(() => {
       f?: string,
     ): boolean => {
       if (kind === 'unfiled')
-        return (
-          cand.type === 'project' &&
-          sessionService.getFolderOf(cand.name) !== null
-        );
+        return cand.type === 'project'
+          ? sessionService.getFolderOf(cand.name) !== null
+          : sessionService.folderParentPath(cand.name) !== null; // 서브폴더 빼내기
       if (!f) return false;
       return cand.type === 'project'
         ? sessionService.getFolderOf(cand.name) !== f
         : cand.name !== f && !f.startsWith(cand.name + '/');
     };
+
+    // 열린 폴더의 넣기 존 위인지 판정 (폴더 드래그 전용)
+    const canNest = (cand: Cand, f: string): boolean =>
+      cand.type === 'folder' &&
+      cand.name !== f &&
+      !f.startsWith(cand.name + '/') &&
+      sessionService.folderParentPath(cand.name) !== f;
 
     const moveGhost = (x: number, y: number) => {
       if (st.ghost)
@@ -807,10 +870,20 @@ const ProjectDrawer = observer(() => {
     const hitTest = (x: number, y: number) => {
       const el = document.elementFromPoint(x, y) as HTMLElement | null;
       let target: string | null = null;
-      const folderEl = el?.closest('[data-drop-folder]') as HTMLElement | null;
-      if (folderEl && st.cand) {
-        const f = folderEl.getAttribute('data-drop-folder')!;
-        if (canDrop(st.cand, 'folder', f)) target = f;
+      // 넣기 존을 먼저 판정 (열린 폴더 내용 상단). 넣기 존은 넣기 대상 폴더만 존재.
+      const nestEl = el?.closest('[data-nest-folder]') as HTMLElement | null;
+      if (nestEl && st.cand) {
+        const f = nestEl.getAttribute('data-nest-folder')!;
+        if (canNest(st.cand, f)) target = '__nest__' + f;
+      }
+      if (!target) {
+        const folderEl = el?.closest(
+          '[data-drop-folder]',
+        ) as HTMLElement | null;
+        if (folderEl && st.cand) {
+          const f = folderEl.getAttribute('data-drop-folder')!;
+          if (canDrop(st.cand, 'folder', f)) target = f;
+        }
       }
       if (!target) {
         const unfiledEl = el?.closest(
@@ -821,7 +894,14 @@ const ProjectDrawer = observer(() => {
       }
       if (target !== st.target) {
         st.target = target;
-        touchApiRef.current.setDropTarget(target);
+        // 넣기 존이면 nestTarget, 그 외엔 dropTarget으로 하이라이트 분기
+        if (target && target.startsWith('__nest__')) {
+          touchApiRef.current.setNestTarget(target.slice('__nest__'.length));
+          touchApiRef.current.setDropTarget(null);
+        } else {
+          touchApiRef.current.setDropTarget(target);
+          touchApiRef.current.setNestTarget(null);
+        }
       }
     };
 
@@ -920,10 +1000,15 @@ const ProjectDrawer = observer(() => {
         if (target && cand) {
           if (target === '__unfiled__')
             touchApiRef.current.handleUnfiledDrop();
+          else if (target.startsWith('__nest__'))
+            touchApiRef.current.handleNestDrop(
+              target.slice('__nest__'.length),
+            );
           else touchApiRef.current.handleFolderDrop(target);
         } else {
           touchApiRef.current.setDrag(null);
           touchApiRef.current.setDropTarget(null);
+          touchApiRef.current.setNestTarget(null);
         }
         // 드래그 직후 합성 click이 프로젝트를 열지 않도록 잠깐 억제
         suppressClick = true;
@@ -1020,6 +1105,7 @@ const ProjectDrawer = observer(() => {
     onDragEnd: () => {
       setDrag(null);
       setDropTarget(null);
+      setNestTarget(null);
     },
     onContextMenu: (e: React.MouseEvent) => {
       e.preventDefault();
@@ -1448,6 +1534,7 @@ const ProjectDrawer = observer(() => {
                               e.stopPropagation();
                               setDrag(null);
                               setDropTarget(null);
+                              setNestTarget(null);
                             }}
                             className="flex-1 flex items-center gap-2 px-1 py-2.5 text-[15px] font-semibold text-body min-w-0"
                           >
@@ -1554,6 +1641,46 @@ const ProjectDrawer = observer(() => {
                       )}
                       {isOpen && (
                         <div className="pb-1">
+                          {/* 서브폴더로 넣기 존: 폴더를 드래그하는 동안, 이 폴더
+                              안으로 넣을 수 있을 때만 표시(접힌 폴더엔 없음 → 중첩 불가) */}
+                          {drag?.type === 'folder' && canNestInto(f) && (
+                            <div
+                              data-nest-folder={f}
+                              onDragOver={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = 'move';
+                                setNestTarget(f);
+                                setDropTarget((t) => (t === f ? null : t));
+                              }}
+                              onDragLeave={(e) => {
+                                e.stopPropagation();
+                                if (
+                                  !e.currentTarget.contains(
+                                    e.relatedTarget as Node,
+                                  )
+                                ) {
+                                  setNestTarget((t) => (t === f ? null : t));
+                                }
+                              }}
+                              onDrop={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                handleNestDrop(f);
+                              }}
+                              className="mx-1 mb-1.5 px-2 py-2 rounded-md border-2 border-dashed text-xs text-center transition-colors"
+                              style={{
+                                borderColor: color,
+                                color,
+                                backgroundColor:
+                                  nestTarget === f
+                                    ? withAlpha(color, '2e')
+                                    : withAlpha(color, '14'),
+                              }}
+                            >
+                              📁 여기에 놓아 "{leafName}" 안에 넣기
+                            </div>
+                          )}
                           {projects.length === 0 &&
                           childFolders.length === 0 ? (
                             <div className="text-xs text-faint px-2 py-1.5">
@@ -1582,8 +1709,10 @@ const ProjectDrawer = observer(() => {
               {/* 미분류 */}
               {(() => {
                 const canDropUnfiled =
-                  drag?.type === 'project' &&
-                  sessionService.getFolderOf(drag.name) !== null;
+                  (drag?.type === 'project' &&
+                    sessionService.getFolderOf(drag.name) !== null) ||
+                  (drag?.type === 'folder' &&
+                    sessionService.folderParentPath(drag.name) !== null);
                 const unfiledDropping =
                   dropTarget === '__unfiled__' && canDropUnfiled;
                 return (
@@ -1645,6 +1774,14 @@ const ProjectDrawer = observer(() => {
                         {unfiled.length}
                       </span>
                     </button>
+                    {/* 서브폴더를 드래그하는 동안: 여기 놓으면 루트로 빠져나옴 안내 */}
+                    {drag?.type === 'folder' &&
+                      sessionService.folderParentPath(drag.name) !== null && (
+                        <div className="px-2 pb-2 text-xs text-faint text-center">
+                          여기에 놓으면 "{sessionService.folderLeafName(drag.name)}"
+                          를 루트로 빼냅니다
+                        </div>
+                      )}
                     {expanded.has('__unfiled__') && (
                       <div className="pl-3 pb-1">
                         {unfiled.map((n) => (
