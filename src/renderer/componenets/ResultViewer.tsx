@@ -1394,7 +1394,7 @@ const ResultDetailView = observer(
             }
           }}
         >
-          {image && (
+          {image ? (
             <img
               src={image}
               draggable={false}
@@ -1413,6 +1413,11 @@ const ResultDetailView = observer(
               }}
               className="w-full h-full object-contain bg-checkboard"
             />
+          ) : (
+            // 이미지 전환/로딩 중 빈 화면 깜빡임 대신 로딩 표시(부팅 스피너와 동일 스타일).
+            <div className="w-full h-full flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full border-2 border-[color:var(--c-line)] border-t-sky-500 animate-spin" />
+            </div>
           )}
           <div className="absolute bottom-0 md:bottom-auto right-0 md:top-10 flex gap-3 p-4 w-full md:w-auto">
             <button
