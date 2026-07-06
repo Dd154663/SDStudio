@@ -413,6 +413,10 @@ export class TrashService extends EventTarget {
       // 여기서 삼키면 활성 프로젝트를 "없음" 으로 오판 → 활성 이미지 오삭제 위험.
       const stats = await backend.listFilesWithStats(dir);
       for (const s of stats) {
+        // '.deleted'/'.json' 처럼 이름 없이 확장자만 남은 점(.) 파일은
+        // 프로젝트명 ''(빈 문자열)로 오인된다 — 빈 이름이 영구삭제로 흘러가면
+        // 'outs/' + '' = outs 루트 전체가 삭제된다(2026-07-06 실사고). 반드시 제외.
+        if (s.name.startsWith('.')) continue;
         if (s.name.endsWith(suffix)) {
           const name = s.name.substring(0, s.name.length - suffix.length);
           if (!map.has(name)) map.set(name, dir + '/' + s.name);
@@ -491,6 +495,9 @@ export class TrashService extends EventTarget {
     for (const name of deletedMap.keys()) {
       // 동명의 활성 .json 이 있으면 orphan 이므로 제외
       if (activeMap.has(name)) continue;
+      // 빈/공백 이름은 목록에 올리지 않는다 (영구삭제 유도 방지 — 스캔 단계
+      // 점 파일 제외와 이중 방어)
+      if (!name.trim()) continue;
       result.push({
         name,
         deletedAt: this.data.projects[name]?.deletedAt || 0,
@@ -525,6 +532,28 @@ export class TrashService extends EventTarget {
 
   async permanentlyDeleteProject(name: string): Promise<void> {
     this.ensureLoaded();
+
+    // CRITICAL: 빈/공백 이름이나 경로 문자가 섞인 이름은 이미지 디렉터리 경로가
+    // 'outs/' 처럼 데이터 루트 자체 또는 다른 위치가 되어 대량 오삭제로 이어진다
+    // (2026-07-06 outs 전체 증발 실사고). 파일시스템은 건드리지 않고
+    // 휴지통 기록의 유령 항목만 정리한 뒤 즉시 중단한다.
+    if (
+      !name ||
+      !name.trim() ||
+      name.includes('/') ||
+      name.includes('\\') ||
+      name.includes('..')
+    ) {
+      console.error(
+        '프로젝트 영구삭제 거부 — 유효하지 않은 이름:',
+        JSON.stringify(name),
+      );
+      if (name in this.data.projects) {
+        delete this.data.projects[name];
+        await this.saveTrash();
+      }
+      return;
+    }
 
     // CRITICAL: 같은 이름의 활성 .json 이 있으면(루트/폴더 어디든) 이미지 디렉터리를
     // 절대 지우지 않는다. 이미지 디렉터리는 이름 기준(outs/<이름> 등)이라 동명의
