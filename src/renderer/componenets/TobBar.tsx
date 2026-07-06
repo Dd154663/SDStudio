@@ -13,9 +13,16 @@ import {
 import { VscChromeMinimize, VscChromeMaximize, VscChromeRestore, VscChromeClose } from 'react-icons/vsc';
 import { FaCog } from 'react-icons/fa';
 import { appState } from '../models/AppService';
+import { resolveLayout } from '../models/layoutTemplates';
 import { observer } from 'mobx-react-lite';
 
 const TobBar = observer(() => {
+  // 컴팩트 템플릿(PC)은 하단바가 없어 세션(프로젝트) 선택을 상단바로 올린다.
+  // 모바일은 resolveLayout 이 항상 classic 강제 → 기존 인라인 표시(md:hidden) 동작 무변화.
+  const sessionSelectTop = resolveLayout(
+    appState.uiLayoutTemplate,
+    isMobile,
+  ).sessionSelectTop;
   const [loggedIn, setLoggedIn] = useState(false);
   const [credits, setCredits] = useState(0);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -94,7 +101,14 @@ const TobBar = observer(() => {
       <div className="titlebar-no-drag gap-3 hidden md:flex text-sky-500 font-bold dark:text-white">
         SDStudio
       </div>
-      <p className="ml-auto mr-3 hidden md:block titlebar-no-drag">
+      {/* 컴팩트(sessionSelectTop): 세션 선택이 flex-1로 가운데를 차지하므로,
+          Anlas·환경설정은 order-1, 창 컨트롤은 order-2로 우측 배치를 유지한다. */}
+      <p
+        className={
+          'ml-auto mr-3 hidden md:block titlebar-no-drag' +
+          (sessionSelectTop ? ' order-1' : '')
+        }
+      >
         {!loggedIn ? (
           <span className={`round-tag back-red`}>
             환경설정에서 로그인하세요
@@ -107,7 +121,12 @@ const TobBar = observer(() => {
         )}
       </p>
       {/* PC: 환경설정 버튼 (가로 배치) - div 래퍼로 round-button display 충돌 방지 */}
-      <div className="hidden md:block titlebar-no-drag">
+      <div
+        className={
+          'hidden md:block titlebar-no-drag' +
+          (sessionSelectTop ? ' order-1' : '')
+        }
+      >
         <button
           className="round-button back-sky"
           onClick={() => {
@@ -151,13 +170,25 @@ const TobBar = observer(() => {
           )}
         </div>
       )}
-      <div className="ml-auto block md:hidden titlebar-no-drag flex-1 min-w-0">
+      {/* 세션(프로젝트) 선택: 모바일은 항상 인라인(md:hidden), 컴팩트(PC)면 PC에서도 표시(block). */}
+      <div
+        className={
+          (sessionSelectTop ? '' : 'ml-auto ') +
+          'titlebar-no-drag flex-1 min-w-0 ' +
+          (sessionSelectTop ? 'block' : 'block md:hidden')
+        }
+      >
         <SessionSelect />
       </div>
 
       {/* 윈도우 컨트롤 버튼 (PC only) */}
       {!isMobile && (
-        <div className="titlebar-no-drag hidden md:flex items-center ml-2 -mr-1">
+        <div
+          className={
+            'titlebar-no-drag hidden md:flex items-center ml-2 -mr-1' +
+            (sessionSelectTop ? ' order-2' : '')
+          }
+        >
           <button
             className="window-control-btn"
             onClick={handleMinimize}

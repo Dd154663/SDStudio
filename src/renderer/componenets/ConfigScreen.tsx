@@ -14,6 +14,7 @@ import ToolbarLayoutEditor from './ToolbarLayoutEditor';
 import { projectToolbarRegistry, sceneToolbarRegistry } from '../models/uiLayout';
 import { buildThemeVars, isHex6 } from '../models/uiTheme';
 import { themeTemplates } from '../models/themeTemplates';
+import { layoutTemplates } from '../models/layoutTemplates';
 import { observer } from 'mobx-react-lite';
 import { appState } from '../models/AppService';
 import { TaskLog } from '../models/TaskQueueService';
@@ -27,6 +28,7 @@ import {
   FaPalette,
   FaSlidersH,
   FaThLarge,
+  FaColumns,
 } from 'react-icons/fa';
 import { keyboardShortcutService, KeyboardShortcutService } from '../models/KeyboardShortcutService';
 import ModalOverlay from './ModalOverlay';
@@ -1224,6 +1226,87 @@ const ToolbarTab = ({ uiToolbar, setUiToolbar }: any) => (
   </div>
 );
 
+/* ── 탭: 레이아웃 ── */
+// 각 템플릿의 미니 와이어프레임 도안(라이브 프리뷰가 아닌 순수 CSS 사각형 배치 도안).
+// 색은 테마 토큰만 사용하고, 하단바 위치만 상태 강조색(sky)으로 표현한다.
+const LayoutWireframe = ({ variant }: { variant: 'classic' | 'compact' }) => {
+  if (variant === 'compact') {
+    // 컴팩트: 하단바 없이 콘텐츠가 세로로 꽉 참(패널+본문 분할) + 우하단 작은 플로팅 위젯 도안.
+    return (
+      <div className="w-28 h-16 relative">
+        <div className="h-full rounded-sm border line-color flex gap-0.5 p-0.5">
+          <div className="w-1/4 rounded-sm bg-[var(--c-zone)]" />
+          <div className="flex-1 rounded-sm bg-[var(--c-zone)]" />
+        </div>
+        {/* 떠 있는 생성 컨트롤 위젯(우하단 작은 사각형) */}
+        <div className="absolute bottom-1 right-1 w-5 h-2.5 rounded-sm bg-sky-500 shadow-sm" />
+      </div>
+    );
+  }
+  // classic: 위 큰 콘텐츠(좌측 좁은 패널 + 우측 넓은 본문) + 아래 가로 얇은 바
+  return (
+    <div className="w-28 h-16 flex flex-col gap-1">
+      <div className="flex-1 rounded-sm border line-color flex gap-0.5 p-0.5">
+        <div className="w-1/4 rounded-sm bg-[var(--c-zone)]" />
+        <div className="flex-1 rounded-sm bg-[var(--c-zone)]" />
+      </div>
+      <div className="h-2 rounded-sm bg-sky-500 flex-none" />
+    </div>
+  );
+};
+
+const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, mobileMode }: any) => (
+  <div className="space-y-5">
+    <div>
+      <label className="block text-sm gray-label mb-1">화면 배치</label>
+      <p className="text-xs text-muted">
+        작업 화면의 하단 바 위치를 바꿉니다. 누르고 <b>저장</b>하면 적용됩니다.
+      </p>
+    </div>
+
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      {layoutTemplates.map((t) => {
+        const selected = uiLayoutTemplate === t.id;
+        // 모바일에서 미허용 템플릿은 resolveLayout 이 어차피 classic 으로 강제하므로
+        // UI 는 안내용으로만 비활성 처리한다.
+        const disabled = mobileMode && !t.mobileAllowed;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            disabled={disabled}
+            onClick={() => { if (!disabled) setUiLayoutTemplate(t.id); }}
+            className={
+              'flex items-center gap-3 rounded-md border p-2.5 text-left clickable ' +
+              (selected ? 'ring-2 ring-sky-400 border-sky-400 ' : 'line-color ') +
+              (disabled ? 'opacity-50 cursor-not-allowed ' : '')
+            }
+          >
+            <LayoutWireframe variant={t.id as 'classic' | 'compact'} />
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm text-default">{t.name}</span>
+                {!t.mobileAllowed && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--c-zone)] text-muted flex-none">
+                    PC 전용
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-muted mt-0.5">{t.description}</div>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+
+    {mobileMode && (
+      <p className="text-xs text-muted">
+        모바일에서는 클래식 배치가 사용됩니다.
+      </p>
+    )}
+  </div>
+);
+
 const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const { curSession } = appState;
   const [activeTab, setActiveTab] = useState(0);
@@ -1250,6 +1333,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [defaultExportFolder, setDefaultExportFolder] = useState('');
   const [uiTheme, setUiTheme] = useState<UiThemeConfig>({});
   const [uiToolbar, setUiToolbar] = useState<UiToolbarConfig>({});
+  const [uiLayoutTemplate, setUiLayoutTemplate] = useState('classic');
   // 미저장 변경 감지 기준 — 로드/저장 시점의 config 스냅샷 (#17)
   const [savedCfg, setSavedCfg] = useState<Config | null>(null);
   const mobileMode = isMobile;
@@ -1273,6 +1357,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setDefaultExportFolder(config.defaultExportFolder ?? '');
       setUiTheme(config.uiTheme ?? {});
       setUiToolbar(config.uiToolbar ?? {});
+      setUiLayoutTemplate(config.uiLayoutTemplate ?? 'classic');
       setSavedCfg(config);
     })();
     const checkReady = () => setReady(localAIService.ready);
@@ -1386,6 +1471,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       trueDark: trueDark,
       uiTheme: uiTheme,
       uiToolbar: uiToolbar,
+      uiLayoutTemplate: uiLayoutTemplate,
     };
     await backend.setConfig(config);
     setSavedCfg(config);
@@ -1393,6 +1479,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.classicSceneCard = classicSceneCard;
     appState.legacyProjectMode = legacyProjectMode;
     appState.uiToolbar = uiToolbar;
+    appState.uiLayoutTemplate = uiLayoutTemplate;
     appState.storageWriteGuard = storageWriteGuard;
     appState.fullWordAutoComplete = fullWordAc;
     localStorage.setItem('sdstudio-full-word-autocomplete', fullWordAc ? 'true' : 'false');
@@ -1406,6 +1493,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     { key: 'login', label: '로그인', icon: <FaUser size={14} /> },
     { key: 'customization', label: '테마', icon: <FaPalette size={14} /> },
     { key: 'toolbar', label: '툴바', icon: <FaThLarge size={14} /> },
+    { key: 'layout', label: '레이아웃', icon: <FaColumns size={14} /> },
     ...(!mobileMode ? [{ key: 'storage', label: '저장/이미지', icon: <FaFolder size={14} /> }] : []),
     { key: 'system', label: '시스템', icon: <FaCog size={14} /> },
     { key: 'personal', label: '개인 설정', icon: <FaSlidersH size={14} /> },
@@ -1429,6 +1517,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
         return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark }} />;
       case 'toolbar':
         return <ToolbarTab {...{ uiToolbar, setUiToolbar }} />;
+      case 'layout':
+        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, mobileMode }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':
@@ -1458,7 +1548,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       // fullWordAc 는 config 파일이 아니라 appState+localStorage 저장 — 저장 시 appState 가 갱신되므로 그것과 비교
       fullWordAc !== appState.fullWordAutoComplete ||
       JSON.stringify(uiTheme) !== JSON.stringify(savedCfg.uiTheme ?? {}) ||
-      JSON.stringify(uiToolbar) !== JSON.stringify(savedCfg.uiToolbar ?? {}));
+      JSON.stringify(uiToolbar) !== JSON.stringify(savedCfg.uiToolbar ?? {}) ||
+      uiLayoutTemplate !== (savedCfg.uiLayoutTemplate ?? 'classic'));
 
   return (
     <div

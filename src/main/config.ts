@@ -63,6 +63,12 @@ export interface Config {
   // 툴바 버튼 배치 커스터마이징. 미설정 시 레지스트리(uiLayout.ts)의 기본 등급.
   // 배치 해석은 resolveToolbar(uiLayout.ts)가 단일 출처.
   uiToolbar?: UiToolbarConfig;
+  // 레이아웃 템플릿 id(배치 구조 프리셋). 미지정=classic. id 계약·강제 폴백 등
+  // 해석은 resolveLayout(layoutTemplates.ts)가 단일 출처.
+  uiLayoutTemplate?: string;
+  // PC 전용 플로팅 생성 컨트롤(TaskQueueControl)의 분리 여부·위치.
+  // detached=true면 하단바에서 떼어내 화면 위 플로팅 카드로 표시(모바일 무시).
+  genWidget?: { detached?: boolean; x?: number; y?: number };
 }
 
 // 버튼 하나의 사용자 배치: 'default'=레지스트리 기본 등급을 따름 /

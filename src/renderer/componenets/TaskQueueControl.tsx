@@ -148,7 +148,14 @@ export const TaskProgressBar = ({ fast }: TaskProgressBarProps) => {
   );
 };
 
-const TaskQueueList = ({ onClose }: { onClose?: () => void }) => {
+const TaskQueueList = ({
+  onClose,
+  dropDown,
+}: {
+  onClose?: () => void;
+  // 컨트롤이 화면 상단에 있을 때(플로팅 위젯) 목록을 아래로 펼침 — 기본은 기존처럼 위로
+  dropDown?: boolean;
+}) => {
   const [tasks, setTasks] = useState<any[]>([]);
   useEffect(() => {
     const onChange = () => {
@@ -178,7 +185,13 @@ const TaskQueueList = ({ onClose }: { onClose?: () => void }) => {
   };
 
   return (
-    <div className="absolute bottom-0 mb-14 md:mb-20 bg-white dark:bg-slate-700 w-60 md:w-96 z-[var(--z-widget)] shadow-lg prog-list flex flex-col overflow-hidden">
+    <div
+      className={
+        'absolute ' +
+        (dropDown ? 'top-full mt-2 ' : 'bottom-0 mb-14 md:mb-20 ') +
+        'bg-white dark:bg-slate-700 w-60 md:w-96 z-[var(--z-widget)] shadow-lg prog-list flex flex-col overflow-hidden'
+      }
+    >
       <button
         className="ml-auto mt-2 mr-2 text-muted hover:text-gray-700 flex-none"
         onClick={() => {
@@ -212,6 +225,9 @@ const TaskQueueList = ({ onClose }: { onClose?: () => void }) => {
 const TaskQueueControl = observer(({}) => {
   const [_, rerender] = useState<{}>({});
   const [showList, setShowList] = useState(false);
+  // 목록 펼침 방향: 컨트롤(플로팅 위젯 포함)이 화면 위쪽 절반이면 아래로 펼친다
+  const [listDropDown, setListDropDown] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const onChange = () => {
       rerender({});
@@ -233,9 +249,10 @@ const TaskQueueControl = observer(({}) => {
   const cyclingActive = cyclingSessionService.state === 'running' || cyclingSessionService.state === 'paused';
 
   return (
-    <div className="flex gap-2 md:gap-4 items-center">
+    <div ref={rootRef} className="flex gap-2 md:gap-4 items-center">
       {showList && (
         <TaskQueueList
+          dropDown={listDropDown}
           onClose={() => {
             setShowList(false);
           }}
@@ -270,6 +287,10 @@ const TaskQueueControl = observer(({}) => {
       <div
         className="relative cursor-pointer hover:brightness-95 active:brightness-90"
         onClick={() => {
+          if (!showList) {
+            const r = rootRef.current?.getBoundingClientRect();
+            setListDropDown(!!r && r.top < window.innerHeight / 2);
+          }
           setShowList(!showList);
         }}
       >

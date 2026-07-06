@@ -19,7 +19,7 @@ import {
   zipService,
 } from '.';
 import { setAppState } from './appStateRef';
-import type { UiToolbarConfig } from '../../main/config';
+import type { Config, UiToolbarConfig } from '../../main/config';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { isOutputImageFile, isImportImageMime } from './imageFormats';
@@ -178,6 +178,14 @@ export class AppState {
   // 툴바 버튼 배치 커스터마이징(config.uiToolbar 미러). 빈 객체 = 기본 등급.
   // 배치 해석은 resolveToolbar(uiLayout.ts) 단일 출처.
   @observable accessor uiToolbar: UiToolbarConfig = {};
+
+  // 레이아웃 템플릿 id(config.uiLayoutTemplate 미러). 기본 'classic'.
+  // 배치 해석은 resolveLayout(layoutTemplates.ts) 단일 출처.
+  @observable accessor uiLayoutTemplate: string = 'classic';
+
+  // PC 전용 플로팅 생성 컨트롤(config.genWidget 미러). 빈 객체 = 부착 상태(기본).
+  // detached 여부·위치는 GenControlWidget.tsx 가 조작·저장한다.
+  @observable accessor genWidget: NonNullable<Config['genWidget']> = {};
 
   // 저장소 접근 불안정 시 자동 저장 일시정지(서킷 브레이커). true(기본)면 보호 활성.
   // ConfigScreen 저장/부팅 시 config.storageWriteGuard 값으로 갱신된다.

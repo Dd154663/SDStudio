@@ -9,14 +9,15 @@ import {
   useRef,
   useCallback,
 } from 'react';
-import SessionSelect from './SessionSelect';
 import ProjectDrawer from './ProjectDrawer';
 import ProjectBrowser from './ProjectBrowser';
 import { ImageHistoryPanel, ImageHistoryDrawer, ImageHistoryHandle } from './ImageHistory';
 import QuickModeTab from './QuickModeTab';
 import PreSetEditor from './PreSetEdtior';
 import SceneQueuControl, { SceneCell } from './SceneQueueControl';
-import TaskQueueControl from './TaskQueueControl';
+import BottomBar from './BottomBar';
+import { GenControlFloating } from './GenControlWidget';
+import { resolveLayout } from '../models/layoutTemplates';
 import TobBar from './TobBar';
 import AlertWindow from './AlertWindow';
 import { DropdownSelect, TabComponent } from './UtilComponents';
@@ -251,6 +252,8 @@ export const App = observer(() => {
       appState.legacyProjectMode = conf.legacyProjectMode ?? false;
       appState.storageWriteGuard = conf.storageWriteGuard ?? true;
       appState.uiToolbar = conf.uiToolbar ?? {};
+      appState.uiLayoutTemplate = conf.uiLayoutTemplate ?? 'classic';
+      appState.genWidget = conf.genWidget ?? {};
     };
     refreshDarkMode();
     sessionService.addEventListener('config-changed', refreshDarkMode);
@@ -557,6 +560,50 @@ export const App = observer(() => {
     };
   }, []);
 
+  // 레이아웃 템플릿 해석은 렌더당 1회 — observer 라 uiLayoutTemplate 변경 시 자동 재렌더된다.
+  // 모바일은 resolveLayout 내부에서 항상 classic('bottom') 강제.
+  const resolvedLayout = resolveLayout(appState.uiLayoutTemplate, isMobile);
+  const bottomBarPlacement = resolvedLayout.bottomBar;
+
+  // 좌패널·스플리터·탭 콘텐츠는 어떤 배치에서도 동일한 부모 체인에 남긴다
+  // (재마운트 방지). 배치에 따라 이 조각을 감싸는 래퍼만 달라진다 — 콘텐츠 JSX 는 여기 1회만 정의.
+  const mainStackContent = (
+    <StackGrow className="flex">
+      {appState.curSession && (
+        <>
+          {!appState.leftPanelCollapsed && (
+            <div
+              style={{ width: appState.leftPanelWidth, minWidth: 250 }}
+              className="flex-none overflow-hidden hidden md:block h-full"
+            >
+              <div className="h-full w-full overflow-hidden">
+                <PreSetEditor
+                  key={appState.curSession.name}
+                  middlePromptMode={false}
+                />
+              </div>
+            </div>
+          )}
+          <div className="flex-none hidden md:flex">
+            <ResizableSplitter />
+          </div>
+          <StackGrow>
+            <TabComponent
+              key={appState.curSession.name}
+              tabs={tabs}
+              toggleView={
+                <PreSetEditor
+                  key={appState.curSession.name + '2'}
+                  middlePromptMode={false}
+                />
+              }
+            />
+          </StackGrow>
+        </>
+      )}
+    </StackGrow>
+  );
+
   return (
     <DndProvider
       backend={isMobile ? TouchBackend : HTML5Backend}
@@ -664,59 +711,20 @@ export const App = observer(() => {
                 )}
                 <div className="h-full w-full flex flex-col overflow-hidden">
                   {isMobile && <div className="flex-none"><TobBar /></div>}
-                  <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-                    <StackGrow className="flex">
-                      {appState.curSession && (
-                        <>
-                          {!appState.leftPanelCollapsed && (
-                            <div
-                              style={{ width: appState.leftPanelWidth, minWidth: 250 }}
-                              className="flex-none overflow-hidden hidden md:block h-full"
-                            >
-                              <div className="h-full w-full overflow-hidden">
-                                <PreSetEditor
-                                  key={appState.curSession.name}
-                                  middlePromptMode={false}
-                                />
-                              </div>
-                            </div>
-                          )}
-                          <div className="flex-none hidden md:flex">
-                            <ResizableSplitter />
-                          </div>
-                          <StackGrow>
-                            <TabComponent
-                              key={appState.curSession.name}
-                              tabs={tabs}
-                              toggleView={
-                                <PreSetEditor
-                                  key={appState.curSession.name + '2'}
-                                  middlePromptMode={false}
-                                />
-                              }
-                            />
-                          </StackGrow>
-                        </>
-                      )}
-                    </StackGrow>
-                    <StackFixed>
-                      <div
-                        className="px-3 pt-2 border-t flex gap-3 items-center line-color"
-                        style={{
-                          // 제스처바가 있는 기기에서 실행/중지 버튼이 바에 가리지 않도록
-                          // 기존 하단 여백(0.5rem)에 safe-area 를 더한다(inset 0이면 기존과 동일).
-                          paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))',
-                        }}
-                      >
-                        <div className="hidden md:block flex-1">
-                          <SessionSelect />
-                        </div>
-                        <div className="flex flex-none gap-4 ml-auto">
-                          <TaskQueueControl />
-                        </div>
-                      </div>
-                    </StackFixed>
-                  </div>
+                  {bottomBarPlacement === 'none' ? (
+                    // 컴팩트: 하단바 미렌더 — 콘텐츠만 배치해 세로 공간을 넓힌다.
+                    // (세션 선택은 상단바로, 생성 컨트롤은 플로팅 위젯으로 이동)
+                    // 클래식과 동일한 부모 체인을 유지해 mainStackContent 재마운트를 막는다.
+                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                      {mainStackContent}
+                    </div>
+                  ) : (
+                    // 기본(bottom): 콘텐츠 아래 하단 가로바 — 기존 DOM 과 동일.
+                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                      {mainStackContent}
+                      <BottomBar placement={bottomBarPlacement} />
+                    </div>
+                  )}
                 </div>
                 {appState.externalImage && (
                   <FloatView
@@ -740,6 +748,12 @@ export const App = observer(() => {
           </VerticalStack>
           )}
         </ErrorBoundary>
+        {/* 분리형 생성 컨트롤 위젯 (PC 전용).
+            분리 상태이거나, 컴팩트 템플릿(하단바 없음)이면 항상 플로팅으로 표시. */}
+        {!isMobile &&
+          (appState.genWidget.detached || bottomBarPlacement === 'none') && (
+            <GenControlFloating />
+          )}
         {/* 내보내기 진행 플로팅 위젯 (비차단형) */}
         {appState.exportProgress && (
           <div className="fixed bottom-16 right-4 z-[var(--z-widget)] bg-[var(--c-surface-2)] rounded-lg shadow-xl border line-color p-3 min-w-[220px]">
