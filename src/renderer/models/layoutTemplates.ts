@@ -18,6 +18,7 @@ export type GenControlPlacement = 'docked' | 'floating';
 // 템플릿 필드로 두지 않고 상수 기본값으로 관리한다(슬롯 오버라이드로만 변경).
 const DEFAULT_HISTORY_SIDE: PanelSide = 'right';
 const DEFAULT_PRESET_SIDE: PanelSide = 'left';
+const DEFAULT_PROJECT_SIDE: PanelSide = 'left';
 
 export interface LayoutTemplateMeta {
   id: string; // 불변 계약(config 저장 키): 'classic' | 'compact'
@@ -63,6 +64,8 @@ export interface ResolvedLayout {
   historySide: PanelSide;
   // 프리셋 에디터 패널 좌/우 (기본 left).
   presetSide: PanelSide;
+  // 프로젝트 사이드 바(드로어 진입) 좌/우 (기본 left).
+  projectSide: PanelSide;
   // 생성 컨트롤 부착/플로팅 (템플릿 기본 위에 슬롯 오버라이드).
   genControl: GenControlPlacement;
 }
@@ -96,15 +99,17 @@ export function resolveLayout(
   // 실제로 적용할 템플릿(미존재 id·모바일 비허용 → classic 폴백).
   const effective = !meta || (isMobile && !meta.mobileAllowed) ? classic : meta;
 
-  // 기본값: 상수(history/preset) + 템플릿(genControl).
+  // 기본값: 상수(history/preset/project) + 템플릿(genControl).
   let historySide: PanelSide = DEFAULT_HISTORY_SIDE;
   let presetSide: PanelSide = DEFAULT_PRESET_SIDE;
+  let projectSide: PanelSide = DEFAULT_PROJECT_SIDE;
   let genControl: GenControlPlacement = effective.genControl;
 
   // slots 오버라이드는 PC 에서만(모바일은 일관성 위해 전부 무시).
   if (slots && !isMobile) {
     historySide = coercePanelSide(slots.historySide, historySide);
     presetSide = coercePanelSide(slots.presetSide, presetSide);
+    projectSide = coercePanelSide(slots.projectSide, projectSide);
     genControl = coerceGenControl(slots.genControl, genControl);
   }
 
@@ -114,6 +119,19 @@ export function resolveLayout(
     sessionSelectTop: effective.bottomBar === 'none',
     historySide,
     presetSide,
+    projectSide,
     genControl,
   };
+}
+
+// 도킹 요소(프로젝트/프리셋/히스토리)의 CSS order 계산 단일 출처.
+// rank = 가장자리 우선순위: 프로젝트=1, 프리셋=2, 히스토리=3 (낮을수록 화면 끝면에 가깝게).
+// 중앙 콘텐츠는 order 0 으로 두고, 좌측 도킹은 음수(작을수록 왼쪽), 우측은 양수(클수록 오른쪽).
+//  좌: 프로젝트(-3) 프리셋(-2) 히스토리(-1) 콘텐츠(0)
+//  우: 콘텐츠(0) 히스토리(1) 프리셋(2) 프로젝트(3)
+// 같은 쪽에 여럿 도킹돼도 항상 프로젝트<프리셋<히스토리 순으로 겹치도록 강제된다.
+export const DOCK_RANK = { project: 1, preset: 2, history: 3 } as const;
+export function dockOrder(side: PanelSide, rank: number): number {
+  const magnitude = 4 - rank; // rank 1→3, 2→2, 3→1
+  return side === 'left' ? -magnitude : magnitude;
 }

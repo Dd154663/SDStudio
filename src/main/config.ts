@@ -80,6 +80,7 @@ export interface Config {
 export interface UiLayoutSlots {
   historySide?: 'left' | 'right'; // 이미지 히스토리 패널 (기본 right)
   presetSide?: 'left' | 'right'; // 프리셋 에디터 패널 (기본 left)
+  projectSide?: 'left' | 'right'; // 프로젝트 사이드 바(드로어 진입) (기본 left)
   genControl?: 'docked' | 'floating'; // 생성 컨트롤 (기본 docked, compact 는 floating)
 }
 

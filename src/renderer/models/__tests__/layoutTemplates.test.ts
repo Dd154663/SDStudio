@@ -1,7 +1,12 @@
 // resolveLayout 순수 함수 단위 테스트.
 // layoutTemplates.ts 는 외부 import 가 없으므로 별도 mock 없이 직접 import 한다.
 
-import { layoutTemplates, resolveLayout } from '../layoutTemplates';
+import {
+  layoutTemplates,
+  resolveLayout,
+  dockOrder,
+  DOCK_RANK,
+} from '../layoutTemplates';
 
 describe('resolveLayout — 폴백/강제', () => {
   it('미지정(undefined) → classic 폴백', () => {
@@ -45,13 +50,14 @@ describe('레지스트리 계약', () => {
 describe('슬롯 개인화 — 회귀 가드(기존 필드 불변 + 새 필드 기본값)', () => {
   // slots 미지정/undefined/빈객체에서 기존 필드는 이전과 100% 동일해야 하고,
   // 새 필드는 템플릿 기본값(classic: right/left/docked, compact: right/left/floating).
-  it('classic + slots 미지정 → 기존 필드 불변 + 기본 슬롯(right/left/docked)', () => {
+  it('classic + slots 미지정 → 기존 필드 불변 + 기본 슬롯(right/left/left/docked)', () => {
     const r = resolveLayout('classic', false);
     expect(r.id).toBe('classic');
     expect(r.bottomBar).toBe('bottom');
     expect(r.sessionSelectTop).toBe(false);
     expect(r.historySide).toBe('right');
     expect(r.presetSide).toBe('left');
+    expect(r.projectSide).toBe('left');
     expect(r.genControl).toBe('docked');
   });
   it('classic + slots undefined → 기본 슬롯', () => {
@@ -147,5 +153,46 @@ describe('슬롯 개인화 — stale 안전', () => {
     expect(r.historySide).toBe('left');
     expect(r.presetSide).toBe('left'); // 미지정 기본
     expect(r.genControl).toBe('floating');
+  });
+});
+
+describe('projectSide 슬롯', () => {
+  it('기본값 left', () => {
+    expect(resolveLayout('classic', false).projectSide).toBe('left');
+  });
+  it('projectSide=right 오버라이드(PC)', () => {
+    const r = resolveLayout('classic', false, { projectSide: 'right' });
+    expect(r.projectSide).toBe('right');
+    expect(r.presetSide).toBe('left'); // 다른 슬롯 불변
+    expect(r.historySide).toBe('right');
+  });
+  it('모바일이면 projectSide 무시(기본 left)', () => {
+    const r = resolveLayout('classic', true, { projectSide: 'right' });
+    expect(r.projectSide).toBe('left');
+  });
+  it('잘못된 값은 기본 left', () => {
+    const r = resolveLayout('classic', false, { projectSide: 'top' as any });
+    expect(r.projectSide).toBe('left');
+  });
+});
+
+describe('dockOrder — 가장자리 순서(프로젝트<프리셋<히스토리)', () => {
+  it('좌측: 프로젝트가 가장 왼쪽, 히스토리가 콘텐츠에 가장 가까움', () => {
+    const p = dockOrder('left', DOCK_RANK.project);
+    const s = dockOrder('left', DOCK_RANK.preset);
+    const h = dockOrder('left', DOCK_RANK.history);
+    expect(p).toBeLessThan(s);
+    expect(s).toBeLessThan(h);
+    expect(h).toBeLessThan(0); // 전부 콘텐츠(0)보다 왼쪽
+    expect([p, s, h]).toEqual([-3, -2, -1]);
+  });
+  it('우측: 프로젝트가 가장 오른쪽, 히스토리가 콘텐츠에 가장 가까움', () => {
+    const p = dockOrder('right', DOCK_RANK.project);
+    const s = dockOrder('right', DOCK_RANK.preset);
+    const h = dockOrder('right', DOCK_RANK.history);
+    expect(p).toBeGreaterThan(s);
+    expect(s).toBeGreaterThan(h);
+    expect(h).toBeGreaterThan(0); // 전부 콘텐츠(0)보다 오른쪽
+    expect([p, s, h]).toEqual([3, 2, 1]);
   });
 });
