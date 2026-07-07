@@ -9,9 +9,10 @@ import {
   FaThLarge,
   FaTimes,
 } from 'react-icons/fa';
-import { imageHistoryService, imageService } from '../models';
+import { imageHistoryService, imageService, isMobile } from '../models';
 import { GenerationHistoryEntry } from '../models/ImageHistoryService';
 import { appState } from '../models/AppService';
+import { resolveLayout } from '../models/layoutTemplates';
 import { backStackService } from '../models/BackStackService';
 import { ContextMenuType, GenericScene } from '../models/types';
 import Tooltip from './Tooltip';
@@ -169,11 +170,27 @@ const HistoryList = observer(() => {
 // PC 우측 밀어내기 패널 (+ 항상 보이는 접기/펼치기 스트립)
 export const ImageHistoryPanel = observer(() => {
   const collapsed = appState.historyPanelCollapsed;
+  // 히스토리가 좌/우 어느 쪽에 도킹됐는지(레이아웃 슬롯). 우측(기본)은 기존 렌더 그대로,
+  // 좌측이면 접기 스트립·구분선·화살표를 전부 좌우 반전해 자연스럽게 보이도록 미러링한다.
+  const side = resolveLayout(
+    appState.uiLayoutTemplate,
+    isMobile,
+    appState.uiLayoutSlots,
+  ).historySide === 'left'
+    ? 'left'
+    : 'right';
+  const mirror = side === 'left';
+  // 스트립(접기 손잡이)이 항상 "중앙 쪽" 모서리에 오도록 배치 방향을 뒤집는다.
+  //  우측 도킹: [스트립 | 패널]  좌측 도킹: [패널 | 스트립]
+  const rowDir = mirror ? 'flex-row-reverse' : 'flex-row';
+  // 구분선은 중앙을 향하는 쪽에 그린다(우측=왼쪽 테두리, 좌측=오른쪽 테두리).
+  const borderSide = mirror ? 'border-r' : 'border-l';
   return (
-    <div className="flex-none hidden md:flex h-full flex-row">
+    <div className={'flex-none hidden md:flex h-full ' + rowDir}>
       <div
         className={
-          'flex-none w-5 flex flex-col items-center border-l line-color ' +
+          'flex-none w-5 flex flex-col items-center line-color ' +
+          borderSide + ' ' +
           (collapsed ? 'cursor-pointer' : '')
         }
         onClick={collapsed ? () => appState.toggleHistoryPanel() : undefined}
@@ -186,17 +203,20 @@ export const ImageHistoryPanel = observer(() => {
               appState.toggleHistoryPanel();
             }}
           >
-            {collapsed ? (
-              <FaChevronLeft size={10} />
-            ) : (
+            {/* 화살표는 "펼치면 열리는 방향"을 가리킨다. 좌측 도킹이면 방향도 반전. */}
+            {collapsed === mirror ? (
               <FaChevronRight size={10} />
+            ) : (
+              <FaChevronLeft size={10} />
             )}
           </button>
         </Tooltip>
       </div>
       {!collapsed && (
         <div
-          className="flex flex-col h-full border-l line-color bg-[var(--c-surface-2)]"
+          className={
+            'flex flex-col h-full line-color bg-[var(--c-surface-2)] ' + borderSide
+          }
           style={{ width: 240 }}
         >
           <div className="flex-none px-3 py-2 border-b line-color flex items-center justify-between">

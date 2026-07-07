@@ -81,7 +81,13 @@ function measureBadges(): BadgeRect[] {
     out.push({
       kind: slot.kind,
       label: slot.label,
-      left: r.left + r.width / 2,
+      // 배지는 -translate-x-1/2 로 중앙 정렬되므로, 마커가 화면 가장자리에 바싹
+      // 붙은 경우(예: 좌/우 끝에 도킹된 히스토리 패널) 배지가 화면 밖으로 잘린다.
+      // 좌표를 화면 안으로 클램프해 배지 전체가 항상 보이게 한다.
+      left: Math.min(
+        Math.max(r.left + r.width / 2, 90),
+        window.innerWidth - 90,
+      ),
       // 마커 상단에 살짝 겹쳐 얹는다(음수가 되면 화면 안으로 끌어당김).
       top: Math.max(8, r.top + 6),
     });
@@ -191,7 +197,10 @@ const EditModeShell = observer(() => {
     <>
       {/* ── 상단 안내 바 (알약) ── */}
       <div
-        className="fixed top-0 left-1/2 -translate-x-1/2 mt-2 flex items-center gap-3 px-4 py-2 rounded-full bg-[var(--c-surface-2)] border line-color shadow-lg select-none"
+        // 안내 바는 화면 최상단 = 타이틀바(-webkit-app-region: drag)와 겹친다.
+        // titlebar-no-drag 가 없으면 "완료" 버튼 클릭이 창 드래그로 먹혀 눌리지 않는다
+        // (특히 클래식 템플릿은 상단바 중앙이 빈 드래그 영역이라 항상 막힘).
+        className="titlebar-no-drag fixed top-0 left-1/2 -translate-x-1/2 mt-2 flex items-center gap-3 px-4 py-2 rounded-full bg-[var(--c-surface-2)] border line-color shadow-lg select-none"
         style={{ zIndex: 'var(--z-edit-overlay)' }}
       >
         <span className="text-sm text-body">
@@ -244,8 +253,10 @@ const EditModeShell = observer(() => {
               startPanelDrag(b.kind as 'preset' | 'history', e);
             }}
             onClick={isGen ? toggleGenControl : undefined}
+            // 배지도 화면 상단에서 타이틀바 드래그 영역과 겹칠 수 있어, 클릭/드래그가
+            // 창 이동으로 먹히지 않도록 titlebar-no-drag.
             className={
-              'fixed -translate-x-1/2 flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--c-surface-2)] border line-color shadow-lg text-sm text-body select-none touch-none ' +
+              'titlebar-no-drag fixed -translate-x-1/2 flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--c-surface-2)] border line-color shadow-lg text-sm text-body select-none touch-none ' +
               (isGen ? 'cursor-pointer ' : 'cursor-grab ') +
               (isDraggingThis ? 'opacity-70 ' : '')
             }
