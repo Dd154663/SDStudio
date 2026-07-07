@@ -430,7 +430,7 @@ const SessionSelect = observer(({ variant = 'bar' }: { variant?: 'bar' | 'sideba
 
       {/* 현재 적용된 캐릭터 프리셋 표시 */}
       {appState.appliedCharacterPreset && (
-        <div className="hidden md:flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900 rounded-lg text-sm">
+        <div className="titlebar-no-drag hidden md:flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900 rounded-lg text-sm">
           <FaUserAlt className="text-green-600 dark:text-green-400" size={12} />
           <Tooltip content={appState.appliedCharacterPreset ?? ''}>
           <span className="text-green-700 dark:text-green-300 max-w-24 truncate">
@@ -450,7 +450,7 @@ const SessionSelect = observer(({ variant = 'bar' }: { variant?: 'bar' | 'sideba
       
       {/* 프로젝트 선택 영역: 기본 = 버튼과 한 줄 공유(폭 변동은 truncate가 흡수, 최소폭 미달 시 버튼이 다음 줄로 래핑) / 클래식 = 모바일 1행 전체 */}
       <div
-        className={`flex items-center gap-1 ${
+        className={`titlebar-no-drag flex items-center gap-1 ${
           appState.uiToolbar.classic
             ? 'w-full md:w-auto md:flex-1 md:max-w-80 min-w-0'
             : 'flex-1 min-w-[9rem] md:min-w-0 md:max-w-80'
@@ -522,6 +522,9 @@ const SessionSelect = observer(({ variant = 'bar' }: { variant?: 'bar' | 'sideba
         </button>
         </Tooltip>
       </div>
+      {/* 툴바 버튼·⋯ 메뉴는 no-drag 그룹으로 묶는다 — 버튼은 조작되되, 이 그룹 밖의
+          빈 공간(래퍼 여백·클러스터 사이)은 drag 로 남아 상단 바가 창 이동 핸들이 된다. */}
+      <span className="titlebar-no-drag flex items-center gap-2">
       {toolbarLayout.inline.map((id, i) => (
         <DraggableToolbarButton
           key={id}
@@ -568,6 +571,7 @@ const SessionSelect = observer(({ variant = 'bar' }: { variant?: 'bar' | 'sideba
           />
         </div>
       )}
+      </span>
       <ToolbarHideZone group="project" />
       {projectTrashModal}
     </div>

@@ -172,11 +172,13 @@ const TobBar = observer(() => {
       )}
       {/* 세션(프로젝트) 선택: 'sidebar' 템플릿이 아닐 때만. 모바일은 항상 인라인(md:hidden),
           컴팩트(PC)면 PC에서도 표시(block). sidebar 템플릿은 좌측 사이드 바가 담당. */}
+      {/* 통짜 no-drag 를 주지 않는다 — SessionSelect 내부의 상호작용 요소만 no-drag 라,
+          채워지지 않은 여백·버튼 사이 빈 공간은 drag 로 남아 창 이동 핸들이 된다. */}
       {!projectSidebar && (
         <div
           className={
             (sessionSelectTop ? '' : 'ml-auto ') +
-            'titlebar-no-drag flex-1 min-w-0 ' +
+            'flex-1 min-w-0 ' +
             (sessionSelectTop ? 'block' : 'block md:hidden')
           }
         >
