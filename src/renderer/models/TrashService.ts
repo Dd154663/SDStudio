@@ -3,6 +3,13 @@ import { persistService } from './PersistenceService';
 import { GenericScene, IInpaintScene, IScene, Session, genericSceneFromJSON } from './types';
 import { imageService } from '.';
 import { isOutputImageFile } from './imageFormats';
+import {
+  projectPath,
+  projectFolderPath,
+  projectJsonPath,
+  PROJECT_JSON_ROOT,
+  PROJECT_IMAGE_ROOTS,
+} from './projectPaths';
 
 // --- Type definitions ---
 
@@ -82,8 +89,8 @@ export class TrashService extends EventTarget {
 
   private getImageTrashDir(session: Session, scene: GenericScene): string {
     const base = scene.type === 'scene'
-      ? 'outs/' + session.name + '/' + scene.name
-      : 'inpaints/' + session.name + '/' + scene.name;
+      ? projectPath('outs', session.name, scene.name)
+      : projectPath('inpaints', session.name, scene.name);
     return base + '/' + IMAGE_TRASH_DIR;
   }
 
@@ -153,8 +160,8 @@ export class TrashService extends EventTarget {
   async restoreImages(session: Session, scene: GenericScene, filenames: string[]): Promise<void> {
     const trashDir = this.getImageTrashDir(session, scene);
     const outputDir = scene.type === 'scene'
-      ? 'outs/' + session.name + '/' + scene.name
-      : 'inpaints/' + session.name + '/' + scene.name;
+      ? projectPath('outs', session.name, scene.name)
+      : projectPath('inpaints', session.name, scene.name);
     const meta = await this.loadImageTrashMeta(session, scene);
 
     for (const filename of filenames) {
@@ -394,13 +401,13 @@ export class TrashService extends EventTarget {
   // 으로 오판해 활성 이미지가 삭제될 수 있었다. 이제 에러를 그대로 전파하고,
   // 파괴적 경로(permanentlyDeleteProject)가 "불확실하면 보존" 하도록 한다.
   private async getProjectDirs(): Promise<string[]> {
-    const entries = await backend.listFiles('projects');
-    const rootStats = await backend.listFilesWithStats('projects');
+    const entries = await backend.listFiles(PROJECT_JSON_ROOT);
+    const rootStats = await backend.listFilesWithStats(PROJECT_JSON_ROOT);
     const rootFileSet = new Set(rootStats.map((s: any) => s.name));
     const dirs = entries.filter(
       (e: string) => !rootFileSet.has(e) && !e.startsWith('.'),
     );
-    return ['projects', ...dirs.map((d) => 'projects/' + d)];
+    return [PROJECT_JSON_ROOT, ...dirs.map((d) => projectFolderPath(d))];
   }
 
   // 주어진 확장자(.json / .deleted)를 가진 프로젝트 파일을 루트 + 폴더에서 모두 찾아
@@ -415,7 +422,7 @@ export class TrashService extends EventTarget {
       for (const s of stats) {
         // '.deleted'/'.json' 처럼 이름 없이 확장자만 남은 점(.) 파일은
         // 프로젝트명 ''(빈 문자열)로 오인된다 — 빈 이름이 영구삭제로 흘러가면
-        // 'outs/' + '' = outs 루트 전체가 삭제된다(2026-07-06 실사고). 반드시 제외.
+        // outs 루트+빈 이름 = outs 루트 전체가 삭제된다(2026-07-06 실사고). 반드시 제외.
         if (s.name.startsWith('.')) continue;
         if (s.name.endsWith(suffix)) {
           const name = s.name.substring(0, s.name.length - suffix.length);
@@ -430,10 +437,10 @@ export class TrashService extends EventTarget {
   // 루트(projects/<이름>.json)와 모든 폴더 경로를 점검한다.
   // getProjectDirs 가 throw 하면(스캔 불가) 호출부에서 "불확실 → 보존" 으로 처리한다.
   private async activeProjectFileExists(name: string): Promise<boolean> {
-    if (await backend.existFile('projects/' + name + '.json')) return true;
+    if (await backend.existFile(projectJsonPath(name))) return true;
     const dirs = await this.getProjectDirs();
     for (const dir of dirs) {
-      if (dir === 'projects') continue;
+      if (dir === PROJECT_JSON_ROOT) continue;
       if (await backend.existFile(dir + '/' + name + '.json')) return true;
     }
     return false;
@@ -636,11 +643,12 @@ export class TrashService extends EventTarget {
     }
 
     if (safeToDeleteDirs) {
-      // references 포함 — 6개 이미지 루트 전부가 삭제 대상 (과거 references 누락으로
-      // 영구삭제 후 references/<이름>/ 고아 디렉터리가 남던 버그 수정, 2026-07-07)
-      for (const dir of ['outs', 'inpaints', 'vibes', 'inpaint_masks', 'inpaint_orgs', 'references']) {
+      // 삭제 대상 이미지 루트 목록은 PROJECT_IMAGE_ROOTS 단일 출처를 따른다
+      // (references 포함 6종 — 과거 references 누락으로 영구삭제 후
+      //  references/<이름>/ 고아 디렉터리가 남던 버그 수정, 2026-07-07).
+      for (const dir of PROJECT_IMAGE_ROOTS) {
         try {
-          await backend.deleteDir(dir + '/' + name);
+          await backend.deleteDir(projectPath(dir, name));
         } catch (e) {}
       }
     }

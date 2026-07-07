@@ -22,6 +22,12 @@ import { ResourceSyncService } from './ResourceSyncService';
 import { persistService } from './PersistenceService';
 import { isOutputImageFile } from './imageFormats';
 import {
+  projectPath,
+  projectFolderPath,
+  PROJECT_JSON_ROOT,
+  PROJECT_IMAGE_ROOTS,
+} from './projectPaths';
+import {
   PromptPieceSlot,
   GenericScene,
   InpaintScene,
@@ -61,7 +67,7 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   constructor() {
-    super('projects', SESSION_SERVICE_INTERVAL);
+    super(PROJECT_JSON_ROOT, SESSION_SERVICE_INTERVAL);
   }
 
   async loadFavorites() {
@@ -113,7 +119,7 @@ export class SessionService extends ResourceSyncService<Session> {
   // ===== 폴더 API (중첩 폴더 지원, 실제 디렉토리) =====
 
   private folderDirPath(folder: string): string {
-    return 'projects/' + folder;
+    return projectFolderPath(folder);
   }
 
   // 폴더 경로에서 마지막 세그먼트만 추출 (표시용)
@@ -676,7 +682,7 @@ export class SessionService extends ResourceSyncService<Session> {
     sceneName: string,
   ): Promise<string | undefined> {
     try {
-      const files = await backend.listFiles('outs/' + project + '/' + sceneName);
+      const files = await backend.listFiles(projectPath('outs', project, sceneName));
       return (files || []).find(isOutputImageFile);
     } catch (e) {
       return undefined;
@@ -1095,11 +1101,11 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   getInpaintOrgPath(session: Session, inpaint: InpaintScene) {
-    return 'inpaint_orgs/' + session.name + '/' + inpaint.name + '.png';
+    return projectPath('inpaint_orgs', session.name, inpaint.name + '.png');
   }
 
   getInpaintMaskPath(session: Session, inpaint: InpaintScene) {
-    return 'inpaint_masks/' + session.name + '/' + inpaint.name + '.png';
+    return projectPath('inpaint_masks', session.name, inpaint.name + '.png');
   }
 
   async exportSessionShallow(session: Session) {
@@ -1161,24 +1167,24 @@ export class SessionService extends ResourceSyncService<Session> {
       // 씬별 이미지 (병렬)
       Promise.all(sceneNames.map(async (name) => ({
         name,
-        files: await ignoreError(backend.listFiles('outs/' + session.name + '/' + name)),
+        files: await ignoreError(backend.listFiles(projectPath('outs', session.name, name))),
       }))),
       // 인페인트별 이미지 (병렬)
       Promise.all(inpaintNames.map(async (name) => ({
         name,
-        files: await ignoreError(backend.listFiles('inpaints/' + session.name + '/' + name)),
+        files: await ignoreError(backend.listFiles(projectPath('inpaints', session.name, name))),
       }))),
-      ignoreError(backend.listFiles('inpaint_orgs/' + session.name)),
-      ignoreError(backend.listFiles('inpaint_masks/' + session.name)),
-      ignoreError(backend.listFiles('vibes/' + session.name)),
-      ignoreError(backend.listFiles('references/' + session.name)),
+      ignoreError(backend.listFiles(projectPath('inpaint_orgs', session.name))),
+      ignoreError(backend.listFiles(projectPath('inpaint_masks', session.name))),
+      ignoreError(backend.listFiles(projectPath('vibes', session.name))),
+      ignoreError(backend.listFiles(projectPath('references', session.name))),
     ]);
 
     for (const { name, files } of sceneResults) {
       for (const image of files) {
         if (!isOutputImageFile(image)) continue;
         entries.push({
-          path: 'outs/' + session.name + '/' + name + '/' + image,
+          path: projectPath('outs', session.name, name, image),
           name: prefix + 'outs/' + name + '/' + image,
         });
       }
@@ -1186,14 +1192,14 @@ export class SessionService extends ResourceSyncService<Session> {
     for (const image of inpaintOrgs) {
       if (!image.endsWith('.png')) continue;
       entries.push({
-        path: 'inpaint_orgs/' + session.name + '/' + image,
+        path: projectPath('inpaint_orgs', session.name, image),
         name: prefix + 'inpaint_orgs/' + image,
       });
     }
     for (const image of inpaintMasks) {
       if (!image.endsWith('.png')) continue;
       entries.push({
-        path: 'inpaint_masks/' + session.name + '/' + image,
+        path: projectPath('inpaint_masks', session.name, image),
         name: prefix + 'inpaint_masks/' + image,
       });
     }
@@ -1201,7 +1207,7 @@ export class SessionService extends ResourceSyncService<Session> {
       for (const image of files) {
         if (!isOutputImageFile(image)) continue;
         entries.push({
-          path: 'inpaints/' + session.name + '/' + name + '/' + image,
+          path: projectPath('inpaints', session.name, name, image),
           name: prefix + 'inpaints/' + name + '/' + image,
         });
       }
@@ -1209,14 +1215,14 @@ export class SessionService extends ResourceSyncService<Session> {
     for (const vibe of vibes) {
       if (!vibe.endsWith('.png')) continue;
       entries.push({
-        path: 'vibes/' + session.name + '/' + vibe,
+        path: projectPath('vibes', session.name, vibe),
         name: prefix + 'vibes/' + vibe,
       });
     }
     for (const ref of references) {
       if (!ref.endsWith('.png')) continue;
       entries.push({
-        path: 'references/' + session.name + '/' + ref,
+        path: projectPath('references', session.name, ref),
         name: prefix + 'references/' + ref,
       });
     }
@@ -1241,7 +1247,7 @@ export class SessionService extends ResourceSyncService<Session> {
       for (const preset of session.presets) {
         if (preset.type === 'style') {
           try {
-            const path = 'vibes/' + name + '/' + v4() + '.png';
+            const path = projectPath('vibes', name, v4() + '.png');
             await backend.writeDataFile(path, preset.profile);
             preset.profile = path.split('/').pop()!;
           } catch (e) {}
@@ -1252,7 +1258,7 @@ export class SessionService extends ResourceSyncService<Session> {
         for (const preset of presetSet) {
           if (preset.profile) {
             try {
-              const path = 'vibes/' + name + '/' + v4() + '.png';
+              const path = projectPath('vibes', name, v4() + '.png');
               await backend.writeDataFile(path, preset.profile);
               preset.profile = path.split('/').pop()!;
             } catch (e) {}
@@ -1291,14 +1297,9 @@ export class SessionService extends ResourceSyncService<Session> {
     session.name = name;
     // 이동(renameDir) 대신 복사 후 검증: 원본(임시 디렉터리)을 보존하므로 중간에
     // 실패해도 데이터가 흩어지거나 유실되지 않는다(부분 복원 방지).
-    const copies: [string, string][] = [
-      [dir + '/outs', 'outs/' + name],
-      [dir + '/inpaints', 'inpaints/' + name],
-      [dir + '/inpaint_orgs', 'inpaint_orgs/' + name],
-      [dir + '/inpaint_masks', 'inpaint_masks/' + name],
-      [dir + '/vibes', 'vibes/' + name],
-      [dir + '/references', 'references/' + name],
-    ];
+    const copies = PROJECT_IMAGE_ROOTS.map(
+      (r) => [dir + '/' + r, projectPath(r, name)] as const,
+    );
     const createdDests: string[] = [];
     try {
       for (const [src, dest] of copies) {
@@ -1377,18 +1378,11 @@ export class SessionService extends ResourceSyncService<Session> {
       throw new Error('Resource already exists');
     }
     // 이미지 디렉터리는 이름 기준(outs/<이름> 등)이므로 이름만 바꿔 통째 복사
-    const imageDirs = [
-      'outs',
-      'inpaints',
-      'vibes',
-      'references',
-      'inpaint_orgs',
-      'inpaint_masks',
-    ];
-    for (const dir of imageDirs) {
+    // 루트별 복사는 상호 독립이라 순서(PROJECT_IMAGE_ROOTS)는 결과에 영향 없음.
+    for (const dir of PROJECT_IMAGE_ROOTS) {
       await this.copyDirRecursive(
-        dir + '/' + session.name,
-        dir + '/' + newName,
+        projectPath(dir, session.name),
+        projectPath(dir, newName),
       );
     }
     const json = session.toJSON();

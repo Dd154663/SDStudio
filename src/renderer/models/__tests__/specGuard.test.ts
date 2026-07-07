@@ -96,6 +96,27 @@ const RULES: Rule[] = [
     },
   },
   {
+    // 프로젝트 데이터 경로는 projectPaths.ts 관문(이름 검증 내장)만 사용.
+    // 루트 리터럴 + 문자열 결합은 빈 이름이 루트가 되는 사고 클래스의 근원
+    // (2026-07-06 outs 증발 실사고).
+    name: "프로젝트 루트 리터럴 결합('outs/' + … 등) — projectPaths.ts 사용",
+    guide: '§10',
+    dir: '',
+    exts: ['.ts', '.tsx'],
+    exclude: ['models/projectPaths.ts'],
+    count: (c) =>
+      countMatches(
+        c,
+        /'(outs|inpaints|inpaint_orgs|inpaint_masks|vibes|references|projects)\/' *\+/g,
+      ),
+    allow: {
+      // 백업 아카이브 내부의 "논리 경로"(물리 배치와 무관한 아카이브 엔트리명,
+      // buildSessionDeepEntries 의 name: 필드) — 의도적 잔류. 물리 경로가 아니라
+      // projectPath 대상이 아니다 (트랙1 조사 보고서 §1-6).
+      'models/SessionService.ts': 6,
+    },
+  },
+  {
     name: 'backButton 직접 등록/removeAllListeners — backStackService 사용',
     guide: '§5',
     dir: '',

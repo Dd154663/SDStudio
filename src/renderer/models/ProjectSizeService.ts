@@ -1,6 +1,7 @@
 import { observable, makeObservable, runInAction } from 'mobx';
 import { persistService } from './PersistenceService';
 import { backend, sessionService } from '.';
+import { projectPath, PROJECT_IMAGE_ROOTS } from './projectPaths';
 
 export interface ProjectSizeEntry {
   bytes: number;
@@ -9,16 +10,9 @@ export interface ProjectSizeEntry {
 
 const SIDECAR_PATH = 'project_sizes.json';
 
-// 프로젝트 데이터가 저장되는 루트 디렉터리들
-// (SessionService.buildSessionDeepEntries 가 백업에 포함하는 집합과 동일)
-const IMAGE_DIR_PREFIXES = [
-  'outs/',
-  'inpaints/',
-  'inpaint_orgs/',
-  'inpaint_masks/',
-  'vibes/',
-  'references/',
-];
+// 프로젝트 데이터가 저장되는 루트 디렉터리 목록은 projectPaths.PROJECT_IMAGE_ROOTS
+// 단일 출처를 사용한다 (SessionService.buildSessionDeepEntries 가 백업에 포함하는
+// 집합과 동일). 경로 조립도 projectPath 를 거쳐 이름 검증을 강제한다.
 
 /**
  * 프로젝트별 차지 용량 수동 계산 서비스
@@ -136,7 +130,7 @@ export class ProjectSizeService {
     try {
       await this.ensureLoaded();
       const dirSums = await Promise.all(
-        IMAGE_DIR_PREFIXES.map((p) => this.dirSize(p + name)),
+        PROJECT_IMAGE_ROOTS.map((p) => this.dirSize(projectPath(p, name))),
       );
       const jsonSize = await this.projectJsonSize(name);
       const bytes = dirSums.reduce((a, b) => a + b, 0) + jsonSize;
@@ -186,8 +180,8 @@ export class ProjectSizeService {
   async estimateFullBackupBytes(names: string[]): Promise<number> {
     let total = 0;
     for (const name of names) {
-      for (const p of IMAGE_DIR_PREFIXES) {
-        total += await this.dirSize(p + name);
+      for (const p of PROJECT_IMAGE_ROOTS) {
+        total += await this.dirSize(projectPath(p, name));
       }
       total += await this.projectJsonSize(name);
     }

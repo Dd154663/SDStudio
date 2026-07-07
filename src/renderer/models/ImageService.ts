@@ -11,11 +11,17 @@ import { platform } from './platform';
 import { GenericScene, InpaintScene, Scene, Session } from './types';
 import { assert } from './util';
 import { isOutputImageFile } from './imageFormats';
+import {
+  projectPath,
+  PROJECT_IMAGE_ROOTS,
+  PROJECT_SCENE_IMAGE_ROOTS,
+  PROJECT_SCENE_MASK_ROOTS,
+} from './projectPaths';
 import { v4 } from 'uuid';
 
 export const supportedImageSizes = [200, 400, 500];
-const imageDirList = ['outs', 'inpaints'];
-const maskDirList = ['inpaint_masks', 'inpaint_orgs'];
+const imageDirList = [...PROJECT_SCENE_IMAGE_ROOTS];
+const maskDirList = [...PROJECT_SCENE_MASK_ROOTS];
 
 const naturalSort = (a: string, b: string) => {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
@@ -459,9 +465,9 @@ export class ImageService extends EventTarget {
     for (const key of toDelete) {
       this.cache.delete(key); // 외부 delete 사용 (용량 회계 유지)
     }
-    for (const dir of ['outs', 'inpaints', 'vibes', 'references', 'inpaint_masks', 'inpaint_orgs']) {
+    for (const dir of PROJECT_IMAGE_ROOTS) {
       try {
-        await backend.renameDir(dir + '/' + oldName, dir + '/' + newName);
+        await backend.renameDir(projectPath(dir, oldName), projectPath(dir, newName));
       } catch (e) {
         // 폴더가 없을 수 있음
       }
@@ -592,23 +598,23 @@ export class ImageService extends EventTarget {
   }
 
   getImageDir(session: Session, scene: Scene) {
-    return 'outs/' + session.name + '/' + scene.name;
+    return projectPath('outs', session.name, scene.name);
   }
 
   getInPaintDir(session: Session, scene: InpaintScene) {
-    return 'inpaints/' + session.name + '/' + scene.name;
+    return projectPath('inpaints', session.name, scene.name);
   }
 
   getVibesDir(session: Session) {
-    return 'vibes/' + session.name;
+    return projectPath('vibes', session.name);
   }
 
   getEncodedVibesDir(session: Session) {
-    return 'vibes/' + session.name + '/encoded';
+    return projectPath('vibes', session.name, 'encoded');
   }
 
   getReferenceDir(session: Session) {
-    return 'references/' + session.name;
+    return projectPath('references', session.name);
   }
 
   async storeVibeImage(session: Session, data: string) {

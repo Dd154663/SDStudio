@@ -23,6 +23,7 @@ import type { Config, UiToolbarConfig, UiLayoutSlots } from '../../main/config';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { isOutputImageFile, isImportImageMime } from './imageFormats';
+import { projectPath } from './projectPaths';
 import { Dialog } from '../componenets/ConfirmWindow';
 import { cropMirrorResultFromDataUri, dataUriToBase64, deleteImageFiles } from './ImageService';
 import {
@@ -952,7 +953,7 @@ export class AppState {
       // outs/<세션명>/ 디렉토리에서 씬 폴더 목록 조회
       let sceneDirs: string[] = [];
       try {
-        const entries = await backend.listFiles('outs/' + session.name);
+        const entries = await backend.listFiles(projectPath('outs', session.name));
         // 디렉토리만 필터링 (확장자 없는 항목 = 디렉토리)
         sceneDirs = entries.filter((e: string) => !e.includes('.'));
       } catch {
@@ -977,7 +978,7 @@ export class AppState {
           let pngFiles: string[] = [];
           try {
             const files = await backend.listFiles(
-              'outs/' + session.name + '/' + dirName,
+              projectPath('outs', session.name, dirName),
             );
             pngFiles = files.filter(isOutputImageFile);
           } catch {

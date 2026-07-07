@@ -3,6 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck, FaPen, FaTrashAlt, FaTimes, FaPalette, FaFileExport, FaCopy, FaChevronDown, FaChevronRight, FaFolderPlus } from 'react-icons/fa';
 import { sessionService, imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
+import { projectPath } from '../models/projectPaths';
 import ModalOverlay from './ModalOverlay';
 import Tooltip from './Tooltip';
 import MobileColorPicker from './MobileColorPicker';
@@ -57,7 +58,7 @@ const ProjectThumbnail = ({ name }: { name: string }) => {
       try {
         return (
           (await imageService.fetchImageSmall(
-            'outs/' + name + '/' + ref.scene + '/' + ref.image,
+            projectPath('outs', name, ref.scene, ref.image),
             200,
           )) ?? undefined
         );
