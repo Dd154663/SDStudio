@@ -150,7 +150,9 @@ function ProjectTrashView() {
   );
 }
 
-const SessionSelect = observer(() => {
+// variant='bar'(기본): 하단/상단 바용 가로 툴바(레거시). 'sidebar': 프로젝트 사이드 바용
+// 세로 아이콘 스택 — 프로젝트 선택기·⋯메뉴·툴바 드래그를 빼고 핵심 액션 버튼만(모달 로직 재사용).
+const SessionSelect = observer(({ variant = 'bar' }: { variant?: 'bar' | 'sidebar' }) => {
   const [sessionNames, setSessionNames] = useState<string[]>([]);
   const [showCharacterPresets, setShowCharacterPresets] = useState(false);
   const [showProjectTrash, setShowProjectTrash] = useState(false);
@@ -301,13 +303,8 @@ const SessionSelect = observer(() => {
     return id;
   };
 
-  return (
-    // 행 전체가 드롭 타깃 — 메뉴에서 끌어다 놓으면 인라인 고정(pinned)
-    <div
-      ref={toolbarRowDrop as any}
-      className={`flex gap-2 items-center w-full flex-wrap${toolbarRowHighlightClass(toolbarDrag, toolbarRowOver)}`}
-    >
-      {showCharacterPresets && appState.curSession && (
+  const characterPresetModal =
+    showCharacterPresets && appState.curSession ? (
         <CharacterPresetFloatEditor
           onClose={() => setShowCharacterPresets(false)}
           onApplyPreset={(preset: CharacterPreset, mode: 'easy' | 'character') => {
@@ -387,8 +384,50 @@ const SessionSelect = observer(() => {
             appState.pushMessage(`"${preset.name}" 프리셋이 ${modeLabel}로 적용되었습니다`);
           }}
         />
-      )}
-      
+    ) : null;
+
+  const projectTrashModal = (
+    <ModalOverlay
+      isOpen={showProjectTrash}
+      onClose={() => setShowProjectTrash(false)}
+      title="🗑️ 프로젝트 휴지통"
+    >
+      <ProjectTrashView />
+    </ModalOverlay>
+  );
+
+  // 프로젝트 사이드 바(세로 스택) — 선택기·⋯메뉴·툴바 드래그를 빼고 핵심 액션 버튼만.
+  // 버튼 노드·모달 로직은 위에서 정의한 것을 그대로 재사용한다.
+  if (variant === 'sidebar') {
+    return (
+      <div className="flex flex-col items-center gap-1.5">
+        {characterPresetModal}
+        {projectTrashModal}
+        {toolbarButtons['character-presets']}
+        {toolbarButtons['add-session']}
+        {toolbarButtons['project-trash']}
+        <Tooltip content="프로젝트 탐색">
+          <button
+            className="icon-button mx-1"
+            onClick={() => {
+              appState.projectBrowserOpen = true;
+            }}
+          >
+            <FaThLarge size={16} />
+          </button>
+        </Tooltip>
+      </div>
+    );
+  }
+
+  return (
+    // 행 전체가 드롭 타깃 — 메뉴에서 끌어다 놓으면 인라인 고정(pinned)
+    <div
+      ref={toolbarRowDrop as any}
+      className={`flex gap-2 items-center w-full flex-wrap${toolbarRowHighlightClass(toolbarDrag, toolbarRowOver)}`}
+    >
+      {characterPresetModal}
+
       {/* 현재 적용된 캐릭터 프리셋 표시 */}
       {appState.appliedCharacterPreset && (
         <div className="hidden md:flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900 rounded-lg text-sm">
@@ -530,13 +569,7 @@ const SessionSelect = observer(() => {
         </div>
       )}
       <ToolbarHideZone group="project" />
-      <ModalOverlay
-        isOpen={showProjectTrash}
-        onClose={() => setShowProjectTrash(false)}
-        title="🗑️ 프로젝트 휴지통"
-      >
-        <ProjectTrashView />
-      </ModalOverlay>
+      {projectTrashModal}
     </div>
   );
 });

@@ -9,6 +9,7 @@ import {
   FaPlus,
   FaChevronDown,
   FaChevronRight,
+  FaChevronLeft,
   FaPalette,
   FaFolderPlus,
   FaCheck,
@@ -224,6 +225,66 @@ const ProjectRow = observer(
     );
   },
 );
+
+// 모바일 좌측 가장자리 손잡이 — 프로젝트 오버레이 드로어 열기/닫기 토글.
+// 히스토리 우측 핸들(ImageHistoryHandle)의 좌측 미러. 좌측 끝에서 우로 스와이프해도 열림.
+// (좌측 끝은 우측 툴바 드래그와 겹치지 않아 toolbarDragUi 가드는 불필요.)
+export const ProjectDrawerHandle = observer(() => {
+  const open = appState.projectDrawerOpen;
+
+  useEffect(() => {
+    let startX = 0;
+    let startY = 0;
+    let tracking = false;
+    const onStart = (e: TouchEvent) => {
+      if (appState.projectDrawerOpen || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      if (t.clientX > 32) return; // 좌측 끝 32px 에서 시작한 터치만
+      startX = t.clientX;
+      startY = t.clientY;
+      tracking = true;
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!tracking || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
+      if (dx > 40 && Math.abs(dx) > Math.abs(dy)) {
+        tracking = false;
+        appState.projectDrawerOpen = true;
+      }
+    };
+    const onEnd = () => {
+      tracking = false;
+    };
+    document.addEventListener('touchstart', onStart, { passive: true });
+    document.addEventListener('touchmove', onMove, { passive: true });
+    document.addEventListener('touchend', onEnd, { passive: true });
+    document.addEventListener('touchcancel', onEnd, { passive: true });
+    return () => {
+      document.removeEventListener('touchstart', onStart);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+      document.removeEventListener('touchcancel', onEnd);
+    };
+  }, []);
+
+  return (
+    <button
+      className="fixed left-0 top-1/2 -translate-y-1/2 md:hidden flex items-center justify-center w-6 h-14 rounded-r-md border border-l-0 line-color bg-[var(--c-surface-2)] opacity-70 active:opacity-100"
+      style={{ zIndex: 'var(--z-drawer-handle)' }}
+      onClick={() => {
+        appState.projectDrawerOpen = !open;
+      }}
+    >
+      {open ? (
+        <FaChevronLeft size={11} className="text-faint" />
+      ) : (
+        <FaChevronRight size={11} className="text-faint" />
+      )}
+    </button>
+  );
+});
 
 const ProjectDrawer = observer(() => {
   const [filter, setFilter] = useState('');
