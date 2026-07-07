@@ -33,6 +33,7 @@ jest.mock('../PersistenceService', () => ({
 
 import { TrashService } from '../TrashService';
 import { backend } from '../index';
+import { persistService } from '../PersistenceService';
 
 describe('dataPathGuard.dirDeleteViolation', () => {
   it('보호 루트 자체는 거부한다', () => {
@@ -113,5 +114,65 @@ describe('TrashService 유령 프로젝트 방어', () => {
       expect(p.endsWith('/foo')).toBe(true);
       expect(dirDeleteViolation(p)).toBeNull();
     }
+    // 6개 이미지 루트 전부 삭제 대상 — references 누락 회귀 방지 (2026-07-07 수정)
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        'outs/foo',
+        'inpaints/foo',
+        'vibes/foo',
+        'inpaint_masks/foo',
+        'inpaint_orgs/foo',
+        'references/foo',
+      ]),
+    );
+  });
+});
+
+describe('TrashService 이름변경 키 이관 (renameProjectKeys)', () => {
+  const loadWith = async (data: unknown) => {
+    (backend.existFile as jest.Mock).mockResolvedValueOnce(true);
+    (backend.readFile as jest.Mock).mockResolvedValueOnce(JSON.stringify(data));
+    const svc = new TrashService();
+    await svc.loadTrash();
+    return svc;
+  };
+  const lastTrashWrite = () => {
+    const calls = (persistService.write as jest.Mock).mock.calls.filter(
+      (c) => c[0] === 'trash.json',
+    );
+    return calls.length ? JSON.parse(calls[calls.length - 1][1]) : null;
+  };
+
+  beforeEach(() => {
+    (persistService.write as jest.Mock).mockClear();
+  });
+
+  it("scenes 복합 키('이름:씬')와 projects 항목을 새 이름으로 옮긴다", async () => {
+    const svc = await loadWith({
+      scenes: {
+        'old:sceneA': { sceneData: {}, deletedAt: 1 },
+        'other:x': { sceneData: {}, deletedAt: 2 },
+      },
+      projects: { old: { deletedAt: 3 } },
+    });
+    await svc.renameProjectKeys('old', 'new');
+    const saved = lastTrashWrite();
+    expect(saved.scenes['new:sceneA']).toBeDefined();
+    expect(saved.scenes['old:sceneA']).toBeUndefined();
+    expect(saved.scenes['other:x']).toBeDefined(); // 무관 프로젝트 보존
+    expect(saved.projects['new']).toEqual({ deletedAt: 3 });
+    expect(saved.projects['old']).toBeUndefined();
+  });
+
+  it('이관 대상이 없으면 저장하지 않는다', async () => {
+    const svc = await loadWith({ scenes: {}, projects: {} });
+    await svc.renameProjectKeys('none', 'x');
+    expect(lastTrashWrite()).toBeNull();
+  });
+
+  it('미로드 상태에서는 저장 없이 건너뛴다 (기존 기록 보호)', async () => {
+    const svc = new TrashService(); // loadTrash 미호출 = !loaded
+    await svc.renameProjectKeys('old', 'new');
+    expect(lastTrashWrite()).toBeNull();
   });
 });

@@ -11,6 +11,7 @@ import {
   taskQueueService,
   globalPieceService,
   globalPresetService,
+  projectSizeService,
 } from '.';
 import { getAppState } from './appStateRef';
 import { FileEntry } from '../backend';
@@ -813,6 +814,11 @@ export class SessionService extends ResourceSyncService<Session> {
       bmChanged = true;
     });
     if (bmChanged) await this.saveBookmarks();
+    // 휴지통 씬 키('<이름>:<씬>')·프로젝트 항목 이관 — 이미지 디렉터리가 새 이름으로
+    // 이동한 뒤이므로 키를 함께 옮기지 않으면 삭제 씬 복원이 영구 불가해진다.
+    await trashService.renameProjectKeys(oldName, newName);
+    // 용량 캐시 키 이관 (재계산 가능 — 실패해도 무해)
+    await projectSizeService.renameProject(oldName, newName);
   }
 
   // 종료 시 빠른 저장: saveAll()은 로드된 세션이 많으면(프로젝트 탐색을 열면

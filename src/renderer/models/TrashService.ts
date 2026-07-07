@@ -485,6 +485,35 @@ export class TrashService extends EventTarget {
     await this.saveTrash();
   }
 
+  // 프로젝트 이름변경 시 trash.json 의 키를 새 이름으로 이관한다.
+  // 씬 휴지통 복원은 '<프로젝트>:<씬>' 복합 키 + outs/<프로젝트>/.trash 경로에
+  // 의존하는데, 이미지 디렉터리는 rename 시 새 이름으로 이동하므로 키를 함께
+  // 옮기지 않으면 기존 삭제 씬이 복원 불가한 유령이 된다.
+  // 로드 실패 상태(!loaded)에서는 저장 자체가 기존 기록을 지울 수 있으므로
+  // 이관을 조용히 건너뛴다 (rename 본체를 막지 않음 — loadTrash 주석 참조).
+  async renameProjectKeys(oldName: string, newName: string): Promise<void> {
+    if (!this.loaded) {
+      console.error('trash.json 미로드 — 이름변경 키 이관 건너뜀:', oldName);
+      return;
+    }
+    let changed = false;
+    const prefix = oldName + ':';
+    for (const key of Object.keys(this.data.scenes)) {
+      if (key.startsWith(prefix)) {
+        const sceneName = key.substring(prefix.length);
+        this.data.scenes[newName + ':' + sceneName] = this.data.scenes[key];
+        delete this.data.scenes[key];
+        changed = true;
+      }
+    }
+    if (this.data.projects[oldName]) {
+      this.data.projects[newName] = this.data.projects[oldName];
+      delete this.data.projects[oldName];
+      changed = true;
+    }
+    if (changed) await this.saveTrash();
+  }
+
   async getDeletedProjects(): Promise<{name: string, deletedAt: number}[]> {
     this.ensureLoaded();
     // 루트 + 폴더 하위까지 .deleted / .json 을 모두 스캔 (폴더 소속 프로젝트 포함)
@@ -607,7 +636,9 @@ export class TrashService extends EventTarget {
     }
 
     if (safeToDeleteDirs) {
-      for (const dir of ['outs', 'inpaints', 'vibes', 'inpaint_masks', 'inpaint_orgs']) {
+      // references 포함 — 6개 이미지 루트 전부가 삭제 대상 (과거 references 누락으로
+      // 영구삭제 후 references/<이름>/ 고아 디렉터리가 남던 버그 수정, 2026-07-07)
+      for (const dir of ['outs', 'inpaints', 'vibes', 'inpaint_masks', 'inpaint_orgs', 'references']) {
         try {
           await backend.deleteDir(dir + '/' + name);
         } catch (e) {}

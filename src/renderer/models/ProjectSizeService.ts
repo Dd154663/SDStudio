@@ -65,6 +65,20 @@ export class ProjectSizeService {
     } catch (e) {}
   }
 
+  // 프로젝트 이름변경 시 용량 캐시 키 이관. 캐시는 재계산 가능하므로 실패해도
+  // 무해하지만, 이관하지 않으면 재시작 전까지 옛 이름의 유령 항목이 남고
+  // 새 이름은 "미계산"으로 표시된다. (ensureLoaded 의 prune 은 최초 로드
+  // 1회뿐이라 로드 후 rename 은 스스로 정리되지 않음)
+  async renameProject(oldName: string, newName: string): Promise<void> {
+    await this.ensureLoaded();
+    if (!this.entries[oldName]) return;
+    runInAction(() => {
+      this.entries[newName] = this.entries[oldName];
+      delete this.entries[oldName];
+    });
+    await this.save();
+  }
+
   private async save(): Promise<void> {
     try {
       await persistService.write(
