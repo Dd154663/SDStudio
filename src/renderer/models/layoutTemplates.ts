@@ -60,9 +60,11 @@ export const layoutTemplates: LayoutTemplateMeta[] = [
     id: 'sidebar',
     name: '프로젝트 사이드바',
     description:
-      '프로젝트를 좌측 두꺼운 세로 바로 진입합니다. 하단 프로젝트 툴바 대신 사이드 바에서 열기·추가·프리셋을 처리합니다.',
-    bottomBar: 'bottom',
-    genControl: 'docked',
+      '프로젝트를 좌측 두꺼운 세로 바로 진입합니다. 하단 바 없이 세로 공간을 넓히고, 생성 컨트롤은 떠 있는 위젯으로 둡니다.',
+    // 프로젝트 툴바를 좌측 사이드 바로 옮겨 하단 바에 남는 요소가 없으므로 하단 바 자체를
+    // 없앤다(컴팩트와 동일). 생성 컨트롤은 플로팅으로. 빈 더미 하단 바·부착 안내 제거.
+    bottomBar: 'none',
+    genControl: 'floating',
     mobileAllowed: false,
     projectSidebar: true,
   },

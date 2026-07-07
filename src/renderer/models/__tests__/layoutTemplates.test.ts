@@ -181,11 +181,13 @@ describe('projectSidebar 템플릿', () => {
     expect(resolveLayout('classic', false).projectSidebar).toBe(false);
     expect(resolveLayout('compact', false).projectSidebar).toBe(false);
   });
-  it("'sidebar' 템플릿(PC) → projectSidebar=true, bottomBar=bottom", () => {
+  it("'sidebar' 템플릿(PC) → projectSidebar=true, 하단바 없음+생성 플로팅", () => {
     const r = resolveLayout('sidebar', false);
     expect(r.id).toBe('sidebar');
     expect(r.projectSidebar).toBe(true);
-    expect(r.bottomBar).toBe('bottom');
+    expect(r.bottomBar).toBe('none');
+    expect(r.genControl).toBe('floating');
+    expect(r.sessionSelectTop).toBe(true); // bottomBar==='none' 파생(사이드바라 실제 미사용)
   });
   it('sidebar + 모바일 → classic 폴백(projectSidebar=false)', () => {
     const r = resolveLayout('sidebar', true);
