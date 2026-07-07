@@ -131,6 +131,14 @@ const Tooltip = ({
     };
   }, []);
 
+  // 토글 버튼(접기↔펼치기 등)은 클릭 시 버튼이 이동하는데, 마우스가 안 움직여
+  // mouseleave 가 안 떠 툴팁이 옛 위치에 남는다. 게다가 그런 버튼은 보통 mousedown/click
+  // 전파를 막아(스플리터 리사이즈 방지) 부모 span 의 hide 도 못 받는다. content 가 바뀌면
+  // (라벨이 토글되면) 강제로 숨겨 잔상을 없앤다 — 다음 hover 때 새 위치에서 다시 뜬다.
+  useEffect(() => {
+    hide();
+  }, [content, hide]);
+
   if (!content) return <>{children}</>;
 
   return (
