@@ -9,7 +9,8 @@ import {
   useRef,
   useCallback,
 } from 'react';
-import ProjectDrawer from './ProjectDrawer';
+import ProjectDrawer, { ProjectDrawerHandle } from './ProjectDrawer';
+import ProjectSideBar from './ProjectSideBar';
 import ProjectBrowser from './ProjectBrowser';
 import { ImageHistoryPanel, ImageHistoryDrawer, ImageHistoryHandle } from './ImageHistory';
 import QuickModeTab from './QuickModeTab';
@@ -18,7 +19,7 @@ import SceneQueuControl, { SceneCell } from './SceneQueueControl';
 import BottomBar from './BottomBar';
 import { GenControlFloating } from './GenControlWidget';
 import EditModeShell from './EditModeShell';
-import { resolveLayout } from '../models/layoutTemplates';
+import { resolveLayout, dockOrder, DOCK_RANK } from '../models/layoutTemplates';
 import TobBar from './TobBar';
 import AlertWindow from './AlertWindow';
 import { DropdownSelect, TabComponent } from './UtilComponents';
@@ -581,57 +582,59 @@ export const App = observer(() => {
   //  - 히스토리 패널: 바깥 행에서 별도 처리(아래 ImageHistoryPanel order 참고)
   // 모바일에서는 프리셋 패널/스플리터가 md:hidden·md:flex 로 미렌더되므로 order 는 영향 없음.
   const presetRight = resolvedLayout.presetSide === 'right';
-  const presetOrder = presetRight ? 'order-4' : 'order-1';
-  const splitterOrder = presetRight ? 'order-3' : 'order-1';
-  // 좌패널·스플리터·탭 콘텐츠는 어떤 배치에서도 동일한 부모 체인에 남긴다
-  // (재마운트 방지). 배치에 따라 이 조각을 감싸는 래퍼만 달라진다 — 콘텐츠 JSX 는 여기 1회만 정의.
+  // 프리셋 도크(패널+스플리터)는 바깥 flex 레벨의 형제로 배치되고, 좌/우는 이 래퍼의
+  // CSS order 로만 바뀐다(아래 배치부). 도크 내부는 스플리터가 항상 "중앙 쪽" 모서리에
+  // 오도록 방향을 뒤집는다(reversed 로 드래그 델타·접기 화살표도 반전).
+  const presetDock = appState.curSession ? (
+    <div
+      className={
+        'flex-none hidden md:flex h-full ' +
+        (presetRight ? 'flex-row-reverse' : 'flex-row')
+      }
+      style={{ order: dockOrder(resolvedLayout.presetSide, DOCK_RANK.preset) }}
+    >
+      {!appState.leftPanelCollapsed && (
+        <div
+          data-slot="preset"
+          style={{ width: appState.leftPanelWidth, minWidth: 250 }}
+          className="flex-none overflow-hidden h-full"
+        >
+          <div className="h-full w-full overflow-hidden">
+            <PreSetEditor
+              key={appState.curSession.name}
+              middlePromptMode={false}
+            />
+          </div>
+        </div>
+      )}
+      {/* 접힌 동안엔 항상 존재하는 스플리터를 편집 배지 마커로 대신 쓴다
+          (펼친 상태에선 위 프리셋 div 가 마커라 여기엔 부여하지 않음 — 중복 방지). */}
+      <div
+        data-slot={appState.leftPanelCollapsed ? 'preset' : undefined}
+        className="flex-none flex"
+      >
+        <ResizableSplitter reversed={presetRight} />
+      </div>
+    </div>
+  ) : null;
+
+  // 중앙 탭 콘텐츠만 담는다(프리셋·스플리터는 presetDock 로 분리됨 — 리마운트 방지 위해
+  // key·부모 체인은 그대로 유지).
   const mainStackContent = (
     <StackGrow className="flex">
       {appState.curSession && (
-        <>
-          {!appState.leftPanelCollapsed && (
-            <div
-              data-slot="preset"
-              style={{ width: appState.leftPanelWidth, minWidth: 250 }}
-              className={
-                'flex-none overflow-hidden hidden md:block h-full ' + presetOrder
-              }
-            >
-              <div className="h-full w-full overflow-hidden">
-                <PreSetEditor
-                  key={appState.curSession.name}
-                  middlePromptMode={false}
-                />
-              </div>
-            </div>
-          )}
-          {/* 프리셋이 오른쪽이면 스플리터가 프리셋 왼쪽에 놓여 드래그 델타
-              방향이 반대 — reversed 로 반전 처리(접기 화살표 방향 포함) */}
-          {/* 프리셋 패널이 접히면 위 data-slot="preset" 마커가 사라져 편집 모드
-              배지가 안 뜨므로, 접힌 동안엔 항상 존재하는 스플리터를 마커로 대신 쓴다
-              (펼친 상태에선 프리셋 div 가 마커라 여기엔 부여하지 않음 — 중복 방지). */}
-          <div
-            data-slot={appState.leftPanelCollapsed ? 'preset' : undefined}
-            className={'flex-none hidden md:flex ' + splitterOrder}
-          >
-            <ResizableSplitter reversed={presetRight} />
-          </div>
-          {/* order 는 flex 아이템인 "바깥" div 에 줘야 한다 — StackGrow 의
-              className 은 안쪽 div 라 outerClassName 사용(안 그러면 order:0 으로
-              중앙이 맨 앞에 가서 프리셋이 오른쪽으로 밀린다, 2026-07-06 실기 버그) */}
-          <StackGrow outerClassName="order-2">
-            <TabComponent
-              key={appState.curSession.name}
-              tabs={tabs}
-              toggleView={
-                <PreSetEditor
-                  key={appState.curSession.name + '2'}
-                  middlePromptMode={false}
-                />
-              }
-            />
-          </StackGrow>
-        </>
+        <StackGrow>
+          <TabComponent
+            key={appState.curSession.name}
+            tabs={tabs}
+            toggleView={
+              <PreSetEditor
+                key={appState.curSession.name + '2'}
+                middlePromptMode={false}
+              />
+            }
+          />
+        </StackGrow>
       )}
     </StackGrow>
   );
@@ -726,16 +729,36 @@ export const App = observer(() => {
               </StackFixed>
             )}
             <StackGrow className="flex">
-              {/* FloatView가 덮는 범위를 이 relative 컨테이너로 한정 —
-                  우측 히스토리 패널은 형제라서 어떤 FloatView가 떠도 항상 접근 가능.
-                  historySide 슬롯은 이 두 형제(콘텐츠 블록 order-2 / 히스토리 패널)
-                  의 CSS order 로만 좌/우를 바꾼다 — DOM 순서·부모는 불변(재마운트 방지). */}
-              <div className="relative flex-1 min-w-0 h-full order-2">
+              {/* 프로젝트/프리셋/히스토리 3개 도크와 중앙 콘텐츠는 이 flex 의 형제다.
+                  FloatView 는 아래 중앙 콘텐츠 블록만 덮으므로 세 도크는 뷰어가 떠도 항상
+                  접근 가능. 좌/우 배치는 각 래퍼의 CSS order(dockOrder)로만 바꾼다 —
+                  DOM 순서·부모·key 는 불변(재마운트 방지). 같은 쪽이면 가장자리부터
+                  프로젝트<프리셋<히스토리 순으로 겹친다(rank 강제). */}
+              {/* 프로젝트 사이드 바(PC): 드로어 진입 + 프로젝트 액션. 세션이 없어도 렌더. */}
+              {!isMobile && (
+                <div
+                  data-slot="project"
+                  className="flex-none hidden md:flex h-full"
+                  style={{
+                    order: dockOrder(resolvedLayout.projectSide, DOCK_RANK.project),
+                  }}
+                >
+                  <ProjectSideBar side={resolvedLayout.projectSide} />
+                </div>
+              )}
+              {/* 프리셋 도크(PC) — 패널+스플리터 */}
+              {presetDock}
+              {/* 중앙 콘텐츠 블록(콘텐츠+FloatView+오버레이 드로어들) — order 0 */}
+              <div
+                className="relative flex-1 min-w-0 h-full"
+                style={{ order: 0 }}
+              >
               <FloatViewProvider>
                 <AppContextMenu />
                 <ProjectDrawer />
                 {isMobile && <ImageHistoryDrawer />}
                 {isMobile && <ImageHistoryHandle />}
+                {isMobile && <ProjectDrawerHandle />}
                 {appState.projectBrowserOpen && (
                   <ProjectBrowser
                     onClose={() => {
@@ -780,16 +803,14 @@ export const App = observer(() => {
                 )}
               </FloatViewProvider>
               </div>
-              {/* 히스토리 패널의 좌/우는 이 래퍼의 CSS order 로만 바꾼다(기본 right=order-3).
-                  ImageHistoryPanel 은 담당 밖(className 고정)이라 항상 존재하는 이 래퍼로
-                  order 를 주며, 래퍼가 상시 존재하므로 패널 인스턴스는 재마운트되지 않는다.
-                  래퍼 자신이 hidden md:flex 라 모바일에서는 기존과 동일하게 미렌더된다. */}
+              {/* 히스토리 도크 — 좌/우는 dockOrder(rank 3)로만. 래퍼 상시 존재라 패널
+                  인스턴스 재마운트 없음. hidden md:flex 라 모바일은 기존대로 미렌더. */}
               <div
                 data-slot="history"
-                className={
-                  'flex-none hidden md:flex h-full ' +
-                  (resolvedLayout.historySide === 'left' ? 'order-1' : 'order-3')
-                }
+                className="flex-none hidden md:flex h-full"
+                style={{
+                  order: dockOrder(resolvedLayout.historySide, DOCK_RANK.history),
+                }}
               >
                 <ImageHistoryPanel />
               </div>

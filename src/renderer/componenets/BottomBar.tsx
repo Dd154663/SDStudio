@@ -1,6 +1,5 @@
 import { observer } from 'mobx-react-lite';
 import { StackFixed } from './LayoutComponents';
-import SessionSelect from './SessionSelect';
 import TaskQueueControl from './TaskQueueControl';
 import { GenControlHandle } from './GenControlWidget';
 import { appState } from '../models/AppService';
@@ -38,9 +37,6 @@ const BottomBar = observer(
           paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))',
         }}
       >
-        <div className="hidden md:block flex-1">
-          <SessionSelect />
-        </div>
         <div className="flex flex-none gap-4 items-center ml-auto">
           {/* 분리 핸들(PC 전용). 분리 상태면 컨트롤은 위젯이 대신 표시하므로 숨김. */}
           {!genDetached && (

@@ -18,8 +18,8 @@ import type { UiLayoutSlots } from '../../main/config';
 
 const DRAG_THRESHOLD = 8; // 이 거리(px)를 넘으면 드래그(가장자리 드롭)로 판정, 미달=클릭 토글
 
-// 편집 대상 슬롯 3종의 서술자. preset/history 는 좌/우 드래그, gencontrol 은 클릭 토글.
-type SlotKind = 'preset' | 'history' | 'gencontrol';
+// 편집 대상 슬롯 4종의 서술자. project/preset/history 는 좌/우 드래그, gencontrol 은 클릭 토글.
+type SlotKind = 'project' | 'preset' | 'history' | 'gencontrol';
 
 interface SlotDescriptor {
   kind: SlotKind;
@@ -27,7 +27,9 @@ interface SlotDescriptor {
   label: string;
 }
 
+// 배열 순서 = 배지 겹침 방지(계단식) 처리 순서. 가장자리 우선(프로젝트→프리셋→히스토리).
 const SLOTS: SlotDescriptor[] = [
+  { kind: 'project', selector: '[data-slot="project"]', label: '프로젝트 패널' },
   { kind: 'preset', selector: '[data-slot="preset"]', label: '프리셋 패널' },
   { kind: 'history', selector: '[data-slot="history"]', label: '히스토리 패널' },
   {
@@ -36,6 +38,13 @@ const SLOTS: SlotDescriptor[] = [
     label: '생성 컨트롤',
   },
 ];
+
+// 좌/우 드래그 가능한 패널 슬롯의 kind → config 슬롯 키.
+const SIDE_KEY: Record<'project' | 'preset' | 'history', 'projectSide' | 'presetSide' | 'historySide'> = {
+  project: 'projectSide',
+  preset: 'presetSide',
+  history: 'historySide',
+};
 
 // 슬롯 배지가 앉을 화면 좌표(마커 위 중앙 상단). 마커가 없으면 null.
 interface BadgeRect {
@@ -60,10 +69,12 @@ async function applyLayoutSlots(partial: Partial<UiLayoutSlots>) {
 }
 
 // 현재 슬롯 값(미설정 시 resolveLayout 과 동일한 기본값으로 해석).
-function currentSide(kind: 'preset' | 'history'): 'left' | 'right' {
+// 기본값: project=left, preset=left, history=right.
+function currentSide(kind: 'project' | 'preset' | 'history'): 'left' | 'right' {
   const s = appState.uiLayoutSlots;
-  if (kind === 'preset') return s.presetSide === 'right' ? 'right' : 'left';
-  return s.historySide === 'left' ? 'left' : 'right';
+  if (kind === 'history') return s.historySide === 'left' ? 'left' : 'right';
+  const v = kind === 'project' ? s.projectSide : s.presetSide;
+  return v === 'right' ? 'right' : 'left';
 }
 function currentGenControl(): 'docked' | 'floating' {
   return appState.uiLayoutSlots.genControl === 'floating' ? 'floating' : 'docked';
@@ -117,8 +128,10 @@ function measureBadges(): BadgeRect[] {
 
 const EditModeShell = observer(() => {
   const [badges, setBadges] = useState<BadgeRect[]>([]);
-  // 드래그 중인 슬롯(preset/history)과 현재 커서가 얹힌 가장자리 존.
-  const [dragging, setDragging] = useState<'preset' | 'history' | null>(null);
+  // 드래그 중인 슬롯(project/preset/history)과 현재 커서가 얹힌 가장자리 존.
+  const [dragging, setDragging] = useState<'project' | 'preset' | 'history' | null>(
+    null,
+  );
   const [hoverSide, setHoverSide] = useState<'left' | 'right' | null>(null);
 
   // 배지 rect 재측정. 배치 변경/리사이즈 후 rAF 로 한 번 더 확실히 잡는다.
@@ -156,10 +169,13 @@ const EditModeShell = observer(() => {
     [remeasure],
   );
 
-  // preset/history 배지의 pointer 드래그. 임계 미달이면 클릭=반대쪽 토글,
+  // project/preset/history 배지의 pointer 드래그. 임계 미달이면 클릭=반대쪽 토글,
   // 임계 초과면 좌/우 가장자리 드롭 존을 띄우고 놓은 쪽 side 를 적용.
   const startPanelDrag = useCallback(
-    (kind: 'preset' | 'history', e: React.PointerEvent<HTMLDivElement>) => {
+    (
+      kind: 'project' | 'preset' | 'history',
+      e: React.PointerEvent<HTMLDivElement>,
+    ) => {
       if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
@@ -185,13 +201,11 @@ const EditModeShell = observer(() => {
         target.releasePointerCapture?.(ev.pointerId);
         if (isDrag) {
           const side = ev.clientX < window.innerWidth / 2 ? 'left' : 'right';
-          const key = kind === 'preset' ? 'presetSide' : 'historySide';
-          applyAndRemeasure({ [key]: side } as Partial<UiLayoutSlots>);
+          applyAndRemeasure({ [SIDE_KEY[kind]]: side } as Partial<UiLayoutSlots>);
         } else {
           // 클릭(임계 미달) = 반대쪽으로 토글.
-          const key = kind === 'preset' ? 'presetSide' : 'historySide';
           const flipped = currentSide(kind) === 'left' ? 'right' : 'left';
-          applyAndRemeasure({ [key]: flipped } as Partial<UiLayoutSlots>);
+          applyAndRemeasure({ [SIDE_KEY[kind]]: flipped } as Partial<UiLayoutSlots>);
         }
         setDragging(null);
         setHoverSide(null);
@@ -270,7 +284,7 @@ const EditModeShell = observer(() => {
             key={b.kind}
             onPointerDown={(e) => {
               if (isGen) return; // gencontrol 은 클릭 토글만
-              startPanelDrag(b.kind as 'preset' | 'history', e);
+              startPanelDrag(b.kind as 'project' | 'preset' | 'history', e);
             }}
             onClick={isGen ? toggleGenControl : undefined}
             // 배지도 화면 상단에서 타이틀바 드래그 영역과 겹칠 수 있어, 클릭/드래그가

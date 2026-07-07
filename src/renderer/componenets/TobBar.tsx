@@ -1,7 +1,6 @@
 import { useContext, useEffect, useState } from 'react';
 import { FloatView } from './FloatView';
 import ConfigScreen from './ConfigScreen';
-import SessionSelect from './SessionSelect';
 import { Session } from '../models/types';
 import {
   loginService,
@@ -170,16 +169,6 @@ const TobBar = observer(() => {
           )}
         </div>
       )}
-      {/* 세션(프로젝트) 선택: 모바일은 항상 인라인(md:hidden), 컴팩트(PC)면 PC에서도 표시(block). */}
-      <div
-        className={
-          (sessionSelectTop ? '' : 'ml-auto ') +
-          'titlebar-no-drag flex-1 min-w-0 ' +
-          (sessionSelectTop ? 'block' : 'block md:hidden')
-        }
-      >
-        <SessionSelect />
-      </div>
 
       {/* 윈도우 컨트롤 버튼 (PC only) */}
       {!isMobile && (
