@@ -607,7 +607,13 @@ export const App = observer(() => {
           )}
           {/* 프리셋이 오른쪽이면 스플리터가 프리셋 왼쪽에 놓여 드래그 델타
               방향이 반대 — reversed 로 반전 처리(접기 화살표 방향 포함) */}
-          <div className={'flex-none hidden md:flex ' + splitterOrder}>
+          {/* 프리셋 패널이 접히면 위 data-slot="preset" 마커가 사라져 편집 모드
+              배지가 안 뜨므로, 접힌 동안엔 항상 존재하는 스플리터를 마커로 대신 쓴다
+              (펼친 상태에선 프리셋 div 가 마커라 여기엔 부여하지 않음 — 중복 방지). */}
+          <div
+            data-slot={appState.leftPanelCollapsed ? 'preset' : undefined}
+            className={'flex-none hidden md:flex ' + splitterOrder}
+          >
             <ResizableSplitter reversed={presetRight} />
           </div>
           {/* order 는 flex 아이템인 "바깥" div 에 줘야 한다 — StackGrow 의
