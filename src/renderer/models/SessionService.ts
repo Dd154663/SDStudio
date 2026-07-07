@@ -789,6 +789,29 @@ export class SessionService extends ResourceSyncService<Session> {
     await trashService.moveProjectToTrash(name);
   }
 
+  // 프로젝트 이름변경의 단일 관문 — 이미지 6루트 이동 → 세션 json·메타 이관.
+  // 과거에는 호출부(BackupService·ProjectDrawer)가 onRenameSession 을 각자 선행
+  // 호출해야 했고, 빼먹으면 이미지 루트가 통째로 고아가 됐다(트랙1 조사 §1-2).
+  // 이제 이름변경은 반드시 이 메서드만 사용할 것.
+  async renameProject(oldName: string, newName: string): Promise<void> {
+    // 1) 이미지 루트 이동 — 실패 시 내부에서 롤백 후 throw (원 상태 보존)
+    await imageService.onRenameSession(oldName, newName);
+    // 2) 세션 json + 메타 이관 — 실패 시 이미지 루트를 되돌려 갈라짐 방지
+    try {
+      await this.rename(oldName, newName);
+    } catch (e) {
+      try {
+        await imageService.onRenameSession(newName, oldName);
+      } catch (e2) {
+        console.error(
+          '이름변경 역롤백 실패 — 이미지가 새 이름에 남아 있을 수 있음:',
+          oldName, newName, e2,
+        );
+      }
+      throw e;
+    }
+  }
+
   async rename(oldName: string, newName: string) {
     // 실제 이름변경(파일 rename)을 먼저 수행 — 여기서 실패하면 이름이 그대로이므로
     // 즐겨찾기/북마크/썸네일 등 메타데이터도 건드리지 않고 그대로 보존한다.
@@ -1379,19 +1402,41 @@ export class SessionService extends ResourceSyncService<Session> {
     }
     // 이미지 디렉터리는 이름 기준(outs/<이름> 등)이므로 이름만 바꿔 통째 복사
     // 루트별 복사는 상호 독립이라 순서(PROJECT_IMAGE_ROOTS)는 결과에 영향 없음.
-    for (const dir of PROJECT_IMAGE_ROOTS) {
-      await this.copyDirRecursive(
-        projectPath(dir, session.name),
-        projectPath(dir, newName),
-      );
+    // 부분 실패 롤백: importSessionDeepFromDir 와 동일하게 만든 대상만 추적해
+    // 정리한다 — 과거에는 롤백이 없어 반쪽 복사본(고아 이미지)이 남았다(트랙1 B4).
+    const createdDests: string[] = [];
+    try {
+      for (const dir of PROJECT_IMAGE_ROOTS) {
+        const src = projectPath(dir, session.name);
+        // 소스 디렉터리가 없으면(해당 타입 이미지 없음) 건너뛴다.
+        let exists = true;
+        try {
+          await backend.listFiles(src);
+        } catch (e) {
+          exists = false;
+        }
+        if (!exists) continue;
+        const dest = projectPath(dir, newName);
+        // strict=true: 파일 복사 실패를 삼키지 않고 던져 반쪽 복제를 막는다.
+        await this.copyDirRecursive(src, dest, true);
+        createdDests.push(dest);
+      }
+      const json = session.toJSON();
+      json.name = newName;
+      const folder = this.getFolderOf(session.name);
+      if (folder) {
+        this.folderMap[newName] = folder;
+      }
+      await this.createFrom(newName, json);
+    } catch (e) {
+      for (const dest of createdDests) {
+        try {
+          await backend.deleteDir(dest);
+        } catch (e2) {}
+      }
+      delete this.folderMap[newName]; // 선반영한 폴더 매핑 정리
+      throw e;
     }
-    const json = session.toJSON();
-    json.name = newName;
-    const folder = this.getFolderOf(session.name);
-    if (folder) {
-      this.folderMap[newName] = folder;
-    }
-    await this.createFrom(newName, json);
   }
 
   async migrateSession(session: ISession) {

@@ -176,8 +176,12 @@ export class BackupService {
                 return;
               }
               const oldName = appState.curSession!.name;
-              await imageService.onRenameSession(oldName, inputValue);
-              await sessionService.rename(oldName, inputValue);
+              try {
+                await sessionService.renameProject(oldName, inputValue);
+              } catch (e: any) {
+                appState.pushMessage(e.message || '프로젝트 이름변경에 실패했습니다.');
+                return;
+              }
               appState.curSession!.name = inputValue;
               appState.pushMessage('프로젝트 이름이 변경되었습니다.');
             },

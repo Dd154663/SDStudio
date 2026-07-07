@@ -16,6 +16,7 @@ import {
   PROJECT_IMAGE_ROOTS,
   PROJECT_SCENE_IMAGE_ROOTS,
   PROJECT_SCENE_MASK_ROOTS,
+  ProjectImageRoot,
 } from './projectPaths';
 import { v4 } from 'uuid';
 
@@ -465,11 +466,34 @@ export class ImageService extends EventTarget {
     for (const key of toDelete) {
       this.cache.delete(key); // 외부 delete 사용 (용량 회계 유지)
     }
+    // 6루트 순차 이동. 과거에는 루트별 실패를 조용히 삼켜(catch 무시) 일부만
+    // 새 이름으로 이동한 "갈라진 상태"가 은폐됐다(트랙1 조사 §1-2). 이제
+    // ①없는 폴더는 실패가 아니므로 사전 확인 후 건너뛰고 ②실제 이동 실패 시
+    // 이미 옮긴 루트를 되돌린(롤백) 뒤 throw 해 원 상태를 보존한다.
+    const moved: ProjectImageRoot[] = [];
     for (const dir of PROJECT_IMAGE_ROOTS) {
+      let exists = true;
+      try {
+        await backend.listFiles(projectPath(dir, oldName));
+      } catch (e) {
+        exists = false; // 해당 타입 이미지 없음 — 정상
+      }
+      if (!exists) continue;
       try {
         await backend.renameDir(projectPath(dir, oldName), projectPath(dir, newName));
+        moved.push(dir);
       } catch (e) {
-        // 폴더가 없을 수 있음
+        for (const back of moved) {
+          try {
+            await backend.renameDir(projectPath(back, newName), projectPath(back, oldName));
+          } catch (e2) {
+            console.error('이름변경 롤백 실패 — 수동 확인 필요:', back, e2);
+          }
+        }
+        throw new Error(
+          `이미지 폴더(${dir}) 이동에 실패해 이름변경을 취소했습니다. ` +
+            `앱 외부에서 해당 폴더를 사용 중인지 확인해주세요.`,
+        );
       }
     }
   }

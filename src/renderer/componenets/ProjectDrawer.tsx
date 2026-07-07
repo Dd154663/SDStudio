@@ -1241,8 +1241,12 @@ const ProjectDrawer = observer(() => {
       return;
     }
     await sessionService.get(old);
-    await imageService.onRenameSession(old, newName);
-    await sessionService.rename(old, newName);
+    try {
+      await sessionService.renameProject(old, newName);
+    } catch (e: any) {
+      appState.pushMessage(e.message || '프로젝트 이름변경에 실패했습니다.');
+      return;
+    }
     const sess = sessionService.getLoaded(newName);
     if (sess) {
       sess.name = newName;
