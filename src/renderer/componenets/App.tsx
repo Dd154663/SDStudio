@@ -768,24 +768,20 @@ export const App = observer(() => {
                 )}
                 <div className="h-full w-full flex flex-col overflow-hidden">
                   {isMobile && <div className="flex-none"><TobBar /></div>}
-                  {bottomBarPlacement === 'none' ? (
-                    // 컴팩트: 하단바 미렌더 — 콘텐츠만 배치해 세로 공간을 넓힌다.
-                    // (세션 선택은 상단바로, 생성 컨트롤은 플로팅 위젯으로 이동)
-                    // 클래식과 동일한 부모 체인을 유지해 mainStackContent 재마운트를 막는다.
-                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-                      {mainStackContent}
-                    </div>
-                  ) : (
-                    // 기본(bottom): 콘텐츠 아래 하단 가로바 — 기존 DOM 과 동일.
-                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-                      {mainStackContent}
+                  {/* 하단바(bottom)는 PC 에선 이 중앙 블록 밖(VerticalStack 최하단)에서
+                      전폭으로 렌더된다 — 좌/우 도크 펼침과 무관하게 항상 하단 전체를
+                      차지(클래식 복원). 모바일은 도크가 없어 전폭이 동일하므로 기존
+                      위치(FloatView 가 덮는 영역 안)를 유지한다. */}
+                  <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                    {mainStackContent}
+                    {isMobile && bottomBarPlacement !== 'none' && (
                       <BottomBar
                         placement={bottomBarPlacement}
                         genControl={resolvedLayout.genControl}
                         projectSidebar={resolvedLayout.projectSidebar}
                       />
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
                 {appState.externalImage && (
                   <FloatView
@@ -816,6 +812,16 @@ export const App = observer(() => {
                 <ImageHistoryPanel />
               </div>
             </StackGrow>
+            {/* PC 하단바: 도크 행(StackGrow)의 형제 — 좌/우 패널 상태와 무관하게
+                항상 창 전폭을 꽉 채운다. FloatView 는 중앙 블록만 덮으므로 뷰어가
+                떠 있어도 하단바는 접근 가능(도크와 동일 원칙). */}
+            {!isMobile && bottomBarPlacement !== 'none' && (
+              <BottomBar
+                placement={bottomBarPlacement}
+                genControl={resolvedLayout.genControl}
+                projectSidebar={resolvedLayout.projectSidebar}
+              />
+            )}
           </VerticalStack>
           )}
         </ErrorBoundary>
