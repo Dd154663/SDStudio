@@ -26,6 +26,7 @@ jest.mock('../index', () => ({
     deleteDir: jest.fn(async () => {}),
   },
   imageService: {},
+  templateService: { removeProject: jest.fn(async () => {}) },
 }));
 jest.mock('../PersistenceService', () => ({
   persistService: { write: jest.fn(async () => {}) },

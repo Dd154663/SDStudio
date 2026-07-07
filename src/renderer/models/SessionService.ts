@@ -12,6 +12,7 @@ import {
   globalPieceService,
   globalPresetService,
   projectSizeService,
+  templateService,
 } from '.';
 import { getAppState } from './appStateRef';
 import { FileEntry } from '../backend';
@@ -848,6 +849,8 @@ export class SessionService extends ResourceSyncService<Session> {
     await trashService.renameProjectKeys(oldName, newName);
     // 용량 캐시 키 이관 (재계산 가능 — 실패해도 무해)
     await projectSizeService.renameProject(oldName, newName);
+    // 템플릿 지정 이관 (지정된 프로젝트가 이름을 바꿔도 지정 유지)
+    await templateService.renameProject(oldName, newName);
   }
 
   // 종료 시 빠른 저장: saveAll()은 로드된 세션이 많으면(프로젝트 탐색을 열면
@@ -1089,28 +1092,34 @@ export class SessionService extends ResourceSyncService<Session> {
     return rc;
   }
 
+  // 새 프로젝트의 초기 씬 구성(빈 default 씬 1개) — createDefault 와
+  // createSessionFromTemplate(씬 리셋)이 공유하는 단일 출처.
+  private static defaultScenesJSON() {
+    return Object.fromEntries([
+      [
+        'default',
+        {
+          type: 'scene' as const,
+          name: 'default',
+          resolution: 'portrait',
+          slots: [[{ prompt: '', characterPrompts: [], id: v4() }]],
+          game: undefined,
+          round: undefined,
+          meta: {},
+          imageMap: [],
+          mains: [],
+        },
+      ],
+    ]);
+  }
+
   async createDefault(name: string) {
     const newSession = Session.fromJSON({
       name: name,
       version: 1,
       presets: {},
       inpaints: {},
-      scenes: Object.fromEntries([
-        [
-          'default',
-          {
-            type: 'scene',
-            name: 'default',
-            resolution: 'portrait',
-            slots: [[{ prompt: '', characterPrompts: [], id: v4() }]],
-            game: undefined,
-            round: undefined,
-            meta: {},
-            imageMap: [],
-            mains: [],
-          },
-        ],
-      ]),
+      scenes: SessionService.defaultScenesJSON(),
       library: {},
       presetShareds: {},
     });
@@ -1121,6 +1130,63 @@ export class SessionService extends ResourceSyncService<Session> {
       await importDefaultPresets(newSession);
     }
     return newSession;
+  }
+
+  // 템플릿 프로젝트의 "설정"만 상속한 새 프로젝트를 만든다 (트랙1 A3).
+  //
+  // 상속: presets·presetShareds(시드 제외)·library·characterPresets·
+  //       selectedWorkflow·mirrorMode·sceneCardStyle + 스타일 이미지
+  //       (vibes/·references/ 디렉터리 통째 복사 — 프리셋 profile·바이브·
+  //       캐릭터 참조의 파일 참조가 그대로 유효하다)
+  // 제외: 씬 작업물(빈 default 1개로 리셋)·인페인트·생성 이미지(outs 등
+  //       콘텐츠 4루트)·미러 원본 이미지·시드(동일 이미지 재생성 방지)
+  //
+  // 부분 실패 시 만든 디렉터리를 롤백한다 (duplicateSessionDeep 과 동일 패턴).
+  async createSessionFromTemplate(templateName: string, newName: string) {
+    if (this.isLoaded(newName)) {
+      throw new Error('Resource already exists');
+    }
+    const template = await this.get(templateName);
+    if (!template) {
+      throw new Error(`템플릿 프로젝트를 찾을 수 없습니다: ${templateName}`);
+    }
+    const json = template.toJSON();
+    json.name = newName;
+    // 콘텐츠 제거 — 씬은 신규 프로젝트와 동일한 빈 default 1개로.
+    json.scenes = SessionService.defaultScenesJSON() as any;
+    json.inpaints = {};
+    (json as any).mirrorImage = undefined;
+    // 시드 초기화 — 고정 시드가 상속되면 새 프로젝트가 템플릿과 동일한
+    // 이미지를 재생성해 사용자를 놀라게 한다.
+    for (const shared of Object.values(json.presetShareds ?? {})) {
+      if (shared && typeof shared === 'object' && 'seed' in (shared as any)) {
+        (shared as any).seed = undefined;
+      }
+    }
+    const createdDests: string[] = [];
+    try {
+      for (const dir of ['vibes', 'references'] as const) {
+        const src = projectPath(dir, templateName);
+        let exists = true;
+        try {
+          await backend.listFiles(src);
+        } catch (e) {
+          exists = false; // 스타일 이미지 없음 — 정상
+        }
+        if (!exists) continue;
+        const dest = projectPath(dir, newName);
+        await this.copyDirRecursive(src, dest, true);
+        createdDests.push(dest);
+      }
+      await this.createFrom(newName, json);
+    } catch (e) {
+      for (const dest of createdDests) {
+        try {
+          await backend.deleteDir(dest);
+        } catch (e2) {}
+      }
+      throw e;
+    }
   }
 
   getInpaintOrgPath(session: Session, inpaint: InpaintScene) {

@@ -1,4 +1,4 @@
-import { backend } from '.';
+import { backend, templateService } from '.';
 import { persistService } from './PersistenceService';
 import { GenericScene, IInpaintScene, IScene, Session, genericSceneFromJSON } from './types';
 import { imageService } from '.';
@@ -662,6 +662,12 @@ export class TrashService extends EventTarget {
     }
     delete this.data.projects[name];
     await this.saveTrash();
+    // 템플릿 지정 해제 — 남겨두면 나중에 동명의 새 프로젝트가 만들어졌을 때
+    // 의도치 않게 템플릿으로 지정된 것처럼 보인다. (소프트 삭제는 지정을
+    // 유지해 복원 시 되살아난다 — list() 가 실존 프로젝트만 노출하므로 무해)
+    try {
+      await templateService.removeProject(name);
+    } catch (e) {}
   }
 
   // ===== Expired project management =====

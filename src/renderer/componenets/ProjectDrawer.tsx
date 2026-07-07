@@ -20,8 +20,10 @@ import {
   FaHdd,
   FaFileArchive,
   FaCopy,
+  FaLayerGroup,
+  FaThLarge,
 } from 'react-icons/fa';
-import { sessionService, imageService, isMobile } from '../models';
+import { sessionService, imageService, isMobile, templateService } from '../models';
 import { appState } from '../models/AppService';
 import { backStackService } from '../models/BackStackService';
 import Tooltip from './Tooltip';
@@ -91,6 +93,8 @@ const ProjectRow = observer(
   }) => {
     const active = appState.curSession?.name === name;
     const isFav = sessionService.isFavorite(name);
+    const isTpl = templateService.isTemplate(name);
+    const isSceneTpl = templateService.isSceneTemplate(name);
     const folder = showFolder ? sessionService.getFolderOf(name) : null;
     const folderColor = folder
       ? sessionService.getFolderColor(folder) || DEFAULT_FOLDER_COLOR
@@ -188,6 +192,28 @@ const ProjectRow = observer(
           </Tooltip>
         )}
         <span className="truncate flex-1">{name}</span>
+        {isTpl && (
+          <Tooltip content="템플릿 프로젝트">
+            <span
+              className={`flex-none flex items-center justify-center w-5 h-5 rounded ${
+                active ? 'text-sky-100' : 'text-sky-500 dark:text-sky-400'
+              }`}
+            >
+              <FaLayerGroup size={11} />
+            </span>
+          </Tooltip>
+        )}
+        {isSceneTpl && (
+          <Tooltip content="씬 템플릿 프로젝트">
+            <span
+              className={`flex-none flex items-center justify-center w-5 h-5 rounded ${
+                active ? 'text-purple-100' : 'text-purple-500 dark:text-purple-400'
+              }`}
+            >
+              <FaThLarge size={11} />
+            </span>
+          </Tooltip>
+        )}
         {folder && (
           <span
             className={`text-xs flex-none flex items-center gap-1 ${
@@ -372,6 +398,7 @@ const ProjectDrawer = observer(() => {
   // 열릴 때마다 현재 프로젝트의 폴더 자동 펼침 + 검색/색상선택 초기화
   useEffect(() => {
     if (!open) return;
+    templateService.ensureLoaded();
     setFilter('');
     setColorPickerFor(null);
     setSelectMode(false);
@@ -505,8 +532,14 @@ const ProjectDrawer = observer(() => {
       appState.pushMessage(`같은 이름의 프로젝트가 ${where}이미 존재합니다.`);
       return;
     }
+    const tpl = await templateService.pickTemplateForCreate();
+    if (tpl === undefined) return; // 사용자가 템플릿 선택을 취소
     try {
-      await sessionService.add(name);
+      if (tpl) {
+        await sessionService.createSessionFromTemplate(tpl, name);
+      } else {
+        await sessionService.add(name);
+      }
       if (folder) {
         try {
           await sessionService.moveToFolder(name, folder);
@@ -728,6 +761,18 @@ const ProjectDrawer = observer(() => {
       items: [
         { text: '📤 내보내기/불러오기', value: 'export' },
         { text: '📋 프로젝트 복제', value: 'clone' },
+        {
+          text: templateService.isTemplate(n)
+            ? '📐 템플릿 해제'
+            : '📐 템플릿으로 지정',
+          value: 'template',
+        },
+        {
+          text: templateService.isSceneTemplate(n)
+            ? '🧩 씬 템플릿 해제'
+            : '🧩 씬 템플릿으로 지정',
+          value: 'scene-template',
+        },
         { text: '✏️ 이름 편집', value: 'rename' },
         { text: '🗑️ 프로젝트 삭제', value: 'delete' },
       ],
@@ -735,6 +780,8 @@ const ProjectDrawer = observer(() => {
     if (!v) return;
     if (v === 'export') handleProjectExportImport(n);
     else if (v === 'clone') handleProjectClone(n);
+    else if (v === 'template') handleProjectTemplateToggle(n);
+    else if (v === 'scene-template') handleProjectSceneTemplateToggle(n);
     else if (v === 'rename') handleProjectRename(n);
     else if (v === 'delete') handleProjectDelete(n);
   };
@@ -1256,6 +1303,31 @@ const ProjectDrawer = observer(() => {
 
   const cancelProjectRename = () => {
     setEditingProject(null);
+  };
+
+  const handleProjectTemplateToggle = async (name: string) => {
+    const before = templateService.isTemplate(name);
+    await templateService.toggle(name);
+    const after = templateService.isTemplate(name);
+    // 변경이 반영된 경우만 안내 (로드 실패 등으로 무변경이면 toggle이 자체 안내).
+    if (after !== before) {
+      appState.pushMessage(
+        after ? '템플릿으로 지정되었습니다.' : '템플릿 지정이 해제되었습니다.',
+      );
+    }
+  };
+
+  const handleProjectSceneTemplateToggle = async (name: string) => {
+    const before = templateService.isSceneTemplate(name);
+    await templateService.toggleSceneTemplate(name);
+    const after = templateService.isSceneTemplate(name);
+    if (after !== before) {
+      appState.pushMessage(
+        after
+          ? '씬 템플릿으로 지정되었습니다.'
+          : '씬 템플릿 지정이 해제되었습니다.',
+      );
+    }
   };
 
   const handleProjectDelete = async (name: string) => {
@@ -2023,6 +2095,40 @@ const ProjectDrawer = observer(() => {
                   className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
                 >
                   <FaPen size={15} />
+                </button>
+              </Tooltip>
+              <Tooltip
+                content={
+                  templateService.isTemplate(toolbar.name)
+                    ? '템플릿 해제'
+                    : '템플릿으로 지정'
+                }
+              >
+                <button
+                  onClick={() => {
+                    handleProjectTemplateToggle(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
+                >
+                  <FaLayerGroup size={14} />
+                </button>
+              </Tooltip>
+              <Tooltip
+                content={
+                  templateService.isSceneTemplate(toolbar.name)
+                    ? '씬 템플릿 해제'
+                    : '씬 템플릿으로 지정'
+                }
+              >
+                <button
+                  onClick={() => {
+                    handleProjectSceneTemplateToggle(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-purple-500"
+                >
+                  <FaThLarge size={14} />
                 </button>
               </Tooltip>
               <Tooltip content="프로젝트 삭제">

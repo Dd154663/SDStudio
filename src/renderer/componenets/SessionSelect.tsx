@@ -5,7 +5,7 @@ import ModalOverlay from './ModalOverlay';
 import { FaEllipsisH, FaPlus, FaThLarge, FaTrash, FaTrashAlt, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown } from 'react-icons/fa';
 import { pushRecentProject } from './ProjectBrowser';
 import Tooltip from './Tooltip';
-import { sessionService, imageService, backend, zipService, workFlowService, trashService, isMobile } from '../models';
+import { sessionService, imageService, backend, zipService, workFlowService, trashService, isMobile, templateService } from '../models';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
 import { CharacterPresetFloatEditor } from './CharacterPresetEditor';
@@ -184,9 +184,19 @@ const SessionSelect = observer(({ variant = 'bar' }: { variant?: 'bar' | 'sideba
               appState.pushMessage('이미 존재하는 프로젝트 이름입니다.');
               return;
             }
-            await sessionService.add(inputValue);
-            const newSession = (await sessionService.get(inputValue))!;
-            appState.curSession = newSession;
+            const tpl = await templateService.pickTemplateForCreate();
+            if (tpl === undefined) return; // 사용자가 템플릿 선택을 취소
+            try {
+              if (tpl) {
+                await sessionService.createSessionFromTemplate(tpl, inputValue);
+              } else {
+                await sessionService.add(inputValue);
+              }
+              const newSession = (await sessionService.get(inputValue))!;
+              appState.curSession = newSession;
+            } catch (e: any) {
+              appState.pushMessage(e.message || '프로젝트 생성에 실패했습니다.');
+            }
           }
         },
       });
