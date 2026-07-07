@@ -1,9 +1,10 @@
 import { useCallback, useRef } from 'react';
 import { FaGripVertical } from 'react-icons/fa';
 import { observer } from 'mobx-react-lite';
-import { backend } from '../models';
+import { backend, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import type { Config } from '../../main/config';
+import { resolveLayout } from '../models/layoutTemplates';
 import TaskQueueControl from './TaskQueueControl';
 import Tooltip from './Tooltip';
 
@@ -16,26 +17,14 @@ import Tooltip from './Tooltip';
 const DRAG_THRESHOLD = 8; // 부착 상태에서 이 거리(px)를 넘으면 분리로 판정
 const CLAMP_MARGIN = 4; // 뷰포트 밖으로 못 나가게 하는 최소 여백
 
-// 상단 타이틀바(-webkit-app-region: drag) 하단 Y. 위젯이 이 위(상단 바)에 놓이면
-// 창 드래그 영역이 재-그랩용 pointerdown 을 삼켜 조작 불가가 되므로, 최소 Y 를 여기로
-// 제한해 위젯이 상단 바를 절대 덮지 않게 한다(근본 가드). 없으면 CLAMP_MARGIN.
-function topGuardY(): number {
-  const bar = document.querySelector('.titlebar-drag');
-  if (bar) {
-    const b = bar.getBoundingClientRect().bottom;
-    if (b > 0) return b + CLAMP_MARGIN;
-  }
-  return CLAMP_MARGIN;
-}
-
 // 위젯 위치를 뷰포트 안으로 클램프. w/h 는 카드 크기(모르면 대략치).
+// 상단 타이틀바 위에 놓여도 위젯 자신이 titlebar-no-drag 라 조작되므로 별도 상단 가드는 없다.
 function clampToViewport(x: number, y: number, w: number, h: number) {
-  const minY = topGuardY();
   const maxX = Math.max(CLAMP_MARGIN, window.innerWidth - w - CLAMP_MARGIN);
-  const maxY = Math.max(minY, window.innerHeight - h - CLAMP_MARGIN);
+  const maxY = Math.max(CLAMP_MARGIN, window.innerHeight - h - CLAMP_MARGIN);
   return {
     x: Math.min(Math.max(CLAMP_MARGIN, x), maxX),
-    y: Math.min(Math.max(minY, y), maxY),
+    y: Math.min(Math.max(CLAMP_MARGIN, y), maxY),
   };
 }
 
@@ -140,6 +129,10 @@ export const GenControlFloating = observer(() => {
   const offsetRef = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
 
   const gw = appState.genWidget;
+  // 하단바 도크가 있는 레이아웃(클래식·사이드바 = bottomBar!=='none')에서만 재부착 가능.
+  // 컴팩트(하단바 없음)에선 부착할 곳이 없으므로 "하단바에 놓으면 부착" 안내를 숨긴다.
+  const canDock =
+    resolveLayout(appState.uiLayoutTemplate, isMobile).bottomBar !== 'none';
   // 복원/최초 진입 시 위치가 없으면 화면 중앙 근처로. 렌더 시 뷰포트 클램프.
   const rawX = gw.x ?? Math.round(window.innerWidth / 2 - 120);
   const rawY = gw.y ?? Math.round(window.innerHeight / 2 - 30);
@@ -197,7 +190,11 @@ export const GenControlFloating = observer(() => {
       className="titlebar-no-drag fixed z-[var(--z-widget)] bg-[var(--c-surface-2)] rounded-lg shadow-xl border line-color p-2 flex items-center gap-3 select-none"
       style={{ left: pos.x, top: pos.y }}
     >
-      <Tooltip content="드래그로 이동 · 하단바에 놓으면 부착">
+      <Tooltip
+        content={
+          canDock ? '드래그로 이동 · 하단바에 놓으면 부착' : '드래그로 이동'
+        }
+      >
         <div
           onPointerDown={onPointerDown}
           className="flex flex-none items-center text-faint cursor-grab select-none touch-none"
