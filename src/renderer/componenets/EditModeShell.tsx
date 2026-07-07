@@ -92,6 +92,26 @@ function measureBadges(): BadgeRect[] {
       top: Math.max(8, r.top + 6),
     });
   }
+  // 두 패널을 같은 쪽에 두거나(특히 프리셋이 접혀 마커가 얇은 스플리터일 때),
+  // 좌표 클램프로 같은 x 로 몰리면 배지들이 겹쳐 하나가 가려진다.
+  // 가로로 가까운 배지는 뒤엣것을 한 줄씩 아래로 내려 계단식으로 펼친다.
+  const BADGE_HALF = 90; // 배지 대략 반폭(px) — 이보다 가까우면 가로로 겹침
+  const ROW = 38; // 한 줄 내림 높이(배지 높이 + 여백)
+  for (let i = 0; i < out.length; i++) {
+    let moved = true;
+    while (moved) {
+      moved = false;
+      for (let j = 0; j < i; j++) {
+        if (
+          Math.abs(out[j].left - out[i].left) < BADGE_HALF * 2 &&
+          Math.abs(out[j].top - out[i].top) < ROW
+        ) {
+          out[i].top = out[j].top + ROW;
+          moved = true;
+        }
+      }
+    }
+  }
   return out;
 }
 
