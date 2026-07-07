@@ -1229,7 +1229,24 @@ const ToolbarTab = ({ uiToolbar, setUiToolbar }: any) => (
 /* ── 탭: 레이아웃 ── */
 // 각 템플릿의 미니 와이어프레임 도안(라이브 프리뷰가 아닌 순수 CSS 사각형 배치 도안).
 // 색은 테마 토큰만 사용하고, 하단바 위치만 상태 강조색(sky)으로 표현한다.
-const LayoutWireframe = ({ variant }: { variant: 'classic' | 'compact' }) => {
+const LayoutWireframe = ({
+  variant,
+}: {
+  variant: 'classic' | 'compact' | 'sidebar';
+}) => {
+  if (variant === 'sidebar') {
+    // 사이드바: 좌측 두꺼운 프로젝트 바(강조색) + 프리셋 + 본문 + 아래 얇은 바.
+    return (
+      <div className="w-28 h-16 flex flex-col gap-1">
+        <div className="flex-1 rounded-sm border line-color flex gap-0.5 p-0.5">
+          <div className="w-2 rounded-sm bg-sky-500" />
+          <div className="w-1/4 rounded-sm bg-[var(--c-zone)]" />
+          <div className="flex-1 rounded-sm bg-[var(--c-zone)]" />
+        </div>
+        <div className="h-2 rounded-sm bg-[var(--c-zone)] flex-none" />
+      </div>
+    );
+  }
   if (variant === 'compact') {
     // 컴팩트: 하단바 없이 콘텐츠가 세로로 꽉 참(패널+본문 분할) + 우하단 작은 플로팅 위젯 도안.
     return (
@@ -1316,7 +1333,9 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, mobileMode, onClose 
               (disabled ? 'opacity-50 cursor-not-allowed ' : '')
             }
           >
-            <LayoutWireframe variant={t.id as 'classic' | 'compact'} />
+            <LayoutWireframe
+              variant={t.id as 'classic' | 'compact' | 'sidebar'}
+            />
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-sm text-default">{t.name}</span>

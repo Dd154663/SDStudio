@@ -734,8 +734,8 @@ export const App = observer(() => {
                   접근 가능. 좌/우 배치는 각 래퍼의 CSS order(dockOrder)로만 바꾼다 —
                   DOM 순서·부모·key 는 불변(재마운트 방지). 같은 쪽이면 가장자리부터
                   프로젝트<프리셋<히스토리 순으로 겹친다(rank 강제). */}
-              {/* 프로젝트 사이드 바(PC): 드로어 진입 + 프로젝트 액션. 세션이 없어도 렌더. */}
-              {!isMobile && (
+              {/* 프로젝트 사이드 바(PC): 'sidebar' 템플릿에서만. 세션이 없어도 렌더. */}
+              {!isMobile && resolvedLayout.projectSidebar && (
                 <div
                   data-slot="project"
                   className="flex-none hidden md:flex h-full"
@@ -758,7 +758,7 @@ export const App = observer(() => {
                 <ProjectDrawer />
                 {isMobile && <ImageHistoryDrawer />}
                 {isMobile && <ImageHistoryHandle />}
-                {isMobile && <ProjectDrawerHandle />}
+                {isMobile && resolvedLayout.projectSidebar && <ProjectDrawerHandle />}
                 {appState.projectBrowserOpen && (
                   <ProjectBrowser
                     onClose={() => {
@@ -782,6 +782,7 @@ export const App = observer(() => {
                       <BottomBar
                         placement={bottomBarPlacement}
                         genControl={resolvedLayout.genControl}
+                        projectSidebar={resolvedLayout.projectSidebar}
                       />
                     </div>
                   )}

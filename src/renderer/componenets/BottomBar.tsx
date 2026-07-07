@@ -1,5 +1,6 @@
 import { observer } from 'mobx-react-lite';
 import { StackFixed } from './LayoutComponents';
+import SessionSelect from './SessionSelect';
 import TaskQueueControl from './TaskQueueControl';
 import { GenControlHandle } from './GenControlWidget';
 import { appState } from '../models/AppService';
@@ -14,9 +15,12 @@ const BottomBar = observer(
   ({
     placement,
     genControl,
+    projectSidebar,
   }: {
     placement?: BottomBarPlacement;
     genControl?: 'docked' | 'floating';
+    // 'sidebar' 템플릿이면 프로젝트 툴바(SessionSelect)는 좌측 사이드 바가 담당 → 하단바엔 미렌더.
+    projectSidebar?: boolean;
   }) => {
   // 분리 상태(PC 전용)이거나 슬롯이 floating 이면 하단바 쪽 컨트롤을 렌더하지 않는다.
   // — 플로팅 위젯이 대신 표시. floating 슬롯인데 detached=false 인 상태에서
@@ -37,6 +41,11 @@ const BottomBar = observer(
           paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))',
         }}
       >
+        {!projectSidebar && (
+          <div className="hidden md:block flex-1">
+            <SessionSelect />
+          </div>
+        )}
         <div className="flex flex-none gap-4 items-center ml-auto">
           {/* 분리 핸들(PC 전용). 분리 상태면 컨트롤은 위젯이 대신 표시하므로 숨김. */}
           {!genDetached && (

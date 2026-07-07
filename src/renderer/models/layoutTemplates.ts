@@ -31,6 +31,9 @@ export interface LayoutTemplateMeta {
   genControl: GenControlPlacement;
   // false → 모바일에서는 resolveLayout 이 classic 으로 강제 폴백(모바일 일관성 보장)
   mobileAllowed: boolean;
+  // true → 프로젝트 진입을 좌측 두꺼운 사이드 바로, 하단/상단 바의 프로젝트 툴바(SessionSelect)는
+  // 렌더하지 않는다. false(기본) → 기존처럼 SessionSelect 를 바에 렌더하고 사이드 바는 없다.
+  projectSidebar: boolean;
 }
 
 export const layoutTemplates: LayoutTemplateMeta[] = [
@@ -41,6 +44,7 @@ export const layoutTemplates: LayoutTemplateMeta[] = [
     bottomBar: 'bottom',
     genControl: 'docked',
     mobileAllowed: true,
+    projectSidebar: false,
   },
   {
     id: 'compact',
@@ -50,6 +54,17 @@ export const layoutTemplates: LayoutTemplateMeta[] = [
     bottomBar: 'none',
     genControl: 'floating',
     mobileAllowed: false,
+    projectSidebar: false,
+  },
+  {
+    id: 'sidebar',
+    name: '프로젝트 사이드바',
+    description:
+      '프로젝트를 좌측 두꺼운 세로 바로 진입합니다. 하단 프로젝트 툴바 대신 사이드 바에서 열기·추가·프리셋을 처리합니다.',
+    bottomBar: 'bottom',
+    genControl: 'docked',
+    mobileAllowed: false,
+    projectSidebar: true,
   },
 ];
 
@@ -68,6 +83,8 @@ export interface ResolvedLayout {
   projectSide: PanelSide;
   // 생성 컨트롤 부착/플로팅 (템플릿 기본 위에 슬롯 오버라이드).
   genControl: GenControlPlacement;
+  // 프로젝트 사이드 바 사용 여부(템플릿 고정 — 슬롯 오버라이드 없음).
+  projectSidebar: boolean;
 }
 
 // 타입 밖 문자열이 stale 하게 저장돼 있던 경우를 걸러내는 검증기(잘못된 값=무시하고 기본값).
@@ -121,6 +138,7 @@ export function resolveLayout(
     presetSide,
     projectSide,
     genControl,
+    projectSidebar: effective.projectSidebar,
   };
 }
 

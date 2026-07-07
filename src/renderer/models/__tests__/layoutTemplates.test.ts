@@ -176,6 +176,24 @@ describe('projectSide 슬롯', () => {
   });
 });
 
+describe('projectSidebar 템플릿', () => {
+  it('classic/compact 는 projectSidebar=false', () => {
+    expect(resolveLayout('classic', false).projectSidebar).toBe(false);
+    expect(resolveLayout('compact', false).projectSidebar).toBe(false);
+  });
+  it("'sidebar' 템플릿(PC) → projectSidebar=true, bottomBar=bottom", () => {
+    const r = resolveLayout('sidebar', false);
+    expect(r.id).toBe('sidebar');
+    expect(r.projectSidebar).toBe(true);
+    expect(r.bottomBar).toBe('bottom');
+  });
+  it('sidebar + 모바일 → classic 폴백(projectSidebar=false)', () => {
+    const r = resolveLayout('sidebar', true);
+    expect(r.id).toBe('classic');
+    expect(r.projectSidebar).toBe(false);
+  });
+});
+
 describe('dockOrder — 가장자리 순서(프로젝트<프리셋<히스토리)', () => {
   it('좌측: 프로젝트가 가장 왼쪽, 히스토리가 콘텐츠에 가장 가까움', () => {
     const p = dockOrder('left', DOCK_RANK.project);

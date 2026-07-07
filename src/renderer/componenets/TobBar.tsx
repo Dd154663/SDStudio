@@ -1,6 +1,7 @@
 import { useContext, useEffect, useState } from 'react';
 import { FloatView } from './FloatView';
 import ConfigScreen from './ConfigScreen';
+import SessionSelect from './SessionSelect';
 import { Session } from '../models/types';
 import {
   loginService,
@@ -18,10 +19,10 @@ import { observer } from 'mobx-react-lite';
 const TobBar = observer(() => {
   // 컴팩트 템플릿(PC)은 하단바가 없어 세션(프로젝트) 선택을 상단바로 올린다.
   // 모바일은 resolveLayout 이 항상 classic 강제 → 기존 인라인 표시(md:hidden) 동작 무변화.
-  const sessionSelectTop = resolveLayout(
-    appState.uiLayoutTemplate,
-    isMobile,
-  ).sessionSelectTop;
+  const resolved = resolveLayout(appState.uiLayoutTemplate, isMobile);
+  const sessionSelectTop = resolved.sessionSelectTop;
+  // 'sidebar' 템플릿이면 프로젝트 선택기는 좌측 사이드 바가 담당 → 상단바엔 미렌더.
+  const projectSidebar = resolved.projectSidebar;
   const [loggedIn, setLoggedIn] = useState(false);
   const [credits, setCredits] = useState(0);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -167,6 +168,19 @@ const TobBar = observer(() => {
           ) : (
             <span className="round-tag back-yellow text-sm !px-2 !py-1">{credits}</span>
           )}
+        </div>
+      )}
+      {/* 세션(프로젝트) 선택: 'sidebar' 템플릿이 아닐 때만. 모바일은 항상 인라인(md:hidden),
+          컴팩트(PC)면 PC에서도 표시(block). sidebar 템플릿은 좌측 사이드 바가 담당. */}
+      {!projectSidebar && (
+        <div
+          className={
+            (sessionSelectTop ? '' : 'ml-auto ') +
+            'titlebar-no-drag flex-1 min-w-0 ' +
+            (sessionSelectTop ? 'block' : 'block md:hidden')
+          }
+        >
+          <SessionSelect />
         </div>
       )}
 
