@@ -1272,6 +1272,22 @@ const LayoutWireframe = ({
   );
 };
 
+// 직접 편집(EditModeShell)으로 바뀐 레이아웃 배치를 템플릿 기본값으로 되돌린다.
+// 대상: 패널 좌/우(history·preset·project) + 생성 컨트롤 슬롯(uiLayoutSlots) + 분리형
+// 위젯 위치(genWidget). 선택한 템플릿(uiLayoutTemplate)은 사용자가 명시적으로 고른 값이라
+// 건드리지 않는다. 이 두 필드는 ConfigScreen 저장 흐름 밖(편집 모드가 즉시 반영)이라
+// 여기서도 즉시 반영한다(applyLayoutSlots·applyGenWidget 패턴과 동일).
+async function resetLayoutArrangement() {
+  appState.uiLayoutSlots = {};
+  appState.genWidget = {};
+  try {
+    const config = await backend.getConfig();
+    await backend.setConfig({ ...config, uiLayoutSlots: {}, genWidget: {} });
+  } catch (e) {
+    console.error('레이아웃 배치 초기화 저장 실패:', e);
+  }
+}
+
 const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, mobileMode, onClose }: any) => (
   <div className="space-y-5">
     <div>
@@ -1357,6 +1373,31 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, mobileMode, onClose 
         모바일에서는 클래식 배치가 사용됩니다.
       </p>
     )}
+
+    {/* 직접 편집으로 옮긴 패널·생성 컨트롤 배치를 되돌리는 초기화(즉시 반영, 저장 불필요).
+        슬롯/위젯 위치는 저장 흐름 밖이라 여기서 바로 config 에 쓴다. */}
+    <div className="pt-3 border-t line-color">
+      <button
+        type="button"
+        className="round-button back-gray btn-sm"
+        onClick={() => {
+          appState.pushDialog({
+            type: 'confirm',
+            text: '화면에서 직접 편집으로 옮긴 패널 좌/우 배치와 생성 컨트롤 위치를 기본값으로 되돌립니다. (선택한 템플릿은 유지됩니다.) 계속할까요?',
+            callback: async () => {
+              await resetLayoutArrangement();
+              appState.pushMessage('레이아웃 배치를 초기화했습니다');
+            },
+          });
+        }}
+      >
+        레이아웃 배치 초기화
+      </button>
+      <p className="text-xs text-muted mt-1">
+        화면에서 직접 편집으로 옮긴 패널·생성 컨트롤 배치를 되돌립니다. 저장 없이
+        즉시 적용됩니다.
+      </p>
+    </div>
   </div>
 );
 

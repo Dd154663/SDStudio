@@ -108,10 +108,14 @@ const ToolbarLayoutEditor = ({
         ))}
         <button
           className="round-button back-gray btn-sm"
-          onClick={() => onChange({ ...value, buttons: undefined })}
+          onClick={() => onChange({ classic: value.classic })}
         >
           버튼 배치 초기화
         </button>
+        <p className="text-xs text-faint mt-1">
+          위 개별 설정과 화면에서 직접 옮긴 버튼 순서까지 모두 기본 배치로
+          되돌립니다. (저장 시 반영)
+        </p>
       </div>
     </div>
   );
