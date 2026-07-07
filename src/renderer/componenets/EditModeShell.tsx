@@ -255,8 +255,11 @@ const EditModeShell = observer(() => {
             onClick={isGen ? toggleGenControl : undefined}
             // 배지도 화면 상단에서 타이틀바 드래그 영역과 겹칠 수 있어, 클릭/드래그가
             // 창 이동으로 먹히지 않도록 titlebar-no-drag.
+            // whitespace-nowrap: 배지가 화면 오른쪽 끝 근처(우측 도킹 패널 위)에 놓이면
+            // fixed 요소의 shrink-to-fit 폭이 좁아져 "히스토리 패널" 텍스트가 줄바꿈되던 문제.
+            // 줄바꿈을 막으면 항상 한 줄 알약으로 렌더된다(-translate-x-1/2 로 중앙 정렬 유지).
             className={
-              'titlebar-no-drag fixed -translate-x-1/2 flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--c-surface-2)] border line-color shadow-lg text-sm text-body select-none touch-none ' +
+              'titlebar-no-drag fixed -translate-x-1/2 whitespace-nowrap flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--c-surface-2)] border line-color shadow-lg text-sm text-body select-none touch-none ' +
               (isGen ? 'cursor-pointer ' : 'cursor-grab ') +
               (isDraggingThis ? 'opacity-70 ' : '')
             }
