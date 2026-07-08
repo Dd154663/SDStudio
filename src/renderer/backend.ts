@@ -23,6 +23,9 @@ export interface ResizeImageInput {
   maxWidth: number;
   maxHeight: number;
   optimize?: ImageOptimizeMethod;
+  // 최적화 품질(1~100). 미지정 시 종전 기본값(webp 80·avif 50). lossless 는 무시.
+  // 데스크톱 전용 — Android 리사이저는 리사이즈만 하고 이 값을 사용하지 않는다.
+  quality?: number;
 }
 
 export interface FileStatEntry {

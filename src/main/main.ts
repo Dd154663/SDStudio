@@ -331,28 +331,65 @@ ipcMain.handle('copy-file-absolute', async (event, src, absoluteDest) => {
   await fs.copyFile(APP_DIR + '/' + src, absoluteDest);
 });
 
-// 생성 이미지 PNG → WebP 변환 (NAI 프롬프트 메타데이터를 EXIF ImageDescription 으로 이월).
-// 원본 PNG tEXt 'Comment'(NAI 생성정보 JSON)를 추출해 webp EXIF 에 박는다.
-ipcMain.handle('convert-to-webp', async (event, srcRel, destRel, quality) => {
-  const srcAbs = APP_DIR + '/' + srcRel;
-  const destAbs = APP_DIR + '/' + destRel;
+// ── 이미지 인코딩 단일 출처 (트랙2 WebP Phase 3) ──
+// 원본(PNG 등) → webp/avif 인코딩. resize(선택)·품질·무손실·effort·EXIF 이월을
+// 파라미터화한다. resize-image(내보내기·백업 최적화)와 convert-to-webp(생성 이미지
+// 일괄 변환)가 각자 갖던 sharp 파이프라인을 여기로 통합한다.
+// carryMetadata: NAI 프롬프트(원본 PNG tEXt 'Comment' JSON)를 EXIF ImageDescription
+// 으로 이월 — 이전엔 convert-to-webp 만 보존하고 resize-image(내보내기)는 유실했다.
+async function encodeImageFile(
+  srcAbs: string,
+  destAbs: string,
+  opts: {
+    format: 'webp' | 'avif';
+    quality?: number;
+    lossless?: boolean;
+    effort?: number;
+    resize?: { maxWidth: number; maxHeight: number };
+    carryMetadata?: boolean;
+  },
+): Promise<void> {
   const buf = await fs.readFile(srcAbs);
   let comment: string | null = null;
-  try {
-    const tags = ExifReader.load(buf);
-    const c = tags['Comment'];
-    if (c) comment = (c.value ?? c.description ?? '').toString() || null;
-  } catch (e) {
-    // 메타데이터 없음 — EXIF 없이 변환 진행
+  if (opts.carryMetadata) {
+    try {
+      const tags = ExifReader.load(buf);
+      const c = tags['Comment'];
+      if (c) comment = (c.value ?? c.description ?? '').toString() || null;
+    } catch (e) {
+      // 메타데이터 없음 — EXIF 없이 진행
+    }
   }
   await fs.mkdir(path.dirname(destAbs), { recursive: true });
-  let pipeline = sharp(buf).webp({ quality: quality ?? 80 });
+  let pipeline = sharp(buf);
+  if (opts.resize) {
+    pipeline = pipeline.resize(opts.resize.maxWidth, opts.resize.maxHeight, {
+      fit: sharp.fit.inside,
+      withoutEnlargement: true,
+    });
+  }
+  if (opts.format === 'avif') {
+    pipeline = pipeline.avif({ quality: opts.quality ?? 50, effort: opts.effort ?? 4 });
+  } else if (opts.lossless) {
+    pipeline = pipeline.webp({ lossless: true });
+  } else {
+    pipeline = pipeline.webp({ quality: opts.quality ?? 80, lossless: false });
+  }
   if (comment) {
     pipeline = pipeline.withMetadata({
       exif: { IFD0: { ImageDescription: comment } },
     });
   }
   await pipeline.toFile(destAbs);
+}
+
+// 생성 이미지 PNG → WebP 변환 (NAI 프롬프트 메타데이터를 EXIF ImageDescription 으로 이월).
+ipcMain.handle('convert-to-webp', async (event, srcRel, destRel, quality) => {
+  await encodeImageFile(APP_DIR + '/' + srcRel, APP_DIR + '/' + destRel, {
+    format: 'webp',
+    quality: quality ?? 80,
+    carryMetadata: true,
+  });
 });
 
 ipcMain.handle('read-data-file', async (event, arg) => {
@@ -703,34 +740,34 @@ ipcMain.handle('artist-analyze', async (event, arg) => {
 
 ipcMain.handle(
   'resize-image',
-  async (event, { inputPath, outputPath, maxWidth, maxHeight, optimize }) => {
+  async (
+    event,
+    { inputPath, outputPath, maxWidth, maxHeight, optimize, quality },
+  ) => {
     try {
-      inputPath = APP_DIR + '/' + inputPath;
-      outputPath = APP_DIR + '/' + outputPath;
-      const dir = path.dirname(outputPath);
-      await fs.mkdir(dir, { recursive: true });
-      let instance = sharp(inputPath).resize(maxWidth, maxHeight, {
-        fit: sharp.fit.inside,
-        withoutEnlargement: true,
+      const srcAbs = APP_DIR + '/' + inputPath;
+      const destAbs = APP_DIR + '/' + outputPath;
+      // optimize 미지정 = 순수 리사이즈(썸네일 생성 등). 포맷 변환·EXIF 이월 없이
+      // 확장자대로 인코딩한다(기존 동작 불변).
+      if (!optimize) {
+        await fs.mkdir(path.dirname(destAbs), { recursive: true });
+        await sharp(srcAbs)
+          .resize(maxWidth, maxHeight, {
+            fit: sharp.fit.inside,
+            withoutEnlargement: true,
+          })
+          .toFile(destAbs);
+        return;
+      }
+      // 최적화 = webp/avif 인코딩(+리사이즈). quality 미지정 시 종전 하드코딩값
+      // (webp 80·avif 50)과 동일. NAI 프롬프트 메타데이터를 보존한다(유실 버그 수정).
+      await encodeImageFile(srcAbs, destAbs, {
+        format: optimize === ImageOptimizeMethod.AVIF ? 'avif' : 'webp',
+        lossless: optimize === ImageOptimizeMethod.LOSSLESS,
+        quality,
+        resize: { maxWidth, maxHeight },
+        carryMetadata: true,
       });
-      if (optimize === ImageOptimizeMethod.LOSSY) {
-        instance = instance.webp({
-          quality: 80,
-          lossless: false,
-        });
-      }
-      if (optimize === ImageOptimizeMethod.LOSSLESS) {
-        instance = instance.webp({
-          lossless: true,
-        });
-      }
-      if (optimize === ImageOptimizeMethod.AVIF) {
-        instance = instance.avif({
-          quality: 50,
-          effort: 4,
-        });
-      }
-      await instance.toFile(outputPath);
     } catch (e: any) {
       console.error('resize-image error:', e);
       throw new Error('이미지 리사이즈 실패: ' + (e.message || e));

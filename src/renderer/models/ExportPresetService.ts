@@ -201,6 +201,7 @@ export class ExportPresetService {
       fav: boolean,
       opt: string,
       imageSize: number,
+      quality: number | undefined,
       separator: string,
       charsToReplace: Set<string>,
       filenamePattern: FilenamePattern | undefined,
@@ -361,6 +362,7 @@ export class ExportPresetService {
               maxHeight: imageSize,
               maxWidth: imageSize,
               optimize: optimizeMethod,
+              quality: quality,
             });
             results[idx] = {
               path: outputPath,
@@ -512,6 +514,7 @@ export class ExportPresetService {
         ep.menu === 'fav',
         ep.opt,
         ep.imageSize,
+        ep.quality,
         ep.separator,
         charsToReplace,
         ep.filenamePattern,
@@ -597,6 +600,18 @@ export class ExportPresetService {
         return;
       }
     }
+    // 화질 백분율 — 압축 품질. lossy/avif 만 의미(lossless·original 은 무시).
+    // 빈값/무효 입력은 기본값(webp 80·avif 50) 사용, 취소(undefined)만 중단.
+    let quality: number | undefined = undefined;
+    if (opt === 'lossy' || opt === 'avif') {
+      const qInput = await appState.pushDialogAsync({
+        type: 'input-confirm',
+        text: `이미지 화질을 입력해주세요 (1~100, 기본 ${opt === 'avif' ? 50 : 80})`,
+      });
+      if (qInput === undefined) return;
+      const q = parseInt(qInput);
+      if (!isNaN(q) && q >= 1 && q <= 100) quality = q;
+    }
     const separatorInput = await appState.pushDialogAsync({
       type: 'input-confirm',
       text: '파일명 구분자를 입력해주세요 (기본값: .)',
@@ -626,6 +641,7 @@ export class ExportPresetService {
       menu === 'fav',
       opt,
       imageSize,
+      quality,
       separator,
       charsToReplace,
       'scene',

@@ -70,6 +70,8 @@ export interface ExportPreset {
   prefix: string;
   opt: 'original' | 'lossy' | 'lossless' | 'avif';
   imageSize: number;
+  /** 압축 화질(1~100). 미설정 시 기본값(webp 80·avif 50). lossy/avif 만 적용. */
+  quality?: number;
   separator: string;
   // ── 신규 옵션 (모두 선택적 — 구형 프리셋은 그대로 동작, 마이그레이션 불필요) ──
   /** 파일명 패턴: 'scene'(기본=현행) / 프로젝트명 / 폴더명+프로젝트명 접두 */

@@ -48,6 +48,7 @@ interface FormState {
   prefix: string;
   opt: 'original' | 'lossy' | 'lossless' | 'avif' | undefined;
   imageSize: number;
+  quality: number;
   separator: string;
   filenamePattern: 'scene' | 'project.scene' | 'folder.project.scene';
   outputMode: 'tar' | 'files';
@@ -65,6 +66,7 @@ const emptyForm = (): FormState => ({
   prefix: '',
   opt: undefined,
   imageSize: 1024,
+  quality: 80,
   separator: '',
   filenamePattern: 'scene',
   outputMode: 'tar',
@@ -82,6 +84,7 @@ const presetToForm = (p: ExportPreset): FormState => ({
   prefix: p.prefix,
   opt: p.opt,
   imageSize: p.imageSize,
+  quality: p.quality ?? 80,
   separator: p.separator,
   filenamePattern: p.filenamePattern ?? 'scene',
   outputMode: p.outputMode ?? 'tar',
@@ -152,6 +155,13 @@ const ExportPresetManager = observer(() => {
       prefix: form.prefix,
       opt: form.opt!,
       imageSize: form.imageSize,
+      // 화질은 lossy/avif 만 의미. 유효(1~100)할 때만 저장, 그 외엔 미설정(기본값 사용).
+      quality:
+        (form.opt === 'lossy' || form.opt === 'avif') &&
+        form.quality >= 1 &&
+        form.quality <= 100
+          ? form.quality
+          : undefined,
       separator: form.separator,
       filenamePattern: form.filenamePattern,
       outputMode: form.outputMode,
@@ -452,6 +462,25 @@ const ExportPresetManager = observer(() => {
                 className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
               />
               <span className="text-xs text-faint">px</span>
+            </div>
+          )}
+
+          {/* 압축 화질 (lossy/avif 시) — 픽셀 크기와 별개 축(해상도 vs 압축 강도) */}
+          {(form.opt === 'lossy' || form.opt === 'avif') && (
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-muted flex-none w-24">화질</label>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={form.quality}
+                onChange={(e) =>
+                  setForm({ ...form, quality: parseInt(e.target.value) || 0 })
+                }
+                placeholder={form.opt === 'avif' ? '50' : '80'}
+                className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              />
+              <span className="text-xs text-faint">1~100</span>
             </div>
           )}
 
