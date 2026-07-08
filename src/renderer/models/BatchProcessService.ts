@@ -16,6 +16,7 @@ import {
   zipService,
 } from '.';
 import { platform } from './platform';
+import { runPool } from './concurrency';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { Dialog } from '../componenets/ConfirmWindow';
@@ -744,51 +745,75 @@ export class BatchProcessService {
       selected.map((s) => gameService.refreshList(session, s)),
     );
 
-    let total = 0;
-    for (const scene of selected) {
-      total += gameService
-        .getOutputs(session, scene)
-        .filter((c) => c.toLowerCase().endsWith('.png')).length;
+    // 씬별 PNG 목록 → 평탄 작업 리스트(병렬 소진용). dir/webp 를 미리 계산.
+    interface WebpTask {
+      scene: GenericScene;
+      dir: string;
+      png: string;
+      webp: string;
     }
-    if (total === 0) {
-      appState.pushMessage('변환할 PNG 이미지가 없습니다.');
-      return;
-    }
-
-    let done = 0;
-    let fail = 0;
-    appState.setProgressDialog({ text: 'WebP 변환 중...', done: 0, total });
-
+    const tasks: WebpTask[] = [];
     for (const scene of selected) {
       const dir = imageService.getOutputDir(session, scene);
       const pngs = gameService
         .getOutputs(session, scene)
         .filter((c) => c.toLowerCase().endsWith('.png'));
       for (const png of pngs) {
-        const webp = png.replace(/\.png$/i, '.webp');
-        try {
-          await backend.convertToWebp(
-            dir + '/' + png,
-            dir + '/' + webp,
-            quality,
-          );
-          // 씬 데이터의 파일명 참조 3곳 갱신 (imageMap/mains/game) — 누락 시 이미지 유실/즐겨찾기 깨짐
-          scene.imageMap = scene.imageMap.map((x) => (x === png ? webp : x));
-          scene.mains = scene.mains.map((x) => (x === png ? webp : x));
-          if (scene.game) {
-            for (const player of scene.game) {
-              if (player.path === png) player.path = webp;
-            }
-          }
-          // 원본 PNG 는 복구 가능한 휴지통으로 이동
-          await backend.trashFile(dir + '/' + png);
-          await imageService.invalidateCache(dir + '/' + png);
-        } catch (e: any) {
-          fail++;
-          console.error('WebP 변환 실패:', dir + '/' + png, e?.message || e);
+        tasks.push({ scene, dir, png, webp: png.replace(/\.png$/i, '.webp') });
+      }
+    }
+    const total = tasks.length;
+    if (total === 0) {
+      appState.pushMessage('변환할 PNG 이미지가 없습니다.');
+      return;
+    }
+
+    // 씬별 성공 rename(png→webp) 맵. 병렬 변환 중에는 씬 객체를 건드리지 않고
+    // 여기에만 쌓았다가 루프 후 씬당 1회 일괄 반영한다 — 동시 변이로 인한
+    // MobX 재렌더 폭주를 막고(파일당 N회 → 씬당 1회) 갱신 순서를 명확히 한다.
+    const renames = new Map<GenericScene, Map<string, string>>();
+    for (const s of selected) renames.set(s, new Map());
+
+    let done = 0;
+    let fail = 0;
+    appState.setProgressDialog({ text: 'WebP 변환 중...', done: 0, total });
+
+    // 내보내기 최적화와 동일한 동시성(공유 runPool + exportConcurrency). 순차(1장씩)
+    // → 최대 4장 병렬. Phase 2 에서 상한을 코어 수로 올리면 이 한 곳이 함께 상향된다.
+    const config = await backend.getConfig();
+    const CONCURRENCY = Math.max(
+      1,
+      Math.min(4, config.exportConcurrency ?? platform.exportConcurrency),
+    );
+
+    await runPool(tasks, CONCURRENCY, async (task) => {
+      const { scene, dir, png, webp } = task;
+      try {
+        await backend.convertToWebp(dir + '/' + png, dir + '/' + webp, quality);
+        renames.get(scene)!.set(png, webp);
+        // 원본 PNG 는 복구 가능한 휴지통으로 이동
+        await backend.trashFile(dir + '/' + png);
+        await imageService.invalidateCache(dir + '/' + png);
+      } catch (e: any) {
+        fail++;
+        console.error('WebP 변환 실패:', dir + '/' + png, e?.message || e);
+      }
+      done++;
+      appState.setProgressDialog({ text: 'WebP 변환 중...', done, total });
+    });
+
+    // 씬 데이터의 파일명 참조 3곳(imageMap/mains/game) 일괄 갱신 — 누락 시
+    // 이미지 유실/즐겨찾기·랭킹 깨짐. 성공한 변환만 반영(실패분은 원본 png 유지).
+    for (const scene of selected) {
+      const map = renames.get(scene)!;
+      if (map.size === 0) continue;
+      scene.imageMap = scene.imageMap.map((x) => map.get(x) ?? x);
+      scene.mains = scene.mains.map((x) => map.get(x) ?? x);
+      if (scene.game) {
+        for (const player of scene.game) {
+          const w = map.get(player.path);
+          if (w) player.path = w;
         }
-        done++;
-        appState.setProgressDialog({ text: 'WebP 변환 중...', done, total });
       }
     }
 

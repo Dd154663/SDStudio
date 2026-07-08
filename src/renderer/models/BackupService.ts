@@ -15,6 +15,7 @@ import {
   zipService,
 } from '.';
 import { platform, buildImageOptimizeOptions } from './platform';
+import { runPool } from './concurrency';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { Dialog } from '../componenets/ConfirmWindow';
@@ -1514,57 +1515,48 @@ export class BackupService {
         done: 0,
         total: paths.length,
       };
-      const queue = paths.map((item, idx) => ({ item, idx }));
-      const workers = Array.from(
-        { length: Math.min(CONCURRENCY, queue.length) },
-        async () => {
-          while (queue.length > 0) {
-            const task = queue.shift();
-            if (!task) break;
-            const { item, idx } = task;
-            // 원본 유지 선택 시: 이미 최적화된 소스는 재인코딩 없이 그대로(확장자 일치)
-            if (skipAlreadyOpt && isOptimizedImageFile(item.path)) {
-              const srcExt = item.path.split('.').pop() || 'webp';
-              results[idx] = {
-                path: item.path,
-                name: item.name.replace(/\.[^.]+$/, '.' + srcExt),
-              };
-              done++;
-              appState.exportProgress = {
-                text: '이미지 크기 최적화 중..',
-                done: done,
-                total: paths.length,
-              };
-              continue;
-            }
-            const outputPath = 'tmp/' + v4() + ext;
-            try {
-              await backend.resizeImage({
-                inputPath: item.path,
-                outputPath: outputPath,
-                maxHeight: imageSize,
-                maxWidth: imageSize,
-                optimize: optimizeMethod,
-              });
-              results[idx] = {
-                path: outputPath,
-                // name 은 이미 최종 확장자(.webp/.avif)를 갖고 있으므로 그대로 사용
-                name: item.name,
-              };
-            } catch (e: any) {
-              failCount++;
-              console.error('이미지 최적화 실패:', item.path, e.message);
-            }
-            done++;
-            appState.exportProgress = {
-              text: '이미지 크기 최적화 중..',
-              done: done,
-              total: paths.length,
-            };
-          }
-        },
-      );
-      await Promise.all(workers);
+      // 동시 실행 수 제한 병렬 처리 (공유 runPool — export/backup/webp일괄 단일 출처)
+      await runPool(paths, CONCURRENCY, async (item, idx) => {
+        // 원본 유지 선택 시: 이미 최적화된 소스는 재인코딩 없이 그대로(확장자 일치)
+        if (skipAlreadyOpt && isOptimizedImageFile(item.path)) {
+          const srcExt = item.path.split('.').pop() || 'webp';
+          results[idx] = {
+            path: item.path,
+            name: item.name.replace(/\.[^.]+$/, '.' + srcExt),
+          };
+          done++;
+          appState.exportProgress = {
+            text: '이미지 크기 최적화 중..',
+            done: done,
+            total: paths.length,
+          };
+          return;
+        }
+        const outputPath = 'tmp/' + v4() + ext;
+        try {
+          await backend.resizeImage({
+            inputPath: item.path,
+            outputPath: outputPath,
+            maxHeight: imageSize,
+            maxWidth: imageSize,
+            optimize: optimizeMethod,
+          });
+          results[idx] = {
+            path: outputPath,
+            // name 은 이미 최종 확장자(.webp/.avif)를 갖고 있으므로 그대로 사용
+            name: item.name,
+          };
+        } catch (e: any) {
+          failCount++;
+          console.error('이미지 최적화 실패:', item.path, e.message);
+        }
+        done++;
+        appState.exportProgress = {
+          text: '이미지 크기 최적화 중..',
+          done: done,
+          total: paths.length,
+        };
+      });
       paths = results.filter(
         (r): r is { path: string; name: string } => r !== null,
       );
