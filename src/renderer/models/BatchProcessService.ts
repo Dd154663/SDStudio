@@ -783,7 +783,10 @@ export class BatchProcessService {
     const config = await backend.getConfig();
     const CONCURRENCY = Math.max(
       1,
-      Math.min(4, config.exportConcurrency ?? platform.exportConcurrency),
+      Math.min(
+        platform.maxImageConcurrency,
+        config.exportConcurrency ?? platform.exportConcurrency,
+      ),
     );
 
     await runPool(tasks, CONCURRENCY, async (task) => {

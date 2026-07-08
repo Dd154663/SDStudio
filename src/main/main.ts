@@ -8,6 +8,8 @@
  * When running `npm run build` or `npm run build:main`, this file is compiled to
  * `./src/main.js` using webpack. This gives us some performance wins.
  */
+// 반드시 최상단 — sharp/첫 threadpool 사용 전에 UV_THREADPOOL_SIZE 를 확정한다.
+import './uvThreadpool';
 import path from 'path';
 import {
   app,
@@ -25,6 +27,11 @@ import MenuBuilder from './menu';
 import { resolveHtmlPath } from './util';
 import { v4 as uuidv4 } from 'uuid';
 const sharp = require('sharp');
+// 대량 병렬 변환 최적화: 각 sharp 연산이 libvips 스레드를 코어 수만큼 점유하면,
+// worker-pool 이 N장을 동시에 돌릴 때 N×코어 스레드가 경합해(오버서브스크립션)
+// 오히려 느려진다. 연산당 1스레드로 두고 "여러 장을 동시에"(UV_THREADPOOL_SIZE)
+// 병렬화하는 것이 다수 이미지 처리에 유리하다(sharp 공식 권장). 트랙2 WebP Phase 2.
+sharp.concurrency(1);
 const ExifReader = require('exifreader');
 const native = require('sdsnative');
 const { exiftool } = require('exiftool-vendored');
@@ -142,6 +149,18 @@ ipcMain.handle('set-config', async (event, newConfig) => {
 
 ipcMain.handle('get-version', async (event) => {
   return app.getVersion();
+});
+
+// 런타임 진단(트랙2 WebP): 감지 코어 수와 실효 libuv 스레드풀 크기(=동시 인코딩
+// 상한)를 노출한다. 환경설정 시스템 탭에서 병렬 상한이 실제로 코어 수로 잡혔는지
+// 사용자가 눈으로 확인하는 용도.
+ipcMain.handle('get-runtime-diag', async () => {
+  return {
+    cpus: require('os').cpus().length,
+    uvThreadpool: process.env.UV_THREADPOOL_SIZE
+      ? parseInt(process.env.UV_THREADPOOL_SIZE, 10)
+      : 4,
+  };
 });
 
 ipcMain.handle('open-web-page', async (event, url) => {

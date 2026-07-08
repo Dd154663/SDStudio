@@ -50,6 +50,9 @@ export abstract class Backend {
   // 데이터 루트가 위치한 볼륨의 여유 공간(bytes). 조회 불가/미지원이면 null
   // (= "알 수 없음"). 트랙1 (b) 마이그레이션 백업 게이트의 공간 판정용.
   abstract getFreeSpace(): Promise<number | null>;
+  // 런타임 진단(감지 코어 수·실효 libuv 스레드풀 크기). 데스크톱 전용 — 모바일은
+  // libuv 스레드풀 개념이 없어 null(="해당 없음"). 이미지 병렬 상한 확인용.
+  abstract getRuntimeDiag(): Promise<{ cpus: number; uvThreadpool: number } | null>;
   abstract searchTags(word: string): Promise<any>;
   abstract lookupTag(word: string): Promise<any>;
   abstract loadPiecesDB(pieces: string[]): Promise<void>;

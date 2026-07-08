@@ -1505,7 +1505,10 @@ export class BackupService {
       const config = await backend.getConfig();
       const CONCURRENCY = Math.max(
         1,
-        Math.min(4, config.exportConcurrency ?? platform.exportConcurrency),
+        Math.min(
+          platform.maxImageConcurrency,
+          config.exportConcurrency ?? platform.exportConcurrency,
+        ),
       );
       const results: ({ path: string; name: string } | null)[] = new Array(
         paths.length,

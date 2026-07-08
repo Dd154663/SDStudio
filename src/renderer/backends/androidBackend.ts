@@ -443,6 +443,11 @@ export class AndroidBackend extends Backend {
     return null;
   }
 
+  async getRuntimeDiag(): Promise<{ cpus: number; uvThreadpool: number } | null> {
+    // 모바일은 libuv 스레드풀(=데스크톱 sharp 병렬) 개념이 없다 — 진단 미해당.
+    return null;
+  }
+
   async selectFile(): Promise<string | undefined> {
     const result = await FilePicker.pickFiles({
       types: ['application/x-tar'],

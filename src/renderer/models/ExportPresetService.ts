@@ -327,7 +327,7 @@ export class ExportPresetService {
         let done = 0;
         let failCount = 0;
         const config = await backend.getConfig();
-        const CONCURRENCY = Math.max(1, Math.min(4, config.exportConcurrency ?? platform.exportConcurrency));
+        const CONCURRENCY = Math.max(1, Math.min(platform.maxImageConcurrency, config.exportConcurrency ?? platform.exportConcurrency));
         const results: (typeof paths[0] | null)[] = new Array(paths.length).fill(null);
 
         appState.exportProgress = {

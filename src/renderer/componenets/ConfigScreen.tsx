@@ -12,6 +12,7 @@ import {
 import { Config, ImageEditor, RemoveBgQuality, UiThemeConfig, UiToolbarConfig } from '../../main/config';
 import ToolbarLayoutEditor from './ToolbarLayoutEditor';
 import { projectToolbarRegistry, sceneToolbarRegistry } from '../models/uiLayout';
+import { platform } from '../models/platform';
 import { buildThemeVars, isHex6 } from '../models/uiTheme';
 import { themeTemplates } from '../models/themeTemplates';
 import { layoutTemplates } from '../models/layoutTemplates';
@@ -377,6 +378,19 @@ const SystemTab = ({
 }: any) => {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [showRickroll, setShowRickroll] = useState(false);
+  // 런타임 진단(감지 코어·실효 스레드풀) — 이미지 병렬 상한이 실제로 코어 수로
+  // 잡혔는지 확인용. 데스크톱 전용(모바일은 null).
+  const [runtimeDiag, setRuntimeDiag] = useState<{
+    cpus: number;
+    uvThreadpool: number;
+  } | null>(null);
+  useEffect(() => {
+    if (isMobile) return;
+    backend
+      .getRuntimeDiag()
+      .then((d) => setRuntimeDiag(d))
+      .catch(() => {});
+  }, []);
 
   const handleCheckUpdate = async () => {
     setCheckingUpdate(true);
@@ -441,10 +455,10 @@ const SystemTab = ({
       <hr className="line-color" />
       <div>
         <label className="block text-sm gray-label mb-1">
-          이미지 최적화 병렬 처리 수 (1 ~ 4)
+          이미지 최적화 병렬 처리 수 (1 ~ {platform.maxImageConcurrency})
         </label>
         <div className="flex items-center gap-2">
-          <input type="range" min={1} max={4} step={1}
+          <input type="range" min={1} max={platform.maxImageConcurrency} step={1}
             value={exportConcurrency} onChange={(e) => setExportConcurrency(parseInt(e.target.value))}
             className="flex-1 min-w-0" />
           <span className="text-sm gray-label w-14 text-right flex-none">{exportConcurrency}</span>
@@ -452,6 +466,12 @@ const SystemTab = ({
         <p className="text-xs text-faint mt-1">
           높을수록 내보내기가 빠르지만 CPU 사용량이 증가합니다.{isMobile ? ' 모바일은 1~2 권장.' : ''}
         </p>
+        {!isMobile && runtimeDiag && (
+          <p className="text-xs text-faint mt-1">
+            감지된 코어: {runtimeDiag.cpus} · 동시 인코딩 상한(스레드풀):{' '}
+            {runtimeDiag.uvThreadpool}
+          </p>
+        )}
       </div>
       <hr className="line-color" />
       <FolderCleanupSection folder="exports" label="exports 폴더 정리" />

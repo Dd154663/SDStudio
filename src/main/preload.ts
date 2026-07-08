@@ -22,6 +22,7 @@ export type Channels =
   | 'show-file'
   | 'zip-files'
   | 'get-free-space'
+  | 'get-runtime-diag'
   | 'get-version'
   | 'open-web-page'
   | 'search-tags'

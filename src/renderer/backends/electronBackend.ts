@@ -122,6 +122,10 @@ export class ElectornBackend extends Backend {
     return await invoke('get-free-space');
   }
 
+  async getRuntimeDiag(): Promise<{ cpus: number; uvThreadpool: number } | null> {
+    return await invoke('get-runtime-diag');
+  }
+
   async searchTags(word: string): Promise<any> {
     return await invoke('search-tags', word);
   }

@@ -24,6 +24,15 @@ export const platform = {
   imageCacheBytes: isMobile ? 32 * 1024 * 1024 : 128 * 1024 * 1024,
   encodedVibeCacheSize: isMobile ? 32 : 128,
   exportConcurrency: isMobile ? 2 : 4,
+  // 이미지 최적화 병렬 처리 "상한"(설정 슬라이더 max·서비스 cap 공유 단일 출처).
+  // 감지된 논리 코어 수에 적응적으로 스케일한다(24코어 데스크톱이면 24까지). 상한
+  // 32 는 서버급 다코어의 병리적 값만 막는 가드 — 그 이상은 디스크 I/O·메모리가 먼저
+  // 병목이라 실익이 없다. 고코어 머신은 RAM 도 비례해 크므로 동시 디코딩 버퍼는
+  // 문제되지 않는다. main 의 UV_THREADPOOL_SIZE 캡과 일치시킨다. 모바일은 저사양·
+  // 네이티브 리사이저 특성상 2 유지. 실제 병렬 수는 사용자가 슬라이더로 선택.
+  maxImageConcurrency: isMobile
+    ? 2
+    : Math.max(1, Math.min(navigator.hardwareConcurrency || 4, 32)),
   // 씬 카드 썸네일 크기. 모바일에서 500 요청은 fastcache 를 거치지 않고
   // "원본 통째 로드"로 우회되는데(ImageService.fetchImageSmall 분기),
   // 씬 그리드는 가상화가 없어 전체 씬의 원본이 메모리에 올라간다 → 400 사용.
