@@ -49,6 +49,7 @@ interface FormState {
   opt: 'original' | 'lossy' | 'lossless' | 'avif' | undefined;
   imageSize: number;
   quality: number;
+  preserveStealth: boolean;
   separator: string;
   filenamePattern: 'scene' | 'project.scene' | 'folder.project.scene';
   outputMode: 'tar' | 'files';
@@ -67,6 +68,7 @@ const emptyForm = (): FormState => ({
   opt: undefined,
   imageSize: 1024,
   quality: 80,
+  preserveStealth: false,
   separator: '',
   filenamePattern: 'scene',
   outputMode: 'tar',
@@ -85,6 +87,7 @@ const presetToForm = (p: ExportPreset): FormState => ({
   opt: p.opt,
   imageSize: p.imageSize,
   quality: p.quality ?? 80,
+  preserveStealth: p.preserveStealth === true,
   separator: p.separator,
   filenamePattern: p.filenamePattern ?? 'scene',
   outputMode: p.outputMode ?? 'tar',
@@ -161,6 +164,11 @@ const ExportPresetManager = observer(() => {
         form.quality >= 1 &&
         form.quality <= 100
           ? form.quality
+          : undefined,
+      // stealth 보존은 webp(lossy/lossless)만 유효
+      preserveStealth:
+        (form.opt === 'lossy' || form.opt === 'lossless') && form.preserveStealth
+          ? true
           : undefined,
       separator: form.separator,
       filenamePattern: form.filenamePattern,
@@ -482,6 +490,21 @@ const ExportPresetManager = observer(() => {
               />
               <span className="text-xs text-faint">1~100</span>
             </div>
+          )}
+
+          {/* NAI 스테가노그래피 보존 (webp: lossy/lossless 시) */}
+          {(form.opt === 'lossy' || form.opt === 'lossless') && (
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={form.preserveStealth}
+                onChange={(e) => setForm({ ...form, preserveStealth: e.target.checked })}
+                className="w-4 h-4 accent-sky-500"
+              />
+              <span className="text-sm text-gray-700 dark:text-gray-300">
+                NAI 스테가노그래피 보존 (NAI 인스펙터 인식 유지, 처리 느려짐)
+              </span>
+            </label>
           )}
 
           {/* 구분자 — 텍스트 입력, 빈 칸 허용 */}

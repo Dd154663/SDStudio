@@ -202,6 +202,7 @@ export class ExportPresetService {
       opt: string,
       imageSize: number,
       quality: number | undefined,
+      preserveStealth: boolean,
       separator: string,
       charsToReplace: Set<string>,
       filenamePattern: FilenamePattern | undefined,
@@ -363,6 +364,7 @@ export class ExportPresetService {
               maxWidth: imageSize,
               optimize: optimizeMethod,
               quality: quality,
+              preserveStealth: preserveStealth,
             });
             results[idx] = {
               path: outputPath,
@@ -515,6 +517,7 @@ export class ExportPresetService {
         ep.opt,
         ep.imageSize,
         ep.quality,
+        ep.preserveStealth === true,
         ep.separator,
         charsToReplace,
         ep.filenamePattern,
@@ -612,6 +615,21 @@ export class ExportPresetService {
       const q = parseInt(qInput);
       if (!isNaN(q) && q >= 1 && q <= 100) quality = q;
     }
+    // NAI 스테가노그래피(알파 워터마크) 보존 — webp 만 가능(AVIF 는 알파 평탄화).
+    // 리사이즈로 파괴되는 워터마크를 추출·재삽입해 NAI 인스펙터 인식을 유지한다.
+    let preserveStealth = false;
+    if (opt === 'lossy' || opt === 'lossless') {
+      const stealthChoice = await appState.pushDialogAsync({
+        type: 'select',
+        text: 'NAI 스테가노그래피(워터마크)를 보존할까요?\n보존 시 NAI 인스펙터 인식이 유지되지만 처리가 느려집니다.',
+        items: [
+          { text: '보존 안 함 (빠름)', value: 'no' },
+          { text: '보존 (NAI 호환)', value: 'yes' },
+        ],
+      });
+      if (stealthChoice === undefined) return;
+      preserveStealth = stealthChoice === 'yes';
+    }
     const separatorInput = await appState.pushDialogAsync({
       type: 'input-confirm',
       text: '파일명 구분자를 입력해주세요 (기본값: .)',
@@ -642,6 +660,7 @@ export class ExportPresetService {
       opt,
       imageSize,
       quality,
+      preserveStealth,
       separator,
       charsToReplace,
       'scene',

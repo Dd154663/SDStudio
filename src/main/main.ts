@@ -38,6 +38,7 @@ const { exiftool } = require('exiftool-vendored');
 const chokidar = require('chokidar');
 import webpackPaths from '../../.erb/configs/webpack.paths';
 import { Config } from './config';
+import { extractStealthBits, embedStealthBits, canEmbed } from './stealth';
 import { spawn } from 'child_process';
 import fsExtra from 'fs-extra';
 import LocalAIService from './localai';
@@ -347,6 +348,9 @@ async function encodeImageFile(
     effort?: number;
     resize?: { maxWidth: number; maxHeight: number };
     carryMetadata?: boolean;
+    // NAI 알파 stealth 워터마크 보존(webp 전용). 소스에서 비트스트림을 추출해
+    // 리사이즈된 출력 알파에 재삽입한다. 없으면/AVIF 면 일반 경로로 폴백.
+    preserveStealth?: boolean;
   },
 ): Promise<void> {
   const buf = await fs.readFile(srcAbs);
@@ -361,6 +365,63 @@ async function encodeImageFile(
     }
   }
   await fs.mkdir(path.dirname(destAbs), { recursive: true });
+
+  // ── NAI stealth 보존 경로 (webp 전용) ──
+  // 소스 알파에서 stealth 비트스트림을 추출 → 리사이즈된 출력 알파에 재삽입 →
+  // webp 무손실 알파로 인코딩. AVIF 는 알파를 평탄화하므로 대상이 아니다.
+  if (opts.preserveStealth && opts.format === 'webp') {
+    const src = await sharp(buf)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const bits = extractStealthBits(
+      src.data,
+      src.info.width,
+      src.info.height,
+      src.info.channels,
+    );
+    if (bits) {
+      let rp = sharp(buf);
+      if (opts.resize) {
+        rp = rp.resize(opts.resize.maxWidth, opts.resize.maxHeight, {
+          fit: sharp.fit.inside,
+          withoutEnlargement: true,
+        });
+      }
+      const out = await rp
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      if (canEmbed(bits, out.info.width, out.info.height)) {
+        embedStealthBits(
+          out.data,
+          out.info.width,
+          out.info.height,
+          out.info.channels,
+          bits,
+        );
+        let enc = sharp(out.data, {
+          raw: {
+            width: out.info.width,
+            height: out.info.height,
+            channels: out.info.channels,
+          },
+        });
+        // 무손실이면 알파도 무손실. 저손실이면 RGB 만 손실, 알파는 alphaQuality 100
+        // 으로 무손실 유지(= stealth LSB 보존).
+        enc = opts.lossless
+          ? enc.webp({ lossless: true })
+          : enc.webp({ quality: opts.quality ?? 80, lossless: false, alphaQuality: 100 });
+        if (comment) {
+          enc = enc.withMetadata({ exif: { IFD0: { ImageDescription: comment } } });
+        }
+        await enc.toFile(destAbs);
+        return;
+      }
+    }
+    // stealth 없음/담기 부족 → 아래 일반 경로로 폴백(경고 없이 자연 통과)
+  }
+
   let pipeline = sharp(buf);
   if (opts.resize) {
     pipeline = pipeline.resize(opts.resize.maxWidth, opts.resize.maxHeight, {
@@ -742,7 +803,7 @@ ipcMain.handle(
   'resize-image',
   async (
     event,
-    { inputPath, outputPath, maxWidth, maxHeight, optimize, quality },
+    { inputPath, outputPath, maxWidth, maxHeight, optimize, quality, preserveStealth },
   ) => {
     try {
       const srcAbs = APP_DIR + '/' + inputPath;
@@ -767,6 +828,7 @@ ipcMain.handle(
         quality,
         resize: { maxWidth, maxHeight },
         carryMetadata: true,
+        preserveStealth,
       });
     } catch (e: any) {
       console.error('resize-image error:', e);

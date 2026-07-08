@@ -26,6 +26,9 @@ export interface ResizeImageInput {
   // 최적화 품질(1~100). 미지정 시 종전 기본값(webp 80·avif 50). lossless 는 무시.
   // 데스크톱 전용 — Android 리사이저는 리사이즈만 하고 이 값을 사용하지 않는다.
   quality?: number;
+  // NAI 알파 stealth 워터마크 보존(webp 전용, 데스크톱 전용). 리사이즈로 파괴되는
+  // 워터마크를 추출→재삽입해 NAI 인스펙터 인식을 유지한다. raw 재인코딩으로 느려짐.
+  preserveStealth?: boolean;
 }
 
 export interface FileStatEntry {

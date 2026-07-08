@@ -72,6 +72,8 @@ export interface ExportPreset {
   imageSize: number;
   /** 압축 화질(1~100). 미설정 시 기본값(webp 80·avif 50). lossy/avif 만 적용. */
   quality?: number;
+  /** NAI 스테가노그래피(알파 워터마크) 보존. webp(lossy/lossless)만 유효. 느려짐. */
+  preserveStealth?: boolean;
   separator: string;
   // ── 신규 옵션 (모두 선택적 — 구형 프리셋은 그대로 동작, 마이그레이션 불필요) ──
   /** 파일명 패턴: 'scene'(기본=현행) / 프로젝트명 / 폴더명+프로젝트명 접두 */
