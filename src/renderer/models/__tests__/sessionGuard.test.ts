@@ -66,6 +66,34 @@ beforeEach(() => {
   (appState as any).storageWriteGuard = true;
 });
 
+describe('세션 uuid 지연 발급 (트랙1 (b) B1)', () => {
+  test('id 없으면 migrate 가 uuid 를 발급한다 (로드/생성 seam)', async () => {
+    const svc = makeSvc();
+    const out = await svc.migrate({ version: 1, presetShareds: {} });
+    expect(typeof out.id).toBe('string');
+    expect(out.id.length).toBeGreaterThan(0);
+  });
+
+  test('기존 id 는 보존한다 (순수 로드 경로)', async () => {
+    const svc = makeSvc();
+    const out = await svc.migrate({
+      version: 1,
+      presetShareds: {},
+      id: 'keep-me',
+    });
+    expect(out.id).toBe('keep-me');
+  });
+
+  test('id 삭제 후 재 migrate 하면 새 uuid 가 발급된다 (복제·유래 재발급 계약)', async () => {
+    const svc = makeSvc();
+    const rc: any = { version: 1, presetShareds: {}, id: 'orig' };
+    delete rc.id; // 복제/템플릿/임포트 경로가 하는 동작
+    const out = await svc.migrate(rc);
+    expect(typeof out.id).toBe('string');
+    expect(out.id).not.toBe('orig');
+  });
+});
+
 describe('countResourceScenes', () => {
   test('씬+인페인트 개수를 합산, 손상 JSON 은 -1', () => {
     const svc = makeSvc();

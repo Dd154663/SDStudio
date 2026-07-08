@@ -107,7 +107,7 @@ const RULES: Rule[] = [
     count: (c) =>
       countMatches(
         c,
-        /'(outs|inpaints|inpaint_orgs|inpaint_masks|vibes|references|projects)\/' *\+/g,
+        /'(outs|inpaints|inpaint_orgs|inpaint_masks|vibes|references|projects|workspace)\/' *\+/g,
       ),
     allow: {
       // 백업 아카이브 내부의 "논리 경로"(물리 배치와 무관한 아카이브 엔트리명,

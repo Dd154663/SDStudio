@@ -431,6 +431,18 @@ export class AndroidBackend extends Backend {
     });
   }
 
+  async getFreeSpace(): Promise<number | null> {
+    // 네이티브 StatFs 로 데이터 루트 볼륨의 실제 여유 공간을 조회한다.
+    // (navigator.storage.estimate() 는 WebView 가 캡된 쿼터를 돌려줘 실제 디스크
+    //  여유와 무관 — 항상 ~10GB 로 추정되던 버그. ZipService.getFreeSpace 로 교체)
+    // 조회 실패 시 null(="알 수 없음")로 폴백한다.
+    try {
+      const res = await ZipService.getFreeSpace({});
+      if (res && typeof res.bytes === 'number') return res.bytes;
+    } catch (e) {}
+    return null;
+  }
+
   async selectFile(): Promise<string | undefined> {
     const result = await FilePicker.pickFiles({
       types: ['application/x-tar'],

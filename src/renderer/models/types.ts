@@ -388,6 +388,7 @@ export interface SelectedWorkflow {
 export interface ISession {
   version: number;
   name: string;
+  id?: string; // 세션 전역 유일 식별자(uuid v4). 트랙1 (b) 물리 통합 — 로드 시 지연 발급. 구버전은 미지 필드로 무시(데이터 호환 안전)
   selectedWorkflow?: SelectedWorkflow;
   presets: Record<string, any[]>;
   inpaints: Record<string, IInpaintScene>;
@@ -403,6 +404,9 @@ export interface ISession {
 export class Session implements Serealizable {
   @observable accessor version: number = 1;
   @observable accessor name: string = '';
+  // 세션 전역 유일 식별자(uuid v4). 트랙1 (b) 물리 통합의 폴더명(정제이름__짧은id)·
+  // meta.json 근거. 로드 경로(SessionService.migrate)에서 없으면 지연 발급된다.
+  @observable accessor id: string | undefined = undefined;
   @observable accessor selectedWorkflow: SelectedWorkflow | undefined =
     undefined;
   @observable accessor presets: Map<string, any[]> = new Map();
@@ -581,6 +585,7 @@ export class Session implements Serealizable {
     const session = new Session();
     session.name = json.name;
     session.version = json.version;
+    session.id = json.id; // 있으면 유지(없으면 undefined → 로드 시 지연 발급)
     session.selectedWorkflow = json.selectedWorkflow;
     session.presets = new Map(
       Object.entries(json.presets).map(([key, value]) => [
@@ -632,6 +637,7 @@ export class Session implements Serealizable {
     return {
       name: this.name,
       version: this.version,
+      id: this.id,
       selectedWorkflow: this.selectedWorkflow,
       presets: Object.fromEntries(
         Array.from(this.presets.entries()).map(([key, value]) => [

@@ -17,6 +17,8 @@ import { appState } from './AppService';
 import { persistService } from './PersistenceService';
 import { runMobilePermissionOnboarding } from './mobilePermissions';
 import { waitForStorageAccess } from './storagePermissionGate';
+import { migrationService } from './MigrationService';
+import { setWorkspaceLayoutActive } from './storageLayout';
 
 // ── 명시적 부트 시퀀스 ──
 // 앱의 모든 비동기 초기화가 여기서 "정해진 순서"로 일어난다.
@@ -61,6 +63,27 @@ export async function bootstrapApp(): Promise<void> {
       await backend.getConfig();
     } catch (e) {
       console.error('설정 로드 실패(기본값으로 진행):', e);
+    }
+
+    // 1.5) [트랙1 (b)] 저장소 v2 마이그레이션 판정·실행 — 권한+config 확보 후,
+    //      세션 스캔(init) 전의 유일한 창(스펙 §3-1). 게이트 UI(MigrationGate)가
+    //      선택을 받을 때까지 여기서 대기한다. 판정 실패(마커 IO 오류 등)는
+    //      구 배치로 폴백(활성화하지 않음 — 안전 쪽).
+    try {
+      const det = await migrationService.detect();
+      if (det === 'fresh') {
+        // 신규 사용자 — 마커만 기록하고 신 배치 활성화.
+        await migrationService.markFreshAndActivate();
+      } else if (det === 'none') {
+        // 마커 있음·잔존 없음 — 신 배치로 통과.
+        setWorkspaceLayoutActive(true);
+      } else {
+        // 'legacy' — 최초 마이그레이션(게이트) 또는 증분 이동. "나중에 하기"
+        // 선택 시 activate 하지 않고 구 배치 그대로 init 진행.
+        await migrationService.runFullFlow();
+      }
+    } catch (e) {
+      console.error('저장소 마이그레이션 판정/실행 실패(구 배치 폴백):', e);
     }
 
     // 2) 핵심: 세션 서비스 준비

@@ -47,6 +47,9 @@ export abstract class Backend {
   abstract copyToDownloads(path: string): Promise<void>;
   abstract zipFiles(files: FileEntry[], outPath: string): Promise<void>;
   abstract unzipFiles(tarPath: string, outPath: string): Promise<void>;
+  // 데이터 루트가 위치한 볼륨의 여유 공간(bytes). 조회 불가/미지원이면 null
+  // (= "알 수 없음"). 트랙1 (b) 마이그레이션 백업 게이트의 공간 판정용.
+  abstract getFreeSpace(): Promise<number | null>;
   abstract searchTags(word: string): Promise<any>;
   abstract lookupTag(word: string): Promise<any>;
   abstract loadPiecesDB(pieces: string[]): Promise<void>;

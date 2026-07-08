@@ -29,6 +29,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.StatFs;
 import android.provider.Settings;
 
 import androidx.core.content.FileProvider;
@@ -41,13 +42,23 @@ public class ZipService extends Plugin {
 
   @PluginMethod
   public void zipFiles(PluginCall call) {
+    // 원자적 아카이브 쓰기: '.part' 임시 경로에 기록 후 완료 시 rename.
+    // 도중 종료 시 불완전 tar 가 최종 경로에 남지 않는다(트랙1 (b) 백업 원자성 §4-0).
+    String outPath = call.getString("outPath");
+    String tmpPath = outPath + ".part";
+    File tmpFile = new File(tmpPath);
     try {
-      String outPath = call.getString("outPath");
       List<JSONObject> files = call.getArray("files").toList();
-      FileOutputStream fos = new FileOutputStream(outPath);
+      FileOutputStream fos = new FileOutputStream(tmpFile);
       BufferedOutputStream bos = new BufferedOutputStream(fos);
       //GzipCompressorOutputStream gzipOut = new GzipCompressorOutputStream(bos);
       TarArchiveOutputStream tarOut = new TarArchiveOutputStream(bos);
+      // 엔트리 이름 100바이트 초과(한글 프로젝트/씬 이름이면 흔함) 시 기본 모드
+      // (LONGFILE_ERROR)는 RuntimeException 을 던져 미처리로 프로세스가 즉사한다
+      // (모바일 백업 완료 직전 튕김의 원인). PAX 확장 헤더로 긴 이름을 기록한다 —
+      // PC(tar-stream)·복원(TarArchiveInputStream) 모두 PAX 를 지원해 호환 유지.
+      tarOut.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
+      tarOut.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_POSIX);
 
       for (JSONObject file : files) {
         String fileName = file.getString("name");
@@ -57,9 +68,43 @@ public class ZipService extends Plugin {
 
       tarOut.finish();
       tarOut.close();
+
+      File finalFile = new File(outPath);
+      if (finalFile.exists()) {
+        finalFile.delete();
+      }
+      if (!tmpFile.renameTo(finalFile)) {
+        tmpFile.delete();
+        throw new IOException("Failed to finalize archive (rename)");
+      }
       call.resolve();
-    } catch (IOException | JSONException e) {
+    } catch (Exception e) {
+      // IOException/JSONException 외의 런타임 예외(라이브러리가 던지는
+      // RuntimeException 등)도 흡수한다 — 플러그인 스레드의 미처리 예외는
+      // 앱 프로세스 전체를 죽이므로(실기 크래시 사례) 반드시 reject 로 변환.
+      // 불완전 임시 파일 정리 시도
+      if (tmpFile.exists()) {
+        tmpFile.delete();
+      }
       call.reject("Failed to zip files", e);
+    }
+  }
+
+  // 데이터 루트 볼륨의 실제 여유 공간(bytes) — 마이그레이션 백업 게이트 공간 판정용.
+  // 데이터는 Documents/.SDStudio 하위에 있어 외부 저장 볼륨과 동일하므로 그 볼륨의
+  // StatFs 를 조회한다. navigator.storage.estimate() 는 WebView 가 캡된 쿼터(≈10GB)를
+  // 돌려줘 실제 디스크 여유와 무관하므로 네이티브 StatFs 로 대체한다(트랙1 (b) §4-1).
+  @PluginMethod
+  public void getFreeSpace(PluginCall call) {
+    try {
+      File dir = Environment.getExternalStorageDirectory();
+      StatFs stat = new StatFs(dir.getAbsolutePath());
+      long available = stat.getAvailableBytes();
+      JSObject ret = new JSObject();
+      ret.put("bytes", available);
+      call.resolve(ret);
+    } catch (Exception e) {
+      call.reject("Failed to get free space", e);
     }
   }
 

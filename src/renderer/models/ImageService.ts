@@ -342,11 +342,13 @@ export class ImageService extends EventTarget {
   // but only happens when "swap of scene names" is the case
   // let's just keep it simple; this is probably not common use case
   async onRenameScene(session: Session, oldName: string, newName: string) {
+    // projectPath 경유 — 신 배치 활성 시 workspace/<물리폴더>/<root>/<씬> 로 분기.
+    // 캐시 키도 projectPath 로 생성되므로 접두 매칭이 양 배치에서 일치한다.
     const cache = this.cache.cache;
     const toDelete = [];
     for (const key of cache.keys()) {
       for (const imgDir of imageDirList.concat(maskDirList)) {
-        if (key.startsWith(imgDir + '/' + session.name + '/' + oldName)) {
+        if (key.startsWith(projectPath(imgDir, session.name, oldName))) {
           toDelete.push(key);
         }
       }
@@ -355,8 +357,8 @@ export class ImageService extends EventTarget {
       this.cache.delete(key); // 외부 delete 사용 (용량 회계 유지)
     }
     for (const imgDir of imageDirList) {
-      const oldPath = imgDir + '/' + session.name + '/' + oldName;
-      const newPath = imgDir + '/' + session.name + '/' + newName;
+      const oldPath = projectPath(imgDir, session.name, oldName);
+      const newPath = projectPath(imgDir, session.name, newName);
       try {
         await backend.renameDir(oldPath, newPath);
       } catch (e) {
@@ -364,8 +366,8 @@ export class ImageService extends EventTarget {
       }
     }
     for (const imgDir of maskDirList) {
-      const oldPath = imgDir + '/' + session.name + '/' + oldName + '.png';
-      const newPath = imgDir + '/' + session.name + '/' + newName + '.png';
+      const oldPath = projectPath(imgDir, session.name, oldName + '.png');
+      const newPath = projectPath(imgDir, session.name, newName + '.png');
       try {
         await backend.renameFile(oldPath, newPath);
       } catch (e) {
@@ -385,8 +387,8 @@ export class ImageService extends EventTarget {
   ): Promise<number> {
     let moved = 0;
     for (const imgDir of imageDirList) {
-      const srcDir = imgDir + '/' + session.name + '/' + sourceName;
-      const dstDir = imgDir + '/' + session.name + '/' + targetName;
+      const srcDir = projectPath(imgDir, session.name, sourceName);
+      const dstDir = projectPath(imgDir, session.name, targetName);
 
       let files: string[];
       try {
@@ -445,7 +447,7 @@ export class ImageService extends EventTarget {
     const toDelete: string[] = [];
     for (const key of cache.keys()) {
       for (const imgDir of imageDirList.concat(maskDirList)) {
-        if (key.startsWith(imgDir + '/' + session.name + '/' + sourceName)) {
+        if (key.startsWith(projectPath(imgDir, session.name, sourceName))) {
           toDelete.push(key);
         }
       }

@@ -7,9 +7,23 @@ import {
   projectPath,
   projectFolderPath,
   projectJsonPath,
+  workspacePath,
+  WORKSPACE_ROOT,
   PROJECT_JSON_ROOT,
   PROJECT_IMAGE_ROOTS,
 } from './projectPaths';
+import {
+  isWorkspaceLayout,
+  physicalDirOf,
+  registerProjectDir,
+  unregisterProjectDir,
+  WorkspaceProjectMeta,
+  PROJECT_META_FILE,
+  PROJECT_JSON_FILE,
+} from './storageLayout';
+
+// 신 배치의 소프트 삭제 파일명(project.json.deleted).
+const WORKSPACE_DELETED_FILE = PROJECT_JSON_FILE + '.deleted';
 
 // --- Type definitions ---
 
@@ -267,14 +281,14 @@ export class TrashService extends EventTarget {
       deletedAt: now,
     };
 
-    // Move scene output directory to .trash/
-    const imgDir = scene.type === 'scene' ? 'outs' : 'inpaints';
-    const srcDir = imgDir + '/' + session.name + '/' + scene.name;
-    const dstDir = imgDir + '/' + session.name + '/' + IMAGE_TRASH_DIR + '/' + scene.name;
+    // Move scene output directory to .trash/ (projectPath 경유 — 신 배치 자동 분기)
+    const imgDir: 'outs' | 'inpaints' = scene.type === 'scene' ? 'outs' : 'inpaints';
+    const srcDir = projectPath(imgDir, session.name, scene.name);
+    const dstDir = projectPath(imgDir, session.name, IMAGE_TRASH_DIR, scene.name);
 
     // Ensure .trash directory exists by writing a placeholder
     try {
-      await backend.writeFile(imgDir + '/' + session.name + '/' + IMAGE_TRASH_DIR + '/.gitkeep', '');
+      await backend.writeFile(projectPath(imgDir, session.name, IMAGE_TRASH_DIR, '.gitkeep'), '');
     } catch (e) {}
 
     try {
@@ -285,11 +299,11 @@ export class TrashService extends EventTarget {
 
     // For inpaint scenes, also move mask and org files
     if (scene.type === 'inpaint') {
-      for (const dir of ['inpaint_masks', 'inpaint_orgs']) {
-        const maskSrc = dir + '/' + session.name + '/' + scene.name + '.png';
-        const maskDst = dir + '/' + session.name + '/' + IMAGE_TRASH_DIR + '/' + scene.name + '.png';
+      for (const dir of ['inpaint_masks', 'inpaint_orgs'] as const) {
+        const maskSrc = projectPath(dir, session.name, scene.name + '.png');
+        const maskDst = projectPath(dir, session.name, IMAGE_TRASH_DIR, scene.name + '.png');
         try {
-          await backend.writeFile(dir + '/' + session.name + '/' + IMAGE_TRASH_DIR + '/.gitkeep', '');
+          await backend.writeFile(projectPath(dir, session.name, IMAGE_TRASH_DIR, '.gitkeep'), '');
         } catch (e) {}
         try {
           await backend.renameFile(maskSrc, maskDst);
@@ -333,10 +347,10 @@ export class TrashService extends EventTarget {
       throw new Error('같은 이름의 씬이 이미 존재합니다');
     }
 
-    // Move directory back
-    const imgDir = sceneType === 'scene' ? 'outs' : 'inpaints';
-    const srcDir = imgDir + '/' + session.name + '/' + IMAGE_TRASH_DIR + '/' + sceneName;
-    const dstDir = imgDir + '/' + session.name + '/' + sceneName;
+    // Move directory back (projectPath 경유 — 신 배치 자동 분기)
+    const imgDir: 'outs' | 'inpaints' = sceneType === 'scene' ? 'outs' : 'inpaints';
+    const srcDir = projectPath(imgDir, session.name, IMAGE_TRASH_DIR, sceneName);
+    const dstDir = projectPath(imgDir, session.name, sceneName);
     try {
       await backend.renameDir(srcDir, dstDir);
     } catch (e) {
@@ -345,9 +359,9 @@ export class TrashService extends EventTarget {
 
     // For inpaint scenes, restore mask and org
     if (sceneType === 'inpaint') {
-      for (const dir of ['inpaint_masks', 'inpaint_orgs']) {
-        const maskSrc = dir + '/' + session.name + '/' + IMAGE_TRASH_DIR + '/' + sceneName + '.png';
-        const maskDst = dir + '/' + session.name + '/' + sceneName + '.png';
+      for (const dir of ['inpaint_masks', 'inpaint_orgs'] as const) {
+        const maskSrc = projectPath(dir, session.name, IMAGE_TRASH_DIR, sceneName + '.png');
+        const maskDst = projectPath(dir, session.name, sceneName + '.png');
         try {
           await backend.renameFile(maskSrc, maskDst);
         } catch (e) {}
@@ -371,18 +385,21 @@ export class TrashService extends EventTarget {
     this.ensureLoaded();
     const key = this.sceneKey(projectName, sceneName);
 
-    // Delete directory
-    const imgDir = sceneType === 'scene' ? 'outs' : 'inpaints';
-    const dir = imgDir + '/' + projectName + '/' + IMAGE_TRASH_DIR + '/' + sceneName;
+    // Delete directory (projectPath 경유 — 신 배치 자동 분기)
+    const imgDir: 'outs' | 'inpaints' = sceneType === 'scene' ? 'outs' : 'inpaints';
     try {
-      await backend.deleteDir(dir);
+      await backend.deleteDir(
+        projectPath(imgDir, projectName, IMAGE_TRASH_DIR, sceneName),
+      );
     } catch (e) {}
 
     // Delete mask/org for inpaint
     if (sceneType === 'inpaint') {
-      for (const maskDir of ['inpaint_masks', 'inpaint_orgs']) {
+      for (const maskDir of ['inpaint_masks', 'inpaint_orgs'] as const) {
         try {
-          await backend.deleteFile(maskDir + '/' + projectName + '/' + IMAGE_TRASH_DIR + '/' + sceneName + '.png');
+          await backend.deleteFile(
+            projectPath(maskDir, projectName, IMAGE_TRASH_DIR, sceneName + '.png'),
+          );
         } catch (e) {}
       }
     }
@@ -410,9 +427,63 @@ export class TrashService extends EventTarget {
     return [PROJECT_JSON_ROOT, ...dirs.map((d) => projectFolderPath(d))];
   }
 
+  // 신 배치(workspace/) 1단 스캔: 각 하위 폴더의 meta.json 을 읽어 논리 이름과
+  // 활성/소프트삭제 상태를 함께 반환한다. 실제 IO 오류는 throw(구 배치 스캔과
+  // 동일 계약 — 파괴적 경로가 "불확실하면 보존"). meta 파손 폴더는 스킵.
+  private async scanWorkspaceEntries(): Promise<
+    { name: string; dir: string; hasJson: boolean; hasDeleted: boolean }[]
+  > {
+    const dirs = await backend.listFiles(WORKSPACE_ROOT); // ENOENT→[], 실오류→throw
+    const result: {
+      name: string;
+      dir: string;
+      hasJson: boolean;
+      hasDeleted: boolean;
+    }[] = [];
+    for (const dir of dirs) {
+      if (dir.startsWith('.')) continue;
+      let meta: WorkspaceProjectMeta;
+      try {
+        meta = JSON.parse(
+          await backend.readFile(workspacePath(dir, PROJECT_META_FILE)),
+        );
+      } catch (e) {
+        continue; // meta 부재/파손 — 스킵(부팅/정리는 계속)
+      }
+      if (!meta || typeof meta.name !== 'string' || !meta.name.trim()) continue;
+      const hasJson = await backend.existFile(
+        workspacePath(dir, PROJECT_JSON_FILE),
+      );
+      const hasDeleted = await backend.existFile(
+        workspacePath(dir, WORKSPACE_DELETED_FILE),
+      );
+      result.push({ name: meta.name, dir, hasJson, hasDeleted });
+    }
+    return result;
+  }
+
   // 주어진 확장자(.json / .deleted)를 가진 프로젝트 파일을 루트 + 폴더에서 모두 찾아
   // 이름 → 전체경로 맵으로 반환한다. (동명은 루트 우선)
   private async scanProjectFiles(suffix: string): Promise<Map<string, string>> {
+    // 신 배치: workspace/ 하위의 project.json(활성)/project.json.deleted(소프트삭제)
+    // 를 스캔한다. suffix 는 상태 선택자로만 쓰이고 경로는 신 배치 규칙으로 조립.
+    if (isWorkspaceLayout()) {
+      const map = new Map<string, string>();
+      const wantDeleted = suffix === '.deleted';
+      for (const e of await this.scanWorkspaceEntries()) {
+        const want = wantDeleted ? e.hasDeleted : e.hasJson;
+        if (!want) continue;
+        if (!e.name.trim()) continue;
+        if (map.has(e.name)) continue;
+        map.set(
+          e.name,
+          wantDeleted
+            ? workspacePath(e.dir, WORKSPACE_DELETED_FILE)
+            : workspacePath(e.dir, PROJECT_JSON_FILE),
+        );
+      }
+      return map;
+    }
     const map = new Map<string, string>();
     const dirs = await this.getProjectDirs();
     for (const dir of dirs) {
@@ -437,6 +508,14 @@ export class TrashService extends EventTarget {
   // 루트(projects/<이름>.json)와 모든 폴더 경로를 점검한다.
   // getProjectDirs 가 throw 하면(스캔 불가) 호출부에서 "불확실 → 보존" 으로 처리한다.
   private async activeProjectFileExists(name: string): Promise<boolean> {
+    // 신 배치: workspace/ 직접 스캔(레지스트리 비의존 — 소프트삭제로 미등록이어도
+    // 활성 여부를 정확히 판정). scanWorkspaceEntries 는 실오류 시 throw → 호출부 보존.
+    if (isWorkspaceLayout()) {
+      for (const e of await this.scanWorkspaceEntries()) {
+        if (e.name === name && e.hasJson) return true;
+      }
+      return false;
+    }
     if (await backend.existFile(projectJsonPath(name))) return true;
     const dirs = await this.getProjectDirs();
     for (const dir of dirs) {
@@ -451,6 +530,20 @@ export class TrashService extends EventTarget {
   // (이 함수는 .deleted 파일 경로만 다루며 이미지 디렉터리와 무관하므로,
   //  실패 시 스킵해도 데이터 안전에는 영향이 없다.)
   private async findAllDeletedPaths(name: string): Promise<string[]> {
+    if (isWorkspaceLayout()) {
+      const result: string[] = [];
+      try {
+        for (const e of await this.scanWorkspaceEntries()) {
+          if (e.name === name && e.hasDeleted) {
+            result.push(workspacePath(e.dir, WORKSPACE_DELETED_FILE));
+          }
+        }
+      } catch (e) {
+        console.error('.deleted 경로 스캔 실패 — 정리 건너뜀:', name, e);
+        return [];
+      }
+      return result;
+    }
     const target = name + '.deleted';
     const result: string[] = [];
     try {
@@ -556,9 +649,18 @@ export class TrashService extends EventTarget {
         } catch (e) {}
       }
     } else if (deletedPath) {
-      // 같은 위치(폴더 포함)에 .json 으로 되돌린다 → 폴더 소속도 복원됨
-      const jsonPath = deletedPath.replace(/\.deleted$/, '.json');
-      await backend.renameFile(deletedPath, jsonPath);
+      if (isWorkspaceLayout()) {
+        // 신 배치: project.json.deleted → project.json (접미 제거). 물리 폴더는
+        // 불변이라 폴더 소속(meta.folder)도 그대로 복원된다. 레지스트리 재등록.
+        const jsonPath = deletedPath.slice(0, -WORKSPACE_DELETED_FILE.length) + PROJECT_JSON_FILE;
+        await backend.renameFile(deletedPath, jsonPath);
+        const dir = deletedPath.split('/')[1];
+        if (dir) registerProjectDir(name, dir);
+      } else {
+        // 같은 위치(폴더 포함)에 .json 으로 되돌린다 → 폴더 소속도 복원됨
+        const jsonPath = deletedPath.replace(/\.deleted$/, '.json');
+        await backend.renameFile(deletedPath, jsonPath);
+      }
     } else {
       throw new Error('프로젝트를 휴지통에서 찾을 수 없습니다');
     }
@@ -643,13 +745,29 @@ export class TrashService extends EventTarget {
     }
 
     if (safeToDeleteDirs) {
-      // 삭제 대상 이미지 루트 목록은 PROJECT_IMAGE_ROOTS 단일 출처를 따른다
-      // (references 포함 6종 — 과거 references 누락으로 영구삭제 후
-      //  references/<이름>/ 고아 디렉터리가 남던 버그 수정, 2026-07-07).
-      for (const dir of PROJECT_IMAGE_ROOTS) {
-        try {
-          await backend.deleteDir(projectPath(dir, name));
-        } catch (e) {}
+      if (isWorkspaceLayout()) {
+        // 신 배치: 프로젝트 물리 폴더(workspace/<dir>) 통째 삭제 — 1연산으로
+        // 이미지 6루트 + json + meta 를 모두 제거(스펙 §A-4). dir 은 .deleted
+        // 경로에서 파생(소프트삭제라 레지스트리엔 없을 수 있음). dataPathGuard 는
+        // 2세그먼트(workspace/<dir>)라 통과.
+        if (deletedPath) {
+          const dir = deletedPath.split('/')[1];
+          if (dir) {
+            try {
+              await backend.deleteDir(workspacePath(dir));
+            } catch (e) {}
+            unregisterProjectDir(name);
+          }
+        }
+      } else {
+        // 삭제 대상 이미지 루트 목록은 PROJECT_IMAGE_ROOTS 단일 출처를 따른다
+        // (references 포함 6종 — 과거 references 누락으로 영구삭제 후
+        //  references/<이름>/ 고아 디렉터리가 남던 버그 수정, 2026-07-07).
+        for (const dir of PROJECT_IMAGE_ROOTS) {
+          try {
+            await backend.deleteDir(projectPath(dir, name));
+          } catch (e) {}
+        }
       }
     }
 
@@ -755,16 +873,16 @@ export class TrashService extends EventTarget {
     }
 
     for (const projectName of activeProjects) {
-      for (const imgDir of ['outs', 'inpaints']) {
+      for (const imgDir of ['outs', 'inpaints'] as const) {
         let sceneDirs: string[];
         try {
-          sceneDirs = await backend.listFiles(imgDir + '/' + projectName);
+          sceneDirs = await backend.listFiles(projectPath(imgDir, projectName));
         } catch (e) {
           continue;
         }
         for (const sceneDir of sceneDirs) {
           if (sceneDir === IMAGE_TRASH_DIR || sceneDir.startsWith('.')) continue;
-          const trashMetaPath = imgDir + '/' + projectName + '/' + sceneDir + '/' + IMAGE_TRASH_DIR + '/' + TRASH_META_FILE;
+          const trashMetaPath = projectPath(imgDir, projectName, sceneDir, IMAGE_TRASH_DIR, TRASH_META_FILE);
           if (!(await backend.existFile(trashMetaPath))) continue;
           try {
             const metaStr = await backend.readFile(trashMetaPath);
@@ -775,7 +893,7 @@ export class TrashService extends EventTarget {
               if (age >= IMAGE_RETENTION_MS) {
                 try {
                   await backend.deleteFile(
-                    imgDir + '/' + projectName + '/' + sceneDir + '/' + IMAGE_TRASH_DIR + '/' + filename,
+                    projectPath(imgDir, projectName, sceneDir, IMAGE_TRASH_DIR, filename),
                   );
                 } catch (e) {}
                 delete meta[filename];

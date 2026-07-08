@@ -8,10 +8,12 @@
 // 주의: 'localai'/'models' 루트는 LocalAI 재설치가 정당하게 통째 삭제하므로
 // 보호 목록에 넣지 않는다 (LocalAIService.ts:37-40).
 
-import { PROJECT_DATA_ROOTS } from '../models/projectPaths';
+import { PROJECT_DATA_ROOTS, WORKSPACE_ROOT } from '../models/projectPaths';
 
-// 보호 루트 7종 — 단일 출처(projectPaths.PROJECT_DATA_ROOTS)에서 파생.
-const PROTECTED_ROOTS = new Set<string>(PROJECT_DATA_ROOTS);
+// 보호 루트: 구 데이터 루트 7종 + 신 물리 통합 루트(workspace, 트랙1 (b)).
+// 단일 출처(projectPaths)에서 파생 — workspace 는 B1 시점부터 선제 보호한다
+// (단일 세그먼트 'workspace' 통째 삭제 거부 = 신 배치 전체 유실 차단).
+const PROTECTED_ROOTS = new Set<string>([...PROJECT_DATA_ROOTS, WORKSPACE_ROOT]);
 
 // 삭제 불가 사유를 반환 (null = 삭제 허용). 순수 함수 — jest 단독 테스트 대상.
 export function dirDeleteViolation(path: string): string | null {

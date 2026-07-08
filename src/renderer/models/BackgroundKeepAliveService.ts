@@ -15,6 +15,9 @@ export class BackgroundKeepAliveService {
   private audioCtx: AudioContext | null = null;
   private osc: OscillatorNode | null = null;
   private active = false;
+  // 생성 큐와 독립적인 수동 유지(참조 카운트). 마이그레이션처럼 큐 밖의 장시간
+  // 작업이 백그라운드 동결로 중단되지 않도록 그 구간에만 오디오를 유지한다.
+  private manualHolds = 0;
 
   start() {
     if (!isMobile) return; // 모바일 전용 (데스크톱은 no-op)
@@ -25,9 +28,24 @@ export class BackgroundKeepAliveService {
     taskQueueService.addEventListener('complete', onChange);
   }
 
+  // 수동 유지 획득/해제 — 생성 큐 동작과 무관하게 동결을 면제한다(모바일 전용).
+  // 중첩 호출 가능(참조 카운트). start() 호출 전에도 동작한다(마이그레이션은 부팅
+  // 게이트에서 start() 이전에 실행되므로). 반드시 try/finally 로 release 를 짝지을 것.
+  acquireHold() {
+    if (!isMobile) return; // 데스크톱은 no-op
+    this.manualHolds++;
+    this.update();
+  }
+  releaseHold() {
+    if (!isMobile) return;
+    this.manualHolds = Math.max(0, this.manualHolds - 1);
+    this.update();
+  }
+
   private update() {
     const need =
-      document.visibilityState === 'hidden' && taskQueueService.isRunning();
+      this.manualHolds > 0 ||
+      (document.visibilityState === 'hidden' && taskQueueService.isRunning());
     if (need && !this.active) this.enable();
     else if (!need && this.active) this.disable();
   }

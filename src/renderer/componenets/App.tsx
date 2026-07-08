@@ -27,6 +27,7 @@ import PieceEditor, { PieceCell } from './PieceEditor';
 import PromptTooltip from './PromptTooltip';
 import ConfirmWindow, { Dialog } from './ConfirmWindow';
 import ExpiredProjectsDialog from './ExpiredProjectsDialog';
+import MigrationGate from './MigrationGate';
 import QueueControl from './SceneQueueControl';
 import { FloatView, FloatViewProvider } from './FloatView';
 import { observer, useObserver } from 'mobx-react-lite';
@@ -825,6 +826,9 @@ export const App = observer(() => {
           </VerticalStack>
           )}
         </ErrorBoundary>
+        {/* 저장소 v2 마이그레이션 게이트 — 활성 시 부팅 스피너 포함 전체를 덮는다
+            (bootReady 이전 실행). 스펙: track1-b-migration-spec.md §4. */}
+        <MigrationGate />
         {/* 분리형 생성 컨트롤 위젯 (PC 전용).
             분리 상태이거나, 컴팩트 템플릿(하단바 없음)이면 항상 플로팅으로 표시. */}
         {!isMobile &&

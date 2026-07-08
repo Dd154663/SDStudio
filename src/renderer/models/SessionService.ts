@@ -25,9 +25,23 @@ import { isOutputImageFile } from './imageFormats';
 import {
   projectPath,
   projectFolderPath,
+  projectJsonPath,
+  workspacePath,
+  WORKSPACE_ROOT,
   PROJECT_JSON_ROOT,
   PROJECT_IMAGE_ROOTS,
 } from './projectPaths';
+import {
+  isWorkspaceLayout,
+  physicalDirOf,
+  registerProjectDir,
+  unregisterProjectDir,
+  renameProjectDirKey,
+  makeWorkspaceDirName,
+  WorkspaceProjectMeta,
+  PROJECT_META_FILE,
+  PROJECT_JSON_FILE,
+} from './storageLayout';
 import {
   PromptPieceSlot,
   GenericScene,
@@ -69,6 +83,190 @@ export class SessionService extends ResourceSyncService<Session> {
 
   constructor() {
     super(PROJECT_JSON_ROOT, SESSION_SERVICE_INTERVAL);
+  }
+
+  // ===== 신 배치(workspace/, storage v2) 계층 =====
+  // 아래 분기는 모두 isWorkspaceLayout()===true 일 때만 동작한다. 비활성 시엔
+  // super/기존 경로로 위임되어 기존 동작이 1바이트도 바뀌지 않는다. 스펙 §2·§5.
+
+  // 세션 본체 경로. 신 배치 활성 시 폴더 무관하게 workspace/<물리폴더>/project.json.
+  getPath(name: string) {
+    if (isWorkspaceLayout()) {
+      return projectJsonPath(name);
+    }
+    return super.getPath(name);
+  }
+
+  // 소프트 삭제 경로: 신 배치는 project.json → project.json.deleted (접미).
+  protected deletedPathOf(src: string): string {
+    if (isWorkspaceLayout()) {
+      return src + '.deleted';
+    }
+    return super.deletedPathOf(src);
+  }
+
+  // 결합 직후 훅 — 신규 프로젝트가 첫 디스크 쓰기 전에 물리 폴더에 등록되도록
+  // 보장하는 안전망. 이미 등록된 이름(스캔으로 올라온 기존 프로젝트, 또는
+  // deep 복제/import 가 복사 전 명시 등록한 경우)은 그대로 통과한다.
+  protected async onAttached(name: string, instance: Session): Promise<void> {
+    if (!isWorkspaceLayout()) return;
+    if (physicalDirOf(name) !== undefined) return;
+    if (!instance.id) instance.id = v4();
+    await this.ensureWorkspaceProject(name, {
+      id: instance.id,
+      folder: this.folderMap[name] ?? '',
+    });
+  }
+
+  // 신 배치 등록 seam: id 확보 → 물리 폴더명 결정 → 레지스트리 등록 → meta.json
+  // 기록. 멱등(이미 등록된 이름은 기존 물리 폴더를 그대로 반환). deep 복제/import
+  // 는 이미지 복사가 createFrom(→onAttached) 보다 앞서므로 복사 시작 전에 이 함수를
+  // 명시 호출해 등록을 선행시킨다(스펙 §A-4).
+  async ensureWorkspaceProject(
+    name: string,
+    opts?: { id?: string; folder?: string },
+  ): Promise<string> {
+    const existing = physicalDirOf(name);
+    if (existing !== undefined) return existing;
+    const id = opts?.id || v4();
+    const dir = makeWorkspaceDirName(name, id);
+    registerProjectDir(name, dir);
+    const meta: WorkspaceProjectMeta = {
+      version: 1,
+      id,
+      name,
+      folder: opts?.folder ?? this.folderMap[name] ?? '',
+    };
+    try {
+      await backend.writeFile(
+        workspacePath(dir, PROJECT_META_FILE),
+        JSON.stringify(meta),
+      );
+    } catch (e) {
+      // meta.json 기록 실패 → 등록을 되돌려 "경로는 풀리는데 meta 는 없는" 갈라짐 방지.
+      unregisterProjectDir(name);
+      throw e;
+    }
+    return dir;
+  }
+
+  // meta.json 의 특정 필드를 부분 갱신한다(read-modify-write). 기존 id/version 보존.
+  private async updateWorkspaceMeta(
+    name: string,
+    patch: Partial<Pick<WorkspaceProjectMeta, 'name' | 'folder'>>,
+  ): Promise<void> {
+    const dir = physicalDirOf(name);
+    if (dir === undefined) {
+      throw new Error(`meta.json 갱신 대상 미등록: ${JSON.stringify(name)}`);
+    }
+    const metaPath = workspacePath(dir, PROJECT_META_FILE);
+    let meta: WorkspaceProjectMeta;
+    try {
+      meta = JSON.parse(await backend.readFile(metaPath));
+    } catch (e) {
+      // meta 부재/파손 시 현재 알고 있는 정보로 재구성(자기치유의 최소형).
+      const inst = this.getLoaded(name) as Session | undefined;
+      meta = {
+        version: 1,
+        id: inst?.id || v4(),
+        name,
+        folder: this.folderMap[name] ?? '',
+      };
+    }
+    if (patch.name !== undefined) meta.name = patch.name;
+    if (patch.folder !== undefined) meta.folder = patch.folder;
+    await backend.writeFile(metaPath, JSON.stringify(meta));
+  }
+
+  // 신 배치 목록 스캔: workspace/ 1단 나열 → 각 하위 폴더의 meta.json 을 읽어
+  // 프로젝트 목록·folderMap(meta.folder 파생)·레지스트리를 채운다. project.json
+  // 부재+project.json.deleted 존재 = 소프트 삭제 상태(목록 제외 — 구 .deleted 와
+  // 동일 의미, 휴지통 스캔이 별도로 소비). meta 파손/부재 폴더는 경고 후 스킵.
+  protected async scanResources(): Promise<{
+    names: string[];
+    folderMap: { [name: string]: string | null };
+    folderList: string[];
+  }> {
+    if (!isWorkspaceLayout()) return super.scanResources();
+
+    const names: string[] = [];
+    const folderMap: { [name: string]: string | null } = {};
+    const folderSet = new Set<string>();
+    const activeNames = new Set<string>();
+    // 소프트 삭제로만 발견된 이름 — 활성 등록이 없을 때만 스캔 끝에 unregister 한다.
+    // (동명 재생성: 옛 폴더=삭제, 새 폴더=활성이 공존할 때 순서와 무관하게 활성 우선)
+    const softOnly: string[] = [];
+
+    let dirs: string[] = [];
+    try {
+      dirs = await backend.listFiles(WORKSPACE_ROOT);
+    } catch (e) {
+      // workspace/ 부재는 [](신규) 로 흡수되지만, 실제 IO 오류면 throw 되어
+      // init 의 #initialScanFailed 경로로 재시도된다.
+      throw e;
+    }
+
+    for (const dir of dirs) {
+      if (dir.startsWith('.')) continue;
+      let meta: WorkspaceProjectMeta | undefined;
+      try {
+        const raw = await backend.readFile(
+          workspacePath(dir, PROJECT_META_FILE),
+        );
+        meta = JSON.parse(raw);
+      } catch (e) {
+        console.warn(
+          `[workspace 스캔] meta.json 읽기 실패 — 폴더 스킵: ${dir}`,
+          e,
+        );
+        continue;
+      }
+      if (!meta || typeof meta.name !== 'string' || !meta.name) {
+        console.warn(`[workspace 스캔] meta.json 형식 이상 — 폴더 스킵: ${dir}`);
+        continue;
+      }
+      const name = meta.name;
+      const folder = typeof meta.folder === 'string' ? meta.folder : '';
+      // 활성 판정 = project.json 존재. 소프트 삭제(project.json.deleted)만 있으면
+      // 목록/등록에서 제외한다(동명 새 프로젝트가 삭제 폴더를 재사용하지 않게).
+      const hasActive = await backend.existFile(
+        workspacePath(dir, PROJECT_JSON_FILE),
+      );
+      if (!hasActive) {
+        softOnly.push(name);
+        continue;
+      }
+      registerProjectDir(name, dir);
+      activeNames.add(name);
+      names.push(name);
+      folderMap[name] = folder || null;
+      // 폴더 조상 경로 파생(a/b/c → a, a/b, a/b/c)
+      if (folder) {
+        const parts = folder.split('/');
+        let acc = '';
+        for (const p of parts) {
+          acc = acc ? acc + '/' + p : p;
+          folderSet.add(acc);
+        }
+      }
+    }
+
+    // 소프트 삭제로만 존재하는 이름은 레지스트리에서 내린다 — 단, 같은 이름의
+    // 활성 프로젝트(다른 물리 폴더)가 있으면 그 등록을 지우지 않는다.
+    for (const name of softOnly) {
+      if (!activeNames.has(name)) unregisterProjectDir(name);
+    }
+
+    // 빈 폴더(프로젝트 0개)는 meta.folder 에 나타나지 않으므로 folderOrder.json 을
+    // 진실 원천으로 병합한다 — 신 배치에서 빈 폴더 생존의 단일 출처(§A-4).
+    for (const f of this.folderOrderKnown()) folderSet.add(f);
+
+    return { names, folderMap, folderList: Array.from(folderSet) };
+  }
+
+  // folderOrder.json 에 기록된 폴더명(빈 폴더 포함) — scanResources 병합용.
+  private folderOrderKnown(): string[] {
+    return this.folderOrder.slice();
   }
 
   async loadFavorites() {
@@ -184,6 +382,24 @@ export class SessionService extends ResourceSyncService<Session> {
     if (this.resourceList.includes(segments[segments.length - 1])) {
       throw new Error('같은 이름의 프로젝트가 있어 폴더를 만들 수 없습니다.');
     }
+    // 신 배치엔 폴더 디렉터리가 없다 — folderOrder.json 을 빈 폴더의 진실 원천으로
+    // 사용한다(scanResources 가 folderList 에 병합). 조상 경로도 함께 기록. §A-4.
+    if (isWorkspaceLayout()) {
+      const toAdd: string[] = [];
+      let cur: string | null = folder;
+      while (cur) {
+        if (!this.folderOrder.includes(cur) && !this.folderList.includes(cur)) {
+          toAdd.unshift(cur);
+        }
+        cur = this.folderParentPath(cur);
+      }
+      for (const f of toAdd) {
+        if (!this.folderOrder.includes(f)) this.folderOrder.push(f);
+      }
+      await this.saveFolderOrder();
+      await this.update();
+      return;
+    }
     // 부모 폴더가 존재하는지 확인 (루트가 아닌 경우)
     const parent = this.folderParentPath(folder);
     if (parent !== null) {
@@ -234,25 +450,39 @@ export class SessionService extends ResourceSyncService<Session> {
       (f) => f === oldName || f.startsWith(oldPrefix),
     );
 
-    await this.withLock(affectedProjects, async () => {
-      // busy 전환 전에 큐에 들어간 각 프로젝트 파일의 잔여 쓰기를 먼저 소진
-      // (디렉터리 이동 뒤에 옛 경로로 파일이 되살아나는 것을 방지)
-      for (const n of affectedProjects) {
-        await persistService.flushPath(this.getPath(n)).catch(() => {});
-      }
-      await backend.renameDir(
-        this.folderDirPath(oldName),
-        this.folderDirPath(newName),
-      );
-      // 폴더맵 즉시 반영: oldName → newName, oldName/child → newName/child
+    if (isWorkspaceLayout()) {
+      // 신 배치: 물리 폴더 이동 없음 — 영향 프로젝트의 meta.folder + folderMap 갱신.
       for (const [name, f] of Object.entries(this.folderMap)) {
-        if (f === oldName) {
-          this.folderMap[name] = newName;
-        } else if (f !== null && f.startsWith(oldPrefix)) {
-          this.folderMap[name] = newName + f.substring(oldName.length);
+        let nf: string | null = null;
+        if (f === oldName) nf = newName;
+        else if (f !== null && f.startsWith(oldPrefix))
+          nf = newName + f.substring(oldName.length);
+        if (nf !== null) {
+          await this.updateWorkspaceMeta(name, { folder: nf });
+          this.folderMap[name] = nf;
         }
       }
-    });
+    } else {
+      await this.withLock(affectedProjects, async () => {
+        // busy 전환 전에 큐에 들어간 각 프로젝트 파일의 잔여 쓰기를 먼저 소진
+        // (디렉터리 이동 뒤에 옛 경로로 파일이 되살아나는 것을 방지)
+        for (const n of affectedProjects) {
+          await persistService.flushPath(this.getPath(n)).catch(() => {});
+        }
+        await backend.renameDir(
+          this.folderDirPath(oldName),
+          this.folderDirPath(newName),
+        );
+        // 폴더맵 즉시 반영: oldName → newName, oldName/child → newName/child
+        for (const [name, f] of Object.entries(this.folderMap)) {
+          if (f === oldName) {
+            this.folderMap[name] = newName;
+          } else if (f !== null && f.startsWith(oldPrefix)) {
+            this.folderMap[name] = newName + f.substring(oldName.length);
+          }
+        }
+      });
+    }
 
     // 폴더 색상 마이그레이션
     for (const f of affectedFolders) {
@@ -301,7 +531,10 @@ export class SessionService extends ResourceSyncService<Session> {
     for (const name of projectsInFolder) {
       await this.moveToFolder(name, null);
     }
-    await backend.deleteDir(this.folderDirPath(folder));
+    // 신 배치엔 폴더 디렉터리가 없다 — 물리 삭제는 건너뛰고 사이드카(색상/순서)만 정리.
+    if (!isWorkspaceLayout()) {
+      await backend.deleteDir(this.folderDirPath(folder));
+    }
     // 폴더 색상 정리
     if (this.folderColors[folder]) {
       delete this.folderColors[folder];
@@ -323,6 +556,13 @@ export class SessionService extends ResourceSyncService<Session> {
       if (!this.folderList.includes(targetFolder)) {
         throw new Error('대상 폴더가 없습니다.');
       }
+    }
+    // 신 배치: 폴더는 meta.json 의 논리 필드 — 물리 이동 없이 필드+맵만 갱신.
+    if (isWorkspaceLayout()) {
+      await this.updateWorkspaceMeta(name, { folder: targetFolder ?? '' });
+      this.folderMap[name] = targetFolder;
+      await this.update();
+      return;
     }
     const srcPath = this.getPath(name);
     await this.withLock([name], async () => {
@@ -406,29 +646,31 @@ export class SessionService extends ResourceSyncService<Session> {
         await this.importSessionShallow(proj, newName);
         await this.moveToFolder(newName, destFolder);
 
-        // 이미지 포함 복사 (휴지통 제외)
+        // 이미지 포함 복사 (휴지통 제외). projectPath 경유 — 신 배치 활성 시
+        // 원본/대상 모두 각자의 물리 폴더로 분기(대상은 importSessionShallow 가
+        // 이미 등록 완료).
         if (withImages) {
           const imgCopyDirs: { src: string; dst: string }[] = [];
           // outs/<project>/<scene>/  +  inpaints/<project>/<scene>/
-          for (const dirPrefix of ['outs', 'inpaints']) {
+          for (const dirPrefix of ['outs', 'inpaints'] as const) {
             let sceneDirs: string[];
-            try { sceneDirs = await backend.listFiles(dirPrefix + '/' + origName); } catch (e) { continue; }
+            try { sceneDirs = await backend.listFiles(projectPath(dirPrefix, origName)); } catch (e) { continue; }
             for (const sd of sceneDirs) {
               if (sd === '.trash' || sd.startsWith('.')) continue;
               imgCopyDirs.push({
-                src: dirPrefix + '/' + origName + '/' + sd,
-                dst: dirPrefix + '/' + newName + '/' + sd,
+                src: projectPath(dirPrefix, origName, sd),
+                dst: projectPath(dirPrefix, newName, sd),
               });
             }
           }
           // inpaint_orgs, inpaint_masks, vibes, references
-          for (const flatDir of ['inpaint_orgs', 'inpaint_masks', 'vibes', 'references']) {
+          for (const flatDir of ['inpaint_orgs', 'inpaint_masks', 'vibes', 'references'] as const) {
             let files: string[];
-            try { files = await backend.listFiles(flatDir + '/' + origName); } catch (e) { continue; }
+            try { files = await backend.listFiles(projectPath(flatDir, origName)); } catch (e) { continue; }
             for (const f of files) {
               if (f.startsWith('.')) continue;
               try {
-                await backend.copyFile(flatDir + '/' + origName + '/' + f, flatDir + '/' + newName + '/' + f);
+                await backend.copyFile(projectPath(flatDir, origName, f), projectPath(flatDir, newName, f));
                 totalImages++;
               } catch (e) {}
             }
@@ -773,6 +1015,12 @@ export class SessionService extends ResourceSyncService<Session> {
     // 실제 삭제(파일 rename)를 먼저 수행 — 여기서 실패하면 프로젝트가 남으므로
     // 즐겨찾기/북마크/썸네일 등 메타데이터도 건드리지 않고 그대로 보존한다.
     await super.delete(name);
+    // 신 배치: 소프트 삭제(project.json→project.json.deleted)로 물리 폴더는
+    // 남지만, 레지스트리에서는 내려 동명 새 프로젝트가 삭제 폴더를 재사용하지
+    // 않게 한다(복원 시 TrashService 가 다시 등록). 스펙 §A-4.
+    if (isWorkspaceLayout()) {
+      unregisterProjectDir(name);
+    }
     // 이하 메타데이터 정리 (프로젝트는 이미 삭제 완료)
     this.favorites.delete(name);
     await this.saveFavorites();
@@ -795,6 +1043,13 @@ export class SessionService extends ResourceSyncService<Session> {
   // 호출해야 했고, 빼먹으면 이미지 루트가 통째로 고아가 됐다(트랙1 조사 §1-2).
   // 이제 이름변경은 반드시 이 메서드만 사용할 것.
   async renameProject(oldName: string, newName: string): Promise<void> {
+    // 신 배치: 물리 폴더는 불변(정제이름__id) — 이미지 6루트 이동도 json rename 도
+    // 없다. meta.json name 갱신 + 레지스트리 키 이관 + 사이드카 키 이관 + 메모리
+    // 갱신뿐. onRenameSession(이미지 이동)은 호출하지 않는다. 스펙 §A-4.
+    if (isWorkspaceLayout()) {
+      await this.renameProjectWorkspace(oldName, newName);
+      return;
+    }
     // 1) 이미지 루트 이동 — 실패 시 내부에서 롤백 후 throw (원 상태 보존)
     await imageService.onRenameSession(oldName, newName);
     // 2) 세션 json + 메타 이관 — 실패 시 이미지 루트를 되돌려 갈라짐 방지
@@ -813,10 +1068,53 @@ export class SessionService extends ResourceSyncService<Session> {
     }
   }
 
+  // 신 배치 이름변경: 물리 이동 없음. meta.json name 갱신 + 레지스트리 키 이관 +
+  // 메모리(entries/folderMap/reaction/세션 name) 갱신 + 사이드카 키 이관.
+  // json 파일은 workspace/<dir>/project.json 그대로(물리 폴더 불변) — 경로가
+  // 바뀌지 않으므로 flushPath/파일 rename 이 불필요하다.
+  private async renameProjectWorkspace(
+    oldName: string,
+    newName: string,
+  ): Promise<void> {
+    const e = this.entries.get(oldName);
+    if (!e?.instance) throw new Error('Resource not found');
+    if (this.entries.get(newName)?.instance)
+      throw new Error('Resource already exists');
+    if (physicalDirOf(oldName) === undefined) {
+      throw new Error(
+        `신 배치 이름변경 대상 미등록: ${JSON.stringify(oldName)}`,
+      );
+    }
+    await this.withLock([oldName, newName], async () => {
+      // meta.json name 갱신(폴더는 유지). 실패 시 여기서 throw → 아래 메모리 갱신
+      // 미실행으로 원 상태 보존.
+      await this.updateWorkspaceMeta(oldName, { name: newName });
+      renameProjectDirKey(oldName, newName);
+      // 메모리 이동 (base rename 의 파일 rename 제외판)
+      this.entries.delete(oldName);
+      this.entries.set(newName, e);
+      e.instance!.name = newName;
+      e.dispose?.();
+      e.dispose = this.watch(newName, e.instance!);
+      if (oldName in this.folderMap) {
+        this.folderMap[newName] = this.folderMap[oldName];
+        delete this.folderMap[oldName];
+      }
+    });
+    await this.migrateRenameSidecars(oldName, newName);
+    await this.update();
+  }
+
   async rename(oldName: string, newName: string) {
     // 실제 이름변경(파일 rename)을 먼저 수행 — 여기서 실패하면 이름이 그대로이므로
     // 즐겨찾기/북마크/썸네일 등 메타데이터도 건드리지 않고 그대로 보존한다.
     await super.rename(oldName, newName);
+    await this.migrateRenameSidecars(oldName, newName);
+  }
+
+  // 이름변경 시 사이드카(즐겨찾기·썸네일·북마크·휴지통·용량·템플릿) 키 이관.
+  // 구/신 배치 공통 — 사이드카는 논리 이름(키) 기준이라 배치와 무관하다.
+  private async migrateRenameSidecars(oldName: string, newName: string) {
     // 이하 메타데이터 마이그레이션 (이름변경은 이미 완료)
     if (this.favorites.has(oldName)) {
       this.favorites.delete(oldName);
@@ -996,7 +1294,9 @@ export class SessionService extends ResourceSyncService<Session> {
         unstable = false; // 비교 기준 없음 → 판단 보류(정상 취급)
       } else {
         try {
-          const onDisk = await backend.listFiles(this.resourceDir);
+          // 신 배치 활성 시 진실 디렉터리는 workspace/(projects/ 는 비어 있음).
+          const probeDir = isWorkspaceLayout() ? WORKSPACE_ROOT : this.resourceDir;
+          const onDisk = await backend.listFiles(probeDir);
           // 메모리엔 프로젝트가 있는데 디스크 목록이 0개 = 접근 이상
           unstable = onDisk.length === 0;
         } catch (e) {
@@ -1046,13 +1346,14 @@ export class SessionService extends ResourceSyncService<Session> {
   // 있는 폴더 이름들을 반환한다. 점(.)으로 시작하는 항목(.trash 등 삭제/시스템
   // 폴더)은 제외해 정상 삭제로 인한 오탐을 막는다.
   private async findScenesWithImagesMissing(
-    dir: string,
+    dir: 'outs' | 'inpaints',
     project: string,
     present: Set<string>,
   ): Promise<string[]> {
+    // projectPath 경유 — 신 배치 활성 시 workspace/<물리폴더>/<dir> 로 자동 분기.
     let entries: string[];
     try {
-      entries = await backend.listFiles(dir + '/' + project);
+      entries = await backend.listFiles(projectPath(dir, project));
     } catch (e) {
       return []; // 폴더 없음 = 비교 대상 없음
     }
@@ -1061,7 +1362,7 @@ export class SessionService extends ResourceSyncService<Session> {
       if (entry.startsWith('.')) continue;
       if (present.has(entry)) continue;
       try {
-        const files = await backend.listFiles(dir + '/' + project + '/' + entry);
+        const files = await backend.listFiles(projectPath(dir, project, entry));
         if (files.some(isOutputImageFile)) missing.push(entry);
       } catch (e) {
         // 폴더가 아니거나 접근 불가 → 보수적으로 무시(오탐 방지)
@@ -1088,6 +1389,13 @@ export class SessionService extends ResourceSyncService<Session> {
       await legacy.recoverSession(rc);
     }
     await this.migrateSession(rc);
+    // 트랙1 (b): 세션 uuid 지연 발급 — 로드/생성(createFrom) 경로가 모두 이 seam 을
+    // 통과한다. 없으면 발급하고, 로드 경로는 메모리 반영만(다음 자연 저장 시 기록),
+    // createFrom 경로는 뒤이은 markDirty 로 즉시 기록된다. 복제·유래 생성은
+    // 호출부에서 json.id 를 지워 여기서 새 uuid 를 받게 한다. 스펙 §5.
+    if (!rc.id) {
+      rc.id = v4();
+    }
     console.log('migrated', rc);
     return rc;
   }
@@ -1127,6 +1435,16 @@ export class SessionService extends ResourceSyncService<Session> {
     // 시딩하면 매 부팅 기본 에셋을 fetch 하고 vibes/dummy/ 에 쓰레기 PNG 가
     // 무한 누적되며 부팅도 느려진다.
     if (name !== 'dummy') {
+      // 신 배치: importDefaultPresets 가 vibes 를 projectPath 로 쓰기 전에 물리
+      // 폴더를 선등록해야 한다(등록 seam 은 onAttached 이지만 그건 attach 이후 —
+      // createDefault 안의 vibe 쓰기보다 늦다). dummy 는 실제 프로젝트가 아니므로 제외.
+      if (isWorkspaceLayout()) {
+        newSession.id = v4();
+        await this.ensureWorkspaceProject(name, {
+          id: newSession.id,
+          folder: this.folderMap[name] ?? '',
+        });
+      }
       await importDefaultPresets(newSession);
     }
     return newSession;
@@ -1152,6 +1470,17 @@ export class SessionService extends ResourceSyncService<Session> {
     }
     const json = template.toJSON();
     json.name = newName;
+    delete json.id; // 템플릿 유래 새 프로젝트는 새 uuid 발급(트랙1 (b))
+    // 신 배치: vibes/references 복사가 createFrom(→등록) 보다 앞서므로 선등록.
+    let tplPreId: string | undefined;
+    if (isWorkspaceLayout()) {
+      tplPreId = v4();
+      json.id = tplPreId;
+      await this.ensureWorkspaceProject(newName, {
+        id: tplPreId,
+        folder: this.folderMap[newName] ?? '',
+      });
+    }
     // 콘텐츠 제거 — 씬은 신규 프로젝트와 동일한 빈 default 1개로.
     json.scenes = SessionService.defaultScenesJSON() as any;
     json.inpaints = {};
@@ -1184,6 +1513,16 @@ export class SessionService extends ResourceSyncService<Session> {
         try {
           await backend.deleteDir(dest);
         } catch (e2) {}
+      }
+      // 신 배치: 선등록 물리 폴더 통째 정리 + 레지스트리 해제.
+      if (isWorkspaceLayout() && !this.isLoaded(newName)) {
+        const wdir = physicalDirOf(newName);
+        if (wdir !== undefined) {
+          try {
+            await backend.deleteDir(workspacePath(wdir));
+          } catch (e2) {}
+          unregisterProjectDir(newName);
+        }
       }
       throw e;
     }
@@ -1332,6 +1671,18 @@ export class SessionService extends ResourceSyncService<Session> {
       throw new Error('Resource already exists');
     }
     session.name = name;
+    // 유래 생성(복제·씬템플릿·백업 복원·순환) — 원본 id 를 버려 migrate 가 새 uuid 를
+    // 발급하게 한다(트랙1 (b): 물리 폴더 유일성). 순수 로드가 아닌 신규 프로젝트 생성.
+    delete session.id;
+    // 신 배치: vibes 쓰기가 createFrom(→등록) 보다 앞서므로, 복사 시작 전에 물리
+    // 폴더를 선등록한다. id 를 확정해 두면 createFrom 의 migrate 가 그대로 유지한다.
+    if (isWorkspaceLayout()) {
+      session.id = v4();
+      await this.ensureWorkspaceProject(name, {
+        id: session.id,
+        folder: this.folderMap[name] ?? '',
+      });
+    }
     if (Array.isArray(session.presets)) {
       for (const preset of session.presets) {
         if (preset.type === 'style') {
@@ -1384,6 +1735,17 @@ export class SessionService extends ResourceSyncService<Session> {
       await backend.readFile(dir + '/project.json'),
     );
     session.name = name;
+    // 백업 아카이브로부터 새 프로젝트 생성 — 원본 id 를 버려 새 uuid 발급 유도(위와 동일).
+    delete (session as any).id;
+    // 신 배치: 이미지 복사가 createFrom(→등록) 보다 앞서므로 복사 대상 물리 폴더를
+    // 선등록한다(projectPath(r, name) 이 복사 시작 전에 이미 해석되어야 함).
+    if (isWorkspaceLayout()) {
+      (session as any).id = v4();
+      await this.ensureWorkspaceProject(name, {
+        id: (session as any).id,
+        folder: this.folderMap[name] ?? '',
+      });
+    }
     // 이동(renameDir) 대신 복사 후 검증: 원본(임시 디렉터리)을 보존하므로 중간에
     // 실패해도 데이터가 흩어지거나 유실되지 않는다(부분 복원 방지).
     const copies = PROJECT_IMAGE_ROOTS.map(
@@ -1412,6 +1774,16 @@ export class SessionService extends ResourceSyncService<Session> {
         try {
           await backend.deleteDir(dest);
         } catch (e2) {}
+      }
+      // 신 배치: 선등록한 물리 폴더(meta.json 포함) 통째 정리 + 레지스트리 해제.
+      if (isWorkspaceLayout() && !this.isLoaded(name)) {
+        const wdir = physicalDirOf(name);
+        if (wdir !== undefined) {
+          try {
+            await backend.deleteDir(workspacePath(wdir));
+          } catch (e2) {}
+          unregisterProjectDir(name);
+        }
       }
       throw e;
     }
@@ -1470,6 +1842,18 @@ export class SessionService extends ResourceSyncService<Session> {
     // 루트별 복사는 상호 독립이라 순서(PROJECT_IMAGE_ROOTS)는 결과에 영향 없음.
     // 부분 실패 롤백: importSessionDeepFromDir 와 동일하게 만든 대상만 추적해
     // 정리한다 — 과거에는 롤백이 없어 반쪽 복사본(고아 이미지)이 남았다(트랙1 B4).
+    // 신 배치: 복사 대상(dest = projectPath(dir, newName)) 이 복사 시작 전에
+    // 해석되어야 하므로 물리 폴더를 선등록한다. 폴더 매핑도 meta 와 일치시켜 반영.
+    const dupFolder = this.getFolderOf(session.name) || '';
+    let dupPreId: string | undefined;
+    if (isWorkspaceLayout()) {
+      dupPreId = v4();
+      if (dupFolder) this.folderMap[newName] = dupFolder;
+      await this.ensureWorkspaceProject(newName, {
+        id: dupPreId,
+        folder: dupFolder,
+      });
+    }
     const createdDests: string[] = [];
     try {
       for (const dir of PROJECT_IMAGE_ROOTS) {
@@ -1489,9 +1873,14 @@ export class SessionService extends ResourceSyncService<Session> {
       }
       const json = session.toJSON();
       json.name = newName;
-      const folder = this.getFolderOf(session.name);
-      if (folder) {
-        this.folderMap[newName] = folder;
+      if (isWorkspaceLayout() && dupPreId) {
+        json.id = dupPreId; // 선등록 id 유지(migrate 가 그대로 둠)
+      } else {
+        delete json.id; // 복제본은 새 uuid 발급(트랙1 (b))
+        const folder = this.getFolderOf(session.name);
+        if (folder) {
+          this.folderMap[newName] = folder;
+        }
       }
       await this.createFrom(newName, json);
     } catch (e) {
@@ -1501,6 +1890,16 @@ export class SessionService extends ResourceSyncService<Session> {
         } catch (e2) {}
       }
       delete this.folderMap[newName]; // 선반영한 폴더 매핑 정리
+      // 신 배치: 선등록 물리 폴더 통째 정리 + 레지스트리 해제.
+      if (isWorkspaceLayout() && !this.isLoaded(newName)) {
+        const wdir = physicalDirOf(newName);
+        if (wdir !== undefined) {
+          try {
+            await backend.deleteDir(workspacePath(wdir));
+          } catch (e2) {}
+          unregisterProjectDir(newName);
+        }
+      }
       throw e;
     }
   }

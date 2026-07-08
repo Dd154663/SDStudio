@@ -15,6 +15,8 @@ export interface ZipPlugin {
     path: string;
     mime?: string;
   }): Promise<{ path: string; uri: string | null }>;
+  // 데이터 루트 볼륨의 실제 여유 공간(bytes) — 네이티브 StatFs 기반.
+  getFreeSpace(options: {}): Promise<{ bytes: number }>;
 }
 
 const ZipService = registerPlugin<ZipPlugin>('ZipService');

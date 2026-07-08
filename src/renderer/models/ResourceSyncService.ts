@@ -140,10 +140,19 @@ export abstract class ResourceSyncService<
     if (e.state === 'loading') e.state = 'ready';
     e.dispose = this.watch(name, instance);
     await this.getHook(instance, name);
+    // 결합 완료 훅 — 기본 no-op. 신 배치(workspace) 활성 시 SessionService 가
+    // 이 지점에서 물리 폴더 등록(id 발급·meta.json 기록)을 보장한다. 첫 디스크
+    // 쓰기(markDirty→update→writeResource)보다 반드시 앞서 실행되어야 한다.
+    await this.onAttached(name, instance);
   }
 
+  // 결합 직후 훅(오버라이드용). 기본은 아무 것도 하지 않는다 — 비활성/타 서비스는
+  // 기존 동작이 1바이트도 바뀌지 않는다.
+  protected async onAttached(_name: string, _instance: T): Promise<void> {}
+
   // 리소스 변경 감지 → dirty 마킹 reaction 설치 (이름 기준 — rename 시 재설치 필요)
-  private watch(name: string, instance: T): () => void {
+  // protected: SessionService 의 신 배치 이름변경이 reaction 을 재설치한다.
+  protected watch(name: string, instance: T): () => void {
     return reaction(
       () => instance.toJSON(),
       () => {
@@ -167,6 +176,13 @@ export abstract class ResourceSyncService<
     return this.folderMap[name] ?? null;
   }
 
+  // 소프트 삭제 대상 경로(<본체>.json → <본체>.deleted). 신 배치는 파일명이
+  // 'project.json' 이라 확장자 치환이 아닌 '.deleted' 접미가 필요하므로
+  // SessionService 가 오버라이드한다. 기본(구 배치)은 기존 동작 그대로.
+  protected deletedPathOf(src: string): string {
+    return src.replace(/\.json$/, '.deleted');
+  }
+
   listFolders(): string[] {
     return this.folderList.slice();
   }
@@ -180,7 +196,7 @@ export abstract class ResourceSyncService<
       // (rename 뒤에 잔여 쓰기가 파일을 되살리는 것을 방지)
       await persistService.flushPath(src).catch(() => {});
       // 파일 이동이 성공한 경우에만 메모리에서 제거 (실패 시 상태 불일치 방지)
-      await backend.renameFile(src, src.replace(/\.json$/, '.deleted'));
+      await backend.renameFile(src, this.deletedPathOf(src));
       e.dispose?.();
       this.entries.delete(name);
       delete this.folderMap[name];
@@ -608,15 +624,25 @@ export abstract class ResourceSyncService<
   }
 
   private async getList() {
+    const { names, folderMap, folderList } = await this.scanResources();
+    this.folderList = folderList;
+    this.folderMap = folderMap;
+    return names;
+  }
+
+  // 목록 스캔의 오버라이드 지점. 기본(구 배치)은 resourceDir 재귀 스캔 그대로 —
+  // 비활성/타 서비스는 결과가 1바이트도 바뀌지 않는다. 신 배치(workspace) 활성
+  // 시 SessionService 가 workspace/ 1단 + meta.json 스캔으로 대체한다. 스펙 §2.
+  protected async scanResources(): Promise<{
+    names: string[];
+    folderMap: { [name: string]: string | null };
+    folderList: string[];
+  }> {
     const newMap: { [name: string]: string | null } = {};
     const names: string[] = [];
     const folderList: string[] = [];
-
     await this.getListDir(this.resourceDir, '', newMap, names, folderList);
-
-    this.folderList = folderList;
-    this.folderMap = newMap;
-    return names;
+    return { names, folderMap: newMap, folderList };
   }
 
   private async fillEmptyPresetVars(obj: any) {

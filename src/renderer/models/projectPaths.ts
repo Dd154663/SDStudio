@@ -8,10 +8,22 @@
 // outs 전체가 물리 삭제된 실사고(2026-07-06, project_data_root_guard)의
 // 재발을 dataPathGuard(삭제 최종 관문)보다 앞 단계에서 차단한다.
 //
-// 주의: 이 모듈은 의존성 없는 리프(leaf)여야 한다 — backends(dataPathGuard)와
-// models 양쪽에서 import 하므로 순환을 만들지 말 것.
+// 주의: 이 모듈은 (거의) 의존성 없는 리프(leaf)여야 한다 — backends(dataPathGuard)와
+// models 양쪽에서 import 하므로 순환을 만들지 말 것. 유일한 예외는 storageLayout(신
+// 배치 상태·레지스트리)로, 그 모듈 자체가 무의존 리프라 순환이 생기지 않는다.
+
+import {
+  isWorkspaceLayout,
+  physicalDirOf,
+  PROJECT_JSON_FILE,
+} from './storageLayout';
 
 export const PROJECT_JSON_ROOT = 'projects';
+
+// 신 물리 통합 루트 (트랙1 (b), storage v2). B1 시점엔 아직 아무도 이 루트에
+// 쓰지 않는다(무동작). dataPathGuard 가 구 7루트와 동일하게 선제 보호한다.
+// 스펙: track1-b-migration-spec.md §1·§2.
+export const WORKSPACE_ROOT = 'workspace';
 
 // 이미지/부속 데이터 6루트. 순서는 정규 순서(백업·복제·삭제 루프가 공유) —
 // 각 루트 작업은 상호 독립이라 순서 자체는 동작에 영향 없음.
@@ -91,9 +103,59 @@ export function projectPath(
 ): string {
   assertValidProjectName(name);
   assertValidSegments(segments);
+  // 신 배치(storage v2) 활성 시: 프로젝트당 단일 물리 폴더 하위로 접힌다.
+  // 'outs/<이름>/<씬>' → 'workspace/<물리폴더>/outs/<씬>'. root 는 물리 폴더
+  // 아래의 첫 세그먼트가 된다. 미등록 이름은 조용한 구경로 폴백 대신 throw —
+  // split layout(신/구 혼재로 데이터가 갈라지는 것)을 막는다. 스펙 §2·§5.
+  if (isWorkspaceLayout()) {
+    const dir = physicalDirOf(name);
+    if (dir === undefined) {
+      throw new Error(
+        `신 배치(workspace)에서 미등록 프로젝트의 경로를 요청함: ${JSON.stringify(
+          name,
+        )} (root=${root}). 스캔/생성 seam 이 registerProjectDir 를 먼저 호출했는지 확인.`,
+      );
+    }
+    return workspacePath(dir, root, ...segments);
+  }
   return segments.length
     ? root + '/' + name + '/' + segments.join('/')
     : root + '/' + name;
+}
+
+// 프로젝트 이름 → 물리 디렉터리 세그먼트 리졸버.
+//
+// (b) 물리 통합의 전환 스위치 지점 — B2 에서 storage_version 마커 기반 신 배치
+// 분기(정제이름__짧은id)가 이 함수에 들어온다. 스펙: track1-b-migration-spec.md §5.
+//
+// **비활성 시엔 항등(이름 그대로 반환)** — 기존 동작이 1바이트도 바뀌지 않는다.
+// 신 배치 활성 시엔 등록된 물리 폴더명을 반환한다(미등록은 throw — split 방지).
+// 이름 검증(invalidProjectName)을 그대로 통과시켜 사고 방어선을 유지한다.
+export function resolveProjectDir(name: string): string {
+  assertValidProjectName(name);
+  if (isWorkspaceLayout()) {
+    const dir = physicalDirOf(name);
+    if (dir === undefined) {
+      throw new Error(
+        `신 배치(workspace)에서 미등록 프로젝트의 물리 폴더를 요청함: ${JSON.stringify(
+          name,
+        )}. 스캔/생성 seam 이 registerProjectDir 를 먼저 호출했는지 확인.`,
+      );
+    }
+    return dir;
+  }
+  return name;
+}
+
+// 'workspace/<물리폴더>[/<세그먼트>...]' — 신 배치(storage v2) 경로 조립의 관문.
+// 물리 폴더명(정제이름__짧은id)도 프로젝트 이름 규칙(구분자·점 시작 금지)을
+// 만족하므로 동일 검증을 적용한다. 스펙: track1-b-migration-spec.md §2.
+export function workspacePath(dir: string, ...segments: string[]): string {
+  assertValidProjectName(dir);
+  assertValidSegments(segments);
+  return segments.length
+    ? WORKSPACE_ROOT + '/' + dir + '/' + segments.join('/')
+    : WORKSPACE_ROOT + '/' + dir;
 }
 
 // 'projects/<폴더경로>' — 폴더는 중첩('a/b')이 정상이므로 이름 검증 대신
@@ -104,8 +166,21 @@ export function projectFolderPath(folder: string): string {
 }
 
 // 'projects/[<폴더>/]<이름>.json' — 세션 본체 파일 경로.
+// 신 배치 활성 시: 'workspace/<물리폴더>/project.json' (folder 인자는 무시 — 신
+// 배치에서 폴더는 meta.json 의 논리 필드일 뿐 물리 경로에 영향이 없다). 스펙 §2.
 export function projectJsonPath(name: string, folder?: string | null): string {
   assertValidProjectName(name);
+  if (isWorkspaceLayout()) {
+    const dir = physicalDirOf(name);
+    if (dir === undefined) {
+      throw new Error(
+        `신 배치(workspace)에서 미등록 프로젝트의 project.json 경로를 요청함: ${JSON.stringify(
+          name,
+        )}. 스캔/생성 seam 이 registerProjectDir 를 먼저 호출했는지 확인.`,
+      );
+    }
+    return workspacePath(dir, PROJECT_JSON_FILE);
+  }
   if (folder) {
     assertValidSegments([folder]);
     return PROJECT_JSON_ROOT + '/' + folder + '/' + name + '.json';

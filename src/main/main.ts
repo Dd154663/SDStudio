@@ -162,14 +162,19 @@ const tarStream = require('tar-stream');
 const fs = require('fs').promises;
 
 ipcMain.handle('zip-files', async (event, files, outPath) => {
-  const dir = path.dirname(APP_DIR + '/' + outPath);
+  const finalPath = APP_DIR + '/' + outPath;
+  const dir = path.dirname(finalPath);
+  // 원자적 아카이브 쓰기: '.part' 임시 경로에 스트리밍 → 완료 시 rename.
+  // 도중 강제 종료/앱 닫기 시 불완전 tar 가 최종 경로에 남지 않는다(임시 파일만
+  // 잔존, 다음 부팅 정리 대상). 트랙1 (b) 마이그레이션 백업 원자성 스펙 §4-0.
+  const tmpPath = finalPath + '.part';
   files = files.map((x: any) => ({
     name: x.name,
     path: APP_DIR + '/' + x.path,
   }));
   await fs.mkdir(dir, { recursive: true });
   const pack = tarStream.pack();
-  const writeStream = fsSync.createWriteStream(APP_DIR + '/' + outPath);
+  const writeStream = fsSync.createWriteStream(tmpPath);
   pack.pipe(writeStream);
   try {
     let done = 0;
@@ -195,12 +200,33 @@ ipcMain.handle('zip-files', async (event, files, outPath) => {
       done: files.length,
       total: files.length,
     });
-    pack.finalize();
+    // pack.finalize() 이후 writeStream 이 실제로 닫힐 때까지 기다린 뒤 rename 해야
+    // 최종 파일이 온전하다.
+    await new Promise<void>((resolve, reject) => {
+      writeStream.on('finish', () => resolve());
+      writeStream.on('error', reject);
+      pack.finalize();
+    });
+    await fs.rename(tmpPath, finalPath);
   } catch (e: any) {
     console.error('zip-files error:', e);
     pack.destroy();
     writeStream.destroy();
+    // 불완전 임시 파일 정리 시도(실패는 무시)
+    await fs.unlink(tmpPath).catch(() => {});
     throw new Error('압축 중 오류: ' + (e.message || e));
+  }
+});
+
+// 데이터 루트 볼륨의 여유 공간(bytes) — 마이그레이션 백업 게이트 공간 판정용.
+// statfs 미지원/오류 시 null(="알 수 없음")을 반환해 게이트가 경고 경로로 간다.
+ipcMain.handle('get-free-space', async () => {
+  try {
+    const st: any = await fs.statfs(APP_DIR);
+    return st.bavail * st.bsize;
+  } catch (e) {
+    console.error('get-free-space error:', e);
+    return null;
   }
 });
 
@@ -1355,7 +1381,11 @@ async function initFolder() {
       if (comps[0] === '.') {
         comps.shift();
       }
-      if (comps[0] === 'outs' || comps[0] === 'inpaints') {
+      if (
+        comps[0] === 'outs' ||
+        comps[0] === 'inpaints' ||
+        comps[0] === 'workspace'
+      ) {
         mainWindow!.webContents.send('image-changed', comps.join('/'));
       }
     });

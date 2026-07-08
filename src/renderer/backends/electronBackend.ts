@@ -118,6 +118,10 @@ export class ElectornBackend extends Backend {
     await invoke('unzip-files', zipPath, outPath);
   }
 
+  async getFreeSpace(): Promise<number | null> {
+    return await invoke('get-free-space');
+  }
+
   async searchTags(word: string): Promise<any> {
     return await invoke('search-tags', word);
   }
