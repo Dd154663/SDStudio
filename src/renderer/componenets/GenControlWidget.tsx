@@ -187,6 +187,9 @@ export const GenControlFloating = observer(() => {
   return (
     <div
       ref={cardRef}
+      // data-slot: 편집 모드(EditModeShell) 배지의 위치 마커 — 플로팅 상태에선
+      // 하단바 도크가 미렌더라 이 카드가 유일한 gencontrol 마커다.
+      data-slot="gencontrol"
       className="titlebar-no-drag fixed z-[var(--z-widget)] bg-[var(--c-surface-2)] rounded-lg shadow-xl border line-color p-2 flex items-center gap-3 select-none"
       style={{ left: pos.x, top: pos.y }}
     >

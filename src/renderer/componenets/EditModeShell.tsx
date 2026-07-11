@@ -3,6 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { FaThLarge } from 'react-icons/fa';
 import { backend } from '../models';
 import { appState } from '../models/AppService';
+import { resolveLayout } from '../models/layoutTemplates';
 import type { UiLayoutSlots } from '../../main/config';
 
 // 편집 모드 셸 (PC 전용).
@@ -80,10 +81,38 @@ function currentGenControl(): 'docked' | 'floating' {
   return appState.uiLayoutSlots.genControl === 'floating' ? 'floating' : 'docked';
 }
 
+// 생성 컨트롤이 부착될 하단바가 있는 템플릿인지 — 없으면(컴팩트·사이드바) 항상
+// 플로팅 강제라 도크/플로팅 전환이 무의미하므로 gencontrol 배지를 띄우지 않는다.
+// (편집 모드는 PC 전용이라 isMobile=false 고정)
+function genDockAvailable(): boolean {
+  return resolveLayout(appState.uiLayoutTemplate, false).bottomBar !== 'none';
+}
+
+// 생성 컨트롤 도크/플로팅 전환의 실제 적용. "플로팅"은 슬롯(genControl)과 격자점
+// 드래그 분리(genWidget.detached) 두 경로가 있으므로, 도크 복귀 시 둘 다 함께
+// 해제해야 한 번의 클릭으로 확실히 부착된다(두 필드를 한 번의 setConfig 로 저장).
+async function applyGenControlMode(mode: 'docked' | 'floating') {
+  const slots: UiLayoutSlots = { ...appState.uiLayoutSlots, genControl: mode };
+  appState.uiLayoutSlots = slots;
+  let genWidget = appState.genWidget;
+  if (mode === 'docked' && genWidget.detached) {
+    genWidget = { ...genWidget, detached: false };
+    appState.genWidget = genWidget;
+  }
+  try {
+    const config = await backend.getConfig();
+    await backend.setConfig({ ...config, uiLayoutSlots: slots, genWidget });
+  } catch (e) {
+    console.error('생성 컨트롤 배치 저장 실패:', e);
+  }
+}
+
 // 마커 3종의 현재 화면 rect 를 측정해 배지 좌표 배열로 변환. 못 찾은 슬롯은 제외.
 function measureBadges(): BadgeRect[] {
   const out: BadgeRect[] = [];
   for (const slot of SLOTS) {
+    // 하단바 없는 템플릿에선 gencontrol 배지 생략(전환 대상 없음 — 항상 플로팅).
+    if (slot.kind === 'gencontrol' && !genDockAvailable()) continue;
     const el = document.querySelector(slot.selector);
     if (!el) continue;
     const r = el.getBoundingClientRect();
@@ -218,14 +247,27 @@ const EditModeShell = observer(() => {
   );
 
   // gencontrol 배지: 드래그 없이 클릭으로 docked↔floating 토글.
+  // 실효 상태로 판정 — 격자점 드래그로 분리(detached)된 상태도 "플로팅"으로 보고,
+  // 도크 복귀 시 applyGenControlMode 가 detached 까지 함께 해제한다.
   const toggleGenControl = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       e.stopPropagation();
-      const next = currentGenControl() === 'docked' ? 'floating' : 'docked';
-      applyAndRemeasure({ genControl: next });
+      const floatingNow =
+        appState.genWidget.detached === true ||
+        currentGenControl() === 'floating';
+      applyGenControlMode(floatingNow ? 'docked' : 'floating');
+      requestAnimationFrame(() => requestAnimationFrame(remeasure));
     },
-    [applyAndRemeasure],
+    [remeasure],
   );
+
+  // 플로팅 위젯을 (편집 모드 중에도 가능한) 핸들 드래그로 옮기거나 도크/플로팅이
+  // 전환되면 gencontrol 마커 위치가 바뀌므로 배지를 재측정한다.
+  const gw = appState.genWidget; // observer 구독 — 변경 시 재렌더 → 아래 effect
+  useEffect(() => {
+    const raf = requestAnimationFrame(remeasure);
+    return () => cancelAnimationFrame(raf);
+  }, [gw.detached, gw.x, gw.y, remeasure]);
 
   return (
     <>
