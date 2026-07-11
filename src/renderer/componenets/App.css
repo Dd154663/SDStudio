@@ -435,6 +435,37 @@ html:not(.finish-classic) .r-card {
   border-radius: 0.5rem; /* rounded-lg — 구획 카드(패딩 있는 박스). 입력창·배지·버튼은 대상 아님 */
 }
 
+/* ── 탭 세그먼트(E) ── TabComponent 탭 헤더를 하나의 라운딩 컨테이너로 묶고
+   선택 탭만 채움 알약(back-sky 유지), 미선택은 배경 없는 텍스트로(세그먼티드 컨트롤).
+   새 마감에서만 적용 — 클래식 마감이면 기존 개별 알약(back-llgray·rounded-md·gap-2) 그대로.
+   컨테이너/미선택 마커(.tab-seg/.tab-seg-off)는 TabComponent(UtilComponents.tsx)가 부여. */
+html:not(.finish-classic) .tab-seg {
+  background-color: var(--c-input-bg);
+  border-radius: 9999px;
+  padding: 3px;
+  gap: 2px;
+  width: fit-content;
+}
+html:not(.finish-classic) .tab-seg > button {
+  border-radius: 9999px;
+  font-weight: 500; /* 세그먼트 안 텍스트 선명도 보강 */
+}
+/* PC 텍스트 탭만 살짝 확대(기존 h-8=32px·px-3) — 모바일 이모지 탭(h-10)은 현행 유지 */
+@media (min-width: 768px) {
+  html:not(.finish-classic) .tab-seg > button {
+    height: 2.25rem; /* 36px */
+    padding-left: 0.875rem;
+    padding-right: 0.875rem;
+  }
+}
+html:not(.finish-classic) .tab-seg > .tab-seg-off {
+  background-color: transparent;
+  color: var(--c-text-label); /* muted 는 흐릿하다는 피드백(2026-07-11) — 본문색 사용 */
+}
+html:not(.finish-classic) .tab-seg > .tab-seg-off:hover {
+  color: var(--c-text);
+}
+
 /* 텍스트 입력 창 윤곽 링(B1) — 배경 음영뿐 테두리가 없던 입력 영역(프롬프트 에디터 등)에
    1px 안쪽 링을 준다. box-shadow 라 레이아웃 불변·라운딩 자동 추종. 클래식 마감에선
    --c-input-ring 이 transparent 로 복원되어 무표시. Tailwind shadow-* 유틸과 같은 요소에

@@ -209,13 +209,14 @@ export const TabComponent: React.FC<TabComponentProps> = ({
           'flex p-1 md:p-0 md:py-2 flex-none gap-2 items-center w-full mb-1 md:mb-0'
         }
       >
-        <div className="md:flex gap-2 w-full hidden">
+        {/* tab-seg/tab-seg-off: 탭 세그먼트 마감(App.css) — 클래식이면 기존 클래스 그대로 렌더 */}
+        <div className="tab-seg md:flex gap-2 w-full hidden">
           {tabs.map((tab, index) => (
             <button
               key={index}
               className={
                 'active:brightness-90 hover:brightness-95 select-none h-8 px-3 text-sm rounded-md transition-colors ' +
-                (index === activeTab ? `back-sky` : 'back-llgray')
+                (index === activeTab ? `back-sky` : 'back-llgray tab-seg-off')
               }
               onClick={() => handleTabClick(index)}
             >
@@ -233,13 +234,13 @@ export const TabComponent: React.FC<TabComponentProps> = ({
             </button>
           )}
           {/* 탭이 많아 가로폭을 넘치면 잘리지 않고 스크롤되도록(min-w-0 + overflow-x-auto). */}
-          <div className="flex gap-1 ml-auto min-w-0 overflow-x-auto no-scrollbar py-0.5">
+          <div className="tab-seg flex gap-1 ml-auto min-w-0 overflow-x-auto no-scrollbar py-0.5">
             {tabs.map((tab, index) => (
               <button
                 key={index}
                 className={
                   'active:brightness-90 hover:brightness-95 select-none px-3 text-base h-10 rounded-md flex-none ' +
-                  (index === activeTab ? `back-sky` : 'back-llgray')
+                  (index === activeTab ? `back-sky` : 'back-llgray tab-seg-off')
                 }
                 onClick={() => handleTabClick(index)}
               >
