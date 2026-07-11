@@ -59,6 +59,14 @@ export abstract class Backend {
   // 런타임 진단(감지 코어 수·실효 libuv 스레드풀 크기). 데스크톱 전용 — 모바일은
   // libuv 스레드풀 개념이 없어 null(="해당 없음"). 이미지 병렬 상한 확인용.
   abstract getRuntimeDiag(): Promise<{ cpus: number; uvThreadpool: number } | null>;
+  // 부팅 경고 조회 — 사용자 지정 저장 경로 접근 실패로 기본 경로로 폴백했는지 등을
+  // 렌더러가 부팅 후 1회 조회해 사용자에게 안내한다. 데스크톱 전용(모바일은 null).
+  abstract getBootWarnings(): Promise<{
+    saveLocationFallback: { attempted: string; code: string } | null;
+  } | null>;
+  // 폴더가 실제 쓰기 가능한지 사전 검증(저장 경로 지정 전). 권한 없는 드라이브를
+  // 저장 경로로 지정해 다음 부팅이 벽돌화되는 것을 예방. 데스크톱 전용(모바일은 항상 ok).
+  abstract checkWritable(absolutePath: string): Promise<{ ok: boolean; code?: string }>;
   abstract searchTags(word: string): Promise<any>;
   abstract lookupTag(word: string): Promise<any>;
   abstract loadPiecesDB(pieces: string[]): Promise<void>;

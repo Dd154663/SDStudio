@@ -164,6 +164,26 @@ ipcMain.handle('get-runtime-diag', async () => {
   };
 });
 
+// 부팅 경고 조회: 사용자 지정 저장 경로 접근 실패로 기본 경로 폴백이 있었는지
+// 렌더러에 전달한다. 렌더러는 부팅 후 1회 조회해 사용자에게 안내한다.
+ipcMain.handle('get-boot-warnings', async () => {
+  return { saveLocationFallback };
+});
+
+// 저장 경로 사전 검증: 사용자가 폴더를 저장 경로로 지정하기 전에 실제 쓰기 가능
+// 여부를 확인한다(권한 없는 드라이브 지정 → 다음 부팅 벽돌화 예방). 데스크톱 전용.
+ipcMain.handle('check-writable', async (event, absPath: string) => {
+  try {
+    await fs.mkdir(absPath, { recursive: true });
+    const probe = path.join(absPath, '.' + uuidv4() + '.wtest');
+    await fs.writeFile(probe, 'ok', 'utf-8');
+    await fs.rm(probe).catch(() => {});
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, code: String(e?.code || e?.message || e) };
+  }
+});
+
 ipcMain.handle('open-web-page', async (event, url) => {
   await shell.openExternal(url);
 });
@@ -1468,11 +1488,40 @@ async function init() {
   await initFolder();
 }
 
+// 사용자 지정 저장 경로(config.saveLocation) 접근/쓰기 불가로 기본 경로 폴백이
+// 일어났을 때 채워진다. 렌더러가 부팅 후 get-boot-warnings 로 조회해 사용자에게
+// 안내한다(설정에서 경로 재지정 유도). 폴백이 없으면 null.
+let saveLocationFallback: { attempted: string; code: string } | null = null;
+
 async function initFolder() {
   if (config.saveLocation) {
     APP_DIR = config.saveLocation;
   }
-  await fs.mkdir(APP_DIR, { recursive: true });
+  try {
+    await fs.mkdir(APP_DIR, { recursive: true });
+    // mkdir 성공이 곧 쓰기 가능을 뜻하진 않는다(읽기전용 볼륨·ACL 제한). 실제 파일
+    // 쓰기까지 확인해야 권한 없는 경로를 정확히 걸러낸다.
+    const probe = path.join(APP_DIR, '.' + uuidv4() + '.wtest');
+    await fs.writeFile(probe, 'ok', 'utf-8');
+    await fs.rm(probe).catch(() => {});
+  } catch (e: any) {
+    // 사용자 지정 저장 경로에 접근/쓰기 불가 → 기본 경로로 폴백해 최소한 앱은 뜨게 한다.
+    // 이 폴백이 없으면 잘못된 경로 하나로 initFolder 가 throw → createWindow 이전에
+    // 부팅이 죽고 single-instance 락만 쥔 채 무반응(벽돌)이 된다. config.saveLocation
+    // 은 일부러 건드리지 않는다 — 사용자가 UI 에서 직접 고치거나, 그 경로가 다시
+    // 유효해지면(외장 재연결 등) 그대로 복구되도록.
+    if (config.saveLocation && APP_DIR !== DEFAULT_APP_DIR) {
+      saveLocationFallback = {
+        attempted: config.saveLocation,
+        code: String(e?.code || e?.message || e),
+      };
+      APP_DIR = DEFAULT_APP_DIR;
+      await fs.mkdir(APP_DIR, { recursive: true });
+    } else {
+      // 기본 경로 자체가 실패면 더 손쓸 수 없다 — 원래대로 throw.
+      throw e;
+    }
+  }
   // 원자 쓰기(tmp+rename)가 쓰기와 rename 사이 강제 종료로 남긴 고아 tmp 파일 정리.
   // tmp 는 항상 uuid v4 파일명(확장자 없음)이라 정확히 그 형태만 지운다.
   const uuidName = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

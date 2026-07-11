@@ -23,6 +23,8 @@ export type Channels =
   | 'zip-files'
   | 'get-free-space'
   | 'get-runtime-diag'
+  | 'get-boot-warnings'
+  | 'check-writable'
   | 'get-version'
   | 'open-web-page'
   | 'search-tags'

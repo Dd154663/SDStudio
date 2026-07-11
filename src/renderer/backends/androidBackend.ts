@@ -448,6 +448,20 @@ export class AndroidBackend extends Backend {
     return null;
   }
 
+  async getBootWarnings(): Promise<{
+    saveLocationFallback: { attempted: string; code: string } | null;
+  } | null> {
+    // 모바일은 saveLocation(사용자 지정 저장 경로)을 쓰지 않는다 — 부팅 경고 미해당.
+    return null;
+  }
+
+  async checkWritable(
+    _absolutePath: string,
+  ): Promise<{ ok: boolean; code?: string }> {
+    // 모바일은 saveLocation 미사용 — 사전 검증 대상 아님.
+    return { ok: true };
+  }
+
   async selectFile(): Promise<string | undefined> {
     const result = await FilePicker.pickFiles({
       types: ['application/x-tar'],

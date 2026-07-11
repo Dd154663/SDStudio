@@ -126,6 +126,18 @@ export class ElectornBackend extends Backend {
     return await invoke('get-runtime-diag');
   }
 
+  async getBootWarnings(): Promise<{
+    saveLocationFallback: { attempted: string; code: string } | null;
+  } | null> {
+    return await invoke('get-boot-warnings');
+  }
+
+  async checkWritable(
+    absolutePath: string,
+  ): Promise<{ ok: boolean; code?: string }> {
+    return await invoke('check-writable', absolutePath);
+  }
+
   async searchTags(word: string): Promise<any> {
     return await invoke('search-tags', word);
   }

@@ -1550,6 +1550,19 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const selectFolder = async () => {
     const folder = await backend.selectDir();
     if (!folder) return;
+    // 저장하기 전에 실제 쓰기 가능 여부를 검증한다. 권한 없는 드라이브를 저장 경로로
+    // 지정하면 다음 부팅에서 그 경로에 쓰기가 막혀(부팅 폴백이 없던 구버전은) 앱이
+    // 무반응 상태로 벽돌이 되므로, 애초에 못 고르게 막는다.
+    const check = await backend.checkWritable(folder);
+    if (!check.ok) {
+      appState.pushDialog({
+        type: 'yes-only',
+        text:
+          `이 폴더에는 쓰기 권한이 없어 저장 위치로 사용할 수 없습니다.\n(${check.code})\n\n` +
+          `다른 위치를 선택하거나, 해당 드라이브의 쓰기 권한을 먼저 확인해 주세요.`,
+      });
+      return;
+    }
     const config = await backend.getConfig();
     config.saveLocation = folder;
     await backend.setConfig(config);

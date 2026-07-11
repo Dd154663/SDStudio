@@ -265,6 +265,24 @@ export const App = observer(() => {
       sessionService.removeEventListener('config-changed', refreshDarkMode);
     };
   }, []);
+  // 부팅 경고: 지정한 저장 경로에 접근할 수 없어 기본 위치로 폴백해 실행 중이면
+  // 사용자에게 안내한다(설정에서 경로를 쓰기 가능한 위치로 재지정 유도). 이 안내가
+  // 없으면 사용자는 저장 경로가 조용히 무시된 사실을 모른다.
+  useEffect(() => {
+    (async () => {
+      const warnings = await backend.getBootWarnings();
+      const fb = warnings?.saveLocationFallback;
+      if (!fb) return;
+      appState.pushDialog({
+        type: 'yes-only',
+        text:
+          `지정한 저장 경로에 접근할 수 없어(${fb.code}) 기본 위치에서 실행 중입니다.\n\n` +
+          `경로: ${fb.attempted}\n\n` +
+          `환경설정 → 이미지에서 저장 위치를 쓰기 가능한 폴더로 다시 지정한 뒤 프로그램을 껐다 켜주세요. ` +
+          `해당 드라이브의 쓰기 권한을 먼저 확인하는 것도 방법입니다.`,
+      });
+    })();
+  }, []);
   useEffect(() => {
     const handleUpdate = () => {
       const latest = appUpdateNoticeService.latestVersion;
