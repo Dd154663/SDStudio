@@ -686,12 +686,16 @@ export class ImageService extends EventTarget {
     return imageService.getReferenceDir(session) + '/' + name.split('/').pop()!;
   }
 
+  // 반환값(트랙1 B4 이슈① 진단용): 'guarded'=디스크 0장인데 기존 목록을 방어
+  // 유지 / 'files'=파일을 정상적으로 읽음(≥1장) / 'empty'=0장을 그대로 반영.
+  // refreshBatch 가 'files'(저장소 접근 정상 증거)와 'guarded'를 대조해
+  // 영구 소실 확정 씬을 자동 화해한다. 개별 호출부는 반환값을 무시해도 된다.
   async refresh(
     session: Session,
     scene: GenericScene,
     emitEvent: boolean = true,
     guardEmpty: boolean = false,
-  ) {
+  ): Promise<'guarded' | 'files' | 'empty'> {
     const target = scene.type === 'scene' ? this.images : this.inpaints;
     if (!(session.name in target)) {
       target[session.name] = {};
@@ -720,7 +724,7 @@ export class ImageService extends EventTarget {
             detail: { batch: false, session, scene },
           }),
         );
-      return;
+      return 'guarded';
     }
 
     for (const file of files) {
@@ -741,12 +745,28 @@ export class ImageService extends EventTarget {
     if (scene.type === 'scene') {
       scene.mains = scene.mains.filter((x: string) => x in fileSet);
     }
+    // 랭킹 죽은 참조 정리(트랙1 B4 이슈②): 부분 소실 시 imageMap/mains 는 위에서
+    // 화해되지만 game/round 는 남아 nextRound 가 소실 이미지를 대진에 올렸다.
+    // 랭크는 결번이 생기므로 cleanGame 으로 정규화(대진 로직의 전제).
+    if (scene.game && scene.game.some((p) => !(p.path in fileSet))) {
+      const alive = scene.game.filter((p) => p.path in fileSet);
+      if (alive.length > 0) {
+        gameService.cleanGame(alive);
+        scene.game = alive;
+      } else {
+        scene.game = undefined;
+      }
+    }
+    if (scene.round && scene.round.players.some((p) => !(p in fileSet))) {
+      scene.round = undefined;
+    }
     if (emitEvent)
       this.dispatchEvent(
         new CustomEvent('updated', {
           detail: { batch: false, session, scene },
         }),
       );
+    return files.length > 0 ? 'files' : 'empty';
   }
 
   async refreshBatch(session: Session) {
@@ -754,9 +774,36 @@ export class ImageService extends EventTarget {
       ...session.scenes.values(),
       ...session.inpaints.values(),
     ];
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       allScenes.map((scene) => this.refresh(session, scene, false, true)),
     );
+    // 유령 참조 자동 화해(트랙1 B4 이슈①): guardEmpty 가 목록을 방어 유지한
+    // 씬('guarded')이 있는데 같은 프로젝트의 다른 씬이 파일을 정상적으로
+    // 읽었다면('files' = 저장소 루트 접근 정상 증거), 해당 씬 폴더는 "일시
+    // 접근 불가"가 아니라 영구 소실 — 실제(0장)로 화해해 무한 경고를 끊는다.
+    // 증거가 없으면(전 씬 0장 = 루트/드라이브 미접근 가능성) 절대 정리하지
+    // 않고 종전대로 방어 유지한다. 씬 자체는 제거하지 않는다(목록 화해만).
+    const guarded: GenericScene[] = [];
+    let evidence = false;
+    results.forEach((r, i) => {
+      if (r.status !== 'fulfilled') return;
+      if (r.value === 'guarded') guarded.push(allScenes[i]);
+      else if (r.value === 'files') evidence = true;
+    });
+    if (evidence && guarded.length > 0) {
+      await Promise.allSettled(
+        guarded.map(async (scene) => {
+          await this.refresh(session, scene, false, false);
+          try {
+            taskQueueService.addLog(
+              'warn',
+              '저장소',
+              `"${session.name}/${scene.name}" 이미지 폴더가 영구 소실된 것으로 확인되어 목록을 정리했습니다 (같은 프로젝트의 다른 씬은 정상 접근됨).`,
+            );
+          } catch (e) {}
+        }),
+      );
+    }
     this.dispatchEvent(
       new CustomEvent('updated', { detail: { batch: true, session } }),
     );
