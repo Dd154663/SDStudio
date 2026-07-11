@@ -204,6 +204,10 @@ export class AppState {
   // 적용은 App.tsx 가 html 에 font-system 클래스를 토글하는 방식(App.css 참조).
   @observable accessor uiFont: 'pretendard' | 'system' = 'system';
 
+  // 클래식 마감(config.uiClassicFinish 미러) — true 면 심미 개편 전 모양으로 복원.
+  // 적용은 App.tsx 가 html 에 finish-classic 클래스를 토글하는 방식(App.css 참조).
+  @observable accessor uiClassicFinish = false;
+
   // 편집 모드(PC 전용): 화면에서 UI 배치 직접 조작. EditModeShell 이 켜져 있는 동안
   // 툴바 버튼은 클릭 대신 드래그 편집 대상이 된다.
   @observable accessor editMode = false;

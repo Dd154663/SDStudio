@@ -57,7 +57,13 @@
   --c-text-label: #374151; /* gray-700 (본문/라벨) */
   --c-text-muted: #6b7280; /* gray-500 (보조 텍스트 L2) */
   --c-text-faint: #9ca3af; /* gray-400 (흐린 텍스트/아이콘 L3) */
-  --c-line: #cbd5e1; /* slate-300 */
+  /* 보더 역할 분리(B1): --c-line=구분선·카드 경계(약하게) / --c-line-strong=셀렉트 등
+     인터랙션 요소 테두리(선명하게) / --c-input-ring=텍스트 입력 창 윤곽 1px 링
+     (프롬프트 영역 등 — 배경 음영뿐이던 입력 창에 경계를 준다. .input-ring 참조).
+     클래식 마감(html.finish-classic)은 아래 오버라이드 블록이 개편 전 값으로 복원. */
+  --c-line: #e2e8f0; /* slate-200 (개편 전 slate-300) */
+  --c-line-strong: #94a3b8; /* slate-400 */
+  --c-input-ring: rgba(0, 0, 0, 0.2);
   --c-input-bg: #e5e7eb; /* gray-200 */
   --c-input-text: #111827; /* gray-900 */
   --c-icon-text: #4b5563; /* gray-600 */
@@ -77,7 +83,9 @@
   --c-text-label: #e2e8f0; /* slate-200 (본문/라벨) */
   --c-text-muted: #9ca3af; /* gray-400 (보조 L2 — 다크는 더 옅음) */
   --c-text-faint: #6b7280; /* gray-500 (흐림 L3 — 다크는 더 어두움) */
-  --c-line: #334155; /* slate-700 */
+  --c-line: #293548; /* slate-700↓ (개편 전 #334155) — 다크 격자 인상 완화 */
+  --c-line-strong: #475569; /* slate-600 */
+  --c-input-ring: rgba(255, 255, 255, 0.16);
   --c-input-bg: #334155; /* slate-700 */
   --c-input-text: #ffffff;
   --c-icon-text: #ffffff;
@@ -92,9 +100,30 @@
 .true-dark {
   --c-surface: #0a0a0a;
   --c-surface-2: #121212; /* dark:bg-slate-800 트루다크 오버라이드와 동일 */
-  --c-line: #2a2a2a;
+  --c-line: #222222; /* (개편 전 #2a2a2a) */
+  --c-line-strong: #3a3a3a;
+  --c-input-ring: rgba(255, 255, 255, 0.12);
   --c-input-bg: #1a1a1a;
   --c-zone: #1a1a1a; /* 구분 구역(폴더 등) */
+}
+
+/* ── 클래식 마감(개편 전 모양) 복원 — config uiClassicFinish → html.finish-classic.
+   심미 개편(B~)의 시각 변경을 토큰 값 되돌리기만으로 복원한다(플랜 B-0 스냅샷 근거).
+   dark/true-dark 클래스는 App 루트 div 에 붙으므로 후손 선택자로 계층별 재정의. */
+html.finish-classic {
+  --c-line: #cbd5e1; /* slate-300 */
+  --c-line-strong: #cbd5e1;
+  --c-input-ring: transparent;
+}
+html.finish-classic .dark {
+  --c-line: #334155; /* slate-700 */
+  --c-line-strong: #334155;
+  --c-input-ring: transparent;
+}
+html.finish-classic .true-dark {
+  --c-line: #2a2a2a;
+  --c-line-strong: #2a2a2a;
+  --c-input-ring: transparent;
 }
 
 body {
@@ -389,14 +418,25 @@ html.font-pretendard body {
   @apply focus:border-0 focus:outline-0 rounded-md focus:outline-black py-1 md:py-1.5 md:pl-2 md:pr-2 placeholder:text-gray-400;
   background-color: var(--c-input-bg);
   color: var(--c-input-text);
+  /* 입력창 윤곽 링(B1) — 배경과 같은 계열 음영이라 묻히던 경계를 살린다. */
+  box-shadow: inset 0 0 0 1px var(--c-input-ring);
+}
+
+/* 텍스트 입력 창 윤곽 링(B1) — 배경 음영뿐 테두리가 없던 입력 영역(프롬프트 에디터 등)에
+   1px 안쪽 링을 준다. box-shadow 라 레이아웃 불변·라운딩 자동 추종. 클래식 마감에선
+   --c-input-ring 이 transparent 로 복원되어 무표시. Tailwind shadow-* 유틸과 같은 요소에
+   겹쳐 쓰지 말 것(box-shadow 상호 덮어씀 — 전체화면 프롬프트 에디터가 그 예외 사유). */
+.input-ring {
+  box-shadow: inset 0 0 0 1px var(--c-input-ring);
 }
 
 @layer components {
   /* .my-react-select-container {
   } */
   .my-react-select-container .my-react-select__control {
-    /* 기본 테두리는 --c-line 추종. (라이트 hover는 원래 base와 동일=무변화였어서 제거) */
-    @apply bg-[var(--c-input-bg)] border-2 border-[color:var(--c-line)] dark:hover:border-slate-500;
+    /* 입력 테두리는 인터랙션용 강한 토큰(B1 역할 분리 — 구분선 약화의 영향 제외).
+       클래식 마감에선 --c-line-strong 이 개편 전 --c-line 값으로 복원된다. */
+    @apply bg-[var(--c-input-bg)] border-2 border-[color:var(--c-line-strong)] dark:hover:border-slate-500;
   }
 
   .my-react-select-container .my-react-select__control--is-focused {

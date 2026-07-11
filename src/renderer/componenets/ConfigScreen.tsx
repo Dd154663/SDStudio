@@ -794,6 +794,7 @@ const PersonalTab = ({
   fullWordAc, setFullWordAc,
   legacyProjectMode, setLegacyProjectMode,
   uiFont, setUiFont,
+  uiClassicFinish, setUiClassicFinish,
 }: any) => (
   <div className="space-y-4">
     <div>
@@ -826,6 +827,17 @@ const PersonalTab = ({
       <input type="checkbox" id="cfgClassicScene" checked={classicSceneCard}
         onChange={(e) => setClassicSceneCard(e.target.checked)} />
       <label htmlFor="cfgClassicScene" className="text-sm gray-label">클래식 씬 카드 디자인 사용</label>
+    </div>
+    <hr className="line-color" />
+    <div>
+      <div className="flex items-center gap-2">
+        <input type="checkbox" id="cfgClassicFinish" checked={uiClassicFinish}
+          onChange={(e) => setUiClassicFinish(e.target.checked)} />
+        <label htmlFor="cfgClassicFinish" className="text-sm gray-label">클래식 마감 사용</label>
+      </div>
+      <p className="text-xs text-faint mt-1 ml-6">
+        켜면 테두리·구분선 등 세부 마감을 디자인 개선 이전 모양으로 되돌립니다.
+      </p>
     </div>
     <hr className="line-color" />
     <div className="flex items-center gap-2">
@@ -1795,6 +1807,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [uiLayoutTemplate, setUiLayoutTemplate] = useState('classic');
   const [uiFloatViewMode, setUiFloatViewMode] = useState<'cover' | 'center'>('cover');
   const [uiFont, setUiFont] = useState<'pretendard' | 'system'>('system');
+  const [uiClassicFinish, setUiClassicFinish] = useState(false);
   // 미저장 변경 감지 기준 — 로드/저장 시점의 config 스냅샷 (#17)
   const [savedCfg, setSavedCfg] = useState<Config | null>(null);
   const mobileMode = isMobile;
@@ -1821,6 +1834,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setUiLayoutTemplate(config.uiLayoutTemplate ?? 'classic');
       setUiFloatViewMode(config.uiFloatViewMode ?? 'cover');
       setUiFont(config.uiFont ?? 'system');
+      setUiClassicFinish(config.uiClassicFinish ?? false);
       setSavedCfg(config);
     })();
     const checkReady = () => setReady(localAIService.ready);
@@ -1950,6 +1964,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiLayoutTemplate: uiLayoutTemplate,
       uiFloatViewMode: uiFloatViewMode,
       uiFont: uiFont,
+      uiClassicFinish: uiClassicFinish,
     };
     await backend.setConfig(config);
     setSavedCfg(config);
@@ -1960,6 +1975,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.uiLayoutTemplate = uiLayoutTemplate;
     appState.uiFloatViewMode = uiFloatViewMode;
     appState.uiFont = uiFont;
+    appState.uiClassicFinish = uiClassicFinish;
     appState.storageWriteGuard = storageWriteGuard;
     appState.fullWordAutoComplete = fullWordAc;
     localStorage.setItem('sdstudio-full-word-autocomplete', fullWordAc ? 'true' : 'false');
@@ -1992,7 +2008,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'system':
         return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency }} />;
       case 'personal':
-        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, uiFont, setUiFont }} />;
+        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish }} />;
       case 'customization':
         return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark }} />;
       case 'toolbar':
@@ -2031,7 +2047,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       JSON.stringify(uiToolbar) !== JSON.stringify(savedCfg.uiToolbar ?? {}) ||
       uiLayoutTemplate !== (savedCfg.uiLayoutTemplate ?? 'classic') ||
       uiFloatViewMode !== (savedCfg.uiFloatViewMode ?? 'cover') ||
-      uiFont !== (savedCfg.uiFont ?? 'system'));
+      uiFont !== (savedCfg.uiFont ?? 'system') ||
+      uiClassicFinish !== (savedCfg.uiClassicFinish ?? false));
 
   return (
     <div

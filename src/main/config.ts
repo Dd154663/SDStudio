@@ -80,6 +80,9 @@ export interface Config {
   // 앱 글꼴(개인 설정) — 'system'(기본, 기존 시스템 글꼴 스택) /
   // 'pretendard'(번들 Pretendard Variable). id 는 config 저장 키라 배포 후 불변.
   uiFont?: 'pretendard' | 'system';
+  // 클래식 마감(개인 설정) — true 면 UI 심미 개편(보더/라운딩 등) 이전 모양으로 복원.
+  // 적용은 App.tsx 가 html 에 finish-classic 클래스를 토글(App.css 토큰 오버라이드).
+  uiClassicFinish?: boolean;
 }
 
 // 레이아웃 슬롯 개인화 — 템플릿(uiLayoutTemplate) 기본값 위에 얹는 오버라이드.

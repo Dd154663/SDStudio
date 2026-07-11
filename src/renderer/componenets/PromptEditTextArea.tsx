@@ -1498,7 +1498,9 @@ const PromptEditTextArea = observer(
           className={
             bgColor +
             (!fullScreen
-              ? ' overflow-hidden h-full relative rounded-md'
+              ? // input-ring: 인라인 입력 창 윤곽(B1). 전체화면은 shadow-lg 와 box-shadow 가
+                // 겹치므로 제외(그림자가 경계 역할).
+                ' input-ring overflow-hidden h-full relative rounded-md'
               : ' left-0 m-4 p-2 overflow-hidden fixed z-[var(--z-prompt-popup)] h-96 prompt-full rounded-lg')
           }
         >
