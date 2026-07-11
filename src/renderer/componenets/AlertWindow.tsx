@@ -15,7 +15,7 @@ const Toast = observer(({ id, text }: { id: number; text: string }) => {
   }, [id]);
 
   return (
-    <div className="toast-rise titlebar-no-drag flex items-center justify-between gap-3 mb-2 pl-4 pr-2 py-3 rounded-md shadow-xl bg-red-600 text-white w-full pointer-events-auto">
+    <div className="toast-rise titlebar-no-drag flex items-center justify-between gap-3 mb-2 pl-4 pr-2 py-3 rounded-md r-popover shadow-xl bg-red-600 text-white w-full pointer-events-auto">
       <div className="flex-1 break-words">{text}</div>
       <button
         className="flex-none p-2 rounded-md hover:bg-red-700 active:bg-red-800 transition-colors"

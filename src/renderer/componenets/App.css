@@ -422,6 +422,16 @@ html.font-pretendard body {
   box-shadow: inset 0 0 0 1px var(--c-input-ring);
 }
 
+/* ── 라운딩 계층(B3) ── 새 마감에서만 기존 rounded-* 유틸을 덮는다(0,2,1 > 0,1,0).
+   클래식 마감이면 셀렉터 자체가 미적용 = 각 사이트의 원래 라운딩이 그대로 복원.
+   사용법: 사이트의 기존 rounded-* 유틸을 지우지 말고 계층 클래스를 병기할 것. */
+html:not(.finish-classic) .r-modal {
+  border-radius: 0.75rem; /* rounded-xl — 중앙 다이얼로그 */
+}
+html:not(.finish-classic) .r-popover {
+  border-radius: 0.5rem; /* rounded-lg — 팝오버·메뉴·토스트 */
+}
+
 /* 텍스트 입력 창 윤곽 링(B1) — 배경 음영뿐 테두리가 없던 입력 영역(프롬프트 에디터 등)에
    1px 안쪽 링을 준다. box-shadow 라 레이아웃 불변·라운딩 자동 추종. 클래식 마감에선
    --c-input-ring 이 transparent 로 복원되어 무표시. Tailwind shadow-* 유틸과 같은 요소에

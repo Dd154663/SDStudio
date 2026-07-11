@@ -743,7 +743,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
         />
       )}
       {isOpen && (
-        <ul className="left-0 top-10 absolute max-h-60 z-20 w-full mt-1 bg-white border-2 line-color rounded-md shadow-lg overflow-auto dark:bg-slate-700">
+        <ul className="left-0 top-10 absolute max-h-60 z-20 w-full mt-1 bg-white border-2 line-color rounded-md r-popover shadow-lg overflow-auto dark:bg-slate-700">
           {presets.map((option) => (
             <li
               key={option.name}

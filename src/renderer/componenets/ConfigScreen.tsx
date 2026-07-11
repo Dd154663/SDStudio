@@ -895,7 +895,7 @@ const TaskLogSection = () => {
       {showDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
           onClick={(e) => { if (e.target === e.currentTarget) setShowDialog(false); }}>
-          <div className="bg-[var(--c-zone)] rounded-lg shadow-xl w-[90vw] max-w-lg max-h-[80vh] flex flex-col">
+          <div className="bg-[var(--c-zone)] rounded-lg r-modal shadow-xl w-[90vw] max-w-lg max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between p-3 border-b line-color">
               <span className="font-bold text-default">작업 로그</span>
               <button className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-lg px-2"

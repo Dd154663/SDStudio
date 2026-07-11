@@ -161,7 +161,7 @@ export const DownloadDialog = observer(
 
     return (
       <FloatView priority={2} onEscape={onClose}>
-        <div className="w-full max-w-lg mx-auto bg-[var(--c-zone)] rounded-lg shadow-xl overflow-hidden">
+        <div className="w-full max-w-lg mx-auto bg-[var(--c-zone)] rounded-lg r-modal shadow-xl overflow-hidden">
           {/* 헤더 */}
           <div className="flex items-center justify-between p-4 border-b line-color">
             <div className="flex items-center gap-2">
