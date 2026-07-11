@@ -35,6 +35,11 @@ import { keyboardShortcutService, KeyboardShortcutService } from '../models/Keyb
 import { migrationService } from '../models/MigrationService';
 import type { MigrationDiagStatus } from '../models/MigrationService';
 import { persistService } from '../models/PersistenceService';
+import {
+  scanLegacyRemnants,
+  deleteLegacyRemnants,
+} from '../models/legacyCleanup';
+import type { LegacyScanResult } from '../models/legacyCleanup';
 import ModalOverlay from './ModalOverlay';
 import MobileColorPicker from './MobileColorPicker';
 
@@ -373,6 +378,119 @@ const FolderCleanupSection = ({ folder, label, description }: { folder: string; 
   );
 };
 
+/* ── 시스템 탭 하위: 구 저장소 잔재 정리 (트랙1 B4) ──
+   마이그레이션 후 구 루트(outs/inpaints/… 7종)에 남은 고아 폴더·파일을 스캔해
+   사용자 확인 후 정리한다. PC=OS 휴지통 이동(복구 가능), 모바일=영구 삭제.
+   미이동 프로젝트 json 잔존 시 스캔이 차단 사유를 반환한다(legacyCleanup.ts). */
+const LegacyCleanupSection = () => {
+  const [scan, setScan] = useState<LegacyScanResult | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  };
+
+  const doScan = async () => {
+    setScanning(true);
+    try {
+      setScan(await scanLegacyRemnants());
+    } catch (e) {
+      setScan(null);
+    }
+    setScanning(false);
+  };
+
+  const doClean = () => {
+    if (!scan || scan.blocked || scan.remnants.length === 0 || cleaning) return;
+    const summary = `${scan.remnants.length}개 항목 (파일 ${scan.totalFiles}개, 총 ${formatSize(scan.totalSize)})`;
+    appState.pushDialog({
+      type: 'select',
+      text: isMobile
+        ? `구 저장소 잔재 ${summary}를 영구 삭제합니다.\n삭제 후에는 복구할 수 없습니다. 계속할까요?`
+        : `구 저장소 잔재 ${summary}를 OS 휴지통으로 이동합니다.\n(필요 시 휴지통에서 복구할 수 있습니다)`,
+      items: [{ text: '정리 진행', value: 'yes' }],
+      callback: async (value?: string) => {
+        if (value !== 'yes') return;
+        setCleaning(true);
+        const res = await deleteLegacyRemnants(scan.remnants, (done, total) =>
+          setProgress({ done, total }),
+        );
+        setCleaning(false);
+        setProgress(null);
+        appState.pushMessage(
+          res.failed.length > 0
+            ? `잔재 ${res.deleted}개 정리, ${res.failed.length}개 실패`
+            : `구 저장소 잔재 ${res.deleted}개를 정리했습니다.`,
+        );
+        await doScan();
+      },
+    });
+  };
+
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <label className="block text-sm gray-label">구 저장소 잔재 정리</label>
+        <button
+          className="btn text-xs back-gray px-2 py-0.5 rounded"
+          onClick={doScan}
+          disabled={scanning || cleaning}
+        >
+          {scanning ? '검사 중...' : scan ? '새로고침' : '검사'}
+        </button>
+      </div>
+      <p className="text-xs text-faint">
+        마이그레이션 후 구 저장 폴더에 남은 항목(프로젝트에 속하지 않는 고아
+        폴더·파일)을 정리합니다.
+      </p>
+      {scan && scan.blocked && (
+        <p className="text-xs text-orange-500 dark:text-orange-400">{scan.blocked}</p>
+      )}
+      {scan && !scan.blocked && scan.remnants.length === 0 && (
+        <p className="text-xs text-faint">구 저장소에 남은 잔재가 없습니다.</p>
+      )}
+      {scan && !scan.blocked && scan.remnants.length > 0 && (
+        <>
+          <div className="text-sm gray-label">
+            잔재 {scan.remnants.length}개 · 파일 {scan.totalFiles}개 · 총{' '}
+            {formatSize(scan.totalSize)}
+          </div>
+          <div className="text-xs text-muted rounded-md bg-[var(--c-zone)] p-2 max-h-32 overflow-y-auto flex flex-col gap-0.5">
+            {scan.remnants.map((r) => (
+              <div key={r.path} className="break-all">
+                {r.path}
+                {r.isDir
+                  ? r.files === 0
+                    ? ' (빈 폴더)'
+                    : ` (파일 ${r.files}개, ${formatSize(r.size)})`
+                  : ` (${formatSize(r.size)})`}
+              </div>
+            ))}
+          </div>
+          <button
+            className="btn text-sm back-red px-3 py-1.5 rounded"
+            onClick={doClean}
+            disabled={cleaning}
+          >
+            {cleaning
+              ? progress
+                ? `정리 중... ${progress.done}/${progress.total}`
+                : '정리 중...'
+              : isMobile
+                ? '잔재 영구 삭제'
+                : '잔재를 휴지통으로 이동'}
+          </button>
+        </>
+      )}
+    </div>
+  );
+};
+
 /* ── 시스템 탭 하위: 저장소 마이그레이션 상태 (트랙1 B3) ──
    완료 시 = 진단 표시 전용(조작 없음). 미완료(구 배치) 시 = 구 구조 관리 상태임을
    명시하고 "마이그레이션 시작" 버튼 노출 — 옵트아웃 해제 후 앱 재시작으로 부팅
@@ -473,6 +591,7 @@ const MigrationDiagSection = () => {
           </button>
         </>
       )}
+      {diag.layout === 'workspace' && <LegacyCleanupSection />}
     </div>
   );
 };
