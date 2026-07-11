@@ -200,6 +200,10 @@ export class AppState {
   // 'cover'(기본)=좌우 패널 위로 넓게 / 'center'=중앙 콘텐츠만. 소비는 FloatView.tsx.
   @observable accessor uiFloatViewMode: 'cover' | 'center' = 'cover';
 
+  // 앱 글꼴(config.uiFont 미러) — 'system'(기본) / 'pretendard'.
+  // 적용은 App.tsx 가 html 에 font-system 클래스를 토글하는 방식(App.css 참조).
+  @observable accessor uiFont: 'pretendard' | 'system' = 'system';
+
   // 편집 모드(PC 전용): 화면에서 UI 배치 직접 조작. EditModeShell 이 켜져 있는 동안
   // 툴바 버튼은 클릭 대신 드래그 편집 대상이 된다.
   @observable accessor editMode = false;

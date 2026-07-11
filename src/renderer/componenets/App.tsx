@@ -263,6 +263,7 @@ export const App = observer(() => {
       appState.genWidget = conf.genWidget ?? {};
       appState.uiLayoutSlots = conf.uiLayoutSlots ?? {};
       appState.uiFloatViewMode = conf.uiFloatViewMode ?? 'cover';
+      appState.uiFont = conf.uiFont ?? 'system';
     };
     refreshDarkMode();
     sessionService.addEventListener('config-changed', refreshDarkMode);
@@ -270,6 +271,14 @@ export const App = observer(() => {
       sessionService.removeEventListener('config-changed', refreshDarkMode);
     };
   }, []);
+  // 글꼴 옵션(환경설정 → 개인 설정) 적용 — 'pretendard'면 html 에 클래스를 얹어
+  // 번들 글꼴로 전환한다(App.css 의 html.font-pretendard, 기본=시스템 스택).
+  useEffect(() => {
+    document.documentElement.classList.toggle(
+      'font-pretendard',
+      appState.uiFont === 'pretendard',
+    );
+  }, [appState.uiFont]);
   // 부팅 경고: 지정한 저장 경로에 접근할 수 없어 기본 위치로 폴백해 실행 중이면
   // 사용자에게 안내한다(설정에서 경로를 쓰기 가능한 위치로 재지정 유도). 이 안내가
   // 없으면 사용자는 저장 경로가 조용히 무시된 사실을 모른다.

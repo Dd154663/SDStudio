@@ -144,8 +144,24 @@ body {
   }
 }
 
+/* ── 앱 글꼴 ──
+   기본 = 기존 시스템 스택('Noto Sans KR' 선언 → 미설치 시 OS 폴백).
+   환경설정 → 개인 설정의 글꼴 옵션이 'Pretendard'면 App.tsx 가 html 에
+   font-pretendard 클래스를 얹어 번들된 Pretendard Variable(OFL, 가변 1파일로
+   전 굵기 커버)로 전환한다. 기본이 클래스 없음이라 부팅 깜빡임이 없다. */
+@font-face {
+  font-family: 'Pretendard Variable';
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+  src: url('../fonts/PretendardVariable.woff2') format('woff2-variations');
+}
+
 body {
   font-family: 'Noto Sans KR', sans-serif;
+}
+html.font-pretendard body {
+  font-family: 'Pretendard Variable', 'Noto Sans KR', sans-serif;
 }
 
 /* 커스텀 타이틀바 */

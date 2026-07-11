@@ -778,12 +778,50 @@ const SystemTab = ({
 };
 
 /* ── 탭: 개인 설정 (취향 토글) ── */
+// 앱 글꼴 선택지 — id 는 config 저장 키(uiFont)라 배포 후 불변. preview 는 각
+// 선택지 라벨을 해당 글꼴로 렌더해 고르기 전에 차이를 눈으로 보게 한다.
+const appFonts: { id: 'pretendard' | 'system'; name: string; family: string }[] = [
+  { id: 'system', name: '시스템 기본', family: "'Noto Sans KR', sans-serif" },
+  {
+    id: 'pretendard',
+    name: 'Pretendard',
+    family: "'Pretendard Variable', 'Noto Sans KR', sans-serif",
+  },
+];
+
 const PersonalTab = ({
   classicSceneCard, setClassicSceneCard,
   fullWordAc, setFullWordAc,
   legacyProjectMode, setLegacyProjectMode,
+  uiFont, setUiFont,
 }: any) => (
   <div className="space-y-4">
+    <div>
+      <label className="block text-sm gray-label mb-1">글꼴</label>
+      <div className="flex flex-wrap gap-2">
+        {appFonts.map((f) => {
+          const selected = (uiFont ?? 'system') === f.id;
+          return (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setUiFont(f.id)}
+              className={
+                'px-3 py-1.5 rounded-md border text-sm clickable text-default ' +
+                (selected ? 'ring-2 ring-sky-400 border-sky-400' : 'line-color')
+              }
+              style={{ fontFamily: f.family }}
+            >
+              {f.name} — 가나다 123
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-xs text-faint mt-1">
+        앱 전체에 쓰이는 글꼴입니다. 저장하면 바로 적용됩니다.
+      </p>
+    </div>
+    <hr className="line-color" />
     <div className="flex items-center gap-2">
       <input type="checkbox" id="cfgClassicScene" checked={classicSceneCard}
         onChange={(e) => setClassicSceneCard(e.target.checked)} />
@@ -1756,6 +1794,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [uiToolbar, setUiToolbar] = useState<UiToolbarConfig>({});
   const [uiLayoutTemplate, setUiLayoutTemplate] = useState('classic');
   const [uiFloatViewMode, setUiFloatViewMode] = useState<'cover' | 'center'>('cover');
+  const [uiFont, setUiFont] = useState<'pretendard' | 'system'>('system');
   // 미저장 변경 감지 기준 — 로드/저장 시점의 config 스냅샷 (#17)
   const [savedCfg, setSavedCfg] = useState<Config | null>(null);
   const mobileMode = isMobile;
@@ -1781,6 +1820,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setUiToolbar(config.uiToolbar ?? {});
       setUiLayoutTemplate(config.uiLayoutTemplate ?? 'classic');
       setUiFloatViewMode(config.uiFloatViewMode ?? 'cover');
+      setUiFont(config.uiFont ?? 'system');
       setSavedCfg(config);
     })();
     const checkReady = () => setReady(localAIService.ready);
@@ -1909,6 +1949,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiToolbar: uiToolbar,
       uiLayoutTemplate: uiLayoutTemplate,
       uiFloatViewMode: uiFloatViewMode,
+      uiFont: uiFont,
     };
     await backend.setConfig(config);
     setSavedCfg(config);
@@ -1918,6 +1959,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.uiToolbar = uiToolbar;
     appState.uiLayoutTemplate = uiLayoutTemplate;
     appState.uiFloatViewMode = uiFloatViewMode;
+    appState.uiFont = uiFont;
     appState.storageWriteGuard = storageWriteGuard;
     appState.fullWordAutoComplete = fullWordAc;
     localStorage.setItem('sdstudio-full-word-autocomplete', fullWordAc ? 'true' : 'false');
@@ -1950,7 +1992,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'system':
         return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency }} />;
       case 'personal':
-        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode }} />;
+        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, uiFont, setUiFont }} />;
       case 'customization':
         return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark }} />;
       case 'toolbar':
@@ -1988,7 +2030,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       JSON.stringify(uiTheme) !== JSON.stringify(savedCfg.uiTheme ?? {}) ||
       JSON.stringify(uiToolbar) !== JSON.stringify(savedCfg.uiToolbar ?? {}) ||
       uiLayoutTemplate !== (savedCfg.uiLayoutTemplate ?? 'classic') ||
-      uiFloatViewMode !== (savedCfg.uiFloatViewMode ?? 'cover'));
+      uiFloatViewMode !== (savedCfg.uiFloatViewMode ?? 'cover') ||
+      uiFont !== (savedCfg.uiFont ?? 'system'));
 
   return (
     <div

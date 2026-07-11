@@ -77,6 +77,9 @@ export interface Config {
   // 'cover'(기본)=좌우 패널 위로 넓게 펼침(히스토리 도크는 유지, v4.14.0 동작) /
   // 'center'=중앙 콘텐츠만 덮어 좌우 패널을 병행 열람. 모바일은 도크가 없어 항상 center.
   uiFloatViewMode?: 'cover' | 'center';
+  // 앱 글꼴(개인 설정) — 'system'(기본, 기존 시스템 글꼴 스택) /
+  // 'pretendard'(번들 Pretendard Variable). id 는 config 저장 키라 배포 후 불변.
+  uiFont?: 'pretendard' | 'system';
 }
 
 // 레이아웃 슬롯 개인화 — 템플릿(uiLayoutTemplate) 기본값 위에 얹는 오버라이드.

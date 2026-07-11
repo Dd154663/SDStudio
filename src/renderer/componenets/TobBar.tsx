@@ -116,7 +116,8 @@ const TobBar = observer(() => {
         ) : (
           <>
             <span className="text-sub">Anlas: </span>{' '}
-            <span className={`round-tag back-yellow`}>{credits}</span>
+            {/* tabular-nums: 잔량이 줄어도 자릿수 폭이 고정돼 출렁이지 않게 */}
+            <span className={`round-tag back-yellow tabular-nums`}>{credits}</span>
           </>
         )}
       </p>
