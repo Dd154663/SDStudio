@@ -1245,7 +1245,7 @@ const CustomizationTab = ({
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {themeTemplates.map((tpl) => (
-            <div key={tpl.name} className="rounded-md border line-color p-2">
+            <div key={tpl.name} className="rounded-md r-card border line-color p-2">
               <div className="text-sm text-default mb-1.5">
                 {tpl.emoji} {tpl.name}
               </div>
@@ -1288,7 +1288,7 @@ const CustomizationTab = ({
             readOnly
           />
           <div
-            className="rounded-md border line-color p-2"
+            className="rounded-md r-card border line-color p-2"
             style={{ backgroundColor: 'var(--c-surface-2)' }}
           >
             <span className="gray-label text-xs">패널 / 카드 샘플</span>
@@ -1649,7 +1649,7 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, set
           onClose();
         }}
         className={
-          'flex w-full items-center gap-3 rounded-md border p-2.5 text-left clickable line-color ' +
+          'flex w-full items-center gap-3 rounded-md r-card border p-2.5 text-left clickable line-color ' +
           (mobileMode ? 'opacity-50 cursor-not-allowed ' : '')
         }
       >

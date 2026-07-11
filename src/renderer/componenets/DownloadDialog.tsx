@@ -270,7 +270,7 @@ export const DownloadDialog = observer(
                       : '전체 선택'}
                   </button>
                 </div>
-                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 border rounded line-color">
+                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 border rounded r-card line-color">
                   {imagePaths.map((_, i) => (
                     <button
                       key={i}
@@ -301,7 +301,7 @@ export const DownloadDialog = observer(
               </button>
 
               {showSettings && (
-                <div className="mt-3 p-3 border rounded line-color space-y-3">
+                <div className="mt-3 p-3 border rounded r-card line-color space-y-3">
                   {/* 자동 넘버링 */}
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input

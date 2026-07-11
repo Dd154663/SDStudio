@@ -1364,7 +1364,7 @@ const CharacterPromptEditor = observer(
             {getField().map((character: CharacterPrompt, i: number) => (
               <div
                 key={character.id}
-                className={`border rounded-md mt-3 p-3 ${character.enabled === false ? 'opacity-60 line-color' : 'border-sky-500 bg-[var(--c-surface-2)]'}`}
+                className={`border rounded-md r-card mt-3 p-3 ${character.enabled === false ? 'opacity-60 line-color' : 'border-sky-500 bg-[var(--c-surface-2)]'}`}
               >
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2 gray-label">
