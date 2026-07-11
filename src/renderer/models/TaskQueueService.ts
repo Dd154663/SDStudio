@@ -224,6 +224,10 @@ export class TaskQueueService extends EventTarget {
   currentRun: TaskQueueRun | undefined;
   taskSet: { [key: string]: boolean };
   taskLogs: TaskLog[] = [];
+  // 진행 바 사이클 시작 시각(epoch ms) — 'start'/'complete' 발화 시점에 갱신.
+  // 진행 바(TaskProgressBar)가 도크↔플로팅 이동 등으로 재마운트돼도 경과분을
+  // 이어 그릴 수 있게 하는 단일 출처(컴포넌트 로컬 상태는 재마운트에 유실됨).
+  progressCycleStartedAt = 0;
   private logsLoaded = false;
   private logsSaveTimer: any = null;
   constructor(handlers: TaskHandler[]) {
@@ -381,6 +385,7 @@ export class TaskQueueService extends EventTarget {
         delayCnt: this.getDelayCnt(),
       };
       this.runInternal(this.currentRun);
+      this.progressCycleStartedAt = Date.now();
       this.dispatchEvent(new CustomEvent('start', {}));
     }
   }
@@ -520,6 +525,7 @@ export class TaskQueueService extends EventTarget {
               this.sceneStats[sceneKey].done++;
             }
           }
+          this.progressCycleStartedAt = Date.now();
           this.dispatchEvent(new CustomEvent('complete', {}));
           this.dispatchProgress();
         } catch (e: any) {

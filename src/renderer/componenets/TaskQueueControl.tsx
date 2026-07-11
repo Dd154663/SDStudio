@@ -13,9 +13,17 @@ interface ProgressBarProps {
   isError: boolean;
   text: string;
   key: number;
+  // 이미 흘러간 시간(초) — 음수 animation-delay 로 애니메이션을 중간부터 이어
+  // 그린다. 컨트롤이 도크↔플로팅 이동으로 재마운트될 때 0부터 다시 차오르는
+  // 문제 방지(경과 초과 시에는 fill-mode:forwards 라 꽉 찬 상태로 유지).
+  elapsed?: number;
 }
 
-const ProgressBar = ({ duration, isError, text, key }: ProgressBarProps) => {
+const ProgressBar = ({ duration, isError, text, key, elapsed }: ProgressBarProps) => {
+  const animStyle = {
+    animationDuration: `${duration}s`,
+    animationDelay: `-${elapsed ?? 0}s`,
+  };
   return (
     <div
       key={key}
@@ -32,11 +40,11 @@ const ProgressBar = ({ duration, isError, text, key }: ProgressBarProps) => {
           'top-0 left-0 absolute w-40 md:w-52 progress-transition rounded-full h-8 progress-clip-animation ' +
           (!isError ? 'bg-sky-500 dark:bg-indigo-400' : 'bg-red-500')
         }
-        style={{ animationDuration: `${duration}s` }}
+        style={animStyle}
       ></div>
       <div
         className="top-0 left-0 w-40 md:w-52 h-8 absolute flex items-center justify-center text-white gap-2 progress-clip-animation"
-        style={{ animationDuration: `${duration}s` }}
+        style={animStyle}
       >
         <FaRegClock size={20} />
         <div className="w-28 md:w-40 text-xs md:text-sm text-center overflow-hidden text-nowrap">
@@ -52,7 +60,22 @@ interface TaskProgressBarProps {
 }
 export const TaskProgressBar = ({ fast }: TaskProgressBarProps) => {
   const key = useRef<number>(0);
-  const [duration, setDuration] = useState(0);
+  // 마운트 시점에 이미 실행 중이면(도크↔플로팅 재마운트 등) 진행 중이던 사이클을
+  // 이어받는다: 길이는 현재 태스크 예상치, 경과는 서비스의 사이클 시작 시각 기준.
+  // (새 사이클이 시작되면 onStart/onComplete 가 elapsed 를 0 으로 되돌린다.)
+  const [duration, setDuration] = useState(() =>
+    taskQueueService.isRunning()
+      ? taskQueueService.estimateTopTaskTime('mean') / 1000
+      : 0,
+  );
+  const [elapsed, setElapsed] = useState(() =>
+    taskQueueService.isRunning() && taskQueueService.progressCycleStartedAt > 0
+      ? Math.max(
+          0,
+          (Date.now() - taskQueueService.progressCycleStartedAt) / 1000,
+        )
+      : 0,
+  );
   const [isError, setIsError] = useState(false);
   const [error, setError] = useState<string>('');
   const [_, rerender] = useState<{}>({});
@@ -86,6 +109,7 @@ export const TaskProgressBar = ({ fast }: TaskProgressBarProps) => {
       if (!taskQueueService.isRunning()) {
         nextKey();
         setDuration(0);
+        setElapsed(0);
         setIsError(false);
         setError('');
       }
@@ -95,6 +119,7 @@ export const TaskProgressBar = ({ fast }: TaskProgressBarProps) => {
       nextKey();
       setIsError(false);
       setError('');
+      setElapsed(0); // 새 사이클 — 처음부터 차오름
       setDuration(taskQueueService.estimateTopTaskTime('mean') / 1000);
       if (!taskQueueService.isRunning()) {
         setDuration(0);
@@ -104,6 +129,7 @@ export const TaskProgressBar = ({ fast }: TaskProgressBarProps) => {
       nextKey();
       setIsError(false);
       setError('');
+      setElapsed(0); // 새 사이클 — 처음부터 차오름
       setDuration(taskQueueService.estimateTopTaskTime('mean') / 1000);
       if (!taskQueueService.isRunning()) {
         setDuration(0);
@@ -142,6 +168,7 @@ export const TaskProgressBar = ({ fast }: TaskProgressBarProps) => {
         key={key.current}
         isError={isError}
         duration={duration}
+        elapsed={elapsed}
         text={getProgressText()}
       />
     </div>
