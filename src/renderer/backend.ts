@@ -94,6 +94,9 @@ export abstract class Backend {
   abstract selectFiles(options?: { filters?: { name: string; extensions: string[] }[] }): Promise<string[]>;
   abstract readBinaryFile(filePath: string): Promise<string>;
   abstract close(): Promise<void>;
+  // 앱 재시작 — 저장소 마이그레이션 재개 버튼용. 데스크톱=정상 종료 경로(close
+  // 인터셉트의 종료 시 저장 보장) 후 자동 재실행, 모바일=WebView reload(부트스트랩 재실행).
+  abstract restartApp(): Promise<void>;
   abstract existFile(filename: string): Promise<boolean>;
   abstract download(url: string, dest: string, filename: string): Promise<void>;
   abstract resizeImage(input: ResizeImageInput): Promise<void>;

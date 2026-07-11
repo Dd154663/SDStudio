@@ -32,6 +32,9 @@ import {
   FaColumns,
 } from 'react-icons/fa';
 import { keyboardShortcutService, KeyboardShortcutService } from '../models/KeyboardShortcutService';
+import { migrationService } from '../models/MigrationService';
+import type { MigrationDiagStatus } from '../models/MigrationService';
+import { persistService } from '../models/PersistenceService';
 import ModalOverlay from './ModalOverlay';
 import MobileColorPicker from './MobileColorPicker';
 
@@ -370,6 +373,110 @@ const FolderCleanupSection = ({ folder, label, description }: { folder: string; 
   );
 };
 
+/* ── 시스템 탭 하위: 저장소 마이그레이션 상태 (트랙1 B3) ──
+   완료 시 = 진단 표시 전용(조작 없음). 미완료(구 배치) 시 = 구 구조 관리 상태임을
+   명시하고 "마이그레이션 시작" 버튼 노출 — 옵트아웃 해제 후 앱 재시작으로 부팅
+   게이트를 다시 태운다(완전 재시작이 가장 안전 — 사용자 결정 2026-07-11). */
+const MigrationDiagSection = () => {
+  const [diag, setDiag] = useState<MigrationDiagStatus | null>(null);
+  useEffect(() => {
+    migrationService
+      .readDiagStatus()
+      .then(setDiag)
+      .catch(() => {});
+  }, []);
+  if (!diag) return null;
+
+  const startMigration = () => {
+    // 재시작은 진행 중인 작업을 중단시킨다 — 생성(진행/예약)·차단형 진행창·
+    // 내보내기 진행이 하나라도 있으면 마이그레이션을 시작하지 않고 안내한다.
+    const busy =
+      taskQueueService.isRunning() ||
+      !taskQueueService.isEmpty() ||
+      !!appState.progressDialog ||
+      (!!appState.exportProgress && !appState.exportProgress.completed);
+    if (busy) {
+      appState.pushDialog({
+        type: 'yes-only',
+        text:
+          '진행 중이거나 예약된 작업이 있습니다.\n' +
+          '이미지 생성·최적화·내보내기 등 모든 작업을 취소하거나 완료한 뒤 다시 시도해 주세요.',
+      });
+      return;
+    }
+    appState.pushDialog({
+      type: 'select',
+      text:
+        '마이그레이션을 시작하려면 프로그램을 다시 시작해야 합니다.\n' +
+        '다시 시작하면 부팅 시 마이그레이션 안내가 표시됩니다.\n\n지금 다시 시작할까요?',
+      items: [{ text: '지금 다시 시작', value: 'restart' }],
+      callback: async (value?: string) => {
+        if (value !== 'restart') return;
+        await migrationService.clearOptOut();
+        // 모바일 reload 경로는 종료 시 저장 훅을 타지 않으므로 여기서 직접
+        // flush 한다(데스크톱은 close 인터셉트가 한 번 더 flush — 무해).
+        try {
+          await sessionService.flushOnClose();
+          await persistService.flushAll();
+        } catch (e) {}
+        await backend.restartApp();
+      },
+    });
+  };
+
+  return (
+    <div>
+      <label className="block text-sm gray-label mb-1">저장소 구조</label>
+      <p className="text-sm text-body">
+        {diag.layout === 'workspace'
+          ? '통합 구조(workspace) 사용 중'
+          : '구 구조 사용 중 — 마이그레이션 미완료. 프로젝트 데이터가 여러 폴더에 분산 저장되는 이전 방식으로 관리되고 있습니다.'}
+      </p>
+      {diag.marker && diag.marker.migratedAt > 0 && (
+        <p className="text-xs text-faint mt-1">
+          전환 완료: {new Date(diag.marker.migratedAt).toLocaleString()}
+          {diag.marker.appVersion ? ` · v${diag.marker.appVersion}` : ''}
+        </p>
+      )}
+      {diag.ledger && (
+        <p className="text-xs text-faint mt-1">
+          이동 기록: 프로젝트 {diag.ledger.total}개 중 완료 {diag.ledger.done}개
+          {diag.ledger.failed > 0 && (
+            <span className="text-red-500"> · 실패 {diag.ledger.failed}개</span>
+          )}
+          {diag.ledger.incomplete > 0 && (
+            <span className="text-red-500">
+              {' '}
+              · 미완료 {diag.ledger.incomplete}개 (다음 부팅에서 재개)
+            </span>
+          )}
+        </p>
+      )}
+      {diag.ledger?.backupFile && (
+        <p className="text-xs text-faint mt-1">
+          전환 직전 백업: exports/{diag.ledger.backupFile}
+        </p>
+      )}
+      {diag.layout === 'legacy' && (
+        <>
+          {diag.optedOut && (
+            <p className="text-xs text-faint mt-1">
+              마이그레이션 안내를 표시하지 않도록 설정되어 있습니다. 아래
+              버튼으로 다시 시작하면 안내가 다시 표시됩니다.
+            </p>
+          )}
+          <button
+            className="mt-2 px-3 py-1.5 text-sm back-sky rounded clickable"
+            onClick={startMigration}
+          >
+            마이그레이션 시작 (프로그램 다시 시작)
+          </button>
+        </>
+      )}
+    </div>
+  );
+};
+
 /* ── 탭: 시스템 (기술·진단·정보) ── */
 const SystemTab = ({
   delayTime, setDelayTime,
@@ -479,6 +586,8 @@ const SystemTab = ({
       <FolderCleanupSection folder="tmp" label="tmp 폴더 정리" description="이미지 내보내기 시 생성되는 임시 파일이 저장됩니다." />
       <hr className="line-color" />
       <TaskLogSection />
+      <hr className="line-color" />
+      <MigrationDiagSection />
       <hr className="line-color" />
       <div className="space-y-2">
         <label className="block text-sm gray-label mb-1">업데이트</label>

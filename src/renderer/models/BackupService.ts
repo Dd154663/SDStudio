@@ -77,6 +77,12 @@ const FULL_BACKUP_SETTINGS_FILES = [
 // 글로벌 프리셋/캐릭터가 참조하는 이미지 디렉터리 (플랫, 파일만)
 const FULL_BACKUP_SETTINGS_IMAGE_DIRS = ['global_vibes', 'global_char_images'];
 
+// 이 버전이 복원할 수 있는 매니페스트 version 상한. 현행 아카이브 포맷은
+// version 1 그대로이며(무변경), 이 상한 검사는 미래에 포맷이 바뀌어 version이
+// 올라갔을 때 지금 버전의 앱이 신 백업을 잘못 복원(이미지 유실 등)하는 것을
+// 막는 포워드 호환 안전판이다. version 필드 부재(구 백업)는 통과.
+const SUPPORTED_MANIFEST_VERSION = 1;
+
 export class BackupService {
   projectBackupMenu() {
     appState.pushDialog({
@@ -447,7 +453,25 @@ export class BackupService {
       appState.pushMessage('폴더 백업 파일이 아닙니다.');
       return;
     }
+    if (!this.guardManifestVersion(manifest)) {
+      appState.setProgressDialog(undefined);
+      try { await backend.deleteDir(root); } catch (e) {}
+      return;
+    }
     await this.restoreFolderBackupFromDir(root, manifest);
+  }
+
+  // 매니페스트 version 상한 검사 — 초과 시 안내 메시지를 띄우고 false.
+  // 호출부는 false 면 임시 디렉터리 정리 후 복원을 중단해야 한다.
+  private guardManifestVersion(manifest: any): boolean {
+    const v = manifest?.version;
+    if (typeof v === 'number' && v > SUPPORTED_MANIFEST_VERSION) {
+      appState.pushMessage(
+        '이 백업은 더 새로운 버전의 SDStudio에서 만들어졌습니다. 앱을 최신 버전으로 업데이트한 뒤 다시 시도해 주세요.',
+      );
+      return false;
+    }
+    return true;
   }
 
   // 추출된 디렉터리에서 폴더 백업 매니페스트를 읽고 유효성 검증. 폴더 백업이 아니면 null.
@@ -643,6 +667,10 @@ export class BackupService {
     if (!manifest || manifest.type !== opts.manifestType) {
       await cleanup();
       appState.pushMessage(`${opts.label} 백업 파일이 아닙니다.`);
+      return;
+    }
+    if (!this.guardManifestVersion(manifest)) {
+      await cleanup();
       return;
     }
     const policy = await this.askLibraryBackupPolicy(opts.label);
@@ -918,6 +946,12 @@ export class BackupService {
         await backend.deleteDir(root);
       } catch (e) {}
       appState.pushMessage('전체 백업 파일이 아닙니다.');
+      return;
+    }
+    if (!this.guardManifestVersion(manifest)) {
+      try {
+        await backend.deleteDir(root);
+      } catch (e) {}
       return;
     }
     const mode: 'full' | 'noimg' | 'settings' =
@@ -1779,6 +1813,10 @@ export class BackupService {
     // 1) 폴더 백업 (_folder.json 매니페스트) → 폴더째 복원
     const manifest = await this.readFolderBackupManifest(root);
     if (manifest) {
+      if (!this.guardManifestVersion(manifest)) {
+        try { await backend.deleteDir(root); } catch (e) {}
+        return;
+      }
       await this.restoreFolderBackupFromDir(root, manifest);
       return;
     }

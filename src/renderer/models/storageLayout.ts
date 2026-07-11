@@ -12,6 +12,10 @@
 
 export const STORAGE_MARKER_FILE = 'storage_version.json';
 export const MIGRATION_LEDGER_FILE = 'migration_ledger.json';
+// 마이그레이션 게이트 "다시 알리지 않음" 기록(데이터 루트 직하 — saveLocation과
+// 동행, 구버전은 무시). 존재하면 부팅 게이트를 띄우지 않고 구 배치로 계속한다.
+// 해제(재개)는 설정 → 시스템 → 저장소 구조의 마이그레이션 시작 버튼.
+export const MIGRATION_OPTOUT_FILE = 'migration_optout.json';
 export const PROJECT_META_FILE = 'meta.json';
 export const PROJECT_JSON_FILE = 'project.json';
 

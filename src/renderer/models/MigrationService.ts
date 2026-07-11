@@ -18,11 +18,13 @@ import { FileEntry } from '../backend';
 import {
   STORAGE_MARKER_FILE,
   MIGRATION_LEDGER_FILE,
+  MIGRATION_OPTOUT_FILE,
   PROJECT_META_FILE,
   PROJECT_JSON_FILE,
   WorkspaceProjectMeta,
   makeWorkspaceDirName,
   setWorkspaceLayoutActive,
+  isWorkspaceLayout,
   registerProjectDir,
 } from './storageLayout';
 import {
@@ -135,7 +137,26 @@ function ledgerKey(folder: string, name: string): string {
   return folder + '\u0000' + name;
 }
 
-export type MigrationChoice = 'proceed' | 'skip-backup' | 'later';
+export type MigrationChoice = 'proceed' | 'skip-backup' | 'later' | 'dismiss';
+
+// 진단 조회 결과(설정→시스템 상태 표시용, 트랙1 B3). 읽기 전용 스냅샷.
+export interface MigrationDiagStatus {
+  layout: 'workspace' | 'legacy';
+  optedOut: boolean; // "다시 알리지 않음" 기록 존재(구 배치일 때만 의미)
+  marker: {
+    storageVersion: number;
+    migratedAt: number;
+    appVersion: string;
+  } | null;
+  ledger: {
+    startedAt: number;
+    total: number;
+    done: number;
+    failed: number;
+    incomplete: number; // pending·moving 잔여(비정상 중단 흔적)
+    backupFile: string | null; // 마이그레이션 직전 전체 백업 파일명(완료 기록 시)
+  } | null;
+}
 
 export type MigrationServiceState =
   | 'idle'
@@ -196,11 +217,21 @@ class MigrationService {
     try {
       let choice: MigrationChoice = 'skip-backup';
       if (!incremental) {
+        // "다시 알리지 않음" 기록이 있으면 게이트를 띄우지 않고 구 배치로 계속.
+        // (재개는 설정 → 시스템 → 저장소 구조의 마이그레이션 시작 버튼)
+        if (await this.readOptOut()) {
+          this.state = 'idle';
+          return;
+        }
         // 최초 마이그레이션 — 여유 공간 판정 후 게이트 선택 대기.
         await this.computeSpaceInfo();
         choice = await this.awaitChoice();
-        if (choice === 'later') {
+        if (choice === 'later' || choice === 'dismiss') {
           // 마이그레이션을 미루고 구 배치 그대로 사용(활성화하지 않음).
+          // 'dismiss' 는 다음 부팅부터 게이트도 띄우지 않는다(옵트아웃 기록).
+          if (choice === 'dismiss') {
+            await this.writeOptOut();
+          }
           this.state = 'idle';
           return;
         }
@@ -225,6 +256,8 @@ class MigrationService {
       if (!incremental) {
         await this.writeMarker();
       }
+      // 마이그레이션이 끝났으므로 옵트아웃 기록은 더 이상 의미 없음 — 정리.
+      await this.clearOptOut();
       setWorkspaceLayoutActive(true);
 
       if (this.failedProjects.length > 0) {
@@ -252,9 +285,37 @@ class MigrationService {
   chooseLater(): void {
     this.resolveChoice('later');
   }
+  chooseDismiss(): void {
+    this.resolveChoice('dismiss');
+  }
   // 부분 실패 요약 확인(활성화 이미 완료 — 게이트 닫기).
   acknowledge(): void {
     this.state = 'done';
+  }
+
+  // ── 옵트아웃("다시 알리지 않음") 기록 — 데이터 루트 직하 파일 ──
+  private async readOptOut(): Promise<boolean> {
+    try {
+      return await backend.existFile(MIGRATION_OPTOUT_FILE);
+    } catch (e) {
+      return false;
+    }
+  }
+  private async writeOptOut(): Promise<void> {
+    try {
+      await backend.writeFile(
+        MIGRATION_OPTOUT_FILE,
+        JSON.stringify({ dismissedAt: Date.now() }),
+      );
+    } catch (e) {}
+  }
+  // 설정의 마이그레이션 시작 버튼 — 옵트아웃 해제(다음 부팅에서 게이트 재표시).
+  async clearOptOut(): Promise<void> {
+    try {
+      if (await backend.existFile(MIGRATION_OPTOUT_FILE)) {
+        await backend.deleteFile(MIGRATION_OPTOUT_FILE);
+      }
+    } catch (e) {}
   }
 
   private awaitChoice(): Promise<MigrationChoice> {
@@ -645,6 +706,44 @@ class MigrationService {
     };
     await walk(PROJECT_JSON_ROOT, '');
     return { entries, folders };
+  }
+
+  // ── 진단 조회(트랙1 B3) — 설정→시스템의 상태 표시 전용, 읽기만 한다 ──
+  // 원장/마커의 스키마 해석을 이 서비스 안에 유지하기 위한 public 창구.
+  async readDiagStatus(): Promise<MigrationDiagStatus> {
+    let marker: MigrationDiagStatus['marker'] = null;
+    try {
+      const raw = JSON.parse(await backend.readFile(STORAGE_MARKER_FILE));
+      if (raw && typeof raw.storageVersion === 'number') {
+        marker = {
+          storageVersion: raw.storageVersion,
+          migratedAt: typeof raw.migratedAt === 'number' ? raw.migratedAt : 0,
+          appVersion: String(raw.appVersion ?? ''),
+        };
+      }
+    } catch (e) {}
+    let ledger: MigrationDiagStatus['ledger'] = null;
+    try {
+      if (await backend.existFile(MIGRATION_LEDGER_FILE)) {
+        const l = await this.loadLedger();
+        const states = Object.values(l.projects).map((p) => p.state);
+        ledger = {
+          startedAt: l.startedAt,
+          total: states.length,
+          done: states.filter((s) => s === 'done').length,
+          failed: states.filter((s) => s === 'failed').length,
+          incomplete: states.filter((s) => s !== 'done' && s !== 'failed')
+            .length,
+          backupFile: l.backup?.done ? l.backup.file : null,
+        };
+      }
+    } catch (e) {}
+    return {
+      layout: isWorkspaceLayout() ? 'workspace' : 'legacy',
+      optedOut: await this.readOptOut(),
+      marker,
+      ledger,
+    };
   }
 
   // ── 원장 로드/저장 ──

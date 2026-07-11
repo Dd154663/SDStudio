@@ -45,6 +45,24 @@ export class ElectornBackend extends Backend {
     this.imageGenService = new NovelAiImageGenService(new ElectronFetcher());
   }
 
+  // 로그인 토큰 — 저장 경로(saveLocation)와 무관하게 이 PC 전역(userData,
+  // config.json 과 동일 위치)에 보관한다. 종전에는 데이터 루트(APP_DIR)에 있어
+  // 저장 경로를 바꾸면 로그인이 풀렸다. 구 위치 토큰은 발견 시 전역으로 1회
+  // 이관하고, 원본은 구버전 롤백 호환을 위해 남겨둔다(전역본이 있으면 무시됨).
+  private async readToken(): Promise<string> {
+    try {
+      return await invoke('read-global-file', 'TOKEN.txt');
+    } catch (e) {
+      const legacy = await invoke('read-file', 'TOKEN.txt');
+      await invoke('write-global-file', 'TOKEN.txt', legacy);
+      return legacy;
+    }
+  }
+
+  private async writeToken(token: string): Promise<void> {
+    await invoke('write-global-file', 'TOKEN.txt', token);
+  }
+
   async getConfig(): Promise<Config> {
     return await invoke('get-config');
   }
@@ -62,43 +80,43 @@ export class ElectornBackend extends Backend {
   }
 
   async generateImage(arg: ImageGenInput): Promise<void> {
-    const token = await this.readFile('TOKEN.txt');
+    const token = await this.readToken();
     const res = await this.imageGenService.generateImage(token, arg);
     await this.writeDataFile(arg.outputFilePath, res);
   }
 
   async augmentImage(arg: ImageAugmentInput): Promise<void> {
-    const token = await this.readFile('TOKEN.txt');
+    const token = await this.readToken();
     const res = await this.imageGenService.augmentImage(token, arg);
     await this.writeDataFile(arg.outputFilePath, res);
   }
 
   async getRemainCredits(): Promise<number> {
-    const token = await this.readFile('TOKEN.txt');
+    const token = await this.readToken();
     return await this.imageGenService.getRemainCredits(token);
   }
 
   async login(email: string, password: string): Promise<void> {
     const token = await this.imageGenService.login(email, password);
-    await this.writeFile('TOKEN.txt', token.accessToken);
+    await this.writeToken(token.accessToken);
   }
 
   async loginWithToken(token: string): Promise<void> {
-    await this.writeFile('TOKEN.txt', token);
+    await this.writeToken(token);
   }
 
   async validateLogin(): Promise<LoginValidity> {
     let token: string;
     try {
-      token = await this.readFile('TOKEN.txt');
+      token = await this.readToken();
     } catch (e) {
-      return 'invalid'; // 토큰 파일 없음 → 로그아웃
+      return 'invalid'; // 토큰 파일 없음(전역·구 위치 모두) → 로그아웃
     }
     return await this.imageGenService.validateToken(token);
   }
 
   async encodeVibeImage(arg: EncodeVibeImageInput): Promise<string> {
-    const token = await this.readFile('TOKEN.txt');
+    const token = await this.readToken();
     return await this.imageGenService.encodeVibeImage(token, arg);
   }
 
@@ -222,6 +240,10 @@ export class ElectornBackend extends Backend {
 
   async close(): Promise<void> {
     await invoke('close');
+  }
+
+  async restartApp(): Promise<void> {
+    await invoke('restart-app');
   }
 
   async existFile(filename: string): Promise<boolean> {

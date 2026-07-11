@@ -339,6 +339,20 @@ ipcMain.handle('write-file', async (event, filename, data) => {
   await fs.rename(tmpFile, APP_DIR + '/' + filename, { recursive: true });
 });
 
+// 전역(저장 경로와 무관) 파일 IO — 로그인 토큰처럼 데이터 저장소가 아니라
+// "이 PC의 앱"에 귀속되는 파일용. config.json 과 같은 DEFAULT_APP_DIR(userData)
+// 고정이라 saveLocation 을 바꿔도 함께 이동/유실되지 않는다.
+ipcMain.handle('read-global-file', async (event, filename) => {
+  return await fs.readFile(DEFAULT_APP_DIR + '/' + filename, 'utf-8');
+});
+
+ipcMain.handle('write-global-file', async (event, filename, data) => {
+  await fs.mkdir(DEFAULT_APP_DIR, { recursive: true });
+  const tmpFile = DEFAULT_APP_DIR + '/' + uuidv4();
+  await fs.writeFile(tmpFile, data, 'utf-8');
+  await fs.rename(tmpFile, DEFAULT_APP_DIR + '/' + filename);
+});
+
 ipcMain.handle('copy-file', async (event, src, dest) => {
   const dir = path.dirname(APP_DIR + '/' + dest);
   await fs.mkdir(dir, { recursive: true });
@@ -623,6 +637,14 @@ ipcMain.handle('trash-file', async (event, filename) => {
 ipcMain.handle('close', async (event) => {
   saveCompleted = true;
   mainWindow!.close();
+});
+
+// 앱 자체 재시작 — 종료 후 자동 재실행을 예약하고 정상 종료 경로(close)를 탄다.
+// close 인터셉트(saveCompleted 게이트)를 그대로 거치므로 렌더러의 종료 시
+// 저장(flush)이 보장된다. 저장소 마이그레이션 재시작 버튼용.
+ipcMain.handle('restart-app', async () => {
+  app.relaunch();
+  mainWindow?.close();
 });
 
 ipcMain.handle('exist-file', async (event, filename) => {

@@ -713,6 +713,13 @@ export class AndroidBackend extends Backend {
     return;
   }
 
+  async restartApp(): Promise<void> {
+    // 앱 프로세스 재실행 API 가 없어 WebView reload 로 부트스트랩을 재실행한다
+    // (MigrationGate 치명 실패 화면의 "앱 다시 시작"과 동일 방식). 호출부가
+    // 사전에 저장 flush 를 마친 뒤 부른다.
+    window.location.reload();
+  }
+
   async existFile(filename: string): Promise<boolean> {
     try {
       await Filesystem.stat({
