@@ -29,7 +29,11 @@ import ConfirmWindow, { Dialog } from './ConfirmWindow';
 import ExpiredProjectsDialog from './ExpiredProjectsDialog';
 import MigrationGate from './MigrationGate';
 import QueueControl from './SceneQueueControl';
-import { FloatView, FloatViewProvider } from './FloatView';
+import {
+  FloatView,
+  FloatViewProvider,
+  FLOAT_VIEW_WIDE_ANCHOR_ID,
+} from './FloatView';
 import { observer, useObserver } from 'mobx-react-lite';
 import { FaGlobe, FaImages, FaPenFancy, FaStar, FaPalette, FaSearch, FaBolt } from 'react-icons/fa';
 import { GlobalPresetTab, GlobalPresetPickerOverlay } from './GlobalPresetTab';
@@ -258,6 +262,7 @@ export const App = observer(() => {
       appState.uiLayoutTemplate = conf.uiLayoutTemplate ?? 'classic';
       appState.genWidget = conf.genWidget ?? {};
       appState.uiLayoutSlots = conf.uiLayoutSlots ?? {};
+      appState.uiFloatViewMode = conf.uiFloatViewMode ?? 'cover';
     };
     refreshDarkMode();
     sessionService.addEventListener('config-changed', refreshDarkMode);
@@ -748,11 +753,22 @@ export const App = observer(() => {
               </StackFixed>
             )}
             <StackGrow className="flex">
-              {/* 프로젝트/프리셋/히스토리 3개 도크와 중앙 콘텐츠는 이 flex 의 형제다.
-                  FloatView 는 아래 중앙 콘텐츠 블록만 덮으므로 세 도크는 뷰어가 떠도 항상
-                  접근 가능. 좌/우 배치는 각 래퍼의 CSS order(dockOrder)로만 바꾼다 —
+              {/* 도크 행: [히스토리 도크]와 [넓은 앵커(프로젝트/프리셋/중앙)]가 형제다.
+                  FloatView 가 덮는 범위는 창 배치 옵션(uiFloatViewMode)에 따른다 —
+                  'cover'(기본)는 넓은 앵커에 포털로 붙어 프로젝트/프리셋 패널 위까지
+                  덮고, 히스토리 도크는 앵커 밖(형제)이라 뷰어 옆에 그대로 남아 항상
+                  접근 가능(v4.14.0 동작). 'center'는 중앙 콘텐츠 블록만 덮는다.
+                  좌/우 배치는 각 래퍼의 CSS order(dockOrder)로만 바꾼다 —
                   DOM 순서·부모·key 는 불변(재마운트 방지). 같은 쪽이면 가장자리부터
-                  프로젝트<프리셋<히스토리 순으로 겹친다(rank 강제). */}
+                  프로젝트<프리셋 순으로 겹치고(rank 강제), 히스토리는 앵커 밖이라
+                  같은 쪽에 두면 항상 최외곽(가장자리 쪽)에 온다. */}
+              {/* 넓은 앵커 — 창 배치 'cover' 오버레이의 경계. order 0 (히스토리 도크의
+                  ±1 과 경쟁해 좌/우가 정해진다). */}
+              <div
+                id={FLOAT_VIEW_WIDE_ANCHOR_ID}
+                className="relative flex-1 min-w-0 h-full flex"
+                style={{ order: 0 }}
+              >
               {/* 프로젝트 사이드 바(PC): 'sidebar' 템플릿에서만. 세션이 없어도 렌더. */}
               {!isMobile && resolvedLayout.projectSidebar && (
                 <div
@@ -819,8 +835,11 @@ export const App = observer(() => {
                 )}
               </FloatViewProvider>
               </div>
-              {/* 히스토리 도크 — 좌/우는 dockOrder(rank 3)로만. 래퍼 상시 존재라 패널
-                  인스턴스 재마운트 없음. hidden md:flex 라 모바일은 기존대로 미렌더. */}
+              </div>
+              {/* 히스토리 도크 — 넓은 앵커 밖(행 직속 형제)이라 창 배치 'cover'의
+                  뷰어가 떠도 옆에 그대로 남아 항상 접근 가능. 좌/우는 dockOrder(rank 3,
+                  앵커의 order 0 과 경쟁해 ±1)로만. 래퍼 상시 존재라 패널 인스턴스
+                  재마운트 없음. hidden md:flex 라 모바일은 기존대로 미렌더. */}
               <div
                 data-slot="history"
                 className="flex-none hidden md:flex h-full"
@@ -832,8 +851,8 @@ export const App = observer(() => {
               </div>
             </StackGrow>
             {/* PC 하단바: 도크 행(StackGrow)의 형제 — 좌/우 패널 상태와 무관하게
-                항상 창 전폭을 꽉 채운다. FloatView 는 중앙 블록만 덮으므로 뷰어가
-                떠 있어도 하단바는 접근 가능(도크와 동일 원칙). */}
+                항상 창 전폭을 꽉 채운다. FloatView 는 어느 창 배치에서도 도크 행
+                밖을 덮지 않으므로 뷰어가 떠 있어도 하단바는 접근 가능. */}
             {!isMobile && bottomBarPlacement !== 'none' && (
               <BottomBar
                 placement={bottomBarPlacement}

@@ -73,6 +73,10 @@ export interface Config {
   // 전부 옵셔널: 미설정 = 템플릿 기본 = 기존 동작(롤백 안전).
   // 해석은 resolveLayout(layoutTemplates.ts)가 단일 출처.
   uiLayoutSlots?: UiLayoutSlots;
+  // 창 배치(PC 전용) — 이미지 뷰어 등 FloatView 가 차지하는 영역.
+  // 'cover'(기본)=좌우 패널 위로 넓게 펼침(히스토리 도크는 유지, v4.14.0 동작) /
+  // 'center'=중앙 콘텐츠만 덮어 좌우 패널을 병행 열람. 모바일은 도크가 없어 항상 center.
+  uiFloatViewMode?: 'cover' | 'center';
 }
 
 // 레이아웃 슬롯 개인화 — 템플릿(uiLayoutTemplate) 기본값 위에 얹는 오버라이드.

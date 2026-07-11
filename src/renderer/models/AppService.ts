@@ -196,6 +196,10 @@ export class AppState {
   // 배치 해석은 resolveLayout(layoutTemplates.ts) 단일 출처. 부팅 시 로드는 App.tsx 담당.
   @observable accessor uiLayoutSlots: UiLayoutSlots = {};
 
+  // 창 배치(config.uiFloatViewMode 미러) — FloatView(뷰어 등)가 덮는 영역.
+  // 'cover'(기본)=좌우 패널 위로 넓게 / 'center'=중앙 콘텐츠만. 소비는 FloatView.tsx.
+  @observable accessor uiFloatViewMode: 'cover' | 'center' = 'cover';
+
   // 편집 모드(PC 전용): 화면에서 UI 배치 직접 조작. EditModeShell 이 켜져 있는 동안
   // 툴바 버튼은 클릭 대신 드래그 편집 대상이 된다.
   @observable accessor editMode = false;

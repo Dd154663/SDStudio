@@ -1536,7 +1536,48 @@ async function resetLayoutArrangement() {
   }
 }
 
-const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, mobileMode, onClose }: any) => (
+// 창 배치(FloatView 노출 범위) 도안 — sky 사각형이 뷰어가 덮는 영역.
+const FloatScopeWireframe = ({ variant }: { variant: 'cover' | 'center' }) => (
+  <div className="w-28 h-16 flex flex-col gap-1">
+    <div className="flex-1 rounded-sm border line-color flex gap-0.5 p-0.5">
+      {variant === 'center' ? (
+        <>
+          <div className="w-1/4 rounded-sm bg-[var(--c-zone)]" />
+          <div className="flex-1 rounded-sm bg-sky-500" />
+          <div className="w-1/5 rounded-sm bg-[var(--c-zone)]" />
+        </>
+      ) : (
+        <>
+          <div className="flex-1 rounded-sm bg-sky-500" />
+          <div className="w-1/5 rounded-sm bg-[var(--c-zone)]" />
+        </>
+      )}
+    </div>
+    <div className="h-2 rounded-sm bg-[var(--c-zone)] flex-none" />
+  </div>
+);
+
+// 창 배치 선택지 — id 는 config 저장 키(uiFloatViewMode)라 배포 후 불변.
+const floatViewModes: {
+  id: 'cover' | 'center';
+  name: string;
+  description: string;
+}[] = [
+  {
+    id: 'cover',
+    name: '넓게 펼침',
+    description:
+      '이미지 뷰어 등 큰 화면이 좌우 패널 위까지 넓게 열립니다. 히스토리 패널은 유지됩니다.',
+  },
+  {
+    id: 'center',
+    name: '중앙 영역만',
+    description:
+      '큰 화면이 중앙 영역 안에만 열려, 좌우 패널(프롬프트 등)을 같이 보며 작업할 수 있습니다.',
+  },
+];
+
+const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
   <div className="space-y-5">
     <div>
       <label className="block text-sm gray-label mb-1">화면 배치</label>
@@ -1622,6 +1663,44 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, mobileMode, onClose 
       </p>
     )}
 
+    {/* 창 배치 — FloatView(이미지 뷰어 등 큰 화면)가 덮는 영역. PC 전용
+        (모바일은 좌우 패널이 없어 항상 중앙 영역과 동일). 저장 시 적용. */}
+    <div className="pt-3 border-t line-color">
+      <label className="block text-sm gray-label mb-1">창 배치</label>
+      <p className="text-xs text-muted mb-2">
+        씬 이미지 목록·뷰어처럼 화면을 덮는 창이 차지할 영역을 정합니다.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {floatViewModes.map((m) => {
+          const selected = (uiFloatViewMode ?? 'cover') === m.id;
+          return (
+            <button
+              key={m.id}
+              type="button"
+              disabled={mobileMode}
+              onClick={() => { if (!mobileMode) setUiFloatViewMode(m.id); }}
+              className={
+                'flex items-center gap-3 rounded-md border p-2.5 text-left clickable ' +
+                (selected ? 'ring-2 ring-sky-400 border-sky-400 ' : 'line-color ') +
+                (mobileMode ? 'opacity-50 cursor-not-allowed ' : '')
+              }
+            >
+              <FloatScopeWireframe variant={m.id} />
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm text-default">{m.name}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--c-zone)] text-muted flex-none">
+                    PC 전용
+                  </span>
+                </div>
+                <div className="text-xs text-muted mt-0.5">{m.description}</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+
     {/* 직접 편집으로 옮긴 패널·생성 컨트롤 배치를 되돌리는 초기화(즉시 반영, 저장 불필요).
         슬롯/위젯 위치는 저장 흐름 밖이라 여기서 바로 config 에 쓴다. */}
     <div className="pt-3 border-t line-color">
@@ -1676,6 +1755,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [uiTheme, setUiTheme] = useState<UiThemeConfig>({});
   const [uiToolbar, setUiToolbar] = useState<UiToolbarConfig>({});
   const [uiLayoutTemplate, setUiLayoutTemplate] = useState('classic');
+  const [uiFloatViewMode, setUiFloatViewMode] = useState<'cover' | 'center'>('cover');
   // 미저장 변경 감지 기준 — 로드/저장 시점의 config 스냅샷 (#17)
   const [savedCfg, setSavedCfg] = useState<Config | null>(null);
   const mobileMode = isMobile;
@@ -1700,6 +1780,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setUiTheme(config.uiTheme ?? {});
       setUiToolbar(config.uiToolbar ?? {});
       setUiLayoutTemplate(config.uiLayoutTemplate ?? 'classic');
+      setUiFloatViewMode(config.uiFloatViewMode ?? 'cover');
       setSavedCfg(config);
     })();
     const checkReady = () => setReady(localAIService.ready);
@@ -1827,6 +1908,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiTheme: uiTheme,
       uiToolbar: uiToolbar,
       uiLayoutTemplate: uiLayoutTemplate,
+      uiFloatViewMode: uiFloatViewMode,
     };
     await backend.setConfig(config);
     setSavedCfg(config);
@@ -1835,6 +1917,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.legacyProjectMode = legacyProjectMode;
     appState.uiToolbar = uiToolbar;
     appState.uiLayoutTemplate = uiLayoutTemplate;
+    appState.uiFloatViewMode = uiFloatViewMode;
     appState.storageWriteGuard = storageWriteGuard;
     appState.fullWordAutoComplete = fullWordAc;
     localStorage.setItem('sdstudio-full-word-autocomplete', fullWordAc ? 'true' : 'false');
@@ -1873,7 +1956,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'toolbar':
         return <ToolbarTab {...{ uiToolbar, setUiToolbar }} />;
       case 'layout':
-        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, mobileMode, onClose }} />;
+        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':
@@ -1904,7 +1987,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       fullWordAc !== appState.fullWordAutoComplete ||
       JSON.stringify(uiTheme) !== JSON.stringify(savedCfg.uiTheme ?? {}) ||
       JSON.stringify(uiToolbar) !== JSON.stringify(savedCfg.uiToolbar ?? {}) ||
-      uiLayoutTemplate !== (savedCfg.uiLayoutTemplate ?? 'classic'));
+      uiLayoutTemplate !== (savedCfg.uiLayoutTemplate ?? 'classic') ||
+      uiFloatViewMode !== (savedCfg.uiFloatViewMode ?? 'cover'));
 
   return (
     <div
