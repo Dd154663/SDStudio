@@ -52,9 +52,16 @@ export class ElectornBackend extends Backend {
   private async readToken(): Promise<string> {
     try {
       return await invoke('read-global-file', 'TOKEN.txt');
-    } catch (e) {
+    } catch (e: any) {
       const legacy = await invoke('read-file', 'TOKEN.txt');
-      await invoke('write-global-file', 'TOKEN.txt', legacy);
+      // 이관은 전역본 부재(ENOENT)일 때만 — 일시 IO 오류로 읽기만 실패한 경우
+      // 이미 있는 전역본을 구 위치의 스테일 토큰으로 덮어쓰지 않는다.
+      // 이관 쓰기 실패도 이번 호출을 막지 않는다(legacy 토큰으로 진행, 다음에 재시도).
+      if (String(e?.message || e).includes('ENOENT')) {
+        try {
+          await invoke('write-global-file', 'TOKEN.txt', legacy);
+        } catch (e2) {}
+      }
       return legacy;
     }
   }

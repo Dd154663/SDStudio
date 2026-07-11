@@ -199,6 +199,16 @@ class MigrationService {
   async detect(): Promise<'none' | 'fresh' | 'legacy'> {
     // 마커 읽기 실패(IO 오류)는 상위(bootstrap)가 구 배치 폴백하도록 예외 전파.
     this.markerExists = await backend.existFile(STORAGE_MARKER_FILE);
+    // 옵트아웃("다시 알리지 않음") + 마커 없음 = 구 배치 계속 사용 확정 상태.
+    // 게이트도 이동도 없으므로 값비싼 projects/ 전체 스캔(직후 sessionService.init
+    // 스캔과 중복)을 건너뛴다 — 옵트아웃 사용자의 매 부팅 비용 제거.
+    // runFullFlow 가 옵트아웃을 다시 확인해 즉시 idle 로 돌아가므로 동작 동일.
+    // (마커 있음=증분 케이스는 옵트아웃과 무관하게 스캔해야 하므로 제외)
+    if (!this.markerExists && (await this.readOptOut())) {
+      this.pendingEntries = [];
+      this.pendingFolders = [];
+      return 'legacy';
+    }
     const { entries, folders } = await this.scanLegacyProjects();
     this.pendingEntries = entries;
     this.pendingFolders = folders;
