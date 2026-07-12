@@ -23,6 +23,7 @@ import {
   COMPANION_HOSTS,
   COMPANION_HOST_LABELS,
 } from '../models/companionSlots';
+import { applyCompanionSlots } from './CompanionDnd';
 import { observer } from 'mobx-react-lite';
 import { appState } from '../models/AppService';
 import { TaskLog } from '../models/TaskQueueService';
@@ -1599,18 +1600,8 @@ async function resetLayoutArrangement() {
 // 단일 출처 헬퍼(assign/removeCompanion)를 경유하며, 표시명은 uiLayout·companionSlots 의
 // 레지스트리/라벨을 조회한다(여기서 중복 정의하지 않음).
 
-// appState 미러 갱신 + config 영속을 한 함수로(즉시 반영+재시작 유지). 저장 흐름 밖이라
-// resetLayoutArrangement·applyPresetOrder(PresetLayoutDnd) 선례처럼 새 객체를 할당해
-// MobX 반응을 태운다 → 열려 있는 프리셋 에디터(CharacterButton=observer)에 즉시 반영.
-async function applyCompanionSlots(next: Record<string, string[]>) {
-  appState.uiCompanionSlots = next;
-  try {
-    const config = await backend.getConfig();
-    await backend.setConfig({ ...config, uiCompanionSlots: next });
-  } catch (e) {
-    console.error('동반 슬롯 저장 실패:', e);
-  }
-}
+// 영속 헬퍼 applyCompanionSlots 는 E4 에서 CompanionDnd 로 이관(드래그·드롭다운 공유
+// 단일 출처). 여기서는 그걸 import 해 쓴다 — 동작·저장 패턴 동일(새 객체 할당 + 병합 저장).
 
 // 동반 버튼 편집(E3) — portable 버튼 8종 각각에 "위치"를 고른다. 이동 의미론상 한 버튼은
 // 최대 한 곳이라 select 단일 선택이 자연스럽다: '기본 (툴바)' = 슬롯 배정 없음(removeCompanion),

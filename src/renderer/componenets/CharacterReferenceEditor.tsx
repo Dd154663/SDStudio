@@ -14,6 +14,7 @@ import { WFElementContext } from './wfElementContext';
 import { EditableSliderValue, VibeImage } from './VibeEditor';
 import { resolveCompanionButtons } from '../models/companionSlots';
 import { renderCompanionButtons } from './PortableToolbarButtons';
+import { CompanionHostRow } from './CompanionDnd';
 
 // PreSetEdtior.tsx 에서 분리된 캐릭터 레퍼런스 편집기 계열.
 interface CharacterReferenceEditorProps {
@@ -442,15 +443,14 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
 
   // 동반 슬롯 (E2): 레퍼런스 행(hostKey = wfiElementKey = 인라인 필드 'characterReferences')
   // 옆에 붙일 portable 버튼. 빈 배열이면 슬롯 없음 = 현행 렌더 100% 동일(회귀 기준).
-  const companionIds = resolveCompanionButtons(
-    wfiElementKey(input) ?? input.field,
-    appState.uiCompanionSlots,
-  );
-  const companions = renderCompanionButtons(companionIds);
+  // hostKey 를 renderCompanionButtons/CompanionHostRow 에 넘겨 편집모드(PC) 드래그(E4)를 붙인다.
+  const hostKey = wfiElementKey(input) ?? input.field;
+  const companionIds = resolveCompanionButtons(hostKey, appState.uiCompanionSlots);
+  const companions = renderCompanionButtons(companionIds, hostKey);
   const hasCompanions = companions.length > 0;
 
   return (
-    <>
+    <CompanionHostRow hostKey={hostKey}>
       {editCharacterReference == undefined && field.length === 0 && (
         hasCompanions ? (
           <div className="w-full mt-2 md:mt-3 flex gap-1 items-stretch">
@@ -525,6 +525,6 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
           )}
         </div>
       )}
-    </>
+    </CompanionHostRow>
   );
 });

@@ -10,6 +10,7 @@ import {
   ToolbarDragItem,
   ToolbarGroup,
   applyToolbarMove,
+  applyToolbarMoveFromCompanion,
   armToolbarDrag,
   disarmToolbarDrag,
   isMenuDragArmed,
@@ -103,12 +104,18 @@ const MenuRow = ({
         const client = monitor.getClientOffset();
         const above =
           rect && client ? client.y < rect.top + rect.height / 2 : true;
-        applyToolbarMove({
+        const move = {
           id: it.id,
           toArea: group,
-          slot: 'menu',
-          anchor: { id: item.id, side: above ? 'before' : 'after' },
-        });
+          slot: 'menu' as const,
+          anchor: { id: item.id, side: above ? ('before' as const) : ('after' as const) },
+        };
+        // 동반 슬롯 출처면 배치 이동 + removeCompanion 을 원자로(툴바 메뉴로 복귀).
+        if (it.fromCompanion !== undefined) {
+          applyToolbarMoveFromCompanion(move);
+        } else {
+          applyToolbarMove(move);
+        }
         // 드래그 소스의 end 가 "메뉴 유지" 분기를 타도록 표식 반환.
         return { reorder: true };
       },

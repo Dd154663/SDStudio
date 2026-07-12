@@ -134,23 +134,48 @@ function pruneEmpty(obj: Record<string, string[]>): Record<string, string[]> {
 }
 
 /**
- * assignCompanion — buttonId 를 hostKey 호스트에 배정(순수, 원본 불변). 이동 의미론:
- *   먼저 모든 호스트에서 그 id 를 제거한 뒤 대상 호스트 끝에 추가한다(라스트 윈 —
- *   같은 버튼을 다른 호스트로 옮기면 이전 자리에서 사라짐). 영속은 호출부(ConfigScreen/E4).
+ * assignCompanionAt — buttonId 를 hostKey 호스트의 "지정 위치"에 배정(순수, 원본 불변).
+ *   이동 의미론(먼저 모든 호스트에서 제거)은 assignCompanion 과 동일하되, anchor 로 대상
+ *   호스트 배열 내 삽입 위치를 지정한다:
+ *     · anchor 없음        = 끝에 추가(= assignCompanion 과 동일 결과).
+ *     · anchor={id, side}  = 대상 호스트 배열에서 그 버튼 앞(before)/뒤(after)에 삽입.
+ *   슬롯 내 순서 조정(같은 호스트 재배열)과 다른 호스트로의 "위치 지정 재배정"을 한 함수로
+ *   처리한다(E4 드래그). anchor 버튼이 대상 호스트에 없으면(또는 자기 자신이면) 끝에 붙인다.
+ *   제거를 먼저 하므로 같은 호스트 내 이동도 오프셋 문제 없이 정확하다. 영속은 호출부.
  */
-export function assignCompanion(
+export function assignCompanionAt(
   slots: Record<string, string[]> | undefined,
   hostKey: string,
   buttonId: string,
+  anchor?: { id: string; side: 'before' | 'after' },
 ): Record<string, string[]> {
   const next: Record<string, string[]> = {};
   for (const [k, v] of Object.entries(slots ?? {})) {
     next[k] = v.filter((id) => id !== buttonId); // 전 호스트에서 제거
   }
   const cur = next[hostKey] ? [...next[hostKey]] : [];
-  cur.push(buttonId);
+  let idx = cur.length; // 기본 = 끝
+  if (anchor && anchor.id !== buttonId) {
+    const at = cur.indexOf(anchor.id);
+    if (at !== -1) idx = anchor.side === 'before' ? at : at + 1;
+  }
+  cur.splice(idx, 0, buttonId);
   next[hostKey] = cur;
   return pruneEmpty(next);
+}
+
+/**
+ * assignCompanion — buttonId 를 hostKey 호스트 끝에 배정(순수, 원본 불변). 이동 의미론:
+ *   먼저 모든 호스트에서 그 id 를 제거한 뒤 대상 호스트 끝에 추가한다(라스트 윈 —
+ *   같은 버튼을 다른 호스트로 옮기면 이전 자리에서 사라짐). anchor 없는 assignCompanionAt
+ *   위임(끝 삽입). 영속은 호출부(ConfigScreen/E4).
+ */
+export function assignCompanion(
+  slots: Record<string, string[]> | undefined,
+  hostKey: string,
+  buttonId: string,
+): Record<string, string[]> {
+  return assignCompanionAt(slots, hostKey, buttonId);
 }
 
 /**

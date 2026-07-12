@@ -19,6 +19,7 @@ import {
 } from 'react-icons/fa';
 import Tooltip from './Tooltip';
 import { appState } from '../models/AppService';
+import { CompanionButtonSlot } from './CompanionDnd';
 
 // 렌더 컨텍스트: variant = 이 버튼이 실제로 표시되는 영역(스타일 적응 기준).
 // mobileIcon = 씬 툴바의 모바일 아이콘 축약 여부(현재 이관 버튼은 미사용이나 계약 유지).
@@ -202,7 +203,14 @@ export function portableToolbarButtons(
 // 어긋나도 안전). CharacterButton·VibeButton·CharacterReferenceButton·WFRGroup 호스트가
 // 공용으로 쓴다 — 하드코딩 맵을 두지 않아 새 portable 추가 시 즉시 슬롯 렌더 가능.
 // observer 렌더 중 호출되는 일반 함수 — 내부 appState 접근이 호출한 observer 에 추적된다.
-export function renderCompanionButtons(ids: string[]): ReactNode[] {
+//
+// hostKey 를 넘기면(E4) 각 버튼을 CompanionButtonSlot 으로 감싼다 — 편집모드(PC)에서만
+// 드래그(재배치·순서 조정·툴바 복귀)가 붙고, 그 외에서는 원본 그대로(fragment). hostKey
+// 미지정 호출은 기존과 동일(감싸지 않음) — 시그니처 확장은 옵셔널이라 하위 호환.
+export function renderCompanionButtons(
+  ids: string[],
+  hostKey?: string,
+): ReactNode[] {
   if (ids.length === 0) return [];
   const nodes = portableToolbarButtons({
     mobileIcon: false,
@@ -212,7 +220,14 @@ export function renderCompanionButtons(ids: string[]): ReactNode[] {
   return ids
     .map((id) => {
       const node = nodes[id];
-      return node ? <Fragment key={id}>{node}</Fragment> : null;
+      if (!node) return null;
+      return hostKey ? (
+        <CompanionButtonSlot key={id} hostKey={hostKey} id={id}>
+          {node}
+        </CompanionButtonSlot>
+      ) : (
+        <Fragment key={id}>{node}</Fragment>
+      );
     })
     .filter((n): n is JSX.Element => n !== null);
 }

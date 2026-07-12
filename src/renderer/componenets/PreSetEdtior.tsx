@@ -73,6 +73,7 @@ import {
 } from '../models/presetLayout';
 import { resolveCompanionButtons } from '../models/companionSlots';
 import { renderCompanionButtons } from './PortableToolbarButtons';
+import { CompanionHostRow } from './CompanionDnd';
 import {
   DraggablePresetRow,
   resetPresetOrder,
@@ -1138,38 +1139,39 @@ const WFRGroup = observer(({ element }: WFElementProps) => {
   }
   // 동반 슬롯 (E2): 그룹 행(hostKey = wfiElementKey = 그룹 id 'sampling-group') 옆에
   // 붙일 portable 버튼. 빈 배열이면 슬롯 없음 = 현행 렌더 100% 동일(회귀 기준).
-  const companionIds = resolveCompanionButtons(
-    wfiElementKey(element) ?? grp.label,
-    appState.uiCompanionSlots,
-  );
-  const companions = renderCompanionButtons(companionIds);
+  // hostKey 를 renderCompanionButtons/CompanionHostRow 에 넘겨 편집모드(PC) 드래그(E4)를
+  // 붙인다 — 편집모드 밖은 CompanionHostRow 가 fragment 라 렌더 무변화.
+  const hostKey = wfiElementKey(element) ?? grp.label;
+  const companionIds = resolveCompanionButtons(hostKey, appState.uiCompanionSlots);
+  const companions = renderCompanionButtons(companionIds, hostKey);
   const hasCompanions = companions.length > 0;
   // 슬롯 없음 = 현행 렌더 100% 동일(회귀 기준). 동반 버튼이 있으면 그룹 버튼을 flex-1 로
   // 축소하고 옆에 아이콘 버튼을 붙이는 flex 행으로 감싼다.
-  if (!hasCompanions) {
-    return (
-      <button
-        className={`round-button back-gray h-8 w-full mt-2 md:mt-3`}
-        onClick={() => {
-          setShowGroupOverlay(grp.label);
-        }}
-      >
-        {grp.label}
-      </button>
-    );
-  }
   return (
-    <div className="w-full mt-2 md:mt-3 flex gap-1 items-stretch">
-      <button
-        className={`round-button back-gray h-8 flex-1`}
-        onClick={() => {
-          setShowGroupOverlay(grp.label);
-        }}
-      >
-        {grp.label}
-      </button>
-      {companions}
-    </div>
+    <CompanionHostRow hostKey={hostKey}>
+      {!hasCompanions ? (
+        <button
+          className={`round-button back-gray h-8 w-full mt-2 md:mt-3`}
+          onClick={() => {
+            setShowGroupOverlay(grp.label);
+          }}
+        >
+          {grp.label}
+        </button>
+      ) : (
+        <div className="w-full mt-2 md:mt-3 flex gap-1 items-stretch">
+          <button
+            className={`round-button back-gray h-8 flex-1`}
+            onClick={() => {
+              setShowGroupOverlay(grp.label);
+            }}
+          >
+            {grp.label}
+          </button>
+          {companions}
+        </div>
+      )}
+    </CompanionHostRow>
   );
 });
 
@@ -1600,18 +1602,17 @@ export const CharacterButton = observer(({ input }: { input: WFIInlineInput }) =
 
   // 동반 슬롯 (L3-2): 이 호스트 행(hostKey = wfiElementKey, 인라인은 id ?? field)에
   // 붙일 portable 버튼 목록. 빈 배열이면 슬롯 없음 = 현행 렌더 100% 동일(회귀 기준).
-  const companionIds = resolveCompanionButtons(
-    wfiElementKey(input) ?? input.field,
-    appState.uiCompanionSlots,
-  );
+  // hostKey 를 renderCompanionButtons/CompanionHostRow 에 넘겨 편집모드(PC) 드래그(E4)를 붙인다.
+  const hostKey = wfiElementKey(input) ?? input.field;
+  const companionIds = resolveCompanionButtons(hostKey, appState.uiCompanionSlots);
   const companions =
-    companionIds.length > 0 ? renderCompanionButtons(companionIds) : [];
+    companionIds.length > 0 ? renderCompanionButtons(companionIds, hostKey) : [];
   const hasCompanions = companions.length > 0;
   // 동반 버튼이 있으면 호스트는 flex-1 로 축소해 아이콘 버튼 자리를 내준다.
   const hostWidth = hasCompanions ? 'flex-1' : 'w-full';
 
   return (
-    <>
+    <CompanionHostRow hostKey={hostKey}>
       {editCharacters === undefined &&
         !anyCharacters &&
         (hasCompanions ? (
@@ -1666,7 +1667,7 @@ export const CharacterButton = observer(({ input }: { input: WFIInlineInput }) =
           {hasCompanions && companions}
         </div>
       )}
-    </>
+    </CompanionHostRow>
   );
 });
 

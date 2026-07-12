@@ -12,6 +12,7 @@ import {
   ToolbarMove,
   moveToolbarButton,
 } from '../models/uiLayout';
+import { removeCompanion } from '../models/companionSlots';
 
 // 툴바 버튼 드래그 커스터마이징 공용 부품.
 // 드래그는 기존 uiToolbar.buttons 오버라이드('pinned'|'menu'|'hidden')를 조작하는
@@ -101,6 +102,10 @@ export interface ToolbarDragItem {
   // 드래그 프리뷰용: 실제 버튼 JSX 그대로 + 원래 너비 (이름 알약로 바뀌면 혼동)
   node?: ReactNode;
   width?: number;
+  // E4: 이 드래그가 "동반 슬롯"에서 시작됐으면 그 호스트 hostKey. 있으면 툴바 드롭
+  // 타깃들이 배치 이동과 함께 removeCompanion(파생 숨김 해제)까지 원자로 적용해
+  // 툴바로 자연스럽게 복귀시킨다(없으면=일반 툴바 아이템, 기존 동작 무변화).
+  fromCompanion?: string;
 }
 
 // TOOLBAR_VIEW_MAIN 에서 이 버튼 id 의 홈 영역(area)을 찾는다. 없으면 undefined.
@@ -133,6 +138,30 @@ export async function applyToolbarMove(move: ToolbarMove): Promise<void> {
     await backend.setConfig({ ...config, uiToolbar: next });
   } catch (e) {
     console.error('툴바 배치 저장 실패:', e);
+  }
+}
+
+// E4: 동반 슬롯에서 온 버튼을 툴바로 되돌린다 — removeCompanion(파생 숨김 해제)과
+// moveToolbarButton(놓은 위치로 배치)을 한 번의 getConfig/setConfig 로 원자 반영한다.
+// 두 미러(uiCompanionSlots·uiToolbar)를 따로 저장하면 각자의 getConfig 가 서로의 갱신을
+// 못 봐 한쪽이 유실될 수 있으므로 반드시 함께 저장한다. slot/anchor 는 놓은 위치를 담아
+// "원자리든 지정 위치든 자연스럽게 복귀"시킨다.
+export async function applyToolbarMoveFromCompanion(
+  move: ToolbarMove,
+): Promise<void> {
+  const nextToolbar = moveToolbarButton(TOOLBAR_VIEW_MAIN, appState.uiToolbar, move);
+  const nextSlots = removeCompanion(appState.uiCompanionSlots, move.id);
+  appState.uiToolbar = nextToolbar;
+  appState.uiCompanionSlots = nextSlots;
+  try {
+    const config = await backend.getConfig();
+    await backend.setConfig({
+      ...config,
+      uiToolbar: nextToolbar,
+      uiCompanionSlots: nextSlots,
+    });
+  } catch (e) {
+    console.error('동반→툴바 복귀 저장 실패:', e);
   }
 }
 
@@ -269,12 +298,18 @@ export const DraggableToolbarButton = observer(
           // 앵커 기반 삽입("이 버튼의 앞/뒤") — 숫자 인덱스는 같은 배열 내 이동 시
           // 제거 오프셋, 모바일 pcOnly 필터로 렌더/정규 배열이 어긋나는 문제가 있어
           // moveToolbarButton 이 제거 후 배열에서 앵커를 찾아 삽입한다.
-          applyToolbarMove({
+          const move: ToolbarMove = {
             id: item.id,
             toArea: area,
             slot: 'inline',
             anchor: { id, side: before ? 'before' : 'after' },
-          });
+          };
+          // 동반 슬롯 출처면 배치 이동 + removeCompanion 을 원자로(툴바 복귀).
+          if (item.fromCompanion !== undefined) {
+            applyToolbarMoveFromCompanion(move);
+          } else {
+            applyToolbarMove(move);
+          }
         },
         collect: (m) => {
           const item = m.getItem() as ToolbarDragItem | null;
@@ -377,11 +412,14 @@ export const ToolbarMenuDropTarget = ({
   const [{ isOver, canDrop }, drop] = useDrop(
     () => ({
       accept: toolbarDndType(group),
-      // 같은 area(자기 영역 메뉴로) 또는 portable(타 영역 메뉴로) 수락.
+      // 같은 area(자기 영역 메뉴로) 또는 portable(타 영역·동반 슬롯 메뉴로) 수락.
       canDrop: (item: ToolbarDragItem) =>
         item.area === area || item.portable === true,
       drop: (item: ToolbarDragItem) => {
-        if (item.area === area) {
+        if (item.fromCompanion !== undefined) {
+          // 동반 슬롯 → 이 영역 메뉴로 이동 + removeCompanion(원자).
+          applyToolbarMoveFromCompanion({ id: item.id, toArea: area, slot: 'menu' });
+        } else if (item.area === area) {
           // 자기 영역 → 홈 기준 배치 API 유지(기존 동작 그대로).
           applyToolbarPlacement(item.id, 'menu');
         } else if (item.portable === true) {
@@ -424,7 +462,10 @@ export function useToolbarRowDrop(
         item.area === area || item.portable === true,
       drop: (item: ToolbarDragItem, monitor) => {
         if (monitor.didDrop()) return;
-        if (item.area === area) {
+        if (item.fromCompanion !== undefined) {
+          // 동반 슬롯 → 이 영역 인라인 맨 뒤로 편입 + removeCompanion(원자, 툴바 복귀).
+          applyToolbarMoveFromCompanion({ id: item.id, toArea: area, slot: 'inline' });
+        } else if (item.area === area) {
           // 자기 영역 → 홈 기준 배치 API 유지(기존 동작 그대로).
           applyToolbarPlacement(item.id, 'pinned');
         } else if (item.portable === true) {

@@ -13,6 +13,7 @@ import { ModelVersion } from '../backends/imageGen';
 import { WFElementContext } from './wfElementContext';
 import { resolveCompanionButtons } from '../models/companionSlots';
 import { renderCompanionButtons } from './PortableToolbarButtons';
+import { CompanionHostRow } from './CompanionDnd';
 
 // PreSetEdtior.tsx 에서 분리된 바이브(vibe) 편집기 계열.
 // VibeImage/EditableSliderValue 는 CharacterReferenceEditor 와 본체도 공용.
@@ -431,15 +432,14 @@ export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
 
   // 동반 슬롯 (E2): 바이브 행(hostKey = wfiElementKey = 인라인 필드 'vibes') 옆에 붙일
   // portable 버튼. 빈 배열이면 슬롯 없음 = 현행 렌더 100% 동일(회귀 기준).
-  const companionIds = resolveCompanionButtons(
-    wfiElementKey(input) ?? input.field,
-    appState.uiCompanionSlots,
-  );
-  const companions = renderCompanionButtons(companionIds);
+  // hostKey 를 renderCompanionButtons/CompanionHostRow 에 넘겨 편집모드(PC) 드래그(E4)를 붙인다.
+  const hostKey = wfiElementKey(input) ?? input.field;
+  const companionIds = resolveCompanionButtons(hostKey, appState.uiCompanionSlots);
+  const companions = renderCompanionButtons(companionIds, hostKey);
   const hasCompanions = companions.length > 0;
 
   return (
-    <>
+    <CompanionHostRow hostKey={hostKey}>
       {editVibe == undefined && getField().length === 0 && (
         hasCompanions ? (
           <div className="w-full mt-2 md:mt-3 flex gap-1 items-stretch">
@@ -506,6 +506,6 @@ export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
           )}
         </div>
       )}
-    </>
+    </CompanionHostRow>
   );
 });

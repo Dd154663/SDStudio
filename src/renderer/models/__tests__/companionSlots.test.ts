@@ -8,6 +8,7 @@ import {
   resolveCompanionButtons,
   companionAssignedIds,
   assignCompanion,
+  assignCompanionAt,
   removeCompanion,
   COMPANION_HOSTS,
 } from '../companionSlots';
@@ -161,6 +162,81 @@ describe('assignCompanion — 라스트 윈(이동 의미론)', () => {
     );
     // 이전 자리에서 제거 → 같은 호스트 재추가라 결과는 동일하나 배열 1건.
     expect(after).toEqual({ characterPrompts: ['character-presets'] });
+  });
+});
+
+describe('assignCompanionAt — 위치 지정 배정(E4 드래그 순서 조정)', () => {
+  it('anchor 없음 → 끝에 추가(assignCompanion 과 동일)', () => {
+    const after = assignCompanionAt(
+      { vibes: ['backup-export'] },
+      'vibes',
+      'piece-editor',
+    );
+    expect(after).toEqual({ vibes: ['backup-export', 'piece-editor'] });
+  });
+
+  it('같은 호스트 내 순서 조정 — 대상 버튼 앞(before)에 삽입', () => {
+    // piece-editor 를 backup-export 앞으로.
+    const after = assignCompanionAt(
+      { vibes: ['backup-export', 'piece-editor'] },
+      'vibes',
+      'piece-editor',
+      { id: 'backup-export', side: 'before' },
+    );
+    expect(after).toEqual({ vibes: ['piece-editor', 'backup-export'] });
+  });
+
+  it('같은 호스트 내 순서 조정 — 대상 버튼 뒤(after)에 삽입', () => {
+    // character-presets 를 piece-editor 뒤로(맨 끝).
+    const after = assignCompanionAt(
+      { vibes: ['character-presets', 'backup-export', 'piece-editor'] },
+      'vibes',
+      'character-presets',
+      { id: 'piece-editor', side: 'after' },
+    );
+    expect(after).toEqual({
+      vibes: ['backup-export', 'piece-editor', 'character-presets'],
+    });
+  });
+
+  it('다른 호스트로 위치 지정 재배정 — 이전 호스트 제거 + 대상 위치 삽입', () => {
+    const before = {
+      characterPrompts: ['character-presets'],
+      vibes: ['backup-export', 'piece-editor'],
+    };
+    const after = assignCompanionAt(before, 'vibes', 'character-presets', {
+      id: 'piece-editor',
+      side: 'before',
+    });
+    expect(after).toEqual({
+      vibes: ['backup-export', 'character-presets', 'piece-editor'],
+    });
+    // 원본 불변.
+    expect(before).toEqual({
+      characterPrompts: ['character-presets'],
+      vibes: ['backup-export', 'piece-editor'],
+    });
+  });
+
+  it('anchor 가 대상 호스트에 없으면 끝에 붙인다', () => {
+    const after = assignCompanionAt(
+      { vibes: ['backup-export'] },
+      'vibes',
+      'piece-editor',
+      { id: 'character-presets', side: 'before' },
+    );
+    expect(after).toEqual({ vibes: ['backup-export', 'piece-editor'] });
+  });
+
+  it('anchor 가 자기 자신이면 무시하고 끝(제자리 근처)에', () => {
+    const after = assignCompanionAt(
+      { vibes: ['character-presets', 'backup-export'] },
+      'vibes',
+      'character-presets',
+      { id: 'character-presets', side: 'before' },
+    );
+    // 제거 후 끝에 재삽입 → 순서만 뒤로.
+    expect(after).toEqual({ vibes: ['backup-export', 'character-presets'] });
   });
 });
 
