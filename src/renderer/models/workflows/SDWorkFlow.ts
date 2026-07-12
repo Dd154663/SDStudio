@@ -58,9 +58,9 @@ const SDImageGenShared = new WFVarBuilder()
   .addStringVar('_appliedPresetName', '');
 
 const SDImageGenUI = wfiStack([
-  wfiPresetSelect(),
+  wfiPresetSelect('preset-select'),
   wfiInlineInput('상위 프롬프트', 'frontPrompt', 'preset', 'flex-1'),
-  wfiMiddlePlaceholderInput('중간 프롬프트 (이 씬에만 적용됨)'),
+  wfiMiddlePlaceholderInput('중간 프롬프트 (이 씬에만 적용됨)', 'middle-prompt'),
   wfiInlineInput('하위 프롬프트', 'backPrompt', 'preset', 'flex-1'),
   wfiInlineInput('네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
   wfiInlineInput('시드', 'seed', 'shared', 'flex-none'),
@@ -96,7 +96,7 @@ const SDImageGenUI = wfiStack([
       'preset',
       'flex-none',
     ),
-  ]),
+  ], 'sampling-group'),
   wfiInlineInput('바이브 설정', 'vibes', 'shared', 'flex-none'),
   wfiInlineInput('캐릭터 레퍼런스', 'characterReferences', 'shared', 'flex-none'),
 ]);
@@ -121,9 +121,9 @@ const SDImageGenEasyShared = SDImageGenShared.clone()
   .addPromptVar('uc', '');
 
 const SDImageGenEasyUI = wfiStack([
-  wfiProfilePresetSelect(),
+  wfiProfilePresetSelect('profile-preset-select'),
   wfiInlineInput('캐릭터 관련 태그', 'characterPrompt', 'shared', 'flex-1'),
-  wfiMiddlePlaceholderInput('중간 프롬프트 (이 씬에만 적용됨)'),
+  wfiMiddlePlaceholderInput('중간 프롬프트 (이 씬에만 적용됨)', 'middle-prompt'),
   wfiInlineInput('배경 관련 태그', 'backgroundPrompt', 'shared', 'flex-1'),
   wfiInlineInput('태그 밴 리스트', 'uc', 'shared', 'flex-1'),
   wfiInlineInput('시드', 'seed', 'shared', 'flex-none'),
@@ -134,7 +134,7 @@ const SDImageGenEasyUI = wfiStack([
 
 const SDImageGenEasyInnerUI = wfiStack([
   wfiInlineInput('상위 프롬프트', 'frontPrompt', 'preset', 'flex-1'),
-  wfiMiddlePlaceholderInput('중간 프롬프트 (이 창에만 적용됨)'),
+  wfiMiddlePlaceholderInput('중간 프롬프트 (이 창에만 적용됨)', 'middle-prompt'),
   wfiInlineInput('하위 프롬프트', 'backPrompt', 'preset', 'flex-1'),
   wfiInlineInput('네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
   wfiGroup('샘플링/모델 설정', [
@@ -168,7 +168,7 @@ const SDImageGenEasyInnerUI = wfiStack([
       'preset',
       'flex-none',
     ),
-  ]),
+  ], 'sampling-group'),
 ]);
 
 const SDImageGenHandler = async (
@@ -378,7 +378,7 @@ const SDInpaintUI = wfiStack([
       'preset',
       'flex-none',
     ),
-  ]),
+  ], 'sampling-group'),
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
   // wfiInlineInput('시드', 'seed', true, 'flex-none'),
 ]);
@@ -525,7 +525,7 @@ const SDI2IUI = wfiStack([
       'preset',
       'flex-none',
     ),
-  ]),
+  ], 'sampling-group'),
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
   wfiInlineInput('캐릭터 레퍼런스', 'characterReferences', 'preset', 'flex-none'),
   // wfiInlineInput('시드', 'seed', true, 'flex-none'),
@@ -739,7 +739,7 @@ const SDMirrorUI = wfiStack([
       'preset',
       'flex-none',
     ),
-  ]),
+  ], 'sampling-group'),
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
 ]);
 

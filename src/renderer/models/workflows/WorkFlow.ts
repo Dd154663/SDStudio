@@ -162,7 +162,13 @@ export type WFFieldType = 'preset' | 'shared' | 'meta';
 
 export type WFIFlex = 'flex-1' | 'flex-2' | 'flex-none';
 
-export interface WFIAbstract {}
+export interface WFIAbstract {
+  // L1-1: 워크플로우 UI 요소의 안정적 고유 키(향후 "프리셋 에디터 요소 순서
+  // 사용자 오버라이드" 기능의 저장 키). inline 요소는 field 가 자연 키라 보통
+  // 미지정이고, 키가 없는 요소(presetSelect/group/middlePlaceholder/push/...)에만
+  // 명시한다. 해석은 wfiElementKey 참조. UI 정의 전용 — 데이터 저장 포맷에는 없다.
+  id?: string;
+}
 
 export interface WFIPresetSelect extends WFIAbstract {
   type: 'presetSelect';
@@ -526,16 +532,16 @@ export class WFWorkFlow {
   }
 }
 
-export function wfiPresetSelect(): WFIPresetSelect {
-  return { type: 'presetSelect' };
+export function wfiPresetSelect(id?: string): WFIPresetSelect {
+  return { type: 'presetSelect', id };
 }
 
-export function wfiProfilePresetSelect(): WFIProfilePresetSelect {
-  return { type: 'profilePresetSelect' };
+export function wfiProfilePresetSelect(id?: string): WFIProfilePresetSelect {
+  return { type: 'profilePresetSelect', id };
 }
 
-export function wfiStack(inputs: WFIElement[]): WFIStack {
-  return { type: 'stack', inputs };
+export function wfiStack(inputs: WFIElement[], id?: string): WFIStack {
+  return { type: 'stack', inputs, id };
 }
 
 export function wfiInlineInput(
@@ -555,20 +561,26 @@ export function wfiInlineInput(
   };
 }
 
-export function wfiGroup(label: string, inputs: WFIElement[]): WFIGroup {
-  return { type: 'group', label, inputs };
+export function wfiGroup(
+  label: string,
+  inputs: WFIElement[],
+  id?: string,
+): WFIGroup {
+  return { type: 'group', label, inputs, id };
 }
 
 export function wfiMiddlePlaceholderInput(
   label: string,
+  id?: string,
 ): WFIMiddlePlaceholderInput {
-  return { type: 'middlePlaceholder', label };
+  return { type: 'middlePlaceholder', label, id };
 }
 
 export function wfiPush(
   direction: 'top' | 'bottom' | 'left' | 'right',
+  id?: string,
 ): WFIPush {
-  return { type: 'push', direction };
+  return { type: 'push', direction, id };
 }
 
 export function wfiIfIn(
@@ -576,19 +588,44 @@ export function wfiIfIn(
   fieldType: WFFieldType,
   values: string[],
   element: WFIElement,
+  id?: string,
 ): WFIIfIn {
-  return { type: 'ifIn', field, fieldType, values, element };
+  return { type: 'ifIn', field, fieldType, values, element, id };
 }
 
-export function wfiSceneOnly(element: WFIElement): WFISceneOnly {
-  return { type: 'sceneOnly', element };
+export function wfiSceneOnly(element: WFIElement, id?: string): WFISceneOnly {
+  return { type: 'sceneOnly', element, id };
 }
 
 export function wfiShowImage(
   field: string,
   fieldType: WFFieldType,
+  id?: string,
 ): WFIShowImage {
-  return { type: 'showImage', field, fieldType };
+  return { type: 'showImage', field, fieldType, id };
+}
+
+/**
+ * wfiElementKey — 워크플로우 UI 요소의 안정적 고유 키 해석 (L1-1)
+ *
+ * 향후 "프리셋 에디터 요소 순서 사용자 오버라이드" 기능이 사용자 config 에 저장할
+ * 키를 결정한다. 규칙(우선순위):
+ *   ① 명시 `id` 가 있으면 그것을 쓴다.
+ *   ② inline 요소는 데이터 필드명(`field`)이 자연 키다(이미 배포 후 불변 계약).
+ *   ③ ifIn / sceneOnly 래퍼는 명시 id 가 없으면 내부 요소의 키로 폴백한다(재귀).
+ *   ④ 그 외 키를 구할 수 없으면 undefined.
+ *
+ * ⚠ 배포 후 id 불변 계약: 여기서 반환하는 키는 사용자 config(순서 오버라이드)에
+ *   저장된다. 요소의 id/field 는 배포 후 변경 금지 — 바꾸면 저장된 순서 설정이
+ *   레지스트리에서 사라져 조용히 무시된다(uiToolbar 버튼 id 와 동일한 계약).
+ *   이 키는 UI 정의 전용이며 프리셋/세션 JSON(데이터 저장 포맷)에는 절대 넣지 않는다.
+ */
+export function wfiElementKey(el: WFIElement): string | undefined {
+  if (el.id) return el.id;
+  if (el.type === 'inline') return (el as WFIInlineInput).field;
+  if (el.type === 'ifIn') return wfiElementKey((el as WFIIfIn).element);
+  if (el.type === 'sceneOnly') return wfiElementKey((el as WFISceneOnly).element);
+  return undefined;
 }
 
 export class WFDefBuilder {

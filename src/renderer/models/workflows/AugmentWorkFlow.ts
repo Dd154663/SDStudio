@@ -80,8 +80,14 @@ const AugmentGenMeta = new WFVarBuilder().addSelectVar(
 const AugmentGenUI = wfiStack([
   wfiInlineInput('수정방법', 'method', 'shared', 'flex-none'),
   wfiInlineInput('이미지', 'image', 'shared', 'flex-none'),
-  wfiShowImage('image', 'shared'),
-  wfiIfIn('method', 'shared', ['emotion', 'colorize'], wfiPresetSelect()),
+  wfiShowImage('image', 'shared', 'show-image'),
+  wfiIfIn(
+    'method',
+    'shared',
+    ['emotion', 'colorize'],
+    wfiPresetSelect(),
+    'if-preset-select',
+  ),
   wfiIfIn(
     'method',
     'shared',
@@ -93,6 +99,7 @@ const AugmentGenUI = wfiStack([
     'shared',
     ['emotion', 'colorize'],
     wfiMiddlePlaceholderInput('중위 프롬프트 (이 씬에만 적용)'),
+    'if-middle-prompt',
   ),
   wfiIfIn(
     'method',
