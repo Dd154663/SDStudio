@@ -97,7 +97,8 @@ const TobBar = observer(() => {
   };
 
   return (
-    <div className="titlebar-drag flex border-b line-color px-3 py-2 items-center select-none gap-2">
+    // zone-bar: 구역 카드화 마감 — PC 새 마감에선 캔버스 프레임에 통합(App.css)
+    <div className="zone-bar titlebar-drag flex border-b line-color px-3 py-2 items-center select-none gap-2">
       <div className="titlebar-no-drag gap-3 hidden md:flex text-sky-500 font-bold dark:text-white">
         SDStudio
       </div>

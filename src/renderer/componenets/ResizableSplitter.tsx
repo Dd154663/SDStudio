@@ -50,7 +50,9 @@ const ResizableSplitter = observer(({ reversed }: { reversed?: boolean }) => {
     <div
       ref={splitterRef}
       className={
-        'flex-none flex flex-col items-center group ' +
+        // zone-splitter: 구역 카드화 마감에선 펼침 상태도 히스토리 스트립과 같은
+        // 20px 거터로 통일(App.css) — 접기 버튼(w-5)이 카드에 가려 잘리지 않게.
+        'zone-splitter flex-none flex flex-col items-center group ' +
         (appState.leftPanelCollapsed
           ? 'w-5 cursor-pointer'
           : 'w-1.5 cursor-col-resize')
@@ -73,9 +75,9 @@ const ResizableSplitter = observer(({ reversed }: { reversed?: boolean }) => {
         }
       </button>
       </Tooltip>
-      {/* 드래그 핸들 바 */}
+      {/* 드래그 핸들 바 — zone-splitter-bar: 구역 카드화 마감에선 평시 투명(App.css) */}
       <div className={
-        'flex-1 rounded-full transition-colors ' +
+        'zone-splitter-bar flex-1 rounded-full transition-colors ' +
         (appState.leftPanelCollapsed
           ? 'w-0.5 bg-gray-300 dark:bg-slate-600'
           : 'w-full bg-gray-300 dark:bg-slate-600 group-hover:bg-sky-400 dark:group-hover:bg-sky-500')

@@ -52,6 +52,15 @@ export function buildThemeVars(
 
   if (isHex6(t.surface)) vars['--c-surface'] = t.surface;
   if (isHex6(t.surface2)) vars['--c-surface-2'] = t.surface2;
+  // 구역 카드화(D) 도크 배경(--c-canvas): 카드(--c-surface)보다 한 단계 어두운 캔버스.
+  // 커스텀 배경이 있으면 그 색조를 따라 파생(기본 회색 캔버스가 커스텀 색과 충돌 방지),
+  // 패턴만 있으면 명도에 맞는 중립 기본값. (미설정 → App.css 모드별 기본값)
+  if (isHex6(t.surface)) {
+    const lightish = readableFg(t.surface) === '#000000';
+    vars['--c-canvas'] = mix(t.surface, '#000000', lightish ? 0.07 : 0.35);
+  } else if (t.textPattern) {
+    vars['--c-canvas'] = t.textPattern === 'light' ? '#eceff4' : '#0b1120';
+  }
   if (isHex6(t.inputBg)) {
     vars['--c-input-bg'] = t.inputBg;
     vars['--c-input-text'] = readableFg(t.inputBg);

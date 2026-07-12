@@ -630,6 +630,7 @@ export const App = observer(() => {
   const presetDock = appState.curSession ? (
     <div
       className={
+        // zone-card(아래 패널): 구역 카드화 마감(App.css) — 캔버스 배경은 도크 행이 담당
         'flex-none hidden md:flex h-full ' +
         (presetRight ? 'flex-row-reverse' : 'flex-row')
       }
@@ -639,7 +640,7 @@ export const App = observer(() => {
         <div
           data-slot="preset"
           style={{ width: appState.leftPanelWidth, minWidth: 250 }}
-          className="flex-none overflow-hidden h-full"
+          className="zone-card flex-none overflow-hidden h-full"
         >
           <div className="h-full w-full overflow-hidden">
             <PreSetEditor
@@ -770,7 +771,9 @@ export const App = observer(() => {
                 <TobBar />
               </StackFixed>
             )}
-            <StackGrow className="flex">
+            {/* zone-canvas: 구역 카드화(D) — 도크 행을 캔버스 배경+여백으로, 각 구역은
+                zone-card 로 라운딩 카드화(App.css, PC 새 마감 전용). 클래식/모바일 무변화. */}
+            <StackGrow className="zone-canvas flex">
               {/* 도크 행: [히스토리 도크]와 [넓은 앵커(프로젝트/프리셋/중앙)]가 형제다.
                   FloatView 가 덮는 범위는 창 배치 옵션(uiFloatViewMode)에 따른다 —
                   'cover'(기본)는 넓은 앵커에 포털로 붙어 프로젝트/프리셋 패널 위까지
@@ -803,7 +806,7 @@ export const App = observer(() => {
               {presetDock}
               {/* 중앙 콘텐츠 블록(콘텐츠+FloatView+오버레이 드로어들) — order 0 */}
               <div
-                className="relative flex-1 min-w-0 h-full"
+                className="zone-card relative flex-1 min-w-0 h-full"
                 style={{ order: 0 }}
               >
               <FloatViewProvider>

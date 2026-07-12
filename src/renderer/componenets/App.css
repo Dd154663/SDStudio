@@ -52,6 +52,7 @@
 :root {
   --c-surface: #ffffff;
   --c-surface-2: #ffffff; /* 패널/카드 (라이트는 루트와 동일) */
+  --c-canvas: #eceff4; /* 구역 카드화(D) 도크 배경 — 카드(--c-surface)보다 한 단계 아래 */
   --c-text: #000000;
   --c-text-sub: #000000;
   --c-text-label: #374151; /* gray-700 (본문/라벨) */
@@ -78,6 +79,7 @@
 .dark {
   --c-surface: #0f172a; /* slate-900 */
   --c-surface-2: #1e293b; /* slate-800 (루트보다 한 단계 위) */
+  --c-canvas: #0b1120; /* slate-900 반 단계 아래 (구역 카드화 도크 배경) */
   --c-text: #ffffff;
   --c-text-sub: #e2e8f0; /* slate-200 */
   --c-text-label: #e2e8f0; /* slate-200 (본문/라벨) */
@@ -100,6 +102,7 @@
 .true-dark {
   --c-surface: #0a0a0a;
   --c-surface-2: #121212; /* dark:bg-slate-800 트루다크 오버라이드와 동일 */
+  --c-canvas: #000000; /* 구역 카드화 도크 배경 (트루다크는 순흑) */
   --c-line: #222222; /* (개편 전 #2a2a2a) */
   --c-line-strong: #3a3a3a;
   --c-input-ring: rgba(255, 255, 255, 0.12);
@@ -464,6 +467,63 @@ html:not(.finish-classic) .tab-seg > .tab-seg-off {
 }
 html:not(.finish-classic) .tab-seg > .tab-seg-off:hover {
   color: var(--c-text);
+}
+
+/* ── 구역 카드화(D) ── 메인 도크 행(프리셋·중앙·히스토리·프로젝트 레일)을 캔버스
+   (--c-canvas) 위에 라운딩 카드로 띄워 직선 보더 없이 부드럽게 구분한다.
+   마커 부여: App.tsx(도크 행 .zone-canvas / 프리셋·중앙 .zone-card)·ImageHistory.tsx
+   (패널 본체 .zone-card, 접기 스트립 .zone-gutter)·ProjectSideBar.tsx(.zone-card).
+   새 마감 + PC(md 이상)에서만 — 모바일은 도크 없는 단일 화면이라 제외.
+   클래식이면 기존 평면 배치 그대로. DOM 불변(시각 래퍼만). */
+@media (min-width: 768px) {
+  html:not(.finish-classic) .zone-canvas {
+    background-color: var(--c-canvas);
+    padding: 6px;
+    /* 앵커↔히스토리 도크 gap 은 두지 않는다 — 접기 스트립(w-5)이 이미 간격을 겸해
+       gap 을 더하면 히스토리 쪽 거터만 과폭(6+20px)이 된다(2026-07-12 피드백). */
+  }
+  html:not(.finish-classic) .zone-card {
+    border-radius: 0.75rem; /* 구역 최상위 = 모달(r-modal)과 동일 계층 */
+    background-color: var(--c-surface); /* 히스토리 surface-2·사이드바도 카드 색으로 통일 */
+    overflow: hidden; /* 코너 클리핑 — 내부 콘텐츠·오버레이가 라운딩을 따르게 */
+    border-color: transparent; /* 카드 자체 경계선(히스토리 border-l 등)은 캔버스 간격이 대신 */
+    /* 옅은 카드 윤곽 하이라이트(2026-07-12 피드백) — 다크에서 캔버스↔카드 명도차가
+       미세해 경계가 안 읽히는 문제 해소. outline 은 자식 위에 그려져 항상 보이고
+       Chromium 94+ 에선 border-radius 를 따른다. */
+    outline: 1px solid var(--c-line);
+    outline-offset: -1px;
+  }
+  html:not(.finish-classic) .zone-gutter {
+    border-color: transparent; /* 카드 사이 손잡이 스트립의 구분선도 간격이 대신 */
+  }
+  /* 스플리터/스트립이 없는 인접면(프로젝트 레일↔이웃 카드)의 카드 간격 */
+  html:not(.finish-classic) .zone-gap-r {
+    margin-right: 6px;
+  }
+  html:not(.finish-classic) .zone-gap-l {
+    margin-left: 6px;
+  }
+  /* 상단/하단 바(TobBar·BottomBar) — 캔버스 프레임에 통합. 평면 surface 바가
+     카드 마감과 충돌한다는 피드백(2026-07-12) → 바 배경을 캔버스로, 경계선은
+     캔버스 연속성이 대신하므로 무력화. */
+  html:not(.finish-classic) .zone-bar {
+    background-color: var(--c-canvas);
+    border-color: transparent;
+  }
+  /* 스플리터 손잡이 바 — 평시엔 캔버스에 녹아들게 투명, hover 시에만 기존
+     하이라이트(group-hover sky)가 그대로 살아난다(:hover 밖에서만 덮으므로). */
+  html:not(.finish-classic) .group:not(:hover) .zone-splitter-bar {
+    background-color: transparent;
+  }
+  /* 프리셋 스플리터 거터 — 접기 버튼(w-5)이 6px 컨테이너를 넘쳐 카드에 잘리던 것을
+     히스토리 접기 스트립과 같은 20px 로 통일(2026-07-12 피드백). 드래그 히트 영역도
+     같이 넓어진다. 손잡이 표시(bar)는 컨테이너와 무관하게 얇게 고정. */
+  html:not(.finish-classic) .zone-splitter {
+    width: 1.25rem; /* w-5 = 히스토리 스트립과 동일 */
+  }
+  html:not(.finish-classic) .zone-splitter-bar {
+    width: 4px;
+  }
 }
 
 /* 텍스트 입력 창 윤곽 링(B1) — 배경 음영뿐 테두리가 없던 입력 영역(프롬프트 에디터 등)에

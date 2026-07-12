@@ -15,6 +15,10 @@ const ProjectSideBar = observer(({ side }: { side: PanelSide }) => {
   return (
     <div
       className={
+        // zone-card/zone-gap-*: 구역 카드화 마감(App.css) — 중앙을 향하는 쪽에 카드 간격.
+        // 클래식이면 기존 보더 구분 그대로.
+        'zone-card ' +
+        (side === 'left' ? 'zone-gap-r ' : 'zone-gap-l ') +
         'flex-none w-12 h-full flex flex-col items-center bg-[var(--c-surface-2)] line-color ' +
         borderSide
       }

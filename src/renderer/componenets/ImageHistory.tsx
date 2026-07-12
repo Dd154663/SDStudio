@@ -185,15 +185,44 @@ export const ImageHistoryPanel = observer(() => {
   const rowDir = mirror ? 'flex-row-reverse' : 'flex-row';
   // 구분선은 중앙을 향하는 쪽에 그린다(우측=왼쪽 테두리, 좌측=오른쪽 테두리).
   const borderSide = mirror ? 'border-r' : 'border-l';
+
+  // 스트립 드래그로 패널 폭 조절 — 프리셋 스플리터(ResizableSplitter)와 동일한 방식.
+  // 우측 도킹은 왼쪽으로 끌수록 넓어지므로 델타를 반전한다(좌측 도킹은 그대로).
+  const onStripMouseDown = (e: React.MouseEvent) => {
+    if (appState.historyPanelCollapsed) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = appState.historyPanelWidth;
+    const reversed = !mirror;
+    const onMouseMove = (ev: MouseEvent) => {
+      const delta = (ev.clientX - startX) * (reversed ? -1 : 1);
+      const maxWidth = Math.floor(window.innerWidth * 0.5);
+      const newWidth = Math.max(200, Math.min(maxWidth, startWidth + delta));
+      appState.setHistoryPanelWidth(newWidth);
+    };
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
   return (
     <div className={'flex-none hidden md:flex h-full ' + rowDir}>
+      {/* zone-gutter/zone-card: 구역 카드화 마감(App.css) — 클래식이면 기존 보더 구분 그대로 */}
       <div
         className={
-          'flex-none w-5 flex flex-col items-center line-color ' +
+          'zone-gutter group flex-none w-5 flex flex-col items-center line-color ' +
           borderSide + ' ' +
-          (collapsed ? 'cursor-pointer' : '')
+          (collapsed ? 'cursor-pointer' : 'cursor-col-resize')
         }
         onClick={collapsed ? () => appState.toggleHistoryPanel() : undefined}
+        onMouseDown={collapsed ? undefined : onStripMouseDown}
       >
         <Tooltip content={collapsed ? '히스토리 펼치기' : '히스토리 접기'}>
           <button
@@ -202,6 +231,7 @@ export const ImageHistoryPanel = observer(() => {
               e.stopPropagation();
               appState.toggleHistoryPanel();
             }}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             {/* 화살표는 "펼치면 열리는 방향"을 가리킨다. 좌측 도킹이면 방향도 반전. */}
             {collapsed === mirror ? (
@@ -211,13 +241,17 @@ export const ImageHistoryPanel = observer(() => {
             )}
           </button>
         </Tooltip>
+        {/* 드래그 손잡이 표시 — 프리셋 스플리터와 동일 언어(평시 투명, hover 시 sky) */}
+        {!collapsed && (
+          <div className="zone-splitter-bar flex-1 w-1 rounded-full transition-colors group-hover:bg-sky-400 dark:group-hover:bg-sky-500" />
+        )}
       </div>
       {!collapsed && (
         <div
           className={
-            'flex flex-col h-full line-color bg-[var(--c-surface-2)] ' + borderSide
+            'zone-card flex flex-col h-full line-color bg-[var(--c-surface-2)] ' + borderSide
           }
-          style={{ width: 240 }}
+          style={{ width: appState.historyPanelWidth }}
         >
           <div className="flex-none px-3 py-2 border-b line-color flex items-center justify-between">
             <span className="text-sm font-semibold gray-label">히스토리</span>

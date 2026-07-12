@@ -32,9 +32,10 @@ const BottomBar = observer(
   // 기본(bottom): 기존 하단 가로바. data-gen-dock = 플로팅 위젯 재부착 히트 영역.
   return (
     <StackFixed>
+      {/* zone-bar: 구역 카드화 마감 — PC 새 마감에선 캔버스 프레임에 통합(App.css) */}
       <div
         data-gen-dock
-        className="px-3 pt-2 border-t flex gap-3 items-center line-color"
+        className="zone-bar px-3 pt-2 border-t flex gap-3 items-center line-color"
         style={{
           // 제스처바가 있는 기기에서 실행/중지 버튼이 바에 가리지 않도록
           // 기존 하단 여백(0.5rem)에 safe-area 를 더한다(inset 0이면 기존과 동일).

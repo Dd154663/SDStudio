@@ -320,6 +320,18 @@ export class AppState {
     return localStorage.getItem('sdstudio-history-panel-collapsed') !== 'false';
   })();
 
+  // 히스토리 패널 폭 — 접기 스트립 드래그로 조절(프리셋 패널 폭과 동일한 방식/저장).
+  @observable accessor historyPanelWidth: number = (() => {
+    const saved = localStorage.getItem('sdstudio-history-panel-width');
+    return saved ? Math.max(200, Math.min(600, parseInt(saved, 10) || 240)) : 240;
+  })();
+
+  @action
+  setHistoryPanelWidth(w: number) {
+    this.historyPanelWidth = w;
+    localStorage.setItem('sdstudio-history-panel-width', String(w));
+  }
+
   @action
   toggleHistoryPanel() {
     this.historyPanelCollapsed = !this.historyPanelCollapsed;
