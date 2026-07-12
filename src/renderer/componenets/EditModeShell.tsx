@@ -1,21 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
-import { FaThLarge } from 'react-icons/fa';
+import { FaArrowsAlt } from 'react-icons/fa';
 import { backend } from '../models';
 import { appState } from '../models/AppService';
 import { resolveLayout } from '../models/layoutTemplates';
 import type { UiLayoutSlots } from '../../main/config';
+import Tooltip from './Tooltip';
 
 // 편집 모드 셸 (PC 전용).
-// 사용자가 화면에서 UI 배치를 직접 조작하는 모드의 셸. 안내 바 + 슬롯 배지 + 드롭 존만
-// 담당한다(전역 클릭 흡수·툴바 어포던스는 병렬로 다른 곳에서 처리 — 여기서는 셸만).
-// App.tsx 가 { !isMobile && appState.editMode && <EditModeShell /> } 로 렌더한다.
+// 사용자가 화면에서 UI 배치를 직접 조작하는 모드의 셸. 안내 바 + 슬롯 그립 칩 +
+// 패널 하이라이트 + 드롭 존만 담당한다(전역 클릭 흡수·툴바 어포던스는 병렬로 다른
+// 곳에서 처리 — 여기서는 셸만). App.tsx 가
+// { !isMobile && appState.editMode && <EditModeShell /> } 로 렌더한다.
 //
-// 슬롯 배지는 App.tsx/BottomBar.tsx 가 부여한 위치 마커의 rect 를 측정해 그 위에 띄운다:
+// 슬롯 그립 칩은 App.tsx/BottomBar.tsx 가 부여한 위치 마커의 rect 를 측정해 그 위에
+// 띄운다:
+//   [data-slot="project"]    — 프로젝트 사이드 바 래퍼
 //   [data-slot="preset"]     — 프리셋 패널 래퍼
 //   [data-slot="history"]    — 이미지 히스토리 패널 래퍼
 //   [data-slot="gencontrol"] — 생성 컨트롤(하단바 도크 or 플로팅 위젯 루트)
-// rect 를 못 찾은 슬롯(세션 없음·패널 접힘 등)은 배지를 그리지 않는다.
+// rect 를 못 찾은 슬롯(세션 없음·패널 접힘 등)은 칩을 그리지 않는다.
+//
+// 칩은 텍스트가 아니라 그립 아이콘(✥, FaArrowsAlt — 프리셋 행 그립과 동일 시각 언어)
+// 중심의 고대비 sky 소형 정사각형이고, 패널명은 툴팁으로만 노출한다(긴 텍스트 배지가
+// 패널 제목과 겹치던 문제 해소). 칩에 호버하거나 드래그를 시작하면 해당 패널 전체에
+// 하늘색 외곽선 + 옅은 스크림을 얹어 "이 패널이 통째로 움직인다"를 즉시 보여준다
+// (스크림은 pointer-events-none 이라 콘텐츠 상호작용을 막지 않음).
 
 const DRAG_THRESHOLD = 8; // 이 거리(px)를 넘으면 드래그(가장자리 드롭)로 판정, 미달=클릭 토글
 
@@ -47,13 +57,23 @@ const SIDE_KEY: Record<'project' | 'preset' | 'history', 'projectSide' | 'preset
   history: 'historySide',
 };
 
-// 슬롯 배지가 앉을 화면 좌표(마커 위 중앙 상단). 마커가 없으면 null.
+// 그립 칩 한 변(px) — 아이콘+여백의 소형 정사각형.
+const CHIP = 30;
+// 칩을 패널 안쪽으로 들이는 여백(px). 상단·우측 공통.
+const CHIP_INSET = 6;
+
+// 슬롯 그립 칩이 앉을 화면 좌표 + 하이라이트용 패널 rect. 마커가 없으면 항목 자체가 없다.
 interface BadgeRect {
   kind: SlotKind;
   label: string;
-  // 배지를 -translate-x-1/2 로 중앙 정렬하므로 left 는 마커 가로 중심.
-  left: number;
-  top: number;
+  // 하이라이트 오버레이가 덮을 패널(마커)의 화면 rect.
+  panelLeft: number;
+  panelTop: number;
+  panelWidth: number;
+  panelHeight: number;
+  // 그립 칩(정사각형)의 좌상단 좌표 — 패널 상단 우측 안쪽(화면 안으로 클램프).
+  chipLeft: number;
+  chipTop: number;
 }
 
 // 슬롯 배치를 즉시 반영 + config 저장. GenControlWidget 의 applyGenWidget 패턴 복제
@@ -107,46 +127,51 @@ async function applyGenControlMode(mode: 'docked' | 'floating') {
   }
 }
 
-// 마커 3종의 현재 화면 rect 를 측정해 배지 좌표 배열로 변환. 못 찾은 슬롯은 제외.
+// 마커 4종의 현재 화면 rect 를 측정해 칩 좌표 + 패널 rect 배열로 변환. 못 찾은 슬롯은 제외.
 function measureBadges(): BadgeRect[] {
   const out: BadgeRect[] = [];
   for (const slot of SLOTS) {
-    // 하단바 없는 템플릿에선 gencontrol 배지 생략(전환 대상 없음 — 항상 플로팅).
+    // 하단바 없는 템플릿에선 gencontrol 칩 생략(전환 대상 없음 — 항상 플로팅).
     if (slot.kind === 'gencontrol' && !genDockAvailable()) continue;
     const el = document.querySelector(slot.selector);
     if (!el) continue;
     const r = el.getBoundingClientRect();
     // 크기 0(미표시)인 마커는 건너뛴다.
     if (r.width <= 0 || r.height <= 0) continue;
+    // 칩은 패널 상단 우측 안쪽. 좁은 패널(예: 48px 프로젝트 사이드 바)·화면 가장자리에
+    // 도킹된 패널에서도 칩 전체가 항상 보이도록 화면 안으로 클램프한다.
+    const chipLeft = Math.min(
+      Math.max(r.right - CHIP - CHIP_INSET, 4),
+      window.innerWidth - CHIP - 4,
+    );
+    const chipTop = Math.min(
+      Math.max(r.top + CHIP_INSET, 4),
+      window.innerHeight - CHIP - 4,
+    );
     out.push({
       kind: slot.kind,
       label: slot.label,
-      // 배지는 -translate-x-1/2 로 중앙 정렬되므로, 마커가 화면 가장자리에 바싹
-      // 붙은 경우(예: 좌/우 끝에 도킹된 히스토리 패널) 배지가 화면 밖으로 잘린다.
-      // 좌표를 화면 안으로 클램프해 배지 전체가 항상 보이게 한다.
-      left: Math.min(
-        Math.max(r.left + r.width / 2, 90),
-        window.innerWidth - 90,
-      ),
-      // 마커 상단에 살짝 겹쳐 얹는다(음수가 되면 화면 안으로 끌어당김).
-      top: Math.max(8, r.top + 6),
+      panelLeft: r.left,
+      panelTop: r.top,
+      panelWidth: r.width,
+      panelHeight: r.height,
+      chipLeft,
+      chipTop,
     });
   }
-  // 두 패널을 같은 쪽에 두거나(특히 프리셋이 접혀 마커가 얇은 스플리터일 때),
-  // 좌표 클램프로 같은 x 로 몰리면 배지들이 겹쳐 하나가 가려진다.
-  // 가로로 가까운 배지는 뒤엣것을 한 줄씩 아래로 내려 계단식으로 펼친다.
-  const BADGE_HALF = 90; // 배지 대략 반폭(px) — 이보다 가까우면 가로로 겹침
-  const ROW = 38; // 한 줄 내림 높이(배지 높이 + 여백)
+  // 두 패널을 같은 쪽에 두거나(특히 프리셋이 접혀 마커가 얇은 스플리터일 때) 칩들이
+  // 같은 좌표로 몰려 겹치면, 뒤엣것을 한 줄씩 아래로 내려 계단식으로 펼친다.
+  const ROW = CHIP + 6; // 한 줄 내림 높이(칩 높이 + 여백)
   for (let i = 0; i < out.length; i++) {
     let moved = true;
     while (moved) {
       moved = false;
       for (let j = 0; j < i; j++) {
         if (
-          Math.abs(out[j].left - out[i].left) < BADGE_HALF * 2 &&
-          Math.abs(out[j].top - out[i].top) < ROW
+          Math.abs(out[j].chipLeft - out[i].chipLeft) < CHIP + 4 &&
+          Math.abs(out[j].chipTop - out[i].chipTop) < ROW
         ) {
-          out[i].top = out[j].top + ROW;
+          out[i].chipTop = out[j].chipTop + ROW;
           moved = true;
         }
       }
@@ -162,6 +187,8 @@ const EditModeShell = observer(() => {
     null,
   );
   const [hoverSide, setHoverSide] = useState<'left' | 'right' | null>(null);
+  // 칩에 마우스가 얹힌 슬롯 — 해당 패널에 하이라이트(외곽선+스크림)를 표시한다.
+  const [hoverKind, setHoverKind] = useState<SlotKind | null>(null);
 
   // 배지 rect 재측정. 배치 변경/리사이즈 후 rAF 로 한 번 더 확실히 잡는다.
   const remeasure = useCallback(() => {
@@ -280,7 +307,7 @@ const EditModeShell = observer(() => {
         style={{ zIndex: 'var(--z-edit-overlay)' }}
       >
         <span className="text-sm text-body">
-          편집 모드 — 버튼을 드래그해 배치·순서를 바꾸고, 패널 배지로 위치를 이동하세요
+          편집 모드 — 버튼을 드래그해 배치·순서를 바꾸고, 패널 손잡이(✥)로 위치를 이동하세요
         </span>
         <button
           className="round-button back-sky text-sm !px-3 !py-1 !min-w-0 !min-h-0"
@@ -317,39 +344,71 @@ const EditModeShell = observer(() => {
         </>
       )}
 
-      {/* ── 슬롯 배지 ── */}
+      {/* ── 패널 하이라이트 (칩 호버 또는 드래그 중) ── */}
+      {/* 칩과 같은 z(--z-edit-overlay)지만 칩보다 먼저 렌더 → 칩이 위에 얹힌다.
+          pointer-events-none 이라 스크림이 칩·콘텐츠 상호작용을 막지 않는다. */}
+      {badges.map((b) => {
+        if (dragging !== b.kind && hoverKind !== b.kind) return null;
+        return (
+          <div
+            key={`hl-${b.kind}`}
+            className="fixed pointer-events-none rounded-lg ring-2 ring-inset ring-sky-400 bg-sky-400/10 dark:bg-sky-500/10"
+            style={{
+              left: b.panelLeft,
+              top: b.panelTop,
+              width: b.panelWidth,
+              height: b.panelHeight,
+              zIndex: 'var(--z-edit-overlay)',
+            }}
+          />
+        );
+      })}
+
+      {/* ── 슬롯 그립 칩 ── */}
       {badges.map((b) => {
         const isGen = b.kind === 'gencontrol';
         const isDraggingThis = dragging === b.kind;
         return (
-          <div
+          <Tooltip
             key={b.kind}
-            onPointerDown={(e) => {
-              if (isGen) return; // gencontrol 은 클릭 토글만
-              startPanelDrag(b.kind as 'project' | 'preset' | 'history', e);
-            }}
-            onClick={isGen ? toggleGenControl : undefined}
-            // 배지도 화면 상단에서 타이틀바 드래그 영역과 겹칠 수 있어, 클릭/드래그가
-            // 창 이동으로 먹히지 않도록 titlebar-no-drag.
-            // whitespace-nowrap: 배지가 화면 오른쪽 끝 근처(우측 도킹 패널 위)에 놓이면
-            // fixed 요소의 shrink-to-fit 폭이 좁아져 "히스토리 패널" 텍스트가 줄바꿈되던 문제.
-            // 줄바꿈을 막으면 항상 한 줄 알약으로 렌더된다(-translate-x-1/2 로 중앙 정렬 유지).
-            className={
-              'titlebar-no-drag fixed -translate-x-1/2 whitespace-nowrap flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--c-surface-2)] border line-color shadow-lg text-sm text-body select-none touch-none ' +
-              (isGen ? 'cursor-pointer ' : 'cursor-grab ') +
-              (isDraggingThis ? 'opacity-70 ' : '')
-            }
-            style={{ left: b.left, top: b.top, zIndex: 'var(--z-edit-overlay)' }}
-            aria-label={`${b.label} 배치`}
-            title={
+            content={
               isGen
-                ? '클릭해 도크/플로팅 전환'
-                : '드래그해 좌/우 이동 · 클릭으로 반대쪽'
+                ? `${b.label} · 클릭해 도크/플로팅 전환`
+                : `${b.label} · 드래그해 좌/우 이동`
             }
+            placement="bottom"
           >
-            <FaThLarge className="text-faint flex-none" />
-            <span>{b.label}</span>
-          </div>
+            <div
+              onPointerDown={(e) => {
+                if (isGen) return; // gencontrol 은 클릭 토글만
+                startPanelDrag(b.kind as 'project' | 'preset' | 'history', e);
+              }}
+              onClick={isGen ? toggleGenControl : undefined}
+              onMouseEnter={() => setHoverKind(b.kind)}
+              onMouseLeave={() =>
+                setHoverKind((k) => (k === b.kind ? null : k))
+              }
+              // 칩도 화면 상단에서 타이틀바 드래그 영역과 겹칠 수 있어, 클릭/드래그가
+              // 창 이동으로 먹히지 않도록 titlebar-no-drag.
+              // 고대비: 진한 sky 배경 + 흰 그립 아이콘 → 다크·화이트 어느 테마에서도
+              // 패널 위에서 묻히지 않는다.
+              className={
+                'titlebar-no-drag fixed flex items-center justify-center rounded-md border border-sky-300 bg-sky-500 text-white shadow-lg select-none touch-none ' +
+                (isGen ? 'cursor-pointer ' : 'cursor-grab ') +
+                (isDraggingThis ? 'opacity-70 ' : '')
+              }
+              style={{
+                left: b.chipLeft,
+                top: b.chipTop,
+                width: CHIP,
+                height: CHIP,
+                zIndex: 'var(--z-edit-overlay)',
+              }}
+              aria-label={`${b.label} 배치`}
+            >
+              <FaArrowsAlt size={14} className="flex-none" />
+            </div>
+          </Tooltip>
         );
       })}
     </>
