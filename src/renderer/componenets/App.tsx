@@ -261,6 +261,7 @@ export const App = observer(() => {
       appState.storageWriteGuard = conf.storageWriteGuard ?? true;
       appState.uiToolbar = conf.uiToolbar ?? {};
       appState.uiPresetLayout = conf.uiPresetLayout ?? {};
+      appState.uiCompanionSlots = conf.uiCompanionSlots ?? {};
       appState.uiLayoutTemplate = conf.uiLayoutTemplate ?? 'classic';
       appState.genWidget = conf.genWidget ?? {};
       appState.uiLayoutSlots = conf.uiLayoutSlots ?? {};

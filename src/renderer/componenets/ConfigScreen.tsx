@@ -16,6 +16,10 @@ import { platform } from '../models/platform';
 import { buildThemeVars, isHex6 } from '../models/uiTheme';
 import { themeTemplates } from '../models/themeTemplates';
 import { layoutTemplates } from '../models/layoutTemplates';
+import {
+  COMPANION_HOST_WHITELIST,
+  resolveCompanionButtons,
+} from '../models/companionSlots';
 import { observer } from 'mobx-react-lite';
 import { appState } from '../models/AppService';
 import { TaskLog } from '../models/TaskQueueService';
@@ -1586,6 +1590,34 @@ async function resetLayoutArrangement() {
   }
 }
 
+// 동반 슬롯(L3-3) — 프리셋 에디터 "호스트 행" 옆 전역 버튼을 켜고 끄는 토글 배선.
+// 1차 화이트리스트는 조합 1건(캐릭터 프롬프트 행 옆 '캐릭터 프리셋 관리')뿐이라
+// (hostKey, 버튼 id)를 리터럴로 재산포하지 않고 COMPANION_HOST_WHITELIST 에서 읽는다
+// (문자열 하드코딩 방지 — 확대 시 이 상수만 늘리면 목록 렌더로 키울 수 있는 형태).
+const COMPANION_HOST_KEY = Object.keys(COMPANION_HOST_WHITELIST)[0];
+const COMPANION_BUTTON_ID = COMPANION_HOST_WHITELIST[COMPANION_HOST_KEY]?.[0];
+
+// appState 미러 갱신 + config 영속을 한 함수로(즉시 반영+재시작 유지). 저장 흐름 밖이라
+// resetLayoutArrangement·applyPresetOrder(PresetLayoutDnd) 선례처럼 새 객체를 할당해
+// MobX 반응을 태운다 → 열려 있는 프리셋 에디터(CharacterButton=observer)에 즉시 반영.
+async function applyCompanionSlots(next: Record<string, string[]>) {
+  appState.uiCompanionSlots = next;
+  try {
+    const config = await backend.getConfig();
+    await backend.setConfig({ ...config, uiCompanionSlots: next });
+  } catch (e) {
+    console.error('동반 슬롯 저장 실패:', e);
+  }
+}
+
+// 토글 on/off → 화이트리스트 1차 조합을 채우거나 해당 hostKey 를 제거(빈 객체 = 슬롯 없음).
+function setCompanionEnabled(on: boolean) {
+  const next = { ...appState.uiCompanionSlots };
+  if (on) next[COMPANION_HOST_KEY] = [COMPANION_BUTTON_ID];
+  else delete next[COMPANION_HOST_KEY];
+  return applyCompanionSlots(next);
+}
+
 // 창 배치(FloatView 노출 범위) 도안 — sky 사각형이 뷰어가 덮는 영역.
 const FloatScopeWireframe = ({ variant }: { variant: 'cover' | 'center' }) => (
   <div className="w-28 h-16 flex flex-col gap-1">
@@ -1627,7 +1659,7 @@ const floatViewModes: {
   },
 ];
 
-const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
+const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, setUiFloatViewMode, companionOn, mobileMode, onClose }: any) => (
   <div className="space-y-5">
     <div>
       <label className="block text-sm gray-label mb-1">화면 배치</label>
@@ -1775,12 +1807,42 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, set
         즉시 적용됩니다.
       </p>
     </div>
+
+    {/* 동반 버튼(L3-3) — 프리셋 에디터 특정 행 옆에 전역 버튼을 붙이는 슬롯 토글.
+        레이아웃 배치 초기화·직접 편집과 같은 "저장 없이 즉시 적용" 계열이라 이 탭에
+        둔다. 토글 즉시 열려 있는 프리셋 에디터에 반영된다(별도 저장 불필요). */}
+    <div className="pt-3 border-t line-color">
+      <label className="block text-sm gray-label mb-1">동반 버튼</label>
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="cfgCompanionCharPreset"
+          checked={companionOn}
+          onChange={(e) => setCompanionEnabled(e.target.checked)}
+        />
+        <label htmlFor="cfgCompanionCharPreset" className="text-sm gray-label">
+          캐릭터 프롬프트 열기 옆에 '캐릭터 프리셋 관리' 버튼 표시
+        </label>
+      </div>
+      <p className="text-xs text-faint mt-1 ml-6">
+        프리셋 에디터의 캐릭터 프롬프트 행 옆에 '캐릭터 프리셋 관리' 아이콘 버튼이
+        추가됩니다. 저장 없이 바로 적용됩니다.
+      </p>
+    </div>
   </div>
 );
 
 const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const { curSession } = appState;
   const [activeTab, setActiveTab] = useState(0);
+
+  // 동반 버튼 체크 상태 — appState 미러를 resolver 로 판독(빈=슬롯 없음). 이 읽기가
+  // observer 인 ConfigScreen 렌더에서 일어나므로, 토글로 appState 가 갱신되면 이 화면의
+  // 체크박스도 즉시 다시 그려진다(프리셋 에디터 반영과 별개로 화면 자기 상태도 최신).
+  const companionOn = resolveCompanionButtons(
+    COMPANION_HOST_KEY,
+    appState.uiCompanionSlots,
+  ).includes(COMPANION_BUTTON_ID);
 
   // state
   const [imageEditor, setImageEditor] = useState('');
@@ -2014,7 +2076,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'toolbar':
         return <ToolbarTab {...{ uiToolbar, setUiToolbar }} />;
       case 'layout':
-        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }} />;
+        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, setUiFloatViewMode, companionOn, mobileMode, onClose }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':

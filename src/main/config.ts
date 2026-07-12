@@ -89,6 +89,14 @@ export interface Config {
   // 최종 렌더 순서 해석은 resolvePresetOrder(presetLayout.ts)가 단일 출처 —
   // stale 키는 조용히 무시하고 신규 키는 정의 위치에 삽입한다(롤백/전방호환 안전).
   uiPresetLayout?: Record<string, string[]>;
+  // 동반 슬롯(L3-1) — 프리셋 에디터 "호스트 행" 옆에 붙일 전역(portable) 툴바 버튼.
+  // 키 = hostKey(wfiElementKey 안정 키, 예 'characterPrompts'), 값 = 붙일 버튼 id
+  // 목록(uiLayout.ts portable 버튼 id, 예 'character-presets') — 둘 다 배포 후 불변.
+  // 미설정/빈 배열 = 슬롯 없음 = 현행 렌더(롤백 안전). 어떤 hostKey·버튼이 허용되는지의
+  // 화이트리스트와 해석은 resolveCompanionButtons/COMPANION_HOST_WHITELIST
+  // (companionSlots.ts)가 단일 출처 — 화이트리스트 밖 hostKey·비허용 버튼 id 는
+  // 조용히 무시한다(stale 무시 방침).
+  uiCompanionSlots?: Record<string, string[]>;
 }
 
 // 레이아웃 슬롯 개인화 — 템플릿(uiLayoutTemplate) 기본값 위에 얹는 오버라이드.

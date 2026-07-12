@@ -193,6 +193,11 @@ export class AppState {
   // (쓰기 API 는 L1-4 소관 — 이번 단계는 읽기 배선만.)
   @observable accessor uiPresetLayout: Record<string, string[]> = {};
 
+  // 동반 슬롯 미러(config.uiCompanionSlots, L3-1). 빈 객체 = 슬롯 없음 = 현행 렌더.
+  // 화이트리스트·해석은 resolveCompanionButtons(companionSlots.ts) 단일 출처. 로드는
+  // App.tsx. (쓰기 API 는 L3-3 ConfigScreen 소관 — 이번 단계는 읽기 배선만.)
+  @observable accessor uiCompanionSlots: Record<string, string[]> = {};
+
   // 레이아웃 템플릿 id(config.uiLayoutTemplate 미러). 기본 'classic'.
   // 배치 해석은 resolveLayout(layoutTemplates.ts) 단일 출처.
   @observable accessor uiLayoutTemplate: string = 'classic';
