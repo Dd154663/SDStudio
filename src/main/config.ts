@@ -83,6 +83,12 @@ export interface Config {
   // 클래식 마감(개인 설정) — true 면 UI 심미 개편(보더/라운딩 등) 이전 모양으로 복원.
   // 적용은 App.tsx 가 html 에 finish-classic 클래스를 토글(App.css 토큰 오버라이드).
   uiClassicFinish?: boolean;
+  // 프리셋 에디터 요소 순서 사용자 오버라이드(L1-2) — 워크플로우 타입별로 최상위 UI
+  // 요소의 렌더 순서를 개인화한다. 키는 wfiElementKey(WorkFlow.ts)가 반환하는 안정 키
+  // (배포 후 불변 계약). 미설정/빈 배열 = 오버라이드 없음 = 정의 순서 그대로(기존 동작).
+  // 최종 렌더 순서 해석은 resolvePresetOrder(presetLayout.ts)가 단일 출처 —
+  // stale 키는 조용히 무시하고 신규 키는 정의 위치에 삽입한다(롤백/전방호환 안전).
+  uiPresetLayout?: Record<string, string[]>;
 }
 
 // 레이아웃 슬롯 개인화 — 템플릿(uiLayoutTemplate) 기본값 위에 얹는 오버라이드.

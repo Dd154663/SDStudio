@@ -64,7 +64,18 @@ import {
   WFIStack,
   WFVar,
   WorkFlowDef,
+  wfiElementKey,
 } from '../models/workflows/WorkFlow';
+import {
+  presetLayoutSlotKey,
+  resolveStackInputs,
+  presetRowLabel,
+} from '../models/presetLayout';
+import {
+  DraggablePresetRow,
+  resetPresetOrder,
+  isPresetAnchorKey,
+} from './PresetLayoutDnd';
 import { StackFixed, StackGrow, VerticalStack } from './LayoutComponents';
 import Tooltip from './Tooltip';
 import ModalOverlay from './ModalOverlay';
@@ -1146,6 +1157,85 @@ const WFRStack = observer(({ element }: WFElementProps) => {
   );
 });
 
+// 편집모드 래퍼가 세로 성장(flex-1)을 보존해야 하는 요소인지(L1-4).
+// EditorField(프롬프트 flex-1)·middlePlaceholder(항상 full)만 flex-1 콘텐츠를 낸다 —
+// 이 경우 래퍼도 flex-1 로 감싸야 프롬프트가 편집모드에서 접히지 않는다. 그 외는 flex-none.
+// ifIn/sceneOnly 래퍼는 내부 요소로 폴백(wfiElementKey 와 동일 계약).
+function presetRowGrows(el: WFIElement): boolean {
+  let cur: WFIElement = el;
+  while (cur.type === 'ifIn' || cur.type === 'sceneOnly') {
+    cur = (cur as WFIIfIn | WFISceneOnly).element;
+  }
+  if (cur.type === 'middlePlaceholder') return true;
+  if (cur.type === 'inline') return (cur as WFIInlineInput).flex === 'flex-1';
+  return false;
+}
+
+// 루트 스택 렌더의 단일 관문(L1-4). 편집모드 꺼짐(또는 모바일·비스택·키 없음)이면
+// 기존 경로(<WFRenderElement element/>)를 100% 그대로 태운다 = L1-3 회귀 기준 유지.
+// 편집모드 활성(PC) && 최상위 전 요소가 유효 키일 때만 각 요소를 세로 드래그 래퍼로 감싼다.
+// 앵커 키(PRESET_LAYOUT_ANCHOR_KEYS)는 래퍼 없이 그대로 렌더 = 최상단 고정·드래그 불가.
+const PresetRootRender = observer(
+  ({ element, slotKey }: { element: WFIElement; slotKey?: string }) => {
+    const editing =
+      appState.editMode &&
+      !isMobile &&
+      element.type === 'stack' &&
+      !!slotKey;
+    if (!editing) {
+      // 평상시 마크업/클래스 무변경 — 원래 렌더 경로 그대로.
+      return <WFRenderElement element={element} />;
+    }
+    const stk = element as WFIStack;
+    const keys = stk.inputs.map((x) => wfiElementKey(x));
+    // 키 없는 최상위 요소 방어 — 하나라도 있으면 편집 비활성(정의 순서 그대로 폴백).
+    const allKeyed = keys.every(
+      (k): k is string => typeof k === 'string' && k.length > 0,
+    );
+    if (!allKeyed) {
+      return <WFRenderElement element={element} />;
+    }
+    const order = keys as string[]; // 현재 렌더된 전체 키 순서(앵커 포함)
+    const hasOverride = !!appState.uiPresetLayout[slotKey!];
+
+    // WFRStack 과 동일한 VerticalStack 골격 — 자식만 편집 래퍼로 감싼다.
+    return (
+      <VerticalStack>
+        {hasOverride && (
+          <div className="flex-none flex justify-end mb-1">
+            <button
+              className="round-button back-gray text-sm !px-2 !py-0.5 !min-w-0 !min-h-0"
+              onClick={() => resetPresetOrder(slotKey!)}
+              title="이 화면의 요소 순서를 기본값으로 되돌립니다"
+            >
+              순서 초기화
+            </button>
+          </div>
+        )}
+        {stk.inputs.map((x, i) => {
+          const key = order[i];
+          // 앵커 = 최상단 고정 — 드래그/드롭 대상 아님(그대로 렌더).
+          if (isPresetAnchorKey(key)) {
+            return <WFRenderElement key={key} element={x} />;
+          }
+          return (
+            <DraggablePresetRow
+              key={key}
+              slotKey={slotKey!}
+              elementKey={key}
+              order={order}
+              grow={presetRowGrows(x)}
+              label={presetRowLabel(x)}
+            >
+              <WFRenderElement element={x} />
+            </DraggablePresetRow>
+          );
+        })}
+      </VerticalStack>
+    );
+  },
+);
+
 const WFRPush = observer(({ element }: WFElementProps) => {
   const { showGroup, showGroupOverlay, editVibe } = useContext(WFElementContext)!;
   const { curGroup } = useContext(WFGroupContext)!;
@@ -1680,6 +1770,9 @@ interface ImplProps {
   meta?: any;
   middlePromptMode: boolean;
   element: WFIElement;
+  // 루트 스택 슬롯 키 계약(L1-3): innerEditor 렌더면 true → `${type}@inner`.
+  // 미지정(false) = 일반 editor. 순서 오버라이드 슬롯 구분에만 쓰인다.
+  inner?: boolean;
   getMiddlePrompt?: () => string;
   onMiddlePromptChange?: (txt: string) => void;
   getCharacterMiddlePrompt?: (index: number) => string;
@@ -1694,6 +1787,7 @@ export const PreSetEditorImpl = observer(
     element,
     meta,
     middlePromptMode,
+    inner,
     getMiddlePrompt,
     onMiddlePromptChange,
     getCharacterMiddlePrompt,
@@ -1754,6 +1848,23 @@ export const PreSetEditorImpl = observer(
       window.addEventListener('shortcut-action', handler);
       return () => window.removeEventListener('shortcut-action', handler);
     }, [groupElement]);
+
+    // 루트 스택 최상위 요소 순서 오버라이드 적용(L1-3, 읽기 배선).
+    //   재배열 대상은 이 "루트 스택"의 최상위 요소뿐 — 중첩 스택/그룹 내부는 손대지 않는다.
+    //   오버라이드 없음(현재 모든 사용자)이면 resolveStackInputs 가 원본 inputs 동일 참조를
+    //   돌려주므로 rootElement === element 가 되어 현행 렌더 결과 100% 동일(회귀 기준).
+    //   appState.uiPresetLayout 읽기는 observer 컴포넌트라 MobX 로 즉시 반응한다.
+    let rootElement: WFIElement = element;
+    let rootSlotKey: string | undefined;
+    if (element.type === 'stack') {
+      const stk = element as WFIStack;
+      rootSlotKey = presetLayoutSlotKey(type, !!inner);
+      const ordered = resolveStackInputs(stk, appState.uiPresetLayout[rootSlotKey]);
+      if (ordered !== stk.inputs) {
+        rootElement = { ...stk, inputs: ordered };
+      }
+    }
+
     return (
       <StackGrow>
         <WFElementContext.Provider
@@ -1799,7 +1910,7 @@ export const PreSetEditorImpl = observer(
               />
             )}
             {!editVibe && !editCharacters && !editCharacterReference && (
-              <WFRenderElement element={element} />
+              <PresetRootRender element={rootElement} slotKey={rootSlotKey} />
             )}
           </WFGroupContext.Provider>
           {/* 샘플링/모델 설정 오버레이 */}
@@ -1873,6 +1984,7 @@ export const InnerPreSetEditor = observer(
           preset={preset}
           meta={meta}
           element={element}
+          inner={true}
           middlePromptMode={middlePromptMode}
           getMiddlePrompt={getMiddlePrompt}
           onMiddlePromptChange={onMiddlePromptChange}

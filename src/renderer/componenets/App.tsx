@@ -259,6 +259,7 @@ export const App = observer(() => {
       appState.legacyProjectMode = conf.legacyProjectMode ?? false;
       appState.storageWriteGuard = conf.storageWriteGuard ?? true;
       appState.uiToolbar = conf.uiToolbar ?? {};
+      appState.uiPresetLayout = conf.uiPresetLayout ?? {};
       appState.uiLayoutTemplate = conf.uiLayoutTemplate ?? 'classic';
       appState.genWidget = conf.genWidget ?? {};
       appState.uiLayoutSlots = conf.uiLayoutSlots ?? {};

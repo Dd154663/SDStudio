@@ -184,6 +184,12 @@ export class AppState {
   // 배치 해석은 resolveToolbar(uiLayout.ts) 단일 출처.
   @observable accessor uiToolbar: UiToolbarConfig = {};
 
+  // 프리셋 에디터 요소 순서 오버라이드(config.uiPresetLayout 미러, L1-3). 빈 객체 =
+  // 오버라이드 없음 = 정의 순서 그대로(기존 동작). 슬롯 키 계약·순서 해석은
+  // presetLayoutSlotKey/resolveStackInputs(presetLayout.ts) 단일 출처. 로드는 App.tsx.
+  // (쓰기 API 는 L1-4 소관 — 이번 단계는 읽기 배선만.)
+  @observable accessor uiPresetLayout: Record<string, string[]> = {};
+
   // 레이아웃 템플릿 id(config.uiLayoutTemplate 미러). 기본 'classic'.
   // 배치 해석은 resolveLayout(layoutTemplates.ts) 단일 출처.
   @observable accessor uiLayoutTemplate: string = 'classic';
