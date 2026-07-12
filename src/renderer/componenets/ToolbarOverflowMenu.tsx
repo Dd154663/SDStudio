@@ -40,6 +40,9 @@ interface ToolbarOverflowMenuProps {
   // 데스크톱 팝오버를 앵커 위로 펼침 — 화면 하단 툴바(프로젝트 바 등)에서
   // 아래로 열면 뷰포트 밖으로 잘리므로 그 경우 true 로.
   dropUp?: boolean;
+  // 데스크톱 팝오버의 가로 정렬(기본 'left'=앵커 왼끝 맞춤·오른쪽으로 펼침).
+  // 우측 사이드 바처럼 오른쪽 가장자리에 앵커가 붙으면 'right' 로 왼쪽으로 펼친다.
+  align?: 'left' | 'right';
   // 행 드래그 아웃용 react-dnd 아이템 타입 (미지정 = 드래그 비활성, 클래식 등)
   dndType?: string;
   // 이 메뉴가 속한 툴바 영역 — 타입이 View 공유('toolbar-btn/main')가 되면서
@@ -198,6 +201,7 @@ const ToolbarOverflowMenu = observer(({
   title,
   items,
   dropUp,
+  align = 'left',
   dndType,
   group,
 }: ToolbarOverflowMenuProps) => {
@@ -289,7 +293,7 @@ const ToolbarOverflowMenu = observer(({
   return (
     <div
       ref={popRef}
-      className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 z-50 min-w-[240px] max-w-[80vw] max-h-[60vh] overflow-auto rounded-xl r-popover border line-color bg-[var(--c-zone)] shadow-2xl p-2${dragActive ? ' opacity-0 pointer-events-none' : ''}`}
+      className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} ${align === 'right' ? 'right-0' : 'left-0'} z-50 min-w-[240px] max-w-[80vw] max-h-[60vh] overflow-auto rounded-xl r-popover border line-color bg-[var(--c-zone)] shadow-2xl p-2${dragActive ? ' opacity-0 pointer-events-none' : ''}`}
     >
       {rows}
     </div>

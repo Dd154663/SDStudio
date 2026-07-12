@@ -23,6 +23,9 @@ import { appState } from '../models/AppService';
 export interface PortableButtonsContext {
   mobileIcon: boolean;
   variant: 'scene' | 'project';
+  // 아이콘 축약 강제 — 프로젝트 사이드 바(w-12 세로 스택)처럼 텍스트 버튼이
+  // 물리적으로 안 들어가는 표시 영역용. 텍스트 포함 버튼(piece-editor)만 영향.
+  iconOnly?: boolean;
 }
 
 // 아이콘 단추 공통 — 표시 영역의 표준 클래스로 감싼다.
@@ -82,8 +85,18 @@ export function portableToolbarButtons(
         )
       ),
     // 텍스트 포함 버튼 — round-button 은 씬 툴바에도 있는 표준이라 양쪽 그대로,
-    // 여백만 적응(프로젝트 바는 ml-1 하드마진, 씬 툴바 행은 gap-1 이라 불필요)
-    'piece-editor': (
+    // 여백만 적응(프로젝트 바는 ml-1 하드마진, 씬 툴바 행은 gap-1 이라 불필요).
+    // iconOnly(사이드 바)는 텍스트를 빼고 툴팁으로 대체(색·아이콘은 원본 유지).
+    'piece-editor': ctx.iconOnly ? (
+      <Tooltip content="프롬프트조각">
+        <button
+          className="round-button back-green"
+          onClick={() => appState.openPieceEditor()}
+        >
+          <FaPuzzlePiece size={18} />
+        </button>
+      </Tooltip>
+    ) : (
       <button
         className={
           'round-button back-green flex items-center gap-1' +

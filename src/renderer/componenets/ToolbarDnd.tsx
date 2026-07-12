@@ -193,8 +193,10 @@ export function useToolbarDragActive(group: ToolbarGroup): boolean {
 // 인라인 버튼 래퍼 — 기존 버튼 JSX 를 감싸 드래그 소스 + (순서 재배열용) 드롭 타깃.
 // disabled=클래식 툴바 등. 롱프레스 잡힘 즉시 자신은 확대, 같은 그룹은 흔들림.
 // area = 이 버튼의 홈 영역(TOOLBAR_VIEW_MAIN 의 area). index = 현재 inline 배열상 위치.
-// 같은 area 의 다른 버튼을 이 버튼 위로 끌어오면 가로 중점 기준 앞/뒤에 삽입한다
+// 같은 area 의 다른 버튼을 이 버튼 위로 끌어오면 중점 기준 앞/뒤에 삽입한다
 // (canDrop 이 item.area === 자기 area 만 수락 — 교차 영역은 Phase B 예정).
+// orientation: 'h'(기본)=가로 툴바(가로 중점 판정) / 'v'=세로 스택(프로젝트
+// 사이드 바 — 세로 중점 판정 + 위/아래 보더 강조).
 export const DraggableToolbarButton = observer(
   ({
     group,
@@ -203,6 +205,7 @@ export const DraggableToolbarButton = observer(
     area,
     index,
     disabled,
+    orientation = 'h',
     children,
   }: {
     group: ToolbarGroup;
@@ -214,6 +217,7 @@ export const DraggableToolbarButton = observer(
     // 안 쓰이지만, 렌더 순서가 바뀔 때 드롭 타깃 재생성을 보장하는 키로 유지
     index: number;
     disabled?: boolean;
+    orientation?: 'h' | 'v';
     children: ReactNode;
   }) => {
     const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -237,8 +241,17 @@ export const DraggableToolbarButton = observer(
     );
 
     // 순서 재배열 드롭 타깃 — 같은 area 의 버튼만 수락. hover 시 커서가 이 버튼의
-    // 가로 중점보다 왼쪽이면 앞(이 index), 오른쪽이면 뒤(index+1)에 삽입.
-    // 자기 자신 위로의 드롭은 무시(변화 없음). before 는 좌/우 보더 강조에 쓴다.
+    // 중점(가로/세로는 orientation)보다 앞이면 앞, 뒤면 뒤(index+1)에 삽입.
+    // 자기 자신 위로의 드롭은 무시(변화 없음). before 는 보더 강조에 쓴다.
+    const isBeforeMidpoint = (
+      rect: DOMRect | undefined,
+      client: { x: number; y: number } | null,
+    ): boolean => {
+      if (!rect || !client) return true;
+      return orientation === 'v'
+        ? client.y < rect.top + rect.height / 2
+        : client.x < rect.left + rect.width / 2;
+    };
     const [{ isOverInsert, insertBefore }, dropInsert] = useDrop(
       () => ({
         accept: toolbarDndType(group),
@@ -252,8 +265,7 @@ export const DraggableToolbarButton = observer(
             return;
           const rect = wrapRef.current?.getBoundingClientRect();
           const client = monitor.getClientOffset();
-          const before =
-            rect && client ? client.x < rect.left + rect.width / 2 : true;
+          const before = isBeforeMidpoint(rect, client);
           // 앵커 기반 삽입("이 버튼의 앞/뒤") — 숫자 인덱스는 같은 배열 내 이동 시
           // 제거 오프셋, 모바일 pcOnly 필터로 렌더/정규 배열이 어긋나는 문제가 있어
           // moveToolbarButton 이 제거 후 배열에서 앵커를 찾아 삽입한다.
@@ -270,12 +282,11 @@ export const DraggableToolbarButton = observer(
             m.isOver({ shallow: true }) && m.canDrop() && !!item;
           const client = m.getClientOffset();
           const rect = wrapRef.current?.getBoundingClientRect();
-          const before =
-            rect && client ? client.x < rect.left + rect.width / 2 : true;
+          const before = isBeforeMidpoint(rect, client);
           return { isOverInsert: over, insertBefore: before };
         },
       }),
-      [group, id, area, index],
+      [group, id, area, index, orientation],
     );
 
     useEffect(() => {
@@ -309,10 +320,15 @@ export const DraggableToolbarButton = observer(
     const armed = toolbarDragUi.armed === group;
     const armedSelf = armed && toolbarDragUi.armedId === id;
     // 삽입 위치 표시 — 커서 쪽 보더 강조(기존 하이라이트 색조 sky 계열과 일관).
+    // 세로 스택은 위/아래 보더로.
     const insertClass = isOverInsert
-      ? insertBefore
-        ? ' border-l-2 border-sky-400 rounded-l'
-        : ' border-r-2 border-sky-400 rounded-r'
+      ? orientation === 'v'
+        ? insertBefore
+          ? ' border-t-2 border-sky-400 rounded-t'
+          : ' border-b-2 border-sky-400 rounded-b'
+        : insertBefore
+          ? ' border-l-2 border-sky-400 rounded-l'
+          : ' border-r-2 border-sky-400 rounded-r'
       : '';
     return (
       <div

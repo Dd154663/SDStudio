@@ -151,8 +151,10 @@ function ProjectTrashView() {
 }
 
 // variant='bar'(기본): 하단/상단 바용 가로 툴바(레거시). 'sidebar': 프로젝트 사이드 바용
-// 세로 아이콘 스택 — 프로젝트 선택기·⋯메뉴·툴바 드래그를 빼고 핵심 액션 버튼만(모달 로직 재사용).
-const SessionSelect = observer(({ variant = 'bar' }: { variant?: 'bar' | 'sidebar' }) => {
+// 세로 아이콘 스택 — bar 와 동일하게 레지스트리+resolveToolbarView 가 배치를 결정하며
+// (⋯메뉴·드래그 재배열 포함), 프로젝트 선택기만 빠진다(사이드 바 상단 존이 대체).
+// side: 사이드 바의 도킹 방향 — ⋯ 팝오버가 화면 안쪽으로 펼쳐지게 정렬을 정한다.
+const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 'bar' | 'sidebar'; side?: 'left' | 'right' }) => {
   const [sessionNames, setSessionNames] = useState<string[]>([]);
   const [showCharacterPresets, setShowCharacterPresets] = useState(false);
   const [showProjectTrash, setShowProjectTrash] = useState(false);
@@ -287,7 +289,12 @@ const SessionSelect = observer(({ variant = 'bar' }: { variant?: 'bar' | 'sideba
   // portable 공유 버튼(backup-export·piece-editor 등) — 크로스 영역 렌더용.
   // 프로젝트 바는 모바일 아이콘 축약 개념이 없어 mobileIcon=false(현 렌더와 동일).
   // variant='project': 타 영역발 버튼도 프로젝트 바 표준(무배경 icon-button)으로 적응.
-  const shared = portableToolbarButtons({ mobileIcon: false, variant: 'project' });
+  // 사이드 바(w-12 세로 스택)는 텍스트 버튼이 안 들어가므로 아이콘 축약(iconOnly).
+  const shared = portableToolbarButtons({
+    mobileIcon: false,
+    variant: 'project',
+    iconOnly: variant === 'sidebar',
+  });
   const buttonNode = (id: string): React.ReactNode =>
     toolbarButtons[id] ?? shared[id];
 
@@ -406,16 +413,63 @@ const SessionSelect = observer(({ variant = 'bar' }: { variant?: 'bar' | 'sideba
     </ModalOverlay>
   );
 
-  // 프로젝트 사이드 바(세로 스택) — 선택기·⋯메뉴·툴바 드래그를 빼고 핵심 액션 버튼만.
-  // 버튼 노드·모달 로직은 위에서 정의한 것을 그대로 재사용한다.
+  // 프로젝트 사이드 바(세로 스택) — bar 와 동일한 레지스트리 해석 결과(toolbarLayout)를
+  // 세로로 렌더한다: 인라인/⋯메뉴/숨김·순서 커스터마이징과 편집 모드 드래그 재배열까지
+  // 전부 반영(프로젝트 툴바 버튼 최종 이관). 버튼 노드·모달 로직은 위 정의를 재사용.
   if (variant === 'sidebar') {
     return (
-      <div className="flex flex-col items-center gap-1.5">
+      <div
+        ref={toolbarRowDrop as any}
+        className={`w-full flex flex-col items-center gap-1.5${toolbarRowHighlightClass(toolbarDrag, toolbarRowOver)}`}
+      >
         {characterPresetModal}
         {projectTrashModal}
-        {toolbarButtons['character-presets']}
-        {toolbarButtons['add-session']}
-        {toolbarButtons['project-trash']}
+        {toolbarLayout.inline.map((id, i) => (
+          <DraggableToolbarButton
+            key={id}
+            group="project"
+            id={id}
+            name={projectName(id)}
+            area="project"
+            index={i}
+            orientation="v"
+            disabled={!!appState.uiToolbar.classic}
+          >
+            {buttonNode(id)}
+          </DraggableToolbarButton>
+        ))}
+        {(toolbarLayout.menu.length > 0 || toolbarDragActive) && (
+          <div className="relative">
+            <ToolbarMenuDropTarget group="project" area="project">
+              <Tooltip content="더보기">
+                <button
+                  className={`icon-button mx-1${toolbarLayout.menu.length === 0 ? ' opacity-40' : ''}`}
+                  onClick={() => {
+                    if (toolbarLayout.menu.length > 0)
+                      setShowProjectMenu(!showProjectMenu);
+                  }}
+                >
+                  <FaEllipsisH size={18} />
+                </button>
+              </Tooltip>
+            </ToolbarMenuDropTarget>
+            <ToolbarOverflowMenu
+              isOpen={showProjectMenu}
+              onClose={() => setShowProjectMenu(false)}
+              title="프로젝트 메뉴"
+              align={side === 'right' ? 'right' : 'left'}
+              group="project"
+              dndType={
+                appState.uiToolbar.classic ? undefined : toolbarDndType('project')
+              }
+              items={toolbarLayout.menu.map((id) => ({
+                id,
+                name: projectName(id),
+                node: buttonNode(id),
+              }))}
+            />
+          </div>
+        )}
         <Tooltip content="프로젝트 탐색">
           <button
             className="icon-button mx-1"
@@ -426,6 +480,7 @@ const SessionSelect = observer(({ variant = 'bar' }: { variant?: 'bar' | 'sideba
             <FaThLarge size={16} />
           </button>
         </Tooltip>
+        <ToolbarHideZone group="project" />
       </div>
     );
   }
