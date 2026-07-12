@@ -102,13 +102,15 @@ describe('resolveToolbarView — areas 순서/폴백/필터', () => {
     expect(scene.inline).toContain('add-scene');
   });
 
-  it('4. stale id 와 타 영역 id 는 무시된다', () => {
+  it('4. stale id 는 무시된다', () => {
+    // (비portable 타영역 id 무시는 B2 가 add-scene→project 로 커버. project 버튼은
+    //  전부 portable 로 승격돼 타영역 배정이 유효 렌더가 되므로 여기선 stale 만 검증)
     const ov: UiToolbarConfig = {
       schema: 2,
       areas: {
         [SCENE]: {
-          // ghost=stale, add-session=타영역(project) id
-          inline: ['ghost-button', 'add-session', 'add-scene'],
+          // ghost=stale(레지스트리에 없는 id)
+          inline: ['ghost-button', 'add-scene'],
           menu: [],
           hidden: [],
         },
@@ -117,7 +119,6 @@ describe('resolveToolbarView — areas 순서/폴백/필터', () => {
     const view = resolveToolbarView(registries, ov, false);
     const scene = view.find((v) => v.area === SCENE)!;
     expect(scene.inline).not.toContain('ghost-button');
-    expect(scene.inline).not.toContain('add-session');
     expect(scene.inline[0]).toBe('add-scene');
   });
 
@@ -152,6 +153,41 @@ describe('resolveToolbarView — areas 순서/폴백/필터', () => {
     expect(scene.inline).not.toContain('webp-convert'); // pcOnly
     expect(scene.inline).not.toContain('scene-search'); // hidden
     expect(scene.menu).not.toContain('scene-search');
+    expect(scene.inline).toContain('add-scene');
+  });
+});
+
+describe('resolveToolbarView — 파생 숨김(excludeIds, 이동 의미론)', () => {
+  it('제외 집합의 id 는 인라인·⋯메뉴 어디서도 빠진다', () => {
+    // project 홈 버튼 character-presets 를 동반 슬롯 배정으로 가정 → 툴바에서 숨김.
+    const exclude = new Set(['character-presets', 'export-images']);
+    const view = resolveToolbarView(registries, undefined, false, exclude);
+    const scene = view.find((v) => v.area === SCENE)!;
+    const project = view.find((v) => v.area === PROJECT)!;
+    // character-presets 는 project 인라인 기본값이지만 제외됨.
+    expect(project.inline).not.toContain('character-presets');
+    expect(project.menu).not.toContain('character-presets');
+    // export-images 는 scene secondary(PC 인라인)이지만 제외됨.
+    expect(scene.inline).not.toContain('export-images');
+    expect(scene.menu).not.toContain('export-images');
+    // 제외되지 않은 버튼은 그대로.
+    expect(project.inline).toContain('add-session');
+    expect(scene.inline).toContain('add-scene');
+  });
+
+  it('빈 집합/미지정이면 기존 결과와 100% 동일', () => {
+    const withEmpty = resolveToolbarView(registries, undefined, false, new Set());
+    const withUndef = resolveToolbarView(registries, undefined, false);
+    expect(withEmpty).toEqual(withUndef);
+  });
+
+  it('classic 에서도 제외 집합이 적용된다(표면에서 사라짐)', () => {
+    const ov: UiToolbarConfig = { classic: true };
+    const exclude = new Set(['find-replace']);
+    const view = resolveToolbarView(registries, ov, false, exclude);
+    const scene = view.find((v) => v.area === SCENE)!;
+    // classic 은 전부 inline 이지만 제외된 find-replace 는 빠진다.
+    expect(scene.inline).not.toContain('find-replace');
     expect(scene.inline).toContain('add-scene');
   });
 });

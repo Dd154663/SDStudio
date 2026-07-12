@@ -1,14 +1,14 @@
 import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { DropdownSelect, Option } from './UtilComponents';
-import ModalOverlay from './ModalOverlay';
-import { FaEllipsisH, FaPlus, FaThLarge, FaTrash, FaTrashAlt, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown } from 'react-icons/fa';
+import { FaEllipsisH, FaThLarge, FaTrash, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown } from 'react-icons/fa';
 import { pushRecentProject } from './ProjectBrowser';
 import Tooltip from './Tooltip';
-import { sessionService, imageService, backend, zipService, trashService, isMobile, templateService } from '../models';
+import { sessionService, imageService, backend, zipService, trashService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
 import { TOOLBAR_VIEW_MAIN, resolveToolbarView } from '../models/uiLayout';
+import { companionAssignedIds } from '../models/companionSlots';
 import ToolbarOverflowMenu from './ToolbarOverflowMenu';
 import {
   DraggableToolbarButton,
@@ -22,7 +22,8 @@ import {
 import { portableToolbarButtons } from './PortableToolbarButtons';
 
 // ===== ProjectTrashView 컴포넌트 (씬 휴지통 SceneTrashView 패턴 재사용) =====
-function ProjectTrashView() {
+// 전역 오버레이(App.tsx)에서 마운트 — appState.projectTrashOpen 호스트가 사용한다.
+export function ProjectTrashView() {
   const [deletedProjects, setDeletedProjects] = useState<
     { name: string; deletedAt: number }[]
   >([]);
@@ -152,7 +153,6 @@ function ProjectTrashView() {
 // side: 사이드 바의 도킹 방향 — ⋯ 팝오버가 화면 안쪽으로 펼쳐지게 정렬을 정한다.
 const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 'bar' | 'sidebar'; side?: 'left' | 'right' }) => {
   const [sessionNames, setSessionNames] = useState<string[]>([]);
-  const [showProjectTrash, setShowProjectTrash] = useState(false);
   // 프로젝트 바 ⋯(더보기) 오버플로 메뉴
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   // 툴바 버튼 드래그 재배치 (클래식 툴바에선 비활성)
@@ -170,36 +170,6 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
       sessionService.removeEventListener('listupdated', onListUpdated);
     };
   }, []);
-  const addSession = () => {
-    (async () => {
-      appState.pushDialog({
-        type: 'input-confirm',
-        text: '신규 프로젝트 이름을 입력해주세요',
-        callback: async (inputValue) => {
-          if (inputValue) {
-            if (sessionNames.includes(inputValue)) {
-              appState.pushMessage('이미 존재하는 프로젝트 이름입니다.');
-              return;
-            }
-            const tpl = await templateService.pickTemplateForCreate();
-            if (tpl === undefined) return; // 사용자가 템플릿 선택을 취소
-            try {
-              if (tpl) {
-                await sessionService.createSessionFromTemplate(tpl, inputValue);
-              } else {
-                await sessionService.add(inputValue);
-              }
-              const newSession = (await sessionService.get(inputValue))!;
-              appState.curSession = newSession;
-            } catch (e: any) {
-              appState.pushMessage(e.message || '프로젝트 생성에 실패했습니다.');
-            }
-          }
-        },
-      });
-    })();
-  };
-
   const selectSession = (opt: Option<string>) => {
     (async () => {
       const session = await sessionService.get(opt.value);
@@ -211,42 +181,12 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
     })();
   };
 
-  const deleteSession = () => {
-    appState.pushDialog({
-      type: 'confirm',
-      text: '정말로 이 프로젝트를 삭제하시겠습니까? (휴지통으로 이동)',
-      callback: async () => {
-        await sessionService.delete(appState.curSession!.name);
-        appState.curSession = undefined;
-      },
-    });
-  };
-
   // ── 프로젝트 바 버튼 바인딩: 레지스트리 id → 실제 버튼 노드 ──
   // 구성·배치는 TOOLBAR_VIEW_MAIN 의 'project' 영역 + resolveToolbarView 가 결정한다.
-  const toolbarButtons: Record<string, React.ReactNode> = {
-    'add-session': (
-      <button className={`icon-button mx-1`} onClick={addSession}>
-        <FaPlus size={18} />
-      </button>
-    ),
-    'delete-session': (
-      <button className={`icon-button mx-1`} onClick={deleteSession}>
-        <FaTrashAlt size={18} />{' '}
-      </button>
-    ),
-    'project-trash': (
-      <Tooltip content="프로젝트 휴지통">
-      <button
-        className={`icon-button mx-1`}
-        onClick={() => setShowProjectTrash(true)}
-      >
-        <FaTrashRestore size={18} />
-      </button>
-      </Tooltip>
-    ),
-  };
-  // portable 공유 버튼(backup-export·piece-editor 등) — 크로스 영역 렌더용.
+  // 프로젝트 버튼은 전부 portable(shared)로 승격됨 — 로컬 전용 노드는 없다.
+  const toolbarButtons: Record<string, React.ReactNode> = {};
+  // portable 공유 버튼(add-session·delete-session·project-trash·backup-export·
+  // character-presets·piece-editor) — 크로스 영역 렌더용.
   // 프로젝트 바는 모바일 아이콘 축약 개념이 없어 mobileIcon=false(현 렌더와 동일).
   // variant='project': 타 영역발 버튼도 프로젝트 바 표준(무배경 icon-button)으로 적응.
   // 사이드 바(w-12 세로 스택)는 텍스트 버튼이 안 들어가므로 아이콘 축약(iconOnly).
@@ -260,10 +200,13 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
 
   // 사용자 설정(appState.uiToolbar, observable)에 따라 인라인/⋯메뉴 배치 결정.
   // 편집 모드 v2: resolveToolbarView 가 전 영역을 해석 → 이 컴포넌트의 'project' 영역만 사용.
+  // 동반 슬롯에 배정된 버튼은 파생 숨김(이동 의미론) — 툴바 표면에서 사라지고 프리셋
+  // 에디터 호스트 행 옆으로 이동한다(uiToolbar 데이터는 불변, 제외 집합 필터).
   const projectView = resolveToolbarView(
     TOOLBAR_VIEW_MAIN,
     appState.uiToolbar,
     isMobile,
+    companionAssignedIds(appState.uiCompanionSlots),
   );
   const projectAreaResolved = projectView.find((a) => a.area === 'project');
   const toolbarLayout = {
@@ -280,26 +223,16 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
     return id;
   };
 
-  const projectTrashModal = (
-    <ModalOverlay
-      isOpen={showProjectTrash}
-      onClose={() => setShowProjectTrash(false)}
-      title="🗑️ 프로젝트 휴지통"
-    >
-      <ProjectTrashView />
-    </ModalOverlay>
-  );
-
   // 프로젝트 사이드 바(세로 스택) — bar 와 동일한 레지스트리 해석 결과(toolbarLayout)를
   // 세로로 렌더한다: 인라인/⋯메뉴/숨김·순서 커스터마이징과 편집 모드 드래그 재배열까지
-  // 전부 반영(프로젝트 툴바 버튼 최종 이관). 버튼 노드·모달 로직은 위 정의를 재사용.
+  // 전부 반영(프로젝트 툴바 버튼 최종 이관). 버튼 노드는 위 정의를 재사용.
+  // (프로젝트 휴지통 모달은 전역 오버레이 App.tsx 로 이관됨)
   if (variant === 'sidebar') {
     return (
       <div
         ref={toolbarRowDrop as any}
         className={`w-full flex flex-col items-center gap-1.5${toolbarRowHighlightClass(toolbarDrag, toolbarRowOver)}`}
       >
-        {projectTrashModal}
         {toolbarLayout.inline.map((id, i) => (
           <DraggableToolbarButton
             key={id}
@@ -512,7 +445,6 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
       )}
       </span>
       <ToolbarHideZone group="project" />
-      {projectTrashModal}
     </div>
   );
 });

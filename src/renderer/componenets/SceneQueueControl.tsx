@@ -83,6 +83,7 @@ import { extractPromptDataFromBase64 } from '../models/util';
 import { IMPORT_IMAGE_ACCEPT } from '../models/imageFormats';
 import { platform } from '../models/platform';
 import { TOOLBAR_VIEW_MAIN, resolveToolbarView } from '../models/uiLayout';
+import { companionAssignedIds } from '../models/companionSlots';
 import ToolbarOverflowMenu from './ToolbarOverflowMenu';
 import {
   DraggableToolbarButton,
@@ -2243,10 +2244,13 @@ const QueueControl = observer(
 
     // 사용자 설정(appState.uiToolbar, observable)에 따라 인라인/⋯메뉴 배치 결정.
     // 편집 모드 v2: resolveToolbarView 가 전 영역을 해석 → 이 컴포넌트의 'scene' 영역만 사용.
+    // 동반 슬롯에 배정된 버튼은 파생 숨김(이동 의미론) — 툴바 표면에서 사라진다
+    // (uiToolbar 데이터는 불변, 제외 집합 필터).
     const sceneView = resolveToolbarView(
       TOOLBAR_VIEW_MAIN,
       appState.uiToolbar,
       isMobile,
+      companionAssignedIds(appState.uiCompanionSlots),
     );
     const sceneArea = sceneView.find((a) => a.area === 'scene');
     const toolbarLayout = {

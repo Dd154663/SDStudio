@@ -8,9 +8,11 @@ import Tooltip from './Tooltip';
 import { ReferenceItem, VibeItem } from '../models/types';
 import { imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
-import { WFIInlineInput } from '../models/workflows/WorkFlow';
+import { WFIInlineInput, wfiElementKey } from '../models/workflows/WorkFlow';
 import { ModelVersion } from '../backends/imageGen';
 import { WFElementContext } from './wfElementContext';
+import { resolveCompanionButtons } from '../models/companionSlots';
+import { renderCompanionButtons } from './PortableToolbarButtons';
 
 // PreSetEdtior.tsx 에서 분리된 바이브(vibe) 편집기 계열.
 // VibeImage/EditableSliderValue 는 CharacterReferenceEditor 와 본체도 공용.
@@ -427,18 +429,42 @@ export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
   const field = getField();
   const safeActiveIndex = field.length > 0 ? Math.min(activeIndex, field.length - 1) : 0;
 
+  // 동반 슬롯 (E2): 바이브 행(hostKey = wfiElementKey = 인라인 필드 'vibes') 옆에 붙일
+  // portable 버튼. 빈 배열이면 슬롯 없음 = 현행 렌더 100% 동일(회귀 기준).
+  const companionIds = resolveCompanionButtons(
+    wfiElementKey(input) ?? input.field,
+    appState.uiCompanionSlots,
+  );
+  const companions = renderCompanionButtons(companionIds);
+  const hasCompanions = companions.length > 0;
+
   return (
     <>
       {editVibe == undefined && getField().length === 0 && (
-        <button
-          className={`round-button h-8 w-full flex mt-2 md:mt-3 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
-          onClick={onClick}
-          disabled={locked}
-        >
-          <div className="flex-1">
-            {locked ? '바이브 이미지 설정 (캐릭터 레퍼런스 사용 중)' : '바이브 이미지 설정 열기'}
+        hasCompanions ? (
+          <div className="w-full mt-2 md:mt-3 flex gap-1 items-stretch">
+            <button
+              className={`round-button h-8 flex-1 flex ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
+              onClick={onClick}
+              disabled={locked}
+            >
+              <div className="flex-1">
+                {locked ? '바이브 이미지 설정 (캐릭터 레퍼런스 사용 중)' : '바이브 이미지 설정 열기'}
+              </div>
+            </button>
+            {companions}
           </div>
-        </button>
+        ) : (
+          <button
+            className={`round-button h-8 w-full flex mt-2 md:mt-3 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
+            onClick={onClick}
+            disabled={locked}
+          >
+            <div className="flex-1">
+              {locked ? '바이브 이미지 설정 (캐릭터 레퍼런스 사용 중)' : '바이브 이미지 설정 열기'}
+            </div>
+          </button>
+        )
       )}
       {editVibe == undefined && getField().length > 0 && (
         <div className={'w-full flex items-center mt-2 md:mt-3' + (locked ? ' opacity-50' : '')}>
@@ -473,6 +499,11 @@ export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
               </Tooltip>
             )}
           </div>
+          {hasCompanions && (
+            <div className="flex-none flex gap-1 items-center ml-1">
+              {companions}
+            </div>
+          )}
         </div>
       )}
     </>

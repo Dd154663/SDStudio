@@ -39,6 +39,7 @@ import { observer, useObserver } from 'mobx-react-lite';
 import { FaGlobe, FaImages, FaPenFancy, FaStar, FaPalette, FaSearch, FaBolt } from 'react-icons/fa';
 import { GlobalPresetTab, GlobalPresetPickerOverlay } from './GlobalPresetTab';
 import ModalOverlay from './ModalOverlay';
+import { ProjectTrashView } from './SessionSelect';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
@@ -952,6 +953,13 @@ export const App = observer(() => {
           {appState.curSession && <PieceEditor />}
         </ModalOverlay>
         <FindReplaceDialog />
+        <ModalOverlay
+          isOpen={appState.projectTrashOpen}
+          onClose={() => appState.closeProjectTrash()}
+          title="🗑️ 프로젝트 휴지통"
+        >
+          <ProjectTrashView />
+        </ModalOverlay>
         {appState.characterPresetsOpen && appState.curSession && (
           <CharacterPresetFloatEditor
             onClose={() => appState.closeCharacterPresets()}

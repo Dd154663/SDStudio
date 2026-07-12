@@ -72,6 +72,7 @@ import {
   presetRowLabel,
 } from '../models/presetLayout';
 import { resolveCompanionButtons } from '../models/companionSlots';
+import { renderCompanionButtons } from './PortableToolbarButtons';
 import {
   DraggablePresetRow,
   resetPresetOrder,
@@ -1135,15 +1136,40 @@ const WFRGroup = observer(({ element }: WFElementProps) => {
   if (editVibe != undefined) {
     return <></>;
   }
+  // 동반 슬롯 (E2): 그룹 행(hostKey = wfiElementKey = 그룹 id 'sampling-group') 옆에
+  // 붙일 portable 버튼. 빈 배열이면 슬롯 없음 = 현행 렌더 100% 동일(회귀 기준).
+  const companionIds = resolveCompanionButtons(
+    wfiElementKey(element) ?? grp.label,
+    appState.uiCompanionSlots,
+  );
+  const companions = renderCompanionButtons(companionIds);
+  const hasCompanions = companions.length > 0;
+  // 슬롯 없음 = 현행 렌더 100% 동일(회귀 기준). 동반 버튼이 있으면 그룹 버튼을 flex-1 로
+  // 축소하고 옆에 아이콘 버튼을 붙이는 flex 행으로 감싼다.
+  if (!hasCompanions) {
+    return (
+      <button
+        className={`round-button back-gray h-8 w-full mt-2 md:mt-3`}
+        onClick={() => {
+          setShowGroupOverlay(grp.label);
+        }}
+      >
+        {grp.label}
+      </button>
+    );
+  }
   return (
-    <button
-      className={`round-button back-gray h-8 w-full mt-2 md:mt-3`}
-      onClick={() => {
-        setShowGroupOverlay(grp.label);
-      }}
-    >
-      {grp.label}
-    </button>
+    <div className="w-full mt-2 md:mt-3 flex gap-1 items-stretch">
+      <button
+        className={`round-button back-gray h-8 flex-1`}
+        onClick={() => {
+          setShowGroupOverlay(grp.label);
+        }}
+      >
+        {grp.label}
+      </button>
+      {companions}
+    </div>
   );
 });
 
@@ -1550,49 +1576,6 @@ const CharacterPromptEditor = observer(
     );
   },
 );
-
-// 동반 슬롯 렌더 헬퍼 (L3-2) — 프리셋 에디터 호스트 행 옆에 붙는 portable 버튼의
-// id → ReactNode 매핑을 한 곳에 모은다. 확대 시 이 맵에 항목만 한 줄 추가하면 되고,
-// 렌더 지점(CharacterButton 등)에는 버튼 id 스위치를 흩뿌리지 않는다.
-//
-// 스타일 근거: PortableToolbarButtons 의 공유 'character-presets' JSX 는 씬 툴바
-// (round-button)·프로젝트 바(icon-button, 무배경) 두 variant 뿐이라, 프리셋 에디터
-// 행 문맥(round-button h-8 로 정렬되는 인라인 버튼 행)과 높이·배경 언어가 어긋난다.
-// 그래서 이 슬롯 전용 소형 렌더를 둔다 — 색·강조 언어(적용 중 back-green / 미적용
-// back-gray)·아이콘(FaUserAlt)·동작(openCharacterPresets, 세션 가드 내장)·툴팁은
-// 툴바 버튼과 동일하게 맞추고, 높이만 호스트 버튼과 같은 h-8 로 정렬한다. 색은 표준
-// 클래스만 사용(하드코딩 금지). observer 렌더 중 호출 — appState 접근이 추적된다.
-const companionButtonRenderers: Record<string, () => React.ReactNode> = {
-  'character-presets': () => (
-    <Tooltip
-      content={
-        appState.appliedCharacterPreset
-          ? `프리셋: ${appState.appliedCharacterPreset}`
-          : '캐릭터 프리셋 관리'
-      }
-    >
-      <button
-        className={`round-button h-8 ${appState.appliedCharacterPreset ? 'back-green' : 'back-gray'}`}
-        onClick={() => appState.openCharacterPresets()}
-      >
-        <FaUserAlt size={18} />
-      </button>
-    </Tooltip>
-  ),
-};
-
-// 동반 버튼 id 목록 → ReactNode 목록. 미등록 id 는 조용히 건너뛴다(화이트리스트와
-// 렌더러가 어긋나도 안전). 확대는 위 companionButtonRenderers 에 한 줄 추가로 끝난다.
-function renderCompanionButtons(ids: string[]): React.ReactNode[] {
-  return ids
-    .map((id) => {
-      const render = companionButtonRenderers[id];
-      return render ? (
-        <React.Fragment key={id}>{render()}</React.Fragment>
-      ) : null;
-    })
-    .filter((node): node is JSX.Element => node !== null);
-}
 
 export const CharacterButton = observer(({ input }: { input: WFIInlineInput }) => {
   const { editCharacters, setEditCharacters, preset, shared, meta } =

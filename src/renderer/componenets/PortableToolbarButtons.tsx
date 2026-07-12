@@ -6,13 +6,16 @@
 // icon-button(무배경형)으로 버튼 언어가 달라, 크로스 배치 시 배경·크기가 어긋난다.
 // 그래서 각 버튼은 "홈 영역에서는 원본 모습 그대로", 타 영역에서는 그 영역의
 // 표준 스타일로 렌더한다(variant = 표시 영역).
-import { ReactNode } from 'react';
+import { ReactNode, Fragment } from 'react';
 import {
   FaBroom,
   FaExchangeAlt,
   FaShare,
   FaPuzzlePiece,
   FaUserAlt,
+  FaPlus,
+  FaTrashAlt,
+  FaTrashRestore,
 } from 'react-icons/fa';
 import Tooltip from './Tooltip';
 import { appState } from '../models/AppService';
@@ -23,23 +26,32 @@ import { appState } from '../models/AppService';
 // 호출한 observer에 추적된다.
 export interface PortableButtonsContext {
   mobileIcon: boolean;
-  variant: 'scene' | 'project';
-  // 아이콘 축약 강제 — 프로젝트 사이드 바(w-12 세로 스택)처럼 텍스트 버튼이
+  // 표시 영역(스타일 적응 기준). companion = 프리셋 에디터 호스트 행 옆 동반 슬롯
+  // (round-button h-8 로 호스트 버튼 높이에 정렬되는 아이콘 버튼+툴팁).
+  variant: 'scene' | 'project' | 'companion';
+  // 아이콘 축약 강제 — 프로젝트 사이드 바(w-12 세로 스택)나 동반 슬롯처럼 텍스트 버튼이
   // 물리적으로 안 들어가는 표시 영역용. 텍스트 포함 버튼(piece-editor)만 영향.
   iconOnly?: boolean;
 }
 
 // 아이콘 단추 공통 — 표시 영역의 표준 클래스로 감싼다.
 // 씬: round-button back-gray(배경형, 씬 아이콘 버튼 표준) / 프로젝트: icon-button mx-1(무배경형)
+// 동반: round-button back-gray h-8(호스트 행 높이 정렬, 아이콘+툴팁).
 const iconButton = (
-  variant: 'scene' | 'project',
+  variant: 'scene' | 'project' | 'companion',
   tooltip: string,
   icon: ReactNode,
   onClick: () => void,
 ): ReactNode => (
   <Tooltip content={tooltip}>
     <button
-      className={variant === 'scene' ? 'round-button back-gray' : 'icon-button mx-1'}
+      className={
+        variant === 'project'
+          ? 'icon-button mx-1'
+          : variant === 'companion'
+            ? 'round-button back-gray h-8'
+            : 'round-button back-gray'
+      }
       onClick={onClick}
     >
       {icon}
@@ -52,6 +64,50 @@ export function portableToolbarButtons(
 ): Record<string, ReactNode> {
   const { variant } = ctx;
   return {
+    // SessionSelect 로컬 맵에서 이관 — 홈(project)은 원본대로 Tooltip 없는
+    // icon-button(FaPlus 18), 씬으로 오면 씬 표준(배경형 18px+툴팁)으로 적응.
+    'add-session':
+      variant === 'project' ? (
+        <button
+          className={`icon-button mx-1`}
+          onClick={() => appState.addSession()}
+        >
+          <FaPlus size={18} />
+        </button>
+      ) : (
+        iconButton(
+          variant,
+          '신규 프로젝트',
+          <FaPlus size={18} />,
+          () => appState.addSession(),
+        )
+      ),
+    // SessionSelect 로컬 맵에서 이관 — 홈(project)은 원본대로 Tooltip 없는
+    // icon-button(FaTrashAlt 18), 씬으로 오면 씬 표준(배경형 18px+툴팁)으로 적응.
+    'delete-session':
+      variant === 'project' ? (
+        <button
+          className={`icon-button mx-1`}
+          onClick={() => appState.deleteSession()}
+        >
+          <FaTrashAlt size={18} />{' '}
+        </button>
+      ) : (
+        iconButton(
+          variant,
+          '프로젝트 삭제',
+          <FaTrashAlt size={18} />,
+          () => appState.deleteSession(),
+        )
+      ),
+    // SessionSelect 로컬 맵에서 이관 — 원본이 이미 Tooltip 래핑이라 양쪽 다
+    // iconButton(툴팁 유지) 사용: 홈(project)=icon-button, 씬=round-button 적응.
+    'project-trash': iconButton(
+      variant,
+      '프로젝트 휴지통',
+      <FaTrashRestore size={18} />,
+      () => appState.openProjectTrash(),
+    ),
     // SceneQueueControl 로컬 맵에서 이관 — 홈(scene)에서는 원본과 동일 렌더
     'empty-image-trash': iconButton(
       variant,
@@ -102,7 +158,9 @@ export function portableToolbarButtons(
           className={
             variant === 'scene'
               ? `round-button ${appState.appliedCharacterPreset ? 'back-green' : 'back-gray'}`
-              : `icon-button mx-1 ${appState.appliedCharacterPreset ? 'back-green' : ''}`
+              : variant === 'companion'
+                ? `round-button h-8 ${appState.appliedCharacterPreset ? 'back-green' : 'back-gray'}`
+                : `icon-button mx-1 ${appState.appliedCharacterPreset ? 'back-green' : ''}`
           }
           onClick={() => appState.openCharacterPresets()}
         >
@@ -116,7 +174,9 @@ export function portableToolbarButtons(
     'piece-editor': ctx.iconOnly ? (
       <Tooltip content="프롬프트조각">
         <button
-          className="round-button back-green"
+          className={
+            'round-button back-green' + (variant === 'companion' ? ' h-8' : '')
+          }
           onClick={() => appState.openPieceEditor()}
         >
           <FaPuzzlePiece size={18} />
@@ -135,4 +195,24 @@ export function portableToolbarButtons(
       </button>
     ),
   };
+}
+
+// 동반 슬롯(프리셋 에디터 호스트 행 옆) 렌더 — portable 공유 JSX(variant 'companion')를
+// id 순서대로 ReactNode 배열로 낸다. 미등록 id 는 조용히 건너뛴다(레지스트리와 렌더러가
+// 어긋나도 안전). CharacterButton·VibeButton·CharacterReferenceButton·WFRGroup 호스트가
+// 공용으로 쓴다 — 하드코딩 맵을 두지 않아 새 portable 추가 시 즉시 슬롯 렌더 가능.
+// observer 렌더 중 호출되는 일반 함수 — 내부 appState 접근이 호출한 observer 에 추적된다.
+export function renderCompanionButtons(ids: string[]): ReactNode[] {
+  if (ids.length === 0) return [];
+  const nodes = portableToolbarButtons({
+    mobileIcon: false,
+    variant: 'companion',
+    iconOnly: true, // piece-editor 텍스트 축약(툴팁 대체)
+  });
+  return ids
+    .map((id) => {
+      const node = nodes[id];
+      return node ? <Fragment key={id}>{node}</Fragment> : null;
+    })
+    .filter((n): n is JSX.Element => n !== null);
 }

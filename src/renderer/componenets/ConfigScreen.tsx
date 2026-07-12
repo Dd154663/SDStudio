@@ -11,14 +11,17 @@ import {
 } from '../models';
 import { Config, ImageEditor, RemoveBgQuality, UiThemeConfig, UiToolbarConfig } from '../../main/config';
 import ToolbarLayoutEditor from './ToolbarLayoutEditor';
-import { projectToolbarRegistry, sceneToolbarRegistry } from '../models/uiLayout';
+import { projectToolbarRegistry, sceneToolbarRegistry, portableButtonMetas } from '../models/uiLayout';
 import { platform } from '../models/platform';
 import { buildThemeVars, isHex6 } from '../models/uiTheme';
 import { themeTemplates } from '../models/themeTemplates';
 import { layoutTemplates } from '../models/layoutTemplates';
 import {
-  COMPANION_HOST_WHITELIST,
-  resolveCompanionButtons,
+  assignCompanion,
+  removeCompanion,
+  companionOwnerOf,
+  COMPANION_HOSTS,
+  COMPANION_HOST_LABELS,
 } from '../models/companionSlots';
 import { observer } from 'mobx-react-lite';
 import { appState } from '../models/AppService';
@@ -1590,12 +1593,11 @@ async function resetLayoutArrangement() {
   }
 }
 
-// 동반 슬롯(L3-3) — 프리셋 에디터 "호스트 행" 옆 전역 버튼을 켜고 끄는 토글 배선.
-// 1차 화이트리스트는 조합 1건(캐릭터 프롬프트 행 옆 '캐릭터 프리셋 관리')뿐이라
-// (hostKey, 버튼 id)를 리터럴로 재산포하지 않고 COMPANION_HOST_WHITELIST 에서 읽는다
-// (문자열 하드코딩 방지 — 확대 시 이 상수만 늘리면 목록 렌더로 키울 수 있는 형태).
-const COMPANION_HOST_KEY = Object.keys(COMPANION_HOST_WHITELIST)[0];
-const COMPANION_BUTTON_ID = COMPANION_HOST_WHITELIST[COMPANION_HOST_KEY]?.[0];
+// 동반 슬롯(L3-3 → E3) — 프리셋 에디터 "호스트 행" 옆 전역 버튼 배치의 편집 배선.
+// E2 에서 계약이 "호스트 목록 + portable 전체 풀 + 유일성"으로 확대됐고, E3 에서 이 화면의
+// 편집 UI 를 단일 토글 → 버튼별 위치 선택(CompanionButtonsSection)으로 일반화한다. 쓰기는
+// 단일 출처 헬퍼(assign/removeCompanion)를 경유하며, 표시명은 uiLayout·companionSlots 의
+// 레지스트리/라벨을 조회한다(여기서 중복 정의하지 않음).
 
 // appState 미러 갱신 + config 영속을 한 함수로(즉시 반영+재시작 유지). 저장 흐름 밖이라
 // resetLayoutArrangement·applyPresetOrder(PresetLayoutDnd) 선례처럼 새 객체를 할당해
@@ -1610,13 +1612,47 @@ async function applyCompanionSlots(next: Record<string, string[]>) {
   }
 }
 
-// 토글 on/off → 화이트리스트 1차 조합을 채우거나 해당 hostKey 를 제거(빈 객체 = 슬롯 없음).
-function setCompanionEnabled(on: boolean) {
-  const next = { ...appState.uiCompanionSlots };
-  if (on) next[COMPANION_HOST_KEY] = [COMPANION_BUTTON_ID];
-  else delete next[COMPANION_HOST_KEY];
-  return applyCompanionSlots(next);
-}
+// 동반 버튼 편집(E3) — portable 버튼 8종 각각에 "위치"를 고른다. 이동 의미론상 한 버튼은
+// 최대 한 곳이라 select 단일 선택이 자연스럽다: '기본 (툴바)' = 슬롯 배정 없음(removeCompanion),
+// 그 외 = 해당 호스트 행에 배정(assignCompanion). observer 라 appState.uiCompanionSlots 변경
+// 시 이 목록도 즉시 갱신되고, applyCompanionSlots 가 열려 있는 프리셋 에디터에도 함께 반영한다.
+// 슬롯 내 순서(같은 호스트 여러 버튼)는 배정 순 — 순서 조정은 E4 드래그 소관이라 여기선 없다.
+const CompanionButtonsSection = observer(() => (
+  <div className="pt-3 border-t line-color">
+    <label className="block text-sm gray-label mb-1">동반 버튼</label>
+    <p className="text-xs text-muted mb-2">
+      행에 배치한 버튼은 툴바에서 그 위치로 이동합니다. 저장 없이 바로 적용됩니다.
+    </p>
+    <div className="space-y-2">
+      {portableButtonMetas().map(({ id, name }) => {
+        const owner = companionOwnerOf(id, appState.uiCompanionSlots) ?? '';
+        return (
+          <div key={id} className="flex items-center gap-2">
+            <span className="flex-1 min-w-0 truncate text-sm text-default">{name}</span>
+            <select
+              className="flex-none w-36 rounded-md line-color shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+              value={owner}
+              onChange={(e) => {
+                const host = e.target.value;
+                const next = host
+                  ? assignCompanion(appState.uiCompanionSlots, host, id)
+                  : removeCompanion(appState.uiCompanionSlots, id);
+                applyCompanionSlots(next);
+              }}
+            >
+              <option value="">기본 (툴바)</option>
+              {COMPANION_HOSTS.map((h) => (
+                <option key={h} value={h}>
+                  {COMPANION_HOST_LABELS[h] ?? h}
+                </option>
+              ))}
+            </select>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+));
 
 // 창 배치(FloatView 노출 범위) 도안 — sky 사각형이 뷰어가 덮는 영역.
 const FloatScopeWireframe = ({ variant }: { variant: 'cover' | 'center' }) => (
@@ -1659,7 +1695,7 @@ const floatViewModes: {
   },
 ];
 
-const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, setUiFloatViewMode, companionOn, mobileMode, onClose }: any) => (
+const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
   <div className="space-y-5">
     <div>
       <label className="block text-sm gray-label mb-1">화면 배치</label>
@@ -1808,41 +1844,16 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, set
       </p>
     </div>
 
-    {/* 동반 버튼(L3-3) — 프리셋 에디터 특정 행 옆에 전역 버튼을 붙이는 슬롯 토글.
+    {/* 동반 버튼(E3) — portable 버튼을 프리셋 에디터 특정 행 옆으로 옮기는 위치 선택.
         레이아웃 배치 초기화·직접 편집과 같은 "저장 없이 즉시 적용" 계열이라 이 탭에
-        둔다. 토글 즉시 열려 있는 프리셋 에디터에 반영된다(별도 저장 불필요). */}
-    <div className="pt-3 border-t line-color">
-      <label className="block text-sm gray-label mb-1">동반 버튼</label>
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="cfgCompanionCharPreset"
-          checked={companionOn}
-          onChange={(e) => setCompanionEnabled(e.target.checked)}
-        />
-        <label htmlFor="cfgCompanionCharPreset" className="text-sm gray-label">
-          캐릭터 프롬프트 열기 옆에 '캐릭터 프리셋 관리' 버튼 표시
-        </label>
-      </div>
-      <p className="text-xs text-faint mt-1 ml-6">
-        프리셋 에디터의 캐릭터 프롬프트 행 옆에 '캐릭터 프리셋 관리' 아이콘 버튼이
-        추가됩니다. 저장 없이 바로 적용됩니다.
-      </p>
-    </div>
+        둔다. 선택 즉시 열려 있는 프리셋 에디터에 반영된다(별도 저장 불필요). */}
+    <CompanionButtonsSection />
   </div>
 );
 
 const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const { curSession } = appState;
   const [activeTab, setActiveTab] = useState(0);
-
-  // 동반 버튼 체크 상태 — appState 미러를 resolver 로 판독(빈=슬롯 없음). 이 읽기가
-  // observer 인 ConfigScreen 렌더에서 일어나므로, 토글로 appState 가 갱신되면 이 화면의
-  // 체크박스도 즉시 다시 그려진다(프리셋 에디터 반영과 별개로 화면 자기 상태도 최신).
-  const companionOn = resolveCompanionButtons(
-    COMPANION_HOST_KEY,
-    appState.uiCompanionSlots,
-  ).includes(COMPANION_BUTTON_ID);
 
   // state
   const [imageEditor, setImageEditor] = useState('');
@@ -2076,7 +2087,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'toolbar':
         return <ToolbarTab {...{ uiToolbar, setUiToolbar }} />;
       case 'layout':
-        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, setUiFloatViewMode, companionOn, mobileMode, onClose }} />;
+        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':

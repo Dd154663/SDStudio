@@ -8,10 +8,12 @@ import Tooltip from './Tooltip';
 import { ReferenceItem } from '../models/types';
 import { imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
-import { WFIInlineInput } from '../models/workflows/WorkFlow';
+import { WFIInlineInput, wfiElementKey } from '../models/workflows/WorkFlow';
 import { ModelVersion } from '../backends/imageGen';
 import { WFElementContext } from './wfElementContext';
 import { EditableSliderValue, VibeImage } from './VibeEditor';
+import { resolveCompanionButtons } from '../models/companionSlots';
+import { renderCompanionButtons } from './PortableToolbarButtons';
 
 // PreSetEdtior.tsx 에서 분리된 캐릭터 레퍼런스 편집기 계열.
 interface CharacterReferenceEditorProps {
@@ -438,18 +440,42 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
   const currentReference = enabledRefs.length > 0 ? enabledRefs[safeActiveIndex] : null;
   const hasValidPath = currentReference && currentReference.path;
 
+  // 동반 슬롯 (E2): 레퍼런스 행(hostKey = wfiElementKey = 인라인 필드 'characterReferences')
+  // 옆에 붙일 portable 버튼. 빈 배열이면 슬롯 없음 = 현행 렌더 100% 동일(회귀 기준).
+  const companionIds = resolveCompanionButtons(
+    wfiElementKey(input) ?? input.field,
+    appState.uiCompanionSlots,
+  );
+  const companions = renderCompanionButtons(companionIds);
+  const hasCompanions = companions.length > 0;
+
   return (
     <>
       {editCharacterReference == undefined && field.length === 0 && (
-        <button
-          className={`round-button h-8 w-full flex mt-2 md:mt-3 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
-          onClick={onClick}
-          disabled={locked}
-        >
-          <div className="flex-1">
-            {locked ? '캐릭터 레퍼런스 (v4 모델 미지원)' : '캐릭터 레퍼런스 설정 열기'}
+        hasCompanions ? (
+          <div className="w-full mt-2 md:mt-3 flex gap-1 items-stretch">
+            <button
+              className={`round-button h-8 flex-1 flex ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
+              onClick={onClick}
+              disabled={locked}
+            >
+              <div className="flex-1">
+                {locked ? '캐릭터 레퍼런스 (v4 모델 미지원)' : '캐릭터 레퍼런스 설정 열기'}
+              </div>
+            </button>
+            {companions}
           </div>
-        </button>
+        ) : (
+          <button
+            className={`round-button h-8 w-full flex mt-2 md:mt-3 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
+            onClick={onClick}
+            disabled={locked}
+          >
+            <div className="flex-1">
+              {locked ? '캐릭터 레퍼런스 (v4 모델 미지원)' : '캐릭터 레퍼런스 설정 열기'}
+            </div>
+          </button>
+        )
       )}
       {editCharacterReference == undefined && field.length > 0 && (
         <div className={'w-full flex items-center mt-2 md:mt-3' + (locked ? ' opacity-50' : '')}>
@@ -492,6 +518,11 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
               </Tooltip>
             )}
           </div>
+          {hasCompanions && (
+            <div className="flex-none flex gap-1 items-center ml-1">
+              {companions}
+            </div>
+          )}
         </div>
       )}
     </>

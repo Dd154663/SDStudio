@@ -54,11 +54,11 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
 // 여기 버튼은 전부 상시 사용 빈도가 높아 기본값 = PC·모바일 모두 전부 인라인
 // (⋯ 없음). 메뉴로 보내기는 사용자 커스터마이징 재량 (2026-07-04 실사용 피드백).
 export const projectToolbarRegistry: ToolbarButtonMeta[] = [
-  { id: 'add-session', name: '신규 프로젝트', tier: 'primary' },
+  { id: 'add-session', name: '신규 프로젝트', tier: 'primary', portable: true },
   { id: 'character-presets', name: '캐릭터 프리셋 관리', tier: 'primary', portable: true },
   { id: 'backup-export', name: '프로젝트 백업/내보내기', tier: 'primary', portable: true },
-  { id: 'delete-session', name: '프로젝트 삭제', tier: 'primary' },
-  { id: 'project-trash', name: '프로젝트 휴지통', tier: 'primary' },
+  { id: 'delete-session', name: '프로젝트 삭제', tier: 'primary', portable: true },
+  { id: 'project-trash', name: '프로젝트 휴지통', tier: 'primary', portable: true },
   { id: 'piece-editor', name: '프롬프트조각', tier: 'primary', portable: true },
 ];
 
@@ -123,6 +123,31 @@ export const TOOLBAR_VIEW_MAIN: ToolbarRegistryEntry[] = [
   { area: 'project', registry: projectToolbarRegistry },
 ];
 
+// portable=true 인 버튼 id 목록(메인 View 레지스트리 도출). 동반 슬롯 허용 풀의 단일
+// 출처 — companionSlots 가 하드코딩 대신 이걸 참조하므로 새 portable 추가 시 자동 반영.
+export function portableButtonIds(): string[] {
+  const ids: string[] = [];
+  for (const { registry } of TOOLBAR_VIEW_MAIN) {
+    for (const b of registry) {
+      if (b.portable === true) ids.push(b.id);
+    }
+  }
+  return ids;
+}
+
+// portable 버튼 메타(id + name) 목록 — portableButtonIds 와 같은 집합·순서를 표시명까지
+// 담아 반환한다. 동반 슬롯 편집 UI(ConfigScreen E3)가 버튼명을 레지스트리에서 조회하는
+// 단일 출처(라벨 중복 정의 금지). 새 portable 추가 시 여기에도 자동 반영된다.
+export function portableButtonMetas(): { id: string; name: string }[] {
+  const out: { id: string; name: string }[] = [];
+  for (const { registry } of TOOLBAR_VIEW_MAIN) {
+    for (const b of registry) {
+      if (b.portable === true) out.push({ id: b.id, name: b.name });
+    }
+  }
+  return out;
+}
+
 export interface ToolbarAreaResolved {
   area: string;
   inline: string[];
@@ -155,7 +180,26 @@ function tierPlacement(
 // 크로스 영역 해석은 "전역(View 단위) 배정"으로 처리한다. portable 버튼이 타 영역
 // areas 에 실려 있으면 그 영역에만 렌더되고 홈 영역엔 나타나지 않아야 한다(중복 렌더가
 // 최악의 버그). 1차 스캔으로 id→배정영역 을 확정한 뒤 2차에서 렌더를 생성한다.
+// 파생 숨김(이동 의미론): excludeIds 에 든 버튼은 인라인·⋯메뉴 어디서도 렌더에서 빠진다
+// (동반 슬롯에 배정된 버튼을 툴바 표면에서 감추는 용도). uiToolbar 데이터는 불변 — 순수
+// 파생 필터라 제외 집합에서 빼면 원래 자리로 복귀한다. 미지정/빈 집합이면 기존과 100% 동일
+// (기존 호출부는 무영향). classic 포함 전 경로에 동일 적용(어디 배정됐든 표면에서 사라짐).
 export function resolveToolbarView(
+  registries: ToolbarRegistryEntry[],
+  overrides: UiToolbarConfig | undefined,
+  isMobile: boolean,
+  excludeIds?: ReadonlySet<string>,
+): ToolbarAreaResolved[] {
+  const base = resolveToolbarViewBase(registries, overrides, isMobile);
+  if (!excludeIds || excludeIds.size === 0) return base;
+  return base.map((a) => ({
+    area: a.area,
+    inline: a.inline.filter((id) => !excludeIds.has(id)),
+    menu: a.menu.filter((id) => !excludeIds.has(id)),
+  }));
+}
+
+function resolveToolbarViewBase(
   registries: ToolbarRegistryEntry[],
   overrides: UiToolbarConfig | undefined,
   isMobile: boolean,

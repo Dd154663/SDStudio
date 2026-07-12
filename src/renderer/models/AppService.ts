@@ -14,6 +14,7 @@ import {
   projectSizeService,
   sessionService,
   taskQueueService,
+  templateService,
   trashService,
   workFlowService,
   zipService,
@@ -241,6 +242,9 @@ export class AppState {
   // 찾기 및 변환 다이얼로그
   @observable accessor findReplaceOpen: boolean = false;
 
+  // 프로젝트 휴지통 오버레이 (전역 액션 — 어느 화면에서든 열림)
+  @observable accessor projectTrashOpen: boolean = false;
+
   // 캐릭터 프리셋 관리 오버레이 (전역 액션 — 어느 화면에서든 열림)
   @observable accessor characterPresetsOpen: boolean = false;
   @observable accessor exportPresetManagerOpen: boolean = false;
@@ -334,6 +338,63 @@ export class AppState {
   @action
   closeCharacterPresets() {
     this.characterPresetsOpen = false;
+  }
+
+  // 신규 프로젝트 생성 — 진입점(프로젝트 툴바 bar/sidebar 등)이 공유하는 전역 액션.
+  // 이름 입력 다이얼로그 + 템플릿 선택까지 여기서 처리한다 (SessionSelect 로컬에서 이관).
+  @action
+  addSession() {
+    (async () => {
+      this.pushDialog({
+        type: 'input-confirm',
+        text: '신규 프로젝트 이름을 입력해주세요',
+        callback: async (inputValue) => {
+          if (inputValue) {
+            if (sessionService.list().includes(inputValue)) {
+              this.pushMessage('이미 존재하는 프로젝트 이름입니다.');
+              return;
+            }
+            const tpl = await templateService.pickTemplateForCreate();
+            if (tpl === undefined) return; // 사용자가 템플릿 선택을 취소
+            try {
+              if (tpl) {
+                await sessionService.createSessionFromTemplate(tpl, inputValue);
+              } else {
+                await sessionService.add(inputValue);
+              }
+              const newSession = (await sessionService.get(inputValue))!;
+              this.curSession = newSession;
+            } catch (e: any) {
+              this.pushMessage(e.message || '프로젝트 생성에 실패했습니다.');
+            }
+          }
+        },
+      });
+    })();
+  }
+
+  // 현재 프로젝트 삭제(휴지통으로 이동) — 전역 액션 (SessionSelect 로컬에서 이관).
+  @action
+  deleteSession() {
+    this.pushDialog({
+      type: 'confirm',
+      text: '정말로 이 프로젝트를 삭제하시겠습니까? (휴지통으로 이동)',
+      callback: async () => {
+        await sessionService.delete(this.curSession!.name);
+        this.curSession = undefined;
+      },
+    });
+  }
+
+  // 프로젝트 휴지통 열기/닫기 — 전역 오버레이(App.tsx 호스트)를 여는 진입점.
+  @action
+  openProjectTrash() {
+    this.projectTrashOpen = true;
+  }
+
+  @action
+  closeProjectTrash() {
+    this.projectTrashOpen = false;
   }
 
   // 캐릭터 프리셋을 현재 세션에 적용 (SessionSelect 로컬 콜백에서 이관 — 로직 무변경)
