@@ -33,9 +33,12 @@ import {
   normalizePresetJson,
   readJSONFromPNG,
 } from './SessionService';
-import { action, observable } from 'mobx';
+import { action, observable, runInAction } from 'mobx';
 import {
   CharacterPreset,
+  CharacterPrompt,
+  ReferenceItem,
+  VibeItem,
   GenericScene,
   InpaintScene,
   ISession,
@@ -232,6 +235,9 @@ export class AppState {
 
   // 찾기 및 변환 다이얼로그
   @observable accessor findReplaceOpen: boolean = false;
+
+  // 캐릭터 프리셋 관리 오버레이 (전역 액션 — 어느 화면에서든 열림)
+  @observable accessor characterPresetsOpen: boolean = false;
   @observable accessor exportPresetManagerOpen: boolean = false;
   lastExportType: 'scene' | 'inpaint' = 'scene';
   lastExportSelected?: GenericScene[];
@@ -288,6 +294,119 @@ export class AppState {
   @action
   closeFindReplace() {
     this.findReplaceOpen = false;
+  }
+
+  // 캐릭터 프리셋 관리 열기 — 진입점(프로젝트 툴바 bar/sidebar 등)이 공유하는
+  // 전역 액션. 세션 가드·모바일 적용중 선택 다이얼로그까지 여기서 처리한다.
+  @action
+  openCharacterPresets() {
+    if (!this.curSession) {
+      this.pushMessage('프로젝트를 먼저 선택해주세요');
+      return;
+    }
+    // 모바일 + 프리셋 적용 중: 해제/관리 선택
+    if (isMobile && this.appliedCharacterPreset) {
+      this.pushDialog({
+        type: 'select',
+        text: `"${this.appliedCharacterPreset}" 프리셋이 적용 중입니다.`,
+        items: [
+          { text: '프리셋 해제', value: 'clear' },
+          { text: '프리셋 관리 열기', value: 'manage' },
+        ],
+        callback: (value?: string) => {
+          if (value === 'clear') {
+            this.clearAppliedCharacterPreset();
+          } else if (value === 'manage') {
+            this.characterPresetsOpen = true;
+          }
+        },
+      });
+      return;
+    }
+    this.characterPresetsOpen = true;
+  }
+
+  @action
+  closeCharacterPresets() {
+    this.characterPresetsOpen = false;
+  }
+
+  // 캐릭터 프리셋을 현재 세션에 적용 (SessionSelect 로컬 콜백에서 이관 — 로직 무변경)
+  @action
+  applyCharacterPreset(preset: CharacterPreset, mode: 'easy' | 'character') {
+    const curSession = this.curSession;
+    if (!curSession) return;
+
+    const workflowType = curSession.selectedWorkflow?.workflowType;
+    if (!workflowType) {
+      this.pushMessage('워크플로우를 먼저 선택해주세요');
+      return;
+    }
+
+    // Mode 1: 이지모드 적용 (SDImageGenEasy 전용)
+    if (mode === 'easy') {
+      if (workflowType !== 'SDImageGenEasy') {
+        this.pushMessage('이지모드 적용은 "이미지 생성 (이지모드)" 워크플로우에서만 사용 가능합니다');
+        return;
+      }
+    }
+
+    let shared = curSession.presetShareds.get(workflowType);
+    if (!shared) {
+      shared = workFlowService.buildShared(workflowType);
+      curSession.presetShareds.set(workflowType, shared);
+    }
+
+    runInAction(() => {
+      // 이전 프리셋에서 추가된 항목 제거 (사용자 직접 추가 항목은 유지)
+      const prevVibes = (shared.vibes || []).filter((v: VibeItem) => !v.fromPreset);
+      const prevRefs = (shared.characterReferences || []).filter((r: ReferenceItem) => !r.fromPreset);
+
+      // 프리셋의 바이브/레퍼런스를 태그 붙여서 추가
+      const presetVibes = (preset.vibes || []).map((v: VibeItem) => {
+        const item = VibeItem.fromJSON(v.toJSON());
+        item.fromPreset = preset.name;
+        return item;
+      });
+      const presetRefs = (preset.characterReferences || []).map((r: ReferenceItem) => {
+        const item = ReferenceItem.fromJSON(r.toJSON());
+        item.fromPreset = preset.name;
+        return item;
+      });
+
+      shared.vibes = [...prevVibes, ...presetVibes];
+      shared.characterReferences = [...prevRefs, ...presetRefs];
+
+      if (mode === 'easy') {
+        shared.characterPrompt = preset.characterPrompt || '';
+        shared.backgroundPrompt = preset.backgroundPrompt || '';
+        shared.uc = preset.characterUC || '';
+      } else {
+        // 이전 프리셋 캐릭터 프롬프트 제거 (사용자 항목 유지)
+        const prevPrompts = (shared.characterPrompts || []).filter(
+          (cp: CharacterPrompt) => !cp.fromPreset
+        );
+        if (preset.characterPrompt || preset.characterUC) {
+          const newEntry: CharacterPrompt = {
+            id: v4(),
+            prompt: preset.characterPrompt || '',
+            uc: preset.characterUC || '',
+            position: { x: 0.5, y: 0.5 },
+            enabled: true,
+            fromPreset: preset.name,
+          };
+          shared.characterPrompts = [...prevPrompts, newEntry];
+        } else {
+          shared.characterPrompts = prevPrompts;
+        }
+      }
+
+      this.setAppliedCharacterPreset(preset.name);
+    });
+
+    this.characterPresetsOpen = false;
+    const modeLabel = mode === 'easy' ? '이지모드' : '캐릭터 프롬프트';
+    this.pushMessage(`"${preset.name}" 프리셋이 ${modeLabel}로 적용되었습니다`);
   }
 
   @action

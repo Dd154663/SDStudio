@@ -24,6 +24,7 @@ import TobBar from './TobBar';
 import AlertWindow from './AlertWindow';
 import { DropdownSelect, TabComponent } from './UtilComponents';
 import PieceEditor, { PieceCell } from './PieceEditor';
+import { CharacterPresetFloatEditor } from './CharacterPresetEditor';
 import PromptTooltip from './PromptTooltip';
 import ConfirmWindow, { Dialog } from './ConfirmWindow';
 import ExpiredProjectsDialog from './ExpiredProjectsDialog';
@@ -950,6 +951,14 @@ export const App = observer(() => {
           {appState.curSession && <PieceEditor />}
         </ModalOverlay>
         <FindReplaceDialog />
+        {appState.characterPresetsOpen && appState.curSession && (
+          <CharacterPresetFloatEditor
+            onClose={() => appState.closeCharacterPresets()}
+            onApplyPreset={(preset, mode) =>
+              appState.applyCharacterPreset(preset, mode)
+            }
+          />
+        )}
         <ExportPresetManager />
         {dragOverlay && (
           <div

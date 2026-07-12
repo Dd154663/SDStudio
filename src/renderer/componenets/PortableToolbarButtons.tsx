@@ -12,6 +12,7 @@ import {
   FaExchangeAlt,
   FaShare,
   FaPuzzlePiece,
+  FaUserAlt,
 } from 'react-icons/fa';
 import Tooltip from './Tooltip';
 import { appState } from '../models/AppService';
@@ -84,6 +85,31 @@ export function portableToolbarButtons(
           () => appState.projectBackupMenu(),
         )
       ),
+    // SessionSelect 로컬 맵에서 이관 — 홈(project)은 원본대로 icon-button(무배경,
+    // 적용 중이면 back-green)+툴팁, 씬으로 오면 씬 표준(배경형 round-button)으로 적응.
+    // 적용 중이면 양쪽 다 back-green 강조. 클릭은 전역 openCharacterPresets()(세션 가드·
+    // 모바일 해제 다이얼로그 포함). PC 해제는 프로젝트 바의 적용 칩(FaTimes)이 담당 —
+    // 버튼 자체에 long-press 핸들러는 없다("길게 눌러 해제" 잔존 문구는 제거, 2026-07-12).
+    'character-presets': (
+      <Tooltip
+        content={
+          appState.appliedCharacterPreset
+            ? `프리셋: ${appState.appliedCharacterPreset}`
+            : '캐릭터 프리셋 관리'
+        }
+      >
+        <button
+          className={
+            variant === 'scene'
+              ? `round-button ${appState.appliedCharacterPreset ? 'back-green' : 'back-gray'}`
+              : `icon-button mx-1 ${appState.appliedCharacterPreset ? 'back-green' : ''}`
+          }
+          onClick={() => appState.openCharacterPresets()}
+        >
+          <FaUserAlt size={18} />
+        </button>
+      </Tooltip>
+    ),
     // 텍스트 포함 버튼 — round-button 은 씬 툴바에도 있는 표준이라 양쪽 그대로,
     // 여백만 적응(프로젝트 바는 ml-1 하드마진, 씬 툴바 행은 gap-1 이라 불필요).
     // iconOnly(사이드 바)는 텍스트를 빼고 툴팁으로 대체(색·아이콘은 원본 유지).

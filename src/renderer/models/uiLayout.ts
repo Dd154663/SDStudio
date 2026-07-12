@@ -55,7 +55,7 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
 // (⋯ 없음). 메뉴로 보내기는 사용자 커스터마이징 재량 (2026-07-04 실사용 피드백).
 export const projectToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'add-session', name: '신규 프로젝트', tier: 'primary' },
-  { id: 'character-presets', name: '캐릭터 프리셋 관리', tier: 'primary' },
+  { id: 'character-presets', name: '캐릭터 프리셋 관리', tier: 'primary', portable: true },
   { id: 'backup-export', name: '프로젝트 백업/내보내기', tier: 'primary', portable: true },
   { id: 'delete-session', name: '프로젝트 삭제', tier: 'primary' },
   { id: 'project-trash', name: '프로젝트 휴지통', tier: 'primary' },
