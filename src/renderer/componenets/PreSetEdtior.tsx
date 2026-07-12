@@ -92,7 +92,7 @@ const ImageSelect = observer(({ input }: { input: WFIInlineInput }) => {
     else meta![input.field] = val;
   };
   return (
-    <div className="inline-flex md:flex gap-3 items-center flex-none text-eplsis overflow-hidden gap-3 mb-1 mt-2">
+    <div className="inline-flex md:flex gap-3 items-center flex-none text-eplsis overflow-hidden gap-3 mb-1 mt-2 md:mt-3">
       <span className="gray-label">{input.label}: </span>
       <div className="w-24 md:w-48">
         <FileUploadBase64
@@ -136,7 +136,7 @@ const EditorField = ({
 }) => {
   return (
     <>
-      <div className={'pt-2 pb-1 gray-label'}>
+      <div className={'pt-2 md:pt-3 pb-1 gray-label'}>
         {bold ? <b>{label}</b> : label}
       </div>
       <div className={full ? 'flex-1 min-h-0' : 'flex-none mt-3'}>
@@ -154,7 +154,7 @@ const InlineEditorField = ({
   children: React.ReactNode;
 }) => {
   return (
-    <div className="pt-2 flex gap-2 items-center">
+    <div className="pt-2 md:pt-3 flex gap-2 items-center">
       <span className={'flex-none gray-label'}>{label}:</span>
       {children}
     </div>
@@ -390,7 +390,7 @@ const ProfilePreSetSelect = observer(({}) => {
     <div
       ref={containerRef}
       className={
-        'mt-2 overflow-hidden min-h-0 ' + (middlePromptMode ? 'h-1/5' : 'h-1/3')
+        'mt-2 md:mt-3 overflow-hidden min-h-0 ' + (middlePromptMode ? 'h-1/5' : 'h-1/3')
       }
     >
       {selected && (
@@ -499,7 +499,7 @@ const IntSliderInput = ({
   max: number;
 }) => {
   return (
-    <div className="flex w-full items-center md:flex-row flex-col mt-2 gap-2">
+    <div className="flex w-full items-center md:flex-row flex-col mt-2 md:mt-3 gap-2">
       <div className={'whitespace-nowrap flex-none mr-auto md:mr-0 gray-label'}>
         {label}:
       </div>
@@ -682,7 +682,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
     };
   });
   return (
-    <div className="flex gap-2 mt-2 items-center relative">
+    <div className="flex gap-2 mt-2 md:mt-3 items-center relative">
       <div className="flex-none gray-label">사전세팅선택:</div>
       <div
         className="round-button back-gray h-9 w-full"
@@ -994,7 +994,7 @@ const WFRShowImage = observer(({ element }: WFElementProps) => {
     return <></>;
   }
   return (
-    <div className="mt-2">
+    <div className="mt-2 md:mt-3">
       {getField() && (
         <VibeImage
           path={imageService.getVibeImagePath(curSession!, getField())}
@@ -1125,7 +1125,7 @@ const WFRGroup = observer(({ element }: WFElementProps) => {
   }
   return (
     <button
-      className={`round-button back-gray h-8 w-full mt-2`}
+      className={`round-button back-gray h-8 w-full mt-2 md:mt-3`}
       onClick={() => {
         setShowGroupOverlay(grp.label);
       }}
@@ -1485,7 +1485,7 @@ export const CharacterButton = observer(({ input }: { input: WFIInlineInput }) =
     <>
       {editCharacters === undefined && !anyCharacters && (
         <button
-          className={`round-button back-gray h-8 w-full flex mt-2`}
+          className={`round-button back-gray h-8 w-full flex mt-2 md:mt-3`}
           onClick={onClick}
         >
           <div className="flex-1">
@@ -1495,7 +1495,7 @@ export const CharacterButton = observer(({ input }: { input: WFIInlineInput }) =
         </button>
       )}
       {editCharacters === undefined && anyCharacters && (
-        <div className="w-full mt-2">
+        <div className="w-full mt-2 md:mt-3">
           <button
             className={`round-button ${hasPresetApplied ? 'back-green' : 'back-sky'} h-8 w-full flex justify-between items-center`}
             onClick={onClick}
@@ -1866,7 +1866,7 @@ export const InnerPreSetEditor = observer(
     nopad,
   }: InnerProps) => {
     return (
-      <VerticalStack className={nopad ? '' : 'p-2'}>
+      <VerticalStack className={nopad ? '' : 'p-2 md:p-3'}>
         <PreSetEditorImpl
           type={type}
           shared={shared}
@@ -1943,7 +1943,7 @@ const PreSetEditor = observer(
       workflowType &&
       shared &&
       curSession.selectedWorkflow!.presetName && (
-        <VerticalStack className="p-2">
+        <VerticalStack className="p-2 md:p-3">
           <StackFixed className="flex gap-2 items-center">
             <span className={'flex-none gray-label'}>작업모드: </span>
             <DropdownSelect

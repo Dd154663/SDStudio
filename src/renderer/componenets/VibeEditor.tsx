@@ -431,7 +431,7 @@ export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
     <>
       {editVibe == undefined && getField().length === 0 && (
         <button
-          className={`round-button h-8 w-full flex mt-2 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
+          className={`round-button h-8 w-full flex mt-2 md:mt-3 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
           onClick={onClick}
           disabled={locked}
         >
@@ -441,7 +441,7 @@ export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
         </button>
       )}
       {editVibe == undefined && getField().length > 0 && (
-        <div className={'w-full flex items-center mt-2' + (locked ? ' opacity-50' : '')}>
+        <div className={'w-full flex items-center mt-2 md:mt-3' + (locked ? ' opacity-50' : '')}>
           <div className={'flex-none mr-2 gray-label'}>
             바이브 설정:
             {locked && (
