@@ -154,7 +154,7 @@ const InlineEditorField = ({
   children: React.ReactNode;
 }) => {
   return (
-    <div className="pt-2 md:pt-3 flex gap-2 items-center">
+    <div className="field-row pt-2 md:pt-3 flex gap-2 items-center">
       <span className={'flex-none gray-label'}>{label}:</span>
       {children}
     </div>
@@ -682,10 +682,10 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
     };
   });
   return (
-    <div className="flex gap-2 mt-2 md:mt-3 items-center relative">
+    <div className="field-row flex gap-2 mt-2 md:mt-3 items-center relative">
       <div className="flex-none gray-label">사전세팅선택:</div>
       <div
-        className="round-button back-gray h-9 w-full"
+        className="round-button back-gray h-8 w-full"
         onClick={() => {
           setIsOpen(!isOpen);
           clicked.current = true;
@@ -1944,7 +1944,7 @@ const PreSetEditor = observer(
       shared &&
       curSession.selectedWorkflow!.presetName && (
         <VerticalStack className="p-2 md:p-3">
-          <StackFixed className="flex gap-2 items-center">
+          <StackFixed className="field-row flex gap-2 items-center">
             <span className={'flex-none gray-label'}>작업모드: </span>
             <DropdownSelect
               selectedOption={workflowType}

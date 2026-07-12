@@ -526,6 +526,23 @@ html:not(.finish-classic) .tab-seg > .tab-seg-off:hover {
   }
 }
 
+/* ── 인라인 행 컨트롤 높이 통일(C2) ── 프리셋 패널의 라벨+컨트롤 행에서 버튼(32px)·
+   입력창(~36px)·드롭다운(react-select 기본 ~40px) 높이가 섞여 들쭉날쭉하던 것을
+   행 스코프 고정 높이 32px 로 맞춘다(.scene-toolbar-row 선례). 마커(.field-row)는
+   PreSetEdtior.tsx 의 InlineEditorField·작업모드·사전세팅선택 행이 부여.
+   모바일(<768px)은 터치 타깃(36px+) 유지를 위해 제외. */
+@media (min-width: 768px) {
+  .field-row .gray-input {
+    height: 2rem;
+  }
+  .field-row .my-react-select__control {
+    min-height: 2rem;
+  }
+  .field-row .my-react-select__indicator {
+    padding: 4px; /* 기본 8px — 화살표가 컨트롤 높이를 40px 로 밀어올리는 원인 */
+  }
+}
+
 /* 텍스트 입력 창 윤곽 링(B1) — 배경 음영뿐 테두리가 없던 입력 영역(프롬프트 에디터 등)에
    1px 안쪽 링을 준다. box-shadow 라 레이아웃 불변·라운딩 자동 추종. 클래식 마감에선
    --c-input-ring 이 transparent 로 복원되어 무표시. Tailwind shadow-* 유틸과 같은 요소에
