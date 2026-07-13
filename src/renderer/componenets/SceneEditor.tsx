@@ -937,7 +937,7 @@ const PieceExpandEditor = observer(
 const PREVIEW_RENDER_CAP = 100;
 const CombinationPreview = observer(
   ({ scene }: { scene: { slots: PromptPieceSlot[] } }) => {
-    const [open, setOpen] = useState(false);
+    const [open, setOpen] = useState(true);
     const sc = scene as unknown as Scene;
     const total = combinationCount(sc);
     const columns = scene.slots.length;
@@ -947,7 +947,8 @@ const CombinationPreview = observer(
     return (
       <div className="mx-2 mb-2 border line-color rounded-lg overflow-hidden">
         <button
-          className="w-full flex items-center gap-2 px-3 py-2 bg-[var(--c-surface2)] text-left"
+          type="button"
+          className="w-full flex items-center gap-2 px-3 py-2 bg-[var(--c-surface2)] text-left text-default"
           onClick={() => setOpen(!open)}
         >
           <span className="flex-none">
@@ -1060,7 +1061,8 @@ const CombinationHelpBanner = observer(() => {
   return (
     <div className="mx-2 mt-1 mb-2 border line-color rounded-lg bg-[var(--c-surface2)] text-sm">
       <button
-        className="w-full flex items-center gap-2 px-3 py-2 text-left"
+        type="button"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left text-default"
         onClick={() => setOpen(!open)}
       >
         <span className="flex-none">
