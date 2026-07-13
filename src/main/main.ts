@@ -1313,6 +1313,72 @@ const getAssetPath = (...paths: string[]): string => {
   return path.join(RESOURCES_PATH, ...paths);
 };
 
+// ── 창 위치·크기 상태 저장 (이 PC 귀속) ──────────────────────────────────────
+// config.json 과 별개 파일로 관리한다. 렌더러 setConfig 가 config 전체를 덮어써도
+// 창 상태가 지워지지 않도록 하기 위함.
+const WINDOW_STATE_FILE = path.join(DEFAULT_APP_DIR, 'window-state.json');
+
+interface WindowState {
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+  isMaximized: boolean;
+}
+
+function loadWindowState(): WindowState | null {
+  try {
+    const s = JSON.parse(fsSync.readFileSync(WINDOW_STATE_FILE, 'utf-8'));
+    if (typeof s.width === 'number' && typeof s.height === 'number') {
+      return s as WindowState;
+    }
+  } catch (e) {}
+  return null;
+}
+
+// 저장된 창이 현재 연결된 디스플레이 중 하나에 최소한 걸쳐 있는지 확인
+// (모니터 분리/해상도 변경 후 화면 밖으로 복원되는 것을 방지)
+function isVisibleOnSomeDisplay(s: WindowState): boolean {
+  if (typeof s.x !== 'number' || typeof s.y !== 'number') return false;
+  return screen.getAllDisplays().some((d) => {
+    const a = d.workArea;
+    return (
+      s.x! < a.x + a.width &&
+      s.x! + s.width > a.x &&
+      s.y! < a.y + a.height &&
+      s.y! + s.height > a.y
+    );
+  });
+}
+
+function saveWindowState(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    const isMaximized = mainWindow.isMaximized();
+    // 최대화 상태에선 getBounds 가 최대화 크기를 주므로, 복원 시 이전 크기로 돌아가도록
+    // 최대화 이전의 일반 크기(getNormalBounds)를 저장한다.
+    const b = mainWindow.getNormalBounds();
+    const state: WindowState = {
+      x: b.x,
+      y: b.y,
+      width: b.width,
+      height: b.height,
+      isMaximized,
+    };
+    const tmp = path.join(DEFAULT_APP_DIR, uuidv4());
+    fsSync.writeFileSync(tmp, JSON.stringify(state), 'utf-8');
+    fsSync.renameSync(tmp, WINDOW_STATE_FILE);
+  } catch (e) {
+    console.error('window state save failed', e);
+  }
+}
+
+let saveWindowStateTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleSaveWindowState(): void {
+  if (saveWindowStateTimer) clearTimeout(saveWindowStateTimer);
+  saveWindowStateTimer = setTimeout(saveWindowState, 400);
+}
+
 const createWindow = async () => {
   if (isDebug) {
     await installExtensions();
@@ -1320,11 +1386,14 @@ const createWindow = async () => {
 
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.workAreaSize;
+  const savedState = loadWindowState();
+  const useSavedPos = savedState != null && isVisibleOnSomeDisplay(savedState);
 
   mainWindow = new BrowserWindow({
     show: false,
-    width: width,
-    height: height,
+    width: savedState?.width ?? width,
+    height: savedState?.height ?? height,
+    ...(useSavedPos ? { x: savedState!.x, y: savedState!.y } : {}),
     minWidth: 1024,
     minHeight: 728,
     frame: false,
@@ -1336,6 +1405,18 @@ const createWindow = async () => {
         : path.join(__dirname, '../../.erb/dll/preload.js'),
     },
   });
+
+  // 최초 실행(저장된 상태 없음)엔 최대화로 시작 — 과거엔 workArea 크기의 어중간한 창이었다.
+  // 이전에 최대화 상태로 종료했다면 그대로 최대화 복원.
+  if (!savedState || savedState.isMaximized) {
+    mainWindow.maximize();
+  }
+
+  // 사용자가 창을 옮기거나 크기를 바꾸면(그리고 최대화 토글 시) 상태를 저장한다.
+  mainWindow.on('resize', scheduleSaveWindowState);
+  mainWindow.on('move', scheduleSaveWindowState);
+  mainWindow.on('maximize', saveWindowState);
+  mainWindow.on('unmaximize', saveWindowState);
 
   contextMenu({
     window: mainWindow,
@@ -1451,6 +1532,8 @@ const createWindow = async () => {
   });
 
   mainWindow.on('close', (e) => {
+    // 닫히기 직전의 창 위치·크기·최대화 상태를 저장한다(다음 실행 복원용).
+    saveWindowState();
     // 저장이 끝나기 전이면 창 닫기를 막고 렌더러에 저장을 위임한다.
     // 렌더러가 저장을 마치면 invoke('close')로 saveCompleted=true 후 다시 닫는다.
     if (!saveCompleted) {

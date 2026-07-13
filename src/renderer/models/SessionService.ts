@@ -2121,8 +2121,13 @@ export const renameScene = async (
     await imageService.onRenameScene(session, oldName, newName);
     const scene = session.scenes.get(oldName)!;
     scene.name = newName;
-    session.scenes.delete(oldName);
-    session.scenes.set(newName, scene);
+    // 순서 보존: Map은 삽입 순서를 유지하므로 delete→set 하면 새 이름이 맨 뒤로 밀린다.
+    // 기존 키 자리에 새 이름을 끼워 Map을 재구성해 원래 위치를 지킨다(moveScene 재구성 패턴).
+    const rebuilt = new Map();
+    for (const [key, value] of session.scenes) {
+      rebuilt.set(key === oldName ? newName : key, value);
+    }
+    session.scenes = rebuilt as any;
   });
 };
 
