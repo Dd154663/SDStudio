@@ -342,6 +342,73 @@ async function dfsPrompts<T, R>(
   return results;
 }
 
+// 조합 미리보기용 세그먼트 — 어느 열에서 온 어떤 조각인지.
+export interface CombinationSegment {
+  columnIndex: number;
+  piece: PromptPiece;
+}
+export type Combination = CombinationSegment[];
+
+/**
+ * 조합 에디터 미리보기용 조합 열거.
+ *
+ * 생성 경로(createSDPrompts → dfsPrompts, collectFn = piece?.prompt)와 **동일 규칙**으로
+ * 각 열에서 활성 조각 하나씩 고르는 데카르트 곱을 만든다:
+ *  - enabled === false 인 조각은 제외.
+ *  - 어떤 열에 활성 조각이 0개면 그 열에서 고를 게 없으므로 전체 조합 0종(dfsPrompts 의
+ *    collectFn(null)===undefined 로 빈 열 분기를 타지 않는 동작과 일치).
+ *  - 세그먼트 순서 = 열 순서(0..N-1). 최종 중간 프롬프트 = 세그먼트 prompt 를 빈 것 제외 ', ' join.
+ *
+ * 순수 함수(관찰만, 부작용 없음). 생성 경로를 건드리지 않고 파리티는 단위 테스트로 고정한다.
+ */
+export function enumerateCombinations(scene: Scene, limit?: number): Combination[] {
+  const results: Combination[] = [];
+  const current: CombinationSegment[] = [];
+  const traverse = (level: number) => {
+    if (limit !== undefined && results.length >= limit) return;
+    if (level === scene.slots.length) {
+      results.push([...current]);
+      return;
+    }
+    for (const piece of scene.slots[level]) {
+      if (limit !== undefined && results.length >= limit) return;
+      if (piece.enabled === undefined || piece.enabled) {
+        current.push({ columnIndex: level, piece });
+        traverse(level + 1);
+        current.pop();
+      }
+    }
+    // 활성 조각이 없는 열이면 아무 것도 push 하지 않음 → 하위 미완성 → 이 갈래는 0종.
+  };
+  traverse(0);
+  return results;
+}
+
+/**
+ * 조합 총 개수만 저비용으로 계산(전체 열거 없이 ∏ 활성 수). 대량 조합에서 미리보기가
+ * 수백만 항목을 만들지 않도록 개수 표시·상한 판정에 사용. enumerateCombinations 와 동일 규칙.
+ */
+export function combinationCount(scene: Scene): number {
+  if (scene.slots.length === 0) return 1;
+  let total = 1;
+  for (const slot of scene.slots) {
+    const enabled = slot.filter(
+      (p) => p.enabled === undefined || p.enabled,
+    ).length;
+    total *= enabled;
+    if (total === 0) return 0; // 활성 0인 열이 있으면 전체 0종.
+  }
+  return total;
+}
+
+/** 한 조합의 최종 중간 프롬프트(생성 시 만들어지는 조합 프롬프트와 동일한 문자열). */
+export function combinationMiddlePrompt(combo: Combination): string {
+  return combo
+    .map((seg) => seg.piece.prompt)
+    .filter((p) => p && p.trim() !== '')
+    .join(', ');
+}
+
 export const createSDPrompts = async (
   session: Session,
   preset: any,

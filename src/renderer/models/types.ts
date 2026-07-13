@@ -180,6 +180,9 @@ export interface IPromptPiece {
   characterPrompts: string[];
   id: string;
   enabled?: boolean;
+  // 조각(셀) 표시용 이름. 옵셔널 = 하위호환(구버전은 무시, 미설정 시 UI가 "열-행" 기본값 표시).
+  // 표시 전용 — 생성 프롬프트 조합에는 영향 없음.
+  name?: string;
 }
 
 export class PromptPiece implements IPromptPiece {
@@ -187,6 +190,7 @@ export class PromptPiece implements IPromptPiece {
   @observable accessor characterPrompts: string[] = [];
   @observable accessor id: string = '';
   @observable accessor enabled: boolean | undefined = undefined;
+  @observable accessor name: string | undefined = undefined;
 
   static fromJSON(json: IPromptPiece): PromptPiece {
     const promptPiece = new PromptPiece();
@@ -204,6 +208,8 @@ export class PromptPiece implements IPromptPiece {
       characterPrompts: [...(this.characterPrompts || [])],
       id: this.id,
       enabled: this.enabled,
+      // 이름은 값이 있을 때만 직렬화 — 기존 저장 파일 오염 방지(하위호환).
+      ...(this.name ? { name: this.name } : {}),
     };
   }
 }
