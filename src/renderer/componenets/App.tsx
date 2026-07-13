@@ -259,6 +259,7 @@ export const App = observer(() => {
       setThemeOverrides(buildThemeVars(conf.uiTheme, !!conf.whiteMode));
       appState.classicSceneCard = conf.classicSceneCard ?? false;
       appState.legacyProjectMode = conf.legacyProjectMode ?? false;
+      appState.legacySceneEditor = conf.legacySceneEditor ?? false;
       appState.storageWriteGuard = conf.storageWriteGuard ?? true;
       appState.uiToolbar = conf.uiToolbar ?? {};
       appState.uiPresetLayout = conf.uiPresetLayout ?? {};

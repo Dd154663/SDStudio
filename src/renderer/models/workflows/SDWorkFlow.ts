@@ -255,6 +255,10 @@ const SDImageGenHandler = async (
   if (shared.type === 'SDImageGenEasy') {
     job.uc = shared.uc + ', ' + preset.uc;
   }
+  // 씬 전용 네거티브 — 항상 최종 네거티브 뒤에 붙인다(이 씬에만 적용)
+  if (sceneObj.sceneUC) {
+    job.uc = job.uc + ', ' + sceneObj.sceneUC;
+  }
   const param: TaskParam = {
     session: session,
     job: job,

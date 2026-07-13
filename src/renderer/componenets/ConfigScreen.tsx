@@ -801,6 +801,7 @@ const PersonalTab = ({
   classicSceneCard, setClassicSceneCard,
   fullWordAc, setFullWordAc,
   legacyProjectMode, setLegacyProjectMode,
+  legacySceneEditor, setLegacySceneEditor,
   uiFont, setUiFont,
   uiClassicFinish, setUiClassicFinish,
 }: any) => (
@@ -862,6 +863,17 @@ const PersonalTab = ({
       </div>
       <p className="text-xs text-faint mt-1 ml-6">
         켜면 기존 프로젝트 선택 드롭다운을 유지합니다(드로어·드롭다운·그리드 공존). 끄면 드롭다운 대신 드로어 열기 버튼으로 표시됩니다.
+      </p>
+    </div>
+    <hr className="line-color" />
+    <div>
+      <div className="flex items-center gap-2">
+        <input type="checkbox" id="cfgLegacyScene" checked={legacySceneEditor}
+          onChange={(e) => setLegacySceneEditor(e.target.checked)} />
+        <label htmlFor="cfgLegacyScene" className="text-sm gray-label">레거시 씬 편집 모드</label>
+      </div>
+      <p className="text-xs text-faint mt-1 ml-6">
+        켜면 씬 에디터를 예전 전체 폼(프롬프트·조합 에디터·씬 캐릭터 프롬프트·미리보기 탭)으로 표시합니다. 끄면 중간 프롬프트와 씬 전용 네거티브 두 입력만 노출합니다.
       </p>
     </div>
   </div>
@@ -1853,6 +1865,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [delayTime, setDelayTime] = useState(0);
   const [classicSceneCard, setClassicSceneCard] = useState(false);
   const [legacyProjectMode, setLegacyProjectMode] = useState(false);
+  const [legacySceneEditor, setLegacySceneEditor] = useState(false);
   const [storageWriteGuard, setStorageWriteGuard] = useState(true);
   const [fullWordAc, setFullWordAc] = useState(appState.fullWordAutoComplete);
   const [trueDark, setTrueDark] = useState(false);
@@ -1888,6 +1901,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setDelayTime(config.delayTime ?? 0);
       setClassicSceneCard(config.classicSceneCard ?? false);
       setLegacyProjectMode(config.legacyProjectMode ?? false);
+      setLegacySceneEditor(config.legacySceneEditor ?? false);
       setStorageWriteGuard(config.storageWriteGuard ?? true);
       setTrueDark(config.trueDark ?? false);
       setExportConcurrency(config.exportConcurrency ?? (isMobile ? 2 : 4));
@@ -2019,6 +2033,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       delayTime: delayTime,
       classicSceneCard: classicSceneCard,
       legacyProjectMode: legacyProjectMode,
+      legacySceneEditor: legacySceneEditor,
       storageWriteGuard: storageWriteGuard,
       exportConcurrency: exportConcurrency,
       defaultExportFolder: defaultExportFolder || undefined,
@@ -2035,6 +2050,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     if (old.useCUDA !== useGPU) localAIService.modelChanged();
     appState.classicSceneCard = classicSceneCard;
     appState.legacyProjectMode = legacyProjectMode;
+    appState.legacySceneEditor = legacySceneEditor;
     appState.uiToolbar = uiToolbar;
     appState.uiLayoutTemplate = uiLayoutTemplate;
     appState.uiFloatViewMode = uiFloatViewMode;
@@ -2072,7 +2088,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'system':
         return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency }} />;
       case 'personal':
-        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish }} />;
+        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, legacySceneEditor, setLegacySceneEditor, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish }} />;
       case 'customization':
         return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark }} />;
       case 'toolbar':
@@ -2101,6 +2117,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       delayTime !== (savedCfg.delayTime ?? 0) ||
       classicSceneCard !== (savedCfg.classicSceneCard ?? false) ||
       legacyProjectMode !== (savedCfg.legacyProjectMode ?? false) ||
+      legacySceneEditor !== (savedCfg.legacySceneEditor ?? false) ||
       storageWriteGuard !== (savedCfg.storageWriteGuard ?? true) ||
       exportConcurrency !== (savedCfg.exportConcurrency ?? (isMobile ? 2 : 4)) ||
       (defaultExportFolder || '') !== (savedCfg.defaultExportFolder ?? '') ||

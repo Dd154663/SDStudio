@@ -281,6 +281,7 @@ export interface IScene extends IAbstractScene {
   sceneCharacterPrompts?: CharacterPrompt[]; // 씬 전용 캐릭터 프롬프트
   useSceneCharacterPrompts?: boolean; // 씬 전용 캐릭터 프롬프트 사용 여부
   sceneCharacterUC?: string; // 씬 전용 캐릭터 네거티브 프롬프트
+  sceneUC?: string; // 씬 전용 네거티브 프롬프트 (생성 시 네거티브 뒤에 붙임)
 }
 
 export class Scene extends AbstractScene implements IScene {
@@ -290,6 +291,7 @@ export class Scene extends AbstractScene implements IScene {
   @observable accessor sceneCharacterPrompts: CharacterPrompt[] = []; // 씬 전용 캐릭터 프롬프트
   @observable accessor useSceneCharacterPrompts: boolean = false; // 씬 전용 캐릭터 프롬프트 사용 여부
   @observable accessor sceneCharacterUC: string = ''; // 씬 전용 캐릭터 네거티브 프롬프트
+  @observable accessor sceneUC: string = ''; // 씬 전용 네거티브 프롬프트 (생성 시 네거티브 뒤에 붙임)
 
   static fromJSON(json: IScene): Scene {
     const scene = new Scene();
@@ -305,6 +307,7 @@ export class Scene extends AbstractScene implements IScene {
     }));
     scene.useSceneCharacterPrompts = json.useSceneCharacterPrompts || false;
     scene.sceneCharacterUC = json.sceneCharacterUC || '';
+    scene.sceneUC = json.sceneUC || '';
     return scene;
   }
 
@@ -317,6 +320,7 @@ export class Scene extends AbstractScene implements IScene {
       sceneCharacterPrompts: this.sceneCharacterPrompts,
       useSceneCharacterPrompts: this.useSceneCharacterPrompts,
       sceneCharacterUC: this.sceneCharacterUC,
+      sceneUC: this.sceneUC,
     };
   }
 }

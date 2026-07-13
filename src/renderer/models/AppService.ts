@@ -183,6 +183,8 @@ export class AppState {
   // 레거시 프로젝트 모드: true면 기존 드롭다운 선택 UI 유지(드로어/드롭다운/그리드 공존),
   // false(기본)면 드롭다운을 제거하고 드로어 트리거로 전환
   @observable accessor legacyProjectMode: boolean = false;
+  // 켜면 씬 에디터를 예전 전체 폼(4탭)으로 표시. 기본 false = 단순 씬 에디터(중간 프롬프트+씬 네거티브)
+  @observable accessor legacySceneEditor: boolean = false;
 
   // 툴바 버튼 배치 커스터마이징(config.uiToolbar 미러). 빈 객체 = 기본 등급.
   // 배치 해석은 resolveToolbar(uiLayout.ts) 단일 출처.

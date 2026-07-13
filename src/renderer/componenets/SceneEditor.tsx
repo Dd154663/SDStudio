@@ -109,6 +109,10 @@ interface BigPromptEditorProps {
   queuePrompt: (middle: string, callback: (path: string) => void) => void;
   setMainImage?: (path: string) => void;
   initialImagePath?: string;
+  // 단순 씬 에디터 모드: 프리셋 폼 대신 중간 프롬프트 + 씬 전용 네거티브 두 입력만 노출
+  simplified?: boolean;
+  getSceneUC?: () => string;
+  setSceneUC?: (txt: string) => void;
 }
 
 export const BigPromptEditor = observer(
@@ -125,6 +129,9 @@ export const BigPromptEditor = observer(
     initialImagePath,
     queuePrompt,
     setMainImage,
+    simplified,
+    getSceneUC,
+    setSceneUC,
   }: BigPromptEditorProps) => {
     const [image, setImage] = useState<string | undefined>(undefined);
     const [path, setPath] = useState<string | undefined>(initialImagePath);
@@ -166,7 +173,7 @@ export const BigPromptEditor = observer(
 
     return (
       <div className="flex h-full flex-col md:flex-row">
-        {promptOpen && (
+        {!simplified && promptOpen && (
           <FloatView
             key="float"
             priority={0}
@@ -188,46 +195,73 @@ export const BigPromptEditor = observer(
             />
           </FloatView>
         )}
-        <div
-          className={
-            'overflow-auto flex-none h-1/3 md:h-auto md:w-1/3 md:h-full'
-          }
-        >
-          <div className={'hidden md:block h-full '}>
-            <UnionPreSetEditor
-              general={general}
-              type={type}
-              preset={preset}
-              meta={meta}
-              shared={shared}
-              middlePromptMode={true}
-              getMiddlePrompt={getMiddlePrompt}
-              onMiddlePromptChange={setMiddlePrompt}
-              getCharacterMiddlePrompt={getCharacterMiddlePrompt}
-              onCharacterMiddlePromptChange={setCharacterMiddlePrompt}
-            />
-          </div>
-          <div className="h-full flex flex-col p-2 overflow-hidden block md:hidden">
-            <div className="flex-none font-bold text-sub">
-              중위 프롬프트 (이 씬에만 적용됨):
+        {simplified ? (
+          <div className="overflow-auto flex-none h-1/3 md:h-auto md:w-1/3 md:h-full">
+            <div className="h-full flex flex-col p-2 gap-2 overflow-hidden">
+              <div className="flex-none font-bold text-sub">
+                중간 프롬프트 (이 씬에만 적용됨)
+              </div>
+              <div className="flex-[2] min-h-0 overflow-hidden">
+                <PromptEditTextArea
+                  disabled={editDisabled}
+                  onChange={setMiddlePrompt}
+                  value={getMiddlePrompt()}
+                />
+              </div>
+              <div className="flex-none font-bold text-sub">
+                씬 전용 네거티브 프롬프트 (이 씬에만 적용됨)
+              </div>
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <PromptEditTextArea
+                  disabled={editDisabled}
+                  onChange={(t) => setSceneUC && setSceneUC(t)}
+                  value={getSceneUC ? getSceneUC() : ''}
+                />
+              </div>
             </div>
-            <div className="flex-1 p-2 overflow-hidden">
-              <PromptEditTextArea
-                disabled={editDisabled}
-                onChange={setMiddlePrompt}
-                value={getMiddlePrompt()}
+          </div>
+        ) : (
+          <div
+            className={
+              'overflow-auto flex-none h-1/3 md:h-auto md:w-1/3 md:h-full'
+            }
+          >
+            <div className={'hidden md:block h-full '}>
+              <UnionPreSetEditor
+                general={general}
+                type={type}
+                preset={preset}
+                meta={meta}
+                shared={shared}
+                middlePromptMode={true}
+                getMiddlePrompt={getMiddlePrompt}
+                onMiddlePromptChange={setMiddlePrompt}
+                getCharacterMiddlePrompt={getCharacterMiddlePrompt}
+                onCharacterMiddlePromptChange={setCharacterMiddlePrompt}
               />
             </div>
-            <div className="flex-none">
-              <button
-                className={`round-button back-sky`}
-                onClick={() => setPromptOpen(true)}
-              >
-                상세설정
-              </button>
+            <div className="h-full flex flex-col p-2 overflow-hidden block md:hidden">
+              <div className="flex-none font-bold text-sub">
+                중위 프롬프트 (이 씬에만 적용됨):
+              </div>
+              <div className="flex-1 p-2 overflow-hidden">
+                <PromptEditTextArea
+                  disabled={editDisabled}
+                  onChange={setMiddlePrompt}
+                  value={getMiddlePrompt()}
+                />
+              </div>
+              <div className="flex-none">
+                <button
+                  className={`round-button back-sky`}
+                  onClick={() => setPromptOpen(true)}
+                >
+                  상세설정
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
         <div className="flex-none h-2/3 md:h-auto md:w-2/3 overflow-hidden">
           <div className="flex flex-col h-full">
             <div className="flex-1 overflow-hidden">
@@ -913,6 +947,26 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
     scene.slots[0][0].characterPrompts[index] = txt;
   };
 
+  const legacyScene = appState.legacySceneEditor;
+
+  // 씬 전용 네거티브 프롬프트 (단순 씬 에디터 전용) — 생성 시 네거티브 뒤에 붙는다
+  const getSceneUC = () => scene.sceneUC ?? '';
+  const setSceneUC = (txt: string) => {
+    scene.sceneUC = txt;
+  };
+
+  // 단순 씬 에디터에선 slots 가 비어 있으면 중간 프롬프트 입력이 불가하므로 첫 조각을 보장한다.
+  useEffect(() => {
+    if (
+      !legacyScene &&
+      (scene.slots.length === 0 || scene.slots[0].length === 0)
+    ) {
+      scene.slots = [
+        [PromptPiece.fromJSON({ prompt: '', characterPrompts: [], id: uuidv4() })],
+      ];
+    }
+  }, [scene, legacyScene]);
+
   const queuePrompt = async (
     middle: string,
     callback: (path: string) => void,
@@ -988,6 +1042,9 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
       queuePrompt={queuePrompt}
       setMainImage={setMainImage}
       initialImagePath={getMainImagePath(curSession!, scene)}
+      simplified={!legacyScene}
+      getSceneUC={getSceneUC}
+      setSceneUC={setSceneUC}
     />
   );
 
@@ -1128,47 +1185,51 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
           </button>
         </div>
         <div className="flex-1 overflow-hidden">
-          <TabComponent
-            defaultActiveTab={initialTab}
-            tabs={[
-              {
-                label: '프롬프트 에디터',
-                content: BigEditor,
-                emoji: <FaImages />,
-              },
-              {
-                label: '조합 에디터',
-                content: SmallSlotEditor,
-                emoji: <FaPuzzlePiece />,
-              },
-              {
-                label: '씬 캐릭터 프롬프트',
-                content: <SceneCharacterPromptEditor scene={scene} />,
-                emoji: <FaUser />,
-              },
-              {
-                label: '최종 프롬프트 미리보기',
-                content: PromptPreview,
-                emoji: <FaSearch />,
-                onClick: () => {
-                  (async () => {
-                    try {
-                      const prompts = await workFlowService.createPrompts(
-                        type,
-                        curSession!,
-                        scene,
-                        preset,
-                        shared,
-                      );
-                      setPreviews(prompts);
-                    } catch (e: any) {
-                      setPreviewError(e.message);
-                    }
-                  })();
+          {legacyScene ? (
+            <TabComponent
+              defaultActiveTab={initialTab}
+              tabs={[
+                {
+                  label: '프롬프트 에디터',
+                  content: BigEditor,
+                  emoji: <FaImages />,
                 },
-              },
-            ]}
-          />
+                {
+                  label: '조합 에디터',
+                  content: SmallSlotEditor,
+                  emoji: <FaPuzzlePiece />,
+                },
+                {
+                  label: '씬 캐릭터 프롬프트',
+                  content: <SceneCharacterPromptEditor scene={scene} />,
+                  emoji: <FaUser />,
+                },
+                {
+                  label: '최종 프롬프트 미리보기',
+                  content: PromptPreview,
+                  emoji: <FaSearch />,
+                  onClick: () => {
+                    (async () => {
+                      try {
+                        const prompts = await workFlowService.createPrompts(
+                          type,
+                          curSession!,
+                          scene,
+                          preset,
+                          shared,
+                        );
+                        setPreviews(prompts);
+                      } catch (e: any) {
+                        setPreviewError(e.message);
+                      }
+                    })();
+                  },
+                },
+              ]}
+            />
+          ) : (
+            BigEditor
+          )}
         </div>
       </div>
     </div>
