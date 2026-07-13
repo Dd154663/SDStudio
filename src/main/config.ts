@@ -44,7 +44,7 @@ export interface Config {
   imageSaveSettings?: ImageSaveSettings;
   classicSceneCard?: boolean;
   legacyProjectMode?: boolean;
-  /** 켜면 씬 에디터를 예전 전체 폼(4탭)으로 표시. 기본 false = 단순 씬 에디터 */
+  /** 켜면 씬 에디터 첫 탭을 예전 프리셋 폼으로 표시(4탭 구조는 항상 유지). 기본 false = 첫 탭 단순화 */
   legacySceneEditor?: boolean;
   exportConcurrency?: number;
   /** 이미지 export 시 기본 목표 폴더(데스크톱 전용 — 프리셋에 폴더가 없을 때 사용) */

@@ -873,7 +873,7 @@ const PersonalTab = ({
         <label htmlFor="cfgLegacyScene" className="text-sm gray-label">레거시 씬 편집 모드</label>
       </div>
       <p className="text-xs text-faint mt-1 ml-6">
-        켜면 씬 에디터를 예전 전체 폼(프롬프트·조합 에디터·씬 캐릭터 프롬프트·미리보기 탭)으로 표시합니다. 끄면 중간 프롬프트와 씬 전용 네거티브 두 입력만 노출합니다.
+        켜면 씬 에디터 첫 탭(프롬프트 에디터)을 예전 프리셋 형태의 전체 폼으로 표시합니다. 끄면 중간 프롬프트와 씬 전용 네거티브 두 입력만 노출합니다. (조합 에디터·씬 캐릭터 프롬프트·미리보기 탭은 항상 표시)
       </p>
     </div>
   </div>

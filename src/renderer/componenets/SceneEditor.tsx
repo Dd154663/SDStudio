@@ -1048,6 +1048,42 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
     />
   );
 
+  // 조합 에디터·씬 캐릭터 프롬프트·미리보기 — 레거시 탭과 단순 모드 고급 편집 오버레이가 공유
+  const runPreview = () => {
+    (async () => {
+      try {
+        const prompts = await workFlowService.createPrompts(
+          type,
+          curSession!,
+          scene,
+          preset,
+          shared,
+        );
+        setPreviews(prompts);
+      } catch (e: any) {
+        setPreviewError(e.message);
+      }
+    })();
+  };
+  const advancedTabs = [
+    {
+      label: '조합 에디터',
+      content: SmallSlotEditor,
+      emoji: <FaPuzzlePiece />,
+    },
+    {
+      label: '씬 캐릭터 프롬프트',
+      content: <SceneCharacterPromptEditor scene={scene} />,
+      emoji: <FaUser />,
+    },
+    {
+      label: '최종 프롬프트 미리보기',
+      content: PromptPreview,
+      emoji: <FaSearch />,
+      onClick: runPreview,
+    },
+  ];
+
   const resolutionOptions = Object.entries(resolutionMap)
     .map(([key, value]) => {
       const resolVal =
@@ -1185,51 +1221,17 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
           </button>
         </div>
         <div className="flex-1 overflow-hidden">
-          {legacyScene ? (
-            <TabComponent
-              defaultActiveTab={initialTab}
-              tabs={[
-                {
-                  label: '프롬프트 에디터',
-                  content: BigEditor,
-                  emoji: <FaImages />,
-                },
-                {
-                  label: '조합 에디터',
-                  content: SmallSlotEditor,
-                  emoji: <FaPuzzlePiece />,
-                },
-                {
-                  label: '씬 캐릭터 프롬프트',
-                  content: <SceneCharacterPromptEditor scene={scene} />,
-                  emoji: <FaUser />,
-                },
-                {
-                  label: '최종 프롬프트 미리보기',
-                  content: PromptPreview,
-                  emoji: <FaSearch />,
-                  onClick: () => {
-                    (async () => {
-                      try {
-                        const prompts = await workFlowService.createPrompts(
-                          type,
-                          curSession!,
-                          scene,
-                          preset,
-                          shared,
-                        );
-                        setPreviews(prompts);
-                      } catch (e: any) {
-                        setPreviewError(e.message);
-                      }
-                    })();
-                  },
-                },
-              ]}
-            />
-          ) : (
-            BigEditor
-          )}
+          <TabComponent
+            defaultActiveTab={initialTab}
+            tabs={[
+              {
+                label: '프롬프트 에디터',
+                content: BigEditor,
+                emoji: <FaImages />,
+              },
+              ...advancedTabs,
+            ]}
+          />
         </div>
       </div>
     </div>
