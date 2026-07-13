@@ -52,7 +52,16 @@ import {
   workFlowService,
 } from '../models';
 import { getMainImagePath } from '../models/ImageService';
-import { highlightPrompt, lowerPromptNode } from '../models/PromptService';
+import {
+  highlightPrompt,
+  lowerPromptNode,
+  combinationCount,
+} from '../models/PromptService';
+import {
+  CombinationList,
+  sceneCharColors,
+  pieceLabel,
+} from './CombinationList';
 import { renameScene, mergeScene } from '../models/SessionService';
 import {
   Scene,
@@ -408,6 +417,17 @@ const CharacterPromptsEditor = observer(
 export const SlotPiece = observer(
   ({ scene, piece, removePiece, moveSlotPiece, style }: SlotPieceProps) => {
     const [showCharacterPrompts, setShowCharacterPrompts] = useState(false);
+    // 셀 이름 인라인 편집 상태. 편집 확정 시 빈 값은 undefined 로 정규화(직렬화 오염 방지).
+    const [editingName, setEditingName] = useState(false);
+    const [nameDraft, setNameDraft] = useState('');
+    // 표시용 열/행 인덱스(기본명 "열-행" 계산).
+    const colIndex = scene.slots.findIndex((slot) => slot.includes(piece));
+    const rowIndex = colIndex >= 0 ? scene.slots[colIndex].indexOf(piece) : 0;
+    const commitName = () => {
+      const trimmed = nameDraft.trim();
+      piece.name = trimmed === '' ? undefined : trimmed;
+      setEditingName(false);
+    };
     const [{ isDragging }, drag, preview] = useDrag(
       () => ({
         type: 'slot',
@@ -468,6 +488,38 @@ export const SlotPiece = observer(
           </FloatView>
         )}
 
+        {/* 셀 이름(표시/편집) — 조합 미리보기 라벨과 연동. 클릭 시 인라인 입력. */}
+        <div className="mb-1 flex items-center gap-1 select-none">
+          {editingName ? (
+            <input
+              autoFocus
+              className="gray-input text-xs px-1 py-0.5 w-full min-w-0"
+              value={nameDraft}
+              placeholder={pieceLabel(piece, colIndex, rowIndex)}
+              onChange={(e) => setNameDraft(e.currentTarget.value)}
+              onBlur={commitName}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitName();
+                if (e.key === 'Escape') setEditingName(false);
+              }}
+            />
+          ) : (
+            <button
+              className="btn-ghost flex items-center gap-1 px-1 py-0.5 rounded text-xs text-muted max-w-full"
+              title="셀 이름 편집"
+              onClick={() => {
+                if (!moveSlotPiece) return;
+                setNameDraft(piece.name ?? '');
+                setEditingName(true);
+              }}
+            >
+              <span className="truncate">
+                {pieceLabel(piece, colIndex, rowIndex)}
+              </span>
+              <FaEdit size={11} className="flex-none text-faint" />
+            </button>
+          )}
+        </div>
         <div className={'mb-3 h-12 w-28 md:h-24 md:w-48'}>
           <PromptEditTextArea
             whiteBg
@@ -525,7 +577,7 @@ interface SceneCharacterPromptEditorProps {
   scene: Scene;
 }
 
-const sceneCharColors = ['#38bdf8', '#f472b6', '#a78bfa', '#fb923c', '#4ade80', '#facc15', '#f87171', '#94a3b8'];
+// sceneCharColors 는 CombinationList.tsx 로 이동(단일 출처) — 여기서는 import.
 
 const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEditorProps) => {
   const [showCoordMap, setShowCoordMap] = useState(false);
@@ -819,8 +871,48 @@ export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
     }
   };
 
-  return (
-    <div className="flex flex-col w-full">
+  // 간략/자세히 토글 — 데스크톱 패널·모바일 오버레이 각각 자체 상태(지속 저장 불필요).
+  const [detailed, setDetailed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileDetailed, setMobileDetailed] = useState(false);
+
+  // 조합 미리보기 패널 본문(헤더 토글 + 리스트) — 데스크톱 우측·모바일 오버레이 공유.
+  const previewPanel = (
+    isDetailed: boolean,
+    setIsDetailed: (v: boolean) => void,
+    title: string,
+  ) => (
+    <div className="flex flex-col h-full min-h-0">
+      <div className="flex-none flex items-center gap-2 px-2 py-1.5 border-b line-color">
+        <span className="text-sm font-bold text-body flex-none">{title}</span>
+        <div className="ml-auto flex gap-1">
+          <button
+            className={
+              'round-button btn-sm ' + (isDetailed ? 'back-gray' : 'back-sky')
+            }
+            onClick={() => setIsDetailed(false)}
+          >
+            간략
+          </button>
+          <button
+            className={
+              'round-button btn-sm ' + (isDetailed ? 'back-sky' : 'back-gray')
+            }
+            onClick={() => setIsDetailed(true)}
+          >
+            자세히
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <CombinationList scene={scene} detailed={isDetailed} />
+      </div>
+    </div>
+  );
+
+  // 열/행 그리드 본체(조각 카드 + 추가 버튼) — 좌측 래퍼에 배치.
+  const gridContent = (
+    <>
       <div className="flex items-center gap-1 px-2 pt-1 pb-0.5">
         <Tooltip content={"각 열의 프롬프트를 조합하여 열×행의 모든 경우의 수만큼 이미지를 생성합니다.\n열 추가: 오른쪽 + 버튼 | 행 추가: 열 하단 + 버튼"}>
           <span className="text-yellow-500 dark:text-yellow-400 cursor-help" onMouseDown={(e) => e.stopPropagation()}>
@@ -828,7 +920,7 @@ export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
           </span>
         </Tooltip>
       </div>
-      <div className="flex w-full">
+      <div className="flex">
         {scene.slots.map((slot, slotIndex) => (
           <div key={slotIndex}>
             {slot.map((piece, pieceIndex) => (
@@ -875,6 +967,51 @@ export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
           <FaPlus />
         </button>
       </div>
+    </>
+  );
+
+  return (
+    <div className="flex flex-row w-full h-full min-h-0">
+      {/* 모바일 오버레이 — 셀과 미리보기 동시 배치 대신 FloatView 로 분리 */}
+      {isMobile && mobileOpen && (
+        <FloatView priority={0} onEscape={() => setMobileOpen(false)}>
+          <div className="w-full h-full flex flex-col">
+            <div className="flex-1 min-h-0">
+              {previewPanel(mobileDetailed, setMobileDetailed, '조합 미리보기')}
+            </div>
+            <div className="flex-none p-2">
+              <button
+                className="round-button back-gray w-full"
+                onClick={() => setMobileOpen(false)}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </FloatView>
+      )}
+
+      {/* 좌측: 열/행 그리드(자체 스크롤) */}
+      <div className="flex-1 min-w-0 flex flex-col min-h-0">
+        {isMobile && (
+          <div className="flex-none px-2 pt-1">
+            <button
+              className="round-button btn-sm back-sky"
+              onClick={() => setMobileOpen(true)}
+            >
+              조합 미리보기 ({combinationCount(scene as unknown as Scene)}종)
+            </button>
+          </div>
+        )}
+        <div className="flex-1 min-h-0 overflow-auto">{gridContent}</div>
+      </div>
+
+      {/* 우측 패널: 데스크톱 전용 상시 배치 */}
+      {!isMobile && (
+        <div className="w-64 flex-none border-l line-color flex flex-col min-h-0">
+          {previewPanel(detailed, setDetailed, detailed ? '조합 목록' : '조합 미리보기')}
+        </div>
+      )}
     </div>
   );
 });
