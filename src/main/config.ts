@@ -46,6 +46,9 @@ export interface Config {
   legacyProjectMode?: boolean;
   /** 켜면 씬 에디터 첫 탭을 예전 프리셋 폼으로 표시(4탭 구조는 항상 유지). 기본 false = 첫 탭 단순화 */
   legacySceneEditor?: boolean;
+  /** 조합 에디터 뷰 모드(개인 지속). 'card'=기존 카드 격자 / 'list'=컴팩트 목록.
+   *  미설정 = 데스크톱 card·모바일 list(App 로드 시 결정). 옵셔널 = 하위호환. */
+  uiCombinationView?: 'card' | 'list';
   exportConcurrency?: number;
   /** 이미지 export 시 기본 목표 폴더(데스크톱 전용 — 프리셋에 폴더가 없을 때 사용) */
   defaultExportFolder?: string;

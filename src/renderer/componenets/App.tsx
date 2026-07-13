@@ -260,6 +260,9 @@ export const App = observer(() => {
       appState.classicSceneCard = conf.classicSceneCard ?? false;
       appState.legacyProjectMode = conf.legacyProjectMode ?? false;
       appState.legacySceneEditor = conf.legacySceneEditor ?? false;
+      // 조합 에디터 뷰: 미설정 시 데스크톱=카드·모바일=목록(모바일 편집 편의).
+      appState.uiCombinationView =
+        conf.uiCombinationView ?? (isMobile ? 'list' : 'card');
       appState.storageWriteGuard = conf.storageWriteGuard ?? true;
       appState.uiToolbar = conf.uiToolbar ?? {};
       appState.uiPresetLayout = conf.uiPresetLayout ?? {};

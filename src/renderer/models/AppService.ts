@@ -185,6 +185,8 @@ export class AppState {
   @observable accessor legacyProjectMode: boolean = false;
   // 켜면 씬 에디터 첫 탭을 예전 프리셋 폼으로 표시(4탭 구조는 항상 유지). 기본 false = 첫 탭 단순화(중간 프롬프트+씬 네거티브)
   @observable accessor legacySceneEditor: boolean = false;
+  // 조합 에디터 뷰 모드(config.uiCombinationView 미러). 'card'=카드 격자 / 'list'=컴팩트 목록.
+  @observable accessor uiCombinationView: 'card' | 'list' = 'card';
 
   // 툴바 버튼 배치 커스터마이징(config.uiToolbar 미러). 빈 객체 = 기본 등급.
   // 배치 해석은 resolveToolbar(uiLayout.ts) 단일 출처.
