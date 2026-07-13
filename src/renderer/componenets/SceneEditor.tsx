@@ -30,12 +30,6 @@ import {
   FaToggleOff,
   FaEdit,
   FaQuestionCircle,
-  FaThLarge,
-  FaList,
-  FaExpand,
-  FaChevronDown,
-  FaChevronRight,
-  FaEye,
 } from 'react-icons/fa';
 import Denque from 'denque';
 import { writeFileSync } from 'original-fs';
@@ -58,12 +52,7 @@ import {
   workFlowService,
 } from '../models';
 import { getMainImagePath } from '../models/ImageService';
-import {
-  highlightPrompt,
-  lowerPromptNode,
-  enumerateCombinations,
-  combinationCount,
-} from '../models/PromptService';
+import { highlightPrompt, lowerPromptNode } from '../models/PromptService';
 import { renameScene, mergeScene } from '../models/SessionService';
 import {
   Scene,
@@ -344,27 +333,6 @@ interface SlotPieceProps {
   removePiece?: (piece: PromptPiece) => void;
   moveSlotPiece?: (from: string, to: string) => void;
   style?: React.CSSProperties;
-  colIndex?: number;
-  rowIndex?: number;
-  onExpand?: () => void;
-}
-
-// 조합 에디터 열 색상(영향 범위 표기) — 씬 캐릭터 팔레트 재사용.
-const columnColor = (i: number) => sceneCharColors[i % sceneCharColors.length];
-// 조각(셀) 기본 표시 이름 = "열-행"(1-based).
-const pieceDefaultName = (col: number, row: number) => `${col + 1}-${row + 1}`;
-const pieceLabel = (piece: PromptPiece, col: number, row: number) =>
-  piece.name && piece.name.trim() ? piece.name.trim() : pieceDefaultName(col, row);
-
-// 조합 에디터 뷰 모드 지속(appState 즉시 반영 + config 저장). applyCompanionSlots 패턴.
-async function applyCombinationView(next: 'card' | 'list'): Promise<void> {
-  appState.uiCombinationView = next;
-  try {
-    const config = await backend.getConfig();
-    await backend.setConfig({ ...config, uiCombinationView: next });
-  } catch (e) {
-    console.error('조합 에디터 뷰 저장 실패:', e);
-  }
 }
 
 interface CharacterPromptsEditorProps {
@@ -438,16 +406,7 @@ const CharacterPromptsEditor = observer(
 );
 
 export const SlotPiece = observer(
-  ({
-    scene,
-    piece,
-    removePiece,
-    moveSlotPiece,
-    style,
-    colIndex,
-    rowIndex,
-    onExpand,
-  }: SlotPieceProps) => {
+  ({ scene, piece, removePiece, moveSlotPiece, style }: SlotPieceProps) => {
     const [showCharacterPrompts, setShowCharacterPrompts] = useState(false);
     const [{ isDragging }, drag, preview] = useDrag(
       () => ({
@@ -509,42 +468,6 @@ export const SlotPiece = observer(
           </FloatView>
         )}
 
-        <div className="flex items-center gap-1 mb-1 w-28 md:w-48">
-          {colIndex !== undefined && (
-            <span
-              className="flex-none w-2.5 h-2.5 rounded-sm"
-              style={{ backgroundColor: columnColor(colIndex) }}
-            />
-          )}
-          <input
-            className="gray-input text-xs h-6 min-w-0 flex-1"
-            type="text"
-            disabled={!moveSlotPiece}
-            value={piece.name ?? ''}
-            placeholder={
-              colIndex !== undefined && rowIndex !== undefined
-                ? pieceDefaultName(colIndex, rowIndex)
-                : '이름'
-            }
-            onChange={(e) => {
-              if (!moveSlotPiece) return;
-              piece.name = e.currentTarget.value;
-            }}
-          />
-          {onExpand && (
-            <Tooltip content="확대 편집">
-              <button
-                className="flex-none active:brightness-90 hover:brightness-95 text-sky-600 dark:text-sky-400"
-                onClick={() => {
-                  if (!moveSlotPiece) return;
-                  onExpand();
-                }}
-              >
-                <FaExpand size={15} />
-              </button>
-            </Tooltip>
-          )}
-        </div>
         <div className={'mb-3 h-12 w-28 md:h-24 md:w-48'}>
           <PromptEditTextArea
             whiteBg
@@ -849,246 +772,6 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
   );
 });
 
-// 조각(셀) 확대 편집기 — 카드/목록 공용 FloatView 내용. 이름·큰 프롬프트·활성·캐릭터 프롬프트.
-interface PieceExpandEditorProps {
-  piece: PromptPiece;
-  colIndex: number;
-  rowIndex: number;
-  editable: boolean;
-  onClose: () => void;
-}
-const PieceExpandEditor = observer(
-  ({ piece, colIndex, rowIndex, editable, onClose }: PieceExpandEditorProps) => {
-    const [showChars, setShowChars] = useState(false);
-    if (showChars) {
-      return (
-        <CharacterPromptsEditor
-          piece={piece}
-          onClose={() => setShowChars(false)}
-        />
-      );
-    }
-    return (
-      <div className="w-full h-full flex flex-col p-4 gap-3 overflow-hidden">
-        <div className="flex-none flex items-center gap-2">
-          <span
-            className="flex-none w-4 h-4 rounded-full"
-            style={{ backgroundColor: columnColor(colIndex) }}
-          />
-          <label className="gray-label flex-none">이름</label>
-          <input
-            className="gray-input flex-1 min-w-0"
-            type="text"
-            disabled={!editable}
-            value={piece.name ?? ''}
-            placeholder={pieceDefaultName(colIndex, rowIndex)}
-            onChange={(e) => {
-              piece.name = e.currentTarget.value;
-            }}
-          />
-        </div>
-        <div className="flex-none flex items-center gap-3 flex-wrap">
-          <label className="gray-label flex items-center gap-2">
-            <input
-              type="checkbox"
-              disabled={!editable}
-              checked={piece.enabled === undefined || piece.enabled}
-              onChange={(e) => {
-                piece.enabled = e.currentTarget.checked;
-              }}
-            />
-            활성화
-          </label>
-          <button
-            className="round-button back-sky h-8"
-            onClick={() => setShowChars(true)}
-          >
-            <FaUser className="inline mr-1" />
-            캐릭터 프롬프트
-            {piece.characterPrompts.length > 0
-              ? ` (${piece.characterPrompts.length})`
-              : ''}
-          </button>
-        </div>
-        <div className="flex-none font-bold text-sub">프롬프트</div>
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <PromptEditTextArea
-            disabled={!editable}
-            value={piece.prompt}
-            onChange={(s) => {
-              piece.prompt = s;
-            }}
-          />
-        </div>
-        <div className="flex-none">
-          <button
-            className="round-button back-gray h-8 w-full"
-            onClick={onClose}
-          >
-            닫기
-          </button>
-        </div>
-      </div>
-    );
-  },
-);
-
-// 조합 미리보기 — 총 개수·열 색상 범례·조합별 색상 구분 프롬프트. 실시간(관찰) 파생, 저장 안 함.
-const PREVIEW_RENDER_CAP = 100;
-const CombinationPreview = observer(
-  ({ scene }: { scene: { slots: PromptPieceSlot[] } }) => {
-    const [open, setOpen] = useState(true);
-    const sc = scene as unknown as Scene;
-    const total = combinationCount(sc);
-    const columns = scene.slots.length;
-    // total 이 커도 앞 PREVIEW_RENDER_CAP 종은 항상 표시(전체 열거는 상한으로 조기 중단).
-    const combos =
-      open && total > 0 ? enumerateCombinations(sc, PREVIEW_RENDER_CAP) : [];
-    return (
-      <div className="mx-2 mb-2 border line-color rounded-lg overflow-hidden">
-        <button
-          type="button"
-          className="w-full flex items-center gap-2 px-3 py-2 bg-[var(--c-surface2)] text-left text-default"
-          onClick={() => setOpen(!open)}
-        >
-          <span className="flex-none">
-            {open ? <FaChevronDown /> : <FaChevronRight />}
-          </span>
-          <FaEye className="flex-none" />
-          <span className="font-bold flex-none">조합 미리보기</span>
-          <span
-            className={`flex-none ml-1 px-2 py-0.5 rounded-full text-white text-sm ${
-              total === 0 ? 'bg-red-500' : 'bg-green-600 dark:bg-green-500'
-            }`}
-          >
-            총 {total}종
-          </span>
-          {total === 0 && (
-            <span className="text-sm text-red-500 truncate">
-              활성 조각이 없는 열이 있어 생성되지 않습니다
-            </span>
-          )}
-        </button>
-        {open && (
-          <div className="p-3 max-h-72 overflow-auto">
-            {columns > 0 && (
-              <div className="flex flex-wrap gap-3 mb-3">
-                {scene.slots.map((_, ci) => (
-                  <span key={ci} className="flex items-center gap-1 text-sm">
-                    <span
-                      className="w-3 h-3 rounded-sm"
-                      style={{ backgroundColor: columnColor(ci) }}
-                    />
-                    열 {ci + 1}
-                  </span>
-                ))}
-              </div>
-            )}
-            {total === 0 ? (
-              <div className="text-sm text-muted">생성될 조합이 없습니다.</div>
-            ) : (
-              <>
-                {total > PREVIEW_RENDER_CAP && (
-                  <div className="text-sm text-muted mb-2">
-                    조합이 {total}종으로 많아 앞 {PREVIEW_RENDER_CAP}종만 표시합니다.
-                  </div>
-                )}
-                <div className="flex flex-col">
-                  {combos.map((combo, i) => {
-                    const segs = combo.filter(
-                      (seg) => seg.piece.prompt.trim() !== '',
-                    );
-                    return (
-                      <div
-                        key={i}
-                        className="py-1.5 border-b line-color last:border-b-0"
-                      >
-                        {/* 조합 라벨(조각 이름) — 색 배경 + 흰 글자(양 테마 가독) */}
-                        <div className="flex flex-wrap gap-1 mb-1">
-                          {combo.map((seg, j) => {
-                            const row = sc.slots[seg.columnIndex].indexOf(
-                              seg.piece,
-                            );
-                            return (
-                              <span
-                                key={j}
-                                className="px-1.5 rounded text-xs text-white"
-                                style={{
-                                  backgroundColor: columnColor(seg.columnIndex),
-                                }}
-                              >
-                                {pieceLabel(seg.piece, seg.columnIndex, row)}
-                              </span>
-                            );
-                          })}
-                        </div>
-                        {/* 최종 중간 프롬프트 — 열별 색 pill(영향 범위 표기) */}
-                        <div className="flex flex-wrap items-center gap-1">
-                          {segs.length === 0 ? (
-                            <span className="text-faint text-sm">
-                              (빈 프롬프트)
-                            </span>
-                          ) : (
-                            segs.map((seg, j) => (
-                              <span
-                                key={j}
-                                className="px-1.5 py-0.5 rounded text-xs text-white break-words"
-                                style={{
-                                  backgroundColor: columnColor(seg.columnIndex),
-                                }}
-                              >
-                                {seg.piece.prompt.trim()}
-                              </span>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  },
-);
-
-// 초심자 안내 배너(접이식). 툴팁 1줄을 대체 — 목적/사용법/개수 규칙을 설명.
-const CombinationHelpBanner = observer(() => {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="mx-2 mt-1 mb-2 border line-color rounded-lg bg-[var(--c-surface2)] text-sm">
-      <button
-        type="button"
-        className="w-full flex items-center gap-2 px-3 py-2 text-left text-default"
-        onClick={() => setOpen(!open)}
-      >
-        <span className="flex-none">
-          {open ? <FaChevronDown /> : <FaChevronRight />}
-        </span>
-        <FaQuestionCircle className="flex-none text-yellow-500 dark:text-yellow-400" />
-        <span className="font-bold">조합 에디터란?</span>
-      </button>
-      {open && (
-        <div className="px-3 pb-3 text-muted leading-relaxed">
-          같은 씬 안에서 <b>여러 바리에이션을 한 번에 생성</b>하는 도구입니다.
-          <br />각 <b>열</b>에 후보 프롬프트(조각)를 넣으면, 생성할 때{' '}
-          <b>열마다 하나씩 골라</b> 조합합니다. 만들어지는 이미지 수 = 열1 조각수
-          × 열2 조각수 × … 입니다.
-          <br />
-          예) 열1 [봄, 여름] · 열2 [낮, 밤] → 봄·낮 / 봄·밤 / 여름·낮 / 여름·밤 =
-          4종.
-          <br />
-          아래 <b>조합 미리보기</b>에서 실제로 몇 종이 어떻게 조합되는지 색으로
-          확인할 수 있습니다.
-        </div>
-      )}
-    </div>
-  );
-});
-
 export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
   useEffect(() => {
     for (const slot of scene.slots) {
@@ -1099,14 +782,6 @@ export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
       }
     }
   }, [scene]);
-
-  const [expand, setExpand] = useState<{
-    piece: PromptPiece;
-    col: number;
-    row: number;
-    editable: boolean;
-  } | null>(null);
-  const view = appState.uiCombinationView;
 
   const removePiece = (slot: PromptPieceSlot, pieceIndex: number) => {
     // 1열 1행 슬롯은 프롬프트 에디터와 연동되므로 삭제 불가
@@ -1144,196 +819,62 @@ export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
     }
   };
 
-  const newPiece = () =>
-    PromptPiece.fromJSON({
-      prompt: '',
-      characterPrompts: [],
-      enabled: true,
-      id: uuidv4(),
-    });
-  const addRow = (slot: PromptPieceSlot) => slot.push(newPiece());
-  const addColumn = () => scene.slots.push([newPiece()]);
-  const isEnabled = (p: PromptPiece) => p.enabled === undefined || p.enabled;
-
   return (
-    <div className="flex flex-col w-full h-full overflow-auto">
-      {expand && (
-        <FloatView priority={0} onEscape={() => setExpand(null)}>
-          <PieceExpandEditor
-            piece={expand.piece}
-            colIndex={expand.col}
-            rowIndex={expand.row}
-            editable={expand.editable}
-            onClose={() => setExpand(null)}
-          />
-        </FloatView>
-      )}
-
-      <CombinationHelpBanner />
-
-      {/* 뷰 토글 */}
-      <div className="flex items-center gap-2 px-2 mb-1">
-        <span className="gray-label">보기:</span>
+    <div className="flex flex-col w-full">
+      <div className="flex items-center gap-1 px-2 pt-1 pb-0.5">
+        <Tooltip content={"각 열의 프롬프트를 조합하여 열×행의 모든 경우의 수만큼 이미지를 생성합니다.\n열 추가: 오른쪽 + 버튼 | 행 추가: 열 하단 + 버튼"}>
+          <span className="text-yellow-500 dark:text-yellow-400 cursor-help" onMouseDown={(e) => e.stopPropagation()}>
+            <FaQuestionCircle size={15} />
+          </span>
+        </Tooltip>
+      </div>
+      <div className="flex w-full">
+        {scene.slots.map((slot, slotIndex) => (
+          <div key={slotIndex}>
+            {slot.map((piece, pieceIndex) => (
+              <SlotPiece
+                key={piece.id!}
+                scene={scene}
+                piece={piece}
+                removePiece={(piece: PromptPiece) =>
+                  removePiece(slot, slot.indexOf(piece)!)
+                }
+                moveSlotPiece={moveSlotPiece}
+              />
+            ))}
+            <button
+              className="p-2 m-2 w-14 back-lllgray clickable rounded-xl flex justify-center"
+              onClick={() => {
+                slot.push(
+                  PromptPiece.fromJSON({
+                    prompt: '',
+                    characterPrompts: [],
+                    enabled: true,
+                    id: uuidv4(),
+                  }),
+                );
+              }}
+            >
+              <FaPlus />
+            </button>
+          </div>
+        ))}
         <button
-          className={`round-button h-8 ${
-            view === 'card' ? 'back-sky' : 'back-gray'
-          }`}
-          onClick={() => applyCombinationView('card')}
+          className="p-2 m-2 h-14 flex items-center back-lllgray clickable rounded-xl"
+          onClick={() => {
+            scene.slots.push([
+              PromptPiece.fromJSON({
+                prompt: '',
+                characterPrompts: [],
+                enabled: true,
+                id: uuidv4(),
+              }),
+            ]);
+          }}
         >
-          <FaThLarge className="inline mr-1" />
-          카드
-        </button>
-        <button
-          className={`round-button h-8 ${
-            view === 'list' ? 'back-sky' : 'back-gray'
-          }`}
-          onClick={() => applyCombinationView('list')}
-        >
-          <FaList className="inline mr-1" />
-          목록
+          <FaPlus />
         </button>
       </div>
-
-      <CombinationPreview scene={scene} />
-
-      {view === 'list' ? (
-        /* 컴팩트 목록 뷰 — 열 섹션마다 얇은 전체폭 행. 모바일 편집 편의. */
-        <div className="flex flex-col px-2 pb-2 gap-3">
-          {scene.slots.map((slot, ci) => (
-            <div
-              key={ci}
-              className="border line-color rounded-lg overflow-hidden"
-            >
-              <div
-                className="flex items-center gap-2 px-2 py-1.5 bg-[var(--c-surface2)]"
-                style={{ borderLeft: `4px solid ${columnColor(ci)}` }}
-              >
-                <span
-                  className="w-3 h-3 rounded-sm flex-none"
-                  style={{ backgroundColor: columnColor(ci) }}
-                />
-                <span className="font-bold flex-none">열 {ci + 1}</span>
-                <span className="text-faint text-xs flex-none">
-                  {slot.filter(isEnabled).length}/{slot.length} 활성
-                </span>
-              </div>
-              {slot.map((piece, ri) => (
-                <div
-                  key={piece.id!}
-                  className="flex items-center gap-2 px-2 py-1.5 border-t line-color"
-                >
-                  <input
-                    className="gray-input text-xs h-8 w-16 md:w-24 flex-none"
-                    type="text"
-                    value={piece.name ?? ''}
-                    placeholder={pieceDefaultName(ci, ri)}
-                    onChange={(e) => {
-                      piece.name = e.currentTarget.value;
-                    }}
-                  />
-                  <div className="flex-1 min-w-0 h-9">
-                    <PromptEditTextArea
-                      value={piece.prompt}
-                      onChange={(s) => {
-                        piece.prompt = s;
-                      }}
-                    />
-                  </div>
-                  <Tooltip content="활성화">
-                    <input
-                      type="checkbox"
-                      className="flex-none"
-                      checked={isEnabled(piece)}
-                      onChange={(e) => {
-                        piece.enabled = e.currentTarget.checked;
-                      }}
-                    />
-                  </Tooltip>
-                  <Tooltip content="확대 편집 / 캐릭터 프롬프트">
-                    <button
-                      className="flex-none relative text-sky-600 dark:text-sky-400 active:brightness-90 hover:brightness-95"
-                      onClick={() =>
-                        setExpand({
-                          piece,
-                          col: ci,
-                          row: ri,
-                          editable: true,
-                        })
-                      }
-                    >
-                      <FaExpand size={18} />
-                      {piece.characterPrompts.length > 0 && (
-                        <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center text-[10px]">
-                          {piece.characterPrompts.length}
-                        </span>
-                      )}
-                    </button>
-                  </Tooltip>
-                  <button
-                    className="flex-none text-red-500 dark:text-red-400 active:brightness-90 hover:brightness-95"
-                    onClick={() => removePiece(slot, ri)}
-                  >
-                    <FaTrash size={18} />
-                  </button>
-                </div>
-              ))}
-              <button
-                className="w-full flex items-center justify-center gap-1 py-1.5 border-t line-color back-lllgray clickable text-sm"
-                onClick={() => addRow(slot)}
-              >
-                <FaPlus size={12} /> 행 추가
-              </button>
-            </div>
-          ))}
-          <button
-            className="flex items-center justify-center gap-1 py-2 back-lllgray clickable rounded-lg"
-            onClick={addColumn}
-          >
-            <FaPlus size={12} /> 열 추가
-          </button>
-        </div>
-      ) : (
-        /* 카드 뷰 — 기존 격자(열=세로 스택). 각 카드에 이름·확대 추가. */
-        <div className="flex">
-          {scene.slots.map((slot, slotIndex) => (
-            <div key={slotIndex}>
-              {slot.map((piece, pieceIndex) => (
-                <SlotPiece
-                  key={piece.id!}
-                  scene={scene}
-                  piece={piece}
-                  colIndex={slotIndex}
-                  rowIndex={pieceIndex}
-                  onExpand={() =>
-                    setExpand({
-                      piece,
-                      col: slotIndex,
-                      row: pieceIndex,
-                      editable: true,
-                    })
-                  }
-                  removePiece={(piece: PromptPiece) =>
-                    removePiece(slot, slot.indexOf(piece)!)
-                  }
-                  moveSlotPiece={moveSlotPiece}
-                />
-              ))}
-              <button
-                className="p-2 m-2 w-14 back-lllgray clickable rounded-xl flex justify-center"
-                onClick={() => addRow(slot)}
-              >
-                <FaPlus />
-              </button>
-            </div>
-          ))}
-          <button
-            className="p-2 m-2 h-14 flex items-center back-lllgray clickable rounded-xl"
-            onClick={addColumn}
-          >
-            <FaPlus />
-          </button>
-        </div>
-      )}
     </div>
   );
 });
