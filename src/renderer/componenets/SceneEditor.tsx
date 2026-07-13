@@ -941,10 +941,9 @@ const CombinationPreview = observer(
     const sc = scene as unknown as Scene;
     const total = combinationCount(sc);
     const columns = scene.slots.length;
+    // total 이 커도 앞 PREVIEW_RENDER_CAP 종은 항상 표시(전체 열거는 상한으로 조기 중단).
     const combos =
-      open && total > 0 && total <= PREVIEW_RENDER_CAP
-        ? enumerateCombinations(sc, PREVIEW_RENDER_CAP)
-        : [];
+      open && total > 0 ? enumerateCombinations(sc, PREVIEW_RENDER_CAP) : [];
     return (
       <div className="mx-2 mb-2 border line-color rounded-lg overflow-hidden">
         <button
@@ -957,8 +956,9 @@ const CombinationPreview = observer(
           <FaEye className="flex-none" />
           <span className="font-bold flex-none">조합 미리보기</span>
           <span
-            className="flex-none ml-1 px-2 py-0.5 rounded-full text-white text-sm"
-            style={{ backgroundColor: total === 0 ? '#f87171' : '#22c55e' }}
+            className={`flex-none ml-1 px-2 py-0.5 rounded-full text-white text-sm ${
+              total === 0 ? 'bg-red-500' : 'bg-green-600 dark:bg-green-500'
+            }`}
           >
             총 {total}종
           </span>
@@ -985,64 +985,67 @@ const CombinationPreview = observer(
             )}
             {total === 0 ? (
               <div className="text-sm text-muted">생성될 조합이 없습니다.</div>
-            ) : total > PREVIEW_RENDER_CAP ? (
-              <div className="text-sm text-muted">
-                조합이 {total}종으로 많아 목록 표시를 생략합니다. (미리보기 상한{' '}
-                {PREVIEW_RENDER_CAP}종)
-              </div>
             ) : (
-              <div className="flex flex-col">
-                {combos.map((combo, i) => {
-                  const segs = combo.filter(
-                    (seg) => seg.piece.prompt.trim() !== '',
-                  );
-                  return (
-                    <div
-                      key={i}
-                      className="py-1.5 border-b line-color last:border-b-0"
-                    >
-                      <div className="flex flex-wrap gap-1 mb-1">
-                        {combo.map((seg, j) => {
-                          const row = sc.slots[seg.columnIndex].indexOf(
-                            seg.piece,
-                          );
-                          return (
-                            <span
-                              key={j}
-                              className="px-1.5 rounded text-xs text-white"
-                              style={{
-                                backgroundColor: columnColor(seg.columnIndex),
-                              }}
-                            >
-                              {pieceLabel(seg.piece, seg.columnIndex, row)}
-                            </span>
-                          );
-                        })}
-                      </div>
-                      <div className="break-words text-sm">
-                        {segs.length === 0 ? (
-                          <span className="text-faint">(빈 프롬프트)</span>
-                        ) : (
-                          segs.map((seg, j) => (
-                            <span key={j}>
-                              {j > 0 && (
-                                <span className="text-faint">, </span>
-                              )}
+              <>
+                {total > PREVIEW_RENDER_CAP && (
+                  <div className="text-sm text-muted mb-2">
+                    조합이 {total}종으로 많아 앞 {PREVIEW_RENDER_CAP}종만 표시합니다.
+                  </div>
+                )}
+                <div className="flex flex-col">
+                  {combos.map((combo, i) => {
+                    const segs = combo.filter(
+                      (seg) => seg.piece.prompt.trim() !== '',
+                    );
+                    return (
+                      <div
+                        key={i}
+                        className="py-1.5 border-b line-color last:border-b-0"
+                      >
+                        {/* 조합 라벨(조각 이름) — 색 배경 + 흰 글자(양 테마 가독) */}
+                        <div className="flex flex-wrap gap-1 mb-1">
+                          {combo.map((seg, j) => {
+                            const row = sc.slots[seg.columnIndex].indexOf(
+                              seg.piece,
+                            );
+                            return (
                               <span
+                                key={j}
+                                className="px-1.5 rounded text-xs text-white"
                                 style={{
-                                  color: columnColor(seg.columnIndex),
+                                  backgroundColor: columnColor(seg.columnIndex),
+                                }}
+                              >
+                                {pieceLabel(seg.piece, seg.columnIndex, row)}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        {/* 최종 중간 프롬프트 — 열별 색 pill(영향 범위 표기) */}
+                        <div className="flex flex-wrap items-center gap-1">
+                          {segs.length === 0 ? (
+                            <span className="text-faint text-sm">
+                              (빈 프롬프트)
+                            </span>
+                          ) : (
+                            segs.map((seg, j) => (
+                              <span
+                                key={j}
+                                className="px-1.5 py-0.5 rounded text-xs text-white break-words"
+                                style={{
+                                  backgroundColor: columnColor(seg.columnIndex),
                                 }}
                               >
                                 {seg.piece.prompt.trim()}
                               </span>
-                            </span>
-                          ))
-                        )}
+                            ))
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
         )}
