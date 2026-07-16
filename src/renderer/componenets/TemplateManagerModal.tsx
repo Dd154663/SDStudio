@@ -524,6 +524,37 @@ export const TemplateWorkflowEditor = observer(
           />
         ) : (
           <div className="flex flex-col gap-4">
+            {/* 일괄 생성 진입 — 최상단 배치(2026-07-16 실기 피드백: 배치만
+                원하는 사용자가 스크롤 없이 바로 진입). 폴더 템플릿 전용,
+                전역 템플릿에선 비활성+안내 노출 (스펙 1항). */}
+            <div className="flex justify-end">
+              <Tooltip
+                content={
+                  batchFolder
+                    ? '캐릭터 프리셋 × 씬 템플릿 조합으로 자식 프로젝트 일괄 생성'
+                    : '일괄 생성 기능은 폴더를 지정해서 사용해야 합니다.'
+                }
+              >
+                <button
+                  className={`px-4 py-2 rounded-lg text-sm font-medium btn-solid-purple ${
+                    batchFolder ? '' : 'opacity-50 cursor-not-allowed'
+                  }`}
+                  onClick={() => {
+                    if (!batchFolder) {
+                      appState.pushMessage(
+                        '일괄 생성 기능은 폴더를 지정해서 사용해야 합니다.',
+                      );
+                      return;
+                    }
+                    // 편집 중 프롬프트까지 베이스에 반영한 뒤 위저드 진입
+                    commitPrompts();
+                    setBatchOpen(true);
+                  }}
+                >
+                  일괄 생성
+                </button>
+              </Tooltip>
+            </div>
             {/* 프롬프트 영역 (스타일 프리셋 1벌) */}
             <div className={sectionCls}>
               <div className="flex items-center gap-2">
@@ -1179,34 +1210,8 @@ export const TemplateWorkflowEditor = observer(
                 </div>
               )}
             </div>
-            {/* 일괄 생성(폴더 템플릿 전용) + 명시적 저장 */}
-            <div className="flex justify-between items-center gap-2">
-              <Tooltip
-                content={
-                  batchFolder
-                    ? '캐릭터 프리셋 × 씬 템플릿 조합으로 자식 프로젝트 일괄 생성'
-                    : '일괄 생성 기능은 폴더를 지정해서 사용해야 합니다.'
-                }
-              >
-                <button
-                  className={`px-4 py-2 rounded-lg text-sm font-medium btn-solid-purple ${
-                    batchFolder ? '' : 'opacity-50 cursor-not-allowed'
-                  }`}
-                  onClick={() => {
-                    if (!batchFolder) {
-                      appState.pushMessage(
-                        '일괄 생성 기능은 폴더를 지정해서 사용해야 합니다.',
-                      );
-                      return;
-                    }
-                    // 편집 중 프롬프트까지 베이스에 반영한 뒤 위저드 진입
-                    commitPrompts();
-                    setBatchOpen(true);
-                  }}
-                >
-                  일괄 생성
-                </button>
-              </Tooltip>
+            {/* 명시적 저장 (일괄 생성 버튼은 최상단으로 이동) */}
+            <div className="flex justify-end">
               <button
                 className="px-5 py-2 rounded-lg text-sm font-medium btn-solid-sky"
                 onClick={saveTemplate}

@@ -10,7 +10,6 @@ import {
   FaEdit,
   FaFolder,
   FaFont,
-  FaGlobe,
   FaPen,
   FaTrash,
   FaUserAlt,
@@ -487,10 +486,8 @@ export const GlobalCharacterPresetCard = ({
       >
         <GlobalCardImage entry={entry} className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-black/0 md:group-hover:bg-black/40 transition-colors duration-200 pointer-events-none" />
-        <div className="absolute top-1.5 left-1.5 bg-purple-500 text-white text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow z-10">
-          <FaGlobe size={9} />
-          글로벌
-        </div>
+        {/* "글로벌" 코너 배지 제거 — 글로벌이 기본 화면이 되면서(주종 역전,
+            2026-07-16) 더 이상 구분 표기가 불필요. */}
         {cyclingMode && (
           <div
             className="absolute top-2 right-2 z-30 cursor-pointer"

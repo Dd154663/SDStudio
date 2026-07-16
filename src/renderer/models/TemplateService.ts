@@ -345,6 +345,15 @@ export class TemplateService {
     await this.save();
   }
 
+  // 이 템플릿을 참조하는 적용 기록이 하나라도 있는지 — 빈 폴더 템플릿의
+  // 자동 삭제 가드용 (지우면 기록이 함께 정리돼 자식 ♟/보호가 사라진다).
+  hasApplications(templateId: string): boolean {
+    for (const byTpl of Object.values(this.templateApplications)) {
+      if (byTpl[templateId]) return true;
+    }
+    return false;
+  }
+
   // 이 템플릿을 상속 중(inherited=true)인 자식 프로젝트 이름 목록 — 전파 대상 조회.
   listInheritedChildren(templateId: string): string[] {
     const out: string[] = [];

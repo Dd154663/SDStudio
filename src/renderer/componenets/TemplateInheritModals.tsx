@@ -143,7 +143,12 @@ export const FolderTemplateModal = observer(
         commitRef.current();
         const e = projectTemplateService.get(localId);
         if (e && projectTemplateService.isEmptyTemplate(e)) {
-          projectTemplateService.delete(localId).catch(() => {});
+          // 적용 기록(일괄 생성 자식 등)이 있으면 빈 템플릿이라도 삭제하지
+          // 않는다 — 삭제가 기록 정리를 동반해 자식 ♟/보호가 사라진다
+          // (2026-07-16 엣지 가드).
+          if (!templateService.hasApplications(e.id)) {
+            projectTemplateService.delete(localId).catch(() => {});
+          }
           onClose();
           return;
         }

@@ -203,8 +203,9 @@ export const CharacterPresetEditor = observer(({
   const [isNew, setIsNew] = useState(false);
   const [editTarget, setEditTarget] = useState<'local' | 'global'>('local');
   const [editGlobalId, setEditGlobalId] = useState<string | null>(null);
-  // 로컬/글로벌 뷰 전환
-  const [globalView, setGlobalView] = useState(false);
+  // 로컬/글로벌 뷰 전환 — 글로벌이 기본 화면(주종 역전, 2026-07-16 합의).
+  // 로컬은 하위호환용 서브 뷰로 토글 진입.
+  const [globalView, setGlobalView] = useState(true);
   // 글로벌 폴더 필터 칩 (1단계 평면 폴더 — 배치 생성 P0):
   // '__all__' 전체 / '__unfiled__' 미분류 / 그 외 = 폴더 이름
   const [folderFilter, setFolderFilter] = useState<string>('__all__');

@@ -5,6 +5,7 @@ import ModalOverlay from './ModalOverlay';
 import { GlobalFolderFilterChips } from './CharacterPresetCards';
 import {
   globalCharacterPresetService,
+  projectTemplateService,
   sessionService,
   templateService,
 } from '../models';
@@ -134,6 +135,16 @@ export const BatchCreateModal = observer(
           );
     const sceneTemplates = templateService.listSceneTemplates();
 
+    // 베이스(폴더 템플릿) 프롬프트 상태 — 프롬프트를 깜빡한 채 대량 생성하는
+    // 실수 방지용 확인 표시+실행 가드 (2026-07-16 실기 피드백)
+    const baseEntry = projectTemplateService.get(templateId);
+    const basePreset: any = baseEntry?.preset;
+    const basePromptFilled = !!(
+      basePreset &&
+      (String(basePreset.frontPrompt ?? '').trim() ||
+        String(basePreset.backPrompt ?? '').trim())
+    );
+
     const chars = entries
       .filter((e) => selectedChars.has(e.id))
       .map((e) => ({ id: e.id, name: e.name }));
@@ -217,14 +228,27 @@ export const BatchCreateModal = observer(
     const execute = () => {
       if (combos.length === 0 || running) return;
       // 조합 50개 이상이면 확인 1회 (차단 아님 — 스펙 8항)
-      if (combos.length >= 50) {
+      const confirmCount = () => {
+        if (combos.length >= 50) {
+          appState.pushDialog({
+            type: 'confirm',
+            text: `${combos.length}개 프로젝트를 생성합니다. 계속할까요?`,
+            callback: run,
+          });
+        } else {
+          run();
+        }
+      };
+      // 빈 프롬프트 가드 (2026-07-16 실기 피드백) — 베이스 프롬프트를 깜빡한 채
+      // 대량 생성하면 전부 엉망으로 만들어지므로 명시적으로 한 번 확인한다.
+      if (!basePromptFilled) {
         appState.pushDialog({
           type: 'confirm',
-          text: `${combos.length}개 프로젝트를 생성합니다. 계속할까요?`,
-          callback: run,
+          text: '베이스 프롬프트(상위/하위)가 비어 있습니다.\n자식 프로젝트가 프롬프트 없이 생성됩니다 — 그래도 계속할까요?\n(템플릿 창에서 프롬프트를 먼저 설정하는 것을 권장합니다)',
+          callback: confirmCount,
         });
       } else {
-        run();
+        confirmCount();
       }
     };
 
@@ -258,6 +282,30 @@ export const BatchCreateModal = observer(
             됩니다. 생성된 자식의 캐릭터·씬 영역은 이후 재적용·전파에서
             보호됩니다.
           </p>
+
+          {/* 베이스 프롬프트 확인 — 위저드 안에서 바로 상태 확인 (실수 방지) */}
+          <div className={sectionCls}>
+            <span className="text-sm font-semibold text-default">
+              베이스 프롬프트
+            </span>
+            {basePromptFilled ? (
+              <div className="text-xs text-body break-words max-h-16 overflow-y-auto">
+                {String(basePreset.frontPrompt ?? '').trim() ||
+                  String(basePreset.backPrompt ?? '').trim()}
+              </div>
+            ) : (
+              <div className="text-xs text-red-500 dark:text-red-400">
+                비어 있음 — 이대로 생성하면 자식 프로젝트에 프롬프트가 없습니다.
+                템플릿 창에서 프롬프트를 설정한 뒤 다시 진입하는 것을
+                권장합니다.
+              </div>
+            )}
+            <div className="text-xs text-faint">
+              캐릭터 프롬프트 {basePreset?.characterPrompts?.length ?? 0} ·
+              바이브 {baseEntry?.vibes?.length ?? 0} · 레퍼런스{' '}
+              {baseEntry?.characterReferences?.length ?? 0}
+            </div>
+          </div>
 
           {/* 캐릭터 축 */}
           <div className={sectionCls}>
