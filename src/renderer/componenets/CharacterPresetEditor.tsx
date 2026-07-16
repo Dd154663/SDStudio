@@ -41,6 +41,7 @@ import {
   globalImageBackend,
   CharacterPresetCard,
   GlobalCharacterPresetCard,
+  GlobalFolderFilterChips,
 } from './CharacterPresetCards';
 import { CharacterPresetInnerEditor } from './CharacterPresetInnerEditor';
 
@@ -204,6 +205,9 @@ export const CharacterPresetEditor = observer(({
   const [editGlobalId, setEditGlobalId] = useState<string | null>(null);
   // 로컬/글로벌 뷰 전환
   const [globalView, setGlobalView] = useState(false);
+  // 글로벌 폴더 필터 칩 (1단계 평면 폴더 — 배치 생성 P0):
+  // '__all__' 전체 / '__unfiled__' 미분류 / 그 외 = 폴더 이름
+  const [folderFilter, setFolderFilter] = useState<string>('__all__');
   const [, setGlobalVersion] = useState(0);
   useEffect(() => {
     const onChanged = () => setGlobalVersion((v) => v + 1);
@@ -481,7 +485,75 @@ export const CharacterPresetEditor = observer(({
     }
   };
 
+  // ─── 글로벌 폴더 (1단계 평면) ───
+  const handleMoveToFolder = async (entry: IGlobalCharacterPresetEntry) => {
+    const folders = globalCharacterPresetService.listFolders();
+    // 'f:' 접두로 폴더 이름과 예약 값('__new__' 등)의 충돌을 차단
+    const items = [
+      ...folders.map((f) => ({ text: `📁 ${f}`, value: 'f:' + f })),
+      { text: '➕ 새 폴더...', value: '__new__' },
+      ...(entry.folder
+        ? [{ text: '📂 루트로 이동 (미분류)', value: '__root__' }]
+        : []),
+    ];
+    const v = await appState.pushDialogAsync({
+      type: 'select',
+      text: `"${entry.name}"을(를) 어느 폴더로 이동할까요?`,
+      items,
+    });
+    if (!v) return;
+    try {
+      if (v === '__new__') {
+        const name = await appState.pushDialogAsync({
+          type: 'input-confirm',
+          text: '새 폴더 이름을 입력해주세요',
+        });
+        if (!name || !name.trim()) return;
+        await globalCharacterPresetService.setFolder(entry.id, name);
+      } else if (v === '__root__') {
+        await globalCharacterPresetService.setFolder(entry.id, null);
+      } else {
+        await globalCharacterPresetService.setFolder(entry.id, v.slice(2));
+      }
+    } catch (e: any) {
+      appState.pushMessage(e.message || '폴더 이동에 실패했습니다');
+    }
+  };
+
+  const handleRenameFolder = (folder: string) => {
+    appState.pushDialog({
+      type: 'input-confirm',
+      text: `폴더 "${folder}"의 새 이름을 입력해주세요`,
+      callback: async (v?: string) => {
+        if (!v || !v.trim()) return;
+        try {
+          await globalCharacterPresetService.renameFolder(folder, v);
+          // 현재 필터가 이 폴더였으면 새 이름을 따라간다
+          setFolderFilter((prev) => (prev === folder ? v.trim() : prev));
+        } catch (e: any) {
+          appState.pushMessage(e.message || '폴더 이름 변경에 실패했습니다');
+        }
+      },
+    });
+  };
+
   const globalEntries = globalCharacterPresetService.list();
+  const globalFolders = globalCharacterPresetService.listFolders();
+  // 필터 대상 폴더가 소멸(항목 전부 이동)했으면 전체로 폴백
+  const effectiveFolderFilter =
+    folderFilter === '__all__' ||
+    folderFilter === '__unfiled__' ||
+    globalFolders.includes(folderFilter)
+      ? folderFilter
+      : '__all__';
+  const visibleGlobalEntries =
+    effectiveFolderFilter === '__all__'
+      ? globalEntries
+      : globalEntries.filter((e) =>
+          effectiveFolderFilter === '__unfiled__'
+            ? !e.folder
+            : e.folder === effectiveFolderFilter,
+        );
 
   // 편집 모드
   if (editingPreset) {
@@ -635,23 +707,39 @@ export const CharacterPresetEditor = observer(({
         </div>
       </div>
 
+      {/* 폴더 필터 칩 (글로벌 뷰, 1단계 평면 폴더 — 공유 컴포넌트, 모바일 가로 스크롤) */}
+      {globalView && (
+        <div className="mb-2">
+          <GlobalFolderFilterChips
+            value={effectiveFolderFilter}
+            onChange={setFolderFilter}
+            onRenameFolder={handleRenameFolder}
+          />
+        </div>
+      )}
+
       {/* 프리셋 선택 바 (순차 생성 모드): 실제 선택 카드 바로 위에 두어 조작 위치를 일치시킴 */}
       {cyclingMode && (
         <div className="mb-2 flex items-center justify-between">
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
             프리셋 선택 (
             {globalView ? selectedGlobalIds.size : selectedPresets.size}/
-            {globalView ? globalEntries.length : presets.length})
+            {globalView ? visibleGlobalEntries.length : presets.length})
           </span>
           <button
             onClick={() => {
               if (globalView) {
+                // 폴더 필터 중엔 보이는 항목만 토글 — 다른 폴더의 선택은 유지
                 const all =
-                  globalEntries.length > 0 &&
-                  globalEntries.every((e) => selectedGlobalIds.has(e.id));
-                setSelectedGlobalIds(
-                  new Set<string>(all ? [] : globalEntries.map((e) => e.id)),
+                  visibleGlobalEntries.length > 0 &&
+                  visibleGlobalEntries.every((e) =>
+                    selectedGlobalIds.has(e.id),
+                  );
+                const next = new Set(selectedGlobalIds);
+                visibleGlobalEntries.forEach((e) =>
+                  all ? next.delete(e.id) : next.add(e.id),
                 );
+                setSelectedGlobalIds(next);
               } else {
                 const all =
                   presets.length > 0 &&
@@ -665,8 +753,8 @@ export const CharacterPresetEditor = observer(({
           >
             {(
               globalView
-                ? globalEntries.length > 0 &&
-                  globalEntries.every((e) => selectedGlobalIds.has(e.id))
+                ? visibleGlobalEntries.length > 0 &&
+                  visibleGlobalEntries.every((e) => selectedGlobalIds.has(e.id))
                 : presets.length > 0 &&
                   presets.every((p) => selectedPresets.has(p.name))
             )
@@ -699,11 +787,13 @@ export const CharacterPresetEditor = observer(({
               </span>
             </div>
           )}
-          {globalEntries.map((entry, i) => (
+          {visibleGlobalEntries.map((entry) => (
             <GlobalCharacterPresetCard
               key={entry.id}
               entry={entry}
-              index={i}
+              // 드래그 정렬은 전체 목록 기준 인덱스로 동작해야 한다
+              // (폴더 필터로 걸러진 화면 인덱스와 다름)
+              index={globalEntries.indexOf(entry)}
               isEasyMode={isEasyMode}
               cyclingMode={cyclingMode}
               selected={selectedGlobalIds.has(entry.id)}
@@ -717,6 +807,7 @@ export const CharacterPresetEditor = observer(({
               onMove={(from, to) =>
                 globalCharacterPresetService.reorder(from, to)
               }
+              onMoveToFolder={() => handleMoveToFolder(entry)}
             />
           ))}
         </div>

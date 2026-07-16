@@ -44,27 +44,15 @@ import {
   ReapplyTemplateModal,
 } from './TemplateInheritModals';
 import { TemplateManagerModal } from './TemplateManagerModal';
+// 폴더 색상 팔레트 (hex, 단일 출처 folderColors.ts). 미지정 폴더는 기본색을 사용한다.
+import {
+  FOLDER_COLORS,
+  DEFAULT_FOLDER_COLOR,
+  withAlpha,
+} from './folderColors';
 
 const naturalCmp = (a: string, b: string) =>
   a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-
-// 폴더 색상 팔레트 (hex). 미지정 폴더는 기본색을 사용한다.
-const FOLDER_COLORS = [
-  '#64748b', // slate
-  '#ef4444', // red
-  '#f97316', // orange
-  '#f59e0b', // amber
-  '#22c55e', // green
-  '#14b8a6', // teal
-  '#0ea5e9', // sky (기본)
-  '#6366f1', // indigo
-  '#a855f7', // purple
-  '#ec4899', // pink
-];
-const DEFAULT_FOLDER_COLOR = '#0ea5e9';
-
-// hex 색상에 알파를 붙여 옅은 배경을 만든다. (아이콘 배지/드롭 피드백 등 소형 색 강조용)
-const withAlpha = (hex: string, alpha: string) => hex + alpha;
 
 // 프로젝트 행. 모듈 레벨 컴포넌트(안정적 정체성)라 드래그 중 리렌더에도 언마운트되지 않는다.
 const ProjectRow = observer(
@@ -109,7 +97,13 @@ const ProjectRow = observer(
     const isFav = sessionService.isFavorite(name);
     const isSceneTpl = templateService.isSceneTemplate(name);
     // 폴더 템플릿 상속 중(♟) — 적용 기록에 inherited=true 가 있는 경우
-    const isInherited = !!templateService.getInheritedApplication(name);
+    const inheritedApp = templateService.getInheritedApplication(name);
+    const isInherited = !!inheritedApp;
+    // 배지 매직 컬러 — 상속 템플릿에 지정된 색(미지정=amber). active 행은
+    // 가독성을 위해 현행 밝은 톤을 유지하고 색을 오버라이드하지 않는다.
+    const inheritedBadgeColor = inheritedApp
+      ? projectTemplateService.get(inheritedApp.templateId)?.badgeColor
+      : undefined;
     const folder = showFolder ? sessionService.getFolderOf(name) : null;
     const folderColor = folder
       ? sessionService.getFolderColor(folder) || DEFAULT_FOLDER_COLOR
@@ -223,8 +217,17 @@ const ProjectRow = observer(
             <span
               aria-label="폴더 템플릿 상속 중"
               className={`flex-none flex items-center justify-center w-5 h-5 text-[13px] leading-none ${
-                active ? 'text-amber-100' : 'text-amber-500 dark:text-amber-400'
+                active
+                  ? 'text-amber-100'
+                  : inheritedBadgeColor
+                    ? ''
+                    : 'text-amber-500 dark:text-amber-400'
               }`}
+              style={
+                !active && inheritedBadgeColor
+                  ? { color: inheritedBadgeColor }
+                  : undefined
+              }
             >
               ♟
             </span>
@@ -423,6 +426,8 @@ const ProjectDrawer = observer(() => {
   useEffect(() => {
     if (!open) return;
     templateService.ensureLoaded();
+    // 배지(♚/♟) 색 판정용 — 템플릿 엔티티(badgeColor)도 필요
+    projectTemplateService.ensureLoaded();
     setFilter('');
     setColorPickerFor(null);
     setSelectMode(false);
@@ -1785,16 +1790,33 @@ const ProjectDrawer = observer(() => {
                             <span className="truncate flex-1 text-left">
                               {leafName}
                             </span>
-                            {templateService.getFolderTemplate(f) && (
-                              <Tooltip content="폴더 기본 템플릿 지정됨">
-                                <span
-                                  aria-label="폴더 기본 템플릿 지정됨"
-                                  className="flex-none text-[13px] leading-none text-amber-500 dark:text-amber-400"
-                                >
-                                  ♚
-                                </span>
-                              </Tooltip>
-                            )}
+                            {(() => {
+                              // ♚ 배지 — 템플릿에 배지 매직 컬러가 있으면 그 색으로
+                              const ft = templateService.getFolderTemplate(f);
+                              if (!ft) return null;
+                              const badgeColor = projectTemplateService.get(
+                                ft.templateId,
+                              )?.badgeColor;
+                              return (
+                                <Tooltip content="폴더 기본 템플릿 지정됨">
+                                  <span
+                                    aria-label="폴더 기본 템플릿 지정됨"
+                                    className={`flex-none text-[13px] leading-none ${
+                                      badgeColor
+                                        ? ''
+                                        : 'text-amber-500 dark:text-amber-400'
+                                    }`}
+                                    style={
+                                      badgeColor
+                                        ? { color: badgeColor }
+                                        : undefined
+                                    }
+                                  >
+                                    ♚
+                                  </span>
+                                </Tooltip>
+                              );
+                            })()}
                             <span className="text-xs text-faint font-normal flex-none">
                               {totalCount}
                             </span>

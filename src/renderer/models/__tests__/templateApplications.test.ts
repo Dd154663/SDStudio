@@ -173,6 +173,66 @@ describe('캐스케이드 — 프로젝트 rename/remove + 템플릿 삭제', ()
   });
 });
 
+describe('protectAreas — 배치 생성 보호 플래그 (R2 스펙 6항)', () => {
+  it('기록·라운드트립 유지', async () => {
+    const svc = new TemplateService();
+    await svc.recordApplication(
+      'P',
+      'tplA',
+      rec({ inherited: true, protectAreas: ['characterPresets', 'scenes'] }),
+    );
+    const svc2 = new TemplateService();
+    await svc2.ensureLoaded();
+    expect(svc2.getApplication('P', 'tplA')!.protectAreas).toEqual([
+      'characterPresets',
+      'scenes',
+    ]);
+  });
+
+  it('로드 방어: 알려진 영역 값만 통과, 빈 배열은 필드 생략', async () => {
+    files['templates.json'] = JSON.stringify({
+      version: 1,
+      templateApplications: {
+        P: {
+          t1: {
+            inherited: false,
+            presets: [],
+            characterPresetNames: [],
+            vibePaths: [],
+            referencePaths: [],
+            protectAreas: ['scenes', 'bogus', 123],
+          },
+          t2: {
+            inherited: false,
+            presets: [],
+            characterPresetNames: [],
+            vibePaths: [],
+            referencePaths: [],
+            protectAreas: 'not-array',
+          },
+        },
+      },
+    });
+    const svc = new TemplateService();
+    await svc.ensureLoaded();
+    expect(svc.getApplication('P', 't1')!.protectAreas).toEqual(['scenes']);
+    expect(svc.getApplication('P', 't2')!.protectAreas).toBeUndefined();
+  });
+
+  it('breakInheritance 후에도 보호 플래그 유지', async () => {
+    const svc = new TemplateService();
+    await svc.recordApplication(
+      'P',
+      'tplA',
+      rec({ inherited: true, protectAreas: ['characterPresets', 'scenes'] }),
+    );
+    await svc.breakInheritance('P');
+    const got = svc.getApplication('P', 'tplA')!;
+    expect(got.inherited).toBe(false);
+    expect(got.protectAreas).toEqual(['characterPresets', 'scenes']);
+  });
+});
+
 describe('로드 방어 — 형식이 깨진 기록 필터', () => {
   it('presets/이름 형식 검증 + 필드 기본값 채움', async () => {
     files['templates.json'] = JSON.stringify({

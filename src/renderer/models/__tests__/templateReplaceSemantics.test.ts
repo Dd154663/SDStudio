@@ -108,6 +108,42 @@ describe('removeRecordedInstances — 교체 의미론', () => {
     expect(shared.vibes).toEqual([{ path: 'userV' }]);
   });
 
+  it('보호 영역(배치 R2): skipCharacterPresets 로 캐릭터 인스턴스화 통째 스킵', async () => {
+    const svc = new ProjectTemplateService();
+    (svc as any).loaded = true;
+    (svc as any).templates = [
+      {
+        id: 'tpl',
+        name: 'T',
+        createdAt: 1,
+        updatedAt: 1,
+        preset: null,
+        characterPresets: [
+          { name: 'T캐릭', vibes: [], characterReferences: [] },
+        ],
+        vibes: [],
+        characterReferences: [],
+        scenes: [],
+      },
+    ];
+    const added: string[] = [];
+    const session: any = {
+      hasCharacterPreset: () => false,
+      addCharacterPreset: (p: any) => added.push(p.name),
+      presetShareds: new Map(),
+    };
+    // 보호(스킵): 추가 없음 + 기록용 결과도 비어 있음
+    const r1 = await svc.instantiateIntoSession(session, 'tpl', {
+      skipCharacterPresets: true,
+    });
+    expect(added).toEqual([]);
+    expect(r1.characterPresetNames).toEqual([]);
+    // 스킵 없이(기본): 정상 인스턴스화
+    const r2 = await svc.instantiateIntoSession(session, 'tpl');
+    expect(added).toEqual(['T캐릭']);
+    expect(r2.characterPresetNames).toEqual(['T캐릭']);
+  });
+
   it('빈 영역 스킵: vibes/refs 영역 스킵 시 shared 배열 불변', () => {
     const svc = new ProjectTemplateService();
     const session = makeFakeSession();

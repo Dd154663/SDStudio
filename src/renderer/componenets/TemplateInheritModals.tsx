@@ -3,6 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { FaCloudDownloadAlt } from 'react-icons/fa';
 import ModalOverlay from './ModalOverlay';
 import { TemplateWorkflowEditor } from './TemplateManagerModal';
+import { FOLDER_COLORS } from './folderColors';
 import {
   projectTemplateService,
   sessionService,
@@ -216,6 +217,46 @@ export const FolderTemplateModal = observer(
                   지정 해제
                 </button>
               </div>
+              {/* 배지 매직 컬러 — ♚(이 폴더)·♟(상속 자식) 배지를 이 색으로
+                  표시해 어느 부모의 자식인지 구분한다. 선택 즉시 저장. */}
+              {entry && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-muted flex-none">
+                    배지 색 (♚/♟)
+                  </span>
+                  {FOLDER_COLORS.map((c) => {
+                    const selected = entry.badgeColor === c;
+                    return (
+                      <button
+                        key={c}
+                        title={c}
+                        onClick={() =>
+                          projectTemplateService
+                            .setBadgeColor(entry.id, c)
+                            .catch(() => {})
+                        }
+                        className="w-6 h-6 rounded-full flex-none transition-transform hover:scale-110"
+                        style={{
+                          backgroundColor: c,
+                          boxShadow: selected
+                            ? `0 0 0 2px #fff, 0 0 0 4px ${c}`
+                            : 'none',
+                        }}
+                      />
+                    );
+                  })}
+                  <button
+                    onClick={() =>
+                      projectTemplateService
+                        .setBadgeColor(entry.id, null)
+                        .catch(() => {})
+                    }
+                    className="px-2 h-6 rounded-md text-xs flex-none btn-neutral text-gray-600 dark:text-gray-200"
+                  >
+                    기본
+                  </button>
+                </div>
+              )}
             </>
           )}
           {entry ? (
@@ -225,6 +266,14 @@ export const FolderTemplateModal = observer(
               syncSignal={syncSignal}
               commitRef={commitRef}
               onEditingCharChange={setCharEditing}
+              batchFolder={folder}
+              onBatchCompleted={() => {
+                // 일괄 생성 직후에는 자식이 이미 최신 구성이다 — 전파 확인
+                // 기준(updatedAt)을 리셋해, 닫을 때 방금 만든 자식에게
+                // "덮어쓸까요?"가 뜨는 비직관 동작을 막는다 (2026-07-16 실기).
+                updatedAtOnOpenRef.current =
+                  projectTemplateService.get(localId)?.updatedAt ?? 0;
+              }}
             />
           ) : (
             <div className="text-sm text-muted py-6 text-center">

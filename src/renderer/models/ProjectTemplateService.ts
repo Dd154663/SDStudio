@@ -80,6 +80,9 @@ export interface IProjectTemplateEntry {
   // true = 폴더 전용 로컬 템플릿 (폴더 기본 템플릿의 실체 — 전역 목록·
   // 생성 다이얼로그에서 숨김, 폴더 모달에서만 편집. 사이드카가 id 로 참조)
   folderLocal?: boolean;
+  // 배지 매직 컬러(hex — 폴더 색 팔레트 공유): ♚(부모 폴더)·♟(상속 자식)
+  // 배지를 이 색으로 표시해 "어느 부모의 자식인지" 구분. 미지정 = 기본(amber).
+  badgeColor?: string;
 }
 
 // 프롬프트 영역을 빈 상태에서 직접 타이핑할 때 쓰는 최소 프리셋 골격.
@@ -132,6 +135,11 @@ export class ProjectTemplateService extends EventTarget {
                   ? t.characterReferences
                   : [],
                 scenes: Array.isArray(t.scenes) ? t.scenes : [],
+                // 배지 색 문자열 방어
+                badgeColor:
+                  typeof t.badgeColor === 'string' && t.badgeColor
+                    ? t.badgeColor
+                    : undefined,
               }))
           : [];
     } catch (e) {
@@ -298,7 +306,8 @@ export class ProjectTemplateService extends EventTarget {
   }
 
   // 다른 템플릿의 구성 전체(프리셋·캐릭터·씬)로 1회성 덮어쓰기 —
-  // 폴더 기본 템플릿의 "전역 템플릿 불러오기". 대상의 id·이름·folderLocal 은
+  // 폴더 기본 템플릿의 "전역 템플릿 불러오기". 대상의 id·이름·folderLocal·
+  // badgeColor(배지 색 = 폴더 지정의 정체성 — 소스 색으로 덮지 않는다)는
   // 유지하고, 이미지는 항상 사본을 만들며(duplicate 와 같은 규칙) 대상의
   // 기존 이미지는 정리한다. 이후 소스와 무관하게 자유 조정 가능.
   @action
@@ -350,6 +359,21 @@ export class ProjectTemplateService extends EventTarget {
     target.characterReferences = copy.characterReferences;
     target.scenes = copy.scenes;
     this.touch(target);
+  }
+
+  // 배지 매직 컬러 지정/해제 (null = 기본 amber).
+  // updatedAt 을 건드리지 않는다 — 배지 색은 표시 메타데이터라 폴더 모달의
+  // "자식 전파 확인"(updatedAt 변경 감지)을 유발하면 안 된다.
+  @action
+  async setBadgeColor(id: string, color: string | null): Promise<void> {
+    const entry = this.get(id);
+    if (!entry) throw new Error('템플릿을 찾을 수 없습니다');
+    const next = color || undefined;
+    if (entry.badgeColor === next) return;
+    entry.badgeColor = next;
+    this.templates = [...this.templates];
+    this.scheduleSave();
+    this.dispatchEvent(new CustomEvent('changed', {}));
   }
 
   @action
@@ -753,10 +777,13 @@ export class ProjectTemplateService extends EventTarget {
   // (씬은 호출측 소관 — 생성 경로는 초기 json 에 포함, 재적용은 씬 불가침).
   // 이미지 파일은 템플릿 디렉터리 → 세션 vibes/references 로 복사.
   // 비어 있는 영역은 자연히 스킵된다(빈 결과 배열).
+  // opts.skipCharacterPresets: 캐릭터 프리셋 영역을 통째 건너뛴다 — 배치 생성
+  // (베이스의 캐릭터 무시)·보호 영역 재적용(제거도 추가도 금지)용.
   // 반환: 만들어진 인스턴스 정보(교체 의미론의 제거 대상 추적·시작 프리셋 지정용).
   async instantiateIntoSession(
     session: Session,
     templateId: string,
+    opts?: { skipCharacterPresets?: boolean },
   ): Promise<IInstantiateResult> {
     const entry = this.get(templateId);
     if (!entry) throw new Error('템플릿을 찾을 수 없습니다');
@@ -788,7 +815,9 @@ export class ProjectTemplateService extends EventTarget {
         console.warn('템플릿 프리셋 적용 실패:', entry.preset?.name, e);
       }
     }
-    for (const cpJson of entry.characterPresets) {
+    for (const cpJson of opts?.skipCharacterPresets
+      ? []
+      : entry.characterPresets) {
       try {
         const json: ICharacterPreset = JSON.parse(JSON.stringify(cpJson));
         for (const v of json.vibes || []) {

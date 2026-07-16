@@ -15,6 +15,10 @@ export interface IGlobalCharacterPresetEntry {
   updatedAt: number;
   // 이미지 경로(vibes/characterReferences/representativeImage)는 글로벌 파일명을 가리킨다.
   preset: ICharacterPreset;
+  // 1단계 평면 폴더(중첩 없음, 배치 생성 P0 — 2026-07-16 합의).
+  // 빈 문자열/미지정 = 루트(미분류). 폴더는 별도 레지스트리 없이 엔트리에서
+  // 파생한다 — 항목이 전부 빠지면 폴더도 자연 소멸(의도된 단순화).
+  folder?: string;
 }
 
 export interface IGlobalCharacterPresetStore {
@@ -37,13 +41,22 @@ export class GlobalCharacterPresetService extends EventTarget {
       const json = JSON.parse(str) as IGlobalCharacterPresetStore;
       this.presets =
         json && Array.isArray(json.presets)
-          ? json.presets.filter(
-              (p) =>
-                p &&
-                typeof p.id === 'string' &&
-                typeof p.name === 'string' &&
-                p.preset,
-            )
+          ? json.presets
+              .filter(
+                (p) =>
+                  p &&
+                  typeof p.id === 'string' &&
+                  typeof p.name === 'string' &&
+                  p.preset,
+              )
+              // folder 문자열 방어 — 비문자열/빈 값은 루트로 정규화
+              .map((p) => ({
+                ...p,
+                folder:
+                  typeof p.folder === 'string' && p.folder.trim()
+                    ? p.folder
+                    : undefined,
+              }))
           : [];
     } catch (e) {
       this.presets = [];
@@ -96,6 +109,48 @@ export class GlobalCharacterPresetService extends EventTarget {
   }
   getByName(name: string): IGlobalCharacterPresetEntry | undefined {
     return this.presets.find((p) => p.name === name);
+  }
+
+  // ---------- 폴더 (1단계 평면 — 배치 생성 P0) ----------
+  // 현존 폴더 목록 — 엔트리에서 파생(중복 제거·정렬)
+  listFolders(): string[] {
+    const set = new Set<string>();
+    for (const p of this.presets) if (p.folder) set.add(p.folder);
+    return Array.from(set).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
+    );
+  }
+
+  // 폴더 지정/해제 — null/빈 값은 루트(undefined)로 정규화
+  @action
+  async setFolder(id: string, folder: string | null): Promise<void> {
+    const entry = this.get(id);
+    if (!entry) return;
+    const f = (folder ?? '').trim();
+    const next = f ? f : undefined;
+    if (entry.folder === next) return;
+    entry.folder = next;
+    entry.updatedAt = Date.now();
+    this.presets = [...this.presets];
+    this.scheduleSave();
+    this.dispatchEvent(new CustomEvent('changed', {}));
+  }
+
+  // 폴더 이름 변경 — 해당 폴더의 엔트리 일괄 이관
+  @action
+  async renameFolder(oldName: string, newName: string): Promise<void> {
+    newName = newName.trim();
+    if (!newName) throw new Error('폴더 이름을 입력해 주세요');
+    if (oldName === newName) return;
+    let changed = false;
+    this.presets = this.presets.map((p) => {
+      if (p.folder !== oldName) return p;
+      changed = true;
+      return { ...p, folder: newName, updatedAt: Date.now() };
+    });
+    if (!changed) return;
+    this.scheduleSave();
+    this.dispatchEvent(new CustomEvent('changed', {}));
   }
 
   // ---------- image helpers (data URI 파일) ----------

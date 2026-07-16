@@ -25,12 +25,16 @@ export interface IFolderTemplateEntry {
 //  - inherited: true = 폴더 자동 상속(♟ 배지·전파 대상)
 //  - presets/characterPresetNames: 이 적용이 세션에 만든 프리셋/캐릭터 인스턴스
 //  - vibePaths/referencePaths: presetShareds 에 주입한 바이브/캐릭터 레퍼런스 path
+//  - protectAreas: 재적용·전파 시 제거도 추가도 하지 않는 보호 영역 (일괄 생성
+//    R2 스펙 6항 — 축으로 적용된 캐릭터 프리셋/씬 보호). 옵셔널 = 구버전 호환.
+export type TemplateProtectArea = 'characterPresets' | 'scenes';
 export interface ITemplateApplicationRecord {
   inherited: boolean;
   presets: { type: string; name: string }[];
   characterPresetNames: string[];
   vibePaths: string[];
   referencePaths: string[];
+  protectAreas?: TemplateProtectArea[];
 }
 
 /**
@@ -138,7 +142,14 @@ export class TemplateService {
       for (const [tplId, rec] of Object.entries(byTpl as any)) {
         if (!tplId || !rec || typeof rec !== 'object') continue;
         const r = rec as any;
+        // 보호 영역: 알려진 값만 통과 (빈 배열이면 필드 생략)
+        const protect = Array.isArray(r.protectAreas)
+          ? (r.protectAreas.filter(
+              (x: any) => x === 'characterPresets' || x === 'scenes',
+            ) as TemplateProtectArea[])
+          : [];
         inner[tplId] = {
+          ...(protect.length > 0 ? { protectAreas: protect } : {}),
           inherited: !!r.inherited,
           presets: Array.isArray(r.presets)
             ? r.presets.filter(

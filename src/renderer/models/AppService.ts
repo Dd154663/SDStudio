@@ -405,30 +405,24 @@ export class AppState {
     this.projectTrashOpen = false;
   }
 
-  // 캐릭터 프리셋을 현재 세션에 적용 (SessionSelect 로컬 콜백에서 이관 — 로직 무변경)
+  // 캐릭터 프리셋 적용 코어 — 임의 세션 대상(현재 세션 UI 적용과 배치 생성의
+  // 백그라운드 자식 세션이 공유). UI 메시지/열림 상태는 건드리지 않는다.
+  // 세션 목록에 추가(addCharacterPreset)만으로는 아무 효과가 없고, 이 적용을
+  // 거쳐야 캐릭터 프롬프트/바이브/레퍼런스가 shared 에 실려 실제 동작한다.
   @action
-  applyCharacterPreset(preset: CharacterPreset, mode: 'easy' | 'character') {
-    const curSession = this.curSession;
-    if (!curSession) return;
+  applyCharacterPresetToSession(
+    session: Session,
+    workflowType: string,
+    preset: CharacterPreset,
+    mode: 'easy' | 'character',
+  ): boolean {
+    // 이지모드 적용은 SDImageGenEasy 전용
+    if (mode === 'easy' && workflowType !== 'SDImageGenEasy') return false;
 
-    const workflowType = curSession.selectedWorkflow?.workflowType;
-    if (!workflowType) {
-      this.pushMessage('워크플로우를 먼저 선택해주세요');
-      return;
-    }
-
-    // Mode 1: 이지모드 적용 (SDImageGenEasy 전용)
-    if (mode === 'easy') {
-      if (workflowType !== 'SDImageGenEasy') {
-        this.pushMessage('이지모드 적용은 "이미지 생성 (이지모드)" 워크플로우에서만 사용 가능합니다');
-        return;
-      }
-    }
-
-    let shared = curSession.presetShareds.get(workflowType);
+    let shared = session.presetShareds.get(workflowType);
     if (!shared) {
       shared = workFlowService.buildShared(workflowType);
-      curSession.presetShareds.set(workflowType, shared);
+      session.presetShareds.set(workflowType, shared);
     }
 
     runInAction(() => {
@@ -475,8 +469,33 @@ export class AppState {
         }
       }
 
-      this.setAppliedCharacterPreset(preset.name);
+      // 적용 상태는 shared 에 영속 (_appliedPresetName)
+      shared._appliedPresetName = preset.name || '';
     });
+    return true;
+  }
+
+  // 캐릭터 프리셋을 현재 세션에 적용 (SessionSelect 로컬 콜백에서 이관 — 로직 무변경)
+  @action
+  applyCharacterPreset(preset: CharacterPreset, mode: 'easy' | 'character') {
+    const curSession = this.curSession;
+    if (!curSession) return;
+
+    const workflowType = curSession.selectedWorkflow?.workflowType;
+    if (!workflowType) {
+      this.pushMessage('워크플로우를 먼저 선택해주세요');
+      return;
+    }
+
+    // Mode 1: 이지모드 적용 (SDImageGenEasy 전용)
+    if (mode === 'easy' && workflowType !== 'SDImageGenEasy') {
+      this.pushMessage('이지모드 적용은 "이미지 생성 (이지모드)" 워크플로우에서만 사용 가능합니다');
+      return;
+    }
+
+    if (!this.applyCharacterPresetToSession(curSession, workflowType, preset, mode)) {
+      return;
+    }
 
     this.characterPresetsOpen = false;
     const modeLabel = mode === 'easy' ? '이지모드' : '캐릭터 프롬프트';

@@ -14,7 +14,10 @@ import {
   projectSizeService,
   templateService,
   projectTemplateService,
+  globalCharacterPresetService,
 } from '.';
+import { IBatchPlanItem, resolveBatchName } from './batchCreatePlan';
+import type { TemplateProtectArea } from './TemplateService';
 import { getAppState } from './appStateRef';
 import { FileEntry } from '../backend';
 import defaultassets from '../defaultassets';
@@ -1466,7 +1469,13 @@ export class SessionService extends ResourceSyncService<Session> {
   async createSessionFromProjectTemplate(
     templateId: string,
     newName: string,
-    opts?: { inherited?: boolean },
+    opts?: {
+      inherited?: boolean;
+      // 일괄 생성(배치 R2, 스펙 2·6항): 베이스 템플릿의 캐릭터 프리셋·씬을
+      // 전면 무시하고 축(전역 캐릭터 프리셋/씬 템플릿)을 대신 적용하며,
+      // 적용 기록에 보호 플래그(protectAreas)를 남긴다.
+      batchAxes?: { charPresetId?: string; sceneTemplateName?: string };
+    },
   ) {
     if (this.isLoaded(newName)) {
       throw new Error('Resource already exists');
@@ -1476,9 +1485,14 @@ export class SessionService extends ResourceSyncService<Session> {
     if (!entry) {
       throw new Error('템플릿을 찾을 수 없습니다.');
     }
-    // 씬 구성: 이름은 템플릿 내에서 이미 유일 (임포트 시 번호 부여)
-    const scenes =
-      entry.scenes.length > 0
+    const batch = opts?.batchAxes;
+    // 씬 구성: 이름은 템플릿 내에서 이미 유일 (임포트 시 번호 부여).
+    // 배치 모드는 템플릿 자체 씬을 무시 — 씬 축(씬 템플릿) 또는 기본 빈 씬.
+    const scenes = batch
+      ? batch.sceneTemplateName
+        ? await this.buildScenesFromSceneTemplate(batch.sceneTemplateName)
+        : SessionService.defaultScenesJSON()
+      : entry.scenes.length > 0
         ? Object.fromEntries(
             entry.scenes.map((s) => [s.name, JSON.parse(JSON.stringify(s))]),
           )
@@ -1509,10 +1523,11 @@ export class SessionService extends ResourceSyncService<Session> {
         throw new Error('프로젝트 생성에 실패했습니다.');
       }
       // 프리셋(1벌)/캐릭터 프리셋/수동 바이브·레퍼런스 인스턴스화
-      // (이미지: 템플릿 디렉터리 → 세션)
+      // (이미지: 템플릿 디렉터리 → 세션). 배치 모드는 베이스의 캐릭터 스킵.
       const result = await projectTemplateService.instantiateIntoSession(
         created,
         templateId,
+        { skipCharacterPresets: !!batch },
       );
       if (result.presetInstance) {
         // 템플릿 프리셋을 시작 프리셋으로 선택
@@ -1524,14 +1539,43 @@ export class SessionService extends ResourceSyncService<Session> {
         // 프리셋 없는 템플릿 → 빈 프로젝트와 동일한 기본 시딩
         await importDefaultPresets(created);
       }
+      // 배치 축: 전역 캐릭터 프리셋 적용 (기존 전역→세션 관문, 이미지 복사)
+      if (batch?.charPresetId) {
+        const axisPreset =
+          await globalCharacterPresetService.instantiateIntoSession(
+            created,
+            batch.charPresetId,
+          );
+        // 목록 추가만으로는 효과가 없다 — UI의 "프리셋 적용"과 동일한 코어로
+        // 즉시 적용해야 캐릭터 프롬프트/바이브/레퍼런스가 실제 동작한다.
+        // (2026-07-16 실기 버그: 적용 단계 누락으로 자식에 아무것도 반영 안 됨)
+        const wfType =
+          created.selectedWorkflow?.workflowType ?? 'SDImageGenEasy';
+        getAppState().applyCharacterPresetToSession(
+          created,
+          wfType,
+          axisPreset,
+          wfType === 'SDImageGenEasy' ? 'easy' : 'character',
+        );
+      }
       // 적용 기록 저장 (교체 의미론·♟ 상속 링크). 폴더 자동 적용이면 inherited.
+      // 배치: 축 캐릭터 인스턴스는 기록에 넣지 않고(이 템플릿 소유물 아님 —
+      // 이중 안전), 캐릭터·씬 영역을 보호로 마킹한다 (스펙 6항).
       try {
         await templateService.recordApplication(newName, templateId, {
           inherited: opts?.inherited ?? false,
           presets: result.presets,
-          characterPresetNames: result.characterPresetNames,
+          characterPresetNames: batch ? [] : result.characterPresetNames,
           vibePaths: result.vibePaths,
           referencePaths: result.referencePaths,
+          ...(batch
+            ? {
+                protectAreas: [
+                  'characterPresets',
+                  'scenes',
+                ] as TemplateProtectArea[],
+              }
+            : {}),
         });
       } catch (e) {
         console.warn('템플릿 적용 기록 저장 실패:', e);
@@ -1587,23 +1631,28 @@ export class SessionService extends ResourceSyncService<Session> {
     }
 
     const prev = templateService.getApplication(targetName, templateId);
+    // 보호 영역(배치 생성 자식, 스펙 6항): 템플릿에 내용이 있어도 캐릭터
+    // 프리셋 영역은 제거도 추가도 하지 않는다. (씬은 재적용이 원래 불가침)
+    const protectChars = !!prev?.protectAreas?.includes('characterPresets');
+    const applyChars = hasChars && !protectChars;
 
     // 1) 기록된 기존 인스턴스 제거 — 단, 템플릿에 내용이 있는 영역만.
     let selectedRemoved = false;
     if (prev) {
       const r = projectTemplateService.removeRecordedInstances(target, prev, {
         removePresets: hasPreset,
-        removeChars: hasChars,
+        removeChars: applyChars,
         removeVibes: hasVibes,
         removeRefs: hasRefs,
       });
       selectedRemoved = r.selectedRemoved;
     }
 
-    // 2) 새로 인스턴스화 (비어 있는 영역은 빈 결과)
+    // 2) 새로 인스턴스화 (비어 있는 영역은 빈 결과, 보호 영역은 스킵)
     const result = await projectTemplateService.instantiateIntoSession(
       target,
       templateId,
+      { skipCharacterPresets: protectChars },
     );
 
     // 3) selectedWorkflow 재선택 — 제거된 프리셋을 가리켰거나 최초 적용이면
@@ -1615,21 +1664,115 @@ export class SessionService extends ResourceSyncService<Session> {
       };
     }
 
-    // 4) 기록 갱신 — 스킵한 영역은 기존 기록을 보존(그 영역 인스턴스는 남아 있음).
+    // 4) 기록 갱신 — 스킵/보호한 영역은 기존 기록을 보존(그 영역 인스턴스는
+    //    남아 있음). protectAreas 는 그대로 유지된다.
     const inherited = opts?.inherited ?? prev?.inherited ?? false;
     await templateService.recordApplication(targetName, templateId, {
       inherited,
       presets: hasPreset ? result.presets : (prev?.presets ?? []),
-      characterPresetNames: hasChars
+      characterPresetNames: applyChars
         ? result.characterPresetNames
         : (prev?.characterPresetNames ?? []),
       vibePaths: hasVibes ? result.vibePaths : (prev?.vibePaths ?? []),
       referencePaths: hasRefs
         ? result.referencePaths
         : (prev?.referencePaths ?? []),
+      ...(prev?.protectAreas?.length
+        ? { protectAreas: prev.protectAreas }
+        : {}),
     });
 
     this.markDirty(targetName);
+  }
+
+  // 씬 템플릿(이미지 없는 일반 프로젝트)의 일반 씬 전체를 새 프로젝트의 초기
+  // 씬 구성 JSON 으로 변환한다 — TemplateService.importSceneTemplate 의 씬 복사
+  // 규칙(이미지·토너먼트 흔적 제거) 재사용. 새 프로젝트가 대상이라 충돌 정책이
+  // 필요 없고, 씬이 하나도 없으면 기본 빈 씬으로 폴백한다.
+  private async buildScenesFromSceneTemplate(
+    tplName: string,
+  ): Promise<Record<string, any>> {
+    const tpl = await this.get(tplName);
+    if (!tpl) {
+      throw new Error(`씬 템플릿 프로젝트를 불러올 수 없습니다: ${tplName}`);
+    }
+    const scenes = tpl.getScenes('scene');
+    if (scenes.length === 0) return SessionService.defaultScenesJSON();
+    const out: Record<string, any> = {};
+    for (const src of scenes) {
+      const json: any = JSON.parse(JSON.stringify(src.toJSON()));
+      json.imageMap = [];
+      json.mains = [];
+      json.game = undefined;
+      json.round = undefined;
+      out[json.name] = json;
+    }
+    return out;
+  }
+
+  // 프로젝트 일괄 생성 (배치 생성 R2, 2026-07-16 확정 스펙).
+  //
+  // 항목별 순차 처리: 이름 충돌 해소(기존+배치 내, `_n` 접미) → 대상 폴더
+  // 확보(folderOrder 매핑 — 서브폴더 포함) → createSessionFromProjectTemplate
+  // (batchAxes: 베이스의 캐릭터·씬 무시, 축 적용, 보호 기록) → 폴더 이동.
+  // 실패 항목은 수집만 하고 계속(롤백 없음 — 생성분 유지, data_root_guard 정신).
+  // shouldCancel 이 true 면 현재 항목 완료 후 중단.
+  async batchCreateFromTemplate(plan: {
+    templateId: string;
+    folder: string; // 부모 폴더 경로 (진입점 = 폴더 템플릿이므로 자동 확정)
+    items: IBatchPlanItem[];
+    onProgress?: (done: number, total: number, currentName: string) => void;
+    shouldCancel?: () => boolean;
+  }): Promise<{
+    created: string[];
+    failed: { name: string; error: string }[];
+    cancelled: boolean;
+  }> {
+    await projectTemplateService.ensureLoaded();
+    const created: string[] = [];
+    const failed: { name: string; error: string }[] = [];
+    let cancelled = false;
+    // 충돌 해소 풀: 기존 프로젝트 전체 + 이번 배치에서 확정된 이름
+    const taken = new Set<string>(this.list());
+    const total = plan.items.length;
+    let done = 0;
+    for (const item of plan.items) {
+      if (plan.shouldCancel?.()) {
+        cancelled = true;
+        break;
+      }
+      const name = resolveBatchName(item.name, taken);
+      plan.onProgress?.(done, total, name);
+      try {
+        // 대상 폴더 확보 — 서브폴더는 매핑(folderOrder/.keep)만으로 생성된다
+        const target = item.subfolder
+          ? (plan.folder ? plan.folder + '/' : '') + item.subfolder
+          : plan.folder;
+        if (target && !this.folderList.includes(target)) {
+          await this.createFolder(target);
+        }
+        await this.createSessionFromProjectTemplate(plan.templateId, name, {
+          inherited: true,
+          batchAxes: {
+            charPresetId: item.charPresetId,
+            sceneTemplateName: item.sceneTemplateName,
+          },
+        });
+        if (target) {
+          // 폴더 이동 실패는 생성 실패로 치지 않는다 (루트에 남을 뿐 —
+          // ProjectDrawer 생성 경로와 동일한 관용)
+          try {
+            await this.moveToFolder(name, target);
+          } catch (e) {}
+        }
+        created.push(name);
+      } catch (e: any) {
+        failed.push({ name, error: e?.message || String(e) });
+      }
+      done++;
+      plan.onProgress?.(done, total, name);
+    }
+    return { created, failed, cancelled };
   }
 
   getInpaintOrgPath(session: Session, inpaint: InpaintScene) {

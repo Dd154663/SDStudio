@@ -7,6 +7,12 @@ import { projectPath } from '../models/projectPaths';
 import ModalOverlay from './ModalOverlay';
 import Tooltip from './Tooltip';
 import MobileColorPicker from './MobileColorPicker';
+// 폴더 색상 팔레트 (단일 출처 folderColors.ts — 드로어와 동일)
+import {
+  FOLDER_COLORS,
+  DEFAULT_FOLDER_COLOR,
+  withAlpha,
+} from './folderColors';
 
 const RECENT_KEY = 'sdstudio-recent-projects';
 const RECENT_MAX = 5;
@@ -37,16 +43,6 @@ const naturalCmp = (a: string, b: string) =>
 
 // 폴더 뷰 식별자: 'all' | 'fav' | 'unfiled' | 폴더이름
 type FolderView = string;
-
-// 폴더 색상 팔레트 (드로어와 동일)
-const FOLDER_COLORS = [
-  '#64748b', '#ef4444', '#f97316', '#f59e0b', '#22c55e',
-  '#14b8a6', '#0ea5e9', '#6366f1', '#a855f7', '#ec4899',
-];
-const DEFAULT_FOLDER_COLOR = '#0ea5e9';
-
-// hex 색상에 알파를 붙여 옅은 배경을 만든다.
-const withAlpha = (hex: string, a: string) => hex + a;
 
 // 프로젝트 카드 썸네일
 const ProjectThumbnail = ({ name }: { name: string }) => {
