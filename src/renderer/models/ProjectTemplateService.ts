@@ -52,6 +52,9 @@ export interface IProjectTemplateEntry {
   characterPresets: ICharacterPreset[];
   // 씬 구성 스냅샷 (이미지·토너먼트 흔적 없음)
   scenes: IScene[];
+  // true = 폴더 전용 로컬 템플릿 (폴더 기본 템플릿의 실체 — 전역 목록·
+  // 생성 다이얼로그에서 숨김, 폴더 모달에서만 편집. 사이드카가 id 로 참조)
+  folderLocal?: boolean;
 }
 
 // 프롬프트 영역을 빈 상태에서 직접 타이핑할 때 쓰는 최소 프리셋 골격.
@@ -151,6 +154,18 @@ export class ProjectTemplateService extends EventTarget {
   list(): IProjectTemplateEntry[] {
     return this.templates.slice();
   }
+  // 전역 템플릿만 (폴더 전용 로컬 템플릿 제외) — 관리 목록·선택 다이얼로그용
+  listGlobal(): IProjectTemplateEntry[] {
+    return this.templates.filter((t) => !t.folderLocal);
+  }
+  // 아무것도 세팅되지 않은 템플릿 — 폴더 모달을 빈 채로 닫으면 지정 자동 해제
+  isEmptyTemplate(entry: IProjectTemplateEntry): boolean {
+    return (
+      !entry.preset &&
+      entry.characterPresets.length === 0 &&
+      entry.scenes.length === 0
+    );
+  }
   get(id: string): IProjectTemplateEntry | undefined {
     return this.templates.find((t) => t.id === id);
   }
@@ -174,7 +189,10 @@ export class ProjectTemplateService extends EventTarget {
 
   // ---------- 엔티티 CRUD ----------
   @action
-  async create(name: string): Promise<IProjectTemplateEntry> {
+  async create(
+    name: string,
+    opts?: { folderLocal?: boolean },
+  ): Promise<IProjectTemplateEntry> {
     const entry: IProjectTemplateEntry = {
       id: uuidv4(),
       name: this.resolveNameCollision((name || '새 템플릿').trim() || '새 템플릿'),
@@ -183,6 +201,7 @@ export class ProjectTemplateService extends EventTarget {
       preset: null,
       characterPresets: [],
       scenes: [],
+      ...(opts?.folderLocal ? { folderLocal: true } : {}),
     };
     this.templates = [...this.templates, entry];
     this.scheduleSave();
@@ -236,6 +255,51 @@ export class ProjectTemplateService extends EventTarget {
     this.scheduleSave();
     this.dispatchEvent(new CustomEvent('changed', {}));
     return clone;
+  }
+
+  // 다른 템플릿의 구성 전체(프리셋·캐릭터·씬)로 1회성 덮어쓰기 —
+  // 폴더 기본 템플릿의 "전역 템플릿 불러오기". 대상의 id·이름·folderLocal 은
+  // 유지하고, 이미지는 항상 사본을 만들며(duplicate 와 같은 규칙) 대상의
+  // 기존 이미지는 정리한다. 이후 소스와 무관하게 자유 조정 가능.
+  @action
+  async overwriteFromTemplate(targetId: string, sourceId: string): Promise<void> {
+    const target = this.get(targetId);
+    if (!target) throw new Error('템플릿을 찾을 수 없습니다');
+    const src = this.get(sourceId);
+    if (!src) throw new Error('불러올 템플릿을 찾을 수 없습니다');
+    for (const token of this.collectImageTokens(target)) {
+      await this.deleteImageData(token);
+    }
+    const copy: Pick<
+      IProjectTemplateEntry,
+      'preset' | 'characterPresets' | 'scenes'
+    > = JSON.parse(
+      JSON.stringify({
+        preset: src.preset,
+        characterPresets: src.characterPresets,
+        scenes: src.scenes,
+      }),
+    );
+    if (copy.preset?.profile) {
+      copy.preset.profile = await this.copyImageToken(copy.preset.profile);
+    }
+    for (const cp of copy.characterPresets) {
+      for (const v of cp.vibes || []) {
+        if (v.path) v.path = await this.copyImageToken(v.path);
+      }
+      for (const r of cp.characterReferences || []) {
+        if (r.path) r.path = await this.copyImageToken(r.path);
+      }
+      if (cp.representativeImage) {
+        cp.representativeImage = await this.copyImageToken(
+          cp.representativeImage,
+        );
+      }
+    }
+    target.preset = copy.preset;
+    target.characterPresets = copy.characterPresets;
+    target.scenes = copy.scenes;
+    this.touch(target);
   }
 
   @action
@@ -611,18 +675,20 @@ export class ProjectTemplateService extends EventTarget {
     return addedPreset;
   }
 
-  // 신규 프로젝트 생성 시 템플릿 선택 다이얼로그.
+  // 신규 프로젝트 생성 시 템플릿 선택 다이얼로그 (전역 템플릿만 —
+  // 폴더 전용 템플릿은 폴더 자동 적용 경로가 담당).
   // 반환: undefined = 취소 / null = 빈 프로젝트 / string = 템플릿 id.
   // 템플릿이 하나도 없으면 다이얼로그 없이 즉시 null (기존 UX 그대로).
   async pickForCreate(): Promise<string | null | undefined> {
     await this.ensureLoaded();
-    if (this.templates.length === 0) return null;
+    const globals = this.listGlobal();
+    if (globals.length === 0) return null;
     const sel = await getAppState().pushDialogAsync({
       type: 'select',
       text: '어떤 구성으로 시작할까요?',
       items: [
         { text: '빈 프로젝트', value: BLANK_VALUE },
-        ...this.templates.map((t) => ({
+        ...globals.map((t) => ({
           text: `템플릿: ${t.name}`,
           value: t.id,
         })),

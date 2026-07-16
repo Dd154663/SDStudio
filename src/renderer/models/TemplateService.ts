@@ -232,12 +232,22 @@ export class TemplateService {
       (f) => f === folder || f.startsWith(prefix),
     );
     if (keys.length === 0) return;
+    const ids = new Set(keys.map((k) => this.folderTemplates[k].templateId));
     runInAction(() => {
       const next = { ...this.folderTemplates };
       for (const k of keys) delete next[k];
       this.folderTemplates = next;
     });
     await this.save();
+    // 폴더 전용 로컬 템플릿 엔티티는 폴더와 함께 제거 (누수 방지 —
+    // 전역 템플릿을 참조하는 구형 지정은 건드리지 않음)
+    try {
+      await projectTemplateService.ensureLoaded();
+      for (const id of ids) {
+        const ent = projectTemplateService.get(id);
+        if (ent?.folderLocal) await projectTemplateService.delete(id);
+      }
+    } catch (e) {}
   }
 
   // 프로젝트 이름변경/삭제 연동 — SessionService.rename/delete 가 호출.

@@ -13,7 +13,13 @@ const backend = {
   }),
 };
 // 프로젝트 템플릿 엔티티 존재 여부 (resolve 검증용 mock)
-let templateEntities: Record<string, { id: string; name: string }> = {};
+let templateEntities: Record<
+  string,
+  { id: string; name: string; folderLocal?: boolean }
+> = {};
+const mockDeleteTemplate = jest.fn(async (id: string) => {
+  delete templateEntities[id];
+});
 
 jest.mock('..', () => ({
   backend,
@@ -24,6 +30,7 @@ jest.mock('..', () => ({
   projectTemplateService: {
     ensureLoaded: async () => {},
     get: (id: string) => templateEntities[id],
+    delete: mockDeleteTemplate,
   },
 }));
 
@@ -54,6 +61,7 @@ beforeEach(() => {
     tplB: { id: 'tplB', name: '템플릿B' },
   };
   pushMessage.mockClear();
+  mockDeleteTemplate.mockClear();
 });
 
 describe('folderTemplates — 지정/해제/저장', () => {
@@ -166,6 +174,23 @@ describe('캐스케이드 — 폴더 rename·remove + 템플릿 삭제', () => {
     expect(svc.getFolderTemplate('상위')).toBeUndefined();
     expect(svc.getFolderTemplate('상위/하위')).toBeUndefined();
     expect(svc.getFolderTemplate('상위비슷')).toEqual({ templateId: 'tplA' });
+  });
+
+  it('removeFolder: 폴더 전용 로컬 템플릿 엔티티도 함께 삭제 (전역 참조는 보존)', async () => {
+    templateEntities['localT'] = {
+      id: 'localT',
+      name: '폴더 기본 (상위)',
+      folderLocal: true,
+    };
+    const svc = new TemplateService();
+    await svc.setFolderTemplate('상위', 'localT');
+    await svc.setFolderTemplate('상위/하위', 'tplA'); // (구형) 전역 참조 지정
+    await svc.setFolderTemplate('무관', 'tplB');
+    await svc.removeFolder('상위');
+    expect(mockDeleteTemplate).toHaveBeenCalledWith('localT');
+    expect(mockDeleteTemplate).not.toHaveBeenCalledWith('tplA');
+    expect(mockDeleteTemplate).not.toHaveBeenCalledWith('tplB');
+    expect(svc.getFolderTemplate('무관')).toEqual({ templateId: 'tplB' });
   });
 
   it('clearFolderTemplatesByTemplateId: 해당 템플릿 지정 일괄 해제', async () => {

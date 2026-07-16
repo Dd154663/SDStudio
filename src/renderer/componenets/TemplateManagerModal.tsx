@@ -19,7 +19,6 @@ import {
   globalCharacterPresetService,
   globalPresetService,
   projectTemplateService,
-  sessionService,
   templateService,
 } from '../models';
 import { appState } from '../models/AppService';
@@ -30,10 +29,13 @@ import { CharacterPreset } from '../models/types';
 // 템플릿 = "모든 걸 미리 세팅/수정 가능한 하나의 완전한 프리셋 워크플로우".
 // 세 영역 모두 우상단 [불러오기] + 수동 편집 가능:
 //  - 프롬프트(스타일 프리셋 1벌): 상위/하위/네거티브 인라인 직접 편집,
-//    글로벌 프리셋 불러오기 = 덮어쓰기(샘플링·대표이미지 포함, 세부 설정 모달)
+//    글로벌 프리셋 불러오기 = 프롬프트·샘플링 1회성 덮어쓰기
 //  - 캐릭터 프리셋: 목록형, 불러오기 = 추가(선적용), 새로 만들기/편집 가능
 //  - 씬 구성: 씬 템플릿/프로젝트에서 불러오기 = 전체 교체(일괄 적용)
 // 새 프로젝트에 적용은 "불러오기"일 뿐 — 생성 후 프로젝트에서 자유 조정.
+//
+// 편집기 본체(TemplateWorkflowEditor)는 폴더 기본 템플릿 모달과 공유한다
+// (폴더 템플릿 = 동일 화면 + 상단 "전역 템플릿 불러오기").
 
 // 템플릿 이미지 디렉터리 기반 캐릭터 편집기 백엔드
 const templateImageBackend: PresetImageBackend = {
@@ -51,10 +53,27 @@ const addBtnCls =
   'px-2 py-1 rounded-md text-xs btn-neutral text-body whitespace-nowrap';
 const iconBtnCls = 'btn-ghost p-1.5 rounded-md text-faint';
 
-export const TemplateManagerModal = observer(
-  ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
-    const [selectedId, setSelectedId] = useState<string>('');
-    // 프롬프트 영역 인라인 편집 상태 — 명시적 커밋([저장]·창 닫기·템플릿 전환)
+// ===== 템플릿 워크플로우 편집기 (프롬프트/캐릭터/씬 3영역 + [저장]) =====
+//
+// 전역 "템플릿 관리"와 폴더 기본 템플릿 모달이 완전히 동일한 화면을 공유하는
+// 단일 출처. key={templateId} 로 마운트해 템플릿 전환 시 상태를 초기화하고,
+// 언마운트 시(창 닫기·전환 포함) 프롬프트 로컬 편집을 자동 커밋한다.
+export const TemplateWorkflowEditor = observer(
+  ({
+    templateId,
+    syncSignal = 0,
+    commitRef,
+    onEditingCharChange,
+  }: {
+    templateId: string;
+    // 부모가 엔티티를 통째로 바꾼 뒤(전역 템플릿 불러오기 등) 재동기화 신호
+    syncSignal?: number;
+    // 부모가 언마운트 전에 강제 커밋해야 할 때(복제·닫기 처리) 쓰는 훅
+    commitRef?: React.MutableRefObject<() => void>;
+    // 캐릭터 프리셋 편집(전체 영역 전환) 중 여부 통지 — 부모 상단 UI 숨김용
+    onEditingCharChange?: (editing: boolean) => void;
+  }) => {
+    // 프롬프트 영역 인라인 편집 상태 — 명시적 커밋([저장]·창 닫기·전환)
     // 전까지는 로컬에만 존재한다. 에디터 onChange 클로저가 마운트 시점에
     // 고정되므로(PromptEditTextArea 내부 EditorModel), 최신 값은 ref 로 추적.
     const [frontPrompt, setFrontPrompt] = useState('');
@@ -63,7 +82,7 @@ export const TemplateManagerModal = observer(
     const promptRef = useRef({ frontPrompt: '', backPrompt: '', uc: '' });
     // 외부 변경(불러오기·세부 설정·비우기) 후 인라인 필드 재동기화 트리거
     const [syncKey, setSyncKey] = useState(0);
-    // 스타일 프리셋 세부 설정 모달 (이름·대표이미지·샘플링)
+    // 스타일 프리셋 세부 설정 모달 (대표이미지·샘플링)
     const [presetDetailOpen, setPresetDetailOpen] = useState(false);
     // 캐릭터 프리셋 편집 (CharacterPresetInnerEditor 인라인 전환)
     const [editChar, setEditChar] = useState<{
@@ -71,35 +90,14 @@ export const TemplateManagerModal = observer(
       preset: CharacterPreset;
     } | null>(null);
 
-    useEffect(() => {
-      if (!isOpen) return;
-      (async () => {
-        await projectTemplateService.ensureLoaded();
-        await templateService.ensureLoaded();
-        setEditChar(null);
-        setPresetDetailOpen(false);
-        setSelectedId((prev) =>
-          prev && projectTemplateService.get(prev)
-            ? prev
-            : (projectTemplateService.list()[0]?.id ?? ''),
-        );
-        setSyncKey((k) => k + 1);
-      })();
-    }, [isOpen]);
-
-    const templates = projectTemplateService.list();
-    const entry = selectedId
-      ? projectTemplateService.get(selectedId)
-      : undefined;
+    const entry = projectTemplateService.get(templateId);
 
     const asStr = (v: any) => (typeof v === 'string' ? v : '');
 
-    // 프롬프트 인라인 필드 동기화 — 템플릿 전환/불러오기/세부 설정 후에만
+    // 프롬프트 인라인 필드 동기화 — 마운트/불러오기/세부 설정 후에만
     // (타이핑 중에는 로컬 상태가 진실이므로 매 렌더 동기화 금지)
     useEffect(() => {
-      const p = selectedId
-        ? projectTemplateService.get(selectedId)?.preset
-        : null;
+      const p = projectTemplateService.get(templateId)?.preset;
       const next = {
         frontPrompt: asStr(p?.frontPrompt),
         backPrompt: asStr(p?.backPrompt),
@@ -110,13 +108,12 @@ export const TemplateManagerModal = observer(
       setUc(next.uc);
       promptRef.current = next;
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedId, syncKey, isOpen]);
+    }, [templateId, syncKey, syncSignal]);
 
-    // 프롬프트 로컬 편집값을 템플릿에 반영 — [저장]·창 닫기·템플릿 전환 등
-    // 명시적 시점에만 호출한다 (타이핑 중 자동 저장 없음).
-    const commitPrompts = (id: string = selectedId) => {
-      if (!id) return;
-      const e = projectTemplateService.get(id);
+    // 프롬프트 로컬 편집값을 템플릿에 반영 — [저장]·언마운트 등 명시적
+    // 시점에만 호출한다 (타이핑 중 자동 저장 없음).
+    const commitPrompts = () => {
+      const e = projectTemplateService.get(templateId);
       if (!e) return;
       const v = promptRef.current;
       // 빈 템플릿에 빈 값 커밋 → 불필요한 골격 생성 방지
@@ -129,8 +126,26 @@ export const TemplateManagerModal = observer(
       ) {
         return; // 변경 없음
       }
-      projectTemplateService.patchPreset(id, { ...v }).catch(() => {});
+      projectTemplateService.patchPreset(templateId, { ...v }).catch(() => {});
     };
+    const commitPromptsRef = useRef(commitPrompts);
+    commitPromptsRef.current = commitPrompts;
+    if (commitRef) commitRef.current = commitPrompts;
+
+    // 언마운트(창 닫기·템플릿 전환) 시 자동 커밋 — "닫으면 저장되나?"
+    // 불확실성 제거. 엔티티가 이미 삭제됐으면 커밋은 스킵된다.
+    useEffect(
+      () => () => {
+        commitPromptsRef.current();
+        projectTemplateService.flushSave().catch(() => {});
+      },
+      [],
+    );
+
+    useEffect(() => {
+      onEditingCharChange?.(!!editChar);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editChar]);
 
     // 명시적 [저장] — 프롬프트 커밋 + 디스크 즉시 반영 + 확인 토스트
     const saveTemplate = async () => {
@@ -138,61 +153,6 @@ export const TemplateManagerModal = observer(
       commitPrompts();
       await projectTemplateService.flushSave();
       appState.pushMessage(`템플릿 "${entry.name}"이(가) 저장되었습니다.`);
-    };
-
-    // 닫을 때도 커밋 — "닫으면 저장되나?" 불확실성 제거
-    const handleClose = () => {
-      commitPrompts();
-      projectTemplateService.flushSave().catch(() => {});
-      onClose();
-    };
-
-    // ----- 템플릿 CRUD -----
-    const createTemplate = async () => {
-      commitPrompts(); // 현재 템플릿의 편집 중 프롬프트 보존
-      const name = await appState.pushDialogAsync({
-        type: 'input-confirm',
-        text: '새 템플릿 이름을 입력해주세요',
-      });
-      if (!name) return;
-      const created = await projectTemplateService.create(name);
-      setSelectedId(created.id);
-      setSyncKey((k) => k + 1);
-    };
-
-    const renameTemplate = async () => {
-      if (!entry) return;
-      const name = await appState.pushDialogAsync({
-        type: 'input-confirm',
-        text: '새 템플릿 이름을 입력해주세요',
-      });
-      if (!name) return;
-      try {
-        await projectTemplateService.rename(entry.id, name);
-      } catch (e: any) {
-        appState.pushMessage(e.message || '이름 변경에 실패했습니다');
-      }
-    };
-
-    const duplicateTemplate = async () => {
-      if (!entry) return;
-      commitPrompts(); // 편집 중 프롬프트까지 포함해 복제
-      const clone = await projectTemplateService.duplicate(entry.id);
-      setSelectedId(clone.id);
-      setSyncKey((k) => k + 1);
-    };
-
-    const deleteTemplate = () => {
-      if (!entry) return;
-      appState.pushDialog({
-        type: 'confirm',
-        text: `템플릿 "${entry.name}"을(를) 삭제하시겠습니까?\n(이 템플릿을 쓰는 폴더 자동 적용 지정도 해제됩니다)`,
-        callback: async () => {
-          await projectTemplateService.delete(entry.id);
-          setSelectedId(projectTemplateService.list()[0]?.id ?? '');
-          setSyncKey((k) => k + 1);
-        },
-      });
     };
 
     // ----- 불러오기 -----
@@ -417,13 +377,10 @@ export const TemplateManagerModal = observer(
       setEditChar(null);
     };
 
+    if (!entry) return null;
+
     return (
-      <ModalOverlay
-        isOpen={isOpen}
-        onClose={handleClose}
-        title="템플릿 관리"
-        width="max-w-3xl"
-      >
+      <>
         {editChar ? (
           <CharacterPresetInnerEditor
             preset={editChar.preset}
@@ -436,265 +393,198 @@ export const TemplateManagerModal = observer(
           />
         ) : (
           <div className="flex flex-col gap-4">
-            <p className="text-sm text-muted">
-              템플릿은 새 프로젝트의 시작 구성을 미리 세팅하는 워크플로우입니다.
-              모든 영역은 직접 편집할 수 있고, 불러오기는 설정을 1회
-              덮어쓰는 편의 기능입니다. 프롬프트 수정은 아래{' '}
-              <b>[저장]</b> 버튼 또는 창을 닫을 때 저장되고, 그 외 변경
-              (불러오기·캐릭터·씬)은 즉시 저장됩니다.
-            </p>
-            {/* 템플릿 선택 + CRUD */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <select
-                className="gray-input flex-1 min-w-[140px]"
-                value={selectedId}
-                onChange={(e) => {
-                  commitPrompts(); // 전환 전 이전 템플릿의 프롬프트 보존
-                  setSelectedId(e.target.value);
-                  setSyncKey((k) => k + 1);
-                }}
-              >
-                {templates.length === 0 && (
-                  <option value="">템플릿 없음</option>
-                )}
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-              <Tooltip content="새 템플릿">
-                <button className={iconBtnCls} onClick={createTemplate}>
-                  <FaPlus size={14} />
-                </button>
-              </Tooltip>
-              {entry && (
-                <>
-                  <Tooltip content="이름 변경">
-                    <button className={iconBtnCls} onClick={renameTemplate}>
-                      <FaPen size={14} />
-                    </button>
-                  </Tooltip>
-                  <Tooltip content="복제">
-                    <button className={iconBtnCls} onClick={duplicateTemplate}>
-                      <FaCopy size={14} />
-                    </button>
-                  </Tooltip>
-                  <Tooltip content="삭제">
+            {/* 프롬프트 영역 (스타일 프리셋 1벌) */}
+            <div className={sectionCls}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-default flex-1">
+                  프롬프트
+                </span>
+                <Tooltip content="세부 설정 (대표이미지·샘플링)">
+                  <button
+                    className={addBtnCls}
+                    onClick={() => {
+                      commitPrompts();
+                      setPresetDetailOpen(true);
+                    }}
+                  >
+                    <FaSlidersH className="inline mr-1" size={10} />
+                    세부 설정
+                  </button>
+                </Tooltip>
+                {entry.preset && (
+                  <Tooltip content="프롬프트 영역 비우기">
                     <button
                       className={iconBtnCls + ' hover:text-red-500'}
-                      onClick={deleteTemplate}
+                      onClick={clearStylePreset}
                     >
-                      <FaTrashAlt size={14} />
+                      <FaTimes size={13} />
                     </button>
                   </Tooltip>
-                </>
-              )}
-            </div>
-            {!entry ? (
-              <div className="text-sm text-default py-6 text-center">
-                템플릿이 없습니다. <b>+</b> 버튼으로 새 템플릿을 만들어주세요.
+                )}
+                <button className={addBtnCls} onClick={importStylePreset}>
+                  <FaCloudDownloadAlt className="inline mr-1" size={11} />
+                  불러오기
+                </button>
               </div>
-            ) : (
-              <>
-                {/* 프롬프트 영역 (스타일 프리셋 1벌) */}
-                <div className={sectionCls}>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-default flex-1">
-                      프롬프트
-                    </span>
-                    <Tooltip content="세부 설정 (대표이미지·샘플링)">
-                      <button
-                        className={addBtnCls}
-                        onClick={() => {
-                          commitPrompts();
-                          setPresetDetailOpen(true);
-                        }}
-                      >
-                        <FaSlidersH className="inline mr-1" size={10} />
-                        세부 설정
-                      </button>
-                    </Tooltip>
-                    {entry.preset && (
-                      <Tooltip content="프롬프트 영역 비우기">
-                        <button
-                          className={iconBtnCls + ' hover:text-red-500'}
-                          onClick={clearStylePreset}
-                        >
-                          <FaTimes size={13} />
-                        </button>
-                      </Tooltip>
-                    )}
-                    <button className={addBtnCls} onClick={importStylePreset}>
-                      <FaCloudDownloadAlt className="inline mr-1" size={11} />
-                      불러오기
-                    </button>
-                  </div>
-                  {!entry.preset && (
-                    <div className="text-xs text-faint">
-                      아래에 직접 입력하거나 글로벌 프리셋을 불러오세요. 비워
-                      두면 새 프로젝트는 기본 프리셋으로 시작합니다.
-                    </div>
-                  )}
-                  <div>
-                    <div className="text-xs font-medium text-muted mb-1">
-                      상위 프롬프트
-                    </div>
-                    <PromptEditTextArea
-                      value={frontPrompt}
-                      onChange={(v: string) => {
-                        setFrontPrompt(v);
-                        promptRef.current = {
-                          ...promptRef.current,
-                          frontPrompt: v,
-                        };
-                      }}
-                      disabled={false}
-                    />
-                  </div>
-                  <div>
-                    <div className="text-xs font-medium text-muted mb-1">
-                      하위 프롬프트
-                    </div>
-                    <PromptEditTextArea
-                      value={backPrompt}
-                      onChange={(v: string) => {
-                        setBackPrompt(v);
-                        promptRef.current = {
-                          ...promptRef.current,
-                          backPrompt: v,
-                        };
-                      }}
-                      disabled={false}
-                    />
-                  </div>
-                  <div>
-                    <div className="text-xs font-medium text-muted mb-1">
-                      네거티브 프롬프트
-                    </div>
-                    <PromptEditTextArea
-                      value={uc}
-                      onChange={(v: string) => {
-                        setUc(v);
-                        promptRef.current = { ...promptRef.current, uc: v };
-                      }}
-                      disabled={false}
-                    />
-                  </div>
+              {!entry.preset && (
+                <div className="text-xs text-faint">
+                  아래에 직접 입력하거나 글로벌 프리셋을 불러오세요. 비워 두면
+                  새 프로젝트는 기본 프리셋으로 시작합니다.
                 </div>
-                {/* 캐릭터/바이브/레퍼런스 (캐릭터 프리셋 목록) */}
-                <div className={sectionCls}>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-default flex-1">
-                      캐릭터 프리셋 ({entry.characterPresets.length})
+              )}
+              <div>
+                <div className="text-xs font-medium text-muted mb-1">
+                  상위 프롬프트
+                </div>
+                <PromptEditTextArea
+                  value={frontPrompt}
+                  onChange={(v: string) => {
+                    setFrontPrompt(v);
+                    promptRef.current = {
+                      ...promptRef.current,
+                      frontPrompt: v,
+                    };
+                  }}
+                  disabled={false}
+                />
+              </div>
+              <div>
+                <div className="text-xs font-medium text-muted mb-1">
+                  하위 프롬프트
+                </div>
+                <PromptEditTextArea
+                  value={backPrompt}
+                  onChange={(v: string) => {
+                    setBackPrompt(v);
+                    promptRef.current = {
+                      ...promptRef.current,
+                      backPrompt: v,
+                    };
+                  }}
+                  disabled={false}
+                />
+              </div>
+              <div>
+                <div className="text-xs font-medium text-muted mb-1">
+                  네거티브 프롬프트
+                </div>
+                <PromptEditTextArea
+                  value={uc}
+                  onChange={(v: string) => {
+                    setUc(v);
+                    promptRef.current = { ...promptRef.current, uc: v };
+                  }}
+                  disabled={false}
+                />
+              </div>
+            </div>
+            {/* 캐릭터/바이브/레퍼런스 (캐릭터 프리셋 목록) */}
+            <div className={sectionCls}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-default flex-1">
+                  캐릭터 프리셋 ({entry.characterPresets.length})
+                </span>
+                <button className={addBtnCls} onClick={startNewCharPreset}>
+                  <FaPlus className="inline mr-1" size={10} />
+                  새로 만들기
+                </button>
+                <button className={addBtnCls} onClick={importCharacterPreset}>
+                  <FaCloudDownloadAlt className="inline mr-1" size={11} />
+                  불러오기
+                </button>
+              </div>
+              {entry.characterPresets.length === 0 && (
+                <div className="text-xs text-faint">
+                  없음 — 직접 만들거나 불러오면 새 프로젝트에 캐릭터
+                  프리셋(바이브·레퍼런스 포함)이 선적용됩니다.
+                </div>
+              )}
+              {entry.characterPresets.map((cp, i) => (
+                <div key={i} className={rowCls}>
+                  <span className="text-sm text-default truncate flex-1">
+                    {cp.name}
+                    <span className="text-xs text-faint ml-1.5">
+                      {(cp.vibes?.length || 0) > 0 && `V:${cp.vibes.length} `}
+                      {(cp.characterReferences?.length || 0) > 0 &&
+                        `R:${cp.characterReferences.length}`}
                     </span>
-                    <button className={addBtnCls} onClick={startNewCharPreset}>
-                      <FaPlus className="inline mr-1" size={10} />
-                      새로 만들기
-                    </button>
+                  </span>
+                  <Tooltip content="편집">
                     <button
-                      className={addBtnCls}
-                      onClick={importCharacterPreset}
+                      className={iconBtnCls}
+                      onClick={() => startEditCharPreset(i)}
                     >
-                      <FaCloudDownloadAlt className="inline mr-1" size={11} />
-                      불러오기
+                      <FaPen size={12} />
                     </button>
-                  </div>
-                  {entry.characterPresets.length === 0 && (
-                    <div className="text-xs text-faint">
-                      없음 — 직접 만들거나 불러오면 새 프로젝트에 캐릭터
-                      프리셋(바이브·레퍼런스 포함)이 선적용됩니다.
-                    </div>
-                  )}
-                  {entry.characterPresets.map((cp, i) => (
-                    <div key={i} className={rowCls}>
-                      <span className="text-sm text-default truncate flex-1">
-                        {cp.name}
-                        <span className="text-xs text-faint ml-1.5">
-                          {(cp.vibes?.length || 0) > 0 &&
-                            `V:${cp.vibes.length} `}
-                          {(cp.characterReferences?.length || 0) > 0 &&
-                            `R:${cp.characterReferences.length}`}
-                        </span>
-                      </span>
-                      <Tooltip content="편집">
-                        <button
-                          className={iconBtnCls}
-                          onClick={() => startEditCharPreset(i)}
-                        >
-                          <FaPen size={12} />
-                        </button>
-                      </Tooltip>
-                      <Tooltip content="제거">
-                        <button
-                          className={iconBtnCls + ' hover:text-red-500'}
-                          onClick={() =>
-                            projectTemplateService.removeCharacterPreset(
-                              entry.id,
-                              i,
-                            )
-                          }
-                        >
-                          <FaTimes size={13} />
-                        </button>
-                      </Tooltip>
-                    </div>
-                  ))}
-                </div>
-                {/* 씬 구성 */}
-                <div className={sectionCls}>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-default flex-1">
-                      씬 구성 ({entry.scenes.length})
-                    </span>
-                    <button className={addBtnCls} onClick={importScenes}>
-                      <FaCloudDownloadAlt className="inline mr-1" size={11} />
-                      불러오기
+                  </Tooltip>
+                  <Tooltip content="제거">
+                    <button
+                      className={iconBtnCls + ' hover:text-red-500'}
+                      onClick={() =>
+                        projectTemplateService.removeCharacterPreset(
+                          entry.id,
+                          i,
+                        )
+                      }
+                    >
+                      <FaTimes size={13} />
                     </button>
-                  </div>
-                  {entry.scenes.length === 0 ? (
-                    <div className="text-xs text-faint">
-                      없음 — 새 프로젝트는 빈 씬 1개로 시작합니다. 불러오기 =
-                      선택한 프로젝트/씬 프리셋의 씬 전체로 교체.
-                    </div>
-                  ) : (
-                    <div className="text-xs text-faint">
-                      씬 내용 수정은 원본 프로젝트에서 고친 뒤 다시 불러와
-                      교체해주세요.
-                    </div>
-                  )}
-                  {entry.scenes.map((s, i) => (
-                    <div key={i} className={rowCls}>
-                      <span className="text-sm text-default truncate flex-1">
-                        {s.name}
-                      </span>
-                      <Tooltip content="제거">
-                        <button
-                          className={iconBtnCls + ' hover:text-red-500'}
-                          onClick={() =>
-                            projectTemplateService.removeScene(entry.id, i)
-                          }
-                        >
-                          <FaTimes size={13} />
-                        </button>
-                      </Tooltip>
-                    </div>
-                  ))}
+                  </Tooltip>
                 </div>
-                {/* 명시적 저장 */}
-                <div className="flex justify-end">
-                  <button
-                    className="px-5 py-2 rounded-lg text-sm font-medium btn-solid-sky"
-                    onClick={saveTemplate}
-                  >
-                    저장
-                  </button>
+              ))}
+            </div>
+            {/* 씬 구성 */}
+            <div className={sectionCls}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-default flex-1">
+                  씬 구성 ({entry.scenes.length})
+                </span>
+                <button className={addBtnCls} onClick={importScenes}>
+                  <FaCloudDownloadAlt className="inline mr-1" size={11} />
+                  불러오기
+                </button>
+              </div>
+              {entry.scenes.length === 0 ? (
+                <div className="text-xs text-faint">
+                  없음 — 새 프로젝트는 빈 씬 1개로 시작합니다. 불러오기 = 선택한
+                  프로젝트/씬 프리셋의 씬 전체로 교체.
                 </div>
-              </>
-            )}
+              ) : (
+                <div className="text-xs text-faint">
+                  씬 내용 수정은 원본 프로젝트에서 고친 뒤 다시 불러와
+                  교체해주세요.
+                </div>
+              )}
+              {entry.scenes.map((s, i) => (
+                <div key={i} className={rowCls}>
+                  <span className="text-sm text-default truncate flex-1">
+                    {s.name}
+                  </span>
+                  <Tooltip content="제거">
+                    <button
+                      className={iconBtnCls + ' hover:text-red-500'}
+                      onClick={() =>
+                        projectTemplateService.removeScene(entry.id, i)
+                      }
+                    >
+                      <FaTimes size={13} />
+                    </button>
+                  </Tooltip>
+                </div>
+              ))}
+            </div>
+            {/* 명시적 저장 */}
+            <div className="flex justify-end">
+              <button
+                className="px-5 py-2 rounded-lg text-sm font-medium btn-solid-sky"
+                onClick={saveTemplate}
+              >
+                저장
+              </button>
+            </div>
           </div>
         )}
-        {entry && presetDetailOpen && (
+        {presetDetailOpen && (
           <PresetEditModal
             title="프리셋 세부 설정"
             initialName={entry.preset?.name ?? entry.name}
@@ -705,12 +595,7 @@ export const TemplateManagerModal = observer(
                   ? projectTemplateService.fetchImageData(entry.preset.profile)
                   : Promise.resolve(null),
               save: (nm, patch, newRep) =>
-                projectTemplateService.updatePreset(
-                  entry.id,
-                  nm,
-                  patch,
-                  newRep,
-                ),
+                projectTemplateService.updatePreset(entry.id, nm, patch, newRep),
             }}
             onClose={() => {
               setPresetDetailOpen(false);
@@ -718,6 +603,163 @@ export const TemplateManagerModal = observer(
             }}
           />
         )}
+      </>
+    );
+  },
+);
+
+// ===== "템플릿 관리" 오버레이 (전역 템플릿 목록 + CRUD + 편집기) =====
+export const TemplateManagerModal = observer(
+  ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+    const [selectedId, setSelectedId] = useState<string>('');
+    // 편집기가 캐릭터 편집 화면으로 전환되면 상단(안내문·CRUD 행)을 숨긴다
+    const [charEditing, setCharEditing] = useState(false);
+    const commitRef = useRef<() => void>(() => {});
+
+    useEffect(() => {
+      if (!isOpen) return;
+      (async () => {
+        await projectTemplateService.ensureLoaded();
+        await templateService.ensureLoaded();
+        setCharEditing(false);
+        setSelectedId((prev) => {
+          const globals = projectTemplateService.listGlobal();
+          return prev && globals.some((t) => t.id === prev)
+            ? prev
+            : (globals[0]?.id ?? '');
+        });
+      })();
+    }, [isOpen]);
+
+    const templates = projectTemplateService.listGlobal();
+    const entry = selectedId
+      ? projectTemplateService.get(selectedId)
+      : undefined;
+
+    // ----- 템플릿 CRUD -----
+    // 전환·닫기 시 프롬프트 커밋은 편집기의 언마운트 훅이 담당한다.
+    const createTemplate = async () => {
+      const name = await appState.pushDialogAsync({
+        type: 'input-confirm',
+        text: '새 템플릿 이름을 입력해주세요',
+      });
+      if (!name) return;
+      const created = await projectTemplateService.create(name);
+      setSelectedId(created.id);
+    };
+
+    const renameTemplate = async () => {
+      if (!entry) return;
+      const name = await appState.pushDialogAsync({
+        type: 'input-confirm',
+        text: '새 템플릿 이름을 입력해주세요',
+      });
+      if (!name) return;
+      try {
+        await projectTemplateService.rename(entry.id, name);
+      } catch (e: any) {
+        appState.pushMessage(e.message || '이름 변경에 실패했습니다');
+      }
+    };
+
+    const duplicateTemplate = async () => {
+      if (!entry) return;
+      commitRef.current(); // 편집 중 프롬프트까지 포함해 복제
+      const clone = await projectTemplateService.duplicate(entry.id);
+      setSelectedId(clone.id);
+    };
+
+    const deleteTemplate = () => {
+      if (!entry) return;
+      appState.pushDialog({
+        type: 'confirm',
+        text: `템플릿 "${entry.name}"을(를) 삭제하시겠습니까?\n(이 템플릿을 쓰는 폴더 자동 적용 지정도 해제됩니다)`,
+        callback: async () => {
+          await projectTemplateService.delete(entry.id);
+          setSelectedId(projectTemplateService.listGlobal()[0]?.id ?? '');
+        },
+      });
+    };
+
+    return (
+      <ModalOverlay
+        isOpen={isOpen}
+        onClose={onClose}
+        title="템플릿 관리"
+        width="max-w-3xl"
+      >
+        <div className="flex flex-col gap-4">
+          {!charEditing && (
+            <>
+              <p className="text-sm text-muted">
+                템플릿은 새 프로젝트의 시작 구성을 미리 세팅하는
+                워크플로우입니다. 모든 영역은 직접 편집할 수 있고, 불러오기는
+                설정을 1회 덮어쓰는 편의 기능입니다. 프롬프트 수정은 아래{' '}
+                <b>[저장]</b> 버튼 또는 창을 닫을 때 저장되고, 그 외 변경
+                (불러오기·캐릭터·씬)은 즉시 저장됩니다.
+              </p>
+              {/* 템플릿 선택 + CRUD */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <select
+                  className="gray-input flex-1 min-w-[140px]"
+                  value={selectedId}
+                  onChange={(e) => setSelectedId(e.target.value)}
+                >
+                  {templates.length === 0 && (
+                    <option value="">템플릿 없음</option>
+                  )}
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <Tooltip content="새 템플릿">
+                  <button className={iconBtnCls} onClick={createTemplate}>
+                    <FaPlus size={14} />
+                  </button>
+                </Tooltip>
+                {entry && (
+                  <>
+                    <Tooltip content="이름 변경">
+                      <button className={iconBtnCls} onClick={renameTemplate}>
+                        <FaPen size={14} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="복제">
+                      <button
+                        className={iconBtnCls}
+                        onClick={duplicateTemplate}
+                      >
+                        <FaCopy size={14} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="삭제">
+                      <button
+                        className={iconBtnCls + ' hover:text-red-500'}
+                        onClick={deleteTemplate}
+                      >
+                        <FaTrashAlt size={14} />
+                      </button>
+                    </Tooltip>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+          {!entry ? (
+            <div className="text-sm text-default py-6 text-center">
+              템플릿이 없습니다. <b>+</b> 버튼으로 새 템플릿을 만들어주세요.
+            </div>
+          ) : (
+            <TemplateWorkflowEditor
+              key={entry.id}
+              templateId={entry.id}
+              commitRef={commitRef}
+              onEditingCharChange={setCharEditing}
+            />
+          )}
+        </div>
       </ModalOverlay>
     );
   },
