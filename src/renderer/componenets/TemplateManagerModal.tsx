@@ -54,10 +54,13 @@ const iconBtnCls = 'btn-ghost p-1.5 rounded-md text-faint';
 export const TemplateManagerModal = observer(
   ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
     const [selectedId, setSelectedId] = useState<string>('');
-    // 프롬프트 영역 인라인 편집 상태 (디바운스 저장)
+    // 프롬프트 영역 인라인 편집 상태 — 명시적 커밋([저장]·창 닫기·템플릿 전환)
+    // 전까지는 로컬에만 존재한다. 에디터 onChange 클로저가 마운트 시점에
+    // 고정되므로(PromptEditTextArea 내부 EditorModel), 최신 값은 ref 로 추적.
     const [frontPrompt, setFrontPrompt] = useState('');
     const [backPrompt, setBackPrompt] = useState('');
     const [uc, setUc] = useState('');
+    const promptRef = useRef({ frontPrompt: '', backPrompt: '', uc: '' });
     // 외부 변경(불러오기·세부 설정·비우기) 후 인라인 필드 재동기화 트리거
     const [syncKey, setSyncKey] = useState(0);
     // 스타일 프리셋 세부 설정 모달 (이름·대표이미지·샘플링)
@@ -67,7 +70,6 @@ export const TemplateManagerModal = observer(
       index: number | null; // null = 새로 만들기
       preset: CharacterPreset;
     } | null>(null);
-    const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
       if (!isOpen) return;
@@ -90,34 +92,64 @@ export const TemplateManagerModal = observer(
       ? projectTemplateService.get(selectedId)
       : undefined;
 
+    const asStr = (v: any) => (typeof v === 'string' ? v : '');
+
     // 프롬프트 인라인 필드 동기화 — 템플릿 전환/불러오기/세부 설정 후에만
     // (타이핑 중에는 로컬 상태가 진실이므로 매 렌더 동기화 금지)
     useEffect(() => {
       const p = selectedId
         ? projectTemplateService.get(selectedId)?.preset
         : null;
-      const asStr = (v: any) => (typeof v === 'string' ? v : '');
-      setFrontPrompt(asStr(p?.frontPrompt));
-      setBackPrompt(asStr(p?.backPrompt));
-      setUc(asStr(p?.uc));
+      const next = {
+        frontPrompt: asStr(p?.frontPrompt),
+        backPrompt: asStr(p?.backPrompt),
+        uc: asStr(p?.uc),
+      };
+      setFrontPrompt(next.frontPrompt);
+      setBackPrompt(next.backPrompt);
+      setUc(next.uc);
+      promptRef.current = next;
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedId, syncKey, isOpen]);
 
-    // 프롬프트 타이핑 → 디바운스 저장 (빈 템플릿이면 골격 자동 생성)
-    const schedulePromptSave = (
-      patch: Partial<{ frontPrompt: string; backPrompt: string; uc: string }>,
-    ) => {
-      const id = selectedId;
+    // 프롬프트 로컬 편집값을 템플릿에 반영 — [저장]·창 닫기·템플릿 전환 등
+    // 명시적 시점에만 호출한다 (타이핑 중 자동 저장 없음).
+    const commitPrompts = (id: string = selectedId) => {
       if (!id) return;
-      const values = { frontPrompt, backPrompt, uc, ...patch };
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        projectTemplateService.patchPreset(id, values).catch(() => {});
-      }, 600);
+      const e = projectTemplateService.get(id);
+      if (!e) return;
+      const v = promptRef.current;
+      // 빈 템플릿에 빈 값 커밋 → 불필요한 골격 생성 방지
+      if (!e.preset && !v.frontPrompt && !v.backPrompt && !v.uc) return;
+      if (
+        e.preset &&
+        asStr(e.preset.frontPrompt) === v.frontPrompt &&
+        asStr(e.preset.backPrompt) === v.backPrompt &&
+        asStr(e.preset.uc) === v.uc
+      ) {
+        return; // 변경 없음
+      }
+      projectTemplateService.patchPreset(id, { ...v }).catch(() => {});
+    };
+
+    // 명시적 [저장] — 프롬프트 커밋 + 디스크 즉시 반영 + 확인 토스트
+    const saveTemplate = async () => {
+      if (!entry) return;
+      commitPrompts();
+      await projectTemplateService.flushSave();
+      appState.pushMessage(`템플릿 "${entry.name}"이(가) 저장되었습니다.`);
+    };
+
+    // 닫을 때도 커밋 — "닫으면 저장되나?" 불확실성 제거
+    const handleClose = () => {
+      commitPrompts();
+      projectTemplateService.flushSave().catch(() => {});
+      onClose();
     };
 
     // ----- 템플릿 CRUD -----
     const createTemplate = async () => {
+      commitPrompts(); // 현재 템플릿의 편집 중 프롬프트 보존
       const name = await appState.pushDialogAsync({
         type: 'input-confirm',
         text: '새 템플릿 이름을 입력해주세요',
@@ -144,6 +176,7 @@ export const TemplateManagerModal = observer(
 
     const duplicateTemplate = async () => {
       if (!entry) return;
+      commitPrompts(); // 편집 중 프롬프트까지 포함해 복제
       const clone = await projectTemplateService.duplicate(entry.id);
       setSelectedId(clone.id);
       setSyncKey((k) => k + 1);
@@ -169,7 +202,7 @@ export const TemplateManagerModal = observer(
       if (!entry) return;
       const source = await appState.pushDialogAsync({
         type: 'select',
-        text: '어디서 불러올까요? (프롬프트·샘플링·대표이미지를 덮어씁니다)',
+        text: '어디서 불러올까요? (프롬프트·샘플링 설정을 1회 덮어씁니다)',
         items: [
           { text: '🌐 글로벌 프리셋에서', value: 'global' },
           { text: '📁 현재 프로젝트에서', value: 'session' },
@@ -221,12 +254,11 @@ export const TemplateManagerModal = observer(
           if (!key) return;
           await projectTemplateService.importSessionPreset(
             entry.id,
-            session,
             lookup[key],
           );
         }
         setSyncKey((k) => k + 1);
-        appState.pushMessage('프롬프트 영역을 덮어썼습니다.');
+        appState.pushMessage('프롬프트·샘플링 설정을 덮어썼습니다.');
       } catch (e: any) {
         appState.pushMessage(e.message || '불러오기에 실패했습니다.');
       }
@@ -388,7 +420,7 @@ export const TemplateManagerModal = observer(
     return (
       <ModalOverlay
         isOpen={isOpen}
-        onClose={onClose}
+        onClose={handleClose}
         title="템플릿 관리"
         width="max-w-3xl"
       >
@@ -406,9 +438,10 @@ export const TemplateManagerModal = observer(
           <div className="flex flex-col gap-4">
             <p className="text-sm text-muted">
               템플릿은 새 프로젝트의 시작 구성을 미리 세팅하는 워크플로우입니다.
-              모든 영역은 직접 편집할 수 있고, 불러오기는 편의 기능입니다. 새
-              프로젝트에는 &ldquo;불러오기&rdquo;로만 적용되므로 생성 후
-              자유롭게 세부 조정할 수 있습니다.
+              모든 영역은 직접 편집할 수 있고, 불러오기는 설정을 1회
+              덮어쓰는 편의 기능입니다. 프롬프트 수정은 아래{' '}
+              <b>[저장]</b> 버튼 또는 창을 닫을 때 저장되고, 그 외 변경
+              (불러오기·캐릭터·씬)은 즉시 저장됩니다.
             </p>
             {/* 템플릿 선택 + CRUD */}
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -416,6 +449,7 @@ export const TemplateManagerModal = observer(
                 className="gray-input flex-1 min-w-[140px]"
                 value={selectedId}
                 onChange={(e) => {
+                  commitPrompts(); // 전환 전 이전 템플릿의 프롬프트 보존
                   setSelectedId(e.target.value);
                   setSyncKey((k) => k + 1);
                 }}
@@ -468,33 +502,28 @@ export const TemplateManagerModal = observer(
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-default flex-1">
                       프롬프트
-                      {entry.preset && (
-                        <span className="text-xs text-faint font-normal ml-1.5">
-                          {entry.preset.name}
-                          {entry.preset.type ? ` · ${entry.preset.type}` : ''}
-                        </span>
-                      )}
                     </span>
+                    <Tooltip content="세부 설정 (대표이미지·샘플링)">
+                      <button
+                        className={addBtnCls}
+                        onClick={() => {
+                          commitPrompts();
+                          setPresetDetailOpen(true);
+                        }}
+                      >
+                        <FaSlidersH className="inline mr-1" size={10} />
+                        세부 설정
+                      </button>
+                    </Tooltip>
                     {entry.preset && (
-                      <>
-                        <Tooltip content="세부 설정 (이름·대표이미지·샘플링)">
-                          <button
-                            className={addBtnCls}
-                            onClick={() => setPresetDetailOpen(true)}
-                          >
-                            <FaSlidersH className="inline mr-1" size={10} />
-                            세부 설정
-                          </button>
-                        </Tooltip>
-                        <Tooltip content="프롬프트 영역 비우기">
-                          <button
-                            className={iconBtnCls + ' hover:text-red-500'}
-                            onClick={clearStylePreset}
-                          >
-                            <FaTimes size={13} />
-                          </button>
-                        </Tooltip>
-                      </>
+                      <Tooltip content="프롬프트 영역 비우기">
+                        <button
+                          className={iconBtnCls + ' hover:text-red-500'}
+                          onClick={clearStylePreset}
+                        >
+                          <FaTimes size={13} />
+                        </button>
+                      </Tooltip>
                     )}
                     <button className={addBtnCls} onClick={importStylePreset}>
                       <FaCloudDownloadAlt className="inline mr-1" size={11} />
@@ -515,7 +544,10 @@ export const TemplateManagerModal = observer(
                       value={frontPrompt}
                       onChange={(v: string) => {
                         setFrontPrompt(v);
-                        schedulePromptSave({ frontPrompt: v });
+                        promptRef.current = {
+                          ...promptRef.current,
+                          frontPrompt: v,
+                        };
                       }}
                       disabled={false}
                     />
@@ -528,7 +560,10 @@ export const TemplateManagerModal = observer(
                       value={backPrompt}
                       onChange={(v: string) => {
                         setBackPrompt(v);
-                        schedulePromptSave({ backPrompt: v });
+                        promptRef.current = {
+                          ...promptRef.current,
+                          backPrompt: v,
+                        };
                       }}
                       disabled={false}
                     />
@@ -541,7 +576,7 @@ export const TemplateManagerModal = observer(
                       value={uc}
                       onChange={(v: string) => {
                         setUc(v);
-                        schedulePromptSave({ uc: v });
+                        promptRef.current = { ...promptRef.current, uc: v };
                       }}
                       disabled={false}
                     />
@@ -646,18 +681,27 @@ export const TemplateManagerModal = observer(
                     </div>
                   ))}
                 </div>
+                {/* 명시적 저장 */}
+                <div className="flex justify-end">
+                  <button
+                    className="px-5 py-2 rounded-lg text-sm font-medium btn-solid-sky"
+                    onClick={saveTemplate}
+                  >
+                    저장
+                  </button>
+                </div>
               </>
             )}
           </div>
         )}
-        {entry && presetDetailOpen && entry.preset && (
+        {entry && presetDetailOpen && (
           <PresetEditModal
             title="프리셋 세부 설정"
-            initialName={entry.preset.name}
-            preset={entry.preset}
+            initialName={entry.preset?.name ?? entry.name}
+            preset={entry.preset ?? {}}
             adapter={{
               fetchProfile: () =>
-                entry.preset.profile
+                entry.preset?.profile
                   ? projectTemplateService.fetchImageData(entry.preset.profile)
                   : Promise.resolve(null),
               save: (nm, patch, newRep) =>

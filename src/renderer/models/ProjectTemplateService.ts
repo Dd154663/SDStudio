@@ -324,18 +324,20 @@ export class ProjectTemplateService extends EventTarget {
 
   // ---------- 불러오기 (편의 기능 — 스냅샷 복사) ----------
 
-  // 기존 프리셋 1벌의 대표 이미지를 정리하고 새 것으로 교체한다 (덮어쓰기 의미론).
+  // 프리셋 불러오기 = "1회성 덮어쓰기" — 프롬프트(상위/하위/네거티브)와
+  // 샘플링 등 설정 값만 덮어쓰고, 어떤 프리셋을 불러왔는지는 남기지 않는다.
+  // 이름·대표이미지는 템플릿 소유 값을 유지한다 (트래킹 없음).
   @action
-  private async replacePreset(entry: IProjectTemplateEntry, json: any) {
-    const oldProfile = entry.preset?.profile;
-    entry.preset = json;
-    if (oldProfile && oldProfile !== json?.profile) {
-      await this.deleteImageData(oldProfile);
-    }
+  private overwritePresetSettings(entry: IProjectTemplateEntry, srcJson: any) {
+    const json: any = { ...srcJson };
+    delete json.name;
+    delete json.profile;
+    const base = entry.preset ?? blankTemplatePreset(entry.name);
+    entry.preset = { ...json, name: base.name, profile: base.profile };
     this.touch(entry);
   }
 
-  // 글로벌 프리셋 → 템플릿 프롬프트 영역 덮어쓰기 (샘플링·대표이미지 포함)
+  // 글로벌 프리셋 → 템플릿 프롬프트 영역 1회성 덮어쓰기 (프롬프트·샘플링만)
   async importGlobalPreset(templateId: string, globalId: string) {
     const entry = this.get(templateId);
     if (!entry) throw new Error('템플릿을 찾을 수 없습니다');
@@ -343,32 +345,14 @@ export class ProjectTemplateService extends EventTarget {
     if (!g) throw new Error('글로벌 프리셋을 찾을 수 없습니다');
     const json: any = JSON.parse(JSON.stringify(g.preset));
     json.type = g.workflowType;
-    json.name = g.name;
-    if (g.profile) {
-      const dataUri = await globalPresetService.fetchProfileImage(g.profile);
-      json.profile = dataUri ? await this.storeImageData(dataUri) : undefined;
-    }
-    await this.replacePreset(entry, json);
+    this.overwritePresetSettings(entry, json);
   }
 
-  // 현재 프로젝트의 프리셋 → 템플릿 프롬프트 영역 덮어쓰기
-  async importSessionPreset(templateId: string, session: Session, preset: any) {
+  // 현재 프로젝트의 프리셋 → 템플릿 프롬프트 영역 1회성 덮어쓰기
+  async importSessionPreset(templateId: string, preset: any) {
     const entry = this.get(templateId);
     if (!entry) throw new Error('템플릿을 찾을 수 없습니다');
-    const json: any = preset.toJSON();
-    if (json.profile) {
-      try {
-        const dataUri = await backend.readDataFile(
-          imageService.getVibeImagePath(session, json.profile),
-        );
-        json.profile = dataUri
-          ? await this.storeImageData(dataUri)
-          : undefined;
-      } catch (e) {
-        json.profile = undefined;
-      }
-    }
-    await this.replacePreset(entry, json);
+    this.overwritePresetSettings(entry, preset.toJSON());
   }
 
   // 프롬프트 영역 인라인 편집(상위/하위/네거티브 등) 반영.
