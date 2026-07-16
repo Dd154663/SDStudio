@@ -24,6 +24,7 @@ import {
   FaThLarge,
   FaMagic,
   FaFileImport,
+  FaUnlink,
 } from 'react-icons/fa';
 import {
   sessionService,
@@ -107,6 +108,8 @@ const ProjectRow = observer(
     const active = appState.curSession?.name === name;
     const isFav = sessionService.isFavorite(name);
     const isSceneTpl = templateService.isSceneTemplate(name);
+    // 폴더 템플릿 상속 중(♟) — 적용 기록에 inherited=true 가 있는 경우
+    const isInherited = !!templateService.getInheritedApplication(name);
     const folder = showFolder ? sessionService.getFolderOf(name) : null;
     const folderColor = folder
       ? sessionService.getFolderColor(folder) || DEFAULT_FOLDER_COLOR
@@ -212,6 +215,18 @@ const ProjectRow = observer(
               }`}
             >
               <FaThLarge size={11} />
+            </span>
+          </Tooltip>
+        )}
+        {isInherited && (
+          <Tooltip content="폴더 템플릿 상속 중">
+            <span
+              aria-label="폴더 템플릿 상속 중"
+              className={`flex-none flex items-center justify-center w-5 h-5 text-[13px] leading-none ${
+                active ? 'text-amber-100' : 'text-amber-500 dark:text-amber-400'
+              }`}
+            >
+              ♟
             </span>
           </Tooltip>
         )}
@@ -554,7 +569,10 @@ const ProjectDrawer = observer(() => {
     }
     try {
       if (tplId) {
-        await sessionService.createSessionFromProjectTemplate(tplId, name);
+        // 폴더 자동 적용이면 상속 링크(♟)를 남긴다. 수동 선택은 inherited=false.
+        await sessionService.createSessionFromProjectTemplate(tplId, name, {
+          inherited: !!folderTpl,
+        });
       } else {
         await sessionService.add(name);
       }
@@ -788,6 +806,8 @@ const ProjectDrawer = observer(() => {
 
   // 모바일: 프로젝트 행의 메뉴 아이콘에서 여는 액션 메뉴(폴더 메뉴와 동일 패턴)
   const openProjectMenu = async (n: string) => {
+    await templateService.ensureLoaded(); // '상속 끊기' 노출 판정용
+    const inherited = !!templateService.getInheritedApplication(n);
     const v = await appState.pushDialogAsync({
       type: 'select',
       text: `프로젝트 "${n}"`,
@@ -801,6 +821,9 @@ const ProjectDrawer = observer(() => {
           value: 'scene-template',
         },
         { text: '📥 템플릿 적용', value: 'reapply' },
+        ...(inherited
+          ? [{ text: '♟ 상속 끊기', value: 'break-inherit' }]
+          : []),
         { text: '✏️ 이름 편집', value: 'rename' },
         { text: '🗑️ 프로젝트 삭제', value: 'delete' },
       ],
@@ -810,6 +833,7 @@ const ProjectDrawer = observer(() => {
     else if (v === 'clone') handleProjectClone(n);
     else if (v === 'scene-template') handleProjectSceneTemplateToggle(n);
     else if (v === 'reapply') setReapplyFor(n);
+    else if (v === 'break-inherit') handleBreakInheritance(n);
     else if (v === 'rename') handleProjectRename(n);
     else if (v === 'delete') handleProjectDelete(n);
   };
@@ -1358,6 +1382,21 @@ const ProjectDrawer = observer(() => {
     });
   };
 
+  // 폴더 템플릿 상속 끊기 (♟ 프로젝트만) — 이후 폴더 템플릿 변경을 따라가지
+  // 않는다. 이미 적용된 구성은 그대로 유지된다.
+  const handleBreakInheritance = (name: string) => {
+    appState.pushDialog({
+      type: 'confirm',
+      text: '이 프로젝트가 더 이상 폴더 템플릿 변경을 따라가지 않습니다. 이미 적용된 구성은 유지됩니다.',
+      callback: async () => {
+        await templateService.breakInheritance(name);
+        appState.pushMessage(
+          `"${name}" 프로젝트의 폴더 템플릿 상속을 해제했습니다.`,
+        );
+      },
+    });
+  };
+
   return (
     <div
       className="fixed inset-0 titlebar-no-drag"
@@ -1746,6 +1785,16 @@ const ProjectDrawer = observer(() => {
                             <span className="truncate flex-1 text-left">
                               {leafName}
                             </span>
+                            {templateService.getFolderTemplate(f) && (
+                              <Tooltip content="폴더 기본 템플릿 지정됨">
+                                <span
+                                  aria-label="폴더 기본 템플릿 지정됨"
+                                  className="flex-none text-[13px] leading-none text-amber-500 dark:text-amber-400"
+                                >
+                                  ♚
+                                </span>
+                              </Tooltip>
+                            )}
                             <span className="text-xs text-faint font-normal flex-none">
                               {totalCount}
                             </span>
@@ -2200,6 +2249,19 @@ const ProjectDrawer = observer(() => {
                   <FaFileImport size={14} />
                 </button>
               </Tooltip>
+              {templateService.getInheritedApplication(toolbar.name) && (
+                <Tooltip content="상속 끊기">
+                  <button
+                    onClick={() => {
+                      handleBreakInheritance(toolbar.name);
+                      setToolbar(null);
+                    }}
+                    className="btn-ghost p-2 rounded-md text-faint hover:text-amber-500"
+                  >
+                    <FaUnlink size={13} />
+                  </button>
+                </Tooltip>
+              )}
               <Tooltip content="프로젝트 삭제">
                 <button
                   onClick={() => {

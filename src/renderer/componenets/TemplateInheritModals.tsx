@@ -38,6 +38,8 @@ export const FolderTemplateModal = observer(
     const [syncSignal, setSyncSignal] = useState(0);
     const [charEditing, setCharEditing] = useState(false);
     const commitRef = useRef<() => void>(() => {});
+    // 열 때의 updatedAt — 닫을 때 변경 여부(=전파 확인 트리거) 판정용
+    const updatedAtOnOpenRef = useRef<number>(0);
 
     // 열 때 폴더 전용 로컬 템플릿을 확보한다:
     //  - 기존 지정이 로컬 템플릿이면 그대로 편집
@@ -71,6 +73,8 @@ export const FolderTemplateModal = observer(
           await templateService.setFolderTemplate(folder, created.id);
           id = created.id;
         }
+        updatedAtOnOpenRef.current =
+          projectTemplateService.get(id)?.updatedAt ?? 0;
         setLocalId(id);
         setSyncSignal((s) => s + 1);
       })();
@@ -130,14 +134,52 @@ export const FolderTemplateModal = observer(
       });
     };
 
-    // 닫기: 프롬프트 커밋 후, 아무것도 세팅되지 않은 템플릿이면 지정 자동
-    // 해제 (열어만 보고 닫은 폴더에 빈 템플릿이 남지 않도록)
+    // 닫기: 프롬프트 커밋 후,
+    //  - 아무것도 세팅되지 않은 템플릿이면 지정 자동 해제 (빈 템플릿 잔존 방지)
+    //  - 수정이 있었고 상속 중인 자식이 있으면 전파(덮어쓰기) 확인
     const handleClose = () => {
       if (localId) {
         commitRef.current();
         const e = projectTemplateService.get(localId);
         if (e && projectTemplateService.isEmptyTemplate(e)) {
           projectTemplateService.delete(localId).catch(() => {});
+          onClose();
+          return;
+        }
+        // 전파 확인 — updatedAt 이 변했고(=수정) 상속 자식이 있을 때만
+        if (e && e.updatedAt !== updatedAtOnOpenRef.current) {
+          const children = templateService.listInheritedChildren(localId);
+          if (children.length > 0) {
+            const tplId = localId;
+            appState.pushDialog({
+              type: 'confirm',
+              text: `변경 내용을 상속 중인 자식 프로젝트 ${children.length}개에 덮어쓸까요? (템플릿에서 비어있는 영역은 건너뜁니다)`,
+              callback: async () => {
+                await projectTemplateService.flushSave();
+                const failed: string[] = [];
+                for (const child of children) {
+                  try {
+                    // inherited 플래그는 유지 (opts 미지정 → 기존 기록 값)
+                    await sessionService.applyProjectTemplateToSession(
+                      tplId,
+                      child,
+                    );
+                  } catch (err) {
+                    failed.push(child);
+                  }
+                }
+                if (failed.length > 0) {
+                  appState.pushMessage(
+                    `일부 프로젝트에 전파하지 못했습니다: ${failed.join(', ')}`,
+                  );
+                } else {
+                  appState.pushMessage(
+                    `자식 프로젝트 ${children.length}개에 변경 내용을 전파했습니다.`,
+                  );
+                }
+              },
+            });
+          }
         }
       }
       onClose();
@@ -265,10 +307,11 @@ export const ReapplyTemplateModal = observer(
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted">
-            템플릿의 프리셋(프롬프트 1벌)·캐릭터 프리셋을 이 프로젝트에{' '}
-            <span className="font-medium text-default">추가하고 선택</span>
-            합니다 — 기존 프리셋·씬·생성 이미지는 지우지 않습니다 (이름이
-            겹치면 번호가 붙음).
+            템플릿의 프리셋·캐릭터 프리셋·바이브/레퍼런스를 이 프로젝트에
+            적용합니다. 이전에 이 템플릿으로 적용된 구성은{' '}
+            <span className="font-medium text-default">새 구성으로 교체</span>
+            되고, 직접 만든 프리셋·씬·생성 이미지는 건드리지 않습니다. 템플릿에서
+            비어있는 영역은 건너뜁니다.
           </p>
           {!hasAny ? (
             <p className="text-sm text-default">
@@ -301,7 +344,9 @@ export const ReapplyTemplateModal = observer(
                 {entry && (
                   <span className="text-xs text-muted">
                     프리셋 {entry.preset ? 1 : 0}벌 · 캐릭터 프리셋{' '}
-                    {entry.characterPresets.length}개
+                    {entry.characterPresets.length}개 · 바이브{' '}
+                    {entry.vibes?.length ?? 0} · 레퍼런스{' '}
+                    {entry.characterReferences?.length ?? 0}
                   </span>
                 )}
               </div>

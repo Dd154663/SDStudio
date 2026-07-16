@@ -32,7 +32,8 @@ import { appState } from '../models/AppService';
 import Tooltip from './Tooltip';
 import { PresetEditModal } from './PresetEditModal';
 
-const GlobalVibeImage = observer(
+// 템플릿 관리(글로벌 프리셋 카드 선택)와 공유 — export
+export const GlobalVibeImage = observer(
   ({
     profile,
     className,

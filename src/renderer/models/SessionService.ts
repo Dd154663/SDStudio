@@ -1463,7 +1463,11 @@ export class SessionService extends ResourceSyncService<Session> {
   //       템플릿에 씬이 없으면 빈 default 씬 1개, 스타일 프리셋이 없으면
   //       빈 프로젝트와 동일한 기본 프리셋 시딩(전역 default 포함).
   // 전부 스냅샷 — 생성 후 템플릿을 바꿔도 기존 프로젝트는 영향 없음.
-  async createSessionFromProjectTemplate(templateId: string, newName: string) {
+  async createSessionFromProjectTemplate(
+    templateId: string,
+    newName: string,
+    opts?: { inherited?: boolean },
+  ) {
     if (this.isLoaded(newName)) {
       throw new Error('Resource already exists');
     }
@@ -1504,20 +1508,33 @@ export class SessionService extends ResourceSyncService<Session> {
       if (!created) {
         throw new Error('프로젝트 생성에 실패했습니다.');
       }
-      // 프리셋(1벌)/캐릭터 프리셋 인스턴스화 (이미지: 템플릿 디렉터리 → 세션)
-      const startPreset = await projectTemplateService.instantiateIntoSession(
+      // 프리셋(1벌)/캐릭터 프리셋/수동 바이브·레퍼런스 인스턴스화
+      // (이미지: 템플릿 디렉터리 → 세션)
+      const result = await projectTemplateService.instantiateIntoSession(
         created,
         templateId,
       );
-      if (startPreset) {
+      if (result.presetInstance) {
         // 템플릿 프리셋을 시작 프리셋으로 선택
         created.selectedWorkflow = {
-          workflowType: startPreset.type,
-          presetName: startPreset.name,
+          workflowType: result.presetInstance.type,
+          presetName: result.presetInstance.name,
         };
       } else {
         // 프리셋 없는 템플릿 → 빈 프로젝트와 동일한 기본 시딩
         await importDefaultPresets(created);
+      }
+      // 적용 기록 저장 (교체 의미론·♟ 상속 링크). 폴더 자동 적용이면 inherited.
+      try {
+        await templateService.recordApplication(newName, templateId, {
+          inherited: opts?.inherited ?? false,
+          presets: result.presets,
+          characterPresetNames: result.characterPresetNames,
+          vibePaths: result.vibePaths,
+          referencePaths: result.referencePaths,
+        });
+      } catch (e) {
+        console.warn('템플릿 적용 기록 저장 실패:', e);
       }
       this.markDirty(newName);
     } catch (e) {
@@ -1535,14 +1552,23 @@ export class SessionService extends ResourceSyncService<Session> {
     }
   }
 
-  // 기존 프로젝트에 프로젝트 템플릿을 적용한다 (프로젝트 상속 v2 —
-  // "스냅샷 + 수동 재적용", 씬 제외 확정).
+  // 기존 프로젝트에 프로젝트 템플릿을 적용한다 (프로젝트 상속 마감 —
+  // "출처 마킹 후 교체", 씬 제외 확정).
   //
-  // 규칙: 템플릿 프리셋(1벌)·캐릭터 프리셋을 **추가**하고 프리셋을 선택한다 —
-  //       기존 프리셋/캐릭터는 지우지 않는다(파괴적 교체 방지, 이름 충돌 시
-  //       접미사). 템플릿에서 비어 있는 영역은 건드리지 않는다.
-  // 불변: 씬·인페인트·생성 이미지·공통 바이브/레퍼런스·시드·미러 불가침.
-  async applyProjectTemplateToSession(templateId: string, targetName: string) {
+  // 규칙(교체 의미론): 이 템플릿으로 이전에 만든 인스턴스(적용 기록)만 제거하고
+  //       새로 인스턴스화한다. 사용자가 직접 만든 프리셋·캐릭터·바이브·씬·생성
+  //       이미지는 절대 건드리지 않는다.
+  // 빈 영역 스킵: 템플릿에서 내용이 있는 영역만 "제거+재적용"한다. preset null →
+  //       프리셋 영역 통째 스킵(기존 기록 인스턴스도 유지), characterPresets 0개 →
+  //       스킵, vibes/references 0개 → 각각 스킵.
+  // 불변: 씬·인페인트·생성 이미지·시드·미러 불가침.
+  // opts.inherited: 지정 시 기록의 inherited 를 덮어씀(폴더 전파=유지). 미지정 시
+  //       기존 기록 값을 유지, 기록이 없으면 false.
+  async applyProjectTemplateToSession(
+    templateId: string,
+    targetName: string,
+    opts?: { inherited?: boolean },
+  ) {
     await projectTemplateService.ensureLoaded();
     const entry = projectTemplateService.get(templateId);
     if (!entry) {
@@ -1552,19 +1578,57 @@ export class SessionService extends ResourceSyncService<Session> {
     if (!target) {
       throw new Error(`대상 프로젝트를 찾을 수 없습니다: ${targetName}`);
     }
-    if (!entry.preset && entry.characterPresets.length === 0) {
-      throw new Error('이 템플릿에는 적용할 프리셋이 없습니다.');
+    const hasPreset = !!entry.preset;
+    const hasChars = entry.characterPresets.length > 0;
+    const hasVibes = (entry.vibes?.length ?? 0) > 0;
+    const hasRefs = (entry.characterReferences?.length ?? 0) > 0;
+    if (!hasPreset && !hasChars && !hasVibes && !hasRefs) {
+      throw new Error('이 템플릿에는 적용할 구성이 없습니다.');
     }
-    const startPreset = await projectTemplateService.instantiateIntoSession(
+
+    const prev = templateService.getApplication(targetName, templateId);
+
+    // 1) 기록된 기존 인스턴스 제거 — 단, 템플릿에 내용이 있는 영역만.
+    let selectedRemoved = false;
+    if (prev) {
+      const r = projectTemplateService.removeRecordedInstances(target, prev, {
+        removePresets: hasPreset,
+        removeChars: hasChars,
+        removeVibes: hasVibes,
+        removeRefs: hasRefs,
+      });
+      selectedRemoved = r.selectedRemoved;
+    }
+
+    // 2) 새로 인스턴스화 (비어 있는 영역은 빈 결과)
+    const result = await projectTemplateService.instantiateIntoSession(
       target,
       templateId,
     );
-    if (startPreset) {
+
+    // 3) selectedWorkflow 재선택 — 제거된 프리셋을 가리켰거나 최초 적용이면
+    //    새 프리셋 인스턴스로.
+    if (result.presetInstance && (!prev || selectedRemoved)) {
       target.selectedWorkflow = {
-        workflowType: startPreset.type,
-        presetName: startPreset.name,
+        workflowType: result.presetInstance.type,
+        presetName: result.presetInstance.name,
       };
     }
+
+    // 4) 기록 갱신 — 스킵한 영역은 기존 기록을 보존(그 영역 인스턴스는 남아 있음).
+    const inherited = opts?.inherited ?? prev?.inherited ?? false;
+    await templateService.recordApplication(targetName, templateId, {
+      inherited,
+      presets: hasPreset ? result.presets : (prev?.presets ?? []),
+      characterPresetNames: hasChars
+        ? result.characterPresetNames
+        : (prev?.characterPresetNames ?? []),
+      vibePaths: hasVibes ? result.vibePaths : (prev?.vibePaths ?? []),
+      referencePaths: hasRefs
+        ? result.referencePaths
+        : (prev?.referencePaths ?? []),
+    });
+
     this.markDirty(targetName);
   }
 

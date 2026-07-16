@@ -17,6 +17,22 @@ export interface IFolderTemplateEntry {
   templateId: string;
 }
 
+// 템플릿 적용 기록 (프로젝트 상속 마감, 2026-07-16 합의).
+//
+// 프리셋 직렬화가 스키마 기반이라 프리셋 JSON에 출처 마킹을 심을 수 없어
+// (WorkFlow materializeWFObj 는 params 키만 직렬화), 마킹은 사이드카의 이 필드에
+// 둔다. 하나로 ♟배지(inherited=true)·상속 끊기·전파 대상 조회·교체 의미론을 해결.
+//  - inherited: true = 폴더 자동 상속(♟ 배지·전파 대상)
+//  - presets/characterPresetNames: 이 적용이 세션에 만든 프리셋/캐릭터 인스턴스
+//  - vibePaths/referencePaths: presetShareds 에 주입한 바이브/캐릭터 레퍼런스 path
+export interface ITemplateApplicationRecord {
+  inherited: boolean;
+  presets: { type: string; name: string }[];
+  characterPresetNames: string[];
+  vibePaths: string[];
+  referencePaths: string[];
+}
+
 /**
  * 템플릿 관련 사이드카(templates.json) 관리
  *
@@ -37,6 +53,13 @@ export class TemplateService {
   // 필드(필드 추가 = 호환 안전 — 구버전은 이 필드를 몰라도 무해).
   @observable accessor folderTemplates: Record<string, IFolderTemplateEntry> =
     {};
+  // 템플릿 적용 기록: 프로젝트 이름 → (템플릿 id → 적용 기록). 같은 사이드카의
+  // templateApplications 필드(필드 추가 = 호환 안전). 키=프로젝트 이름(기존
+  // 사이드카 관례) — rename/delete 캐스케이드에 편승한다.
+  @observable accessor templateApplications: Record<
+    string,
+    Record<string, ITemplateApplicationRecord>
+  > = {};
 
   private loaded = false;
   // IO 오류(권한 등)로 로드가 실패하면 저장을 차단해 기존 지정 목록을
@@ -73,6 +96,9 @@ export class TemplateService {
           }
         }
         this.folderTemplates = ft;
+        this.templateApplications = this.sanitizeApplications(
+          raw?.templateApplications,
+        );
       });
       this.loaded = true;
     } catch (e) {
@@ -94,8 +120,48 @@ export class TemplateService {
         version: 1,
         sceneTemplates: this.sceneNames,
         folderTemplates: this.folderTemplates,
+        templateApplications: this.templateApplications,
       }),
     );
+  }
+
+  // 적용 기록 로드 방어: 형식이 어긋난 항목은 걸러내고 필드 기본값을 채운다
+  // (구버전 데이터는 이 필드가 없어 빈 객체 → 무해).
+  private sanitizeApplications(
+    raw: unknown,
+  ): Record<string, Record<string, ITemplateApplicationRecord>> {
+    const out: Record<string, Record<string, ITemplateApplicationRecord>> = {};
+    if (!raw || typeof raw !== 'object') return out;
+    for (const [project, byTpl] of Object.entries(raw as any)) {
+      if (!project || !byTpl || typeof byTpl !== 'object') continue;
+      const inner: Record<string, ITemplateApplicationRecord> = {};
+      for (const [tplId, rec] of Object.entries(byTpl as any)) {
+        if (!tplId || !rec || typeof rec !== 'object') continue;
+        const r = rec as any;
+        inner[tplId] = {
+          inherited: !!r.inherited,
+          presets: Array.isArray(r.presets)
+            ? r.presets.filter(
+                (p: any) =>
+                  p &&
+                  typeof p.type === 'string' &&
+                  typeof p.name === 'string',
+              )
+            : [],
+          characterPresetNames: Array.isArray(r.characterPresetNames)
+            ? r.characterPresetNames.filter((n: any) => typeof n === 'string')
+            : [],
+          vibePaths: Array.isArray(r.vibePaths)
+            ? r.vibePaths.filter((n: any) => typeof n === 'string')
+            : [],
+          referencePaths: Array.isArray(r.referencePaths)
+            ? r.referencePaths.filter((n: any) => typeof n === 'string')
+            : [],
+        };
+      }
+      if (Object.keys(inner).length > 0) out[project] = inner;
+    }
+    return out;
   }
 
   isSceneTemplate(name: string): boolean {
@@ -201,6 +267,137 @@ export class TemplateService {
     await this.save();
   }
 
+  // ===== 템플릿 적용 기록 (프로젝트 상속 마감) =====
+
+  getApplication(
+    project: string,
+    templateId: string,
+  ): ITemplateApplicationRecord | undefined {
+    return this.templateApplications[project]?.[templateId];
+  }
+
+  // inherited=true 인 적용 기록 1개 반환 (♟ 배지·상속 끊기 판정용).
+  // 폴더 자동 상속은 프로젝트당 최대 1개이므로 첫 항목이면 충분.
+  getInheritedApplication(
+    project: string,
+  ): (ITemplateApplicationRecord & { templateId: string }) | undefined {
+    const byTpl = this.templateApplications[project];
+    if (!byTpl) return undefined;
+    for (const [templateId, rec] of Object.entries(byTpl)) {
+      if (rec.inherited) return { ...rec, templateId };
+    }
+    return undefined;
+  }
+
+  async recordApplication(
+    project: string,
+    templateId: string,
+    record: ITemplateApplicationRecord,
+  ): Promise<void> {
+    await this.ensureLoaded();
+    if (!this.loaded) return;
+    runInAction(() => {
+      const byTpl = { ...(this.templateApplications[project] ?? {}) };
+      byTpl[templateId] = record;
+      this.templateApplications = {
+        ...this.templateApplications,
+        [project]: byTpl,
+      };
+    });
+    await this.save();
+  }
+
+  // 상속 끊기 — 이 프로젝트의 모든 적용 기록을 inherited=false 로 전환.
+  // 이미 적용된 구성은 유지(전파·배지만 해제), 기록 자체는 남는다.
+  async breakInheritance(project: string): Promise<void> {
+    await this.ensureLoaded();
+    if (!this.loaded) return;
+    const byTpl = this.templateApplications[project];
+    if (!byTpl) return;
+    let changed = false;
+    const next: Record<string, ITemplateApplicationRecord> = {};
+    for (const [tplId, rec] of Object.entries(byTpl)) {
+      if (rec.inherited) {
+        next[tplId] = { ...rec, inherited: false };
+        changed = true;
+      } else {
+        next[tplId] = rec;
+      }
+    }
+    if (!changed) return;
+    runInAction(() => {
+      this.templateApplications = {
+        ...this.templateApplications,
+        [project]: next,
+      };
+    });
+    await this.save();
+  }
+
+  // 이 템플릿을 상속 중(inherited=true)인 자식 프로젝트 이름 목록 — 전파 대상 조회.
+  listInheritedChildren(templateId: string): string[] {
+    const out: string[] = [];
+    for (const [project, byTpl] of Object.entries(this.templateApplications)) {
+      if (byTpl[templateId]?.inherited) out.push(project);
+    }
+    return out;
+  }
+
+  async removeApplicationsOfProject(project: string): Promise<void> {
+    await this.ensureLoaded();
+    if (!this.loaded) return;
+    if (!this.templateApplications[project]) return;
+    runInAction(() => {
+      const next = { ...this.templateApplications };
+      delete next[project];
+      this.templateApplications = next;
+    });
+    await this.save();
+  }
+
+  async renameProjectApplications(
+    oldName: string,
+    newName: string,
+  ): Promise<void> {
+    await this.ensureLoaded();
+    if (!this.loaded) return;
+    if (!this.templateApplications[oldName]) return;
+    runInAction(() => {
+      const next = { ...this.templateApplications };
+      next[newName] = next[oldName];
+      delete next[oldName];
+      this.templateApplications = next;
+    });
+    await this.save();
+  }
+
+  // 템플릿 엔티티 삭제 시 해당 템플릿의 적용 기록 일괄 해제
+  // (ProjectTemplateService.delete 가 clearFolderTemplatesByTemplateId 옆에서 호출).
+  async clearApplicationsByTemplateId(templateId: string): Promise<void> {
+    await this.ensureLoaded();
+    if (!this.loaded) return;
+    let changed = false;
+    const next: Record<
+      string,
+      Record<string, ITemplateApplicationRecord>
+    > = {};
+    for (const [project, byTpl] of Object.entries(this.templateApplications)) {
+      if (byTpl[templateId]) {
+        const inner = { ...byTpl };
+        delete inner[templateId];
+        changed = true;
+        if (Object.keys(inner).length > 0) next[project] = inner;
+      } else {
+        next[project] = byTpl;
+      }
+    }
+    if (!changed) return;
+    runInAction(() => {
+      this.templateApplications = next;
+    });
+    await this.save();
+  }
+
   // 폴더 이름변경/삭제 연동 — SessionService.renameFolder/deleteFolder 가 호출.
   // (folderColors/folderOrder 이관과 같은 규칙: 정확 일치 + 하위 경로 프리픽스)
   async renameFolder(oldPath: string, newPath: string): Promise<void> {
@@ -256,6 +453,8 @@ export class TemplateService {
   async renameProject(oldName: string, newName: string): Promise<void> {
     await this.ensureLoaded();
     if (!this.loaded) return;
+    // 적용 기록 키 이관 (씬 템플릿 지정과 함께 편승)
+    await this.renameProjectApplications(oldName, newName);
     if (!this.isSceneTemplate(oldName)) return;
     runInAction(() => {
       this.sceneNames = this.sceneNames.map((n) =>
@@ -268,6 +467,9 @@ export class TemplateService {
   async removeProject(name: string): Promise<void> {
     await this.ensureLoaded();
     if (!this.loaded) return;
+    // 적용 기록 정리 (하드 삭제 시점 — 씬 템플릿 지정과 동일 취지: 소프트
+    // 삭제는 유지해 복원 시 되살아나고, 하드 삭제에서만 제거)
+    await this.removeApplicationsOfProject(name);
     if (!this.isSceneTemplate(name)) return;
     runInAction(() => {
       this.sceneNames = this.sceneNames.filter((n) => n !== name);

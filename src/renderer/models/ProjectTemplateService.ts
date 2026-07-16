@@ -1,4 +1,4 @@
-import { observable, action } from 'mobx';
+import { observable, action, runInAction } from 'mobx';
 import { persistService } from './PersistenceService';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -16,6 +16,10 @@ import {
   CharacterPreset,
   ICharacterPreset,
   IScene,
+  IVibeItem,
+  IReferenceItem,
+  VibeItem,
+  ReferenceItem,
 } from './types';
 import { dataUriToBase64 } from './ImageService';
 import { imageExtFromBase64 } from './imageFormats';
@@ -25,6 +29,22 @@ const PROJECT_TEMPLATE_IMAGES_DIR = 'project_template_images';
 
 // 신규 프로젝트 생성 다이얼로그의 '빈 프로젝트' 값 — uuid 와 충돌 불가한 문자.
 const BLANK_VALUE = '/blank';
+
+// 수동 바이브/레퍼런스를 주입할 기본 워크플로 타입 (스타일 프리셋이 없을 때).
+// blankTemplatePreset 및 빈 프로젝트 기본 프리셋과 같은 타입이어야 시작 프리셋과
+// presetShareds 가 짝을 이룬다.
+const DEFAULT_WORKFLOW_TYPE = 'SDImageGenEasy';
+
+// 템플릿을 세션에 인스턴스화한 결과 — 교체 의미론(적용 기록)에 쓰인다.
+export interface IInstantiateResult {
+  // 시작 프리셋 지정용 스타일 프리셋 인스턴스(없으면 undefined)
+  presetInstance?: any;
+  // 이 적용이 세션에 만든 인스턴스들(제거 대상 추적용 — 넘버링 후 실제 이름)
+  presets: { type: string; name: string }[];
+  characterPresetNames: string[];
+  vibePaths: string[];
+  referencePaths: string[];
+}
 
 // 프로젝트 템플릿 (프로젝트 상속 v2, 2026-07-16 합의 · 워크플로우형 재설계).
 //
@@ -50,6 +70,11 @@ export interface IProjectTemplateEntry {
   preset: any | null;
   // 캐릭터 프리셋 스냅샷 목록 — 이미지 경로는 템플릿 이미지 디렉터리 파일명.
   characterPresets: ICharacterPreset[];
+  // 프로젝트 공통 바이브/캐릭터 레퍼런스(수동 지정 영역, 상속 마감).
+  // 캐릭터 프리셋을 거치지 않고 직접 지정 — 적용 시 세션 presetShareds 에 주입.
+  // path 는 템플릿 이미지 디렉터리 파일명(캐릭터 프리셋 이미지와 동일 규칙).
+  vibes: IVibeItem[];
+  characterReferences: IReferenceItem[];
   // 씬 구성 스냅샷 (이미지·토너먼트 흔적 없음)
   scenes: IScene[];
   // true = 폴더 전용 로컬 템플릿 (폴더 기본 템플릿의 실체 — 전역 목록·
@@ -100,6 +125,11 @@ export class ProjectTemplateService extends EventTarget {
                 presets: undefined,
                 characterPresets: Array.isArray(t.characterPresets)
                   ? t.characterPresets
+                  : [],
+                // 구 데이터는 두 영역이 없음 → 빈 배열(호환 안전)
+                vibes: Array.isArray(t.vibes) ? t.vibes : [],
+                characterReferences: Array.isArray(t.characterReferences)
+                  ? t.characterReferences
                   : [],
                 scenes: Array.isArray(t.scenes) ? t.scenes : [],
               }))
@@ -163,6 +193,8 @@ export class ProjectTemplateService extends EventTarget {
     return (
       !entry.preset &&
       entry.characterPresets.length === 0 &&
+      (entry.vibes?.length ?? 0) === 0 &&
+      (entry.characterReferences?.length ?? 0) === 0 &&
       entry.scenes.length === 0
     );
   }
@@ -200,6 +232,8 @@ export class ProjectTemplateService extends EventTarget {
       updatedAt: Date.now(),
       preset: null,
       characterPresets: [],
+      vibes: [],
+      characterReferences: [],
       scenes: [],
       ...(opts?.folderLocal ? { folderLocal: true } : {}),
     };
@@ -251,6 +285,12 @@ export class ProjectTemplateService extends EventTarget {
         );
       }
     }
+    for (const v of clone.vibes || []) {
+      if (v.path) v.path = await this.copyImageToken(v.path);
+    }
+    for (const r of clone.characterReferences || []) {
+      if (r.path) r.path = await this.copyImageToken(r.path);
+    }
     this.templates = [...this.templates, clone];
     this.scheduleSave();
     this.dispatchEvent(new CustomEvent('changed', {}));
@@ -272,11 +312,13 @@ export class ProjectTemplateService extends EventTarget {
     }
     const copy: Pick<
       IProjectTemplateEntry,
-      'preset' | 'characterPresets' | 'scenes'
+      'preset' | 'characterPresets' | 'vibes' | 'characterReferences' | 'scenes'
     > = JSON.parse(
       JSON.stringify({
         preset: src.preset,
         characterPresets: src.characterPresets,
+        vibes: src.vibes ?? [],
+        characterReferences: src.characterReferences ?? [],
         scenes: src.scenes,
       }),
     );
@@ -296,8 +338,16 @@ export class ProjectTemplateService extends EventTarget {
         );
       }
     }
+    for (const v of copy.vibes) {
+      if (v.path) v.path = await this.copyImageToken(v.path);
+    }
+    for (const r of copy.characterReferences) {
+      if (r.path) r.path = await this.copyImageToken(r.path);
+    }
     target.preset = copy.preset;
     target.characterPresets = copy.characterPresets;
+    target.vibes = copy.vibes;
+    target.characterReferences = copy.characterReferences;
     target.scenes = copy.scenes;
     this.touch(target);
   }
@@ -316,6 +366,10 @@ export class ProjectTemplateService extends EventTarget {
     try {
       await templateService.clearFolderTemplatesByTemplateId(id);
     } catch (e) {}
+    // 이 템플릿의 적용 기록(♟ 상속 링크 등) 정리
+    try {
+      await templateService.clearApplicationsByTemplateId(id);
+    } catch (e) {}
   }
 
   private collectImageTokens(entry: IProjectTemplateEntry): string[] {
@@ -327,6 +381,10 @@ export class ProjectTemplateService extends EventTarget {
         if (r.path) tokens.push(r.path);
       if (cp.representativeImage) tokens.push(cp.representativeImage);
     }
+    // 수동 바이브/레퍼런스 영역
+    for (const v of entry.vibes || []) if (v.path) tokens.push(v.path);
+    for (const r of entry.characterReferences || [])
+      if (r.path) tokens.push(r.path);
     return tokens;
   }
 
@@ -602,19 +660,112 @@ export class ProjectTemplateService extends EventTarget {
     this.touch(entry);
   }
 
+  // ---------- 수동 바이브/캐릭터 레퍼런스 영역 (상속 마감) ----------
+  // 업로드는 raw base64(FileUploadBase64) → 템플릿 이미지 디렉터리에 저장하고
+  // 기본값 VibeItem/ReferenceItem JSON 을 만들어 목록에 추가한다.
+  @action
+  async addVibe(templateId: string, base64: string): Promise<void> {
+    const entry = this.get(templateId);
+    if (!entry) throw new Error('템플릿을 찾을 수 없습니다');
+    const path = await this.storeImageForEditor(base64);
+    const item: IVibeItem = { path, info: 1.0, strength: 0.6 };
+    entry.vibes = [...(entry.vibes || []), item];
+    this.touch(entry);
+  }
+
+  // 수동 바이브/레퍼런스 항목 값 조정 (IS/RS·fidelity·referenceType 등 슬라이더)
+  @action
+  async updateVibe(
+    templateId: string,
+    index: number,
+    patch: Partial<IVibeItem>,
+  ): Promise<void> {
+    const entry = this.get(templateId);
+    if (!entry || !(entry.vibes || [])[index]) return;
+    entry.vibes = entry.vibes.map((v, i) =>
+      i === index ? { ...v, ...patch } : v,
+    );
+    this.touch(entry);
+  }
+
+  @action
+  async updateCharacterReference(
+    templateId: string,
+    index: number,
+    patch: Partial<IReferenceItem>,
+  ): Promise<void> {
+    const entry = this.get(templateId);
+    if (!entry || !(entry.characterReferences || [])[index]) return;
+    entry.characterReferences = entry.characterReferences.map((r, i) =>
+      i === index ? { ...r, ...patch } : r,
+    );
+    this.touch(entry);
+  }
+
+  @action
+  async removeVibe(templateId: string, index: number): Promise<void> {
+    const entry = this.get(templateId);
+    if (!entry) return;
+    const removed = (entry.vibes || [])[index];
+    if (removed?.path) await this.deleteImageData(removed.path);
+    entry.vibes = (entry.vibes || []).filter((_, i) => i !== index);
+    this.touch(entry);
+  }
+
+  @action
+  async addCharacterReference(
+    templateId: string,
+    base64: string,
+  ): Promise<void> {
+    const entry = this.get(templateId);
+    if (!entry) throw new Error('템플릿을 찾을 수 없습니다');
+    const path = await this.storeImageForEditor(base64);
+    const item: IReferenceItem = {
+      path,
+      info: 1.0,
+      strength: 0.6,
+      fidelity: 1.0,
+      referenceType: 'character',
+      enabled: true,
+    };
+    entry.characterReferences = [...(entry.characterReferences || []), item];
+    this.touch(entry);
+  }
+
+  @action
+  async removeCharacterReference(
+    templateId: string,
+    index: number,
+  ): Promise<void> {
+    const entry = this.get(templateId);
+    if (!entry) return;
+    const removed = (entry.characterReferences || [])[index];
+    if (removed?.path) await this.deleteImageData(removed.path);
+    entry.characterReferences = (entry.characterReferences || []).filter(
+      (_, i) => i !== index,
+    );
+    this.touch(entry);
+  }
+
   // ---------- 템플릿 → 세션 적용 (스냅샷 인스턴스화) ----------
   //
-  // 스타일 프리셋(1벌)·캐릭터 프리셋을 세션에 추가한다 (씬은 호출측 소관 —
-  // 생성 경로는 초기 json 에 포함, 재적용은 씬 불가침).
+  // 스타일 프리셋(1벌)·캐릭터 프리셋·수동 바이브/레퍼런스를 세션에 추가한다
+  // (씬은 호출측 소관 — 생성 경로는 초기 json 에 포함, 재적용은 씬 불가침).
   // 이미지 파일은 템플릿 디렉터리 → 세션 vibes/references 로 복사.
-  // 반환: 추가된 스타일 프리셋 인스턴스(시작 프리셋 지정용, 없으면 undefined).
+  // 비어 있는 영역은 자연히 스킵된다(빈 결과 배열).
+  // 반환: 만들어진 인스턴스 정보(교체 의미론의 제거 대상 추적·시작 프리셋 지정용).
   async instantiateIntoSession(
     session: Session,
     templateId: string,
-  ): Promise<any | undefined> {
+  ): Promise<IInstantiateResult> {
     const entry = this.get(templateId);
     if (!entry) throw new Error('템플릿을 찾을 수 없습니다');
-    let addedPreset: any | undefined;
+    const result: IInstantiateResult = {
+      presets: [],
+      characterPresetNames: [],
+      vibePaths: [],
+      referencePaths: [],
+    };
     if (entry.preset) {
       try {
         const clone: any = JSON.parse(JSON.stringify(entry.preset));
@@ -629,8 +780,9 @@ export class ProjectTemplateService extends EventTarget {
         }
         const preset = workFlowService.presetFromJSON(clone);
         if (preset) {
-          session.addPreset(preset);
-          addedPreset = preset;
+          session.addPreset(preset); // 이름 충돌 시 넘버링(preset.name 변경)
+          result.presetInstance = preset;
+          result.presets.push({ type: preset.type, name: preset.name });
         }
       } catch (e) {
         console.warn('템플릿 프리셋 적용 실패:', entry.preset?.name, e);
@@ -668,11 +820,120 @@ export class ProjectTemplateService extends EventTarget {
         while (session.hasCharacterPreset(nm)) nm = nm + ' (템플릿)';
         preset.name = nm;
         session.addCharacterPreset(preset);
+        result.characterPresetNames.push(preset.name);
       } catch (e) {
         console.warn('템플릿 캐릭터 프리셋 적용 실패:', cpJson?.name, e);
       }
     }
-    return addedPreset;
+    // 수동 바이브/레퍼런스 → presetShareds[type] 주입 (캐릭터 프리셋을 거치지
+    // 않는 프로젝트 공통 영역). type 은 스타일 프리셋 타입, 없으면 기본 타입.
+    const sharedType = entry.preset?.type ?? DEFAULT_WORKFLOW_TYPE;
+    if (
+      (entry.vibes?.length ?? 0) > 0 ||
+      (entry.characterReferences?.length ?? 0) > 0
+    ) {
+      let shared = session.presetShareds.get(sharedType);
+      if (!shared) {
+        shared = workFlowService.buildShared(sharedType);
+        session.presetShareds.set(sharedType, shared);
+      }
+      const newVibes: VibeItem[] = [];
+      for (const vJson of entry.vibes || []) {
+        try {
+          const d = await this.fetchImageData(vJson.path);
+          const path = d
+            ? await imageService.storeVibeImage(session, dataUriToBase64(d))
+            : vJson.path;
+          const item = VibeItem.fromJSON({ ...vJson, path });
+          newVibes.push(item);
+          result.vibePaths.push(path);
+        } catch (e) {
+          console.warn('템플릿 바이브 적용 실패:', e);
+        }
+      }
+      const newRefs: ReferenceItem[] = [];
+      for (const rJson of entry.characterReferences || []) {
+        try {
+          const d = await this.fetchImageData(rJson.path);
+          const path = d
+            ? await imageService.storeReferenceImage(
+                session,
+                dataUriToBase64(d),
+              )
+            : rJson.path;
+          const item = ReferenceItem.fromJSON({ ...rJson, path });
+          newRefs.push(item);
+          result.referencePaths.push(path);
+        } catch (e) {
+          console.warn('템플릿 캐릭터 레퍼런스 적용 실패:', e);
+        }
+      }
+      runInAction(() => {
+        if (newVibes.length > 0)
+          shared.vibes = [...(shared.vibes || []), ...newVibes];
+        if (newRefs.length > 0)
+          shared.characterReferences = [
+            ...(shared.characterReferences || []),
+            ...newRefs,
+          ];
+      });
+    }
+    return result;
+  }
+
+  // 교체 의미론용 — 기록된 인스턴스만 세션에서 제거한다. 사용자가 직접 만든
+  // 것은 절대 건드리지 않는다(이름/path 정확 일치 항목만). 이미지 파일 자체는
+  // 지우지 않는다(안전 우선). 반환: selectedWorkflow 가 제거된 프리셋을 가리켰는지.
+  removeRecordedInstances(
+    session: Session,
+    record: {
+      presets?: { type: string; name: string }[];
+      characterPresetNames?: string[];
+      vibePaths?: string[];
+      referencePaths?: string[];
+    },
+    opts: { removePresets: boolean; removeChars: boolean; removeVibes: boolean; removeRefs: boolean },
+  ): { selectedRemoved: boolean } {
+    let selectedRemoved = false;
+    if (opts.removePresets) {
+      for (const p of record.presets || []) {
+        if (
+          session.selectedWorkflow?.workflowType === p.type &&
+          session.selectedWorkflow?.presetName === p.name
+        ) {
+          selectedRemoved = true;
+        }
+        session.removePreset(p.type, p.name);
+      }
+    }
+    if (opts.removeChars) {
+      for (const nm of record.characterPresetNames || []) {
+        session.removeCharacterPreset(nm);
+      }
+    }
+    const vibeSet = new Set(record.vibePaths || []);
+    const refSet = new Set(record.referencePaths || []);
+    if (
+      (opts.removeVibes && vibeSet.size > 0) ||
+      (opts.removeRefs && refSet.size > 0)
+    ) {
+      runInAction(() => {
+        for (const shared of session.presetShareds.values()) {
+          if (!shared) continue;
+          if (opts.removeVibes && Array.isArray(shared.vibes)) {
+            shared.vibes = shared.vibes.filter(
+              (v: any) => !vibeSet.has(v?.path),
+            );
+          }
+          if (opts.removeRefs && Array.isArray(shared.characterReferences)) {
+            shared.characterReferences = shared.characterReferences.filter(
+              (r: any) => !refSet.has(r?.path),
+            );
+          }
+        }
+      });
+    }
+    return { selectedRemoved };
   }
 
   // 신규 프로젝트 생성 시 템플릿 선택 다이얼로그 (전역 템플릿만 —
