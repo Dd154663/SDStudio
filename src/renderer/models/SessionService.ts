@@ -1504,10 +1504,19 @@ export class SessionService extends ResourceSyncService<Session> {
       if (!created) {
         throw new Error('프로젝트 생성에 실패했습니다.');
       }
-      // 프리셋/캐릭터 프리셋 인스턴스화 (이미지: 템플릿 디렉터리 → 세션)
-      await projectTemplateService.instantiateIntoSession(created, templateId);
-      if (entry.presets.length === 0) {
-        // 스타일 프리셋 없는 템플릿 → 빈 프로젝트와 동일한 기본 시딩
+      // 프리셋(1벌)/캐릭터 프리셋 인스턴스화 (이미지: 템플릿 디렉터리 → 세션)
+      const startPreset = await projectTemplateService.instantiateIntoSession(
+        created,
+        templateId,
+      );
+      if (startPreset) {
+        // 템플릿 프리셋을 시작 프리셋으로 선택
+        created.selectedWorkflow = {
+          workflowType: startPreset.type,
+          presetName: startPreset.name,
+        };
+      } else {
+        // 프리셋 없는 템플릿 → 빈 프로젝트와 동일한 기본 시딩
         await importDefaultPresets(created);
       }
       this.markDirty(newName);
@@ -1526,11 +1535,12 @@ export class SessionService extends ResourceSyncService<Session> {
     }
   }
 
-  // 기존 프로젝트에 프로젝트 템플릿을 덮어쓴다 (프로젝트 상속 v2 —
+  // 기존 프로젝트에 프로젝트 템플릿을 적용한다 (프로젝트 상속 v2 —
   // "스냅샷 + 수동 재적용", 씬 제외 확정).
   //
-  // 규칙: 템플릿의 스타일 프리셋·캐릭터 프리셋으로 해당 영역을 교체.
-  //       템플릿에서 비어 있는 영역은 건드리지 않는다(실수 방지).
+  // 규칙: 템플릿 프리셋(1벌)·캐릭터 프리셋을 **추가**하고 프리셋을 선택한다 —
+  //       기존 프리셋/캐릭터는 지우지 않는다(파괴적 교체 방지, 이름 충돌 시
+  //       접미사). 템플릿에서 비어 있는 영역은 건드리지 않는다.
   // 불변: 씬·인페인트·생성 이미지·공통 바이브/레퍼런스·시드·미러 불가침.
   async applyProjectTemplateToSession(templateId: string, targetName: string) {
     await projectTemplateService.ensureLoaded();
@@ -1542,23 +1552,18 @@ export class SessionService extends ResourceSyncService<Session> {
     if (!target) {
       throw new Error(`대상 프로젝트를 찾을 수 없습니다: ${targetName}`);
     }
-    if (entry.presets.length === 0 && entry.characterPresets.length === 0) {
+    if (!entry.preset && entry.characterPresets.length === 0) {
       throw new Error('이 템플릿에는 적용할 프리셋이 없습니다.');
     }
-    if (entry.presets.length > 0) {
-      target.presets = new Map();
-    }
-    if (entry.characterPresets.length > 0) {
-      target.characterPresets = new Map();
-    }
-    await projectTemplateService.instantiateIntoSession(target, templateId);
-    // 덮어쓴 목록에 없는 프리셋을 가리키는 선택 상태 정리 (dangling 방지)
-    const sw = target.selectedWorkflow;
-    if (entry.presets.length > 0 && sw?.presetName) {
-      const list = target.presets.get(sw.workflowType) ?? [];
-      if (!list.some((p: any) => p?.name === sw.presetName)) {
-        sw.presetName = undefined;
-      }
+    const startPreset = await projectTemplateService.instantiateIntoSession(
+      target,
+      templateId,
+    );
+    if (startPreset) {
+      target.selectedWorkflow = {
+        workflowType: startPreset.type,
+        presetName: startPreset.name,
+      };
     }
     this.markDirty(targetName);
   }

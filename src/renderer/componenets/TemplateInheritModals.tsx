@@ -193,10 +193,10 @@ export const ReapplyTemplateModal = observer(
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted">
-            템플릿의 스타일 프리셋·캐릭터 프리셋으로 이 프로젝트의 해당 영역을{' '}
-            <span className="text-red-500 font-medium">덮어씁니다</span>{' '}
-            (템플릿에서 비어 있는 영역은 건드리지 않음). 씬·생성 이미지는
-            변경되지 않습니다.
+            템플릿의 프리셋(프롬프트 1벌)·캐릭터 프리셋을 이 프로젝트에{' '}
+            <span className="font-medium text-default">추가하고 선택</span>
+            합니다 — 기존 프리셋·씬·생성 이미지는 지우지 않습니다 (이름이
+            겹치면 번호가 붙음).
           </p>
           {templates.length === 0 ? (
             <p className="text-sm text-default">
@@ -223,7 +223,7 @@ export const ReapplyTemplateModal = observer(
                 </select>
                 {entry && (
                   <span className="text-xs text-muted">
-                    스타일 프리셋 {entry.presets.length}개 · 캐릭터 프리셋{' '}
+                    프리셋 {entry.preset ? 1 : 0}벌 · 캐릭터 프리셋{' '}
                     {entry.characterPresets.length}개
                   </span>
                 )}
@@ -234,7 +234,7 @@ export const ReapplyTemplateModal = observer(
                   disabled={!selected || busy}
                   onClick={apply}
                 >
-                  {busy ? '적용 중...' : '적용 (덮어쓰기)'}
+                  {busy ? '적용 중...' : '적용'}
                 </button>
               </div>
             </>

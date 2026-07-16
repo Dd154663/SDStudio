@@ -26,12 +26,16 @@ const PROJECT_TEMPLATE_IMAGES_DIR = 'project_template_images';
 // 신규 프로젝트 생성 다이얼로그의 '빈 프로젝트' 값 — uuid 와 충돌 불가한 문자.
 const BLANK_VALUE = '/blank';
 
-// 프로젝트 템플릿 (프로젝트 상속 v2, 2026-07-16 합의).
+// 프로젝트 템플릿 (프로젝트 상속 v2, 2026-07-16 합의 · 워크플로우형 재설계).
 //
-// 템플릿 = 독립 전역 데이터: 스타일 프리셋·캐릭터 프리셋·씬 구성의 스냅샷 모음.
-// "템플릿 관리" 오버레이에서 글로벌 프리셋/캐릭터 프리셋/씬 프리셋을 불러와
-// 조합하거나 직접 편집한다. 새 프로젝트 생성 시(선택 또는 폴더 자동 적용)
-// 구성 전체가 프로젝트로 복사된다 — 생성 후엔 원본 템플릿과 독립(스냅샷).
+// 템플릿 = "모든 걸 미리 세팅/수정 가능한 하나의 완전한 프리셋 워크플로우"
+// (독립 전역 데이터). 세 영역으로 구성:
+//  - 프롬프트(스타일 프리셋 1벌): 상위/하위/네거티브 직접 편집,
+//    글로벌 프리셋 불러오기 = 이 1벌 덮어쓰기(샘플링·대표이미지 포함)
+//  - 캐릭터 프리셋 목록: 수동 생성/편집, 불러오기 = 목록에 추가(선적용)
+//  - 씬 구성: 씬 템플릿/프로젝트에서 불러오기 = 전체 교체(일괄 적용)
+// 새 프로젝트 생성 시(선택 또는 폴더 자동 적용) 구성 전체가 프로젝트로
+// 복사된다 — "불러오기"일 뿐이므로 생성 후 프로젝트에서 자유 조정(스냅샷).
 //
 // 이미지는 세션 디렉터리에 종속되지 않도록 전용 디렉터리(data URI 파일)에
 // 보관하고, 적용 시 세션 vibes/references 로 복사한다
@@ -41,13 +45,25 @@ export interface IProjectTemplateEntry {
   name: string;
   createdAt: number;
   updatedAt: number;
-  // 스타일 프리셋 스냅샷: 세션 프리셋 JSON(name/type/profile 포함).
+  // 스타일 프리셋 1벌: 세션 프리셋 JSON(name/type/profile 포함), 없으면 null.
   // profile 은 PROJECT_TEMPLATE_IMAGES_DIR 내 파일명.
-  presets: any[];
-  // 캐릭터 프리셋 스냅샷 — 이미지 경로는 템플릿 이미지 디렉터리 파일명.
+  preset: any | null;
+  // 캐릭터 프리셋 스냅샷 목록 — 이미지 경로는 템플릿 이미지 디렉터리 파일명.
   characterPresets: ICharacterPreset[];
   // 씬 구성 스냅샷 (이미지·토너먼트 흔적 없음)
   scenes: IScene[];
+}
+
+// 프롬프트 영역을 빈 상태에서 직접 타이핑할 때 쓰는 최소 프리셋 골격.
+// presetFromJSON 이 buildPreset(기본값) 위에 overlay 하므로 이 정도면 충분.
+export function blankTemplatePreset(name: string): any {
+  return {
+    type: 'SDImageGenEasy',
+    name,
+    frontPrompt: '',
+    backPrompt: '',
+    uc: '',
+  };
 }
 
 export interface IProjectTemplateStore {
@@ -72,9 +88,13 @@ export class ProjectTemplateService extends EventTarget {
                 (t) =>
                   t && typeof t.id === 'string' && typeof t.name === 'string',
               )
-              .map((t) => ({
+              .map((t: any) => ({
                 ...t,
-                presets: Array.isArray(t.presets) ? t.presets : [],
+                // 구형(프리셋 목록형) 데이터 호환: 첫 항목을 1벌로 승격
+                preset:
+                  t.preset ??
+                  (Array.isArray(t.presets) ? (t.presets[0] ?? null) : null),
+                presets: undefined,
                 characterPresets: Array.isArray(t.characterPresets)
                   ? t.characterPresets
                   : [],
@@ -160,7 +180,7 @@ export class ProjectTemplateService extends EventTarget {
       name: this.resolveNameCollision((name || '새 템플릿').trim() || '새 템플릿'),
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      presets: [],
+      preset: null,
       characterPresets: [],
       scenes: [],
     };
@@ -196,8 +216,8 @@ export class ProjectTemplateService extends EventTarget {
     clone.updatedAt = Date.now();
     // 이미지 파일도 복제 — 엔트리 간 파일 공유가 생기면 한쪽 삭제가
     // 다른 쪽 참조를 깨뜨리므로 항상 사본을 만든다.
-    for (const p of clone.presets) {
-      if (p.profile) p.profile = await this.copyImageToken(p.profile);
+    if (clone.preset?.profile) {
+      clone.preset.profile = await this.copyImageToken(clone.preset.profile);
     }
     for (const cp of clone.characterPresets) {
       for (const v of cp.vibes || []) {
@@ -236,9 +256,7 @@ export class ProjectTemplateService extends EventTarget {
 
   private collectImageTokens(entry: IProjectTemplateEntry): string[] {
     const tokens: string[] = [];
-    for (const p of entry.presets) {
-      if (p.profile) tokens.push(p.profile);
-    }
+    if (entry.preset?.profile) tokens.push(entry.preset.profile);
     for (const cp of entry.characterPresets) {
       for (const v of cp.vibes || []) if (v.path) tokens.push(v.path);
       for (const r of cp.characterReferences || [])
@@ -293,14 +311,6 @@ export class ProjectTemplateService extends EventTarget {
     return await this.storeImageData(dataUri);
   }
 
-  private presetNameCollision(entry: IProjectTemplateEntry, name: string) {
-    const used = new Set(entry.presets.map((p) => p.name));
-    if (!used.has(name)) return name;
-    let i = 2;
-    while (used.has(`${name} (${i})`)) i++;
-    return `${name} (${i})`;
-  }
-
   private charPresetNameCollision(
     entry: IProjectTemplateEntry,
     name: string,
@@ -312,18 +322,20 @@ export class ProjectTemplateService extends EventTarget {
     return `${name} (${i})`;
   }
 
-  private sceneNameCollision(entry: IProjectTemplateEntry, name: string) {
-    const used = new Set(entry.scenes.map((s) => s.name));
-    if (!used.has(name)) return name;
-    let i = 1;
-    while (used.has(`${name}_${i}`)) i++;
-    return `${name}_${i}`;
-  }
-
   // ---------- 불러오기 (편의 기능 — 스냅샷 복사) ----------
 
-  // 글로벌 프리셋 → 템플릿
+  // 기존 프리셋 1벌의 대표 이미지를 정리하고 새 것으로 교체한다 (덮어쓰기 의미론).
   @action
+  private async replacePreset(entry: IProjectTemplateEntry, json: any) {
+    const oldProfile = entry.preset?.profile;
+    entry.preset = json;
+    if (oldProfile && oldProfile !== json?.profile) {
+      await this.deleteImageData(oldProfile);
+    }
+    this.touch(entry);
+  }
+
+  // 글로벌 프리셋 → 템플릿 프롬프트 영역 덮어쓰기 (샘플링·대표이미지 포함)
   async importGlobalPreset(templateId: string, globalId: string) {
     const entry = this.get(templateId);
     if (!entry) throw new Error('템플릿을 찾을 수 없습니다');
@@ -331,22 +343,19 @@ export class ProjectTemplateService extends EventTarget {
     if (!g) throw new Error('글로벌 프리셋을 찾을 수 없습니다');
     const json: any = JSON.parse(JSON.stringify(g.preset));
     json.type = g.workflowType;
-    json.name = this.presetNameCollision(entry, g.name);
+    json.name = g.name;
     if (g.profile) {
       const dataUri = await globalPresetService.fetchProfileImage(g.profile);
       json.profile = dataUri ? await this.storeImageData(dataUri) : undefined;
     }
-    entry.presets = [...entry.presets, json];
-    this.touch(entry);
+    await this.replacePreset(entry, json);
   }
 
-  // 현재 프로젝트의 프리셋 → 템플릿 (수동 지정 경로)
-  @action
+  // 현재 프로젝트의 프리셋 → 템플릿 프롬프트 영역 덮어쓰기
   async importSessionPreset(templateId: string, session: Session, preset: any) {
     const entry = this.get(templateId);
     if (!entry) throw new Error('템플릿을 찾을 수 없습니다');
     const json: any = preset.toJSON();
-    json.name = this.presetNameCollision(entry, json.name);
     if (json.profile) {
       try {
         const dataUri = await backend.readDataFile(
@@ -359,7 +368,17 @@ export class ProjectTemplateService extends EventTarget {
         json.profile = undefined;
       }
     }
-    entry.presets = [...entry.presets, json];
+    await this.replacePreset(entry, json);
+  }
+
+  // 프롬프트 영역 인라인 편집(상위/하위/네거티브 등) 반영.
+  // 프리셋이 아직 없으면 빈 골격을 만들어 타이핑을 받는다 —
+  // "불러오기 없이 수동 세팅"도 가능해야 한다는 스펙.
+  @action
+  async patchPreset(templateId: string, patch: Record<string, any>) {
+    const entry = this.get(templateId);
+    if (!entry) throw new Error('템플릿을 찾을 수 없습니다');
+    entry.preset = { ...(entry.preset ?? blankTemplatePreset(entry.name)), ...patch };
     this.touch(entry);
   }
 
@@ -449,38 +468,31 @@ export class ProjectTemplateService extends EventTarget {
     this.touch(entry);
   }
 
-  // 스타일 프리셋 편집 저장 (PresetEditModal 어댑터용)
+  // 스타일 프리셋 세부 설정 저장 (PresetEditModal 어댑터용 — 이름/샘플링/대표이미지)
   @action
   async updatePreset(
     templateId: string,
-    index: number,
     name: string,
     patch: Record<string, any>,
     newRepImageBase64: string | null,
   ) {
     const entry = this.get(templateId);
     if (!entry) throw new Error('템플릿을 찾을 수 없습니다');
-    const cur = entry.presets[index];
-    if (!cur) throw new Error('프리셋을 찾을 수 없습니다');
-    if (
-      name !== cur.name &&
-      entry.presets.some((p, i) => i !== index && p.name === name)
-    ) {
-      throw new Error('이미 존재하는 이름입니다');
-    }
-    const next: any = { ...cur, ...patch, name };
+    const next: any = {
+      ...(entry.preset ?? blankTemplatePreset(entry.name)),
+      ...patch,
+      name,
+    };
     if (newRepImageBase64) {
       const old = next.profile;
       next.profile = await this.storeImageForEditor(newRepImageBase64);
       if (old) await this.deleteImageData(old);
     }
-    const arr = entry.presets.slice();
-    arr[index] = next;
-    entry.presets = arr;
+    entry.preset = next;
     this.touch(entry);
   }
 
-  // 프로젝트의 씬 구성 → 템플릿 (씬 프리셋/현재 프로젝트 공용).
+  // 프로젝트의 씬 구성 → 템플릿 씬 영역 **전체 교체** (일괄 적용 — 스펙 확정).
   // 이미지·토너먼트 흔적은 가져오지 않는다 (씬 템플릿 임포트와 동일 규칙).
   async importScenesFromProject(
     templateId: string,
@@ -492,29 +504,27 @@ export class ProjectTemplateService extends EventTarget {
     if (!session) throw new Error('프로젝트를 불러올 수 없습니다');
     const scenes = session.getScenes('scene');
     if (scenes.length === 0) return 0;
-    const added: IScene[] = [];
+    const next: IScene[] = [];
     for (const src of scenes) {
       const json: any = JSON.parse(JSON.stringify(src.toJSON()));
       json.imageMap = [];
       json.mains = [];
       json.game = undefined;
       json.round = undefined;
-      json.name = this.sceneNameCollision(entry, json.name);
-      added.push(json);
-      entry.scenes = [...entry.scenes, json];
+      next.push(json);
     }
+    entry.scenes = next;
     this.touch(entry);
-    return added.length;
+    return next.length;
   }
 
   // ---------- 항목 제거 ----------
   @action
-  async removePreset(templateId: string, index: number) {
+  async removePreset(templateId: string) {
     const entry = this.get(templateId);
-    if (!entry) return;
-    const removed = entry.presets[index];
-    if (removed?.profile) await this.deleteImageData(removed.profile);
-    entry.presets = entry.presets.filter((_, i) => i !== index);
+    if (!entry || !entry.preset) return;
+    if (entry.preset.profile) await this.deleteImageData(entry.preset.profile);
+    entry.preset = null;
     this.touch(entry);
   }
 
@@ -546,15 +556,20 @@ export class ProjectTemplateService extends EventTarget {
 
   // ---------- 템플릿 → 세션 적용 (스냅샷 인스턴스화) ----------
   //
-  // 스타일 프리셋·캐릭터 프리셋을 세션에 추가한다 (씬은 호출측 소관 —
+  // 스타일 프리셋(1벌)·캐릭터 프리셋을 세션에 추가한다 (씬은 호출측 소관 —
   // 생성 경로는 초기 json 에 포함, 재적용은 씬 불가침).
   // 이미지 파일은 템플릿 디렉터리 → 세션 vibes/references 로 복사.
-  async instantiateIntoSession(session: Session, templateId: string) {
+  // 반환: 추가된 스타일 프리셋 인스턴스(시작 프리셋 지정용, 없으면 undefined).
+  async instantiateIntoSession(
+    session: Session,
+    templateId: string,
+  ): Promise<any | undefined> {
     const entry = this.get(templateId);
     if (!entry) throw new Error('템플릿을 찾을 수 없습니다');
-    for (const presetJson of entry.presets) {
+    let addedPreset: any | undefined;
+    if (entry.preset) {
       try {
-        const clone: any = JSON.parse(JSON.stringify(presetJson));
+        const clone: any = JSON.parse(JSON.stringify(entry.preset));
         if (clone.profile) {
           const dataUri = await this.fetchImageData(clone.profile);
           clone.profile = dataUri
@@ -565,9 +580,12 @@ export class ProjectTemplateService extends EventTarget {
             : undefined;
         }
         const preset = workFlowService.presetFromJSON(clone);
-        if (preset) session.addPreset(preset);
+        if (preset) {
+          session.addPreset(preset);
+          addedPreset = preset;
+        }
       } catch (e) {
-        console.warn('템플릿 프리셋 적용 실패:', presetJson?.name, e);
+        console.warn('템플릿 프리셋 적용 실패:', entry.preset?.name, e);
       }
     }
     for (const cpJson of entry.characterPresets) {
@@ -606,6 +624,7 @@ export class ProjectTemplateService extends EventTarget {
         console.warn('템플릿 캐릭터 프리셋 적용 실패:', cpJson?.name, e);
       }
     }
+    return addedPreset;
   }
 
   // 신규 프로젝트 생성 시 템플릿 선택 다이얼로그.
