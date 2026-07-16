@@ -13,6 +13,7 @@ import {
   globalPresetService,
   projectSizeService,
   templateService,
+  projectTemplateService,
 } from '.';
 import { getAppState } from './appStateRef';
 import { FileEntry } from '../backend';
@@ -505,6 +506,9 @@ export class SessionService extends ResourceSyncService<Session> {
     }
     await this.saveFolderOrder();
 
+    // 폴더 기본 템플릿 키 마이그레이션 (프로젝트 상속 안 A — 캐스케이드 편승)
+    await templateService.renameFolder(oldName, newName);
+
     await this.update();
   }
 
@@ -545,6 +549,8 @@ export class SessionService extends ResourceSyncService<Session> {
       this.folderOrder = this.folderOrder.filter((f) => f !== folder);
       await this.saveFolderOrder();
     }
+    // 폴더 기본 템플릿 지정 정리 (프로젝트 상속 안 A — 캐스케이드 편승)
+    await templateService.removeFolder(folder);
     await this.update();
   }
 
@@ -1450,70 +1456,71 @@ export class SessionService extends ResourceSyncService<Session> {
     return newSession;
   }
 
-  // 템플릿 프로젝트의 "설정"만 상속한 새 프로젝트를 만든다 (트랙1 A3).
+  // 프로젝트 템플릿(ProjectTemplateService 엔티티)으로 새 프로젝트를 만든다
+  // (프로젝트 상속 v2 — 2026-07-16 합의).
   //
-  // 상속: presets·presetShareds(시드 제외)·library·characterPresets·
-  //       selectedWorkflow·mirrorMode·sceneCardStyle + 스타일 이미지
-  //       (vibes/·references/ 디렉터리 통째 복사 — 프리셋 profile·바이브·
-  //       캐릭터 참조의 파일 참조가 그대로 유효하다)
-  // 제외: 씬 작업물(빈 default 1개로 리셋)·인페인트·생성 이미지(outs 등
-  //       콘텐츠 4루트)·미러 원본 이미지·시드(동일 이미지 재생성 방지)
-  //
-  // 부분 실패 시 만든 디렉터리를 롤백한다 (duplicateSessionDeep 과 동일 패턴).
-  async createSessionFromTemplate(templateName: string, newName: string) {
+  // 적용: 템플릿의 스타일 프리셋·캐릭터 프리셋(이미지 포함 복사)·씬 구성.
+  //       템플릿에 씬이 없으면 빈 default 씬 1개, 스타일 프리셋이 없으면
+  //       빈 프로젝트와 동일한 기본 프리셋 시딩(전역 default 포함).
+  // 전부 스냅샷 — 생성 후 템플릿을 바꿔도 기존 프로젝트는 영향 없음.
+  async createSessionFromProjectTemplate(templateId: string, newName: string) {
     if (this.isLoaded(newName)) {
       throw new Error('Resource already exists');
     }
-    const template = await this.get(templateName);
-    if (!template) {
-      throw new Error(`템플릿 프로젝트를 찾을 수 없습니다: ${templateName}`);
+    await projectTemplateService.ensureLoaded();
+    const entry = projectTemplateService.get(templateId);
+    if (!entry) {
+      throw new Error('템플릿을 찾을 수 없습니다.');
     }
-    const json = template.toJSON();
-    json.name = newName;
-    delete json.id; // 템플릿 유래 새 프로젝트는 새 uuid 발급(트랙1 (b))
-    // 신 배치: vibes/references 복사가 createFrom(→등록) 보다 앞서므로 선등록.
-    let tplPreId: string | undefined;
+    // 씬 구성: 이름은 템플릿 내에서 이미 유일 (임포트 시 번호 부여)
+    const scenes =
+      entry.scenes.length > 0
+        ? Object.fromEntries(
+            entry.scenes.map((s) => [s.name, JSON.parse(JSON.stringify(s))]),
+          )
+        : SessionService.defaultScenesJSON();
+    const json: ISession = {
+      name: newName,
+      version: 1,
+      presets: {},
+      inpaints: {},
+      scenes: scenes as any,
+      library: {},
+      presetShareds: {},
+      characterPresets: {},
+    };
+    // 신 배치: 물리 폴더 선등록 (createDefault 와 동일 — 이후 이미지 쓰기가
+    // projectPath 를 쓰기 전에 등록돼 있어야 한다).
     if (isWorkspaceLayout()) {
-      tplPreId = v4();
-      json.id = tplPreId;
+      json.id = v4();
       await this.ensureWorkspaceProject(newName, {
-        id: tplPreId,
+        id: json.id,
         folder: this.folderMap[newName] ?? '',
       });
     }
-    // 콘텐츠 제거 — 씬은 신규 프로젝트와 동일한 빈 default 1개로.
-    json.scenes = SessionService.defaultScenesJSON() as any;
-    json.inpaints = {};
-    (json as any).mirrorImage = undefined;
-    // 시드 초기화 — 고정 시드가 상속되면 새 프로젝트가 템플릿과 동일한
-    // 이미지를 재생성해 사용자를 놀라게 한다.
-    for (const shared of Object.values(json.presetShareds ?? {})) {
-      if (shared && typeof shared === 'object' && 'seed' in (shared as any)) {
-        (shared as any).seed = undefined;
-      }
-    }
-    const createdDests: string[] = [];
     try {
-      for (const dir of ['vibes', 'references'] as const) {
-        const src = projectPath(dir, templateName);
-        let exists = true;
-        try {
-          await backend.listFiles(src);
-        } catch (e) {
-          exists = false; // 스타일 이미지 없음 — 정상
-        }
-        if (!exists) continue;
-        const dest = projectPath(dir, newName);
-        await this.copyDirRecursive(src, dest, true);
-        createdDests.push(dest);
-      }
       await this.createFrom(newName, json);
-    } catch (e) {
-      for (const dest of createdDests) {
-        try {
-          await backend.deleteDir(dest);
-        } catch (e2) {}
+      const created = await this.get(newName);
+      if (!created) {
+        throw new Error('프로젝트 생성에 실패했습니다.');
       }
+      // 프리셋(1벌)/캐릭터 프리셋 인스턴스화 (이미지: 템플릿 디렉터리 → 세션)
+      const startPreset = await projectTemplateService.instantiateIntoSession(
+        created,
+        templateId,
+      );
+      if (startPreset) {
+        // 템플릿 프리셋을 시작 프리셋으로 선택
+        created.selectedWorkflow = {
+          workflowType: startPreset.type,
+          presetName: startPreset.name,
+        };
+      } else {
+        // 프리셋 없는 템플릿 → 빈 프로젝트와 동일한 기본 시딩
+        await importDefaultPresets(created);
+      }
+      this.markDirty(newName);
+    } catch (e) {
       // 신 배치: 선등록 물리 폴더 통째 정리 + 레지스트리 해제.
       if (isWorkspaceLayout() && !this.isLoaded(newName)) {
         const wdir = physicalDirOf(newName);
@@ -1526,6 +1533,39 @@ export class SessionService extends ResourceSyncService<Session> {
       }
       throw e;
     }
+  }
+
+  // 기존 프로젝트에 프로젝트 템플릿을 적용한다 (프로젝트 상속 v2 —
+  // "스냅샷 + 수동 재적용", 씬 제외 확정).
+  //
+  // 규칙: 템플릿 프리셋(1벌)·캐릭터 프리셋을 **추가**하고 프리셋을 선택한다 —
+  //       기존 프리셋/캐릭터는 지우지 않는다(파괴적 교체 방지, 이름 충돌 시
+  //       접미사). 템플릿에서 비어 있는 영역은 건드리지 않는다.
+  // 불변: 씬·인페인트·생성 이미지·공통 바이브/레퍼런스·시드·미러 불가침.
+  async applyProjectTemplateToSession(templateId: string, targetName: string) {
+    await projectTemplateService.ensureLoaded();
+    const entry = projectTemplateService.get(templateId);
+    if (!entry) {
+      throw new Error('템플릿을 찾을 수 없습니다.');
+    }
+    const target = await this.get(targetName);
+    if (!target) {
+      throw new Error(`대상 프로젝트를 찾을 수 없습니다: ${targetName}`);
+    }
+    if (!entry.preset && entry.characterPresets.length === 0) {
+      throw new Error('이 템플릿에는 적용할 프리셋이 없습니다.');
+    }
+    const startPreset = await projectTemplateService.instantiateIntoSession(
+      target,
+      templateId,
+    );
+    if (startPreset) {
+      target.selectedWorkflow = {
+        workflowType: startPreset.type,
+        presetName: startPreset.name,
+      };
+    }
+    this.markDirty(targetName);
   }
 
   getInpaintOrgPath(session: Session, inpaint: InpaintScene) {

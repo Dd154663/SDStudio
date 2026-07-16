@@ -22,14 +22,27 @@ import {
   FaCopy,
   FaLayerGroup,
   FaThLarge,
+  FaMagic,
+  FaFileImport,
 } from 'react-icons/fa';
-import { sessionService, imageService, isMobile, templateService } from '../models';
+import {
+  sessionService,
+  imageService,
+  isMobile,
+  templateService,
+  projectTemplateService,
+} from '../models';
 import { appState } from '../models/AppService';
 import { backStackService } from '../models/BackStackService';
 import Tooltip from './Tooltip';
 import MobileColorPicker from './MobileColorPicker';
 import { pushRecentProject } from './ProjectBrowser';
 import StorageManageModal from './StorageManageModal';
+import {
+  FolderTemplateModal,
+  ReapplyTemplateModal,
+} from './TemplateInheritModals';
+import { TemplateManagerModal } from './TemplateManagerModal';
 
 const naturalCmp = (a: string, b: string) =>
   a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
@@ -93,7 +106,6 @@ const ProjectRow = observer(
   }) => {
     const active = appState.curSession?.name === name;
     const isFav = sessionService.isFavorite(name);
-    const isTpl = templateService.isTemplate(name);
     const isSceneTpl = templateService.isSceneTemplate(name);
     const folder = showFolder ? sessionService.getFolderOf(name) : null;
     const folderColor = folder
@@ -192,17 +204,6 @@ const ProjectRow = observer(
           </Tooltip>
         )}
         <span className="truncate flex-1">{name}</span>
-        {isTpl && (
-          <Tooltip content="템플릿 프로젝트">
-            <span
-              className={`flex-none flex items-center justify-center w-5 h-5 rounded ${
-                active ? 'text-sky-100' : 'text-sky-500 dark:text-sky-400'
-              }`}
-            >
-              <FaLayerGroup size={11} />
-            </span>
-          </Tooltip>
-        )}
         {isSceneTpl && (
           <Tooltip content="씬 템플릿 프로젝트">
             <span
@@ -328,6 +329,14 @@ const ProjectDrawer = observer(() => {
   const customColorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 저장 공간 관리 모달
   const [storageOpen, setStorageOpen] = useState(false);
+  // 폴더 기본 템플릿 지정 모달 (프로젝트 상속 v2) — 대상 폴더 경로
+  const [folderTemplateFor, setFolderTemplateFor] = useState<string | null>(
+    null,
+  );
+  // 템플릿 수동 재적용 모달 — 대상 프로젝트 이름
+  const [reapplyFor, setReapplyFor] = useState<string | null>(null);
+  // 템플릿 관리 오버레이 (프로젝트 상속 v2)
+  const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
   // 선택 모드(다중 선택 → 폴더 일괄 이동)
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -532,11 +541,20 @@ const ProjectDrawer = observer(() => {
       appState.pushMessage(`같은 이름의 프로젝트가 ${where}이미 존재합니다.`);
       return;
     }
-    const tpl = await templateService.pickTemplateForCreate();
-    if (tpl === undefined) return; // 사용자가 템플릿 선택을 취소
+    // 폴더 기본 템플릿(조상 폴더 포함, 프로젝트 상속 v2)이 있으면 선택
+    // 다이얼로그를 건너뛰고 자동 적용한다.
+    const folderTpl = await templateService.resolveFolderTemplate(folder);
+    let tplId: string | null;
+    if (folderTpl) {
+      tplId = folderTpl.templateId;
+    } else {
+      const picked = await projectTemplateService.pickForCreate();
+      if (picked === undefined) return; // 사용자가 템플릿 선택을 취소
+      tplId = picked;
+    }
     try {
-      if (tpl) {
-        await sessionService.createSessionFromTemplate(tpl, name);
+      if (tplId) {
+        await sessionService.createSessionFromProjectTemplate(tplId, name);
       } else {
         await sessionService.add(name);
       }
@@ -550,6 +568,13 @@ const ProjectDrawer = observer(() => {
         imageService.refreshBatch(session);
         appState.curSession = session;
         pushRecentProject(name);
+      }
+      if (folderTpl) {
+        const tplName =
+          projectTemplateService.get(folderTpl.templateId)?.name ?? '';
+        appState.pushMessage(
+          `폴더 기본 템플릿 "${tplName}"이(가) 적용되었습니다.`,
+        );
       }
       close();
     } catch (e: any) {
@@ -729,6 +754,7 @@ const ProjectDrawer = observer(() => {
 
   // 모바일: 폴더마다 ⋮ 메뉴 (데스크톱은 인라인 버튼 유지)
   const openFolderMenu = async (f: string) => {
+    await templateService.ensureLoaded(); // '기본 템플릿 (지정됨)' 라벨 판정용
     const leafName = sessionService.folderLeafName(f);
     const v = await appState.pushDialogAsync({
       type: 'select',
@@ -741,6 +767,12 @@ const ProjectDrawer = observer(() => {
         { text: '🗑️ 폴더 삭제', value: 'delete' },
         { text: '➕ 이 폴더에 새 프로젝트', value: 'add' },
         { text: '📂 이 폴더에 서브폴더', value: 'subfolder' },
+        {
+          text: templateService.getFolderTemplate(f)
+            ? '✨ 기본 템플릿 (지정됨)'
+            : '✨ 기본 템플릿',
+          value: 'folder-template',
+        },
       ],
     });
     if (!v) return;
@@ -751,6 +783,7 @@ const ProjectDrawer = observer(() => {
     else if (v === 'delete') deleteFolderConfirm(f);
     else if (v === 'add') createProject(f);
     else if (v === 'subfolder') createFolder(f);
+    else if (v === 'folder-template') setFolderTemplateFor(f);
   };
 
   // 모바일: 프로젝트 행의 메뉴 아이콘에서 여는 액션 메뉴(폴더 메뉴와 동일 패턴)
@@ -762,17 +795,12 @@ const ProjectDrawer = observer(() => {
         { text: '📤 내보내기/불러오기', value: 'export' },
         { text: '📋 프로젝트 복제', value: 'clone' },
         {
-          text: templateService.isTemplate(n)
-            ? '📐 템플릿 해제'
-            : '📐 템플릿으로 지정',
-          value: 'template',
-        },
-        {
           text: templateService.isSceneTemplate(n)
             ? '🧩 씬 템플릿 해제'
             : '🧩 씬 템플릿으로 지정',
           value: 'scene-template',
         },
+        { text: '📥 템플릿 적용', value: 'reapply' },
         { text: '✏️ 이름 편집', value: 'rename' },
         { text: '🗑️ 프로젝트 삭제', value: 'delete' },
       ],
@@ -780,8 +808,8 @@ const ProjectDrawer = observer(() => {
     if (!v) return;
     if (v === 'export') handleProjectExportImport(n);
     else if (v === 'clone') handleProjectClone(n);
-    else if (v === 'template') handleProjectTemplateToggle(n);
     else if (v === 'scene-template') handleProjectSceneTemplateToggle(n);
+    else if (v === 'reapply') setReapplyFor(n);
     else if (v === 'rename') handleProjectRename(n);
     else if (v === 'delete') handleProjectDelete(n);
   };
@@ -1305,18 +1333,6 @@ const ProjectDrawer = observer(() => {
     setEditingProject(null);
   };
 
-  const handleProjectTemplateToggle = async (name: string) => {
-    const before = templateService.isTemplate(name);
-    await templateService.toggle(name);
-    const after = templateService.isTemplate(name);
-    // 변경이 반영된 경우만 안내 (로드 실패 등으로 무변경이면 toggle이 자체 안내).
-    if (after !== before) {
-      appState.pushMessage(
-        after ? '템플릿으로 지정되었습니다.' : '템플릿 지정이 해제되었습니다.',
-      );
-    }
-  };
-
   const handleProjectSceneTemplateToggle = async (name: string) => {
     const before = templateService.isSceneTemplate(name);
     await templateService.toggleSceneTemplate(name);
@@ -1438,12 +1454,16 @@ const ProjectDrawer = observer(() => {
           </div>
         ) : (
           <div className="px-3 py-2.5 flex gap-2 flex-none">
-            <button
-              onClick={() => createProject(null)}
-              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-lg text-sm font-medium btn-solid-sky whitespace-nowrap"
-            >
-              <FaPlus size={12} /> 새 프로젝트
-            </button>
+            {/* 아이콘화 — 도구 버튼 5개 + 새 프로젝트가 한 줄에 들어가야
+                오버플로가 없다 (2026-07-16 실기 피드백) */}
+            <Tooltip content="새 프로젝트">
+              <button
+                onClick={() => createProject(null)}
+                className="flex items-center justify-center px-3 py-2.5 rounded-lg text-sm font-medium btn-solid-sky whitespace-nowrap"
+              >
+                <FaPlus size={14} />
+              </button>
+            </Tooltip>
             <Tooltip content="새 폴더 만들기">
               <button
                 onClick={() => createFolder()}
@@ -1460,6 +1480,15 @@ const ProjectDrawer = observer(() => {
               >
                 <FaHdd size={14} />{' '}
                 <span className="hidden md:inline">관리</span>
+              </button>
+            </Tooltip>
+            <Tooltip content="템플릿 관리 (새 프로젝트 시작 구성)">
+              <button
+                onClick={() => setTemplateManagerOpen(true)}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap"
+              >
+                <FaLayerGroup size={14} />{' '}
+                <span className="hidden md:inline">템플릿</span>
               </button>
             </Tooltip>
             <Tooltip content="전체 백업 / 복원">
@@ -1968,6 +1997,35 @@ const ProjectDrawer = observer(() => {
           />
         </div>
       )}
+      {/* 템플릿 관리 / 폴더 기본 템플릿 지정 / 수동 재적용 (프로젝트 상속 v2) —
+          StorageManageModal 과 동일하게 루트 렌더 + 전파 차단 */}
+      {templateManagerOpen && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <TemplateManagerModal
+            isOpen={templateManagerOpen}
+            onClose={() => setTemplateManagerOpen(false)}
+          />
+        </div>
+      )}
+      {folderTemplateFor && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <FolderTemplateModal
+            folder={folderTemplateFor}
+            isOpen={!!folderTemplateFor}
+            onClose={() => setFolderTemplateFor(null)}
+            onOpenManager={() => setTemplateManagerOpen(true)}
+          />
+        </div>
+      )}
+      {reapplyFor && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <ReapplyTemplateModal
+            target={reapplyFor}
+            isOpen={!!reapplyFor}
+            onClose={() => setReapplyFor(null)}
+          />
+        </div>
+      )}
       {toolbar &&
         createPortal(
           toolbar.type === 'folder' ? (
@@ -2056,6 +2114,23 @@ const ProjectDrawer = observer(() => {
                   <FaFolderPlus size={13} />
                 </button>
               </Tooltip>
+              <Tooltip
+                content={
+                  templateService.getFolderTemplate(toolbar.name)
+                    ? '기본 템플릿 (지정됨)'
+                    : '기본 템플릿'
+                }
+              >
+                <button
+                  onClick={() => {
+                    setFolderTemplateFor(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-purple-500"
+                >
+                  <FaMagic size={14} />
+                </button>
+              </Tooltip>
             </div>
           ) : (
             <div
@@ -2099,23 +2174,6 @@ const ProjectDrawer = observer(() => {
               </Tooltip>
               <Tooltip
                 content={
-                  templateService.isTemplate(toolbar.name)
-                    ? '템플릿 해제'
-                    : '템플릿으로 지정'
-                }
-              >
-                <button
-                  onClick={() => {
-                    handleProjectTemplateToggle(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
-                >
-                  <FaLayerGroup size={14} />
-                </button>
-              </Tooltip>
-              <Tooltip
-                content={
                   templateService.isSceneTemplate(toolbar.name)
                     ? '씬 템플릿 해제'
                     : '씬 템플릿으로 지정'
@@ -2129,6 +2187,17 @@ const ProjectDrawer = observer(() => {
                   className="btn-ghost p-2 rounded-md text-faint hover:text-purple-500"
                 >
                   <FaThLarge size={14} />
+                </button>
+              </Tooltip>
+              <Tooltip content="템플릿 적용">
+                <button
+                  onClick={() => {
+                    setReapplyFor(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-purple-500"
+                >
+                  <FaFileImport size={14} />
                 </button>
               </Tooltip>
               <Tooltip content="프로젝트 삭제">

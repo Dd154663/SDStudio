@@ -15,6 +15,7 @@ import {
   sessionService,
   taskQueueService,
   templateService,
+  projectTemplateService,
   trashService,
   workFlowService,
   zipService,
@@ -358,11 +359,14 @@ export class AppState {
               this.pushMessage('이미 존재하는 프로젝트 이름입니다.');
               return;
             }
-            const tpl = await templateService.pickTemplateForCreate();
-            if (tpl === undefined) return; // 사용자가 템플릿 선택을 취소
+            const tplId = await projectTemplateService.pickForCreate();
+            if (tplId === undefined) return; // 사용자가 템플릿 선택을 취소
             try {
-              if (tpl) {
-                await sessionService.createSessionFromTemplate(tpl, inputValue);
+              if (tplId) {
+                await sessionService.createSessionFromProjectTemplate(
+                  tplId,
+                  inputValue,
+                );
               } else {
                 await sessionService.add(inputValue);
               }
