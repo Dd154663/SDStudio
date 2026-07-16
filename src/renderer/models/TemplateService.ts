@@ -1,30 +1,42 @@
 import { observable, makeObservable, runInAction } from 'mobx';
 import { persistService } from './PersistenceService';
-import { backend, sessionService, trashService } from '.';
+import {
+  backend,
+  sessionService,
+  trashService,
+  projectTemplateService,
+} from '.';
 import { getAppState } from './appStateRef';
 import { Session, genericSceneFromJSON } from './types';
 
 const SIDECAR_PATH = 'templates.json';
 
-// 신규 프로젝트 생성 시 '빈 프로젝트' 선택지의 다이얼로그 값 — '/' 는 경로
-// 구분자라 프로젝트 이름에 쓸 수 없으므로 실제 이름과 충돌 불가.
-const BLANK_VALUE = '/blank';
+// 폴더 기본 템플릿 지정 (프로젝트 상속 v2, 2026-07-16 합의).
+// templateId = ProjectTemplateService 엔티티 id (불변 — 이름변경 캐스케이드 불필요).
+export interface IFolderTemplateEntry {
+  templateId: string;
+}
 
 /**
- * 프로젝트 템플릿 지정 관리 (트랙1 A3)
+ * 템플릿 관련 사이드카(templates.json) 관리
  *
- * - "템플릿" = 사용자가 지정한 기존 프로젝트. 신규 프로젝트 생성 시 그 프로젝트의
- *   설정(프리셋·라이브러리·캐릭터 프리셋 등)만 상속한다 — 상속 로직은
- *   SessionService.createSessionFromTemplate 참조.
- * - 지정 목록은 사이드카 templates.json 에 저장 (세션 파일 포맷 무변경 —
- *   feedback_data_migration: 구버전은 이 파일을 몰라도 무해).
+ * - 씬 템플릿: "이미지 없는 일반 프로젝트"를 씬 묶음 템플릿으로 지정한 목록
+ *   (sceneTemplates 필드). 프로젝트 상속 v2 의 "씬 프리셋" 소스이기도 하다.
+ * - 폴더 기본 템플릿: 폴더 경로 → 프로젝트 템플릿(ProjectTemplateService) id.
+ *   해당 폴더(하위 포함)에서 새 프로젝트 생성 시 자동 적용된다.
+ * - (구) '프로젝트를 템플릿으로 지정'(templates 필드)은 프로젝트 상속 v2 에서
+ *   폐기 — 로드 시 무시한다. 구버전은 이 파일의 미지 필드를 몰라도 무해
+ *   (feedback_data_migration).
  * - 시작 시 로드 없음 — 사용처에서 ensureLoaded 지연 로드 (ProjectSizeService 패턴).
  */
 export class TemplateService {
-  @observable accessor names: string[] = [];
   // 씬 템플릿 지정 목록 — "이미지 없는 일반 프로젝트"를 씬 묶음 템플릿으로
   // 지정한 것. 같은 사이드카의 sceneTemplates 필드에 저장(필드 추가 = 호환 안전).
   @observable accessor sceneNames: string[] = [];
+  // 폴더 기본 템플릿: 폴더 경로 → 템플릿 지정. 같은 사이드카의 folderTemplates
+  // 필드(필드 추가 = 호환 안전 — 구버전은 이 필드를 몰라도 무해).
+  @observable accessor folderTemplates: Record<string, IFolderTemplateEntry> =
+    {};
 
   private loaded = false;
   // IO 오류(권한 등)로 로드가 실패하면 저장을 차단해 기존 지정 목록을
@@ -44,12 +56,23 @@ export class TemplateService {
       }
       const raw = JSON.parse(await backend.readFile(SIDECAR_PATH));
       runInAction(() => {
-        this.names = Array.isArray(raw?.templates)
-          ? raw.templates.filter((n: unknown) => typeof n === 'string')
-          : [];
         this.sceneNames = Array.isArray(raw?.sceneTemplates)
           ? raw.sceneTemplates.filter((n: unknown) => typeof n === 'string')
           : [];
+        const ft: Record<string, IFolderTemplateEntry> = {};
+        if (raw?.folderTemplates && typeof raw.folderTemplates === 'object') {
+          for (const [folder, entry] of Object.entries(raw.folderTemplates)) {
+            if (
+              typeof folder === 'string' &&
+              folder &&
+              entry &&
+              typeof (entry as any).templateId === 'string'
+            ) {
+              ft[folder] = { templateId: (entry as any).templateId };
+            }
+          }
+        }
+        this.folderTemplates = ft;
       });
       this.loaded = true;
     } catch (e) {
@@ -69,38 +92,10 @@ export class TemplateService {
       SIDECAR_PATH,
       JSON.stringify({
         version: 1,
-        templates: this.names,
         sceneTemplates: this.sceneNames,
+        folderTemplates: this.folderTemplates,
       }),
     );
-  }
-
-  isTemplate(name: string): boolean {
-    return this.names.includes(name);
-  }
-
-  // 지정 목록 중 실존 프로젝트만 (수동 조작 등으로 남은 stale 지정 제외)
-  list(): string[] {
-    try {
-      const existing = new Set(sessionService.list());
-      return this.names.filter((n) => existing.has(n));
-    } catch (e) {
-      return [...this.names];
-    }
-  }
-
-  async toggle(name: string): Promise<void> {
-    await this.ensureLoaded();
-    if (!this.loaded) {
-      getAppState().pushMessage('템플릿 목록을 불러오지 못해 변경할 수 없습니다.');
-      return;
-    }
-    runInAction(() => {
-      this.names = this.isTemplate(name)
-        ? this.names.filter((n) => n !== name)
-        : [...this.names, name];
-    });
-    await this.save();
   }
 
   isSceneTemplate(name: string): boolean {
@@ -130,14 +125,129 @@ export class TemplateService {
     await this.save();
   }
 
+  // ===== 폴더 기본 템플릿 (프로젝트 상속 안 A) =====
+
+  getFolderTemplate(folder: string): IFolderTemplateEntry | undefined {
+    return this.folderTemplates[folder];
+  }
+
+  // 폴더(+조상 폴더, 가까운 순) 에서 유효한 기본 템플릿을 찾는다.
+  // 템플릿 엔티티가 사라진 stale 지정은 건너뛰고 더 위 조상을 계속 본다.
+  async resolveFolderTemplate(
+    folder: string | null,
+  ): Promise<(IFolderTemplateEntry & { folder: string }) | undefined> {
+    await this.ensureLoaded();
+    if (!this.loaded) return undefined;
+    try {
+      await projectTemplateService.ensureLoaded();
+    } catch (e) {
+      return undefined;
+    }
+    let cur: string | null = folder;
+    while (cur) {
+      const entry = this.folderTemplates[cur];
+      if (entry && projectTemplateService.get(entry.templateId)) {
+        return { ...entry, folder: cur };
+      }
+      const idx = cur.lastIndexOf('/');
+      cur = idx >= 0 ? cur.substring(0, idx) : null;
+    }
+    return undefined;
+  }
+
+  async setFolderTemplate(folder: string, templateId: string): Promise<void> {
+    await this.ensureLoaded();
+    if (!this.loaded) {
+      getAppState().pushMessage('템플릿 목록을 불러오지 못해 변경할 수 없습니다.');
+      return;
+    }
+    runInAction(() => {
+      this.folderTemplates = {
+        ...this.folderTemplates,
+        [folder]: { templateId },
+      };
+    });
+    await this.save();
+  }
+
+  // 템플릿 엔티티 삭제 시 해당 지정 일괄 해제 (ProjectTemplateService.delete 가 호출)
+  async clearFolderTemplatesByTemplateId(templateId: string): Promise<void> {
+    await this.ensureLoaded();
+    if (!this.loaded) return;
+    const keys = Object.keys(this.folderTemplates).filter(
+      (f) => this.folderTemplates[f].templateId === templateId,
+    );
+    if (keys.length === 0) return;
+    runInAction(() => {
+      const next = { ...this.folderTemplates };
+      for (const k of keys) delete next[k];
+      this.folderTemplates = next;
+    });
+    await this.save();
+  }
+
+  async clearFolderTemplate(folder: string): Promise<void> {
+    await this.ensureLoaded();
+    if (!this.loaded) {
+      getAppState().pushMessage('템플릿 목록을 불러오지 못해 변경할 수 없습니다.');
+      return;
+    }
+    if (!this.folderTemplates[folder]) return;
+    runInAction(() => {
+      const next = { ...this.folderTemplates };
+      delete next[folder];
+      this.folderTemplates = next;
+    });
+    await this.save();
+  }
+
+  // 폴더 이름변경/삭제 연동 — SessionService.renameFolder/deleteFolder 가 호출.
+  // (folderColors/folderOrder 이관과 같은 규칙: 정확 일치 + 하위 경로 프리픽스)
+  async renameFolder(oldPath: string, newPath: string): Promise<void> {
+    await this.ensureLoaded();
+    if (!this.loaded) return;
+    const oldPrefix = oldPath + '/';
+    let changed = false;
+    const next: Record<string, IFolderTemplateEntry> = {};
+    for (const [folder, entry] of Object.entries(this.folderTemplates)) {
+      let key = folder;
+      if (folder === oldPath) key = newPath;
+      else if (folder.startsWith(oldPrefix))
+        key = newPath + folder.substring(oldPath.length);
+      if (key !== folder) changed = true;
+      next[key] = entry;
+    }
+    if (!changed) return;
+    runInAction(() => {
+      this.folderTemplates = next;
+    });
+    await this.save();
+  }
+
+  async removeFolder(folder: string): Promise<void> {
+    await this.ensureLoaded();
+    if (!this.loaded) return;
+    const prefix = folder + '/';
+    const keys = Object.keys(this.folderTemplates).filter(
+      (f) => f === folder || f.startsWith(prefix),
+    );
+    if (keys.length === 0) return;
+    runInAction(() => {
+      const next = { ...this.folderTemplates };
+      for (const k of keys) delete next[k];
+      this.folderTemplates = next;
+    });
+    await this.save();
+  }
+
   // 프로젝트 이름변경/삭제 연동 — SessionService.rename/delete 가 호출.
   // (사이드카 키 이관 — trash/project_sizes 와 같은 규칙, 트랙1 B2 참조)
+  // 폴더 템플릿은 엔티티 id 참조라 프로젝트 이름과 무관 — 씬 템플릿만 이관.
   async renameProject(oldName: string, newName: string): Promise<void> {
     await this.ensureLoaded();
     if (!this.loaded) return;
-    if (!this.isTemplate(oldName) && !this.isSceneTemplate(oldName)) return;
+    if (!this.isSceneTemplate(oldName)) return;
     runInAction(() => {
-      this.names = this.names.map((n) => (n === oldName ? newName : n));
       this.sceneNames = this.sceneNames.map((n) =>
         n === oldName ? newName : n,
       );
@@ -148,9 +258,8 @@ export class TemplateService {
   async removeProject(name: string): Promise<void> {
     await this.ensureLoaded();
     if (!this.loaded) return;
-    if (!this.isTemplate(name) && !this.isSceneTemplate(name)) return;
+    if (!this.isSceneTemplate(name)) return;
     runInAction(() => {
-      this.names = this.names.filter((n) => n !== name);
       this.sceneNames = this.sceneNames.filter((n) => n !== name);
     });
     await this.save();
@@ -319,22 +428,4 @@ export class TemplateService {
     appState.curSession = tpl;
   }
 
-  // 신규 프로젝트 생성 시 템플릿 선택 다이얼로그.
-  // 반환: undefined = 사용자 취소(생성 중단) / null = 빈 프로젝트 / string = 템플릿 이름.
-  // 지정된 템플릿이 하나도 없으면 다이얼로그 없이 즉시 null (기존 생성 UX 그대로).
-  async pickTemplateForCreate(): Promise<string | null | undefined> {
-    await this.ensureLoaded();
-    const templates = this.list();
-    if (templates.length === 0) return null;
-    const sel = await getAppState().pushDialogAsync({
-      type: 'select',
-      text: '어떤 구성으로 시작할까요?',
-      items: [
-        { text: '빈 프로젝트', value: BLANK_VALUE },
-        ...templates.map((n) => ({ text: `템플릿: ${n}`, value: n })),
-      ],
-    });
-    if (!sel) return undefined;
-    return sel === BLANK_VALUE ? null : sel;
-  }
 }

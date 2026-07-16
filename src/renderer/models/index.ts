@@ -37,6 +37,7 @@ import { BackgroundNotificationService } from './BackgroundNotificationService';
 import { BackgroundKeepAliveService } from './BackgroundKeepAliveService';
 import { ProjectSizeService } from './ProjectSizeService';
 import { TemplateService } from './TemplateService';
+import { ProjectTemplateService } from './ProjectTemplateService';
 import { ArtistTagService } from './ArtistTagService';
 import { ArtistLibraryService } from './ArtistLibraryService';
 import { BackupService } from './BackupService';
@@ -85,6 +86,9 @@ export const projectSizeService = new ProjectSizeService();
 
 // 프로젝트 템플릿 지정 (시작 시 로드 없음 — 생성/지정 시 지연 로드)
 export const templateService = new TemplateService();
+
+// 프로젝트 템플릿 엔티티 (프로젝트 상속 v2 — 시작 시 로드 없음, 지연 로드)
+export const projectTemplateService = new ProjectTemplateService();
 
 // 아티스트 태깅 (데스크톱 전용, 시작 시 비용 없음 — 모달에서 지연 사용)
 export const artistTagService = new ArtistTagService();
