@@ -800,7 +800,7 @@ const ProjectDrawer = observer(() => {
             : '🧩 씬 템플릿으로 지정',
           value: 'scene-template',
         },
-        { text: '📥 템플릿 적용 (덮어쓰기)', value: 'reapply' },
+        { text: '📥 템플릿 적용', value: 'reapply' },
         { text: '✏️ 이름 편집', value: 'rename' },
         { text: '🗑️ 프로젝트 삭제', value: 'delete' },
       ],
@@ -1454,12 +1454,16 @@ const ProjectDrawer = observer(() => {
           </div>
         ) : (
           <div className="px-3 py-2.5 flex gap-2 flex-none">
-            <button
-              onClick={() => createProject(null)}
-              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-lg text-sm font-medium btn-solid-sky whitespace-nowrap"
-            >
-              <FaPlus size={12} /> 새 프로젝트
-            </button>
+            {/* 아이콘화 — 도구 버튼 5개 + 새 프로젝트가 한 줄에 들어가야
+                오버플로가 없다 (2026-07-16 실기 피드백) */}
+            <Tooltip content="새 프로젝트">
+              <button
+                onClick={() => createProject(null)}
+                className="flex items-center justify-center px-3 py-2.5 rounded-lg text-sm font-medium btn-solid-sky whitespace-nowrap"
+              >
+                <FaPlus size={14} />
+              </button>
+            </Tooltip>
             <Tooltip content="새 폴더 만들기">
               <button
                 onClick={() => createFolder()}
@@ -2185,7 +2189,7 @@ const ProjectDrawer = observer(() => {
                   <FaThLarge size={14} />
                 </button>
               </Tooltip>
-              <Tooltip content="템플릿 적용 (덮어쓰기)">
+              <Tooltip content="템플릿 적용">
                 <button
                   onClick={() => {
                     setReapplyFor(toolbar.name);
