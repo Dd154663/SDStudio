@@ -103,6 +103,11 @@ export async function bootstrapApp(): Promise<void> {
   // 이 창(소유 창)에 보낸 메시지를 토스트로 표시한다.
   backend.onLockOwnerNotice((message) => appState.pushMessage(message));
 
+  // 생성 위임 브리지 (W6 P3, 데스크톱 멀티 윈도우): 이 창이 호스트인지 조회하고
+  // 제출/실행/취소/완료/미러 IPC 를 연결한다. 모바일/단일 창은 backend 기본 구현이
+  // "항상 호스트" no-op 이라 사실상 아무 배선도 하지 않는다(종전과 동일).
+  await taskQueueService.initGenerationHostBridge();
+
   // 전역 저장소 동기화 수신 (W6 P2, 데스크톱 멀티 윈도우): 다른 창이 공유
   // 저장소를 저장하면 여기서 디스크 재로드로 반영한다(낙관적 쓰기+브로드캐스트).
   // 보낸 창은 main 이 제외하므로 자기 저장에 자기 재로드가 겹치지 않는다.

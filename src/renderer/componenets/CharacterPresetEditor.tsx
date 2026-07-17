@@ -492,6 +492,12 @@ export const CharacterPresetEditor = observer(({
     : selectedPresets.size;
 
   const startCycling = () => {
+    // 순차 생성은 큐 외 자체 상태 머신(세션 스왑 포함)이라 위임 범위 밖 — 1차 범위에선
+    // 생성 호스트(주) 창에서만 시작 가능(W6 P3). 보조 창은 안내로 차단한다.
+    if (!taskQueueService.isGenerationHost) {
+      appState.pushMessage('순차 생성은 주 창에서 실행해주세요.');
+      return;
+    }
     const selectedSceneList = scenes.filter((s) => selectedScenes.has(s.name));
     // 현재 뷰에 따라 큐 항목(디스크립터) 구성
     const items = globalView

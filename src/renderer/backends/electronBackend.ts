@@ -417,4 +417,51 @@ export class ElectornBackend extends Backend {
   onGlobalStoreChanged(callback: (key: string) => void): () => void {
     return window.electron.ipcRenderer.on('global-store-changed', callback);
   }
+
+  // ─── 생성 위임: 단일 생성 호스트 (W6 P3) — main 의 창 레지스트리에 위임 ───
+  async isGenerationHost(): Promise<boolean> {
+    return await invoke('is-generation-host');
+  }
+  onGenerationHostChanged(callback: (isHost: boolean) => void): () => void {
+    return window.electron.ipcRenderer.on('generation-host-changed', callback);
+  }
+  onGenerationPeerCount(callback: (count: number) => void): () => void {
+    return window.electron.ipcRenderer.on('generation-peer-count', callback);
+  }
+  async delegateTask(payload: any): Promise<void> {
+    await invoke('delegate-task', payload);
+  }
+  async delegateCancel(payload: any): Promise<void> {
+    await invoke('delegate-cancel', payload);
+  }
+  async delegateRun(): Promise<void> {
+    await invoke('delegate-run');
+  }
+  async delegateStop(): Promise<void> {
+    await invoke('delegate-stop');
+  }
+  onDelegateTask(callback: (payload: any) => void): () => void {
+    return window.electron.ipcRenderer.on('delegate-task', callback);
+  }
+  onDelegateCancel(callback: (payload: any) => void): () => void {
+    return window.electron.ipcRenderer.on('delegate-cancel', callback);
+  }
+  onDelegateRun(callback: () => void): () => void {
+    return window.electron.ipcRenderer.on('delegate-run', callback);
+  }
+  onDelegateStop(callback: () => void): () => void {
+    return window.electron.ipcRenderer.on('delegate-stop', callback);
+  }
+  async delegateComplete(payload: any): Promise<void> {
+    await invoke('delegate-complete', payload);
+  }
+  async delegateQueueSnapshot(snapshot: any): Promise<void> {
+    await invoke('delegate-queue-snapshot', snapshot);
+  }
+  onDelegateComplete(callback: (payload: any) => void): () => void {
+    return window.electron.ipcRenderer.on('delegate-complete', callback);
+  }
+  onDelegateQueueSnapshot(callback: (snapshot: any) => void): () => void {
+    return window.electron.ipcRenderer.on('delegate-queue-snapshot', callback);
+  }
 }

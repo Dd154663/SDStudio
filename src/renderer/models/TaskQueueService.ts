@@ -66,6 +66,54 @@ export interface TaskParam {
   scene: GenericScene;
   onComplete?: (path: string) => void;
   nodelay?: boolean;
+  // 생성 위임(W6 P3): 이 태스크가 보조 창에서 위임되어 호스트 창에서 실행 중이면
+  // 채워진다. 존재하면 호스트는 로컬 onComplete/onAddImage 를 하지 않고(=자기 세션을
+  // 건드리지 않음) 완료를 원 창에 브리지한다. 로컬 예약(단일 창 포함)은 항상 undefined.
+  delegation?: DelegationInfo;
+}
+
+// 위임 태스크의 원 창 귀속 정보 — 완료 브리지·취소 매칭의 키.
+export interface DelegationInfo {
+  originWindowId: number; // 원 창 wcId (main 이 주입)
+  taskId: string; // 원 창이 발급한 uuid — onComplete 대행 맵의 키
+  sessionName: string;
+  sceneName?: string;
+  sceneType?: string;
+}
+
+// 보조 창 → 호스트로 넘기는 직렬화된 태스크 페이로드(순수 JSON).
+export interface DelegatedTaskPayload {
+  taskId: string;
+  sessionName: string;
+  sceneName?: string;
+  sceneType?: string;
+  job: any; // JSON 안전(PromptNode 트리 + toJSON 스냅샷된 vibes/references) — §검증 참조
+  outputPath: string;
+  samples: number;
+  nodelay: boolean;
+  hasOnComplete: boolean;
+  originWindowId?: number; // main 이 주입
+}
+
+// 호스트 → 원 창 완료/실패 브리지 페이로드.
+export interface DelegateCompletePayload extends DelegationInfo {
+  status: 'ok' | 'fail' | 'done';
+  path?: string;
+  message?: string;
+}
+
+// 호스트 → 보조 창 큐 상태 미러(단일 출처라 합산 불필요).
+export interface QueueMirror {
+  running: boolean;
+  doneTotal: number;
+  total: number;
+  etaMean: number;
+  topTaskTimeMean: number;
+  projectRemains: { [sessionName: string]: number };
+  projectRunning: string | null;
+  byOrigin: { [originWindowId: number]: number };
+  // 씬 단위 통계(getSceneKey 키) — 보조 창의 씬 카드 예약 배지용(2026-07-17 실기 피드백).
+  sceneStats: { [sceneKey: string]: TaskStats };
 }
 
 export interface Task {
@@ -230,6 +278,19 @@ export class TaskQueueService extends EventTarget {
   progressCycleStartedAt = 0;
   private logsLoaded = false;
   private logsSaveTimer: any = null;
+
+  // ─── 생성 위임: 단일 생성 호스트 (W6 P3) ───
+  // 기본 true = "내가 생성 호스트" — 단일 창·모바일·주 창의 종전 경로. 데스크톱 멀티
+  // 윈도우에서 보조 창만 부팅 시 false 로 갱신되어 제출/실행/취소를 호스트에 위임한다.
+  isGenerationHost = true;
+  // 호스트가 아는 보조 창 수 — 0이면 상태 스냅샷 브로드캐스트를 생략(단일 창 무부하).
+  private peerWindowCount = 0;
+  // 보조 창이 호스트로부터 받은 최신 큐 미러(표시 전용). 호스트는 항상 null(로컬 사용).
+  private mirror: QueueMirror | null = null;
+  // 위임한 태스크의 onComplete 대행 맵(원 창 보유) — taskId → 콜백.
+  private delegatedCallbacks = new Map<string, (path: string) => void>();
+  private snapshotThrottle: any = null;
+
   constructor(handlers: TaskHandler[]) {
     super();
     this.handlers = handlers;
@@ -296,9 +357,20 @@ export class TaskQueueService extends EventTarget {
     }
   }
 
+  // 취소는 전역 의미론(2026-07-17 실기 피드백): 어느 창에서 취소하든 호스트 큐의
+  // 해당 예약 전부(모든 출처)가 취소된다 — 시작/정지의 전역 위임과 일관.
   removeAllTasks() {
+    // 보조 창: 전체 취소를 호스트에 위임(호스트가 전 출처 큐를 비운다).
+    if (!this.isGenerationHost) {
+      backend
+        .delegateCancel({ all: true })
+        .catch((e) => console.error('예약 취소 위임 실패:', e));
+      return;
+    }
     while (!this.queue.isEmpty()) {
       const task = this.queue.peek();
+      // 위임 태스크는 원 창의 onComplete 대행 콜백 정리를 알린다.
+      this.notifyDelegationDone(task);
       this.removeTaskInternal(task);
       this.queue.dequeue();
     }
@@ -306,6 +378,18 @@ export class TaskQueueService extends EventTarget {
   }
 
   removeTasksFromScene(scene: GenericScene) {
+    // 보조 창: 씬 단위 취소를 호스트에 위임(그 씬의 예약 전부 — 출처 무관).
+    if (!this.isGenerationHost) {
+      backend
+        .delegateCancel({
+          all: false,
+          sessionName: appState.curSession?.name,
+          sceneName: scene.name,
+          sceneType: scene.type,
+        })
+        .catch((e) => console.error('씬 예약 취소 위임 실패:', e));
+      return;
+    }
     const oldQueue = this.queue;
     this.queue = new CircularQueue<Task>();
     while (!oldQueue.isEmpty()) {
@@ -314,12 +398,35 @@ export class TaskQueueService extends EventTarget {
       this.removeTaskInternal(task);
       if (task.params.scene !== scene) {
         this.addTaskInternal(task);
+      } else {
+        this.notifyDelegationDone(task);
       }
     }
     this.dispatchProgress();
   }
 
+  // 위임 태스크가 실행 없이 제거될 때 원 창에 'done'을 브리지해 onComplete 대행
+  // 콜백 맵이 새지 않게 한다. 로컬 태스크(delegation 없음)는 no-op.
+  private notifyDelegationDone(task: Task) {
+    if (!task.params.delegation) return;
+    backend
+      .delegateComplete({ ...task.params.delegation, status: 'done' })
+      .catch(() => {});
+  }
+
   addTask(params: TaskParam, numExec: number) {
+    // 생성 위임(W6 P3): 내가 호스트가 아니면(보조 창) 로컬 큐에 넣지 않고 호스트에
+    // 위임한다. 호스트/단일 창/모바일은 그대로 로컬 경로(addTaskLocal) — 종전과 동일.
+    if (!this.isGenerationHost) {
+      this.delegateSubmit(params, numExec);
+      return;
+    }
+    this.addTaskLocal(params, numExec);
+  }
+
+  // 로컬 큐에 실제로 태스크를 넣는다(기존 addTask 본체). 호스트의 위임 수신 경로도
+  // 이 메서드를 직접 호출한다(재위임 방지).
+  addTaskLocal(params: TaskParam, numExec: number) {
     const task: Task = {
       id: v4(),
       cls: -1,
@@ -357,18 +464,37 @@ export class TaskQueueService extends EventTarget {
   }
 
   isEmpty() {
+    // 보조 창은 호스트 미러 기준(로컬 큐는 항상 비어 있음).
+    if (!this.isGenerationHost)
+      return (this.mirror?.total ?? 0) - (this.mirror?.doneTotal ?? 0) <= 0;
     return this.queue.isEmpty();
   }
 
   isRunning() {
+    if (!this.isGenerationHost) return !!this.mirror?.running;
     return this.currentRun != undefined;
   }
 
+  run() {
+    // 보조 창의 시작 = 전역 실행을 호스트에 위임(사용자 합의).
+    if (!this.isGenerationHost) {
+      backend.delegateRun().catch((e) => console.error('실행 위임 실패:', e));
+      return;
+    }
+    this.runLocal();
+  }
+
   stop() {
+    // 보조 창의 정지 = 전역 정지를 호스트에 위임.
+    if (!this.isGenerationHost) {
+      backend.delegateStop().catch((e) => console.error('정지 위임 실패:', e));
+      return;
+    }
     if (this.currentRun) {
       this.currentRun.stopped = true;
       this.currentRun = undefined;
       this.dispatchEvent(new CustomEvent('stop', {}));
+      this.scheduleSnapshotBroadcast();
     }
   }
 
@@ -378,7 +504,7 @@ export class TaskQueueService extends EventTarget {
     );
   }
 
-  run() {
+  runLocal() {
     if (!this.currentRun) {
       this.currentRun = {
         stopped: false,
@@ -387,6 +513,7 @@ export class TaskQueueService extends EventTarget {
       this.runInternal(this.currentRun);
       this.progressCycleStartedAt = Date.now();
       this.dispatchEvent(new CustomEvent('start', {}));
+      this.scheduleSnapshotBroadcast();
     }
   }
 
@@ -401,6 +528,8 @@ export class TaskQueueService extends EventTarget {
   }
 
   statsAllTasks(): TaskStats {
+    if (!this.isGenerationHost && this.mirror)
+      return { done: this.mirror.doneTotal, total: this.mirror.total };
     let done = 0;
     let total = 0;
     for (let i = 0; i < this.handlers.length; i++) {
@@ -411,6 +540,8 @@ export class TaskQueueService extends EventTarget {
   }
 
   estimateTopTaskTime(type: 'median' | 'mean'): number {
+    if (!this.isGenerationHost)
+      return this.mirror?.topTaskTimeMean ?? 0;
     if (this.queue.isEmpty()) {
       return 0;
     }
@@ -422,6 +553,7 @@ export class TaskQueueService extends EventTarget {
   }
 
   estimateTime(type: 'median' | 'mean'): number {
+    if (!this.isGenerationHost) return this.mirror?.etaMean ?? 0;
     let res = 0;
     for (let i = 0; i < this.handlers.length; i++) {
       if (type === 'mean') {
@@ -444,6 +576,12 @@ export class TaskQueueService extends EventTarget {
     remains: { [sessionName: string]: number };
     running: string | null;
   } {
+    // 보조 창은 호스트 미러의 프로젝트별 잔여/실행 값을 그대로 표시(전 창 동일 값).
+    if (!this.isGenerationHost && this.mirror)
+      return {
+        remains: this.mirror.projectRemains,
+        running: this.mirror.projectRunning,
+      };
     const remains: { [sessionName: string]: number } = {};
     for (const task of this.queue) {
       const remain = task!.total - task!.done;
@@ -459,9 +597,15 @@ export class TaskQueueService extends EventTarget {
   }
 
   statsTasksFromScene(session: Session, scene: GenericScene): TaskStats {
+    const sceneKey = getSceneKey(session, scene);
+    // 보조 창은 호스트 미러의 씬 단위 통계로 응답(로컬 큐는 항상 비어 있음) —
+    // 씬 카드 예약 배지가 호스트 큐 기준으로 표시된다.
+    if (!this.isGenerationHost) {
+      const m = this.mirror?.sceneStats?.[sceneKey];
+      return m ? { done: m.done, total: m.total } : { done: 0, total: 0 };
+    }
     let done = 0;
     let total = 0;
-    const sceneKey = getSceneKey(session, scene);
     if (sceneKey in this.sceneStats) {
       done += this.sceneStats[sceneKey].done;
       total += this.sceneStats[sceneKey].total;
@@ -471,6 +615,8 @@ export class TaskQueueService extends EventTarget {
 
   dispatchProgress() {
     this.dispatchEvent(new CustomEvent('progress', {}));
+    // 호스트: 큐 변경을 보조 창들에 미러(스로틀). 보조 창 0개면 완전 생략.
+    this.scheduleSnapshotBroadcast();
   }
 
   removeTaskInternal(task: Task) {
@@ -508,6 +654,12 @@ export class TaskQueueService extends EventTarget {
     while (!this.queue.isEmpty()) {
       const task = this.queue.peek();
       if (task.done >= task.total) {
+        // 위임 태스크가 전량 완료됨 — 원 창의 onComplete 대행 콜백 정리를 알린다.
+        if (task.params.delegation) {
+          backend
+            .delegateComplete({ ...task.params.delegation, status: 'done' })
+            .catch(() => {});
+        }
         this.removeTaskInternal(task);
         this.queue.dequeue();
         continue;
@@ -591,6 +743,16 @@ export class TaskQueueService extends EventTarget {
             detail: { error: '재시도 초과로 건너뜀', task: task },
           }),
         );
+        // 위임 태스크 실패 — 원 창에 토스트로 통지(브리지).
+        if (task.params.delegation) {
+          backend
+            .delegateComplete({
+              ...task.params.delegation,
+              status: 'fail',
+              message: `생성 실패(재시도 초과): ${sceneName}`,
+            })
+            .catch(() => {});
+        }
         this.removeTaskInternal(task);
         this.queue.dequeue();
         this.dispatchProgress();
@@ -606,6 +768,241 @@ export class TaskQueueService extends EventTarget {
 
   getTaskInfo(task: Task) {
     return this.handlers[task.cls].getInfo(task);
+  }
+
+  // ─── 생성 위임: 브리지 배선/메서드 (W6 P3) ───
+
+  // 부팅 시 1회 호출(bootstrap). 데스크톱에서만 실제 IPC 가 연결되고, 모바일/단일 창은
+  // backend 기본 구현이 no-op·항상 호스트라 아무 배선도 하지 않는다(무영향).
+  async initGenerationHostBridge(): Promise<void> {
+    try {
+      this.isGenerationHost = await backend.isGenerationHost();
+    } catch (e) {
+      console.error('생성 호스트 조회 실패(호스트로 간주):', e);
+      this.isGenerationHost = true;
+    }
+    backend.onGenerationHostChanged((isHost) => {
+      const was = this.isGenerationHost;
+      this.isGenerationHost = isHost;
+      // 승격으로 호스트가 되면 미러를 버리고 로컬 상태로 전환, UI 재평가를 알린다.
+      if (isHost && !was) this.mirror = null;
+      this.dispatchEvent(new CustomEvent('progress', {}));
+    });
+    backend.onGenerationPeerCount((count) => {
+      this.peerWindowCount = count;
+      // 보조 창이 막 붙었을 때 다음 큐 변경까지 기다리지 않고 즉시 현재 상태를 미러링.
+      if (count > 0) this.scheduleSnapshotBroadcast();
+    });
+    // 호스트 수신부
+    backend.onDelegateTask((payload) => this.receiveDelegatedTask(payload));
+    backend.onDelegateCancel((payload) => this.receiveDelegatedCancel(payload));
+    backend.onDelegateRun(() => this.runLocal());
+    backend.onDelegateStop(() => this.stop());
+    // 원 창/보조 창 수신부
+    backend.onDelegateComplete((payload) =>
+      this.receiveDelegatedComplete(payload),
+    );
+    backend.onDelegateQueueSnapshot((snap) => this.receiveQueueMirror(snap));
+  }
+
+  // 보조 창 → 호스트: TaskParam 을 직렬화해 제출을 위임한다. originWindowId 는 main 이
+  // 주입하므로 여기서 보내지 않는다. onComplete 는 원 창에 남겨 두고 taskId 로 대행한다.
+  private delegateSubmit(params: TaskParam, numExec: number) {
+    const taskId = v4();
+    if (params.onComplete) this.delegatedCallbacks.set(taskId, params.onComplete);
+    const payload: DelegatedTaskPayload = {
+      taskId,
+      sessionName: params.session.name,
+      sceneName: params.scene?.name,
+      sceneType: params.scene?.type,
+      // JSON 왕복 = 위임 직렬화 계층. job 은 이미 순수 JSON(PromptNode 트리 +
+      // 예약 시점 toJSON 스냅샷된 vibes/references)이라 함수/클래스/순환이 없다.
+      job: JSON.parse(JSON.stringify(params.job)),
+      outputPath: params.outputPath,
+      samples: numExec,
+      nodelay: !!params.nodelay,
+      hasOnComplete: !!params.onComplete,
+    };
+    backend.delegateTask(payload).catch((e) => {
+      console.error('생성 위임 실패:', e);
+      this.delegatedCallbacks.delete(taskId);
+      appState.pushMessage('생성을 주 창에 위임하지 못했습니다.');
+    });
+  }
+
+  // 호스트: 위임된 태스크를 세션/씬 이름으로 재바인딩해 로컬 큐에 넣는다.
+  // 안전: 로드는 읽기 전용이며, delegation 표식이 있어 호스트는 완료 시 자기 세션의
+  // imageMap 을 건드리지 않는다(원 창이 갱신). 세션은 dirty 로 마킹되지 않는다.
+  private async receiveDelegatedTask(payload: DelegatedTaskPayload) {
+    const fail = (message: string) => {
+      if (payload.originWindowId == null) return;
+      backend
+        .delegateComplete({
+          originWindowId: payload.originWindowId,
+          taskId: payload.taskId,
+          sessionName: payload.sessionName,
+          sceneName: payload.sceneName,
+          sceneType: payload.sceneType,
+          status: 'fail',
+          message,
+        })
+        .catch(() => {});
+    };
+    try {
+      const session = await sessionService.get(payload.sessionName);
+      if (!session) {
+        fail(`위임 실패: 프로젝트 "${payload.sessionName}"를 찾을 수 없습니다.`);
+        return;
+      }
+      let scene: GenericScene | undefined;
+      if (payload.sceneName) {
+        scene = session.getScene(
+          (payload.sceneType as 'scene' | 'inpaint') ?? 'scene',
+          payload.sceneName,
+        );
+        if (!scene) {
+          fail(`위임 실패: 씬 "${payload.sceneName}"를 찾을 수 없습니다.`);
+          return;
+        }
+      }
+      const param: TaskParam = {
+        session,
+        job: payload.job as Job,
+        scene: scene as GenericScene,
+        outputPath: payload.outputPath,
+        nodelay: payload.nodelay,
+        delegation: {
+          originWindowId: payload.originWindowId!,
+          taskId: payload.taskId,
+          sessionName: payload.sessionName,
+          sceneName: payload.sceneName,
+          sceneType: payload.sceneType,
+        },
+      };
+      this.addTaskLocal(param, payload.samples);
+    } catch (e: any) {
+      console.error('위임 태스크 수신 실패:', e);
+      fail(`위임 처리 오류: ${e?.message ?? e}`);
+    }
+  }
+
+  // 호스트: 보조 창의 취소 요청 — 전역 의미론(2026-07-17 실기 피드백).
+  // all=true 면 큐 전체(모든 출처), 아니면 세션+씬 일치분 전부(출처 무관)를 제거한다.
+  // 제거되는 위임 태스크는 원 창에 'done' 브리지(대행 콜백 정리).
+  private receiveDelegatedCancel(payload: {
+    originWindowId?: number;
+    all?: boolean;
+    sessionName?: string;
+    sceneName?: string;
+    sceneType?: string;
+  }) {
+    if (payload.all) {
+      this.removeAllTasks(); // 호스트 로컬 경로 — 전 출처 제거+done 브리지 포함
+      return;
+    }
+    const oldQueue = this.queue;
+    this.queue = new CircularQueue<Task>();
+    while (!oldQueue.isEmpty()) {
+      const task = oldQueue.peek();
+      oldQueue.dequeue();
+      this.removeTaskInternal(task);
+      // 이름 기준 매칭 — 호스트 로컬 태스크·타 창 위임 태스크 모두 포함
+      const match =
+        task.params.session.name === payload.sessionName &&
+        task.params.scene?.name === payload.sceneName &&
+        task.params.scene?.type === payload.sceneType;
+      if (match) {
+        this.notifyDelegationDone(task);
+      } else {
+        this.addTaskInternal(task);
+      }
+    }
+    this.dispatchProgress();
+  }
+
+  // 원 창: 위임한 태스크의 이미지 1장 완료/실패/전량완료 수신.
+  private receiveDelegatedComplete(payload: DelegateCompletePayload) {
+    if (payload.status === 'fail') {
+      this.delegatedCallbacks.delete(payload.taskId);
+      if (payload.message) appState.pushMessage(payload.message);
+      return;
+    }
+    if (payload.status === 'done') {
+      // 전량 완료 — 대행 콜백 정리(더 이상 발화 없음).
+      this.delegatedCallbacks.delete(payload.taskId);
+      return;
+    }
+    // status === 'ok' — 자기 세션 인스턴스의 그리드/imageMap 을 갱신한다.
+    // (chokidar 감시는 config.refreshImage OFF 면 안 돌므로 이 브리지가 정식 경로)
+    const session = sessionService.getFast(payload.sessionName);
+    if (session && payload.sceneName && payload.path) {
+      if (payload.sceneType === 'inpaint') {
+        imageService.onAddInPaint(session, payload.sceneName, payload.path);
+      } else {
+        imageService.onAddImage(session, payload.sceneName, payload.path);
+      }
+    }
+    const cb = this.delegatedCallbacks.get(payload.taskId);
+    if (cb && payload.path) cb(payload.path);
+  }
+
+  // 보조 창: 호스트가 보낸 큐 미러를 저장하고, UI 갱신용 이벤트로 변환한다.
+  private receiveQueueMirror(snap: QueueMirror) {
+    const prev = this.mirror;
+    const prevRunning = prev?.running ?? false;
+    const prevDone = prev?.doneTotal ?? 0;
+    this.mirror = snap;
+    // 진행 바 사이클 갱신 — 이미지 1장 완료(done 증가)나 실행 시작 시 리셋.
+    if (snap.doneTotal > prevDone || (snap.running && !prevRunning)) {
+      this.progressCycleStartedAt = Date.now();
+    }
+    this.dispatchEvent(new CustomEvent('progress', {}));
+    if (snap.running && !prevRunning)
+      this.dispatchEvent(new CustomEvent('start', {}));
+    if (!snap.running && prevRunning)
+      this.dispatchEvent(new CustomEvent('stop', {}));
+    if (snap.doneTotal > prevDone)
+      this.dispatchEvent(new CustomEvent('complete', {}));
+  }
+
+  // 호스트: 보조 창들에 큐 미러를 브로드캐스트(스로틀 300ms). 보조 창 0개면 생략해
+  // 단일 창에서는 아무 부하도 없다. 미러 값은 전부 로컬 계산(호스트=isGenerationHost).
+  private scheduleSnapshotBroadcast() {
+    if (!this.isGenerationHost || this.peerWindowCount <= 0) return;
+    if (this.snapshotThrottle) return;
+    this.snapshotThrottle = setTimeout(() => {
+      this.snapshotThrottle = null;
+      backend.delegateQueueSnapshot(this.buildMirror()).catch(() => {});
+    }, 300);
+  }
+
+  private buildMirror(): QueueMirror {
+    const stats = this.statsAllTasks();
+    const snap = this.projectQueueSnapshot();
+    const byOrigin: { [originWindowId: number]: number } = {};
+    for (const task of this.queue) {
+      const remain = task!.total - task!.done;
+      if (remain <= 0) continue;
+      const oid = task!.params.delegation?.originWindowId ?? 0; // 0 = 호스트 자신
+      byOrigin[oid] = (byOrigin[oid] ?? 0) + remain;
+    }
+    // 씬 단위 통계 — 잔여가 있는 항목만 실어 페이로드를 작게 유지
+    // (sceneStats 는 제거 시 감산되므로 0 잔여 항목이 남아 있을 수 있다).
+    const sceneStats: { [sceneKey: string]: TaskStats } = {};
+    for (const [key, s] of Object.entries(this.sceneStats)) {
+      if (s.total - s.done > 0) sceneStats[key] = { done: s.done, total: s.total };
+    }
+    return {
+      running: this.isRunning(),
+      doneTotal: stats.done,
+      total: stats.total,
+      etaMean: this.estimateTime('mean'),
+      topTaskTimeMean: this.estimateTopTaskTime('mean'),
+      projectRemains: snap.remains,
+      projectRunning: snap.running,
+      byOrigin,
+      sceneStats,
+    };
   }
 }
 

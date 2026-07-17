@@ -160,6 +160,88 @@ ipcMain.handle('take-initial-project', (event) => {
   return name;
 });
 
+// ─── 생성 위임: 단일 생성 호스트 (W6 P3) ───
+// 모든 창의 생성 예약/실행을 "생성 호스트" 창 하나의 큐에서 처리한다. 기본 호스트는
+// 첫(주) 창. 보조 창의 큐는 항상 비어 있고 제출/실행/취소를 IPC 로 호스트에 위임하며,
+// 완료·상태는 역방향으로 브리지된다. 호스트가 닫히면 남은 창 중 가장 오래된 창으로
+// 승격한다. 단일 창(=호스트 자신)·모바일은 위임 경로를 아예 타지 않아 종전과 동일하다.
+let generationHostWcId: number | null = null;
+
+function hostWindow(): BrowserWindow | undefined {
+  if (generationHostWcId == null) return undefined;
+  return findWindowByWcId(generationHostWcId);
+}
+
+// 호스트 창에 "보조 창 수"를 알린다 — 0이면 호스트가 상태 스냅샷 브로드캐스트를
+// 생략하므로 단일 창에서는 위임 관련 추가 작업이 전혀 없다(최우선 회귀 기준).
+function notifyPeerCount() {
+  const host = hostWindow();
+  if (!host) return;
+  const peers = BrowserWindow.getAllWindows().filter(
+    (w) => !w.isDestroyed() && w.webContents.id !== generationHostWcId,
+  ).length;
+  host.webContents.send('generation-peer-count', peers);
+}
+
+// 각 창에 자신이 호스트인지 통지한다(승격·역할 변경 시). 최초 배정 시점의 렌더러는
+// 아직 리스너 등록 전일 수 있으나, 렌더러가 부팅 시 is-generation-host 로 직접
+// 조회(pull)하므로 타이밍에 무관하게 정확한 역할을 얻는다.
+function broadcastHostRole() {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) {
+      w.webContents.send(
+        'generation-host-changed',
+        w.webContents.id === generationHostWcId,
+      );
+    }
+  }
+}
+
+ipcMain.handle('is-generation-host', (event) => {
+  return event.sender.id === generationHostWcId;
+});
+
+// 보조 창 → 호스트: 태스크 제출 위임. originWindowId 는 main 이 신뢰 가능한 출처인
+// event.sender 로 주입한다(렌더러가 자기 wcId 를 알 필요 없음).
+ipcMain.handle('delegate-task', (event, payload: any) => {
+  hostWindow()?.webContents.send('delegate-task', {
+    ...payload,
+    originWindowId: event.sender.id,
+  });
+});
+
+ipcMain.handle('delegate-cancel', (event, payload: any) => {
+  hostWindow()?.webContents.send('delegate-cancel', {
+    ...payload,
+    originWindowId: event.sender.id,
+  });
+});
+
+// 시작/정지는 전역(호스트 큐 전체) — 사용자 합의(보조 창도 실행/정지 가능, 단순화).
+ipcMain.handle('delegate-run', () => {
+  hostWindow()?.webContents.send('delegate-run');
+});
+ipcMain.handle('delegate-stop', () => {
+  hostWindow()?.webContents.send('delegate-stop');
+});
+
+// 호스트 → 원 창: 이미지 1장 완료/실패 브리지(imageMap 갱신·onComplete 대행·토스트).
+ipcMain.handle('delegate-complete', (event, payload: any) => {
+  findWindowByWcId(payload.originWindowId)?.webContents.send(
+    'delegate-complete',
+    payload,
+  );
+});
+
+// 호스트 → 보조 창들: 큐 상태 미러 스냅샷(호스트 자신 제외). 단일 출처라 합산 불필요.
+ipcMain.handle('delegate-queue-snapshot', (event, snapshot: any) => {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed() && w.webContents.id !== event.sender.id) {
+      w.webContents.send('delegate-queue-snapshot', snapshot);
+    }
+  }
+});
+
 // 살아있는 창 하나(주 창 우선)를 복원·포커스한다. second-instance 처리용.
 function focusAnyWindow() {
   const win =
@@ -1574,6 +1656,11 @@ const createWindow = async (opts?: {
     icon: getAssetPath('icon.png'),
     webPreferences: {
       webviewTag: true,
+      // 백그라운드 타이머 스로틀 해제 (W6 P3, 2026-07-17 실기 피드백): 생성 호스트
+      // (주 창)가 배경에 있으면 Chromium 이 setTimeout 을 1초+로 늦춰 큐 처리와
+      // 미러 브로드캐스트(300ms 스로틀)가 수 초씩 지연된다. 위임 구조에서는
+      // 사용자가 보조 창에서 작업하는 동안 호스트가 항상 배경이므로 필수.
+      backgroundThrottling: false,
       preload: app.isPackaged
         ? path.join(__dirname, 'preload.js')
         : path.join(__dirname, '../../.erb/dll/preload.js'),
@@ -1719,6 +1806,11 @@ const createWindow = async (opts?: {
     pendingInitialProject.set(wcId, opts.initialProject);
   }
 
+  // 생성 호스트 배정 (W6 P3): 현재 호스트가 없으면(=첫 창) 이 창이 호스트가 된다.
+  // 이후 열리는 보조 창은 호스트가 되지 않는다. 새 창 생성 시 호스트의 보조 창 수 갱신.
+  if (generationHostWcId == null) generationHostWcId = wcId;
+  notifyPeerCount();
+
   win.on('close', (e) => {
     // 주 창만 닫히기 직전의 위치·크기·최대화 상태를 저장한다(다음 실행 복원용).
     if (!secondary) saveWindowState();
@@ -1738,6 +1830,23 @@ const createWindow = async (opts?: {
       if (owner === wcId) projectLocks.delete(name);
     }
     pendingInitialProject.delete(wcId);
+    // 생성 호스트 승격 (W6 P3): 호스트가 닫히면 남은 창 중 가장 오래된 창을 새
+    // 호스트로 승격한다(기존 호스트 큐 내용은 소멸 — 현재 앱 종료 의미론과 동일).
+    // 'closed' 는 파괴 후 발화하므로 getAllWindows() 에 닫힌 창은 이미 없다.
+    if (generationHostWcId === wcId) {
+      const remaining = BrowserWindow.getAllWindows().filter(
+        (w) => !w.isDestroyed(),
+      );
+      generationHostWcId =
+        remaining.length > 0 ? remaining[0].webContents.id : null;
+      if (generationHostWcId != null) {
+        broadcastHostRole();
+        notifyPeerCount();
+      }
+    } else {
+      // 보조 창이 닫힘 — 호스트의 보조 창 수만 갱신.
+      notifyPeerCount();
+    }
     if (!secondary) mainWindow = null;
   });
 

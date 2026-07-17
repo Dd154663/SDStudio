@@ -170,4 +170,45 @@ export abstract class Backend {
   onGlobalStoreChanged(_callback: (key: string) => void): () => void {
     return () => {};
   }
+
+  // ─── 생성 위임: 단일 생성 호스트 (W6 P3) ───
+  // 데스크톱 멀티 윈도우에서 모든 창의 생성을 "호스트 창" 큐 하나로 일원화한다.
+  // 기본 구현은 "항상 자기 창이 호스트" — 단일 창·모바일은 위임 경로를 아예 타지
+  // 않으므로 종전 동작과 100% 동일하다(최우선 회귀 기준). payload/snapshot 은 IPC
+  // 구조적 복제로 넘어가는 순수 JSON 이라 여기선 느슨한 타입(any)으로 둔다.
+  async isGenerationHost(): Promise<boolean> {
+    return true;
+  }
+  onGenerationHostChanged(_callback: (isHost: boolean) => void): () => void {
+    return () => {};
+  }
+  onGenerationPeerCount(_callback: (count: number) => void): () => void {
+    return () => {};
+  }
+  // 보조 창 → 호스트
+  async delegateTask(_payload: any): Promise<void> {}
+  async delegateCancel(_payload: any): Promise<void> {}
+  async delegateRun(): Promise<void> {}
+  async delegateStop(): Promise<void> {}
+  onDelegateTask(_callback: (payload: any) => void): () => void {
+    return () => {};
+  }
+  onDelegateCancel(_callback: (payload: any) => void): () => void {
+    return () => {};
+  }
+  onDelegateRun(_callback: () => void): () => void {
+    return () => {};
+  }
+  onDelegateStop(_callback: () => void): () => void {
+    return () => {};
+  }
+  // 호스트 → 원 창(완료·실패) / 호스트 → 보조 창들(상태 미러)
+  async delegateComplete(_payload: any): Promise<void> {}
+  async delegateQueueSnapshot(_snapshot: any): Promise<void> {}
+  onDelegateComplete(_callback: (payload: any) => void): () => void {
+    return () => {};
+  }
+  onDelegateQueueSnapshot(_callback: (snapshot: any) => void): () => void {
+    return () => {};
+  }
 }

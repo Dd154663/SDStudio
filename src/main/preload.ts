@@ -72,7 +72,16 @@ export type Channels =
   | 'lock-owner-notice'
   | 'take-initial-project'
   | 'notify-global-store-changed'
-  | 'global-store-changed';
+  | 'global-store-changed'
+  | 'is-generation-host'
+  | 'generation-host-changed'
+  | 'generation-peer-count'
+  | 'delegate-task'
+  | 'delegate-cancel'
+  | 'delegate-run'
+  | 'delegate-stop'
+  | 'delegate-complete'
+  | 'delegate-queue-snapshot';
 
 const electronHandler = {
   ipcRenderer: {

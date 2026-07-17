@@ -61,6 +61,38 @@ import type {
   TaskInfo,
 } from './TaskQueueService';
 
+// 생성 완료 처리 (W6 P3). 위임 태스크(호스트에서 실행 중)면 완료를 원 창에 브리지하고
+// 호스트 자기 세션은 건드리지 않는다(imageMap 미갱신 → dirty/저장 없음). 로컬 태스크
+// (단일 창 포함)는 종전과 동일하게 onComplete + imageMap 갱신을 수행한다.
+function finishOrBridgeImage(task: Task, outputFilePath: string) {
+  if (task.params.delegation) {
+    backend
+      .delegateComplete({
+        ...task.params.delegation,
+        status: 'ok',
+        path: outputFilePath,
+      })
+      .catch(() => {});
+    return;
+  }
+  if (task.params.onComplete) task.params.onComplete(outputFilePath);
+  if (task.params.scene != null) {
+    if (task.params.scene.type === 'inpaint') {
+      imageService.onAddInPaint(
+        task.params.session,
+        task.params.scene.name,
+        outputFilePath,
+      );
+    } else {
+      imageService.onAddImage(
+        task.params.session,
+        task.params.scene.name,
+        outputFilePath,
+      );
+    }
+  }
+}
+
 class GenerateImageTaskHandler implements TaskHandler {
   type: ImageTaskType;
   fast: boolean;
@@ -354,25 +386,7 @@ class GenerateImageTaskHandler implements TaskHandler {
       job.seed = stepSeed(job.seed);
     }
 
-    if (task.params.onComplete) {
-      task.params.onComplete(outputFilePath);
-    }
-
-    if (task.params.scene != null) {
-      if (task.params.scene.type === 'inpaint') {
-        imageService.onAddInPaint(
-          task.params.session,
-          task.params.scene.name,
-          outputFilePath,
-        );
-      } else {
-        imageService.onAddImage(
-          task.params.session,
-          task.params.scene.name,
-          outputFilePath,
-        );
-      }
-    }
+    finishOrBridgeImage(task, outputFilePath);
 
     return true;
   }
@@ -455,12 +469,7 @@ class RemoveBgTaskHandler implements TaskHandler {
       task.params.outputPath + '/' + Date.now().toString() + '.png';
     const job = task.params.job as AugmentJob;
     await localAIService.removeBg(job.image!, outputFilePath);
-    if (task.params.onComplete) task.params.onComplete(outputFilePath);
-    imageService.onAddImage(
-      task.params.session,
-      task.params.scene!.name,
-      outputFilePath,
-    );
+    finishOrBridgeImage(task, outputFilePath);
     return true;
   }
 
@@ -519,20 +528,7 @@ class AugmentTaskHandler implements TaskHandler {
       image: job.image,
     };
     await backend.augmentImage(params);
-    if (task.params.onComplete) task.params.onComplete(outputFilePath);
-    if (task.params.scene.type === 'inpaint') {
-      imageService.onAddInPaint(
-        task.params.session,
-        task.params.scene.name,
-        outputFilePath,
-      );
-    } else {
-      imageService.onAddImage(
-        task.params.session,
-        task.params.scene.name,
-        outputFilePath,
-      );
-    }
+    finishOrBridgeImage(task, outputFilePath);
     return true;
   }
 
