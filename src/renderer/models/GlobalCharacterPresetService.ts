@@ -249,11 +249,12 @@ export class GlobalCharacterPresetService extends EventTarget {
     } catch (e) {}
   }
 
+  // 이름 충돌 시 `_n` 접미사 부여 — 일괄 생성(batchCreatePlan)과 같은 관례
   private resolveNameCollision(name: string): string {
     if (!this.getByName(name)) return name;
     let i = 1;
-    while (this.getByName(`${name} (${i})`)) i++;
-    return `${name} (${i})`;
+    while (this.getByName(`${name}_${i}`)) i++;
+    return `${name}_${i}`;
   }
 
   // ---------- 로컬 → 글로벌 ----------
