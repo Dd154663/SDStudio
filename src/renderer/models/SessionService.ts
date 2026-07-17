@@ -303,6 +303,8 @@ export class SessionService extends ResourceSyncService<Session> {
   async saveFavorites() {
     if (this.metaSaveBlocked('favorites.json')) return;
     await persistService.write('favorites.json', JSON.stringify([...this.favorites]));
+    // 전역 저장소 동기화(W6 P2): 다른 창들이 공유 메타를 재로드하도록 알림
+    backend.notifyGlobalStoreChanged('session-meta').catch(() => {});
   }
 
   async toggleFavorite(name: string) {
@@ -765,6 +767,8 @@ export class SessionService extends ResourceSyncService<Session> {
       'folderColors.json',
       JSON.stringify(this.folderColors),
     );
+    // 전역 저장소 동기화(W6 P2)
+    backend.notifyGlobalStoreChanged('session-meta').catch(() => {});
   }
 
   getFolderColor(folder: string): string | undefined {
@@ -796,6 +800,8 @@ export class SessionService extends ResourceSyncService<Session> {
       'folderOrder.json',
       JSON.stringify(this.folderOrder),
     );
+    // 전역 저장소 동기화(W6 P2)
+    backend.notifyGlobalStoreChanged('session-meta').catch(() => {});
   }
 
   // 저장된 순서를 우선 적용하고, 순서에 없는 폴더는 뒤에 자연정렬로 덧붙인다.
@@ -2223,6 +2229,15 @@ export class SessionService extends ResourceSyncService<Session> {
 
   configChanged(): void {
     this.dispatchEvent(new CustomEvent('config-changed', {}));
+  }
+
+  // 다른 창의 공유 메타(즐겨찾기·폴더색·폴더순서) 변경 반영(W6 P2) —
+  // 디스크 재로드 후 listupdated 로 드로어/브라우저를 재렌더시킨다.
+  async reloadSharedMeta(): Promise<void> {
+    await this.loadFavorites();
+    await this.loadFolderColors();
+    await this.loadFolderOrder();
+    this.dispatchEvent(new CustomEvent('listupdated', {}));
   }
 
   async reloadPieceLibraryDB(session: Session) {

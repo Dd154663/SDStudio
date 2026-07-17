@@ -408,4 +408,13 @@ export class ElectornBackend extends Backend {
   async takeInitialProject(): Promise<string | null> {
     return await invoke('take-initial-project');
   }
+
+  // ─── 전역 저장소 동기화 (W6 P2) ───
+  async notifyGlobalStoreChanged(key: string): Promise<void> {
+    await invoke('notify-global-store-changed', key);
+  }
+
+  onGlobalStoreChanged(callback: (key: string) => void): () => void {
+    return window.electron.ipcRenderer.on('global-store-changed', callback);
+  }
 }

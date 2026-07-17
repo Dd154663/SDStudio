@@ -135,6 +135,22 @@ ipcMain.handle(
   },
 );
 
+// ─── 전역 저장소 동기화 (W6 P2) ───
+// 창 공유 저장소(config·글로벌 캐릭터 프리셋·휴지통·세션 메타)의 변경을 다른
+// 창들에 알린다 — 낙관적 쓰기 + 변경 브로드캐스트(수신 창이 디스크에서 재로드).
+// 보낸 창 자신은 제외한다(이미 최신 상태 + 재로드로 인한 편집 중 상태 유실 방지).
+function broadcastGlobalStoreChanged(senderWcId: number, key: string) {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed() && w.webContents.id !== senderWcId) {
+      w.webContents.send('global-store-changed', key);
+    }
+  }
+}
+
+ipcMain.handle('notify-global-store-changed', (event, key: string) => {
+  broadcastGlobalStoreChanged(event.sender.id, key);
+});
+
 // "새 창에서 열기"로 전달된 초기 프로젝트 — 새 창(wcId)이 부팅 후 1회 가져간다.
 const pendingInitialProject = new Map<number, string>();
 
@@ -241,6 +257,9 @@ ipcMain.handle('set-config', async (event, newConfig) => {
   const tmpFile = path.join(DEFAULT_APP_DIR, uuidv4());
   await fs.writeFile(tmpFile, JSON.stringify(config), 'utf-8');
   await fs.rename(tmpFile, path.join(DEFAULT_APP_DIR, 'config.json'));
+  // 전역 저장소 동기화(W6 P2): 설정 변경을 다른 창들에 알린다 — 각 창이
+  // get-config 재조회+미러 재적용(config-changed 경로)으로 반영한다.
+  broadcastGlobalStoreChanged(event.sender.id, 'config');
 });
 
 ipcMain.handle('get-version', async (event) => {

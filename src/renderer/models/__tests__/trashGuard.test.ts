@@ -24,6 +24,8 @@ jest.mock('../index', () => ({
     ),
     deleteFile: jest.fn(async () => {}),
     deleteDir: jest.fn(async () => {}),
+    // 전역 저장소 동기화(W6 P2) — saveTrash 가 저장 후 브로드캐스트 호출
+    notifyGlobalStoreChanged: jest.fn(async () => {}),
   },
   imageService: {},
   templateService: { removeProject: jest.fn(async () => {}) },

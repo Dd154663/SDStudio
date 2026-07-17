@@ -70,7 +70,9 @@ export type Channels =
   | 'project-lock-query'
   | 'project-lock-focus-owner'
   | 'lock-owner-notice'
-  | 'take-initial-project';
+  | 'take-initial-project'
+  | 'notify-global-store-changed'
+  | 'global-store-changed';
 
 const electronHandler = {
   ipcRenderer: {

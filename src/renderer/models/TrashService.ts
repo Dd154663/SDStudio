@@ -93,6 +93,15 @@ export class TrashService extends EventTarget {
   async saveTrash(): Promise<void> {
     await persistService.write(TRASH_FILE, JSON.stringify(this.data));
     this.dispatchEvent(new CustomEvent('trash-updated'));
+    // 전역 저장소 동기화(W6 P2): 다른 창들이 휴지통을 재로드하도록 알림
+    backend.notifyGlobalStoreChanged('trash').catch(() => {});
+  }
+
+  // 다른 창의 휴지통 변경 반영(W6 P2) — 디스크 재로드 + UI 갱신 이벤트.
+  // loadTrash 의 IO 실패 차단 의미론(loaded 미설정)은 그대로 유지된다.
+  async reloadExternal(): Promise<void> {
+    await this.loadTrash();
+    this.dispatchEvent(new CustomEvent('trash-updated'));
   }
 
   private ensureLoaded() {

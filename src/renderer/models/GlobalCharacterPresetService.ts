@@ -100,8 +100,11 @@ export class GlobalCharacterPresetService extends EventTarget {
         await persistService.write(GLOBAL_CHAR_PRESETS_FILE, data);
       } catch (e2) {
         console.error('Failed to save global character presets:', e2);
+        return;
       }
     }
+    // 전역 저장소 동기화(W6 P2): 다른 창들이 디스크에서 재로드하도록 알림
+    backend.notifyGlobalStoreChanged('global-character-presets').catch(() => {});
   }
 
   scheduleSave() {

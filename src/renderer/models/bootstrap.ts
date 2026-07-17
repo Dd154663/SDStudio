@@ -2,6 +2,7 @@ import {
   backend,
   sessionService,
   imageService,
+  trashService,
   globalPieceService,
   globalPresetService,
   globalCharacterPresetService,
@@ -101,6 +102,27 @@ export async function bootstrapApp(): Promise<void> {
   // 락 소유 창으로 전달된 안내 수신 — 다른 창의 열기/파괴 작업 충돌 시 main 이
   // 이 창(소유 창)에 보낸 메시지를 토스트로 표시한다.
   backend.onLockOwnerNotice((message) => appState.pushMessage(message));
+
+  // 전역 저장소 동기화 수신 (W6 P2, 데스크톱 멀티 윈도우): 다른 창이 공유
+  // 저장소를 저장하면 여기서 디스크 재로드로 반영한다(낙관적 쓰기+브로드캐스트).
+  // 보낸 창은 main 이 제외하므로 자기 저장에 자기 재로드가 겹치지 않는다.
+  backend.onGlobalStoreChanged(async (key) => {
+    try {
+      if (key === 'config') {
+        // main 의 config 는 이미 최신 — config-changed 경로(App.tsx 구독)가
+        // get-config 재조회 + appState 미러 재적용을 수행한다.
+        sessionService.configChanged();
+      } else if (key === 'global-character-presets') {
+        await globalCharacterPresetService.load();
+      } else if (key === 'trash') {
+        await trashService.reloadExternal();
+      } else if (key === 'session-meta') {
+        await sessionService.reloadSharedMeta();
+      }
+    } catch (e) {
+      console.error('전역 저장소 동기화 실패:', key, e);
+    }
+  });
 
   // 각 단계는 개별 격리한다 — 앞 단계 실패가 뒤 단계(특히 세션 초기화)를
   // 건너뛰게 하면 안 된다. 부팅이 일부 실패해도 앱은 반드시 뜬다.

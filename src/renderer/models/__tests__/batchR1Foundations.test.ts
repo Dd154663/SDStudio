@@ -18,6 +18,8 @@ const backend = {
   readDataFile: jest.fn(async () => null),
   writeDataFile: jest.fn(async () => {}),
   deleteFile: jest.fn(async () => {}),
+  // 전역 저장소 동기화(W6 P2) — save() 가 저장 후 브로드캐스트 호출
+  notifyGlobalStoreChanged: jest.fn(async () => {}),
 };
 
 jest.mock('..', () => ({

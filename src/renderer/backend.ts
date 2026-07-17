@@ -161,4 +161,13 @@ export abstract class Backend {
   async takeInitialProject(): Promise<string | null> {
     return null;
   }
+
+  // ─── 전역 저장소 동기화 (W6 P2) ───
+  // 창 공유 저장소(글로벌 캐릭터 프리셋·휴지통·세션 메타 등)를 저장한 뒤 다른
+  // 창들에 알린다(낙관적 쓰기 + 브로드캐스트). 기본 no-op(모바일/단일 창).
+  async notifyGlobalStoreChanged(_key: string): Promise<void> {}
+  // 다른 창의 전역 저장소 변경 수신 — 수신 창은 해당 저장소를 디스크에서 재로드.
+  onGlobalStoreChanged(_callback: (key: string) => void): () => void {
+    return () => {};
+  }
 }
