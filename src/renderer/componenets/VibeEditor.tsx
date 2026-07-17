@@ -17,6 +17,29 @@ import { CompanionHostRow } from './CompanionDnd';
 
 // PreSetEdtior.tsx 에서 분리된 바이브(vibe) 편집기 계열.
 // VibeImage/EditableSliderValue 는 CharacterReferenceEditor 와 본체도 공용.
+
+// 패널 폭 적응(2026-07-17): 좌측 프리셋 패널은 폭을 자유 조정할 수 있어 창 기준
+// md: 브레이크포인트로는 부족 — 컨테이너 실폭을 관찰해 좁으면 세로 배치로 전환한다
+// (바이브/레퍼런스 항목의 슬라이더 영역이 화면 밖으로 잘리는 오버플로 방지).
+// active: 편집기가 조건부 마운트라 열릴 때 재관찰하도록 의존성으로 받는다.
+export function useNarrowContainer(
+  ref: React.RefObject<HTMLElement | null>,
+  active: any,
+  threshold = 340,
+) {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () =>
+      setNarrow(el.clientWidth > 0 && el.clientWidth < threshold);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref, active, threshold]);
+  return narrow;
+}
 export const VibeImage = ({
   path,
   onClick,
@@ -148,6 +171,8 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
     useContext(WFElementContext)!;
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  // 패널 폭 적응 — 좁으면 항목을 세로 배치(이미지 위/컨트롤 아래)로 전환
+  const narrow = useNarrowContainer(containerRef, editVibe);
   // shared 필드의 fromPreset 항목 = 캐릭터 프리셋 귀속(개별 삭제 대신 프리셋 단위 해제 — W4)
   const isPresetActive = editVibe?.fieldType === 'shared';
 
@@ -264,7 +289,7 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
             {getField().map((vibe: VibeItem) => (
               <div
                 key={vibe.path}
-                className="border line-color mt-2 p-2 flex gap-2 items-begin"
+                className={`border line-color mt-2 p-2 flex gap-2 ${narrow ? 'flex-col' : 'items-begin'}`}
               >
                 <VibeImage
                   path={
@@ -273,18 +298,20 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                   }
                   className="flex-none w-28 h-28 object-cover"
                 />
-                <div className="flex flex-col gap-2 w-full">
-                  <div className="flex w-full items-center md:flex-row flex-col">
+                <div className="flex flex-col gap-2 w-full min-w-0">
+                  <div
+                    className={`flex w-full items-center ${narrow ? 'flex-col' : 'md:flex-row flex-col'}`}
+                  >
                     <div
-                      className={
-                        'whitespace-nowrap flex-none mr-auto md:mr-0 gray-label'
-                      }
+                      className={`whitespace-nowrap flex-none gray-label ${narrow ? 'mr-auto' : 'mr-auto md:mr-0'}`}
                     >
                       정보 추출률 (IS):
                     </div>
-                    <div className="flex flex-1 md:w-auto w-full gap-1">
+                    <div
+                      className={`flex flex-1 gap-1 min-w-0 ${narrow ? 'w-full' : 'md:w-auto w-full'}`}
+                    >
                       <input
-                        className="flex-1"
+                        className="flex-1 min-w-0"
                         type="range"
                         step="0.01"
                         min="0"
@@ -304,17 +331,19 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                       />
                     </div>
                   </div>
-                  <div className="flex w-full md:flex-row flex-col items-center">
+                  <div
+                    className={`flex w-full items-center ${narrow ? 'flex-col' : 'md:flex-row flex-col'}`}
+                  >
                     <div
-                      className={
-                        'whitepace-nowrap flex-none mr-auto md:mr-0 gray-label'
-                      }
+                      className={`whitespace-nowrap flex-none gray-label ${narrow ? 'mr-auto' : 'mr-auto md:mr-0'}`}
                     >
                       레퍼런스 강도 (RS):
                     </div>
-                    <div className="flex flex-1 md:w-auto w-full gap-1">
+                    <div
+                      className={`flex flex-1 gap-1 min-w-0 ${narrow ? 'w-full' : 'md:w-auto w-full'}`}
+                    >
                       <input
-                        className="flex-1"
+                        className="flex-1 min-w-0"
                         type="range"
                         step="0.01"
                         min="0"
@@ -334,13 +363,13 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                       />
                     </div>
                   </div>
-                  <div className="flex-none flex ml-auto mt-auto">
+                  <div className="flex-none flex ml-auto mt-auto min-w-0 max-w-full">
                     {isPresetActive && vibe.fromPreset ? (
                       <Tooltip
                         content={`"${vibe.fromPreset}" 프리셋 해제 — 연결된 캐릭터 프롬프트/레퍼런스 함께 제거`}
                       >
                         <button
-                          className="round-button back-gray h-8 px-3 text-xs"
+                          className="round-button back-gray h-8 px-3 text-xs max-w-full truncate"
                           onClick={() => {
                             if (disabled) return;
                             appState.removeAppliedCharacterPreset(

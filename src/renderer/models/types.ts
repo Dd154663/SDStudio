@@ -994,6 +994,10 @@ export interface ICharacterPreset {
   filenameSuffix?: string;  // 다운로드 시 파일명 접미사
   // 대표 이미지 (옵셔널 - vibes 디렉토리 내 파일명)
   representativeImage?: string;
+  // 글로벌 프리셋 유래 추적 (옵셔널 - 하위 호환): instantiateIntoSession 이 기록.
+  // 같은 글로벌을 반복 적용해도 로컬 사본을 재사용/갱신해 증식을 막는다.
+  fromGlobalId?: string;   // 유래 글로벌 엔트리 id
+  fromGlobalRev?: number;  // 불러온 시점의 글로벌 updatedAt (무변경이면 재복사 생략)
 }
 
 export class CharacterPreset implements ICharacterPreset {
@@ -1008,6 +1012,9 @@ export class CharacterPreset implements ICharacterPreset {
   @observable accessor filenameSuffix: string = '';
   // 대표 이미지 (옵셔널 - vibes 디렉토리 내 파일명)
   @observable accessor representativeImage: string = '';
+  // 글로벌 프리셋 유래 추적 (증식 방지 — ICharacterPreset 주석 참조)
+  @observable accessor fromGlobalId: string = '';
+  @observable accessor fromGlobalRev: number = 0;
 
   static fromJSON(json: ICharacterPreset): CharacterPreset {
     const preset = new CharacterPreset();
@@ -1021,6 +1028,8 @@ export class CharacterPreset implements ICharacterPreset {
     preset.filenamePrefix = json.filenamePrefix || '';
     preset.filenameSuffix = json.filenameSuffix || '';
     preset.representativeImage = json.representativeImage || '';
+    preset.fromGlobalId = json.fromGlobalId || '';
+    preset.fromGlobalRev = json.fromGlobalRev || 0;
     return preset;
   }
 
@@ -1036,6 +1045,8 @@ export class CharacterPreset implements ICharacterPreset {
       filenamePrefix: this.filenamePrefix || undefined,
       filenameSuffix: this.filenameSuffix || undefined,
       representativeImage: this.representativeImage || undefined,
+      fromGlobalId: this.fromGlobalId || undefined,
+      fromGlobalRev: this.fromGlobalRev || undefined,
     };
   }
 }

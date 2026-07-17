@@ -294,6 +294,9 @@ export class GlobalCharacterPresetService extends EventTarget {
       (json.name || '이름없음').trim() || '이름없음',
     );
     json.name = name;
+    // 로컬 사본에 붙은 글로벌 유래 링크는 새 글로벌 엔트리와 무관 — 제거
+    delete json.fromGlobalId;
+    delete json.fromGlobalRev;
     const entry: IGlobalCharacterPresetEntry = {
       id: uuidv4(),
       name,
@@ -308,12 +311,25 @@ export class GlobalCharacterPresetService extends EventTarget {
   }
 
   // ---------- 글로벌 → 로컬 ----------
+  // 멱등(증식 방지, 2026-07-17): 같은 글로벌에서 불러온 로컬 사본(fromGlobalId
+  // 링크, 구버전 사본은 동명 무링크 로컬을 입양)이 이미 있으면 — 글로벌이 그대로면
+  // 그 사본을 그대로 재사용(이미지 재복사 없음), 글로벌이 바뀌었으면 그 사본을
+  // 자리에서 갱신한다. 반복 적용/해제로 "이름 (글로벌)…" 사본이 늘어나지 않는다.
   async instantiateIntoSession(
     session: Session,
     id: string,
   ): Promise<CharacterPreset> {
     const entry = this.get(id);
     if (!entry) throw new Error('프리셋을 찾을 수 없습니다');
+    const existing =
+      session.getCharacterPresets().find((p) => p.fromGlobalId === id) ||
+      // 이 수정 이전에 만들어진 사본 입양: 글로벌과 같은 이름의 무링크 로컬
+      session
+        .getCharacterPresets()
+        .find((p) => !p.fromGlobalId && p.name === entry.name);
+    if (existing && existing.fromGlobalRev === entry.updatedAt) {
+      return existing;
+    }
     const json: ICharacterPreset = JSON.parse(JSON.stringify(entry.preset));
 
     for (const vibe of json.vibes || []) {
@@ -351,11 +367,27 @@ export class GlobalCharacterPresetService extends EventTarget {
     }
 
     const preset = CharacterPreset.fromJSON(json);
-    // 로컬 이름 충돌 방지
-    let nm = preset.name;
-    while (session.hasCharacterPreset(nm)) nm = nm + ' (글로벌)';
-    preset.name = nm;
-    session.addCharacterPreset(preset);
+    preset.fromGlobalId = id;
+    preset.fromGlobalRev = entry.updatedAt;
+    if (existing) {
+      // 기존 사본을 자리에서 갱신 — 이름은 글로벌을 따라가되, 링크된 자기 자신이
+      // 아닌 다른 로컬과 충돌하면 접미. 이름이 유지되면 fromPreset 적용 태그도
+      // 그대로 이어진다.
+      let nm = preset.name;
+      while (
+        session.hasCharacterPreset(nm) &&
+        session.getCharacterPreset(nm) !== existing
+      )
+        nm = nm + ' (글로벌)';
+      preset.name = nm;
+      session.updateCharacterPreset(existing.name, preset);
+    } else {
+      // 최초 불러오기 — 로컬 이름 충돌 방지
+      let nm = preset.name;
+      while (session.hasCharacterPreset(nm)) nm = nm + ' (글로벌)';
+      preset.name = nm;
+      session.addCharacterPreset(preset);
+    }
     return preset;
   }
 
@@ -399,6 +431,9 @@ export class GlobalCharacterPresetService extends EventTarget {
       (json.name || '이름없음').trim() || '이름없음',
     );
     json.name = name;
+    // 글로벌 유래 링크는 새 글로벌 엔트리와 무관 — 제거
+    delete json.fromGlobalId;
+    delete json.fromGlobalRev;
     const entry: IGlobalCharacterPresetEntry = {
       id: uuidv4(),
       name,

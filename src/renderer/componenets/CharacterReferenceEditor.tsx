@@ -11,7 +11,7 @@ import { appState } from '../models/AppService';
 import { WFIInlineInput, wfiElementKey } from '../models/workflows/WorkFlow';
 import { ModelVersion } from '../backends/imageGen';
 import { WFElementContext } from './wfElementContext';
-import { EditableSliderValue, VibeImage } from './VibeEditor';
+import { EditableSliderValue, VibeImage, useNarrowContainer } from './VibeEditor';
 import { resolveCompanionButtons } from '../models/companionSlots';
 import { renderCompanionButtons } from './PortableToolbarButtons';
 import { CompanionHostRow } from './CompanionDnd';
@@ -41,6 +41,8 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
     useContext(WFElementContext)!;
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  // 패널 폭 적응 — 좁으면 항목을 세로 배치(이미지 위/컨트롤 아래)로 전환
+  const narrow = useNarrowContainer(containerRef, editCharacterReference);
   const [showDefaults, setShowDefaults] = useState(false);
   const [refDefaults, setRefDefaults] = useState(getRefDefaults);
   // shared 필드의 fromPreset 항목 = 캐릭터 프리셋 귀속(개별 삭제 대신 프리셋 단위 해제 — W4)
@@ -175,7 +177,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                     <span className="gray-label w-20 flex-none">Strength:</span>
                     <input
                       type="range"
-                      className="flex-1"
+                      className="flex-1 min-w-0"
                       min="0" max="2" step="0.01"
                       value={refDefaults.strength}
                       onChange={(e) => updateDefault(REF_DEFAULT_STRENGTH_KEY, e.target.value)}
@@ -186,7 +188,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                     <span className="gray-label w-20 flex-none">Fidelity:</span>
                     <input
                       type="range"
-                      className="flex-1"
+                      className="flex-1 min-w-0"
                       min="0" max="2" step="0.01"
                       value={refDefaults.fidelity}
                       onChange={(e) => updateDefault(REF_DEFAULT_FIDELITY_KEY, e.target.value)}
@@ -221,7 +223,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
             {getField().map((reference: ReferenceItem) => (
               <div
                 key={reference.path}
-                className={`border mt-2 p-2 flex gap-2 items-begin ${reference.enabled !== false ? 'border-sky-500 bg-[var(--c-surface-2)]' : 'line-color opacity-60'}`}
+                className={`border mt-2 p-2 flex gap-2 ${narrow ? 'flex-col' : 'items-begin'} ${reference.enabled !== false ? 'border-sky-500 bg-[var(--c-surface-2)]' : 'line-color opacity-60'}`}
               >
                 <VibeImage
                   path={
@@ -230,15 +232,15 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                   }
                   className="flex-none w-28 h-28 object-cover"
                 />
-                <div className="flex flex-col gap-2 w-full">
-                  <div className="flex w-full items-center justify-between">
-                    <div className="flex gap-2 items-center">
+                <div className="flex flex-col gap-2 w-full min-w-0">
+                  <div className="flex w-full items-center justify-between gap-1 min-w-0">
+                    <div className="flex gap-2 items-center min-w-0">
                       {isPresetActive && reference.fromPreset ? (
                         <Tooltip
                           content={`"${reference.fromPreset}" 프리셋 해제 — 연결된 캐릭터 프롬프트/바이브 함께 제거`}
                         >
                           <button
-                            className="round-button back-gray h-8 px-3 text-xs"
+                            className="round-button back-gray h-8 px-3 text-xs max-w-full truncate"
                             onClick={() => {
                               if (disabled) return;
                               appState.removeAppliedCharacterPreset(
@@ -281,17 +283,19 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                       </Tooltip>
                     )}
                   </div>
-                  <div className="flex w-full md:flex-row flex-col items-center">
+                  <div
+                    className={`flex w-full items-center ${narrow ? 'flex-col' : 'md:flex-row flex-col'}`}
+                  >
                     <div
-                      className={
-                        'whitespace-nowrap flex-none mr-auto md:mr-0 gray-label'
-                      }
+                      className={`whitespace-nowrap flex-none gray-label ${narrow ? 'mr-auto' : 'mr-auto md:mr-0'}`}
                     >
                       Strength:
                     </div>
-                    <div className="flex flex-1 md:w-auto w-full gap-1">
+                    <div
+                      className={`flex flex-1 gap-1 min-w-0 ${narrow ? 'w-full' : 'md:w-auto w-full'}`}
+                    >
                       <input
-                        className="flex-1"
+                        className="flex-1 min-w-0"
                         type="range"
                         step="0.01"
                         min="0"
@@ -311,17 +315,19 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                       />
                     </div>
                   </div>
-                  <div className="flex w-full md:flex-row flex-col items-center">
+                  <div
+                    className={`flex w-full items-center ${narrow ? 'flex-col' : 'md:flex-row flex-col'}`}
+                  >
                     <div
-                      className={
-                        'whitespace-nowrap flex-none mr-auto md:mr-0 gray-label'
-                      }
+                      className={`whitespace-nowrap flex-none gray-label ${narrow ? 'mr-auto' : 'mr-auto md:mr-0'}`}
                     >
                       Fidelity:
                     </div>
-                    <div className="flex flex-1 md:w-auto w-full gap-1">
+                    <div
+                      className={`flex flex-1 gap-1 min-w-0 ${narrow ? 'w-full' : 'md:w-auto w-full'}`}
+                    >
                       <input
-                        className="flex-1"
+                        className="flex-1 min-w-0"
                         type="range"
                         step="0.01"
                         min="0"

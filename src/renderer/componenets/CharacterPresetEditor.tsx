@@ -611,6 +611,9 @@ export const CharacterPresetEditor = observer(({
   const handleDuplicate = (preset: CharacterPreset) => {
     const copy = CharacterPreset.fromJSON(preset.toJSON());
     copy.name = preset.name + ' 복사본';
+    // 복제본은 독립 로컬 — 글로벌 유래 링크를 끊어 원본만 재적용 갱신 대상으로 유지
+    copy.fromGlobalId = '';
+    copy.fromGlobalRev = 0;
     curSession.addCharacterPreset(copy);
   };
 
