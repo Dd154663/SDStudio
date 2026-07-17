@@ -186,6 +186,9 @@ export class AppState {
   @observable accessor legacyProjectMode: boolean = false;
   // 켜면 씬 에디터 첫 탭을 예전 프리셋 폼으로 표시(4탭 구조는 항상 유지). 기본 false = 첫 탭 단순화(중간 프롬프트+씬 네거티브)
   @observable accessor legacySceneEditor: boolean = false;
+  // 레거시 작업모드(W3): true면 이지모드·이미지 수정 작업모드와 선택 드롭다운을 다시 표시.
+  // false(기본)면 작업모드를 SDImageGen 하나로 고정하고 드롭다운 숨김(데이터 비파괴 — 세션의 이지모드 프리셋은 보존).
+  @observable accessor legacyWorkflowMode: boolean = false;
   // 조합 에디터 뷰 모드(config.uiCombinationView 미러). 'card'=카드 격자 / 'list'=컴팩트 목록.
   @observable accessor uiCombinationView: 'card' | 'list' = 'card';
 

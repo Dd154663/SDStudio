@@ -330,7 +330,9 @@ export const ExternalImageView = observer(
                     >
                       <optgroup label="현재 세션">
                         <option value="new-normal">새 일반 사전설정</option>
-                        <option value="new-easy">새 이지모드 사전설정</option>
+                        {appState.legacyWorkflowMode && (
+                          <option value="new-easy">새 이지모드 사전설정</option>
+                        )}
                         {appState.curSession?.selectedWorkflow && (
                           <option value="current">현재 사전설정에 적용</option>
                         )}

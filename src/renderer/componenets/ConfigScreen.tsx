@@ -802,6 +802,7 @@ const PersonalTab = ({
   fullWordAc, setFullWordAc,
   legacyProjectMode, setLegacyProjectMode,
   legacySceneEditor, setLegacySceneEditor,
+  legacyWorkflowMode, setLegacyWorkflowMode,
   uiFont, setUiFont,
   uiClassicFinish, setUiClassicFinish,
 }: any) => (
@@ -874,6 +875,17 @@ const PersonalTab = ({
       </div>
       <p className="text-xs text-faint mt-1 ml-6">
         켜면 씬 에디터 첫 탭(프롬프트 에디터)을 예전 프리셋 형태의 전체 폼으로 표시합니다. 끄면 중간 프롬프트와 씬 전용 네거티브 두 입력만 노출합니다. (조합 에디터·씬 캐릭터 프롬프트·미리보기 탭은 항상 표시)
+      </p>
+    </div>
+    <hr className="line-color" />
+    <div>
+      <div className="flex items-center gap-2">
+        <input type="checkbox" id="cfgLegacyWorkflow" checked={legacyWorkflowMode}
+          onChange={(e) => setLegacyWorkflowMode(e.target.checked)} />
+        <label htmlFor="cfgLegacyWorkflow" className="text-sm gray-label">레거시 작업모드 활성화</label>
+      </div>
+      <p className="text-xs text-faint mt-1 ml-6">
+        켜면 이지모드·이미지 수정 작업모드와 작업모드 선택 드롭다운을 다시 표시합니다. 끄면(기본) 작업모드가 "이미지 생성" 하나로 고정되고 드롭다운이 숨겨집니다. 기존 이지모드 사전설정 데이터는 삭제되지 않습니다.
       </p>
     </div>
   </div>
@@ -1866,6 +1878,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [classicSceneCard, setClassicSceneCard] = useState(false);
   const [legacyProjectMode, setLegacyProjectMode] = useState(false);
   const [legacySceneEditor, setLegacySceneEditor] = useState(false);
+  const [legacyWorkflowMode, setLegacyWorkflowMode] = useState(false);
   const [storageWriteGuard, setStorageWriteGuard] = useState(true);
   const [fullWordAc, setFullWordAc] = useState(appState.fullWordAutoComplete);
   const [trueDark, setTrueDark] = useState(false);
@@ -1902,6 +1915,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setClassicSceneCard(config.classicSceneCard ?? false);
       setLegacyProjectMode(config.legacyProjectMode ?? false);
       setLegacySceneEditor(config.legacySceneEditor ?? false);
+      setLegacyWorkflowMode(config.legacyWorkflowMode ?? false);
       setStorageWriteGuard(config.storageWriteGuard ?? true);
       setTrueDark(config.trueDark ?? false);
       setExportConcurrency(config.exportConcurrency ?? (isMobile ? 2 : 4));
@@ -2034,6 +2048,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       classicSceneCard: classicSceneCard,
       legacyProjectMode: legacyProjectMode,
       legacySceneEditor: legacySceneEditor,
+      legacyWorkflowMode: legacyWorkflowMode,
       storageWriteGuard: storageWriteGuard,
       exportConcurrency: exportConcurrency,
       defaultExportFolder: defaultExportFolder || undefined,
@@ -2051,6 +2066,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.classicSceneCard = classicSceneCard;
     appState.legacyProjectMode = legacyProjectMode;
     appState.legacySceneEditor = legacySceneEditor;
+    appState.legacyWorkflowMode = legacyWorkflowMode;
     appState.uiToolbar = uiToolbar;
     appState.uiLayoutTemplate = uiLayoutTemplate;
     appState.uiFloatViewMode = uiFloatViewMode;
@@ -2088,7 +2104,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'system':
         return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency }} />;
       case 'personal':
-        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, legacySceneEditor, setLegacySceneEditor, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish }} />;
+        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, legacySceneEditor, setLegacySceneEditor, legacyWorkflowMode, setLegacyWorkflowMode, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish }} />;
       case 'customization':
         return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark }} />;
       case 'toolbar':
@@ -2118,6 +2134,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       classicSceneCard !== (savedCfg.classicSceneCard ?? false) ||
       legacyProjectMode !== (savedCfg.legacyProjectMode ?? false) ||
       legacySceneEditor !== (savedCfg.legacySceneEditor ?? false) ||
+      legacyWorkflowMode !== (savedCfg.legacyWorkflowMode ?? false) ||
       storageWriteGuard !== (savedCfg.storageWriteGuard ?? true) ||
       exportConcurrency !== (savedCfg.exportConcurrency ?? (isMobile ? 2 : 4)) ||
       (defaultExportFolder || '') !== (savedCfg.defaultExportFolder ?? '') ||

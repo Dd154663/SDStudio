@@ -2074,13 +2074,21 @@ const PreSetEditor = observer(
   }: Props) => {
     const [_, rerender] = useState<{}>({});
     const curSession = appState.curSession!;
+    // 레거시 작업모드(W3): 기본(OFF)에선 작업모드를 SDImageGen 하나로 고정.
+    // 세션 데이터는 비파괴 — 이지모드/수정 프리셋은 보존되고 포인터만 바뀐다.
+    const legacyWf = appState.legacyWorkflowMode;
     const workflowType = curSession.selectedWorkflow?.workflowType;
     const shared = curSession.presetShareds?.get(workflowType!);
     const presets = curSession.presets?.get(workflowType!);
     if (!workflowType) {
       curSession.selectedWorkflow = {
-        workflowType: workFlowService.generalFlows[0].getType(),
+        workflowType: legacyWf
+          ? workFlowService.generalFlows[0].getType()
+          : 'SDImageGen',
       };
+      rerender({});
+    } else if (!legacyWf && workflowType !== 'SDImageGen') {
+      curSession.selectedWorkflow = { workflowType: 'SDImageGen' };
       rerender({});
     } else {
       if (!presets) {
@@ -2114,22 +2122,25 @@ const PreSetEditor = observer(
       shared &&
       curSession.selectedWorkflow!.presetName && (
         <VerticalStack className="p-2 md:p-3">
-          <StackFixed className="field-row flex gap-2 items-center">
-            <span className={'flex-none gray-label'}>작업모드: </span>
-            <DropdownSelect
-              selectedOption={workflowType}
-              menuPlacement="bottom"
-              options={workFlowService.generalFlows.map((x) => ({
-                value: x.getType(),
-                label: x.getTitle(),
-              }))}
-              onSelect={(opt) => {
-                curSession.selectedWorkflow = {
-                  workflowType: opt.value,
-                };
-              }}
-            />
-          </StackFixed>
+          {/* 작업모드 선택 — 레거시 작업모드에서만 노출(기본은 SDImageGen 고정, 행 제거로 공간 확보) */}
+          {legacyWf && (
+            <StackFixed className="field-row flex gap-2 items-center">
+              <span className={'flex-none gray-label'}>작업모드: </span>
+              <DropdownSelect
+                selectedOption={workflowType}
+                menuPlacement="bottom"
+                options={workFlowService.generalFlows.map((x) => ({
+                  value: x.getType(),
+                  label: x.getTitle(),
+                }))}
+                onSelect={(opt) => {
+                  curSession.selectedWorkflow = {
+                    workflowType: opt.value,
+                  };
+                }}
+              />
+            </StackFixed>
+          )}
           <PreSetEditorImpl
             type={workflowType}
             shared={shared}
