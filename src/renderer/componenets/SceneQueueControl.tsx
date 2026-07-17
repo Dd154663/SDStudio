@@ -17,6 +17,7 @@ import {
   FaFileExport,
   FaFileImage,
   FaPaintBrush,
+  FaPen,
   FaPlus,
   FaQuestion,
   FaRegCalendarPlus,
@@ -43,6 +44,7 @@ import Tournament from './Tournament';
 import ResultViewer from './ResultViewer';
 import InPaintEditor from './InPaintEditor';
 import ShortcutCheatsheet from './ShortcutCheatsheet';
+import SceneQuickPromptModal from './SceneQuickPromptModal';
 import { base64ToDataUri } from './BrushTool';
 import SceneSelector from './SceneSelector';
 import Tooltip from './Tooltip';
@@ -135,6 +137,9 @@ interface SceneCellProps {
   onToggleBookmark?: () => void;
   disableHover?: boolean;
   isFocused?: boolean;
+  // 프롬프트 퀵 수정(W2) — 일반 씬 전용, 이미지 우상단 오버레이 버튼.
+  // anchor = 씬 카드 사각형 (모달을 카드 위에 띄우는 인라인 느낌용)
+  onQuickPrompt?: (scene: GenericScene, anchor?: DOMRect) => void;
 }
 
 export const SceneCell = observer(
@@ -152,6 +157,7 @@ export const SceneCell = observer(
     onToggleBookmark,
     disableHover,
     isFocused,
+    onQuickPrompt,
   }: SceneCellProps) => {
     const { show, hideAll } = useContextMenu({
       id: ContextMenuType.Scene,
@@ -557,6 +563,28 @@ export const SceneCell = observer(
       : '';
     const isSelected = appState.selectedScenes.has(scene.name);
 
+    // 프롬프트 퀵 수정 버튼(W2) — 이미지 우상단 오버레이(클래식/신규 공용).
+    // 하단 버튼 행은 4개가 상한(스몰 뷰·모바일 그리드 보전)이라 행에 넣지 않는다.
+    const quickPromptButton =
+      onQuickPrompt && scene.type === 'scene' ? (
+        <Tooltip content="중간 프롬프트 퀵 수정">
+          <button
+            className={`absolute right-1 top-1 z-20 w-7 h-7 rounded-full bg-black/55 hover:bg-black/80 text-white clickable flex items-center justify-center transition-opacity duration-200${
+              !isMobile && !isHovered ? ' opacity-0' : ''
+            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onQuickPrompt(
+                scene,
+                cardElRef.current?.getBoundingClientRect() ?? undefined,
+              );
+            }}
+          >
+            <FaPen size={11} />
+          </button>
+        </Tooltip>
+      ) : null;
+
     if (isClassic) {
       // ===== 클래식 디자인 =====
       return (
@@ -629,6 +657,7 @@ export const SceneCell = observer(
                   )}
                 </div>
               )}
+              {quickPromptButton}
             </div>
           </div>
           <div className="w-full flex mt-auto justify-center items-center gap-1 md:gap-2 p-1 md:p-2">
@@ -716,6 +745,7 @@ export const SceneCell = observer(
                 </div>
               </div>
             </div>
+            {quickPromptButton}
           </div>
         </div>
         {/* PC 전용: 호버 시 버튼 */}
@@ -908,6 +938,10 @@ const QueueControl = observer(
     const [displayScene, setDisplayScene] = useState<GenericScene | undefined>(
       undefined,
     );
+    // 프롬프트 퀵 수정(W2) 대상 씬 (+카드 앵커 사각형 — 카드 위에 모달 배치)
+    const [quickPromptScene, setQuickPromptScene] = useState<
+      { scene: Scene; anchor?: DOMRect } | undefined
+    >(undefined);
     // 히스토리에서 "이 이미지가 있는 그리드 열기" 요청 시 포커스할 파일명
     const [displayFocus, setDisplayFocus] = useState<string | undefined>(
       undefined,
@@ -2297,6 +2331,13 @@ const QueueControl = observer(
           </FloatView>
         )}
         {resultViewer}
+        {quickPromptScene && (
+          <SceneQuickPromptModal
+            scene={quickPromptScene.scene}
+            anchor={quickPromptScene.anchor}
+            onClose={() => setQuickPromptScene(undefined)}
+          />
+        )}
         <ModalOverlay
           isOpen={showSceneTrash}
           onClose={() => setShowSceneTrash(false)}
@@ -2518,6 +2559,10 @@ const QueueControl = observer(
                     getImage={getImage}
                     setDisplayScene={setDisplayScene}
                     setEditingScene={setEditingScene}
+                    onQuickPrompt={(s, anchor) => {
+                      if (s.type === 'scene')
+                        setQuickPromptScene({ scene: s as Scene, anchor });
+                    }}
                     moveScene={moveScene}
                     moveScenes={moveScenes}
                     curSession={curSession}
