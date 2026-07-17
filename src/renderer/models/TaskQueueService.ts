@@ -437,6 +437,27 @@ export class TaskQueueService extends EventTarget {
     return res;
   }
 
+  // 프로젝트(세션 이름)별 잔여 예약 수 + 현재 실행 중 프로젝트 스냅샷 —
+  // 프로젝트 드로어 배지용 (일괄 생성 예약 확인, 2026-07-17).
+  // 'progress'/'start'/'stop' 이벤트를 구독해 갱신한다.
+  projectQueueSnapshot(): {
+    remains: { [sessionName: string]: number };
+    running: string | null;
+  } {
+    const remains: { [sessionName: string]: number } = {};
+    for (const task of this.queue) {
+      const remain = task!.total - task!.done;
+      if (remain <= 0) continue;
+      const n = task!.params.session.name;
+      remains[n] = (remains[n] ?? 0) + remain;
+    }
+    const running =
+      this.isRunning() && !this.queue.isEmpty()
+        ? this.queue.peek().params.session.name
+        : null;
+    return { remains, running };
+  }
+
   statsTasksFromScene(session: Session, scene: GenericScene): TaskStats {
     let done = 0;
     let total = 0;

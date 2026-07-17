@@ -408,15 +408,14 @@ export const CharacterPresetEditor = observer(({
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  // 로컬 → 글로벌 일괄 복사 진행 중 (모두 글로벌로 보내기)
+  const [bulkSending, setBulkSending] = useState(false);
+
   const cyclingState = cyclingSessionService.state;
 
-  if (!curSession) {
-    return <div className="p-4 text-muted">세션을 선택해주세요</div>;
-  }
-
-  const presets = curSession.getCharacterPresets();
-  const scenes = Array.from(curSession.scenes.values());
-  const isEasyMode = curSession.selectedWorkflow?.workflowType === 'SDImageGenEasy';
+  // ⚠ 아래 훅들은 !curSession 조기 return 앞에 있어야 한다 — 세션 유무가
+  // 바뀔 때 훅 개수가 달라지면 React 훅 순서 오류(#300/#310)가 난다.
+  const scenes = curSession ? Array.from(curSession.scenes.values()) : [];
 
   // 씬 필터링
   const filteredScenes = useMemo(() => {
@@ -424,6 +423,13 @@ export const CharacterPresetEditor = observer(({
     const q = sceneFilter.toLowerCase();
     return scenes.filter((s) => s.name.toLowerCase().includes(q));
   }, [scenes, sceneFilter]);
+
+  if (!curSession) {
+    return <div className="p-4 text-muted">세션을 선택해주세요</div>;
+  }
+
+  const presets = curSession.getCharacterPresets();
+  const isEasyMode = curSession.selectedWorkflow?.workflowType === 'SDImageGenEasy';
 
   // 순차 생성 모드 진입 시 모든 선택 해제 (기본값)
   // 글로벌 뷰에서는 프로젝트 파일 생성 모드를 기본 ON (요청 핵심 동작)
@@ -624,7 +630,6 @@ export const CharacterPresetEditor = observer(({
   };
 
   // 로컬 → 글로벌 일괄 복사 (무파괴 승격 — 원본 유지, 중복 이름은 _n 접미)
-  const [bulkSending, setBulkSending] = useState(false);
   const handleSendAllToGlobal = () => {
     appState.pushDialog({
       type: 'confirm',

@@ -25,6 +25,7 @@ import {
   FaMagic,
   FaFileImport,
   FaUnlink,
+  FaCalendarPlus,
 } from 'react-icons/fa';
 import {
   sessionService,
@@ -32,9 +33,14 @@ import {
   isMobile,
   templateService,
   projectTemplateService,
+  taskQueueService,
 } from '../models';
 import { appState } from '../models/AppService';
 import { backStackService } from '../models/BackStackService';
+import {
+  queueFolderProjectsForGeneration,
+  queueProjectForGeneration,
+} from '../models/sceneQueueActions';
 import Tooltip from './Tooltip';
 import MobileColorPicker from './MobileColorPicker';
 import { pushRecentProject } from './ProjectBrowser';
@@ -74,6 +80,8 @@ const ProjectRow = observer(
     onEditCommit,
     onEditCancel,
     onEditKeyDown,
+    queueRemain,
+    queueRunning,
   }: {
     name: string;
     showFolder?: boolean;
@@ -92,6 +100,10 @@ const ProjectRow = observer(
     onEditCommit?: () => void;
     onEditCancel?: () => void;
     onEditKeyDown?: (e: React.KeyboardEvent) => void;
+    // 이 프로젝트의 잔여 생성 예약 수 (0=배지 없음) — 일괄 생성 예약 확인용
+    queueRemain?: number;
+    // 이 프로젝트의 예약이 지금 실제 실행 중 — 행을 다른 색으로 하이라이트
+    queueRunning?: boolean;
   }) => {
     const active = appState.curSession?.name === name;
     const isFav = sessionService.isFavorite(name);
@@ -163,7 +175,9 @@ const ProjectRow = observer(
         className={`w-full flex items-center gap-2 px-2.5 py-2.5 rounded-md text-[15px] text-left transition-colors ${
           highlighted
             ? 'bg-sky-500 text-white shadow-sm'
-            : 'hover:bg-gray-100 dark:hover:bg-slate-700 text-default'
+            : queueRunning
+              ? 'bg-emerald-100/70 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-default'
+              : 'hover:bg-gray-100 dark:hover:bg-slate-700 text-default'
         }`}
       >
         {selectMode ? (
@@ -247,6 +261,27 @@ const ProjectRow = observer(
             />
             <span className="max-w-[80px] truncate">{folder}</span>
           </span>
+        )}
+        {/* 생성 예약 배지 — 잔여 예약 수. 우측 끝 배치(모바일은 ⋮ 메뉴가
+            뒤에 오므로 자연히 그보다 왼쪽). 실행 중이면 색을 달리한다. */}
+        {(queueRemain ?? 0) > 0 && (
+          <Tooltip
+            content={
+              queueRunning ? '생성 진행 중 — 남은 예약' : '생성 예약됨'
+            }
+          >
+            <span
+              className={`flex-none text-[11px] leading-none font-medium px-1.5 py-1 rounded-full ${
+                highlighted
+                  ? 'bg-white/25 text-white'
+                  : queueRunning
+                    ? 'bg-emerald-500 text-white'
+                    : 'bg-sky-100 text-sky-600 dark:bg-sky-900/40 dark:text-sky-300'
+              }`}
+            >
+              {queueRemain}
+            </span>
+          </Tooltip>
         )}
         {isMobile && !selectMode && onMenu && (
           <span
@@ -796,6 +831,7 @@ const ProjectDrawer = observer(() => {
             : '✨ 기본 템플릿',
           value: 'folder-template',
         },
+        { text: '📅 일괄 생성 예약', value: 'batch-queue' },
       ],
     });
     if (!v) return;
@@ -807,6 +843,7 @@ const ProjectDrawer = observer(() => {
     else if (v === 'add') createProject(f);
     else if (v === 'subfolder') createFolder(f);
     else if (v === 'folder-template') setFolderTemplateFor(f);
+    else if (v === 'batch-queue') queueFolderProjectsForGeneration(f);
   };
 
   // 모바일: 프로젝트 행의 메뉴 아이콘에서 여는 액션 메뉴(폴더 메뉴와 동일 패턴)
@@ -829,6 +866,7 @@ const ProjectDrawer = observer(() => {
         ...(inherited
           ? [{ text: '♟ 상속 끊기', value: 'break-inherit' }]
           : []),
+        { text: '📅 일괄 예약 추가', value: 'batch-queue' },
         { text: '✏️ 이름 편집', value: 'rename' },
         { text: '🗑️ 프로젝트 삭제', value: 'delete' },
       ],
@@ -839,6 +877,7 @@ const ProjectDrawer = observer(() => {
     else if (v === 'scene-template') handleProjectSceneTemplateToggle(n);
     else if (v === 'reapply') setReapplyFor(n);
     else if (v === 'break-inherit') handleBreakInheritance(n);
+    else if (v === 'batch-queue') queueProjectForGeneration(n);
     else if (v === 'rename') handleProjectRename(n);
     else if (v === 'delete') handleProjectDelete(n);
   };
@@ -1209,6 +1248,34 @@ const ProjectDrawer = observer(() => {
     };
   }, []);
 
+  // 프로젝트별 잔여 생성 예약 배지 + 실행 중 하이라이트 (일괄 생성 예약 확인).
+  // 큐는 mobx 가 아니라 이벤트 소스이므로 스냅샷을 구독으로 동기화한다.
+  // 내용이 같으면 setState 를 생략해 생성 진행 중 불필요한 리렌더를 줄인다.
+  // ⚠ 훅이므로 반드시 아래 조기 return(!render)보다 앞에 있어야 한다.
+  const [queueSnapshot, setQueueSnapshot] = useState<{
+    remains: { [name: string]: number };
+    running: string | null;
+  }>({ remains: {}, running: null });
+  const queueSnapshotJsonRef = useRef('');
+  useEffect(() => {
+    const update = () => {
+      const snap = taskQueueService.projectQueueSnapshot();
+      const json = JSON.stringify(snap);
+      if (json === queueSnapshotJsonRef.current) return;
+      queueSnapshotJsonRef.current = json;
+      setQueueSnapshot(snap);
+    };
+    update();
+    taskQueueService.addEventListener('progress', update);
+    taskQueueService.addEventListener('start', update);
+    taskQueueService.addEventListener('stop', update);
+    return () => {
+      taskQueueService.removeEventListener('progress', update);
+      taskQueueService.removeEventListener('start', update);
+      taskQueueService.removeEventListener('stop', update);
+    };
+  }, []);
+
   // 드로어가 닫혀 있으면 여기서 렌더 종료. 모든 훅 호출 이후이므로 훅 순서가 안전하다
   // (터치 드래그용 useRef/useEffect를 조기 return보다 앞에 두기 위해 위치를 내렸다).
   if (!render) return null;
@@ -1260,6 +1327,8 @@ const ProjectDrawer = observer(() => {
   // 드래그 도중 setDrag 리렌더로 인한 언마운트/리마운트(드래그 중단)를 방지한다.
   const rowProps = (n: string) => ({
     name: n,
+    queueRemain: queueSnapshot.remains[n] ?? 0,
+    queueRunning: queueSnapshot.running === n,
     dndEnabled: dndEnabled && !selectMode,
     dragging: drag?.type === 'project' && drag.name === n,
     selectMode,
@@ -2202,6 +2271,17 @@ const ProjectDrawer = observer(() => {
                   <FaMagic size={14} />
                 </button>
               </Tooltip>
+              <Tooltip content="일괄 생성 예약 (서브폴더 포함, 프로젝트마다 모든 씬)">
+                <button
+                  onClick={() => {
+                    queueFolderProjectsForGeneration(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-green-500"
+                >
+                  <FaCalendarPlus size={14} />
+                </button>
+              </Tooltip>
             </div>
           ) : (
             <div
@@ -2284,6 +2364,17 @@ const ProjectDrawer = observer(() => {
                   </button>
                 </Tooltip>
               )}
+              <Tooltip content="일괄 예약 추가 (모든 씬, 즉시)">
+                <button
+                  onClick={() => {
+                    queueProjectForGeneration(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-green-500"
+                >
+                  <FaCalendarPlus size={14} />
+                </button>
+              </Tooltip>
               <Tooltip content="프로젝트 삭제">
                 <button
                   onClick={() => {
