@@ -16,6 +16,7 @@ import {
   FaPlus,
   FaTrashAlt,
   FaTrashRestore,
+  FaWindowRestore,
 } from 'react-icons/fa';
 import Tooltip from './Tooltip';
 import { appState } from '../models/AppService';
@@ -121,6 +122,14 @@ export function portableToolbarButtons(
       '찾기 및 변환 (Ctrl+H)',
       <FaExchangeAlt size={18} />,
       () => appState.openFindReplace(),
+    ),
+    // 새 창(멀티 윈도우 W6) — 데스크톱 전용(레지스트리 pcOnly 로 모바일 미노출).
+    // 각 영역 표준 스타일로 적응(iconButton).
+    'new-window': iconButton(
+      variant,
+      '새 창',
+      <FaWindowRestore size={18} />,
+      () => appState.openNewWindow(),
     ),
     // SessionSelect 로컬 맵에서 이관 — 홈(project)은 원본대로 Tooltip 없는
     // icon-button(FaShare 기본 크기), 씬으로 오면 씬 표준(배경형 18px+툴팁)으로 적응

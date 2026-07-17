@@ -323,6 +323,15 @@ export class AppState {
     this.pieceEditorOpen = true;
   }
 
+  // 새 창 열기(멀티 윈도우 W6) — 데스크톱 전용(모바일 백엔드는 no-op). 각 창은
+  // 자기만의 curSession 을 갖는 완전한 렌더러 앱으로, 보조 창 규칙(캐스케이드,
+  // 창 상태 저장 없음)으로 열린다.
+  openNewWindow() {
+    backend.openNewWindow().catch((e) => {
+      console.error('새 창 열기 실패:', e);
+    });
+  }
+
   @action
   closePieceEditor() {
     this.pieceEditorOpen = false;

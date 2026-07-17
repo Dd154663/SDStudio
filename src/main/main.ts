@@ -59,8 +59,34 @@ let databases: DataBaseConns = {
   pieceDBId: -1,
 };
 
+// 주 창(primary) 포인터 — 창 상태 저장/second-instance 포커스의 기준이 된다.
+// 보조 창은 이 변수에 담기지 않고 BrowserWindow.getAllWindows() 로만 추적한다(W6 P0).
 let mainWindow: BrowserWindow | null = null;
 let tagMap: Map<string, any> = new Map();
+
+// 종료 저장 게이트 — 창별로 분리(webContents.id 기준). 닫는 창만 렌더러에 저장을
+// 위임받고, 렌더러가 invoke('close') 하면 그 창만 다시 닫는다. 창이 닫히면 정리한다.
+// (전역 단일 플래그였다면 한 창을 닫을 때 다른 창의 저장 게이트까지 함께 열려 유실 위험)
+const saveCompletedByWc = new Map<number, boolean>();
+
+// 전 창 브로드캐스트 — 요청 컨텍스트가 없는(창 공유) 이벤트용. 파괴된 창은 건너뛴다.
+function broadcast(channel: string, ...args: any[]) {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send(channel, ...args);
+  }
+}
+
+// 살아있는 창 하나(주 창 우선)를 복원·포커스한다. second-instance 처리용.
+function focusAnyWindow() {
+  const win =
+    mainWindow && !mainWindow.isDestroyed()
+      ? mainWindow
+      : BrowserWindow.getAllWindows()[0];
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+}
 
 async function listFilesInDirectory(dir: any) {
   try {
@@ -116,24 +142,25 @@ async function readFileAsDataURL(filePath: any) {
 const DEFAULT_APP_DIR = app.getPath('userData') + '/' + 'SDStudio';
 let APP_DIR = DEFAULT_APP_DIR;
 
-let saveCompleted = false;
 let config: Config = {};
 
-ipcMain.handle('window-minimize', () => {
-  mainWindow?.minimize();
+// 창 컨트롤 IPC — 호출한 창(event.sender)에만 작용한다(멀티 윈도우 안전).
+ipcMain.handle('window-minimize', (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.minimize();
 });
-ipcMain.handle('window-maximize', () => {
-  if (mainWindow?.isMaximized()) {
-    mainWindow.unmaximize();
+ipcMain.handle('window-maximize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win?.isMaximized()) {
+    win.unmaximize();
   } else {
-    mainWindow?.maximize();
+    win?.maximize();
   }
 });
-ipcMain.handle('window-close', () => {
-  mainWindow?.close();
+ipcMain.handle('window-close', (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.close();
 });
-ipcMain.handle('window-is-maximized', () => {
-  return mainWindow?.isMaximized() ?? false;
+ipcMain.handle('window-is-maximized', (event) => {
+  return BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false;
 });
 ipcMain.handle('get-config', async (event) => {
   return config;
@@ -219,7 +246,7 @@ ipcMain.handle('zip-files', async (event, files, outPath) => {
   try {
     let done = 0;
     for (const file of files) {
-      mainWindow!.webContents.send('zip-progress', {
+      event.sender.send('zip-progress', {
         done: done,
         total: files.length,
       });
@@ -236,7 +263,7 @@ ipcMain.handle('zip-files', async (event, files, outPath) => {
       });
       done++;
     }
-    mainWindow!.webContents.send('zip-progress', {
+    event.sender.send('zip-progress', {
       done: files.length,
       total: files.length,
     });
@@ -635,16 +662,19 @@ ipcMain.handle('trash-file', async (event, filename) => {
 });
 
 ipcMain.handle('close', async (event) => {
-  saveCompleted = true;
-  mainWindow!.close();
+  // 저장 완료 위임 — 호출한 창만 게이트를 열고 그 창만 다시 닫는다.
+  const win = BrowserWindow.fromWebContents(event.sender);
+  saveCompletedByWc.set(event.sender.id, true);
+  win?.close();
 });
 
 // 앱 자체 재시작 — 종료 후 자동 재실행을 예약하고 정상 종료 경로(close)를 탄다.
-// close 인터셉트(saveCompleted 게이트)를 그대로 거치므로 렌더러의 종료 시
-// 저장(flush)이 보장된다. 저장소 마이그레이션 재시작 버튼용.
+// close 인터셉트(창별 saveCompleted 게이트)를 그대로 거치므로 렌더러의 종료 시
+// 저장(flush)이 보장된다. 저장소 마이그레이션 재시작 버튼용. 앱 전체 재시작이라
+// 모든 창을 닫는다(각 창이 자기 저장을 flush 한 뒤 닫힘 → 마지막 창에서 앱 종료·재실행).
 ipcMain.handle('restart-app', async () => {
   app.relaunch();
-  mainWindow?.close();
+  for (const w of BrowserWindow.getAllWindows()) w.close();
 });
 
 ipcMain.handle('exist-file', async (event, filename) => {
@@ -659,17 +689,19 @@ ipcMain.handle('exist-file', async (event, filename) => {
 ipcMain.handle('download', async (event, url, dest, filename) => {
   dest = path.join(APP_DIR, dest);
   await fs.mkdir(dest, { recursive: true });
+  // 요청한 창(event.sender)을 다운로드 소유 창·진행 이벤트 수신 창으로 삼는다.
+  const reqWin = BrowserWindow.fromWebContents(event.sender) ?? mainWindow!;
   const options = {
     directory: dest,
     saveAs: false,
     openFolderWhenDone: false,
     filename,
     onProgress: (progress: any) => {
-      mainWindow!.webContents.send('download-progress', progress);
+      event.sender.send('download-progress', progress);
     },
   };
   try {
-    await electronDL.download(mainWindow!, url, options);
+    await electronDL.download(reqWin, url, options);
   } catch (e) {
     if (!(e instanceof electronDL.CancelError)) {
       console.error(e);
@@ -879,10 +911,13 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle('select-dir', async () => {
-  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow!, {
-    properties: ['openDirectory'],
-  });
+ipcMain.handle('select-dir', async (event) => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(
+    BrowserWindow.fromWebContents(event.sender) ?? mainWindow!,
+    {
+      properties: ['openDirectory'],
+    },
+  );
   if (canceled) {
     return;
   } else {
@@ -890,10 +925,13 @@ ipcMain.handle('select-dir', async () => {
   }
 });
 
-ipcMain.handle('select-file', async () => {
-  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow!, {
-    properties: ['openFile'],
-  });
+ipcMain.handle('select-file', async (event) => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(
+    BrowserWindow.fromWebContents(event.sender) ?? mainWindow!,
+    {
+      properties: ['openFile'],
+    },
+  );
   if (canceled) {
     return;
   } else {
@@ -908,7 +946,10 @@ ipcMain.handle('select-files', async (event, options) => {
   if (options?.filters) {
     dialogOptions.filters = options.filters;
   }
-  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow!, dialogOptions);
+  const { canceled, filePaths } = await dialog.showOpenDialog(
+    BrowserWindow.fromWebContents(event.sender) ?? mainWindow!,
+    dialogOptions,
+  );
   if (canceled) {
     return [];
   } else {
@@ -1100,7 +1141,9 @@ ipcMain.handle('watch-image', async (event, inputPath) => {
                     'Exif data written:',
                     orgDir + '/' + path.basename(changedPath),
                   );
-                  mainWindow!.webContents.send(
+                  // 디렉터리 감시자는 창 간 공유(dirWatchHandles 로 dedup)라 신뢰할 수
+                  // 있는 단일 요청 창이 없다 → 전 창 브로드캐스트(관심 없는 창은 무시).
+                  broadcast(
                     'image-changed',
                     orgDir + '/' + path.basename(changedPath),
                   );
@@ -1118,7 +1161,7 @@ ipcMain.handle('watch-image', async (event, inputPath) => {
             };
             trigger(4000, true);
           }
-          mainWindow!.webContents.send(
+          broadcast(
             'image-changed',
             orgDir + '/' + path.basename(changedPath),
           );
@@ -1159,7 +1202,7 @@ ipcMain.handle('extract-zip', async (event, zipPath, outPath) => {
         const entries = Object.values(await zip.entries());
         zip.on('extract', (entry: any, file: any) => {
           numExtracted++;
-          mainWindow!.webContents.send('download-progress', {
+          event.sender.send('download-progress', {
             percent: numExtracted / entries.length,
           });
         });
@@ -1379,21 +1422,61 @@ function scheduleSaveWindowState(): void {
   saveWindowStateTimer = setTimeout(saveWindowState, 400);
 }
 
-const createWindow = async () => {
-  if (isDebug) {
+// 보조 창(secondary) 위치 계산 — 기준 창(포커스된 창 → 주 창 → 첫 창)에서
+// +32,+32 캐스케이드하되, 화면(workArea) 밖으로 나가지 않게 클램프한다. 보조 창은
+// 상태를 저장/복원하지 않는다(주 창만 window-state.json 관리, W6 P0 §8).
+function computeCascadeBounds(): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  const OFFSET = 32;
+  const ref =
+    BrowserWindow.getFocusedWindow() ??
+    (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null) ??
+    BrowserWindow.getAllWindows()[0] ??
+    null;
+  const display = ref
+    ? screen.getDisplayMatching(ref.getBounds())
+    : screen.getPrimaryDisplay();
+  const wa = display.workArea;
+  const base = ref
+    ? ref.getBounds()
+    : { x: wa.x, y: wa.y, width: wa.width, height: wa.height };
+  const width = Math.min(base.width, wa.width);
+  const height = Math.min(base.height, wa.height);
+  let x = base.x + OFFSET;
+  let y = base.y + OFFSET;
+  // 우/하단으로 넘치면 workArea 안으로 되돌린다.
+  if (x + width > wa.x + wa.width) x = wa.x;
+  if (y + height > wa.y + wa.height) y = wa.y;
+  return { x, y, width, height };
+}
+
+// 창 생성 — 재사용 가능(주 창·보조 창 공용). secondary=true 면 상태 저장/복원 없이
+// 캐스케이드 위치로 열고, mainWindow 포인터에 담지 않는다(주 창은 유지).
+const createWindow = async (opts?: { secondary?: boolean }) => {
+  const secondary = opts?.secondary === true;
+  if (isDebug && !secondary) {
     await installExtensions();
   }
 
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.workAreaSize;
-  const savedState = loadWindowState();
+  const savedState = secondary ? null : loadWindowState();
   const useSavedPos = savedState != null && isVisibleOnSomeDisplay(savedState);
+  const cascade = secondary ? computeCascadeBounds() : null;
 
-  mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     show: false,
-    width: savedState?.width ?? width,
-    height: savedState?.height ?? height,
-    ...(useSavedPos ? { x: savedState!.x, y: savedState!.y } : {}),
+    width: cascade?.width ?? savedState?.width ?? width,
+    height: cascade?.height ?? savedState?.height ?? height,
+    ...(cascade
+      ? { x: cascade.x, y: cascade.y }
+      : useSavedPos
+        ? { x: savedState!.x, y: savedState!.y }
+        : {}),
     minWidth: 1024,
     minHeight: 728,
     frame: false,
@@ -1406,20 +1489,24 @@ const createWindow = async () => {
     },
   });
 
-  // 최초 실행(저장된 상태 없음)엔 최대화로 시작 — 과거엔 workArea 크기의 어중간한 창이었다.
-  // 이전에 최대화 상태로 종료했다면 그대로 최대화 복원.
-  if (!savedState || savedState.isMaximized) {
-    mainWindow.maximize();
+  // 주 창만 전역 포인터에 담는다(상태 저장·포커스 기준).
+  if (!secondary) {
+    mainWindow = win;
+    // 최초 실행(저장된 상태 없음)엔 최대화로 시작 — 과거엔 workArea 크기의 어중간한 창이었다.
+    // 이전에 최대화 상태로 종료했다면 그대로 최대화 복원.
+    if (!savedState || savedState.isMaximized) {
+      win.maximize();
+    }
+    // 사용자가 창을 옮기거나 크기를 바꾸면(그리고 최대화 토글 시) 상태를 저장한다.
+    // 주 창만 — 보조 창은 상태를 저장하지 않는다.
+    win.on('resize', scheduleSaveWindowState);
+    win.on('move', scheduleSaveWindowState);
+    win.on('maximize', saveWindowState);
+    win.on('unmaximize', saveWindowState);
   }
 
-  // 사용자가 창을 옮기거나 크기를 바꾸면(그리고 최대화 토글 시) 상태를 저장한다.
-  mainWindow.on('resize', scheduleSaveWindowState);
-  mainWindow.on('move', scheduleSaveWindowState);
-  mainWindow.on('maximize', saveWindowState);
-  mainWindow.on('unmaximize', saveWindowState);
-
   contextMenu({
-    window: mainWindow,
+    window: win,
     // danbooru 태그는 일반 구글 검색이 무의미하므로 기본 "구글 검색" 항목을 끈다.
     showSearchWithGoogle: false,
     // 기본 메뉴 항목 한글화
@@ -1441,6 +1528,9 @@ const createWindow = async () => {
       console.log(params.mediaType);
       console.log(params.altText);
       console.log(params.titleText);
+      // 콜백의 browserWindow(우클릭한 창)를 BrowserWindow 로 좁혀 그 창에만 send 한다.
+      // (contextMenu 를 창마다 등록하므로 이 창 === 우클릭한 창)
+      const bw = browserWindow as BrowserWindow;
       // 텍스트 드래그 선택 시: danbooru 태그 검색 (앱 내 웹 검색 탭으로 전달)
       if (
         params.selectionText &&
@@ -1451,7 +1541,8 @@ const createWindow = async () => {
           {
             label: 'Danbooru로 검색',
             click: () => {
-              mainWindow!.webContents.send(
+              // 우클릭한 그 창으로 전달(멀티 윈도우 안전) — 콜백의 browserWindow 사용.
+              bw?.webContents.send(
                 'danbooru-search',
                 params.selectionText,
               );
@@ -1465,13 +1556,13 @@ const createWindow = async () => {
             {
               label: '해당 이미지를 다른 씬으로 복사',
               click: () => {
-                mainWindow!.webContents.send('copy-image', altContext);
+                bw?.webContents.send('copy-image', altContext);
               },
             },
             {
               label: '해당 이미지를 복제',
               click: () => {
-                mainWindow!.webContents.send('duplicate-image', altContext);
+                bw?.webContents.send('duplicate-image', altContext);
               },
             },
           ];
@@ -1480,19 +1571,19 @@ const createWindow = async () => {
             {
               label: '해당 씬을 맨위로 이동',
               click: () => {
-                mainWindow!.webContents.send('move-scene-front', altContext);
+                bw?.webContents.send('move-scene-front', altContext);
               },
             },
             {
               label: '해당 씬을 맨뒤로 이동',
               click: () => {
-                mainWindow!.webContents.send('move-scene-back', altContext);
+                bw?.webContents.send('move-scene-back', altContext);
               },
             },
             {
               label: '해당 씬을 복제',
               click: () => {
-                mainWindow!.webContents.send('duplicate-scene', altContext);
+                bw?.webContents.send('duplicate-scene', altContext);
               },
             },
           ];
@@ -1518,40 +1609,43 @@ const createWindow = async () => {
     },
   });
 
-  mainWindow.loadURL(resolveHtmlPath('index.html'));
+  win.loadURL(resolveHtmlPath('index.html'));
 
-  mainWindow.on('ready-to-show', () => {
-    if (!mainWindow) {
-      throw new Error('"mainWindow" is not defined');
-    }
+  win.on('ready-to-show', () => {
     if (process.env.START_MINIMIZED) {
-      mainWindow.minimize();
+      win.minimize();
     } else {
-      mainWindow.show();
+      win.show();
     }
   });
 
-  mainWindow.on('close', (e) => {
-    // 닫히기 직전의 창 위치·크기·최대화 상태를 저장한다(다음 실행 복원용).
-    saveWindowState();
-    // 저장이 끝나기 전이면 창 닫기를 막고 렌더러에 저장을 위임한다.
-    // 렌더러가 저장을 마치면 invoke('close')로 saveCompleted=true 후 다시 닫는다.
-    if (!saveCompleted) {
+  // webContents.id 는 생성 시점에 캡처해 둔다 — 'closed' 는 창이 파괴된 뒤 발화하므로
+  // 핸들러 안에서 win.webContents 에 접근하면 "Object has been destroyed" 가 난다.
+  const wcId = win.webContents.id;
+
+  win.on('close', (e) => {
+    // 주 창만 닫히기 직전의 위치·크기·최대화 상태를 저장한다(다음 실행 복원용).
+    if (!secondary) saveWindowState();
+    // 저장이 끝나기 전이면 창 닫기를 막고 렌더러에 저장을 위임한다(창별 게이트).
+    // 렌더러가 저장을 마치면 invoke('close')로 이 창의 게이트를 열고 다시 닫는다.
+    if (!saveCompletedByWc.get(wcId)) {
       e.preventDefault();
-      mainWindow!.webContents.send('close');
+      win.webContents.send('close');
     }
   });
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
+  win.on('closed', () => {
+    // 창별 종료 게이트 정리 (캡처한 wcId 사용 — 이 시점의 win 은 이미 파괴됨).
+    saveCompletedByWc.delete(wcId);
+    if (!secondary) mainWindow = null;
   });
 
-  const menuBuilder = new MenuBuilder(mainWindow);
+  const menuBuilder = new MenuBuilder(win);
   menuBuilder.buildMenu();
-  mainWindow.setMenu(null);
+  win.setMenu(null);
 
   // Open urls in the user's browser
-  mainWindow.webContents.setWindowOpenHandler((edata) => {
+  win.webContents.setWindowOpenHandler((edata) => {
     shell.openExternal(edata.url);
     return { action: 'deny' };
   });
@@ -1560,6 +1654,11 @@ const createWindow = async () => {
   // eslint-disable-next-line
   // new AppUpdater();
 };
+
+// 새 창 열기 IPC — 보조 창 규칙(캐스케이드, 상태 저장 없음)으로 생성한다(W6 P0 §10).
+ipcMain.handle('open-new-window', async () => {
+  await createWindow({ secondary: true });
+});
 
 const dataDir = isDebug
   ? path.join(webpackPaths.appPath, 'data')
@@ -1658,7 +1757,8 @@ async function initFolder() {
         comps[0] === 'inpaints' ||
         comps[0] === 'workspace'
       ) {
-        mainWindow!.webContents.send('image-changed', comps.join('/'));
+        // 저장 경로 전역 감시 — 어느 창이 볼지 알 수 없으니 전 창 브로드캐스트.
+        broadcast('image-changed', comps.join('/'));
       }
     });
   }
@@ -1673,10 +1773,8 @@ if (!gotTheLock) {
 } else {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
     // Someone tried to run a second instance, we should focus our window.
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+    // 살아있는 아무 창(주 창 우선)을 복원·포커스한다(멀티 윈도우).
+    focusAnyWindow();
   });
   /**
    * Add event listeners...
@@ -1702,7 +1800,8 @@ if (!gotTheLock) {
       app.on('activate', () => {
         // On macOS it's common to re-create a window in the app when the
         // dock icon is clicked and there are no other windows open.
-        if (mainWindow === null) createWindow();
+        // 창이 하나도 없으면 새 주 창을 만든다.
+        if (BrowserWindow.getAllWindows().length === 0) createWindow();
         // APP_DIR = app.getPath('userData');
       });
     })

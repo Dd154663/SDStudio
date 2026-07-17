@@ -378,4 +378,9 @@ export class ElectornBackend extends Backend {
   async copyImageToClipboard(imagePath: string): Promise<void> {
     await invoke('copy-image-to-clipboard', imagePath);
   }
+
+  // 새 창 열기(멀티 윈도우 W6) — main 이 보조 창을 캐스케이드 위치로 생성한다.
+  async openNewWindow(): Promise<void> {
+    await invoke('open-new-window');
+  }
 }

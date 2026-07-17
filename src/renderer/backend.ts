@@ -131,4 +131,8 @@ export abstract class Backend {
     _title: string,
     _text: string,
   ): Promise<void> {}
+
+  // 새 창 열기 — 데스크톱(Electron)에서 보조 창(멀티 윈도우, W6)을 연다.
+  // 기본은 no-op(모바일은 단일 WebView라 창 개념 없음) — 데스크톱 백엔드에서만 구현.
+  async openNewWindow(): Promise<void> {}
 }

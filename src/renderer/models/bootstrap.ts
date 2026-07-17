@@ -13,6 +13,7 @@ import {
   backgroundNotificationService,
   backgroundKeepAliveService,
 } from '.';
+import { reaction } from 'mobx';
 import { appState } from './AppService';
 import { persistService } from './PersistenceService';
 import { runMobilePermissionOnboarding } from './mobilePermissions';
@@ -36,6 +37,17 @@ export async function bootstrapApp(): Promise<void> {
   if (started) return; // React StrictMode/재호출 방어
   started = true;
   const t0 = Date.now();
+
+  // 창 제목에 현재 프로젝트명을 반영 — 작업표시줄/Alt+Tab 에서 창을 구분하기 위함
+  // (멀티 윈도우 W6, 데스크톱). curSession 변경 시 mobx reaction 으로 최소 침습 갱신.
+  // 모바일은 작업표시줄이 없어 무의미하지만 무해하다.
+  reaction(
+    () => appState.curSession?.name,
+    (name) => {
+      document.title = name ? `SDStudio — ${name}` : 'SDStudio';
+    },
+    { fireImmediately: true },
+  );
 
   // 각 단계는 개별 격리한다 — 앞 단계 실패가 뒤 단계(특히 세션 초기화)를
   // 건너뛰게 하면 안 된다. 부팅이 일부 실패해도 앱은 반드시 뜬다.

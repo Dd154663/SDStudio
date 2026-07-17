@@ -63,7 +63,8 @@ export type Channels =
   | 'window-minimize'
   | 'window-maximize'
   | 'window-close'
-  | 'window-is-maximized';
+  | 'window-is-maximized'
+  | 'open-new-window';
 
 const electronHandler = {
   ipcRenderer: {

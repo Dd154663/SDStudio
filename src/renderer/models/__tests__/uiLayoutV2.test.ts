@@ -63,13 +63,14 @@ describe('resolveToolbarView — areas 순서/폴백/필터', () => {
     };
     const view = resolveToolbarView(registries, ov, false);
     const project = view.find((v) => v.area === PROJECT)!;
-    // 명시한 앞 3개는 지정 순서, 나머지 미배치(backup-export, project-trash)는 tier 폴백 append.
+    // 명시한 앞 3개는 지정 순서, 나머지 미배치(backup-export, project-trash, new-window)는 tier 폴백 append.
     expect(project.inline).toEqual([
       'piece-editor',
       'add-session',
       'delete-session',
       'backup-export',
       'project-trash',
+      'new-window',
     ]);
     expect(project.menu).toEqual(['character-presets']);
   });

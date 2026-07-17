@@ -60,6 +60,8 @@ export const projectToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'delete-session', name: '프로젝트 삭제', tier: 'primary', portable: true },
   { id: 'project-trash', name: '프로젝트 휴지통', tier: 'primary', portable: true },
   { id: 'piece-editor', name: '프롬프트조각', tier: 'primary', portable: true },
+  // 새 창(멀티 윈도우 W6) — 데스크톱 전용(모바일 미노출). portable 로 크로스 영역 이동 허용.
+  { id: 'new-window', name: '새 창', pcOnly: true, tier: 'primary', portable: true },
 ];
 
 // 레지스트리 + 사용자 설정 → 실제 배치를 해석하는 단일 출처(순수 함수).
