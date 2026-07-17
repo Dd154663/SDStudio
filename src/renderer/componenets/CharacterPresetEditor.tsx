@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef, useLayoutEffect } from 'react';
 import { observer } from 'mobx-react-lite';
 import Tooltip from './Tooltip';
 import {
@@ -14,6 +14,9 @@ import {
   FaArrowLeft,
   FaToggleOn,
   FaToggleOff,
+  FaFolder,
+  FaPen,
+  FaCheckSquare,
 } from 'react-icons/fa';
 import {
   CharacterPreset,
@@ -41,7 +44,6 @@ import {
   globalImageBackend,
   CharacterPresetCard,
   GlobalCharacterPresetCard,
-  GlobalFolderFilterChips,
 } from './CharacterPresetCards';
 import { CharacterPresetInnerEditor } from './CharacterPresetInnerEditor';
 
@@ -190,6 +192,162 @@ async function importCharacterPresets(session: any, file: File) {
   appState.pushMessage(`${imported}개 캐릭터 프리셋을 불러왔습니다`);
 }
 
+// ─── 글로벌 폴더 패널 행 (그리드 탐색기 NavItem 경량판, 2026-07-16 UX 개편) ───
+//
+// PC = 좌측 세로 목록 / 모바일 = 상단 가로 스크롤 (부모가 flex 방향 제어).
+// 카드(react-dnd 'global-character-preset-card')를 행에 드롭하면 그 폴더로
+// 이동한다. 편집 모드 = 행이 인라인 입력으로 전환 (드로어 폴더 이름변경 UX).
+const GlobalFolderRow = observer(
+  ({
+    label,
+    icon,
+    count,
+    active,
+    onClick,
+    droppable = false,
+    dropFolder = null,
+    onRename,
+    onDelete,
+    editing,
+    editValue,
+    onEditChange,
+    onEditCommit,
+    onEditCancel,
+  }: {
+    label: string;
+    icon: React.ReactNode;
+    count: number;
+    active: boolean;
+    onClick: () => void;
+    // 카드 드롭 수락 여부 + 드롭 시 이동할 폴더 (null = 미분류)
+    droppable?: boolean;
+    dropFolder?: string | null;
+    onRename?: () => void;
+    onDelete?: () => void;
+    editing?: boolean;
+    editValue?: string;
+    onEditChange?: (v: string) => void;
+    onEditCommit?: () => void;
+    onEditCancel?: () => void;
+  }) => {
+    const [{ isOver }, drop] = useDrop(
+      () => ({
+        accept: 'global-character-preset-card',
+        drop: (item: { index: number }) => {
+          const entry = globalCharacterPresetService.list()[item.index];
+          if (entry) globalCharacterPresetService.setFolder(entry.id, dropFolder);
+        },
+        collect: (m) => ({ isOver: m.isOver() }),
+      }),
+      [dropFolder],
+    );
+    if (editing) {
+      return (
+        <div className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none md:w-full bg-[var(--c-surface)] ring-2 ring-purple-400">
+          {icon}
+          <input
+            autoFocus
+            value={editValue}
+            onChange={(e) => onEditChange?.(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                onEditCommit?.();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                onEditCancel?.();
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-24 md:w-auto md:flex-1 min-w-0 bg-transparent outline-none text-default text-sm"
+          />
+          <Tooltip content="저장">
+            <span
+              role="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditCommit?.();
+              }}
+              className="text-green-500 hover:text-green-600 px-0.5"
+            >
+              <FaCheck size={13} />
+            </span>
+          </Tooltip>
+          <Tooltip content="취소">
+            <span
+              role="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditCancel?.();
+              }}
+              className="text-faint hover:text-gray-600 dark:hover:text-gray-200 px-0.5"
+            >
+              <FaTimes size={13} />
+            </span>
+          </Tooltip>
+        </div>
+      );
+    }
+    return (
+      <div
+        ref={droppable ? (drop as any) : undefined}
+        className="flex-none md:w-full"
+      >
+        <button
+          onClick={onClick}
+          className={`group flex w-full items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${
+            droppable && isOver ? 'ring-2 ring-purple-400 ' : ''
+          }${active ? 'bg-purple-500 text-white' : 'btn-neutral text-body'}`}
+        >
+          {icon}
+          <span className="truncate min-w-0 max-w-[7rem] md:max-w-none md:flex-1 text-left">
+            {label}
+          </span>
+          <span
+            className={`text-xs flex-none ${
+              active ? 'text-purple-100' : 'text-faint'
+            }`}
+          >
+            {count}
+          </span>
+          {onRename && (
+            <Tooltip content="이름 변경">
+              <span
+                role="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRename();
+                }}
+                className={`flex-none opacity-60 hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 ${
+                  active ? 'text-white md:opacity-100' : 'hover:text-sky-500'
+                }`}
+              >
+                <FaPen size={11} />
+              </span>
+            </Tooltip>
+          )}
+          {onDelete && (
+            <Tooltip content="폴더 삭제">
+              <span
+                role="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                className={`flex-none opacity-60 hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 ${
+                  active ? 'text-white md:opacity-100' : 'hover:text-red-500'
+                }`}
+              >
+                <FaTrash size={11} />
+              </span>
+            </Tooltip>
+          )}
+        </button>
+      </div>
+    );
+  },
+);
+
 // ─── 메인 프리셋 매니저 (목록/편집 전환) ───────────────────────
 interface CharacterPresetEditorProps {
   onApplyPreset?: (preset: CharacterPreset, mode: 'easy' | 'character') => void;
@@ -206,9 +364,16 @@ export const CharacterPresetEditor = observer(({
   // 로컬/글로벌 뷰 전환 — 글로벌이 기본 화면(주종 역전, 2026-07-16 합의).
   // 로컬은 하위호환용 서브 뷰로 토글 진입.
   const [globalView, setGlobalView] = useState(true);
-  // 글로벌 폴더 필터 칩 (1단계 평면 폴더 — 배치 생성 P0):
+  // 글로벌 폴더 필터 (좌측 폴더 패널 — 1단계 평면):
   // '__all__' 전체 / '__unfiled__' 미분류 / 그 외 = 폴더 이름
   const [folderFilter, setFolderFilter] = useState<string>('__all__');
+  // 폴더 패널 인라인 편집 상태 (새 폴더 입력 / 폴더 이름 변경)
+  const [newFolderMode, setNewFolderMode] = useState(false);
+  const [newFolderValue, setNewFolderValue] = useState('');
+  const [editingFolder, setEditingFolder] = useState<string | null>(null);
+  const [editFolderValue, setEditFolderValue] = useState('');
+  // 일괄 선택 모드 (카드 다중 선택 → 폴더 이동) — 순차 생성 모드와 배타
+  const [selectMode, setSelectMode] = useState(false);
   const [, setGlobalVersion] = useState(0);
   useEffect(() => {
     const onChanged = () => setGlobalVersion((v) => v + 1);
@@ -225,6 +390,23 @@ export const CharacterPresetEditor = observer(({
   const [sceneFilter, setSceneFilter] = useState('');
   // 프로젝트 파일 생성 모드: 프리셋마다 현재 프로젝트를 복제해 새 프로젝트로 생성
   const [projectFileMode, setProjectFileMode] = useState(false);
+
+  // 목록 높이 고정: 글로벌/로컬 전환·폴더 필터로 카드 수가 달라져도 지금까지
+  // 본 것 중 가장 큰 높이를 minHeight 로 유지해 모달이 출렁이지 않게 한다.
+  // (마운트 동안만 유효 — 모달을 닫으면 리셋, 창 크기 변경 시 재측정)
+  const listRootRef = useRef<HTMLDivElement | null>(null);
+  const [minListHeight, setMinListHeight] = useState(0);
+  useLayoutEffect(() => {
+    const el = listRootRef.current;
+    if (el && el.offsetHeight > minListHeight) {
+      setMinListHeight(el.offsetHeight);
+    }
+  });
+  useEffect(() => {
+    const onResize = () => setMinListHeight(0);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const cyclingState = cyclingSessionService.state;
 
@@ -245,7 +427,9 @@ export const CharacterPresetEditor = observer(({
 
   // 순차 생성 모드 진입 시 모든 선택 해제 (기본값)
   // 글로벌 뷰에서는 프로젝트 파일 생성 모드를 기본 ON (요청 핵심 동작)
+  // 일괄 선택 모드와 배타 — 진입 시 다른 쪽 해제.
   const enterCyclingMode = () => {
+    setSelectMode(false);
     setCyclingMode(true);
     setSelectedPresets(new Set());
     setSelectedGlobalIds(new Set());
@@ -260,6 +444,17 @@ export const CharacterPresetEditor = observer(({
     setSelectedGlobalIds(new Set());
     setSelectedScenes(new Set());
     setSceneFilter('');
+  };
+
+  // 일괄 선택 모드 (글로벌 뷰) — 카드 체크 다중 선택 후 폴더 이동
+  const enterSelectMode = () => {
+    if (cyclingMode) exitCyclingMode();
+    setSelectMode(true);
+    setSelectedGlobalIds(new Set());
+  };
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedGlobalIds(new Set());
   };
 
   const togglePresetSelection = (name: string) => {
@@ -486,54 +681,119 @@ export const CharacterPresetEditor = observer(({
     }
   };
 
-  // ─── 글로벌 폴더 (1단계 평면) ───
-  const handleMoveToFolder = async (entry: IGlobalCharacterPresetEntry) => {
+  // ─── 글로벌 폴더 (1단계 평면, 좌측 패널) ───
+
+  // 폴더 선택 다이얼로그 (단건 이동·일괄 이동 공용).
+  // 반환: undefined = 취소 / null = 미분류 / string = 폴더 이름.
+  // 'f:' 접두로 폴더 이름과 예약 값('__new__' 등)의 충돌을 차단한다.
+  const pickFolderTarget = async (
+    text: string,
+    showRoot: boolean,
+  ): Promise<string | null | undefined> => {
     const folders = globalCharacterPresetService.listFolders();
-    // 'f:' 접두로 폴더 이름과 예약 값('__new__' 등)의 충돌을 차단
     const items = [
       ...folders.map((f) => ({ text: `📁 ${f}`, value: 'f:' + f })),
       { text: '➕ 새 폴더...', value: '__new__' },
-      ...(entry.folder
-        ? [{ text: '📂 루트로 이동 (미분류)', value: '__root__' }]
-        : []),
+      ...(showRoot ? [{ text: '📂 미분류로 이동', value: '__root__' }] : []),
     ];
-    const v = await appState.pushDialogAsync({
-      type: 'select',
-      text: `"${entry.name}"을(를) 어느 폴더로 이동할까요?`,
-      items,
-    });
-    if (!v) return;
+    const v = await appState.pushDialogAsync({ type: 'select', text, items });
+    if (!v) return undefined;
+    if (v === '__new__') {
+      const name = await appState.pushDialogAsync({
+        type: 'input-confirm',
+        text: '새 폴더 이름을 입력해주세요',
+      });
+      if (!name || !name.trim()) return undefined;
+      return name.trim();
+    }
+    if (v === '__root__') return null;
+    return v.slice(2);
+  };
+
+  const handleMoveToFolder = async (entry: IGlobalCharacterPresetEntry) => {
+    const target = await pickFolderTarget(
+      `"${entry.name}"을(를) 어느 폴더로 이동할까요?`,
+      !!entry.folder,
+    );
+    if (target === undefined) return;
     try {
-      if (v === '__new__') {
-        const name = await appState.pushDialogAsync({
-          type: 'input-confirm',
-          text: '새 폴더 이름을 입력해주세요',
-        });
-        if (!name || !name.trim()) return;
-        await globalCharacterPresetService.setFolder(entry.id, name);
-      } else if (v === '__root__') {
-        await globalCharacterPresetService.setFolder(entry.id, null);
-      } else {
-        await globalCharacterPresetService.setFolder(entry.id, v.slice(2));
-      }
+      await globalCharacterPresetService.setFolder(entry.id, target);
     } catch (e: any) {
       appState.pushMessage(e.message || '폴더 이동에 실패했습니다');
     }
   };
 
-  const handleRenameFolder = (folder: string) => {
+  // 일괄 선택 모드: 선택한 카드들을 한 번에 폴더로 이동 (이동 후 선택 해제)
+  const bulkMoveToFolder = async () => {
+    const ids = Array.from(selectedGlobalIds);
+    if (ids.length === 0) return;
+    const target = await pickFolderTarget(
+      `선택한 ${ids.length}개를 어느 폴더로 이동할까요?`,
+      true,
+    );
+    if (target === undefined) return;
+    try {
+      for (const id of ids) {
+        await globalCharacterPresetService.setFolder(id, target);
+      }
+      appState.pushMessage(
+        target
+          ? `${ids.length}개를 "${target}" 폴더로 이동했습니다`
+          : `${ids.length}개를 미분류로 이동했습니다`,
+      );
+      setSelectedGlobalIds(new Set());
+    } catch (e: any) {
+      appState.pushMessage(e.message || '폴더 이동에 실패했습니다');
+    }
+  };
+
+  // 패널: 새 폴더 인라인 입력 확정 (생성 후 그 폴더를 바로 선택)
+  const commitNewFolder = async () => {
+    const name = newFolderValue.trim();
+    if (!name) {
+      setNewFolderMode(false);
+      return;
+    }
+    try {
+      const created = await globalCharacterPresetService.createFolder(name);
+      setFolderFilter(created);
+      setNewFolderMode(false);
+      setNewFolderValue('');
+    } catch (e: any) {
+      appState.pushMessage(e.message || '폴더 생성에 실패했습니다');
+    }
+  };
+
+  // 패널: 폴더 이름 인라인 변경 확정
+  const commitFolderRename = async () => {
+    const oldName = editingFolder;
+    if (!oldName) return;
+    const newName = editFolderValue.trim();
+    if (!newName || newName === oldName) {
+      setEditingFolder(null);
+      return;
+    }
+    try {
+      await globalCharacterPresetService.renameFolder(oldName, newName);
+      // 현재 필터가 이 폴더였으면 새 이름을 따라간다
+      setFolderFilter((prev) => (prev === oldName ? newName : prev));
+      setEditingFolder(null);
+    } catch (e: any) {
+      appState.pushMessage(e.message || '폴더 이름 변경에 실패했습니다');
+    }
+  };
+
+  // 패널: 폴더 삭제 (소속 프리셋은 미분류로 이동)
+  const handleDeleteFolder = (folder: string) => {
+    const count = globalCharacterPresetService
+      .list()
+      .filter((e) => e.folder === folder).length;
     appState.pushDialog({
-      type: 'input-confirm',
-      text: `폴더 "${folder}"의 새 이름을 입력해주세요`,
-      callback: async (v?: string) => {
-        if (!v || !v.trim()) return;
-        try {
-          await globalCharacterPresetService.renameFolder(folder, v);
-          // 현재 필터가 이 폴더였으면 새 이름을 따라간다
-          setFolderFilter((prev) => (prev === folder ? v.trim() : prev));
-        } catch (e: any) {
-          appState.pushMessage(e.message || '폴더 이름 변경에 실패했습니다');
-        }
+      type: 'confirm',
+      text: `폴더 "${folder}"를 삭제할까요?\n소속 프리셋 ${count}개는 미분류로 이동합니다.`,
+      callback: async () => {
+        await globalCharacterPresetService.deleteFolder(folder);
+        setFolderFilter((prev) => (prev === folder ? '__all__' : prev));
       },
     });
   };
@@ -640,7 +900,11 @@ export const CharacterPresetEditor = observer(({
 
   // 카드 그리드 모드
   return (
-    <div className="text-default">
+    <div
+      ref={listRootRef}
+      className="text-default"
+      style={{ minHeight: minListHeight || undefined }}
+    >
       {/* 상단 컨트롤 */}
       <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
@@ -670,6 +934,18 @@ export const CharacterPresetEditor = observer(({
             >
               <FaSync size={11} />
               {cyclingMode ? '순차 생성 모드 끄기' : '순차 생성 모드'}
+            </button>
+          )}
+          {/* 일괄 선택 → 폴더 이동 (글로벌 뷰 전용, 순차 생성과 배타) */}
+          {globalView && globalEntries.length > 0 && (
+            <button
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                selectMode ? 'bg-purple-500 text-white' : 'btn-neutral text-body'
+              }`}
+              onClick={() => (selectMode ? exitSelectMode() : enterSelectMode())}
+            >
+              <FaCheckSquare size={11} />
+              {selectMode ? '선택 모드 끄기' : '선택'}
             </button>
           )}
         </div>
@@ -708,14 +984,46 @@ export const CharacterPresetEditor = observer(({
         </div>
       </div>
 
-      {/* 폴더 필터 칩 (글로벌 뷰, 1단계 평면 폴더 — 공유 컴포넌트, 모바일 가로 스크롤) */}
-      {globalView && (
-        <div className="mb-2">
-          <GlobalFolderFilterChips
-            value={effectiveFolderFilter}
-            onChange={setFolderFilter}
-            onRenameFolder={handleRenameFolder}
-          />
+      {/* 일괄 선택 액션 바 (글로벌 뷰) — 다중 선택 후 폴더 이동 */}
+      {globalView && selectMode && (
+        <div className="mb-2 flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {selectedGlobalIds.size}개 선택
+          </span>
+          <button
+            className="text-xs btn-link"
+            onClick={() => {
+              // 폴더 필터 중엔 보이는 항목만 토글 — 다른 폴더의 선택은 유지
+              const all =
+                visibleGlobalEntries.length > 0 &&
+                visibleGlobalEntries.every((e) => selectedGlobalIds.has(e.id));
+              const next = new Set(selectedGlobalIds);
+              visibleGlobalEntries.forEach((e) =>
+                all ? next.delete(e.id) : next.add(e.id),
+              );
+              setSelectedGlobalIds(next);
+            }}
+          >
+            {visibleGlobalEntries.length > 0 &&
+            visibleGlobalEntries.every((e) => selectedGlobalIds.has(e.id))
+              ? '전체 해제'
+              : '전체 선택'}
+          </button>
+          <button
+            className="px-3 py-1 rounded-lg text-xs font-medium btn-solid-purple"
+            disabled={selectedGlobalIds.size === 0}
+            onClick={bulkMoveToFolder}
+          >
+            <FaFolder className="inline mr-1" size={10} />
+            폴더로 이동
+          </button>
+          <button
+            className="px-3 py-1 rounded-lg text-xs btn-neutral text-body"
+            disabled={selectedGlobalIds.size === 0}
+            onClick={() => setSelectedGlobalIds(new Set())}
+          >
+            선택 해제
+          </button>
         </div>
       )}
 
@@ -766,51 +1074,143 @@ export const CharacterPresetEditor = observer(({
       )}
 
       {globalView ? (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: isMobile
-              ? 'repeat(2, 1fr)'
-              : 'repeat(auto-fill, minmax(180px, 1fr))',
-            gap: '0.75rem',
-            alignContent: 'start',
-          }}
-        >
-          {/* 새 글로벌 프리셋 카드 (순차 생성 모드가 아닐 때만) */}
-          {!cyclingMode && (
-            <div
-              className="rounded-lg border-2 border-dashed border-purple-300 dark:border-purple-600 hover:border-purple-500 cursor-pointer flex flex-col items-center justify-center aspect-[3/4] transition-colors group"
-              onClick={handleAddNewGlobal}
-            >
-              <FaPlus className="text-2xl text-purple-400 dark:text-purple-500 group-hover:text-purple-600 transition-colors mb-2" />
-              <span className="text-sm text-purple-400 dark:text-purple-500 group-hover:text-purple-600 transition-colors">
-                새 글로벌 프리셋
-              </span>
-            </div>
-          )}
-          {visibleGlobalEntries.map((entry) => (
-            <GlobalCharacterPresetCard
-              key={entry.id}
-              entry={entry}
-              // 드래그 정렬은 전체 목록 기준 인덱스로 동작해야 한다
-              // (폴더 필터로 걸러진 화면 인덱스와 다름)
-              index={globalEntries.indexOf(entry)}
-              isEasyMode={isEasyMode}
-              cyclingMode={cyclingMode}
-              selected={selectedGlobalIds.has(entry.id)}
-              onToggleSelect={() => toggleGlobalSelection(entry.id)}
-              onApplyEasy={() => handleApplyGlobal(entry, 'easy')}
-              onApplyCharacter={() => handleApplyGlobal(entry, 'character')}
-              onLoad={() => handleLoadGlobal(entry)}
-              onEdit={() => handleEditGlobal(entry)}
-              onDuplicate={() => handleDuplicateGlobal(entry)}
-              onDelete={() => handleDeleteGlobal(entry)}
-              onMove={(from, to) =>
-                globalCharacterPresetService.reorder(from, to)
-              }
-              onMoveToFolder={() => handleMoveToFolder(entry)}
+        <div className="flex flex-col md:flex-row gap-3">
+          {/* 좌측 폴더 패널 (PC: 세로 목록 / 모바일: 상단 가로 스크롤 —
+              그리드 탐색기 좌측 패널 관례의 경량판) */}
+          <div className="flex md:flex-col gap-1.5 md:w-44 md:flex-none flex-none overflow-x-auto md:overflow-y-auto md:max-h-[65vh] pb-1 md:pb-0">
+            <GlobalFolderRow
+              label="전체"
+              icon={<FaFolder className="opacity-70 flex-none" size={13} />}
+              count={globalEntries.length}
+              active={effectiveFolderFilter === '__all__'}
+              onClick={() => setFolderFilter('__all__')}
             />
-          ))}
+            <GlobalFolderRow
+              label="미분류"
+              icon={<FaFolder className="opacity-40 flex-none" size={13} />}
+              count={globalEntries.filter((e) => !e.folder).length}
+              active={effectiveFolderFilter === '__unfiled__'}
+              onClick={() => setFolderFilter('__unfiled__')}
+              droppable
+              dropFolder={null}
+            />
+            {globalFolders.map((f) => (
+              <GlobalFolderRow
+                key={f}
+                label={f}
+                icon={
+                  <FaFolder
+                    className="text-purple-400 dark:text-purple-500 flex-none"
+                    size={13}
+                  />
+                }
+                count={globalEntries.filter((e) => e.folder === f).length}
+                active={effectiveFolderFilter === f}
+                onClick={() => setFolderFilter(f)}
+                droppable
+                dropFolder={f}
+                onRename={() => {
+                  setEditingFolder(f);
+                  setEditFolderValue(f);
+                }}
+                onDelete={() => handleDeleteFolder(f)}
+                editing={editingFolder === f}
+                editValue={editFolderValue}
+                onEditChange={setEditFolderValue}
+                onEditCommit={commitFolderRename}
+                onEditCancel={() => setEditingFolder(null)}
+              />
+            ))}
+            {/* 새 폴더 — 인라인 입력 (Enter 확정 / Escape 취소) */}
+            {newFolderMode ? (
+              <GlobalFolderRow
+                label=""
+                icon={
+                  <FaFolder
+                    className="text-purple-400 dark:text-purple-500 flex-none"
+                    size={13}
+                  />
+                }
+                count={0}
+                active={false}
+                onClick={() => {}}
+                editing
+                editValue={newFolderValue}
+                onEditChange={setNewFolderValue}
+                onEditCommit={commitNewFolder}
+                onEditCancel={() => {
+                  setNewFolderMode(false);
+                  setNewFolderValue('');
+                }}
+              />
+            ) : (
+              <button
+                className="btn-ghost flex items-center justify-center md:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none md:w-full border border-dashed line-color text-muted"
+                onClick={() => {
+                  setNewFolderMode(true);
+                  setNewFolderValue('');
+                }}
+              >
+                <FaPlus size={11} />새 폴더
+              </button>
+            )}
+          </div>
+          {/* 우측 카드 그리드 */}
+          <div className="flex-1 min-w-0">
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: isMobile
+                  ? 'repeat(2, 1fr)'
+                  : 'repeat(auto-fill, minmax(180px, 1fr))',
+                gap: '0.75rem',
+                alignContent: 'start',
+              }}
+            >
+              {/* 새 글로벌 프리셋 카드 (순차 생성·선택 모드가 아닐 때만) */}
+              {!cyclingMode && !selectMode && (
+                <div
+                  className="rounded-lg border-2 border-dashed border-purple-300 dark:border-purple-600 hover:border-purple-500 cursor-pointer flex flex-col items-center justify-center aspect-[3/4] transition-colors group"
+                  onClick={handleAddNewGlobal}
+                >
+                  <FaPlus className="text-2xl text-purple-400 dark:text-purple-500 group-hover:text-purple-600 transition-colors mb-2" />
+                  <span className="text-sm text-purple-400 dark:text-purple-500 group-hover:text-purple-600 transition-colors">
+                    새 글로벌 프리셋
+                  </span>
+                </div>
+              )}
+              {visibleGlobalEntries.map((entry) => (
+                <GlobalCharacterPresetCard
+                  key={entry.id}
+                  entry={entry}
+                  // 드래그 정렬·폴더 드롭은 전체 목록 기준 인덱스로 동작해야
+                  // 한다 (폴더 필터로 걸러진 화면 인덱스와 다름)
+                  index={globalEntries.indexOf(entry)}
+                  isEasyMode={isEasyMode}
+                  // 선택 모드도 순차 생성과 같은 체크 오버레이 UI 를 재사용
+                  cyclingMode={cyclingMode || selectMode}
+                  selected={selectedGlobalIds.has(entry.id)}
+                  onToggleSelect={() => toggleGlobalSelection(entry.id)}
+                  onApplyEasy={() => handleApplyGlobal(entry, 'easy')}
+                  onApplyCharacter={() => handleApplyGlobal(entry, 'character')}
+                  onLoad={() => handleLoadGlobal(entry)}
+                  onEdit={() => handleEditGlobal(entry)}
+                  onDuplicate={() => handleDuplicateGlobal(entry)}
+                  onDelete={() => handleDeleteGlobal(entry)}
+                  onMove={(from, to) =>
+                    globalCharacterPresetService.reorder(from, to)
+                  }
+                  onMoveToFolder={() => handleMoveToFolder(entry)}
+                />
+              ))}
+              {visibleGlobalEntries.length === 0 &&
+                (cyclingMode || selectMode) && (
+                  <div className="col-span-full text-sm text-faint py-8 text-center">
+                    이 폴더에 프리셋이 없습니다
+                  </div>
+                )}
+            </div>
+          </div>
         </div>
       ) : presets.length === 0 ? (
         <div className="text-center py-12">

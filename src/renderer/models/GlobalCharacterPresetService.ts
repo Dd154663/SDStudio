@@ -16,14 +16,18 @@ export interface IGlobalCharacterPresetEntry {
   // 이미지 경로(vibes/characterReferences/representativeImage)는 글로벌 파일명을 가리킨다.
   preset: ICharacterPreset;
   // 1단계 평면 폴더(중첩 없음, 배치 생성 P0 — 2026-07-16 합의).
-  // 빈 문자열/미지정 = 루트(미분류). 폴더는 별도 레지스트리 없이 엔트리에서
-  // 파생한다 — 항목이 전부 빠지면 폴더도 자연 소멸(의도된 단순화).
+  // 빈 문자열/미지정 = 루트(미분류). 폴더 목록의 진실 원천은 스토어의
+  // folders 레지스트리(아래) — 엔트리의 이 필드는 소속 지정이다.
   folder?: string;
 }
 
 export interface IGlobalCharacterPresetStore {
   version: 1;
   presets: IGlobalCharacterPresetEntry[];
+  // 폴더 레지스트리(1단계 평면, 배열 순서 = 표시 순서) — 빈 폴더 허용
+  // ("폴더 먼저 만들고 옮기는" 워크플로). 필드 추가 = 구버전 호환 무해.
+  // 구 데이터(파생 방식)는 listFolders 가 엔트리에서 자동 복구 병합한다.
+  folders?: string[];
 }
 
 // 글로벌(프로젝트 공통) 캐릭터 프리셋.
@@ -31,6 +35,9 @@ export interface IGlobalCharacterPresetStore {
 // 이미지를 따로 보관하고(data URI 파일), 불러올 때 세션으로 복사한다.
 export class GlobalCharacterPresetService extends EventTarget {
   @observable accessor presets: IGlobalCharacterPresetEntry[] = [];
+  // 폴더 레지스트리 — 순서가 곧 표시 순서. listFolders 로만 읽을 것
+  // (파생 폴더 자동 복구 병합 포함).
+  @observable accessor folders: string[] = [];
   @observable accessor loaded: boolean = false;
   private saveTimeout: any = null;
 
@@ -58,8 +65,20 @@ export class GlobalCharacterPresetService extends EventTarget {
                     : undefined,
               }))
           : [];
+      // 폴더 레지스트리 로드 방어 — 문자열만·trim·중복 제거
+      const rawFolders = Array.isArray((json as any)?.folders)
+        ? ((json as any).folders as unknown[])
+        : [];
+      const folders: string[] = [];
+      for (const f of rawFolders) {
+        if (typeof f !== 'string') continue;
+        const t = f.trim();
+        if (t && !folders.includes(t)) folders.push(t);
+      }
+      this.folders = folders;
     } catch (e) {
       this.presets = [];
+      this.folders = [];
     }
     this.loaded = true;
     this.dispatchEvent(new CustomEvent('changed', {}));
@@ -69,6 +88,7 @@ export class GlobalCharacterPresetService extends EventTarget {
     const store: IGlobalCharacterPresetStore = {
       version: 1,
       presets: this.presets,
+      folders: this.folders,
     };
     const data = JSON.stringify(store);
     const tmp = GLOBAL_CHAR_PRESETS_FILE + '.tmp';
@@ -111,17 +131,52 @@ export class GlobalCharacterPresetService extends EventTarget {
     return this.presets.find((p) => p.name === name);
   }
 
-  // ---------- 폴더 (1단계 평면 — 배치 생성 P0) ----------
-  // 현존 폴더 목록 — 엔트리에서 파생(중복 제거·정렬)
+  // ---------- 폴더 (1단계 평면, 영속 레지스트리 — 2026-07-16 UX 개편) ----------
+  // 폴더는 folders 레지스트리가 진실 원천(빈 폴더 허용 — 폴더 먼저 만들고
+  // 옮기는 워크플로). 레지스트리에 없는데 엔트리에만 존재하는 파생 폴더
+  // (수동 편집/구 데이터)는 목록 뒤에 정렬 병합해 자동 복구한다.
   listFolders(): string[] {
-    const set = new Set<string>();
-    for (const p of this.presets) if (p.folder) set.add(p.folder);
-    return Array.from(set).sort((a, b) =>
+    const derived = new Set<string>();
+    for (const p of this.presets) if (p.folder) derived.add(p.folder);
+    for (const f of this.folders) derived.delete(f);
+    const extras = Array.from(derived).sort((a, b) =>
       a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
     );
+    return [...this.folders, ...extras];
   }
 
-  // 폴더 지정/해제 — null/빈 값은 루트(undefined)로 정규화
+  // 새 폴더 등록 (빈 폴더 허용) — trim·중복 거부. 반환 = 정규화된 이름.
+  @action
+  async createFolder(name: string): Promise<string> {
+    name = (name ?? '').trim();
+    if (!name) throw new Error('폴더 이름을 입력해 주세요');
+    if (this.listFolders().includes(name)) {
+      throw new Error('이미 존재하는 폴더입니다');
+    }
+    this.folders = [...this.folders, name];
+    this.scheduleSave();
+    this.dispatchEvent(new CustomEvent('changed', {}));
+    return name;
+  }
+
+  // 폴더 삭제 — 소속 엔트리는 미분류로 이동, 레지스트리에서 제거.
+  @action
+  async deleteFolder(name: string): Promise<void> {
+    let entryChanged = false;
+    this.presets = this.presets.map((p) => {
+      if (p.folder !== name) return p;
+      entryChanged = true;
+      return { ...p, folder: undefined, updatedAt: Date.now() };
+    });
+    const registryChanged = this.folders.includes(name);
+    if (!entryChanged && !registryChanged) return;
+    this.folders = this.folders.filter((f) => f !== name);
+    this.scheduleSave();
+    this.dispatchEvent(new CustomEvent('changed', {}));
+  }
+
+  // 폴더 지정/해제 — null/빈 값은 루트(undefined)로 정규화.
+  // 새 폴더 이름이 오면 레지스트리에 자동 등록한다.
   @action
   async setFolder(id: string, folder: string | null): Promise<void> {
     const entry = this.get(id);
@@ -131,24 +186,32 @@ export class GlobalCharacterPresetService extends EventTarget {
     if (entry.folder === next) return;
     entry.folder = next;
     entry.updatedAt = Date.now();
+    if (next && !this.folders.includes(next)) {
+      this.folders = [...this.folders, next];
+    }
     this.presets = [...this.presets];
     this.scheduleSave();
     this.dispatchEvent(new CustomEvent('changed', {}));
   }
 
-  // 폴더 이름 변경 — 해당 폴더의 엔트리 일괄 이관
+  // 폴더 이름 변경 — 레지스트리 이관 + 해당 폴더의 엔트리 일괄 이관.
   @action
   async renameFolder(oldName: string, newName: string): Promise<void> {
     newName = newName.trim();
     if (!newName) throw new Error('폴더 이름을 입력해 주세요');
     if (oldName === newName) return;
-    let changed = false;
-    this.presets = this.presets.map((p) => {
-      if (p.folder !== oldName) return p;
-      changed = true;
-      return { ...p, folder: newName, updatedAt: Date.now() };
-    });
-    if (!changed) return;
+    if (this.listFolders().includes(newName)) {
+      throw new Error('이미 존재하는 폴더입니다');
+    }
+    // 레지스트리 이관 — 파생 전용(미등록) 폴더였다면 새 이름으로 등록해 복구
+    this.folders = this.folders.includes(oldName)
+      ? this.folders.map((f) => (f === oldName ? newName : f))
+      : [...this.folders, newName];
+    this.presets = this.presets.map((p) =>
+      p.folder === oldName
+        ? { ...p, folder: newName, updatedAt: Date.now() }
+        : p,
+    );
     this.scheduleSave();
     this.dispatchEvent(new CustomEvent('changed', {}));
   }
