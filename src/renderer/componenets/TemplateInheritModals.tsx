@@ -41,6 +41,8 @@ export const FolderTemplateModal = observer(
     const commitRef = useRef<() => void>(() => {});
     // 열 때의 updatedAt — 닫을 때 변경 여부(=전파 확인 트리거) 판정용
     const updatedAtOnOpenRef = useRef<number>(0);
+    // 일괄 생성(배치 탭) 실행 중 — 모달 닫기 차단 (배치 R3)
+    const [batchRunning, setBatchRunning] = useState(false);
 
     // 열 때 폴더 전용 로컬 템플릿을 확보한다:
     //  - 기존 지정이 로컬 템플릿이면 그대로 편집
@@ -139,6 +141,13 @@ export const FolderTemplateModal = observer(
     //  - 아무것도 세팅되지 않은 템플릿이면 지정 자동 해제 (빈 템플릿 잔존 방지)
     //  - 수정이 있었고 상속 중인 자식이 있으면 전파(덮어쓰기) 확인
     const handleClose = () => {
+      // 일괄 생성 실행 중엔 닫지 않는다 — 진행률·취소 수단 유실 방지 (배치 R3)
+      if (batchRunning) {
+        appState.pushMessage(
+          '일괄 생성이 진행 중입니다 — [취소] 버튼으로 중단한 뒤 닫을 수 있습니다.',
+        );
+        return;
+      }
       if (localId) {
         commitRef.current();
         const e = projectTemplateService.get(localId);
@@ -199,7 +208,9 @@ export const FolderTemplateModal = observer(
         width="max-w-3xl"
       >
         <div className="flex flex-col gap-4">
-          {!charEditing && (
+          {/* 배치 실행 중엔 상단 조작(불러오기·지정 해제·배지 색)도 잠근다 —
+              실행 대상 템플릿을 도중에 바꾸거나 지우는 사고 방지 (배치 R3) */}
+          {!charEditing && !batchRunning && (
             <>
               <p className="text-sm text-muted">
                 이 폴더(하위 폴더 포함)에서 새 프로젝트를 만들 때 아래 구성이
@@ -272,6 +283,7 @@ export const FolderTemplateModal = observer(
               commitRef={commitRef}
               onEditingCharChange={setCharEditing}
               batchFolder={folder}
+              onBatchRunningChange={setBatchRunning}
               onBatchCompleted={() => {
                 // 일괄 생성 직후에는 자식이 이미 최신 구성이다 — 전파 확인
                 // 기준(updatedAt)을 리셋해, 닫을 때 방금 만든 자식에게

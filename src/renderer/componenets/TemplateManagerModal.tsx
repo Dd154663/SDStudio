@@ -17,7 +17,7 @@ import Tooltip from './Tooltip';
 import PromptEditTextArea from './PromptEditTextArea';
 import { CharacterPresetInnerEditor } from './CharacterPresetInnerEditor';
 import { PresetImageBackend, VibeImage } from './CharacterPresetCards';
-import { BatchCreateModal } from './BatchCreateModal';
+import { BatchCreatePanel } from './BatchCreateModal';
 import { GlobalVibeImage } from './GlobalPresetTab';
 import { EditableSliderValue } from './VibeEditor';
 import { FileUploadBase64 } from './UtilComponents';
@@ -142,6 +142,7 @@ export const TemplateWorkflowEditor = observer(
     onEditingCharChange,
     batchFolder,
     onBatchCompleted,
+    onBatchRunningChange,
   }: {
     templateId: string;
     // 부모가 엔티티를 통째로 바꾼 뒤(전역 템플릿 불러오기 등) 재동기화 신호
@@ -150,12 +151,15 @@ export const TemplateWorkflowEditor = observer(
     commitRef?: React.MutableRefObject<() => void>;
     // 캐릭터 프리셋 편집(전체 영역 전환) 중 여부 통지 — 부모 상단 UI 숨김용
     onEditingCharChange?: (editing: boolean) => void;
-    // 일괄 생성(배치 R2)의 폴더 컨텍스트 — FolderTemplateModal 경유일 때만
-    // 폴더 경로가 온다. 없으면(전역 템플릿 관리) 버튼 비활성+안내 (스펙 1항).
+    // 일괄 생성 탭의 폴더 컨텍스트 — FolderTemplateModal 경유일 때만 폴더
+    // 경로가 온다. 없으면(전역 템플릿 관리) 배치 탭에 "대상 폴더 — 새로 생성"
+    // 입력 섹션이 뜬다 (배치 R3 스펙 3항).
     batchFolder?: string;
     // 일괄 생성 실행 완료 통지 — 부모(폴더 모달)가 전파 확인 기준(updatedAt)을
     // 리셋하는 데 쓴다 (방금 만든 자식에게 또 "덮어쓸까요?"가 뜨지 않도록).
     onBatchCompleted?: () => void;
+    // 일괄 생성 실행 중 여부 통지 — 호스트 모달이 닫기를 차단하는 데 쓴다.
+    onBatchRunningChange?: (running: boolean) => void;
   }) => {
     // 프롬프트 영역 인라인 편집 상태 — 명시적 커밋([저장]·창 닫기·전환)
     // 전까지는 로컬에만 존재한다. 에디터 onChange 클로저가 마운트 시점에
@@ -168,8 +172,12 @@ export const TemplateWorkflowEditor = observer(
     const [syncKey, setSyncKey] = useState(0);
     // 글로벌 프리셋 카드 선택 모달 (프롬프트 영역 불러오기)
     const [globalPickerOpen, setGlobalPickerOpen] = useState(false);
-    // 일괄 생성 위저드 (폴더 템플릿 전용 — 배치 R2)
-    const [batchOpen, setBatchOpen] = useState(false);
+    // [템플릿]|[일괄 생성] 탭 (배치 R3) — 기본값=템플릿, 비영속(1회성)
+    const [tab, setTab] = useState<'template' | 'batch'>('template');
+    // 일괄 생성 실행 중 — 탭 전환 비활성+호스트 닫기 차단용
+    const [batchRunning, setBatchRunning] = useState(false);
+    // 배치 탭의 전역 프리셋 즉석 생성 중 — 탭 헤더 숨김(전체 영역 전환)
+    const [batchCharEditing, setBatchCharEditing] = useState(false);
     // 캐릭터 프리셋 편집 (CharacterPresetInnerEditor 인라인 전환)
     const [editChar, setEditChar] = useState<{
       index: number | null; // null = 새로 만들기
@@ -523,39 +531,11 @@ export const TemplateWorkflowEditor = observer(
             imageBackend={templateImageBackend}
           />
         ) : (
-          <div className="flex flex-col gap-4">
-            {/* 일괄 생성 진입 — 최상단 배치(2026-07-16 실기 피드백: 배치만
-                원하는 사용자가 스크롤 없이 바로 진입). 폴더 템플릿 전용,
-                전역 템플릿에선 비활성+안내 노출 (스펙 1항). */}
-            <div className="flex justify-end">
-              <Tooltip
-                content={
-                  batchFolder
-                    ? '캐릭터 프리셋 × 씬 템플릿 조합으로 자식 프로젝트 일괄 생성'
-                    : '일괄 생성 기능은 폴더를 지정해서 사용해야 합니다.'
-                }
-              >
-                <button
-                  className={`px-4 py-2 rounded-lg text-sm font-medium btn-solid-purple ${
-                    batchFolder ? '' : 'opacity-50 cursor-not-allowed'
-                  }`}
-                  onClick={() => {
-                    if (!batchFolder) {
-                      appState.pushMessage(
-                        '일괄 생성 기능은 폴더를 지정해서 사용해야 합니다.',
-                      );
-                      return;
-                    }
-                    // 편집 중 프롬프트까지 베이스에 반영한 뒤 위저드 진입
-                    commitPrompts();
-                    setBatchOpen(true);
-                  }}
-                >
-                  일괄 생성
-                </button>
-              </Tooltip>
-            </div>
-            {/* 프롬프트 영역 (스타일 프리셋 1벌) */}
+          (() => {
+            // ----- 섹션 요소 (배치 R3: 편집 탭·일괄 생성 탭이 같은 실물을
+            // 공유한다 — JSX 중복 금지, 상태·커밋 로직 단일 출처) -----
+            // 프롬프트(+샘플링) — 양 탭 공유
+            const promptSection = (
             <div className={sectionCls}>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-default flex-1">
@@ -719,7 +699,9 @@ export const TemplateWorkflowEditor = observer(
                 </label>
               </div>
             </div>
-            {/* 캐릭터/바이브/레퍼런스 (캐릭터 프리셋 목록) */}
+            );
+            // 캐릭터 프리셋 목록 — 편집 탭 전용 (배치 탭은 이 자리에 캐릭터 축)
+            const charPresetSection = (
             <div className={sectionCls}>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-default flex-1">
@@ -774,10 +756,15 @@ export const TemplateWorkflowEditor = observer(
                 </div>
               ))}
             </div>
-            {/* 캐릭터 프롬프트 (NAI 멀티 캐릭터 — 수동 지정 영역).
-                데이터는 프리셋 소속(preset.characterPrompts)이지만 사용자
-                관점에선 캐릭터 세팅의 일부 — 캐릭터 프리셋/바이브 사이 배치
-                (2026-07-16 실기 피드백). */}
+            );
+            // 캐릭터 프롬프트·바이브·레퍼런스 — 편집 탭 전용. 배치 탭에선
+            // 노출하지 않는다(수동 삽입의 영향이 불확실 — 캐릭터 프리셋 축
+            // 사용으로 유도, 2026-07-17 결정).
+            // (캐릭터 프롬프트 데이터는 프리셋 소속(preset.characterPrompts)
+            // 이지만 사용자 관점에선 캐릭터 세팅의 일부 — 캐릭터 프리셋과
+            // 바이브 사이 배치, 2026-07-16 실기 피드백)
+            const middleSections = (
+            <>
             <div className={sectionCls}>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-default flex-1">
@@ -1164,7 +1151,10 @@ export const TemplateWorkflowEditor = observer(
                 </div>
               ))}
             </div>
-            {/* 씬 구성 */}
+            </>
+            );
+            // 씬 구성 — 편집 탭 전용 (배치 탭은 이 자리에 씬 축)
+            const sceneSection = (
             <div className={sectionCls}>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-default flex-1">
@@ -1210,25 +1200,86 @@ export const TemplateWorkflowEditor = observer(
                 </div>
               )}
             </div>
-            {/* 명시적 저장 (일괄 생성 버튼은 최상단으로 이동) */}
-            <div className="flex justify-end">
-              <button
-                className="px-5 py-2 rounded-lg text-sm font-medium btn-solid-sky"
-                onClick={saveTemplate}
-              >
-                저장
-              </button>
-            </div>
-          </div>
-        )}
-        {batchOpen && batchFolder && (
-          <BatchCreateModal
-            isOpen={batchOpen}
-            onClose={() => setBatchOpen(false)}
-            templateId={templateId}
-            folder={batchFolder}
-            onCompleted={onBatchCompleted}
-          />
+            );
+            // ----- 레이아웃: [템플릿]|[일괄 생성] 탭 전환 (배치 R3) -----
+            return (
+              <div className="flex flex-col gap-4">
+                {/* 탭 헤더 — tab-seg 마커 계약 (SPEC_GUIDE §2, back-llgray/
+                    rounded-md 는 클래식 마감 복원용 병기). 배치 탭의 프리셋
+                    즉석 생성(전체 영역 전환) 중에는 숨긴다. */}
+                {!batchCharEditing && (
+                <div className="tab-seg flex gap-2">
+                  {(
+                    [
+                      ['template', '템플릿'],
+                      ['batch', '일괄 생성'],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <button
+                      key={key}
+                      className={
+                        'active:brightness-90 hover:brightness-95 select-none h-8 px-4 text-sm rounded-md transition-colors ' +
+                        (tab === key ? 'back-sky' : 'back-llgray tab-seg-off')
+                      }
+                      onClick={() => {
+                        if (batchRunning) {
+                          appState.pushMessage(
+                            '일괄 생성이 진행 중입니다 — 완료 후 전환할 수 있습니다.',
+                          );
+                          return;
+                        }
+                        setTab(key);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                )}
+                {tab === 'template' ? (
+                  <>
+                    {promptSection}
+                    {charPresetSection}
+                    {middleSections}
+                    {sceneSection}
+                    {/* 명시적 저장 */}
+                    <div className="flex justify-end">
+                      <button
+                        className="px-5 py-2 rounded-lg text-sm font-medium btn-solid-sky"
+                        onClick={saveTemplate}
+                      >
+                        저장
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <BatchCreatePanel
+                    templateId={templateId}
+                    batchFolder={batchFolder}
+                    onCompleted={onBatchCompleted}
+                    onRunningChange={(r) => {
+                      setBatchRunning(r);
+                      onBatchRunningChange?.(r);
+                    }}
+                    isPromptFilled={() =>
+                      !!(
+                        promptRef.current.frontPrompt.trim() ||
+                        promptRef.current.backPrompt.trim()
+                      )
+                    }
+                    beforeExecute={commitPrompts}
+                    renderPromptSection={() => promptSection}
+                    onEditingChange={(v) => {
+                      setBatchCharEditing(v);
+                      // 호스트 상단 조작도 같이 숨긴다 (편집 탭의 캐릭터
+                      // 프리셋 편집과 같은 동선)
+                      onEditingCharChange?.(v);
+                    }}
+                  />
+                )}
+              </div>
+            );
+          })()
         )}
         {globalPickerOpen && (
           <GlobalPresetPickerModal
@@ -1248,7 +1299,20 @@ export const TemplateManagerModal = observer(
     const [selectedId, setSelectedId] = useState<string>('');
     // 편집기가 캐릭터 편집 화면으로 전환되면 상단(안내문·CRUD 행)을 숨긴다
     const [charEditing, setCharEditing] = useState(false);
+    // 일괄 생성(배치 탭) 실행 중 — 모달 닫기 차단 (배치 R3, 전역 호스트)
+    const [batchRunning, setBatchRunning] = useState(false);
     const commitRef = useRef<() => void>(() => {});
+
+    // 실행 중 닫기 차단 — 진행률·취소 수단 유실 방지
+    const guardedClose = () => {
+      if (batchRunning) {
+        appState.pushMessage(
+          '일괄 생성이 진행 중입니다 — [취소] 버튼으로 중단한 뒤 닫을 수 있습니다.',
+        );
+        return;
+      }
+      onClose();
+    };
 
     useEffect(() => {
       if (!isOpen) return;
@@ -1318,12 +1382,14 @@ export const TemplateManagerModal = observer(
     return (
       <ModalOverlay
         isOpen={isOpen}
-        onClose={onClose}
+        onClose={guardedClose}
         title="템플릿 관리"
         width="max-w-3xl"
       >
         <div className="flex flex-col gap-4">
-          {!charEditing && (
+          {/* 배치 실행 중엔 상단 CRUD(전환·삭제 등)도 잠근다 — 실행 대상
+              템플릿을 도중에 바꾸거나 지우는 사고 방지 (배치 R3) */}
+          {!charEditing && !batchRunning && (
             <>
               <p className="text-sm text-muted">
                 템플릿은 새 프로젝트의 시작 구성을 미리 세팅하는
@@ -1391,6 +1457,7 @@ export const TemplateManagerModal = observer(
               templateId={entry.id}
               commitRef={commitRef}
               onEditingCharChange={setCharEditing}
+              onBatchRunningChange={setBatchRunning}
             />
           )}
         </div>
