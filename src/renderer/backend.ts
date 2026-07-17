@@ -133,6 +133,32 @@ export abstract class Backend {
   ): Promise<void> {}
 
   // 새 창 열기 — 데스크톱(Electron)에서 보조 창(멀티 윈도우, W6)을 연다.
+  // projectName 을 주면 새 창이 부팅 후 그 프로젝트를 연다("새 창에서 열기").
   // 기본은 no-op(모바일은 단일 WebView라 창 개념 없음) — 데스크톱 백엔드에서만 구현.
-  async openNewWindow(): Promise<void> {}
+  async openNewWindow(_projectName?: string): Promise<void> {}
+
+  // ─── 프로젝트 배타 락 (W6 P1) ───
+  // 데스크톱 멀티 윈도우에서 같은 프로젝트의 이중 열기를 차단한다.
+  // 모바일/단일 창은 락 개념이 없으므로 기본 구현은 "항상 성공" no-op.
+  async acquireProjectLock(_name: string): Promise<boolean> {
+    return true;
+  }
+  async releaseProjectLock(_name: string): Promise<void> {}
+  async queryProjectLock(
+    _name: string,
+  ): Promise<{ locked: boolean; mine: boolean }> {
+    return { locked: false, mine: false };
+  }
+  // notice 를 주면 안내 토스트가 요청 창이 아닌 **소유 창**에 표시된다
+  // (포커스가 소유 창으로 넘어가므로 안내도 도착한 창에서 보이는 게 자연스럽다).
+  async focusProjectLockOwner(_name: string, _notice?: string): Promise<void> {}
+  // 락 소유 창으로 전달된 안내 수신 — 기본 no-op(모바일/단일 창).
+  onLockOwnerNotice(_callback: (message: string) => void): () => void {
+    return () => {};
+  }
+
+  // "새 창에서 열기"로 이 창에 예치된 초기 프로젝트 이름(1회성) — 없으면 null.
+  async takeInitialProject(): Promise<string | null> {
+    return null;
+  }
 }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
-import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck, FaPen, FaTrashAlt, FaTimes, FaPalette, FaFileExport, FaCopy, FaChevronDown, FaChevronRight, FaFolderPlus } from 'react-icons/fa';
-import { sessionService, imageService, isMobile } from '../models';
+import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck, FaPen, FaTrashAlt, FaTimes, FaPalette, FaFileExport, FaCopy, FaChevronDown, FaChevronRight, FaFolderPlus, FaWindowRestore } from 'react-icons/fa';
+import { sessionService, imageService, isMobile, backend } from '../models';
 import { appState } from '../models/AppService';
 import { projectPath } from '../models/projectPaths';
 import ModalOverlay from './ModalOverlay';
@@ -166,6 +166,21 @@ const ProjectCard = ({
         </button>
         </Tooltip>
         <span className="text-[15px] text-default truncate flex-1">{name}</span>
+        {/* 새 창에서 열기 (멀티 윈도우 W6 P1, 데스크톱 전용) — 이미 다른 창에서
+            열려 있으면 새 창의 락 확보가 실패해 토스트+소유 창 포커스로 안내된다. */}
+        {!isMobile && (
+          <Tooltip content="새 창에서 열기">
+            <button
+              className="flex-none text-faint hover:text-sky-500 px-0.5"
+              onClick={(e) => {
+                e.stopPropagation();
+                backend.openNewWindow(name);
+              }}
+            >
+              <FaWindowRestore size={13} />
+            </button>
+          </Tooltip>
+        )}
         <Tooltip content="폴더로 이동">
         <button
           className="flex-none text-faint hover:text-gray-700 dark:hover:text-gray-200 px-0.5"

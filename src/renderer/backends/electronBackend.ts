@@ -380,7 +380,32 @@ export class ElectornBackend extends Backend {
   }
 
   // 새 창 열기(멀티 윈도우 W6) — main 이 보조 창을 캐스케이드 위치로 생성한다.
-  async openNewWindow(): Promise<void> {
-    await invoke('open-new-window');
+  // projectName 이 있으면 새 창이 부팅 후 그 프로젝트를 연다("새 창에서 열기").
+  async openNewWindow(projectName?: string): Promise<void> {
+    await invoke('open-new-window', projectName);
+  }
+
+  // ─── 프로젝트 배타 락 (W6 P1) — main 의 창 간 등록부에 위임 ───
+  async acquireProjectLock(name: string): Promise<boolean> {
+    return await invoke('project-lock-acquire', name);
+  }
+  async releaseProjectLock(name: string): Promise<void> {
+    await invoke('project-lock-release', name);
+  }
+  async queryProjectLock(
+    name: string,
+  ): Promise<{ locked: boolean; mine: boolean }> {
+    return await invoke('project-lock-query', name);
+  }
+  async focusProjectLockOwner(name: string, notice?: string): Promise<void> {
+    await invoke('project-lock-focus-owner', name, notice);
+  }
+
+  onLockOwnerNotice(callback: (message: string) => void): () => void {
+    return window.electron.ipcRenderer.on('lock-owner-notice', callback);
+  }
+
+  async takeInitialProject(): Promise<string | null> {
+    return await invoke('take-initial-project');
   }
 }

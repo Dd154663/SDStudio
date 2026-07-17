@@ -76,6 +76,74 @@ function broadcast(channel: string, ...args: any[]) {
   }
 }
 
+// ─── 프로젝트 배타 락 (W6 P1) ───
+// 같은 프로젝트를 두 창에서 동시에 여는 것을 원천 차단한다. 렌더러의 쓰기 큐/락은
+// 프로세스(창) 내부 직렬화라 창 간에는 효력이 없어, 이 등록부가 유일한 안전선이다.
+// 키 = 프로젝트명, 값 = 소유 창 webContents.id. 창이 닫히면 자동 해제(closed 훅).
+const projectLocks = new Map<string, number>();
+
+function findWindowByWcId(wcId: number): BrowserWindow | undefined {
+  return BrowserWindow.getAllWindows().find(
+    (w) => !w.isDestroyed() && w.webContents.id === wcId,
+  );
+}
+
+// 소유 창이 이미 사라진 낡은 락은 지우고 없는 것으로 취급한다(방어적 자가 치유).
+function liveLockOwner(name: string): number | undefined {
+  const owner = projectLocks.get(name);
+  if (owner === undefined) return undefined;
+  if (!findWindowByWcId(owner)) {
+    projectLocks.delete(name);
+    return undefined;
+  }
+  return owner;
+}
+
+ipcMain.handle('project-lock-acquire', (event, name: string) => {
+  const owner = liveLockOwner(name);
+  if (owner === undefined || owner === event.sender.id) {
+    projectLocks.set(name, event.sender.id);
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle('project-lock-release', (event, name: string) => {
+  if (projectLocks.get(name) === event.sender.id) projectLocks.delete(name);
+});
+
+ipcMain.handle('project-lock-query', (event, name: string) => {
+  const owner = liveLockOwner(name);
+  if (owner === undefined) return { locked: false, mine: false };
+  return { locked: true, mine: owner === event.sender.id };
+});
+
+// 락 소유 창을 앞으로 가져온다 — "다른 창에서 열려 있음" 충돌 UX용.
+// notice 가 있으면 안내 토스트를 **소유 창**에 띄운다 — 포커스가 즉시 소유 창으로
+// 넘어가므로 요청한 창에 토스트를 남기면 돌아왔을 때 낡은 메시지만 남는다(실기 피드백).
+ipcMain.handle(
+  'project-lock-focus-owner',
+  (event, name: string, notice?: string) => {
+    const owner = liveLockOwner(name);
+    if (owner === undefined) return false;
+    const win = findWindowByWcId(owner);
+    if (!win) return false;
+    if (win.isMinimized()) win.restore();
+    win.focus();
+    if (notice) win.webContents.send('lock-owner-notice', notice);
+    return true;
+  },
+);
+
+// "새 창에서 열기"로 전달된 초기 프로젝트 — 새 창(wcId)이 부팅 후 1회 가져간다.
+const pendingInitialProject = new Map<number, string>();
+
+ipcMain.handle('take-initial-project', (event) => {
+  const name = pendingInitialProject.get(event.sender.id) ?? null;
+  pendingInitialProject.delete(event.sender.id);
+  return name;
+});
+
 // 살아있는 창 하나(주 창 우선)를 복원·포커스한다. second-instance 처리용.
 function focusAnyWindow() {
   const win =
@@ -1456,7 +1524,11 @@ function computeCascadeBounds(): {
 
 // 창 생성 — 재사용 가능(주 창·보조 창 공용). secondary=true 면 상태 저장/복원 없이
 // 캐스케이드 위치로 열고, mainWindow 포인터에 담지 않는다(주 창은 유지).
-const createWindow = async (opts?: { secondary?: boolean }) => {
+// initialProject: "새 창에서 열기"로 전달된 프로젝트 — 새 창이 부팅 후 가져가 연다.
+const createWindow = async (opts?: {
+  secondary?: boolean;
+  initialProject?: string;
+}) => {
   const secondary = opts?.secondary === true;
   if (isDebug && !secondary) {
     await installExtensions();
@@ -1623,6 +1695,11 @@ const createWindow = async (opts?: { secondary?: boolean }) => {
   // 핸들러 안에서 win.webContents 에 접근하면 "Object has been destroyed" 가 난다.
   const wcId = win.webContents.id;
 
+  // "새 창에서 열기" 초기 프로젝트 예치 — 이 창의 렌더러가 부팅 후 take-initial-project 로 가져간다.
+  if (opts?.initialProject) {
+    pendingInitialProject.set(wcId, opts.initialProject);
+  }
+
   win.on('close', (e) => {
     // 주 창만 닫히기 직전의 위치·크기·최대화 상태를 저장한다(다음 실행 복원용).
     if (!secondary) saveWindowState();
@@ -1637,6 +1714,11 @@ const createWindow = async (opts?: { secondary?: boolean }) => {
   win.on('closed', () => {
     // 창별 종료 게이트 정리 (캡처한 wcId 사용 — 이 시점의 win 은 이미 파괴됨).
     saveCompletedByWc.delete(wcId);
+    // 이 창이 보유하던 프로젝트 배타 락 자동 해제 (W6 P1).
+    for (const [name, owner] of projectLocks) {
+      if (owner === wcId) projectLocks.delete(name);
+    }
+    pendingInitialProject.delete(wcId);
     if (!secondary) mainWindow = null;
   });
 
@@ -1656,8 +1738,9 @@ const createWindow = async (opts?: { secondary?: boolean }) => {
 };
 
 // 새 창 열기 IPC — 보조 창 규칙(캐스케이드, 상태 저장 없음)으로 생성한다(W6 P0 §10).
-ipcMain.handle('open-new-window', async () => {
-  await createWindow({ secondary: true });
+// projectName 이 오면 "새 창에서 열기" — 새 창이 부팅 후 그 프로젝트를 연다(W6 P1).
+ipcMain.handle('open-new-window', async (event, projectName?: string) => {
+  await createWindow({ secondary: true, initialProject: projectName });
 });
 
 const dataDir = isDebug

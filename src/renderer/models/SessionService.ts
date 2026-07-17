@@ -558,7 +558,34 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   // 프로젝트를 폴더로 이동 (null = 루트/미분류). 실제 .json 파일을 옮긴다.
+  // 다른 창에서 열려 있는 프로젝트의 경로/존재를 바꾸는 작업 차단 (W6 P1).
+  // 열려 있는 창의 in-memory 세션과 디스크가 어긋나 저장 시 유실로 이어질 수 있다.
+  // 모바일/단일 창은 backend 기본 구현이 {locked:false}라 항상 통과.
+  private async guardCrossWindowLock(
+    name: string,
+    actionLabel: string,
+  ): Promise<boolean> {
+    try {
+      const q = await backend.queryProjectLock(name);
+      if (q.locked && !q.mine) {
+        // 안내 토스트는 포커스가 넘어가는 소유 창에 표시(요청 창에 남기면
+        // 돌아왔을 때 낡은 메시지만 남음 — 2026-07-17 실기 피드백).
+        backend
+          .focusProjectLockOwner(
+            name,
+            `"${name}" 프로젝트가 이 창에서 열려 있어 다른 창의 ${actionLabel} 요청을 차단했습니다`,
+          )
+          .catch(() => {});
+        return false;
+      }
+    } catch (e) {
+      console.error('프로젝트 락 조회 실패(허용으로 진행):', e);
+    }
+    return true;
+  }
+
   async moveToFolder(name: string, targetFolder: string | null): Promise<void> {
+    if (!(await this.guardCrossWindowLock(name, '폴더 이동'))) return;
     const current = this.folderMap[name] ?? null;
     if (current === targetFolder) return;
     if (targetFolder !== null) {
@@ -1018,6 +1045,8 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async delete(name: string) {
+    // 다른 창에서 열려 있으면 삭제 금지 (W6 P1 — 토스트+소유 창 포커스)
+    if (!(await this.guardCrossWindowLock(name, '삭제'))) return;
     // 같은 이름의 기존 휴지통 항목을 먼저 정리 (동명 프로젝트 재삭제 시 충돌/덮어쓰기 방지).
     // 이렇게 해야 super.delete 의 .json → .deleted rename 대상이 비어 있어 플랫폼 무관하게 안전.
     await trashService.purgeDeletedProject(name);
@@ -1115,6 +1144,8 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async rename(oldName: string, newName: string) {
+    // 다른 창에서 열려 있으면 이름변경 금지 (W6 P1 — 토스트+소유 창 포커스)
+    if (!(await this.guardCrossWindowLock(oldName, '이름 변경'))) return;
     // 실제 이름변경(파일 rename)을 먼저 수행 — 여기서 실패하면 이름이 그대로이므로
     // 즐겨찾기/북마크/썸네일 등 메타데이터도 건드리지 않고 그대로 보존한다.
     await super.rename(oldName, newName);

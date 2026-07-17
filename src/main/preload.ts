@@ -64,7 +64,13 @@ export type Channels =
   | 'window-maximize'
   | 'window-close'
   | 'window-is-maximized'
-  | 'open-new-window';
+  | 'open-new-window'
+  | 'project-lock-acquire'
+  | 'project-lock-release'
+  | 'project-lock-query'
+  | 'project-lock-focus-owner'
+  | 'lock-owner-notice'
+  | 'take-initial-project';
 
 const electronHandler = {
   ipcRenderer: {

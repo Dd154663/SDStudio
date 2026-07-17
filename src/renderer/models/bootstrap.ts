@@ -1,6 +1,7 @@
 import {
   backend,
   sessionService,
+  imageService,
   globalPieceService,
   globalPresetService,
   globalCharacterPresetService,
@@ -20,6 +21,7 @@ import { runMobilePermissionOnboarding } from './mobilePermissions';
 import { waitForStorageAccess } from './storagePermissionGate';
 import { migrationService } from './MigrationService';
 import { setWorkspaceLayoutActive } from './storageLayout';
+import type { Session } from './types';
 
 // ── 명시적 부트 시퀀스 ──
 // 앱의 모든 비동기 초기화가 여기서 "정해진 순서"로 일어난다.
@@ -48,6 +50,57 @@ export async function bootstrapApp(): Promise<void> {
     },
     { fireImmediately: true },
   );
+
+  // 프로젝트 배타 락 (W6 P1, 데스크톱 멀티 윈도우): curSession 전환을 이 단일
+  // 지점에서 감시해 락을 확보/해제한다 — 흩어진 할당 지점(16곳)은 건드리지 않는
+  // 최소 침습. 확보 실패(다른 창이 보유) 시 토스트+소유 창 포커스+이전 세션 복귀.
+  // 모바일/단일 창은 backend 기본 구현이 "항상 성공"이라 사실상 no-op.
+  // 이름 기준으로 감시하므로 현재 프로젝트의 이름 변경도 자동 재키잉(새 이름
+  // acquire → 옛 이름 release)된다. 창이 닫히면 main 이 그 창의 락을 자동 해제.
+  let lockHeldSession: Session | undefined; // 락을 확보한 세션 (실패 복귀용)
+  let lockSeq = 0; // 빠른 연속 전환 시 낡은 acquire 결과를 폐기하는 세대 번호
+  reaction(
+    () => appState.curSession?.name,
+    async (name, prevName) => {
+      const seq = ++lockSeq;
+      if (!name) {
+        if (prevName) backend.releaseProjectLock(prevName).catch(() => {});
+        lockHeldSession = undefined;
+        return;
+      }
+      const session = appState.curSession;
+      let ok = true;
+      try {
+        ok = await backend.acquireProjectLock(name);
+      } catch (e) {
+        console.error('프로젝트 락 확보 실패(허용으로 진행):', e);
+      }
+      if (seq !== lockSeq) return; // 더 새로운 전환이 있음 — 이 결과는 폐기
+      if (ok) {
+        if (prevName && prevName !== name) {
+          backend.releaseProjectLock(prevName).catch(() => {});
+        }
+        lockHeldSession = session;
+      } else {
+        // 안내 토스트는 요청 창이 아닌 **소유 창**에 띄운다 — 포커스가 즉시
+        // 소유 창으로 넘어가므로, 여기(요청 창)에 남기면 돌아왔을 때 낡은
+        // 메시지만 덩그러니 남는다(2026-07-17 실기 피드백).
+        backend
+          .focusProjectLockOwner(
+            name,
+            `"${name}" 프로젝트는 이 창에 열려 있습니다`,
+          )
+          .catch(() => {});
+        // 락 보유 세션(또는 미선택 화면)으로 복귀 — 이 재할당으로 reaction 이
+        // 한 번 더 돌지만, 보유 중인 락 재확보(멱등)라 무한 루프는 없다.
+        appState.curSession = lockHeldSession;
+      }
+    },
+  );
+
+  // 락 소유 창으로 전달된 안내 수신 — 다른 창의 열기/파괴 작업 충돌 시 main 이
+  // 이 창(소유 창)에 보낸 메시지를 토스트로 표시한다.
+  backend.onLockOwnerNotice((message) => appState.pushMessage(message));
 
   // 각 단계는 개별 격리한다 — 앞 단계 실패가 뒤 단계(특히 세션 초기화)를
   // 건너뛰게 하면 안 된다. 부팅이 일부 실패해도 앱은 반드시 뜬다.
@@ -104,6 +157,23 @@ export async function bootstrapApp(): Promise<void> {
       await sessionService.init();
     } catch (e) {
       console.error('세션 서비스 초기화 실패(주기 루프가 재시도):', e);
+    }
+
+    // 2.5) [데스크톱 멀티 윈도우 W6 P1] "새 창에서 열기"로 이 창에 예치된 초기
+    //      프로젝트가 있으면 연다. 락은 위 curSession reaction 이 확보한다
+    //      (이론상 경합 실패 시 토스트+소유 창 포커스+선택 화면 복귀).
+    //      일반 창/모바일은 backend 기본 구현이 null 이라 통과.
+    try {
+      const initial = await backend.takeInitialProject();
+      if (initial) {
+        const sess = await sessionService.get(initial);
+        if (sess) {
+          imageService.refreshBatch(sess);
+          appState.curSession = sess;
+        }
+      }
+    } catch (e) {
+      console.error('초기 프로젝트 로드 실패(선택 화면으로 진행):', e);
     }
 
     // 3) 가벼운 로컬 데이터 병렬 로드 — 하나가 실패해도 나머지는 진행

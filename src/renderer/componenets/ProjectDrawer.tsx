@@ -26,11 +26,13 @@ import {
   FaFileImport,
   FaUnlink,
   FaCalendarPlus,
+  FaWindowRestore,
 } from 'react-icons/fa';
 import {
   sessionService,
   imageService,
   isMobile,
+  backend,
   templateService,
   projectTemplateService,
   taskQueueService,
@@ -2290,6 +2292,19 @@ const ProjectDrawer = observer(() => {
               style={{ left: toolbar.x, top: toolbar.y }}
               onMouseDown={(e) => e.stopPropagation()}
             >
+              {/* 새 창에서 열기 (멀티 윈도우 W6 P1) — 이미 다른 창에서 열려 있으면
+                  새 창의 락 확보가 실패해 토스트+소유 창 포커스로 안내된다. */}
+              <Tooltip content="새 창에서 열기">
+                <button
+                  onClick={() => {
+                    backend.openNewWindow(toolbar.name);
+                    setToolbar(null);
+                  }}
+                  className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
+                >
+                  <FaWindowRestore size={14} />
+                </button>
+              </Tooltip>
               <Tooltip content="내보내기/불러오기">
                 <button
                   onClick={() => {
