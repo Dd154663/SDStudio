@@ -24,6 +24,8 @@ const ACTIONS: ShortcutAction[] = [
   { id: 'image-tab-2', label: '즐겨찾기 탭', category: 'image-grid', defaultKey: 'Ctrl+2' },
   { id: 'image-tab-3', label: '휴지통 탭', category: 'image-grid', defaultKey: 'Ctrl+3' },
   { id: 'image-tab-4', label: '인페인트 씬 탭', category: 'image-grid', defaultKey: 'Ctrl+4' },
+  { id: 'image-prev-scene', label: '이전 씬 그리드로 이동', category: 'image-grid', defaultKey: 'Ctrl+ArrowLeft' },
+  { id: 'image-next-scene', label: '다음 씬 그리드로 이동', category: 'image-grid', defaultKey: 'Ctrl+ArrowRight' },
 
   // 뷰어 액션 (ResultViewer가 열려 있을 때만 작동)
   { id: 'toggle-favorite', label: '즐겨찾기 토글', category: 'viewer', defaultKey: 'Ctrl+F' },

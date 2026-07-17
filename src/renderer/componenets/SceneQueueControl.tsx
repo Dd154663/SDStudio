@@ -1800,7 +1800,18 @@ const QueueControl = observer(
 
     const resultViewerRef = useRef<any>(null);
     const resultViewer = useMemo(() => {
-      if (displayScene)
+      if (displayScene) {
+        // 씬 탭 이동(W1): 그리드 표시 순서(검색/필터 반영)대로 이전/다음 씬 계산.
+        // 뷰어가 열려 있는 동안엔 검색어/필터를 바꿀 수 없으므로 메모 시점 목록으로 충분.
+        const navScenes = getFilteredScenes();
+        const navIdx = navScenes.findIndex((s) => s.name === displayScene.name);
+        const goScene = (delta: number) => {
+          const next = navIdx >= 0 ? navScenes[navIdx + delta] : undefined;
+          if (!next) return;
+          gameService.refreshList(curSession!, displayScene);
+          setDisplayFocus(undefined);
+          setDisplayScene(next);
+        };
         return (
           <FloatView
             // 씬 고유 key: 열린 채 다른 씬으로 바뀔 때 리마운트시켜 마운트 refresh·탭 상태를 초기화
@@ -1817,6 +1828,11 @@ const QueueControl = observer(
               ref={resultViewerRef}
               scene={displayScene}
               focusFilename={displayFocus}
+              sceneNav={{
+                hasPrev: navIdx > 0,
+                hasNext: navIdx >= 0 && navIdx < navScenes.length - 1,
+                go: goScene,
+              }}
               isMainImage={isMainImage}
               onFilenameChange={onFilenameChange}
               onEdit={onEdit}
@@ -1888,8 +1904,9 @@ const QueueControl = observer(
             />
           </FloatView>
         );
+      }
       return <></>;
-    }, [displayScene, displayFocus]);
+    }, [displayScene, displayFocus, getFilteredScenes]);
 
     const [sceneSelector, setSceneSelector] = useState<
       SceneSelectorItem | undefined

@@ -42,7 +42,14 @@ import { PromptHighlighter } from './SceneEditor';
 import QueueControl from './SceneQueueControl';
 import { FloatView } from './FloatView';
 import memoizeOne from 'memoize-one';
-import { FaPlus, FaRegSquareCheck, FaCopy, FaPaste } from 'react-icons/fa6';
+import {
+  FaPlus,
+  FaRegSquareCheck,
+  FaCopy,
+  FaPaste,
+  FaChevronLeft,
+  FaChevronRight,
+} from 'react-icons/fa6';
 import { useContextMenu } from 'react-contexify';
 import { useDrag, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
@@ -1460,6 +1467,12 @@ interface ResultViewerProps {
   onSampleExtract?: (seeds: number[]) => void;
   // 히스토리 사이드바에서 특정 이미지로 점프할 때 포커스할 파일명
   focusFilename?: string;
+  // 씬 탭 이동(W1): 뷰어를 연 채 그리드 표시 순서대로 이전/다음 씬으로 전환
+  sceneNav?: {
+    hasPrev: boolean;
+    hasNext: boolean;
+    go: (delta: number) => void;
+  };
 }
 
 const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
@@ -1473,6 +1486,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       buttons,
       onSampleExtract,
       focusFilename,
+      sceneNav,
     }: ResultViewerProps,
     ref,
   ) => {
@@ -1828,6 +1842,12 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           return;
         }
 
+        // 씬 탭 이동(W1) — 어느 탭에서든 동작 (전환 시 새 씬으로 리마운트되어 탭 초기화)
+        if (action === 'image-prev-scene' || action === 'image-next-scene') {
+          sceneNav?.go(action === 'image-prev-scene' ? -1 : 1);
+          return;
+        }
+
         // 이하 그리드 조작은 이미지/즐겨찾기 탭에서만 의미 있음
         if (selectedTab !== 0 && selectedTab !== 1) return;
 
@@ -1929,6 +1949,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       selectedTab,
       curSession,
       selectMode,
+      sceneNav,
     ]);
 
     // 선택 모드(Ctrl+S로 진입)에서 수정자 없는 S로 포커스 이미지 선택 토글.
@@ -2048,6 +2069,28 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                 </span>
               )}
             </span>
+            {sceneNav && (
+              <span className="ml-auto flex-none inline-flex items-center gap-1 md:gap-2 pl-2">
+                <Tooltip content="이전 씬 그리드 (Ctrl+←)">
+                  <button
+                    className={`round-button back-gray ${!sceneNav.hasPrev ? 'opacity-40' : ''}`}
+                    disabled={!sceneNav.hasPrev}
+                    onClick={() => sceneNav.go(-1)}
+                  >
+                    <FaChevronLeft />
+                  </button>
+                </Tooltip>
+                <Tooltip content="다음 씬 그리드 (Ctrl+→)">
+                  <button
+                    className={`round-button back-gray ${!sceneNav.hasNext ? 'opacity-40' : ''}`}
+                    disabled={!sceneNav.hasNext}
+                    onClick={() => sceneNav.go(1)}
+                  >
+                    <FaChevronRight />
+                  </button>
+                </Tooltip>
+              </span>
+            )}
           </div>
           <div className="md:flex justify-between items-center mt-2 md:mt-4">
             <div className="flex gap-2 md:gap-3 flex-wrap">

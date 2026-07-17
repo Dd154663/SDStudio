@@ -33,6 +33,7 @@ const IMAGE_GRID_SHORTCUTS: ShortcutEntry[] = [
   { keys: ['Ctrl+X'], desc: '선택 모드 취소' },
   { keys: ['Del'], desc: '이미지 삭제' },
   { keys: ['Ctrl+1', 'Ctrl+2', 'Ctrl+3', 'Ctrl+4'], desc: '탭 전환' },
+  { keys: ['Ctrl+←', 'Ctrl+→'], desc: '이전/다음 씬 그리드로 이동' },
   { keys: ['H'], desc: '단축키 도움말' },
 ];
 
