@@ -452,15 +452,18 @@ export const CharacterPresetEditor = observer(({
     setSceneFilter('');
   };
 
-  // 일괄 선택 모드 (글로벌 뷰) — 카드 체크 다중 선택 후 폴더 이동
+  // 일괄 선택 모드 (로컬/글로벌 공통) — 카드 체크 다중 선택 후
+  // 일괄 적용(캐릭터 프롬프트, W4 다중 적용) / 폴더 이동(글로벌 전용)
   const enterSelectMode = () => {
     if (cyclingMode) exitCyclingMode();
     setSelectMode(true);
     setSelectedGlobalIds(new Set());
+    setSelectedPresets(new Set());
   };
   const exitSelectMode = () => {
     setSelectMode(false);
     setSelectedGlobalIds(new Set());
+    setSelectedPresets(new Set());
   };
 
   const togglePresetSelection = (name: string) => {
@@ -596,9 +599,9 @@ export const CharacterPresetEditor = observer(({
       type: 'confirm',
       text: `"${preset.name}" 프리셋을 삭제하시겠습니까?`,
       callback: () => {
-        // 삭제하려는 프리셋이 현재 적용 중이면 먼저 해제
-        if (appState.appliedCharacterPreset === preset.name) {
-          appState.clearAppliedCharacterPreset();
+        // 삭제하려는 프리셋이 현재 적용 중이면 먼저 해제 (해당 프리셋만 — W4 다중 적용)
+        if (appState.appliedCharacterPresetNames.includes(preset.name)) {
+          appState.removeAppliedCharacterPreset(preset.name);
         }
         curSession.removeCharacterPreset(preset.name);
       },
@@ -617,6 +620,37 @@ export const CharacterPresetEditor = observer(({
 
   const handleApplyCharacter = (preset: CharacterPreset) => {
     if (onApplyPreset) onApplyPreset(preset, 'character');
+  };
+
+  // 일괄 적용 (선택 모드): 선택한 프리셋들을 캐릭터 프롬프트로 순서대로 추가
+  // 적용 (W4 다중 적용 — 기존 적용·수동 항목은 유지). 글로벌은 단건 적용과
+  // 동일하게 먼저 프로젝트로 불러온(이미지 복사) 뒤 적용한다. 토스트 1회.
+  const bulkApplyCharacter = async () => {
+    if (globalView) {
+      const entries = globalEntries.filter((e) => selectedGlobalIds.has(e.id));
+      if (entries.length === 0) return;
+      const locals: CharacterPreset[] = [];
+      for (const e of entries) {
+        try {
+          locals.push(
+            await globalCharacterPresetService.instantiateIntoSession(
+              curSession,
+              e.id,
+            ),
+          );
+        } catch (err: any) {
+          appState.pushMessage(
+            err.message || `"${e.name}" 불러오기에 실패했습니다`,
+          );
+        }
+      }
+      appState.applyCharacterPresets(locals);
+    } else {
+      appState.applyCharacterPresets(
+        presets.filter((p) => selectedPresets.has(p.name)),
+      );
+    }
+    exitSelectMode();
   };
 
   // ─── 글로벌 캐릭터 프리셋 ───
@@ -956,6 +990,7 @@ export const CharacterPresetEditor = observer(({
             }`}
             onClick={() => {
               if (cyclingMode) exitCyclingMode();
+              if (selectMode) exitSelectMode();
               setGlobalView(!globalView);
             }}
           >
@@ -975,11 +1010,15 @@ export const CharacterPresetEditor = observer(({
               {cyclingMode ? '순차 생성 모드 끄기' : '순차 생성 모드'}
             </button>
           )}
-          {/* 일괄 선택 → 폴더 이동 (글로벌 뷰 전용, 순차 생성과 배타) */}
-          {globalView && globalEntries.length > 0 && (
+          {/* 일괄 선택 → 일괄 적용(양 뷰) / 폴더 이동(글로벌) — 순차 생성과 배타 */}
+          {(globalView ? globalEntries.length > 0 : presets.length > 0) && (
             <button
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
-                selectMode ? 'bg-purple-500 text-white' : 'btn-neutral text-body'
+                selectMode
+                  ? globalView
+                    ? 'bg-purple-500 text-white'
+                    : 'bg-sky-500 text-white'
+                  : 'btn-neutral text-body'
               }`}
               onClick={() => (selectMode ? exitSelectMode() : enterSelectMode())}
             >
@@ -1035,43 +1074,82 @@ export const CharacterPresetEditor = observer(({
         </div>
       </div>
 
-      {/* 일괄 선택 액션 바 (글로벌 뷰) — 다중 선택 후 폴더 이동 */}
-      {globalView && selectMode && (
+      {/* 일괄 선택 액션 바 — 다중 선택 후 일괄 적용(양 뷰) / 폴더 이동(글로벌) */}
+      {selectMode && (
         <div className="mb-2 flex items-center gap-2 flex-wrap">
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {selectedGlobalIds.size}개 선택
+            {(globalView ? selectedGlobalIds.size : selectedPresets.size)}개
+            선택
           </span>
           <button
             className="text-xs btn-link"
             onClick={() => {
-              // 폴더 필터 중엔 보이는 항목만 토글 — 다른 폴더의 선택은 유지
-              const all =
-                visibleGlobalEntries.length > 0 &&
-                visibleGlobalEntries.every((e) => selectedGlobalIds.has(e.id));
-              const next = new Set(selectedGlobalIds);
-              visibleGlobalEntries.forEach((e) =>
-                all ? next.delete(e.id) : next.add(e.id),
-              );
-              setSelectedGlobalIds(next);
+              if (globalView) {
+                // 폴더 필터 중엔 보이는 항목만 토글 — 다른 폴더의 선택은 유지
+                const all =
+                  visibleGlobalEntries.length > 0 &&
+                  visibleGlobalEntries.every((e) =>
+                    selectedGlobalIds.has(e.id),
+                  );
+                const next = new Set(selectedGlobalIds);
+                visibleGlobalEntries.forEach((e) =>
+                  all ? next.delete(e.id) : next.add(e.id),
+                );
+                setSelectedGlobalIds(next);
+              } else {
+                const all =
+                  presets.length > 0 &&
+                  presets.every((p) => selectedPresets.has(p.name));
+                setSelectedPresets(
+                  new Set<string>(all ? [] : presets.map((p) => p.name)),
+                );
+              }
             }}
           >
-            {visibleGlobalEntries.length > 0 &&
-            visibleGlobalEntries.every((e) => selectedGlobalIds.has(e.id))
+            {(
+              globalView
+                ? visibleGlobalEntries.length > 0 &&
+                  visibleGlobalEntries.every((e) =>
+                    selectedGlobalIds.has(e.id),
+                  )
+                : presets.length > 0 &&
+                  presets.every((p) => selectedPresets.has(p.name))
+            )
               ? '전체 해제'
               : '전체 선택'}
           </button>
-          <button
-            className="px-3 py-1 rounded-lg text-xs font-medium btn-solid-purple"
-            disabled={selectedGlobalIds.size === 0}
-            onClick={bulkMoveToFolder}
-          >
-            <FaFolder className="inline mr-1" size={10} />
-            폴더로 이동
-          </button>
+          <Tooltip content="선택한 프리셋을 캐릭터 프롬프트로 일괄 적용 (기존 적용에 추가)">
+            <button
+              className="px-3 py-1 rounded-lg text-xs font-medium btn-solid-yellow"
+              disabled={
+                (globalView ? selectedGlobalIds.size : selectedPresets.size) ===
+                0
+              }
+              onClick={bulkApplyCharacter}
+            >
+              <FaUserAlt className="inline mr-1" size={10} />
+              선택 적용
+            </button>
+          </Tooltip>
+          {globalView && (
+            <button
+              className="px-3 py-1 rounded-lg text-xs font-medium btn-solid-purple"
+              disabled={selectedGlobalIds.size === 0}
+              onClick={bulkMoveToFolder}
+            >
+              <FaFolder className="inline mr-1" size={10} />
+              폴더로 이동
+            </button>
+          )}
           <button
             className="px-3 py-1 rounded-lg text-xs btn-neutral text-body"
-            disabled={selectedGlobalIds.size === 0}
-            onClick={() => setSelectedGlobalIds(new Set())}
+            disabled={
+              (globalView ? selectedGlobalIds.size : selectedPresets.size) === 0
+            }
+            onClick={() => {
+              setSelectedGlobalIds(new Set());
+              setSelectedPresets(new Set());
+            }}
           >
             선택 해제
           </button>
@@ -1285,8 +1363,8 @@ export const CharacterPresetEditor = observer(({
               alignContent: 'start',
             }}
           >
-            {/* 새 프리셋 카드 (순회 모드가 아닐 때만) */}
-            {!cyclingMode && (
+            {/* 새 프리셋 카드 (순회·선택 모드가 아닐 때만) */}
+            {!cyclingMode && !selectMode && (
               <div
                 className="rounded-lg border-2 border-dashed line-color hover:border-sky-400 dark:hover:border-sky-500 cursor-pointer flex flex-col items-center justify-center aspect-[3/4] transition-colors group"
                 onClick={handleAddNew}
@@ -1301,7 +1379,7 @@ export const CharacterPresetEditor = observer(({
             {/* 프리셋 카드들 */}
             {presets.map((preset, i) => (
               <div key={preset.name} className="relative">
-                {cyclingMode && (
+                {(cyclingMode || selectMode) && (
                   <div
                     className="absolute top-2 left-2 z-30 cursor-pointer"
                     onClick={(e) => { e.stopPropagation(); togglePresetSelection(preset.name); }}
@@ -1318,7 +1396,7 @@ export const CharacterPresetEditor = observer(({
                 <CharacterPresetCard
                   preset={preset}
                   index={i}
-                  onEdit={() => cyclingMode ? togglePresetSelection(preset.name) : handleEdit(preset)}
+                  onEdit={() => (cyclingMode || selectMode) ? togglePresetSelection(preset.name) : handleEdit(preset)}
                   onDelete={() => handleDelete(preset)}
                   onApplyEasy={() => handleApplyEasy(preset)}
                   onApplyCharacter={() => handleApplyCharacter(preset)}
@@ -1326,7 +1404,7 @@ export const CharacterPresetEditor = observer(({
                   onMove={(from, to) => curSession.moveCharacterPreset(from, to)}
                   onCopyToGlobal={() => handleCopyToGlobal(preset)}
                   isEasyMode={isEasyMode}
-                  hideActions={cyclingMode}
+                  hideActions={cyclingMode || selectMode}
                 />
               </div>
             ))}

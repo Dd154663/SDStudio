@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { v4 } from 'uuid';
-import { FaCloudUploadAlt, FaToggleOff, FaToggleOn, FaTrash } from 'react-icons/fa';
+import { FaCloudUploadAlt, FaTimes, FaToggleOff, FaToggleOn, FaTrash } from 'react-icons/fa';
 import { FileUploadBase64 } from './UtilComponents';
 import Tooltip from './Tooltip';
 import { ReferenceItem } from '../models/types';
@@ -43,7 +43,8 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [showDefaults, setShowDefaults] = useState(false);
   const [refDefaults, setRefDefaults] = useState(getRefDefaults);
-  const isPresetActive = !!appState.appliedCharacterPreset && editCharacterReference?.fieldType === 'shared';
+  // shared 필드의 fromPreset 항목 = 캐릭터 프리셋 귀속(개별 삭제 대신 프리셋 단위 해제 — W4)
+  const isPresetActive = editCharacterReference?.fieldType === 'shared';
 
   const updateDefault = (key: string, value: string) => {
     localStorage.setItem(key, value);
@@ -233,7 +234,22 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                   <div className="flex w-full items-center justify-between">
                     <div className="flex gap-2 items-center">
                       {isPresetActive && reference.fromPreset ? (
-                        <div className="text-xs text-faint">🔒 프리셋</div>
+                        <Tooltip
+                          content={`"${reference.fromPreset}" 프리셋 해제 — 연결된 캐릭터 프롬프트/바이브 함께 제거`}
+                        >
+                          <button
+                            className="round-button back-gray h-8 px-3 text-xs"
+                            onClick={() => {
+                              if (disabled) return;
+                              appState.removeAppliedCharacterPreset(
+                                reference.fromPreset!,
+                              );
+                            }}
+                          >
+                            🔒 {reference.fromPreset}
+                            <FaTimes className="ml-1.5" size={11} />
+                          </button>
+                        </Tooltip>
                       ) : (
                         <button
                           className={`round-button h-8 px-4 ${reference.enabled !== false ? 'back-sky' : 'back-gray'}`}

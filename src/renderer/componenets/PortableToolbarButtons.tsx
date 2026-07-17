@@ -150,18 +150,18 @@ export function portableToolbarButtons(
     'character-presets': (
       <Tooltip
         content={
-          appState.appliedCharacterPreset
-            ? `프리셋: ${appState.appliedCharacterPreset}`
+          appState.appliedCharacterPresetNames.length > 0
+            ? `프리셋: ${appState.appliedCharacterPresetNames.join(', ')}`
             : '캐릭터 프리셋 관리'
         }
       >
         <button
           className={
             variant === 'scene'
-              ? `round-button ${appState.appliedCharacterPreset ? 'back-green' : 'back-gray'}`
+              ? `round-button ${appState.appliedCharacterPresetNames.length > 0 ? 'back-green' : 'back-gray'}`
               : variant === 'companion'
-                ? `round-button h-8 ${appState.appliedCharacterPreset ? 'back-green' : 'back-gray'}`
-                : `icon-button mx-1 ${appState.appliedCharacterPreset ? 'back-green' : ''}`
+                ? `round-button h-8 ${appState.appliedCharacterPresetNames.length > 0 ? 'back-green' : 'back-gray'}`
+                : `icon-button mx-1 ${appState.appliedCharacterPresetNames.length > 0 ? 'back-green' : ''}`
           }
           onClick={() => appState.openCharacterPresets()}
         >

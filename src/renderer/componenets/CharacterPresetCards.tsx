@@ -218,6 +218,9 @@ export const CharacterPresetCard = observer(({
             {preset.name}
           </div>
           <div className="text-xs text-white/70 drop-shadow">
+            {appState.appliedCharacterPresetNames.includes(preset.name) && (
+              <span className="text-green-300 font-semibold mr-1">✓ 적용됨</span>
+            )}
             {preset.vibes.length > 0 && `V:${preset.vibes.length}`}
             {preset.vibes.length > 0 && preset.characterReferences.length > 0 && ' '}
             {preset.characterReferences.length > 0 && `R:${preset.characterReferences.length}`}
@@ -407,7 +410,7 @@ const GlobalCardImage = ({
   );
 };
 
-export const GlobalCharacterPresetCard = ({
+export const GlobalCharacterPresetCard = observer(({
   entry,
   index,
   isEasyMode,
@@ -514,6 +517,9 @@ export const GlobalCharacterPresetCard = ({
             {entry.name}
           </div>
           <div className="text-xs text-white/70 drop-shadow truncate">
+            {appState.appliedCharacterPresetNames.includes(entry.name) && (
+              <span className="text-green-300 font-semibold mr-1">✓ 적용됨</span>
+            )}
             {vcount > 0 && `V:${vcount}`}
             {vcount > 0 && rcount > 0 && ' '}
             {rcount > 0 && `R:${rcount}`}
@@ -578,4 +584,4 @@ export const GlobalCharacterPresetCard = ({
       </div>
     </div>
   );
-};
+});

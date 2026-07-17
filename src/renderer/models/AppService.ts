@@ -125,7 +125,8 @@ export class AppState {
   // 프로젝트 좌측 드로어 / 그리드 탐색기 모달 열림 상태 (앱 전역)
   @observable accessor projectDrawerOpen: boolean = false;
   @observable accessor projectBrowserOpen: boolean = false;
-  /** 현재 적용된 캐릭터 프리셋 이름 (shared에서 읽음 — 영속화됨) */
+  /** 현재 적용된 캐릭터 프리셋 이름 (shared에서 읽음 — 영속화됨).
+   *  다중 적용(W4) 이후엔 "마지막 적용" 표시용 잔존 — 목록은 appliedCharacterPresetNames 사용 */
   get appliedCharacterPreset(): string | undefined {
     const session = this.curSession;
     if (!session) return undefined;
@@ -133,6 +134,30 @@ export class AppState {
     if (!workflowType) return undefined;
     const shared = session.presetShareds.get(workflowType);
     return shared?._appliedPresetName || undefined;
+  }
+
+  /** 현재 적용된 캐릭터 프리셋 이름 목록(W4 다중 적용).
+   *  별도 필드 없이 shared 항목들의 fromPreset 태그에서 유도(첫 등장 순서 유지) —
+   *  스키마 추가가 없어 구버전과 그대로 호환된다. */
+  get appliedCharacterPresetNames(): string[] {
+    const session = this.curSession;
+    if (!session) return [];
+    const workflowType = session.selectedWorkflow?.workflowType;
+    if (!workflowType) return [];
+    const shared = session.presetShareds.get(workflowType);
+    if (!shared) return [];
+    const names: string[] = [];
+    const collect = (items: any[] | undefined) => {
+      for (const item of items || []) {
+        if (item?.fromPreset && !names.includes(item.fromPreset)) {
+          names.push(item.fromPreset);
+        }
+      }
+    };
+    collect(shared.characterPrompts);
+    collect(shared.vibes);
+    collect(shared.characterReferences);
+    return names;
   }
 
   // 이미지 클립보드
@@ -321,17 +346,29 @@ export class AppState {
       this.pushMessage('프로젝트를 먼저 선택해주세요');
       return;
     }
-    // 모바일 + 프리셋 적용 중: 해제/관리 선택
-    if (isMobile && this.appliedCharacterPreset) {
+    // 모바일 + 프리셋 적용 중: 해제/관리 선택 (W4 다중 적용 — 프리셋별 개별 해제)
+    const appliedNames = this.appliedCharacterPresetNames;
+    if (isMobile && appliedNames.length > 0) {
       this.pushDialog({
         type: 'select',
-        text: `"${this.appliedCharacterPreset}" 프리셋이 적용 중입니다.`,
+        text:
+          appliedNames.length === 1
+            ? `"${appliedNames[0]}" 프리셋이 적용 중입니다.`
+            : `캐릭터 프리셋 ${appliedNames.length}개가 적용 중입니다.`,
         items: [
-          { text: '프리셋 해제', value: 'clear' },
+          ...appliedNames.map((n) => ({
+            text: `"${n}" 해제`,
+            value: 'clear:' + n,
+          })),
+          ...(appliedNames.length > 1
+            ? [{ text: '모두 해제', value: 'clear-all' }]
+            : []),
           { text: '프리셋 관리 열기', value: 'manage' },
         ],
         callback: (value?: string) => {
-          if (value === 'clear') {
+          if (value?.startsWith('clear:')) {
+            this.removeAppliedCharacterPreset(value.slice('clear:'.length));
+          } else if (value === 'clear-all') {
             this.clearAppliedCharacterPreset();
           } else if (value === 'manage') {
             this.characterPresetsOpen = true;
@@ -429,9 +466,15 @@ export class AppState {
     }
 
     runInAction(() => {
-      // 이전 프리셋에서 추가된 항목 제거 (사용자 직접 추가 항목은 유지)
-      const prevVibes = (shared.vibes || []).filter((v: VibeItem) => !v.fromPreset);
-      const prevRefs = (shared.characterReferences || []).filter((r: ReferenceItem) => !r.fromPreset);
+      // 다중 적용(W4, character 모드): 같은 프리셋에서 온 항목만 갱신(재적용)하고
+      // 다른 프리셋 항목은 유지 = 추가형. 이지모드는 단일 필드 구조라 종전대로
+      // 프리셋 유래 항목 전체 교체(단일 적용 의미론 유지). 수동 항목은 늘 보존.
+      const keepFilter =
+        mode === 'easy'
+          ? (x: any) => !x.fromPreset
+          : (x: any) => x.fromPreset !== preset.name;
+      const prevVibes = (shared.vibes || []).filter(keepFilter);
+      const prevRefs = (shared.characterReferences || []).filter(keepFilter);
 
       // 프리셋의 바이브/레퍼런스를 태그 붙여서 추가
       const presetVibes = (preset.vibes || []).map((v: VibeItem) => {
@@ -453,9 +496,9 @@ export class AppState {
         shared.backgroundPrompt = preset.backgroundPrompt || '';
         shared.uc = preset.characterUC || '';
       } else {
-        // 이전 프리셋 캐릭터 프롬프트 제거 (사용자 항목 유지)
+        // 같은 프리셋의 기존 캐릭터 프롬프트만 갱신 (수동·타 프리셋 항목 유지)
         const prevPrompts = (shared.characterPrompts || []).filter(
-          (cp: CharacterPrompt) => !cp.fromPreset
+          (cp: CharacterPrompt) => cp.fromPreset !== preset.name
         );
         if (preset.characterPrompt || preset.characterUC) {
           const newEntry: CharacterPrompt = {
@@ -472,9 +515,55 @@ export class AppState {
         }
       }
 
-      // 적용 상태는 shared 에 영속 (_appliedPresetName)
+      // 적용 상태는 shared 에 영속 (_appliedPresetName = 마지막 적용, 표시/호환용)
       shared._appliedPresetName = preset.name || '';
     });
+    return true;
+  }
+
+  // 캐릭터 프리셋 개별 해제(W4): 해당 프리셋 태그가 붙은 캐릭터 프롬프트/바이브/
+  // 레퍼런스만 제거. 수동 항목·다른 프리셋 항목은 유지.
+  @action
+  removeAppliedCharacterPreset(name: string) {
+    if (!this.removeAppliedCharacterPresetCore(name)) return;
+    this.pushMessage(`"${name}" 프리셋이 해제되었습니다 (연결 항목 함께 제거)`);
+  }
+
+  // 일괄 해제(W4 후속): 팝오버 체크 선택 해제용 — 토스트는 1회로 묶는다.
+  @action
+  removeAppliedCharacterPresets(names: string[]) {
+    const removed = names.filter((n) => this.removeAppliedCharacterPresetCore(n));
+    if (removed.length === 0) return;
+    this.pushMessage(
+      removed.length === 1
+        ? `"${removed[0]}" 프리셋이 해제되었습니다 (연결 항목 함께 제거)`
+        : `프리셋 ${removed.length}개가 해제되었습니다 (연결 항목 함께 제거)`,
+    );
+  }
+
+  // 해제 코어 (토스트 없음) — 개별/일괄 해제가 공유
+  private removeAppliedCharacterPresetCore(name: string): boolean {
+    const session = this.curSession;
+    if (!session) return false;
+    const workflowType = session.selectedWorkflow?.workflowType;
+    if (!workflowType) return false;
+    const shared = session.presetShareds.get(workflowType);
+    if (!shared) return false;
+
+    shared.vibes = (shared.vibes || []).filter((v: any) => v.fromPreset !== name);
+    shared.characterReferences = (shared.characterReferences || []).filter(
+      (r: any) => r.fromPreset !== name,
+    );
+    if (shared.characterPrompts) {
+      shared.characterPrompts = shared.characterPrompts.filter(
+        (cp: any) => cp.fromPreset !== name,
+      );
+    }
+    // 마지막 적용 표시가 해제 대상이었다면 남은 프리셋 중 마지막으로 갱신
+    if (shared._appliedPresetName === name) {
+      const remaining = this.appliedCharacterPresetNames;
+      shared._appliedPresetName = remaining[remaining.length - 1] || '';
+    }
     return true;
   }
 
@@ -503,6 +592,28 @@ export class AppState {
     this.characterPresetsOpen = false;
     const modeLabel = mode === 'easy' ? '이지모드' : '캐릭터 프롬프트';
     this.pushMessage(`"${preset.name}" 프리셋이 ${modeLabel}로 적용되었습니다`);
+  }
+
+  // 캐릭터 프리셋 일괄 적용(W4 후속): 프리셋 관리의 선택 모드에서 여러 개를
+  // 한 번에 캐릭터 프롬프트로 추가 적용. 토스트는 1회로 묶는다.
+  @action
+  applyCharacterPresets(presets: CharacterPreset[]) {
+    const curSession = this.curSession;
+    if (!curSession || presets.length === 0) return;
+    const workflowType = curSession.selectedWorkflow?.workflowType;
+    if (!workflowType) {
+      this.pushMessage('워크플로우를 먼저 선택해주세요');
+      return;
+    }
+    for (const p of presets) {
+      this.applyCharacterPresetToSession(curSession, workflowType, p, 'character');
+    }
+    this.characterPresetsOpen = false;
+    this.pushMessage(
+      presets.length === 1
+        ? `"${presets[0].name}" 프리셋이 캐릭터 프롬프트로 적용되었습니다`
+        : `프리셋 ${presets.length}개가 캐릭터 프롬프트로 적용되었습니다`,
+    );
   }
 
   @action
@@ -1377,23 +1488,45 @@ export class AppState {
     for (const [, shared] of this.curSession.presetShareds) {
       if (!shared) continue;
 
-      const presetName = shared._appliedPresetName;
-
-      if (presetName && !this.curSession.hasCharacterPreset(presetName)) {
-        // 존재하지 않는 프리셋이 적용 중 → 프리셋 태그 항목만 정리
-        shared.vibes = (shared.vibes || []).filter((v: any) => !v.fromPreset);
-        shared.characterReferences = (shared.characterReferences || []).filter((r: any) => !r.fromPreset);
-        if (shared.characterPrompts) {
-          shared.characterPrompts = shared.characterPrompts.filter((cp: any) => !cp.fromPreset);
+      // 삭제된 프리셋의 잔존 항목 정리 — 다중 적용(W4)이라 프리셋 이름 단위로만
+      // 제거하고, 존재하는 프리셋의 항목은 유지한다.
+      const tagNames = new Set<string>();
+      const collect = (items: any[] | undefined) => {
+        for (const item of items || []) {
+          if (item?.fromPreset) tagNames.add(item.fromPreset);
         }
+      };
+      collect(shared.characterPrompts);
+      collect(shared.vibes);
+      collect(shared.characterReferences);
+      const orphaned = Array.from(tagNames).filter(
+        (n) => !this.curSession!.hasCharacterPreset(n),
+      );
+      if (orphaned.length > 0) {
+        const isOrphan = (x: any) => x.fromPreset && orphaned.includes(x.fromPreset);
+        shared.vibes = (shared.vibes || []).filter((v: any) => !isOrphan(v));
+        shared.characterReferences = (shared.characterReferences || []).filter(
+          (r: any) => !isOrphan(r),
+        );
+        if (shared.characterPrompts) {
+          shared.characterPrompts = shared.characterPrompts.filter(
+            (cp: any) => !isOrphan(cp),
+          );
+        }
+      }
+      if (
+        shared._appliedPresetName &&
+        !this.curSession.hasCharacterPreset(shared._appliedPresetName)
+      ) {
         shared._appliedPresetName = '';
       }
 
       // 캐릭터 프롬프트 중복 제거 (이전 버전 오염 데이터 정리)
+      // 프리셋 출처가 다르면 같은 내용이라도 별개(다중 적용) — 키에 fromPreset 포함
       if (shared.characterPrompts && shared.characterPrompts.length > 1) {
         const seen = new Set<string>();
         shared.characterPrompts = shared.characterPrompts.filter((cp: any) => {
-          const key = (cp.prompt || '') + '\0' + (cp.uc || '');
+          const key = (cp.prompt || '') + '\0' + (cp.uc || '') + '\0' + (cp.fromPreset || '');
           if (seen.has(key)) return false;
           seen.add(key);
           return true;

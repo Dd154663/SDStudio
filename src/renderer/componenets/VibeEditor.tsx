@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { v4 } from 'uuid';
-import { FaCloudUploadAlt, FaTrash } from 'react-icons/fa';
+import { FaCloudUploadAlt, FaTimes, FaTrash } from 'react-icons/fa';
 import { FileUploadBase64 } from './UtilComponents';
 import Tooltip from './Tooltip';
 import { ReferenceItem, VibeItem } from '../models/types';
@@ -148,7 +148,8 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
     useContext(WFElementContext)!;
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const isPresetActive = !!appState.appliedCharacterPreset && editVibe?.fieldType === 'shared';
+  // shared 필드의 fromPreset 항목 = 캐릭터 프리셋 귀속(개별 삭제 대신 프리셋 단위 해제 — W4)
+  const isPresetActive = editVibe?.fieldType === 'shared';
 
   const getField = () => {
     if (editVibe!.fieldType === 'preset') return preset[editVibe!.field];
@@ -335,7 +336,22 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                   </div>
                   <div className="flex-none flex ml-auto mt-auto">
                     {isPresetActive && vibe.fromPreset ? (
-                      <div className="text-xs text-faint px-2">🔒 프리셋</div>
+                      <Tooltip
+                        content={`"${vibe.fromPreset}" 프리셋 해제 — 연결된 캐릭터 프롬프트/레퍼런스 함께 제거`}
+                      >
+                        <button
+                          className="round-button back-gray h-8 px-3 text-xs"
+                          onClick={() => {
+                            if (disabled) return;
+                            appState.removeAppliedCharacterPreset(
+                              vibe.fromPreset!,
+                            );
+                          }}
+                        >
+                          🔒 {vibe.fromPreset}
+                          <FaTimes className="ml-1.5" size={11} />
+                        </button>
+                      </Tooltip>
                     ) : (
                       <Tooltip content="바이브 삭제">
                       <button

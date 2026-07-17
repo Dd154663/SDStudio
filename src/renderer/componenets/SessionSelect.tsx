@@ -155,6 +155,44 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
   const [sessionNames, setSessionNames] = useState<string[]>([]);
   // 프로젝트 바 ⋯(더보기) 오버플로 메뉴
   const [showProjectMenu, setShowProjectMenu] = useState(false);
+  // 적용된 캐릭터 프리셋 칩의 팝오버(W4 다중 적용 — 목록·개별 해제)
+  const [showPresetPopover, setShowPresetPopover] = useState(false);
+  // 팝오버 내 일괄 해제용 체크 선택 (팝오버를 열 때마다 초기화)
+  const [presetClearSel, setPresetClearSel] = useState<Set<string>>(
+    () => new Set(),
+  );
+  // 팝오버 적응 배치(W2 팝오버 패턴): 프로젝트 툴바가 상단(컴팩트)·하단·사이드
+  // 어디에 있어도 화면 밖으로 나가지 않게 — 앵커(칩) 아래 우선, 여유 없으면 위,
+  // 뷰포트 8px 클램프. 측정 전에는 visibility:hidden 으로 깜빡임 방지.
+  const presetChipRef = React.useRef<HTMLDivElement | null>(null);
+  const presetPopRef = React.useRef<HTMLDivElement | null>(null);
+  const [presetPopPos, setPresetPopPos] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+  React.useLayoutEffect(() => {
+    if (!showPresetPopover) {
+      if (presetPopPos) setPresetPopPos(null);
+      return;
+    }
+    const anchor = presetChipRef.current?.getBoundingClientRect();
+    const pop = presetPopRef.current?.getBoundingClientRect();
+    if (!anchor || !pop) return;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let top = anchor.bottom + 4;
+    if (top + pop.height > vh - 8) top = anchor.top - pop.height - 4;
+    top = Math.max(8, Math.min(top, vh - pop.height - 8));
+    const left = Math.max(8, Math.min(anchor.left, vw - pop.width - 8));
+    // 매 렌더 실행되는 훅이라 실제 변화가 있을 때만 set (무한 루프 방지)
+    if (
+      !presetPopPos ||
+      Math.abs(presetPopPos.left - left) > 0.5 ||
+      Math.abs(presetPopPos.top - top) > 0.5
+    ) {
+      setPresetPopPos({ left, top });
+    }
+  });
   // 툴바 버튼 드래그 재배치 (클래식 툴바에선 비활성)
   const toolbarDrag = useToolbarDragState('project');
   const toolbarDragActive = toolbarDrag.active;
@@ -300,23 +338,138 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
       ref={toolbarRowDrop as any}
       className={`flex gap-2 items-center w-full flex-wrap${toolbarRowHighlightClass(toolbarDrag, toolbarRowOver)}`}
     >
-      {/* 현재 적용된 캐릭터 프리셋 표시 */}
-      {appState.appliedCharacterPreset && (
-        <div className="titlebar-no-drag hidden md:flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900 rounded-lg text-sm">
-          <FaUserAlt className="text-green-600 dark:text-green-400" size={12} />
-          <Tooltip content={appState.appliedCharacterPreset ?? ''}>
-          <span className="text-green-700 dark:text-green-300 max-w-24 truncate">
-            {appState.appliedCharacterPreset}
-          </span>
+      {/* 현재 적용된 캐릭터 프리셋 — 통합 칩 1개 + 팝오버(W4 다중 적용, 개별 해제) */}
+      {appState.appliedCharacterPresetNames.length > 0 && (
+        <div
+          ref={presetChipRef}
+          className="relative titlebar-no-drag hidden md:block"
+        >
+          <Tooltip content={appState.appliedCharacterPresetNames.join(', ')}>
+            <button
+              className="flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900 rounded-lg text-sm clickable"
+              onClick={() =>
+                setShowPresetPopover((v) => {
+                  if (!v) setPresetClearSel(new Set());
+                  return !v;
+                })
+              }
+            >
+              <FaUserAlt
+                className="text-green-600 dark:text-green-400"
+                size={12}
+              />
+              <span className="text-green-700 dark:text-green-300 max-w-24 truncate">
+                {appState.appliedCharacterPresetNames.length === 1
+                  ? appState.appliedCharacterPresetNames[0]
+                  : `프리셋 ${appState.appliedCharacterPresetNames.length}개`}
+              </span>
+              <FaChevronDown
+                className="text-green-600 dark:text-green-400"
+                size={9}
+              />
+            </button>
           </Tooltip>
-          <Tooltip content="캐릭터 프리셋 해제">
-          <button
-            className="ml-1 text-green-600 dark:text-green-400 hover:text-red-500 dark:hover:text-red-400"
-            onClick={() => appState.clearAppliedCharacterPreset()}
-          >
-            <FaTimes size={12} />
-          </button>
-          </Tooltip>
+          {showPresetPopover && (
+            <>
+              {/* 바깥 클릭 닫기용 투명 백드롭 */}
+              <div
+                className="fixed inset-0"
+                style={{ zIndex: 'var(--z-context-menu)' }}
+                onClick={() => setShowPresetPopover(false)}
+              />
+              <div
+                ref={presetPopRef}
+                className="fixed w-56 bg-[var(--c-zone)] border line-color rounded-lg shadow-xl overflow-hidden"
+                style={{
+                  zIndex: 'var(--z-context-menu)',
+                  left: presetPopPos?.left ?? 0,
+                  top: presetPopPos?.top ?? 0,
+                  visibility: presetPopPos ? 'visible' : 'hidden',
+                }}
+              >
+                <div className="px-3 py-1.5 text-xs font-semibold text-muted border-b line-color">
+                  적용된 캐릭터 프리셋
+                </div>
+                {appState.appliedCharacterPresetNames.map((name) => (
+                  <div
+                    key={name}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm text-default hover:bg-gray-100 dark:hover:bg-slate-700 cursor-pointer"
+                    onClick={() => {
+                      // 행 클릭 = 일괄 해제용 체크 토글
+                      setPresetClearSel((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(name)) next.delete(name);
+                        else next.add(name);
+                        return next;
+                      });
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={presetClearSel.has(name)}
+                      readOnly
+                      className="flex-none rounded line-color pointer-events-none"
+                    />
+                    <FaUserAlt
+                      className="flex-none text-green-600 dark:text-green-400"
+                      size={11}
+                    />
+                    <span className="flex-1 truncate">{name}</span>
+                    <Tooltip content="이 프리셋 해제 (연결 항목 함께 제거)">
+                      <button
+                        className="flex-none text-muted hover:text-red-500 dark:hover:text-red-400 p-0.5"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          appState.removeAppliedCharacterPreset(name);
+                          setPresetClearSel((prev) => {
+                            const next = new Set(prev);
+                            next.delete(name);
+                            return next;
+                          });
+                          if (
+                            appState.appliedCharacterPresetNames.length === 0
+                          ) {
+                            setShowPresetPopover(false);
+                          }
+                        }}
+                      >
+                        <FaTimes size={12} />
+                      </button>
+                    </Tooltip>
+                  </div>
+                ))}
+                {presetClearSel.size > 0 && (
+                  <button
+                    className="w-full px-3 py-1.5 text-xs text-left font-medium text-red-500 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-slate-700 border-t line-color"
+                    onClick={() => {
+                      appState.removeAppliedCharacterPresets(
+                        appState.appliedCharacterPresetNames.filter((n) =>
+                          presetClearSel.has(n),
+                        ),
+                      );
+                      setPresetClearSel(new Set());
+                      if (appState.appliedCharacterPresetNames.length === 0) {
+                        setShowPresetPopover(false);
+                      }
+                    }}
+                  >
+                    선택 {presetClearSel.size}개 해제
+                  </button>
+                )}
+                {appState.appliedCharacterPresetNames.length > 1 && (
+                  <button
+                    className="w-full px-3 py-1.5 text-xs text-left text-muted hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-slate-700 border-t line-color"
+                    onClick={() => {
+                      appState.clearAppliedCharacterPreset();
+                      setShowPresetPopover(false);
+                    }}
+                  >
+                    모두 해제
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
       
