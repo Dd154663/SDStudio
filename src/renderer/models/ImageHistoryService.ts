@@ -1,5 +1,6 @@
 import { action, observable } from 'mobx';
 import { imageService, sessionService } from '.';
+import { toggleImageMain } from './ImageService';
 import { getAppState } from './appStateRef';
 import { GenericScene, Session } from './types';
 
@@ -119,12 +120,9 @@ export class ImageHistoryService {
   async toggleFavorite(entry: GenerationHistoryEntry): Promise<void> {
     const resolved = await this.resolve(entry);
     if (!resolved) return;
-    const { scene } = resolved;
-    if (scene.mains.includes(entry.filename)) {
-      scene.mains.splice(scene.mains.indexOf(entry.filename), 1);
-    } else {
-      scene.mains.push(entry.filename);
-    }
+    const { session, scene } = resolved;
+    // 창 간 동기화 헬퍼(읽기 전용 미러): 소유 창 위임 + 로컬 반영
+    toggleImageMain(session, scene, entry.filename);
   }
 
   // 좌클릭/컨텍스트 메뉴 "해당 씬으로 이동" 공용 진입점.

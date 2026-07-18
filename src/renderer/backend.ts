@@ -211,4 +211,13 @@ export abstract class Backend {
   onDelegateQueueSnapshot(_callback: (snapshot: any) => void): () => void {
     return () => {};
   }
+
+  // ─── 창 간 세션 op(메모리 반영) 동기화 — 같은 프로젝트 중복 열기(읽기 전용 미러) ───
+  // P2 전역 저장소 동기화가 "저장소 재로드"라면, 이쪽은 메모리의 세션 op(이미지
+  // 즐겨찾기 등)를 다른 창에 전파해 소유 창이 자기 큐에서 저장하도록 위임한다.
+  // 기본 no-op(모바일/단일 창) — payload 는 IPC 구조적 복제로 넘어가는 순수 JSON.
+  async notifySessionOp(_payload: any): Promise<void> {}
+  onSessionOp(_callback: (payload: any) => void): () => void {
+    return () => {};
+  }
 }

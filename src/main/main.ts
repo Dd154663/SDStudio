@@ -151,6 +151,19 @@ ipcMain.handle('notify-global-store-changed', (event, key: string) => {
   broadcastGlobalStoreChanged(event.sender.id, key);
 });
 
+// ─── 창 간 세션 op(메모리 반영) 동기화 — 읽기 전용 미러 (같은 프로젝트 중복 열기) ───
+// P2 의 저장소 재로드 브로드캐스트와 의미론이 다르다: 저장소를 다시 읽는 게 아니라
+// 메모리의 세션 op(이미지 즐겨찾기 등)를 다른 창에 그대로 전달해, 로드된 창이 op 를
+// 적용하도록 한다(소유 창이면 자기 큐가 저장, 미러 창은 P0 가드가 저장을 드롭).
+// 보낸 창 자신은 제외한다(이미 로컬 반영됨). P2 broadcastGlobalStoreChanged 와 동형.
+ipcMain.handle('notify-session-op', (event, payload: any) => {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed() && w.webContents.id !== event.sender.id) {
+      w.webContents.send('session-op', payload);
+    }
+  }
+});
+
 // "새 창에서 열기"로 전달된 초기 프로젝트 — 새 창(wcId)이 부팅 후 1회 가져간다.
 const pendingInitialProject = new Map<number, string>();
 

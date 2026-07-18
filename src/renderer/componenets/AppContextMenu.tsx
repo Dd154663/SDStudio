@@ -3,7 +3,7 @@ import { getSnapshot } from 'mobx-state-tree';
 import { Item, Menu, Separator } from 'react-contexify';
 import { sessionService, backend, imageService, isMobile, imageDownloadService, imageHistoryService } from '../models';
 import { appState } from '../models/AppService';
-import { dataUriToBase64, deleteImageFiles } from '../models/ImageService';
+import { dataUriToBase64, deleteImageFiles, toggleImageMain } from '../models/ImageService';
 import { createImageWithText, embedJSONInPNG } from '../models/SessionService';
 import {
   SceneContextAlt,
@@ -343,11 +343,8 @@ export const AppContextMenu = observer(() => {
     if (!ctx.scene) return;
     for (const path_ of ctx.path) {
       const path = path_.split('/').pop()!;
-      if (ctx.scene.mains.includes(path)) {
-        ctx.scene.mains.splice(ctx.scene.mains.indexOf(path), 1);
-      } else {
-        ctx.scene.mains.push(path);
-      }
+      // 창 간 동기화 헬퍼(읽기 전용 미러): 소유 창 위임 + 로컬 반영
+      toggleImageMain(appState.curSession!, ctx.scene, path);
     }
   };
   const deleteImg = async (ctx: GallaryImageContextAlt) => {

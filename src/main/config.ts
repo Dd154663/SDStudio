@@ -105,6 +105,11 @@ export interface Config {
   // 전체)와 해석·유일성(first-host-wins)은 companionSlots.ts 가 단일 출처 — 호스트 목록
   // 밖 hostKey·풀 밖 버튼 id 는 조용히 무시한다(stale 무시 방침).
   uiCompanionSlots?: Record<string, string[]>;
+  // 같은 프로젝트 중복 열기 허용(읽기 전용 미러). 기본 false/undefined = 종전대로
+  // 배타(다른 창이 연 프로젝트는 소유 창으로 포커스만). true 면 충돌 시 "소유 창으로
+  // 이동 / 읽기 전용 미러로 열기" 선택지를 제시한다. 미러 창은 락을 보유하지 않아
+  // 디스크에 쓰지 못하고(P0 가드), 이미지 즐겨찾기·삭제·생성 예약만 소유 창에 위임된다.
+  allowDuplicateProjectOpen?: boolean;
 }
 
 // 레이아웃 슬롯 개인화 — 템플릿(uiLayoutTemplate) 기본값 위에 얹는 오버라이드.

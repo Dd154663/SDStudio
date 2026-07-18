@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { DropdownSelect, Option } from './UtilComponents';
-import { FaEllipsisH, FaThLarge, FaTrash, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown } from 'react-icons/fa';
+import { FaEllipsisH, FaThLarge, FaTrash, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown, FaEye } from 'react-icons/fa';
 import { pushRecentProject } from './ProjectBrowser';
 import Tooltip from './Tooltip';
 import { sessionService, imageService, backend, zipService, trashService, isMobile } from '../models';
@@ -368,6 +368,14 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
     </>
   );
 
+  // 읽기 전용 미러 배지(같은 프로젝트 중복 열기) — 현재 프로젝트가 이 창에서 미러로
+  // 열려 있을 때만. 좁은 폭에서 레이아웃을 밀지 않게 flex-none+truncate. 앰버 계열
+  // (양 테마 지정) — 색 하드코딩 없이 기존 칩 팔레트 클래스 사용.
+  const isMirrorCur =
+    !!appState.curSession && sessionService.isMirror(appState.curSession.name);
+  const mirrorTooltip =
+    '읽기 전용 미러 — 열람·비교·생성 예약·이미지 즐겨찾기·삭제만 가능하고, 그 외 편집은 저장되지 않습니다.';
+
   // 프로젝트 사이드 바(세로 스택) — bar 와 동일한 레지스트리 해석 결과(toolbarLayout)를
   // 세로로 렌더한다: 인라인/⋯메뉴/숨김·순서 커스터마이징과 편집 모드 드래그 재배열까지
   // 전부 반영(프로젝트 툴바 버튼 최종 이관). 버튼 노드는 위 정의를 재사용.
@@ -378,6 +386,14 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
         ref={toolbarRowDrop as any}
         className={`w-full flex flex-col items-center gap-1.5${toolbarRowHighlightClass(toolbarDrag, toolbarRowOver)}`}
       >
+        {/* 읽기 전용 미러 배지 (컴팩트: 아이콘) */}
+        {isMirrorCur && (
+          <Tooltip content={mirrorTooltip}>
+            <div className="flex-none w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900 flex items-center justify-center">
+              <FaEye className="text-amber-700 dark:text-amber-300" size={14} />
+            </div>
+          </Tooltip>
+        )}
         {/* 적용된 캐릭터 프리셋 칩 (컴팩트: 아이콘+개수 배지) — bar 와 같은 팝오버 공유 */}
         {appState.appliedCharacterPresetNames.length > 0 && (
           <div ref={presetChipRef} className="relative titlebar-no-drag">
@@ -577,6 +593,15 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
         </button>
         </Tooltip>
       </div>
+      {/* 읽기 전용 미러 배지 — flex-none 으로 좁은 폭에서도 레이아웃을 밀지 않는다 */}
+      {isMirrorCur && (
+        <Tooltip content={mirrorTooltip}>
+          <span className="flex-none titlebar-no-drag inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 text-xs font-medium max-w-[9rem]">
+            <FaEye size={11} className="flex-none" />
+            <span className="truncate">읽기 전용 미러</span>
+          </span>
+        </Tooltip>
+      )}
       {/* 툴바 버튼·⋯ 메뉴는 no-drag 그룹으로 묶는다 — 버튼은 조작되되, 이 그룹 밖의
           빈 공간(래퍼 여백·클러스터 사이)은 drag 로 남아 상단 바가 창 이동 핸들이 된다. */}
       <span className="titlebar-no-drag flex items-center gap-2">

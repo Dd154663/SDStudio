@@ -945,6 +945,43 @@ export async function getMainImage(
   return undefined;
 }
 
+// ── 이미지 즐겨찾기(mains) 중앙 헬퍼 (읽기 전용 미러 / 창 간 동기화) ──
+// scene.mains 를 로컬에 반영하고, 같은 프로젝트를 연 다른 창에 op 를 전파한다.
+// 소유 창은 자기 큐가 저장하고(=위임의 실체), 미러 창은 P0 가드가 디스크 쓰기를
+// 드롭한다. 단일 창/모바일은 notifySessionOp 가 no-op 이라 종전 동작과 동일하다.
+// filename 은 확장자 포함 파일명(경로 아님) — 호출부에서 path.split('/').pop() 처리.
+export function setImageMain(
+  session: Session,
+  scene: GenericScene,
+  filename: string,
+  on: boolean,
+) {
+  const has = scene.mains.includes(filename);
+  // 절대값 의미론 + 중복 push 방지
+  if (on && !has) scene.mains.push(filename);
+  else if (!on && has) scene.mains.splice(scene.mains.indexOf(filename), 1);
+  // 창 간 위임: 같은 프로젝트를 연 다른 창에 절대값 op 를 전파(실패 무시).
+  backend
+    .notifySessionOp({
+      project: session.name,
+      sceneType: scene.type === 'inpaint' ? 'inpaint' : 'scene',
+      sceneName: scene.name,
+      filename,
+      op: 'set-main',
+      on,
+    })
+    .catch(() => {});
+}
+
+// 현재 상태를 반전(토글) — 기존 splice/push 토글 호출부를 이 헬퍼로 치환한다.
+export function toggleImageMain(
+  session: Session,
+  scene: GenericScene,
+  filename: string,
+) {
+  setImageMain(session, scene, filename, !scene.mains.includes(filename));
+}
+
 export const deleteImageFiles = async (
   curSession: Session,
   paths: string[],

@@ -77,6 +77,18 @@ export abstract class ResourceSyncService<
     return names;
   }
 
+  // 메모리 캐시 파기(디스크 무접촉) — 저장하지 않은 로컬 변이를 버리고, 다음 접근이
+  // 디스크 최신본을 읽게 한다(읽기 전용 미러 진입/종료가 사용). busy(경로 변경 중)
+  // 엔트리는 건드리지 않는다(경로 작업 무결성 우선 — 실패해도 다음 기회에 재로드).
+  // 진행 중 flush 와의 경합은 안전: writeResource 는 쓰기 직전 entries 를 재확인해
+  // 엔트리가 사라졌으면 쓰지 않는다.
+  evict(name: string) {
+    const e = this.entries.get(name);
+    if (!e || e.state !== 'ready') return;
+    e.dispose?.();
+    this.entries.delete(name);
+  }
+
   // 저장 필요 표시 — 외부(씬 큐 등)에서 세션을 직접 변경했을 때 호출한다.
   markDirty(name: string) {
     const e = this.entries.get(name);

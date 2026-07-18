@@ -805,6 +805,7 @@ const PersonalTab = ({
   legacyWorkflowMode, setLegacyWorkflowMode,
   uiFont, setUiFont,
   uiClassicFinish, setUiClassicFinish,
+  allowDuplicateProjectOpen, setAllowDuplicateProjectOpen,
 }: any) => (
   <div className="space-y-4">
     <div>
@@ -886,6 +887,17 @@ const PersonalTab = ({
       </div>
       <p className="text-xs text-faint mt-1 ml-6">
         켜면 이지모드·이미지 수정 작업모드와 작업모드 선택 드롭다운을 다시 표시합니다. 끄면(기본) 작업모드가 "이미지 생성" 하나로 고정되고 드롭다운이 숨겨집니다. 기존 이지모드 사전설정 데이터는 삭제되지 않습니다.
+      </p>
+    </div>
+    <hr className="line-color" />
+    <div>
+      <div className="flex items-center gap-2">
+        <input type="checkbox" id="cfgAllowDupOpen" checked={allowDuplicateProjectOpen}
+          onChange={(e) => setAllowDuplicateProjectOpen(e.target.checked)} />
+        <label htmlFor="cfgAllowDupOpen" className="text-sm gray-label">같은 프로젝트 중복 열기 허용 (읽기 전용 미러)</label>
+      </div>
+      <p className="text-xs text-faint mt-1 ml-6">
+        다른 창에서 열린 프로젝트를 읽기 전용 미러로 열 수 있습니다. 미러에서는 열람·비교·생성 예약·이미지 즐겨찾기·이미지 삭제만 가능하고 그 외 편집은 저장되지 않습니다.
       </p>
     </div>
   </div>
@@ -1898,6 +1910,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [uiFloatViewMode, setUiFloatViewMode] = useState<'cover' | 'center'>('cover');
   const [uiFont, setUiFont] = useState<'pretendard' | 'system'>('system');
   const [uiClassicFinish, setUiClassicFinish] = useState(false);
+  const [allowDuplicateProjectOpen, setAllowDuplicateProjectOpen] = useState(false);
   // 미저장 변경 감지 기준 — 로드/저장 시점의 config 스냅샷 (#17)
   const [savedCfg, setSavedCfg] = useState<Config | null>(null);
   const mobileMode = isMobile;
@@ -1927,6 +1940,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setUiFloatViewMode(config.uiFloatViewMode ?? 'cover');
       setUiFont(config.uiFont ?? 'system');
       setUiClassicFinish(config.uiClassicFinish ?? false);
+      setAllowDuplicateProjectOpen(config.allowDuplicateProjectOpen ?? false);
       setSavedCfg(config);
     })();
     const checkReady = () => setReady(localAIService.ready);
@@ -2059,6 +2073,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiFloatViewMode: uiFloatViewMode,
       uiFont: uiFont,
       uiClassicFinish: uiClassicFinish,
+      allowDuplicateProjectOpen: allowDuplicateProjectOpen,
     };
     await backend.setConfig(config);
     setSavedCfg(config);
@@ -2072,6 +2087,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.uiFloatViewMode = uiFloatViewMode;
     appState.uiFont = uiFont;
     appState.uiClassicFinish = uiClassicFinish;
+    appState.allowDuplicateProjectOpen = allowDuplicateProjectOpen;
     appState.storageWriteGuard = storageWriteGuard;
     appState.fullWordAutoComplete = fullWordAc;
     localStorage.setItem('sdstudio-full-word-autocomplete', fullWordAc ? 'true' : 'false');
@@ -2104,7 +2120,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'system':
         return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency }} />;
       case 'personal':
-        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, legacySceneEditor, setLegacySceneEditor, legacyWorkflowMode, setLegacyWorkflowMode, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish }} />;
+        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, legacySceneEditor, setLegacySceneEditor, legacyWorkflowMode, setLegacyWorkflowMode, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish, allowDuplicateProjectOpen, setAllowDuplicateProjectOpen }} />;
       case 'customization':
         return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark }} />;
       case 'toolbar':
@@ -2146,7 +2162,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiLayoutTemplate !== (savedCfg.uiLayoutTemplate ?? 'classic') ||
       uiFloatViewMode !== (savedCfg.uiFloatViewMode ?? 'cover') ||
       uiFont !== (savedCfg.uiFont ?? 'system') ||
-      uiClassicFinish !== (savedCfg.uiClassicFinish ?? false));
+      uiClassicFinish !== (savedCfg.uiClassicFinish ?? false) ||
+      allowDuplicateProjectOpen !== (savedCfg.allowDuplicateProjectOpen ?? false));
 
   return (
     <div

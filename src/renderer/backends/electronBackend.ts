@@ -464,4 +464,12 @@ export class ElectornBackend extends Backend {
   onDelegateQueueSnapshot(callback: (snapshot: any) => void): () => void {
     return window.electron.ipcRenderer.on('delegate-queue-snapshot', callback);
   }
+
+  // ─── 창 간 세션 op(메모리 반영) 동기화 — 읽기 전용 미러 (같은 프로젝트 중복 열기) ───
+  async notifySessionOp(payload: any): Promise<void> {
+    await invoke('notify-session-op', payload);
+  }
+  onSessionOp(callback: (payload: any) => void): () => void {
+    return window.electron.ipcRenderer.on('session-op', callback);
+  }
 }

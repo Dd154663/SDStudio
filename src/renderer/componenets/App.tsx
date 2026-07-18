@@ -274,6 +274,7 @@ export const App = observer(() => {
       appState.uiFloatViewMode = conf.uiFloatViewMode ?? 'cover';
       appState.uiFont = conf.uiFont ?? 'system';
       appState.uiClassicFinish = conf.uiClassicFinish ?? false;
+      appState.allowDuplicateProjectOpen = conf.allowDuplicateProjectOpen ?? false;
     };
     refreshDarkMode();
     sessionService.addEventListener('config-changed', refreshDarkMode);

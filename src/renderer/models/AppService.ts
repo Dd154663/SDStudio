@@ -264,6 +264,11 @@ export class AppState {
   // ConfigScreen 저장/부팅 시 config.storageWriteGuard 값으로 갱신된다.
   @observable accessor storageWriteGuard: boolean = true;
 
+  // 같은 프로젝트 중복 열기 허용(config.allowDuplicateProjectOpen 미러). 기본 false.
+  // true 면 다른 창이 연 프로젝트를 열 때 "소유 창으로 이동 / 읽기 전용 미러로 열기"
+  // 를 선택할 수 있다(bootstrap 락 reaction 소비).
+  @observable accessor allowDuplicateProjectOpen: boolean = false;
+
   // 자동완성 모드: false=커서 왼쪽만(기본), true=콤마 사이 전체 단어
   @observable accessor fullWordAutoComplete: boolean = (() => {
     return localStorage.getItem('sdstudio-full-word-autocomplete') === 'true';

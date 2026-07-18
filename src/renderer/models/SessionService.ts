@@ -1,5 +1,6 @@
 import extractChunks from 'png-chunks-extract';
 import { Buffer } from 'buffer';
+import { observable } from 'mobx';
 import { v4 } from 'uuid';
 import {
   backend,
@@ -87,6 +88,87 @@ export class SessionService extends ResourceSyncService<Session> {
 
   constructor() {
     super(PROJECT_JSON_ROOT, SESSION_SERVICE_INTERVAL);
+  }
+
+  // ===== 읽기 전용 미러 (같은 프로젝트 중복 열기, W6 후속) =====
+  // 이 창에서 "읽기 전용 미러"로 연 프로젝트 이름 집합. 미러는 락을 보유하지 않아
+  // P0 가드가 디스크 쓰기를 드롭한다(이미지 즐겨찾기·삭제·생성만 소유 창에 위임).
+  readonly mirrorSessions = observable.set<string>();
+  isMirror(name: string): boolean {
+    return this.mirrorSessions.has(name);
+  }
+
+  // 미러 종료 — 마킹 해제 + 편집 경고 1회 상태 리셋 + 메모리 캐시 파기.
+  // 캐시를 버리는 이유: 미러의 편집은 저장되지 않는데 캐시 인스턴스가 살아 있으면
+  // 재열기 때 그 편집이 "그대로 남은" 것처럼 보여(디스크와 괴리) 혼동을 준다
+  // (2026-07-18 실기 피드백). 다음 접근은 디스크 최신본을 읽는다.
+  endMirror(name: string) {
+    this.mirrorSessions.delete(name);
+    this.#mirrorEditWarned.delete(name);
+    this.evict(name);
+  }
+
+  // P2 창 간 op 적용 중 표시 — 이 동안의 markDirty 는 "미러 편집 경고" 토스트를
+  // 띄우지 않는다(op 적용은 사용자의 편집이 아니라 다른 창의 반영이므로).
+  applyingSessionOp = false;
+  // 마지막 op 적용 시각 — 변경 감지 reaction 이 updateInterval 디바운스로 늦게
+  // markDirty 를 호출하므로, 동기 플래그만으로는 op 유래 dirty 를 걸러내지 못한다.
+  // 적용 직후 한 디바운스 창 동안은 경고를 억제한다(그 사이 사용자 편집의 경고는
+  // 세션당 1회 안내 성격상 다음 편집 때 떠도 무방).
+  #lastSessionOpAt = 0;
+  // 미러 편집 경고 토스트를 세션당 1회만 띄우기 위한 집합.
+  #mirrorEditWarned = new Set<string>();
+
+  // 미러 세션이 dirty 로 마킹되는 최초 1회, 저장되지 않는 편집임을 안내한다.
+  // (op 적용 중에는 억제 — applyingSessionOp + 디바운스 지연분은 시각 창으로)
+  markDirty(name: string) {
+    if (
+      this.isMirror(name) &&
+      !this.applyingSessionOp &&
+      Date.now() - this.#lastSessionOpAt > SESSION_SERVICE_INTERVAL + 2000 &&
+      !this.#mirrorEditWarned.has(name)
+    ) {
+      this.#mirrorEditWarned.add(name);
+      try {
+        getAppState().pushMessage(
+          '읽기 전용 미러 — 즐겨찾기·삭제·생성 외 편집은 저장되지 않습니다',
+        );
+      } catch (e) {}
+    }
+    super.markDirty(name);
+  }
+
+  // 창 간 세션 op 적용(읽기 전용 미러) — 다른 창이 보낸 이미지 즐겨찾기(mains)
+  // 변경을 이 창의 메모리에 반영한다. 이미 로드된 세션에만 적용하며(디스크 읽기
+  // 유발 금지), 적용 중에는 미러 편집 경고를 억제한다. 소유 창이면 mobx reaction 이
+  // 자동 저장(=위임의 실체), 비소유(미러) 창은 P0 가드가 저장을 드롭한다.
+  applySessionOp(payload: {
+    project: string;
+    sceneType: 'scene' | 'inpaint';
+    sceneName: string;
+    filename: string;
+    op: string;
+    on: boolean;
+  }) {
+    const session = this.getLoaded(payload.project);
+    if (!session) return; // 이 창에 로드돼 있지 않으면 무시
+    const scene =
+      payload.sceneType === 'inpaint'
+        ? session.inpaints.get(payload.sceneName)
+        : session.scenes.get(payload.sceneName);
+    if (!scene) return;
+    if (payload.op === 'set-main') {
+      const has = scene.mains.includes(payload.filename);
+      if (payload.on === has) return; // 이미 일치 — no-op
+      this.applyingSessionOp = true;
+      this.#lastSessionOpAt = Date.now();
+      try {
+        if (payload.on) scene.mains.push(payload.filename);
+        else scene.mains.splice(scene.mains.indexOf(payload.filename), 1);
+      } finally {
+        this.applyingSessionOp = false;
+      }
+    }
   }
 
   // ===== 신 배치(workspace/, storage v2) 계층 =====
@@ -563,7 +645,9 @@ export class SessionService extends ResourceSyncService<Session> {
   // 다른 창에서 열려 있는 프로젝트의 경로/존재를 바꾸는 작업 차단 (W6 P1).
   // 열려 있는 창의 in-memory 세션과 디스크가 어긋나 저장 시 유실로 이어질 수 있다.
   // 모바일/단일 창은 backend 기본 구현이 {locked:false}라 항상 통과.
-  private async guardCrossWindowLock(
+  // public: 씬 제거/이름변경 등 다른 서비스(TrashService)·모듈 함수(renameScene)도
+  // 같은 창 간 락 가드를 재사용한다.
+  async guardCrossWindowLock(
     name: string,
     actionLabel: string,
   ): Promise<boolean> {
@@ -1243,6 +1327,22 @@ export class SessionService extends ResourceSyncService<Session> {
       if (appState.storageWriteGuard && (await this.checkStorageUnstable())) {
         return 'skip-keep';
       }
+    } catch (e) {}
+
+    // ── 락 소유 쓰기 불변식 (P0, 하드 가드) — 두 목적을 겸한다 ──
+    //  1) 읽기 전용 미러(같은 프로젝트 중복 열기): 미러 창은 락을 보유하지 않으므로
+    //     어떤 편집도 디스크에 쓰지 못하게 막는다 — 소유 창만 저장한다.
+    //  2) 창 간 race 봉합: 히스토리 탐색 등으로 타 창 소유 프로젝트를 sessionService.get
+    //     으로 로드해 변이→자동저장하던 기존 창 간 경합 엣지도 함께 차단한다.
+    // 즉 각 창은 "자기가 락을 보유했거나 아무도 열지 않은" 세션만 디스크에 쓴다.
+    // 조회 실패는 기존 방침대로 허용('ok' 흐름 계속 — 아래로 진행).
+    // 미러 플래그는 락과 별개로 항상 차단한다 — 소유 창이 닫혀 락이 비어도 미러의
+    // 낡은 스냅샷이 소유 창의 마지막 저장을 덮어쓰면 안 된다(미러는 재열기 전까지
+    // 영원히 읽기 전용 — 다이얼로그·문서에 명시된 의미론).
+    if (this.isMirror(name)) return 'skip';
+    try {
+      const q = await backend.queryProjectLock(name);
+      if (q.locked && !q.mine) return 'skip';
     } catch (e) {}
 
     let json: ISession;
@@ -2406,6 +2506,10 @@ export const renameScene = async (
   oldName: string,
   newName: string,
 ) => {
+  // 씬 이름변경은 outs 폴더 rename 을 동반하는 구조 변경 — 다른 창이 소유(=이 창이
+  // 미러)한 프로젝트에서는 차단하고 소유 창에 토스트를 띄운다(P3, W6 후속).
+  if (!(await sessionService.guardCrossWindowLock(session.name, '씬 이름변경')))
+    return;
   newName = newName.trimEnd();
   // 폴더 이동(onRenameScene)과 Map 갱신 사이에 주기 flush 가 끼면, 손실 방지 가드가
   // "newName 폴더는 있는데 세션엔 없다"고 오인할 수 있다. 작업 동안 세션을 in-flight 로

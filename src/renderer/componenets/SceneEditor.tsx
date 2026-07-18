@@ -51,7 +51,7 @@ import {
   backend,
   workFlowService,
 } from '../models';
-import { getMainImagePath } from '../models/ImageService';
+import { getMainImagePath, setImageMain } from '../models/ImageService';
 import {
   highlightPrompt,
   lowerPromptNode,
@@ -1145,9 +1145,9 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
 
   const setMainImage = (path: string) => {
     const filename = path.split('/').pop()!;
-    if (!(filename in scene.mains)) {
-      scene.mains.push(filename);
-    }
+    // 기존 `filename in scene.mains`(배열에 in 연산 = 인덱스 검사) 오검사 버그를
+    // setImageMain(절대값 on)으로 치환 — 중복 방지 + 창 간 위임(읽기 전용 미러).
+    setImageMain(curSession!, scene, filename, true);
   };
 
   const [previews, setPreviews] = useState<PromptNode[]>([]);

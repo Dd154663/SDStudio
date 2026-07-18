@@ -81,7 +81,9 @@ export type Channels =
   | 'delegate-run'
   | 'delegate-stop'
   | 'delegate-complete'
-  | 'delegate-queue-snapshot';
+  | 'delegate-queue-snapshot'
+  | 'notify-session-op'
+  | 'session-op';
 
 const electronHandler = {
   ipcRenderer: {

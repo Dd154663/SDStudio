@@ -74,7 +74,7 @@ import {
   trashService,
 } from '../models';
 import { queueI2IWorkflow, queueWorkflow } from '../models/TaskQueueService';
-import { dataUriToBase64, deleteImageFiles } from '../models/ImageService';
+import { dataUriToBase64, deleteImageFiles, toggleImageMain } from '../models/ImageService';
 import { getResultDirectory } from '../models/SessionService';
 import { extractPromptDataFromBase64 } from '../models/util';
 import { appState } from '../models/AppService';
@@ -773,11 +773,8 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
         const path = filePaths[idx];
         if (!path) return;
         const filename = path.split('/').pop()!;
-        if (scene.mains.includes(filename)) {
-          scene.mains.splice(scene.mains.indexOf(filename), 1);
-        } else {
-          scene.mains.push(filename);
-        }
+        // 창 간 동기화 헬퍼(읽기 전용 미러): 소유 창 위임 + 로컬 반영
+        toggleImageMain(curSession!, scene, filename);
       };
       window.addEventListener('keydown', handleKey);
       return () => window.removeEventListener('keydown', handleKey);
@@ -1113,11 +1110,7 @@ const ResultDetailView = observer(
           });
         } else if (action === 'toggle-favorite') {
           const path = paths[selectedIndex].split('/').pop()!;
-          if (scene.mains.includes(path)) {
-            scene.mains.splice(scene.mains.indexOf(path), 1);
-          } else {
-            scene.mains.push(path);
-          }
+          toggleImageMain(curSession!, scene, path);
         } else if (action === 'toggle-bookmark') {
           const filename = paths[selectedIndex]?.split('/').pop();
           if (filename) {
@@ -1631,11 +1624,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       if (selectedImages.current.size === 0) return;
       for (const path_ of selectedImages.current) {
         const filename = path_.split('/').pop()!;
-        if (scene.mains.includes(filename)) {
-          scene.mains.splice(scene.mains.indexOf(filename), 1);
-        } else {
-          scene.mains.push(filename);
-        }
+        toggleImageMain(curSession!, scene, filename);
       }
       if (gallaryRef.current) gallaryRef.current.refresh();
       if (gallaryRef2.current) gallaryRef2.current.refresh();
@@ -1914,11 +1903,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           if (originalIdx >= 0) setSelectedImageIndex(originalIdx);
         } else if (action === 'image-toggle-favorite') {
           const filename = activePaths[i].split('/').pop()!;
-          if (scene.mains.includes(filename)) {
-            scene.mains.splice(scene.mains.indexOf(filename), 1);
-          } else {
-            scene.mains.push(filename);
-          }
+          toggleImageMain(curSession!, scene, filename);
         } else if (action === 'image-toggle-bookmark') {
           const filename = activePaths[i].split('/').pop()!;
           sessionService.toggleImageBookmark(

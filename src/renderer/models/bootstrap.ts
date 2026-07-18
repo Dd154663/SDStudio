@@ -65,7 +65,12 @@ export async function bootstrapApp(): Promise<void> {
     async (name, prevName) => {
       const seq = ++lockSeq;
       if (!name) {
-        if (prevName) backend.releaseProjectLock(prevName).catch(() => {});
+        if (prevName) {
+          backend.releaseProjectLock(prevName).catch(() => {});
+          // 미러였다면 종료 처리(마킹 해제+버려진 편집 캐시 파기)
+          if (sessionService.isMirror(prevName))
+            sessionService.endMirror(prevName);
+        }
         lockHeldSession = undefined;
         return;
       }
@@ -82,7 +87,53 @@ export async function bootstrapApp(): Promise<void> {
           backend.releaseProjectLock(prevName).catch(() => {});
         }
         lockHeldSession = session;
+        // 이전 세션이 읽기 전용 미러였다면 종료 처리 — 마킹 해제 + 버려진 편집이
+        // 캐시로 살아남지 않게 파기(재열기 시 "그대로 남은" 혼동 방지, 2026-07-18
+        // 실기 피드백). 미러는 락이 없어 release 호출 경로는 기존대로 둬도 무해.
+        if (prevName && sessionService.isMirror(prevName)) {
+          sessionService.endMirror(prevName);
+        }
       } else {
+        // 다른 창이 소유 중. "같은 프로젝트 중복 열기 허용" 설정이면 "소유 창으로
+        // 이동 / 읽기 전용 미러로 열기" 를 고르게 한다(설정 OFF 면 종전 동작 그대로).
+        if (appState.allowDuplicateProjectOpen) {
+          const choice = await appState.pushDialogAsync({
+            type: 'select',
+            text: `"${name}" 프로젝트는 다른 창에서 열려 있습니다. 어떻게 할까요?`,
+            items: [
+              { text: '소유 창으로 이동', value: 'focus' },
+              { text: '읽기 전용 미러로 열기', value: 'mirror' },
+            ],
+          });
+          if (seq !== lockSeq) return; // 대기 중 더 새로운 전환 — 결과 폐기
+          if (choice === 'mirror') {
+            // 미러로 열기: 락 미획득. 이전 프로젝트의 락은 놓는다 — 이 창은 더
+            // 이상 그 프로젝트를 표시하지 않는데 락만 쥐고 있으면 다른 창이
+            // "열려 있음" 충돌을 만나고, 포커스를 받아도 미러만 보여 혼란스럽다
+            // (release 는 main 이 소유 검사라 미보유면 무해).
+            sessionService.mirrorSessions.add(name);
+            if (prevName && prevName !== name) {
+              backend.releaseProjectLock(prevName).catch(() => {});
+              if (sessionService.isMirror(prevName)) {
+                sessionService.endMirror(prevName);
+              }
+            }
+            lockHeldSession = undefined; // 복귀 대상 없음(실패 시 미선택 화면으로)
+            // 미러는 디스크 최신본으로 연다 — 이 창의 낡은 캐시(예전에 열었던
+            // 인스턴스나 직전 미러의 버려진 편집)가 소유 창의 최근 저장을 가리지
+            // 않게 캐시를 파기하고 새로 읽어 교체한다(이름이 같아 이 reaction 은
+            // 재발화하지 않는다). 로드 실패 시엔 기존 인스턴스 유지(최선 노력).
+            sessionService.evict(name);
+            const fresh = await sessionService.get(name);
+            if (seq !== lockSeq) return; // 로드 대기 중 전환 — 결과 폐기
+            if (fresh) appState.curSession = fresh;
+            appState.pushMessage(
+              '읽기 전용 미러로 열었습니다 — 즐겨찾기·삭제·생성 외 편집은 저장되지 않습니다',
+            );
+            return;
+          }
+          // choice !== 'mirror'(이동/취소) → 아래 기존 동작(포커스 + 복귀)
+        }
         // 안내 토스트는 요청 창이 아닌 **소유 창**에 띄운다 — 포커스가 즉시
         // 소유 창으로 넘어가므로, 여기(요청 창)에 남기면 돌아왔을 때 낡은
         // 메시지만 덩그러니 남는다(2026-07-17 실기 피드백).
@@ -126,6 +177,17 @@ export async function bootstrapApp(): Promise<void> {
       }
     } catch (e) {
       console.error('전역 저장소 동기화 실패:', key, e);
+    }
+  });
+
+  // 창 간 세션 op 수신 (읽기 전용 미러 / 같은 프로젝트 중복 열기): 다른 창이 보낸
+  // 이미지 즐겨찾기(mains) 변경을 이 창의 메모리에 반영한다(로드된 세션에만).
+  // 소유 창이면 mobx reaction 이 자동 저장(=위임의 실체), 미러 창은 P0 가드가 드롭.
+  backend.onSessionOp((payload) => {
+    try {
+      sessionService.applySessionOp(payload);
+    } catch (e) {
+      console.error('세션 op 적용 실패:', e);
     }
   });
 

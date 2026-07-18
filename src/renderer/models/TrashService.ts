@@ -1,4 +1,4 @@
-import { backend, templateService } from '.';
+import { backend, templateService, sessionService } from '.';
 import { persistService } from './PersistenceService';
 import { GenericScene, IInpaintScene, IScene, Session, genericSceneFromJSON } from './types';
 import { imageService } from '.';
@@ -280,6 +280,10 @@ export class TrashService extends EventTarget {
   }
 
   async moveSceneToTrash(session: Session, scene: GenericScene): Promise<void> {
+    // 씬 제거는 outs 폴더를 .trash 로 옮기는 구조 변경 — 다른 창이 소유(=이 창이
+    // 미러)한 프로젝트에서는 차단하고 소유 창에 토스트를 띄운다(P3, W6 후속).
+    if (!(await sessionService.guardCrossWindowLock(session.name, '씬 제거')))
+      return;
     this.ensureLoaded();
     const key = this.sceneKey(session.name, scene.name);
     const now = Date.now();
