@@ -15,6 +15,7 @@ import ModalOverlay from './ModalOverlay';
 import Tooltip from './Tooltip';
 import { sessionService, templateService } from '../models';
 import { appState } from '../models/AppService';
+import HelpIcon from './HelpIcon';
 
 // 씬 템플릿 관리 오버레이 (씬 템플릿 개편 후속, 2026-07-18 실기 피드백):
 // select 다이얼로그 연쇄(선택→동작→확인)가 불편 → 캐릭터 프리셋 관리와 같은
@@ -115,7 +116,17 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
     <ModalOverlay
       isOpen={true}
       onClose={onClose}
-      title="씬 템플릿 관리"
+      title={
+        <span className="inline-flex items-center gap-1.5">
+          씬 템플릿 관리
+          <HelpIcon
+            content={
+              '자주 쓰는 씬 묶음을 템플릿으로 저장해 두고 아무 프로젝트에나 가져올 수 있습니다.\n' +
+              '행을 클릭하면 템플릿을 열어 씬을 직접 수정할 수 있습니다.'
+            }
+          />
+        </span>
+      }
       width="max-w-2xl"
     >
       {/* 상단 액션 */}

@@ -47,6 +47,7 @@ import {
   GlobalCharacterPresetCard,
 } from './CharacterPresetCards';
 import { CharacterPresetInnerEditor } from './CharacterPresetInnerEditor';
+import HelpIcon from './HelpIcon';
 
 // ─── 캐릭터 프리셋 내보내기/불러오기 ─────────────────────────
 
@@ -1081,6 +1082,14 @@ export const CharacterPresetEditor = observer(({
               </label>
             </Tooltip>
           )}
+          {/* 도움말은 행 맨 끝 고정 (버튼 사이 배치가 어색하다는 피드백) */}
+          <HelpIcon
+            content={
+              '캐릭터 프리셋은 캐릭터 프롬프트, 네거티브, 바이브, 레퍼런스의 묶음입니다.\n' +
+              '카드 버튼으로 현재 프로젝트에 적용/해제합니다 (여러 개 일괄 적용 가능).\n' +
+              '글로벌 프리셋은 모든 프로젝트에서 공유되며, 적용하면 현재 프로젝트로 사본이 들어갑니다.'
+            }
+          />
         </div>
       </div>
 

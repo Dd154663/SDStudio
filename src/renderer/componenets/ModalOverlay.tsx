@@ -6,7 +6,8 @@ import { backStackService } from '../models/BackStackService';
 interface ModalOverlayProps {
   isOpen: boolean;
   onClose: () => void;
-  title: string;
+  // 제목 옆 도움말 아이콘 등 인라인 요소 허용 (h2 안에 그대로 렌더)
+  title: ReactNode;
   children: ReactNode;
   width?: string;
   // 마운트는 유지한 채 시각적으로만 숨김 — 내용물이 드래그 소스일 때

@@ -10,6 +10,7 @@ import {
   templateService,
 } from '../models';
 import { appState } from '../models/AppService';
+import HelpIcon from './HelpIcon';
 
 // 프로젝트 상속 v2 (2026-07-16 합의) — 폴더 기본 템플릿 / 수동 재적용 모달.
 
@@ -237,8 +238,15 @@ export const FolderTemplateModal = observer(
                   표시해 어느 부모의 자식인지 구분한다. 선택 즉시 저장. */}
               {entry && (
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm text-muted flex-none">
+                  <span className="text-sm text-muted flex-none inline-flex items-center gap-1.5">
                     배지 색 (♚/♟)
+                    <HelpIcon
+                      content={
+                        '♚ = 이 폴더의 기본 템플릿(부모)\n' +
+                        '♟ = 그 템플릿을 상속받은 프로젝트\n' +
+                        '배지 색으로 어느 부모의 자식인지 구분합니다.'
+                      }
+                    />
                   </span>
                   {FOLDER_COLORS.map((c) => {
                     const selected = entry.badgeColor === c;

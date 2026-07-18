@@ -27,6 +27,7 @@ import { isValidPieceLibrary, Piece, PieceLibrary } from '../models/types';
 import { appState } from '../models/AppService';
 import { migratePieceLibrary } from '../models/legacy';
 import { observer } from 'mobx-react-lite';
+import HelpIcon from './HelpIcon';
 
 interface PieceCellProps {
   piece: Piece;
@@ -166,7 +167,8 @@ export const PieceCell = observer(
               piece.multi = e.target.checked;
               onPieceContentChange?.();
             }}
-          />
+          />{' '}
+          <HelpIcon content="켜면 생성할 때마다 여러 줄 중 한 줄을 랜덤으로 골라 씁니다." size={13} />
         </div>
       </div>
     );
@@ -611,6 +613,14 @@ const PieceEditor = observer(() => {
         >
           전역 조각
         </button>
+        <span className="inline-flex items-center ml-1">
+          <HelpIcon
+            content={
+              '조각은 프롬프트에서 <그룹.이름> 으로 참조하는 재사용 텍스트입니다.\n' +
+              '로컬은 현재 프로젝트 전용(전역보다 우선), 전역은 모든 프로젝트 공유입니다.'
+            }
+          />
+        </span>
       </div>
 
       {/* 스코프 안내 */}

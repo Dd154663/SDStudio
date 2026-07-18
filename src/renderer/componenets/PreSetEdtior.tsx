@@ -93,6 +93,18 @@ import {
 } from './CharacterReferenceEditor';
 import { WFElementContext, PresetIconRowContext } from './wfElementContext';
 import { ResolutionPicker, resolutionValueToSize } from './ResolutionPicker';
+import HelpIcon from './HelpIcon';
+
+// 프롬프트 문법 도움말 (2026-07-18) — 상위 프롬프트 라벨 옆 (?) 아이콘.
+// 문법은 상위/하위/네거티브 공통이라 첫 프롬프트에만 1회 노출한다.
+// 근거: PromptService(조각 <그룹.조각>, ##주석## 제거), highlightPrompt(가중치),
+// PromptEditTextArea(자동완성 트리거). {a|b} 랜덤 치환은 미지원(랜덤은 멀티 조각뿐).
+const PROMPT_SYNTAX_HELP = `프롬프트 문법
+• <그룹.조각> : 프롬프트 조각 삽입 (로컬 우선, 없으면 전역)
+• {강조} / [약화] : 중첩할수록 강해짐
+• 1.5::내용:: : 명시 가중치 (음수 가능)
+• ##메모## : 주석 (생성 시 제외, 저장은 유지)
+• 자동완성 : 입력 중 태그 추천, < 입력 시 조각 검색`;
 
 const ImageSelect = observer(({ input }: { input: WFIInlineInput }) => {
   const { curSession } = appState;
@@ -145,16 +157,24 @@ const EditorField = ({
   full,
   children,
   bold,
+  hint,
 }: {
   label: string;
   children: React.ReactNode;
   full: boolean;
   bold?: boolean;
+  // (?) 도움말 아이콘 문구 — 라벨 오른쪽에 표시 (프롬프트 문법 안내 등)
+  hint?: string;
 }) => {
   return (
     <>
       <div className={'pt-2 md:pt-3 pb-1 gray-label'}>
         {bold ? <b>{label}</b> : label}
+        {hint && (
+          <span className="ml-1.5">
+            <HelpIcon content={hint} />
+          </span>
+        )}
       </div>
       <div className={full ? 'flex-1 min-h-0' : 'flex-none mt-3'}>
         {children}
@@ -1926,7 +1946,12 @@ const WFRInline = observer(({ element }: WFElementProps) => {
   switch (field.type) {
     case 'prompt':
       return (
-        <EditorField label={input.label} full={input.flex === 'flex-1'}>
+        <EditorField
+          label={input.label}
+          full={input.flex === 'flex-1'}
+          // 문법 안내는 첫 프롬프트(상위)에만 1회 — 문법은 전 프롬프트 공통
+          hint={input.field === 'frontPrompt' ? PROMPT_SYNTAX_HELP : undefined}
+        >
           <PromptEditTextArea
             key={key}
             value={getField()}

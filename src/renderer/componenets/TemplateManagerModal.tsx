@@ -30,6 +30,7 @@ import {
 import { appState } from '../models/AppService';
 import { CharacterPreset, CharacterPrompt } from '../models/types';
 import { Sampling, NoiseSchedule } from '../backends/imageGen';
+import HelpIcon from './HelpIcon';
 
 // "템플릿 관리" 오버레이 (프로젝트 상속 v2 — 2026-07-16 워크플로우형 재설계).
 //
@@ -1383,7 +1384,17 @@ export const TemplateManagerModal = observer(
       <ModalOverlay
         isOpen={isOpen}
         onClose={guardedClose}
-        title="템플릿 관리"
+        title={
+          <span className="inline-flex items-center gap-1.5">
+            템플릿 관리
+            <HelpIcon
+              content={
+                '새 프로젝트 생성 시 시작 구성(프리셋, 캐릭터, 바이브, 레퍼런스, 씬)을 자동 세팅합니다.\n' +
+                '프롬프트는 [저장] 시점에, 나머지 항목은 즉시 저장됩니다.'
+              }
+            />
+          </span>
+        }
         width="max-w-3xl"
       >
         <div className="flex flex-col gap-4">
