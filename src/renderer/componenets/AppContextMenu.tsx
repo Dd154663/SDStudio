@@ -437,6 +437,16 @@ export const AppContextMenu = observer(() => {
     if (!path) return;
     await appState.saveImageToArtistLibrary(path);
   };
+  // 파일 탐색기에서 열기 (데스크톱 전용 — 메뉴 항목도 !isMobile 게이트).
+  // showFile 은 저장소 상대경로를 받아 OS 탐색기에서 해당 파일을 선택해 보여준다.
+  const revealImageInExplorer = async (path: string | undefined) => {
+    if (!path) return;
+    try {
+      await backend.showFile(path);
+    } catch (e: any) {
+      appState.pushMessage(e.message || '파일 탐색기 열기에 실패했습니다.');
+    }
+  };
   const handleImageItemClick = ({ id, props }: any) => {
     const ctx2: GallaryImageContextAlt = {
       ...props.ctx,
@@ -459,6 +469,8 @@ export const AppContextMenu = observer(() => {
       saveImageAsGlobalPreset(ctx2);
     } else if (id === 'save-artist') {
       saveImageToArtistLibrary(ctx2);
+    } else if (id === 'reveal') {
+      revealImageInExplorer(ctx2.path[0]);
     }
   };
   const handleImageItemClick2 = ({ id, props }: any) => {
@@ -480,6 +492,8 @@ export const AppContextMenu = observer(() => {
       saveImageAsGlobalPreset(props.ctx);
     } else if (id === 'save-artist') {
       saveImageToArtistLibrary(props.ctx);
+    } else if (id === 'reveal') {
+      revealImageInExplorer(props.ctx.path?.[0]);
     }
   };
   const exportStyle = async (ctx: StyleContextAlt) => {
@@ -559,6 +573,8 @@ export const AppContextMenu = observer(() => {
       historyDownloadImage(ctx);
     } else if (id === 'delete') {
       historyDeleteImage(ctx);
+    } else if (id === 'reveal') {
+      revealImageInExplorer(ctx.entry.path);
     }
   };
   const handleStyleItemClick = ({ id, props }: any) => {
@@ -645,6 +661,11 @@ export const AppContextMenu = observer(() => {
             클립보드로 이미지 복사
           </Item>
         )}
+        {!isMobile && (
+          <Item id="reveal" onClick={handleImageItemClick2}>
+            파일 탐색기에서 열기
+          </Item>
+        )}
         <Separator />
         <Item id="save-global" onClick={handleImageItemClick2}>
           글로벌 프리셋으로 저장
@@ -671,6 +692,11 @@ export const AppContextMenu = observer(() => {
             클립보드로 이미지 복사
           </Item>
         )}
+        {!isMobile && (
+          <Item id="reveal" onClick={handleImageItemClick}>
+            파일 탐색기에서 열기
+          </Item>
+        )}
         <Separator />
         <Item id="save-global" onClick={handleImageItemClick}>
           글로벌 프리셋으로 저장
@@ -692,6 +718,11 @@ export const AppContextMenu = observer(() => {
         <Item id="download" onClick={handleHistoryItemClick}>
           이미지 다운로드
         </Item>
+        {!isMobile && (
+          <Item id="reveal" onClick={handleHistoryItemClick}>
+            파일 탐색기에서 열기
+          </Item>
+        )}
         <Separator />
         <Item id="delete" onClick={handleHistoryItemClick}>
           해당 이미지 삭제
