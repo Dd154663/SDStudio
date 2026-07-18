@@ -1,5 +1,7 @@
 import { appState } from './AppService';
 import {
+  backend,
+  imageService,
   promptService,
   sessionService,
   taskQueueService,
@@ -15,6 +17,7 @@ import {
   InpaintScene,
   Piece,
   PieceLibrary,
+  Scene,
   Session,
 } from './types';
 
@@ -69,6 +72,84 @@ export const queueScene = async (
         samples,
       );
     }
+  }
+};
+
+// ── 퀵 생성 전용 예약 (퀵 생성 개편, 2026-07-18 합의) ──
+//
+// 프롬프트/프리셋 해석은 promptSession(현재 프로젝트 좌측 패널), 태스크 귀속
+// (출력 폴더·imageMap·통계·image-added 이벤트)은 quickSession(전용 숨김 프로젝트).
+// queueWorkflow 를 그대로 쓰면 세션이 하나로 묶여 출력이 현재 프로젝트에 떨어지므로,
+// 해석 단계(createPrompt — 조각/캐릭터 프리셋이 promptSession 기준)와 귀속 단계
+// (def.handler — getOutputDir(session, scene)이 quickSession 기준)를 분리한다.
+//
+// 바이브/레퍼런스 파일은 실행 시점에 task.params.session(=quickSession) 폴더에서
+// 로드되므로(TaskHandlers), 예약 시점에 현재 프로젝트 폴더에서 전용 프로젝트
+// 폴더로 복사해 둔다(없을 때만 — 인코딩된 바이브도 함께 복사해 재인코딩 방지).
+const copyIfMissing = async (src: string, dest: string) => {
+  try {
+    if (await backend.existFile(dest)) return;
+    if (!(await backend.existFile(src))) return;
+    await backend.copyFile(src, dest);
+  } catch (e) {
+    // 복사 실패 시 예약은 계속 — 실행 시점 로드 실패가 사용자 메시지로 안내된다
+    console.warn('퀵 생성 자산 복사 실패:', src, e);
+  }
+};
+
+const copyPresetAssets = async (
+  from: Session,
+  to: Session,
+  shared: any,
+): Promise<void> => {
+  for (const v of shared.vibes ?? []) {
+    if (!v?.path) continue;
+    await copyIfMissing(
+      imageService.getVibeImagePath(from, v.path),
+      imageService.getVibeImagePath(to, v.path),
+    );
+    await copyIfMissing(
+      imageService.getEncodedVibeImagePath(from, v.path, v.info),
+      imageService.getEncodedVibeImagePath(to, v.path, v.info),
+    );
+  }
+  for (const r of shared.characterReferences ?? []) {
+    if (r?.enabled === false || !r?.path) continue;
+    const name = r.path.split('/').pop()!;
+    await copyIfMissing(
+      imageService.getReferenceDir(from) + '/' + name,
+      imageService.getReferenceDir(to) + '/' + name,
+    );
+  }
+};
+
+export const queueQuickScene = async (
+  promptSession: Session,
+  quickSession: Session,
+  scene: Scene,
+  samples: number,
+) => {
+  const workflow = promptSession.selectedWorkflow!;
+  const [type, preset, shared, def] = promptSession.getCommonSetup(workflow);
+  const prompts = await def.createPrompt!(promptSession, scene, preset, shared);
+  const characterPrompts = await def.createCharacterPrompts!(
+    promptSession,
+    scene,
+    preset,
+    shared,
+  );
+  await copyPresetAssets(promptSession, quickSession, shared);
+  for (let i = 0; i < prompts.length; i++) {
+    await def.handler(
+      quickSession,
+      scene,
+      prompts[i],
+      characterPrompts[i],
+      preset,
+      shared,
+      samples,
+      scene.meta.get(type),
+    );
   }
 };
 

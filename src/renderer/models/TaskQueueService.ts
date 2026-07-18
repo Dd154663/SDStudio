@@ -377,13 +377,16 @@ export class TaskQueueService extends EventTarget {
     this.dispatchProgress();
   }
 
-  removeTasksFromScene(scene: GenericScene) {
+  // session: 씬이 속한 세션 — 생략 시 curSession (퀵 생성처럼 열려 있지 않은
+  // 전용 프로젝트의 씬을 취소할 때만 명시가 필요하다. 호스트 로컬 경로는
+  // 씬 객체 동일성으로 걸러서 세션이 불필요 — 위임 페이로드에만 쓰인다.)
+  removeTasksFromScene(scene: GenericScene, session?: Session) {
     // 보조 창: 씬 단위 취소를 호스트에 위임(그 씬의 예약 전부 — 출처 무관).
     if (!this.isGenerationHost) {
       backend
         .delegateCancel({
           all: false,
-          sessionName: appState.curSession?.name,
+          sessionName: (session ?? appState.curSession)?.name,
           sceneName: scene.name,
           sceneType: scene.type,
         })

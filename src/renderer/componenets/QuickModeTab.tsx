@@ -8,15 +8,21 @@ import {
   imageService,
   sessionService,
   taskQueueService,
+  templateService,
 } from '../models';
 import { appState } from '../models/AppService';
-import { queueScene } from '../models/sceneQueueActions';
+import { queueQuickScene } from '../models/sceneQueueActions';
 import { ContextMenuType, Scene, Session } from '../models/types';
 
 // 퀵 모드 탭 — NAI 공식 웹풍의 즉시 생성 화면.
-// 중앙에 default 씬의 최신 생성 이미지를 크게 표시하고, 생성 버튼 하나로
+// 중앙에 최신 생성 이미지를 크게 표시하고, 생성 버튼 하나로
 // 클릭=즉시 1장 / 롱프레스=자동(반복) / 생성 중 재클릭=취소 동작을 제공한다.
 // 프롬프트/파라미터는 기존 좌측 패널(모바일: 프롬프트 열기)을 그대로 사용.
+//
+// 개편(2026-07-18 합의): 씬/결과물은 현재 프로젝트의 default 씬이 아니라
+// **퀵 생성 전용 숨김 프로젝트**(templateService.ensureQuickGenProject)의
+// default 씬을 쓴다 — 어느 프로젝트에서 접근해도 결과물이 한 폴더에 쌓인다.
+// 프롬프트/프리셋 해석만 현재 프로젝트 기준(queueQuickScene 이 분리 처리).
 
 const DEFAULT_SCENE = 'default';
 
@@ -47,6 +53,8 @@ function ensureDefaultScene(session: Session): Scene {
 
 const QuickModeTab = observer(() => {
   const curSession = appState.curSession!;
+  // 퀵 생성 전용 프로젝트 — 마운트 시 확보(없으면 자동 생성). 로드 전엔 null.
+  const [quickSession, setQuickSession] = useState<Session | null>(null);
   const [latestPath, setLatestPath] = useState<string | undefined>(undefined);
   const [image, setImage] = useState<string | undefined>(undefined);
   const [running, setRunning] = useState(taskQueueService.isRunning());
@@ -57,31 +65,43 @@ const QuickModeTab = observer(() => {
   // 지속 실패(토큰 만료·Anlas 소진 등) 시 실패→재예약→실패의 무한 루프(오류 요청 폭주)를 막는다.
   const producedRef = useRef(false);
 
-  // ── 최신 이미지 경로 유지 (default 씬의 가장 최근 생성작) ──
+  useEffect(() => {
+    let canceled = false;
+    templateService.ensureQuickGenProject().then((s) => {
+      if (!canceled) setQuickSession(s);
+    });
+    return () => {
+      canceled = true;
+    };
+  }, []);
+
+  // ── 최신 이미지 경로 유지 (전용 프로젝트 default 씬의 가장 최근 생성작) ──
   const refreshLatest = useCallback(() => {
-    const scene = curSession.scenes.get(DEFAULT_SCENE);
+    if (!quickSession) return;
+    const scene = quickSession.scenes.get(DEFAULT_SCENE);
     if (!scene) {
       setLatestPath(undefined);
       return;
     }
-    const outputs = gameService.getOutputs(curSession, scene);
+    const outputs = gameService.getOutputs(quickSession, scene);
     setLatestPath(
       outputs.length
-        ? imageService.getOutputDir(curSession, scene) + '/' + outputs[0]
+        ? imageService.getOutputDir(quickSession, scene) + '/' + outputs[0]
         : undefined,
     );
-  }, [curSession]);
+  }, [quickSession]);
 
   useEffect(() => {
+    if (!quickSession) return;
     (async () => {
-      const scene = curSession.scenes.get(DEFAULT_SCENE);
-      if (scene) await imageService.refresh(curSession, scene);
+      const scene = quickSession.scenes.get(DEFAULT_SCENE);
+      if (scene) await imageService.refresh(quickSession, scene);
       refreshLatest();
     })();
     const onAdded = (e: Event) => {
       const d = (e as CustomEvent).detail;
       if (
-        d?.session?.name === curSession.name &&
+        d?.session?.name === quickSession.name &&
         d.sceneType === 'scene' &&
         d.sceneName === DEFAULT_SCENE
       ) {
@@ -89,13 +109,24 @@ const QuickModeTab = observer(() => {
       }
     };
     const onUpdated = () => refreshLatest();
+    // 보조 창 대비: image-added 는 생성 호스트 창의 imageService 에서만 발화하므로,
+    // 위임 완료 브리지의 'complete' 이벤트에서 폴더를 재스캔해 최신작을 반영한다.
+    // (단일 창에서는 image-added 와 중복이지만 무해 — 파일 목록 1회 조회)
+    const onComplete = async () => {
+      const scene = quickSession.scenes.get(DEFAULT_SCENE);
+      if (!scene) return;
+      await imageService.refresh(quickSession, scene);
+      refreshLatest();
+    };
     imageService.addEventListener('image-added', onAdded);
     imageService.addEventListener('updated', onUpdated);
+    taskQueueService.addEventListener('complete', onComplete);
     return () => {
       imageService.removeEventListener('image-added', onAdded);
       imageService.removeEventListener('updated', onUpdated);
+      taskQueueService.removeEventListener('complete', onComplete);
     };
-  }, [curSession, refreshLatest]);
+  }, [quickSession, refreshLatest]);
 
   // 고해상 이미지 로드 (중앙 대형 표시용)
   useEffect(() => {
@@ -119,10 +150,10 @@ const QuickModeTab = observer(() => {
   useEffect(() => {
     const update = () => {
       setRunning(taskQueueService.isRunning());
-      const scene = curSession.scenes.get(DEFAULT_SCENE);
+      const scene = quickSession?.scenes.get(DEFAULT_SCENE);
       setSceneStats(
-        scene
-          ? taskQueueService.statsTasksFromScene(curSession, scene)
+        quickSession && scene
+          ? taskQueueService.statsTasksFromScene(quickSession, scene)
           : { done: 0, total: 0 },
       );
     };
@@ -132,7 +163,7 @@ const QuickModeTab = observer(() => {
     return () => {
       for (const ev of events) taskQueueService.removeEventListener(ev, update);
     };
-  }, [curSession]);
+  }, [quickSession]);
 
   // ── 자동 모드: 큐 자연 완료 시 다음 1장 재예약 (CyclingSessionService 패턴) ──
   useEffect(() => {
@@ -153,8 +184,9 @@ const QuickModeTab = observer(() => {
       producedRef.current = false; // 다음 사이클 판정을 위해 리셋
       (async () => {
         try {
-          const scene = ensureDefaultScene(curSession);
-          await queueScene(curSession, scene, 1);
+          if (!quickSession) throw new Error('퀵 생성 프로젝트가 없습니다');
+          const scene = ensureDefaultScene(quickSession);
+          await queueQuickScene(curSession, quickSession, scene, 1);
           taskQueueService.run();
         } catch (e: any) {
           autoRef.current = false;
@@ -170,12 +202,16 @@ const QuickModeTab = observer(() => {
       taskQueueService.removeEventListener('stop', onStop);
       autoRef.current = false;
     };
-  }, [curSession]);
+  }, [curSession, quickSession]);
 
   // ── 생성 시작/취소 ──
   const guardCycling = () => {
     if (cyclingSessionService.state === 'running') {
       appState.pushMessage('사이클링 생성이 진행 중입니다. 완료 후 사용해주세요');
+      return false;
+    }
+    if (!quickSession) {
+      appState.pushMessage('퀵 생성 프로젝트를 준비하지 못했습니다');
       return false;
     }
     return true;
@@ -184,8 +220,8 @@ const QuickModeTab = observer(() => {
   const startOnce = async () => {
     if (!guardCycling()) return;
     try {
-      const scene = ensureDefaultScene(curSession);
-      await queueScene(curSession, scene, 1);
+      const scene = ensureDefaultScene(quickSession!);
+      await queueQuickScene(curSession, quickSession!, scene, 1);
       taskQueueService.run();
     } catch (e: any) {
       appState.pushMessage(`프롬프트 에러: ${e.message}`);
@@ -204,13 +240,14 @@ const QuickModeTab = observer(() => {
     // 순서 중요: 자동 플래그를 먼저 꺼야 stop 이벤트에서 재예약되지 않음
     autoRef.current = false;
     setAutoOn(false);
-    const scene = curSession.scenes.get(DEFAULT_SCENE);
-    if (scene) taskQueueService.removeTasksFromScene(scene);
+    const scene = quickSession?.scenes.get(DEFAULT_SCENE);
+    if (quickSession && scene)
+      taskQueueService.removeTasksFromScene(scene, quickSession);
     taskQueueService.stop();
   };
 
   // ── 버튼 상태/롱프레스 판정 ──
-  // "퀵 모드 작업 진행 중" = 자동 모드이거나, 큐 실행 중이면서 default 씬 태스크가 남아있을 때
+  // "퀵 모드 작업 진행 중" = 자동 모드이거나, 큐 실행 중이면서 퀵 씬 태스크가 남아있을 때
   // (다른 탭에서 예약한 다른 씬 작업과는 간섭하지 않도록 구분)
   const busy = autoOn || (running && sceneStats.done < sceneStats.total);
 
@@ -251,11 +288,11 @@ const QuickModeTab = observer(() => {
     id: ContextMenuType.HistoryImage,
   });
   const onImageContext = (e: React.MouseEvent) => {
-    if (!latestPath) return;
+    if (!latestPath || !quickSession) return;
     e.preventDefault();
     const entry = {
       id: latestPath,
-      sessionName: curSession.name,
+      sessionName: quickSession.name,
       sceneType: 'scene' as const,
       sceneName: DEFAULT_SCENE,
       filename: latestPath.split('/').pop()!,

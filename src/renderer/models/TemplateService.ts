@@ -53,11 +53,16 @@ export class TemplateService {
   // 씬 템플릿 지정 목록 — "이미지 없는 일반 프로젝트"를 씬 묶음 템플릿으로
   // 지정한 것. 같은 사이드카의 sceneTemplates 필드에 저장(필드 추가 = 호환 안전).
   @observable accessor sceneNames: string[] = [];
-  // 숨김 프로젝트 목록(⊆ sceneNames) — 씬 템플릿 개편(2026-07-18 합의): 템플릿은
+  // 숨김 프로젝트 목록 — 씬 템플릿 개편(2026-07-18 합의): 템플릿은
   // 별도 숨김 프로젝트로 분리해 일반 프로젝트 목록(사이드바·드로어·브라우저·
   // 프로젝트 선택)에서 제외한다. 같은 사이드카의 hiddenSceneTemplates 필드
   // (필드 추가 = 호환 안전 — 구버전은 이 필드를 몰라 숨김만 풀릴 뿐 무해).
+  // 씬 템플릿(⊆ sceneNames) 외에 퀵 생성 전용 프로젝트(quickGenName)도 포함한다.
   @observable accessor hiddenNames: string[] = [];
+  // 퀵 생성 전용 프로젝트 이름 (퀵 생성 개편, 2026-07-18 합의) — 퀵 생성 탭이
+  // 어느 프로젝트에서 열려도 항상 이 숨김 프로젝트의 씬/출력 폴더를 사용한다.
+  // 같은 사이드카의 quickGenProject 필드(필드 추가 = 호환 안전).
+  @observable accessor quickGenName: string | null = null;
   // 폴더 기본 템플릿: 폴더 경로 → 템플릿 지정. 같은 사이드카의 folderTemplates
   // 필드(필드 추가 = 호환 안전 — 구버전은 이 필드를 몰라도 무해).
   @observable accessor folderTemplates: Record<string, IFolderTemplateEntry> =
@@ -96,6 +101,10 @@ export class TemplateService {
               (n: unknown) => typeof n === 'string',
             )
           : [];
+        this.quickGenName =
+          typeof raw?.quickGenProject === 'string' && raw.quickGenProject
+            ? raw.quickGenProject
+            : null;
         const ft: Record<string, IFolderTemplateEntry> = {};
         if (raw?.folderTemplates && typeof raw.folderTemplates === 'object') {
           for (const [folder, entry] of Object.entries(raw.folderTemplates)) {
@@ -136,6 +145,8 @@ export class TemplateService {
         hiddenSceneTemplates: this.hiddenNames,
         folderTemplates: this.folderTemplates,
         templateApplications: this.templateApplications,
+        // null 이면 JSON.stringify 가 필드를 남기므로 undefined 로 생략
+        quickGenProject: this.quickGenName ?? undefined,
       }),
     );
   }
@@ -498,7 +509,9 @@ export class TemplateService {
     if (!this.loaded) return;
     // 적용 기록 키 이관 (씬 템플릿 지정과 함께 편승)
     await this.renameProjectApplications(oldName, newName);
-    if (!this.isSceneTemplate(oldName)) return;
+    // 퀵 생성 전용 프로젝트도 이관 대상 (sceneNames 밖이라 별도 판정)
+    const isQuick = this.quickGenName === oldName;
+    if (!this.isSceneTemplate(oldName) && !isQuick) return;
     runInAction(() => {
       this.sceneNames = this.sceneNames.map((n) =>
         n === oldName ? newName : n,
@@ -507,6 +520,7 @@ export class TemplateService {
       this.hiddenNames = this.hiddenNames.map((n) =>
         n === oldName ? newName : n,
       );
+      if (isQuick) this.quickGenName = newName;
     });
     await this.save();
   }
@@ -517,10 +531,13 @@ export class TemplateService {
     // 적용 기록 정리 (하드 삭제 시점 — 씬 템플릿 지정과 동일 취지: 소프트
     // 삭제는 유지해 복원 시 되살아나고, 하드 삭제에서만 제거)
     await this.removeApplicationsOfProject(name);
-    if (!this.isSceneTemplate(name)) return;
+    const isQuick = this.quickGenName === name;
+    if (!this.isSceneTemplate(name) && !isQuick) return;
     runInAction(() => {
       this.sceneNames = this.sceneNames.filter((n) => n !== name);
       this.hiddenNames = this.hiddenNames.filter((n) => n !== name);
+      // 퀵 전용 프로젝트 하드 삭제 → 지정 해제 (다음 퀵 생성 시 새로 만든다)
+      if (isQuick) this.quickGenName = null;
     });
     await this.save();
   }
@@ -744,6 +761,74 @@ export class TemplateService {
     if (skipped) parts.push(`건너뜀 ${skipped}개`);
     appState.pushMessage(`씬 템플릿 가져오기 완료 — ${parts.join(', ')}`);
     return importedNames;
+  }
+
+  // ===== 퀵 생성 전용 프로젝트 (퀵 생성 개편, 2026-07-18 합의) =====
+  //
+  // 퀵 생성 탭은 종전에 "열려 있는 프로젝트의 default 씬"을 재활용해 결과물이
+  // 프로젝트마다 흩어졌다. 개편 후에는 전용 숨김 프로젝트 1개를 지정해 두고
+  // 어느 프로젝트에서 접근해도 항상 이 프로젝트의 씬/출력 폴더(outs/<전용>/)를
+  // 쓴다. 프롬프트/프리셋은 종전대로 현재 프로젝트 것을 사용(사용자 합의) —
+  // 예약 경로는 sceneQueueActions.queueQuickScene 참조.
+  // 씬 템플릿(sceneNames)에는 넣지 않아 템플릿 관리 모달에는 나타나지 않는다.
+
+  // 전용 프로젝트를 확보해 반환한다 — 없거나 삭제됐으면 새로 만든다.
+  async ensureQuickGenProject(): Promise<Session | null> {
+    await this.ensureLoaded();
+    if (!this.loaded) return null;
+    // 미지정이면 사이드카를 새로 읽어 다른 창이 만든 지정을 먼저 흡수한다
+    // (templates.json 은 창 간 브로드캐스트 미대상 — 중복 생성 방지)
+    if (!this.quickGenName) {
+      try {
+        const raw = JSON.parse(await backend.readFile(SIDECAR_PATH));
+        if (typeof raw?.quickGenProject === 'string' && raw.quickGenProject) {
+          runInAction(() => {
+            this.quickGenName = raw.quickGenProject;
+          });
+        }
+      } catch (e) {}
+    }
+    const cur = this.quickGenName;
+    if (cur && sessionService.list().includes(cur)) {
+      const s = await sessionService.get(cur);
+      if (s) {
+        // 자가 치유: 어떤 이유로 숨김이 풀렸으면 다시 숨긴다
+        if (!this.hiddenNames.includes(cur)) {
+          runInAction(() => {
+            this.hiddenNames = [...this.hiddenNames, cur];
+          });
+          await this.save();
+        }
+        return s;
+      }
+    }
+    // 새로 생성 — 이름 충돌 시 번호 부여
+    let name = '퀵 생성';
+    let i = 2;
+    while (sessionService.list().includes(name)) {
+      name = `퀵 생성 (${i})`;
+      i++;
+    }
+    try {
+      await sessionService.add(name);
+    } catch (e: any) {
+      getAppState().pushMessage(
+        e.message || '퀵 생성 전용 프로젝트 생성에 실패했습니다.',
+      );
+      return null;
+    }
+    runInAction(() => {
+      const old = this.quickGenName;
+      // 소프트 삭제된 옛 전용 프로젝트가 복원되면 접근 불가 숨김 고아가 되므로
+      // 재지정 시점에 옛 이름의 숨김을 함께 푼다(복원 시 일반 프로젝트로 보임).
+      this.hiddenNames = [
+        ...this.hiddenNames.filter((n) => n !== old && n !== name),
+        name,
+      ];
+      this.quickGenName = name;
+    });
+    await this.save();
+    return (await sessionService.get(name)) ?? null;
   }
 
 }

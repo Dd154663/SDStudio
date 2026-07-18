@@ -21,10 +21,18 @@ const mockDeleteTemplate = jest.fn(async (id: string) => {
   delete templateEntities[id];
 });
 
+// 프로젝트 목록 mock (퀵 생성 전용 프로젝트 생성 검증용)
+const mockProjects: string[] = [];
 jest.mock('..', () => ({
   backend,
   sessionService: {
-    list: () => [] as string[],
+    list: () => [...mockProjects],
+    add: jest.fn(async (name: string) => {
+      mockProjects.push(name);
+    }),
+    get: jest.fn(async (name: string) =>
+      mockProjects.includes(name) ? { name } : null,
+    ),
   },
   trashService: {},
   projectTemplateService: {
@@ -56,6 +64,7 @@ const lastSaved = () => JSON.parse(writes[writes.length - 1].data);
 beforeEach(() => {
   for (const k of Object.keys(files)) delete files[k];
   writes.length = 0;
+  mockProjects.length = 0;
   templateEntities = {
     tplA: { id: 'tplA', name: '템플릿A' },
     tplB: { id: 'tplB', name: '템플릿B' },
@@ -275,5 +284,96 @@ describe('숨김 씬 템플릿 — hiddenSceneTemplates', () => {
     expect(svc.isSceneTemplate('숨김템플릿')).toBe(false);
     expect(svc.isHiddenProject('숨김템플릿')).toBe(false);
     expect(lastSaved().hiddenSceneTemplates).toEqual([]);
+  });
+});
+
+// 퀵 생성 전용 프로젝트 (퀵 생성 개편, 2026-07-18 합의):
+//  - quickGenProject 필드 저장/로드 (필드 추가 = 호환 안전)
+//  - ensureQuickGenProject: 지정 재사용 / 없으면 생성(+이름 충돌 번호) / 숨김 지정
+//  - 지정 프로젝트 소실 시 재생성 + 옛 이름 숨김 해제(복원 고아 방지)
+//  - rename/remove 캐스케이드 (sceneNames 밖이라 별도 판정 경로)
+describe('퀵 생성 전용 프로젝트 — quickGenProject', () => {
+  it('ensureQuickGenProject: 없으면 생성 + 숨김 + 저장', async () => {
+    const svc = new TemplateService();
+    const s = await svc.ensureQuickGenProject();
+    expect(s).toEqual({ name: '퀵 생성' });
+    expect(svc.quickGenName).toBe('퀵 생성');
+    expect(svc.isHiddenProject('퀵 생성')).toBe(true);
+    expect(lastSaved().quickGenProject).toBe('퀵 생성');
+    // 씬 템플릿 목록에는 나타나지 않는다
+    expect(svc.isSceneTemplate('퀵 생성')).toBe(false);
+  });
+
+  it('이름 충돌 시 번호 부여', async () => {
+    mockProjects.push('퀵 생성');
+    const svc = new TemplateService();
+    const s = await svc.ensureQuickGenProject();
+    expect(s).toEqual({ name: '퀵 생성 (2)' });
+    expect(svc.quickGenName).toBe('퀵 생성 (2)');
+  });
+
+  it('지정된 프로젝트가 실존하면 재사용(새로 만들지 않음) + 숨김 자가 치유', async () => {
+    mockProjects.push('내퀵');
+    files['templates.json'] = JSON.stringify({
+      version: 1,
+      sceneTemplates: [],
+      hiddenSceneTemplates: [],
+      folderTemplates: {},
+      quickGenProject: '내퀵',
+    });
+    const svc = new TemplateService();
+    const s = await svc.ensureQuickGenProject();
+    expect(s).toEqual({ name: '내퀵' });
+    expect(mockProjects).toEqual(['내퀵']);
+    expect(svc.isHiddenProject('내퀵')).toBe(true);
+  });
+
+  it('지정 프로젝트 소실 → 재생성 + 옛 이름 숨김 해제', async () => {
+    files['templates.json'] = JSON.stringify({
+      version: 1,
+      sceneTemplates: [],
+      hiddenSceneTemplates: ['옛퀵'],
+      folderTemplates: {},
+      quickGenProject: '옛퀵',
+    });
+    const svc = new TemplateService();
+    const s = await svc.ensureQuickGenProject();
+    expect(s).toEqual({ name: '퀵 생성' });
+    expect(svc.quickGenName).toBe('퀵 생성');
+    expect(svc.isHiddenProject('옛퀵')).toBe(false);
+    expect(svc.isHiddenProject('퀵 생성')).toBe(true);
+  });
+
+  it('renameProject: quickGenName + 숨김 이관 (씬 템플릿 아님)', async () => {
+    files['templates.json'] = JSON.stringify({
+      version: 1,
+      sceneTemplates: [],
+      hiddenSceneTemplates: ['퀵 생성'],
+      folderTemplates: {},
+      quickGenProject: '퀵 생성',
+    });
+    const svc = new TemplateService();
+    await svc.ensureLoaded();
+    await svc.renameProject('퀵 생성', '새퀵');
+    expect(svc.quickGenName).toBe('새퀵');
+    expect(svc.isHiddenProject('새퀵')).toBe(true);
+    expect(svc.isHiddenProject('퀵 생성')).toBe(false);
+    expect(lastSaved().quickGenProject).toBe('새퀵');
+  });
+
+  it('removeProject: 지정 해제 + 숨김 정리', async () => {
+    files['templates.json'] = JSON.stringify({
+      version: 1,
+      sceneTemplates: [],
+      hiddenSceneTemplates: ['퀵 생성'],
+      folderTemplates: {},
+      quickGenProject: '퀵 생성',
+    });
+    const svc = new TemplateService();
+    await svc.ensureLoaded();
+    await svc.removeProject('퀵 생성');
+    expect(svc.quickGenName).toBeNull();
+    expect(svc.isHiddenProject('퀵 생성')).toBe(false);
+    expect(lastSaved().quickGenProject).toBeUndefined();
   });
 });
