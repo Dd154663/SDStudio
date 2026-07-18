@@ -214,6 +214,9 @@ export class AppState {
   // 레거시 작업모드(W3): true면 이지모드·이미지 수정 작업모드와 선택 드롭다운을 다시 표시.
   // false(기본)면 작업모드를 SDImageGen 하나로 고정하고 드롭다운 숨김(데이터 비파괴 — 세션의 이지모드 프리셋은 보존).
   @observable accessor legacyWorkflowMode: boolean = false;
+  // 씬 툴바 레거시 텍스트 버튼(config.sceneToolbarLegacyText 미러): true면 PC 씬 툴바를
+  // 예전 텍스트 버튼으로 표시. false(기본)면 아이콘+툴팁. 모바일 아이콘 축약과는 무관.
+  @observable accessor sceneToolbarLegacyText: boolean = false;
   // 조합 에디터 뷰 모드(config.uiCombinationView 미러). 'card'=카드 격자 / 'list'=컴팩트 목록.
   @observable accessor uiCombinationView: 'card' | 'list' = 'card';
 

@@ -2016,12 +2016,20 @@ const QueueControl = observer(
     // 구성·순서는 TOOLBAR_VIEW_MAIN 의 'scene' 영역(models/uiLayout.ts)이 결정한다.
     // 모바일은 텍스트 대신 아이콘으로 폭을 줄인다(줄 밀림 방지). 단 클래식 툴바
     // 토글이 켜지면 예전처럼 텍스트로 표시(mobileIcon=false).
+    // mobileIcon = 모바일 행 레이아웃(가로 스크롤·sticky ⋯)까지 좌우하므로 별도 유지.
     const mobileIcon = isMobile && !appState.uiToolbar.classic;
+    // 버튼 내용의 아이콘화 여부 — PC 도 기본 아이콘. 텍스트 복원은 개인 설정
+    // "씬 툴바 텍스트 버튼(레거시)" 또는 클래식 툴바 토글이 담당.
+    const iconMode =
+      mobileIcon ||
+      (!isMobile &&
+        !appState.uiToolbar.classic &&
+        !appState.sceneToolbarLegacyText);
     const toolbarButtons: Record<string, ReactNode> = {
       'add-scene': (
         <Tooltip content="씬 추가">
           <button className="round-button back-sky" onClick={addScene}>
-            {mobileIcon ? <FaPlus size={18} /> : '씬 추가'}
+            {iconMode ? <FaPlus size={18} /> : '씬 추가'}
           </button>
         </Tooltip>
       ),
@@ -2035,7 +2043,7 @@ const QueueControl = observer(
                 : addAllToQueue
             }
           >
-            {mobileIcon ? (
+            {iconMode ? (
               // 예약제거(달력✕, 씬 카드)와 짝을 이루는 달력+ 아이콘. 선택 중엔 수 병기
               <>
                 <FaRegCalendarPlus size={18} />
@@ -2059,7 +2067,7 @@ const QueueControl = observer(
             className="round-button back-gray"
             onClick={() => appState.exportPackage(type)}
           >
-            {mobileIcon ? (
+            {iconMode ? (
               <FaFileExport size={18} />
             ) : (
               <>
@@ -2071,13 +2079,22 @@ const QueueControl = observer(
         </Tooltip>
       ),
       'quick-export': (
-        <button
-          className="round-button back-sky"
-          onClick={() => appState.quickExportPackage(type)}
-          title="기본 프리셋으로 한 번에 내보내기"
-        >
-          ⚡{isMobile ? '' : ' 빠른 export'}
-        </button>
+        <Tooltip content="기본 프리셋으로 한 번에 내보내기">
+          <button
+            className="round-button back-sky"
+            onClick={() => appState.quickExportPackage(type)}
+          >
+            {/* 아이콘 모드 = 번개+내보내기 아이콘 조합(2026-07-18 사용자) */}
+            {iconMode ? (
+              <>
+                ⚡
+                <FaFileExport size={18} className="ml-0.5" />
+              </>
+            ) : (
+              <>⚡{isMobile ? '' : ' 빠른 export'}</>
+            )}
+          </button>
+        </Tooltip>
       ),
       'batch-process': (
         <Tooltip content="대량 작업">
@@ -2087,6 +2104,7 @@ const QueueControl = observer(
               appState.openBatchProcessMenu(type, setSceneSelector);
             }}
           >
+            {/* PC 는 아이콘 모드에서도 텍스트 유지(2026-07-18 사용자) — 모바일만 아이콘 */}
             {mobileIcon ? <FaTasks size={18} /> : '대량 작업'}
           </button>
         </Tooltip>
@@ -2121,16 +2139,16 @@ const QueueControl = observer(
               appState.sceneSelectionMode = false;
             }}
           >
-            {mobileIcon ? (
-              // 아이콘 + 선택 수. 활성(선택 모드) 상태는 배경색(back-sky)으로 표시
+            {iconMode ? (
+              // 아이콘 + 선택 수. 활성(선택 중) 상태는 배경색(back-sky)으로 표시.
+              // PC 는 선택 모드 플래그 없이도 선택이 생기므로 선택 수만으로 병기.
               <>
                 <FaCheckSquare size={18} />
-                {appState.sceneSelectionMode &&
-                  appState.selectedScenes.size > 0 && (
-                    <span className="ml-1 text-xs">
-                      {appState.selectedScenes.size}
-                    </span>
-                  )}
+                {appState.selectedScenes.size > 0 && (
+                  <span className="ml-1 text-xs">
+                    {appState.selectedScenes.size}
+                  </span>
+                )}
               </>
             ) : isMobile ? (
               appState.sceneSelectionMode
@@ -2144,6 +2162,7 @@ const QueueControl = observer(
           </button>
         </Tooltip>
       ),
+      // 해상도 변경은 아이콘 모드에서도 텍스트 유지(2026-07-18 사용자)
       'change-resolution': (
         <button
           className="round-button back-gray"
@@ -2155,15 +2174,17 @@ const QueueControl = observer(
         </button>
       ),
       'webp-convert': !isMobile && (
-        <button
-          className="round-button back-gray"
-          onClick={() => {
-            appState.openConvertToWebpMenu(type, setSceneSelector);
-          }}
-          title="선택 씬의 PNG를 WebP로 변환(용량 절감, 메타데이터 보존)"
-        >
-          WebP 변환
-        </button>
+        <Tooltip content="선택 씬의 PNG를 WebP로 변환(용량 절감, 메타데이터 보존)">
+          <button
+            className="round-button back-gray"
+            onClick={() => {
+              appState.openConvertToWebpMenu(type, setSceneSelector);
+            }}
+          >
+            {/* 아이콘 모드 = 'WebP' 단축 표기(2026-07-18 사용자) */}
+            {iconMode ? 'WebP' : 'WebP 변환'}
+          </button>
+        </Tooltip>
       ),
       'import-image': (
         <Tooltip content="이미지 프롬프트 추출">
@@ -2278,7 +2299,12 @@ const QueueControl = observer(
     };
     // portable 공유 버튼(find-replace·empty-image-trash 등) — 크로스 영역 렌더용.
     // variant='scene': 타 영역발 버튼도 씬 툴바 표준 스타일(배경형)로 적응 렌더.
-    const shared = portableToolbarButtons({ mobileIcon, variant: 'scene' });
+    // iconOnly=iconMode: 텍스트 포함 버튼(piece-editor)도 아이콘 모드에선 아이콘+툴팁.
+    const shared = portableToolbarButtons({
+      mobileIcon: iconMode,
+      variant: 'scene',
+      iconOnly: iconMode,
+    });
     const buttonNode = (id: string): ReactNode =>
       toolbarButtons[id] ?? shared[id];
 

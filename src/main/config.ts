@@ -49,6 +49,9 @@ export interface Config {
   /** 켜면 이지모드·이미지 수정 작업모드와 선택 드롭다운을 다시 표시(기존 사용자용).
    *  기본 false = 작업모드를 "이미지 생성" 하나로 고정하고 드롭다운 숨김. 데이터는 비파괴. */
   legacyWorkflowMode?: boolean;
+  /** 켜면 PC 씬 툴바 버튼을 예전처럼 텍스트로 표시(레거시). 기본 false = 아이콘+툴팁.
+   *  모바일 아이콘 축약에는 영향 없음(모바일 텍스트 복원은 클래식 툴바가 담당). */
+  sceneToolbarLegacyText?: boolean;
   /** 조합 에디터 뷰 모드(개인 지속). 'card'=기존 카드 격자 / 'list'=컴팩트 목록.
    *  미설정 = 데스크톱 card·모바일 list(App 로드 시 결정). 옵셔널 = 하위호환. */
   uiCombinationView?: 'card' | 'list';

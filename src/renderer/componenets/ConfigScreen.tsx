@@ -803,6 +803,7 @@ const PersonalTab = ({
   legacyProjectMode, setLegacyProjectMode,
   legacySceneEditor, setLegacySceneEditor,
   legacyWorkflowMode, setLegacyWorkflowMode,
+  sceneToolbarLegacyText, setSceneToolbarLegacyText,
   uiFont, setUiFont,
   uiClassicFinish, setUiClassicFinish,
   allowDuplicateProjectOpen, setAllowDuplicateProjectOpen,
@@ -887,6 +888,17 @@ const PersonalTab = ({
       </div>
       <p className="text-xs text-faint mt-1 ml-6">
         켜면 이지모드·이미지 수정 작업모드와 작업모드 선택 드롭다운을 다시 표시합니다. 끄면(기본) 작업모드가 "이미지 생성" 하나로 고정되고 드롭다운이 숨겨집니다. 기존 이지모드 사전설정 데이터는 삭제되지 않습니다.
+      </p>
+    </div>
+    <hr className="line-color" />
+    <div>
+      <div className="flex items-center gap-2">
+        <input type="checkbox" id="cfgSceneToolbarText" checked={sceneToolbarLegacyText}
+          onChange={(e) => setSceneToolbarLegacyText(e.target.checked)} />
+        <label htmlFor="cfgSceneToolbarText" className="text-sm gray-label">씬 툴바 텍스트 버튼 사용 (레거시)</label>
+      </div>
+      <p className="text-xs text-faint mt-1 ml-6">
+        켜면 PC 씬 툴바 버튼을 예전처럼 텍스트로 표시합니다. 끄면(기본) 아이콘으로 표시되고 이름은 마우스를 올리면 뜹니다. 모바일에는 영향이 없습니다.
       </p>
     </div>
     <hr className="line-color" />
@@ -1891,6 +1903,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [legacyProjectMode, setLegacyProjectMode] = useState(false);
   const [legacySceneEditor, setLegacySceneEditor] = useState(false);
   const [legacyWorkflowMode, setLegacyWorkflowMode] = useState(false);
+  const [sceneToolbarLegacyText, setSceneToolbarLegacyText] = useState(false);
   const [storageWriteGuard, setStorageWriteGuard] = useState(true);
   const [fullWordAc, setFullWordAc] = useState(appState.fullWordAutoComplete);
   const [trueDark, setTrueDark] = useState(false);
@@ -1929,6 +1942,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setLegacyProjectMode(config.legacyProjectMode ?? false);
       setLegacySceneEditor(config.legacySceneEditor ?? false);
       setLegacyWorkflowMode(config.legacyWorkflowMode ?? false);
+      setSceneToolbarLegacyText(config.sceneToolbarLegacyText ?? false);
       setStorageWriteGuard(config.storageWriteGuard ?? true);
       setTrueDark(config.trueDark ?? false);
       setExportConcurrency(config.exportConcurrency ?? (isMobile ? 2 : 4));
@@ -2063,6 +2077,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       legacyProjectMode: legacyProjectMode,
       legacySceneEditor: legacySceneEditor,
       legacyWorkflowMode: legacyWorkflowMode,
+      sceneToolbarLegacyText: sceneToolbarLegacyText,
       storageWriteGuard: storageWriteGuard,
       exportConcurrency: exportConcurrency,
       defaultExportFolder: defaultExportFolder || undefined,
@@ -2082,6 +2097,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.legacyProjectMode = legacyProjectMode;
     appState.legacySceneEditor = legacySceneEditor;
     appState.legacyWorkflowMode = legacyWorkflowMode;
+    appState.sceneToolbarLegacyText = sceneToolbarLegacyText;
     appState.uiToolbar = uiToolbar;
     appState.uiLayoutTemplate = uiLayoutTemplate;
     appState.uiFloatViewMode = uiFloatViewMode;
@@ -2120,7 +2136,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'system':
         return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency }} />;
       case 'personal':
-        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, legacySceneEditor, setLegacySceneEditor, legacyWorkflowMode, setLegacyWorkflowMode, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish, allowDuplicateProjectOpen, setAllowDuplicateProjectOpen }} />;
+        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, legacySceneEditor, setLegacySceneEditor, legacyWorkflowMode, setLegacyWorkflowMode, sceneToolbarLegacyText, setSceneToolbarLegacyText, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish, allowDuplicateProjectOpen, setAllowDuplicateProjectOpen }} />;
       case 'customization':
         return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark }} />;
       case 'toolbar':
@@ -2151,6 +2167,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       legacyProjectMode !== (savedCfg.legacyProjectMode ?? false) ||
       legacySceneEditor !== (savedCfg.legacySceneEditor ?? false) ||
       legacyWorkflowMode !== (savedCfg.legacyWorkflowMode ?? false) ||
+      sceneToolbarLegacyText !== (savedCfg.sceneToolbarLegacyText ?? false) ||
       storageWriteGuard !== (savedCfg.storageWriteGuard ?? true) ||
       exportConcurrency !== (savedCfg.exportConcurrency ?? (isMobile ? 2 : 4)) ||
       (defaultExportFolder || '') !== (savedCfg.defaultExportFolder ?? '') ||
