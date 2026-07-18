@@ -101,10 +101,15 @@ export const QuickMenu = observer(() => {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [open]);
 
-  // 전체화면 오버레이(뷰어·환경설정 등 FloatView)·편집 모드 중에는 진입 버튼 숨김
-  // (버튼 z 가 FloatView 보다 높아 떠 보이는 부자연 방지). 열림 상태는 유지.
+  // 진입 버튼 표시 조건: 옵트인 토글(quickMenuButton, 기본 숨김 — 2026-07-18 피드백)
+  // + 전체화면 오버레이(뷰어·환경설정 등 FloatView)·편집 모드 중에는 숨김
+  // (버튼 z 가 FloatView 보다 높아 떠 보이는 부자연 방지). 열림 상태는 유지 —
+  // 버튼이 꺼져 있어도 PC 단축키(Ctrl+K)로 오버레이는 계속 열 수 있다.
   const fabHidden =
-    appState.floatViewCount > 0 || appState.configScreenOpen || appState.editMode;
+    !appState.quickMenuButton ||
+    appState.floatViewCount > 0 ||
+    appState.configScreenOpen ||
+    appState.editMode;
 
   const actions = resolveQuickMenu(appState.quickMenu, isMobile);
 

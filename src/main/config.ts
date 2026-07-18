@@ -55,6 +55,9 @@ export interface Config {
   /** 퀵 메뉴 구성(전역 액션 id 목록, globalActions 참조). 미설정 = 추천 기본 프리셋.
    *  stale id 는 해석 시 조용히 무시(uiToolbar 선례). */
   quickMenu?: string[];
+  /** 퀵 메뉴 ⚡ 플로팅 버튼 표시(옵트인, 2026-07-18 피드백 — 기본 숨김으로 전환).
+   *  기본 false = 버튼 숨김. PC 단축키(기본 Ctrl+K)는 버튼과 무관하게 항상 동작. */
+  quickMenuButton?: boolean;
   /** 사용자 커스텀 테마 프리셋(릴리스 준비 ③) — 현재 색 구성(UiThemeConfig)+기본
    *  모드(다크/화이트/트루다크) 스냅샷. 칩 클릭 = 저장 당시 모습 그대로 복원(템플릿
    *  칩과 동일 UX). 옵셔널 = 하위호환. */

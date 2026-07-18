@@ -1716,9 +1716,13 @@ const CustomizationTab = ({
 const QuickMenuEditor = ({
   value,
   onChange,
+  showButton,
+  setShowButton,
 }: {
   value: string[] | undefined;
   onChange: (v: string[] | undefined) => void;
+  showButton: boolean;
+  setShowButton: (v: boolean) => void;
 }) => {
   const list = value ?? DEFAULT_QUICK_MENU;
   const included = new Set(list);
@@ -1742,6 +1746,24 @@ const QuickMenuEditor = ({
       <p className="text-xs text-faint mb-2">
         우하단 ⚡ 버튼{isMobile ? '' : ' 또는 단축키(기본 Ctrl+K)'}로 여는 퀵
         메뉴에 담을 기능을 고릅니다. 위에서부터 나열 순서대로 표시됩니다.
+      </p>
+      {/* ⚡ 플로팅 버튼 옵트인 (2026-07-18 피드백 — 기본 숨김) */}
+      <div className="flex items-center gap-2 mb-1">
+        <input
+          type="checkbox"
+          id="cfgQuickMenuButton"
+          checked={showButton}
+          onChange={(e) => setShowButton(e.target.checked)}
+        />
+        <label htmlFor="cfgQuickMenuButton" className="text-sm gray-label">
+          ⚡ 플로팅 버튼 표시
+        </label>
+      </div>
+      <p className="text-xs text-faint mb-2 ml-6">
+        끄면(기본) 화면의 퀵 메뉴 버튼이 숨겨집니다.
+        {isMobile
+          ? ' 모바일에서는 버튼이 유일한 진입점이므로 사용하려면 켜세요.'
+          : ' 버튼 없이도 단축키(기본 Ctrl+K)로 계속 열 수 있습니다.'}
       </p>
       <div className="rounded-md border line-color divide-y divide-[var(--c-line)] mb-2">
         {list.filter((id) => candidates.some((a) => a.id === id)).length === 0 && (
@@ -1787,7 +1809,7 @@ const QuickMenuEditor = ({
   );
 };
 
-const ToolbarTab = ({ uiToolbar, setUiToolbar, quickMenu, setQuickMenu }: any) => (
+const ToolbarTab = ({ uiToolbar, setUiToolbar, quickMenu, setQuickMenu, quickMenuButton, setQuickMenuButton }: any) => (
   <div className="space-y-5">
     <ToolbarLayoutEditor
       value={uiToolbar}
@@ -1799,7 +1821,7 @@ const ToolbarTab = ({ uiToolbar, setUiToolbar, quickMenu, setQuickMenu }: any) =
       mobileMode={isMobile}
     />
     <hr className="line-color" />
-    <QuickMenuEditor value={quickMenu} onChange={setQuickMenu} />
+    <QuickMenuEditor value={quickMenu} onChange={setQuickMenu} showButton={quickMenuButton} setShowButton={setQuickMenuButton} />
   </div>
 );
 
@@ -1983,7 +2005,7 @@ const floatViewModes: {
   },
 ];
 
-const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbar, setUiToolbar, quickMenu, setQuickMenu, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
+const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbar, setUiToolbar, quickMenu, setQuickMenu, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
   <div className="space-y-5">
     <div>
       <label className="block text-sm gray-label mb-1">화면 배치</label>
@@ -2211,7 +2233,7 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, setModernExitReset, 
             배치로 되돌립니다. (저장 시 반영)
           </p>
         </div>
-        <QuickMenuEditor value={quickMenu} onChange={setQuickMenu} />
+        <QuickMenuEditor value={quickMenu} onChange={setQuickMenu} showButton={quickMenuButton} setShowButton={setQuickMenuButton} />
       </div>
     )}
 
@@ -2255,6 +2277,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   >([]);
   const [uiToolbar, setUiToolbar] = useState<UiToolbarConfig>({});
   const [quickMenuCfg, setQuickMenuCfg] = useState<string[] | undefined>(undefined);
+  const [quickMenuButton, setQuickMenuButton] = useState(false);
   const [uiLayoutTemplate, setUiLayoutTemplate] = useState('classic');
   const [uiPresetIconRow, setUiPresetIconRow] = useState(false);
   // 모던 해제 확인(② A 2차 피드백 후속 1): 모던 → 다른 템플릿 전환 시 "배치 초기화"에
@@ -2292,6 +2315,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setUiThemePresets(config.uiThemePresets ?? []);
       setUiToolbar(config.uiToolbar ?? {});
       setQuickMenuCfg(config.quickMenu);
+      setQuickMenuButton(config.quickMenuButton ?? false);
       setUiLayoutTemplate(config.uiLayoutTemplate ?? 'classic');
       setUiPresetIconRow(config.uiPresetIconRow ?? false);
       setUiFloatViewMode(config.uiFloatViewMode ?? 'cover');
@@ -2429,6 +2453,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiThemePresets: uiThemePresets.length > 0 ? uiThemePresets : undefined,
       uiToolbar: uiToolbar,
       quickMenu: quickMenuCfg,
+      quickMenuButton: quickMenuButton,
       uiLayoutTemplate: uiLayoutTemplate,
       uiPresetIconRow: uiPresetIconRow,
       uiFloatViewMode: uiFloatViewMode,
@@ -2472,6 +2497,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.sceneToolbarLegacyText = sceneToolbarLegacyText;
     appState.uiToolbar = uiToolbar;
     appState.quickMenu = quickMenuCfg;
+    appState.quickMenuButton = quickMenuButton;
     appState.uiLayoutTemplate = uiLayoutTemplate;
     appState.uiPresetIconRow = uiPresetIconRow;
     appState.uiFloatViewMode = uiFloatViewMode;
@@ -2540,9 +2566,9 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'customization':
         return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark, uiThemePresets, setUiThemePresets }} />;
       case 'toolbar':
-        return <ToolbarTab {...{ uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg }} />;
+        return <ToolbarTab {...{ uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton }} />;
       case 'layout':
-        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }} />;
+        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':
@@ -2578,6 +2604,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       JSON.stringify(uiThemePresets) !== JSON.stringify(savedCfg.uiThemePresets ?? []) ||
       JSON.stringify(uiToolbar) !== JSON.stringify(savedCfg.uiToolbar ?? {}) ||
       JSON.stringify(quickMenuCfg ?? null) !== JSON.stringify(savedCfg.quickMenu ?? null) ||
+      quickMenuButton !== (savedCfg.quickMenuButton ?? false) ||
       uiLayoutTemplate !== (savedCfg.uiLayoutTemplate ?? 'classic') ||
       uiPresetIconRow !== (savedCfg.uiPresetIconRow ?? false) ||
       uiFloatViewMode !== (savedCfg.uiFloatViewMode ?? 'cover') ||

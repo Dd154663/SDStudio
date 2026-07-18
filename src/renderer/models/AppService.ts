@@ -383,6 +383,8 @@ export class AppState {
   // 퀵 메뉴(P3) — 오버레이 열림 상태 + 구성(config.quickMenu 미러, undefined=추천 기본).
   @observable accessor quickMenuOpen: boolean = false;
   @observable accessor quickMenu: string[] | undefined = undefined;
+  // ⚡ 플로팅 버튼 표시(config.quickMenuButton 미러) — 기본 false=숨김(옵트인).
+  @observable accessor quickMenuButton: boolean = false;
 
   // 메인 탭 문맥('scene'|'inpaint'|'other') — 퀵 메뉴의 export 계열 액션이 활성 탭을
   // 따라가기 위한 추적(D3). App.tsx 탭 onClick 이 갱신, 세션 전환 시 'scene' 리셋.
