@@ -4,7 +4,7 @@ import { DropdownSelect, Option } from './UtilComponents';
 import { FaEllipsisH, FaTrash, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown, FaEye } from 'react-icons/fa';
 import { pushRecentProject } from './ProjectBrowser';
 import Tooltip from './Tooltip';
-import { sessionService, imageService, backend, zipService, trashService, isMobile } from '../models';
+import { sessionService, imageService, backend, zipService, trashService, isMobile, templateService } from '../models';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
 import { TOOLBAR_VIEW_MAIN, resolveToolbarView } from '../models/uiLayout';
@@ -200,7 +200,10 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
     useToolbarRowDrop('project', 'project');
   useEffect(() => {
     const onListUpdated = () => {
-      setSessionNames(sessionService.list());
+      // 숨김 씬 템플릿 제외 (씬 템플릿 개편 2026-07-18)
+      setSessionNames(
+        templateService.filterVisibleProjects(sessionService.list()),
+      );
     };
     onListUpdated();
     sessionService.addEventListener('listupdated', onListUpdated);

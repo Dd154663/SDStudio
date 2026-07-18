@@ -11,6 +11,7 @@ import {
   projectSizeService,
   sessionService,
   taskQueueService,
+  templateService,
   trashService,
   workFlowService,
   zipService,
@@ -533,7 +534,10 @@ export class BatchProcessService {
           }
           if (value === 'copyToProject') {
             const curName = appState.curSession!.name;
-            const allProjects = sessionService.list().filter((n) => n !== curName);
+            // 숨김 씬 템플릿 제외 (씬 템플릿 개편 2026-07-18)
+            const allProjects = templateService
+              .filterVisibleProjects(sessionService.list())
+              .filter((n) => n !== curName);
             if (allProjects.length === 0) {
               appState.pushMessage('복사할 다른 프로젝트가 없습니다');
               return;

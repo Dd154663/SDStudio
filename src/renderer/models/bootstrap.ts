@@ -14,6 +14,7 @@ import {
   localAIService,
   backgroundNotificationService,
   backgroundKeepAliveService,
+  templateService,
 } from '.';
 import { reaction } from 'mobx';
 import { appState } from './AppService';
@@ -274,6 +275,9 @@ export async function bootstrapApp(): Promise<void> {
       taskQueueService.loadLogs(), // 이전 실행의 작업 로그 복원(파일 없으면 무시)
       imageDownloadService.loadSettings(),
       appState.initExportPresets(), // localStorage → exportPresets.json 1회 이관 + 로드
+      // 숨김 씬 템플릿 목록을 UI 렌더 전에 확보 — 목록 필터가 첫 렌더부터 적용된다
+      // (보조 창 포함 — 이관은 아래에서 호스트만)
+      templateService.ensureLoaded(),
     ]);
     for (const r of results) {
       if (r.status === 'rejected') console.error('부팅 로드 실패(계속 진행):', r.reason);
@@ -289,6 +293,15 @@ export async function bootstrapApp(): Promise<void> {
   sessionService.runLoop().catch((e) => {
     console.error('자동 저장 루프 중단(치명적 — 저장 미가동 위험):', e);
   });
+  // 씬 템플릿 → 숨김 프로젝트 1회 이관 (씬 템플릿 개편, 2026-07-18) — 지정된
+  // 일반 프로젝트를 복제본(숨김)으로 분리한다. 멱등이라 실패 항목은 다음 부팅에서
+  // 재시도. 생성 호스트(주) 창에서만 실행해 보조 창과의 중복 이관을 피한다
+  // (모바일/단일 창은 항상 호스트).
+  if (taskQueueService.isGenerationHost) {
+    templateService.migrateSceneTemplatesToHidden().catch((e) => {
+      console.error('씬 템플릿 숨김 이관 실패:', e);
+    });
+  }
   // 시작 시 1회 토큰 검증 (네트워크)
   loginService.refresh().catch(() => {});
   // 새 버전 확인 (네트워크)

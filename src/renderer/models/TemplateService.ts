@@ -53,6 +53,11 @@ export class TemplateService {
   // 씬 템플릿 지정 목록 — "이미지 없는 일반 프로젝트"를 씬 묶음 템플릿으로
   // 지정한 것. 같은 사이드카의 sceneTemplates 필드에 저장(필드 추가 = 호환 안전).
   @observable accessor sceneNames: string[] = [];
+  // 숨김 프로젝트 목록(⊆ sceneNames) — 씬 템플릿 개편(2026-07-18 합의): 템플릿은
+  // 별도 숨김 프로젝트로 분리해 일반 프로젝트 목록(사이드바·드로어·브라우저·
+  // 프로젝트 선택)에서 제외한다. 같은 사이드카의 hiddenSceneTemplates 필드
+  // (필드 추가 = 호환 안전 — 구버전은 이 필드를 몰라 숨김만 풀릴 뿐 무해).
+  @observable accessor hiddenNames: string[] = [];
   // 폴더 기본 템플릿: 폴더 경로 → 템플릿 지정. 같은 사이드카의 folderTemplates
   // 필드(필드 추가 = 호환 안전 — 구버전은 이 필드를 몰라도 무해).
   @observable accessor folderTemplates: Record<string, IFolderTemplateEntry> =
@@ -85,6 +90,11 @@ export class TemplateService {
       runInAction(() => {
         this.sceneNames = Array.isArray(raw?.sceneTemplates)
           ? raw.sceneTemplates.filter((n: unknown) => typeof n === 'string')
+          : [];
+        this.hiddenNames = Array.isArray(raw?.hiddenSceneTemplates)
+          ? raw.hiddenSceneTemplates.filter(
+              (n: unknown) => typeof n === 'string',
+            )
           : [];
         const ft: Record<string, IFolderTemplateEntry> = {};
         if (raw?.folderTemplates && typeof raw.folderTemplates === 'object') {
@@ -123,6 +133,7 @@ export class TemplateService {
       JSON.stringify({
         version: 1,
         sceneTemplates: this.sceneNames,
+        hiddenSceneTemplates: this.hiddenNames,
         folderTemplates: this.folderTemplates,
         templateApplications: this.templateApplications,
       }),
@@ -177,6 +188,18 @@ export class TemplateService {
 
   isSceneTemplate(name: string): boolean {
     return this.sceneNames.includes(name);
+  }
+
+  // 숨김 프로젝트(=분리된 씬 템플릿) 판정 — 일반 프로젝트 목록 UI 가 제외 필터로
+  // 사용한다. observable 이라 observer 컴포넌트는 로드 완료 시 자동 재렌더된다.
+  isHiddenProject(name: string): boolean {
+    return this.hiddenNames.includes(name);
+  }
+
+  // 프로젝트 이름 목록에서 숨김 템플릿을 제외한다 — 목록 표시 지점 공용 헬퍼.
+  filterVisibleProjects(names: string[]): string[] {
+    if (this.hiddenNames.length === 0) return names;
+    return names.filter((n) => !this.hiddenNames.includes(n));
   }
 
   listSceneTemplates(): string[] {
@@ -480,6 +503,10 @@ export class TemplateService {
       this.sceneNames = this.sceneNames.map((n) =>
         n === oldName ? newName : n,
       );
+      // 숨김 목록도 함께 이관 — 이관 누락 시 이름변경만으로 숨김이 풀린다
+      this.hiddenNames = this.hiddenNames.map((n) =>
+        n === oldName ? newName : n,
+      );
     });
     await this.save();
   }
@@ -493,6 +520,7 @@ export class TemplateService {
     if (!this.isSceneTemplate(name)) return;
     runInAction(() => {
       this.sceneNames = this.sceneNames.filter((n) => n !== name);
+      this.hiddenNames = this.hiddenNames.filter((n) => n !== name);
     });
     await this.save();
   }
@@ -500,32 +528,21 @@ export class TemplateService {
   // ===== 씬 템플릿 (여러 씬 묶음의 즉시 임포트) =====
   //
   // 씬 템플릿의 실체 = "이미지 없는 일반 프로젝트"(사용자 합의, 2026-07-07).
-  // 수정은 그 프로젝트를 열어 기존 씬 카드 UI 로 하면 되므로 전용 편집 화면이 없다.
-  // 씬 툴바 ⋯메뉴의 '씬 템플릿' 버튼이 이 메뉴를 연다.
-  async sceneTemplateMenu(session: Session): Promise<void> {
-    const appState = getAppState();
-    const action = await appState.pushDialogAsync({
-      type: 'select',
-      text: '씬 템플릿',
-      items: [
-        { text: '📥 씬 템플릿 가져오기', value: 'import' },
-        { text: '📤 현재 씬 전체로 템플릿 만들기', value: 'create' },
-        { text: '✏️ 템플릿 열기 (씬 수정)', value: 'open' },
-      ],
-    });
-    if (!action) return;
-    if (action === 'import') await this.importSceneTemplate(session);
-    else if (action === 'create') await this.createSceneTemplate(session);
-    else if (action === 'open') await this.openSceneTemplate();
-  }
+  // 개편(2026-07-18 합의): 템플릿 프로젝트는 **숨김**으로 분리해 일반 목록에서
+  // 제외한다(원본 프로젝트와의 결합 해소). 관리 UI = SceneTemplateManager 모달
+  // (select 다이얼로그 연쇄는 불편하다는 실기 피드백으로 폐기) — 씬 툴바 ⋯의
+  // '씬 템플릿' 버튼·퀵 메뉴가 appState.sceneTemplateManagerOpen 으로 연다.
+  // 수정은 템플릿을 열어 기존 씬 카드 UI 로 하면 되므로 전용 편집 화면이 없다.
 
-  // 현재 프로젝트의 씬 전체를 "이미지 없는 프로젝트"로 복제해 씬 템플릿으로 지정.
-  // 기존 얕은 복제(exportSessionShallow → importSessionShallow)를 그대로 재사용한다.
-  private async createSceneTemplate(session: Session): Promise<void> {
+  // 주어진 프로젝트의 씬 전체를 "이미지 없는 숨김 프로젝트"로 복제해 씬 템플릿으로
+  // 지정. 기존 얕은 복제(exportSessionShallow → importSessionShallow)를 재사용한다.
+  // 공개 메서드 — ⋯메뉴(현재 세션) 외에 드로어 행 액션('씬 템플릿으로 만들기')과
+  // 관리 메뉴의 복제도 호출한다.
+  async createSceneTemplate(session: Session): Promise<void> {
     const appState = getAppState();
     const name = await appState.pushDialogAsync({
       type: 'input-confirm',
-      text: `씬 템플릿 프로젝트 이름 (예: ${session.name} 씬템플릿)`,
+      text: `씬 템플릿 이름 (예: ${session.name} 씬템플릿)`,
     });
     if (!name) return;
     if (sessionService.list().includes(name)) {
@@ -539,23 +556,111 @@ export class TemplateService {
       appState.pushMessage(e.message || '씬 템플릿 생성에 실패했습니다.');
       return;
     }
-    await this.ensureLoaded();
-    if (this.loaded && !this.isSceneTemplate(name)) {
-      runInAction(() => {
-        this.sceneNames = [...this.sceneNames, name];
-      });
-      await this.save();
-    }
+    await this.designateHiddenTemplate(name);
     appState.pushMessage(
-      `씬 템플릿 "${name}"이(가) 만들어졌습니다. 프로젝트로 열면 씬을 수정할 수 있습니다.`,
+      `씬 템플릿 "${name}"이(가) 만들어졌습니다. 씬 툴바 ⋯ → 씬 템플릿에서 관리할 수 있습니다.`,
     );
+  }
+
+  // 빈 씬 템플릿 새로 만들기 — 빈 숨김 프로젝트를 만들어 바로 열어준다
+  // (처음부터 템플릿을 설계하는 흐름, 2026-07-18 합의).
+  // 반환 = 만든 템플릿 이름(취소/실패=null) — 관리 모달이 성공 시 닫히도록.
+  async createEmptySceneTemplate(): Promise<string | null> {
+    const appState = getAppState();
+    const name = await appState.pushDialogAsync({
+      type: 'input-confirm',
+      text: '빈 씬 템플릿 이름',
+    });
+    if (!name) return null;
+    if (sessionService.list().includes(name)) {
+      appState.pushMessage('같은 이름의 프로젝트가 이미 존재합니다.');
+      return null;
+    }
+    try {
+      await sessionService.add(name);
+    } catch (e: any) {
+      appState.pushMessage(e.message || '씬 템플릿 생성에 실패했습니다.');
+      return null;
+    }
+    await this.designateHiddenTemplate(name);
+    const tpl = await sessionService.get(name);
+    if (tpl) appState.curSession = tpl;
+    appState.pushMessage(
+      `빈 씬 템플릿 "${name}"을(를) 열었습니다. 씬을 추가해 구성해주세요.`,
+    );
+    return name;
+  }
+
+  // 이름을 씬 템플릿 + 숨김으로 지정한다 (생성/복제/이관 공용).
+  private async designateHiddenTemplate(name: string): Promise<void> {
+    await this.ensureLoaded();
+    if (!this.loaded) return;
+    runInAction(() => {
+      if (!this.sceneNames.includes(name))
+        this.sceneNames = [...this.sceneNames, name];
+      if (!this.hiddenNames.includes(name))
+        this.hiddenNames = [...this.hiddenNames, name];
+    });
+    await this.save();
+  }
+
+  // ── 1회 이관 (씬 템플릿 개편, 2026-07-18 합의) ──
+  // 기존에 "일반 프로젝트를 씬 템플릿으로 지정"해 둔 항목을, 복제본(숨김)으로
+  // 분리하고 원본은 일반 프로젝트로 되돌린다(지정 해제). 부팅 완료 후 비차단으로
+  // 생성 호스트(주) 창에서만 실행 — 보조 창과의 중복 이관을 피한다.
+  // 이관 대상 판정 = sceneNames 중 숨김이 아닌 실존 프로젝트 (멱등 —
+  // 이관 후에는 모든 템플릿이 숨김이라 재실행해도 no-op).
+  async migrateSceneTemplatesToHidden(): Promise<void> {
+    await this.ensureLoaded();
+    if (!this.loaded) return;
+    const pending = this.listSceneTemplates().filter(
+      (n) => !this.hiddenNames.includes(n),
+    );
+    if (pending.length === 0) return;
+    const appState = getAppState();
+    let migrated = 0;
+    for (const name of pending) {
+      try {
+        const src = await sessionService.get(name);
+        if (!src) continue;
+        // 복제본 이름: "<원본> (템플릿)" + 필요 시 번호
+        let cloneName = `${name} (템플릿)`;
+        let i = 2;
+        while (sessionService.list().includes(cloneName)) {
+          cloneName = `${name} (템플릿 ${i})`;
+          i++;
+        }
+        const json = await sessionService.exportSessionShallow(src);
+        await sessionService.importSessionShallow(json, cloneName);
+        runInAction(() => {
+          this.sceneNames = [
+            ...this.sceneNames.filter((n) => n !== name),
+            cloneName,
+          ];
+          this.hiddenNames = [...this.hiddenNames, cloneName];
+        });
+        await this.save();
+        migrated++;
+      } catch (e) {
+        // 실패 항목은 지정을 유지 — 다음 부팅에서 재시도된다
+        console.error(`씬 템플릿 "${name}" 숨김 이관 실패:`, e);
+      }
+    }
+    if (migrated > 0) {
+      appState.pushMessage(
+        `씬 템플릿 ${migrated}개를 별도 템플릿(숨김)으로 분리했습니다. 원본 프로젝트는 일반 프로젝트로 유지됩니다.`,
+      );
+    }
   }
 
   // 씬 템플릿의 일반 씬 전체를 현재 프로젝트에 추가한다.
   // 충돌 정책(사용자 합의): 겹치는 씬이 있으면 덮어쓰기/번호 부여/건너뛰기 중 택1.
   // 덮어쓰기는 기존 씬을 moveSceneToTrash 경유로 제거한다 — 씬 제거 시 outs 폴더
   // .trash 이동 규칙(project_scene_loss_guard) 준수. 직접 Map 삭제 금지.
-  private async importSceneTemplate(session: Session): Promise<void> {
+  // 공개 메서드 — 씬 툴바 ⋯메뉴 외에 순차 생성 설정 패널에서도 호출한다.
+  // 반환 = 실제로 세션에 들어간 씬 이름 목록(추가+덮어쓰기, 최종 이름 기준).
+  // 취소·실패 시 null (호출처가 자동 선택 등 후속을 건너뛰도록).
+  async importSceneTemplate(session: Session): Promise<string[] | null> {
     const appState = getAppState();
     await this.ensureLoaded();
     const templates = this.listSceneTemplates().filter(
@@ -565,23 +670,23 @@ export class TemplateService {
       appState.pushMessage(
         '가져올 씬 템플릿이 없습니다. 먼저 "현재 씬 전체로 템플릿 만들기"로 템플릿을 만들어주세요.',
       );
-      return;
+      return null;
     }
     const tplName = await appState.pushDialogAsync({
       type: 'select',
       text: '가져올 씬 템플릿을 선택해주세요',
       items: templates.map((n) => ({ text: n, value: n })),
     });
-    if (!tplName) return;
+    if (!tplName) return null;
     const tpl = await sessionService.get(tplName);
     if (!tpl) {
       appState.pushMessage('씬 템플릿 프로젝트를 불러올 수 없습니다.');
-      return;
+      return null;
     }
     const scenes = tpl.getScenes('scene');
     if (scenes.length === 0) {
       appState.pushMessage('이 템플릿에는 씬이 없습니다.');
-      return;
+      return null;
     }
     const conflicts = scenes.filter((s) => session.hasScene('scene', s.name));
     let policy = 'number';
@@ -595,12 +700,13 @@ export class TemplateService {
           { text: '겹치는 씬은 건너뛰기', value: 'skip' },
         ],
       });
-      if (!sel) return;
+      if (!sel) return null;
       policy = sel;
     }
     let added = 0;
     let replaced = 0;
     let skipped = 0;
+    const importedNames: string[] = [];
     for (const src of scenes) {
       // 크로스 프로젝트 씬 복사 선례(AppContextMenu '설정만 복사') 재사용 —
       // 템플릿 프로젝트에서 생성된 이미지/토너먼트 흔적은 가져오지 않는다.
@@ -620,6 +726,7 @@ export class TemplateService {
           if (old) await trashService.moveSceneToTrash(session, old);
           session.addScene(scene);
           replaced++;
+          importedNames.push(scene.name);
           continue;
         }
         // number: 기존 크로스 복사와 동일한 '_n' 접미 관례
@@ -630,34 +737,13 @@ export class TemplateService {
       }
       session.addScene(scene);
       added++;
+      importedNames.push(scene.name);
     }
     const parts = [`추가 ${added}개`];
     if (replaced) parts.push(`덮어쓰기 ${replaced}개`);
     if (skipped) parts.push(`건너뜀 ${skipped}개`);
     appState.pushMessage(`씬 템플릿 가져오기 완료 — ${parts.join(', ')}`);
-  }
-
-  // 템플릿 프로젝트를 열어 씬 카드 UI 로 수정하게 한다.
-  private async openSceneTemplate(): Promise<void> {
-    const appState = getAppState();
-    await this.ensureLoaded();
-    const templates = this.listSceneTemplates();
-    if (templates.length === 0) {
-      appState.pushMessage('지정된 씬 템플릿이 없습니다.');
-      return;
-    }
-    const tplName = await appState.pushDialogAsync({
-      type: 'select',
-      text: '열어서 수정할 씬 템플릿',
-      items: templates.map((n) => ({ text: n, value: n })),
-    });
-    if (!tplName) return;
-    const tpl = await sessionService.get(tplName);
-    if (!tpl) {
-      appState.pushMessage('씬 템플릿 프로젝트를 불러올 수 없습니다.');
-      return;
-    }
-    appState.curSession = tpl;
+    return importedNames;
   }
 
 }

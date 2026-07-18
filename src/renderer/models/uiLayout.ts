@@ -44,7 +44,8 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'bookmark-jump', name: '북마크된 씬으로 이동', tier: 'secondary' },
   // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환
   { id: 'scene-trash', name: '씬 휴지통', tier: 'overflow', portable: true },
-  { id: 'scene-template', name: '씬 템플릿', tier: 'overflow' },
+  // 'scene-template' 은 씬 템플릿 개편(2026-07-18)으로 프로젝트 바 레지스트리로 이동 —
+  // 매크로성 기능 승격(사용자 확정). id 는 그대로라 과거 씬 영역 배치 설정은 조용히 무시됨.
   { id: 'empty-image-trash', name: '삭제 이미지 일괄 비우기', tier: 'overflow', portable: true },
   { id: 'find-replace', name: '찾기 및 변환', tier: 'secondary', portable: true },
   { id: 'shortcut-help', name: '단축키 도움말', pcOnly: true, tier: 'overflow' },
@@ -61,6 +62,10 @@ export const projectToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'project-browser', name: '프로젝트 탐색', tier: 'primary', portable: true },
   { id: 'add-session', name: '신규 프로젝트', tier: 'primary', portable: true },
   { id: 'character-presets', name: '캐릭터 프리셋 관리', tier: 'primary', portable: true },
+  // 씬 툴바 overflow 에서 이동(씬 템플릿 개편 2026-07-18) — 숨김 템플릿 관리 모달의
+  // 주 진입점으로 승격. 프로젝트 바 관례(전부 primary 인라인)를 따른다(§6 overflow
+  // 기본 규칙은 "신규 버튼 증식" 차단용 — 이 건은 기존 버튼의 영역 이동+승격 확정).
+  { id: 'scene-template', name: '씬 템플릿', tier: 'primary', portable: true },
   { id: 'backup-export', name: '프로젝트 백업/내보내기', tier: 'primary', portable: true },
   { id: 'delete-session', name: '프로젝트 삭제', tier: 'primary', portable: true },
   { id: 'project-trash', name: '프로젝트 휴지통', tier: 'primary', portable: true },

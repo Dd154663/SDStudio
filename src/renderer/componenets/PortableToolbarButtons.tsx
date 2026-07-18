@@ -10,6 +10,7 @@ import { ReactNode, Fragment } from 'react';
 import {
   FaBroom,
   FaExchangeAlt,
+  FaFilm,
   FaFolderMinus,
   FaPaintBrush,
   FaShare,
@@ -152,6 +153,18 @@ export function portableToolbarButtons(
       <FaThLarge size={variant === 'project' ? 16 : 18} />,
       () => {
         appState.projectBrowserOpen = true;
+      },
+    ),
+    // 씬 툴바에서 프로젝트 바로 이동(씬 템플릿 개편 2026-07-18 — 매크로 기능 승격).
+    // 관리 모달(SceneTemplateManager)을 연다. 아이콘 = FaFilm(씬 프레임): 같은 행의
+    // project-browser 가 FaThLarge(그리드)라 기존 아이콘 유지 시 동일 아이콘 혼동
+    // (② A 피드백 1·2와 같은 유형) — 정체성 아이콘을 분리(퀵 메뉴 맵도 동일).
+    'scene-template': iconButton(
+      variant,
+      '씬 템플릿',
+      <FaFilm size={18} />,
+      () => {
+        appState.sceneTemplateManagerOpen = true;
       },
     ),
     // 새 창(멀티 윈도우 W6) — 데스크톱 전용(레지스트리 pcOnly 로 모바일 미노출).

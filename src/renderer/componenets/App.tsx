@@ -27,6 +27,7 @@ import AlertWindow from './AlertWindow';
 import { DropdownSelect, TabComponent } from './UtilComponents';
 import PieceEditor, { PieceCell } from './PieceEditor';
 import { CharacterPresetFloatEditor } from './CharacterPresetEditor';
+import SceneTemplateManager from './SceneTemplateManager';
 import PromptTooltip from './PromptTooltip';
 import ConfirmWindow, { Dialog } from './ConfirmWindow';
 import ExpiredProjectsDialog from './ExpiredProjectsDialog';
@@ -1041,6 +1042,14 @@ export const App = observer(() => {
             onApplyPreset={(preset, mode) =>
               appState.applyCharacterPreset(preset, mode)
             }
+          />
+        )}
+        {/* 씬 템플릿 관리 (씬 템플릿 개편 — 숨김 템플릿의 유일한 관리 지점) */}
+        {appState.sceneTemplateManagerOpen && (
+          <SceneTemplateManager
+            onClose={() => {
+              appState.sceneTemplateManagerOpen = false;
+            }}
           />
         )}
         <ExportPresetManager />

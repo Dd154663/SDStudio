@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck, FaPen, FaTrashAlt, FaTimes, FaPalette, FaFileExport, FaCopy, FaChevronDown, FaChevronRight, FaFolderPlus, FaWindowRestore } from 'react-icons/fa';
-import { sessionService, imageService, isMobile, backend } from '../models';
+import {
+  sessionService,
+  imageService,
+  isMobile,
+  backend,
+  templateService,
+} from '../models';
 import { appState } from '../models/AppService';
 import { projectPath } from '../models/projectPaths';
 import ModalOverlay from './ModalOverlay';
@@ -476,7 +482,10 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
   const dndEnabled = !isMobile;
 
   const refresh = useCallback(() => {
-    setSessionNames(sessionService.list());
+    // 숨김 씬 템플릿 제외 (씬 템플릿 개편 2026-07-18)
+    setSessionNames(
+      templateService.filterVisibleProjects(sessionService.list()),
+    );
     setVersion((v) => v + 1);
   }, []);
 

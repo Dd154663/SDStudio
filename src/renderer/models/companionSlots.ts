@@ -69,10 +69,18 @@ export const COMPANION_HOST_LABELS: Record<string, string> = {
  *     (구 "작업모드 행 옆" 대체. delete-session 도 "프로젝트 전체" 액션이라 사전세팅선택
  *     행이 아닌 상단부로 — 2026-07-18 실기 피드백 2로 2026-07-13 결정 대체)
  *   - character-presets → 캐릭터 프롬프트 행 (하단 아이콘 행과 결합 시 5종 정렬)
+ *   - scene-template → 사전세팅선택 위 행 (씬 템플릿 개편 2026-07-18 — 프로젝트 바
+ *     승격 버튼인데 모던은 툴바 미렌더라 여기 없으면 퀵 메뉴 외 진입점이 사라진다)
  *   - add-session·project-browser 는 미배정 — 모던에선 툴바 미렌더로 미노출, 드로어가 흡수.
  */
 export const MODERN_COMPANION_DEFAULTS: Record<string, string[]> = {
-  'preset-top': ['backup-export', 'project-trash', 'delete-session', 'piece-editor'],
+  'preset-top': [
+    'backup-export',
+    'project-trash',
+    'delete-session',
+    'scene-template',
+    'piece-editor',
+  ],
   characterPrompts: ['character-presets'],
 };
 

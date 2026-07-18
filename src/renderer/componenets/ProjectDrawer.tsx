@@ -22,6 +22,7 @@ import {
   FaCopy,
   FaLayerGroup,
   FaThLarge,
+  FaFilm,
   FaMagic,
   FaFileImport,
   FaUnlink,
@@ -224,7 +225,8 @@ const ProjectRow = observer(
                 active ? 'text-purple-100' : 'text-purple-500 dark:text-purple-400'
               }`}
             >
-              <FaThLarge size={11} />
+              {/* 씬 템플릿 정체성 아이콘 = FaFilm (프로젝트 탐색 FaThLarge 와 분리) */}
+              <FaFilm size={11} />
             </span>
           </Tooltip>
         )}
@@ -535,7 +537,10 @@ const ProjectDrawer = observer(() => {
     appState.projectDrawerOpen = false;
   };
 
-  const sessionNames = sessionService.list();
+  // 숨김 씬 템플릿 제외 — 트리·즐겨찾기·검색·카운트가 전부 이 목록에서 파생된다
+  const sessionNames = templateService.filterVisibleProjects(
+    sessionService.list(),
+  );
   const folders = sessionService.getOrderedFolders();
 
   const isFav = (n: string) => sessionService.isFavorite(n);
@@ -858,12 +863,7 @@ const ProjectDrawer = observer(() => {
       items: [
         { text: '📤 내보내기/불러오기', value: 'export' },
         { text: '📋 프로젝트 복제', value: 'clone' },
-        {
-          text: templateService.isSceneTemplate(n)
-            ? '🧩 씬 템플릿 해제'
-            : '🧩 씬 템플릿으로 지정',
-          value: 'scene-template',
-        },
+        { text: '🧩 씬 템플릿으로 만들기 (복제)', value: 'scene-template' },
         { text: '📥 템플릿 적용', value: 'reapply' },
         ...(inherited
           ? [{ text: '♟ 상속 끊기', value: 'break-inherit' }]
@@ -876,7 +876,7 @@ const ProjectDrawer = observer(() => {
     if (!v) return;
     if (v === 'export') handleProjectExportImport(n);
     else if (v === 'clone') handleProjectClone(n);
-    else if (v === 'scene-template') handleProjectSceneTemplateToggle(n);
+    else if (v === 'scene-template') handleProjectSceneTemplateCreate(n);
     else if (v === 'reapply') setReapplyFor(n);
     else if (v === 'break-inherit') handleBreakInheritance(n);
     else if (v === 'batch-queue') queueProjectForGeneration(n);
@@ -1433,17 +1433,16 @@ const ProjectDrawer = observer(() => {
     setEditingProject(null);
   };
 
-  const handleProjectSceneTemplateToggle = async (name: string) => {
-    const before = templateService.isSceneTemplate(name);
-    await templateService.toggleSceneTemplate(name);
-    const after = templateService.isSceneTemplate(name);
-    if (after !== before) {
-      appState.pushMessage(
-        after
-          ? '씬 템플릿으로 지정되었습니다.'
-          : '씬 템플릿 지정이 해제되었습니다.',
-      );
+  // 씬 템플릿 개편(2026-07-18): "지정 토글" → "복제해 숨김 템플릿 만들기".
+  // 템플릿은 별도 숨김 프로젝트라 일반 목록의 프로젝트는 더 이상 템플릿이 아니다.
+  // 관리(이름변경·복제·삭제)는 씬 툴바 ⋯ → 씬 템플릿 → 템플릿 관리.
+  const handleProjectSceneTemplateCreate = async (name: string) => {
+    const src = await sessionService.get(name);
+    if (!src) {
+      appState.pushMessage('프로젝트를 불러올 수 없습니다.');
+      return;
     }
+    await templateService.createSceneTemplate(src);
   };
 
   const handleProjectDelete = async (name: string) => {
@@ -1506,6 +1505,19 @@ const ProjectDrawer = observer(() => {
             프로젝트
           </h2>
           <div className="flex items-center gap-2">
+            {/* 프로젝트 탐색 — 도구 행은 6개째부터 400px 폭을 넘쳐(재검증
+                2026-07-18 피드백 3) 헤더로 배치 */}
+            <Tooltip content="프로젝트 탐색 (그리드 보기)">
+              <button
+                onClick={() => {
+                  close();
+                  appState.projectBrowserOpen = true;
+                }}
+                className="p-1.5 rounded-md hover:bg-gray-200 dark:hover:bg-slate-600 text-muted"
+              >
+                <FaThLarge size={15} />
+              </button>
+            </Tooltip>
             {!selectMode && (
               <button
                 onClick={() => setSelectMode(true)}
@@ -1613,17 +1625,6 @@ const ProjectDrawer = observer(() => {
               >
                 <FaFileArchive size={14} />{' '}
                 <span className="hidden md:inline">백업</span>
-              </button>
-            </Tooltip>
-            <Tooltip content="프로젝트 탐색 (그리드 보기)">
-              <button
-                onClick={() => {
-                  close();
-                  appState.projectBrowserOpen = true;
-                }}
-                className="flex items-center justify-center px-3 py-2.5 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap"
-              >
-                <FaThLarge size={14} />
               </button>
             </Tooltip>
           </div>
@@ -2349,21 +2350,15 @@ const ProjectDrawer = observer(() => {
                   <FaPen size={15} />
                 </button>
               </Tooltip>
-              <Tooltip
-                content={
-                  templateService.isSceneTemplate(toolbar.name)
-                    ? '씬 템플릿 해제'
-                    : '씬 템플릿으로 지정'
-                }
-              >
+              <Tooltip content="씬 템플릿으로 만들기 (복제)">
                 <button
                   onClick={() => {
-                    handleProjectSceneTemplateToggle(toolbar.name);
+                    handleProjectSceneTemplateCreate(toolbar.name);
                     setToolbar(null);
                   }}
                   className="btn-ghost p-2 rounded-md text-faint hover:text-purple-500"
                 >
-                  <FaThLarge size={14} />
+                  <FaFilm size={14} />
                 </button>
               </Tooltip>
               <Tooltip content="템플릿 적용">

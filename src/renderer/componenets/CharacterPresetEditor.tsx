@@ -31,6 +31,7 @@ import {
   backend,
   isMobile,
   globalCharacterPresetService,
+  templateService,
 } from '../models';
 import { appState } from '../models/AppService';
 import { FaPlay, FaPause, FaStop, FaSync, FaDownload, FaUpload, FaGlobe, FaUsers, FaCloudUploadAlt, FaCloudDownloadAlt } from 'react-icons/fa';
@@ -1428,19 +1429,39 @@ export const CharacterPresetEditor = observer(({
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                     씬 선택 ({selectedScenes.size}/{scenes.length})
                   </span>
-                  <button
-                    onClick={() => {
-                      const targets = filteredScenes.map((s) => s.name);
-                      const allSelected = targets.every((n) => selectedScenes.has(n));
-                      const next = new Set(selectedScenes);
-                      targets.forEach((n) => allSelected ? next.delete(n) : next.add(n));
-                      setSelectedScenes(next);
-                    }}
-                    className="text-xs btn-link"
-                  >
-                    {filteredScenes.every((s) => selectedScenes.has(s.name)) ? '전체 해제' : '전체 선택'}
-                    {sceneFilter.trim() && ` (${filteredScenes.length}개)`}
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {/* 씬 템플릿을 현 프로젝트에 가져와 바로 순차 생성 대상으로 쓴다
+                        (2026-07-18 재검증 피드백 1) — 가져온 씬은 자동 선택 */}
+                    <button
+                      onClick={async () => {
+                        const names =
+                          await templateService.importSceneTemplate(curSession);
+                        if (names && names.length > 0) {
+                          setSelectedScenes((prev) => {
+                            const next = new Set(prev);
+                            names.forEach((n) => next.add(n));
+                            return next;
+                          });
+                        }
+                      }}
+                      className="text-xs btn-link"
+                    >
+                      씬 템플릿 가져오기
+                    </button>
+                    <button
+                      onClick={() => {
+                        const targets = filteredScenes.map((s) => s.name);
+                        const allSelected = targets.every((n) => selectedScenes.has(n));
+                        const next = new Set(selectedScenes);
+                        targets.forEach((n) => allSelected ? next.delete(n) : next.add(n));
+                        setSelectedScenes(next);
+                      }}
+                      className="text-xs btn-link"
+                    >
+                      {filteredScenes.every((s) => selectedScenes.has(s.name)) ? '전체 해제' : '전체 선택'}
+                      {sceneFilter.trim() && ` (${filteredScenes.length}개)`}
+                    </button>
+                  </div>
                 </div>
                 <input
                   type="text"

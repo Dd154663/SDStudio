@@ -27,7 +27,6 @@ import {
   FaTimes,
   FaTrash,
   FaTrashRestore,
-  FaThLarge,
 } from 'react-icons/fa';
 import { useDrag, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
@@ -59,7 +58,6 @@ import {
   workFlowService,
   trashService,
   promptService,
-  templateService,
 } from '../models';
 import {
   getMainImage,
@@ -2251,18 +2249,8 @@ const QueueControl = observer(
           </button>
         </Tooltip>
       ),
-      'scene-template': (
-        <Tooltip content="씬 템플릿">
-          <button
-            className="round-button back-gray"
-            onClick={() => {
-              templateService.sceneTemplateMenu(curSession);
-            }}
-          >
-            <FaThLarge size={18} />
-          </button>
-        </Tooltip>
-      ),
+      // 'scene-template' 은 프로젝트 바 레지스트리로 이동(씬 템플릿 개편 2026-07-18)
+      // — 공유 JSX(PortableToolbarButtons)가 렌더한다.
       'shortcut-help': !isMobile && (
         <Tooltip content="단축키 도움말">
           <button

@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import ModalOverlay from './ModalOverlay';
-import { projectSizeService, sessionService } from '../models';
+import {
+  projectSizeService,
+  sessionService,
+  templateService,
+} from '../models';
 
 // 고용량 하이라이트 기준 (3GB)
 const HIGHLIGHT_BYTES = 3 * 1024 * 1024 * 1024;
@@ -44,7 +48,11 @@ const StorageManageModal = observer(
       if (!isOpen) return;
       projectSizeService.ensureLoaded();
       try {
-        setNames(sessionService.list());
+        // 숨김 씬 템플릿 제외 (씬 템플릿 개편 2026-07-18) — 관리는 씬 툴바
+        // ⋯ → 씬 템플릿 → 템플릿 관리에서 한다
+        setNames(
+          templateService.filterVisibleProjects(sessionService.list()),
+        );
       } catch {
         setNames([]);
       }

@@ -221,3 +221,59 @@ describe('renameProject/removeProject — 씬 템플릿만 이관(폴더 템플�
     expect(svc.isSceneTemplate('프로젝트2')).toBe(false);
   });
 });
+
+// 숨김 씬 템플릿 (씬 템플릿 개편, 2026-07-18 합의):
+//  - hiddenSceneTemplates 필드 저장/로드 (필드 추가 = 호환 안전)
+//  - filterVisibleProjects: 목록 UI 의 숨김 제외 필터
+//  - rename/remove 캐스케이드가 hiddenNames 도 함께 이관/정리
+//    (이관 누락 시 이름변경만으로 숨김이 풀리는 회귀 방지)
+describe('숨김 씬 템플릿 — hiddenSceneTemplates', () => {
+  it('저장/로드 라운드트립 + filterVisibleProjects', async () => {
+    files['templates.json'] = JSON.stringify({
+      version: 1,
+      sceneTemplates: ['보임템플릿', '숨김템플릿'],
+      hiddenSceneTemplates: ['숨김템플릿'],
+      folderTemplates: {},
+    });
+    const svc = new TemplateService();
+    await svc.ensureLoaded();
+    expect(svc.isHiddenProject('숨김템플릿')).toBe(true);
+    expect(svc.isHiddenProject('보임템플릿')).toBe(false);
+    expect(
+      svc.filterVisibleProjects(['일반', '숨김템플릿', '보임템플릿']),
+    ).toEqual(['일반', '보임템플릿']);
+    // 저장 페이로드에 hiddenSceneTemplates 유지
+    await svc.setFolderTemplate('폴더', 'tplA');
+    expect(lastSaved().hiddenSceneTemplates).toEqual(['숨김템플릿']);
+  });
+
+  it('renameProject: hiddenNames 도 함께 이관', async () => {
+    files['templates.json'] = JSON.stringify({
+      version: 1,
+      sceneTemplates: ['숨김템플릿'],
+      hiddenSceneTemplates: ['숨김템플릿'],
+      folderTemplates: {},
+    });
+    const svc = new TemplateService();
+    await svc.ensureLoaded();
+    await svc.renameProject('숨김템플릿', '새이름');
+    expect(svc.isSceneTemplate('새이름')).toBe(true);
+    expect(svc.isHiddenProject('새이름')).toBe(true);
+    expect(svc.isHiddenProject('숨김템플릿')).toBe(false);
+  });
+
+  it('removeProject: hiddenNames 정리', async () => {
+    files['templates.json'] = JSON.stringify({
+      version: 1,
+      sceneTemplates: ['숨김템플릿'],
+      hiddenSceneTemplates: ['숨김템플릿'],
+      folderTemplates: {},
+    });
+    const svc = new TemplateService();
+    await svc.ensureLoaded();
+    await svc.removeProject('숨김템플릿');
+    expect(svc.isSceneTemplate('숨김템플릿')).toBe(false);
+    expect(svc.isHiddenProject('숨김템플릿')).toBe(false);
+    expect(lastSaved().hiddenSceneTemplates).toEqual([]);
+  });
+});

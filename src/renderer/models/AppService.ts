@@ -292,6 +292,8 @@ export class AppState {
 
   // 캐릭터 프리셋 관리 오버레이 (전역 액션 — 어느 화면에서든 열림)
   @observable accessor characterPresetsOpen: boolean = false;
+  // 씬 템플릿 관리 오버레이 (씬 템플릿 개편 — 숨김 템플릿의 유일한 관리 지점)
+  @observable accessor sceneTemplateManagerOpen: boolean = false;
   @observable accessor exportPresetManagerOpen: boolean = false;
   lastExportType: 'scene' | 'inpaint' = 'scene';
   lastExportSelected?: GenericScene[];

@@ -18,6 +18,7 @@ import {
   FaExchangeAlt,
   FaFileExport,
   FaFileImage,
+  FaFilm,
   FaFolderMinus,
   FaPaintBrush,
   FaPlus,
@@ -48,7 +49,9 @@ const ACTION_ICONS: Record<string, ReactNode> = {
   'empty-image-trash': <FaBroom size={18} />,
   'quick-export': <span className="text-base leading-none">⚡</span>,
   'export-images': <FaFileExport size={18} />,
-  'scene-template': <FaThLarge size={18} />,
+  // FaThLarge→FaFilm(씬 템플릿 개편): project-browser 와 동일 아이콘 혼동 분리 —
+  // 툴바 공유 JSX 와 동일 정체성.
+  'scene-template': <FaFilm size={18} />,
   'import-image': <FaFileImage size={18} />,
   'shortcut-help': <FaQuestion size={18} />,
   'project-browser': <FaThLarge size={18} />,

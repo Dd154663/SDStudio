@@ -9,7 +9,6 @@
 // available?(): 실행 불가 상태 판정(퀵 메뉴에서 비활성 표시). run() 자체도 각 전역
 // 메서드의 세션 가드를 신뢰한다(이중 방어).
 import { appState } from './AppService';
-import { templateService } from '.';
 import {
   sceneToolbarRegistry,
   projectToolbarRegistry,
@@ -54,7 +53,11 @@ export const GLOBAL_ACTIONS: GlobalAction[] = [
   },
   {
     id: 'scene-template',
-    run: () => templateService.sceneTemplateMenu(appState.curSession!),
+    // 씬 템플릿 개편: select 연쇄 메뉴 → 관리 모달. 세션 없이도 관리는 가능하지만
+    // 기존 노출 조건(hasSession)은 유지 — 가져오기/만들기가 주 동선이라 무해.
+    run: () => {
+      appState.sceneTemplateManagerOpen = true;
+    },
     available: hasSession,
   },
   {

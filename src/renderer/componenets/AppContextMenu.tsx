@@ -1,7 +1,7 @@
 import { observer } from 'mobx-react-lite';
 import { getSnapshot } from 'mobx-state-tree';
 import { Item, Menu, Separator } from 'react-contexify';
-import { sessionService, backend, imageService, isMobile, imageDownloadService, imageHistoryService } from '../models';
+import { sessionService, backend, imageService, isMobile, imageDownloadService, imageHistoryService, templateService } from '../models';
 import { appState } from '../models/AppService';
 import { dataUriToBase64, deleteImageFiles, toggleImageMain } from '../models/ImageService';
 import { createImageWithText, embedJSONInPNG } from '../models/SessionService';
@@ -51,7 +51,10 @@ export const AppContextMenu = observer(() => {
     const session = appState.curSession;
     if (!session || scenes.length === 0) return;
     const curName = session.name;
-    const allProjects = sessionService.list().filter((n) => n !== curName);
+    // 숨김 씬 템플릿 제외 (씬 템플릿 개편 2026-07-18)
+    const allProjects = templateService
+      .filterVisibleProjects(sessionService.list())
+      .filter((n) => n !== curName);
     if (allProjects.length === 0) {
       appState.pushMessage('복사할 다른 프로젝트가 없습니다');
       return;

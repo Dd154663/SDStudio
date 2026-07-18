@@ -1,5 +1,10 @@
 import { appState } from './AppService';
-import { promptService, sessionService, taskQueueService } from '.';
+import {
+  promptService,
+  sessionService,
+  taskQueueService,
+  templateService,
+} from '.';
 import {
   queueI2IWorkflow,
   queueMirrorWorkflow,
@@ -166,10 +171,13 @@ export const queueProjectForGeneration = async (name: string) => {
 // 자동 생성을 대화형으로 물을 수 없으므로, 프롬프트 에러는 프로젝트 단위로
 // 수집해 요약만 한다.
 export const queueFolderProjectsForGeneration = async (folder: string) => {
-  const names = sessionService.list().filter((n) => {
-    const f = sessionService.getFolderOf(n);
-    return f === folder || !!(f && f.startsWith(folder + '/'));
-  });
+  // 숨김 씬 템플릿은 일괄 예약 대상에서 제외 (씬 템플릿 개편 2026-07-18)
+  const names = templateService
+    .filterVisibleProjects(sessionService.list())
+    .filter((n) => {
+      const f = sessionService.getFolderOf(n);
+      return f === folder || !!(f && f.startsWith(folder + '/'));
+    });
   if (names.length === 0) {
     appState.pushMessage('이 폴더에 프로젝트가 없습니다.');
     return;
