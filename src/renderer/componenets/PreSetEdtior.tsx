@@ -21,6 +21,7 @@ import {
   FaTimes,
   FaTrashAlt,
   FaUserAlt,
+  FaSlidersH,
   FaArrowsAlt,
   FaToggleOn,
   FaToggleOff,
@@ -90,7 +91,7 @@ import {
   CharacterReferenceEditor,
   CharacterReferenceButton,
 } from './CharacterReferenceEditor';
-import { WFElementContext } from './wfElementContext';
+import { WFElementContext, PresetIconRowContext } from './wfElementContext';
 
 const ImageSelect = observer(({ input }: { input: WFIInlineInput }) => {
   const { curSession } = appState;
@@ -1163,6 +1164,7 @@ const WFRGroup = observer(({ element }: WFElementProps) => {
   const grp = element as WFIGroup;
   const { editVibe, setShowGroupOverlay } =
     useContext(WFElementContext)!;
+  const iconRow = useContext(PresetIconRowContext);
   if (editVibe != undefined) {
     return <></>;
   }
@@ -1174,6 +1176,24 @@ const WFRGroup = observer(({ element }: WFElementProps) => {
   const companionIds = resolveCompanionButtons(hostKey, appState.uiCompanionSlots);
   const companions = renderCompanionButtons(companionIds, hostKey);
   const hasCompanions = companions.length > 0;
+  // 하단 아이콘 행(uiPresetIconRow) 안 — 아이콘 압축 형태. 동반 버튼은 그대로 이웃.
+  if (iconRow) {
+    return (
+      <CompanionHostRow hostKey={hostKey}>
+        <Tooltip content={grp.label}>
+          <button
+            className="round-button back-gray h-8 flex-1 !min-w-0"
+            onClick={() => {
+              setShowGroupOverlay(grp.label);
+            }}
+          >
+            <FaSlidersH size={14} className="inline-block" />
+          </button>
+        </Tooltip>
+        {companions}
+      </CompanionHostRow>
+    );
+  }
   // 슬롯 없음 = 현행 렌더 100% 동일(회귀 기준). 동반 버튼이 있으면 그룹 버튼을 flex-1 로
   // 축소하고 옆에 아이콘 버튼을 붙이는 flex 행으로 감싼다.
   return (
@@ -1229,23 +1249,85 @@ function presetRowGrows(el: WFIElement): boolean {
   return false;
 }
 
+// 하단 아이콘 행(uiPresetIconRow) 대상 요소의 안정 키 목록(wfiElementKey 계약,
+// 배포 후 불변) — 프리셋 패널의 넓은 버튼 4종. COMPANION_HOSTS 의 행 호스트 키에서
+// preset-select 를 제외한 집합과 동일. 워크플로우 스택에 존재하는 것만 하단 행으로
+// 이동한다(워크플로우별 구성 상이 — 예: 인페인트엔 레퍼런스 없음).
+const PRESET_ICON_ROW_KEYS: readonly string[] = [
+  'characterPrompts',
+  'sampling-group',
+  'vibes',
+  'characterReferences',
+];
+
 // 루트 스택 렌더의 단일 관문(L1-4). 편집모드 꺼짐(또는 모바일·비스택·키 없음)이면
 // 기존 경로(<WFRenderElement element/>)를 100% 그대로 태운다 = L1-3 회귀 기준 유지.
 // 편집모드 활성(PC) && 최상위 전 요소가 유효 키일 때만 각 요소를 세로 드래그 래퍼로 감싼다.
 // 앵커 키(PRESET_LAYOUT_ANCHOR_KEYS)는 래퍼 없이 그대로 렌더 = 최상단 고정·드래그 불가.
+// iconRow(uiPresetIconRow, ② B): 대상 키 요소를 본문에서 빼 하단 flex-none 아이콘 행으로
+// 보낸다. 요소는 원본 그대로 재렌더(래퍼·상태·핸들러 보존)하고, 압축 시각만
+// PresetIconRowContext 로 전환한다. 비활성(기본) = bottomEls 빈 배열 = 현행 렌더 100% 동일.
 const PresetRootRender = observer(
-  ({ element, slotKey }: { element: WFIElement; slotKey?: string }) => {
+  ({
+    element,
+    slotKey,
+    iconRow,
+  }: {
+    element: WFIElement;
+    slotKey?: string;
+    iconRow?: boolean;
+  }) => {
+    // 하단 행 분리(활성 시에만). 순서 오버라이드(resolveStackInputs)가 이미 적용된
+    // 스택을 받으므로, 본문 순서·하단 행 순서 모두 사용자 순서를 따른다.
+    let bodyInputs: WFIElement[] | undefined;
+    let bottomEls: WFIElement[] = [];
+    if (iconRow && element.type === 'stack') {
+      const stk = element as WFIStack;
+      bottomEls = stk.inputs.filter((x) =>
+        PRESET_ICON_ROW_KEYS.includes(wfiElementKey(x) ?? ''),
+      );
+      if (bottomEls.length > 0) {
+        bodyInputs = stk.inputs.filter((x) => !bottomEls.includes(x));
+      }
+    }
+    const bottomRow =
+      bottomEls.length > 0 ? (
+        <PresetIconRowContext.Provider value={true}>
+          <div className="flex-none flex gap-1 items-stretch mt-2 md:mt-3">
+            {bottomEls.map((x) => (
+              <WFRenderElement key={wfiElementKey(x)} element={x} />
+            ))}
+          </div>
+        </PresetIconRowContext.Provider>
+      ) : null;
+
     const editing =
       appState.editMode &&
       !isMobile &&
       element.type === 'stack' &&
       !!slotKey;
     if (!editing) {
-      // 평상시 마크업/클래스 무변경 — 원래 렌더 경로 그대로.
-      return <WFRenderElement element={element} />;
+      if (!bodyInputs) {
+        // 평상시 마크업/클래스 무변경 — 원래 렌더 경로 그대로.
+        return <WFRenderElement element={element} />;
+      }
+      // 아이콘 행 활성: WFRStack 과 동일한 VerticalStack 골격에 본문만 렌더하고
+      // 최하단에 아이콘 행을 붙인다.
+      return (
+        <VerticalStack>
+          {bodyInputs.map((x) => (
+            <WFRenderElement key={wfiElementKey(x)} element={x} />
+          ))}
+          {bottomRow}
+        </VerticalStack>
+      );
     }
     const stk = element as WFIStack;
-    const keys = stk.inputs.map((x) => wfiElementKey(x));
+    // 편집모드 드래그 대상 = 본문 요소만(하단 행 요소는 워크플로우 정의 순서 고정).
+    // 저장되는 순서 배열이 하단 행 키를 안 담아도 resolvePresetOrder 가 누락 키를
+    // 정의 위치에 삽입하므로(순열 계약) 옵션 해제 시에도 안전하다.
+    const rows = bodyInputs ?? stk.inputs;
+    const keys = rows.map((x) => wfiElementKey(x));
     // 키 없는 최상위 요소 방어 — 하나라도 있으면 편집 비활성(정의 순서 그대로 폴백).
     const allKeyed = keys.every(
       (k): k is string => typeof k === 'string' && k.length > 0,
@@ -1270,7 +1352,7 @@ const PresetRootRender = observer(
             </button>
           </div>
         )}
-        {stk.inputs.map((x, i) => {
+        {rows.map((x, i) => {
           const key = order[i];
           // 앵커 = 최상단 고정 — 드래그/드롭 대상 아님(그대로 렌더).
           if (isPresetAnchorKey(key)) {
@@ -1289,6 +1371,7 @@ const PresetRootRender = observer(
             </DraggablePresetRow>
           );
         })}
+        {bottomRow}
       </VerticalStack>
     );
   },
@@ -1618,6 +1701,7 @@ const CharacterPromptEditor = observer(
 export const CharacterButton = observer(({ input }: { input: WFIInlineInput }) => {
   const { editCharacters, setEditCharacters, preset, shared, meta } =
     useContext(WFElementContext)!;
+  const iconRow = useContext(PresetIconRowContext);
 
   const getField = () => {
     if (input.fieldType === 'preset') return preset[input.field] || [];
@@ -1646,6 +1730,29 @@ export const CharacterButton = observer(({ input }: { input: WFIInlineInput }) =
   const hasCompanions = companions.length > 0;
   // 동반 버튼이 있으면 호스트는 flex-1 로 축소해 아이콘 버튼 자리를 내준다.
   const hostWidth = hasCompanions ? 'flex-1' : 'w-full';
+
+  // 하단 아이콘 행(uiPresetIconRow) 안 — 아이콘+활성 수 압축 형태(색 의미는 넓은
+  // 버튼과 동일: 프리셋 적용=green / 캐릭터 있음=sky / 없음=gray).
+  if (iconRow) {
+    return (
+      <CompanionHostRow hostKey={hostKey}>
+        <Tooltip content="캐릭터 프롬프트 열기">
+          <button
+            className={`round-button ${hasPresetApplied ? 'back-green' : anyCharacters ? 'back-sky' : 'back-gray'} h-8 flex-1 !min-w-0`}
+            onClick={onClick}
+          >
+            <FaUserAlt size={14} className="inline-block" />
+            {totalCount > 0 && (
+              <span className="ml-1 text-xs">
+                {enabledCount}/{totalCount}
+              </span>
+            )}
+          </button>
+        </Tooltip>
+        {companions}
+      </CompanionHostRow>
+    );
+  }
 
   return (
     <CompanionHostRow hostKey={hostKey}>
@@ -2004,7 +2111,13 @@ export const PreSetEditorImpl = observer(
               />
             )}
             {!editVibe && !editCharacters && !editCharacterReference && (
-              <PresetRootRender element={rootElement} slotKey={rootSlotKey} />
+              <PresetRootRender
+                element={rootElement}
+                slotKey={rootSlotKey}
+                // 하단 아이콘 행은 프리셋 패널(general)만 — inner(씬 에디터 등 내장
+                // 편집기)는 오버레이 문맥이라 현행 세로 버튼 유지.
+                iconRow={!inner && appState.uiPresetIconRow}
+              />
             )}
           </WFGroupContext.Provider>
           {/* 샘플링/모델 설정 오버레이 */}

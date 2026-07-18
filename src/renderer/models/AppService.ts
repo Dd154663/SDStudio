@@ -239,6 +239,10 @@ export class AppState {
   // 배치 해석은 resolveLayout(layoutTemplates.ts) 단일 출처.
   @observable accessor uiLayoutTemplate: string = 'classic';
 
+  // 프리셋 패널 버튼 하단 아이콘 행(config.uiPresetIconRow 미러). 기본 false = 현행
+  // 세로 넓은 버튼. 소비는 PreSetEdtior.tsx(PresetRootRender), 로드는 App.tsx.
+  @observable accessor uiPresetIconRow: boolean = false;
+
   // PC 전용 플로팅 생성 컨트롤(config.genWidget 미러). 빈 객체 = 부착 상태(기본).
   // detached 여부·위치는 GenControlWidget.tsx 가 조작·저장한다.
   @observable accessor genWidget: NonNullable<Config['genWidget']> = {};

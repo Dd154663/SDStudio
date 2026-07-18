@@ -1956,7 +1956,7 @@ const floatViewModes: {
   },
 ];
 
-const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
+const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiPresetIconRow, setUiPresetIconRow, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
   <div className="space-y-5">
     <div>
       <label className="block text-sm gray-label mb-1">화면 배치</label>
@@ -2041,6 +2041,20 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, set
         모바일에서는 클래식 배치가 사용됩니다.
       </p>
     )}
+
+    {/* 프리셋 패널 버튼 하단 아이콘 행(릴리스 준비 ② B) — 템플릿과 독립인 선택
+        옵션(PC·모바일 공용, 저장 시 적용). */}
+    <div className="pt-3 border-t line-color">
+      <div className="flex items-center gap-2">
+        <input type="checkbox" id="cfgPresetIconRow" checked={uiPresetIconRow}
+          onChange={(e: any) => setUiPresetIconRow(e.target.checked)} />
+        <label htmlFor="cfgPresetIconRow" className="text-sm gray-label">프리셋 패널 버튼을 하단 아이콘 행으로 정리</label>
+      </div>
+      <p className="text-xs text-faint mt-1 ml-6">
+        캐릭터 프롬프트·샘플링/모델·바이브·캐릭터 레퍼런스 버튼을 패널 최하단의
+        아이콘 한 줄로 모아 프롬프트 공간을 넓힙니다.
+      </p>
+    </div>
 
     {/* 창 배치 — FloatView(이미지 뷰어 등 큰 화면)가 덮는 영역. PC 전용
         (모바일은 좌우 패널이 없어 항상 중앙 영역과 동일). 저장 시 적용. */}
@@ -2146,6 +2160,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [uiToolbar, setUiToolbar] = useState<UiToolbarConfig>({});
   const [quickMenuCfg, setQuickMenuCfg] = useState<string[] | undefined>(undefined);
   const [uiLayoutTemplate, setUiLayoutTemplate] = useState('classic');
+  const [uiPresetIconRow, setUiPresetIconRow] = useState(false);
   const [uiFloatViewMode, setUiFloatViewMode] = useState<'cover' | 'center'>('cover');
   const [uiFont, setUiFont] = useState<'pretendard' | 'system'>('system');
   const [uiClassicFinish, setUiClassicFinish] = useState(false);
@@ -2179,6 +2194,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setUiToolbar(config.uiToolbar ?? {});
       setQuickMenuCfg(config.quickMenu);
       setUiLayoutTemplate(config.uiLayoutTemplate ?? 'classic');
+      setUiPresetIconRow(config.uiPresetIconRow ?? false);
       setUiFloatViewMode(config.uiFloatViewMode ?? 'cover');
       setUiFont(config.uiFont ?? 'system');
       setUiClassicFinish(config.uiClassicFinish ?? false);
@@ -2315,6 +2331,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiToolbar: uiToolbar,
       quickMenu: quickMenuCfg,
       uiLayoutTemplate: uiLayoutTemplate,
+      uiPresetIconRow: uiPresetIconRow,
       uiFloatViewMode: uiFloatViewMode,
       uiFont: uiFont,
       uiClassicFinish: uiClassicFinish,
@@ -2331,6 +2348,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.uiToolbar = uiToolbar;
     appState.quickMenu = quickMenuCfg;
     appState.uiLayoutTemplate = uiLayoutTemplate;
+    appState.uiPresetIconRow = uiPresetIconRow;
     appState.uiFloatViewMode = uiFloatViewMode;
     appState.uiFont = uiFont;
     appState.uiClassicFinish = uiClassicFinish;
@@ -2373,7 +2391,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'toolbar':
         return <ToolbarTab {...{ uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg }} />;
       case 'layout':
-        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }} />;
+        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiPresetIconRow, setUiPresetIconRow, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':
@@ -2410,6 +2428,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       JSON.stringify(uiToolbar) !== JSON.stringify(savedCfg.uiToolbar ?? {}) ||
       JSON.stringify(quickMenuCfg ?? null) !== JSON.stringify(savedCfg.quickMenu ?? null) ||
       uiLayoutTemplate !== (savedCfg.uiLayoutTemplate ?? 'classic') ||
+      uiPresetIconRow !== (savedCfg.uiPresetIconRow ?? false) ||
       uiFloatViewMode !== (savedCfg.uiFloatViewMode ?? 'cover') ||
       uiFont !== (savedCfg.uiFont ?? 'system') ||
       uiClassicFinish !== (savedCfg.uiClassicFinish ?? false) ||

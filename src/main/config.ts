@@ -112,6 +112,11 @@ export interface Config {
   // 최종 렌더 순서 해석은 resolvePresetOrder(presetLayout.ts)가 단일 출처 —
   // stale 키는 조용히 무시하고 신규 키는 정의 위치에 삽입한다(롤백/전방호환 안전).
   uiPresetLayout?: Record<string, string[]>;
+  // 프리셋 패널 버튼 하단 아이콘 행(릴리스 준비 ② B) — true 면 프리셋 패널의 넓은
+  // 버튼(캐릭터 프롬프트·샘플링/모델·바이브·캐릭터 레퍼런스)을 본문에서 빼 패널
+  // 최하단의 아이콘 한 줄로 정리한다(존재하는 버튼만 — 워크플로우별 상이).
+  // 미설정/false = 현행 세로 넓은 버튼 그대로(롤백 안전). PC·모바일 공용.
+  uiPresetIconRow?: boolean;
   // 동반 슬롯(L3-1 → E2) — 프리셋 에디터 "호스트 행" 옆에 붙일 전역(portable) 툴바 버튼.
   // 키 = hostKey(wfiElementKey 안정 키, 예 'characterPrompts'·'vibes'·'characterReferences'
   // ·'sampling-group'), 값 = 붙일 버튼 id 목록(uiLayout.ts portable 버튼 id, 예

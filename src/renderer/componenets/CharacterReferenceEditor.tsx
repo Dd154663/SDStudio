@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { v4 } from 'uuid';
-import { FaCloudUploadAlt, FaTimes, FaToggleOff, FaToggleOn, FaTrash } from 'react-icons/fa';
+import { FaCloudUploadAlt, FaPortrait, FaTimes, FaToggleOff, FaToggleOn, FaTrash } from 'react-icons/fa';
 import { FileUploadBase64 } from './UtilComponents';
 import Tooltip from './Tooltip';
 import { ReferenceItem } from '../models/types';
@@ -10,7 +10,7 @@ import { imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import { WFIInlineInput, wfiElementKey } from '../models/workflows/WorkFlow';
 import { ModelVersion } from '../backends/imageGen';
-import { WFElementContext } from './wfElementContext';
+import { WFElementContext, PresetIconRowContext } from './wfElementContext';
 import { EditableSliderValue, VibeImage, useNarrowContainer } from './VibeEditor';
 import { resolveCompanionButtons } from '../models/companionSlots';
 import { renderCompanionButtons } from './PortableToolbarButtons';
@@ -162,7 +162,9 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
         onDrop={handleDrop}
       >
         <div className="flex-1 overflow-hidden">
-          <div className="h-full overflow-auto">
+          {/* flex-col: 빈 상태 안내가 "기본값 설정 헤더를 뺀 잔여 높이"(flex-1)를 채우게
+              한다 — h-full 이면 헤더 높이만큼 항상 넘쳐 빈 상태에서 세로 스크롤이 생긴다. */}
+          <div className="h-full overflow-auto flex flex-col">
             {/* 기본값 설정 섹션 */}
             <div className="mx-2 mt-2 mb-1">
               <button
@@ -214,7 +216,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
               )}
             </div>
             {getField().length === 0 && !isMobile && (
-              <div className="flex flex-col items-center justify-center h-full text-faint p-8">
+              <div className="flex flex-col items-center justify-center flex-1 text-faint p-8">
                 <FaCloudUploadAlt size={48} className="mb-4 opacity-60" />
                 <p className="text-base font-medium mb-1">이미지를 드래그하거나</p>
                 <p className="text-base font-medium">Ctrl+V로 붙여넣기 할 수 있습니다</p>
@@ -422,6 +424,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
 export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineInput }) => {
   const { editCharacterReference, setEditCharacterReference, preset, shared, meta, modelVersion } =
     useContext(WFElementContext)!;
+  const iconRow = useContext(PresetIconRowContext);
   const [activeIndex, setActiveIndex] = useState(0);
 
   const getField = () => {
@@ -470,6 +473,34 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
   const companionIds = resolveCompanionButtons(hostKey, appState.uiCompanionSlots);
   const companions = renderCompanionButtons(companionIds, hostKey);
   const hasCompanions = companions.length > 0;
+
+  // 하단 아이콘 행(uiPresetIconRow) 안 — 아이콘+활성 수 압축 형태. 잠금 의미는 넓은
+  // 버튼과 동일(툴팁으로 사유 안내), 동반 버튼은 그대로 이웃.
+  if (iconRow) {
+    return (
+      <CompanionHostRow hostKey={hostKey}>
+        <Tooltip
+          content={
+            locked ? '캐릭터 레퍼런스 (v4 모델 미지원)' : '캐릭터 레퍼런스 설정 열기'
+          }
+        >
+          <button
+            className={`round-button h-8 flex-1 !min-w-0 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
+            onClick={onClick}
+            disabled={locked}
+          >
+            <FaPortrait size={14} className="inline-block" />
+            {field.length > 0 && (
+              <span className="ml-1 text-xs">
+                {enabledRefs.length}/{field.length}
+              </span>
+            )}
+          </button>
+        </Tooltip>
+        {companions}
+      </CompanionHostRow>
+    );
+  }
 
   return (
     <CompanionHostRow hostKey={hostKey}>

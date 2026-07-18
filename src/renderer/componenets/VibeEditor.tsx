@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { v4 } from 'uuid';
-import { FaCloudUploadAlt, FaTimes, FaTrash } from 'react-icons/fa';
+import { FaCloudUploadAlt, FaImages, FaTimes, FaTrash } from 'react-icons/fa';
 import { FileUploadBase64 } from './UtilComponents';
 import Tooltip from './Tooltip';
 import { ReferenceItem, VibeItem } from '../models/types';
@@ -10,7 +10,7 @@ import { imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import { WFIInlineInput, wfiElementKey } from '../models/workflows/WorkFlow';
 import { ModelVersion } from '../backends/imageGen';
-import { WFElementContext } from './wfElementContext';
+import { WFElementContext, PresetIconRowContext } from './wfElementContext';
 import { resolveCompanionButtons } from '../models/companionSlots';
 import { renderCompanionButtons } from './PortableToolbarButtons';
 import { CompanionHostRow } from './CompanionDnd';
@@ -433,6 +433,7 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
 export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
   const { editVibe, setEditVibe, preset, shared, meta, modelVersion } =
     useContext(WFElementContext)!;
+  const iconRow = useContext(PresetIconRowContext);
   const [activeIndex, setActiveIndex] = useState(0);
 
   const getField = () => {
@@ -482,6 +483,34 @@ export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
   const companionIds = resolveCompanionButtons(hostKey, appState.uiCompanionSlots);
   const companions = renderCompanionButtons(companionIds, hostKey);
   const hasCompanions = companions.length > 0;
+
+  // 하단 아이콘 행(uiPresetIconRow) 안 — 아이콘+장수 압축 형태. 잠금 의미는 넓은
+  // 버튼과 동일(툴팁으로 사유 안내), 동반 버튼은 그대로 이웃.
+  if (iconRow) {
+    return (
+      <CompanionHostRow hostKey={hostKey}>
+        <Tooltip
+          content={
+            locked
+              ? '바이브 이미지 설정 (캐릭터 레퍼런스 사용 중)'
+              : '바이브 이미지 설정 열기'
+          }
+        >
+          <button
+            className={`round-button h-8 flex-1 !min-w-0 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
+            onClick={onClick}
+            disabled={locked}
+          >
+            <FaImages size={14} className="inline-block" />
+            {field.length > 0 && (
+              <span className="ml-1 text-xs">{field.length}</span>
+            )}
+          </button>
+        </Tooltip>
+        {companions}
+      </CompanionHostRow>
+    );
+  }
 
   return (
     <CompanionHostRow hostKey={hostKey}>

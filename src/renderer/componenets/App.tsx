@@ -276,6 +276,7 @@ export const App = observer(() => {
       appState.uiPresetLayout = conf.uiPresetLayout ?? {};
       appState.uiCompanionSlots = conf.uiCompanionSlots ?? {};
       appState.uiLayoutTemplate = conf.uiLayoutTemplate ?? 'classic';
+      appState.uiPresetIconRow = conf.uiPresetIconRow ?? false;
       appState.genWidget = conf.genWidget ?? {};
       appState.uiLayoutSlots = conf.uiLayoutSlots ?? {};
       appState.uiFloatViewMode = conf.uiFloatViewMode ?? 'cover';

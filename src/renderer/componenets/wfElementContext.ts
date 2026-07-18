@@ -30,3 +30,9 @@ export interface IWFElementContext {
 }
 
 export const WFElementContext = React.createContext<IWFElementContext | null>(null);
+
+// 프리셋 패널 하단 아이콘 행(uiPresetIconRow) 내부 렌더 표시.
+// PresetRootRender 의 하단 행 컨테이너가 true 로 제공하고, 대상 버튼 컴포넌트
+// (CharacterButton/WFRGroup/VibeButton/CharacterReferenceButton)가 읽어
+// 넓은(w-full) 형태 대신 아이콘 압축 형태로 렌더한다. 기본 false = 현행 렌더.
+export const PresetIconRowContext = React.createContext<boolean>(false);
