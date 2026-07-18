@@ -55,6 +55,15 @@ export interface Config {
   /** 퀵 메뉴 구성(전역 액션 id 목록, globalActions 참조). 미설정 = 추천 기본 프리셋.
    *  stale id 는 해석 시 조용히 무시(uiToolbar 선례). */
   quickMenu?: string[];
+  /** 사용자 커스텀 테마 프리셋(릴리스 준비 ③) — 현재 색 구성(UiThemeConfig)+기본
+   *  모드(다크/화이트/트루다크) 스냅샷. 칩 클릭 = 저장 당시 모습 그대로 복원(템플릿
+   *  칩과 동일 UX). 옵셔널 = 하위호환. */
+  uiThemePresets?: {
+    name: string;
+    whiteMode: boolean;
+    trueDark?: boolean;
+    theme: UiThemeConfig;
+  }[];
   /** 조합 에디터 뷰 모드(개인 지속). 'card'=기존 카드 격자 / 'list'=컴팩트 목록.
    *  미설정 = 데스크톱 card·모바일 list(App 로드 시 결정). 옵셔널 = 하위호환. */
   uiCombinationView?: 'card' | 'list';

@@ -1228,11 +1228,72 @@ const TemplateVariantChip = ({
   </button>
 );
 
+// 내 프리셋 칩(릴리스 준비 ③) — 저장된 스냅샷의 배경/대표색으로 칠해 색감을 예상.
+// 클릭 = 복원 적용, ✕ = 삭제. 라벨 색은 textPattern, 미설정 시 기본 모드로 추정.
+const MyThemePresetChip = ({
+  preset,
+  onApply,
+  onDelete,
+}: {
+  preset: { name: string; whiteMode: boolean; trueDark?: boolean; theme: UiThemeConfig };
+  onApply: () => void;
+  onDelete: () => void;
+}) => {
+  const labelColor = preset.theme.textPattern
+    ? preset.theme.textPattern === 'light'
+      ? '#000000'
+      : '#ffffff'
+    : preset.whiteMode
+      ? '#000000'
+      : '#ffffff';
+  return (
+    <div
+      className="flex items-center gap-1 rounded-full border line-color pl-2.5 pr-1.5 py-1"
+      style={{ backgroundColor: preset.theme.surface }}
+    >
+      <button className="flex items-center gap-1.5 clickable min-w-0" onClick={onApply}>
+        <span
+          className="text-xs font-medium truncate max-w-[9rem]"
+          style={{ color: labelColor }}
+        >
+          {preset.name}
+        </span>
+        <span className="flex gap-1 flex-none">
+          {[
+            preset.theme.surface2,
+            preset.theme.accent,
+            preset.theme.neutral,
+            preset.theme.danger,
+          ].map((c, i) => (
+            <span
+              key={i}
+              className="w-3 h-3 rounded-full flex-none"
+              style={{
+                backgroundColor: c,
+                boxShadow: 'inset 0 0 0 1px rgba(128,128,128,.4)',
+              }}
+            />
+          ))}
+        </span>
+      </button>
+      <button
+        className="clickable text-xs px-1 flex-none"
+        style={{ color: labelColor }}
+        onClick={onDelete}
+        title="프리셋 삭제"
+      >
+        ✕
+      </button>
+    </div>
+  );
+};
+
 const CustomizationTab = ({
   uiTheme,
   setUiTheme,
   whiteMode, setWhiteMode,
   trueDark, setTrueDark,
+  uiThemePresets, setUiThemePresets,
 }: any) => {
   const [mobilePicker, setMobilePicker] = useState<{
     initial: string;
@@ -1261,6 +1322,41 @@ const CustomizationTab = ({
     }));
     setWhiteMode(mode === 'light');
     setTrueDark(false);
+  };
+
+  // 내 프리셋(릴리스 준비 ③): 현재 색 구성+기본 모드 스냅샷을 이름 붙여 저장.
+  // 같은 이름 = 덮어쓰기 확인. 적용은 스냅샷 그대로 복원(저장 전이라 되돌리기 자유).
+  const presets: NonNullable<Config['uiThemePresets']> = uiThemePresets ?? [];
+  const saveCurrentAsPreset = async () => {
+    const name = await appState.pushDialogAsync({
+      type: 'input-confirm',
+      text: '프리셋 이름을 입력하세요',
+    });
+    if (!name) return;
+    const snapshot = {
+      name,
+      whiteMode,
+      trueDark: trueDark || undefined,
+      theme: JSON.parse(JSON.stringify(uiTheme)) as UiThemeConfig,
+    };
+    if (presets.some((p: { name: string }) => p.name === name)) {
+      appState.pushDialog({
+        type: 'confirm',
+        text: `"${name}" 프리셋이 이미 있습니다. 덮어쓸까요?`,
+        callback: () => {
+          setUiThemePresets(
+            presets.map((p: { name: string }) => (p.name === name ? snapshot : p)),
+          );
+        },
+      });
+      return;
+    }
+    setUiThemePresets([...presets, snapshot]);
+  };
+  const applyPreset = (p: (typeof presets)[number]) => {
+    setUiTheme(JSON.parse(JSON.stringify(p.theme)));
+    setWhiteMode(p.whiteMode);
+    setTrueDark(p.trueDark ?? false);
   };
 
   return (
@@ -1325,6 +1421,52 @@ const CustomizationTab = ({
             </div>
           ))}
         </div>
+      </div>
+      <hr className="line-color" />
+
+      {/* ── 내 프리셋 (릴리스 준비 ③) ── */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-sm gray-label">내 프리셋</label>
+          <button
+            className="round-button back-sky btn-sm flex-none"
+            onClick={saveCurrentAsPreset}
+          >
+            현재 구성 저장
+          </button>
+        </div>
+        <p className="text-xs text-muted mb-2">
+          현재 색 구성과 기본 테마(다크/화이트)를 스냅샷으로 저장합니다. 칩을
+          누르면 저장 당시 모습 그대로 복원되고, <b>저장</b>해야 앱에 적용됩니다.
+        </p>
+        {presets.length === 0 ? (
+          <div className="text-xs text-faint">
+            저장된 프리셋이 없습니다 — 색을 꾸민 뒤 "현재 구성 저장"을 누르세요.
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {presets.map((p: (typeof presets)[number]) => (
+              <MyThemePresetChip
+                key={p.name}
+                preset={p}
+                onApply={() => applyPreset(p)}
+                onDelete={() => {
+                  appState.pushDialog({
+                    type: 'confirm',
+                    text: `"${p.name}" 프리셋을 삭제하시겠습니까?`,
+                    callback: () => {
+                      setUiThemePresets(
+                        presets.filter(
+                          (x: { name: string }) => x.name !== p.name,
+                        ),
+                      );
+                    },
+                  });
+                }}
+              />
+            ))}
+          </div>
+        )}
       </div>
       <hr className="line-color" />
 
@@ -1998,6 +2140,9 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [saveLocation, setSaveLocation] = useState('');
   const [defaultExportFolder, setDefaultExportFolder] = useState('');
   const [uiTheme, setUiTheme] = useState<UiThemeConfig>({});
+  const [uiThemePresets, setUiThemePresets] = useState<
+    NonNullable<Config['uiThemePresets']>
+  >([]);
   const [uiToolbar, setUiToolbar] = useState<UiToolbarConfig>({});
   const [quickMenuCfg, setQuickMenuCfg] = useState<string[] | undefined>(undefined);
   const [uiLayoutTemplate, setUiLayoutTemplate] = useState('classic');
@@ -2030,6 +2175,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setSaveLocation(config.saveLocation ?? '');
       setDefaultExportFolder(config.defaultExportFolder ?? '');
       setUiTheme(config.uiTheme ?? {});
+      setUiThemePresets(config.uiThemePresets ?? []);
       setUiToolbar(config.uiToolbar ?? {});
       setQuickMenuCfg(config.quickMenu);
       setUiLayoutTemplate(config.uiLayoutTemplate ?? 'classic');
@@ -2165,6 +2311,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       defaultExportFolder: defaultExportFolder || undefined,
       trueDark: trueDark,
       uiTheme: uiTheme,
+      uiThemePresets: uiThemePresets.length > 0 ? uiThemePresets : undefined,
       uiToolbar: uiToolbar,
       quickMenu: quickMenuCfg,
       uiLayoutTemplate: uiLayoutTemplate,
@@ -2222,7 +2369,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'personal':
         return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, legacySceneEditor, setLegacySceneEditor, legacyWorkflowMode, setLegacyWorkflowMode, sceneToolbarLegacyText, setSceneToolbarLegacyText, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish, allowDuplicateProjectOpen, setAllowDuplicateProjectOpen }} />;
       case 'customization':
-        return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark }} />;
+        return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark, uiThemePresets, setUiThemePresets }} />;
       case 'toolbar':
         return <ToolbarTab {...{ uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg }} />;
       case 'layout':
@@ -2259,6 +2406,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       // fullWordAc 는 config 파일이 아니라 appState+localStorage 저장 — 저장 시 appState 가 갱신되므로 그것과 비교
       fullWordAc !== appState.fullWordAutoComplete ||
       JSON.stringify(uiTheme) !== JSON.stringify(savedCfg.uiTheme ?? {}) ||
+      JSON.stringify(uiThemePresets) !== JSON.stringify(savedCfg.uiThemePresets ?? []) ||
       JSON.stringify(uiToolbar) !== JSON.stringify(savedCfg.uiToolbar ?? {}) ||
       JSON.stringify(quickMenuCfg ?? null) !== JSON.stringify(savedCfg.quickMenu ?? null) ||
       uiLayoutTemplate !== (savedCfg.uiLayoutTemplate ?? 'classic') ||
