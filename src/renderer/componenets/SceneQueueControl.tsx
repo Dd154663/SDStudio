@@ -2198,7 +2198,7 @@ const QueueControl = observer(
           {isMobile ? '해상도' : '해상도 변경'}
         </button>
       ),
-      'webp-convert': !isMobile && (
+      'webp-convert': (
         <Tooltip content="선택 씬의 PNG를 WebP로 변환(용량 절감, 메타데이터 보존)">
           <button
             className="round-button back-gray"
@@ -2206,8 +2206,8 @@ const QueueControl = observer(
               appState.openConvertToWebpMenu(type, setSceneSelector);
             }}
           >
-            {/* 아이콘 모드 = 'WebP' 단축 표기(2026-07-18 사용자) */}
-            {iconMode ? 'WebP' : 'WebP 변환'}
+            {/* 아이콘 모드 = 'WebP' 단축 표기(2026-07-18 사용자), 모바일도 단축 */}
+            {isMobile || iconMode ? 'WebP' : 'WebP 변환'}
           </button>
         </Tooltip>
       ),

@@ -35,7 +35,8 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'batch-process', name: '대량 작업', tier: 'primary' },
   { id: 'multi-select', name: '다중 선택', tier: 'primary' },
   { id: 'change-resolution', name: '해상도 변경', tier: 'secondary' },
-  { id: 'webp-convert', name: 'WebP 변환', pcOnly: true, tier: 'overflow' },
+  // pcOnly 해제(2026-07-18): 모바일도 wasm libwebp 로 일괄 변환 지원(경고+취소 포함)
+  { id: 'webp-convert', name: 'WebP 변환', tier: 'overflow' },
   // 모바일 실사용 빈도가 높아 모바일만 인라인 (PC 는 기존대로 ⋯ 메뉴)
   { id: 'import-image', name: '이미지 프롬프트 추출', tier: 'mobile-primary' },
   // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환

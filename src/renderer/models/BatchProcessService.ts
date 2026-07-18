@@ -705,14 +705,26 @@ export class BatchProcessService {
     });
   }
 
-  // 생성 이미지 PNG → WebP 일괄 변환 (데스크톱 전용, 사후 변환).
-  // 프롬프트 메타데이터는 EXIF 로 이월되고 원본 PNG 는 복구 가능한 휴지통으로 이동한다.
+  // WebP 일괄 변환 confirm 공통 문구. 원본 처리(데스크톱=OS 휴지통 이동/모바일=삭제)와
+  // 모바일 부하 경고를 플랫폼에 맞게 안내한다.
+  private webpConfirmText(head: string, quality: number): string {
+    const origin = platform.isMobile
+      ? '원본 PNG는 삭제됩니다.'
+      : '원본 PNG는 복구 가능한 휴지통으로 이동합니다.';
+    const warn = platform.isMobile
+      ? '\n⚠ 모바일에서는 기기 사양에 따라 부하가 크고 매우 오래 걸릴 수 있습니다. 변환 중 취소하면 그때까지 변환된 분량은 안전하게 저장됩니다.'
+      : '';
+    return `${head}(품질 ${quality})로 변환합니다.\n프롬프트 메타데이터는 보존되며, ${origin}${warn} 계속할까요?`;
+  }
+
+  // 생성 이미지 PNG → WebP 일괄 변환 (사후 변환).
+  // 프롬프트 메타데이터는 보존된다(데스크톱=EXIF 이월+스텔스, 모바일=스텔스 유지).
   openConvertToWebpMenu(
     type: 'scene' | 'inpaint',
     setSceneSelector: (item: SceneSelectorItem | undefined) => void,
   ) {
     if (!platform.supportsWebpConvert) {
-      appState.pushMessage('WebP 변환은 데스크톱에서만 지원됩니다.');
+      appState.pushMessage('이 플랫폼에서는 WebP 변환을 지원하지 않습니다.');
       return;
     }
     setSceneSelector({
@@ -733,7 +745,10 @@ export class BatchProcessService {
 
         appState.pushDialog({
           type: 'confirm',
-          text: `선택한 ${selected.length}개 씬의 PNG 이미지를 WebP(품질 ${quality})로 변환합니다.\n프롬프트 메타데이터는 보존되며, 원본 PNG는 복구 가능한 휴지통으로 이동합니다. 계속할까요?`,
+          text: this.webpConfirmText(
+            `선택한 ${selected.length}개 씬의 PNG 이미지를 WebP`,
+            quality,
+          ),
           callback: async () => {
             await this.runWebpConversion(appState.curSession!, selected, quality);
           },
@@ -748,7 +763,7 @@ export class BatchProcessService {
   // 프로젝트와 읽기 전용 미러는 차단(파일만 바꾸면 소유 창 세션과 어긋난다).
   async openProjectWebpOptimize(name: string) {
     if (!platform.supportsWebpConvert) {
-      appState.pushMessage('WebP 변환은 데스크톱에서만 지원됩니다.');
+      appState.pushMessage('이 플랫폼에서는 WebP 변환을 지원하지 않습니다.');
       return;
     }
     if (sessionService.isMirror(name)) {
@@ -771,7 +786,10 @@ export class BatchProcessService {
 
     appState.pushDialog({
       type: 'confirm',
-      text: `프로젝트 [${name}]의 모든 PNG 이미지(씬+인페인트)를 WebP(품질 ${quality})로 변환합니다.\n프롬프트 메타데이터는 보존되며, 원본 PNG는 복구 가능한 휴지통으로 이동합니다. 계속할까요?`,
+      text: this.webpConfirmText(
+        `프로젝트 [${name}]의 모든 PNG 이미지(씬+인페인트)를 WebP`,
+        quality,
+      ),
       callback: async () => {
         const session = await sessionService.get(name);
         if (!session) {
@@ -830,7 +848,27 @@ export class BatchProcessService {
 
     let done = 0;
     let fail = 0;
-    appState.setProgressDialog({ text: 'WebP 변환 중...', done: 0, total });
+    let skipped = 0;
+    // 중간 취소(특히 모바일 — 일괄 변환이 매우 오래 걸릴 수 있음): 플래그만 세우고
+    // 남은 작업을 스킵으로 소진한다. 이미 변환된 분량은 아래 rename 일괄 반영을
+    // 그대로 거치므로 데이터 참조가 깨지지 않는다(진행분 안전 저장 후 중단).
+    let cancelled = false;
+    const updateProgress = () => {
+      appState.setProgressDialog({
+        text: cancelled
+          ? 'WebP 변환 취소 중... (진행분 마무리)'
+          : 'WebP 변환 중...',
+        done,
+        total,
+        onCancel: cancelled
+          ? undefined
+          : () => {
+              cancelled = true;
+              updateProgress();
+            },
+      });
+    };
+    updateProgress();
 
     // 내보내기 최적화와 동일한 동시성(공유 runPool + exportConcurrency). 순차(1장씩)
     // → 최대 4장 병렬. Phase 2 에서 상한을 코어 수로 올리면 이 한 곳이 함께 상향된다.
@@ -844,11 +882,16 @@ export class BatchProcessService {
     );
 
     await runPool(tasks, CONCURRENCY, async (task) => {
+      if (cancelled) {
+        skipped++;
+        done++;
+        return;
+      }
       const { scene, dir, png, webp } = task;
       try {
         await backend.convertToWebp(dir + '/' + png, dir + '/' + webp, quality);
         renames.get(scene)!.set(png, webp);
-        // 원본 PNG 는 복구 가능한 휴지통으로 이동
+        // 원본 PNG 제거(데스크톱=OS 휴지통 이동, 모바일=삭제 — trashFile 의미)
         await backend.trashFile(dir + '/' + png);
         await imageService.invalidateCache(dir + '/' + png);
       } catch (e: any) {
@@ -856,7 +899,7 @@ export class BatchProcessService {
         console.error('WebP 변환 실패:', dir + '/' + png, e?.message || e);
       }
       done++;
-      appState.setProgressDialog({ text: 'WebP 변환 중...', done, total });
+      updateProgress();
     });
 
     // 씬 데이터의 파일명 참조 3곳(imageMap/mains/game) 일괄 갱신 — 누락 시
@@ -879,8 +922,11 @@ export class BatchProcessService {
     await Promise.allSettled(
       selected.map((s) => gameService.refreshList(session, s)),
     );
+    const success = done - fail - skipped;
     appState.pushMessage(
-      `WebP 변환 완료: ${done - fail}개 성공${fail ? `, ${fail}개 실패(원본 유지)` : ''}`,
+      cancelled
+        ? `WebP 변환 취소됨: ${success}개 변환 저장, ${skipped}개 중단${fail ? `, ${fail}개 실패(원본 유지)` : ''}`
+        : `WebP 변환 완료: ${success}개 성공${fail ? `, ${fail}개 실패(원본 유지)` : ''}`,
     );
   }
 }

@@ -146,8 +146,9 @@ describe('resolveToolbarView — areas 순서/폴백/필터', () => {
       schema: 2,
       areas: {
         [SCENE]: {
-          // webp-convert 는 pcOnly. scene-search 는 hidden.
-          inline: ['webp-convert', 'add-scene'],
+          // artist-tag 는 pcOnly. scene-search 는 hidden.
+          // (webp-convert 는 모바일 일괄 변환 지원으로 pcOnly 해제됨 — 2026-07-18)
+          inline: ['artist-tag', 'add-scene'],
           menu: [],
           hidden: ['scene-search'],
         },
@@ -155,7 +156,7 @@ describe('resolveToolbarView — areas 순서/폴백/필터', () => {
     };
     const view = resolveToolbarView(registries, ov, true);
     const scene = view.find((v) => v.area === SCENE)!;
-    expect(scene.inline).not.toContain('webp-convert'); // pcOnly
+    expect(scene.inline).not.toContain('artist-tag'); // pcOnly
     expect(scene.inline).not.toContain('scene-search'); // hidden
     expect(scene.menu).not.toContain('scene-search');
     expect(scene.inline).toContain('add-scene');

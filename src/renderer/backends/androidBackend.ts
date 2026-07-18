@@ -606,8 +606,8 @@ export class AndroidBackend extends Backend {
   }
 
   async convertToWebp(src: string, dest: string, quality: number): Promise<void> {
-    // 모바일은 sharp 가 없어 wasm libwebp(렌더러)로 인코딩한다 — 자동 WebP 변환
-    // (1장씩) 전용 경로. 씬/프로젝트 일괄 변환 UI 는 모바일에서 계속 차단된다.
+    // 모바일은 sharp 가 없어 wasm libwebp(렌더러)로 인코딩한다 — 자동 WebP 변환과
+    // 씬/프로젝트 일괄 변환이 공용으로 쓰는 경로(일괄은 경고+취소 제공).
     // wasm 번들이 무거워 동적 import 로 필요 시점에만 로드한다.
     const { encodePngBase64ToWebp } = await import('./wasmWebp');
     const data = await Filesystem.readFile({

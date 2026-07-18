@@ -1,8 +1,9 @@
 // 모바일 WebP 인코딩 경로 (wasm libwebp — @jsquash/webp).
 //
 // 데스크톱 WebP 변환은 main 프로세스의 sharp 가 담당하지만 모바일(WebView)에는
-// sharp 가 없다. 이 모듈은 자동 WebP 변환(새 생성 이미지 1장씩)을 위해 렌더러에서
-// libwebp wasm 으로 인코딩한다. 씬/프로젝트 일괄 변환은 모바일 비지원 유지(부하).
+// sharp 가 없다. 이 모듈은 모바일의 WebP 인코딩 전부(자동 변환 1장씩 + 씬/프로젝트
+// 일괄 변환)를 렌더러에서 libwebp wasm 으로 처리한다. 일괄 변환은 오래 걸릴 수
+// 있어 진입 시 경고+진행 중 취소를 제공한다(BatchProcessService).
 //
 // NAI stealth 워터마크(알파 LSB) 보존 원리 — 플랜 mobile-auto-webp.md 참조:
 //  - 캔버스 디코드(drawImage→getImageData)는 알파 채널을 비트 그대로 돌려준다.
