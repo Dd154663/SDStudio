@@ -360,6 +360,17 @@ html.font-pretendard body {
   color: var(--c-icon-text);
 }
 
+/* icon-button + back-* 조합 시 전경색은 back-* 가 이긴다.
+   .icon-button 이 .back-* 보다 뒤에 정의돼 같은 특이도에서 --c-icon-text 가
+   덮어쓰는 캐스케이드 파손 수정 — 라이트 모드에서 회색600 텍스트가 회색500
+   배경(--c-gray-bg)이나 채도 배경 위에 얹혀 안 보이던 버그(작가 라이브러리
+   아이콘 버튼·프롬프트조각 상단 버튼 등). */
+.icon-button.back-green { color: var(--c-green-fg); }
+.icon-button.back-sky { color: var(--c-sky-fg); }
+.icon-button.back-red { color: var(--c-red-fg); }
+.icon-button.back-gray { color: var(--c-gray-fg); }
+.icon-button.back-orange { color: var(--c-orange-fg); }
+
 /* ── #12 버튼 언어 통일 ─────────────────────────────────────
    원칙: 기존 모양 100% 유지 — 화면마다 반복되던 하드코딩만 클래스로 흡수.
    색은 back-*(테마 추종) 또는 btn-solid-*(의도적 원색 유지), 크기는 px/py 조합. */
