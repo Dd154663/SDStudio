@@ -12,6 +12,7 @@ import {
 import { Config, ImageEditor, RemoveBgQuality, UiThemeConfig, UiToolbarConfig } from '../../main/config';
 import ToolbarLayoutEditor from './ToolbarLayoutEditor';
 import { projectToolbarRegistry, sceneToolbarRegistry, portableButtonMetas } from '../models/uiLayout';
+import { GLOBAL_ACTIONS, globalActionMeta, DEFAULT_QUICK_MENU } from '../models/globalActions';
 import { platform } from '../models/platform';
 import { buildThemeVars, isHex6 } from '../models/uiTheme';
 import { themeTemplates } from '../models/themeTemplates';
@@ -1566,7 +1567,84 @@ const CustomizationTab = ({
 };
 
 /* ── 탭: 툴바 버튼 구성 (테마 탭에서 분리 — 두 기능이 한 탭에 있으면 스크롤이 과도) ── */
-const ToolbarTab = ({ uiToolbar, setUiToolbar }: any) => (
+/* ── 퀵 메뉴 구성 (트랙2 ① P3) ── */
+// config.quickMenu 편집기. undefined = 추천 기본(DEFAULT_QUICK_MENU) 사용 상태.
+// 표시명은 uiLayout 레지스트리 단일 출처(globalActionMeta), 모바일은 pcOnly 후보 제외.
+const QuickMenuEditor = ({
+  value,
+  onChange,
+}: {
+  value: string[] | undefined;
+  onChange: (v: string[] | undefined) => void;
+}) => {
+  const list = value ?? DEFAULT_QUICK_MENU;
+  const included = new Set(list);
+  const candidates = GLOBAL_ACTIONS.filter((a) => {
+    const m = globalActionMeta(a.id);
+    return !!m && !(isMobile && m.pcOnly);
+  });
+  const nameOf = (id: string) => globalActionMeta(id)?.name ?? id;
+  const move = (id: string, dir: -1 | 1) => {
+    const idx = list.indexOf(id);
+    const to = idx + dir;
+    if (idx < 0 || to < 0 || to >= list.length) return;
+    const next = [...list];
+    next.splice(idx, 1);
+    next.splice(to, 0, id);
+    onChange(next);
+  };
+  return (
+    <div>
+      <div className="text-sm font-semibold gray-label mb-1">퀵 메뉴 구성</div>
+      <p className="text-xs text-faint mb-2">
+        우하단 ⚡ 버튼{isMobile ? '' : ' 또는 단축키(기본 Ctrl+K)'}로 여는 퀵
+        메뉴에 담을 기능을 고릅니다. 위에서부터 나열 순서대로 표시됩니다.
+      </p>
+      <div className="rounded-md border line-color divide-y divide-[var(--c-line)] mb-2">
+        {list.filter((id) => candidates.some((a) => a.id === id)).length === 0 && (
+          <div className="text-xs text-muted p-2">비어 있음 — 아래에서 추가하세요</div>
+        )}
+        {list.map((id) =>
+          candidates.some((a) => a.id === id) ? (
+            <div key={id} className="flex items-center gap-1 px-2 py-1">
+              <span className="flex-1 text-sm text-default truncate">{nameOf(id)}</span>
+              <button className="btn-ghost rounded px-1.5 py-0.5 text-xs" onClick={() => move(id, -1)}>▲</button>
+              <button className="btn-ghost rounded px-1.5 py-0.5 text-xs" onClick={() => move(id, 1)}>▼</button>
+              <button
+                className="btn-ghost rounded px-1.5 py-0.5 text-xs"
+                onClick={() => onChange(list.filter((x) => x !== id))}
+              >
+                ✕
+              </button>
+            </div>
+          ) : null,
+        )}
+      </div>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {candidates
+          .filter((a) => !included.has(a.id))
+          .map((a) => (
+            <button
+              key={a.id}
+              className="btn rounded-full border line-color px-2.5 py-1 text-xs text-default bg-[var(--c-input-bg)]"
+              onClick={() => onChange([...list, a.id])}
+            >
+              + {nameOf(a.id)}
+            </button>
+          ))}
+      </div>
+      <button
+        className="btn-link text-xs"
+        onClick={() => onChange(undefined)}
+        disabled={value === undefined}
+      >
+        추천 기본값으로 되돌리기
+      </button>
+    </div>
+  );
+};
+
+const ToolbarTab = ({ uiToolbar, setUiToolbar, quickMenu, setQuickMenu }: any) => (
   <div className="space-y-5">
     <ToolbarLayoutEditor
       value={uiToolbar}
@@ -1577,6 +1655,8 @@ const ToolbarTab = ({ uiToolbar, setUiToolbar }: any) => (
       ]}
       mobileMode={isMobile}
     />
+    <hr className="line-color" />
+    <QuickMenuEditor value={quickMenu} onChange={setQuickMenu} />
   </div>
 );
 
@@ -1919,6 +1999,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [defaultExportFolder, setDefaultExportFolder] = useState('');
   const [uiTheme, setUiTheme] = useState<UiThemeConfig>({});
   const [uiToolbar, setUiToolbar] = useState<UiToolbarConfig>({});
+  const [quickMenuCfg, setQuickMenuCfg] = useState<string[] | undefined>(undefined);
   const [uiLayoutTemplate, setUiLayoutTemplate] = useState('classic');
   const [uiFloatViewMode, setUiFloatViewMode] = useState<'cover' | 'center'>('cover');
   const [uiFont, setUiFont] = useState<'pretendard' | 'system'>('system');
@@ -1950,6 +2031,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setDefaultExportFolder(config.defaultExportFolder ?? '');
       setUiTheme(config.uiTheme ?? {});
       setUiToolbar(config.uiToolbar ?? {});
+      setQuickMenuCfg(config.quickMenu);
       setUiLayoutTemplate(config.uiLayoutTemplate ?? 'classic');
       setUiFloatViewMode(config.uiFloatViewMode ?? 'cover');
       setUiFont(config.uiFont ?? 'system');
@@ -2084,6 +2166,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       trueDark: trueDark,
       uiTheme: uiTheme,
       uiToolbar: uiToolbar,
+      quickMenu: quickMenuCfg,
       uiLayoutTemplate: uiLayoutTemplate,
       uiFloatViewMode: uiFloatViewMode,
       uiFont: uiFont,
@@ -2099,6 +2182,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.legacyWorkflowMode = legacyWorkflowMode;
     appState.sceneToolbarLegacyText = sceneToolbarLegacyText;
     appState.uiToolbar = uiToolbar;
+    appState.quickMenu = quickMenuCfg;
     appState.uiLayoutTemplate = uiLayoutTemplate;
     appState.uiFloatViewMode = uiFloatViewMode;
     appState.uiFont = uiFont;
@@ -2140,7 +2224,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'customization':
         return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark }} />;
       case 'toolbar':
-        return <ToolbarTab {...{ uiToolbar, setUiToolbar }} />;
+        return <ToolbarTab {...{ uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg }} />;
       case 'layout':
         return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }} />;
       case 'recovery':
@@ -2176,6 +2260,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       fullWordAc !== appState.fullWordAutoComplete ||
       JSON.stringify(uiTheme) !== JSON.stringify(savedCfg.uiTheme ?? {}) ||
       JSON.stringify(uiToolbar) !== JSON.stringify(savedCfg.uiToolbar ?? {}) ||
+      JSON.stringify(quickMenuCfg ?? null) !== JSON.stringify(savedCfg.quickMenu ?? null) ||
       uiLayoutTemplate !== (savedCfg.uiLayoutTemplate ?? 'classic') ||
       uiFloatViewMode !== (savedCfg.uiFloatViewMode ?? 'cover') ||
       uiFont !== (savedCfg.uiFont ?? 'system') ||

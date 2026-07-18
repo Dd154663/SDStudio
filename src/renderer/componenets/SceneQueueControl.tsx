@@ -16,7 +16,6 @@ import {
   FaEllipsisH,
   FaFileExport,
   FaFileImage,
-  FaPaintBrush,
   FaPen,
   FaPlus,
   FaQuestion,
@@ -39,7 +38,6 @@ import { reaction } from 'mobx';
 import { FloatView } from './FloatView';
 import ModalOverlay from './ModalOverlay';
 import SceneEditor from './SceneEditor';
-import ArtistTagModal from './ArtistTagModal';
 import Tournament from './Tournament';
 import ResultViewer from './ResultViewer';
 import InPaintEditor from './InPaintEditor';
@@ -758,12 +756,13 @@ export const SceneCell = observer(
 );
 
 // ===== SceneTrashView 컴포넌트 =====
+// B군 승격(퀵 메뉴 P2)으로 전역 오버레이(App.tsx)가 호스트 — export 로 전환.
 
 interface SceneTrashViewProps {
   projectName: string;
 }
 
-function SceneTrashView({ projectName }: SceneTrashViewProps) {
+export function SceneTrashView({ projectName }: SceneTrashViewProps) {
   const [deletedScenes, setDeletedScenes] = useState<
     { name: string; type: 'scene' | 'inpaint'; deletedAt: number }[]
   >([]);
@@ -1935,9 +1934,8 @@ const QueueControl = observer(
       SceneSelectorItem | undefined
     >(undefined);
 
-    const [showSceneTrash, setShowSceneTrash] = useState(false);
-    // 아티스트 태깅 모달 (데스크톱 전용)
-    const [showArtistTag, setShowArtistTag] = useState(false);
+    // 씬 휴지통·아티스트 태깅은 전역 승격(appState.sceneTrashOpen/artistTagOpen,
+    // 퀵 메뉴 P2) — 모달 호스트는 App.tsx 전역 오버레이, 버튼은 portable 공유 JSX.
     // 툴바 ⋯(더보기) 오버플로 메뉴
     const [showToolbarMenu, setShowToolbarMenu] = useState(false);
     // 툴바 버튼 드래그 재배치 (클래식 툴바에선 비활성)
@@ -2207,16 +2205,8 @@ const QueueControl = observer(
           </button>
         </Tooltip>
       ),
-      'artist-tag': !isMobile && (
-        <Tooltip content="아티스트 태깅 (그림체 분석)">
-          <button
-            className="round-button back-gray"
-            onClick={() => setShowArtistTag(true)}
-          >
-            <FaPaintBrush size={18} />
-          </button>
-        </Tooltip>
-      ),
+      // 'artist-tag'·'scene-trash' 는 portable 공유 JSX(PortableToolbarButtons)로
+      // 이관(B군 승격) — buttonNode 의 shared 폴백이 렌더한다.
       'scene-search': (
         <Tooltip content="씬 검색">
           <button
@@ -2258,16 +2248,6 @@ const QueueControl = observer(
             }}
           >
             <FaBookmark size={18} />
-          </button>
-        </Tooltip>
-      ),
-      'scene-trash': (
-        <Tooltip content="씬 휴지통">
-          <button
-            className="round-button back-gray"
-            onClick={() => setShowSceneTrash(true)}
-          >
-            <FaTrash size={18} />
           </button>
         </Tooltip>
       ),
@@ -2353,19 +2333,7 @@ const QueueControl = observer(
             onClose={() => setQuickPromptScene(undefined)}
           />
         )}
-        <ModalOverlay
-          isOpen={showSceneTrash}
-          onClose={() => setShowSceneTrash(false)}
-          title="🗑️ 씬 휴지통"
-        >
-          <SceneTrashView projectName={curSession.name} />
-        </ModalOverlay>
-        {showArtistTag && (
-          <ArtistTagModal
-            isOpen={showArtistTag}
-            onClose={() => setShowArtistTag(false)}
-          />
-        )}
+        {/* 씬 휴지통·아티스트 태깅 모달은 App.tsx 전역 오버레이로 이관(B군 승격) */}
         {panel}
         {!!showPannel && (
           <div className="flex flex-none pb-1.5 flex-wrap">

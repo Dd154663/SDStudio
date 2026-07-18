@@ -355,6 +355,33 @@ export class AppState {
     this.findReplaceOpen = false;
   }
 
+  // 아티스트 태깅(B군 승격, 퀵 메뉴 P2) — 세션 무관·PC 전용(진입점이 pcOnly).
+  // 모달 호스트는 App.tsx 전역 오버레이.
+  @observable accessor artistTagOpen: boolean = false;
+  @action
+  openArtistTag() {
+    this.artistTagOpen = true;
+  }
+
+  // 씬 휴지통(B군 승격, 퀵 메뉴 P2) — SceneTrashView 가 curSession.name 을 쓰므로 세션 가드.
+  @observable accessor sceneTrashOpen: boolean = false;
+  @action
+  openSceneTrash() {
+    if (!this.curSession) {
+      this.pushMessage('프로젝트를 먼저 선택해주세요');
+      return;
+    }
+    this.sceneTrashOpen = true;
+  }
+
+  // 퀵 메뉴(P3) — 오버레이 열림 상태 + 구성(config.quickMenu 미러, undefined=추천 기본).
+  @observable accessor quickMenuOpen: boolean = false;
+  @observable accessor quickMenu: string[] | undefined = undefined;
+
+  // 메인 탭 문맥('scene'|'inpaint'|'other') — 퀵 메뉴의 export 계열 액션이 활성 탭을
+  // 따라가기 위한 추적(D3). App.tsx 탭 onClick 이 갱신, 세션 전환 시 'scene' 리셋.
+  @observable accessor curMainTab: 'scene' | 'inpaint' | 'other' = 'scene';
+
   // 캐릭터 프리셋 관리 열기 — 진입점(프로젝트 툴바 bar/sidebar 등)이 공유하는
   // 전역 액션. 세션 가드·모바일 적용중 선택 다이얼로그까지 여기서 처리한다.
   @action

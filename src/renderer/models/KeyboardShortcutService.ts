@@ -62,6 +62,7 @@ const ACTIONS: ShortcutAction[] = [
   { id: 'find-replace', label: '찾기 및 변환', category: 'global', defaultKey: 'Ctrl+H' },
   { id: 'open-project-drawer', label: '프로젝트 드로어 열기/닫기', category: 'global', defaultKey: 'F1' },
   { id: 'open-project-grid', label: '프로젝트 그리드 열기/닫기', category: 'global', defaultKey: 'Ctrl+E' },
+  { id: 'quick-menu', label: '퀵 메뉴 열기/닫기', category: 'global', defaultKey: 'Ctrl+K' },
 ];
 
 const STORAGE_KEY = 'sdstudio-key-bindings';

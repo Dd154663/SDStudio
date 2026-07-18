@@ -10,9 +10,11 @@ import { ReactNode, Fragment } from 'react';
 import {
   FaBroom,
   FaExchangeAlt,
+  FaPaintBrush,
   FaShare,
   FaPuzzlePiece,
   FaThLarge,
+  FaTrash,
   FaUserAlt,
   FaPlus,
   FaTrashAlt,
@@ -123,6 +125,20 @@ export function portableToolbarButtons(
       '찾기 및 변환 (Ctrl+H)',
       <FaExchangeAlt size={18} />,
       () => appState.openFindReplace(),
+    ),
+    // SceneQueueControl 로컬 맵에서 이관(B군 승격, 퀵 메뉴 P2) — 홈(scene)에서는
+    // 원본과 동일 렌더(배경형 아이콘+툴팁), 모달은 App.tsx 전역 오버레이가 호스트.
+    'artist-tag': iconButton(
+      variant,
+      '아티스트 태깅 (그림체 분석)',
+      <FaPaintBrush size={18} />,
+      () => appState.openArtistTag(),
+    ),
+    'scene-trash': iconButton(
+      variant,
+      '씬 휴지통',
+      <FaTrash size={18} />,
+      () => appState.openSceneTrash(),
     ),
     // SessionSelect 고정 버튼에서 레지스트리 편입(④ 자유 위치) — 홈(project)은
     // 원본대로 16px, 타 영역은 각 영역 표준 18px 로 적응.

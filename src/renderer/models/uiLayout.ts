@@ -38,10 +38,12 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'webp-convert', name: 'WebP 변환', pcOnly: true, tier: 'overflow' },
   // 모바일 실사용 빈도가 높아 모바일만 인라인 (PC 는 기존대로 ⋯ 메뉴)
   { id: 'import-image', name: '이미지 프롬프트 추출', tier: 'mobile-primary' },
-  { id: 'artist-tag', name: '아티스트 태깅', pcOnly: true, tier: 'overflow' },
+  // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환
+  { id: 'artist-tag', name: '아티스트 태깅', pcOnly: true, tier: 'overflow', portable: true },
   { id: 'scene-search', name: '씬 검색', tier: 'primary' },
   { id: 'bookmark-jump', name: '북마크된 씬으로 이동', tier: 'secondary' },
-  { id: 'scene-trash', name: '씬 휴지통', tier: 'overflow' },
+  // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환
+  { id: 'scene-trash', name: '씬 휴지통', tier: 'overflow', portable: true },
   { id: 'scene-template', name: '씬 템플릿', tier: 'overflow' },
   { id: 'empty-image-trash', name: '삭제 이미지 일괄 비우기', tier: 'overflow', portable: true },
   { id: 'find-replace', name: '찾기 및 변환', tier: 'secondary', portable: true },

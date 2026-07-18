@@ -15,7 +15,9 @@ import ProjectBrowser from './ProjectBrowser';
 import { ImageHistoryPanel, ImageHistoryDrawer, ImageHistoryHandle } from './ImageHistory';
 import QuickModeTab from './QuickModeTab';
 import PreSetEditor from './PreSetEdtior';
-import SceneQueuControl, { SceneCell } from './SceneQueueControl';
+import SceneQueuControl, { SceneCell, SceneTrashView } from './SceneQueueControl';
+import ArtistTagModal from './ArtistTagModal';
+import { QuickMenu } from './QuickMenu';
 import BottomBar from './BottomBar';
 import { GenControlFloating } from './GenControlWidget';
 import EditModeShell from './EditModeShell';
@@ -233,6 +235,9 @@ export const App = observer(() => {
         case 'open-project-grid':
           appState.projectBrowserOpen = !appState.projectBrowserOpen;
           break;
+        case 'quick-menu':
+          appState.quickMenuOpen = !appState.quickMenuOpen;
+          break;
         case 'toggle-history-panel':
           if (isMobile) {
             appState.historyDrawerOpen = !appState.historyDrawerOpen;
@@ -262,6 +267,7 @@ export const App = observer(() => {
       appState.legacySceneEditor = conf.legacySceneEditor ?? false;
       appState.legacyWorkflowMode = conf.legacyWorkflowMode ?? false;
       appState.sceneToolbarLegacyText = conf.sceneToolbarLegacyText ?? false;
+      appState.quickMenu = conf.quickMenu;
       // 조합 에디터 뷰: 미설정 시 데스크톱=카드·모바일=목록(모바일 편집 편의).
       appState.uiCombinationView =
         conf.uiCombinationView ?? (isMobile ? 'list' : 'card');
@@ -490,42 +496,66 @@ export const App = observer(() => {
     };
   }, []);
 
+  // onClick: 퀵 메뉴 export 계열의 탭 문맥 추적(appState.curMainTab, D3) —
+  // 단축키 탭 전환(tab-N)도 TabComponent 가 onClick 을 호출하므로 함께 갱신된다.
   const tabs = [
     {
       label: '이미지생성',
       content: <QueueControl type="scene" showPannel />,
       emoji: <FaImages />,
+      onClick: () => {
+        appState.curMainTab = 'scene';
+      },
     },
     {
       label: '이미지변형',
       content: <QueueControl type="inpaint" showPannel />,
       emoji: <FaPenFancy />,
+      onClick: () => {
+        appState.curMainTab = 'inpaint';
+      },
     },
     {
       label: '글로벌 프리셋',
       content: <GlobalPresetTab />,
       emoji: <FaStar />,
       banToggle: true,
+      onClick: () => {
+        appState.curMainTab = 'other';
+      },
     },
     {
       label: '작가 라이브러리',
       content: <ArtistLibraryTab />,
       emoji: <FaPalette />,
       banToggle: true,
+      onClick: () => {
+        appState.curMainTab = 'other';
+      },
     },
     {
       // NAI풍 즉시 생성 화면. banToggle 미설정 → 모바일에서 공용 "프롬프트 열기" 사용
       label: '퀵 생성',
       content: <QuickModeTab />,
       emoji: <FaBolt />,
+      onClick: () => {
+        appState.curMainTab = 'other';
+      },
     },
     ...(!isMobile ? [{
       label: '웹 검색',
       content: <EmbeddedBrowser />,
       emoji: <FaGlobe />,
       banToggle: true,
+      onClick: () => {
+        appState.curMainTab = 'other';
+      },
     }] : []),
   ];
+  // 세션 전환 시 메인 탭이 첫 탭(이미지생성)으로 리마운트되므로 문맥도 리셋
+  useEffect(() => {
+    appState.curMainTab = 'scene';
+  }, [appState.curSession?.name]);
 
   // 모바일: 선택 텍스트가 있을 때 화면 하단에 띄우는 'Danbooru 검색' 칩의 검색어
   const [danbooruSel, setDanbooruSel] = useState<string | null>(null);
@@ -970,6 +1000,28 @@ export const App = observer(() => {
         >
           <ProjectTrashView />
         </ModalOverlay>
+        {/* 씬 휴지통·아티스트 태깅 — B군 승격(퀵 메뉴 P2) 전역 오버레이 호스트 */}
+        <ModalOverlay
+          isOpen={appState.sceneTrashOpen && !!appState.curSession}
+          onClose={() => {
+            appState.sceneTrashOpen = false;
+          }}
+          title="🗑️ 씬 휴지통"
+        >
+          {appState.curSession && (
+            <SceneTrashView projectName={appState.curSession.name} />
+          )}
+        </ModalOverlay>
+        {appState.artistTagOpen && (
+          <ArtistTagModal
+            isOpen={appState.artistTagOpen}
+            onClose={() => {
+              appState.artistTagOpen = false;
+            }}
+          />
+        )}
+        {/* 퀵 메뉴 — 플로팅 진입 버튼 + 오버레이 (트랙2 ① P3) */}
+        <QuickMenu />
         {appState.characterPresetsOpen && appState.curSession && (
           <CharacterPresetFloatEditor
             onClose={() => appState.closeCharacterPresets()}
