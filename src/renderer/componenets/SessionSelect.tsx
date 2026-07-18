@@ -7,7 +7,7 @@ import Tooltip from './Tooltip';
 import { sessionService, imageService, backend, zipService, trashService, isMobile, templateService } from '../models';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
-import { TOOLBAR_VIEW_MAIN, resolveToolbarView } from '../models/uiLayout';
+import { TOOLBAR_VIEW_MAIN, MOBILE_PROJECT_TOPROW_IDS, resolveToolbarView } from '../models/uiLayout';
 import { companionAssignedIds } from '../models/companionSlots';
 import ToolbarOverflowMenu from './ToolbarOverflowMenu';
 import {
@@ -494,6 +494,19 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
     );
   }
 
+  // 모바일 상단 행 분리(MOBILE_PROJECT_TOPROW_IDS 참조) — 프로젝트 선택기 옆 남는 폭에
+  // 넣어 기본 배치가 2줄 안에 스크롤 없이 다 보이게 한다. 인라인 배치인 id 만 대상
+  // (메뉴/숨김 이동 시 자연 소멸), classic 은 이전 배치 계약 유지를 위해 제외.
+  const topRowIds =
+    isMobile && !appState.uiToolbar.classic
+      ? toolbarLayout.inline.filter((id) =>
+          MOBILE_PROJECT_TOPROW_IDS.includes(id),
+        )
+      : [];
+  const clusterIds = topRowIds.length
+    ? toolbarLayout.inline.filter((id) => !topRowIds.includes(id))
+    : toolbarLayout.inline;
+
   return (
     // 행 전체가 드롭 타깃 — 메뉴에서 끌어다 놓으면 인라인 고정(pinned)
     <div
@@ -612,17 +625,47 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
           </span>
         </Tooltip>
       )}
+      {/* 모바일 상단 행 버튼(topRowIds) — 선택기 옆 남는 폭에 고정 노출. flex-none 이라
+          안 맞으면 통째로 다음 줄로 내려가며 사라지지 않는다. index 는 inline 원본
+          순서를 유지해 드래그 드롭 앵커 계산이 어긋나지 않게 한다. */}
+      {topRowIds.length > 0 && (
+        <span className="titlebar-no-drag flex items-center gap-2 flex-none">
+          {topRowIds.map((id) => (
+            <DraggableToolbarButton
+              key={id}
+              group="project"
+              id={id}
+              name={projectName(id)}
+              area="project"
+              index={toolbarLayout.inline.indexOf(id)}
+              disabled={!!appState.uiToolbar.classic}
+            >
+              {buttonNode(id)}
+            </DraggableToolbarButton>
+          ))}
+        </span>
+      )}
       {/* 툴바 버튼·⋯ 메뉴는 no-drag 그룹으로 묶는다 — 버튼은 조작되되, 이 그룹 밖의
-          빈 공간(래퍼 여백·클러스터 사이)은 drag 로 남아 상단 바가 창 이동 핸들이 된다. */}
-      <span className="titlebar-no-drag flex items-center gap-2">
-      {toolbarLayout.inline.map((id, i) => (
+          빈 공간(래퍼 여백·클러스터 사이)은 drag 로 남아 상단 바가 창 이동 핸들이 된다.
+          모바일: 클러스터가 안 맞으면 바깥 flex-wrap 이 통째로 2줄째로 내리는
+          기본 배치는 유지하고(flex-1/min-w-0 을 주면 1줄째 좁은 틈에 끼어 부자연 —
+          2026-07-18 실기 피드백), 2줄째 전체 폭마저 초과하는 분량만 가로 스크롤
+          (overflow-x-auto 는 flex 자동 최소폭을 0 으로 만들어 줄 폭에 맞게 수축됨). */}
+      <span
+        className={`titlebar-no-drag flex items-center gap-2${
+          isMobile
+            ? ' flex-nowrap overflow-x-auto no-scrollbars max-w-full [&>*]:flex-none'
+            : ''
+        }`}
+      >
+      {clusterIds.map((id) => (
         <DraggableToolbarButton
           key={id}
           group="project"
           id={id}
           name={projectName(id)}
           area="project"
-          index={i}
+          index={toolbarLayout.inline.indexOf(id)}
           disabled={!!appState.uiToolbar.classic}
         >
           {buttonNode(id)}

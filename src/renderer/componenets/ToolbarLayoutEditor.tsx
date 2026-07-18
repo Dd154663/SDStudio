@@ -2,7 +2,11 @@ import {
   ToolbarButtonPlacement,
   UiToolbarConfig,
 } from '../../main/config';
-import { ToolbarButtonMeta } from '../models/uiLayout';
+import {
+  moveToolbarButton,
+  ToolbarButtonMeta,
+  ToolbarRegistryEntry,
+} from '../models/uiLayout';
 
 // 환경설정 → 테마 탭의 "툴바 버튼 구성" 에디터.
 // 상단 클래식 롤백 토글 + 레지스트리별 버튼 배치 select 목록.
@@ -10,6 +14,8 @@ import { ToolbarButtonMeta } from '../models/uiLayout';
 
 export interface ToolbarEditorGroup {
   title: string;
+  // 레지스트리의 영역 id('scene'/'project' 등) — moveToolbarButton 경유에 필요
+  area: string;
   registry: ToolbarButtonMeta[];
 }
 
@@ -34,18 +40,27 @@ const ToolbarLayoutEditor = ({
   groups,
   mobileMode,
 }: ToolbarLayoutEditorProps) => {
+  // 배치 변경은 반드시 moveToolbarButton(v2 인지) 경유 — 예전처럼 v1 buttons 만
+  // 쓰면, 화면 드래그/⋯이동/숨김이 한 번이라도 만든 schema v2 areas 배열이 우선이라
+  // select 변경이 조용히 무시된다(특히 hidden 배열의 버튼을 영영 꺼낼 수 없었음 —
+  // 2026-07-18 모바일 버그). moveToolbarButton 은 전 영역 배열에서 제거 후 재배치
+  // +v1 buttons dual-write 까지 처리하므로 두 편집 경로가 일관된다.
+  const registries: ToolbarRegistryEntry[] = groups.map((g) => ({
+    area: g.area,
+    registry: g.registry,
+  }));
   const setPlacement = (id: string, placement: ToolbarButtonPlacement) => {
-    const buttons = { ...(value.buttons ?? {}) };
-    if (placement === 'default') {
-      // 기본으로 되돌린 항목은 키 제거 — config 비대화·잔재 방지
-      delete buttons[id];
-    } else {
-      buttons[id] = placement;
-    }
-    onChange({
-      ...value,
-      buttons: Object.keys(buttons).length > 0 ? buttons : undefined,
-    });
+    const home = registries.find((r) => r.registry.some((b) => b.id === id));
+    if (!home) return;
+    const slot =
+      placement === 'pinned'
+        ? ('inline' as const)
+        : placement === 'menu'
+          ? ('menu' as const)
+          : placement === 'hidden'
+            ? ('hidden' as const)
+            : ('default' as const);
+    onChange(moveToolbarButton(registries, value, { id, toArea: home.area, slot }));
   };
 
   return (

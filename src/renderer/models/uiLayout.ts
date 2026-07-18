@@ -75,6 +75,13 @@ export const projectToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'new-window', name: '새 창', pcOnly: true, tier: 'primary', portable: true },
 ];
 
+// 모바일 프로젝트 바 상단 행(프로젝트 선택기 옆) 고정 노출 id — 단일 출처(§6 배치
+// 하드코딩 금지). 2026-07-18 실기 피드백: 상단 행 남는 폭에 딱 2개가 들어가, 기본
+// 배치에서 전 버튼이 가로 스크롤 없이 2줄에 노출된다. SessionSelect(bar variant)가
+// 인라인 배치된 id 에 한해 상단 행으로 분리 렌더(메뉴/숨김 커스터마이징 존중,
+// classic 은 이전 배치 100% 계약이라 제외).
+export const MOBILE_PROJECT_TOPROW_IDS = ['project-browser', 'project-trash'];
+
 // 레지스트리 + 사용자 설정 → 실제 배치를 해석하는 단일 출처(순수 함수).
 // - classic=true: 계층화 이전과 100% 동일 렌더 — 전 버튼을 레지스트리 순서로 인라인,
 //   buttons 오버라이드 무시. pcOnly 도 필터하지 않는다(기존 렌더는 pcOnly id 도 map 하고

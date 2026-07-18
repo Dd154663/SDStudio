@@ -1880,8 +1880,8 @@ const ToolbarTab = ({ uiToolbar, setUiToolbar, quickMenu, setQuickMenu, quickMen
       value={uiToolbar}
       onChange={setUiToolbar}
       groups={[
-        { title: '씬 툴바', registry: sceneToolbarRegistry },
-        { title: '프로젝트 바', registry: projectToolbarRegistry },
+        { title: '씬 툴바', area: 'scene', registry: sceneToolbarRegistry },
+        { title: '프로젝트 바', area: 'project', registry: projectToolbarRegistry },
       ]}
       mobileMode={isMobile}
     />
