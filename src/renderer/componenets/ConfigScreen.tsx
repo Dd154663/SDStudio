@@ -23,6 +23,7 @@ import {
   companionOwnerOf,
   COMPANION_HOSTS,
   COMPANION_HOST_LABELS,
+  MODERN_COMPANION_DEFAULTS,
 } from '../models/companionSlots';
 import { applyCompanionSlots } from './CompanionDnd';
 import { observer } from 'mobx-react-lite';
@@ -1808,8 +1809,21 @@ const ToolbarTab = ({ uiToolbar, setUiToolbar, quickMenu, setQuickMenu }: any) =
 const LayoutWireframe = ({
   variant,
 }: {
-  variant: 'classic' | 'compact' | 'sidebar';
+  variant: 'classic' | 'compact' | 'sidebar' | 'modern';
 }) => {
+  if (variant === 'modern') {
+    // 모던: 좌측 아주 얇은 스트립(강조) + 프리셋 + 본문, 하단바 없음 + 플로팅 위젯.
+    return (
+      <div className="w-28 h-16 relative">
+        <div className="h-full rounded-sm border line-color flex gap-0.5 p-0.5">
+          <div className="w-1 rounded-sm bg-sky-500" />
+          <div className="w-1/4 rounded-sm bg-[var(--c-zone)]" />
+          <div className="flex-1 rounded-sm bg-[var(--c-zone)]" />
+        </div>
+        <div className="absolute bottom-1 right-1 w-5 h-2.5 rounded-sm bg-sky-500 shadow-sm" />
+      </div>
+    );
+  }
   if (variant === 'sidebar') {
     // 사이드바: 좌측 두꺼운 프로젝트 바(강조색) + 프리셋 + 본문 + 아래 얇은 바.
     return (
@@ -1850,15 +1864,28 @@ const LayoutWireframe = ({
 
 // 직접 편집(EditModeShell)으로 바뀐 레이아웃 배치를 템플릿 기본값으로 되돌린다.
 // 대상: 패널 좌/우(history·preset·project) + 생성 컨트롤 슬롯(uiLayoutSlots) + 분리형
-// 위젯 위치(genWidget). 선택한 템플릿(uiLayoutTemplate)은 사용자가 명시적으로 고른 값이라
-// 건드리지 않는다. 이 두 필드는 ConfigScreen 저장 흐름 밖(편집 모드가 즉시 반영)이라
-// 여기서도 즉시 반영한다(applyLayoutSlots·applyGenWidget 패턴과 동일).
+// 위젯 위치(genWidget) + 동반 슬롯(uiCompanionSlots — ② A 실기 피드백 3). 동반 슬롯의
+// "기본값"은 템플릿 의존: 모던이면 모던 기본 배치, 그 외에는 배정 없음(전부 툴바 복귀).
+// 모던 해제 후 흩어진 버튼을 일괄 복귀시키는 유일한 수단이라 여기 포함한다.
+// 선택한 템플릿(uiLayoutTemplate)은 사용자가 명시적으로 고른 값이라 건드리지 않는다.
+// 이 필드들은 ConfigScreen 저장 흐름 밖(편집 모드/드래그가 즉시 반영)이라 여기서도
+// 즉시 반영한다(applyLayoutSlots·applyGenWidget·applyCompanionSlots 패턴과 동일).
 async function resetLayoutArrangement() {
   appState.uiLayoutSlots = {};
   appState.genWidget = {};
+  const companionDefaults: Record<string, string[]> =
+    appState.uiLayoutTemplate === 'modern'
+      ? JSON.parse(JSON.stringify(MODERN_COMPANION_DEFAULTS))
+      : {};
+  appState.uiCompanionSlots = companionDefaults;
   try {
     const config = await backend.getConfig();
-    await backend.setConfig({ ...config, uiLayoutSlots: {}, genWidget: {} });
+    await backend.setConfig({
+      ...config,
+      uiLayoutSlots: {},
+      genWidget: {},
+      uiCompanionSlots: companionDefaults,
+    });
   } catch (e) {
     console.error('레이아웃 배치 초기화 저장 실패:', e);
   }
@@ -1956,7 +1983,7 @@ const floatViewModes: {
   },
 ];
 
-const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiPresetIconRow, setUiPresetIconRow, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
+const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbar, setUiToolbar, quickMenu, setQuickMenu, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
   <div className="space-y-5">
     <div>
       <label className="block text-sm gray-label mb-1">화면 배치</label>
@@ -2010,7 +2037,34 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiPresetIconRow, set
             key={t.id}
             type="button"
             disabled={disabled}
-            onClick={() => { if (!disabled) setUiLayoutTemplate(t.id); }}
+            onClick={() => {
+              if (disabled) return;
+              // 모던 사이드바 = 저장 시 버튼 배치를 초기화하고 모던 기본 배치를 강제
+              // 적용하므로(② A 결정 2), 선택 시점에 미리 경고·동의를 받는다.
+              if (t.id === 'modern' && uiLayoutTemplate !== 'modern') {
+                appState.pushDialog({
+                  type: 'confirm',
+                  text: '모던 사이드바를 적용하면 저장 시 프로젝트 툴바가 사라지고, 버튼 배치(툴바·동반 슬롯)가 초기화된 뒤 모던 기본 배치가 적용됩니다. 계속할까요?',
+                  callback: () => {
+                    setModernExitReset(false);
+                    setUiLayoutTemplate('modern');
+                  },
+                });
+                return;
+              }
+              // 모던 → 다른 템플릿(② A 2차 피드백 후속 1): 흩어진 버튼·레이아웃 배치를
+              // 초기화할지 묻는다. 아니요(취소) = 전환만 하고 현재 배치 유지.
+              if (uiLayoutTemplate === 'modern' && t.id !== 'modern') {
+                setUiLayoutTemplate(t.id);
+                appState.pushDialog({
+                  type: 'confirm',
+                  text: '모던 사이드바를 해제합니다. 저장 시 버튼과 레이아웃 배치를 기본값으로 초기화할까요? (취소 = 현재 배치 유지)',
+                  callback: () => setModernExitReset(true),
+                });
+                return;
+              }
+              setUiLayoutTemplate(t.id);
+            }}
             className={
               'flex items-center gap-3 rounded-md border p-2.5 text-left clickable ' +
               (selected ? 'ring-2 ring-sky-400 border-sky-400 ' : 'line-color ') +
@@ -2018,7 +2072,7 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiPresetIconRow, set
             }
           >
             <LayoutWireframe
-              variant={t.id as 'classic' | 'compact' | 'sidebar'}
+              variant={t.id as 'classic' | 'compact' | 'sidebar' | 'modern'}
             />
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
@@ -2103,7 +2157,7 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiPresetIconRow, set
         onClick={() => {
           appState.pushDialog({
             type: 'confirm',
-            text: '화면에서 직접 편집으로 옮긴 패널 좌/우 배치와 생성 컨트롤 위치를 기본값으로 되돌립니다. (선택한 템플릿은 유지됩니다.) 계속할까요?',
+            text: '화면에서 직접 편집으로 옮긴 패널 좌/우 배치·생성 컨트롤 위치·동반 버튼 배치를 현재 템플릿의 기본값으로 되돌립니다. (선택한 템플릿은 유지됩니다.) 계속할까요?',
             callback: async () => {
               await resetLayoutArrangement();
               appState.pushMessage('레이아웃 배치를 초기화했습니다');
@@ -2119,10 +2173,52 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiPresetIconRow, set
       </p>
     </div>
 
+    {/* 툴바 전역 조작(② A 2차 피드백 후속 2 — 툴바 탭 흡수, PC 전용): 버튼별 배치
+        select·동반 버튼 select 는 편집 모드 드래그(고정/⋯메뉴/숨김/동반 배정)가 전부
+        대체해 제거. 남는 전역 조작 3종(클래식 토글·버튼 배치 초기화·퀵 메뉴 구성)만
+        이관. 모바일은 편집 모드가 없어 기존 툴바 탭이 유지된다. */}
+    {!mobileMode && (
+      <div className="pt-3 border-t line-color space-y-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="cfgClassicToolbar"
+              checked={!!uiToolbar.classic}
+              onChange={(e: any) =>
+                setUiToolbar({ ...uiToolbar, classic: e.target.checked || undefined })
+              }
+            />
+            <label htmlFor="cfgClassicToolbar" className="text-sm gray-label">
+              클래식 툴바 사용 (이전 배치로 되돌리기)
+            </label>
+          </div>
+          <p className="text-xs text-faint mt-1 ml-6">
+            켜면 모든 버튼을 예전처럼 툴바에 나란히 표시합니다(⋯ 메뉴·개별 배치
+            무시). 저장 시 반영됩니다.
+          </p>
+        </div>
+        <div>
+          <button
+            type="button"
+            className="round-button back-gray btn-sm"
+            onClick={() => setUiToolbar({ classic: uiToolbar.classic })}
+          >
+            버튼 배치 초기화
+          </button>
+          <p className="text-xs text-muted mt-1">
+            화면에서 직접 편집으로 옮긴 버튼 배치(고정/⋯메뉴/숨김·순서)를 모두 기본
+            배치로 되돌립니다. (저장 시 반영)
+          </p>
+        </div>
+        <QuickMenuEditor value={quickMenu} onChange={setQuickMenu} />
+      </div>
+    )}
+
     {/* 동반 버튼(E3) — portable 버튼을 프리셋 에디터 특정 행 옆으로 옮기는 위치 선택.
-        레이아웃 배치 초기화·직접 편집과 같은 "저장 없이 즉시 적용" 계열이라 이 탭에
-        둔다. 선택 즉시 열려 있는 프리셋 에디터에 반영된다(별도 저장 불필요). */}
-    <CompanionButtonsSection />
+        모바일 전용(② A 2차 피드백 후속 2): PC 는 편집 모드 드래그(E4)가 대체. 모바일은
+        편집 모드가 없어 이 select 가 유일한 배정 수단이라 유지한다. */}
+    {mobileMode && <CompanionButtonsSection />}
   </div>
 );
 
@@ -2161,6 +2257,9 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [quickMenuCfg, setQuickMenuCfg] = useState<string[] | undefined>(undefined);
   const [uiLayoutTemplate, setUiLayoutTemplate] = useState('classic');
   const [uiPresetIconRow, setUiPresetIconRow] = useState(false);
+  // 모던 해제 확인(② A 2차 피드백 후속 1): 모던 → 다른 템플릿 전환 시 "배치 초기화"에
+  // 동의했는지. true 면 저장 시 버튼(툴바·동반)·레이아웃 배치를 기본값으로 되돌린다.
+  const [modernExitReset, setModernExitReset] = useState(false);
   const [uiFloatViewMode, setUiFloatViewMode] = useState<'cover' | 'center'>('cover');
   const [uiFont, setUiFont] = useState<'pretendard' | 'system'>('system');
   const [uiClassicFinish, setUiClassicFinish] = useState(false);
@@ -2337,6 +2436,32 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiClassicFinish: uiClassicFinish,
       allowDuplicateProjectOpen: allowDuplicateProjectOpen,
     };
+    // 모던 사이드바 "최초 전환" 시(② A 결정 2): 버튼 배치(툴바·동반 슬롯)를 초기화하고
+    // 모던 기본 배치+하단 아이콘 행을 강제 적용한다. 이후 재커스텀 자유, 해제(다른
+    // 템플릿 복귀) 시엔 배치를 손대지 않는다(초기화 유지 — 이전 커스텀 복원 없음).
+    const modernApplied =
+      uiLayoutTemplate === 'modern' && old.uiLayoutTemplate !== 'modern';
+    if (modernApplied) {
+      config.uiToolbar = {};
+      config.uiCompanionSlots = JSON.parse(
+        JSON.stringify(MODERN_COMPANION_DEFAULTS),
+      );
+      config.uiPresetIconRow = true;
+    }
+    // 모던 해제 + 초기화 동의(② A 2차 피드백 후속 1): 버튼(툴바 개별 배치·동반 슬롯)·
+    // 레이아웃(패널 좌/우·생성 위젯)·하단 아이콘 행을 기본값으로. 클래식 툴바 토글은
+    // 배치가 아닌 모드라 유지한다.
+    const modernExited =
+      modernExitReset &&
+      uiLayoutTemplate !== 'modern' &&
+      old.uiLayoutTemplate === 'modern';
+    if (modernExited) {
+      config.uiToolbar = { classic: uiToolbar.classic };
+      config.uiCompanionSlots = {};
+      config.uiLayoutSlots = {};
+      config.genWidget = {};
+      config.uiPresetIconRow = false;
+    }
     await backend.setConfig(config);
     setSavedCfg(config);
     if (old.useCUDA !== useGPU) localAIService.modelChanged();
@@ -2355,6 +2480,28 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.allowDuplicateProjectOpen = allowDuplicateProjectOpen;
     appState.storageWriteGuard = storageWriteGuard;
     appState.fullWordAutoComplete = fullWordAc;
+    // 모던 전환 강제 배치의 미러·로컬 상태 반영(위의 일괄 미러가 옛 상태 값을 덮으므로
+    // 마지막에 덮어써야 한다 — dirty 재계산도 이 로컬 상태와 savedCfg 로 일치).
+    if (modernApplied) {
+      appState.uiToolbar = {};
+      appState.uiCompanionSlots = JSON.parse(
+        JSON.stringify(MODERN_COMPANION_DEFAULTS),
+      );
+      appState.uiPresetIconRow = true;
+      setUiToolbar({});
+      setUiPresetIconRow(true);
+    }
+    if (modernExited) {
+      appState.uiToolbar = { classic: uiToolbar.classic };
+      appState.uiCompanionSlots = {};
+      appState.uiLayoutSlots = {};
+      appState.genWidget = {};
+      appState.uiPresetIconRow = false;
+      setUiToolbar({ classic: uiToolbar.classic });
+      setUiPresetIconRow(false);
+    }
+    // 모던 해제 동의 플래그는 1회성 — 저장이 소비한다(재전환 시 새로 묻는다).
+    setModernExitReset(false);
     localStorage.setItem('sdstudio-full-word-autocomplete', fullWordAc ? 'true' : 'false');
     sessionService.configChanged();
     onSave();
@@ -2365,7 +2512,11 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const tabs = [
     { key: 'login', label: '로그인', icon: <FaUser size={14} /> },
     { key: 'customization', label: '테마', icon: <FaPalette size={14} /> },
-    { key: 'toolbar', label: '툴바', icon: <FaThLarge size={14} /> },
+    // 툴바 탭은 모바일 전용(② A 2차 피드백 후속 2): PC 는 편집 모드 드래그가 버튼
+    // 배치(고정/⋯메뉴/숨김·동반 배정)를 전부 대체해 select UI 를 없애고, 남는 전역
+    // 조작(클래식 토글·버튼 배치 초기화·퀵 메뉴 구성)은 레이아웃 탭으로 이관.
+    // 모바일은 편집 모드가 없어 기존 select UI 가 유일한 수단이라 탭을 유지한다.
+    ...(mobileMode ? [{ key: 'toolbar', label: '툴바', icon: <FaThLarge size={14} /> }] : []),
     { key: 'layout', label: '레이아웃', icon: <FaColumns size={14} /> },
     ...(!mobileMode ? [{ key: 'storage', label: '저장/이미지', icon: <FaFolder size={14} /> }] : []),
     { key: 'system', label: '시스템', icon: <FaCog size={14} /> },
@@ -2391,7 +2542,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'toolbar':
         return <ToolbarTab {...{ uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg }} />;
       case 'layout':
-        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiPresetIconRow, setUiPresetIconRow, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }} />;
+        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':

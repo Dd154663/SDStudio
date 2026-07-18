@@ -42,6 +42,10 @@ export const COMPANION_HOSTS: string[] = [
   // 토글에서만 렌더되는 조건부 행이라 제외 — 배정 버튼이 파생 숨김으로 툴바에서도
   // 빠지는데 호스트 행마저 없으면 버튼이 양쪽에서 사라지므로 호스트 부적합.
   'preset-select',
+  // ② A 모던 사이드바(2026-07-18): 사전세팅선택 행 "위"의 독립 동반 행(프리셋 패널
+  // 최상단). 실제 행이 없어도 배정이 있으면 렌더되는 전용 행(PresetTopCompanionRow,
+  // PreSetEdtior.tsx)이라 조건부 행 함정이 없다. 모던 기본 배치의 수용처.
+  'preset-top',
 ];
 
 /**
@@ -54,6 +58,22 @@ export const COMPANION_HOST_LABELS: Record<string, string> = {
   characterReferences: '캐릭터 레퍼런스 행',
   'sampling-group': '샘플링/모델 설정 행',
   'preset-select': '사전세팅선택 행',
+  'preset-top': '사전세팅선택 위 행',
+};
+
+/**
+ * MODERN_COMPANION_DEFAULTS — 모던 사이드바('modern' 템플릿) 적용 시 강제되는 동반 슬롯
+ *   기본 배치(② A 스펙, 2026-07-18 사용자 확정). 템플릿 저장 전환 시 ConfigScreen 이
+ *   uiToolbar 초기화와 함께 이 값을 uiCompanionSlots 로 깐다(이후 재커스텀 자유).
+ *   - backup-export·project-trash·delete-session·piece-editor → 사전세팅선택 위 행
+ *     (구 "작업모드 행 옆" 대체. delete-session 도 "프로젝트 전체" 액션이라 사전세팅선택
+ *     행이 아닌 상단부로 — 2026-07-18 실기 피드백 2로 2026-07-13 결정 대체)
+ *   - character-presets → 캐릭터 프롬프트 행 (하단 아이콘 행과 결합 시 5종 정렬)
+ *   - add-session·project-browser 는 미배정 — 모던에선 툴바 미렌더로 미노출, 드로어가 흡수.
+ */
+export const MODERN_COMPANION_DEFAULTS: Record<string, string[]> = {
+  'preset-top': ['backup-export', 'project-trash', 'delete-session', 'piece-editor'],
+  characterPrompts: ['character-presets'],
 };
 
 /**

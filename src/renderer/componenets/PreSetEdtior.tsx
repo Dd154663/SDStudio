@@ -2212,6 +2212,35 @@ interface Props {
   onCharacterMiddlePromptChange?: (index: number, txt: string) => void;
 }
 
+// 사전세팅선택 행 "위"의 독립 동반 행(② A, hostKey 'preset-top') — 프리셋 패널(general)
+// 최상단. 다른 호스트와 달리 자체 콘텐츠(호스트 버튼)가 없어, 배정이 없으면 평상시엔
+// 행 자체를 렌더하지 않는다(현행 무변화). PC 편집모드에선 빈 상태도 드롭 안내와 함께
+// 노출해 드래그 배정 타깃을 제공한다.
+const PresetTopCompanionRow = observer(() => {
+  const ids = resolveCompanionButtons('preset-top', appState.uiCompanionSlots);
+  // 모던 행 스타일(② A 실기 피드백 3·2차 1): 무배경 icon-button('project' 적응)을
+  // 중앙에 모아 배치(전폭 균등 분산은 버튼이 부자연스럽게 멀어져 기각) — 프리셋 패널
+  // 안에 자연스럽게 녹아드는 미니 액션 바.
+  const companions =
+    ids.length > 0 ? renderCompanionButtons(ids, 'preset-top', 'project') : [];
+  const editing = appState.editMode && !isMobile;
+  if (companions.length === 0 && !editing) return <></>;
+  return (
+    <StackFixed>
+      <CompanionHostRow hostKey="preset-top">
+        <div className="field-row flex items-center justify-center gap-3 min-h-[2rem]">
+          {companions.length === 0 && editing && (
+            <span className="text-xs text-faint">
+              여기로 전역 버튼을 끌어다 놓을 수 있습니다
+            </span>
+          )}
+          {companions}
+        </div>
+      </CompanionHostRow>
+    </StackFixed>
+  );
+});
+
 const PreSetEditor = observer(
   ({
     middlePromptMode,
@@ -2271,6 +2300,8 @@ const PreSetEditor = observer(
       shared &&
       curSession.selectedWorkflow!.presetName && (
         <VerticalStack className="p-2 md:p-3">
+          {/* 사전세팅선택 위 동반 행(② A) — 배정 없으면 평상시 미렌더(현행 무변화) */}
+          <PresetTopCompanionRow />
           {/* 작업모드 선택 — 레거시 작업모드에서만 노출(기본은 SDImageGen 고정, 행 제거로 공간 확보) */}
           {legacyWf && (
             <StackFixed className="field-row flex gap-2 items-center">

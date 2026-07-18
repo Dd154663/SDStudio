@@ -10,7 +10,7 @@ import {
   useCallback,
 } from 'react';
 import ProjectDrawer, { ProjectDrawerHandle } from './ProjectDrawer';
-import ProjectSideBar from './ProjectSideBar';
+import ProjectSideBar, { ProjectStrip } from './ProjectSideBar';
 import ProjectBrowser from './ProjectBrowser';
 import { ImageHistoryPanel, ImageHistoryDrawer, ImageHistoryHandle } from './ImageHistory';
 import QuickModeTab from './QuickModeTab';
@@ -845,6 +845,18 @@ export const App = observer(() => {
                   }}
                 >
                   <ProjectSideBar side={resolvedLayout.projectSide} />
+                </div>
+              )}
+              {/* 프로젝트 얇은 스트립(PC): 'modern' 템플릿에서만 — 클릭=드로어 열기. */}
+              {!isMobile && resolvedLayout.projectStrip && (
+                <div
+                  data-slot="project"
+                  className="flex-none hidden md:flex h-full"
+                  style={{
+                    order: dockOrder(resolvedLayout.projectSide, DOCK_RANK.project),
+                  }}
+                >
+                  <ProjectStrip side={resolvedLayout.projectSide} />
                 </div>
               )}
               {/* 프리셋 도크(PC) — 패널+스플리터 */}

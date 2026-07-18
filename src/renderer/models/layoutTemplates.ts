@@ -34,6 +34,9 @@ export interface LayoutTemplateMeta {
   // true → 프로젝트 진입을 좌측 두꺼운 사이드 바로, 하단/상단 바의 프로젝트 툴바(SessionSelect)는
   // 렌더하지 않는다. false(기본) → 기존처럼 SessionSelect 를 바에 렌더하고 사이드 바는 없다.
   projectSidebar: boolean;
+  // true → 프로젝트 진입을 좌측 얇은 스트립(클릭=드로어 열기)으로만 하고, SessionSelect
+  // (프로젝트 툴바)는 어디에도 렌더하지 않는다(모던 사이드바 — 버튼은 동반 슬롯으로 분산).
+  projectStrip: boolean;
 }
 
 export const layoutTemplates: LayoutTemplateMeta[] = [
@@ -45,6 +48,7 @@ export const layoutTemplates: LayoutTemplateMeta[] = [
     genControl: 'docked',
     mobileAllowed: true,
     projectSidebar: false,
+    projectStrip: false,
   },
   {
     id: 'compact',
@@ -55,6 +59,7 @@ export const layoutTemplates: LayoutTemplateMeta[] = [
     genControl: 'floating',
     mobileAllowed: false,
     projectSidebar: false,
+    projectStrip: false,
   },
   {
     id: 'sidebar',
@@ -67,6 +72,21 @@ export const layoutTemplates: LayoutTemplateMeta[] = [
     genControl: 'floating',
     mobileAllowed: false,
     projectSidebar: true,
+    projectStrip: false,
+  },
+  {
+    id: 'modern',
+    name: '모던 사이드바',
+    description:
+      '프로젝트 툴바를 없애고 좌측 얇은 스트립(클릭=프로젝트 목록)으로 진입합니다. 프로젝트 버튼은 동반 슬롯 기본 배치로 분산됩니다.',
+    // 릴리스 준비 ② A(2026-07-18): 프로젝트 툴바 완전 제거 — SessionSelect 를 어느 바에도
+    // 렌더하지 않는다. 진입은 얇은 스트립+드로어, 버튼 7종은 동반 슬롯 기본 배치
+    // (MODERN_COMPANION_DEFAULTS, companionSlots.ts)로 분산·add-session 은 드로어가 흡수.
+    bottomBar: 'none',
+    genControl: 'floating',
+    mobileAllowed: false,
+    projectSidebar: false,
+    projectStrip: true,
   },
 ];
 
@@ -87,6 +107,8 @@ export interface ResolvedLayout {
   genControl: GenControlPlacement;
   // 프로젝트 사이드 바 사용 여부(템플릿 고정 — 슬롯 오버라이드 없음).
   projectSidebar: boolean;
+  // 프로젝트 얇은 스트립(모던 사이드바) 사용 여부(템플릿 고정).
+  projectStrip: boolean;
 }
 
 // 타입 밖 문자열이 stale 하게 저장돼 있던 경우를 걸러내는 검증기(잘못된 값=무시하고 기본값).
@@ -141,6 +163,7 @@ export function resolveLayout(
     projectSide,
     genControl,
     projectSidebar: effective.projectSidebar,
+    projectStrip: effective.projectStrip,
   };
 }
 

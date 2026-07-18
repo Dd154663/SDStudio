@@ -10,14 +10,14 @@ import { ReactNode, Fragment } from 'react';
 import {
   FaBroom,
   FaExchangeAlt,
+  FaFolderMinus,
   FaPaintBrush,
   FaShare,
   FaPuzzlePiece,
   FaThLarge,
   FaTrash,
-  FaUserAlt,
+  FaUsers,
   FaPlus,
-  FaTrashAlt,
   FaTrashRestore,
   FaWindowRestore,
 } from 'react-icons/fa';
@@ -87,21 +87,25 @@ export function portableToolbarButtons(
           () => appState.addSession(),
         )
       ),
-    // SessionSelect 로컬 맵에서 이관 — 홈(project)은 원본대로 Tooltip 없는
-    // icon-button(FaTrashAlt 18), 씬으로 오면 씬 표준(배경형 18px+툴팁)으로 적응.
+    // SessionSelect 로컬 맵에서 이관 — 홈(project)은 원본대로 icon-button 무배경.
+    // 아이콘 FaTrashAlt→FaFolderMinus(② A 실기 피드백 1): 사전세팅선택 행에 동반 배정
+    // 시 일괄삭제(FaTrashAlt)와 동일 아이콘이 한 행에 겹쳐 혼동 — "프로젝트(폴더) 삭제"
+    // 의미가 드러나는 아이콘으로 전역 교체(퀵 메뉴 맵도 동일).
     'delete-session':
       variant === 'project' ? (
-        <button
-          className={`icon-button mx-1`}
-          onClick={() => appState.deleteSession()}
-        >
-          <FaTrashAlt size={18} />{' '}
-        </button>
+        <Tooltip content="프로젝트 삭제">
+          <button
+            className={`icon-button mx-1`}
+            onClick={() => appState.deleteSession()}
+          >
+            <FaFolderMinus size={18} />{' '}
+          </button>
+        </Tooltip>
       ) : (
         iconButton(
           variant,
           '프로젝트 삭제',
-          <FaTrashAlt size={18} />,
+          <FaFolderMinus size={18} />,
           () => appState.deleteSession(),
         )
       ),
@@ -201,7 +205,10 @@ export function portableToolbarButtons(
           }
           onClick={() => appState.openCharacterPresets()}
         >
-          <FaUserAlt size={18} />
+          {/* FaUserAlt→FaUsers(② A 실기 피드백 2): 하단 아이콘 행에서 캐릭터 프롬프트
+              (FaUserAlt)와 동일 아이콘이 한 행에 겹쳐 혼동 — 프리셋 "관리(여럿)" 의미의
+              아이콘으로 전역 교체(퀵 메뉴 맵도 동일). */}
+          <FaUsers size={18} />
         </button>
       </Tooltip>
     ),
@@ -212,7 +219,12 @@ export function portableToolbarButtons(
       <Tooltip content="프롬프트조각">
         <button
           className={
-            'round-button back-green' + (variant === 'companion' ? ' h-8' : '')
+            // project(무배경 행 — 사전세팅선택·사전세팅 위·사이드바) 적응: 배경형 녹색
+            // 원이 무배경 이웃과 어긋나던 것을 무배경+녹색 전경으로 통일(② A 피드백 3).
+            variant === 'project'
+              ? 'icon-button back-green mx-1'
+              : 'round-button back-green' +
+                (variant === 'companion' ? ' h-8' : '')
           }
           onClick={() => appState.openPieceEditor()}
         >

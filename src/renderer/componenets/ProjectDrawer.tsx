@@ -1615,6 +1615,17 @@ const ProjectDrawer = observer(() => {
                 <span className="hidden md:inline">백업</span>
               </button>
             </Tooltip>
+            <Tooltip content="프로젝트 탐색 (그리드 보기)">
+              <button
+                onClick={() => {
+                  close();
+                  appState.projectBrowserOpen = true;
+                }}
+                className="flex items-center justify-center px-3 py-2.5 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap"
+              >
+                <FaThLarge size={14} />
+              </button>
+            </Tooltip>
           </div>
         )}
 

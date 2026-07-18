@@ -15,13 +15,14 @@ import {
 import { portableButtonIds } from '../uiLayout';
 
 describe('COMPANION_HOSTS — 호스트 목록 계약', () => {
-  it('호스트 5종(characterPrompts·vibes·characterReferences·sampling-group·preset-select)', () => {
+  it('호스트 6종(characterPrompts·vibes·characterReferences·sampling-group·preset-select·preset-top)', () => {
     expect(COMPANION_HOSTS).toEqual([
       'characterPrompts',
       'vibes',
       'characterReferences',
       'sampling-group',
       'preset-select', // ④ 호스트 확대(2026-07-18): 사전세팅선택 행
+      'preset-top', // ② A 모던 사이드바(2026-07-18): 사전세팅선택 위 행
     ]);
   });
 });

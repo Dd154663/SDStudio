@@ -196,6 +196,27 @@ describe('projectSidebar 템플릿', () => {
   });
 });
 
+describe("projectStrip 템플릿('modern' — ② A)", () => {
+  it('classic/compact/sidebar 는 projectStrip=false', () => {
+    expect(resolveLayout('classic', false).projectStrip).toBe(false);
+    expect(resolveLayout('compact', false).projectStrip).toBe(false);
+    expect(resolveLayout('sidebar', false).projectStrip).toBe(false);
+  });
+  it("'modern' 템플릿(PC) → projectStrip=true·projectSidebar=false, 하단바 없음+생성 플로팅", () => {
+    const r = resolveLayout('modern', false);
+    expect(r.id).toBe('modern');
+    expect(r.projectStrip).toBe(true);
+    expect(r.projectSidebar).toBe(false);
+    expect(r.bottomBar).toBe('none');
+    expect(r.genControl).toBe('floating');
+  });
+  it('modern + 모바일 → classic 폴백(projectStrip=false)', () => {
+    const r = resolveLayout('modern', true);
+    expect(r.id).toBe('classic');
+    expect(r.projectStrip).toBe(false);
+  });
+});
+
 describe('dockOrder — 가장자리 순서(프로젝트<프리셋<히스토리)', () => {
   it('좌측: 프로젝트가 가장 왼쪽, 히스토리가 콘텐츠에 가장 가까움', () => {
     const p = dockOrder('left', DOCK_RANK.project);

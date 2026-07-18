@@ -22,7 +22,8 @@ const TobBar = observer(() => {
   const resolved = resolveLayout(appState.uiLayoutTemplate, isMobile);
   const sessionSelectTop = resolved.sessionSelectTop;
   // 'sidebar' 템플릿이면 프로젝트 선택기는 좌측 사이드 바가 담당 → 상단바엔 미렌더.
-  const projectSidebar = resolved.projectSidebar;
+  // 'modern' 템플릿(projectStrip)은 프로젝트 툴바 완전 제거 — 좌측 스트립+드로어가 담당.
+  const projectSidebar = resolved.projectSidebar || resolved.projectStrip;
   const [loggedIn, setLoggedIn] = useState(false);
   const [credits, setCredits] = useState(0);
   const [isMaximized, setIsMaximized] = useState(false);
