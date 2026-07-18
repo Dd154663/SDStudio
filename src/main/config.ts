@@ -73,6 +73,11 @@ export interface Config {
   exportConcurrency?: number;
   /** 이미지 export 시 기본 목표 폴더(데스크톱 전용 — 프리셋에 폴더가 없을 때 사용) */
   defaultExportFolder?: string;
+  /** 새로 생성되는 이미지를 저장 직후 WebP 로 자동 변환(데스크톱 전용, 기본 false).
+   *  변환 실패 시 원본 PNG 를 그대로 사용하므로 안전. 기존 이미지에는 영향 없음. */
+  autoConvertWebp?: boolean;
+  /** 자동 WebP 변환 품질(1~100, 기본 80 — 수동 일괄 변환 기본값과 동일) */
+  autoConvertWebpQuality?: number;
   trueDark?: boolean;
   // 저장소(스토리지) 접근이 불안정할 때 자동 저장을 일시정지해 데이터 손상을 막는다.
   // 기본 ON. OFF 시 항상 저장을 시도(불안정 시 손상 위험은 있으나 작업 롤백 체감은 없음).

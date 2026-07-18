@@ -177,6 +177,7 @@ const StorageTab = ({
   saveLocation, selectFolder, clearImageCache,
   refreshImage, setRefreshImage,
   defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder,
+  autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality,
 }: any) => (
   <div className="space-y-4">
     <div>
@@ -222,6 +223,34 @@ const StorageTab = ({
         onChange={(e) => setRefreshImage(e.target.checked)} />
       <label htmlFor="cfgRefresh" className="text-sm gray-label">이미지 폴더 직접 편집 감지</label>
     </div>
+    <hr className="line-color" />
+    <div className="flex items-center gap-2">
+      <input type="checkbox" id="cfgAutoWebp" checked={autoConvertWebp}
+        onChange={(e) => setAutoConvertWebp(e.target.checked)} />
+      <label htmlFor="cfgAutoWebp" className="text-sm gray-label">새로 생성되는 이미지를 WebP로 자동 변환</label>
+    </div>
+    <p className="text-xs text-muted">
+      생성 직후 PNG를 WebP로 재인코딩해 저장 용량을 줄입니다. 프롬프트
+      메타데이터와 NAI 인식(스텔스 워터마크)은 유지되며, 기존 이미지에는 영향이
+      없습니다. 변환에 실패하면 원본 PNG가 그대로 저장됩니다.
+    </p>
+    {autoConvertWebp && (
+      <div className="flex items-center gap-2">
+        <label htmlFor="cfgAutoWebpQ" className="text-sm gray-label">변환 품질 (1~100)</label>
+        <input
+          type="number"
+          id="cfgAutoWebpQ"
+          min={1}
+          max={100}
+          value={autoWebpQuality}
+          onChange={(e) => {
+            const v = parseInt(e.target.value);
+            setAutoWebpQuality(isNaN(v) ? 80 : Math.min(100, Math.max(1, v)));
+          }}
+          className="w-16 text-sm text-center border rounded px-1 py-1 back-gray"
+        />
+      </div>
+    )}
     <hr className="line-color" />
     <div>
       <label className="block text-sm font-semibold gray-label mb-1">이미지 복구 (실험적 기능)</label>
@@ -2264,6 +2293,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [exportConcurrency, setExportConcurrency] = useState(isMobile ? 2 : 4);
   const [useLocalBgRemoval, setUseLocalBgRemoval] = useState(false);
   const [refreshImage, setRefreshImage] = useState(false);
+  const [autoConvertWebp, setAutoConvertWebp] = useState(false);
+  const [autoWebpQuality, setAutoWebpQuality] = useState(80);
   const [ready, setReady] = useState(false);
   const [quality, setQuality] = useState('');
   const [progress, setProgress] = useState(0);
@@ -2299,6 +2330,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setUseGPU(config.useCUDA ?? false);
       setQuality(config.removeBgQuality ?? 'normal');
       setRefreshImage(config.refreshImage ?? false);
+      setAutoConvertWebp(config.autoConvertWebp ?? false);
+      setAutoWebpQuality(config.autoConvertWebpQuality ?? 80);
       setUseLocalBgRemoval(config.useLocalBgRemoval ?? false);
       setDelayTime(config.delayTime ?? 0);
       setClassicSceneCard(config.classicSceneCard ?? false);
@@ -2437,6 +2470,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       modelType: 'quality',
       removeBgQuality: quality as RemoveBgQuality,
       refreshImage: refreshImage,
+      autoConvertWebp: autoConvertWebp,
+      autoConvertWebpQuality: autoWebpQuality,
       whiteMode: whiteMode,
       useLocalBgRemoval: useLocalBgRemoval,
       delayTime: delayTime,
@@ -2558,7 +2593,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'login':
         return <LoginTab {...{ accessToken, setAccessToken, loggedIn, loginWithToken, roundTag }} />;
       case 'storage':
-        return <StorageImageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
+        return <StorageImageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 'system':
         return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency }} />;
       case 'personal':
@@ -2586,6 +2621,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       useGPU !== (savedCfg.useCUDA ?? false) ||
       quality !== (savedCfg.removeBgQuality ?? 'normal') ||
       refreshImage !== (savedCfg.refreshImage ?? false) ||
+      autoConvertWebp !== (savedCfg.autoConvertWebp ?? false) ||
+      autoWebpQuality !== (savedCfg.autoConvertWebpQuality ?? 80) ||
       whiteMode !== (savedCfg.whiteMode ?? false) ||
       useLocalBgRemoval !== (savedCfg.useLocalBgRemoval ?? false) ||
       delayTime !== (savedCfg.delayTime ?? 0) ||

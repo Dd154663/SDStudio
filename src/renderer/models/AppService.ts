@@ -1322,6 +1322,7 @@ export class AppState {
   openBatchProcessMenu(type: 'scene' | 'inpaint', setSceneSelector: (item: SceneSelectorItem | undefined) => void) { return batchProcessService.openBatchProcessMenu(type, setSceneSelector); }
   openChangeResolutionMenu(type: 'scene' | 'inpaint', setSceneSelector: (item: SceneSelectorItem | undefined) => void) { return batchProcessService.openChangeResolutionMenu(type, setSceneSelector); }
   openConvertToWebpMenu(type: 'scene' | 'inpaint', setSceneSelector: (item: SceneSelectorItem | undefined) => void) { return batchProcessService.openConvertToWebpMenu(type, setSceneSelector); }
+  openProjectWebpOptimize(name: string) { return batchProcessService.openProjectWebpOptimize(name); }
 
 
   @action

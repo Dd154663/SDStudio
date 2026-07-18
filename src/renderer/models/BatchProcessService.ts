@@ -735,15 +735,65 @@ export class BatchProcessService {
           type: 'confirm',
           text: `선택한 ${selected.length}개 씬의 PNG 이미지를 WebP(품질 ${quality})로 변환합니다.\n프롬프트 메타데이터는 보존되며, 원본 PNG는 복구 가능한 휴지통으로 이동합니다. 계속할까요?`,
           callback: async () => {
-            await this.runWebpConversion(selected, quality);
+            await this.runWebpConversion(appState.curSession!, selected, quality);
           },
         });
       },
     });
   }
 
-  private async runWebpConversion(selected: GenericScene[], quality: number) {
-    const session = appState.curSession!;
+  // 프로젝트 단위 WebP 즉시 최적화 (저장 공간 관리 모달, 데스크톱 전용).
+  // 열려 있지 않은 프로젝트도 sessionService.get 으로 정식 로드해 씬 데이터 참조
+  // (imageMap/mains/game)까지 갱신하는 동일 변환 경로를 태운다. 타 창이 락을 보유한
+  // 프로젝트와 읽기 전용 미러는 차단(파일만 바꾸면 소유 창 세션과 어긋난다).
+  async openProjectWebpOptimize(name: string) {
+    if (!platform.supportsWebpConvert) {
+      appState.pushMessage('WebP 변환은 데스크톱에서만 지원됩니다.');
+      return;
+    }
+    if (sessionService.isMirror(name)) {
+      appState.pushMessage(
+        '읽기 전용 미러로 열린 프로젝트는 최적화할 수 없습니다.',
+      );
+      return;
+    }
+    if (!(await sessionService.guardCrossWindowLock(name, 'WebP 최적화')))
+      return;
+
+    const qInput = await appState.pushDialogAsync({
+      type: 'input-confirm',
+      text: 'WebP 품질을 입력해주세요 (1~100, 기본 80)',
+    });
+    if (qInput === undefined) return;
+    let quality = 80;
+    const q = parseInt(qInput);
+    if (!isNaN(q) && q >= 1 && q <= 100) quality = q;
+
+    appState.pushDialog({
+      type: 'confirm',
+      text: `프로젝트 [${name}]의 모든 PNG 이미지(씬+인페인트)를 WebP(품질 ${quality})로 변환합니다.\n프롬프트 메타데이터는 보존되며, 원본 PNG는 복구 가능한 휴지통으로 이동합니다. 계속할까요?`,
+      callback: async () => {
+        const session = await sessionService.get(name);
+        if (!session) {
+          appState.pushMessage('프로젝트를 불러오지 못했습니다.');
+          return;
+        }
+        const selected: GenericScene[] = [
+          ...session.scenes.values(),
+          ...session.inpaints.values(),
+        ];
+        await this.runWebpConversion(session, selected, quality);
+        // 절약된 용량이 바로 보이도록 크기 재계산 (실패해도 무시)
+        void projectSizeService.calculate(name);
+      },
+    });
+  }
+
+  private async runWebpConversion(
+    session: Session,
+    selected: GenericScene[],
+    quality: number,
+  ) {
     await imageService.refreshBatch(session);
     await Promise.allSettled(
       selected.map((s) => gameService.refreshList(session, s)),

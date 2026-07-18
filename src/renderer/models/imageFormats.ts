@@ -36,6 +36,12 @@ export function isImportImageMime(mime: string): boolean {
   return (IMPORT_IMAGE_MIMES as readonly string[]).includes(mime);
 }
 
+// PNG 경로/파일명 → WebP 경로/파일명 (WebP 변환의 목적지 이름 규칙 단일 출처).
+// 확장자만 교체하며 대소문자 무관(.PNG 도 매칭). PNG 가 아니면 그대로 반환.
+export function pngPathToWebp(path: string): string {
+  return path.replace(/\.png$/i, '.webp');
+}
+
 // 접두사 없는 raw base64 의 시그니처로 이미지 확장자를 추정한다(알 수 없으면 png).
 // 저장 시 올바른 확장자를 붙여야 표시·MIME 이 어긋나지 않는다.
 export function imageExtFromBase64(base64: string): string {

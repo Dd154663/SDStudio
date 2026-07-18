@@ -37,6 +37,8 @@ import {
   Session,
 } from './types';
 import { sleep } from './util';
+import { platform } from './platform';
+import { pngPathToWebp } from './imageFormats';
 import { expandPieces, lowerPromptNode, toPARR } from './PromptService';
 import { dataUriToBase64 } from './ImageService';
 import { prepareMirrorCanvas } from './workflows/SDWorkFlow';
@@ -386,7 +388,31 @@ class GenerateImageTaskHandler implements TaskHandler {
       job.seed = stepSeed(job.seed);
     }
 
-    finishOrBridgeImage(task, outputFilePath);
+    // 자동 WebP 변환(옵트인, 데스크톱 전용): 저장된 PNG 를 곧바로 WebP 로 재인코딩.
+    // 리사이즈 없는 변환이라 NAI stealth 워터마크(알파)도 보존된다. 변환 성공 시에만
+    // 원본 PNG 를 삭제하고, 실패하면 PNG 를 그대로 결과로 쓴다(생성물 유실 없음).
+    let finalPath = outputFilePath;
+    if (config.autoConvertWebp && platform.supportsWebpConvert) {
+      const webpPath = pngPathToWebp(outputFilePath);
+      try {
+        await backend.convertToWebp(
+          outputFilePath,
+          webpPath,
+          config.autoConvertWebpQuality ?? 80,
+        );
+        try {
+          await backend.deleteFile(outputFilePath);
+          finalPath = webpPath;
+        } catch (e) {
+          // PNG 삭제 실패 → 같은 이미지가 2장 보이지 않게 WebP 쪽을 정리하고 PNG 유지
+          await backend.deleteFile(webpPath).catch(() => {});
+        }
+      } catch (e: any) {
+        console.error('자동 WebP 변환 실패(PNG 유지):', e?.message || e);
+      }
+    }
+
+    finishOrBridgeImage(task, finalPath);
 
     return true;
   }
