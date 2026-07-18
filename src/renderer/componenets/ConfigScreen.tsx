@@ -640,6 +640,7 @@ const SystemTab = ({
   delayTime, setDelayTime,
   storageWriteGuard, setStorageWriteGuard,
   exportConcurrency, setExportConcurrency,
+  autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality,
 }: any) => {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [showRickroll, setShowRickroll] = useState(false);
@@ -738,6 +739,41 @@ const SystemTab = ({
           </p>
         )}
       </div>
+      {/* 자동 WebP 변환 — 데스크톱은 저장/이미지 탭에 동일 설정이 있어 모바일만 노출 */}
+      {isMobile && (
+        <>
+          <hr className="line-color" />
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="cfgAutoWebpM" checked={autoConvertWebp}
+                onChange={(e) => setAutoConvertWebp(e.target.checked)} />
+              <label htmlFor="cfgAutoWebpM" className="text-sm gray-label">새로 생성되는 이미지를 WebP로 자동 변환</label>
+            </div>
+            <p className="text-xs text-muted">
+              생성 직후 PNG를 WebP로 재인코딩해 저장 용량을 줄입니다. 프롬프트
+              메타데이터와 NAI 인식(스텔스 워터마크)은 유지되며, 기존 이미지에는
+              영향이 없습니다. 변환에 실패하면 원본 PNG가 그대로 저장됩니다.
+            </p>
+            {autoConvertWebp && (
+              <div className="flex items-center gap-2">
+                <label htmlFor="cfgAutoWebpQM" className="text-sm gray-label">변환 품질 (1~100)</label>
+                <input
+                  type="number"
+                  id="cfgAutoWebpQM"
+                  min={1}
+                  max={100}
+                  value={autoWebpQuality}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value);
+                    setAutoWebpQuality(isNaN(v) ? 80 : Math.min(100, Math.max(1, v)));
+                  }}
+                  className="w-16 text-sm text-center border rounded px-1 py-1 back-gray"
+                />
+              </div>
+            )}
+          </div>
+        </>
+      )}
       <hr className="line-color" />
       <FolderCleanupSection folder="exports" label="exports 폴더 정리" />
       <hr className="line-color" />
@@ -2595,7 +2631,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'storage':
         return <StorageImageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 'system':
-        return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency }} />;
+        return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality }} />;
       case 'personal':
         return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, legacySceneEditor, setLegacySceneEditor, legacyWorkflowMode, setLegacyWorkflowMode, sceneToolbarLegacyText, setSceneToolbarLegacyText, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish, allowDuplicateProjectOpen, setAllowDuplicateProjectOpen }} />;
       case 'customization':

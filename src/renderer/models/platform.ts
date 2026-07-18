@@ -46,7 +46,11 @@ export const platform = {
   supportsLosslessWebp: !isMobile, // sharp 무손실 webp 최적화
   supportsTargetFolder: !isMobile, // 임의(절대경로) 폴더로 export
   supportsRemoveBg: !isMobile, // 배경 제거 (로컬 AI)
-  supportsWebpConvert: !isMobile, // 생성 이미지 PNG→WebP 변환
+  supportsWebpConvert: !isMobile, // 생성 이미지 PNG→WebP 일괄 변환(씬/프로젝트 단위)
+  // 자동 WebP 변환(새 생성 이미지 1장씩)은 모바일도 지원 — 데스크톱=sharp,
+  // 모바일=wasm libwebp(backends/wasmWebp.ts). 일괄 변환과 달리 부하가 장당
+  // 단위라 저사양에서도 감당 가능(사용자 확정, 2026-07-18).
+  supportsAutoWebpConvert: true,
 };
 
 // 이미지 크기 최적화 방법 선택 옵션.

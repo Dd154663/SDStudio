@@ -32,6 +32,12 @@ const configuration: webpack.Configuration = {
         test: /\.txt$/i,
         use: 'raw-loader',
       },
+      {
+        // wasm 바이너리는 URL 에셋으로 취급 (모바일 WebP 인코더 — wasmWebp.ts 가
+        // fetch→compile 해 사용). webpack 기본 wasm 모듈 처리를 우회한다.
+        test: /\.wasm$/i,
+        type: 'asset/resource',
+      },
     ],
   },
 

@@ -113,6 +113,7 @@
     "@capacitor/share": "^6.0.1",
     "@capawesome/capacitor-file-picker": "^6.0.1",
     "@dqbd/tiktoken": "^1.0.15",
+    "@jsquash/webp": "^1.5.0",
     "@vitejs/plugin-react": "^4.3.1",
     "@xenova/transformers": "^2.17.2",
     "adm-zip": "^0.5.12",

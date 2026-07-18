@@ -392,7 +392,7 @@ class GenerateImageTaskHandler implements TaskHandler {
     // 리사이즈 없는 변환이라 NAI stealth 워터마크(알파)도 보존된다. 변환 성공 시에만
     // 원본 PNG 를 삭제하고, 실패하면 PNG 를 그대로 결과로 쓴다(생성물 유실 없음).
     let finalPath = outputFilePath;
-    if (config.autoConvertWebp && platform.supportsWebpConvert) {
+    if (config.autoConvertWebp && platform.supportsAutoWebpConvert) {
       const webpPath = pngPathToWebp(outputFilePath);
       try {
         await backend.convertToWebp(
