@@ -124,6 +124,30 @@ describe('이미지 히스토리 — 세션당 상한 + 영속화', () => {
     expect(names.indexOf('3.png')).toBeLessThan(names.indexOf('1.png'));
   });
 
+  it('로드 시 경로 재계산 — 다른 배치에서 저장된 stale path 를 현재 배치 기준으로 복구', async () => {
+    mockProjects.push('A');
+    files['history.json'] = JSON.stringify({
+      version: 1,
+      entries: [
+        {
+          // 신 배치(workspace)에서 저장된 경로 — 구 배치 로드 시 무효인 상황
+          sessionName: 'A',
+          sceneType: 'scene',
+          sceneName: 'scene1',
+          filename: '9.png',
+          path: 'workspace/a__x1y2/outs/scene1/9.png',
+          createdAt: 100,
+        },
+      ],
+    });
+    const svc = new ImageHistoryService();
+    await svc.ensureLoaded();
+    expect(svc.entries.length).toBe(1);
+    // 현재 배치(테스트=구 배치 항등) 기준으로 재계산됨
+    expect(svc.entries[0].path).toBe('outs/A/scene1/9.png');
+    expect(svc.entries[0].id).toBe('outs/A/scene1/9.png');
+  });
+
   it('파손 파일 → 빈 히스토리로 재시작, 이후 저장은 동작', async () => {
     files['history.json'] = '{{{corrupt';
     const svc = new ImageHistoryService();

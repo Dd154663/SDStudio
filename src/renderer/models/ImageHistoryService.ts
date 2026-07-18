@@ -2,6 +2,7 @@ import { action, observable, runInAction } from 'mobx';
 import { backend, imageService, sessionService } from '.';
 import { toggleImageMain } from './ImageService';
 import { persistService } from './PersistenceService';
+import { projectPath } from './projectPaths';
 import { getAppState } from './appStateRef';
 import { GenericScene, Session } from './types';
 
@@ -75,6 +76,25 @@ export class ImageHistoryService {
       try {
         existing = new Set(sessionService.list());
       } catch (e) {}
+      // 저장된 path 는 "생성 시점 배치" 기준이라 구→신 마이그레이션 직후엔
+      // 무효가 된다(파일이 workspace/ 하위로 이동). 세션·씬·파일명으로 현재
+      // 배치 기준 경로를 projectPath 관문으로 재계산한다 — 구 배치에서는
+      // 항등이라 동작 무변경. 재계산 불가(미등록/이상 이름 throw)면 항목 폐기.
+      const rebuildPath = (e: any): string | null => {
+        try {
+          return (
+            projectPath(
+              e.sceneType === 'scene' ? 'outs' : 'inpaints',
+              e.sessionName,
+              e.sceneName,
+            ) +
+            '/' +
+            e.filename
+          );
+        } catch {
+          return null;
+        }
+      };
       const valid: GenerationHistoryEntry[] = arr
         .filter(
           (e) =>
@@ -87,15 +107,20 @@ export class ImageHistoryService {
             (e.sceneType === 'scene' || e.sceneType === 'inpaint'),
         )
         .filter((e) => !existing || existing.has(e.sessionName))
-        .map((e) => ({
-          id: e.path,
-          sessionName: e.sessionName,
-          sceneType: e.sceneType,
-          sceneName: e.sceneName,
-          filename: e.filename,
-          path: e.path,
-          createdAt: typeof e.createdAt === 'number' ? e.createdAt : 0,
-        }));
+        .map((e) => {
+          const path = rebuildPath(e);
+          if (!path) return null;
+          return {
+            id: path,
+            sessionName: e.sessionName,
+            sceneType: e.sceneType,
+            sceneName: e.sceneName,
+            filename: e.filename,
+            path,
+            createdAt: typeof e.createdAt === 'number' ? e.createdAt : 0,
+          };
+        })
+        .filter((e): e is GenerationHistoryEntry => e !== null);
       const hadRuntime = this.entries.length > 0;
       runInAction(() => {
         const merged = [...this.entries];
