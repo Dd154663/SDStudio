@@ -92,6 +92,7 @@ import {
   CharacterReferenceButton,
 } from './CharacterReferenceEditor';
 import { WFElementContext, PresetIconRowContext } from './wfElementContext';
+import { ResolutionPicker, resolutionValueToSize } from './ResolutionPicker';
 
 const ImageSelect = observer(({ input }: { input: WFIInlineInput }) => {
   const { curSession } = appState;
@@ -1249,6 +1250,60 @@ function presetRowGrows(el: WFIElement): boolean {
   return false;
 }
 
+// 새 씬 기본 해상도 행 (2026-07-18) — 프리셋 패널 워크플로우 스택 바로 아래(시드 아래) 고정.
+// 여기서 고른 해상도는 세션(newSceneResolution)에 저장되어 [씬 추가]로 새로 만드는
+// 씬에만 적용된다(기존 씬 무영향). 우측 버튼 = 씬 탭의 모든 씬에 현재 해상도 일괄 적용.
+const NewSceneResolutionRow = observer(() => {
+  const curSession = appState.curSession;
+  if (!curSession) return <></>;
+  const value = curSession.newSceneResolution;
+  const size = resolutionValueToSize(value);
+  const applyAll = () => {
+    const scenes = Array.from(curSession.scenes.values());
+    if (scenes.length === 0) {
+      appState.pushMessage('적용할 씬이 없습니다');
+      return;
+    }
+    appState.pushDialog({
+      type: 'confirm',
+      text: `씬 탭의 모든 씬 ${scenes.length}개에 ${size.width}x${size.height} 해상도를 적용하시겠습니까?`,
+      callback: () => {
+        const v = value ?? { resolution: 'portrait' };
+        for (const scene of scenes) {
+          scene.resolution = v.resolution;
+          if (v.resolution === 'custom') {
+            scene.resolutionWidth = v.width;
+            scene.resolutionHeight = v.height;
+          }
+        }
+        appState.pushMessage(`${scenes.length}개 씬에 해상도를 적용했습니다`);
+      },
+    });
+  };
+  return (
+    <div className="flex-none mt-2 flex items-center gap-2">
+      <span className="flex-none gray-label">새 씬 해상도:</span>
+      {/* 남는 폭을 피커가 채운다 — 값은 왼쪽, 화살표는 오른쪽 끝 */}
+      <ResolutionPicker
+        className="flex-1 min-w-0"
+        triggerClassName="w-full justify-between py-1.5"
+        value={value}
+        onApply={(v) => {
+          curSession.newSceneResolution = v;
+        }}
+      />
+      <Tooltip content="씬 탭의 모든 씬에 이 해상도를 일괄 적용합니다 (인페인트 씬 제외)">
+        <button
+          className="round-button back-gray text-sm flex-none !px-2.5 !py-1 !min-w-0"
+          onClick={applyAll}
+        >
+          일괄 적용
+        </button>
+      </Tooltip>
+    </div>
+  );
+});
+
 // 하단 아이콘 행(uiPresetIconRow) 대상 요소의 안정 키 목록(wfiElementKey 계약,
 // 배포 후 불변) — 프리셋 패널의 넓은 버튼 4종. COMPANION_HOSTS 의 행 호스트 키에서
 // preset-select 를 제외한 집합과 동일. 워크플로우 스택에 존재하는 것만 하단 행으로
@@ -1272,10 +1327,14 @@ const PresetRootRender = observer(
     element,
     slotKey,
     iconRow,
+    belowBody,
   }: {
     element: WFIElement;
     slotKey?: string;
     iconRow?: boolean;
+    // 본문(워크플로우 스택) 아래·하단 아이콘 행 위에 끼우는 고정 행
+    // (새 씬 해상도 행). 프리셋 패널(general)에서만 전달된다.
+    belowBody?: React.ReactNode;
   }) => {
     // 하단 행 분리(활성 시에만). 순서 오버라이드(resolveStackInputs)가 이미 적용된
     // 스택을 받으므로, 본문 순서·하단 행 순서 모두 사용자 순서를 따른다.
@@ -1308,8 +1367,20 @@ const PresetRootRender = observer(
       !!slotKey;
     if (!editing) {
       if (!bodyInputs) {
-        // 평상시 마크업/클래스 무변경 — 원래 렌더 경로 그대로.
-        return <WFRenderElement element={element} />;
+        if (!belowBody || element.type !== 'stack') {
+          // 평상시 마크업/클래스 무변경 — 원래 렌더 경로 그대로.
+          return <WFRenderElement element={element} />;
+        }
+        // belowBody 만 있는 경우 — 스택이 h-full 이라 형제로는 못 붙이므로
+        // WFRStack 과 동일한 VerticalStack 골격에 본문+행을 렌더한다.
+        return (
+          <VerticalStack>
+            {(element as WFIStack).inputs.map((x) => (
+              <WFRenderElement element={x} />
+            ))}
+            {belowBody}
+          </VerticalStack>
+        );
       }
       // 아이콘 행 활성: WFRStack 과 동일한 VerticalStack 골격에 본문만 렌더하고
       // 최하단에 아이콘 행을 붙인다.
@@ -1318,6 +1389,7 @@ const PresetRootRender = observer(
           {bodyInputs.map((x) => (
             <WFRenderElement key={wfiElementKey(x)} element={x} />
           ))}
+          {belowBody}
           {bottomRow}
         </VerticalStack>
       );
@@ -1371,6 +1443,7 @@ const PresetRootRender = observer(
             </DraggablePresetRow>
           );
         })}
+        {belowBody}
         {bottomRow}
       </VerticalStack>
     );
@@ -2117,6 +2190,9 @@ export const PreSetEditorImpl = observer(
                 // 하단 아이콘 행은 프리셋 패널(general)만 — inner(씬 에디터 등 내장
                 // 편집기)는 오버레이 문맥이라 현행 세로 버튼 유지.
                 iconRow={!inner && appState.uiPresetIconRow}
+                // 새 씬 해상도 행도 프리셋 패널(general)만 — inner 는 개별 씬 편집
+                // 문맥이라 새 씬 기본값 컨트롤이 어울리지 않는다.
+                belowBody={!inner ? <NewSceneResolutionRow /> : undefined}
               />
             )}
           </WFGroupContext.Provider>

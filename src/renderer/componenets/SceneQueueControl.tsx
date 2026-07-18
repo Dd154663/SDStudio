@@ -1428,13 +1428,22 @@ const QueueControl = observer(
             return;
           }
 
+          // 새 씬 기본 해상도 (프리셋 패널 하단 컨트롤, 세션 저장값) — 미지정 시 portrait
+          const defRes = curSession.newSceneResolution;
+          const defResFields = {
+            resolution: defRes?.resolution ?? 'portrait',
+            resolutionWidth:
+              defRes?.resolution === 'custom' ? defRes.width : undefined,
+            resolutionHeight:
+              defRes?.resolution === 'custom' ? defRes.height : undefined,
+          };
           if (type === 'scene') {
             for (const name of names) {
               curSession.addScene(
                 Scene.fromJSON({
                   type: 'scene',
                   name,
-                  resolution: 'portrait',
+                  ...defResFields,
                   slots: [
                     [
                       {
@@ -1469,7 +1478,7 @@ const QueueControl = observer(
                 InpaintScene.fromJSON({
                   type: 'inpaint',
                   name,
-                  resolution: 'portrait',
+                  ...defResFields,
                   workflowType: menu,
                   preset: workFlowService.buildPreset(menu).toJSON(),
                   mains: [],

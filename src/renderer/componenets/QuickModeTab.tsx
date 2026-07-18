@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useContextMenu } from 'react-contexify';
-import { FaChevronDown } from 'react-icons/fa';
 import { v4 } from 'uuid';
 import {
   cyclingSessionService,
@@ -11,10 +10,10 @@ import {
   taskQueueService,
   templateService,
 } from '../models';
-import { Resolution, resolutionMap } from '../backends/imageGen';
 import { appState } from '../models/AppService';
 import { queueQuickScene } from '../models/sceneQueueActions';
 import { ContextMenuType, Scene, Session } from '../models/types';
+import { ResolutionPicker } from './ResolutionPicker';
 
 // 퀵 모드 탭 — NAI 공식 웹풍의 즉시 생성 화면.
 // 중앙에 최신 생성 이미지를 크게 표시하고, 생성 버튼 하나로
@@ -311,25 +310,9 @@ const QuickModeTab = observer(() => {
     sceneStats.total > 0 ? `${sceneStats.done}/${sceneStats.total}` : '';
 
   // ── 해상도 컨트롤 (2026-07-18 피드백) ──
-  // 하단에 퀵 씬의 해상도를 노출하고, 드롭다운 버튼으로 위로 열리는 패널에서
-  // 프리셋 선택/직접 입력(64px 배수 자동 보정)으로 변경한다.
-  const [resOpen, setResOpen] = useState(false);
-  const [wText, setWText] = useState('');
-  const [hText, setHText] = useState('');
+  // 하단에 퀵 씬의 해상도를 노출한다. 피커 UI(프리셋/직접 입력/Anlas confirm/
+  // 64px 보정)는 공용 ResolutionPicker 로 추출됨 — 프리셋 패널과 공유.
   const quickScene = quickSession?.scenes.get(DEFAULT_SCENE);
-  // 표시용 현재 해상도 — 씬 생성 전에는 ensureDefaultScene 기본값(portrait) 표시
-  const curRes = (() => {
-    if (!quickScene) return resolutionMap.portrait;
-    if (quickScene.resolution === 'custom')
-      return {
-        width: quickScene.resolutionWidth ?? 0,
-        height: quickScene.resolutionHeight ?? 0,
-      };
-    return (
-      resolutionMap[quickScene.resolution as Resolution] ??
-      resolutionMap.portrait
-    );
-  })();
 
   // 씬 확보 후 변경 적용 + 저장 (퀵 씬은 curSession 밖이라 markDirty 명시 필요)
   const applyResolution = (fn: (scene: Scene) => void) => {
@@ -338,57 +321,6 @@ const QuickModeTab = observer(() => {
     fn(scene);
     sessionService.markDirty(quickSession.name);
   };
-
-  const openResPanel = () => {
-    // 패널을 열 때 직접 입력칸을 현재 값으로 채운다
-    setWText(String(curRes.width || ''));
-    setHText(String(curRes.height || ''));
-    setResOpen(true);
-  };
-
-  const selectPreset = (key: Resolution) => {
-    setResOpen(false);
-    const apply = () =>
-      applyResolution((scene) => {
-        scene.resolution = key;
-      });
-    // Anlas 소모 해상도는 씬 편집기와 동일하게 확인을 거친다
-    if (key.startsWith('large') || key.startsWith('wallpaper')) {
-      appState.pushDialog({
-        type: 'confirm',
-        text: '해당 해상도는 Anlas를 소모합니다 (유료임) 계속하시겠습니까?',
-        callback: apply,
-      });
-    } else {
-      apply();
-    }
-  };
-
-  const applyCustom = () => {
-    const w = parseInt(wText);
-    const h = parseInt(hText);
-    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
-      appState.pushMessage('올바른 숫자를 입력해주세요');
-      return;
-    }
-    // 64px 배수로 올림 보정 (씬 편집기 커스텀 해상도와 동일 규칙)
-    const w64 = Math.max(64, (w + 63) & ~63);
-    const h64 = Math.max(64, (h + 63) & ~63);
-    setResOpen(false);
-    applyResolution((scene) => {
-      scene.resolution = 'custom' as Resolution;
-      scene.resolutionWidth = w64;
-      scene.resolutionHeight = h64;
-    });
-    if (w64 !== w || h64 !== h) {
-      appState.pushMessage(`64px 배수로 보정되었습니다 — ${w64}x${h64}`);
-    }
-  };
-
-  // 프리셋 목록: 씬 편집기와 동일하게 small 계열 제외, custom 은 입력칸이 대신한다
-  const presetOptions = Object.entries(resolutionMap).filter(
-    ([key]) => !key.startsWith('small') && key !== 'custom',
-  ) as [Resolution, { width: number; height: number }][];
 
   return (
     <div className="h-full w-full flex flex-col">
@@ -442,85 +374,30 @@ const QuickModeTab = observer(() => {
               ? `생성 중${progressText ? ' ' + progressText : ''} — 탭하여 취소`
               : '생성 (길게 눌러 자동)'}
         </button>
-        {/* 해상도 표시 + 드롭다운 (위로 열리는 패널) */}
-        <div className="relative flex-none">
-          <button
-            className="h-full flex items-center gap-1.5 px-3 rounded-lg border line-color bg-[var(--c-input-bg)] text-body text-sm whitespace-nowrap select-none hover:brightness-95"
-            disabled={!quickSession}
-            onClick={() => (resOpen ? setResOpen(false) : openResPanel())}
-          >
-            {curRes.width}x{curRes.height}
-            <FaChevronDown
-              size={10}
-              className={'text-faint transition-transform' + (resOpen ? ' rotate-180' : '')}
-            />
-          </button>
-          {resOpen && (
-            <>
-              {/* 투명 백드롭 — 바깥 클릭 닫기 (퀵 메뉴 PC 팝오버 관례) */}
-              <div
-                className="fixed inset-0 z-[var(--z-widget)]"
-                onClick={() => setResOpen(false)}
-              />
-              <div className="absolute bottom-full right-0 mb-2 z-[var(--z-widget)] w-56 rounded-lg border line-color bg-[var(--c-surface-2)] shadow-xl p-1.5">
-                {presetOptions.map(([key, value]) => {
-                  const active =
-                    quickScene?.resolution === key ||
-                    (!quickScene && key === 'portrait');
-                  return (
-                    <button
-                      key={key}
-                      className={
-                        'btn-ghost w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-sm text-left ' +
-                        (active ? 'font-semibold text-sky-500' : 'text-default')
-                      }
-                      onClick={() => selectPreset(key)}
-                    >
-                      <span>
-                        {value.width}x{value.height}
-                      </span>
-                      {(key.startsWith('large') ||
-                        key.startsWith('wallpaper')) && (
-                        <span className="text-[10px] text-amber-500">Anlas</span>
-                      )}
-                    </button>
-                  );
-                })}
-                {/* 직접 입력 (64px 배수 자동 보정) */}
-                <div className="border-t line-color mt-1.5 pt-1.5 px-1 pb-0.5">
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      className="w-0 flex-1 px-2 py-1 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
-                      inputMode="numeric"
-                      placeholder="너비"
-                      value={wText}
-                      onChange={(e) => setWText(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && applyCustom()}
-                    />
-                    <span className="text-faint text-xs">x</span>
-                    <input
-                      className="w-0 flex-1 px-2 py-1 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
-                      inputMode="numeric"
-                      placeholder="높이"
-                      value={hText}
-                      onChange={(e) => setHText(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && applyCustom()}
-                    />
-                    <button
-                      className="round-button back-sky text-sm !py-1 px-2.5 flex-none"
-                      onClick={applyCustom}
-                    >
-                      적용
-                    </button>
-                  </div>
-                  <div className="text-[10px] text-faint mt-1 px-0.5">
-                    직접 입력 — 64px 배수로 자동 보정
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+        {/* 해상도 표시 + 드롭다운 (공용 ResolutionPicker — 위로 열리는 패널) */}
+        <ResolutionPicker
+          className="flex-none"
+          triggerClassName="h-full"
+          disabled={!quickSession}
+          value={
+            quickScene
+              ? {
+                  resolution: quickScene.resolution,
+                  width: quickScene.resolutionWidth,
+                  height: quickScene.resolutionHeight,
+                }
+              : undefined
+          }
+          onApply={(v) =>
+            applyResolution((scene) => {
+              scene.resolution = v.resolution;
+              if (v.resolution === 'custom') {
+                scene.resolutionWidth = v.width;
+                scene.resolutionHeight = v.height;
+              }
+            })
+          }
+        />
       </div>
     </div>
   );

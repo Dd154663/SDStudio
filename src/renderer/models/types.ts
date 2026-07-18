@@ -409,6 +409,9 @@ export interface ISession {
   mirrorImage?: string; // 세션 레벨 미러 원본 이미지 (vibe storage 경로)
   mirrorMode?: 'blank' | 'duplicate'; // 미러 캔버스 모드 (blank=우측 빈 캔버스, duplicate=우측 이미지 복제)
   sceneCardStyle?: { scene?: string; inpaint?: string }; // 탭별 씬 카드 종횡비
+  // 새 씬 기본 해상도 (프리셋 패널 하단 컨트롤) — [씬 추가] 시에만 적용, 기존 씬 무영향.
+  // 구버전은 미지 필드로 무시(데이터 호환 안전)
+  newSceneResolution?: { resolution: string; width?: number; height?: number };
 }
 
 export class Session implements Serealizable {
@@ -428,6 +431,9 @@ export class Session implements Serealizable {
   @observable accessor mirrorImage: string | undefined = undefined;
   @observable accessor mirrorMode: 'blank' | 'duplicate' = 'blank';
   @observable accessor sceneCardStyle: { scene?: string; inpaint?: string } = {};
+  @observable accessor newSceneResolution:
+    | { resolution: string; width?: number; height?: number }
+    | undefined = undefined;
 
   constructor() {
     makeObservable(this);
@@ -636,6 +642,7 @@ export class Session implements Serealizable {
     session.mirrorImage = json.mirrorImage;
     session.mirrorMode = json.mirrorMode || 'blank';
     session.sceneCardStyle = json.sceneCardStyle || {};
+    session.newSceneResolution = json.newSceneResolution;
     return session;
   }
 
@@ -689,6 +696,7 @@ export class Session implements Serealizable {
       mirrorImage: this.mirrorImage,
       mirrorMode: this.mirrorMode,
       sceneCardStyle: this.sceneCardStyle,
+      newSceneResolution: this.newSceneResolution,
     };
   }
 }
