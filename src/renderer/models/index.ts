@@ -118,7 +118,7 @@ export const loginService = new LoginService();
 
 export const gameService = new GameService();
 
-// 최근 생성 이미지 히스토리 (메모리 기반, 프로젝트 무관 — 우측 사이드바)
+// 최근 생성 이미지 히스토리 (history.json 영속, 전체 최근 30장 — 우측 사이드바)
 export const imageHistoryService = new ImageHistoryService();
 
 export const workFlowService = new WorkFlowService();

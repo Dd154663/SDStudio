@@ -15,6 +15,7 @@ import {
   backgroundNotificationService,
   backgroundKeepAliveService,
   templateService,
+  imageHistoryService,
 } from '.';
 import { reaction } from 'mobx';
 import { appState } from './AppService';
@@ -278,6 +279,7 @@ export async function bootstrapApp(): Promise<void> {
       // 숨김 씬 템플릿 목록을 UI 렌더 전에 확보 — 목록 필터가 첫 렌더부터 적용된다
       // (보조 창 포함 — 이관은 아래에서 호스트만)
       templateService.ensureLoaded(),
+      imageHistoryService.ensureLoaded(), // 지난 실행 히스토리 복원(전체 최근 30장)
     ]);
     for (const r of results) {
       if (r.status === 'rejected') console.error('부팅 로드 실패(계속 진행):', r.reason);
