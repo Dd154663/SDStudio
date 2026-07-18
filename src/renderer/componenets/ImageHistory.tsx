@@ -249,7 +249,8 @@ export const ImageHistoryPanel = observer(() => {
       {!collapsed && (
         <div
           className={
-            'zone-card flex flex-col h-full line-color bg-[var(--c-surface-2)] ' + borderSide
+            // panel-vw-clamp(App.css): 좁은 창(<1024)에서만 폭 상한 — 프리셋 패널 주석 참고
+            'panel-vw-clamp zone-card flex flex-col h-full line-color bg-[var(--c-surface-2)] ' + borderSide
           }
           style={{ width: appState.historyPanelWidth }}
         >

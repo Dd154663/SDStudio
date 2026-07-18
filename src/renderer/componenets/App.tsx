@@ -648,8 +648,11 @@ export const App = observer(() => {
       {!appState.leftPanelCollapsed && (
         <div
           data-slot="preset"
+          // panel-vw-clamp(App.css): 좁은 창(<1024, W6 후속)에서만 뷰포트 비례
+          // 상한을 걸어 좌우 패널이 중앙을 완전히 삼키지 않게 한다. 저장된 폭은
+          // 그대로라 창을 넓히면 복원. (min-width 250 이 상한보다 우선)
           style={{ width: appState.leftPanelWidth, minWidth: 250 }}
-          className="zone-card flex-none overflow-hidden h-full"
+          className="panel-vw-clamp zone-card flex-none overflow-hidden h-full"
         >
           <div className="h-full w-full overflow-hidden">
             <PreSetEditor

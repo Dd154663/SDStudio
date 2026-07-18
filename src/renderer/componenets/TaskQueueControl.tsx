@@ -27,28 +27,28 @@ const ProgressBar = ({ duration, isError, text, key, elapsed }: ProgressBarProps
   return (
     <div
       key={key}
-      className="relative w-40 md:w-52 bg-gray-200 dark:bg-slate-700 rounded-full h-8"
+      className="relative w-40 lg:w-52 bg-gray-200 dark:bg-slate-700 rounded-full h-8"
     >
       {/* tabular-nums: 남은 개수·예상 시간 숫자가 바뀌어도 폭이 출렁이지 않게 */}
-      <div className="top-0 left-0 w-40 md:w-52 h-8 absolute flex items-center justify-center text-gray-600 dark:text-white gap-2">
+      <div className="top-0 left-0 w-40 lg:w-52 h-8 absolute flex items-center justify-center text-gray-600 dark:text-white gap-2">
         <FaRegClock size={20} />
-        <div className="w-28 md:w-40 text-xs md:text-sm text-center overflow-hidden text-nowrap tabular-nums">
+        <div className="w-28 lg:w-40 text-xs lg:text-sm text-center overflow-hidden text-nowrap tabular-nums">
           {text}
         </div>
       </div>
       <div
         className={
-          'top-0 left-0 absolute w-40 md:w-52 progress-transition rounded-full h-8 progress-clip-animation ' +
+          'top-0 left-0 absolute w-40 lg:w-52 progress-transition rounded-full h-8 progress-clip-animation ' +
           (!isError ? 'bg-sky-500 dark:bg-indigo-400' : 'bg-red-500')
         }
         style={animStyle}
       ></div>
       <div
-        className="top-0 left-0 w-40 md:w-52 h-8 absolute flex items-center justify-center text-white gap-2 progress-clip-animation"
+        className="top-0 left-0 w-40 lg:w-52 h-8 absolute flex items-center justify-center text-white gap-2 progress-clip-animation"
         style={animStyle}
       >
         <FaRegClock size={20} />
-        <div className="w-28 md:w-40 text-xs md:text-sm text-center overflow-hidden text-nowrap tabular-nums">
+        <div className="w-28 lg:w-40 text-xs lg:text-sm text-center overflow-hidden text-nowrap tabular-nums">
           {text}
         </div>
       </div>
@@ -277,7 +277,7 @@ const TaskQueueControl = observer(({}) => {
   const cyclingActive = cyclingSessionService.state === 'running' || cyclingSessionService.state === 'paused';
 
   return (
-    <div ref={rootRef} className="flex gap-2 md:gap-4 items-center">
+    <div ref={rootRef} className="flex gap-2 lg:gap-4 items-center">
       {showList && (
         <TaskQueueList
           dropDown={listDropDown}
@@ -325,7 +325,7 @@ const TaskQueueControl = observer(({}) => {
         <TaskProgressBar />
       </div>
       <button
-        className={`round-button back-gray px-2 h-8 md:px-6`}
+        className={`round-button back-gray px-2 h-8 lg:px-6`}
         onClick={() => {
           taskQueueService.removeAllTasks();
         }}
@@ -334,7 +334,7 @@ const TaskQueueControl = observer(({}) => {
       </button>
       {!taskQueueService.isRunning() ? (
         <button
-          className={`round-button back-green px-2 h-8 md:px-6`}
+          className={`round-button back-green px-2 h-8 lg:px-6`}
           onClick={() => {
             (async () => {
               const costs = taskQueueService.calculateCost();
@@ -363,7 +363,7 @@ const TaskQueueControl = observer(({}) => {
         </button>
       ) : (
         <button
-          className={`round-button back-red px-2 h-8 md:px-6`}
+          className={`round-button back-red px-2 h-8 lg:px-6`}
           onClick={() => {
             taskQueueService.stop();
           }}

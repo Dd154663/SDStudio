@@ -699,17 +699,24 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
   return (
     <div className="field-row flex gap-2 mt-2 md:mt-3 items-center relative">
       <div className="flex-none gray-label">사전세팅선택:</div>
+      {/* flex-1 !min-w-0 + truncate: 이름이 길어도 행 폭을 밀어내지 않고 말줄임 —
+          우측 +·★·🗑 버튼이 밖으로 밀려 못 누르게 되던 문제 방지.
+          !min-w-0 필수: .round-button 의 min-width(App.css, md 미디어 룰의 unset)가
+          Tailwind min-w-0 보다 캐스케이드에서 뒤라 ! 없이는 축소가 막힌다.
+          span 쪽 min-w-0 도 필수(플렉스 아이템 기본 min-width:auto 로는 truncate 미발동). */}
       <div
-        className="round-button back-gray h-8 w-full"
+        className="round-button back-gray h-8 flex-1 !min-w-0 overflow-hidden"
         onClick={() => {
           setIsOpen(!isOpen);
           clicked.current = true;
         }}
       >
-        {curSession.selectedWorkflow?.presetName}
+        <span className="min-w-0 truncate">
+          {curSession.selectedWorkflow?.presetName}
+        </span>
       </div>
       <button
-        className={`icon-button`}
+        className={`icon-button flex-none`}
         onClick={async () => {
           const name = await appState.pushDialogAsync({
             type: 'input-confirm',
@@ -734,7 +741,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
       {workflowType === 'SDImageGen' && (
         <Tooltip content="글로벌 프리셋에서 가져오기">
           <button
-            className={`icon-button`}
+            className={`icon-button flex-none`}
             onClick={() => {
               appState.openGlobalPresetPicker('SDImageGen');
             }}
@@ -745,7 +752,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
       )}
       <Tooltip content="사전 세팅 일괄 삭제">
         <button
-          className={`icon-button`}
+          className={`icon-button flex-none`}
           onClick={() => setBulkOpen(true)}
         >
           <FaTrashAlt />
@@ -771,7 +778,8 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                     presetName: option.name,
                   };
                 }}
-                className="w-full text-left"
+                // flex-1 min-w-0 truncate: 긴 이름이 우측 수정/삭제 아이콘을 밀어내지 않게
+                className="flex-1 min-w-0 text-left truncate"
               >
                 {option.name}
               </button>

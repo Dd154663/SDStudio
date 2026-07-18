@@ -598,6 +598,15 @@ html:not(.finish-classic) .tab-seg > .tab-seg-off:hover {
 }
 
 /* 가로 스크롤은 허용하되 스크롤바는 숨긴다(모바일 탭바 등). */
+/* 좁은 창(<1024, W6 후속) 전용 패널 폭 상한 — 프리셋/히스토리 패널이 함께 열려도
+   중앙 콘텐츠가 완전히 가려지지 않게 한다(36vw×2 → 중앙 최소 ~25vw 확보).
+   1024 이상에서는 미적용이라 사용자가 넓게 잡아둔 패널 레이아웃을 건드리지 않는다. */
+@media (max-width: 1023px) {
+  .panel-vw-clamp {
+    max-width: 36vw;
+  }
+}
+
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;

@@ -99,7 +99,9 @@ const TobBar = observer(() => {
   return (
     // zone-bar: 구역 카드화 마감 — PC 새 마감에선 캔버스 프레임에 통합(App.css)
     <div className="zone-bar titlebar-drag flex border-b line-color px-3 py-2 items-center select-none gap-2">
-      <div className="titlebar-no-drag gap-3 hidden md:flex text-sky-500 font-bold dark:text-white">
+      {/* 좁은 창(768~1024) 다이어트: 장식성 요소는 lg(1024) 미만에서 숨긴다 —
+          두 창 나란히(960px) 배치 시 공간 확보. md 미만(모바일) 동작은 무변화. */}
+      <div className="titlebar-no-drag gap-3 hidden lg:flex text-sky-500 font-bold dark:text-white">
         SDStudio
       </div>
       {/* 컴팩트(sessionSelectTop): 세션 선택이 flex-1로 가운데를 차지하므로,
@@ -112,11 +114,13 @@ const TobBar = observer(() => {
       >
         {!loggedIn ? (
           <span className={`round-tag back-red`}>
-            환경설정에서 로그인하세요
+            {/* 좁은 창(<lg)에서는 모바일과 같은 축약 문구 */}
+            <span className="lg:hidden">로그인필요</span>
+            <span className="hidden lg:inline">환경설정에서 로그인하세요</span>
           </span>
         ) : (
           <>
-            <span className="text-sub">Anlas: </span>{' '}
+            <span className="text-sub hidden lg:inline">Anlas: </span>{' '}
             {/* tabular-nums: 잔량이 줄어도 자릿수 폭이 고정돼 출렁이지 않게 */}
             <span className={`round-tag back-yellow tabular-nums`}>{credits}</span>
           </>
@@ -135,7 +139,9 @@ const TobBar = observer(() => {
             setSettings(true);
           }}
         >
-          환경설정
+          {/* 좁은 창(<lg)에서는 톱니 아이콘으로 축약 */}
+          <FaCog size={16} className="lg:hidden" />
+          <span className="hidden lg:inline">환경설정</span>
         </button>
       </div>
       {/* Mobile: 기본 = ⚙ 아이콘+크레딧 인라인(1줄 다이어트) / 클래식 툴바 = 기존 세로 배치 */}

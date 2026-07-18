@@ -500,11 +500,13 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
       )}
 
       {/* 프로젝트 선택 영역: 기본 = 버튼과 한 줄 공유(폭 변동은 truncate가 흡수, 최소폭 미달 시 버튼이 다음 줄로 래핑) / 클래식 = 모바일 1행 전체 */}
+      {/* md:min-w-[13rem]: 좁은 창(W6 후속)에서 이 영역이 무한 축소(min-w-0)로 뭉개지는
+          1순위였던 문제 수정 — 최소폭을 보장해 대신 뒤의 버튼들이 다음 줄로 래핑되게 한다. */}
       <div
         className={`titlebar-no-drag flex items-center gap-1 ${
           appState.uiToolbar.classic
-            ? 'w-full md:w-auto md:flex-1 md:max-w-80 min-w-0'
-            : 'flex-1 min-w-[9rem] md:min-w-0 md:max-w-80'
+            ? 'w-full md:w-auto md:flex-1 md:min-w-[13rem] md:max-w-80 min-w-0'
+            : 'flex-1 min-w-[9rem] md:min-w-[13rem] md:max-w-80'
         }`}
       >
         {appState.legacyProjectMode ? (
@@ -519,7 +521,8 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
                 <FaBars size={16} />
               </button>
             </Tooltip>
-            <span className="hidden md:inline whitespace-nowrap text-sub">
+            {/* 좁은 창(<lg) 다이어트 — 라벨 없어도 선택기 형태로 의미가 통한다 */}
+            <span className="hidden lg:inline whitespace-nowrap text-sub">
               프로젝트:{' '}
             </span>
             <div className="flex-1 min-w-0">
@@ -545,7 +548,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
           </>
         ) : (
           <>
-            <span className="hidden md:inline whitespace-nowrap text-sub">
+            <span className="hidden lg:inline whitespace-nowrap text-sub">
               프로젝트:{' '}
             </span>
             <Tooltip content="프로젝트 목록 열기 (폴더 드로어)">
@@ -568,7 +571,8 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
           </>
         )}
         <Tooltip content="프로젝트 탐색">
-        <button className={`icon-button mx-1`} onClick={() => { appState.projectBrowserOpen = true; }}>
+        {/* flex-none: 좁은 폭에서 이 버튼이 눌려 앞 버튼과 겹쳐 보이던 문제 방지 */}
+        <button className={`icon-button mx-1 flex-none`} onClick={() => { appState.projectBrowserOpen = true; }}>
           <FaThLarge size={16} />
         </button>
         </Tooltip>

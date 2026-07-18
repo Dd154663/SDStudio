@@ -210,12 +210,14 @@ export const TabComponent: React.FC<TabComponentProps> = ({
         }
       >
         {/* tab-seg/tab-seg-off: 탭 세그먼트 마감(App.css) — 클래식이면 기존 클래스 그대로 렌더 */}
-        <div className="tab-seg md:flex gap-2 w-full hidden">
+        {/* 좁은 폭(좁은 창 또는 두꺼운 좌우 패널) 대응: 버튼은 flex-none 으로 눌리지 않게
+            하고 컨테이너가 가로 스크롤 — 글자가 세로로 깨지는 문제 방지(모바일 변형과 동일 기법) */}
+        <div className="tab-seg md:flex gap-2 w-full max-w-full min-w-0 overflow-x-auto no-scrollbar hidden">
           {tabs.map((tab, index) => (
             <button
               key={index}
               className={
-                'active:brightness-90 hover:brightness-95 select-none h-8 px-3 text-sm rounded-md transition-colors ' +
+                'active:brightness-90 hover:brightness-95 select-none h-8 px-3 text-sm rounded-md transition-colors flex-none whitespace-nowrap ' +
                 (index === activeTab ? `back-sky` : 'back-llgray tab-seg-off')
               }
               onClick={() => handleTabClick(index)}

@@ -1650,7 +1650,10 @@ const createWindow = async (opts?: {
       : useSavedPos
         ? { x: savedState!.x, y: savedState!.y }
         : {}),
-    minWidth: 1024,
+    // 좁은 창 대응(W6 후속, 2026-07-18): 1024→768. 1920 화면에 두 창(960px)을
+    // 나란히 놓는 멀티 윈도우 사용을 허용한다. 768 미만은 미지원 — Tailwind md(768)
+    // 아래는 모바일 전용 분기(사이드 도크·창 컨트롤이 hidden md:*)라 PC 구조가 깨진다.
+    minWidth: 768,
     minHeight: 728,
     frame: false,
     icon: getAssetPath('icon.png'),
