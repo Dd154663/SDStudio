@@ -394,6 +394,131 @@ export class GlobalCharacterPresetService extends EventTarget {
     return preset;
   }
 
+  // ---------- 파일 내보내기/불러오기 (PC↔모바일 크로스 작업 이동, 2026-07-18) ----------
+  // 파일 형식 = 로컬 캐릭터 프리셋 내보내기(CharacterPresetEditor 의
+  // ExportedPresetData version 1)와 동일: 프리셋 JSON + vibeImages/referenceImages/
+  // representativeImageData 로 이미지 데이터 인라인. filename 은 프리셋 json 의
+  // path 토큰과 일치시키므로 **로컬↔글로벌 교차 불러오기**가 가능하다.
+  // globalFolder 는 글로벌 전용 추가 필드 — 로컬 불러오기는 모른 채 무시(무해).
+  async exportToFileData(): Promise<any> {
+    const out: any = { version: 1, presets: [] };
+    for (const entry of this.presets) {
+      const json: any = JSON.parse(JSON.stringify(entry.preset));
+      json.vibeImages = [];
+      for (const vibe of json.vibes || []) {
+        if (!vibe.path) continue;
+        const data = await this.fetchImageData(vibe.path);
+        if (data) json.vibeImages.push({ filename: vibe.path, data });
+      }
+      json.referenceImages = [];
+      for (const ref of json.characterReferences || []) {
+        if (!ref.path) continue;
+        const data = await this.fetchImageData(ref.path);
+        if (data) json.referenceImages.push({ filename: ref.path, data });
+      }
+      if (json.representativeImage) {
+        const data = await this.fetchImageData(json.representativeImage);
+        if (data) json.representativeImageData = data;
+      }
+      if (entry.folder) json.globalFolder = entry.folder;
+      out.presets.push(json);
+    }
+    return out;
+  }
+
+  // 파일 데이터 → 글로벌 엔트리 등록. 이미지는 새 글로벌 파일명(uuid)으로 저장 후
+  // path 재지정(기존 글로벌 이미지와 충돌 없음). 이름 충돌은 `_n` 접미.
+  // 반환 = 불러온 개수. 형식 오류는 throw (호출 UI 가 메시지 처리).
+  @action
+  async importFromFileData(data: any): Promise<number> {
+    if (!data || !Array.isArray(data.presets)) {
+      throw new Error('올바른 캐릭터 프리셋 파일이 아닙니다');
+    }
+    let imported = 0;
+    for (const raw of data.presets) {
+      if (!raw || typeof raw !== 'object') continue;
+      try {
+        const json: any = JSON.parse(JSON.stringify(raw));
+        const folder =
+          typeof json.globalFolder === 'string' && json.globalFolder.trim()
+            ? json.globalFolder.trim()
+            : undefined;
+        // 이미지 복원: 원본 filename → 새 글로벌 파일명 매핑 후 path 재지정
+        const map = new Map<string, string>();
+        for (const img of json.vibeImages || []) {
+          if (!img?.filename || typeof img.data !== 'string') continue;
+          try {
+            map.set(
+              String(img.filename).split('/').pop()!,
+              await this.storeImageData(img.data),
+            );
+          } catch (e) {}
+        }
+        for (const img of json.referenceImages || []) {
+          if (!img?.filename || typeof img.data !== 'string') continue;
+          try {
+            map.set(
+              String(img.filename).split('/').pop()!,
+              await this.storeImageData(img.data),
+            );
+          } catch (e) {}
+        }
+        for (const vibe of json.vibes || []) {
+          vibe.path = map.get(String(vibe.path || '').split('/').pop()!) ?? '';
+        }
+        for (const ref of json.characterReferences || []) {
+          ref.path = map.get(String(ref.path || '').split('/').pop()!) ?? '';
+        }
+        if (json.representativeImageData && json.representativeImage) {
+          try {
+            json.representativeImage = await this.storeImageData(
+              json.representativeImageData,
+            );
+          } catch (e) {
+            json.representativeImage = '';
+          }
+        } else {
+          json.representativeImage = '';
+        }
+        delete json.vibeImages;
+        delete json.referenceImages;
+        delete json.representativeImageData;
+        delete json.globalFolder;
+        // 스키마 정규화(미지 필드 제거) + 글로벌 유래 링크 제거
+        const clean: any = CharacterPreset.fromJSON(
+          json as ICharacterPreset,
+        ).toJSON();
+        delete clean.fromGlobalId;
+        delete clean.fromGlobalRev;
+        const name = this.resolveNameCollision(
+          (clean.name || '이름없음').trim() || '이름없음',
+        );
+        clean.name = name;
+        const entry: IGlobalCharacterPresetEntry = {
+          id: uuidv4(),
+          name,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          preset: clean as ICharacterPreset,
+          ...(folder ? { folder } : {}),
+        };
+        if (folder && !this.folders.includes(folder)) {
+          this.folders = [...this.folders, folder];
+        }
+        this.presets = [...this.presets, entry];
+        imported++;
+      } catch (e) {
+        // 항목 단위 파손은 건너뛰고 나머지는 계속 불러온다
+        console.error('글로벌 프리셋 항목 불러오기 실패:', e);
+      }
+    }
+    if (imported > 0) {
+      this.scheduleSave();
+      this.dispatchEvent(new CustomEvent('changed', {}));
+    }
+    return imported;
+  }
+
   // ---------- 편집기용 이미지 저장 (FileUploadBase64는 raw base64 제공) ----------
   async storeVibeForEditor(base64: string): Promise<string> {
     const filename = uuidv4() + '.png';

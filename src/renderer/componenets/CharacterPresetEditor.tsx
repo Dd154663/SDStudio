@@ -36,6 +36,7 @@ import {
 import { appState } from '../models/AppService';
 import { FaPlay, FaPause, FaStop, FaSync, FaDownload, FaUpload, FaGlobe, FaUsers, FaCloudUploadAlt, FaCloudDownloadAlt } from 'react-icons/fa';
 import type { IGlobalCharacterPresetEntry } from '../models/GlobalCharacterPresetService';
+import { saveJsonFile } from '../models/exportUtil';
 import { FileUploadBase64 } from './UtilComponents';
 import PromptEditTextArea from './PromptEditTextArea';
 import ModalOverlay from './ModalOverlay';
@@ -104,30 +105,54 @@ async function exportCharacterPresets(session: any) {
     exportData.presets.push(json);
   }
 
-  const jsonStr = JSON.stringify(exportData);
-  const fileName = session.name + '_character_presets.json';
-
-  if (isMobile) {
-    // 모바일: Capacitor Filesystem으로 저장 후 Share
-    try {
-      const outPath = 'exports/' + fileName;
-      await backend.writeFile(outPath, jsonStr);
-      await backend.showFile(outPath);
-    } catch (e: any) {
-      appState.pushMessage('내보내기 실패: ' + e.message);
-      return;
-    }
-  } else {
-    // PC: Blob 다운로드
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    a.click();
-    URL.revokeObjectURL(url);
+  try {
+    await saveJsonFile(
+      session.name + '_character_presets.json',
+      JSON.stringify(exportData),
+    );
+  } catch (e: any) {
+    appState.pushMessage('내보내기 실패: ' + e.message);
+    return;
   }
   appState.pushMessage(`${presets.length}개 캐릭터 프리셋을 내보냈습니다`);
+}
+
+// ─── 글로벌 캐릭터 프리셋 내보내기/불러오기 (PC↔모바일 크로스, 2026-07-18) ───
+// 파일 형식은 로컬(ExportedPresetData v1)과 동일 — 직렬화/복원은 서비스가 담당
+// (GlobalCharacterPresetService.exportToFileData/importFromFileData 참조).
+// 로컬에서 내보낸 파일을 글로벌로, 글로벌 파일을 로컬로 교차 불러올 수 있다.
+
+async function exportGlobalCharacterPresets() {
+  const entries = globalCharacterPresetService.list();
+  if (entries.length === 0) {
+    appState.pushMessage('내보낼 글로벌 프리셋이 없습니다');
+    return;
+  }
+  try {
+    const data = await globalCharacterPresetService.exportToFileData();
+    await saveJsonFile('global_character_presets.json', JSON.stringify(data));
+  } catch (e: any) {
+    appState.pushMessage('내보내기 실패: ' + e.message);
+    return;
+  }
+  appState.pushMessage(`${entries.length}개 글로벌 프리셋을 내보냈습니다`);
+}
+
+async function importGlobalCharacterPresets(file: File) {
+  const text = await file.text();
+  let data: any;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    appState.pushMessage('올바른 캐릭터 프리셋 파일이 아닙니다');
+    return;
+  }
+  try {
+    const n = await globalCharacterPresetService.importFromFileData(data);
+    appState.pushMessage(`${n}개 프리셋을 글로벌로 불러왔습니다`);
+  } catch (e: any) {
+    appState.pushMessage(e.message || '불러오기에 실패했습니다');
+  }
 }
 
 async function importCharacterPresets(session: any, file: File) {
@@ -1075,6 +1100,39 @@ export const CharacterPresetEditor = observer(({
                     const file = e.target.files?.[0];
                     if (file) {
                       await importCharacterPresets(curSession, file);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+              </label>
+            </Tooltip>
+          )}
+          {/* 글로벌 내보내기/불러오기 — PC↔모바일 크로스 작업 이동용.
+              파일 형식이 로컬과 동일해 로컬 내보내기 파일도 불러올 수 있다. */}
+          {globalView && globalEntries.length > 0 && (
+            <Tooltip content="모든 글로벌 프리셋 내보내기">
+              <button
+                className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5"
+                onClick={exportGlobalCharacterPresets}
+              >
+                <FaDownload size={11} />
+                내보내기
+              </button>
+            </Tooltip>
+          )}
+          {globalView && (
+            <Tooltip content="프리셋 파일 불러오기 (로컬에서 내보낸 파일도 가능)">
+              <label className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 cursor-pointer">
+                <FaUpload size={11} />
+                불러오기
+                <input
+                  type="file"
+                  accept=".json"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      await importGlobalCharacterPresets(file);
                       e.target.value = '';
                     }
                   }}

@@ -10,11 +10,14 @@ import {
   FaPlus,
   FaCheck,
   FaTimes,
+  FaDownload,
+  FaUpload,
 } from 'react-icons/fa';
 import ModalOverlay from './ModalOverlay';
 import Tooltip from './Tooltip';
 import { sessionService, templateService } from '../models';
 import { appState } from '../models/AppService';
+import { saveJsonFile } from '../models/exportUtil';
 import HelpIcon from './HelpIcon';
 
 // 씬 템플릿 관리 오버레이 (씬 템플릿 개편 후속, 2026-07-18 실기 피드백):
@@ -112,6 +115,23 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
     if (names && names.length > 0) onClose(); // 가져온 씬을 바로 보도록
   };
 
+  // 파일 내보내기/불러오기 (PC↔모바일 크로스 작업 이동, 2026-07-18) —
+  // 직렬화/검증은 TemplateService.exportSceneTemplateFile/importSceneTemplateFile 담당
+  const handleExportFile = async (name: string) => {
+    const jsonStr = await templateService.exportSceneTemplateFile(name);
+    if (!jsonStr) return;
+    try {
+      await saveJsonFile(name + '_scene_template.json', jsonStr);
+      appState.pushMessage(`씬 템플릿 "${name}"을(를) 파일로 내보냈습니다`);
+    } catch (e: any) {
+      appState.pushMessage('내보내기 실패: ' + e.message);
+    }
+  };
+
+  const handleImportFile = async (file: File) => {
+    await templateService.importSceneTemplateFile(await file.text());
+  };
+
   return (
     <ModalOverlay
       isOpen={true}
@@ -156,6 +176,23 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
           >
             <FaFileImport size={13} /> 현재 프로젝트로 가져오기
           </button>
+        </Tooltip>
+        <Tooltip content="다른 기기에서 내보낸 씬 템플릿 파일을 추가합니다">
+          <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap cursor-pointer">
+            <FaUpload size={13} /> 파일 불러오기
+            <input
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  await handleImportFile(file);
+                  e.target.value = '';
+                }
+              }}
+            />
+          </label>
         </Tooltip>
       </div>
       <div className="text-xs text-muted mb-3">
@@ -240,6 +277,17 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
                     className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
                   >
                     <FaCopy size={13} />
+                  </button>
+                </Tooltip>
+                <Tooltip content="파일로 내보내기 (다른 기기로 이동)">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleExportFile(name);
+                    }}
+                    className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
+                  >
+                    <FaDownload size={13} />
                   </button>
                 </Tooltip>
                 <Tooltip content="삭제 (휴지통으로 이동)">

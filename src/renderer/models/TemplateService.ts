@@ -621,6 +621,74 @@ export class TemplateService {
     await this.save();
   }
 
+  // ── 파일 내보내기/불러오기 (PC↔모바일 크로스 작업 이동, 2026-07-18) ──
+  // 실체가 숨김 프로젝트이므로 인앱 복제와 같은 얕은 직렬화(exportSessionShallow —
+  // 이미지 제외·스타일 프로필 인라인)를 그대로 파일에 담는다. 캐릭터 프리셋의
+  // 바이브/레퍼런스 이미지가 빠지는 것도 인앱 복제와 동일 의미론.
+
+  // 반환 = 파일 내용 JSON 문자열 (실패 시 null — 메시지는 여기서 처리)
+  async exportSceneTemplateFile(name: string): Promise<string | null> {
+    const appState = getAppState();
+    const tpl = await sessionService.get(name);
+    if (!tpl) {
+      appState.pushMessage('씬 템플릿 프로젝트를 불러올 수 없습니다.');
+      return null;
+    }
+    const json = await sessionService.exportSessionShallow(tpl);
+    return JSON.stringify({
+      version: 1,
+      type: 'sdstudio-scene-template',
+      name,
+      session: json,
+    });
+  }
+
+  // 파일 내용 → 새 숨김 템플릿 프로젝트 생성 + 지정. 반환 = 만든 이름(실패 null).
+  async importSceneTemplateFile(text: string): Promise<string | null> {
+    const appState = getAppState();
+    let data: any;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      appState.pushMessage('올바른 씬 템플릿 파일이 아닙니다.');
+      return null;
+    }
+    if (
+      data?.type !== 'sdstudio-scene-template' ||
+      !data.session ||
+      typeof data.session !== 'object'
+    ) {
+      appState.pushMessage('올바른 씬 템플릿 파일이 아닙니다.');
+      return null;
+    }
+    await this.ensureLoaded();
+    if (!this.loaded) {
+      appState.pushMessage('템플릿 목록을 불러오지 못해 변경할 수 없습니다.');
+      return null;
+    }
+    // 프로젝트 이름은 경로 구성요소가 되므로 파일시스템 예약 문자를 제거하고,
+    // 빈 이름은 기본값으로 대체 (데이터 루트 오삭제 방어와 같은 취지의 빈 이름 검증)
+    const base =
+      (typeof data.name === 'string' ? data.name : '')
+        .replace(/[\\/:*?"<>|]/g, ' ')
+        .trim() || '가져온 씬 템플릿';
+    let name = base;
+    let i = 2;
+    while (sessionService.list().includes(name)) {
+      name = `${base} (${i})`;
+      i++;
+    }
+    try {
+      await sessionService.importSessionShallow(data.session, name);
+    } catch (e: any) {
+      appState.pushMessage(e?.message || '씬 템플릿 불러오기에 실패했습니다.');
+      return null;
+    }
+    await this.designateHiddenTemplate(name);
+    appState.pushMessage(`씬 템플릿 "${name}"을(를) 불러왔습니다.`);
+    return name;
+  }
+
   // ── 1회 이관 (씬 템플릿 개편, 2026-07-18 합의) ──
   // 기존에 "일반 프로젝트를 씬 템플릿으로 지정"해 둔 항목을, 복제본(숨김)으로
   // 분리하고 원본은 일반 프로젝트로 되돌린다(지정 해제). 부팅 완료 후 비차단으로
