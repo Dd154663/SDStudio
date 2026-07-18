@@ -26,6 +26,8 @@ import {
   FaToggleOn,
   FaToggleOff,
   FaFolderOpen,
+  FaChevronDown,
+  FaChevronRight,
 } from 'react-icons/fa';
 import { FloatView } from './FloatView';
 import { useDrag, useDrop } from 'react-dnd';
@@ -56,6 +58,7 @@ import { observer } from 'mobx-react-lite';
 import {
   WFAbstractVar,
   WFIElement,
+  WFIExtraPromptInput,
   WFIGroup,
   WFIIfIn,
   WFIInlineInput,
@@ -152,12 +155,39 @@ const ImageSelect = observer(({ input }: { input: WFIInlineInput }) => {
   );
 });
 
+// ─── 프롬프트 영역 접기 상태 (2026-07-18) ───
+// 세션/프리셋과 무관한 전역 UI 상태라 localStorage 에 둔다(설정 파일 비오염).
+// 키 = 프롬프트 필드명(frontPrompt/backPrompt/uc/extraPrompt 등, 워크플로우 공용).
+// 기본값은 호출부의 defaultFolded (추가 프롬프트만 접힘, 나머지 펼침).
+const PROMPT_FOLD_LS_KEY = 'sdstudio-prompt-fold';
+function loadPromptFold(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(PROMPT_FOLD_LS_KEY) || '{}') || {};
+  } catch (e) {
+    return {};
+  }
+}
+function getPromptFold(key: string, def: boolean): boolean {
+  const m = loadPromptFold();
+  return typeof m[key] === 'boolean' ? m[key] : def;
+}
+function setPromptFold(key: string, folded: boolean) {
+  const m = loadPromptFold();
+  m[key] = folded;
+  try {
+    localStorage.setItem(PROMPT_FOLD_LS_KEY, JSON.stringify(m));
+  } catch (e) {}
+}
+
 const EditorField = ({
   label,
   full,
   children,
   bold,
   hint,
+  foldKey,
+  defaultFolded,
+  foldedBadge,
 }: {
   label: string;
   children: React.ReactNode;
@@ -165,20 +195,54 @@ const EditorField = ({
   bold?: boolean;
   // (?) 도움말 아이콘 문구 — 라벨 오른쪽에 표시 (프롬프트 문법 안내 등)
   hint?: string;
+  // 접기 지원: foldKey 지정 시 라벨 클릭으로 접기/펼치기 (localStorage 영속)
+  foldKey?: string;
+  defaultFolded?: boolean;
+  // 접힘 상태에서 내용이 있을 때 라벨 옆에 표시할 배지 (보이지 않는 프롬프트 방지)
+  foldedBadge?: string;
 }) => {
+  const [folded, setFolded] = useState(() =>
+    foldKey ? getPromptFold(foldKey, !!defaultFolded) : false,
+  );
+  const toggle = () => {
+    if (!foldKey) return;
+    setPromptFold(foldKey, !folded);
+    setFolded(!folded);
+  };
   return (
     <>
       <div className={'pt-2 md:pt-3 pb-1 gray-label'}>
-        {bold ? <b>{label}</b> : label}
+        <span
+          className={foldKey ? 'cursor-pointer select-none' : undefined}
+          onClick={foldKey ? toggle : undefined}
+        >
+          {foldKey && (
+            <span className="inline-block mr-1 text-faint align-middle">
+              {folded ? (
+                <FaChevronRight size={9} />
+              ) : (
+                <FaChevronDown size={9} />
+              )}
+            </span>
+          )}
+          {bold ? <b>{label}</b> : label}
+        </span>
         {hint && (
           <span className="ml-1.5">
             <HelpIcon content={hint} />
           </span>
         )}
+        {folded && foldedBadge && (
+          <span className="ml-1.5 text-xs text-sky-500 dark:text-sky-400">
+            {foldedBadge}
+          </span>
+        )}
       </div>
-      <div className={full ? 'flex-1 min-h-0' : 'flex-none mt-3'}>
-        {children}
-      </div>
+      {!folded && (
+        <div className={full ? 'flex-1 min-h-0' : 'flex-none mt-3'}>
+          {children}
+        </div>
+      )}
     </>
   );
 };
@@ -1002,6 +1066,8 @@ const WFRenderElement = observer(({ element }: WFElementProps) => {
       return <WFRPush element={element} />;
     case 'middlePlaceholder':
       return <WFRMiddlePlaceholder element={element} />;
+    case 'extraPrompt':
+      return <WFRExtraPrompt element={element} />;
     case 'showImage':
       return <WFRShowImage element={element} />;
     case 'ifIn':
@@ -1086,6 +1152,40 @@ const WFRMiddlePlaceholder = observer(({ element }: WFElementProps) => {
         value={getMiddlePrompt!()}
         disabled={false}
         onChange={onMiddlePromptChange!}
+      ></PromptEditTextArea>
+    </EditorField>
+  );
+});
+
+// 추가 프롬프트 (2026-07-18) — 상위/중위 사이의 스크래치 프롬프트.
+// Session.extraPrompt 에 바인딩: 프로젝트(세션 JSON)에 귀속되어 유지되지만,
+// 프리셋·글로벌 프리셋 저장 구조에는 들어가지 않는다. 기본 접힘 + 내용 배지.
+const WFRExtraPrompt = observer(({ element }: WFElementProps) => {
+  const { editVibe, showGroup } = useContext(WFElementContext)!;
+  const { curSession } = appState;
+  const input = element as WFIExtraPromptInput;
+  if (!curSession) return <></>;
+  if (showGroup || editVibe) {
+    return <></>;
+  }
+  return (
+    <EditorField
+      label={input.label}
+      full={true}
+      foldKey="extraPrompt"
+      defaultFolded
+      foldedBadge={curSession.extraPrompt.trim() ? '작성됨' : undefined}
+      hint={
+        '상위와 중간(씬 전용) 프롬프트 사이에 삽입되는 추가 프롬프트입니다.\n' +
+        '프리셋에는 저장되지 않고, 현재 프로젝트에 귀속되어 유지됩니다.'
+      }
+    >
+      <PromptEditTextArea
+        value={curSession.extraPrompt}
+        disabled={false}
+        onChange={(v: string) => {
+          curSession.extraPrompt = v;
+        }}
       ></PromptEditTextArea>
     </EditorField>
   );
@@ -1266,6 +1366,7 @@ function presetRowGrows(el: WFIElement): boolean {
     cur = (cur as WFIIfIn | WFISceneOnly).element;
   }
   if (cur.type === 'middlePlaceholder') return true;
+  if (cur.type === 'extraPrompt') return true;
   if (cur.type === 'inline') return (cur as WFIInlineInput).flex === 'flex-1';
   return false;
 }
@@ -1951,6 +2052,14 @@ const WFRInline = observer(({ element }: WFElementProps) => {
           full={input.flex === 'flex-1'}
           // 문법 안내는 첫 프롬프트(상위)에만 1회 — 문법은 전 프롬프트 공통
           hint={input.field === 'frontPrompt' ? PROMPT_SYNTAX_HELP : undefined}
+          // 접기 (2026-07-18): 필드명 키로 워크플로우 공용 영속, 기본 펼침.
+          // 접힌 채 내용이 있으면 배지로 표시해 보이지 않는 프롬프트를 방지.
+          foldKey={input.flex === 'flex-1' ? input.field : undefined}
+          foldedBadge={
+            typeof getField() === 'string' && getField().trim()
+              ? '작성됨'
+              : undefined
+          }
         >
           <PromptEditTextArea
             key={key}

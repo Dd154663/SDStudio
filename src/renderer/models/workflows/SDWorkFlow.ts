@@ -1,6 +1,7 @@
 import { NoiseSchedule, Sampling } from '../../backends/imageGen';
 import {
   WFDefBuilder,
+  wfiExtraPromptInput,
   wfiGroup,
   wfiInlineInput,
   wfiMiddlePlaceholderInput,
@@ -60,6 +61,8 @@ const SDImageGenShared = new WFVarBuilder()
 const SDImageGenUI = wfiStack([
   wfiPresetSelect('preset-select'),
   wfiInlineInput('상위 프롬프트', 'frontPrompt', 'preset', 'flex-1'),
+  // 추가 프롬프트 — 상위/중위 사이, 프로젝트 귀속·프리셋 비저장 (기본 접힘)
+  wfiExtraPromptInput('추가 프롬프트', 'extra-prompt'),
   wfiMiddlePlaceholderInput('중간 프롬프트 (이 씬에만 적용됨)', 'middle-prompt'),
   wfiInlineInput('하위 프롬프트', 'backPrompt', 'preset', 'flex-1'),
   wfiInlineInput('네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
@@ -123,6 +126,8 @@ const SDImageGenEasyShared = SDImageGenShared.clone()
 const SDImageGenEasyUI = wfiStack([
   wfiProfilePresetSelect('profile-preset-select'),
   wfiInlineInput('캐릭터 관련 태그', 'characterPrompt', 'shared', 'flex-1'),
+  // 추가 프롬프트 — 상위/중위 사이, 프로젝트 귀속·프리셋 비저장 (기본 접힘)
+  wfiExtraPromptInput('추가 프롬프트', 'extra-prompt'),
   wfiMiddlePlaceholderInput('중간 프롬프트 (이 씬에만 적용됨)', 'middle-prompt'),
   wfiInlineInput('배경 관련 태그', 'backgroundPrompt', 'shared', 'flex-1'),
   wfiInlineInput('태그 밴 리스트', 'uc', 'shared', 'flex-1'),

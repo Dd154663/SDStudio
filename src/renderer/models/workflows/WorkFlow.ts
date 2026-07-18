@@ -216,6 +216,14 @@ export interface WFIMiddlePlaceholderInput extends WFIAbstract {
   label: string;
 }
 
+// 추가 프롬프트 (2026-07-18) — 상위/중위 사이의 스크래치 프롬프트.
+// 프리셋/공유 변수가 아니라 Session.extraPrompt(프로젝트 귀속, 프리셋 구조 비저장)에
+// 바인딩되는 특수 요소라 middlePlaceholder 처럼 전용 타입으로 둔다.
+export interface WFIExtraPromptInput extends WFIAbstract {
+  type: 'extraPrompt';
+  label: string;
+}
+
 export interface WFIShowImage extends WFIAbstract {
   type: 'showImage';
   field: string;
@@ -234,6 +242,7 @@ export type WFIElement =
   | WFIInlineInput
   | WFIGroup
   | WFIMiddlePlaceholderInput
+  | WFIExtraPromptInput
   | WFIPush
   | WFIIfIn
   | WFISceneOnly
@@ -574,6 +583,13 @@ export function wfiMiddlePlaceholderInput(
   id?: string,
 ): WFIMiddlePlaceholderInput {
   return { type: 'middlePlaceholder', label, id };
+}
+
+export function wfiExtraPromptInput(
+  label: string,
+  id?: string,
+): WFIExtraPromptInput {
+  return { type: 'extraPrompt', label, id };
 }
 
 export function wfiPush(

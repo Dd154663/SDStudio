@@ -25,6 +25,7 @@ import {
   WFIInlineInput,
   WFIGroup,
   WFIMiddlePlaceholderInput,
+  WFIExtraPromptInput,
   WFIIfIn,
   WFISceneOnly,
   wfiElementKey,
@@ -192,10 +193,15 @@ export function presetRowLabel(el: WFIElement): string {
   if (
     cur.type === 'inline' ||
     cur.type === 'group' ||
-    cur.type === 'middlePlaceholder'
+    cur.type === 'middlePlaceholder' ||
+    cur.type === 'extraPrompt'
   ) {
     const label = (
-      cur as WFIInlineInput | WFIGroup | WFIMiddlePlaceholderInput
+      cur as
+        | WFIInlineInput
+        | WFIGroup
+        | WFIMiddlePlaceholderInput
+        | WFIExtraPromptInput
     ).label;
     if (label && label.length > 0) return label;
   }

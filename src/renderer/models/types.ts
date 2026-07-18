@@ -412,6 +412,9 @@ export interface ISession {
   // 새 씬 기본 해상도 (프리셋 패널 하단 컨트롤) — [씬 추가] 시에만 적용, 기존 씬 무영향.
   // 구버전은 미지 필드로 무시(데이터 호환 안전)
   newSceneResolution?: { resolution: string; width?: number; height?: number };
+  // 추가 프롬프트 (2026-07-18) — 세션 레벨 필드로만 저장(프리셋/글로벌 프리셋 구조
+  // 비대상, 사용자 확정). 구버전은 미지 필드로 무시(데이터 호환 안전)
+  extraPrompt?: string;
 }
 
 export class Session implements Serealizable {
@@ -434,6 +437,11 @@ export class Session implements Serealizable {
   @observable accessor newSceneResolution:
     | { resolution: string; width?: number; height?: number }
     | undefined = undefined;
+  // 추가 프롬프트 (2026-07-18) — 상위와 중위(씬 전용) 사이에 끼는 스크래치 프롬프트.
+  // **세션(프로젝트) 귀속 필드**로만 저장한다: 프리셋·글로벌 프리셋 등 기존 프롬프트
+  // 저장 구조에는 의도적으로 넣지 않는다(프리셋 전환/글로벌화와 무관하게 유지, 사용자
+  // 확정 2026-07-18). 조합 반영은 PromptService.createSDPrompts 단일 지점.
+  @observable accessor extraPrompt: string = '';
 
   constructor() {
     makeObservable(this);
@@ -643,6 +651,7 @@ export class Session implements Serealizable {
     session.mirrorMode = json.mirrorMode || 'blank';
     session.sceneCardStyle = json.sceneCardStyle || {};
     session.newSceneResolution = json.newSceneResolution;
+    session.extraPrompt = json.extraPrompt || '';
     return session;
   }
 
@@ -697,6 +706,8 @@ export class Session implements Serealizable {
       mirrorMode: this.mirrorMode,
       sceneCardStyle: this.sceneCardStyle,
       newSceneResolution: this.newSceneResolution,
+      // 빈 값은 필드 생략 — 미사용 프로젝트의 JSON 을 오염시키지 않는다
+      extraPrompt: this.extraPrompt || undefined,
     };
   }
 }
