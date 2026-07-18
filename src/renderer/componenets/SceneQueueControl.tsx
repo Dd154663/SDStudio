@@ -813,11 +813,21 @@ export function SceneTrashView({ projectName }: SceneTrashViewProps) {
       type: 'confirm',
       text: `씬 "${item.name}"을(를) 영구 삭제하시겠습니까?`,
       callback: async () => {
-        await trashService.permanentlyDeleteScene(
-          projectName,
-          item.name,
-          item.type,
-        );
+        // 일괄 작업 잠금(2026-07-18): 씬 폴더 삭제(이미지 다수)는 무거움 — 전체화면 잠금
+        appState.setProgressDialog({
+          text: '씬 영구 삭제 중...',
+          done: 0,
+          total: 1,
+        });
+        try {
+          await trashService.permanentlyDeleteScene(
+            projectName,
+            item.name,
+            item.type,
+          );
+        } finally {
+          appState.setProgressDialog(undefined);
+        }
         await refresh();
       },
     });
@@ -829,14 +839,24 @@ export function SceneTrashView({ projectName }: SceneTrashViewProps) {
       type: 'confirm',
       text: `휴지통의 모든 씬(${deletedScenes.length}개)을 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
       callback: async () => {
-        for (const item of deletedScenes) {
-          try {
-            await trashService.permanentlyDeleteScene(
-              projectName,
-              item.name,
-              item.type,
-            );
-          } catch (e) {}
+        // 일괄 작업 잠금(2026-07-18): 저사양(특히 모바일) 보호 — finally 해제 보장
+        const lockText = '씬 휴지통 비우는 중...';
+        const total = deletedScenes.length;
+        let done = 0;
+        appState.setProgressDialog({ text: lockText, done, total });
+        try {
+          for (const item of deletedScenes) {
+            try {
+              await trashService.permanentlyDeleteScene(
+                projectName,
+                item.name,
+                item.type,
+              );
+            } catch (e) {}
+            appState.setProgressDialog({ text: lockText, done: ++done, total });
+          }
+        } finally {
+          appState.setProgressDialog(undefined);
         }
         appState.pushMessage('씬 휴지통을 비웠습니다.');
         await refresh();

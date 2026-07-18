@@ -1339,9 +1339,25 @@ export class AppState {
         `이 프로젝트의 ${scenesWithTrash}개 씬에서 삭제된 이미지 ` +
         `${totalImages}개를 영구 삭제하시겠습니까? (복원 불가)`,
       callback: async () => {
-        const deleted = await trashService.emptyProjectImageTrash(
-          this.curSession!,
-        );
+        // 일괄 작업 잠금(2026-07-18): 저사양(특히 모바일)에서 청소 도중 다른 조작이
+        // 겹치면 렉/오류가 나므로 전체화면 progressDialog 로 입력을 차단한다.
+        // finally 해제 보장 — 잠금 고착 방지.
+        const lockText = '삭제된 이미지 청소 중...';
+        this.setProgressDialog({ text: lockText, done: 0, total: totalImages });
+        let deleted = 0;
+        try {
+          deleted = await trashService.emptyProjectImageTrash(
+            this.curSession!,
+            (d) =>
+              this.setProgressDialog({
+                text: lockText,
+                done: d,
+                total: totalImages,
+              }),
+          );
+        } finally {
+          this.setProgressDialog(undefined);
+        }
         appState.pushDialog({
           type: 'yes-only',
           text: `${deleted}개의 이미지가 영구 삭제되었습니다.`,

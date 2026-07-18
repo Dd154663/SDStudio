@@ -74,7 +74,18 @@ export function ProjectTrashView() {
       type: 'confirm',
       text: `"${name}" 프로젝트를 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
       callback: async () => {
-        await trashService.permanentlyDeleteProject(name);
+        // 일괄 작업 잠금(2026-07-18): 프로젝트 폴더 삭제는 무거워(수천 파일 가능)
+        // 진행 중 다른 조작이 겹치면 렉/오류 여지 — 전체화면 잠금으로 차단.
+        appState.setProgressDialog({
+          text: '프로젝트 영구 삭제 중...',
+          done: 0,
+          total: 1,
+        });
+        try {
+          await trashService.permanentlyDeleteProject(name);
+        } finally {
+          appState.setProgressDialog(undefined);
+        }
         appState.pushMessage(`프로젝트 "${name}"이(가) 영구 삭제되었습니다.`);
         await refresh();
       },
@@ -86,10 +97,20 @@ export function ProjectTrashView() {
       type: 'confirm',
       text: `휴지통의 모든 프로젝트(${deletedProjects.length}개)를 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
       callback: async () => {
-        for (const p of deletedProjects) {
-          try {
-            await trashService.permanentlyDeleteProject(p.name);
-          } catch (e) {}
+        // 일괄 작업 잠금(2026-07-18): 저사양(특히 모바일) 보호 — finally 해제 보장
+        const lockText = '프로젝트 휴지통 비우는 중...';
+        const total = deletedProjects.length;
+        let done = 0;
+        appState.setProgressDialog({ text: lockText, done, total });
+        try {
+          for (const p of deletedProjects) {
+            try {
+              await trashService.permanentlyDeleteProject(p.name);
+            } catch (e) {}
+            appState.setProgressDialog({ text: lockText, done: ++done, total });
+          }
+        } finally {
+          appState.setProgressDialog(undefined);
         }
         appState.pushMessage('프로젝트 휴지통을 비웠습니다.');
         await refresh();

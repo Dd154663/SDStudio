@@ -174,11 +174,24 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
       type: 'confirm',
       text: selected.size + '장의 이미지를 영구 삭제하시겠습니까?',
       callback: async () => {
-        await trashService.permanentlyDeleteImages(
-          session,
-          scene,
-          Array.from(selected),
-        );
+        // 일괄 작업 잠금(2026-07-18): 저사양(특히 모바일) 보호 — finally 해제 보장
+        const lockText = '이미지 영구 삭제 중...';
+        appState.setProgressDialog({
+          text: lockText,
+          done: 0,
+          total: selected.size,
+        });
+        try {
+          await trashService.permanentlyDeleteImages(
+            session,
+            scene,
+            Array.from(selected),
+            (done, total) =>
+              appState.setProgressDialog({ text: lockText, done, total }),
+          );
+        } finally {
+          appState.setProgressDialog(undefined);
+        }
         setSelected(new Set());
         await refresh();
       },
@@ -191,7 +204,20 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
       type: 'confirm',
       text: '휴지통을 비우시겠습니까? 모든 이미지가 영구 삭제됩니다.',
       callback: async () => {
-        await trashService.emptyImageTrash(session, scene);
+        // 일괄 작업 잠금(2026-07-18): 저사양(특히 모바일) 보호 — finally 해제 보장
+        const lockText = '휴지통 비우는 중...';
+        appState.setProgressDialog({
+          text: lockText,
+          done: 0,
+          total: trashImages.length,
+        });
+        try {
+          await trashService.emptyImageTrash(session, scene, (done, total) =>
+            appState.setProgressDialog({ text: lockText, done, total }),
+          );
+        } finally {
+          appState.setProgressDialog(undefined);
+        }
         setSelected(new Set());
         await refresh();
       },

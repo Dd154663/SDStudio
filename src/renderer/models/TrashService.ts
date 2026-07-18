@@ -200,10 +200,12 @@ export class TrashService extends EventTarget {
     this.dispatchEvent(new CustomEvent('trash-updated'));
   }
 
-  async permanentlyDeleteImages(session: Session, scene: GenericScene, filenames: string[]): Promise<void> {
+  // onProgress: 일괄 작업 잠금(progressDialog)용 진행 통지 — 파일 1개 삭제마다 호출 (옵셔널=기존 호출 무변경)
+  async permanentlyDeleteImages(session: Session, scene: GenericScene, filenames: string[], onProgress?: (done: number, total: number) => void): Promise<void> {
     const trashDir = this.getImageTrashDir(session, scene);
     const meta = await this.loadImageTrashMeta(session, scene);
 
+    let done = 0;
     for (const filename of filenames) {
       try {
         await backend.deleteFile(trashDir + '/' + filename);
@@ -211,16 +213,17 @@ export class TrashService extends EventTarget {
         console.error('이미지 영구 삭제 실패:', filename, e);
       }
       delete meta[filename];
+      onProgress?.(++done, filenames.length);
     }
 
     await this.saveImageTrashMeta(session, scene, meta);
     this.dispatchEvent(new CustomEvent('trash-updated'));
   }
 
-  async emptyImageTrash(session: Session, scene: GenericScene): Promise<void> {
+  async emptyImageTrash(session: Session, scene: GenericScene, onProgress?: (done: number, total: number) => void): Promise<void> {
     const items = await this.getTrashImages(session, scene);
     if (items.length > 0) {
-      await this.permanentlyDeleteImages(session, scene, items.map(i => i.filename));
+      await this.permanentlyDeleteImages(session, scene, items.map(i => i.filename), onProgress);
     }
   }
 
@@ -253,7 +256,11 @@ export class TrashService extends EventTarget {
    * 현재 프로젝트(세션)의 모든 활성 씬에 대해 이미지 휴지통을 영구 비움
    * 반환값: 영구삭제된 이미지 총개수
    */
-  async emptyProjectImageTrash(session: Session): Promise<number> {
+  // onProgress: 일괄 작업 잠금(progressDialog)용 — 삭제 누계(이미지 단위)를 통지 (옵셔널=기존 호출 무변경)
+  async emptyProjectImageTrash(
+    session: Session,
+    onProgress?: (deletedImages: number) => void,
+  ): Promise<number> {
     let total = 0;
     const allScenes: GenericScene[] = [
       ...session.getScenes('scene'),
@@ -262,10 +269,12 @@ export class TrashService extends EventTarget {
     for (const scene of allScenes) {
       const items = await this.getTrashImages(session, scene);
       if (items.length > 0) {
+        const base = total;
         await this.permanentlyDeleteImages(
           session,
           scene,
           items.map((i) => i.filename),
+          (done) => onProgress?.(base + done),
         );
         total += items.length;
       }
