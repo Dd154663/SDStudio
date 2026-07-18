@@ -2218,9 +2218,9 @@ interface Props {
 // 노출해 드래그 배정 타깃을 제공한다.
 const PresetTopCompanionRow = observer(() => {
   const ids = resolveCompanionButtons('preset-top', appState.uiCompanionSlots);
-  // 모던 행 스타일(② A 실기 피드백 3·2차 1): 무배경 icon-button('project' 적응)을
-  // 중앙에 모아 배치(전폭 균등 분산은 버튼이 부자연스럽게 멀어져 기각) — 프리셋 패널
-  // 안에 자연스럽게 녹아드는 미니 액션 바.
+  // 모던 행 스타일(② A 실기 피드백 3·2차 1 + 재검증 2026-07-18): 무배경
+  // icon-button('project' 적응)을 탭 세그먼트(tab-seg)풍 알약 컨테이너로 묶어
+  // 중앙 배치 — 낱개로 떠 있으면 어색하다는 피드백, 탭 헤더와 같은 그룹 문법 사용.
   const companions =
     ids.length > 0 ? renderCompanionButtons(ids, 'preset-top', 'project') : [];
   const editing = appState.editMode && !isMobile;
@@ -2228,13 +2228,16 @@ const PresetTopCompanionRow = observer(() => {
   return (
     <StackFixed>
       <CompanionHostRow hostKey="preset-top">
-        <div className="field-row flex items-center justify-center gap-3 min-h-[2rem]">
-          {companions.length === 0 && editing && (
+        <div className="field-row flex items-center justify-center min-h-[2rem]">
+          {companions.length === 0 && editing ? (
             <span className="text-xs text-faint">
               여기로 전역 버튼을 끌어다 놓을 수 있습니다
             </span>
+          ) : (
+            <div className="flex items-center gap-1.5 rounded-full bg-[var(--c-input-bg)] px-2.5 py-1">
+              {companions}
+            </div>
           )}
-          {companions}
         </div>
       </CompanionHostRow>
     </StackFixed>
