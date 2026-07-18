@@ -15,12 +15,13 @@ import {
 import { portableButtonIds } from '../uiLayout';
 
 describe('COMPANION_HOSTS — 호스트 목록 계약', () => {
-  it('호스트 4종(characterPrompts·vibes·characterReferences·sampling-group)', () => {
+  it('호스트 5종(characterPrompts·vibes·characterReferences·sampling-group·preset-select)', () => {
     expect(COMPANION_HOSTS).toEqual([
       'characterPrompts',
       'vibes',
       'characterReferences',
       'sampling-group',
+      'preset-select', // ④ 호스트 확대(2026-07-18): 사전세팅선택 행
     ]);
   });
 });

@@ -54,6 +54,9 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
 // 여기 버튼은 전부 상시 사용 빈도가 높아 기본값 = PC·모바일 모두 전부 인라인
 // (⋯ 없음). 메뉴로 보내기는 사용자 커스터마이징 재량 (2026-07-04 실사용 피드백).
 export const projectToolbarRegistry: ToolbarButtonMeta[] = [
+  // 기존 고정 버튼의 레지스트리 편입(④ 자유 위치, 2026-07-18) — 신규 기능 아님.
+  // 선두 배치 = 기존 위치(프로젝트 선택기 옆) 근사 유지.
+  { id: 'project-browser', name: '프로젝트 탐색', tier: 'primary', portable: true },
   { id: 'add-session', name: '신규 프로젝트', tier: 'primary', portable: true },
   { id: 'character-presets', name: '캐릭터 프리셋 관리', tier: 'primary', portable: true },
   { id: 'backup-export', name: '프로젝트 백업/내보내기', tier: 'primary', portable: true },

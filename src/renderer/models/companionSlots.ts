@@ -38,6 +38,10 @@ export const COMPANION_HOSTS: string[] = [
   'vibes',
   'characterReferences',
   'sampling-group',
+  // ④ 호스트 확대(2026-07-18): 사전세팅선택 행(PreSetSelect). 작업모드 행은 레거시
+  // 토글에서만 렌더되는 조건부 행이라 제외 — 배정 버튼이 파생 숨김으로 툴바에서도
+  // 빠지는데 호스트 행마저 없으면 버튼이 양쪽에서 사라지므로 호스트 부적합.
+  'preset-select',
 ];
 
 /**
@@ -49,6 +53,7 @@ export const COMPANION_HOST_LABELS: Record<string, string> = {
   vibes: '바이브 설정 행',
   characterReferences: '캐릭터 레퍼런스 행',
   'sampling-group': '샘플링/모델 설정 행',
+  'preset-select': '사전세팅선택 행',
 };
 
 /**

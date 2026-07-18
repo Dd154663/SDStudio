@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { DropdownSelect, Option } from './UtilComponents';
-import { FaEllipsisH, FaThLarge, FaTrash, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown, FaEye } from 'react-icons/fa';
+import { FaEllipsisH, FaTrash, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown, FaEye } from 'react-icons/fa';
 import { pushRecentProject } from './ProjectBrowser';
 import Tooltip from './Tooltip';
 import { sessionService, imageService, backend, zipService, trashService, isMobile } from '../models';
@@ -464,16 +464,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
             />
           </div>
         )}
-        <Tooltip content="프로젝트 탐색">
-          <button
-            className="icon-button mx-1"
-            onClick={() => {
-              appState.projectBrowserOpen = true;
-            }}
-          >
-            <FaThLarge size={16} />
-          </button>
-        </Tooltip>
+        {/* 프로젝트 탐색은 레지스트리 편입(④) — toolbarLayout 인라인/⋯로 렌더 */}
         <ToolbarHideZone group="project" />
       </div>
     );
@@ -586,12 +577,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
             </Tooltip>
           </>
         )}
-        <Tooltip content="프로젝트 탐색">
-        {/* flex-none: 좁은 폭에서 이 버튼이 눌려 앞 버튼과 겹쳐 보이던 문제 방지 */}
-        <button className={`icon-button mx-1 flex-none`} onClick={() => { appState.projectBrowserOpen = true; }}>
-          <FaThLarge size={16} />
-        </button>
-        </Tooltip>
+        {/* 프로젝트 탐색은 레지스트리 편입(④) — 툴바 클러스터에서 렌더 */}
       </div>
       {/* 읽기 전용 미러 배지 — flex-none 으로 좁은 폭에서도 레이아웃을 밀지 않는다 */}
       {isMirrorCur && (

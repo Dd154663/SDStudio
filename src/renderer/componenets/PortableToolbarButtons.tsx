@@ -12,6 +12,7 @@ import {
   FaExchangeAlt,
   FaShare,
   FaPuzzlePiece,
+  FaThLarge,
   FaUserAlt,
   FaPlus,
   FaTrashAlt,
@@ -123,6 +124,16 @@ export function portableToolbarButtons(
       <FaExchangeAlt size={18} />,
       () => appState.openFindReplace(),
     ),
+    // SessionSelect 고정 버튼에서 레지스트리 편입(④ 자유 위치) — 홈(project)은
+    // 원본대로 16px, 타 영역은 각 영역 표준 18px 로 적응.
+    'project-browser': iconButton(
+      variant,
+      '프로젝트 탐색',
+      <FaThLarge size={variant === 'project' ? 16 : 18} />,
+      () => {
+        appState.projectBrowserOpen = true;
+      },
+    ),
     // 새 창(멀티 윈도우 W6) — 데스크톱 전용(레지스트리 pcOnly 로 모바일 미노출).
     // 각 영역 표준 스타일로 적응(iconButton).
     'new-window': iconButton(
@@ -216,14 +227,17 @@ export function portableToolbarButtons(
 // hostKey 를 넘기면(E4) 각 버튼을 CompanionButtonSlot 으로 감싼다 — 편집모드(PC)에서만
 // 드래그(재배치·순서 조정·툴바 복귀)가 붙고, 그 외에서는 원본 그대로(fragment). hostKey
 // 미지정 호출은 기존과 동일(감싸지 않음) — 시그니처 확장은 옵셔널이라 하위 호환.
+// variant(옵셔널, 기본 'companion'): 호스트 행의 이웃 버튼 스타일에 적응 — 사전세팅선택
+// 행처럼 무배경 icon-button 이 표준인 행은 'project' 로 무배경 적응(④ 실기 보정).
 export function renderCompanionButtons(
   ids: string[],
   hostKey?: string,
+  variant: 'companion' | 'project' = 'companion',
 ): ReactNode[] {
   if (ids.length === 0) return [];
   const nodes = portableToolbarButtons({
     mobileIcon: false,
-    variant: 'companion',
+    variant,
     iconOnly: true, // piece-editor 텍스트 축약(툴팁 대체)
   });
   return ids

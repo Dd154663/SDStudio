@@ -696,9 +696,27 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
       window.removeEventListener('click', close);
     };
   });
+  // 동반 슬롯 (④ 호스트 확대): 사전세팅선택 행 옆에 portable 버튼을 붙인다.
+  // 빈 배열이면 슬롯 없음 = 현행 렌더 100% 동일. 드롭다운은 이미 flex-1 !min-w-0
+  // truncate 라 아이콘 버튼 자리를 자연스럽게 내준다. 편집모드 밖은
+  // CompanionHostRow 가 fragment 라 렌더 무변화.
+  const companionIds = resolveCompanionButtons(
+    'preset-select',
+    appState.uiCompanionSlots,
+  );
+  // variant 'project': 이 행의 이웃 버튼(+·★·🗑)이 무배경 icon-button 이라 동반 버튼도
+  // 무배경으로 적응(배경형 companion 스타일은 이 행에서 이질적 — 실기 보정).
+  const companions =
+    companionIds.length > 0
+      ? renderCompanionButtons(companionIds, 'preset-select', 'project')
+      : [];
   return (
+    <CompanionHostRow hostKey="preset-select">
     <div className="field-row flex gap-2 mt-2 md:mt-3 items-center relative">
-      <div className="flex-none gray-label">사전세팅선택:</div>
+      {/* 동반 버튼이 붙으면 라벨을 숨겨 자리를 내준다(실기 보정) */}
+      {companions.length === 0 && (
+        <div className="flex-none gray-label">사전세팅선택:</div>
+      )}
       {/* flex-1 !min-w-0 + truncate: 이름이 길어도 행 폭을 밀어내지 않고 말줄임 —
           우측 +·★·🗑 버튼이 밖으로 밀려 못 누르게 되던 문제 방지.
           !min-w-0 필수: .round-button 의 min-width(App.css, md 미디어 룰의 unset)가
@@ -758,6 +776,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
           <FaTrashAlt />
         </button>
       </Tooltip>
+      {companions}
       {bulkOpen && (
         <PreSetBulkManageModal
           workflowType={workflowType}
@@ -895,6 +914,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
         </ul>
       )}
     </div>
+    </CompanionHostRow>
   );
 });
 
