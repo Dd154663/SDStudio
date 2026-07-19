@@ -295,6 +295,8 @@ export class GlobalPresetService extends EventTarget {
 
     // Strip profile from stored preset JSON so it lives only in entry.profile
     if ('profile' in json) delete json.profile;
+    // 캐릭터 프롬프트는 글로벌 프리셋 저장 대상이 아니다(관리 UI 없음) — 제외
+    if ('characterPrompts' in json) delete json.characterPrompts;
 
     const resolvedName = this.resolveNameCollision(
       preset.type,
@@ -356,6 +358,8 @@ export class GlobalPresetService extends EventTarget {
 
     // Strip profile from stored preset JSON
     if ('profile' in json) delete json.profile;
+    // 캐릭터 프롬프트는 글로벌 프리셋 저장 대상이 아니다(관리 UI 없음) — 제외
+    if ('characterPrompts' in json) delete json.characterPrompts;
 
     const resolvedName = this.resolveNameCollision(
       preset.type,
@@ -399,6 +403,8 @@ export class GlobalPresetService extends EventTarget {
 
     // Remove any profile path from embedded JSON; we own the image now
     if ('profile' in json) delete json.profile;
+    // 캐릭터 프롬프트는 글로벌 프리셋 저장 대상이 아니다(관리 UI 없음) — 제외
+    if ('characterPrompts' in json) delete json.characterPrompts;
 
     const resolvedName = this.resolveNameCollision(
       json.type,
@@ -683,6 +689,21 @@ export class GlobalPresetService extends EventTarget {
     clone = this.convertPresetJSON(clone, entry.workflowType, target);
     clone.type = target;
     clone.name = entry.name;
+
+    // 글로벌 프리셋은 그림체 설정(상위/하위/네거티브/샘플링)만 나른다.
+    // 구버전 엔트리에 캐릭터 프롬프트가 묻어 있어도 버리고, 적용 후에도
+    // 현재 보고 있던 프리셋의 캐릭터 프롬프트를 그대로 이어받는다(소실 방지).
+    delete clone.characterPrompts;
+    const cur = session.selectedWorkflow;
+    const curPreset =
+      cur && cur.workflowType === target && cur.presetName
+        ? session.getPreset(target, cur.presetName)
+        : undefined;
+    if (curPreset?.characterPrompts?.length) {
+      clone.characterPrompts = JSON.parse(
+        JSON.stringify(curPreset.characterPrompts),
+      );
+    }
 
     // Copy profile image from global_vibes -> session vibes
     if (entry.profile) {

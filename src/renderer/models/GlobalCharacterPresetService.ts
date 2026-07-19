@@ -315,21 +315,22 @@ export class GlobalCharacterPresetService extends EventTarget {
 
   // ---------- 글로벌 → 로컬 ----------
   // 멱등(증식 방지, 2026-07-17): 같은 글로벌에서 불러온 로컬 사본(fromGlobalId
-  // 링크, 구버전 사본은 동명 무링크 로컬을 입양)이 이미 있으면 — 글로벌이 그대로면
-  // 그 사본을 그대로 재사용(이미지 재복사 없음), 글로벌이 바뀌었으면 그 사본을
-  // 자리에서 갱신한다. 반복 적용/해제로 "이름 (글로벌)…" 사본이 늘어나지 않는다.
+  // 링크)이 이미 있으면 — 글로벌이 그대로면 그 사본을 그대로 재사용(이미지
+  // 재복사 없음), 글로벌이 바뀌었으면 그 사본을 자리에서 갱신한다. 반복
+  // 적용/해제로 "이름 (글로벌)…" 사본이 늘어나지 않는다. 무링크 동명 로컬은
+  // 갱신 대상이 아니다(순수 로컬 프리셋 덮어쓰기 방지, 2026-07-19).
   async instantiateIntoSession(
     session: Session,
     id: string,
   ): Promise<CharacterPreset> {
     const entry = this.get(id);
     if (!entry) throw new Error('프리셋을 찾을 수 없습니다');
-    const existing =
-      session.getCharacterPresets().find((p) => p.fromGlobalId === id) ||
-      // 이 수정 이전에 만들어진 사본 입양: 글로벌과 같은 이름의 무링크 로컬
-      session
-        .getCharacterPresets()
-        .find((p) => !p.fromGlobalId && p.name === entry.name);
+    // 링크(fromGlobalId)된 사본만 재사용·갱신한다. 같은 이름의 무링크 로컬은
+    // 우연히 이름만 같은 순수 로컬 프리셋일 수 있어 제자리 갱신하면 바이브/
+    // 레퍼런스가 소실된다 — 갱신 금지, 이름 충돌은 아래 접미 처리로 해소.
+    const existing = session
+      .getCharacterPresets()
+      .find((p) => p.fromGlobalId === id);
     if (existing && existing.fromGlobalRev === entry.updatedAt) {
       return existing;
     }
