@@ -130,14 +130,26 @@ const ImageEditTab = ({
         <option value="gimp">GIMP</option>
         <option value="mspaint">그림판</option>
       </select>
+      {platform.isLinux && (
+        <p className="text-xs text-muted mt-1">
+          리눅스에서는 GIMP만 지원됩니다 (PATH 의 gimp 실행).
+        </p>
+      )}
     </div>
     <hr className="line-color" />
     <div className="flex items-center gap-2">
       <input type="checkbox" id="cfgLocalBg" checked={useLocalBgRemoval}
+        disabled={!platform.supportsRemoveBg}
         onChange={(e) => setUseLocalBgRemoval(e.target.checked)} />
       <label htmlFor="cfgLocalBg" className="text-sm gray-label">로컬 배경 제거 모델 사용</label>
     </div>
-    {!ready && (
+    {!platform.supportsRemoveBg && (
+      <p className="text-xs text-muted">
+        이 플랫폼(리눅스)용 로컬 배경 제거 모델은 배포되지 않아 사용할 수
+        없습니다. 배경 제거는 NAI 서버 방식으로 동작합니다.
+      </p>
+    )}
+    {platform.supportsRemoveBg && !ready && (
       <button className="btn w-full back-green py-2 rounded"
         onClick={() => { if (!localAIService.downloading) localAIService.download(); }}>
         {!localAIService.downloading

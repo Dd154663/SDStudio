@@ -1182,6 +1182,9 @@ async function openImageEditor(inputPath: string) {
       }
     } else if (platform === 'darwin') {
       return '/Applications/GIMP.app';
+    } else if (platform === 'linux') {
+      // 리눅스는 배포판마다 설치 경로가 달라 PATH 의 gimp 에 위임한다.
+      return 'gimp';
     } else {
       throw new Error('Unsupported platform: ' + platform);
     }
@@ -1224,10 +1227,11 @@ async function openImageEditor(inputPath: string) {
   editorsToTry.splice(editorsToTry.indexOf(editor), 1);
   editorsToTry.unshift(editor);
   const runProgram = async (program: string) => {
+    // mac 만 앱 번들을 open -a 로 열고, win/linux 는 실행 파일 직접 실행.
     const command =
-      os.platform() === 'win32'
-        ? `"${program}" "${path.resolve(inputPath)}"`
-        : `open -a "${program}" "${path.resolve(inputPath)}"`;
+      os.platform() === 'darwin'
+        ? `open -a "${program}" "${path.resolve(inputPath)}"`
+        : `"${program}" "${path.resolve(inputPath)}"`;
 
     exec(command, (err: any) => {
       if (err) {

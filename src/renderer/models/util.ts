@@ -38,6 +38,9 @@ export function buildDanbooruSearchUrl(rawText: string): string | null {
 export async function getPlatform() {
   const platform = window.navigator.platform;
   if (platform.startsWith('Win')) return 'windows';
+  // 리눅스 데스크톱. (안드로이드도 navigator.platform 이 Linux 로 시작하지만
+  // 이 함수는 데스크톱 전용 LocalAI 다운로드 링크에서만 쓰인다)
+  if (platform.startsWith('Linux')) return 'linux';
   const arch = await (navigator as any).userAgentData.getHighEntropyValues([
     'architecture',
   ]);

@@ -13,6 +13,7 @@ import {
 import { getImageDimensions } from '../../componenets/BrushTool';
 import { appState } from '../AppService';
 import { dataUriToBase64 } from '../ImageService';
+import { platform } from '../platform';
 import { queueI2IWorkflow, TaskParam } from '../TaskQueueService';
 import { AugmentJob, GenericScene, SDAbstractJob, Session } from '../types';
 import { emotions } from './AugmentWorkFlow';
@@ -26,7 +27,10 @@ export const queueRemoveBg = async (
   imgJob?: SDAbstractJob<string>,
 ) => {
   const config = await backend.getConfig();
-  if (config.useLocalBgRemoval && !localAIService.ready) {
+  // 로컬 AI 미지원 플랫폼(리눅스 등)에서는 설정이 켜져 있어도(백업 복원 등)
+  // NAI 방식으로 강제한다.
+  const useLocal = config.useLocalBgRemoval && platform.supportsRemoveBg;
+  if (useLocal && !localAIService.ready) {
     appState.pushMessage('환경설정에서 배경 제거 기능을 활성화해주세요');
     return;
   }
@@ -36,7 +40,7 @@ export const queueRemoveBg = async (
     prompt: { type: 'text', text: '' },
     method: 'bg-removal',
     backend: {
-      type: config.useLocalBgRemoval ? 'SD' : 'NAI',
+      type: useLocal ? 'SD' : 'NAI',
     },
     width: 0,
     height: 0,

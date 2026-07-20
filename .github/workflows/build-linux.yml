@@ -1,0 +1,64 @@
+name: Build Linux
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install python setuptools (node-gyp dependency)
+        run: python3 -m pip install setuptools --break-system-packages
+
+      - name: Install native module dependencies
+        run: |
+          cd src/native
+          npm ci
+
+      - name: Build capacitor-background-mode
+        run: |
+          cd externals/capacitor-background-mode
+          npm ci
+          npm run build
+
+      - name: Install project dependencies (skip postinstall)
+        run: npm ci --legacy-peer-deps --ignore-scripts
+
+      - name: Install electron-builder app deps
+        run: npx electron-builder install-app-deps
+
+      - name: Build application
+        run: npm run build
+
+      - name: Package (AppImage)
+        run: npx electron-builder build --linux --publish never
+
+      - name: Get version
+        run: echo "version=$(jq -r '.version' release/app/package.json)" >> $GITHUB_ENV
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SDStudio-${{ env.version }}-linux-x64
+          path: release/build/*.AppImage
+          if-no-files-found: error
+
+      - name: Upload to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/build/*.AppImage

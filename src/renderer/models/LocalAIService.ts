@@ -1,4 +1,5 @@
 import { backend } from '.';
+import { platform } from './platform';
 import { getPlatform } from './util';
 
 async function getLocalAIDownloadLink() {
@@ -29,6 +30,11 @@ export class LocalAIService extends EventTarget {
   }
 
   async download() {
+    // 리눅스용 LocalAI 바이너리는 배포되지 않는다 — UI 에서도 막지만 이중 방어.
+    if (!platform.supportsRemoveBg) {
+      console.error('LocalAI is not supported on this platform.');
+      return;
+    }
     this.downloading = true;
     try {
       await backend.deleteFile('tmp/localai.zip');

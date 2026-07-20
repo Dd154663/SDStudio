@@ -13,8 +13,13 @@
 // window.electron 은 preload 가 번들 실행 전에 주입하므로 모듈 평가 시점에 안전하다.
 const isMobile = window.electron == null;
 
+// 리눅스 데스크톱(Electron) 여부. 안드로이드 WebView 도 navigator.platform 이
+// 'Linux'로 시작하므로 반드시 Electron 여부와 함께 판정한다.
+const isLinux = !isMobile && window.navigator.platform.startsWith('Linux');
+
 export const platform = {
   isMobile,
+  isLinux,
 
   // --- 튜닝 상수 ---
   imageCacheSize: isMobile ? 64 : 256,
@@ -45,7 +50,10 @@ export const platform = {
   // --- 능력 플래그 (데스크톱 전용 기능) ---
   supportsLosslessWebp: !isMobile, // sharp 무손실 webp 최적화
   supportsTargetFolder: !isMobile, // 임의(절대경로) 폴더로 export
-  supportsRemoveBg: !isMobile, // 배경 제거 (로컬 AI)
+  // 로컬 AI(배경 제거) 실행 파일 가용 여부 — 일괄 배경 제거 메뉴·로컬 배경 제거
+  // 설정 UI·LocalAI 다운로드를 모두 이 플래그로 게이트한다.
+  // 리눅스는 LocalAI 바이너리 미배포(HF 저장소 권한 없음, 2026-07-20)로 제외.
+  supportsRemoveBg: !isMobile && !isLinux,
   // 생성 이미지 PNG→WebP 일괄 변환(씬/프로젝트 단위). 모바일도 wasm libwebp 로
   // 지원(2026-07-18 사용자 확정 — 찾는 사람을 위해 개방하되, 진입 시 부하 경고
   // +변환 중 취소 제공. BatchProcessService.webpConfirmText/runWebpConversion 참조).
