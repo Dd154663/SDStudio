@@ -426,7 +426,8 @@ export const SceneCell = observer(
 
     const getSceneQueueCount = (scene: GenericScene) => {
       const stats = taskQueueService.statsTasksFromScene(curSession!, scene);
-      return stats.total - stats.done;
+      // 표시 방어: 통계가 일시적으로 어긋나도 음수 배지는 만들지 않는다.
+      return Math.max(0, stats.total - stats.done);
     };
 
     useEffect(() => {
@@ -1750,6 +1751,7 @@ const QueueControl = observer(
             {inpaintEditScene && (
               <FloatView
                 priority={3}
+                ownsGenControl
                 onEscape={() => setInpaintEditScene(undefined)}
               >
                 <InPaintEditor
@@ -1790,6 +1792,7 @@ const QueueControl = observer(
           {inpaintEditScene && (
             <FloatView
               priority={3}
+              ownsGenControl
               onEscape={() => setInpaintEditScene(undefined)}
             >
               <InPaintEditor
@@ -1804,6 +1807,7 @@ const QueueControl = observer(
           {(editingScene || adding) && (
             <FloatView
               priority={2}
+              ownsGenControl
               onEscape={() => {
                 setEditingScene(undefined);
                 setAdding(false);

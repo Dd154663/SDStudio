@@ -332,6 +332,21 @@ export class AppState {
     this.floatViewCount = Math.max(0, this.floatViewCount - 1);
   }
 
+  // 자체 실행/중지 컨트롤을 가진 오버레이(인페인트 편집기 등) 개수.
+  // PC 는 하단바가 오버레이에 덮이지 않아 실행 버튼이 2개 노출되므로,
+  // 이 값이 0보다 크면 BottomBar 가 실행 컨트롤을 숨긴다.
+  @observable accessor genControlOverlayCount: number = 0;
+
+  @action
+  incrementGenControlOverlay() {
+    this.genControlOverlayCount++;
+  }
+
+  @action
+  decrementGenControlOverlay() {
+    this.genControlOverlayCount = Math.max(0, this.genControlOverlayCount - 1);
+  }
+
   @action
   openPieceEditor() {
     this.pieceEditorOpen = true;

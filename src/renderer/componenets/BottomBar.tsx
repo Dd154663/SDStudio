@@ -25,9 +25,13 @@ const BottomBar = observer(
   // 분리 상태(PC 전용)이거나 슬롯이 floating 이면 하단바 쪽 컨트롤을 렌더하지 않는다.
   // — 플로팅 위젯이 대신 표시. floating 슬롯인데 detached=false 인 상태에서
   //   하단바 컨트롤과 플로팅 위젯이 중복 렌더되는 것을 막는다.
+  // 자체 실행 컨트롤을 가진 오버레이(인페인트 편집기 등)가 떠 있으면 마찬가지로
+  // 숨긴다 — PC 하단바는 FloatView 에 덮이지 않아 실행 버튼이 2개 노출되기 때문.
   const genDetached =
     !isMobile &&
-    (appState.genWidget.detached === true || genControl === 'floating');
+    (appState.genWidget.detached === true ||
+      genControl === 'floating' ||
+      appState.genControlOverlayCount > 0);
 
   // 기본(bottom): 기존 하단 가로바. data-gen-dock = 플로팅 위젯 재부착 히트 영역.
   return (

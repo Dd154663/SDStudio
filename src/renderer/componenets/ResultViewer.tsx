@@ -414,14 +414,19 @@ const Cell = memo(
         setImage(undefined);
         return;
       }
+      // 늦게 도착한 이전 요청이 새 셀 내용 위에 덮어써 잔상이 남지 않도록
+      // 언마운트/의존성 변경 시 진행 중 요청 결과를 버린다.
+      let cancelled = false;
       const refreshImage = async () => {
         try {
           const base64Image = await imageService.fetchImageSmall(
             path,
             imageSize,
           )!;
+          if (cancelled) return;
           setImage(base64Image!);
         } catch (e: any) {
+          if (cancelled) return;
           setImage(undefined);
         }
         forceUpdate({});
@@ -440,6 +445,7 @@ const Cell = memo(
       sessionService.addEventListener('main-image-updated', refreshMainImage);
       refreshImage();
       return () => {
+        cancelled = true;
         refreshImageFuncs.current.delete(path);
         sessionService.removeEventListener(
           'main-image-updated',
@@ -958,6 +964,12 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
             onCellEnter,
             onCellLeave,
           )}
+          // 셀 키를 위치가 아닌 이미지 경로 기준으로 — 목록이 바뀌면 셀이
+          // 언마운트되어 이전 이미지 state(잔상)가 재사용되지 않는다.
+          itemKey={({ columnIndex, rowIndex, data }: any) => {
+            const idx = rowIndex * data.columnCount + columnIndex;
+            return data.filePaths[idx] ?? `empty-${rowIndex}:${columnIndex}`;
+          }}
           outerElementType={CustomScrollbarsVirtualGrid}
           overscanRowCount={overcountCounts[Math.ceil(imageSize / 200) - 1]}
         >
@@ -1711,6 +1723,21 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     }, [curSession]);
 
     const onDeleteImages = async (scene: GenericScene) => {
+      // 삭제 대상은 실행 시점에 재계산한다 — 렌더 시점 스냅샷(paths)을 쓰면
+      // 다이얼로그가 떠 있는 동안 새로 생성된 이미지(표시 순서상 맨 윗줄)가
+      // 삭제 목록에서 빠져 화면에 남는 간헐 버그가 있었다.
+      const currentPaths = () =>
+        gameService
+          .getOutputs(curSession!, scene)
+          .map(
+            (p) => imageService.getOutputDir(curSession!, scene) + '/' + p,
+          );
+      // 이동 실패(파일 잠금 등)를 조용히 넘기지 않고 사용자에게 알린다.
+      const reportFailed = (failed: number) => {
+        if (failed > 0) {
+          appState.pushMessage(`이미지 ${failed}장은 삭제하지 못했습니다.`);
+        }
+      };
       appState.pushDialog({
         type: 'select',
         text: '이미지를 삭제합니다. 원하시는 작업을 선택해주세요.',
@@ -1731,7 +1758,9 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
         callback: async (value) => {
           if (value === 'all') {
             const doDel = async () => {
-              await deleteImageFiles(curSession!, paths, scene);
+              reportFailed(
+                await deleteImageFiles(curSession!, currentPaths(), scene),
+              );
             };
             if (appState.skipImageDeleteConfirm) {
               await doDel();
@@ -1750,22 +1779,28 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               callback: async (value) => {
                 if (value) {
                   const n = parseInt(value);
-                  await deleteImageFiles(
-                    curSession!,
-                    paths
-                      .slice(n)
-                      .filter((x) => !isMainImage || !isMainImage(x)),
-                    scene,
+                  reportFailed(
+                    await deleteImageFiles(
+                      curSession!,
+                      currentPaths()
+                        .slice(n)
+                        .filter((x) => !isMainImage || !isMainImage(x)),
+                      scene,
+                    ),
                   );
                 }
               },
             });
           } else {
             const doDel = async () => {
-              await deleteImageFiles(
-                curSession!,
-                paths.filter((x) => !isMainImage || !isMainImage(x)),
-                scene,
+              reportFailed(
+                await deleteImageFiles(
+                  curSession!,
+                  currentPaths().filter(
+                    (x) => !isMainImage || !isMainImage(x),
+                  ),
+                  scene,
+                ),
               );
             };
             if (appState.skipImageDeleteConfirm) {

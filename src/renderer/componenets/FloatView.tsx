@@ -25,6 +25,10 @@ interface FloatView {
   component: ReactNode;
   priority: number;
   showToolbar?: boolean;
+  // 이 오버레이가 자체 실행/중지 컨트롤을 갖고 있음(인페인트 편집기 등).
+  // PC 하단바는 오버레이에 덮이지 않으므로, 이 플래그가 켜진 뷰가 떠 있는 동안
+  // BottomBar 가 실행 컨트롤을 숨겨 버튼 중복 노출을 막는다(showToolbar 와 대칭 계약).
+  ownsGenControl?: boolean;
   onEscape?: () => void;
 }
 
@@ -57,9 +61,16 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = observer(({
   // 통해 최상단 뷰부터 닫도록 각 뷰를 push 하고, 닫힐 때 remove 한다.
   const backHandles = useRef<Map<number, BackStackHandle>>(new Map());
 
+  // ownsGenControl 뷰 id 집합 — setViews 업데이터 밖에서 증감을 처리하기 위한 장부.
+  const genControlOwnerIds = useRef<Set<number>>(new Set());
+
   const registerView = (view: FloatView) => {
     setViews((prevViews) => [...prevViews, view].sort((a, b) => b.id - a.id));
     appState.incrementFloatView();
+    if (view.ownsGenControl) {
+      genControlOwnerIds.current.add(view.id);
+      appState.incrementGenControlOverlay();
+    }
     backHandles.current.set(
       view.id,
       backStackService.push(() => view.onEscape?.()),
@@ -69,6 +80,9 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = observer(({
   const unregisterView = (id: number) => {
     setViews((prevViews) => prevViews.filter((view) => view.id !== id));
     appState.decrementFloatView();
+    if (genControlOwnerIds.current.delete(id)) {
+      appState.decrementGenControlOverlay();
+    }
     const handle = backHandles.current.get(id);
     if (handle) {
       handle.remove();
@@ -159,13 +173,14 @@ interface FloatViewProps {
   children: ReactNode;
   priority: number;
   showToolbar?: boolean;
+  ownsGenControl?: boolean;
   onEscape?: () => void;
 }
 
 let viewId = 0;
 
 export const FloatView: React.FC<FloatViewProps> = memo(
-  ({ children, priority, showToolbar, onEscape }) => {
+  ({ children, priority, showToolbar, ownsGenControl, onEscape }) => {
     const { registerView, unregisterView } = useFloatView();
     const id = useRef(++viewId);
 
@@ -176,6 +191,7 @@ export const FloatView: React.FC<FloatViewProps> = memo(
         priority,
         onEscape,
         showToolbar,
+        ownsGenControl,
       };
       registerView(view);
       return () => unregisterView(id.current);

@@ -982,18 +982,30 @@ export function toggleImageMain(
   setImageMain(session, scene, filename, !scene.mains.includes(filename));
 }
 
+// 반환값: 삭제(휴지통 이동)에 실패한 파일 수 — 호출부가 사용자 알림에 사용.
 export const deleteImageFiles = async (
   curSession: Session,
   paths: string[],
   scene?: GenericScene,
-) => {
+): Promise<number> => {
   if (scene) {
-    // 휴지통으로 이동
-    await trashService.moveImagesToTrash(curSession, scene, paths);
-    for (const path of paths) {
-      await imageService.invalidateCache(path);
+    let failed = 0;
+    try {
+      // 휴지통으로 이동
+      failed = await trashService.moveImagesToTrash(curSession, scene, paths);
+      for (const path of paths) {
+        try {
+          await imageService.invalidateCache(path);
+        } catch (e) {
+          console.error('이미지 캐시 무효화 실패:', path, e);
+        }
+      }
+    } finally {
+      // 중간에 예외가 나도 목록 재로딩은 반드시 수행 — 안 하면 삭제된
+      // 이미지가 화면에 그대로 남는다.
+      await imageService.refresh(curSession, scene);
     }
-    await imageService.refresh(curSession, scene);
+    return failed;
   } else {
     // scene이 없는 경우 기존 동작 유지 (OS 휴지통)
     for (const path of paths) {
@@ -1003,6 +1015,7 @@ export const deleteImageFiles = async (
       await imageService.invalidateCache(path);
     }
     await imageService.refreshBatch(curSession);
+    return 0;
   }
 };
 

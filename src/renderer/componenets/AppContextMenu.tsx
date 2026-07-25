@@ -236,38 +236,46 @@ export const AppContextMenu = observer(() => {
       return;
     }
 
-    const scenes: { scene: any; paths: string[] }[] = [];
-    let totalImages = 0;
+    // 대상 수집 헬퍼 — 확인 다이얼로그용 미리보기와 실제 삭제 시점 재계산에
+    // 같은 로직을 쓴다(클릭 시점 스냅샷을 실행까지 들고 가면 다이얼로그가 떠
+    // 있는 동안 생성된 이미지가 목록 갱신에서 빠져 화면에 남는 간헐 버그).
+    const collectTargets = () => {
+      const scenes: { scene: any; paths: string[] }[] = [];
+      let totalImages = 0;
+      for (const name of selectedNames) {
+        const scene = session.scenes.get(name) || session.inpaints.get(name);
+        if (!scene) continue;
+        if (!scene.imageMap || scene.imageMap.length === 0) continue;
 
-    for (const name of selectedNames) {
-      const scene = session.scenes.get(name) || session.inpaints.get(name);
-      if (!scene) continue;
-      if (!scene.imageMap || scene.imageMap.length === 0) continue;
+        const dir = imageService.getOutputDir(session, scene);
+        let paths = scene.imageMap.map((img: string) => dir + '/' + img);
 
-      const dir = imageService.getOutputDir(session, scene);
-      let paths = scene.imageMap.map((img: string) => dir + '/' + img);
+        if (excludeFav && scene.mains) {
+          const favs = new Set(scene.mains);
+          paths = paths.filter((p: string) => {
+            const filename = p.split('/').pop()!;
+            return !favs.has(filename);
+          });
+        }
 
-      if (excludeFav && scene.mains) {
-        const favs = new Set(scene.mains);
-        paths = paths.filter((p: string) => {
-          const filename = p.split('/').pop()!;
-          return !favs.has(filename);
-        });
+        if (paths.length > 0) {
+          scenes.push({ scene, paths });
+          totalImages += paths.length;
+        }
       }
+      return { scenes, totalImages };
+    };
 
-      if (paths.length > 0) {
-        scenes.push({ scene, paths });
-        totalImages += paths.length;
-      }
-    }
-
-    if (totalImages === 0) {
+    const preview = collectTargets();
+    if (preview.totalImages === 0) {
       appState.pushMessage('삭제할 이미지가 없습니다.');
       return;
     }
 
     const label = excludeFav ? '즐겨찾기 제외 ' : '';
     const doBatchDelete = async () => {
+      // 실행 시점 재계산 — 확인 다이얼로그 대기 중 생성분까지 반영.
+      const { scenes, totalImages } = collectTargets();
       appState.setProgressDialog({ text: '이미지 삭제 중...', done: 0, total: scenes.length });
       let done = 0;
       for (const { scene, paths } of scenes) {
@@ -287,7 +295,7 @@ export const AppContextMenu = observer(() => {
     }
     appState.pushDialog({
       type: 'confirm',
-      text: `${selectedNames.size}개 씬에서 ${label}${totalImages}장의 이미지를 삭제할까요?`,
+      text: `${selectedNames.size}개 씬에서 ${label}${preview.totalImages}장의 이미지를 삭제할까요?`,
       showSkipConfirm: true,
       callback: doBatchDelete,
     });

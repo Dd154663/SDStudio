@@ -135,7 +135,9 @@ export class TrashService extends EventTarget {
     await persistService.write(this.getImageTrashMetaPath(session, scene), JSON.stringify(meta));
   }
 
-  async moveImagesToTrash(session: Session, scene: GenericScene, fullPaths: string[]): Promise<void> {
+  // 반환값: 이동에 실패한 파일 수(잠금/권한 등). 호출부가 사용자에게 알릴 수 있도록
+  // 조용히 삼키지 않고 집계해 돌려준다.
+  async moveImagesToTrash(session: Session, scene: GenericScene, fullPaths: string[]): Promise<number> {
     const trashDir = this.getImageTrashDir(session, scene);
     const meta = await this.loadImageTrashMeta(session, scene);
     const now = Date.now();
@@ -146,18 +148,21 @@ export class TrashService extends EventTarget {
       await this.saveImageTrashMeta(session, scene, meta);
     }
 
+    let failed = 0;
     for (const fullPath of fullPaths) {
       const filename = fullPath.split('/').pop()!;
       try {
         await backend.renameFile(fullPath, trashDir + '/' + filename);
         meta[filename] = now;
       } catch (e) {
+        failed++;
         console.error('이미지 휴지통 이동 실패:', fullPath, e);
       }
     }
 
     await this.saveImageTrashMeta(session, scene, meta);
     this.dispatchEvent(new CustomEvent('trash-updated'));
+    return failed;
   }
 
   async getTrashImages(session: Session, scene: GenericScene): Promise<{filename: string, deletedAt: number}[]> {

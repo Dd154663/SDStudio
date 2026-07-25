@@ -95,7 +95,8 @@ export const TaskProgressBar = ({ fast }: TaskProgressBarProps) => {
   };
   const getProgressText = () => {
     const stats = taskQueueService.statsAllTasks();
-    const remain = stats.total - stats.done;
+    // 표시 방어: 통계가 일시적으로 어긋나도 음수("-1개 남음")는 보여주지 않는다.
+    const remain = Math.max(0, stats.total - stats.done);
     const ms = taskQueueService.estimateTime('mean');
     const timeEstimate = formatTime(ms);
     return `${remain}개 남음 (예상 ${timeEstimate})`;
@@ -303,12 +304,12 @@ const TaskQueueControl = observer(({}) => {
           type="number"
           value={appState.samples}
           onChange={(e: any) => {
-            try {
-              const num = parseInt(e.currentTarget.value) ?? 0;
-              appState.samples = Math.max(1, Math.min(99, num));
-            } catch (e: any) {
-              appState.samples = 1;
-            }
+            // parseInt 는 비숫자에서 NaN 을 반환하고 ??/Math.min 은 NaN 을 거르지
+            // 못한다 — NaN 이 samples 에 들어가면 큐 통계가 영구 오염된다.
+            const num = parseInt(e.currentTarget.value, 10);
+            appState.samples = Number.isFinite(num)
+              ? Math.max(1, Math.min(99, num))
+              : 1;
           }}
         />
       </div>

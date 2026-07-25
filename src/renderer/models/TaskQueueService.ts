@@ -122,6 +122,9 @@ export interface Task {
   params: TaskParam;
   done: number;
   total: number;
+  // 씬 통계 키 — 예약 시점에 1회 계산해 고정한다. 실행 중 씬/프로젝트 이름이
+  // 바뀌어도 추가(+)와 제거(-)가 같은 키를 쓰도록 하기 위함(음수 배지 방지).
+  sceneKey?: string;
 }
 
 function getRandomInt(min: number, max: number): number {
@@ -430,12 +433,20 @@ export class TaskQueueService extends EventTarget {
   // 로컬 큐에 실제로 태스크를 넣는다(기존 addTask 본체). 호스트의 위임 수신 경로도
   // 이 메서드를 직접 호출한다(재위임 방지).
   addTaskLocal(params: TaskParam, numExec: number) {
+    // 마지막 방어선: NaN/음수/비유한 값이 큐에 들어오면 통계가 NaN 으로 영구
+    // 오염되고(NaN-x=NaN) 실행 루프가 완료 판정(done >= total)을 영원히 통과하지
+    // 못한다. 입력 UI 검증과 별개로 여기서 반드시 정규화한다.
+    const n = Math.floor(Number(numExec));
+    if (!Number.isFinite(n) || n <= 0) {
+      appState.pushMessage('예약 개수가 올바르지 않습니다.');
+      return;
+    }
     const task: Task = {
       id: v4(),
       cls: -1,
       params: params,
       done: 0,
-      total: numExec,
+      total: n,
     };
     task.cls = this.getTaskCls(task);
     this.addTaskInternal(task);
@@ -446,9 +457,11 @@ export class TaskQueueService extends EventTarget {
     this.taskSet[task.id!] = true;
     this.groupStats[task.cls].total += task.total;
     this.groupStats[task.cls].done += task.done;
-    const sceneKey = task.params.scene
+    // 키는 최초 1회만 계산·고정(재등록 시 기존 키 유지 — 제거와 대칭 보장).
+    task.sceneKey ??= task.params.scene
       ? getSceneKey(task.params.session, task.params.scene)
       : '';
+    const sceneKey = task.sceneKey;
     if (!(sceneKey in this.sceneStats)) {
       this.sceneStats[sceneKey] = { done: 0, total: 0 };
     }
@@ -509,11 +522,25 @@ export class TaskQueueService extends EventTarget {
 
   runLocal() {
     if (!this.currentRun) {
-      this.currentRun = {
+      const cur: TaskQueueRun = {
         stopped: false,
         delayCnt: this.getDelayCnt(),
       };
-      this.runInternal(this.currentRun);
+      this.currentRun = cur;
+      // 실행 루프가 어떤 예외로 죽어도 currentRun 이 반드시 해제되도록 보장.
+      // 해제되지 않으면 isRunning() 이 영구 true 가 되어 시작 버튼이 다시
+      // 나타나지 않고 생성이 완전히 멈춘다.
+      this.runInternal(cur)
+        .catch((e) => {
+          console.error('큐 실행 루프 비정상 종료:', e);
+        })
+        .finally(() => {
+          if (cur === this.currentRun) {
+            this.currentRun = undefined;
+            this.dispatchEvent(new CustomEvent('stop', {}));
+            this.dispatchProgress();
+          }
+        });
       this.progressCycleStartedAt = Date.now();
       this.dispatchEvent(new CustomEvent('start', {}));
       this.scheduleSnapshotBroadcast();
@@ -623,11 +650,18 @@ export class TaskQueueService extends EventTarget {
   }
 
   removeTaskInternal(task: Task) {
+    // 멱등 가드: 같은 태스크로 두 번 불리면(예: 사용자가 예약을 전부 취소한 뒤
+    // 실행 루프의 실패-스킵 경로가 같은 태스크를 또 제거) 통계가 이중 감산되어
+    // "-1개 남음" 같은 음수가 된다. 이미 제거된 태스크는 무시한다.
+    if (!(task.id! in this.taskSet)) return;
     this.groupStats[task.cls].done -= task.done;
     this.groupStats[task.cls].total -= task.total;
-    const sceneKey = task.params.scene
-      ? getSceneKey(task.params.session, task.params.scene)
-      : '';
+    // 추가 시점에 고정한 키를 그대로 사용(이름변경으로 재계산 키가 어긋나는 것 방지).
+    const sceneKey =
+      task.sceneKey ??
+      (task.params.scene
+        ? getSceneKey(task.params.session, task.params.scene)
+        : '');
     if (sceneKey in this.sceneStats) {
       this.sceneStats[sceneKey].done -= task.done;
       this.sceneStats[sceneKey].total -= task.total;
@@ -655,8 +689,16 @@ export class TaskQueueService extends EventTarget {
     const config = await backend.getConfig();
     const delayTime = config.delayTime ?? 0;
     while (!this.queue.isEmpty()) {
+      // 정지된 런은 즉시 종료 — stop() 후 새 런이 시작돼도 옛 루프가 큐를
+      // 건드리지 않도록(같은 태스크 이중 처리 방지).
+      if (cur.stopped) {
+        this.dispatchProgress();
+        return;
+      }
       const task = this.queue.peek();
-      if (task.done >= task.total) {
+      // total 이 오염(NaN 등)된 태스크는 done >= total 이 영원히 거짓이라
+      // 큐 머리를 무한 점유한다 — 완료로 간주하고 폐기한다.
+      if (!Number.isFinite(task.total) || task.done >= task.total) {
         // 위임 태스크가 전량 완료됨 — 원 창의 onComplete 대행 콜백 정리를 알린다.
         if (task.params.delegation) {
           backend
@@ -695,10 +737,16 @@ export class TaskQueueService extends EventTarget {
             task.done++;
             if (task.id! in this.taskSet) {
               this.groupStats[task.cls].done++;
-              const sceneKey = task.params.scene
-                ? getSceneKey(task.params.session, task.params.scene)
-                : '';
-              this.sceneStats[sceneKey].done++;
+              // 추가 시점에 고정한 키 사용 — 실행 중 씬/프로젝트 이름이 바뀌어도
+              // 미등록 키 접근(TypeError → 유령 생성 오류)이 나지 않도록 가드.
+              const sceneKey =
+                task.sceneKey ??
+                (task.params.scene
+                  ? getSceneKey(task.params.session, task.params.scene)
+                  : '');
+              if (sceneKey in this.sceneStats) {
+                this.sceneStats[sceneKey].done++;
+              }
             }
           }
           this.progressCycleStartedAt = Date.now();
@@ -737,6 +785,12 @@ export class TaskQueueService extends EventTarget {
         }
       }
       if (!done) {
+        // 재시도 도중 런이 정지됐으면 스킵 처리 없이 종료 — 정지 후 남은 큐를
+        // 옛 루프가 건드리면 새 런과 이중 제거가 발생한다.
+        if (cur.stopped) {
+          this.dispatchProgress();
+          return;
+        }
         // 실패한 태스크를 건너뛰고 다음 태스크로 진행
         const sceneName = task.params.scene?.name ?? '(unknown)';
         this.addLog('error', sceneName, `${numTries}회 재시도 실패 - 건너뜀`);
@@ -757,7 +811,11 @@ export class TaskQueueService extends EventTarget {
             .catch(() => {});
         }
         this.removeTaskInternal(task);
-        this.queue.dequeue();
+        // 긴 재시도 구간 동안 사용자가 예약을 취소해 큐가 비었거나 머리가
+        // 바뀌었을 수 있다 — 빈 큐 dequeue 는 throw 라 반드시 머리 동일성 확인.
+        if (!this.queue.isEmpty() && this.queue.peek() === task) {
+          this.queue.dequeue();
+        }
         this.dispatchProgress();
         continue;
       }
