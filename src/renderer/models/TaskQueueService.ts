@@ -127,22 +127,16 @@ export interface Task {
   sceneKey?: string;
 }
 
-function getRandomInt(min: number, max: number): number {
-  min = Math.ceil(min);
-  max = Math.floor(max);
-  return Math.floor(Math.random() * (max - min)) + min;
-}
-
-const MOD = 2100000000;
-function randomBaseSeed() {
-  return getRandomInt(1, MOD);
-}
-
+// 고정 시드 연속 생성 시 다음 시드 계산(xorshift32). NAI 시드 공간은 32비트
+// 전체(0~4,294,967,295)다 — 과거의 % 2,100,000,000 접기는 임의 제한이라 제거
+// (2026-07-25). 21억 이상 시드도 그대로 순회한다.
 export function stepSeed(seed: number) {
+  seed = seed >>> 0;
   seed ^= seed << 13;
-  seed ^= seed >> 17;
+  seed >>>= 0;
+  seed ^= seed >>> 17;
   seed ^= seed << 5;
-  seed = (seed >>> 0) % MOD;
+  seed >>>= 0;
   return Math.max(1, seed);
 }
 

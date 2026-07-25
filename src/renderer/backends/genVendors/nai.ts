@@ -145,7 +145,10 @@ export class NovelAiImageGenService implements ImageGenService {
       config.modelVersion ?? ModelVersion.V4_5,
     );
 
-    const seed = params.seed ?? this.getRandomInt(1, 2100000000);
+    // 시드 미지정 시 랜덤 — NAI 시드 공간은 32비트 전체(최대 4,294,967,295).
+    // 과거 상한 2,100,000,000 은 임의 제한이라 제거(2026-07-25).
+    // getRandomInt 는 max 미포함이라 2^32 을 넘겨 4,294,967,295 까지 나온다.
+    const seed = params.seed ?? this.getRandomInt(1, 0x100000000);
     let action = undefined;
     switch (params.model) {
       case Model.Anime:
