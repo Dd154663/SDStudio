@@ -479,9 +479,21 @@ export abstract class ResourceSyncService<
   }
 
   // flush + 목록 재스캔. 추가/삭제/이름변경/이동 등 목록이 바뀌는 작업이 호출한다.
+  // 목록 상태 — UI 가 "빈 목록"과 "스캔 실패/로딩 중"을 구분해 표시하기 위한 값.
+  // ('error' 여도 resourceList 는 직전 성공 목록을 유지한다 — update 가 대입 전에
+  //  throw 하므로.)
+  listState: 'loading' | 'ready' | 'error' = 'loading';
+
   async update() {
     await this.flush();
-    this.resourceList = await this.getList();
+    try {
+      this.resourceList = await this.getList();
+      this.listState = 'ready';
+    } catch (e) {
+      this.listState = 'error';
+      this.dispatchEvent(new CustomEvent('listupdated', {}));
+      throw e;
+    }
     this.dispatchEvent(new CustomEvent('listupdated', {}));
   }
 

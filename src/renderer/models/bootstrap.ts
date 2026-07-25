@@ -23,7 +23,8 @@ import { persistService } from './PersistenceService';
 import { runMobilePermissionOnboarding } from './mobilePermissions';
 import { waitForStorageAccess } from './storagePermissionGate';
 import { migrationService } from './MigrationService';
-import { setWorkspaceLayoutActive } from './storageLayout';
+import { setWorkspaceLayoutActive, STORAGE_MARKER_FILE } from './storageLayout';
+import { WORKSPACE_ROOT } from './projectPaths';
 import type { Session } from './types';
 
 // ── 명시적 부트 시퀀스 ──
@@ -223,23 +224,51 @@ export async function bootstrapApp(): Promise<void> {
 
     // 1.5) [트랙1 (b)] 저장소 v2 마이그레이션 판정·실행 — 권한+config 확보 후,
     //      세션 스캔(init) 전의 유일한 창(스펙 §3-1). 게이트 UI(MigrationGate)가
-    //      선택을 받을 때까지 여기서 대기한다. 판정 실패(마커 IO 오류 등)는
-    //      구 배치로 폴백(활성화하지 않음 — 안전 쪽).
+    //      선택을 받을 때까지 여기서 대기한다.
     try {
-      const det = await migrationService.detect();
-      if (det === 'fresh') {
-        // 신규 사용자 — 마커만 기록하고 신 배치 활성화.
-        await migrationService.markFreshAndActivate();
-      } else if (det === 'none') {
-        // 마커 있음·잔존 없음 — 신 배치로 통과.
-        setWorkspaceLayoutActive(true);
+      // [오판 방어 ①] 지정 저장 경로 접근 실패로 기본 경로 폴백 중이면(데스크톱)
+      // 판정을 보류한다 — 엉뚱한(기본) 루트에 마커를 기록하거나 그 루트의 옛
+      // 데이터로 마이그레이션 게이트를 띄우면 안 된다. 마커가 이미 있으면
+      // 활성화만 하고 통과(폴백 경고는 App.tsx 가 안내).
+      const bootWarnings = await backend.getBootWarnings().catch(() => null);
+      const saveLocFallback = !!bootWarnings?.saveLocationFallback;
+      // [오판 방어 ②] 보조 창(데스크톱 멀티 윈도우)은 마이그레이션을 수행하지
+      // 않는다 — 호스트 창이 "나중에 하기"를 고른 뒤 보조 창이 이동을 돌리면
+      // 두 창의 배치 인식이 갈라져 목록이 통째로 비어 보인다. 마커만 따라간다.
+      const migrationAllowed =
+        !saveLocFallback && taskQueueService.isGenerationHost;
+      if (!migrationAllowed) {
+        if (await backend.existFile(STORAGE_MARKER_FILE)) {
+          setWorkspaceLayoutActive(true);
+        }
       } else {
-        // 'legacy' — 최초 마이그레이션(게이트) 또는 증분 이동. "나중에 하기"
-        // 선택 시 activate 하지 않고 구 배치 그대로 init 진행.
-        await migrationService.runFullFlow();
+        const det = await migrationService.detect();
+        if (det === 'fresh') {
+          // 신규 사용자 — 신 배치 활성화(구 데이터 흔적 재검증·마커 기록은 내부).
+          await migrationService.markFreshAndActivate();
+        } else if (det === 'none') {
+          // 마커 있음·잔존 없음 — 신 배치로 통과.
+          setWorkspaceLayoutActive(true);
+        } else {
+          // 'legacy' — 최초 마이그레이션(게이트) 또는 증분 이동. "나중에 하기"
+          // 선택 시 activate 하지 않고 구 배치 그대로 init 진행.
+          await migrationService.runFullFlow();
+        }
       }
     } catch (e) {
-      console.error('저장소 마이그레이션 판정/실행 실패(구 배치 폴백):', e);
+      console.error('저장소 마이그레이션 판정/실행 실패:', e);
+      // [오판 방어 ③] 구 배치 폴백 전 재확인 — workspace 에 프로젝트가 있으면
+      // (이미 이관된 사용자) 구 배치로 내려가는 순간 빈 projects/ 를 스캔해
+      // 목록이 통째로 비어 보인다. 이 경우 신 배치를 유지한다.
+      try {
+        const ws = await backend
+          .listFiles(WORKSPACE_ROOT)
+          .catch(() => [] as string[]);
+        if (ws.some((d: string) => !d.startsWith('.'))) {
+          console.error('→ workspace 데이터 감지: 구 배치 폴백 대신 신 배치 유지');
+          setWorkspaceLayoutActive(true);
+        }
+      } catch (e2) {}
     }
 
     // 2) 핵심: 세션 서비스 준비

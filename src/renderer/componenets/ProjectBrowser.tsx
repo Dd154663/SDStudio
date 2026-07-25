@@ -1261,8 +1261,26 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                 {filter.trim() ? `검색 결과 (${filtered.length})` : `프로젝트 (${filtered.length})`}
               </div>
               {filtered.length === 0 ? (
+                // 빈 목록 / 로딩 / 스캔 실패를 구분해 표시 — 스캔 실패를 "프로젝트가
+                // 없습니다"로 보여주면 데이터가 사라진 것으로 오인된다.
                 <div className="text-sm text-faint text-center py-8">
-                  {filter.trim() ? '검색 결과가 없습니다' : '프로젝트가 없습니다'}
+                  {filter.trim() ? (
+                    '검색 결과가 없습니다'
+                  ) : sessionService.listState === 'error' ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <span>프로젝트 목록을 불러오지 못했습니다</span>
+                      <button
+                        className="round-button back-sky px-4 h-8"
+                        onClick={() => sessionService.update().catch(() => {})}
+                      >
+                        다시 시도
+                      </button>
+                    </div>
+                  ) : sessionService.listState === 'loading' ? (
+                    '프로젝트 목록을 불러오는 중…'
+                  ) : (
+                    '프로젝트가 없습니다'
+                  )}
                 </div>
               ) : (
                 <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">

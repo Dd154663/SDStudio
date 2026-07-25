@@ -289,6 +289,10 @@ export class SessionService extends ResourceSyncService<Session> {
     // 소프트 삭제로만 발견된 이름 — 활성 등록이 없을 때만 스캔 끝에 unregister 한다.
     // (동명 재생성: 옛 폴더=삭제, 새 폴더=활성이 공존할 때 순서와 무관하게 활성 우선)
     const softOnly: string[] = [];
+    // 이번 스캔에서 확정된 이름 → 물리 폴더 (동명 meta 중복 감지용)
+    const seenNameToDir = new Map<string, string>();
+    let metaReadFailures = 0;
+    let successCount = 0;
 
     let dirs: string[] = [];
     try {
@@ -299,8 +303,8 @@ export class SessionService extends ResourceSyncService<Session> {
       throw e;
     }
 
-    for (const dir of dirs) {
-      if (dir.startsWith('.')) continue;
+    const projectDirs = dirs.filter((d) => !d.startsWith('.'));
+    for (const dir of projectDirs) {
       let meta: WorkspaceProjectMeta | undefined;
       try {
         const raw = await backend.readFile(
@@ -308,17 +312,20 @@ export class SessionService extends ResourceSyncService<Session> {
         );
         meta = JSON.parse(raw);
       } catch (e) {
-        console.warn(
-          `[workspace 스캔] meta.json 읽기 실패 — 폴더 스킵: ${dir}`,
-          e,
-        );
-        continue;
+        meta = undefined;
       }
       if (!meta || typeof meta.name !== 'string' || !meta.name) {
-        console.warn(`[workspace 스캔] meta.json 형식 이상 — 폴더 스킵: ${dir}`);
-        continue;
+        // 자가치유: .bak → project.json(name/id) → 폴더명 유추 순으로 meta 재구성.
+        // (마이그레이션/쓰기 중단으로 meta 만 깨진 프로젝트가 조용히 영구
+        //  비가시가 되던 문제 — 복구 실패 시에만 스킵+고지)
+        meta = await this.recoverWorkspaceMeta(dir);
+        if (!meta) {
+          metaReadFailures++;
+          this.noteMetaSkip(dir);
+          continue;
+        }
       }
-      const name = meta.name;
+      let name = meta.name;
       const folder = typeof meta.folder === 'string' ? meta.folder : '';
       // 활성 판정 = project.json 존재. 소프트 삭제(project.json.deleted)만 있으면
       // 목록/등록에서 제외한다(동명 새 프로젝트가 삭제 폴더를 재사용하지 않게).
@@ -326,9 +333,43 @@ export class SessionService extends ResourceSyncService<Session> {
         workspacePath(dir, PROJECT_JSON_FILE),
       );
       if (!hasActive) {
+        const hasDeleted = await backend.existFile(
+          workspacePath(dir, PROJECT_JSON_FILE + '.deleted'),
+        );
+        if (!hasDeleted) {
+          // 본문도 삭제본도 안 보임 — 쓰기 교체 창(모바일 2단계 rename)이나
+          // 일시 오류일 수 있다. 삭제로 단정해 unregister 하지 않고 이번
+          // 스캔에서만 제외한다(다음 주기에 재평가).
+          successCount++;
+          continue;
+        }
+        successCount++;
         softOnly.push(name);
         continue;
       }
+      // 동명 meta.name 중복 — 나중 폴더가 레지스트리를 덮어써 앞 폴더가 영구
+      // 그림자가 되는 것을 막는다. 뒤에 온 폴더에 '_복구N'을 부여하고 재기록.
+      if (seenNameToDir.has(name) && seenNameToDir.get(name) !== dir) {
+        let n = 2;
+        while (seenNameToDir.has(`${name}_복구${n}`)) n++;
+        const newName = `${name}_복구${n}`;
+        console.warn(
+          `[workspace 스캔] 동명 프로젝트 감지 — ${dir} 을(를) '${newName}' 으로 정규화`,
+        );
+        try {
+          await backend.writeFile(
+            workspacePath(dir, PROJECT_META_FILE),
+            JSON.stringify({ ...meta, name: newName }),
+          );
+        } catch (e) {
+          console.error('동명 정규화 meta 기록 실패(다음 스캔 재시도):', e);
+          this.noteMetaSkip(dir);
+          continue;
+        }
+        name = newName;
+      }
+      seenNameToDir.set(name, dir);
+      successCount++;
       registerProjectDir(name, dir);
       activeNames.add(name);
       names.push(name);
@@ -342,6 +383,15 @@ export class SessionService extends ResourceSyncService<Session> {
           folderSet.add(acc);
         }
       }
+    }
+
+    // 폴더는 있는데 meta 읽기가 전부 실패 = 목록이 아니라 스캔이 죽은 것(일시
+    // IO 장애 가능성) — 빈 목록으로 갈아치우지 않고 오류로 승격해 직전 목록을
+    // 유지한다(update() 가 예외를 전파, runLoop 이 재시도).
+    if (projectDirs.length > 0 && successCount === 0 && metaReadFailures > 0) {
+      throw new Error(
+        `workspace 스캔 실패: 폴더 ${projectDirs.length}개 전부 meta 읽기 실패`,
+      );
     }
 
     // 소프트 삭제로만 존재하는 이름은 레지스트리에서 내린다 — 단, 같은 이름의
@@ -360,6 +410,96 @@ export class SessionService extends ResourceSyncService<Session> {
   // folderOrder.json 에 기록된 폴더명(빈 폴더 포함) — scanResources 병합용.
   private folderOrderKnown(): string[] {
     return this.folderOrder.slice();
+  }
+
+  // meta.json 소실/파손 폴더 자가치유 — .bak → project.json(name/id) → 폴더명
+  // 유추 순으로 복구를 시도하고, 성공 시 meta.json 을 재기록해 반환한다.
+  // project.json(.deleted 포함)이 아예 없는 폴더는 프로젝트가 아니라고 보고 포기.
+  private async recoverWorkspaceMeta(
+    dir: string,
+  ): Promise<WorkspaceProjectMeta | undefined> {
+    const metaPath = workspacePath(dir, PROJECT_META_FILE);
+    // 1) 모바일 2단계 쓰기가 남긴 .bak
+    try {
+      const meta = JSON.parse(
+        await backend.readFile(metaPath + '.bak'),
+      ) as WorkspaceProjectMeta;
+      if (meta && typeof meta.name === 'string' && meta.name) {
+        await backend.writeFile(metaPath, JSON.stringify(meta));
+        console.warn(`[workspace 스캔] meta.json 을 .bak 에서 복구: ${dir}`);
+        return meta;
+      }
+    } catch (e) {}
+    // 2) project.json / project.json.deleted 의 name/id 로 재구성
+    for (const f of [PROJECT_JSON_FILE, PROJECT_JSON_FILE + '.deleted']) {
+      try {
+        const parsed = JSON.parse(
+          await backend.readFile(workspacePath(dir, f)),
+        );
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          const name =
+            typeof parsed.name === 'string' && parsed.name
+              ? parsed.name
+              : this.nameFromWorkspaceDir(dir);
+          if (!name) continue;
+          const meta: WorkspaceProjectMeta = {
+            version: 1,
+            id:
+              typeof parsed.id === 'string' && parsed.id ? parsed.id : v4(),
+            name,
+            folder: '',
+          };
+          await backend.writeFile(metaPath, JSON.stringify(meta));
+          console.warn(
+            `[workspace 스캔] meta.json 을 ${f} 에서 재구성: ${dir} → ${name}`,
+          );
+          return meta;
+        }
+      } catch (e) {}
+    }
+    // 3) 본문이 존재하지만 파싱 불가 — 폴더명에서 이름 유추(최후 수단)
+    try {
+      const hasBody =
+        (await backend.existFile(workspacePath(dir, PROJECT_JSON_FILE))) ||
+        (await backend.existFile(
+          workspacePath(dir, PROJECT_JSON_FILE + '.deleted'),
+        ));
+      if (hasBody) {
+        const name = this.nameFromWorkspaceDir(dir);
+        if (name) {
+          const meta: WorkspaceProjectMeta = {
+            version: 1,
+            id: v4(),
+            name,
+            folder: '',
+          };
+          await backend.writeFile(metaPath, JSON.stringify(meta));
+          console.warn(
+            `[workspace 스캔] meta.json 을 폴더명에서 재구성: ${dir} → ${name}`,
+          );
+          return meta;
+        }
+      }
+    } catch (e) {}
+    return undefined;
+  }
+
+  // 물리 폴더명 '정제이름__짧은id' 에서 표시 이름 후보를 유추한다.
+  private nameFromWorkspaceDir(dir: string): string {
+    const idx = dir.lastIndexOf('__');
+    const base = idx > 0 ? dir.slice(0, idx) : dir;
+    return base.trim();
+  }
+
+  // 복구까지 실패해 목록에서 스킵된 폴더 — 세션당 1회만 사용자에게 고지한다.
+  private announcedMetaSkips = new Set<string>();
+  private noteMetaSkip(dir: string): void {
+    console.warn(`[workspace 스캔] meta.json 읽기/복구 실패 — 폴더 스킵: ${dir}`);
+    if (this.announcedMetaSkips.has(dir)) return;
+    this.announcedMetaSkips.add(dir);
+    getAppState().pushMessage(
+      `프로젝트 폴더를 목록에 불러오지 못했습니다: ${dir}`,
+    );
   }
 
   async loadFavorites() {
@@ -1110,6 +1250,18 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async init() {
+    // 신 배치 루트 보장(.keep): 모바일은 없는 디렉터리의 목록 조회가 예외라
+    // workspace/ 부재만으로 초기 스캔이 통째로 실패한다 — 구 배치 projects/.keep
+    // 과 같은 이유(ResourceSyncService.init 주석 참조). 점 파일이라 스캔은 무시.
+    if (isWorkspaceLayout()) {
+      try {
+        if (!(await backend.existFile(WORKSPACE_ROOT + '/.keep'))) {
+          await backend.writeFile(WORKSPACE_ROOT + '/.keep', '');
+        }
+      } catch (e) {
+        console.error('workspace 루트 준비 실패:', e);
+      }
+    }
     // 사전 로드(즐겨찾기/북마크/휴지통 등)가 어떤 이유로 실패하더라도
     // super.init()(초기 스캔 + 백그라운드 진입 시 강제 저장 훅)에는
     // 반드시 도달해야 한다. 여기서 죽으면 앱은 멀쩡해 보여도 이후 편집이

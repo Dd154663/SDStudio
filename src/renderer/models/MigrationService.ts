@@ -31,6 +31,7 @@ import {
   PROJECT_JSON_ROOT,
   PROJECT_DATA_ROOTS,
   PROJECT_IMAGE_ROOTS,
+  WORKSPACE_ROOT,
   projectPath,
   workspacePath,
   projectJsonPath,
@@ -205,8 +206,17 @@ class MigrationService {
 
   // ── 판정 ──
   async detect(): Promise<'none' | 'fresh' | 'legacy'> {
-    // 마커 읽기 실패(IO 오류)는 상위(bootstrap)가 구 배치 폴백하도록 예외 전파.
     this.markerExists = await backend.existFile(STORAGE_MARKER_FILE);
+    if (!this.markerExists) {
+      // existFile 은 모든 오류를 false 로 삼킨다(양 플랫폼 공통) — 마커가 실제로
+      // 있는데 일시 IO 오류로 못 본 오판을, 실제 내용 읽기+파싱으로 한 번 더 확인.
+      try {
+        const raw = JSON.parse(await backend.readFile(STORAGE_MARKER_FILE));
+        if (raw && typeof raw.storageVersion === 'number') {
+          this.markerExists = true;
+        }
+      } catch (e) {}
+    }
     // 옵트아웃("다시 알리지 않음") + 마커 없음 = 구 배치 계속 사용 확정 상태.
     // 게이트도 이동도 없으므로 값비싼 projects/ 전체 스캔(직후 sessionService.init
     // 스캔과 중복)을 건너뛴다 — 옵트아웃 사용자의 매 부팅 비용 제거.
@@ -223,10 +233,55 @@ class MigrationService {
     return classifyDetection(this.markerExists, entries.length > 0);
   }
 
-  // 신규 사용자('fresh') — 마커만 기록하고 신 배치 활성화.
+  // 신규 사용자('fresh') — 신 배치 활성화 + 마커 기록.
+  // 'fresh' 는 "마커도 없고 구 projects/ json 도 없음"인데, 스캔이 일시 IO 오류를
+  // 전부 '없음'으로 삼킨 오판일 수 있다. 잘못 확정하면 마커가 선기록되어 구 데이터가
+  // 안 보이게 되므로 흔적을 재검증한다.
   async markFreshAndActivate(): Promise<void> {
-    await this.writeMarker();
+    const hasWorkspaceData = await this.hasWorkspaceData();
+    if (!hasWorkspaceData && (await this.hasLegacyTraces())) {
+      // 구 배치 데이터 흔적이 있는데 스캔은 0개 — 신규 확정 보류.
+      // 이번 부팅은 구 배치로 진행하고, 다음 부팅에서 스캔이 성공하면
+      // 'legacy' 로 정상 판정된다(마커 미기록이므로 재판정 가능).
+      console.warn(
+        '[마이그레이션] fresh 판정 보류 — 구 배치 데이터 흔적 감지(스캔 일시 오류 가능성). 마커 기록/활성화 건너뜀.',
+      );
+      return;
+    }
+    // 활성화를 마커 기록보다 먼저 — 마커 쓰기 한 번의 실패가 활성화를 막으면
+    // workspace 에 데이터가 있는 사용자(마커만 소실)가 빈 구 배치를 스캔해
+    // "프로젝트 전멸"로 보인다. 마커는 다음 부팅에서 재시도된다.
     setWorkspaceLayoutActive(true);
+    try {
+      await this.writeMarker();
+    } catch (e) {
+      console.error('[마이그레이션] 마커 기록 실패(활성화는 유지 — 다음 부팅 재시도):', e);
+    }
+  }
+
+  // workspace/ 에 프로젝트 폴더가 하나라도 있는지 — 마커 소실 복구 판정용.
+  private async hasWorkspaceData(): Promise<boolean> {
+    try {
+      const dirs = await backend.listFiles(WORKSPACE_ROOT);
+      return dirs.some((d) => !d.startsWith('.'));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // 구 배치 데이터 흔적 — projects/ 에 비어 있지 않은 내용물, 또는 구식 루트/
+  // 사이드카 존재. 신규 사용자에게는 어느 것도 없다.
+  private async hasLegacyTraces(): Promise<boolean> {
+    try {
+      const pj = await backend.listFiles(PROJECT_JSON_ROOT);
+      if (pj.some((n) => !n.startsWith('.'))) return true;
+    } catch (e) {}
+    for (const t of ['outs', 'favorites.json']) {
+      try {
+        if (await backend.existFile(t)) return true;
+      } catch (e) {}
+    }
+    return false;
   }
 
   // ── 전체 흐름('legacy') ──
@@ -617,10 +672,25 @@ class MigrationService {
       const raw = entries[i];
       this.projectCurrent = i + 1;
       this.currentProjectName = plan.logicalName;
-      const key = ledgerKey(raw.folder, raw.name);
+      let key = ledgerKey(raw.folder, raw.name);
+      // 되살아난 항목 재이동 시 새 논리 이름/이미지 귀속을 강제하기 위한 플래그.
+      let resurrected = false;
 
       try {
         let led = ledger.projects[key];
+        if (led && led.state === 'done') {
+          // 원장은 완료인데 원본 json 이 다시 존재하는 경우(구버전 다운그레이드
+          // 왕복·백업 수동 복원) — 그냥 건너뛰면 그 데이터는 영구히 안 보인다.
+          // 대체 키로 새 항목을 만들어 재이동한다.
+          if (!(await backend.existFile(this.legacyJsonPath(raw)))) {
+            continue; // 정상 완료(원본 없음)
+          }
+          let n = 2;
+          while (ledger.projects[`${key}#${n}`]?.state === 'done') n++;
+          key = `${key}#${n}`;
+          led = ledger.projects[key];
+          resurrected = true;
+        }
         if (!led) {
           // 신규 항목 — json.id 확인(파싱 실패 시 스킵+failed).
           const idOrSkip = await this.readJsonIdOrSkip(raw);
@@ -649,13 +719,26 @@ class MigrationService {
             dir: makeWorkspaceDirName(plan.logicalName, id),
             id,
             deleted: raw.deleted,
-            moveImages: plan.moveImages,
+            // 되살아난 항목은 이미지 귀속을 다시 받는다 — 이전 시대의 이미지
+            // 루트는 이미 이동됐으므로, 지금 구 루트에 있는 폴더는 새 시대 것.
+            moveImages: resurrected ? true : plan.moveImages,
             state: 'pending',
             roots: {},
           };
           ledger.projects[key] = led;
         }
-        if (led.state === 'done') continue; // 이미 완료(재개)
+        if (led.state === 'done') continue; // 방어(정상 흐름에선 위에서 분기)
+        if (!led.dir) {
+          // 과거 json 파싱 실패로 dir='' 로 기록된 failed 항목 — 그대로 두면
+          // 매 부팅 경로 조립에서 throw 하며 영구 실패한다. 재계획 후 재시도.
+          const idOrSkip = await this.readJsonIdOrSkip(raw);
+          if (idOrSkip.skip) {
+            this.pushFailure(led.logicalName);
+            continue; // 여전히 파싱 불가 — failed 유지
+          }
+          led.id = idOrSkip.id || uuidv4();
+          led.dir = makeWorkspaceDirName(led.logicalName, led.id);
+        }
         await this.moveProject(led, ledger);
       } catch (e) {
         // 프로젝트 단위 실패는 원장 기록 후 다음 프로젝트 계속(전체 중단 금지).
@@ -793,18 +876,26 @@ class MigrationService {
     }
   }
 
+  // 구 배치에서 이 항목의 json 물리 경로(활성 .json / 소프트삭제 .deleted).
+  private legacyJsonPath(raw: RawProjectEntry): string {
+    const base = projectJsonPath(raw.name, raw.folder || undefined);
+    return raw.deleted ? base.replace(/\.json$/, '.deleted') : base;
+  }
+
   // json 을 가볍게 파싱해 id 필드만 확인(전체 Session 로드 금지). 파싱 실패=스킵 신호.
   private async readJsonIdOrSkip(
     raw: RawProjectEntry,
   ): Promise<{ skip: boolean; id?: string }> {
-    const base = projectJsonPath(raw.name, raw.folder || undefined);
-    const p = raw.deleted ? base.replace(/\.json$/, '.deleted') : base;
+    const p = this.legacyJsonPath(raw);
     try {
       const parsed = JSON.parse(await backend.readFile(p));
+      // 세션 json 은 항상 객체다 — 배열/원시값(favorites 류 사이드카가 잘못
+      // 섞인 경우)은 프로젝트가 아니므로 스킵해 유령 프로젝트 생성을 막는다.
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return { skip: true };
+      }
       const id =
-        parsed && typeof parsed.id === 'string' && parsed.id
-          ? parsed.id
-          : undefined;
+        typeof parsed.id === 'string' && parsed.id ? parsed.id : undefined;
       return { skip: false, id };
     } catch (e) {
       return { skip: true };
@@ -859,6 +950,10 @@ class MigrationService {
       for (const fname of fileSet) {
         if (fname.startsWith('.')) continue; // 이름 없는 점 파일('.deleted' 등) 제외
         if (fname.endsWith('.json.bak')) continue; // .bak 동반 파일은 항목 아님
+        // 구식 위치의 사이드카(v1 시절 projects/favorites.json) — 프로젝트가 아니다.
+        // 이관 대상으로 삼으면 'favorites' 유령 프로젝트가 생기고 즐겨찾기가 소실된다
+        // (부팅 순서상 loadFavorites 의 자체 이관보다 마이그레이션이 먼저 본다).
+        if (folder === '' && fname === 'favorites.json') continue;
         if (fname.endsWith('.json')) {
           entries.push({ folder, name: fname.slice(0, -5), deleted: false });
         } else if (fname.endsWith('.deleted')) {
