@@ -332,6 +332,15 @@ export class AppState {
     this.floatViewCount = Math.max(0, this.floatViewCount - 1);
   }
 
+  // 저장 경로 폴백 상태(데스크톱): 지정 저장 폴더 접근 불가로 기본 위치에서
+  // 임시 실행 중. bootstrap 이 채우고, SaveLocationGate 가 확인을 받기 전까지
+  // 메인 UI 를 가린다 — 조용히 부팅하면 "프로젝트 전부 초기화"로 오해된다.
+  @observable accessor saveLocationFallback: {
+    attempted: string;
+    code: string;
+  } | null = null;
+  @observable accessor saveLocationFallbackAcked: boolean = false;
+
   // 자체 실행/중지 컨트롤을 가진 오버레이(인페인트 편집기 등) 개수.
   // PC 는 하단바가 오버레이에 덮이지 않아 실행 버튼이 2개 노출되므로,
   // 이 값이 0보다 크면 BottomBar 가 실행 컨트롤을 숨긴다.

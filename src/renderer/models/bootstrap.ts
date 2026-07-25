@@ -232,6 +232,8 @@ export async function bootstrapApp(): Promise<void> {
       // 활성화만 하고 통과(폴백 경고는 App.tsx 가 안내).
       const bootWarnings = await backend.getBootWarnings().catch(() => null);
       const saveLocFallback = !!bootWarnings?.saveLocationFallback;
+      // 가드 창(SaveLocationGate)이 부팅 즉시 메인 UI 를 가리도록 상태를 노출.
+      appState.saveLocationFallback = bootWarnings?.saveLocationFallback ?? null;
       // [오판 방어 ②] 보조 창(데스크톱 멀티 윈도우)은 마이그레이션을 수행하지
       // 않는다 — 호스트 창이 "나중에 하기"를 고른 뒤 보조 창이 이동을 돌리면
       // 두 창의 배치 인식이 갈라져 목록이 통째로 비어 보인다. 마커만 따라간다.

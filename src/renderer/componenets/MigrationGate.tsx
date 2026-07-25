@@ -27,7 +27,8 @@ function formatBytes(bytes: number | null | undefined): string {
 }
 
 // 공용 카드 셸 — 세로 단순 레이아웃(모바일 호환).
-function GateShell({ children }: { children: React.ReactNode }) {
+// SaveLocationGate(저장 경로 폴백 가드)도 재사용한다.
+export function GateShell({ children }: { children: React.ReactNode }) {
   return (
     <div
       className="fixed inset-0 z-[var(--z-drag-overlay)] flex items-center justify-center p-4"

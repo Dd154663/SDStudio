@@ -32,6 +32,7 @@ import PromptTooltip from './PromptTooltip';
 import ConfirmWindow, { Dialog } from './ConfirmWindow';
 import ExpiredProjectsDialog from './ExpiredProjectsDialog';
 import MigrationGate from './MigrationGate';
+import SaveLocationGate from './SaveLocationGate';
 import QueueControl from './SceneQueueControl';
 import {
   FloatView,
@@ -308,24 +309,9 @@ export const App = observer(() => {
       appState.uiClassicFinish,
     );
   }, [appState.uiClassicFinish]);
-  // 부팅 경고: 지정한 저장 경로에 접근할 수 없어 기본 위치로 폴백해 실행 중이면
-  // 사용자에게 안내한다(설정에서 경로를 쓰기 가능한 위치로 재지정 유도). 이 안내가
-  // 없으면 사용자는 저장 경로가 조용히 무시된 사실을 모른다.
-  useEffect(() => {
-    (async () => {
-      const warnings = await backend.getBootWarnings();
-      const fb = warnings?.saveLocationFallback;
-      if (!fb) return;
-      appState.pushDialog({
-        type: 'yes-only',
-        text:
-          `지정한 저장 경로에 접근할 수 없어(${fb.code}) 기본 위치에서 실행 중입니다.\n\n` +
-          `경로: ${fb.attempted}\n\n` +
-          `환경설정 → 이미지에서 저장 위치를 쓰기 가능한 폴더로 다시 지정한 뒤 프로그램을 껐다 켜주세요. ` +
-          `해당 드라이브의 쓰기 권한을 먼저 확인하는 것도 방법입니다.`,
-      });
-    })();
-  }, []);
+  // 부팅 경고(저장 경로 폴백)는 SaveLocationGate 전면 게이트가 담당한다 —
+  // 사후 다이얼로그는 다른 게이트/창에 가려져 "프로젝트 전부 초기화"로 오해되던
+  // 문제로 격상(2026-07-25). 상태는 bootstrap 이 appState.saveLocationFallback 에 채운다.
   useEffect(() => {
     const handleUpdate = () => {
       const latest = appUpdateNoticeService.latestVersion;
@@ -946,6 +932,10 @@ export const App = observer(() => {
         {/* 저장소 v2 마이그레이션 게이트 — 활성 시 부팅 스피너 포함 전체를 덮는다
             (bootReady 이전 실행). 스펙: track1-b-migration-spec.md §4. */}
         <MigrationGate />
+        {/* 저장 경로 폴백 가드 — 지정 저장 폴더 접근 불가 시 확인 전까지 메인을
+            가린다(폴백 세션은 마이그레이션이 보류되므로 MigrationGate 와 동시에
+            뜨지 않는다). */}
+        <SaveLocationGate />
         {/* 분리형 생성 컨트롤 위젯 (PC 전용).
             분리 상태이거나, 컴팩트 템플릿(하단바 없음)이면 항상 플로팅으로 표시. */}
         {!isMobile &&
