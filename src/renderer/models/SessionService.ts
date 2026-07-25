@@ -196,6 +196,13 @@ export class SessionService extends ResourceSyncService<Session> {
   // deep 복제/import 가 복사 전 명시 등록한 경우)은 그대로 통과한다.
   protected async onAttached(name: string, instance: Session): Promise<void> {
     if (!isWorkspaceLayout()) return;
+    // 자가 치유: 마이그레이션 동명 충돌('_복구N')로 project.json 안의 name 이
+    // 레지스트리 키와 어긋난 세션은 키를 진실로 삼아 정정한다. 어긋난 채 두면
+    // vibes/references 등 이미지 경로가 다른(또는 미등록) 프로젝트로 해석된다.
+    // (변경은 watch reaction 이 감지해 정정된 이름으로 저장까지 이어진다.)
+    if (instance.name !== name) {
+      instance.name = name;
+    }
     if (physicalDirOf(name) !== undefined) return;
     if (!instance.id) instance.id = v4();
     await this.ensureWorkspaceProject(name, {

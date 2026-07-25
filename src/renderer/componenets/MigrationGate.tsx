@@ -98,7 +98,14 @@ const ChoicePanel = observer(() => {
       </div>
       {info && (
         <div className="text-xs text-muted rounded-md bg-[var(--c-zone)] p-3 flex flex-col gap-1">
-          <div>예상 백업 크기: 약 {formatBytes(info.estimatedBytes)}</div>
+          <div>
+            예상 백업 크기:{' '}
+            {info.measured
+              ? `약 ${formatBytes(info.estimatedBytes)}`
+              : info.estimatedBytes > 0
+                ? `약 ${formatBytes(info.estimatedBytes)} (정밀 계산 중…)`
+                : '계산 중…'}
+          </div>
           <div>사용 가능 공간: {formatBytes(info.freeBytes)}</div>
           {!info.sufficient && (
             <div className="text-orange-500 dark:text-orange-400 mt-1">

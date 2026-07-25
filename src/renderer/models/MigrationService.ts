@@ -52,6 +52,13 @@ export function classifyDetection(
   return markerExists ? 'none' : 'fresh';
 }
 
+// 사람이 읽는 용량 문자열(오류/게이트 문구용) — 1GB 이상은 GB, 미만은 MB.
+export function formatSizeKo(bytes: number): string {
+  const GB = 1024 ** 3;
+  if (bytes >= GB) return `${(bytes / GB).toFixed(1)} GB`;
+  return `${Math.max(1, Math.round(bytes / 1024 ** 2))} MB`;
+}
+
 // 동명 프로젝트 충돌 시 유일한 논리 이름을 만든다(스펙 §3-4).
 // 첫 번째는 원래 이름, 두 번째부터 '이름_복구N'(N=2,3,…). taken 은 변형하지 않는다.
 export function resolveRecoveryName(
@@ -167,9 +174,10 @@ export type MigrationServiceState =
   | 'failed';
 
 export interface MigrationSpaceInfo {
-  estimatedBytes: number; // 예상 백업 크기(project_sizes 합산×1.05)
+  estimatedBytes: number; // 예상 백업 크기(사이드카 추정 → 실측으로 비동기 보정)
   freeBytes: number | null; // 여유 공간(null=알 수 없음)
   sufficient: boolean; // 여유 ≥ 예상×1.2
+  measured: boolean; // true = 백업 대상 실측 합산(신뢰 가능), false = 사이드카 추정
 }
 
 class MigrationService {
@@ -341,6 +349,10 @@ class MigrationService {
   }
 
   // ── 여유 공간 판정(스펙 §4-1) ──
+  // 1차: project_sizes.json 사이드카로 즉시 추정(게이트를 지연 없이 띄우기 위함).
+  // 2차: 백업 대상 파일을 실제로 걸어 합산한 실측치로 비동기 보정 — 사이드카는
+  //      수동 계산이라 낡거나 비어 있을 수 있고 tar 오버헤드도 빠져 있어, 실제
+  //      백업이 예상보다 수 GB 큰 문제(예: 예상 28GB vs 실제 33GB)가 보고됐다.
   private async computeSpaceInfo(): Promise<void> {
     let estimatedBytes = 0;
     try {
@@ -364,7 +376,41 @@ class MigrationService {
       freeBytes != null &&
       estimatedBytes > 0 &&
       freeBytes >= estimatedBytes * 1.2;
-    this.spaceInfo = { estimatedBytes, freeBytes, sufficient };
+    this.spaceInfo = { estimatedBytes, freeBytes, sufficient, measured: false };
+    // 실측 보정은 게이트가 떠 있는 동안 백그라운드로 진행(대기시키지 않음).
+    void this.refineSpaceInfo();
+  }
+
+  // 백업 대상 실측 합산으로 spaceInfo 를 보정한다(읽기 전용 — 실패해도 무해).
+  private async refineSpaceInfo(): Promise<void> {
+    try {
+      const { entries, totalBytes } = await this.buildBackupEntries();
+      const estimatedBytes = MigrationService.estimateArchiveBytes(
+        entries.length,
+        totalBytes,
+      );
+      const freeBytes = this.spaceInfo?.freeBytes ?? null;
+      this.spaceInfo = {
+        estimatedBytes,
+        freeBytes,
+        sufficient:
+          freeBytes != null &&
+          estimatedBytes > 0 &&
+          freeBytes >= estimatedBytes * 1.2,
+        measured: true,
+      };
+    } catch (e) {
+      console.error('백업 크기 실측 실패(사이드카 추정 유지):', e);
+    }
+  }
+
+  // 무압축 tar 산출 크기 추정: 실측 합계 + 파일당 오버헤드(512B 헤더 + 평균
+  // 512B 블록 패딩 ≈ 1KB) + 트레일러 여유.
+  private static estimateArchiveBytes(
+    fileCount: number,
+    totalBytes: number,
+  ): number {
+    return Math.round(totalBytes + fileCount * 1024 + 4096);
   }
 
   // ── 마커 기록 ──
@@ -398,7 +444,29 @@ class MigrationService {
     }
 
     this.backupPhase = '백업할 파일 목록을 만드는 중…';
-    const entries = await this.buildBackupEntries();
+    const { entries, totalBytes } = await this.buildBackupEntries();
+
+    // 공간 하드 가드: 실측 필요 용량보다 여유 공간이 부족하면 시작하지 않는다.
+    // 수십 GB 를 쓰다 디스크가 가득 차 중간에 죽는 것보다 즉시 명확히 실패하는
+    // 편이 안전하다(잔여 .part 는 다음 부팅에 정리됨). 여유 공간을 알 수 없으면
+    // 종전대로 진행한다.
+    const needed = MigrationService.estimateArchiveBytes(
+      entries.length,
+      totalBytes,
+    );
+    let free: number | null = null;
+    try {
+      free = await backend.getFreeSpace();
+    } catch (e) {}
+    if (free != null && free < needed * 1.02) {
+      throw new Error(
+        `저장 공간이 부족해 백업을 시작할 수 없습니다 (필요 약 ${formatSizeKo(
+          needed,
+        )}, 남은 공간 ${formatSizeKo(free)}). ` +
+          '공간을 확보한 뒤 프로그램을 다시 시작하거나, 백업 없이 진행을 선택해주세요.',
+      );
+    }
+
     this.backupPhase = `백업 중 (${entries.length}개 파일)`;
     // PC 파일별 진행: zip-progress IPC → App.tsx 핸들러가 appState.exportProgress
     // 를 갱신하는데, 그 핸들러는 exportProgress 가 이미 있을 때만 갱신한다. 여기서
@@ -454,13 +522,33 @@ class MigrationService {
     } catch (e) {}
   }
 
-  // 7루트(6 이미지 + projects) 재귀 + 루트 사이드카 json 을 아카이브 엔트리로 모은다.
+  // 백업에서 제외하는 파생 캐시 디렉터리 — 원본만으로 재생성 가능하고, 포함하면
+  // 백업이 실데이터 대비 수 배로 커진다(백업 용량 초과 보고의 주원인).
+  // fastcache = 썸네일 캐시(원본 1장당 3개), encoded = 바이브 인코딩 캐시.
+  // .trash 등 점 시작 디렉터리(휴지통)는 아래 walk 의 점 필터가 제외한다.
+  private static readonly BACKUP_SKIP_DIRS = new Set(['fastcache', 'encoded']);
+
+  // 프로젝트 7루트 밖의 글로벌 이미지 루트 — 루트 사이드카 json 이 참조하므로
+  // 함께 백업해야 복구 시 글로벌 프리셋/캐릭터/작가 라이브러리 이미지가 살아남는다.
+  private static readonly BACKUP_EXTRA_ROOTS = [
+    'global_vibes',
+    'global_char_images',
+    'artist_library',
+    'project_template_images',
+  ];
+
+  // 7루트(6 이미지 + projects) 재귀 + 글로벌 이미지 루트 + 루트 사이드카 json 을
+  // 아카이브 엔트리로 모은다. totalBytes = 대상 파일 실측 합계(공간 가드·실측 추정용).
   // 엔트리의 name(아카이브 내부 경로)은 상대 경로 그대로 — 백업 아카이브 논리 형식과 동일.
-  private async buildBackupEntries(): Promise<FileEntry[]> {
+  private async buildBackupEntries(): Promise<{
+    entries: FileEntry[];
+    totalBytes: number;
+  }> {
     const out: FileEntry[] = [];
+    let totalBytes = 0;
     const walk = async (relDir: string): Promise<void> => {
       let names: string[];
-      let stats: { name: string }[];
+      let stats: { name: string; size: number }[];
       try {
         names = await backend.listFiles(relDir);
         stats = await backend.listFilesWithStats(relDir);
@@ -468,26 +556,36 @@ class MigrationService {
         return; // 폴더 없음 — 건너뜀
       }
       const fileSet = new Set(stats.map((s) => s.name));
-      for (const f of fileSet) {
-        const rel = relDir + '/' + f;
+      for (const s of stats) {
+        const rel = relDir + '/' + s.name;
         out.push({ name: rel, path: rel });
+        totalBytes += s.size || 0;
       }
       for (const sub of names) {
         if (fileSet.has(sub)) continue;
+        // 파생 캐시·점 디렉터리(.trash 등)는 백업 제외.
+        if (sub.startsWith('.') || MigrationService.BACKUP_SKIP_DIRS.has(sub))
+          continue;
         await walk(relDir + '/' + sub);
       }
     };
     for (const root of PROJECT_DATA_ROOTS) {
       await walk(root);
     }
+    for (const root of MigrationService.BACKUP_EXTRA_ROOTS) {
+      await walk(root);
+    }
     // 루트 직하 사이드카 json(favorites/bookmarks/trash/… 무변경 대상)
     try {
       const rootStats = await backend.listFilesWithStats('');
       for (const s of rootStats) {
-        if (s.name.endsWith('.json')) out.push({ name: s.name, path: s.name });
+        if (s.name.endsWith('.json')) {
+          out.push({ name: s.name, path: s.name });
+          totalBytes += s.size || 0;
+        }
       }
     } catch (e) {}
-    return out;
+    return { entries: out, totalBytes };
   }
 
   // ── 이동 루프(스펙 §3-3) ──
@@ -599,7 +697,30 @@ class MigrationService {
           await backend.renameDir(oldPath, workspacePath(led.dir, root));
         }
         led.roots[root] = 'done';
+        // 루트 1개마다 원장 저장 — 중단 시 재개 지점을 정밀화(마지막 순서인
+        // vibes/references 만 미이동으로 남는 어중간한 상태를 최소화).
+        await this.saveLedger(ledger);
       }
+    } else if (led.roots['attachCopy'] !== 'done') {
+      // 동명 충돌로 이미지 6루트를 받지 못한 프로젝트 — 구 배치에서는 동명
+      // 프로젝트끼리 이미지 폴더를 물리 공유했으므로, 첨부(레퍼런스/바이브)가
+      // 살아남도록 선점 프로젝트의 vibes/references 만 복사해 준다(outs 등
+      // 대용량 생성물은 종전 정책대로 선점 측 단독 귀속).
+      const claimant = Object.values(ledger.projects).find(
+        (p) =>
+          p.originalName === led.originalName &&
+          p.moveImages &&
+          p.state === 'done',
+      );
+      if (claimant) {
+        for (const root of ['vibes', 'references']) {
+          await this.copyDirRecursive(
+            workspacePath(claimant.dir, root),
+            workspacePath(led.dir, root),
+          );
+        }
+      }
+      led.roots['attachCopy'] = 'done';
       await this.saveLedger(ledger);
     }
 
@@ -612,7 +733,23 @@ class MigrationService {
       ? workspacePath(led.dir, PROJECT_JSON_FILE + '.deleted')
       : workspacePath(led.dir, PROJECT_JSON_FILE);
     if (await backend.existFile(oldJson)) {
-      await backend.renameFile(oldJson, newJson);
+      if (led.logicalName !== led.originalName) {
+        // 동명 충돌로 '_복구N' 논리 이름을 받은 프로젝트 — json 안의 name 도
+        // 논리 이름으로 재기록한다. 그대로 두면 로드된 세션의 name 이 레지스트리
+        // 키와 어긋나, vibes/references 등 이미지 경로가 다른(또는 미등록)
+        // 프로젝트로 해석된다(마이그레이션 후 레퍼런스 첨부 깨짐의 근본 원인).
+        try {
+          const parsed = JSON.parse(await backend.readFile(oldJson));
+          parsed.name = led.logicalName;
+          await backend.writeFile(newJson, JSON.stringify(parsed));
+          await backend.deleteFile(oldJson);
+        } catch (e) {
+          // 파싱 실패 시 이동이라도 보장 — 이름 정정은 로드 시 자가 치유가 담당.
+          await backend.renameFile(oldJson, newJson);
+        }
+      } else {
+        await backend.renameFile(oldJson, newJson);
+      }
     }
     // .bak 동반 이동(존재 시).
     const oldBak = baseOld + '.bak';
@@ -627,6 +764,33 @@ class MigrationService {
     led.state = 'done';
     registerProjectDir(led.logicalName, led.dir);
     await this.saveLedger(ledger);
+  }
+
+  // src 디렉터리의 파일·하위 폴더를 dest 로 복사한다(파생 캐시·점 폴더 제외).
+  // src 가 없으면 조용히 통과. 개별 파일 실패는 기록만 하고 계속(전체 중단 금지).
+  private async copyDirRecursive(src: string, dest: string): Promise<void> {
+    let names: string[];
+    let stats: { name: string }[];
+    try {
+      names = await backend.listFiles(src);
+      stats = await backend.listFilesWithStats(src);
+    } catch (e) {
+      return; // 폴더 없음
+    }
+    const fileSet = new Set(stats.map((s) => s.name));
+    for (const f of fileSet) {
+      try {
+        await backend.copyFile(src + '/' + f, dest + '/' + f);
+      } catch (e) {
+        console.error('첨부 이미지 복사 실패(계속):', src + '/' + f, e);
+      }
+    }
+    for (const sub of names) {
+      if (fileSet.has(sub)) continue;
+      if (sub.startsWith('.') || MigrationService.BACKUP_SKIP_DIRS.has(sub))
+        continue;
+      await this.copyDirRecursive(src + '/' + sub, dest + '/' + sub);
+    }
   }
 
   // json 을 가볍게 파싱해 id 필드만 확인(전체 Session 로드 금지). 파싱 실패=스킵 신호.
@@ -715,7 +879,15 @@ class MigrationService {
       }
     };
     await walk(PROJECT_JSON_ROOT, '');
-    return { entries, folders };
+    // 활성(.json)을 소프트 삭제(.deleted)보다 먼저 배치 — 동명 충돌 시 활성
+    // 프로젝트가 원래 이름과 이미지 6루트를 선점하도록. 삭제 항목이 선점하면
+    // 활성 쪽 이미지 루트가 미등록 삭제 폴더로 이동해 outs/레퍼런스/바이브가
+    // 통째로 사라진 것처럼 보인다(마이그레이션 후 첨부 깨짐 시나리오).
+    const sorted = [
+      ...entries.filter((e) => !e.deleted),
+      ...entries.filter((e) => e.deleted),
+    ];
+    return { entries: sorted, folders };
   }
 
   // ── 진단 조회(트랙1 B3) — 설정→시스템의 상태 표시 전용, 읽기만 한다 ──
