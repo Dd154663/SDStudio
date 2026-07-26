@@ -1369,9 +1369,9 @@ export class AppState {
         // finally 해제 보장 — 잠금 고착 방지.
         const lockText = '삭제된 이미지 청소 중...';
         this.setProgressDialog({ text: lockText, done: 0, total: totalImages });
-        let deleted = 0;
+        let result = { deleted: 0, failed: 0 };
         try {
-          deleted = await trashService.emptyProjectImageTrash(
+          result = await trashService.emptyProjectImageTrash(
             this.curSession!,
             (d) =>
               this.setProgressDialog({
@@ -1385,7 +1385,11 @@ export class AppState {
         }
         appState.pushDialog({
           type: 'yes-only',
-          text: `${deleted}개의 이미지가 영구 삭제되었습니다.`,
+          text:
+            `${result.deleted}개의 이미지가 영구 삭제되었습니다.` +
+            (result.failed > 0
+              ? `\n${result.failed}개는 삭제하지 못했습니다 — 잠시 후 다시 시도해주세요.`
+              : ''),
         });
       },
     });

@@ -32,6 +32,10 @@ const sharp = require('sharp');
 // 오히려 느려진다. 연산당 1스레드로 두고 "여러 장을 동시에"(UV_THREADPOOL_SIZE)
 // 병렬화하는 것이 다수 이미지 처리에 유리하다(sharp 공식 권장). 트랙2 WebP Phase 2.
 sharp.concurrency(1);
+// vips 연산 캐시 비활성 — 캐시가 입력 파일(특히 webp: mmap 유지)을 잡아 두면
+// Windows 에서 해당 파일 rename/unlink 가 EBUSY 로 실패한다(휴지통 미삭제 버그).
+// 썸네일은 fastcache(디스크)로 이미 캐싱되므로 vips 메모리 캐시의 실익도 없다.
+sharp.cache(false);
 const ExifReader = require('exifreader');
 const native = require('sdsnative');
 const { exiftool } = require('exiftool-vendored');
@@ -1068,7 +1072,11 @@ ipcMain.handle(
       // 확장자대로 인코딩한다(기존 동작 불변).
       if (!optimize) {
         await fs.mkdir(path.dirname(destAbs), { recursive: true });
-        await sharp(srcAbs)
+        // 경로 입력 금지 — sharp(경로)는 webp 소스를 mmap 으로 연 채 vips 캐시에
+        // 유지해, Windows 에서 원본의 휴지통 이동(rename)·영구 삭제(unlink)가
+        // EBUSY 로 실패한다(png 는 스트림 읽기라 무관). 버퍼로 읽어 핸들을 남기지
+        // 않는다 (2026-07-26 휴지통 webp 미삭제 버그).
+        await sharp(await fs.readFile(srcAbs))
           .resize(maxWidth, maxHeight, {
             fit: sharp.fit.inside,
             withoutEnlargement: true,

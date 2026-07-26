@@ -181,8 +181,9 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
           done: 0,
           total: selected.size,
         });
+        let failed = 0;
         try {
-          await trashService.permanentlyDeleteImages(
+          failed = await trashService.permanentlyDeleteImages(
             session,
             scene,
             Array.from(selected),
@@ -191,6 +192,11 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
           );
         } finally {
           appState.setProgressDialog(undefined);
+        }
+        if (failed > 0) {
+          appState.pushMessage(
+            failed + '장의 이미지를 삭제하지 못했습니다. 잠시 후 다시 시도해주세요.',
+          );
         }
         setSelected(new Set());
         await refresh();
@@ -211,12 +217,18 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
           done: 0,
           total: trashImages.length,
         });
+        let failed = 0;
         try {
-          await trashService.emptyImageTrash(session, scene, (done, total) =>
+          failed = await trashService.emptyImageTrash(session, scene, (done, total) =>
             appState.setProgressDialog({ text: lockText, done, total }),
           );
         } finally {
           appState.setProgressDialog(undefined);
+        }
+        if (failed > 0) {
+          appState.pushMessage(
+            failed + '장의 이미지를 삭제하지 못했습니다. 잠시 후 다시 시도해주세요.',
+          );
         }
         setSelected(new Set());
         await refresh();

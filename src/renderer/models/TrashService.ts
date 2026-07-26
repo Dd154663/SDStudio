@@ -196,6 +196,11 @@ export class TrashService extends EventTarget {
       try {
         await backend.renameFile(trashDir + '/' + filename, outputDir + '/' + filename);
         delete meta[filename];
+        // 휴지통 뷰 썸네일(.trash/fastcache) 잔여물 정리 — 복원 후에도 남으면
+        // 디스크에 고아 파일로 영구히 쌓인다.
+        try {
+          await imageService.invalidateCache(trashDir + '/' + filename);
+        } catch (e) {}
       } catch (e) {
         console.error('이미지 복원 실패:', filename, e);
       }
@@ -206,30 +211,52 @@ export class TrashService extends EventTarget {
   }
 
   // onProgress: 일괄 작업 잠금(progressDialog)용 진행 통지 — 파일 1개 삭제마다 호출 (옵셔널=기존 호출 무변경)
-  async permanentlyDeleteImages(session: Session, scene: GenericScene, filenames: string[], onProgress?: (done: number, total: number) => void): Promise<void> {
+  // 반환값: 삭제에 실패한 파일 수. 실패한 파일은 meta 항목을 보존해 자동 정리
+  // (autoCleanup)가 다음에 재시도할 수 있게 한다 — 과거엔 실패해도 meta 를 지워
+  // 해당 파일이 자동 삭제 대상에서 영구히 빠졌다(2026-07-26 webp 미삭제 버그).
+  async permanentlyDeleteImages(session: Session, scene: GenericScene, filenames: string[], onProgress?: (done: number, total: number) => void): Promise<number> {
     const trashDir = this.getImageTrashDir(session, scene);
     const meta = await this.loadImageTrashMeta(session, scene);
 
     let done = 0;
+    let failed = 0;
     for (const filename of filenames) {
+      const trashPath = trashDir + '/' + filename;
+      let removed = false;
       try {
-        await backend.deleteFile(trashDir + '/' + filename);
+        await backend.deleteFile(trashPath);
+        removed = true;
       } catch (e) {
-        console.error('이미지 영구 삭제 실패:', filename, e);
+        // 이미 없는 파일(ENOENT)이면 정리된 것으로 간주. 확인 자체가 실패하면
+        // 보수적으로 "아직 있음"으로 취급해 meta 를 보존한다.
+        removed = !(await backend.existFile(trashPath).catch(() => true));
+        if (!removed) {
+          failed++;
+          console.error('이미지 영구 삭제 실패:', filename, e);
+        }
       }
-      delete meta[filename];
+      if (removed) {
+        delete meta[filename];
+        // 휴지통 뷰 썸네일(.trash/fastcache/<크기>_<이름>)과 메모리 캐시 잔여물 정리
+        try {
+          await imageService.invalidateCache(trashPath);
+        } catch (e) {}
+      }
       onProgress?.(++done, filenames.length);
     }
 
     await this.saveImageTrashMeta(session, scene, meta);
     this.dispatchEvent(new CustomEvent('trash-updated'));
+    return failed;
   }
 
-  async emptyImageTrash(session: Session, scene: GenericScene, onProgress?: (done: number, total: number) => void): Promise<void> {
+  // 반환값: 삭제에 실패한 파일 수 (permanentlyDeleteImages 와 동일 의미)
+  async emptyImageTrash(session: Session, scene: GenericScene, onProgress?: (done: number, total: number) => void): Promise<number> {
     const items = await this.getTrashImages(session, scene);
     if (items.length > 0) {
-      await this.permanentlyDeleteImages(session, scene, items.map(i => i.filename), onProgress);
+      return await this.permanentlyDeleteImages(session, scene, items.map(i => i.filename), onProgress);
     }
+    return 0;
   }
 
   // ===== Project-wide image trash (all active scenes) =====
@@ -259,14 +286,15 @@ export class TrashService extends EventTarget {
 
   /**
    * 현재 프로젝트(세션)의 모든 활성 씬에 대해 이미지 휴지통을 영구 비움
-   * 반환값: 영구삭제된 이미지 총개수
+   * 반환값: { deleted: 영구삭제된 이미지 수, failed: 삭제 실패 수 }
    */
   // onProgress: 일괄 작업 잠금(progressDialog)용 — 삭제 누계(이미지 단위)를 통지 (옵셔널=기존 호출 무변경)
   async emptyProjectImageTrash(
     session: Session,
     onProgress?: (deletedImages: number) => void,
-  ): Promise<number> {
+  ): Promise<{ deleted: number; failed: number }> {
     let total = 0;
+    let failed = 0;
     const allScenes: GenericScene[] = [
       ...session.getScenes('scene'),
       ...session.getScenes('inpaint'),
@@ -275,16 +303,17 @@ export class TrashService extends EventTarget {
       const items = await this.getTrashImages(session, scene);
       if (items.length > 0) {
         const base = total;
-        await this.permanentlyDeleteImages(
+        const f = await this.permanentlyDeleteImages(
           session,
           scene,
           items.map((i) => i.filename),
           (done) => onProgress?.(base + done),
         );
-        total += items.length;
+        failed += f;
+        total += items.length - f;
       }
     }
-    return total;
+    return { deleted: total, failed };
   }
 
   // ===== Scene trash =====
@@ -915,16 +944,44 @@ export class TrashService extends EventTarget {
             const metaStr = await backend.readFile(trashMetaPath);
             const meta: TrashImageMeta = JSON.parse(metaStr);
             let metaChanged = false;
+            // 고아 입양: .trash 에 실재하지만 meta 에 없는 파일(과거 삭제 실패로
+            // meta 만 지워진 잔재 등)은 지금 시각으로 등록해 보관 기한(3일)의
+            // 시계를 다시 돌린다 — 등록이 없으면 자동 정리 대상에서 영구히 빠진다.
+            try {
+              const actual = (
+                await backend.listFiles(
+                  projectPath(imgDir, projectName, sceneDir, IMAGE_TRASH_DIR),
+                )
+              ).filter(isOutputImageFile);
+              for (const f of actual) {
+                if (!(f in meta)) {
+                  meta[f] = now;
+                  metaChanged = true;
+                }
+              }
+            } catch (e) {}
             for (const [filename, deletedAt] of Object.entries(meta)) {
               const age = now - deletedAt;
               if (age >= IMAGE_RETENTION_MS) {
+                const trashPath = projectPath(
+                  imgDir, projectName, sceneDir, IMAGE_TRASH_DIR, filename,
+                );
+                let removed = false;
                 try {
-                  await backend.deleteFile(
-                    projectPath(imgDir, projectName, sceneDir, IMAGE_TRASH_DIR, filename),
-                  );
-                } catch (e) {}
-                delete meta[filename];
-                metaChanged = true;
+                  await backend.deleteFile(trashPath);
+                  removed = true;
+                } catch (e) {
+                  // ENOENT(이미 없음)만 정리로 간주 — 잠금 등 실패는 meta 를
+                  // 남겨 다음 자동 정리에서 재시도한다.
+                  removed = !(await backend.existFile(trashPath).catch(() => true));
+                }
+                if (removed) {
+                  delete meta[filename];
+                  metaChanged = true;
+                  try {
+                    await imageService.invalidateCache(trashPath);
+                  } catch (e) {}
+                }
               }
             }
             if (metaChanged) {
