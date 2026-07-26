@@ -51,6 +51,13 @@ const CLEAN_USER_AGENT = (() => {
 // 짧은 시간에 과도한 네비게이션 = Cloudflare 챌린지 루프로 간주
 const LOOP_WINDOW_MS = 2000;
 const LOOP_THRESHOLD = 5;
+// 루프 감지 시 자동 복구: 잠시 멈췄다가 재시도하면 대부분 풀린다(연속 요청 자체가
+// 챌린지를 재발시키는 근본 원인이라 짧은 정지가 해법, 2026-07-26). 연속으로
+// MAX_AUTO_RETRIES 회 실패했을 때만 종전 안내 배너로 폴백한다. 페이지가
+// STABLE_RESET_MS 동안 안정되면 카운터를 리셋해 다음 발생 때 다시 자동 복구한다.
+const RETRY_PAUSE_MS = 200;
+const MAX_AUTO_RETRIES = 3;
+const STABLE_RESET_MS = 3000;
 
 interface BookmarkDialogProps {
   mode: 'add' | 'edit';
@@ -131,6 +138,9 @@ const DesktopBrowser: React.FC = () => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; bookmark: Bookmark } | null>(null);
   const [loopBlocked, setLoopBlocked] = useState(false);
   const navTimesRef = useRef<number[]>([]);
+  const autoRetryRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const updateNavState = useCallback(() => {
     const wv = webviewRef.current;
@@ -145,29 +155,54 @@ const DesktopBrowser: React.FC = () => {
     const wv = webviewRef.current;
     if (!wv) return;
 
-    const onNavigate = (e: any) => {
-      setUrl(e.url);
-      setInputUrl(e.url);
-      updateNavState();
-      // Cloudflare 챌린지 무한 루프 감지: 3초 내 과도한 네비게이션이면 로딩 중단 + 안내
+    // Cloudflare 챌린지 무한 루프 감지: 짧은 시간 내 과도한 네비게이션이면
+    // 로딩을 멈추고 잠시 후 자동 재시도. 연속 실패 시에만 안내 배너.
+    const noteNavAndMaybeRecover = () => {
       const now = Date.now();
       const times = navTimesRef.current.filter((t) => now - t < LOOP_WINDOW_MS);
       times.push(now);
       navTimesRef.current = times;
-      if (times.length >= LOOP_THRESHOLD) {
-        navTimesRef.current = [];
-        try {
-          wv.stop();
-        } catch {}
-        setLoading(false);
-        setLoopBlocked(true);
+      if (times.length < LOOP_THRESHOLD) return;
+      navTimesRef.current = [];
+      try {
+        wv.stop();
+      } catch {}
+      if (autoRetryRef.current < MAX_AUTO_RETRIES) {
+        autoRetryRef.current++;
+        if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = setTimeout(() => {
+          try {
+            webviewRef.current?.reload();
+          } catch {}
+        }, RETRY_PAUSE_MS);
+        return;
       }
+      setLoading(false);
+      setLoopBlocked(true);
     };
 
-    const onStartLoading = () => setLoading(true);
+    const onNavigate = (e: any) => {
+      setUrl(e.url);
+      setInputUrl(e.url);
+      updateNavState();
+      noteNavAndMaybeRecover();
+    };
+
+    const onStartLoading = () => {
+      setLoading(true);
+      // 로딩이 다시 시작되면(챌린지 루프 지속 포함) 안정화 리셋을 취소한다 —
+      // 루프 중 stop() 이 유발한 did-stop-loading 이 카운터를 되돌리면 자동
+      // 재시도가 무한 반복된다.
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    };
     const onStopLoading = () => {
       setLoading(false);
       updateNavState();
+      // 일정 시간 안정 상태가 유지되면 자동 재시도 카운터 리셋
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+      resetTimerRef.current = setTimeout(() => {
+        autoRetryRef.current = 0;
+      }, STABLE_RESET_MS);
     };
 
     const onNewWindow = (e: any) => {
@@ -178,16 +213,7 @@ const DesktopBrowser: React.FC = () => {
 
     const onFailLoad = (e: any) => {
       if (e.errorCode === -3) return;
-      const now = Date.now();
-      const times = navTimesRef.current.filter((t) => now - t < LOOP_WINDOW_MS);
-      times.push(now);
-      navTimesRef.current = times;
-      if (times.length >= LOOP_THRESHOLD) {
-        navTimesRef.current = [];
-        try { wv.stop(); } catch {}
-        setLoading(false);
-        setLoopBlocked(true);
-      }
+      noteNavAndMaybeRecover();
     };
 
     wv.addEventListener('did-navigate', onNavigate);
@@ -204,6 +230,8 @@ const DesktopBrowser: React.FC = () => {
       wv.removeEventListener('did-stop-loading', onStopLoading);
       wv.removeEventListener('new-window', onNewWindow);
       wv.removeEventListener('did-fail-load', onFailLoad);
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
     };
   }, [updateNavState]);
 
@@ -234,6 +262,7 @@ const DesktopBrowser: React.FC = () => {
     const wv = webviewRef.current;
     if (wv) {
       navTimesRef.current = [];
+      autoRetryRef.current = 0;
       setLoopBlocked(false);
       wv.loadURL(finalUrl);
     }
@@ -353,6 +382,7 @@ const DesktopBrowser: React.FC = () => {
               className="flex-none px-3 py-1.5 text-sm back-sky rounded"
               onClick={() => {
                 navTimesRef.current = [];
+                autoRetryRef.current = 0;
                 setLoopBlocked(false);
                 webviewRef.current?.reload();
               }}
