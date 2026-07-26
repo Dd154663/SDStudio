@@ -937,8 +937,12 @@ export const App = observer(() => {
             뜨지 않는다). */}
         <SaveLocationGate />
         {/* 분리형 생성 컨트롤 위젯 (PC 전용).
-            분리 상태이거나, 컴팩트 템플릿(하단바 없음)이면 항상 플로팅으로 표시. */}
+            분리 상태이거나, 컴팩트 템플릿(하단바 없음)이면 항상 플로팅으로 표시.
+            단 자체 실행 컨트롤을 가진 오버레이(인페인트 편집기 등)가 떠 있으면
+            숨긴다 — 위젯(z-widget)이 FloatView(z-float-view)보다 위라 실행 버튼이
+            2개 노출되기 때문(BottomBar 의 genDetached 가드와 동일 이유). */}
         {!isMobile &&
+          appState.genControlOverlayCount === 0 &&
           (appState.genWidget.detached ||
             bottomBarPlacement === 'none' ||
             resolvedLayout.genControl === 'floating') && (

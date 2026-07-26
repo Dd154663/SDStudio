@@ -430,48 +430,61 @@ export class SessionService extends ResourceSyncService<Session> {
         return meta;
       }
     } catch (e) {}
-    // 2) project.json / project.json.deleted 의 name/id 로 재구성
+    // 2) project.json / project.json.deleted 의 name/id 로 재구성.
+    // 폴더 소속은 직전 스캔의 folderMap(마지막으로 알려진 값)에서 승계한다 —
+    // ''(루트) 하드코딩이면 일시적 meta 읽기 오류만으로 폴더 분류가 영구
+    // 소실된다(meta.json 이 소속의 유일한 영속 출처).
+    // 본문 "읽기 성공 + 파싱 불가"와 "읽기 자체 실패"를 구분해, 후자만으로는
+    // 3단계(이름 유추+id 재발급)로 내려가지 않는다 — 일시 IO 오류로 프로젝트가
+    // 영구 개명되는 것을 막는다(스킵 후 다음 스캔에서 재시도).
+    let bodyReadButUnparsable = false;
     for (const f of [PROJECT_JSON_FILE, PROJECT_JSON_FILE + '.deleted']) {
+      let raw: string;
       try {
-        const parsed = JSON.parse(
-          await backend.readFile(workspacePath(dir, f)),
+        raw = await backend.readFile(workspacePath(dir, f));
+      } catch (e) {
+        continue; // 부재 또는 일시 읽기 오류 — 이 파일로는 판단하지 않음
+      }
+      let parsed: any;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (e) {
+        bodyReadButUnparsable = true;
+        continue;
+      }
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const name =
+          typeof parsed.name === 'string' && parsed.name
+            ? parsed.name
+            : this.nameFromWorkspaceDir(dir);
+        if (!name) continue;
+        const meta: WorkspaceProjectMeta = {
+          version: 1,
+          id:
+            typeof parsed.id === 'string' && parsed.id ? parsed.id : v4(),
+          name,
+          folder: this.folderMap[name] ?? '',
+        };
+        await backend.writeFile(metaPath, JSON.stringify(meta));
+        console.warn(
+          `[workspace 스캔] meta.json 을 ${f} 에서 재구성: ${dir} → ${name}`,
         );
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          const name =
-            typeof parsed.name === 'string' && parsed.name
-              ? parsed.name
-              : this.nameFromWorkspaceDir(dir);
-          if (!name) continue;
-          const meta: WorkspaceProjectMeta = {
-            version: 1,
-            id:
-              typeof parsed.id === 'string' && parsed.id ? parsed.id : v4(),
-            name,
-            folder: '',
-          };
-          await backend.writeFile(metaPath, JSON.stringify(meta));
-          console.warn(
-            `[workspace 스캔] meta.json 을 ${f} 에서 재구성: ${dir} → ${name}`,
-          );
-          return meta;
-        }
-      } catch (e) {}
+        return meta;
+      } else {
+        bodyReadButUnparsable = true;
+      }
     }
-    // 3) 본문이 존재하지만 파싱 불가 — 폴더명에서 이름 유추(최후 수단)
+    // 3) 본문을 실제로 읽었는데 파싱 불가 — 폴더명에서 이름 유추(최후 수단).
+    // 읽기 자체가 실패한 경우는 여기로 오지 않는다(위 주석 참조).
     try {
-      const hasBody =
-        (await backend.existFile(workspacePath(dir, PROJECT_JSON_FILE))) ||
-        (await backend.existFile(
-          workspacePath(dir, PROJECT_JSON_FILE + '.deleted'),
-        ));
-      if (hasBody) {
+      if (bodyReadButUnparsable) {
         const name = this.nameFromWorkspaceDir(dir);
         if (name) {
           const meta: WorkspaceProjectMeta = {
             version: 1,
             id: v4(),
             name,
-            folder: '',
+            folder: this.folderMap[name] ?? '',
           };
           await backend.writeFile(metaPath, JSON.stringify(meta));
           console.warn(
@@ -1404,6 +1417,8 @@ export class SessionService extends ResourceSyncService<Session> {
   // 이름변경 시 사이드카(즐겨찾기·썸네일·북마크·휴지통·용량·템플릿) 키 이관.
   // 구/신 배치 공통 — 사이드카는 논리 이름(키) 기준이라 배치와 무관하다.
   private async migrateRenameSidecars(oldName: string, newName: string) {
+    // 실행 중 예약의 씬 통계 키 이관 — 안 하면 씬 카드 예약 배지가 0으로 사라짐
+    taskQueueService.onRenameProject(oldName, newName);
     // 이하 메타데이터 마이그레이션 (이름변경은 이미 완료)
     if (this.favorites.has(oldName)) {
       this.favorites.delete(oldName);
@@ -2685,6 +2700,8 @@ export const renameScene = async (
     }
     session.scenes = rebuilt as any;
   });
+  // 실행 중 예약의 씬 통계 키 이관 — 안 하면 씬 카드 예약 배지가 0으로 사라짐
+  taskQueueService.onRenameScene(session.name, 'scene', oldName, newName);
 };
 
 // 씬 병합: sourceName 씬을 기존 targetName 씬으로 합친다.

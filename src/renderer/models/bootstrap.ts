@@ -23,7 +23,7 @@ import { persistService } from './PersistenceService';
 import { runMobilePermissionOnboarding } from './mobilePermissions';
 import { waitForStorageAccess } from './storagePermissionGate';
 import { migrationService } from './MigrationService';
-import { setWorkspaceLayoutActive, STORAGE_MARKER_FILE } from './storageLayout';
+import { setWorkspaceLayoutActive } from './storageLayout';
 import { WORKSPACE_ROOT } from './projectPaths';
 import type { Session } from './types';
 
@@ -240,7 +240,9 @@ export async function bootstrapApp(): Promise<void> {
       const migrationAllowed =
         !saveLocFallback && taskQueueService.isGenerationHost;
       if (!migrationAllowed) {
-        if (await backend.existFile(STORAGE_MARKER_FILE)) {
+        // 강화 판정(읽기+파싱 재확인) — 단독 existFile 이 일시 IO 오류로 false 를
+        // 주면 이 창만 구 배치로 부팅해 호스트 창과 배치 인식이 갈라진다.
+        if (await migrationService.robustMarkerExists()) {
           setWorkspaceLayoutActive(true);
         }
       } else {

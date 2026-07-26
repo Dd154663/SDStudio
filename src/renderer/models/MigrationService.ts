@@ -204,19 +204,23 @@ class MigrationService {
 
   private choiceResolver: ((c: MigrationChoice) => void) | undefined;
 
+  // 마커 존재 판정(강화판) — existFile 은 모든 오류를 false 로 삼킨다(양 플랫폼
+  // 공통). 마커가 실제로 있는데 일시 IO 오류로 못 본 오판을, 실제 내용
+  // 읽기+파싱으로 한 번 더 확인한다. detect() 와 bootstrap 의 보조 창/폴백
+  // 우회 분기가 공용한다(단독 existFile 판정이면 창 간 배치 인식이 갈라진다).
+  async robustMarkerExists(): Promise<boolean> {
+    if (await backend.existFile(STORAGE_MARKER_FILE)) return true;
+    try {
+      const raw = JSON.parse(await backend.readFile(STORAGE_MARKER_FILE));
+      return !!raw && typeof raw.storageVersion === 'number';
+    } catch (e) {
+      return false;
+    }
+  }
+
   // ── 판정 ──
   async detect(): Promise<'none' | 'fresh' | 'legacy'> {
-    this.markerExists = await backend.existFile(STORAGE_MARKER_FILE);
-    if (!this.markerExists) {
-      // existFile 은 모든 오류를 false 로 삼킨다(양 플랫폼 공통) — 마커가 실제로
-      // 있는데 일시 IO 오류로 못 본 오판을, 실제 내용 읽기+파싱으로 한 번 더 확인.
-      try {
-        const raw = JSON.parse(await backend.readFile(STORAGE_MARKER_FILE));
-        if (raw && typeof raw.storageVersion === 'number') {
-          this.markerExists = true;
-        }
-      } catch (e) {}
-    }
+    this.markerExists = await this.robustMarkerExists();
     // 옵트아웃("다시 알리지 않음") + 마커 없음 = 구 배치 계속 사용 확정 상태.
     // 게이트도 이동도 없으므로 값비싼 projects/ 전체 스캔(직후 sessionService.init
     // 스캔과 중복)을 건너뛴다 — 옵트아웃 사용자의 매 부팅 비용 제거.
@@ -602,14 +606,13 @@ class MigrationService {
     const out: FileEntry[] = [];
     let totalBytes = 0;
     const walk = async (relDir: string): Promise<void> => {
-      let names: string[];
-      let stats: { name: string; size: number }[];
-      try {
-        names = await backend.listFiles(relDir);
-        stats = await backend.listFilesWithStats(relDir);
-      } catch (e) {
-        return; // 폴더 없음 — 건너뜀
-      }
+      // 폴더 부재는 listFiles/listFilesWithStats 가 [] 로 흡수한다(양 플랫폼 공통
+      // 계약). 그 외 실오류(권한/일시 IO)는 여기서 삼키지 않고 전파한다 — 삼키면
+      // 그 디렉터리의 파일이 목록·용량 실측에서 통째로 빠진 "불완전 백업 tar"가
+      // 조용히 완성되고, findReusableBackup 이 다음 부팅마다 그것을 재사용한다.
+      const names: string[] = await backend.listFiles(relDir);
+      const stats: { name: string; size: number }[] =
+        await backend.listFilesWithStats(relDir);
       const fileSet = new Set(stats.map((s) => s.name));
       for (const s of stats) {
         const rel = relDir + '/' + s.name;
@@ -630,16 +633,15 @@ class MigrationService {
     for (const root of MigrationService.BACKUP_EXTRA_ROOTS) {
       await walk(root);
     }
-    // 루트 직하 사이드카 json(favorites/bookmarks/trash/… 무변경 대상)
-    try {
-      const rootStats = await backend.listFilesWithStats('');
-      for (const s of rootStats) {
-        if (s.name.endsWith('.json')) {
-          out.push({ name: s.name, path: s.name });
-          totalBytes += s.size || 0;
-        }
+    // 루트 직하 사이드카 json(favorites/bookmarks/trash/… 무변경 대상).
+    // 실오류는 전파(walk 와 동일 이유 — 사이드카 누락 백업을 조용히 완성하지 않음).
+    const rootStats = await backend.listFilesWithStats('');
+    for (const s of rootStats) {
+      if (s.name.endsWith('.json')) {
+        out.push({ name: s.name, path: s.name });
+        totalBytes += s.size || 0;
       }
-    } catch (e) {}
+    }
     return { entries: out, totalBytes };
   }
 
@@ -678,6 +680,17 @@ class MigrationService {
 
       try {
         let led = ledger.projects[key];
+        // 동명 활성(.json)+소프트삭제(.deleted)는 서로 다른 파일인데 키가 같다 —
+        // 그대로 두면 (a) 소프트삭제가 "되살아난 항목"으로 오판돼 moveImages 가
+        // 강제 true 가 되어 attachCopy(레퍼런스/바이브 복사)를 영영 건너뛰고,
+        // (b) 활성이 failed 상태면 소프트삭제가 원장 항목 없이 영구 비가시가 된다.
+        // deleted 상태가 어긋나면 전용 접미 키로 분리한다(충돌 없는 기존 원장의
+        // 키는 그대로 유지 — 중단 재개 호환). 접미 구분자는 ledgerKey 와 동일한
+        // NUL(u0000) — 파일명에 올 수 없어 실제 프로젝트명과 충돌 불가.
+        if (led && led.deleted !== raw.deleted) {
+          key = key + '\u0000' + (raw.deleted ? 'del' : 'act');
+          led = ledger.projects[key];
+        }
         if (led && led.state === 'done') {
           // 원장은 완료인데 원본 json 이 다시 존재하는 경우(구버전 다운그레이드
           // 왕복·백업 수동 복원) — 그냥 건너뛰면 그 데이터는 영구히 안 보인다.

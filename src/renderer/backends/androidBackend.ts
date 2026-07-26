@@ -514,12 +514,26 @@ export class AndroidBackend extends Backend {
     return (await TagDB.search(args)).results;
   }
 
+  // Capacitor Filesystem 오류 중 "대상 부재"(ENOENT 상당) 판별.
+  // listFiles/listFilesWithStats 의 전 앱 공통 계약은 "부재→[], 실오류(권한 등)→throw"
+  // (데스크톱 main.ts 핸들러와 동일). 종전엔 stats 가 모든 오류를 [] 로 삼켜
+  // 백업 목록/용량 실측에서 파일이 통째로 누락돼도(불완전 tar) 조용히 지나갔다.
+  private isNotFoundError(e: any): boolean {
+    const msg = String(e?.message ?? e ?? '');
+    return /does not exist|ENOENT|no such file/i.test(msg);
+  }
+
   async listFiles(arg: string): Promise<string[]> {
-    const { files } = await Filesystem.readdir({
-      path: `${APP_DIR}/${arg}`,
-      directory: Directory.Documents,
-    });
-    return files.map((x) => x.name);
+    try {
+      const { files } = await Filesystem.readdir({
+        path: `${APP_DIR}/${arg}`,
+        directory: Directory.Documents,
+      });
+      return files.map((x) => x.name);
+    } catch (e) {
+      if (this.isNotFoundError(e)) return [];
+      throw e;
+    }
   }
 
   async listFilesWithStats(arg: string): Promise<any[]> {
@@ -535,8 +549,9 @@ export class AndroidBackend extends Backend {
           size: x.size ?? 0,
           mtime: x.mtime ?? 0,
         }));
-    } catch {
-      return [];
+    } catch (e) {
+      if (this.isNotFoundError(e)) return [];
+      throw e;
     }
   }
 

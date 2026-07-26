@@ -293,7 +293,10 @@ export class TrashService extends EventTarget {
     session: Session,
     onProgress?: (deletedImages: number) => void,
   ): Promise<{ deleted: number; failed: number }> {
-    let total = 0;
+    // 진행 통지(onProgress)는 "시도 누계" 기준 — 성공 누계를 오프셋으로 쓰면
+    // 실패가 섞였을 때 다음 씬에서 진행바가 뒤로 갔다가 total 에 못 미친다.
+    let attempted = 0;
+    let deleted = 0;
     let failed = 0;
     const allScenes: GenericScene[] = [
       ...session.getScenes('scene'),
@@ -302,18 +305,19 @@ export class TrashService extends EventTarget {
     for (const scene of allScenes) {
       const items = await this.getTrashImages(session, scene);
       if (items.length > 0) {
-        const base = total;
+        const base = attempted;
         const f = await this.permanentlyDeleteImages(
           session,
           scene,
           items.map((i) => i.filename),
           (done) => onProgress?.(base + done),
         );
+        attempted += items.length;
         failed += f;
-        total += items.length - f;
+        deleted += items.length - f;
       }
     }
-    return { deleted: total, failed };
+    return { deleted, failed };
   }
 
   // ===== Scene trash =====

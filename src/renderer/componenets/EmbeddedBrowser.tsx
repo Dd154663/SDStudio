@@ -188,6 +188,15 @@ const DesktopBrowser: React.FC = () => {
       noteNavAndMaybeRecover();
     };
 
+    // in-page 네비게이션(SPA pushState — 무한 스크롤 갤러리 등)은 루프 카운터에
+    // 넣지 않는다: Cloudflare 챌린지 루프는 전체 페이지 네비게이션으로 나타나며,
+    // in-page 를 세면 정상 사용 중 자동 reload 가 발동해 스크롤·입력 상태를 날린다.
+    const onNavigateInPage = (e: any) => {
+      setUrl(e.url);
+      setInputUrl(e.url);
+      updateNavState();
+    };
+
     const onStartLoading = () => {
       setLoading(true);
       // 로딩이 다시 시작되면(챌린지 루프 지속 포함) 안정화 리셋을 취소한다 —
@@ -213,11 +222,14 @@ const DesktopBrowser: React.FC = () => {
 
     const onFailLoad = (e: any) => {
       if (e.errorCode === -3) return;
+      // 서브프레임(광고/외부 위젯 iframe) 실패는 세지 않는다 — 메인 문서와
+      // 무관한 다발 실패로 자동 reload 가 오발동하는 것을 막는다.
+      if (e.isMainFrame === false) return;
       noteNavAndMaybeRecover();
     };
 
     wv.addEventListener('did-navigate', onNavigate);
-    wv.addEventListener('did-navigate-in-page', onNavigate);
+    wv.addEventListener('did-navigate-in-page', onNavigateInPage);
     wv.addEventListener('did-start-loading', onStartLoading);
     wv.addEventListener('did-stop-loading', onStopLoading);
     wv.addEventListener('new-window', onNewWindow);
@@ -225,7 +237,7 @@ const DesktopBrowser: React.FC = () => {
 
     return () => {
       wv.removeEventListener('did-navigate', onNavigate);
-      wv.removeEventListener('did-navigate-in-page', onNavigate);
+      wv.removeEventListener('did-navigate-in-page', onNavigateInPage);
       wv.removeEventListener('did-start-loading', onStartLoading);
       wv.removeEventListener('did-stop-loading', onStopLoading);
       wv.removeEventListener('new-window', onNewWindow);
@@ -263,6 +275,12 @@ const DesktopBrowser: React.FC = () => {
     if (wv) {
       navTimesRef.current = [];
       autoRetryRef.current = 0;
+      // 대기 중인 자동 재시도 취소 — 안 하면 200ms 뒤 reload() 가 마지막 커밋
+      // URL(루프 중이던 옛 페이지)을 다시 불러 사용자의 이동을 되돌린다.
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
       setLoopBlocked(false);
       wv.loadURL(finalUrl);
     }

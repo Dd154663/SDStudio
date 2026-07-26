@@ -637,6 +637,58 @@ export class TaskQueueService extends EventTarget {
     return { done, total };
   }
 
+  // 씬 통계 키 이관 — 쓰기(추가/제거/진행)는 예약 시점에 고정한 task.sceneKey 를
+  // 쓰지만 읽기(statsTasksFromScene)는 현재 이름으로 키를 재계산한다. 씬/프로젝트
+  // 이름 변경 시 키를 함께 옮기지 않으면 실행 중 예약의 씬 카드 배지가 0으로
+  // 사라진다(통계는 옛 키 버킷에 잔류). remap 이 null 이면 해당 키 유지.
+  private rekeySceneStats(remap: (key: string) => string | null) {
+    let changed = false;
+    for (const key of Object.keys(this.sceneStats)) {
+      const nk = remap(key);
+      if (!nk || nk === key) continue;
+      const src = this.sceneStats[key];
+      const dst = this.sceneStats[nk];
+      if (dst) {
+        dst.done += src.done;
+        dst.total += src.total;
+      } else {
+        this.sceneStats[nk] = src;
+      }
+      delete this.sceneStats[key];
+      changed = true;
+    }
+    // 큐 내 태스크의 고정 키도 함께 갱신 — 이후 제거/진행 감산이 새 버킷에 적용
+    for (const task of this.queue) {
+      if (!task?.sceneKey) continue;
+      const nk = remap(task.sceneKey);
+      if (nk && nk !== task.sceneKey) {
+        task.sceneKey = nk;
+        changed = true;
+      }
+    }
+    if (changed) this.dispatchProgress();
+  }
+
+  // 씬 이름 변경 반영 (renameScene 에서 호출)
+  onRenameScene(
+    sessionName: string,
+    sceneType: 'scene' | 'inpaint',
+    oldName: string,
+    newName: string,
+  ) {
+    const oldKey = sessionName + '/' + sceneType + '/' + oldName;
+    const newKey = sessionName + '/' + sceneType + '/' + newName;
+    this.rekeySceneStats((k) => (k === oldKey ? newKey : null));
+  }
+
+  // 프로젝트 이름 변경 반영 (SessionService 프로젝트 rename 에서 호출)
+  onRenameProject(oldName: string, newName: string) {
+    const prefix = oldName + '/';
+    this.rekeySceneStats((k) =>
+      k.startsWith(prefix) ? newName + '/' + k.slice(prefix.length) : null,
+    );
+  }
+
   dispatchProgress() {
     this.dispatchEvent(new CustomEvent('progress', {}));
     // 호스트: 큐 변경을 보조 창들에 미러(스로틀). 보조 창 0개면 완전 생략.

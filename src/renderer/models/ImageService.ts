@@ -8,6 +8,7 @@ import {
   trashService,
 } from '.';
 import { platform } from './platform';
+import { getAppState } from './appStateRef';
 import { GenericScene, InpaintScene, Scene, Session } from './types';
 import { assert } from './util';
 import { isOutputImageFile } from './imageFormats';
@@ -982,7 +983,9 @@ export function toggleImageMain(
   setImageMain(session, scene, filename, !scene.mains.includes(filename));
 }
 
-// 반환값: 삭제(휴지통 이동)에 실패한 파일 수 — 호출부가 사용자 알림에 사용.
+// 반환값: 삭제(휴지통 이동)에 실패한 파일 수.
+// 실패 통지는 여기서 직접 한다 — 호출부 10여 곳이 반환값을 버려 실패가 무통지로
+// 삼켜지던 문제(2026-07-26). appState 는 순환 import 회피를 위해 getAppState() 경유.
 export const deleteImageFiles = async (
   curSession: Session,
   paths: string[],
@@ -1004,6 +1007,13 @@ export const deleteImageFiles = async (
       // 중간에 예외가 나도 목록 재로딩은 반드시 수행 — 안 하면 삭제된
       // 이미지가 화면에 그대로 남는다.
       await imageService.refresh(curSession, scene);
+    }
+    if (failed > 0) {
+      try {
+        getAppState().pushMessage(
+          failed + '장의 이미지를 삭제하지 못했습니다. 잠시 후 다시 시도해주세요.',
+        );
+      } catch (e) {}
     }
     return failed;
   } else {
