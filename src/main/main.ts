@@ -407,6 +407,15 @@ ipcMain.handle('show-file', async (event, arg) => {
   shell.showItemInFolder(filePath);
 });
 
+// 폴더를 OS 파일 탐색기로 연다(내용물 표시 — show-file 은 부모에서 선택만 함).
+// 프로젝트 우클릭 "파일 탐색기에서 열기"용. shell.openPath 는 실패 시 throw 대신
+// 오류 문자열을 반환하므로 명시적으로 승격한다.
+ipcMain.handle('open-path', async (event, arg) => {
+  const target = path.isAbsolute(arg) ? arg : path.join(APP_DIR, arg);
+  const err = await shell.openPath(target);
+  if (err) throw new Error(err);
+});
+
 const AdmZip = require('adm-zip');
 
 const fsSync = require('fs');

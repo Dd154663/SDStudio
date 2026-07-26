@@ -131,6 +131,10 @@ export class ElectornBackend extends Backend {
     await invoke('show-file', arg);
   }
 
+  async openPath(arg: string): Promise<void> {
+    await invoke('open-path', arg);
+  }
+
   async copyToDownloads(path: string): Promise<void> {
     return;
   }

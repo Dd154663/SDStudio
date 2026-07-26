@@ -28,6 +28,7 @@ import {
   FaUnlink,
   FaCalendarPlus,
   FaWindowRestore,
+  FaFolderOpen,
 } from 'react-icons/fa';
 import {
   sessionService,
@@ -53,6 +54,8 @@ import {
   ReapplyTemplateModal,
 } from './TemplateInheritModals';
 import { TemplateManagerModal } from './TemplateManagerModal';
+import { isWorkspaceLayout, physicalDirOf } from '../models/storageLayout';
+import { workspacePath } from '../models/projectPaths';
 // 폴더 색상 팔레트 (hex, 단일 출처 folderColors.ts). 미지정 폴더는 기본색을 사용한다.
 import {
   FOLDER_COLORS,
@@ -1404,6 +1407,21 @@ const ProjectDrawer = observer(() => {
     setEditProjectValue(name);
   };
 
+  // 프로젝트 물리 폴더를 OS 파일 탐색기로 연다(PC 전용). 신 배치=workspace/<dir>,
+  // 구 배치는 프로젝트 단일 폴더가 없으므로 데이터 루트를 연다.
+  const handleProjectOpenInExplorer = async (name: string) => {
+    let rel = '';
+    if (isWorkspaceLayout()) {
+      const dir = physicalDirOf(name);
+      if (dir) rel = workspacePath(dir);
+    }
+    try {
+      await backend.openPath(rel);
+    } catch (e: any) {
+      appState.pushMessage('파일 탐색기 열기에 실패했습니다: ' + (e?.message || e));
+    }
+  };
+
   const commitProjectRename = async () => {
     const old = editingProject;
     const newName = editProjectValue.trim();
@@ -2317,6 +2335,20 @@ const ProjectDrawer = observer(() => {
                   <FaWindowRestore size={14} />
                 </button>
               </Tooltip>
+              {/* 파일 탐색기에서 열기 (PC 전용 — 모바일 롱프레스 툴바에선 숨김) */}
+              {!isMobile && (
+                <Tooltip content="파일 탐색기에서 열기">
+                  <button
+                    onClick={() => {
+                      handleProjectOpenInExplorer(toolbar.name);
+                      setToolbar(null);
+                    }}
+                    className="btn-ghost p-2 rounded-md text-faint hover:text-yellow-500"
+                  >
+                    <FaFolderOpen size={14} />
+                  </button>
+                </Tooltip>
+              )}
               <Tooltip content="내보내기/불러오기">
                 <button
                   onClick={() => {

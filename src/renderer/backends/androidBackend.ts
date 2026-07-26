@@ -326,6 +326,10 @@ export class AndroidBackend extends Backend {
     return res;
   }
 
+  async openPath(arg: string): Promise<void> {
+    // 모바일은 OS 파일 탐색기 열기 미지원 — no-op (호출 UI 는 PC 전용 게이트)
+  }
+
   async showFile(arg: string): Promise<void> {
     const { appState } = require('../models/AppService');
     const urlRes = await Filesystem.getUri({

@@ -2,19 +2,25 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { observer } from 'mobx-react-lite';
 import { v4 as uuidv4 } from 'uuid';
 import { appState } from '../models/AppService';
-import { backend } from '../models';
+import {
+  backend,
+  sessionService,
+  globalPresetService,
+  globalCharacterPresetService,
+} from '../models';
+import { renameScene } from '../models/SessionService';
 import ModalOverlay from './ModalOverlay';
 import { FaSearch, FaExchangeAlt, FaPlus } from 'react-icons/fa';
 import { Scene, CharacterPreset, PromptPiece } from '../models/types';
 
-/** 검색 결과 한 건 */
+/** 검색 결과 한 건. setText 가 false 를 반환하면 "건너뜀"(이름 충돌·차단 등). */
 interface SearchResult {
   location: string;
   getText: () => string;
-  setText: (v: string) => void;
+  setText: (v: string) => void | boolean | Promise<void | boolean>;
 }
 
-type SearchScope = 'scene' | 'character' | 'preset';
+type SearchScope = 'scene' | 'character' | 'preset' | 'global' | 'sceneNames' | 'projectName';
 
 function collectResults(
   query: string,
@@ -114,6 +120,106 @@ function collectResults(
     }
   }
 
+  // 글로벌 프리셋(그림체) + 글로벌 캐릭터 프리셋 — 프로젝트(씬 선택)와 무관.
+  // 변환 시 updatedAt 을 올리고 저장을 예약한다(글로벌은 세션 자동 저장 밖의
+  // 별도 스토어). updatedAt 갱신으로 링크된 로컬 사본도 다음 적용 때 동기화된다.
+  if (scopes.global) {
+    for (const entry of globalCharacterPresetService.presets) {
+      const p = entry.preset as any;
+      const touch = () => {
+        entry.updatedAt = Date.now();
+        globalCharacterPresetService.presets = [
+          ...globalCharacterPresetService.presets,
+        ];
+        globalCharacterPresetService.scheduleSave();
+        globalCharacterPresetService.dispatchEvent(new CustomEvent('changed', {}));
+      };
+      const fields: [string, string][] = [
+        ['characterPrompt', '캐릭터 프롬프트'],
+        ['characterUC', '캐릭터 UC'],
+        ['backgroundPrompt', '배경 프롬프트'],
+      ];
+      for (const [key, label] of fields) {
+        if (typeof p[key] === 'string' && p[key].includes(q)) {
+          results.push({
+            location: `[글로벌 캐릭터: ${entry.name}] ${label}`,
+            getText: () => p[key],
+            setText: (v) => { p[key] = v; touch(); },
+          });
+        }
+      }
+    }
+    for (const entry of globalPresetService.presets) {
+      const p = (entry.preset || {}) as any;
+      const touch = () => {
+        entry.updatedAt = Date.now();
+        globalPresetService.presets = [...globalPresetService.presets];
+        globalPresetService.scheduleSave();
+        globalPresetService.dispatchEvent(new CustomEvent('changed', {}));
+      };
+      const fields: [string, string][] = [
+        ['frontPrompt', '상위 프롬프트'],
+        ['backPrompt', '하위 프롬프트'],
+        ['uc', '네거티브 프롬프트'],
+      ];
+      for (const [key, label] of fields) {
+        if (typeof p[key] === 'string' && p[key].includes(q)) {
+          results.push({
+            location: `[글로벌 프리셋: ${entry.name}] ${label}`,
+            getText: () => p[key],
+            setText: (v) => { p[key] = v; touch(); },
+          });
+        }
+      }
+    }
+  }
+
+  // 이름 검색 — 씬 이름들 먼저, 프로젝트 이름은 맨 마지막(내용 변환이 모두 끝난
+  // 뒤에 프로젝트 rename 이 실행되도록 순서 보장). 변환 = 실제 이름변경이라
+  // 빈 이름/동명 충돌/창 간 잠금이면 건너뛴다(setText 가 false 반환).
+  if (scopes.sceneNames) {
+    for (const scene of session.scenes.values()) {
+      if (hasFilter && !selectedScenes!.has(scene.name)) continue;
+      const sceneName = scene.name;
+      if (!sceneName.includes(q)) continue;
+      results.push({
+        location: `[씬 이름] ${sceneName}`,
+        getText: () => sceneName,
+        setText: async (v) => {
+          const nm = v.trim();
+          if (!nm || nm === sceneName) return false;
+          if (session.scenes.has(nm)) return false; // 동명 충돌 — 건너뜀
+          await renameScene(session, sceneName, nm);
+          return session.scenes.has(nm); // 창 간 잠금 차단 시 false
+        },
+      });
+    }
+  }
+  if (scopes.projectName) {
+    const projName = session.name;
+    if (projName.includes(q)) {
+      results.push({
+        location: `[프로젝트 이름] ${projName}`,
+        getText: () => projName,
+        setText: async (v) => {
+          const nm = v.trim();
+          if (!nm || nm === projName) return false;
+          if (sessionService.list().includes(nm)) return false; // 동명 충돌
+          await sessionService.get(projName);
+          try {
+            await sessionService.renameProject(projName, nm);
+          } catch (e) {
+            console.error('프로젝트 이름 변환 실패:', e);
+            return false;
+          }
+          const sess = sessionService.getLoaded(nm);
+          if (sess) sess.name = nm;
+          return true;
+        },
+      });
+    }
+  }
+
   return results;
 }
 
@@ -150,10 +256,14 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
 
   const [searchText, setSearchText] = useState('');
   const [replaceText, setReplaceText] = useState('');
-  const [scopes, setScopes] = useState<Record<SearchScope, boolean>>({ scene: true, character: true, preset: false });
+  const [scopes, setScopes] = useState<Record<SearchScope, boolean>>({ scene: true, character: true, preset: false, global: false, sceneNames: false, projectName: false });
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searched, setSearched] = useState(false);
   const [replaceComplete, setReplaceComplete] = useState<number | null>(null);
+  const [replaceSkipped, setReplaceSkipped] = useState(0);
+  // 공백 검색: 검색어를 trim 하지 않고 그대로 사용 — 공백만으로도 검색/변환 가능
+  // (예: 공백 → 언더스코어 일괄 치환)
+  const [wsSearch, setWsSearch] = useState(false);
   const [selectedScenes, setSelectedScenes] = useState<Set<string>>(() => new Set(sceneList));
   const [sceneFilter, setSceneFilter] = useState('');
 
@@ -192,22 +302,37 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
     setSearched(false); setResults([]); setReplaceComplete(null);
   };
 
+  // 공백 검색 모드면 공백만으로도 검색 허용(trim 가드 해제)
+  const canSearch = wsSearch ? searchText.length > 0 : !!searchText.trim();
+
   const doSearch = useCallback(() => {
-    if (!searchText.trim()) return;
+    if (!(wsSearch ? searchText.length > 0 : searchText.trim())) return;
     setResults(collectResults(searchText, scopes, selectedScenes));
     setSearched(true);
     setReplaceComplete(null);
-  }, [searchText, scopes, selectedScenes]);
+    setReplaceSkipped(0);
+  }, [searchText, scopes, selectedScenes, wsSearch]);
 
-  const doReplaceAll = useCallback(() => {
+  const doReplaceAll = useCallback(async () => {
     if (results.length === 0) return;
     let replaced = 0;
+    let skipped = 0;
+    // 이름 변환(씬/프로젝트 rename)은 비동기 — 순차 await 로 안전하게 처리
     for (const r of results) {
       const cur = r.getText();
       const next = cur.replaceAll(searchText, replaceText);
-      if (cur !== next) { r.setText(next); replaced++; }
+      if (cur === next) continue;
+      try {
+        const ok = await r.setText(next);
+        if (ok === false) skipped++;
+        else replaced++;
+      } catch (e) {
+        console.error('변환 실패:', r.location, e);
+        skipped++;
+      }
     }
     setReplaceComplete(replaced);
+    setReplaceSkipped(skipped);
     setResults(collectResults(searchText, scopes, selectedScenes));
     setSearched(true);
   }, [results, searchText, replaceText, scopes, selectedScenes]);
@@ -219,7 +344,7 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="text-sm font-medium text-gray-700 dark:text-gray-300 flex-none">검색 범위:</span>
         <label className="flex items-center gap-1.5 cursor-pointer">
           <input type="checkbox" checked={scopes.scene} onChange={() => toggleScope('scene')} className="rounded line-color" />
@@ -232,6 +357,18 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
         <label className="flex items-center gap-1.5 cursor-pointer">
           <input type="checkbox" checked={scopes.preset} onChange={() => toggleScope('preset')} className="rounded line-color" />
           <span className="text-sm text-gray-700 dark:text-gray-300">캐릭터 프리셋</span>
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked={scopes.global} onChange={() => toggleScope('global')} className="rounded line-color" />
+          <span className="text-sm text-gray-700 dark:text-gray-300">글로벌 프리셋</span>
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked={scopes.sceneNames} onChange={() => toggleScope('sceneNames')} className="rounded line-color" />
+          <span className="text-sm text-gray-700 dark:text-gray-300">씬 이름</span>
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked={scopes.projectName} onChange={() => toggleScope('projectName')} className="rounded line-color" />
+          <span className="text-sm text-gray-700 dark:text-gray-300">프로젝트 이름</span>
         </label>
       </div>
 
@@ -264,14 +401,22 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" size={14} />
-          <input ref={searchInputRef} type="text" placeholder="검색어 입력..." value={searchText}
+          <input ref={searchInputRef} type="text" placeholder={wsSearch ? '검색어 입력 (공백 그대로 검색됨)...' : '검색어 입력...'} value={searchText}
             onChange={(e) => { setSearchText(e.target.value); setSearched(false); setReplaceComplete(null); }}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } }}
             className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
         </div>
-        <button onClick={doSearch} disabled={!searchText.trim()}
+        <button onClick={doSearch} disabled={!canSearch}
           className="px-4 py-2 rounded-lg btn-solid-sky disabled:bg-gray-300 dark:disabled:bg-gray-600 text-sm font-medium transition-colors flex-none">검색</button>
       </div>
+
+      <label className="flex items-center gap-1.5 cursor-pointer -mt-2">
+        <input type="checkbox" checked={wsSearch}
+          onChange={() => { setWsSearch(!wsSearch); setSearched(false); setResults([]); setReplaceComplete(null); }}
+          className="rounded line-color" />
+        <span className="text-sm text-gray-700 dark:text-gray-300">공백 검색</span>
+        <span className="text-xs text-faint">— 검색어의 공백을 그대로 사용 (공백만 검색해 다른 문자로 일괄 변환 가능)</span>
+      </label>
 
       {searched && (
         <div className="flex flex-col gap-2">
@@ -309,6 +454,9 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
           {replaceComplete !== null && (
             <div className="text-sm text-green-600 dark:text-green-400 font-medium">
               ✓ {replaceComplete}개 항목이 변환되었습니다{results.length > 0 && ` (잔여 ${results.length}개)`}
+              {replaceSkipped > 0 && (
+                <span className="text-amber-600 dark:text-amber-400"> — {replaceSkipped}개 건너뜀 (이름 충돌/빈 이름 등)</span>
+              )}
             </div>
           )}
         </div>
@@ -316,7 +464,8 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
 
       <div className="text-xs text-faint mt-1">
         선택한 씬의 텍스트를 검색하고 일괄 변환합니다.
-        캐릭터 프리셋은 씬 선택과 무관하며, '캐릭터 프리셋' 검색 범위를 끄면 제외됩니다.
+        캐릭터 프리셋·글로벌 프리셋은 씬 선택과 무관하며, 해당 검색 범위를 끄면 제외됩니다.
+        '씬 이름'/'프로젝트 이름' 범위의 변환은 실제 이름변경으로 실행되며, 동명 충돌 항목은 건너뜁니다.
       </div>
     </div>
   );

@@ -50,6 +50,8 @@ export abstract class Backend {
   abstract validateLogin(): Promise<LoginValidity>;
   abstract encodeVibeImage(arg: EncodeVibeImageInput): Promise<string>;
   abstract showFile(arg: string): Promise<void>;
+  // 폴더를 OS 파일 탐색기로 연다(내용물 표시). 데스크톱 전용 — 모바일은 no-op.
+  abstract openPath(arg: string): Promise<void>;
   abstract copyToDownloads(path: string): Promise<void>;
   abstract zipFiles(files: FileEntry[], outPath: string): Promise<void>;
   abstract unzipFiles(tarPath: string, outPath: string): Promise<void>;
