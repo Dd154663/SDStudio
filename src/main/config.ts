@@ -38,6 +38,10 @@ export interface Config {
   whiteMode?: boolean;
   disableQuality?: boolean;
   modelVersion?: ModelVersion;
+  /** NAI Undesired Content Preset — 생성 시 네거티브 앞에 병합되는 기본 프리셋.
+   *  모델별 제공 항목이 다르며(naiQualityPresets 단일 출처) 기본 'none' =
+   *  기존 사용자 결과 무변화(옵트인). */
+  ucPreset?: 'heavy' | 'light' | 'humanFocus' | 'furryFocus' | 'none';
   delayTime?: number;
   furryMode?: boolean;
   downloadSettings?: DownloadSettings;

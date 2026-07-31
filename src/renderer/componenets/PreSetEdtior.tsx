@@ -89,6 +89,13 @@ import Tooltip from './Tooltip';
 import ModalOverlay from './ModalOverlay';
 import { FaCloudUploadAlt } from 'react-icons/fa';
 import { ModelVersion } from '../backends/imageGen';
+import {
+  QUALITY_TAGS,
+  UcPresetKey,
+  effectiveUcPreset,
+  ucPresetOptionsFor,
+  ucPresetTextFor,
+} from '../backends/genVendors/naiQualityPresets';
 import { EditableSliderValue, VibeEditor, VibeButton, VibeImage } from './VibeEditor';
 import {
   CharacterReferenceEditor,
@@ -1205,6 +1212,7 @@ const GlobalModelSettings = observer(() => {
   const [modelVersion, setModelVersion] = useState<ModelVersion>(ModelVersion.V4_5);
   const [furryMode, setFurryMode] = useState(false);
   const [disableQuality, setDisableQuality] = useState(false);
+  const [ucPreset, setUcPreset] = useState<UcPresetKey>('none');
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -1213,6 +1221,7 @@ const GlobalModelSettings = observer(() => {
       setModelVersion(config.modelVersion ?? ModelVersion.V4_5);
       setFurryMode(config.furryMode ?? false);
       setDisableQuality(config.disableQuality ?? false);
+      setUcPreset((config.ucPreset as UcPresetKey) ?? 'none');
       setLoaded(true);
     })();
   }, []);
@@ -1262,19 +1271,51 @@ const GlobalModelSettings = observer(() => {
             퍼리 모드 켜기
           </label>
         </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="globalDisableQuality"
-            checked={disableQuality}
-            onChange={(e) => {
-              setDisableQuality(e.target.checked);
-              saveConfig({ disableQuality: e.target.checked });
+        {/* NAI 웹 패리티: Add Quality Tags — 켜면 생성 시 프롬프트 끝에 모델별
+            퀄리티 태그가 병합된다(프롬프트 입력칸은 그대로). 기존 disableQuality
+            설정의 역표기 — 키 유지로 기존 사용자 설정 그대로 승계. */}
+        <div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="globalAddQuality"
+              checked={!disableQuality}
+              onChange={(e) => {
+                setDisableQuality(!e.target.checked);
+                saveConfig({ disableQuality: !e.target.checked });
+              }}
+            />
+            <label htmlFor="globalAddQuality" className="text-sm gray-label">
+              퀄리티 태그 추가 (Add Quality Tags)
+            </label>
+          </div>
+          {!disableQuality && (
+            <div className="text-xs text-faint mt-1 ml-6 break-all">
+              프롬프트 끝에 추가: {QUALITY_TAGS[modelVersion]?.replace(/^, /, '')}
+            </div>
+          )}
+        </div>
+        {/* NAI 웹 패리티: Undesired Content Preset — 생성 시 네거티브 프롬프트
+            앞에 모델별 프리셋 텍스트가 병합된다. 기본 '없음' = 기존 결과 무변화. */}
+        <div>
+          <label className="text-sm gray-label mb-1 block">
+            네거티브 프리셋 (Undesired Content Preset)
+          </label>
+          <DropdownSelect
+            selectedOption={effectiveUcPreset(modelVersion, ucPreset)}
+            menuPlacement="auto"
+            options={ucPresetOptionsFor(modelVersion)}
+            onSelect={(opt) => {
+              setUcPreset(opt.value as UcPresetKey);
+              saveConfig({ ucPreset: opt.value });
             }}
           />
-          <label htmlFor="globalDisableQuality" className="text-sm gray-label">
-            NAI 자동 퀄리티 태그 비활성화
-          </label>
+          {effectiveUcPreset(modelVersion, ucPreset) !== 'none' && (
+            <div className="text-xs text-faint mt-1 break-all">
+              네거티브 앞에 추가:{' '}
+              {ucPresetTextFor(modelVersion, ucPreset)}
+            </div>
+          )}
         </div>
       </div>
     </div>

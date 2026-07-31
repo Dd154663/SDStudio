@@ -16,6 +16,11 @@ import { Buffer } from 'buffer';
 import libsodium_wrappers_sumo_1 from 'libsodium-wrappers-sumo';
 import { getImageDimensions } from '../../componenets/BrushTool';
 import { backend } from '../../models';
+import {
+  mergeQualityTags,
+  mergeUcPreset,
+  ucPresetApiIndex,
+} from './naiQualityPresets';
 
 export interface NovelAiFetcher {
   fetchArrayBuffer(url: string, body: any, headers: any): Promise<ArrayBuffer>;
@@ -140,10 +145,19 @@ export class NovelAiImageGenService implements ImageGenService {
 
     const config = await this.getCachedConfig();
 
-    const modelValue = this.translateModel(
-      params.model,
-      config.modelVersion ?? ModelVersion.V4_5,
+    const modelVersionValue: ModelVersion =
+      config.modelVersion ?? ModelVersion.V4_5;
+    const modelValue = this.translateModel(params.model, modelVersionValue);
+
+    // NAI 웹 패리티(2026-07-31): 퀄리티 태그/UC 프리셋은 API 필드가 아니라
+    // 클라이언트가 텍스트를 병합해야 실제 반영된다(qualityToggle/ucPreset 은
+    // 메타데이터 전용). 프롬프트 끝에 퀄리티 태그, 네거티브 앞에 UC 프리셋.
+    const finalPrompt = mergeQualityTags(
+      params.prompt,
+      modelVersionValue,
+      config.disableQuality ? false : true,
     );
+    const finalUc = mergeUcPreset(params.uc, modelVersionValue, config.ucPreset);
 
     // 시드 미지정 시 랜덤 — NAI 시드 공간은 32비트 전체(최대 4,294,967,295).
     // 과거 상한 2,100,000,000 은 임의 제한이라 제거(2026-07-25).
@@ -163,7 +177,7 @@ export class NovelAiImageGenService implements ImageGenService {
     }
     const url = this.apiEndpoint;
     const body: any = {
-      input: params.prompt,
+      input: finalPrompt,
       model: modelValue,
       action: action,
       parameters: {
@@ -179,8 +193,8 @@ export class NovelAiImageGenService implements ImageGenService {
         noise: params.noise,
         seed: seed,
         n_samples: 1,
-        ucPreset: 0,
-        negative_prompt: params.uc,
+        ucPreset: ucPresetApiIndex(modelVersionValue, config.ucPreset),
+        negative_prompt: finalUc,
         strength: params.imageStrength,
         qualityToggle: config.disableQuality ? false : true,
         characterPrompts: [],
@@ -198,7 +212,7 @@ export class NovelAiImageGenService implements ImageGenService {
         skip_cfg_above_sigma: null,
         v4_prompt: {
           caption: {
-            base_caption: params.prompt,
+            base_caption: finalPrompt,
             char_captions: [],
           },
           use_coords: params.useCoords,
@@ -206,7 +220,7 @@ export class NovelAiImageGenService implements ImageGenService {
         },
         v4_negative_prompt: {
           caption: {
-            base_caption: params.uc,
+            base_caption: finalUc,
             char_captions: [],
           },
           legacy_uc: params.legacyPromptConditioning,
