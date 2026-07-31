@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   appUpdateNoticeService,
   backend,
@@ -40,6 +40,8 @@ import {
   FaSlidersH,
   FaThLarge,
   FaColumns,
+  FaChevronLeft,
+  FaChevronRight,
 } from 'react-icons/fa';
 import { keyboardShortcutService, KeyboardShortcutService } from '../models/KeyboardShortcutService';
 import { migrationService } from '../models/MigrationService';
@@ -2329,6 +2331,31 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const { curSession } = appState;
   const [activeTab, setActiveTab] = useState(0);
 
+  // 모바일 탭 바 가로 스크롤 힌트 — 각 방향에 가려진 탭이 있을 때만 양 끝에
+  // 옅은 화살표를 띄운다(스크롤 가능함을 알리는 표시 전용, 클릭 무반응).
+  const tabBarRef = useRef<HTMLDivElement | null>(null);
+  const [tabScrollHint, setTabScrollHint] = useState({
+    left: false,
+    right: false,
+  });
+  const updateTabScrollHint = useCallback(() => {
+    const el = tabBarRef.current;
+    if (!el) return;
+    const left = el.scrollLeft > 2;
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+    setTabScrollHint((prev) =>
+      prev.left === left && prev.right === right ? prev : { left, right },
+    );
+  }, []);
+  useEffect(() => {
+    updateTabScrollHint();
+    const el = tabBarRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => updateTabScrollHint());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [updateTabScrollHint]);
+
   // state
   const [imageEditor, setImageEditor] = useState('');
   const [useGPU, setUseGPU] = useState(false);
@@ -2736,33 +2763,48 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
           </button>
         </div>
         {/* 탭 바 — 탭이 많아도 줄바꿈 대신 가로 스크롤.
-            모바일=스크롤바 숨김(스와이프) / PC=얇은 스크롤바 표기 + Shift 없이 휠로 이동 */}
-        <div
-          className={
-            'flex flex-nowrap overflow-x-auto border-b line-color px-2 flex-none ' +
-            (mobileMode ? 'no-scrollbars' : 'thin-hscroll')
-          }
-          onWheel={(e) => {
-            if (!mobileMode && e.deltaY) {
-              e.currentTarget.scrollLeft += e.deltaY;
+            모바일=스크롤바 숨김(스와이프) + 양 끝 옅은 화살표로 "가려진 탭 있음" 힌트
+            / PC=얇은 스크롤바 표기 + Shift 없이 휠로 이동 */}
+        <div className="relative flex-none">
+          <div
+            ref={tabBarRef}
+            className={
+              'flex flex-nowrap overflow-x-auto border-b line-color px-2 ' +
+              (mobileMode ? 'no-scrollbars' : 'thin-hscroll')
             }
-          }}
-        >
-          {tabs.map((tab, i) => (
-            <button
-              key={tab.label}
-              className={
-                'flex flex-none items-center gap-1.5 px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ' +
-                (activeTab === i
-                  ? 'border-sky-500 text-sky-600 dark:text-sky-400'
-                  : 'border-transparent text-muted hover:text-gray-700 dark:hover:text-gray-200')
+            onScroll={updateTabScrollHint}
+            onWheel={(e) => {
+              if (!mobileMode && e.deltaY) {
+                e.currentTarget.scrollLeft += e.deltaY;
               }
-              onClick={() => setActiveTab(i)}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
+            }}
+          >
+            {tabs.map((tab, i) => (
+              <button
+                key={tab.label}
+                className={
+                  'flex flex-none items-center gap-1.5 px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ' +
+                  (activeTab === i
+                    ? 'border-sky-500 text-sky-600 dark:text-sky-400'
+                    : 'border-transparent text-muted hover:text-gray-700 dark:hover:text-gray-200')
+                }
+                onClick={() => setActiveTab(i)}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          {mobileMode && tabScrollHint.left && (
+            <div className="absolute left-0 top-0 bottom-0 w-5 flex items-center justify-start pl-1 pointer-events-none bg-gradient-to-r from-[var(--c-zone)] to-transparent">
+              <FaChevronLeft size={9} className="text-faint" />
+            </div>
+          )}
+          {mobileMode && tabScrollHint.right && (
+            <div className="absolute right-0 top-0 bottom-0 w-5 flex items-center justify-end pr-1 pointer-events-none bg-gradient-to-l from-[var(--c-zone)] to-transparent">
+              <FaChevronRight size={9} className="text-faint" />
+            </div>
+          )}
         </div>
         {/* 탭 콘텐츠 — CSS Grid로 모든 탭을 같은 셀에 겹쳐 높이 통일 */}
         <div className="flex-1 overflow-auto px-3 py-4 md:p-5 overflow-x-hidden" style={{ minHeight: 0 }}>
