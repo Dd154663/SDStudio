@@ -17,6 +17,14 @@ export interface ZipPlugin {
   }): Promise<{ path: string; uri: string | null }>;
   // 데이터 루트 볼륨의 실제 여유 공간(bytes) — 네이티브 StatFs 기반.
   getFreeSpace(options: {}): Promise<{ bytes: number }>;
+  // Android 11+ '모든 파일 접근' 특수 권한 상태 (저장소 부팅 게이트).
+  // required=false(Android 10 이하)면 granted 는 항상 true.
+  storagePermissionStatus(options: {}): Promise<{
+    required: boolean;
+    granted: boolean;
+  }>;
+  // '모든 파일 접근' 설정 화면 열기 (게이트 화면의 [설정 열기] 버튼).
+  openAllFilesSettings(options: {}): Promise<void>;
 }
 
 const ZipService = registerPlugin<ZipPlugin>('ZipService');

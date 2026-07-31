@@ -67,6 +67,7 @@ import {
   isMobile,
 } from '../models';
 import { appState } from '../models/AppService';
+import { openStoragePermissionSettings } from '../models/storagePermissionGate';
 import { keyboardShortcutService } from '../models/KeyboardShortcutService';
 import { buildDanbooruSearchUrl } from '../models/util';
 import { isImportImageMime } from '../models/imageFormats';
@@ -796,6 +797,25 @@ export const App = observer(() => {
               <div className="text-sub text-sm whitespace-pre-line text-center px-6">
                 {appState.bootStatusMessage || 'SDStudio 시작 중…'}
               </div>
+              {/* [안드로이드 11+] 모든 파일 접근 대기 — 권한 없이 진행하면 기존
+                  데이터가 숨어 "증발"처럼 보이므로 허용 전엔 부팅을 차단한다 */}
+              {appState.storagePermissionBlocked && (
+                <div className="flex flex-col items-center gap-3 px-6 max-w-md">
+                  <p className="text-xs text-muted text-center whitespace-pre-line">
+                    안드로이드 보안 정책상 &ldquo;모든 파일 접근&rdquo;을
+                    허용해야 기존 프로젝트·이미지를 읽을 수 있습니다.{'\n'}
+                    데이터는 사라지지 않았습니다 — 허용하면 그대로 표시됩니다.
+                  </p>
+                  <button
+                    className="px-4 py-2 rounded-lg text-sm font-medium btn-solid-sky"
+                    onClick={() => {
+                      openStoragePermissionSettings().catch(() => {});
+                    }}
+                  >
+                    설정 열기
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
           <VerticalStack>

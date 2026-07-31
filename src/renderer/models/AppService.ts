@@ -112,6 +112,11 @@ export class AppState {
   @observable accessor bootReady: boolean = false;
   // 부팅 대기 화면의 보조 안내 문구 (예: 저장소 권한 대기). 빈 문자열 = 기본 문구.
   @observable accessor bootStatusMessage: string = '';
+  // [안드로이드 11+] '모든 파일 접근' 허용 대기로 부팅이 차단된 상태 —
+  // 부팅 화면이 전용 안내("데이터는 안전합니다")와 [설정 열기] 버튼을 표시한다.
+  // storagePermissionGate 가 설정/해제. (권한 없이 진행하면 기존 파일이 FUSE 에
+  // 숨어 "전부 증발"처럼 보이고 저장 충돌 2차 피해까지 나므로 진행 금지)
+  @observable accessor storagePermissionBlocked: boolean = false;
   @observable accessor curSession: Session | undefined = undefined;
   // 토스트 메시지: 각 항목이 고유 id를 가져 개별 타이머/개별 닫기가 가능하다.
   @observable accessor messages: { id: number; text: string }[] = [];

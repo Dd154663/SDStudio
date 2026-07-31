@@ -108,6 +108,50 @@ public class ZipService extends Plugin {
     }
   }
 
+  // Android 11+ '모든 파일 접근' 특수 권한 상태 — 저장소 부팅 게이트용.
+  // 이 권한이 없으면 FUSE 가 타 설치본 소유 파일(재설치·기기 이전 전의 데이터)을
+  // File API 에서 오류 없이 숨겨 "전부 증발"처럼 보이므로, 쓰기 프로브로는 감지가
+  // 불가능하다 — 반드시 이 정확한 상태 조회로 판정해야 한다(2026-07-31 근본 조사).
+  @PluginMethod
+  public void storagePermissionStatus(PluginCall call) {
+    JSObject ret = new JSObject();
+    boolean required = Build.VERSION.SDK_INT >= 30;
+    boolean granted = true;
+    if (required) {
+      try {
+        granted = Environment.isExternalStorageManager();
+      } catch (Exception e) {
+        granted = false;
+      }
+    }
+    ret.put("required", required);
+    ret.put("granted", granted);
+    call.resolve(ret);
+  }
+
+  // '모든 파일 접근' 설정 화면 열기 — 부팅 게이트 화면의 [설정 열기] 버튼.
+  // 이 앱 항목으로 딥링크하고, 실패 시 전체 목록 화면으로 폴백(MainActivity 와 동일 패턴).
+  @PluginMethod
+  public void openAllFilesSettings(PluginCall call) {
+    try {
+      Uri uri = Uri.parse("package:" + getContext().getPackageName());
+      Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+      intent.setData(uri);
+      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      getContext().startActivity(intent);
+      call.resolve();
+    } catch (Exception e) {
+      try {
+        Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        getContext().startActivity(intent);
+        call.resolve();
+      } catch (Exception e2) {
+        call.reject("Failed to open all files access settings", e2);
+      }
+    }
+  }
+
   private void addFileToTar(TarArchiveOutputStream tarOut, String filePath, String entryName) throws IOException {
     File file = new File(filePath);
     TarArchiveEntry tarEntry = new TarArchiveEntry(file, entryName);

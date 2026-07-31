@@ -1,14 +1,17 @@
 // 안드로이드 저장소 권한 부팅 게이트.
 //
-// 배경: MainActivity 는 '모든 파일 접근' 권한이 없으면 설정 화면을 띄우지만
-// 앱 부팅은 그대로 계속된다. 사용자가 설정에서 허용하는 동안 JS 부트스트랩이
-// 권한 없는 상태로 즐겨찾기/북마크/config 등을 읽어 조용히 "빈 값"으로
-// 초기화하고, 이후 저장 시 그 빈 값이 기존 파일을 덮어쓴다(데이터 유실).
-// → 부트스트랩의 데이터 로드 전에 실제 접근 가능 여부를 프로브로 확인하고,
-//   가능해질 때까지 대기한다(설정에서 복귀하는 resume + 1초 폴링).
+// 배경 (2026-07-31 근본 조사 — plans/android-storage-vanish-investigation.md):
+// 데이터 루트는 공유 저장소(Documents/.SDStudio)다. Android 11+ 의 스코프드
+// 스토리지(FUSE)는 '모든 파일 접근'이 없으면 이 설치본이 만들지 않은 파일
+// (재설치·기기 이전·MediaStore 재구축 이전의 데이터)을 File API 목록/읽기에서
+// **오류 없이** 숨긴다 — 파일은 디스크에 있는데 앱에는 "전부 증발"로 보이고,
+// 그 상태의 저장/백업은 2차 피해(포크·불완전 tar)를 만든다.
+// 종전의 "쓰기 프로브" 게이트는 새 파일 쓰기가 항상 성공하는 스코프드 스토리지
+// 특성상 이 상태를 통과시켰다(무력). → Android 11+ 는 네이티브 상태 조회
+// (Environment.isExternalStorageManager)로 허용될 때까지 부팅을 차단한다.
 //
-// 프로브 = 실제 쓰기+삭제 시도. 네이티브 API 조회 대신 실측이라 SDK 버전·
-// 권한 모델 차이(런타임 권한/모든 파일 접근)와 무관하게 정확하다.
+// Android 10 이하는 런타임 권한 모델이라 종전 흐름(권한 요청 + 실측 프로브)이
+// 정확하다 — 그대로 유지. 네이티브 조회가 실패하면(구 플러그인 등) 프로브로 폴백.
 
 import { backend, isMobile } from '.';
 import { appState } from './AppService';
@@ -37,10 +40,86 @@ async function probeStorageAccess(): Promise<boolean> {
   }
 }
 
+// Android 11+ '모든 파일 접근' 상태 조회. null = 조회 불가(프로브 폴백).
+async function allFilesStatus(): Promise<{
+  required: boolean;
+  granted: boolean;
+} | null> {
+  try {
+    const { default: ZipService } = await import('../backends/zipService');
+    const st = await ZipService.storagePermissionStatus({});
+    if (st && typeof st.required === 'boolean') return st;
+  } catch {}
+  return null;
+}
+
+// '모든 파일 접근' 설정 화면 열기 — 부팅 게이트 화면의 [설정 열기] 버튼이 호출.
+export async function openStoragePermissionSettings(): Promise<void> {
+  try {
+    const { default: ZipService } = await import('../backends/zipService');
+    await ZipService.openAllFilesSettings({});
+  } catch (e) {
+    console.error('모든 파일 접근 설정 화면 열기 실패:', e);
+  }
+}
+
+// 조건이 참이 될 때까지 대기 — 1초 폴링 + 설정 화면에서 복귀(resume) 시 즉시 재확인.
+async function waitUntil(check: () => Promise<boolean>): Promise<void> {
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    let listenerHandle: { remove: () => void } | undefined;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearInterval(timer);
+      listenerHandle?.remove();
+      resolve();
+    };
+    const tryCheck = () => {
+      check().then((ok) => {
+        if (ok) finish();
+      });
+    };
+    const timer = setInterval(tryCheck, 1000);
+    (async () => {
+      try {
+        const { App: CapacitorApp } = await import('@capacitor/app');
+        listenerHandle = await CapacitorApp.addListener(
+          'appStateChange',
+          ({ isActive }) => {
+            if (isActive) tryCheck();
+          },
+        );
+      } catch {}
+    })();
+  });
+}
+
 export async function waitForStorageAccess(): Promise<void> {
   if (!isMobile) return;
 
-  // SDK<30(런타임 권한 모델) 대비: 권한 요청 다이얼로그 트리거. 30+ 에선 no-op.
+  // ── Android 11+: '모든 파일 접근' 필수 (허용 전 부팅 진행 금지) ──
+  const status = await allFilesStatus();
+  if (status?.required) {
+    if (!status.granted) {
+      appState.storagePermissionBlocked = true;
+      appState.bootStatusMessage = '저장소 권한을 기다리는 중…';
+      try {
+        await waitUntil(async () => {
+          const st = await allFilesStatus();
+          // 조회가 갑자기 실패하면 차단을 풀지 않는다(보수적) — 다음 폴링에서 재시도
+          return !!st && (!st.required || st.granted);
+        });
+      } finally {
+        appState.storagePermissionBlocked = false;
+        appState.bootStatusMessage = '';
+      }
+    }
+    await reloadEarlyFailedConfig();
+    return;
+  }
+
+  // ── Android 10 이하(런타임 권한) 또는 네이티브 조회 실패: 종전 프로브 흐름 ──
   try {
     const { Filesystem } = await import('@capacitor/filesystem');
     await Filesystem.requestPermissions();
@@ -54,35 +133,7 @@ export async function waitForStorageAccess(): Promise<void> {
   appState.bootStatusMessage =
     '저장소 권한을 기다리는 중…\n설정에서 "모든 파일 접근"을 허용해 주세요';
   try {
-    await new Promise<void>((resolve) => {
-      let settled = false;
-      let listenerHandle: { remove: () => void } | undefined;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        clearInterval(timer);
-        listenerHandle?.remove();
-        resolve();
-      };
-      const tryProbe = () => {
-        probeStorageAccess().then((ok) => {
-          if (ok) finish();
-        });
-      };
-      const timer = setInterval(tryProbe, 1000);
-      // 설정 화면에서 앱으로 복귀하는 순간 즉시 재확인
-      (async () => {
-        try {
-          const { App: CapacitorApp } = await import('@capacitor/app');
-          listenerHandle = await CapacitorApp.addListener(
-            'appStateChange',
-            ({ isActive }) => {
-              if (isActive) tryProbe();
-            },
-          );
-        } catch {}
-      })();
-    });
+    await waitUntil(probeStorageAccess);
   } finally {
     appState.bootStatusMessage = '';
   }
