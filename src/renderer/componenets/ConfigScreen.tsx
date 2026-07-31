@@ -52,6 +52,7 @@ import {
 import type { LegacyScanResult } from '../models/legacyCleanup';
 import ModalOverlay from './ModalOverlay';
 import MobileColorPicker from './MobileColorPicker';
+import { StorageDiagnosticsSection } from './StorageDiagnostics';
 
 interface ConfigScreenProps {
   onSave: () => void;
@@ -294,6 +295,9 @@ const StorageImageTab = (props: any) => (
    메서드(listFiles/refreshBatch)만 사용하므로 모바일에서도 그대로 동작한다. */
 const RecoveryTab = () => (
   <div className="space-y-4">
+    {/* 저장소 진단 — 권한/데이터 인식 실측 (증발처럼 보이는 증상 원인 안내) */}
+    <StorageDiagnosticsSection />
+    <hr className="line-color" />
     <div>
       <label className="block text-sm font-semibold gray-label mb-1">
         이미지 복구 (실험적 기능)
