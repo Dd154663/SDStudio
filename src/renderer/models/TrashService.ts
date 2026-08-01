@@ -695,6 +695,19 @@ export class TrashService extends EventTarget {
     return result;
   }
 
+  // 신 배치에서 .deleted 를 지운 폴더에 남는 project.json.bak(쓰기 회전 잔해)도
+  // 함께 지운다 — 남겨두면 "본문·삭제본 없음+.bak 있음" 상태가 되어 스캔의
+  // .bak 자가치유가 삭제된 프로젝트를 부활시킨다.
+  private async deleteWorkspaceBakSibling(deletedPath: string): Promise<void> {
+    if (!isWorkspaceLayout()) return;
+    if (!deletedPath.endsWith(WORKSPACE_DELETED_FILE)) return;
+    const bakPath =
+      deletedPath.slice(0, -'.deleted'.length) + '.bak';
+    try {
+      await backend.deleteFile(bakPath);
+    } catch (e) {}
+  }
+
   async restoreProject(name: string): Promise<void> {
     this.ensureLoaded();
     const deletedMap = await this.scanProjectFiles('.deleted');
@@ -702,11 +715,12 @@ export class TrashService extends EventTarget {
     const deletedPath = deletedMap.get(name);
 
     if (activeMap.has(name)) {
-      // Orphan .deleted: 활성 프로젝트가 있으니 .deleted 만 제거
+      // Orphan .deleted: 활성 프로젝트가 있으니 .deleted 만 제거(.bak 동반 정리)
       if (deletedPath) {
         try {
           await backend.deleteFile(deletedPath);
         } catch (e) {}
+        await this.deleteWorkspaceBakSibling(deletedPath);
       }
     } else if (deletedPath) {
       if (isWorkspaceLayout()) {
@@ -776,11 +790,14 @@ export class TrashService extends EventTarget {
       scanOk = false;
     }
 
-    // .deleted 파일 제거 (스캔으로 경로를 확인한 경우에만)
+    // .deleted 파일 제거 (스캔으로 경로를 확인한 경우에만). 아래 안전 판정이
+    // 실패해 폴더 삭제를 건너뛰더라도 잔여 .bak 이 자가치유로 부활하지 않도록
+    // 함께 제거한다.
     if (deletedPath) {
       try {
         await backend.deleteFile(deletedPath);
       } catch (e) {}
+      await this.deleteWorkspaceBakSibling(deletedPath);
     }
 
     // 디렉터리를 지워도 되는지 최종 판정.
@@ -895,6 +912,7 @@ export class TrashService extends EventTarget {
           try {
             await backend.deleteFile(path);
           } catch (e) {}
+          await this.deleteWorkspaceBakSibling(path);
           delete this.data.projects[name];
           changed = true;
         }

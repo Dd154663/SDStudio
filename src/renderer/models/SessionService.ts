@@ -35,10 +35,12 @@ import {
   WORKSPACE_ROOT,
   PROJECT_JSON_ROOT,
   PROJECT_IMAGE_ROOTS,
+  invalidProjectName,
 } from './projectPaths';
 import {
   isWorkspaceLayout,
   physicalDirOf,
+  nameOfPhysicalDir,
   registerProjectDir,
   unregisterProjectDir,
   renameProjectDirKey,
@@ -289,6 +291,8 @@ export class SessionService extends ResourceSyncService<Session> {
     // 소프트 삭제로만 발견된 이름 — 활성 등록이 없을 때만 스캔 끝에 unregister 한다.
     // (동명 재생성: 옛 폴더=삭제, 새 폴더=활성이 공존할 때 순서와 무관하게 활성 우선)
     const softOnly: string[] = [];
+    // .bak 자가치유 후보(project.json·.deleted 둘 다 부재) — 루프 뒤에서 처리.
+    const bakHealCandidates: { dir: string; name: string }[] = [];
     // 이번 스캔에서 확정된 이름 → 물리 폴더 (동명 meta 중복 감지용)
     const seenNameToDir = new Map<string, string>();
     let metaReadFailures = 0;
@@ -339,7 +343,11 @@ export class SessionService extends ResourceSyncService<Session> {
         if (!hasDeleted) {
           // 본문도 삭제본도 안 보임 — 쓰기 교체 창(모바일 2단계 rename)이나
           // 일시 오류일 수 있다. 삭제로 단정해 unregister 하지 않고 이번
-          // 스캔에서만 제외한다(다음 주기에 재평가).
+          // 스캔에서만 제외한다(다음 주기에 재평가). 단 2단계 쓰기가 중간에
+          // 끊겨 .bak 만 남은 잔해는 방치 시 영구 미인식이 되므로 자가치유
+          // 후보로 모아 루프 뒤에서 복원한다 — 루프 안에서 즉시 입양하면
+          // 뒤에 나올 동명 활성 폴더가 '_복구N' 으로 개명당할 수 있다.
+          bakHealCandidates.push({ dir, name });
           successCount++;
           continue;
         }
@@ -398,6 +406,19 @@ export class SessionService extends ResourceSyncService<Session> {
     // 활성 프로젝트(다른 물리 폴더)가 있으면 그 등록을 지우지 않는다.
     for (const name of softOnly) {
       if (!activeNames.has(name)) unregisterProjectDir(name);
+    }
+
+    // .bak 자가치유(지연 실행): 활성 폴더 전수 파악이 끝난 뒤에만 복원한다.
+    //  - 동명 활성 폴더가 있으면 부활 금지 — 휴지통 정리가 남긴 좀비 잔재일
+    //    가능성이 높고, 복원하면 살아있는 프로젝트가 동명 정규화로 개명당한다
+    //  - 로드 중 이름은 쓰기 교체 창일 수 있어 제외
+    //  - 복원만 하고 입양은 다음 스캔이 자연 수행한다(등록 순서 경합 회피)
+    for (const c of bakHealCandidates) {
+      if (seenNameToDir.has(c.name)) continue;
+      if (this.isLoaded(c.name)) continue;
+      const reg = physicalDirOf(c.name);
+      if (reg !== undefined && reg !== c.dir) continue;
+      await this.restoreProjectJsonFromBak(c.dir);
     }
 
     // 빈 폴더(프로젝트 0개)는 meta.folder 에 나타나지 않으므로 folderOrder.json 을
@@ -502,6 +523,191 @@ export class SessionService extends ResourceSyncService<Session> {
     const idx = dir.lastIndexOf('__');
     const base = idx > 0 ? dir.slice(0, idx) : dir;
     return base.trim();
+  }
+
+  // project.json 이 없는 폴더의 .bak(모바일 2단계 쓰기 잔해)을 본문으로 복원.
+  // 유효한 JSON 객체일 때만 복원하고 .bak 자체는 남긴다(다음 정상 쓰기가 회전).
+  // 1회성 경로라 직접 backend.writeFile 을 쓴다 — 미등록 프로젝트라
+  // persistService 큐(등록된 리소스 전용)와 경합하지 않는다.
+  private async restoreProjectJsonFromBak(dir: string): Promise<boolean> {
+    try {
+      const raw = await backend.readFile(
+        workspacePath(dir, PROJECT_JSON_FILE + '.bak'),
+      );
+      const parsed = JSON.parse(raw);
+      // name 문자열까지 요구 — 형태 없는 객체를 본문으로 승격하면 "목록엔
+      // 있는데 열리지 않는" 프로젝트가 되고 진단 탭의 복구 경로도 사라진다.
+      if (
+        !parsed ||
+        typeof parsed !== 'object' ||
+        Array.isArray(parsed) ||
+        typeof parsed.name !== 'string' ||
+        !parsed.name
+      ) {
+        return false;
+      }
+      // 판정 이후 본문이 생겼으면(쓰기 교체 창 통과 등) 복원하지 않는다 —
+      // 최신 본문을 스테일 .bak 으로 되돌리는 역주행 방지.
+      if (await backend.existFile(workspacePath(dir, PROJECT_JSON_FILE))) {
+        return false;
+      }
+      await backend.writeFile(workspacePath(dir, PROJECT_JSON_FILE), raw);
+      console.warn(`[workspace 스캔] project.json 을 .bak 에서 복원: ${dir}`);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // 깨진 프로젝트 폴더(project.json·.deleted 부재) 수동 복구 — 저장소 진단 탭 전용.
+  // .bak 이 유효하면 본문 복원(완전 복구), 없으면 outs/ 씬 폴더에 맞춘 빈 씬
+  // 골격으로 project.json 을 만들어 그 자리에서 입양한다(부분 복구 — 이미지는
+  // 이후 '이미지 복구'가 재연결). 씬 골격을 outs 에 맞추는 것은 UX 만이 아니라
+  // 씬 유실 가드(붕괴 판정: 누락>보유 시 저장 드롭)를 첫 저장이 통과하기 위한
+  // 필수 조건이다. 폴더 이동 없음: 기존 물리 폴더를 그대로 등록한다.
+  async repairBrokenWorkspaceFolder(
+    dir: string,
+  ): Promise<{ name: string; fromBak: boolean }> {
+    if (!isWorkspaceLayout()) {
+      throw new Error('신 배치(workspace)가 아닙니다.');
+    }
+    // 방어 재확인 — 진단 시점과 실행 시점 사이에 상태가 변했을 수 있다.
+    const hasActive = await backend.existFile(
+      workspacePath(dir, PROJECT_JSON_FILE),
+    );
+    const hasDeleted = await backend.existFile(
+      workspacePath(dir, PROJECT_JSON_FILE + '.deleted'),
+    );
+    if (hasActive || hasDeleted) {
+      throw new Error('이미 정상 또는 휴지통 상태입니다. 다시 진단해 주세요.');
+    }
+    // 이 물리 폴더가 이미 어떤 이름으로든 등록돼 있으면(방금 복구 직후 재클릭
+    // 등) 같은 폴더에 '_복구N' 이름이 이중 등록되어 두 인스턴스가 한 파일을
+    // 번갈아 덮어쓰게 된다 — 진입 자체를 중단한다.
+    if (nameOfPhysicalDir(dir) !== undefined) {
+      throw new Error(
+        '이미 앱이 인식한 프로젝트입니다. 잠시 후 다시 진단해 주세요.',
+      );
+    }
+
+    // 이름 결정: meta.json → 폴더명 유추 → 최후 기본값. 등록/로드 충돌은 '_복구N'.
+    let meta: WorkspaceProjectMeta | undefined;
+    try {
+      const parsed = JSON.parse(
+        await backend.readFile(workspacePath(dir, PROJECT_META_FILE)),
+      );
+      if (parsed && typeof parsed.name === 'string' && parsed.name) {
+        meta = parsed;
+      }
+    } catch (e) {}
+    let base = meta?.name || this.nameFromWorkspaceDir(dir);
+    if (!base || invalidProjectName(base)) base = '복구된 프로젝트';
+    let name = base;
+    for (
+      let n = 2;
+      physicalDirOf(name) !== undefined || this.isLoaded(name);
+      n++
+    ) {
+      name = `${base}_복구${n}`;
+    }
+
+    // .bak 이 유효(name 보유 객체)하면 그 내용 전체가 복구본(완전 복구).
+    let json: ISession | undefined;
+    try {
+      const raw = await backend.readFile(
+        workspacePath(dir, PROJECT_JSON_FILE + '.bak'),
+      );
+      const parsed = JSON.parse(raw);
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        !Array.isArray(parsed) &&
+        typeof parsed.name === 'string' &&
+        parsed.name
+      ) {
+        json = parsed as ISession;
+      }
+    } catch (e) {}
+    const fromBak = !!json;
+    if (!json) {
+      // 부분 복구 골격: outs/ 의 씬 폴더 이름대로 빈 씬을 만든다(폴더가 하나도
+      // 없으면 기본 씬 1개). 항목 판별은 recoverProjectImages 와 동일한 규칙
+      // (점 미포함 = 디렉터리).
+      let scenes: any;
+      try {
+        const entries = await backend.listFiles(workspacePath(dir, 'outs'));
+        const sceneDirs = entries.filter(
+          (e) => !e.startsWith('.') && !e.includes('.'),
+        );
+        if (sceneDirs.length > 0) {
+          scenes = Object.fromEntries(
+            sceneDirs.map((s) => [
+              s,
+              {
+                type: 'scene' as const,
+                name: s,
+                resolution: 'portrait',
+                slots: [[{ prompt: '', characterPrompts: [], id: v4() }]],
+                game: undefined,
+                round: undefined,
+                meta: {},
+                imageMap: [],
+                mains: [],
+              },
+            ]),
+          );
+        }
+      } catch (e) {}
+      if (!scenes) scenes = SessionService.defaultScenesJSON();
+      json = {
+        name,
+        version: 1,
+        presets: {},
+        inpaints: {},
+        scenes,
+        library: {},
+        presetShareds: {},
+        characterPresets: {},
+      } as ISession;
+    }
+    json.name = name;
+    if (!json.id) json.id = meta?.id || v4();
+
+    // 기존 물리 폴더를 그 자리에서 등록(이동 없음) + meta 정합화 후 정식
+    // 생성 seam(createFrom)으로 project.json 을 기록·목록 갱신한다.
+    registerProjectDir(name, dir);
+    try {
+      const newMeta: WorkspaceProjectMeta = {
+        version: 1,
+        id: json.id,
+        name,
+        folder: meta?.folder ?? '',
+      };
+      await backend.writeFile(
+        workspacePath(dir, PROJECT_META_FILE),
+        JSON.stringify(newMeta),
+      );
+      await this.createFrom(name, json);
+    } catch (e) {
+      // createFrom 이 attach(로드) 이후 단계(목록 재스캔 등)에서 실패한 경우
+      // 등록을 되돌리면 로드 인스턴스의 경로 해석이 영구 실패하는 좀비가 된다
+      // — 로드까지 갔으면 등록을 유지하고(다음 스캔이 수습), 그 전이면 롤백.
+      if (!this.isLoaded(name)) unregisterProjectDir(name);
+      throw e;
+    }
+    // 부분 복구는 빈 프로젝트와 동일하게 기본 프리셋을 시딩해 바로 생성 가능
+    // 상태로 만든다(.bak 복구본은 프리셋을 이미 갖고 있으므로 제외).
+    if (!fromBak) {
+      const created = await this.get(name);
+      if (created) {
+        try {
+          await importDefaultPresets(created);
+        } catch (e) {
+          console.error('부분 복구 기본 프리셋 시딩 실패(치명적 아님):', e);
+        }
+      }
+    }
+    return { name, fromBak };
   }
 
   // 복구까지 실패해 목록에서 스킵된 폴더 — 세션당 1회만 사용자에게 고지한다.
