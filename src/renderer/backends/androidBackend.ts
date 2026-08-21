@@ -21,6 +21,7 @@ import { Buffer } from 'buffer';
 import { v4 as uuidv4 } from 'uuid';
 import Pica from 'pica';
 import { NovelAiFetcher, NovelAiImageGenService } from './genVendors/nai';
+import { createNaiApiError } from './genVendors/naiErrors';
 import { assertDeletableDirPath } from './dataPathGuard';
 import FetchService from './fecthService';
 import JSZip from 'jszip';
@@ -108,6 +109,19 @@ class AndroidFetcher implements NovelAiFetcher {
       }
 
       return bytes.buffer;
+    }
+    if (response.status < 200 || response.status >= 300) {
+      let detail = '';
+      try {
+        detail = new TextDecoder().decode(
+          base64ToArrayBuffer(response.data || ''),
+        );
+      } catch (_) {}
+      throw createNaiApiError(
+        response.status,
+        detail,
+        response.correlationId,
+      );
     }
     return base64ToArrayBuffer(response.data);
   }
@@ -238,6 +252,7 @@ export class AndroidBackend extends Backend {
     // writeFile 경유 = tmp+rename(+.bak) 원자 쓰기 — 직접 쓰기는 강제 종료 시
     // 파일이 반쯤 쓰여 파손되고, 로드가 조용히 실패해 설정 전체가 초기화된다.
     await this.writeFile('config.json', JSON.stringify(config));
+    this.imageGenService.invalidateConfigCache?.();
   }
 
   // 포그라운드 서비스 설정 적용 + enable. (resume/시작/생성 시 반복 호출되어 자가복구)
@@ -299,6 +314,11 @@ export class AndroidBackend extends Backend {
   async getRemainCredits(): Promise<number> {
     const token = await this.readFile('TOKEN.txt');
     return await this.imageGenService.getRemainCredits(token);
+  }
+
+  async getOpusUsageStatus() {
+    const token = await this.readFile('TOKEN.txt');
+    return await this.imageGenService.getOpusUsageStatus(token);
   }
 
   async login(email: string, password: string): Promise<void> {

@@ -111,6 +111,7 @@ export abstract class Backend {
   abstract spawnLocalAI(): Promise<void>;
   abstract isLocalAIRunning(): Promise<boolean>;
   abstract getRemainCredits(): Promise<number>;
+  abstract getOpusUsageStatus(): Promise<import('./backends/imageGen').OpusUsageStatus>;
   abstract removeBackground(
     inputImageBase64: string,
     outputPath: string,

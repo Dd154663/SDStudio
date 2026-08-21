@@ -1,4 +1,8 @@
-import { ModelVersion } from '../renderer/backends/imageGen';
+import {
+  GenerationQualityPreset,
+  GenerationUcPreset,
+  ModelVersion,
+} from '../renderer/backends/imageGen';
 
 export type ImageEditor = 'photoshop' | 'gimp' | 'mspaint';
 
@@ -37,11 +41,15 @@ export interface Config {
   uuid?: string;
   whiteMode?: boolean;
   disableQuality?: boolean;
+  /** V5 품질 프리셋. 누락 시 기존 disableQuality 값으로 해석한다. */
+  qualityPreset?: GenerationQualityPreset;
+  /** V5 투명 배경 생성. 구버전은 모르는 선택 필드라 그대로 무시한다. */
+  transparentBackground?: boolean;
   modelVersion?: ModelVersion;
   /** NAI Undesired Content Preset — 생성 시 네거티브 앞에 병합되는 기본 프리셋.
    *  모델별 제공 항목이 다르며(naiQualityPresets 단일 출처) 기본 'none' =
    *  기존 사용자 결과 무변화(옵트인). */
-  ucPreset?: 'heavy' | 'light' | 'humanFocus' | 'furryFocus' | 'none';
+  ucPreset?: GenerationUcPreset;
   delayTime?: number;
   furryMode?: boolean;
   downloadSettings?: DownloadSettings;

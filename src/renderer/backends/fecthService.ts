@@ -5,7 +5,7 @@ export interface FetchServicePlugin {
     url: string;
     body: string;
     headers: string;
-  }): Promise<{ data: string }>;
+  }): Promise<{ data: string; status: number; correlationId?: string }>;
 }
 
 const FetchService = registerPlugin<FetchServicePlugin>('FetchService');

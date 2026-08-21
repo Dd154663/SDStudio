@@ -1,4 +1,7 @@
-import { ModelVersion } from '../imageGen';
+import {
+  GenerationQualityPreset,
+  ModelVersion,
+} from '../imageGen';
 
 // NAI 웹 UI 패리티: Add Quality Tags / Undesired Content Preset (2026-07-31).
 //
@@ -23,6 +26,8 @@ export type UcPresetKey =
 
 // 퀄리티 태그 — 프롬프트 "끝"에 그대로 이어 붙는다(v4/v4.5 공통, 선행 ', ' 포함).
 export const QUALITY_TAGS: Record<ModelVersion, string> = {
+  [ModelVersion.V5]: ', very aesthetic, masterpiece, no text',
+  [ModelVersion.V5Curated]: ', very aesthetic, masterpiece, no text',
   [ModelVersion.V4_5]: ', very aesthetic, masterpiece, no text',
   [ModelVersion.V4_5Curated]:
     ', location, masterpiece, no text, -0.8::feet::, rating:general',
@@ -31,13 +36,48 @@ export const QUALITY_TAGS: Record<ModelVersion, string> = {
     ', rating:general, amazing quality, very aesthetic, absurdres',
 };
 
+const V5_QUALITY_TAGS: Record<GenerationQualityPreset, string> = {
+  standard: 'very aesthetic, masterpiece, no text',
+  light: 'very aesthetic, amazing quality, no text',
+  none: '',
+};
+
+export const QUALITY_PRESET_LABELS: Record<GenerationQualityPreset, string> = {
+  standard: '표준 (Standard)',
+  light: '가벼움 (Light)',
+  none: '없음 (None)',
+};
+
+export const QUALITY_PRESET_OPTIONS: GenerationQualityPreset[] = [
+  'standard',
+  'light',
+  'none',
+];
+
 const V45_FULL_HEAVY =
   'nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page';
+
+const V5_HEAVY =
+  'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page';
+
+const V5_FURRY_FOCUS =
+  '{worst quality}, distracting watermark, unfinished, bad quality, {widescreen}, upscale, {sequence}, {{grandfathered content}}, blurred foreground, chromatic aberration, sketch, everyone, [sketch background], simple, [flat colors], ych (character), outline, multiple scenes, [[horror (theme)]], comic';
+
+const v5UcPresets = (): Partial<Record<UcPresetKey, string>> => ({
+  heavy: V5_HEAVY,
+  light:
+    'lowres, bad hands, bad anatomy, artistic error, sepia, white haze, worst quality, very displeasing, jpeg artifacts, 0::ai-generated::',
+  humanFocus:
+    V5_HEAVY + ', @_@, mismatched pupils, glowing eyes, bad anatomy',
+  furryFocus: V5_FURRY_FOCUS,
+});
 
 // 네거티브(UC) 프리셋 — 유저 네거티브 "앞"에 ', ' 로 이어 붙는다.
 // 모델별 제공 항목이 다르다(NAI 웹과 동일): V4 계열은 Heavy/Light 만,
 // V4.5 Curated 는 +Human Focus, V4.5 Full 은 +Human Focus/Furry Focus.
 const UC_PRESETS: Record<ModelVersion, Partial<Record<UcPresetKey, string>>> = {
+  [ModelVersion.V5]: v5UcPresets(),
+  [ModelVersion.V5Curated]: v5UcPresets(),
   [ModelVersion.V4_5]: {
     heavy: V45_FULL_HEAVY,
     light:
@@ -119,10 +159,51 @@ export function ucPresetTextFor(
 export function mergeQualityTags(
   prompt: string,
   version: ModelVersion,
-  enabled: boolean,
+  preset: GenerationQualityPreset,
+  transparentBackground = false,
 ): string {
-  if (!enabled) return prompt;
-  return prompt + (QUALITY_TAGS[version] ?? '');
+  let result = prompt;
+  if (transparentBackground) {
+    result = result ? `transparent background, ${result}` : 'transparent background';
+  }
+  if (preset === 'none') return result;
+  if (version === ModelVersion.V5 || version === ModelVersion.V5Curated) {
+    const suffix = V5_QUALITY_TAGS[preset];
+    return suffix ? (result ? `${result}, ${suffix}` : suffix) : result;
+  }
+  return result + (QUALITY_TAGS[version] ?? '');
+}
+
+// 공식 웹 공통 힌트 ID: none=0, standard=1, heavy=2, light=3,
+// humanFocus=4, furryFocus=5. 레거시 ucPreset 숫자와 다른 계약이다.
+export function qualityPresetHintId(preset: GenerationQualityPreset): number {
+  return preset === 'standard' ? 1 : preset === 'light' ? 3 : 0;
+}
+
+export function ucPresetHintId(
+  version: ModelVersion,
+  key: UcPresetKey | undefined,
+): number {
+  const effective = effectiveUcPreset(version, key);
+  const map: Record<UcPresetKey, number> = {
+    none: 0,
+    heavy: 2,
+    light: 3,
+    humanFocus: 4,
+    furryFocus: 5,
+  };
+  return map[effective];
+}
+
+export function qualityPresetTextFor(
+  version: ModelVersion,
+  preset: GenerationQualityPreset,
+): string {
+  if (preset === 'none') return '';
+  if (version === ModelVersion.V5 || version === ModelVersion.V5Curated) {
+    return V5_QUALITY_TAGS[preset];
+  }
+  return (QUALITY_TAGS[version] ?? '').replace(/^, /, '');
 }
 
 // 유저 네거티브 앞에 UC 프리셋 병합 (실캡처: 프리셋 + ', ' + 유저 네거티브)

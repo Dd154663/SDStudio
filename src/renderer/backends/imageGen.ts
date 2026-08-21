@@ -7,6 +7,8 @@ export enum Model {
 }
 
 export enum ModelVersion {
+  V5 = '5-full',
+  V5Curated = '5-curated',
   V4_5 = '4-5-full',
   V4_5Curated = '4-5-curated',
   V4 = '4-full',
@@ -112,6 +114,31 @@ export interface ImageSize {
   height: number;
 }
 
+export type GenerationUcPreset =
+  | 'heavy'
+  | 'light'
+  | 'humanFocus'
+  | 'furryFocus'
+  | 'none';
+
+export type GenerationQualityPreset = 'standard' | 'light' | 'none';
+
+// 예약 시점의 전역 생성 설정. 선택적 필드로 TaskParam·다중 창 payload에 실리며,
+// 스냅샷이 없는 구 작업은 실행 시 기존 config 해석 경로를 사용한다.
+export interface GenerationSettingsSnapshot {
+  schemaVersion: 1;
+  modelVersion: ModelVersion;
+  furryMode: boolean;
+  disableQuality: boolean;
+  /** V5 3단계 품질. 누락 시 disableQuality를 해석해 하위 호환한다. */
+  qualityPreset?: GenerationQualityPreset;
+  ucPreset: GenerationUcPreset;
+  /** V5 전용. 누락/구 작업은 false로 해석한다. */
+  transparentBackground?: boolean;
+  autoConvertWebp: boolean;
+  autoConvertWebpQuality: number;
+}
+
 export interface ImageGenInput {
   model: Model;
   prompt: string;
@@ -139,6 +166,7 @@ export interface ImageGenInput {
   characterUCs?: string[];
   characterPositions?: CharacterPosition[];
   characterReferences?: CharacterReference[];
+  generationSettings?: GenerationSettingsSnapshot;
 }
 
 export type AugmentMethod =
@@ -168,10 +196,18 @@ export interface EncodeVibeImageInput {
 export type LoginValidity = 'valid' | 'invalid' | 'error';
 
 export interface ImageGenService {
+  invalidateConfigCache?(): void;
   login(email: string, password: string): Promise<{ accessToken: string }>;
   generateImage(token: string, params: ImageGenInput): Promise<string>;
   augmentImage(token: string, params: ImageAugmentInput): Promise<string>;
   getRemainCredits(token: string): Promise<number>;
+  getOpusUsageStatus(token: string): Promise<OpusUsageStatus>;
   encodeVibeImage(token: string, params: EncodeVibeImageInput): Promise<string>;
   validateToken(token: string): Promise<LoginValidity>;
+}
+
+export interface OpusUsageStatus {
+  percent: number;
+  isNegative: boolean;
+  timeUntilNextPercent: number;
 }

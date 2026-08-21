@@ -23,6 +23,7 @@ export type Channels =
   | 'close'
   | 'restart-app'
   | 'show-file'
+  | 'open-path'
   | 'zip-files'
   | 'get-free-space'
   | 'get-runtime-diag'

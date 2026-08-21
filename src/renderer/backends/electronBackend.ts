@@ -9,6 +9,7 @@ import {
 import { Backend, FileEntry, ResizeImageInput } from '../backend';
 import { assertDeletableDirPath } from './dataPathGuard';
 import { NovelAiFetcher, NovelAiImageGenService } from './genVendors/nai';
+import { createNaiApiError } from './genVendors/naiErrors';
 import { ImageContextAlt, SceneContextAlt } from '../models/types';
 
 const invoke = window.electron?.ipcRenderer?.invoke;
@@ -23,18 +24,26 @@ class ElectronFetcher implements NovelAiFetcher {
     const timeoutId = setTimeout(() => {
       controller.abort();
     }, 120 * 1000);
-    const response = await fetch(url, {
-      body: JSON.stringify(body),
-      headers: headers,
-      method: 'POST',
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-    if (!response.ok) {
-      console.error(await response.json());
-      throw new Error(`Failed to fetch: ${response.status}`);
+    try {
+      const response = await fetch(url, {
+        body: JSON.stringify(body),
+        headers: headers,
+        method: 'POST',
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const detail = await response.text().catch(() => '');
+        const correlationId =
+          response.headers.get('x-correlation-id') ??
+          response.headers.get('x-request-id') ??
+          response.headers.get('cf-ray') ??
+          undefined;
+        throw createNaiApiError(response.status, detail, correlationId);
+      }
+      return await response.arrayBuffer();
+    } finally {
+      clearTimeout(timeoutId);
     }
-    return await response.arrayBuffer();
   }
 }
 
@@ -76,6 +85,7 @@ export class ElectornBackend extends Backend {
 
   async setConfig(newConfig: Config): Promise<void> {
     await invoke('set-config', newConfig);
+    this.imageGenService.invalidateConfigCache?.();
   }
 
   async getVersion(): Promise<string> {
@@ -101,6 +111,11 @@ export class ElectornBackend extends Backend {
   async getRemainCredits(): Promise<number> {
     const token = await this.readToken();
     return await this.imageGenService.getRemainCredits(token);
+  }
+
+  async getOpusUsageStatus() {
+    const token = await this.readToken();
+    return await this.imageGenService.getOpusUsageStatus(token);
   }
 
   async login(email: string, password: string): Promise<void> {

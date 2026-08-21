@@ -8,6 +8,7 @@ import {
   ModelVersion,
   EncodeVibeImageInput,
   LoginValidity,
+  OpusUsageStatus,
 } from '../imageGen';
 
 import JSZip from 'jszip';
@@ -19,8 +20,17 @@ import { backend } from '../../models';
 import {
   mergeQualityTags,
   mergeUcPreset,
+  qualityPresetHintId,
   ucPresetApiIndex,
+  ucPresetHintId,
 } from './naiQualityPresets';
+import { resolveQualityPreset } from '../generationSettings';
+import {
+  getNaiModelSpec,
+  isV5ModelVersion,
+  normalizeNaiSampling,
+  resolveNaiModelId,
+} from './naiModelCapabilities';
 
 export interface NovelAiFetcher {
   fetchArrayBuffer(url: string, body: any, headers: any): Promise<ArrayBuffer>;
@@ -54,16 +64,7 @@ export class NovelAiImageGenService implements ImageGenService {
   }
 
   private translateModel(model: Model, version: ModelVersion): string {
-    const modelMap = {
-      anime: `nai-diffusion-${version}`,
-      inpaint: `nai-diffusion-${version}-inpainting`,
-      i2i: `nai-diffusion-${version}`,
-    } as const;
-    const resultModel = modelMap[model];
-
-    if (version === ModelVersion.V4Curated && model.match(/anime|i2i/))
-      return resultModel + '-preview';
-    return resultModel;
+    return resolveNaiModelId(model, version);
   }
 
   private translateSampling(sampling: Sampling): string {
@@ -141,13 +142,23 @@ export class NovelAiImageGenService implements ImageGenService {
 
   public async generateImage(authorization: string, params: ImageGenInput) {
     const resolutionValue = params.resolution;
-    const samplingValue = this.translateSampling(params.sampling);
-
-    const config = await this.getCachedConfig();
+    const config = params.generationSettings ?? (await this.getCachedConfig());
 
     const modelVersionValue: ModelVersion =
       config.modelVersion ?? ModelVersion.V4_5;
     const modelValue = this.translateModel(params.model, modelVersionValue);
+    const modelSpec = getNaiModelSpec(modelVersionValue);
+    const isV5 = isV5ModelVersion(modelVersionValue);
+    const normalizedSampling = normalizeNaiSampling(
+      modelVersionValue,
+      params.sampling,
+    );
+    const samplingValue = this.translateSampling(normalizedSampling);
+    const qualityPreset = resolveQualityPreset(config);
+    const transparentBackground =
+      isV5 &&
+      modelSpec.capabilities.supportsTransparentBackground &&
+      config.transparentBackground === true;
 
     // NAI 웹 패리티(2026-07-31): 퀄리티 태그/UC 프리셋은 API 필드가 아니라
     // 클라이언트가 텍스트를 병합해야 실제 반영된다(qualityToggle/ucPreset 은
@@ -155,7 +166,12 @@ export class NovelAiImageGenService implements ImageGenService {
     const finalPrompt = mergeQualityTags(
       params.prompt,
       modelVersionValue,
-      config.disableQuality ? false : true,
+      isV5
+        ? qualityPreset
+        : config.disableQuality
+          ? 'none'
+          : 'standard',
+      transparentBackground,
     );
     const finalUc = mergeUcPreset(params.uc, modelVersionValue, config.ucPreset);
 
@@ -176,11 +192,7 @@ export class NovelAiImageGenService implements ImageGenService {
         break;
     }
     const url = this.apiEndpoint;
-    const body: any = {
-      input: finalPrompt,
-      model: modelValue,
-      action: action,
-      parameters: {
+    const legacyParameters: any = {
         params_version: 3,
         width: resolutionValue.width,
         height: resolutionValue.height,
@@ -225,9 +237,61 @@ export class NovelAiImageGenService implements ImageGenService {
           },
           legacy_uc: params.legacyPromptConditioning,
         },
+      };
+    const v5Parameters: any = {
+      params_version: modelSpec.capabilities.paramsVersion,
+      width: resolutionValue.width,
+      height: resolutionValue.height,
+      noise_schedule: modelSpec.capabilities.forcedNoiseSchedule,
+      scale: Math.min(
+        params.promptGuidance,
+        modelSpec.capabilities.maxPromptGuidance ?? params.promptGuidance,
+      ),
+      sampler: samplingValue,
+      steps: Math.min(
+        params.steps,
+        modelSpec.capabilities.maxSteps ?? params.steps,
+      ),
+      noise: params.noise,
+      seed,
+      n_samples: 1,
+      negative_prompt: finalUc,
+      strength: params.imageStrength,
+      characterPrompts: [],
+      use_coords: params.useCoords ?? false,
+      cfg_rescale: params.cfgRescale,
+      skip_cfg_above_sigma: null,
+      prefer_brownian: samplingValue === 'k_euler_ancestral',
+      deliberate_euler_ancestral_bug: false,
+      tag_hint_qt: qualityPresetHintId(qualityPreset),
+      tag_hint_uc_preset: ucPresetHintId(
+        modelVersionValue,
+        config.ucPreset,
+      ),
+      tag_hint_transparent_background: transparentBackground,
+      v4_prompt: {
+        caption: {
+          base_caption: finalPrompt,
+          char_captions: [],
+        },
+        use_coords: params.useCoords ?? false,
+        use_order: true,
+      },
+      v4_negative_prompt: {
+        caption: {
+          base_caption: finalUc,
+          char_captions: [],
+        },
       },
     };
-    if (params.vibes.length) {
+    const body: any = {
+      input: finalPrompt,
+      model: modelValue,
+      action: action,
+      parameters: isV5 ? v5Parameters : legacyParameters,
+    };
+    if (isV5) body.use_new_shared_trial = true;
+    if (!isV5 && params.vibes.length) {
       body.parameters.reference_image_multiple = params.vibes.map(
         (v) => v.image,
       );
@@ -249,7 +313,7 @@ export class NovelAiImageGenService implements ImageGenService {
     const validCharacterReferences = params.characterReferences?.filter(
       (ref) => ref.image && ref.image.length > 0,
     );
-    if (validCharacterReferences?.length) {
+    if (!isV5 && validCharacterReferences?.length) {
       body.parameters.director_reference_images = [];
       body.parameters.director_reference_descriptions = [];
       body.parameters.director_reference_strength_values = [];
@@ -283,7 +347,7 @@ export class NovelAiImageGenService implements ImageGenService {
         extra_noise_seed: seed,
         color_correct: true,
       };
-      if (params.sampling === Sampling.DDIM) {
+      if (normalizedSampling === Sampling.DDIM) {
         body.parameters.sampler = this.translateSampling(
           Sampling.KEulerAncestral,
         );
@@ -298,9 +362,9 @@ export class NovelAiImageGenService implements ImageGenService {
         color_correct: true,
       };
     }
-    if (params.sampling == Sampling.KEulerAncestral) {
+    if (normalizedSampling == Sampling.KEulerAncestral) {
       body.parameters.deliberate_euler_ancestral_bug =
-        params.deliberateEulerAncestralBug ?? false;
+        isV5 ? false : (params.deliberateEulerAncestralBug ?? false);
     }
     // Variety+ (skip_cfg_above_sigma) must be disabled when Precise/Character
     // Reference is used. NAI 공식 사이트는 Char Ref 켜면 Variety+를 UI에서
@@ -309,7 +373,7 @@ export class NovelAiImageGenService implements ImageGenService {
     // 참고: DNT-LAB/NAIA_novel_ai_entrypoint 의 _apply_character_reference
     // (params.pop("skip_cfg_above_sigma", None))
     const hasValidCharRef = (validCharacterReferences?.length ?? 0) > 0;
-    if (params.varietyPlus && !hasValidCharRef) {
+    if (!isV5 && params.varietyPlus && !hasValidCharRef) {
       let sigmaCoef: number;
       switch (config.modelVersion) {
         case ModelVersion.V4_5:
@@ -336,27 +400,34 @@ export class NovelAiImageGenService implements ImageGenService {
     }
     if (params.characterPrompts?.length) {
       const center = { x: 0.5, y: 0.5 };
-      const charaPos = (index: number) =>
+      const charaPos = (sourceIndex: number) =>
         params.useCoords
-          ? (params.characterPositions?.[index] ?? center)
+          ? (params.characterPositions?.[sourceIndex] ?? center)
           : center;
-      body.parameters.characterPrompts = params.characterPrompts.map(
-        (charPrompt, index) => ({
-          prompt: charPrompt,
-          uc: params.characterUCs?.[index] ?? '',
-          center: charaPos(index),
+      const characterEntries = params.characterPrompts
+        .map((prompt, sourceIndex) => ({
+          prompt,
+          uc: params.characterUCs?.[sourceIndex] ?? '',
+          center: charaPos(sourceIndex),
+        }))
+        .filter((entry) => entry.prompt.trim().length > 0)
+        .slice(
+          0,
+          modelSpec.capabilities.maxCharacterPrompts ??
+            params.characterPrompts.length,
+        );
+      body.parameters.characterPrompts = characterEntries;
+      body.parameters.v4_prompt.caption.char_captions = characterEntries.map(
+        (entry) => ({
+          char_caption: entry.prompt,
+          centers: [entry.center],
         }),
       );
-      body.parameters.v4_prompt.caption.char_captions =
-        params.characterPrompts.map((charPrompt, index) => ({
-          char_caption: charPrompt,
-          centers: [charaPos(index)],
-        }));
       body.parameters.v4_negative_prompt.caption.char_captions =
-        params.characterUCs?.map((charUC, index) => ({
-          char_caption: charUC,
-          centers: [charaPos(index)],
-        })) ?? [];
+        characterEntries.map((entry) => ({
+          char_caption: entry.uc,
+          centers: [entry.center],
+        }));
     }
 
     // 디버그 로깅은 개발 환경에서만 활성화 (성능 최적화)
@@ -401,6 +472,39 @@ export class NovelAiImageGenService implements ImageGenService {
     const res = await reponse.json();
     const steps = res['subscription']['trainingStepsLeft'];
     return steps['fixedTrainingStepsLeft'] + steps['purchasedTrainingSteps'];
+  }
+
+  async getOpusUsageStatus(token: string): Promise<OpusUsageStatus> {
+    // Opus V5 회복형 할당량은 체험판 trial-status가 아니라 user/data의
+    // subscription.usage에 있다. getRemainCredits와 같은 사용자 데이터 원본을
+    // 사용해야 공식 웹의 Opus 잔량 표시와 일치한다.
+    const response = await fetch(this.apiEndpoint2 + '/user/data', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) {
+      throw new Error('HTTP error:' + response.status);
+    }
+    const raw = await response.json();
+    const usage = raw?.subscription?.usage;
+    const percent = Number(usage?.percent);
+    const timeUntilNextPercent = Number(usage?.timeUntilNextPercent);
+    if (
+      !Number.isFinite(percent) ||
+      typeof usage?.isNegative !== 'boolean' ||
+      !Number.isFinite(timeUntilNextPercent)
+    ) {
+      // 형식이 바뀌거나 Opus 사용량이 없는 계정을 0% 소진으로 오인하지 않는다.
+      throw new Error('Opus usage data is unavailable');
+    }
+    return {
+      percent: Math.max(0, Math.min(100, Math.round(percent))),
+      isNegative: usage.isNegative,
+      timeUntilNextPercent: Math.max(0, timeUntilNextPercent),
+    };
   }
 
   // 토큰이 NovelAI에서 실제로 유효한지 검증한다.

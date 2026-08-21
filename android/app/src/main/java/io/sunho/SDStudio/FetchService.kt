@@ -43,13 +43,16 @@ class FetchService : Plugin() {
       }
 
       override fun onResponse(httpcall: Call, response: Response) {
-        if (!response.isSuccessful) {
-          call.reject("Network request failed: ${response.code}")
-        } else {
+        response.use {
           val responseData = response.body?.bytes()
           val blobData = responseData?.let { Base64.encodeToString(it, Base64.DEFAULT) }
           val result = JSObject()
           result.put("data", blobData)
+          result.put("status", response.code)
+          val correlationId = response.header("x-correlation-id")
+            ?: response.header("x-request-id")
+            ?: response.header("cf-ray")
+          if (correlationId != null) result.put("correlationId", correlationId)
           call.resolve(result)
         }
       }
