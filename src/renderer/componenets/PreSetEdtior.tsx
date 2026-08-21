@@ -88,14 +88,24 @@ import { StackFixed, StackGrow, VerticalStack } from './LayoutComponents';
 import Tooltip from './Tooltip';
 import ModalOverlay from './ModalOverlay';
 import { FaCloudUploadAlt } from 'react-icons/fa';
-import { ModelVersion } from '../backends/imageGen';
 import {
-  QUALITY_TAGS,
+  GenerationQualityPreset,
+  ModelVersion,
+} from '../backends/imageGen';
+import {
+  QUALITY_PRESET_LABELS,
+  QUALITY_PRESET_OPTIONS,
   UcPresetKey,
   effectiveUcPreset,
+  qualityPresetTextFor,
   ucPresetOptionsFor,
   ucPresetTextFor,
 } from '../backends/genVendors/naiQualityPresets';
+import { resolveQualityPreset } from '../backends/generationSettings';
+import {
+  isV5ModelVersion,
+  V5_SAMPLERS,
+} from '../backends/genVendors/naiModelCapabilities';
 import { EditableSliderValue, VibeEditor, VibeButton, VibeImage } from './VibeEditor';
 import {
   CharacterReferenceEditor,
@@ -115,6 +125,9 @@ const PROMPT_SYNTAX_HELP = `프롬프트 문법
 • 1.5::내용:: : 명시 가중치 (음수 가능)
 • ##메모## : 주석 (생성 시 제외, 저장은 유지)
 • 자동완성 : 입력 중 태그 추천, < 입력 시 조각 검색`;
+
+const TRANSPARENT_BACKGROUND_HELP =
+  '프롬프트 앞에 transparent background를 추가하고 투명 PNG를 요청합니다.';
 
 const ImageSelect = observer(({ input }: { input: WFIInlineInput }) => {
   const { curSession } = appState;
@@ -1212,6 +1225,8 @@ const GlobalModelSettings = observer(() => {
   const [modelVersion, setModelVersion] = useState<ModelVersion>(ModelVersion.V4_5);
   const [furryMode, setFurryMode] = useState(false);
   const [disableQuality, setDisableQuality] = useState(false);
+  const [qualityPreset, setQualityPreset] =
+    useState<GenerationQualityPreset>('standard');
   const [ucPreset, setUcPreset] = useState<UcPresetKey>('none');
   const [loaded, setLoaded] = useState(false);
 
@@ -1221,6 +1236,7 @@ const GlobalModelSettings = observer(() => {
       setModelVersion(config.modelVersion ?? ModelVersion.V4_5);
       setFurryMode(config.furryMode ?? false);
       setDisableQuality(config.disableQuality ?? false);
+      setQualityPreset(resolveQualityPreset(config));
       setUcPreset((config.ucPreset as UcPresetKey) ?? 'none');
       setLoaded(true);
     })();
@@ -1246,6 +1262,8 @@ const GlobalModelSettings = observer(() => {
             selectedOption={modelVersion}
             menuPlacement="auto"
             options={[
+              { label: 'V5 Full', value: ModelVersion.V5 },
+              { label: 'V5 Curated', value: ModelVersion.V5Curated },
               { label: 'V4.5 Full', value: ModelVersion.V4_5 },
               { label: 'V4.5 Curated', value: ModelVersion.V4_5Curated },
               { label: 'V4 Full', value: ModelVersion.V4 },
@@ -1256,6 +1274,19 @@ const GlobalModelSettings = observer(() => {
               saveConfig({ modelVersion: opt.value });
             }}
           />
+          {(modelVersion === ModelVersion.V5 ||
+            modelVersion === ModelVersion.V5Curated) && (
+            <div className="text-xs text-faint mt-1">
+              V5에서는 Karras가 고정되며 Vibe·캐릭터 레퍼런스·Variety+·DDIM은
+              생성 요청에서 안전하게 제외됩니다.
+            </div>
+          )}
+          {modelVersion === ModelVersion.V5Curated && (
+            <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+              V5 Curated 인페인트는 현재 NAI 공식 동작에 따라 V4.5 Curated
+              인페인트 모델로 처리됩니다.
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <input
@@ -1271,30 +1302,58 @@ const GlobalModelSettings = observer(() => {
             퍼리 모드 켜기
           </label>
         </div>
-        {/* NAI 웹 패리티: Add Quality Tags — 켜면 생성 시 프롬프트 끝에 모델별
-            퀄리티 태그가 병합된다(프롬프트 입력칸은 그대로). 기존 disableQuality
-            설정의 역표기 — 키 유지로 기존 사용자 설정 그대로 승계. */}
-        <div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="globalAddQuality"
-              checked={!disableQuality}
-              onChange={(e) => {
-                setDisableQuality(!e.target.checked);
-                saveConfig({ disableQuality: !e.target.checked });
+        {(modelVersion === ModelVersion.V5 ||
+          modelVersion === ModelVersion.V5Curated) ? (
+          <div>
+            <label className="text-sm gray-label mb-1 block">품질 태그</label>
+            <DropdownSelect
+              selectedOption={qualityPreset}
+              menuPlacement="auto"
+              options={QUALITY_PRESET_OPTIONS.map((value) => ({
+                value,
+                label: QUALITY_PRESET_LABELS[value],
+              }))}
+              onSelect={(opt) => {
+                const value = opt.value as GenerationQualityPreset;
+                setQualityPreset(value);
+                setDisableQuality(value === 'none');
+                saveConfig({
+                  qualityPreset: value,
+                  disableQuality: value === 'none',
+                });
               }}
             />
-            <label htmlFor="globalAddQuality" className="text-sm gray-label">
-              퀄리티 태그 추가 (Add Quality Tags)
-            </label>
+            {qualityPreset !== 'none' && (
+              <div className="text-xs text-faint mt-1 break-all">
+                프롬프트 끝에 추가: {' '}
+                {qualityPresetTextFor(modelVersion, qualityPreset)}
+              </div>
+            )}
           </div>
-          {!disableQuality && (
-            <div className="text-xs text-faint mt-1 ml-6 break-all">
-              프롬프트 끝에 추가: {QUALITY_TAGS[modelVersion]?.replace(/^, /, '')}
+        ) : (
+          <div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="globalAddQuality"
+                checked={!disableQuality}
+                onChange={(e) => {
+                  setDisableQuality(!e.target.checked);
+                  saveConfig({ disableQuality: !e.target.checked });
+                }}
+              />
+              <label htmlFor="globalAddQuality" className="text-sm gray-label">
+                퀄리티 태그 추가 (Add Quality Tags)
+              </label>
             </div>
-          )}
-        </div>
+            {!disableQuality && (
+              <div className="text-xs text-faint mt-1 ml-6 break-all">
+                프롬프트 끝에 추가: {' '}
+                {qualityPresetTextFor(modelVersion, 'standard')}
+              </div>
+            )}
+          </div>
+        )}
         {/* NAI 웹 패리티: Undesired Content Preset — 생성 시 네거티브 프롬프트
             앞에 모델별 프리셋 텍스트가 병합된다. 기본 '없음' = 기존 결과 무변화. */}
         <div>
@@ -1321,6 +1380,58 @@ const GlobalModelSettings = observer(() => {
     </div>
   );
 });
+
+const TransparentBackgroundMainRow = observer(
+  ({ modelVersion }: { modelVersion: ModelVersion }) => {
+    const [enabled, setEnabled] = useState(false);
+    const [loaded, setLoaded] = useState(false);
+
+    useEffect(() => {
+      let mounted = true;
+      const load = async () => {
+        const config = await backend.getConfig();
+        if (!mounted) return;
+        setEnabled(config.transparentBackground ?? false);
+        setLoaded(true);
+      };
+      void load();
+      sessionService.addEventListener('config-changed', load);
+      return () => {
+        mounted = false;
+        sessionService.removeEventListener('config-changed', load);
+      };
+    }, []);
+
+    if (!loaded || !isV5ModelVersion(modelVersion)) return null;
+
+    return (
+      <div className="field-row pt-2 md:pt-3 flex gap-2 items-center">
+        <input
+          type="checkbox"
+          id="mainTransparentBackground"
+          checked={enabled}
+          onChange={async (e) => {
+            const checked = e.target.checked;
+            setEnabled(checked);
+            const config = await backend.getConfig();
+            await backend.setConfig({
+              ...config,
+              transparentBackground: checked,
+            });
+            sessionService.configChanged();
+          }}
+        />
+        <label
+          htmlFor="mainTransparentBackground"
+          className="flex-none gray-label cursor-pointer"
+        >
+          투명 배경
+        </label>
+        <HelpIcon content={TRANSPARENT_BACKGROUND_HELP} />
+      </div>
+    );
+  },
+);
 
 const WFRGroup = observer(({ element }: WFElementProps) => {
   const grp = element as WFIGroup;
@@ -1644,6 +1755,7 @@ const CharacterPromptEditor = observer(
       editCharacters,
       setEditCharacters,
       middlePromptMode,
+      modelVersion,
       getCharacterMiddlePrompt,
       onCharacterMiddlePromptChange,
     } = useContext(WFElementContext)!;
@@ -1661,6 +1773,18 @@ const CharacterPromptEditor = observer(
     };
 
     const addCharacter = () => {
+      const sharedCount =
+        input.fieldType === 'preset'
+          ? (shared?.characterPrompts || []).length
+          : 0;
+      if (
+        (modelVersion === ModelVersion.V5 ||
+          modelVersion === ModelVersion.V5Curated) &&
+        sharedCount + getField().length >= 32
+      ) {
+        appState.pushMessage('V5 캐릭터 프롬프트는 최대 32개까지 사용할 수 있습니다.');
+        return;
+      }
       const characters = [...getField()];
       characters.push({
         id: v4(),
@@ -1701,6 +1825,10 @@ const CharacterPromptEditor = observer(
 
     const [showCoordMap, setShowCoordMap] = useState(false);
     const allChars = [...(hasSharedPresetCPs ? sharedCPs : []), ...getField()];
+    const reachedV5CharacterLimit =
+      (modelVersion === ModelVersion.V5 ||
+        modelVersion === ModelVersion.V5Curated) &&
+      allChars.length >= 32;
     const coordMapRef = useRef<HTMLDivElement>(null);
     const [draggingId, setDraggingId] = useState<string | null>(null);
 
@@ -1916,8 +2044,10 @@ const CharacterPromptEditor = observer(
           <button
             className="round-button back-green h-8"
             onClick={addCharacter}
+            disabled={reachedV5CharacterLimit}
+            title={reachedV5CharacterLimit ? 'V5 최대 32개' : undefined}
           >
-            캐릭터 추가
+            캐릭터 추가{reachedV5CharacterLimit ? ' (최대 32개)' : ''}
           </button>
           <button
             className="round-button back-gray h-8 w-full"
@@ -2050,7 +2180,7 @@ export const CharacterButton = observer(({ input }: { input: WFIInlineInput }) =
 });
 
 const WFRInline = observer(({ element }: WFElementProps) => {
-  const { editVibe, editCharacters, type, showGroup, showGroupOverlay, preset, shared, meta } =
+  const { editVibe, editCharacters, type, showGroup, showGroupOverlay, preset, shared, meta, modelVersion } =
     useContext(WFElementContext)!;
   const { curGroup } = useContext(WFGroupContext)!;
   const input = element as WFIInlineInput;
@@ -2085,6 +2215,19 @@ const WFRInline = observer(({ element }: WFElementProps) => {
     }
   }
   const key = `${type}_${preset.name}_${input.field}`;
+  const isV5 = isV5ModelVersion(modelVersion);
+  if (
+    isV5 &&
+    [
+      'noiseSchedule',
+      'varietyPlus',
+      'legacyPromptConditioning',
+      'deliberateEulerAncestralBug',
+      'normalizeStrength',
+    ].includes(input.field)
+  ) {
+    return <></>;
+  }
   switch (field.type) {
     case 'prompt':
       return (
@@ -2132,15 +2275,20 @@ const WFRInline = observer(({ element }: WFElementProps) => {
       return <CharacterButton input={input} key={key} />;
     case 'nullInt':
       return (
-        <InlineEditorField label={input.label}>
-          <NullIntInput
-            label={input.label}
-            value={getField()}
-            disabled={false}
-            onChange={(val) => setField(val)}
-            key={key}
-          />
-        </InlineEditorField>
+        <>
+          {input.field === 'seed' && (
+            <TransparentBackgroundMainRow modelVersion={modelVersion} />
+          )}
+          <InlineEditorField label={input.label}>
+            <NullIntInput
+              label={input.label}
+              value={getField()}
+              disabled={false}
+              onChange={(val) => setField(val)}
+              key={key}
+            />
+          </InlineEditorField>
+        </>
       );
     case 'vibeSet':
       return <VibeButton input={input} key={key} />;
@@ -2178,7 +2326,7 @@ const WFRInline = observer(({ element }: WFElementProps) => {
             selectedOption={getField()}
             disabled={false}
             menuPlacement="auto"
-            options={Object.values(Sampling).map((x) => ({
+            options={(isV5 ? V5_SAMPLERS : Object.values(Sampling)).map((x) => ({
               label: x,
               value: x,
             }))}

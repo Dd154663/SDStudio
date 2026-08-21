@@ -449,7 +449,11 @@ export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
     return refs.some((ref: ReferenceItem) => ref.enabled !== false && ref.path);
   })();
   const isV4_5 = modelVersion === ModelVersion.V4_5 || modelVersion === ModelVersion.V4_5Curated;
-  const locked = isV4_5 && hasCharacterReferences;
+  const isV5 = modelVersion === ModelVersion.V5 || modelVersion === ModelVersion.V5Curated;
+  const locked = isV5 || (isV4_5 && hasCharacterReferences);
+  const lockedLabel = isV5
+    ? '바이브 이미지 설정 (V5 미지원)'
+    : '바이브 이미지 설정 (캐릭터 레퍼런스 사용 중)';
 
   const onClick = () => {
     if (locked) return;
@@ -492,7 +496,7 @@ export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
         <Tooltip
           content={
             locked
-              ? '바이브 이미지 설정 (캐릭터 레퍼런스 사용 중)'
+              ? lockedLabel
               : '바이브 이미지 설정 열기'
           }
         >
@@ -523,7 +527,7 @@ export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
               disabled={locked}
             >
               <div className="flex-1">
-                {locked ? '바이브 이미지 설정 (캐릭터 레퍼런스 사용 중)' : '바이브 이미지 설정 열기'}
+                {locked ? lockedLabel : '바이브 이미지 설정 열기'}
               </div>
             </button>
             {companions}
@@ -535,7 +539,7 @@ export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
             disabled={locked}
           >
             <div className="flex-1">
-              {locked ? '바이브 이미지 설정 (캐릭터 레퍼런스 사용 중)' : '바이브 이미지 설정 열기'}
+              {locked ? lockedLabel : '바이브 이미지 설정 열기'}
             </div>
           </button>
         )

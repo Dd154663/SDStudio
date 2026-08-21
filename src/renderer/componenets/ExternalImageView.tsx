@@ -320,6 +320,37 @@ export const ExternalImageView = observer(
 
               {job && (
                 <>
+                  {job.naiDiagnostics && (
+                    <div className="mb-4 rounded-lg border line-color p-3 bg-[var(--c-surface)]">
+                      <div className="text-sm font-semibold text-default mb-2">
+                        NAI 생성 정보
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                        <div className="text-muted">모델</div>
+                        <div className="text-body">{job.naiDiagnostics.model}</div>
+                        <div className="text-muted">요청 형식</div>
+                        <div className="text-body">
+                          params {job.naiDiagnostics.paramsVersion ?? '알 수 없음'}
+                        </div>
+                        <div className="text-muted">Noise Schedule</div>
+                        <div className="text-body">
+                          {job.naiDiagnostics.noiseSchedule ?? '알 수 없음'}
+                        </div>
+                        <div className="text-muted">품질 / UC 힌트</div>
+                        <div className="text-body">
+                          {job.naiDiagnostics.qualityHint ?? '-'} / {' '}
+                          {job.naiDiagnostics.ucHint ?? '-'}
+                        </div>
+                        <div className="text-muted">투명 배경</div>
+                        <div className="text-body">
+                          {job.naiDiagnostics.transparentBackground ? 'ON' : 'OFF'}
+                          {job.naiDiagnostics.straightAlpha !== undefined
+                            ? ` / straight alpha ${job.naiDiagnostics.straightAlpha ? 'ON' : 'OFF'}`
+                            : ''}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {/* 적용 대상 */}
                   <div className="mb-4">
                     <label className="text-xs font-medium text-muted mb-1 block">적용할 프리셋</label>

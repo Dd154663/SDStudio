@@ -435,7 +435,11 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
 
   // v4 모델은 캐릭터 레퍼런스 미지원
   const isV4 = modelVersion === ModelVersion.V4 || modelVersion === ModelVersion.V4Curated;
-  const locked = isV4;
+  const isV5 = modelVersion === ModelVersion.V5 || modelVersion === ModelVersion.V5Curated;
+  const locked = isV4 || isV5;
+  const lockedLabel = isV5
+    ? '캐릭터 레퍼런스 (V5 미지원)'
+    : '캐릭터 레퍼런스 (V4 모델 미지원)';
 
   const onClick = () => {
     if (locked) return;
@@ -481,7 +485,7 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
       <CompanionHostRow hostKey={hostKey}>
         <Tooltip
           content={
-            locked ? '캐릭터 레퍼런스 (v4 모델 미지원)' : '캐릭터 레퍼런스 설정 열기'
+            locked ? lockedLabel : '캐릭터 레퍼런스 설정 열기'
           }
         >
           <button
@@ -513,7 +517,7 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
               disabled={locked}
             >
               <div className="flex-1">
-                {locked ? '캐릭터 레퍼런스 (v4 모델 미지원)' : '캐릭터 레퍼런스 설정 열기'}
+                {locked ? lockedLabel : '캐릭터 레퍼런스 설정 열기'}
               </div>
             </button>
             {companions}
@@ -525,7 +529,7 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
             disabled={locked}
           >
             <div className="flex-1">
-              {locked ? '캐릭터 레퍼런스 (v4 모델 미지원)' : '캐릭터 레퍼런스 설정 열기'}
+              {locked ? lockedLabel : '캐릭터 레퍼런스 설정 열기'}
             </div>
           </button>
         )
@@ -557,7 +561,7 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
                 className={'flex-1 h-14 rounded-xl bg-[var(--c-surface)] flex items-center justify-center text-muted' + (locked ? '' : ' cursor-pointer hover:brightness-95 active:brightness-90')}
                 onClick={handleImageClick}
               >
-                {locked ? 'v4 모델 미지원' : enabledRefs.length === 0 ? '활성화된 이미지 없음' : '이미지 없음'}
+                {locked ? (isV5 ? 'V5 모델 미지원' : 'V4 모델 미지원') : enabledRefs.length === 0 ? '활성화된 이미지 없음' : '이미지 없음'}
               </div>
             )}
             {!locked && (

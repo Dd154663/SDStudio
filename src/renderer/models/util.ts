@@ -193,8 +193,61 @@ export async function extractMetadataFromAlpha(
   }
 }
 
+export function buildNaiMetadataDiagnostics(
+  data: any,
+  source?: string,
+): NonNullable<ImportableMetadata['naiDiagnostics']> {
+  const paramsVersion = Number(data?.['params_version']);
+  const qualityHint = Number(data?.['tag_hint_qt']);
+  const ucHint = Number(data?.['tag_hint_uc_preset']);
+  const sourceText =
+    source || (typeof data?.['model'] === 'string' ? data['model'] : '');
+  const lowerSource = sourceText.toLowerCase();
+  let detectedModel = '알 수 없음';
+  if (lowerSource.includes('v5')) {
+    detectedModel = /657484a5|0adf9ab7|full/.test(lowerSource)
+      ? 'V5 Full'
+      : 'V5 Curated';
+  } else if (lowerSource.includes('v4.5')) {
+    detectedModel = lowerSource.includes('curated')
+      ? 'V4.5 Curated'
+      : 'V4.5 Full';
+  } else if (lowerSource.includes('v4')) {
+    detectedModel = lowerSource.includes('curated')
+      ? 'V4 Curated'
+      : 'V4 Full';
+  }
+  const looksLikeV5CuratedFallback =
+    detectedModel === 'V4.5 Curated' &&
+    paramsVersion === 4 &&
+    Number.isFinite(qualityHint) &&
+    lowerSource.includes('inpaint');
+  if (looksLikeV5CuratedFallback) {
+    detectedModel = 'V5 Curated 인페인트 (V4.5 Curated 폴백)';
+  } else if (lowerSource.includes('inpaint')) {
+    detectedModel += ' 인페인트';
+  }
+  return {
+    model: detectedModel,
+    source: sourceText || undefined,
+    paramsVersion: Number.isFinite(paramsVersion) ? paramsVersion : undefined,
+    qualityHint: Number.isFinite(qualityHint) ? qualityHint : undefined,
+    ucHint: Number.isFinite(ucHint) ? ucHint : undefined,
+    transparentBackground: data?.['tag_hint_transparent_background'] === true,
+    straightAlpha:
+      typeof data?.['straight_alpha'] === 'boolean'
+        ? data['straight_alpha']
+        : undefined,
+    noiseSchedule:
+      typeof data?.['noise_schedule'] === 'string'
+        ? data['noise_schedule']
+        : undefined,
+  };
+}
+
 function parseCommentToJob(
   data: any,
+  source?: string,
 ): ImportableMetadata | undefined {
   if (!data || !data['prompt']) return undefined;
   try {
@@ -272,6 +325,7 @@ function parseCommentToJob(
       vibeImageData: vibeImages.length > 0 ? vibeImages : undefined,
       referenceImageData: refImages.length > 0 ? refImages : undefined,
       resolution,
+      naiDiagnostics: buildNaiMetadataDiagnostics(data, source),
     };
   } catch (e) {
     return undefined;
@@ -295,7 +349,13 @@ export async function extractPromptDataFromBase64(
       const data = JSON.parse(
         Array.isArray(raw) ? (raw as any[]).join('') : (raw as string),
       );
-      const result = parseCommentToJob(data);
+      const sourceRaw = exif['Source']?.value;
+      const source = Array.isArray(sourceRaw)
+        ? sourceRaw.join('')
+        : typeof sourceRaw === 'string'
+          ? sourceRaw
+          : exif['Source']?.description;
+      const result = parseCommentToJob(data, source);
       if (result) return result;
     }
   } catch (e) {
@@ -307,7 +367,11 @@ export async function extractPromptDataFromBase64(
     const metadata = await extractMetadataFromAlpha(base64);
     if (metadata) {
       const commentData = metadata['Comment'] || metadata;
-      const result = parseCommentToJob(commentData);
+      const source =
+        typeof metadata['Source'] === 'string'
+          ? metadata['Source']
+          : undefined;
+      const result = parseCommentToJob(commentData, source);
       if (result) return result;
     }
   } catch (e) {

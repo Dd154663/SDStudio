@@ -79,6 +79,16 @@ export interface ImportableMetadata extends SDAbstractJob<string> {
   vibeImageData?: string[];
   referenceImageData?: string[];
   resolution?: { width: number; height: number };
+  naiDiagnostics?: {
+    model: string;
+    source?: string;
+    paramsVersion?: number;
+    qualityHint?: number;
+    ucHint?: number;
+    transparentBackground: boolean;
+    straightAlpha?: boolean;
+    noiseSchedule?: string;
+  };
 }
 
 export interface SDJob extends SDAbstractJob<PromptNode> {
