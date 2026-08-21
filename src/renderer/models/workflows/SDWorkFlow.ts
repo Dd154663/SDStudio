@@ -272,7 +272,7 @@ const SDImageGenHandler = async (
     outputPath: imageService.getOutputDir(session, scene),
     onComplete: onComplete,
   };
-  taskQueueService.addTask(param, samples);
+  await taskQueueService.addTask(param, samples);
 };
 
 const SDCreatePrompt = async (
@@ -450,7 +450,7 @@ const createSDI2IHandler = (type: string) => {
       outputPath: imageService.getOutputDir(session, scene),
       onComplete: onComplete,
     };
-    taskQueueService.addTask(param, samples);
+    await taskQueueService.addTask(param, samples);
   };
   return handler;
 };

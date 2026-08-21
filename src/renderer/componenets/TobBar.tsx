@@ -9,6 +9,7 @@ import {
   taskQueueService,
   imageService,
   isMobile,
+  opusUsageService,
 } from '../models';
 import { VscChromeMinimize, VscChromeMaximize, VscChromeRestore, VscChromeClose } from 'react-icons/vsc';
 import { FaCog } from 'react-icons/fa';
@@ -26,6 +27,7 @@ const TobBar = observer(() => {
   const projectSidebar = resolved.projectSidebar || resolved.projectStrip;
   const [loggedIn, setLoggedIn] = useState(false);
   const [credits, setCredits] = useState(0);
+  const [, setUsageVersion] = useState(0);
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
@@ -33,12 +35,14 @@ const TobBar = observer(() => {
       setLoggedIn(loginService.loggedIn);
       if (!loginService.loggedIn) {
         setCredits(0);
+        opusUsageService.clear();
         return;
       }
       (async () => {
         try {
           const credits = await backend.getRemainCredits();
           setCredits(credits);
+          opusUsageService.refresh().catch(() => {});
         } catch (e) {
           // 로그인 표기는 ON인데 크레딧 조회가 실패 → 토큰 만료 의심 → 재검증
           // (만료면 OFF로 전환, 네트워크 일시 오류면 상태 유지)
@@ -50,12 +54,26 @@ const TobBar = observer(() => {
     loginService.addEventListener('change', onChange);
     taskQueueService.addEventListener('complete', onChange);
     imageService.addEventListener('encode-vibe', onChange);
+    const onUsageChange = () => setUsageVersion((v) => v + 1);
+    opusUsageService.addEventListener('change', onUsageChange);
     return () => {
       loginService.removeEventListener('change', onChange);
       taskQueueService.removeEventListener('complete', onChange);
       imageService.removeEventListener('encode-vibe', onChange);
+      opusUsageService.removeEventListener('change', onUsageChange);
     };
   }, []);
+
+  const opusStatus = opusUsageService.status;
+  const opusClass =
+    !opusStatus || opusUsageService.state === 'error'
+      ? 'back-gray'
+      : opusStatus.isNegative || opusStatus.percent <= 0
+        ? 'back-red'
+        : opusStatus.percent <= 10
+          ? 'back-orange'
+          : 'back-green';
+  const opusText = opusStatus ? `V5 ${opusStatus.percent}%` : 'V5 ?';
 
   useEffect(() => {
     if (isMobile || !window.electron) return;
@@ -124,6 +142,7 @@ const TobBar = observer(() => {
             <span className="text-sub hidden lg:inline">Anlas: </span>{' '}
             {/* tabular-nums: 잔량이 줄어도 자릿수 폭이 고정돼 출렁이지 않게 */}
             <span className={`round-tag back-yellow tabular-nums`}>{credits}</span>
+            <span className={`round-tag ${opusClass} tabular-nums ml-1`}>{opusText}</span>
           </>
         )}
       </p>
@@ -159,7 +178,10 @@ const TobBar = observer(() => {
           {!loggedIn ? (
             <span className="round-tag back-red text-sm !px-3 !py-1">로그인필요</span>
           ) : (
-            <span className="round-tag back-yellow text-sm !px-3 !py-1">{credits}</span>
+            <>
+              <span className="round-tag back-yellow text-sm !px-3 !py-1">{credits}</span>
+              <span className={`round-tag ${opusClass} text-sm !px-3 !py-1`}>{opusText}</span>
+            </>
           )}
         </div>
       ) : (
@@ -175,7 +197,10 @@ const TobBar = observer(() => {
           {!loggedIn ? (
             <span className="round-tag back-red text-sm !px-2 !py-1">로그인필요</span>
           ) : (
-            <span className="round-tag back-yellow text-sm !px-2 !py-1">{credits}</span>
+            <>
+              <span className="round-tag back-yellow text-sm !px-2 !py-1">{credits}</span>
+              <span className={`round-tag ${opusClass} text-sm !px-2 !py-1`}>{opusText}</span>
+            </>
           )}
         </div>
       )}

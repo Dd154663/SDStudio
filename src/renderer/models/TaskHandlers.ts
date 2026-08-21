@@ -16,11 +16,16 @@ import {
   imageService,
   isMobile,
   localAIService,
+  opusUsageService,
   promptService,
   sessionService,
   taskQueueService,
   workFlowService,
 } from '.';
+import {
+  isOpusFreeEligible,
+  isV5ModelVersion,
+} from '../backends/genVendors/naiModelCapabilities';
 import { appState } from './AppService';
 import {
   AbstractJob,
@@ -140,7 +145,8 @@ class GenerateImageTaskHandler implements TaskHandler {
   async handleTask(task: Task, run: TaskQueueRun) {
     const job: SDAbstractJob<PromptNode> = task.params
       .job as SDAbstractJob<PromptNode>;
-    const config = await backend.getConfig();
+    const config =
+      task.params.generationSnapshot ?? (await backend.getConfig());
     let prompt = lowerPromptNode(job.prompt!);
     console.log('lowered prompt: ' + prompt);
     const outputFilePath =
@@ -313,15 +319,16 @@ class GenerateImageTaskHandler implements TaskHandler {
       : (task.params.scene!.resolution as Resolution);
 
     // 모델 버전에 따른 바이브/캐릭터 레퍼런스 필터링
-    const appConfig = await backend.getConfig();
-    const curModelVersion = appConfig.modelVersion ?? ModelVersion.V4_5;
+    const curModelVersion = config.modelVersion ?? ModelVersion.V4_5;
     const isV4 = curModelVersion === ModelVersion.V4 || curModelVersion === ModelVersion.V4Curated;
     const isV4_5 = curModelVersion === ModelVersion.V4_5 || curModelVersion === ModelVersion.V4_5Curated;
+    const isV5 = isV5ModelVersion(curModelVersion);
 
-    // v4: 캐릭터 레퍼런스 미지원 → 제거
-    const finalReferences = isV4 ? [] : references;
+    // V4와 V5는 Precise/Character Reference 미지원 → 저장값은 보존하고 요청에서만 제거
+    const finalReferences = isV4 || isV5 ? [] : references;
     // v4.5: 캐릭터 레퍼런스가 있으면 바이브 비활성화
-    const finalVibes = (isV4_5 && finalReferences.length > 0) ? [] : vibes;
+    // V5는 Vibe Transfer 미지원 → 요청에서만 제거
+    const finalVibes = isV5 || (isV4_5 && finalReferences.length > 0) ? [] : vibes;
 
     const arg: ImageGenInput = {
       prompt: prompt,
@@ -350,6 +357,7 @@ class GenerateImageTaskHandler implements TaskHandler {
       characterReferences: finalReferences,
       outputFilePath: outputFilePath,
       seed: job.seed,
+      generationSettings: task.params.generationSnapshot,
     };
     if (job.characterPrompts?.length) {
       for (const character of job.characterPrompts) {
@@ -381,8 +389,58 @@ class GenerateImageTaskHandler implements TaskHandler {
       arg.originalImage = true;
       arg.imageStrength = i2iJob.strength;
     }
+    if (
+      isOpusFreeEligible({
+        version: curModelVersion,
+        width: arg.resolution.width,
+        height: arg.resolution.height,
+        steps: Math.min(arg.steps, 50),
+        hasCharacterReference: finalReferences.length > 0,
+      })
+    ) {
+      const usage = await opusUsageService.refresh(true);
+      if (opusUsageService.takeLowWarning(usage)) {
+        appState.pushMessage(
+          `Opus V5 무료 할당량이 ${usage!.percent}% 남았습니다. 소진 후에는 Anlas가 소비될 수 있습니다.`,
+        );
+      }
+      if (
+        opusUsageService.isPaidRisk(usage) &&
+        !opusUsageService.hasRecentPaidApproval()
+      ) {
+        const detail = usage
+          ? `현재 무료 할당량은 ${usage.percent}%입니다.`
+          : '현재 무료 할당량을 확인하지 못했습니다.';
+        const choice = await appState.pushDialogAsync({
+          type: 'select',
+          text:
+            `${detail}\n이후 생성은 Anlas를 소비할 수 있습니다. ` +
+            '서버 상태는 조회 직후에도 달라질 수 있습니다.',
+          items: [
+            {
+              text: 'Anlas 소비 가능성을 이해하고 계속',
+              value: 'continue',
+            },
+          ],
+        });
+        if (choice !== 'continue') {
+          taskQueueService.stop();
+          throw new Error('Opus 할당량 확인에서 생성을 중단했습니다.');
+        }
+        opusUsageService.approvePaidRisk();
+      }
+    }
+
     // IP 확인 최적화 - 세션당 한 번만 확인
-    await backend.generateImage(arg);
+    try {
+      await backend.generateImage(arg);
+    } catch (e: any) {
+      if (e?.kind === 'quota') {
+        opusUsageService.refresh(true).catch(() => {});
+      }
+      throw e;
+    }
+    if (isV5) opusUsageService.refresh(true).catch(() => {});
 
     if (job.seed) {
       job.seed = stepSeed(job.seed);

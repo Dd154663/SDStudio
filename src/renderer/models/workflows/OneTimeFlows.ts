@@ -52,7 +52,7 @@ export const queueRemoveBg = async (
     scene,
     onComplete,
   };
-  taskQueueService.addTask(params, 1);
+  await taskQueueService.addTask(params, 1);
 };
 
 const queueAugment = async (
@@ -87,7 +87,7 @@ const queueAugment = async (
     onComplete,
   };
   const samples = appState.samples;
-  taskQueueService.addTask(params, samples);
+  await taskQueueService.addTask(params, samples);
 };
 
 const createQueueAugment = (method: AugmentMethod) => {

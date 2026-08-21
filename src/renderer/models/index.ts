@@ -44,9 +44,12 @@ import { BackupService } from './BackupService';
 import { BatchProcessService } from './BatchProcessService';
 import { ExportPresetService } from './ExportPresetService';
 import { ImageHistoryService } from './ImageHistoryService';
+import { OpusUsageService } from './OpusUsageService';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
+
+export const opusUsageService = new OpusUsageService(backend);
 
 export const isMobile = window.electron == null;
 

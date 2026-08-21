@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "name": "V5 호환 기준 프로젝트",
+  "id": "11111111-2222-4333-8444-555555555555",
+  "presets": {},
+  "inpaints": {},
+  "scenes": {
+    "장면 1": {
+      "name": "장면 1",
+      "resolution": "portrait",
+      "resolutionWidth": 832,
+      "resolutionHeight": 1216,
+      "imageMap": [
+        "000001.png"
+      ],
+      "mains": [
+        "000001.png"
+      ],
+      "type": "scene",
+      "slots": [],
+      "meta": {
+        "legacy-note": "보존 대상"
+      },
+      "sceneCharacterPrompts": [],
+      "useSceneCharacterPrompts": false,
+      "sceneCharacterUC": "",
+      "sceneUC": "기존 씬 네거티브"
+    }
+  },
+  "library": {},
+  "presetShareds": {},
+  "characterPresets": {},
+  "mirrorMode": "blank",
+  "sceneCardStyle": {
+    "scene": "portrait"
+  },
+  "newSceneResolution": {
+    "resolution": "portrait",
+    "width": 832,
+    "height": 1216
+  },
+  "extraPrompt": "기존 추가 프롬프트"
+}

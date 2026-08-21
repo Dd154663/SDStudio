@@ -157,7 +157,7 @@ const AugmentGenHandler = async (
     outputPath: imageService.getOutputDir(session, scene),
     onComplete: onComplete,
   };
-  taskQueueService.addTask(param, samples);
+  await taskQueueService.addTask(param, samples);
 };
 
 const AugmentGenCreatePrompts = async (
@@ -283,7 +283,7 @@ const AugmentHandler = async (
     outputPath: imageService.getOutputDir(session, scene),
     onComplete: onComplete,
   };
-  taskQueueService.addTask(param, samples);
+  await taskQueueService.addTask(param, samples);
 };
 
 export const AugmentDef = new WFDefBuilder('Augment')
