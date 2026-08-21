@@ -769,6 +769,50 @@ export const CharacterPresetEditor = observer(({
     });
   };
 
+  // 선택 모드 일괄 삭제. 단건 삭제와 동일한 서비스 경로를 사용해 글로벌
+  // 첨부 이미지 정리와 로컬 적용 상태 해제를 빠뜨리지 않는다.
+  const handleDeleteSelected = () => {
+    const count = globalView
+      ? selectedGlobalIds.size
+      : selectedPresets.size;
+    if (count === 0) return;
+
+    appState.pushDialog({
+      type: 'confirm',
+      text: globalView
+        ? `선택한 글로벌 프리셋 ${count}개를 삭제하시겠습니까?\n첨부 이미지도 함께 삭제되며, 이 작업은 모든 프로젝트에 영향을 줍니다.`
+        : `선택한 로컬 프리셋 ${count}개를 삭제하시겠습니까?\n현재 프로젝트에서 삭제되며 복구할 수 없습니다.`,
+      callback: async () => {
+        if (globalView) {
+          const ids = Array.from(selectedGlobalIds);
+          const failed = new Set<string>();
+          for (const id of ids) {
+            try {
+              await globalCharacterPresetService.delete(id);
+            } catch (e) {
+              failed.add(id);
+            }
+          }
+          setSelectedGlobalIds(failed);
+          if (failed.size > 0) {
+            appState.pushMessage(
+              `${ids.length - failed.size}개를 삭제하고 ${failed.size}개는 삭제하지 못했습니다`,
+            );
+          } else {
+            appState.pushMessage(`${ids.length}개 글로벌 프리셋을 삭제했습니다`);
+          }
+          return;
+        }
+
+        const names = Array.from(selectedPresets);
+        appState.removeAppliedCharacterPresets(names);
+        for (const name of names) curSession.removeCharacterPreset(name);
+        setSelectedPresets(new Set());
+        appState.pushMessage(`${names.length}개 로컬 프리셋을 삭제했습니다`);
+      },
+    });
+  };
+
   const handleDuplicateGlobal = (entry: IGlobalCharacterPresetEntry) => {
     globalCharacterPresetService.duplicateEntry(entry.id);
   };
@@ -1229,6 +1273,16 @@ export const CharacterPresetEditor = observer(({
             }}
           >
             선택 해제
+          </button>
+          <button
+            className="px-3 py-1 rounded-lg text-xs font-medium btn-solid-red disabled:opacity-50"
+            disabled={
+              (globalView ? selectedGlobalIds.size : selectedPresets.size) === 0
+            }
+            onClick={handleDeleteSelected}
+          >
+            <FaTrash className="inline mr-1" size={10} />
+            선택 삭제
           </button>
         </div>
       )}
