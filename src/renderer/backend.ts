@@ -46,8 +46,15 @@ export abstract class Backend {
   abstract augmentImage(arg: ImageAugmentInput): Promise<void>;
   abstract login(email: string, password: string): Promise<void>;
   abstract loginWithToken(token: string): Promise<void>;
+  // 저장된 로그인 토큰을 바꾸지 않고 후보 토큰만 검증한다. 수동 토큰
+  // 프리셋 전환에서 잘못된 토큰으로 현재 로그인을 덮어쓰지 않기 위한 관문.
+  abstract validateToken(token: string): Promise<LoginValidity>;
   // 저장된 토큰이 실제로 유효한지 NovelAI API로 검증 (단순 파일 존재 확인이 아님)
   abstract validateLogin(): Promise<LoginValidity>;
+  // 로그인 토큰 프리셋은 프로젝트 저장 경로와 분리된 인증 저장 영역에 둔다.
+  // 반환값 undefined 는 아직 프리셋 파일이 없는 정상적인 최초 상태다.
+  abstract readTokenProfileData(): Promise<string | undefined>;
+  abstract writeTokenProfileData(data: string): Promise<void>;
   abstract encodeVibeImage(arg: EncodeVibeImageInput): Promise<string>;
   abstract showFile(arg: string): Promise<void>;
   // 폴더를 OS 파일 탐색기로 연다(내용물 표시). 데스크톱 전용 — 모바일은 no-op.

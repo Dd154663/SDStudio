@@ -15,24 +15,39 @@ import { backend } from '.';
 // 이미지 등 "한 번 쓰고 끝나는 유니크 경로" 파일은 경쟁이 없으므로 대상이 아니다.
 
 type Settler = { resolve: () => void; reject: (e: any) => void };
+type Writer = (data: string) => Promise<void>;
 
 export class PersistenceService {
   // 경로별 진행 중 펌프(쓰기 루프). 완료되면 스스로 제거된다.
   #pumps = new Map<string, Promise<void>>();
   // 경로별 대기 데이터 — 항상 최신 스냅숏 하나만 유지(병합).
-  #queued = new Map<string, { data: string; settlers: Settler[] }>();
+  #queued = new Map<
+    string,
+    { data: string; writer: Writer; settlers: Settler[] }
+  >();
 
   write(path: string, data: string): Promise<void> {
+    return this.writeWith(path, data, (next) => backend.writeFile(path, next));
+  }
+
+  // 데이터 루트 밖의 반복 상태 파일도 같은 직렬화·병합 보장을 재사용한다.
+  // key 는 큐 식별자일 뿐 실제 경로가 아니며, writer 가 저장 위치를 결정한다.
+  writeWith(key: string, data: string, writer: Writer): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const q = this.#queued.get(path);
+      const q = this.#queued.get(key);
       if (q) {
         // 아직 시작 안 한 쓰기가 있으면 데이터만 최신으로 교체(병합)
         q.data = data;
+        q.writer = writer;
         q.settlers.push({ resolve, reject });
       } else {
-        this.#queued.set(path, { data, settlers: [{ resolve, reject }] });
+        this.#queued.set(key, {
+          data,
+          writer,
+          settlers: [{ resolve, reject }],
+        });
       }
-      this.#ensurePump(path);
+      this.#ensurePump(key);
     });
   }
 
@@ -47,11 +62,11 @@ export class PersistenceService {
   }
 
   async #pump(path: string) {
-    let q: { data: string; settlers: Settler[] } | undefined;
+    let q: { data: string; writer: Writer; settlers: Settler[] } | undefined;
     while ((q = this.#queued.get(path))) {
       this.#queued.delete(path);
       try {
-        await backend.writeFile(path, q.data);
+        await q.writer(q.data);
         for (const s of q.settlers) s.resolve();
       } catch (e) {
         for (const s of q.settlers) s.reject(e);

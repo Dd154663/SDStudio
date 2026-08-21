@@ -1,0 +1,96 @@
+import type { LoginValidity } from '../../backends/imageGen';
+
+let profileData: string | undefined;
+let currentToken = 'original-token';
+
+const backend = {
+  readTokenProfileData: jest.fn(async () => profileData),
+  writeTokenProfileData: jest.fn(async (data: string) => {
+    profileData = data;
+  }),
+  writeFile: jest.fn(async () => {}),
+  loginWithToken: jest.fn(async (token: string) => {
+    currentToken = token;
+  }),
+  validateToken: jest.fn<Promise<LoginValidity>, [string]>(async () => 'valid'),
+  validateLogin: jest.fn<Promise<LoginValidity>, []>(async () => 'valid'),
+};
+
+jest.mock('..', () => ({ backend }));
+
+import { LoginService } from '../LoginService';
+
+beforeEach(() => {
+  profileData = undefined;
+  currentToken = 'original-token';
+  jest.clearAllMocks();
+  backend.validateToken.mockResolvedValue('valid');
+  backend.validateLogin.mockResolvedValue('valid');
+});
+
+describe('LoginService 토큰 프리셋', () => {
+  test('최초 상태에서 이름과 토큰을 저장하되 목록에는 토큰을 노출하지 않는다', async () => {
+    const service = new LoginService();
+    await service.saveTokenProfile('계정 1', 'secret-token-1');
+
+    expect(service.listTokenProfiles()).toEqual([
+      expect.objectContaining({ name: '계정 1' }),
+    ]);
+    expect(service.listTokenProfiles()[0]).not.toHaveProperty('token');
+    expect(profileData).toContain('secret-token-1');
+  });
+
+  test('후보 토큰 검증 후 기존 로그인 파일을 교체하고 활성 상태를 저장한다', async () => {
+    const service = new LoginService();
+    await service.saveTokenProfile('계정 2', 'secret-token-2');
+    const id = service.listTokenProfiles()[0].id;
+
+    await service.activateTokenProfile(id);
+
+    expect(backend.validateToken).toHaveBeenCalledWith('secret-token-2');
+    expect(backend.loginWithToken).toHaveBeenCalledWith('secret-token-2');
+    expect(currentToken).toBe('secret-token-2');
+    expect(service.activeProfileId).toBe(id);
+    expect(JSON.parse(profileData!).activeId).toBe(id);
+  });
+
+  test('유효하지 않은 저장 토큰은 현재 로그인 파일을 덮어쓰지 않는다', async () => {
+    const service = new LoginService();
+    await service.saveTokenProfile('잘못된 계정', 'invalid-token');
+    const id = service.listTokenProfiles()[0].id;
+    backend.validateToken.mockResolvedValueOnce('invalid');
+
+    await expect(service.activateTokenProfile(id)).rejects.toThrow(
+      '저장된 토큰이 유효하지 않습니다',
+    );
+
+    expect(backend.loginWithToken).not.toHaveBeenCalled();
+    expect(currentToken).toBe('original-token');
+    expect(service.activeProfileId).toBeUndefined();
+  });
+
+  test('활성 프리셋 삭제는 현재 로그인 토큰을 지우지 않는다', async () => {
+    const service = new LoginService();
+    await service.saveTokenProfile('계정 3', 'secret-token-3');
+    const id = service.listTokenProfiles()[0].id;
+    await service.activateTokenProfile(id);
+    backend.loginWithToken.mockClear();
+
+    await service.deleteTokenProfile(id);
+
+    expect(service.listTokenProfiles()).toEqual([]);
+    expect(service.activeProfileId).toBeUndefined();
+    expect(backend.loginWithToken).not.toHaveBeenCalled();
+    expect(currentToken).toBe('secret-token-3');
+  });
+
+  test('직접 로그인한 토큰과 일치하는 저장 프리셋을 활성 표시한다', async () => {
+    const service = new LoginService();
+    await service.saveTokenProfile('계정 4', 'secret-token-4');
+    const id = service.listTokenProfiles()[0].id;
+
+    await service.loginWithToken('secret-token-4');
+
+    expect(service.activeProfileId).toBe(id);
+  });
+});

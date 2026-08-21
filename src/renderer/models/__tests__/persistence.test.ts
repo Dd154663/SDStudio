@@ -101,4 +101,18 @@ describe('PersistenceService 쓰기 파이프라인', () => {
     await flush;
     expect(written.length).toBe(2);
   });
+
+  test('writeWith 는 데이터 루트 밖의 사용자 지정 writer 에도 직렬화를 적용한다', async () => {
+    const svc = new PersistenceService();
+    const custom: string[] = [];
+    await Promise.all([
+      svc.writeWith('auth:test', '1', async (data) => {
+        custom.push(data);
+      }),
+      svc.writeWith('auth:test', '2', async (data) => {
+        custom.push(data);
+      }),
+    ]);
+    expect(custom[custom.length - 1]).toBe('2');
+  });
 });

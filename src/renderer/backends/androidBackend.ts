@@ -330,6 +330,10 @@ export class AndroidBackend extends Backend {
     await this.writeFile('TOKEN.txt', token);
   }
 
+  async validateToken(token: string): Promise<LoginValidity> {
+    return await this.imageGenService.validateToken(token);
+  }
+
   async validateLogin(): Promise<LoginValidity> {
     let token: string;
     try {
@@ -338,6 +342,29 @@ export class AndroidBackend extends Backend {
       return 'invalid'; // 토큰 파일 없음 → 로그아웃
     }
     return await this.imageGenService.validateToken(token);
+  }
+
+  async readTokenProfileData(): Promise<string | undefined> {
+    try {
+      return await this.readFile('TOKEN_PROFILES.json');
+    } catch (e) {
+      if (!this.isNotFoundError(e)) throw e;
+      // 원자 교체 도중 앱이 종료돼 본문만 사라진 경우 직전 백업으로 복구한다.
+      try {
+        return await this.readFile('TOKEN_PROFILES.json.bak');
+      } catch (bakError) {
+        if (this.isNotFoundError(bakError)) return undefined;
+        throw bakError;
+      }
+    }
+  }
+
+  async writeTokenProfileData(data: string): Promise<void> {
+    await this.writeFile('TOKEN_PROFILES.json', data);
+    // 정상 저장 뒤에는 삭제된 토큰이 과거 .bak 에 장기 잔류하지 않게 정리한다.
+    try {
+      await this.deleteFile('TOKEN_PROFILES.json.bak');
+    } catch (e) {}
   }
 
   async encodeVibeImage(arg: EncodeVibeImageInput): Promise<string> {

@@ -79,6 +79,19 @@ export class ElectornBackend extends Backend {
     await invoke('write-global-file', 'TOKEN.txt', token);
   }
 
+  async readTokenProfileData(): Promise<string | undefined> {
+    try {
+      return await invoke('read-global-file', 'TOKEN_PROFILES.json');
+    } catch (e: any) {
+      if (String(e?.message || e).includes('ENOENT')) return undefined;
+      throw e;
+    }
+  }
+
+  async writeTokenProfileData(data: string): Promise<void> {
+    await invoke('write-global-file', 'TOKEN_PROFILES.json', data);
+  }
+
   async getConfig(): Promise<Config> {
     return await invoke('get-config');
   }
@@ -125,6 +138,10 @@ export class ElectornBackend extends Backend {
 
   async loginWithToken(token: string): Promise<void> {
     await this.writeToken(token);
+  }
+
+  async validateToken(token: string): Promise<LoginValidity> {
+    return await this.imageGenService.validateToken(token);
   }
 
   async validateLogin(): Promise<LoginValidity> {

@@ -55,6 +55,7 @@ import type { LegacyScanResult } from '../models/legacyCleanup';
 import ModalOverlay from './ModalOverlay';
 import MobileColorPicker from './MobileColorPicker';
 import { StorageDiagnosticsSection } from './StorageDiagnostics';
+import type { LoginTokenProfile } from '../models/LoginService';
 
 interface ConfigScreenProps {
   onSave: () => void;
@@ -65,57 +66,199 @@ interface ConfigScreenProps {
 const LoginTab = ({
   accessToken, setAccessToken,
   loggedIn, loginWithToken, roundTag,
-}: any) => (
-  <div className="space-y-5">
-    <div>
-      <label className="block text-sm font-semibold gray-label mb-2">
-        API 토큰으로 로그인
-      </label>
-      <div className="flex gap-2 mb-2">
-        <input className="gray-input block flex-1" type="password"
-          placeholder="API 토큰을 붙여넣으세요"
-          value={accessToken} onChange={(e) => setAccessToken(e.target.value)} />
+}: any) => {
+  const [profiles, setProfiles] = useState<LoginTokenProfile[]>([]);
+  const [profileName, setProfileName] = useState('');
+  const [profilesReady, setProfilesReady] = useState(false);
+  const [profileBusy, setProfileBusy] = useState(false);
+
+  const syncProfiles = useCallback(() => {
+    setProfiles(loginService.listTokenProfiles());
+    setProfilesReady(true);
+  }, []);
+
+  useEffect(() => {
+    const onChange = () => syncProfiles();
+    loginService.addEventListener('token-profiles-change', onChange);
+    loginService
+      .loadTokenProfiles()
+      .then(syncProfiles)
+      .catch((e: any) => {
+        setProfilesReady(true);
+        appState.pushMessage(e.message || '토큰 프리셋을 불러오지 못했습니다');
+      });
+    return () =>
+      loginService.removeEventListener('token-profiles-change', onChange);
+  }, [syncProfiles]);
+
+  const saveProfile = async () => {
+    if (profileBusy) return;
+    setProfileBusy(true);
+    try {
+      await loginService.saveTokenProfile(profileName, accessToken);
+      setProfileName('');
+      setAccessToken('');
+      appState.pushMessage('토큰 프리셋을 저장했습니다');
+    } catch (e: any) {
+      appState.pushMessage(e.message || '토큰 프리셋 저장에 실패했습니다');
+    } finally {
+      setProfileBusy(false);
+    }
+  };
+
+  const activateProfile = async (profile: LoginTokenProfile) => {
+    if (profileBusy) return;
+    setProfileBusy(true);
+    try {
+      await loginService.activateTokenProfile(profile.id);
+      appState.pushMessage(`${profile.name} 계정으로 전환했습니다`);
+    } catch (e: any) {
+      appState.pushMessage(e.message || '계정 전환에 실패했습니다');
+    } finally {
+      setProfileBusy(false);
+    }
+  };
+
+  const deleteProfile = (profile: LoginTokenProfile) => {
+    appState.pushDialog({
+      type: 'confirm',
+      text:
+        `${profile.name} 토큰 프리셋을 삭제하시겠습니까?\n` +
+        '현재 로그인 토큰은 삭제하거나 로그아웃하지 않습니다.',
+      callback: async () => {
+        setProfileBusy(true);
+        try {
+          await loginService.deleteTokenProfile(profile.id);
+          appState.pushMessage('토큰 프리셋을 삭제했습니다');
+        } catch (e: any) {
+          appState.pushMessage(e.message || '토큰 프리셋 삭제에 실패했습니다');
+        } finally {
+          setProfileBusy(false);
+        }
+      },
+    });
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <label className="block text-sm font-semibold gray-label mb-2">
+          API 토큰으로 로그인
+        </label>
+        <div className="flex gap-2 mb-2">
+          <input className="gray-input block flex-1" type="password"
+            placeholder="API 토큰을 붙여넣으세요"
+            value={accessToken} onChange={(e) => setAccessToken(e.target.value)} />
+        </div>
+        <div className="flex items-center">
+          <p className="flex items-center gap-1">
+            <span className="text-sm gray-label">로그인 상태:</span>{' '}
+            {loggedIn
+              ? <span className={`${roundTag} back-green`}>Yes</span>
+              : <span className={`${roundTag} back-red`}>No</span>}
+          </p>
+          <button className="btn back-sky py-1 px-3 rounded ml-auto"
+            onClick={loginWithToken}>
+            토큰 로그인
+          </button>
+        </div>
       </div>
-      <div className="flex items-center">
-        <p className="flex items-center gap-1">
-          <span className="text-sm gray-label">로그인 상태:</span>{' '}
-          {loggedIn
-            ? <span className={`${roundTag} back-green`}>Yes</span>
-            : <span className={`${roundTag} back-red`}>No</span>}
-        </p>
-        <button className="btn back-sky py-1 px-3 rounded ml-auto"
-          onClick={loginWithToken}>
-          토큰 로그인
-        </button>
+      <hr className="line-color" />
+      {/* 토큰 발급/로그인 가이드 */}
+      <div className="rounded-lg border line-color bg-gray-50 dark:bg-slate-700/40 p-4 text-sm text-body">
+        <p className="font-medium mb-1">토큰 발급 방법</p>
+        <ol className="list-decimal list-inside space-y-1 mb-3 leading-relaxed text-body">
+          <li>
+            <a
+              className="text-sky-500 hover:text-sky-400 cursor-pointer underline"
+              onClick={() => backend.openWebPage('https://novelai.net')}
+            >
+              NovelAI 공식 웹사이트
+            </a>
+            에 로그인
+          </li>
+          <li>좌측 사이드바의 톱니바퀴 아이콘 (User Settings) 클릭</li>
+          <li>Account 탭으로 이동</li>
+          <li>"Get Persistent API Token" 버튼 클릭</li>
+          <li>프롬프트가 표시됨. 처음 생성해도 "overwrite" 메시지가 뜰 수 있으며 이는 정상</li>
+          <li>복사 아이콘으로 토큰을 클립보드에 복사</li>
+        </ol>
+        <p className="font-medium mb-1">로그인 방법</p>
+        <ol className="list-decimal list-inside space-y-1 leading-relaxed text-body">
+          <li>위 "API 토큰으로 로그인" 칸에 복사한 토큰을 붙여넣고 [토큰 로그인] 클릭</li>
+        </ol>
       </div>
-    </div>
-    <hr className="line-color" />
-    {/* 토큰 발급/로그인 가이드 */}
-    <div className="rounded-lg border line-color bg-gray-50 dark:bg-slate-700/40 p-4 text-sm text-body">
-      <p className="font-medium mb-1">토큰 발급 방법</p>
-      <ol className="list-decimal list-inside space-y-1 mb-3 leading-relaxed text-body">
-        <li>
-          <a
-            className="text-sky-500 hover:text-sky-400 cursor-pointer underline"
-            onClick={() => backend.openWebPage('https://novelai.net')}
+
+      <hr className="line-color" />
+      <div className="space-y-3">
+        <div>
+          <p className="text-sm font-semibold gray-label">여러 토큰</p>
+          <p className="text-xs text-muted mt-1">
+            토큰을 이름별로 저장하고 수동으로 전환합니다. 자동 순환은 지원하지 않습니다.
+          </p>
+        </div>
+        <div className="rounded-lg border line-color bg-[var(--c-zone)] p-3 text-xs text-body">
+          토큰은 현재 로그인 토큰과 같은 로컬 인증 영역에 저장됩니다. 토큰 값은 목록에
+          표시되지 않지만, 공용 기기에서는 저장하지 마세요.
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            className="gray-input flex-1"
+            placeholder="프리셋 이름 예: 계정 1"
+            value={profileName}
+            maxLength={40}
+            onChange={(e) => setProfileName(e.target.value)}
+          />
+          <button
+            className="btn back-sky rounded px-3 py-2 text-sm"
+            disabled={profileBusy || !profileName.trim() || !accessToken.trim()}
+            onClick={saveProfile}
           >
-            NovelAI 공식 웹사이트
-          </a>
-          에 로그인
-        </li>
-        <li>좌측 사이드바의 톱니바퀴 아이콘 (User Settings) 클릭</li>
-        <li>Account 탭으로 이동</li>
-        <li>"Get Persistent API Token" 버튼 클릭</li>
-        <li>프롬프트가 표시됨. 처음 생성해도 "overwrite" 메시지가 뜰 수 있으며 이는 정상</li>
-        <li>복사 아이콘으로 토큰을 클립보드에 복사</li>
-      </ol>
-      <p className="font-medium mb-1">로그인 방법</p>
-      <ol className="list-decimal list-inside space-y-1 leading-relaxed text-body">
-        <li>위 "API 토큰으로 로그인" 칸에 복사한 토큰을 붙여넣고 [토큰 로그인] 클릭</li>
-      </ol>
+            입력 토큰 저장
+          </button>
+        </div>
+        {!profilesReady ? (
+          <p className="text-sm text-muted">토큰 프리셋을 불러오는 중…</p>
+        ) : profiles.length === 0 ? (
+          <p className="text-sm text-muted">저장된 토큰 프리셋이 없습니다.</p>
+        ) : (
+          <div className="space-y-2">
+            {profiles.map((profile) => {
+              const active = loginService.activeProfileId === profile.id;
+              return (
+                <div
+                  key={profile.id}
+                  className="flex items-center gap-2 rounded-lg border line-color bg-[var(--c-surface-2)] px-3 py-2"
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm text-default">
+                    {profile.name}
+                  </span>
+                  {active && (
+                    <span className={`${roundTag} back-green flex-none`}>사용 중</span>
+                  )}
+                  <button
+                    className="btn back-sky rounded px-3 py-1 text-xs flex-none"
+                    disabled={profileBusy || active}
+                    onClick={() => activateProfile(profile)}
+                  >
+                    전환
+                  </button>
+                  <button
+                    className="btn back-red rounded px-3 py-1 text-xs flex-none"
+                    disabled={profileBusy}
+                    onClick={() => deleteProfile(profile)}
+                  >
+                    삭제
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 /* ── 탭 2: 이미지 편집 및 배경 제거 ── */
 const ImageEditTab = ({
