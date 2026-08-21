@@ -17,6 +17,24 @@ import { appState } from '../models/AppService';
 import { resolveLayout } from '../models/layoutTemplates';
 import { observer } from 'mobx-react-lite';
 
+const MobileResourceBadge = ({
+  credits,
+  opusClass,
+  opusText,
+}: {
+  credits: number;
+  opusClass: string;
+  opusText: string;
+}) => (
+  <span
+    className="round-tag inline-grid overflow-hidden !p-0 text-center tabular-nums leading-none"
+    aria-label={`Anlas ${credits}, ${opusText}`}
+  >
+    <span className="back-yellow px-2 text-xs leading-4">{credits}</span>
+    <span className={`${opusClass} px-2 text-[11px] leading-[14px]`}>{opusText}</span>
+  </span>
+);
+
 const TobBar = observer(() => {
   // 컴팩트 템플릿(PC)은 하단바가 없어 세션(프로젝트) 선택을 상단바로 올린다.
   // 모바일은 resolveLayout 이 항상 classic 강제 → 기존 인라인 표시(md:hidden) 동작 무변화.
@@ -178,10 +196,11 @@ const TobBar = observer(() => {
           {!loggedIn ? (
             <span className="round-tag back-red text-sm !px-3 !py-1">로그인필요</span>
           ) : (
-            <>
-              <span className="round-tag back-yellow text-sm !px-3 !py-1">{credits}</span>
-              <span className={`round-tag ${opusClass} text-sm !px-3 !py-1`}>{opusText}</span>
-            </>
+            <MobileResourceBadge
+              credits={credits}
+              opusClass={opusClass}
+              opusText={opusText}
+            />
           )}
         </div>
       ) : (
@@ -197,10 +216,11 @@ const TobBar = observer(() => {
           {!loggedIn ? (
             <span className="round-tag back-red text-sm !px-2 !py-1">로그인필요</span>
           ) : (
-            <>
-              <span className="round-tag back-yellow text-sm !px-2 !py-1">{credits}</span>
-              <span className={`round-tag ${opusClass} text-sm !px-2 !py-1`}>{opusText}</span>
-            </>
+            <MobileResourceBadge
+              credits={credits}
+              opusClass={opusClass}
+              opusText={opusText}
+            />
           )}
         </div>
       )}
