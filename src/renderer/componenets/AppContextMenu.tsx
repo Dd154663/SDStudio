@@ -14,6 +14,7 @@ import {
   GallaryImageContextAlt,
   GenericScene,
   HistoryImageContextAlt,
+  Scene,
 } from '../models/types';
 import { oneTimeFlowMap, oneTimeFlows } from '../models/workflows/OneTimeFlows';
 import { extractPromptDataFromBase64 } from '../models/util';
@@ -21,8 +22,85 @@ import {
   addScenesToQueue,
   removeScenesFromQueue,
 } from '../models/sceneQueueActions';
+import {
+  assignScenesToSeedGroup,
+  createSceneSeedGroup,
+  dissolveSceneSeedGroup,
+  getSceneSeedGroupInfo,
+  listSceneSeedGroups,
+  removeScenesFromSeedGroups,
+} from '../models/sceneSeedGroups';
 
 export const AppContextMenu = observer(() => {
+  const selectedNormalScenes = (fallback?: GenericScene): Scene[] => {
+    const session = appState.curSession;
+    if (!session) return [];
+    if (appState.selectedScenes.size > 0) {
+      return Array.from(appState.selectedScenes)
+        .map((name) => session.scenes.get(name))
+        .filter((scene): scene is Scene => scene !== undefined);
+    }
+    return fallback?.type === 'scene' ? [fallback] : [];
+  };
+
+  const configureSceneSeedGroup = async (ctx: SceneContextAlt) => {
+    const session = appState.curSession;
+    if (!session) return;
+    const scenes = selectedNormalScenes(ctx.scene);
+    if (scenes.length < 2) {
+      appState.pushMessage('일반 씬을 2개 이상 선택한 뒤 실행해 주세요.');
+      return;
+    }
+
+    const groups = listSceneSeedGroups(session);
+    const choice = await appState.pushDialogAsync({
+      type: 'select',
+      text: `선택한 ${scenes.length}개 씬의 시드 그룹을 설정합니다.`,
+      items: [
+        { text: '새 그룹으로 묶기', value: '__new__' },
+        ...groups.map((group) => ({
+          text: `그룹 ${group.label}에 추가`,
+          value: group.id,
+        })),
+      ],
+    });
+    if (!choice) return;
+
+    const group =
+      choice === '__new__'
+        ? createSceneSeedGroup(session, scenes)
+        : assignScenesToSeedGroup(session, scenes, choice)
+          ? listSceneSeedGroups(session).find((item) => item.id === choice)
+          : undefined;
+    if (!group) {
+      appState.pushMessage('시드 그룹을 설정하지 못했습니다.');
+      return;
+    }
+    sessionService.markDirty(session.name);
+    appState.pushMessage(
+      `${scenes.length}개 씬을 시드 그룹 ${group.label}로 설정했습니다.`,
+    );
+  };
+
+  const removeSceneSeedGroup = (ctx: SceneContextAlt) => {
+    const session = appState.curSession;
+    if (!session || ctx.scene.type !== 'scene') return;
+    const selected = selectedNormalScenes();
+    let changed = 0;
+    if (selected.length > 0) {
+      changed = removeScenesFromSeedGroups(selected);
+    } else {
+      const group = getSceneSeedGroupInfo(session, ctx.scene);
+      if (group) changed = dissolveSceneSeedGroup(session, group.id);
+    }
+    if (changed === 0) {
+      appState.pushMessage('해제할 시드 그룹이 없습니다.');
+      return;
+    }
+    sessionService.markDirty(session.name);
+    appState.pushMessage('시드 그룹을 해제했습니다.');
+  };
+
   const duplicateScene = async (ctx: SceneContextAlt) => {
     // 살아있는 씬의 toJSON() 재역직렬화라 null(프리셋 역직렬화 실패)이 나올 수 없다
     const newScene = genericSceneFromJSON(ctx.scene.toJSON())!;
@@ -225,6 +303,10 @@ export const AppContextMenu = observer(() => {
           appState.selectedScenes.size > 0,
         );
       }
+    } else if (id === 'seed-group-set') {
+      void configureSceneSeedGroup(ctx);
+    } else if (id === 'seed-group-remove') {
+      removeSceneSeedGroup(ctx);
     }
   };
   const deleteAllImagesFromSelected = async (excludeFav: boolean) => {
@@ -632,6 +714,18 @@ export const AppContextMenu = observer(() => {
         <Item id="move-back" onClick={handleSceneItemClick}>
           해당 씬 맨 뒤로
         </Item>
+        <Separator />
+        {appState.selectedScenes.size > 1 && (
+          <Item id="seed-group-set" onClick={handleSceneItemClick}>
+            선택한 씬 시드 그룹 설정 ({appState.selectedScenes.size})
+          </Item>
+        )}
+        <Item id="seed-group-remove" onClick={handleSceneItemClick}>
+          {appState.selectedScenes.size > 0
+            ? '선택한 씬을 시드 그룹에서 제외'
+            : '현재 시드 그룹 해제'}
+        </Item>
+        <Separator />
         <Item id="delete" onClick={handleSceneItemClick}>
           {appState.selectedScenes.size > 1
             ? `선택한 씬(${appState.selectedScenes.size}) 삭제`

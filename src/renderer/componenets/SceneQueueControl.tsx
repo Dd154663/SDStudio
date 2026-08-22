@@ -101,6 +101,11 @@ import {
   prepareMirrorCanvas,
 } from '../models/workflows/SDWorkFlow';
 import { oneTimeFlowMap, oneTimeFlows } from '../models/workflows/OneTimeFlows';
+import {
+  getSceneSeedGroupInfo,
+  MAX_NAI_SEED,
+  setSceneSeedGroupSeed,
+} from '../models/sceneSeedGroups';
 
 // createMissingPiecesForSession / queueScene 는 models/sceneQueueActions.ts 로 이전
 // (AppContextMenu 우클릭 메뉴와 공유 — 중복 제거)
@@ -120,6 +125,99 @@ function getSelectedSceneNames(session: Session): string[] {
   );
   return names;
 }
+
+interface SceneSeedGroupBadgeProps {
+  session: Session;
+  scene: Scene;
+}
+
+const SCENE_SEED_GROUP_COLOR_CLASSES = [
+  'btn-solid-sky',
+  'btn-solid-purple',
+  'btn-solid-green',
+  'btn-solid-orange',
+  'btn-solid-indigo',
+  'btn-solid-red',
+  'btn-solid-yellow',
+] as const;
+
+const SceneSeedGroupBadge = observer(
+  ({ session, scene }: SceneSeedGroupBadgeProps) => {
+    const group = getSceneSeedGroupInfo(session, scene);
+    const [open, setOpen] = useState(false);
+    const [value, setValue] = useState('');
+    const cancelSaveRef = useRef(false);
+
+    useEffect(() => {
+      if (!open) return;
+      cancelSaveRef.current = false;
+      setValue(group?.seed?.toString() ?? '');
+    }, [open, group?.id, group?.seed]);
+
+    if (!group) return null;
+    const colorClass =
+      SCENE_SEED_GROUP_COLOR_CLASSES[
+        group.displayIndex % SCENE_SEED_GROUP_COLOR_CLASSES.length
+      ];
+
+    const save = () => {
+      const trimmed = value.trim();
+      const seed = trimmed === '' ? undefined : Number(trimmed);
+      if (
+        seed !== undefined &&
+        (!Number.isInteger(seed) || seed < 0 || seed > MAX_NAI_SEED)
+      ) {
+        appState.pushMessage(
+          `시드는 0~${MAX_NAI_SEED} 사이의 정수여야 합니다.`,
+        );
+        setValue(group.seed?.toString() ?? '');
+        return;
+      }
+      if (setSceneSeedGroupSeed(session, group.id, seed)) {
+        sessionService.markDirty(session.name);
+      }
+    };
+
+    return (
+      <div
+        className="absolute right-9 top-1 z-30"
+        onClick={(event) => event.stopPropagation()}
+        onContextMenu={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          className={`w-7 h-7 p-0 rounded-full btn ${colorClass} opacity-80 hover:opacity-100 text-xs font-bold shadow clickable flex items-center justify-center`}
+          title={`시드 그룹 ${group.label}`}
+          onClick={() => setOpen((current) => !current)}
+        >
+          {group.label}
+        </button>
+        {open && (
+          <input
+            autoFocus
+            type="text"
+            inputMode="numeric"
+            value={value}
+            placeholder="그룹 시드"
+            className="absolute right-0 top-8 w-40 gray-input text-sm"
+            onChange={(event) => setValue(event.target.value)}
+            onBlur={() => {
+              if (!cancelSaveRef.current) save();
+              setOpen(false);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') event.currentTarget.blur();
+              if (event.key === 'Escape') {
+                cancelSaveRef.current = true;
+                setOpen(false);
+              }
+            }}
+          />
+        )}
+      </div>
+    );
+  },
+);
 
 interface SceneCellProps {
   scene: GenericScene;
@@ -551,6 +649,10 @@ export const SceneCell = observer(
       ? ' outline outline-4 outline-sky-400 outline-offset-2'
       : '';
     const isSelected = appState.selectedScenes.has(scene.name);
+    const seedGroupBadge =
+      scene.type === 'scene' ? (
+        <SceneSeedGroupBadge session={curSession} scene={scene} />
+      ) : null;
 
     // 프롬프트 퀵 수정 버튼(W2) — 이미지 우상단 오버레이(클래식/신규 공용).
     // 하단 버튼 행은 4개가 상한(스몰 뷰·모바일 그리드 보전)이라 행에 넣지 않는다.
@@ -620,33 +722,36 @@ export const SceneCell = observer(
                   : totalImages}{' '}
               </div>
             </div>
-            <div
-              className={`relative image-cell overflow-hidden ${cellSizes[cellSize]}`}
-            >
-              {(previewImage || image) && (
-                <div className="relative w-full h-full">
-                  <img
-                    src={previewImage || image}
-                    draggable={false}
-                    className={`w-full h-full object-contain z-0${
-                      currentPreviewIsFavorite
-                        ? ' border-2 border-yellow-400'
-                        : ''
-                    }`}
-                  />
-                  {currentPreviewIsFavorite && (
-                    <div className="absolute left-1 top-1 z-10 text-yellow-400 text-sm drop-shadow flex items-center gap-1">
-                      <FaStar />
-                      {scene.mains.length > 1 && (
-                        <span className="bg-black/70 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold leading-none">
-                          {scene.mains.length}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-              {quickPromptButton}
+            <div className="relative">
+              {seedGroupBadge}
+              <div
+                className={`relative image-cell overflow-hidden ${cellSizes[cellSize]}`}
+              >
+                {(previewImage || image) && (
+                  <div className="relative w-full h-full">
+                    <img
+                      src={previewImage || image}
+                      draggable={false}
+                      className={`w-full h-full object-contain z-0${
+                        currentPreviewIsFavorite
+                          ? ' border-2 border-yellow-400'
+                          : ''
+                      }`}
+                    />
+                    {currentPreviewIsFavorite && (
+                      <div className="absolute left-1 top-1 z-10 text-yellow-400 text-sm drop-shadow flex items-center gap-1">
+                        <FaStar />
+                        {scene.mains.length > 1 && (
+                          <span className="bg-black/70 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold leading-none">
+                            {scene.mains.length}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {quickPromptButton}
+              </div>
             </div>
           </div>
           <div className="w-full flex mt-auto justify-center items-center gap-1 md:gap-2 p-1 md:p-2">
@@ -693,48 +798,51 @@ export const SceneCell = observer(
           className="clickable bg-[var(--c-surface-2)]"
           onClick={onClickCard}
         >
-          <div
-            className={`relative image-cell overflow-hidden rounded-md ${
-              cellSizes[cellSize]
-            }`}
-          >
-            {(previewImage || image) && (
-              <div className="relative w-full h-full">
-                <img
-                  src={previewImage || image}
-                  draggable={false}
-                  className="w-full h-full object-cover z-0"
-                />
-                {currentPreviewIsFavorite && (
-                  <div className="absolute left-1 top-1 z-10 text-yellow-400 text-sm drop-shadow flex items-center gap-1">
-                    <FaStar />
-                    {scene.mains.length > 1 && (
-                      <span className="bg-black/70 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold leading-none">
-                        {scene.mains.length}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-            {/* 씬 이름 + 이미지 카운트 오버레이 */}
-            <div className="absolute bottom-0 left-0 right-0 z-[5] bg-gradient-to-t from-black/70 to-transparent px-2 pt-4 pb-1.5">
-              <div className="flex items-center text-sm text-white">
-                <div className="truncate flex-1 font-medium drop-shadow">
-                  {isBookmarked && (
-                    <span className="text-orange-500 mr-0.5">📌</span>
+          <div className="relative">
+            {seedGroupBadge}
+            <div
+              className={`relative image-cell overflow-hidden rounded-md ${
+                cellSizes[cellSize]
+              }`}
+            >
+              {(previewImage || image) && (
+                <div className="relative w-full h-full">
+                  <img
+                    src={previewImage || image}
+                    draggable={false}
+                    className="w-full h-full object-cover z-0"
+                  />
+                  {currentPreviewIsFavorite && (
+                    <div className="absolute left-1 top-1 z-10 text-yellow-400 text-sm drop-shadow flex items-center gap-1">
+                      <FaStar />
+                      {scene.mains.length > 1 && (
+                        <span className="bg-black/70 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold leading-none">
+                          {scene.mains.length}
+                        </span>
+                      )}
+                    </div>
                   )}
-                  {emoji}
-                  {scene.name}
                 </div>
-                <div className="flex-none ml-1 text-white/80 drop-shadow">
-                  {previewIndex >= 0
-                    ? `${previewIndex + 1}/${totalImages}`
-                    : totalImages}
+              )}
+              {/* 씬 이름 + 이미지 카운트 오버레이 */}
+              <div className="absolute bottom-0 left-0 right-0 z-[5] bg-gradient-to-t from-black/70 to-transparent px-2 pt-4 pb-1.5">
+                <div className="flex items-center text-sm text-white">
+                  <div className="truncate flex-1 font-medium drop-shadow">
+                    {isBookmarked && (
+                      <span className="text-orange-500 mr-0.5">📌</span>
+                    )}
+                    {emoji}
+                    {scene.name}
+                  </div>
+                  <div className="flex-none ml-1 text-white/80 drop-shadow">
+                    {previewIndex >= 0
+                      ? `${previewIndex + 1}/${totalImages}`
+                      : totalImages}
+                  </div>
                 </div>
               </div>
+              {quickPromptButton}
             </div>
-            {quickPromptButton}
           </div>
         </div>
         {/* PC 전용: 호버 시 버튼 */}

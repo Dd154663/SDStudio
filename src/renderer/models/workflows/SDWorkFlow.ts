@@ -38,6 +38,7 @@ import {
 import { imageService, promptService, taskQueueService, workFlowService } from '..';
 import { TaskParam } from '../TaskQueueService';
 import { dataUriToBase64 } from '../ImageService';
+import { resolveSceneSeed } from '../sceneSeedGroups';
 
 const SDImageGenPreset = new WFVarBuilder()
   .addIntVar('cfgRescale', 0, 1, 0.01, 0)
@@ -254,7 +255,7 @@ const SDImageGenHandler = async (
     noiseSchedule: preset.noiseSchedule,
     backend: preset.backend,
     vibes: (shared.vibes || []).map((v: any) => (v.toJSON ? v.toJSON() : { ...v })),
-    seed: shared.seed,
+    seed: resolveSceneSeed(sceneObj, shared.seed),
   };
   
   // 씬 전용 캐릭터 UC 추가
