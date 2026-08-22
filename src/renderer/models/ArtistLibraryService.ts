@@ -75,6 +75,14 @@ export class ArtistLibraryService extends EventTarget {
   }
 
   async save(): Promise<void> {
+    try {
+      await this.writeStoreOrThrow();
+    } catch (e) {
+      console.error('Failed to save artist library:', e);
+    }
+  }
+
+  private async writeStoreOrThrow(): Promise<void> {
     const store: IArtistLibraryStore = {
       version: 1,
       artists: this.artists,
@@ -86,11 +94,7 @@ export class ArtistLibraryService extends EventTarget {
       await persistService.write(tmp, data);
       await backend.renameFile(tmp, ARTIST_LIBRARY_FILE);
     } catch (e) {
-      try {
-        await persistService.write(ARTIST_LIBRARY_FILE, data);
-      } catch (e2) {
-        console.error('Failed to save artist library:', e2);
-      }
+      await persistService.write(ARTIST_LIBRARY_FILE, data);
     }
   }
 
@@ -116,10 +120,45 @@ export class ArtistLibraryService extends EventTarget {
     return this.artists.find((a) => a.id === id);
   }
 
+  private normalizeArtistName(name: string): string {
+    return name.trim().replace(/\s+/g, ' ');
+  }
+
+  private artistNameKey(name: string): string {
+    return this.normalizeArtistName(name).toLowerCase();
+  }
+
+  findArtistByName(
+    name: string,
+    excludeId?: string,
+  ): IArtistEntry | undefined {
+    const key = this.artistNameKey(name);
+    if (!key) return undefined;
+    return this.artists
+      .filter(
+        (a) => a.id !== excludeId && this.artistNameKey(a.name) === key,
+      )
+      .sort((a, b) => a.createdAt - b.createdAt)[0];
+  }
+
+  getDuplicateArtistGroups(): IArtistEntry[][] {
+    const groups = new Map<string, IArtistEntry[]>();
+    for (const artist of this.artists) {
+      const key = this.artistNameKey(artist.name);
+      if (!key) continue;
+      const group = groups.get(key) ?? [];
+      group.push(artist);
+      groups.set(key, group);
+    }
+    return Array.from(groups.values()).filter((group) => group.length > 1);
+  }
+
   @action
   createArtist(name: string): IArtistEntry | undefined {
-    name = name.trim();
+    name = this.normalizeArtistName(name);
     if (!name) return undefined;
+    const existing = this.findArtistByName(name);
+    if (existing) return existing;
     const entry: IArtistEntry = {
       id: uuidv4(),
       name,
@@ -138,12 +177,100 @@ export class ArtistLibraryService extends EventTarget {
   renameArtist(id: string, name: string): void {
     const a = this.getArtist(id);
     if (!a) return;
-    name = name.trim();
+    name = this.normalizeArtistName(name);
     if (!name || a.name === name) return;
+    if (this.findArtistByName(name, id)) return;
     a.name = name;
     a.updatedAt = Date.now();
     this.artists = [...this.artists];
     this.scheduleSave();
+  }
+
+  // 기존 동명 카드를 사용자가 명시적으로 요청했을 때만 일괄 병합한다.
+  // 파일은 대상 폴더로 전부 복사하고 JSON 저장까지 성공한 뒤 원본 폴더를 지운다.
+  @action
+  async mergeDuplicateArtists(
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<{ groups: number; mergedArtists: number; copiedImages: number }> {
+    const groups = this.getDuplicateArtistGroups();
+    if (groups.length === 0) {
+      return { groups: 0, mergedArtists: 0, copiedImages: 0 };
+    }
+
+    const originalArtists = this.artists;
+    let nextArtists = [...this.artists];
+    const copiedPaths: string[] = [];
+    const sourceDirs: string[] = [];
+    let mergedArtists = 0;
+
+    try {
+      for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+        const group = [...groups[groupIndex]].sort(
+          (a, b) =>
+            (a.createdAt ?? Number.MAX_SAFE_INTEGER) -
+            (b.createdAt ?? Number.MAX_SAFE_INTEGER),
+        );
+        const target = group[0];
+        const sources = group.slice(1);
+        const copiedImages: IArtistImage[] = [];
+
+        for (const source of sources) {
+          for (const image of source.images) {
+            const imageId = uuidv4();
+            const ext = image.path.split('.').pop() || 'png';
+            const dest = `${ARTIST_LIBRARY_DIR}/${target.id}/${imageId}.${ext}`;
+            await backend.copyFile(image.path, dest);
+            copiedPaths.push(dest);
+            copiedImages.push({ id: imageId, path: dest });
+          }
+          sourceDirs.push(`${ARTIST_LIBRARY_DIR}/${source.id}`);
+        }
+
+        const merged: IArtistEntry = {
+          ...target,
+          images: [...target.images, ...copiedImages],
+          tags: Array.from(new Set(group.flatMap((a) => a.tags))),
+          favorite: group.some((a) => a.favorite),
+          createdAt: Math.min(
+            ...group.map((a) => a.createdAt ?? Date.now()),
+          ),
+          updatedAt: Date.now(),
+        };
+        const sourceIds = new Set(sources.map((a) => a.id));
+        nextArtists = nextArtists
+          .filter((a) => !sourceIds.has(a.id))
+          .map((a) => (a.id === target.id ? merged : a));
+        mergedArtists += sources.length;
+        onProgress?.(groupIndex + 1, groups.length);
+      }
+
+      if (this.saveTimeout) {
+        clearTimeout(this.saveTimeout);
+        this.saveTimeout = null;
+      }
+      this.artists = nextArtists;
+      await this.writeStoreOrThrow();
+    } catch (e) {
+      this.artists = originalArtists;
+      for (const path of copiedPaths) {
+        try {
+          await backend.deleteFile(path);
+        } catch (cleanupError) {}
+      }
+      throw e;
+    }
+
+    for (const dir of sourceDirs) {
+      try {
+        await backend.deleteDir(dir);
+      } catch (e) {}
+    }
+
+    return {
+      groups: groups.length,
+      mergedArtists,
+      copiedImages: copiedPaths.length,
+    };
   }
 
   @action

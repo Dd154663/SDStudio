@@ -18,6 +18,7 @@ import {
   FaCheckSquare,
   FaSquare,
   FaGlobe,
+  FaCompressArrowsAlt,
 } from 'react-icons/fa';
 import { artistLibraryService, imageService, backend } from '../models';
 import { IArtistEntry, IArtistImage } from '../models/ArtistLibraryService';
@@ -200,7 +201,17 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                     type: 'input-confirm',
                     text: `새 작가 이름을 입력하세요 (현재: ${artist.name})`,
                   });
-                  if (newName) artistLibraryService.renameArtist(artist.id, newName);
+                  if (newName) {
+                    const duplicate = artistLibraryService.findArtistByName(
+                      newName,
+                      artist.id,
+                    );
+                    if (duplicate) {
+                      appState.pushMessage('동일한 이름의 작가가 있어 이름을 변경하지 않았습니다.');
+                      return;
+                    }
+                    artistLibraryService.renameArtist(artist.id, newName);
+                  }
                 }}
               >
                 <FaPen />
@@ -425,6 +436,7 @@ const ArtistLibraryTab = observer(() => {
   const [openId, setOpenId] = useState<string | null>(null);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [mergingDuplicates, setMergingDuplicates] = useState(false);
 
   const exitMultiSelect = () => {
     setMultiSelectMode(false);
@@ -455,8 +467,64 @@ const ArtistLibraryTab = observer(() => {
   const newArtist = async () => {
     const name = await appState.pushDialogAsync({ type: 'input-confirm', text: '작가 이름을 입력하세요 (예: suko mugi)' });
     if (!name) return;
+    const existing = artistLibraryService.findArtistByName(name);
     const a = artistLibraryService.createArtist(name);
-    if (a) setOpenId(a.id);
+    if (a) {
+      if (existing) {
+        appState.pushMessage('동일한 작가가 있어 기존 카드를 열었습니다.');
+      }
+      setOpenId(a.id);
+    }
+  };
+
+  const mergeDuplicates = () => {
+    const groups = artistLibraryService.getDuplicateArtistGroups();
+    if (groups.length === 0) {
+      appState.pushMessage('동일한 이름의 중복 작가가 없습니다.');
+      return;
+    }
+    const cards = groups.reduce((sum, group) => sum + group.length, 0);
+    const images = groups.reduce(
+      (sum, group) => sum + group.reduce((n, artist) => n + artist.images.length, 0),
+      0,
+    );
+    appState.pushDialog({
+      type: 'confirm',
+      text:
+        `동일한 이름의 작가 ${groups.length}그룹을 일괄 병합할까요?\n` +
+        `대상 카드 ${cards}개 · 샘플 이미지 ${images}장\n\n` +
+        '실행 전 작가 라이브러리 백업을 권장합니다.\n' +
+        '각 그룹에서 가장 먼저 만든 카드를 기준으로 이미지와 태그를 합칩니다.',
+      callback: async () => {
+        setMergingDuplicates(true);
+        appState.setProgressDialog({
+          text: '중복 작가 병합 중...',
+          done: 0,
+          total: groups.length,
+        });
+        try {
+          const result = await artistLibraryService.mergeDuplicateArtists(
+            (done, total) =>
+              appState.setProgressDialog({
+                text: '중복 작가 병합 중...',
+                done,
+                total,
+              }),
+          );
+          appState.pushDialog({
+            type: 'yes-only',
+            text:
+              `중복 작가 ${result.groups}그룹을 병합했습니다.\n` +
+              `정리한 카드 ${result.mergedArtists}개 · 이동한 이미지 ${result.copiedImages}장`,
+          });
+        } catch (e: any) {
+          appState.pushMessage('중복 작가 병합 실패: ' + (e?.message || e));
+        } finally {
+          appState.setProgressDialog(undefined);
+          setMergingDuplicates(false);
+        }
+      },
+    });
   };
 
   let list = artistLibraryService.search(query);
@@ -489,6 +557,15 @@ const ArtistLibraryTab = observer(() => {
         <button className="round-button back-sky px-4 py-2 text-sm flex items-center gap-1" onClick={newArtist}>
           <FaPlus size={12} /> 새 작가
         </button>
+        <Tooltip content="동일한 이름의 기존 작가 카드를 일괄 병합">
+          <button
+            className="round-button back-gray px-3 py-2 text-sm flex items-center gap-1 disabled:opacity-50"
+            disabled={mergingDuplicates}
+            onClick={mergeDuplicates}
+          >
+            <FaCompressArrowsAlt size={12} /> 중복 병합
+          </button>
+        </Tooltip>
         <Tooltip content="작가 라이브러리 전체 백업">
           <button className="round-button back-gray px-3 py-2 text-sm flex items-center gap-1" onClick={() => appState.artistLibraryBackupExport()}>
             <FaFileArchive size={13} /> 백업

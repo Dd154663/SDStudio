@@ -1237,10 +1237,14 @@ export class AppState {
           text: '작가 이름을 입력하세요 (예: suko mugi)',
         });
         if (!name) return;
+        const existing = artistLibraryService.findArtistByName(name);
         const a = artistLibraryService.createArtist(name);
         if (!a) {
           this.pushMessage('작가 생성에 실패했습니다.');
           return;
+        }
+        if (existing) {
+          this.pushMessage('동일한 작가가 있어 기존 카드에 이미지를 추가합니다.');
         }
         artistId = a.id;
         artistName = a.name;
