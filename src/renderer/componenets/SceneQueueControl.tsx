@@ -4,6 +4,7 @@ import {
   memo,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -25,9 +26,11 @@ import {
   FaStar,
   FaTasks,
   FaTimes,
+  FaToggleOn,
   FaTrash,
   FaTrashRestore,
 } from 'react-icons/fa';
+import { createPortal } from 'react-dom';
 import { useDrag, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
 import { useContextMenu } from 'react-contexify';
@@ -106,6 +109,16 @@ import {
   MAX_NAI_SEED,
   setSceneSeedGroupSeed,
 } from '../models/sceneSeedGroups';
+import {
+  activeCombinationPieceKeys,
+  allCombinationPieceKeys,
+  applyCombinationPieceSelection,
+  combinationCountForSelection,
+  combinationPieceKey,
+  selectionHasEveryCombinationColumn,
+} from '../models/combinationSelection';
+import { columnColor, pieceLabel } from './CombinationList';
+import { backStackService } from '../models/BackStackService';
 
 // createMissingPiecesForSession / queueScene 는 models/sceneQueueActions.ts 로 이전
 // (AppContextMenu 우클릭 메뉴와 공유 — 중복 제거)
@@ -215,6 +228,241 @@ const SceneSeedGroupBadge = observer(
           />
         )}
       </div>
+    );
+  },
+);
+
+interface CombinationQuickToggleProps {
+  session: Session;
+  scene: Scene;
+  isHovered: boolean;
+}
+
+const CombinationQuickToggle = observer(
+  ({ session, scene, isHovered }: CombinationQuickToggleProps) => {
+    const [open, setOpen] = useState(false);
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [position, setPosition] = useState<{
+      left: number;
+      top: number;
+    } | null>(null);
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    const panelRef = useRef<HTMLDivElement>(null);
+    const mouseDownOnBackdrop = useRef(false);
+
+    const openPopover = () => {
+      setSelected(activeCombinationPieceKeys(scene));
+      setPosition(null);
+      setOpen(true);
+    };
+
+    useLayoutEffect(() => {
+      if (!open || !buttonRef.current || !panelRef.current) return;
+      const anchor = buttonRef.current.getBoundingClientRect();
+      const panel = panelRef.current.getBoundingClientRect();
+      let left = anchor.right - panel.width;
+      let top = anchor.bottom + 4;
+      if (top + panel.height > window.innerHeight - 8) {
+        top = anchor.top - panel.height - 4;
+      }
+      left = Math.max(8, Math.min(left, window.innerWidth - panel.width - 8));
+      top = Math.max(8, Math.min(top, window.innerHeight - panel.height - 8));
+      setPosition({ left, top });
+    }, [open]);
+
+    useEffect(() => {
+      if (!open) return;
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+          event.stopPropagation();
+          setOpen(false);
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown, true);
+      return () => window.removeEventListener('keydown', handleKeyDown, true);
+    }, [open]);
+
+    useEffect(() => {
+      if (!open) return;
+      const handle = backStackService.push(() => setOpen(false));
+      return () => handle.remove();
+    }, [open]);
+
+    const togglePiece = (key: string) => {
+      setSelected((current) => {
+        const next = new Set(current);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
+    };
+
+    const valid = selectionHasEveryCombinationColumn(scene, selected);
+    const combinationTotal = combinationCountForSelection(scene, selected);
+    const portalHost =
+      buttonRef.current?.closest<HTMLElement>('[data-app-theme-root]') ??
+      document.body;
+
+    const popover = open
+      ? createPortal(
+          <div
+            className="fixed inset-0"
+            style={{ zIndex: 'var(--z-modal)' }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => {
+              event.stopPropagation();
+              mouseDownOnBackdrop.current = event.target === event.currentTarget;
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (
+                event.target === event.currentTarget &&
+                mouseDownOnBackdrop.current
+              ) {
+                setOpen(false);
+              }
+              mouseDownOnBackdrop.current = false;
+            }}
+            onContextMenu={(event) => event.stopPropagation()}
+          >
+            <div
+              ref={panelRef}
+              className="fixed w-80 max-w-[calc(100vw-16px)] max-h-[60vh] rounded-lg r-popover border line-color bg-[var(--c-zone)] shadow-2xl flex flex-col overflow-hidden"
+              style={{
+                left: position?.left ?? 8,
+                top: position?.top ?? 8,
+                visibility: position ? 'visible' : 'hidden',
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex-none px-3 py-2 border-b line-color">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-bold text-default">
+                    조합 퀵 토글
+                  </span>
+                  <span className="text-xs text-muted">
+                    선택 결과 {combinationTotal}종
+                  </span>
+                </div>
+                {!valid && (
+                  <div className="mt-1 text-xs text-red-500 dark:text-red-400">
+                    각 열에서 한 조각 이상 선택해 주세요.
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-h-0 overflow-auto p-2 space-y-2">
+                {scene.slots.length === 0 ? (
+                  <div className="py-4 text-center text-sm text-muted">
+                    선택할 조각이 없습니다.
+                  </div>
+                ) : (
+                  scene.slots.map((slot, columnIndex) => (
+                    <div
+                      key={columnIndex}
+                      className="rounded-md r-card border line-color p-2"
+                    >
+                      <div className="mb-1.5 text-xs font-bold text-muted">
+                        열 {columnIndex + 1}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {slot.map((piece, rowIndex) => {
+                          const key = combinationPieceKey(
+                            columnIndex,
+                            rowIndex,
+                          );
+                          const checked = selected.has(key);
+                          return (
+                            <Tooltip
+                              key={key}
+                              content={piece.prompt || '(빈 프롬프트)'}
+                            >
+                              <button
+                                type="button"
+                                className={`btn rounded px-2 py-1 text-xs ${
+                                  checked
+                                    ? 'text-white shadow-sm'
+                                    : 'btn-neutral text-muted opacity-60'
+                                }`}
+                                style={
+                                  checked
+                                    ? {
+                                        backgroundColor:
+                                          columnColor(columnIndex),
+                                      }
+                                    : undefined
+                                }
+                                aria-pressed={checked}
+                                onClick={() => togglePiece(key)}
+                              >
+                                {pieceLabel(
+                                  piece,
+                                  columnIndex,
+                                  rowIndex,
+                                )}
+                              </button>
+                            </Tooltip>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="flex-none flex items-center justify-end gap-2 px-3 py-2 border-t line-color">
+                <button
+                  type="button"
+                  className="btn rounded px-3 py-1.5 btn-neutral text-sm"
+                  onClick={() => setSelected(allCombinationPieceKeys(scene))}
+                >
+                  초기화
+                </button>
+                <button
+                  type="button"
+                  className="btn rounded px-3 py-1.5 btn-solid-sky text-sm"
+                  disabled={!valid}
+                  onClick={() => {
+                    const changed = applyCombinationPieceSelection(
+                      scene,
+                      selected,
+                    );
+                    if (changed > 0) sessionService.markDirty(session.name);
+                    setOpen(false);
+                  }}
+                >
+                  확인
+                </button>
+              </div>
+            </div>
+          </div>,
+          portalHost,
+        )
+      : null;
+
+    return (
+      <>
+        <div
+          className="absolute right-1 top-9 z-30"
+          onClick={(event) => event.stopPropagation()}
+          onContextMenu={(event) => event.stopPropagation()}
+        >
+          <Tooltip content="조합 에디터 퀵 토글">
+            <button
+              ref={buttonRef}
+              type="button"
+              className={`w-7 h-7 rounded-full bg-black/55 hover:bg-black/80 text-white clickable flex items-center justify-center transition-opacity duration-200${
+                !isMobile && !isHovered && !open ? ' opacity-0' : ''
+              }`}
+              onClick={() => {
+                if (open) setOpen(false);
+                else openPopover();
+              }}
+            >
+              <FaToggleOn size={13} />
+            </button>
+          </Tooltip>
+        </div>
+        {popover}
+      </>
     );
   },
 );
@@ -653,6 +901,14 @@ export const SceneCell = observer(
       scene.type === 'scene' ? (
         <SceneSeedGroupBadge session={curSession} scene={scene} />
       ) : null;
+    const combinationQuickToggle =
+      scene.type === 'scene' ? (
+        <CombinationQuickToggle
+          session={curSession}
+          scene={scene}
+          isHovered={isHovered}
+        />
+      ) : null;
 
     // 프롬프트 퀵 수정 버튼(W2) — 이미지 우상단 오버레이(클래식/신규 공용).
     // 하단 버튼 행은 4개가 상한(스몰 뷰·모바일 그리드 보전)이라 행에 넣지 않는다.
@@ -724,6 +980,7 @@ export const SceneCell = observer(
             </div>
             <div className="relative">
               {seedGroupBadge}
+              {combinationQuickToggle}
               <div
                 className={`relative image-cell overflow-hidden ${cellSizes[cellSize]}`}
               >
@@ -800,6 +1057,7 @@ export const SceneCell = observer(
         >
           <div className="relative">
             {seedGroupBadge}
+            {combinationQuickToggle}
             <div
               className={`relative image-cell overflow-hidden rounded-md ${
                 cellSizes[cellSize]

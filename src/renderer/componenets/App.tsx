@@ -726,6 +726,7 @@ export const App = observer(() => {
       }}
     >
       <div
+        data-app-theme-root
         className={
           'flex flex-col relative h-screen w-screen ' +
           (darkMode ? 'dark' : '') + (trueDark && darkMode ? ' true-dark' : '')

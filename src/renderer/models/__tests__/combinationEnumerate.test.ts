@@ -23,6 +23,14 @@ import {
   combinationCount,
 } from '../PromptService';
 import { PromptPiece, Scene } from '../types';
+import {
+  activeCombinationPieceKeys,
+  allCombinationPieceKeys,
+  applyCombinationPieceSelection,
+  combinationCountForSelection,
+  combinationPieceKey,
+  selectionHasEveryCombinationColumn,
+} from '../combinationSelection';
 
 let idc = 0;
 function piece(prompt: string, enabled?: boolean): PromptPiece {
@@ -154,5 +162,58 @@ describe('combinationMiddlePrompt — 빈 조각 제외 후 조인', () => {
     );
     expect(combos.length).toBe(1);
     expect(combinationMiddlePrompt(combos[0])).toBe('a, c');
+  });
+});
+
+describe('조합 퀵 토글 선택', () => {
+  it('현재 활성 조각과 전체 조각을 각각 초기 선택으로 만든다', () => {
+    const s = scene([
+      [piece('a'), piece('b', false)],
+      [piece('x'), piece('y')],
+    ]);
+    expect(Array.from(activeCombinationPieceKeys(s))).toEqual([
+      '0:0',
+      '1:0',
+      '1:1',
+    ]);
+    expect(allCombinationPieceKeys(s).size).toBe(4);
+  });
+
+  it('선택한 조각의 데카르트 곱 개수를 계산한다', () => {
+    const s = scene([
+      [piece('a'), piece('b')],
+      [piece('x'), piece('y'), piece('z')],
+    ]);
+    const selected = new Set([
+      combinationPieceKey(0, 0),
+      combinationPieceKey(1, 0),
+      combinationPieceKey(1, 2),
+    ]);
+    expect(combinationCountForSelection(s, selected)).toBe(2);
+    expect(selectionHasEveryCombinationColumn(s, selected)).toBe(true);
+  });
+
+  it('비어 있는 열이 있으면 적용 불가로 판정한다', () => {
+    const s = scene([[piece('a')], [piece('x')]]);
+    const selected = new Set([combinationPieceKey(0, 0)]);
+    expect(combinationCountForSelection(s, selected)).toBe(0);
+    expect(selectionHasEveryCombinationColumn(s, selected)).toBe(false);
+  });
+
+  it('확인 시 선택 조각만 활성화한다', () => {
+    const s = scene([
+      [piece('a'), piece('b')],
+      [piece('x'), piece('y')],
+    ]);
+    const selected = new Set([
+      combinationPieceKey(0, 1),
+      combinationPieceKey(1, 0),
+    ]);
+    expect(applyCombinationPieceSelection(s, selected)).toBe(2);
+    expect(s.slots.map((slot) => slot.map((p) => p.enabled))).toEqual([
+      [false, true],
+      [true, false],
+    ]);
+    expect(combinationCount(s)).toBe(1);
   });
 });
