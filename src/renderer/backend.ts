@@ -122,6 +122,9 @@ export abstract class Backend {
   abstract isLocalAIRunning(): Promise<boolean>;
   abstract getRemainCredits(): Promise<number>;
   abstract getOpusUsageStatus(): Promise<import('./backends/imageGen').OpusUsageStatus>;
+  abstract getOpusUsageStatusForToken(
+    token: string,
+  ): Promise<import('./backends/imageGen').OpusUsageStatus>;
   abstract removeBackground(
     inputImageBase64: string,
     outputPath: string,

@@ -1,5 +1,5 @@
 import { backend } from '.';
-import type { LoginValidity } from '../backends/imageGen';
+import type { LoginValidity, OpusUsageStatus } from '../backends/imageGen';
 import { persistService } from './PersistenceService';
 
 const TOKEN_PROFILE_STORE_KEY = 'auth:TOKEN_PROFILES.json';
@@ -19,6 +19,11 @@ interface StoredTokenProfileData {
 export interface LoginTokenProfile {
   id: string;
   name: string;
+}
+
+export interface LoginTokenUsageCheck extends LoginTokenProfile {
+  validity: LoginValidity;
+  usage?: OpusUsageStatus;
 }
 
 export class LoginService extends EventTarget {
@@ -148,6 +153,32 @@ export class LoginService extends EventTarget {
       this.tokenProfiles.map((p) => (p.id === id ? { ...p, name } : p)),
       this.activeTokenProfileId,
     );
+  }
+
+  async checkTokenProfileUsages(): Promise<LoginTokenUsageCheck[]> {
+    await this.ensureTokenProfilesLoaded();
+    const results: LoginTokenUsageCheck[] = [];
+    // 여러 계정에 동시에 요청을 몰아 보내지 않도록 저장 순서대로 한 번씩 조회한다.
+    for (const profile of this.tokenProfiles) {
+      try {
+        const usage = await backend.getOpusUsageStatusForToken(profile.token);
+        results.push({
+          id: profile.id,
+          name: profile.name,
+          validity: 'valid',
+          usage,
+        });
+      } catch (e) {
+        // 정상 Opus 토큰은 user/data 한 번으로 확인된다. 실패한 경우에만 토큰
+        // 검증을 추가해 만료와 일시적인 사용량 조회 오류를 구분한다.
+        let validity: LoginValidity = 'error';
+        try {
+          validity = await backend.validateToken(profile.token);
+        } catch (e2) {}
+        results.push({ id: profile.id, name: profile.name, validity });
+      }
+    }
+    return results;
   }
 
   async deleteTokenProfile(id: string): Promise<void> {

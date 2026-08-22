@@ -131,6 +131,10 @@ export class ElectornBackend extends Backend {
     return await this.imageGenService.getOpusUsageStatus(token);
   }
 
+  async getOpusUsageStatusForToken(token: string) {
+    return await this.imageGenService.getOpusUsageStatus(token);
+  }
+
   async login(email: string, password: string): Promise<void> {
     const token = await this.imageGenService.login(email, password);
     await this.writeToken(token.accessToken);

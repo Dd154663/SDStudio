@@ -56,7 +56,10 @@ import type { LegacyScanResult } from '../models/legacyCleanup';
 import ModalOverlay from './ModalOverlay';
 import MobileColorPicker from './MobileColorPicker';
 import { StorageDiagnosticsSection } from './StorageDiagnostics';
-import type { LoginTokenProfile } from '../models/LoginService';
+import type {
+  LoginTokenProfile,
+  LoginTokenUsageCheck,
+} from '../models/LoginService';
 
 interface ConfigScreenProps {
   onSave: () => void;
@@ -74,6 +77,10 @@ const LoginTab = ({
   const [profileBusy, setProfileBusy] = useState(false);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [profileNameDraft, setProfileNameDraft] = useState('');
+  const [checkingProfileUsages, setCheckingProfileUsages] = useState(false);
+  const [profileUsageChecks, setProfileUsageChecks] = useState<
+    Record<string, LoginTokenUsageCheck>
+  >({});
 
   const syncProfiles = useCallback(() => {
     setProfiles(loginService.listTokenProfiles());
@@ -162,6 +169,24 @@ const LoginTab = ({
     });
   };
 
+  const checkProfileUsages = async () => {
+    if (profileBusy || profiles.length === 0) return;
+    setProfileBusy(true);
+    setCheckingProfileUsages(true);
+    setProfileUsageChecks({});
+    try {
+      const results = await loginService.checkTokenProfileUsages();
+      setProfileUsageChecks(
+        Object.fromEntries(results.map((result) => [result.id, result])),
+      );
+    } catch (e: any) {
+      appState.pushMessage(e.message || '저장 토큰 할당량 조회에 실패했습니다');
+    } finally {
+      setCheckingProfileUsages(false);
+      setProfileBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div>
@@ -215,7 +240,16 @@ const LoginTab = ({
       <hr className="line-color" />
       <div className="space-y-3">
         <div>
-          <p className="text-sm font-semibold gray-label">여러 토큰</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold gray-label">여러 토큰</p>
+            <button
+              className="btn back-sky rounded px-3 py-1.5 text-xs ml-auto flex-none whitespace-nowrap"
+              disabled={profileBusy || profiles.length === 0}
+              onClick={checkProfileUsages}
+            >
+              {checkingProfileUsages ? '조회 중…' : 'V5 할당량 1회 확인'}
+            </button>
+          </div>
           <p className="text-xs text-muted mt-1">
             토큰을 개별 저장하고 수동으로 전환합니다. 자동 순환은 지원하지 않습니다.
           </p>
@@ -249,10 +283,31 @@ const LoginTab = ({
           <div className="space-y-2">
             {profiles.map((profile) => {
               const active = loginService.activeProfileId === profile.id;
+              const usageCheck = profileUsageChecks[profile.id];
+              const usageClass = !usageCheck || usageCheck.validity === 'error'
+                ? 'back-gray'
+                : usageCheck.validity === 'invalid'
+                  ? 'back-red'
+                  : !usageCheck.usage
+                    ? 'back-gray'
+                    : usageCheck.usage.isNegative || usageCheck.usage.percent <= 0
+                      ? 'back-red'
+                      : usageCheck.usage.percent <= 10
+                        ? 'back-orange'
+                        : 'back-green';
+              const usageText = !usageCheck
+                ? undefined
+                : usageCheck.validity === 'invalid'
+                  ? '로그인 실패'
+                  : usageCheck.validity === 'error'
+                    ? '조회 실패'
+                    : usageCheck.usage
+                      ? `정상 · V5 ${usageCheck.usage.percent}%`
+                      : '정상 · V5 정보 없음';
               return (
                 <div
                   key={profile.id}
-                  className="flex items-center gap-2 rounded-lg border line-color bg-[var(--c-surface-2)] px-3 py-2"
+                  className="flex flex-wrap items-center gap-2 rounded-lg border line-color bg-[var(--c-surface-2)] px-3 py-2"
                 >
                   {editingProfileId === profile.id ? (
                     <input
@@ -290,6 +345,11 @@ const LoginTab = ({
                   )}
                   {active && (
                     <span className={`${roundTag} back-green flex-none`}>사용 중</span>
+                  )}
+                  {usageText && (
+                    <span className={`${roundTag} ${usageClass} flex-none`}>
+                      {usageText}
+                    </span>
                   )}
                   <button
                     className="btn back-sky rounded px-3 py-1 text-xs flex-none"

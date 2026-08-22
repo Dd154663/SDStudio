@@ -14,6 +14,11 @@ const backend = {
     currentToken = token;
   }),
   validateToken: jest.fn<Promise<LoginValidity>, [string]>(async () => 'valid'),
+  getOpusUsageStatusForToken: jest.fn(async (token: string) => ({
+    percent: token === 'secret-token-1' ? 88 : 42,
+    isNegative: false,
+    timeUntilNextPercent: 60,
+  })),
   validateLogin: jest.fn<Promise<LoginValidity>, []>(async () => 'valid'),
 };
 
@@ -26,6 +31,11 @@ beforeEach(() => {
   currentToken = undefined;
   jest.clearAllMocks();
   backend.validateToken.mockResolvedValue('valid');
+  backend.getOpusUsageStatusForToken.mockImplementation(async (token: string) => ({
+    percent: token === 'secret-token-1' ? 88 : 42,
+    isNegative: false,
+    timeUntilNextPercent: 60,
+  }));
   backend.validateLogin.mockResolvedValue('valid');
 });
 
@@ -112,6 +122,35 @@ describe('LoginService 토큰 프리셋', () => {
     await expect(
       service.renameTokenProfile(secondId, '작업 계정'),
     ).rejects.toThrow('같은 이름의 토큰 프리셋이 있습니다');
+  });
+
+  test('저장 토큰의 V5 할당량을 현재 로그인 변경 없이 순차 조회한다', async () => {
+    const service = new LoginService();
+    await service.saveTokenProfile('주 계정', 'secret-token-1');
+    await service.saveTokenProfile('보조 계정', 'secret-token-2');
+
+    const results = await service.checkTokenProfileUsages();
+
+    expect(results).toEqual([
+      expect.objectContaining({ name: '주 계정', validity: 'valid', usage: expect.objectContaining({ percent: 88 }) }),
+      expect.objectContaining({ name: '보조 계정', validity: 'valid', usage: expect.objectContaining({ percent: 42 }) }),
+    ]);
+    expect(backend.getOpusUsageStatusForToken.mock.calls.map(([token]) => token)).toEqual([
+      'secret-token-1',
+      'secret-token-2',
+    ]);
+    expect(backend.loginWithToken).not.toHaveBeenCalled();
+  });
+
+  test('할당량 조회 실패 시 토큰 검증으로 로그인 실패를 구분한다', async () => {
+    const service = new LoginService();
+    await service.saveTokenProfile('만료 계정', 'expired-token');
+    backend.getOpusUsageStatusForToken.mockRejectedValueOnce(new Error('HTTP error:401'));
+    backend.validateToken.mockResolvedValueOnce('invalid');
+
+    await expect(service.checkTokenProfileUsages()).resolves.toEqual([
+      expect.objectContaining({ name: '만료 계정', validity: 'invalid' }),
+    ]);
   });
 
   test('후보 토큰 검증 후 기존 로그인 파일을 교체하고 활성 상태를 저장한다', async () => {
