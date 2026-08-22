@@ -327,10 +327,25 @@ export const ExternalImageView = observer(
                       </div>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                         <div className="text-muted">모델</div>
-                        <div className="text-body">{job.naiDiagnostics.model}</div>
+                        <div className="text-body">
+                          {job.naiDiagnostics.model}
+                          {job.naiDiagnostics.modelHash
+                            ? ` (${job.naiDiagnostics.modelHash})`
+                            : ''}
+                        </div>
                         <div className="text-muted">요청 형식</div>
                         <div className="text-body">
-                          params {job.naiDiagnostics.paramsVersion ?? '알 수 없음'}
+                          {job.naiDiagnostics.paramsVersion !== undefined
+                            ? `params ${job.naiDiagnostics.paramsVersion}`
+                            : job.naiDiagnostics.requestType
+                              ? `${job.naiDiagnostics.requestType}${
+                                  job.naiDiagnostics.metadataVersion !== undefined
+                                    ? ` / metadata v${job.naiDiagnostics.metadataVersion}`
+                                    : ''
+                                }`
+                              : job.naiDiagnostics.metadataVersion !== undefined
+                                ? `metadata v${job.naiDiagnostics.metadataVersion}`
+                                : '알 수 없음'}
                         </div>
                         <div className="text-muted">Noise Schedule</div>
                         <div className="text-body">

@@ -197,17 +197,42 @@ export function buildNaiMetadataDiagnostics(
   data: any,
   source?: string,
 ): NonNullable<ImportableMetadata['naiDiagnostics']> {
-  const paramsVersion = Number(data?.['params_version']);
-  const qualityHint = Number(data?.['tag_hint_qt']);
-  const ucHint = Number(data?.['tag_hint_uc_preset']);
+  const finiteNumber = (value: unknown): number | undefined => {
+    if (value === null || value === undefined || value === '') return undefined;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+  const paramsVersion = finiteNumber(data?.['params_version']);
+  const metadataVersion = finiteNumber(data?.['version']);
+  const qualityHint = finiteNumber(data?.['tag_hint_qt']);
+  const ucHint = finiteNumber(data?.['tag_hint_uc_preset']);
+  const modelName =
+    typeof data?.['model_name'] === 'string'
+      ? data['model_name'].trim()
+      : '';
+  const modelHash =
+    typeof data?.['model_hash'] === 'string'
+      ? data['model_hash'].trim()
+      : '';
+  const requestType =
+    typeof data?.['request_type'] === 'string'
+      ? data['request_type'].trim()
+      : '';
   const sourceText =
-    source || (typeof data?.['model'] === 'string' ? data['model'] : '');
-  const lowerSource = sourceText.toLowerCase();
+    source ||
+    (typeof data?.['model'] === 'string' ? data['model'] : '') ||
+    [modelName, modelHash].filter(Boolean).join(' ');
+  const lowerSource = [sourceText, requestType]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
   let detectedModel = '알 수 없음';
   if (lowerSource.includes('v5')) {
-    detectedModel = /657484a5|0adf9ab7|full/.test(lowerSource)
-      ? 'V5 Full'
-      : 'V5 Curated';
+    detectedModel = lowerSource.includes('curated')
+      ? 'V5 Curated'
+      : /657484a5|0adf9ab7|full/.test(lowerSource)
+        ? 'V5 Full'
+        : 'V5';
   } else if (lowerSource.includes('v4.5')) {
     detectedModel = lowerSource.includes('curated')
       ? 'V4.5 Curated'
@@ -220,19 +245,22 @@ export function buildNaiMetadataDiagnostics(
   const looksLikeV5CuratedFallback =
     detectedModel === 'V4.5 Curated' &&
     paramsVersion === 4 &&
-    Number.isFinite(qualityHint) &&
-    lowerSource.includes('inpaint');
+    qualityHint !== undefined &&
+    /inpaint|infill/.test(lowerSource);
   if (looksLikeV5CuratedFallback) {
     detectedModel = 'V5 Curated 인페인트 (V4.5 Curated 폴백)';
-  } else if (lowerSource.includes('inpaint')) {
+  } else if (/inpaint|infill/.test(lowerSource)) {
     detectedModel += ' 인페인트';
   }
   return {
     model: detectedModel,
+    modelHash: modelHash || undefined,
     source: sourceText || undefined,
-    paramsVersion: Number.isFinite(paramsVersion) ? paramsVersion : undefined,
-    qualityHint: Number.isFinite(qualityHint) ? qualityHint : undefined,
-    ucHint: Number.isFinite(ucHint) ? ucHint : undefined,
+    paramsVersion,
+    metadataVersion,
+    requestType: requestType || undefined,
+    qualityHint,
+    ucHint,
     transparentBackground: data?.['tag_hint_transparent_background'] === true,
     straightAlpha:
       typeof data?.['straight_alpha'] === 'boolean'

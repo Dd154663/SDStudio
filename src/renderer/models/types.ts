@@ -81,8 +81,11 @@ export interface ImportableMetadata extends SDAbstractJob<string> {
   resolution?: { width: number; height: number };
   naiDiagnostics?: {
     model: string;
+    modelHash?: string;
     source?: string;
     paramsVersion?: number;
+    metadataVersion?: number;
+    requestType?: string;
     qualityHint?: number;
     ucHint?: number;
     transparentBackground: boolean;
