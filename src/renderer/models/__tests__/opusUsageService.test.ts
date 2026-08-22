@@ -36,4 +36,20 @@ describe('OpusUsageService', () => {
       }),
     ).toBe(true);
   });
+
+  test('자동 전환에서 확인한 새 토큰 상태를 추가 조회 없이 채택한다', () => {
+    const getOpusUsageStatus = jest.fn();
+    const service = new OpusUsageService({ getOpusUsageStatus } as any);
+
+    service.adoptKnownStatus({
+      percent: 35,
+      isNegative: false,
+      timeUntilNextPercent: 30,
+    });
+
+    expect(service.state).toBe('ready');
+    expect(service.status).toEqual(expect.objectContaining({ percent: 35 }));
+    expect(service.fetchedAt).toBeGreaterThan(0);
+    expect(getOpusUsageStatus).not.toHaveBeenCalled();
+  });
 });

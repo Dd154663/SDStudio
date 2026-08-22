@@ -60,6 +60,14 @@ import type {
   LoginTokenProfile,
   LoginTokenUsageCheck,
 } from '../models/LoginService';
+import {
+  minimumTokenRotateTarget,
+  normalizeTokenRotateTarget,
+  normalizeTokenRotateWarning,
+  TOKEN_ROTATE_TARGET_MAX,
+  TOKEN_ROTATE_WARNING_MAX,
+  TOKEN_ROTATE_WARNING_MIN,
+} from '../models/tokenAutoRotation';
 
 interface ConfigScreenProps {
   onSave: () => void;
@@ -70,6 +78,9 @@ interface ConfigScreenProps {
 const LoginTab = ({
   accessToken, setAccessToken,
   loggedIn, loginWithToken, roundTag,
+  multiTokenAutoRotate, setMultiTokenAutoRotate,
+  multiTokenRotateWarning, setMultiTokenRotateWarning,
+  multiTokenRotateTarget, setMultiTokenRotateTarget,
 }: any) => {
   const [profiles, setProfiles] = useState<LoginTokenProfile[]>([]);
   const [profileToken, setProfileToken] = useState('');
@@ -81,6 +92,15 @@ const LoginTab = ({
   const [profileUsageChecks, setProfileUsageChecks] = useState<
     Record<string, LoginTokenUsageCheck>
   >({});
+  const rotateTargetMin = minimumTokenRotateTarget(multiTokenRotateWarning);
+
+  const changeRotateWarning = (value: number) => {
+    const warning = normalizeTokenRotateWarning(value);
+    setMultiTokenRotateWarning(warning);
+    setMultiTokenRotateTarget((current: number) =>
+      normalizeTokenRotateTarget(current, warning),
+    );
+  };
 
   const syncProfiles = useCallback(() => {
     setProfiles(loginService.listTokenProfiles());
@@ -251,12 +271,87 @@ const LoginTab = ({
             </button>
           </div>
           <p className="text-xs text-muted mt-1">
-            토큰을 개별 저장하고 수동으로 전환합니다. 자동 순환은 지원하지 않습니다.
+            토큰을 개별 저장하고 수동으로 전환하거나, V5 할당량에 따라 보수적으로
+            자동 순회할 수 있습니다.
           </p>
         </div>
         <div className="rounded-lg border line-color bg-[var(--c-zone)] p-3 text-xs text-body">
           토큰은 현재 로그인 토큰과 같은 로컬 인증 영역에 저장됩니다. 토큰 값은 목록에
           표시되지 않지만, 공용 기기에서는 저장하지 마세요.
+        </div>
+        <div className="rounded-lg border line-color bg-[var(--c-surface-2)] p-3 space-y-3">
+          <div className="flex items-center gap-2">
+            <input
+              id="cfgMultiTokenAutoRotate"
+              type="checkbox"
+              checked={multiTokenAutoRotate}
+              disabled={!profilesReady || profiles.length < 2}
+              onChange={(e) => setMultiTokenAutoRotate(e.target.checked)}
+            />
+            <label
+              htmlFor="cfgMultiTokenAutoRotate"
+              className="text-sm font-medium text-default"
+            >
+              V5 할당량 기반 자동 순회
+            </label>
+          </div>
+          <p className="text-xs text-muted">
+            정상 Opus 토큰이 2개 이상 저장된 경우에만 동작합니다. 무료 할당량 대상
+            V5 생성에서 한 장이 끝난 뒤 다음 장을 시작하기 전에 전환합니다.
+          </p>
+          <div className={multiTokenAutoRotate ? 'space-y-3' : 'space-y-3 opacity-50'}>
+            <div>
+              <label className="block text-xs text-body mb-1">
+                경고 임계값 — {multiTokenRotateWarning}% 이하에서 전환 시도
+              </label>
+              <input
+                type="range"
+                min={TOKEN_ROTATE_WARNING_MIN}
+                max={TOKEN_ROTATE_WARNING_MAX}
+                step={1}
+                value={multiTokenRotateWarning}
+                disabled={!multiTokenAutoRotate}
+                onChange={(e) => changeRotateWarning(Number(e.target.value))}
+                className="w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-body mb-1">
+                사용 토큰 여유값 — {multiTokenRotateTarget}% 이상인 토큰만 사용
+              </label>
+              <input
+                type="range"
+                min={rotateTargetMin}
+                max={TOKEN_ROTATE_TARGET_MAX}
+                step={1}
+                value={multiTokenRotateTarget}
+                disabled={!multiTokenAutoRotate}
+                onChange={(e) =>
+                  setMultiTokenRotateTarget(
+                    normalizeTokenRotateTarget(
+                      Number(e.target.value),
+                      multiTokenRotateWarning,
+                    ),
+                  )
+                }
+                className="w-full"
+              />
+              <p className="text-xs text-faint mt-1">
+                반복 전환을 막기 위해 경고 임계값보다 항상 5%p 이상 높게 유지됩니다.
+              </p>
+            </div>
+          </div>
+          {multiTokenAutoRotate && (
+            <div className="back-orange rounded-lg p-3 text-xs">
+              다중 계정 사용은 NovelAI 정책에 따라 제재 또는 계정 제한 위험이 있을 수
+              있으며, 사용에 대한 책임은 사용자에게 있습니다.
+            </div>
+          )}
+          {profilesReady && profiles.length < 2 && (
+            <p className="text-xs text-muted">
+              자동 순회를 사용하려면 토큰을 2개 이상 저장해 주세요.
+            </p>
+          )}
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
           <input
@@ -2655,6 +2750,9 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [uiFont, setUiFont] = useState<'pretendard' | 'system'>('system');
   const [uiClassicFinish, setUiClassicFinish] = useState(false);
   const [allowDuplicateProjectOpen, setAllowDuplicateProjectOpen] = useState(false);
+  const [multiTokenAutoRotate, setMultiTokenAutoRotate] = useState(false);
+  const [multiTokenRotateWarning, setMultiTokenRotateWarning] = useState(10);
+  const [multiTokenRotateTarget, setMultiTokenRotateTarget] = useState(25);
   // 미저장 변경 감지 기준 — 로드/저장 시점의 config 스냅샷 (#17)
   const [savedCfg, setSavedCfg] = useState<Config | null>(null);
   const mobileMode = isMobile;
@@ -2692,6 +2790,17 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setUiFont(config.uiFont ?? 'system');
       setUiClassicFinish(config.uiClassicFinish ?? false);
       setAllowDuplicateProjectOpen(config.allowDuplicateProjectOpen ?? false);
+      const rotateWarning = normalizeTokenRotateWarning(
+        config.multiTokenRotateWarningPercent,
+      );
+      setMultiTokenAutoRotate(config.multiTokenAutoRotate ?? false);
+      setMultiTokenRotateWarning(rotateWarning);
+      setMultiTokenRotateTarget(
+        normalizeTokenRotateTarget(
+          config.multiTokenRotateTargetPercent,
+          rotateWarning,
+        ),
+      );
       setSavedCfg(config);
     })();
     const checkReady = () => setReady(localAIService.ready);
@@ -2832,6 +2941,9 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiFont: uiFont,
       uiClassicFinish: uiClassicFinish,
       allowDuplicateProjectOpen: allowDuplicateProjectOpen,
+      multiTokenAutoRotate: multiTokenAutoRotate,
+      multiTokenRotateWarningPercent: multiTokenRotateWarning,
+      multiTokenRotateTargetPercent: multiTokenRotateTarget,
     };
     // 모던 사이드바 "최초 전환" 시(② A 결정 2): 버튼 배치(툴바·동반 슬롯)를 초기화하고
     // 모던 기본 배치+하단 아이콘 행을 강제 적용한다. 이후 재커스텀 자유, 해제(다른
@@ -2928,7 +3040,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     const key = tabs[tabIdx]?.key;
     switch (key) {
       case 'login':
-        return <LoginTab {...{ accessToken, setAccessToken, loggedIn, loginWithToken, roundTag }} />;
+        return <LoginTab {...{ accessToken, setAccessToken, loggedIn, loginWithToken, roundTag, multiTokenAutoRotate, setMultiTokenAutoRotate, multiTokenRotateWarning, setMultiTokenRotateWarning, multiTokenRotateTarget, setMultiTokenRotateTarget }} />;
       case 'storage':
         return <StorageImageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 'system':
@@ -2984,7 +3096,15 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiFloatViewMode !== (savedCfg.uiFloatViewMode ?? 'cover') ||
       uiFont !== (savedCfg.uiFont ?? 'system') ||
       uiClassicFinish !== (savedCfg.uiClassicFinish ?? false) ||
-      allowDuplicateProjectOpen !== (savedCfg.allowDuplicateProjectOpen ?? false));
+      allowDuplicateProjectOpen !== (savedCfg.allowDuplicateProjectOpen ?? false) ||
+      multiTokenAutoRotate !== (savedCfg.multiTokenAutoRotate ?? false) ||
+      multiTokenRotateWarning !== normalizeTokenRotateWarning(
+        savedCfg.multiTokenRotateWarningPercent,
+      ) ||
+      multiTokenRotateTarget !== normalizeTokenRotateTarget(
+        savedCfg.multiTokenRotateTargetPercent,
+        savedCfg.multiTokenRotateWarningPercent,
+      ));
 
   return (
     <div

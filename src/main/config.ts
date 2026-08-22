@@ -45,6 +45,12 @@ export interface Config {
   qualityPreset?: GenerationQualityPreset;
   /** V5 투명 배경 생성. 구버전은 모르는 선택 필드라 그대로 무시한다. */
   transparentBackground?: boolean;
+  /** 저장된 Opus 토큰의 V5 할당량 기반 자동 순회. 누락/false면 비활성이다. */
+  multiTokenAutoRotate?: boolean;
+  /** 현재 토큰이 이 값 이하일 때 자동 순회를 시도한다. 1~24, 기본 10. */
+  multiTokenRotateWarningPercent?: number;
+  /** 이 값 이상 남은 후보 토큰만 사용한다. 경고값보다 최소 5%p 높아야 한다. */
+  multiTokenRotateTargetPercent?: number;
   modelVersion?: ModelVersion;
   /** NAI Undesired Content Preset — 생성 시 네거티브 앞에 병합되는 기본 프리셋.
    *  모델별 제공 항목이 다르며(naiQualityPresets 단일 출처) 기본 'none' =

@@ -61,6 +61,17 @@ export class OpusUsageService extends EventTarget {
     this.emitChange();
   }
 
+  adoptKnownStatus(status: OpusUsageStatus): void {
+    // 자동 순회 후보 조회에서 이미 확인한 새 계정의 상태를 즉시 채택한다.
+    // 같은 user/data를 전환 직후 다시 요청하지 않고 상단 배지와 유료 가드를 맞춘다.
+    this.status = status;
+    this.fetchedAt = Date.now();
+    this.state = 'ready';
+    this.paidApprovalUntil = 0;
+    this.lowWarningShown = false;
+    this.emitChange();
+  }
+
   isPaidRisk(status: OpusUsageStatus | undefined): boolean {
     return !status || status.isNegative || status.percent <= 0;
   }

@@ -26,12 +26,29 @@ export interface LoginTokenUsageCheck extends LoginTokenProfile {
   usage?: OpusUsageStatus;
 }
 
+export type LoginTokenRotationResult =
+  | {
+      switched: true;
+      from: LoginTokenProfile;
+      to: LoginTokenProfile;
+      usage: OpusUsageStatus;
+      stateSaved: boolean;
+    }
+  | {
+      switched: false;
+      reason: 'not-ready' | 'cooldown' | 'no-candidate' | 'switch-failed';
+    };
+
+const AUTO_ROTATION_RETRY_MS = 60_000;
+
 export class LoginService extends EventTarget {
   loggedIn: boolean;
   private tokenProfiles: StoredTokenProfile[] = [];
   private tokenProfilesLoaded = false;
   private tokenProfilesLoading?: Promise<void>;
   private activeTokenProfileId?: string;
+  private autoRotationInFlight?: Promise<LoginTokenRotationResult>;
+  private nextAutoRotationAttemptAt = 0;
 
   constructor() {
     super();
@@ -179,6 +196,89 @@ export class LoginService extends EventTarget {
       }
     }
     return results;
+  }
+
+  async tryAutoRotateToken(
+    minimumPercent: number,
+  ): Promise<LoginTokenRotationResult> {
+    if (this.autoRotationInFlight) return this.autoRotationInFlight;
+    this.autoRotationInFlight = this.tryAutoRotateTokenInternal(
+      minimumPercent,
+    ).finally(() => {
+      this.autoRotationInFlight = undefined;
+    });
+    return this.autoRotationInFlight;
+  }
+
+  private async tryAutoRotateTokenInternal(
+    minimumPercent: number,
+  ): Promise<LoginTokenRotationResult> {
+    await this.ensureTokenProfilesLoaded();
+    let currentToken: string | undefined;
+    try {
+      currentToken = (await backend.readLoginToken())?.trim();
+    } catch (e) {
+      return { switched: false, reason: 'not-ready' };
+    }
+    const activeIndex = this.tokenProfiles.findIndex(
+      (profile) =>
+        profile.id === this.activeTokenProfileId &&
+        profile.token === currentToken,
+    );
+    if (this.tokenProfiles.length < 2 || activeIndex < 0) {
+      return { switched: false, reason: 'not-ready' };
+    }
+    if (Date.now() < this.nextAutoRotationAttemptAt) {
+      return { switched: false, reason: 'cooldown' };
+    }
+
+    // 현재 계정이 임계값 아래인 동안 매 이미지마다 다른 계정의 user/data를
+    // 반복 조회하지 않도록 후보 탐색 자체를 최대 1분에 한 번으로 제한한다.
+    this.nextAutoRotationAttemptAt = Date.now() + AUTO_ROTATION_RETRY_MS;
+    minimumPercent = Math.max(1, Math.min(100, Math.round(minimumPercent)));
+    const from = this.tokenProfiles[activeIndex];
+
+    for (let offset = 1; offset < this.tokenProfiles.length; offset++) {
+      const candidate =
+        this.tokenProfiles[(activeIndex + offset) % this.tokenProfiles.length];
+      let usage: OpusUsageStatus;
+      try {
+        // user/data에서 Opus usage를 정상 수신한 토큰만 후보로 인정한다.
+        usage = await backend.getOpusUsageStatusForToken(candidate.token);
+      } catch (e) {
+        continue;
+      }
+      if (usage.isNegative || usage.percent < minimumPercent) continue;
+
+      try {
+        await backend.loginWithToken(candidate.token);
+      } catch (e) {
+        return { switched: false, reason: 'switch-failed' };
+      }
+
+      let stateSaved = true;
+      try {
+        await this.persistTokenProfiles(this.tokenProfiles, candidate.id);
+      } catch (e) {
+        // TOKEN.txt 전환은 이미 끝났으므로 현재 세션 표시는 실제 상태를 따른다.
+        // 생성은 새 토큰으로 계속하되 호출부가 저장 실패를 사용자에게 알린다.
+        stateSaved = false;
+        this.activeTokenProfileId = candidate.id;
+        this.emitTokenProfilesChange();
+      }
+      if (!this.loggedIn) {
+        this.loggedIn = true;
+        this.dispatchEvent(new CustomEvent('change', {}));
+      }
+      return {
+        switched: true,
+        from: { id: from.id, name: from.name },
+        to: { id: candidate.id, name: candidate.name },
+        usage,
+        stateSaved,
+      };
+    }
+    return { switched: false, reason: 'no-candidate' };
   }
 
   async deleteTokenProfile(id: string): Promise<void> {

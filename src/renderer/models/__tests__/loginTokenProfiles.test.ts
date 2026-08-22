@@ -207,4 +207,74 @@ describe('LoginService 토큰 프리셋', () => {
 
     expect(service.activeProfileId).toBe(id);
   });
+
+  test('활성 토큰 다음 순서에서 기준 이상인 Opus 토큰으로 자동 전환한다', async () => {
+    const service = new LoginService();
+    await service.saveTokenProfile('주 계정', 'secret-token-1');
+    await service.saveTokenProfile('부족 계정', 'secret-token-2');
+    await service.saveTokenProfile('여유 계정', 'secret-token-3');
+    const [first, , third] = service.listTokenProfiles();
+    await service.activateTokenProfile(first.id);
+    backend.loginWithToken.mockClear();
+    backend.getOpusUsageStatusForToken.mockImplementation(async (token: string) => ({
+      percent: token === 'secret-token-2' ? 20 : 40,
+      isNegative: false,
+      timeUntilNextPercent: 60,
+    }));
+
+    const result = await service.tryAutoRotateToken(25);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        switched: true,
+        from: expect.objectContaining({ name: '주 계정' }),
+        to: expect.objectContaining({ name: '여유 계정' }),
+        usage: expect.objectContaining({ percent: 40 }),
+      }),
+    );
+    expect(backend.getOpusUsageStatusForToken.mock.calls.map(([token]) => token)).toEqual([
+      'secret-token-2',
+      'secret-token-3',
+    ]);
+    expect(backend.loginWithToken).toHaveBeenCalledWith('secret-token-3');
+    expect(service.activeProfileId).toBe(third.id);
+    expect(JSON.parse(profileData!).activeId).toBe(third.id);
+  });
+
+  test('후보가 없을 때 반복 이미지에서 후보 조회를 1분간 재시도하지 않는다', async () => {
+    const service = new LoginService();
+    await service.saveTokenProfile('주 계정', 'secret-token-1');
+    await service.saveTokenProfile('부족 계정', 'secret-token-2');
+    const first = service.listTokenProfiles()[0];
+    await service.activateTokenProfile(first.id);
+    backend.getOpusUsageStatusForToken.mockResolvedValue({
+      percent: 5,
+      isNegative: false,
+      timeUntilNextPercent: 60,
+    });
+
+    await expect(service.tryAutoRotateToken(25)).resolves.toEqual({
+      switched: false,
+      reason: 'no-candidate',
+    });
+    await expect(service.tryAutoRotateToken(25)).resolves.toEqual({
+      switched: false,
+      reason: 'cooldown',
+    });
+
+    expect(backend.getOpusUsageStatusForToken).toHaveBeenCalledTimes(1);
+  });
+
+  test('활성 저장 토큰이 없으면 자동 순회를 수행하지 않는다', async () => {
+    const service = new LoginService();
+    await service.saveTokenProfile('계정 1', 'secret-token-1');
+    await service.saveTokenProfile('계정 2', 'secret-token-2');
+
+    await expect(service.tryAutoRotateToken(25)).resolves.toEqual({
+      switched: false,
+      reason: 'not-ready',
+    });
+    expect(backend.getOpusUsageStatusForToken).not.toHaveBeenCalled();
+    expect(backend.loginWithToken).not.toHaveBeenCalled();
+  });
 });

@@ -16,6 +16,7 @@ import {
   imageService,
   isMobile,
   localAIService,
+  loginService,
   opusUsageService,
   promptService,
   sessionService,
@@ -48,6 +49,10 @@ import { expandPieces, lowerPromptNode, toPARR } from './PromptService';
 import { dataUriToBase64 } from './ImageService';
 import { prepareMirrorCanvas } from './workflows/SDWorkFlow';
 import { getImageDimensions } from '../componenets/BrushTool';
+import {
+  normalizeTokenRotateTarget,
+  normalizeTokenRotateWarning,
+} from './tokenAutoRotation';
 import {
   TaskTimeEstimator,
   TASK_DEFAULT_ESTIMATE,
@@ -398,7 +403,39 @@ class GenerateImageTaskHandler implements TaskHandler {
         hasCharacterReference: finalReferences.length > 0,
       })
     ) {
-      const usage = await opusUsageService.refresh(true);
+      let usage = await opusUsageService.refresh(true);
+      const runtimeConfig = await backend.getConfig();
+      const rotateWarning = normalizeTokenRotateWarning(
+        runtimeConfig.multiTokenRotateWarningPercent,
+      );
+      const rotateTarget = normalizeTokenRotateTarget(
+        runtimeConfig.multiTokenRotateTargetPercent,
+        rotateWarning,
+      );
+      if (
+        runtimeConfig.multiTokenAutoRotate === true &&
+        usage &&
+        (usage.isNegative || usage.percent <= rotateWarning)
+      ) {
+        const rotation = await loginService.tryAutoRotateToken(rotateTarget);
+        if (rotation.switched) {
+          usage = rotation.usage;
+          opusUsageService.adoptKnownStatus(rotation.usage);
+          appState.pushMessage(
+            `${rotation.from.name}에서 ${rotation.to.name}(으)로 전환했습니다. ` +
+              `새 토큰의 V5 할당량은 ${rotation.usage.percent}%입니다.`,
+          );
+          if (!rotation.stateSaved) {
+            appState.pushMessage(
+              '토큰 전환은 완료됐지만 활성 토큰 상태를 저장하지 못했습니다.',
+            );
+          }
+        } else if (rotation.reason === 'switch-failed') {
+          appState.pushMessage(
+            '자동 토큰 전환에 실패해 현재 토큰으로 계속합니다.',
+          );
+        }
+      }
       if (opusUsageService.takeLowWarning(usage)) {
         appState.pushMessage(
           `Opus V5 무료 할당량이 ${usage!.percent}% 남았습니다. 소진 후에는 Anlas가 소비될 수 있습니다.`,
