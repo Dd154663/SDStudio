@@ -435,9 +435,7 @@ export class TaskQueueService extends EventTarget {
       try {
         capturedParams = {
           ...params,
-          generationSnapshot: captureGenerationSettings(
-            await backend.getConfig(),
-          ),
+          generationSnapshot: await this.captureGenerationSnapshot(),
         };
       } catch (e) {
         console.error('예약 생성 설정을 읽지 못했습니다:', e);
@@ -452,6 +450,12 @@ export class TaskQueueService extends EventTarget {
       return;
     }
     this.addTaskLocal(capturedParams, n);
+  }
+
+  // 한 번의 사용자 예약 동작에서 공유할 생성 설정 스냅샷을 만든다.
+  // 일괄 예약 호출부가 이 값을 재사용하면 태스크마다 config IPC를 반복하지 않는다.
+  async captureGenerationSnapshot(): Promise<GenerationSettingsSnapshot> {
+    return captureGenerationSettings(await backend.getConfig());
   }
 
   // 로컬 큐에 실제로 태스크를 넣는다(기존 addTask 본체). 호스트의 위임 수신 경로도
@@ -1154,6 +1158,7 @@ export const queueWorkflow = async (
   workflow: SelectedWorkflow,
   scene: GenericScene,
   samples: number,
+  generationSnapshot?: GenerationSettingsSnapshot,
 ) => {
   const [type, preset, shared, def] = session.getCommonSetup(workflow);
   const prompts = await def.createPrompt!(session, scene, preset, shared);
@@ -1174,6 +1179,9 @@ export const queueWorkflow = async (
       shared,
       samples,
       scene_.meta.get(type),
+      undefined,
+      undefined,
+      generationSnapshot,
     );
   }
 };
@@ -1185,6 +1193,7 @@ export const queueI2IWorkflow = async (
   scene: GenericScene,
   samples: number,
   onComplete?: (path: string) => void,
+  generationSnapshot?: GenerationSettingsSnapshot,
 ) => {
   const def = workFlowService.getDef(type)!;
   console.log('queueI2IWorkflow', type, preset, scene, samples, onComplete);
@@ -1198,6 +1207,8 @@ export const queueI2IWorkflow = async (
     samples,
     undefined,
     onComplete,
+    undefined,
+    generationSnapshot,
   );
 };
 
@@ -1208,6 +1219,7 @@ export const queueMirrorWorkflow = async (
   scene: InpaintScene,
   samples: number,
   onComplete?: (path: string) => void,
+  generationSnapshot?: GenerationSettingsSnapshot,
 ) => {
   const def = workFlowService.getDef(type);
 
@@ -1244,6 +1256,8 @@ export const queueMirrorWorkflow = async (
       samples,
       undefined,
       onComplete,
+      undefined,
+      generationSnapshot,
     );
     return;
   }
@@ -1286,6 +1300,8 @@ export const queueMirrorWorkflow = async (
       samples,
       undefined,
       onComplete,
+      undefined,
+      generationSnapshot,
     );
   }
 };

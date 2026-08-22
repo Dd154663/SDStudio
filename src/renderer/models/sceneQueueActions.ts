@@ -12,6 +12,7 @@ import {
   queueMirrorWorkflow,
   queueWorkflow,
 } from './TaskQueueService';
+import { GenerationSettingsSnapshot } from '../backends/imageGen';
 import {
   GenericScene,
   InpaintScene,
@@ -50,9 +51,16 @@ export const queueScene = async (
   session: Session,
   scene: GenericScene,
   samples: number,
+  generationSnapshot?: GenerationSettingsSnapshot,
 ) => {
   if (scene.type === 'scene') {
-    await queueWorkflow(session, session.selectedWorkflow!, scene, samples);
+    await queueWorkflow(
+      session,
+      session.selectedWorkflow!,
+      scene,
+      samples,
+      generationSnapshot,
+    );
   } else {
     const inpaintScene = scene as InpaintScene;
     if (inpaintScene.workflowType === 'SDMirror') {
@@ -62,6 +70,8 @@ export const queueScene = async (
         inpaintScene.preset,
         inpaintScene,
         samples,
+        undefined,
+        generationSnapshot,
       );
     } else {
       await queueI2IWorkflow(
@@ -70,6 +80,8 @@ export const queueScene = async (
         scene.preset,
         scene,
         samples,
+        undefined,
+        generationSnapshot,
       );
     }
   }
@@ -182,9 +194,22 @@ export const addScenesToQueue = async (
     }
 
     const doQueue = async () => {
+      let generationSnapshot: GenerationSettingsSnapshot;
+      try {
+        generationSnapshot = await taskQueueService.captureGenerationSnapshot();
+      } catch (e) {
+        console.error('일괄 예약 생성 설정을 읽지 못했습니다:', e);
+        appState.pushMessage('생성 설정을 읽지 못해 예약하지 못했습니다.');
+        return;
+      }
       for (const scene of scenes) {
         try {
-          await queueScene(session, scene, appState.samples);
+          await queueScene(
+            session,
+            scene,
+            appState.samples,
+            generationSnapshot,
+          );
         } catch (e: any) {
           appState.pushMessage(`프롬프트 에러 (${scene.name}): ${e.message}`);
         }
@@ -212,12 +237,26 @@ export const addScenesToQueue = async (
 };
 
 // 한 세션의 모든 씬을 예약 추가 (프롬프트 에러 등 씬 단위 실패는 집계만)
-const queueAllScenesOfSession = async (session: Session, samples: number) => {
+const queueAllScenesOfSession = async (
+  session: Session,
+  samples: number,
+  sharedSnapshot?: GenerationSettingsSnapshot,
+) => {
   let queued = 0;
   let failed = 0;
-  for (const scene of session.getScenes('scene')) {
+  const scenes = session.getScenes('scene');
+  let generationSnapshot = sharedSnapshot;
+  if (!generationSnapshot) {
     try {
-      await queueScene(session, scene, samples);
+      generationSnapshot = await taskQueueService.captureGenerationSnapshot();
+    } catch (e) {
+      console.error('일괄 예약 생성 설정을 읽지 못했습니다:', e);
+      return { queued: 0, failed: scenes.length };
+    }
+  }
+  for (const scene of scenes) {
+    try {
+      await queueScene(session, scene, samples, generationSnapshot);
       queued++;
     } catch (e) {
       failed++;
@@ -271,6 +310,14 @@ export const queueFolderProjectsForGeneration = async (folder: string) => {
       `프로젝트 ${names.length}개에\n프로젝트마다 모든 씬 × ${samples}장 ` +
       `생성 예약을 추가할까요?`,
     callback: async () => {
+      let generationSnapshot: GenerationSettingsSnapshot;
+      try {
+        generationSnapshot = await taskQueueService.captureGenerationSnapshot();
+      } catch (e) {
+        console.error('일괄 예약 생성 설정을 읽지 못했습니다:', e);
+        appState.pushMessage('생성 설정을 읽지 못해 예약하지 못했습니다.');
+        return;
+      }
       let queuedScenes = 0;
       const failed: string[] = [];
       appState.setProgressDialog({
@@ -284,7 +331,11 @@ export const queueFolderProjectsForGeneration = async (folder: string) => {
           try {
             const session = await sessionService.get(name);
             if (!session) throw new Error('프로젝트 로드 실패');
-            const r = await queueAllScenesOfSession(session, samples);
+            const r = await queueAllScenesOfSession(
+              session,
+              samples,
+              generationSnapshot,
+            );
             queuedScenes += r.queued;
             if (r.failed > 0 && !failed.includes(name)) failed.push(name);
           } catch (e) {

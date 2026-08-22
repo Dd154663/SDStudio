@@ -1,4 +1,5 @@
 import { action, observable, makeAutoObservable } from 'mobx';
+import type { GenerationSettingsSnapshot } from '../../backends/imageGen';
 import {
   CharacterPrompt,
   GenericScene,
@@ -41,6 +42,7 @@ export type WFHandler = (
   meta?: any,
   onComplete?: (img: string) => void,
   nodelay?: boolean,
+  generationSnapshot?: GenerationSettingsSnapshot,
 ) => void | Promise<void>;
 
 export type WFCreatePrompt = (

@@ -1,4 +1,8 @@
-import { NoiseSchedule, Sampling } from '../../backends/imageGen';
+import {
+  GenerationSettingsSnapshot,
+  NoiseSchedule,
+  Sampling,
+} from '../../backends/imageGen';
 import {
   WFDefBuilder,
   wfiExtraPromptInput,
@@ -187,6 +191,7 @@ const SDImageGenHandler = async (
   meta?: any,
   onComplete?: (img: string) => void,
   nodelay?: boolean,
+  generationSnapshot?: GenerationSettingsSnapshot,
 ) => {
   // 씬 전용 캐릭터 프롬프트 사용 여부 확인
   const sceneObj = scene as Scene;
@@ -271,6 +276,7 @@ const SDImageGenHandler = async (
     nodelay: nodelay,
     outputPath: imageService.getOutputDir(session, scene),
     onComplete: onComplete,
+    generationSnapshot,
   };
   await taskQueueService.addTask(param, samples);
 };
@@ -403,6 +409,8 @@ const createSDI2IHandler = (type: string) => {
     samples: number,
     meta?: any,
     onComplete?: (img: string) => void,
+    _nodelay?: boolean,
+    generationSnapshot?: GenerationSettingsSnapshot,
   ) => {
     const image = preset.image.endsWith('.png')
       ? dataUriToBase64(
@@ -449,6 +457,7 @@ const createSDI2IHandler = (type: string) => {
       scene: scene,
       outputPath: imageService.getOutputDir(session, scene),
       onComplete: onComplete,
+      generationSnapshot,
     };
     await taskQueueService.addTask(param, samples);
   };

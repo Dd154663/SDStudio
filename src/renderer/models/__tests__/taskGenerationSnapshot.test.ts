@@ -54,6 +54,7 @@ jest.mock('../../componenets/BrushTool', () => ({
 import { ModelVersion } from '../../backends/imageGen';
 import {
   DelegatedTaskPayload,
+  queueWorkflow,
   TaskHandler,
   TaskQueueService,
 } from '../TaskQueueService';
@@ -115,6 +116,66 @@ describe('TaskQueueService 예약 생성 설정 스냅샷', () => {
       autoConvertWebp: true,
       autoConvertWebpQuality: 72,
     });
+  });
+
+  test('일괄 예약은 생성 설정을 한 번만 읽고 모든 작업에 공유한다', async () => {
+    getConfig.mockResolvedValue({
+      modelVersion: ModelVersion.V5,
+      transparentBackground: true,
+    });
+    const service = new TaskQueueService([makeHandler()]);
+
+    const snapshot = await service.captureGenerationSnapshot();
+    await service.addTask({ ...makeParam(), generationSnapshot: snapshot }, 1);
+    await service.addTask({ ...makeParam(), generationSnapshot: snapshot }, 1);
+    await service.addTask({ ...makeParam(), generationSnapshot: snapshot }, 1);
+
+    expect(getConfig).toHaveBeenCalledTimes(1);
+    expect(service.queue.size).toBe(3);
+    expect(
+      service.queue.queue.filter(Boolean).every(
+        (task) => task?.params.generationSnapshot === snapshot,
+      ),
+    ).toBe(true);
+  });
+
+  test('워크플로우가 공유 스냅샷을 생성 핸들러에 전달한다', async () => {
+    const snapshot = {
+      schemaVersion: 1 as const,
+      modelVersion: ModelVersion.V5,
+      furryMode: false,
+      disableQuality: false,
+      qualityPreset: 'standard' as const,
+      ucPreset: 'none' as const,
+      transparentBackground: true,
+      autoConvertWebp: false,
+      autoConvertWebpQuality: 80,
+    };
+    const handler: jest.Mock<any, any> = jest.fn(async () => {});
+    const scene = { name: 'scene', type: 'scene', meta: new Map() } as any;
+    const session = {
+      getCommonSetup: jest.fn(() => [
+        'SDImageGen',
+        {},
+        {},
+        {
+          createPrompt: jest.fn(async () => [{ type: 'text', text: 'prompt' }]),
+          createCharacterPrompts: jest.fn(async () => [[]]),
+          handler,
+        },
+      ]),
+    } as any;
+
+    await queueWorkflow(
+      session,
+      { workflowType: 'SDImageGen', presetName: '' } as any,
+      scene,
+      1,
+      snapshot,
+    );
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0][10]).toBe(snapshot);
   });
 
   test('보조 창 위임 payload에 같은 스냅샷을 포함한다', async () => {
