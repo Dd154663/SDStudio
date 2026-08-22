@@ -5,6 +5,7 @@ import {
   ImageGenInput,
   ImageGenService,
   LoginValidity,
+  ModelVersion,
 } from './imageGen';
 import {
   Backend,
@@ -28,8 +29,11 @@ import JSZip from 'jszip';
 import { BackgroundMode } from '@anuradev/capacitor-background-mode';
 import { App as CapacitorApp } from '@capacitor/app';
 import { TagDB } from './tagDB';
+import { isV5ModelVersion } from './genVendors/naiModelCapabilities';
 // @ts-ignore
 import DBCSV from '../../../assets/db.txt';
+// @ts-ignore
+import V5DBCSV from '../../../assets/db_v5.txt';
 import packageInfo from '../../../package.json';
 import ZipService from './zipService';
 import { FilePicker } from '@capawesome/capacitor-file-picker';
@@ -43,6 +47,7 @@ let configLoaded = false;
 let configLoadFailed = false; // 읽기 실패(권한 등) — 게이트 통과 후 재읽기 대상
 let configLoadPromise: Promise<void> | null = null;
 const pica = new Pica();
+type TagDatabaseKind = 'legacy' | 'v5';
 
 function extname(filename: string): string {
   const parts = filename.split('.');
@@ -132,6 +137,8 @@ export class AndroidBackend extends Backend {
   private tagDBId?: number;
   private piecesDBId?: number;
   private tagMap: Map<string, WordTag>;
+  private activeTagDatabase?: TagDatabaseKind;
+  private tagDatabaseLoadPromise: Promise<void> = Promise.resolve();
   constructor() {
     super();
     this.tagMap = new Map();
@@ -202,23 +209,53 @@ export class AndroidBackend extends Backend {
       });
     } catch (e) {}
 
-    (async () => {
+    this.tagDatabaseLoadPromise = (async () => {
       this.tagDBId = (await TagDB.createDB({ name: 'tags' })).id;
       this.piecesDBId = (await TagDB.createDB({ name: 'pieces' })).id;
-      await TagDB.loadDB({ id: this.tagDBId, path: DBCSV });
-      DBCSV.split('\n').forEach((x: string) => {
-        const comps: string[] = x.split(',');
-        if (comps.length !== 4) return;
-        this.tagMap.set(comps[0], {
-          word: comps[0],
-          normalized: comps[0],
-          freq: parseInt(comps[2]),
-          category: parseInt(comps[1]),
-          redirect: comps[3],
-          priority: 0,
-        });
-      });
+      if (configLoadPromise) await configLoadPromise;
+      await this.applyTagDatabase(
+        this.tagDatabaseKindForModel(config.modelVersion),
+      );
     })();
+  }
+
+  private tagDatabaseKindForModel(
+    modelVersion?: ModelVersion,
+  ): TagDatabaseKind {
+    return isV5ModelVersion(modelVersion ?? ModelVersion.V4_5)
+      ? 'v5'
+      : 'legacy';
+  }
+
+  private async applyTagDatabase(kind: TagDatabaseKind): Promise<void> {
+    const csv = kind === 'v5' ? V5DBCSV : DBCSV;
+    await TagDB.loadDB({ id: this.tagDBId!, path: csv });
+
+    const nextMap = new Map<string, WordTag>();
+    csv.split('\n').forEach((line: string) => {
+      const comps = line.split(',');
+      if (comps.length !== 4) return;
+      nextMap.set(comps[0], {
+        word: comps[0],
+        normalized: comps[0],
+        freq: parseInt(comps[2], 10),
+        category: parseInt(comps[1], 10),
+        redirect: comps[3],
+        priority: 0,
+      });
+    });
+    this.tagMap = nextMap;
+    this.activeTagDatabase = kind;
+  }
+
+  private loadTagDatabase(modelVersion?: ModelVersion): Promise<void> {
+    const kind = this.tagDatabaseKindForModel(modelVersion);
+    const previous = this.tagDatabaseLoadPromise.catch(() => undefined);
+    this.tagDatabaseLoadPromise = previous.then(async () => {
+      if (this.activeTagDatabase === kind) return;
+      await this.applyTagDatabase(kind);
+    });
+    return this.tagDatabaseLoadPromise;
   }
 
   async getConfig(): Promise<Config> {
@@ -244,10 +281,14 @@ export class AndroidBackend extends Backend {
       configLoadFailed = false;
     } catch {
       // 진짜 파일 없음(첫 실행) — 빈 config 그대로 진행
+      return;
     }
+    await this.loadTagDatabase(config.modelVersion);
   }
 
   async setConfig(newConfig: Config): Promise<void> {
+    // 저장된 모델과 자동완성 DB가 어긋나지 않도록 전환을 먼저 완료한다.
+    await this.loadTagDatabase(newConfig.modelVersion);
     config = newConfig;
     // writeFile 경유 = tmp+rename(+.bak) 원자 쓰기 — 직접 쓰기는 강제 종료 시
     // 파일이 반쯤 쓰여 파손되고, 로드가 조용히 실패해 설정 전체가 초기화된다.
@@ -556,11 +597,13 @@ export class AndroidBackend extends Backend {
   }
 
   async searchTags(word: string): Promise<any> {
+    await this.tagDatabaseLoadPromise;
     const args = { id: this.tagDBId!, query: word };
     return (await TagDB.search(args)).results;
   }
 
   async lookupTag(word: string): Promise<any> {
+    await this.tagDatabaseLoadPromise;
     return this.tagMap.get(word);
   }
 

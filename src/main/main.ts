@@ -52,6 +52,8 @@ import contextMenu from 'electron-context-menu';
 import * as electronDL from 'electron-dl';
 import { createGzip } from 'zlib';
 import { ImageOptimizeMethod } from '../renderer/backend';
+import { ModelVersion } from '../renderer/backends/imageGen';
+import { isV5ModelVersion } from '../renderer/backends/genVendors/naiModelCapabilities';
 
 interface DataBaseConns {
   tagDBId: number;
@@ -67,6 +69,9 @@ let databases: DataBaseConns = {
 // 보조 창은 이 변수에 담기지 않고 BrowserWindow.getAllWindows() 로만 추적한다(W6 P0).
 let mainWindow: BrowserWindow | null = null;
 let tagMap: Map<string, any> = new Map();
+type TagDatabaseKind = 'legacy' | 'v5';
+let activeTagDatabase: TagDatabaseKind | undefined;
+let tagDatabaseLoadPromise: Promise<void> = Promise.resolve();
 
 // 종료 저장 게이트 — 창별로 분리(webContents.id 기준). 닫는 창만 렌더러에 저장을
 // 위임받고, 렌더러가 invoke('close') 하면 그 창만 다시 닫는다. 창이 닫히면 정리한다.
@@ -350,6 +355,8 @@ ipcMain.handle('get-config', async (event) => {
 });
 
 ipcMain.handle('set-config', async (event, newConfig) => {
+  // 모델과 자동완성 DB가 서로 다른 상태로 저장되지 않도록 DB 전환을 먼저 완료한다.
+  await loadTagDatabase(newConfig.modelVersion);
   config = newConfig;
   // tmp+rename 원자 쓰기 — 직접 쓰기는 강제 종료 시 파일이 반쯤 쓰여 파손되고,
   // 다음 부팅의 로드가 조용히 실패해 설정 전체가 기본값으로 초기화된다.
@@ -508,6 +515,7 @@ ipcMain.handle('unzip-files', async (event, zipPath, outPath) => {
 });
 
 ipcMain.handle('search-tags', async (event, word) => {
+  await tagDatabaseLoadPromise;
   return native.search(databases.tagDBId, word);
 });
 
@@ -1424,7 +1432,8 @@ ipcMain.handle('extract-zip', async (event, zipPath, outPath) => {
   }
 });
 
-ipcMain.handle('lookup-tag', (event, word) => {
+ipcMain.handle('lookup-tag', async (event, word) => {
+  await tagDatabaseLoadPromise;
   return tagMap.get(word);
 });
 
@@ -1914,6 +1923,42 @@ const dataDir = isDebug
 
 const localAI = new LocalAIService('http://127.0.0.1');
 
+function tagDatabaseKindForModel(modelVersion?: ModelVersion): TagDatabaseKind {
+  return isV5ModelVersion(modelVersion ?? ModelVersion.V4_5) ? 'v5' : 'legacy';
+}
+
+async function applyTagDatabase(kind: TagDatabaseKind): Promise<void> {
+  const filename = kind === 'v5' ? 'db_v5.csv' : 'db.csv';
+  const csv = await fs.readFile(path.join(dataDir, filename), 'utf-8');
+  native.loadDB(databases.tagDBId, csv);
+
+  const nextMap = new Map<string, any>();
+  csv.split('\n').forEach((line: string) => {
+    const comps = line.split(',');
+    if (comps.length !== 4) return;
+    nextMap.set(comps[0], {
+      word: comps[0],
+      normalized: comps[0],
+      freq: parseInt(comps[2], 10),
+      category: parseInt(comps[1], 10),
+      redirect: comps[3],
+      priority: 0,
+    });
+  });
+  tagMap = nextMap;
+  activeTagDatabase = kind;
+}
+
+function loadTagDatabase(modelVersion?: ModelVersion): Promise<void> {
+  const kind = tagDatabaseKindForModel(modelVersion);
+  const previous = tagDatabaseLoadPromise.catch(() => undefined);
+  tagDatabaseLoadPromise = previous.then(async () => {
+    if (activeTagDatabase === kind) return;
+    await applyTagDatabase(kind);
+  });
+  return tagDatabaseLoadPromise;
+}
+
 async function init() {
   await fs.mkdir(DEFAULT_APP_DIR, { recursive: true });
   try {
@@ -1921,22 +1966,9 @@ async function init() {
       await fs.readFile(path.join(DEFAULT_APP_DIR, 'config.json'), 'utf-8'),
     );
   } catch (e) {}
-  const dbCsvContent = await fs.readFile(path.join(dataDir, 'db.csv'), 'utf-8');
   databases.tagDBId = native.createDB('danbooru');
-  native.loadDB(databases.tagDBId, dbCsvContent);
+  await loadTagDatabase(config.modelVersion);
   databases.pieceDBId = native.createDB('pieces');
-  dbCsvContent.split('\n').forEach((x: string) => {
-    const comps: string[] = x.split(',');
-    if (comps.length !== 4) return;
-    tagMap.set(comps[0], {
-      word: comps[0],
-      normalized: comps[0],
-      freq: parseInt(comps[2]),
-      category: parseInt(comps[1]),
-      redirect: comps[3],
-      priority: 0,
-    });
-  });
   await initFolder();
 }
 
