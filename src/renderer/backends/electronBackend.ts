@@ -154,6 +154,16 @@ export class ElectornBackend extends Backend {
     return await this.imageGenService.validateToken(token);
   }
 
+  async readLoginToken(): Promise<string | undefined> {
+    try {
+      const token = (await this.readToken()).trim();
+      return token || undefined;
+    } catch (e: any) {
+      if (String(e?.message || e).includes('ENOENT')) return undefined;
+      throw e;
+    }
+  }
+
   async encodeVibeImage(arg: EncodeVibeImageInput): Promise<string> {
     const token = await this.readToken();
     return await this.imageGenService.encodeVibeImage(token, arg);

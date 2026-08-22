@@ -71,6 +71,16 @@ export class LoginService extends EventTarget {
     return this.activeTokenProfileId;
   }
 
+  async saveToken(token: string): Promise<void> {
+    await this.ensureTokenProfilesLoaded();
+    const usedNames = new Set(
+      this.tokenProfiles.map((p) => p.name.trim().toLowerCase()),
+    );
+    let index = 1;
+    while (usedNames.has(`토큰 ${index}`.toLowerCase())) index++;
+    await this.saveTokenProfile(`토큰 ${index}`, token);
+  }
+
   async saveTokenProfile(name: string, token: string): Promise<void> {
     await this.ensureTokenProfilesLoaded();
     name = name.trim();
@@ -119,6 +129,27 @@ export class LoginService extends EventTarget {
     return validity;
   }
 
+  async renameTokenProfile(id: string, name: string): Promise<void> {
+    await this.ensureTokenProfilesLoaded();
+    name = name.trim();
+    if (!name) throw new Error('토큰 이름을 입력해주세요');
+    if (name.length > 40) throw new Error('토큰 이름은 40자 이하로 입력해주세요');
+    const profile = this.tokenProfiles.find((p) => p.id === id);
+    if (!profile) throw new Error('토큰 프리셋을 찾을 수 없습니다');
+    if (
+      this.tokenProfiles.some(
+        (p) => p.id !== id && p.name.toLowerCase() === name.toLowerCase(),
+      )
+    ) {
+      throw new Error('같은 이름의 토큰 프리셋이 있습니다');
+    }
+    if (profile.name === name) return;
+    await this.persistTokenProfiles(
+      this.tokenProfiles.map((p) => (p.id === id ? { ...p, name } : p)),
+      this.activeTokenProfileId,
+    );
+  }
+
   async deleteTokenProfile(id: string): Promise<void> {
     await this.ensureTokenProfilesLoaded();
     if (!this.tokenProfiles.some((p) => p.id === id)) return;
@@ -156,10 +187,7 @@ export class LoginService extends EventTarget {
     this.tokenProfilesLoading = (async () => {
       const raw = await backend.readTokenProfileData();
       if (!raw) {
-        this.tokenProfiles = [];
-        this.activeTokenProfileId = undefined;
-        this.tokenProfilesLoaded = true;
-        this.emitTokenProfilesChange();
+        await this.initializeEmptyTokenProfiles();
         return;
       }
 
@@ -199,6 +227,21 @@ export class LoginService extends EventTarget {
       this.tokenProfilesLoading = undefined;
     });
     return this.tokenProfilesLoading;
+  }
+
+  private async initializeEmptyTokenProfiles(): Promise<void> {
+    const token = (await backend.readLoginToken())?.trim();
+    if (!token) {
+      this.tokenProfiles = [];
+      this.activeTokenProfileId = undefined;
+      this.tokenProfilesLoaded = true;
+      this.emitTokenProfilesChange();
+      return;
+    }
+    const id = `${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
+    await this.persistTokenProfiles([{ id, name: '토큰 1', token }], id);
   }
 
   private async persistTokenProfiles(

@@ -1,9 +1,10 @@
 import type { LoginValidity } from '../../backends/imageGen';
 
 let profileData: string | undefined;
-let currentToken = 'original-token';
+let currentToken: string | undefined;
 
 const backend = {
+  readLoginToken: jest.fn(async () => currentToken),
   readTokenProfileData: jest.fn(async () => profileData),
   writeTokenProfileData: jest.fn(async (data: string) => {
     profileData = data;
@@ -22,13 +23,62 @@ import { LoginService } from '../LoginService';
 
 beforeEach(() => {
   profileData = undefined;
-  currentToken = 'original-token';
+  currentToken = undefined;
   jest.clearAllMocks();
   backend.validateToken.mockResolvedValue('valid');
   backend.validateLogin.mockResolvedValue('valid');
 });
 
 describe('LoginService 토큰 프리셋', () => {
+  test('저장 목록이 비어 있으면 기존 로그인 토큰을 활성 토큰 1로 복사한다', async () => {
+    currentToken = 'existing-login-token';
+    const service = new LoginService();
+
+    await service.loadTokenProfiles();
+
+    const profiles = service.listTokenProfiles();
+    expect(profiles).toEqual([expect.objectContaining({ name: '토큰 1' })]);
+    expect(service.activeProfileId).toBe(profiles[0].id);
+    expect(JSON.parse(profileData!)).toEqual(
+      expect.objectContaining({
+        activeId: profiles[0].id,
+        profiles: [
+          expect.objectContaining({
+            id: profiles[0].id,
+            name: '토큰 1',
+            token: 'existing-login-token',
+          }),
+        ],
+      }),
+    );
+    expect(backend.loginWithToken).not.toHaveBeenCalled();
+  });
+
+  test('이미 생성된 빈 저장 목록에는 삭제한 토큰을 다시 가져오지 않는다', async () => {
+    currentToken = 'existing-login-token';
+    profileData = JSON.stringify({ version: 1, profiles: [] });
+    const service = new LoginService();
+
+    await service.loadTokenProfiles();
+
+    expect(service.listTokenProfiles()).toEqual([]);
+    expect(service.activeProfileId).toBeUndefined();
+    expect(backend.writeTokenProfileData).not.toHaveBeenCalled();
+  });
+
+  test('이름 입력 없이 토큰을 저장하면 구분용 이름을 자동 생성한다', async () => {
+    const service = new LoginService();
+    await service.saveToken('secret-token-1');
+    await service.saveToken('secret-token-2');
+
+    expect(service.listTokenProfiles()).toEqual([
+      expect.objectContaining({ name: '토큰 1' }),
+      expect.objectContaining({ name: '토큰 2' }),
+    ]);
+    expect(profileData).toContain('secret-token-1');
+    expect(profileData).toContain('secret-token-2');
+  });
+
   test('최초 상태에서 이름과 토큰을 저장하되 목록에는 토큰을 노출하지 않는다', async () => {
     const service = new LoginService();
     await service.saveTokenProfile('계정 1', 'secret-token-1');
@@ -38,6 +88,30 @@ describe('LoginService 토큰 프리셋', () => {
     ]);
     expect(service.listTokenProfiles()[0]).not.toHaveProperty('token');
     expect(profileData).toContain('secret-token-1');
+  });
+
+  test('저장된 토큰의 표시 이름을 변경한다', async () => {
+    const service = new LoginService();
+    await service.saveToken('secret-token-1');
+    const id = service.listTokenProfiles()[0].id;
+
+    await service.renameTokenProfile(id, '  작업 계정  ');
+
+    expect(service.listTokenProfiles()).toEqual([
+      expect.objectContaining({ id, name: '작업 계정' }),
+    ]);
+    expect(JSON.parse(profileData!).profiles[0].name).toBe('작업 계정');
+  });
+
+  test('토큰 표시 이름은 중복될 수 없다', async () => {
+    const service = new LoginService();
+    await service.saveTokenProfile('작업 계정', 'secret-token-1');
+    await service.saveTokenProfile('보조 계정', 'secret-token-2');
+    const secondId = service.listTokenProfiles()[1].id;
+
+    await expect(
+      service.renameTokenProfile(secondId, '작업 계정'),
+    ).rejects.toThrow('같은 이름의 토큰 프리셋이 있습니다');
   });
 
   test('후보 토큰 검증 후 기존 로그인 파일을 교체하고 활성 상태를 저장한다', async () => {
@@ -58,6 +132,7 @@ describe('LoginService 토큰 프리셋', () => {
     const service = new LoginService();
     await service.saveTokenProfile('잘못된 계정', 'invalid-token');
     const id = service.listTokenProfiles()[0].id;
+    currentToken = 'original-token';
     backend.validateToken.mockResolvedValueOnce('invalid');
 
     await expect(service.activateTokenProfile(id)).rejects.toThrow(

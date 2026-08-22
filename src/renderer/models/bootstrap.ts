@@ -337,8 +337,14 @@ export async function bootstrapApp(): Promise<void> {
       console.error('씬 템플릿 숨김 이관 실패:', e);
     });
   }
-  // 시작 시 1회 토큰 검증 (네트워크)
-  loginService.refresh().catch(() => {});
+  // 기존 TOKEN.txt를 빈 다중 토큰 목록에 먼저 복사한 뒤 로그인 검증을 시작한다.
+  // 복사는 원본 토큰을 바꾸지 않으며 실패해도 기존 로그인 검증은 계속한다.
+  const tokenProfilesReady = taskQueueService.isGenerationHost
+    ? loginService.loadTokenProfiles()
+    : Promise.resolve();
+  tokenProfilesReady
+    .catch(() => {})
+    .finally(() => loginService.refresh().catch(() => {}));
   // 새 버전 확인 (네트워크)
   Promise.resolve(appUpdateNoticeService.run()).catch(() => {});
   // 로컬 배경 제거 모델 존재 확인

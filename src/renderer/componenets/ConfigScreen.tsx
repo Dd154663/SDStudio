@@ -42,6 +42,7 @@ import {
   FaColumns,
   FaChevronLeft,
   FaChevronRight,
+  FaPen,
 } from 'react-icons/fa';
 import { keyboardShortcutService, KeyboardShortcutService } from '../models/KeyboardShortcutService';
 import { migrationService } from '../models/MigrationService';
@@ -68,9 +69,11 @@ const LoginTab = ({
   loggedIn, loginWithToken, roundTag,
 }: any) => {
   const [profiles, setProfiles] = useState<LoginTokenProfile[]>([]);
-  const [profileName, setProfileName] = useState('');
+  const [profileToken, setProfileToken] = useState('');
   const [profilesReady, setProfilesReady] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  const [profileNameDraft, setProfileNameDraft] = useState('');
 
   const syncProfiles = useCallback(() => {
     setProfiles(loginService.listTokenProfiles());
@@ -95,10 +98,9 @@ const LoginTab = ({
     if (profileBusy) return;
     setProfileBusy(true);
     try {
-      await loginService.saveTokenProfile(profileName, accessToken);
-      setProfileName('');
-      setAccessToken('');
-      appState.pushMessage('토큰 프리셋을 저장했습니다');
+      await loginService.saveToken(profileToken);
+      setProfileToken('');
+      appState.pushMessage('토큰을 저장했습니다');
     } catch (e: any) {
       appState.pushMessage(e.message || '토큰 프리셋 저장에 실패했습니다');
     } finally {
@@ -114,6 +116,27 @@ const LoginTab = ({
       appState.pushMessage(`${profile.name} 계정으로 전환했습니다`);
     } catch (e: any) {
       appState.pushMessage(e.message || '계정 전환에 실패했습니다');
+    } finally {
+      setProfileBusy(false);
+    }
+  };
+
+  const startProfileRename = (profile: LoginTokenProfile) => {
+    if (profileBusy) return;
+    setEditingProfileId(profile.id);
+    setProfileNameDraft(profile.name);
+  };
+
+  const commitProfileRename = async (profile: LoginTokenProfile) => {
+    if (editingProfileId !== profile.id || profileBusy) return;
+    const nextName = profileNameDraft.trim();
+    setEditingProfileId(null);
+    if (nextName === profile.name) return;
+    setProfileBusy(true);
+    try {
+      await loginService.renameTokenProfile(profile.id, nextName);
+    } catch (e: any) {
+      appState.pushMessage(e.message || '토큰 이름 변경에 실패했습니다');
     } finally {
       setProfileBusy(false);
     }
@@ -194,7 +217,7 @@ const LoginTab = ({
         <div>
           <p className="text-sm font-semibold gray-label">여러 토큰</p>
           <p className="text-xs text-muted mt-1">
-            토큰을 이름별로 저장하고 수동으로 전환합니다. 자동 순환은 지원하지 않습니다.
+            토큰을 개별 저장하고 수동으로 전환합니다. 자동 순환은 지원하지 않습니다.
           </p>
         </div>
         <div className="rounded-lg border line-color bg-[var(--c-zone)] p-3 text-xs text-body">
@@ -204,14 +227,15 @@ const LoginTab = ({
         <div className="flex flex-col sm:flex-row gap-2">
           <input
             className="gray-input flex-1"
-            placeholder="프리셋 이름 예: 계정 1"
-            value={profileName}
-            maxLength={40}
-            onChange={(e) => setProfileName(e.target.value)}
+            type="password"
+            autoComplete="off"
+            placeholder="저장할 API 토큰을 붙여넣으세요"
+            value={profileToken}
+            onChange={(e) => setProfileToken(e.target.value)}
           />
           <button
             className="btn back-sky rounded px-3 py-2 text-sm"
-            disabled={profileBusy || !profileName.trim() || !accessToken.trim()}
+            disabled={profileBusy || !profileToken.trim()}
             onClick={saveProfile}
           >
             입력 토큰 저장
@@ -230,9 +254,40 @@ const LoginTab = ({
                   key={profile.id}
                   className="flex items-center gap-2 rounded-lg border line-color bg-[var(--c-surface-2)] px-3 py-2"
                 >
-                  <span className="min-w-0 flex-1 truncate text-sm text-default">
-                    {profile.name}
-                  </span>
+                  {editingProfileId === profile.id ? (
+                    <input
+                      autoFocus
+                      className="gray-input min-w-0 flex-1 py-1 text-sm"
+                      value={profileNameDraft}
+                      maxLength={40}
+                      onChange={(e) => setProfileNameDraft(e.target.value)}
+                      onBlur={() => void commitProfileRename(profile)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                        if (e.key === 'Escape') setEditingProfileId(null);
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className="min-w-0 flex-1 truncate text-sm text-default cursor-text"
+                      title="더블클릭하여 이름 변경"
+                      onDoubleClick={() => startProfileRename(profile)}
+                    >
+                      {profile.name}
+                    </span>
+                  )}
+                  {editingProfileId !== profile.id && (
+                    <button
+                      className="btn btn-ghost rounded p-1 text-muted flex-none"
+                      title="토큰 이름 변경"
+                      aria-label={`${profile.name} 이름 변경`}
+                      disabled={profileBusy}
+                      onClick={() => startProfileRename(profile)}
+                      onDoubleClick={() => startProfileRename(profile)}
+                    >
+                      <FaPen size={11} />
+                    </button>
+                  )}
                   {active && (
                     <span className={`${roundTag} back-green flex-none`}>사용 중</span>
                   )}

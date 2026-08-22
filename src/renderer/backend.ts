@@ -51,6 +51,9 @@ export abstract class Backend {
   abstract validateToken(token: string): Promise<LoginValidity>;
   // 저장된 토큰이 실제로 유효한지 NovelAI API로 검증 (단순 파일 존재 확인이 아님)
   abstract validateLogin(): Promise<LoginValidity>;
+  // 현재 TOKEN.txt 로그인 토큰을 변경 없이 읽는다. 다중 토큰 저장소가 비어 있을 때
+  // 기존 로그인을 최초 항목으로 안전하게 복사하기 위한 읽기 전용 관문이다.
+  abstract readLoginToken(): Promise<string | undefined>;
   // 로그인 토큰 프리셋은 프로젝트 저장 경로와 분리된 인증 저장 영역에 둔다.
   // 반환값 undefined 는 아직 프리셋 파일이 없는 정상적인 최초 상태다.
   abstract readTokenProfileData(): Promise<string | undefined>;

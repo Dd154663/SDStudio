@@ -344,6 +344,16 @@ export class AndroidBackend extends Backend {
     return await this.imageGenService.validateToken(token);
   }
 
+  async readLoginToken(): Promise<string | undefined> {
+    try {
+      const token = (await this.readFile('TOKEN.txt')).trim();
+      return token || undefined;
+    } catch (e) {
+      if (this.isNotFoundError(e)) return undefined;
+      throw e;
+    }
+  }
+
   async readTokenProfileData(): Promise<string | undefined> {
     try {
       return await this.readFile('TOKEN_PROFILES.json');
