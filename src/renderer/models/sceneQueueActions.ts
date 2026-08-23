@@ -59,13 +59,16 @@ export const queueScene = async (
   samples: number,
   generationSnapshot?: GenerationSettingsSnapshot,
 ) => {
+  const snapshot =
+    generationSnapshot ??
+    (await taskQueueService.captureGenerationSnapshot());
   if (scene.type === 'scene') {
     await queueWorkflow(
       session,
       session.selectedWorkflow!,
       scene,
       samples,
-      generationSnapshot,
+      snapshot,
     );
   } else {
     const inpaintScene = scene as InpaintScene;
@@ -77,7 +80,7 @@ export const queueScene = async (
         inpaintScene,
         samples,
         undefined,
-        generationSnapshot,
+        snapshot,
       );
     } else {
       await queueI2IWorkflow(
@@ -87,7 +90,7 @@ export const queueScene = async (
         scene,
         samples,
         undefined,
-        generationSnapshot,
+        snapshot,
       );
     }
   }

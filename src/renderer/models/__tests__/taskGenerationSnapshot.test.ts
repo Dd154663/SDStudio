@@ -3,6 +3,7 @@ const delegateTask = jest.fn(async () => {});
 const delegateComplete = jest.fn(async () => {});
 const getSession = jest.fn();
 const pushMessage = jest.fn();
+const captureGenerationSnapshot = jest.fn();
 
 jest.mock('..', () => ({
   backend: {
@@ -17,7 +18,9 @@ jest.mock('..', () => ({
   sessionService: {
     get: getSession,
   },
-  taskQueueService: {},
+  taskQueueService: {
+    captureGenerationSnapshot,
+  },
   workFlowService: {},
 }));
 
@@ -58,6 +61,8 @@ import {
   TaskHandler,
   TaskQueueService,
 } from '../TaskQueueService';
+import * as taskQueueModule from '../TaskQueueService';
+import { queueScene } from '../sceneQueueActions';
 
 function makeHandler(): TaskHandler {
   return {
@@ -86,6 +91,11 @@ beforeEach(() => {
   delegateComplete.mockClear();
   getSession.mockReset();
   pushMessage.mockClear();
+  captureGenerationSnapshot.mockReset();
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
 });
 
 describe('TaskQueueService 예약 생성 설정 스냅샷', () => {
@@ -137,6 +147,65 @@ describe('TaskQueueService 예약 생성 설정 스냅샷', () => {
         (task) => task?.params.generationSnapshot === snapshot,
       ),
     ).toBe(true);
+  });
+
+  test('단일 씬 예약도 호출 단위로 설정을 한 번만 캡처해 전달한다', async () => {
+    const snapshot = {
+      schemaVersion: 1 as const,
+      modelVersion: ModelVersion.V5,
+      furryMode: false,
+      disableQuality: false,
+      ucPreset: 'none' as const,
+      transparentBackground: false,
+      autoConvertWebp: false,
+      autoConvertWebpQuality: 90,
+    };
+    captureGenerationSnapshot.mockResolvedValue(snapshot);
+    const queueWorkflowSpy = jest
+      .spyOn(taskQueueModule, 'queueWorkflow')
+      .mockResolvedValue(undefined);
+    const session = { selectedWorkflow: { type: 'SDImageGen' } } as any;
+    const scene = { name: 'scene', type: 'scene' } as any;
+
+    await queueScene(session, scene, 3);
+
+    expect(captureGenerationSnapshot).toHaveBeenCalledTimes(1);
+    expect(queueWorkflowSpy).toHaveBeenCalledWith(
+      session,
+      session.selectedWorkflow,
+      scene,
+      3,
+      snapshot,
+    );
+  });
+
+  test('공유된 설정 스냅샷은 다시 캡처하지 않는다', async () => {
+    const snapshot = {
+      schemaVersion: 1 as const,
+      modelVersion: ModelVersion.V5,
+      furryMode: false,
+      disableQuality: false,
+      ucPreset: 'none' as const,
+      transparentBackground: true,
+      autoConvertWebp: false,
+      autoConvertWebpQuality: 90,
+    };
+    const queueWorkflowSpy = jest
+      .spyOn(taskQueueModule, 'queueWorkflow')
+      .mockResolvedValue(undefined);
+    const session = { selectedWorkflow: { type: 'SDImageGen' } } as any;
+    const scene = { name: 'scene', type: 'scene' } as any;
+
+    await queueScene(session, scene, 2, snapshot);
+
+    expect(captureGenerationSnapshot).not.toHaveBeenCalled();
+    expect(queueWorkflowSpy).toHaveBeenCalledWith(
+      session,
+      session.selectedWorkflow,
+      scene,
+      2,
+      snapshot,
+    );
   });
 
   test('워크플로우가 공유 스냅샷을 생성 핸들러에 전달한다', async () => {

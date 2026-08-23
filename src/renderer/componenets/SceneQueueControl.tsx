@@ -898,7 +898,7 @@ export const SceneCell = observer(
       );
     };
 
-    const focusRing = isFocused && appState.sceneSelectionMode
+    const focusRing = isFocused
       ? ' outline outline-4 outline-sky-400 outline-offset-2'
       : '';
     const isSelected = appState.selectedScenes.has(scene.name);
