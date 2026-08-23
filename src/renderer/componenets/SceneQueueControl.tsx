@@ -18,6 +18,7 @@ import {
   FaFileExport,
   FaFileImage,
   FaPen,
+  FaPaintBrush,
   FaPlus,
   FaQuestion,
   FaRegCalendarPlus,
@@ -74,6 +75,7 @@ import { queueWorkflow } from '../models/TaskQueueService';
 import {
   addScenesToQueue,
   createMissingPiecesForSession,
+  queueArtistBreakdown,
   queueScene,
 } from '../models/sceneQueueActions';
 import {
@@ -2820,6 +2822,17 @@ const QueueControl = observer(
           <button className="round-button back-gray" onClick={findScene}>
             <FaSearch size={18} />
             {!iconMode && <span className="ml-1">씬 찾기</span>}
+          </button>
+        </Tooltip>
+      ),
+      'artist-breakdown': (
+        <Tooltip content="좌측 프롬프트의 작가 태그를 하나씩 분리해 default 씬에 예약">
+          <button
+            className="round-button back-gray"
+            onClick={() => queueArtistBreakdown(curSession)}
+          >
+            <FaPaintBrush size={18} />
+            {!iconMode && <span className="ml-1">작가 분해</span>}
           </button>
         </Tooltip>
       ),

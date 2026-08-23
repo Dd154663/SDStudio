@@ -32,6 +32,7 @@ import { highlightPrompt } from '../models/PromptService';
 import { WordTag, calcGapMatch } from '../models/Tags';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
+import { adjustPromptWeightAtSelection } from '../models/promptTransforms';
 
 interface PromptEditTextAreaProps {
   value: string;
@@ -292,6 +293,34 @@ class CursorMemorizeEditor {
     this.redoBuf.clear();
   }
 
+  async adjustWeight(delta: number) {
+    const selection = window.getSelection();
+    if (
+      !selection ||
+      selection.rangeCount === 0 ||
+      !this.editor.contains(selection.getRangeAt(0).commonAncestorContainer)
+    ) {
+      return false;
+    }
+    const [start, end] = this.getCaretPosition();
+    const adjusted = adjustPromptWeightAtSelection(
+      this.curText,
+      start,
+      end,
+      delta,
+    );
+    if (!adjusted) return false;
+    this.pushHistory();
+    this.compositionBuffer = [];
+    this.updateCurText(adjusted.text);
+    this.updateDOM(adjusted.text, adjusted.selectionStart, false);
+    await this.setCaretPosition([
+      adjusted.selectionStart,
+      adjusted.selectionEnd,
+    ]);
+    return true;
+  }
+
   getCurWord(start: number) {
     let curText = this.domText;
     let startIdx = start;
@@ -457,6 +486,14 @@ class CursorMemorizeEditor {
       const range = selection.getRangeAt(0);
       const [start, end] = this.getCaretPosition();
       const collapsed = range.collapsed;
+      if (
+        e.ctrlKey &&
+        (e.key === 'ArrowUp' || e.key === 'ArrowDown')
+      ) {
+        e.preventDefault();
+        await this.adjustWeight(e.key === 'ArrowUp' ? 0.05 : -0.05);
+        return;
+      }
       if (koreanRegex.test(e.key || '')) {
         e.preventDefault();
         this.shuffling = true;
@@ -1029,6 +1066,17 @@ const EmulatedEditTextArea = observer(
         }
         const handlePaste = (e: any) => editor.handlePaste(e);
         editorRef.current.addEventListener('paste', handlePaste);
+        const handleWheel = (e: WheelEvent) => {
+          if (!e.ctrlKey || e.deltaY === 0) return;
+          e.preventDefault();
+          closeAutoComplete();
+          mutex.runExclusive(async () => {
+            await editor.adjustWeight(e.deltaY < 0 ? 0.05 : -0.05);
+          });
+        };
+        editorRef.current.addEventListener('wheel', handleWheel, {
+          passive: false,
+        });
         const handleWindowMouseDown = (e: any) => {
           closeAutoComplete();
           editor.handleWindowMouseDown(e);
@@ -1051,6 +1099,7 @@ const EmulatedEditTextArea = observer(
             );
           }
           editorRef.current.removeEventListener('paste', handlePaste);
+          editorRef.current.removeEventListener('wheel', handleWheel);
           editorRef.current.removeEventListener('mousedown', handleMouseDown);
         };
       }, []);
@@ -1174,6 +1223,24 @@ const NativeEditTextArea = observer(
         }
         history.push({ text, cursorPos: [start, end], copmositionBuffer: [] });
         redo.clear();
+      };
+
+      const adjustWeight = (delta: number) => {
+        const start = textareaRef.current.selectionStart;
+        const end = textareaRef.current.selectionEnd;
+        const adjusted = adjustPromptWeightAtSelection(
+          textareaRef.current.value,
+          start,
+          end,
+          delta,
+        );
+        if (!adjusted) return;
+        textareaRef.current.value = adjusted.text;
+        textareaRef.current.selectionStart = adjusted.selectionStart;
+        textareaRef.current.selectionEnd = adjusted.selectionEnd;
+        onUpdated(adjusted.text);
+        renderText();
+        pushHistory();
       };
 
       const doUndo = () => {
@@ -1307,8 +1374,21 @@ const NativeEditTextArea = observer(
               className="native-text-area-input native-text-area-highlight"
               defaultValue={value}
               disabled={disabled}
+              onWheel={(e: any) => {
+                if (!e.ctrlKey || e.deltaY === 0) return;
+                e.preventDefault();
+                closeAutoComplete();
+                adjustWeight(e.deltaY < 0 ? 0.05 : -0.05);
+              }}
               onKeyDown={(e: any) => {
-                if (e.key === 'ArrowUp') {
+                if (
+                  e.ctrlKey &&
+                  (e.key === 'ArrowUp' || e.key === 'ArrowDown')
+                ) {
+                  e.preventDefault();
+                  closeAutoComplete();
+                  adjustWeight(e.key === 'ArrowUp' ? 0.05 : -0.05);
+                } else if (e.key === 'ArrowUp') {
                   if (isAutoComplete.current) {
                     e.preventDefault();
                   }

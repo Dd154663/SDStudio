@@ -1,4 +1,5 @@
 import { appState } from './AppService';
+import { v4 } from 'uuid';
 import {
   backend,
   imageService,
@@ -21,6 +22,11 @@ import {
   Scene,
   Session,
 } from './types';
+import {
+  createSDCharacterPrompts,
+  createSDPrompts,
+} from './PromptService';
+import { buildArtistPromptVariants } from './promptTransforms';
 
 // 씬 큐 예약(추가/제거) 공유 로직 단일 출처.
 // SceneQueueControl(툴바·단축키·카드 버튼)과 AppContextMenu(우클릭 메뉴)가 함께 사용한다.
@@ -162,6 +168,135 @@ export const queueQuickScene = async (
       samples,
       scene.meta.get(type),
     );
+  }
+};
+
+const ensureArtistBreakdownScene = (session: Session): Scene => {
+  let scene = session.scenes.get('default');
+  if (scene) return scene;
+  const resolution = session.newSceneResolution;
+  scene = Scene.fromJSON({
+    type: 'scene',
+    name: 'default',
+    resolution: resolution?.resolution ?? 'portrait',
+    resolutionWidth:
+      resolution?.resolution === 'custom' ? resolution.width : undefined,
+    resolutionHeight:
+      resolution?.resolution === 'custom' ? resolution.height : undefined,
+    slots: [
+      [{ id: v4(), prompt: '', characterPrompts: [], enabled: true }],
+    ],
+    mains: [],
+    imageMap: [],
+    meta: {},
+    round: undefined,
+    game: undefined,
+  });
+  session.addScene(scene);
+  sessionService.markDirty(session.name);
+  return scene;
+};
+
+/**
+ * 좌측 양의 프롬프트에 있는 작가 태그를 하나씩 남겨 default 씬에 1장씩 예약한다.
+ * 프리셋·프로젝트 프롬프트는 건드리지 않고 예약 시점의 복제본만 사용한다.
+ */
+export const queueArtistBreakdown = async (session: Session) => {
+  const workflow = session.selectedWorkflow;
+  if (!workflow) {
+    appState.pushMessage('먼저 이미지 생성 워크플로우를 선택해주세요.');
+    return;
+  }
+  const [type, preset, shared, def] = session.getCommonSetup(workflow);
+  if (!preset || !shared || !['SDImageGen', 'SDImageGenEasy'].includes(type)) {
+    appState.pushMessage('이미지 생성 프리셋에서만 작가 분해를 사용할 수 있습니다.');
+    return;
+  }
+
+  const variants = buildArtistPromptVariants({
+    frontPrompt: preset.frontPrompt ?? '',
+    extraPrompt: session.extraPrompt ?? '',
+    backPrompt: preset.backPrompt ?? '',
+    characterPrompt:
+      type === 'SDImageGenEasy' ? shared.characterPrompt ?? '' : undefined,
+    backgroundPrompt:
+      type === 'SDImageGenEasy' ? shared.backgroundPrompt ?? '' : undefined,
+  });
+  if (variants.length === 0) {
+    appState.pushMessage('좌측 프롬프트에서 artist: 태그를 찾지 못했습니다.');
+    return;
+  }
+
+  let generationSnapshot: GenerationSettingsSnapshot;
+  try {
+    generationSnapshot = await taskQueueService.captureGenerationSnapshot();
+  } catch (e) {
+    console.error('작가 분해 생성 설정을 읽지 못했습니다:', e);
+    appState.pushMessage('생성 설정을 읽지 못해 예약하지 못했습니다.');
+    return;
+  }
+
+  const targetScene = ensureArtistBreakdownScene(session);
+  const promptScene = Scene.fromJSON({
+    ...targetScene.toJSON(),
+    slots: [
+      [{ id: v4(), prompt: '', characterPrompts: [], enabled: true }],
+    ],
+  });
+  let queued = 0;
+  for (const variant of variants) {
+    const variantPreset = {
+      ...preset,
+      frontPrompt: variant.frontPrompt ?? '',
+      backPrompt: variant.backPrompt ?? '',
+    };
+    const variantShared = {
+      ...shared,
+      ...(type === 'SDImageGenEasy'
+        ? {
+            characterPrompt: variant.characterPrompt ?? '',
+            backgroundPrompt: variant.backgroundPrompt ?? '',
+          }
+        : {}),
+    };
+    try {
+      const prompts = await createSDPrompts(
+        session,
+        variantPreset,
+        variantShared,
+        promptScene,
+        variant.extraPrompt ?? '',
+      );
+      const characterPrompts = await createSDCharacterPrompts(
+        session,
+        variantPreset,
+        variantShared,
+        promptScene,
+      );
+      for (let i = 0; i < prompts.length; i++) {
+        await def.handler(
+          session,
+          targetScene,
+          prompts[i],
+          characterPrompts[i],
+          variantPreset,
+          variantShared,
+          1,
+          targetScene.meta.get(type),
+          undefined,
+          undefined,
+          generationSnapshot,
+        );
+        queued++;
+      }
+    } catch (e: any) {
+      appState.pushMessage(
+        `작가 분해 예약 실패 (${variant.artistTag}): ${e.message}`,
+      );
+    }
+  }
+  if (queued > 0) {
+    appState.pushMessage(`작가 ${queued}명 · default 씬에 각 1장 예약됨`);
   }
 };
 

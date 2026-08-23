@@ -44,6 +44,7 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'scene-search', name: '씬 검색', tier: 'primary' },
   { id: 'scene-find', name: '씬 찾기', tier: 'overflow' },
   { id: 'image-review', name: '이미지 검수', tier: 'overflow' },
+  { id: 'artist-breakdown', name: '작가 분해', tier: 'overflow' },
   { id: 'bookmark-jump', name: '북마크된 씬으로 이동', tier: 'secondary' },
   // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환
   { id: 'scene-trash', name: '씬 휴지통', tier: 'overflow', portable: true },

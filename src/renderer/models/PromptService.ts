@@ -472,6 +472,7 @@ export const createSDPrompts = async (
   preset: any,
   shared: any,
   scene: Scene,
+  extraPromptOverride?: string,
 ) => {
   return await dfsPrompts(
     session,
@@ -507,7 +508,9 @@ export const createSDPrompts = async (
       // 추가 프롬프트 (2026-07-18): 상위(및 이지 모드 캐릭터 태그 재배열) 뒤,
       // 중위(씬 전용) 앞에 삽입 — 조합 순서 = 상위→추가→중위→하위.
       // 세션(프로젝트) 귀속 필드로 프리셋 구조에는 저장되지 않는다.
-      front = front.concat(toPARR(session.extraPrompt || ''));
+      front = front.concat(
+        toPARR(extraPromptOverride ?? session.extraPrompt ?? ''),
+      );
 
       let middle: string[] = [];
       for (const comb of promptComb) {
