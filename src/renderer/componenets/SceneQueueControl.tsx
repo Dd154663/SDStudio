@@ -43,6 +43,7 @@ import SceneEditor from './SceneEditor';
 import Tournament from './Tournament';
 import ResultViewer from './ResultViewer';
 import InPaintEditor from './InPaintEditor';
+import ImageReview from './ImageReview';
 import ShortcutCheatsheet from './ShortcutCheatsheet';
 import SceneQuickPromptModal from './SceneQuickPromptModal';
 import { base64ToDataUri } from './BrushTool';
@@ -484,6 +485,7 @@ interface SceneCellProps {
   // 프롬프트 퀵 수정(W2) — 일반 씬 전용, 이미지 우상단 오버레이 버튼.
   // anchor = 씬 카드 사각형 (모달을 카드 위에 띄우는 인라인 느낌용)
   onQuickPrompt?: (scene: GenericScene, anchor?: DOMRect) => void;
+  onReview?: (scene: GenericScene) => void;
 }
 
 export const SceneCell = observer(
@@ -502,6 +504,7 @@ export const SceneCell = observer(
     disableHover,
     isFocused,
     onQuickPrompt,
+    onReview,
   }: SceneCellProps) => {
     const { show, hideAll } = useContextMenu({
       id: ContextMenuType.Scene,
@@ -931,6 +934,21 @@ export const SceneCell = observer(
           </button>
         </Tooltip>
       ) : null;
+    const reviewButton = onReview ? (
+      <Tooltip content="이 씬부터 이미지 검수">
+        <button
+          className={`absolute ${quickPromptButton ? 'right-9' : 'right-1'} top-1 z-20 flex h-7 w-7 items-center justify-center rounded-full btn-solid-sky text-xs font-bold transition-opacity duration-200${
+            !isMobile && !isHovered ? ' opacity-0' : ''
+          }`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onReview(scene);
+          }}
+        >
+          R
+        </button>
+      </Tooltip>
+    ) : null;
 
     if (isClassic) {
       // ===== 클래식 디자인 =====
@@ -1008,6 +1026,7 @@ export const SceneCell = observer(
                   </div>
                 )}
                 {quickPromptButton}
+                {reviewButton}
               </div>
             </div>
           </div>
@@ -1100,6 +1119,7 @@ export const SceneCell = observer(
                 </div>
               </div>
               {quickPromptButton}
+              {reviewButton}
             </div>
           </div>
         </div>
@@ -1314,6 +1334,9 @@ const QueueControl = observer(
     const [displayScene, setDisplayScene] = useState<GenericScene | undefined>(
       undefined,
     );
+    const [imageReview, setImageReview] = useState<
+      { startScene?: GenericScene } | undefined
+    >(undefined);
     // 프롬프트 퀵 수정(W2) 대상 씬 (+카드 앵커 사각형 — 카드 위에 모달 배치)
     const [quickPromptScene, setQuickPromptScene] = useState<
       { scene: Scene; anchor?: DOMRect } | undefined
@@ -1459,7 +1482,6 @@ const QueueControl = observer(
             x.name.toLowerCase().includes(sceneSearchQuery.toLowerCase()),
         );
     }, [curSession, type, filterFunc, sceneSearchQuery]);
-
 
     // clientX/Y → 그리드 콘텐츠 좌표(스크롤 포함). 뷰포트 범위로 클램프해서
     // 그리드를 벗어나도 박스가 가장자리에 머물고 드래그가 유지되게 한다.
@@ -2704,6 +2726,17 @@ const QueueControl = observer(
           </button>
         </Tooltip>
       ),
+      'image-review': (
+        <Tooltip content="이미지를 크게 넘겨보며 검수">
+          <button
+            className="round-button back-gray"
+            onClick={() => setImageReview({})}
+          >
+            <FaFileImage size={18} />
+            {!iconMode && <span className="ml-1">이미지 검수</span>}
+          </button>
+        </Tooltip>
+      ),
       'bookmark-jump': (
         <Tooltip content="북마크된 씬으로 이동">
           <button
@@ -2807,6 +2840,31 @@ const QueueControl = observer(
           </FloatView>
         )}
         {resultViewer}
+        {imageReview && (
+          <ImageReview
+            session={curSession}
+            type={type}
+            startScene={imageReview.startScene}
+            onClose={() => setImageReview(undefined)}
+            onInpaint={async (scene, path) => {
+              if (scene.type === 'scene') {
+                await createInpaintScene(scene, 'SDInpaint', path, () =>
+                  setImageReview(undefined),
+                );
+                return;
+              }
+              let source = await imageService.fetchImage(path);
+              source = dataUriToBase64(source!);
+              await imageService.writeVibeImage(
+                curSession,
+                scene.preset.image,
+                source,
+              );
+              setImageReview(undefined);
+              setInpaintEditScene(scene);
+            }}
+          />
+        )}
         {quickPromptScene && (
           <SceneQuickPromptModal
             scene={quickPromptScene.scene}
@@ -3046,6 +3104,9 @@ const QueueControl = observer(
                       if (s.type === 'scene')
                         setQuickPromptScene({ scene: s as Scene, anchor });
                     }}
+                    onReview={(scene) =>
+                      setImageReview({ startScene: scene })
+                    }
                     moveScene={moveScene}
                     moveScenes={moveScenes}
                     curSession={curSession}

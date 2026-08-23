@@ -20,6 +20,9 @@ const SCENE_SHORTCUTS: ShortcutEntry[] = [
   { keys: ['Space'], desc: '예약 실행' },
   { keys: ['Ctrl+D'], desc: '모든 예약 취소' },
   { keys: ['Ctrl+B'], desc: '씬 북마크 토글' },
+  { keys: ['Shift+드래그'], desc: '선택 영역 해제' },
+  { keys: ['Alt+드래그'], desc: '영역 내 씬 예약 제거' },
+  { keys: ['Alt+→'], desc: '이미지 검수에서 즉시 삭제' },
   { keys: ['H'], desc: '단축키 도움말' },
 ];
 
