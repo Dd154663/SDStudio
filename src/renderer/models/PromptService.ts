@@ -27,8 +27,66 @@ export function stripPromptComments(str: string): string {
 
 export function toPARR(str: string) {
   return cleanPARR(
-    stripPromptComments(str).replace('\n', ',').split(','),
+    stripPromptComments(str).replace(/\r\n?|\n/g, ',').split(','),
   ).filter((x) => x !== '');
+}
+
+/**
+ * Expands inline alternatives such as `{jeans|black pants}`.
+ * Braces without a top-level pipe remain untouched so NovelAI emphasis syntax
+ * such as `{artist:name}` keeps its original meaning.
+ */
+export function expandInlineRandom(text: string): string {
+  const expand = (value: string): string => {
+    let result = '';
+    for (let index = 0; index < value.length; index++) {
+      if (value[index] !== '{') {
+        result += value[index];
+        continue;
+      }
+
+      let depth = 1;
+      let closeIndex = -1;
+      const separators: number[] = [];
+      let cursor = index + 1;
+      for (; cursor < value.length; cursor++) {
+        const char = value[cursor];
+        if (char === '{') depth++;
+        else if (char === '}') {
+          depth--;
+          if (depth === 0) {
+            closeIndex = cursor;
+            break;
+          }
+        } else if (char === '|' && depth === 1) {
+          separators.push(cursor);
+        }
+      }
+
+      if (closeIndex < 0) {
+        result += value.slice(index);
+        break;
+      }
+
+      const inner = value.slice(index + 1, closeIndex);
+      if (separators.length === 0) {
+        result += `{${expand(inner)}}`;
+      } else {
+        const options: string[] = [];
+        let optionStart = index + 1;
+        for (const separator of separators) {
+          options.push(value.slice(optionStart, separator));
+          optionStart = separator + 1;
+        }
+        options.push(value.slice(optionStart, closeIndex));
+        result += expand(pickRandom(options).trim());
+      }
+      index = closeIndex;
+    }
+    return result;
+  };
+
+  return expand(text);
 }
 
 /**
@@ -222,7 +280,7 @@ export class PromptService extends EventTarget {
       try {
         if (this.isMulti(word, session)) {
           const expanded = this.tryExpandPiece(word, session, scene);
-          const lines = expanded.split('\n');
+          const lines = expanded.split(/\r\n?|\n/);
           const randNode: PromptRandomNode = {
             type: 'random',
             options: [],
@@ -270,7 +328,7 @@ export class PromptService extends EventTarget {
         if (this.isMulti(piece, window.curSession!)) {
           txt =
             '이 중 한 줄 랜덤 선택:\n' +
-            expanded.split('\n').slice(0, 32).join('\n');
+            expanded.split(/\r\n?|\n/).slice(0, 32).join('\n');
         } else {
           txt = expanded;
         }
@@ -904,7 +962,7 @@ export function reformat(text: string) {
 
 export function lowerPromptNode(node: PromptNode): string {
   if (node.type === 'text') {
-    return node.text;
+    return expandInlineRandom(node.text);
   }
   if (node.type === 'random') {
     return lowerPromptNode(pickRandom(node.options));
