@@ -5,6 +5,7 @@ import {
   GenerationSettingsSnapshot,
   ImageAugmentInput,
   ImageGenInput,
+  ImageSize,
   Model,
   ModelVersion,
   NoiseSchedule,
@@ -245,7 +246,14 @@ export async function handleNAIDelay(
 
 export type ImageTaskType = 'gen' | 'inpaint' | 'i2i';
 
-export const lowerResolution = (res: Resolution, width?: number, height?: number) => {
+export const lowerResolution = (
+  res: Resolution | ImageSize,
+  width?: number,
+  height?: number,
+) => {
+  if (typeof res === 'object') {
+    return { width: res.width, height: res.height };
+  }
   if (res === Resolution.Custom) {
     return {
       width: width!,

@@ -635,7 +635,17 @@ export class ExportPresetService {
       text: '파일명 구분자를 입력해주세요 (기본값: .)',
     });
     if (separatorInput === undefined) return;
-    const separator = separatorInput || '.';
+    const separatorOptions = await appState.pushDialogAsync({
+      type: 'checkbox',
+      text: '파일명 구분자 옵션',
+      items: [{ text: '구분자 없음', value: 'none' }],
+    });
+    if (separatorOptions === undefined) return;
+    let noSeparator = false;
+    try {
+      noSeparator = JSON.parse(separatorOptions).includes('none');
+    } catch (e) {}
+    const separator = noSeparator ? '' : separatorInput || '.';
 
     // 특수문자 감지 (공통 헬퍼 사용)
     // 특수문자 감지 (공통 헬퍼 사용)

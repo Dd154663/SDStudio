@@ -1483,6 +1483,46 @@ const QueueControl = observer(
         );
     }, [curSession, type, filterFunc, sceneSearchQuery]);
 
+    const findScene = async () => {
+      const input = await appState.pushDialogAsync({
+        type: 'input-confirm',
+        text: '찾을 씬 이름을 입력하세요',
+      });
+      if (input === undefined || !input.trim()) return;
+      const query = input.trim().toLowerCase();
+      const scenes = curSession.getScenes(type);
+      const found =
+        scenes.find((scene) => scene.name.toLowerCase() === query) ||
+        scenes.find((scene) => scene.name.toLowerCase().includes(query));
+      if (!found) {
+        appState.pushMessage(`일치하는 씬을 찾지 못했습니다: ${input.trim()}`);
+        return;
+      }
+      setSceneSearchQuery('');
+      setShowSceneSearch(false);
+      window.setTimeout(() => {
+        const element = document.getElementById(
+          `scene-cell-${found.type}-${found.name}`,
+        );
+        if (!element) {
+          appState.pushMessage(`씬을 표시하지 못했습니다: ${found.name}`);
+          return;
+        }
+        element.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'center',
+        });
+        element.animate(
+          [
+            { boxShadow: '0 0 0 4px var(--c-sky-bg)' },
+            { boxShadow: '0 0 0 0 transparent' },
+          ],
+          { duration: 1400, easing: 'ease-out' },
+        );
+      }, 80);
+    };
+
     // clientX/Y → 그리드 콘텐츠 좌표(스크롤 포함). 뷰포트 범위로 클램프해서
     // 그리드를 벗어나도 박스가 가장자리에 머물고 드래그가 유지되게 한다.
     const toGridContentXY = (clientX: number, clientY: number) => {
@@ -2772,6 +2812,14 @@ const QueueControl = observer(
           >
             <FaFileImage size={18} />
             {!iconMode && <span className="ml-1">이미지 검수</span>}
+          </button>
+        </Tooltip>
+      ),
+      'scene-find': (
+        <Tooltip content="필터하지 않고 씬 위치로 이동">
+          <button className="round-button back-gray" onClick={findScene}>
+            <FaSearch size={18} />
+            {!iconMode && <span className="ml-1">씬 찾기</span>}
           </button>
         </Tooltip>
       ),

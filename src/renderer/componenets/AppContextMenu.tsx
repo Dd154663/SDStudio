@@ -1,7 +1,16 @@
 import { observer } from 'mobx-react-lite';
 import { getSnapshot } from 'mobx-state-tree';
 import { Item, Menu, Separator } from 'react-contexify';
-import { sessionService, backend, imageService, isMobile, imageDownloadService, imageHistoryService, templateService } from '../models';
+import {
+  sessionService,
+  backend,
+  imageService,
+  isMobile,
+  imageDownloadService,
+  imageHistoryService,
+  templateService,
+  taskQueueService,
+} from '../models';
 import { appState } from '../models/AppService';
 import { dataUriToBase64, deleteImageFiles, toggleImageMain } from '../models/ImageService';
 import { createImageWithText, embedJSONInPNG } from '../models/SessionService';
@@ -15,6 +24,7 @@ import {
   GenericScene,
   HistoryImageContextAlt,
   Scene,
+  SDJob,
 } from '../models/types';
 import { oneTimeFlowMap, oneTimeFlows } from '../models/workflows/OneTimeFlows';
 import { extractPromptDataFromBase64 } from '../models/util';
@@ -112,6 +122,205 @@ export const AppContextMenu = observer(() => {
     }
     newScene.name = newName();
     appState.curSession!.addScene(newScene);
+  };
+
+  const regenerateSceneFromImages = async (ctx: SceneContextAlt) => {
+    const session = appState.curSession;
+    if (!session) return;
+
+    const sourceScene = ctx.scene;
+    await imageService.refresh(session, sourceScene);
+    const files = [...imageService.getOutputs(session, sourceScene)];
+    let generationSnapshot;
+    if (files.length > 0) {
+      try {
+        generationSnapshot =
+          await taskQueueService.captureGenerationSnapshot();
+      } catch (e) {
+        appState.pushMessage('생성 설정을 읽지 못해 예약하지 못했습니다.');
+        return;
+      }
+    }
+
+    const regenerated = genericSceneFromJSON(sourceScene.toJSON());
+    if (!regenerated) {
+      appState.pushMessage('씬을 복제할 수 없습니다.');
+      return;
+    }
+
+    const baseName = `${sourceScene.name}_regen`;
+    let name = baseName;
+    let suffix = 2;
+    while (session.hasScene(regenerated.type, name)) {
+      name = `${baseName}${suffix++}`;
+    }
+    regenerated.name = name;
+    regenerated.imageMap = [];
+    regenerated.mains = [];
+    session.addScene(regenerated);
+    const sourceIndex = session
+      .getScenes(sourceScene.type)
+      .findIndex((scene) => scene === sourceScene);
+    if (sourceIndex >= 0) session.moveScene(regenerated, sourceIndex + 1);
+
+    if (files.length === 0) {
+      appState.pushMessage(
+        `"${regenerated.name}" 씬을 만들었습니다. 재생성할 이미지가 없습니다.`,
+      );
+      return;
+    }
+
+    const sourceDir = imageService.getOutputDir(session, sourceScene);
+    const outputDir = imageService.getOutputDir(session, regenerated);
+    let queued = 0;
+    let skipped = 0;
+    let assetWarnings = 0;
+
+    appState.setProgressDialog({
+      text: '이미지 생성 설정을 읽는 중...',
+      done: 0,
+      total: files.length,
+    });
+    try {
+      for (let imageIndex = 0; imageIndex < files.length; imageIndex++) {
+        try {
+          const image = await imageService.fetchImage(
+            `${sourceDir}/${files[imageIndex]}`,
+          );
+          if (!image) {
+            skipped++;
+            continue;
+          }
+          const metadata = await extractPromptDataFromBase64(
+            dataUriToBase64(image),
+          );
+          if (!metadata?.prompt) {
+            skipped++;
+            continue;
+          }
+
+          const vibes = [];
+          for (
+            let vibeIndex = 0;
+            vibeIndex < (metadata.vibes?.length ?? 0);
+            vibeIndex++
+          ) {
+            const vibe = metadata.vibes[vibeIndex];
+            const encoded = metadata.vibeImageData?.[vibeIndex];
+            if (!encoded) {
+              assetWarnings++;
+              continue;
+            }
+            try {
+              const filename = `regen-${Date.now()}-${imageIndex}-v${vibeIndex}-${Math.random()
+                .toString(36)
+                .slice(2)}.png`;
+              await imageService.storeEncodedVibeImage(
+                session,
+                filename,
+                encoded,
+                vibe.info,
+              );
+              vibes.push({ ...vibe, path: filename });
+            } catch (e) {
+              assetWarnings++;
+              console.warn('바이브 복원 실패:', e);
+            }
+          }
+
+          const characterReferences = [];
+          for (
+            let referenceIndex = 0;
+            referenceIndex < (metadata.characterReferences?.length ?? 0);
+            referenceIndex++
+          ) {
+            const reference = metadata.characterReferences[referenceIndex];
+            const encoded = metadata.referenceImageData?.[referenceIndex];
+            if (!encoded) {
+              assetWarnings++;
+              continue;
+            }
+            try {
+              const referencePath = await imageService.storeReferenceImage(
+                session,
+                encoded,
+              );
+              characterReferences.push({
+                ...reference,
+                path: referencePath,
+                enabled: true,
+              });
+            } catch (e) {
+              assetWarnings++;
+              console.warn('캐릭터 레퍼런스 복원 실패:', e);
+            }
+          }
+
+          const job: SDJob = {
+            type: 'sd',
+            cfgRescale: metadata.cfgRescale ?? 0,
+            steps: metadata.steps ?? 28,
+            promptGuidance: metadata.promptGuidance ?? 5,
+            prompt: { type: 'text', text: metadata.prompt },
+            sampling: metadata.sampling || 'k_euler_ancestral',
+            uc: metadata.uc || '',
+            characterPrompts: (metadata.characterPrompts || []).map(
+              (prompt) => ({
+                ...prompt,
+                prompt: { type: 'text', text: prompt.prompt || '' },
+                uc: prompt.uc || '',
+              }),
+            ),
+            useCoords: !!metadata.useCoords,
+            legacyPromptConditioning: !!metadata.legacyPromptConditioning,
+            normalizeStrength: metadata.normalizeStrength ?? true,
+            varietyPlus: !!metadata.varietyPlus,
+            deliberateEulerAncestralBug:
+              !!metadata.deliberateEulerAncestralBug,
+            characterReferences,
+            noiseSchedule: metadata.noiseSchedule || 'karras',
+            backend: metadata.backend ? { ...metadata.backend } : { type: 'NAI' },
+            vibes,
+            seed: undefined,
+            overrideResolution: metadata.resolution,
+          };
+          await taskQueueService.addTask(
+            {
+              session,
+              job,
+              outputPath: outputDir,
+              scene: regenerated,
+              generationSnapshot,
+            },
+            1,
+          );
+          queued++;
+        } catch (e) {
+          skipped++;
+          console.error(
+            '씬 이미지 설정 재생성 준비 실패:',
+            files[imageIndex],
+            e,
+          );
+        } finally {
+          appState.setProgressDialog({
+            text: '이미지 생성 설정을 읽는 중...',
+            done: imageIndex + 1,
+            total: files.length,
+          });
+        }
+      }
+    } finally {
+      appState.setProgressDialog(undefined);
+    }
+
+    const result = [`${queued}장 예약됨`];
+    if (skipped > 0) result.push(`${skipped}장 정보 없음/읽기 실패`);
+    if (assetWarnings > 0)
+      result.push(`참조 자료 ${assetWarnings}개 제외`);
+    appState.pushMessage(
+      `"${regenerated.name}" 씬 생성 · ${result.join(' · ')}`,
+    );
   };
   const moveSceneFront = (ctx: SceneContextAlt) => {
     const curSession = appState.curSession;
@@ -231,6 +440,8 @@ export const AppContextMenu = observer(() => {
       );
     } else if (id === 'duplicate') {
       duplicateScene(ctx);
+    } else if (id === 'regenerate-scene') {
+      regenerateSceneFromImages(ctx);
     } else if (id === 'copy-to-project') {
       const selectedNames = appState.selectedScenes;
       if (selectedNames.size > 1) {
@@ -702,6 +913,9 @@ export const AppContextMenu = observer(() => {
         <Separator />
         <Item id="duplicate" onClick={handleSceneItemClick}>
           해당 씬 복제
+        </Item>
+        <Item id="regenerate-scene" onClick={handleSceneItemClick}>
+          씬 재생성 (이미지별 설정)
         </Item>
         <Item id="copy-to-project" onClick={handleSceneItemClick}>
           {appState.selectedScenes.size > 1

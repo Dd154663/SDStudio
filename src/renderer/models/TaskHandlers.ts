@@ -554,10 +554,15 @@ class GenerateImageTaskHandler implements TaskHandler {
         scene: name,
         text: '씬 해상도가 큼',
       });
-    } else if (resolution === Resolution.Custom) {
+    } else if (
+      resolution === Resolution.Custom ||
+      typeof resolution === 'object'
+    ) {
       const totalPixels =
-        (task.params.scene.resolutionWidth ?? 0) *
-        (task.params.scene.resolutionHeight ?? 0);
+        typeof resolution === 'object'
+          ? resolution.width * resolution.height
+          : (task.params.scene.resolutionWidth ?? 0) *
+            (task.params.scene.resolutionHeight ?? 0);
       if (totalPixels > 1024 * 1024) {
         res.push({
           scene: name,
