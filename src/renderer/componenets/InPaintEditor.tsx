@@ -83,6 +83,7 @@ const InPaintEditor = observer(
     const [height, setHeight] = useState(0);
     const [mask, setMask] = useState<string | undefined>(undefined);
     const [brushSize, setBrushSize] = useState(brushSizeSaved);
+    const [eraserMode, setEraserMode] = useState(false);
     const [brushing, setBrushing] = useState(true);
     const [open, setOpen] = useState(false);
     const def = workFlowService.getDef(editingScene.workflowType)!;
@@ -592,6 +593,26 @@ const InPaintEditor = observer(
                   {brushing ? <FaArrowsAlt /> : <FaPaintBrush />}
                 </button>
               }
+              <div className="flex-none flex items-center gap-1">
+                <button
+                  className={`round-button ${eraserMode ? 'back-gray' : 'back-sky'}`}
+                  onClick={() => {
+                    setEraserMode(false);
+                    setBrushing(true);
+                  }}
+                >
+                  브러시
+                </button>
+                <button
+                  className={`round-button ${eraserMode ? 'back-red' : 'back-gray'}`}
+                  onClick={() => {
+                    setEraserMode(true);
+                    setBrushing(true);
+                  }}
+                >
+                  지우개
+                </button>
+              </div>
               {isMobile && (
                 <Tooltip content="되돌리기">
                 <button
@@ -605,7 +626,11 @@ const InPaintEditor = observer(
                 </Tooltip>
               )}
               <label className="flex-none gray-label" htmlFor="brushSize">
-                {isMobile ? '' : '브러시 크기:'}{' '}
+                {isMobile
+                  ? ''
+                  : eraserMode
+                    ? '지우개 크기:'
+                    : '브러시 크기:'}{' '}
                 <span className="inline-block w-4">{brushSize}</span>
               </label>
               <input
@@ -614,7 +639,7 @@ const InPaintEditor = observer(
                 min="1"
                 max="100"
                 value={brushSize}
-                className="inline-block flex-1 min-w-0 md:max-w-40"
+                className="inline-block flex-1 min-w-[180px] max-w-[360px]"
                 onChange={(e: any) => {
                   setBrushSize(e.target.value);
                   brushSizeSaved = e.target.value;
@@ -640,6 +665,7 @@ const InPaintEditor = observer(
               <TransformComponent wrapperClass="wrapper flex-none items-center justify-center">
                 <BrushTool
                   brushSize={brushSize}
+                  eraserMode={eraserMode}
                   mask={mask ? base64ToDataUri(mask) : undefined}
                   ref={brushTool}
                   image={base64ToDataUri(image)}
@@ -670,59 +696,58 @@ const InPaintEditor = observer(
               <FaArrowLeft size={20} />
             </button>
             <TaskProgressBar fast />
-            {!taskQueueService.isRunning() ? (
-              <button
-                className={`round-button back-green h-8 w-16 md:w-36 flex items-center justify-center`}
-                onClick={async () => {
-                  if (isMirror) {
-                    if (!curSession?.mirrorImage) {
-                      appState.pushMessage('미러 이미지를 먼저 업로드해주세요.');
-                      return;
-                    }
-                    await refreshMirrorCanvas();
+            <button
+              className={`round-button back-green h-8 w-16 md:w-36 flex items-center justify-center`}
+              onClick={async () => {
+                if (isMirror) {
+                  if (!curSession?.mirrorImage) {
+                    appState.pushMessage('미러 이미지를 먼저 업로드해주세요.');
+                    return;
                   }
-                  await saveMask();
-                  const onGenComplete = (path: string) => {
-                    (async () => {
-                      const data = await imageService.fetchImage(path);
-                      setImage(dataUriToBase64(data!));
-                    })();
-                  };
-                  if (isMirror) {
-                    await queueMirrorWorkflow(
-                      curSession!,
-                      editingScene.workflowType,
-                      editingScene.preset,
-                      editingScene,
-                      1,
-                      onGenComplete,
-                    );
-                  } else {
-                    await queueI2IWorkflow(
-                      curSession!,
-                      editingScene.workflowType,
-                      editingScene.preset,
-                      editingScene,
-                      1,
-                      onGenComplete,
-                    );
-                  }
-                  taskQueueService.run();
-                }}
-              >
-                <FaPlay size={15} />
-              </button>
-            ) : (
+                  await refreshMirrorCanvas();
+                }
+                await saveMask();
+                const onGenComplete = (path: string) => {
+                  (async () => {
+                    const data = await imageService.fetchImage(path);
+                    setImage(dataUriToBase64(data!));
+                  })();
+                };
+                if (isMirror) {
+                  await queueMirrorWorkflow(
+                    curSession!,
+                    editingScene.workflowType,
+                    editingScene.preset,
+                    editingScene,
+                    1,
+                    onGenComplete,
+                  );
+                } else {
+                  await queueI2IWorkflow(
+                    curSession!,
+                    editingScene.workflowType,
+                    editingScene.preset,
+                    editingScene,
+                    1,
+                    onGenComplete,
+                  );
+                }
+                taskQueueService.run();
+              }}
+            >
+              <FaPlay size={15} />
+            </button>
+            {taskQueueService.isRunning() && (
               <Tooltip content="중지">
-              <button
-                className={`round-button back-red h-8 w-16 md:w-36 flex items-center justify-center`}
-                onClick={() => {
-                  taskQueueService.removeAllTasks();
-                  taskQueueService.stop();
-                }}
-              >
-                <FaStop size={15} />
-              </button>
+                <button
+                  className={`round-button back-red h-8 w-16 md:w-36 flex items-center justify-center`}
+                  onClick={() => {
+                    taskQueueService.removeAllTasks();
+                    taskQueueService.stop();
+                  }}
+                >
+                  <FaStop size={15} />
+                </button>
               </Tooltip>
             )}
           </div>

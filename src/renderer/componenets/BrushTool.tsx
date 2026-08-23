@@ -69,6 +69,7 @@ export function maskToBase64(
 interface Props {
   image: string;
   brushSize: number;
+  eraserMode?: boolean;
   mask?: string;
   imageWidth: number;
   imageHeight: number;
@@ -165,7 +166,18 @@ function getChunksBetween(
 }
 
 const BrushTool = forwardRef<BrushToolRef, Props>(
-  ({ image, mask, imageWidth, imageHeight, brushSize, onDrawEnd }, ref) => {
+  (
+    {
+      image,
+      mask,
+      imageWidth,
+      imageHeight,
+      brushSize,
+      eraserMode = false,
+      onDrawEnd,
+    },
+    ref,
+  ) => {
     const canvasRef = useRef<any>(null);
     const [loaded, setLoaded] = useState(false);
     const brushingRef = useRef(true);
@@ -277,14 +289,32 @@ const BrushTool = forwardRef<BrushToolRef, Props>(
       const drawBrushChunk = (x: any, y: any) => {
         const chunks = getChunksInBrush(x, y, brushSize);
         chunks.forEach(({ chunkX, chunkY }) => {
-          drawChunk(ctx, chunkX, chunkY, brushColor);
+          if (eraserMode) {
+            ctx.clearRect(
+              chunkX * CHUNK_SIZE,
+              chunkY * CHUNK_SIZE,
+              CHUNK_SIZE,
+              CHUNK_SIZE,
+            );
+          } else {
+            drawChunk(ctx, chunkX, chunkY, brushColor);
+          }
         });
       };
 
       const interpolate = (x0: any, y0: any, x1: any, y1: any) => {
         const chunks = getChunksBetween(x0, y0, x1, y1, brushSize);
         chunks.forEach(({ chunkX, chunkY }) => {
-          drawChunk(ctx, chunkX, chunkY, brushColor);
+          if (eraserMode) {
+            ctx.clearRect(
+              chunkX * CHUNK_SIZE,
+              chunkY * CHUNK_SIZE,
+              CHUNK_SIZE,
+              CHUNK_SIZE,
+            );
+          } else {
+            drawChunk(ctx, chunkX, chunkY, brushColor);
+          }
         });
       };
 
@@ -351,7 +381,7 @@ const BrushTool = forwardRef<BrushToolRef, Props>(
           // Show preview of chunks that would be painted
           ctx.putImageData(curImageRef.current, 0, 0);
           const chunks = getChunksInBrush(x, y, brushSize);
-          ctx.strokeStyle = 'black';
+          ctx.strokeStyle = eraserMode ? 'white' : 'black';
           ctx.lineWidth = 2;
           chunks.forEach(({ chunkX, chunkY }) => {
             ctx.strokeRect(
@@ -383,7 +413,7 @@ const BrushTool = forwardRef<BrushToolRef, Props>(
         canvas.removeEventListener('touchend', stopDrawing);
         window.removeEventListener('keydown', undo);
       };
-    }, [brushSize]);
+    }, [brushSize, eraserMode]);
 
     return (
       <div className="canvas-container overflow-auto w-full md:w-auto h-auto md:h-full ">

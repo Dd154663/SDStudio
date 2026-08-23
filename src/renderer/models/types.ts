@@ -349,6 +349,7 @@ export interface IInpaintScene extends IAbstractScene {
   workflowType: string;
   preset?: any;
   sceneRef?: string;
+  sourceImage?: string;
   slots?: IPromptPieceSlot[];
   mirrorCropX?: number;
 }
@@ -358,6 +359,7 @@ export class InpaintScene extends AbstractScene implements IInpaintScene {
   @observable accessor workflowType: string = '';
   @observable accessor preset: any | undefined = undefined;
   @observable accessor sceneRef: string | undefined = undefined;
+  @observable accessor sourceImage: string | undefined = undefined;
   @observable accessor slots: PromptPieceSlot[] = [];
   @observable accessor mirrorCropX: number | undefined = undefined;
 
@@ -385,6 +387,7 @@ export class InpaintScene extends AbstractScene implements IInpaintScene {
       workflowType: this.workflowType,
       preset: this.preset?.toJSON(),
       sceneRef: this.sceneRef,
+      sourceImage: this.sourceImage,
       ...(this.slots.length > 0 && {
         slots: this.slots.map((slot) => slot.map((piece) => piece.toJSON())),
       }),

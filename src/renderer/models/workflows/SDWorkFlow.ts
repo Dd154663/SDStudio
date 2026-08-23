@@ -726,6 +726,7 @@ const SDMirrorUI = wfiStack([
     'preset',
     'flex-none',
   ),
+  wfiInlineInput('씬 네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
   wfiGroup('샘플링/모델 설정', [
     wfiPush('top'),
@@ -794,7 +795,11 @@ const createMirrorHandler = () => {
       .filter(Boolean)
       .map((w) => lowerPromptNode(promptService.parseWord(w, session, scene)))
       .join(', ');
-    const mergedPreset = { ...preset, prompt: resolvedPrompt, uc: globalUc || preset.uc };
+    const mergedPreset = {
+      ...preset,
+      prompt: resolvedPrompt,
+      uc: [globalUc, preset.uc].filter(Boolean).join(', '),
+    };
     return innerHandler(
       session, scene, prompt, characterPrompts,
       mergedPreset, shared, samples, meta, onComplete,

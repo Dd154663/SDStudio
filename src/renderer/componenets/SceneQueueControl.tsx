@@ -2053,6 +2053,7 @@ const QueueControl = observer(
       path: string,
       close: () => void,
     ) => {
+      const sourceImage = path.split('/').pop();
       let image = await imageService.fetchImage(path);
       image = dataUriToBase64(image!);
       let cnt = 0;
@@ -2095,6 +2096,7 @@ const QueueControl = observer(
           resolutionHeight: result.height,
           mirrorCropX: result.cropX,
           sceneRef: scene.type === 'scene' ? scene.name : undefined,
+          sourceImage: scene.type === 'scene' ? sourceImage : undefined,
           imageMap: [],
           mains: [],
           round: undefined,
@@ -2114,6 +2116,7 @@ const QueueControl = observer(
           preset,
           resolution: scene.resolution,
           sceneRef: scene.type === 'scene' ? scene.name : undefined,
+          sourceImage: scene.type === 'scene' ? sourceImage : undefined,
           imageMap: [],
           mains: [],
           round: undefined,
@@ -2188,7 +2191,42 @@ const QueueControl = observer(
                     orgScene,
                   )}/${Date.now().toString()}.png`,
                 );
-                imageService.refresh(curSession!, orgScene);
+                let sourcePath = scene.sourceImage
+                  ? `${imageService.getImageDir(curSession!, orgScene)}/${scene.sourceImage}`
+                  : undefined;
+                if (!sourcePath && scene.preset?.image) {
+                  try {
+                    const sourceData = dataUriToBase64(
+                      (await imageService.fetchVibeImage(
+                        curSession!,
+                        scene.preset.image,
+                      ))!,
+                    );
+                    for (const filename of imageService.getOutputs(
+                      curSession!,
+                      orgScene,
+                    )) {
+                      const candidate = `${imageService.getImageDir(
+                        curSession!,
+                        orgScene,
+                      )}/${filename}`;
+                      const candidateData = dataUriToBase64(
+                        (await imageService.fetchImage(candidate))!,
+                      );
+                      if (candidateData === sourceData) {
+                        sourcePath = candidate;
+                        break;
+                      }
+                    }
+                  } catch (e) {
+                    console.warn('원본 인페인트 이미지 확인 실패:', e);
+                  }
+                }
+                if (sourcePath && (await backend.existFile(sourcePath))) {
+                  await deleteImageFiles(curSession!, [sourcePath], orgScene);
+                } else {
+                  await imageService.refresh(curSession!, orgScene);
+                }
                 setDisplayScene(undefined);
                 if (onClose) onClose(0);
                 close();
