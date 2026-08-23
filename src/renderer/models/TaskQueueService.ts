@@ -384,16 +384,23 @@ export class TaskQueueService extends EventTarget {
   // 전용 프로젝트의 씬을 취소할 때만 명시가 필요하다. 호스트 로컬 경로는
   // 씬 객체 동일성으로 걸러서 세션이 불필요 — 위임 페이로드에만 쓰인다.)
   removeTasksFromScene(scene: GenericScene, session?: Session) {
+    this.removeTasksFromScenes(new Set([scene]), session);
+  }
+
+  removeTasksFromScenes(scenes: ReadonlySet<GenericScene>, session?: Session) {
+    if (scenes.size === 0) return;
     // 보조 창: 씬 단위 취소를 호스트에 위임(그 씬의 예약 전부 — 출처 무관).
     if (!this.isGenerationHost) {
-      backend
-        .delegateCancel({
-          all: false,
-          sessionName: (session ?? appState.curSession)?.name,
-          sceneName: scene.name,
-          sceneType: scene.type,
-        })
-        .catch((e) => console.error('씬 예약 취소 위임 실패:', e));
+      for (const scene of scenes) {
+        backend
+          .delegateCancel({
+            all: false,
+            sessionName: (session ?? appState.curSession)?.name,
+            sceneName: scene.name,
+            sceneType: scene.type,
+          })
+          .catch((e) => console.error('씬 예약 취소 위임 실패:', e));
+      }
       return;
     }
     const oldQueue = this.queue;
@@ -402,7 +409,7 @@ export class TaskQueueService extends EventTarget {
       const task = oldQueue.peek();
       oldQueue.dequeue();
       this.removeTaskInternal(task);
-      if (task.params.scene !== scene) {
+      if (!scenes.has(task.params.scene)) {
         this.addTaskInternal(task);
       } else {
         this.notifyDelegationDone(task);

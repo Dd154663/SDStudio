@@ -819,15 +819,15 @@ export const SceneCell = observer(
 
     const cardRef = (node: any) => {
       cardElRef.current = node;
-      drag(drop(node));
+      drag(drop(appState.sceneSelectionMode ? null : node));
     };
     const onContext = (e: any) => {
       show({ event: e, props: { ctx: { type: 'scene', scene } } });
     };
     const onClickCard = (event: any) => {
       if (isDragging) return;
-      // PC: Ctrl+클릭 / 모바일: 선택 모드 활성 시 탭 → 선택 토글 (그리드 안 열림)
-      if (event.ctrlKey || (isMobile && appState.sceneSelectionMode)) {
+      // 선택 모드에서는 데스크톱/모바일 모두 카드 클릭으로 선택을 토글한다.
+      if (event.ctrlKey || appState.sceneSelectionMode) {
         appState.toggleSceneSelection(scene.name);
         return;
       }
@@ -893,7 +893,7 @@ export const SceneCell = observer(
       );
     };
 
-    const focusRing = isFocused
+    const focusRing = isFocused && appState.sceneSelectionMode
       ? ' outline outline-4 outline-sky-400 outline-offset-2'
       : '';
     const isSelected = appState.selectedScenes.has(scene.name);
@@ -1337,6 +1337,7 @@ const QueueControl = observer(
       x2: number;
       y2: number;
       deselect: boolean;
+      removeQueue: boolean;
     };
     const [dragBox, setDragBox] = useState<SceneDragBox | null>(null);
     // 드래그 중 window 리스너가 최신 좌표를 읽도록 ref 로도 동기화
@@ -1465,16 +1466,56 @@ const QueueControl = observer(
     const toGridContentXY = (clientX: number, clientY: number) => {
       const el = gridContainerRef.current!;
       const r = el.getBoundingClientRect();
-      const vx = Math.max(0, Math.min(clientX - r.left, r.width));
-      const vy = Math.max(0, Math.min(clientY - r.top, r.height));
+      const vx = Math.max(0, Math.min(clientX - r.left, el.clientWidth));
+      const vy = Math.max(0, Math.min(clientY - r.top, el.clientHeight));
       return { x: vx + el.scrollLeft, y: vy + el.scrollTop };
     };
 
     const handleGridMouseDown = (e: React.MouseEvent) => {
-      if (e.button !== 0) return;
-      // 카드 위에서 시작된 드래그는 react-dnd 씬 재정렬로 처리 (네이티브 HTML5 드래그가 mousemove를 중단시킴)
-      if (e.target !== e.currentTarget) return;
-      if (!gridContainerRef.current) return;
+      if (
+        e.button !== 0 ||
+        !appState.sceneSelectionMode ||
+        !gridContainerRef.current ||
+        dragBoxRef.current
+      ) {
+        return;
+      }
+      const target = e.target;
+      if (
+        target instanceof Element &&
+        target.closest(
+          'button,input,textarea,select,a,[contenteditable="true"],.scene-btn,[data-no-scene-drag]',
+        )
+      ) {
+        return;
+      }
+
+      const grid = gridContainerRef.current;
+      const bounds = grid.getBoundingClientRect();
+      const insideGrid =
+        e.clientX >= bounds.left &&
+        e.clientX <= bounds.right &&
+        e.clientY >= bounds.top &&
+        e.clientY <= bounds.bottom;
+      if (
+        insideGrid &&
+        (e.clientX > bounds.left + grid.clientWidth ||
+          e.clientY > bounds.top + grid.clientHeight)
+      ) {
+        return;
+      }
+      // 위쪽 툴바 아래 빈 공간은 허용하되 그리드 좌우 바깥은 시작점에서 제외한다.
+      if (
+        !insideGrid &&
+        (e.clientX < bounds.left ||
+          e.clientX > bounds.right ||
+          e.clientY > bounds.bottom)
+      ) {
+        return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
       const { x, y } = toGridContentXY(e.clientX, e.clientY);
       const start: SceneDragBox = {
         x1: x,
@@ -1482,6 +1523,7 @@ const QueueControl = observer(
         x2: x,
         y2: y,
         deselect: e.shiftKey || e.ctrlKey,
+        removeQueue: e.altKey,
       };
       dragBoxRef.current = start;
       dragStartClientRef.current = { x: e.clientX, y: e.clientY };
@@ -1497,13 +1539,64 @@ const QueueControl = observer(
     useEffect(() => {
       if (!isSelecting) return;
 
+      let animationFrame = 0;
+      let pointer: { x: number; y: number } | undefined;
+
+      const updateAutoScroll = () => {
+        if (!pointer || !dragBoxRef.current || !gridContainerRef.current)
+          return;
+        const grid = gridContainerRef.current;
+        const bounds = grid.getBoundingClientRect();
+        const edgeSize = 64;
+        const maxSpeed = 24;
+        const leftRatio = (pointer.x - bounds.left) / edgeSize;
+        const rightRatio = (bounds.right - pointer.x) / edgeSize;
+        const topRatio = (pointer.y - bounds.top) / edgeSize;
+        const bottomRatio = (bounds.bottom - pointer.y) / edgeSize;
+        let dx = 0;
+        let dy = 0;
+        if (leftRatio < 1)
+          dx = -Math.ceil(maxSpeed * Math.min(1, 1 - leftRatio));
+        else if (rightRatio < 1)
+          dx = Math.ceil(maxSpeed * Math.min(1, 1 - rightRatio));
+        if (topRatio < 1)
+          dy = -Math.ceil(maxSpeed * Math.min(1, 1 - topRatio));
+        else if (bottomRatio < 1)
+          dy = Math.ceil(maxSpeed * Math.min(1, 1 - bottomRatio));
+
+        const previousLeft = grid.scrollLeft;
+        const previousTop = grid.scrollTop;
+        if (dx || dy) {
+          grid.scrollLeft = Math.max(0, previousLeft + dx);
+          grid.scrollTop = Math.max(0, previousTop + dy);
+        }
+        if (
+          grid.scrollLeft !== previousLeft ||
+          grid.scrollTop !== previousTop
+        ) {
+          const { x, y } = toGridContentXY(pointer.x, pointer.y);
+          const next = { ...dragBoxRef.current, x2: x, y2: y };
+          dragBoxRef.current = next;
+          setDragBox(next);
+        }
+      };
+
+      const animate = () => {
+        updateAutoScroll();
+        animationFrame = window.requestAnimationFrame(animate);
+      };
+
       const onMove = (e: MouseEvent) => {
         const start = dragBoxRef.current;
         if (!start || !gridContainerRef.current) return;
+        pointer = { x: e.clientX, y: e.clientY };
         const dx = Math.abs(e.clientX - dragStartClientRef.current.x);
         const dy = Math.abs(e.clientY - dragStartClientRef.current.y);
         if (dx > 3 || dy > 3) isDraggingRef.current = true;
         if (!isDraggingRef.current) return;
+        if (animationFrame === 0) {
+          animationFrame = window.requestAnimationFrame(animate);
+        }
         const { x, y } = toGridContentXY(e.clientX, e.clientY);
         const next: SceneDragBox = { ...start, x2: x, y2: y };
         dragBoxRef.current = next;
@@ -1519,6 +1612,7 @@ const QueueControl = observer(
           const top = Math.min(box.y1, box.y2);
           const bottom = Math.max(box.y1, box.y2);
           const selected: string[] = [];
+          const selectedScenes: GenericScene[] = [];
           const scenes = getFilteredScenes();
           const el = gridContainerRef.current;
           if (el) {
@@ -1537,11 +1631,17 @@ const QueueControl = observer(
               const ch = cc.height;
               if (left < cx + cw && right > cx && top < cy + ch && bottom > cy) {
                 selected.push(scene.name);
+                selectedScenes.push(scene);
               }
             }
           }
           if (selected.length > 0) {
-            if (box.deselect) {
+            if (box.removeQueue) {
+              taskQueueService.removeTasksFromScenes(
+                new Set(selectedScenes),
+                curSession,
+              );
+            } else if (box.deselect) {
               appState.removeScenesFromSelection(selected);
             } else {
               appState.addScenesToSelection(selected);
@@ -1549,6 +1649,11 @@ const QueueControl = observer(
           }
         }
         dragBoxRef.current = null;
+        pointer = undefined;
+        if (animationFrame) {
+          window.cancelAnimationFrame(animationFrame);
+          animationFrame = 0;
+        }
         setDragBox(null);
         isDraggingRef.current = false;
         setIsSelecting(false);
@@ -1557,6 +1662,7 @@ const QueueControl = observer(
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
       return () => {
+        if (animationFrame) window.cancelAnimationFrame(animationFrame);
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('mouseup', onUp);
       };
@@ -1566,9 +1672,14 @@ const QueueControl = observer(
       // 드래그 직후 발생하는 click은 무시 (mouseup에서 이미 선택 처리됨)
       if (wasDraggingRef.current) {
         wasDraggingRef.current = false;
+        e.preventDefault();
+        e.stopPropagation();
         return;
       }
-      if (e.target === gridContainerRef.current) {
+      if (
+        !appState.sceneSelectionMode &&
+        e.target === gridContainerRef.current
+      ) {
         appState.clearSceneSelection();
       }
     };
@@ -2505,38 +2616,21 @@ const QueueControl = observer(
         </Tooltip>
       ),
       'multi-select': (
-        <Tooltip content="다중 선택">
+        <Tooltip content="드래그 선택 모드">
           <button
             className={`round-button ${
-              (isMobile ? appState.sceneSelectionMode : appState.selectedScenes.size > 0)
-                ? 'back-sky'
-                : 'back-gray'
+              appState.sceneSelectionMode ? 'back-sky' : 'back-gray'
             }`}
             onClick={() => {
-              if (isMobile) {
-                // 모바일: 선택 모드 토글. 끌 때는 선택도 해제한다.
-                if (appState.sceneSelectionMode) {
-                  appState.sceneSelectionMode = false;
-                  appState.clearSceneSelection();
-                } else {
-                  appState.sceneSelectionMode = true;
-                }
-                return;
+              if (appState.sceneSelectionMode) {
+                appState.sceneSelectionMode = false;
+                appState.clearSceneSelection();
+              } else {
+                appState.sceneSelectionMode = true;
               }
-              // PC: 선택이 있으면 해제(키보드 선택 모드도 종료), 없으면 선택 방법 안내
-              if (appState.selectedScenes.size === 0) {
-                appState.pushMessage(
-                  'Ctrl+S(선택 모드)·Ctrl+클릭·드래그로 씬을 선택하세요. 모드 진입 후엔 S로 토글.',
-                );
-                return;
-              }
-              appState.clearSceneSelection();
-              appState.sceneSelectionMode = false;
             }}
           >
             {iconMode ? (
-              // 아이콘 + 선택 수. 활성(선택 중) 상태는 배경색(back-sky)으로 표시.
-              // PC 는 선택 모드 플래그 없이도 선택이 생기므로 선택 수만으로 병기.
               <>
                 <FaCheckSquare size={18} />
                 {appState.selectedScenes.size > 0 && (
@@ -2545,14 +2639,10 @@ const QueueControl = observer(
                   </span>
                 )}
               </>
-            ) : isMobile ? (
-              appState.sceneSelectionMode
-                ? `선택 모드 (${appState.selectedScenes.size}) ✕`
-                : '다중 선택'
-            ) : appState.selectedScenes.size > 0 ? (
-              `선택 (${appState.selectedScenes.size}) ✕`
+            ) : appState.sceneSelectionMode ? (
+              `선택중 ${appState.selectedScenes.size}`
             ) : (
-              '다중 선택'
+              '선택 모드'
             )}
           </button>
         </Tooltip>
@@ -2701,7 +2791,11 @@ const QueueControl = observer(
     };
 
     return (
-      <div className={`flex flex-col h-full ${className ?? ''}`}>
+      <div
+        className={`flex flex-col h-full ${className ?? ''}`}
+        onMouseDownCapture={handleGridMouseDown}
+        onClickCapture={handleGridClick}
+      >
         {sceneSelector && (
           <FloatView priority={0} onEscape={() => setSceneSelector(undefined)}>
             <SceneSelector
@@ -2734,6 +2828,27 @@ const QueueControl = observer(
                   : 'flex-wrap'
               }${toolbarRowHighlightClass(toolbarDrag, toolbarRowOver)}`}
             >
+              {appState.sceneSelectionMode && (
+                <Tooltip content="현재 표시된 씬 모두 선택">
+                  <button
+                    className="round-button back-sky"
+                    onClick={() =>
+                      appState.addScenesToSelection(
+                        getFilteredScenes().map((scene) => scene.name),
+                      )
+                    }
+                  >
+                    {iconMode ? (
+                      <>
+                        <FaCheckSquare size={18} />
+                        <span className="ml-1 text-xs">전체</span>
+                      </>
+                    ) : (
+                      '모두 선택'
+                    )}
+                  </button>
+                </Tooltip>
+              )}
               {toolbarLayout.inline.map((id, i) => (
                 <DraggableToolbarButton
                   key={id}
@@ -2895,8 +3010,6 @@ const QueueControl = observer(
                       }
                     : undefined
                 }
-                onMouseDown={handleGridMouseDown}
-                onClick={handleGridClick}
               >
                 {dragBox && isDraggingRef.current && (
                   <div

@@ -371,7 +371,5 @@ export const removeScenesFromQueue = (
     scenes = scenes.filter((s) => selectedNames.has(s.name));
   }
   if (scenes.length === 0) return;
-  for (const scene of scenes) {
-    taskQueueService.removeTasksFromScene(scene);
-  }
+  taskQueueService.removeTasksFromScenes(new Set(scenes), session);
 };
