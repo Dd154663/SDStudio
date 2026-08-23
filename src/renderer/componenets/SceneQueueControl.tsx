@@ -937,7 +937,7 @@ export const SceneCell = observer(
     const reviewButton = onReview ? (
       <Tooltip content="이 씬부터 이미지 검수">
         <button
-          className={`absolute ${quickPromptButton ? 'right-9' : 'right-1'} top-1 z-20 flex h-7 w-7 items-center justify-center rounded-full btn-solid-sky text-xs font-bold transition-opacity duration-200${
+          className={`absolute right-1 ${scene.type === 'scene' ? 'top-[4.25rem]' : 'top-1'} z-20 flex h-7 w-7 items-center justify-center rounded-full btn-solid-sky text-xs font-bold transition-opacity duration-200${
             !isMobile && !isHovered ? ' opacity-0' : ''
           }`}
           onClick={(event) => {

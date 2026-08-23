@@ -379,10 +379,10 @@ const ImageReview = ({
       role="dialog"
       aria-label="이미지 검수"
       data-no-scene-drag
-      className="fixed inset-0 z-[var(--z-modal)] flex flex-col bg-[var(--c-surface)] text-default outline-none"
+      className="titlebar-no-drag fixed inset-0 z-[var(--z-modal)] flex flex-col overflow-hidden bg-[var(--c-surface)] text-default outline-none"
       onMouseDown={(event) => event.stopPropagation()}
     >
-      <header className="flex items-center gap-2 border-b line-color bg-[var(--c-surface-2)] px-3 py-2">
+      <header className="flex flex-none items-center gap-2 border-b line-color bg-[var(--c-surface-2)] px-3 py-2">
         <strong className="min-w-0 flex-1 truncate">
           {current
             ? `${current.scene.name} / ${current.filename}`
@@ -415,7 +415,7 @@ const ImageReview = ({
         )}
       </main>
 
-      <footer className="flex flex-wrap items-center justify-center gap-2 border-t line-color bg-[var(--c-surface-2)] px-3 py-2">
+      <footer className="flex flex-none flex-wrap items-center justify-center gap-2 border-t line-color bg-[var(--c-surface-2)] px-3 py-2">
         <Tooltip content="이전 이미지">
           <button className="round-button back-gray" onClick={() => move(-1)}>
             <FaArrowLeft />
@@ -475,8 +475,8 @@ const ImageReview = ({
       </footer>
 
       {trashScene && (
-        <div className="absolute inset-0 z-10 flex flex-col bg-[var(--c-surface)]">
-          <header className="flex items-center gap-2 border-b line-color bg-[var(--c-surface-2)] px-3 py-2">
+        <div className="absolute inset-0 z-10 flex flex-col overflow-hidden bg-[var(--c-surface)]">
+          <header className="flex flex-none items-center gap-2 border-b line-color bg-[var(--c-surface-2)] px-3 py-2">
             <strong className="min-w-0 flex-1 truncate">
               {trashScene.name} / 휴지통
             </strong>
