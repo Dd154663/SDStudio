@@ -32,6 +32,7 @@ import {
   FaArrowDown,
   FaGripVertical,
   FaLock,
+  FaCheck,
 } from 'react-icons/fa';
 import { FloatView } from './FloatView';
 import { useDrag, useDrop } from 'react-dnd';
@@ -797,19 +798,32 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
   const curSession = appState.curSession!;
   const [isOpen, setIsOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
-  const clicked = React.useRef(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
   const presets = curSession.presets.get(workflowType)!;
   const { preset } = useContext(WFElementContext)!;
   useEffect(() => {
-    const close = () => {
-      if (!clicked.current) setIsOpen(false);
-      else clicked.current = false;
+    if (!isOpen) return;
+    const close = (e: PointerEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
     };
-    window.addEventListener('click', close);
+    window.addEventListener('pointerdown', close);
     return () => {
-      window.removeEventListener('click', close);
+      window.removeEventListener('pointerdown', close);
     };
-  });
+  }, [isOpen]);
+
+  const selectPreset = (presetName: string) => {
+    // 메뉴 닫기를 전역 click 버블링에 맡기지 않고 선택 시점에 확정한다.
+    // 같은 프리셋을 다시 눌러도 메뉴는 즉시 닫혀 클릭 반응을 분명히 보여준다.
+    setIsOpen(false);
+    if (curSession.selectedWorkflow?.presetName === presetName) return;
+    curSession.selectedWorkflow = {
+      workflowType,
+      presetName,
+    };
+  };
   // 동반 슬롯 (④ 호스트 확대): 사전세팅선택 행 옆에 portable 버튼을 붙인다.
   // 빈 배열이면 슬롯 없음 = 현행 렌더 100% 동일. 드롭다운은 이미 flex-1 !min-w-0
   // truncate 라 아이콘 버튼 자리를 자연스럽게 내준다. 편집모드 밖은
@@ -826,7 +840,10 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
       : [];
   return (
     <CompanionHostRow hostKey="preset-select">
-    <div className="field-row flex gap-2 mt-2 md:mt-3 items-center relative">
+    <div
+      ref={containerRef}
+      className="field-row flex gap-2 mt-2 md:mt-3 items-center relative"
+    >
       {/* 동반 버튼이 붙으면 라벨을 숨겨 자리를 내준다(실기 보정) */}
       {companions.length === 0 && (
         <div className="flex-none gray-label">사전세팅선택:</div>
@@ -836,17 +853,17 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
           !min-w-0 필수: .round-button 의 min-width(App.css, md 미디어 룰의 unset)가
           Tailwind min-w-0 보다 캐스케이드에서 뒤라 ! 없이는 축소가 막힌다.
           span 쪽 min-w-0 도 필수(플렉스 아이템 기본 min-width:auto 로는 truncate 미발동). */}
-      <div
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
         className="round-button back-gray h-8 flex-1 !min-w-0 overflow-hidden"
-        onClick={() => {
-          setIsOpen(!isOpen);
-          clicked.current = true;
-        }}
+        onClick={() => setIsOpen((open) => !open)}
       >
         <span className="min-w-0 truncate">
           {curSession.selectedWorkflow?.presetName}
         </span>
-      </div>
+      </button>
       <button
         className={`icon-button flex-none`}
         onClick={async () => {
@@ -898,27 +915,46 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
         />
       )}
       {isOpen && (
-        <ul className="left-0 top-10 absolute max-h-60 z-20 w-full mt-1 bg-white border-2 line-color rounded-md r-popover shadow-lg overflow-auto dark:bg-slate-700">
+        <ul
+          role="listbox"
+          className="left-0 top-10 absolute max-h-60 z-20 w-full mt-1 bg-white border-2 line-color rounded-md r-popover shadow-lg overflow-auto dark:bg-slate-700"
+        >
           {presets.map((option) => (
             <li
               key={option.name}
-              className="text-default flex items-center justify-between p-2 clickable bg-[var(--c-surface)]"
+              role="option"
+              aria-selected={
+                curSession.selectedWorkflow?.presetName === option.name
+              }
+              tabIndex={0}
+              onClick={() => selectPreset(option.name)}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  selectPreset(option.name);
+                }
+              }}
+              className={
+                'text-default flex items-center justify-between p-2 clickable ' +
+                (curSession.selectedWorkflow?.presetName === option.name
+                  ? 'bg-[var(--c-input-bg)]'
+                  : 'bg-[var(--c-surface)]')
+              }
             >
-              <button
-                onClick={() => {
-                  curSession.selectedWorkflow = {
-                    workflowType: workflowType,
-                    presetName: option.name,
-                  };
-                }}
-                // flex-1 min-w-0 truncate: 긴 이름이 우측 수정/삭제 아이콘을 밀어내지 않게
-                className="flex-1 min-w-0 text-left truncate"
-              >
+              <span className="flex flex-1 min-w-0 items-center gap-2 text-left">
+                {curSession.selectedWorkflow?.presetName === option.name && (
+                  <FaCheck className="flex-none text-sky-500" aria-hidden />
+                )}
+                {/* flex-1 min-w-0 truncate: 긴 이름이 우측 수정/삭제 아이콘을 밀어내지 않게 */}
+                <span className="flex-1 min-w-0 truncate">
                 {option.name}
-              </button>
+                </span>
+              </span>
               <div className="flex">
                 <button
-                  onClick={async () => {
+                  onClick={async (e) => {
+                    e.stopPropagation();
                     const newName = await appState.pushDialogAsync({
                       type: 'input-confirm',
                       text: '새 사전 세팅 이름을 입력하세요',
@@ -998,7 +1034,8 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                 )}
                 <Tooltip content="그림체 삭제">
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     if (presets.length === 1) {
                       appState.pushMessage(
                         '마지막 사전 세팅은 삭제할 수 없습니다',
