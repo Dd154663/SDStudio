@@ -27,7 +27,9 @@ jest.mock('../index', () => ({
     // 전역 저장소 동기화(W6 P2) — saveTrash 가 저장 후 브로드캐스트 호출
     notifyGlobalStoreChanged: jest.fn(async () => {}),
   },
-  imageService: {},
+  imageService: {
+    invalidateCacheBatch: jest.fn(async () => {}),
+  },
   templateService: { removeProject: jest.fn(async () => {}) },
 }));
 jest.mock('../PersistenceService', () => ({
@@ -35,7 +37,7 @@ jest.mock('../PersistenceService', () => ({
 }));
 
 import { TrashService } from '../TrashService';
-import { backend } from '../index';
+import { backend, imageService } from '../index';
 import { persistService } from '../PersistenceService';
 
 describe('dataPathGuard.dirDeleteViolation', () => {
@@ -128,6 +130,59 @@ describe('TrashService 유령 프로젝트 방어', () => {
         'references/foo',
       ]),
     );
+  });
+});
+
+describe('TrashService 이미지 휴지통 배치 캐시 정리', () => {
+  const session = { name: 'project' } as any;
+  const scene = { name: 'scene', type: 'scene' } as any;
+
+  beforeEach(() => {
+    (backend.readFile as jest.Mock).mockReset().mockResolvedValue(
+      JSON.stringify({ 'a.webp': 1, 'b.webp': 2 }),
+    );
+    (backend.deleteFile as jest.Mock).mockReset().mockResolvedValue(undefined);
+    (imageService.invalidateCacheBatch as jest.Mock).mockClear();
+    (persistService.write as jest.Mock).mockClear();
+  });
+
+  it('여러 이미지를 삭제해도 캐시는 파일별이 아니라 한 번에 정리한다', async () => {
+    const svc = new TrashService();
+    const failed = await svc.permanentlyDeleteImages(
+      session,
+      scene,
+      ['a.webp', 'b.webp'],
+    );
+
+    expect(failed).toBe(0);
+    expect(imageService.invalidateCacheBatch).toHaveBeenCalledTimes(1);
+    expect(imageService.invalidateCacheBatch).toHaveBeenCalledWith([
+      'outs/project/scene/.trash/a.webp',
+      'outs/project/scene/.trash/b.webp',
+    ]);
+  });
+
+  it('삭제 실패 파일은 메타와 배치 캐시 정리 대상에 남기지 않는다', async () => {
+    (backend.deleteFile as jest.Mock)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('locked'));
+    (backend.existFile as jest.Mock).mockResolvedValueOnce(true);
+    const svc = new TrashService();
+
+    const failed = await svc.permanentlyDeleteImages(
+      session,
+      scene,
+      ['a.webp', 'b.webp'],
+    );
+
+    expect(failed).toBe(1);
+    expect(imageService.invalidateCacheBatch).toHaveBeenCalledWith([
+      'outs/project/scene/.trash/a.webp',
+    ]);
+    const metaWrite = (persistService.write as jest.Mock).mock.calls.find(
+      (c) => c[0] === 'outs/project/scene/.trash/.trash_meta.json',
+    );
+    expect(JSON.parse(metaWrite[1])).toEqual({ 'b.webp': 2 });
   });
 });
 

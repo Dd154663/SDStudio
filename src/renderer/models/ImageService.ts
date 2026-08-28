@@ -214,6 +214,69 @@ export class ImageService extends EventTarget {
     );
   }
 
+  /**
+   * 같은 디렉터리의 여러 이미지 캐시를 한 번에 정리한다.
+   *
+   * 휴지통 일괄 삭제에서 파일마다 3개 썸네일을 직렬 삭제하면 Android
+   * 브리지 호출과 리사이즈 mutex 대기가 이미지 수만큼 누적된다. 메모리 키는
+   * 개별 제거하되, 디스크 fastcache는 디렉터리당 한 번만 제거한다.
+   */
+  async invalidateCacheBatch(paths: string[]): Promise<void> {
+    const originals = Array.from(
+      new Set(paths.filter((path) => path && !path.includes('/fastcache/'))),
+    );
+    if (originals.length === 0) return;
+
+    const lockPaths: string[] = [];
+    for (const path of originals) {
+      lockPaths.push(path);
+      for (const imageSize of supportedImageSizes) {
+        lockPaths.push(this.getSmallImagePath(path, imageSize));
+      }
+    }
+
+    // 기존 invalidateCache/onRenameFile과 같은 원본→썸네일 순서를 유지한다.
+    for (const path of lockPaths) {
+      await this.acquireMutex(path);
+    }
+    try {
+      const cacheDirs = new Set<string>();
+      for (const path of originals) {
+        this.cache.delete(path);
+        for (const imageSize of supportedImageSizes) {
+          const smallPath = this.getSmallImagePath(path, imageSize);
+          this.cache.delete(smallPath);
+          const marker = '/fastcache/';
+          const markerIndex = smallPath.lastIndexOf(marker);
+          if (markerIndex >= 0) {
+            cacheDirs.add(smallPath.slice(0, markerIndex + marker.length - 1));
+          }
+        }
+      }
+
+      for (const cacheDir of cacheDirs) {
+        try {
+          await backend.deleteDir(cacheDir);
+        } catch (e) {
+          // 캐시는 파생 데이터다. 폴더가 없거나 정리에 실패해도 원본 삭제·복원
+          // 성공 여부를 뒤집지 않으며, 다음 썸네일 생성 때 다시 정리된다.
+        }
+      }
+    } finally {
+      for (let i = lockPaths.length - 1; i >= 0; i--) {
+        this.releaseMutex(lockPaths[i]);
+      }
+    }
+
+    // 경로별 이벤트 N회 대신 한 번만 알려 대량 삭제 시 씬 카드 전체가 N번
+    // 다시 그려지는 것을 막는다. path는 기존 리스너 호환용이다.
+    this.dispatchEvent(
+      new CustomEvent('image-cache-invalidated', {
+        detail: { path: originals[0], paths: originals },
+      }),
+    );
+  }
+
   async fetchVibeImage(session: Session, name: string) {
     if (!name) return null;
     const path =

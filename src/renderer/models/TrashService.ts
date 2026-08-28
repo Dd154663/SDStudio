@@ -191,20 +191,23 @@ export class TrashService extends EventTarget {
       ? projectPath('outs', session.name, scene.name)
       : projectPath('inpaints', session.name, scene.name);
     const meta = await this.loadImageTrashMeta(session, scene);
+    const restoredTrashPaths: string[] = [];
 
     for (const filename of filenames) {
       try {
-        await backend.renameFile(trashDir + '/' + filename, outputDir + '/' + filename);
+        const trashPath = trashDir + '/' + filename;
+        await backend.renameFile(trashPath, outputDir + '/' + filename);
         delete meta[filename];
-        // 휴지통 뷰 썸네일(.trash/fastcache) 잔여물 정리 — 복원 후에도 남으면
-        // 디스크에 고아 파일로 영구히 쌓인다.
-        try {
-          await imageService.invalidateCache(trashDir + '/' + filename);
-        } catch (e) {}
+        restoredTrashPaths.push(trashPath);
       } catch (e) {
         console.error('이미지 복원 실패:', filename, e);
       }
     }
+
+    // 휴지통 썸네일은 디렉터리 단위로 한 번만 정리한다.
+    try {
+      await imageService.invalidateCacheBatch(restoredTrashPaths);
+    } catch (e) {}
 
     await this.saveImageTrashMeta(session, scene, meta);
     this.dispatchEvent(new CustomEvent('trash-updated'));
@@ -220,6 +223,8 @@ export class TrashService extends EventTarget {
 
     let done = 0;
     let failed = 0;
+    let lastProgressAt = 0;
+    const removedPaths: string[] = [];
     for (const filename of filenames) {
       const trashPath = trashDir + '/' + filename;
       let removed = false;
@@ -237,13 +242,20 @@ export class TrashService extends EventTarget {
       }
       if (removed) {
         delete meta[filename];
-        // 휴지통 뷰 썸네일(.trash/fastcache/<크기>_<이름>)과 메모리 캐시 잔여물 정리
-        try {
-          await imageService.invalidateCache(trashPath);
-        } catch (e) {}
+        removedPaths.push(trashPath);
       }
-      onProgress?.(++done, filenames.length);
+      done++;
+      const now = Date.now();
+      if (done === filenames.length || done === 1 || now - lastProgressAt >= 100) {
+        onProgress?.(done, filenames.length);
+        lastProgressAt = now;
+      }
     }
+
+    // 파일별 3회 디스크 캐시 삭제 대신 .trash/fastcache를 한 번만 제거한다.
+    try {
+      await imageService.invalidateCacheBatch(removedPaths);
+    } catch (e) {}
 
     await this.saveImageTrashMeta(session, scene, meta);
     this.dispatchEvent(new CustomEvent('trash-updated'));
@@ -966,6 +978,7 @@ export class TrashService extends EventTarget {
             const metaStr = await backend.readFile(trashMetaPath);
             const meta: TrashImageMeta = JSON.parse(metaStr);
             let metaChanged = false;
+            const removedPaths: string[] = [];
             // 고아 입양: .trash 에 실재하지만 meta 에 없는 파일(과거 삭제 실패로
             // meta 만 지워진 잔재 등)은 지금 시각으로 등록해 보관 기한(3일)의
             // 시계를 다시 돌린다 — 등록이 없으면 자동 정리 대상에서 영구히 빠진다.
@@ -1000,12 +1013,13 @@ export class TrashService extends EventTarget {
                 if (removed) {
                   delete meta[filename];
                   metaChanged = true;
-                  try {
-                    await imageService.invalidateCache(trashPath);
-                  } catch (e) {}
+                  removedPaths.push(trashPath);
                 }
               }
             }
+            try {
+              await imageService.invalidateCacheBatch(removedPaths);
+            } catch (e) {}
             if (metaChanged) {
               await persistService.write(trashMetaPath, JSON.stringify(meta));
             }

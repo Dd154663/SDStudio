@@ -97,6 +97,8 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const thumbnailLoadGenerationRef = useRef(0);
+  const thumbnailLoadPromiseRef = useRef<Promise<void> | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -124,9 +126,11 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
 
   // 썸네일 로드
   useEffect(() => {
+    const generation = ++thumbnailLoadGenerationRef.current;
     const loadThumbnails = async () => {
       const newThumbs: Record<string, string> = {};
       for (const item of trashImages) {
+        if (generation !== thumbnailLoadGenerationRef.current) break;
         const path = trashService.getTrashImagePath(
           session,
           scene,
@@ -137,14 +141,43 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
             path,
             isMobile ? 200 : Math.min(imageSize, 400),
           );
+          if (generation !== thumbnailLoadGenerationRef.current) break;
           if (thumb) newThumbs[item.filename] = thumb;
         } catch (e) {}
       }
-      setThumbnails(newThumbs);
+      if (generation === thumbnailLoadGenerationRef.current) {
+        setThumbnails(newThumbs);
+      }
     };
-    if (trashImages.length > 0) loadThumbnails();
-    else setThumbnails({});
+    if (trashImages.length > 0) {
+      const promise = loadThumbnails();
+      thumbnailLoadPromiseRef.current = promise;
+      void promise.finally(() => {
+        if (thumbnailLoadPromiseRef.current === promise) {
+          thumbnailLoadPromiseRef.current = null;
+        }
+      });
+    } else {
+      setThumbnails({});
+    }
+    return () => {
+      if (thumbnailLoadGenerationRef.current === generation) {
+        thumbnailLoadGenerationRef.current++;
+      }
+    };
   }, [trashImages, session, scene, imageSize]);
+
+  // 삭제/복원 전에 진행 중인 썸네일 한 장만 마치고 다음 리사이즈를 중단한다.
+  // Android에서 삭제 루프와 썸네일 루프가 같은 mutex를 번갈아 잡는 현상을 방지한다.
+  const stopThumbnailLoading = useCallback(async () => {
+    thumbnailLoadGenerationRef.current++;
+    const current = thumbnailLoadPromiseRef.current;
+    if (current) {
+      try {
+        await current;
+      } catch (e) {}
+    }
+  }, []);
 
   const toggleSelect = (filename: string) => {
     setSelected((prev) => {
@@ -161,6 +194,7 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
 
   const handleRestore = async () => {
     if (selected.size === 0) return;
+    await stopThumbnailLoading();
     await trashService.restoreImages(session, scene, Array.from(selected));
     await imageService.refresh(session, scene);
     appState.pushMessage(selected.size + '장의 이미지가 복원되었습니다.');
@@ -174,6 +208,7 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
       type: 'confirm',
       text: selected.size + '장의 이미지를 영구 삭제하시겠습니까?',
       callback: async () => {
+        await stopThumbnailLoading();
         // 일괄 작업 잠금(2026-07-18): 저사양(특히 모바일) 보호 — finally 해제 보장
         const lockText = '이미지 영구 삭제 중...';
         appState.setProgressDialog({
@@ -210,6 +245,7 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
       type: 'confirm',
       text: '휴지통을 비우시겠습니까? 모든 이미지가 영구 삭제됩니다.',
       callback: async () => {
+        await stopThumbnailLoading();
         // 일괄 작업 잠금(2026-07-18): 저사양(특히 모바일) 보호 — finally 해제 보장
         const lockText = '휴지통 비우는 중...';
         appState.setProgressDialog({
