@@ -300,6 +300,7 @@ export interface IScene extends IAbstractScene {
   meta: Record<string, any>;
   sceneCharacterPrompts?: CharacterPrompt[]; // 씬 전용 캐릭터 프롬프트
   useSceneCharacterPrompts?: boolean; // 씬 전용 캐릭터 프롬프트 사용 여부
+  sceneCharacterPromptMode?: 'base' | 'mix' | 'scene'; // 기본/역할 혼합/씬 전용
   sceneCharacterUC?: string; // 씬 전용 캐릭터 네거티브 프롬프트
   sceneUC?: string; // 씬 전용 네거티브 프롬프트 (생성 시 네거티브 뒤에 붙임)
 }
@@ -310,6 +311,7 @@ export class Scene extends AbstractScene implements IScene {
   @observable accessor meta: Map<string, any> = new Map();
   @observable accessor sceneCharacterPrompts: CharacterPrompt[] = []; // 씬 전용 캐릭터 프롬프트
   @observable accessor useSceneCharacterPrompts: boolean = false; // 씬 전용 캐릭터 프롬프트 사용 여부
+  @observable accessor sceneCharacterPromptMode: 'base' | 'mix' | 'scene' | undefined = undefined;
   @observable accessor sceneCharacterUC: string = ''; // 씬 전용 캐릭터 네거티브 프롬프트
   @observable accessor sceneUC: string = ''; // 씬 전용 네거티브 프롬프트 (생성 시 네거티브 뒤에 붙임)
 
@@ -326,6 +328,11 @@ export class Scene extends AbstractScene implements IScene {
       enabled: cp.enabled !== false,
     }));
     scene.useSceneCharacterPrompts = json.useSceneCharacterPrompts || false;
+    scene.sceneCharacterPromptMode = ['base', 'mix', 'scene'].includes(
+      json.sceneCharacterPromptMode || '',
+    )
+      ? json.sceneCharacterPromptMode
+      : undefined;
     scene.sceneCharacterUC = json.sceneCharacterUC || '';
     scene.sceneUC = json.sceneUC || '';
     return scene;
@@ -339,6 +346,7 @@ export class Scene extends AbstractScene implements IScene {
       meta: Object.fromEntries(this.meta.entries()),
       sceneCharacterPrompts: this.sceneCharacterPrompts,
       useSceneCharacterPrompts: this.useSceneCharacterPrompts,
+      sceneCharacterPromptMode: this.sceneCharacterPromptMode,
       sceneCharacterUC: this.sceneCharacterUC,
       sceneUC: this.sceneUC,
     };
@@ -964,6 +972,8 @@ export interface CharacterPrompt<T = string> {
   position: CharacterPosition;
   enabled?: boolean;
   fromPreset?: string;
+  /** 직접입력·적용 프리셋 배열을 건드리지 않고 최종 캐릭터 순서만 정한다. */
+  order?: number;
 }
 
 export interface CharacterPosition {

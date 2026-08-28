@@ -512,6 +512,7 @@ export class BatchProcessService {
                               enabled: cp.enabled !== false,
                             }));
                             t.useSceneCharacterPrompts = srcJSON.useSceneCharacterPrompts || false;
+                            t.sceneCharacterPromptMode = srcJSON.sceneCharacterPromptMode;
                             t.sceneCharacterUC = srcJSON.sceneCharacterUC || '';
                           }
                         } else if (sourceScene.type === 'inpaint' && type === 'inpaint') {

@@ -276,17 +276,23 @@ export class CyclingSessionService {
     shared.characterReferences = [...prevRefs, ...presetRefs];
 
     // 이전 프리셋 캐릭터 프롬프트 제거 (사용자 항목 유지)
+    // 순환 적용은 이전 프리셋 유래 항목을 전부 교체하므로, 이름이 달라도
+    // 기존 역할 대응 순서를 이어받아야 씬의 번호 기반 혼합이 흔들리지 않는다.
+    const replacedPrompt = (shared.characterPrompts || []).find(
+      (cp: any) => !!cp.fromPreset,
+    );
     const prevPrompts = (shared.characterPrompts || []).filter(
       (cp: any) => !cp.fromPreset
     );
     if (preset.characterPrompt || preset.characterUC) {
       const newEntry = {
-        id: uuidv4(),
+        id: replacedPrompt?.id || uuidv4(),
         prompt: preset.characterPrompt || '',
         uc: preset.characterUC || '',
         position: { x: 0.5, y: 0.5 },
         enabled: true,
         fromPreset: preset.name,
+        order: replacedPrompt?.order,
       };
       shared.characterPrompts = [...prevPrompts, newEntry];
     } else {

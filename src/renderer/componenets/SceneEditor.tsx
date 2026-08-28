@@ -30,6 +30,10 @@ import {
   FaToggleOff,
   FaEdit,
   FaQuestionCircle,
+  FaArrowUp,
+  FaArrowDown,
+  FaGripVertical,
+  FaLock,
 } from 'react-icons/fa';
 import Denque from 'denque';
 import { writeFileSync } from 'original-fs';
@@ -73,6 +77,14 @@ import {
 } from '../models/types';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
+import {
+  getOrderedBaseCharacterPrompts,
+  getSceneCharacterPromptMode,
+  reorderBaseCharacterPrompts,
+  reorderSceneCharacterPrompts,
+  SceneCharacterPromptMode,
+  setSceneCharacterPromptMode,
+} from '../models/sceneCharacterPrompts';
 
 interface Props {
   scene: Scene;
@@ -575,14 +587,22 @@ export const SlotPiece = observer(
 // 씬별 캐릭터 프롬프트 에디터 (씬 전용 캐릭터 프롬프트 직접 입력)
 interface SceneCharacterPromptEditorProps {
   scene: Scene;
+  preset: any;
+  shared: any;
 }
 
 // sceneCharColors 는 CombinationList.tsx 로 이동(단일 출처) — 여기서는 import.
 
-const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEditorProps) => {
+const SceneCharacterPromptEditor = observer(({
+  scene,
+  preset,
+  shared,
+}: SceneCharacterPromptEditorProps) => {
   const [showCoordMap, setShowCoordMap] = useState(false);
   const coordMapRef = useRef<HTMLDivElement>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [draggingBaseIndex, setDraggingBaseIndex] = useState<number | null>(null);
+  const [draggingRoleIndex, setDraggingRoleIndex] = useState<number | null>(null);
 
   const addCharacter = () => {
     const newCharacter: CharacterPrompt = {
@@ -624,7 +644,32 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
   };
 
   const characters = scene.sceneCharacterPrompts || [];
+  const baseCharacters = getOrderedBaseCharacterPrompts(preset, shared);
+  const mode = getSceneCharacterPromptMode(scene);
   const enabledCount = characters.filter(c => c.enabled !== false).length;
+
+  const moveBase = (from: number, to: number) => {
+    reorderBaseCharacterPrompts(preset, shared, from, to);
+  };
+
+  const moveRole = (from: number, to: number) => {
+    reorderSceneCharacterPrompts(scene, from, to);
+  };
+
+  const modeButton = (
+    value: SceneCharacterPromptMode,
+    label: string,
+  ) => (
+    <button
+      type="button"
+      className={`btn rounded px-3 py-1.5 text-sm ${
+        mode === value ? 'btn-solid-sky' : 'btn-neutral'
+      }`}
+      onClick={() => setSceneCharacterPromptMode(scene, value)}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div className="flex flex-col h-full p-4 overflow-hidden">
@@ -634,31 +679,101 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
             <FaUser className="inline mr-2" />
             씬 전용 캐릭터 프롬프트
           </div>
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={scene.useSceneCharacterPrompts || false}
-                onChange={(e) => {
-                  scene.useSceneCharacterPrompts = e.target.checked;
-                }}
-                className="w-4 h-4"
-              />
-              <span className="text-sm text-gray-700 dark:text-gray-300">씬 전용 캐릭터 프롬프트 사용</span>
-            </label>
+          <div className="flex items-center gap-1 flex-wrap justify-end">
+            {modeButton('base', '기본만')}
+            {modeButton('mix', '역할 혼합')}
+            {modeButton('scene', '씬 전용')}
           </div>
         </div>
         <div className="text-sm text-muted">
-          이 씬에서만 사용할 캐릭터 프롬프트를 직접 입력하세요.
-          {scene.useSceneCharacterPrompts
-            ? ' (활성화됨 - 공유 캐릭터 프롬프트 대신 이 프롬프트가 사용됩니다)'
-            : ' (비활성화됨 - 공유 캐릭터 프롬프트가 사용됩니다)'}
+          {mode === 'base' && '메인 패널의 기본 캐릭터 프롬프트만 사용합니다.'}
+          {mode === 'mix' &&
+            '같은 번호의 기본 캐릭터에 씬 역할의 동작·네거티브·좌표를 자동으로 합칩니다.'}
+          {mode === 'scene' &&
+            '메인 직접입력 캐릭터를 씬 전용 캐릭터로 대체합니다. 적용된 캐릭터 프리셋은 유지됩니다.'}
         </div>
         {characters.length > 0 && (
           <div className="mt-2 text-sm">
             <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
               {enabledCount}/{characters.length} 캐릭터 활성화
             </span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex-none mb-3 rounded-lg r-card border line-color bg-[var(--c-surface-2)] p-3">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="text-sm font-bold text-default flex items-center gap-1.5">
+            <FaLock className="text-muted" />
+            기본 캐릭터 프롬프트
+          </div>
+          <span className="text-xs text-muted">내용 읽기 전용 · 순서 변경 가능</span>
+        </div>
+        <div className="text-xs text-muted mb-2">
+          기본 순서를 바꾸면 역할 혼합을 사용하는 모든 씬의 대응 순서가 변경됩니다.
+        </div>
+        {baseCharacters.length === 0 ? (
+          <div className="py-2 text-sm text-muted text-center">
+            기본 캐릭터 프롬프트가 없습니다
+          </div>
+        ) : (
+          <div className="space-y-1.5 max-h-48 overflow-auto">
+            {baseCharacters.map((character, index) => (
+              <div
+                key={character.id}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  if (draggingBaseIndex !== null) moveBase(draggingBaseIndex, index);
+                  setDraggingBaseIndex(null);
+                }}
+                className="flex items-center gap-2 rounded border line-color bg-[var(--c-surface)] px-2 py-1.5"
+              >
+                {!isMobile && (
+                  <span
+                    draggable
+                    onDragStart={() => setDraggingBaseIndex(index)}
+                    onDragEnd={() => setDraggingBaseIndex(null)}
+                    className="text-faint flex-none cursor-grab"
+                  >
+                    <FaGripVertical />
+                  </span>
+                )}
+                <div
+                  className="w-6 h-6 rounded-full flex-none flex items-center justify-center text-xs font-bold text-white"
+                  style={{ backgroundColor: sceneCharColors[index % sceneCharColors.length] }}
+                >
+                  {index + 1}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs text-default truncate">
+                    {character.prompt || '(비어 있음)'}
+                  </div>
+                  {character.fromPreset && (
+                    <div className="text-[11px] text-muted truncate">
+                      프리셋: {character.fromPreset}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="icon-button back-gray w-7 h-7"
+                  disabled={index === 0}
+                  onClick={() => moveBase(index, index - 1)}
+                  title="위로"
+                >
+                  <FaArrowUp size={11} />
+                </button>
+                <button
+                  type="button"
+                  className="icon-button back-gray w-7 h-7"
+                  disabled={index === baseCharacters.length - 1}
+                  onClick={() => moveBase(index, index + 1)}
+                  title="아래로"
+                >
+                  <FaArrowDown size={11} />
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -729,6 +844,11 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
             {characters.map((character, index) => (
               <div
                 key={character.id}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  if (draggingRoleIndex !== null) moveRole(draggingRoleIndex, index);
+                  setDraggingRoleIndex(null);
+                }}
                 className={`border rounded-lg p-4 transition-all ${
                   character.enabled !== false
                     ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
@@ -737,8 +857,27 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
+                    {!isMobile && (
+                      <span
+                        draggable
+                        onDragStart={() => setDraggingRoleIndex(index)}
+                        onDragEnd={() => setDraggingRoleIndex(null)}
+                        className="text-faint cursor-grab"
+                      >
+                        <FaGripVertical />
+                      </span>
+                    )}
                     <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: sceneCharColors[index % sceneCharColors.length] }}>{index + 1}</div>
-                    <span className="font-medium text-default">캐릭터 프롬프트</span>
+                    <div className="min-w-0">
+                      <div className="font-medium text-default">씬 캐릭터 역할 {index + 1}</div>
+                      {mode === 'mix' && (
+                        <div className="text-xs text-muted">
+                          {baseCharacters[index]
+                            ? `기본 캐릭터 ${index + 1}에 자동 혼합`
+                            : '대기 중 · 대응 기본 캐릭터 없음'}
+                        </div>
+                      )}
+                    </div>
                     <button
                       className={`round-button h-7 px-3 text-sm ${
                         character.enabled !== false ? 'back-sky' : 'back-gray'
@@ -758,17 +897,37 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
                       )}
                     </button>
                   </div>
-                  <button
-                    className="icon-button back-red"
-                    onClick={() => removeCharacter(character.id)}
-                  >
-                    <FaTrash />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="icon-button back-gray w-7 h-7"
+                      disabled={index === 0}
+                      onClick={() => moveRole(index, index - 1)}
+                      title="위로"
+                    >
+                      <FaArrowUp size={11} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button back-gray w-7 h-7"
+                      disabled={index === characters.length - 1}
+                      onClick={() => moveRole(index, index + 1)}
+                      title="아래로"
+                    >
+                      <FaArrowDown size={11} />
+                    </button>
+                    <button
+                      className="icon-button back-red"
+                      onClick={() => removeCharacter(character.id)}
+                    >
+                      <FaTrash />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mb-3">
                   <label className="block text-sm font-medium mb-1 gray-label">
-                    캐릭터 프롬프트
+                    역할 프롬프트
                   </label>
                   <PromptEditTextArea
                     value={character.prompt}
@@ -778,7 +937,7 @@ const SceneCharacterPromptEditor = observer(({ scene }: SceneCharacterPromptEdit
 
                 <div className="mb-3">
                   <label className="block text-sm font-medium mb-1 gray-label">
-                    캐릭터 네거티브 프롬프트
+                    역할 네거티브 프롬프트
                   </label>
                   <PromptEditTextArea
                     value={character.uc}
@@ -1209,8 +1368,14 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
       emoji: <FaPuzzlePiece />,
     },
     {
-      label: '씬 캐릭터 프롬프트',
-      content: <SceneCharacterPromptEditor scene={scene} />,
+      label: '씬 캐릭터 역할',
+      content: (
+        <SceneCharacterPromptEditor
+          scene={scene}
+          preset={preset}
+          shared={shared}
+        />
+      ),
       emoji: <FaUser />,
     },
     {

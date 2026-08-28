@@ -10,6 +10,7 @@ import {
   Scene,
   Session,
 } from './types';
+import { resolveSceneCharacterPrompts } from './sceneCharacterPrompts';
 
 export function cleanPARR(parr: PARR): PARR {
   return parr.map((p) => p.trim());
@@ -573,14 +574,11 @@ export const createSDCharacterPrompts = async (
   shared: any,
   scene: Scene,
 ) => {
-  // 씬 전용 캐릭터 프롬프트가 활성화된 경우 씬 전용 + shared 병합
-  const useSceneCP = scene.useSceneCharacterPrompts &&
-    scene.sceneCharacterPrompts &&
-    scene.sceneCharacterPrompts.length > 0;
-  const sharedCPs = shared.characterPrompts || [];
-  const characterPrompts = useSceneCP
-    ? [...(scene.sceneCharacterPrompts || []), ...sharedCPs]
-    : [...(preset.characterPrompts || []), ...sharedCPs];
+  const characterPrompts = resolveSceneCharacterPrompts(
+    preset,
+    shared,
+    scene,
+  );
   if (!characterPrompts || characterPrompts.length === 0) return [];
 
   return await dfsPrompts(

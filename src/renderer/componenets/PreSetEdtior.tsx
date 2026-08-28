@@ -28,6 +28,10 @@ import {
   FaFolderOpen,
   FaChevronDown,
   FaChevronRight,
+  FaArrowUp,
+  FaArrowDown,
+  FaGripVertical,
+  FaLock,
 } from 'react-icons/fa';
 import { FloatView } from './FloatView';
 import { useDrag, useDrop } from 'react-dnd';
@@ -88,6 +92,10 @@ import { StackFixed, StackGrow, VerticalStack } from './LayoutComponents';
 import Tooltip from './Tooltip';
 import ModalOverlay from './ModalOverlay';
 import { FaCloudUploadAlt } from 'react-icons/fa';
+import {
+  getOrderedBaseCharacterPrompts,
+  reorderBaseCharacterPrompts,
+} from '../models/sceneCharacterPrompts';
 import {
   GenerationQualityPreset,
   ModelVersion,
@@ -1821,10 +1829,32 @@ const CharacterPromptEditor = observer(
     }
 
     const sharedCPs = shared?.characterPrompts || [];
-    const hasSharedPresetCPs = input.fieldType === 'preset' && sharedCPs.length > 0;
-
     const [showCoordMap, setShowCoordMap] = useState(false);
-    const allChars = [...(hasSharedPresetCPs ? sharedCPs : []), ...getField()];
+    const [draggingOrderIndex, setDraggingOrderIndex] = useState<number | null>(null);
+    const allChars =
+      input.fieldType === 'preset'
+        ? getOrderedBaseCharacterPrompts(preset, shared)
+        : getField();
+    const moveCharacter = (from: number, to: number) => {
+      if (input.fieldType === 'preset') {
+        reorderBaseCharacterPrompts(preset, shared, from, to);
+        return;
+      }
+      const next = [...getField()];
+      if (
+        from < 0 ||
+        to < 0 ||
+        from >= next.length ||
+        to >= next.length ||
+        from === to
+      ) return;
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      setField(next.map((item: CharacterPrompt, index: number) => ({
+        ...item,
+        order: index,
+      })));
+    };
     const reachedV5CharacterLimit =
       (modelVersion === ModelVersion.V5 ||
         modelVersion === ModelVersion.V5Curated) &&
@@ -1928,51 +1958,81 @@ const CharacterPromptEditor = observer(
             )}
           </div>
         )}
-        {hasSharedPresetCPs && sharedCPs.map((cp: CharacterPrompt, idx: number) => (
-          <div key={cp.id || idx} className={`flex-none mx-3 mt-3 p-2 border rounded-lg border-green-300 dark:border-green-600 bg-green-50 dark:bg-green-900/20`}>
-            <div className="flex items-center justify-between mb-1">
-              <div className="min-w-0 text-sm font-medium text-green-700 dark:text-green-400 flex items-center gap-1.5">
-                <div className="flex-none w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: charColors[idx % charColors.length] }}>{idx + 1}</div>
-                <span className="truncate">🔒 프리셋: {(cp as any).fromPreset}</span>
-              </div>
-              <Tooltip content={`"${(cp as any).fromPreset}" 프리셋 해제 — 연결된 바이브/레퍼런스 함께 제거`}>
-                <button
-                  className="flex-none text-muted hover:text-red-500 dark:hover:text-red-400 p-1"
-                  onClick={() =>
-                    appState.removeAppliedCharacterPreset((cp as any).fromPreset)
-                  }
-                >
-                  <FaTimes size={13} />
-                </button>
-              </Tooltip>
-            </div>
-            <div className="text-xs text-muted mb-0.5">캐릭터 프롬프트:</div>
-            <div className="text-xs text-gray-700 dark:text-gray-300 bg-[var(--c-surface)] p-1.5 rounded font-mono whitespace-pre-wrap break-all mb-1">
-              {cp.prompt || '(비어 있음)'}
-            </div>
-            {cp.uc && (
-              <>
-                <div className="text-xs text-muted mb-0.5">네거티브 프롬프트:</div>
-                <div className="text-xs text-gray-700 dark:text-gray-300 bg-[var(--c-surface)] p-1.5 rounded font-mono whitespace-pre-wrap break-all">
-                  {cp.uc}
-                </div>
-              </>
-            )}
-          </div>
-        ))}
         <div className="flex-1 overflow-hidden">
-          <div className="h-full overflow-auto">
-            {getField().map((character: CharacterPrompt, i: number) => (
+          <div className="h-full overflow-auto px-3">
+            {allChars.map((character: CharacterPrompt, i: number) => {
+              const locked =
+                input.fieldType === 'preset' &&
+                sharedCPs.some((cp: CharacterPrompt) => cp.id === character.id);
+              return (
               <div
                 key={character.id}
-                className={`border rounded-md r-card mt-3 p-3 ${character.enabled === false ? 'opacity-60 line-color' : 'border-sky-500 bg-[var(--c-surface-2)]'}`}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  if (draggingOrderIndex !== null) moveCharacter(draggingOrderIndex, i);
+                  setDraggingOrderIndex(null);
+                }}
+                className={`border rounded-md r-card mt-3 p-3 ${
+                  locked
+                    ? 'border-green-300 dark:border-green-600 bg-green-50 dark:bg-green-900/20'
+                    : character.enabled === false
+                      ? 'opacity-60 line-color'
+                      : 'border-sky-500 bg-[var(--c-surface-2)]'
+                }`}
               >
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2 gray-label">
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: charColors[((hasSharedPresetCPs ? sharedCPs.length : 0) + i) % charColors.length] }}>{(hasSharedPresetCPs ? sharedCPs.length : 0) + i + 1}</div>
-                    캐릭터 프롬프트
+                    {!isMobile && (
+                      <span
+                        draggable
+                        onDragStart={() => setDraggingOrderIndex(i)}
+                        onDragEnd={() => setDraggingOrderIndex(null)}
+                        className="text-faint cursor-grab"
+                      >
+                        <FaGripVertical />
+                      </span>
+                    )}
+                    <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: charColors[i % charColors.length] }}>{i + 1}</div>
+                    {locked ? (
+                      <span className="flex items-center gap-1 text-green-700 dark:text-green-400">
+                        <FaLock size={11} /> 프리셋: {character.fromPreset}
+                      </span>
+                    ) : (
+                      '캐릭터 프롬프트'
+                    )}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="icon-button back-gray w-7 h-7"
+                      disabled={i === 0}
+                      onClick={() => moveCharacter(i, i - 1)}
+                      title="위로"
+                    >
+                      <FaArrowUp size={11} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button back-gray w-7 h-7"
+                      disabled={i === allChars.length - 1}
+                      onClick={() => moveCharacter(i, i + 1)}
+                      title="아래로"
+                    >
+                      <FaArrowDown size={11} />
+                    </button>
+                    {locked ? (
+                      <Tooltip content={`${character.fromPreset} 프리셋 해제 — 연결된 바이브/레퍼런스 함께 제거`}>
+                        <button
+                          className="flex-none text-muted hover:text-red-500 dark:hover:text-red-400 p-1"
+                          onClick={() =>
+                            appState.removeAppliedCharacterPreset(character.fromPreset!)
+                          }
+                        >
+                          <FaTimes size={13} />
+                        </button>
+                      </Tooltip>
+                    ) : (
+                      <>
                     <Tooltip content={character.enabled !== false ? '비활성화' : '활성화'}>
                     <button
                       className={`round-button h-8 px-4 ${character.enabled !== false ? 'back-sky' : 'back-gray'}`}
@@ -1990,8 +2050,27 @@ const CharacterPromptEditor = observer(
                       <FaTrash />
                     </button>
                     </Tooltip>
+                      </>
+                    )}
                   </div>
                 </div>
+                {locked ? (
+                  <>
+                    <div className="text-xs text-muted mb-0.5">캐릭터 프롬프트:</div>
+                    <div className="text-xs text-body bg-[var(--c-surface)] p-1.5 rounded font-mono whitespace-pre-wrap break-all mb-1">
+                      {character.prompt || '(비어 있음)'}
+                    </div>
+                    {character.uc && (
+                      <>
+                        <div className="text-xs text-muted mb-0.5">네거티브 프롬프트:</div>
+                        <div className="text-xs text-body bg-[var(--c-surface)] p-1.5 rounded font-mono whitespace-pre-wrap break-all">
+                          {character.uc}
+                        </div>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
                 <div className="mb-2">
                   <PromptEditTextArea
                     value={character.prompt}
@@ -2032,12 +2111,14 @@ const CharacterPromptEditor = observer(
                 </div>
                 {preset.useCoords && (
                   <div className="flex items-center gap-2 text-xs text-faint mt-1">
-                    <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: charColors[((hasSharedPresetCPs ? sharedCPs.length : 0) + i) % charColors.length] }} />
+                    <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: charColors[i % charColors.length] }} />
                     위치: ({character.position?.x?.toFixed(2)}, {character.position?.y?.toFixed(2)})
                   </div>
                 )}
+                  </>
+                )}
               </div>
-            ))}
+            )})}
           </div>
         </div>
         <div className="flex-none mt-auto pt-2 flex gap-2 items-center">

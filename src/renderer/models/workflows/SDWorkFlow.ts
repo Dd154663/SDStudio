@@ -39,6 +39,10 @@ import { imageService, promptService, taskQueueService, workFlowService } from '
 import { TaskParam } from '../TaskQueueService';
 import { dataUriToBase64 } from '../ImageService';
 import { resolveSceneSeed } from '../sceneSeedGroups';
+import {
+  resolveSceneCharacterPrompts,
+  usesSceneCharacterPromptData,
+} from '../sceneCharacterPrompts';
 
 const SDImageGenPreset = new WFVarBuilder()
   .addIntVar('cfgRescale', 0, 1, 0.01, 0)
@@ -194,38 +198,12 @@ const SDImageGenHandler = async (
   nodelay?: boolean,
   generationSnapshot?: GenerationSettingsSnapshot,
 ) => {
-  // 씬 전용 캐릭터 프롬프트 사용 여부 확인
   const sceneObj = scene as Scene;
-  const useSceneCharacterPrompts = sceneObj.useSceneCharacterPrompts &&
-    sceneObj.sceneCharacterPrompts &&
-    sceneObj.sceneCharacterPrompts.length > 0;
-
-  // 활성화된 캐릭터 프롬프트만 필터링
-  let allCharacterPrompts: CharacterPrompt[];
-  let finalCharacterPrompts: PromptNode[];
-  
-  if (useSceneCharacterPrompts) {
-    // 씬 전용 + shared(프리셋) 캐릭터 프롬프트 병합
-    const sceneCPs = sceneObj.sceneCharacterPrompts || [];
-    const sharedCPs = shared.characterPrompts || [];
-    allCharacterPrompts = [...sceneCPs, ...sharedCPs];
-    // 씬 전용 프롬프트는 직접 파싱, shared 프롬프트도 동일하게 파싱
-    finalCharacterPrompts = allCharacterPrompts.map(cp => {
-      const tokens = toPARR(cp.prompt);
-      const node: PromptNode = {
-        type: 'group',
-        children: tokens.map(w => promptService.parseWord(w, session, scene as Scene)),
-      };
-      return node;
-    });
-  } else {
-    // 프리셋 + 공유 캐릭터 프롬프트 병합 (다중 캐릭터 지원)
-    const presetCPs = preset.characterPrompts || [];
-    const sharedCPs = shared.characterPrompts || [];
-    allCharacterPrompts = [...presetCPs, ...sharedCPs];
-    finalCharacterPrompts = characterPrompts;
-  }
-  
+  const allCharacterPrompts = resolveSceneCharacterPrompts(
+    preset,
+    shared,
+    sceneObj,
+  );
   const enabledCharacterPrompts = (allCharacterPrompts || [])
     .map((p: CharacterPrompt, i: number) => ({ original: p, index: i }))
     .filter(({ original }: { original: CharacterPrompt }) => original.enabled !== false);
@@ -240,7 +218,7 @@ const SDImageGenHandler = async (
     uc: preset.uc,
     characterPrompts: enabledCharacterPrompts.map(({ original, index }: { original: CharacterPrompt, index: number }) => ({
       ...original,
-      prompt: finalCharacterPrompts[index],
+      prompt: characterPrompts[index],
     })),
     useCoords: preset.useCoords,
     legacyPromptConditioning: preset.legacyPromptConditioning,
@@ -259,7 +237,7 @@ const SDImageGenHandler = async (
   };
   
   // 씬 전용 캐릭터 UC 추가
-  if (useSceneCharacterPrompts && sceneObj.sceneCharacterUC) {
+  if (usesSceneCharacterPromptData(sceneObj) && sceneObj.sceneCharacterUC) {
     job.uc = job.uc + ', ' + sceneObj.sceneCharacterUC;
   }
   

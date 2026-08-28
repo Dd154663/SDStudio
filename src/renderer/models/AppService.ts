@@ -578,17 +578,21 @@ export class AppState {
         shared.uc = preset.characterUC || '';
       } else {
         // 같은 프리셋의 기존 캐릭터 프롬프트만 갱신 (수동·타 프리셋 항목 유지)
+        const replacedPrompt = (shared.characterPrompts || []).find(
+          (cp: CharacterPrompt) => cp.fromPreset === preset.name,
+        );
         const prevPrompts = (shared.characterPrompts || []).filter(
           (cp: CharacterPrompt) => cp.fromPreset !== preset.name
         );
         if (preset.characterPrompt || preset.characterUC) {
           const newEntry: CharacterPrompt = {
-            id: v4(),
+            id: replacedPrompt?.id || v4(),
             prompt: preset.characterPrompt || '',
             uc: preset.characterUC || '',
             position: { x: 0.5, y: 0.5 },
             enabled: true,
             fromPreset: preset.name,
+            order: replacedPrompt?.order,
           };
           shared.characterPrompts = [...prevPrompts, newEntry];
         } else {
