@@ -1,6 +1,7 @@
 import { backend } from '.';
 import type { LoginValidity, OpusUsageStatus } from '../backends/imageGen';
 import { persistService } from './PersistenceService';
+import { minimumBalancedTokenPercent } from './tokenAutoRotation';
 
 const TOKEN_PROFILE_STORE_KEY = 'auth:TOKEN_PROFILES.json';
 
@@ -40,6 +41,7 @@ export type LoginTokenRotationResult =
     };
 
 const AUTO_ROTATION_RETRY_MS = 60_000;
+const AUTO_BALANCE_RETRY_MS = 30 * 60_000;
 
 export class LoginService extends EventTarget {
   loggedIn: boolean;
@@ -49,6 +51,7 @@ export class LoginService extends EventTarget {
   private activeTokenProfileId?: string;
   private autoRotationInFlight?: Promise<LoginTokenRotationResult>;
   private nextAutoRotationAttemptAt = 0;
+  private nextAutoBalanceAttemptAt = 0;
 
   constructor() {
     super();
@@ -210,8 +213,31 @@ export class LoginService extends EventTarget {
     return this.autoRotationInFlight;
   }
 
+  async tryAutoBalanceToken(
+    balancePercent: number,
+    currentPercent: number,
+  ): Promise<LoginTokenRotationResult> {
+    if (this.autoRotationInFlight) return this.autoRotationInFlight;
+    const minimumPercent = minimumBalancedTokenPercent(
+      currentPercent,
+      balancePercent,
+    );
+    // 현재 잔량이 96% 이상이면 5%p 더 많은 후보는 존재할 수 없다.
+    if (minimumPercent > 100) {
+      return { switched: false, reason: 'no-candidate' };
+    }
+    this.autoRotationInFlight = this.tryAutoRotateTokenInternal(
+      minimumPercent,
+      'balance',
+    ).finally(() => {
+      this.autoRotationInFlight = undefined;
+    });
+    return this.autoRotationInFlight;
+  }
+
   private async tryAutoRotateTokenInternal(
     minimumPercent: number,
+    mode: 'urgent' | 'balance' = 'urgent',
   ): Promise<LoginTokenRotationResult> {
     await this.ensureTokenProfilesLoaded();
     let currentToken: string | undefined;
@@ -228,13 +254,22 @@ export class LoginService extends EventTarget {
     if (this.tokenProfiles.length < 2 || activeIndex < 0) {
       return { switched: false, reason: 'not-ready' };
     }
-    if (Date.now() < this.nextAutoRotationAttemptAt) {
+    const now = Date.now();
+    const nextAttemptAt =
+      mode === 'balance'
+        ? this.nextAutoBalanceAttemptAt
+        : this.nextAutoRotationAttemptAt;
+    if (now < nextAttemptAt) {
       return { switched: false, reason: 'cooldown' };
     }
 
-    // 현재 계정이 임계값 아래인 동안 매 이미지마다 다른 계정의 user/data를
-    // 반복 조회하지 않도록 후보 탐색 자체를 최대 1분에 한 번으로 제한한다.
-    this.nextAutoRotationAttemptAt = Date.now() + AUTO_ROTATION_RETRY_MS;
+    // 긴급 전환과 느린 회복 균형 탐색의 쿨다운은 분리한다. 여유 탐색 직후
+    // 현재 계정이 급격히 소진돼도 긴급 전환까지 막히지 않아야 한다.
+    if (mode === 'balance') {
+      this.nextAutoBalanceAttemptAt = now + AUTO_BALANCE_RETRY_MS;
+    } else {
+      this.nextAutoRotationAttemptAt = now + AUTO_ROTATION_RETRY_MS;
+    }
     minimumPercent = Math.max(1, Math.min(100, Math.round(minimumPercent)));
     const from = this.tokenProfiles[activeIndex];
 
@@ -270,6 +305,12 @@ export class LoginService extends EventTarget {
         this.loggedIn = true;
         this.dispatchEvent(new CustomEvent('change', {}));
       }
+      // 어떤 경로로 전환했든 새 계정의 상태가 안정될 때까지 여유 순회를
+      // 다시 검사하지 않는다. 긴급 저잔량 전환은 계속 별도로 허용한다.
+      this.nextAutoBalanceAttemptAt = Math.max(
+        this.nextAutoBalanceAttemptAt,
+        Date.now() + AUTO_BALANCE_RETRY_MS,
+      );
       return {
         switched: true,
         from: { id: from.id, name: from.name },

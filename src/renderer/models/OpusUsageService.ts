@@ -34,10 +34,6 @@ export class OpusUsageService extends EventTarget {
         this.status = status;
         this.fetchedAt = Date.now();
         this.state = 'ready';
-        if (status.percent > 10 && !status.isNegative) {
-          this.lowWarningShown = false;
-          this.paidApprovalUntil = 0;
-        }
         this.emitChange();
         return status;
       })
@@ -68,7 +64,6 @@ export class OpusUsageService extends EventTarget {
     this.fetchedAt = Date.now();
     this.state = 'ready';
     this.paidApprovalUntil = 0;
-    this.lowWarningShown = false;
     this.emitChange();
   }
 
@@ -86,8 +81,17 @@ export class OpusUsageService extends EventTarget {
     this.paidApprovalUntil = Date.now() + 60_000;
   }
 
-  takeLowWarning(status: OpusUsageStatus | undefined): boolean {
-    if (!status || status.isNegative || status.percent <= 0 || status.percent > 10) {
+  takeLowWarning(
+    status: OpusUsageStatus | undefined,
+    warningPercent = 10,
+  ): boolean {
+    warningPercent = Math.max(1, Math.min(100, Math.round(warningPercent)));
+    if (
+      !status ||
+      status.isNegative ||
+      status.percent <= 0 ||
+      status.percent > warningPercent
+    ) {
       return false;
     }
     if (this.lowWarningShown) return false;

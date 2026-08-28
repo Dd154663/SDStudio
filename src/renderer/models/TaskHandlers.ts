@@ -50,6 +50,7 @@ import { dataUriToBase64 } from './ImageService';
 import { prepareMirrorCanvas } from './workflows/SDWorkFlow';
 import { getImageDimensions } from '../componenets/BrushTool';
 import {
+  normalizeTokenRotateBalance,
   normalizeTokenRotateTarget,
   normalizeTokenRotateWarning,
 } from './tokenAutoRotation';
@@ -412,17 +413,29 @@ class GenerateImageTaskHandler implements TaskHandler {
         runtimeConfig.multiTokenRotateTargetPercent,
         rotateWarning,
       );
-      if (
-        runtimeConfig.multiTokenAutoRotate === true &&
-        usage &&
-        (usage.isNegative || usage.percent <= rotateWarning)
-      ) {
-        const rotation = await loginService.tryAutoRotateToken(rotateTarget);
-        if (rotation.switched) {
+      const rotateBalance = normalizeTokenRotateBalance(
+        runtimeConfig.multiTokenRotateBalancePercent,
+      );
+      if (runtimeConfig.multiTokenAutoRotate === true && usage) {
+        const urgent = usage.isNegative || usage.percent <= rotateWarning;
+        const balance =
+          !urgent &&
+          runtimeConfig.multiTokenBalanceRotate === true &&
+          !usage.isNegative;
+        const rotation = urgent
+          ? await loginService.tryAutoRotateToken(rotateTarget)
+          : balance
+            ? await loginService.tryAutoBalanceToken(
+                rotateBalance,
+                usage.percent,
+              )
+            : undefined;
+        if (rotation?.switched) {
+          const reason = urgent ? '저할당량 자동 순회' : '여유 할당량 균형 순회';
           usage = rotation.usage;
           opusUsageService.adoptKnownStatus(rotation.usage);
           appState.pushMessage(
-            `${rotation.from.name}에서 ${rotation.to.name}(으)로 전환했습니다. ` +
+            `${reason}: ${rotation.from.name}에서 ${rotation.to.name}(으)로 전환했습니다. ` +
               `새 토큰의 V5 할당량은 ${rotation.usage.percent}%입니다.`,
           );
           if (!rotation.stateSaved) {
@@ -430,13 +443,13 @@ class GenerateImageTaskHandler implements TaskHandler {
               '토큰 전환은 완료됐지만 활성 토큰 상태를 저장하지 못했습니다.',
             );
           }
-        } else if (rotation.reason === 'switch-failed') {
+        } else if (rotation?.reason === 'switch-failed') {
           appState.pushMessage(
             '자동 토큰 전환에 실패해 현재 토큰으로 계속합니다.',
           );
         }
       }
-      if (opusUsageService.takeLowWarning(usage)) {
+      if (opusUsageService.takeLowWarning(usage, rotateWarning)) {
         appState.pushMessage(
           `Opus V5 무료 할당량이 ${usage!.percent}% 남았습니다. 소진 후에는 Anlas가 소비될 수 있습니다.`,
         );

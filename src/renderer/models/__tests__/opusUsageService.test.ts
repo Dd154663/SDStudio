@@ -52,4 +52,48 @@ describe('OpusUsageService', () => {
     expect(service.fetchedAt).toBeGreaterThan(0);
     expect(getOpusUsageStatus).not.toHaveBeenCalled();
   });
+
+  test('자연 회복으로 임계값을 넘었다가 다시 내려와도 세션 경고를 반복하지 않는다', async () => {
+    const getOpusUsageStatus = jest
+      .fn()
+      .mockResolvedValueOnce({
+        percent: 9,
+        isNegative: false,
+        timeUntilNextPercent: 30,
+      })
+      .mockResolvedValueOnce({
+        percent: 11,
+        isNegative: false,
+        timeUntilNextPercent: 30,
+      })
+      .mockResolvedValueOnce({
+        percent: 9,
+        isNegative: false,
+        timeUntilNextPercent: 30,
+      });
+    const service = new OpusUsageService({ getOpusUsageStatus } as any);
+
+    await service.refresh(true);
+    expect(service.takeLowWarning(service.status, 10)).toBe(true);
+    await service.refresh(true);
+    await service.refresh(true);
+
+    expect(service.takeLowWarning(service.status, 10)).toBe(false);
+  });
+
+  test('토큰 자동 전환 상태 채택도 이미 표시한 세션 경고를 재무장하지 않는다', () => {
+    const service = new OpusUsageService({
+      getOpusUsageStatus: jest.fn(),
+    } as any);
+    const low = {
+      percent: 8,
+      isNegative: false,
+      timeUntilNextPercent: 30,
+    };
+
+    expect(service.takeLowWarning(low, 10)).toBe(true);
+    service.adoptKnownStatus({ ...low, percent: 40 });
+
+    expect(service.takeLowWarning(low, 10)).toBe(false);
+  });
 });

@@ -51,6 +51,10 @@ export interface Config {
   multiTokenRotateWarningPercent?: number;
   /** 이 값 이상 남은 후보 토큰만 사용한다. 경고값보다 최소 5%p 높아야 한다. */
   multiTokenRotateTargetPercent?: number;
+  /** 느리게 회복된 다른 계정의 여유 할당량을 균형 있게 사용하는 추가 순회. */
+  multiTokenBalanceRotate?: boolean;
+  /** 균형 순회 후보로 볼 최소 잔량. 60~100, 기본 80. */
+  multiTokenRotateBalancePercent?: number;
   modelVersion?: ModelVersion;
   /** NAI Undesired Content Preset — 생성 시 네거티브 앞에 병합되는 기본 프리셋.
    *  모델별 제공 항목이 다르며(naiQualityPresets 단일 출처) 기본 'none' =

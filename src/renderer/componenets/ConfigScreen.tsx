@@ -62,8 +62,11 @@ import type {
 } from '../models/LoginService';
 import {
   minimumTokenRotateTarget,
+  normalizeTokenRotateBalance,
   normalizeTokenRotateTarget,
   normalizeTokenRotateWarning,
+  TOKEN_ROTATE_BALANCE_MAX,
+  TOKEN_ROTATE_BALANCE_MIN,
   TOKEN_ROTATE_TARGET_MAX,
   TOKEN_ROTATE_WARNING_MAX,
   TOKEN_ROTATE_WARNING_MIN,
@@ -81,6 +84,8 @@ const LoginTab = ({
   multiTokenAutoRotate, setMultiTokenAutoRotate,
   multiTokenRotateWarning, setMultiTokenRotateWarning,
   multiTokenRotateTarget, setMultiTokenRotateTarget,
+  multiTokenBalanceRotate, setMultiTokenBalanceRotate,
+  multiTokenRotateBalance, setMultiTokenRotateBalance,
 }: any) => {
   const [profiles, setProfiles] = useState<LoginTokenProfile[]>([]);
   const [profileToken, setProfileToken] = useState('');
@@ -340,6 +345,46 @@ const LoginTab = ({
                 반복 전환을 막기 위해 경고 임계값보다 항상 5%p 이상 높게 유지됩니다.
               </p>
             </div>
+            <div className="border-t line-color pt-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  id="cfgMultiTokenBalanceRotate"
+                  type="checkbox"
+                  checked={multiTokenBalanceRotate}
+                  disabled={!multiTokenAutoRotate}
+                  onChange={(e) => setMultiTokenBalanceRotate(e.target.checked)}
+                />
+                <label
+                  htmlFor="cfgMultiTokenBalanceRotate"
+                  className="text-xs font-medium text-default"
+                >
+                  여유 할당량 균형 순회
+                </label>
+              </div>
+              <p className="text-xs text-muted">
+                느리게 회복된 다른 계정이 현재 계정보다 5%p 이상 여유로울 때 전환합니다.
+                후보 조회와 계정 전환은 최대 30분에 한 번만 수행합니다.
+              </p>
+              <div className={multiTokenBalanceRotate ? '' : 'opacity-50'}>
+                <label className="block text-xs text-body mb-1">
+                  균형 순회 여유 기준 — {multiTokenRotateBalance}% 이상
+                </label>
+                <input
+                  type="range"
+                  min={TOKEN_ROTATE_BALANCE_MIN}
+                  max={TOKEN_ROTATE_BALANCE_MAX}
+                  step={1}
+                  value={multiTokenRotateBalance}
+                  disabled={!multiTokenAutoRotate || !multiTokenBalanceRotate}
+                  onChange={(e) =>
+                    setMultiTokenRotateBalance(
+                      normalizeTokenRotateBalance(Number(e.target.value)),
+                    )
+                  }
+                  className="w-full"
+                />
+              </div>
+            </div>
           </div>
           {multiTokenAutoRotate && (
             <div className="back-orange rounded-lg p-3 text-xs">
@@ -562,10 +607,10 @@ const StorageTab = ({
     <div>
       <label className="block text-sm font-semibold gray-label mb-1">기본 내보내기 폴더</label>
       <p className="text-xs text-muted mb-2">
-        내보내기 프리셋에 폴더가 지정되지 않았을 때 사용할 기본 폴더입니다.
+        내보내기 프리셋에 폴더가 지정되지 않았을 때 사용합니다. 비워 두면 OS 다운로드 폴더에 저장됩니다.
       </p>
       <div className="text-sm text-muted bg-gray-100 dark:bg-slate-700 rounded px-3 py-2 break-all">
-        {defaultExportFolder || '미설정 (프리셋별 폴더를 사용하세요)'}
+        {defaultExportFolder || '미설정 (다운로드 폴더 사용)'}
       </div>
     </div>
     <div className="flex gap-2">
@@ -2753,6 +2798,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [multiTokenAutoRotate, setMultiTokenAutoRotate] = useState(false);
   const [multiTokenRotateWarning, setMultiTokenRotateWarning] = useState(10);
   const [multiTokenRotateTarget, setMultiTokenRotateTarget] = useState(25);
+  const [multiTokenBalanceRotate, setMultiTokenBalanceRotate] = useState(false);
+  const [multiTokenRotateBalance, setMultiTokenRotateBalance] = useState(80);
   // 미저장 변경 감지 기준 — 로드/저장 시점의 config 스냅샷 (#17)
   const [savedCfg, setSavedCfg] = useState<Config | null>(null);
   const mobileMode = isMobile;
@@ -2800,6 +2847,10 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
           config.multiTokenRotateTargetPercent,
           rotateWarning,
         ),
+      );
+      setMultiTokenBalanceRotate(config.multiTokenBalanceRotate ?? false);
+      setMultiTokenRotateBalance(
+        normalizeTokenRotateBalance(config.multiTokenRotateBalancePercent),
       );
       setSavedCfg(config);
     })();
@@ -2944,6 +2995,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       multiTokenAutoRotate: multiTokenAutoRotate,
       multiTokenRotateWarningPercent: multiTokenRotateWarning,
       multiTokenRotateTargetPercent: multiTokenRotateTarget,
+      multiTokenBalanceRotate: multiTokenBalanceRotate,
+      multiTokenRotateBalancePercent: multiTokenRotateBalance,
     };
     // 모던 사이드바 "최초 전환" 시(② A 결정 2): 버튼 배치(툴바·동반 슬롯)를 초기화하고
     // 모던 기본 배치+하단 아이콘 행을 강제 적용한다. 이후 재커스텀 자유, 해제(다른
@@ -3040,7 +3093,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     const key = tabs[tabIdx]?.key;
     switch (key) {
       case 'login':
-        return <LoginTab {...{ accessToken, setAccessToken, loggedIn, loginWithToken, roundTag, multiTokenAutoRotate, setMultiTokenAutoRotate, multiTokenRotateWarning, setMultiTokenRotateWarning, multiTokenRotateTarget, setMultiTokenRotateTarget }} />;
+        return <LoginTab {...{ accessToken, setAccessToken, loggedIn, loginWithToken, roundTag, multiTokenAutoRotate, setMultiTokenAutoRotate, multiTokenRotateWarning, setMultiTokenRotateWarning, multiTokenRotateTarget, setMultiTokenRotateTarget, multiTokenBalanceRotate, setMultiTokenBalanceRotate, multiTokenRotateBalance, setMultiTokenRotateBalance }} />;
       case 'storage':
         return <StorageImageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 'system':
@@ -3104,6 +3157,10 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       multiTokenRotateTarget !== normalizeTokenRotateTarget(
         savedCfg.multiTokenRotateTargetPercent,
         savedCfg.multiTokenRotateWarningPercent,
+      ) ||
+      multiTokenBalanceRotate !== (savedCfg.multiTokenBalanceRotate ?? false) ||
+      multiTokenRotateBalance !== normalizeTokenRotateBalance(
+        savedCfg.multiTokenRotateBalancePercent,
       ));
 
   return (

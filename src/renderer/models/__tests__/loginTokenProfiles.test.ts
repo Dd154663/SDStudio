@@ -265,6 +265,78 @@ describe('LoginService 토큰 프리셋', () => {
     expect(backend.getOpusUsageStatusForToken).toHaveBeenCalledTimes(1);
   });
 
+  test('균형 순회는 여유 기준과 현재보다 5퍼센트포인트 높은 후보로만 전환한다', async () => {
+    const service = new LoginService();
+    await service.saveTokenProfile('현재 계정', 'secret-token-1');
+    await service.saveTokenProfile('비슷한 계정', 'secret-token-2');
+    await service.saveTokenProfile('회복 계정', 'secret-token-3');
+    const [first, , third] = service.listTokenProfiles();
+    await service.activateTokenProfile(first.id);
+    backend.loginWithToken.mockClear();
+    backend.getOpusUsageStatusForToken.mockImplementation(async (token: string) => ({
+      percent: token === 'secret-token-2' ? 82 : 90,
+      isNegative: false,
+      timeUntilNextPercent: 60,
+    }));
+
+    const result = await service.tryAutoBalanceToken(80, 84);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        switched: true,
+        to: expect.objectContaining({ name: '회복 계정' }),
+        usage: expect.objectContaining({ percent: 90 }),
+      }),
+    );
+    expect(backend.loginWithToken).toHaveBeenCalledWith('secret-token-3');
+    expect(service.activeProfileId).toBe(third.id);
+    backend.getOpusUsageStatusForToken.mockClear();
+    await expect(service.tryAutoBalanceToken(80, 90)).resolves.toEqual({
+      switched: false,
+      reason: 'cooldown',
+    });
+    expect(backend.getOpusUsageStatusForToken).not.toHaveBeenCalled();
+  });
+
+  test('균형 탐색 쿨다운은 긴급 저잔량 전환을 막지 않는다', async () => {
+    const service = new LoginService();
+    await service.saveTokenProfile('현재 계정', 'secret-token-1');
+    await service.saveTokenProfile('보조 계정', 'secret-token-2');
+    const first = service.listTokenProfiles()[0];
+    await service.activateTokenProfile(first.id);
+    backend.loginWithToken.mockClear();
+
+    backend.getOpusUsageStatusForToken.mockResolvedValueOnce({
+      percent: 70,
+      isNegative: false,
+      timeUntilNextPercent: 60,
+    });
+    await expect(service.tryAutoBalanceToken(80, 75)).resolves.toEqual({
+      switched: false,
+      reason: 'no-candidate',
+    });
+
+    backend.getOpusUsageStatusForToken.mockResolvedValueOnce({
+      percent: 40,
+      isNegative: false,
+      timeUntilNextPercent: 60,
+    });
+    await expect(service.tryAutoRotateToken(25)).resolves.toEqual(
+      expect.objectContaining({ switched: true }),
+    );
+    expect(backend.loginWithToken).toHaveBeenCalledWith('secret-token-2');
+  });
+
+  test('현재 잔량이 96퍼센트 이상이면 5퍼센트포인트 우위 후보를 조회하지 않는다', async () => {
+    const service = new LoginService();
+
+    await expect(service.tryAutoBalanceToken(80, 96)).resolves.toEqual({
+      switched: false,
+      reason: 'no-candidate',
+    });
+    expect(backend.getOpusUsageStatusForToken).not.toHaveBeenCalled();
+  });
+
   test('활성 저장 토큰이 없으면 자동 순회를 수행하지 않는다', async () => {
     const service = new LoginService();
     await service.saveTokenProfile('계정 1', 'secret-token-1');
