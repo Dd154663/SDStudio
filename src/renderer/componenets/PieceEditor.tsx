@@ -446,7 +446,7 @@ const PieceEditor = observer(() => {
       Date.now().toString() +
       '.json';
     await backend.writeFile(outPath, JSON.stringify(curPieceLibrary.toJSON()));
-    await backend.showFile(outPath);
+    await backend.publishExport(outPath);
   };
 
   const exportAllGlobal = async () => {
@@ -456,7 +456,7 @@ const PieceEditor = observer(() => {
     }
     const outPath = 'exports/global_pieces_backup_' + Date.now().toString() + '.json';
     await backend.writeFile(outPath, JSON.stringify(allData));
-    await backend.showFile(outPath);
+    await backend.publishExport(outPath);
     appState.pushMessage('전역 조각 전체 백업 완료');
   };
 

@@ -462,6 +462,114 @@ export class AndroidBackend extends Backend {
     }
   }
 
+  async publishExport(arg: string): Promise<void> {
+    const normalized = arg.replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!normalized.startsWith('exports/') || normalized.includes('../')) {
+      throw new Error('내보내기 폴더 밖의 파일은 이동할 수 없습니다.');
+    }
+
+    const { appState } = require('../models/AppService');
+    const sourceStat = await Filesystem.stat({
+      path: `${APP_DIR}/${normalized}`,
+      directory: Directory.Documents,
+    });
+    try {
+      await Filesystem.mkdir({
+        path: 'Download',
+        directory: Directory.ExternalStorage,
+      });
+    } catch (e) {}
+
+    const originalName = normalized.split('/').pop()!;
+    const dot = sourceStat.type === 'directory' ? -1 : originalName.lastIndexOf('.');
+    const baseName = dot > 0 ? originalName.slice(0, dot) : originalName;
+    const extension = dot > 0 ? originalName.slice(dot) : '';
+    let fileName = originalName;
+    let suffix = 1;
+    while (true) {
+      try {
+        await Filesystem.stat({
+          path: `Download/${fileName}`,
+          directory: Directory.ExternalStorage,
+        });
+        fileName = `${baseName} (${suffix++})${extension}`;
+      } catch (e) {
+        break;
+      }
+    }
+
+    const destRel = `Download/${fileName}`;
+    await Filesystem.copy({
+      from: `${APP_DIR}/${normalized}`,
+      directory: Directory.Documents,
+      to: destRel,
+      toDirectory: Directory.ExternalStorage,
+    });
+
+    // 외부 복사가 성공한 뒤에만 내부 스테이징 사본을 정리한다. 복사 실패 시에는
+    // exports/ 원본이 남아 사용자가 설정의 폴더 정리 또는 재시도로 회수할 수 있다.
+    let cleanupFailed = false;
+    try {
+      if (sourceStat.type === 'directory') {
+        assertDeletableDirPath(normalized);
+        await Filesystem.rmdir({
+          path: `${APP_DIR}/${normalized}`,
+          directory: Directory.Documents,
+          recursive: true,
+        });
+      } else {
+        await Filesystem.deleteFile({
+          path: `${APP_DIR}/${normalized}`,
+          directory: Directory.Documents,
+        });
+      }
+    } catch (e) {
+      cleanupFailed = true;
+    }
+
+    const mime = (() => {
+      const ext = extension.slice(1).toLowerCase();
+      if (ext === 'png') return 'image/png';
+      if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+      if (ext === 'webp') return 'image/webp';
+      return null;
+    })();
+    const uriRes = await Filesystem.getUri({
+      path: destRel,
+      directory: Directory.ExternalStorage,
+    });
+    if (mime) {
+      try {
+        await ZipService.scanMedia({
+          path: uriRes.uri.replace(/^file:\/\//, ''),
+          mime,
+        });
+      } catch (e) {}
+    }
+    if (cleanupFailed) {
+      appState.pushMessage(
+        '다운로드 저장은 완료했지만 앱 내부의 임시 사본을 정리하지 못했습니다.',
+      );
+    }
+
+    const items = [{ text: '다운로드 폴더 열기', value: 'download' }];
+    if (sourceStat.type !== 'directory') items.push({ text: '공유', value: 'share' });
+    const choice = await new Promise<string | undefined>((resolve) => {
+      appState.pushDialog({
+        type: 'select',
+        text: `다운로드 폴더에 저장했습니다.\n${fileName}`,
+        items,
+        callback: (value?: string) => resolve(value),
+        onCancel: () => resolve(undefined),
+      });
+    });
+    if (choice === 'share') {
+      await Share.share({ url: uriRes.uri });
+    } else if (choice === 'download') {
+      await ZipService.showDownloads({});
+    }
+  }
+
   async copyToDownloads(path: string): Promise<void> {
     // 파일 내용을 base64 문자열로 JS까지 왕복시키면 대용량 파일(원본 PNG 다수를 묶은
     // tar 등 수백 MB)에서 네이티브 힙 OOM으로 앱이 크래시하므로, 데이터를 브리지에

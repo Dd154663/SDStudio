@@ -177,6 +177,10 @@ export class ElectornBackend extends Backend {
     await invoke('show-file', arg);
   }
 
+  async publishExport(arg: string): Promise<void> {
+    await invoke('publish-export', arg);
+  }
+
   async openPath(arg: string): Promise<void> {
     await invoke('open-path', arg);
   }

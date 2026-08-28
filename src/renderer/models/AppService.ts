@@ -1348,7 +1348,7 @@ export class AppState {
       const path =
         'exports/' + entry.name + '_' + Date.now().toString() + '.png';
       await globalPresetService.exportToPng(entry.id, path);
-      await backend.showFile(path);
+      await backend.publishExport(path);
     } catch (e: any) {
       this.pushMessage('내보내기 실패: ' + (e.message || e));
     }

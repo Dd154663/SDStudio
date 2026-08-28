@@ -68,6 +68,7 @@ import {
 } from './exportPresetUtils';
 import type { FilenamePattern } from './exportPresetUtils';
 import { isOptimizedImageFile } from './imageFormats';
+import { decoratePresetExportImage } from './presetExportDecoration';
 
 export class ExportPresetService {
   // ── 내보내기 프리셋 헬퍼 ──
@@ -437,7 +438,11 @@ export class ExportPresetService {
           return;
         }
         appState.showExportComplete();
-        await backend.showFile(baseDest);
+        if (targetFolder) {
+          await backend.showFile(baseDest);
+        } else {
+          await backend.publishExport(baseDest);
+        }
         return;
       }
 
@@ -480,14 +485,15 @@ export class ExportPresetService {
           return;
         } catch (e: any) {
           appState.pushMessage(
-            '목표 폴더로 복사 실패: ' + (e.message || e) + ' (exports 폴더에 보관됨)',
+            '목표 폴더로 복사하지 못해 기본 다운로드 폴더로 전환합니다: ' +
+              (e.message || e),
           );
-          await backend.showFile(outFilePath);
+          await backend.publishExport(outFilePath);
           return;
         }
       }
       appState.showExportComplete();
-      await backend.showFile(outFilePath);
+      await backend.publishExport(outFilePath);
     };
 
     // 프리셋 1개를 실행 (선택/빠른 export 공용). 캐릭터 이름 입력·특수문자·목표폴더 해석 포함.
@@ -722,11 +728,16 @@ export class ExportPresetService {
       } else {
         pngData = await createImageWithText(832, 1216, preset.name);
       }
-      const newPngData = embedJSONInPNG(pngData, preset);
+      const decoratedPng = await decoratePresetExportImage(
+        pngData,
+        'local',
+        preset.name,
+      );
+      const newPngData = embedJSONInPNG(decoratedPng, preset);
       const path =
         'exports/' + preset.name + '_' + Date.now().toString() + '.png';
       await backend.writeDataFile(path, newPngData);
-      await backend.showFile(path);
+      await backend.publishExport(path);
     } catch (e: any) {
       appState.pushMessage('프리셋 내보내기 실패: ' + (e.message || e));
     }

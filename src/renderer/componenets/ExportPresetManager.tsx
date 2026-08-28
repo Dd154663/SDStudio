@@ -549,7 +549,7 @@ const ExportPresetManager = observer(() => {
           {!isMobile && (
             <div className="space-y-2 border-t line-color pt-3">
               <div className="text-xs text-muted">
-                내보내기 목표 폴더 (비우면 환경설정의 기본 폴더 사용)
+                내보내기 목표 폴더 (비우면 환경설정 기본 폴더, 둘 다 없으면 다운로드 폴더 사용)
               </div>
               <div className="text-sm text-body bg-gray-100 dark:bg-slate-700 rounded px-3 py-2 break-all">
                 {form.targetFolder || '미설정'}

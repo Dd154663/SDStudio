@@ -430,6 +430,54 @@ const tar = require('tar-fs');
 const tarStream = require('tar-stream');
 const fs = require('fs').promises;
 
+// 사용자 내보내기만 앱 내부 exports/에서 OS 다운로드 폴더로 이동한다.
+// 마이그레이션 사전 백업은 이 IPC를 호출하지 않으므로 기존 exports/에 남아
+// 재시작 시 완성 백업 재사용 판정에 계속 쓰인다.
+ipcMain.handle('publish-export', async (event, arg) => {
+  if (typeof arg !== 'string') throw new Error('내보내기 경로가 올바르지 않습니다.');
+  const normalized = arg.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!normalized.startsWith('exports/') || normalized.includes('../')) {
+    throw new Error('내보내기 폴더 밖의 파일은 이동할 수 없습니다.');
+  }
+
+  const exportRoot = path.resolve(APP_DIR, 'exports');
+  const source = path.resolve(APP_DIR, normalized);
+  const sourceRel = path.relative(exportRoot, source);
+  if (!sourceRel || sourceRel.startsWith('..') || path.isAbsolute(sourceRel)) {
+    throw new Error('내보내기 경로가 올바르지 않습니다.');
+  }
+
+  const stat = await fs.stat(source);
+  const downloads = app.getPath('downloads');
+  await fs.mkdir(downloads, { recursive: true });
+  const parsed = path.parse(path.basename(source));
+  const outputStem = stat.isDirectory() ? parsed.base : parsed.name;
+  const outputExt = stat.isDirectory() ? '' : parsed.ext;
+  let destination = path.join(downloads, parsed.base);
+  let suffix = 1;
+  while (true) {
+    try {
+      await fs.access(destination);
+      destination = path.join(
+        downloads,
+        `${outputStem} (${suffix++})${outputExt}`,
+      );
+    } catch (e: any) {
+      if (e?.code === 'ENOENT') break;
+      throw e;
+    }
+  }
+
+  try {
+    await fs.rename(source, destination);
+  } catch (e: any) {
+    if (e?.code !== 'EXDEV') throw e;
+    await fsExtra.copy(source, destination, { overwrite: false, errorOnExist: true });
+    await fsExtra.remove(source);
+  }
+  shell.showItemInFolder(destination);
+});
+
 ipcMain.handle('zip-files', async (event, files, outPath) => {
   const finalPath = APP_DIR + '/' + outPath;
   const dir = path.dirname(finalPath);

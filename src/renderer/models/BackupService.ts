@@ -133,7 +133,7 @@ export class BackupService {
             );
             const path = 'exports/' + appState.curSession.name + '.json';
             await backend.writeFile(path, JSON.stringify(proj));
-            await backend.showFile(path);
+            await backend.publishExport(path);
           }
         } else if (value === 'saveDeep') {
           if (appState.curSession) {
@@ -158,7 +158,7 @@ export class BackupService {
               type: 'yes-only',
               text: '백업이 완료되었습니다.',
             });
-            await backend.showFile(path);
+            await backend.publishExport(path);
             appState.setProgressDialog(undefined);
           }
         } else if (value === 'load') {
@@ -426,7 +426,7 @@ export class BackupService {
       type: 'yes-only',
       text: `폴더 "${folder}" 백업이 완료되었습니다. (${manifest.projects.length}개 프로젝트)`,
     });
-    await backend.showFile(outPath);
+    await backend.publishExport(outPath);
   }
 
   // 불러오기: 폴더 백업 아카이브를 선택 → 매니페스트 인식 → 폴더 새로 만들고 프로젝트 전체 복원.
@@ -631,7 +631,7 @@ export class BackupService {
       text: `${opts.label} 백업이 완료되었습니다.`,
     });
     try {
-      await backend.showFile(outPath);
+      await backend.publishExport(outPath);
     } catch (e) {}
   }
 
@@ -885,7 +885,7 @@ export class BackupService {
             })`,
     });
     try {
-      await backend.showFile(outPath);
+      await backend.publishExport(outPath);
     } catch (e) {}
   }
 
@@ -1686,7 +1686,7 @@ export class BackupService {
       type: 'yes-only',
       text: `폴더 "${folder}" 이미지 내보내기가 완료되었습니다. (${allEntries.length}장)`,
     });
-    await backend.showFile(outPath);
+    await backend.publishExport(outPath);
   }
 
   // 이미지 내보내기 옵션을 한 번 입력 받는다 (프리셋 또는 직접 설정).

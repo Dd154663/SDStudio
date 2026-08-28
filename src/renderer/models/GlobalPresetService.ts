@@ -11,6 +11,7 @@ import {
   createImageWithText,
 } from './SessionService';
 import { extractPromptDataFromBase64 } from './util';
+import { decoratePresetExportImage } from './presetExportDecoration';
 
 const GLOBAL_PRESETS_FILE = 'global_presets.json';
 const GLOBAL_VIBES_DIR = 'global_vibes';
@@ -756,7 +757,12 @@ export class GlobalPresetService extends EventTarget {
       name: entry.name,
     };
 
-    const newPng = embedJSONInPNG(pngBase64, jsonForPng);
+    const decoratedPng = await decoratePresetExportImage(
+      pngBase64,
+      'global',
+      entry.name,
+    );
+    const newPng = embedJSONInPNG(decoratedPng, jsonForPng);
     await backend.writeDataFile(outPath, newPng);
   }
 }

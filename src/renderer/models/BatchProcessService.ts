@@ -359,7 +359,7 @@ export class BatchProcessService {
         }
         const path = 'exports/scene_names_' + Date.now().toString() + '.txt';
         await backend.writeFile(path, names);
-        await backend.showFile(path);
+        await backend.publishExport(path);
         appState.pushMessage(`${selected.length}개 씬 이름을 내보냈습니다.`);
       } else if (value === 'sortScenes') {
         const allScenes = appState.curSession!.getScenes(type);
