@@ -60,6 +60,52 @@ describe('ImageService.refresh guardEmpty (유령 상태 방지 + 진단 로그)
     expect(svc.getImages(session, sc as any)).toEqual([]);
     expect(addLog).not.toHaveBeenCalled();
   });
+
+  test('기존 imageMap의 같은 파일명 중복을 한 번으로 정리한다', async () => {
+    const svc = new ImageService();
+    backend.listFiles.mockResolvedValue(['a.webp', 'b.webp']);
+    const sc = scene(['a.webp', 'a.webp', 'b.webp', 'a.webp']);
+
+    await svc.refresh(session, sc as any, false, false);
+
+    expect(sc.imageMap).toEqual(['a.webp', 'b.webp']);
+    expect(svc.getImages(session, sc as any)).toEqual(['a.webp', 'b.webp']);
+  });
+
+  test('생성 완료가 같은 파일명을 다시 통지해도 중복 등록하지 않는다', () => {
+    const svc = new ImageService();
+    const sc = scene([]);
+    const sess = {
+      name: 'p1',
+      scenes: new Map([['sceneA', sc]]),
+    };
+
+    svc.onAddImage(sess as any, 'sceneA', 'outs/p1/sceneA/a.webp');
+    svc.onAddImage(sess as any, 'sceneA', 'outs/p1/sceneA/a.webp');
+
+    expect(sc.imageMap).toEqual(['a.webp']);
+    expect(svc.getImages(sess as any, sc as any)).toEqual(['a.webp']);
+  });
+
+  test('WebP 완료 전 먼저 발견된 PNG 참조를 명시적으로 제거한다', () => {
+    const svc = new ImageService();
+    const sc = scene(['a.png', 'old.webp']);
+    const sess = {
+      name: 'p1',
+      scenes: new Map([['sceneA', sc]]),
+    };
+
+    svc.onAddImage(sess as any, 'sceneA', 'outs/p1/sceneA/old.webp');
+    svc.onAddImage(sess as any, 'sceneA', 'outs/p1/sceneA/a.png');
+    svc.removeImageReference(sess as any, sc as any, 'outs/p1/sceneA/a.png');
+    svc.onAddImage(sess as any, 'sceneA', 'outs/p1/sceneA/a.webp');
+
+    expect(sc.imageMap).toEqual(['old.webp', 'a.webp']);
+    expect(svc.getImages(sess as any, sc as any)).toEqual([
+      'old.webp',
+      'a.webp',
+    ]);
+  });
 });
 
 // 트랙1 B4 이슈②: 부분 소실 화해 시 랭킹(game/round) 죽은 참조 정리

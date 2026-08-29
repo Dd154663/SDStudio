@@ -106,6 +106,7 @@ export interface DelegatedTaskPayload {
 export interface DelegateCompletePayload extends DelegationInfo {
   status: 'ok' | 'fail' | 'done';
   path?: string;
+  replacedPath?: string;
   message?: string;
 }
 
@@ -1097,6 +1098,13 @@ export class TaskQueueService extends EventTarget {
     // (chokidar 감시는 config.refreshImage OFF 면 안 돌므로 이 브리지가 정식 경로)
     const session = sessionService.getFast(payload.sessionName);
     if (session && payload.sceneName && payload.path) {
+      const scene =
+        payload.sceneType === 'inpaint'
+          ? session.inpaints.get(payload.sceneName)
+          : session.scenes.get(payload.sceneName);
+      if (scene && payload.replacedPath) {
+        imageService.removeImageReference(session, scene, payload.replacedPath);
+      }
       if (payload.sceneType === 'inpaint') {
         imageService.onAddInPaint(session, payload.sceneName, payload.path);
       } else {

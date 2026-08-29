@@ -77,16 +77,28 @@ import type {
 // 생성 완료 처리 (W6 P3). 위임 태스크(호스트에서 실행 중)면 완료를 원 창에 브리지하고
 // 호스트 자기 세션은 건드리지 않는다(imageMap 미갱신 → dirty/저장 없음). 로컬 태스크
 // (단일 창 포함)는 종전과 동일하게 onComplete + imageMap 갱신을 수행한다.
-function finishOrBridgeImage(task: Task, outputFilePath: string) {
+function finishOrBridgeImage(
+  task: Task,
+  outputFilePath: string,
+  replacedPath?: string,
+) {
   if (task.params.delegation) {
     backend
       .delegateComplete({
         ...task.params.delegation,
         status: 'ok',
         path: outputFilePath,
+        replacedPath,
       })
       .catch(() => {});
     return;
+  }
+  if (replacedPath && task.params.scene) {
+    imageService.removeImageReference(
+      task.params.session,
+      task.params.scene,
+      replacedPath,
+    );
   }
   if (task.params.onComplete) task.params.onComplete(outputFilePath);
   if (task.params.scene != null) {
@@ -520,31 +532,41 @@ class GenerateImageTaskHandler implements TaskHandler {
       job.seed = stepSeed(job.seed);
     }
 
-    // 자동 WebP 변환(옵트인, 데스크톱 전용): 저장된 PNG 를 곧바로 WebP 로 재인코딩.
+    // 자동 WebP 변환(옵트인, 데스크톱+모바일): 저장된 PNG 를 곧바로 WebP 로 재인코딩.
     // 리사이즈 없는 변환이라 NAI stealth 워터마크(알파)도 보존된다. 변환 성공 시에만
     // 원본 PNG 를 삭제하고, 실패하면 PNG 를 그대로 결과로 쓴다(생성물 유실 없음).
     let finalPath = outputFilePath;
+    let replacedPath: string | undefined;
     if (config.autoConvertWebp && platform.supportsAutoWebpConvert) {
       const webpPath = pngPathToWebp(outputFilePath);
+      // 완성 전 WebP가 listFiles에 노출되지 않도록 이미지 확장자가 아닌 임시명에
+      // 인코딩·메타데이터 후처리를 모두 마친 뒤 최종명으로 공개한다.
+      const tempWebpPath = webpPath + '.' + v4() + '.tmp';
+      let webpPublished = false;
       try {
         await backend.convertToWebp(
           outputFilePath,
-          webpPath,
+          tempWebpPath,
           config.autoConvertWebpQuality ?? 80,
         );
+        await backend.renameFile(tempWebpPath, webpPath);
+        webpPublished = true;
         try {
           await backend.deleteFile(outputFilePath);
           finalPath = webpPath;
+          replacedPath = outputFilePath;
         } catch (e) {
           // PNG 삭제 실패 → 같은 이미지가 2장 보이지 않게 WebP 쪽을 정리하고 PNG 유지
           await backend.deleteFile(webpPath).catch(() => {});
         }
       } catch (e: any) {
+        await backend.deleteFile(tempWebpPath).catch(() => {});
+        if (webpPublished) await backend.deleteFile(webpPath).catch(() => {});
         console.error('자동 WebP 변환 실패(PNG 유지):', e?.message || e);
       }
     }
 
-    finishOrBridgeImage(task, finalPath);
+    finishOrBridgeImage(task, finalPath, replacedPath);
 
     return true;
   }

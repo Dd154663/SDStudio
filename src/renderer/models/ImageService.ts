@@ -794,14 +794,18 @@ export class ImageService extends EventTarget {
     for (const file of files) {
       fileSet[file] = true;
     }
-    const invImageMap: any = {};
-    for (let i = 0; i < scene.imageMap.length; i++) {
-      invImageMap[scene.imageMap[i]] = i;
-    }
-    let newImageMap = scene.imageMap.filter((x: string) => x in fileSet);
+    // 같은 파일명이 중복 저장된 옛 imageMap은 React Grid의 중복 key와 동일 파일
+    // 이중 표시를 만든다. 디스크에 실제 존재하는 첫 참조만 유지해 갱신 시 자가치유한다.
+    const seen = new Set<string>();
+    let newImageMap = scene.imageMap.filter((x: string) => {
+      if (!(x in fileSet) || seen.has(x)) return false;
+      seen.add(x);
+      return true;
+    });
     for (const file of files) {
-      if (!(file in invImageMap)) {
+      if (!seen.has(file)) {
         newImageMap.push(file);
+        seen.add(file);
       }
     }
     scene.imageMap = newImageMap;
@@ -880,10 +884,22 @@ export class ImageService extends EventTarget {
     if (!(scene in this.images[session.name])) {
       this.images[session.name][scene] = [];
     }
-    this.images[session.name][scene] = this.images[session.name][scene].concat([
-      path.split('/').pop()!,
-    ]);
-    session.scenes.get(scene)?.imageMap.push(path.split('/').pop()!);
+    const filename = path.split('/').pop()!;
+    let changed = false;
+    if (!this.images[session.name][scene].includes(filename)) {
+      this.images[session.name][scene] = this.images[session.name][scene].concat([
+        filename,
+      ]);
+      changed = true;
+    }
+    const sceneObj = session.scenes.get(scene);
+    if (sceneObj && !sceneObj.imageMap.includes(filename)) {
+      sceneObj.imageMap.push(filename);
+      changed = true;
+    }
+    // 완료 브리지·파일 스캔 경합으로 같은 경로가 다시 들어와도 히스토리와 그리드를
+    // 중복 갱신하지 않는다. 한쪽 목록만 빠진 경우에는 위에서 정상 화해한다.
+    if (!changed) return;
     if (isMobile)
       for (const size of platform.pregenThumbSizes) this.fetchImageSmall(path, size);
     // 생성 히스토리 수집용 — 새로 추가된 이미지의 경로까지 전달('updated'에는 없음)
@@ -893,7 +909,7 @@ export class ImageService extends EventTarget {
           session,
           sceneType: 'scene',
           sceneName: scene,
-          filename: path.split('/').pop()!,
+          filename,
           path,
         },
       }),
@@ -912,10 +928,20 @@ export class ImageService extends EventTarget {
     if (!(scene in this.inpaints[session.name])) {
       this.inpaints[session.name][scene] = [];
     }
-    this.inpaints[session.name][scene] = this.inpaints[session.name][
-      scene
-    ].concat([path.split('/').pop()!]);
-    session.inpaints.get(scene)?.imageMap.push(path.split('/').pop()!);
+    const filename = path.split('/').pop()!;
+    let changed = false;
+    if (!this.inpaints[session.name][scene].includes(filename)) {
+      this.inpaints[session.name][scene] = this.inpaints[session.name][
+        scene
+      ].concat([filename]);
+      changed = true;
+    }
+    const sceneObj = session.inpaints.get(scene);
+    if (sceneObj && !sceneObj.imageMap.includes(filename)) {
+      sceneObj.imageMap.push(filename);
+      changed = true;
+    }
+    if (!changed) return;
     if (isMobile)
       for (const size of platform.pregenThumbSizes) this.fetchImageSmall(path, size);
     this.dispatchEvent(
@@ -924,7 +950,7 @@ export class ImageService extends EventTarget {
           session,
           sceneType: 'inpaint',
           sceneName: scene,
-          filename: path.split('/').pop()!,
+          filename,
           path,
         },
       }),
@@ -934,6 +960,31 @@ export class ImageService extends EventTarget {
         detail: { batch: false, session, scene: session.inpaints.get(scene) },
       }),
     );
+  }
+
+  // 생성 직후 WebP 변환 중 파일 스캔이 먼저 발견한 임시 PNG 참조를 제거한다.
+  // 파일 자체는 TaskHandlers가 처리하며, 여기서는 메모리/프로젝트 JSON 참조만 정리한다.
+  removeImageReference(session: Session, scene: GenericScene, path: string) {
+    const filename = path.split('/').pop()!;
+    const target = scene.type === 'scene' ? this.images : this.inpaints;
+    const list = target[session.name]?.[scene.name];
+    if (list) {
+      target[session.name][scene.name] = list.filter((x) => x !== filename);
+    }
+    scene.imageMap = scene.imageMap.filter((x) => x !== filename);
+    if (scene.type === 'scene') {
+      scene.mains = scene.mains.filter((x) => x !== filename);
+      if (scene.game?.some((p) => p.path === filename)) {
+        const alive = scene.game.filter((p) => p.path !== filename);
+        if (alive.length > 0) {
+          gameService.cleanGame(alive);
+          scene.game = alive;
+        } else {
+          scene.game = undefined;
+        }
+      }
+      if (scene.round?.players.includes(filename)) scene.round = undefined;
+    }
   }
 
   async encodeVibeImage(session: Session, path: string, info: number) {

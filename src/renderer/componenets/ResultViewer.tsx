@@ -1083,6 +1083,8 @@ const ResultDetailView = observer(
     );
     const filenameRef = useRef<string>(filename);
     const [image, setImage] = useState<string | undefined>(undefined);
+    const [imageLoadFailed, setImageLoadFailed] = useState(false);
+    const [imageRetryRevision, setImageRetryRevision] = useState(0);
     const watchedImages = useRef(new Set<string>());
     // 모바일 좌우 스와이프로 이미지 전환. 시작 좌표를 저장해 끝점과 비교한다.
     const touchStart = useRef<{ x: number; y: number } | null>(null);
@@ -1097,12 +1099,19 @@ const ResultDetailView = observer(
     const [uc, setUc] = useState<string>('');
     const [_, forceUpdate] = useState<{}>({});
     useEffect(() => {
+      let cancelled = false;
       const fetchImage = async () => {
         if (!paths[selectedIndex]) return;
+        setImage(undefined);
+        setImageLoadFailed(false);
         try {
           let base64Image = await imageService.fetchImage(
             paths[selectedIndex],
           )!;
+          if (!base64Image) {
+            throw new Error('이미지 파일을 찾을 수 없습니다.');
+          }
+          if (cancelled) return;
           setImage(base64Image!);
           base64Image = dataUriToBase64(base64Image!);
           try {
@@ -1136,8 +1145,10 @@ const ResultDetailView = observer(
           }
           setFilename(paths[selectedIndex].split('/').pop()!);
         } catch (e: any) {
+          if (cancelled) return;
           console.log(e);
           setImage(undefined);
+          setImageLoadFailed(true);
           setMiddlePrompt('');
           setCharacterPrompts([]);
           setSeed('');
@@ -1238,13 +1249,14 @@ const ResultDetailView = observer(
       imageService.addEventListener('image-cache-invalidated', fetchImage);
       gameService.addEventListener('updated', refreshPaths);
       return () => {
+        cancelled = true;
         window.removeEventListener('keydown', handleKeyDown);
         window.removeEventListener('shortcut-action', handleShortcut);
         sessionService.removeEventListener('main-image-updated', rerender);
         imageService.removeEventListener('image-cache-invalidated', fetchImage);
         gameService.removeEventListener('updated', refreshPaths);
       };
-    }, [selectedIndex, paths]);
+    }, [selectedIndex, paths, imageRetryRevision]);
 
     useEffect(() => {
       return () => {
@@ -1508,6 +1520,23 @@ const ResultDetailView = observer(
               }}
               className="w-full h-full object-contain bg-checkboard"
             />
+          ) : imageLoadFailed ? (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-muted">
+              <span>이미지를 불러오지 못했습니다.</span>
+              <button
+                className="round-button back-sky"
+                onClick={async () => {
+                  const path = paths[selectedIndex];
+                  if (path) {
+                    await imageService.invalidateCache(path).catch(() => {});
+                  }
+                  await imageService.refresh(curSession!, scene).catch(() => {});
+                  setImageRetryRevision((v) => v + 1);
+                }}
+              >
+                다시 시도
+              </button>
+            </div>
           ) : (
             // 이미지 전환/로딩 중 빈 화면 깜빡임 대신 로딩 표시(부팅 스피너와 동일 스타일).
             <div className="w-full h-full flex items-center justify-center">
