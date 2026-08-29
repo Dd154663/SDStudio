@@ -79,7 +79,12 @@ export abstract class Backend {
   // 렌더러가 부팅 후 1회 조회해 사용자에게 안내한다. 데스크톱 전용(모바일은 null).
   abstract getBootWarnings(): Promise<{
     saveLocationFallback: { attempted: string; code: string } | null;
+    configLoadFailure: { path: string; code: string } | null;
   } | null>;
+  // 현재 실행에서 실제로 사용 중인 데이터 루트. 기본 위치도 절대/표시 경로로 노출한다.
+  abstract getDataRoot(): Promise<string>;
+  // 읽기 실패한 config.json 을 삭제하지 않고 백업명으로 격리한다. 데스크톱 전용.
+  abstract backupFailedConfig(): Promise<string>;
   // 폴더가 실제 쓰기 가능한지 사전 검증(저장 경로 지정 전). 권한 없는 드라이브를
   // 저장 경로로 지정해 다음 부팅이 벽돌화되는 것을 예방. 데스크톱 전용(모바일은 항상 ok).
   abstract checkWritable(absolutePath: string): Promise<{ ok: boolean; code?: string }>;

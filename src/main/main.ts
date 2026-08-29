@@ -42,6 +42,7 @@ const { exiftool } = require('exiftool-vendored');
 const chokidar = require('chokidar');
 import webpackPaths from '../../.erb/configs/webpack.paths';
 import { Config } from './config';
+import { backupFailedConfig, loadJsonConfig } from './configLoad';
 import { extractStealthBits, embedStealthBits, canEmbed } from './stealth';
 import { spawn } from 'child_process';
 import fsExtra from 'fs-extra';
@@ -336,6 +337,7 @@ const DEFAULT_APP_DIR = app.getPath('userData') + '/' + 'SDStudio';
 let APP_DIR = DEFAULT_APP_DIR;
 
 let config: Config = {};
+let configLoadFailure: { path: string; code: string } | null = null;
 
 // 창 컨트롤 IPC — 호출한 창(event.sender)에만 작용한다(멀티 윈도우 안전).
 ipcMain.handle('window-minimize', (event) => {
@@ -389,10 +391,25 @@ ipcMain.handle('get-runtime-diag', async () => {
   };
 });
 
-// 부팅 경고 조회: 사용자 지정 저장 경로 접근 실패로 기본 경로 폴백이 있었는지
-// 렌더러에 전달한다. 렌더러는 부팅 후 1회 조회해 사용자에게 안내한다.
+// 부팅 경고 조회: 설정 파일 읽기 실패 또는 사용자 지정 저장 경로 접근 실패를
+// 렌더러에 전달한다. 렌더러는 사용자 데이터 IO 전에 조회해 전면 가드로 안내한다.
 ipcMain.handle('get-boot-warnings', async () => {
-  return { saveLocationFallback };
+  return { saveLocationFallback, configLoadFailure };
+});
+
+ipcMain.handle('get-data-root', async () => APP_DIR);
+
+// 설정 파일 영구 파손 시 탈출 경로. 원본은 삭제하지 않고 같은 폴더의 고유 백업명으로
+// 이동한다. 이후 재시작하면 config.json 부재=최초 설정으로 안전하게 부팅한다.
+ipcMain.handle('backup-failed-config', async () => {
+  if (!configLoadFailure) {
+    throw new Error('복구할 설정 파일 오류가 없습니다.');
+  }
+  const expectedPath = path.join(DEFAULT_APP_DIR, 'config.json');
+  if (path.resolve(configLoadFailure.path) !== path.resolve(expectedPath)) {
+    throw new Error('설정 파일 경로가 올바르지 않습니다.');
+  }
+  return await backupFailedConfig(expectedPath);
 });
 
 // 저장 경로 사전 검증: 사용자가 폴더를 저장 경로로 지정하기 전에 실제 쓰기 가능
@@ -2027,12 +2044,23 @@ function loadTagDatabase(modelVersion?: ModelVersion): Promise<void> {
 }
 
 async function init() {
-  await fs.mkdir(DEFAULT_APP_DIR, { recursive: true });
+  const configPath = path.join(DEFAULT_APP_DIR, 'config.json');
   try {
-    config = JSON.parse(
-      await fs.readFile(path.join(DEFAULT_APP_DIR, 'config.json'), 'utf-8'),
-    );
-  } catch (e) {}
+    await fs.mkdir(DEFAULT_APP_DIR, { recursive: true });
+  } catch (e: any) {
+    configLoadFailure = {
+      path: configPath,
+      code: String(e?.code || e?.message || e),
+    };
+    return;
+  }
+  const loadedConfig = await loadJsonConfig<Config>(configPath);
+  if (loadedConfig.kind === 'loaded') {
+    config = loadedConfig.value;
+  } else if (loadedConfig.kind === 'failed') {
+    configLoadFailure = { path: configPath, code: loadedConfig.code };
+    return;
+  }
   databases.tagDBId = native.createDB('danbooru');
   await loadTagDatabase(config.modelVersion);
   databases.pieceDBId = native.createDB('pieces');

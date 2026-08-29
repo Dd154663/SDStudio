@@ -198,6 +198,24 @@ export async function bootstrapApp(): Promise<void> {
   // 건너뛰게 하면 안 된다. 부팅이 일부 실패해도 앱은 반드시 뜬다.
   // (전체를 try/finally 로 감싸 어떤 예외 경로에서도 ready 게이트는 반드시 열린다)
   try {
+    // main 프로세스가 config.json 을 읽지 못했다면 저장 경로를 확정할 수 없다.
+    // 이 상태에서 기본 루트를 스캔하거나 종료 저장 훅을 등록하면 프로젝트가
+    // 초기화된 것처럼 보이고 빈 설정을 덮어쓸 수 있으므로, 안내 게이트만 띄우고
+    // 모든 사용자 데이터 IO 를 시작하지 않는다.
+    const bootWarnings = await backend.getBootWarnings().catch(() => null);
+    appState.configLoadFailure = bootWarnings?.configLoadFailure ?? null;
+    appState.saveLocationFallback = bootWarnings?.saveLocationFallback ?? null;
+    if (appState.configLoadFailure) {
+      // 일반 종료도 가능해야 한다. main 은 렌더러의 close 응답을 받을 때까지 창을
+      // 닫지 않으므로, 저장은 전혀 하지 않고 종료 게이트만 해제하는 훅을 연결한다.
+      backend.onClose(() => {
+        backend.close().catch((e) => {
+          console.error('설정 로드 실패 상태에서 앱 종료 실패:', e);
+        });
+      });
+      return;
+    }
+
     // 0) 종료 시 저장 훅을 가장 먼저 등록 — 부팅 도중 종료해도 안전하게 저장 시도
     try {
       registerOnCloseFlush();
@@ -230,10 +248,7 @@ export async function bootstrapApp(): Promise<void> {
       // 판정을 보류한다 — 엉뚱한(기본) 루트에 마커를 기록하거나 그 루트의 옛
       // 데이터로 마이그레이션 게이트를 띄우면 안 된다. 마커가 이미 있으면
       // 활성화만 하고 통과(폴백 경고는 App.tsx 가 안내).
-      const bootWarnings = await backend.getBootWarnings().catch(() => null);
       const saveLocFallback = !!bootWarnings?.saveLocationFallback;
-      // 가드 창(SaveLocationGate)이 부팅 즉시 메인 UI 를 가리도록 상태를 노출.
-      appState.saveLocationFallback = bootWarnings?.saveLocationFallback ?? null;
       // [오판 방어 ②] 보조 창(데스크톱 멀티 윈도우)은 마이그레이션을 수행하지
       // 않는다 — 호스트 창이 "나중에 하기"를 고른 뒤 보조 창이 이동을 돌리면
       // 두 창의 배치 인식이 갈라져 목록이 통째로 비어 보인다. 마커만 따라간다.

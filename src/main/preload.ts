@@ -29,6 +29,8 @@ export type Channels =
   | 'get-free-space'
   | 'get-runtime-diag'
   | 'get-boot-warnings'
+  | 'get-data-root'
+  | 'backup-failed-config'
   | 'check-writable'
   | 'get-version'
   | 'open-web-page'

@@ -587,7 +587,7 @@ const ImageEditTab = ({
 
 /* ── 탭 3: 이미지 및 데이터 저장경로 ── */
 const StorageTab = ({
-  saveLocation, selectFolder, clearImageCache,
+  saveLocation, dataRoot, selectFolder, clearImageCache,
   refreshImage, setRefreshImage,
   defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder,
   autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality,
@@ -596,7 +596,14 @@ const StorageTab = ({
     <div>
       <label className="block text-sm font-semibold gray-label mb-1">현재 저장경로</label>
       <div className="text-sm text-muted bg-gray-100 dark:bg-slate-700 rounded px-3 py-2 break-all">
-        {saveLocation || '기본 위치'}
+        {dataRoot || saveLocation || '경로 확인 중…'}
+      </div>
+      <div className="text-xs text-muted mt-1">
+        {appState.saveLocationFallback
+          ? '지정 위치 접근 실패로 기본 위치를 임시 사용 중'
+          : saveLocation
+            ? '사용자 지정 위치'
+            : '기본 위치'}
       </div>
     </div>
     <button className="btn w-full back-green py-2 rounded"
@@ -2778,6 +2785,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [stage, setStage] = useState(0);
   const [accessToken, setAccessToken] = useState('');
   const [saveLocation, setSaveLocation] = useState('');
+  const [dataRoot, setDataRoot] = useState('');
   const [defaultExportFolder, setDefaultExportFolder] = useState('');
   const [uiTheme, setUiTheme] = useState<UiThemeConfig>({});
   const [uiThemePresets, setUiThemePresets] = useState<
@@ -2807,6 +2815,9 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   useEffect(() => {
     (async () => {
       const config = await backend.getConfig();
+      const actualDataRoot = await backend
+        .getDataRoot()
+        .catch(() => config.saveLocation ?? '');
       setWhiteMode(config.whiteMode ?? false);
       setImageEditor(config.imageEditor ?? 'photoshop');
       setUseGPU(config.useCUDA ?? false);
@@ -2825,6 +2836,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setTrueDark(config.trueDark ?? false);
       setExportConcurrency(config.exportConcurrency ?? (isMobile ? 2 : 4));
       setSaveLocation(config.saveLocation ?? '');
+      setDataRoot(actualDataRoot);
       setDefaultExportFolder(config.defaultExportFolder ?? '');
       setUiTheme(config.uiTheme ?? {});
       setUiThemePresets(config.uiThemePresets ?? []);
@@ -2947,6 +2959,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     config.saveLocation = folder;
     await backend.setConfig(config);
     setSaveLocation(folder);
+    setDataRoot(folder);
     appState.pushDialog({ type: 'yes-only', text: '저장 위치 지정 완료. 프로그램을 껐다 켜주세요' });
   };
 
@@ -3095,7 +3108,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'login':
         return <LoginTab {...{ accessToken, setAccessToken, loggedIn, loginWithToken, roundTag, multiTokenAutoRotate, setMultiTokenAutoRotate, multiTokenRotateWarning, setMultiTokenRotateWarning, multiTokenRotateTarget, setMultiTokenRotateTarget, multiTokenBalanceRotate, setMultiTokenBalanceRotate, multiTokenRotateBalance, setMultiTokenRotateBalance }} />;
       case 'storage':
-        return <StorageImageTab {...{ saveLocation, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
+        return <StorageImageTab {...{ saveLocation, dataRoot, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 'system':
         return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality }} />;
       case 'personal':

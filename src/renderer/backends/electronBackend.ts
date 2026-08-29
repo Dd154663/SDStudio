@@ -215,8 +215,17 @@ export class ElectornBackend extends Backend {
 
   async getBootWarnings(): Promise<{
     saveLocationFallback: { attempted: string; code: string } | null;
+    configLoadFailure: { path: string; code: string } | null;
   } | null> {
     return await invoke('get-boot-warnings');
+  }
+
+  async getDataRoot(): Promise<string> {
+    return await invoke('get-data-root');
+  }
+
+  async backupFailedConfig(): Promise<string> {
+    return await invoke('backup-failed-config');
   }
 
   async checkWritable(

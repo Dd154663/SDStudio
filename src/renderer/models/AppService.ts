@@ -346,6 +346,12 @@ export class AppState {
     code: string;
   } | null = null;
   @observable accessor saveLocationFallbackAcked: boolean = false;
+  // config.json 이 존재하지만 읽기·파싱에 실패한 상태. 저장 경로 자체를 신뢰할 수
+  // 없으므로 프로젝트 스캔과 저장을 시작하지 않고 재시작 안내 게이트를 표시한다.
+  @observable accessor configLoadFailure: {
+    path: string;
+    code: string;
+  } | null = null;
 
   // 자체 실행/중지 컨트롤을 가진 오버레이(인페인트 편집기 등) 개수.
   // PC 는 하단바가 오버레이에 덮이지 않아 실행 버튼이 2개 노출되므로,

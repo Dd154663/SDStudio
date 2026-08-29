@@ -672,9 +672,18 @@ export class AndroidBackend extends Backend {
 
   async getBootWarnings(): Promise<{
     saveLocationFallback: { attempted: string; code: string } | null;
+    configLoadFailure: { path: string; code: string } | null;
   } | null> {
     // 모바일은 saveLocation(사용자 지정 저장 경로)을 쓰지 않는다 — 부팅 경고 미해당.
     return null;
+  }
+
+  async getDataRoot(): Promise<string> {
+    return 'Documents/.SDStudio';
+  }
+
+  async backupFailedConfig(): Promise<string> {
+    throw new Error('모바일에서는 PC 설정 파일 복구를 사용하지 않습니다.');
   }
 
   async checkWritable(
