@@ -1,12 +1,29 @@
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
-import { ImportableMetadata, VibeItem, ReferenceItem } from '../models/types';
+import {
+  GenericScene,
+  ImportableMetadata,
+  PromptPiece,
+  VibeItem,
+  ReferenceItem,
+} from '../models/types';
 import { base64ToDataUri } from './BrushTool';
 import { PromptHighlighter } from './SceneEditor';
 import { extractPromptDataFromBase64 } from '../models/util';
 import { appState } from '../models/AppService';
-import { imageService, workFlowService, globalPresetService } from '../models';
-import { Sampling } from '../backends/imageGen';
+import {
+  backend,
+  imageService,
+  sessionService,
+  workFlowService,
+  globalPresetService,
+} from '../models';
+import {
+  GenerationUcPreset,
+  ModelVersion,
+  Resolution,
+  Sampling,
+} from '../backends/imageGen';
 import { runInAction } from 'mobx';
 import { FaTimes } from 'react-icons/fa';
 import { v4 } from 'uuid';
@@ -21,15 +38,17 @@ interface ImportOptions {
   settings: boolean;
   seed: boolean;
   resolution: boolean;
+  modelSettings: boolean;
 }
 
 interface ExternalImageViewProps {
   image: string;
   onClose: () => void;
+  scene?: GenericScene;
 }
 
 export const ExternalImageView = observer(
-  ({ image, onClose }: ExternalImageViewProps) => {
+  ({ image, onClose, scene }: ExternalImageViewProps) => {
     const [job, setJob] = useState<ImportableMetadata | undefined>(undefined);
     const [target, setTarget] = useState<string>('new-normal');
     const [importing, setImporting] = useState(false);
@@ -43,6 +62,7 @@ export const ExternalImageView = observer(
       settings: true,
       seed: true,
       resolution: true,
+      modelSettings: true,
     });
 
     useEffect(() => {
@@ -73,9 +93,27 @@ export const ExternalImageView = observer(
     const hasRefImages = (job?.referenceImageData?.length ?? 0) > 0;
     const hasCharRefs = (job?.characterReferences?.length ?? 0) > 0;
     const hasResolution = !!job?.resolution;
+    const exactSource = job?.sdstudioMetadata?.promptSource;
+    const currentWorkflowType = appState.curSession?.selectedWorkflow?.workflowType;
+    const canApplyExact = !!(
+      exactSource &&
+      target === 'current' &&
+      scene?.type === 'scene' &&
+      exactSource.workflowType === currentWorkflowType
+    );
 
     const applyImport = async () => {
       if (!job || !appState.curSession) return;
+      if (canApplyExact && options.prompt) {
+        const choice = await appState.pushDialogAsync({
+          type: 'select',
+          text:
+            '현재 상위·추가·씬·하위 프롬프트를 이미지 생성 당시 값으로 덮어씁니다. ' +
+            '현재 씬의 조합은 생성에 사용된 한 조합으로 교체됩니다.',
+          items: [{ text: '정확 복원 실행', value: 'apply' }],
+        });
+        if (choice !== 'apply') return;
+      }
       setImporting(true);
 
       try {
@@ -103,10 +141,40 @@ export const ExternalImageView = observer(
           if (!preset) { setImporting(false); return; }
         }
 
+        const ensureShared = () => {
+          let shared = session.presetShareds.get(presetType);
+          if (!shared) {
+            shared = workFlowService.buildShared(presetType);
+            session.presetShareds.set(presetType, shared);
+          }
+          return shared;
+        };
+
         runInAction(() => {
           if (options.prompt) {
-            preset.frontPrompt = job.prompt ?? '';
-            if (isNew || isGlobal) preset.backPrompt = '';
+            if (canApplyExact && exactSource && scene?.type === 'scene') {
+              preset.frontPrompt = exactSource.frontPrompt;
+              preset.backPrompt = exactSource.backPrompt;
+              session.extraPrompt = exactSource.extraPrompt;
+              scene.slots = exactSource.middlePrompt.trim()
+                ? [[
+                    PromptPiece.fromJSON({
+                      id: v4(),
+                      prompt: exactSource.middlePrompt,
+                      characterPrompts: [],
+                      enabled: true,
+                    }),
+                  ]]
+                : [];
+              if (presetType === 'SDImageGenEasy') {
+                const shared = ensureShared();
+                shared.characterPrompt = exactSource.characterPrompt ?? '';
+                shared.backgroundPrompt = exactSource.backgroundPrompt ?? '';
+              }
+            } else {
+              preset.frontPrompt = job.prompt ?? '';
+              if (isNew || isGlobal) preset.backPrompt = '';
+            }
           }
           if (options.uc) {
             preset.uc = job.uc ?? '';
@@ -137,6 +205,25 @@ export const ExternalImageView = observer(
           }
         });
 
+        if (
+          target === 'current' &&
+          options.modelSettings &&
+          job.sdstudioMetadata?.generationSettings
+        ) {
+          const saved = job.sdstudioMetadata.generationSettings;
+          const config = await backend.getConfig();
+          await backend.setConfig({
+            ...config,
+            modelVersion: saved.modelVersion as ModelVersion,
+            furryMode: saved.furryMode,
+            disableQuality: saved.disableQuality,
+            qualityPreset: saved.qualityPreset,
+            ucPreset: saved.ucPreset as GenerationUcPreset,
+            transparentBackground: saved.transparentBackground ?? false,
+          });
+          sessionService.configChanged();
+        }
+
         // 글로벌 프리셋 대상: shared state(시드/바이브/캐릭터 레퍼런스)는 저장 안 함
         // (글로벌 프리셋은 그림체 설정만 저장. 시드/바이브/레퍼런스는 세션 단위 데이터)
         if (isGlobal) {
@@ -161,22 +248,14 @@ export const ExternalImageView = observer(
 
         // 시드는 presetShared에 저장
         if (options.seed && job.seed != null) {
-          let shared = session.presetShareds.get(presetType);
-          if (!shared) {
-            shared = workFlowService.buildShared(presetType);
-            session.presetShareds.set(presetType, shared);
-          }
+          const shared = ensureShared();
           runInAction(() => {
             shared.seed = job.seed;
           });
         }
 
         if (options.vibes && hasVibes) {
-          let shared = session.presetShareds.get(presetType);
-          if (!shared) {
-            shared = workFlowService.buildShared(presetType);
-            session.presetShareds.set(presetType, shared);
-          }
+          const shared = ensureShared();
           const newVibes: VibeItem[] = [];
           for (let i = 0; i < job.vibes.length; i++) {
             const vibe = job.vibes[i];
@@ -206,11 +285,7 @@ export const ExternalImageView = observer(
         }
 
         if (hasCharRefs) {
-          let shared = session.presetShareds.get(presetType);
-          if (!shared) {
-            shared = workFlowService.buildShared(presetType);
-            session.presetShareds.set(presetType, shared);
-          }
+          const shared = ensureShared();
           const newRefs: ReferenceItem[] = [];
           for (let i = 0; i < job.characterReferences.length; i++) {
             const ref = job.characterReferences[i];
@@ -229,6 +304,14 @@ export const ExternalImageView = observer(
           }
           runInAction(() => {
             shared.characterReferences = newRefs;
+          });
+        }
+
+        if (options.resolution && job.resolution && scene) {
+          runInAction(() => {
+            scene.resolution = Resolution.Custom;
+            scene.resolutionWidth = job.resolution!.width;
+            scene.resolutionHeight = job.resolution!.height;
           });
         }
 
@@ -366,6 +449,18 @@ export const ExternalImageView = observer(
                       </div>
                     </div>
                   )}
+                  <div className="mb-4 rounded-lg border line-color p-3 bg-[var(--c-surface)] text-sm">
+                    <div className="font-semibold text-default">
+                      {job.sdstudioMetadata
+                        ? 'SDStudio 생성 구획 메타데이터 있음'
+                        : '통합 프롬프트로 복원'}
+                    </div>
+                    <div className="text-xs text-muted mt-1">
+                      {job.sdstudioMetadata
+                        ? '현재 설정에 적용할 때 같은 워크플로우와 씬이면 상위·추가·씬·하위 구획을 정확히 복원합니다.'
+                        : '이전 SDStudio 또는 NAI 공식 이미지로, 긍정 프롬프트를 상위 프롬프트에 통합해 적용합니다.'}
+                    </div>
+                  </div>
                   {/* 적용 대상 */}
                   <div className="mb-4">
                     <label className="text-xs font-medium text-muted mb-1 block">적용할 프리셋</label>
@@ -564,6 +659,19 @@ export const ExternalImageView = observer(
                     onChange={(v) => setOpt('seed', v)}
                     disabled={job.seed == null}
                   />
+
+                  {job.sdstudioMetadata?.generationSettings && (
+                    <CheckboxRow
+                      label="모델·품질 전역 설정"
+                      checked={options.modelSettings}
+                      onChange={(v) => setOpt('modelSettings', v)}
+                      disabled={target !== 'current'}
+                    >
+                      <div className="text-xs text-muted">
+                        현재 설정에 적용할 때 모델, 품질, UC 프리셋과 투명 배경 설정을 생성 당시 값으로 맞춥니다.
+                      </div>
+                    </CheckboxRow>
+                  )}
 
                   {/* 해상도 */}
                   <CheckboxRow

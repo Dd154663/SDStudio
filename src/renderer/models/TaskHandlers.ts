@@ -364,6 +364,30 @@ class GenerateImageTaskHandler implements TaskHandler {
       outputFilePath: outputFilePath,
       seed: job.seed,
       generationSettings: task.params.generationSnapshot,
+      ...(job.sdstudioPromptSource
+        ? {
+            sdstudioMetadata: {
+              schemaVersion: 1 as const,
+              promptSource: job.sdstudioPromptSource,
+              ...(task.params.generationSnapshot
+                ? {
+                    generationSettings: {
+                      schemaVersion: 1 as const,
+                      modelVersion: task.params.generationSnapshot.modelVersion,
+                      furryMode: task.params.generationSnapshot.furryMode,
+                      disableQuality:
+                        task.params.generationSnapshot.disableQuality,
+                      qualityPreset:
+                        task.params.generationSnapshot.qualityPreset,
+                      ucPreset: task.params.generationSnapshot.ucPreset,
+                      transparentBackground:
+                        task.params.generationSnapshot.transparentBackground,
+                    },
+                  }
+                : {}),
+            },
+          }
+        : {}),
     };
     if (job.characterPrompts?.length) {
       for (const character of job.characterPrompts) {

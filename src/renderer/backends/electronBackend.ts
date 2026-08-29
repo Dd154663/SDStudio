@@ -11,6 +11,7 @@ import { assertDeletableDirPath } from './dataPathGuard';
 import { NovelAiFetcher, NovelAiImageGenService } from './genVendors/nai';
 import { createNaiApiError } from './genVendors/naiErrors';
 import { ImageContextAlt, SceneContextAlt } from '../models/types';
+import { embedSDStudioMetadataInPngBase64 } from '../../shared/sdstudioImageMetadata';
 
 const invoke = window.electron?.ipcRenderer?.invoke;
 
@@ -111,7 +112,14 @@ export class ElectornBackend extends Backend {
 
   async generateImage(arg: ImageGenInput): Promise<void> {
     const token = await this.readToken();
-    const res = await this.imageGenService.generateImage(token, arg);
+    let res = await this.imageGenService.generateImage(token, arg);
+    if (arg.sdstudioMetadata) {
+      try {
+        res = embedSDStudioMetadataInPngBase64(res, arg.sdstudioMetadata);
+      } catch (e) {
+        console.warn('SDStudio 생성 메타데이터 삽입 실패(원본 저장):', e);
+      }
+    }
     await this.writeDataFile(arg.outputFilePath, res);
   }
 

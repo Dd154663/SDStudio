@@ -28,6 +28,7 @@ import FetchService from './fecthService';
 import JSZip from 'jszip';
 import { BackgroundMode } from '@anuradev/capacitor-background-mode';
 import { App as CapacitorApp } from '@capacitor/app';
+import { embedSDStudioMetadataInPngBase64 } from '../../shared/sdstudioImageMetadata';
 import { TagDB } from './tagDB';
 import { isV5ModelVersion } from './genVendors/naiModelCapabilities';
 // @ts-ignore
@@ -342,7 +343,14 @@ export class AndroidBackend extends Backend {
 
   async generateImage(arg: ImageGenInput): Promise<void> {
     const token = await this.readFile('TOKEN.txt');
-    const res = await this.imageGenService.generateImage(token, arg);
+    let res = await this.imageGenService.generateImage(token, arg);
+    if (arg.sdstudioMetadata) {
+      try {
+        res = embedSDStudioMetadataInPngBase64(res, arg.sdstudioMetadata);
+      } catch (e) {
+        console.warn('SDStudio 생성 메타데이터 삽입 실패(원본 저장):', e);
+      }
+    }
     await this.writeDataFile(arg.outputFilePath, res);
   }
 

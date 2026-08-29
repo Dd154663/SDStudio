@@ -15,6 +15,10 @@ import {
 import { action, observable, makeObservable } from 'mobx';
 import { Serealizable } from './ResourceSyncService';
 import { workFlowService } from '.';
+import type {
+  SDStudioImageMetadataV1,
+  SDStudioPromptSourceV1,
+} from '../../shared/sdstudioImageMetadata';
 import { WFWorkFlow, WorkFlowDef } from './workflows/WorkFlow';
 
 export type PARR = string[];
@@ -74,6 +78,7 @@ export interface SDAbstractJob<T> extends AbstractJob {
   vibes: IVibeItem[];
   overrideResolution?: Resolution | ImageSize;
   seed?: number;
+  sdstudioPromptSource?: SDStudioPromptSourceV1;
 }
 
 export interface ImportableMetadata extends SDAbstractJob<string> {
@@ -93,6 +98,7 @@ export interface ImportableMetadata extends SDAbstractJob<string> {
     straightAlpha?: boolean;
     noiseSchedule?: string;
   };
+  sdstudioMetadata?: SDStudioImageMetadataV1;
 }
 
 export interface SDJob extends SDAbstractJob<PromptNode> {
@@ -740,6 +746,8 @@ export class Session implements Serealizable {
 export interface PromptGroupNode {
   type: 'group';
   children: PromptNode[];
+  /** 생성 중에만 전달되며 프로젝트 JSON에는 저장되지 않는 프롬프트 구획 정보. */
+  sdstudioPromptSource?: SDStudioPromptSourceV1;
 }
 
 export interface PromptTextNode {

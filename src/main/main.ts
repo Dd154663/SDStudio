@@ -53,6 +53,11 @@ import * as electronDL from 'electron-dl';
 import { createGzip } from 'zlib';
 import { ImageOptimizeMethod } from '../renderer/backend';
 import { ModelVersion } from '../renderer/backends/imageGen';
+import {
+  embedSDStudioMetadataInWebpBytes,
+  extractSDStudioMetadataFromBase64,
+  SDStudioImageMetadataV1,
+} from '../shared/sdstudioImageMetadata';
 import { isV5ModelVersion } from '../renderer/backends/genVendors/naiModelCapabilities';
 
 interface DataBaseConns {
@@ -667,6 +672,7 @@ async function encodeImageFile(
 ): Promise<void> {
   const buf = await fs.readFile(srcAbs);
   let comment: string | null = null;
+  let sdstudioMetadata: SDStudioImageMetadataV1 | undefined;
   if (opts.carryMetadata) {
     try {
       const tags = ExifReader.load(buf);
@@ -675,8 +681,19 @@ async function encodeImageFile(
     } catch (e) {
       // 메타데이터 없음 — EXIF 없이 진행
     }
+    sdstudioMetadata = extractSDStudioMetadataFromBase64(buf.toString('base64'));
   }
   await fs.mkdir(path.dirname(destAbs), { recursive: true });
+
+  const carrySDStudioMetadata = async () => {
+    if (!sdstudioMetadata || opts.format !== 'webp') return;
+    const webp = await fs.readFile(destAbs);
+    const withMetadata = embedSDStudioMetadataInWebpBytes(
+      webp,
+      sdstudioMetadata,
+    );
+    await fs.writeFile(destAbs, withMetadata);
+  };
 
   // ── NAI stealth 보존 경로 (webp 전용) ──
   // 소스 알파에서 stealth 비트스트림을 추출 → 리사이즈된 출력 알파에 재삽입 →
@@ -728,6 +745,7 @@ async function encodeImageFile(
           enc = enc.withMetadata({ exif: { IFD0: { ImageDescription: comment } } });
         }
         await enc.toFile(destAbs);
+        await carrySDStudioMetadata();
         return;
       }
     }
@@ -754,6 +772,7 @@ async function encodeImageFile(
     });
   }
   await pipeline.toFile(destAbs);
+  await carrySDStudioMetadata();
 }
 
 // 생성 이미지 PNG → WebP 변환 (NAI 프롬프트 메타데이터를 EXIF ImageDescription 으로 이월).

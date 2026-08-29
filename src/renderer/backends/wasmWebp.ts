@@ -24,6 +24,10 @@ import encode, { init } from '@jsquash/webp/encode';
 // 번들된 wasm 에셋 URL (webpack asset/resource)
 import wasmUrl from '@jsquash/webp/codec/enc/webp_enc.wasm';
 import wasmSimdUrl from '@jsquash/webp/codec/enc/webp_enc_simd.wasm';
+import {
+  embedSDStudioMetadataInWebpBytes,
+  extractSDStudioMetadataFromPngBase64,
+} from '../../shared/sdstudioImageMetadata';
 
 let initPromise: Promise<void> | undefined;
 
@@ -68,6 +72,12 @@ export async function encodePngBase64ToWebp(
   if (!ctx) throw new Error('canvas 2d context 생성 실패');
   ctx.drawImage(img, 0, 0);
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const out = await encode(imageData, { quality, alpha_quality: 100 });
-  return Buffer.from(out).toString('base64');
+  const out = new Uint8Array(
+    await encode(imageData, { quality, alpha_quality: 100 }),
+  );
+  const metadata = extractSDStudioMetadataFromPngBase64(pngBase64);
+  const finalOut = metadata
+    ? embedSDStudioMetadataInWebpBytes(out, metadata)
+    : out;
+  return Buffer.from(finalOut).toString('base64');
 }

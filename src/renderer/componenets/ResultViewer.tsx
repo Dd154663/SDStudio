@@ -1371,6 +1371,15 @@ const ResultDetailView = observer(
               <FaCopy className="mr-1" />
               이미지 복사
             </button>
+            <button
+              className="round-button back-sky"
+              onClick={() => {
+                if (!image) return;
+                appState.openExternalImage(dataUriToBase64(image), scene);
+              }}
+            >
+              생성 설정 불러오기
+            </button>
             {buttons.map((button, index) => (
               <button
                 key={index}

@@ -234,6 +234,8 @@ const SDImageGenHandler = async (
     backend: preset.backend,
     vibes: (shared.vibes || []).map((v: any) => (v.toJSON ? v.toJSON() : { ...v })),
     seed: resolveSceneSeed(sceneObj, shared.seed),
+    sdstudioPromptSource:
+      prompt.type === 'group' ? prompt.sdstudioPromptSource : undefined,
   };
   
   // 씬 전용 캐릭터 UC 추가

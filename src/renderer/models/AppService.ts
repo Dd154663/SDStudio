@@ -127,6 +127,7 @@ export class AppState {
   // 이미지 복구 진행 중 재진입 가드(중복 터치로 스캔이 동시에 두 번 도는 것 차단)
   private recovering = false;
   @observable accessor externalImage: string | undefined = undefined;
+  @observable.ref accessor externalImageScene: GenericScene | undefined = undefined;
   // 프로젝트 좌측 드로어 / 그리드 탐색기 모달 열림 상태 (앱 전역)
   @observable accessor projectDrawerOpen: boolean = false;
   @observable accessor projectBrowserOpen: boolean = false;
@@ -1535,8 +1536,14 @@ export class AppState {
     this.pushDialog({ type: 'yes-only', text: resultText });
   }
 
+  openExternalImage(image: string, scene?: GenericScene) {
+    this.externalImage = image;
+    this.externalImageScene = scene;
+  }
+
   closeExternalImage() {
     this.externalImage = undefined;
+    this.externalImageScene = undefined;
   }
 
   @action

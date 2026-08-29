@@ -559,6 +559,22 @@ export const createSDPrompts = async (
       const newNode: PromptNode = {
         type: 'group',
         children: [],
+        sdstudioPromptSource: {
+          schemaVersion: 1,
+          workflowType: shared.type ?? preset.type ?? 'SDImageGen',
+          frontPrompt: preset.frontPrompt ?? '',
+          extraPrompt: extraPromptOverride ?? session.extraPrompt ?? '',
+          middlePrompt: promptComb
+            .filter((part) => typeof part === 'string' && part.trim() !== '')
+            .join(', '),
+          backPrompt: preset.backPrompt ?? '',
+          ...(shared.type === 'SDImageGenEasy'
+            ? {
+                characterPrompt: shared.characterPrompt ?? '',
+                backgroundPrompt: shared.backgroundPrompt ?? '',
+              }
+            : {}),
+        },
       };
       for (const word of cur) {
         newNode.children.push(promptService.parseWord(word, session, scene));

@@ -1,4 +1,5 @@
 import { CharacterPosition } from '../models/types';
+import type { SDStudioImageMetadataV1 } from '../../shared/sdstudioImageMetadata';
 
 export enum Model {
   Anime = 'anime',
@@ -167,6 +168,8 @@ export interface ImageGenInput {
   characterPositions?: CharacterPosition[];
   characterReferences?: CharacterReference[];
   generationSettings?: GenerationSettingsSnapshot;
+  /** SDStudio에서 앞으로 생성한 이미지에만 삽입하는 선택적 복원 메타데이터. */
+  sdstudioMetadata?: SDStudioImageMetadataV1;
 }
 
 export type AugmentMethod =

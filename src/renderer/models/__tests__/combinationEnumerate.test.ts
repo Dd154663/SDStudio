@@ -21,6 +21,7 @@ import {
   enumerateCombinations,
   combinationMiddlePrompt,
   combinationCount,
+  createSDPrompts,
 } from '../PromptService';
 import { PromptPiece, Scene } from '../types';
 import {
@@ -162,6 +163,42 @@ describe('combinationMiddlePrompt — 빈 조각 제외 후 조인', () => {
     );
     expect(combos.length).toBe(1);
     expect(combinationMiddlePrompt(combos[0])).toBe('a, c');
+  });
+});
+
+describe('createSDPrompts — 생성 구획 메타데이터', () => {
+  it('각 조합에 상위·추가·중간·하위 원본 구획을 붙인다', async () => {
+    const indexMock = jest.requireMock('../index');
+    indexMock.promptService.parseWord = (word: string) => ({
+      type: 'text',
+      text: word,
+    });
+    const s = scene([[piece('middle-a'), piece('middle-b')]]);
+    const session = { extraPrompt: 'extra' } as any;
+    const preset = {
+      type: 'SDImageGen',
+      frontPrompt: 'front',
+      backPrompt: 'back',
+    };
+    const shared = { type: 'SDImageGen' };
+
+    const prompts = await createSDPrompts(session, preset, shared, s);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0].type).toBe('group');
+    expect(
+      prompts[0].type === 'group' && prompts[0].sdstudioPromptSource,
+    ).toEqual({
+      schemaVersion: 1,
+      workflowType: 'SDImageGen',
+      frontPrompt: 'front',
+      extraPrompt: 'extra',
+      middlePrompt: 'middle-a',
+      backPrompt: 'back',
+    });
+    expect(
+      prompts[1].type === 'group' &&
+        prompts[1].sdstudioPromptSource?.middlePrompt,
+    ).toBe('middle-b');
   });
 });
 

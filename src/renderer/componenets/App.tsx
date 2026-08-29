@@ -914,6 +914,7 @@ export const App = observer(() => {
                   >
                     <ExternalImageView
                       image={appState.externalImage}
+                      scene={appState.externalImageScene}
                       onClose={() => {
                         appState.closeExternalImage();
                       }}

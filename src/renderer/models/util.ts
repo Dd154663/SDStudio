@@ -1,5 +1,8 @@
 import ExifReader from 'exifreader';
 import { CharacterPrompt, ImportableMetadata, SDAbstractJob, SDJob } from './types';
+import {
+  extractSDStudioMetadataFromBase64,
+} from '../../shared/sdstudioImageMetadata';
 
 export function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -363,6 +366,13 @@ function parseCommentToJob(
 export async function extractPromptDataFromBase64(
   base64: string,
 ): Promise<ImportableMetadata | undefined> {
+  const sdstudioMetadata = extractSDStudioMetadataFromBase64(base64);
+  const attachSDStudioMetadata = (
+    result: ImportableMetadata | undefined,
+  ): ImportableMetadata | undefined => {
+    if (result && sdstudioMetadata) result.sdstudioMetadata = sdstudioMetadata;
+    return result;
+  };
   // 1차: EXIF 에서 추출 시도.
   //  - PNG: tEXt 'Comment' 에 NAI JSON
   //  - WebP/AVIF: 변환 시 EXIF 'ImageDescription' 으로 이월됨 (sharp withMetadata)
@@ -384,7 +394,7 @@ export async function extractPromptDataFromBase64(
           ? sourceRaw
           : exif['Source']?.description;
       const result = parseCommentToJob(data, source);
-      if (result) return result;
+      if (result) return attachSDStudioMetadata(result);
     }
   } catch (e) {
     // EXIF 추출 실패 — 스테가노그래피로 폴백
@@ -400,7 +410,7 @@ export async function extractPromptDataFromBase64(
           ? metadata['Source']
           : undefined;
       const result = parseCommentToJob(commentData, source);
-      if (result) return result;
+      if (result) return attachSDStudioMetadata(result);
     }
   } catch (e) {
     // 스테가노그래피 추출도 실패
