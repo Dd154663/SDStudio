@@ -26,6 +26,7 @@ import { getEmptyImage } from 'react-dnd-html5-backend';
 import { isValidPieceLibrary, Piece, PieceLibrary } from '../models/types';
 import { appState } from '../models/AppService';
 import { migratePieceLibrary } from '../models/legacy';
+import { stringifyExportJson } from '../models/jsonExport';
 import { observer } from 'mobx-react-lite';
 import HelpIcon from './HelpIcon';
 
@@ -445,7 +446,7 @@ const PieceEditor = observer(() => {
       '_' +
       Date.now().toString() +
       '.json';
-    await backend.writeFile(outPath, JSON.stringify(curPieceLibrary.toJSON()));
+    await backend.writeFile(outPath, stringifyExportJson(curPieceLibrary.toJSON()));
     await backend.publishExport(outPath);
   };
 
@@ -455,7 +456,7 @@ const PieceEditor = observer(() => {
       allData[key] = value.toJSON();
     }
     const outPath = 'exports/global_pieces_backup_' + Date.now().toString() + '.json';
-    await backend.writeFile(outPath, JSON.stringify(allData));
+    await backend.writeFile(outPath, stringifyExportJson(allData));
     await backend.publishExport(outPath);
     appState.pushMessage('전역 조각 전체 백업 완료');
   };

@@ -8,6 +8,7 @@ import {
 } from '.';
 import { getAppState } from './appStateRef';
 import { Session, genericSceneFromJSON } from './types';
+import { stringifyExportJson } from './jsonExport';
 
 const SIDECAR_PATH = 'templates.json';
 
@@ -635,7 +636,7 @@ export class TemplateService {
       return null;
     }
     const json = await sessionService.exportSessionShallow(tpl);
-    return JSON.stringify({
+    return stringifyExportJson({
       version: 1,
       type: 'sdstudio-scene-template',
       name,

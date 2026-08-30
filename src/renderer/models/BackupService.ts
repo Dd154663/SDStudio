@@ -59,6 +59,7 @@ import {
 } from './workflows/OneTimeFlows';
 import { appState } from './AppService';
 import type { ExportPreset } from './AppService';
+import { stringifyExportJson } from './jsonExport';
 
 // 전체 백업에 담는 전역 설정 파일. (백업엔 전부 담되, 설정 병합 복원 시
 // trash.json / folderOrder.json 은 의도적으로 제외 — 아래 mergeSettingsFromDir 참조)
@@ -132,7 +133,7 @@ export class BackupService {
               appState.curSession,
             );
             const path = 'exports/' + appState.curSession.name + '.json';
-            await backend.writeFile(path, JSON.stringify(proj));
+            await backend.writeFile(path, stringifyExportJson(proj));
             await backend.publishExport(path);
           }
         } else if (value === 'saveDeep') {

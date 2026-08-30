@@ -37,6 +37,7 @@ import { appState } from '../models/AppService';
 import { FaPlay, FaPause, FaStop, FaSync, FaDownload, FaUpload, FaGlobe, FaUsers, FaCloudUploadAlt, FaCloudDownloadAlt } from 'react-icons/fa';
 import type { IGlobalCharacterPresetEntry } from '../models/GlobalCharacterPresetService';
 import { saveJsonFile } from '../models/exportUtil';
+import { stringifyExportJson } from '../models/jsonExport';
 import { FileUploadBase64 } from './UtilComponents';
 import PromptEditTextArea from './PromptEditTextArea';
 import ModalOverlay from './ModalOverlay';
@@ -108,7 +109,7 @@ async function exportCharacterPresets(session: any) {
   try {
     await saveJsonFile(
       session.name + '_character_presets.json',
-      JSON.stringify(exportData),
+      stringifyExportJson(exportData),
     );
   } catch (e: any) {
     appState.pushMessage('내보내기 실패: ' + e.message);
@@ -130,7 +131,7 @@ async function exportGlobalCharacterPresets() {
   }
   try {
     const data = await globalCharacterPresetService.exportToFileData();
-    await saveJsonFile('global_character_presets.json', JSON.stringify(data));
+    await saveJsonFile('global_character_presets.json', stringifyExportJson(data));
   } catch (e: any) {
     appState.pushMessage('내보내기 실패: ' + e.message);
     return;
