@@ -32,8 +32,12 @@ class SDSAddOn : public Napi::Addon<SDSAddOn> {
     Napi::Env env = info.Env();
     Napi::Number id = info[0].As<Napi::Number>();
     Napi::String input = info[1].As<Napi::String>();
+    int category =
+        info.Length() > 2 && info[2].IsNumber()
+            ? info[2].As<Napi::Number>().Int32Value()
+            : -1;
     Database& db = dbRepo.get(id.Int32Value());
-    std::vector<Word> result = db.search(input.Utf8Value());
+    std::vector<Word> result = db.search(input.Utf8Value(), category);
     Napi::Array output = Napi::Array::New(env, result.size());
     for (size_t i = 0; i < result.size(); i++) {
       Napi::Object obj = Napi::Object::New(env);
@@ -67,4 +71,3 @@ class SDSAddOn : public Napi::Addon<SDSAddOn> {
 };
 
 NODE_API_ADDON(SDSAddOn)
-

@@ -88,7 +88,7 @@ export abstract class Backend {
   // 폴더가 실제 쓰기 가능한지 사전 검증(저장 경로 지정 전). 권한 없는 드라이브를
   // 저장 경로로 지정해 다음 부팅이 벽돌화되는 것을 예방. 데스크톱 전용(모바일은 항상 ok).
   abstract checkWritable(absolutePath: string): Promise<{ ok: boolean; code?: string }>;
-  abstract searchTags(word: string): Promise<any>;
+  abstract searchTags(word: string, category?: number): Promise<any>;
   abstract lookupTag(word: string): Promise<any>;
   abstract loadPiecesDB(pieces: string[]): Promise<void>;
   abstract searchPieces(word: string): Promise<any>;

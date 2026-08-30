@@ -234,8 +234,8 @@ export class ElectornBackend extends Backend {
     return await invoke('check-writable', absolutePath);
   }
 
-  async searchTags(word: string): Promise<any> {
-    return await invoke('search-tags', word);
+  async searchTags(word: string, category?: number): Promise<any> {
+    return await invoke('search-tags', word, category);
   }
 
   async lookupTag(word: string): Promise<any> {

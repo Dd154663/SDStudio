@@ -33,6 +33,10 @@ import { WordTag, calcGapMatch } from '../models/Tags';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
 import { adjustPromptWeightAtSelection } from '../models/promptTransforms';
+import {
+  autocompleteTagCategory,
+  trimAutocompleteWord,
+} from '../models/promptAutocomplete';
 
 interface PromptEditTextAreaProps {
   value: string;
@@ -957,16 +961,6 @@ function useLatest(value: any) {
   return ref;
 }
 
-function trimByBraces(str: string) {
-  // (숫자)::tag:: 형식의 가중치 접두어/접미어 제거
-  str = str.replace(/^-?\d+(?:\.\d+)?::/, '');
-  str = str.replace(/::$/, '');
-  // {[]} 괄호 및 artist: 접두어 제거
-  str = str.replace(/^[{\[]*(artist:)?/, '');
-  str = str.replace(/[}\]]*$/, '');
-  return str;
-}
-
 function replaceMiddleWord(str: string, newWord: string) {
   // 가중치 접두어/접미어 보존: (숫자)::내용::
   const wpMatch = str.match(/^(-?\d+(?:\.\d+)?::)/);
@@ -976,7 +970,7 @@ function replaceMiddleWord(str: string, newWord: string) {
     ? str.substring(weightPrefix.length, str.length - 2)
     : str.substring(weightPrefix.length);
   // 괄호 보존: {[내용]}
-  const leftMatch = inner.match(/^[{\[]*(artist:)?/);
+  const leftMatch = inner.match(/^[{\[]*\s*(?:artist\s*:\s*)?/i);
   const trimmedLeft = leftMatch ? leftMatch[0] : '';
   const rightMatch = inner.match(/[}\]]*$/);
   const trimmedRight = rightMatch ? rightMatch[0] : '';
@@ -1488,12 +1482,13 @@ const PromptEditTextArea = observer(
         if (word === '') {
           closeAutoComplete();
         } else {
-          const action = word.startsWith('<')
-            ? backend.searchPieces.bind(backend)
-            : backend.searchTags.bind(backend);
           cntRef.current++;
           const myId = cntRef.current;
-          action(trimByBraces(word)).then(async (tags: any[]) => {
+          const query = trimAutocompleteWord(word);
+          const searchPromise = word.startsWith('<')
+            ? backend.searchPieces(query)
+            : backend.searchTags(query, autocompleteTagCategory(word));
+          searchPromise.then(async (tags: any[]) => {
             if (myId !== cntRef.current) return;
             if (tags.length > 0) {
               const [x, y] = await editorRef.current!.getCaretCoords();

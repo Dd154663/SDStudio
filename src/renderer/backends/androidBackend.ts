@@ -721,9 +721,9 @@ export class AndroidBackend extends Backend {
     return data.data.toString();
   }
 
-  async searchTags(word: string): Promise<any> {
+  async searchTags(word: string, category?: number): Promise<any> {
     await this.tagDatabaseLoadPromise;
-    const args = { id: this.tagDBId!, query: word };
+    const args = { id: this.tagDBId!, query: word, category };
     return (await TagDB.search(args)).results;
   }
 

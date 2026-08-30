@@ -7,7 +7,7 @@ JNIEXPORT jint JNICALL Java_io_sunho_SDStudio_SDSNative_createDB
         (JNIEnv *, jobject, jstring);
 
 JNIEXPORT jobjectArray JNICALL Java_io_sunho_SDStudio_SDSNative_search
-        (JNIEnv *, jobject, jint, jstring);
+        (JNIEnv *, jobject, jint, jstring, jint);
 
 JNIEXPORT void JNICALL Java_io_sunho_SDStudio_SDSNative_loadDB
 (JNIEnv *, jobject, jint, jstring);

@@ -14,10 +14,10 @@ JNIEXPORT jint JNICALL Java_io_sunho_SDStudio_SDSNative_createDB(JNIEnv *env, jo
     return dbRepo.nextId - 1;
 }
 
-JNIEXPORT jobjectArray JNICALL Java_io_sunho_SDStudio_SDSNative_search(JNIEnv *env, jobject, jint id, jstring input) {
+JNIEXPORT jobjectArray JNICALL Java_io_sunho_SDStudio_SDSNative_search(JNIEnv *env, jobject, jint id, jstring input, jint category) {
     const char *searchTerm = env->GetStringUTFChars(input, 0);
     Database& db = dbRepo.get(id);
-    std::vector<Word> result = db.search(searchTerm);
+    std::vector<Word> result = db.search(searchTerm, category);
     env->ReleaseStringUTFChars(input, searchTerm);
 
     jclass wordClass = env->FindClass("io/sunho/SDStudio/Word");

@@ -437,11 +437,14 @@ public:
     return i == small.size();
   }
 
-  std::vector<Word> search(const std::string& word) {
+  std::vector<Word> search(const std::string& word, int category = -1) {
     const std::wstring normalized = utf8ToUtf16(normalize(word));
     std::vector<Word> result_;
     std::unordered_set<std::wstring_view> seen;
     for (const auto& item : words) {
+      if (category >= 0 && item.category != category) {
+        continue;
+      }
       if (isSubsequence(normalized, item.normalized)) {
         if (item.redirect == L"null")
           seen.insert(item.word);

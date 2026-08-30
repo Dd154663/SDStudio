@@ -30,11 +30,12 @@ class TagDB : Plugin() {
   fun search(call: PluginCall) {
     val id = call.getInt("id")
     val query = call.getString("query")
+    val category = call.getInt("category") ?: -1
     if (id == null || query == null) {
       call.reject("Must provide id and query")
       return
     }
-    val results = sdsNative.search(id, query)
+    val results = sdsNative.search(id, query, category)
     val resultArray = JSArray()
     for (result in results) {
       val obj = JSObject()

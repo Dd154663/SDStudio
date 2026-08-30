@@ -12,6 +12,7 @@ export interface TagDBPlugin {
   search(options: {
     id: number;
     query: string;
+    category?: number;
   }): Promise<{ results: WordTag[] }>;
   loadDB(options: { id: number; path: string }): Promise<void>;
   releaseDB(options: { id: number }): Promise<void>;

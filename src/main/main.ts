@@ -584,9 +584,9 @@ ipcMain.handle('unzip-files', async (event, zipPath, outPath) => {
   }
 });
 
-ipcMain.handle('search-tags', async (event, word) => {
+ipcMain.handle('search-tags', async (event, word, category) => {
   await tagDatabaseLoadPromise;
-  return native.search(databases.tagDBId, word);
+  return native.search(databases.tagDBId, word, category);
 });
 
 ipcMain.handle('load-pieces-db', async (event, pieces) => {
