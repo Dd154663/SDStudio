@@ -60,6 +60,7 @@ import {
 } from './workflows/OneTimeFlows';
 import { appState } from './AppService';
 import type { SceneSelectorItem } from './AppService';
+import { collectFavoriteUpscaleTargets, queueNaiUpscaleImages } from './workflows/NaiUpscaleFlow';
 
 export class BatchProcessService {
   openBatchProcessMenu(
@@ -271,6 +272,9 @@ export class BatchProcessService {
         });
       } else if (value === 'removeBg') {
         removeBg(selected);
+      } else if (value === 'upscaleFavorites') {
+        const session = appState.curSession;
+        if (session) await queueNaiUpscaleImages(session, collectFavoriteUpscaleTargets(session, selected), true);
       } else if (value === 'deleteScenes') {
         deleteScenes(selected);
       } else if (value === 'cancelReservations') {
@@ -384,6 +388,7 @@ export class BatchProcessService {
         { text: '📁 이미지 내보내기', value: 'export' },
         { text: '🔪 즐겨찾기 이미지 배경 제거', value: 'removeBg' },
         { text: '🔄 즐겨찾기 이미지 변형', value: 'transform' },
+        { text: '🔎 즐겨찾기 이미지 업스케일 ×2', value: 'upscaleFavorites' },
         { text: '🗑️ 이미지 삭제', value: 'removeImage' },
         { text: '❌ 즐겨찾기 전부 해제', value: 'removeAllFav' },
         { text: '⭐ 상위 n등 즐겨찾기 지정', value: 'setFav' },

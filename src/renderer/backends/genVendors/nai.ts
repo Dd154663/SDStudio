@@ -5,6 +5,7 @@ import {
   ImageGenInput,
   ImageGenService,
   ImageAugmentInput,
+  ImageUpscaleInput,
   ModelVersion,
   EncodeVibeImageInput,
   LoginValidity,
@@ -12,6 +13,7 @@ import {
 } from '../imageGen';
 
 import JSZip from 'jszip';
+import { estimateNaiUpscaleCost, NAI_UPSCALE_MODEL } from './naiUpscale';
 import { Buffer } from 'buffer';
 
 import libsodium_wrappers_sumo_1 from 'libsodium-wrappers-sumo';
@@ -527,6 +529,31 @@ export class NovelAiImageGenService implements ImageGenService {
     } catch (e) {
       return 'error'; // 네트워크 오류 → 상태 유지
     }
+  }
+
+  async upscaleImage(authorization: string, params: ImageUpscaleInput) {
+    const { width, height } = await getImageDimensions(params.image);
+    estimateNaiUpscaleCost(width, height); // UI를 거치지 않는 위임 요청도 전송 전 검증
+    const response = await this.fetcher.fetchArrayBuffer(
+      this.apiEndpoint2 + '/ai/upscale',
+      { image: params.image, model: NAI_UPSCALE_MODEL, declared_blur_sigma: 0 },
+      { Authorization: `Bearer ${authorization}`, 'Content-Type': 'application/json', Accept: 'application/zip' },
+    );
+    const zip = await JSZip.loadAsync(response);
+    // 공식 웹과 동일한 PNG 출력만 선택한다. 메타데이터/디렉터리를 이미지로 저장하지 않는다.
+    const entries = Object.values(zip.files).filter(
+      (entry) => !entry.dir && /^image[^/]*\.png$/.test(entry.name),
+    );
+    if (entries.length !== 1) {
+      throw new Error('업스케일 응답에 정상적인 이미지 1장이 없습니다. 자동 재시도하지 않습니다.');
+    }
+    const bytes = await entries[0].async('uint8array');
+    const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+    if (!signature.every((value, i) => bytes[i] === value)) {
+      throw new Error('업스케일 결과가 PNG 이미지가 아닙니다.');
+    }
+    // 서버 메타데이터와 알파 채널을 포함한 원본 바이트를 그대로 저장한다.
+    return Buffer.from(bytes).toString('base64');
   }
 
   async augmentImage(authorization: string, params: ImageAugmentInput) {

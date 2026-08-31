@@ -135,8 +135,13 @@ export interface AugmentJob extends AbstractJob {
 
 export interface UpscaleJob extends AbstractJob {
   type: 'upscale';
+  backend: ModelBackend;
   image: string;
+  /** 대량 예약은 base64 대신 경로를 보관하고 실행 직전에 원본을 읽는다. */
+  imagePath?: string;
   resolution: string;
+  width: number;
+  height: number;
 }
 
 export type Job = SDJob | SDInpaintJob | AugmentJob | UpscaleJob | SDI2IJob;

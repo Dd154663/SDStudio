@@ -4,14 +4,19 @@ const delegateComplete = jest.fn(async () => {});
 const getSession = jest.fn();
 const pushMessage = jest.fn();
 const captureGenerationSnapshot = jest.fn();
+const upscaleImage = jest.fn(async () => {});
+const onAddImage = jest.fn();
+const readDataFile = jest.fn(async () => 'data:image/webp;base64,file-image');
 
 jest.mock('..', () => ({
   backend: {
     getConfig,
     delegateTask,
     delegateComplete,
+    upscaleImage,
+    readDataFile,
   },
-  imageService: {},
+  imageService: { onAddImage },
   isMobile: false,
   localAIService: {},
   promptService: {},
@@ -43,7 +48,7 @@ jest.mock('../PromptService', () => ({
 }));
 
 jest.mock('../ImageService', () => ({
-  dataUriToBase64: jest.fn(),
+  dataUriToBase64: jest.fn((data: string) => data.split(',')[1]),
 }));
 
 jest.mock('../workflows/SDWorkFlow', () => ({
@@ -63,6 +68,7 @@ import {
 } from '../TaskQueueService';
 import * as taskQueueModule from '../TaskQueueService';
 import { queueScene } from '../sceneQueueActions';
+import { taskHandlers } from '../TaskHandlers';
 
 function makeHandler(): TaskHandler {
   return {
@@ -92,6 +98,53 @@ beforeEach(() => {
   getSession.mockReset();
   pushMessage.mockClear();
   captureGenerationSnapshot.mockReset();
+  upscaleImage.mockClear();
+  onAddImage.mockClear();
+  readDataFile.mockClear();
+});
+
+describe('독립 업스케일 큐 연결', () => {
+  function upscaleTask() {
+    return { params: { ...makeParam(), job: {
+      type: 'upscale', backend: { type: 'NAI' }, image: 'source',
+      width: 832, height: 1216, resolution: '832x1216',
+    } } } as any;
+  }
+
+  test('핸들러 등록·1회 실행·원본과 다른 결과를 씬에 추가', async () => {
+    const task = upscaleTask();
+    const handler = taskHandlers.find((h) => h.checkTask(task))!;
+    expect(handler).toBeDefined();
+    expect(handler.getNumTries(task)).toBe(1);
+    expect(handler.calculateCost(task)).toEqual([]); // 실행 버튼에서도 중복 확인 없음
+    await handler.handleTask(task, {} as any);
+    expect(upscaleImage).toHaveBeenCalledTimes(1);
+    const saved = (upscaleImage.mock.calls as any[][])[0][0];
+    expect(saved.image).toBe('source');
+    expect(saved.outputFilePath).toMatch(/^outs\/project\/scene\/[\da-f-]+\.png$/);
+    expect(onAddImage).toHaveBeenCalledWith(task.params.session, 'scene', saved.outputFilePath);
+  });
+
+  test('보조 창 요청은 호스트 세션을 변경하지 않고 완료 경로를 위임한다', async () => {
+    const task = upscaleTask();
+    task.params.delegation = { originWindowId: 7, taskId: 'upscale-task' };
+    const handler = taskHandlers.find((h) => h.checkTask(task))!;
+    await handler.handleTask(task, {} as any);
+    expect(onAddImage).not.toHaveBeenCalled();
+    expect(delegateComplete).toHaveBeenCalledWith(expect.objectContaining({
+      originWindowId: 7, taskId: 'upscale-task', status: 'ok', path: expect.any(String),
+    }));
+  });
+
+  test('대량 예약 원본은 실행 직전 경로에서 읽는다', async () => {
+    const task = upscaleTask();
+    task.params.job.image = '';
+    task.params.job.imagePath = 'source-path';
+    const handler = taskHandlers.find((h) => h.checkTask(task))!;
+    await handler.handleTask(task, {} as any);
+    expect(readDataFile).toHaveBeenCalledWith('source-path');
+    expect(upscaleImage).toHaveBeenCalledWith(expect.objectContaining({ image: 'file-image' }));
+  });
 });
 
 afterEach(() => {

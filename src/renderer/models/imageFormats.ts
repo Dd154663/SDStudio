@@ -5,7 +5,8 @@
 
 // 생성 이미지(outs/ · inpaints/)로 저장·표시·메타데이터 추출하는 포맷.
 // 정렬·필터·유실가드·export·휴지통·복구 등 "출력 이미지" 판정에 쓴다.
-export const OUTPUT_IMAGE_EXTS = ['png', 'webp'] as const;
+export const PNG_IMAGE_EXT = 'png';
+export const OUTPUT_IMAGE_EXTS = [PNG_IMAGE_EXT, 'webp'] as const;
 
 // 파일명이 앱이 다루는 생성 이미지인지 (확장자 기준, 소문자 .png/.webp).
 export function isOutputImageFile(filename: string): boolean {

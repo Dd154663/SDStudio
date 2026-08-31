@@ -2,6 +2,7 @@ import { Config } from '../../main/config';
 import {
   EncodeVibeImageInput,
   ImageAugmentInput,
+  ImageUpscaleInput,
   ImageGenInput,
   ImageGenService,
   LoginValidity,
@@ -132,6 +133,12 @@ export class ElectornBackend extends Backend {
   async getRemainCredits(): Promise<number> {
     const token = await this.readToken();
     return await this.imageGenService.getRemainCredits(token);
+  }
+
+  async upscaleImage(arg: ImageUpscaleInput): Promise<void> {
+    const token = await this.readToken();
+    const res = await this.imageGenService.upscaleImage(token, arg);
+    await this.writeDataFile(arg.outputFilePath, res);
   }
 
   async getOpusUsageStatus() {

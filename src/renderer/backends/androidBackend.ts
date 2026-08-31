@@ -2,6 +2,7 @@ import { Config } from '../../main/config';
 import {
   EncodeVibeImageInput,
   ImageAugmentInput,
+  ImageUpscaleInput,
   ImageGenInput,
   ImageGenService,
   LoginValidity,
@@ -357,6 +358,12 @@ export class AndroidBackend extends Backend {
   async augmentImage(arg: ImageAugmentInput): Promise<void> {
     const token = await this.readFile('TOKEN.txt');
     const res = await this.imageGenService.augmentImage(token, arg);
+    await this.writeDataFile(arg.outputFilePath, res);
+  }
+
+  async upscaleImage(arg: ImageUpscaleInput): Promise<void> {
+    const token = await this.readFile('TOKEN.txt');
+    const res = await this.imageGenService.upscaleImage(token, arg);
     await this.writeDataFile(arg.outputFilePath, res);
   }
 

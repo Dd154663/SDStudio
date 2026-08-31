@@ -74,6 +74,9 @@ import {
   trashService,
 } from '../models';
 import { queueI2IWorkflow, queueWorkflow } from '../models/TaskQueueService';
+import { queueNaiUpscale } from '../models/workflows/NaiUpscaleFlow';
+import { estimateNaiUpscaleCost } from '../backends/genVendors/naiUpscale';
+import { getImageDimensions } from './BrushTool';
 import { dataUriToBase64, deleteImageFiles, toggleImageMain } from '../models/ImageService';
 import { getResultDirectory } from '../models/SessionService';
 import { extractPromptDataFromBase64 } from '../models/util';
@@ -1084,6 +1087,8 @@ const ResultDetailView = observer(
     const filenameRef = useRef<string>(filename);
     const [image, setImage] = useState<string | undefined>(undefined);
     const [imageLoadFailed, setImageLoadFailed] = useState(false);
+    const [upscalePreparing, setUpscalePreparing] = useState(false);
+    const [upscaleInfo, setUpscaleInfo] = useState<{ path: string; cost?: number; error?: string }>();
     const [imageRetryRevision, setImageRetryRevision] = useState(0);
     const watchedImages = useRef(new Set<string>());
     // 모바일 좌우 스와이프로 이미지 전환. 시작 좌표를 저장해 끝점과 비교한다.
@@ -1104,6 +1109,7 @@ const ResultDetailView = observer(
         if (!paths[selectedIndex]) return;
         setImage(undefined);
         setImageLoadFailed(false);
+        setUpscaleInfo(undefined);
         try {
           let base64Image = await imageService.fetchImage(
             paths[selectedIndex],
@@ -1114,6 +1120,13 @@ const ResultDetailView = observer(
           if (cancelled) return;
           setImage(base64Image!);
           base64Image = dataUriToBase64(base64Image!);
+          const upscalePath = paths[selectedIndex];
+          void getImageDimensions(base64Image).then(({ width, height }) => {
+            const cost = estimateNaiUpscaleCost(width, height);
+            if (!cancelled) setUpscaleInfo({ path: upscalePath, cost });
+          }).catch((e) => {
+            if (!cancelled) setUpscaleInfo({ path: upscalePath, error: e?.message ?? '이미지 확인 실패' });
+          });
           try {
             const job = await extractPromptDataFromBase64(base64Image);
             if (job) {
@@ -1391,6 +1404,28 @@ const ResultDetailView = observer(
               }}
             >
               생성 설정 불러오기
+            </button>
+            <button
+              className="round-button back-sky"
+              title={upscaleInfo?.error ?? '가로·세로 2배 · 원본 유지 · Anlas 사용'}
+              disabled={upscalePreparing || upscaleInfo?.path !== paths[selectedIndex] || !upscaleInfo?.cost}
+              onClick={async () => {
+                const path = paths[selectedIndex];
+                const session = curSession;
+                if (!path || !session || upscalePreparing) return;
+                setUpscalePreparing(true);
+                try {
+                  const source = await imageService.fetchImage(path);
+                  if (!source) throw new Error('원본 이미지를 읽지 못했습니다.');
+                  await queueNaiUpscale(session, scene, dataUriToBase64(source));
+                } catch (e: any) {
+                  appState.pushMessage(e?.message ?? 'NAI 업스케일을 예약하지 못했습니다.');
+                } finally {
+                  setUpscalePreparing(false);
+                }
+              }}
+            >
+              {upscalePreparing ? '예약 중…' : `업스케일 ×2 · ${upscaleInfo?.path === paths[selectedIndex] && upscaleInfo.cost ? `${upscaleInfo.cost} Anlas` : upscaleInfo?.error ? '미지원' : '…'}`}
             </button>
             {buttons.map((button, index) => (
               <button

@@ -31,6 +31,7 @@ import { appState } from './AppService';
 import {
   AbstractJob,
   AugmentJob,
+  UpscaleJob,
   GenericScene,
   InpaintScene,
   Job,
@@ -44,7 +45,7 @@ import {
 } from './types';
 import { sleep } from './util';
 import { platform } from './platform';
-import { pngPathToWebp } from './imageFormats';
+import { pngPathToWebp, PNG_IMAGE_EXT } from './imageFormats';
 import { expandPieces, lowerPromptNode, toPARR } from './PromptService';
 import { dataUriToBase64 } from './ImageService';
 import { prepareMirrorCanvas } from './workflows/SDWorkFlow';
@@ -757,6 +758,44 @@ class AugmentTaskHandler implements TaskHandler {
 }
 
 
+class UpscaleTaskHandler implements TaskHandler {
+  createTimeEstimator() {
+    return new TaskTimeEstimator(TASK_TIME_ESTIMATOR_SAMPLE_COUNT, TASK_DEFAULT_ESTIMATE);
+  }
+
+  async handleDelay(task: Task, numTry: number, delayTime: number) {
+    await handleNAIDelay(numTry, false, delayTime);
+  }
+
+  async handleTask(task: Task, run: TaskQueueRun) {
+    const job = task.params.job as UpscaleJob;
+    const outputFilePath = task.params.outputPath + '/' + v4() + '.' + PNG_IMAGE_EXT;
+    const image = job.imagePath
+      ? dataUriToBase64(await backend.readDataFile(job.imagePath))
+      : job.image;
+    await backend.upscaleImage({ image, outputFilePath });
+    finishOrBridgeImage(task, outputFilePath);
+    return true;
+  }
+
+  checkTask(task: Task) {
+    return task.params.job.type === 'upscale' && task.params.job.backend.type === 'NAI';
+  }
+
+  // 유료 요청의 응답 유실/저장 실패에 재호출하면 이중 과금될 수 있다.
+  getNumTries() { return 1; }
+
+  getInfo(task: Task) {
+    return { name: task.params.scene?.name ?? '(none)', emoji: '🔎' };
+  }
+
+  calculateCost(task: Task): CostItem[] {
+    // 업스케일 진입점에서 비용을 표시한다. 큐 실행 시 같은 안내를 다시 띄우지 않는다.
+    // 다른 생성 작업의 유료 설정 확인은 각 핸들러의 기존 정책을 유지한다.
+    return [];
+  }
+}
+
 export const taskHandlers = [
   new GenerateImageTaskHandler(false, 'gen'),
   new GenerateImageTaskHandler(true, 'gen'),
@@ -766,4 +805,5 @@ export const taskHandlers = [
   new GenerateImageTaskHandler(true, 'inpaint'),
   new AugmentTaskHandler(),
   new RemoveBgTaskHandler(),
+  new UpscaleTaskHandler(),
 ];

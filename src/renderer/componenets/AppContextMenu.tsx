@@ -27,6 +27,7 @@ import {
   SDJob,
 } from '../models/types';
 import { oneTimeFlowMap, oneTimeFlows } from '../models/workflows/OneTimeFlows';
+import { queueNaiUpscaleImages } from '../models/workflows/NaiUpscaleFlow';
 import { extractPromptDataFromBase64 } from '../models/util';
 import {
   addScenesToQueue,
@@ -699,6 +700,11 @@ export const AppContextMenu = observer(() => {
       );
     }
   };
+  const upscaleImages = async (ctx: GallaryImageContextAlt) => {
+    const session = appState.curSession;
+    if (!session || !ctx.scene) return;
+    await queueNaiUpscaleImages(session, ctx.path.map((path) => ({ scene: ctx.scene!, path })));
+  };
   const transformImage = async (ctx: GallaryImageContextAlt) => {
     const items = oneTimeFlows.map((x) => ({
       text: x.text,
@@ -766,6 +772,8 @@ export const AppContextMenu = observer(() => {
       deleteImg(ctx2);
     } else if (id === 'download') {
       downloadImage(ctx2);
+    } else if (id === 'upscale') {
+      upscaleImages(ctx2).catch(() => appState.pushMessage('업스케일 예약 실패'));
     } else if (id === 'save-global') {
       saveImageAsGlobalPreset(ctx2);
     } else if (id === 'save-artist') {
@@ -787,6 +795,8 @@ export const AppContextMenu = observer(() => {
       deleteImg(props.ctx);
     } else if (id === 'transform') {
       transformImage(props.ctx);
+    } else if (id === 'upscale') {
+      upscaleImages(props.ctx).catch(() => appState.pushMessage('업스케일 예약 실패'));
     } else if (id === 'download') {
       downloadImage(props.ctx);
     } else if (id === 'save-global') {
@@ -862,6 +872,11 @@ export const AppContextMenu = observer(() => {
       callback: doDelete,
     });
   };
+  const historyUpscaleImage = async (ctx: HistoryImageContextAlt) => {
+    const resolved = await imageHistoryService.resolve(ctx.entry);
+    if (!resolved) return;
+    await queueNaiUpscaleImages(resolved.session, [{ scene: resolved.scene, path: ctx.entry.path }]);
+  };
   const handleHistoryItemClick = ({ id, props }: any) => {
     const ctx = props.ctx as HistoryImageContextAlt;
     if (id === 'goto-scene') {
@@ -872,6 +887,8 @@ export const AppContextMenu = observer(() => {
       imageHistoryService.toggleFavorite(ctx.entry);
     } else if (id === 'download') {
       historyDownloadImage(ctx);
+    } else if (id === 'upscale') {
+      historyUpscaleImage(ctx).catch(() => appState.pushMessage('업스케일 예약 실패'));
     } else if (id === 'delete') {
       historyDeleteImage(ctx);
     } else if (id === 'reveal') {
@@ -963,6 +980,9 @@ export const AppContextMenu = observer(() => {
         <Item id="transform" onClick={handleImageItemClick2}>
           이미지 변형
         </Item>
+        <Item id="upscale" onClick={handleImageItemClick2}>
+          업스케일 ×2 (Anlas)
+        </Item>
         <Item id="delete" onClick={handleImageItemClick2}>
           해당 이미지 삭제
         </Item>
@@ -991,6 +1011,9 @@ export const AppContextMenu = observer(() => {
         </Item>
       </Menu>
       <Menu id={ContextMenuType.Image}>
+        <Item id="upscale" onClick={handleImageItemClick}>
+          업스케일 ×2 (Anlas)
+        </Item>
         <Item id="download" onClick={handleImageItemClick}>
           이미지 다운로드
         </Item>
@@ -1022,6 +1045,9 @@ export const AppContextMenu = observer(() => {
         </Item>
       </Menu>
       <Menu id={ContextMenuType.HistoryImage}>
+        <Item id="upscale" onClick={handleHistoryItemClick}>
+          업스케일 ×2 (Anlas)
+        </Item>
         <Item id="goto-scene" onClick={handleHistoryItemClick}>
           해당 씬으로 이동
         </Item>

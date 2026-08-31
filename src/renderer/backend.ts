@@ -2,6 +2,7 @@ import { Config } from '../main/config';
 import {
   EncodeVibeImageInput,
   ImageAugmentInput,
+  ImageUpscaleInput,
   ImageGenInput,
   LoginValidity,
 } from './backends/imageGen';
@@ -44,6 +45,7 @@ export abstract class Backend {
   abstract openWebPage(url: string): Promise<void>;
   abstract generateImage(arg: ImageGenInput): Promise<void>;
   abstract augmentImage(arg: ImageAugmentInput): Promise<void>;
+  abstract upscaleImage(arg: ImageUpscaleInput): Promise<void>;
   abstract login(email: string, password: string): Promise<void>;
   abstract loginWithToken(token: string): Promise<void>;
   // 저장된 로그인 토큰을 바꾸지 않고 후보 토큰만 검증한다. 수동 토큰
