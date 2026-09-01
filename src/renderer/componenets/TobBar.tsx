@@ -10,30 +10,15 @@ import {
   imageService,
   isMobile,
   opusUsageService,
+  sessionService,
 } from '../models';
 import { VscChromeMinimize, VscChromeMaximize, VscChromeRestore, VscChromeClose } from 'react-icons/vsc';
-import { FaCog } from 'react-icons/fa';
+import { FaCog, FaCoins } from 'react-icons/fa';
 import { appState } from '../models/AppService';
 import { resolveLayout } from '../models/layoutTemplates';
 import { observer } from 'mobx-react-lite';
-
-const MobileResourceBadge = ({
-  credits,
-  opusClass,
-  opusText,
-}: {
-  credits: number;
-  opusClass: string;
-  opusText: string;
-}) => (
-  <span
-    className="round-tag inline-grid overflow-hidden !p-0 text-center tabular-nums leading-none"
-    aria-label={`Anlas ${credits}, ${opusText}`}
-  >
-    <span className="back-yellow px-2 text-xs leading-4">{credits}</span>
-    <span className={`${opusClass} px-2 text-[11px] leading-[14px]`}>{opusText}</span>
-  </span>
-);
+import OpusUsageBadge from './OpusUsageBadge';
+import { normalizeTokenRotateWarning } from '../models/tokenAutoRotation';
 
 const TobBar = observer(() => {
   // 컴팩트 템플릿(PC)은 하단바가 없어 세션(프로젝트) 선택을 상단바로 올린다.
@@ -45,11 +30,25 @@ const TobBar = observer(() => {
   const projectSidebar = resolved.projectSidebar || resolved.projectStrip;
   const [loggedIn, setLoggedIn] = useState(false);
   const [credits, setCredits] = useState(0);
-  const [, setUsageVersion] = useState(0);
+  const [warningPercent, setWarningPercent] = useState(10);
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      backend.getConfig().then((config) => {
+        if (!cancelled) setWarningPercent(normalizeTokenRotateWarning(config.multiTokenRotateWarningPercent));
+      }).catch(() => {});
+    };
+    load();
+    sessionService.addEventListener('config-changed', load);
+    return () => { cancelled = true; sessionService.removeEventListener('config-changed', load); };
+  }, []);
+
+  useEffect(() => {
+    let accountRevision = 0;
     const onChange = () => {
+      const revision = accountRevision;
       setLoggedIn(loginService.loggedIn);
       if (!loginService.loggedIn) {
         setCredits(0);
@@ -59,39 +58,32 @@ const TobBar = observer(() => {
       (async () => {
         try {
           const credits = await backend.getRemainCredits();
+          if (revision !== accountRevision) return;
           setCredits(credits);
           opusUsageService.refresh().catch(() => {});
         } catch (e) {
           // 로그인 표기는 ON인데 크레딧 조회가 실패 → 토큰 만료 의심 → 재검증
           // (만료면 OFF로 전환, 네트워크 일시 오류면 상태 유지)
-          loginService.refresh();
+          if (revision === accountRevision) loginService.refresh();
         }
       })();
     };
+    const onLoginChange = () => {
+      accountRevision++;
+      opusUsageService.invalidateAccount();
+      onChange();
+    };
     onChange();
-    loginService.addEventListener('change', onChange);
+    loginService.addEventListener('change', onLoginChange);
     taskQueueService.addEventListener('complete', onChange);
     imageService.addEventListener('encode-vibe', onChange);
-    const onUsageChange = () => setUsageVersion((v) => v + 1);
-    opusUsageService.addEventListener('change', onUsageChange);
     return () => {
-      loginService.removeEventListener('change', onChange);
+      accountRevision++;
+      loginService.removeEventListener('change', onLoginChange);
       taskQueueService.removeEventListener('complete', onChange);
       imageService.removeEventListener('encode-vibe', onChange);
-      opusUsageService.removeEventListener('change', onUsageChange);
     };
   }, []);
-
-  const opusStatus = opusUsageService.status;
-  const opusClass =
-    !opusStatus || opusUsageService.state === 'error'
-      ? 'back-gray'
-      : opusStatus.isNegative || opusStatus.percent <= 0
-        ? 'back-red'
-        : opusStatus.percent <= 10
-          ? 'back-orange'
-          : 'back-green';
-  const opusText = opusStatus ? `V5 ${opusStatus.percent}%` : 'V5 ?';
 
   useEffect(() => {
     if (isMobile || !window.electron) return;
@@ -143,36 +135,32 @@ const TobBar = observer(() => {
       </div>
       {/* 컴팩트(sessionSelectTop): 세션 선택이 flex-1로 가운데를 차지하므로,
           Anlas·환경설정은 order-1, 창 컨트롤은 order-2로 우측 배치를 유지한다. */}
-      <p
+      <div
         className={
-          'ml-auto mr-3 hidden md:block titlebar-no-drag' +
+          'ml-auto hidden md:flex items-center gap-2 flex-none titlebar-no-drag' +
           (sessionSelectTop ? ' order-1' : '')
         }
       >
+        <div className="flex items-center gap-2" role="group" aria-label="계정 상태 및 환경설정">
         {!loggedIn ? (
-          <span className={`round-tag back-red`}>
+          <span className="account-status-control back-red text-sm">
             {/* 좁은 창(<lg)에서는 모바일과 같은 축약 문구 */}
             <span className="lg:hidden">로그인필요</span>
             <span className="hidden lg:inline">환경설정에서 로그인하세요</span>
           </span>
         ) : (
           <>
-            <span className="text-sub hidden lg:inline">Anlas: </span>{' '}
             {/* tabular-nums: 잔량이 줄어도 자릿수 폭이 고정돼 출렁이지 않게 */}
-            <span className={`round-tag back-yellow tabular-nums`}>{credits}</span>
-            <span className={`round-tag ${opusClass} tabular-nums ml-1`}>{opusText}</span>
+            <span className="account-status-control back-yellow tabular-nums text-sm gap-1.5" aria-label={`Anlas ${credits}`}>
+              <FaCoins size={15} aria-hidden="true" />
+              <span>{credits}</span>
+            </span>
+            <OpusUsageBadge warningPercent={warningPercent} />
           </>
         )}
-      </p>
-      {/* PC: 환경설정 버튼 (가로 배치) - div 래퍼로 round-button display 충돌 방지 */}
-      <div
-        className={
-          'hidden md:block titlebar-no-drag' +
-          (sessionSelectTop ? ' order-1' : '')
-        }
-      >
         <button
-          className="round-button back-sky"
+          className="btn account-status-control back-sky text-sm"
+          aria-label="환경설정"
           onClick={() => {
             setSettings(true);
           }}
@@ -181,6 +169,7 @@ const TobBar = observer(() => {
           <FaCog size={16} className="lg:hidden" />
           <span className="hidden lg:inline">환경설정</span>
         </button>
+        </div>
       </div>
       {/* Mobile: 기본 = ⚙ 아이콘+크레딧 인라인(1줄 다이어트) / 클래식 툴바 = 기존 세로 배치 */}
       {appState.uiToolbar.classic ? (
@@ -196,11 +185,7 @@ const TobBar = observer(() => {
           {!loggedIn ? (
             <span className="round-tag back-red text-sm !px-3 !py-1">로그인필요</span>
           ) : (
-            <MobileResourceBadge
-              credits={credits}
-              opusClass={opusClass}
-              opusText={opusText}
-            />
+            <OpusUsageBadge credits={credits} warningPercent={warningPercent} />
           )}
         </div>
       ) : (
@@ -216,11 +201,7 @@ const TobBar = observer(() => {
           {!loggedIn ? (
             <span className="round-tag back-red text-sm !px-2 !py-1">로그인필요</span>
           ) : (
-            <MobileResourceBadge
-              credits={credits}
-              opusClass={opusClass}
-              opusText={opusText}
-            />
+            <OpusUsageBadge credits={credits} warningPercent={warningPercent} />
           )}
         </div>
       )}

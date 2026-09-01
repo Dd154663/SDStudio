@@ -25,6 +25,7 @@ export interface LoginTokenProfile {
 export interface LoginTokenUsageCheck extends LoginTokenProfile {
   validity: LoginValidity;
   usage?: OpusUsageStatus;
+  checkedAt?: number;
 }
 
 export type LoginTokenRotationResult =
@@ -187,6 +188,7 @@ export class LoginService extends EventTarget {
           name: profile.name,
           validity: 'valid',
           usage,
+          checkedAt: Date.now(),
         });
       } catch (e) {
         // 정상 Opus 토큰은 user/data 한 번으로 확인된다. 실패한 경우에만 토큰
@@ -195,7 +197,7 @@ export class LoginService extends EventTarget {
         try {
           validity = await backend.validateToken(profile.token);
         } catch (e2) {}
-        results.push({ id: profile.id, name: profile.name, validity });
+        results.push({ id: profile.id, name: profile.name, validity, checkedAt: Date.now() });
       }
     }
     return results;

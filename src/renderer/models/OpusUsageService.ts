@@ -12,8 +12,10 @@ export class OpusUsageService extends EventTarget {
   state: OpusUsageState = 'idle';
   status: OpusUsageStatus | undefined;
   fetchedAt = 0;
+  refreshing = false;
 
   private inFlight: Promise<OpusUsageStatus | undefined> | undefined;
+  private revision = 0;
   private paidApprovalUntil = 0;
   private lowWarningShown = false;
 
@@ -26,11 +28,14 @@ export class OpusUsageService extends EventTarget {
     if (!force && fresh && this.status) return this.status;
     if (this.inFlight) return this.inFlight;
 
+    const revision = this.revision;
+    this.refreshing = true;
     this.state = this.status ? 'stale' : 'loading';
     this.emitChange();
     this.inFlight = this.backend
       .getOpusUsageStatus()
       .then((status) => {
+        if (revision !== this.revision) return undefined;
         this.status = status;
         this.fetchedAt = Date.now();
         this.state = 'ready';
@@ -38,28 +43,44 @@ export class OpusUsageService extends EventTarget {
         return status;
       })
       .catch(() => {
+        if (revision !== this.revision) return undefined;
         this.state = this.status ? 'stale' : 'error';
         this.emitChange();
         return undefined;
       })
       .finally(() => {
+        if (revision !== this.revision) return;
         this.inFlight = undefined;
+        this.refreshing = false;
+        this.emitChange();
       });
     return this.inFlight;
   }
 
   clear(): void {
+    this.invalidateAccount();
+    this.lowWarningShown = false;
+  }
+
+  // A manual login/account switch must not display the previous account's
+  // cached quota or let its late response overwrite the new account.
+  invalidateAccount(): void {
+    this.revision++;
+    this.inFlight = undefined;
+    this.refreshing = false;
     this.state = 'idle';
     this.status = undefined;
     this.fetchedAt = 0;
     this.paidApprovalUntil = 0;
-    this.lowWarningShown = false;
     this.emitChange();
   }
 
   adoptKnownStatus(status: OpusUsageStatus): void {
     // 자동 순회 후보 조회에서 이미 확인한 새 계정의 상태를 즉시 채택한다.
     // 같은 user/data를 전환 직후 다시 요청하지 않고 상단 배지와 유료 가드를 맞춘다.
+    this.revision++;
+    this.inFlight = undefined;
+    this.refreshing = false;
     this.status = status;
     this.fetchedAt = Date.now();
     this.state = 'ready';

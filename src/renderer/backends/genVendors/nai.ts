@@ -503,7 +503,8 @@ export class NovelAiImageGenService implements ImageGenService {
       throw new Error('Opus usage data is unavailable');
     }
     return {
-      percent: Math.max(0, Math.min(100, Math.round(percent))),
+      // Preserve server-reported surplus; only the UI progress bar caps at 100.
+      percent: Math.max(0, Math.round(percent)),
       isNegative: usage.isNegative,
       timeUntilNextPercent: Math.max(0, timeUntilNextPercent),
     };

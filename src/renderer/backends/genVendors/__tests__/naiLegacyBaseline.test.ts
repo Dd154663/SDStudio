@@ -343,6 +343,20 @@ describe('NovelAI V5 최소 요청', () => {
 });
 
 describe('NovelAI Opus 사용량 조회', () => {
+  test('서버가 반환한 100% 초과 잔량을 보존한다', async () => {
+    const originalFetch = (global as any).fetch;
+    (global as any).fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ subscription: { usage: { percent: 111, isNegative: false, timeUntilNextPercent: 0 } } }),
+    });
+    try {
+      const { service } = makeService();
+      await expect(service.getOpusUsageStatus('test-token')).resolves.toMatchObject({ percent: 111 });
+    } finally {
+      (global as any).fetch = originalFetch;
+    }
+  });
+
   test('user/data의 subscription.usage를 Opus 잔량으로 읽는다', async () => {
     const originalFetch = (global as any).fetch;
     const fetchMock = jest.fn().mockResolvedValue({

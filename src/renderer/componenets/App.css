@@ -295,6 +295,41 @@ html.font-pretendard body {
   color: var(--c-orange-fg);
 }
 
+/* Quota graphs use the existing theme's solid accent, not its translucent
+   dark button background. Keep short/thin bars readable on every surface. */
+.opus-usage-bar-fill { background-color: var(--opus-fill-bg); }
+.dark .opus-usage-bar-fill { background-color: var(--opus-fill-fg); }
+
+/* One geometry contract for the desktop account/status block. These are not
+   inline text badges: all three controls share height, center and spacing. */
+.account-status-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 9999px;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+}
+.account-status-control.account-quota-control {
+  display: inline-grid;
+  justify-content: stretch;
+  justify-items: stretch;
+  grid-template-rows: 18px 8px;
+  align-content: center;
+  gap: 2px;
+  min-width: 72px;
+  padding: 0 8px;
+}
+.account-quota-control .account-quota-label { color: inherit; font: inherit; line-height: 18px; }
+.account-quota-control [role="progressbar"] { height: 8px; }
+
 /* 표면 추종 보조 버튼 (D타입): 액센트가 아니라 입력창 배경 음영을 따라가는
    은은한 중립 버튼. 폴더/관리/백업 등. hover는 brightness로 커스텀 색도 자동 추종.
    라이트=어둡게, 다크/트루다크=밝게(.dark가 true-dark에도 적용됨). */

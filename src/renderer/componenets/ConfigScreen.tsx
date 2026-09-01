@@ -54,6 +54,8 @@ import {
 } from '../models/legacyCleanup';
 import type { LegacyScanResult } from '../models/legacyCleanup';
 import ModalOverlay from './ModalOverlay';
+import OpusUsageMeter, { OpusUsageHelp } from './OpusUsageMeter';
+import { useOpusUsage } from './OpusUsageBadge';
 import MobileColorPicker from './MobileColorPicker';
 import { StorageDiagnosticsSection } from './StorageDiagnostics';
 import type {
@@ -87,6 +89,7 @@ const LoginTab = ({
   multiTokenBalanceRotate, setMultiTokenBalanceRotate,
   multiTokenRotateBalance, setMultiTokenRotateBalance,
 }: any) => {
+  const currentUsage = useOpusUsage();
   const [profiles, setProfiles] = useState<LoginTokenProfile[]>([]);
   const [profileToken, setProfileToken] = useState('');
   const [profilesReady, setProfilesReady] = useState(false);
@@ -198,7 +201,6 @@ const LoginTab = ({
     if (profileBusy || profiles.length === 0) return;
     setProfileBusy(true);
     setCheckingProfileUsages(true);
-    setProfileUsageChecks({});
     try {
       const results = await loginService.checkTokenProfileUsages();
       setProfileUsageChecks(
@@ -272,7 +274,7 @@ const LoginTab = ({
               disabled={profileBusy || profiles.length === 0}
               onClick={checkProfileUsages}
             >
-              {checkingProfileUsages ? '조회 중…' : 'V5 할당량 1회 확인'}
+              {checkingProfileUsages ? '조회 중…' : '할당량 새로고침'}
             </button>
           </div>
           <p className="text-xs text-muted mt-1">
@@ -424,31 +426,20 @@ const LoginTab = ({
             {profiles.map((profile) => {
               const active = loginService.activeProfileId === profile.id;
               const usageCheck = profileUsageChecks[profile.id];
-              const usageClass = !usageCheck || usageCheck.validity === 'error'
-                ? 'back-gray'
-                : usageCheck.validity === 'invalid'
-                  ? 'back-red'
-                  : !usageCheck.usage
-                    ? 'back-gray'
-                    : usageCheck.usage.isNegative || usageCheck.usage.percent <= 0
-                      ? 'back-red'
-                      : usageCheck.usage.percent <= 10
-                        ? 'back-orange'
-                        : 'back-green';
-              const usageText = !usageCheck
-                ? undefined
-                : usageCheck.validity === 'invalid'
-                  ? '로그인 실패'
-                  : usageCheck.validity === 'error'
-                    ? '조회 실패'
-                    : usageCheck.usage
-                      ? `정상 · V5 ${usageCheck.usage.percent}%`
-                      : '정상 · V5 정보 없음';
+              const useCurrent = active && currentUsage.fetchedAt > (usageCheck?.checkedAt ?? 0);
+              const status = useCurrent ? currentUsage.status : usageCheck?.usage;
+              const checkedAt = useCurrent ? currentUsage.fetchedAt : usageCheck?.checkedAt ?? 0;
+              const error = useCurrent
+                ? currentUsage.state === 'error' ? '조회 실패' : undefined
+                : usageCheck?.validity === 'invalid' ? '로그인 실패'
+                  : usageCheck?.validity === 'error' ? '조회 실패' : undefined;
               return (
                 <div
                   key={profile.id}
-                  className="flex flex-wrap items-center gap-2 rounded-lg border line-color bg-[var(--c-surface-2)] px-3 py-2"
+                  className="rounded-lg r-card border line-color bg-[var(--c-surface-2)] p-3 space-y-3"
+                  style={active ? { borderColor: 'var(--c-sky-bg)' } : undefined}
                 >
+                  <div className="flex flex-wrap items-center gap-2">
                   {editingProfileId === profile.id ? (
                     <input
                       autoFocus
@@ -486,11 +477,6 @@ const LoginTab = ({
                   {active && (
                     <span className={`${roundTag} back-green flex-none`}>사용 중</span>
                   )}
-                  {usageText && (
-                    <span className={`${roundTag} ${usageClass} flex-none`}>
-                      {usageText}
-                    </span>
-                  )}
                   <button
                     className="btn back-sky rounded px-3 py-1 text-xs flex-none"
                     disabled={profileBusy || active}
@@ -505,11 +491,17 @@ const LoginTab = ({
                   >
                     삭제
                   </button>
+                  </div>
+                  <OpusUsageMeter status={status} checkedAt={checkedAt}
+                    warningPercent={multiTokenRotateWarning}
+                    loading={checkingProfileUsages || (active && currentUsage.refreshing)}
+                    stale={useCurrent && currentUsage.state === 'stale'} error={error} />
                 </div>
               );
             })}
           </div>
         )}
+        <OpusUsageHelp />
       </div>
     </div>
   );
