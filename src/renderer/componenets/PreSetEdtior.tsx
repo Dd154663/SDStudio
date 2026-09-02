@@ -123,6 +123,12 @@ import {
 import { WFElementContext, PresetIconRowContext } from './wfElementContext';
 import { ResolutionPicker, resolutionValueToSize } from './ResolutionPicker';
 import HelpIcon from './HelpIcon';
+import {
+  activatePresetSamplingFamily,
+  samplingFamilyForModel,
+  setPresetSamplingField,
+  switchSessionSamplingFamily,
+} from '../models/modelSamplingProfiles';
 
 // 프롬프트 문법 도움말 (2026-07-18) — 상위 프롬프트 라벨 옆 (?) 아이콘.
 // 문법은 상위/하위/네거티브 공통이라 첫 프롬프트에만 1회 노출한다.
@@ -1268,6 +1274,7 @@ const WFRPresetSelect = observer(({ element }: WFElementProps) => {
 
 const GlobalModelSettings = observer(() => {
   const [modelVersion, setModelVersion] = useState<ModelVersion>(ModelVersion.V4_5);
+  const [switchingModel, setSwitchingModel] = useState(false);
   const [furryMode, setFurryMode] = useState(false);
   const [disableQuality, setDisableQuality] = useState(false);
   const [qualityPreset, setQualityPreset] =
@@ -1276,7 +1283,7 @@ const GlobalModelSettings = observer(() => {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    (async () => {
+    const load = async () => {
       const config = await backend.getConfig();
       setModelVersion(config.modelVersion ?? ModelVersion.V4_5);
       setFurryMode(config.furryMode ?? false);
@@ -1284,13 +1291,37 @@ const GlobalModelSettings = observer(() => {
       setQualityPreset(resolveQualityPreset(config));
       setUcPreset((config.ucPreset as UcPresetKey) ?? 'none');
       setLoaded(true);
-    })();
+    };
+    void load();
+    sessionService.addEventListener('config-changed', load);
+    return () => sessionService.removeEventListener('config-changed', load);
   }, []);
 
   const saveConfig = async (updates: Record<string, any>) => {
     const config = await backend.getConfig();
     await backend.setConfig({ ...config, ...updates });
     sessionService.configChanged();
+  };
+
+  const changeModelVersion = async (next: ModelVersion) => {
+    if (switchingModel || next === modelVersion) return;
+    const previous = modelVersion;
+    const previousFamily = samplingFamilyForModel(previous);
+    const family = samplingFamilyForModel(next);
+    setSwitchingModel(true);
+    try {
+      if (family) switchSessionSamplingFamily(appState.curSession, family);
+      setModelVersion(next);
+      await saveConfig({ modelVersion: next });
+    } catch (e) {
+      if (previousFamily) {
+        switchSessionSamplingFamily(appState.curSession, previousFamily);
+      }
+      setModelVersion(previous);
+      appState.pushMessage('모델 전환에 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      setSwitchingModel(false);
+    }
   };
 
   if (!loaded) return null;
@@ -1315,9 +1346,9 @@ const GlobalModelSettings = observer(() => {
               { label: 'V4 Curated', value: ModelVersion.V4Curated },
             ]}
             onSelect={(opt) => {
-              setModelVersion(opt.value as ModelVersion);
-              saveConfig({ modelVersion: opt.value });
+              void changeModelVersion(opt.value as ModelVersion);
             }}
+            disabled={switchingModel}
           />
           {(modelVersion === ModelVersion.V5 ||
             modelVersion === ModelVersion.V5Curated) && (
@@ -2314,7 +2345,10 @@ const WFRInline = observer(({ element }: WFElementProps) => {
   };
   const setField = (val: any) => {
     if (input.fieldType === 'preset') {
-      preset[input.field] = val;
+      const family = samplingFamilyForModel(modelVersion);
+      if (!family || !setPresetSamplingField(preset, family, input.field, val)) {
+        preset[input.field] = val;
+      }
     } else if (input.fieldType === 'shared') {
       shared[input.field] = val;
     } else {
@@ -2522,17 +2556,17 @@ export const PreSetEditorImpl = observer(
     const [modelVersion, setModelVersion] = useState<ModelVersion>(ModelVersion.V4_5);
 
     useEffect(() => {
-      (async () => {
+      const loadModel = async () => {
         const config = await backend.getConfig();
-        setModelVersion(config.modelVersion ?? ModelVersion.V4_5);
-      })();
-      const onConfigChanged = async () => {
-        const config = await backend.getConfig();
-        setModelVersion(config.modelVersion ?? ModelVersion.V4_5);
+        const next = config.modelVersion ?? ModelVersion.V4_5;
+        const family = samplingFamilyForModel(next);
+        if (family) activatePresetSamplingFamily(preset, family);
+        setModelVersion(next);
       };
-      sessionService.addEventListener('config-changed', onConfigChanged);
-      return () => sessionService.removeEventListener('config-changed', onConfigChanged);
-    }, []);
+      void loadModel();
+      sessionService.addEventListener('config-changed', loadModel);
+      return () => sessionService.removeEventListener('config-changed', loadModel);
+    }, [preset]);
 
     // element 트리에서 group 요소 찾기
     const findGroupElement = (el: WFIElement): WFIGroup | undefined => {

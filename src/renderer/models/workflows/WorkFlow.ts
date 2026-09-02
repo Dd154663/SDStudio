@@ -1,6 +1,11 @@
 import { action, observable, makeAutoObservable } from 'mobx';
 import type { GenerationSettingsSnapshot } from '../../backends/imageGen';
 import {
+  normalizeSamplingProfiles,
+  type ModelSamplingFamily,
+  type ModelSamplingProfiles,
+} from '../modelSamplingProfiles';
+import {
   CharacterPrompt,
   GenericScene,
   ModelBackend,
@@ -285,16 +290,20 @@ function createDefaultValue(varObj: WFVar) {
   }
 }
 
-function createMobxObject(vars: WFVar[]) {
+function createMobxObject(vars: WFVar[], samplingProfiles = false) {
   const obj: any = {};
   vars.forEach((varObj) => {
     obj[varObj.name] = createDefaultValue(varObj);
   });
+  if (samplingProfiles) {
+    obj.samplingProfiles = undefined as ModelSamplingProfiles | undefined;
+    obj.samplingProfileFamily = undefined as ModelSamplingFamily | undefined;
+  }
   return makeAutoObservable(obj);
 }
 
-function materializeWFObj(type: string, vars: WFVar[]) {
-  const obj = createMobxObject(vars);
+function materializeWFObj(type: string, vars: WFVar[], samplingProfiles = false) {
+  const obj = createMobxObject(vars, samplingProfiles);
   obj['type'] = type;
   const params: { [key: string]: WFVar } = {};
   for (const varObj of vars) {
@@ -317,6 +326,13 @@ function materializeWFObj(type: string, vars: WFVar[]) {
         obj[key] = json[key];
       }
     });
+    if (samplingProfiles) {
+      obj.samplingProfiles = normalizeSamplingProfiles(json.samplingProfiles);
+      obj.samplingProfileFamily =
+        json.samplingProfileFamily === 'v4_5' || json.samplingProfileFamily === 'v5'
+          ? json.samplingProfileFamily
+          : undefined;
+    }
   };
 
   obj.toJSON = () => {
@@ -331,6 +347,12 @@ function materializeWFObj(type: string, vars: WFVar[]) {
         json[key] = obj[key];
       }
     });
+    if (samplingProfiles && obj.samplingProfiles) {
+      json.samplingProfiles = normalizeSamplingProfiles(obj.samplingProfiles);
+      if (obj.samplingProfileFamily) {
+        json.samplingProfileFamily = obj.samplingProfileFamily;
+      }
+    }
     return json;
   };
 
@@ -515,12 +537,12 @@ export class WFWorkFlow {
       { type: 'string', name: 'profile', default: '' },
     ]);
     if (this.def.backendType === 'none') {
-      return materializeWFObj(this.def.type, newVars);
+      return materializeWFObj(this.def.type, newVars, true);
     } else {
       newVars = newVars.concat([
         { type: 'backend', name: 'backend', default: { type: 'NAI' } },
       ]);
-      return materializeWFObj(this.def.type, newVars);
+      return materializeWFObj(this.def.type, newVars, true);
     }
   }
 

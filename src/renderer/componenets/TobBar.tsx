@@ -19,6 +19,13 @@ import { resolveLayout } from '../models/layoutTemplates';
 import { observer } from 'mobx-react-lite';
 import OpusUsageBadge from './OpusUsageBadge';
 import { normalizeTokenRotateWarning } from '../models/tokenAutoRotation';
+import { ModelVersion } from '../backends/imageGen';
+import {
+  modelVersionForSamplingFamily,
+  samplingFamilyForModel,
+  switchSessionSamplingFamily,
+  type ModelSamplingFamily,
+} from '../models/modelSamplingProfiles';
 
 const TobBar = observer(() => {
   // 컴팩트 템플릿(PC)은 하단바가 없어 세션(프로젝트) 선택을 상단바로 올린다.
@@ -31,19 +38,43 @@ const TobBar = observer(() => {
   const [loggedIn, setLoggedIn] = useState(false);
   const [credits, setCredits] = useState(0);
   const [warningPercent, setWarningPercent] = useState(10);
+  const [modelVersion, setModelVersion] = useState<ModelVersion>(ModelVersion.V4_5);
+  const [switchingModel, setSwitchingModel] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     const load = () => {
       backend.getConfig().then((config) => {
-        if (!cancelled) setWarningPercent(normalizeTokenRotateWarning(config.multiTokenRotateWarningPercent));
+        if (!cancelled) {
+          setWarningPercent(normalizeTokenRotateWarning(config.multiTokenRotateWarningPercent));
+          setModelVersion(config.modelVersion ?? ModelVersion.V4_5);
+        }
       }).catch(() => {});
     };
     load();
     sessionService.addEventListener('config-changed', load);
     return () => { cancelled = true; sessionService.removeEventListener('config-changed', load); };
   }, []);
+
+  const switchModelFamily = async (family: ModelSamplingFamily) => {
+    if (switchingModel || samplingFamilyForModel(modelVersion) === family) return;
+    const previousFamily = samplingFamilyForModel(modelVersion);
+    const nextVersion = modelVersionForSamplingFamily(family, modelVersion);
+    setSwitchingModel(true);
+    try {
+      switchSessionSamplingFamily(appState.curSession, family);
+      const config = await backend.getConfig();
+      await backend.setConfig({ ...config, modelVersion: nextVersion });
+      setModelVersion(nextVersion);
+      sessionService.configChanged();
+    } catch (e) {
+      if (previousFamily) switchSessionSamplingFamily(appState.curSession, previousFamily);
+      appState.pushMessage('모델 전환에 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      setSwitchingModel(false);
+    }
+  };
 
   useEffect(() => {
     let accountRevision = 0;
@@ -141,6 +172,26 @@ const TobBar = observer(() => {
           (sessionSelectTop ? ' order-1' : '')
         }
       >
+        <div
+          className="flex items-center overflow-hidden rounded-md border line-color bg-[var(--c-input-bg)]"
+          role="group"
+          aria-label="NAI 모델 퀵 전환"
+        >
+          {(['v4_5', 'v5'] as const).map((family) => {
+            const selected = samplingFamilyForModel(modelVersion) === family;
+            return (
+              <button
+                key={family}
+                className={`btn h-9 min-w-[48px] rounded-none px-3 text-base ${selected ? 'back-sky' : 'btn-ghost text-default'}`}
+                aria-pressed={selected}
+                disabled={switchingModel}
+                onClick={() => void switchModelFamily(family)}
+              >
+                {family === 'v4_5' ? '4.5' : '5'}
+              </button>
+            );
+          })}
+        </div>
         <div className="flex items-center gap-2" role="group" aria-label="계정 상태 및 환경설정">
         {!loggedIn ? (
           <span className="account-status-control back-red text-sm">
