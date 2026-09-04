@@ -340,18 +340,20 @@ export const addScenesToQueue = async (
         appState.pushMessage('생성 설정을 읽지 못해 예약하지 못했습니다.');
         return;
       }
-      for (const scene of scenes) {
-        try {
-          await queueScene(
-            session,
-            scene,
-            appState.samples,
-            generationSnapshot,
-          );
-        } catch (e: any) {
-          appState.pushMessage(`프롬프트 에러 (${scene.name}): ${e.message}`);
+      await taskQueueService.withProgressBatch(async () => {
+        for (const scene of scenes) {
+          try {
+            await queueScene(
+              session,
+              scene,
+              appState.samples,
+              generationSnapshot,
+            );
+          } catch (e: any) {
+            appState.pushMessage(`프롬프트 에러 (${scene.name}): ${e.message}`);
+          }
         }
-      }
+      });
     };
 
     if (allMissing.length > 0) {
@@ -392,14 +394,16 @@ const queueAllScenesOfSession = async (
       return { queued: 0, failed: scenes.length };
     }
   }
-  for (const scene of scenes) {
-    try {
-      await queueScene(session, scene, samples, generationSnapshot);
-      queued++;
-    } catch (e) {
-      failed++;
+  await taskQueueService.withProgressBatch(async () => {
+    for (const scene of scenes) {
+      try {
+        await queueScene(session, scene, samples, generationSnapshot);
+        queued++;
+      } catch (e) {
+        failed++;
+      }
     }
-  }
+  });
   return { queued, failed };
 };
 
@@ -464,27 +468,29 @@ export const queueFolderProjectsForGeneration = async (folder: string) => {
         total: names.length,
       });
       try {
-        for (let i = 0; i < names.length; i++) {
-          const name = names[i];
-          try {
-            const session = await sessionService.get(name);
-            if (!session) throw new Error('프로젝트 로드 실패');
-            const r = await queueAllScenesOfSession(
-              session,
-              samples,
-              generationSnapshot,
-            );
-            queuedScenes += r.queued;
-            if (r.failed > 0 && !failed.includes(name)) failed.push(name);
-          } catch (e) {
-            if (!failed.includes(name)) failed.push(name);
+        await taskQueueService.withProgressBatch(async () => {
+          for (let i = 0; i < names.length; i++) {
+            const name = names[i];
+            try {
+              const session = await sessionService.get(name);
+              if (!session) throw new Error('프로젝트 로드 실패');
+              const r = await queueAllScenesOfSession(
+                session,
+                samples,
+                generationSnapshot,
+              );
+              queuedScenes += r.queued;
+              if (r.failed > 0 && !failed.includes(name)) failed.push(name);
+            } catch (e) {
+              if (!failed.includes(name)) failed.push(name);
+            }
+            appState.setProgressDialog({
+              text: '일괄 생성 예약 중...',
+              done: i + 1,
+              total: names.length,
+            });
           }
-          appState.setProgressDialog({
-            text: '일괄 생성 예약 중...',
-            done: i + 1,
-            total: names.length,
-          });
-        }
+        });
       } finally {
         appState.setProgressDialog(undefined);
       }

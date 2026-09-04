@@ -152,6 +152,71 @@ afterEach(() => {
 });
 
 describe('TaskQueueService 예약 생성 설정 스냅샷', () => {
+  test('일괄 예약은 진행 이벤트를 한 번만 보내고 프로젝트 잔량을 증분 집계한다', async () => {
+    const service = new TaskQueueService([makeHandler()]);
+    const onProgress = jest.fn();
+    service.addEventListener('progress', onProgress);
+
+    await service.withProgressBatch(async () => {
+      service.addTaskLocal(makeParam(), 2);
+      service.addTaskLocal(makeParam(), 3);
+      service.addTaskLocal(
+        {
+          ...makeParam(),
+          session: { name: 'project-2' },
+        } as any,
+        4,
+      );
+    });
+
+    expect(onProgress).toHaveBeenCalledTimes(1);
+    expect(service.projectQueueSnapshot().remains).toEqual({
+      project: 5,
+      'project-2': 4,
+    });
+    jest
+      .spyOn(service.queue, Symbol.iterator)
+      .mockImplementation(
+        () =>
+          ({
+            next: () => {
+              throw new Error('전체 큐 순회 금지');
+            },
+          }) as any,
+      );
+    expect(service.projectQueueSnapshot().remains).toEqual({
+      project: 5,
+      'project-2': 4,
+    });
+  });
+
+  test('프로젝트 이름 변경과 전체 취소 뒤에도 증분 잔량이 정확하다', () => {
+    const service = new TaskQueueService([makeHandler()]);
+    service.addTaskLocal(makeParam(), 5);
+
+    service.onRenameProject('project', 'renamed');
+    expect(service.projectQueueSnapshot().remains).toEqual({ renamed: 5 });
+
+    service.removeAllTasks();
+    expect(service.projectQueueSnapshot().remains).toEqual({});
+  });
+
+  test('씬 일괄 취소의 큐 재구성도 진행 이벤트를 한 번만 보낸다', () => {
+    const service = new TaskQueueService([makeHandler()]);
+    const sceneA = { name: 'a', type: 'scene' } as any;
+    const sceneB = { name: 'b', type: 'scene' } as any;
+    const session = { name: 'project' } as any;
+    service.addTaskLocal({ ...makeParam(), session, scene: sceneA }, 2);
+    service.addTaskLocal({ ...makeParam(), session, scene: sceneB }, 3);
+    const onProgress = jest.fn();
+    service.addEventListener('progress', onProgress);
+
+    service.removeTasksFromScene(sceneA, session);
+
+    expect(onProgress).toHaveBeenCalledTimes(1);
+    expect(service.projectQueueSnapshot().remains).toEqual({ project: 3 });
+  });
+
   test('로컬 예약 시 config를 한 번 읽어 작업에 고정한다', async () => {
     getConfig.mockResolvedValue({
       modelVersion: ModelVersion.V4_5Curated,

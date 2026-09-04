@@ -133,6 +133,9 @@ export interface Task {
   // 씬 통계 키 — 예약 시점에 1회 계산해 고정한다. 실행 중 씬/프로젝트 이름이
   // 바뀌어도 추가(+)와 제거(-)가 같은 키를 쓰도록 하기 위함(음수 배지 방지).
   sceneKey?: string;
+  // 프로젝트 통계 키도 예약 시점에 고정한다. 프로젝트 이름 변경 시 명시적으로
+  // 이관해 추가·완료·제거가 항상 같은 버킷을 사용하도록 한다.
+  projectKey?: string;
 }
 
 // 고정 시드 연속 생성 시 다음 시드 계산(xorshift32). NAI 시드 공간은 32비트
@@ -281,6 +284,7 @@ export class TaskQueueService extends EventTarget {
   timeEstimators: TaskTimeEstimator[];
   groupStats: TaskStats[];
   sceneStats: { [sceneKey: string]: TaskStats };
+  projectStats: { [projectKey: string]: TaskStats };
   currentRun: TaskQueueRun | undefined;
   taskSet: { [key: string]: boolean };
   taskLogs: TaskLog[] = [];
@@ -302,11 +306,14 @@ export class TaskQueueService extends EventTarget {
   // 위임한 태스크의 onComplete 대행 맵(원 창 보유) — taskId → 콜백.
   private delegatedCallbacks = new Map<string, (path: string) => void>();
   private snapshotThrottle: any = null;
+  private progressBatchDepth = 0;
+  private progressBatchPending = false;
 
   constructor(handlers: TaskHandler[]) {
     super();
     this.handlers = handlers;
     this.sceneStats = {};
+    this.projectStats = {};
     this.timeEstimators = [];
     this.groupStats = [];
     for (const handler of this.handlers) {
@@ -414,17 +421,22 @@ export class TaskQueueService extends EventTarget {
     }
     const oldQueue = this.queue;
     this.queue = new CircularQueue<Task>();
-    while (!oldQueue.isEmpty()) {
-      const task = oldQueue.peek();
-      oldQueue.dequeue();
-      this.removeTaskInternal(task);
-      if (!scenes.has(task.params.scene)) {
-        this.addTaskInternal(task);
-      } else {
-        this.notifyDelegationDone(task);
+    this.beginProgressBatch();
+    try {
+      while (!oldQueue.isEmpty()) {
+        const task = oldQueue.peek();
+        oldQueue.dequeue();
+        this.removeTaskInternal(task);
+        if (!scenes.has(task.params.scene)) {
+          this.addTaskInternal(task);
+        } else {
+          this.notifyDelegationDone(task);
+        }
       }
+      this.dispatchProgress();
+    } finally {
+      this.endProgressBatch();
     }
-    this.dispatchProgress();
   }
 
   // 위임 태스크가 실행 없이 제거될 때 원 창에 'done'을 브리지해 onComplete 대행
@@ -511,6 +523,13 @@ export class TaskQueueService extends EventTarget {
     }
     this.sceneStats[sceneKey].done += task.done;
     this.sceneStats[sceneKey].total += task.total;
+    task.projectKey ??= task.params.session.name;
+    const projectKey = task.projectKey;
+    if (!(projectKey in this.projectStats)) {
+      this.projectStats[projectKey] = { done: 0, total: 0 };
+    }
+    this.projectStats[projectKey].done += task.done;
+    this.projectStats[projectKey].total += task.total;
     this.dispatchProgress();
   }
 
@@ -657,15 +676,14 @@ export class TaskQueueService extends EventTarget {
         running: this.mirror.projectRunning,
       };
     const remains: { [sessionName: string]: number } = {};
-    for (const task of this.queue) {
-      const remain = task!.total - task!.done;
+    for (const [projectKey, stats] of Object.entries(this.projectStats)) {
+      const remain = stats.total - stats.done;
       if (remain <= 0) continue;
-      const n = task!.params.session.name;
-      remains[n] = (remains[n] ?? 0) + remain;
+      remains[projectKey] = remain;
     }
     const running =
       this.isRunning() && !this.queue.isEmpty()
-        ? this.queue.peek().params.session.name
+        ? this.queue.peek().projectKey ?? this.queue.peek().params.session.name
         : null;
     return { remains, running };
   }
@@ -691,7 +709,10 @@ export class TaskQueueService extends EventTarget {
   // 쓰지만 읽기(statsTasksFromScene)는 현재 이름으로 키를 재계산한다. 씬/프로젝트
   // 이름 변경 시 키를 함께 옮기지 않으면 실행 중 예약의 씬 카드 배지가 0으로
   // 사라진다(통계는 옛 키 버킷에 잔류). remap 이 null 이면 해당 키 유지.
-  private rekeySceneStats(remap: (key: string) => string | null) {
+  private rekeySceneStats(
+    remap: (key: string) => string | null,
+    emitProgress = true,
+  ): boolean {
     let changed = false;
     for (const key of Object.keys(this.sceneStats)) {
       const nk = remap(key);
@@ -716,7 +737,8 @@ export class TaskQueueService extends EventTarget {
         changed = true;
       }
     }
-    if (changed) this.dispatchProgress();
+    if (changed && emitProgress) this.dispatchProgress();
+    return changed;
   }
 
   // 씬 이름 변경 반영 (renameScene 에서 호출)
@@ -733,16 +755,69 @@ export class TaskQueueService extends EventTarget {
 
   // 프로젝트 이름 변경 반영 (SessionService 프로젝트 rename 에서 호출)
   onRenameProject(oldName: string, newName: string) {
+    let projectChanged = false;
+    const src = this.projectStats[oldName];
+    if (src) {
+      const dst = this.projectStats[newName];
+      if (dst) {
+        dst.done += src.done;
+        dst.total += src.total;
+      } else {
+        this.projectStats[newName] = src;
+      }
+      delete this.projectStats[oldName];
+      projectChanged = true;
+    }
+    for (const task of this.queue) {
+      if (task?.projectKey === oldName) {
+        task.projectKey = newName;
+        projectChanged = true;
+      }
+    }
     const prefix = oldName + '/';
-    this.rekeySceneStats((k) =>
-      k.startsWith(prefix) ? newName + '/' + k.slice(prefix.length) : null,
+    const sceneChanged = this.rekeySceneStats(
+      (k) =>
+        k.startsWith(prefix) ? newName + '/' + k.slice(prefix.length) : null,
+      false,
     );
+    if (projectChanged || sceneChanged) this.dispatchProgress();
   }
 
   dispatchProgress() {
+    if (this.progressBatchDepth > 0) {
+      this.progressBatchPending = true;
+      return;
+    }
+    this.emitProgress();
+  }
+
+  private emitProgress() {
     this.dispatchEvent(new CustomEvent('progress', {}));
     // 호스트: 큐 변경을 보조 창들에 미러(스로틀). 보조 창 0개면 완전 생략.
     this.scheduleSnapshotBroadcast();
+  }
+
+  private beginProgressBatch() {
+    this.progressBatchDepth++;
+  }
+
+  private endProgressBatch() {
+    this.progressBatchDepth--;
+    if (this.progressBatchDepth === 0 && this.progressBatchPending) {
+      this.progressBatchPending = false;
+      this.emitProgress();
+    }
+  }
+
+  // 한 번의 일괄 예약에서 수백 개의 progress 이벤트와 그에 따른 UI 전체
+  // 재계산이 발생하지 않도록, 중첩 가능한 범위 안의 변경을 마지막 1회로 합친다.
+  async withProgressBatch<T>(callback: () => Promise<T>): Promise<T> {
+    this.beginProgressBatch();
+    try {
+      return await callback();
+    } finally {
+      this.endProgressBatch();
+    }
   }
 
   removeTaskInternal(task: Task) {
@@ -761,6 +836,14 @@ export class TaskQueueService extends EventTarget {
     if (sceneKey in this.sceneStats) {
       this.sceneStats[sceneKey].done -= task.done;
       this.sceneStats[sceneKey].total -= task.total;
+    }
+    const projectKey = task.projectKey ?? task.params.session.name;
+    if (projectKey in this.projectStats) {
+      this.projectStats[projectKey].done -= task.done;
+      this.projectStats[projectKey].total -= task.total;
+      if (this.projectStats[projectKey].total <= 0) {
+        delete this.projectStats[projectKey];
+      }
     }
     delete this.taskSet[task.id!];
   }
@@ -842,6 +925,10 @@ export class TaskQueueService extends EventTarget {
                   : '');
               if (sceneKey in this.sceneStats) {
                 this.sceneStats[sceneKey].done++;
+              }
+              const projectKey = task.projectKey ?? task.params.session.name;
+              if (projectKey in this.projectStats) {
+                this.projectStats[projectKey].done++;
               }
             }
           }
@@ -1064,22 +1151,27 @@ export class TaskQueueService extends EventTarget {
     }
     const oldQueue = this.queue;
     this.queue = new CircularQueue<Task>();
-    while (!oldQueue.isEmpty()) {
-      const task = oldQueue.peek();
-      oldQueue.dequeue();
-      this.removeTaskInternal(task);
-      // 이름 기준 매칭 — 호스트 로컬 태스크·타 창 위임 태스크 모두 포함
-      const match =
-        task.params.session.name === payload.sessionName &&
-        task.params.scene?.name === payload.sceneName &&
-        task.params.scene?.type === payload.sceneType;
-      if (match) {
-        this.notifyDelegationDone(task);
-      } else {
-        this.addTaskInternal(task);
+    this.beginProgressBatch();
+    try {
+      while (!oldQueue.isEmpty()) {
+        const task = oldQueue.peek();
+        oldQueue.dequeue();
+        this.removeTaskInternal(task);
+        // 이름 기준 매칭 — 호스트 로컬 태스크·타 창 위임 태스크 모두 포함
+        const match =
+          task.params.session.name === payload.sessionName &&
+          task.params.scene?.name === payload.sceneName &&
+          task.params.scene?.type === payload.sceneType;
+        if (match) {
+          this.notifyDelegationDone(task);
+        } else {
+          this.addTaskInternal(task);
+        }
       }
+      this.dispatchProgress();
+    } finally {
+      this.endProgressBatch();
     }
-    this.dispatchProgress();
   }
 
   // 원 창: 위임한 태스크의 이미지 1장 완료/실패/전량완료 수신.
