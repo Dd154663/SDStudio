@@ -273,7 +273,6 @@ export class ImageHistoryService {
     const appState = getAppState();
     if (appState.curSession?.name !== session.name) {
       // 타 프로젝트 항목 → 프로젝트 전환 (ProjectDrawer.selectProject와 동일 패턴)
-      imageService.refreshBatch(session);
       appState.curSession = session;
     }
     const cell = await this.waitForSceneCell(entry.sceneType, entry.sceneName);

@@ -1381,10 +1381,6 @@ const QueueControl = observer(
         taskQueueService.removeEventListener('progress', onProgressUpdated);
       };
     }, []);
-    useEffect(() => {
-      imageService.refreshBatch(curSession!);
-    }, [curSession]);
-
     // 씬 우클릭 메뉴의 "씬 편집기로/조합 에디터로" → 해당 타입 탭에서 에디터 열기
     useEffect(() => {
       const handleOpenEditor = (e: Event) => {

@@ -32,7 +32,6 @@ import {
 } from 'react-icons/fa';
 import {
   sessionService,
-  imageService,
   isMobile,
   backend,
   templateService,
@@ -585,7 +584,6 @@ const ProjectDrawer = observer(() => {
   const selectProject = async (name: string) => {
     const session = await sessionService.get(name);
     if (session) {
-      imageService.refreshBatch(session);
       appState.curSession = session;
       pushRecentProject(name);
     }
@@ -633,7 +631,6 @@ const ProjectDrawer = observer(() => {
       }
       const session = await sessionService.get(name);
       if (session) {
-        imageService.refreshBatch(session);
         appState.curSession = session;
         pushRecentProject(name);
       }

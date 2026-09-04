@@ -89,6 +89,7 @@ class LRUCache<K, V> {
 }
 
 export class ImageService extends EventTarget {
+  private refreshBatchInFlight = new Map<string, Promise<void>>();
   images: { [key: string]: { [key: string]: string[] } };
   inpaints: { [key: string]: { [key: string]: string[] } };
   cache: LRUCache<string, string>;
@@ -837,7 +838,25 @@ export class ImageService extends EventTarget {
     return files.length > 0 ? 'files' : 'empty';
   }
 
-  async refreshBatch(session: Session) {
+  async refreshBatch(session: Session): Promise<void> {
+    const inFlight = this.refreshBatchInFlight.get(session.name);
+    if (inFlight) {
+      await inFlight;
+      return;
+    }
+
+    const refreshPromise = this.refreshBatchInternal(session);
+    this.refreshBatchInFlight.set(session.name, refreshPromise);
+    try {
+      await refreshPromise;
+    } finally {
+      if (this.refreshBatchInFlight.get(session.name) === refreshPromise) {
+        this.refreshBatchInFlight.delete(session.name);
+      }
+    }
+  }
+
+  private async refreshBatchInternal(session: Session): Promise<void> {
     const allScenes: GenericScene[] = [
       ...session.scenes.values(),
       ...session.inpaints.values(),

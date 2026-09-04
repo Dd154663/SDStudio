@@ -1,7 +1,6 @@
 import {
   backend,
   sessionService,
-  imageService,
   trashService,
   globalPieceService,
   globalPresetService,
@@ -307,7 +306,6 @@ export async function bootstrapApp(): Promise<void> {
       if (initial) {
         const sess = await sessionService.get(initial);
         if (sess) {
-          imageService.refreshBatch(sess);
           appState.curSession = sess;
         }
       }

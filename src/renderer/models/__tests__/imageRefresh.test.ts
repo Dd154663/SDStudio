@@ -201,4 +201,28 @@ describe('ImageService.refreshBatch 유령 참조 자동 화해', () => {
       addLog.mock.calls.some((c) => String(c[2]).includes('영구 소실')),
     ).toBe(false);
   });
+
+  test('같은 프로젝트의 동시 전수 새로고침은 파일 스캔과 배치 이벤트를 한 번만 수행한다', async () => {
+    const svc = new ImageService();
+    const sc = { ...scene(['a.png']), name: 'alive' };
+    const sess = makeSession([sc]) as any;
+    let release!: (files: string[]) => void;
+    backend.listFiles.mockImplementation(
+      () => new Promise<string[]>((resolve) => (release = resolve)),
+    );
+    const onUpdated = jest.fn();
+    svc.addEventListener('updated', onUpdated);
+
+    const first = svc.refreshBatch(sess);
+    const second = svc.refreshBatch(sess);
+
+    expect(backend.listFiles).toHaveBeenCalledTimes(1);
+    release(['a.png']);
+    await Promise.all([first, second]);
+
+    expect(backend.listFiles).toHaveBeenCalledTimes(1);
+    expect(
+      onUpdated.mock.calls.filter(([event]) => (event as CustomEvent).detail?.batch),
+    ).toHaveLength(1);
+  });
 });

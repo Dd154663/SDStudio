@@ -555,7 +555,6 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
   const selectProject = useCallback(async (name: string) => {
     const session = await sessionService.get(name);
     if (session) {
-      imageService.refreshBatch(session);
       appState.curSession = session;
       pushRecentProject(name);
     }

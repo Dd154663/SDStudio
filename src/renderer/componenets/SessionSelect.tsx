@@ -4,7 +4,7 @@ import { DropdownSelect, Option } from './UtilComponents';
 import { FaEllipsisH, FaTrash, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown, FaEye } from 'react-icons/fa';
 import { pushRecentProject } from './ProjectBrowser';
 import Tooltip from './Tooltip';
-import { sessionService, imageService, backend, zipService, trashService, isMobile, templateService } from '../models';
+import { sessionService, backend, zipService, trashService, isMobile, templateService } from '../models';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
 import { TOOLBAR_VIEW_MAIN, MOBILE_PROJECT_TOPROW_IDS, resolveToolbarView } from '../models/uiLayout';
@@ -236,7 +236,6 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
     (async () => {
       const session = await sessionService.get(opt.value);
       if (session) {
-        imageService.refreshBatch(session);
         appState.curSession = session;
         pushRecentProject(opt.value);
       }
