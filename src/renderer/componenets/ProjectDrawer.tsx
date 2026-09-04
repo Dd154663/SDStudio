@@ -427,10 +427,11 @@ const ProjectDrawer = observer(() => {
   const refresh = useCallback(() => setVersion((v) => v + 1), []);
 
   useEffect(() => {
+    if (!render) return;
     const onUpdate = () => refresh();
     sessionService.addEventListener('listupdated', onUpdate);
     return () => sessionService.removeEventListener('listupdated', onUpdate);
-  }, [refresh]);
+  }, [refresh, render]);
 
   // 안드로이드 뒤로가기로 드로어 닫기
   useEffect(() => {
@@ -540,10 +541,11 @@ const ProjectDrawer = observer(() => {
   };
 
   // 숨김 씬 템플릿 제외 — 트리·즐겨찾기·검색·카운트가 전부 이 목록에서 파생된다
-  const sessionNames = templateService.filterVisibleProjects(
-    sessionService.list(),
-  );
-  const folders = sessionService.getOrderedFolders();
+  // 닫힌 동안에는 대용량 프로젝트 목록의 필터·정렬을 만들지 않는다.
+  const sessionNames = render
+    ? templateService.filterVisibleProjects(sessionService.list())
+    : [];
+  const folders = render ? sessionService.getOrderedFolders() : [];
 
   const isFav = (n: string) => sessionService.isFavorite(n);
   const sortFn = (a: string, b: string) => {
@@ -1023,7 +1025,7 @@ const ProjectDrawer = observer(() => {
   };
 
   useEffect(() => {
-    if (!isMobile) return;
+    if (!render || !isMobile) return;
     type Cand = { type: 'project' | 'folder'; name: string };
     const st = {
       cand: null as Cand | null,
@@ -1248,7 +1250,7 @@ const ProjectDrawer = observer(() => {
       document.removeEventListener('click', onClick, true);
       cleanupTransient();
     };
-  }, []);
+  }, [render]);
 
   // 프로젝트별 잔여 생성 예약 배지 + 실행 중 하이라이트 (일괄 생성 예약 확인).
   // 큐는 mobx 가 아니라 이벤트 소스이므로 스냅샷을 구독으로 동기화한다.
@@ -1260,6 +1262,7 @@ const ProjectDrawer = observer(() => {
   }>({ remains: {}, running: null });
   const queueSnapshotJsonRef = useRef('');
   useEffect(() => {
+    if (!render) return;
     const update = () => {
       const snap = taskQueueService.projectQueueSnapshot();
       const json = JSON.stringify(snap);
@@ -1276,7 +1279,7 @@ const ProjectDrawer = observer(() => {
       taskQueueService.removeEventListener('start', update);
       taskQueueService.removeEventListener('stop', update);
     };
-  }, []);
+  }, [render]);
 
   // 드로어가 닫혀 있으면 여기서 렌더 종료. 모든 훅 호출 이후이므로 훅 순서가 안전하다
   // (터치 드래그용 useRef/useEffect를 조기 return보다 앞에 두기 위해 위치를 내렸다).
