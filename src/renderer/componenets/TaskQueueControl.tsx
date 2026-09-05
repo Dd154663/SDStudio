@@ -1,12 +1,13 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import { FaSpinner } from 'react-icons/fa';
-import { FaPlay, FaRegCalendarTimes, FaStop } from 'react-icons/fa';
+import { FaPlay, FaRegCalendarPlus, FaRegCalendarTimes, FaStop } from 'react-icons/fa';
 import { FaTimes } from 'react-icons/fa';
 import { FaRegClock } from 'react-icons/fa';
 import { taskQueueService, cyclingSessionService } from '../models';
 import { Task } from '../models/TaskQueueService';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
+import { addScenesToQueue } from '../models/sceneQueueActions';
 
 interface ProgressBarProps {
   duration: number;
@@ -278,7 +279,7 @@ const TaskQueueControl = observer(({}) => {
   const cyclingActive = cyclingSessionService.state === 'running' || cyclingSessionService.state === 'paused';
 
   return (
-    <div ref={rootRef} className="flex gap-2 lg:gap-4 items-center">
+    <div ref={rootRef} className="flex gap-1 md:gap-2 lg:gap-4 items-center">
       {showList && (
         <TaskQueueList
           dropDown={listDropDown}
@@ -296,11 +297,12 @@ const TaskQueueControl = observer(({}) => {
         </div>
       )}
       <div className="whitespace-nowrap">
-        <span className="whitespace-nowrap text-default">개수:</span>
+        <span className="sr-only md:not-sr-only whitespace-nowrap text-default">개수:</span>
         <input
+          aria-label="생성 개수"
           min={1}
           max={99}
-          className={'ml-2 p-1 md:w-16 text-center gray-input'}
+          className={'ml-2 p-1 w-10 md:w-16 text-center gray-input'}
           type="number"
           value={appState.samples}
           onChange={(e: any) => {
@@ -325,6 +327,24 @@ const TaskQueueControl = observer(({}) => {
       >
         <TaskProgressBar />
       </div>
+      <button
+        type="button"
+        className="round-button back-sky px-2 h-8 lg:px-6 disabled:opacity-50"
+        title="씬 일괄 예약 (선택한 씬이 있으면 선택 씬만)"
+        aria-label="씬 일괄 예약"
+        disabled={!appState.curSession}
+        onClick={() => {
+          if (appState.curSession) {
+            void addScenesToQueue(
+              appState.curSession,
+              'scene',
+              appState.selectedScenes.size > 0,
+            );
+          }
+        }}
+      >
+        <FaRegCalendarPlus size={18} />
+      </button>
       <button
         className={`round-button back-gray px-2 h-8 lg:px-6`}
         onClick={() => {
