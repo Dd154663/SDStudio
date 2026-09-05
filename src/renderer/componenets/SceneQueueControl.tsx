@@ -472,6 +472,8 @@ const CombinationQuickToggle = observer(
 
 interface SceneCellProps {
   scene: GenericScene;
+  sceneIndex?: number;
+  isActive?: boolean;
   curSession: Session;
   cellSize: number;
   getImage: (scene: GenericScene) => Promise<string | null>;
@@ -493,6 +495,8 @@ interface SceneCellProps {
 export const SceneCell = observer(
   ({
     scene,
+    sceneIndex,
+    isActive = true,
     getImage,
     setDisplayScene,
     moveScene,
@@ -515,6 +519,10 @@ export const SceneCell = observer(
     const [previewIndex, setPreviewIndex] = useState(-1);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [isHovered, setIsHovered] = useState(false);
+    const activeRef = useRef(isActive);
+    activeRef.current = isActive;
+    const getImageRef = useRef(getImage);
+    getImageRef.current = getImage;
     let emoji = '';
     if (scene.type === 'inpaint') {
       const def = workFlowService.getDef(scene.workflowType);
@@ -560,20 +568,27 @@ export const SceneCell = observer(
     }, []);
 
     useEffect(() => {
+      if (!isActive) return;
+      let cancelled = false;
       if (previewIndex >= 0 && previewIndex < totalImages) {
         const filename = outputs[previewIndex];
         const dir = imageService.getOutputDir(curSession!, scene);
         imageService
           .fetchImageSmall(`${dir}/${filename}`, platform.sceneThumbSize)
-          .then(setPreviewImage)
-          .catch(() => setPreviewImage(null));
+          .then((image) => {
+            if (!cancelled && activeRef.current) setPreviewImage(image);
+          })
+          .catch(() => {
+            if (!cancelled && activeRef.current) setPreviewImage(null);
+          });
       } else {
         setPreviewImage(null);
       }
-    }, [previewIndex, totalImages, curSession, scene]);
+      return () => { cancelled = true; };
+    }, [isActive, previewIndex, totalImages, outputs, curSession, scene]);
 
     useEffect(() => {
-      if (!isHovered) return;
+      if (!isActive || !isHovered) return;
       const handler = (e: KeyboardEvent) => {
         if (isInputFocusedLocal()) return;
         if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -605,6 +620,7 @@ export const SceneCell = observer(
       window.addEventListener('keydown', handler, true);
       return () => window.removeEventListener('keydown', handler, true);
     }, [
+      isActive,
       isHovered,
       previewIndex,
       totalImages,
@@ -617,6 +633,7 @@ export const SceneCell = observer(
     // 부모(SceneQueueControl)가 A/D/F 를 이 이벤트로 디스패치한다. 마우스 호버 셀은
     // 위의 capture 핸들러가 stopPropagation 으로 선점하므로, 호버가 항상 우선된다.
     useEffect(() => {
+      if (!isActive) return;
       const handler = (e: Event) => {
         const detail = (e as CustomEvent).detail;
         if (!detail) return;
@@ -638,15 +655,20 @@ export const SceneCell = observer(
       };
       window.addEventListener('scene-image-nav', handler);
       return () => window.removeEventListener('scene-image-nav', handler);
-    }, [scene, totalImages, outputs, previewIndex]);
+    }, [isActive, scene, totalImages, outputs, previewIndex]);
 
     // 키보드 포커스가 떠나고 호버도 아니면 미리보기를 초기화한다.
     // (포커스가 다른 씬으로 이동했을 때 이전 미리보기 잔상이 남지 않도록)
     useEffect(() => {
-      if (!isFocused && !isHovered) setPreviewIndex(-1);
-    }, [isFocused, isHovered]);
+      if (isActive && !isFocused && !isHovered) setPreviewIndex(-1);
+    }, [isActive, isFocused, isHovered]);
 
-    const curIndex = curSession.getScenes(scene.type).indexOf(scene);
+    useEffect(() => {
+      if (!isActive) setIsHovered(false);
+    }, [isActive]);
+
+    // 검색으로 걸러진 표시 순서 대신 원래 씬 순서를 DnD에 전달한다.
+    const curIndex = sceneIndex ?? curSession.getScenes(scene.type).indexOf(scene);
     const cardElRef = useRef<HTMLDivElement | null>(null);
     const [{ isDragging }, drag, preview] = useDrag(
       () => ({
@@ -782,14 +804,21 @@ export const SceneCell = observer(
     };
 
     useEffect(() => {
+      if (!isActive) return;
+      let cancelled = false;
+      let request = 0;
       const onUpdate = () => {
-        rerender({});
+        if (activeRef.current) rerender({});
       };
       const refreshImage = async () => {
+        if (!activeRef.current) return;
+        const currentRequest = ++request;
         try {
-          const base64 = await getImage(scene);
-          setImage(base64!);
+          const base64 = await getImageRef.current(scene);
+          if (cancelled || !activeRef.current || currentRequest !== request) return;
+          setImage(base64 ?? undefined);
         } catch (e: any) {
+          if (cancelled || !activeRef.current || currentRequest !== request) return;
           setImage(undefined);
         }
         rerender({});
@@ -805,12 +834,13 @@ export const SceneCell = observer(
         },
       );
       const dispose2 = reaction(
-        () => scene.type === 'inpaint' && scene.preset.image,
+        () => scene.type === 'inpaint' && scene.preset?.image,
         () => {
           refreshImage();
         },
       );
       return () => {
+        cancelled = true;
         gameService.removeEventListener('updated', refreshImage);
         taskQueueService.removeEventListener('progress', onUpdate);
         imageService.removeEventListener(
@@ -820,7 +850,7 @@ export const SceneCell = observer(
         dispose();
         dispose2();
       };
-    }, [scene]);
+    }, [isActive, scene, curSession]);
 
     const cardRef = (node: any) => {
       cardElRef.current = node;
@@ -1307,6 +1337,7 @@ export function SceneTrashView({ projectName }: SceneTrashViewProps) {
 
 interface QueueControlProps {
   type: 'scene' | 'inpaint';
+  isActive?: boolean;
   filterFunc?: (scene: GenericScene) => boolean;
   onClose?: (x: number) => void;
   showPannel?: boolean;
@@ -1314,7 +1345,7 @@ interface QueueControlProps {
 }
 
 const QueueControl = observer(
-  ({ type, className, showPannel, filterFunc, onClose }: QueueControlProps) => {
+  ({ type, isActive = true, className, showPannel, filterFunc, onClose }: QueueControlProps) => {
     const curSession = appState.curSession!;
     const [_, rerender] = useState<{}>({});
     const [editingScene, _setEditingScene] = useState<GenericScene | undefined>(
@@ -1373,14 +1404,16 @@ const QueueControl = observer(
     const wasDraggingRef = useRef(false);
 
     useEffect(() => {
+      if (!isActive) return;
       const onProgressUpdated = () => {
         rerender({});
       };
       taskQueueService.addEventListener('progress', onProgressUpdated);
+      onProgressUpdated();
       return () => {
         taskQueueService.removeEventListener('progress', onProgressUpdated);
       };
-    }, []);
+    }, [isActive]);
     // 씬 우클릭 메뉴의 "씬 편집기로/조합 에디터로" → 해당 타입 탭에서 에디터 열기
     useEffect(() => {
       const handleOpenEditor = (e: Event) => {
@@ -3145,6 +3178,9 @@ const QueueControl = observer(
             const minWidths = ['180px', '240px', '320px'];
             const useGrid = !isMobile;
             const renderedScenes = getFilteredScenes();
+            const sceneIndices = new Map(
+              curSession.getScenes(type).map((scene, index) => [scene, index]),
+            );
             return (
               <div
                 ref={gridContainerRef}
@@ -3192,6 +3228,8 @@ const QueueControl = observer(
                     cellSize={effectiveCellSize}
                     key={scene.name}
                     scene={scene}
+                    sceneIndex={sceneIndices.get(scene)}
+                    isActive={isActive}
                     getImage={getImage}
                     setDisplayScene={setDisplayScene}
                     setEditingScene={setEditingScene}

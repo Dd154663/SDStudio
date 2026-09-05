@@ -491,7 +491,7 @@ export const App = observer(() => {
   const tabs = [
     {
       label: '이미지생성',
-      content: <QueueControl type="scene" showPannel />,
+      content: (isActive: boolean) => <QueueControl type="scene" isActive={isActive} showPannel />,
       emoji: <FaImages />,
       onClick: () => {
         appState.curMainTab = 'scene';
@@ -499,7 +499,7 @@ export const App = observer(() => {
     },
     {
       label: '이미지변형',
-      content: <QueueControl type="inpaint" showPannel />,
+      content: (isActive: boolean) => <QueueControl type="inpaint" isActive={isActive} showPannel />,
       emoji: <FaPenFancy />,
       onClick: () => {
         appState.curMainTab = 'inpaint';

@@ -2568,6 +2568,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           )}
           <QueueControl
             type="inpaint"
+            isActive={selectedTab === 3}
             className={selectedTab === 3 ? 'px-1 md:px-4 ' : 'hidden'}
             onClose={(x) => {
               setSelectedTab(x);

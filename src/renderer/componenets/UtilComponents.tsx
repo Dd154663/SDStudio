@@ -156,7 +156,7 @@ export const FileUploadBase64: React.FC<{
 
 interface TabProps {
   label: string;
-  content: React.ReactNode;
+  content: React.ReactNode | ((isActive: boolean) => React.ReactNode);
   banToggle?: boolean;
   emoji: React.ReactNode;
   onClick?: () => void;
@@ -264,7 +264,9 @@ export const TabComponent: React.FC<TabComponentProps> = ({
             className="h-full overflow-auto"
             style={{ display: index === activeTab ? 'block' : 'none' }}
           >
-            {tab.content}
+            {typeof tab.content === 'function'
+              ? tab.content(index === activeTab)
+              : tab.content}
           </div>
         ))}
       </div>
