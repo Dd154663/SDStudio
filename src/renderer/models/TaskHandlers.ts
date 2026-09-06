@@ -493,7 +493,7 @@ class GenerateImageTaskHandler implements TaskHandler {
       }
       if (
         opusUsageService.isPaidRisk(usage) &&
-        !opusUsageService.hasRecentPaidApproval()
+        !opusUsageService.hasSessionPaidApproval()
       ) {
         const detail = usage
           ? `현재 무료 할당량은 ${usage.percent}%입니다.`
@@ -502,7 +502,8 @@ class GenerateImageTaskHandler implements TaskHandler {
           type: 'select',
           text:
             `${detail}\n이후 생성은 Anlas를 소비할 수 있습니다. ` +
-            '서버 상태는 조회 직후에도 달라질 수 있습니다.',
+            '서버 상태는 조회 직후에도 달라질 수 있습니다.\n' +
+            '계속하면 계정 전환을 포함해 앱을 다시 실행할 때까지 이 확인을 생략합니다.',
           items: [
             {
               text: 'Anlas 소비 가능성을 이해하고 계속',

@@ -16,7 +16,7 @@ export class OpusUsageService extends EventTarget {
 
   private inFlight: Promise<OpusUsageStatus | undefined> | undefined;
   private revision = 0;
-  private paidApprovalUntil = 0;
+  private paidRiskApprovedForSession = false;
   private lowWarningShown = false;
 
   constructor(private readonly backend: Pick<Backend, 'getOpusUsageStatus'>) {
@@ -71,7 +71,6 @@ export class OpusUsageService extends EventTarget {
     this.state = 'idle';
     this.status = undefined;
     this.fetchedAt = 0;
-    this.paidApprovalUntil = 0;
     this.emitChange();
   }
 
@@ -84,7 +83,6 @@ export class OpusUsageService extends EventTarget {
     this.status = status;
     this.fetchedAt = Date.now();
     this.state = 'ready';
-    this.paidApprovalUntil = 0;
     this.emitChange();
   }
 
@@ -92,14 +90,14 @@ export class OpusUsageService extends EventTarget {
     return !status || status.isNegative || status.percent <= 0;
   }
 
-  hasRecentPaidApproval(): boolean {
-    return Date.now() < this.paidApprovalUntil;
+  hasSessionPaidApproval(): boolean {
+    return this.paidRiskApprovedForSession;
   }
 
   approvePaidRisk(): void {
-    // 긴 큐에서 매 장마다 확인창이 반복되지 않게 하되, 외부 기기 소비를 고려해
-    // 60초 뒤에는 다시 서버 상태와 사용자 의사를 확인한다.
-    this.paidApprovalUntil = Date.now() + 60_000;
+    // 사용자 승인 이후에는 시간 경과·회복·계정 전환으로 재확인하지 않는다.
+    // 메모리에만 보관하므로 앱 세션이 새로 시작되면 다시 승인이 필요하다.
+    this.paidRiskApprovedForSession = true;
   }
 
   takeLowWarning(

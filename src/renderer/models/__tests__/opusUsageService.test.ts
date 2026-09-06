@@ -137,3 +137,34 @@ describe('OpusUsageService', () => {
     expect(service.takeLowWarning(low, 10)).toBe(false);
   });
 });
+
+describe('Anlas 소비 세션 승인', () => {
+  test('승인하지 않은 새 세션은 소진 확인이 필요하다', () => {
+    const service = new OpusUsageService({ getOpusUsageStatus: jest.fn() } as any);
+    expect(service.hasSessionPaidApproval()).toBe(false);
+  });
+
+  test('시간 경과와 소진/소량 회복 반복에도 승인 상태를 유지한다', () => {
+    jest.useFakeTimers();
+    try {
+      const service = new OpusUsageService({ getOpusUsageStatus: jest.fn() } as any);
+      service.approvePaidRisk();
+      jest.advanceTimersByTime(24 * 60 * 60 * 1000);
+      for (const percent of [0, 1, 0, 1, 0]) {
+        service.adoptKnownStatus({ percent, isNegative: percent === 0, timeUntilNextPercent: 60 });
+        expect(service.hasSessionPaidApproval()).toBe(true);
+      }
+    } finally { jest.useRealTimers(); }
+  });
+
+  test('계정 전환과 로그인 상태 초기화는 같은 앱 세션의 승인을 취소하지 않는다', () => {
+    const service = new OpusUsageService({ getOpusUsageStatus: jest.fn() } as any);
+    service.approvePaidRisk();
+    service.invalidateAccount();
+    expect(service.hasSessionPaidApproval()).toBe(true);
+    service.clear();
+    expect(service.hasSessionPaidApproval()).toBe(true);
+    const restarted = new OpusUsageService({ getOpusUsageStatus: jest.fn() } as any);
+    expect(restarted.hasSessionPaidApproval()).toBe(false);
+  });
+});
