@@ -64,15 +64,13 @@ export class ElectornBackend extends Backend {
     try {
       return await invoke('read-global-file', 'TOKEN.txt');
     } catch (e: any) {
+      if (!String(e?.message || e).includes('ENOENT')) throw e;
       const legacy = await invoke('read-file', 'TOKEN.txt');
-      // 이관은 전역본 부재(ENOENT)일 때만 — 일시 IO 오류로 읽기만 실패한 경우
-      // 이미 있는 전역본을 구 위치의 스테일 토큰으로 덮어쓰지 않는다.
-      // 이관 쓰기 실패도 이번 호출을 막지 않는다(legacy 토큰으로 진행, 다음에 재시도).
-      if (String(e?.message || e).includes('ENOENT')) {
-        try {
-          await invoke('write-global-file', 'TOKEN.txt', legacy);
-        } catch (e2) {}
-      }
+      // 부재일 때만 구 위치를 이관한다. 일시 읽기 오류는 위에서 그대로 전파한다.
+      // 이관 쓰기 실패는 이번 호출을 막지 않고 다음에 재시도한다.
+      try {
+        await invoke('write-global-file', 'TOKEN.txt', legacy);
+      } catch (e2) {}
       return legacy;
     }
   }
@@ -167,8 +165,8 @@ export class ElectornBackend extends Backend {
     let token: string;
     try {
       token = await this.readToken();
-    } catch (e) {
-      return 'invalid'; // 토큰 파일 없음(전역·구 위치 모두) → 로그아웃
+    } catch (e: any) {
+      return String(e?.message || e).includes('ENOENT') ? 'invalid' : 'error';
     }
     return await this.imageGenService.validateToken(token);
   }

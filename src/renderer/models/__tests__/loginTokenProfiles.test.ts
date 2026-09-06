@@ -350,3 +350,127 @@ describe('LoginService 토큰 프리셋', () => {
     expect(backend.loginWithToken).not.toHaveBeenCalled();
   });
 });
+
+describe('로그인 복구 회귀', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
+
+  test('늦은 이전 오류가 최신 성공을 취소하지 않는다', async () => {
+    let finish!: (value: LoginValidity) => void;
+    backend.validateLogin.mockImplementationOnce(() => new Promise(r => { finish = r; }));
+    const service = new LoginService();
+    const old = service.refresh();
+    await Promise.resolve();
+    await service.refresh();
+    finish('error');
+    await old;
+    expect(service.loggedIn).toBe(true);
+  });
+
+  test('첫 통신 실패 후 타이머 재검증으로 복구한다', async () => {
+    backend.validateLogin.mockResolvedValueOnce('error');
+    const service = new LoginService();
+    await service.refresh();
+    expect(service.loggedIn).toBe(false);
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(service.loggedIn).toBe(true);
+  });
+
+  test('잘못된 직접 입력은 기존 인증 파일을 덮어쓰지 않는다', async () => {
+    currentToken = 'existing';
+    backend.validateToken.mockResolvedValueOnce('invalid');
+    const service = new LoginService();
+    await expect(service.loginWithToken('bad')).rejects.toThrow('유효');
+    expect(currentToken).toBe('existing');
+    expect(backend.loginWithToken).not.toHaveBeenCalled();
+  });
+
+  test('직접 입력 통신 실패를 로그인 성공으로 반환하지 않는다', async () => {
+    backend.validateToken.mockResolvedValueOnce('error');
+    await expect(new LoginService().loginWithToken('candidate')).rejects.toThrow('네트워크');
+    expect(backend.loginWithToken).not.toHaveBeenCalled();
+  });
+
+  const saved = () => {
+    profileData = JSON.stringify({ version: 1, activeId: 'a', profiles: [
+      { id: 'a', name: 'A', token: 'first' }, { id: 'b', name: 'B', token: 'second' },
+    ] });
+  };
+
+  test('인증 파일이 없으면 검증된 마지막 활성 토큰만 복구한다', async () => {
+    saved();
+    const service = new LoginService();
+    await service.initializeLogin(true);
+    expect(currentToken).toBe('first');
+    expect(service.loggedIn).toBe(true);
+  });
+
+  test('실제 인증 파일과 다르면 실제 토큰으로 활성 표시를 정정한다', async () => {
+    saved(); currentToken = 'second';
+    const service = new LoginService();
+    await service.initializeLogin(true);
+    expect(service.activeProfileId).toBe('b');
+    expect(backend.loginWithToken).not.toHaveBeenCalled();
+  });
+
+  test('프리셋 밖 직접 토큰도 보존하며 활성 표시만 해제한다', async () => {
+    saved(); currentToken = 'manual';
+    const service = new LoginService();
+    await service.initializeLogin(true);
+    expect(service.activeProfileId).toBeUndefined();
+    expect(currentToken).toBe('manual');
+  });
+
+  test('읽기 오류를 파일 부재로 간주하여 복구하지 않는다', async () => {
+    saved();
+    backend.readLoginToken.mockRejectedValueOnce(new Error('EACCES'));
+    expect(await new LoginService().initializeLogin(true)).toBe('error');
+    expect(backend.loginWithToken).not.toHaveBeenCalled();
+  });
+
+  test('보조 창에서는 프리셋 복구 쓰기를 하지 않는다', async () => {
+    saved();
+    await new LoginService().initializeLogin(false);
+    expect(backend.loginWithToken).not.toHaveBeenCalled();
+    expect(backend.writeTokenProfileData).not.toHaveBeenCalled();
+  });
+});
+
+describe('프리셋 복구 실패의 격리', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
+  test('손상된 프리셋이 기존 토큰의 인증을 막지 않는다', async () => {
+    profileData = '{broken'; currentToken = 'existing';
+    const service = new LoginService();
+    expect(await service.initializeLogin(true)).toBe('valid');
+    expect(service.loggedIn).toBe(true);
+    expect(backend.loginWithToken).not.toHaveBeenCalled();
+  });
+  test('복구 후보 검증 통신 실패는 재시도하고 무검증 저장하지 않는다', async () => {
+    profileData = JSON.stringify({version: 1, activeId: 'a', profiles: [{id:'a',name:'A',token:'candidate'}]});
+    backend.validateToken.mockResolvedValueOnce('error');
+    const service = new LoginService();
+    expect(await service.initializeLogin(true)).toBe('error');
+    expect(backend.loginWithToken).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(currentToken).toBe('candidate');
+    expect(service.loggedIn).toBe(true);
+  });
+  test('무효한 마지막 활성 토큰은 복구하지 않는다', async () => {
+    profileData = JSON.stringify({version: 1, activeId: 'a', profiles: [{id:'a',name:'A',token:'candidate'}]});
+    backend.validateToken.mockResolvedValueOnce('invalid');
+    backend.validateLogin.mockResolvedValueOnce('invalid');
+    const service = new LoginService();
+    expect(await service.initializeLogin(true)).toBe('invalid');
+    expect(backend.loginWithToken).not.toHaveBeenCalled();
+    expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
+test('검증된 프리셋 전환은 중복 인증 조회 없이 로그인 상태를 확정한다', async () => {
+  profileData = JSON.stringify({version: 1, activeId: 'a', profiles: [{id:'a',name:'A',token:'candidate'}]});
+  const service = new LoginService();
+  await service.activateTokenProfile('a');
+  expect(service.loggedIn).toBe(true);
+  expect(backend.validateLogin).not.toHaveBeenCalled();
+});

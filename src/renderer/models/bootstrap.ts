@@ -357,7 +357,7 @@ export async function bootstrapApp(): Promise<void> {
     : Promise.resolve();
   tokenProfilesReady
     .catch(() => {})
-    .finally(() => loginService.refresh().catch(() => {}));
+    .finally(() => loginService.initializeLogin(taskQueueService.isGenerationHost).catch(() => {}));
   // 새 버전 확인 (네트워크)
   Promise.resolve(appUpdateNoticeService.run()).catch(() => {});
   // 로컬 배경 제거 모델 존재 확인

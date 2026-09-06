@@ -54,10 +54,79 @@ export class LoginService extends EventTarget {
   private nextAutoRotationAttemptAt = 0;
   private nextAutoBalanceAttemptAt = 0;
 
+  private validationRevision = 0;
+  private retryTimer?: ReturnType<typeof setTimeout>;
+  private retryDelay = 30_000;
+  private reconcileOnRefresh = false;
+  private tokenWriteQueue: Promise<void> = Promise.resolve();
+
+  private invalidateValidation(): void {
+    this.validationRevision++;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = undefined;
+  }
+
+  private async writeLoginToken(token: string): Promise<void> {
+    this.invalidateValidation();
+    const write = this.tokenWriteQueue.then(() => backend.loginWithToken(token));
+    this.tokenWriteQueue = write.catch(() => {});
+    try {
+      await write;
+    } finally {
+      this.invalidateValidation();
+    }
+  }
+
+  async initializeLogin(restoreProfiles: boolean): Promise<LoginValidity> {
+    this.reconcileOnRefresh = restoreProfiles;
+    return this.refresh();
+  }
+
+  // 실제 토큰이 우선이다. 파일 부재만 검증된 마지막 활성 토큰으로 복구한다.
+  private async reconcileToken(revision: number): Promise<void> {
+    const token = await backend.readLoginToken();
+    try {
+      await this.ensureTokenProfilesLoaded();
+    } catch (e) {
+      // 프리셋 손상/저장 실패가 별도로 존재하는 정상 인증을 막지 않는다.
+      if (token) return;
+      throw e;
+    }
+    if (revision !== this.validationRevision) return;
+    if (token) {
+      const id = this.tokenProfiles.find((p) => p.token === token)?.id;
+      if (id !== this.activeTokenProfileId) {
+        try {
+          await this.persistTokenProfiles(this.tokenProfiles, id);
+        } catch (e) {
+          this.activeTokenProfileId = id;
+          this.emitTokenProfilesChange();
+        }
+      }
+      return;
+    }
+    const active = this.tokenProfiles.find((p) => p.id === this.activeTokenProfileId);
+    if (!active) return;
+    const validity = await backend.validateToken(active.token);
+    if (revision !== this.validationRevision) return;
+    if (validity === 'error') throw new Error('토큰 복구 검증을 재시도해야 합니다');
+    if (validity !== 'valid') return;
+    // 검증 도중 다른 창에서 로그인했으면 기존 토큰을 보존한다.
+    if (await backend.readLoginToken()) return;
+    if (revision !== this.validationRevision) return;
+    const restore = this.tokenWriteQueue.then(async () => {
+      if (revision !== this.validationRevision) return;
+      if (await backend.readLoginToken()) return;
+      if (revision === this.validationRevision) await backend.loginWithToken(active.token);
+    });
+    this.tokenWriteQueue = restore.catch(() => {});
+    await restore;
+  }
+
   constructor() {
     super();
     this.loggedIn = false;
-    // 시작 시 1회 토큰 검증은 bootstrap 이 refresh() 를 호출해 수행한다
+    // 시작 시 토큰 검증은 bootstrap 이 initializeLogin() 을 호출해 수행한다
     // (생성자에서 네트워크 IO 를 시작하지 않는다 — 부팅 순서 보장).
     // 세션 도중 만료는 TobBar의 크레딧 조회 실패 시 재검증으로 잡힌다.
   }
@@ -68,8 +137,14 @@ export class LoginService extends EventTarget {
   }
 
   async loginWithToken(token: string) {
-    await backend.loginWithToken(token);
-    await this.refresh(true);
+    token = token.trim();
+    const validity = await backend.validateToken(token);
+    if (validity === 'invalid') throw new Error('토큰이 유효하지 않습니다');
+    if (validity !== 'valid') throw new Error('네트워크 오류로 토큰을 확인할 수 없습니다. 다시 시도해주세요');
+    await this.writeLoginToken(token);
+    // 방금 검증한 토큰을 저장했으므로 중복 조회 실패로 성공을 취소하지 않는다.
+    this.loggedIn = true;
+    this.dispatchEvent(new CustomEvent('change', {}));
     // 직접 붙여넣은 토큰이 저장 프리셋과 같으면 해당 항목을 활성 표시한다.
     // 일치하지 않으면 수동 로그인 상태로 표시하며, 로그인 성공 자체는 프로필
     // 메타데이터 저장 실패의 영향을 받지 않는다.
@@ -141,17 +216,18 @@ export class LoginService extends EventTarget {
       throw new Error('네트워크 오류로 토큰을 확인할 수 없습니다');
     }
 
-    await backend.loginWithToken(profile.token);
+    await this.writeLoginToken(profile.token);
+    this.loggedIn = true;
     try {
       await this.persistTokenProfiles(this.tokenProfiles, profile.id);
     } catch (e) {
       // 실제 토큰 전환은 끝났으므로 현재 세션의 표시만큼은 진실을 유지한다.
       this.activeTokenProfileId = profile.id;
       this.emitTokenProfilesChange();
-      await this.refresh(true);
+      this.dispatchEvent(new CustomEvent('change', {}));
       throw new Error('로그인은 전환됐지만 활성 프리셋 상태를 저장하지 못했습니다');
     }
-    await this.refresh(true);
+    this.dispatchEvent(new CustomEvent('change', {}));
     return validity;
   }
 
@@ -241,6 +317,7 @@ export class LoginService extends EventTarget {
     minimumPercent: number,
     mode: 'urgent' | 'balance' = 'urgent',
   ): Promise<LoginTokenRotationResult> {
+    const revision = this.validationRevision;
     await this.ensureTokenProfilesLoaded();
     let currentToken: string | undefined;
     try {
@@ -287,8 +364,9 @@ export class LoginService extends EventTarget {
       }
       if (usage.isNegative || usage.percent < minimumPercent) continue;
 
+      if (revision !== this.validationRevision) return { switched: false, reason: 'not-ready' };
       try {
-        await backend.loginWithToken(candidate.token);
+        await this.writeLoginToken(candidate.token);
       } catch (e) {
         return { switched: false, reason: 'switch-failed' };
       }
@@ -337,21 +415,32 @@ export class LoginService extends EventTarget {
   // valid → 로그인 ON, invalid(인증 거부) → OFF, error(네트워크 등 불확실) → 현재 상태 유지.
   // 상태가 실제로 바뀔 때만 'change'를 발생시켜(또는 force 시) 재검증 루프를 방지한다.
   async refresh(force = false): Promise<LoginValidity> {
-    let next = this.loggedIn;
+    this.invalidateValidation();
+    const revision = this.validationRevision;
     let result: LoginValidity = 'error';
     try {
+      await this.tokenWriteQueue;
+      if (revision !== this.validationRevision) return 'error';
+      if (this.reconcileOnRefresh) await this.reconcileToken(revision);
+      if (revision !== this.validationRevision) return 'error';
       result = await backend.validateLogin();
-      if (result === 'valid') next = true;
-      else if (result === 'invalid') next = false;
-      // 'error' → 일시 오류로 보고 현재 상태 유지(오탐 방지)
     } catch (e) {
-      // 예기치 못한 오류 → 상태 유지
+      // 저장소/네트워크 오류는 인증 거부와 구분한다.
     }
+    if (revision !== this.validationRevision) return 'error';
+    const next = result === 'error' ? this.loggedIn : result === 'valid';
     const changed = next !== this.loggedIn;
     this.loggedIn = next;
-    if (changed || force) {
-      this.dispatchEvent(new CustomEvent('change', {}));
+    if (result === 'error') {
+      this.retryTimer = setTimeout(() => {
+        this.retryTimer = undefined;
+        void this.refresh();
+      }, this.retryDelay);
+      this.retryDelay = Math.min(this.retryDelay * 2, 300_000);
+    } else {
+      this.retryDelay = 30_000;
     }
+    if (changed || force) this.dispatchEvent(new CustomEvent('change', {}));
     return result;
   }
 
@@ -391,7 +480,7 @@ export class LoginService extends EventTarget {
       if (ids.size !== parsed.profiles.length) {
         throw new Error('토큰 프리셋 파일에 중복 항목이 있습니다');
       }
-      this.tokenProfiles = parsed.profiles.map((p) => ({ ...p }));
+      this.tokenProfiles = parsed.profiles.map((p) => ({ ...p, token: p.token.trim() }));
       this.activeTokenProfileId = ids.has(parsed.activeId || '')
         ? parsed.activeId
         : undefined;

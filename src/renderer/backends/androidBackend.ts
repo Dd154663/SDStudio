@@ -399,7 +399,7 @@ export class AndroidBackend extends Backend {
     try {
       token = await this.readFile('TOKEN.txt');
     } catch (e) {
-      return 'invalid'; // 토큰 파일 없음 → 로그아웃
+      return this.isNotFoundError(e) ? 'invalid' : 'error';
     }
     return await this.imageGenService.validateToken(token);
   }
