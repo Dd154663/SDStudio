@@ -84,7 +84,7 @@ const RULES: Rule[] = [
       'models/ArtistLibraryService.ts': 1,
       'models/BackupService.ts': 3,
       'models/BatchProcessService.ts': 2,
-      'models/ExportPresetService.ts': 4,
+      'models/ExportPresetService.ts': 3,
       'models/GlobalCharacterPresetService.ts': 3,
       'models/GlobalPresetService.ts': 2,
       'models/ImageService.ts': 4,

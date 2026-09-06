@@ -69,6 +69,8 @@ import {
 } from './workflows/OneTimeFlows';
 
 export interface ExportPreset {
+  /** 미지정인 구 프리셋은 기존 재최적화 확인을 유지한다. */
+  reoptimize?: 'ask' | 'skip' | 'all';
   name: string;
   menu: 'fav' | 'all';
   format: 'normal' | 'prefix' | 'prefix_ask';
@@ -301,8 +303,10 @@ export class AppState {
   // 씬 템플릿 관리 오버레이 (씬 템플릿 개편 — 숨김 템플릿의 유일한 관리 지점)
   @observable accessor sceneTemplateManagerOpen: boolean = false;
   @observable accessor exportPresetManagerOpen: boolean = false;
+  @observable.ref accessor directExportRequest: import('./exportSettings').DirectExportRequest | undefined = undefined;
   lastExportType: 'scene' | 'inpaint' = 'scene';
   lastExportSelected?: GenericScene[];
+  lastExportSession?: Session;
 
   // 모달 오버레이 카운터 (열린 ModalOverlay 수 추적)
   @observable accessor modalOverlayCount: number = 0;

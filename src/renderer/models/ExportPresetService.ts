@@ -1,3 +1,4 @@
+import { DirectExportResult, exportSpecialChars } from './exportSettings';
 import { persistService } from './PersistenceService';
 import {
   batchProcessService,
@@ -162,12 +163,7 @@ export class ExportPresetService {
     separator: string,
     autoConvert = false,
   ): Promise<Set<string> | undefined> {
-    const specialCharRegex = /[^a-zA-Z0-9가-힣ぁ-んァ-ヶ一-龥　-〿]/g;
-    const detectedChars = new Set<string>();
-    for (const nm of sceneNames) {
-      const matches = nm.match(specialCharRegex);
-      if (matches) matches.forEach((c) => detectedChars.add(c));
-    }
+    const detectedChars = new Set(exportSpecialChars(sceneNames));
 
     let charsToReplace = new Set<string>();
     if (detectedChars.size > 0) {
@@ -195,8 +191,15 @@ export class ExportPresetService {
     selected?: GenericScene[],
     presetOverride?: ExportPreset,
   ) {
+    const session = appState.curSession;
+    if (!session) return;
+    // 설정 중 프로젝트를 바꿔도 시작한 대상과 캐릭터 파일명 설정을 유지한다.
+    selected = [...(selected ?? session.getScenes(type))];
+    const character = appState.getAppliedCharacterPreset();
+    const characterAffix = { filenamePrefix: character?.filenamePrefix, filenameSuffix: character?.filenameSuffix };
     appState.lastExportType = type;
     appState.lastExportSelected = selected;
+    appState.lastExportSession = session;
     const exportImpl = async (
       prefix: string,
       fav: boolean,
@@ -210,14 +213,15 @@ export class ExportPresetService {
       applyCharacterAffix: boolean,
       targetFolder: string | null,
       outputMode: 'tar' | 'files',
+      reoptimize: 'ask' | 'skip' | 'all',
     ) => {
       let paths: { path: string; name: string }[] = [];
-      await imageService.refreshBatch(appState.curSession!);
-      const scenes = selected ?? appState.curSession!.getScenes(type);
-      await Promise.allSettled(scenes.map((s) => gameService.refreshList(appState.curSession!, s)));
+      await imageService.refreshBatch(session);
+      const scenes = selected ?? session.getScenes(type);
+      await Promise.allSettled(scenes.map((s) => gameService.refreshList(session, s)));
 
       // 파일명 패턴 프리픽스(프로젝트/폴더명) — export 1회당 고정
-      const patternProjectName = appState.curSession!.name;
+      const patternProjectName = session.name;
       const patternFolderPath = sessionService.getFolderOf(patternProjectName);
       const patternFolderName = patternFolderPath
         ? sessionService.folderLeafName(patternFolderPath)
@@ -229,7 +233,7 @@ export class ExportPresetService {
         separator,
       );
       for (const scene of scenes) {
-        const cands = gameService.getOutputs(appState.curSession!, scene);
+        const cands = gameService.getOutputs(session, scene);
         const imageMap: any = {};
         cands.forEach((x) => {
           imageMap[x] = true;
@@ -252,7 +256,7 @@ export class ExportPresetService {
         }
         // 캐릭터 프리셋 파일명 옵션 적용 (토글 off 면 접두/접미사 미적용)
         const characterPreset = applyCharacterAffix
-          ? appState.getAppliedCharacterPreset()
+          ? characterAffix
           : null;
         const presetPrefix = characterPreset?.filenamePrefix || '';
         const presetSuffix = characterPreset?.filenameSuffix || '';
@@ -273,7 +277,7 @@ export class ExportPresetService {
         }
         const isMirror = scene.type === 'inpaint' && (scene as InpaintScene).workflowType === 'SDMirror';
         for (let i = 0; i < images.length; i++) {
-          let imgPath = imageService.getOutputDir(appState.curSession!, scene) + '/' + images[i];
+          let imgPath = imageService.getOutputDir(session, scene) + '/' + images[i];
           if (isMirror) {
             const imgData = await imageService.fetchImage(imgPath);
             if (imgData) {
@@ -304,8 +308,8 @@ export class ExportPresetService {
         const alreadyOptCount = paths.filter((p) =>
           isOptimizedImageFile(p.path),
         ).length;
-        let skipAlreadyOpt = false;
-        if (alreadyOptCount > 0) {
+        let skipAlreadyOpt = reoptimize === 'skip';
+        if (alreadyOptCount > 0 && reoptimize === 'ask') {
           const choice = await appState.pushDialogAsync({
             type: 'select',
             text: `선택한 이미지 중 ${alreadyOptCount}개가 이미 최적화(webp/avif)되어 있습니다.\n다시 최적화하면 화질이 저하될 수 있습니다. 어떻게 할까요?`,
@@ -398,7 +402,7 @@ export class ExportPresetService {
       // ── 개별 파일 출력(무압축): 목표 폴더가 있으면 그 아래, 없으면 exports/ 하위에 저장 ──
       if (outputMode === 'files') {
         const outDirName =
-          sanitizeFilenamePart(appState.curSession!.name) +
+          sanitizeFilenamePart(session.name) +
           '_' +
           Date.now().toString();
         const baseDest = targetFolder
@@ -453,7 +457,7 @@ export class ExportPresetService {
       };
       const outFilePath =
         'exports/' +
-        appState.curSession!.name +
+        session.name +
         '_main_images_' +
         Date.now().toString() +
         '.tar';
@@ -497,8 +501,8 @@ export class ExportPresetService {
     };
 
     // 프리셋 1개를 실행 (선택/빠른 export 공용). 캐릭터 이름 입력·특수문자·목표폴더 해석 포함.
-    const runPreset = async (ep: ExportPreset) => {
-      const charsToReplace = await this.detectSpecialChars(
+    const runPreset = async (ep: ExportPreset, resolvedChars?: Set<string>) => {
+      const charsToReplace = resolvedChars ?? await this.detectSpecialChars(
         type,
         selected,
         ep.separator,
@@ -516,7 +520,7 @@ export class ExportPresetService {
         if (!inputName) return;
         epPrefix = inputName + ep.separator;
       }
-      const targetFolder = await this.resolveTargetFolderFor(ep);
+      const targetFolder = await this.resolveTargetFolderFor(ep, session.name);
       await exportImpl(
         epPrefix,
         ep.menu === 'fav',
@@ -530,6 +534,7 @@ export class ExportPresetService {
         ep.applyCharacterAffix !== false,
         targetFolder,
         ep.outputMode === 'files' ? 'files' : 'tar',
+        ep.reoptimize ?? 'ask',
       );
     };
 
@@ -567,125 +572,25 @@ export class ExportPresetService {
       await runPreset(ep);
       return;
     }
-    // '_manual' → 아래 기존 다이얼로그 체인
-
-    // ── 기존 다이얼로그 체인 (직접 설정) ──
-    const menu = await appState.pushDialogAsync({
-      type: 'select',
-      text: '내보낼 이미지를 선택해주세요',
-      items: [
-        { text: '즐겨찾기 이미지만 내보내기', value: 'fav' },
-        { text: '모든 이미지 전부 내보내기', value: 'all' },
-      ],
-    });
-    if (!menu) return;
-    const format = await appState.pushDialogAsync({
-      type: 'select',
-      text: '파일 이름 형식을 선택해주세요',
-      items: [
-        { text: '(씬이름).(이미지 번호).png', value: 'normal' },
-        { text: '(캐릭터 이름).(씬이름).(이미지 번호)', value: 'prefix' },
-      ],
-    });
-    if (!format) return;
-
-    const optItems = buildImageOptimizeOptions();
-    const opt = await appState.pushDialogAsync({
-      type: 'select',
-      text: '이미지 크기 최적화 방법을 선택해주세요',
-      items: optItems,
-    });
-    if (!opt) return;
-    let imageSize = 0;
-    if (opt !== 'original') {
-      const inputImageSize = await appState.pushDialogAsync({
-        type: 'input-confirm',
-        text: '이미지 픽셀 크기를 결정해주세요 (추천값 1024)',
-      });
-      if (!inputImageSize) return;
-      try {
-        imageSize = parseInt(inputImageSize);
-      } catch (error) {
-        return;
-      }
+    if (appState.directExportRequest) {
+      appState.pushMessage('이미 직접 내보내기 설정이 열려 있습니다.');
+      return;
     }
-    // 화질 백분율 — 압축 품질. lossy/avif 만 의미(lossless·original 은 무시).
-    // 빈값/무효 입력은 기본값(webp 80·avif 50) 사용, 취소(undefined)만 중단.
-    let quality: number | undefined = undefined;
-    if (opt === 'lossy' || opt === 'avif') {
-      const qInput = await appState.pushDialogAsync({
-        type: 'input-confirm',
-        text: `이미지 화질을 입력해주세요 (1~100, 기본 ${opt === 'avif' ? 50 : 80})`,
-      });
-      if (qInput === undefined) return;
-      const q = parseInt(qInput);
-      if (!isNaN(q) && q >= 1 && q <= 100) quality = q;
-    }
-    // NAI 스테가노그래피(알파 워터마크) 보존 — webp 만 가능(AVIF 는 알파 평탄화).
-    // 리사이즈로 파괴되는 워터마크를 추출·재삽입해 NAI 인스펙터 인식을 유지한다.
-    let preserveStealth = false;
-    if (opt === 'lossy' || opt === 'lossless') {
-      const stealthChoice = await appState.pushDialogAsync({
-        type: 'select',
-        text: 'NAI 스테가노그래피(워터마크)를 보존할까요?\n보존 시 NAI 인스펙터 인식이 유지되지만 처리가 느려집니다.',
-        items: [
-          { text: '보존 안 함 (빠름)', value: 'no' },
-          { text: '보존 (NAI 호환)', value: 'yes' },
-        ],
-      });
-      if (stealthChoice === undefined) return;
-      preserveStealth = stealthChoice === 'yes';
-    }
-    const separatorInput = await appState.pushDialogAsync({
-      type: 'input-confirm',
-      text: '파일명 구분자를 입력해주세요 (기본값: .)',
+    const result = await new Promise<DirectExportResult | undefined>((resolve) => {
+      let settled = false;
+      appState.directExportRequest = {
+        projectName: session.name,
+        sceneNames: selected!.map((scene) => scene.name),
+        resolve: (value) => {
+          if (settled) return;
+          settled = true;
+          appState.directExportRequest = undefined;
+          resolve(value);
+        },
+      };
     });
-    if (separatorInput === undefined) return;
-    const separatorOptions = await appState.pushDialogAsync({
-      type: 'checkbox',
-      text: '파일명 구분자 옵션',
-      items: [{ text: '구분자 없음', value: 'none' }],
-    });
-    if (separatorOptions === undefined) return;
-    let noSeparator = false;
-    try {
-      noSeparator = JSON.parse(separatorOptions).includes('none');
-    } catch (e) {}
-    const separator = noSeparator ? '' : separatorInput || '.';
-
-    // 특수문자 감지 (공통 헬퍼 사용)
-    // 특수문자 감지 (공통 헬퍼 사용)
-    const charsToReplace = await this.detectSpecialChars(type, selected, separator);
-    if (charsToReplace === undefined) return;
-
-    // 캐릭터 이름 입력 또는 바로 내보내기
-    let prefix = '';
-    if (format === 'prefix') {
-      const inputPrefix = await appState.pushDialogAsync({
-        type: 'input-confirm',
-        text: '캐릭터 이름을 입력해주세요',
-      });
-      if (!inputPrefix) return;
-      prefix = inputPrefix + separator;
-    }
-
-    // 직접 설정 export 는 현행 동작 유지 (패턴=씬, 캐릭터접두사 적용, 목표폴더 없음, tar)
-    await exportImpl(
-      prefix,
-      menu === 'fav',
-      opt,
-      imageSize,
-      quality,
-      preserveStealth,
-      separator,
-      charsToReplace,
-      'scene',
-      true,
-      null,
-      'tar',
-    );
+    if (result) await runPreset(result.preset, new Set(result.charsToReplace));
   }
-
   // ⚡ 빠른 export: isDefault 로 지정된 프리셋을 선택 다이얼로그 없이 바로 실행.
   async quickExportPackage(type: 'scene' | 'inpaint', selected?: GenericScene[]) {
     const presets = this.loadExportPresets();
@@ -702,10 +607,11 @@ export class ExportPresetService {
   // 프리셋의 목표 폴더(절대경로) 해석. 모바일은 임의 폴더 export 미지원이라 항상 null.
   private async resolveTargetFolderFor(
     preset: ExportPreset,
+    projectName: string,
   ): Promise<string | null> {
     if (!platform.supportsTargetFolder) return null;
     const config = await backend.getConfig();
-    const projectFolder = sessionService.getFolderOf(appState.curSession!.name);
+    const projectFolder = sessionService.getFolderOf(projectName);
     return resolveExportTargetFolder(
       preset,
       projectFolder,

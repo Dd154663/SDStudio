@@ -78,6 +78,7 @@ import { configure } from 'mobx';
 import { ExternalImageView } from './ExternalImageView';
 import FindReplaceDialog from './FindReplaceDialog';
 import ExportPresetManager from './ExportPresetManager';
+import DirectExportDialog from './DirectExportDialog';
 configure({
   enforceActions: 'never',
 });
@@ -1070,6 +1071,7 @@ export const App = observer(() => {
           />
         )}
         <ExportPresetManager />
+        <DirectExportDialog />
         {dragOverlay && (
           <div
             className="fixed inset-0 z-[var(--z-drag-overlay)] flex items-center justify-center pointer-events-none"

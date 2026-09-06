@@ -1,102 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import ExportSettingsFields from './ExportSettingsFields';
+import { ExportFormState as FormState, emptyExportForm as emptyForm, presetToExportForm as presetToForm, isExportFormValid, exportFormToPreset } from '../models/exportSettings';
+import React, { useState, useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
 import { appState, ExportPreset } from '../models/AppService';
-import { isMobile, backend } from '../models';
+
 import ModalOverlay from './ModalOverlay';
-import { DropdownSelect } from './UtilComponents';
-import { FaPlus, FaTrash, FaFolderOpen, FaPen, FaCopy } from 'react-icons/fa';
 
-const menuOptions = [
-  { value: 'fav' as const, label: '즐겨찾기 이미지만' },
-  { value: 'all' as const, label: '모든 이미지 전부' },
-];
-
-const formatOptions = [
-  { value: 'normal' as const, label: '(씬이름).(번호).png' },
-  { value: 'prefix' as const, label: '(캐릭터).(씬이름).(번호)' },
-  { value: 'prefix_ask' as const, label: '(캐릭터).(씬이름).(번호) - 이름 직접 입력' },
-];
-
-const filenamePatternOptions = [
-  { value: 'scene' as const, label: '(씬이름) — 기본' },
-  { value: 'project.scene' as const, label: '(프로젝트).(씬이름)' },
-  { value: 'folder.project.scene' as const, label: '(폴더).(프로젝트).(씬이름)' },
-];
-
-const outputModeOptions = [
-  { value: 'tar' as const, label: 'tar 압축파일 — 기본' },
-  { value: 'files' as const, label: '개별 이미지 파일 (무압축)' },
-];
-
-const getOptOptions = () => {
-  const opts: { value: 'original' | 'lossy' | 'lossless' | 'avif'; label: string }[] = [
-    { value: 'original' as const, label: '원본' },
-    { value: 'lossy' as const, label: '저손실 webp 최적화' },
-  ];
-  if (!isMobile) {
-    opts.push({ value: 'lossless' as const, label: '무손실 webp 최적화' });
-  }
-  opts.push({ value: 'avif' as const, label: 'AVIF 최적화' });
-  return opts;
-};
-
-// 편집 폼 상태 — 드롭다운은 미선택(undefined) 상태로 시작
-interface FormState {
-  name: string;
-  menu: 'fav' | 'all' | undefined;
-  format: 'normal' | 'prefix' | 'prefix_ask' | undefined;
-  prefix: string;
-  opt: 'original' | 'lossy' | 'lossless' | 'avif' | undefined;
-  imageSize: number;
-  quality: number;
-  preserveStealth: boolean;
-  separator: string;
-  filenamePattern: 'scene' | 'project.scene' | 'folder.project.scene';
-  outputMode: 'tar' | 'files';
-  applyCharacterAffix: boolean;
-  autoConvertSeparator: boolean;
-  isDefault: boolean;
-  targetFolder: string;
-  useProjectRelativePath: boolean;
-}
-
-const emptyForm = (): FormState => ({
-  name: '',
-  menu: undefined,
-  format: undefined,
-  prefix: '',
-  opt: undefined,
-  imageSize: 1024,
-  quality: 80,
-  preserveStealth: false,
-  separator: '',
-  filenamePattern: 'scene',
-  outputMode: 'tar',
-  applyCharacterAffix: true,
-  autoConvertSeparator: false,
-  isDefault: false,
-  targetFolder: '',
-  useProjectRelativePath: false,
-});
-
-const presetToForm = (p: ExportPreset): FormState => ({
-  name: p.name,
-  menu: p.menu,
-  format: p.format,
-  prefix: p.prefix,
-  opt: p.opt,
-  imageSize: p.imageSize,
-  quality: p.quality ?? 80,
-  preserveStealth: p.preserveStealth === true,
-  separator: p.separator,
-  filenamePattern: p.filenamePattern ?? 'scene',
-  outputMode: p.outputMode ?? 'tar',
-  applyCharacterAffix: p.applyCharacterAffix !== false,
-  autoConvertSeparator: p.autoConvertSeparator === true,
-  isDefault: p.isDefault ?? false,
-  targetFolder: p.targetFolder ?? '',
-  useProjectRelativePath: p.useProjectRelativePath ?? false,
-});
+import { FaPlus, FaTrash, FaPen, FaCopy } from 'react-icons/fa';
 
 const ExportPresetManager = observer(() => {
   const [presets, setPresets] = useState<ExportPreset[]>([]);
@@ -104,7 +14,7 @@ const ExportPresetManager = observer(() => {
   const [form, setForm] = useState<FormState>(emptyForm());
   const [renamingIndex, setRenamingIndex] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  const optOptions = useMemo(getOptOptions, []);
+
 
   useEffect(() => {
     if (appState.exportPresetManagerOpen) {
@@ -120,7 +30,11 @@ const ExportPresetManager = observer(() => {
   const onClose = () => {
     appState.closeExportPresetManager();
     const type = appState.lastExportType || 'scene';
-    setTimeout(() => appState.exportPackage(type), 100);
+    const session = appState.lastExportSession;
+    const selected = appState.lastExportSelected;
+    setTimeout(() => {
+      if (session && appState.curSession === session) appState.exportPackage(type, selected);
+    }, 100);
   };
 
   const selectPreset = (idx: number) => {
@@ -133,52 +47,11 @@ const ExportPresetManager = observer(() => {
     setForm(emptyForm());
   };
 
-  const selectTargetFolder = async () => {
-    const folder = await backend.selectDir();
-    if (!folder) return;
-    setForm((f) => ({ ...f, targetFolder: folder }));
-  };
-
-  const isFormValid = (): boolean => {
-    if (!form.name.trim()) return false;
-    if (form.menu === undefined) return false;
-    if (form.format === undefined) return false;
-    if (form.format === 'prefix' && !form.prefix.trim()) return false;
-    if (form.opt === undefined) return false;
-    if (form.opt !== 'original' && (!form.imageSize || form.imageSize <= 0)) return false;
-    return true;
-  };
+  const isFormValid = () => isExportFormValid(form, true);
 
   const savePreset = () => {
     if (!isFormValid()) return;
-    const preset: ExportPreset = {
-      name: form.name.trim(),
-      menu: form.menu!,
-      format: form.format!,
-      prefix: form.prefix,
-      opt: form.opt!,
-      imageSize: form.imageSize,
-      // 화질은 lossy/avif 만 의미. 유효(1~100)할 때만 저장, 그 외엔 미설정(기본값 사용).
-      quality:
-        (form.opt === 'lossy' || form.opt === 'avif') &&
-        form.quality >= 1 &&
-        form.quality <= 100
-          ? form.quality
-          : undefined,
-      // stealth 보존은 webp(lossy/lossless)만 유효
-      preserveStealth:
-        (form.opt === 'lossy' || form.opt === 'lossless') && form.preserveStealth
-          ? true
-          : undefined,
-      separator: form.separator,
-      filenamePattern: form.filenamePattern,
-      outputMode: form.outputMode,
-      applyCharacterAffix: form.applyCharacterAffix,
-      autoConvertSeparator: form.autoConvertSeparator,
-      isDefault: form.isDefault,
-      targetFolder: form.targetFolder,
-      useProjectRelativePath: form.useProjectRelativePath,
-    };
+    const preset = exportFormToPreset(form);
     let updated = [...presets];
     if (editingIndex !== null) {
       updated[editingIndex] = preset;
@@ -371,167 +244,7 @@ const ExportPresetManager = observer(() => {
             />
           </div>
 
-          {/* 이미지 범위 */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-muted flex-none w-24">이미지 범위 *</label>
-            <div className="flex-1 min-w-0">
-              <DropdownSelect
-                selectedOption={form.menu}
-                options={menuOptions}
-                onSelect={(o: any) => setForm({ ...form, menu: o.value })}
-              />
-            </div>
-          </div>
-
-          {/* 파일명 형식 */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-muted flex-none w-24">파일명 형식 *</label>
-            <div className="flex-1 min-w-0">
-              <DropdownSelect
-                selectedOption={form.format}
-                options={formatOptions}
-                onSelect={(o: any) => setForm({ ...form, format: o.value })}
-              />
-            </div>
-          </div>
-
-          {/* 파일명 패턴 (프로젝트/폴더 접두) */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-muted flex-none w-24">파일명 패턴</label>
-            <div className="flex-1 min-w-0">
-              <DropdownSelect
-                selectedOption={form.filenamePattern}
-                options={filenamePatternOptions}
-                onSelect={(o: any) => setForm({ ...form, filenamePattern: o.value })}
-              />
-            </div>
-          </div>
-
-          {/* 출력 형태 (tar / 개별 파일) */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-muted flex-none w-24">출력 형태</label>
-            <div className="flex-1 min-w-0">
-              <DropdownSelect
-                selectedOption={form.outputMode}
-                options={outputModeOptions}
-                onSelect={(o: any) => setForm({ ...form, outputMode: o.value })}
-              />
-            </div>
-          </div>
-
-          {/* 캐릭터 이름 (format=prefix 시) */}
-          {form.format === 'prefix' && (
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-muted flex-none w-24">캐릭터 이름 *</label>
-              <input
-                type="text"
-                value={form.prefix}
-                onChange={(e) => setForm({ ...form, prefix: e.target.value })}
-                placeholder="캐릭터 이름"
-                className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
-              />
-            </div>
-          )}
-
-          {/* 캐릭터 프리셋 접두/접미사 적용 토글 */}
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={form.applyCharacterAffix}
-              onChange={(e) => setForm({ ...form, applyCharacterAffix: e.target.checked })}
-              className="w-4 h-4 accent-sky-500"
-            />
-            <span className="text-sm text-gray-700 dark:text-gray-300">
-              캐릭터 프리셋 접두사/접미사 적용
-            </span>
-          </label>
-
-          {/* 최적화 방법 */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-muted flex-none w-24">최적화 *</label>
-            <div className="flex-1 min-w-0">
-              <DropdownSelect
-                selectedOption={form.opt}
-                options={optOptions}
-                onSelect={(o: any) => setForm({ ...form, opt: o.value })}
-              />
-            </div>
-          </div>
-
-          {/* 이미지 크기 (opt≠original 시) */}
-          {form.opt !== undefined && form.opt !== 'original' && (
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-muted flex-none w-24">이미지 크기 *</label>
-              <input
-                type="number"
-                value={form.imageSize}
-                onChange={(e) => setForm({ ...form, imageSize: parseInt(e.target.value) || 0 })}
-                placeholder="1024"
-                className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
-              />
-              <span className="text-xs text-faint">px</span>
-            </div>
-          )}
-
-          {/* 압축 화질 (lossy/avif 시) — 픽셀 크기와 별개 축(해상도 vs 압축 강도) */}
-          {(form.opt === 'lossy' || form.opt === 'avif') && (
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-muted flex-none w-24">화질</label>
-              <input
-                type="number"
-                min={1}
-                max={100}
-                value={form.quality}
-                onChange={(e) =>
-                  setForm({ ...form, quality: parseInt(e.target.value) || 0 })
-                }
-                placeholder={form.opt === 'avif' ? '50' : '80'}
-                className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
-              />
-              <span className="text-xs text-faint">1~100</span>
-            </div>
-          )}
-
-          {/* NAI 스테가노그래피 보존 (webp: lossy/lossless 시) */}
-          {(form.opt === 'lossy' || form.opt === 'lossless') && (
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={form.preserveStealth}
-                onChange={(e) => setForm({ ...form, preserveStealth: e.target.checked })}
-                className="w-4 h-4 accent-sky-500"
-              />
-              <span className="text-sm text-gray-700 dark:text-gray-300">
-                NAI 스테가노그래피 보존 (NAI 인스펙터 인식 유지, 처리 느려짐)
-              </span>
-            </label>
-          )}
-
-          {/* 구분자 — 텍스트 입력, 빈 칸 허용 */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-muted flex-none w-24">파일명 구분자</label>
-            <input
-              type="text"
-              value={form.separator}
-              onChange={(e) => setForm({ ...form, separator: e.target.value })}
-              placeholder="비워두면 구분자 없음"
-              className="flex-1 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
-            />
-          </div>
-
-          {/* 구분자 자동 변환 (특수문자 묻지 않음) */}
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={form.autoConvertSeparator}
-              onChange={(e) => setForm({ ...form, autoConvertSeparator: e.target.checked })}
-              className="w-4 h-4 accent-sky-500"
-            />
-            <span className="text-sm text-gray-700 dark:text-gray-300">
-              특수문자 묻지 않고 구분자로 자동 변환
-            </span>
-          </label>
-
+          <ExportSettingsFields form={form} setForm={setForm} />
           {/* ⚡ 빠른 export 기본 프리셋 지정 */}
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
@@ -544,46 +257,6 @@ const ExportPresetManager = observer(() => {
               ⚡ 빠른 export 기본 프리셋으로 사용
             </span>
           </label>
-
-          {/* 목표 폴더 (데스크톱 전용 — 모바일은 임의 폴더 저장 미지원) */}
-          {!isMobile && (
-            <div className="space-y-2 border-t line-color pt-3">
-              <div className="text-xs text-muted">
-                내보내기 목표 폴더 (비우면 환경설정 기본 폴더, 둘 다 없으면 다운로드 폴더 사용)
-              </div>
-              <div className="text-sm text-body bg-gray-100 dark:bg-slate-700 rounded px-3 py-2 break-all">
-                {form.targetFolder || '미설정'}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={selectTargetFolder}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded border line-color text-sm text-body hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors"
-                >
-                  <FaFolderOpen size={12} />
-                  폴더 선택
-                </button>
-                {form.targetFolder && (
-                  <button
-                    onClick={() => setForm({ ...form, targetFolder: '' })}
-                    className="px-3 py-1.5 rounded border line-color text-sm text-muted hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors"
-                  >
-                    지우기
-                  </button>
-                )}
-              </div>
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={form.useProjectRelativePath}
-                  onChange={(e) => setForm({ ...form, useProjectRelativePath: e.target.checked })}
-                  className="w-4 h-4 accent-sky-500"
-                />
-                <span className="text-sm text-gray-700 dark:text-gray-300">
-                  프로젝트 폴더 경로로 하위 폴더 생성
-                </span>
-              </label>
-            </div>
-          )}
 
           {/* 저장 버튼 */}
           <div className="flex justify-end pt-2">
