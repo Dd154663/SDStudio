@@ -304,16 +304,24 @@ export const queueArtistBreakdown = async (session: Session) => {
 };
 
 // 모든(또는 선택한) 씬을 큐에 예약 추가. 누락 프롬프트조각이 있으면 생성 여부를 확인한다.
+export type SceneQueueFilter = 'all' | 'empty' | 'no-favorites';
+
 export const addScenesToQueue = async (
   session: Session,
   type: 'scene' | 'inpaint',
   selectedOnly: boolean,
+  filter: SceneQueueFilter = 'all',
 ) => {
   try {
     let scenes = session.getScenes(type);
     if (selectedOnly) {
       const selectedNames = appState.selectedScenes;
       scenes = scenes.filter((s) => selectedNames.has(s.name));
+    }
+    if (filter === 'empty') {
+      scenes = scenes.filter((scene) => imageService.getOutputs(session, scene).length === 0);
+    } else if (filter === 'no-favorites') {
+      scenes = scenes.filter((scene) => scene.mains.length === 0);
     }
     if (scenes.length === 0) return;
 

@@ -1,3 +1,4 @@
+import SceneQueueMenu from './SceneQueueMenu';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { FaSpinner } from 'react-icons/fa';
 import { FaPlay, FaRegCalendarPlus, FaRegCalendarTimes, FaStop } from 'react-icons/fa';
@@ -279,7 +280,7 @@ const TaskQueueControl = observer(({}) => {
   const cyclingActive = cyclingSessionService.state === 'running' || cyclingSessionService.state === 'paused';
 
   return (
-    <div ref={rootRef} className="flex gap-1 md:gap-2 lg:gap-4 items-center">
+    <div ref={rootRef} className="flex gap-0.5 md:gap-2 lg:gap-4 items-center">
       {showList && (
         <TaskQueueList
           dropDown={listDropDown}
@@ -302,7 +303,7 @@ const TaskQueueControl = observer(({}) => {
           aria-label="생성 개수"
           min={1}
           max={99}
-          className={'ml-2 p-1 w-10 md:w-16 text-center gray-input'}
+          className={'ml-1 md:ml-2 p-1 w-10 md:w-16 text-center gray-input'}
           type="number"
           value={appState.samples}
           onChange={(e: any) => {
@@ -327,6 +328,7 @@ const TaskQueueControl = observer(({}) => {
       >
         <TaskProgressBar />
       </div>
+      <SceneQueueMenu session={appState.curSession} type="scene" selectedOnly={appState.selectedScenes.size > 0}>
       <button
         type="button"
         className="round-button back-sky px-2 h-8 lg:px-6 disabled:opacity-50"
@@ -345,6 +347,7 @@ const TaskQueueControl = observer(({}) => {
       >
         <FaRegCalendarPlus size={18} />
       </button>
+      </SceneQueueMenu>
       <button
         className={`round-button back-gray px-2 h-8 lg:px-6`}
         onClick={() => {

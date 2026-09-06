@@ -1,3 +1,4 @@
+import SceneQueueMenu from './SceneQueueMenu';
 import {
   Fragment,
   ReactNode,
@@ -2671,7 +2672,7 @@ const QueueControl = observer(
         </Tooltip>
       ),
       'queue-add': (
-        <Tooltip content="예약 추가">
+        <SceneQueueMenu session={curSession} type={type} selectedOnly={appState.selectedScenes.size > 0}>
           <button
             className="round-button back-sky"
             onClick={
@@ -2696,7 +2697,7 @@ const QueueControl = observer(
               '모두 예약추가'
             )}
           </button>
-        </Tooltip>
+        </SceneQueueMenu>
       ),
       'export-images': (
         <Tooltip content="이미지 내보내기">
