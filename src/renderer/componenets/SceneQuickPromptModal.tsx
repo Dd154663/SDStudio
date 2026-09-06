@@ -1,7 +1,9 @@
+import CompactCombinationPieces from './CompactCombinationPieces';
+import { combinationPieceKey } from '../models/combinationSelection';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { v4 as uuidv4 } from 'uuid';
-import { FaPuzzlePiece, FaTimes } from 'react-icons/fa';
+import { FaExpand, FaPuzzlePiece, FaTimes } from 'react-icons/fa';
 import ModalOverlay from './ModalOverlay';
 import PromptEditTextArea from './PromptEditTextArea';
 import { FloatView } from './FloatView';
@@ -19,25 +21,22 @@ interface SceneQuickPromptModalProps {
 }
 
 // 씬 프롬프트 퀵 수정(W2): 씬 카드의 우상단 버튼에서 열리는 경량 편집 창.
-// 첫 번째 조합 조각(1-1)의 중간 프롬프트만 즉석 수정하고,
-// 퍼즐 버튼으로 전체 조합 에디터(SlotEditor)를 오버레이해 나머지를 수정한다.
+// 처음에는 1-1 조각을 열고 컴팩트 목록에서 다른 조각으로 전환한다.
+// 전체 조합 에디터(SlotEditor)는 별도 확장 버튼으로 접근한다.
 const SceneQuickPromptModal = observer(
   ({ scene, onClose, anchor }: SceneQuickPromptModalProps) => {
     const [showFull, setShowFull] = useState(false);
+    const [showPieces, setShowPieces] = useState(false);
+    const [selectedPiece, setSelectedPiece] = useState<PromptPiece>();
+    useEffect(() => { setSelectedPiece(undefined); setShowPieces(false); }, [scene]);
     const usePopover = !isMobile && !!anchor;
 
     // 단순 씬 에디터와 동일한 보장: slots 가 비어 있으면 첫 조각을 만든다
     useEffect(() => {
       if (scene.slots.length === 0 || scene.slots[0].length === 0) {
-        scene.slots = [
-          [
-            PromptPiece.fromJSON({
-              prompt: '',
-              characterPrompts: [],
-              id: uuidv4(),
-            }),
-          ],
-        ];
+        const first = PromptPiece.fromJSON({ prompt: '', characterPrompts: [], id: uuidv4() });
+        if (scene.slots.length === 0) scene.slots.push([first]);
+        else scene.slots[0].push(first);
       }
     }, [scene]);
 
@@ -56,7 +55,7 @@ const SceneQuickPromptModal = observer(
       left = Math.max(8, Math.min(left, window.innerWidth - r.width - 8));
       top = Math.max(8, Math.min(top, window.innerHeight - r.height - 8));
       setPos({ left, top });
-    }, [usePopover, showFull, anchor]);
+    }, [usePopover, showFull, showPieces, anchor]);
 
     // 팝오버 모드 ESC 닫기 (중앙 모달은 ModalOverlay가, 조합 에디터는 FloatView가 처리)
     useEffect(() => {
@@ -71,7 +70,16 @@ const SceneQuickPromptModal = observer(
       return () => window.removeEventListener('keydown', handler, true);
     }, [usePopover, showFull, onClose]);
 
-    const piece = scene.slots[0]?.[0];
+    const piece = selectedPiece && scene.slots.some((slot) => slot.includes(selectedPiece))
+      ? selectedPiece : scene.slots[0]?.[0];
+    const columnIndex = scene.slots.findIndex((slot) => !!piece && slot.includes(piece));
+    const rowIndex = columnIndex < 0 ? -1 : scene.slots[columnIndex].indexOf(piece!);
+    const location = `${columnIndex + 1}-${rowIndex + 1}`;
+    const picker = <div className="max-h-[50vh] overflow-auto p-2">
+      <CompactCombinationPieces scene={scene}
+        selected={new Set([combinationPieceKey(columnIndex, rowIndex)])}
+        onSelect={(_key, nextPiece) => { setSelectedPiece(nextPiece); setShowPieces(false); }} />
+    </div>;
     const pieceCount = scene.slots.reduce((acc, slot) => acc + slot.length, 0);
 
     if (showFull) {
@@ -90,7 +98,7 @@ const SceneQuickPromptModal = observer(
     }
 
     const editor = piece && (
-      <PromptEditTextArea
+      <PromptEditTextArea key={piece.id}
         value={piece.prompt}
         onChange={(v: string) => {
           piece.prompt = v;
@@ -124,22 +132,19 @@ const SceneQuickPromptModal = observer(
           >
             <div className="flex-none flex items-center gap-1 px-2.5 py-1.5 border-b line-color">
               <span className="text-sm font-semibold text-default truncate">
-                ✏️ {scene.name}
+                ✏️ {scene.name} — {location}
               </span>
               <span className="ml-auto flex-none flex items-center gap-0.5">
-                <Tooltip
-                  content={
-                    pieceCount > 1
-                      ? `전체 조합 에디터 열기 (조각 ${pieceCount}개 — 여기서는 1-1만 수정됩니다)`
-                      : '전체 조합 에디터 열기'
-                  }
-                >
+                <Tooltip content={"조합 펼치기 (조각 " + pieceCount + "개)"}>
                   <button
                     className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors"
-                    onClick={() => setShowFull(true)}
+                    aria-label="조합 펼치기" aria-expanded={showPieces} onClick={() => setShowPieces(!showPieces)}
                   >
                     <FaPuzzlePiece size={13} />
                   </button>
+                </Tooltip>
+                <Tooltip content="전체 조합 에디터 열기">
+                  <button type="button" className="btn-ghost p-1.5 text-muted" aria-label="전체 조합 에디터 열기" onClick={() => setShowFull(true)}><FaExpand size={13} /></button>
                 </Tooltip>
                 <Tooltip content="닫기 (ESC)">
                   <button
@@ -151,7 +156,7 @@ const SceneQuickPromptModal = observer(
                 </Tooltip>
               </span>
             </div>
-            <div className="h-36 p-1.5 overflow-hidden">{editor}</div>
+            {showPieces ? picker : <div className="h-36 p-1.5 overflow-hidden">{editor}</div>}
           </div>
         </div>
       );
@@ -162,18 +167,14 @@ const SceneQuickPromptModal = observer(
       <ModalOverlay
         isOpen
         onClose={onClose}
-        title={`✏️ ${scene.name} — 중간 프롬프트 (1-1)`}
+        title={`✏️ ${scene.name} — 중간 프롬프트 (${location})`}
       >
         <div className="flex flex-col gap-3">
-          {pieceCount > 1 && (
-            <div className="text-xs text-muted">
-              이 씬은 조합 조각이 {pieceCount}개입니다. 여기서는 첫 번째(1-1)
-              조각만 수정하며, 나머지는 "자세히 보기"의 조합 에디터에서 수정할
-              수 있습니다.
-            </div>
-          )}
-          <div className="h-40 md:h-52 overflow-hidden">{editor}</div>
-          <div className="flex justify-end gap-2">
+          {showPieces ? picker : <div className="h-40 md:h-52 overflow-hidden">{editor}</div>}
+          <div className="flex justify-end gap-2 flex-wrap">
+            <button type="button" className="round-button back-gray" aria-label="조합 펼치기" aria-expanded={showPieces} onClick={() => setShowPieces(!showPieces)}>
+              <FaPuzzlePiece /> 조합 펼치기
+            </button>
             <button
               className="round-button back-gray"
               onClick={() => setShowFull(true)}
