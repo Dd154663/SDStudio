@@ -11,6 +11,9 @@
 // 반드시 최상단 — sharp/첫 threadpool 사용 전에 UV_THREADPOOL_SIZE 를 확정한다.
 import './uvThreadpool';
 import path from 'path';
+import { copyFileUnlessSame } from './copyFileUnlessSame';
+import { openExportDirectory } from './openExportDirectory';
+import { writeImageZip } from './writeImageZip';
 import {
   app,
   BrowserWindow,
@@ -432,7 +435,7 @@ ipcMain.handle('open-web-page', async (event, url) => {
 
 ipcMain.handle('show-file', async (event, arg) => {
   // 절대경로(목표 폴더 export 결과)면 그대로, 아니면 APP_DIR 기준 상대경로로 해석.
-  const filePath = path.isAbsolute(arg) ? arg : path.join(APP_DIR, arg);
+  const filePath = path.resolve(APP_DIR, arg);
   shell.showItemInFolder(filePath);
 });
 
@@ -440,9 +443,7 @@ ipcMain.handle('show-file', async (event, arg) => {
 // 프로젝트 우클릭 "파일 탐색기에서 열기"용. shell.openPath 는 실패 시 throw 대신
 // 오류 문자열을 반환하므로 명시적으로 승격한다.
 ipcMain.handle('open-path', async (event, arg) => {
-  const target = path.isAbsolute(arg) ? arg : path.join(APP_DIR, arg);
-  const err = await shell.openPath(target);
-  if (err) throw new Error(err);
+  await openExportDirectory(path.resolve(APP_DIR, arg), (target) => shell.openPath(target));
 });
 
 const AdmZip = require('adm-zip');
@@ -497,10 +498,20 @@ ipcMain.handle('publish-export', async (event, arg) => {
     await fsExtra.copy(source, destination, { overwrite: false, errorOnExist: true });
     await fsExtra.remove(source);
   }
-  shell.showItemInFolder(destination);
+  await openExportDirectory(
+    stat.isDirectory() ? destination : path.dirname(destination),
+    (target) => shell.openPath(target),
+  );
 });
 
 ipcMain.handle('zip-files', async (event, files, outPath) => {
+  if (path.extname(outPath).toLowerCase() === '.zip') {
+    return await writeImageZip(
+      files.map((file: any) => ({ name: file.name, path: path.resolve(APP_DIR, file.path) })),
+      path.resolve(APP_DIR, outPath),
+      (done, total) => event.sender.send('zip-progress', { done, total }),
+    );
+  }
   const finalPath = APP_DIR + '/' + outPath;
   const dir = path.dirname(finalPath);
   // 원자적 아카이브 쓰기: '.part' 임시 경로에 스트리밍 → 완료 시 rename.
@@ -661,9 +672,7 @@ ipcMain.handle('copy-file', async (event, src, dest) => {
 
 // src(APP_DIR 상대) → 절대경로 dest 로 복사. 데스크톱 export 목표 폴더용.
 ipcMain.handle('copy-file-absolute', async (event, src, absoluteDest) => {
-  const dir = path.dirname(absoluteDest);
-  await fs.mkdir(dir, { recursive: true });
-  await fs.copyFile(APP_DIR + '/' + src, absoluteDest);
+  return await copyFileUnlessSame(path.resolve(APP_DIR, src), absoluteDest);
 });
 
 // ── 이미지 인코딩 단일 출처 (트랙2 WebP Phase 3) ──

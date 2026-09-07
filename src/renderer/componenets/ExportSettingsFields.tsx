@@ -23,6 +23,7 @@ const filenamePatternOptions = [
 
 const outputModeOptions = [
   { value: 'tar' as const, label: 'tar 압축파일 — 기본' },
+  { value: 'zip' as const, label: 'zip 압축파일' },
   { value: 'files' as const, label: '개별 이미지 파일 (무압축)' },
 ];
 

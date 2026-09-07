@@ -275,8 +275,8 @@ export class ElectornBackend extends Backend {
     await invoke('copy-file', src, dest);
   }
 
-  async copyFileToAbsolute(src: string, absoluteDest: string): Promise<void> {
-    await invoke('copy-file-absolute', src, absoluteDest);
+  async copyFileToAbsolute(src: string, absoluteDest: string): Promise<'copied' | 'same-file'> {
+    return await invoke('copy-file-absolute', src, absoluteDest);
   }
 
   async convertToWebp(src: string, dest: string, quality: number): Promise<void> {

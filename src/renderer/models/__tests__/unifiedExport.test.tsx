@@ -89,3 +89,19 @@ test('mobile ignores desktop target folders and uses publication', async () => {
   expect(copyFileToAbsolute).not.toHaveBeenCalled();
   expect(publishExport).toHaveBeenCalledTimes(1);
 });
+
+test('direct ZIP choice reaches archive creation and publication with .zip', async () => {
+  state.pushDialogAsync.mockResolvedValue('_manual');
+  const pending = service.exportPackage('scene');
+  await Promise.resolve();
+  state.directExportRequest.resolve({preset:{...exportFormToPreset(emptyExportForm()), outputMode:'zip'},charsToReplace:[]});
+  await pending;
+  expect(zipFiles).toHaveBeenCalledWith(expect.any(Array), expect.stringMatching(/\.zip$/));
+  expect(publishExport).toHaveBeenCalledWith(expect.stringMatching(/\.zip$/));
+});
+test('legacy preset still produces TAR and saved ZIP remains ZIP', async () => {
+  const preset = exportFormToPreset(emptyExportForm());
+  await service.exportPackage('scene',undefined,{...preset, outputMode:undefined});
+  expect(zipFiles).toHaveBeenLastCalledWith(expect.any(Array),expect.stringMatching(/\.tar$/));
+  expect(presetToExportForm({...preset,outputMode:'zip'}).outputMode).toBe('zip');
+});

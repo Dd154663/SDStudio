@@ -36,6 +36,8 @@ import androidx.core.content.FileProvider;
 
 import java.io.*;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @CapacitorPlugin(name = "ZipService")
 public class ZipService extends Plugin {
@@ -49,6 +51,27 @@ public class ZipService extends Plugin {
     File tmpFile = new File(tmpPath);
     try {
       List<JSONObject> files = call.getArray("files").toList();
+      if (outPath.toLowerCase(java.util.Locale.ROOT).endsWith(".zip")) {
+        try (ZipOutputStream zipOut = new ZipOutputStream(
+            new BufferedOutputStream(new FileOutputStream(tmpFile)))) {
+          zipOut.setLevel(1);
+          byte[] buffer = new byte[64 * 1024];
+          for (JSONObject file : files) {
+            zipOut.putNextEntry(new ZipEntry(file.getString("name")));
+            try (InputStream input = new BufferedInputStream(
+                new FileInputStream(file.getString("path")))) {
+              int count;
+              while ((count = input.read(buffer)) != -1) zipOut.write(buffer, 0, count);
+            }
+            zipOut.closeEntry();
+          }
+        }
+        // Publish only after the ZIP central directory has been written and closed.
+        android.system.Os.rename(tmpPath, outPath);
+        call.resolve();
+        return;
+      }
+
       FileOutputStream fos = new FileOutputStream(tmpFile);
       BufferedOutputStream bos = new BufferedOutputStream(fos);
       //GzipCompressorOutputStream gzipOut = new GzipCompressorOutputStream(bos);

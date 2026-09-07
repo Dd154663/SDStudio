@@ -1,3 +1,4 @@
+import { transferExportArchive } from './exportArchiveTransfer';
 import { DirectExportResult, exportSpecialChars } from './exportSettings';
 import { persistService } from './PersistenceService';
 import {
@@ -212,7 +213,7 @@ export class ExportPresetService {
       filenamePattern: FilenamePattern | undefined,
       applyCharacterAffix: boolean,
       targetFolder: string | null,
-      outputMode: 'tar' | 'files',
+      outputMode: 'tar' | 'zip' | 'files',
       reoptimize: 'ask' | 'skip' | 'all',
     ) => {
       let paths: { path: string; name: string }[] = [];
@@ -443,7 +444,7 @@ export class ExportPresetService {
         }
         appState.showExportComplete();
         if (targetFolder) {
-          await backend.showFile(baseDest);
+          await backend.openPath(baseDest);
         } else {
           await backend.publishExport(baseDest);
         }
@@ -460,7 +461,7 @@ export class ExportPresetService {
         session.name +
         '_main_images_' +
         Date.now().toString() +
-        '.tar';
+        (outputMode === 'zip' ? '.zip' : '.tar');
       if (zipService.isZipping) {
         appState.pushDialog({
           type: 'yes-only',
@@ -482,11 +483,10 @@ export class ExportPresetService {
         const tarName = outFilePath.split('/').pop()!;
         const dest = `${targetFolder}/${tarName}`;
         try {
-          await backend.copyFileToAbsolute(outFilePath, dest);
-          await backend.deleteFile(outFilePath);
-          appState.showExportComplete();
-          await backend.showFile(dest);
-          return;
+          const { cleanupFailed } = await transferExportArchive(backend, outFilePath, dest);
+          if (cleanupFailed) {
+            appState.pushMessage('내보내기는 완료됐지만 임시 압축파일을 정리하지 못했습니다.');
+          }
         } catch (e: any) {
           appState.pushMessage(
             '목표 폴더로 복사하지 못해 기본 다운로드 폴더로 전환합니다: ' +
@@ -495,6 +495,9 @@ export class ExportPresetService {
           await backend.publishExport(outFilePath);
           return;
         }
+        appState.showExportComplete();
+        await backend.openPath(targetFolder);
+        return;
       }
       appState.showExportComplete();
       await backend.publishExport(outFilePath);
@@ -533,7 +536,7 @@ export class ExportPresetService {
         ep.filenamePattern,
         ep.applyCharacterAffix !== false,
         targetFolder,
-        ep.outputMode === 'files' ? 'files' : 'tar',
+        ep.outputMode === 'files' || ep.outputMode === 'zip' ? ep.outputMode : 'tar',
         ep.reoptimize ?? 'ask',
       );
     };

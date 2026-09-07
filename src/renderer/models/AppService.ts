@@ -86,7 +86,7 @@ export interface ExportPreset {
   /** 파일명 패턴: 'scene'(기본=현행) / 프로젝트명 / 폴더명+프로젝트명 접두 */
   filenamePattern?: 'scene' | 'project.scene' | 'folder.project.scene';
   /** 출력 형태: 'tar'(기본, 압축파일) / 'files'(개별 이미지 파일) */
-  outputMode?: 'tar' | 'files';
+  outputMode?: 'tar' | 'zip' | 'files';
   /** 캐릭터 프리셋 접두/접미사 적용 여부 (미설정 시 true = 적용) */
   applyCharacterAffix?: boolean;
   /** 켜면 씬 이름 특수문자를 묻지 않고 전부 구분자로 자동 변환 (기본 false) */
