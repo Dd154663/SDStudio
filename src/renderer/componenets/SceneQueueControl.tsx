@@ -1,3 +1,4 @@
+import { canStartSelectionBox } from '../models/dragSelection';
 import SceneQueueMenu from './SceneQueueMenu';
 import {
   Fragment,
@@ -1512,21 +1513,12 @@ const QueueControl = observer(
     const handleGridMouseDown = (e: React.MouseEvent) => {
       if (
         e.button !== 0 ||
-        !appState.sceneSelectionMode ||
         !gridContainerRef.current ||
         dragBoxRef.current
       ) {
         return;
       }
-      const target = e.target;
-      if (
-        target instanceof Element &&
-        target.closest(
-          'button,input,textarea,select,a,[contenteditable="true"],.scene-btn,[data-no-scene-drag]',
-        )
-      ) {
-        return;
-      }
+      if (!canStartSelectionBox(e.target, appState.sceneSelectionMode, '[id^="scene-cell-"]')) return;
 
       const grid = gridContainerRef.current;
       const bounds = grid.getBoundingClientRect();
@@ -1682,6 +1674,7 @@ const QueueControl = observer(
             } else if (box.deselect) {
               appState.removeScenesFromSelection(selected);
             } else {
+              appState.sceneSelectionMode = true;
               appState.addScenesToSelection(selected);
             }
           }

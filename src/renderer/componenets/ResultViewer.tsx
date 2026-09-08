@@ -1,3 +1,4 @@
+import { canStartSelectionBox, imagePathsInSelectionBox } from '../models/dragSelection';
 import React, {
   useState,
   useEffect,
@@ -451,6 +452,7 @@ const Cell = memo(
       focusedIndex,
       onCellEnter,
       onCellLeave,
+      selectMode,
     } = data as any;
 
     const { curSession } = appState;
@@ -521,7 +523,7 @@ const Cell = memo(
       () => ({
         type: 'image',
         item: { scene, path, cellSize, imageSize, index },
-        canDrag: () => index < filePaths.length,
+        canDrag: () => !selectMode && index < filePaths.length,
         collect: (monitor) => {
           const diff = monitor.getDifferenceFromInitialOffset();
           if (diff) {
@@ -535,7 +537,7 @@ const Cell = memo(
           };
         },
       }),
-      [path, imageSize, index],
+      [path, imageSize, index, selectMode],
     );
 
     const [{ isOver }, drop] = useDrop(
@@ -604,14 +606,14 @@ const Cell = memo(
     return (
       <div
         key={index.toString() + path + imageSize.toString()}
-        id={`image-cell-${index}`}
+        data-image-index={index}
         style={style}
         className={
           'image-cell relative hover:brightness-95 active:brightness-90 bg-[var(--c-surface)] cursor-pointer ' +
           (isDragging ? 'opacity-0 no-touch' : '') +
           (isOver ? ' border-2 border-sky-500' : '')
         }
-        draggable
+        draggable={!selectMode}
         onClick={() => {
           if (path) {
             if (onSelected) {
@@ -621,11 +623,11 @@ const Cell = memo(
         }}
         onMouseEnter={() => onCellEnter?.(index)}
         onMouseLeave={() => onCellLeave?.(index)}
-        ref={(node) => drag(drop(node))}
+        ref={(node) => drag(drop(selectMode ? null : node))}
       >
         {path && image && (
           <>
-            <div className="relative ">
+            <div data-image-content className="relative w-fit">
               <img
                 src={image}
                 style={{
@@ -723,6 +725,7 @@ const createItemData = memoizeOne(
     focusedIndex,
     onCellEnter,
     onCellLeave,
+    selectMode,
   ) => {
     return {
       scene,
@@ -739,6 +742,7 @@ const createItemData = memoizeOne(
       focusedIndex,
       onCellEnter,
       onCellLeave,
+      selectMode,
     };
   },
 );
@@ -875,13 +879,11 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
     };
 
     const handleGridMouseDown = (e: React.MouseEvent) => {
-      if (e.button !== 0) return;
-      const target = e.target as HTMLElement;
-      if (target.closest('.image-cell')) return;
-      // 스크롤바 위에서는 박스 선택을 시작하지 않는다(스크롤 동작 방해 금지)
-      if (target.closest('.scrollbar-thumb') || target.closest('.scrollbar-track'))
-        return;
+      if (e.button !== 0 || dragBoxRef.current || isHidden) return;
+      if (!canStartSelectionBox(e.target, !!selectMode, '[data-image-content]')) return;
       if (!containerRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
       const { x, y } = toContainerXY(e.clientX, e.clientY);
       const start: DragBox = {
         x1: x,
@@ -923,27 +925,9 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
         wasDraggingRef.current = isDraggingRef.current;
         const box = dragBoxRef.current;
         if (isDraggingRef.current && box) {
-          const left = Math.min(box.x1, box.x2);
-          const right = Math.max(box.x1, box.x2);
-          const top = Math.min(box.y1, box.y2);
-          const bottom = Math.max(box.y1, box.y2);
-          const selected: string[] = [];
-          const el = containerRef.current;
-          if (el) {
-            const cr = el.getBoundingClientRect();
-            filePaths.forEach((path, index) => {
-              const cell = document.getElementById(`image-cell-${index}`);
-              if (!cell) return;
-              const cc = cell.getBoundingClientRect();
-              const cx = cc.left - cr.left;
-              const cy = cc.top - cr.top;
-              const cw = cc.width;
-              const ch = cc.height;
-              if (left < cx + cw && right > cx && top < cy + ch && bottom > cy) {
-                selected.push(path);
-              }
-            });
-          }
+          const selected = containerRef.current
+            ? imagePathsInSelectionBox(containerRef.current, filePaths, box)
+            : [];
           if (selected.length > 0 && onSelectedImagesChange) {
             onSelectedImagesChange(selected, box.deselect);
           }
@@ -965,6 +949,8 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
     const handleGridClick = (e: React.MouseEvent) => {
       if (wasDraggingRef.current) {
         wasDraggingRef.current = false;
+        e.preventDefault();
+        e.stopPropagation();
         return;
       }
       if (
@@ -987,8 +973,8 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
           'flex justify-center relative select-none ' +
           (isHidden ? 'hidden' : '')
         }
-        onMouseDown={handleGridMouseDown}
-        onClick={handleGridClick}
+        onMouseDownCapture={handleGridMouseDown}
+        onClickCapture={handleGridClick}
       >
         <Grid
           ref={gridRef}
@@ -1014,6 +1000,7 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
             focusedIndex ?? null,
             onCellEnter,
             onCellLeave,
+            selectMode,
           )}
           // 셀 키를 위치가 아닌 이미지 경로 기준으로 — 목록이 바뀌면 셀이
           // 언마운트되어 이전 이미지 state(잔상)가 재사용되지 않는다.
@@ -2615,6 +2602,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           <ImageGallery
             scene={scene}
             ref={gallaryRef2}
+            selectMode={selectMode}
             onFilenameChange={onFilenameChange}
             isMainImage={isMainImage}
             filePaths={paths.filter((path) => isMainImage && isMainImage(path))}
