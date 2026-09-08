@@ -9,8 +9,8 @@ android {
         applicationId "io.sunho.SDStudio"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 50301
-        versionName "5.3.1"
+        versionCode 50302
+        versionName "5.3.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
