@@ -1,6 +1,30 @@
-import { canStartSelectionBox, imagePathsInSelectionBox } from '../dragSelection';
+import { canStartSelectionBox, imagePathsInSelectionBox, mainSceneDragSurface, isOnNativeScrollbar } from '../dragSelection';
 
 afterEach(() => { document.body.innerHTML = ''; });
+
+test('main surface accepts side-panel whitespace but excludes bars and popup content', () => {
+  document.body.innerHTML = '<header></header><main class="scene-selection-surface"><aside></aside><div data-no-scene-drag><span>mobile footer</span></div><div class="r-popover"><p>popup</p></div><div style="position:fixed"><em>overlay</em></div></main><footer></footer>';
+  expect(mainSceneDragSurface(document.querySelector('aside'))).toBe(document.querySelector('main'));
+  for (const selector of ['header', 'footer', 'span', 'p', 'em']) expect(mainSceneDragSurface(document.querySelector(selector))).toBeNull();
+});
+
+test('focused text editing stays independent of a drag starting outside', () => {
+  document.body.innerHTML = '<main class="scene-selection-surface"><textarea></textarea><div contenteditable=""><span>text</span></div><button>run</button><div style="cursor:col-resize"><i></i></div><aside></aside></main>';
+  document.querySelector('textarea')!.focus();
+  for (const selector of ['textarea', 'span', 'button', 'i']) expect(mainSceneDragSurface(document.querySelector(selector))).toBeNull();
+  expect(mainSceneDragSurface(document.querySelector('aside'))).toBe(document.querySelector('main'));
+  expect(document.activeElement).toBe(document.querySelector('textarea'));
+});
+
+test('native scrollbar hit area is excluded while scrollable content is allowed', () => {
+  const node = document.createElement('div');
+  node.style.overflowY = 'auto';
+  document.body.appendChild(node);
+  Object.defineProperties(node, { offsetWidth: { value: 100 }, clientWidth: { value: 85 } });
+  node.getBoundingClientRect = () => ({ left: 10, top: 0 } as DOMRect);
+  expect(isOnNativeScrollbar(node, 100, 20)).toBe(true);
+  expect(isOnNativeScrollbar(node, 20, 20)).toBe(false);
+});
 
 test('scene background starts immediately while cards keep normal reordering', () => {
   document.body.innerHTML = '<main><div id="scene-cell-scene-a"><span>Scene</span><button>Queue</button></div></main>';

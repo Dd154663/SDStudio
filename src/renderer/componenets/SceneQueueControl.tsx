@@ -1,4 +1,4 @@
-import { canStartSelectionBox } from '../models/dragSelection';
+import { canStartSelectionBox, mainSceneDragSurface, isOnNativeScrollbar } from '../models/dragSelection';
 import SceneQueueMenu from './SceneQueueMenu';
 import {
   Fragment,
@@ -1293,6 +1293,8 @@ interface QueueControlProps {
 const QueueControl = observer(
   ({ type, isActive = true, className, showPannel, filterFunc, onClose }: QueueControlProps) => {
     const curSession = appState.curSession!;
+    const mainDragSurface = type === 'scene' && !!showPannel;
+    const selectionSurfaceRef = useRef<HTMLElement | null>(null);
     const [_, rerender] = useState<{}>({});
     const [editingScene, _setEditingScene] = useState<GenericScene | undefined>(
       undefined,
@@ -1505,12 +1507,19 @@ const QueueControl = observer(
     const toGridContentXY = (clientX: number, clientY: number) => {
       const el = gridContainerRef.current!;
       const r = el.getBoundingClientRect();
+      if (mainDragSurface && selectionSurfaceRef.current) {
+        const surface = selectionSurfaceRef.current.getBoundingClientRect();
+        return {
+          x: Math.max(surface.left, Math.min(clientX, surface.right)) - r.left + el.scrollLeft,
+          y: Math.max(surface.top, Math.min(clientY, surface.bottom)) - r.top + el.scrollTop,
+        };
+      }
       const vx = Math.max(0, Math.min(clientX - r.left, el.clientWidth));
       const vy = Math.max(0, Math.min(clientY - r.top, el.clientHeight));
       return { x: vx + el.scrollLeft, y: vy + el.scrollTop };
     };
 
-    const handleGridMouseDown = (e: React.MouseEvent) => {
+    const handleGridMouseDown = (e: React.MouseEvent | MouseEvent) => {
       if (
         e.button !== 0 ||
         !gridContainerRef.current ||
@@ -1521,6 +1530,12 @@ const QueueControl = observer(
       if (!canStartSelectionBox(e.target, appState.sceneSelectionMode, '[id^="scene-cell-"]')) return;
 
       const grid = gridContainerRef.current;
+      if (mainDragSurface) {
+        if (!isActive || grid.offsetParent === null || appState.floatViewCount > 0 || appState.dialogs.length > 0 || appState.projectBrowserOpen) return;
+        const surface = mainSceneDragSurface(e.target);
+        if (!surface || isOnNativeScrollbar(e.target as Element, e.clientX, e.clientY)) return;
+        selectionSurfaceRef.current = surface;
+      }
       const bounds = grid.getBoundingClientRect();
       const insideGrid =
         e.clientX >= bounds.left &&
@@ -1536,7 +1551,7 @@ const QueueControl = observer(
       }
       // 위쪽 툴바 아래 빈 공간은 허용하되 그리드 좌우 바깥은 시작점에서 제외한다.
       if (
-        !insideGrid &&
+        !mainDragSurface && !insideGrid &&
         (e.clientX < bounds.left ||
           e.clientX > bounds.right ||
           e.clientY > bounds.bottom)
@@ -1577,6 +1592,7 @@ const QueueControl = observer(
           return;
         const grid = gridContainerRef.current;
         const bounds = grid.getBoundingClientRect();
+        if (mainDragSurface && (pointer.x < bounds.left || pointer.x > bounds.right || pointer.y < bounds.top || pointer.y > bounds.bottom)) return;
         const edgeSize = 64;
         const maxSpeed = 24;
         const leftRatio = (pointer.x - bounds.left) / edgeSize;
@@ -1636,7 +1652,12 @@ const QueueControl = observer(
       const onUp = () => {
         wasDraggingRef.current = isDraggingRef.current;
         const box = dragBoxRef.current;
-        if (isDraggingRef.current && box) {
+        const mainSurfaceAvailable = !mainDragSurface || (
+          isActive && gridContainerRef.current?.offsetParent !== null &&
+          appState.floatViewCount === 0 && appState.dialogs.length === 0 &&
+          !appState.projectBrowserOpen
+        );
+        if (isDraggingRef.current && box && mainSurfaceAvailable) {
           const left = Math.min(box.x1, box.x2);
           const right = Math.max(box.x1, box.x2);
           const top = Math.min(box.y1, box.y2);
@@ -1699,7 +1720,7 @@ const QueueControl = observer(
       };
     }, [isSelecting, getFilteredScenes]);
 
-    const handleGridClick = (e: React.MouseEvent) => {
+    const handleGridClick = (e: React.MouseEvent | MouseEvent) => {
       // 드래그 직후 발생하는 click은 무시 (mouseup에서 이미 선택 처리됨)
       if (wasDraggingRef.current) {
         wasDraggingRef.current = false;
@@ -1714,6 +1735,19 @@ const QueueControl = observer(
         appState.clearSceneSelection();
       }
     };
+
+    useEffect(() => {
+      if (!mainDragSurface || !isActive) return;
+      const click = (event: MouseEvent) => {
+        if (wasDraggingRef.current) handleGridClick(event);
+      };
+      document.addEventListener('mousedown', handleGridMouseDown, true);
+      document.addEventListener('click', click, true);
+      return () => {
+        document.removeEventListener('mousedown', handleGridMouseDown, true);
+        document.removeEventListener('click', click, true);
+      };
+    });
 
     const getGridColumnCount = useCallback((): number => {
       if (!gridContainerRef.current) return 1;
@@ -2892,9 +2926,20 @@ const QueueControl = observer(
     return (
       <div
         className={`flex flex-col h-full ${className ?? ''}`}
-        onMouseDownCapture={handleGridMouseDown}
-        onClickCapture={handleGridClick}
+        onMouseDownCapture={mainDragSurface ? undefined : handleGridMouseDown}
+        onClickCapture={mainDragSurface ? undefined : handleGridClick}
       >
+        {mainDragSurface && dragBox && isDraggingRef.current && gridContainerRef.current && createPortal(
+          <div
+            className="fixed bg-sky-500/30 border-2 border-sky-500 rounded pointer-events-none z-[var(--z-dnd-hint)]"
+            style={{
+              left: Math.min(dragBox.x1, dragBox.x2) + gridContainerRef.current.getBoundingClientRect().left - gridContainerRef.current.scrollLeft,
+              top: Math.min(dragBox.y1, dragBox.y2) + gridContainerRef.current.getBoundingClientRect().top - gridContainerRef.current.scrollTop,
+              width: Math.abs(dragBox.x2 - dragBox.x1),
+              height: Math.abs(dragBox.y2 - dragBox.y1),
+            }}
+          />, document.body,
+        )}
         {sceneSelector && (
           <FloatView priority={0} onEscape={() => setSceneSelector(undefined)}>
             <SceneSelector
@@ -3138,7 +3183,7 @@ const QueueControl = observer(
                     : undefined
                 }
               >
-                {dragBox && isDraggingRef.current && (
+                {dragBox && isDraggingRef.current && !mainDragSurface && (
                   <div
                     className="absolute bg-sky-500/30 border-2 border-sky-500 rounded pointer-events-none z-50"
                     style={{

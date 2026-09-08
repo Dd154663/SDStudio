@@ -828,7 +828,7 @@ export const App = observer(() => {
             )}
             {/* zone-canvas: 구역 카드화(D) — 도크 행을 캔버스 배경+여백으로, 각 구역은
                 zone-card 로 라운딩 카드화(App.css, PC 새 마감 전용). 클래식/모바일 무변화. */}
-            <StackGrow className="zone-canvas flex">
+            <StackGrow className="zone-canvas flex scene-selection-surface">
               {/* 도크 행: [히스토리 도크]와 [넓은 앵커(프로젝트/프리셋/중앙)]가 형제다.
                   FloatView 가 덮는 범위는 창 배치 옵션(uiFloatViewMode)에 따른다 —
                   'cover'(기본)는 넓은 앵커에 포털로 붙어 프로젝트/프리셋 패널 위까지
@@ -890,7 +890,7 @@ export const App = observer(() => {
                   />
                 )}
                 <div className="h-full w-full flex flex-col overflow-hidden">
-                  {isMobile && <div className="flex-none"><TobBar /></div>}
+                  {isMobile && <div data-no-scene-drag className="flex-none"><TobBar /></div>}
                   {/* 하단바(bottom)는 PC 에선 이 중앙 블록 밖(VerticalStack 최하단)에서
                       전폭으로 렌더된다 — 좌/우 도크 펼침과 무관하게 항상 하단 전체를
                       차지(클래식 복원). 모바일은 도크가 없어 전폭이 동일하므로 기존
@@ -898,11 +898,13 @@ export const App = observer(() => {
                   <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                     {mainStackContent}
                     {isMobile && bottomBarPlacement !== 'none' && (
+                      <div data-no-scene-drag className="contents">
                       <BottomBar
                         placement={bottomBarPlacement}
                         genControl={resolvedLayout.genControl}
                         projectSidebar={resolvedLayout.projectSidebar}
                       />
+                      </div>
                     )}
                   </div>
                 </div>

@@ -9,6 +9,31 @@ export function canStartSelectionBox(
   return selectionMode || !target.closest(contentSelector);
 }
 
+// The surface is the middle app row, never the header/footer or a portal.
+export function mainSceneDragSurface(target: EventTarget | null): HTMLElement | null {
+  if (!(target instanceof Element)) return null;
+  const surface = target.closest<HTMLElement>('.scene-selection-surface');
+  if (!surface || target.closest('[data-no-scene-drag],input,textarea,select,button,a,label,[contenteditable]:not([contenteditable="false"]),[role="button"],[role="dialog"],[role="menu"],[role="slider"],[role="separator"],.r-popover,.r-modal,.react-contexify,.scrollbar-thumb,.scrollbar-track')) return null;
+  for (let node: Element | null = target; node && node !== surface; node = node.parentElement) {
+    const style = window.getComputedStyle(node);
+    if (style.position === 'fixed' || Number(style.zIndex) >= 100 || style.cursor.includes('resize')) return null;
+    // Native scrollbars are checked separately using the pointer coordinates.
+  }
+  if (!target.closest('[id^="scene-cell-"]') && target.closest('img,canvas,[draggable="true"]')) return null;
+  return surface;
+}
+
+export function isOnNativeScrollbar(target: Element, x: number, y: number): boolean {
+  for (let node: Element | null = target; node; node = node.parentElement) {
+    if (!(node instanceof HTMLElement)) continue;
+    const rect = node.getBoundingClientRect();
+    const style = window.getComputedStyle(node);
+    if (/(auto|scroll)/.test(style.overflowY) && node.offsetWidth > node.clientWidth && x >= rect.left + node.clientLeft + node.clientWidth) return true;
+    if (/(auto|scroll)/.test(style.overflowX) && node.offsetHeight > node.clientHeight && y >= rect.top + node.clientTop + node.clientHeight) return true;
+  }
+  return false;
+}
+
 export function imagePathsInSelectionBox(
   container: HTMLElement,
   paths: string[],
