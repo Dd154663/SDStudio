@@ -347,7 +347,7 @@ describe('NovelAI Opus 사용량 조회', () => {
     const originalFetch = (global as any).fetch;
     (global as any).fetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ subscription: { usage: { percent: 111, isNegative: false, timeUntilNextPercent: 0 } } }),
+      json: async () => ({ subscription: { active: true, tier: 3, usage: { percent: 111, isNegative: false, timeUntilNextPercent: 0 } } }),
     });
     try {
       const { service } = makeService();
@@ -363,6 +363,8 @@ describe('NovelAI Opus 사용량 조회', () => {
       ok: true,
       json: async () => ({
         subscription: {
+          active: true,
+          tier: 3,
           usage: {
             percent: 88,
             isNegative: false,
@@ -375,6 +377,7 @@ describe('NovelAI Opus 사용량 조회', () => {
     const { service } = makeService();
 
     await expect(service.getOpusUsageStatus('test-token')).resolves.toEqual({
+      opusSubscribed: true,
       percent: 88,
       isNegative: false,
       timeUntilNextPercent: 123,
@@ -390,7 +393,7 @@ describe('NovelAI Opus 사용량 조회', () => {
     const originalFetch = (global as any).fetch;
     (global as any).fetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ subscription: {} }),
+      json: async () => ({ subscription: { active: true, tier: 3 } }),
     } as Response);
     const { service } = makeService();
 
@@ -398,5 +401,28 @@ describe('NovelAI Opus 사용량 조회', () => {
       'Opus usage data is unavailable',
     );
     (global as any).fetch = originalFetch;
+  });
+});
+
+describe('Opus 구독과 잔량 분리', () => {
+  test.each([[true, 0], [true, 1], [true, 2], [false, 3]])(
+    'active=%s tier=%s 계정의 가짜 100%%는 무료 잔량이 아니다', async (active, tier) => {
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({
+        subscription: { active, tier, usage: { percent: 100, isNegative: false, timeUntilNextPercent: 0 } },
+      }) });
+      try {
+        await expect(makeService().service.getOpusUsageStatus('test')).resolves.toMatchObject({ opusSubscribed: false, percent: 0 });
+      } finally { global.fetch = originalFetch; }
+    },
+  );
+  test('구독 정보 누락은 미구독으로 단정하지 않고 조회 실패로 남긴다', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({
+      subscription: { usage: { percent: 100, isNegative: false, timeUntilNextPercent: 0 } },
+    }) });
+    try {
+      await expect(makeService().service.getOpusUsageStatus('test')).rejects.toThrow('subscription data is unavailable');
+    } finally { global.fetch = originalFetch; }
   });
 });

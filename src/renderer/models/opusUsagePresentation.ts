@@ -14,6 +14,15 @@ export function presentOpusUsage(
   status?: OpusUsageStatus,
   warningPercent = 10,
 ) {
+  if (status?.opusSubscribed === false) {
+    return {
+      text: 'X',
+      percent: undefined,
+      fill: 0,
+      images: undefined,
+      tone: 'gray' as OpusUsageTone,
+    };
+  }
   if (!status || !Number.isFinite(status.percent)) {
     return {
       text: '—',

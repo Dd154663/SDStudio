@@ -362,7 +362,7 @@ export class LoginService extends EventTarget {
       } catch (e) {
         continue;
       }
-      if (usage.isNegative || usage.percent < minimumPercent) continue;
+      if (usage.opusSubscribed === false || usage.isNegative || usage.percent < minimumPercent) continue;
 
       if (revision !== this.validationRevision) return { switched: false, reason: 'not-ready' };
       try {

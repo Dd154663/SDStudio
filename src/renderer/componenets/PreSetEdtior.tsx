@@ -993,18 +993,18 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                   onClick={(e) => {
                     e.stopPropagation();
                     const newPreset = workFlowService.presetFromJSON(
-                      preset.toJSON(),
+                      option.toJSON(),
                     );
                     let num = 1;
                     while (
                       presets.find(
                         (x) =>
-                          x.name === preset.name + ' copy ' + num.toString(),
+                          x.name === option.name + ' copy ' + num.toString(),
                       )
                     ) {
                       num++;
                     }
-                    const newName = preset.name + ' copy ' + num.toString();
+                    const newName = option.name + ' copy ' + num.toString();
                     newPreset.name = newName;
                     curSession!.addPreset(newPreset);
                   }}

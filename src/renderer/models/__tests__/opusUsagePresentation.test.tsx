@@ -61,6 +61,17 @@ test('실제 소진에는 Anlas 사용 안내를 표시한다', () => {
   );
 });
 
+test('미구독은 X로 표시하고 잔량·예상 장수·소진 경고를 표시하지 않는다', () => {
+  const unsubscribed = { ...status(100), opusSubscribed: false };
+  expect(presentOpusUsage(unsubscribed)).toMatchObject({ text: 'X', percent: undefined, images: undefined, tone: 'gray' });
+  const html = render(<OpusUsageMeter status={unsubscribed} />);
+  expect(html).toContain('Opus 미구독');
+  expect(html).not.toContain('100%');
+  expect(html).not.toContain('약 ');
+  expect(html).not.toContain('할당량 소진');
+  expect(html).not.toContain('progressbar');
+});
+
 test('확인 시각 표시는 조회 없이 시간 차이를 계산한다', () => {
   expect(opusCheckedLabel(0)).toBe('아직 확인하지 않음');
   expect(opusCheckedLabel(1000, 1001)).toBe('방금 확인');

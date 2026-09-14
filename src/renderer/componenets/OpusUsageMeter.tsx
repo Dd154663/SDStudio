@@ -39,6 +39,7 @@ export function OpusUsageBar({
   warningPercent?: number;
 }) {
   const view = presentOpusUsage(status, warningPercent);
+  if (status?.opusSubscribed === false) return null;
   return (
     <div
       className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--c-input-bg)]"
@@ -90,6 +91,8 @@ export default function OpusUsageMeter({
         <span className="text-sm text-body tabular-nums">
           {view.images !== undefined
             ? `약 ${view.images.toLocaleString('ko-KR')}장`
+            : status?.opusSubscribed === false
+              ? 'Opus 미구독 · 무료 할당량 대상 아님'
             : loading
               ? '확인 중…'
               : error || '미확인'}

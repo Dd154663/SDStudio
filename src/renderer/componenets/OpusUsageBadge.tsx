@@ -157,10 +157,10 @@ const OpusUsageBadge = observer(
         <button
           ref={buttonRef}
           className={`btn titlebar-no-drag overflow-hidden text-center tabular-nums ${mobile ? 'round-tag inline-grid leading-none align-middle !p-0' : `account-status-control account-quota-control back-${view.tone}`}`}
-          aria-label={`${mobile ? `Anlas ${credits}, ` : ''}무료 생성 할당량 ${view.text}, 상세 보기`}
+          aria-label={`${mobile ? `Anlas ${credits}, ` : ''}${usage.status?.opusSubscribed === false ? 'Opus 미구독' : `무료 생성 할당량 ${view.text}`}, 상세 보기`}
           aria-haspopup="dialog"
           aria-expanded={open}
-          title="Opus 무료 생성 할당량"
+          title={usage.status?.opusSubscribed === false ? 'Opus 미구독 · 무료 할당량 대상 아님' : 'Opus 무료 생성 할당량'}
           onClick={() => setOpen(!open)}
         >
           {mobile && (

@@ -1,6 +1,16 @@
 import { OpusUsageService } from '../OpusUsageService';
 
 describe('OpusUsageService', () => {
+  test('미구독은 잔량과 무관하게 유료 위험이며 저할당량 경고를 소모하지 않는다', () => {
+    const service = new OpusUsageService({ getOpusUsageStatus: jest.fn() });
+    const usage = { opusSubscribed: false, percent: 100, isNegative: false, timeUntilNextPercent: 0 };
+    expect(service.isPaidRisk(usage)).toBe(true);
+    expect(service.takeLowWarning({ ...usage, percent: 5 })).toBe(false);
+    expect(service.takeLowWarning({ ...usage, opusSubscribed: true, percent: 5 })).toBe(true);
+    service.approvePaidRisk();
+    service.invalidateAccount();
+    expect(service.hasSessionPaidApproval()).toBe(true);
+  });
   test('새로고침 실패 후에도 이전 값은 남기고 재시도 버튼은 다시 활성화한다', async () => {
     const getOpusUsageStatus = jest.fn()
       .mockResolvedValueOnce({ percent: 91, isNegative: false, timeUntilNextPercent: 30 })

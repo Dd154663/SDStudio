@@ -87,7 +87,7 @@ export class OpusUsageService extends EventTarget {
   }
 
   isPaidRisk(status: OpusUsageStatus | undefined): boolean {
-    return !status || status.isNegative || status.percent <= 0;
+    return !status || status.opusSubscribed === false || status.isNegative || status.percent <= 0;
   }
 
   hasSessionPaidApproval(): boolean {
@@ -107,6 +107,7 @@ export class OpusUsageService extends EventTarget {
     warningPercent = Math.max(1, Math.min(100, Math.round(warningPercent)));
     if (
       !status ||
+      status.opusSubscribed === false ||
       status.isNegative ||
       status.percent <= 0 ||
       status.percent > warningPercent

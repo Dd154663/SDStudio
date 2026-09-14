@@ -241,6 +241,22 @@ describe('LoginService 토큰 프리셋', () => {
     expect(JSON.parse(profileData!).activeId).toBe(third.id);
   });
 
+  test('100%로 응답한 미구독 토큰은 자동 순회 대상으로 선택하지 않는다', async () => {
+    const service = new LoginService();
+    await service.saveTokenProfile('주 계정', 'first-token');
+    await service.saveTokenProfile('미구독', 'non-opus-token');
+    await service.saveTokenProfile('Opus', 'opus-token');
+    const [first, , third] = service.listTokenProfiles();
+    await service.activateTokenProfile(first.id);
+    backend.getOpusUsageStatusForToken.mockImplementation(async (token: string) => ({
+      percent: 100, isNegative: false, timeUntilNextPercent: 0,
+      opusSubscribed: token !== 'non-opus-token',
+    }));
+    const result = await service.tryAutoRotateToken(25);
+    expect(result).toMatchObject({ switched: true, to: { id: third.id } });
+    expect(currentToken).toBe('opus-token');
+  });
+
   test('후보가 없을 때 반복 이미지에서 후보 조회를 1분간 재시도하지 않는다', async () => {
     const service = new LoginService();
     await service.saveTokenProfile('주 계정', 'secret-token-1');

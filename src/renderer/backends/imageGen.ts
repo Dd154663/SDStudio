@@ -216,6 +216,8 @@ export interface ImageGenService {
 }
 
 export interface OpusUsageStatus {
+  // Absent only for legacy in-memory callers. Backend responses always set this.
+  opusSubscribed?: boolean;
   percent: number;
   isNegative: boolean;
   timeUntilNextPercent: number;

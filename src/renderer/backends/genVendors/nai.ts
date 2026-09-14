@@ -491,7 +491,19 @@ export class NovelAiImageGenService implements ImageGenService {
       throw new Error('HTTP error:' + response.status);
     }
     const raw = await response.json();
-    const usage = raw?.subscription?.usage;
+    const subscription = raw?.subscription;
+    // A non-Opus account can still carry usage.percent=100. Check entitlement
+    // before reading usage; renewal/cancellation timestamps are not entitlement.
+    if (
+      typeof subscription?.active !== 'boolean' ||
+      !Number.isInteger(subscription?.tier) || subscription.tier < 0
+    ) {
+      throw new Error('Opus subscription data is unavailable');
+    }
+    if (!subscription.active || subscription.tier !== 3) {
+      return { opusSubscribed: false, percent: 0, isNegative: false, timeUntilNextPercent: 0 };
+    }
+    const usage = subscription.usage;
     const percent = Number(usage?.percent);
     const timeUntilNextPercent = Number(usage?.timeUntilNextPercent);
     if (
@@ -503,6 +515,7 @@ export class NovelAiImageGenService implements ImageGenService {
       throw new Error('Opus usage data is unavailable');
     }
     return {
+      opusSubscribed: true,
       // Preserve server-reported surplus; only the UI progress bar caps at 100.
       percent: Math.max(0, Math.round(percent)),
       isNegative: usage.isNegative,

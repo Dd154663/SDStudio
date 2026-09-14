@@ -454,7 +454,7 @@ class GenerateImageTaskHandler implements TaskHandler {
         runtimeConfig.multiTokenRotateBalancePercent,
       );
       if (runtimeConfig.multiTokenAutoRotate === true && usage) {
-        const urgent = usage.isNegative || usage.percent <= rotateWarning;
+        const urgent = usage.opusSubscribed === false || usage.isNegative || usage.percent <= rotateWarning;
         const balance =
           !urgent &&
           runtimeConfig.multiTokenBalanceRotate === true &&
@@ -495,7 +495,9 @@ class GenerateImageTaskHandler implements TaskHandler {
         opusUsageService.isPaidRisk(usage) &&
         !opusUsageService.hasSessionPaidApproval()
       ) {
-        const detail = usage
+        const detail = usage?.opusSubscribed === false
+          ? '현재 계정은 Opus 무료 할당량 대상이 아닙니다.'
+          : usage
           ? `현재 무료 할당량은 ${usage.percent}%입니다.`
           : '현재 무료 할당량을 확인하지 못했습니다.';
         const choice = await appState.pushDialogAsync({
