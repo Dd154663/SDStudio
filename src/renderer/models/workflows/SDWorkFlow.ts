@@ -453,21 +453,7 @@ export function createInpaintPreset(
   const preset = workFlowService.buildPreset('SDInpaint');
   if (image !== undefined) preset.image = image;
   if (mask !== undefined) preset.mask = mask;
-  // Director Tools and imported images may have only part of the generation
-  // metadata. Missing values must not erase the usable manual-scene defaults.
-  preset.cfgRescale = job?.cfgRescale ?? preset.cfgRescale;
-  preset.promptGuidance = job?.promptGuidance ?? preset.promptGuidance;
-  preset.sampling = job?.sampling ?? preset.sampling;
-  preset.noiseSchedule = job?.noiseSchedule ?? preset.noiseSchedule;
-  preset.prompt = job?.prompt ?? preset.prompt;
-  preset.uc = job?.uc ?? preset.uc;
-  preset.characterPrompts = job?.characterPrompts ?? preset.characterPrompts;
-  preset.useCoords = job?.useCoords ?? preset.useCoords;
-  preset.legacyPromptConditioning = job?.legacyPromptConditioning ?? preset.legacyPromptConditioning;
-  preset.normalizeStrength = job?.normalizeStrength ?? preset.normalizeStrength;
-  preset.varietyPlus = job?.varietyPlus ?? preset.varietyPlus;
-  preset.deliberateEulerAncestralBug = job?.deliberateEulerAncestralBug ?? preset.deliberateEulerAncestralBug;
-  return preset;
+  return applyImportedJob(preset, job);
 }
 
 export const SDInpaintDef = new WFDefBuilder('SDInpaint')
@@ -532,28 +518,36 @@ const SDI2IUI = wfiStack([
   // wfiInlineInput('시드', 'seed', true, 'flex-none'),
 ]);
 
+// 이미지에서 가져온 부분 메타데이터(Director Tools 출력 등은 prompt만 있음)가
+// 기본값을 undefined로 지우지 않도록 누락 값은 기본 프리셋 값을 유지한다.
+// createInpaintPreset과 동일 계약(SPEC_GUIDE §12).
+function applyImportedJob(preset: any, job?: Partial<SDAbstractJob<string>>) {
+  preset.cfgRescale = job?.cfgRescale ?? preset.cfgRescale;
+  preset.promptGuidance = job?.promptGuidance ?? preset.promptGuidance;
+  preset.sampling = job?.sampling ?? preset.sampling;
+  preset.noiseSchedule = job?.noiseSchedule ?? preset.noiseSchedule;
+  preset.prompt = job?.prompt ?? preset.prompt;
+  preset.uc = job?.uc ?? preset.uc;
+  preset.characterPrompts = job?.characterPrompts ?? preset.characterPrompts;
+  preset.useCoords = job?.useCoords ?? preset.useCoords;
+  preset.legacyPromptConditioning =
+    job?.legacyPromptConditioning ?? preset.legacyPromptConditioning;
+  preset.normalizeStrength = job?.normalizeStrength ?? preset.normalizeStrength;
+  preset.varietyPlus = job?.varietyPlus ?? preset.varietyPlus;
+  preset.deliberateEulerAncestralBug =
+    job?.deliberateEulerAncestralBug ?? preset.deliberateEulerAncestralBug;
+  return preset;
+}
+
 export function createI2IPreset(
-  job: SDAbstractJob<string>,
+  job?: Partial<SDAbstractJob<string>>,
   image?: string,
   mask?: string,
 ): any {
   const preset = workFlowService.buildPreset('SDI2I');
-  preset.image = image;
-  preset.mask = mask;
-  preset.cfgRescale = job.cfgRescale;
-  preset.promptGuidance = job.promptGuidance;
-  preset.sampling = job.sampling;
-  preset.noiseSchedule = job.noiseSchedule;
-  preset.prompt = job.prompt;
-  preset.uc = job.uc;
-  preset.characterPrompts = job.characterPrompts;
-  preset.useCoords = job.useCoords;
-  preset.legacyPromptConditioning = job.legacyPromptConditioning;
-  preset.normalizeStrength = job.normalizeStrength;
-  preset.varietyPlus = job.varietyPlus;
-  preset.deliberateEulerAncestralBug = job.deliberateEulerAncestralBug ?? false;
-  preset.characterPrompts = job.characterPrompts;
-  return preset;
+  if (image !== undefined) preset.image = image;
+  if (mask !== undefined) preset.mask = mask;
+  return applyImportedJob(preset, job);
 }
 
 export const SDI2IDef = new WFDefBuilder('SDI2I')
@@ -791,26 +785,14 @@ const createMirrorHandler = () => {
 };
 
 export function createMirrorPreset(
-  job: SDAbstractJob<string>,
+  job?: Partial<SDAbstractJob<string>>,
   image?: string,
   mask?: string,
 ): any {
   const preset = workFlowService.buildPreset('SDMirror');
   if (image !== undefined) preset.image = image;
   if (mask !== undefined) preset.mask = mask;
-  preset.cfgRescale = job.cfgRescale;
-  preset.promptGuidance = job.promptGuidance;
-  preset.sampling = job.sampling;
-  preset.noiseSchedule = job.noiseSchedule;
-  preset.prompt = job.prompt;
-  preset.uc = job.uc;
-  preset.characterPrompts = job.characterPrompts;
-  preset.useCoords = job.useCoords;
-  preset.legacyPromptConditioning = job.legacyPromptConditioning;
-  preset.normalizeStrength = job.normalizeStrength;
-  preset.varietyPlus = job.varietyPlus;
-  preset.deliberateEulerAncestralBug = job.deliberateEulerAncestralBug ?? false;
-  return preset;
+  return applyImportedJob(preset, job);
 }
 
 export const SDMirrorDef = new WFDefBuilder('SDMirror')

@@ -322,6 +322,11 @@ function materializeWFObj(type: string, vars: WFVar[], samplingProfiles = false)
           .map((x: any) => ReferenceItem.fromJSON(x));
       } else if (params[key].type === 'characterPrompts') {
         obj[key] = json[key] || [];
+      } else if (json[key] === undefined) {
+        // 자가치유: 저장 JSON에 키가 없으면(과거 부분 메타데이터 가져오기로
+        // undefined가 직렬화에서 탈락한 씬, 또는 이후 추가된 변수) createMobxObject의
+        // 기본값을 그대로 유지한다. undefined를 덮어쓰면 PC 프롬프트 편집기가
+        // 문자열 연산에서 실패한다. 명시적 null은 값으로 취급해 그대로 대입한다.
       } else {
         obj[key] = json[key];
       }
