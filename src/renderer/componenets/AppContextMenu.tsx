@@ -43,16 +43,28 @@ import {
 } from '../models/sceneSeedGroups';
 
 export const AppContextMenu = observer(() => {
+  // 선택은 (종류, 이름) 쌍이다 — 변형 탭의 선택으로 같은 이름의 일반 씬을 다루지 않는다
+  // (models/sceneSelection.ts, SPEC_GUIDE 드래그 다중 선택 절).
   const selectedNormalScenes = (fallback?: GenericScene): Scene[] => {
     const session = appState.curSession;
     if (!session) return [];
-    if (appState.selectedScenes.size > 0) {
+    if (appState.selectedSceneCount('scene') > 0) {
       return Array.from(appState.selectedScenes)
         .map((name) => session.scenes.get(name))
         .filter((scene): scene is Scene => scene !== undefined);
     }
     return fallback?.type === 'scene' ? [fallback] : [];
   };
+  // 우클릭한 씬과 같은 종류의 선택만 그 종류의 Map 에서 조회한다.
+  const selectedScenesLike = (ctxScene: GenericScene): GenericScene[] => {
+    const session = appState.curSession;
+    if (!session) return [];
+    return session
+      .getScenes(ctxScene.type)
+      .filter((scene) => appState.isSceneSelected(scene));
+  };
+  // 메뉴 라벨 수: 우클릭한 씬 종류와 일치하는 선택만 센다
+  const selCount = appState.selectedSceneCount(appState.contextSceneType);
 
   const configureSceneSeedGroup = async (ctx: SceneContextAlt) => {
     const session = appState.curSession;
@@ -444,19 +456,11 @@ export const AppContextMenu = observer(() => {
     } else if (id === 'regenerate-scene') {
       regenerateSceneFromImages(ctx);
     } else if (id === 'copy-to-project') {
-      const selectedNames = appState.selectedScenes;
-      if (selectedNames.size > 1) {
-        const session = appState.curSession;
-        if (session) {
-          const selectedScenes: GenericScene[] = [];
-          for (const name of selectedNames) {
-            const scene = session.scenes.get(name) || session.inpaints.get(name);
-            if (scene) selectedScenes.push(scene);
-          }
-          if (selectedScenes.length > 0) {
-            copyScenesToProject(selectedScenes);
-            return;
-          }
+      if (appState.selectedSceneCount(ctx.scene.type) > 1) {
+        const selectedScenes = selectedScenesLike(ctx.scene);
+        if (selectedScenes.length > 0) {
+          copyScenesToProject(selectedScenes);
+          return;
         }
       }
       copySceneToProject(ctx);
@@ -465,20 +469,20 @@ export const AppContextMenu = observer(() => {
     } else if (id === 'move-back') {
       moveSceneBack(ctx);
     } else if (id === 'delete') {
-      const selectedNames = appState.selectedScenes;
-      if (selectedNames.size > 1) {
+      const selectedCount = appState.selectedSceneCount(ctx.scene.type);
+      if (selectedCount > 1) {
+        const kindLabel = ctx.scene.type === 'inpaint' ? '변형 씬' : '씬';
         appState.pushDialog({
           type: 'confirm',
-          text: `선택한 ${selectedNames.size}개 씬을 삭제할까요? (휴지통으로 이동)`,
+          text: `선택한 ${selectedCount}개 ${kindLabel}을 삭제할까요? (휴지통으로 이동)`,
           callback: async () => {
             const { trashService } = await import('../models');
             const session = appState.curSession;
             if (!session) return;
-            for (const name of selectedNames) {
-              const scene = session.scenes.get(name) || session.inpaints.get(name);
-              if (scene) {
-                try { await trashService.moveSceneToTrash(session, scene); } catch (e) {}
-              }
+            // 우클릭한 씬과 같은 종류의 Map 에서만 대상을 찾는다. 이름만으로
+            // scenes→inpaints 순으로 찾으면 변형 탭의 삭제가 같은 이름의 일반 씬을 지운다.
+            for (const scene of selectedScenesLike(ctx.scene)) {
+              try { await trashService.moveSceneToTrash(session, scene); } catch (e) {}
             }
             appState.clearSceneSelection();
           },
@@ -494,16 +498,16 @@ export const AppContextMenu = observer(() => {
         });
       }
     } else if (id === 'delete-all-selected-images') {
-      deleteAllImagesFromSelected(false);
+      deleteAllImagesFromSelected(false, ctx.scene);
     } else if (id === 'delete-all-selected-images-except-fav') {
-      deleteAllImagesFromSelected(true);
+      deleteAllImagesFromSelected(true, ctx.scene);
     } else if (id === 'queue-add-all-or-selected') {
       const session = appState.curSession;
       if (session) {
         addScenesToQueue(
           session,
           ctx.scene.type,
-          appState.selectedScenes.size > 0,
+          appState.selectedSceneCount(ctx.scene.type) > 0,
         );
       }
     } else if (id === 'queue-remove-all-or-selected') {
@@ -512,7 +516,7 @@ export const AppContextMenu = observer(() => {
         removeScenesFromQueue(
           session,
           ctx.scene.type,
-          appState.selectedScenes.size > 0,
+          appState.selectedSceneCount(ctx.scene.type) > 0,
         );
       }
     } else if (id === 'seed-group-set') {
@@ -521,11 +525,13 @@ export const AppContextMenu = observer(() => {
       removeSceneSeedGroup(ctx);
     }
   };
-  const deleteAllImagesFromSelected = async (excludeFav: boolean) => {
+  const deleteAllImagesFromSelected = async (
+    excludeFav: boolean,
+    ctxScene: GenericScene,
+  ) => {
     const session = appState.curSession;
     if (!session) return;
-    const selectedNames = appState.selectedScenes;
-    if (selectedNames.size === 0) {
+    if (appState.selectedSceneCount(ctxScene.type) === 0) {
       appState.pushMessage('선택된 씬이 없습니다.');
       return;
     }
@@ -536,9 +542,7 @@ export const AppContextMenu = observer(() => {
     const collectTargets = () => {
       const scenes: { scene: any; paths: string[] }[] = [];
       let totalImages = 0;
-      for (const name of selectedNames) {
-        const scene = session.scenes.get(name) || session.inpaints.get(name);
-        if (!scene) continue;
+      for (const scene of selectedScenesLike(ctxScene)) {
         if (!scene.imageMap || scene.imageMap.length === 0) continue;
 
         const dir = imageService.getOutputDir(session, scene);
@@ -589,7 +593,7 @@ export const AppContextMenu = observer(() => {
     }
     appState.pushDialog({
       type: 'confirm',
-      text: `${selectedNames.size}개 씬에서 ${label}${preview.totalImages}장의 이미지를 삭제할까요?`,
+      text: `${preview.scenes.length}개 씬에서 ${label}${preview.totalImages}장의 이미지를 삭제할까요?`,
       showSkipConfirm: true,
       callback: doBatchDelete,
     });
@@ -918,13 +922,13 @@ export const AppContextMenu = observer(() => {
         </Item>
         <Separator />
         <Item id="queue-add-all-or-selected" onClick={handleSceneItemClick}>
-          {appState.selectedScenes.size > 0
-            ? `선택한 씬 예약 추가 (${appState.selectedScenes.size})`
+          {selCount > 0
+            ? `선택한 씬 예약 추가 (${selCount})`
             : '모든 씬 예약 추가'}
         </Item>
         <Item id="queue-remove-all-or-selected" onClick={handleSceneItemClick}>
-          {appState.selectedScenes.size > 0
-            ? `선택한 씬 예약 제거 (${appState.selectedScenes.size})`
+          {selCount > 0
+            ? `선택한 씬 예약 제거 (${selCount})`
             : '모든 씬 예약 제거'}
         </Item>
         <Separator />
@@ -935,8 +939,8 @@ export const AppContextMenu = observer(() => {
           씬 재생성 (이미지별 설정)
         </Item>
         <Item id="copy-to-project" onClick={handleSceneItemClick}>
-          {appState.selectedScenes.size > 1
-            ? `선택한 씬(${appState.selectedScenes.size}) 복사`
+          {selCount > 1
+            ? `선택한 씬(${selCount}) 복사`
             : '다른 프로젝트로 씬 복사'}
         </Item>
         <Item id="move-front" onClick={handleSceneItemClick}>
@@ -946,20 +950,20 @@ export const AppContextMenu = observer(() => {
           해당 씬 맨 뒤로
         </Item>
         <Separator />
-        {appState.selectedScenes.size > 1 && (
+        {selCount > 1 && (
           <Item id="seed-group-set" onClick={handleSceneItemClick}>
-            선택한 씬 시드 그룹 설정 ({appState.selectedScenes.size})
+            선택한 씬 시드 그룹 설정 ({selCount})
           </Item>
         )}
         <Item id="seed-group-remove" onClick={handleSceneItemClick}>
-          {appState.selectedScenes.size > 0
+          {selCount > 0
             ? '선택한 씬을 시드 그룹에서 제외'
             : '현재 시드 그룹 해제'}
         </Item>
         <Separator />
         <Item id="delete" onClick={handleSceneItemClick}>
-          {appState.selectedScenes.size > 1
-            ? `선택한 씬(${appState.selectedScenes.size}) 삭제`
+          {selCount > 1
+            ? `선택한 씬(${selCount}) 삭제`
             : '해당 씬 삭제'}
         </Item>
         <Separator />

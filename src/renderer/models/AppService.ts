@@ -63,6 +63,16 @@ import { Resolution, resolutionMap } from '../backends/imageGen';
 import { ProgressDialog } from '../componenets/ProgressWindow';
 import { migratePieceLibrary } from './legacy';
 import {
+  EMPTY_SCENE_SELECTION,
+  SceneKind,
+  SceneSelectionState,
+  addScenesToSelectionState,
+  isSceneSelected,
+  removeScenesFromSelectionState,
+  selectedCountForType,
+  toggleSceneInSelection,
+} from './sceneSelection';
+import {
   oneTimeFlowMap,
   oneTimeFlows,
   queueRemoveBg,
@@ -171,8 +181,14 @@ export class AppState {
   // 이미지 클립보드
   @observable accessor imageClipboard: string[] = [];
 
-  // 씬 다중 선택 (Ctrl+클릭 or 드래그)
+  // 씬 다중 선택 (Ctrl+클릭 or 드래그). 선택은 (종류, 이름) 쌍이다 —
+  // 일반/변형 씬은 이름이 겹칠 수 있으므로 selectedScenesType 과 함께 판정한다
+  // (models/sceneSelection.ts, SPEC_GUIDE 드래그 다중 선택 절).
   @observable accessor selectedScenes: Set<string> = new Set();
+  @observable accessor selectedScenesType: SceneKind | null = null;
+
+  // 우클릭 컨텍스트 메뉴를 연 씬의 종류 — 메뉴 라벨의 선택 수 표시용
+  @observable accessor contextSceneType: SceneKind = 'scene';
 
   // 모바일 전용: 씬 다중 선택 모드. 켜지면 씬 탭이 이미지 그리드 열기 대신
   // 선택 토글로 동작한다. (PC 는 Ctrl+클릭/드래그/Ctrl+S 로 선택하므로 미사용)
@@ -181,31 +197,48 @@ export class AppState {
   // 이미지 삭제 확인 건너뛰기 (세션 스코프)
   @observable accessor skipImageDeleteConfirm: boolean = false;
 
-  @action
-  toggleSceneSelection(name: string) {
-    const next = new Set(this.selectedScenes);
-    if (next.has(name)) next.delete(name);
-    else next.add(name);
-    this.selectedScenes = next;
+  private get sceneSelectionState(): SceneSelectionState {
+    return { names: this.selectedScenes, type: this.selectedScenesType };
   }
 
   @action
-  addScenesToSelection(names: string[]) {
-    const next = new Set(this.selectedScenes);
-    for (const name of names) next.add(name);
-    this.selectedScenes = next;
+  private applySceneSelection(next: SceneSelectionState) {
+    this.selectedScenes = next.names;
+    this.selectedScenesType = next.type;
   }
 
   @action
-  removeScenesFromSelection(names: string[]) {
-    const next = new Set(this.selectedScenes);
-    for (const name of names) next.delete(name);
-    this.selectedScenes = next;
+  toggleSceneSelection(name: string, type: SceneKind) {
+    this.applySceneSelection(
+      toggleSceneInSelection(this.sceneSelectionState, name, type),
+    );
+  }
+
+  @action
+  addScenesToSelection(names: string[], type: SceneKind) {
+    this.applySceneSelection(
+      addScenesToSelectionState(this.sceneSelectionState, names, type),
+    );
+  }
+
+  @action
+  removeScenesFromSelection(names: string[], type: SceneKind) {
+    this.applySceneSelection(
+      removeScenesFromSelectionState(this.sceneSelectionState, names, type),
+    );
   }
 
   @action
   clearSceneSelection() {
-    this.selectedScenes = new Set();
+    this.applySceneSelection(EMPTY_SCENE_SELECTION);
+  }
+
+  isSceneSelected(scene: { name: string; type: string }): boolean {
+    return isSceneSelected(this.sceneSelectionState, scene);
+  }
+
+  selectedSceneCount(type: SceneKind): number {
+    return selectedCountForType(this.sceneSelectionState, type);
   }
 
   // 만료 프로젝트 알림

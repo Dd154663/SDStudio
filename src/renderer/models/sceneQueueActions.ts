@@ -27,6 +27,7 @@ import {
   createSDPrompts,
 } from './PromptService';
 import { buildArtistPromptVariants } from './promptTransforms';
+import { selectedScenesOfType } from './sceneSelection';
 
 // 씬 큐 예약(추가/제거) 공유 로직 단일 출처.
 // SceneQueueControl(툴바·단축키·카드 버튼)과 AppContextMenu(우클릭 메뉴)가 함께 사용한다.
@@ -315,8 +316,12 @@ export const addScenesToQueue = async (
   try {
     let scenes = session.getScenes(type);
     if (selectedOnly) {
-      const selectedNames = appState.selectedScenes;
-      scenes = scenes.filter((s) => selectedNames.has(s.name));
+      // 선택 종류가 다른 탭이면 같은 이름의 씬을 예약하지 않는다(빈 목록).
+      scenes = selectedScenesOfType(
+        { names: appState.selectedScenes, type: appState.selectedScenesType },
+        type,
+        scenes,
+      );
     }
     if (filter === 'empty') {
       scenes = scenes.filter((scene) => imageService.getOutputs(session, scene).length === 0);
@@ -519,8 +524,11 @@ export const removeScenesFromQueue = (
 ) => {
   let scenes = session.getScenes(type);
   if (selectedOnly) {
-    const selectedNames = appState.selectedScenes;
-    scenes = scenes.filter((s) => selectedNames.has(s.name));
+    scenes = selectedScenesOfType(
+      { names: appState.selectedScenes, type: appState.selectedScenesType },
+      type,
+      scenes,
+    );
   }
   if (scenes.length === 0) return;
   taskQueueService.removeTasksFromScenes(new Set(scenes), session);

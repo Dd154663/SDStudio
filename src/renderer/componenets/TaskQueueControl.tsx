@@ -328,19 +328,21 @@ const TaskQueueControl = observer(({}) => {
       >
         <TaskProgressBar />
       </div>
-      <SceneQueueMenu session={appState.curSession} type="scene" selectedOnly={appState.selectedScenes.size > 0}>
+      <SceneQueueMenu session={appState.curSession} type="scene" selectedOnly={appState.selectedSceneCount('scene') > 0}>
       <button
         type="button"
         className="round-button back-sky px-2 h-8 lg:px-6 disabled:opacity-50"
-        title="씬 일괄 예약 (선택한 씬이 있으면 선택 씬만)"
+        title="씬 일괄 예약 (선택한 일반 씬이 있으면 선택 씬만)"
         aria-label="씬 일괄 예약"
         disabled={!appState.curSession}
         onClick={() => {
           if (appState.curSession) {
+            // 변형 탭에서 선택한 이름으로 같은 이름의 일반 씬을 예약하지 않도록
+            // 선택 종류가 scene 일 때만 선택 예약으로 취급한다.
             void addScenesToQueue(
               appState.curSession,
               'scene',
-              appState.selectedScenes.size > 0,
+              appState.selectedSceneCount('scene') > 0,
             );
           }
         }}

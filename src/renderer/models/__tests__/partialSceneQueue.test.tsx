@@ -5,7 +5,8 @@ const queueWorkflow = jest.fn(async () => {});
 const queueI2IWorkflow = jest.fn(async () => {});
 const capture = jest.fn(async () => ({ model: 'snapshot' }));
 const batch = jest.fn(async (run: () => Promise<void>) => run());
-const state = { samples: 2, selectedScenes: new Set<string>(), pushMessage: jest.fn(), pushDialog: jest.fn() };
+// 선택은 (종류, 이름) 쌍 — sceneSelection.ts 계약. 기본은 일반 씬 탭에서 선택한 상태.
+const state = { samples: 2, selectedScenes: new Set<string>(), selectedScenesType: 'scene' as 'scene' | 'inpaint' | null, pushMessage: jest.fn(), pushDialog: jest.fn() };
 const outputs = jest.fn((_session: any, scene: any) => scene.outputs);
 jest.mock('..', () => ({
   imageService: { getOutputs: outputs },
@@ -25,6 +26,7 @@ let session: any;
 beforeEach(() => {
   jest.clearAllMocks();
   state.selectedScenes.clear();
+  state.selectedScenesType = 'scene';
   scenes = [
     { name: 'empty', type: 'scene', outputs: [], mains: [] },
     { name: 'ordinary', type: 'scene', outputs: ['a.png'], mains: [] },
@@ -52,6 +54,15 @@ test('selection intersects the condition and empty matches do not capture or que
   await addScenesToQueue(session, 'scene', true, 'no-favorites');
   expect(queueWorkflow).toHaveBeenCalledTimes(1);
   expect((queueWorkflow.mock.calls[0] as any)[2].name).toBe('ordinary');
+});
+test('a selection made in the inpaint tab never queues same-named normal scenes', async () => {
+  // 일괄 미러 복제는 변형 씬을 원본과 같은 이름으로 만든다 — 변형 탭 선택으로 일반 씬을 예약하지 않는다
+  state.selectedScenesType = 'inpaint';
+  state.selectedScenes.add('ordinary');
+  state.selectedScenes.add('empty');
+  await addScenesToQueue(session, 'scene', true);
+  expect(queueWorkflow).not.toHaveBeenCalled();
+  expect(capture).not.toHaveBeenCalled();
 });
 test('inpaint filtering uses output images, not the input image', async () => {
   scenes = [{ name: 'paint', type: 'inpaint', workflowType: 'test', preset: { image: 'input' }, outputs: [], mains: [] }];

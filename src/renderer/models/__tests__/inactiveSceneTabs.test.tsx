@@ -115,6 +115,8 @@ beforeEach(() => {
   jest.clearAllMocks(); dragSpecs.clear(); dropSpecs.length = 0;
   scene = observable({ name: 'scene', type: 'inpaint', workflowType: 'test', mains: [], preset: { image: 'source' }, imageMap: [] });
   session = { name: 'project', getScenes: jest.fn(() => [scene]), sceneCardStyle: {}, inpaints: new Map([[scene.name, scene]]), scenes: new Map() };
+  // 실제 Session.getScene 과 동일: 종류별 Map 에서만 조회 (sceneSelection 계약)
+  session.getScene = (type: string, name: string) => (type === 'scene' ? session.scenes : session.inpaints).get(name);
   state.curSession = session;
   state.selectedScenes.clear();
   getImage = jest.fn(async () => 'initial');

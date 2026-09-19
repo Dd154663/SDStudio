@@ -1,4 +1,5 @@
 import { canStartSelectionBox, mainSceneDragSurface, isOnNativeScrollbar } from '../models/dragSelection';
+import { isSceneSelected, selectedCountForType } from '../models/sceneSelection';
 import SceneQueueMenu from './SceneQueueMenu';
 import {
   Fragment,
@@ -127,20 +128,17 @@ import { backStackService } from '../models/BackStackService';
 // createMissingPiecesForSession / queueScene 는 models/sceneQueueActions.ts 로 이전
 // (AppContextMenu 우클릭 메뉴와 공유 — 중복 제거)
 
-function getSelectedSceneNames(session: Session): string[] {
-  const names = Array.from(appState.selectedScenes);
-  const sceneOrder = new Map(
-    session.getScenes('scene').map((s, i) => [s.name, i]),
-  );
-  const inpaintOrder = new Map(
-    session.getScenes('inpaint').map((s, i) => [s.name, i]),
-  );
-  names.sort(
-    (a, b) =>
-      (sceneOrder.get(a) ?? inpaintOrder.get(a) ?? 0) -
-      (sceneOrder.get(b) ?? inpaintOrder.get(b) ?? 0),
-  );
-  return names;
+// 드래그 중인 카드와 같은 종류(탭)의 선택만, 그 탭의 표시 순서로 돌려준다.
+// 일반/변형 씬은 이름이 겹칠 수 있어 종류를 섞어 조회하지 않는다(sceneSelection.ts).
+function getSelectedSceneNames(
+  session: Session,
+  type: 'scene' | 'inpaint',
+): string[] {
+  if (appState.selectedScenesType !== type) return [];
+  return session
+    .getScenes(type)
+    .filter((s) => appState.selectedScenes.has(s.name))
+    .map((s) => s.name);
 }
 
 interface SceneSeedGroupBadgeProps {
@@ -621,11 +619,13 @@ export const SceneCell = observer(
         type: 'scene',
         item: () => {
           const cardWidth = cardElRef.current?.offsetWidth;
-          const isSelected = appState.selectedScenes.has(scene.name);
-          const selectedSceneNames =
-            isSelected && appState.selectedScenes.size > 1
-              ? getSelectedSceneNames(curSession)
-              : [];
+          const isSelected = isSceneSelected(
+            { names: appState.selectedScenes, type: appState.selectedScenesType },
+            scene,
+          );
+          const selectedSceneNames = isSelected
+            ? getSelectedSceneNames(curSession, scene.type)
+            : [];
           return {
             scene,
             curIndex,
@@ -693,8 +693,8 @@ export const SceneCell = observer(
             ) {
               const selectedScenes: GenericScene[] = [];
               for (const name of item.selectedSceneNames) {
-                const s =
-                  curSession.scenes.get(name) || curSession.inpaints.get(name);
+                // 드롭 대상과 같은 종류에서만 조회 — 이름이 같은 다른 탭 씬을 옮기지 않는다
+                const s = curSession.getScene(scene.type, name);
                 if (s) selectedScenes.push(s);
               }
               if (selectedScenes.length > 0) {
@@ -803,13 +803,15 @@ export const SceneCell = observer(
       drag(drop(appState.sceneSelectionMode ? null : node));
     };
     const onContext = (e: any) => {
+      // 메뉴 라벨의 "선택한 씬(N)" 수는 우클릭한 씬과 같은 종류의 선택만 센다
+      appState.contextSceneType = scene.type;
       show({ event: e, props: { ctx: { type: 'scene', scene } } });
     };
     const onClickCard = (event: any) => {
       if (isDragging) return;
       // 선택 모드에서는 데스크톱/모바일 모두 카드 클릭으로 선택을 토글한다.
       if (event.ctrlKey || appState.sceneSelectionMode) {
-        appState.toggleSceneSelection(scene.name);
+        appState.toggleSceneSelection(scene.name, scene.type);
         return;
       }
       appState.clearSceneSelection();
@@ -877,7 +879,10 @@ export const SceneCell = observer(
     const focusRing = isFocused
       ? ' outline outline-4 outline-sky-400 outline-offset-2'
       : '';
-    const isSelected = appState.selectedScenes.has(scene.name);
+    const isSelected = isSceneSelected(
+      { names: appState.selectedScenes, type: appState.selectedScenesType },
+      scene,
+    );
     const seedGroupBadge =
       scene.type === 'scene' ? (
         <SceneSeedGroupBadge session={curSession} scene={scene} />
@@ -1431,13 +1436,18 @@ const QueueControl = observer(
     }, []);
 
     const addAllToQueue = () => addScenesToQueue(curSession, type, false);
+    // 이 탭(종류)과 일치하는 선택 수. 다른 탭의 선택은 여기서 0 으로 취급한다.
+    const selectedCount = selectedCountForType(
+      { names: appState.selectedScenes, type: appState.selectedScenesType },
+      type,
+    );
 
     // 단축키에서 모든 씬 예약 이벤트 수신
     useEffect(() => {
       const handler = (e: Event) => {
         const action = (e as CustomEvent).detail?.action;
         if (action === 'queue-all-scenes') {
-          if (appState.selectedScenes.size > 0) {
+          if (selectedCount > 0) {
             addSelectedToQueue();
           } else {
             addAllToQueue();
@@ -1693,10 +1703,10 @@ const QueueControl = observer(
                 curSession,
               );
             } else if (box.deselect) {
-              appState.removeScenesFromSelection(selected);
+              appState.removeScenesFromSelection(selected, type);
             } else {
               appState.sceneSelectionMode = true;
-              appState.addScenesToSelection(selected);
+              appState.addScenesToSelection(selected, type);
             }
           }
         }
@@ -1807,7 +1817,7 @@ const QueueControl = observer(
           }
         } else if (action === 'scene-queue-add') {
           // 다중 선택 상태면 선택된 씬 전체를, 아니면 포커스된 씬만 예약
-          if (appState.selectedScenes.size > 0) {
+          if (selectedCount > 0) {
             addSelectedToQueue();
           } else if (
             focusedSceneIndex != null &&
@@ -1823,7 +1833,7 @@ const QueueControl = observer(
           // 모드 진입 후엔 수정자 없는 S 키만으로 토글이 이어진다(아래 keydown 핸들러).
           if (focusedSceneIndex != null && focusedSceneIndex < scenes.length) {
             appState.sceneSelectionMode = true;
-            appState.toggleSceneSelection(scenes[focusedSceneIndex].name);
+            appState.toggleSceneSelection(scenes[focusedSceneIndex].name, type);
           }
         } else if (action === 'scene-clear-select') {
           // 선택 모드 취소(전체 선택 해제 + 모드 종료)
@@ -1923,7 +1933,7 @@ const QueueControl = observer(
           // 모드 밖에서는 실수 선택을 막기 위해 무시한다.
           if (!appState.sceneSelectionMode || !hasFocus) return;
           e.preventDefault();
-          appState.toggleSceneSelection(scenes[focusedSceneIndex!].name);
+          appState.toggleSceneSelection(scenes[focusedSceneIndex!].name, type);
           return;
         }
         if (e.key === 'a' || e.key === 'A' || e.key === ',') {
@@ -2643,11 +2653,11 @@ const QueueControl = observer(
         </Tooltip>
       ),
       'queue-add': (
-        <SceneQueueMenu session={curSession} type={type} selectedOnly={appState.selectedScenes.size > 0}>
+        <SceneQueueMenu session={curSession} type={type} selectedOnly={selectedCount > 0}>
           <button
             className="round-button back-sky"
             onClick={
-              appState.selectedScenes.size > 0
+              selectedCount > 0
                 ? addSelectedToQueue
                 : addAllToQueue
             }
@@ -2656,14 +2666,14 @@ const QueueControl = observer(
               // 예약제거(달력✕, 씬 카드)와 짝을 이루는 달력+ 아이콘. 선택 중엔 수 병기
               <>
                 <FaRegCalendarPlus size={18} />
-                {appState.selectedScenes.size > 0 && (
+                {selectedCount > 0 && (
                   <span className="ml-1 text-xs">
-                    {appState.selectedScenes.size}
+                    {selectedCount}
                   </span>
                 )}
               </>
-            ) : appState.selectedScenes.size > 0 ? (
-              `선택 씬 예약추가 (${appState.selectedScenes.size})`
+            ) : selectedCount > 0 ? (
+              `선택 씬 예약추가 (${selectedCount})`
             ) : (
               '모두 예약추가'
             )}
@@ -2736,14 +2746,14 @@ const QueueControl = observer(
             {iconMode ? (
               <>
                 <FaCheckSquare size={18} />
-                {appState.selectedScenes.size > 0 && (
+                {selectedCount > 0 && (
                   <span className="ml-1 text-xs">
-                    {appState.selectedScenes.size}
+                    {selectedCount}
                   </span>
                 )}
               </>
             ) : appState.sceneSelectionMode ? (
-              `선택중 ${appState.selectedScenes.size}`
+              `선택중 ${selectedCount}`
             ) : (
               '선택 모드'
             )}
@@ -3004,6 +3014,7 @@ const QueueControl = observer(
                     onClick={() =>
                       appState.addScenesToSelection(
                         getFilteredScenes().map((scene) => scene.name),
+                        type,
                       )
                     }
                   >
