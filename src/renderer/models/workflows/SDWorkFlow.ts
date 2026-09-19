@@ -446,25 +446,27 @@ const createSDI2IHandler = (type: string) => {
 };
 
 export function createInpaintPreset(
-  job: SDAbstractJob<string>,
+  job?: Partial<SDAbstractJob<string>>,
   image?: string,
   mask?: string,
 ): any {
   const preset = workFlowService.buildPreset('SDInpaint');
   if (image !== undefined) preset.image = image;
   if (mask !== undefined) preset.mask = mask;
-  preset.cfgRescale = job.cfgRescale;
-  preset.promptGuidance = job.promptGuidance;
-  preset.sampling = job.sampling;
-  preset.noiseSchedule = job.noiseSchedule;
-  preset.prompt = job.prompt;
-  preset.uc = job.uc;
-  preset.characterPrompts = job.characterPrompts;
-  preset.useCoords = job.useCoords;
-  preset.legacyPromptConditioning = job.legacyPromptConditioning;
-  preset.normalizeStrength = job.normalizeStrength;
-  preset.varietyPlus = job.varietyPlus;
-  preset.deliberateEulerAncestralBug = job.deliberateEulerAncestralBug ?? false;
+  // Director Tools and imported images may have only part of the generation
+  // metadata. Missing values must not erase the usable manual-scene defaults.
+  preset.cfgRescale = job?.cfgRescale ?? preset.cfgRescale;
+  preset.promptGuidance = job?.promptGuidance ?? preset.promptGuidance;
+  preset.sampling = job?.sampling ?? preset.sampling;
+  preset.noiseSchedule = job?.noiseSchedule ?? preset.noiseSchedule;
+  preset.prompt = job?.prompt ?? preset.prompt;
+  preset.uc = job?.uc ?? preset.uc;
+  preset.characterPrompts = job?.characterPrompts ?? preset.characterPrompts;
+  preset.useCoords = job?.useCoords ?? preset.useCoords;
+  preset.legacyPromptConditioning = job?.legacyPromptConditioning ?? preset.legacyPromptConditioning;
+  preset.normalizeStrength = job?.normalizeStrength ?? preset.normalizeStrength;
+  preset.varietyPlus = job?.varietyPlus ?? preset.varietyPlus;
+  preset.deliberateEulerAncestralBug = job?.deliberateEulerAncestralBug ?? preset.deliberateEulerAncestralBug;
   return preset;
 }
 
