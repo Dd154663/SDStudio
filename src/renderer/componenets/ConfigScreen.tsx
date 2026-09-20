@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { HScrollHintArrow, useHScrollHint } from './HScrollHint';
 import {
   appUpdateNoticeService,
   backend,
@@ -40,8 +41,6 @@ import {
   FaSlidersH,
   FaThLarge,
   FaColumns,
-  FaChevronLeft,
-  FaChevronRight,
   FaPen,
 } from 'react-icons/fa';
 import { keyboardShortcutService, KeyboardShortcutService } from '../models/KeyboardShortcutService';
@@ -2758,28 +2757,12 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
 
   // 모바일 탭 바 가로 스크롤 힌트 — 각 방향에 가려진 탭이 있을 때만 양 끝에
   // 옅은 화살표를 띄운다(스크롤 가능함을 알리는 표시 전용, 클릭 무반응).
-  const tabBarRef = useRef<HTMLDivElement | null>(null);
-  const [tabScrollHint, setTabScrollHint] = useState({
-    left: false,
-    right: false,
-  });
-  const updateTabScrollHint = useCallback(() => {
-    const el = tabBarRef.current;
-    if (!el) return;
-    const left = el.scrollLeft > 2;
-    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
-    setTabScrollHint((prev) =>
-      prev.left === left && prev.right === right ? prev : { left, right },
-    );
-  }, []);
-  useEffect(() => {
-    updateTabScrollHint();
-    const el = tabBarRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => updateTabScrollHint());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [updateTabScrollHint]);
+  // 구현은 공용 HScrollHint(씬 툴바와 공유).
+  const {
+    ref: tabBarRef,
+    hint: tabScrollHint,
+    onScroll: updateTabScrollHint,
+  } = useHScrollHint<HTMLDivElement>();
 
   // state
   const [imageEditor, setImageEditor] = useState('');
@@ -3264,14 +3247,10 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
             ))}
           </div>
           {mobileMode && tabScrollHint.left && (
-            <div className="absolute left-0 top-0 bottom-0 w-5 flex items-center justify-start pl-1 pointer-events-none bg-gradient-to-r from-[var(--c-zone)] to-transparent">
-              <FaChevronLeft size={9} className="text-faint" />
-            </div>
+            <HScrollHintArrow side="left" surface="var(--c-zone)" />
           )}
           {mobileMode && tabScrollHint.right && (
-            <div className="absolute right-0 top-0 bottom-0 w-5 flex items-center justify-end pr-1 pointer-events-none bg-gradient-to-l from-[var(--c-zone)] to-transparent">
-              <FaChevronRight size={9} className="text-faint" />
-            </div>
+            <HScrollHintArrow side="right" surface="var(--c-zone)" />
           )}
         </div>
         {/* 탭 콘텐츠 — CSS Grid로 모든 탭을 같은 셀에 겹쳐 높이 통일 */}

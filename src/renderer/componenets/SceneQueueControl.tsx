@@ -53,6 +53,7 @@ import SceneQuickPromptModal from './SceneQuickPromptModal';
 import { base64ToDataUri } from './BrushTool';
 import SceneSelector from './SceneSelector';
 import Tooltip from './Tooltip';
+import { HScrollHintArrow, useHScrollHint } from './HScrollHint';
 import { ImageOptimizeMethod } from '../backend';
 import {
   isMobile,
@@ -2591,6 +2592,19 @@ const QueueControl = observer(
     const toolbarDragActive = toolbarDrag.active;
     const { drop: toolbarRowDrop, isOver: toolbarRowOver } =
       useToolbarRowDrop('scene', 'scene');
+    const {
+      ref: toolbarScrollRef,
+      hint: toolbarScrollHint,
+      onScroll: updateToolbarScrollHint,
+    } = useHScrollHint<HTMLDivElement>();
+    // 드롭 타깃 커넥터와 스크롤 힌트 ref 를 한 요소에 함께 건다.
+    const toolbarRowRef = useCallback(
+      (el: HTMLDivElement | null) => {
+        (toolbarRowDrop as any)(el);
+        toolbarScrollRef.current = el;
+      },
+      [toolbarRowDrop, toolbarScrollRef],
+    );
 
     const [bmRev, setBmRev] = useState(0);
     useEffect(() => {
@@ -3026,8 +3040,12 @@ const QueueControl = observer(
           <div className="flex flex-none pb-1.5 flex-wrap">
             {/* 모바일(비클래식): 줄바꿈 대신 가로 스크롤 — 어떤 기기 폭에서도 1줄 보장.
                 행 전체가 드롭 타깃(놓으면 인라인 고정) */}
+            {/* 모바일: 스크롤바를 숨긴 행이라 가려진 버튼이 있을 때 양 끝에 옅은 화살표 힌트를 띄운다
+                (환경설정 탭 바와 같은 HScrollHint). PC 는 줄바꿈이라 래퍼를 contents 로 무력화 */}
+            <div className={mobileIcon ? 'relative min-w-0 max-w-full' : 'contents'}>
             <div
-              ref={toolbarRowDrop as any}
+              ref={toolbarRowRef}
+              onScroll={mobileIcon ? updateToolbarScrollHint : undefined}
               className={`scene-toolbar-row flex gap-1 md:gap-1.5 items-center ${
                 mobileIcon
                   ? 'flex-nowrap overflow-x-auto no-scrollbars min-w-0 max-w-full [&>*]:flex-none'
@@ -3080,6 +3098,13 @@ const QueueControl = observer(
                       : 'relative'
                   }
                 >
+                  {mobileIcon && toolbarScrollHint.right && (
+                    <HScrollHintArrow
+                      side="right"
+                      surface="var(--c-surface)"
+                      positionClass="right-full"
+                    />
+                  )}
                   <ToolbarMenuDropTarget group="scene" area="scene">
                     <Tooltip content="더보기">
                       <button
@@ -3117,6 +3142,15 @@ const QueueControl = observer(
                   )}
                 </div>
               )}
+            </div>
+              {mobileIcon && toolbarScrollHint.left && (
+                <HScrollHintArrow side="left" surface="var(--c-surface)" />
+              )}
+              {mobileIcon &&
+                toolbarScrollHint.right &&
+                !(toolbarLayout.menu.length > 0 || toolbarDragActive) && (
+                  <HScrollHintArrow side="right" surface="var(--c-surface)" />
+                )}
             </div>
             {isMobile && toolbarLayout.menu.length > 0 && (
               <ToolbarOverflowMenu
