@@ -55,6 +55,7 @@ import {
 import { TemplateManagerModal } from './TemplateManagerModal';
 import { isWorkspaceLayout, physicalDirOf } from '../models/storageLayout';
 import { workspacePath } from '../models/projectPaths';
+import { EDGE_SWIPE_ZONE, shouldIgnoreEdgeSwipeAt } from '../models/edgeSwipe';
 // 폴더 색상 팔레트 (hex, 단일 출처 folderColors.ts). 미지정 폴더는 기본색을 사용한다.
 import {
   FOLDER_COLORS,
@@ -325,7 +326,8 @@ export const ProjectDrawerHandle = observer(() => {
     const onStart = (e: TouchEvent) => {
       if (appState.projectDrawerOpen || e.touches.length !== 1) return;
       const t = e.touches[0];
-      if (t.clientX > 32) return; // 좌측 끝 32px 에서 시작한 터치만
+      if (t.clientX > EDGE_SWIPE_ZONE) return; // 좌측 끝 32px 에서 시작한 터치만
+      if (shouldIgnoreEdgeSwipeAt(e.target, t.clientX, t.clientY, 'left')) return; // 가로 제스처 영역에는 양보(edgeSwipe.ts)
       startX = t.clientX;
       startY = t.clientY;
       tracking = true;

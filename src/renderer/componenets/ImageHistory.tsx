@@ -17,6 +17,7 @@ import { backStackService } from '../models/BackStackService';
 import { ContextMenuType, GenericScene } from '../models/types';
 import Tooltip from './Tooltip';
 import { toolbarDragUi } from './ToolbarDnd';
+import { EDGE_SWIPE_ZONE, shouldIgnoreEdgeSwipeAt } from '../models/edgeSwipe';
 
 // 최근 생성 이미지 히스토리 사이드바.
 // PC: 우측 밀어내기(push) 패널 — 펼치면 중앙 영역이 그만큼 줄어듦.
@@ -282,7 +283,9 @@ export const ImageHistoryHandle = observer(() => {
       // 오인해 드로어가 열리지 않도록 무시한다.
       if (toolbarDragUi.armed !== null) return;
       const t = e.touches[0];
-      if (t.clientX < window.innerWidth - 32) return; // 가장자리 32px에서 시작한 터치만
+      if (t.clientX < window.innerWidth - EDGE_SWIPE_ZONE) return; // 가장자리 32px에서 시작한 터치만
+      // 가로 스크롤 툴바·이미지 좌우 넘기기처럼 같은 가로 제스처를 쓰는 영역에는 양보한다.
+      if (shouldIgnoreEdgeSwipeAt(e.target, t.clientX, t.clientY, 'right')) return;
       startX = t.clientX;
       startY = t.clientY;
       tracking = true;

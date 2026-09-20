@@ -1494,6 +1494,8 @@ const ResultDetailView = observer(
         </div>
         <div
           className="flex-1 overflow-auto"
+          // 좌우 스와이프로 이미지를 넘기는 영역 — 가장자리 드로어 스와이프에 양보받는다(edgeSwipe.ts).
+          data-edge-swipe-ignore=""
           onTouchStart={(e) => {
             if (e.touches.length !== 1) {
               touchStart.current = null;

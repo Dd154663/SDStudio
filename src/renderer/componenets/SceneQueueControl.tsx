@@ -937,6 +937,26 @@ export const SceneCell = observer(
       </Tooltip>
     ) : null;
 
+    // 모바일: 오버레이 버튼(연필·조합 토글·R)을 살짝 빗나간 탭이 카드 탭(이미지 그리드 열기)으로
+    // 떨어지지 않도록 버튼 열 주변에 무반응 영역을 둔다. 클릭만 삼키므로 길게 누르기 메뉴·드래그
+    // 정렬은 그대로이고, 선택 모드에서는 카드 어디를 눌러도 선택되도록 통과시킨다.
+    const overlayDeadZone = isMobile ? (
+      <div
+        aria-hidden="true"
+        className={`absolute right-0 top-0 z-10 w-11 ${
+          scene.type === 'scene'
+            ? 'h-[7.25rem]'
+            : onReview
+              ? 'h-11'
+              : 'hidden'
+        }`}
+        onClick={(event) => {
+          if (appState.sceneSelectionMode) return;
+          event.stopPropagation();
+        }}
+      />
+    ) : null;
+
     if (isClassic) {
       // ===== 클래식 디자인 =====
       return (
@@ -1012,6 +1032,7 @@ export const SceneCell = observer(
                     )}
                   </div>
                 )}
+                {overlayDeadZone}
                 {quickPromptButton}
                 {reviewButton}
               </div>
@@ -1105,6 +1126,7 @@ export const SceneCell = observer(
                   </div>
                 </div>
               </div>
+              {overlayDeadZone}
               {quickPromptButton}
               {reviewButton}
             </div>
