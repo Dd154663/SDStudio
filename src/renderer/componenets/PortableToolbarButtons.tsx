@@ -53,7 +53,7 @@ const iconButton = (
     <button
       className={
         variant === 'project'
-          ? 'icon-button mx-1'
+          ? 'icon-button touch-hit relative mx-1'
           : variant === 'companion'
             ? 'round-button back-gray h-8'
             : 'round-button back-gray'
@@ -75,7 +75,7 @@ export function portableToolbarButtons(
     'add-session':
       variant === 'project' ? (
         <button
-          className={`icon-button mx-1`}
+          className={`icon-button touch-hit relative mx-1`}
           onClick={() => appState.addSession()}
         >
           <FaPlus size={18} />
@@ -96,7 +96,7 @@ export function portableToolbarButtons(
       variant === 'project' ? (
         <Tooltip content="프로젝트 삭제">
           <button
-            className={`icon-button mx-1`}
+            className={`icon-button touch-hit relative mx-1`}
             onClick={() => appState.deleteSession()}
           >
             <FaFolderMinus size={18} />{' '}
@@ -180,7 +180,7 @@ export function portableToolbarButtons(
     'backup-export':
       variant === 'project' ? (
         <button
-          className={`icon-button mx-1`}
+          className={`icon-button touch-hit relative mx-1`}
           onClick={() => {
             appState.projectBackupMenu();
           }}
@@ -214,7 +214,7 @@ export function portableToolbarButtons(
               ? `round-button ${appState.appliedCharacterPresetNames.length > 0 ? 'back-green' : 'back-gray'}`
               : variant === 'companion'
                 ? `round-button h-8 ${appState.appliedCharacterPresetNames.length > 0 ? 'back-green' : 'back-gray'}`
-                : `icon-button mx-1 ${appState.appliedCharacterPresetNames.length > 0 ? 'back-green' : ''}`
+                : `icon-button touch-hit relative mx-1 ${appState.appliedCharacterPresetNames.length > 0 ? 'back-green' : ''}`
           }
           onClick={() => appState.openCharacterPresets()}
         >
@@ -235,7 +235,7 @@ export function portableToolbarButtons(
             // project(무배경 행 — 사전세팅선택·사전세팅 위·사이드바) 적응: 배경형 녹색
             // 원이 무배경 이웃과 어긋나던 것을 무배경+녹색 전경으로 통일(② A 피드백 3).
             variant === 'project'
-              ? 'icon-button back-green mx-1'
+              ? 'icon-button touch-hit relative back-green mx-1'
               : 'round-button back-green' +
                 (variant === 'companion' ? ' h-8' : '')
           }

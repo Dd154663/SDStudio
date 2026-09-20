@@ -371,6 +371,32 @@ html.font-pretendard body {
   min-width: unset;
   min-height: unset;
 }
+/* 모바일 폭: 씬 카드 하단 버튼은 카드 폭을 균등 분배한 둥근 사각형, 높이 30px(2026-09-20).
+   36px 알약형은 폭보다 높이가 커 세로 타원으로 보여 실기기에서 기각 → 가로로 긴 사각형으로 확정.
+   768px 이상은 위 규칙 그대로. */
+@media (max-width: 767px) {
+  .scene-btn-row .round-button.scene-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 30px;
+    min-height: 30px;
+    padding: 0;
+    border-radius: 8px;
+  }
+}
+/* 터치 판정 확장(옵트인): 보이는 크기는 그대로 두고 판정만 바깥으로 넓힌다.
+   대상 요소는 positioned(relative/absolute) 여야 한다. --touch-hit 로 확장 폭 조절. */
+@media (max-width: 767px) {
+  .touch-hit::after {
+    content: '';
+    position: absolute;
+    inset: calc(-1 * var(--touch-hit, 4px));
+  }
+  /* 무배경 아이콘 버튼(약 26px)은 5px 확장으로 36px 판정 */
+  .icon-button.touch-hit {
+    --touch-hit: 5px;
+  }
+}
 /* 씬 툴바 행 버튼 높이 균일화(2026-07-06 피드백) — 텍스트 버튼(줄높이 24px+패딩=32px)과
    아이콘 버튼(18px 아이콘+패딩=26px)의 콘텐츠 높이 차이를 행 스코프 고정 높이로 맞춘다.
    모바일은 .round-button 의 min-height:36px 가 height 보다 우선하므로 영향 없음. */

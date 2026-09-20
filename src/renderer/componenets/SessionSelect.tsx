@@ -460,7 +460,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
             <ToolbarMenuDropTarget group="project" area="project">
               <Tooltip content="더보기">
                 <button
-                  className={`icon-button mx-1${toolbarLayout.menu.length === 0 ? ' opacity-40' : ''}`}
+                  className={`icon-button touch-hit relative mx-1${toolbarLayout.menu.length === 0 ? ' opacity-40' : ''}`}
                   onClick={() => {
                     if (toolbarLayout.menu.length > 0)
                       setShowProjectMenu(!showProjectMenu);
@@ -676,7 +676,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
           <ToolbarMenuDropTarget group="project" area="project">
             <Tooltip content="더보기">
               <button
-                className={`icon-button mx-1${toolbarLayout.menu.length === 0 ? ' opacity-40' : ''}`}
+                className={`icon-button touch-hit relative mx-1${toolbarLayout.menu.length === 0 ? ' opacity-40' : ''}`}
                 onClick={() => {
                   if (toolbarLayout.menu.length > 0)
                     setShowProjectMenu(!showProjectMenu);

@@ -195,13 +195,13 @@ const SceneSeedGroupBadge = observer(
 
     return (
       <div
-        className="absolute right-9 top-1 z-30"
+        className={`absolute ${isMobile ? 'right-10' : 'right-9'} top-1 z-30`}
         onClick={(event) => event.stopPropagation()}
         onContextMenu={(event) => event.stopPropagation()}
       >
         <button
           type="button"
-          className={`w-7 h-7 p-0 rounded-full btn ${colorClass} opacity-80 hover:opacity-100 text-xs font-bold shadow clickable flex items-center justify-center`}
+          className={`relative touch-hit w-7 h-7 p-0 rounded-full btn ${colorClass} opacity-80 hover:opacity-100 text-xs font-bold shadow clickable flex items-center justify-center`}
           title={`시드 그룹 ${group.label}`}
           onClick={() => setOpen((current) => !current)}
         >
@@ -388,7 +388,7 @@ const CombinationQuickToggle = observer(
     return (
       <>
         <div
-          className="absolute right-1 top-9 z-30"
+          className={`absolute right-1 ${isMobile ? 'top-10' : 'top-9'} z-30`}
           onClick={(event) => event.stopPropagation()}
           onContextMenu={(event) => event.stopPropagation()}
         >
@@ -396,7 +396,7 @@ const CombinationQuickToggle = observer(
             <button
               ref={buttonRef}
               type="button"
-              className={`w-7 h-7 rounded-full bg-black/55 hover:bg-black/80 text-white clickable flex items-center justify-center transition-opacity duration-200${
+              className={`relative touch-hit w-7 h-7 rounded-full bg-black/55 hover:bg-black/80 text-white clickable flex items-center justify-center transition-opacity duration-200${
                 !isMobile && !isHovered && !open ? ' opacity-0' : ''
               }`}
               onClick={() => {
@@ -900,11 +900,13 @@ export const SceneCell = observer(
 
     // 프롬프트 퀵 수정 버튼(W2) — 이미지 우상단 오버레이(클래식/신규 공용).
     // 하단 버튼 행은 4개가 상한(스몰 뷰·모바일 그리드 보전)이라 행에 넣지 않는다.
+    // 모바일 오버레이 버튼(시드 배지·연필·조합 토글·R)은 28px 외형 유지+touch-hit 로 판정 36px,
+    // 판정이 겹치지 않도록 서로 8px 간격(top-1/top-10/top-[4.75rem], 배지 right-10)을 둔다.
     const quickPromptButton =
       onQuickPrompt && scene.type === 'scene' ? (
         <Tooltip content="중간 프롬프트 퀵 수정">
           <button
-            className={`absolute right-1 top-1 z-20 w-7 h-7 rounded-full bg-black/55 hover:bg-black/80 text-white clickable flex items-center justify-center transition-opacity duration-200${
+            className={`touch-hit absolute right-1 top-1 z-20 w-7 h-7 rounded-full bg-black/55 hover:bg-black/80 text-white clickable flex items-center justify-center transition-opacity duration-200${
               !isMobile && !isHovered ? ' opacity-0' : ''
             }`}
             onClick={(e) => {
@@ -922,7 +924,7 @@ export const SceneCell = observer(
     const reviewButton = onReview ? (
       <Tooltip content="이 씬부터 이미지 검수">
         <button
-          className={`absolute right-1 ${scene.type === 'scene' ? 'top-[4.25rem]' : 'top-1'} z-20 flex h-7 w-7 items-center justify-center rounded-full btn-solid-sky text-xs font-bold transition-opacity duration-200${
+          className={`touch-hit absolute right-1 ${scene.type === 'scene' ? (isMobile ? 'top-[4.75rem]' : 'top-[4.25rem]') : 'top-1'} z-20 flex h-7 w-7 items-center justify-center rounded-full btn-solid-sky text-xs font-bold transition-opacity duration-200${
             !isMobile && !isHovered ? ' opacity-0' : ''
           }`}
           onClick={(event) => {
@@ -940,7 +942,7 @@ export const SceneCell = observer(
       return (
         <div
           id={`scene-cell-${scene.type}-${scene.name}`}
-          className={`relative z-0 m-[10.5px] p-1 bg-[var(--c-surface-2)] border line-color ${
+          className={`relative z-0 ${isMobile ? 'm-[5px]' : 'm-[10.5px]'} p-1 bg-[var(--c-surface-2)] border line-color ${
             isDragging ? 'opacity-0 no-touch ' : ''
           }${isOver ? ' outline outline-sky-500' : ''}${
             isSelected
@@ -1015,7 +1017,7 @@ export const SceneCell = observer(
               </div>
             </div>
           </div>
-          <div className="w-full flex mt-auto justify-center items-center gap-1 md:gap-2 p-1 md:p-2">
+          <div className="scene-btn-row w-full flex mt-auto justify-center items-center gap-1 md:gap-2 p-1 md:p-2">
             {renderButtons(false)}
           </div>
         </div>
@@ -1026,7 +1028,7 @@ export const SceneCell = observer(
     return (
       <div
         id={`scene-cell-${scene.type}-${scene.name}`}
-        className={`${disableHover ? '' : 'group '}relative z-0 m-[8.5px] p-1 rounded-lg bg-[var(--c-surface-2)] border-2 ${
+        className={`${disableHover ? '' : 'group '}relative z-0 ${isMobile ? 'm-[5px]' : 'm-[8.5px]'} p-1 rounded-lg bg-[var(--c-surface-2)] border-2 ${
           currentPreviewIsFavorite
             ? 'border-yellow-400 '
             : isSelected
@@ -1116,7 +1118,7 @@ export const SceneCell = observer(
         )}
         {/* 모바일 전용: 하단 버튼 */}
         <div
-          className={`w-full flex mt-auto justify-center items-center gap-1 p-1 ${isMobile ? '' : 'md:hidden'}`}
+          className={`scene-btn-row w-full flex mt-auto justify-center items-center gap-1 p-1 ${isMobile ? '' : 'md:hidden'}`}
         >
           {renderButtons(false)}
         </div>
