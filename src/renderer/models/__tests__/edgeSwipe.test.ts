@@ -3,6 +3,9 @@ import {
   EDGE_SWIPE_IGNORE_ATTR,
   shouldIgnoreEdgeSwipe,
   shouldIgnoreEdgeSwipeAt,
+  createSwipeTracker,
+  canOpenDrawerBySwipe,
+  isInsideOverlay,
 } from '../edgeSwipe';
 
 function setSize(el: HTMLElement, scrollWidth: number, clientWidth: number) {
@@ -80,5 +83,67 @@ describe('shouldIgnoreEdgeSwipe', () => {
     expect(shouldIgnoreEdgeSwipeAt(margin, 5, 170, 'left')).toBe(false);
     expect(probe).toHaveBeenLastCalledWith(33, 170);
     delete (document as any).elementFromPoint;
+  });
+});
+
+describe('createSwipeTracker', () => {
+  it('수평 우세로 40px 넘게 밀면 한 번만 발동한다', () => {
+    const t = createSwipeTracker('right');
+    t.start(5, 300, 0);
+    expect(t.move(30, 302, 50)).toBe(false);
+    expect(t.move(50, 305, 90)).toBe(true);
+    expect(t.move(90, 305, 120)).toBe(false);
+  });
+
+  it('방향이 반대거나 세로가 우세하면 발동하지 않는다', () => {
+    const left = createSwipeTracker('left');
+    left.start(300, 300, 0);
+    expect(left.move(360, 300, 60)).toBe(false);
+    const right = createSwipeTracker('right');
+    right.start(5, 300, 0);
+    expect(right.move(50, 400, 60)).toBe(false);
+  });
+
+  it('왼쪽 방향은 오른쪽에서 왼쪽으로 밀 때 발동한다', () => {
+    const t = createSwipeTracker('left');
+    t.start(300, 300, 0);
+    expect(t.move(250, 303, 80)).toBe(true);
+  });
+
+  it('길게 누른 뒤 움직이기 시작한 터치는 스와이프로 치지 않는다', () => {
+    const t = createSwipeTracker('left');
+    t.start(300, 300, 0);
+    expect(t.move(302, 300, 200)).toBe(false);
+    expect(t.move(240, 300, 450)).toBe(false);
+    expect(t.move(100, 300, 600)).toBe(false);
+  });
+
+  it('end 이후에는 발동하지 않는다', () => {
+    const t = createSwipeTracker('right');
+    t.start(5, 300, 0);
+    t.end();
+    expect(t.move(100, 300, 50)).toBe(false);
+  });
+});
+
+describe('canOpenDrawerBySwipe', () => {
+  it('자기나 반대쪽 드로어가 열려 있으면 열기 스와이프를 막는다', () => {
+    expect(canOpenDrawerBySwipe({ selfOpen: false, otherOpen: false })).toBe(true);
+    expect(canOpenDrawerBySwipe({ selfOpen: true, otherOpen: false })).toBe(false);
+    expect(canOpenDrawerBySwipe({ selfOpen: false, otherOpen: true })).toBe(false);
+  });
+});
+
+describe('isInsideOverlay', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+  it('모달·뷰어 안의 터치만 오버레이로 본다', () => {
+    document.body.innerHTML =
+      '<div id="main"><span id="a"></span></div><div class="fixed inset-0"><b id="m"></b></div><div class="float-view"><i id="v"></i></div>';
+    expect(isInsideOverlay(document.getElementById('a'))).toBe(false);
+    expect(isInsideOverlay(document.getElementById('m'))).toBe(true);
+    expect(isInsideOverlay(document.getElementById('v'))).toBe(true);
+    expect(isInsideOverlay(null)).toBe(false);
   });
 });

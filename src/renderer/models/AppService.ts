@@ -793,6 +793,22 @@ export class AppState {
     localStorage.setItem('sdstudio-history-panel-width', String(w));
   }
 
+  // 좌우 오버레이 드로어(프로젝트·히스토리)는 동시에 열리지 않는다 — 한쪽을 열면 반대쪽은 닫는다.
+  // 모바일 양쪽 손잡이를 연달아 누르면 두 드로어가 겹쳐 열리던 문제(2026-09-20). 스와이프 열기는
+  // 반대쪽이 열려 있으면 아예 무반응(edgeSwipe.canOpenDrawerBySwipe)이고, 손잡이·단축키는 전환이다.
+  @action
+  toggleSideDrawer(which: 'project' | 'history') {
+    if (which === 'project') {
+      const next = !this.projectDrawerOpen;
+      if (next) this.historyDrawerOpen = false;
+      this.projectDrawerOpen = next;
+    } else {
+      const next = !this.historyDrawerOpen;
+      if (next) this.projectDrawerOpen = false;
+      this.historyDrawerOpen = next;
+    }
+  }
+
   @action
   toggleHistoryPanel() {
     this.historyPanelCollapsed = !this.historyPanelCollapsed;

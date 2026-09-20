@@ -17,7 +17,11 @@ import { backStackService } from '../models/BackStackService';
 import { ContextMenuType, GenericScene } from '../models/types';
 import Tooltip from './Tooltip';
 import { toolbarDragUi } from './ToolbarDnd';
-import { EDGE_SWIPE_ZONE, shouldIgnoreEdgeSwipeAt } from '../models/edgeSwipe';
+import {
+  EDGE_SWIPE_ZONE,
+  shouldIgnoreEdgeSwipeAt,
+  canOpenDrawerBySwipe,
+} from '../models/edgeSwipe';
 
 // 최근 생성 이미지 히스토리 사이드바.
 // PC: 우측 밀어내기(push) 패널 — 펼치면 중앙 영역이 그만큼 줄어듦.
@@ -278,7 +282,15 @@ export const ImageHistoryHandle = observer(() => {
     let startY = 0;
     let tracking = false;
     const onStart = (e: TouchEvent) => {
-      if (appState.historyDrawerOpen || e.touches.length !== 1) return;
+      if (e.touches.length !== 1) return;
+      // 프로젝트 드로어가 열려 있으면 반응하지 않는다(좌우 드로어 스와이프 겹침 방지)
+      if (
+        !canOpenDrawerBySwipe({
+          selfOpen: appState.historyDrawerOpen,
+          otherOpen: appState.projectDrawerOpen,
+        })
+      )
+        return;
       // 우측 끝 툴바 버튼을 롱프레스로 잡아 정리(드래그)하는 중이면 스와이프로
       // 오인해 드로어가 열리지 않도록 무시한다.
       if (toolbarDragUi.armed !== null) return;
@@ -302,7 +314,7 @@ export const ImageHistoryHandle = observer(() => {
       const dy = t.clientY - startY;
       if (dx < -40 && Math.abs(dx) > Math.abs(dy)) {
         tracking = false;
-        appState.historyDrawerOpen = true;
+        if (!appState.projectDrawerOpen) appState.historyDrawerOpen = true;
       }
     };
     const onEnd = () => {
@@ -324,9 +336,7 @@ export const ImageHistoryHandle = observer(() => {
     <button
       className="fixed right-0 top-1/2 -translate-y-1/2 md:hidden flex items-center justify-center w-5 h-14 rounded-l-md border border-r-0 line-color bg-[var(--c-surface-2)] opacity-70 active:opacity-100"
       style={{ zIndex: 'var(--z-drawer-handle)' }}
-      onClick={() => {
-        appState.historyDrawerOpen = !open;
-      }}
+      onClick={() => appState.toggleSideDrawer('history')}
     >
       {open ? (
         <FaChevronRight size={11} className="text-faint" />

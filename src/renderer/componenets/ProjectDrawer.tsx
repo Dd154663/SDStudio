@@ -55,7 +55,14 @@ import {
 import { TemplateManagerModal } from './TemplateManagerModal';
 import { isWorkspaceLayout, physicalDirOf } from '../models/storageLayout';
 import { workspacePath } from '../models/projectPaths';
-import { EDGE_SWIPE_ZONE, shouldIgnoreEdgeSwipeAt } from '../models/edgeSwipe';
+import {
+  EDGE_SWIPE_ZONE,
+  shouldIgnoreEdgeSwipe,
+  shouldIgnoreEdgeSwipeAt,
+  createSwipeTracker,
+  canOpenDrawerBySwipe,
+  isInsideOverlay,
+} from '../models/edgeSwipe';
 // 폴더 색상 팔레트 (hex, 단일 출처 folderColors.ts). 미지정 폴더는 기본색을 사용한다.
 import {
   FOLDER_COLORS,
@@ -313,38 +320,35 @@ const ProjectRow = observer(
   },
 );
 
-// 모바일 좌측 가장자리 손잡이 — 프로젝트 오버레이 드로어 열기/닫기 토글.
-// 히스토리 우측 핸들(ImageHistoryHandle)의 좌측 미러. 좌측 끝에서 우로 스와이프해도 열림.
-// (좌측 끝은 우측 툴바 드래그와 겹치지 않아 toolbarDragUi 가드는 불필요.)
-export const ProjectDrawerHandle = observer(() => {
-  const open = appState.projectDrawerOpen;
-
+// 좌측 끝에서 우로 스와이프하면 프로젝트 드로어 열기(모바일). 히스토리 드로어가 열려 있으면
+// 반응하지 않는다(좌우 드로어 스와이프 겹침 방지). 판정은 models/edgeSwipe.ts 단일 출처.
+function useProjectDrawerEdgeSwipe() {
   useEffect(() => {
-    let startX = 0;
-    let startY = 0;
-    let tracking = false;
+    const tracker = createSwipeTracker('right');
     const onStart = (e: TouchEvent) => {
-      if (appState.projectDrawerOpen || e.touches.length !== 1) return;
+      tracker.end();
+      if (e.touches.length !== 1) return;
+      if (
+        !canOpenDrawerBySwipe({
+          selfOpen: appState.projectDrawerOpen,
+          otherOpen: appState.historyDrawerOpen,
+        })
+      )
+        return;
       const t = e.touches[0];
       if (t.clientX > EDGE_SWIPE_ZONE) return; // 좌측 끝 32px 에서 시작한 터치만
-      if (shouldIgnoreEdgeSwipeAt(e.target, t.clientX, t.clientY, 'left')) return; // 가로 제스처 영역에는 양보(edgeSwipe.ts)
-      startX = t.clientX;
-      startY = t.clientY;
-      tracking = true;
+      if (shouldIgnoreEdgeSwipeAt(e.target, t.clientX, t.clientY, 'left')) return; // 가로 제스처 영역에는 양보
+      if (isInsideOverlay(e.target)) return; // 모달·뷰어 위에서는 열지 않는다
+      tracker.start(t.clientX, t.clientY, e.timeStamp);
     };
     const onMove = (e: TouchEvent) => {
-      if (!tracking || e.touches.length !== 1) return;
+      if (e.touches.length !== 1) return tracker.end();
       const t = e.touches[0];
-      const dx = t.clientX - startX;
-      const dy = t.clientY - startY;
-      if (dx > 40 && Math.abs(dx) > Math.abs(dy)) {
-        tracking = false;
-        appState.projectDrawerOpen = true;
+      if (tracker.move(t.clientX, t.clientY, e.timeStamp)) {
+        if (!appState.historyDrawerOpen) appState.projectDrawerOpen = true;
       }
     };
-    const onEnd = () => {
-      tracking = false;
-    };
+    const onEnd = () => tracker.end();
     document.addEventListener('touchstart', onStart, { passive: true });
     document.addEventListener('touchmove', onMove, { passive: true });
     document.addEventListener('touchend', onEnd, { passive: true });
@@ -356,14 +360,21 @@ export const ProjectDrawerHandle = observer(() => {
       document.removeEventListener('touchcancel', onEnd);
     };
   }, []);
+}
+
+// 모바일 좌측 가장자리 손잡이 — 프로젝트 오버레이 드로어 열기/닫기 토글.
+// 히스토리 우측 핸들(ImageHistoryHandle)의 좌측 미러. 좌측 끝에서 우로 스와이프해도 열림.
+// (좌측 끝은 우측 툴바 드래그와 겹치지 않아 toolbarDragUi 가드는 불필요.)
+// 모바일은 레이아웃과 무관하게 항상 마운트된다(App.tsx, 2026-09-20).
+export const ProjectDrawerHandle = observer(() => {
+  const open = appState.projectDrawerOpen;
+  useProjectDrawerEdgeSwipe();
 
   return (
     <button
-      className="fixed left-0 top-1/2 -translate-y-1/2 md:hidden flex items-center justify-center w-6 h-14 rounded-r-md border border-l-0 line-color bg-[var(--c-surface-2)] opacity-70 active:opacity-100"
+      className="fixed left-0 top-1/2 -translate-y-1/2 md:hidden flex items-center justify-center w-5 h-14 rounded-r-md border border-l-0 line-color bg-[var(--c-surface-2)] opacity-70 active:opacity-100"
       style={{ zIndex: 'var(--z-drawer-handle)' }}
-      onClick={() => {
-        appState.projectDrawerOpen = !open;
-      }}
+      onClick={() => appState.toggleSideDrawer('project')}
     >
       {open ? (
         <FaChevronLeft size={11} className="text-faint" />
@@ -443,6 +454,31 @@ const ProjectDrawer = observer(() => {
     });
     return () => handle.remove();
   }, [open]);
+
+  // 드로어 위에서 우→좌 스와이프하면 닫기(히스토리 드로어의 좌우 반전). 길게 눌러 프로젝트를
+  // 끌어 옮기는 조작과 가로 스크롤 영역(HScroll)은 스와이프로 치지 않는다.
+  const closeSwipe = useRef(createSwipeTracker('left'));
+  const onPanelTouchStart = (e: React.TouchEvent) => {
+    closeSwipe.current.end();
+    if (e.touches.length !== 1 || shouldIgnoreEdgeSwipe(e.target)) return;
+    closeSwipe.current.start(
+      e.touches[0].clientX,
+      e.touches[0].clientY,
+      e.timeStamp,
+    );
+  };
+  const onPanelTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return closeSwipe.current.end();
+    if (
+      closeSwipe.current.move(
+        e.touches[0].clientX,
+        e.touches[0].clientY,
+        e.timeStamp,
+      )
+    )
+      appState.projectDrawerOpen = false;
+  };
+  const onPanelTouchEnd = () => closeSwipe.current.end();
 
   // 열림/닫힘 트랜지션 제어
   useEffect(() => {
@@ -1501,6 +1537,11 @@ const ProjectDrawer = observer(() => {
         if (toolbar) return;
         close();
       }}
+      // 닫기 스와이프는 패널과 어두운 배경 어디에서 시작해도 받는다
+      onTouchStart={onPanelTouchStart}
+      onTouchMove={onPanelTouchMove}
+      onTouchEnd={onPanelTouchEnd}
+      onTouchCancel={onPanelTouchEnd}
     >
       <div
         className="absolute inset-0"

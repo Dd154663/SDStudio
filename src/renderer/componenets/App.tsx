@@ -234,7 +234,7 @@ export const App = observer(() => {
           }
           break;
         case 'open-project-drawer':
-          appState.projectDrawerOpen = !appState.projectDrawerOpen;
+          appState.toggleSideDrawer('project');
           break;
         case 'open-project-grid':
           appState.projectBrowserOpen = !appState.projectBrowserOpen;
@@ -244,7 +244,7 @@ export const App = observer(() => {
           break;
         case 'toggle-history-panel':
           if (isMobile) {
-            appState.historyDrawerOpen = !appState.historyDrawerOpen;
+            appState.toggleSideDrawer('history');
           } else {
             appState.toggleHistoryPanel();
           }
@@ -881,7 +881,8 @@ export const App = observer(() => {
                 <ProjectDrawer />
                 {isMobile && <ImageHistoryDrawer />}
                 {isMobile && <ImageHistoryHandle />}
-                {isMobile && resolvedLayout.projectSidebar && <ProjectDrawerHandle />}
+                {/* 모바일은 레이아웃과 무관하게 좌측 손잡이+가장자리 스와이프(히스토리 손잡이의 좌우 반전) */}
+                {isMobile && <ProjectDrawerHandle />}
                 {appState.projectBrowserOpen && (
                   <ProjectBrowser
                     onClose={() => {
