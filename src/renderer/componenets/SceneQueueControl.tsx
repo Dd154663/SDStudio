@@ -924,7 +924,7 @@ export const SceneCell = observer(
     const reviewButton = onReview ? (
       <Tooltip content="이 씬부터 이미지 검수">
         <button
-          className={`touch-hit absolute right-1 ${scene.type === 'scene' ? (isMobile ? 'top-[4.75rem]' : 'top-[4.25rem]') : 'top-1'} z-20 flex h-7 w-7 items-center justify-center rounded-full btn-solid-sky text-xs font-bold transition-opacity duration-200${
+          className={`touch-hit absolute right-1 ${scene.type === 'scene' ? (isMobile ? 'top-[4.75rem]' : 'top-[4.25rem]') : 'top-1'} z-20 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 hover:bg-black/80 text-white clickable text-xs font-bold transition-opacity duration-200${
             !isMobile && !isHovered ? ' opacity-0' : ''
           }`}
           onClick={(event) => {
@@ -938,16 +938,17 @@ export const SceneCell = observer(
     ) : null;
 
     // 모바일: 오버레이 버튼(연필·조합 토글·R)을 살짝 빗나간 탭이 카드 탭(이미지 그리드 열기)으로
-    // 떨어지지 않도록 버튼 열 주변에 무반응 영역을 둔다. 클릭만 삼키므로 길게 누르기 메뉴·드래그
+    // 떨어지지 않도록 버튼 열 주변에 무반응 영역을 둔다. 크기는 버튼 터치 판정(36px) 열과
+    // 그 사이 8px 틈만 덮는 36×108px — 더 넓히면 카드 중앙 오른쪽 탭까지 먹혀 실기기에서 기각됨. 클릭만 삼키므로 길게 누르기 메뉴·드래그
     // 정렬은 그대로이고, 선택 모드에서는 카드 어디를 눌러도 선택되도록 통과시킨다.
     const overlayDeadZone = isMobile ? (
       <div
         aria-hidden="true"
-        className={`absolute right-0 top-0 z-10 w-11 ${
+        className={`absolute right-0 top-0 z-10 w-9 ${
           scene.type === 'scene'
-            ? 'h-[7.25rem]'
+            ? 'h-[6.75rem]'
             : onReview
-              ? 'h-11'
+              ? 'h-9'
               : 'hidden'
         }`}
         onClick={(event) => {
