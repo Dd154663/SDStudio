@@ -484,8 +484,10 @@ export const SceneCell = observer(
       landscape: 'aspect-[4/3]',
     };
     const aspectClass = aspectMap[cardStyle];
+    // 모바일: 반응형 그리드(QueueControl 의 gridTemplateColumns)가 열 폭을 정하므로 카드는
+    // 셀을 채우는 정사각형이다(과거 w-36 h-36 고정 → 오른쪽 빈 띠·폭 불변 문제, 2026-09-20).
     const cellSizes = isMobile
-      ? ['w-48 h-48', 'w-36 h-36', 'w-96 h-96']
+      ? ['w-full aspect-square', 'w-full aspect-square', 'w-full aspect-square']
       : aspectClass
         ? [
             `w-full ${aspectClass}`,
@@ -493,7 +495,7 @@ export const SceneCell = observer(
             `w-full ${aspectClass}`,
           ]
         : ['w-full h-48', 'w-full h-64', 'w-full h-96'];
-    const cellSizes3 = isMobile ? ['w-48', 'w-36', 'w-96'] : ['', '', ''];
+    const cellSizes3 = ['', '', ''];
 
     const outputs = gameService.getOutputs(curSession!, scene);
     const totalImages = outputs.length;
@@ -3170,7 +3172,12 @@ const QueueControl = observer(
           {(() => {
             const effectiveCellSize = showPannel || isMobile ? cellSize : 2;
             const minWidths = ['180px', '240px', '320px'];
-            const useGrid = !isMobile;
+            // 모바일도 CSS grid(2026-09-20): 최소 트랙이 min(9rem, 50%) 라 아무리 좁아도 2열이
+            // 확보되고, 넓으면 열이 늘며, 1fr 로 폭을 채워 좌우 대칭이 된다.
+            const useGrid = true;
+            const gridMinTrack = isMobile
+              ? 'min(9rem, 50%)'
+              : minWidths[effectiveCellSize];
             const renderedScenes = getFilteredScenes();
             const sceneIndices = new Map(
               curSession.getScenes(type).map((scene, index) => [scene, index]),
@@ -3187,9 +3194,14 @@ const QueueControl = observer(
                   useGrid
                     ? {
                         display: 'grid',
-                        gridTemplateColumns: `repeat(auto-fill, minmax(${minWidths[effectiveCellSize]}, 1fr))`,
+                        gridTemplateColumns: `repeat(auto-fill, minmax(${gridMinTrack}, 1fr))`,
                         alignItems: 'start',
                         alignContent: 'start',
+                        // 모바일은 스크롤바(8px)가 레이아웃 폭을 차지해 오른쪽 여백만 커진다 →
+                        // 양쪽에 같은 자리를 잡아 카드 열을 화면 중앙에 맞춘다.
+                        ...(isMobile
+                          ? { scrollbarGutter: 'stable both-edges' }
+                          : {}),
                       }
                     : undefined
                 }

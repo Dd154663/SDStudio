@@ -319,7 +319,7 @@ export const ImageHistoryHandle = observer(() => {
 
   return (
     <button
-      className="fixed right-0 top-1/2 -translate-y-1/2 md:hidden flex items-center justify-center w-6 h-14 rounded-l-md border border-r-0 line-color bg-[var(--c-surface-2)] opacity-70 active:opacity-100"
+      className="fixed right-0 top-1/2 -translate-y-1/2 md:hidden flex items-center justify-center w-5 h-14 rounded-l-md border border-r-0 line-color bg-[var(--c-surface-2)] opacity-70 active:opacity-100"
       style={{ zIndex: 'var(--z-drawer-handle)' }}
       onClick={() => {
         appState.historyDrawerOpen = !open;
