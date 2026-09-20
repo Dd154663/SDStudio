@@ -156,6 +156,24 @@ const TobBar = observer(() => {
     window.electron?.ipcRenderer.invoke('window-close');
   };
 
+  // 모바일 기본 툴바의 환경설정 버튼·계정 표기. 모바일은 SessionSelect 의 2줄 배치 슬롯
+  // (1줄째 맨 앞=환경설정·계정 표기, 그 뒤 프로젝트 선택)으로, 좁은 PC 창은 기존 인라인 묶음으로 렌더.
+  const mobileSettingsButton = (
+    <button
+      className="icon-button flex-none"
+      onClick={() => {
+        setSettings(true);
+      }}
+    >
+      <FaCog size={18} />
+    </button>
+  );
+  const mobileAccountBadge = !loggedIn ? (
+    <span className="round-tag back-red text-sm !px-2 !py-1">로그인필요</span>
+  ) : (
+    <OpusUsageBadge credits={credits} warningPercent={warningPercent} inline />
+  );
+
   return (
     // zone-bar: 구역 카드화 마감 — PC 새 마감에선 캔버스 프레임에 통합(App.css)
     <div className="zone-bar titlebar-drag flex border-b line-color px-3 py-2 items-center select-none gap-2">
@@ -239,21 +257,11 @@ const TobBar = observer(() => {
             <OpusUsageBadge credits={credits} warningPercent={warningPercent} />
           )}
         </div>
-      ) : (
+      ) : isMobile ? null : (
+        // 좁은 PC 창(md 미만): 기존 인라인 배치 유지. 모바일은 SessionSelect 의 2줄 배치 슬롯으로 넘긴다.
         <div className="md:hidden flex items-center gap-1.5 titlebar-no-drag flex-none">
-          <button
-            className="icon-button flex-none"
-            onClick={() => {
-              setSettings(true);
-            }}
-          >
-            <FaCog size={18} />
-          </button>
-          {!loggedIn ? (
-            <span className="round-tag back-red text-sm !px-2 !py-1">로그인필요</span>
-          ) : (
-            <OpusUsageBadge credits={credits} warningPercent={warningPercent} />
-          )}
+          {mobileSettingsButton}
+          {mobileAccountBadge}
         </div>
       )}
       {/* 세션(프로젝트) 선택: 'sidebar' 템플릿이 아닐 때만. 모바일은 항상 인라인(md:hidden),
@@ -268,7 +276,14 @@ const TobBar = observer(() => {
             (sessionSelectTop ? 'block' : 'block md:hidden')
           }
         >
-          <SessionSelect />
+          <SessionSelect
+            mobileLead={
+              <>
+                {mobileSettingsButton}
+                <span className="flex-none">{mobileAccountBadge}</span>
+              </>
+            }
+          />
         </div>
       )}
 

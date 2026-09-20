@@ -26,9 +26,14 @@ const OpusUsageBadge = observer(
   ({
     credits,
     warningPercent = 10,
+    inline = false,
   }: {
     credits?: number;
     warningPercent?: number;
+    // 모바일 상단 바 1줄째용 일렬 표기: [Anlas | 할당량]+하단 3px 막대, 라운드 사각형 높이 28px.
+    // 세로 3단 알약(49×36)은 선택기(34px)보다 높고 칸이 빡빡해 목업 비교 후 교체(2026-09-20).
+    // 클래식 툴바의 세로 배치는 기존 세로 3단을 유지한다(inline 미전달).
+    inline?: boolean;
   }) => {
     const usage = useOpusUsage();
     const mobile = credits !== undefined;
@@ -156,7 +161,7 @@ const OpusUsageBadge = observer(
       <>
         <button
           ref={buttonRef}
-          className={`btn titlebar-no-drag overflow-hidden text-center tabular-nums ${mobile ? 'round-tag inline-grid leading-none align-middle !p-0' : `account-status-control account-quota-control back-${view.tone}`}`}
+          className={`btn titlebar-no-drag overflow-hidden text-center tabular-nums ${mobile ? (inline ? 'relative inline-flex items-stretch align-middle rounded-lg h-7 !p-0 text-xs leading-[25px] whitespace-nowrap' : 'round-tag inline-grid leading-none align-middle !p-0') : `account-status-control account-quota-control back-${view.tone}`}`}
           aria-label={`${mobile ? `Anlas ${credits}, ` : ''}${usage.status?.opusSubscribed === false ? 'Opus 미구독' : `무료 생성 할당량 ${view.text}`}, 상세 보기`}
           aria-haspopup="dialog"
           aria-expanded={open}
@@ -164,16 +169,22 @@ const OpusUsageBadge = observer(
           onClick={() => setOpen(!open)}
         >
           {mobile && (
-            <span className="back-yellow px-2 text-xs leading-4">
+            <span
+              className={`back-yellow ${inline ? 'px-[7px]' : 'px-2 text-xs leading-4'}`}
+            >
               {credits}
             </span>
           )}
           <span
-            className={`${mobile ? `back-${view.tone} px-2 text-[11px] leading-[14px]` : 'account-quota-label text-default'} whitespace-nowrap`}
+            className={`${mobile ? (inline ? `back-${view.tone} px-[7px]` : `back-${view.tone} px-2 text-[11px] leading-[14px]`) : 'account-quota-label text-default'} whitespace-nowrap`}
           >
             {view.text}
           </span>
-          <OpusUsageBar status={usage.status} warningPercent={warning} />
+          <OpusUsageBar
+            status={usage.status}
+            warningPercent={warning}
+            line={mobile && inline}
+          />
         </button>
         {open &&
           createPortal(

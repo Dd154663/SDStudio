@@ -8,6 +8,7 @@ import { sessionService, backend, zipService, trashService, isMobile, templateSe
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
 import { TOOLBAR_VIEW_MAIN, MOBILE_PROJECT_TOPROW_IDS, resolveToolbarView } from '../models/uiLayout';
+import { HScrollHintArrow, useHScrollHint } from './HScrollHint';
 import { companionAssignedIds } from '../models/companionSlots';
 import ToolbarOverflowMenu from './ToolbarOverflowMenu';
 import {
@@ -172,7 +173,11 @@ export function ProjectTrashView() {
 // 세로 아이콘 스택 — bar 와 동일하게 레지스트리+resolveToolbarView 가 배치를 결정하며
 // (⋯메뉴·드래그 재배열 포함), 프로젝트 선택기만 빠진다(사이드 바 상단 존이 대체).
 // side: 사이드 바의 도킹 방향 — ⋯ 팝오버가 화면 안쪽으로 펼쳐지게 정렬을 정한다.
-const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 'bar' | 'sidebar'; side?: 'left' | 'right' }) => {
+// mobileLead(2026-09-20): 모바일 상단 바 2줄 배치용 슬롯. TobBar 가 환경설정 버튼과 계정 표기
+// (Anlas/로그인필요)를 넘기면 1줄째 = [환경설정][계정 표기][프로젝트 선택], 2줄째 = 전체 폭
+// [버튼 전부(상단 행 버튼 포함, 가로 스크롤+화살표 힌트)] 로 배치한다. 360px 폭에서 2줄째가
+// 선택기 아래 좁은 구역에 갇혀 버튼이 잘리던 문제의 해결. 슬롯이 없으면 기존 배치 그대로.
+const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: { variant?: 'bar' | 'sidebar'; side?: 'left' | 'right'; mobileLead?: React.ReactNode }) => {
   const [sessionNames, setSessionNames] = useState<string[]>([]);
   // 프로젝트 바 ⋯(더보기) 오버플로 메뉴
   const [showProjectMenu, setShowProjectMenu] = useState(false);
@@ -505,6 +510,15 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
   const clusterIds = topRowIds.length
     ? toolbarLayout.inline.filter((id) => !topRowIds.includes(id))
     : toolbarLayout.inline;
+  const mobileTwoRow = isMobile && !appState.uiToolbar.classic && !!mobileLead;
+  // 2줄 배치에서는 상단 행 버튼(그리드·휴지통)도 2줄째 맨 앞으로 내려 한 줄에 모은다.
+  const row1TopIds = mobileTwoRow ? [] : topRowIds;
+  const row2Ids = mobileTwoRow ? [...topRowIds, ...clusterIds] : clusterIds;
+  const {
+    ref: clusterScrollRef,
+    hint: clusterScrollHint,
+    onScroll: updateClusterScrollHint,
+  } = useHScrollHint<HTMLSpanElement>();
 
   return (
     // 행 전체가 드롭 타깃 — 메뉴에서 끌어다 놓으면 인라인 고정(pinned)
@@ -552,6 +566,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
             : 'flex-1 min-w-[9rem] md:min-w-[13rem] md:max-w-80'
         }`}
       >
+        {mobileTwoRow && mobileLead}
         {appState.legacyProjectMode ? (
           <>
             <Tooltip content="프로젝트 목록(폴더)">
@@ -627,9 +642,9 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
       {/* 모바일 상단 행 버튼(topRowIds) — 선택기 옆 남는 폭에 고정 노출. flex-none 이라
           안 맞으면 통째로 다음 줄로 내려가며 사라지지 않는다. index 는 inline 원본
           순서를 유지해 드래그 드롭 앵커 계산이 어긋나지 않게 한다. */}
-      {topRowIds.length > 0 && (
+      {row1TopIds.length > 0 && (
         <span className="titlebar-no-drag flex items-center gap-2 flex-none">
-          {topRowIds.map((id) => (
+          {row1TopIds.map((id) => (
             <DraggableToolbarButton
               key={id}
               group="project"
@@ -650,14 +665,21 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
           기본 배치는 유지하고(flex-1/min-w-0 을 주면 1줄째 좁은 틈에 끼어 부자연 —
           2026-07-18 실기 피드백), 2줄째 전체 폭마저 초과하는 분량만 가로 스크롤
           (overflow-x-auto 는 flex 자동 최소폭을 0 으로 만들어 줄 폭에 맞게 수축됨). */}
+      {/* 모바일 2줄 배치: 2줄째는 항상 전체 폭의 버튼 줄. 넘치면 가로 스크롤이고 가려진
+          방향에 화살표 힌트(HScrollHint)를 띄운다. */}
+      <div className={mobileTwoRow ? 'w-full min-w-0 flex items-center' : 'contents'}>
+      <div className={isMobile ? 'relative min-w-0 max-w-full' : 'contents'}>
       <span
-        className={`titlebar-no-drag flex items-center gap-2${
+        ref={clusterScrollRef}
+        onScroll={isMobile ? updateClusterScrollHint : undefined}
+        // 2줄 배치는 버튼 8개가 360px 한 줄에 들어가도록 간격을 6px 로(터치 판정 36px 끼리는 겹치지 않음)
+        className={`titlebar-no-drag flex items-center ${mobileTwoRow ? 'gap-1.5' : 'gap-2'}${
           isMobile
             ? ' flex-nowrap overflow-x-auto no-scrollbars max-w-full [&>*]:flex-none'
             : ''
         }`}
       >
-      {clusterIds.map((id) => (
+      {row2Ids.map((id) => (
         <DraggableToolbarButton
           key={id}
           group="project"
@@ -704,6 +726,14 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left' }: { variant?: 
         </div>
       )}
       </span>
+      {isMobile && clusterScrollHint.left && (
+        <HScrollHintArrow side="left" surface="var(--c-surface)" />
+      )}
+      {isMobile && clusterScrollHint.right && (
+        <HScrollHintArrow side="right" surface="var(--c-surface)" />
+      )}
+      </div>
+      </div>
       <ToolbarHideZone group="project" />
     </div>
   );

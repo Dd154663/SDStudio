@@ -31,18 +31,25 @@ export function OpusCheckedTime({ checkedAt }: { checkedAt: number }) {
   );
 }
 
+// line: 부모(relative)의 맨 아래에 깔리는 3px 선 — 모바일 일렬 계정 표기용(2026-09-20).
 export function OpusUsageBar({
   status,
   warningPercent = 10,
+  line = false,
 }: {
   status?: OpusUsageStatus;
   warningPercent?: number;
+  line?: boolean;
 }) {
   const view = presentOpusUsage(status, warningPercent);
   if (status?.opusSubscribed === false) return null;
   return (
     <div
-      className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--c-input-bg)]"
+      className={
+        line
+          ? 'absolute inset-x-0 bottom-0 h-[3px] bg-[var(--c-input-bg)]'
+          : 'h-1.5 w-full overflow-hidden rounded-full bg-[var(--c-input-bg)]'
+      }
       role="progressbar"
       aria-label="무료 생성 할당량"
       aria-valuemin={0}
@@ -53,7 +60,7 @@ export function OpusUsageBar({
       }
     >
       <div
-        className="h-full rounded-full opus-usage-bar-fill"
+        className={`h-full opus-usage-bar-fill${line ? '' : ' rounded-full'}`}
         style={
           {
             width: `${view.fill}%`,

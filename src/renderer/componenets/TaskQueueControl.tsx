@@ -29,28 +29,30 @@ const ProgressBar = ({ duration, isError, text, key, elapsed }: ProgressBarProps
   return (
     <div
       key={key}
-      className="relative w-40 lg:w-52 bg-gray-200 dark:bg-slate-700 rounded-full h-8"
+      // 모바일 폭(md 미만)은 남는 폭에 맞춰 6~10rem 으로 줄어든다 — 360px 기기에서 고정 160px 때문에
+      // 시작 버튼이 화면 밖으로 밀리던 문제(2026-09-20). md 이상은 기존 고정 폭.
+      className="relative w-[clamp(6rem,calc(100vw-14.5rem),10rem)] md:w-40 lg:w-52 bg-gray-200 dark:bg-slate-700 rounded-full h-8 overflow-hidden"
     >
       {/* tabular-nums: 남은 개수·예상 시간 숫자가 바뀌어도 폭이 출렁이지 않게 */}
-      <div className="top-0 left-0 w-40 lg:w-52 h-8 absolute flex items-center justify-center text-gray-600 dark:text-white gap-2">
-        <FaRegClock size={20} />
-        <div className="w-28 lg:w-40 text-xs lg:text-sm text-center overflow-hidden text-nowrap tabular-nums">
+      <div className="top-0 left-0 w-full h-8 absolute flex items-center justify-center text-gray-600 dark:text-white gap-2 px-2 md:px-0">
+        <FaRegClock size={20} className="flex-none" />
+        <div className="flex-1 min-w-0 md:flex-none md:w-28 lg:w-40 text-xs lg:text-sm text-center overflow-hidden text-nowrap tabular-nums">
           {text}
         </div>
       </div>
       <div
         className={
-          'top-0 left-0 absolute w-40 lg:w-52 progress-transition rounded-full h-8 progress-clip-animation ' +
+          'top-0 left-0 absolute w-full progress-transition rounded-full h-8 progress-clip-animation ' +
           (!isError ? 'bg-sky-500 dark:bg-indigo-400' : 'bg-red-500')
         }
         style={animStyle}
       ></div>
       <div
-        className="top-0 left-0 w-40 lg:w-52 h-8 absolute flex items-center justify-center text-white gap-2 progress-clip-animation"
+        className="top-0 left-0 w-full h-8 absolute flex items-center justify-center text-white gap-2 px-2 md:px-0 progress-clip-animation"
         style={animStyle}
       >
-        <FaRegClock size={20} />
-        <div className="w-28 lg:w-40 text-xs lg:text-sm text-center overflow-hidden text-nowrap tabular-nums">
+        <FaRegClock size={20} className="flex-none" />
+        <div className="flex-1 min-w-0 md:flex-none md:w-28 lg:w-40 text-xs lg:text-sm text-center overflow-hidden text-nowrap tabular-nums">
           {text}
         </div>
       </div>

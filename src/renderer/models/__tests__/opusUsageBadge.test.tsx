@@ -73,3 +73,18 @@ test('전환 실패는 팝업에서 안내하고 재시도할 수 있다', async
   expect(target()!.disabled).toBe(false);
   expect(login.activeProfileId).toBe('one');
 });
+
+test('모바일 일렬 표기(inline)는 Anlas·할당량 두 칸과 하단 선 막대를 그리고, 기존 세로 표기는 그대로다', async () => {
+  await act(async () => root.render(<OpusUsageBadge credits={10000} inline />));
+  let button = container.querySelector('button')!;
+  expect(button.className).toContain('inline-flex');
+  expect(button.className).toContain('rounded-lg');
+  expect(button.className).not.toContain('round-tag');
+  expect(button.textContent).toContain('10000');
+  expect(button.querySelector('[role="progressbar"]')!.className).toContain('absolute');
+
+  await act(async () => root.render(<OpusUsageBadge credits={10000} />));
+  button = container.querySelector('button')!;
+  expect(button.className).toContain('round-tag');
+  expect(button.querySelector('[role="progressbar"]')!.className).toContain('h-1.5');
+});
