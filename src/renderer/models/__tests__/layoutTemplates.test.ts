@@ -5,8 +5,7 @@ import {
   layoutTemplates,
   resolveLayout,
   dockOrder,
-  DOCK_RANK,
-} from '../layoutTemplates';
+  DOCK_RANK, isMobileV2Layout } from '../layoutTemplates';
 
 describe('resolveLayout — 폴백/강제', () => {
   it('미지정(undefined) → classic 폴백', () => {
@@ -235,5 +234,33 @@ describe('dockOrder — 가장자리 순서(프로젝트<프리셋<히스토리)
     expect(s).toBeGreaterThan(h);
     expect(h).toBeGreaterThan(0); // 전부 콘텐츠(0)보다 오른쪽
     expect([p, s, h]).toEqual([3, 2, 1]);
+  });
+});
+
+describe('모바일 V2 템플릿 — 선택형·되돌리기 가능(2026-09-20)', () => {
+  it('모바일에서 mobile-v2 를 고르면 V2 로 해석되고 골격은 클래식과 같다', () => {
+    const v2 = resolveLayout('mobile-v2', true);
+    const classic = resolveLayout('classic', true);
+    expect(v2.id).toBe('mobile-v2');
+    expect(v2.mobileV2).toBe(true);
+    expect({ ...v2, id: 'classic', mobileV2: false }).toEqual(classic);
+  });
+  it('클래식·미지정·모바일 비허용 템플릿은 모바일에서 V2 가 아니다', () => {
+    for (const id of [undefined, 'classic', 'compact', 'sidebar', 'modern', 'ghost']) {
+      expect(resolveLayout(id, true).mobileV2).toBe(false);
+    }
+  });
+  it('PC 에서는 mobile-v2 가 classic 으로 폴백된다(설정 복원 등 유입 안전)', () => {
+    const r = resolveLayout('mobile-v2', false, { historySide: 'left' });
+    expect(r.id).toBe('classic');
+    expect(r.mobileV2).toBe(false);
+    expect(r.historySide).toBe('left');
+    expect(isMobileV2Layout('mobile-v2', false)).toBe(false);
+    expect(isMobileV2Layout('mobile-v2', true)).toBe(true);
+  });
+  it('기존 PC 템플릿은 전부 desktopAllowed 이고 mobile-v2 만 모바일 전용이다', () => {
+    const mobileOnly = layoutTemplates.filter((t) => !t.desktopAllowed).map((t) => t.id);
+    expect(mobileOnly).toEqual(['mobile-v2']);
+    expect(layoutTemplates.filter((t) => t.mobileAllowed).map((t) => t.id)).toEqual(['classic', 'mobile-v2']);
   });
 });

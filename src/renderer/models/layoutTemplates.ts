@@ -21,7 +21,7 @@ const DEFAULT_PRESET_SIDE: PanelSide = 'left';
 const DEFAULT_PROJECT_SIDE: PanelSide = 'left';
 
 export interface LayoutTemplateMeta {
-  id: string; // 불변 계약(config 저장 키): 'classic' | 'compact'
+  id: string; // 불변 계약(config 저장 키): 'classic' | 'compact' | 'sidebar' | 'modern' | 'mobile-v2'
   // 환경설정 화면에서 사용자에게 보여줄 이름
   name: string;
   description: string;
@@ -31,6 +31,13 @@ export interface LayoutTemplateMeta {
   genControl: GenControlPlacement;
   // false → 모바일에서는 resolveLayout 이 classic 으로 강제 폴백(모바일 일관성 보장)
   mobileAllowed: boolean;
+  // false → PC 에서는 resolveLayout 이 classic 으로 강제 폴백(모바일 전용 템플릿).
+  // 설정 복원 등으로 모바일 전용 id 가 PC config 에 들어와도 안전하다.
+  desktopAllowed: boolean;
+  // true → 모바일 V2 배치(선택형·되돌리기 가능, 2026-09-20). 클래식 모바일 배치를 기준으로
+  // 개선을 한 묶음씩 얹는 분기의 스위치다. V2 전용 배치는 반드시 해석 결과의 mobileV2 로만
+  // 분기하고, 클래식(false) 경로의 코드·동작은 건드리지 않는다.
+  mobileV2: boolean;
   // true → 프로젝트 진입을 좌측 두꺼운 사이드 바로, 하단/상단 바의 프로젝트 툴바(SessionSelect)는
   // 렌더하지 않는다. false(기본) → 기존처럼 SessionSelect 를 바에 렌더하고 사이드 바는 없다.
   projectSidebar: boolean;
@@ -47,6 +54,8 @@ export const layoutTemplates: LayoutTemplateMeta[] = [
     bottomBar: 'bottom',
     genControl: 'docked',
     mobileAllowed: true,
+    desktopAllowed: true,
+    mobileV2: false,
     projectSidebar: false,
     projectStrip: false,
   },
@@ -58,6 +67,8 @@ export const layoutTemplates: LayoutTemplateMeta[] = [
     bottomBar: 'none',
     genControl: 'floating',
     mobileAllowed: false,
+    desktopAllowed: true,
+    mobileV2: false,
     projectSidebar: false,
     projectStrip: false,
   },
@@ -71,6 +82,8 @@ export const layoutTemplates: LayoutTemplateMeta[] = [
     bottomBar: 'none',
     genControl: 'floating',
     mobileAllowed: false,
+    desktopAllowed: true,
+    mobileV2: false,
     projectSidebar: true,
     projectStrip: false,
   },
@@ -85,8 +98,25 @@ export const layoutTemplates: LayoutTemplateMeta[] = [
     bottomBar: 'none',
     genControl: 'floating',
     mobileAllowed: false,
+    desktopAllowed: true,
+    mobileV2: false,
     projectSidebar: false,
     projectStrip: true,
+  },
+  {
+    id: 'mobile-v2',
+    name: '모바일 V2',
+    description:
+      '한 손 조작과 낮은 버튼 밀도를 목표로 한 새 모바일 배치입니다. 언제든 클래식으로 되돌릴 수 있습니다.',
+    // 골격(하단 바·부착형 생성 컨트롤)은 클래식 모바일과 같다. V2 에서 달라지는 배치는
+    // mobileV2 플래그로만 분기한다(플랜 guides/plans/2026-09-20-mobile-layout-v2.md).
+    bottomBar: 'bottom',
+    genControl: 'docked',
+    mobileAllowed: true,
+    desktopAllowed: false,
+    mobileV2: true,
+    projectSidebar: false,
+    projectStrip: false,
   },
 ];
 
@@ -109,6 +139,8 @@ export interface ResolvedLayout {
   projectSidebar: boolean;
   // 프로젝트 얇은 스트립(모던 사이드바) 사용 여부(템플릿 고정).
   projectStrip: boolean;
+  // 모바일 V2 배치 여부(템플릿 고정). PC 또는 클래식이면 항상 false.
+  mobileV2: boolean;
 }
 
 // 타입 밖 문자열이 stale 하게 저장돼 있던 경우를 걸러내는 검증기(잘못된 값=무시하고 기본값).
@@ -125,6 +157,7 @@ function coerceGenControl(
 // 레지스트리 + 사용자 설정 → 실제 배치를 해석하는 단일 출처(순수 함수, resolveToolbar 선례 미러).
 // - 미지정/미존재 id → classic 폴백(stale id 조용히 무시).
 // - mobileAllowed=false && isMobile → classic 강제(모바일 일관성 보장).
+// - desktopAllowed=false && !isMobile → classic 강제(모바일 전용 템플릿).
 // - 그 외 → 해당 템플릿 그대로.
 // slots(3번째 인자, 옵셔널)는 템플릿 기본값 위에 얹는 개인화 오버라이드.
 // - 모바일이면 slots 전부 무시(템플릿도 classic 강제 — 기존 규칙 유지).
@@ -138,7 +171,12 @@ export function resolveLayout(
   const meta = layoutTemplates.find((t) => t.id === templateId);
 
   // 실제로 적용할 템플릿(미존재 id·모바일 비허용 → classic 폴백).
-  const effective = !meta || (isMobile && !meta.mobileAllowed) ? classic : meta;
+  const effective =
+    !meta ||
+    (isMobile && !meta.mobileAllowed) ||
+    (!isMobile && !meta.desktopAllowed)
+      ? classic
+      : meta;
 
   // 기본값: 상수(history/preset/project) + 템플릿(genControl).
   let historySide: PanelSide = DEFAULT_HISTORY_SIDE;
@@ -164,7 +202,17 @@ export function resolveLayout(
     genControl,
     projectSidebar: effective.projectSidebar,
     projectStrip: effective.projectStrip,
+    mobileV2: isMobile && effective.mobileV2,
   };
+}
+
+// 깊은 컴포넌트(씬 카드·뷰어 등)가 App 의 해석 결과 없이 V2 여부만 알아야 할 때 쓰는 헬퍼.
+// 판정은 resolveLayout 과 동일(단일 출처 유지).
+export function isMobileV2Layout(
+  templateId: string | undefined,
+  isMobile: boolean,
+): boolean {
+  return resolveLayout(templateId, isMobile).mobileV2;
 }
 
 // 도킹 요소(프로젝트/프리셋/히스토리)의 CSS order 계산 단일 출처.

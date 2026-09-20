@@ -2311,8 +2311,21 @@ const ToolbarTab = ({ uiToolbar, setUiToolbar, quickMenu, setQuickMenu, quickMen
 const LayoutWireframe = ({
   variant,
 }: {
-  variant: 'classic' | 'compact' | 'sidebar' | 'modern';
+  variant: 'classic' | 'compact' | 'sidebar' | 'modern' | 'mobile-v2';
 }) => {
+  if (variant === 'mobile-v2') {
+    // 모바일 V2: 세로 화면 도안 — 조작 영역이 아래(엄지 범위)에 모인 모습(하단 강조 2줄).
+    return (
+      <div className="w-28 h-16 flex justify-center">
+        <div className="h-full w-9 rounded-sm border line-color flex flex-col gap-0.5 p-0.5">
+          <div className="h-1 rounded-sm bg-[var(--c-zone)] flex-none" />
+          <div className="flex-1 rounded-sm bg-[var(--c-zone)]" />
+          <div className="h-1.5 rounded-sm bg-sky-500/60 flex-none" />
+          <div className="h-1.5 rounded-sm bg-sky-500 flex-none" />
+        </div>
+      </div>
+    );
+  }
   if (variant === 'modern') {
     // 모던: 좌측 아주 얇은 스트립(강조) + 프리셋 + 본문, 하단바 없음 + 플로팅 위젯.
     return (
@@ -2529,11 +2542,20 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, setModernExitReset, 
     </div>
 
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-      {layoutTemplates.map((t) => {
+      {/* 이 기기에서 고를 수 있는 템플릿을 먼저 보여준다(모바일에서 PC 전용 4종 아래로
+          모바일 V2 가 밀리지 않게). 같은 그룹 안에서는 레지스트리 순서 유지. */}
+      {[...layoutTemplates]
+        .sort((a, b) => {
+          const off = (t: (typeof layoutTemplates)[number]) =>
+            (mobileMode ? !t.mobileAllowed : !t.desktopAllowed) ? 1 : 0;
+          return off(a) - off(b);
+        })
+        .map((t) => {
         const selected = uiLayoutTemplate === t.id;
         // 모바일에서 미허용 템플릿은 resolveLayout 이 어차피 classic 으로 강제하므로
         // UI 는 안내용으로만 비활성 처리한다.
-        const disabled = mobileMode && !t.mobileAllowed;
+        // PC 에서 모바일 전용 템플릿도 같은 이유(desktopAllowed=false → classic 폴백)로 비활성.
+        const disabled = mobileMode ? !t.mobileAllowed : !t.desktopAllowed;
         return (
           <button
             key={t.id}
@@ -2574,7 +2596,7 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, setModernExitReset, 
             }
           >
             <LayoutWireframe
-              variant={t.id as 'classic' | 'compact' | 'sidebar' | 'modern'}
+              variant={t.id as 'classic' | 'compact' | 'sidebar' | 'modern' | 'mobile-v2'}
             />
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
@@ -2582,6 +2604,11 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, setModernExitReset, 
                 {!t.mobileAllowed && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--c-zone)] text-muted flex-none">
                     PC 전용
+                  </span>
+                )}
+                {!t.desktopAllowed && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--c-zone)] text-muted flex-none">
+                    모바일 전용
                   </span>
                 )}
               </div>
@@ -2594,7 +2621,8 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, setModernExitReset, 
 
     {mobileMode && (
       <p className="text-xs text-muted">
-        모바일에서는 클래식 배치가 사용됩니다.
+        모바일에서는 클래식과 모바일 V2 중에서 고를 수 있습니다. 모바일 V2 는 선택 사항이며,
+        여기서 클래식을 다시 고르고 저장하면 언제든 이전 배치로 돌아갑니다.
       </p>
     )}
 
