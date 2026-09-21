@@ -280,6 +280,11 @@ const TaskQueueControl = observer(({}) => {
   }, []);
 
   const cyclingActive = cyclingSessionService.state === 'running' || cyclingSessionService.state === 'paused';
+  // 하단 일괄 예약의 대상 종류 = 지금 보고 있는 메인 탭(2026-09-21 버그 수정). 예전에는 'scene' 고정이라
+  // 이미지변형 탭에서 눌러도 이미지생성 탭의 씬이 예약됐다(상단 툴바의 예약 추가는 탭 종류를 따름 — 동작 불일치).
+  // 씬 탭이 아닌 곳(프리셋·작가·퀵 생성)에서는 기존처럼 이미지생성 씬. globalActions.ts 와 같은 규칙.
+  const queueType: 'scene' | 'inpaint' =
+    appState.curMainTab === 'inpaint' ? 'inpaint' : 'scene';
 
   return (
     <div ref={rootRef} className="flex gap-0.5 md:gap-2 lg:gap-4 items-center">
@@ -330,21 +335,21 @@ const TaskQueueControl = observer(({}) => {
       >
         <TaskProgressBar />
       </div>
-      <SceneQueueMenu session={appState.curSession} type="scene" selectedOnly={appState.selectedSceneCount('scene') > 0}>
+      <SceneQueueMenu session={appState.curSession} type={queueType} selectedOnly={appState.selectedSceneCount(queueType) > 0}>
       <button
         type="button"
         className="round-button back-sky px-2 h-8 lg:px-6 disabled:opacity-50"
-        title="씬 일괄 예약 (선택한 일반 씬이 있으면 선택 씬만)"
+        title={queueType === 'inpaint' ? '이미지변형 씬 일괄 예약 (선택한 씬이 있으면 선택 씬만)' : '씬 일괄 예약 (선택한 씬이 있으면 선택 씬만)'}
         aria-label="씬 일괄 예약"
         disabled={!appState.curSession}
         onClick={() => {
           if (appState.curSession) {
-            // 변형 탭에서 선택한 이름으로 같은 이름의 일반 씬을 예약하지 않도록
-            // 선택 종류가 scene 일 때만 선택 예약으로 취급한다.
+            // 보고 있는 탭의 종류로 예약한다(queueType). 선택 예약 여부도 같은 종류의 선택 수로만 판단해
+            // 다른 탭에서 고른 이름으로 같은 이름의 씬을 예약하지 않는다.
             void addScenesToQueue(
               appState.curSession,
-              'scene',
-              appState.selectedSceneCount('scene') > 0,
+              queueType,
+              appState.selectedSceneCount(queueType) > 0,
             );
           }
         }}
