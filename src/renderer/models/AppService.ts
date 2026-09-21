@@ -283,6 +283,8 @@ export class AppState {
   // 프리셋 패널 버튼 하단 아이콘 행(config.uiPresetIconRow 미러). 기본 false = 현행
   // 세로 넓은 버튼. 소비는 PreSetEdtior.tsx(PresetRootRender), 로드는 App.tsx.
   @observable accessor uiPresetIconRow: boolean = false;
+  // 모바일 V2: 퀵 생성 탭이 하단 바 자리를 [생성][해상도]로 쓰는 동안 true(큐용 하단 바 숨김). models/mobileV2.ts
+  @observable accessor mobileV2QuickBar: boolean = false;
 
   // PC 전용 플로팅 생성 컨트롤(config.genWidget 미러). 빈 객체 = 부착 상태(기본).
   // detached 여부·위치는 GenControlWidget.tsx 가 조작·저장한다.

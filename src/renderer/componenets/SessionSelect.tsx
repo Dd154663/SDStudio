@@ -1,11 +1,13 @@
 import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { DropdownSelect, Option } from './UtilComponents';
-import { FaEllipsisH, FaTrash, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown, FaEye } from 'react-icons/fa';
+import {
+  FaChevronUp, FaEllipsisH, FaTrash, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown, FaEye } from 'react-icons/fa';
 import { pushRecentProject } from './ProjectBrowser';
 import Tooltip from './Tooltip';
 import { sessionService, backend, zipService, trashService, isMobile, templateService } from '../models';
 import { appState } from '../models/AppService';
+import { isV2, loadV2ShelfOpen, saveV2ShelfOpen } from '../models/mobileV2';
 import { observer } from 'mobx-react-lite';
 import { TOOLBAR_VIEW_MAIN, MOBILE_PROJECT_TOPROW_IDS, resolveToolbarView } from '../models/uiLayout';
 import { HScrollHintArrow, useHScrollHint } from './HScrollHint';
@@ -178,6 +180,11 @@ export function ProjectTrashView() {
 // [버튼 전부(상단 행 버튼 포함, 가로 스크롤+화살표 힌트)] 로 배치한다. 360px 폭에서 2줄째가
 // 선택기 아래 좁은 구역에 갇혀 버튼이 잘리던 문제의 해결. 슬롯이 없으면 기존 배치 그대로.
 const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: { variant?: 'bar' | 'sidebar'; side?: 'left' | 'right'; mobileLead?: React.ReactNode }) => {
+  const [shelfOpen, setShelfOpenState] = useState(loadV2ShelfOpen);
+  const setShelfOpen = (open: boolean) => {
+    setShelfOpenState(open);
+    saveV2ShelfOpen(open);
+  };
   const [sessionNames, setSessionNames] = useState<string[]>([]);
   // 프로젝트 바 ⋯(더보기) 오버플로 메뉴
   const [showProjectMenu, setShowProjectMenu] = useState(false);
@@ -511,9 +518,14 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
     ? toolbarLayout.inline.filter((id) => !topRowIds.includes(id))
     : toolbarLayout.inline;
   const mobileTwoRow = isMobile && !appState.uiToolbar.classic && !!mobileLead;
+  // 모바일 V2: 2줄째(프로젝트 도구)는 접어 두고 ⋯ 로 제자리에서 펼치는 선반. 드문 조작이라 평소에는 한 줄만 쓴다.
+  // 버튼 구성·순서·동작은 클래식 2줄째 그대로(새 화면 없음). 단 프롬프트조각은 탭 위 상단 줄에 자리가 있으므로 선반에서 뺀다.
+  // 펼침 상태는 앱을 다시 켜도 기억한다(models/mobileV2.ts).
+  const v2Shelf = mobileTwoRow && isV2();
   // 2줄 배치에서는 상단 행 버튼(그리드·휴지통)도 2줄째 맨 앞으로 내려 한 줄에 모은다.
   const row1TopIds = mobileTwoRow ? [] : topRowIds;
-  const row2Ids = mobileTwoRow ? [...topRowIds, ...clusterIds] : clusterIds;
+  const row2IdsAll = mobileTwoRow ? [...topRowIds, ...clusterIds] : clusterIds;
+  const row2Ids = v2Shelf ? row2IdsAll.filter((id) => id !== 'piece-editor') : row2IdsAll;
   const {
     ref: clusterScrollRef,
     hint: clusterScrollHint,
@@ -667,7 +679,21 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
           (overflow-x-auto 는 flex 자동 최소폭을 0 으로 만들어 줄 폭에 맞게 수축됨). */}
       {/* 모바일 2줄 배치: 2줄째는 항상 전체 폭의 버튼 줄. 넘치면 가로 스크롤이고 가려진
           방향에 화살표 힌트(HScrollHint)를 띄운다. */}
-      <div className={mobileTwoRow ? 'w-full min-w-0 flex items-center' : 'contents'}>
+      {v2Shelf && (
+        <button
+          type="button"
+          aria-label={shelfOpen ? '프로젝트 도구 접기' : '프로젝트 도구 펼치기'}
+          aria-expanded={shelfOpen}
+          className={`titlebar-no-drag icon-button touch-hit relative flex-none ${shelfOpen ? 'back-sky' : ''}`}
+          onClick={() => setShelfOpen(!shelfOpen)}
+        >
+          {shelfOpen ? <FaChevronUp size={14} /> : <FaChevronDown size={14} />}
+        </button>
+      )}
+      <div
+        className={mobileTwoRow ? 'w-full min-w-0 flex items-center' : 'contents'}
+        style={v2Shelf && !shelfOpen ? { display: 'none' } : undefined}
+      >
       <div className={isMobile ? 'relative min-w-0 max-w-full' : 'contents'}>
       <span
         ref={clusterScrollRef}

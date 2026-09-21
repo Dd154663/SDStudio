@@ -10,6 +10,8 @@ import {
 } from './UtilComponents';
 import { NoiseSchedule, Resolution, Sampling } from '../backends/imageGen';
 import PromptEditTextArea from './PromptEditTextArea';
+import { PresetCompactContext } from './MobilePromptSheet';
+import { V2_SHEET_HALF_KEYS } from '../models/mobileV2';
 import {
   FaCopy,
   FaFont,
@@ -1685,6 +1687,23 @@ const PresetRootRender = observer(
     // (새 씬 해상도 행). 프리셋 패널(general)에서만 전달된다.
     belowBody?: React.ReactNode;
   }) => {
+    // 모바일 V2 하단 시트의 "반" 상태(빠른 수정): 상위·추가 프롬프트와 시드만 그린다.
+    // 해당 키가 하나도 없는 워크플로우면 평소 렌더로 폴백한다. 요소는 원본 그대로라 접힘 상태·값이 전체 보기와 공유된다.
+    const compact = useContext(PresetCompactContext);
+    if (compact && element.type === 'stack') {
+      const keep = (element as WFIStack).inputs.filter((x) =>
+        V2_SHEET_HALF_KEYS.includes(wfiElementKey(x) ?? ''),
+      );
+      if (keep.length > 0) {
+        return (
+          <VerticalStack>
+            {keep.map((x) => (
+              <WFRenderElement key={wfiElementKey(x)} element={x} />
+            ))}
+          </VerticalStack>
+        );
+      }
+    }
     // 하단 행 분리(활성 시에만). 순서 오버라이드(resolveStackInputs)가 이미 적용된
     // 스택을 받으므로, 본문 순서·하단 행 순서 모두 사용자 순서를 따른다.
     let bodyInputs: WFIElement[] | undefined;

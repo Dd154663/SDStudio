@@ -2,6 +2,7 @@ import { observer } from 'mobx-react-lite';
 import { StackFixed } from './LayoutComponents';
 import SessionSelect from './SessionSelect';
 import TaskQueueControl from './TaskQueueControl';
+import { isV2, V2_QUICK_BAR_SLOT_ID } from '../models/mobileV2';
 import { GenControlHandle } from './GenControlWidget';
 import { appState } from '../models/AppService';
 import { isMobile } from '../models';
@@ -33,6 +34,8 @@ const BottomBar = observer(
       genControl === 'floating' ||
       appState.genControlOverlayCount > 0);
 
+  const v2 = isV2();
+
   // 기본(bottom): 기존 하단 가로바. data-gen-dock = 플로팅 위젯 재부착 히트 영역.
   return (
     <StackFixed>
@@ -51,12 +54,27 @@ const BottomBar = observer(
             <SessionSelect />
           </div>
         )}
-        <div className="flex flex-none gap-4 items-center ml-auto">
+        {/* 모바일 V2: 퀵 생성 탭이 [생성][해상도]를 포털로 넣는 자리. 그동안 큐용 컨트롤은 숨긴다(mobileV2QuickBar). */}
+        {v2 && (
+          <div
+            id={V2_QUICK_BAR_SLOT_ID}
+            className="flex-1 min-w-0 items-stretch gap-1.5"
+            style={{ display: appState.mobileV2QuickBar ? 'flex' : 'none' }}
+          />
+        )}
+        <div
+          className={
+            v2
+              ? 'flex flex-1 min-w-0 items-center'
+              : 'flex flex-none gap-4 items-center ml-auto'
+          }
+          style={v2 && appState.mobileV2QuickBar ? { display: 'none' } : undefined}
+        >
           {/* 분리 핸들(PC 전용). 분리 상태면 컨트롤은 위젯이 대신 표시하므로 숨김. */}
           {!genDetached && (
             <div
               data-slot="gencontrol"
-              className="flex flex-none items-center gap-2"
+              className={v2 ? 'flex flex-1 min-w-0 items-center gap-2' : 'flex flex-none items-center gap-2'}
             >
               <span className="hidden md:flex">
                 <GenControlHandle />

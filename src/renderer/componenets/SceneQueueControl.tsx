@@ -15,7 +15,9 @@ import {
 } from 'react';
 import {
   FaBookmark,
+  FaCheck,
   FaCheckSquare,
+  FaChevronDown,
   FaEdit,
   FaEllipsisH,
   FaFileExport,
@@ -95,6 +97,9 @@ import { platform } from '../models/platform';
 import { TOOLBAR_VIEW_MAIN, resolveToolbarView } from '../models/uiLayout';
 import { companionAssignedIds } from '../models/companionSlots';
 import ToolbarOverflowMenu from './ToolbarOverflowMenu';
+import { V2MainRow, V2SlotDef } from './MobileV2Bars';
+import { useV2Slot } from './useV2Slot';
+import { isV2, V2_TOP_PIECE_SLOT_ID, V2_TOP_SLOT_ID } from '../models/mobileV2';
 import {
   DraggableToolbarButton,
   ToolbarHideZone,
@@ -1366,6 +1371,16 @@ const QueueControl = observer(
     const gridContainerRef = useRef<HTMLDivElement>(null);
     const [sceneSearchQuery, setSceneSearchQuery] = useState('');
     const [showSceneSearch, setShowSceneSearch] = useState(false);
+    // 모바일 V2(선택형 배치): 씬 툴바 줄 대신 하단 메인 줄, 검색·프롬프트조각은 상단 슬롯, 프롬프트 도구는 시트 슬롯으로 보낸다.
+    // 메인 탭의 씬 목록에만 적용한다(이미지 상세 안의 파생 목록=filterFunc 는 클래식 그대로). models/mobileV2.ts
+    const v2Layout = isV2() && !!showPannel && !filterFunc;
+    const v2TopSlot = useV2Slot(V2_TOP_SLOT_ID, v2Layout && isActive);
+    // 프롬프트조각은 어느 탭에서든 같은 자리에 있어야 하므로, 활성 여부와 무관하게 이미지생성 탭의 목록이 맡는다.
+    const v2PieceSlot = useV2Slot(V2_TOP_PIECE_SLOT_ID, v2Layout && type === 'scene');
+    const [v2Menu, setV2Menu] = useState<'more' | 'find' | null>(null);
+    const { show: showSceneContextMenu } = useContextMenu({
+      id: ContextMenuType.Scene,
+    });
     const showCheatsheet = appState.showSceneCheatsheet;
     const sceneSearchRef = useRef<HTMLInputElement>(null);
     type SceneDragBox = {
@@ -2677,6 +2692,18 @@ const QueueControl = observer(
     // 모바일은 텍스트 대신 아이콘으로 폭을 줄인다(줄 밀림 방지). 단 클래식 툴바
     // 토글이 켜지면 예전처럼 텍스트로 표시(mobileIcon=false).
     // mobileIcon = 모바일 행 레이아웃(가로 스크롤·sticky ⋯)까지 좌우하므로 별도 유지.
+    const pickImportImage = () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = IMPORT_IMAGE_ACCEPT;
+      input.onchange = (e: any) => {
+        const file = e.target.files?.[0];
+        if (file) {
+          appState.handleFile(file);
+        }
+      };
+      input.click();
+    };
     const mobileIcon = isMobile && !appState.uiToolbar.classic;
     // 버튼 내용의 아이콘화 여부 — PC 도 기본 아이콘. 텍스트 복원은 개인 설정
     // "씬 툴바 텍스트 버튼(레거시)" 또는 클래식 툴바 토글이 담당.
@@ -2829,18 +2856,7 @@ const QueueControl = observer(
         <Tooltip content="이미지 프롬프트 추출">
           <button
             className="round-button back-gray"
-            onClick={() => {
-              const input = document.createElement('input');
-              input.type = 'file';
-              input.accept = IMPORT_IMAGE_ACCEPT;
-              input.onchange = (e: any) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  appState.handleFile(file);
-                }
-              };
-              input.click();
-            }}
+            onClick={pickImportImage}
           >
             <FaFileImage size={18} />
           </button>
@@ -3036,7 +3052,7 @@ const QueueControl = observer(
         )}
         {/* 씬 휴지통·아티스트 태깅 모달은 App.tsx 전역 오버레이로 이관(B군 승격) */}
         {panel}
-        {!!showPannel && (
+        {!!showPannel && !v2Layout && (
           <div className="flex flex-none pb-1.5 flex-wrap">
             {/* 모바일(비클래식): 줄바꿈 대신 가로 스크롤 — 어떤 기기 폭에서도 1줄 보장.
                 행 전체가 드롭 타깃(놓으면 인라인 고정) */}
@@ -3199,7 +3215,7 @@ const QueueControl = observer(
             </div>
           </div>
         )}
-        {showSceneSearch && (
+        {showSceneSearch && !v2Layout && (
           <div className="flex flex-none items-center gap-2 pb-2 px-1">
             <FaSearch className="text-faint flex-none" />
             <input
@@ -3345,6 +3361,171 @@ const QueueControl = observer(
             );
           })()}
         </div>
+        {v2Layout &&
+          (() => {
+            const selecting = appState.sceneSelectionMode;
+            // 메인 줄·상단 슬롯·하단 바에 이미 집이 있는 버튼은 더보기에서 뺀다(찾기 및 변환·작가 분해는 더보기가 집). 나머지 툴바 버튼은 전부 더보기로
+            // (V2 에서 기능이 사라지지 않게). 해상도·WebP 는 대량 작업 메뉴에 있다.
+            const homed = new Set([
+              'multi-select', 'export-images', 'quick-export', 'batch-process', 'import-image',
+              'scene-search', 'scene-find', 'bookmark-jump', 'add-scene',
+              'piece-editor', 'change-resolution', 'webp-convert',
+            ]);
+            // 일괄 예약은 하단 바의 예약 버튼이 맡는다(보고 있는 탭의 종류를 따르고, 선택이 있으면 선택분만) → 더보기에서 뺀다.
+            homed.add('queue-add');
+            const moreIds = [...toolbarLayout.inline, ...toolbarLayout.menu].filter(
+              (id) => !homed.has(id) && !!buttonNode(id),
+            );
+            const selectedNames = getSelectedSceneNames(curSession, type);
+            const mainSlots: V2SlotDef[] = [
+              {
+                key: 'multi-select',
+                name: '다중 선택',
+                icon: <FaCheckSquare size={17} />,
+                onTap: () => {
+                  appState.sceneSelectionMode = true;
+                },
+              },
+              {
+                key: 'export',
+                name: '내보내기',
+                icon: <FaFileExport size={17} />,
+                onTap: () => appState.exportPackage(type),
+                swipeUp: {
+                  name: '빠른 내보내기',
+                  run: () => appState.quickExportPackage(type),
+                },
+              },
+              {
+                key: 'batch-process',
+                name: '대량 작업',
+                icon: <FaTasks size={17} />,
+                onTap: () => appState.openBatchProcessMenu(type, setSceneSelector),
+              },
+              {
+                key: 'import-image',
+                name: '프롬프트 추출',
+                icon: <FaFileImage size={17} />,
+                onTap: pickImportImage,
+              },
+              {
+                key: 'more',
+                name: '더보기',
+                icon: <FaEllipsisH size={17} />,
+                onTap: () => setV2Menu('more'),
+                disabled: moreIds.length === 0,
+              },
+            ];
+            const selectSlots: V2SlotDef[] = [
+              {
+                key: 'select-all',
+                name: '전체',
+                icon: <FaCheckSquare size={17} />,
+                onTap: () =>
+                  appState.addScenesToSelection(
+                    getFilteredScenes().map((scene) => scene.name),
+                    type,
+                  ),
+              },
+              {
+                key: 'queue-selected',
+                name: '예약 추가',
+                icon: <FaRegCalendarPlus size={17} />,
+                disabled: selectedNames.length === 0,
+                onTap: () => void addScenesToQueue(curSession, type, true),
+              },
+              {
+                key: 'selection-actions',
+                name: '선택 작업',
+                icon: <FaTasks size={17} />,
+                disabled: selectedNames.length === 0,
+                // 선택을 대상으로 이미 동작하는 기능(이미지 삭제·씬 삭제·예약·시드 그룹 등)은 기존 컨텍스트 메뉴에 있다 → 그대로 연다
+                onTap: (e) => {
+                  const first = curSession
+                    .getScenes(type)
+                    .find((x) => x.name === selectedNames[0]);
+                  if (first) {
+                    showSceneContextMenu({
+                      event: e,
+                      props: { ctx: { type: 'scene', scene: first } },
+                    });
+                  }
+                },
+              },
+              {
+                key: 'select-end',
+                name: '완료',
+                icon: <FaCheck size={17} />,
+                tone: 'accent',
+                badge:
+                  selectedNames.length > 0 ? (
+                    <span className="ml-0.5">{selectedNames.length}</span>
+                  ) : undefined,
+                onTap: () => {
+                  appState.sceneSelectionMode = false;
+                  appState.clearSceneSelection();
+                },
+              },
+            ];
+            return (
+              <>
+                <V2MainRow slots={selecting ? selectSlots : mainSlots} selecting={selecting} />
+                <ToolbarOverflowMenu
+                  isOpen={v2Menu === 'more'}
+                  onClose={() => setV2Menu(null)}
+                  title="더보기"
+                  group="scene"
+                  items={moreIds.map((id) => ({ id, name: sceneName(id), node: buttonNode(id) }))}
+                />
+                <ToolbarOverflowMenu
+                  isOpen={v2Menu === 'find'}
+                  onClose={() => setV2Menu(null)}
+                  title="찾기·이동"
+                  group="scene"
+                  items={['scene-find', 'bookmark-jump']
+                    .filter((id) => !!buttonNode(id))
+                    .map((id) => ({ id, name: sceneName(id), node: buttonNode(id) }))}
+                />
+                {v2PieceSlot && createPortal(buttonNode('piece-editor'), v2PieceSlot)}
+                {v2TopSlot &&
+                  createPortal(
+                    <>
+                      <label className="flex-1 min-w-0 h-10 flex items-center gap-1 pl-2 pr-1 rounded-[10px] border line-color bg-[var(--c-input-bg)]">
+                        <input
+                          ref={sceneSearchRef}
+                          type="text"
+                          aria-label="씬 검색"
+                          className="flex-1 min-w-0 w-0 bg-transparent border-0 outline-none text-[13px] text-default"
+                          placeholder="씬 검색"
+                          value={sceneSearchQuery}
+                          onChange={(e) => setSceneSearchQuery(e.target.value)}
+                        />
+                        {sceneSearchQuery ? (
+                          <button
+                            type="button"
+                            aria-label="검색어 지우기"
+                            className="flex-none w-6 h-[30px] flex items-center justify-center rounded-md clickable text-faint"
+                            onClick={() => setSceneSearchQuery('')}
+                          >
+                            <FaTimes size={11} />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            aria-label="씬 찾기·북마크 이동"
+                            className="flex-none w-6 h-[30px] flex items-center justify-center rounded-md clickable text-faint"
+                            onClick={() => setV2Menu('find')}
+                          >
+                            <FaChevronDown size={10} />
+                          </button>
+                        )}
+                      </label>
+                    </>,
+                    v2TopSlot,
+                  )}
+              </>
+            );
+          })()}
         {!isMobile && showCheatsheet && appState.floatViewCount === 0 && (
           <ShortcutCheatsheet
             scope="scene"

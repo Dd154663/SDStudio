@@ -1239,3 +1239,56 @@ input[type='number']::-webkit-outer-spin-button {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   cursor: pointer;
 }
+
+/* ── 모바일 V2: 메인 줄 "위로 밀기 빠른 실행" 안내(MobileV2Bars.tsx, 2026-09-21) ──
+   누르면 칸 위로 기둥이 솟고(rise), 뒤에서 빛이 숨쉬며(glow), 기둥 안에서 화살표가 아래→위로 흐른다(flow).
+   가운데 정렬(translateX(-50%))은 키프레임이 아니라 기본 스타일에 둔다 — 동작 줄이기 설정으로 애니메이션이
+   꺼져도 기둥이 어긋나지 않게(목업에서 40px 어긋났던 실수). */
+@keyframes v2SwipeFlow {
+  0% { transform: translateY(18px); opacity: 0; }
+  25% { opacity: 0.95; }
+  100% { transform: translateY(-46px); opacity: 0; }
+}
+@keyframes v2SwipeGlow {
+  0%, 100% { opacity: 0.55; transform: translateX(-50%) scale(1); }
+  50% { opacity: 1; transform: translateX(-50%) scale(1.08); }
+}
+@keyframes v2SwipeRise {
+  from { transform: translateX(-50%) scaleY(0.2); opacity: 0; }
+  to { transform: translateX(-50%) scaleY(1); opacity: 1; }
+}
+@keyframes v2SwipePop {
+  0% { transform: translateX(-50%) scale(1); }
+  40% { transform: translateX(-50%) scale(1.12); }
+  100% { transform: translateX(-50%) scale(1); }
+}
+.v2-swipe-glow {
+  transform: translateX(-50%);
+  animation: v2SwipeGlow 1.4s ease-in-out infinite;
+}
+.v2-swipe-track {
+  transform: translateX(-50%);
+  transform-origin: 50% 100%;
+  animation: v2SwipeRise 0.16s ease-out both;
+}
+.v2-swipe-track.v2-swipe-armed {
+  animation: v2SwipePop 0.22s ease-out both;
+}
+.v2-swipe-flow i {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  margin-left: -9px;
+  width: 18px;
+  height: 18px;
+  font-style: normal;
+  font-size: 18px;
+  line-height: 18px;
+  text-align: center;
+  animation: v2SwipeFlow 1.05s linear infinite;
+}
+.v2-swipe-flow i:nth-child(2) { animation-delay: 0.35s; }
+.v2-swipe-flow i:nth-child(3) { animation-delay: 0.7s; }
+@media (prefers-reduced-motion: reduce) {
+  .v2-swipe-glow, .v2-swipe-track, .v2-swipe-flow i { animation: none !important; }
+}

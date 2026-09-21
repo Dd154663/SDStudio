@@ -7,6 +7,7 @@ import { FaRegClock } from 'react-icons/fa';
 import { taskQueueService, cyclingSessionService } from '../models';
 import { Task } from '../models/TaskQueueService';
 import { appState } from '../models/AppService';
+import { isV2 } from '../models/mobileV2';
 import { observer } from 'mobx-react-lite';
 import { addScenesToQueue } from '../models/sceneQueueActions';
 
@@ -19,9 +20,11 @@ interface ProgressBarProps {
   // 그린다. 컨트롤이 도크↔플로팅 이동으로 재마운트될 때 0부터 다시 차오르는
   // 문제 방지(경과 초과 시에는 fill-mode:forwards 라 꽉 찬 상태로 유지).
   elapsed?: number;
+  // 모바일 V2: 고정/클램프 폭 대신 부모가 준 폭을 그대로 채우고 시계 아이콘을 뺀다(예약 버튼을 덮던 문제, 2026-09-21 실기기).
+  fit?: boolean;
 }
 
-const ProgressBar = ({ duration, isError, text, key, elapsed }: ProgressBarProps) => {
+const ProgressBar = ({ duration, isError, text, key, elapsed, fit }: ProgressBarProps) => {
   const animStyle = {
     animationDuration: `${duration}s`,
     animationDelay: `-${elapsed ?? 0}s`,
@@ -31,11 +34,11 @@ const ProgressBar = ({ duration, isError, text, key, elapsed }: ProgressBarProps
       key={key}
       // 모바일 폭(md 미만)은 남는 폭에 맞춰 6~10rem 으로 줄어든다 — 360px 기기에서 고정 160px 때문에
       // 시작 버튼이 화면 밖으로 밀리던 문제(2026-09-20). md 이상은 기존 고정 폭.
-      className="relative w-[clamp(6rem,calc(100vw-14.5rem),10rem)] md:w-40 lg:w-52 bg-gray-200 dark:bg-slate-700 rounded-full h-8 overflow-hidden"
+      className={`relative ${fit ? 'w-full' : 'w-[clamp(6rem,calc(100vw-14.5rem),10rem)] md:w-40 lg:w-52'} bg-gray-200 dark:bg-slate-700 rounded-full h-8 overflow-hidden`}
     >
       {/* tabular-nums: 남은 개수·예상 시간 숫자가 바뀌어도 폭이 출렁이지 않게 */}
-      <div className="top-0 left-0 w-full h-8 absolute flex items-center justify-center text-gray-600 dark:text-white gap-2 px-2 md:px-0">
-        <FaRegClock size={20} className="flex-none" />
+      <div className={`top-0 left-0 w-full h-8 absolute flex items-center justify-center text-gray-600 dark:text-white gap-2 ${fit ? 'px-1.5' : 'px-2'} md:px-0`}>
+        {!fit && <FaRegClock size={20} className="flex-none" />}
         <div className="flex-1 min-w-0 md:flex-none md:w-28 lg:w-40 text-xs lg:text-sm text-center overflow-hidden text-nowrap tabular-nums">
           {text}
         </div>
@@ -48,10 +51,10 @@ const ProgressBar = ({ duration, isError, text, key, elapsed }: ProgressBarProps
         style={animStyle}
       ></div>
       <div
-        className="top-0 left-0 w-full h-8 absolute flex items-center justify-center text-white gap-2 px-2 md:px-0 progress-clip-animation"
+        className={`top-0 left-0 w-full h-8 absolute flex items-center justify-center text-white gap-2 ${fit ? 'px-1.5' : 'px-2'} md:px-0 progress-clip-animation`}
         style={animStyle}
       >
-        <FaRegClock size={20} className="flex-none" />
+        {!fit && <FaRegClock size={20} className="flex-none" />}
         <div className="flex-1 min-w-0 md:flex-none md:w-28 lg:w-40 text-xs lg:text-sm text-center overflow-hidden text-nowrap tabular-nums">
           {text}
         </div>
@@ -62,8 +65,9 @@ const ProgressBar = ({ duration, isError, text, key, elapsed }: ProgressBarProps
 
 interface TaskProgressBarProps {
   fast?: boolean;
+  fit?: boolean;
 }
-export const TaskProgressBar = ({ fast }: TaskProgressBarProps) => {
+export const TaskProgressBar = ({ fast, fit }: TaskProgressBarProps) => {
   const key = useRef<number>(0);
   // 마운트 시점에 이미 실행 중이면(도크↔플로팅 재마운트 등) 진행 중이던 사이클을
   // 이어받는다: 길이는 현재 태스크 예상치, 경과는 서비스의 사이클 시작 시각 기준.
@@ -103,6 +107,8 @@ export const TaskProgressBar = ({ fast }: TaskProgressBarProps) => {
     const remain = Math.max(0, stats.total - stats.done);
     const ms = taskQueueService.estimateTime('mean');
     const timeEstimate = formatTime(ms);
+    // 좁은 막대(fit)는 짧은 문구 — "12개 · 3분"
+    if (fit) return `${remain}개·${timeEstimate}`;
     return `${remain}개 남음 (예상 ${timeEstimate})`;
   };
 
@@ -176,6 +182,7 @@ export const TaskProgressBar = ({ fast }: TaskProgressBarProps) => {
         duration={duration}
         elapsed={elapsed}
         text={getProgressText()}
+        fit={fit}
       />
     </div>
   );
@@ -280,6 +287,8 @@ const TaskQueueControl = observer(({}) => {
   }, []);
 
   const cyclingActive = cyclingSessionService.state === 'running' || cyclingSessionService.state === 'paused';
+  // 모바일 V2: 생성 위주 하단 바(막대는 남는 폭, 생성/중지 버튼은 이름을 달아 크게). 클래식은 기존 그대로.
+  const v2 = isV2();
   // 하단 일괄 예약의 대상 종류 = 지금 보고 있는 메인 탭(2026-09-21 버그 수정). 예전에는 'scene' 고정이라
   // 이미지변형 탭에서 눌러도 이미지생성 탭의 씬이 예약됐다(상단 툴바의 예약 추가는 탭 종류를 따름 — 동작 불일치).
   // 씬 탭이 아닌 곳(프리셋·작가·퀵 생성)에서는 기존처럼 이미지생성 씬. globalActions.ts 와 같은 규칙.
@@ -287,7 +296,14 @@ const TaskQueueControl = observer(({}) => {
     appState.curMainTab === 'inpaint' ? 'inpaint' : 'scene';
 
   return (
-    <div ref={rootRef} className="flex gap-0.5 md:gap-2 lg:gap-4 items-center">
+    <div
+      ref={rootRef}
+      className={
+        v2
+          ? 'flex gap-1.5 items-center w-full min-w-0'
+          : 'flex gap-0.5 md:gap-2 lg:gap-4 items-center'
+      }
+    >
       {showList && (
         <TaskQueueList
           dropDown={listDropDown}
@@ -324,7 +340,7 @@ const TaskQueueControl = observer(({}) => {
         />
       </div>
       <div
-        className="relative cursor-pointer hover:brightness-95 active:brightness-90"
+        className={`relative cursor-pointer hover:brightness-95 active:brightness-90${v2 ? ' flex-1 min-w-[3.5rem]' : ''}`}
         onClick={() => {
           if (!showList) {
             const r = rootRef.current?.getBoundingClientRect();
@@ -333,7 +349,7 @@ const TaskQueueControl = observer(({}) => {
           setShowList(!showList);
         }}
       >
-        <TaskProgressBar />
+        <TaskProgressBar fit={v2} />
       </div>
       <SceneQueueMenu session={appState.curSession} type={queueType} selectedOnly={appState.selectedSceneCount(queueType) > 0}>
       <button
@@ -367,7 +383,7 @@ const TaskQueueControl = observer(({}) => {
       </button>
       {!taskQueueService.isRunning() ? (
         <button
-          className={`round-button back-green px-2 h-8 lg:px-6`}
+          className={v2 ? 'round-button back-green flex-none !h-10 min-w-[96px] !px-4 gap-2 !rounded-xl font-bold text-[15px]' : `round-button back-green px-2 h-8 lg:px-6`}
           onClick={() => {
             (async () => {
               const costs = taskQueueService.calculateCost();
@@ -393,15 +409,17 @@ const TaskQueueControl = observer(({}) => {
           }}
         >
           <FaPlay size={15} />
+          {v2 && <span>생성</span>}
         </button>
       ) : (
         <button
-          className={`round-button back-red px-2 h-8 lg:px-6`}
+          className={v2 ? 'round-button back-red flex-none !h-10 min-w-[96px] !px-4 gap-2 !rounded-xl font-bold text-[15px]' : `round-button back-red px-2 h-8 lg:px-6`}
           onClick={() => {
             taskQueueService.stop();
           }}
         >
           <FaStop size={15} />
+          {v2 && <span>중지</span>}
         </button>
       )}
     </div>

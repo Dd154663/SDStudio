@@ -3019,6 +3019,14 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     // 템플릿 복귀) 시엔 배치를 손대지 않는다(초기화 유지 — 이전 커스텀 복원 없음).
     const modernApplied =
       uiLayoutTemplate === 'modern' && old.uiLayoutTemplate !== 'modern';
+    // 모바일 V2 "최초 전환" 시: 하단 시트 프롬프트의 공간 확보를 위해 하단 아이콘 행을 켜 준다.
+    // 모던과 같은 규칙 — 전환하는 순간에만 켜고, 그 뒤에는 V2 를 쓰는 중에도 사용자가 자유롭게 끌 수 있다.
+    // 툴바·동반 슬롯은 건드리지 않는다(모바일은 슬롯을 쓰지 않음). 해제 시에도 되돌리지 않는다(사용자 값 존중).
+    const mobileV2Applied =
+      uiLayoutTemplate === 'mobile-v2' && old.uiLayoutTemplate !== 'mobile-v2';
+    if (mobileV2Applied) {
+      config.uiPresetIconRow = true;
+    }
     if (modernApplied) {
       config.uiToolbar = {};
       config.uiCompanionSlots = JSON.parse(
@@ -3068,6 +3076,10 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       );
       appState.uiPresetIconRow = true;
       setUiToolbar({});
+      setUiPresetIconRow(true);
+    }
+    if (mobileV2Applied) {
+      appState.uiPresetIconRow = true;
       setUiPresetIconRow(true);
     }
     if (modernExited) {

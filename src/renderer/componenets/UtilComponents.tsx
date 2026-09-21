@@ -20,6 +20,13 @@ import {
 import { Scrollbars } from 'react-custom-scrollbars-2';
 import { FaAnchor, FaOpencart, FaPerson } from 'react-icons/fa6';
 import { FloatView } from './FloatView';
+import MobilePromptSheet from './MobilePromptSheet';
+import {
+  isV2,
+  V2_SHEET_PEEK_PX,
+  V2_TOP_PIECE_SLOT_ID,
+  V2_TOP_SLOT_ID,
+} from '../models/mobileV2';
 
 export interface Option<T> {
   value: T;
@@ -202,8 +209,12 @@ export const TabComponent: React.FC<TabComponentProps> = ({
     return () => window.removeEventListener('shortcut-action', handler);
   }, [tabs]);
 
+  // 모바일 V2(선택형 배치): 「프롬프트 열기」 대신 하단 시트, 상단 줄 왼쪽은 활성 탭이 채우는 슬롯.
+  // 탭 본문의 부모 체인은 클래식과 같게 유지한다(전환 시 재마운트 방지) — 바뀌는 것은 상단 줄과 시트뿐.
+  const v2 = isV2();
+
   return (
-    <div className="h-full flex flex-col px-1 md:p-2">
+    <div className={`h-full flex flex-col px-1 md:p-2${v2 ? ' relative' : ''}`}>
       <div
         className={
           'flex p-1 md:p-0 md:py-2 flex-none gap-2 items-center w-full mb-1 md:mb-0'
@@ -227,7 +238,16 @@ export const TabComponent: React.FC<TabComponentProps> = ({
           ))}
         </div>
         <div className="flex md:hidden gap-1 w-full items-center">
-          {!tabs[activeTab].banToggle && toggleView && (
+          {v2 && (
+            // 씬 탭이 [씬 검색+찾기][프롬프트조각]을 포털로 넣는 자리. 다른 탭에서는 비지만 폭은 그대로라
+            // 탭 묶음의 크기와 위치가 변하지 않는다(2026-09-21 사용자 결정).
+            <div
+              id={V2_TOP_SLOT_ID}
+              className="flex-1 min-w-0 h-10 flex items-center gap-1"
+            />
+          )}
+          {v2 && <div id={V2_TOP_PIECE_SLOT_ID} className="flex-none h-10 flex items-center" />}
+          {!v2 && !tabs[activeTab].banToggle && toggleView && (
             <button
               className="active:brightness-90 hover:brightness-95 select-none h-10 md:hidden text-sm back-llgray px-3 flex-none flex justify-center items-center"
               onClick={() => setToggleViewOpen(!toggleViewOpen)}
@@ -236,7 +256,11 @@ export const TabComponent: React.FC<TabComponentProps> = ({
             </button>
           )}
           {/* 탭이 많아 가로폭을 넘치면 잘리지 않고 스크롤되도록(min-w-0 + overflow-x-auto). */}
-          <div className="tab-seg flex gap-1 ml-auto min-w-0 overflow-x-auto no-scrollbar py-0.5">
+          <div
+            className={`tab-seg flex gap-1 ml-auto overflow-x-auto no-scrollbar py-0.5 ${
+              v2 ? 'flex-none max-w-[62%]' : 'min-w-0'
+            }`}
+          >
             {tabs.map((tab, index) => (
               <button
                 key={index}
@@ -252,8 +276,13 @@ export const TabComponent: React.FC<TabComponentProps> = ({
           </div>
         </div>
       </div>
-      <div className="flex-1 overflow-hidden relative">
-        {!tabs[activeTab].banToggle && toggleViewOpen && (
+      <div
+        className="flex-1 overflow-hidden relative"
+        // 접힌 시트 높이만큼의 바닥 여백은 탭별이 아니라 여기 공통 컨테이너에서 한 번만 확보한다
+        // (탭마다 주면 퀵 생성처럼 빠뜨린 탭의 바닥 요소가 시트에 가려진다 — 목업에서 실제로 겪음).
+        style={v2 ? { paddingBottom: V2_SHEET_PEEK_PX } : undefined}
+      >
+        {!v2 && !tabs[activeTab].banToggle && toggleViewOpen && (
           <FloatView priority={0} onEscape={() => setToggleViewOpen(false)}>
             {toggleView}
           </FloatView>
@@ -270,6 +299,7 @@ export const TabComponent: React.FC<TabComponentProps> = ({
           </div>
         ))}
       </div>
+      {v2 && toggleView && <MobilePromptSheet>{toggleView}</MobilePromptSheet>}
     </div>
   );
 };

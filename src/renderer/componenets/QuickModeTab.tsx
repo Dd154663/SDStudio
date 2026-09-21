@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
+import { createPortal } from 'react-dom';
+import { useV2Slot } from './useV2Slot';
+import { isV2, V2_QUICK_BAR_SLOT_ID } from '../models/mobileV2';
 import { useContextMenu } from 'react-contexify';
 import { v4 } from 'uuid';
 import {
@@ -52,7 +55,18 @@ function ensureDefaultScene(session: Session): Scene {
   return scene;
 }
 
-const QuickModeTab = observer(() => {
+const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
+  // 모바일 V2: 이 탭이 활성인 동안 하단 바 자리를 [생성][해상도] 두 개로 쓴다(큐용 하단 바는 숨김).
+  // 생성은 어느 탭에서나 화면 맨 아래 — 탭 본문 바닥에 두면 접힌 프롬프트 시트에 가려진다.
+  const v2Bar = isV2() && isActive;
+  const v2BarSlot = useV2Slot(V2_QUICK_BAR_SLOT_ID, v2Bar);
+  useEffect(() => {
+    if (!v2Bar) return undefined;
+    appState.mobileV2QuickBar = true;
+    return () => {
+      appState.mobileV2QuickBar = false;
+    };
+  }, [v2Bar]);
   const curSession = appState.curSession!;
   // 퀵 생성 전용 프로젝트 — 마운트 시 확보(없으면 자동 생성). 로드 전엔 null.
   const [quickSession, setQuickSession] = useState<Session | null>(null);
@@ -354,11 +368,15 @@ const QuickModeTab = observer(() => {
           </div>
         )}
       </div>
-      {/* 생성 버튼 + 해상도 컨트롤 (퀵 모드 전용 동작) */}
-      <div className="flex-none flex justify-center items-stretch gap-2 px-3 pb-3 pt-1">
+      {/* 생성 버튼 + 해상도 컨트롤 (퀵 모드 전용 동작). 모바일 V2 에서는 같은 내용을 하단 바 자리로 포털한다. */}
+      {(() => {
+        const controls = (
+          <>
         <button
           className={
-            'round-button font-semibold text-base px-10 !py-2.5 w-full max-w-md select-none ' +
+            (v2Bar
+              ? 'round-button font-bold text-[15px] flex-1 min-w-0 !h-10 !rounded-xl px-3 select-none whitespace-nowrap '
+              : 'round-button font-semibold text-base px-10 !py-2.5 w-full max-w-md select-none ') +
             (autoOn ? 'back-red' : busy ? 'back-gray' : 'back-sky')
           }
           onPointerDown={onPointerDown}
@@ -398,7 +416,15 @@ const QuickModeTab = observer(() => {
             })
           }
         />
-      </div>
+          </>
+        );
+        if (v2Bar) return v2BarSlot ? createPortal(controls, v2BarSlot) : null;
+        return (
+          <div className="flex-none flex justify-center items-stretch gap-2 px-3 pb-3 pt-1">
+            {controls}
+          </div>
+        );
+      })()}
     </div>
   );
 });

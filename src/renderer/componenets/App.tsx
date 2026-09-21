@@ -527,7 +527,8 @@ export const App = observer(() => {
     {
       // NAI풍 즉시 생성 화면. banToggle 미설정 → 모바일에서 공용 "프롬프트 열기" 사용
       label: '퀵 생성',
-      content: <QuickModeTab />,
+      // isActive: 모바일 V2 에서 활성일 때만 하단 바 자리를 [생성][해상도]로 쓴다
+      content: (isActive: boolean) => <QuickModeTab isActive={isActive} />,
       emoji: <FaBolt />,
       onClick: () => {
         appState.curMainTab = 'other';
