@@ -392,6 +392,7 @@ export class BatchProcessService {
         { text: '🗑️ 이미지 삭제', value: 'removeImage' },
         { text: '❌ 즐겨찾기 전부 해제', value: 'removeAllFav' },
         { text: '⭐ 상위 n등 즐겨찾기 지정', value: 'setFav' },
+        { text: '🖥️ 해상도 변경', value: 'changeResolution' },
         { text: '📋 씬 내용 복제', value: 'copySceneContent' },
         { text: '📦 다른 프로젝트로 씬 복사', value: 'copyToProject' },
         { text: '📝 씬 이름 내보내기', value: 'exportSceneNames' },
@@ -411,6 +412,12 @@ export class BatchProcessService {
         graySelect: true,
         items: items,
         callback: (value, text) => {
+          // 해상도 변경은 툴바의 별도 버튼과 같은 흐름(씬 선택 → 해상도 선택)을 그대로 쓴다.
+          // 메인 툴바에서 버튼을 빼는 배치(모바일 V2)에서도 접근로가 남도록 대량 작업에도 둔다(2026-09-21).
+          if (value === 'changeResolution') {
+            this.openChangeResolutionMenu(type, setSceneSelector);
+            return;
+          }
           if (value === 'mirrorDuplicate') {
             const imageGenScenes = appState.curSession!.getScenes('scene');
             if (imageGenScenes.length === 0) {
