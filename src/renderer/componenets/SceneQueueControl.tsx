@@ -3283,7 +3283,7 @@ const QueueControl = observer(
                     ) : (
                       <>
                         <span>아직 씬이 없습니다</span>
-                        <span>상단 툴바의 [씬 추가] 버튼으로 첫 씬을 만들어 보세요</span>
+                        <span>{filterFunc ? '상단 툴바의 [씬 추가] 버튼으로 첫 씬을 만들어 보세요' : '아래 [새 씬] 카드나 툴바의 [씬 추가] 버튼으로 첫 씬을 만들어 보세요'}</span>
                       </>
                     )}
                   </div>
@@ -3322,6 +3322,25 @@ const QueueControl = observer(
                     isFocused={focusedSceneIndex === sceneIdx}
                   />
                 ))}
+                {/* 그리드 끝의 점선 「새 씬」 카드(2026-09-21, PC·모바일 공통) — 툴바 [씬 추가]와 같은 addScene.
+                    검색 중·선택 모드·파생 목록(filterFunc)에서는 숨긴다. 씬 카드가 아니므로 scene-cell- id 를 쓰지 않는다. */}
+                {!sceneSearchQuery.trim() &&
+                  !appState.sceneSelectionMode &&
+                  !filterFunc && (
+                    <button
+                      type="button"
+                      data-add-scene-card=""
+                      className={`${isMobile ? 'm-[5px]' : appState.classicSceneCard ? 'm-[10.5px]' : 'm-[8.5px]'} ${
+                        appState.classicSceneCard ? '' : 'rounded-lg '
+                      }border-2 border-dashed line-color bg-transparent flex flex-col items-center justify-center gap-1.5 text-sub clickable select-none`}
+                      // 폭·높이 모두 칸에 맞춘다(같은 줄 씬 카드와 같은 높이). 혼자 줄에 놓이면 aspectRatio 가 높이를 정한다.
+                      style={{ alignSelf: 'stretch', justifySelf: 'stretch', aspectRatio: '1 / 1.15' }}
+                      onClick={addScene}
+                    >
+                      <FaPlus size={22} />
+                      <span className="text-sm">새 씬</span>
+                    </button>
+                  )}
               </div>
             );
           })()}
