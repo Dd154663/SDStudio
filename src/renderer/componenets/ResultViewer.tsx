@@ -1,4 +1,5 @@
 import { canStartSelectionBox, imagePathsInSelectionBox } from '../models/dragSelection';
+import { parseRankCutoff, RANK_CUTOFF_INVALID_MESSAGE } from '../models/rankCutoff';
 import React, {
   useState,
   useEffect,
@@ -1888,7 +1889,12 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               text: '몇등 이하 이미지를 삭제할지 입력해주세요.',
               callback: async (value) => {
                 if (value) {
-                  const n = parseInt(value);
+                  // 숫자가 아닌 입력은 slice(NaN)=slice(0) 이 되어 즐겨찾기 외 전부를 지운다 → 공용 해석기로 거른다
+                  const n = parseRankCutoff(value);
+                  if (n == null) {
+                    appState.pushMessage(RANK_CUTOFF_INVALID_MESSAGE);
+                    return;
+                  }
                   reportFailed(
                     await deleteImageFiles(
                       curSession!,

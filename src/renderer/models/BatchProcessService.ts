@@ -1,3 +1,4 @@
+import { parseRankCutoff, RANK_CUTOFF_INVALID_MESSAGE } from './rankCutoff';
 import {
   backupService,
   backend,
@@ -108,12 +109,25 @@ export class BatchProcessService {
         type: 'confirm',
         text: `정말로 선택한 ${selected.length}개의 씬을 삭제하시겠습니까? (휴지통으로 이동)`,
         callback: async () => {
+          // 한 건이 실패(타 창 잠금·파일 잠금 등)해도 나머지는 계속 처리하고 결과를 숨기지 않는다.
+          // 예전에는 예외가 루프를 끊어 일부만 삭제된 채 알림 없이 끝났다(2026-09-21).
+          const failedNames: string[] = [];
           for (const scene of selected) {
-            await trashService.moveSceneToTrash(appState.curSession!, scene);
+            try {
+              await trashService.moveSceneToTrash(appState.curSession!, scene);
+            } catch (e) {
+              console.error('씬 휴지통 이동 실패:', scene.name, e);
+              failedNames.push(scene.name);
+            }
           }
+          const moved = selected.length - failedNames.length;
+          const failedText =
+            failedNames.length === 0
+              ? ''
+              : `\n이동하지 못한 씬 ${failedNames.length}개: ${failedNames.slice(0, 5).join(', ')}${failedNames.length > 5 ? ' 외' : ''}`;
           appState.pushDialog({
             type: 'yes-only',
-            text: `${selected.length}개의 씬이 휴지통으로 이동되었습니다.`,
+            text: `${moved}개의 씬이 휴지통으로 이동되었습니다.${failedText}`,
           });
         },
       });
@@ -125,7 +139,8 @@ export class BatchProcessService {
         const stats = taskQueueService.statsTasksFromScene(appState.curSession!, scene);
         const remaining = stats.total - stats.done;
         totalCancelled += remaining;
-        taskQueueService.removeTasksFromScene(scene);
+        // 보조 창에서는 취소를 호스트에 위임하는데 그때 세션 이름이 필요하다(다른 진입점과 같이 전달).
+        taskQueueService.removeTasksFromScene(scene, appState.curSession!);
       }
       appState.pushDialog({
         type: 'yes-only',
@@ -139,7 +154,33 @@ export class BatchProcessService {
     ) => {
       const isMain = (scene: GenericScene, path: string) => {
         const filename = path.split('/').pop()!;
-        return !!(scene && scene.mains.includes(filename));
+        return !!(scene && scene.mains && scene.mains.includes(filename));
+      };
+      // 순위 목록은 캐시다. 고르는 사이 이미지가 늘거나 순위가 바뀌었을 수 있으므로 쓰기 직전에 다시 만든다
+      // ("n등" 기준이 낡은 채 삭제되는 것을 막는다, 2026-09-21).
+      const freshOutputs = (scene: GenericScene) => {
+        gameService.refreshList(appState.curSession!, scene);
+        return gameService.getOutputs(appState.curSession!, scene);
+      };
+      const freshPaths = (scene: GenericScene) =>
+        freshOutputs(scene).map(
+          (x) => imageService.getOutputDir(appState.curSession!, scene) + '/' + x,
+        );
+      // 이동 실패(파일 잠금 등)를 조용히 넘기지 않는다 — 이미지 그리드의 삭제와 같은 알림.
+      const deleteAndReport = async (
+        pick: (scene: GenericScene, paths: string[]) => string[],
+      ) => {
+        let failed = 0;
+        for (const scene of selected) {
+          failed += await deleteImageFiles(
+            appState.curSession!,
+            pick(scene, freshPaths(scene)),
+            scene,
+          );
+        }
+        if (failed > 0) {
+          appState.pushMessage(`이미지 ${failed}장은 삭제하지 못했습니다.`);
+        }
       };
       if (value === 'removeImage') {
         appState.pushDialog({
@@ -161,19 +202,7 @@ export class BatchProcessService {
           ],
           callback: async (menu) => {
             if (menu === 'all') {
-              const doDel = async () => {
-                for (const scene of selected) {
-                  const paths = gameService
-                    .getOutputs(appState.curSession!, scene)
-                    .map(
-                      (x) =>
-                        imageService.getOutputDir(appState.curSession!, scene!) +
-                        '/' +
-                        x,
-                    );
-                  await deleteImageFiles(appState.curSession!, paths, scene);
-                }
-              };
+              const doDel = () => deleteAndReport((_scene, paths) => paths);
               if (appState.skipImageDeleteConfirm) { await doDel(); return; }
               appState.pushDialog({
                 type: 'confirm',
@@ -186,52 +215,22 @@ export class BatchProcessService {
                 type: 'input-confirm',
                 text: '몇등 이하 이미지를 삭제할지 입력해주세요.',
                 callback: async (value) => {
-                  if (value) {
-                    for (const scene of selected) {
-                      const paths = gameService
-                        .getOutputs(appState.curSession!, scene)
-                        .map(
-                          (x) =>
-                            imageService.getOutputDir(
-                              appState.curSession!,
-                              scene!,
-                            ) +
-                            '/' +
-                            x,
-                        );
-                      const n = parseInt(value);
-                      await deleteImageFiles(
-                        appState.curSession!,
-                        paths.slice(n).filter((x) => !isMain(scene, x)),
-                        scene,
-                      );
-                    }
+                  if (!value) return;
+                  const n = parseRankCutoff(value);
+                  if (n == null) {
+                    appState.pushMessage(RANK_CUTOFF_INVALID_MESSAGE);
+                    return;
                   }
+                  await deleteAndReport((scene, paths) =>
+                    paths.slice(n).filter((x) => !isMain(scene, x)),
+                  );
                 },
               });
             } else if (menu === 'fav') {
-              const doDel = async () => {
-                for (const scene of selected) {
-                  const paths = gameService
-                    .getOutputs(appState.curSession!, scene)
-                    .map(
-                      (x) =>
-                        imageService.getOutputDir(appState.curSession!, scene!) +
-                        '/' +
-                        x,
-                    );
-                  const isMain = (scene: GenericScene, img: string) => {
-                    if (!scene.mains) return false;
-                    const filename = img.split('/').pop()!;
-                    return scene.mains.includes(filename);
-                  };
-                  await deleteImageFiles(
-                    appState.curSession!,
-                    paths.filter((x) => !isMain(scene, x)),
-                    scene,
-                  );
-                }
-              };
+              const doDel = () =>
+                deleteAndReport((scene, paths) =>
+                  paths.filter((x) => !isMain(scene, x)),
+                );
               if (appState.skipImageDeleteConfirm) { await doDel(); return; }
               appState.pushDialog({
                 type: 'confirm',
@@ -257,16 +256,17 @@ export class BatchProcessService {
           type: 'input-confirm',
           text: '몇등까지 즐겨찾기로 지정할지 입력해주세요',
           callback: async (value) => {
-            if (value) {
-              const n = parseInt(value);
-              for (const scene of selected) {
-                const cands = gameService
-                  .getOutputs(appState.curSession!, scene)
-                  .slice(0, n);
-                scene.mains = scene.mains
-                  .concat(cands)
-                  .filter((x, i, self) => self.indexOf(x) === i);
-              }
+            if (!value) return;
+            const n = parseRankCutoff(value);
+            if (n == null) {
+              appState.pushMessage(RANK_CUTOFF_INVALID_MESSAGE);
+              return;
+            }
+            for (const scene of selected) {
+              const cands = freshOutputs(scene).slice(0, n);
+              scene.mains = scene.mains
+                .concat(cands)
+                .filter((x, i, self) => self.indexOf(x) === i);
             }
           },
         });
@@ -393,6 +393,7 @@ export class BatchProcessService {
         { text: '❌ 즐겨찾기 전부 해제', value: 'removeAllFav' },
         { text: '⭐ 상위 n등 즐겨찾기 지정', value: 'setFav' },
         { text: '🖥️ 해상도 변경', value: 'changeResolution' },
+        { text: '🗜️ WebP 변환', value: 'convertToWebp' },
         { text: '📋 씬 내용 복제', value: 'copySceneContent' },
         { text: '📦 다른 프로젝트로 씬 복사', value: 'copyToProject' },
         { text: '📝 씬 이름 내보내기', value: 'exportSceneNames' },
@@ -402,6 +403,9 @@ export class BatchProcessService {
       ];
       if (type === 'inpaint') {
         items.push({ text: '🪞 이미지생성 탭 씬 이미지미러로 복제', value: 'mirrorDuplicate' });
+      }
+      if (!platform.supportsWebpConvert) {
+        items = items.filter((x) => x.value !== 'convertToWebp');
       }
       if (!platform.supportsRemoveBg) {
         items = items.filter((x) => x.value !== 'removeBg');
@@ -414,6 +418,11 @@ export class BatchProcessService {
         callback: (value, text) => {
           // 해상도 변경은 툴바의 별도 버튼과 같은 흐름(씬 선택 → 해상도 선택)을 그대로 쓴다.
           // 메인 툴바에서 버튼을 빼는 배치(모바일 V2)에서도 접근로가 남도록 대량 작업에도 둔다(2026-09-21).
+          // WebP 변환도 같은 이유로 툴바 버튼(webp-convert)과 같은 흐름을 그대로 쓴다.
+          if (value === 'convertToWebp') {
+            this.openConvertToWebpMenu(type, setSceneSelector);
+            return;
+          }
           if (value === 'changeResolution') {
             this.openChangeResolutionMenu(type, setSceneSelector);
             return;
