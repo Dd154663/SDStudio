@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useSceneSelectorGestures } from './useSceneSelectorGestures';
 import { FaObjectGroup } from 'react-icons/fa';
 import { GenericScene } from '../models/types';
 import { imageService, gameService } from '../models';
@@ -79,7 +80,20 @@ const SceneSelector: React.FC<SceneSelectorProps> = ({
     }
   }, [curSession]);
 
+  // 다중 선택 제스처(PC 드래그 상자 / 터치 길게 눌러 연속 선택)
+  const scenesRef = useRef(scenes);
+  scenesRef.current = scenes;
+  const selectedRef = useRef(selectedScenes);
+  selectedRef.current = selectedScenes;
+  const { listRef, box, sweeping, suppressClickRef } = useSceneSelectorGestures({
+    getNames: () => scenesRef.current.map((x) => x.name),
+    getSelected: () => new Set(selectedRef.current.map((x) => x.name)),
+    setSelected: (names) =>
+      setSelectedScenes(scenesRef.current.filter((x) => names.has(x.name))),
+  });
+
   const toggleSceneSelection = (scene: GenericScene) => {
+    if (suppressClickRef.current) return;
     const isSelected = selectedScenes.some(
       (selected) => selected.name === scene.name,
     );
@@ -121,8 +135,24 @@ const SceneSelector: React.FC<SceneSelectorProps> = ({
           </button>
         </div>
         <div className="flex-1 overflow-hidden pt-4 pb-2">
-          <div className="flex flex-wrap h-full overflow-auto gap-2 content-start text-sub">
-            {scenes.map((scene) => (
+          <div
+            ref={listRef}
+            className={`relative flex flex-wrap h-full overflow-auto gap-2 content-start text-sub select-none${
+              sweeping ? ' touch-none' : ''
+            }`}
+          >
+            {box && (
+              <div
+                className="absolute bg-sky-500/30 border-2 border-sky-500 rounded pointer-events-none z-50"
+                style={{
+                  left: Math.min(box.x1, box.x2),
+                  top: Math.min(box.y1, box.y2),
+                  width: Math.abs(box.x2 - box.x1),
+                  height: Math.abs(box.y2 - box.y1),
+                }}
+              />
+            )}
+            {scenes.map((scene, sceneIndex) => (
               <div
                 className={
                   'hover:brightness-95 active:brightness-90 cursor-pointer p-2 border flex-none flex flex-col items-center ' +
@@ -134,6 +164,7 @@ const SceneSelector: React.FC<SceneSelectorProps> = ({
                 }
                 onClick={() => toggleSceneSelection(scene)}
                 key={scene.name}
+                data-selector-index={sceneIndex}
               >
                 <div>
                   <SceneImage getImage={getImage} scene={scene}></SceneImage>
@@ -150,7 +181,7 @@ const SceneSelector: React.FC<SceneSelectorProps> = ({
             className={`round-button back-green ml-auto`}
             onClick={() => onConfirm(selectedScenes)}
           >
-            작업 적용
+            작업 적용 ({selectedScenes.length}개)
           </button>
         </div>
       </div>

@@ -3,6 +3,13 @@ import { DropdownSelect } from './UtilComponents';
 import { appState } from '../models/AppService';
 import { backStackService } from '../models/BackStackService';
 import { observer } from 'mobx-react-lite';
+import { FaChevronDown, FaChevronRight } from 'react-icons/fa';
+import {
+  groupPreview,
+  loadOpenGroups,
+  saveOpenGroups,
+  sectionsOf,
+} from '../models/selectDialogGroups';
 
 export interface Dialog {
   text: string;
@@ -14,7 +21,9 @@ export interface Dialog {
   inputValue?: string;
   green?: boolean;
   graySelect?: boolean;
-  items?: { text: string; value: string }[];
+  // select: group 이 있으면 같은 이름끼리 접이식 폴더로 묶인다. groupFoldKey 가 있으면 접힘 상태를 기억한다.
+  items?: { text: string; value: string; group?: string }[];
+  groupFoldKey?: string;
   showSkipConfirm?: boolean;
   // confirm 타입의 버튼 라벨 교체 (미지정 시 확인/취소)
   confirmText?: string;
@@ -25,6 +34,13 @@ const ConfirmWindow = observer(() => {
   const [inputValue, setInputValue] = useState<string>('');
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
   const [skipConfirm, setSkipConfirm] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  const topDialog = appState.dialogs[appState.dialogs.length - 1];
+  const foldKey = topDialog?.type === 'select' ? topDialog.groupFoldKey : undefined;
+  // 대화상자가 열릴 때 저장된 펼침 상태를 읽는다(foldKey 가 없으면 전부 접힘에서 시작)
+  useEffect(() => {
+    setOpenGroups(foldKey ? loadOpenGroups(foldKey) : new Set());
+  }, [foldKey, topDialog]);
 
   const handleConfirm = () => {
     const currentDialog = appState.dialogs[appState.dialogs.length - 1];
@@ -181,23 +197,84 @@ const ConfirmWindow = observer(() => {
                 <>
                   {/* 항목이 많아지면 화면 밖으로 잘리지 않도록 스크롤 영역으로 감싼다 */}
                   <div className="flex flex-col gap-2 max-h-[55vh] overflow-y-auto">
-                    {curDialog.items!.map((item, idx) => (
-                      <button
-                        key={idx}
-                        className={
-                          'w-full px-4 py-2 rounded clickable shrink-0 ' +
-                          (curDialog.graySelect ? 'back-lgray' : 'back-sky')
-                        }
-                        onClick={() => {
-                          appState.dialogs.pop();
-                          if (curDialog.callback) {
-                            curDialog.callback!(item.value, item.text);
+                    {(() => {
+                      const itemButton = (
+                        item: { text: string; value: string },
+                        key: string,
+                      ) => (
+                        <button
+                          key={key}
+                          className={
+                            'w-full px-4 py-2 rounded clickable shrink-0 ' +
+                            (curDialog.graySelect ? 'back-lgray' : 'back-sky')
                           }
-                        }}
-                      >
-                        {item.text}
-                      </button>
-                    ))}
+                          onClick={() => {
+                            appState.dialogs.pop();
+                            if (curDialog.callback) {
+                              curDialog.callback!(item.value, item.text);
+                            }
+                          }}
+                        >
+                          {item.text}
+                        </button>
+                      );
+                      return sectionsOf(curDialog.items!).map((sec, idx) => {
+                        if (sec.kind === 'item') {
+                          return itemButton(sec.item, 'i' + idx);
+                        }
+                        const open = openGroups.has(sec.name);
+                        return (
+                          <div
+                            key={'g' + sec.name}
+                            className="shrink-0 rounded border line-color"
+                            data-select-group={sec.name}
+                          >
+                            <button
+                              type="button"
+                              aria-expanded={open}
+                              className="w-full px-3 py-2 flex items-center gap-2 text-left clickable rounded"
+                              onClick={() => {
+                                const next = new Set(openGroups);
+                                if (open) next.delete(sec.name);
+                                else next.add(sec.name);
+                                setOpenGroups(next);
+                                if (curDialog.groupFoldKey) {
+                                  saveOpenGroups(curDialog.groupFoldKey, next);
+                                }
+                              }}
+                            >
+                              <span className="flex-none text-faint">
+                                {open ? (
+                                  <FaChevronDown size={10} />
+                                ) : (
+                                  <FaChevronRight size={10} />
+                                )}
+                              </span>
+                              <span className="flex-1 min-w-0">
+                                <span className="block text-default font-semibold">
+                                  {sec.name}
+                                  <span className="ml-1.5 text-faint font-normal text-xs">
+                                    {sec.items.length}
+                                  </span>
+                                </span>
+                                {!open && (
+                                  <span className="block text-faint text-xs truncate">
+                                    {groupPreview(sec.items)}
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+                            {open && (
+                              <div className="flex flex-col gap-2 px-2 pb-2">
+                                {sec.items.map((item, i) =>
+                                  itemButton(item, sec.name + i),
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                   <button
                     className="w-full px-4 py-2 clickable rounded back-gray shrink-0"

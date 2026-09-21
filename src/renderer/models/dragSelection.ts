@@ -54,3 +54,72 @@ export function imagePathsInSelectionBox(
   });
   return selected;
 }
+
+// ── 씬 선택 창(SceneSelector) 다중 선택 (2026-09-21) ────────────────────────────
+export interface IndexedRect {
+  index: number;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/** 상자와 겹치는 항목의 index 목록. 좌표계는 호출부가 맞춘다(상자·항목 모두 같은 기준). */
+export function indicesInBox(
+  rects: IndexedRect[],
+  box: { x1: number; y1: number; x2: number; y2: number },
+): number[] {
+  const left = Math.min(box.x1, box.x2);
+  const right = Math.max(box.x1, box.x2);
+  const top = Math.min(box.y1, box.y2);
+  const bottom = Math.max(box.y1, box.y2);
+  return rects
+    .filter(
+      (r) =>
+        r.right > r.left &&
+        r.bottom > r.top &&
+        left < r.right &&
+        right > r.left &&
+        top < r.bottom &&
+        bottom > r.top,
+    )
+    .map((r) => r.index);
+}
+
+/**
+ * 길게 누른 뒤 끌어 연속 선택: 시작 전 선택(base)에서 출발해 anchor~current 범위(목록 순서)에만
+ * select(true=선택, false=해제)를 적용한다. 범위 밖은 base 그대로라, 손가락을 되돌리면 원상 복구된다.
+ */
+export function applySweepSelection(
+  base: ReadonlySet<string>,
+  names: string[],
+  anchor: number,
+  current: number,
+  select: boolean,
+): Set<string> {
+  const next = new Set(base);
+  const from = Math.max(0, Math.min(anchor, current));
+  const to = Math.min(names.length - 1, Math.max(anchor, current));
+  for (let i = from; i <= to; i++) {
+    if (select) next.add(names[i]);
+    else next.delete(names[i]);
+  }
+  return next;
+}
+
+/** 가장자리 자동 스크롤 속도(px/프레임). 영역 밖이면 0. */
+export function edgeAutoScrollSpeed(
+  pointerY: number,
+  top: number,
+  bottom: number,
+  zone = 36,
+  max = 14,
+): number {
+  if (pointerY < top + zone) {
+    return -Math.ceil(max * Math.min(1, (top + zone - pointerY) / zone));
+  }
+  if (pointerY > bottom - zone) {
+    return Math.ceil(max * Math.min(1, (pointerY - (bottom - zone)) / zone));
+  }
+  return 0;
+}

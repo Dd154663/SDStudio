@@ -384,25 +384,27 @@ export class BatchProcessService {
     };
 
     const openMenu = () => {
-      let items = [
-        { text: '📁 이미지 내보내기', value: 'export' },
-        { text: '🔪 즐겨찾기 이미지 배경 제거', value: 'removeBg' },
-        { text: '🔄 즐겨찾기 이미지 변형', value: 'transform' },
-        { text: '🔎 즐겨찾기 이미지 업스케일 ×2', value: 'upscaleFavorites' },
-        { text: '🗑️ 이미지 삭제', value: 'removeImage' },
-        { text: '❌ 즐겨찾기 전부 해제', value: 'removeAllFav' },
-        { text: '⭐ 상위 n등 즐겨찾기 지정', value: 'setFav' },
-        { text: '🖥️ 해상도 변경', value: 'changeResolution' },
-        { text: '🗜️ WebP 변환', value: 'convertToWebp' },
-        { text: '📋 씬 내용 복제', value: 'copySceneContent' },
-        { text: '📦 다른 프로젝트로 씬 복사', value: 'copyToProject' },
-        { text: '📝 씬 이름 내보내기', value: 'exportSceneNames' },
-        { text: '🗂️ 씬 일괄 삭제', value: 'deleteScenes' },
-        { text: '🔤 씬 이름순 정렬', value: 'sortScenes' },
+      // 폴더 묶음(2026-09-21): group 이 같은 항목끼리 접이식 폴더가 된다(ConfirmWindow 의 select). 접힘 상태는
+      // groupFoldKey 로 기억한다. 예약 일괄 취소는 혼자라 폴더 없이 낱개로 둔다. 새 항목은 맞는 group 을 붙여 추가한다.
+      let items: { text: string; value: string; group?: string }[] = [
+        { text: '📁 이미지 내보내기', value: 'export', group: '이미지' },
+        { text: '🗑️ 이미지 삭제', value: 'removeImage', group: '이미지' },
+        { text: '🗜️ WebP 변환', value: 'convertToWebp', group: '이미지' },
+        { text: '⭐ 상위 n등 즐겨찾기 지정', value: 'setFav', group: '즐겨찾기' },
+        { text: '❌ 즐겨찾기 전부 해제', value: 'removeAllFav', group: '즐겨찾기' },
+        { text: '🔄 즐겨찾기 이미지 변형', value: 'transform', group: '즐겨찾기' },
+        { text: '🔎 즐겨찾기 이미지 업스케일 ×2', value: 'upscaleFavorites', group: '즐겨찾기' },
+        { text: '🔪 즐겨찾기 이미지 배경 제거', value: 'removeBg', group: '즐겨찾기' },
+        { text: '🖥️ 해상도 변경', value: 'changeResolution', group: '씬' },
+        { text: '📋 씬 내용 복제', value: 'copySceneContent', group: '씬' },
+        { text: '📦 다른 프로젝트로 씬 복사', value: 'copyToProject', group: '씬' },
+        { text: '📝 씬 이름 내보내기', value: 'exportSceneNames', group: '씬' },
+        { text: '🔤 씬 이름순 정렬', value: 'sortScenes', group: '씬' },
+        { text: '🗂️ 씬 일괄 삭제', value: 'deleteScenes', group: '씬' },
         { text: '⏹️ 예약 일괄 취소', value: 'cancelReservations' },
       ];
       if (type === 'inpaint') {
-        items.push({ text: '🪞 이미지생성 탭 씬 이미지미러로 복제', value: 'mirrorDuplicate' });
+        items.push({ text: '🪞 이미지생성 탭 씬 이미지미러로 복제', value: 'mirrorDuplicate', group: '씬' });
       }
       if (!platform.supportsWebpConvert) {
         items = items.filter((x) => x.value !== 'convertToWebp');
@@ -414,6 +416,7 @@ export class BatchProcessService {
         type: 'select',
         text: '선택할 씬들에 적용할 대량 작업을 선택해주세요',
         graySelect: true,
+        groupFoldKey: 'batchProcess',
         items: items,
         callback: (value, text) => {
           // 해상도 변경은 툴바의 별도 버튼과 같은 흐름(씬 선택 → 해상도 선택)을 그대로 쓴다.
