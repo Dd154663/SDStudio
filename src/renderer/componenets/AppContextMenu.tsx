@@ -464,6 +464,15 @@ export const AppContextMenu = observer(() => {
         }
       }
       copySceneToProject(ctx);
+    } else if (id === 'change-resolution') {
+      // 삭제·복사와 같은 규칙: 같은 종류의 선택이 2개 이상이면 선택한 씬 전부, 아니면 이 씬 하나
+      const selectedScenes =
+        appState.selectedSceneCount(ctx.scene.type) > 1
+          ? selectedScenesLike(ctx.scene)
+          : [];
+      appState.changeResolutionOfScenes(
+        selectedScenes.length > 0 ? selectedScenes : [ctx.scene],
+      );
     } else if (id === 'move-front') {
       moveSceneFront(ctx);
     } else if (id === 'move-back') {
@@ -948,6 +957,11 @@ export const AppContextMenu = observer(() => {
         </Item>
         <Item id="move-back" onClick={handleSceneItemClick}>
           해당 씬 맨 뒤로
+        </Item>
+        <Item id="change-resolution" onClick={handleSceneItemClick}>
+          {selCount > 1
+            ? `선택한 씬(${selCount}) 해상도 변경`
+            : '해당 씬 해상도 변경'}
         </Item>
         <Separator />
         {selCount > 1 && (

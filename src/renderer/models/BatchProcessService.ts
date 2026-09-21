@@ -667,65 +667,71 @@ export class BatchProcessService {
       text: '🖥️ 해상도 변경할 씬 선택',
       callback: async (selected) => {
         setSceneSelector(undefined);
-        if (selected.length === 0) return;
-        const options = Object.entries(resolutionMap)
-          .filter((x) => !x[0].includes('small'))
-          .map(([key, value]) => {
-            if (key === 'custom')
-              return { text: '커스텀 (직접 입력)', value: key };
-            return {
-              text: `${value.width}x${value.height}`,
-              value: key,
-            };
+        this.changeResolutionOfScenes(selected);
+      },
+    });
+  }
+
+  // 주어진 씬들의 해상도를 바꾼다(해상도 선택 → 커스텀 입력/Anlas 확인 → 적용). 씬 고르기는 호출부 몫:
+  // 대량 작업·툴바는 씬 선택 창을 거쳐 오고, 컨텍스트 메뉴(선택 작업)는 이미 고른 씬을 그대로 넘긴다(2026-09-21).
+  changeResolutionOfScenes(selected: GenericScene[]) {
+    if (selected.length === 0) return;
+    const options = Object.entries(resolutionMap)
+      .filter((x) => !x[0].includes('small'))
+      .map(([key, value]) => {
+        if (key === 'custom')
+          return { text: '커스텀 (직접 입력)', value: key };
+        return {
+          text: `${value.width}x${value.height}`,
+          value: key,
+        };
+      });
+    appState.pushDialog({
+      type: 'dropdown',
+      text: '변경할 해상도를 선택해주세요',
+      items: options,
+      callback: async (value?: string) => {
+        if (!value) return;
+        if (value === 'custom') {
+          const width = await appState.pushDialogAsync({
+            type: 'input-confirm',
+            text: '해상도 너비를 입력해주세요',
           });
-        appState.pushDialog({
-          type: 'dropdown',
-          text: '변경할 해상도를 선택해주세요',
-          items: options,
-          callback: async (value?: string) => {
-            if (!value) return;
-            if (value === 'custom') {
-              const width = await appState.pushDialogAsync({
-                type: 'input-confirm',
-                text: '해상도 너비를 입력해주세요',
-              });
-              if (width == null) return;
-              const height = await appState.pushDialogAsync({
-                type: 'input-confirm',
-                text: '해상도 높이를 입력해주세요',
-              });
-              if (height == null) return;
-              try {
-                const w = (parseInt(width) + 63) & ~63;
-                const h = (parseInt(height) + 63) & ~63;
-                for (const scene of selected) {
-                  scene.resolution = 'custom' as Resolution;
-                  scene.resolutionWidth = w;
-                  scene.resolutionHeight = h;
-                }
-              } catch (e: any) {
-                appState.pushMessage(e.message);
-              }
-              return;
+          if (width == null) return;
+          const height = await appState.pushDialogAsync({
+            type: 'input-confirm',
+            text: '해상도 높이를 입력해주세요',
+          });
+          if (height == null) return;
+          try {
+            const w = (parseInt(width) + 63) & ~63;
+            const h = (parseInt(height) + 63) & ~63;
+            for (const scene of selected) {
+              scene.resolution = 'custom' as Resolution;
+              scene.resolutionWidth = w;
+              scene.resolutionHeight = h;
             }
-            const action = () => {
-              for (const scene of selected) {
-                scene.resolution = value as Resolution;
-              }
-            };
-            if (value.includes('large') || value.includes('wallpaper')) {
-              appState.pushDialog({
-                text: 'Anlas를 소모하는 해상도 입니다. 계속하겠습니까?',
-                type: 'confirm',
-                callback: () => {
-                  action();
-                },
-              });
-            } else {
+          } catch (e: any) {
+            appState.pushMessage(e.message);
+          }
+          return;
+        }
+        const action = () => {
+          for (const scene of selected) {
+            scene.resolution = value as Resolution;
+          }
+        };
+        if (value.includes('large') || value.includes('wallpaper')) {
+          appState.pushDialog({
+            text: 'Anlas를 소모하는 해상도 입니다. 계속하겠습니까?',
+            type: 'confirm',
+            callback: () => {
               action();
-            }
-          },
-        });
+            },
+          });
+        } else {
+          action();
+        }
       },
     });
   }

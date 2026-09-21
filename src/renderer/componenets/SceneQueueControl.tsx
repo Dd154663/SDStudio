@@ -3377,6 +3377,10 @@ const QueueControl = observer(
               (id) => !homed.has(id) && !!buttonNode(id),
             );
             const selectedNames = getSelectedSceneNames(curSession, type);
+            const selectedScenesNow = () => {
+              const names = new Set(getSelectedSceneNames(curSession, type));
+              return curSession.getScenes(type).filter((x) => names.has(x.name));
+            };
             const mainSlots: V2SlotDef[] = [
               {
                 key: 'multi-select',
@@ -3416,6 +3420,8 @@ const QueueControl = observer(
                 disabled: moreIds.length === 0,
               },
             ];
+            // 순서는 메인 줄과 같은 자리에 같은 성격을 둔다(2026-09-21 사용자 결정): 다중 선택↔전체, 내보내기↔내보내기(위로 밀기도 같은 자리),
+            // 대량 작업↔선택 작업, 그 뒤에 예약 추가, 맨 끝은 완료.
             const selectSlots: V2SlotDef[] = [
               {
                 key: 'select-all',
@@ -3428,18 +3434,26 @@ const QueueControl = observer(
                   ),
               },
               {
-                key: 'queue-selected',
-                name: '예약 추가',
-                icon: <FaRegCalendarPlus size={17} />,
+                // 고른 씬만 내보낸다(내보내기 함수가 대상 목록을 받는다 — 대량 작업과 같은 경로). 위로 밀면 빠른 내보내기.
+                key: 'export-selected',
+                name: '내보내기',
+                icon: <FaFileExport size={17} />,
                 disabled: selectedNames.length === 0,
-                onTap: () => void addScenesToQueue(curSession, type, true),
+                onTap: () => appState.exportPackage(type, selectedScenesNow()),
+                swipeUp: {
+                  name: '빠른 내보내기',
+                  run: () => {
+                    const picked = selectedScenesNow();
+                    if (picked.length > 0) appState.quickExportPackage(type, picked);
+                  },
+                },
               },
               {
                 key: 'selection-actions',
                 name: '선택 작업',
                 icon: <FaTasks size={17} />,
                 disabled: selectedNames.length === 0,
-                // 선택을 대상으로 이미 동작하는 기능(이미지 삭제·씬 삭제·예약·시드 그룹 등)은 기존 컨텍스트 메뉴에 있다 → 그대로 연다
+                // 선택을 대상으로 동작하는 기능(해상도 변경·이미지 삭제·씬 삭제·복사·시드 그룹 등)은 기존 컨텍스트 메뉴에 있다 → 그대로 연다
                 onTap: (e) => {
                   const first = curSession
                     .getScenes(type)
@@ -3451,6 +3465,13 @@ const QueueControl = observer(
                     });
                   }
                 },
+              },
+              {
+                key: 'queue-selected',
+                name: '예약 추가',
+                icon: <FaRegCalendarPlus size={17} />,
+                disabled: selectedNames.length === 0,
+                onTap: () => void addScenesToQueue(curSession, type, true),
               },
               {
                 key: 'select-end',
@@ -3466,6 +3487,7 @@ const QueueControl = observer(
                   appState.clearSceneSelection();
                 },
               },
+
             ];
             return (
               <>

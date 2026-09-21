@@ -1420,6 +1420,7 @@ export class AppState {
   // ── 배치 처리: BatchProcessService 로 분리됨 (UI 호환 위임) ──
   openBatchProcessMenu(type: 'scene' | 'inpaint', setSceneSelector: (item: SceneSelectorItem | undefined) => void) { return batchProcessService.openBatchProcessMenu(type, setSceneSelector); }
   openChangeResolutionMenu(type: 'scene' | 'inpaint', setSceneSelector: (item: SceneSelectorItem | undefined) => void) { return batchProcessService.openChangeResolutionMenu(type, setSceneSelector); }
+  changeResolutionOfScenes(scenes: GenericScene[]) { return batchProcessService.changeResolutionOfScenes(scenes); }
   openConvertToWebpMenu(type: 'scene' | 'inpaint', setSceneSelector: (item: SceneSelectorItem | undefined) => void) { return batchProcessService.openConvertToWebpMenu(type, setSceneSelector); }
   openProjectWebpOptimize(name: string) { return batchProcessService.openProjectWebpOptimize(name); }
 
