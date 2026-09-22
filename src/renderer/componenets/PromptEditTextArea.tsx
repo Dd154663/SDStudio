@@ -28,6 +28,7 @@ import { FaPerson, FaStar } from 'react-icons/fa6';
 import { FixedSizeList as List } from 'react-window';
 import getCaretCoordinates from 'textarea-caret';
 import { isMobile, backend } from '../models';
+import { backStackService } from '../models/BackStackService';
 import { highlightPrompt } from '../models/PromptService';
 import { WordTag, calcGapMatch } from '../models/Tags';
 import { appState } from '../models/AppService';
@@ -1445,6 +1446,18 @@ const PromptEditTextArea = observer(
     const selectedTagRef = useLatest(selectedTag);
     const curWordRef = useLatest(curWord);
     const [fullScreen, setFullScreen] = useState(false);
+    // 모바일 확장 창이 열려 있는 동안 Android 뒤로 가기는 이 창만 닫는다(포커스도 해제). 키보드가 떠 있으면 첫
+    // 뒤로 가기는 시스템이 키보드를 내리는 데 쓰고, 그다음 뒤로 가기가 여기로 온다 — 예전에는 그 뒤로 가기가
+    // 바깥(하단 시트 등)을 통째로 닫아 버렸다(2026-09-22 실기기 5차).
+    useEffect(() => {
+      if (!isMobile || !fullScreen) return undefined;
+      const handle = backStackService.push(() => {
+        setFullScreen(false);
+        const active = document.activeElement as HTMLElement | null;
+        if (active && typeof active.blur === 'function') active.blur();
+      });
+      return () => handle.remove();
+    }, [fullScreen]);
     const EditTextAreaImpl = isMobile
       ? NativeEditTextArea
       : EmulatedEditTextArea;

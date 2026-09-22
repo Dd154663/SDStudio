@@ -294,6 +294,7 @@ export const ImageHistoryHandle = observer(() => {
       // 우측 끝 툴바 버튼을 롱프레스로 잡아 정리(드래그)하는 중이면 스와이프로
       // 오인해 드로어가 열리지 않도록 무시한다.
       if (toolbarDragUi.armed !== null) return;
+      if (appState.mobileV2SheetOpen) return; // V2 하단 시트가 열려 있으면 물러난다
       const t = e.touches[0];
       if (t.clientX < window.innerWidth - EDGE_SWIPE_ZONE) return; // 가장자리 32px에서 시작한 터치만
       // 가로 스크롤 툴바·이미지 좌우 넘기기처럼 같은 가로 제스처를 쓰는 영역에는 양보한다.
@@ -331,6 +332,9 @@ export const ImageHistoryHandle = observer(() => {
       document.removeEventListener('touchcancel', onEnd);
     };
   }, []);
+
+  // V2 하단 시트가 열려 있으면 손잡이를 숨긴다(2026-09-22 실기기 피드백)
+  if (appState.mobileV2SheetOpen) return null;
 
   return (
     <button

@@ -285,6 +285,8 @@ export class AppState {
   @observable accessor uiPresetIconRow: boolean = false;
   // 모바일 V2: 퀵 생성 탭이 하단 바 자리를 [생성][해상도]로 쓰는 동안 true(큐용 하단 바 숨김). models/mobileV2.ts
   @observable accessor mobileV2QuickBar: boolean = false;
+  // 모바일 V2: 하단 시트 프롬프트가 열려 있는 동안 true. 드로어 손잡이·가장자리 스와이프가 물러난다(MobilePromptSheet).
+  @observable accessor mobileV2SheetOpen: boolean = false;
 
   // PC 전용 플로팅 생성 컨트롤(config.genWidget 미러). 빈 객체 = 부착 상태(기본).
   // detached 여부·위치는 GenControlWidget.tsx 가 조작·저장한다.

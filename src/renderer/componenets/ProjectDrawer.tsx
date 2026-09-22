@@ -339,6 +339,7 @@ function useProjectDrawerEdgeSwipe() {
       if (t.clientX > EDGE_SWIPE_ZONE) return; // 좌측 끝 32px 에서 시작한 터치만
       if (shouldIgnoreEdgeSwipeAt(e.target, t.clientX, t.clientY, 'left')) return; // 가로 제스처 영역에는 양보
       if (isInsideOverlay(e.target)) return; // 모달·뷰어 위에서는 열지 않는다
+      if (appState.mobileV2SheetOpen) return; // V2 하단 시트가 열려 있으면 메인 화면 조작을 막는다
       tracker.start(t.clientX, t.clientY, e.timeStamp);
     };
     const onMove = (e: TouchEvent) => {
@@ -369,6 +370,8 @@ function useProjectDrawerEdgeSwipe() {
 export const ProjectDrawerHandle = observer(() => {
   const open = appState.projectDrawerOpen;
   useProjectDrawerEdgeSwipe();
+  // V2 하단 시트가 열려 있으면 손잡이도 숨긴다(시트 밖 터치는 시트 접기만 해야 함, 2026-09-22 실기기 피드백)
+  if (appState.mobileV2SheetOpen) return null;
 
   return (
     <button

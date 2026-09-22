@@ -21,8 +21,15 @@ export const V2_QUICK_BAR_SLOT_ID = 'v2-quick-bar-slot';
 /** 접힌 하단 시트의 높이(px). 본문 바닥 여백과 시트 접힘 높이가 같은 값을 쓴다. */
 export const V2_SHEET_PEEK_PX = 44;
 
-/** 반만 연 시트에서 보여줄 프리셋 요소 키(wfiElementKey 계약): 상위 프롬프트·추가 프롬프트·시드. */
-export const V2_SHEET_HALF_KEYS: readonly string[] = ['frontPrompt', 'extra-prompt', 'seed'];
+/** 반만 연 시트에서 보여줄 프리셋 요소 키(wfiElementKey 계약): 사전세팅선택(일반·프로필)·상위 프롬프트·추가 프롬프트·시드.
+ *  사전세팅선택은 2026-09-22 추가 — 패널 맨 위 기능이 반 상태에서만 안 보이는 것이 어색하다는 사용자 판단. */
+export const V2_SHEET_HALF_KEYS: readonly string[] = [
+  'preset-select',
+  'profile-preset-select',
+  'frontPrompt',
+  'extra-prompt',
+  'seed',
+];
 
 export type V2SheetState = 'peek' | 'half' | 'full';
 
@@ -65,7 +72,52 @@ export function nextSheetState(state: V2SheetState): V2SheetState {
   return state === 'peek' ? 'half' : state === 'half' ? 'full' : 'peek';
 }
 
-/** Android 뒤로 가기: 한 단계씩 접는다. */
-export function prevSheetState(state: V2SheetState): V2SheetState {
-  return state === 'full' ? 'half' : 'peek';
+// Android 뒤로 가기는 상태와 무관하게 바로 접힘(peek)이다 — 전체에서 반을 거치지 않는다(2026-09-22 사용자).
+
+// ── 손잡이 끌기 판정 (2026-09-22 실기기 피드백: 가장 가까운 상태 붙이기는 너무 엄격 — 한 손 엄지로 전체까지 못 감) ──
+/** 느린 끌기: 지금 있는 구간(접힘↔반, 반↔전체)에서 진행 방향으로 이 비율 이상 갔으면 그쪽 끝에 붙는다. */
+export const V2_SHEET_SNAP_RATIO = 0.25;
+/** 손을 뗄 때 속도(px/ms)가 이 이상이면 거리와 무관하게 진행 방향의 다음 상태로. */
+export const V2_SHEET_FLING_V = 0.5;
+/** 이 이상이면 한 번에 끝까지(위=전체, 아래=접힘). 1.0 은 반만 열려던 손짓도 전체로 보내 1.8 로(2026-09-22 실기기). */
+export const V2_SHEET_FAST_V = 1.8;
+
+const SHEET_ORDER: readonly V2SheetState[] = ['peek', 'half', 'full'];
+
+/**
+ * 손을 뗐을 때 도착할 상태. velocity 는 px/ms, 위로 움직이면 양수.
+ *  · 빠른 튕김(FAST 이상): 위=전체, 아래=접힘.
+ *  · 튕김(FLING 이상): 현재 위치 기준 진행 방향의 다음 상태.
+ *  · 느린 끌기: 현재 구간에서 진행 방향으로 SNAP_RATIO 이상 갔으면 그쪽 끝, 아니면 출발 쪽 끝.
+ */
+export function resolveSheetTarget(p: {
+  height: number;
+  startHeight: number;
+  velocity: number;
+  heights: Record<V2SheetState, number>;
+}): V2SheetState {
+  const { height, startHeight, velocity, heights } = p;
+  const speed = Math.abs(velocity);
+  const up = speed >= V2_SHEET_FLING_V ? velocity > 0 : height >= startHeight;
+  if (speed >= V2_SHEET_FAST_V) return up ? 'full' : 'peek';
+  if (speed >= V2_SHEET_FLING_V) {
+    if (up) return SHEET_ORDER.find((k) => heights[k] > height + 1) ?? 'full';
+    return [...SHEET_ORDER].reverse().find((k) => heights[k] < height - 1) ?? 'peek';
+  }
+  let lo: V2SheetState = 'peek';
+  let hi: V2SheetState = 'full';
+  for (let i = 0; i < SHEET_ORDER.length - 1; i += 1) {
+    const a = SHEET_ORDER[i];
+    const b = SHEET_ORDER[i + 1];
+    if (height >= heights[a] && height <= heights[b]) {
+      lo = a;
+      hi = b;
+      break;
+    }
+  }
+  const span = heights[hi] - heights[lo];
+  if (span <= 0) return lo;
+  const frac = (height - heights[lo]) / span;
+  if (up) return frac >= V2_SHEET_SNAP_RATIO ? hi : lo;
+  return frac <= 1 - V2_SHEET_SNAP_RATIO ? lo : hi;
 }
