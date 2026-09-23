@@ -1,4 +1,4 @@
-import React, { createContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { createContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FaChevronUp } from 'react-icons/fa';
 import { appState } from '../models/AppService';
 import { backStackService } from '../models/BackStackService';
@@ -30,6 +30,21 @@ import {
 
 /** true 면 프리셋 패널이 빠른 수정용 요소만 그린다(PreSetEdtior 의 PresetRootRender 가 읽는다). */
 export const PresetCompactContext = createContext(false);
+
+/**
+ * 집중 모드(2026-09-23): 키보드가 떠 있고 시트 안 칸에 포커스가 있으면 그 칸만 남기고 나머지(사전세팅선택 포함)를
+ * 숨긴다. 키보드가 뜨면 본문이 300px 안팎이라 flex 로 나눠 갖던 프롬프트 칸이 몇 줄로 접혀 편집이 안 됐다.
+ * 예전 확장 창처럼 다른 자리로 점프하지 않고 같은 요소가 제자리에서 커지므로 포커스·커서가 유지된다.
+ *  · key: 집중할 최상위 요소의 wfiElementKey, null 이면 평소 배치. 판정은 시트가 한다(kbdOpen && 포커스).
+ *  · done: 머리줄의 완료 버튼 — 포커스를 풀어 키보드를 내린다(키보드가 내려가면 시트가 모드를 해제).
+ *  · 공급자가 있을 때만(V2 시트) PresetRootRender 가 요소마다 data-wfi-key 래퍼(display:contents)를 두어,
+ *    모드 진입·해제가 트리 모양을 바꾸지 않는다(포커스된 textarea 가 재마운트되면 포커스가 날아간다).
+ *    PC·클래식 모바일은 공급자가 없어 마크업 불변.
+ */
+export const PresetFocusContext = createContext<{ key: string | null; done: () => void } | null>(
+  null,
+);
+export const WFI_KEY_ATTR = 'data-wfi-key';
 
 const HALF_RATIO = 0.56;
 const DRAG_TAP_PX = 6;
@@ -65,6 +80,29 @@ const MobilePromptSheet: React.FC<{ children: React.ReactNode }> = ({ children }
   const [kbdOpen, setKbdOpen] = useState(false);
   const maxHRef = useRef(0);
   const widthRef = useRef(0);
+  // 시트 본문 안에서 포커스를 가진 최상위 요소의 키(집중 모드 대상). 본문 밖으로 포커스가 나가면 null.
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  // 키보드가 내려갈 때까지 붙잡아 두는 마지막 집중 키. 완료·뒤로 가기로 포커스가 먼저 풀리면 칸들이 좁은 시트에
+  // 다시 펼쳐지고, 그 뒤 키보드가 내려가며 또 재배치되어 화면이 들썩였다(2026-09-23). 키보드가 사라지는 순간
+  // 집중 해제·반 배치·하단 바 복귀를 한 번에 한다.
+  const heldKeyRef = useRef<string | null>(null);
+  if (focusKey != null) heldKeyRef.current = focusKey;
+  // 하단 바 높이(보일 때 측정). 키보드 전환 프레임에 하단 바가 사라지거나 돌아올 것을 미리 반영해 두 번 배치를 피한다.
+  const barHRef = useRef(0);
+  const onBodyFocus = (e: React.FocusEvent) => {
+    const host = (e.target as HTMLElement | null)?.closest?.(`[${WFI_KEY_ATTR}]`) as HTMLElement | null;
+    setFocusKey(host?.getAttribute(WFI_KEY_ATTR) || null);
+  };
+  const onBodyBlur = (e: React.FocusEvent) => {
+    // 칸 사이 이동(blur→focus)에서 잠깐 null 이 되어 배치가 흔들리지 않게, 본문 밖으로 나갈 때만 해제
+    const next = e.relatedTarget as Node | null;
+    if (next && e.currentTarget.contains(next)) return;
+    setFocusKey(null);
+  };
+  const focusDone = () => {
+    const active = document.activeElement as HTMLElement | null;
+    if (active && typeof active.blur === 'function') active.blur();
+  };
   const [everOpened, setEverOpened] = useState(false);
   // 부모 높이를 잰 뒤 한 번 더 그린 다음에야 전환 애니메이션을 켠다 — 첫 측정으로 translateY 가 0→(전체−44)로
   // 바뀔 때 시트가 위에서 내려오는 것처럼 보이지 않게(마운트·프로젝트 전환마다 생기던 잔상).
@@ -92,6 +130,10 @@ const MobilePromptSheet: React.FC<{ children: React.ReactNode }> = ({ children }
       }
       maxHRef.current = Math.max(maxHRef.current, h);
       setKbdOpen(maxHRef.current - h > KBD_SHRINK_PX);
+      const dock = document.querySelector('[data-gen-dock]');
+      if (dock && dock.getClientRects().length > 0) {
+        barHRef.current = Math.round(dock.getBoundingClientRect().height);
+      }
     };
     measure();
     window.addEventListener('resize', measure);
@@ -135,17 +177,34 @@ const MobilePromptSheet: React.FC<{ children: React.ReactNode }> = ({ children }
     appState.mobileV2SheetOpen = open;
     if (open) setEverOpened(true);
   }, [open]);
+  // 시트가 열린 채 키보드가 떠 있으면 하단 바를 숨긴다(BottomBar). 시트가 접힌 채 다른 입력(씬 검색 등)에서
+  // 키보드가 뜨는 경우는 해당 없음.
+  useEffect(() => {
+    appState.mobileV2SheetKeyboard = open && kbdOpen;
+  }, [open, kbdOpen]);
   useEffect(
     () => () => {
       appState.mobileV2SheetOpen = false;
+      appState.mobileV2SheetKeyboard = false;
     },
     [],
   );
 
+  // 하단 바 숨김 표식(appState.mobileV2SheetKeyboard)은 아래 effect 가 이 렌더 뒤에 갱신한다. 표식과 kbdOpen 이
+  // 어긋난 렌더 = 하단 바가 곧 사라지거나(키보드 뜸) 곧 돌아올(키보드 내림) 프레임 → 그 변화를 미리 반영한
+  // 부모 높이로 배치해, 하단 바가 실제로 바뀐 뒤의 재측정이 같은 결과를 내게 한다(두 번 배치 방지).
+  const barShownNow = !appState.mobileV2SheetKeyboard;
+  const barWillHide = open && kbdOpen && barShownNow;
+  const barWillShow = !(open && kbdOpen) && !barShownNow;
+  const baseH = barWillHide
+    ? containerH + barHRef.current
+    : barWillShow
+      ? Math.max(0, containerH - barHRef.current)
+      : containerH;
   const heights: Record<V2SheetState, number> = {
     peek: V2_SHEET_PEEK_PX,
-    half: Math.max(V2_SHEET_PEEK_PX, Math.round(containerH * HALF_RATIO)),
-    full: Math.max(V2_SHEET_PEEK_PX, containerH),
+    half: Math.max(V2_SHEET_PEEK_PX, Math.round(baseH * HALF_RATIO)),
+    full: Math.max(V2_SHEET_PEEK_PX, baseH),
   };
   const heightsRef = useRef(heights);
   heightsRef.current = heights;
@@ -212,10 +271,15 @@ const MobilePromptSheet: React.FC<{ children: React.ReactNode }> = ({ children }
   const dragOffset = dragging ? -(dragHeight - heights[state]) : 0;
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const visualTopRef = useRef(restTop);
+  const prevFullRef = useRef(heights.full);
   const animRef = useRef<{ timer: number; done: () => void } | null>(null);
   useLayoutEffect(() => {
     const el = sheetRef.current;
     if (!el) return;
+    // 부모 높이가 바뀐 재배치(키보드 뜸/내림·회전)는 애니메이션 없이 즉시 — 키보드마다 시트가 오르내리는
+    // 울렁거림을 없앤다(2026-09-22 축소안). 상태 전환·끌기 놓기만 전환 애니메이션.
+    const resized = heights.full !== prevFullRef.current;
+    prevFullRef.current = heights.full;
     if (dragging) {
       visualTopRef.current = restTop + dragOffset;
       return;
@@ -225,6 +289,16 @@ const MobilePromptSheet: React.FC<{ children: React.ReactNode }> = ({ children }
     // 자리가 그대로인 재렌더(예: 첫 열림 직후의 everOpened 갱신)는 진행 중인 전환을 건드리지 않는다 — 여기서
     // transform 을 none 으로 되돌리면 방금 시작한 전환이 끊겨 시트가 툭 튄다.
     if (!ready || Math.abs(delta) < 1) return;
+    if (resized) {
+      if (animRef.current) {
+        window.clearTimeout(animRef.current.timer);
+        el.removeEventListener('transitionend', animRef.current.done);
+        animRef.current = null;
+      }
+      el.style.transition = 'none';
+      el.style.transform = 'none';
+      return;
+    }
     if (animRef.current) {
       window.clearTimeout(animRef.current.timer);
       el.removeEventListener('transitionend', animRef.current.done);
@@ -259,6 +333,14 @@ const MobilePromptSheet: React.FC<{ children: React.ReactNode }> = ({ children }
       : lastOpenRef.current;
   const showBody = everOpened || dragging;
   const bodyHidden = !open && !dragging;
+  // 집중 모드 = 키보드가 떠 있고 본문 안에 포커스가 있을 때만. 키보드 내림 버튼은 포커스를 풀지 않으므로
+  // 포커스만 보면 키보드가 내려간 뒤에도 모드가 남는다 → kbdOpen 을 함께 본다.
+  // 키보드가 떠 있는 동안은 포커스가 풀려도 마지막 키를 유지한다(키보드가 내려가면 heldKey 도 비운다)
+  if (!kbdOpen) heldKeyRef.current = null;
+  const activeKey = focusKey ?? heldKeyRef.current;
+  const focusMode = open && kbdOpen && !dragging && activeKey != null;
+  const focusCtxKey = focusMode ? activeKey : null;
+  const focusCtx = useMemo(() => ({ key: focusCtxKey, done: focusDone }), [focusCtxKey]);
 
   return (
     <>
@@ -314,6 +396,8 @@ const MobilePromptSheet: React.FC<{ children: React.ReactNode }> = ({ children }
             <div
               aria-hidden={bodyHidden}
               className="flex-none min-h-0 overflow-hidden"
+              onFocus={onBodyFocus}
+              onBlur={onBodyBlur}
               style={{
                 overflow: 'clip',
                 // 본문 높이는 도착 상태 기준(시트 자체는 항상 전체 높이라 flex-1 을 쓰면 반 상태에서 바닥이 잘린다)
@@ -324,7 +408,7 @@ const MobilePromptSheet: React.FC<{ children: React.ReactNode }> = ({ children }
               }}
             >
               <PresetCompactContext.Provider value={bodyState !== 'full'}>
-                {children}
+                <PresetFocusContext.Provider value={focusCtx}>{children}</PresetFocusContext.Provider>
               </PresetCompactContext.Provider>
             </div>
           )}

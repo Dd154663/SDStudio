@@ -287,6 +287,9 @@ export class AppState {
   @observable accessor mobileV2QuickBar: boolean = false;
   // 모바일 V2: 하단 시트 프롬프트가 열려 있는 동안 true. 드로어 손잡이·가장자리 스와이프가 물러난다(MobilePromptSheet).
   @observable accessor mobileV2SheetOpen: boolean = false;
+  // 모바일 V2: 시트가 열린 채 소프트 키보드가 떠 있는 동안 true. 하단 바가 키보드 위로 밀려 올라와 시트와 키보드
+  // 사이에 끼어 보이지 않게 BottomBar 가 이 동안 숨는다(2026-09-23 실기기 피드백, MobilePromptSheet 가 갱신).
+  @observable accessor mobileV2SheetKeyboard: boolean = false;
 
   // PC 전용 플로팅 생성 컨트롤(config.genWidget 미러). 빈 객체 = 부착 상태(기본).
   // detached 여부·위치는 GenControlWidget.tsx 가 조작·저장한다.

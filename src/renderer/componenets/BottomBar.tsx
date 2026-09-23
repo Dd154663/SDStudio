@@ -37,7 +37,7 @@ const BottomBar = observer(
   const v2 = isV2();
 
   // 기본(bottom): 기존 하단 가로바. data-gen-dock = 플로팅 위젯 재부착 히트 영역.
-  return (
+  const bar = (
     <StackFixed>
       {/* zone-bar: 구역 카드화 마감 — PC 새 마감에선 캔버스 프레임에 통합(App.css) */}
       <div
@@ -85,6 +85,12 @@ const BottomBar = observer(
         </div>
       </div>
     </StackFixed>
+  );
+  // 모바일 V2: 시트가 열린 채 키보드가 떠 있는 동안은 하단 바를 숨긴다(display:none — 퀵 생성 포털 자리 유지를 위해
+  // 마운트는 유지). 클래식·PC 는 래퍼 없이 그대로.
+  if (!v2) return bar;
+  return (
+    <div style={{ display: appState.mobileV2SheetKeyboard ? 'none' : 'contents' }}>{bar}</div>
   );
   },
 );

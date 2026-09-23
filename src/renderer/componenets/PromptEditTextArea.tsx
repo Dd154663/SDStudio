@@ -1449,13 +1449,10 @@ const PromptEditTextArea = observer(
     // 모바일 확장 창이 열려 있는 동안 Android 뒤로 가기는 이 창만 닫는다(포커스도 해제). 키보드가 떠 있으면 첫
     // 뒤로 가기는 시스템이 키보드를 내리는 데 쓰고, 그다음 뒤로 가기가 여기로 온다 — 예전에는 그 뒤로 가기가
     // 바깥(하단 시트 등)을 통째로 닫아 버렸다(2026-09-22 실기기 5차).
+    const closeFullScreenRef = useRef<() => void>(() => {});
     useEffect(() => {
       if (!isMobile || !fullScreen) return undefined;
-      const handle = backStackService.push(() => {
-        setFullScreen(false);
-        const active = document.activeElement as HTMLElement | null;
-        if (active && typeof active.blur === 'function') active.blur();
-      });
+      const handle = backStackService.push(() => closeFullScreenRef.current());
       return () => handle.remove();
     }, [fullScreen]);
     const EditTextAreaImpl = isMobile
@@ -1539,35 +1536,19 @@ const PromptEditTextArea = observer(
       closeAutoComplete();
     };
 
-    const onFoucs = () => {
-      if (isMobile) {
-        setFullScreen(true);
-      }
-    };
-
+    // 모바일 축소안(2026-09-22): 포커스만으로는 확대하지 않는다 — 인라인 편집이 기본. 확대는 확대 버튼으로만 열고,
+    // 닫기는 X·배경 탭·뒤로 가기 세 가지뿐. 예전의 "포커스=확대 + 창 밖 click 감시"는 포커스 순간 요소가 고정 위치로
+    // 점프해 click 대상이 바뀌는 바람에 열림/닫힘이 탭 위치에 따라 갈렸고, 자동완성 항목 탭도 바깥 click 으로 잡혀
+    // 창이 닫혔다(실기기 조사). PC 는 원래 포커스 확대가 없어 영향 없음.
+    const onFoucs = () => {};
     const onBlur = () => {};
-
-    const flagRef = useRef(false);
-    const handleClick = (event: any) => {
-      flagRef.current = true;
+    const closeFullScreen = () => {
+      setFullScreen(false);
+      // 배경 탭·뒤로 가기 = 편집 끝. 포커스도 풀어 키보드를 내린다(X 버튼은 인라인 편집을 이어갈 수 있게 포커스 유지).
+      const active = document.activeElement as HTMLElement | null;
+      if (active && typeof active.blur === 'function') active.blur();
     };
-
-    useEffect(() => {
-      const handleWindowClick = () => {
-        if (flagRef.current) {
-          flagRef.current = false;
-          return;
-        }
-        if (isMobile) {
-          setFullScreen(false);
-        }
-      };
-
-      window.addEventListener('click', handleWindowClick);
-      return () => {
-        window.removeEventListener('click', handleWindowClick);
-      };
-    }, []);
+    closeFullScreenRef.current = closeFullScreen;
 
     // 입력창 배경 토큰(--c-input-bg)을 따라 커스터마이징 반영. 기본값은 기존 외형과
     // 동일(다크=slate-700, 라이트=gray-200). 전체화면(확장 창)도 동일 토큰을 써서
@@ -1579,7 +1560,6 @@ const PromptEditTextArea = observer(
       <>
         <div
           ref={innerRef}
-          onClick={handleClick}
           spellCheck={false}
           draggable={true}
           onDragStart={(event) => event.preventDefault()}
@@ -1642,9 +1622,7 @@ const PromptEditTextArea = observer(
         {fullScreen && (
           <div
             className="fixed bg-black opacity-15 w-screen h-screen top-0 left-0 z-[var(--z-prompt-back)]"
-            onClick={() => {
-              setFullScreen(false);
-            }}
+            onClick={closeFullScreen}
           ></div>
         )}
       </>

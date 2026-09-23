@@ -10,7 +10,7 @@ import {
 } from './UtilComponents';
 import { NoiseSchedule, Resolution, Sampling } from '../backends/imageGen';
 import PromptEditTextArea from './PromptEditTextArea';
-import { PresetCompactContext } from './MobilePromptSheet';
+import { PresetCompactContext, PresetFocusContext, WFI_KEY_ATTR } from './MobilePromptSheet';
 import { V2_SHEET_HALF_KEYS } from '../models/mobileV2';
 import {
   FaCopy,
@@ -1690,6 +1690,42 @@ const PresetRootRender = observer(
     // 모바일 V2 하단 시트의 "반" 상태(빠른 수정): 상위·추가 프롬프트와 시드만 그린다.
     // 해당 키가 하나도 없는 워크플로우면 평소 렌더로 폴백한다. 요소는 원본 그대로라 접힘 상태·값이 전체 보기와 공유된다.
     const compact = useContext(PresetCompactContext);
+    // 모바일 V2 시트의 집중 모드(MobilePromptSheet.PresetFocusContext). 공급자가 있을 때만 요소마다
+    // data-wfi-key 래퍼(display:contents — 레이아웃 불변)를 두고, 집중 키가 있으면 그 요소만 보이게 한다.
+    // 래퍼는 모드와 무관하게 항상 있어야 한다(진입·해제가 트리를 바꾸면 포커스된 칸이 재마운트되어 포커스를 잃음).
+    const focus = useContext(PresetFocusContext);
+    const focusKey = focus?.key ?? null;
+    const renderEl = (x: WFIElement) => {
+      const k = wfiElementKey(x) ?? '';
+      if (!focus) return <WFRenderElement key={k} element={x} />;
+      const hidden = focusKey != null && k !== focusKey;
+      return (
+        <div key={k} {...{ [WFI_KEY_ATTR]: k }} style={{ display: hidden ? 'none' : 'contents' }}>
+          <WFRenderElement element={x} />
+        </div>
+      );
+    };
+    // 집중 모드 머리줄: 편집 중인 칸 이름 + 완료(포커스 해제 → 키보드 내림). 어느 칸을 고치는지 알 수 있게.
+    const focusHead = (inputs: WFIElement[]) => {
+      if (!focus || focusKey == null) return null;
+      const target = inputs.find((x) => (wfiElementKey(x) ?? '') === focusKey);
+      if (!target) return null;
+      const label = (target as { label?: string }).label ?? '';
+      return (
+        <div key="__v2-focus-head" className="flex-none flex items-center gap-2 pb-1">
+          <span className="flex-1 min-w-0 truncate text-sm font-semibold gray-label">
+            {label || '편집 중'}
+          </span>
+          <button
+            type="button"
+            className="round-button back-sky text-sm !px-3 !py-0.5 !min-w-0 !min-h-0"
+            onClick={focus.done}
+          >
+            완료
+          </button>
+        </div>
+      );
+    };
     if (compact && element.type === 'stack') {
       const keep = (element as WFIStack).inputs.filter((x) =>
         V2_SHEET_HALF_KEYS.includes(wfiElementKey(x) ?? ''),
@@ -1697,9 +1733,8 @@ const PresetRootRender = observer(
       if (keep.length > 0) {
         return (
           <VerticalStack>
-            {keep.map((x) => (
-              <WFRenderElement key={wfiElementKey(x)} element={x} />
-            ))}
+            {focusHead(keep)}
+            {keep.map(renderEl)}
           </VerticalStack>
         );
       }
@@ -1743,22 +1778,22 @@ const PresetRootRender = observer(
         // WFRStack 과 동일한 VerticalStack 골격에 본문+행을 렌더한다.
         return (
           <VerticalStack>
-            {(element as WFIStack).inputs.map((x) => (
-              <WFRenderElement element={x} />
-            ))}
-            {belowBody}
+            {focusHead((element as WFIStack).inputs)}
+            {(element as WFIStack).inputs.map((x) =>
+              focus ? renderEl(x) : <WFRenderElement element={x} />,
+            )}
+            {focusKey == null && belowBody}
           </VerticalStack>
         );
       }
       // 아이콘 행 활성: WFRStack 과 동일한 VerticalStack 골격에 본문만 렌더하고
-      // 최하단에 아이콘 행을 붙인다.
+      // 최하단에 아이콘 행을 붙인다. 집중 모드에서는 해상도 행·아이콘 행도 숨긴다.
       return (
         <VerticalStack>
-          {bodyInputs.map((x) => (
-            <WFRenderElement key={wfiElementKey(x)} element={x} />
-          ))}
-          {belowBody}
-          {bottomRow}
+          {focusHead(bodyInputs)}
+          {bodyInputs.map(renderEl)}
+          {focusKey == null && belowBody}
+          {focusKey == null && bottomRow}
         </VerticalStack>
       );
     }
