@@ -1292,3 +1292,16 @@ input[type='number']::-webkit-outer-spin-button {
 @media (prefers-reduced-motion: reduce) {
   .v2-swipe-glow, .v2-swipe-track, .v2-swipe-flow i { animation: none !important; }
 }
+
+/* ── 모바일 V2: 더보기 둘째 줄(2계층) 칸(MobileV2Bars.tsx V2TierRows, 2026-09-24) ──
+   기존 툴바 버튼 노드를 칸 안에 그대로 넣으므로(onClick 재배선 없음), 씬 툴바 표준인 배경형
+   버튼(round-button back-*)을 메인 줄 칸과 같은 무배경 아이콘 모양으로 맞춘다. 색은 칸(text-sub)을 따른다. */
+.v2-tier-cell .round-button {
+  background-color: transparent;
+  color: inherit;
+  min-width: 0;
+  min-height: 0;
+  height: 20px;
+  padding: 0;
+  box-shadow: none;
+}

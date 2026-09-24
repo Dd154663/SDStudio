@@ -1,7 +1,21 @@
 /** @jest-environment jsdom */
 jest.mock('../AppService', () => ({ appState: { uiLayoutTemplate: 'classic' } }));
 
-import { nearestSheetState, nextSheetState, V2_SHEET_HALF_KEYS } from '../mobileV2';
+import { nearestSheetState, nextSheetState, tierRows, V2_SHEET_HALF_KEYS } from '../mobileV2';
+
+describe('모바일 V2 더보기 둘째 줄 나누기 (2026-09-24)', () => {
+  it('5칸 기준: 5개면 한 줄 꽉 참, 6개면 두 줄이고 둘째 줄은 빈 칸 4개', () => {
+    expect(tierRows(['a', 'b', 'c', 'd', 'e'], 5)).toEqual([['a', 'b', 'c', 'd', 'e']]);
+    expect(tierRows(['a', 'b', 'c', 'd', 'e', 'f'], 5)).toEqual([
+      ['a', 'b', 'c', 'd', 'e'],
+      ['f', null, null, null, null],
+    ]);
+  });
+  it('항목이 없으면 줄도 없다, 칸 수가 0 이하면 1칸으로 본다', () => {
+    expect(tierRows([], 5)).toEqual([]);
+    expect(tierRows(['a', 'b'], 0)).toEqual([['a'], ['b']]);
+  });
+});
 
 describe('모바일 V2 하단 시트 상태', () => {
   const heights = { peek: 44, half: 388, full: 692 };

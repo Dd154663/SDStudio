@@ -31,6 +31,21 @@ export const V2_SHEET_HALF_KEYS: readonly string[] = [
   'seed',
 ];
 
+/**
+ * 더보기 둘째 줄(2계층) 줄 나누기(2026-09-24 사용자 제안·목업 검수). 메인 줄과 같은 칸 수(perRow)로 자르고,
+ * 마지막 줄의 남는 자리는 null(빈 칸)로 채워 칸 폭이 고정되게 한다. 항목이 없으면 빈 배열.
+ */
+export function tierRows<T>(items: readonly T[], perRow: number): (T | null)[][] {
+  const per = Math.max(1, Math.floor(perRow));
+  const rows: (T | null)[][] = [];
+  for (let i = 0; i < items.length; i += per) {
+    const row: (T | null)[] = items.slice(i, i + per);
+    while (row.length < per) row.push(null);
+    rows.push(row);
+  }
+  return rows;
+}
+
 export type V2SheetState = 'peek' | 'half' | 'full';
 
 // 프로젝트 선반(상단 2줄째)의 펼침 상태 — 앱을 다시 켜도 유지(기기별 UI 취향이라 config 가 아니라 localStorage).

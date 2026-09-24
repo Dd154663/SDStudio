@@ -24,6 +24,8 @@ export interface ToolbarButtonMeta {
   tier: ToolbarTier;
   // 문맥 독립(appState만 의존) 버튼만 — 크로스 영역 이동 허용 표식. 공유 JSX는 PortableToolbarButtons.tsx
   portable?: boolean;
+  // 모바일 V2 더보기 둘째 줄의 칸 라벨(약 6자까지 들어간다). 없으면 name 을 그대로 쓴다 — SPEC_GUIDE §6-2.
+  v2Label?: string;
 }
 
 // 씬 툴바 (이미지생성/이미지변형 탭 상단) — SceneQueueControl.tsx 가 사용
@@ -38,20 +40,20 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   // pcOnly 해제(2026-07-18): 모바일도 wasm libwebp 로 일괄 변환 지원(경고+취소 포함)
   { id: 'webp-convert', name: 'WebP 변환', tier: 'overflow' },
   // 모바일 실사용 빈도가 높아 모바일만 인라인 (PC 는 기존대로 ⋯ 메뉴)
-  { id: 'import-image', name: '이미지 프롬프트 추출', tier: 'mobile-primary' },
+  { id: 'import-image', name: '이미지 프롬프트 추출', tier: 'mobile-primary', v2Label: '프롬프트 추출' },
   // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환
   { id: 'artist-tag', name: '아티스트 태깅', pcOnly: true, tier: 'overflow', portable: true },
   { id: 'scene-search', name: '씬 검색', tier: 'primary' },
   { id: 'scene-find', name: '씬 찾기', tier: 'overflow' },
   { id: 'image-review', name: '이미지 검수', tier: 'overflow' },
   { id: 'artist-breakdown', name: '작가 분해', tier: 'overflow' },
-  { id: 'bookmark-jump', name: '북마크된 씬으로 이동', tier: 'secondary' },
+  { id: 'bookmark-jump', name: '북마크된 씬으로 이동', tier: 'secondary', v2Label: '북마크 이동' },
   // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환
   { id: 'scene-trash', name: '씬 휴지통', tier: 'overflow', portable: true },
   // 'scene-template' 은 씬 템플릿 개편(2026-07-18)으로 프로젝트 바 레지스트리로 이동 —
   // 매크로성 기능 승격(사용자 확정). id 는 그대로라 과거 씬 영역 배치 설정은 조용히 무시됨.
-  { id: 'empty-image-trash', name: '삭제 이미지 일괄 비우기', tier: 'overflow', portable: true },
-  { id: 'find-replace', name: '찾기 및 변환', tier: 'secondary', portable: true },
+  { id: 'empty-image-trash', name: '삭제 이미지 일괄 비우기', tier: 'overflow', portable: true, v2Label: '삭제 비우기' },
+  { id: 'find-replace', name: '찾기 및 변환', tier: 'secondary', portable: true, v2Label: '찾기·변환' },
   { id: 'shortcut-help', name: '단축키 도움말', pcOnly: true, tier: 'overflow' },
 ];
 

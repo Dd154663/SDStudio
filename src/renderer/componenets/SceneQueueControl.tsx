@@ -97,7 +97,7 @@ import { platform } from '../models/platform';
 import { TOOLBAR_VIEW_MAIN, resolveToolbarView } from '../models/uiLayout';
 import { companionAssignedIds } from '../models/companionSlots';
 import ToolbarOverflowMenu from './ToolbarOverflowMenu';
-import { V2MainRow, V2SlotDef } from './MobileV2Bars';
+import { V2MainRow, V2SlotDef, V2TierRows } from './MobileV2Bars';
 import { useV2Slot } from './useV2Slot';
 import { isV2, V2_TOP_PIECE_SLOT_ID, V2_TOP_SLOT_ID } from '../models/mobileV2';
 import {
@@ -1377,7 +1377,13 @@ const QueueControl = observer(
     const v2TopSlot = useV2Slot(V2_TOP_SLOT_ID, v2Layout && isActive);
     // 프롬프트조각은 어느 탭에서든 같은 자리에 있어야 하므로, 활성 여부와 무관하게 이미지생성 탭의 목록이 맡는다.
     const v2PieceSlot = useV2Slot(V2_TOP_PIECE_SLOT_ID, v2Layout && type === 'scene');
-    const [v2Menu, setV2Menu] = useState<'more' | 'find' | null>(null);
+    const [v2Menu, setV2Menu] = useState<'find' | null>(null);
+    // 더보기 둘째 줄(2계층, 2026-09-24) 펼침 — 선택 모드에 들어가면 접힌다(선택 중 줄로 바뀌므로)
+    const [v2Tier, setV2Tier] = useState(false);
+    const closeV2Tier = useCallback(() => setV2Tier(false), []);
+    useEffect(() => {
+      if (appState.sceneSelectionMode) setV2Tier(false);
+    }, [appState.sceneSelectionMode]);
     const { show: showSceneContextMenu } = useContextMenu({
       id: ContextMenuType.Scene,
     });
@@ -2989,6 +2995,14 @@ const QueueControl = observer(
       }
       return id;
     };
+    // 모바일 V2 더보기 둘째 줄의 칸 라벨 — 레지스트리 v2Label(짧은 이름) 우선, 없으면 name.
+    const sceneV2Label = (id: string) => {
+      for (const { registry } of TOOLBAR_VIEW_MAIN) {
+        const found = registry.find((b) => b.id === id);
+        if (found) return found.v2Label ?? found.name;
+      }
+      return id;
+    };
 
     return (
       <div
@@ -3413,11 +3427,13 @@ const QueueControl = observer(
                 onTap: pickImportImage,
               },
               {
+                // 둘째 줄(2계층)로 펼친다. 열린 동안은 백드롭이 재탭을 흡수해 접히므로 여기서는 열기만.
                 key: 'more',
                 name: '더보기',
                 icon: <FaEllipsisH size={17} />,
-                onTap: () => setV2Menu('more'),
+                onTap: () => setV2Tier(true),
                 disabled: moreIds.length === 0,
+                expanded: v2Tier,
               },
             ];
             // 순서는 메인 줄과 같은 자리에 같은 성격을 둔다(2026-09-21 사용자 결정): 다중 선택↔전체, 내보내기↔내보내기(위로 밀기도 같은 자리),
@@ -3491,14 +3507,20 @@ const QueueControl = observer(
             ];
             return (
               <>
-                <V2MainRow slots={selecting ? selectSlots : mainSlots} selecting={selecting} />
-                <ToolbarOverflowMenu
-                  isOpen={v2Menu === 'more'}
-                  onClose={() => setV2Menu(null)}
-                  title="더보기"
-                  group="scene"
-                  items={moreIds.map((id) => ({ id, name: sceneName(id), node: buttonNode(id) }))}
-                />
+                {/* 메인 줄 래퍼(relative): 더보기 둘째 줄이 bottom-full 로 이 위에 덮어 올라온다 */}
+                <div className="relative flex-none" data-v2-bottom="">
+                  <V2TierRows
+                    open={v2Tier && !selecting}
+                    onClose={closeV2Tier}
+                    perRow={mainSlots.length}
+                    items={moreIds.map((id) => ({
+                      id,
+                      label: sceneV2Label(id),
+                      node: buttonNode(id),
+                    }))}
+                  />
+                  <V2MainRow slots={selecting ? selectSlots : mainSlots} selecting={selecting} />
+                </div>
                 <ToolbarOverflowMenu
                   isOpen={v2Menu === 'find'}
                   onClose={() => setV2Menu(null)}
