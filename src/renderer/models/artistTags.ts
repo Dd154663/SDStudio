@@ -39,6 +39,16 @@ export function parsePromptSegment(segment: string): PromptSegmentParts {
   return { leading, weightPrefix, open, core, close, weightSuffix, trailing };
 }
 
+/** 커서 위치(caret)가 놓인 쉼표 구획의 원문(장식 포함). 줄바꿈도 구획 경계로 본다. */
+export function promptSegmentAt(text: string, caret: number): string {
+  const c = Math.max(0, Math.min(text.length, caret));
+  let start = c;
+  while (start > 0 && !',\n'.includes(text[start - 1])) start -= 1;
+  let end = c;
+  while (end < text.length && !',\n'.includes(text[end])) end += 1;
+  return text.slice(start, end);
+}
+
 export function joinPromptSegment(p: PromptSegmentParts): string {
   return p.leading + p.weightPrefix + p.open + p.core + p.close + p.weightSuffix + p.trailing;
 }
@@ -104,6 +114,31 @@ export async function isArtistCore(core: string, lookup: ArtistLookup): Promise<
 }
 
 /** add=접두 없는 작가에 붙임, remove=접두 뗌, toggle=구획마다 반전(있으면 뗌, 없는 작가엔 붙임 — 섞여 있어도 한쪽으로 몰지 않음). */
+/**
+ * artist: 접두가 달린 구획을 전부 뺀 프롬프트(작가 라이브러리 샘플 생성용 — 대상 작가만 남기기 전에 쓴다, 2026-09-26).
+ * 접두 없는 작가(DB 판별)는 건드리지 않는다(작가 분해와 같은 기준: 접두가 곧 의도). 빈 구획은 정리한다.
+ */
+export function removeArtistSegments(text: string): string {
+  return text
+    .split(',')
+    .filter((segment) => {
+      const core = parsePromptSegment(segment).core;
+      return !(isTransformableCore(core) && hasArtistPrefix(core));
+    })
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .join(', ');
+}
+
+/** 프롬프트에 그 작가(접두 유무 무관, 대소문자 무시)가 이미 있는가. */
+export function hasArtistNamed(text: string, name: string): boolean {
+  const key = name.trim().toLowerCase();
+  return text.split(',').some((segment) => {
+    const core = parsePromptSegment(segment).core;
+    return stripArtistPrefix(core).toLowerCase() === key;
+  });
+}
+
 export type ArtistPrefixMode = 'add' | 'remove' | 'toggle';
 
 export interface ArtistPrefixResult {

@@ -26,6 +26,8 @@ import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { isOutputImageFile, isImportImageMime } from './imageFormats';
 import { projectPath } from './projectPaths';
+import { V2_SHEET_CLOSE_EVENT } from './uiEvents';
+import { ARTIST_LIBRARY_TAB_ACTION } from './ArtistLibraryService';
 import { Dialog } from '../componenets/ConfirmWindow';
 import { cropMirrorResultFromDataUri, dataUriToBase64, deleteImageFiles } from './ImageService';
 import {
@@ -290,6 +292,9 @@ export class AppState {
   // 모바일 V2: 시트가 열린 채 소프트 키보드가 떠 있는 동안 true. 하단 바가 키보드 위로 밀려 올라와 시트와 키보드
   // 사이에 끼어 보이지 않게 BottomBar 가 이 동안 숨는다(2026-09-23 실기기 피드백, MobilePromptSheet 가 갱신).
   @observable accessor mobileV2SheetKeyboard: boolean = false;
+  // 작가 라이브러리에서 특정 작가 카드를 열어 달라는 요청(프롬프트 편집기의 「작가 라이브러리」 버튼, 2026-09-26).
+  // nonce 로 같은 작가를 연달아 요청해도 반응하게 한다. 소비는 ArtistLibraryTab.
+  @observable accessor artistLibraryFocus: { id: string; nonce: number } | null = null;
 
   // PC 전용 플로팅 생성 컨트롤(config.genWidget 미러). 빈 객체 = 부착 상태(기본).
   // detached 여부·위치는 GenControlWidget.tsx 가 조작·저장한다.
@@ -1236,6 +1241,37 @@ export class AppState {
   globalPresetBackupImport() { return backupService.globalPresetBackupImport(); }
   artistLibraryBackupExport() { return backupService.artistLibraryBackupExport(); }
   artistLibraryBackupImport() { return backupService.artistLibraryBackupImport(); }
+
+  // 프롬프트 편집기의 「작가 라이브러리」 버튼(2026-09-26): 이름으로 카드를 찾아 열고, 없으면 확인 뒤 새로 만든다.
+  // 탭 전환은 shortcut-action 'tab-4'(작가 라이브러리 탭). 모바일 V2 는 시트가 탭을 덮으므로 먼저 접는다.
+  async openArtistInLibrary(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    let artist = artistLibraryService.findArtistByName(trimmed);
+    if (!artist) {
+      // confirm 형은 콜백이 값 없이 불려 pushDialogAsync 가 undefined 로 풀린다 → 콜백/취소로 직접 받는다
+      const ok = await new Promise<boolean>((resolve) => {
+        this.pushDialog({
+          type: 'confirm',
+          green: true,
+          text: `작가 라이브러리에 「${trimmed}」이(가) 없습니다. 새 카드를 만들까요?`,
+          callback: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!ok) return;
+      artist = artistLibraryService.createArtist(trimmed);
+      if (!artist) {
+        this.pushMessage('작가 생성에 실패했습니다.');
+        return;
+      }
+    }
+    this.artistLibraryFocus = { id: artist.id, nonce: Date.now() };
+    window.dispatchEvent(new CustomEvent(V2_SHEET_CLOSE_EVENT));
+    window.dispatchEvent(
+      new CustomEvent('shortcut-action', { detail: { action: ARTIST_LIBRARY_TAB_ACTION } }),
+    );
+  }
   handleTarImport(tarPath: string) { return backupService.handleTarImport(tarPath); }
   handlePngImport(base64: string) { return backupService.handlePngImport(base64); }
 

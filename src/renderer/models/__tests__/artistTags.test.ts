@@ -103,6 +103,18 @@ describe('artist: 반전(toggle)', () => {
   });
 });
 
+describe('샘플 생성용 작가 구획 제거·존재 판정', () => {
+  it('artist: 접두 구획만 빼고 나머지·조각·빈 구획 정리', () => {
+    const { removeArtistSegments, hasArtistNamed } = jest.requireActual('../artistTags');
+    expect(removeArtistSegments('1girl, artist:ixy, 1.3::artist: lunch boxer::, <조각>, , shouu-kun')).toBe(
+      '1girl, <조각>, shouu-kun',
+    );
+    expect(hasArtistNamed('1girl, artist:ixy', 'IXY')).toBe(true);
+    expect(hasArtistNamed('1girl, ixy', 'ixy')).toBe(true);
+    expect(hasArtistNamed('1girl', 'ixy')).toBe(false);
+  });
+});
+
 describe('작가 조회 래퍼', () => {
   it('원문·밑줄·공백 표기를 차례로 찾고 같은 단어는 한 번만 조회한다', async () => {
     const calls: string[] = [];

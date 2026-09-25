@@ -30,9 +30,14 @@ import { buildArtistPromptVariants } from './promptTransforms';
 import { selectedScenesOfType } from './sceneSelection';
 import {
   ArtistPrefixMode,
+  hasArtistNamed,
   makeArtistLookup,
+  removeArtistSegments,
   transformArtistPrefix,
 } from './artistTags';
+import { artistLibraryService } from '.';
+import { dataUriToBase64 } from './ImageService';
+import { samplingFamilyForModel } from './modelSamplingProfiles';
 
 // 씬 큐 예약(추가/제거) 공유 로직 단일 출처.
 // SceneQueueControl(툴바·단축키·카드 버튼)과 AppContextMenu(우클릭 메뉴)가 함께 사용한다.
@@ -620,4 +625,103 @@ export const applyArtistPrefixBatch = async (
       appState.pushMessage(`artist: 접두를 전환했습니다 — ${what}.`);
     },
   });
+};
+
+/**
+ * 작가 라이브러리 카드에서 「샘플 생성」(2026-09-26): 현재 프리셋의 긍정 프롬프트에서 artist: 접두 구획을 전부 빼고
+ * 이 작가만 남겨(없으면 상위 프롬프트 맨 앞에 artist:이름 추가) default 씬에 1장 예약한다. 완료되면 결과 이미지를
+ * 그 작가 카드에 저장한다(모델 계열은 예약 시점 스냅샷의 modelVersion). 작가 분해와 같은 경로·같은 씬.
+ */
+export const queueArtistSample = async (
+  session: Session,
+  artistId: string,
+  artistName: string,
+): Promise<boolean> => {
+  const workflow = session.selectedWorkflow;
+  if (!workflow) {
+    appState.pushMessage('먼저 이미지 생성 워크플로우를 선택해주세요.');
+    return false;
+  }
+  const [type, preset, shared, def] = session.getCommonSetup(workflow);
+  if (!preset || !shared || !['SDImageGen', 'SDImageGenEasy'].includes(type)) {
+    appState.pushMessage('이미지 생성 프리셋에서만 샘플을 생성할 수 있습니다.');
+    return false;
+  }
+  const name = artistName.trim();
+  if (!name) return false;
+
+  const strip = (v?: string) => removeArtistSegments(v ?? '');
+  let frontPrompt = strip(preset.frontPrompt);
+  const extraPrompt = strip(session.extraPrompt);
+  const backPrompt = strip(preset.backPrompt);
+  const characterPrompt =
+    type === 'SDImageGenEasy' ? strip(shared.characterPrompt) : undefined;
+  const backgroundPrompt =
+    type === 'SDImageGenEasy' ? strip(shared.backgroundPrompt) : undefined;
+  // 접두 없는 같은 이름은 그대로 두고(DB 기준 작가일 수 있음), 없으면 맨 앞에 붙인다
+  const already = [frontPrompt, extraPrompt, backPrompt, characterPrompt ?? '', backgroundPrompt ?? '']
+    .some((t) => hasArtistNamed(t, name));
+  if (!already) frontPrompt = frontPrompt ? `artist:${name}, ${frontPrompt}` : `artist:${name}`;
+
+  let generationSnapshot: GenerationSettingsSnapshot;
+  try {
+    generationSnapshot = await taskQueueService.captureGenerationSnapshot();
+  } catch (e) {
+    console.error('샘플 생성 설정을 읽지 못했습니다:', e);
+    appState.pushMessage('생성 설정을 읽지 못해 예약하지 못했습니다.');
+    return false;
+  }
+  const family = samplingFamilyForModel(generationSnapshot.modelVersion);
+
+  const targetScene = ensureArtistBreakdownScene(session);
+  const promptScene = Scene.fromJSON({
+    ...targetScene.toJSON(),
+    slots: [[{ id: v4(), prompt: '', characterPrompts: [], enabled: true }]],
+  });
+  const variantPreset = { ...preset, frontPrompt, backPrompt };
+  const variantShared = {
+    ...shared,
+    ...(type === 'SDImageGenEasy' ? { characterPrompt, backgroundPrompt } : {}),
+  };
+  const wasEmpty = taskQueueService.isEmpty();
+  try {
+    const prompts = await createSDPrompts(session, variantPreset, variantShared, promptScene, extraPrompt);
+    const characterPrompts = await createSDCharacterPrompts(session, variantPreset, variantShared, promptScene);
+    if (prompts.length === 0) {
+      appState.pushMessage('프롬프트를 만들지 못했습니다.');
+      return false;
+    }
+    await def.handler(
+      session,
+      targetScene,
+      prompts[0],
+      characterPrompts[0],
+      variantPreset,
+      variantShared,
+      1,
+      targetScene.meta.get(type),
+      async (path: string) => {
+        try {
+          const dataUri = await backend.readDataFile(path);
+          await artistLibraryService.addImage(artistId, dataUriToBase64(dataUri), family);
+          appState.pushMessage(`「${name}」 샘플 이미지를 작가 라이브러리에 저장했습니다.`);
+        } catch (e: any) {
+          appState.pushMessage(`샘플 저장 실패: ${e?.message ?? e}`);
+        }
+      },
+      undefined,
+      generationSnapshot,
+    );
+  } catch (e: any) {
+    appState.pushMessage(`샘플 생성 예약 실패: ${e?.message ?? e}`);
+    return false;
+  }
+  // 큐가 비어 있었으면 바로 돌린다(다른 대기 작업을 멋대로 시작하지 않기 위해 비어 있을 때만)
+  if (wasEmpty && !taskQueueService.isRunning()) taskQueueService.run();
+  appState.pushMessage(
+    wasEmpty
+      ? `「${name}」 샘플 1장 생성 시작 — 완료되면 카드에 저장됩니다.`
+      : `「${name}」 샘플 1장을 예약했습니다(큐 실행 시 생성·저장).`,
+  );
+  return true;
 };

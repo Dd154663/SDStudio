@@ -18,6 +18,9 @@ export const V2_TOP_PIECE_SLOT_ID = 'v2-top-piece-slot';
 /** 하단 바 자리: 퀵 생성 탭이 [생성][해상도]를 넣는다(그동안 큐용 하단 바는 숨김). */
 export const V2_QUICK_BAR_SLOT_ID = 'v2-quick-bar-slot';
 
+/** window 이벤트: 하단 시트를 접어 달라(탭 전환 전 등 — AppService.openArtistInLibrary 가 보낸다, 2026-09-26). */
+export { V2_SHEET_CLOSE_EVENT } from './uiEvents';
+
 /** 접힌 하단 시트의 높이(px). 본문 바닥 여백과 시트 접힘 높이가 같은 값을 쓴다. */
 export const V2_SHEET_PEEK_PX = 44;
 

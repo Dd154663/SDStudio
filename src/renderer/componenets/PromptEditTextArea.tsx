@@ -29,6 +29,14 @@ import { FixedSizeList as List } from 'react-window';
 import getCaretCoordinates from 'textarea-caret';
 import { isMobile, backend } from '../models';
 import { backStackService } from '../models/BackStackService';
+import {
+  hasArtistPrefix,
+  isTransformableCore,
+  makeArtistLookup,
+  parsePromptSegment,
+  promptSegmentAt,
+  stripArtistPrefix,
+} from '../models/artistTags';
 import { highlightPrompt } from '../models/PromptService';
 import { WordTag, calcGapMatch } from '../models/Tags';
 import { appState } from '../models/AppService';
@@ -1003,6 +1011,8 @@ interface EditTextAreaRef {
   onOpenAutoComplete: () => void;
   setCurWord: (word: string) => void;
   getCaretCoords(): Promise<number[]>;
+  /** 커서가 놓인 쉼표 구획(장식 포함 원문). 커서를 모르면 빈 문자열. */
+  getCaretSegment(): string;
   undo(): void;
 }
 
@@ -1121,6 +1131,12 @@ const EmulatedEditTextArea = observer(
             rect = range.getBoundingClientRect();
           }
           return [rect.right, rect.top];
+        },
+        getCaretSegment: () => {
+          const m = editorModelRef.current;
+          if (!m) return '';
+          const pos = m.getCaretPosition()[0] ?? 0;
+          return promptSegmentAt(m.curText ?? '', pos);
         },
         undo() {
           editorModelRef.current.handleKeyDown({ key: 'z', metaKey: true });
@@ -1344,6 +1360,11 @@ const NativeEditTextArea = observer(
           const rect = textareaRef.current!.getBoundingClientRect();
           return [caret.left + rect.left, caret.top + rect.top];
         },
+        getCaretSegment: () => {
+          const ta = textareaRef.current;
+          if (!ta) return '';
+          return promptSegmentAt(ta.value, ta.selectionStart ?? 0);
+        },
         undo() {
           doUndo();
         },
@@ -1427,6 +1448,9 @@ const NativeEditTextArea = observer(
   ),
 );
 
+// 커서 구획의 작가 판별용 태그 DB 조회(앱 수명 동안 캐시).
+const caretArtistLookup = makeArtistLookup((w) => backend.lookupTag(w));
+
 const PromptEditTextArea = observer(
   ({
     value,
@@ -1451,6 +1475,39 @@ const PromptEditTextArea = observer(
     const selectedTagRef = useLatest(selectedTag);
     const curWordRef = useLatest(curWord);
     const [fullScreen, setFullScreen] = useState(false);
+    // 커서가 놓인 구획이 작가 태그면 그 이름(접두 제거). 편집기 오른쪽 위에 「작가 라이브러리」 버튼이 뜬다(2026-09-26).
+    // 접두가 있으면 즉시, 없으면 태그 DB 조회(캐시). 입력·클릭·키·selectionchange 뒤 150ms 디바운스.
+    const [caretArtist, setCaretArtist] = useState<string | null>(null);
+    const rootRef = useRef<HTMLDivElement | null>(null);
+    const caretTimer = useRef<number | null>(null);
+    const caretSeq = useRef(0);
+    const refreshCaretArtist = () => {
+      if (caretTimer.current) window.clearTimeout(caretTimer.current);
+      caretTimer.current = window.setTimeout(async () => {
+        caretTimer.current = null;
+        const seq = (caretSeq.current += 1);
+        const seg = editorRef.current?.getCaretSegment?.() ?? '';
+        const core = parsePromptSegment(seg).core;
+        let name: string | null = null;
+        if (isTransformableCore(core)) {
+          if (hasArtistPrefix(core)) name = stripArtistPrefix(core);
+          else if (await caretArtistLookup(core.trim())) name = core.trim();
+        }
+        if (seq === caretSeq.current) setCaretArtist(name);
+      }, 150);
+    };
+    useEffect(() => {
+      const onSel = () => {
+        const root = rootRef.current;
+        if (root && document.activeElement && root.contains(document.activeElement)) refreshCaretArtist();
+      };
+      document.addEventListener('selectionchange', onSel);
+      return () => {
+        document.removeEventListener('selectionchange', onSel);
+        if (caretTimer.current) window.clearTimeout(caretTimer.current);
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     // 모바일 확장 창이 열려 있는 동안 Android 뒤로 가기는 이 창만 닫는다(포커스도 해제). 키보드가 떠 있으면 첫
     // 뒤로 가기는 시스템이 키보드를 내리는 데 쓰고, 그다음 뒤로 가기가 여기로 온다 — 예전에는 그 뒤로 가기가
     // 바깥(하단 시트 등)을 통째로 닫아 버렸다(2026-09-22 실기기 5차).
@@ -1564,7 +1621,21 @@ const PromptEditTextArea = observer(
     return (
       <>
         <div
-          ref={innerRef}
+          ref={(el: HTMLDivElement | null) => {
+            rootRef.current = el;
+            if (typeof innerRef === 'function') innerRef(el);
+            else if (innerRef) innerRef.current = el;
+          }}
+          onKeyUp={refreshCaretArtist}
+          onClick={refreshCaretArtist}
+          onFocusCapture={refreshCaretArtist}
+          onBlurCapture={() => {
+            // 편집기 밖으로 나가면 버튼을 거둔다(버튼 자체로 가는 포커스는 유지)
+            window.setTimeout(() => {
+              const root = rootRef.current;
+              if (root && !(document.activeElement && root.contains(document.activeElement))) setCaretArtist(null);
+            }, 0);
+          }}
           spellCheck={false}
           draggable={true}
           onDragStart={(event) => event.preventDefault()}
@@ -1577,7 +1648,23 @@ const PromptEditTextArea = observer(
               : ' left-0 m-4 p-2 overflow-hidden fixed z-[var(--z-prompt-popup)] h-96 prompt-full rounded-lg')
           }
         >
-          <div className="absolute right-0 top-0 z-10">
+          <div className="absolute right-0 top-0 z-10 flex items-center gap-1">
+            {caretArtist && (
+              <button
+                type="button"
+                title={`작가 라이브러리에서 「${caretArtist}」 열기`}
+                aria-label={`작가 라이브러리에서 ${caretArtist} 열기`}
+                className="flex items-center gap-1 mt-1 px-1.5 h-5 rounded-md text-[11px] leading-none bg-[var(--c-zone)] border line-color text-sky-500 opacity-90 hover:opacity-100 max-w-[10rem]"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  appState.openArtistInLibrary(caretArtist);
+                }}
+              >
+                <FaPaintBrush size={10} className="flex-none" />
+                <span className="truncate">{caretArtist}</span>
+              </button>
+            )}
             <button
               onClick={() => {
                 if (!disabled) setFullScreen(!fullScreen);

@@ -8,6 +8,7 @@ import {
   nearestSheetState,
   nextSheetState,
   resolveSheetTarget,
+  V2_SHEET_CLOSE_EVENT,
 } from '../models/mobileV2';
 
 // 모바일 V2 의 하단 시트 프롬프트(2026-09-21). 클래식의 「프롬프트 열기」 전체 화면을 대신한다.
@@ -171,6 +172,13 @@ const MobilePromptSheet: React.FC<{ children: React.ReactNode }> = ({ children }
     });
     return () => handle.remove();
   }, [open]);
+
+  // 바깥에서 접기 요청(프롬프트 편집기의 「작가 라이브러리」 버튼이 탭을 바꾸기 전에 보낸다, 2026-09-26).
+  useEffect(() => {
+    const onClose = () => setState('peek');
+    window.addEventListener(V2_SHEET_CLOSE_EVENT, onClose);
+    return () => window.removeEventListener(V2_SHEET_CLOSE_EVENT, onClose);
+  }, []);
 
   // 열림 표식: 드로어 손잡이·가장자리 스와이프가 이 값을 보고 물러난다(ProjectDrawer·ImageHistory).
   useEffect(() => {

@@ -31,6 +31,19 @@ export function samplingFamilyForModel(
   return undefined;
 }
 
+/**
+ * NAI 모델 id 문자열(이미지 메타데이터 naiDiagnostics.model, 예: nai-diffusion-4-5-full / nai-diffusion-5-curated)
+ * → 모델 계열. 작가 라이브러리의 샘플 이미지 계열 자동 판정에 쓴다(2026-09-26). 모르는 id 는 undefined.
+ */
+export function samplingFamilyForModelId(
+  modelId?: string | null,
+): ModelSamplingFamily | undefined {
+  const id = (modelId ?? '').trim().toLowerCase();
+  if (/^nai-diffusion-5(-|$)/.test(id)) return 'v5';
+  if (/^nai-diffusion-4-5(-|$)/.test(id)) return 'v4_5';
+  return undefined;
+}
+
 export function modelVersionForSamplingFamily(
   family: ModelSamplingFamily,
   current?: ModelVersion,

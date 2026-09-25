@@ -19,15 +19,48 @@ import {
   FaSquare,
   FaGlobe,
   FaCompressArrowsAlt,
+  FaMagic,
 } from 'react-icons/fa';
+import { queueArtistSample } from '../models/sceneQueueActions';
 import { artistLibraryService, imageService, backend } from '../models';
 import { IArtistEntry, IArtistImage } from '../models/ArtistLibraryService';
+import { ModelSamplingFamily } from '../models/modelSamplingProfiles';
 import { appState } from '../models/AppService';
 import { dataUriToBase64 } from '../models/ImageService';
 import { extractPromptDataFromBase64 } from '../models/util';
 import { IMPORT_IMAGE_ACCEPT } from '../models/imageFormats';
 import Tooltip from './Tooltip';
 import ModalOverlay from './ModalOverlay';
+
+// ─── 모델 계열 보기(2026-09-26): 같은 작가라도 v4.5/v5 의 학습 여부·출력 화풍이 달라 구분한다 ───
+type FamilyView = 'all' | ModelSamplingFamily;
+const FAMILY_VIEW_KEY = 'sdstudio-artist-lib-family';
+const FAMILY_LABEL: Record<ModelSamplingFamily, string> = { v4_5: 'v4.5', v5: 'v5' };
+const loadFamilyView = (): FamilyView => {
+  try {
+    const v = localStorage.getItem(FAMILY_VIEW_KEY);
+    return v === 'v4_5' || v === 'v5' ? v : 'all';
+  } catch (e) {
+    return 'all';
+  }
+};
+const saveFamilyView = (v: FamilyView) => {
+  try {
+    localStorage.setItem(FAMILY_VIEW_KEY, v);
+  } catch (e) {
+    /* 무시 */
+  }
+};
+/** 보기 계열에 맞는 이미지들(전체 보기면 전부). */
+const imagesFor = (artist: IArtistEntry, view: FamilyView): IArtistImage[] =>
+  view === 'all' ? artist.images : artist.images.filter((i) => i.family === view);
+/** 썸네일 구석의 계열 배지. 미지정은 표시하지 않는다. */
+const FamilyBadge = ({ family, className }: { family?: ModelSamplingFamily; className?: string }) =>
+  family ? (
+    <span className={'pointer-events-none text-[10px] leading-none px-1 py-0.5 rounded bg-black/60 text-white ' + (className || '')}>
+      {FAMILY_LABEL[family]}
+    </span>
+  ) : null;
 
 const copyText = async (text: string, msg: string) => {
   try {
@@ -256,15 +289,50 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                 {artist.images.map((img) => (
                   <div key={img.id} className={'relative w-14 h-14 rounded overflow-hidden cursor-pointer border-2 ' + (selected?.id === img.id ? 'border-sky-500' : 'border-transparent')}>
                     <ArtistImage path={img.path} className="w-full h-full" onClick={() => { setSelectedId(img.id); setShowPrompt(false); }} />
+                    <FamilyBadge family={img.family} className="absolute left-0.5 bottom-0.5" />
                   </div>
                 ))}
                 <button className="w-14 h-14 rounded border border-dashed line-color flex items-center justify-center text-faint hover:text-sky-500"
                   onClick={() => fileRef.current?.click()}>
                   <FaPlus />
                 </button>
+                {/* 샘플 생성(2026-09-26): 현재 프리셋에서 다른 작가 태그를 빼고 이 작가만으로 1장 생성해 카드에 저장 */}
+                <Tooltip content="현재 프리셋에서 다른 artist: 태그를 빼고 이 작가만으로 1장 생성해 카드에 저장">
+                  <button
+                    className="w-14 h-14 rounded border border-dashed line-color flex flex-col items-center justify-center gap-0.5 text-faint hover:text-sky-500 disabled:opacity-40"
+                    disabled={!appState.curSession}
+                    data-artist-sample-generate=""
+                    onClick={() => {
+                      if (!appState.curSession) {
+                        appState.pushMessage('프로젝트를 먼저 여세요.');
+                        return;
+                      }
+                      queueArtistSample(appState.curSession, artist.id, artist.name);
+                    }}
+                  >
+                    <FaMagic />
+                    <span className="text-[10px] leading-none">샘플 생성</span>
+                  </button>
+                </Tooltip>
                 <input type="file" accept={IMPORT_IMAGE_ACCEPT} multiple ref={fileRef} className="hidden"
                   onChange={(e) => { if (e.target.files) addImages(e.target.files); e.target.value = ''; }} />
               </div>
+              {selected && (
+                <div className="flex items-center gap-1.5 mt-2 text-xs">
+                  <span className="text-muted mr-1">모델 계열</span>
+                  {(['v4_5', 'v5'] as ModelSamplingFamily[]).map((f) => (
+                    <button
+                      key={f}
+                      className={'px-2 py-0.5 rounded-full border ' + (selected.family === f ? 'border-sky-500 text-sky-500 bg-sky-100 dark:bg-sky-900/40' : 'line-color text-muted hover:border-sky-400')}
+                      onClick={() => artistLibraryService.setImageFamily(artist.id, selected.id, selected.family === f ? undefined : f)}
+                      title="이 샘플이 나온 모델 계열(다시 누르면 미지정)"
+                    >
+                      {FAMILY_LABEL[f]}
+                    </button>
+                  ))}
+                  {!selected.family && <span className="text-faint">미지정 — 메타데이터에서 못 읽음</span>}
+                </div>
+              )}
               {selected && (
                 <div className="flex gap-2 mt-2">
                   {artist.images[0]?.id !== selected.id && (
@@ -339,14 +407,18 @@ const ArtistCard = observer(({
   multiSelectMode,
   selected,
   onToggleSelect,
+  familyView,
 }: {
   artist: IArtistEntry;
   onOpen: () => void;
   multiSelectMode: boolean;
   selected: boolean;
   onToggleSelect: () => void;
+  familyView: FamilyView;
 }) => {
-  const thumb = artist.images[0];
+  // 계열 보기면 그 계열의 첫 이미지가 대표(없으면 "샘플 없음"), 전체 보기면 대표 썸네일(images[0])
+  const shown = imagesFor(artist, familyView);
+  const thumb = shown[0];
   const handleClick = () => { if (multiSelectMode) onToggleSelect(); else onOpen(); };
   return (
     <div className={
@@ -360,11 +432,19 @@ const ArtistCard = observer(({
         {thumb ? (
           <ArtistImage path={thumb.path} className="w-full h-full" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-faint"><FaImage size={30} /></div>
+          <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-faint">
+            <FaImage size={30} />
+            {familyView !== 'all' && artist.images.length > 0 && (
+              <span className="text-xs">{FAMILY_LABEL[familyView]} 샘플 없음</span>
+            )}
+          </div>
         )}
-        {artist.images.length > 0 && (
-          <span className="absolute top-2 right-2 text-xs bg-black/60 text-white rounded-md px-2 py-0.5">{artist.images.length}장</span>
+        {shown.length > 0 && (
+          <span className="absolute top-2 right-2 text-xs bg-black/60 text-white rounded-md px-2 py-0.5">
+            {familyView === 'all' ? `${shown.length}장` : `${FAMILY_LABEL[familyView]} ${shown.length}장`}
+          </span>
         )}
+        {familyView === 'all' && <FamilyBadge family={thumb?.family} className="absolute bottom-2 left-2" />}
         {multiSelectMode && (
           <div className="absolute top-2 left-2 bg-[var(--c-surface-2)] rounded p-1 shadow">
             {selected ? <FaCheckSquare className="text-sky-500" size={20} /> : <FaSquare className="text-faint" size={20} />}
@@ -437,6 +517,17 @@ const ArtistLibraryTab = observer(() => {
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [mergingDuplicates, setMergingDuplicates] = useState(false);
+  const [familyView, setFamilyViewState] = useState<FamilyView>(loadFamilyView);
+  const setFamilyView = (v: FamilyView) => {
+    setFamilyViewState(v);
+    saveFamilyView(v);
+  };
+  // 프롬프트 편집기의 「작가 라이브러리」 버튼 → 해당 카드 열기(appState.openArtistInLibrary)
+  const focus = appState.artistLibraryFocus;
+  useEffect(() => {
+    if (!focus) return;
+    if (artistLibraryService.getArtist(focus.id)) setOpenId(focus.id);
+  }, [focus?.id, focus?.nonce]);
 
   const exitMultiSelect = () => {
     setMultiSelectMode(false);
@@ -554,6 +645,19 @@ const ArtistLibraryTab = observer(() => {
         <button className={'round-button px-3 py-2 text-sm ' + (favOnly ? 'back-orange' : 'back-gray')} onClick={() => setFavOnly((v) => !v)}>
           <FaHeart className="inline mr-1" size={12} />즐겨찾기
         </button>
+        {/* 모델 계열 보기: 카드의 대표 이미지·장수가 그 계열 샘플 기준이 된다 */}
+        <div className="flex rounded-lg border line-color overflow-hidden text-sm" role="group" aria-label="모델 계열 보기" data-artist-family-view={familyView}>
+          {(['all', 'v4_5', 'v5'] as FamilyView[]).map((v) => (
+            <button
+              key={v}
+              className={'px-3 py-2 ' + (familyView === v ? 'back-sky' : 'back-gray')}
+              onClick={() => setFamilyView(v)}
+              aria-pressed={familyView === v}
+            >
+              {v === 'all' ? '전체' : FAMILY_LABEL[v]}
+            </button>
+          ))}
+        </div>
         <button className="round-button back-sky px-4 py-2 text-sm flex items-center gap-1" onClick={newArtist}>
           <FaPlus size={12} /> 새 작가
         </button>
@@ -610,6 +714,7 @@ const ArtistLibraryTab = observer(() => {
                 selected={selectedIds.has(a.id)}
                 onToggleSelect={() => toggleSelect(a.id)}
                 onOpen={() => setOpenId(a.id)}
+                familyView={familyView}
               />
             ))}
             {/* 항상 그리드 끝에 추가 카드 (멀티선택 중엔 숨김) */}
