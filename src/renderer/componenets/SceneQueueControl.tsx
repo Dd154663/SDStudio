@@ -82,6 +82,7 @@ import {
   addScenesToQueue,
   createMissingPiecesForSession,
   queueArtistBreakdown,
+  applyArtistPrefixBatch,
   queueScene,
 } from '../models/sceneQueueActions';
 import {
@@ -2907,6 +2908,21 @@ const QueueControl = observer(
           >
             <FaPaintBrush size={18} />
             {!iconMode && <span className="ml-1">작가 분해</span>}
+          </button>
+        </Tooltip>
+      ),
+      // 작가 태그 artist: 접두 전환(2026-09-26): 긍정 프롬프트 칸 전체, 구획마다 있으면 떼고 없는 작가(태그 DB)엔 붙임. 확인창 뒤 적용.
+      'artist-prefix-toggle': (
+        <Tooltip content="긍정 프롬프트의 작가 태그 artist: 접두 전환 — 있으면 제거, 없으면 추가(태그 DB 기준)">
+          <button
+            className="round-button back-gray"
+            onClick={() => applyArtistPrefixBatch(curSession)}
+          >
+            <span className="relative inline-flex">
+              <FaPaintBrush size={18} />
+              <FaToggleOn size={10} className="absolute -right-2 -bottom-1" />
+            </span>
+            {!iconMode && <span className="ml-1">작가 접두 전환</span>}
           </button>
         </Tooltip>
       ),

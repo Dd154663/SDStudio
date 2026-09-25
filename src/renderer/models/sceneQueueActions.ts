@@ -28,6 +28,11 @@ import {
 } from './PromptService';
 import { buildArtistPromptVariants } from './promptTransforms';
 import { selectedScenesOfType } from './sceneSelection';
+import {
+  ArtistPrefixMode,
+  makeArtistLookup,
+  transformArtistPrefix,
+} from './artistTags';
 
 // 씬 큐 예약(추가/제거) 공유 로직 단일 출처.
 // SceneQueueControl(툴바·단축키·카드 버튼)과 AppContextMenu(우클릭 메뉴)가 함께 사용한다.
@@ -532,4 +537,87 @@ export const removeScenesFromQueue = (
   }
   if (scenes.length === 0) return;
   taskQueueService.removeTasksFromScenes(new Set(scenes), session);
+};
+
+/**
+ * 긍정 프롬프트 칸 전체의 작가 태그 artist: 접두를 전환한다(2026-09-25 추가/제거 → 2026-09-26 사용자 결정으로 버튼 하나의 반전).
+ * 구획마다 접두가 있으면 떼고, 없는데 태그 DB(카테고리 1)상 작가면 붙인다 — 섞여 있어도 한쪽으로 몰지 않는다.
+ * 대상 = preset.frontPrompt·backPrompt, session.extraPrompt, (이지) shared.characterPrompt·backgroundPrompt,
+ * 캐릭터 프롬프트 배열의 prompt. 부정(uc)은 제외(사용자 결정: 수정할 일이 적고 태그 명시가 의도적일 수 있음).
+ * 변환 결과를 먼저 계산해 붙일/뗄 개수를 확인창에 보여 주고, 확인 뒤에만 적용한다. models/artistTags.ts 가 단일 출처.
+ */
+export const applyArtistPrefixBatch = async (
+  session: Session,
+  mode: ArtistPrefixMode = 'toggle',
+) => {
+  const workflow = session.selectedWorkflow;
+  if (!workflow) {
+    appState.pushMessage('먼저 이미지 생성 워크플로우를 선택해주세요.');
+    return;
+  }
+  const [type, preset, shared] = session.getCommonSetup(workflow);
+  if (!preset || !shared || !['SDImageGen', 'SDImageGenEasy'].includes(type)) {
+    appState.pushMessage('이미지 생성 프리셋에서만 작가 접두 전환을 사용할 수 있습니다.');
+    return;
+  }
+  const lookup = makeArtistLookup((w) => backend.lookupTag(w));
+  type Field = { label: string; get: () => string; set: (v: string) => void };
+  const fields: Field[] = [];
+  const addField = (label: string, holder: any, key: string) => {
+    if (!holder || typeof holder[key] !== 'string') return;
+    fields.push({
+      label,
+      get: () => holder[key] as string,
+      set: (v) => {
+        holder[key] = v;
+      },
+    });
+  };
+  addField('상위 프롬프트', preset, 'frontPrompt');
+  addField('추가 프롬프트', session, 'extraPrompt');
+  addField('하위 프롬프트', preset, 'backPrompt');
+  if (type === 'SDImageGenEasy') {
+    addField('캐릭터 관련 태그', shared, 'characterPrompt');
+    addField('배경 관련 태그', shared, 'backgroundPrompt');
+  }
+  for (const holder of [preset, shared] as any[]) {
+    const list = holder?.characterPrompts;
+    if (!Array.isArray(list)) continue;
+    list.forEach((cp: any, i: number) => addField(`캐릭터 프롬프트 ${i + 1}`, cp, 'prompt'));
+  }
+
+  const results: { field: Field; text: string; changed: number }[] = [];
+  let added = 0;
+  let removed = 0;
+  let artists = 0;
+  for (const field of fields) {
+    // eslint-disable-next-line no-await-in-loop
+    const r = await transformArtistPrefix(field.get(), mode, lookup);
+    artists += r.artists;
+    added += r.added;
+    removed += r.removed;
+    if (r.changed > 0) results.push({ field, text: r.text, changed: r.changed });
+  }
+  const changed = added + removed;
+  if (changed === 0) {
+    appState.pushMessage(
+      artists > 0
+        ? '바꿀 artist: 접두가 없습니다.'
+        : '긍정 프롬프트에서 작가 태그를 찾지 못했습니다(태그 DB 기준).',
+    );
+    return;
+  }
+  const what = [added > 0 ? `추가 ${added}개` : '', removed > 0 ? `제거 ${removed}개` : '']
+    .filter(Boolean)
+    .join(', ');
+  const where = results.map((r) => `${r.field.label} ${r.changed}개`).join(', ');
+  appState.pushDialog({
+    type: 'confirm',
+    text: `작가 태그의 artist: 접두를 전환합니다 — ${what}.\n(${where})`,
+    callback: async () => {
+      results.forEach((r) => r.field.set(r.text));
+      sessionService.markDirty(session.name);
+      appState.pushMessage(`artist: 접두를 전환했습니다 — ${what}.`);
+    },
+  });
 };

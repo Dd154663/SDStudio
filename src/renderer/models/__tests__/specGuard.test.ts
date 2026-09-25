@@ -127,6 +127,21 @@ const RULES: Rule[] = [
       countMatches(c, /removeAllListeners/g),
     allow: {},
   },
+  {
+    // 작가 태그(artist:) 접두 판별·제거 정규식은 models/artistTags.ts 가 단일 출처(2026-09-25).
+    // 기존 3곳(작가 분해 판별·자동완성 카테고리·편집기)은 의도적 잔류로 동결.
+    name: '작가 접두 정규식 리터럴(artist\\s*:) — models/artistTags.ts 사용',
+    guide: '「작가 태그 접두(artist:) 계약」',
+    dir: '',
+    exts: ['.ts', '.tsx'],
+    exclude: ['models/artistTags.ts'],
+    count: (c) => countMatches(c, /artist\\s\*:/g),
+    allow: {
+      'models/promptTransforms.ts': 2,
+      'models/promptAutocomplete.ts': 2,
+      'componenets/PromptEditTextArea.tsx': 1,
+    },
+  },
 ];
 
 function listFiles(dirAbs: string, exts: string[]): string[] {

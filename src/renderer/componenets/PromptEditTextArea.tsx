@@ -1351,6 +1351,11 @@ const NativeEditTextArea = observer(
 
       useEffect(() => {
         if (!textareaRef.current || !highlightRef.current) return;
+        // 바깥에서 바뀐 값(작가 접두 일괄 변경·찾기 및 변환 등)을 textarea 에 반영한다(2026-09-25 결함 수정).
+        // 예전에는 하이라이트만 다시 그려 화면의 글자가 프리셋과 어긋났다. 사용자 입력은 값이 같아 건너뛴다.
+        if (typeof value === 'string' && textareaRef.current.value !== value) {
+          textareaRef.current.value = value;
+        }
         const text = textareaRef.current.value;
         highlightRef.current.innerHTML =
           highlight(text, getCurWord(), false) + '<span></span><br>';

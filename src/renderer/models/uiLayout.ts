@@ -47,6 +47,8 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'scene-find', name: '씬 찾기', tier: 'overflow' },
   { id: 'image-review', name: '이미지 검수', tier: 'overflow' },
   { id: 'artist-breakdown', name: '작가 분해', tier: 'overflow' },
+  // 작가 태그 artist: 접두 전환(2026-09-26, 공통) — 긍정 프롬프트 칸 전체, 구획마다 있으면 떼고 없는 작가엔 붙임. SPEC_GUIDE 「작가 태그 접두 계약」
+  { id: 'artist-prefix-toggle', name: '작가 접두 전환', tier: 'overflow', v2Label: '접두 전환' },
   { id: 'bookmark-jump', name: '북마크된 씬으로 이동', tier: 'secondary', v2Label: '북마크 이동' },
   // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환
   { id: 'scene-trash', name: '씬 휴지통', tier: 'overflow', portable: true },
