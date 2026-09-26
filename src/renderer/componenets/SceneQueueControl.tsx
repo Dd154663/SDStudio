@@ -1374,7 +1374,7 @@ const QueueControl = observer(
     const [showSceneSearch, setShowSceneSearch] = useState(false);
     // 모바일 V2(선택형 배치): 씬 툴바 줄 대신 하단 메인 줄, 검색·프롬프트조각은 상단 슬롯, 프롬프트 도구는 시트 슬롯으로 보낸다.
     // 메인 탭의 씬 목록에만 적용한다(이미지 상세 안의 파생 목록=filterFunc 는 클래식 그대로). models/mobileV2.ts
-    const v2Layout = isV2() && !!showPannel && !filterFunc;
+    const v2Layout = isV2('main') && !!showPannel && !filterFunc;
     const v2TopSlot = useV2Slot(V2_TOP_SLOT_ID, v2Layout && isActive);
     // 프롬프트조각은 어느 탭에서든 같은 자리에 있어야 하므로, 활성 여부와 무관하게 이미지생성 탭의 목록이 맡는다.
     const v2PieceSlot = useV2Slot(V2_TOP_PIECE_SLOT_ID, v2Layout && type === 'scene');

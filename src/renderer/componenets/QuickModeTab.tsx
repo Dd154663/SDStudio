@@ -58,7 +58,7 @@ function ensureDefaultScene(session: Session): Scene {
 const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
   // 모바일 V2: 이 탭이 활성인 동안 하단 바 자리를 [생성][해상도] 두 개로 쓴다(큐용 하단 바는 숨김).
   // 생성은 어느 탭에서나 화면 맨 아래 — 탭 본문 바닥에 두면 접힌 프롬프트 시트에 가려진다.
-  const v2Bar = isV2() && isActive;
+  const v2Bar = isV2('main') && isActive;
   const v2BarSlot = useV2Slot(V2_QUICK_BAR_SLOT_ID, v2Bar);
   useEffect(() => {
     if (!v2Bar) return undefined;

@@ -1,3 +1,4 @@
+import { PromptFocusShell } from './PromptFocusShell';
 import React, {
   ReactNode,
   forwardRef,
@@ -223,7 +224,7 @@ export const TabComponent: React.FC<TabComponentProps> = ({
 
   // 모바일 V2(선택형 배치): 「프롬프트 열기」 대신 하단 시트, 상단 줄 왼쪽은 활성 탭이 채우는 슬롯.
   // 탭 본문의 부모 체인은 클래식과 같게 유지한다(전환 시 재마운트 방지) — 바뀌는 것은 상단 줄과 시트뿐.
-  const v2 = isV2();
+  const v2 = isV2('main');
   const wideTabs = isMobile && mobileTabs === 'wide';
   const bottomTabs = isMobile && mobileTabs === 'bottom';
 
@@ -303,7 +304,8 @@ export const TabComponent: React.FC<TabComponentProps> = ({
       >
         {!v2 && !tabs[activeTab].banToggle && toggleViewOpen && (
           <FloatView priority={0} onEscape={() => setToggleViewOpen(false)}>
-            {toggleView}
+            {/* V2 「인라인 편집기」 부위만 켠 경우(메인 화면은 클래식): 시트 없이 집중 모드만 제공(2026-09-27) */}
+            {isV2('editor') ? <PromptFocusShell>{toggleView}</PromptFocusShell> : toggleView}
           </FloatView>
         )}
         {tabs.map((tab, index) => (

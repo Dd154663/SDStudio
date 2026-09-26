@@ -522,7 +522,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
   // 모바일 V2: 2줄째(프로젝트 도구)는 접어 두고 ⋯ 로 제자리에서 펼치는 선반. 드문 조작이라 평소에는 한 줄만 쓴다.
   // 버튼 구성·순서·동작은 클래식 2줄째 그대로(새 화면 없음). 단 프롬프트조각은 탭 위 상단 줄에 자리가 있으므로 선반에서 뺀다.
   // 펼침 상태는 앱을 다시 켜도 기억한다(models/mobileV2.ts).
-  const v2Shelf = mobileTwoRow && isV2();
+  const v2Shelf = mobileTwoRow && isV2('main');
   // 2줄 배치에서는 상단 행 버튼(그리드·휴지통)도 2줄째 맨 앞으로 내려 한 줄에 모은다.
   const row1TopIds = mobileTwoRow ? [] : topRowIds;
   const row2IdsAll = mobileTwoRow ? [...topRowIds, ...clusterIds] : clusterIds;

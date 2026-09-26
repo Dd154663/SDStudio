@@ -288,7 +288,7 @@ const TaskQueueControl = observer(({}) => {
 
   const cyclingActive = cyclingSessionService.state === 'running' || cyclingSessionService.state === 'paused';
   // 모바일 V2: 생성 위주 하단 바(막대는 남는 폭, 생성/중지 버튼은 이름을 달아 크게). 클래식은 기존 그대로.
-  const v2 = isV2();
+  const v2 = isV2('main');
   // 하단 일괄 예약의 대상 종류 = 지금 보고 있는 메인 탭(2026-09-21 버그 수정). 예전에는 'scene' 고정이라
   // 이미지변형 탭에서 눌러도 이미지생성 탭의 씬이 예약됐다(상단 툴바의 예약 추가는 탭 종류를 따름 — 동작 불일치).
   // 씬 탭이 아닌 곳(프리셋·작가·퀵 생성)에서는 기존처럼 이미지생성 씬. globalActions.ts 와 같은 규칙.

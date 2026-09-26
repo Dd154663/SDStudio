@@ -10,6 +10,7 @@ import {
   nextSheetState,
   resolveSheetTarget,
   V2_SHEET_CLOSE_EVENT,
+  isV2,
 } from '../models/mobileV2';
 
 // 모바일 V2 의 하단 시트 프롬프트(2026-09-21). 클래식의 「프롬프트 열기」 전체 화면을 대신한다.
@@ -347,7 +348,8 @@ const MobilePromptSheet: React.FC<{ children: React.ReactNode }> = ({ children }
   // 키보드가 떠 있는 동안은 포커스가 풀려도 마지막 키를 유지한다(키보드가 내려가면 heldKey 도 비운다)
   if (!kbdOpen) heldKeyRef.current = null;
   const activeKey = focusKey ?? heldKeyRef.current;
-  const focusMode = open && kbdOpen && !dragging && activeKey != null;
+  // 집중 모드는 V2 「인라인 편집기」 부위(2026-09-27 일부 적용) — 끄면 시트는 그대로, 칸 숨김만 하지 않는다
+  const focusMode = open && kbdOpen && !dragging && activeKey != null && isV2('editor');
   const focusCtxKey = focusMode ? activeKey : null;
   const focusCtx = useMemo(() => ({ key: focusCtxKey, done: focusDone }), [focusCtxKey]);
 

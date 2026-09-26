@@ -1,3 +1,4 @@
+import { MobileV2Parts, normalizeV2Parts, V2_PART_OPTIONS } from '../models/mobileV2';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { HScrollHintArrow, useHScrollHint } from './HScrollHint';
 import {
@@ -2497,7 +2498,7 @@ const floatViewModes: {
   },
 ];
 
-const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbar, setUiToolbar, quickMenu, setQuickMenu, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
+const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbar, setUiToolbar, quickMenu, setQuickMenu, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
   <div className="space-y-5">
     <div>
       <label className="block text-sm gray-label mb-1">화면 배치</label>
@@ -2623,6 +2624,28 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, setModernExitReset, 
         모바일에서는 클래식과 모바일 V2 중에서 고를 수 있습니다. 모바일 V2 는 선택 사항이며,
         여기서 클래식을 다시 고르고 저장하면 언제든 이전 배치로 돌아갑니다.
       </p>
+    )}
+    {/* 모바일 V2 일부 적용(2026-09-27): 부위별 켬/끔. 끈 부위는 클래식 배치. 저장 시 적용. */}
+    {mobileMode && uiLayoutTemplate === 'mobile-v2' && (
+      <div className="pt-2" data-cfg-v2-parts="">
+        <div className="text-sm gray-label mb-1">모바일 V2 적용 범위</div>
+        {V2_PART_OPTIONS.map((p) => (
+          <div key={p.key} className="flex items-start gap-2 py-1">
+            <input
+              type="checkbox"
+              id={`cfgV2Part-${p.key}`}
+              className="mt-1"
+              checked={uiMobileV2Parts[p.key]}
+              onChange={(e: any) => setUiMobileV2Parts({ ...uiMobileV2Parts, [p.key]: e.target.checked })}
+            />
+            <label htmlFor={`cfgV2Part-${p.key}`} className="text-sm text-default">
+              {p.label}
+              <span className="block text-xs text-faint">{p.desc}</span>
+            </label>
+          </div>
+        ))}
+        <p className="text-xs text-faint mt-1">끈 부위는 클래식 배치로 그려집니다. 저장 시 적용.</p>
+      </div>
     )}
 
     {/* 프리셋 패널 버튼 하단 아이콘 행(릴리스 준비 ② B) — 템플릿과 독립인 선택
@@ -2798,6 +2821,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [quickMenuCfg, setQuickMenuCfg] = useState<string[] | undefined>(undefined);
   const [quickMenuButton, setQuickMenuButton] = useState(false);
   const [uiLayoutTemplate, setUiLayoutTemplate] = useState('classic');
+  const [uiMobileV2Parts, setUiMobileV2Parts] = useState<MobileV2Parts>(normalizeV2Parts(undefined));
   const [uiPresetIconRow, setUiPresetIconRow] = useState(false);
   // 모던 해제 확인(② A 2차 피드백 후속 1): 모던 → 다른 템플릿 전환 시 "배치 초기화"에
   // 동의했는지. true 면 저장 시 버튼(툴바·동반)·레이아웃 배치를 기본값으로 되돌린다.
@@ -2847,6 +2871,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setQuickMenuCfg(config.quickMenu);
       setQuickMenuButton(config.quickMenuButton ?? false);
       setUiLayoutTemplate(config.uiLayoutTemplate ?? 'classic');
+      setUiMobileV2Parts(normalizeV2Parts(config.uiMobileV2Parts));
       setUiPresetIconRow(config.uiPresetIconRow ?? false);
       setUiFloatViewMode(config.uiFloatViewMode ?? 'cover');
       setUiFont(config.uiFont ?? 'system');
@@ -3003,6 +3028,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       quickMenu: quickMenuCfg,
       quickMenuButton: quickMenuButton,
       uiLayoutTemplate: uiLayoutTemplate,
+      uiMobileV2Parts: uiMobileV2Parts,
       uiPresetIconRow: uiPresetIconRow,
       uiFloatViewMode: uiFloatViewMode,
       uiFont: uiFont,
@@ -3060,6 +3086,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.quickMenu = quickMenuCfg;
     appState.quickMenuButton = quickMenuButton;
     appState.uiLayoutTemplate = uiLayoutTemplate;
+    appState.uiMobileV2Parts = uiMobileV2Parts;
     appState.uiPresetIconRow = uiPresetIconRow;
     appState.uiFloatViewMode = uiFloatViewMode;
     appState.uiFont = uiFont;
@@ -3133,7 +3160,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'toolbar':
         return <ToolbarTab {...{ uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton }} />;
       case 'layout':
-        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }} />;
+        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':
@@ -3173,6 +3200,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       JSON.stringify(quickMenuCfg ?? null) !== JSON.stringify(savedCfg.quickMenu ?? null) ||
       quickMenuButton !== (savedCfg.quickMenuButton ?? false) ||
       uiLayoutTemplate !== (savedCfg.uiLayoutTemplate ?? 'classic') ||
+      JSON.stringify(uiMobileV2Parts) !== JSON.stringify(normalizeV2Parts(savedCfg.uiMobileV2Parts)) ||
       uiPresetIconRow !== (savedCfg.uiPresetIconRow ?? false) ||
       uiFloatViewMode !== (savedCfg.uiFloatViewMode ?? 'cover') ||
       uiFont !== (savedCfg.uiFont ?? 'system') ||

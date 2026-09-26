@@ -5,9 +5,41 @@ import { isMobileV2Layout } from './layoutTemplates';
 // 구조: 탭 묶음(TabComponent)이 빈 자리(슬롯)를 만들고, 상태를 가진 쪽(씬 목록·퀵 생성)이 포털로 채운다.
 const mobile = window.electron == null;
 
-/** 지금 모바일 V2 배치인가(observable 을 읽으므로 observer 안에서 호출하면 전환에 반응한다). */
-export function isV2(): boolean {
-  return isMobileV2Layout(appState.uiLayoutTemplate, mobile);
+/**
+ * 모바일 V2 일부 적용(2026-09-27 사용자 결정): 템플릿이 V2 여도 부위별로 켜고 끌 수 있다(config.uiMobileV2Parts).
+ *  · main   = 메인 화면(하단 시트·손잡이·하단 바·메인 줄·2계층·프로젝트 선반·퀵 바·씬 편집 탭 하단)
+ *  · editor = 인라인 편집기 집중 모드(키보드가 뜨면 편집 중인 칸만) — 시트 안과 클래식 프롬프트 창(PromptFocusShell) 공통
+ *  · grid   = 이미지 그리드 하단 줄
+ *  · detail = 이미지 상세 하단 줄·정보 손잡이
+ * 값이 없으면 전부 켬(=예전 동작). 클래식 템플릿이면 부위 값과 무관하게 전부 꺼짐.
+ */
+export type V2Part = 'main' | 'editor' | 'grid' | 'detail';
+export interface MobileV2Parts {
+  main: boolean;
+  editor: boolean;
+  grid: boolean;
+  detail: boolean;
+}
+export const V2_PART_OPTIONS: { key: V2Part; label: string; desc: string }[] = [
+  { key: 'main', label: '메인 화면', desc: '하단 프롬프트 시트와 손잡이, 생성 위주 하단 바, 메인 줄·더보기, 프로젝트 선반, 씬 편집 창 하단 탭' },
+  { key: 'editor', label: '인라인 편집기 집중 모드', desc: '키보드가 뜨면 편집 중인 칸만 남기고 머리줄(칸 이름·완료)을 둡니다. 클래식 프롬프트 창에도 적용' },
+  { key: 'grid', label: '이미지 그리드', desc: '선택·삭제·즐겨찾기·북마크 줄을 아래로' },
+  { key: 'detail', label: '이미지 상세', desc: '버튼 6칸을 아래로, 자세한 정보는 손잡이로' },
+];
+export function normalizeV2Parts(raw: unknown): MobileV2Parts {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const pick = (k: V2Part) => (typeof r[k] === 'boolean' ? (r[k] as boolean) : true);
+  return { main: pick('main'), editor: pick('editor'), grid: pick('grid'), detail: pick('detail') };
+}
+
+/**
+ * 지금 모바일 V2 배치인가(observable 을 읽으므로 observer 안에서 호출하면 전환에 반응한다).
+ * part 를 주면 그 부위가 켜져 있을 때만 true. part 없이 부르면 템플릿 판정만(부위 무관).
+ */
+export function isV2(part?: V2Part): boolean {
+  if (!isMobileV2Layout(appState.uiLayoutTemplate, mobile)) return false;
+  if (!part) return true;
+  return normalizeV2Parts(appState.uiMobileV2Parts)[part];
 }
 
 /** 상단 줄 왼쪽: 활성 씬 탭이 [씬 검색+찾기][프롬프트조각]을 넣는다. 다른 탭은 비워 둔다(폭 유지). */

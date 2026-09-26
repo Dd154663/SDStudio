@@ -34,7 +34,7 @@ const BottomBar = observer(
       genControl === 'floating' ||
       appState.genControlOverlayCount > 0);
 
-  const v2 = isV2();
+  const v2 = isV2('main');
 
   // 기본(bottom): 기존 하단 가로바. data-gen-dock = 플로팅 위젯 재부착 히트 영역.
   const bar = (

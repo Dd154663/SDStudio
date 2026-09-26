@@ -1280,7 +1280,7 @@ const ResultDetailView = observer(
 
     const [showPrompt, setShowPrompt] = useState<boolean>(false);
     // 모바일 V2(2026-09-26): 넓은 버튼 묶음 대신 이미지 아래 [자세한 정보 손잡이][하단 6칸 줄]. 클래식·PC 마크업은 불변.
-    const v2 = isV2();
+    const v2 = isV2('grid');
     const [v2More, setV2More] = useState(false);
     const { show, hideAll } = useContextMenu({
       id: ContextMenuType.Image,
@@ -1769,7 +1769,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     const [_, forceUpdate] = useState<{}>({});
     const [selectMode, setSelectMode] = useState<boolean>(false);
     // 모바일 V2(2026-09-26): 머리의 액션 버튼 줄 대신 하단 5칸 줄(+더보기 둘째 줄). 클래식·PC 마크업은 불변.
-    const v2 = isV2();
+    const v2 = isV2('detail');
     const [v2More, setV2More] = useState(false);
     const [showImageCheatsheet, setShowImageCheatsheet] =
       useState<boolean>(false);

@@ -119,6 +119,8 @@ export interface Config {
   // 레이아웃 템플릿 id(배치 구조 프리셋). 미지정=classic. id 계약·강제 폴백 등
   // 해석은 resolveLayout(layoutTemplates.ts)가 단일 출처.
   uiLayoutTemplate?: string;
+  // 모바일 V2 부위별 적용(2026-09-27). 없으면 전부 켬.
+  uiMobileV2Parts?: { main?: boolean; editor?: boolean; grid?: boolean; detail?: boolean };
   // PC 전용 플로팅 생성 컨트롤(TaskQueueControl)의 분리 여부·위치.
   // detached=true면 하단바에서 떼어내 화면 위 플로팅 카드로 표시(모바일 무시).
   genWidget?: { detached?: boolean; x?: number; y?: number };

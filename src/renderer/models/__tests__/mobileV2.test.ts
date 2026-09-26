@@ -1,7 +1,8 @@
 /** @jest-environment jsdom */
 jest.mock('../AppService', () => ({ appState: { uiLayoutTemplate: 'classic' } }));
 
-import { nearestSheetState, nextSheetState, tierRows, V2_SHEET_HALF_KEYS } from '../mobileV2';
+import { isV2, nearestSheetState, nextSheetState, normalizeV2Parts, tierRows, V2_PART_OPTIONS, V2_SHEET_HALF_KEYS } from '../mobileV2';
+const { appState } = jest.requireMock('../AppService') as { appState: { uiLayoutTemplate: string; uiMobileV2Parts?: unknown } };
 
 describe('모바일 V2 더보기 둘째 줄 나누기 (2026-09-24)', () => {
   it('5칸 기준: 5개면 한 줄 꽉 참, 6개면 두 줄이고 둘째 줄은 빈 칸 4개', () => {
@@ -72,5 +73,34 @@ describe('모바일 V2 하단 시트 끌기 판정 (2026-09-22, 덜 엄격하게
     expect(go(44, 44)).toBe('peek');
     expect(go(388, 388)).toBe('half');
     expect(go(692, 692)).toBe('full');
+  });
+});
+
+describe('모바일 V2 일부 적용 (2026-09-27)', () => {
+  afterEach(() => {
+    appState.uiLayoutTemplate = 'classic';
+    appState.uiMobileV2Parts = undefined;
+  });
+  it('부위 값이 없거나 일부만 있으면 나머지는 켬, 불리언 아닌 값은 무시', () => {
+    expect(normalizeV2Parts(undefined)).toEqual({ main: true, editor: true, grid: true, detail: true });
+    expect(normalizeV2Parts({ grid: false })).toEqual({ main: true, editor: true, grid: false, detail: true });
+    expect(normalizeV2Parts({ main: 'no' })).toEqual({ main: true, editor: true, grid: true, detail: true });
+    expect(V2_PART_OPTIONS.map((p) => p.key)).toEqual(['main', 'editor', 'grid', 'detail']);
+  });
+  it('클래식 템플릿이면 부위와 무관하게 전부 꺼짐', () => {
+    appState.uiMobileV2Parts = { main: true, grid: true };
+    expect(isV2()).toBe(false);
+    expect(isV2('main')).toBe(false);
+  });
+  it('V2 템플릿: 부위 값이 없으면 전부 켬, 끈 부위만 false, 인자 없는 호출은 템플릿 판정', () => {
+    appState.uiLayoutTemplate = 'mobile-v2';
+    expect(isV2()).toBe(true);
+    expect(isV2('grid')).toBe(true);
+    appState.uiMobileV2Parts = { grid: false, editor: false };
+    expect(isV2()).toBe(true);
+    expect(isV2('main')).toBe(true);
+    expect(isV2('grid')).toBe(false);
+    expect(isV2('editor')).toBe(false);
+    expect(isV2('detail')).toBe(true);
   });
 });

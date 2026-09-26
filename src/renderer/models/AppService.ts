@@ -1,3 +1,4 @@
+import type { MobileV2Parts } from './mobileV2';
 import {
   exportPresetService,
   batchProcessService,
@@ -281,6 +282,8 @@ export class AppState {
   // 레이아웃 템플릿 id(config.uiLayoutTemplate 미러). 기본 'classic'.
   // 배치 해석은 resolveLayout(layoutTemplates.ts) 단일 출처.
   @observable accessor uiLayoutTemplate: string = 'classic';
+  // 모바일 V2 부위별 적용(config.uiMobileV2Parts 미러, 2026-09-27). undefined = 전부 켬. 판정은 mobileV2.ts isV2(part).
+  @observable accessor uiMobileV2Parts: Partial<MobileV2Parts> | undefined = undefined;
 
   // 프리셋 패널 버튼 하단 아이콘 행(config.uiPresetIconRow 미러). 기본 false = 현행
   // 세로 넓은 버튼. 소비는 PreSetEdtior.tsx(PresetRootRender), 로드는 App.tsx.

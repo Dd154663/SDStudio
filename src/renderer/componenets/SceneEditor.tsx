@@ -1904,7 +1904,7 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
           <TabComponent
             defaultActiveTab={initialTab}
             // 모바일(2026-09-26): 클래식=위 한 줄 전체 폭 등분, V2=하단 탭 바(메인 줄 언어). 그 외 개선은 공통.
-            mobileTabs={isMobile ? (isV2() ? 'bottom' : 'wide') : undefined}
+            mobileTabs={isMobile ? (isV2('main') ? 'bottom' : 'wide') : undefined}
             mobileTabsHidden={focusMode}
             tabs={[
               {
