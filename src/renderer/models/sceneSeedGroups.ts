@@ -17,6 +17,10 @@ export interface SceneSeedGroupInfo extends SceneSeedGroupMeta {
   scenes: Scene[];
 }
 
+export function isValidNaiSeed(value: unknown): value is number {
+  return validSeed(value);
+}
+
 function validSeed(value: unknown): value is number {
   return (
     typeof value === 'number' &&
@@ -179,10 +183,15 @@ export function setSceneSeedGroupSeed(
   return true;
 }
 
+/**
+ * 생성 시드 우선순위(2026-09-26 사용자 결정): 씬 전용 시드 → 씬 그룹 시드 → 프롬프트(사전세팅) 시드 → 랜덤(undefined).
+ * 각 단계는 유효한 정수(0~2^32-1)일 때만 채택하고 아니면 다음 단계로 넘어간다.
+ */
 export function resolveSceneSeed(
   scene: Scene,
   commonSeed?: number | null,
 ): number | undefined {
+  if (validSeed(scene.sceneSeed)) return scene.sceneSeed;
   const groupSeed = readSceneSeedGroup(scene)?.seed;
   if (groupSeed !== undefined) return groupSeed;
   return validSeed(commonSeed) ? commonSeed : undefined;

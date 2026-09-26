@@ -32,17 +32,19 @@ import {
   FaChevronRight,
   FaArrowUp,
   FaArrowDown,
-  FaGripVertical,
   FaLock,
   FaCheck,
 } from 'react-icons/fa';
 import { FloatView } from './FloatView';
+import { CharacterPositionOverlay, PositionMarker } from './CharacterPositionOverlay';
+import { PositionBackground, resolvePositionBackground } from '../models/characterPositionBackground';
 import { useDrag, useDrop } from 'react-dnd';
 import { v4 } from 'uuid';
 import { BigPromptEditor, SlotPiece } from './SceneEditor';
 import { useContextMenu } from 'react-contexify';
 import {
   CharacterPrompt,
+  CharacterPosition,
   ContextMenuType,
   PromptNode,
   PromptPiece,
@@ -1961,8 +1963,11 @@ const CharacterPromptEditor = observer(
     }
 
     const sharedCPs = shared?.characterPrompts || [];
-    const [showCoordMap, setShowCoordMap] = useState(false);
-    const [draggingOrderIndex, setDraggingOrderIndex] = useState<number | null>(null);
+    // 캐릭터 위치 지정 오버레이(2026-09-26): 인라인 좌표평면 대신 전체 화면 모달(ModalOverlay fullscreen — PC 프리셋 도크는 FloatViewProvider 밖). 배경은 열 때 한 번 정한다.
+    const [posOverlay, setPosOverlay] = useState<{ selectedId?: string; bg: PositionBackground } | null>(null);
+    const openPositionOverlay = (selectedId?: string) =>
+      setPosOverlay({ selectedId, bg: resolvePositionBackground(appState.curSession) });
+    const closePositionOverlay = () => setPosOverlay(null);
     const allChars =
       input.fieldType === 'preset'
         ? getOrderedBaseCharacterPrompts(preset, shared)
@@ -1991,32 +1996,21 @@ const CharacterPromptEditor = observer(
       (modelVersion === ModelVersion.V5 ||
         modelVersion === ModelVersion.V5Curated) &&
       allChars.length >= 32;
-    const coordMapRef = useRef<HTMLDivElement>(null);
-    const [draggingId, setDraggingId] = useState<string | null>(null);
-
-    const handleCoordPointer = (e: React.PointerEvent, charId: string, isDown = false) => {
-      const rect = coordMapRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    const setCharPosition = (charId: string, position: CharacterPosition) => {
       // preset(워크플로우) 캐릭터 프롬프트에서 찾기
       const inField = getField().find((c: CharacterPrompt) => c.id === charId);
       if (inField) {
-        updateCharacter(charId, { position: { x, y } });
-      } else {
-        // shared(캐릭터 프리셋) 캐릭터 프롬프트에서 찾기
-        // in-place 변형은 자동 저장 reaction이 추적하지 못하므로 배열을 재할당한다.
-        const inShared = sharedCPs.find((c: CharacterPrompt) => c.id === charId);
-        if (inShared) {
-          shared.characterPrompts = (shared.characterPrompts || []).map(
-            (c: CharacterPrompt) =>
-              c.id === charId ? { ...c, position: { x, y } } : c,
-          );
-        }
+        updateCharacter(charId, { position });
+        return;
       }
-      if (isDown) {
-        setDraggingId(charId);
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      // shared(캐릭터 프리셋) 캐릭터 프롬프트에서 찾기
+      // in-place 변형은 자동 저장 reaction이 추적하지 못하므로 배열을 재할당한다.
+      const inShared = sharedCPs.find((c: CharacterPrompt) => c.id === charId);
+      if (inShared) {
+        shared.characterPrompts = (shared.characterPrompts || []).map(
+          (c: CharacterPrompt) =>
+            c.id === charId ? { ...c, position } : c,
+        );
       }
     };
 
@@ -2036,61 +2030,35 @@ const CharacterPromptEditor = observer(
         {preset.useCoords && allChars.length > 0 && (
           <div className="flex-none mx-3 mt-2">
             <button
-              className="text-xs text-sky-500 hover:text-sky-400 mb-1"
-              onClick={() => setShowCoordMap(!showCoordMap)}
+              type="button"
+              className="round-button back-sky h-8 text-sm"
+              data-char-pos-open=""
+              onClick={() => openPositionOverlay()}
             >
-              {showCoordMap ? '▼ 좌표평면 접기' : '▶ 좌표평면 펼치기'}
+              위치 지정 창 열기
             </button>
-            {showCoordMap && (
-              <div
-                ref={coordMapRef}
-                // 좌표 끌기와 메인 본문 선택 상자 드래그가 겹치지 않게(2026-09-26 PC 버그)
-                data-no-scene-drag=""
-                className="relative w-full bg-[var(--c-surface)] border line-color rounded select-none overflow-hidden"
-                style={{ aspectRatio: '4 / 3', touchAction: 'none' }}
-                onPointerMove={(e) => {
-                  if (draggingId) handleCoordPointer(e, draggingId);
-                }}
-                onPointerUp={() => setDraggingId(null)}
-              >
-                {/* 9등분 격자선 */}
-                <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 300 300" preserveAspectRatio="none">
-                  <line x1="100" y1="0" x2="100" y2="300" stroke="currentColor" className="text-gray-200 dark:text-slate-600" strokeWidth="0.5" />
-                  <line x1="200" y1="0" x2="200" y2="300" stroke="currentColor" className="text-gray-200 dark:text-slate-600" strokeWidth="0.5" />
-                  <line x1="0" y1="100" x2="300" y2="100" stroke="currentColor" className="text-gray-200 dark:text-slate-600" strokeWidth="0.5" />
-                  <line x1="0" y1="200" x2="300" y2="200" stroke="currentColor" className="text-gray-200 dark:text-slate-600" strokeWidth="0.5" />
-                </svg>
-                {/* 캐릭터 마커 */}
-                {allChars.map((c: CharacterPrompt, i: number) => {
-                  const isFromPreset = !!(c as any).fromPreset;
-                  const color = charColors[i % charColors.length];
-                  return (
-                    <div
-                      key={c.id}
-                      className="absolute"
-                      style={{
-                        left: `${(c.position?.x ?? 0.5) * 100}%`,
-                        top: `${(c.position?.y ?? 0.5) * 100}%`,
-                        transform: 'translate(-50%, -50%)',
-                        cursor: 'grab',
-                        zIndex: draggingId === c.id ? 10 : 1,
-                      }}
-                      onPointerDown={(e) => {
-                        handleCoordPointer(e, c.id, true);
-                      }}
-                    >
-                      <div
-                        className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-900 shadow-lg flex items-center justify-center text-xs font-bold text-white"
-                        style={{ backgroundColor: color, opacity: c.enabled === false ? 0.4 : 1 }}
-                      >
-                        {i + 1}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
+        )}
+        {posOverlay && (
+          <ModalOverlay isOpen onClose={closePositionOverlay} title="캐릭터 위치 지정" fullscreen>
+            <CharacterPositionOverlay
+              markers={allChars.map(
+                (c: CharacterPrompt, i: number): PositionMarker => ({
+                  id: c.id,
+                  label: c.fromPreset ? `프리셋: ${c.fromPreset}` : typeof c.prompt === 'string' ? c.prompt : '',
+                  color: charColors[i % charColors.length],
+                  position: c.position ?? { x: 0.5, y: 0.5 },
+                  enabled: c.enabled !== false,
+                }),
+              )}
+              onMove={setCharPosition}
+              onDone={closePositionOverlay}
+              initialSelectedId={posOverlay.selectedId}
+              backgroundPath={posOverlay.bg.path}
+              fallbackAspect={posOverlay.bg.aspect}
+              caption={posOverlay.bg.caption}
+            />
+          </ModalOverlay>
         )}
         <div className="flex-1 overflow-hidden">
           <div className="h-full overflow-auto px-3">
@@ -2101,11 +2069,6 @@ const CharacterPromptEditor = observer(
               return (
               <div
                 key={character.id}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => {
-                  if (draggingOrderIndex !== null) moveCharacter(draggingOrderIndex, i);
-                  setDraggingOrderIndex(null);
-                }}
                 className={`border rounded-md r-card mt-3 p-3 ${
                   locked
                     ? 'border-green-300 dark:border-green-600 bg-green-50 dark:bg-green-900/20'
@@ -2115,25 +2078,14 @@ const CharacterPromptEditor = observer(
                 }`}
               >
                 <div className="flex justify-between items-center mb-2">
+                  {/* 2026-09-26 사용자 지적: 미동작 끌기 손잡이와 자리만 차지하던 「캐릭터 프롬프트」 글자 제거(순서는 ↑↓) */}
                   <div className="flex items-center gap-2 gray-label">
-                    {!isMobile && (
-                      <span
-                        draggable
-                        onDragStart={() => setDraggingOrderIndex(i)}
-                        onDragEnd={() => setDraggingOrderIndex(null)}
-                        className="text-faint cursor-grab"
-                      >
-                        <FaGripVertical />
-                      </span>
-                    )}
                     <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: charColors[i % charColors.length] }}>{i + 1}</div>
                     {locked ? (
                       <span className="flex items-center gap-1 text-green-700 dark:text-green-400">
                         <FaLock size={11} /> 프리셋: {character.fromPreset}
                       </span>
-                    ) : (
-                      '캐릭터 프롬프트'
-                    )}
+                    ) : null}
                   </div>
                   <div className="flex items-center gap-1">
                     <button
@@ -2244,10 +2196,15 @@ const CharacterPromptEditor = observer(
                   />
                 </div>
                 {preset.useCoords && (
-                  <div className="flex items-center gap-2 text-xs text-faint mt-1">
+                  // 위치 줄을 누르면 그 캐릭터가 선택된 상태로 위치 지정 창이 열린다(2026-09-26)
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 text-xs text-sky-500 mt-1 relative touch-hit"
+                    onClick={() => openPositionOverlay(character.id)}
+                  >
                     <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: charColors[i % charColors.length] }} />
-                    위치: ({character.position?.x?.toFixed(2)}, {character.position?.y?.toFixed(2)})
-                  </div>
+                    위치: ({(character.position?.x ?? 0.5).toFixed(2)}, {(character.position?.y ?? 0.5).toFixed(2)}) · 위치 지정 창에서 조정
+                  </button>
                 )}
                   </>
                 )}

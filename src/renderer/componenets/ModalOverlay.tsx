@@ -2,6 +2,7 @@ import React, { ReactNode, useEffect, useCallback, useRef } from 'react';
 import { FaTimes } from 'react-icons/fa';
 import { appState } from '../models/AppService';
 import { backStackService } from '../models/BackStackService';
+import { isMobile } from '../models';
 
 interface ModalOverlayProps {
   isOpen: boolean;
@@ -13,6 +14,9 @@ interface ModalOverlayProps {
   // 마운트는 유지한 채 시각적으로만 숨김 — 내용물이 드래그 소스일 때
   // 드래그 도중 언마운트하면 드래그가 끊기므로 이 경로를 쓴다.
   hidden?: boolean;
+  // 전체 화면 변형(2026-09-26, 캐릭터 위치 지정 창): 모바일=화면 전체, PC=94vw×92vh. 내용 영역은 여백 없이
+  // 자식이 높이를 전부 쓴다(flex-1 min-h-0 overflow-hidden). 뒤로 가기·Escape·모달 카운터는 그대로.
+  fullscreen?: boolean;
 }
 
 const ModalOverlay = ({
@@ -22,6 +26,7 @@ const ModalOverlay = ({
   children,
   width = 'max-w-xl',
   hidden,
+  fullscreen,
 }: ModalOverlayProps) => {
   const mouseDownOnBackdrop = useRef(false);
 
@@ -90,7 +95,14 @@ const ModalOverlay = ({
       }}
     >
       <div
-        className={`${width} w-[90vw] max-h-[85vh] bg-[var(--c-zone)] rounded-xl shadow-2xl flex flex-col overflow-hidden border line-color`}
+        className={
+          fullscreen
+            ? isMobile
+              ? 'w-full h-full bg-[var(--c-zone)] flex flex-col overflow-hidden'
+              : 'w-[94vw] h-[92vh] bg-[var(--c-zone)] rounded-xl shadow-2xl flex flex-col overflow-hidden border line-color'
+            : `${width} w-[90vw] max-h-[85vh] bg-[var(--c-zone)] rounded-xl shadow-2xl flex flex-col overflow-hidden border line-color`
+        }
+        data-modal-fullscreen={fullscreen ? '' : undefined}
       >
         {/* 타이틀 바 */}
         <div className="flex items-center justify-between px-5 py-3 border-b line-color flex-none">
@@ -105,7 +117,7 @@ const ModalOverlay = ({
           </button>
         </div>
         {/* 콘텐츠 */}
-        <div className="flex-1 overflow-auto p-5">{children}</div>
+        <div className={fullscreen ? 'flex-1 min-h-0 overflow-hidden' : 'flex-1 overflow-auto p-5'}>{children}</div>
       </div>
     </div>
   );

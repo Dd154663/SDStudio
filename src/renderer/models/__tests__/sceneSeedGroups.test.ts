@@ -100,3 +100,42 @@ describe('sceneSeedGroups', () => {
     expect(sceneSeedGroupLabel(27)).toBe('AB');
   });
 });
+
+describe('씬 전용 시드 우선순위(2026-09-26)', () => {
+  it('씬 전용 시드 → 그룹 시드 → 공통 시드 → 랜덤 순', () => {
+    const { session, scenes } = makeSession('a', 'b');
+    const group = createSceneSeedGroup(session, scenes)!;
+    setSceneSeedGroupSeed(session, group.id, 777);
+    scenes[0].sceneSeed = 42;
+    expect(resolveSceneSeed(scenes[0], 123)).toBe(42);
+    expect(resolveSceneSeed(scenes[1], 123)).toBe(777);
+    scenes[0].sceneSeed = undefined;
+    expect(resolveSceneSeed(scenes[0], 123)).toBe(777);
+    const lone = new Scene();
+    lone.sceneSeed = 5;
+    expect(resolveSceneSeed(lone, 123)).toBe(5);
+    lone.sceneSeed = undefined;
+    expect(resolveSceneSeed(lone, 123)).toBe(123);
+    expect(resolveSceneSeed(lone, null)).toBeUndefined();
+  });
+  it('범위 밖 씬 전용 시드는 무시하고 다음 단계로', () => {
+    const scene = new Scene();
+    scene.sceneSeed = -1;
+    expect(resolveSceneSeed(scene, 9)).toBe(9);
+    scene.sceneSeed = 1.5;
+    expect(resolveSceneSeed(scene, 9)).toBe(9);
+  });
+  it('직렬화: 있으면 저장, 없으면 키 생략, 손상 값은 미설정으로 복원', () => {
+    const scene = new Scene();
+    scene.name = 's';
+    scene.slots = [];
+    expect('sceneSeed' in scene.toJSON()).toBe(false);
+    scene.sceneSeed = 0;
+    const json = scene.toJSON();
+    expect(json.sceneSeed).toBe(0);
+    expect(Scene.fromJSON(json).sceneSeed).toBe(0);
+    expect(Scene.fromJSON({ ...json, sceneSeed: undefined }).sceneSeed).toBeUndefined();
+    expect(Scene.fromJSON({ ...json, sceneSeed: '12' as any }).sceneSeed).toBeUndefined();
+    expect(Scene.fromJSON({ ...json, sceneSeed: 2 ** 32 }).sceneSeed).toBeUndefined();
+  });
+});

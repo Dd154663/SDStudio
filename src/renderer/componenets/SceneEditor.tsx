@@ -46,6 +46,10 @@ import PreSetEditor, { UnionPreSetEditor } from './PreSetEdtior';
 import { TaskProgressBar } from './TaskQueueControl';
 import { Resolution, resolutionMap } from '../backends/imageGen';
 import { FloatView } from './FloatView';
+import ModalOverlay from './ModalOverlay';
+import { CharacterPositionOverlay } from './CharacterPositionOverlay';
+import { isValidNaiSeed, MAX_NAI_SEED } from '../models/sceneSeedGroups';
+import { PositionBackground, resolvePositionBackground } from '../models/characterPositionBackground';
 import { isV2 } from '../models/mobileV2';
 import { v4 as uuidv4 } from 'uuid';
 import { useDrag, useDrop } from 'react-dnd';
@@ -115,7 +119,7 @@ export const PromptHighlighter = observer(
   },
 );
 
-// 모바일 씬 편집 창의 접이식 구역(2026-09-26): 기본 캐릭터 프롬프트·좌표평면·공통 네거티브. 기본 접힘, 기기에 기억.
+// 모바일 씬 편집 창의 접이식 구역(2026-09-26): 기본 캐릭터 프롬프트·공통 네거티브. 기본 접힘, 기기에 기억.
 const SCENE_EDITOR_FOLD_KEY = 'sdstudio-scene-editor-fold';
 type SceneEditorFoldKey = 'base' | 'coord' | 'neg';
 function loadSceneEditorFold(key: SceneEditorFoldKey, def: boolean): boolean {
@@ -133,6 +137,55 @@ function saveSceneEditorFold(key: SceneEditorFoldKey, folded: boolean) {
     localStorage.setItem(SCENE_EDITOR_FOLD_KEY, JSON.stringify(m));
   } catch (e) {}
 }
+/**
+ * 씬 전용 시드 입력(2026-09-26). 비우면 미설정(→ 그룹 시드 → 프롬프트 시드 → 랜덤). blur/Enter 에 저장, 범위 밖이면
+ * 알림 뒤 이전 값으로 되돌린다(시드 그룹 배지 입력과 같은 규칙). 값은 Scene.sceneSeed(직렬화 포함).
+ */
+const SceneSeedInput = ({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: number | undefined;
+  onChange: (seed: number | undefined) => void;
+  disabled?: boolean;
+}) => {
+  const [text, setText] = useState(value === undefined ? '' : String(value));
+  useEffect(() => {
+    setText(value === undefined ? '' : String(value));
+  }, [value]);
+  const commit = () => {
+    const trimmed = text.trim();
+    if (trimmed === '') {
+      if (value !== undefined) onChange(undefined);
+      return;
+    }
+    const seed = Number(trimmed);
+    if (!isValidNaiSeed(seed)) {
+      appState.pushMessage(`시드는 0~${MAX_NAI_SEED} 사이의 정수여야 합니다.`);
+      setText(value === undefined ? '' : String(value));
+      return;
+    }
+    if (seed !== value) onChange(seed);
+  };
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      data-scene-seed-input=""
+      className="gray-input flex-1 min-w-0 h-8 text-sm"
+      disabled={disabled}
+      value={text}
+      placeholder="비우면 그룹 시드 → 프롬프트 시드 → 랜덤"
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+      }}
+    />
+  );
+};
+
 /** 모바일 접이식 구역 머리줄(▶/▼ + 제목). PC 에서는 쓰지 않는다. */
 const FoldHead = ({ open, label, onToggle }: { open: boolean; label: string; onToggle: () => void }) => (
   <button
@@ -170,6 +223,9 @@ interface BigPromptEditorProps {
   setSceneUC?: (txt: string) => void;
   /** 모바일 집중 모드(키보드가 떠 편집 중): 이미지·즐겨찾기·진행 막대 영역을 숨기고 편집기가 높이를 전부 쓴다(2026-09-26). */
   keyboardCompact?: boolean;
+  /** 씬 전용 시드(단순 씬 에디터 전용, 2026-09-26). onSceneSeedChange 가 있을 때만 줄을 그린다. */
+  sceneSeed?: number;
+  onSceneSeedChange?: (seed: number | undefined) => void;
 }
 
 export const BigPromptEditor = observer(
@@ -190,6 +246,8 @@ export const BigPromptEditor = observer(
     getSceneUC,
     setSceneUC,
     keyboardCompact,
+    sceneSeed,
+    onSceneSeedChange,
   }: BigPromptEditorProps) => {
     const [image, setImage] = useState<string | undefined>(undefined);
     const [path, setPath] = useState<string | undefined>(initialImagePath);
@@ -276,6 +334,13 @@ export const BigPromptEditor = observer(
                   value={getSceneUC ? getSceneUC() : ''}
                 />
               </div>
+              {onSceneSeedChange && (
+                // 씬 전용 시드(2026-09-26): 우선순위 씬 전용 → 그룹 → 프롬프트 → 랜덤(resolveSceneSeed)
+                <div className="flex-none flex items-center gap-2" data-scene-seed-row="">
+                  <span className="font-bold text-sub text-sm flex-none">씬 전용 시드</span>
+                  <SceneSeedInput value={sceneSeed} onChange={onSceneSeedChange} disabled={editDisabled} />
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -645,16 +710,18 @@ const SceneCharacterPromptEditor = observer(({
   preset,
   shared,
 }: SceneCharacterPromptEditorProps) => {
-  const [showCoordMap, setShowCoordMap] = useState(false);
-  const coordMapRef = useRef<HTMLDivElement>(null);
-  // 모바일 접이식 구역(2026-09-26): 기본 캐릭터·공통 네거티브는 기본 접힘, 기기에 기억. 좌표평면은 showCoordMap 그대로.
+  // 캐릭터 위치 지정 오버레이(2026-09-26): 인라인 좌표평면 대신 전체 화면 모달(ModalOverlay fullscreen — PC 프리셋 도크는 FloatViewProvider 밖). 배경=이 씬의 최근 생성작.
+  const [posOverlay, setPosOverlay] = useState<{ selectedId?: string; bg: PositionBackground } | null>(null);
+  const openPositionOverlay = (selectedId?: string) =>
+    setPosOverlay({ selectedId, bg: resolvePositionBackground(appState.curSession, scene) });
+  const closePositionOverlay = () => setPosOverlay(null);
+  // 모바일 접이식 구역(2026-09-26): 기본 캐릭터·공통 네거티브는 기본 접힘, 기기에 기억.
   const [foldBase, setFoldBase] = useState(() => loadSceneEditorFold('base', true));
   const [foldNeg, setFoldNeg] = useState(() => loadSceneEditorFold('neg', true));
   const toggleFold = (key: 'base' | 'neg') => {
     if (key === 'base') { saveSceneEditorFold('base', !foldBase); setFoldBase(!foldBase); }
     else { saveSceneEditorFold('neg', !foldNeg); setFoldNeg(!foldNeg); }
   };
-  const [draggingId, setDraggingId] = useState<string | null>(null);
   const [draggingBaseIndex, setDraggingBaseIndex] = useState<number | null>(null);
   const [draggingRoleIndex, setDraggingRoleIndex] = useState<number | null>(null);
 
@@ -683,18 +750,6 @@ const SceneCharacterPromptEditor = observer(({
     scene.sceneCharacterPrompts = (scene.sceneCharacterPrompts || []).map(c =>
       c.id === id ? { ...c, enabled: c.enabled === false ? true : false } : c
     );
-  };
-
-  const handleCoordPointer = (e: React.PointerEvent, charId: string, isDown = false) => {
-    const rect = coordMapRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-    updateCharacter(charId, { position: { x, y } });
-    if (isDown) {
-      setDraggingId(charId);
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    }
   };
 
   const characters = scene.sceneCharacterPrompts || [];
@@ -731,12 +786,6 @@ const SceneCharacterPromptEditor = observer(({
       : mode === 'mix'
         ? '같은 번호의 기본 캐릭터에 씬 역할의 동작·네거티브·좌표를 자동으로 합칩니다.'
         : '메인 직접입력 캐릭터를 씬 전용 캐릭터로 대체합니다. 적용된 캐릭터 프리셋은 유지됩니다.';
-  // 모바일 좌표평면 열기(카드의 위치 줄에서도 호출) — 위치 지정 모드의 진입로를 하나 더 둔다
-  const openCoordMap = () => {
-    setShowCoordMap(true);
-    setTimeout(() => coordMapRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 0);
-  };
-
   return (
     <div className={isMobile ? 'flex flex-col h-full px-3 py-2 overflow-hidden' : 'flex flex-col h-full p-4 overflow-hidden'}>
       {isMobile ? (
@@ -884,63 +933,40 @@ const SceneCharacterPromptEditor = observer(({
       </div>
       )}
 
-      {/* 좌표평면(캐릭터 위치 지정). 모바일은 접이식 머리줄, 카드의 위치 줄에서도 열 수 있다. */}
+      {/* 캐릭터 위치 지정 창(2026-09-26): 카드의 위치 줄에서도 열 수 있다. */}
       {characters.length > 0 && (
-        <div className={isMobile ? 'flex-none mb-1' : 'flex-none mb-3'}>
-          {isMobile ? (
-            <FoldHead open={showCoordMap} label="좌표평면 (캐릭터 위치 지정)" onToggle={() => setShowCoordMap(!showCoordMap)} />
-          ) : (
+        <div className={isMobile ? 'flex-none mb-2 flex items-center gap-2' : 'flex-none mb-3 flex items-center gap-2'}>
           <button
-            className="text-xs text-sky-500 hover:text-sky-400 mb-1"
-            onClick={() => setShowCoordMap(!showCoordMap)}
+            type="button"
+            className="round-button back-sky h-8 text-sm"
+            data-char-pos-open=""
+            onClick={() => openPositionOverlay()}
           >
-            {showCoordMap ? '▼ 좌표평면 접기' : '▶ 좌표평면 펼치기'}
+            위치 지정 창 열기
           </button>
-          )}
-          {showCoordMap && (
-            <div
-              ref={coordMapRef}
-              data-no-scene-drag=""
-              className="relative bg-[var(--c-surface)] border line-color rounded select-none overflow-hidden"
-              style={{ aspectRatio: '4 / 3', maxWidth: '360px', touchAction: 'none' }}
-              onPointerMove={(e) => {
-                if (draggingId) handleCoordPointer(e, draggingId);
-              }}
-              onPointerUp={() => setDraggingId(null)}
-            >
-              <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 300 300" preserveAspectRatio="none">
-                <line x1="100" y1="0" x2="100" y2="300" stroke="currentColor" className="text-gray-200 dark:text-slate-600" strokeWidth="0.5" />
-                <line x1="200" y1="0" x2="200" y2="300" stroke="currentColor" className="text-gray-200 dark:text-slate-600" strokeWidth="0.5" />
-                <line x1="0" y1="100" x2="300" y2="100" stroke="currentColor" className="text-gray-200 dark:text-slate-600" strokeWidth="0.5" />
-                <line x1="0" y1="200" x2="300" y2="200" stroke="currentColor" className="text-gray-200 dark:text-slate-600" strokeWidth="0.5" />
-              </svg>
-              {characters.map((c, i) => {
-                const color = sceneCharColors[i % sceneCharColors.length];
-                return (
-                  <div
-                    key={c.id}
-                    className="absolute"
-                    style={{
-                      left: `${(c.position?.x ?? 0.5) * 100}%`,
-                      top: `${(c.position?.y ?? 0.5) * 100}%`,
-                      transform: 'translate(-50%, -50%)',
-                      cursor: 'grab',
-                      zIndex: draggingId === c.id ? 10 : 1,
-                    }}
-                    onPointerDown={(e) => handleCoordPointer(e, c.id, true)}
-                  >
-                    <div
-                      className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-900 shadow-lg flex items-center justify-center text-xs font-bold text-white"
-                      style={{ backgroundColor: color, opacity: c.enabled === false ? 0.4 : 1 }}
-                    >
-                      {i + 1}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+          {!preset?.useCoords && (
+            <span className="text-xs text-faint min-w-0 truncate">메인 패널의 「캐릭터 위치 지정 모드」가 꺼져 있어 좌표는 전송되지 않습니다</span>
           )}
         </div>
+      )}
+      {posOverlay && (
+        <ModalOverlay isOpen onClose={closePositionOverlay} title="캐릭터 위치 지정" fullscreen>
+          <CharacterPositionOverlay
+            markers={characters.map((c, i) => ({
+              id: c.id,
+              label: c.prompt,
+              color: sceneCharColors[i % sceneCharColors.length],
+              position: c.position ?? { x: 0.5, y: 0.5 },
+              enabled: c.enabled !== false,
+            }))}
+            onMove={(id, position) => updateCharacter(id, { position })}
+            onDone={closePositionOverlay}
+            initialSelectedId={posOverlay.selectedId}
+            backgroundPath={posOverlay.bg.path}
+            fallbackAspect={posOverlay.bg.aspect}
+            caption={posOverlay.bg.caption}
+          />
+        </ModalOverlay>
       )}
 
       <div className="flex-1 overflow-auto">
@@ -1061,22 +1087,15 @@ const SceneCharacterPromptEditor = observer(({
                   </div>
                 </div>
 
-                {isMobile ? (
-                  // 위치 줄을 누르면 좌표평면이 열린다(위치 지정 모드 진입로, 2026-09-26)
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 text-xs text-sky-500 relative touch-hit"
-                    onClick={openCoordMap}
-                  >
-                    <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: sceneCharColors[index % sceneCharColors.length] }} />
-                    위치: ({character.position?.x?.toFixed(2) || '0.50'}, {character.position?.y?.toFixed(2) || '0.50'}) · 좌표평면에서 지정
-                  </button>
-                ) : (
-                <div className="flex items-center gap-2 text-xs text-faint">
+                {/* 위치 줄을 누르면 그 캐릭터가 선택된 상태로 위치 지정 창이 열린다(2026-09-26, PC·모바일 공통) */}
+                <button
+                  type="button"
+                  className="flex items-center gap-2 text-xs text-sky-500 relative touch-hit"
+                  onClick={() => openPositionOverlay(character.id)}
+                >
                   <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: sceneCharColors[index % sceneCharColors.length] }} />
-                  위치: ({character.position?.x?.toFixed(2) || '0.50'}, {character.position?.y?.toFixed(2) || '0.50'})
-                </div>
-                )}
+                  위치: ({(character.position?.x ?? 0.5).toFixed(2)}, {(character.position?.y ?? 0.5).toFixed(2)}) · 위치 지정 창에서 조정
+                </button>
               </div>
             ))}
           </div>
@@ -1632,6 +1651,10 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
       getSceneUC={getSceneUC}
       setSceneUC={setSceneUC}
       keyboardCompact={focusMode}
+      sceneSeed={scene.sceneSeed}
+      onSceneSeedChange={(seed) => {
+        scene.sceneSeed = seed;
+      }}
     />
   );
 
