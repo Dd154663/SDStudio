@@ -39,7 +39,15 @@ import {
   FaTrashRestore,
   FaClone,
   FaShareSquare,
+  FaChevronUp,
+  FaCog,
+  FaEllipsisH,
+  FaExchangeAlt,
+  FaSearchPlus,
+  FaTrophy,
 } from 'react-icons/fa';
+import { isV2, V2_SHEET_PEEK_PX } from '../models/mobileV2';
+import { V2MainRow, V2TierRows, type V2SlotDef, type V2TierItem } from './MobileV2Bars';
 import { PromptHighlighter } from './SceneEditor';
 import QueueControl from './SceneQueueControl';
 import { FloatView } from './FloatView';
@@ -1049,6 +1057,9 @@ interface ResultDetailViewProps {
   buttons: ResultDetailViewButton[];
   onClose: () => void;
 }
+// 모바일 V2 이미지 그리드 하단 줄 높이(V2MainRow 46px 칸 + 위 3px·아래 2px 여백 + 위 테두리 1px) — S/M/L 을 이 위로 올린다
+const V2_GALLERY_BAR_PX = 52;
+
 const ResultDetailView = observer(
   ({
     scene,
@@ -1268,6 +1279,9 @@ const ResultDetailView = observer(
     });
 
     const [showPrompt, setShowPrompt] = useState<boolean>(false);
+    // 모바일 V2(2026-09-26): 넓은 버튼 묶음 대신 이미지 아래 [자세한 정보 손잡이][하단 6칸 줄]. 클래식·PC 마크업은 불변.
+    const v2 = isV2();
+    const [v2More, setV2More] = useState(false);
     const { show, hideAll } = useContextMenu({
       id: ContextMenuType.Image,
     });
@@ -1291,155 +1305,68 @@ const ResultDetailView = observer(
 
     if (!paths[selectedIndex]) return null;
 
-    return (
-      <div className="z-10 bg-[var(--c-surface)] w-full h-full flex overflow-auto flex-col md:flex-row">
-        <div className="flex-none md:w-1/3 p-2 md:p-4 overflow-y-auto">
-          <div className="flex gap-2 md:gap-3 mb-2 md:mb-6 flex-wrap w-full">
-            {!isMobile && (
-              <button
-                className={`round-button back-green`}
-                onClick={async () => {
-                  // 다운로드 다이얼로그 열기
-                  await imageDownloadService.downloadSingleImage(
-                    curSession!,
-                    scene,
-                    paths[selectedIndex],
-                    appState.getAppliedCharacterPreset(),
-                  );
-                }}
-              >
-                <FaDownload className="mr-1" />
-                다운로드
-              </button>
-            )}
-            <button
-              className={`round-button back-sky`}
-              onClick={async () => {
-                if (isMobile) {
-                  await backend.copyToDownloads(paths[selectedIndex]);
-                } else {
-                  await backend.showFile(paths[selectedIndex]);
-                }
-              }}
-            >
-              {!isMobile ? '파일 위치 열기' : '파일 다운로드'}
-            </button>
-            {!isMobile && (
-              <button
-                className={`round-button back-sky`}
-                onClick={async () => {
-                  await backend.openImageEditor(paths[selectedIndex]);
-                  watchedImages.current.add(paths[selectedIndex]);
-                  backend.watchImage(paths[selectedIndex]);
-                }}
-              >
-                이미지 편집
-              </button>
-            )}
-            <button
-              className={`round-button back-red`}
-              onClick={() => {
-                const doDel = async () => {
-                  await deleteImageFiles(
-                    curSession!,
-                    [paths[selectedIndex]],
-                    scene,
-                  );
-                };
-                if (appState.skipImageDeleteConfirm) {
-                  doDel();
-                  return;
-                }
-                appState.pushDialog({
-                  type: 'confirm',
-                  text: '정말로 파일을 삭제하시겠습니까?',
-                  showSkipConfirm: true,
-                  callback: doDel,
-                });
-              }}
-            >
-              파일 삭제
-            </button>
-            <button
-              className={`round-button ${isImageBm ? 'back-orange' : 'back-gray'}`}
-              onClick={() => {
-                if (currentFilename) {
-                  sessionService.toggleImageBookmark(
-                    curSession!.name,
-                    scene.name,
-                    currentFilename,
-                  );
-                }
-              }}
-            >
-              <FaBookmark className="mr-1" />
-              {isImageBm ? '북마크 해제' : '북마크'}
-            </button>
-            <button
-              className={`round-button back-sky`}
-              onClick={() => {
-                appState.copyImagesToClipboard([paths[selectedIndex]]);
-              }}
-            >
-              <FaCopy className="mr-1" />
-              이미지 복사
-            </button>
-            <button
-              className="round-button back-sky"
-              onClick={() => {
-                if (!image) return;
-                appState.openExternalImage(dataUriToBase64(image), scene);
-              }}
-            >
-              생성 설정 불러오기
-            </button>
-            <button
-              className="round-button back-sky"
-              title={upscaleInfo?.error ?? '가로·세로 2배 · 원본 유지 · Anlas 사용'}
-              disabled={upscalePreparing || upscaleInfo?.path !== paths[selectedIndex] || !upscaleInfo?.cost}
-              onClick={async () => {
-                const path = paths[selectedIndex];
-                const session = curSession;
-                if (!path || !session || upscalePreparing) return;
-                setUpscalePreparing(true);
-                try {
-                  const source = await imageService.fetchImage(path);
-                  if (!source) throw new Error('원본 이미지를 읽지 못했습니다.');
-                  await queueNaiUpscale(session, scene, dataUriToBase64(source));
-                } catch (e: any) {
-                  appState.pushMessage(e?.message ?? 'NAI 업스케일을 예약하지 못했습니다.');
-                } finally {
-                  setUpscalePreparing(false);
-                }
-              }}
-            >
-              {upscalePreparing ? '예약 중…' : `업스케일 ×2 · ${upscaleInfo?.path === paths[selectedIndex] && upscaleInfo.cost ? `${upscaleInfo.cost} Anlas` : upscaleInfo?.error ? '미지원' : '…'}`}
-            </button>
-            {buttons.map((button, index) => (
-              <button
-                key={index}
-                className={`round-button ${button.className}`}
-                onClick={() => {
-                  button.onClick(scene, paths[selectedIndex], onClose);
-                }}
-              >
-                {button.text instanceof Function
-                  ? button.text(paths[selectedIndex])
-                  : button.text}
-              </button>
-            ))}
-          </div>
-          <button
-            className={`round-button back-gray md:hidden`}
-            onClick={() => setShowPrompt(!showPrompt)}
-          >
-            {!showPrompt ? '자세한 정보 보기' : '자세한 정보 숨기기'}
-          </button>
-          <div
-            className={
-              'mt-2 md:mt-0 md:block ' + (showPrompt ? 'block' : 'hidden')
-            }
-          >
+    // 버튼 동작(클래식 넓은 버튼과 V2 하단 줄이 공유)
+    const actDownloadFile = async () => {
+      if (isMobile) {
+        await backend.copyToDownloads(paths[selectedIndex]);
+      } else {
+        await backend.showFile(paths[selectedIndex]);
+      }
+    };
+    const actDeleteFile = () => {
+      const doDel = async () => {
+        await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
+      };
+      if (appState.skipImageDeleteConfirm) {
+        doDel();
+        return;
+      }
+      appState.pushDialog({
+        type: 'confirm',
+        text: '정말로 파일을 삭제하시겠습니까?',
+        showSkipConfirm: true,
+        callback: doDel,
+      });
+    };
+    const actToggleBookmark = () => {
+      if (currentFilename) {
+        sessionService.toggleImageBookmark(curSession!.name, scene.name, currentFilename);
+      }
+    };
+    const actCopyImage = () => {
+      appState.copyImagesToClipboard([paths[selectedIndex]]);
+    };
+    const actLoadSettings = () => {
+      if (!image) return;
+      appState.openExternalImage(dataUriToBase64(image), scene);
+    };
+    const upscaleTitle = upscaleInfo?.error ?? '가로·세로 2배 · 원본 유지 · Anlas 사용';
+    const upscaleDisabled =
+      upscalePreparing || upscaleInfo?.path !== paths[selectedIndex] || !upscaleInfo?.cost;
+    const upscaleLabel = upscalePreparing
+      ? '예약 중…'
+      : `업스케일 ×2 · ${upscaleInfo?.path === paths[selectedIndex] && upscaleInfo.cost ? `${upscaleInfo.cost} Anlas` : upscaleInfo?.error ? '미지원' : '…'}`;
+    const actUpscale = async () => {
+      const path = paths[selectedIndex];
+      const session = curSession;
+      if (!path || !session || upscalePreparing) return;
+      setUpscalePreparing(true);
+      try {
+        const source = await imageService.fetchImage(path);
+        if (!source) throw new Error('원본 이미지를 읽지 못했습니다.');
+        await queueNaiUpscale(session, scene, dataUriToBase64(source));
+      } catch (e: any) {
+        appState.pushMessage(e?.message ?? 'NAI 업스케일을 예약하지 못했습니다.');
+      } finally {
+        setUpscalePreparing(false);
+      }
+    };
+    const pluginLabel = (b: any) =>
+      String(typeof b.text === 'function' ? b.text(paths[selectedIndex]) : b.text);
+    const runPlugin = (b: any) => b.onClick(scene, paths[selectedIndex], onClose);
+
+    const infoFields = (
+      <>
             <div className="max-w-full mb-2 text-sub">
               <span className="gray-label">파일이름: </span>
               <span>{filename}</span>
@@ -1491,10 +1418,183 @@ const ResultDetailView = observer(
               <span className="gray-label">스텝: </span>
               {steps}
             </div>
+      </>
+    );
+
+    // 모바일 V2 하단 6칸 줄(2026-09-26 사용자 결정): 다운로드·삭제·설정 불러오기·즐겨찾기·인페인트+더보기.
+    // 즐겨찾기·인페인트는 SceneQueueControl 이 넘기는 plugin 버튼(text 로 식별), 나머지 plugin 은 더보기로.
+    const favBtn = v2 ? buttons.find((b: any) => /즐겨찾기/.test(pluginLabel(b))) : undefined;
+    const inpaintBtn = v2 ? buttons.find((b: any) => /인페인/.test(pluginLabel(b))) : undefined;
+    const otherBtns = v2 ? buttons.filter((b: any) => b !== favBtn && b !== inpaintBtn) : [];
+    const detailSlots: V2SlotDef[] = v2
+      ? [
+          { key: 'download', name: '다운로드', icon: <FaDownload />, onTap: () => void actDownloadFile() },
+          { key: 'delete', name: '삭제', icon: <FaTrash />, tone: 'danger', onTap: actDeleteFile },
+          { key: 'settings', name: '설정 추출', icon: <FaCog />, onTap: actLoadSettings, disabled: !image },
+          {
+            key: 'fav',
+            name: '즐겨찾기',
+            icon: <FaStar />,
+            tone: favBtn && /해제/.test(pluginLabel(favBtn)) ? 'accent' : 'default',
+            onTap: () => favBtn && runPlugin(favBtn),
+            disabled: !favBtn,
+          },
+          {
+            key: 'inpaint',
+            name: '인페인트',
+            icon: <FaPaintBrush />,
+            onTap: () => inpaintBtn && runPlugin(inpaintBtn),
+            disabled: !inpaintBtn,
+          },
+          { key: 'more', name: '더보기', icon: <FaEllipsisH />, onTap: () => setV2More((v) => !v), expanded: v2More },
+        ]
+      : [];
+    const detailTier: V2TierItem[] = v2
+      ? [
+          {
+            id: 'bookmark',
+            label: isImageBm ? '북마크 해제' : '북마크',
+            node: (
+              <button className={`round-button ${isImageBm ? 'back-orange' : 'back-gray'}`} onClick={actToggleBookmark}>
+                <FaBookmark />
+              </button>
+            ),
+          },
+          {
+            id: 'copy',
+            label: '복사',
+            node: (
+              <button className="round-button back-sky" onClick={actCopyImage}>
+                <FaCopy />
+              </button>
+            ),
+          },
+          {
+            id: 'upscale',
+            label: '업스케일',
+            node: (
+              <button className="round-button back-sky" title={upscaleTitle} disabled={upscaleDisabled} onClick={actUpscale}>
+                <FaSearchPlus />
+              </button>
+            ),
+          },
+          ...otherBtns.map((b: any, i: number) => ({
+            id: `plugin-${i}`,
+            label: pluginLabel(b),
+            node: (
+              <button className={`round-button ${b.className}`} onClick={() => runPlugin(b)}>
+                <FaExchangeAlt />
+              </button>
+            ),
+          })),
+        ]
+      : [];
+
+    return (
+      <div className="z-10 bg-[var(--c-surface)] w-full h-full flex overflow-auto flex-col md:flex-row">
+        {!v2 && (
+        <div className="flex-none md:w-1/3 p-2 md:p-4 overflow-y-auto">
+          <div className="flex gap-2 md:gap-3 mb-2 md:mb-6 flex-wrap w-full">
+            {!isMobile && (
+              <button
+                className={`round-button back-green`}
+                onClick={async () => {
+                  // 다운로드 다이얼로그 열기
+                  await imageDownloadService.downloadSingleImage(
+                    curSession!,
+                    scene,
+                    paths[selectedIndex],
+                    appState.getAppliedCharacterPreset(),
+                  );
+                }}
+              >
+                <FaDownload className="mr-1" />
+                다운로드
+              </button>
+            )}
+            <button
+              className={`round-button back-sky`}
+              onClick={actDownloadFile}
+            >
+              {!isMobile ? '파일 위치 열기' : '파일 다운로드'}
+            </button>
+            {!isMobile && (
+              <button
+                className={`round-button back-sky`}
+                onClick={async () => {
+                  await backend.openImageEditor(paths[selectedIndex]);
+                  watchedImages.current.add(paths[selectedIndex]);
+                  backend.watchImage(paths[selectedIndex]);
+                }}
+              >
+                이미지 편집
+              </button>
+            )}
+            <button
+              className={`round-button back-red`}
+              onClick={actDeleteFile}
+            >
+              파일 삭제
+            </button>
+            <button
+              className={`round-button ${isImageBm ? 'back-orange' : 'back-gray'}`}
+              onClick={actToggleBookmark}
+            >
+              <FaBookmark className="mr-1" />
+              {isImageBm ? '북마크 해제' : '북마크'}
+            </button>
+            <button
+              className={`round-button back-sky`}
+              onClick={actCopyImage}
+            >
+              <FaCopy className="mr-1" />
+              이미지 복사
+            </button>
+            <button
+              className="round-button back-sky"
+              onClick={actLoadSettings}
+            >
+              생성 설정 불러오기
+            </button>
+            <button
+              className="round-button back-sky"
+              title={upscaleTitle}
+              disabled={upscaleDisabled}
+              onClick={actUpscale}
+            >
+              {upscaleLabel}
+            </button>
+            {buttons.map((button, index) => (
+              <button
+                key={index}
+                className={`round-button ${button.className}`}
+                onClick={() => {
+                  button.onClick(scene, paths[selectedIndex], onClose);
+                }}
+              >
+                {button.text instanceof Function
+                  ? button.text(paths[selectedIndex])
+                  : button.text}
+              </button>
+            ))}
+          </div>
+          <button
+            className={`round-button back-gray md:hidden`}
+            onClick={() => setShowPrompt(!showPrompt)}
+          >
+            {!showPrompt ? '자세한 정보 보기' : '자세한 정보 숨기기'}
+          </button>
+          <div
+            className={
+              'mt-2 md:mt-0 md:block ' + (showPrompt ? 'block' : 'hidden')
+            }
+          >
+            {infoFields}
           </div>
         </div>
+        )}
         <div
-          className="flex-1 overflow-auto"
+          className={v2 ? 'flex-1 overflow-auto relative min-h-0' : 'flex-1 overflow-auto'}
           // 좌우 스와이프로 이미지를 넘기는 영역 — 가장자리 드로어 스와이프에 양보받는다(edgeSwipe.ts).
           data-edge-swipe-ignore=""
           onTouchStart={(e) => {
@@ -1568,7 +1668,7 @@ const ResultDetailView = observer(
               <div className="w-8 h-8 rounded-full border-2 border-[color:var(--c-line)] border-t-sky-500 animate-spin" />
             </div>
           )}
-          <div className="absolute bottom-0 md:bottom-auto right-0 md:top-10 flex gap-3 p-4 w-full md:w-auto">
+          <div className={'absolute bottom-0 md:bottom-auto right-0 md:top-10 flex gap-3 p-4 w-full md:w-auto' + (v2 ? ' opacity-60' : '')}>
             <button
               className={`round-button  ml-0 md:ml-auto h-10 md:h-8 w-20 md:w-auto bg-[var(--c-input-bg)] text-body mr-auto md:mr-0 text-xl md:text-base`}
               onClick={() => {
@@ -1589,6 +1689,39 @@ const ResultDetailView = observer(
             </button>
           </div>
         </div>
+        {v2 && (
+          <>
+            {/* 자세한 정보 = 이미지 아래 손잡이(프롬프트 시트와 같은 언어). 탭하면 아래로 정보가 펼쳐지고 이미지가 줄어든다. */}
+            <div
+              role="button"
+              aria-label={showPrompt ? '자세한 정보 접기' : '자세한 정보 펼치기'}
+              aria-expanded={showPrompt}
+              data-v2-detail-info-handle=""
+              className="flex-none select-none cursor-pointer px-3 pt-1.5 border-t line-color bg-[var(--c-zone)]"
+              style={{ height: V2_SHEET_PEEK_PX }}
+              onClick={() => setShowPrompt(!showPrompt)}
+            >
+              <div className="mx-auto mb-1.5 h-1 w-9 rounded-full bg-[var(--c-line)]" />
+              <div className="flex items-center justify-center gap-1.5 text-[12px] text-sub">
+                <span>자세한 정보</span>
+                <FaChevronUp
+                  size={10}
+                  className="flex-none text-faint transition-transform duration-200"
+                  style={{ transform: showPrompt ? 'rotate(180deg)' : undefined }}
+                />
+              </div>
+            </div>
+            {showPrompt && (
+              <div data-v2-detail-info="" className="flex-none overflow-auto px-3 py-2 bg-[var(--c-zone)] text-sm" style={{ maxHeight: '45%' }}>
+                {infoFields}
+              </div>
+            )}
+            <div className="relative flex-none" data-v2-detail-bar="">
+              <V2TierRows open={v2More} onClose={() => setV2More(false)} items={detailTier} perRow={6} />
+              <V2MainRow slots={detailSlots} />
+            </div>
+          </>
+        )}
       </div>
     );
   },
@@ -1635,6 +1768,9 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     const { curSession, samples } = appState;
     const [_, forceUpdate] = useState<{}>({});
     const [selectMode, setSelectMode] = useState<boolean>(false);
+    // 모바일 V2(2026-09-26): 머리의 액션 버튼 줄 대신 하단 5칸 줄(+더보기 둘째 줄). 클래식·PC 마크업은 불변.
+    const v2 = isV2();
+    const [v2More, setV2More] = useState(false);
     const [showImageCheatsheet, setShowImageCheatsheet] =
       useState<boolean>(false);
     const [tournament, setTournament] = useState<boolean>(false);
@@ -2183,6 +2319,208 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       title = workFlowService.getDef(scene.workflowType)?.title ?? '';
     }
 
+    // 액션 동작(클래식 머리 버튼과 V2 하단 줄이 공유)
+    const actQueueAdd = async () => {
+      if (scene.type === 'scene') {
+        await queueWorkflow(curSession!, curSession!.selectedWorkflow!, scene, appState.samples);
+      } else {
+        await queueI2IWorkflow(curSession!, scene.workflowType, scene.preset, scene, appState.samples);
+      }
+    };
+    const actQueueRemove = () => {
+      taskQueueService.removeTasksFromScene(scene);
+    };
+    const actToggleSelect = () => {
+      if (selectMode) {
+        selectedImages.current.clear();
+      }
+      setSelectMode(!selectMode);
+    };
+    const actSelectFavorites = () => {
+      const favPaths = paths.filter((p) => isMainImage!(p));
+      if (favPaths.length === 0) {
+        appState.pushMessage('즐겨찾기 이미지가 없습니다.');
+        return;
+      }
+      if (!selectMode) {
+        setSelectMode(true);
+      }
+      selectedImages.current.clear();
+      for (const p of favPaths) {
+        selectedImages.current.add(p);
+      }
+      gallaryRef.current?.refresh();
+      gallaryRef2.current?.refresh();
+      appState.pushMessage(favPaths.length + '장의 즐겨찾기 이미지가 선택되었습니다.');
+    };
+    const actSelectAll = () => {
+      selectedImages.current.clear();
+      for (const p of activePaths) selectedImages.current.add(p);
+      gallaryRef.current?.refresh();
+      gallaryRef2.current?.refresh();
+      forceUpdate({});
+    };
+    const actDownload = () => {
+      setShowDownloadDialog(true);
+    };
+    const actCopyImages = () => {
+      if (selectMode && selectedImages.current.size > 0) {
+        const selected = [...selectedImages.current];
+        appState.copyImagesToClipboard(selected);
+      } else {
+        appState.copyImagesToClipboard(paths);
+      }
+    };
+    const actPaste = () => {
+      appState.pushDialog({
+        type: 'confirm',
+        text: appState.imageClipboard.length + '장의 이미지를 이 씬에 붙여넣으시겠습니까?',
+        callback: async () => {
+          await appState.pasteImagesFromClipboard(curSession!, scene);
+        },
+      });
+    };
+    const actSampleExtract = async () => {
+      if (!onSampleExtract) return;
+      if (!selectMode || selectedImages.current.size === 0) {
+        appState.pushMessage('이미지를 먼저 선택해주세요.');
+        return;
+      }
+      const selectedPaths = Array.from(selectedImages.current);
+      const seeds: number[] = [];
+      for (const path of selectedPaths) {
+        try {
+          const image = await imageService.fetchImage(path);
+          if (!image) continue;
+          const base64 = dataUriToBase64(image);
+          const job = await extractPromptDataFromBase64(base64);
+          if (job?.seed) seeds.push(job.seed);
+        } catch (e) {
+          // 시드 추출 실패 시 스킵
+        }
+      }
+      if (seeds.length === 0) {
+        appState.pushMessage('선택한 이미지에서 시드를 추출할 수 없습니다.');
+        return;
+      }
+      onSampleExtract(seeds);
+    };
+    const actGoBookmark = () => {
+      if (!bookmarkedImageFilename) {
+        appState.pushMessage('북마크된 이미지가 없습니다.');
+        return;
+      }
+      const bmPath = imageService.getOutputDir(curSession!, scene) + '/' + bookmarkedImageFilename;
+      const index = paths.indexOf(bmPath);
+      if (index !== -1) {
+        // 이미지 탭으로 전환 후 해당 위치로 스크롤
+        setSelectedTab(0);
+        setTimeout(() => {
+          gallaryRef.current?.scrollToIndex(index);
+        }, 50);
+      } else {
+        appState.pushMessage('북마크된 이미지를 찾을 수 없습니다.');
+      }
+    };
+
+    // 모바일 V2 하단 줄(2026-09-26 사용자 결정): 평소=선택·삭제·즐겨찾기(일괄 선택)·북마크(+더보기),
+    // 선택 중=전체·즐겨찾기 토글·삭제·더보기·완료. 나머지 액션은 더보기 둘째 줄(V2TierRows, 5칸씩).
+    const selectedCount = selectedImages.current.size;
+    const moreSlot: V2SlotDef = {
+      key: 'more',
+      name: '더보기',
+      icon: <FaEllipsisH />,
+      onTap: () => setV2More((v) => !v),
+      expanded: v2More,
+    };
+    const deleteSlot: V2SlotDef = {
+      key: 'delete',
+      name: '삭제',
+      icon: <FaTrash />,
+      tone: 'danger',
+      onTap: () => {
+        onDeleteImages(scene);
+      },
+    };
+    const gallerySlots: V2SlotDef[] = v2
+      ? [
+          { key: 'select', name: '선택', icon: <FaRegSquareCheck />, onTap: actToggleSelect },
+          deleteSlot,
+          isMainImage
+            ? {
+                key: 'fav-select',
+                name: '즐겨찾기',
+                icon: (
+                  <span className="relative inline-flex items-center justify-center">
+                    <FaStar />
+                    <FaCheck className="absolute -right-1.5 -bottom-1 text-[9px]" />
+                  </span>
+                ),
+                onTap: actSelectFavorites,
+              }
+            : { key: 'download', name: '다운로드', icon: <FaDownload />, onTap: actDownload },
+          {
+            key: 'bookmark',
+            name: '북마크',
+            icon: <FaBookmark />,
+            tone: bookmarkedImageFilename ? 'accent' : 'default',
+            onTap: actGoBookmark,
+          },
+          moreSlot,
+        ]
+      : [];
+    const gallerySelectSlots: V2SlotDef[] = v2
+      ? [
+          { key: 'all', name: '전체', icon: <FaRegSquareCheck />, onTap: actSelectAll },
+          {
+            key: 'fav-toggle',
+            name: '즐겨찾기',
+            icon: <FaStar />,
+            onTap: () => {
+              if (selectedCount === 0) {
+                appState.pushMessage('이미지를 먼저 선택해주세요.');
+                return;
+              }
+              onToggleFavoriteSelected();
+            },
+          },
+          deleteSlot,
+          moreSlot,
+          { key: 'done', name: '완료', icon: <FaCheck />, tone: 'accent', onTap: onClearSelection },
+        ]
+      : [];
+    const tierItem = (id: string, label: string, className: string, icon: React.ReactNode, onClick: () => void, disabled?: boolean): V2TierItem => ({
+      id,
+      label,
+      node: (
+        <button className={`round-button ${className}`} onClick={onClick} disabled={disabled}>
+          {icon}
+        </button>
+      ),
+    });
+    const galleryTier: V2TierItem[] = v2
+      ? [
+          tierItem('queue-add', '예약 추가', 'back-green', <FaPlus />, () => void actQueueAdd()),
+          tierItem('queue-remove', '예약 제거', 'back-gray', <FaCalendarTimes />, actQueueRemove),
+          tierItem('edit', '씬 편집', 'back-orange', <FaEdit />, () => onEdit(scene)),
+          tierItem('download', '다운로드', 'back-green', <FaDownload />, actDownload),
+          tierItem('copy', '복사', 'back-sky', <FaCopy />, actCopyImages),
+          tierItem('paste', '붙여넣기', appState.imageClipboard.length > 0 ? 'back-sky' : 'back-gray', <FaPaste />, actPaste),
+          ...(onSampleExtract ? [tierItem('sample', '샘플 뽑기', 'back-sky', <FaDice />, () => void actSampleExtract())] : []),
+          tierItem('tournament', '월드컵', 'back-sky', <FaTrophy />, () => setTournament(true)),
+        ]
+      : [];
+    const gallerySelectTier: V2TierItem[] = v2
+      ? [
+          tierItem('download', '다운로드', 'back-green', <FaDownload />, actDownload),
+          tierItem('copy', '복사', 'back-sky', <FaCopy />, actCopyImages),
+          tierItem('duplicate', '복제', 'back-sky', <FaClone />, () => void onDuplicateSelected(), selectedCount === 0),
+          tierItem('copy-to', '다른 씬', 'back-sky', <FaShareSquare />, onCopyToSceneSelected, selectedCount === 0),
+          ...(onSampleExtract ? [tierItem('sample', '샘플 뽑기', 'back-sky', <FaDice />, () => void actSampleExtract())] : []),
+          ...(isMainImage ? [tierItem('fav-select', '즐겨찾기 선택', 'back-yellow', <FaStar />, actSelectFavorites)] : []),
+        ]
+      : [];
+
     return (
       <div className="w-full h-full flex flex-col">
         {!isMobile && showImageCheatsheet && !tournament && (
@@ -2255,6 +2593,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             )}
           </div>
           <div className="md:flex justify-between items-center mt-2 md:mt-4">
+            {!v2 && (
             <div className="flex gap-2 md:gap-3 flex-wrap">
               <button
                 className={`round-button back-sky`}
@@ -2264,24 +2603,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               </button>
               <button
                 className={`round-button back-green`}
-                onClick={async () => {
-                  if (scene.type === 'scene') {
-                    await queueWorkflow(
-                      curSession!,
-                      curSession!.selectedWorkflow!,
-                      scene,
-                      appState.samples,
-                    );
-                  } else {
-                    await queueI2IWorkflow(
-                      curSession!,
-                      scene.workflowType,
-                      scene.preset,
-                      scene,
-                      appState.samples,
-                    );
-                  }
-                }}
+                onClick={actQueueAdd}
               >
                 {!isMobile ? '예약 추가' : <FaPlus />}
               </button>
@@ -2324,12 +2646,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                   className={
                     `round-button ` + (selectMode ? 'back-sky' : 'back-gray')
                   }
-                  onClick={() => {
-                    if (selectMode) {
-                      selectedImages.current.clear();
-                    }
-                    setSelectMode(!selectMode);
-                  }}
+                  onClick={actToggleSelect}
                 >
                   <FaRegSquareCheck />
                 </button>
@@ -2338,26 +2655,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                 <Tooltip content="즐겨찾기 이미지 일괄 선택">
                   <button
                     className={`round-button back-yellow`}
-                    onClick={() => {
-                      const favPaths = paths.filter((p) => isMainImage!(p));
-                      if (favPaths.length === 0) {
-                        appState.pushMessage('즐겨찾기 이미지가 없습니다.');
-                        return;
-                      }
-                      if (!selectMode) {
-                        setSelectMode(true);
-                      }
-                      selectedImages.current.clear();
-                      for (const p of favPaths) {
-                        selectedImages.current.add(p);
-                      }
-                      gallaryRef.current?.refresh();
-                      gallaryRef2.current?.refresh();
-                      appState.pushMessage(
-                        favPaths.length +
-                          '장의 즐겨찾기 이미지가 선택되었습니다.',
-                      );
-                    }}
+                    onClick={actSelectFavorites}
                   >
                     {/* 즐겨찾기 '선택' 헬퍼: 별+체크 배지로 토글 버튼(순수 별)과 구분 */}
                     <span className="relative inline-flex items-center justify-center">
@@ -2370,13 +2668,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               <Tooltip content="이미지 다운로드">
                 <button
                   className={`round-button back-green`}
-                  onClick={() => {
-                    if (selectMode && selectedImages.current.size > 0) {
-                      setShowDownloadDialog(true);
-                    } else {
-                      setShowDownloadDialog(true);
-                    }
-                  }}
+                  onClick={actDownload}
                 >
                   <FaDownload />
                 </button>
@@ -2384,14 +2676,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               <Tooltip content="이미지 복사">
                 <button
                   className={`round-button back-sky`}
-                  onClick={() => {
-                    if (selectMode && selectedImages.current.size > 0) {
-                      const selected = [...selectedImages.current];
-                      appState.copyImagesToClipboard(selected);
-                    } else {
-                      appState.copyImagesToClipboard(paths);
-                    }
-                  }}
+                  onClick={actCopyImages}
                 >
                   <FaCopy />
                 </button>
@@ -2399,20 +2684,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               <Tooltip content="이미지 붙여넣기">
                 <button
                   className={`round-button ${appState.imageClipboard.length > 0 ? 'back-sky' : 'back-gray'}`}
-                  onClick={() => {
-                    appState.pushDialog({
-                      type: 'confirm',
-                      text:
-                        appState.imageClipboard.length +
-                        '장의 이미지를 이 씬에 붙여넣으시겠습니까?',
-                      callback: async () => {
-                        await appState.pasteImagesFromClipboard(
-                          curSession!,
-                          scene,
-                        );
-                      },
-                    });
-                  }}
+                  onClick={actPaste}
                 >
                   <FaPaste />
                 </button>
@@ -2459,32 +2731,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                 <Tooltip content="샘플 뽑기 (시드 추출)">
                   <button
                     className={`round-button back-sky`}
-                    onClick={async () => {
-                      if (!selectMode || selectedImages.current.size === 0) {
-                        appState.pushMessage('이미지를 먼저 선택해주세요.');
-                        return;
-                      }
-                      const selectedPaths = Array.from(selectedImages.current);
-                      const seeds: number[] = [];
-                      for (const path of selectedPaths) {
-                        try {
-                          const image = await imageService.fetchImage(path);
-                          if (!image) continue;
-                          const base64 = dataUriToBase64(image);
-                          const job = await extractPromptDataFromBase64(base64);
-                          if (job?.seed) seeds.push(job.seed);
-                        } catch (e) {
-                          // 시드 추출 실패 시 스킵
-                        }
-                      }
-                      if (seeds.length === 0) {
-                        appState.pushMessage(
-                          '선택한 이미지에서 시드를 추출할 수 없습니다.',
-                        );
-                        return;
-                      }
-                      onSampleExtract(seeds);
-                    }}
+                    onClick={actSampleExtract}
                   >
                     <FaDice />
                   </button>
@@ -2493,33 +2740,13 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               <Tooltip content="북마크된 이미지로 이동">
                 <button
                   className={`round-button ${bookmarkedImageFilename ? 'back-orange' : 'back-gray'}`}
-                  onClick={() => {
-                    if (!bookmarkedImageFilename) {
-                      appState.pushMessage('북마크된 이미지가 없습니다.');
-                      return;
-                    }
-                    const bmPath =
-                      imageService.getOutputDir(curSession!, scene) +
-                      '/' +
-                      bookmarkedImageFilename;
-                    const index = paths.indexOf(bmPath);
-                    if (index !== -1) {
-                      // 이미지 탭으로 전환 후 해당 위치로 스크롤
-                      setSelectedTab(0);
-                      setTimeout(() => {
-                        gallaryRef.current?.scrollToIndex(index);
-                      }, 50);
-                    } else {
-                      appState.pushMessage(
-                        '북마크된 이미지를 찾을 수 없습니다.',
-                      );
-                    }
-                  }}
+                  onClick={actGoBookmark}
                 >
                   <FaBookmark />
                 </button>
               </Tooltip>
             </div>
+            )}
             <span className="flex ml-auto gap-1 md:gap-2 mt-2 md:mt-0">
               {tabNames.map((tabName, index) => (
                 <button
@@ -2535,7 +2762,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             </span>
           </div>
         </div>
-        <div className="flex-1 pt-2 relative h-full overflow-hidden">
+        <div className={v2 ? 'flex-1 pt-2 relative min-h-0 overflow-hidden' : 'flex-1 pt-2 relative h-full overflow-hidden'}>
           <ImageGallery
             scene={scene}
             onFilenameChange={onFilenameChange}
@@ -2626,7 +2853,22 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             emptyHint="이미지에 ★(즐겨찾기)를 지정하면 여기에 모입니다"
           />
         </div>
-        <div className="absolute gap-1 m-2 bottom-0 bg-[var(--c-surface-2)] p-1 right-0 opacity-30 hover:opacity-100 transition-all flex">
+        {v2 && (
+          <div className="relative flex-none" data-v2-gallery-bar="">
+            <V2TierRows
+              open={v2More}
+              onClose={() => setV2More(false)}
+              items={selectMode ? gallerySelectTier : galleryTier}
+              perRow={5}
+            />
+            <V2MainRow slots={selectMode ? gallerySelectSlots : gallerySlots} selecting={selectMode} />
+          </div>
+        )}
+        <div
+          className="absolute gap-1 m-2 bottom-0 bg-[var(--c-surface-2)] p-1 right-0 opacity-30 hover:opacity-100 transition-all flex"
+          // V2: 하단 줄(52px) 위로 올린다(가려지지 않게)
+          style={v2 ? { bottom: V2_GALLERY_BAR_PX } : undefined}
+        >
           {selectedTab !== 2 &&
             selectedTab !== 3 &&
             imagesSizes.map((size, index) => (

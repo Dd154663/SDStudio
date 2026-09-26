@@ -383,6 +383,17 @@ html.font-pretendard body {
     padding: 0;
     border-radius: 8px;
   }
+  /* 모바일 카드 하단 버튼의 시각적 무게(2026-09-26, 클래식·V2 공통 — 목업 V2 안 검수 후 사용자 요청):
+     예약 추가(back-green)만 색을 남기고 예약 제거·씬 편집·북마크는 배경 없이 흐린 아이콘.
+     북마크가 켜진 상태(.scene-btn-on)는 주황 아이콘 색(text-orange-400 — --c-orange-fg 는 라이트에서 흰색이라 배경 없이는 안 보임)으로만 구분. 오버레이 버튼·PC 는 불변. */
+  .scene-btn-row .round-button.scene-btn.back-gray,
+  .scene-btn-row .round-button.scene-btn.back-orange {
+    background-color: transparent;
+    color: var(--c-text-faint);
+  }
+  .scene-btn-row .round-button.scene-btn.scene-btn-on {
+    @apply text-orange-400;
+  }
 }
 /* 터치 판정 확장(옵트인): 보이는 크기는 그대로 두고 판정만 바깥으로 넓힌다.
    대상 요소는 positioned(relative/absolute) 여야 한다. --touch-hit 로 확장 폭 조절. */

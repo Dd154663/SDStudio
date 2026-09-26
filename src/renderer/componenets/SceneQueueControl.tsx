@@ -872,7 +872,7 @@ export const SceneCell = observer(
           </Tooltip>
           <Tooltip content="씬 북마크">
             <button
-              className={`${btnClass} ${isBookmarked ? orange : gray}`}
+              className={`${btnClass} ${isBookmarked ? orange + ' scene-btn-on' : gray}`}
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleBookmark?.();
