@@ -1,6 +1,6 @@
 import { Scrollbars } from 'react-custom-scrollbars-2';
 import * as Hangul from 'hangul-js';
-import {
+import { createContext,
   DOMElement,
   createRef,
   forwardRef,
@@ -41,7 +41,13 @@ import { highlightPrompt } from '../models/PromptService';
 import { WordTag, calcGapMatch } from '../models/Tags';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
-import { adjustPromptWeightAtSelection } from '../models/promptTransforms';
+import { adjustPromptWeightAtSelection,
+  getPromptWeightAtSelection } from '../models/promptTransforms';
+import {
+  clearFocusedPromptEditor,
+  setFocusedPromptEditor,
+  type FocusedPromptEditor,
+} from '../models/promptEditorFocus';
 import {
   autocompleteTagCategory,
   trimAutocompleteWord,
@@ -1013,6 +1019,8 @@ interface EditTextAreaRef {
   getCaretCoords(): Promise<number[]>;
   /** 커서가 놓인 쉼표 구획(장식 포함 원문). 커서를 모르면 빈 문자열. */
   getCaretSegment(): string;
+  /** 커서 구획의 가중치를 delta 만큼 조절(PC 휠·모바일 키보드 위 칩 공통). */
+  adjustWeight(delta: number): void;
   undo(): void;
 }
 
@@ -1131,6 +1139,9 @@ const EmulatedEditTextArea = observer(
             rect = range.getBoundingClientRect();
           }
           return [rect.right, rect.top];
+        },
+        adjustWeight: (delta: number) => {
+          editorModelRef.current?.adjustWeight(delta);
         },
         getCaretSegment: () => {
           const m = editorModelRef.current;
@@ -1295,6 +1306,21 @@ const NativeEditTextArea = observer(
         textareaRef.current.addEventListener('input', handleInput);
         textareaRef.current.addEventListener('focus', onFocus);
         textareaRef.current.addEventListener('blur', onBlur);
+        // 키보드 위 가중치 칩(MobileKeyboardChip)이 편집기 트리 밖에서 조절할 수 있게 포커스 동안 핸들을 등록한다.
+        const focusHandle: FocusedPromptEditor = {
+          element: textareaRef.current,
+          adjustWeight,
+          getCaretWeight: () =>
+            getPromptWeightAtSelection(
+              textareaRef.current.value,
+              textareaRef.current.selectionStart ?? 0,
+            ),
+        };
+        const registerFocus = () => setFocusedPromptEditor(focusHandle);
+        const unregisterFocus = () => clearFocusedPromptEditor(focusHandle);
+        textareaRef.current.addEventListener('focus', registerFocus);
+        textareaRef.current.addEventListener('blur', unregisterFocus);
+        if (document.activeElement === textareaRef.current) registerFocus();
 
         // 초기 렌더링 (자동완성 트리거 없이 하이라이트만)
         {
@@ -1315,6 +1341,9 @@ const NativeEditTextArea = observer(
           textareaRef.current.removeEventListener('input', handleInput);
           textareaRef.current.removeEventListener('focus', onFocus);
           textareaRef.current.removeEventListener('blur', onBlur);
+          textareaRef.current.removeEventListener('focus', registerFocus);
+          textareaRef.current.removeEventListener('blur', unregisterFocus);
+          unregisterFocus();
         };
       }, []);
 
@@ -1364,6 +1393,9 @@ const NativeEditTextArea = observer(
           const ta = textareaRef.current;
           if (!ta) return '';
           return promptSegmentAt(ta.value, ta.selectionStart ?? 0);
+        },
+        adjustWeight: (delta: number) => {
+          adjustWeight(delta);
         },
         undo() {
           doUndo();
@@ -1451,6 +1483,15 @@ const NativeEditTextArea = observer(
 // 커서 구획의 작가 판별용 태그 DB 조회(앱 수명 동안 캐시).
 const caretArtistLookup = makeArtistLookup((w) => backend.lookupTag(w));
 
+/**
+ * 편집기 부속 버튼(작가 라이브러리 열기)을 편집기 바깥 라벨 줄에 두기 위한 슬롯(2026-09-26 사용자 요청).
+ * 라벨 줄(PreSetEdtior EditorField)이 공급자를 두면 편집기는 버튼을 그 줄 오른쪽 끝으로 보내고 안에는 그리지 않는다
+ * (우상단 안쪽 버튼이 첫 줄 프롬프트를 가리던 문제). 공급자가 없는 호출부(캐릭터·퀵 수정·조각 등)는 안쪽 우상단 폴백.
+ */
+export const PromptAccessorySlotContext = createContext<
+  ((node: React.ReactNode) => void) | null
+>(null);
+
 const PromptEditTextArea = observer(
   ({
     value,
@@ -1475,7 +1516,8 @@ const PromptEditTextArea = observer(
     const selectedTagRef = useLatest(selectedTag);
     const curWordRef = useLatest(curWord);
     const [fullScreen, setFullScreen] = useState(false);
-    // 커서가 놓인 구획이 작가 태그면 그 이름(접두 제거). 편집기 오른쪽 위에 「작가 라이브러리」 버튼이 뜬다(2026-09-26).
+    const accessorySlot = useContext(PromptAccessorySlotContext);
+    // 커서가 놓인 구획이 작가 태그면 그 이름(접두 제거). 「작가 라이브러리」 버튼이 라벨 줄 슬롯(있으면) 또는 편집기 오른쪽 위에 뜬다(2026-09-26).
     // 접두가 있으면 즉시, 없으면 태그 DB 조회(캐시). 입력·클릭·키·selectionchange 뒤 150ms 디바운스.
     const [caretArtist, setCaretArtist] = useState<string | null>(null);
     const rootRef = useRef<HTMLDivElement | null>(null);
@@ -1612,6 +1654,34 @@ const PromptEditTextArea = observer(
     };
     closeFullScreenRef.current = closeFullScreen;
 
+    // 작가 라이브러리 버튼. 슬롯이 있으면 라벨 줄로(editor 밖), 없으면 편집기 안 우상단.
+    const artistButton = (name: string, extra: string) => (
+      <button
+        type="button"
+        data-caret-artist-btn
+        title={`작가 라이브러리에서 「${name}」 열기`}
+        aria-label={`작가 라이브러리에서 ${name} 열기`}
+        className={
+          'flex items-center gap-1 px-1.5 h-5 rounded-md text-[11px] leading-none bg-[var(--c-zone)] border line-color text-sky-500 opacity-90 hover:opacity-100 max-w-[10rem] ' +
+          extra
+        }
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.stopPropagation();
+          appState.openArtistInLibrary(name);
+        }}
+      >
+        <FaPaintBrush size={10} className="flex-none" />
+        <span className="truncate">{name}</span>
+      </button>
+    );
+    useEffect(() => {
+      if (!accessorySlot) return undefined;
+      accessorySlot(caretArtist ? artistButton(caretArtist, '') : null);
+      return () => accessorySlot(null);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [caretArtist, accessorySlot]);
+
     // 입력창 배경 토큰(--c-input-bg)을 따라 커스터마이징 반영. 기본값은 기존 외형과
     // 동일(다크=slate-700, 라이트=gray-200). 전체화면(확장 창)도 동일 토큰을 써서
     // 테마 커스터마이징이 그대로 반영되도록 한다(그림자만 추가).
@@ -1649,22 +1719,7 @@ const PromptEditTextArea = observer(
           }
         >
           <div className="absolute right-0 top-0 z-10 flex items-center gap-1">
-            {caretArtist && (
-              <button
-                type="button"
-                title={`작가 라이브러리에서 「${caretArtist}」 열기`}
-                aria-label={`작가 라이브러리에서 ${caretArtist} 열기`}
-                className="flex items-center gap-1 mt-1 px-1.5 h-5 rounded-md text-[11px] leading-none bg-[var(--c-zone)] border line-color text-sky-500 opacity-90 hover:opacity-100 max-w-[10rem]"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  appState.openArtistInLibrary(caretArtist);
-                }}
-              >
-                <FaPaintBrush size={10} className="flex-none" />
-                <span className="truncate">{caretArtist}</span>
-              </button>
-            )}
+            {caretArtist && !accessorySlot && artistButton(caretArtist, 'mt-1')}
             <button
               onClick={() => {
                 if (!disabled) setFullScreen(!fullScreen);

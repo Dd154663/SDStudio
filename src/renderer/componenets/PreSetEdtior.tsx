@@ -9,7 +9,7 @@ import {
   DropdownSelect,
 } from './UtilComponents';
 import { NoiseSchedule, Resolution, Sampling } from '../backends/imageGen';
-import PromptEditTextArea from './PromptEditTextArea';
+import PromptEditTextArea, { PromptAccessorySlotContext } from './PromptEditTextArea';
 import { PresetCompactContext, PresetFocusContext, WFI_KEY_ATTR } from './MobilePromptSheet';
 import { V2_SHEET_HALF_KEYS } from '../models/mobileV2';
 import {
@@ -241,6 +241,9 @@ const EditorField = ({
   const [folded, setFolded] = useState(() =>
     foldKey ? getPromptFold(foldKey, !!defaultFolded) : false,
   );
+  // 편집기 부속 버튼(작가 라이브러리 열기) 자리 — 라벨 줄 오른쪽 끝. 편집기 안 우상단에 두면 첫 줄 프롬프트를
+  // 가려 수정을 방해한다(2026-09-26 사용자 실기기 지적). PromptEditTextArea 가 컨텍스트로 노드를 보낸다.
+  const [accessory, setAccessory] = useState<React.ReactNode>(null);
   const toggle = () => {
     if (!foldKey) return;
     setPromptFold(foldKey, !folded);
@@ -248,7 +251,7 @@ const EditorField = ({
   };
   return (
     <>
-      <div className={'pt-2 md:pt-3 pb-1 gray-label'}>
+      <div className={'pt-2 md:pt-3 pb-1 gray-label flex items-center min-w-0'}>
         <span
           className={foldKey ? 'cursor-pointer select-none' : undefined}
           onClick={foldKey ? toggle : undefined}
@@ -274,10 +277,17 @@ const EditorField = ({
             {foldedBadge}
           </span>
         )}
+        {accessory && (
+          <span data-editor-field-accessory className="ml-auto pl-2 flex-none flex items-center">
+            {accessory}
+          </span>
+        )}
       </div>
       {!folded && (
         <div className={full ? 'flex-1 min-h-0' : 'flex-none mt-3'}>
-          {children}
+          <PromptAccessorySlotContext.Provider value={setAccessory}>
+            {children}
+          </PromptAccessorySlotContext.Provider>
         </div>
       )}
     </>

@@ -6,6 +6,61 @@ export interface PromptWeightAdjustment {
 
 const WEIGHTED_PROMPT_RE = /^(-?\d+(?:\.\d+)?)::([\s\S]+)::$/;
 
+/** 가중치 조절 한 단계(PC Ctrl+휠/Ctrl+↑↓, 모바일 키보드 위 칩 공통). */
+export const PROMPT_WEIGHT_STEP = 0.05;
+
+export interface PromptWeightInfo {
+  /** 커서 구획의 핵심(앞뒤 공백 제외, 가중치 래퍼 포함). */
+  core: string;
+  /** 가중치 래퍼를 벗긴 안쪽. 래퍼가 없으면 core 와 같다. */
+  inner: string;
+  /** 현재 가중치. 래퍼가 없으면 1. */
+  weight: number;
+}
+
+interface CaretSegment {
+  segmentStart: number;
+  segmentEnd: number;
+  segment: string;
+  leading: string;
+  trailing: string;
+  core: string;
+}
+
+/** 커서가 놓인 쉼표 구간(앞뒤 공백 분리). */
+function caretSegmentOf(text: string, selectionStart: number): CaretSegment {
+  const caret = clamp(selectionStart, 0, text.length);
+  const segmentStart = text.lastIndexOf(',', Math.max(0, caret - 1)) + 1;
+  const nextComma = text.indexOf(',', caret);
+  const segmentEnd = nextComma < 0 ? text.length : nextComma;
+  const segment = text.slice(segmentStart, segmentEnd);
+  const leading = segment.match(/^\s*/)?.[0] ?? '';
+  const trailing = segment.match(/\s*$/)?.[0] ?? '';
+  const core = segment.slice(leading.length, segment.length - trailing.length);
+  return { segmentStart, segmentEnd, segment, leading, trailing, core };
+}
+
+/** 커서 구획의 현재 가중치(모바일 칩 표시용). 빈 구획이면 undefined. */
+export function getPromptWeightAtSelection(
+  text: string,
+  selectionStart: number,
+): PromptWeightInfo | undefined {
+  const { core } = caretSegmentOf(text, selectionStart);
+  if (!core) return undefined;
+  const weighted = core.match(WEIGHTED_PROMPT_RE);
+  return {
+    core,
+    inner: weighted ? weighted[2] : core,
+    weight: weighted ? Number(weighted[1]) : 1,
+  };
+}
+
+/** 칩에 보이는 값: 1 → "1.0", 그 외는 소수 둘째 자리까지(1.15, 0.95, -0.05). */
+export function formatPromptWeightLabel(weight: number): string {
+  const rounded = Math.round(weight * 100) / 100;
+  return Number.isInteger(rounded) ? rounded.toFixed(1) : String(rounded);
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -26,14 +81,8 @@ export function adjustPromptWeightAtSelection(
 ): PromptWeightAdjustment | undefined {
   if (!Number.isFinite(delta) || delta === 0) return undefined;
 
-  const caret = clamp(selectionStart, 0, text.length);
-  const segmentStart = text.lastIndexOf(',', Math.max(0, caret - 1)) + 1;
-  const nextComma = text.indexOf(',', caret);
-  const segmentEnd = nextComma < 0 ? text.length : nextComma;
-  const segment = text.slice(segmentStart, segmentEnd);
-  const leading = segment.match(/^\s*/)?.[0] ?? '';
-  const trailing = segment.match(/\s*$/)?.[0] ?? '';
-  const core = segment.slice(leading.length, segment.length - trailing.length);
+  const { segmentStart, segmentEnd, segment, leading, trailing, core } =
+    caretSegmentOf(text, selectionStart);
   if (!core) return undefined;
 
   const weighted = core.match(WEIGHTED_PROMPT_RE);

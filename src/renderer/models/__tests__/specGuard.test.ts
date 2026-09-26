@@ -142,6 +142,17 @@ const RULES: Rule[] = [
       'componenets/PromptEditTextArea.tsx': 1,
     },
   },
+  {
+    // 모바일 키보드 위 칩(--z-kbd-action 층)은 MobileKeyboardChip 하나가 검색·가중치 조정 두 모드를 맡는다(2026-09-26).
+    // 같은 층에 칩을 또 띄우면 키보드 위에서 서로 겹친다.
+    name: '키보드 위 칩(--z-kbd-action) — componenets/MobileKeyboardChip.tsx 만 사용',
+    guide: '「모바일 키보드 위 칩(Danbooru 검색·가중치 퀵 조정) 계약」',
+    dir: '',
+    exts: ['.ts', '.tsx'],
+    exclude: ['componenets/MobileKeyboardChip.tsx'],
+    count: (c) => countMatches(c, /z-kbd-action/g),
+    allow: {},
+  },
 ];
 
 function listFiles(dirAbs: string, exts: string[]): string[] {

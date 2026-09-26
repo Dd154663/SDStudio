@@ -1,7 +1,38 @@
 import {
   adjustPromptWeightAtSelection,
   buildArtistPromptVariants,
+  formatPromptWeightLabel,
+  getPromptWeightAtSelection,
+  PROMPT_WEIGHT_STEP,
 } from '../promptTransforms';
+
+describe('커서 구획의 현재 가중치 읽기(모바일 칩)', () => {
+  it('래퍼가 없으면 1, 있으면 그 값과 안쪽을 돌려준다', () => {
+    const text = '1girl, 1.15::{artist:ixy}::, , -0.05::bad::';
+    expect(getPromptWeightAtSelection(text, 2)).toEqual({ core: '1girl', inner: '1girl', weight: 1 });
+    const at = text.indexOf('ixy');
+    expect(getPromptWeightAtSelection(text, at)).toEqual({ core: '1.15::{artist:ixy}::', inner: '{artist:ixy}', weight: 1.15 });
+    expect(getPromptWeightAtSelection(text, text.indexOf('bad'))!.weight).toBe(-0.05);
+    expect(getPromptWeightAtSelection(text, text.indexOf(', ,') + 2)).toBeUndefined();
+    expect(getPromptWeightAtSelection('', 0)).toBeUndefined();
+  });
+  it('조절 함수와 같은 구획을 본다 — 조절 뒤 읽으면 새 값', () => {
+    const text = 'a, b';
+    const r = adjustPromptWeightAtSelection(text, 3, 3, -PROMPT_WEIGHT_STEP)!;
+    expect(getPromptWeightAtSelection(r.text, r.selectionStart)!.weight).toBe(0.95);
+    const r2 = adjustPromptWeightAtSelection(r.text, r.selectionStart, r.selectionEnd, PROMPT_WEIGHT_STEP)!;
+    expect(r2.text).toBe('a, b');
+    expect(getPromptWeightAtSelection(r2.text, r2.selectionStart)!.weight).toBe(1);
+  });
+  it('표시 형식: 1 → 1.0, 그 외 둘째 자리까지, 음수 허용', () => {
+    expect(formatPromptWeightLabel(1)).toBe('1.0');
+    expect(formatPromptWeightLabel(1.15)).toBe('1.15');
+    expect(formatPromptWeightLabel(0.95)).toBe('0.95');
+    expect(formatPromptWeightLabel(2)).toBe('2.0');
+    expect(formatPromptWeightLabel(-0.05)).toBe('-0.05');
+    expect(formatPromptWeightLabel(0.1 + 0.2)).toBe('0.3');
+  });
+});
 
 describe('커서 기준 프롬프트 가중치 조절', () => {
   it('커서가 있는 쉼표 구간만 0.05 올린다', () => {
