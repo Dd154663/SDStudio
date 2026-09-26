@@ -370,8 +370,10 @@ function useProjectDrawerEdgeSwipe() {
 export const ProjectDrawerHandle = observer(() => {
   const open = appState.projectDrawerOpen;
   useProjectDrawerEdgeSwipe();
-  // V2 하단 시트가 열려 있으면 손잡이도 숨긴다(시트 밖 터치는 시트 접기만 해야 함, 2026-09-22 실기기 피드백)
-  if (appState.mobileV2SheetOpen) return null;
+  // V2 하단 시트가 열려 있으면 손잡이도 숨긴다(시트 밖 터치는 시트 접기만 해야 함, 2026-09-22 실기기 피드백).
+  // 씬 편집 창·이미지 그리드·이미지 상세 같은 FloatView 가 떠 있는 동안도 숨긴다(2026-09-26 사용자 요청 —
+  // 가장자리 스와이프는 isInsideOverlay 가 이미 막고 있어 손잡이 버튼만 남아 있었다).
+  if (appState.mobileV2SheetOpen || appState.floatViewCount > 0) return null;
 
   return (
     <button

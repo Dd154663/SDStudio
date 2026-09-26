@@ -35,6 +35,8 @@ interface FloatView {
 interface FloatViewContextProps {
   registerView: (view: FloatView) => void;
   unregisterView: (id: number) => void;
+  /** 등록 뒤 children/onEscape 등이 바뀌면 갱신(2026-09-26). 부모 상태가 오버레이 내용을 바꾸는 경우를 위해. */
+  updateView: (id: number, patch: Partial<Omit<FloatView, 'id'>>) => void;
 }
 
 const FloatViewContext = createContext<FloatViewContextProps | undefined>(
@@ -71,10 +73,23 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = observer(({
       genControlOwnerIds.current.add(view.id);
       appState.incrementGenControlOverlay();
     }
+    // view 객체는 updateView 가 제자리에서 갱신하므로 여기서 늦게 읽으면 최신 onEscape 가 불린다
     backHandles.current.set(
       view.id,
       backStackService.push(() => view.onEscape?.()),
     );
+  };
+
+  // 마운트 뒤 바뀐 children·onEscape 를 반영한다. 예전엔 등록 시점의 스냅샷만 그려서, 부모 상태로 내용이
+  // 바뀌는 오버레이(모바일 조합 미리보기의 간략/자세히)가 갱신되지 않았다(2026-09-26 버그). 뒤로 가기 핸들은
+  // view.onEscape 를 늦게 읽으므로 객체를 제자리에서 갱신해도 최신 닫기 동작을 부른다.
+  const updateView = (id: number, patch: Partial<Omit<FloatView, 'id'>>) => {
+    setViews((prevViews) => {
+      const cur = prevViews.find((v) => v.id === id);
+      if (!cur) return prevViews;
+      Object.assign(cur, patch);
+      return [...prevViews];
+    });
   };
 
   const unregisterView = (id: number) => {
@@ -162,7 +177,7 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = observer(({
       : null;
 
   return (
-    <FloatViewContext.Provider value={{ registerView, unregisterView }}>
+    <FloatViewContext.Provider value={{ registerView, unregisterView, updateView }}>
       {children}
       {wideAnchor ? createPortal(overlay, wideAnchor) : overlay}
     </FloatViewContext.Provider>
@@ -181,8 +196,9 @@ let viewId = 0;
 
 export const FloatView: React.FC<FloatViewProps> = memo(
   ({ children, priority, showToolbar, ownsGenControl, onEscape }) => {
-    const { registerView, unregisterView } = useFloatView();
+    const { registerView, unregisterView, updateView } = useFloatView();
     const id = useRef(++viewId);
+    const mounted = useRef(false);
 
     useEffect(() => {
       const view = {
@@ -194,8 +210,15 @@ export const FloatView: React.FC<FloatViewProps> = memo(
         ownsGenControl,
       };
       registerView(view);
+      mounted.current = true;
       return () => unregisterView(id.current);
     }, []);
+
+    // 부모가 다시 그리면 오버레이 내용도 따라간다(children 은 렌더마다 새 요소라 매 렌더 갱신 — 제자리 갱신이라 가볍다)
+    useEffect(() => {
+      if (!mounted.current) return;
+      updateView(id.current, { component: children, onEscape, showToolbar });
+    }, [children, onEscape, showToolbar]);
 
     return null;
   },

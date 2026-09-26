@@ -21,6 +21,7 @@ import { Scrollbars } from 'react-custom-scrollbars-2';
 import { FaAnchor, FaOpencart, FaPerson } from 'react-icons/fa6';
 import { FloatView } from './FloatView';
 import MobilePromptSheet from './MobilePromptSheet';
+import { V2MainRow } from './MobileV2Bars';
 import {
   isV2,
   V2_SHEET_PEEK_PX,
@@ -167,6 +168,8 @@ interface TabProps {
   banToggle?: boolean;
   emoji: React.ReactNode;
   onClick?: () => void;
+  /** 모바일 하단 탭 바(mobileTabs='bottom')의 칸 라벨(약 5자). 없으면 label. */
+  shortLabel?: string;
 }
 
 interface TabComponentProps {
@@ -175,6 +178,13 @@ interface TabComponentProps {
   className?: string;
   left?: boolean;
   defaultActiveTab?: number;
+  /**
+   * 모바일 탭 배치(2026-09-26, 씬 편집 창): 'wide'=위 한 줄을 전체 폭 등분(엄지가 닿게), 'bottom'=본문 아래
+   * 하단 탭 바(V2 메인 줄 언어, V2MainRow 재사용). 지정하지 않으면 기존(오른쪽 정렬 아이콘 스트립). PC 는 불변.
+   */
+  mobileTabs?: 'wide' | 'bottom';
+  /** 모바일 탭 줄(위 스트립·하단 바)을 잠시 숨김 — 키보드가 떠 편집 중일 때(씬 편집 창 집중 모드, 2026-09-26). PC 불변. */
+  mobileTabsHidden?: boolean;
 }
 
 export const TabComponent: React.FC<TabComponentProps> = ({
@@ -182,6 +192,8 @@ export const TabComponent: React.FC<TabComponentProps> = ({
   tabs,
   toggleView,
   defaultActiveTab = 0,
+  mobileTabs,
+  mobileTabsHidden,
 }) => {
   const [activeTab, setActiveTab] = useState(defaultActiveTab);
   const [toggleViewOpen, setToggleViewOpen] = useState(false);
@@ -212,12 +224,16 @@ export const TabComponent: React.FC<TabComponentProps> = ({
   // 모바일 V2(선택형 배치): 「프롬프트 열기」 대신 하단 시트, 상단 줄 왼쪽은 활성 탭이 채우는 슬롯.
   // 탭 본문의 부모 체인은 클래식과 같게 유지한다(전환 시 재마운트 방지) — 바뀌는 것은 상단 줄과 시트뿐.
   const v2 = isV2();
+  const wideTabs = isMobile && mobileTabs === 'wide';
+  const bottomTabs = isMobile && mobileTabs === 'bottom';
 
   return (
     <div className={`h-full flex flex-col px-1 md:p-2${v2 ? ' relative' : ''}`}>
       <div
         className={
-          'flex p-1 md:p-0 md:py-2 flex-none gap-2 items-center w-full mb-1 md:mb-0'
+          'flex p-1 md:p-0 md:py-2 flex-none gap-2 items-center w-full mb-1 md:mb-0' +
+          // 하단 탭 바 배치에서는 모바일 상단 줄을 통째로 숨긴다(PC 스트립은 md 이상에서 그대로)
+          (bottomTabs || (isMobile && mobileTabsHidden) ? ' hidden md:flex' : '')
         }
       >
         {/* tab-seg/tab-seg-off: 탭 세그먼트 마감(App.css) — 클래식이면 기존 클래스 그대로 렌더 */}
@@ -258,14 +274,17 @@ export const TabComponent: React.FC<TabComponentProps> = ({
           {/* 탭이 많아 가로폭을 넘치면 잘리지 않고 스크롤되도록(min-w-0 + overflow-x-auto). */}
           <div
             className={`tab-seg flex gap-1 ml-auto overflow-x-auto no-scrollbar py-0.5 ${
-              v2 ? 'flex-none max-w-[62%]' : 'min-w-0'
+              wideTabs ? 'w-full' : v2 ? 'flex-none max-w-[62%]' : 'min-w-0'
             }`}
+            // .tab-seg 마감이 width:fit-content 라 유틸 w-full 이 밀린다 → 인라인으로 전체 폭
+            style={wideTabs ? { width: '100%' } : undefined}
           >
             {tabs.map((tab, index) => (
               <button
                 key={index}
                 className={
-                  'active:brightness-90 hover:brightness-95 select-none px-3 text-base h-10 rounded-md flex-none ' +
+                  'active:brightness-90 hover:brightness-95 select-none px-3 text-base rounded-md ' +
+                  (wideTabs ? 'flex-1 basis-0 min-w-0 h-9 ' : 'h-10 flex-none ') +
                   (index === activeTab ? `back-sky` : 'back-llgray tab-seg-off')
                 }
                 onClick={() => handleTabClick(index)}
@@ -299,6 +318,19 @@ export const TabComponent: React.FC<TabComponentProps> = ({
           </div>
         ))}
       </div>
+      {bottomTabs && !mobileTabsHidden && (
+        <div className="md:hidden" data-tab-bar="bottom">
+          <V2MainRow
+            slots={tabs.map((tab, index) => ({
+              key: `tab-${index}`,
+              name: tab.shortLabel ?? tab.label,
+              icon: tab.emoji,
+              tone: index === activeTab ? 'accent' : 'default',
+              onTap: () => handleTabClick(index),
+            }))}
+          />
+        </div>
+      )}
       {v2 && toggleView && <MobilePromptSheet>{toggleView}</MobilePromptSheet>}
     </div>
   );

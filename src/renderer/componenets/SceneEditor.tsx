@@ -34,6 +34,8 @@ import {
   FaArrowDown,
   FaGripVertical,
   FaLock,
+  FaChevronDown,
+  FaChevronRight,
 } from 'react-icons/fa';
 import Denque from 'denque';
 import { writeFileSync } from 'original-fs';
@@ -44,6 +46,7 @@ import PreSetEditor, { UnionPreSetEditor } from './PreSetEdtior';
 import { TaskProgressBar } from './TaskQueueControl';
 import { Resolution, resolutionMap } from '../backends/imageGen';
 import { FloatView } from './FloatView';
+import { isV2 } from '../models/mobileV2';
 import { v4 as uuidv4 } from 'uuid';
 import { useDrag, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
@@ -112,6 +115,37 @@ export const PromptHighlighter = observer(
   },
 );
 
+// 모바일 씬 편집 창의 접이식 구역(2026-09-26): 기본 캐릭터 프롬프트·좌표평면·공통 네거티브. 기본 접힘, 기기에 기억.
+const SCENE_EDITOR_FOLD_KEY = 'sdstudio-scene-editor-fold';
+type SceneEditorFoldKey = 'base' | 'coord' | 'neg';
+function loadSceneEditorFold(key: SceneEditorFoldKey, def: boolean): boolean {
+  try {
+    const m = JSON.parse(localStorage.getItem(SCENE_EDITOR_FOLD_KEY) || '{}') || {};
+    return typeof m[key] === 'boolean' ? m[key] : def;
+  } catch (e) {
+    return def;
+  }
+}
+function saveSceneEditorFold(key: SceneEditorFoldKey, folded: boolean) {
+  try {
+    const m = JSON.parse(localStorage.getItem(SCENE_EDITOR_FOLD_KEY) || '{}') || {};
+    m[key] = folded;
+    localStorage.setItem(SCENE_EDITOR_FOLD_KEY, JSON.stringify(m));
+  } catch (e) {}
+}
+/** 모바일 접이식 구역 머리줄(▶/▼ + 제목). PC 에서는 쓰지 않는다. */
+const FoldHead = ({ open, label, onToggle }: { open: boolean; label: string; onToggle: () => void }) => (
+  <button
+    type="button"
+    className="w-full flex items-center gap-1.5 py-2 text-sm text-sub text-left border-t line-color"
+    aria-expanded={open}
+    onClick={onToggle}
+  >
+    {open ? <FaChevronDown size={10} className="flex-none text-faint" /> : <FaChevronRight size={10} className="flex-none text-faint" />}
+    <span className="truncate">{label}</span>
+  </button>
+);
+
 interface SlotEditorProps {
   scene: { slots: PromptPieceSlot[] };
   big?: boolean;
@@ -134,6 +168,8 @@ interface BigPromptEditorProps {
   simplified?: boolean;
   getSceneUC?: () => string;
   setSceneUC?: (txt: string) => void;
+  /** 모바일 집중 모드(키보드가 떠 편집 중): 이미지·즐겨찾기·진행 막대 영역을 숨기고 편집기가 높이를 전부 쓴다(2026-09-26). */
+  keyboardCompact?: boolean;
 }
 
 export const BigPromptEditor = observer(
@@ -153,6 +189,7 @@ export const BigPromptEditor = observer(
     simplified,
     getSceneUC,
     setSceneUC,
+    keyboardCompact,
   }: BigPromptEditorProps) => {
     const [image, setImage] = useState<string | undefined>(undefined);
     const [path, setPath] = useState<string | undefined>(initialImagePath);
@@ -217,7 +254,7 @@ export const BigPromptEditor = observer(
           </FloatView>
         )}
         {simplified ? (
-          <div className="overflow-auto flex-none h-1/3 md:h-auto md:w-1/3 md:h-full">
+          <div className={keyboardCompact ? 'overflow-auto flex-1 min-h-0 md:h-auto md:w-1/3 md:h-full' : 'overflow-auto flex-none h-1/3 md:h-auto md:w-1/3 md:h-full'} data-scene-prompt-column={keyboardCompact ? 'compact' : undefined}>
             <div className="h-full flex flex-col p-2 gap-2 overflow-hidden">
               <div className="flex-none font-bold text-sub">
                 중간 프롬프트 (이 씬에만 적용됨)
@@ -283,7 +320,7 @@ export const BigPromptEditor = observer(
             </div>
           </div>
         )}
-        <div className="flex-none h-2/3 md:h-auto md:w-2/3 overflow-hidden">
+        <div className={keyboardCompact ? 'hidden md:block flex-none h-2/3 md:h-auto md:w-2/3 overflow-hidden' : 'flex-none h-2/3 md:h-auto md:w-2/3 overflow-hidden'}>
           <div className="flex flex-col h-full">
             <div className="flex-1 overflow-hidden">
               {image && (
@@ -354,6 +391,8 @@ interface SlotPieceProps {
   removePiece?: (piece: PromptPiece) => void;
   moveSlotPiece?: (from: string, to: string) => void;
   style?: React.CSSProperties;
+  /** 모바일 열 단위 보기: 카드가 열 폭을 채우고 편집기 h-16, 이름·활성화·캐릭터·삭제는 한 줄(2026-09-26) */
+  wide?: boolean;
 }
 
 interface CharacterPromptsEditorProps {
@@ -427,7 +466,7 @@ const CharacterPromptsEditor = observer(
 );
 
 export const SlotPiece = observer(
-  ({ scene, piece, removePiece, moveSlotPiece, style }: SlotPieceProps) => {
+  ({ scene, piece, removePiece, moveSlotPiece, style, wide }: SlotPieceProps) => {
     const [showCharacterPrompts, setShowCharacterPrompts] = useState(false);
     // 셀 이름 인라인 편집 상태. 편집 확정 시 빈 값은 undefined 로 정규화(직렬화 오염 방지).
     const [editingName, setEditingName] = useState(false);
@@ -477,16 +516,58 @@ export const SlotPiece = observer(
       preview(getEmptyImage(), { captureDraggingState: true });
     }, [preview]);
 
+    const pieceControls = (
+      <div className={wide ? 'ml-auto flex items-center gap-3 select-none' : 'flex gap-2 select-none'}>
+        <label className="gray-label">활성화</label>
+        <input
+          type="checkbox"
+          className={wide ? 'relative touch-hit' : undefined}
+          checked={piece.enabled == undefined || piece.enabled}
+          onChange={(e) => {
+            if (!moveSlotPiece) return;
+            piece.enabled = e.currentTarget.checked;
+          }}
+        />
+        <Tooltip content="캐릭터 프롬프트 편집">
+        <button
+          className={'active:brightness-90 hover:brightness-95 text-blue-600 dark:text-blue-400' + (wide ? ' relative touch-hit' : '')}
+          onClick={() => {
+            if (!moveSlotPiece) return;
+            setShowCharacterPrompts(true);
+          }}
+        >
+          <FaUser size={20} />
+          {piece.characterPrompts.length > 0 && (
+            <span className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/3 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs">
+              {piece.characterPrompts.length}
+            </span>
+          )}
+        </button>
+        </Tooltip>
+        <button
+          className={'active:brightness-90 hover:brightness-95 ml-auto text-red-500 dark:text-red-400' + (wide ? ' relative touch-hit' : '')}
+          onClick={() => {
+            if (!moveSlotPiece) return;
+            removePiece && removePiece(piece);
+          }}
+        >
+          <FaTrash size={20} />
+        </button>
+      </div>
+    );
+
     return (
       <div
         key={piece.id!}
         ref={(node) => drag(drop(node))}
         style={style}
         className={
-          'p-3 m-2 bg-gray-200 dark:bg-slate-600 rounded-xl ' +
+          (wide ? 'px-2.5 py-2 mx-2 mb-2 ' : 'p-3 m-2 ') +
+          'bg-gray-200 dark:bg-slate-600 rounded-xl ' +
           (isDragging ? 'opacity-0' : '') +
           (isOver ? ' outline outline-sky-500' : '')
         }
+        data-slot-piece={wide ? 'wide' : undefined}
       >
         {showCharacterPrompts && (
           <FloatView
@@ -501,7 +582,7 @@ export const SlotPiece = observer(
         )}
 
         {/* 셀 이름(표시/편집) — 조합 미리보기 라벨과 연동. 클릭 시 인라인 입력. */}
-        <div className="mb-1 flex items-center gap-1 select-none">
+        <div className={wide ? 'mb-1.5 flex items-center gap-2 select-none' : 'mb-1 flex items-center gap-1 select-none'}>
           {editingName ? (
             <input
               autoFocus
@@ -531,8 +612,9 @@ export const SlotPiece = observer(
               <FaEdit size={11} className="flex-none text-faint" />
             </button>
           )}
+          {wide && pieceControls}
         </div>
-        <div className={'mb-3 h-12 w-28 md:h-24 md:w-48'}>
+        <div className={wide ? 'h-16 w-full' : 'mb-3 h-12 w-28 md:h-24 md:w-48'}>
           <PromptEditTextArea
             whiteBg
             disabled={!moveSlotPiece}
@@ -543,42 +625,7 @@ export const SlotPiece = observer(
             }}
           />
         </div>
-        <div className="flex gap-2 select-none">
-          <label className="gray-label">활성화</label>
-          <input
-            type="checkbox"
-            checked={piece.enabled == undefined || piece.enabled}
-            onChange={(e) => {
-              if (!moveSlotPiece) return;
-              piece.enabled = e.currentTarget.checked;
-            }}
-          />
-          <Tooltip content="캐릭터 프롬프트 편집">
-          <button
-            className="active:brightness-90 hover:brightness-95 text-blue-600 dark:text-blue-400"
-            onClick={() => {
-              if (!moveSlotPiece) return;
-              setShowCharacterPrompts(true);
-            }}
-          >
-            <FaUser size={20} />
-            {piece.characterPrompts.length > 0 && (
-              <span className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/3 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs">
-                {piece.characterPrompts.length}
-              </span>
-            )}
-          </button>
-          </Tooltip>
-          <button
-            className="active:brightness-90 hover:brightness-95 ml-auto text-red-500 dark:text-red-400"
-            onClick={() => {
-              if (!moveSlotPiece) return;
-              removePiece && removePiece(piece);
-            }}
-          >
-            <FaTrash size={20} />
-          </button>
-        </div>
+        {!wide && pieceControls}
       </div>
     );
   },
@@ -600,6 +647,13 @@ const SceneCharacterPromptEditor = observer(({
 }: SceneCharacterPromptEditorProps) => {
   const [showCoordMap, setShowCoordMap] = useState(false);
   const coordMapRef = useRef<HTMLDivElement>(null);
+  // 모바일 접이식 구역(2026-09-26): 기본 캐릭터·공통 네거티브는 기본 접힘, 기기에 기억. 좌표평면은 showCoordMap 그대로.
+  const [foldBase, setFoldBase] = useState(() => loadSceneEditorFold('base', true));
+  const [foldNeg, setFoldNeg] = useState(() => loadSceneEditorFold('neg', true));
+  const toggleFold = (key: 'base' | 'neg') => {
+    if (key === 'base') { saveSceneEditorFold('base', !foldBase); setFoldBase(!foldBase); }
+    else { saveSceneEditorFold('neg', !foldNeg); setFoldNeg(!foldNeg); }
+  };
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [draggingBaseIndex, setDraggingBaseIndex] = useState<number | null>(null);
   const [draggingRoleIndex, setDraggingRoleIndex] = useState<number | null>(null);
@@ -671,8 +725,54 @@ const SceneCharacterPromptEditor = observer(({
     </button>
   );
 
+  const modeDesc =
+    mode === 'base'
+      ? '메인 패널의 기본 캐릭터 프롬프트만 사용합니다.'
+      : mode === 'mix'
+        ? '같은 번호의 기본 캐릭터에 씬 역할의 동작·네거티브·좌표를 자동으로 합칩니다.'
+        : '메인 직접입력 캐릭터를 씬 전용 캐릭터로 대체합니다. 적용된 캐릭터 프리셋은 유지됩니다.';
+  // 모바일 좌표평면 열기(카드의 위치 줄에서도 호출) — 위치 지정 모드의 진입로를 하나 더 둔다
+  const openCoordMap = () => {
+    setShowCoordMap(true);
+    setTimeout(() => coordMapRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 0);
+  };
+
   return (
-    <div className="flex flex-col h-full p-4 overflow-hidden">
+    <div className={isMobile ? 'flex flex-col h-full px-3 py-2 overflow-hidden' : 'flex flex-col h-full p-4 overflow-hidden'}>
+      {isMobile ? (
+        // 모바일 압축 머리(2026-09-26): 제목 없음(탭이 제목), 모드 세그먼트 한 줄 + ? 도움말 + 활성 수
+        <div className="flex-none flex items-center gap-2 mb-2" data-scene-roles-head="">
+          <div className="tab-seg flex-1 min-w-0 flex gap-0.5">
+            {(
+              [
+                ['base', '기본만'],
+                ['mix', '혼합'],
+                ['scene', '씬 전용'],
+              ] as [SceneCharacterPromptMode, string][]
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={`round-button flex-1 basis-0 min-w-0 h-8 text-sm ${mode === value ? 'back-sky' : 'back-llgray tab-seg-off'}`}
+                aria-pressed={mode === value}
+                onClick={() => setSceneCharacterPromptMode(scene, value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <Tooltip content={modeDesc}>
+            <span className="text-yellow-500 dark:text-yellow-400 cursor-help flex-none">
+              <FaQuestionCircle size={15} />
+            </span>
+          </Tooltip>
+          {characters.length > 0 && (
+            <span className="flex-none text-xs text-green-600 dark:text-green-300">
+              {enabledCount}/{characters.length} 활성
+            </span>
+          )}
+        </div>
+      ) : (
       <div className="flex-none mb-4">
         <div className="flex items-center justify-between mb-2">
           <div className="text-lg font-medium text-default">
@@ -700,7 +800,12 @@ const SceneCharacterPromptEditor = observer(({
           </div>
         )}
       </div>
+      )}
 
+      {isMobile && (
+        <FoldHead open={!foldBase} label="기본 캐릭터 프롬프트 (읽기 전용 · 순서 변경)" onToggle={() => toggleFold('base')} />
+      )}
+      {(!isMobile || !foldBase) && (
       <div className="flex-none mb-3 rounded-lg r-card border line-color bg-[var(--c-surface-2)] p-3">
         <div className="flex items-center justify-between gap-2 mb-2">
           <div className="text-sm font-bold text-default flex items-center gap-1.5">
@@ -777,19 +882,25 @@ const SceneCharacterPromptEditor = observer(({
           </div>
         )}
       </div>
+      )}
 
-      {/* 좌표평면 */}
+      {/* 좌표평면(캐릭터 위치 지정). 모바일은 접이식 머리줄, 카드의 위치 줄에서도 열 수 있다. */}
       {characters.length > 0 && (
-        <div className="flex-none mb-3">
+        <div className={isMobile ? 'flex-none mb-1' : 'flex-none mb-3'}>
+          {isMobile ? (
+            <FoldHead open={showCoordMap} label="좌표평면 (캐릭터 위치 지정)" onToggle={() => setShowCoordMap(!showCoordMap)} />
+          ) : (
           <button
             className="text-xs text-sky-500 hover:text-sky-400 mb-1"
             onClick={() => setShowCoordMap(!showCoordMap)}
           >
             {showCoordMap ? '▼ 좌표평면 접기' : '▶ 좌표평면 펼치기'}
           </button>
+          )}
           {showCoordMap && (
             <div
               ref={coordMapRef}
+              data-no-scene-drag=""
               className="relative bg-[var(--c-surface)] border line-color rounded select-none overflow-hidden"
               style={{ aspectRatio: '4 / 3', maxWidth: '360px', touchAction: 'none' }}
               onPointerMove={(e) => {
@@ -849,13 +960,14 @@ const SceneCharacterPromptEditor = observer(({
                   if (draggingRoleIndex !== null) moveRole(draggingRoleIndex, index);
                   setDraggingRoleIndex(null);
                 }}
-                className={`border rounded-lg p-4 transition-all ${
+                className={`border rounded-lg ${isMobile ? 'p-3' : 'p-4'} transition-all ${
                   character.enabled !== false
                     ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
                     : 'line-color opacity-60'
                 }`}
+                data-scene-role={index + 1}
               >
-                <div className="flex items-center justify-between mb-3">
+                <div className={`flex items-center justify-between ${isMobile ? 'mb-2' : 'mb-3'}`}>
                   <div className="flex items-center gap-2">
                     {!isMobile && (
                       <span
@@ -925,36 +1037,78 @@ const SceneCharacterPromptEditor = observer(({
                   </div>
                 </div>
 
-                <div className="mb-3">
+                <div className={isMobile ? 'mb-2' : 'mb-3'}>
                   <label className="block text-sm font-medium mb-1 gray-label">
                     역할 프롬프트
                   </label>
-                  <PromptEditTextArea
-                    value={character.prompt}
-                    onChange={(value) => updateCharacter(character.id, { prompt: value })}
-                  />
+                  <div className={isMobile ? 'h-16' : undefined}>
+                    <PromptEditTextArea
+                      value={character.prompt}
+                      onChange={(value) => updateCharacter(character.id, { prompt: value })}
+                    />
+                  </div>
                 </div>
 
-                <div className="mb-3">
+                <div className={isMobile ? 'mb-2' : 'mb-3'}>
                   <label className="block text-sm font-medium mb-1 gray-label">
                     역할 네거티브 프롬프트
                   </label>
-                  <PromptEditTextArea
-                    value={character.uc}
-                    onChange={(value) => updateCharacter(character.id, { uc: value })}
-                  />
+                  <div className={isMobile ? 'h-16' : undefined}>
+                    <PromptEditTextArea
+                      value={character.uc}
+                      onChange={(value) => updateCharacter(character.id, { uc: value })}
+                    />
+                  </div>
                 </div>
 
+                {isMobile ? (
+                  // 위치 줄을 누르면 좌표평면이 열린다(위치 지정 모드 진입로, 2026-09-26)
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 text-xs text-sky-500 relative touch-hit"
+                    onClick={openCoordMap}
+                  >
+                    <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: sceneCharColors[index % sceneCharColors.length] }} />
+                    위치: ({character.position?.x?.toFixed(2) || '0.50'}, {character.position?.y?.toFixed(2) || '0.50'}) · 좌표평면에서 지정
+                  </button>
+                ) : (
                 <div className="flex items-center gap-2 text-xs text-faint">
                   <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: sceneCharColors[index % sceneCharColors.length] }} />
                   위치: ({character.position?.x?.toFixed(2) || '0.50'}, {character.position?.y?.toFixed(2) || '0.50'})
                 </div>
+                )}
               </div>
             ))}
           </div>
         )}
+        {isMobile && (
+          // 캐릭터 추가 = 목록 끝 점선 카드(새 씬 카드와 같은 언어)
+          <button
+            type="button"
+            data-scene-role-add=""
+            className="mt-3 w-full h-11 border-2 border-dashed line-color rounded-lg text-sm text-sub flex items-center justify-center gap-1"
+            onClick={addCharacter}
+          >
+            <FaPlus size={11} /> 캐릭터 추가
+          </button>
+        )}
       </div>
 
+      {isMobile ? (
+        <div className="flex-none">
+          <FoldHead open={!foldNeg} label="씬 전용 캐릭터 공통 네거티브 프롬프트" onToggle={() => toggleFold('neg')} />
+          {!foldNeg && (
+            <div className="h-16 mb-2">
+              <PromptEditTextArea
+                value={scene.sceneCharacterUC || ''}
+                onChange={(value) => {
+                  scene.sceneCharacterUC = value;
+                }}
+              />
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="flex-none mt-4 pt-4 border-t">
         <div className="flex gap-2">
           <button
@@ -979,6 +1133,7 @@ const SceneCharacterPromptEditor = observer(({
           />
         </div>
       </div>
+      )}
     </div>
   );
 });
@@ -1034,6 +1189,24 @@ export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
   const [detailed, setDetailed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileDetailed, setMobileDetailed] = useState(false);
+  // 모바일 열 단위 보기(2026-09-26): 한 번에 한 열, 가로 스크롤(스냅)·열 세그먼트·표식으로 열 이동. 열 수 변화에 맞춰 클램프.
+  const [mobileCol, setMobileCol] = useState(0);
+  const pagesRef = useRef<HTMLDivElement | null>(null);
+  const colCount = scene.slots.length;
+  const curCol = Math.min(mobileCol, Math.max(0, colCount - 1));
+  const goCol = (i: number) => {
+    const next = Math.max(0, Math.min(colCount - 1, i));
+    setMobileCol(next);
+    const el = pagesRef.current;
+    if (el) el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' });
+  };
+  const newPiece = () =>
+    PromptPiece.fromJSON({
+      prompt: '',
+      characterPrompts: [],
+      enabled: true,
+      id: uuidv4(),
+    });
 
   // 조합 미리보기 패널 본문(헤더 토글 + 리스트) — 데스크톱 우측·모바일 오버레이 공유.
   const previewPanel = (
@@ -1150,19 +1323,95 @@ export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
         </FloatView>
       )}
 
-      {/* 좌측: 열/행 그리드(자체 스크롤) */}
+      {/* 좌측: 열/행 그리드(자체 스크롤). 모바일은 열 단위 보기(2026-09-26). */}
       <div className="flex-1 min-w-0 flex flex-col min-h-0">
-        {isMobile && (
-          <div className="flex-none px-2 pt-1">
-            <button
-              className="round-button btn-sm back-sky"
-              onClick={() => setMobileOpen(true)}
+        {isMobile ? (
+          <>
+            <div className="flex-none flex items-center gap-2 px-2 pt-1 pb-1" data-slot-colseg="">
+              <div className="flex-1 min-w-0 flex items-center gap-1 overflow-x-auto no-scrollbar">
+                {scene.slots.map((_, i) => (
+                  <button
+                    key={i}
+                    className={`round-button btn-sm flex-none ${i === curCol ? 'back-sky' : 'back-llgray'}`}
+                    aria-pressed={i === curCol}
+                    onClick={() => goCol(i)}
+                  >
+                    {i + 1}열
+                  </button>
+                ))}
+                <button
+                  className="round-button btn-sm flex-none back-lllgray"
+                  aria-label="열 추가"
+                  onClick={() => {
+                    scene.slots.push([newPiece()]);
+                    setTimeout(() => goCol(scene.slots.length - 1), 80);
+                  }}
+                >
+                  <FaPlus className="mr-1" size={10} />열
+                </button>
+                <Tooltip content={"각 열의 프롬프트를 조합하여 열×행의 모든 경우의 수만큼 이미지를 생성합니다.\n열 추가: ＋열 · 행 추가: 열 끝의 조각 추가"}>
+                  <span className="text-yellow-500 dark:text-yellow-400 cursor-help flex-none" onMouseDown={(e) => e.stopPropagation()}>
+                    <FaQuestionCircle size={15} />
+                  </span>
+                </Tooltip>
+              </div>
+              <button
+                className="round-button btn-sm back-sky flex-none"
+                onClick={() => setMobileOpen(true)}
+              >
+                미리보기 {combinationCount(scene as unknown as Scene)}종
+              </button>
+            </div>
+            <div
+              ref={pagesRef}
+              data-slot-pages=""
+              data-edge-swipe-ignore=""
+              className="flex-1 min-h-0 flex overflow-x-auto overflow-y-hidden snap-x snap-mandatory always-show-scroll"
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                const i = Math.round(el.scrollLeft / Math.max(1, el.clientWidth));
+                if (i !== mobileCol) setMobileCol(i);
+              }}
             >
-              조합 미리보기 ({combinationCount(scene as unknown as Scene)}종)
-            </button>
-          </div>
+              {scene.slots.map((slot, slotIndex) => (
+                <div
+                  key={slotIndex}
+                  data-slot-page={slotIndex + 1}
+                  className="flex-none w-full snap-start overflow-y-auto pt-1 pb-2"
+                >
+                  {slot.map((piece) => (
+                    <SlotPiece
+                      key={piece.id!}
+                      scene={scene}
+                      piece={piece}
+                      wide
+                      removePiece={(p: PromptPiece) => removePiece(slot, slot.indexOf(p)!)}
+                      moveSlotPiece={moveSlotPiece}
+                    />
+                  ))}
+                  <button
+                    className="mx-2 mb-2 h-10 border-2 border-dashed line-color rounded-xl text-sm text-sub flex items-center justify-center gap-1"
+                    style={{ width: 'calc(100% - 1rem)' }}
+                    onClick={() => slot.push(newPiece())}
+                  >
+                    <FaPlus size={11} /> 조각 추가
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="flex-none flex items-center justify-center gap-1.5 py-1 text-[11px] text-faint" data-slot-dots="">
+              {scene.slots.map((_, i) => (
+                <span
+                  key={i}
+                  className={`inline-block h-1.5 rounded-full ${i === curCol ? 'w-4 bg-sky-500' : 'w-1.5 bg-[var(--c-line)]'}`}
+                />
+              ))}
+              <span className="ml-2">{curCol + 1}/{colCount}열 · 옆으로 밀어 이동</span>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 min-h-0 overflow-auto">{gridContent}</div>
         )}
-        <div className="flex-1 min-h-0 overflow-auto">{gridContent}</div>
       </div>
 
       {/* 우측 패널: 데스크톱 전용 상시 배치 */}
@@ -1174,6 +1423,13 @@ export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
     </div>
   );
 });
+
+// 모바일 씬 편집 창 집중 모드(2026-09-26): 키보드가 떠(같은 폭에서 본 최대 높이보다 SCENE_EDITOR_KBD_SHRINK_PX 넘게 줄면)
+// 편집기에 포커스가 있으면 머리 줄을 [씬 이름 … 완료]로, 탭 줄·이미지/진행 막대 영역을 숨겨 편집기가 남는 높이를 쓴다.
+// V2 프롬프트 시트의 kbdOpen 판정(MobilePromptSheet)과 같은 규칙. 클래식·V2 공통(사용자 요청).
+const SCENE_EDITOR_KBD_SHRINK_PX = 120;
+const isEditableTarget = (el: Element | null): boolean =>
+  !!el && el.matches('textarea,input:not([type=checkbox]):not([type=range]),[contenteditable="true"]');
 
 const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props) => {
   const { curSession } = appState;
@@ -1309,6 +1565,40 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
     setImageMain(curSession!, scene, filename, true);
   };
 
+  // 모바일 집중 모드 판정: 루트 높이(키보드) + 편집 포커스
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [kbdOpen, setKbdOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (!isMobile) return undefined;
+    const el = rootRef.current;
+    if (!el) return undefined;
+    let maxH = 0;
+    let width = window.innerWidth;
+    const measure = () => {
+      const h = el.clientHeight;
+      if (window.innerWidth !== width) {
+        width = window.innerWidth;
+        maxH = 0;
+      }
+      maxH = Math.max(maxH, h);
+      setKbdOpen(maxH - h > SCENE_EDITOR_KBD_SHRINK_PX);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    ro?.observe(el);
+    return () => {
+      window.removeEventListener('resize', measure);
+      ro?.disconnect();
+    };
+  }, []);
+  const focusMode = isMobile && kbdOpen && editing;
+  const finishEditing = () => {
+    const active = document.activeElement as HTMLElement | null;
+    if (active && typeof active.blur === 'function') active.blur();
+  };
+
   const [previews, setPreviews] = useState<PromptNode[]>([]);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const PromptPreview = previewError ? (
@@ -1341,6 +1631,7 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
       simplified={!legacyScene}
       getSceneUC={getSceneUC}
       setSceneUC={setSceneUC}
+      keyboardCompact={focusMode}
     />
   );
 
@@ -1364,11 +1655,13 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
   const advancedTabs = [
     {
       label: '조합 에디터',
+      shortLabel: '조합',
       content: SmallSlotEditor,
       emoji: <FaPuzzlePiece />,
     },
     {
       label: '씬 캐릭터 역할',
+      shortLabel: '역할',
       content: (
         <SceneCharacterPromptEditor
           scene={scene}
@@ -1380,6 +1673,7 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
     },
     {
       label: '최종 프롬프트 미리보기',
+      shortLabel: '미리보기',
       content: PromptPreview,
       emoji: <FaSearch />,
       onClick: runPreview,
@@ -1396,29 +1690,8 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
     })
     .filter((x) => !x.value.startsWith('small'));
 
-  return (
-    <div className="w-full h-full overflow-hidden">
-      <div className="flex flex-col overflow-hidden h-full w-full">
-        <div className="grow-0 pt-2 px-3 flex gap-3 items-center text-nowrap flex-wrap mb-2 md:mb-0">
-          <div className="flex items-center gap-2">
-            <label className="gray-label">씬 이름:</label>
-            <input
-              className="gray-input"
-              type="text"
-              value={curName}
-              onChange={(e) => {
-                setCurName(e.currentTarget.value);
-              }}
-            />
-          </div>
-          <div className="flex items-center gap-2 ">
-            <label className="gray-label">해상도:</label>
-            <div className="md:w-36">
-              <DropdownSelect
-                options={resolutionOptions}
-                menuPlacement="bottom"
-                selectedOption={scene.resolution}
-                onSelect={async (opt) => {
+  // 해상도 선택·이름 변경·삭제 동작(PC 머리 버튼과 모바일 한 줄 머리가 공유)
+  const onSelectResolution = async (opt: { value: string }) => {
                   if (
                     opt.value.startsWith('large') ||
                     opt.value.startsWith('wallpaper')
@@ -1457,14 +1730,8 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
                   } else {
                     scene.resolution = opt.value as Resolution;
                   }
-                }}
-              />
-            </div>
-          </div>
-
-          <button
-            className={`round-button back-sky`}
-            onClick={async () => {
+  };
+  const commitRename = async () => {
               const trimmedName = curName.trimEnd();
               if (!trimmedName) return;
               if (trimmedName === scene.name) return;
@@ -1498,13 +1765,8 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
                 return;
               }
               await renameScene(curSession!, scene.name, trimmedName);
-            }}
-          >
-            이름 변경
-          </button>
-          <button
-            className={`round-button back-red`}
-            onClick={() => {
+  };
+  const confirmDelete = () => {
               appState.pushDialog({
                 type: 'confirm',
                 text: '정말로 해당 씬을 삭제하시겠습니까? (휴지통으로 이동)',
@@ -1517,17 +1779,114 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
                   }
                 },
               });
-            }}
+  };
+  const resolutionSelect = (
+    <DropdownSelect
+      options={resolutionOptions}
+      menuPlacement="bottom"
+      selectedOption={scene.resolution}
+      onSelect={onSelectResolution}
+    />
+  );
+  return (
+    <div
+      ref={rootRef}
+      className="w-full h-full overflow-hidden"
+      data-scene-editor-focus={focusMode ? '' : undefined}
+      onFocusCapture={(e) => {
+        if (isMobile && isEditableTarget(e.target as Element)) setEditing(true);
+      }}
+      onBlurCapture={() => {
+        if (!isMobile) return;
+        window.setTimeout(() => {
+          const a = document.activeElement;
+          setEditing(!!(a && rootRef.current?.contains(a) && isEditableTarget(a)));
+        }, 0);
+      }}
+    >
+      <div className="flex flex-col overflow-hidden h-full w-full">
+        {focusMode ? (
+          // 집중 모드 머리줄(V2 시트와 같은 언어): 씬 이름 + 완료(blur → 키보드 내림 → 원래 배치로)
+          <div className="grow-0 px-3 py-1.5 flex items-center gap-2" data-scene-editor-focus-head="">
+            <span className="flex-1 min-w-0 truncate text-sm font-semibold gray-label">{curName || scene.name}</span>
+            <button
+              type="button"
+              className="round-button back-sky text-sm !px-3 !py-0.5 !min-w-0 !min-h-0"
+              onClick={finishEditing}
+            >
+              완료
+            </button>
+          </div>
+        ) : isMobile ? (
+          // 모바일 한 줄 머리(2026-09-26, 클래식·V2 공통): [씬 이름(blur/Enter 자동 저장)][해상도][삭제]. 「이름 변경」 버튼 없음.
+          <div className="grow-0 pt-1.5 px-3 pb-1 flex gap-2 items-center" data-scene-editor-head="">
+            <input
+              className="gray-input flex-1 min-w-0 h-9"
+              type="text"
+              aria-label="씬 이름 (수정하면 자동 저장)"
+              value={curName}
+              onChange={(e) => {
+                setCurName(e.currentTarget.value);
+              }}
+              onBlur={() => void commitRename()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  (e.currentTarget as HTMLInputElement).blur();
+                }
+              }}
+            />
+            <div className="flex-none w-[8.5rem]">{resolutionSelect}</div>
+            <button
+              type="button"
+              className="round-button back-red flex-none !min-w-0 w-9 h-9 !px-0"
+              aria-label="씬 삭제"
+              onClick={confirmDelete}
+            >
+              <FaTrash size={14} />
+            </button>
+          </div>
+        ) : (
+        <div className="grow-0 pt-2 px-3 flex gap-3 items-center text-nowrap flex-wrap mb-2 md:mb-0">
+          <div className="flex items-center gap-2">
+            <label className="gray-label">씬 이름:</label>
+            <input
+              className="gray-input"
+              type="text"
+              value={curName}
+              onChange={(e) => {
+                setCurName(e.currentTarget.value);
+              }}
+            />
+          </div>
+          <div className="flex items-center gap-2 ">
+            <label className="gray-label">해상도:</label>
+            <div className="md:w-36">{resolutionSelect}</div>
+          </div>
+          <button
+            className={`round-button back-sky`}
+            onClick={commitRename}
+          >
+            이름 변경
+          </button>
+          <button
+            className={`round-button back-red`}
+            onClick={confirmDelete}
           >
             삭제
           </button>
         </div>
+        )}
         <div className="flex-1 overflow-hidden">
           <TabComponent
             defaultActiveTab={initialTab}
+            // 모바일(2026-09-26): 클래식=위 한 줄 전체 폭 등분, V2=하단 탭 바(메인 줄 언어). 그 외 개선은 공통.
+            mobileTabs={isMobile ? (isV2() ? 'bottom' : 'wide') : undefined}
+            mobileTabsHidden={focusMode}
             tabs={[
               {
                 label: '프롬프트 에디터',
+                shortLabel: '프롬프트',
                 content: BigEditor,
                 emoji: <FaImages />,
               },

@@ -2044,6 +2044,8 @@ const CharacterPromptEditor = observer(
             {showCoordMap && (
               <div
                 ref={coordMapRef}
+                // 좌표 끌기와 메인 본문 선택 상자 드래그가 겹치지 않게(2026-09-26 PC 버그)
+                data-no-scene-drag=""
                 className="relative w-full bg-[var(--c-surface)] border line-color rounded select-none overflow-hidden"
                 style={{ aspectRatio: '4 / 3', touchAction: 'none' }}
                 onPointerMove={(e) => {
