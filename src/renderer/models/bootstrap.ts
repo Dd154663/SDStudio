@@ -22,6 +22,7 @@ import { persistService } from './PersistenceService';
 import { runMobilePermissionOnboarding } from './mobilePermissions';
 import { waitForStorageAccess } from './storagePermissionGate';
 import { migrationService } from './MigrationService';
+import { applyMobileV2Default, StorageDetectKind } from './mobileV2Default';
 import { setWorkspaceLayoutActive } from './storageLayout';
 import { WORKSPACE_ROOT } from './projectPaths';
 import type { Session } from './types';
@@ -239,6 +240,8 @@ export async function bootstrapApp(): Promise<void> {
       console.error('설정 로드 실패(기본값으로 진행):', e);
     }
 
+    // 1.7 단계(모바일 V2 기본값)가 새 설치('fresh')와 기존 사용자를 가르는 데 쓴다. 판정 불가면 기존 사용자로.
+    let storageDetect: StorageDetectKind = 'unknown';
     // 1.5) [트랙1 (b)] 저장소 v2 마이그레이션 판정·실행 — 권한+config 확보 후,
     //      세션 스캔(init) 전의 유일한 창(스펙 §3-1). 게이트 UI(MigrationGate)가
     //      선택을 받을 때까지 여기서 대기한다.
@@ -261,6 +264,7 @@ export async function bootstrapApp(): Promise<void> {
         }
       } else {
         const det = await migrationService.detect();
+        storageDetect = det;
         if (det === 'fresh') {
           // 신규 사용자 — 신 배치 활성화(구 데이터 흔적 재검증·마커 기록은 내부).
           await migrationService.markFreshAndActivate();
@@ -287,6 +291,14 @@ export async function bootstrapApp(): Promise<void> {
           setWorkspaceLayoutActive(true);
         }
       } catch (e2) {}
+    }
+
+    // 1.7) 모바일 기본 배치=V2 (2026-09-27, 5.4.0 부터): 새 설치는 조용히 V2, 기존 사용자는 한 번 V2 로 바꾸고
+    //      안내 창 표식을 세운다(App.tsx 가 bootReady 뒤 표시). 완료 표식이 있으면 무동작. PC 는 무동작.
+    try {
+      await applyMobileV2Default(storageDetect);
+    } catch (e) {
+      console.error('모바일 V2 기본 배치 적용 실패(진행):', e);
     }
 
     // 2) 핵심: 세션 서비스 준비

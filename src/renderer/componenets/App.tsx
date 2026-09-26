@@ -21,7 +21,8 @@ import { QuickMenu } from './QuickMenu';
 import BottomBar from './BottomBar';
 import { GenControlFloating } from './GenControlWidget';
 import EditModeShell from './EditModeShell';
-import { resolveLayout, dockOrder, DOCK_RANK } from '../models/layoutTemplates';
+import { resolveLayout, dockOrder, DOCK_RANK, defaultLayoutTemplateId } from '../models/layoutTemplates';
+import { MOBILE_V2_INTRO_TEXT, revertMobileV2ToClassic } from '../models/mobileV2Default';
 import TobBar from './TobBar';
 import AlertWindow from './AlertWindow';
 import { DropdownSelect, TabComponent } from './UtilComponents';
@@ -281,7 +282,7 @@ export const App = observer(() => {
       appState.uiToolbar = conf.uiToolbar ?? {};
       appState.uiPresetLayout = conf.uiPresetLayout ?? {};
       appState.uiCompanionSlots = conf.uiCompanionSlots ?? {};
-      appState.uiLayoutTemplate = conf.uiLayoutTemplate ?? 'classic';
+      appState.uiLayoutTemplate = conf.uiLayoutTemplate ?? defaultLayoutTemplateId(isMobile);
       appState.uiMobileV2Parts = conf.uiMobileV2Parts;
       appState.uiPresetIconRow = conf.uiPresetIconRow ?? false;
       appState.genWidget = conf.genWidget ?? {};
@@ -343,6 +344,26 @@ export const App = observer(() => {
       appUpdateNoticeService.removeEventListener('updated', handleUpdate);
     };
   }, []);
+  // 모바일 기본 배치=V2 최초 안내(2026-09-27): bootstrap(applyMobileV2Default)이 기존 사용자를 V2 로 바꾼 뒤
+  // 세운 표식을 보고, 메인 UI 가 뜬 다음 한 번만 띄운다. 「클래식으로 되돌리기」는 템플릿만 되돌린다.
+  useEffect(() => {
+    if (!appState.bootReady || !appState.mobileV2IntroPending) return;
+    appState.mobileV2IntroPending = false;
+    appState.pushDialog({
+      type: 'select',
+      text: MOBILE_V2_INTRO_TEXT,
+      green: true,
+      items: [
+        { text: '확인', value: 'ok' },
+        { text: '클래식으로 되돌리기', value: 'classic' },
+      ],
+      callback: (value?: string) => {
+        if (value === 'classic') {
+          revertMobileV2ToClassic().catch((e) => console.error('클래식 되돌리기 실패:', e));
+        }
+      },
+    });
+  }, [appState.bootReady, appState.mobileV2IntroPending]);
   useEffect(() => {
     const removeDonwloadProgressListener = backend.onDownloadProgress(
       (progress: any) => {

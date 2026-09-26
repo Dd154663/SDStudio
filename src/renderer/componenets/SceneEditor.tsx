@@ -1,3 +1,4 @@
+import { PromptAutoExpandContext } from './PromptAutoExpand';
 import {
   createRef,
   useContext,
@@ -1811,7 +1812,9 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
       onSelect={onSelectResolution}
     />
   );
+  // 씬 편집 창은 키보드 집중 모드(모바일 공통)가 있어 편집기 「탭=확장 창」을 끈다(2026-09-27 클래식 복원의 예외, 사용자 결정).
   return (
+    <PromptAutoExpandContext.Provider value={false}>
     <div
       ref={rootRef}
       className="w-full h-full overflow-hidden"
@@ -1919,6 +1922,7 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
         </div>
       </div>
     </div>
+    </PromptAutoExpandContext.Provider>
   );
 });
 

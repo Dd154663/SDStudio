@@ -1,3 +1,4 @@
+import { PromptAutoExpandContext } from './PromptAutoExpand';
 import React, { createContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FaChevronUp } from 'react-icons/fa';
 import ModelFamilySwitch from './ModelFamilySwitch';
@@ -433,7 +434,9 @@ const MobilePromptSheet: React.FC<{ children: React.ReactNode }> = ({ children }
               }}
             >
               <PresetCompactContext.Provider value={bodyState !== 'full'}>
-                <PresetFocusContext.Provider value={focusCtx}>{children}</PresetFocusContext.Provider>
+                <PresetFocusContext.Provider value={focusCtx}>
+                  <PromptAutoExpandContext.Provider value={false}>{children}</PromptAutoExpandContext.Provider>
+                </PresetFocusContext.Provider>
               </PresetCompactContext.Provider>
             </div>
           )}

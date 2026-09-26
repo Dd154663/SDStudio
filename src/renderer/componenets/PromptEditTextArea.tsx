@@ -1,3 +1,4 @@
+import { PromptAutoExpandContext } from './PromptAutoExpand';
 import { Scrollbars } from 'react-custom-scrollbars-2';
 import * as Hangul from 'hangul-js';
 import { createContext,
@@ -1517,6 +1518,8 @@ const PromptEditTextArea = observer(
     const curWordRef = useLatest(curWord);
     const [fullScreen, setFullScreen] = useState(false);
     const accessorySlot = useContext(PromptAccessorySlotContext);
+    // 모바일 「탭=확장 창」(클래식 동작). 자체 집중 모드가 있는 곳(V2 시트·PromptFocusShell·씬 편집 창)은 false 로 감싼다.
+    const autoExpand = useContext(PromptAutoExpandContext);
     // 커서가 놓인 구획이 작가 태그면 그 이름(접두 제거). 「작가 라이브러리」 버튼이 라벨 줄 슬롯(있으면) 또는 편집기 오른쪽 위에 뜬다(2026-09-26).
     // 접두가 있으면 즉시, 없으면 태그 DB 조회(캐시). 입력·클릭·키·selectionchange 뒤 150ms 디바운스.
     const [caretArtist, setCaretArtist] = useState<string | null>(null);
@@ -1640,11 +1643,14 @@ const PromptEditTextArea = observer(
       closeAutoComplete();
     };
 
-    // 모바일 축소안(2026-09-22): 포커스만으로는 확대하지 않는다 — 인라인 편집이 기본. 확대는 확대 버튼으로만 열고,
-    // 닫기는 X·배경 탭·뒤로 가기 세 가지뿐. 예전의 "포커스=확대 + 창 밖 click 감시"는 포커스 순간 요소가 고정 위치로
-    // 점프해 click 대상이 바뀌는 바람에 열림/닫힘이 탭 위치에 따라 갈렸고, 자동완성 항목 탭도 바깥 click 으로 잡혀
-    // 창이 닫혔다(실기기 조사). PC 는 원래 포커스 확대가 없어 영향 없음.
-    const onFoucs = () => {};
+    // 모바일 포커스 확대(2026-09-27 클래식 복원, PromptAutoExpandContext): 자체 집중 모드가 없는 곳에서는 탭(포커스)만으로
+    // 확장 창을 연다 — 축소안(2026-09-22) 이전의 클래식 동작. 창 밖 click 감시는 되살리지 않는다(포커스 순간 요소가 고정
+    // 위치로 점프해 click 대상이 바뀌어 열림/닫힘이 탭 위치에 따라 갈렸고, 자동완성 항목 탭도 바깥 click 으로 닫히던 원인).
+    // 닫기는 X·배경 탭·뒤로 가기. V2 시트·PromptFocusShell·씬 편집 창은 컨텍스트 false 라 인라인 편집(집중 모드)이 기본.
+    // PC 는 원래 포커스 확대가 없어 영향 없음.
+    const onFoucs = () => {
+      if (isMobile && autoExpand && !disabled && !fullScreen) setFullScreen(true);
+    };
     const onBlur = () => {};
     const closeFullScreen = () => {
       setFullScreen(false);

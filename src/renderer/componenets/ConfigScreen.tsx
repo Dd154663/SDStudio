@@ -18,7 +18,7 @@ import { GLOBAL_ACTIONS, globalActionMeta, DEFAULT_QUICK_MENU } from '../models/
 import { platform } from '../models/platform';
 import { buildThemeVars, isHex6 } from '../models/uiTheme';
 import { themeTemplates } from '../models/themeTemplates';
-import { layoutTemplates } from '../models/layoutTemplates';
+import { layoutTemplates, defaultLayoutTemplateId } from '../models/layoutTemplates';
 import {
   assignCompanion,
   removeCompanion,
@@ -2820,7 +2820,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [uiToolbar, setUiToolbar] = useState<UiToolbarConfig>({});
   const [quickMenuCfg, setQuickMenuCfg] = useState<string[] | undefined>(undefined);
   const [quickMenuButton, setQuickMenuButton] = useState(false);
-  const [uiLayoutTemplate, setUiLayoutTemplate] = useState('classic');
+  const [uiLayoutTemplate, setUiLayoutTemplate] = useState(defaultLayoutTemplateId(isMobile));
   const [uiMobileV2Parts, setUiMobileV2Parts] = useState<MobileV2Parts>(normalizeV2Parts(undefined));
   const [uiPresetIconRow, setUiPresetIconRow] = useState(false);
   // 모던 해제 확인(② A 2차 피드백 후속 1): 모던 → 다른 템플릿 전환 시 "배치 초기화"에
@@ -2870,7 +2870,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setUiToolbar(config.uiToolbar ?? {});
       setQuickMenuCfg(config.quickMenu);
       setQuickMenuButton(config.quickMenuButton ?? false);
-      setUiLayoutTemplate(config.uiLayoutTemplate ?? 'classic');
+      setUiLayoutTemplate(config.uiLayoutTemplate ?? defaultLayoutTemplateId(isMobile));
       setUiMobileV2Parts(normalizeV2Parts(config.uiMobileV2Parts));
       setUiPresetIconRow(config.uiPresetIconRow ?? false);
       setUiFloatViewMode(config.uiFloatViewMode ?? 'cover');
@@ -3199,7 +3199,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       JSON.stringify(uiToolbar) !== JSON.stringify(savedCfg.uiToolbar ?? {}) ||
       JSON.stringify(quickMenuCfg ?? null) !== JSON.stringify(savedCfg.quickMenu ?? null) ||
       quickMenuButton !== (savedCfg.quickMenuButton ?? false) ||
-      uiLayoutTemplate !== (savedCfg.uiLayoutTemplate ?? 'classic') ||
+      uiLayoutTemplate !== (savedCfg.uiLayoutTemplate ?? defaultLayoutTemplateId(isMobile)) ||
       JSON.stringify(uiMobileV2Parts) !== JSON.stringify(normalizeV2Parts(savedCfg.uiMobileV2Parts)) ||
       uiPresetIconRow !== (savedCfg.uiPresetIconRow ?? false) ||
       uiFloatViewMode !== (savedCfg.uiFloatViewMode ?? 'cover') ||

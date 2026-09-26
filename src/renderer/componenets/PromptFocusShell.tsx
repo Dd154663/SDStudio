@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PresetFocusContext, WFI_KEY_ATTR } from './MobilePromptSheet';
+import { PromptAutoExpandContext } from './PromptAutoExpand';
 
 /**
  * 클래식 모바일 프롬프트 창(FloatView)용 집중 모드 껍데기(2026-09-27, 모바일 V2 「인라인 편집기」 부위).
@@ -70,7 +71,9 @@ export const PromptFocusShell = ({ children }: { children: React.ReactNode }) =>
       onFocusCapture={onFocus}
       onBlurCapture={onBlur}
     >
-      <PresetFocusContext.Provider value={ctx}>{children}</PresetFocusContext.Provider>
+      <PresetFocusContext.Provider value={ctx}>
+        <PromptAutoExpandContext.Provider value={false}>{children}</PromptAutoExpandContext.Provider>
+      </PresetFocusContext.Provider>
     </div>
   );
 };

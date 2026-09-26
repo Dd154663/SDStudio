@@ -14,6 +14,14 @@ describe('resolveLayout — 폴백/강제', () => {
     expect(r.bottomBar).toBe('bottom');
     expect(r.sessionSelectTop).toBe(false);
   });
+  it('미지정(undefined) + 모바일 → mobile-v2 기본(2026-09-27, 5.4.0 부터)', () => {
+    const r = resolveLayout(undefined, true);
+    expect(r.id).toBe('mobile-v2');
+    expect(r.mobileV2).toBe(true);
+    expect(resolveLayout('ghost', true).id).toBe('mobile-v2');
+    // PC 는 종전대로 classic
+    expect(resolveLayout(undefined, false).mobileV2).toBe(false);
+  });
   it("미존재 id('ghost') → classic 폴백", () => {
     const r = resolveLayout('ghost', false);
     expect(r.id).toBe('classic');
@@ -245,8 +253,8 @@ describe('모바일 V2 템플릿 — 선택형·되돌리기 가능(2026-09-20)'
     expect(v2.mobileV2).toBe(true);
     expect({ ...v2, id: 'classic', mobileV2: false }).toEqual(classic);
   });
-  it('클래식·미지정·모바일 비허용 템플릿은 모바일에서 V2 가 아니다', () => {
-    for (const id of [undefined, 'classic', 'compact', 'sidebar', 'modern', 'ghost']) {
+  it('클래식·모바일 비허용 템플릿은 모바일에서 V2 가 아니다(미지정·미존재 id 는 2026-09-27 부터 모바일 기본 V2)', () => {
+    for (const id of ['classic', 'compact', 'sidebar', 'modern']) {
       expect(resolveLayout(id, true).mobileV2).toBe(false);
     }
   });

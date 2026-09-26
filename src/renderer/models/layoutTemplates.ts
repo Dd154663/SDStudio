@@ -162,6 +162,11 @@ function coerceGenControl(
 // slots(3번째 인자, 옵셔널)는 템플릿 기본값 위에 얹는 개인화 오버라이드.
 // - 모바일이면 slots 전부 무시(템플릿도 classic 강제 — 기존 규칙 유지).
 // - 잘못된 값(타입 밖 문자열)은 무시하고 기본값(stale 안전).
+/** 플랫폼 기본 템플릿 id(2026-09-27): 모바일=mobile-v2(5.4.0 부터 기본), PC=classic. 미지정·미존재 id 의 폴백. */
+export function defaultLayoutTemplateId(isMobile: boolean): string {
+  return isMobile ? 'mobile-v2' : 'classic';
+}
+
 export function resolveLayout(
   templateId: string | undefined,
   isMobile: boolean,
@@ -170,11 +175,13 @@ export function resolveLayout(
   const classic = layoutTemplates[0];
   const meta = layoutTemplates.find((t) => t.id === templateId);
 
-  // 실제로 적용할 템플릿(미존재 id·모바일 비허용 → classic 폴백).
-  const effective =
-    !meta ||
-    (isMobile && !meta.mobileAllowed) ||
-    (!isMobile && !meta.desktopAllowed)
+  // 실제로 적용할 템플릿: 미지정·미존재 id → 플랫폼 기본(모바일 mobile-v2 / PC classic),
+  // 이 플랫폼에서 허용되지 않는 템플릿 → classic 강제(종전 규칙).
+  const fallback =
+    layoutTemplates.find((t) => t.id === defaultLayoutTemplateId(isMobile)) ?? classic;
+  const effective = !meta
+    ? fallback
+    : (isMobile && !meta.mobileAllowed) || (!isMobile && !meta.desktopAllowed)
       ? classic
       : meta;
 

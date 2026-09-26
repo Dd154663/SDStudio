@@ -284,6 +284,8 @@ export class AppState {
   @observable accessor uiLayoutTemplate: string = 'classic';
   // 모바일 V2 부위별 적용(config.uiMobileV2Parts 미러, 2026-09-27). undefined = 전부 켬. 판정은 mobileV2.ts isV2(part).
   @observable accessor uiMobileV2Parts: Partial<MobileV2Parts> | undefined = undefined;
+  // 모바일 V2 기본 전환 안내 창 대기(bootstrap 이 세우고 App 이 bootReady 뒤 한 번 띄운다, 2026-09-27).
+  @observable accessor mobileV2IntroPending: boolean = false;
 
   // 프리셋 패널 버튼 하단 아이콘 행(config.uiPresetIconRow 미러). 기본 false = 현행
   // 세로 넓은 버튼. 소비는 PreSetEdtior.tsx(PresetRootRender), 로드는 App.tsx.
