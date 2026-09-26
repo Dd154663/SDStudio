@@ -1,5 +1,6 @@
 import React, { createContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FaChevronUp } from 'react-icons/fa';
+import ModelFamilySwitch from './ModelFamilySwitch';
 import { appState } from '../models/AppService';
 import { backStackService } from '../models/BackStackService';
 import {
@@ -382,13 +383,27 @@ const MobilePromptSheet: React.FC<{ children: React.ReactNode }> = ({ children }
             role="button"
             aria-label="프롬프트 시트 열기/닫기"
             aria-expanded={open}
-            className="flex-none select-none cursor-grab px-3 pt-1.5"
+            className="relative flex-none select-none cursor-grab px-3 pt-1.5"
             style={{ height: V2_SHEET_PEEK_PX, touchAction: 'none' }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={() => endDrag(true)}
             onPointerCancel={() => endDrag(false)}
           >
+            {/* NAI 모델 퀵 전환(4.5/5) — 손잡이 줄 왼쪽(2026-09-26 사용자: 오른쪽은 생성 버튼과 가까워 오터치 우려).
+                접힘·반·전체 모두 보인다. 여기서 시작한 터치는 손잡이의 끌기·탭 순환으로 새지 않게 전파를 막는다. */}
+            <div
+              data-v2-handle-model-switch
+              className="absolute left-3 top-1/2 -translate-y-1/2 cursor-auto"
+              style={{ touchAction: 'manipulation' }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onPointerMove={(e) => e.stopPropagation()}
+              onPointerUp={(e) => e.stopPropagation()}
+              onPointerCancel={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ModelFamilySwitch compact />
+            </div>
             {/* 손잡이는 막대+이름+화살표만(안내 문구는 시선을 끌어 제거, 2026-09-22 사용자). 상태 설명은 aria-label 로. */}
             <div className="mx-auto mb-1.5 h-1 w-9 rounded-full bg-[var(--c-line)]" />
             <div className="flex items-center justify-center gap-1.5 text-[12px] text-sub">

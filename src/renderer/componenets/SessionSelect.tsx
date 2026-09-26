@@ -13,6 +13,7 @@ import { TOOLBAR_VIEW_MAIN, MOBILE_PROJECT_TOPROW_IDS, resolveToolbarView } from
 import { HScrollHintArrow, useHScrollHint } from './HScrollHint';
 import { companionAssignedIds } from '../models/companionSlots';
 import ToolbarOverflowMenu from './ToolbarOverflowMenu';
+import ModelFamilySwitch from './ModelFamilySwitch';
 import {
   DraggableToolbarButton,
   ToolbarHideZone,
@@ -679,6 +680,13 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
           (overflow-x-auto 는 flex 자동 최소폭을 0 으로 만들어 줄 폭에 맞게 수축됨). */}
       {/* 모바일 2줄 배치: 2줄째는 항상 전체 폭의 버튼 줄. 넘치면 가로 스크롤이고 가려진
           방향에 화살표 힌트(HScrollHint)를 띄운다. */}
+      {/* 클래식 모바일: NAI 모델 퀵 전환 단일 토글(현재 계열 표시, 탭=다른 계열). V2 의 선반 손잡이와 같은 우상단 자리.
+          세그먼트 대신 토글인 이유=프로젝트 선택 폭 보전(2026-09-26 사용자 결정). V2 는 시트 손잡이 줄에 세그먼트가 있어 여기 없음. */}
+      {mobileTwoRow && !v2Shelf && (
+        <Tooltip content="NAI 모델 전환 (탭하면 4.5 ↔ 5)">
+          <ModelFamilySwitch variant="toggle" className="titlebar-no-drag flex-none" />
+        </Tooltip>
+      )}
       {v2Shelf && (
         <button
           type="button"
