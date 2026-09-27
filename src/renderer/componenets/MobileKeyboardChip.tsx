@@ -19,6 +19,11 @@ import {
 export const KBD_CHIP_HOLD_MS = 350;
 export const KBD_CHIP_REPEAT_MS = 100;
 export const KBD_CHIP_SCRUB_PX = 24;
+/**
+ * 집중 모드(편집 칸이 남는 높이를 전부 쓰는 배치)에서 칩이 마지막 줄을 가리지 않게 컨테이너 아래에 비워 두는 높이(2026-09-27).
+ * = 칩 높이 약 38px + 화면 아래 띄움 16px. V2 시트·PromptFocusShell·씬 편집 창 집중 모드가 같은 값을 쓴다.
+ */
+export const KBD_CHIP_RESERVE_PX = 56;
 
 type ChipState =
   | { mode: 'search'; text: string }

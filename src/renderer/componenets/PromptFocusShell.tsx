@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PresetFocusContext, WFI_KEY_ATTR } from './MobilePromptSheet';
 import { PromptAutoExpandContext } from './PromptAutoExpand';
+import { KBD_CHIP_RESERVE_PX } from './MobileKeyboardChip';
 
 /**
  * 클래식 모바일 프롬프트 창(FloatView)용 집중 모드 껍데기(2026-09-27, 모바일 V2 「인라인 편집기」 부위).
@@ -67,6 +68,8 @@ export const PromptFocusShell = ({ children }: { children: React.ReactNode }) =>
     <div
       ref={rootRef}
       className="h-full w-full"
+      // 집중 모드에서는 키보드 위 칩이 마지막 줄을 가리지 않게 아래를 비워 둔다(2026-09-27)
+      style={key != null ? { paddingBottom: KBD_CHIP_RESERVE_PX } : undefined}
       data-prompt-focus-shell={key != null ? 'on' : 'off'}
       onFocusCapture={onFocus}
       onBlurCapture={onBlur}

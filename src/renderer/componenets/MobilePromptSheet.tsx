@@ -1,3 +1,4 @@
+import { KBD_CHIP_RESERVE_PX } from './MobileKeyboardChip';
 import { PromptAutoExpandContext } from './PromptAutoExpand';
 import React, { createContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FaChevronUp } from 'react-icons/fa';
@@ -428,6 +429,8 @@ const MobilePromptSheet: React.FC<{ children: React.ReactNode }> = ({ children }
                 overflow: 'clip',
                 // 본문 높이는 도착 상태 기준(시트 자체는 항상 전체 높이라 flex-1 을 쓰면 반 상태에서 바닥이 잘린다)
                 height: Math.max(0, layoutHeight(bodyState) - V2_SHEET_PEEK_PX),
+                // 집중 모드에서는 키보드 위 칩이 마지막 줄을 가리지 않게 아래를 비워 둔다(2026-09-27)
+                paddingBottom: focusMode ? KBD_CHIP_RESERVE_PX : undefined,
                 visibility: bodyHidden ? 'hidden' : 'visible',
                 // 접을 때는 내려가는 애니메이션이 끝난 뒤 숨기고, 열 때는 즉시 보인다
                 transition: bodyHidden && ready ? 'visibility 0s linear 0.22s' : 'visibility 0s',

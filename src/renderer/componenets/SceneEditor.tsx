@@ -1,3 +1,4 @@
+import { KBD_CHIP_RESERVE_PX } from './MobileKeyboardChip';
 import { PromptAutoExpandContext } from './PromptAutoExpand';
 import {
   createRef,
@@ -313,7 +314,12 @@ export const BigPromptEditor = observer(
           </FloatView>
         )}
         {simplified ? (
-          <div className={keyboardCompact ? 'overflow-auto flex-1 min-h-0 md:h-auto md:w-1/3 md:h-full' : 'overflow-auto flex-none h-1/3 md:h-auto md:w-1/3 md:h-full'} data-scene-prompt-column={keyboardCompact ? 'compact' : undefined}>
+          <div
+            className={keyboardCompact ? 'overflow-auto flex-1 min-h-0 md:h-auto md:w-1/3 md:h-full' : 'overflow-auto flex-none h-1/3 md:h-auto md:w-1/3 md:h-full'}
+            // 집중 모드에서는 키보드 위 칩이 마지막 줄을 가리지 않게 아래를 비워 둔다(2026-09-27)
+            style={keyboardCompact ? { paddingBottom: KBD_CHIP_RESERVE_PX } : undefined}
+            data-scene-prompt-column={keyboardCompact ? 'compact' : undefined}
+          >
             <div className="h-full flex flex-col p-2 gap-2 overflow-hidden">
               <div className="flex-none font-bold text-sub">
                 중간 프롬프트 (이 씬에만 적용됨)
