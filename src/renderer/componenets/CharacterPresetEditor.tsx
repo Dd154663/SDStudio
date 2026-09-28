@@ -38,6 +38,11 @@ import { FaPlay, FaPause, FaStop, FaSync, FaDownload, FaUpload, FaGlobe, FaUsers
 import type { IGlobalCharacterPresetEntry } from '../models/GlobalCharacterPresetService';
 import { saveJsonFile } from '../models/exportUtil';
 import { syncFileName } from '../models/driveSync';
+import {
+  askImportPolicyWithConfirm,
+  IMPORT_FLOW_TEXT,
+  notifyImportDone,
+} from '../models/importFlow';
 import { stringifyExportJson } from '../models/jsonExport';
 import { FileUploadBase64 } from './UtilComponents';
 import PromptEditTextArea from './PromptEditTextArea';
@@ -156,9 +161,24 @@ async function importGlobalCharacterPresets(file: File) {
     appState.pushMessage('올바른 캐릭터 프리셋 파일이 아닙니다');
     return;
   }
+  if (!data || !Array.isArray(data.presets)) {
+    appState.pushMessage('올바른 캐릭터 프리셋 파일이 아닙니다');
+    return;
+  }
+  // 공용 불러오기 흐름(드라이브 동기화 ② B2): 이름이 같은 항목이 있으면 정책 선택 →
+  // 덮어쓰기면 확인 1회. 덮어쓰기는 id 를 유지한 채 내용만 교체(프로젝트 연결 보존).
+  const policy = await askImportPolicyWithConfirm({
+    label: '캐릭터 프리셋',
+    conflictCount: globalCharacterPresetService.countFileConflicts(data),
+    protection: IMPORT_FLOW_TEXT.protection.keepLink,
+  });
+  if (!policy) return;
   try {
-    const n = await globalCharacterPresetService.importFromFileData(data);
-    appState.pushMessage(`${n}개 프리셋을 글로벌로 불러왔습니다`);
+    const res = await globalCharacterPresetService.importFromFileData(
+      data,
+      policy,
+    );
+    notifyImportDone('캐릭터 프리셋', res);
   } catch (e: any) {
     appState.pushMessage(e.message || '불러오기에 실패했습니다');
   }

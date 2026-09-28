@@ -1225,12 +1225,30 @@ ipcMain.handle('select-dir', async (event) => {
   }
 });
 
-ipcMain.handle('select-file', async (event) => {
+ipcMain.handle('select-file', async (event, options?: any) => {
+  // options(선택, 하위 호환 — 드라이브 동기화 ②): defaultPath = 선택기 시작 폴더,
+  // filters = 확장자 필터. 형식이 맞지 않는 값은 무시하고 기존 동작으로 연다.
+  const dialogOptions: Electron.OpenDialogOptions = {
+    properties: ['openFile'],
+  };
+  if (typeof options?.defaultPath === 'string' && options.defaultPath.trim()) {
+    dialogOptions.defaultPath = options.defaultPath;
+  }
+  if (
+    Array.isArray(options?.filters) &&
+    options.filters.every(
+      (f: any) =>
+        f &&
+        typeof f.name === 'string' &&
+        Array.isArray(f.extensions) &&
+        f.extensions.every((x: any) => typeof x === 'string'),
+    )
+  ) {
+    dialogOptions.filters = options.filters;
+  }
   const { canceled, filePaths } = await dialog.showOpenDialog(
     BrowserWindow.fromWebContents(event.sender) ?? mainWindow!,
-    {
-      properties: ['openFile'],
-    },
+    dialogOptions,
   );
   if (canceled) {
     return;

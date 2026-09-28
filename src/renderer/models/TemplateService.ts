@@ -9,6 +9,7 @@ import {
 import { getAppState } from './appStateRef';
 import { Session, genericSceneFromJSON } from './types';
 import { stringifyExportJson } from './jsonExport';
+import { askImportPolicy, notifyImportDone } from './importFlow';
 
 const SIDECAR_PATH = 'templates.json';
 
@@ -644,7 +645,10 @@ export class TemplateService {
     });
   }
 
-  // 파일 내용 → 새 숨김 템플릿 프로젝트 생성 + 지정. 반환 = 만든 이름(실패 null).
+  // 파일 내용 → 새 숨김 템플릿 프로젝트 생성 + 지정. 반환 = 만든 이름(실패·건너뜀 null).
+  // 같은 이름의 씬 템플릿이 있으면 공용 불러오기 흐름(드라이브 동기화 ② B3)으로
+  // [새 이름으로 추가 / 건너뛰기]를 묻는다(덮어쓰기는 지원하지 않아 숨김).
+  // 새 이름 규칙은 기존 `(2)` 그대로. 템플릿이 아닌 동명 프로젝트는 묻지 않고 `(2)`.
   async importSceneTemplateFile(text: string): Promise<string | null> {
     const appState = getAppState();
     let data: any;
@@ -673,6 +677,16 @@ export class TemplateService {
       (typeof data.name === 'string' ? data.name : '')
         .replace(/[\\/:*?"<>|]/g, ' ')
         .trim() || '가져온 씬 템플릿';
+    const policy = await askImportPolicy({
+      label: '씬 템플릿',
+      conflictCount: this.listSceneTemplates().includes(base) ? 1 : 0,
+      allow: { overwrite: false },
+    });
+    if (!policy) return null;
+    if (policy === 'skip') {
+      notifyImportDone('씬 템플릿', { added: 0, updated: 0, skipped: 1 });
+      return null;
+    }
     let name = base;
     let i = 2;
     while (sessionService.list().includes(name)) {
@@ -686,7 +700,12 @@ export class TemplateService {
       return null;
     }
     await this.designateHiddenTemplate(name);
-    appState.pushMessage(`씬 템플릿 "${name}"을(를) 불러왔습니다.`);
+    notifyImportDone('씬 템플릿', {
+      added: 1,
+      updated: 0,
+      skipped: 0,
+      extra: `불러온 이름: ${name}`,
+    });
     return name;
   }
 

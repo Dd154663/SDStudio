@@ -13,6 +13,7 @@ import {
   FileEntry,
   ImageOptimizeMethod,
   ResizeImageInput,
+  SelectFileOptions,
 } from '../backend';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import {
@@ -700,7 +701,9 @@ export class AndroidBackend extends Backend {
     return { ok: true };
   }
 
-  async selectFile(): Promise<string | undefined> {
+  async selectFile(_options?: SelectFileOptions): Promise<string | undefined> {
+    // 시작 폴더(defaultPath)·확장자 필터는 문서 선택기에 지정할 수 없어 의도적으로 무시한다
+    // (드라이브 동기화 ② — Android 는 문서 선택기에서 Drive 를 직접 고른다).
     const result = await FilePicker.pickFiles({
       types: ['application/x-tar'],
     });

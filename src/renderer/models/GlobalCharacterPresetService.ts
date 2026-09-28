@@ -427,17 +427,67 @@ export class GlobalCharacterPresetService extends EventTarget {
     return out;
   }
 
+  // 파일 항목의 표시 이름(정규화) — 충돌 판정과 등록 이름이 같은 규칙을 쓰게 한 곳에.
+  private static fileEntryName(raw: any): string {
+    const n = typeof raw?.name === 'string' ? raw.name.trim() : '';
+    return n || '이름없음';
+  }
+
+  // 파일 안 항목 중 기존 글로벌 프리셋과 이름이 같은 개수(불러오기 정책 선택용).
+  // 형식이 아니면 0 — 실제 형식 검사는 importFromFileData 가 throw 로 한다.
+  countFileConflicts(data: any): number {
+    if (!data || !Array.isArray(data.presets)) return 0;
+    const existing = new Set(this.presets.map((p) => p.name));
+    let n = 0;
+    for (const raw of data.presets) {
+      if (!raw || typeof raw !== 'object') continue;
+      if (existing.has(GlobalCharacterPresetService.fileEntryName(raw))) n++;
+    }
+    return n;
+  }
+
   // 파일 데이터 → 글로벌 엔트리 등록. 이미지는 새 글로벌 파일명(uuid)으로 저장 후
-  // path 재지정(기존 글로벌 이미지와 충돌 없음). 이름 충돌은 `_n` 접미.
-  // 반환 = 불러온 개수. 형식 오류는 throw (호출 UI 가 메시지 처리).
+  // path 재지정(기존 글로벌 이미지와 충돌 없음).
+  // 이름이 같은 기존 항목 처리(policy, 드라이브 동기화 ② B2 — 기본 'rename' = 종전 동작):
+  //  - rename   : 새 엔트리로 추가, 이름은 `_n` 접미(resolveNameCollision 기존 규칙)
+  //  - skip     : 추가하지 않음(이미지도 저장하지 않음)
+  //  - overwrite: updateEntry 로 **id 를 유지한 채 내용만 교체** — 프로젝트 사본의
+  //               fromGlobalId 링크가 끊기지 않고, 다음 적용 때 fromGlobalRev 차이로
+  //               갱신된다. 기존 한 항목은 한 번만 덮어쓴다(파일 안 같은 이름이 또
+  //               나오면 rename 으로 추가). 파일에 폴더가 있으면 그 폴더로 옮긴다.
+  // 충돌 판정 기준은 불러오기 시작 시점의 기존 목록이다(파일 안 같은 이름끼리는 충돌 아님).
+  // 형식 오류는 throw (호출 UI 가 메시지 처리). 항목 단위 파손은 건너뛰고 계속한다.
   @action
-  async importFromFileData(data: any): Promise<number> {
+  async importFromFileData(
+    data: any,
+    policy: 'rename' | 'skip' | 'overwrite' = 'rename',
+  ): Promise<{ added: number; updated: number; skipped: number }> {
     if (!data || !Array.isArray(data.presets)) {
       throw new Error('올바른 캐릭터 프리셋 파일이 아닙니다');
     }
-    let imported = 0;
+    const existingByName = new Map<string, string>();
+    for (const p of this.presets) {
+      if (!existingByName.has(p.name)) existingByName.set(p.name, p.id);
+    }
+    const overwrittenIds = new Set<string>();
+    let added = 0;
+    let updated = 0;
+    let skipped = 0;
     for (const raw of data.presets) {
       if (!raw || typeof raw !== 'object') continue;
+      const fileName = GlobalCharacterPresetService.fileEntryName(raw);
+      const existingId = existingByName.get(fileName);
+      if (existingId && policy === 'skip') {
+        skipped++;
+        continue;
+      }
+      const overwriteId =
+        existingId &&
+        policy === 'overwrite' &&
+        !overwrittenIds.has(existingId) &&
+        this.get(existingId)
+          ? existingId
+          : undefined;
       try {
         const json: any = JSON.parse(JSON.stringify(raw));
         const folder =
@@ -491,9 +541,22 @@ export class GlobalCharacterPresetService extends EventTarget {
         ).toJSON();
         delete clean.fromGlobalId;
         delete clean.fromGlobalRev;
-        const name = this.resolveNameCollision(
-          (clean.name || '이름없음').trim() || '이름없음',
-        );
+
+        if (overwriteId) {
+          // id 유지 갱신 — 기존 관문(updateEntry: 이름 충돌 처리·안 쓰는 이미지 정리·
+          // scheduleSave·changed 이벤트)을 그대로 쓴다.
+          clean.name = fileName;
+          await this.updateEntry(
+            overwriteId,
+            CharacterPreset.fromJSON(clean as ICharacterPreset),
+          );
+          overwrittenIds.add(overwriteId);
+          if (folder) await this.setFolder(overwriteId, folder);
+          updated++;
+          continue;
+        }
+
+        const name = this.resolveNameCollision(fileName);
         clean.name = name;
         const entry: IGlobalCharacterPresetEntry = {
           id: uuidv4(),
@@ -507,17 +570,17 @@ export class GlobalCharacterPresetService extends EventTarget {
           this.folders = [...this.folders, folder];
         }
         this.presets = [...this.presets, entry];
-        imported++;
+        added++;
       } catch (e) {
         // 항목 단위 파손은 건너뛰고 나머지는 계속 불러온다
         console.error('글로벌 프리셋 항목 불러오기 실패:', e);
       }
     }
-    if (imported > 0) {
+    if (added > 0) {
       this.scheduleSave();
       this.dispatchEvent(new CustomEvent('changed', {}));
     }
-    return imported;
+    return { added, updated, skipped };
   }
 
   // ---------- 편집기용 이미지 저장 (FileUploadBase64는 raw base64 제공) ----------

@@ -61,7 +61,16 @@ import { appState } from './AppService';
 import type { ExportPreset } from './AppService';
 import { stringifyExportJson } from './jsonExport';
 import { isProjectNameTaken } from './projectPaths';
-import { deliverExport, syncFileName } from './driveSync';
+import { deliverExport, getSyncFolder, syncFileName } from './driveSync';
+import {
+  askImportPolicyWithConfirm,
+  countNameConflicts,
+  IMPORT_FLOW_TEXT,
+  librarySummary,
+  notifyImportDone,
+  readNamesFromStore,
+  type ImportPolicy,
+} from './importFlow';
 
 // 전체 백업에 담는 전역 설정 파일. (백업엔 전부 담되, 설정 병합 복원 시
 // trash.json / folderOrder.json 은 의도적으로 제외 — 아래 mergeSettingsFromDir 참조)
@@ -85,6 +94,11 @@ const FULL_BACKUP_SETTINGS_IMAGE_DIRS = ['global_vibes', 'global_char_images'];
 // 올라갔을 때 지금 버전의 앱이 신 백업을 잘못 복원(이미지 유실 등)하는 것을
 // 막는 포워드 호환 안전판이다. version 필드 부재(구 백업)는 통과.
 const SUPPORTED_MANIFEST_VERSION = 1;
+
+// 압축 해제된 라이브러리 백업 JSON 에서 항목 이름 목록(충돌 개수 계산용). 읽기 실패는 throw.
+async function readBackupNames(path: string, key: string): Promise<string[]> {
+  return readNamesFromStore(JSON.parse(await backend.readFile(path)), key);
+}
 
 export class BackupService {
   projectBackupMenu() {
@@ -556,37 +570,6 @@ export class BackupService {
 
   // ===== 라이브러리 단위 백업/복원 (글로벌 프리셋 · 작가 라이브러리) =====
 
-  // 복원 시 이름 충돌 처리 방식을 묻는다. 덮어쓰기는 파괴적이라 2번 더 확인.
-  private async askLibraryBackupPolicy(
-    label: string,
-  ): Promise<'rename' | 'skip' | 'overwrite' | undefined> {
-    const choice = await appState.pushDialogAsync({
-      type: 'select',
-      text: `${label} 백업을 불러옵니다.\n이름이 같은 항목이 있을 때 처리 방식을 선택하세요.`,
-      items: [
-        { text: '동명은 새 이름 (2)로 불러오기 (권장)', value: 'rename' },
-        { text: '동명은 건너뛰기', value: 'skip' },
-        { text: '⚠️ 동명을 덮어쓰기 (기존 영구 삭제)', value: 'overwrite' },
-      ],
-    });
-    if (!choice || choice === 'cancel') return undefined;
-    if (choice === 'overwrite') {
-      const c1 = await appState.pushDialogAsync({
-        type: 'select',
-        text: '⚠️ 덮어쓰기: 이름이 같은 기존 항목이 영구 삭제되고 백업으로 대체됩니다.\n정말로 진행할까요?',
-        items: [{ text: '예, 덮어씁니다', value: 'yes' }],
-      });
-      if (c1 !== 'yes') return undefined;
-      const c2 = await appState.pushDialogAsync({
-        type: 'select',
-        text: '정말 정말로 진행할까요?\n이 작업은 되돌릴 수 없습니다.',
-        items: [{ text: '예, 확실합니다', value: 'yes' }],
-      });
-      if (c2 !== 'yes') return undefined;
-    }
-    return choice as 'rename' | 'skip' | 'overwrite';
-  }
-
   private async libraryBackupExport(opts: {
     label: string;
     manifestType: string;
@@ -635,15 +618,27 @@ export class BackupService {
     } catch (e) {}
   }
 
+  // 복원은 공용 불러오기 흐름(importFlow.ts)을 따른다: 파일 고르기 → (동명이 있으면)
+  // 정책 선택 → (덮어쓰기면) 확인 1회 → 적용 → 「추가 · 갱신 · 건너뜀」 안내.
+  // 내부 병합 규칙(새 id·(2) 접미·덮어쓰기=삭제 후 추가)은 각 서비스 기존 그대로.
   private async libraryBackupImport(opts: {
     label: string;
+    // 덮어쓰기 확인 문구의 항목 이름(예: '작가'). 없으면 label.
+    itemLabel?: string;
     manifestType: string;
+    // 압축 해제된 백업의 항목 이름 목록(충돌 개수 계산용). 실패 시 개수 미상으로 묻는다.
+    incomingNames: (root: string) => Promise<string[]>;
+    existingNames: () => string[];
     restore: (
       root: string,
-      policy: 'rename' | 'skip' | 'overwrite',
+      policy: ImportPolicy,
     ) => Promise<{ added: number; skipped: number; overwritten: number }>;
   }) {
-    const tarPath = await backend.selectFile();
+    // PC 는 드라이브 동기화 폴더가 설정돼 있으면 그 폴더에서 선택기를 연다(모바일 무시).
+    const syncFolder = await getSyncFolder();
+    const tarPath = await backend.selectFile(
+      syncFolder ? { defaultPath: syncFolder } : undefined,
+    );
     if (!tarPath) return;
     appState.setProgressDialog({ text: '백업을 확인하는 중..', done: 0, total: 1 });
     const root = 'tmp/' + v4();
@@ -673,7 +668,21 @@ export class BackupService {
       await cleanup();
       return;
     }
-    const policy = await this.askLibraryBackupPolicy(opts.label);
+    let conflictCount: number | undefined;
+    try {
+      conflictCount = countNameConflicts(
+        await opts.incomingNames(root),
+        opts.existingNames(),
+      );
+    } catch (e) {
+      conflictCount = undefined; // 개수를 모르면 묻는다(restore 가 형식 오류를 알린다)
+    }
+    const policy = await askImportPolicyWithConfirm({
+      label: opts.label,
+      itemLabel: opts.itemLabel,
+      conflictCount,
+      protection: IMPORT_FLOW_TEXT.protection.replaceDeleted,
+    });
     if (!policy) {
       await cleanup();
       return;
@@ -690,15 +699,7 @@ export class BackupService {
     }
     appState.setProgressDialog(undefined);
     await cleanup();
-    const extra: string[] = [];
-    if (res.skipped > 0) extra.push(`${res.skipped}개 건너뜀`);
-    if (res.overwritten > 0) extra.push(`${res.overwritten}개 덮어씀`);
-    appState.pushDialog({
-      type: 'yes-only',
-      text:
-        `${opts.label} ${res.added}개를 불러왔습니다.` +
-        (extra.length ? `\n(${extra.join(', ')})` : ''),
-    });
+    notifyImportDone(opts.label, librarySummary(res));
   }
 
   async globalPresetBackupExport() {
@@ -716,6 +717,9 @@ export class BackupService {
     await this.libraryBackupImport({
       label: '글로벌 프리셋',
       manifestType: 'sdstudio-global-presets',
+      incomingNames: (root) =>
+        readBackupNames(root + '/global_presets.json', 'presets'),
+      existingNames: () => globalPresetService.presets.map((p) => p.name),
       restore: (root, policy) =>
         globalPresetService.restoreFromBackupDir(root, policy),
     });
@@ -735,7 +739,11 @@ export class BackupService {
   async artistLibraryBackupImport() {
     await this.libraryBackupImport({
       label: '작가 라이브러리',
+      itemLabel: '작가',
       manifestType: 'sdstudio-artist-library',
+      incomingNames: (root) =>
+        readBackupNames(root + '/artist_library.json', 'artists'),
+      existingNames: () => artistLibraryService.artists.map((a) => a.name),
       restore: (root, policy) =>
         artistLibraryService.restoreFromBackupDir(root, policy),
     });

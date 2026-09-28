@@ -506,7 +506,12 @@ export class ArtistLibraryService extends EventTarget {
             const dest =
               ARTIST_LIBRARY_DIR + '/' + newId + '/' + imgId + '.' + srcExt;
             await backend.copyFile(srcPath, dest);
-            newImages.push({ id: imgId, path: dest });
+            // 모델 계열(family)은 유효한 값일 때만 보존(드라이브 동기화 ② B4 — 전엔 유실)
+            const family: ModelSamplingFamily | undefined =
+              img.family === 'v4_5' || img.family === 'v5' ? img.family : undefined;
+            newImages.push(
+              family ? { id: imgId, path: dest, family } : { id: imgId, path: dest },
+            );
           }
         } catch (e) {}
       }

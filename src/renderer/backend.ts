@@ -12,6 +12,12 @@ export interface FileEntry {
   path: string;
 }
 
+// selectFile 선택 인자(하위 호환). 미지정 = 기존 동작.
+export interface SelectFileOptions {
+  defaultPath?: string;
+  filters?: { name: string; extensions: string[] }[];
+}
+
 export enum ImageOptimizeMethod {
   LOSSY = 1,
   LOSSLESS = 2,
@@ -113,7 +119,9 @@ export abstract class Backend {
   abstract deleteDir(filename: string): Promise<void>;
   abstract trashFile(filename: string): Promise<void>;
   abstract selectDir(): Promise<string | undefined>;
-  abstract selectFile(): Promise<string | undefined>;
+  // options 는 하위 호환 선택 인자(드라이브 동기화 ②): PC 는 defaultPath 폴더에서
+  // 선택기를 열고 filters 를 적용한다. Android 문서 선택기는 둘 다 의도적으로 무시한다.
+  abstract selectFile(options?: SelectFileOptions): Promise<string | undefined>;
   abstract selectFiles(options?: { filters?: { name: string; extensions: string[] }[] }): Promise<string[]>;
   abstract readBinaryFile(filePath: string): Promise<string>;
   abstract close(): Promise<void>;

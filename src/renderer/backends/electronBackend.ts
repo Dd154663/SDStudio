@@ -7,7 +7,7 @@ import {
   ImageGenService,
   LoginValidity,
 } from './imageGen';
-import { Backend, FileEntry, ResizeImageInput } from '../backend';
+import { Backend, FileEntry, ResizeImageInput, SelectFileOptions } from '../backend';
 import { assertDeletableDirPath } from './dataPathGuard';
 import { NovelAiFetcher, NovelAiImageGenService } from './genVendors/nai';
 import { createNaiApiError } from './genVendors/naiErrors';
@@ -373,8 +373,9 @@ export class ElectornBackend extends Backend {
     return await invoke('select-dir');
   }
 
-  async selectFile() {
-    return await invoke('select-file');
+  async selectFile(options?: SelectFileOptions) {
+    // 인자 없는 기존 호출은 그대로(select-file 에 옵션 없이 전달).
+    return options ? await invoke('select-file', options) : await invoke('select-file');
   }
 
   async selectFiles(options?: { filters?: { name: string; extensions: string[] }[] }): Promise<string[]> {

@@ -9,6 +9,7 @@ import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
+import android.util.Log;
 
 import com.getcapacitor.Plugin;
 import com.getcapacitor.annotation.CapacitorPlugin;
@@ -41,6 +42,7 @@ import java.util.zip.ZipOutputStream;
 
 @CapacitorPlugin(name = "ZipService")
 public class ZipService extends Plugin {
+  private static final String TAG = "ZipService";
 
   @PluginMethod
   public void zipFiles(PluginCall call) {
@@ -201,35 +203,64 @@ public class ZipService extends Plugin {
   }
 
 
+  // tar 압축 해제(앱의 모든 불러오기가 쓰는 유일한 네이티브 해제 경로 — zip 은 만들기만
+  // 하고 풀지 않는다). 드라이브 동기화 ② B8: 엔트리 이름이 대상 폴더 밖(../, 절대 경로,
+  // 드라이브 문자)을 가리키거나 링크 엔트리면 풀지 않고 건너뛴 뒤 로그를 남긴다.
+  // 결과 { skipped: 건너뛴 엔트리 수 } — JS 쪽은 사용하지 않아도 무해.
   @PluginMethod
   public void unzipFiles(PluginCall call) {
-
+    String outPath = call.getString("outPath");
+    String zipPath = call.getString("zipPath");
+    if (outPath == null || zipPath == null) {
+      call.reject("outPath and zipPath must be provided");
+      return;
+    }
+    int skipped = 0;
     try {
-      String outPath = call.getString("outPath");
-
-      InputStream fis = openInputStreamFromUri(getContext(), Uri.parse(call.getString("zipPath")));
-      BufferedInputStream bis = new BufferedInputStream(fis);
-      TarArchiveInputStream tarIn = new TarArchiveInputStream(bis);
-
-      TarArchiveEntry entry;
-      while ((entry = (TarArchiveEntry) tarIn.getNextEntry()) != null) {
-        File destPath = new File(outPath, entry.getName());
-        if (entry.isDirectory()) {
-          destPath.mkdirs();
-        } else {
-          destPath.getParentFile().mkdirs();
-          OutputStream out = new FileOutputStream(destPath);
-          byte[] buffer = new byte[1024];
-          int length;
-          while ((length = tarIn.read(buffer)) != -1) {
-            out.write(buffer, 0, length);
+      File root = new File(outPath).getCanonicalFile();
+      InputStream fis = openInputStreamFromUri(getContext(), Uri.parse(zipPath));
+      try (TarArchiveInputStream tarIn =
+          new TarArchiveInputStream(new BufferedInputStream(fis))) {
+        TarArchiveEntry entry;
+        while ((entry = (TarArchiveEntry) tarIn.getNextEntry()) != null) {
+          String name = entry.getName();
+          if (entry.isSymbolicLink() || entry.isLink()) {
+            skipped++;
+            Log.w(TAG, "unzipFiles: skipped link entry: " + name);
+            continue;
           }
-          out.close();
+          File destPath = TarEntryPaths.resolveInside(root, name);
+          if (destPath == null) {
+            skipped++;
+            Log.w(TAG, "unzipFiles: skipped entry outside target: " + name);
+            continue;
+          }
+          if (entry.isDirectory()) {
+            destPath.mkdirs();
+          } else {
+            if (destPath.equals(root)) {
+              skipped++;
+              Log.w(TAG, "unzipFiles: skipped file entry at target root: " + name);
+              continue;
+            }
+            File parent = destPath.getParentFile();
+            if (parent != null) parent.mkdirs();
+            try (OutputStream out = new FileOutputStream(destPath)) {
+              byte[] buffer = new byte[64 * 1024];
+              int length;
+              while ((length = tarIn.read(buffer)) != -1) {
+                out.write(buffer, 0, length);
+              }
+            }
+          }
         }
       }
-      tarIn.close();
-      call.resolve();
-    } catch (IOException e) {
+      JSObject ret = new JSObject();
+      ret.put("skipped", skipped);
+      call.resolve(ret);
+    } catch (Exception e) {
+      // 런타임 예외도 reject 로 변환 — 플러그인 스레드의 미처리 예외는 앱 프로세스를
+      // 죽인다(zipFiles 와 같은 이유).
       call.reject("Failed to unzip files", e);
     }
   }
