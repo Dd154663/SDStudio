@@ -64,7 +64,9 @@ import {
 } from '../shared/sdstudioImageMetadata';
 import { isV5ModelVersion } from '../renderer/backends/genVendors/naiModelCapabilities';
 import * as googleDriveAuth from './googleDrive';
+import { uploadExportFileForIpc } from './googleDrive/upload';
 import { DRIVE_AUTH_CHANNEL } from '../shared/googleDriveAuth';
+import { DRIVE_FILE_CHANNEL, isDriveWebUrl } from '../shared/googleDrive';
 
 interface DataBaseConns {
   tagDBId: number;
@@ -442,8 +444,49 @@ ipcMain.handle(DRIVE_AUTH_CHANNEL.status, async () => googleDriveAuth.getStatus(
 ipcMain.handle(DRIVE_AUTH_CHANNEL.connect, async () => googleDriveAuth.connectForIpc());
 ipcMain.handle(DRIVE_AUTH_CHANNEL.cancel, async () => googleDriveAuth.cancelConnect());
 ipcMain.handle(DRIVE_AUTH_CHANNEL.disconnect, async () => googleDriveAuth.disconnect());
-// 종료 시 브라우저 승인 대기(루프백 서버·타이머)를 정리한다.
-app.on('will-quit', () => googleDriveAuth.cancelConnect());
+// 연결 여부만(네트워크 조회 없음) — 내보내기 목적지 결정용(드라이브 API ②).
+ipcMain.handle(DRIVE_AUTH_CHANNEL.connected, async () => googleDriveAuth.isConnected());
+
+// ─── Google 드라이브 올리기 (드라이브 API ②) ───
+// 창(webContents)마다 한 번에 하나. 진행률은 요청한 창에만 보내고, 창이 닫히면 올리기를 중단한다.
+// 경로는 publish-export 와 같은 규칙(APP_DIR 기준 exports/… 만). 토큰 파일은 main 에서도 거부.
+const driveUploads = new Map<number, AbortController>();
+ipcMain.handle(DRIVE_FILE_CHANNEL.upload, async (event, request) => {
+  const sender = event.sender;
+  const senderId = sender.id;
+  if (driveUploads.has(senderId)) return { ok: false, code: 'busy' };
+  const controller = new AbortController();
+  driveUploads.set(senderId, controller);
+  const onDestroyed = () => controller.abort();
+  sender.once('destroyed', onDestroyed);
+  try {
+    return await uploadExportFileForIpc({
+      appDir: APP_DIR,
+      request,
+      signal: controller.signal,
+      onProgress: (p) => {
+        if (!sender.isDestroyed()) sender.send(DRIVE_FILE_CHANNEL.uploadProgress, p);
+      },
+    });
+  } finally {
+    if (driveUploads.get(senderId) === controller) driveUploads.delete(senderId);
+    if (!sender.isDestroyed()) sender.removeListener('destroyed', onDestroyed);
+  }
+});
+ipcMain.handle(DRIVE_FILE_CHANNEL.uploadCancel, async (event) => {
+  driveUploads.get(event.sender.id)?.abort();
+});
+// 드라이브 웹 주소(https://drive.google.com/…)만 시스템 브라우저로 연다.
+ipcMain.handle(DRIVE_FILE_CHANNEL.openFile, async (event, url) => {
+  if (!isDriveWebUrl(url)) throw new Error('Google 드라이브 주소가 아닙니다.');
+  await shell.openExternal(url);
+});
+
+// 종료 시 브라우저 승인 대기(루프백 서버·타이머)와 진행 중인 올리기를 정리한다.
+app.on('will-quit', () => {
+  googleDriveAuth.cancelConnect();
+  for (const c of driveUploads.values()) c.abort();
+});
 
 ipcMain.handle('show-file', async (event, arg) => {
   // 절대경로(목표 폴더 export 결과)면 그대로, 아니면 APP_DIR 기준 상대경로로 해석.

@@ -13,12 +13,24 @@
 //
 // 순수 함수(syncFileName·withCollisionSuffix·resolveExportDestinations·joinAbsolute)는
 // jest 로 검증한다(__tests__/driveSync.test.ts).
+//
+// Google 드라이브 연동 ②(2026-09-28, PC): 드라이브에 연결돼 있으면 목적지는
+// [Google 드라이브 / 다운로드 폴더]이고(동기화 폴더는 이때 제안하지 않음 — 과도기 1단계),
+// 'drive' 선택 시 main 이 드라이브 SDStudio 폴더에 올린다(backend.driveUpload). 실패는 다운로드
+// 폴더로 전환, 취소는 스테이징 삭제. NovelAI 토큰 파일('token')은 연결·동기화 폴더와 관계없이
+// 다운로드 폴더에만 저장한다(main 올리기도 한 번 더 거부 — 2중 방벽).
 
 import { backend } from '.';
 import { appState } from './AppService';
 import { platform } from './platform';
 import { transferExportArchive } from './exportArchiveTransfer';
 import { sanitizeFilenamePart } from './exportPresetUtils';
+import { formatBytes } from './googleDrive';
+import {
+  DriveFileMeta,
+  driveUploadErrorText,
+  isDriveWebUrl,
+} from '../../shared/googleDrive';
 
 // 대상 종류 = 파일명 규칙 sdstudio-<kind>-<날짜> 의 kind. 기존 라이브러리 백업 파일명
 // (sdstudio-global-presets-…, sdstudio-artist-library-…)과 같은 값을 쓴다.
@@ -61,6 +73,22 @@ export const DRIVE_SYNC_TEXT = {
     drive: '드라이브 폴더',
     downloads: '다운로드 폴더',
   } as Record<ExportDestination, string>,
+  // Google 드라이브 연결 시 'drive' 선택지 라벨(드라이브 API ②).
+  googleDriveDestination: 'Google 드라이브',
+  tokenDownloadsOnly: 'NovelAI 토큰 파일은 다운로드 폴더에만 저장합니다.',
+  googleDriveUploading: (fileName: string) =>
+    `Google 드라이브에 올리는 중입니다… (${fileName})`,
+  googleDriveCancelling: 'Google 드라이브 올리기를 취소하는 중입니다…',
+  googleDriveProgress: (percent: number, sent: string, total: string) =>
+    total ? `${percent}% · ${sent} / ${total}` : `${percent}%`,
+  googleDriveSaved: (fileName: string) =>
+    `Google 드라이브의 SDStudio 폴더에 저장했습니다: ${fileName}`,
+  googleDriveOpen: '드라이브에서 열기',
+  googleDriveClose: '닫기',
+  googleDriveCleanupFailed:
+    'Google 드라이브 저장은 완료했지만 앱 내부의 임시 사본을 정리하지 못했습니다.',
+  googleDriveFailed: (reason: string) =>
+    `Google 드라이브에 올리지 못해 다운로드 폴더로 저장합니다: ${reason}`,
   driveSaved: (fileName: string) => `드라이브 폴더에 저장했습니다: ${fileName}`,
   driveCleanupFailed:
     '드라이브 폴더 저장은 완료했지만 앱 내부의 임시 사본을 정리하지 못했습니다.',
@@ -139,11 +167,18 @@ export function normalizeSyncFolder(value: unknown): string | undefined {
 }
 
 // 이 기기에서 고를 수 있는 목적지 목록(표시 순서 = 배열 순서).
-// 드라이브 폴더는 임의 절대 경로 쓰기가 되는 플랫폼(PC)에서 폴더가 지정된 경우만.
+// - NovelAI 토큰('token')은 항상 다운로드 폴더만(드라이브 API ② — 드라이브·동기화 폴더 모두 제외).
+// - PC(임의 절대 경로 쓰기가 되는 플랫폼)에서 Google 드라이브에 연결돼 있으면 'drive' =
+//   Google 드라이브. 동기화 폴더가 있어도 이때는 제안하지 않는다(과도기 1단계).
+// - 미연결이면 기존 규칙: 동기화 폴더가 지정된 경우만 'drive' = 드라이브 폴더.
 export function resolveExportDestinations(opts: {
   syncFolder?: string;
   supportsTargetFolder: boolean;
+  driveConnected?: boolean;
+  kind?: DriveExportKind;
 }): ExportDestination[] {
+  if (opts.kind === 'token') return ['downloads'];
+  if (opts.supportsTargetFolder && opts.driveConnected) return ['drive', 'downloads'];
   if (opts.supportsTargetFolder && normalizeSyncFolder(opts.syncFolder)) {
     return ['drive', 'downloads'];
   }
@@ -161,6 +196,45 @@ export async function getSyncFolder(): Promise<string | undefined> {
   }
 }
 
+// PC 에서 Google 드라이브에 연결돼 있는지(네트워크 조회 없음). 미지원·오류는 false.
+export async function isGoogleDriveConnected(): Promise<boolean> {
+  if (!platform.supportsTargetFolder) return false;
+  try {
+    return backend.driveAuthSupported() && (await backend.driveAuthConnected());
+  } catch (e) {
+    return false;
+  }
+}
+
+export interface ExportTarget {
+  destinations: ExportDestination[];
+  syncFolder?: string;
+  // true 면 'drive' = Google 드라이브(아니면 동기화 폴더).
+  driveConnected: boolean;
+  // 토큰이라 드라이브·동기화 폴더 선택지를 뺐을 때 true(안내 문구용).
+  tokenRestricted: boolean;
+}
+
+export async function resolveExportTarget(kind: DriveExportKind): Promise<ExportTarget> {
+  const [syncFolder, driveConnected] = await Promise.all([
+    getSyncFolder(),
+    isGoogleDriveConnected(),
+  ]);
+  const base = {
+    syncFolder,
+    supportsTargetFolder: platform.supportsTargetFolder,
+    driveConnected,
+  };
+  const destinations = resolveExportDestinations({ ...base, kind });
+  const tokenRestricted =
+    kind === 'token' && resolveExportDestinations(base).length > 1;
+  return { destinations, syncFolder, driveConnected, tokenRestricted };
+}
+
+export function pushTokenDownloadsOnlyNotice(): void {
+  appState.pushMessage(DRIVE_SYNC_TEXT.tokenDownloadsOnly);
+}
+
 export type DeliverResult = 'drive' | 'downloads' | 'cancelled';
 
 // 내보내기 끝 공용 처리. exportsPath 는 앱 내부 exports/ 의 완성 산출물.
@@ -171,14 +245,12 @@ export async function deliverExport(
   kind: DriveExportKind,
   opts: { doneText?: string } = {},
 ): Promise<DeliverResult> {
-  const syncFolder = await getSyncFolder();
-  const destinations = resolveExportDestinations({
-    syncFolder,
-    supportsTargetFolder: platform.supportsTargetFolder,
-  });
+  const target = await resolveExportTarget(kind);
+  const { destinations, syncFolder, driveConnected } = target;
 
-  if (destinations.length === 1 || !syncFolder) {
-    // 기존 동작 그대로(PC 폴더 미설정·Android).
+  if (destinations.length === 1 || (!syncFolder && !driveConnected)) {
+    // 기존 동작 그대로(PC 폴더 미설정·미연결·Android·토큰).
+    if (target.tokenRestricted) pushTokenDownloadsOnlyNotice();
     if (opts.doneText) appState.pushDialog({ type: 'yes-only', text: opts.doneText });
     await backend.publishExport(exportsPath);
     return 'downloads';
@@ -190,7 +262,10 @@ export async function deliverExport(
       (opts.doneText ? opts.doneText + '\n' : '') +
       DRIVE_SYNC_TEXT.chooseDestination(kind),
     items: destinations.map((d) => ({
-      text: DRIVE_SYNC_TEXT.destination[d],
+      text:
+        d === 'drive' && driveConnected
+          ? DRIVE_SYNC_TEXT.googleDriveDestination
+          : DRIVE_SYNC_TEXT.destination[d],
       value: d,
     })),
   });
@@ -205,6 +280,12 @@ export async function deliverExport(
   }
 
   if (choice === 'downloads') {
+    await backend.publishExport(exportsPath);
+    return 'downloads';
+  }
+
+  if (driveConnected) return await uploadToGoogleDrive(exportsPath, kind);
+  if (!syncFolder) {
     await backend.publishExport(exportsPath);
     return 'downloads';
   }
@@ -232,6 +313,104 @@ export async function deliverExport(
   try {
     await backend.openPath(syncFolder);
   } catch (e) {}
+  return 'drive';
+}
+
+function exportBaseName(exportsPath: string): string {
+  return exportsPath.replace(/\\/g, '/').split('/').pop() || exportsPath;
+}
+
+export function uploadPercent(sent: number, total: number): number {
+  if (!(total > 0)) return 0;
+  return Math.max(0, Math.min(100, Math.floor((sent / total) * 100)));
+}
+
+// Google 드라이브 올리기(드라이브 API ②). 진행 표시는 기존 전체 화면 진행 창(progressDialog)을
+// 재사용하고 [취소]로 main 의 올리기를 중단한다. 성공 뒤에만 exports/ 사본을 지운다(정리 실패는
+// 안내만 — 다시 내보내지 않음). 실패는 다운로드 폴더로 전환, 취소는 스테이징 삭제.
+async function uploadToGoogleDrive(
+  exportsPath: string,
+  kind: DriveExportKind,
+): Promise<DeliverResult> {
+  const name = exportBaseName(exportsPath);
+  let cancelRequested = false;
+  let last = { sent: 0, total: 0 };
+  const countText = () =>
+    DRIVE_SYNC_TEXT.googleDriveProgress(
+      uploadPercent(last.sent, last.total),
+      last.total > 0 ? formatBytes(last.sent) : '',
+      last.total > 0 ? formatBytes(last.total) : '',
+    );
+  const onCancel = () => {
+    if (cancelRequested) return;
+    cancelRequested = true;
+    // 취소 접수 후에는 버튼을 숨긴다(ProgressDialog 계약).
+    appState.setProgressDialog({
+      text: DRIVE_SYNC_TEXT.googleDriveCancelling,
+      done: uploadPercent(last.sent, last.total),
+      total: 100,
+      countText: countText(),
+    });
+    backend.driveUploadCancel().catch(() => {});
+  };
+  const show = () => {
+    if (cancelRequested) return;
+    appState.setProgressDialog({
+      text: DRIVE_SYNC_TEXT.googleDriveUploading(name),
+      done: uploadPercent(last.sent, last.total),
+      total: 100,
+      countText: countText(),
+      onCancel,
+    });
+  };
+  show();
+
+  let file: DriveFileMeta;
+  try {
+    file = await backend.driveUpload(exportsPath, { kind }, (p) => {
+      last = { sent: p.sent, total: p.total };
+      show();
+    });
+  } catch (e: any) {
+    appState.setProgressDialog(undefined);
+    if (cancelRequested || e?.code === 'cancelled') {
+      try {
+        await backend.deleteFile(exportsPath);
+      } catch (err) {}
+      appState.pushMessage(DRIVE_SYNC_TEXT.cancelled);
+      return 'cancelled';
+    }
+    const reason = e?.code
+      ? driveUploadErrorText(e.code) + (e.detail ? ` (${e.detail})` : '')
+      : e?.message || String(e);
+    appState.pushMessage(DRIVE_SYNC_TEXT.googleDriveFailed(reason));
+    await backend.publishExport(exportsPath);
+    return 'downloads';
+  }
+  appState.setProgressDialog(undefined);
+
+  try {
+    await backend.deleteFile(exportsPath);
+  } catch (e) {
+    appState.pushMessage(DRIVE_SYNC_TEXT.googleDriveCleanupFailed);
+  }
+
+  const savedText = DRIVE_SYNC_TEXT.googleDriveSaved(file.name || name);
+  const link = file.webViewLink;
+  if (isDriveWebUrl(link)) {
+    appState.pushDialog({
+      type: 'confirm',
+      green: true,
+      text: savedText,
+      confirmText: DRIVE_SYNC_TEXT.googleDriveOpen,
+      cancelText: DRIVE_SYNC_TEXT.googleDriveClose,
+      callback: () => {
+        backend.driveOpenFile(link).catch(() => {});
+      },
+    });
+  } else {
+    appState.pushMessage(savedText);
+  }
   return 'drive';
 }
 

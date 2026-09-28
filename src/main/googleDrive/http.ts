@@ -59,3 +59,66 @@ export function postForm(url: string, params: Record<string, string>): Promise<H
     body: new URLSearchParams(params).toString(),
   });
 }
+
+// ─── 드라이브 파일 작업용(드라이브 API ②) ───
+// 이진 본문(업로드 청크)·응답 헤더(Location·Range)·외부 취소 신호가 필요한 요청.
+// 네트워크 오류는 DriveAuthError('network'), 외부 신호로 중단되면 DriveAuthError('cancelled').
+export interface HttpRawResult extends HttpResult {
+  header(name: string): string | null;
+}
+
+export async function httpRequestRaw(
+  url: string,
+  init: {
+    method: string;
+    headers?: Record<string, string>;
+    body?: string | Uint8Array;
+    signal?: AbortSignal;
+  },
+  timeoutMs = HTTP_TIMEOUT_MS,
+): Promise<HttpRawResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const external = init.signal;
+  const onExternalAbort = () => controller.abort();
+  if (external) {
+    if (external.aborted) controller.abort();
+    else external.addEventListener('abort', onExternalAbort);
+  }
+  const cancelledOrNetwork = () =>
+    external?.aborted
+      ? new DriveAuthError('cancelled')
+      : new DriveAuthError('network', controller.signal.aborted ? 'timeout' : undefined);
+  try {
+    let res: Response;
+    try {
+      res = await pickFetch()(url, {
+        method: init.method,
+        headers: init.headers,
+        body: init.body as any,
+        signal: controller.signal,
+      });
+    } catch {
+      throw cancelledOrNetwork();
+    }
+    let text = '';
+    try {
+      text = await res.text();
+    } catch {
+      throw cancelledOrNetwork();
+    }
+    let body: unknown = text;
+    if (text) {
+      try {
+        body = JSON.parse(text);
+      } catch {
+        /* JSON 아님 — 원문 유지 */
+      }
+    }
+    const headers = res.headers;
+    return { status: res.status, body, header: (name) => headers.get(name) };
+  } finally {
+    clearTimeout(timer);
+    external?.removeEventListener('abort', onExternalAbort);
+  }
+}

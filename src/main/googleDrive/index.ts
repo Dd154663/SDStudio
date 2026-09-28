@@ -168,6 +168,18 @@ export async function getAccessToken(): Promise<string> {
   return refreshing;
 }
 
+// Drive 호출이 401 을 받았을 때 — 메모리의 access token 을 버려 다음 getAccessToken 이 갱신하게 한다.
+// usedToken 이 지금 토큰과 다르면(이미 다른 호출이 갱신함) 아무것도 하지 않는다.
+export function invalidateAccessToken(usedToken: string): void {
+  if (access && access.token === usedToken) access = null;
+}
+
+// 연결 여부만(네트워크 조회 없음). 내보내기 목적지 결정용(드라이브 API ②).
+export async function isConnected(): Promise<boolean> {
+  await ensureLoaded();
+  return !!session;
+}
+
 // about.get 으로 이메일·용량 갱신. 401 이면 access token 을 버리고 1회 재시도.
 async function refreshAboutInfo(): Promise<void> {
   const gen = generation;

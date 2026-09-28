@@ -1,5 +1,9 @@
 import { backend, isMobile } from '.';
-import { deliverExport, getSyncFolder } from './driveSync';
+import {
+  deliverExport,
+  pushTokenDownloadsOnlyNotice,
+  resolveExportTarget,
+} from './driveSync';
 import type { DeliverResult, DriveExportKind } from './driveSync';
 import { sanitizeFilenamePart } from './exportPresetUtils';
 
@@ -11,6 +15,8 @@ import { sanitizeFilenamePart } from './exportPresetUtils';
 // 목적지 선택(driveSync.deliverExport)을 쓴다. PC 는 Blob 다운로드라 exports/ 파일이
 // 없으므로, 드라이브 동기화 폴더가 설정된 경우에만 exports/ 에 쓰고 목적지를 고른다.
 // 미지정 호출부(프로젝트 로컬 캐릭터 프리셋 등)는 기존 동작 그대로다.
+// 드라이브 API ②: PC 에서 Google 드라이브에 연결돼 있어도 같은 흐름(exports/ 경유 → 목적지 선택).
+// 목적지가 다운로드 하나뿐이면(미연결·폴더 미설정·NovelAI 토큰) 기존 Blob 다운로드 그대로다.
 // 반환 = 'cancelled' 면 사용자가 목적지 선택을 취소한 것(완료 안내를 띄우지 않는다).
 export async function saveJsonFile(
   fileName: string,
@@ -24,7 +30,8 @@ export async function saveJsonFile(
     await backend.publishExport(outPath);
     return 'downloads';
   }
-  if (driveKind && (await getSyncFolder())) {
+  const target = driveKind ? await resolveExportTarget(driveKind) : undefined;
+  if (driveKind && target && target.destinations.length > 1) {
     // 사용자 입력 이름(씬 템플릿 이름 등)이 들어가므로 파일 시스템 예약 문자를 치환한다.
     const dot = fileName.lastIndexOf('.');
     const stem = dot > 0 ? fileName.slice(0, dot) : fileName;
@@ -34,6 +41,7 @@ export async function saveJsonFile(
     await backend.writeFile(outPath, jsonStr);
     return await deliverExport(outPath, driveKind);
   }
+  if (target?.tokenRestricted) pushTokenDownloadsOnlyNotice();
   const blob = new Blob([jsonStr], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

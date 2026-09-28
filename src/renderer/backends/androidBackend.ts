@@ -32,6 +32,7 @@ import { BackgroundMode } from '@anuradev/capacitor-background-mode';
 import { App as CapacitorApp } from '@capacitor/app';
 import { embedSDStudioMetadataInPngBase64 } from '../../shared/sdstudioImageMetadata';
 import type { DriveAuthStatus } from '../../shared/googleDriveAuth';
+import type { DriveFileMeta, DriveUploadProgress } from '../../shared/googleDrive';
 import { GOOGLE_DRIVE_TEXT } from '../models/googleDrive';
 import { TagDB } from './tagDB';
 import { isV5ModelVersion } from './genVendors/naiModelCapabilities';
@@ -618,6 +619,28 @@ export class AndroidBackend extends Backend {
 
   onDriveAuthChanged(_callback: (status: DriveAuthStatus) => void): () => void {
     return () => {};
+  }
+
+  // 내보내기 목적지 결정용 — Android 는 연결 개념이 아직 없으므로 항상 미연결.
+  async driveAuthConnected(): Promise<boolean> {
+    return false;
+  }
+
+  // ─── Google 드라이브 올리기 — ④ 전까지 미지원(driveAuthSupported false 라 호출되지 않음) ───
+  async driveUpload(
+    _exportsPath: string,
+    _meta: { kind: string; name?: string },
+    _onProgress?: (p: DriveUploadProgress) => void,
+  ): Promise<DriveFileMeta> {
+    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
+  }
+
+  async driveUploadCancel(): Promise<void> {
+    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
+  }
+
+  async driveOpenFile(_webViewLink: string): Promise<void> {
+    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
   }
 
   async saveExportToDownloads(arg: string): Promise<string> {

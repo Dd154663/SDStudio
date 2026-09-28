@@ -1,5 +1,6 @@
 import { Config } from '../main/config';
 import type { DriveAuthStatus } from '../shared/googleDriveAuth';
+import type { DriveFileMeta, DriveUploadProgress } from '../shared/googleDrive';
 import {
   EncodeVibeImageInput,
   ImageAugmentInput,
@@ -92,6 +93,22 @@ export abstract class Backend {
   abstract driveAuthDisconnect(): Promise<void>;
   // 다른 창 포함 상태 변경 수신. 반환 = 구독 해제.
   abstract onDriveAuthChanged(callback: (status: DriveAuthStatus) => void): () => void;
+  // 연결 여부만(네트워크 조회 없음) — 내보내기 목적지 결정용(드라이브 API ②).
+  // driveAuthStatus 는 이메일·용량을 새로 조회하므로(오프라인이면 제한 시간까지 대기) 쓰지 않는다.
+  abstract driveAuthConnected(): Promise<boolean>;
+  // ─── Google 드라이브 올리기 (드라이브 API ②) ───
+  // exports/ 산출물을 드라이브 SDStudio 폴더에 올린다(exports/ 사본은 지우지 않음 — 호출부 몫).
+  // 실패·취소는 DriveUploadError(code) throw(취소 = 'cancelled'). NovelAI 토큰 파일은 거부.
+  // Android 는 ④ 전까지 미지원(driveAuthSupported false 라 호출되지 않음, 호출 시 오류).
+  abstract driveUpload(
+    exportsPath: string,
+    meta: { kind: string; name?: string },
+    onProgress?: (p: DriveUploadProgress) => void,
+  ): Promise<DriveFileMeta>;
+  // 이 창에서 진행 중인 올리기를 중단한다(없으면 무시).
+  abstract driveUploadCancel(): Promise<void>;
+  // 올린 파일의 드라이브 웹 주소를 시스템 브라우저로 연다(https://drive.google.com/ 만).
+  abstract driveOpenFile(webViewLink: string): Promise<void>;
   // 폴더를 OS 파일 탐색기로 연다(내용물 표시). 데스크톱 전용 — 모바일은 no-op.
   abstract openPath(arg: string): Promise<void>;
   abstract copyToDownloads(path: string): Promise<void>;

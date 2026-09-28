@@ -10,6 +10,8 @@ export interface ProgressDialog {
   // 설정 시 [취소] 버튼 노출 — 호출부가 취소 플래그를 세우고 진행분을 마무리한다.
   // 취소 접수 후에는 onCancel 없이 다이얼로그를 갱신해 버튼을 숨길 것.
   onCancel?: () => void;
+  // 막대 안 숫자 대신 보일 문구(예: 「42% · 1.2 GB / 3 GB」). 미설정이면 done/total.
+  countText?: string;
 }
 
 interface Props {
@@ -23,7 +25,7 @@ const ProgressWindow = ({ dialog }: Props) => {
         <div className="break-keep text-center text-default">{dialog.text}</div>
         <div className="relative w-full h-8 bg-gray-500 dark:bg-slate-700 mt-4 flex justify-center text-white font-medium bg-clip-border">
           <div className="z-10">
-            {dialog.done}/{dialog.total}
+            {dialog.countText ?? `${dialog.done}/${dialog.total}`}
           </div>
           <div
             className="absolute top-0 left-0 h-8 bg-sky-500 dark:bg-indigo-400"

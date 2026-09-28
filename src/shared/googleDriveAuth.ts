@@ -90,6 +90,8 @@ export type DriveAuthConnectResult =
 // IPC 채널 이름(main.ts·preload·electronBackend 공용).
 export const DRIVE_AUTH_CHANNEL = {
   status: 'drive-auth-status',
+  // 연결 여부만(네트워크 조회 없음) — 내보내기 목적지 결정용(드라이브 API ②).
+  connected: 'drive-auth-connected',
   connect: 'drive-auth-connect',
   cancel: 'drive-auth-cancel',
   disconnect: 'drive-auth-disconnect',

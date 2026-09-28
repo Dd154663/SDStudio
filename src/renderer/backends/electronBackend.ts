@@ -20,6 +20,14 @@ import {
   DriveAuthStatus,
   isDriveAuthErrorCode,
 } from '../../shared/googleDriveAuth';
+import {
+  DRIVE_FILE_CHANNEL,
+  DriveFileMeta,
+  DriveUploadError,
+  DriveUploadProgress,
+  DriveUploadResult,
+  isDriveUploadErrorCode,
+} from '../../shared/googleDrive';
 
 const invoke = window.electron?.ipcRenderer?.invoke;
 
@@ -231,6 +239,45 @@ export class ElectornBackend extends Backend {
 
   onDriveAuthChanged(callback: (status: DriveAuthStatus) => void): () => void {
     return window.electron.ipcRenderer.on(DRIVE_AUTH_CHANNEL.changed, callback);
+  }
+
+  async driveAuthConnected(): Promise<boolean> {
+    return !!(await invoke(DRIVE_AUTH_CHANNEL.connected));
+  }
+
+  // ─── Google 드라이브 올리기 (드라이브 API ②) — main IPC 위임 ───
+  // 진행률은 이 창으로만 오는 drive-upload-progress 를 올리기 동안만 구독한다.
+  async driveUpload(
+    exportsPath: string,
+    meta: { kind: string; name?: string },
+    onProgress?: (p: DriveUploadProgress) => void,
+  ): Promise<DriveFileMeta> {
+    const unsubscribe = onProgress
+      ? window.electron.ipcRenderer.on(DRIVE_FILE_CHANNEL.uploadProgress, (p: any) => {
+          if (p && typeof p.sent === 'number' && typeof p.total === 'number') onProgress(p);
+        })
+      : () => {};
+    let res: DriveUploadResult;
+    try {
+      res = await invoke(DRIVE_FILE_CHANNEL.upload, {
+        exportsPath,
+        kind: meta.kind,
+        ...(meta.name ? { name: meta.name } : {}),
+      });
+    } finally {
+      unsubscribe();
+    }
+    if (res && res.ok) return res.file;
+    const code = res && isDriveUploadErrorCode(res.code) ? res.code : 'unknown';
+    throw new DriveUploadError(code, res && !res.ok ? res.detail : undefined);
+  }
+
+  async driveUploadCancel(): Promise<void> {
+    await invoke(DRIVE_FILE_CHANNEL.uploadCancel);
+  }
+
+  async driveOpenFile(webViewLink: string): Promise<void> {
+    await invoke(DRIVE_FILE_CHANNEL.openFile, webViewLink);
   }
 
   async openPath(arg: string): Promise<void> {
