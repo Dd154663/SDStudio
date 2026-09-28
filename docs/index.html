@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="SDStudio는 NovelAI 이미지 생성을 위한 데스크톱·Android 오픈소스 앱입니다.">
+<meta name="color-scheme" content="light dark">
+<title>SDStudio</title>
+<style>
+  :root {
+    --bg: #f7f7f9;
+    --surface: #ffffff;
+    --text: #1d1d22;
+    --muted: #5b5b66;
+    --border: #e1e1e8;
+    --accent: #3b5bdb;
+    --accent-text: #ffffff;
+    --note-bg: #fff8e6;
+    --note-border: #f0d890;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121216;
+      --surface: #1c1c22;
+      --text: #ececf1;
+      --muted: #a3a3b0;
+      --border: #2e2e38;
+      --accent: #8fa5ff;
+      --accent-text: #0d0d12;
+      --note-bg: #2a2516;
+      --note-border: #5a4b1e;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    line-height: 1.7;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; }
+  header { padding: 24px 0 8px; }
+  h1 { font-size: 2.2rem; margin: 0 0 8px; letter-spacing: -0.01em; }
+  h2 { font-size: 1.3rem; margin: 40px 0 12px; }
+  h3 { font-size: 1.05rem; margin: 0 0 4px; }
+  p { margin: 0 0 12px; }
+  .lead { font-size: 1.1rem; color: var(--muted); }
+  a { color: var(--accent); }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0 4px; }
+  .btn {
+    display: inline-block;
+    padding: 10px 18px;
+    border-radius: 8px;
+    border: 1px solid var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .btn.primary { background: var(--accent); color: var(--accent-text); }
+  .btn.secondary { background: transparent; color: var(--accent); }
+  .features { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .features li { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .features p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+  .tag { font-size: 0.75rem; font-weight: 600; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); margin-left: 4px; white-space: nowrap; }
+  .note { background: var(--note-bg); border: 1px solid var(--note-border); border-radius: 10px; padding: 12px 16px; margin-top: 28px; font-size: 0.95rem; }
+  .links { padding-left: 20px; margin: 0; }
+  .en { border-top: 1px solid var(--border); margin-top: 48px; padding-top: 8px; }
+  footer { margin-top: 48px; color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--border); padding-top: 16px; }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>SDStudio</h1>
+    <p class="lead">NovelAI 이미지 생성을 위한 데스크톱·Android 오픈소스 작업 도구입니다.</p>
+    <div class="actions">
+      <a class="btn primary" href="https://github.com/Dd154663/SDStudio/releases">다운로드</a>
+      <a class="btn secondary" href="https://github.com/Dd154663/SDStudio">소스 코드 (GitHub)</a>
+    </div>
+    <p><a href="#english">English summary</a></p>
+  </header>
+
+  <main>
+    <section>
+      <h2>주요 기능</h2>
+      <ul class="features">
+        <li>
+          <h3>프롬프트·프리셋·씬 관리</h3>
+          <p>프롬프트와 생성 설정을 프리셋으로 저장하고, 씬 단위로 나누어 체계적으로 관리합니다.</p>
+        </li>
+        <li>
+          <h3>대량 생성</h3>
+          <p>여러 씬을 한꺼번에 대기열에 올려 원하는 만큼 이미지를 연속으로 생성합니다.</p>
+        </li>
+        <li>
+          <h3>캐릭터 프리셋·템플릿</h3>
+          <p>자주 쓰는 캐릭터 설정과 프로젝트 템플릿을 저장해 새 작업에 바로 불러옵니다.</p>
+        </li>
+        <li>
+          <h3>데스크톱 + Android</h3>
+          <p>Windows·macOS·Linux 데스크톱 앱과 Android 앱을 함께 제공합니다.</p>
+        </li>
+        <li>
+          <h3>백업 내보내기·불러오기</h3>
+          <p>프로젝트·프리셋·환경설정을 파일로 내보내고 다른 기기에서 불러올 수 있습니다.</p>
+        </li>
+        <li>
+          <h3>Google 드라이브 연동 <span class="tag">예정</span></h3>
+          <p>백업 파일을 사용자가 직접 Google 드라이브에 올리고 받을 수 있게 할 예정입니다. 자동 동기화는 하지 않습니다.</p>
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>다운로드와 소스</h2>
+      <ul class="links">
+        <li>다운로드: <a href="https://github.com/Dd154663/SDStudio/releases">GitHub 릴리스</a></li>
+        <li>소스 코드: <a href="https://github.com/Dd154663/SDStudio">GitHub 저장소</a></li>
+        <li>문의·버그 제보: <a href="https://github.com/Dd154663/SDStudio/issues">GitHub Issues</a></li>
+        <li><a href="privacy.html">개인정보처리방침</a></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>데이터 보관</h2>
+      <p>SDStudio에는 개발자가 운영하는 서버가 없습니다. 프로젝트, 이미지, 프리셋, 설정은 모두 사용자 기기에 저장됩니다. NovelAI API 토큰은 사용자가 직접 입력하며 기기에만 저장되고 NovelAI로만 전송됩니다. 자세한 내용은 <a href="privacy.html">개인정보처리방침</a>을 참고해 주세요.</p>
+    </section>
+
+    <p class="note">SDStudio는 NovelAI와 무관한 독립 오픈소스 프로젝트입니다. NovelAI는 해당 권리자의 상표이며, SDStudio는 NovelAI의 공식 제품이 아닙니다.</p>
+
+    <section class="en" id="english" lang="en">
+      <h2>English summary</h2>
+      <p>SDStudio is an open-source desktop (Windows, macOS, Linux) and Android app for creating images with NovelAI.</p>
+      <ul class="links">
+        <li>Organize prompts, presets, and scenes.</li>
+        <li>Generate images in bulk from a queue of scenes.</li>
+        <li>Save character presets and project templates for reuse.</li>
+        <li>Export and import backups of projects, presets, and settings.</li>
+        <li>Google Drive integration (planned): manually upload and download your backup files. No automatic sync.</li>
+      </ul>
+      <p>There is no developer-operated server. All projects, images, presets, and settings stay on your device. Your NovelAI API token is stored only on your device and is sent only to NovelAI.</p>
+      <p>Download: <a href="https://github.com/Dd154663/SDStudio/releases">GitHub Releases</a> · Source: <a href="https://github.com/Dd154663/SDStudio">GitHub</a> · Contact: <a href="https://github.com/Dd154663/SDStudio/issues">GitHub Issues</a> · <a href="privacy.html#en">Privacy Policy</a></p>
+      <p>SDStudio is an independent open-source project and is not affiliated with, endorsed by, or sponsored by NovelAI.</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>SDStudio · 오픈소스 프로젝트 · <a href="privacy.html">개인정보처리방침 / Privacy Policy</a></p>
+  </footer>
+</div>
+</body>
+</html>
