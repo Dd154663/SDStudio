@@ -37,6 +37,7 @@ import { appState } from '../models/AppService';
 import { FaPlay, FaPause, FaStop, FaSync, FaDownload, FaUpload, FaGlobe, FaUsers, FaCloudUploadAlt, FaCloudDownloadAlt } from 'react-icons/fa';
 import type { IGlobalCharacterPresetEntry } from '../models/GlobalCharacterPresetService';
 import { saveJsonFile } from '../models/exportUtil';
+import { syncFileName } from '../models/driveSync';
 import { stringifyExportJson } from '../models/jsonExport';
 import { FileUploadBase64 } from './UtilComponents';
 import PromptEditTextArea from './PromptEditTextArea';
@@ -131,7 +132,14 @@ async function exportGlobalCharacterPresets() {
   }
   try {
     const data = await globalCharacterPresetService.exportToFileData();
-    await saveJsonFile('global_character_presets.json', stringifyExportJson(data));
+    // 파일명은 공용 규칙 sdstudio-character-presets-<날짜>.json (드라이브 동기화 ①,
+    // 구 고정 이름 global_character_presets.json 은 불러오기에 그대로 쓸 수 있다).
+    const result = await saveJsonFile(
+      syncFileName('character-presets', new Date(), 'json'),
+      stringifyExportJson(data),
+      'character-presets',
+    );
+    if (result === 'cancelled') return;
   } catch (e: any) {
     appState.pushMessage('내보내기 실패: ' + e.message);
     return;

@@ -58,6 +58,7 @@ import OpusUsageMeter, { OpusUsageHelp } from './OpusUsageMeter';
 import { useOpusUsage } from './OpusUsageBadge';
 import MobileColorPicker from './MobileColorPicker';
 import { StorageDiagnosticsSection } from './StorageDiagnostics';
+import { DRIVE_SYNC_TEXT } from '../models/driveSync';
 import type {
   LoginTokenProfile,
   LoginTokenUsageCheck,
@@ -582,6 +583,7 @@ const StorageTab = ({
   saveLocation, dataRoot, selectFolder, clearImageCache,
   refreshImage, setRefreshImage,
   defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder,
+  syncFolder, setSyncFolder, selectSyncFolder,
   autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality,
 }: any) => (
   <div className="space-y-4">
@@ -621,6 +623,27 @@ const StorageTab = ({
         <button className="btn px-3 back-gray py-2 rounded"
           onClick={() => setDefaultExportFolder('')}>
           지우기
+        </button>
+      )}
+    </div>
+    <hr className="line-color" />
+    {/* 드라이브 동기화 폴더(PC 전용 — 이 탭 자체가 PC 에서만 보인다). 문구 단일 출처 = driveSync.ts */}
+    <div>
+      <label className="block text-sm font-semibold gray-label mb-1">{DRIVE_SYNC_TEXT.settingLabel}</label>
+      <p className="text-xs text-muted mb-2">{DRIVE_SYNC_TEXT.settingDescription}</p>
+      <div className="text-sm text-muted bg-[var(--c-surface-2)] rounded px-3 py-2 break-all">
+        {syncFolder || DRIVE_SYNC_TEXT.settingUnset}
+      </div>
+    </div>
+    <div className="flex gap-2">
+      <button className="btn flex-1 back-green py-2 rounded"
+        onClick={selectSyncFolder}>
+        {DRIVE_SYNC_TEXT.settingSelect}
+      </button>
+      {syncFolder && (
+        <button className="btn px-3 back-gray py-2 rounded"
+          onClick={() => setSyncFolder('')}>
+          {DRIVE_SYNC_TEXT.settingClear}
         </button>
       )}
     </div>
@@ -2813,6 +2836,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [saveLocation, setSaveLocation] = useState('');
   const [dataRoot, setDataRoot] = useState('');
   const [defaultExportFolder, setDefaultExportFolder] = useState('');
+  const [syncFolder, setSyncFolder] = useState('');
   const [uiTheme, setUiTheme] = useState<UiThemeConfig>({});
   const [uiThemePresets, setUiThemePresets] = useState<
     NonNullable<Config['uiThemePresets']>
@@ -2865,6 +2889,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       setSaveLocation(config.saveLocation ?? '');
       setDataRoot(actualDataRoot);
       setDefaultExportFolder(config.defaultExportFolder ?? '');
+      setSyncFolder(config.syncFolder ?? '');
       setUiTheme(config.uiTheme ?? {});
       setUiThemePresets(config.uiThemePresets ?? []);
       setUiToolbar(config.uiToolbar ?? {});
@@ -2997,6 +3022,22 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     setDefaultExportFolder(folder);
   };
 
+  // 드라이브 동기화 폴더(PC 전용) — 내보내기 끝에서 고를 목적지. 저장 경로 지정과
+  // 같이 실제 쓰기 가능 여부를 먼저 확인한다.
+  const selectSyncFolder = async () => {
+    const folder = await backend.selectDir();
+    if (!folder) return;
+    const check = await backend.checkWritable(folder);
+    if (!check.ok) {
+      appState.pushDialog({
+        type: 'yes-only',
+        text: DRIVE_SYNC_TEXT.settingNotWritable(check.code),
+      });
+      return;
+    }
+    setSyncFolder(folder);
+  };
+
   const stageTexts = ['모델 다운로드 중...', '모델 가중치 다운로드 중...', '모델 압축 푸는 중...'];
 
   const handleSave = async () => {
@@ -3021,6 +3062,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       storageWriteGuard: storageWriteGuard,
       exportConcurrency: exportConcurrency,
       defaultExportFolder: defaultExportFolder || undefined,
+      syncFolder: syncFolder || undefined,
       trueDark: trueDark,
       uiTheme: uiTheme,
       uiThemePresets: uiThemePresets.length > 0 ? uiThemePresets : undefined,
@@ -3150,7 +3192,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'login':
         return <LoginTab {...{ accessToken, setAccessToken, loggedIn, loginWithToken, roundTag, multiTokenAutoRotate, setMultiTokenAutoRotate, multiTokenRotateWarning, setMultiTokenRotateWarning, multiTokenRotateTarget, setMultiTokenRotateTarget, multiTokenBalanceRotate, setMultiTokenBalanceRotate, multiTokenRotateBalance, setMultiTokenRotateBalance }} />;
       case 'storage':
-        return <StorageImageTab {...{ saveLocation, dataRoot, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
+        return <StorageImageTab {...{ saveLocation, dataRoot, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, syncFolder, setSyncFolder, selectSyncFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 'system':
         return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality }} />;
       case 'personal':
@@ -3191,6 +3233,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       storageWriteGuard !== (savedCfg.storageWriteGuard ?? true) ||
       exportConcurrency !== (savedCfg.exportConcurrency ?? (isMobile ? 2 : 4)) ||
       (defaultExportFolder || '') !== (savedCfg.defaultExportFolder ?? '') ||
+      (syncFolder || '') !== (savedCfg.syncFolder ?? '') ||
       trueDark !== (savedCfg.trueDark ?? false) ||
       // fullWordAc 는 config 파일이 아니라 appState+localStorage 저장 — 저장 시 appState 가 갱신되므로 그것과 비교
       fullWordAc !== appState.fullWordAutoComplete ||

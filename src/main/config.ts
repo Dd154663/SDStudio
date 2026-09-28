@@ -95,6 +95,10 @@ export interface Config {
   exportConcurrency?: number;
   /** 이미지 export 시 기본 목표 폴더(데스크톱 전용 — 프리셋에 폴더가 없을 때 사용) */
   defaultExportFolder?: string;
+  /** 드라이브 동기화 폴더(데스크톱 전용, 기기 고유 — 설정 파일 내보내기 대상 아님).
+   *  Google Drive 등 동기화 앱이 올리는 로컬 폴더. 설정되면 백업·내보내기 끝에서
+   *  [드라이브 폴더 / 다운로드 폴더]를 고른다(models/driveSync.ts). */
+  syncFolder?: string;
   /** 새로 생성되는 이미지를 저장 직후 WebP 로 자동 변환(데스크톱 전용, 기본 false).
    *  변환 실패 시 원본 PNG 를 그대로 사용하므로 안전. 기존 이미지에는 영향 없음. */
   autoConvertWebp?: boolean;

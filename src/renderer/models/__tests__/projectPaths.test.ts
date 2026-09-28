@@ -15,6 +15,7 @@ import {
   PROJECT_SCENE_MASK_ROOTS,
   WORKSPACE_ROOT,
   invalidProjectName,
+  isProjectNameTaken,
   projectFolderPath,
   projectJsonPath,
   projectPath,
@@ -184,5 +185,21 @@ describe('신 배치(workspace) 활성 시 경로 분기 (트랙1 (b) B2, §2·�
       expect(() => projectPath('outs', bad)).toThrow();
       expect(() => projectJsonPath(bad)).toThrow();
     }
+  });
+});
+
+// 프로젝트 백업 불러오기 이름 중복 검사 회귀(2026-09-28): 배열에 `in` 을 쓰면
+// 인덱스('0','1')를 검사해 실제 이름 중복을 놓쳤다.
+describe('isProjectNameTaken', () => {
+  const names = ['alpha', 'beta'];
+  it('같은 이름이 있으면 true', () => {
+    expect(isProjectNameTaken(names, 'alpha')).toBe(true);
+    expect(isProjectNameTaken(names, 'beta')).toBe(true);
+  });
+  it('없는 이름·인덱스 문자열은 false', () => {
+    expect(isProjectNameTaken(names, 'gamma')).toBe(false);
+    expect(isProjectNameTaken(names, '0')).toBe(false);
+    // 구 결함 재현: 배열 in 은 값이 아니라 인덱스를 본다
+    expect('alpha' in names).toBe(false);
   });
 });

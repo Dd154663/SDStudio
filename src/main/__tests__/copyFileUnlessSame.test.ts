@@ -35,3 +35,15 @@ test('다른 경로에는 실제 복사한 뒤 정리 가능을 반환한다', a
   expect(await fs.readFile(dest, 'utf8')).toBe('archive contents');
   expect(await fs.readFile(source, 'utf8')).toBe('archive contents');
 });
+test('임시 .part 이름으로 쓴 뒤 교체해 폴더에 .part 가 남지 않는다', async () => {
+  await fs.writeFile(dest, 'old contents');
+  expect(await copyFileUnlessSame(source, dest)).toBe('copied');
+  expect(await fs.readFile(dest, 'utf8')).toBe('archive contents');
+  expect((await fs.readdir(dir)).filter((f) => f.endsWith('.part'))).toEqual([]);
+});
+test('복사 실패 시 기존 대상 파일을 그대로 두고 .part 를 남기지 않는다', async () => {
+  await fs.writeFile(dest, 'old contents');
+  await expect(copyFileUnlessSame(path.join(dir, 'missing.tar'), dest)).rejects.toThrow();
+  expect(await fs.readFile(dest, 'utf8')).toBe('old contents');
+  expect((await fs.readdir(dir)).filter((f) => f.endsWith('.part'))).toEqual([]);
+});

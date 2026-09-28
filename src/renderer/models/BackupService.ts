@@ -60,6 +60,8 @@ import {
 import { appState } from './AppService';
 import type { ExportPreset } from './AppService';
 import { stringifyExportJson } from './jsonExport';
+import { isProjectNameTaken } from './projectPaths';
+import { deliverExport, syncFileName } from './driveSync';
 
 // 전체 백업에 담는 전역 설정 파일. (백업엔 전부 담되, 설정 병합 복원 시
 // trash.json / folderOrder.json 은 의도적으로 제외 — 아래 mergeSettingsFromDir 참조)
@@ -155,11 +157,11 @@ export class BackupService {
               return;
             }
             appState.setProgressDialog(undefined);
-            appState.pushDialog({
-              type: 'yes-only',
-              text: '백업이 완료되었습니다.',
+            // 목적지 선택(드라이브 폴더/다운로드 폴더)은 공용층이 담당 — 폴더 미설정·
+            // Android 는 기존과 같이 완료 창 + publishExport.
+            await deliverExport(path, 'project', {
+              doneText: '백업이 완료되었습니다.',
             });
-            await backend.publishExport(path);
             appState.setProgressDialog(undefined);
           }
         } else if (value === 'load') {
@@ -208,7 +210,7 @@ export class BackupService {
             text: '새로운 프로젝트 이름을 입력해주세요',
             callback: async (inputValue) => {
               if (inputValue) {
-                if (inputValue in sessionService.list()) {
+                if (isProjectNameTaken(sessionService.list(), inputValue)) {
                   appState.pushMessage('이미 존재하는 프로젝트 이름입니다.');
                   return;
                 }
@@ -588,7 +590,7 @@ export class BackupService {
   private async libraryBackupExport(opts: {
     label: string;
     manifestType: string;
-    fileBase: string;
+    fileBase: 'global-presets' | 'artist-library';
     isEmpty: boolean;
     buildEntries: () => Promise<{ path: string; name: string }[]>;
   }) {
@@ -617,8 +619,7 @@ export class BackupService {
     const tmpManifest = 'tmp/' + v4() + '.json';
     await backend.writeFile(tmpManifest, JSON.stringify(manifest));
     entries.push({ path: tmpManifest, name: '_manifest.json' });
-    const dateStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const outPath = `exports/sdstudio-${opts.fileBase}-${dateStr}.tar`;
+    const outPath = 'exports/' + syncFileName(opts.fileBase, new Date(), 'tar');
     try {
       await zipService.zipFiles(entries, outPath);
     } catch (e: any) {
@@ -627,12 +628,10 @@ export class BackupService {
       return;
     }
     appState.setProgressDialog(undefined);
-    appState.pushDialog({
-      type: 'yes-only',
-      text: `${opts.label} 백업이 완료되었습니다.`,
-    });
     try {
-      await backend.publishExport(outPath);
+      await deliverExport(outPath, opts.fileBase, {
+        doneText: `${opts.label} 백업이 완료되었습니다.`,
+      });
     } catch (e) {}
   }
 

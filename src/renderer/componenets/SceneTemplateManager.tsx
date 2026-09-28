@@ -121,7 +121,12 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
     const jsonStr = await templateService.exportSceneTemplateFile(name);
     if (!jsonStr) return;
     try {
-      await saveJsonFile(name + '_scene_template.json', jsonStr);
+      const result = await saveJsonFile(
+        name + '_scene_template.json',
+        jsonStr,
+        'scene-template',
+      );
+      if (result === 'cancelled') return;
       appState.pushMessage(`씬 템플릿 "${name}"을(를) 파일로 내보냈습니다`);
     } catch (e: any) {
       appState.pushMessage('내보내기 실패: ' + e.message);

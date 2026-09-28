@@ -69,6 +69,16 @@ export function invalidProjectName(name: string): string | null {
   return null;
 }
 
+// 기존 프로젝트 목록(sessionService.list() — 배열)에 같은 이름이 있는지.
+// 배열에 `in` 을 쓰면 값이 아니라 인덱스를 검사해 항상 false 가 되던 결함
+// (BackupService 프로젝트 백업 불러오기, 2026-09-28 수정)의 회귀 방지용 순수 판정.
+export function isProjectNameTaken(
+  existing: readonly string[],
+  name: string,
+): boolean {
+  return existing.includes(name);
+}
+
 export function assertValidProjectName(name: string): void {
   const reason = invalidProjectName(name);
   if (reason) {
