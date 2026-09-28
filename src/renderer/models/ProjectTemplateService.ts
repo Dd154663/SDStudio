@@ -23,6 +23,18 @@ import {
 } from './types';
 import { dataUriToBase64 } from './ImageService';
 import { imageExtFromBase64 } from './imageFormats';
+import {
+  collectTemplateImageTokens,
+  imageFileExt,
+  imageTokenBase,
+  isSafeImageToken,
+  planTemplateImport,
+  readBackupTemplates,
+  remapTemplateImages,
+  PROJECT_TEMPLATE_BACKUP,
+  type TemplateContent,
+  type TemplateImportPolicy,
+} from './projectTemplateBackup';
 
 const PROJECT_TEMPLATES_FILE = 'project_templates.json';
 const PROJECT_TEMPLATE_IMAGES_DIR = 'project_template_images';
@@ -353,6 +365,12 @@ export class ProjectTemplateService extends EventTarget {
     for (const r of copy.characterReferences) {
       if (r.path) r.path = await this.copyImageToken(r.path);
     }
+    this.assignContent(target, copy);
+  }
+
+  // 내용 5영역 교체(id·이름·folderLocal·badgeColor·createdAt 유지) — 덮어쓰기 공용.
+  @action
+  private assignContent(target: IProjectTemplateEntry, copy: TemplateContent) {
     target.preset = copy.preset;
     target.characterPresets = copy.characterPresets;
     target.vibes = copy.vibes;
@@ -396,20 +414,91 @@ export class ProjectTemplateService extends EventTarget {
     } catch (e) {}
   }
 
+  // 프리셋 프로필·캐릭터 프리셋 이미지·수동 바이브/레퍼런스 영역(단일 출처 = projectTemplateBackup)
   private collectImageTokens(entry: IProjectTemplateEntry): string[] {
-    const tokens: string[] = [];
-    if (entry.preset?.profile) tokens.push(entry.preset.profile);
-    for (const cp of entry.characterPresets) {
-      for (const v of cp.vibes || []) if (v.path) tokens.push(v.path);
-      for (const r of cp.characterReferences || [])
-        if (r.path) tokens.push(r.path);
-      if (cp.representativeImage) tokens.push(cp.representativeImage);
+    return collectTemplateImageTokens(entry);
+  }
+
+  // ---------- 백업 복원 (드라이브 동기화 C안 ④) ----------
+  // 압축 해제된 백업 폴더에서 전역 템플릿을 병합 복원한다(BackupService.libraryBackupImport).
+  //  - rename = 새 id·이름 (2)…, skip = 같은 이름 전역 템플릿이 있으면 제외
+  //  - overwrite = 같은 이름 전역 템플릿의 id 를 유지한 채 내용만 갱신(폴더 지정·적용
+  //    기록 참조 보존) — 새 이미지를 먼저 복사한 뒤 옛 이미지를 정리한다
+  //  - 이미지는 항상 새 파일명 사본, 저장은 메모리 갱신 + scheduleSave(PersistenceService)
+  @action
+  async restoreFromBackupDir(
+    root: string,
+    policy: TemplateImportPolicy,
+  ): Promise<{ added: number; skipped: number; overwritten: number }> {
+    await this.ensureLoaded();
+    let store: any;
+    try {
+      store = JSON.parse(
+        await backend.readFile(root + '/' + PROJECT_TEMPLATE_BACKUP.storeName),
+      );
+    } catch (e) {
+      throw new Error('백업에 프로젝트 템플릿 데이터가 없습니다');
     }
-    // 수동 바이브/레퍼런스 영역
-    for (const v of entry.vibes || []) if (v.path) tokens.push(v.path);
-    for (const r of entry.characterReferences || [])
-      if (r.path) tokens.push(r.path);
-    return tokens;
+    const incoming = readBackupTemplates(store);
+    const plan = planTemplateImport(
+      incoming.map((t) => t.name),
+      this.templates,
+      policy,
+    );
+    let added = 0;
+    let skipped = 0;
+    let overwritten = 0;
+    for (let i = 0; i < incoming.length; i++) {
+      const step = plan[i];
+      if (step.kind === 'skip') {
+        skipped++;
+        continue;
+      }
+      const src = incoming[i];
+      const target =
+        step.kind === 'overwrite' ? this.get(step.targetId) : undefined;
+      if (step.kind === 'overwrite' && !target) {
+        skipped++; // 계획 뒤 사라진 대상 — 다른 템플릿을 덮지 않는다
+        continue;
+      }
+      const map = new Map<string, string>();
+      for (const token of collectTemplateImageTokens(src)) {
+        if (map.has(token)) continue;
+        const base = imageTokenBase(token);
+        if (!isSafeImageToken(base)) continue;
+        const srcPath = root + '/' + PROJECT_TEMPLATE_BACKUP.imageDir + '/' + base;
+        try {
+          if (!(await backend.existFile(srcPath))) continue;
+          const filename = uuidv4() + '.' + imageFileExt(base);
+          await backend.copyFile(
+            srcPath,
+            PROJECT_TEMPLATE_IMAGES_DIR + '/' + filename,
+          );
+          map.set(token, filename);
+        } catch (e) {}
+      }
+      const content = remapTemplateImages(src, map);
+      if (target) {
+        const oldTokens = this.collectImageTokens(target);
+        this.assignContent(target, content);
+        for (const token of oldTokens) await this.deleteImageData(token);
+        overwritten++;
+        continue;
+      }
+      const now = Date.now();
+      const entry: IProjectTemplateEntry = {
+        id: uuidv4(),
+        name: (step as { kind: 'add'; name: string }).name,
+        createdAt: src.createdAt || now,
+        updatedAt: now,
+        ...content,
+      };
+      this.templates = [...this.templates, entry];
+      added++;
+    }
+    this.scheduleSave();
+    this.dispatchEvent(new CustomEvent('changed', {}));
+    return { added, skipped, overwritten };
   }
 
   // ---------- 이미지 (data URI 파일 — 글로벌 캐릭터 프리셋과 동일 패턴) ----------

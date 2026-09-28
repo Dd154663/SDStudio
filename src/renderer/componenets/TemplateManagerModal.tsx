@@ -11,6 +11,8 @@ import {
   FaToggleOn,
   FaToggleOff,
   FaTrash,
+  FaFileArchive,
+  FaFileImport,
 } from 'react-icons/fa';
 import ModalOverlay from './ModalOverlay';
 import Tooltip from './Tooltip';
@@ -60,6 +62,9 @@ const rowCls =
 const addBtnCls =
   'px-2 py-1 rounded-md text-xs btn-neutral text-body whitespace-nowrap';
 const iconBtnCls = 'btn-ghost p-1.5 rounded-md text-faint';
+// 백업/복원(드라이브 동기화 ④) — 글로벌 프리셋 탭 모바일 툴바 버튼과 같은 모양(작은 알약)
+const backupBtnCls =
+  'round-button back-gray h-8 !px-3 text-sm flex items-center gap-1.5';
 // 샘플링 인라인 컨트롤 입력 (PresetEditModal 과 동일 스타일)
 const numCls =
   'mt-1 w-full px-2 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default';
@@ -1303,6 +1308,8 @@ export const TemplateManagerModal = observer(
     // 일괄 생성(배치 탭) 실행 중 — 모달 닫기 차단 (배치 R3, 전역 호스트)
     const [batchRunning, setBatchRunning] = useState(false);
     const commitRef = useRef<() => void>(() => {});
+    // 백업 복원(덮어쓰기)으로 엔티티가 바뀐 뒤 편집기 프롬프트 재동기화 신호
+    const [syncSignal, setSyncSignal] = useState(0);
 
     // 실행 중 닫기 차단 — 진행률·취소 수단 유실 방지
     const guardedClose = () => {
@@ -1366,6 +1373,26 @@ export const TemplateManagerModal = observer(
       commitRef.current(); // 편집 중 프롬프트까지 포함해 복제
       const clone = await projectTemplateService.duplicate(entry.id);
       setSelectedId(clone.id);
+    };
+
+    // ----- 백업/복원 (드라이브 동기화 ④ — 전역 템플릿 전체, tar) -----
+    const backupTemplates = async () => {
+      commitRef.current(); // 편집 중 프롬프트까지 포함해 백업
+      await appState.projectTemplateBackupExport();
+    };
+
+    const restoreTemplates = async () => {
+      // 편집 중 프롬프트를 먼저 반영 — 덮어쓰기 뒤 편집기의 옛 값이 되써지지 않게
+      // 복원 후 재동기화한다(창 닫기 커밋이 복원 내용을 되돌리지 않도록).
+      commitRef.current();
+      await appState.projectTemplateBackupImport();
+      setSyncSignal((s) => s + 1);
+      setSelectedId((prev) => {
+        const globals = projectTemplateService.listGlobal();
+        return prev && globals.some((t) => t.id === prev)
+          ? prev
+          : (globals[0]?.id ?? '');
+      });
     };
 
     const deleteTemplate = () => {
@@ -1455,17 +1482,49 @@ export const TemplateManagerModal = observer(
                     </Tooltip>
                   </>
                 )}
+                {/* 백업/복원 — 좁은 화면에선 둘이 함께 다음 줄로 내려간다 */}
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <Tooltip
+                    content={
+                      templates.length === 0
+                        ? '백업할 템플릿이 없습니다'
+                        : '프로젝트 템플릿 전체를 tar 파일로 백업'
+                    }
+                  >
+                    <button
+                      type="button"
+                      className={backupBtnCls}
+                      disabled={templates.length === 0}
+                      onClick={backupTemplates}
+                    >
+                      <FaFileArchive size={14} />
+                      <span>백업</span>
+                    </button>
+                  </Tooltip>
+                  <Tooltip content="백업 파일에서 프로젝트 템플릿 복원 (동명 처리 선택)">
+                    <button
+                      type="button"
+                      className={backupBtnCls}
+                      onClick={restoreTemplates}
+                    >
+                      <FaFileImport size={14} />
+                      <span>복원</span>
+                    </button>
+                  </Tooltip>
+                </div>
               </div>
             </>
           )}
           {!entry ? (
             <div className="text-sm text-default py-6 text-center">
-              템플릿이 없습니다. <b>+</b> 버튼으로 새 템플릿을 만들어주세요.
+              템플릿이 없습니다. <b>+</b> 버튼으로 새 템플릿을 만들거나{' '}
+              <b>[복원]</b>으로 백업 파일에서 불러와 주세요.
             </div>
           ) : (
             <TemplateWorkflowEditor
               key={entry.id}
               templateId={entry.id}
+              syncSignal={syncSignal}
               commitRef={commitRef}
               onEditingCharChange={setCharEditing}
               onBatchRunningChange={setBatchRunning}

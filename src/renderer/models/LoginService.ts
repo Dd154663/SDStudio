@@ -2,6 +2,7 @@ import { backend } from '.';
 import type { LoginValidity, OpusUsageStatus } from '../backends/imageGen';
 import { persistService } from './PersistenceService';
 import { minimumBalancedTokenPercent } from './tokenAutoRotation';
+import { planTokenImport } from './configSync';
 
 const TOKEN_PROFILE_STORE_KEY = 'auth:TOKEN_PROFILES.json';
 
@@ -202,6 +203,42 @@ export class LoginService extends EventTarget {
       [...this.tokenProfiles, { id, name, token }],
       this.activeTokenProfileId,
     );
+  }
+
+  // 토큰 파일 내보내기용(드라이브 동기화 ③, 사용자 옵트인 경로 전용). 저장된 토큰
+  // 프리셋 전부, 없으면 현재 로그인 토큰 1건. 반환값을 화면·로그·토스트에 쓰지 않는다.
+  async getTokenEntriesForExport(
+    currentTokenName: string,
+  ): Promise<{ name: string; token: string }[]> {
+    await this.ensureTokenProfilesLoaded();
+    if (this.tokenProfiles.length > 0) {
+      return this.tokenProfiles.map(({ name, token }) => ({ name, token }));
+    }
+    const current = (await backend.readLoginToken())?.trim();
+    return current ? [{ name: currentTokenName, token: current }] : [];
+  }
+
+  // 토큰 파일 불러오기(드라이브 동기화 ③): saveTokenProfile 로 **추가만** 한다.
+  // 같은 토큰·같은 이름은 건너뛰고, 활성 토큰(인증 파일·activeId)은 바꾸지 않는다.
+  async importTokenProfiles(
+    entries: { name: string; token: string }[],
+  ): Promise<{ added: number; skipped: number }> {
+    await this.ensureTokenProfilesLoaded();
+    const { toAdd, skipped } = planTokenImport(
+      this.tokenProfiles.map(({ name, token }) => ({ name, token })),
+      entries,
+    );
+    let added = 0;
+    let failed = 0;
+    for (const entry of toAdd) {
+      try {
+        await this.saveTokenProfile(entry.name, entry.token);
+        added++;
+      } catch (e) {
+        failed++;
+      }
+    }
+    return { added, skipped: skipped + failed };
   }
 
   async activateTokenProfile(id: string): Promise<LoginValidity> {

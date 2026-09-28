@@ -490,3 +490,43 @@ test('검증된 프리셋 전환은 중복 인증 조회 없이 로그인 상태
   expect(service.loggedIn).toBe(true);
   expect(backend.validateLogin).not.toHaveBeenCalled();
 });
+
+describe('토큰 파일 내보내기·불러오기(드라이브 동기화 ③)', () => {
+  test('불러오기는 추가만 하고 같은 토큰·같은 이름은 건너뛰며 활성 토큰을 바꾸지 않는다', async () => {
+    currentToken = 'active-token';
+    profileData = JSON.stringify({
+      version: 1,
+      activeId: 'a',
+      profiles: [{ id: 'a', name: 'Main', token: 'active-token' }],
+    });
+    const service = new LoginService();
+    const res = await service.importTokenProfiles([
+      { name: 'Other', token: 'active-token' },
+      { name: 'main', token: 'new-1' },
+      { name: 'Phone', token: 'new-2' },
+    ]);
+    expect(res).toEqual({ added: 1, skipped: 2 });
+    expect(service.listTokenProfiles().map((p) => p.name)).toEqual(['Main', 'Phone']);
+    expect(service.activeProfileId).toBe('a');
+    expect(JSON.parse(profileData!).activeId).toBe('a');
+    expect(currentToken).toBe('active-token');
+    expect(backend.loginWithToken).not.toHaveBeenCalled();
+    expect(backend.validateToken).not.toHaveBeenCalled();
+  });
+
+  test('내보내기 목록은 저장된 프리셋 전부(이름·토큰만)', async () => {
+    profileData = JSON.stringify({
+      version: 1,
+      activeId: 'b',
+      profiles: [
+        { id: 'a', name: 'A', token: 't-a' },
+        { id: 'b', name: 'B', token: 't-b' },
+      ],
+    });
+    const service = new LoginService();
+    expect(await service.getTokenEntriesForExport('가져온 토큰')).toEqual([
+      { name: 'A', token: 't-a' },
+      { name: 'B', token: 't-b' },
+    ]);
+  });
+});

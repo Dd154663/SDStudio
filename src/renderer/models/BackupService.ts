@@ -5,6 +5,7 @@ import {
   globalPieceService,
   globalPresetService,
   artistLibraryService,
+  projectTemplateService,
   imageService,
   localAIService,
   projectSizeService,
@@ -60,10 +61,16 @@ import {
 import { appState } from './AppService';
 import type { ExportPreset } from './AppService';
 import { stringifyExportJson } from './jsonExport';
-import { isProjectNameTaken } from './projectPaths';
-import { deliverExport, getSyncFolder, syncFileName } from './driveSync';
 import {
+  deliverExport,
+  getSyncFolder,
+  saveExportSilently,
+  syncFileName,
+} from './driveSync';
+import {
+  askImportPolicy,
   askImportPolicyWithConfirm,
+  confirmOverwrite,
   countNameConflicts,
   IMPORT_FLOW_TEXT,
   librarySummary,
@@ -71,6 +78,25 @@ import {
   readNamesFromStore,
   type ImportPolicy,
 } from './importFlow';
+import {
+  checkNewProjectName,
+  fileStemOf,
+  overwriteFailureText,
+  planProjectImport,
+  projectBackupFileName,
+  projectImportSummary,
+  PROJECT_IMPORT_LABEL,
+  PROJECT_IMPORT_TEXT,
+  runProjectOverwrite,
+  suggestProjectName,
+} from './projectOverwrite';
+import { PROJECT_IMAGE_ROOTS } from './projectPaths';
+import {
+  buildTemplateBackupStore,
+  globalTemplateNames,
+  readBackupTemplates,
+  PROJECT_TEMPLATE_BACKUP,
+} from './projectTemplateBackup';
 
 // 전체 백업에 담는 전역 설정 파일. (백업엔 전부 담되, 설정 병합 복원 시
 // trash.json / folderOrder.json 은 의도적으로 제외 — 아래 mergeSettingsFromDir 참조)
@@ -154,7 +180,10 @@ export class BackupService {
           }
         } else if (value === 'saveDeep') {
           if (appState.curSession) {
-            const path = 'exports/' + appState.curSession.name + '.tar';
+            // 공용 파일명 규칙 sdstudio-project-<안전한 이름>-<날짜>.tar (드라이브 동기화 ⑤)
+            const path =
+              'exports/' +
+              projectBackupFileName(appState.curSession.name, new Date());
             if (zipService.isZipping) {
               appState.pushMessage('이미 내보내기 작업이 진행중입니다.');
               return;
@@ -219,40 +248,17 @@ export class BackupService {
           const isFav = sessionService.isFavorite(appState.curSession.name);
           appState.pushMessage(isFav ? '즐겨찾기에 추가되었습니다' : '즐겨찾기가 해제되었습니다');
         } else {
-          appState.pushDialog({
-            type: 'input-confirm',
-            text: '새로운 프로젝트 이름을 입력해주세요',
-            callback: async (inputValue) => {
-              if (inputValue) {
-                if (isProjectNameTaken(sessionService.list(), inputValue)) {
-                  appState.pushMessage('이미 존재하는 프로젝트 이름입니다.');
-                  return;
-                }
-                const tarPath = await backend.selectFile();
-                if (tarPath) {
-                  appState.setProgressDialog({
-                    text: '프로젝트 백업을 불러오는 중입니다...',
-                    done: 0,
-                    total: 1,
-                  });
-                  try {
-                    await sessionService.importSessionDeep(tarPath, inputValue);
-                  } catch (e: any) {
-                    appState.setProgressDialog(undefined);
-                    appState.pushMessage(e.message);
-                    return;
-                  }
-                  appState.setProgressDialog(undefined);
-                  appState.pushDialog({
-                    type: 'yes-only',
-                    text: '프로젝트 백업을 불러왔습니다.',
-                  });
-                  const sess = await sessionService.get(inputValue);
-                  appState.curSession = sess;
-                }
-              }
-            },
+          // 프로젝트 백업 불러오기(드라이브 동기화 ⑤): 파일 고르기 → 이름 확인/정책 선택 →
+          // (덮어쓰기면 확인 2회 → 임시 백업·휴지통 이관 절차) → 완료 안내.
+          // 드래그로 들어온 tar(handleTarImport)와 같은 흐름을 쓴다.
+          // PC 는 드라이브 동기화 폴더가 있으면 그 폴더에서, tar 만 보이게 연다(모바일 무시).
+          const syncFolder = await getSyncFolder();
+          const tarPath = await backend.selectFile({
+            ...(syncFolder ? { defaultPath: syncFolder } : {}),
+            filters: [{ name: '프로젝트 백업', extensions: ['tar'] }],
           });
+          if (!tarPath) return;
+          await this.handleTarImport(tarPath);
         }
       },
     });
@@ -573,7 +579,7 @@ export class BackupService {
   private async libraryBackupExport(opts: {
     label: string;
     manifestType: string;
-    fileBase: 'global-presets' | 'artist-library';
+    fileBase: 'global-presets' | 'artist-library' | 'project-templates';
     isEmpty: boolean;
     buildEntries: () => Promise<{ path: string; name: string }[]>;
   }) {
@@ -626,6 +632,10 @@ export class BackupService {
     // 덮어쓰기 확인 문구의 항목 이름(예: '작가'). 없으면 label.
     itemLabel?: string;
     manifestType: string;
+    // 덮어쓰기 확인의 보호 방식 문구. 없으면 「영구 삭제된 뒤 … 교체」(글로벌 프리셋·작가).
+    protection?: string;
+    // PC 파일 선택기 확장자 필터(선택). Android 선택기는 이미 tar 전용.
+    filters?: { name: string; extensions: string[] }[];
     // 압축 해제된 백업의 항목 이름 목록(충돌 개수 계산용). 실패 시 개수 미상으로 묻는다.
     incomingNames: (root: string) => Promise<string[]>;
     existingNames: () => string[];
@@ -636,8 +646,12 @@ export class BackupService {
   }) {
     // PC 는 드라이브 동기화 폴더가 설정돼 있으면 그 폴더에서 선택기를 연다(모바일 무시).
     const syncFolder = await getSyncFolder();
+    const selectOptions = {
+      ...(syncFolder ? { defaultPath: syncFolder } : {}),
+      ...(opts.filters ? { filters: opts.filters } : {}),
+    };
     const tarPath = await backend.selectFile(
-      syncFolder ? { defaultPath: syncFolder } : undefined,
+      Object.keys(selectOptions).length ? selectOptions : undefined,
     );
     if (!tarPath) return;
     appState.setProgressDialog({ text: '백업을 확인하는 중..', done: 0, total: 1 });
@@ -681,7 +695,7 @@ export class BackupService {
       label: opts.label,
       itemLabel: opts.itemLabel,
       conflictCount,
-      protection: IMPORT_FLOW_TEXT.protection.replaceDeleted,
+      protection: opts.protection ?? IMPORT_FLOW_TEXT.protection.replaceDeleted,
     });
     if (!policy) {
       await cleanup();
@@ -746,6 +760,71 @@ export class BackupService {
       existingNames: () => artistLibraryService.artists.map((a) => a.name),
       restore: (root, policy) =>
         artistLibraryService.restoreFromBackupDir(root, policy),
+    });
+  }
+
+  // 프로젝트 템플릿 백업(드라이브 동기화 ④) — 전역 템플릿만 담는다(폴더 전용 로컬
+  // 템플릿·배지 색 제외, 형식은 projectTemplateBackup.ts). 저장 파일 대신 메모리 목록을
+  // 앱 파일과 같은 형식으로 임시 파일에 써서 담는다(폴더 로컬 항목을 걸러야 하므로).
+  async projectTemplateBackupExport() {
+    await projectTemplateService.ensureLoaded();
+    const { store, imageFiles } = buildTemplateBackupStore(
+      projectTemplateService.list(),
+    );
+    let tmpStore: string | undefined;
+    try {
+      await this.libraryBackupExport({
+        label: PROJECT_TEMPLATE_BACKUP.label,
+        manifestType: PROJECT_TEMPLATE_BACKUP.manifestType,
+        fileBase: 'project-templates',
+        isEmpty: store.templates.length === 0,
+        buildEntries: async () => {
+          tmpStore = 'tmp/' + v4() + '.json';
+          await backend.writeFile(tmpStore, JSON.stringify(store));
+          const entries: { path: string; name: string }[] = [
+            { path: tmpStore, name: PROJECT_TEMPLATE_BACKUP.storeName },
+          ];
+          for (const file of imageFiles) {
+            const p = projectTemplateService.getImagePath(file);
+            try {
+              if (await backend.existFile(p)) {
+                entries.push({
+                  path: p,
+                  name: PROJECT_TEMPLATE_BACKUP.imageDir + '/' + file,
+                });
+              }
+            } catch (e) {}
+          }
+          return entries;
+        },
+      });
+    } finally {
+      if (tmpStore) {
+        try {
+          await backend.deleteFile(tmpStore);
+        } catch (e) {}
+      }
+    }
+  }
+
+  // 덮어쓰기 = 같은 이름 전역 템플릿의 id 를 유지한 채 내용만 갱신(폴더 기본 템플릿
+  // 지정·적용 기록 참조 보존 — ProjectTemplateService.restoreFromBackupDir).
+  async projectTemplateBackupImport() {
+    await projectTemplateService.ensureLoaded();
+    await this.libraryBackupImport({
+      label: PROJECT_TEMPLATE_BACKUP.label,
+      manifestType: PROJECT_TEMPLATE_BACKUP.manifestType,
+      protection: IMPORT_FLOW_TEXT.protection.keepId,
+      filters: [{ name: 'SDStudio 백업 (tar)', extensions: ['tar'] }],
+      incomingNames: async (root) =>
+        readBackupTemplates(
+          JSON.parse(
+            await backend.readFile(root + '/' + PROJECT_TEMPLATE_BACKUP.storeName),
+          ),
+        ).map((t) => t.name),
+      existingNames: () => globalTemplateNames(projectTemplateService.list()),
+      restore: (root, policy) =>
+        projectTemplateService.restoreFromBackupDir(root, policy),
     });
   }
 
@@ -1850,45 +1929,227 @@ export class BackupService {
       return;
     }
 
-    appState.pushDialog({
-      type: 'input-confirm',
-      text: '프로젝트 백업을 불러옵니다.\n새 프로젝트 이름을 입력하세요.',
-      onCancel: async () => {
-        try { await backend.deleteDir(root); } catch (e) {}
-      },
-      callback: async (inputValue) => {
-        if (!inputValue) {
-          try { await backend.deleteDir(root); } catch (e) {}
-          return;
-        }
-        if (sessionService.list().includes(inputValue)) {
-          appState.pushMessage('이미 존재하는 프로젝트 이름입니다.');
-          try { await backend.deleteDir(root); } catch (e) {}
-          return;
-        }
-        appState.setProgressDialog({
-          text: '프로젝트 백업을 불러오는 중입니다...',
-          done: 0,
-          total: 1,
-        });
-        try {
-          await sessionService.importSessionDeepFromDir(root, inputValue);
-        } catch (e: any) {
-          appState.setProgressDialog(undefined);
-          appState.pushMessage('백업 불러오기 실패: ' + e.message);
-          try { await backend.deleteDir(root); } catch (e2) {}
-          return;
-        }
-        try { await backend.deleteDir(root); } catch (e) {}
-        appState.setProgressDialog(undefined);
-        appState.pushDialog({
-          type: 'yes-only',
-          text: '프로젝트 백업을 불러왔습니다.',
-        });
-        const sess = await sessionService.get(inputValue);
-        appState.curSession = sess;
-      },
+    await this.importProjectBackupFromDir(root, fileStemOf(tarPath));
+  }
+
+  // 압축 해제된 프로젝트 백업(root/project.json + 이미지 6루트)을 §0 순서로 불러온다
+  // (드라이브 동기화 ⑤). root 는 이 함수가 끝날 때 항상 정리한다.
+  private async importProjectBackupFromDir(
+    root: string,
+    fileStem?: string,
+  ): Promise<void> {
+    const cleanup = async () => {
+      try {
+        await backend.deleteDir(root);
+      } catch (e) {}
+    };
+    let json: any;
+    try {
+      json = JSON.parse(await backend.readFile(root + '/project.json'));
+    } catch (e) {
+      await cleanup();
+      appState.pushMessage(PROJECT_IMPORT_TEXT.readFailed);
+      return;
+    }
+    const suggested = suggestProjectName(json?.name, fileStem);
+    const plan = planProjectImport({
+      suggested,
+      existing: sessionService.list(),
+      hasImages: await this.dirHasProjectImages(root),
     });
+
+    let policy: ImportPolicy = 'rename';
+    if (plan.conflict) {
+      const chosen = await askImportPolicy({
+        label: PROJECT_IMPORT_LABEL,
+        conflictCount: 1,
+        allow: { overwrite: plan.allowOverwrite },
+      });
+      if (!chosen) {
+        await cleanup();
+        return;
+      }
+      policy = chosen;
+    }
+
+    if (policy === 'skip') {
+      await cleanup();
+      notifyImportDone(PROJECT_IMPORT_LABEL, projectImportSummary('skip'));
+      return;
+    }
+
+    if (policy === 'overwrite') {
+      try {
+        await this.overwriteProjectFromDir(root, suggested);
+      } finally {
+        await cleanup();
+      }
+      return;
+    }
+
+    // 새 이름으로 추가 — 백업 이름(충돌 시 「이름 (n)」)을 기본값으로 제시.
+    const input = await appState.pushDialogAsync({
+      type: 'input-confirm',
+      text: PROJECT_IMPORT_TEXT.namePrompt,
+      inputValue: plan.renameDefault,
+    });
+    const name = (input ?? '').trim();
+    if (!name) {
+      await cleanup();
+      return;
+    }
+    const problem = checkNewProjectName(name, sessionService.list());
+    if (problem) {
+      await cleanup();
+      appState.pushMessage(problem);
+      return;
+    }
+    appState.setProgressDialog({
+      text: PROJECT_IMPORT_TEXT.importing,
+      done: 0,
+      total: 1,
+    });
+    try {
+      await sessionService.importSessionDeepFromDir(root, name);
+    } catch (e: any) {
+      appState.setProgressDialog(undefined);
+      await cleanup();
+      appState.pushMessage(
+        PROJECT_IMPORT_TEXT.importFailed(e?.message || String(e)),
+      );
+      return;
+    }
+    await cleanup();
+    appState.setProgressDialog(undefined);
+    notifyImportDone(PROJECT_IMPORT_LABEL, projectImportSummary('rename'));
+    const sess = await sessionService.get(name);
+    if (sess) appState.curSession = sess;
+  }
+
+  // 백업에 이미지(6루트 중 하나라도 파일)가 있는지 — 없으면 덮어쓰기를 숨긴다(§0-2).
+  private async dirHasProjectImages(root: string): Promise<boolean> {
+    for (const r of PROJECT_IMAGE_ROOTS) {
+      try {
+        const files = await backend.listFiles(root + '/' + r);
+        if (files.length > 0) return true;
+      } catch (e) {}
+    }
+    return false;
+  }
+
+  // 같은 이름의 기존 프로젝트를 백업 내용으로 덮어쓴다(드라이브 동기화 ⑤ — 플랜 §6,
+  // 사용자 결정: 임시 백업 + 휴지통 이관 2중 보호, 영구 삭제 없음). 절차 분기는
+  // projectOverwrite.runProjectOverwrite(순수·jest), 여기서는 기존 관문만 연결한다:
+  // flush=flushProjectNow, 백업=exportSessionDeep, 가져오기=importSessionDeepFromDir
+  // (이미지 선복사→createFrom), 이름변경=renameProject, 휴지통=sessionService.delete.
+  // 새 lock 을 만들거나 중첩하지 않는다(각 관문이 자기 withLock·flushPath 를 쓴다).
+  private async overwriteProjectFromDir(root: string, target: string) {
+    // 확인 2회(프로젝트만 — §0-3).
+    const ok1 = await confirmOverwrite({
+      label: PROJECT_IMPORT_LABEL,
+      count: 1,
+      protection: IMPORT_FLOW_TEXT.protection.trashWithBackup,
+    });
+    if (!ok1) return;
+    const ok2 = await appState.pushDialogAsync({
+      type: 'select',
+      text: PROJECT_IMPORT_TEXT.secondConfirm,
+      items: [{ text: PROJECT_IMPORT_TEXT.secondConfirmButton, value: 'yes' }],
+    });
+    if (ok2 !== 'yes') return;
+    if (zipService.isZipping) {
+      appState.pushMessage(PROJECT_IMPORT_TEXT.busyZipping);
+      return;
+    }
+
+    const wasCurrent = appState.curSession?.name === target;
+    // delete·rename 은 메모리에 올라온 프로젝트만 처리한다(미로드면 조용히 돌아오거나
+    // 오류) → 부르기 전에 로드한다.
+    const ensureLoaded = async (name: string) => {
+      const s = await sessionService.get(name);
+      if (!s) throw new Error('프로젝트를 불러오지 못했습니다: ' + name);
+      return s;
+    };
+
+    let result;
+    try {
+      result = await runProjectOverwrite(target, new Date(), {
+        listNames: () => sessionService.list(),
+        trashedNames: async () =>
+          (await trashService.getDeletedProjects()).map((p) => p.name),
+        isLockedElsewhere: async (name) =>
+          !(await sessionService.guardCrossWindowLock(name, '덮어쓰기')),
+        folderOf: (name) => sessionService.getFolderOf(name),
+        folderExists: (folder) => sessionService.listFolders().includes(folder),
+        flush: async (name) => {
+          await ensureLoaded(name);
+          await sessionService.flushProjectNow(name);
+        },
+        exportBackup: async (name, exportsPath) => {
+          const s = await ensureLoaded(name);
+          await sessionService.exportSessionDeep(s, exportsPath);
+        },
+        saveBackup: (exportsPath) => saveExportSilently(exportsPath),
+        discardStaging: async (exportsPath) => {
+          try {
+            await backend.deleteFile(exportsPath);
+          } catch (e) {}
+        },
+        importAs: (name) => sessionService.importSessionDeepFromDir(root, name),
+        beforeSwap: (name) => {
+          if (appState.curSession?.name === name) appState.curSession = undefined;
+        },
+        rename: async (oldName, newName) => {
+          await ensureLoaded(oldName);
+          await sessionService.renameProject(oldName, newName);
+          // 구 배치 rename 은 인스턴스 name 을 바꾸지 않는다 — 기존 호출부(ProjectDrawer·
+          // FindReplaceDialog)와 같이 맞춘다(이미지 경로가 session.name 기준).
+          const s = sessionService.getLoaded(newName);
+          if (s) s.name = newName;
+        },
+        remove: async (name) => {
+          await ensureLoaded(name);
+          await sessionService.delete(name);
+        },
+        moveToFolder: (name, folder) => sessionService.moveToFolder(name, folder),
+        onProgress: (stage) =>
+          appState.setProgressDialog({
+            text: PROJECT_IMPORT_TEXT.progress[stage],
+            done: 0,
+            total: 1,
+          }),
+      });
+    } finally {
+      appState.setProgressDialog(undefined);
+    }
+
+    if (!result.ok) {
+      appState.pushDialog({ type: 'yes-only', text: overwriteFailureText(result) });
+      // 이 창에서 열려 있던 기존 프로젝트가 원래 이름 그대로 남았으면 다시 연다.
+      if (
+        wasCurrent &&
+        !appState.curSession &&
+        sessionService.list().includes(target)
+      ) {
+        const sess = await sessionService.get(target);
+        if (sess) appState.curSession = sess;
+      }
+      return;
+    }
+    const extraLines = [
+      PROJECT_IMPORT_TEXT.doneExtra(result.backupLocation, result.trashName),
+    ];
+    if (result.folderRestoreFailed) {
+      extraLines.push(
+        PROJECT_IMPORT_TEXT.folderRestoreFailed(result.folderRestoreFailed),
+      );
+    }
+    notifyImportDone(PROJECT_IMPORT_LABEL, {
+      ...projectImportSummary('overwrite'),
+      extra: extraLines.join('\n'),
+    });
+    const sess = await sessionService.get(target);
+    if (sess) appState.curSession = sess;
   }
 
   async handlePngImport(base64: string): Promise<void> {

@@ -1246,6 +1246,8 @@ export class AppState {
   globalPresetBackupImport() { return backupService.globalPresetBackupImport(); }
   artistLibraryBackupExport() { return backupService.artistLibraryBackupExport(); }
   artistLibraryBackupImport() { return backupService.artistLibraryBackupImport(); }
+  projectTemplateBackupExport() { return backupService.projectTemplateBackupExport(); }
+  projectTemplateBackupImport() { return backupService.projectTemplateBackupImport(); }
 
   // 프롬프트 편집기의 「작가 라이브러리」 버튼(2026-09-26): 이름으로 카드를 찾아 열고, 없으면 확인 뒤 새로 만든다.
   // 탭 전환은 shortcut-action 'tab-4'(작가 라이브러리 탭). 모바일 V2 는 시트가 탭을 덮으므로 먼저 접는다.

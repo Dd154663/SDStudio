@@ -18,6 +18,7 @@ import { backend } from '.';
 import { appState } from './AppService';
 import { platform } from './platform';
 import { transferExportArchive } from './exportArchiveTransfer';
+import { sanitizeFilenamePart } from './exportPresetUtils';
 
 // 대상 종류 = 파일명 규칙 sdstudio-<kind>-<날짜> 의 kind. 기존 라이브러리 백업 파일명
 // (sdstudio-global-presets-…, sdstudio-artist-library-…)과 같은 값을 쓴다.
@@ -26,7 +27,10 @@ export type DriveExportKind =
   | 'artist-library'
   | 'character-presets'
   | 'scene-template'
-  | 'project';
+  | 'project'
+  | 'config'
+  | 'token'
+  | 'project-templates';
 
 export type ExportDestination = 'drive' | 'downloads';
 
@@ -36,6 +40,9 @@ export const DRIVE_EXPORT_KIND_LABEL: Record<DriveExportKind, string> = {
   'character-presets': '캐릭터 프리셋',
   'scene-template': '씬 템플릿',
   project: '프로젝트 백업',
+  config: '환경설정',
+  token: 'NovelAI 토큰',
+  'project-templates': '프로젝트 템플릿 백업',
 };
 
 // 사용자에게 보이는 문구는 전부 여기 한 곳에 둔다(대상별로 달라지지 않게).
@@ -75,6 +82,26 @@ export function syncFileName(
 ): string {
   const cleanExt = ext.replace(/^\.+/, '');
   return `sdstudio-${kind}-${exportDateStamp(date)}${cleanExt ? '.' + cleanExt : ''}`;
+}
+
+// 대상 이름을 넣은 변형(드라이브 동기화 ⑤ 프로젝트 백업):
+// sdstudio-<kind>-<안전한 이름>[-<tag>]-<YYYY-MM-DDTHH-mm-ss>.<ext>
+// 이름의 파일 시스템 위험 문자·공백은 기존 sanitizeFilenamePart 규칙으로 '_' 치환,
+// 정제 결과가 비면 이름 자리를 생략한다(=syncFileName 과 같은 모양).
+export function namedSyncFileName(
+  kind: DriveExportKind,
+  name: string,
+  date: Date,
+  ext: string,
+  tag?: string,
+): string {
+  const safe = sanitizeFilenamePart(name);
+  const cleanExt = ext.replace(/^\.+/, '');
+  const parts = ['sdstudio', kind];
+  if (safe) parts.push(safe);
+  if (tag) parts.push(tag);
+  parts.push(exportDateStamp(date));
+  return parts.join('-') + (cleanExt ? '.' + cleanExt : '');
 }
 
 // "a.tar" → exists 면 "a (1).tar", "a (2).tar" … (publish-export 의 다운로드 폴더
@@ -206,4 +233,27 @@ export async function deliverExport(
     await backend.openPath(syncFolder);
   } catch (e) {}
   return 'drive';
+}
+
+// 대화상자 없이 저장만 한다(프로젝트 덮어쓰기 임시 백업, 드라이브 동기화 ⑤).
+// PC 에 드라이브 동기화 폴더가 있으면 그 폴더(같은 이름은 " (n)" 접미, 복사 후
+// existFileAbsolute 로 실제 존재 확인), 없거나 복사가 실패하면 다운로드 폴더
+// (backend.saveExportToDownloads — Android 는 Download/ 복사 성공 기준).
+// 반환 = 사용자에게 보여 줄 저장 위치. 두 곳 모두 실패하면 throw(호출부는 중단).
+export async function saveExportSilently(exportsPath: string): Promise<string> {
+  const syncFolder = await getSyncFolder();
+  if (syncFolder) {
+    try {
+      const baseName = exportsPath.replace(/\\/g, '/').split('/').pop()!;
+      const finalName = await withCollisionSuffix(baseName, (candidate) =>
+        backend.existFileAbsolute(joinAbsolute(syncFolder, candidate)),
+      );
+      const dest = joinAbsolute(syncFolder, finalName);
+      await transferExportArchive(backend, exportsPath, dest);
+      if (await backend.existFileAbsolute(dest)) return dest;
+    } catch (e) {
+      console.error('드라이브 폴더 임시 백업 저장 실패 — 다운로드 폴더로 전환:', e);
+    }
+  }
+  return await backend.saveExportToDownloads(exportsPath);
 }

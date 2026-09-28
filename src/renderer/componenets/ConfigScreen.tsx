@@ -59,6 +59,7 @@ import { useOpusUsage } from './OpusUsageBadge';
 import MobileColorPicker from './MobileColorPicker';
 import { StorageDiagnosticsSection } from './StorageDiagnostics';
 import { DRIVE_SYNC_TEXT } from '../models/driveSync';
+import ConfigSyncSection from './ConfigSyncSection';
 import type {
   LoginTokenProfile,
   LoginTokenUsageCheck,
@@ -1079,6 +1080,7 @@ const SystemTab = ({
   storageWriteGuard, setStorageWriteGuard,
   exportConcurrency, setExportConcurrency,
   autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality,
+  dirty, reloadConfig,
 }: any) => {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [showRickroll, setShowRickroll] = useState(false);
@@ -1134,6 +1136,10 @@ const SystemTab = ({
 
   return (
     <div className="space-y-4">
+      {/* 환경설정 내보내기·불러오기(드라이브 동기화 ③, PC·모바일 공통). 불러오기 적용 뒤
+          reloadConfig 로 이 화면의 로컬 상태를 설정 파일에서 다시 읽는다. */}
+      <ConfigSyncSection dirty={!!dirty} onConfigImported={reloadConfig} />
+      <hr className="line-color" />
       <div>
         <div className="flex items-center gap-2">
           <input type="checkbox" id="cfgStorageGuard" checked={storageWriteGuard}
@@ -2863,62 +2869,68 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [savedCfg, setSavedCfg] = useState<Config | null>(null);
   const mobileMode = isMobile;
 
+  // 설정 파일 → 화면 로컬 상태. 마운트 때 한 번 + 환경설정 불러오기 적용 뒤 다시(드라이브
+  // 동기화 ③ — 이 화면은 저장 때 로컬 상태 전체를 쓰므로, 불러온 값을 로컬에 다시 읽어 두지
+  // 않으면 이어서 「저장」할 때 불러오기 전 값으로 되돌아간다).
+  const loadConfig = async () => {
+    const config = await backend.getConfig();
+    const actualDataRoot = await backend
+      .getDataRoot()
+      .catch(() => config.saveLocation ?? '');
+    setWhiteMode(config.whiteMode ?? false);
+    setImageEditor(config.imageEditor ?? 'photoshop');
+    setUseGPU(config.useCUDA ?? false);
+    setQuality(config.removeBgQuality ?? 'normal');
+    setRefreshImage(config.refreshImage ?? false);
+    setAutoConvertWebp(config.autoConvertWebp ?? false);
+    setAutoWebpQuality(config.autoConvertWebpQuality ?? 80);
+    setUseLocalBgRemoval(config.useLocalBgRemoval ?? false);
+    setDelayTime(config.delayTime ?? 0);
+    setClassicSceneCard(config.classicSceneCard ?? false);
+    setLegacyProjectMode(config.legacyProjectMode ?? false);
+    setLegacySceneEditor(config.legacySceneEditor ?? false);
+    setLegacyWorkflowMode(config.legacyWorkflowMode ?? false);
+    setSceneToolbarLegacyText(config.sceneToolbarLegacyText ?? false);
+    setStorageWriteGuard(config.storageWriteGuard ?? true);
+    setTrueDark(config.trueDark ?? false);
+    setExportConcurrency(config.exportConcurrency ?? (isMobile ? 2 : 4));
+    setSaveLocation(config.saveLocation ?? '');
+    setDataRoot(actualDataRoot);
+    setDefaultExportFolder(config.defaultExportFolder ?? '');
+    setSyncFolder(config.syncFolder ?? '');
+    setUiTheme(config.uiTheme ?? {});
+    setUiThemePresets(config.uiThemePresets ?? []);
+    setUiToolbar(config.uiToolbar ?? {});
+    setQuickMenuCfg(config.quickMenu);
+    setQuickMenuButton(config.quickMenuButton ?? false);
+    setUiLayoutTemplate(config.uiLayoutTemplate ?? defaultLayoutTemplateId(isMobile));
+    setUiMobileV2Parts(normalizeV2Parts(config.uiMobileV2Parts));
+    setUiPresetIconRow(config.uiPresetIconRow ?? false);
+    setUiFloatViewMode(config.uiFloatViewMode ?? 'cover');
+    setUiFont(config.uiFont ?? 'system');
+    setUiClassicFinish(config.uiClassicFinish ?? false);
+    setAllowDuplicateProjectOpen(config.allowDuplicateProjectOpen ?? false);
+    const rotateWarning = normalizeTokenRotateWarning(
+      config.multiTokenRotateWarningPercent,
+    );
+    setMultiTokenAutoRotate(config.multiTokenAutoRotate ?? false);
+    setMultiTokenRotateWarning(rotateWarning);
+    setMultiTokenRotateTarget(
+      normalizeTokenRotateTarget(
+        config.multiTokenRotateTargetPercent,
+        rotateWarning,
+      ),
+    );
+    setMultiTokenBalanceRotate(config.multiTokenBalanceRotate ?? false);
+    setMultiTokenRotateBalance(
+      normalizeTokenRotateBalance(config.multiTokenRotateBalancePercent),
+    );
+    setModernExitReset(false);
+    setSavedCfg(config);
+  };
+
   useEffect(() => {
-    (async () => {
-      const config = await backend.getConfig();
-      const actualDataRoot = await backend
-        .getDataRoot()
-        .catch(() => config.saveLocation ?? '');
-      setWhiteMode(config.whiteMode ?? false);
-      setImageEditor(config.imageEditor ?? 'photoshop');
-      setUseGPU(config.useCUDA ?? false);
-      setQuality(config.removeBgQuality ?? 'normal');
-      setRefreshImage(config.refreshImage ?? false);
-      setAutoConvertWebp(config.autoConvertWebp ?? false);
-      setAutoWebpQuality(config.autoConvertWebpQuality ?? 80);
-      setUseLocalBgRemoval(config.useLocalBgRemoval ?? false);
-      setDelayTime(config.delayTime ?? 0);
-      setClassicSceneCard(config.classicSceneCard ?? false);
-      setLegacyProjectMode(config.legacyProjectMode ?? false);
-      setLegacySceneEditor(config.legacySceneEditor ?? false);
-      setLegacyWorkflowMode(config.legacyWorkflowMode ?? false);
-      setSceneToolbarLegacyText(config.sceneToolbarLegacyText ?? false);
-      setStorageWriteGuard(config.storageWriteGuard ?? true);
-      setTrueDark(config.trueDark ?? false);
-      setExportConcurrency(config.exportConcurrency ?? (isMobile ? 2 : 4));
-      setSaveLocation(config.saveLocation ?? '');
-      setDataRoot(actualDataRoot);
-      setDefaultExportFolder(config.defaultExportFolder ?? '');
-      setSyncFolder(config.syncFolder ?? '');
-      setUiTheme(config.uiTheme ?? {});
-      setUiThemePresets(config.uiThemePresets ?? []);
-      setUiToolbar(config.uiToolbar ?? {});
-      setQuickMenuCfg(config.quickMenu);
-      setQuickMenuButton(config.quickMenuButton ?? false);
-      setUiLayoutTemplate(config.uiLayoutTemplate ?? defaultLayoutTemplateId(isMobile));
-      setUiMobileV2Parts(normalizeV2Parts(config.uiMobileV2Parts));
-      setUiPresetIconRow(config.uiPresetIconRow ?? false);
-      setUiFloatViewMode(config.uiFloatViewMode ?? 'cover');
-      setUiFont(config.uiFont ?? 'system');
-      setUiClassicFinish(config.uiClassicFinish ?? false);
-      setAllowDuplicateProjectOpen(config.allowDuplicateProjectOpen ?? false);
-      const rotateWarning = normalizeTokenRotateWarning(
-        config.multiTokenRotateWarningPercent,
-      );
-      setMultiTokenAutoRotate(config.multiTokenAutoRotate ?? false);
-      setMultiTokenRotateWarning(rotateWarning);
-      setMultiTokenRotateTarget(
-        normalizeTokenRotateTarget(
-          config.multiTokenRotateTargetPercent,
-          rotateWarning,
-        ),
-      );
-      setMultiTokenBalanceRotate(config.multiTokenBalanceRotate ?? false);
-      setMultiTokenRotateBalance(
-        normalizeTokenRotateBalance(config.multiTokenRotateBalancePercent),
-      );
-      setSavedCfg(config);
-    })();
+    loadConfig();
     const checkReady = () => setReady(localAIService.ready);
     const onProgress = (e: any) => setProgress(e.detail.percent);
     const onStage = (e: any) => setStage(e.detail.stage);
@@ -3194,7 +3206,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'storage':
         return <StorageImageTab {...{ saveLocation, dataRoot, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, syncFolder, setSyncFolder, selectSyncFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 'system':
-        return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality }} />;
+        return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, dirty, reloadConfig: loadConfig }} />;
       case 'personal':
         return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, legacySceneEditor, setLegacySceneEditor, legacyWorkflowMode, setLegacyWorkflowMode, sceneToolbarLegacyText, setSceneToolbarLegacyText, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish, allowDuplicateProjectOpen, setAllowDuplicateProjectOpen }} />;
       case 'customization':
