@@ -57,6 +57,12 @@ assets/danbooru_*.csv
 assets/hf_*.csv
 assets/db_new.txt
 
+# Android 서명 비밀·키 (공개 저장소 — 절대 커밋 금지, 예시 파일만 추적)
+android/keystore.properties
+*.jks
+*.keystore
+*.lineage
+
 # Claude Code 로컬 설정 (개인 경로 포함)
 .claude/
 
