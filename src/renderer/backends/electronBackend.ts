@@ -194,6 +194,10 @@ export class ElectornBackend extends Backend {
     await invoke('publish-export', arg);
   }
 
+  async saveExportToDownloads(arg: string): Promise<string> {
+    return await invoke('save-export-to-downloads', arg);
+  }
+
   async openPath(arg: string): Promise<void> {
     await invoke('open-path', arg);
   }

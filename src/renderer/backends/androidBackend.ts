@@ -586,6 +586,66 @@ export class AndroidBackend extends Backend {
     }
   }
 
+  // publishExport 와 같은 Download/ 저장 규칙(같은 이름이면 " (n)" 접미, 네이티브
+  // Filesystem.copy — 대용량 tar 도 브리지에 태우지 않음)이지만 대화상자·공유 시트를
+  // 띄우지 않는다. 성공 기준 = Download/ 복사 성공(공유 결과에 의존하지 않음).
+  // 복사 성공 뒤에만 exports/ 스테이징을 지우고, 정리 실패는 저장 성공을 뒤집지 않는다.
+  // 폴더 산출물은 이 경로의 용도(프로젝트 백업 tar 1개)가 아니므로 명시 거부한다.
+  async saveExportToDownloads(arg: string): Promise<string> {
+    const normalized = arg.replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!normalized.startsWith('exports/') || normalized.includes('../')) {
+      throw new Error('내보내기 폴더 밖의 파일은 저장할 수 없습니다.');
+    }
+    const sourceStat = await Filesystem.stat({
+      path: `${APP_DIR}/${normalized}`,
+      directory: Directory.Documents,
+    });
+    if (sourceStat.type === 'directory') {
+      throw new Error('폴더 내보내기는 이 저장 방식을 지원하지 않습니다.');
+    }
+    try {
+      await Filesystem.mkdir({
+        path: 'Download',
+        directory: Directory.ExternalStorage,
+      });
+    } catch (e) {}
+
+    const originalName = normalized.split('/').pop()!;
+    const dot = originalName.lastIndexOf('.');
+    const baseName = dot > 0 ? originalName.slice(0, dot) : originalName;
+    const extension = dot > 0 ? originalName.slice(dot) : '';
+    let fileName = originalName;
+    let suffix = 1;
+    while (true) {
+      try {
+        await Filesystem.stat({
+          path: `Download/${fileName}`,
+          directory: Directory.ExternalStorage,
+        });
+        fileName = `${baseName} (${suffix++})${extension}`;
+      } catch (e) {
+        break;
+      }
+    }
+
+    const destRel = `Download/${fileName}`;
+    await Filesystem.copy({
+      from: `${APP_DIR}/${normalized}`,
+      directory: Directory.Documents,
+      to: destRel,
+      toDirectory: Directory.ExternalStorage,
+    });
+    // 복사 결과를 한 번 더 확인한다(확인 실패 = 저장 실패로 보고 기존 데이터를 건드리지 않게).
+    await Filesystem.stat({ path: destRel, directory: Directory.ExternalStorage });
+    try {
+      await Filesystem.deleteFile({
+        path: `${APP_DIR}/${normalized}`,
+        directory: Directory.Documents,
+      });
+    } catch (e) {}
+    return destRel;
+  }
+
   async copyToDownloads(path: string): Promise<void> {
     // 파일 내용을 base64 문자열로 JS까지 왕복시키면 대용량 파일(원본 PNG 다수를 묶은
     // tar 등 수백 MB)에서 네이티브 힙 OOM으로 앱이 크래시하므로, 데이터를 브리지에

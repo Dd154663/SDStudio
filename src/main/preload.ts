@@ -24,6 +24,7 @@ export type Channels =
   | 'restart-app'
   | 'show-file'
   | 'publish-export'
+  | 'save-export-to-downloads'
   | 'open-path'
   | 'zip-files'
   | 'get-free-space'

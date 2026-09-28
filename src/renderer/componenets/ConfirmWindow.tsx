@@ -41,6 +41,13 @@ const ConfirmWindow = observer(() => {
   useEffect(() => {
     setOpenGroups(foldKey ? loadOpenGroups(foldKey) : new Set());
   }, [foldKey, topDialog]);
+  // input-confirm 은 inputValue 가 있으면 그 값을 처음 값으로 채운다(없으면 빈 칸 —
+  // 기존 동작). textarea-confirm 의 inputValue 는 종전대로 placeholder 로만 쓴다.
+  useEffect(() => {
+    if (topDialog?.type === 'input-confirm') {
+      setInputValue(topDialog.inputValue ?? '');
+    }
+  }, [topDialog]);
 
   const handleConfirm = () => {
     const currentDialog = appState.dialogs[appState.dialogs.length - 1];

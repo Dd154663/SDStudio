@@ -456,7 +456,11 @@ const fs = require('fs').promises;
 // 사용자 내보내기만 앱 내부 exports/에서 OS 다운로드 폴더로 이동한다.
 // 마이그레이션 사전 백업은 이 IPC를 호출하지 않으므로 기존 exports/에 남아
 // 재시작 시 완성 백업 재사용 판정에 계속 쓰인다.
-ipcMain.handle('publish-export', async (event, arg) => {
+// publish-export(이동 후 폴더 열기)와 save-export-to-downloads(이동만 — 프로젝트
+// 덮어쓰기 임시 백업, 드라이브 동기화 ⑤)가 같은 이동 규칙을 공유한다.
+async function moveExportToDownloads(
+  arg: unknown,
+): Promise<{ destination: string; isDirectory: boolean }> {
   if (typeof arg !== 'string') throw new Error('내보내기 경로가 올바르지 않습니다.');
   const normalized = arg.replace(/\\/g, '/').replace(/^\/+/, '');
   if (!normalized.startsWith('exports/') || normalized.includes('../')) {
@@ -498,10 +502,21 @@ ipcMain.handle('publish-export', async (event, arg) => {
     await fsExtra.copy(source, destination, { overwrite: false, errorOnExist: true });
     await fsExtra.remove(source);
   }
+  return { destination, isDirectory: stat.isDirectory() };
+}
+
+ipcMain.handle('publish-export', async (event, arg) => {
+  const { destination, isDirectory } = await moveExportToDownloads(arg);
   await openExportDirectory(
-    stat.isDirectory() ? destination : path.dirname(destination),
+    isDirectory ? destination : path.dirname(destination),
     (target) => shell.openPath(target),
   );
+});
+
+// 대화상자·폴더 열기 없이 다운로드 폴더로 옮기기만 하고 최종 절대 경로를 돌려준다.
+ipcMain.handle('save-export-to-downloads', async (event, arg) => {
+  const { destination } = await moveExportToDownloads(arg);
+  return destination;
 });
 
 ipcMain.handle('zip-files', async (event, files, outPath) => {

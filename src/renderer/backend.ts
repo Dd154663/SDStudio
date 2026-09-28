@@ -72,6 +72,11 @@ export abstract class Backend {
   // 옮긴 뒤 표시한다. 생성 원본을 다루는 showFile/copyToDownloads와 분리해
   // 성공 후 내부 스테이징 사본을 안전하게 정리할 수 있게 한다.
   abstract publishExport(arg: string): Promise<void>;
+  // publishExport 와 같은 규칙으로 exports/ 산출물을 다운로드 폴더에 저장하되
+  // 대화상자·폴더 열기·공유 없이 저장만 하고, 저장된 위치(표시용 경로)를 돌려준다.
+  // 저장 실패는 throw — 호출부(프로젝트 덮어쓰기 임시 백업, 드라이브 동기화 ⑤)는
+  // 이 결과를 받은 뒤에만 기존 프로젝트를 건드린다.
+  abstract saveExportToDownloads(arg: string): Promise<string>;
   // 폴더를 OS 파일 탐색기로 연다(내용물 표시). 데스크톱 전용 — 모바일은 no-op.
   abstract openPath(arg: string): Promise<void>;
   abstract copyToDownloads(path: string): Promise<void>;

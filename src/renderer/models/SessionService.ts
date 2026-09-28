@@ -1681,6 +1681,21 @@ export class SessionService extends ResourceSyncService<Session> {
     } catch (e) {}
   }
 
+  // 한 프로젝트의 현재 메모리 상태를 지금 디스크에 반영하고 그 경로의 쓰기 큐를
+  // 비운다(디바운스 대기 중인 편집 포함). 디스크 project.json 을 읽는 작업(프로젝트
+  // 덮어쓰기 전 임시 백업 — 드라이브 동기화 ⑤) 직전에 쓴다. 쓰기는 기존 단일 지점
+  // writeResource(손실 방지 가드·상태 재확인 포함)를 그대로 거친다. 저장소 불안정으로
+  // 보류('retry')되면 최신 상태를 보장할 수 없으므로 throw 한다.
+  async flushProjectNow(name: string): Promise<void> {
+    if (this.isLoaded(name)) {
+      const r = await this.writeResource(name);
+      if (r === 'retry') {
+        throw new Error('저장소가 불안정해 프로젝트를 저장하지 못했습니다.');
+      }
+    }
+    await persistService.flushPath(this.getPath(name));
+  }
+
   // 같은 앱 실행 중 같은 프로젝트에 손실 경고를 한 번만 띄우기 위한 집합
   #lossGuardWarned = new Set<string>();
 
