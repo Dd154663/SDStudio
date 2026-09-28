@@ -60,6 +60,7 @@ import MobileColorPicker from './MobileColorPicker';
 import { StorageDiagnosticsSection } from './StorageDiagnostics';
 import { DRIVE_SYNC_TEXT } from '../models/driveSync';
 import ConfigSyncSection from './ConfigSyncSection';
+import DriveConnectSection from './DriveConnectSection';
 import type {
   LoginTokenProfile,
   LoginTokenUsageCheck,
@@ -1136,6 +1137,13 @@ const SystemTab = ({
 
   return (
     <div className="space-y-4">
+      {/* Google 드라이브 연동(드라이브 API ①). 지원 플랫폼(PC)만 — Android 는 ④ 전까지 숨김. */}
+      {backend.driveAuthSupported() && (
+        <>
+          <DriveConnectSection />
+          <hr className="line-color" />
+        </>
+      )}
       {/* 환경설정 내보내기·불러오기(드라이브 동기화 ③, PC·모바일 공통). 불러오기 적용 뒤
           reloadConfig 로 이 화면의 로컬 상태를 설정 파일에서 다시 읽는다. */}
       <ConfigSyncSection dirty={!!dirty} onConfigImported={reloadConfig} />

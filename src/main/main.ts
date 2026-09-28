@@ -63,6 +63,8 @@ import {
   SDStudioImageMetadataV1,
 } from '../shared/sdstudioImageMetadata';
 import { isV5ModelVersion } from '../renderer/backends/genVendors/naiModelCapabilities';
+import * as googleDriveAuth from './googleDrive';
+import { DRIVE_AUTH_CHANNEL } from '../shared/googleDriveAuth';
 
 interface DataBaseConns {
   tagDBId: number;
@@ -432,6 +434,16 @@ ipcMain.handle('check-writable', async (event, absPath: string) => {
 ipcMain.handle('open-web-page', async (event, url) => {
   await shell.openExternal(url);
 });
+
+// ─── Google 드라이브 연동 인증 (드라이브 API ①) ───
+// 상태는 main(googleDrive 모듈) 하나가 진실이다. renderer 에는 DriveAuthStatus 만 보내고
+// 토큰·시크릿은 넘기지 않는다. 변경은 모듈이 전 창에 drive-auth-changed 로 알린다.
+ipcMain.handle(DRIVE_AUTH_CHANNEL.status, async () => googleDriveAuth.getStatus());
+ipcMain.handle(DRIVE_AUTH_CHANNEL.connect, async () => googleDriveAuth.connectForIpc());
+ipcMain.handle(DRIVE_AUTH_CHANNEL.cancel, async () => googleDriveAuth.cancelConnect());
+ipcMain.handle(DRIVE_AUTH_CHANNEL.disconnect, async () => googleDriveAuth.disconnect());
+// 종료 시 브라우저 승인 대기(루프백 서버·타이머)를 정리한다.
+app.on('will-quit', () => googleDriveAuth.cancelConnect());
 
 ipcMain.handle('show-file', async (event, arg) => {
   // 절대경로(목표 폴더 export 결과)면 그대로, 아니면 APP_DIR 기준 상대경로로 해석.

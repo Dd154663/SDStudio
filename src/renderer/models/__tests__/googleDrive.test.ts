@@ -1,0 +1,120 @@
+// Google 드라이브 연동 ① — 설정 화면 표시용 순수 함수 검증.
+import {
+  describeStatus,
+  formatBytes,
+  formatQuota,
+  GOOGLE_DRIVE_TEXT,
+} from '../googleDrive';
+import { DRIVE_AUTH_ERROR_TEXT } from '../../../shared/googleDriveAuth';
+
+const GiB = 1024 ** 3;
+
+describe('formatBytes / formatQuota', () => {
+  test('단위 경계', () => {
+    expect(formatBytes(0)).toBe('0 B');
+    expect(formatBytes(1023)).toBe('1023 B');
+    expect(formatBytes(1024)).toBe('1 KB');
+    expect(formatBytes(1536)).toBe('1.5 KB');
+    expect(formatBytes(1024 ** 2)).toBe('1 MB');
+    expect(formatBytes(150 * 1024 ** 2)).toBe('150 MB');
+    expect(formatBytes(15 * GiB)).toBe('15 GB');
+    expect(formatBytes(2 * 1024 ** 4)).toBe('2 TB');
+    expect(formatBytes(-1)).toBe('');
+    expect(formatBytes(NaN)).toBe('');
+  });
+
+  test('사용량 / 한도 사용', () => {
+    expect(formatQuota(3.2 * GiB, 15 * GiB)).toBe('3.2 GB / 15 GB 사용');
+  });
+
+  test('한도 없음(무제한)은 사용량만', () => {
+    expect(formatQuota(3.2 * GiB)).toBe('3.2 GB 사용');
+  });
+
+  test('사용량 없음은 빈 문자열', () => {
+    expect(formatQuota(undefined, 15 * GiB)).toBe('');
+    expect(formatQuota()).toBe('');
+  });
+});
+
+describe('describeStatus', () => {
+  test('첫 조회 전 = 확인 중(버튼 없음)', () => {
+    const v = describeStatus(null);
+    expect(v.tone).toBe('loading');
+    expect(v.label).toBe(GOOGLE_DRIVE_TEXT.status.loading);
+    expect(v.canConnect || v.canDisconnect || v.canCancel).toBe(false);
+  });
+
+  test('연결 안 됨 = 회색·연결 버튼', () => {
+    const v = describeStatus({ connected: false, persistent: true });
+    expect(v).toMatchObject({
+      tone: 'disconnected',
+      label: '연결 안 됨',
+      tagClass: 'back-gray',
+      canConnect: true,
+      canDisconnect: false,
+    });
+    expect(v.persistenceNote).toBeUndefined();
+  });
+
+  test('연결 안 됨 + 암호화 저장 불가 = 사전 경고', () => {
+    const v = describeStatus({ connected: false, persistent: false });
+    expect(v.persistenceNote).toBe(GOOGLE_DRIVE_TEXT.notPersistentBefore);
+  });
+
+  test('연결 중(이 창 또는 다른 창) = 취소만', () => {
+    for (const v of [
+      describeStatus({ connected: false, persistent: true }, true),
+      describeStatus({ connected: false, persistent: true, connecting: true }),
+      describeStatus(null, true),
+    ]) {
+      expect(v).toMatchObject({
+        tone: 'connecting',
+        label: '연결 중…',
+        canConnect: false,
+        canDisconnect: false,
+        canCancel: true,
+      });
+    }
+  });
+
+  test('연결됨 = 초록·이메일·용량 한 줄·해제 버튼', () => {
+    const v = describeStatus({
+      connected: true,
+      persistent: true,
+      email: 'user@example.com',
+      quota: { usage: 3.2 * GiB, limit: 15 * GiB },
+    });
+    expect(v).toMatchObject({
+      tone: 'connected',
+      label: '연결됨',
+      tagClass: 'back-green',
+      detail: 'user@example.com · 3.2 GB / 15 GB 사용',
+      canConnect: false,
+      canDisconnect: true,
+      canCancel: false,
+    });
+  });
+
+  test('연결됨 + 저장 불가 + 조회 실패 = 경고·오류 문구, 이메일 없으면 대체 문구', () => {
+    const v = describeStatus({ connected: true, persistent: false, error: '조회 실패' });
+    expect(v.detail).toBe(GOOGLE_DRIVE_TEXT.emailUnknown);
+    expect(v.persistenceNote).toBe(GOOGLE_DRIVE_TEXT.notPersistentConnected);
+    expect(v.error).toBe('조회 실패');
+  });
+});
+
+describe('문구', () => {
+  test('연결 실패 문구는 코드별 공용 문구를 쓴다', () => {
+    expect(GOOGLE_DRIVE_TEXT.connectFailed('timeout')).toContain(DRIVE_AUTH_ERROR_TEXT.timeout);
+    expect(GOOGLE_DRIVE_TEXT.connectFailed('???')).toContain(DRIVE_AUTH_ERROR_TEXT.unknown);
+    expect(GOOGLE_DRIVE_TEXT.connectFailed('exchange-failed', 'invalid_client')).toContain(
+      '(invalid_client)',
+    );
+  });
+  test('해제 확인 문구', () => {
+    expect(GOOGLE_DRIVE_TEXT.disconnectConfirm).toBe(
+      '연결을 해제하면 저장된 인증 정보가 삭제됩니다. 드라이브의 파일은 그대로 남습니다.',
+    );
+  });
+});

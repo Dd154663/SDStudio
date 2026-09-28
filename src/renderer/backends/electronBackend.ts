@@ -13,6 +13,13 @@ import { NovelAiFetcher, NovelAiImageGenService } from './genVendors/nai';
 import { createNaiApiError } from './genVendors/naiErrors';
 import { ImageContextAlt, SceneContextAlt } from '../models/types';
 import { embedSDStudioMetadataInPngBase64 } from '../../shared/sdstudioImageMetadata';
+import {
+  DRIVE_AUTH_CHANNEL,
+  DriveAuthConnectResult,
+  DriveAuthError,
+  DriveAuthStatus,
+  isDriveAuthErrorCode,
+} from '../../shared/googleDriveAuth';
 
 const invoke = window.electron?.ipcRenderer?.invoke;
 
@@ -196,6 +203,34 @@ export class ElectornBackend extends Backend {
 
   async saveExportToDownloads(arg: string): Promise<string> {
     return await invoke('save-export-to-downloads', arg);
+  }
+
+  // ─── Google 드라이브 연동 인증 (드라이브 API ①) — main IPC 위임 ───
+  driveAuthSupported(): boolean {
+    return true;
+  }
+
+  async driveAuthStatus(): Promise<DriveAuthStatus> {
+    return await invoke(DRIVE_AUTH_CHANNEL.status);
+  }
+
+  async driveAuthConnect(): Promise<DriveAuthStatus> {
+    const res: DriveAuthConnectResult = await invoke(DRIVE_AUTH_CHANNEL.connect);
+    if (res && res.ok) return res.status;
+    const code = res && isDriveAuthErrorCode(res.code) ? res.code : 'unknown';
+    throw new DriveAuthError(code, res && !res.ok ? res.detail : undefined);
+  }
+
+  async driveAuthCancel(): Promise<void> {
+    await invoke(DRIVE_AUTH_CHANNEL.cancel);
+  }
+
+  async driveAuthDisconnect(): Promise<void> {
+    await invoke(DRIVE_AUTH_CHANNEL.disconnect);
+  }
+
+  onDriveAuthChanged(callback: (status: DriveAuthStatus) => void): () => void {
+    return window.electron.ipcRenderer.on(DRIVE_AUTH_CHANNEL.changed, callback);
   }
 
   async openPath(arg: string): Promise<void> {

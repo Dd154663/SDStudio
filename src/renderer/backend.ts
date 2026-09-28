@@ -1,4 +1,5 @@
 import { Config } from '../main/config';
+import type { DriveAuthStatus } from '../shared/googleDriveAuth';
 import {
   EncodeVibeImageInput,
   ImageAugmentInput,
@@ -77,6 +78,20 @@ export abstract class Backend {
   // 저장 실패는 throw — 호출부(프로젝트 덮어쓰기 임시 백업, 드라이브 동기화 ⑤)는
   // 이 결과를 받은 뒤에만 기존 프로젝트를 건드린다.
   abstract saveExportToDownloads(arg: string): Promise<string>;
+  // ─── Google 드라이브 연동 인증 (드라이브 API ①) ───
+  // PC = main IPC(루프백 PKCE·safeStorage 저장). Android 는 ④ 전까지 미지원:
+  // driveAuthSupported() false(설정 화면 구역 자체를 숨김), 나머지 호출은 명확한 오류.
+  abstract driveAuthSupported(): boolean;
+  // 현재 연결 상태(연결돼 있으면 이메일·용량을 새로 조회). 토큰 값은 포함하지 않는다.
+  abstract driveAuthStatus(): Promise<DriveAuthStatus>;
+  // 시스템 브라우저로 승인 → 완료 시 상태. 실패·취소는 DriveAuthError(code) throw.
+  abstract driveAuthConnect(): Promise<DriveAuthStatus>;
+  // 진행 중인 브라우저 승인 대기를 취소한다(없으면 무시).
+  abstract driveAuthCancel(): Promise<void>;
+  // 저장된 인증 정보 삭제 + Google 권한 철회(철회 실패해도 로컬 해제는 완료).
+  abstract driveAuthDisconnect(): Promise<void>;
+  // 다른 창 포함 상태 변경 수신. 반환 = 구독 해제.
+  abstract onDriveAuthChanged(callback: (status: DriveAuthStatus) => void): () => void;
   // 폴더를 OS 파일 탐색기로 연다(내용물 표시). 데스크톱 전용 — 모바일은 no-op.
   abstract openPath(arg: string): Promise<void>;
   abstract copyToDownloads(path: string): Promise<void>;

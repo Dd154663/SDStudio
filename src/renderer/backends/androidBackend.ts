@@ -31,6 +31,8 @@ import JSZip from 'jszip';
 import { BackgroundMode } from '@anuradev/capacitor-background-mode';
 import { App as CapacitorApp } from '@capacitor/app';
 import { embedSDStudioMetadataInPngBase64 } from '../../shared/sdstudioImageMetadata';
+import type { DriveAuthStatus } from '../../shared/googleDriveAuth';
+import { GOOGLE_DRIVE_TEXT } from '../models/googleDrive';
 import { TagDB } from './tagDB';
 import { isV5ModelVersion } from './genVendors/naiModelCapabilities';
 // @ts-ignore
@@ -591,6 +593,33 @@ export class AndroidBackend extends Backend {
   // 띄우지 않는다. 성공 기준 = Download/ 복사 성공(공유 결과에 의존하지 않음).
   // 복사 성공 뒤에만 exports/ 스테이징을 지우고, 정리 실패는 저장 성공을 뒤집지 않는다.
   // 폴더 산출물은 이 경로의 용도(프로젝트 백업 tar 1개)가 아니므로 명시 거부한다.
+  // ─── Google 드라이브 연동 인증 — Android 는 ④(Kotlin 플러그인) 전까지 미지원 ───
+  // 설정 화면은 driveAuthSupported() false 로 구역 자체를 숨긴다. 그 밖의 호출은
+  // 조용히 넘어가지 않도록 명확한 오류로 거부한다(구독만 no-op).
+  driveAuthSupported(): boolean {
+    return false;
+  }
+
+  async driveAuthStatus(): Promise<DriveAuthStatus> {
+    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
+  }
+
+  async driveAuthConnect(): Promise<DriveAuthStatus> {
+    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
+  }
+
+  async driveAuthCancel(): Promise<void> {
+    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
+  }
+
+  async driveAuthDisconnect(): Promise<void> {
+    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
+  }
+
+  onDriveAuthChanged(_callback: (status: DriveAuthStatus) => void): () => void {
+    return () => {};
+  }
+
   async saveExportToDownloads(arg: string): Promise<string> {
     const normalized = arg.replace(/\\/g, '/').replace(/^\/+/, '');
     if (!normalized.startsWith('exports/') || normalized.includes('../')) {
