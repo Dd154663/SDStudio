@@ -18,6 +18,7 @@ import { DriveAuthError } from '../../shared/googleDriveAuth';
 import {
   DriveFileMeta,
   DriveUploadError,
+  DriveUploadErrorCode,
   DriveUploadProgress,
   DriveUploadRequest,
   DriveUploadResult,
@@ -34,11 +35,14 @@ import {
   fileGetUrl,
   filesListUrl,
   firstFileId,
+  firstFolderInfo,
   folderCreateUrl,
   isUsableFolder,
   MAX_BACKOFF_RETRIES,
   nextOffsetFromRange,
+  parseFolderInfo,
   parseUploadedFile,
+  ROOT_FOLDER_FIELDS,
   planChunk,
   resolveExportsSource,
   resumableInitUrl,
@@ -53,17 +57,18 @@ import {
 // 작은 JSON 요청(폴더 조회·세션 시작)의 네트워크 끊김 재시도 횟수(오프라인에서 오래 기다리지 않게).
 const JSON_NETWORK_RETRIES = 2;
 
-function toUploadError(e: unknown): DriveUploadError {
+// ③(download.ts·manage.ts)도 아래 공용 헬퍼(오류 변환·취소·대기·인증 요청)를 그대로 쓴다.
+export function toUploadError(e: unknown): DriveUploadError {
   if (e instanceof DriveUploadError) return e;
   if (e instanceof DriveAuthError) return new DriveUploadError(e.code, e.detail);
   return new DriveUploadError('unknown');
 }
 
-function throwIfAborted(signal?: AbortSignal) {
+export function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) throw new DriveUploadError('cancelled');
 }
 
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(new DriveUploadError('cancelled'));
@@ -81,7 +86,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-async function accessTokenOrThrow(): Promise<string> {
+export async function accessTokenOrThrow(): Promise<string> {
   try {
     return await getAccessToken();
   } catch (e) {
@@ -89,14 +94,14 @@ async function accessTokenOrThrow(): Promise<string> {
   }
 }
 
-interface DriveRequestInit {
+export interface DriveRequestInit {
   method: string;
   headers?: Record<string, string>;
   body?: string | Uint8Array;
 }
 
 // 인증·재시도를 붙인 요청. 2xx·308·passStatuses 는 응답을 그대로 돌려주고, 나머지는 DriveUploadError.
-async function driveRequest(
+export async function driveRequest(
   url: string,
   init: DriveRequestInit,
   opts: {
@@ -104,6 +109,8 @@ async function driveRequest(
     timeoutMs?: number;
     networkRetries?: number;
     passStatuses?: number[];
+    // 재시도하지 않는 실패의 코드(기본 upload-failed — ③ 목록·휴지통은 request-failed).
+    failCode?: DriveUploadErrorCode;
   } = {},
 ): Promise<HttpRawResult> {
   const networkRetries = opts.networkRetries ?? JSON_NETWORK_RETRIES;
@@ -133,7 +140,7 @@ async function driveRequest(
       throw err;
     }
     if (opts.passStatuses?.includes(r.status)) return r;
-    const c = classifyDriveResponse(r.status, r.body);
+    const c = classifyDriveResponse(r.status, r.body, opts.failCode);
     if (c.kind === 'ok' || c.kind === 'incomplete') return r;
     if (c.kind === 'auth') {
       if (!authRetried) {
@@ -151,7 +158,7 @@ async function driveRequest(
   }
 }
 
-function jsonInit(method: string, body?: unknown): DriveRequestInit {
+export function jsonInit(method: string, body?: unknown): DriveRequestInit {
   return body === undefined
     ? { method }
     : {
@@ -163,53 +170,93 @@ function jsonInit(method: string, body?: unknown): DriveRequestInit {
 
 // ─── SDStudio 폴더 ───
 
-let cachedRootFolderId: string | null = null;
-let rootFolderPromise: Promise<string> | null = null;
-
-async function findFolder(q: string, signal?: AbortSignal): Promise<string | undefined> {
-  const r = await driveRequest(filesListUrl(q), jsonInit('GET'), { signal });
-  return firstFileId(r.body);
+// 폴더 id 와 드라이브 웹 주소(백업 관리 창 [드라이브에서 열기] — ③).
+export interface RootFolderInfo {
+  id: string;
+  webViewLink?: string;
 }
 
-async function resolveRootFolder(signal?: AbortSignal): Promise<string> {
-  if (cachedRootFolderId) {
-    const r = await driveRequest(fileGetUrl(cachedRootFolderId, 'id,trashed'), jsonInit('GET'), {
-      signal,
-      passStatuses: [404],
-    });
-    if (r.status !== 404 && isUsableFolder(r.body)) return cachedRootFolderId;
-    cachedRootFolderId = null;
+let cachedRootFolder: RootFolderInfo | null = null;
+let rootFolderPromise: Promise<RootFolderInfo> | null = null;
+
+async function findFolder(q: string, signal?: AbortSignal): Promise<RootFolderInfo | null> {
+  const r = await driveRequest(filesListUrl(q), jsonInit('GET'), { signal });
+  const info = firstFolderInfo(r.body);
+  if (info) return info;
+  const id = firstFileId(r.body);
+  return id ? { id } : null;
+}
+
+async function resolveRootFolder(
+  signal: AbortSignal | undefined,
+  create: boolean,
+): Promise<RootFolderInfo | null> {
+  if (cachedRootFolder) {
+    const r = await driveRequest(
+      fileGetUrl(cachedRootFolder.id, ROOT_FOLDER_FIELDS),
+      jsonInit('GET'),
+      { signal, passStatuses: [404] },
+    );
+    if (r.status !== 404 && isUsableFolder(r.body)) {
+      const link = parseFolderInfo(r.body)?.webViewLink;
+      if (link) cachedRootFolder = { ...cachedRootFolder, webViewLink: link };
+      return cachedRootFolder;
+    }
+    cachedRootFolder = null;
   }
-  let id = await findFolder(rootFolderQuery(), signal);
-  if (!id) id = await findFolder(rootFolderNameQuery(), signal);
-  if (!id) {
+  let info = await findFolder(rootFolderQuery(), signal);
+  if (!info) info = await findFolder(rootFolderNameQuery(), signal);
+  if (!info) {
+    // 목록·휴지통(③)은 폴더를 만들지 않는다 — 없으면 null.
+    if (!create) return null;
     const r = await driveRequest(folderCreateUrl(), jsonInit('POST', buildFolderCreateBody()), {
       signal,
     });
-    id = firstFileId({ files: [r.body] });
-    if (!id) throw new DriveUploadError('server', 'folder id');
+    info = parseFolderInfo(r.body);
+    if (!info) throw new DriveUploadError('server', 'folder id');
     log.info('[googleDrive] SDStudio 폴더를 만들었습니다');
   }
-  cachedRootFolderId = id;
-  return id;
+  cachedRootFolder = info;
+  return info;
 }
 
 // 캐시 비우기(jest 전용 — 실행 중에는 매번 files.get 으로 확인하므로 따로 부를 필요 없음).
 export function resetRootFolderCache(): void {
-  cachedRootFolderId = null;
+  cachedRootFolder = null;
   rootFolderPromise = null;
 }
 
 // 동시에 여러 창이 올려도 폴더를 한 번만 찾거나 만든다.
-export async function ensureRootFolder(signal?: AbortSignal): Promise<string> {
+export async function ensureRootFolderInfo(signal?: AbortSignal): Promise<RootFolderInfo> {
   if (!rootFolderPromise) {
-    rootFolderPromise = resolveRootFolder(signal).finally(() => {
-      rootFolderPromise = null;
-    });
+    rootFolderPromise = resolveRootFolder(signal, true)
+      .then((info) => {
+        if (!info) throw new DriveUploadError('server', 'folder id');
+        return info;
+      })
+      .finally(() => {
+        rootFolderPromise = null;
+      });
   }
-  const id = await rootFolderPromise;
+  const info = await rootFolderPromise;
   throwIfAborted(signal);
-  return id;
+  return info;
+}
+
+export async function ensureRootFolder(signal?: AbortSignal): Promise<string> {
+  return (await ensureRootFolderInfo(signal)).id;
+}
+
+// 있으면 폴더 정보, 없으면 null(만들지 않는다 — 목록·휴지통용). 만드는 중이면 그 결과를 기다린다.
+export async function findRootFolderInfo(signal?: AbortSignal): Promise<RootFolderInfo | null> {
+  if (rootFolderPromise) {
+    try {
+      return await rootFolderPromise;
+    } catch {
+      /* 아래에서 다시 찾는다 */
+    }
+  }
+  return await resolveRootFolder(signal, false);
 }
 
 // ─── resumable 올리기 ───

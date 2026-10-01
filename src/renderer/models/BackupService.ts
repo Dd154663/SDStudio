@@ -62,11 +62,14 @@ import { appState } from './AppService';
 import type { ExportPreset } from './AppService';
 import { stringifyExportJson } from './jsonExport';
 import {
+  chooseImportSource,
   deliverExport,
+  DriveExportKind,
   getSyncFolder,
   saveExportSilently,
   syncFileName,
 } from './driveSync';
+import { importFromDrive } from './driveImport';
 import {
   askImportPolicy,
   askImportPolicyWithConfirm,
@@ -124,6 +127,12 @@ const SUPPORTED_MANIFEST_VERSION = 1;
 // 압축 해제된 라이브러리 백업 JSON 에서 항목 이름 목록(충돌 개수 계산용). 읽기 실패는 throw.
 async function readBackupNames(path: string, key: string): Promise<string[]> {
   return readNamesFromStore(JSON.parse(await backend.readFile(path)), key);
+}
+
+// 라이브러리 복원 공개 메서드의 선택 인자(드라이브 API ③).
+// pickedPath = 이미 받은 백업 파일(절대 경로) — 출처 선택·파일 선택기를 건너뛴다.
+export interface LibraryImportOptions {
+  pickedPath?: string;
 }
 
 export class BackupService {
@@ -252,6 +261,14 @@ export class BackupService {
           // (덮어쓰기면 확인 2회 → 임시 백업·휴지통 이관 절차) → 완료 안내.
           // 드래그로 들어온 tar(handleTarImport)와 같은 흐름을 쓴다.
           // PC 는 드라이브 동기화 폴더가 있으면 그 폴더에서, tar 만 보이게 연다(모바일 무시).
+          // Google 드라이브에 연결돼 있으면(PC) 먼저 출처를 묻는다(드라이브 API ③) — 드라이브면
+          // 백업 관리 창에서 골라 받은 tar 가 같은 handleTarImport 로 들어간다.
+          const source = await chooseImportSource('project');
+          if (source === 'cancelled') return;
+          if (source === 'drive') {
+            await importFromDrive('project');
+            return;
+          }
           const syncFolder = await getSyncFolder();
           const tarPath = await backend.selectFile({
             ...(syncFolder ? { defaultPath: syncFolder } : {}),
@@ -643,16 +660,21 @@ export class BackupService {
       root: string,
       policy: ImportPolicy,
     ) => Promise<{ added: number; skipped: number; overwritten: number }>;
+    // 이미 고른 파일(드라이브에서 받은 tar 등, 절대 경로). 있으면 파일 선택기를 건너뛴다(드라이브 API ③).
+    pickedPath?: string;
   }) {
-    // PC 는 드라이브 동기화 폴더가 설정돼 있으면 그 폴더에서 선택기를 연다(모바일 무시).
-    const syncFolder = await getSyncFolder();
-    const selectOptions = {
-      ...(syncFolder ? { defaultPath: syncFolder } : {}),
-      ...(opts.filters ? { filters: opts.filters } : {}),
-    };
-    const tarPath = await backend.selectFile(
-      Object.keys(selectOptions).length ? selectOptions : undefined,
-    );
+    let tarPath = opts.pickedPath;
+    if (!tarPath) {
+      // PC 는 드라이브 동기화 폴더가 설정돼 있으면 그 폴더에서 선택기를 연다(모바일 무시).
+      const syncFolder = await getSyncFolder();
+      const selectOptions = {
+        ...(syncFolder ? { defaultPath: syncFolder } : {}),
+        ...(opts.filters ? { filters: opts.filters } : {}),
+      };
+      tarPath = await backend.selectFile(
+        Object.keys(selectOptions).length ? selectOptions : undefined,
+      );
+    }
     if (!tarPath) return;
     appState.setProgressDialog({ text: '백업을 확인하는 중..', done: 0, total: 1 });
     const root = 'tmp/' + v4();
@@ -727,8 +749,23 @@ export class BackupService {
     });
   }
 
-  async globalPresetBackupImport() {
+  // 불러오기 출처 선택(드라이브 API ③). pickedPath 가 없고 PC 가 Google 드라이브에 연결돼 있으면
+  // [Google 드라이브 / 파일]을 묻는다. 드라이브면 백업 관리 창(고르기)으로 넘기고 false,
+  // 파일(또는 미연결·Android)이면 true — 호출부는 기존 파일 흐름을 그대로 계속한다.
+  private async continueWithFileSource(
+    kind: DriveExportKind,
+    opts: LibraryImportOptions,
+  ): Promise<boolean> {
+    if (opts.pickedPath) return true;
+    const source = await chooseImportSource(kind);
+    if (source === 'drive') await importFromDrive(kind);
+    return source === 'file';
+  }
+
+  async globalPresetBackupImport(opts: LibraryImportOptions = {}) {
+    if (!(await this.continueWithFileSource('global-presets', opts))) return;
     await this.libraryBackupImport({
+      pickedPath: opts.pickedPath,
       label: '글로벌 프리셋',
       manifestType: 'sdstudio-global-presets',
       incomingNames: (root) =>
@@ -750,8 +787,10 @@ export class BackupService {
     });
   }
 
-  async artistLibraryBackupImport() {
+  async artistLibraryBackupImport(opts: LibraryImportOptions = {}) {
+    if (!(await this.continueWithFileSource('artist-library', opts))) return;
     await this.libraryBackupImport({
+      pickedPath: opts.pickedPath,
       label: '작가 라이브러리',
       itemLabel: '작가',
       manifestType: 'sdstudio-artist-library',
@@ -809,9 +848,11 @@ export class BackupService {
 
   // 덮어쓰기 = 같은 이름 전역 템플릿의 id 를 유지한 채 내용만 갱신(폴더 기본 템플릿
   // 지정·적용 기록 참조 보존 — ProjectTemplateService.restoreFromBackupDir).
-  async projectTemplateBackupImport() {
+  async projectTemplateBackupImport(opts: LibraryImportOptions = {}) {
+    if (!(await this.continueWithFileSource('project-templates', opts))) return;
     await projectTemplateService.ensureLoaded();
     await this.libraryBackupImport({
+      pickedPath: opts.pickedPath,
       label: PROJECT_TEMPLATE_BACKUP.label,
       manifestType: PROJECT_TEMPLATE_BACKUP.manifestType,
       protection: IMPORT_FLOW_TEXT.protection.keepId,

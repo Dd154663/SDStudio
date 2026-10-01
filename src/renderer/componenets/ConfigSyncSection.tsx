@@ -3,41 +3,37 @@
 // 환경설정 「시스템」 탭(PC·모바일 공통)에 들어간다. 형식·필터·문구는 models/configSync.ts,
 // 목적지 선택은 driveSync(saveJsonFile 'config'/'token'), 확인·완료 문구는 importFlow 를 쓴다.
 //
-// 불러오기 순서(§0 일관화): 파일 고르기 → 형식 검사 → (화면에 저장 안 된 변경이 있으면)
-// 확인 → 미리보기(필드군별 바뀌는 항목·켬/끔) → 덮어쓰기 확인 1회 → 적용 → 완료 안내.
-// 적용은 backend.getConfig() 위에 applyConfigGroups → backend.setConfig →
-// sessionService.configChanged()(App 미러·다른 컴포넌트 재조회) → onConfigImported()
-// (설정 화면 로컬 상태 다시 읽기 — 열린 화면에서 「저장」해도 되돌아가지 않게).
+// 불러오기 순서(§0 일관화): (PC·Google 드라이브 연결 시 출처 선택) → 파일 고르기 → 형식 검사 →
+// (화면에 저장 안 된 변경이 있으면) 확인 → 미리보기(필드군별 바뀌는 항목·켬/끔) → 덮어쓰기 확인 1회
+// → 적용 → 완료 안내. 텍스트 이후 단계는 models/configSyncFlow.ts(드라이브 백업 관리 창과 공용,
+// 드라이브 API ③에서 컴포넌트 밖으로 이동 — 동작 불변). 미리보기 창은 아래
+// ConfigImportPreviewHost(App 에 1개)가 띄운다.
 //
 // 토큰: 기본 꺼짐. 켤 때 경고 확인, 설정 파일과 별도 파일. 받기는 LoginService 관문으로
-// 추가만. 토큰 값은 화면·로그·토스트에 쓰지 않는다.
+// 추가만(파일에서만 — 드라이브 출처 없음). 토큰 값은 화면·로그·토스트에 쓰지 않는다.
 
 import React, { useRef, useState } from 'react';
-import { backend, isMobile, loginService, sessionService } from '../models';
+import { observer } from 'mobx-react-lite';
+import { backend, isMobile, loginService } from '../models';
 import { appState } from '../models/AppService';
 import { saveJsonFile } from '../models/exportUtil';
-import { getSyncFolder, syncFileName } from '../models/driveSync';
+import { chooseImportSource, getSyncFolder, syncFileName } from '../models/driveSync';
+import { importFromDrive } from '../models/driveImport';
 import { stringifyExportJson } from '../models/jsonExport';
 import {
-  confirmOverwrite,
-  IMPORT_FLOW_TEXT,
-  notifyImportDone,
-} from '../models/importFlow';
-import {
-  applyConfigGroups,
   buildConfigExport,
   buildTokenExport,
   configFieldLabel,
   CONFIG_SYNC_TEXT,
-  ConfigGroupDiff,
-  ConfigGroupKey,
   countConfigChanges,
   decodeBase64Utf8,
-  diffConfigGroups,
-  ParsedConfigImport,
-  parseConfigImport,
-  parseTokenImport,
 } from '../models/configSync';
+import {
+  ConfigGroupSelection,
+  currentConfigPreviewRequest,
+  importConfigText,
+  importTokenText,
+} from '../models/configSyncFlow';
 import ModalOverlay from './ModalOverlay';
 
 interface Props {
@@ -45,12 +41,6 @@ interface Props {
   dirty: boolean;
   // 불러오기 적용 뒤 설정 화면 로컬 상태를 설정 파일에서 다시 읽는다.
   onConfigImported: () => Promise<void> | void;
-}
-
-interface PreviewState {
-  parsed: ParsedConfigImport;
-  diff: ConfigGroupDiff[];
-  enabled: Partial<Record<ConfigGroupKey, boolean>>;
 }
 
 function askConfirm(text: string, confirmText: string): Promise<boolean> {
@@ -87,7 +77,6 @@ const btn = 'round-button h-8 text-sm';
 const ConfigSyncSection = ({ dirty, onConfigImported }: Props) => {
   const [includeToken, setIncludeToken] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [preview, setPreview] = useState<PreviewState | null>(null);
   // Android 는 selectFile 이 tar 전용이라 JSON 은 기존 선례대로 <input type=file> 를 쓴다.
   const configInputRef = useRef<HTMLInputElement>(null);
   const tokenInputRef = useRef<HTMLInputElement>(null);
@@ -161,45 +150,27 @@ const ConfigSyncSection = ({ dirty, onConfigImported }: Props) => {
     }
   };
 
-  // ── 설정 불러오기 ──
-  const handleConfigText = async (text: string) => {
-    const parsed = parseConfigImport(text);
-    if (!parsed.ok) {
-      appState.pushDialog({
-        type: 'yes-only',
-        text:
-          parsed.error === 'newer-version'
-            ? CONFIG_SYNC_TEXT.newerVersion
-            : CONFIG_SYNC_TEXT.notConfigFile,
-      });
-      return;
-    }
-    const current = await backend.getConfig();
-    const diff = diffConfigGroups(current, parsed.value.groups);
-    if (countConfigChanges(diff) === 0) {
-      appState.pushDialog({ type: 'yes-only', text: CONFIG_SYNC_TEXT.noChanges });
-      return;
-    }
-    if (dirty) {
-      const ok = await askConfirm(
-        CONFIG_SYNC_TEXT.unsavedConfirm,
-        CONFIG_SYNC_TEXT.unsavedConfirmButton,
-      );
-      if (!ok) return;
-    }
-    const enabled: PreviewState['enabled'] = {};
-    for (const d of diff) enabled[d.group] = d.changed.length > 0;
-    setPreview({ parsed: parsed.value, diff, enabled });
-  };
+  // ── 설정 불러오기 ── (흐름은 models/configSyncFlow.ts — 드라이브 백업 관리 창과 공용)
+  const importCtx = { dirty, onConfigImported };
+  const handleConfigText = (text: string) => importConfigText(text, importCtx);
 
   const startConfigImport = async () => {
     if (busy) return;
+    // Android 는 출처를 묻지 않는다(드라이브 연동 ④ 전) — 사용자 제스처 안에서 바로 선택기.
     if (isMobile) {
       configInputRef.current?.click();
       return;
     }
     setBusy(true);
     try {
+      // 불러오기 출처(드라이브 API ③): PC 에서 Google 드라이브에 연결돼 있으면
+      // [Google 드라이브 / 파일]을 묻는다. 미연결이면 묻지 않고 파일.
+      const source = await chooseImportSource('config');
+      if (source === 'cancelled') return;
+      if (source === 'drive') {
+        await importFromDrive('config', { config: importCtx });
+        return;
+      }
       const text = await pickJsonTextPc();
       if (text === undefined) return;
       await handleConfigText(text);
@@ -210,60 +181,8 @@ const ConfigSyncSection = ({ dirty, onConfigImported }: Props) => {
     }
   };
 
-  const applyPreview = async () => {
-    if (!preview) return;
-    const count = countConfigChanges(preview.diff, preview.enabled);
-    if (count === 0) return;
-    const ok = await confirmOverwrite({
-      label: CONFIG_SYNC_TEXT.itemLabel,
-      count,
-      protection: IMPORT_FLOW_TEXT.protection.replaceValue,
-    });
-    if (!ok) return;
-    const { parsed, enabled } = preview;
-    setPreview(null);
-    setBusy(true);
-    try {
-      // 미리보기 이후 설정이 바뀌었을 수 있으므로 저장된 최신 값 위에 다시 계산한다.
-      const current = await backend.getConfig();
-      const freshDiff = diffConfigGroups(current, parsed.groups);
-      const updated = countConfigChanges(freshDiff, enabled);
-      const skipped = countConfigChanges(freshDiff) - updated;
-      await backend.setConfig(applyConfigGroups(current, parsed.groups, enabled));
-      sessionService.configChanged();
-      await onConfigImported();
-      notifyImportDone(CONFIG_SYNC_TEXT.doneLabel, { added: 0, updated, skipped });
-    } catch (e: any) {
-      appState.pushMessage(CONFIG_SYNC_TEXT.applyFailed(e?.message || String(e)));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // ── 토큰 불러오기 ──
-  const handleTokenText = async (text: string) => {
-    const parsed = parseTokenImport(text);
-    if (!parsed.ok) {
-      appState.pushDialog({
-        type: 'yes-only',
-        text:
-          parsed.error === 'newer-version'
-            ? CONFIG_SYNC_TEXT.newerVersion
-            : CONFIG_SYNC_TEXT.notTokenFile,
-      });
-      return;
-    }
-    try {
-      const res = await loginService.importTokenProfiles(parsed.profiles);
-      notifyImportDone(CONFIG_SYNC_TEXT.tokenDoneLabel, {
-        added: res.added,
-        updated: 0,
-        skipped: res.skipped + parsed.invalid,
-      });
-    } catch (e: any) {
-      appState.pushMessage(CONFIG_SYNC_TEXT.tokenImportFailed(e?.message || String(e)));
-    }
-  };
+  // ── 토큰 불러오기 ── (파일에서만 — 토큰 파일은 드라이브에 올리지도 받지도 않는다)
+  const handleTokenText = importTokenText;
 
   const startTokenImport = async () => {
     if (busy) return;
@@ -300,13 +219,6 @@ const ConfigSyncSection = ({ dirty, onConfigImported }: Props) => {
         setBusy(false);
       }
     };
-
-  const previewCount = preview
-    ? countConfigChanges(preview.diff, preview.enabled)
-    : 0;
-  const themePresetChanged = !!preview?.diff.some((d) =>
-    d.changed.includes('uiThemePresets'),
-  );
 
   return (
     <div className="space-y-2">
@@ -360,86 +272,114 @@ const ConfigSyncSection = ({ dirty, onConfigImported }: Props) => {
           />
         </>
       )}
-      {preview && (
-        <ModalOverlay
-          isOpen={true}
-          onClose={() => setPreview(null)}
-          title={CONFIG_SYNC_TEXT.previewTitle}
-          width="max-w-md"
-        >
-          <div className="space-y-3">
-            <p className="text-xs text-muted break-words">
-              {CONFIG_SYNC_TEXT.previewSource(
-                preview.parsed.platform,
-                preview.parsed.appVersion,
-                formatCreatedAt(preview.parsed.createdAt),
-              )}
-            </p>
-            <p className="text-xs text-faint">{CONFIG_SYNC_TEXT.previewHint}</p>
-            <div className="space-y-2">
-              {preview.diff.map((d) => {
-                const n = d.changed.length;
-                const id = 'cfgSyncGroup-' + d.group;
-                return (
-                  <div
-                    key={d.group}
-                    className={
-                      'flex items-start gap-2 px-3 py-2 rounded-lg border line-color bg-[var(--c-surface-2)]' +
-                      (n === 0 ? ' opacity-60' : '')
-                    }
-                  >
-                    <input
-                      type="checkbox"
-                      id={id}
-                      className="mt-1"
-                      checked={!!preview.enabled[d.group]}
-                      disabled={n === 0}
-                      onChange={(e) =>
-                        setPreview({
-                          ...preview,
-                          enabled: { ...preview.enabled, [d.group]: e.target.checked },
-                        })
-                      }
-                    />
-                    <label htmlFor={id} className="min-w-0 flex-1">
-                      <span className="text-sm gray-label">
-                        {CONFIG_SYNC_TEXT.groupLabel[d.group]}
-                      </span>
-                      <span className="text-xs text-muted">
-                        {' · '}
-                        {CONFIG_SYNC_TEXT.groupChanges(n)}
-                      </span>
-                      {n > 0 && (
-                        <span className="block text-xs text-faint break-words">
-                          {d.changed.map(configFieldLabel).join(', ')}
-                        </span>
-                      )}
-                    </label>
-                  </div>
-                );
-              })}
-            </div>
-            {themePresetChanged && (
-              <p className="text-xs text-faint">{CONFIG_SYNC_TEXT.previewThemePresetNote}</p>
-            )}
-            <div className="flex flex-wrap justify-end gap-2">
-              <button className={btn + ' back-gray'} onClick={() => setPreview(null)}>
-                {CONFIG_SYNC_TEXT.previewCancel}
-              </button>
-              <button
-                className={btn + ' back-sky'}
-                disabled={previewCount === 0}
-                onClick={applyPreview}
-              >
-                {CONFIG_SYNC_TEXT.previewApply}
-                {previewCount > 0 ? ` (${previewCount})` : ''}
-              </button>
-            </div>
-          </div>
-        </ModalOverlay>
-      )}
     </div>
   );
 };
 
 export default ConfigSyncSection;
+
+// ── 불러오기 미리보기(전역 호스트, App 에 1개) ──
+// 파일·드라이브 어느 쪽에서 불러와도 같은 창. Google 드라이브 백업 관리 창 위에 뜨도록
+// 호스트는 관리 창 호스트 뒤에 두고 같은 층(--z-modal-top)을 쓴다.
+const ConfigImportPreviewModal = ({
+  req,
+}: {
+  req: NonNullable<ReturnType<typeof currentConfigPreviewRequest>>;
+}) => {
+  const { preview } = req;
+  const [enabled, setEnabled] = useState<ConfigGroupSelection>(preview.enabled);
+  const [applying, setApplying] = useState(false);
+  const previewCount = countConfigChanges(preview.diff, enabled);
+  const themePresetChanged = preview.diff.some((d) => d.changed.includes('uiThemePresets'));
+  const cancel = () => req.resolve(null);
+  const apply = async () => {
+    if (applying || previewCount === 0) return;
+    setApplying(true);
+    try {
+      if (await req.confirm(enabled)) req.resolve(enabled);
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  return (
+    <ModalOverlay
+      isOpen={true}
+      onClose={cancel}
+      title={CONFIG_SYNC_TEXT.previewTitle}
+      width="max-w-md"
+      zIndex="var(--z-modal-top)"
+    >
+      <div className="space-y-3">
+        <p className="text-xs text-muted break-words">
+          {CONFIG_SYNC_TEXT.previewSource(
+            preview.parsed.platform,
+            preview.parsed.appVersion,
+            formatCreatedAt(preview.parsed.createdAt),
+          )}
+        </p>
+        <p className="text-xs text-faint">{CONFIG_SYNC_TEXT.previewHint}</p>
+        <div className="space-y-2">
+          {preview.diff.map((d) => {
+            const n = d.changed.length;
+            const id = 'cfgSyncGroup-' + d.group;
+            return (
+              <div
+                key={d.group}
+                className={
+                  'flex items-start gap-2 px-3 py-2 rounded-lg border line-color bg-[var(--c-surface-2)]' +
+                  (n === 0 ? ' opacity-60' : '')
+                }
+              >
+                <input
+                  type="checkbox"
+                  id={id}
+                  className="mt-1"
+                  checked={!!enabled[d.group]}
+                  disabled={n === 0}
+                  onChange={(e) => setEnabled({ ...enabled, [d.group]: e.target.checked })}
+                />
+                <label htmlFor={id} className="min-w-0 flex-1">
+                  <span className="text-sm gray-label">
+                    {CONFIG_SYNC_TEXT.groupLabel[d.group]}
+                  </span>
+                  <span className="text-xs text-muted">
+                    {' · '}
+                    {CONFIG_SYNC_TEXT.groupChanges(n)}
+                  </span>
+                  {n > 0 && (
+                    <span className="block text-xs text-faint break-words">
+                      {d.changed.map(configFieldLabel).join(', ')}
+                    </span>
+                  )}
+                </label>
+              </div>
+            );
+          })}
+        </div>
+        {themePresetChanged && (
+          <p className="text-xs text-faint">{CONFIG_SYNC_TEXT.previewThemePresetNote}</p>
+        )}
+        <div className="flex flex-wrap justify-end gap-2">
+          <button className={btn + ' back-gray'} onClick={cancel}>
+            {CONFIG_SYNC_TEXT.previewCancel}
+          </button>
+          <button
+            className={btn + ' back-sky'}
+            disabled={previewCount === 0 || applying}
+            onClick={apply}
+          >
+            {CONFIG_SYNC_TEXT.previewApply}
+            {previewCount > 0 ? ` (${previewCount})` : ''}
+          </button>
+        </div>
+      </div>
+    </ModalOverlay>
+  );
+};
+
+export const ConfigImportPreviewHost = observer(() => {
+  const req = currentConfigPreviewRequest();
+  if (!req) return null;
+  return <ConfigImportPreviewModal key={req.id} req={req} />;
+});

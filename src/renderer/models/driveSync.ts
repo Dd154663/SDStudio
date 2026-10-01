@@ -19,6 +19,10 @@
 // 'drive' 선택 시 main 이 드라이브 SDStudio 폴더에 올린다(backend.driveUpload). 실패는 다운로드
 // 폴더로 전환, 취소는 스테이징 삭제. NovelAI 토큰 파일('token')은 연결·동기화 폴더와 관계없이
 // 다운로드 폴더에만 저장한다(main 올리기도 한 번 더 거부 — 2중 방벽).
+//
+// Google 드라이브 연동 ③(2026-09-28, PC): 불러오기 시작의 출처 선택(chooseImportSource) —
+// 연결돼 있으면 [Google 드라이브 / 파일], 미연결·Android·토큰은 묻지 않고 파일. 드라이브에서 받은
+// 파일의 라우팅은 driveImport.ts.
 
 import { backend } from '.';
 import { appState } from './AppService';
@@ -27,6 +31,7 @@ import { transferExportArchive } from './exportArchiveTransfer';
 import { sanitizeFilenamePart } from './exportPresetUtils';
 import { formatBytes } from './googleDrive';
 import {
+  DriveBackupKind,
   DriveFileMeta,
   driveUploadErrorText,
   isDriveWebUrl,
@@ -43,6 +48,11 @@ export type DriveExportKind =
   | 'config'
   | 'token'
   | 'project-templates';
+
+// main 과 공유하는 목록(shared/googleDrive DRIVE_BACKUP_KINDS — 드라이브 목록의 kind 검증)과
+// 같은 값인지 컴파일 시점에 확인한다(한쪽만 늘리면 타입 오류).
+type SameKinds<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+export const DRIVE_KINDS_IN_SYNC: SameKinds<DriveExportKind, DriveBackupKind> = true;
 
 export type ExportDestination = 'drive' | 'downloads';
 
@@ -435,4 +445,50 @@ export async function saveExportSilently(exportsPath: string): Promise<string> {
     }
   }
   return await backend.saveExportToDownloads(exportsPath);
+}
+
+// ─── 불러오기 출처 선택 (드라이브 API ③, §0 일관화) ───
+// 내보내기 끝에서 목적지를 고르듯, 불러오기 시작에서 출처를 고른다. PC 에서 Google 드라이브에
+// 연결돼 있으면 [Google 드라이브 / 파일], 그 밖(미연결·Android)은 묻지 않고 파일.
+// NovelAI 토큰 파일은 드라이브에 올리지 않으므로 출처도 파일만(토큰 불러오기에는 적용하지 않음).
+
+export type ImportSource = 'drive' | 'file';
+
+// 이 기기에서 고를 수 있는 불러오기 출처(표시 순서 = 배열 순서).
+export function resolveImportSources(opts: {
+  kind: DriveExportKind;
+  supportsTargetFolder: boolean;
+  driveConnected: boolean;
+}): ImportSource[] {
+  if (opts.kind === 'token') return ['file'];
+  if (opts.supportsTargetFolder && opts.driveConnected) return ['drive', 'file'];
+  return ['file'];
+}
+
+export const DRIVE_IMPORT_SOURCE_TEXT = {
+  chooseSource: (kind: DriveExportKind) =>
+    `${DRIVE_EXPORT_KIND_LABEL[kind]}을(를) 어디에서 불러올까요?`,
+  source: {
+    drive: 'Google 드라이브',
+    file: '파일',
+  } as Record<ImportSource, string>,
+};
+
+// 출처 선택 창(내보내기 목적지 선택 창과 같은 select 부품). 선택지가 하나면 묻지 않는다.
+export async function chooseImportSource(
+  kind: DriveExportKind,
+): Promise<ImportSource | 'cancelled'> {
+  if (kind === 'token') return 'file';
+  const sources = resolveImportSources({
+    kind,
+    supportsTargetFolder: platform.supportsTargetFolder,
+    driveConnected: await isGoogleDriveConnected(),
+  });
+  if (sources.length === 1) return sources[0];
+  const choice = await appState.pushDialogAsync({
+    type: 'select',
+    text: DRIVE_IMPORT_SOURCE_TEXT.chooseSource(kind),
+    items: sources.map((s) => ({ text: DRIVE_IMPORT_SOURCE_TEXT.source[s], value: s })),
+  });
+  return choice === 'drive' || choice === 'file' ? choice : 'cancelled';
 }

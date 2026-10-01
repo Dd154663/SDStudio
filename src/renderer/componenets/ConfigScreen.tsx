@@ -1140,7 +1140,7 @@ const SystemTab = ({
       {/* Google 드라이브 연동(드라이브 API ①). 지원 플랫폼(PC)만 — Android 는 ④ 전까지 숨김. */}
       {backend.driveAuthSupported() && (
         <>
-          <DriveConnectSection />
+          <DriveConnectSection dirty={!!dirty} onConfigImported={reloadConfig} />
           <hr className="line-color" />
         </>
       )}

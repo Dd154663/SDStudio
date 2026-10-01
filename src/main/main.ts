@@ -65,6 +65,8 @@ import {
 import { isV5ModelVersion } from '../renderer/backends/genVendors/naiModelCapabilities';
 import * as googleDriveAuth from './googleDrive';
 import { uploadExportFileForIpc } from './googleDrive/upload';
+import { cleanupDriveDownload, downloadDriveFileForIpc } from './googleDrive/download';
+import { listBackupsForIpc, trashBackupFileForIpc } from './googleDrive/manage';
 import { DRIVE_AUTH_CHANNEL } from '../shared/googleDriveAuth';
 import { DRIVE_FILE_CHANNEL, isDriveWebUrl } from '../shared/googleDrive';
 
@@ -482,10 +484,50 @@ ipcMain.handle(DRIVE_FILE_CHANNEL.openFile, async (event, url) => {
   await shell.openExternal(url);
 });
 
-// 종료 시 브라우저 승인 대기(루프백 서버·타이머)와 진행 중인 올리기를 정리한다.
+// ─── Google 드라이브 목록·받기·휴지통 (드라이브 API ③) ───
+// 받기는 창마다 한 번에 하나(진행률은 요청 창에만, 창이 닫히면 중단). 기본 목적지는
+// APP_DIR/tmp/drive-download/<fileId>/ — 불러오기가 끝나면 renderer 가 drive-cleanup-download 로
+// 지운다. 삭제는 드라이브 휴지통 이동만(files.delete 는 어디에서도 호출하지 않는다).
+const driveDownloads = new Map<number, AbortController>();
+ipcMain.handle(DRIVE_FILE_CHANNEL.list, async () => listBackupsForIpc());
+ipcMain.handle(DRIVE_FILE_CHANNEL.download, async (event, request) => {
+  const sender = event.sender;
+  const senderId = sender.id;
+  if (driveDownloads.has(senderId)) return { ok: false, code: 'busy' };
+  const controller = new AbortController();
+  driveDownloads.set(senderId, controller);
+  const onDestroyed = () => controller.abort();
+  sender.once('destroyed', onDestroyed);
+  try {
+    return await downloadDriveFileForIpc({
+      appDir: APP_DIR,
+      downloadsDir: app.getPath('downloads'),
+      request,
+      signal: controller.signal,
+      onProgress: (p) => {
+        if (!sender.isDestroyed()) sender.send(DRIVE_FILE_CHANNEL.downloadProgress, p);
+      },
+    });
+  } finally {
+    if (driveDownloads.get(senderId) === controller) driveDownloads.delete(senderId);
+    if (!sender.isDestroyed()) sender.removeListener('destroyed', onDestroyed);
+  }
+});
+ipcMain.handle(DRIVE_FILE_CHANNEL.downloadCancel, async (event) => {
+  driveDownloads.get(event.sender.id)?.abort();
+});
+ipcMain.handle(DRIVE_FILE_CHANNEL.trash, async (event, request) =>
+  trashBackupFileForIpc(request?.fileId),
+);
+ipcMain.handle(DRIVE_FILE_CHANNEL.cleanupDownload, async (event, request) => {
+  await cleanupDriveDownload(APP_DIR, request?.fileId);
+});
+
+// 종료 시 브라우저 승인 대기(루프백 서버·타이머)와 진행 중인 올리기·받기를 정리한다.
 app.on('will-quit', () => {
   googleDriveAuth.cancelConnect();
   for (const c of driveUploads.values()) c.abort();
+  for (const c of driveDownloads.values()) c.abort();
 });
 
 ipcMain.handle('show-file', async (event, arg) => {

@@ -22,12 +22,24 @@ import {
 } from '../../shared/googleDriveAuth';
 import {
   DRIVE_FILE_CHANNEL,
+  DriveBackupItem,
+  DriveDownloadIpcResult,
+  DriveDownloadProgress,
   DriveFileMeta,
+  DriveListIpcResult,
+  DriveListResult,
+  DriveTrashIpcResult,
   DriveUploadError,
   DriveUploadProgress,
   DriveUploadResult,
   isDriveUploadErrorCode,
 } from '../../shared/googleDrive';
+
+// { ok:false, code, detail } IPC 결과 → DriveUploadError(모르는 코드는 unknown).
+function driveFileError(res: any): DriveUploadError {
+  const code = res && isDriveUploadErrorCode(res.code) ? res.code : 'unknown';
+  return new DriveUploadError(code, res && typeof res.detail === 'string' ? res.detail : undefined);
+}
 
 const invoke = window.electron?.ipcRenderer?.invoke;
 
@@ -278,6 +290,62 @@ export class ElectornBackend extends Backend {
 
   async driveOpenFile(webViewLink: string): Promise<void> {
     await invoke(DRIVE_FILE_CHANNEL.openFile, webViewLink);
+  }
+
+  // ─── Google 드라이브 목록·받기·휴지통 (드라이브 API ③) — main IPC 위임 ───
+  async driveList(): Promise<DriveListResult> {
+    const res: DriveListIpcResult = await invoke(DRIVE_FILE_CHANNEL.list);
+    if (res && res.ok) {
+      return {
+        items: Array.isArray(res.items) ? res.items : [],
+        ...(res.folderLink ? { folderLink: res.folderLink } : {}),
+      };
+    }
+    throw driveFileError(res);
+  }
+
+  // 진행률은 이 창으로만 오는 drive-download-progress 를 받기 동안만 구독한다.
+  async driveDownload(
+    item: Pick<DriveBackupItem, 'id' | 'name' | 'size'>,
+    opts: { toDownloads?: boolean },
+    onProgress?: (p: DriveDownloadProgress) => void,
+  ): Promise<string> {
+    const unsubscribe = onProgress
+      ? window.electron.ipcRenderer.on(DRIVE_FILE_CHANNEL.downloadProgress, (p: any) => {
+          if (p && typeof p.received === 'number' && typeof p.total === 'number') onProgress(p);
+        })
+      : () => {};
+    let res: DriveDownloadIpcResult;
+    try {
+      res = await invoke(DRIVE_FILE_CHANNEL.download, {
+        fileId: item.id,
+        name: item.name,
+        ...(typeof item.size === 'number' ? { size: item.size } : {}),
+        ...(opts.toDownloads ? { toDownloads: true } : {}),
+      });
+    } finally {
+      unsubscribe();
+    }
+    if (res && res.ok) return res.path;
+    throw driveFileError(res);
+  }
+
+  async driveDownloadCancel(): Promise<void> {
+    await invoke(DRIVE_FILE_CHANNEL.downloadCancel);
+  }
+
+  async driveTrash(fileId: string): Promise<void> {
+    const res: DriveTrashIpcResult = await invoke(DRIVE_FILE_CHANNEL.trash, { fileId });
+    if (res && res.ok) return;
+    throw driveFileError(res);
+  }
+
+  async driveCleanupDownload(fileId: string): Promise<void> {
+    try {
+      await invoke(DRIVE_FILE_CHANNEL.cleanupDownload, { fileId });
+    } catch (e) {
+      /* 정리 실패는 무시 */
+    }
   }
 
   async openPath(arg: string): Promise<void> {

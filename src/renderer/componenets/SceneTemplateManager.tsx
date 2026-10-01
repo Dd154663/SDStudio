@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import {
   FaFilm,
@@ -18,6 +18,7 @@ import Tooltip from './Tooltip';
 import { sessionService, templateService } from '../models';
 import { appState } from '../models/AppService';
 import { saveJsonFile } from '../models/exportUtil';
+import { interceptFileImportClick } from '../models/driveImport';
 import HelpIcon from './HelpIcon';
 
 // 씬 템플릿 관리 오버레이 (씬 템플릿 개편 후속, 2026-07-18 실기 피드백):
@@ -30,6 +31,8 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
   // 인라인 이름 변경 (드로어 프로젝트 행과 같은 패턴)
   const [editing, setEditing] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  // [파일 불러오기] 의 숨은 파일 입력 — 출처 선택 뒤 「파일」이면 이걸 눌러 선택기를 연다.
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   // listSceneTemplates 는 sessionService.list()(비-observable)로 실존 필터를
   // 하므로, 복제/삭제 등 목록 변경을 listupdated 이벤트로 리렌더한다.
   const [, setVersion] = useState(0);
@@ -133,6 +136,7 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
     }
   };
 
+  // 텍스트 이후는 TemplateService.importSceneTemplateFile(드라이브에서 받은 파일과 공용 — 드라이브 API ③).
   const handleImportFile = async (file: File) => {
     await templateService.importSceneTemplateFile(await file.text());
   };
@@ -183,9 +187,14 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
           </button>
         </Tooltip>
         <Tooltip content="다른 기기에서 내보낸 씬 템플릿 파일을 추가합니다">
-          <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap cursor-pointer">
+          {/* PC 에서 Google 드라이브에 연결돼 있으면 출처를 먼저 묻는다(드라이브 API ③). */}
+          <label
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap cursor-pointer"
+            onClick={(e) => interceptFileImportClick(e, importInputRef.current, 'scene-template')}
+          >
             <FaUpload size={13} /> 파일 불러오기
             <input
+              ref={importInputRef}
               type="file"
               accept=".json"
               className="hidden"

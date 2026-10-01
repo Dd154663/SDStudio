@@ -122,3 +122,113 @@ export async function httpRequestRaw(
     external?.removeEventListener('abort', onExternalAbort);
   }
 }
+
+// ─── 스트리밍 받기용(드라이브 API ③) ───
+// 응답 헤더까지만 timeoutMs 를 적용하고, 본문은 조각(chunks)으로 넘긴다(대용량 tar 를 메모리에
+// 모으지 않는다). 2xx 가 아니면 본문을 읽어 body(JSON 또는 원문)로 준다 — 오류 분류용.
+// 외부 신호로 중단되면 DriveAuthError('cancelled'), 그 밖의 끊김은 DriveAuthError('network').
+export interface HttpStreamResult {
+  status: number;
+  header(name: string): string | null;
+  // 2xx 일 때만 있음.
+  chunks?: AsyncIterable<Uint8Array>;
+  // 2xx 가 아닐 때 오류 본문.
+  body?: unknown;
+}
+
+export async function httpRequestStream(
+  url: string,
+  init: { method: string; headers?: Record<string, string>; signal?: AbortSignal },
+  timeoutMs = HTTP_TIMEOUT_MS,
+): Promise<HttpStreamResult> {
+  const controller = new AbortController();
+  const external = init.signal;
+  const onExternalAbort = () => controller.abort();
+  if (external) {
+    if (external.aborted) controller.abort();
+    else external.addEventListener('abort', onExternalAbort);
+  }
+  const detach = () => external?.removeEventListener('abort', onExternalAbort);
+  const cancelledOrNetwork = (timedOut = false) =>
+    external?.aborted
+      ? new DriveAuthError('cancelled')
+      : new DriveAuthError('network', timedOut ? 'timeout' : undefined);
+
+  let headerTimedOut = false;
+  const timer = setTimeout(() => {
+    headerTimedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  let res: Response;
+  try {
+    res = await pickFetch()(url, {
+      method: init.method,
+      headers: init.headers,
+      signal: controller.signal,
+    });
+  } catch {
+    clearTimeout(timer);
+    detach();
+    throw cancelledOrNetwork(headerTimedOut);
+  }
+  clearTimeout(timer);
+  const headers = res.headers;
+  const header = (name: string) => headers.get(name);
+
+  if (res.status < 200 || res.status >= 300) {
+    let text = '';
+    try {
+      text = await res.text();
+    } catch {
+      detach();
+      throw cancelledOrNetwork();
+    }
+    detach();
+    let body: unknown = text;
+    if (text) {
+      try {
+        body = JSON.parse(text);
+      } catch {
+        /* JSON 아님 — 원문 유지 */
+      }
+    }
+    return { status: res.status, header, body };
+  }
+
+  const stream = res.body;
+  async function* read(): AsyncGenerator<Uint8Array> {
+    if (!stream) {
+      detach();
+      return;
+    }
+    const reader = stream.getReader();
+    try {
+      for (;;) {
+        let r: ReadableStreamReadResult<Uint8Array>;
+        try {
+          r = await reader.read();
+        } catch {
+          throw cancelledOrNetwork();
+        }
+        if (r.done) return;
+        if (r.value && r.value.byteLength > 0) yield r.value;
+      }
+    } finally {
+      detach();
+      try {
+        reader.releaseLock();
+      } catch {
+        /* 이미 해제됨 */
+      }
+      // 중간에 멈춘 경우 연결을 끊는다.
+      if (!controller.signal.aborted) {
+        try {
+          await stream.cancel();
+        } catch {
+          /* 무시 */
+        }
+      }
+    }
+  }
+  return { status: res.status, header, chunks: read() };
+}

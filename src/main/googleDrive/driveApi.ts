@@ -7,9 +7,17 @@
 //   Drive 한도 = 파일당 30개, 키+값 UTF-8 합 124바이트 → 값은 바이트 기준으로 자른다.
 // - resumable 업로드: 청크 8 MiB(256 KiB 배수 필수, 마지막 청크만 예외), 308 의 Range 로 다음 위치.
 // - 오류 분류: 401 → 토큰 갱신 후 1회 재시도, 429·5xx·403(요청 한도 사유) → 지수 백오프 최대 5회.
+// - ③(2026-09-28): 목록(폴더 바로 아래·최신 먼저·페이지 이어 받기)·항목 변환(kind 검증)·받기
+//   경로(tmp/drive-download/<id>, 파일 이름 정제)·휴지통(trashed:true — files.delete 없음).
+//   실제 호출은 download.ts·manage.ts, jest 는 __tests__/googleDriveDownload.test.ts.
 
 import path from 'path';
-import type { DriveFileMeta, DriveUploadErrorCode } from '../../shared/googleDrive';
+import type {
+  DriveBackupItem,
+  DriveFileMeta,
+  DriveUploadErrorCode,
+} from '../../shared/googleDrive';
+import { isDriveBackupKind, isDriveFileId } from '../../shared/googleDrive';
 
 export const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
 export const DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3/files';
@@ -61,7 +69,7 @@ export function filesListUrl(q: string): string {
     spaces: 'drive',
     pageSize: '10',
     orderBy: 'createdTime',
-    fields: 'files(id,name)',
+    fields: 'files(id,name,webViewLink)',
   });
   return `${DRIVE_API_BASE}/files?${params.toString()}`;
 }
@@ -71,7 +79,7 @@ export function fileGetUrl(fileId: string, fields: string): string {
 }
 
 export function folderCreateUrl(): string {
-  return `${DRIVE_API_BASE}/files?fields=${encodeURIComponent('id,name')}`;
+  return `${DRIVE_API_BASE}/files?fields=${encodeURIComponent('id,name,webViewLink')}`;
 }
 
 export function buildFolderCreateBody(name = SDSTUDIO_FOLDER_NAME) {
@@ -292,7 +300,12 @@ export type DriveResponseClass =
   | { kind: 'backoff'; code: DriveUploadErrorCode; detail: string }
   | { kind: 'fail'; code: DriveUploadErrorCode; detail: string };
 
-export function classifyDriveResponse(status: number, body: unknown): DriveResponseClass {
+// failCode = 재시도하지 않는 실패의 코드(올리기 upload-failed, 받기 download-failed 등).
+export function classifyDriveResponse(
+  status: number,
+  body: unknown,
+  failCode: DriveUploadErrorCode = 'upload-failed',
+): DriveResponseClass {
   if (status >= 200 && status < 300) return { kind: 'ok' };
   if (status === 308) return { kind: 'incomplete' };
   const reason = driveErrorReason(body);
@@ -304,10 +317,10 @@ export function classifyDriveResponse(status: number, body: unknown): DriveRespo
     if (reason && RATE_LIMIT_REASONS.has(reason)) {
       return { kind: 'backoff', code: 'rate-limited', detail };
     }
-    return { kind: 'fail', code: 'upload-failed', detail };
+    return { kind: 'fail', code: failCode, detail };
   }
   if (status >= 500) return { kind: 'backoff', code: 'server', detail };
-  return { kind: 'fail', code: 'upload-failed', detail };
+  return { kind: 'fail', code: failCode, detail };
 }
 
 // 재시도 대기 시간: 1s·2s·4s·8s·16s(+0~1s 무작위), 최대 32s. attempt 는 0부터.
@@ -343,4 +356,179 @@ export function uploadDisplayName(sourcePath: string, requested?: unknown): stri
     if (clean) return clean;
   }
   return path.basename(sourcePath);
+}
+
+// ─── 목록·받기·휴지통 (드라이브 API ③) ───
+// 목록 = SDStudio 폴더 바로 아래 파일(폴더 제외, 휴지통 제외). appProperties 필터는 걸지 않는다 —
+// 표식 없는 파일도 보이되 종류 「알 수 없음」(받기는 다운로드 폴더 저장만).
+// 삭제 = files.update {trashed:true}(드라이브 휴지통, 30일 뒤 자동 삭제). files.delete(즉시 영구
+// 삭제)는 이 앱 어디에서도 호출하지 않는다.
+
+export const BACKUP_LIST_PAGE_SIZE = 100;
+// 목록 페이지 이어 받기 상한(무한 반복 방지 — 100 × 50 = 5000개).
+export const MAX_LIST_PAGES = 50;
+export const BACKUP_LIST_FIELDS =
+  'nextPageToken,files(id,name,size,modifiedTime,appProperties,webViewLink)';
+// 루트 폴더 조회 필드(폴더 링크 포함).
+export const ROOT_FOLDER_FIELDS = 'id,trashed,webViewLink';
+
+// 받기 재시도(처음부터 다시 받기) 최대 횟수 — 5xx·429·끊김.
+export const DOWNLOAD_MAX_RETRIES = 3;
+// 받는 도중 이 시간 동안 한 바이트도 오지 않으면 끊긴 것으로 본다.
+export const DOWNLOAD_IDLE_TIMEOUT_MS = 60 * 1000;
+// 진행률 보고 간격(바이트) — IPC 를 조각마다 보내지 않는다.
+export const DOWNLOAD_PROGRESS_STEP = 1024 * 1024;
+export const DOWNLOAD_DIR_SEGMENTS = ['tmp', 'drive-download'] as const;
+
+export function backupListQuery(rootId: string): string {
+  return (
+    `'${escapeQueryValue(rootId)}' in parents and trashed=false and ` +
+    `mimeType != '${DRIVE_FOLDER_MIME}'`
+  );
+}
+
+export function backupListUrl(rootId: string, pageToken?: string): string {
+  const params = new URLSearchParams({
+    q: backupListQuery(rootId),
+    spaces: 'drive',
+    pageSize: String(BACKUP_LIST_PAGE_SIZE),
+    orderBy: 'modifiedTime desc',
+    fields: BACKUP_LIST_FIELDS,
+  });
+  if (pageToken) params.set('pageToken', pageToken);
+  return `${DRIVE_API_BASE}/files?${params.toString()}`;
+}
+
+export function fileMediaUrl(fileId: string): string {
+  return `${DRIVE_API_BASE}/files/${encodeURIComponent(fileId)}?alt=media`;
+}
+
+// 휴지통 이동(files.update). 응답은 id·trashed 만.
+export function trashUrl(fileId: string): string {
+  return `${DRIVE_API_BASE}/files/${encodeURIComponent(fileId)}?fields=${encodeURIComponent('id,trashed')}`;
+}
+
+export function buildTrashBody(): { trashed: true } {
+  return { trashed: true };
+}
+
+// 폴더 조회·생성 응답 → { id, webViewLink? }.
+export function parseFolderInfo(body: unknown): { id: string; webViewLink?: string } | null {
+  const b = body as any;
+  if (!b || typeof b.id !== 'string' || !b.id) return null;
+  return {
+    id: b.id,
+    ...(typeof b.webViewLink === 'string' && b.webViewLink ? { webViewLink: b.webViewLink } : {}),
+  };
+}
+
+// files.list 응답의 첫 폴더 정보.
+export function firstFolderInfo(body: unknown): { id: string; webViewLink?: string } | null {
+  const files = (body as any)?.files;
+  if (!Array.isArray(files)) return null;
+  for (const f of files) {
+    const info = parseFolderInfo(f);
+    if (info) return info;
+  }
+  return null;
+}
+
+function optionalString(v: unknown, max = 200): string | undefined {
+  return typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined;
+}
+
+// files.list 항목 하나 → DriveBackupItem. id 가 없으면 null.
+export function parseBackupItem(raw: unknown): DriveBackupItem | null {
+  const f = raw as any;
+  if (!f || typeof f.id !== 'string' || !f.id) return null;
+  const props = f.appProperties && typeof f.appProperties === 'object' ? f.appProperties : {};
+  const size = typeof f.size === 'string' || typeof f.size === 'number' ? Number(f.size) : NaN;
+  const modified =
+    typeof f.modifiedTime === 'string' && !Number.isNaN(Date.parse(f.modifiedTime))
+      ? f.modifiedTime
+      : undefined;
+  const device = optionalString(props.device);
+  const appVersion = optionalString(props.appVersion, 40);
+  return {
+    id: f.id,
+    name: typeof f.name === 'string' ? f.name : '',
+    ...(Number.isFinite(size) && size >= 0 ? { size } : {}),
+    ...(modified ? { modifiedTime: modified } : {}),
+    kind: isDriveBackupKind(props.kind) ? props.kind : 'unknown',
+    ...(device ? { device } : {}),
+    ...(appVersion ? { appVersion } : {}),
+    ...(typeof f.webViewLink === 'string' && f.webViewLink ? { webViewLink: f.webViewLink } : {}),
+  };
+}
+
+export function parseBackupListPage(body: unknown): {
+  items: DriveBackupItem[];
+  nextPageToken?: string;
+} {
+  const b = body as any;
+  const files = Array.isArray(b?.files) ? b.files : [];
+  const items: DriveBackupItem[] = [];
+  for (const f of files) {
+    const item = parseBackupItem(f);
+    if (item) items.push(item);
+  }
+  const next = typeof b?.nextPageToken === 'string' && b.nextPageToken ? b.nextPageToken : undefined;
+  return next ? { items, nextPageToken: next } : { items };
+}
+
+// 수정 시각 내림차순(최신 먼저), 시각 없는 항목은 뒤, 같으면 이름순. 원본은 바꾸지 않는다.
+export function sortBackupItems(items: DriveBackupItem[]): DriveBackupItem[] {
+  const t = (i: DriveBackupItem) => (i.modifiedTime ? Date.parse(i.modifiedTime) : -Infinity);
+  return [...items].sort((a, b) => {
+    const d = t(b) - t(a);
+    if (d !== 0 && !Number.isNaN(d)) return d > 0 ? 1 : -1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+// 휴지통 이동 전 확인: SDStudio 폴더 바로 아래의 파일(폴더 아님)인지.
+export function isBackupFileInFolder(body: unknown, rootId: string): boolean {
+  const b = body as any;
+  if (!b || typeof b.id !== 'string' || !b.id || b.id === rootId) return false;
+  if (b.mimeType === DRIVE_FOLDER_MIME) return false;
+  return Array.isArray(b.parents) && b.parents.includes(rootId);
+}
+
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
+const MAX_LOCAL_NAME = 150;
+
+// 드라이브 파일 이름 → 로컬 파일 이름. 경로 구분자·Windows 금지 문자·제어 문자는 '_',
+// 끝의 점·공백 제거, 예약 이름은 앞에 '_', 길이 150자(확장자 보존). 비면 fallback.
+export function sanitizeDownloadName(name: unknown, fallback: string): string {
+  let s = typeof name === 'string' ? name : '';
+  s = s.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim();
+  s = s.replace(/[. ]+$/, '');
+  if (!s || /^_*$/.test(s.replace(/\./g, ''))) s = '';
+  if (!s) return fallback;
+  if (WINDOWS_RESERVED.test(s)) s = '_' + s;
+  if (s.length > MAX_LOCAL_NAME) {
+    const ext = path.extname(s);
+    const keepExt = ext.length > 0 && ext.length <= 12 ? ext : '';
+    s = s.slice(0, MAX_LOCAL_NAME - keepExt.length) + keepExt;
+  }
+  return s;
+}
+
+// 받은 파일을 둘 APP_DIR 안 임시 폴더(파일 id 별). id 형식이 아니면 null.
+export function downloadDirFor(appDir: string, fileId: unknown): string | null {
+  if (!isDriveFileId(fileId)) return null;
+  return path.join(appDir, ...DOWNLOAD_DIR_SEGMENTS, fileId);
+}
+
+// Content-Length → 바이트(없거나 잘못되면 undefined).
+export function parseContentLength(v: string | null | undefined): number | undefined {
+  if (typeof v !== 'string' || !/^\s*\d+\s*$/.test(v)) return undefined;
+  const n = Number(v);
+  return Number.isSafeInteger(n) ? n : undefined;
+}
+
+// 진행률 분모: 목록 크기 우선, 없으면 Content-Length, 모르면 0.
+export function downloadTotal(expected: unknown, contentLength: string | null | undefined): number {
+  if (typeof expected === 'number' && Number.isFinite(expected) && expected >= 0) return expected;
+  return parseContentLength(contentLength) ?? 0;
 }

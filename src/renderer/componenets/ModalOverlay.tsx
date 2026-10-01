@@ -17,6 +17,9 @@ interface ModalOverlayProps {
   // 전체 화면 변형(2026-09-26, 캐릭터 위치 지정 창): 모바일=화면 전체, PC=94vw×92vh. 내용 영역은 여백 없이
   // 자식이 높이를 전부 쓴다(flex-1 min-h-0 overflow-hidden). 뒤로 가기·Escape·모달 카운터는 그대로.
   fullscreen?: boolean;
+  // 층(z-index) 교체 — 기본 var(--z-modal). 다른 모달·드로어 위에 떠야 하는 전역 창
+  // (Google 드라이브 백업 창·환경설정 불러오기 미리보기)만 var(--z-modal-top) 을 쓴다.
+  zIndex?: string;
 }
 
 const ModalOverlay = ({
@@ -27,6 +30,7 @@ const ModalOverlay = ({
   width = 'max-w-xl',
   hidden,
   fullscreen,
+  zIndex,
 }: ModalOverlayProps) => {
   const mouseDownOnBackdrop = useRef(false);
 
@@ -76,7 +80,7 @@ const ModalOverlay = ({
         (hidden ? ' opacity-0 pointer-events-none' : '')
       }
       style={{
-        zIndex: 'var(--z-modal)',
+        zIndex: zIndex ?? 'var(--z-modal)',
         backgroundColor: 'rgba(0, 0, 0, 0.3)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',

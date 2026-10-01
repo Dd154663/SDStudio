@@ -38,11 +38,8 @@ import { FaPlay, FaPause, FaStop, FaSync, FaDownload, FaUpload, FaGlobe, FaUsers
 import type { IGlobalCharacterPresetEntry } from '../models/GlobalCharacterPresetService';
 import { saveJsonFile } from '../models/exportUtil';
 import { syncFileName } from '../models/driveSync';
-import {
-  askImportPolicyWithConfirm,
-  IMPORT_FLOW_TEXT,
-  notifyImportDone,
-} from '../models/importFlow';
+import { importGlobalCharacterPresetsText } from '../models/characterPresetImport';
+import { interceptFileImportClick } from '../models/driveImport';
 import { stringifyExportJson } from '../models/jsonExport';
 import { FileUploadBase64 } from './UtilComponents';
 import PromptEditTextArea from './PromptEditTextArea';
@@ -152,36 +149,9 @@ async function exportGlobalCharacterPresets() {
   appState.pushMessage(`${entries.length}개 글로벌 프리셋을 내보냈습니다`);
 }
 
+// 텍스트 이후 단계는 models/characterPresetImport.ts(드라이브에서 받은 파일과 공용 — 드라이브 API ③).
 async function importGlobalCharacterPresets(file: File) {
-  const text = await file.text();
-  let data: any;
-  try {
-    data = JSON.parse(text);
-  } catch (e) {
-    appState.pushMessage('올바른 캐릭터 프리셋 파일이 아닙니다');
-    return;
-  }
-  if (!data || !Array.isArray(data.presets)) {
-    appState.pushMessage('올바른 캐릭터 프리셋 파일이 아닙니다');
-    return;
-  }
-  // 공용 불러오기 흐름(드라이브 동기화 ② B2): 이름이 같은 항목이 있으면 정책 선택 →
-  // 덮어쓰기면 확인 1회. 덮어쓰기는 id 를 유지한 채 내용만 교체(프로젝트 연결 보존).
-  const policy = await askImportPolicyWithConfirm({
-    label: '캐릭터 프리셋',
-    conflictCount: globalCharacterPresetService.countFileConflicts(data),
-    protection: IMPORT_FLOW_TEXT.protection.keepLink,
-  });
-  if (!policy) return;
-  try {
-    const res = await globalCharacterPresetService.importFromFileData(
-      data,
-      policy,
-    );
-    notifyImportDone('캐릭터 프리셋', res);
-  } catch (e: any) {
-    appState.pushMessage(e.message || '불러오기에 실패했습니다');
-  }
+  await importGlobalCharacterPresetsText(await file.text());
 }
 
 async function importCharacterPresets(session: any, file: File) {
@@ -451,6 +421,8 @@ export const CharacterPresetEditor = observer(({
   // 본 것 중 가장 큰 높이를 minHeight 로 유지해 모달이 출렁이지 않게 한다.
   // (마운트 동안만 유효 — 모달을 닫으면 리셋, 창 크기 변경 시 재측정)
   const listRootRef = useRef<HTMLDivElement | null>(null);
+  // 글로벌 [불러오기] 의 숨은 파일 입력 — 출처 선택 뒤 「파일」이면 이걸 눌러 선택기를 연다.
+  const globalImportInputRef = useRef<HTMLInputElement | null>(null);
   const [minListHeight, setMinListHeight] = useState(0);
   useLayoutEffect(() => {
     const el = listRootRef.current;
@@ -1195,10 +1167,18 @@ export const CharacterPresetEditor = observer(({
           )}
           {globalView && (
             <Tooltip content="프리셋 파일 불러오기 (로컬에서 내보낸 파일도 가능)">
-              <label className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 cursor-pointer">
+              {/* PC 에서 Google 드라이브에 연결돼 있으면 출처([Google 드라이브 / 파일])를 먼저 묻는다
+                  (드라이브 API ③). Android·미연결은 기존처럼 바로 파일 선택기. */}
+              <label
+                className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 cursor-pointer"
+                onClick={(e) =>
+                  interceptFileImportClick(e, globalImportInputRef.current, 'character-presets')
+                }
+              >
                 <FaUpload size={11} />
                 불러오기
                 <input
+                  ref={globalImportInputRef}
                   type="file"
                   accept=".json"
                   className="hidden"

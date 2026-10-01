@@ -50,7 +50,54 @@ export const GOOGLE_DRIVE_TEXT = {
     `연결 해제 중 문제가 발생했습니다.\n${message}`,
   quotaUsed: (usage: string, limit?: string) =>
     limit ? `${usage} / ${limit} 사용` : `${usage} 사용`,
+
+  // ─── 백업 관리 창·받기 (드라이브 API ③) ───
+  manageButton: '백업 관리',
+  managerTitle: 'Google 드라이브 백업',
+  pickerTitle: (label: string) => `Google 드라이브에서 ${label} 고르기`,
+  refresh: '새로 고침',
+  openFolder: '드라이브에서 열기',
+  filterLabel: '종류',
+  filterAll: '전체',
+  unknownKind: '알 수 없음',
+  loading: '목록을 불러오는 중입니다…',
+  empty: '아직 올린 백업이 없습니다',
+  emptyFiltered: '이 종류의 백업이 없습니다',
+  pickHint: '불러올 백업을 고르세요. 받은 뒤 기존 불러오기 창(정책 선택·확인)이 이어집니다.',
+  manageHint:
+    '[받기]는 파일을 받아 바로 불러옵니다. [삭제]는 드라이브 휴지통으로 옮기며 영구 삭제하지 않습니다.',
+  listFailed: (reason: string) => `Google 드라이브 목록을 불러오지 못했습니다.\n${reason}`,
+  receive: '받기',
+  select: '선택',
+  trash: '삭제',
+  sizeUnknown: '크기 모름',
+  deviceUnknown: '기기 모름',
+  trashConfirm: (name: string) =>
+    `「${name}」을(를) 드라이브 휴지통으로 이동합니다. 30일 뒤 자동으로 지워지며 그 전에는 드라이브에서 복원할 수 있습니다.`,
+  trashConfirmButton: '휴지통으로 이동',
+  trashed: (name: string) => `드라이브 휴지통으로 옮겼습니다: ${name}`,
+  trashFailed: (reason: string) => `드라이브 휴지통으로 옮기지 못했습니다.\n${reason}`,
+  downloading: (name: string) => `Google 드라이브에서 받는 중입니다… (${name})`,
+  downloadCancelling: 'Google 드라이브 받기를 취소하는 중입니다…',
+  downloadCancelled: '받기를 취소했습니다.',
+  downloadFailed: (reason: string) => `Google 드라이브에서 받지 못했습니다.\n${reason}`,
+  importFailed: (reason: string) => `받은 파일을 불러오지 못했습니다.\n${reason}`,
+  // 토큰·알 수 없는 파일 — 앱 안으로 불러오지 않고 다운로드 폴더 저장만.
+  tokenDownloadOnly:
+    'NovelAI 토큰 파일은 드라이브에서 불러오지 않습니다. 다운로드 폴더에 파일로만 저장할 수 있습니다.',
+  unknownDownloadOnly:
+    'SDStudio 가 올린 백업인지 확인할 수 없어(종류 표식 없음) 앱으로 불러오지 않습니다. 다운로드 폴더에 파일로만 저장할 수 있습니다.',
+  saveToDownloads: '다운로드 폴더에 저장',
+  savedToDownloads: (path: string) => `다운로드 폴더에 저장했습니다: ${path}`,
 };
+
+// 드라이브 파일 수정 시각(ISO) → 로컬 시각 문자열. 해석 불가면 빈 문자열.
+export function formatDriveTime(iso?: string): string {
+  if (!iso) return '';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return '';
+  return new Date(t).toLocaleString();
+}
 
 const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
 

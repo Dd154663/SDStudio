@@ -38,6 +38,9 @@ import {
   withCollisionSuffix,
   DRIVE_SYNC_TEXT,
   uploadPercent,
+  chooseImportSource,
+  resolveImportSources,
+  DRIVE_IMPORT_SOURCE_TEXT,
 } from '../driveSync';
 import { saveJsonFile } from '../exportUtil';
 import { DRIVE_UPLOAD_ERROR_TEXT, DriveUploadError } from '../../../shared/googleDrive';
@@ -322,5 +325,54 @@ describe('saveJsonFile (PC) — 드라이브 API ②', () => {
     expect(backend.driveUpload).not.toHaveBeenCalled();
     expect(appState.pushMessage).toHaveBeenCalledWith(DRIVE_SYNC_TEXT.tokenDownloadsOnly);
     expect((URL as any).createObjectURL).toHaveBeenCalled();
+  });
+});
+
+describe('불러오기 출처 선택(드라이브 API ③)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    platform.supportsTargetFolder = true;
+    backend.driveAuthSupported.mockReturnValue(true);
+  });
+
+  it('resolveImportSources: PC 연결 = 드라이브·파일, 미연결·Android·토큰 = 파일만', () => {
+    expect(resolveImportSources({ kind: 'project', supportsTargetFolder: true, driveConnected: true })).toEqual(['drive', 'file']);
+    expect(resolveImportSources({ kind: 'project', supportsTargetFolder: true, driveConnected: false })).toEqual(['file']);
+    expect(resolveImportSources({ kind: 'config', supportsTargetFolder: false, driveConnected: true })).toEqual(['file']);
+    expect(resolveImportSources({ kind: 'token', supportsTargetFolder: true, driveConnected: true })).toEqual(['file']);
+  });
+
+  it('미연결이면 묻지 않고 file', async () => {
+    backend.driveAuthConnected.mockResolvedValue(false);
+    expect(await chooseImportSource('global-presets')).toBe('file');
+    expect(appState.pushDialogAsync).not.toHaveBeenCalled();
+  });
+
+  it('Android 는 연결 조회도 하지 않고 file', async () => {
+    platform.supportsTargetFolder = false;
+    expect(await chooseImportSource('config')).toBe('file');
+    expect(backend.driveAuthConnected).not.toHaveBeenCalled();
+    expect(appState.pushDialogAsync).not.toHaveBeenCalled();
+  });
+
+  it('토큰은 연결돼 있어도 file(묻지 않음)', async () => {
+    backend.driveAuthConnected.mockResolvedValue(true);
+    expect(await chooseImportSource('token')).toBe('file');
+    expect(appState.pushDialogAsync).not.toHaveBeenCalled();
+  });
+
+  it('연결 시 [Google 드라이브 / 파일] 선택 창 — 고른 값, 닫으면 cancelled', async () => {
+    backend.driveAuthConnected.mockResolvedValue(true);
+    appState.pushDialogAsync.mockResolvedValueOnce('drive');
+    expect(await chooseImportSource('project')).toBe('drive');
+    const dialog = appState.pushDialogAsync.mock.calls[0][0];
+    expect(dialog.type).toBe('select');
+    expect(dialog.text).toBe(DRIVE_IMPORT_SOURCE_TEXT.chooseSource('project'));
+    expect(dialog.items.map((i: any) => i.value)).toEqual(['drive', 'file']);
+    expect(dialog.items.map((i: any) => i.text)).toEqual(['Google 드라이브', '파일']);
+    appState.pushDialogAsync.mockResolvedValueOnce('file');
+    expect(await chooseImportSource('project')).toBe('file');
+    appState.pushDialogAsync.mockResolvedValueOnce(undefined);
+    expect(await chooseImportSource('project')).toBe('cancelled');
   });
 });

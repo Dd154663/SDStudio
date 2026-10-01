@@ -1,6 +1,12 @@
 import { Config } from '../main/config';
 import type { DriveAuthStatus } from '../shared/googleDriveAuth';
-import type { DriveFileMeta, DriveUploadProgress } from '../shared/googleDrive';
+import type {
+  DriveBackupItem,
+  DriveDownloadProgress,
+  DriveFileMeta,
+  DriveListResult,
+  DriveUploadProgress,
+} from '../shared/googleDrive';
 import {
   EncodeVibeImageInput,
   ImageAugmentInput,
@@ -109,6 +115,24 @@ export abstract class Backend {
   abstract driveUploadCancel(): Promise<void>;
   // 올린 파일의 드라이브 웹 주소를 시스템 브라우저로 연다(https://drive.google.com/ 만).
   abstract driveOpenFile(webViewLink: string): Promise<void>;
+  // ─── Google 드라이브 목록·받기·휴지통 (드라이브 API ③) ───
+  // 실패는 DriveUploadError(code) throw. Android 는 ④ 전까지 미지원(호출되지 않음, 호출 시 오류).
+  // SDStudio 폴더의 파일 목록(최신 먼저)과 폴더 웹 주소. 폴더가 아직 없으면 빈 목록.
+  abstract driveList(): Promise<DriveListResult>;
+  // 파일을 받아 저장된 절대 경로를 돌려준다. 기본 = 앱 tmp/drive-download/<id>/(불러오기용 —
+  // 끝나면 driveCleanupDownload), toDownloads = OS 다운로드 폴더. 취소 = 'cancelled'.
+  // NovelAI 토큰 파일은 toDownloads 로만 받을 수 있다.
+  abstract driveDownload(
+    item: Pick<DriveBackupItem, 'id' | 'name' | 'size'>,
+    opts: { toDownloads?: boolean },
+    onProgress?: (p: DriveDownloadProgress) => void,
+  ): Promise<string>;
+  // 이 창에서 진행 중인 받기를 중단한다(없으면 무시).
+  abstract driveDownloadCancel(): Promise<void>;
+  // 드라이브 휴지통으로 이동(영구 삭제 아님 — files.delete 는 쓰지 않는다).
+  abstract driveTrash(fileId: string): Promise<void>;
+  // 받은 임시 폴더(tmp/drive-download/<id>) 삭제. 실패는 무시.
+  abstract driveCleanupDownload(fileId: string): Promise<void>;
   // 폴더를 OS 파일 탐색기로 연다(내용물 표시). 데스크톱 전용 — 모바일은 no-op.
   abstract openPath(arg: string): Promise<void>;
   abstract copyToDownloads(path: string): Promise<void>;

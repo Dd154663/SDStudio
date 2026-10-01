@@ -174,7 +174,7 @@ describe('폴더 쿼리', () => {
   test('files.list 주소에 q 가 인코딩되어 들어간다', () => {
     const url = new URL(filesListUrl(rootFolderQuery()));
     expect(url.searchParams.get('q')).toBe(rootFolderQuery());
-    expect(url.searchParams.get('fields')).toBe('files(id,name)');
+    expect(url.searchParams.get('fields')).toBe('files(id,name,webViewLink)');
   });
   test('새 폴더 = 폴더 MIME + root 표식', () => {
     expect(buildFolderCreateBody()).toEqual({

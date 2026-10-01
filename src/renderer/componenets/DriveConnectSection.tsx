@@ -6,11 +6,15 @@
 // 상태의 진실은 main 이다: 마운트 시 driveAuthStatus() 로 조회하고, onDriveAuthChanged 로
 // 다른 창의 연결·해제도 반영한다. 연결은 시스템 브라우저 승인(최대 5분)을 기다리며, 그동안
 // [취소] 를 보인다. 해제는 확인 1회. 문구·요약 규칙은 models/googleDrive.ts.
+//
+// 드라이브 API ③: 연결돼 있으면 [백업 관리] 로 Google 드라이브 백업 관리 창(받기·삭제)을 연다.
+// 환경설정 백업을 받을 때 ConfigSyncSection 과 같은 dirty·onConfigImported 를 쓰도록 넘긴다.
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { backend } from '../models';
 import { appState } from '../models/AppService';
 import { describeStatus, GOOGLE_DRIVE_TEXT } from '../models/googleDrive';
+import { openDriveBackupManager } from '../models/driveImport';
 import type { DriveAuthStatus } from '../../shared/googleDriveAuth';
 
 function askConfirm(text: string, confirmText: string): Promise<boolean> {
@@ -28,7 +32,14 @@ function askConfirm(text: string, confirmText: string): Promise<boolean> {
 const btn = 'round-button h-8 text-sm';
 const tag = 'text-xs px-2 py-1 rounded-full whitespace-nowrap';
 
-const DriveConnectSection = () => {
+interface Props {
+  // 설정 화면에 저장 안 된 변경이 있는지(환경설정 백업 받기의 확인용).
+  dirty?: boolean;
+  // 환경설정 백업을 받아 적용한 뒤 설정 화면 로컬 상태를 다시 읽는다.
+  onConfigImported?: () => Promise<void> | void;
+}
+
+const DriveConnectSection = ({ dirty = false, onConfigImported }: Props) => {
   const supported = backend.driveAuthSupported();
   const [status, setStatus] = useState<DriveAuthStatus | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -135,6 +146,19 @@ const DriveConnectSection = () => {
             </button>
             <span className="text-xs text-muted">{GOOGLE_DRIVE_TEXT.connectingHint}</span>
           </>
+        )}
+        {view.canDisconnect && (
+          <button
+            className={btn + ' back-sky'}
+            disabled={busy}
+            onClick={() =>
+              openDriveBackupManager({
+                config: { dirty, onConfigImported: onConfigImported ?? (() => {}) },
+              })
+            }
+          >
+            {GOOGLE_DRIVE_TEXT.manageButton}
+          </button>
         )}
         {view.canDisconnect && (
           <button className={btn + ' back-gray'} disabled={busy} onClick={disconnect}>

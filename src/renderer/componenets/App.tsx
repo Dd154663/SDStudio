@@ -29,6 +29,8 @@ import { DropdownSelect, TabComponent } from './UtilComponents';
 import PieceEditor, { PieceCell } from './PieceEditor';
 import { CharacterPresetFloatEditor } from './CharacterPresetEditor';
 import SceneTemplateManager from './SceneTemplateManager';
+import { DriveBackupManagerHost } from './DriveBackupManager';
+import { ConfigImportPreviewHost } from './ConfigSyncSection';
 import PromptTooltip from './PromptTooltip';
 import ConfirmWindow, { Dialog } from './ConfirmWindow';
 import ExpiredProjectsDialog from './ExpiredProjectsDialog';
@@ -1008,6 +1010,10 @@ export const App = observer(() => {
         )}
         <ExportPresetManager />
         <DirectExportDialog />
+        {/* Google 드라이브 백업 관리 창·환경설정 불러오기 미리보기(드라이브 API ③) — 다른 모달·드로어
+            위(--z-modal-top). 미리보기가 관리 창 위에 오도록 이 순서를 지킨다. */}
+        <DriveBackupManagerHost />
+        <ConfigImportPreviewHost />
         {dragOverlay && (
           <div
             className="fixed inset-0 z-[var(--z-drag-overlay)] flex items-center justify-center pointer-events-none"

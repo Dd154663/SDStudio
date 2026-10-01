@@ -32,7 +32,13 @@ import { BackgroundMode } from '@anuradev/capacitor-background-mode';
 import { App as CapacitorApp } from '@capacitor/app';
 import { embedSDStudioMetadataInPngBase64 } from '../../shared/sdstudioImageMetadata';
 import type { DriveAuthStatus } from '../../shared/googleDriveAuth';
-import type { DriveFileMeta, DriveUploadProgress } from '../../shared/googleDrive';
+import type {
+  DriveBackupItem,
+  DriveDownloadProgress,
+  DriveFileMeta,
+  DriveListResult,
+  DriveUploadProgress,
+} from '../../shared/googleDrive';
 import { GOOGLE_DRIVE_TEXT } from '../models/googleDrive';
 import { TagDB } from './tagDB';
 import { isV5ModelVersion } from './genVendors/naiModelCapabilities';
@@ -640,6 +646,31 @@ export class AndroidBackend extends Backend {
   }
 
   async driveOpenFile(_webViewLink: string): Promise<void> {
+    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
+  }
+
+  // ─── Google 드라이브 목록·받기·휴지통 — ④ 전까지 미지원(출처 선택 창이 뜨지 않아 호출되지 않음) ───
+  async driveList(): Promise<DriveListResult> {
+    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
+  }
+
+  async driveDownload(
+    _item: Pick<DriveBackupItem, 'id' | 'name' | 'size'>,
+    _opts: { toDownloads?: boolean },
+    _onProgress?: (p: DriveDownloadProgress) => void,
+  ): Promise<string> {
+    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
+  }
+
+  async driveDownloadCancel(): Promise<void> {
+    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
+  }
+
+  async driveTrash(_fileId: string): Promise<void> {
+    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
+  }
+
+  async driveCleanupDownload(_fileId: string): Promise<void> {
     throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
   }
 
