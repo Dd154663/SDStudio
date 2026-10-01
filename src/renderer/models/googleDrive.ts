@@ -7,9 +7,13 @@
 
 import {
   DRIVE_AUTH_ERROR_TEXT,
+  DriveAuthError,
+  DriveAuthQuota,
   DriveAuthStatus,
+  driveInfoFailedText,
   isDriveAuthErrorCode,
 } from '../../shared/googleDriveAuth';
+import { DriveUploadError, isDriveUploadErrorCode } from '../../shared/googleDrive';
 
 export const GOOGLE_DRIVE_TEXT = {
   sectionTitle: 'Google 드라이브 연동',
@@ -32,7 +36,13 @@ export const GOOGLE_DRIVE_TEXT = {
   notPersistentBefore:
     '이 PC 에서는 인증 정보를 암호화해 저장할 수 없어, 연결하더라도 이 실행 중에만 유지됩니다.',
   emailUnknown: '계정 이메일을 확인하지 못했습니다',
-  androidUnsupported: 'Android 에서는 아직 Google 드라이브 연동을 지원하지 않습니다.',
+  androidUnsupported:
+    '이 기기에서는 Google 드라이브 연동을 사용할 수 없습니다(Google Play 서비스가 필요합니다).',
+  // Android(드라이브 API ④) — 승인은 시스템의 Google 계정 창, 토큰은 Play 서비스가 관리.
+  connectingHintMobile: 'Google 계정 창에서 계정을 고르고 승인해 주세요',
+  storageNoteMobile:
+    '인증은 Google Play 서비스가 관리합니다. 이 기기에는 연결 여부와 계정 이메일만 저장되며, 백업·내보내기·환경설정 파일에는 포함되지 않습니다.',
+  fileReadFailed: '파일을 읽지 못했습니다.',
   disconnectConfirm:
     '연결을 해제하면 저장된 인증 정보가 삭제됩니다. 드라이브의 파일은 그대로 남습니다.',
   disconnectConfirmButton: '연결 해제',
@@ -200,4 +210,51 @@ export function describeStatus(
     canDisconnect: false,
     canCancel: false,
   };
+}
+
+// ─── Android 네이티브 플러그인 응답 변환 (드라이브 API ④) ───
+// 네이티브(GoogleDrivePlugin.kt)는 문구 없이 상태·오류 코드만 준다. 문구는 PC 와 같은 표를 쓴다.
+
+function finiteNumber(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined;
+}
+
+// 네이티브 상태 → DriveAuthStatus. Android 는 영속 토큰이 없어(Play 서비스가 관리) persistent 는 항상 true.
+export function nativeDriveAuthStatus(n: any): DriveAuthStatus {
+  if (!n || n.connected !== true) {
+    const out: DriveAuthStatus = { connected: false, persistent: true };
+    if (n?.authError === 'expired') out.error = DRIVE_AUTH_ERROR_TEXT.expired;
+    return out;
+  }
+  const out: DriveAuthStatus = { connected: true, persistent: true };
+  if (typeof n.email === 'string' && n.email) out.email = n.email;
+  if (typeof n.connectedAt === 'string' && n.connectedAt) out.connectedAt = n.connectedAt;
+  const limit = finiteNumber(n.quota?.limit);
+  const usage = finiteNumber(n.quota?.usage);
+  if (limit !== undefined || usage !== undefined) {
+    const quota: DriveAuthQuota = {};
+    if (limit !== undefined) quota.limit = limit;
+    if (usage !== undefined) quota.usage = usage;
+    out.quota = quota;
+  }
+  if (typeof n.infoError === 'string' && n.infoError) {
+    out.error = driveInfoFailedText(isDriveAuthErrorCode(n.infoError) ? n.infoError : 'server');
+  }
+  return out;
+}
+
+function nativeDetail(e: any): string | undefined {
+  const d = e?.data?.detail;
+  return typeof d === 'string' && d ? d.slice(0, 120) : undefined;
+}
+
+// 플러그인 reject(code·data.detail) → 코드가 붙은 오류. 모르는 코드(플러그인 없음 등)는 unknown.
+export function nativeDriveAuthError(e: any): DriveAuthError {
+  if (e instanceof DriveAuthError) return e;
+  return new DriveAuthError(isDriveAuthErrorCode(e?.code) ? e.code : 'unknown', nativeDetail(e));
+}
+
+export function nativeDriveFileError(e: any): DriveUploadError {
+  if (e instanceof DriveUploadError) return e;
+  return new DriveUploadError(isDriveUploadErrorCode(e?.code) ? e.code : 'unknown', nativeDetail(e));
 }

@@ -21,8 +21,13 @@
 // 다운로드 폴더에만 저장한다(main 올리기도 한 번 더 거부 — 2중 방벽).
 //
 // Google 드라이브 연동 ③(2026-09-28, PC): 불러오기 시작의 출처 선택(chooseImportSource) —
-// 연결돼 있으면 [Google 드라이브 / 파일], 미연결·Android·토큰은 묻지 않고 파일. 드라이브에서 받은
+// 연결돼 있으면 [Google 드라이브 / 파일], 미연결·토큰은 묻지 않고 파일. 드라이브에서 받은
 // 파일의 라우팅은 driveImport.ts.
+//
+// Google 드라이브 연동 ④(2026-10-01, Android): 연결 판정·목적지·출처 규칙을 플랫폼 중립으로 바꿨다.
+// Android 도 연결돼 있으면 [Google 드라이브 / 다운로드 폴더·공유](두 번째 = 기존 publishExport 완료
+// 흐름), 불러오기는 [Google 드라이브 / 파일]. Play 서비스가 없거나 미연결인 Android 는 기존 그대로.
+// 동기화 폴더(syncFolder)는 여전히 PC 전용.
 
 import { backend } from '.';
 import { appState } from './AppService';
@@ -83,6 +88,8 @@ export const DRIVE_SYNC_TEXT = {
     drive: '드라이브 폴더',
     downloads: '다운로드 폴더',
   } as Record<ExportDestination, string>,
+  // Android 에서 'downloads' 선택지 라벨 — 기존 publishExport(Download/ 저장 뒤 [다운로드 폴더 열기 / 공유]).
+  mobileDownloadsDestination: '다운로드 폴더·공유',
   // Google 드라이브 연결 시 'drive' 선택지 라벨(드라이브 API ②).
   googleDriveDestination: 'Google 드라이브',
   tokenDownloadsOnly: 'NovelAI 토큰 파일은 다운로드 폴더에만 저장합니다.',
@@ -178,9 +185,10 @@ export function normalizeSyncFolder(value: unknown): string | undefined {
 
 // 이 기기에서 고를 수 있는 목적지 목록(표시 순서 = 배열 순서).
 // - NovelAI 토큰('token')은 항상 다운로드 폴더만(드라이브 API ② — 드라이브·동기화 폴더 모두 제외).
-// - PC(임의 절대 경로 쓰기가 되는 플랫폼)에서 Google 드라이브에 연결돼 있으면 'drive' =
-//   Google 드라이브. 동기화 폴더가 있어도 이때는 제안하지 않는다(과도기 1단계).
-// - 미연결이면 기존 규칙: 동기화 폴더가 지정된 경우만 'drive' = 드라이브 폴더.
+// - Google 드라이브에 연결돼 있으면(PC·Android 공통, 드라이브 API ④) 'drive' = Google 드라이브.
+//   동기화 폴더가 있어도 이때는 제안하지 않는다(과도기 1단계).
+// - 미연결이면 기존 규칙: PC(임의 절대 경로 쓰기가 되는 플랫폼)에 동기화 폴더가 지정된 경우만
+//   'drive' = 드라이브 폴더.
 export function resolveExportDestinations(opts: {
   syncFolder?: string;
   supportsTargetFolder: boolean;
@@ -188,7 +196,7 @@ export function resolveExportDestinations(opts: {
   kind?: DriveExportKind;
 }): ExportDestination[] {
   if (opts.kind === 'token') return ['downloads'];
-  if (opts.supportsTargetFolder && opts.driveConnected) return ['drive', 'downloads'];
+  if (opts.driveConnected) return ['drive', 'downloads'];
   if (opts.supportsTargetFolder && normalizeSyncFolder(opts.syncFolder)) {
     return ['drive', 'downloads'];
   }
@@ -206,11 +214,21 @@ export async function getSyncFolder(): Promise<string | undefined> {
   }
 }
 
-// PC 에서 Google 드라이브에 연결돼 있는지(네트워크 조회 없음). 미지원·오류는 false.
+// Google 드라이브에 연결돼 있는지(네트워크 조회 없음, PC·Android 공통). 미지원(Play 서비스 없는
+// Android 등)·오류는 false.
 export async function isGoogleDriveConnected(): Promise<boolean> {
-  if (!platform.supportsTargetFolder) return false;
   try {
-    return backend.driveAuthSupported() && (await backend.driveAuthConnected());
+    return !!backend.driveAuthSupported() && !!(await backend.driveAuthConnected());
+  } catch (e) {
+    return false;
+  }
+}
+
+// 동기 판정(마지막으로 알려진 연결 상태) — Android <input type=file> 버튼이 사용자 제스처 안에서
+// 「가로채서 출처를 물을지」를 await 없이 정할 때만 쓴다(드라이브 API ④). PC 는 항상 false.
+export function isGoogleDriveConnectedHint(): boolean {
+  try {
+    return !!backend.driveAuthSupported() && !!backend.driveAuthConnectedHint();
   } catch (e) {
     return false;
   }
@@ -275,7 +293,9 @@ export async function deliverExport(
       text:
         d === 'drive' && driveConnected
           ? DRIVE_SYNC_TEXT.googleDriveDestination
-          : DRIVE_SYNC_TEXT.destination[d],
+          : d === 'downloads' && platform.isMobile
+            ? DRIVE_SYNC_TEXT.mobileDownloadsDestination
+            : DRIVE_SYNC_TEXT.destination[d],
       value: d,
     })),
   });
@@ -448,20 +468,22 @@ export async function saveExportSilently(exportsPath: string): Promise<string> {
 }
 
 // ─── 불러오기 출처 선택 (드라이브 API ③, §0 일관화) ───
-// 내보내기 끝에서 목적지를 고르듯, 불러오기 시작에서 출처를 고른다. PC 에서 Google 드라이브에
-// 연결돼 있으면 [Google 드라이브 / 파일], 그 밖(미연결·Android)은 묻지 않고 파일.
+// 내보내기 끝에서 목적지를 고르듯, 불러오기 시작에서 출처를 고른다. Google 드라이브에 연결돼 있으면
+// (PC·Android 공통 — 드라이브 API ④) [Google 드라이브 / 파일], 미연결은 묻지 않고 파일.
 // NovelAI 토큰 파일은 드라이브에 올리지 않으므로 출처도 파일만(토큰 불러오기에는 적용하지 않음).
+// Android 의 <input type=file> 진입점은 「파일」을 문서 선택기(selectFile)로 연다 — driveImport.ts.
 
 export type ImportSource = 'drive' | 'file';
 
 // 이 기기에서 고를 수 있는 불러오기 출처(표시 순서 = 배열 순서).
+// supportsTargetFolder 는 호출 호환용으로만 받는다(④부터 판정에 쓰지 않음).
 export function resolveImportSources(opts: {
   kind: DriveExportKind;
   supportsTargetFolder: boolean;
   driveConnected: boolean;
 }): ImportSource[] {
   if (opts.kind === 'token') return ['file'];
-  if (opts.supportsTargetFolder && opts.driveConnected) return ['drive', 'file'];
+  if (opts.driveConnected) return ['drive', 'file'];
   return ['file'];
 }
 

@@ -1,4 +1,4 @@
-// Google 드라이브 백업 관리 창 (드라이브 API ③, 2026-09-28, PC 전용)
+// Google 드라이브 백업 관리 창 (드라이브 API ③, 2026-09-28 · ④ 2026-10-01 Android 공용)
 //
 // 전역 호스트(App 에 1개)가 models/driveImport.ts 의 요청 상태를 그린다. 두 가지로 열린다:
 // - 관리(manage): 설정 「시스템」 탭 Google 드라이브 연동 구역의 [백업 관리]. 행마다 [받기][삭제].
@@ -6,6 +6,8 @@
 // - 고르기(pick): 불러오기 출처로 「Google 드라이브」를 골랐을 때. 종류 필터 고정·숨김, 행마다 [선택].
 // 목록은 SDStudio 폴더 바로 아래 파일(최신 먼저). 표식 없는 파일은 종류 「알 수 없음」(관리 모드에만 보임).
 // 다른 모달·드로어 위에 뜨도록 --z-modal-top 층을 쓴다(진행 창·확인 창은 그보다 위).
+// 모바일 폭(360): 행은 카드형(정보 줄 아래로 버튼 줄바꿈), 버튼은 .round-button 의 모바일
+// min-height 36px 로 터치 판정을 맞춘다.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
@@ -184,7 +186,7 @@ const ManagerBody = ({ req }: { req: DriveManagerRequest }) => {
                 key={item.id}
                 className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg border line-color bg-[var(--c-surface-2)]"
               >
-                <div className="min-w-0 flex-1 basis-56">
+                <div className="min-w-0 flex-1 basis-48">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span
                       className={`${tag} ${item.kind === 'unknown' ? 'back-gray' : 'back-sky'}`}

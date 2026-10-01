@@ -1,4 +1,5 @@
-// Google 드라이브에서 받은 백업을 기존 불러오기 흐름으로 넘기는 층 (드라이브 API ③, 2026-09-28, PC)
+// Google 드라이브에서 받은 백업을 기존 불러오기 흐름으로 넘기는 층 (드라이브 API ③, 2026-09-28, PC ·
+// ④ 2026-10-01 Android — 받은 경로가 file:// URI 일 뿐 흐름은 같다)
 //
 // 불러오기 순서(SPEC §12-3 §0 일관화)는 그대로다. 드라이브는 「파일 고르기」 단계만 바꾼다:
 //   출처 선택 [Google 드라이브 / 파일](driveSync.chooseImportSource) → 드라이브면 백업 관리 창
@@ -24,6 +25,7 @@ import {
   chooseImportSource,
   DRIVE_EXPORT_KIND_LABEL,
   DriveExportKind,
+  isGoogleDriveConnectedHint,
   uploadPercent,
 } from './driveSync';
 import { formatBytes, GOOGLE_DRIVE_TEXT } from './googleDrive';
@@ -297,15 +299,76 @@ export async function importFromDrive(
   await receiveDriveBackup(item, ctx);
 }
 
+// ─── Android: <input type=file> 진입점의 출처 선택 (드라이브 API ④) ───
+// Android WebView 는 비동기 대화상자(출처 선택) 뒤의 input.click() 을 사용자 제스처로 보지 않아
+// 선택기가 열리지 않을 수 있다. 그래서 연결돼 있을 때만 가로채 출처를 묻고, 「파일」은 문서 선택기
+// (backend.selectFile — 네이티브라 제스처 제한 없음)로 고른 뒤 readBinaryFile 로 읽어 기존 텍스트
+// 함수에 넘긴다. 미연결(또는 아직 모름)이면 가로채지 않고 기존 <input type=file> 그대로다.
+export type TextImportKind = 'character-presets' | 'scene-template' | 'config';
+
+// 문서 선택기에서 JSON 하나를 골라 UTF-8 텍스트(BOM 제거)로. 고르지 않으면 undefined.
+export async function pickJsonFileText(): Promise<string | undefined> {
+  let path: string | undefined;
+  try {
+    path = await backend.selectFile({ filters: [{ name: 'JSON', extensions: ['json'] }] });
+  } catch (e: any) {
+    // 문서 선택기에서 뒤로 가기 = 「pickFiles canceled.」 — 고르지 않은 것으로 본다.
+    if (/cancel/i.test(String(e?.message ?? e))) return undefined;
+    throw e;
+  }
+  if (!path) return undefined;
+  return await readLocalText(path);
+}
+
+// 텍스트 대상별 기존 불러오기 흐름(<input type=file> onChange·드라이브 라우팅과 같은 함수).
+export async function importTextByKind(
+  kind: TextImportKind,
+  text: string,
+  ctx: DriveImportContext = {},
+): Promise<void> {
+  if (kind === 'character-presets') await importGlobalCharacterPresetsText(text);
+  else if (kind === 'scene-template') await templateService.importSceneTemplateFile(text);
+  else await importConfigText(text, ctx.config ?? NO_CONFIG_CONTEXT);
+}
+
+// Android 연결 시: 출처 선택 → 드라이브(고르기 창·받기) 또는 파일(문서 선택기) → 기존 흐름.
+export async function importTextWithSource(
+  kind: TextImportKind,
+  ctx: DriveImportContext = {},
+): Promise<void> {
+  const source = await chooseImportSource(kind);
+  if (source === 'drive') {
+    await importFromDrive(kind, ctx);
+    return;
+  }
+  if (source !== 'file') return;
+  let text: string | undefined;
+  try {
+    text = await pickJsonFileText();
+  } catch (e) {
+    appState.pushMessage(GOOGLE_DRIVE_TEXT.fileReadFailed);
+    return;
+  }
+  if (text === undefined) return;
+  await importTextByKind(kind, text, ctx);
+}
+
 // <label><input type=file/></label> 형 [불러오기] 버튼용(캐릭터 프리셋·씬 템플릿).
-// PC 에서만 기본 동작(파일 선택기)을 막고 출처를 묻는다 — 「파일」이면 숨은 input 을 눌러 기존
-// 선택기를 연다(Electron 은 대화상자 클릭이 사용자 활성화라 선택기가 열린다). Android 는 기존 그대로.
+// PC: 기본 동작(파일 선택기)을 막고 출처를 묻는다 — 「파일」이면 숨은 input 을 눌러 기존
+// 선택기를 연다(Electron 은 대화상자 클릭이 사용자 활성화라 선택기가 열린다).
+// Android(④): 연결돼 있을 때만 막고 importTextWithSource(「파일」= 문서 선택기). 미연결은 기존 그대로.
 export function interceptFileImportClick(
   e: { target: EventTarget | null; preventDefault(): void },
   input: HTMLInputElement | null,
-  kind: DriveExportKind,
+  kind: TextImportKind,
 ): void {
-  if (!platform.supportsTargetFolder) return;
+  if (!platform.supportsTargetFolder) {
+    if (!isGoogleDriveConnectedHint()) return;
+    if (input && e.target === input) return;
+    e.preventDefault();
+    void importTextWithSource(kind);
+    return;
+  }
   // 아래 input.click() 이 label 로 전파된 클릭은 그대로 통과(선택기 열기).
   if (!input || e.target === input) return;
   e.preventDefault();

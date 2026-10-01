@@ -1137,7 +1137,8 @@ const SystemTab = ({
 
   return (
     <div className="space-y-4">
-      {/* Google 드라이브 연동(드라이브 API ①). 지원 플랫폼(PC)만 — Android 는 ④ 전까지 숨김. */}
+      {/* Google 드라이브 연동(드라이브 API ①·④). PC 와 Google Play 서비스가 있는 Android —
+          Play 서비스가 없는 Android 는 숨김(기존 공유 시트 흐름). */}
       {backend.driveAuthSupported() && (
         <>
           <DriveConnectSection dirty={!!dirty} onConfigImported={reloadConfig} />

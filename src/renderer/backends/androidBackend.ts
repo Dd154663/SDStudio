@@ -31,6 +31,7 @@ import JSZip from 'jszip';
 import { BackgroundMode } from '@anuradev/capacitor-background-mode';
 import { App as CapacitorApp } from '@capacitor/app';
 import { embedSDStudioMetadataInPngBase64 } from '../../shared/sdstudioImageMetadata';
+import type { PluginListenerHandle } from '@capacitor/core';
 import type { DriveAuthStatus } from '../../shared/googleDriveAuth';
 import type {
   DriveBackupItem,
@@ -39,7 +40,19 @@ import type {
   DriveListResult,
   DriveUploadProgress,
 } from '../../shared/googleDrive';
-import { GOOGLE_DRIVE_TEXT } from '../models/googleDrive';
+import {
+  DRIVE_BACKUP_KINDS,
+  DriveUploadError,
+  isDriveWebUrl,
+  isTokenExport,
+} from '../../shared/googleDrive';
+import {
+  GOOGLE_DRIVE_TEXT,
+  nativeDriveAuthError,
+  nativeDriveAuthStatus,
+  nativeDriveFileError,
+} from '../models/googleDrive';
+import GoogleDrive from './googleDrivePlugin';
 import { TagDB } from './tagDB';
 import { isV5ModelVersion } from './genVendors/naiModelCapabilities';
 // @ts-ignore
@@ -92,6 +105,23 @@ function getMimeType(filePath: any) {
     default:
       return 'vnd.android.document/directory';
   }
+}
+
+// selectFile 확장자 필터 → 문서 선택기 MIME(<input accept=".json"> 이 쓰는 것과 같은 값).
+const PICKER_MIME_BY_EXT: Record<string, string> = {
+  tar: 'application/x-tar',
+  json: 'application/json',
+};
+
+function pickerTypesFor(filters?: { name: string; extensions: string[] }[]): string[] {
+  const types = new Set<string>();
+  for (const f of filters || []) {
+    for (const ext of f.extensions || []) {
+      const mime = PICKER_MIME_BY_EXT[String(ext).replace(/^\./, '').toLowerCase()];
+      if (mime) types.add(mime);
+    }
+  }
+  return types.size > 0 ? Array.from(types) : ['application/x-tar'];
 }
 
 function getDirName(filePath: string): string {
@@ -220,6 +250,9 @@ export class AndroidBackend extends Backend {
         }
       });
     } catch (e) {}
+
+    // Google 드라이브 연동(드라이브 API ④): Play 서비스 확인·연결 상태 캐시(비차단).
+    this.initGoogleDrive();
 
     this.tagDatabaseLoadPromise = (async () => {
       this.tagDBId = (await TagDB.createDB({ name: 'tags' })).id;
@@ -600,80 +633,6 @@ export class AndroidBackend extends Backend {
   // 띄우지 않는다. 성공 기준 = Download/ 복사 성공(공유 결과에 의존하지 않음).
   // 복사 성공 뒤에만 exports/ 스테이징을 지우고, 정리 실패는 저장 성공을 뒤집지 않는다.
   // 폴더 산출물은 이 경로의 용도(프로젝트 백업 tar 1개)가 아니므로 명시 거부한다.
-  // ─── Google 드라이브 연동 인증 — Android 는 ④(Kotlin 플러그인) 전까지 미지원 ───
-  // 설정 화면은 driveAuthSupported() false 로 구역 자체를 숨긴다. 그 밖의 호출은
-  // 조용히 넘어가지 않도록 명확한 오류로 거부한다(구독만 no-op).
-  driveAuthSupported(): boolean {
-    return false;
-  }
-
-  async driveAuthStatus(): Promise<DriveAuthStatus> {
-    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
-  }
-
-  async driveAuthConnect(): Promise<DriveAuthStatus> {
-    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
-  }
-
-  async driveAuthCancel(): Promise<void> {
-    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
-  }
-
-  async driveAuthDisconnect(): Promise<void> {
-    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
-  }
-
-  onDriveAuthChanged(_callback: (status: DriveAuthStatus) => void): () => void {
-    return () => {};
-  }
-
-  // 내보내기 목적지 결정용 — Android 는 연결 개념이 아직 없으므로 항상 미연결.
-  async driveAuthConnected(): Promise<boolean> {
-    return false;
-  }
-
-  // ─── Google 드라이브 올리기 — ④ 전까지 미지원(driveAuthSupported false 라 호출되지 않음) ───
-  async driveUpload(
-    _exportsPath: string,
-    _meta: { kind: string; name?: string },
-    _onProgress?: (p: DriveUploadProgress) => void,
-  ): Promise<DriveFileMeta> {
-    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
-  }
-
-  async driveUploadCancel(): Promise<void> {
-    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
-  }
-
-  async driveOpenFile(_webViewLink: string): Promise<void> {
-    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
-  }
-
-  // ─── Google 드라이브 목록·받기·휴지통 — ④ 전까지 미지원(출처 선택 창이 뜨지 않아 호출되지 않음) ───
-  async driveList(): Promise<DriveListResult> {
-    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
-  }
-
-  async driveDownload(
-    _item: Pick<DriveBackupItem, 'id' | 'name' | 'size'>,
-    _opts: { toDownloads?: boolean },
-    _onProgress?: (p: DriveDownloadProgress) => void,
-  ): Promise<string> {
-    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
-  }
-
-  async driveDownloadCancel(): Promise<void> {
-    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
-  }
-
-  async driveTrash(_fileId: string): Promise<void> {
-    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
-  }
-
-  async driveCleanupDownload(_fileId: string): Promise<void> {
-    throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
-  }
-
   async saveExportToDownloads(arg: string): Promise<string> {
     const normalized = arg.replace(/\\/g, '/').replace(/^\/+/, '');
     if (!normalized.startsWith('exports/') || normalized.includes('../')) {
@@ -727,6 +686,235 @@ export class AndroidBackend extends Backend {
       });
     } catch (e) {}
     return destRel;
+  }
+
+  // ─── Google 드라이브 연동 (드라이브 API ④) — 네이티브 플러그인 GoogleDrive ───
+  // 지원 = Google Play 서비스 있음(앱 시작 시 한 번 확인해 캐시 — 확인 전에는 false). 없으면
+  // driveAuthSupported() false 로 설정 구역을 숨기고, 내보내기·불러오기는 기존 공유 시트·파일 선택
+  // 흐름 그대로다(그 밖의 호출은 명확한 오류). access token 은 네이티브 메모리에만 있고 이 파일은
+  // 상태·진행률·오류 코드만 다룬다. 데이터 루트에는 받은 임시 파일(tmp/drive-download/<id>) 말고는
+  // 아무것도 쓰지 않는다(연결 상태는 앱 내부 SharedPreferences).
+  private driveAvailable = false;
+  private driveConnectedCache = false;
+  private driveAuthListeners = new Set<(status: DriveAuthStatus) => void>();
+
+  private initGoogleDrive(): void {
+    (async () => {
+      try {
+        const { available } = await GoogleDrive.isAvailable();
+        if (!available) return;
+        await GoogleDrive.addListener('driveAuthChanged', (n) => {
+          this.emitDriveAuth(nativeDriveAuthStatus(n));
+        });
+        try {
+          this.driveConnectedCache = !!(await GoogleDrive.connected()).connected;
+        } catch (e) {}
+        this.driveAvailable = true;
+      } catch (e) {
+        // 플러그인 없음·Play 서비스 확인 실패 = 미지원(기존 흐름 그대로).
+      }
+    })();
+  }
+
+  private emitDriveAuth(status: DriveAuthStatus): void {
+    this.driveConnectedCache = status.connected;
+    for (const cb of Array.from(this.driveAuthListeners)) {
+      try {
+        cb(status);
+      } catch (e) {}
+    }
+  }
+
+  private requireDrive(): void {
+    if (!this.driveAvailable) throw new Error(GOOGLE_DRIVE_TEXT.androidUnsupported);
+  }
+
+  // 데이터 루트의 file:// URI — 네이티브가 exports/·tmp/ 경로를 이 기준으로 푼다(zipFiles 와 같은 출처).
+  private async appDirUri(): Promise<string> {
+    const res = await Filesystem.getUri({ path: APP_DIR, directory: Directory.Documents });
+    return res.uri;
+  }
+
+  driveAuthSupported(): boolean {
+    return this.driveAvailable;
+  }
+
+  async driveAuthStatus(): Promise<DriveAuthStatus> {
+    this.requireDrive();
+    let status: DriveAuthStatus;
+    try {
+      status = nativeDriveAuthStatus(await GoogleDrive.status());
+    } catch (e) {
+      throw nativeDriveAuthError(e);
+    }
+    this.driveConnectedCache = status.connected;
+    return status;
+  }
+
+  // 시스템 Google 계정 선택·동의 창 → 완료 시 상태. 뒤로 가기 = 'cancelled'.
+  async driveAuthConnect(): Promise<DriveAuthStatus> {
+    this.requireDrive();
+    let status: DriveAuthStatus;
+    try {
+      status = nativeDriveAuthStatus(await GoogleDrive.connect());
+    } catch (e) {
+      throw nativeDriveAuthError(e);
+    }
+    this.driveConnectedCache = status.connected;
+    return status;
+  }
+
+  // 시스템 Google 계정 창은 앱이 닫을 수 없다(사용자가 뒤로 가기로 취소) — 의도된 no-op.
+  async driveAuthCancel(): Promise<void> {}
+
+  // 로컬 연결 정보 삭제 + revokeAccess(철회 실패해도 해제는 완료).
+  async driveAuthDisconnect(): Promise<void> {
+    this.requireDrive();
+    try {
+      await GoogleDrive.disconnect();
+    } catch (e) {
+      throw nativeDriveAuthError(e);
+    } finally {
+      this.driveConnectedCache = false;
+    }
+  }
+
+  onDriveAuthChanged(callback: (status: DriveAuthStatus) => void): () => void {
+    this.driveAuthListeners.add(callback);
+    return () => {
+      this.driveAuthListeners.delete(callback);
+    };
+  }
+
+  // 내보내기 목적지·불러오기 출처 결정용(네트워크 없음 — SharedPreferences 플래그).
+  async driveAuthConnected(): Promise<boolean> {
+    if (!this.driveAvailable) return false;
+    try {
+      const connected = !!(await GoogleDrive.connected()).connected;
+      this.driveConnectedCache = connected;
+      return connected;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  driveAuthConnectedHint(): boolean {
+    return this.driveAvailable && this.driveConnectedCache;
+  }
+
+  async driveUpload(
+    exportsPath: string,
+    meta: { kind: string; name?: string },
+    onProgress?: (p: DriveUploadProgress) => void,
+  ): Promise<DriveFileMeta> {
+    this.requireDrive();
+    // 토큰 방벽(JS 측) — 네이티브도 한 번 더 거부한다.
+    if (isTokenExport(meta.kind, exportsPath) || isTokenExport(undefined, meta.name)) {
+      throw new DriveUploadError('token-export-forbidden');
+    }
+    let handle: PluginListenerHandle | undefined;
+    try {
+      if (onProgress) {
+        handle = await GoogleDrive.addListener('driveUploadProgress', (p: any) => {
+          if (p && typeof p.sent === 'number' && typeof p.total === 'number') {
+            onProgress({ sent: p.sent, total: p.total });
+          }
+        });
+      }
+      const res = await GoogleDrive.upload({
+        appDir: await this.appDirUri(),
+        exportsPath,
+        kind: meta.kind,
+        ...(meta.name ? { name: meta.name } : {}),
+        appVersion: packageInfo.version,
+      });
+      return res.file;
+    } catch (e) {
+      throw nativeDriveFileError(e);
+    } finally {
+      handle?.remove().catch(() => {});
+    }
+  }
+
+  async driveUploadCancel(): Promise<void> {
+    if (!this.driveAvailable) return;
+    await GoogleDrive.uploadCancel();
+  }
+
+  // 드라이브 웹 주소만 연다(Intent ACTION_VIEW — Drive 앱 또는 브라우저).
+  async driveOpenFile(webViewLink: string): Promise<void> {
+    if (!isDriveWebUrl(webViewLink)) return;
+    this.requireDrive();
+    await GoogleDrive.openFile({ url: webViewLink });
+  }
+
+  async driveList(): Promise<DriveListResult> {
+    this.requireDrive();
+    try {
+      const res = await GoogleDrive.list({ kinds: [...DRIVE_BACKUP_KINDS] });
+      return {
+        items: Array.isArray(res?.items) ? res.items : [],
+        ...(res?.folderLink ? { folderLink: res.folderLink } : {}),
+      };
+    } catch (e) {
+      throw nativeDriveFileError(e);
+    }
+  }
+
+  // 반환: 불러오기용 = tmp/drive-download/<id>/ 의 file:// URI(unzipFiles·readBinaryFile 이 연다),
+  // toDownloads = 기기 Download/ 의 절대 경로(표시용, 같은 이름이면 " (n)" 접미).
+  async driveDownload(
+    item: Pick<DriveBackupItem, 'id' | 'name' | 'size'>,
+    opts: { toDownloads?: boolean },
+    onProgress?: (p: DriveDownloadProgress) => void,
+  ): Promise<string> {
+    this.requireDrive();
+    let handle: PluginListenerHandle | undefined;
+    try {
+      if (onProgress) {
+        handle = await GoogleDrive.addListener('driveDownloadProgress', (p: any) => {
+          if (p && typeof p.received === 'number' && typeof p.total === 'number') {
+            onProgress({ received: p.received, total: p.total });
+          }
+        });
+      }
+      const res = await GoogleDrive.download({
+        appDir: await this.appDirUri(),
+        fileId: item.id,
+        name: item.name,
+        ...(typeof item.size === 'number' ? { size: item.size } : {}),
+        ...(opts.toDownloads ? { toDownloads: true } : {}),
+      });
+      return res.path;
+    } catch (e) {
+      throw nativeDriveFileError(e);
+    } finally {
+      handle?.remove().catch(() => {});
+    }
+  }
+
+  async driveDownloadCancel(): Promise<void> {
+    if (!this.driveAvailable) return;
+    await GoogleDrive.downloadCancel();
+  }
+
+  // 드라이브 휴지통으로 이동(영구 삭제 아님 — 네이티브에도 files.delete 호출이 없다).
+  async driveTrash(fileId: string): Promise<void> {
+    this.requireDrive();
+    try {
+      await GoogleDrive.trash({ fileId });
+    } catch (e) {
+      throw nativeDriveFileError(e);
+    }
+  }
+
+  async driveCleanupDownload(fileId: string): Promise<void> {
+    if (!this.driveAvailable) return;
+    try {
+      await GoogleDrive.cleanupDownload({ appDir: await this.appDirUri(), fileId });
+    } catch (e) {
+      /* 정리 실패는 무시 */
+    }
   }
 
   async copyToDownloads(path: string): Promise<void> {
@@ -844,11 +1032,13 @@ export class AndroidBackend extends Backend {
     return { ok: true };
   }
 
-  async selectFile(_options?: SelectFileOptions): Promise<string | undefined> {
-    // 시작 폴더(defaultPath)·확장자 필터는 문서 선택기에 지정할 수 없어 의도적으로 무시한다
+  async selectFile(options?: SelectFileOptions): Promise<string | undefined> {
+    // 시작 폴더(defaultPath)는 문서 선택기에 지정할 수 없어 의도적으로 무시한다
     // (드라이브 동기화 ② — Android 는 문서 선택기에서 Drive 를 직접 고른다).
+    // 확장자 필터는 MIME 으로 바꾼다(드라이브 API ④ — JSON 불러오기). 필터가 없거나 아는 확장자가
+    // 없으면 기존처럼 tar 만.
     const result = await FilePicker.pickFiles({
-      types: ['application/x-tar'],
+      types: pickerTypesFor(options?.filters),
     });
     return result.files[0].path;
   }

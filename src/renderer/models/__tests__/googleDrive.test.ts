@@ -4,8 +4,12 @@ import {
   formatBytes,
   formatQuota,
   GOOGLE_DRIVE_TEXT,
+  nativeDriveAuthError,
+  nativeDriveAuthStatus,
+  nativeDriveFileError,
 } from '../googleDrive';
-import { DRIVE_AUTH_ERROR_TEXT } from '../../../shared/googleDriveAuth';
+import { DRIVE_AUTH_ERROR_TEXT, DriveAuthError, driveInfoFailedText } from '../../../shared/googleDriveAuth';
+import { DriveUploadError } from '../../../shared/googleDrive';
 
 const GiB = 1024 ** 3;
 
@@ -116,5 +120,59 @@ describe('문구', () => {
     expect(GOOGLE_DRIVE_TEXT.disconnectConfirm).toBe(
       '연결을 해제하면 저장된 인증 정보가 삭제됩니다. 드라이브의 파일은 그대로 남습니다.',
     );
+  });
+});
+
+describe('Android 네이티브 응답 변환(드라이브 API ④)', () => {
+  test('미연결 = persistent true(영속 토큰 없음), 권한 해제는 expired 문구', () => {
+    expect(nativeDriveAuthStatus({ connected: false })).toEqual({ connected: false, persistent: true });
+    expect(nativeDriveAuthStatus(null)).toEqual({ connected: false, persistent: true });
+    expect(nativeDriveAuthStatus({ connected: false, authError: 'expired' })).toEqual({
+      connected: false,
+      persistent: true,
+      error: DRIVE_AUTH_ERROR_TEXT.expired,
+    });
+  });
+
+  test('연결 = 이메일·시각·용량, 조회 실패는 PC 와 같은 「연결 유지」 문구', () => {
+    const s = nativeDriveAuthStatus({
+      connected: true,
+      email: 'a@b.c',
+      connectedAt: '2026-10-01T00:00:00.000Z',
+      quota: { limit: 15 * GiB, usage: GiB },
+    });
+    expect(s).toEqual({
+      connected: true,
+      persistent: true,
+      email: 'a@b.c',
+      connectedAt: '2026-10-01T00:00:00.000Z',
+      quota: { limit: 15 * GiB, usage: GiB },
+    });
+    expect(describeStatus(s).detail).toBe('a@b.c · 1 GB / 15 GB 사용');
+    expect(nativeDriveAuthStatus({ connected: true, infoError: 'network' }).error).toBe(
+      driveInfoFailedText('network'),
+    );
+    // 인증 코드가 아닌 값(rate-limited 등)은 server 문구로
+    expect(nativeDriveAuthStatus({ connected: true, infoError: 'rate-limited' }).error).toBe(
+      driveInfoFailedText('server'),
+    );
+    // 잘못된 용량 값은 버린다
+    expect(nativeDriveAuthStatus({ connected: true, quota: { limit: -1, usage: 'x' } }).quota).toBeUndefined();
+  });
+
+  test('플러그인 오류 코드 → DriveAuthError / DriveUploadError(모르는 코드는 unknown)', () => {
+    const a = nativeDriveAuthError({ code: 'cancelled', data: { detail: 'x' } });
+    expect(a).toBeInstanceOf(DriveAuthError);
+    expect(a.code).toBe('cancelled');
+    expect(a.detail).toBe('x');
+    expect(nativeDriveAuthError({ code: 'UNIMPLEMENTED' }).code).toBe('unknown');
+    const f = nativeDriveFileError({ code: 'quota-exceeded', data: { detail: 'HTTP 403 storageQuotaExceeded' } });
+    expect(f).toBeInstanceOf(DriveUploadError);
+    expect(f.code).toBe('quota-exceeded');
+    expect(f.detail).toBe('HTTP 403 storageQuotaExceeded');
+    expect(nativeDriveFileError({ code: 'token-export-forbidden' }).code).toBe('token-export-forbidden');
+    expect(nativeDriveFileError(new Error('boom')).code).toBe('unknown');
+    const same = new DriveUploadError('cancelled');
+    expect(nativeDriveFileError(same)).toBe(same);
   });
 });

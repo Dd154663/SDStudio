@@ -17,8 +17,13 @@ import { observer } from 'mobx-react-lite';
 import { backend, isMobile, loginService } from '../models';
 import { appState } from '../models/AppService';
 import { saveJsonFile } from '../models/exportUtil';
-import { chooseImportSource, getSyncFolder, syncFileName } from '../models/driveSync';
-import { importFromDrive } from '../models/driveImport';
+import {
+  chooseImportSource,
+  getSyncFolder,
+  isGoogleDriveConnectedHint,
+  syncFileName,
+} from '../models/driveSync';
+import { importFromDrive, importTextWithSource } from '../models/driveImport';
 import { stringifyExportJson } from '../models/jsonExport';
 import {
   buildConfigExport,
@@ -156,9 +161,21 @@ const ConfigSyncSection = ({ dirty, onConfigImported }: Props) => {
 
   const startConfigImport = async () => {
     if (busy) return;
-    // Android 는 출처를 묻지 않는다(드라이브 연동 ④ 전) — 사용자 제스처 안에서 바로 선택기.
     if (isMobile) {
-      configInputRef.current?.click();
+      // Android 미연결(또는 Play 서비스 없음): 기존처럼 사용자 제스처 안에서 바로 선택기.
+      if (!isGoogleDriveConnectedHint()) {
+        configInputRef.current?.click();
+        return;
+      }
+      // Android 연결(드라이브 API ④): 출처 선택 → 드라이브 또는 문서 선택기(제스처 제한 없음).
+      setBusy(true);
+      try {
+        await importTextWithSource('config', { config: importCtx });
+      } catch (e: any) {
+        appState.pushMessage(CONFIG_SYNC_TEXT.readFailed);
+      } finally {
+        setBusy(false);
+      }
       return;
     }
     setBusy(true);

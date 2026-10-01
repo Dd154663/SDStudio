@@ -86,8 +86,9 @@ export abstract class Backend {
   // 이 결과를 받은 뒤에만 기존 프로젝트를 건드린다.
   abstract saveExportToDownloads(arg: string): Promise<string>;
   // ─── Google 드라이브 연동 인증 (드라이브 API ①) ───
-  // PC = main IPC(루프백 PKCE·safeStorage 저장). Android 는 ④ 전까지 미지원:
-  // driveAuthSupported() false(설정 화면 구역 자체를 숨김), 나머지 호출은 명확한 오류.
+  // PC = main IPC(루프백 PKCE·safeStorage 저장). Android(④) = 네이티브 플러그인 GoogleDrive
+  // (AuthorizationClient — 영속 토큰 없음). Google Play 서비스가 없는 Android 는
+  // driveAuthSupported() false(설정 화면 구역 자체를 숨김·기존 공유 시트 흐름), 나머지 호출은 명확한 오류.
   abstract driveAuthSupported(): boolean;
   // 현재 연결 상태(연결돼 있으면 이메일·용량을 새로 조회). 토큰 값은 포함하지 않는다.
   abstract driveAuthStatus(): Promise<DriveAuthStatus>;
@@ -102,10 +103,13 @@ export abstract class Backend {
   // 연결 여부만(네트워크 조회 없음) — 내보내기 목적지 결정용(드라이브 API ②).
   // driveAuthStatus 는 이메일·용량을 새로 조회하므로(오프라인이면 제한 시간까지 대기) 쓰지 않는다.
   abstract driveAuthConnected(): Promise<boolean>;
+  // 연결 여부의 마지막으로 알려진 값(동기·네트워크 없음, 드라이브 API ④). Android 의 <input type=file>
+  // 버튼은 사용자 제스처 안에서 await 없이 「출처를 물을지」를 정해야 해서 쓴다(PC 는 쓰지 않음 — false).
+  abstract driveAuthConnectedHint(): boolean;
   // ─── Google 드라이브 올리기 (드라이브 API ②) ───
   // exports/ 산출물을 드라이브 SDStudio 폴더에 올린다(exports/ 사본은 지우지 않음 — 호출부 몫).
   // 실패·취소는 DriveUploadError(code) throw(취소 = 'cancelled'). NovelAI 토큰 파일은 거부.
-  // Android 는 ④ 전까지 미지원(driveAuthSupported false 라 호출되지 않음, 호출 시 오류).
+  // Android 는 네이티브 플러그인(8 MiB 청크 resumable, 진행 이벤트 driveUploadProgress).
   abstract driveUpload(
     exportsPath: string,
     meta: { kind: string; name?: string },
@@ -116,7 +120,7 @@ export abstract class Backend {
   // 올린 파일의 드라이브 웹 주소를 시스템 브라우저로 연다(https://drive.google.com/ 만).
   abstract driveOpenFile(webViewLink: string): Promise<void>;
   // ─── Google 드라이브 목록·받기·휴지통 (드라이브 API ③) ───
-  // 실패는 DriveUploadError(code) throw. Android 는 ④ 전까지 미지원(호출되지 않음, 호출 시 오류).
+  // 실패는 DriveUploadError(code) throw. Android 는 네이티브 플러그인(받은 경로 = file:// URI).
   // SDStudio 폴더의 파일 목록(최신 먼저)과 폴더 웹 주소. 폴더가 아직 없으면 빈 목록.
   abstract driveList(): Promise<DriveListResult>;
   // 파일을 받아 저장된 절대 경로를 돌려준다. 기본 = 앱 tmp/drive-download/<id>/(불러오기용 —

@@ -1,7 +1,9 @@
 // Google 드라이브 연동 구역 (드라이브 API ①, 2026-09-28)
 //
 // 환경설정 「시스템」 탭에서 환경설정 내보내기·불러오기(ConfigSyncSection) 바로 위에 들어간다.
-// backend.driveAuthSupported() 가 false 인 플랫폼(Android, ④ 전까지)은 렌더하지 않는다.
+// backend.driveAuthSupported() 가 false 인 경우(Google Play 서비스가 없는 Android)는 렌더하지 않는다.
+// Android(드라이브 API ④): 승인은 시스템 Google 계정 창이라 [취소] 를 두지 않고(앱이 닫을 수 없음),
+// 저장 안내는 「Play 서비스가 관리」 문구로 바꾼다.
 //
 // 상태의 진실은 main 이다: 마운트 시 driveAuthStatus() 로 조회하고, onDriveAuthChanged 로
 // 다른 창의 연결·해제도 반영한다. 연결은 시스템 브라우저 승인(최대 5분)을 기다리며, 그동안
@@ -11,7 +13,7 @@
 // 환경설정 백업을 받을 때 ConfigSyncSection 과 같은 dirty·onConfigImported 를 쓰도록 넘긴다.
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { backend } from '../models';
+import { backend, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import { describeStatus, GOOGLE_DRIVE_TEXT } from '../models/googleDrive';
 import { openDriveBackupManager } from '../models/driveImport';
@@ -139,13 +141,18 @@ const DriveConnectSection = ({ dirty = false, onConfigImported }: Props) => {
             {GOOGLE_DRIVE_TEXT.connectButton}
           </button>
         )}
-        {view.canCancel && (
+        {view.canCancel && !isMobile && (
           <>
             <button className={btn + ' back-gray'} onClick={cancel}>
               {GOOGLE_DRIVE_TEXT.cancelButton}
             </button>
             <span className="text-xs text-muted">{GOOGLE_DRIVE_TEXT.connectingHint}</span>
           </>
+        )}
+        {view.canCancel && isMobile && (
+          <span className="text-xs text-muted break-words">
+            {GOOGLE_DRIVE_TEXT.connectingHintMobile}
+          </span>
         )}
         {view.canDisconnect && (
           <button
@@ -172,7 +179,9 @@ const DriveConnectSection = ({ dirty = false, onConfigImported }: Props) => {
       )}
       <div className="r-card rounded-lg border line-color bg-[var(--c-zone)] p-3 text-xs text-body space-y-1">
         <p>{GOOGLE_DRIVE_TEXT.description}</p>
-        <p className="text-muted">{GOOGLE_DRIVE_TEXT.storageNote}</p>
+        <p className="text-muted">
+          {isMobile ? GOOGLE_DRIVE_TEXT.storageNoteMobile : GOOGLE_DRIVE_TEXT.storageNote}
+        </p>
       </div>
     </div>
   );

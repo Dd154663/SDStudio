@@ -64,6 +64,9 @@ dependencies {
   implementation 'com.github.bumptech.glide:glide:4.12.0'
   annotationProcessor 'com.github.bumptech.glide:compiler:4.12.0'
   implementation 'org.apache.commons:commons-compress:1.21'
+  // Google 드라이브 연동 ④(GoogleDrivePlugin.kt) — AuthorizationClient·revokeAccess·clearToken.
+  // 21.4.0 = minSdk 21 인 마지막 판(21.5.0 부터 minSdk 23, 22.0.0 은 24). 앱 minSdk 22 유지 위해 고정.
+  implementation 'com.google.android.gms:play-services-auth:21.4.0'
 }
 
 apply from: 'capacitor.build.gradle'

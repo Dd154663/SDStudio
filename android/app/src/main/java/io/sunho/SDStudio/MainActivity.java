@@ -33,6 +33,7 @@ public class MainActivity extends BridgeActivity {
     registerPlugin(ImageResizer.class);
     registerPlugin(ZipService.class);
     registerPlugin(TagDB.class);
+    registerPlugin(GoogleDrivePlugin.class);
 
     if (Build.VERSION.SDK_INT >= 30) {
       if (!Environment.isExternalStorageManager()) {

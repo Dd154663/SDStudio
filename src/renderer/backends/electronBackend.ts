@@ -257,6 +257,11 @@ export class ElectornBackend extends Backend {
     return !!(await invoke(DRIVE_AUTH_CHANNEL.connected));
   }
 
+  // PC 는 출처 선택 뒤 input.click() 이 막히지 않아(대화상자 클릭이 사용자 활성화) 쓰지 않는다.
+  driveAuthConnectedHint(): boolean {
+    return false;
+  }
+
   // ─── Google 드라이브 올리기 (드라이브 API ②) — main IPC 위임 ───
   // 진행률은 이 창으로만 오는 drive-upload-progress 를 올리기 동안만 구독한다.
   async driveUpload(

@@ -9,6 +9,8 @@ const backend = {
   readBinaryFile: jest.fn(),
   driveAuthSupported: jest.fn(() => true),
   driveAuthConnected: jest.fn(),
+  driveAuthConnectedHint: jest.fn(() => false),
+  selectFile: jest.fn(),
   getConfig: jest.fn(),
 };
 const backupService = {
@@ -50,6 +52,7 @@ import {
   currentDriveManagerRequest,
   driveBackupKindLabel,
   importFromDrive,
+  importTextWithSource,
   interceptFileImportClick,
   receiveDriveBackup,
   resolveDriveRoute,
@@ -215,11 +218,92 @@ describe('고르기 모드·출처 가로채기', () => {
     expect(backend.driveDownload).not.toHaveBeenCalled();
   });
 
-  test('Android: label 기본 동작(파일 선택기) 그대로', () => {
+  test('Android 미연결: label 기본 동작(파일 선택기) 그대로', () => {
     platform.supportsTargetFolder = false;
+    backend.driveAuthConnectedHint.mockReturnValue(false);
     const e = { target: {} as any, preventDefault: jest.fn() };
     interceptFileImportClick(e, {} as any, 'scene-template');
     expect(e.preventDefault).not.toHaveBeenCalled();
+  });
+
+  test('Android 미지원(Play 서비스 없음): 연결 표시가 있어도 가로채지 않는다', () => {
+    platform.supportsTargetFolder = false;
+    backend.driveAuthSupported.mockReturnValue(false);
+    backend.driveAuthConnectedHint.mockReturnValue(true);
+    const e = { target: {} as any, preventDefault: jest.fn() };
+    interceptFileImportClick(e, {} as any, 'scene-template');
+    expect(e.preventDefault).not.toHaveBeenCalled();
+  });
+
+  test('Android 연결(④): 가로채 출처를 묻고, 「파일」은 문서 선택기(selectFile JSON)로 읽어 기존 함수로', async () => {
+    platform.supportsTargetFolder = false;
+    backend.driveAuthConnectedHint.mockReturnValue(true);
+    backend.driveAuthConnected.mockResolvedValue(true);
+    appState.pushDialogAsync.mockResolvedValue('file');
+    backend.selectFile.mockResolvedValue('content://docs/a.json');
+    backend.readBinaryFile.mockResolvedValue(b64('\uFEFF{"presets":[]}'));
+    const input = { click: jest.fn() } as any;
+    const e = { target: {} as any, preventDefault: jest.fn() };
+    interceptFileImportClick(e, input, 'character-presets');
+    expect(e.preventDefault).toHaveBeenCalled();
+    await flush();
+    await flush();
+    await flush();
+    expect(input.click).not.toHaveBeenCalled();
+    expect(backend.selectFile).toHaveBeenCalledWith({ filters: [{ name: 'JSON', extensions: ['json'] }] });
+    expect(backend.readBinaryFile).toHaveBeenCalledWith('content://docs/a.json');
+    expect(mockImportCharacterText).toHaveBeenCalledWith('{"presets":[]}');
+  });
+
+  test('Android 연결: 씬 템플릿 「Google 드라이브」는 고르기 창, 문서 선택기 취소는 조용히 끝', async () => {
+    platform.supportsTargetFolder = false;
+    backend.driveAuthConnectedHint.mockReturnValue(true);
+    backend.driveAuthConnected.mockResolvedValue(true);
+    appState.pushDialogAsync.mockResolvedValueOnce('drive');
+    interceptFileImportClick({ target: {} as any, preventDefault: jest.fn() }, null, 'scene-template');
+    await flush();
+    await flush();
+    expect(currentDriveManagerRequest()).toMatchObject({ mode: 'pick', kind: 'scene-template' });
+    closeDriveBackupManager(null);
+    await flush();
+
+    appState.pushDialogAsync.mockResolvedValueOnce('file');
+    backend.selectFile.mockRejectedValueOnce(new Error('pickFiles canceled.'));
+    await importTextWithSource('scene-template');
+    expect(templateService.importSceneTemplateFile).not.toHaveBeenCalled();
+    expect(appState.pushMessage).not.toHaveBeenCalled();
+  });
+
+  test('Android 연결: 환경설정은 문맥(dirty·재동기화)과 함께 importConfigText 로', async () => {
+    platform.supportsTargetFolder = false;
+    backend.driveAuthConnected.mockResolvedValue(true);
+    appState.pushDialogAsync.mockResolvedValueOnce('file');
+    backend.selectFile.mockResolvedValue('content://docs/c.json');
+    backend.readBinaryFile.mockResolvedValue(b64('{"a":1}'));
+    const ctx = { config: { dirty: true, onConfigImported: jest.fn() } };
+    await importTextWithSource('config', ctx);
+    expect(mockImportConfigText).toHaveBeenCalledWith('{"a":1}', ctx.config);
+  });
+
+  test('Android 연결: 파일 읽기 실패는 안내만', async () => {
+    platform.supportsTargetFolder = false;
+    backend.driveAuthConnected.mockResolvedValue(true);
+    appState.pushDialogAsync.mockResolvedValueOnce('file');
+    backend.selectFile.mockResolvedValue('content://docs/c.json');
+    backend.readBinaryFile.mockRejectedValue(new Error('io'));
+    await importTextWithSource('config');
+    expect(appState.pushMessage).toHaveBeenCalledWith(GOOGLE_DRIVE_TEXT.fileReadFailed);
+    expect(mockImportConfigText).not.toHaveBeenCalled();
+  });
+
+  test('Android: 드라이브에서 받은 file:// URI 를 그대로 tar 불러오기·텍스트 읽기에 쓴다', async () => {
+    platform.supportsTargetFolder = false;
+    backend.driveDownload.mockResolvedValue('file:///storage/emulated/0/Documents/.SDStudio/tmp/drive-download/F1/p.tar');
+    await receiveDriveBackup(item('project', 'p.tar'));
+    expect(backupService.handleTarImport).toHaveBeenCalledWith(
+      'file:///storage/emulated/0/Documents/.SDStudio/tmp/drive-download/F1/p.tar',
+    );
+    expect(backend.driveCleanupDownload).toHaveBeenCalledWith('F1');
   });
 
   test('PC 미연결: 기본 동작을 막고 묻지 않고 숨은 input 을 누른다', async () => {
