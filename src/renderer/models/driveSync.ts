@@ -74,6 +74,9 @@ export const DRIVE_EXPORT_KIND_LABEL: Record<DriveExportKind, string> = {
 
 // 사용자에게 보이는 문구는 전부 여기 한 곳에 둔다(대상별로 달라지지 않게).
 export const DRIVE_SYNC_TEXT = {
+  // 설정 「드라이브」 탭의 접이식 고급 구역(⑤ — 과도기: Google 드라이브 연결 시 숨김, 값은 보존).
+  settingAdvancedTitle: '고급: 로컬 동기화 폴더',
+  settingReplacedNote: 'Google 드라이브 연동으로 대체되는 기능입니다.',
   settingLabel: '드라이브 동기화 폴더',
   settingDescription:
     'Google Drive 등 데스크톱 동기화 앱이 올리는 로컬 폴더를 지정하면 내보내기 끝에서 이 폴더를 고를 수 있습니다.',

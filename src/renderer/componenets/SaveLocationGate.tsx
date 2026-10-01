@@ -144,7 +144,7 @@ const SaveLocationGate = observer(() => {
         </button>
         <div className="text-xs text-muted">
           계속하면 이번 실행 동안 새로 만드는 프로젝트/이미지는 기본 위치에
-          저장됩니다. 저장 위치를 바꾸려면 환경설정 → 이미지에서 다시
+          저장됩니다. 저장 위치를 바꾸려면 환경설정 → 저장경로에서 다시
           지정해주세요.
         </div>
       </div>

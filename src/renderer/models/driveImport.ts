@@ -15,7 +15,9 @@
 //   token·토큰 파일명  → 불러오기 거부, 다운로드 폴더 저장만(드라이브에 있어선 안 되는 파일)
 //   unknown(표식 없음) → 다운로드 폴더 저장만
 //
-// 백업 관리 창(componenets/DriveBackupManager.tsx)은 전역 호스트 1개가 이 파일의 요청 상태를 그린다.
+// 고르기 창(componenets/DriveBackupManager.tsx 의 DriveBackupManagerHost)은 전역 호스트 1개가 이 파일의
+// 요청 상태를 그린다. 관리(받기·삭제) 목록은 ⑤(2026-10-01)부터 설정 「드라이브」 탭 안에 인라인으로 있어
+// 요청 상태를 쓰지 않는다(같은 DriveBackupList 컴포넌트).
 
 import { observable, runInAction } from 'mobx';
 import { backend, backupService, templateService } from '.';
@@ -76,12 +78,12 @@ export function driveBackupKindLabel(kind: DriveBackupItem['kind']): string {
   return kind === 'unknown' ? GOOGLE_DRIVE_TEXT.unknownKind : DRIVE_EXPORT_KIND_LABEL[kind];
 }
 
-// ─── 백업 관리 창 요청 상태(전역 호스트가 그린다) ───
+// ─── 고르기 창 요청 상태(전역 호스트가 그린다) ───
 
 export interface DriveManagerRequest {
   id: number;
-  // manage = 설정 화면 [백업 관리](받기·삭제), pick = 불러오기 출처로 드라이브를 골랐을 때(선택).
-  mode: 'manage' | 'pick';
+  // pick = 불러오기 출처로 드라이브를 골랐을 때(선택). 관리(받기·삭제)는 설정 「드라이브」 탭 인라인(⑤).
+  mode: 'pick';
   // pick 모드의 고정 종류 필터.
   kind?: DriveExportKind;
   ctx: DriveImportContext;
@@ -101,10 +103,6 @@ function setManagerRequest(req: DriveManagerRequest | null) {
   runInAction(() => managerBox.set(req));
   // 이전 고르기 요청이 남아 있으면 「고르지 않음」으로 끝낸다.
   if (prev && prev !== req) prev.resolve?.(null);
-}
-
-export function openDriveBackupManager(ctx: DriveImportContext = {}): void {
-  setManagerRequest({ id: ++managerSeq, mode: 'manage', ctx });
 }
 
 export function pickDriveBackup(

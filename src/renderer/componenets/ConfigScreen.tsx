@@ -43,6 +43,7 @@ import {
   FaThLarge,
   FaColumns,
   FaPen,
+  FaGoogleDrive,
 } from 'react-icons/fa';
 import { keyboardShortcutService, KeyboardShortcutService } from '../models/KeyboardShortcutService';
 import { migrationService } from '../models/MigrationService';
@@ -59,8 +60,7 @@ import { useOpusUsage } from './OpusUsageBadge';
 import MobileColorPicker from './MobileColorPicker';
 import { StorageDiagnosticsSection } from './StorageDiagnostics';
 import { DRIVE_SYNC_TEXT } from '../models/driveSync';
-import ConfigSyncSection from './ConfigSyncSection';
-import DriveConnectSection from './DriveConnectSection';
+import DriveSettingsTab from './DriveSettingsTab';
 import type {
   LoginTokenProfile,
   LoginTokenUsageCheck,
@@ -585,7 +585,6 @@ const StorageTab = ({
   saveLocation, dataRoot, selectFolder, clearImageCache,
   refreshImage, setRefreshImage,
   defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder,
-  syncFolder, setSyncFolder, selectSyncFolder,
   autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality,
 }: any) => (
   <div className="space-y-4">
@@ -628,27 +627,7 @@ const StorageTab = ({
         </button>
       )}
     </div>
-    <hr className="line-color" />
-    {/* 드라이브 동기화 폴더(PC 전용 — 이 탭 자체가 PC 에서만 보인다). 문구 단일 출처 = driveSync.ts */}
-    <div>
-      <label className="block text-sm font-semibold gray-label mb-1">{DRIVE_SYNC_TEXT.settingLabel}</label>
-      <p className="text-xs text-muted mb-2">{DRIVE_SYNC_TEXT.settingDescription}</p>
-      <div className="text-sm text-muted bg-[var(--c-surface-2)] rounded px-3 py-2 break-all">
-        {syncFolder || DRIVE_SYNC_TEXT.settingUnset}
-      </div>
-    </div>
-    <div className="flex gap-2">
-      <button className="btn flex-1 back-green py-2 rounded"
-        onClick={selectSyncFolder}>
-        {DRIVE_SYNC_TEXT.settingSelect}
-      </button>
-      {syncFolder && (
-        <button className="btn px-3 back-gray py-2 rounded"
-          onClick={() => setSyncFolder('')}>
-          {DRIVE_SYNC_TEXT.settingClear}
-        </button>
-      )}
-    </div>
+    {/* 드라이브 동기화 폴더(syncFolder)는 「드라이브」 탭의 「고급: 로컬 동기화 폴더」로 옮겼다(드라이브 API ⑤). */}
     <hr className="line-color" />
     <button className="btn w-full back-red py-2 rounded"
       onClick={clearImageCache}>
@@ -704,7 +683,7 @@ const StorageTab = ({
   </div>
 );
 
-/* ── 탭: 저장/이미지 (저장경로 + 이미지 편집 병합) ── */
+/* ── 탭: 저장경로 (저장경로 + 이미지 편집 병합, 2026-10-01 라벨 「저장/이미지」→「저장경로」) ── */
 const StorageImageTab = (props: any) => (
   <div className="space-y-4">
     <StorageTab {...props} />
@@ -1081,7 +1060,6 @@ const SystemTab = ({
   storageWriteGuard, setStorageWriteGuard,
   exportConcurrency, setExportConcurrency,
   autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality,
-  dirty, reloadConfig,
 }: any) => {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [showRickroll, setShowRickroll] = useState(false);
@@ -1137,18 +1115,7 @@ const SystemTab = ({
 
   return (
     <div className="space-y-4">
-      {/* Google 드라이브 연동(드라이브 API ①·④). PC 와 Google Play 서비스가 있는 Android —
-          Play 서비스가 없는 Android 는 숨김(기존 공유 시트 흐름). */}
-      {backend.driveAuthSupported() && (
-        <>
-          <DriveConnectSection dirty={!!dirty} onConfigImported={reloadConfig} />
-          <hr className="line-color" />
-        </>
-      )}
-      {/* 환경설정 내보내기·불러오기(드라이브 동기화 ③, PC·모바일 공통). 불러오기 적용 뒤
-          reloadConfig 로 이 화면의 로컬 상태를 설정 파일에서 다시 읽는다. */}
-      <ConfigSyncSection dirty={!!dirty} onConfigImported={reloadConfig} />
-      <hr className="line-color" />
+      {/* Google 드라이브 연동·환경설정 내보내기/불러오기는 「드라이브」 탭으로 옮겼다(드라이브 API ⑤). */}
       <div>
         <div className="flex items-center gap-2">
           <input type="checkbox" id="cfgStorageGuard" checked={storageWriteGuard}
@@ -1192,7 +1159,7 @@ const SystemTab = ({
           </p>
         )}
       </div>
-      {/* 자동 WebP 변환 — 데스크톱은 저장/이미지 탭에 동일 설정이 있어 모바일만 노출 */}
+      {/* 자동 WebP 변환 — 데스크톱은 저장경로 탭에 동일 설정이 있어 모바일만 노출 */}
       {isMobile && (
         <>
           <hr className="line-color" />
@@ -1305,7 +1272,7 @@ const SystemTab = ({
   );
 };
 
-/* ── 탭: 개인 설정 (취향 토글) ── */
+/* ── 탭: 커스텀 (취향 토글, 2026-10-01 라벨 「개인 설정」→「커스텀」) ── */
 // 앱 글꼴 선택지 — id 는 config 저장 키(uiFont)라 배포 후 불변. preview 는 각
 // 선택지 라벨을 해당 글꼴로 렌더해 고르기 전에 차이를 눈으로 보게 한다.
 const appFonts: { id: 'pretendard' | 'system'; name: string; family: string }[] = [
@@ -1501,7 +1468,7 @@ const TaskLogSection = () => {
   );
 };
 
-/* ── 탭: 키 바인딩 (PC only) ── */
+/* ── 탭: 단축키 (PC only, 2026-10-01 라벨 「키 바인딩」→「단축키」) ── */
 const KeyBindingsTab = () => {
   const [bindings, setBindings] = useState(keyboardShortcutService?.getAllActions() ?? []);
   const [recordingAction, setRecordingAction] = useState<string | null>(null);
@@ -3199,12 +3166,16 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     // 모바일은 편집 모드가 없어 기존 select UI 가 유일한 수단이라 탭을 유지한다.
     ...(mobileMode ? [{ key: 'toolbar', label: '툴바', icon: <FaThLarge size={14} /> }] : []),
     { key: 'layout', label: '레이아웃', icon: <FaColumns size={14} /> },
-    ...(!mobileMode ? [{ key: 'storage', label: '저장/이미지', icon: <FaFolder size={14} /> }] : []),
+    ...(!mobileMode ? [{ key: 'storage', label: '저장경로', icon: <FaFolder size={14} /> }] : []),
+    // 드라이브(드라이브 API ⑤, PC·모바일 공통): Google 드라이브 연동·백업 목록·환경설정 내보내기/불러오기·
+    // (PC) 고급 로컬 동기화 폴더. 라벨 축약(저장경로·커스텀·단축키)과 탭 버튼 여백(px-2.5·gap-1)은 PC 설정
+    // 창 폭(md:max-w-2xl)에 8탭이 한 줄로 들어가게 하려는 것(2026-10-01 사용자 결정).
+    { key: 'drive', label: '드라이브', icon: <FaGoogleDrive size={14} /> },
     { key: 'system', label: '시스템', icon: <FaCog size={14} /> },
-    { key: 'personal', label: '개인 설정', icon: <FaSlidersH size={14} /> },
-    // 복구는 모바일 전용 탭(데스크탑은 '저장/이미지' 탭 안에 동일 기능 존재)
+    { key: 'personal', label: '커스텀', icon: <FaSlidersH size={14} /> },
+    // 복구는 모바일 전용 탭(데스크탑은 '저장경로' 탭 안에 동일 기능 존재)
     ...(mobileMode ? [{ key: 'recovery', label: '복구', icon: <FaWrench size={14} /> }] : []),
-    ...(!mobileMode ? [{ key: 'keybindings', label: '키 바인딩', icon: <FaKeyboard size={14} /> }] : []),
+    ...(!mobileMode ? [{ key: 'keybindings', label: '단축키', icon: <FaKeyboard size={14} /> }] : []),
   ];
 
   const getTabContent = (tabIdx: number) => {
@@ -3213,9 +3184,11 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'login':
         return <LoginTab {...{ accessToken, setAccessToken, loggedIn, loginWithToken, roundTag, multiTokenAutoRotate, setMultiTokenAutoRotate, multiTokenRotateWarning, setMultiTokenRotateWarning, multiTokenRotateTarget, setMultiTokenRotateTarget, multiTokenBalanceRotate, setMultiTokenBalanceRotate, multiTokenRotateBalance, setMultiTokenRotateBalance }} />;
       case 'storage':
-        return <StorageImageTab {...{ saveLocation, dataRoot, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, syncFolder, setSyncFolder, selectSyncFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
+        return <StorageImageTab {...{ saveLocation, dataRoot, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 'system':
-        return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, dirty, reloadConfig: loadConfig }} />;
+        return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality }} />;
+      case 'drive':
+        return <DriveSettingsTab active={activeTab === tabIdx} dirty={!!dirty} reloadConfig={loadConfig} syncFolder={syncFolder} setSyncFolder={setSyncFolder} selectSyncFolder={selectSyncFolder} />;
       case 'personal':
         return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, legacySceneEditor, setLegacySceneEditor, legacyWorkflowMode, setLegacyWorkflowMode, sceneToolbarLegacyText, setSceneToolbarLegacyText, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish, allowDuplicateProjectOpen, setAllowDuplicateProjectOpen }} />;
       case 'customization':
@@ -3338,7 +3311,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
               <button
                 key={tab.label}
                 className={
-                  'flex flex-none items-center gap-1.5 px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ' +
+                  'flex flex-none items-center gap-1 px-2.5 py-2 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ' +
                   (activeTab === i
                     ? 'border-sky-500 text-sky-600 dark:text-sky-400'
                     : 'border-transparent text-muted hover:text-gray-700 dark:hover:text-gray-200')

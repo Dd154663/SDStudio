@@ -1,7 +1,8 @@
 // Google 드라이브 연동 구역 (드라이브 API ①, 2026-09-28)
 //
-// 환경설정 「시스템」 탭에서 환경설정 내보내기·불러오기(ConfigSyncSection) 바로 위에 들어간다.
-// backend.driveAuthSupported() 가 false 인 경우(Google Play 서비스가 없는 Android)는 렌더하지 않는다.
+// 환경설정 「드라이브」 탭(⑤, 2026-10-01 — 이전엔 「시스템」 탭) 맨 위에 들어간다.
+// backend.driveAuthSupported() 가 false 인 경우(Google Play 서비스가 없는 Android)는 렌더하지 않는다
+// (그때 드라이브 탭은 「지원하지 않습니다」 안내를 대신 보인다).
 // Android(드라이브 API ④): 승인은 시스템 Google 계정 창이라 [취소] 를 두지 않고(앱이 닫을 수 없음),
 // 저장 안내는 「Play 서비스가 관리」 문구로 바꾼다.
 //
@@ -9,14 +10,13 @@
 // 다른 창의 연결·해제도 반영한다. 연결은 시스템 브라우저 승인(최대 5분)을 기다리며, 그동안
 // [취소] 를 보인다. 해제는 확인 1회. 문구·요약 규칙은 models/googleDrive.ts.
 //
-// 드라이브 API ③: 연결돼 있으면 [백업 관리] 로 Google 드라이브 백업 관리 창(받기·삭제)을 연다.
-// 환경설정 백업을 받을 때 ConfigSyncSection 과 같은 dirty·onConfigImported 를 쓰도록 넘긴다.
+// 드라이브 API ⑤: [백업 관리] 버튼은 없앴다 — 백업 목록(받기·삭제)은 같은 탭 아래에 인라인으로 있다.
+// 그 목록이 연결 여부를 알도록 상태가 바뀔 때마다 onStatusChange 로 알린다(조회는 이 구역 한 곳만).
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { backend, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import { describeStatus, GOOGLE_DRIVE_TEXT } from '../models/googleDrive';
-import { openDriveBackupManager } from '../models/driveImport';
 import type { DriveAuthStatus } from '../../shared/googleDriveAuth';
 
 function askConfirm(text: string, confirmText: string): Promise<boolean> {
@@ -35,18 +35,22 @@ const btn = 'round-button h-8 text-sm';
 const tag = 'text-xs px-2 py-1 rounded-full whitespace-nowrap';
 
 interface Props {
-  // 설정 화면에 저장 안 된 변경이 있는지(환경설정 백업 받기의 확인용).
-  dirty?: boolean;
-  // 환경설정 백업을 받아 적용한 뒤 설정 화면 로컬 상태를 다시 읽는다.
-  onConfigImported?: () => Promise<void> | void;
+  // 연결 상태가 바뀔 때(첫 조회·연결·해제·다른 창 방송) 알린다. 드라이브 탭의 인라인 목록·고급 구역 표시용.
+  onStatusChange?: (status: DriveAuthStatus) => void;
 }
 
-const DriveConnectSection = ({ dirty = false, onConfigImported }: Props) => {
+const DriveConnectSection = ({ onStatusChange }: Props) => {
   const supported = backend.driveAuthSupported();
   const [status, setStatus] = useState<DriveAuthStatus | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [busy, setBusy] = useState(false);
   const aliveRef = useRef(true);
+  const onStatusChangeRef = useRef(onStatusChange);
+  onStatusChangeRef.current = onStatusChange;
+
+  useEffect(() => {
+    if (status) onStatusChangeRef.current?.(status);
+  }, [status]);
 
   const refresh = useCallback(async () => {
     try {
@@ -153,19 +157,6 @@ const DriveConnectSection = ({ dirty = false, onConfigImported }: Props) => {
           <span className="text-xs text-muted break-words">
             {GOOGLE_DRIVE_TEXT.connectingHintMobile}
           </span>
-        )}
-        {view.canDisconnect && (
-          <button
-            className={btn + ' back-sky'}
-            disabled={busy}
-            onClick={() =>
-              openDriveBackupManager({
-                config: { dirty, onConfigImported: onConfigImported ?? (() => {}) },
-              })
-            }
-          >
-            {GOOGLE_DRIVE_TEXT.manageButton}
-          </button>
         )}
         {view.canDisconnect && (
           <button className={btn + ' back-gray'} disabled={busy} onClick={disconnect}>

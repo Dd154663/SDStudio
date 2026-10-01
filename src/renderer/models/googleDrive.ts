@@ -61,8 +61,13 @@ export const GOOGLE_DRIVE_TEXT = {
   quotaUsed: (usage: string, limit?: string) =>
     limit ? `${usage} / ${limit} 사용` : `${usage} 사용`,
 
-  // ─── 백업 관리 창·받기 (드라이브 API ③) ───
-  manageButton: '백업 관리',
+  // ─── 설정 「드라이브」 탭 (드라이브 API ⑤) ───
+  unsupported: '이 기기에서는 Google 드라이브 연동을 지원하지 않습니다.',
+  unsupportedHintMobile:
+    'Google Play 서비스가 필요합니다. 내보내기·불러오기는 기존처럼 다운로드 폴더·공유와 파일 선택으로 할 수 있습니다.',
+  backupListDisconnected: '연결하면 드라이브의 백업 목록이 여기에 표시됩니다.',
+
+  // ─── 백업 목록·받기 (드라이브 API ③) ───
   managerTitle: 'Google 드라이브 백업',
   pickerTitle: (label: string) => `Google 드라이브에서 ${label} 고르기`,
   refresh: '새로 고침',
