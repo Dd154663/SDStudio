@@ -49,8 +49,8 @@ CLAUDE_BUILD_GUIDE.md
 SPEC_GUIDE.md
 guides/
 
-# 일회성 스크립트
-scripts/
+# 일회성 스크립트(루트 scripts/ 만 — .erb/scripts/ 는 빌드·테스트에 쓰이는 추적 대상)
+/scripts/
 
 # 태그 데이터 원본 (빌드에 불필요)
 assets/danbooru_*.csv

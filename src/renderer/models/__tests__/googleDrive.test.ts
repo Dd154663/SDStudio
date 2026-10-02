@@ -9,7 +9,11 @@ import {
   nativeDriveFileError,
 } from '../googleDrive';
 import { DRIVE_AUTH_ERROR_TEXT, DriveAuthError, driveInfoFailedText } from '../../../shared/googleDriveAuth';
-import { DriveUploadError } from '../../../shared/googleDrive';
+import {
+  DriveUploadError,
+  driveDownloadErrorText,
+  driveUploadErrorText,
+} from '../../../shared/googleDrive';
 
 const GiB = 1024 ** 3;
 
@@ -199,5 +203,24 @@ describe('Android 네이티브 응답 변환(드라이브 API ④)', () => {
     expect(nativeDriveFileError(new Error('boom')).code).toBe('unknown');
     const same = new DriveUploadError('cancelled');
     expect(nativeDriveFileError(same)).toBe(same);
+  });
+
+  test('서명 미등록(DEVELOPER_ERROR 10) → signing-not-registered 문구, statusCode 는 detail 로 표시', () => {
+    const a = nativeDriveAuthError({ code: 'signing-not-registered', data: { detail: 'ApiException 10' } });
+    expect(a.code).toBe('signing-not-registered');
+    expect(a.detail).toBe('ApiException 10');
+    const text = GOOGLE_DRIVE_TEXT.connectFailed(a.code, a.detail);
+    expect(text).toContain(DRIVE_AUTH_ERROR_TEXT['signing-not-registered']);
+    expect(text).toContain('서명');
+    expect(text).toContain('(ApiException 10)');
+    // 연결 뒤 Drive 호출 중 토큰 재발급에서 나와도 같은 코드·문구로 보인다.
+    const f = nativeDriveFileError({ code: 'signing-not-registered', data: { detail: 'ApiException 10' } });
+    expect(f.code).toBe('signing-not-registered');
+    expect(driveUploadErrorText('signing-not-registered')).toBe(
+      DRIVE_AUTH_ERROR_TEXT['signing-not-registered'],
+    );
+    expect(driveDownloadErrorText('signing-not-registered')).toBe(
+      DRIVE_AUTH_ERROR_TEXT['signing-not-registered'],
+    );
   });
 });

@@ -43,6 +43,9 @@ export type DriveAuthErrorCode =
   | 'network'
   | 'server'
   | 'not-configured'
+  // Android: Google Play 서비스가 DEVELOPER_ERROR(10)를 돌려줌 — 이 APK 의 패키지 이름·서명 지문이
+  // Google Cloud 프로젝트에 등록되지 않음(직접 빌드·다른 키 서명). 2026-10-02.
+  | 'signing-not-registered'
   | 'unknown';
 
 export const DRIVE_AUTH_ERROR_TEXT: Record<DriveAuthErrorCode, string> = {
@@ -60,6 +63,8 @@ export const DRIVE_AUTH_ERROR_TEXT: Record<DriveAuthErrorCode, string> = {
   network: '네트워크에 연결할 수 없습니다. 인터넷 연결을 확인해 주세요.',
   server: 'Google 서버 응답이 올바르지 않습니다. 잠시 뒤 다시 시도해 주세요.',
   'not-configured': '이 빌드에는 Google 드라이브 연동 설정이 들어 있지 않습니다.',
+  'signing-not-registered':
+    '이 빌드의 서명이 Google 프로젝트에 등록되어 있지 않습니다. 공식 배포 APK 를 쓰거나, 직접 빌드했다면 자신의 Google Cloud 프로젝트에 패키지 이름과 서명 지문을 등록해야 합니다.',
   unknown: '알 수 없는 오류로 연결하지 못했습니다.',
 };
 

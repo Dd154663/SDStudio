@@ -7,7 +7,8 @@
 // 형식: KEY=VALUE 한 줄씩. 빈 줄·# 주석 줄 무시, 앞의 export 무시, 키·값 앞뒤 공백 제거,
 // 값을 감싼 따옴표('…' 또는 "…") 제거. 따옴표 없는 값의 「 #」 뒤는 주석으로 본다.
 // 이미 설정된 환경 변수(CI Secrets·셸에서 지정한 값)는 덮어쓰지 않는다.
-// 위치 주의: .erb/scripts/ 는 .gitignore 의 `scripts/` 규칙에 걸려 새 파일이 추적되지 않으므로 configs 에 둔다.
+// 위치: webpack 설정과 함께 configs 에 둔다(2026-10-02 .gitignore 를 루트 `/scripts/` 로 좁혀
+// .erb/scripts/ 의 새 파일도 이제 추적된다).
 
 import fs from 'fs';
 import path from 'path';

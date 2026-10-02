@@ -545,10 +545,14 @@ class GoogleDrivePlugin : Plugin() {
     }
   }
 
+  // detail 에는 항상 statusCode 를 남긴다(다른 코드로 오는 서명 미등록 등도 진단할 수 있게).
   private fun apiError(e: ApiException): DriveError = when (e.statusCode) {
     CommonStatusCodes.NETWORK_ERROR, CommonStatusCodes.TIMEOUT -> DriveError("network", "ApiException ${e.statusCode}")
     CommonStatusCodes.CANCELED -> DriveError("cancelled", "ApiException ${e.statusCode}")
     CommonStatusCodes.SIGN_IN_REQUIRED -> DriveError("expired", "ApiException ${e.statusCode}")
+    // DEVELOPER_ERROR(10) = 앱 구성 오류. 이 앱에서는 패키지 이름·서명 SHA-1 이 Google Cloud 프로젝트의
+    // OAuth Android 클라이언트에 등록되어 있지 않을 때(직접 빌드·다른 키로 서명한 APK) 나온다.
+    CommonStatusCodes.DEVELOPER_ERROR -> DriveError("signing-not-registered", "ApiException ${e.statusCode}")
     else -> DriveError("exchange-failed", "ApiException ${e.statusCode}")
   }
 

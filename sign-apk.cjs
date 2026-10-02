@@ -17,6 +17,15 @@
  *   - 따라서 원래 키(디버그 키 사본)·새 키·lineage 세 파일을 영구 보관해야 한다.
  *     하나라도 잃으면 이후 업데이트 서명을 만들 수 없다.
  *
+ * 두 가지 모드 (android/keystore.properties 의 originalStoreFile 줄 유무로 결정)
+ *   - 단일 키 모드(직접 빌드용): originalStoreFile 줄이 없으면 releaseStoreFile 키 하나로만
+ *     서명한다(v1·v2·v3 on, v4 off, lineage·--next-signer 없음). 저장소를 받아 직접 빌드하는
+ *     사람용이며, 공식 배포 APK 와 서명이 다르므로 공식 설치본 위에는 설치되지 않는다.
+ *   - 키 회전 모드(공식 배포): originalStoreFile 이 있으면 아래 키 회전 방식으로 서명하고
+ *     원래 키 지문이 5.4.0 서명자와 다르면 거부한다.
+ *   단일 키 모드는 공식 키 회전 구성의 실수(줄을 지운 경우)를 막기 위해, releaseStoreFile 옆에
+ *   lineage 파일이 있거나 새 키가 공식 정식 키이면 서명을 거부한다.
+ *
  * 설정 (비밀은 저장소에 두지 않는다)
  *   android/keystore.properties (gitignore) 에 키 경로·별칭·비밀번호를 적는다.
  *   형식과 항목 설명은 android/keystore.properties.example 참고.
@@ -57,6 +66,15 @@ const DEFAULT_LINEAGE_NAME = 'sdstudio.lineage';
 // 5.4.0 까지 배포한 APK 의 서명자(원래 키) 인증서 SHA-256. 공개 정보(모든 배포 APK 에 포함)다.
 // 원래 키 파일이 이 인증서가 아니면 키 회전 결과가 기존 설치본과 이어지지 않으므로 서명을 막는다.
 const KNOWN_ORIGINAL_SHA256 = '45ced549609ddb6cb31503785fd1073ed95311e0084655c451150eb421fababb';
+
+// 공식 정식 키(키 회전의 새 키) 인증서 SHA-1. 공개 정보(키 회전 이후 배포 APK 의 서명자)다.
+// 단일 키 모드에서 이 키를 쓰면 원래 키 서명이 빠져 기존 설치본이 업데이트되지 않으므로 거부한다.
+const KNOWN_OFFICIAL_RELEASE_SHA1 = '25cb81e7ecb121bdc97b2e14efa455db2f784247';
+
+const MODE_LABEL = {
+  single: '단일 키 모드(직접 빌드용)',
+  rotation: '키 회전 모드(공식 배포)',
+};
 
 // 비밀번호를 담는 환경 변수 이름. 값은 자식 프로세스 env 로만 전달한다.
 const ENV = {
@@ -140,6 +158,11 @@ function loadConfig({ propsPath = PROPS_PATH, requireSecrets = true } = {}) {
     if (!KNOWN_KEYS.includes(key)) warnings.push(`알 수 없는 항목(오타 확인): ${key}`);
   }
 
+  // originalStoreFile 줄 자체가 없으면 단일 키 모드. 줄은 있는데 값이 비어 있으면 종전처럼 누락 오류.
+  if (props.originalStoreFile === undefined) {
+    return loadSingleConfig({ propsPath, props, baseDir, warnings, requireSecrets });
+  }
+
   const missing = [];
   const need = (key) => {
     const v = props[key];
@@ -178,6 +201,7 @@ function loadConfig({ propsPath = PROPS_PATH, requireSecrets = true } = {}) {
   };
 
   return {
+    mode: 'rotation',
     propsPath,
     releaseStoreFile,
     releaseKeyAlias: props.releaseKeyAlias ? stripQuotes(props.releaseKeyAlias) : null,
@@ -185,6 +209,49 @@ function loadConfig({ propsPath = PROPS_PATH, requireSecrets = true } = {}) {
     originalKeyAlias: props.originalKeyAlias ? stripQuotes(props.originalKeyAlias) : DEFAULT_ORIGINAL_ALIAS,
     lineageFile,
     secrets,
+    warnings,
+  };
+}
+
+/**
+ * 단일 키 모드 설정. releaseStoreFile 키 하나만 쓴다(lineage 없음).
+ * lineageFile 은 서명에 쓰지 않고, 공식 키 회전 구성을 실수로 단일 키 모드로 돌리는 것을 막는
+ * 검사(가드)에만 쓴다: 명시값 또는 releaseStoreFile 옆의 기본 이름.
+ */
+function loadSingleConfig({ propsPath, props, baseDir, warnings, requireSecrets }) {
+  const missing = [];
+  const releaseStoreFileRaw = props.releaseStoreFile || '';
+  if (!releaseStoreFileRaw) missing.push('releaseStoreFile');
+  const relKsPass = props.releaseStorePassword || '';
+  if (requireSecrets && !relKsPass) missing.push('releaseStorePassword');
+  if (missing.length) {
+    throw new CliError(`keystore.properties 에 필수 항목이 없습니다(단일 키 모드): ${missing.join(', ')}`, 2);
+  }
+
+  const releaseStoreFile = resolvePathValue(releaseStoreFileRaw, baseDir);
+  if (isInside(REPO_ROOT, releaseStoreFile)) {
+    throw new CliError(`releaseStoreFile 가 저장소 안을 가리킵니다. 키 파일은 저장소 밖으로 옮기세요: ${releaseStoreFile}`, 2);
+  }
+  const lineageFile = props.lineageFile
+    ? resolvePathValue(props.lineageFile, baseDir)
+    : path.join(path.dirname(releaseStoreFile), DEFAULT_LINEAGE_NAME);
+
+  const ignored = ['originalStorePassword', 'originalKeyAlias', 'originalKeyPassword', 'lineageFile']
+    .filter((k) => props[k] !== undefined);
+  if (ignored.length) warnings.push(`단일 키 모드에서는 다음 항목을 서명에 쓰지 않습니다: ${ignored.join(', ')}`);
+
+  return {
+    mode: 'single',
+    propsPath,
+    releaseStoreFile,
+    releaseKeyAlias: props.releaseKeyAlias ? stripQuotes(props.releaseKeyAlias) : null,
+    originalStoreFile: null,
+    originalKeyAlias: null,
+    lineageFile,
+    secrets: {
+      [ENV.REL_KS]: relKsPass,
+      [ENV.REL_KEY]: props.releaseKeyPassword || relKsPass,
+    },
     warnings,
   };
 }
@@ -479,11 +546,43 @@ function loadKeyDigests(tools, config, relAlias) {
   if (orig.sha256 !== KNOWN_ORIGINAL_SHA256) {
     throw new CliError(
       `원래 키 인증서가 5.4.0 배포 서명자와 다릅니다.\n  기대: ${fmtFp(KNOWN_ORIGINAL_SHA256)}\n  실제: ${fmtFp(orig.sha256)}\n`
-        + 'originalStoreFile·originalKeyAlias 를 확인하세요. 다른 키로 회전하면 기존 설치본이 업데이트되지 않습니다.',
+        + 'originalStoreFile·originalKeyAlias 를 확인하세요. 다른 키로 회전하면 기존 설치본이 업데이트되지 않습니다.\n'
+        + '직접 빌드라면 keystore.properties 에서 originalStoreFile 줄을 지워 단일 키 모드로 서명하세요.',
     );
   }
   if (rel.sha256 === orig.sha256) throw new CliError('새 키와 원래 키가 같은 인증서입니다. releaseStoreFile 을 확인하세요.');
   return { orig, rel };
+}
+
+/**
+ * 단일 키 모드: 서명 키의 지문을 구하고, 공식 키 회전 구성을 실수로 단일 키 모드로 쓰는 경우를 막는다.
+ *   - lineage 파일이 있으면(명시값 또는 releaseStoreFile 옆 기본 이름) 공식 구성으로 보고 거부
+ *   - 서명 키가 공식 정식 키이면 거부(원래 키 서명이 빠져 기존 설치본이 업데이트되지 않음)
+ */
+function loadSingleKeyDigests(tools, config, relAlias) {
+  if (fs.existsSync(config.lineageFile)) {
+    throw new CliError(
+      `lineage 파일이 있습니다: ${config.lineageFile}\n`
+        + '공식 키 회전 구성으로 보입니다. 공식 배포 서명이라면 keystore.properties 에 originalStoreFile 줄을 되살리세요.\n'
+        + '직접 빌드한 자기 키라면 lineage 파일과 다른 폴더에 키를 두거나 lineageFile 을 지우세요.',
+    );
+  }
+  const rel = exportCertDigests(tools, config.releaseStoreFile, relAlias, ENV.REL_KS,
+    STORETYPE_ORDER.release, config.secrets, '서명 키');
+  if (rel.sha1 === KNOWN_OFFICIAL_RELEASE_SHA1) {
+    throw new CliError(
+      '서명 키가 공식 정식 키입니다. 공식 배포는 키 회전 모드(originalStoreFile 포함)로만 서명합니다.\n'
+        + '단일 키로 서명하면 기존 설치본이 업데이트되지 않습니다. keystore.properties 의 originalStoreFile 줄을 확인하세요.',
+    );
+  }
+  return { single: true, rel };
+}
+
+/** 모드에 맞는 지문 로드(키 회전 모드는 종전 loadKeyDigests 그대로). */
+function loadDigestsForMode(tools, config, relAlias) {
+  return config.mode === 'single'
+    ? loadSingleKeyDigests(tools, config, relAlias)
+    : loadKeyDigests(tools, config, relAlias);
 }
 
 /* ───────────────────────── apksigner 명령 구성 ───────────────────────── */
@@ -515,6 +614,27 @@ function signArgs(config, relAlias, inApk, outApk) {
     '--out', outApk,
     inApk,
   ];
+}
+
+// 단일 키 모드 서명: 키 하나, lineage·--next-signer 없음. 서명 방식 구성은 키 회전 모드와 같다.
+function singleSignArgs(config, relAlias, inApk, outApk) {
+  return [
+    'sign',
+    '--ks', config.releaseStoreFile, '--ks-key-alias', relAlias,
+    '--ks-pass', `env:${ENV.REL_KS}`, '--key-pass', `env:${ENV.REL_KEY}`,
+    '--v1-signing-enabled', 'true',
+    '--v2-signing-enabled', 'true',
+    '--v3-signing-enabled', 'true',
+    '--v4-signing-enabled', 'false',
+    '--out', outApk,
+    inApk,
+  ];
+}
+
+function signArgsForMode(config, relAlias, inApk, outApk) {
+  return config.mode === 'single'
+    ? singleSignArgs(config, relAlias, inApk, outApk)
+    : signArgs(config, relAlias, inApk, outApk);
 }
 
 function verifyArgs(apk) {
@@ -593,6 +713,15 @@ function verifyApk(tools, apk, expected) {
   for (const d of digests) console.log(`  ${d.label || '서명자'} SHA-256 ${fmtFp(d.sha256)}`);
 
   if (schemes.v3 !== true) reasons.push('v3 서명 검증 결과가 true 가 아닙니다');
+  if (expected && expected.single) {
+    // 단일 키 모드: 서명자 지문이 설정한 키 하나뿐인지 확인한다.
+    if (schemes.v1 !== true) reasons.push('v1 서명 검증 결과가 true 가 아닙니다(minSdk 22 대응 필요)');
+    if (schemes.v2 !== true) reasons.push('v2 서명 검증 결과가 true 가 아닙니다');
+    const onlyRel = digests.length > 0 && digests.every((d) => d.sha256 === expected.rel.sha256);
+    console.log(`  서명 키 지문: ${onlyRel ? '확인' : '불일치'} (${fmtFp(expected.rel.sha256)})`);
+    if (!onlyRel) reasons.push('서명자 지문이 설정한 키와 다르거나 다른 서명자가 섞여 있습니다');
+    return { ok: reasons.length === 0, reasons };
+  }
   const hasOrig = seen.has(KNOWN_ORIGINAL_SHA256);
   console.log(`  원래 키(5.4.0 서명자) 지문: ${hasOrig ? '확인' : '없음'}`);
   if (expected) {
@@ -651,7 +780,19 @@ function printTools(tools) {
   for (const p of tools.problems) console.log(`  문제: ${p}`);
 }
 
+function printMode(mode) {
+  console.log(`\n[모드] ${MODE_LABEL[mode]}`);
+}
+
 function printConfigSummary(config, relAlias) {
+  if (config.mode === 'single') {
+    console.log('\n[설정]');
+    console.log(`  설정 파일: ${config.propsPath}`);
+    console.log(`  서명 키: ${config.releaseStoreFile} (별칭 ${relAlias})`);
+    console.log(`  비밀번호: 환경 변수 ${ENV.REL_KS}, ${ENV.REL_KEY} 로 전달(값 미표시)`);
+    for (const w of config.warnings) console.log(`  주의: ${w}`);
+    return;
+  }
   console.log('\n[설정]');
   console.log(`  설정 파일: ${config.propsPath}`);
   console.log(`  새 키: ${config.releaseStoreFile} (별칭 ${relAlias})`);
@@ -681,7 +822,9 @@ function cmdCheck() {
   const tools = resolveTools({ allowMissing: true });
   printTools(tools);
   const config = loadConfig();
+  printMode(config.mode);
   if (tools.problems.length) throw new CliError('도구가 준비되지 않았습니다.');
+  if (config.mode === 'single') return cmdCheckSingle(tools, config);
 
   requireFile(config.releaseStoreFile, '새 키(releaseStoreFile)');
   requireFile(config.originalStoreFile, '원래 키(originalStoreFile)');
@@ -706,6 +849,20 @@ function cmdCheck() {
 
   console.log(`\n[입력 APK] ${DEFAULT_IN} ${fs.existsSync(DEFAULT_IN) ? '(있음)' : '(없음 — assembleRelease 필요)'}`);
   console.log('\n점검 완료: 서명 준비됨.');
+  return undefined;
+}
+
+function cmdCheckSingle(tools, config) {
+  requireFile(config.releaseStoreFile, '서명 키(releaseStoreFile)');
+  const { alias: relAlias, detected } = resolveReleaseAlias(tools, config);
+  printConfigSummary(config, `${relAlias}${detected ? ', 자동 감지' : ''}`);
+  const keys = loadSingleKeyDigests(tools, config, relAlias);
+  console.log('\n[인증서 지문] (공개 정보 — 자신의 Google OAuth Android 클라이언트 등록용 SHA-1 포함)');
+  console.log(`  서명 키 SHA-256 ${fmtFp(keys.rel.sha256)}`);
+  console.log(`  서명 키 SHA-1   ${fmtFp(keys.rel.sha1)}`);
+  console.log(`\n[입력 APK] ${DEFAULT_IN} ${fs.existsSync(DEFAULT_IN) ? '(있음)' : '(없음 — assembleRelease 필요)'}`);
+  console.log('\n점검 완료: 서명 준비됨(단일 키 — 공식 배포 APK 와 서명이 달라 공식 설치본 위에는 설치되지 않습니다).');
+  return undefined;
 }
 
 function cmdSignDryRun(opts) {
@@ -718,7 +875,9 @@ function cmdSignDryRun(opts) {
   } catch (e) {
     if (!(e instanceof CliError) || e.exitCode !== 2) throw e;
     console.log(`\n(설정 파일을 읽지 못해 자리표시자로 대체: ${e.message.split('\n')[0]})`);
+    console.log('(자리표시자는 키 회전 모드로 표시합니다. 설정에 originalStoreFile 줄이 없으면 단일 키 모드입니다.)');
     config = {
+      mode: 'rotation',
       releaseStoreFile: '<releaseStoreFile>',
       releaseKeyAlias: null,
       originalStoreFile: '<originalStoreFile>',
@@ -726,6 +885,7 @@ function cmdSignDryRun(opts) {
       lineageFile: '<lineageFile>',
     };
   }
+  printMode(config.mode);
   const relAlias = config.releaseKeyAlias || '<자동 감지 별칭>';
   const inApk = opts.in;
   const outApk = opts.out;
@@ -736,6 +896,13 @@ function cmdSignDryRun(opts) {
     console.log(`  실행 파일: ${cmd.file || '(도구 없음)'}`);
     console.log(`  인자 배열: ${JSON.stringify(cmd.argv)}`);
   };
+  if (config.mode === 'single') {
+    show('(a) 정렬 검사', tools.zipalign, ['-c', '-P', '4', '4', inApk]);
+    show('(b) 서명(단일 키, lineage 없음)', tools.apksigner, singleSignArgs(config, relAlias, inApk, outApk));
+    show('(c) 검증', tools.apksigner, verifyArgs(outApk));
+    console.log(`\n자식 프로세스에 넘길 환경 변수 이름: ${ENV.REL_KS}, ${ENV.REL_KEY} (값 미표시)`);
+    return;
+  }
   const lineageExists = config.lineageFile && fs.existsSync(config.lineageFile);
   show(`(a) lineage 생성${lineageExists ? ' — 이미 있어 실제로는 생략' : ' (없을 때 1회)'}`, tools.apksigner, rotateArgs(config, relAlias));
   show('(b) 정렬 검사', tools.zipalign, ['-c', '-P', '4', '4', inApk]);
@@ -755,26 +922,34 @@ function cmdSign(opts) {
   const tools = resolveTools();
   printTools(tools);
   const config = loadConfig();
-  requireFile(config.releaseStoreFile, '새 키(releaseStoreFile)');
-  requireFile(config.originalStoreFile, '원래 키(originalStoreFile)');
+  printMode(config.mode);
+  const single = config.mode === 'single';
+  requireFile(config.releaseStoreFile, single ? '서명 키(releaseStoreFile)' : '새 키(releaseStoreFile)');
+  if (!single) requireFile(config.originalStoreFile, '원래 키(originalStoreFile)');
   const { alias: relAlias, detected } = resolveReleaseAlias(tools, config);
   printConfigSummary(config, `${relAlias}${detected ? ', 자동 감지' : ''}`);
-  const keys = loadKeyDigests(tools, config, relAlias);
-  console.log(`\n  원래 키 SHA-256 ${fmtFp(keys.orig.sha256)} (5.4.0 서명자와 일치)`);
-  console.log(`  새 키   SHA-256 ${fmtFp(keys.rel.sha256)}`);
-
-  // (a) lineage
-  if (!fs.existsSync(config.lineageFile)) {
-    console.log('\n[lineage] 없음 — 1회 생성합니다');
-    const r = run(tools.apksigner, rotateArgs(config, relAlias), { secrets: config.secrets, extraEnv: javaHomeEnv(tools) });
-    printToolOutput(r);
-    if (r.status !== 0 || !fs.existsSync(config.lineageFile)) {
-      throw new CliError(`apksigner rotate 실패(종료 코드 ${r.status})`);
-    }
-    console.log(`  lineage 생성됨: ${config.lineageFile}`);
-    console.log('  ※ 이 파일을 원래 키·새 키와 함께 반드시 백업하세요(잃으면 이후 업데이트 서명 불가).');
+  const keys = loadDigestsForMode(tools, config, relAlias);
+  if (single) {
+    console.log(`\n  서명 키 SHA-256 ${fmtFp(keys.rel.sha256)}`);
+  } else {
+    console.log(`\n  원래 키 SHA-256 ${fmtFp(keys.orig.sha256)} (5.4.0 서명자와 일치)`);
+    console.log(`  새 키   SHA-256 ${fmtFp(keys.rel.sha256)}`);
   }
-  checkLineage(tools, config, keys);
+
+  // (a) lineage — 키 회전 모드만(단일 키 모드는 lineage 를 만들지도 쓰지도 않는다)
+  if (!single) {
+    if (!fs.existsSync(config.lineageFile)) {
+      console.log('\n[lineage] 없음 — 1회 생성합니다');
+      const r = run(tools.apksigner, rotateArgs(config, relAlias), { secrets: config.secrets, extraEnv: javaHomeEnv(tools) });
+      printToolOutput(r);
+      if (r.status !== 0 || !fs.existsSync(config.lineageFile)) {
+        throw new CliError(`apksigner rotate 실패(종료 코드 ${r.status})`);
+      }
+      console.log(`  lineage 생성됨: ${config.lineageFile}`);
+      console.log('  ※ 이 파일을 원래 키·새 키와 함께 반드시 백업하세요(잃으면 이후 업데이트 서명 불가).');
+    }
+    checkLineage(tools, config, keys);
+  }
 
   // (b) 정렬
   const tmpApk = `${outApk}.aligned-tmp.apk`;
@@ -792,8 +967,8 @@ function cmdSign(opts) {
     const signInput = aligned || inApk;
 
     // (c) 서명
-    console.log('\n[서명] apksigner sign (원래 키 → 새 키, lineage)');
-    const s = run(tools.apksigner, signArgs(config, relAlias, signInput, outApk), {
+    console.log(single ? '\n[서명] apksigner sign (단일 키)' : '\n[서명] apksigner sign (원래 키 → 새 키, lineage)');
+    const s = run(tools.apksigner, signArgsForMode(config, relAlias, signInput, outApk), {
       secrets: config.secrets, extraEnv: javaHomeEnv(tools),
     });
     printToolOutput(s);
@@ -822,8 +997,9 @@ function cmdVerify(apk) {
     // 설정이 있으면 새 키 지문까지 대조한다. 실패하면 기본 검증만.
     try {
       const config = loadConfig();
+      printMode(config.mode);
       const { alias } = resolveReleaseAlias(tools, config);
-      keys = loadKeyDigests(tools, config, alias);
+      keys = loadDigestsForMode(tools, config, alias);
     } catch (e) {
       console.log(`  (설정으로 새 키 지문을 구하지 못해 기본 검증만 합니다: ${e.message.split('\n')[0]})`);
     }
@@ -906,11 +1082,15 @@ module.exports = {
   parseKeytoolAliases,
   parseSchemes,
   parseDigests,
+  loadConfig,
   rotateArgs,
   signArgs,
+  singleSignArgs,
   verifyArgs,
   buildCommand,
   certDigestsFromPem,
   ENV,
   KNOWN_ORIGINAL_SHA256,
+  KNOWN_OFFICIAL_RELEASE_SHA1,
+  MODE_LABEL,
 };
