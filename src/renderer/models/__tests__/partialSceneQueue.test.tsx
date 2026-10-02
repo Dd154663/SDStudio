@@ -14,7 +14,12 @@ jest.mock('..', () => ({
   promptService: { findMissingPieces: () => [] },
 }));
 jest.mock('../AppService', () => ({ appState: state }));
-jest.mock('../TaskQueueService', () => ({ queueWorkflow, queueI2IWorkflow }));
+jest.mock('../TaskQueueService', () => ({
+  queueWorkflow,
+  queueI2IWorkflow,
+  // 일괄 예약 묶음의 미러 합성 캔버스 기억(2026-10-02 P1) — 이 테스트는 미러 씬 없음
+  createMirrorCanvasMemo: () => ({ get: jest.fn() }),
+}));
 jest.mock('../PromptService', () => ({}));
 jest.mock('../types', () => ({}));
 jest.mock('../BackStackService', () => ({ backStackService: { push: () => ({ remove() {} }) } }));

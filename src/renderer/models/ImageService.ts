@@ -11,7 +11,7 @@ import { platform } from './platform';
 import { getAppState } from './appStateRef';
 import { GenericScene, InpaintScene, Scene, Session } from './types';
 import { assert } from './util';
-import { isOutputImageFile } from './imageFormats';
+import { isOutputImageFile, PNG_IMAGE_EXT } from './imageFormats';
 import {
   projectPath,
   PROJECT_IMAGE_ROOTS,
@@ -708,9 +708,15 @@ export class ImageService extends EventTarget {
     return projectPath('references', session.name);
   }
 
-  async storeVibeImage(session: Session, data: string) {
+  // primeCache: 방금 쓴 PNG(base64)를 읽기 캐시에 바로 넣는다. 미러 일괄 예약처럼
+  // 쓰자마자 같은 파일을 다시 읽는 경로(씬 카드 표시·예약 핸들러)의 디스크 왕복을
+  // 없앤다 — 넣는 값은 readDataFile 이 돌려줄 data URI 와 같은 모양(2026-10-02 P1).
+  async storeVibeImage(session: Session, data: string, primeCache = false) {
     const path = imageService.getVibesDir(session) + '/' + v4() + '.png';
     await backend.writeDataFile(path, data);
+    if (primeCache) {
+      this.cache.set(path, `data:image/${PNG_IMAGE_EXT};base64,${data}`);
+    }
     return path.split('/').pop()!;
   }
 

@@ -11,6 +11,10 @@ import {
   Session,
 } from './types';
 import { resolveSceneCharacterPrompts } from './sceneCharacterPrompts';
+import {
+  makeExplicitWeightRangeRegex,
+  parsePromptWeightNumber,
+} from './promptWeightSyntax';
 
 export function cleanPARR(parr: PARR): PARR {
   return parr.map((p) => p.trim());
@@ -769,13 +773,14 @@ export const highlightPrompt = (
   }
   // (number)::tag:: 패턴의 범위와 가중치
   const explicitWeightRanges: Array<{ start: number; end: number; weight: number }> = [];
-  const ewRegex = /(-?\d+(?:\.\d+)?)::[\s\S]*?::/g;
+  // 숫자 표기는 promptWeightSyntax 단일 출처 — .6:: 도 0.6(1 미만 색)으로 본다(2026-10-02 I2, 예전엔 6 으로 읽어 강조 색).
+  const ewRegex = makeExplicitWeightRangeRegex();
   let ewMatch: RegExpExecArray | null;
   while ((ewMatch = ewRegex.exec(text)) !== null) {
     explicitWeightRanges.push({
       start: ewMatch.index,
       end: ewMatch.index + ewMatch[0].length,
-      weight: parseFloat(ewMatch[1]),
+      weight: parsePromptWeightNumber(ewMatch[1]),
     });
   }
   /** 해당 offset 범위의 가중치 상태 반환: 'emphasis' | 'deemphasis' | 'negative' | null */

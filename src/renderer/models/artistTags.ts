@@ -1,42 +1,158 @@
 // 작가 태그(artist:) 단일 출처 — SPEC_GUIDE 「작가 태그 접두(artist:) 계약」.
 //  · 쉼표 구획 하나를 [앞 공백][가중치 접두 N::][괄호 {[ ][핵심][괄호 ]}][가중치 접미 ::][뒤 공백] 으로 나눈다.
+//    가중치 묶음(N::a, b::)의 첫·마지막 태그처럼 여는 쪽·닫는 쪽만 있는 구획도 각각 벗긴다(2026-10-02).
 //  · "작가인가" 판별은 두 갈래: ①핵심이 artist: 접두를 가짐 ②접두가 없어도 태그 DB(카테고리 1=작가)에 있는 단어.
 //  · 일괄 추가/제거는 핵심만 바꾸고 가중치·괄호·공백은 그대로 둔다. 조각(<이름>)·랜덤({a|b})·빈 구획은 건드리지 않는다.
+
+import { PROMPT_WEIGHT_NUMBER_SOURCE } from './promptWeightSyntax';
 
 /** Danbooru 태그 DB의 작가 카테고리(promptAutocomplete.ts 의 ARTIST_TAG_CATEGORY 와 같은 값). */
 export const ARTIST_CATEGORY = 1;
 
 const ARTIST_PREFIX_RE = /^artist\s*:\s*/i;
-const WEIGHT_RE = /^(-?\d+(?:\.\d+)?::)([\s\S]*?)(::)$/;
+/** 구획 앞쪽 장식 토큰 하나: 괄호 `{` `[` 또는 여는 가중치 `N::`(.6:: 처럼 0 생략 포함) + 뒤 공백. */
+const OPEN_DECOR_TOKEN_RE = new RegExp(`^(?:[{[]|${PROMPT_WEIGHT_NUMBER_SOURCE}::)\\s*`);
+/** 구획 뒤쪽 장식 토큰 하나: 앞 공백 + 괄호 `}` `]` 또는 닫는 가중치 `::`. */
+const CLOSE_DECOR_TOKEN_RE = /\s*(?:[}\]]|::)$/;
 
 export interface PromptSegmentParts {
   leading: string;
+  /** 여는 가중치 `N::` 까지의 앞 장식(가중치 바깥 괄호가 있으면 함께). 가중치가 없으면 ''. */
   weightPrefix: string;
+  /** 핵심 바로 앞 괄호(와 공백). */
   open: string;
   core: string;
+  /** 핵심 바로 뒤 괄호(와 공백). */
   close: string;
+  /** 닫는 가중치 `::` 부터의 뒤 장식(가중치 바깥 괄호가 있으면 함께). 가중치가 없으면 ''. */
   weightSuffix: string;
   trailing: string;
 }
 
-/** 쉼표 구획 하나를 장식과 핵심으로 나눈다. joinPromptSegment 로 되돌리면 원문과 같다. */
+/**
+ * 쉼표 구획 하나를 장식과 핵심으로 나눈다. joinPromptSegment 로 되돌리면 원문과 같다.
+ * NAI 가중치 묶음 `N::a, b, c::` 는 쉼표로 쪼개면 여는 `N::` 와 닫는 `::` 가 서로 다른 구획에 놓인다
+ * (첫 태그=여는 쪽만, 마지막 태그=닫는 쪽만). 그래서 앞·뒤 장식을 각각 따로 벗긴다(2026-10-02 B3 수정 —
+ * 예전에는 한 구획에 둘 다 있을 때만 벗겨 `artist:bbb::` 가 이름으로 나왔다).
+ */
 export function parsePromptSegment(segment: string): PromptSegmentParts {
   const leading = segment.match(/^\s*/)?.[0] ?? '';
   const rest = segment.slice(leading.length); // 공백뿐인 구획에서 앞·뒤 공백이 겹치지 않게 앞 공백을 뗀 뒤 잰다
   const trailing = rest.match(/\s*$/)?.[0] ?? '';
-  let body = rest.slice(0, rest.length - trailing.length);
-  let weightPrefix = '';
-  let weightSuffix = '';
-  const weighted = body.match(WEIGHT_RE);
-  if (weighted) {
-    weightPrefix = weighted[1];
-    body = weighted[2];
-    weightSuffix = weighted[3];
+  const body = rest.slice(0, rest.length - trailing.length);
+  // 앞 장식: 괄호·여는 가중치 토큰을 차례로 벗긴다. 마지막 가중치 토큰까지가 weightPrefix, 그 뒤 괄호가 open.
+  let pre = '';
+  let weightPrefixLen = 0;
+  for (;;) {
+    const m = body.slice(pre.length).match(OPEN_DECOR_TOKEN_RE);
+    if (!m || !m[0]) break;
+    pre += m[0];
+    if (m[0][0] !== '{' && m[0][0] !== '[') weightPrefixLen = pre.length;
   }
-  const open = body.match(/^[{[]*/)?.[0] ?? '';
-  const close = body.match(/[}\]]*$/)?.[0] ?? '';
-  const core = body.slice(open.length, body.length - close.length);
-  return { leading, weightPrefix, open, core, close, weightSuffix, trailing };
+  // 뒤 장식: 남은 부분 끝에서 괄호·닫는 가중치 토큰을 벗긴다. 가장 왼쪽 :: 부터가 weightSuffix, 그 앞 괄호가 close.
+  const afterPre = body.slice(pre.length);
+  let post = '';
+  let weightSuffixLen = 0;
+  for (;;) {
+    const m = afterPre.slice(0, afterPre.length - post.length).match(CLOSE_DECOR_TOKEN_RE);
+    if (!m || !m[0]) break;
+    post = m[0] + post;
+    if (m[0].trim() === '::') weightSuffixLen = post.length;
+  }
+  return {
+    leading,
+    weightPrefix: pre.slice(0, weightPrefixLen),
+    open: pre.slice(weightPrefixLen),
+    core: afterPre.slice(0, afterPre.length - post.length),
+    close: post.slice(0, post.length - weightSuffixLen),
+    weightSuffix: post.slice(post.length - weightSuffixLen),
+    trailing,
+  };
+}
+
+type DecorKind = '{' | '[' | 'w';
+
+/** 장식 문자열을 토큰(공백 제거)과 종류로 나눈다. 여는 쪽은 바깥→안, 닫는 쪽은 안→바깥 순서. */
+function decorTokens(decor: string, side: 'open' | 'close'): { text: string; kind: DecorKind }[] {
+  const out: { text: string; kind: DecorKind }[] = [];
+  let rest = decor.trim();
+  while (rest) {
+    if (side === 'open') {
+      const m = rest.match(OPEN_DECOR_TOKEN_RE);
+      if (!m || !m[0]) break;
+      const text = m[0].trim();
+      out.push({ text, kind: text === '{' ? '{' : text === '[' ? '[' : 'w' });
+      rest = rest.slice(m[0].length).trim();
+    } else {
+      const m = rest.match(/^\s*(?:[}\]]|::)/);
+      if (!m) break;
+      const text = m[0].trim();
+      out.push({ text, kind: text === '}' ? '{' : text === ']' ? '[' : 'w' });
+      rest = rest.slice(m[0].length).trim();
+    }
+  }
+  return out;
+}
+
+/**
+ * 구획 안에서 짝이 맞지 않는 장식 — 묶음의 첫·마지막 태그가 가진 여는 `N::`/`{`/`[`, 닫는 `::`/`}`/`]`.
+ * 안쪽부터 같은 종류끼리 짝지어 상쇄하고 남은 바깥쪽만 돌려준다.
+ */
+function unbalancedDecor(parts: PromptSegmentParts) {
+  const opens = decorTokens(parts.weightPrefix + parts.open, 'open');
+  const closes = decorTokens(parts.close + parts.weightSuffix, 'close');
+  let i = opens.length - 1;
+  let j = 0;
+  while (i >= 0 && j < closes.length && opens[i].kind === closes[j].kind) {
+    i -= 1;
+    j += 1;
+  }
+  return { opens: opens.slice(0, i + 1), closes: closes.slice(j) };
+}
+
+/**
+ * 조건에 맞는 쉼표 구획을 빼되 가중치 묶음·괄호의 짝은 보존한다(2026-10-02).
+ *  · 뺀 구획이 묶음을 여는 쪽이면(`1.5::artist:a`) 그 `1.5::` 를 다음에 남는 구획 앞으로 넘긴다.
+ *  · 뺀 구획이 묶음을 닫는 쪽이면(`artist:b::`) 넘겨받은 여는 장식과 상쇄하고, 없으면 앞에 남은 구획 뒤에 붙인다.
+ *  · 결과는 남은 구획을 trim 해 ', ' 로 잇는다(빈 구획 정리). 끝까지 닫히지 않은 여는 장식은 버린다.
+ */
+export function removePromptSegmentsKeepingGroups(
+  text: string,
+  shouldRemove: (parts: PromptSegmentParts, index: number) => boolean,
+): string {
+  const out: string[] = [];
+  let pending: { text: string; kind: DecorKind }[] = [];
+  text.split(',').forEach((segment, index) => {
+    const parts = parsePromptSegment(segment);
+    if (!shouldRemove(parts, index)) {
+      const kept = segment.trim();
+      if (!kept) return;
+      out.push(pending.map((t) => t.text).join('') + kept);
+      pending = [];
+      return;
+    }
+    const { opens, closes } = unbalancedDecor(parts);
+    for (const c of closes) {
+      if (pending.length > 0 && pending[pending.length - 1].kind === c.kind) {
+        pending.pop();
+      } else if (out.length > 0) {
+        out[out.length - 1] += c.text;
+      }
+    }
+    pending = pending.concat(opens);
+  });
+  return out.join(', ');
+}
+
+/**
+ * 커서 구획 등 쉼표 구획 하나에서 artist: 접두가 달린 작가 이름(접두·가중치·괄호 제거)을 뽑는다. 없으면 undefined.
+ * 접두 없는 작가(태그 DB 판별)는 호출자가 parsePromptSegment(...).core 로 따로 조회한다.
+ */
+export function prefixedArtistNameOfSegment(segment: string): string | undefined {
+  const core = parsePromptSegment(segment).core;
+  if (!hasArtistPrefix(core)) return undefined;
+  const name = stripArtistPrefix(core).trim();
+  return name || undefined;
 }
 
 /** 커서 위치(caret)가 놓인 쉼표 구획의 원문(장식 포함). 줄바꿈도 구획 경계로 본다. */
@@ -119,15 +235,11 @@ export async function isArtistCore(core: string, lookup: ArtistLookup): Promise<
  * 접두 없는 작가(DB 판별)는 건드리지 않는다(작가 분해와 같은 기준: 접두가 곧 의도). 빈 구획은 정리한다.
  */
 export function removeArtistSegments(text: string): string {
-  return text
-    .split(',')
-    .filter((segment) => {
-      const core = parsePromptSegment(segment).core;
-      return !(isTransformableCore(core) && hasArtistPrefix(core));
-    })
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0)
-    .join(', ');
+  // 가중치 묶음 안의 작가를 빼도 묶음의 여는 N:: / 닫는 :: 는 남는 태그로 옮겨 짝을 유지한다(2026-10-02).
+  return removePromptSegmentsKeepingGroups(
+    text,
+    (parts) => isTransformableCore(parts.core) && hasArtistPrefix(parts.core),
+  );
 }
 
 /** 프롬프트에 그 작가(접두 유무 무관, 대소문자 무시)가 이미 있는가. */

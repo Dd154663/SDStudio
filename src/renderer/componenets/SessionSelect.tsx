@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { DropdownSelect, Option } from './UtilComponents';
 import {
-  FaChevronUp, FaEllipsisH, FaTrash, FaTrashRestore, FaUserAlt, FaTimes, FaBars, FaChevronDown, FaEye } from 'react-icons/fa';
+  FaChevronUp, FaEllipsisH, FaUserAlt, FaTimes, FaBars, FaChevronDown, FaEye } from 'react-icons/fa';
 import { pushRecentProject } from './ProjectBrowser';
 import Tooltip from './Tooltip';
 import { sessionService, backend, zipService, trashService, isMobile, templateService } from '../models';
@@ -24,12 +24,21 @@ import {
   useToolbarRowDrop,
 } from './ToolbarDnd';
 import { portableToolbarButtons } from './PortableToolbarButtons';
+import { TrashList, TrashNameBadge, formatTrashDate, trashNoticeText } from './TrashViews';
+import {
+  planProjectRestore,
+  sortTrashNewestFirst,
+  trashDuplicateOrdinals,
+  trashDuplicateSuffix,
+} from '../models/trashList';
+import { checkNewProjectName } from '../models/projectOverwrite';
 
 // ===== ProjectTrashView 컴포넌트 (씬 휴지통 SceneTrashView 패턴 재사용) =====
 // 전역 오버레이(App.tsx)에서 마운트 — appState.projectTrashOpen 호스트가 사용한다.
 export function ProjectTrashView() {
+  // dir = 신 배치 휴지통 폴더(동명 구분용 내부 식별자 — 화면에 내지 않는다, S2)
   const [deletedProjects, setDeletedProjects] = useState<
-    { name: string; deletedAt: number }[]
+    { name: string; deletedAt: number; dir?: string }[]
   >([]);
   const [loading, setLoading] = useState(false);
 
@@ -37,8 +46,7 @@ export function ProjectTrashView() {
     setLoading(true);
     try {
       const items = await trashService.getDeletedProjects();
-      items.sort((a, b) => b.deletedAt - a.deletedAt);
-      setDeletedProjects(items);
+      setDeletedProjects(sortTrashNewestFirst(items));
     } catch (e) {
       appState.pushMessage(
         '휴지통 목록을 불러오지 못했습니다 (파일 접근 오류). 잠시 후 다시 시도해주세요.',
@@ -52,31 +60,60 @@ export function ProjectTrashView() {
     refresh();
   }, [refresh]);
 
-  const formatDate = (ts: number) => {
-    if (!ts) return '알 수 없음';
-    const d = new Date(ts);
-    return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    })}`;
-  };
+  // 목록 행 키: 신 배치는 폴더, 구 배치는 이름(구 배치는 같은 이름이 하나뿐).
+  const rowKey = (item: { name: string; dir?: string }) => item.dir ?? item.name;
+  // 같은 이름 휴지통 항목끼리 오래된 순 (2)(3)… 표시 번호
+  const ordinals = trashDuplicateOrdinals(
+    deletedProjects.map((p) => ({ key: rowKey(p), name: p.name, deletedAt: p.deletedAt })),
+  );
+  const displayName = (item: { name: string; dir?: string }) =>
+    item.name + trashDuplicateSuffix(ordinals.get(rowKey(item)));
+  const findItem = (key: string) => deletedProjects.find((p) => rowKey(p) === key);
 
-  const handleRestore = async (name: string) => {
+  const handleRestore = async (key: string) => {
+    const item = findItem(key);
+    if (!item) return;
     try {
-      await trashService.restoreProject(name);
+      // 같은 이름의 활성 프로젝트가 있으면(신 배치 동명 공존) 새 이름을 묻는다.
+      const active = sessionService.list();
+      const plan = planProjectRestore(item.name, active);
+      let newName: string | undefined;
+      if (plan.needsNewName && item.dir) {
+        const input = await appState.pushDialogAsync({
+          type: 'input-confirm',
+          text: `같은 이름의 프로젝트 "${item.name}"이(가) 이미 있습니다.\n복원할 프로젝트의 새 이름을 입력해 주세요.`,
+          inputValue: plan.defaultName,
+        });
+        const typed = (input ?? '').trim();
+        if (!typed) return;
+        const problem = checkNewProjectName(typed, sessionService.list());
+        if (problem) {
+          appState.pushMessage(problem);
+          return;
+        }
+        newName = typed;
+      }
+      await trashService.restoreProject(item.name, { dir: item.dir, newName });
       // 복원은 .deleted→.json 파일만 바꾸므로 목록 재스캔을 즉시 트리거한다.
       await sessionService.update();
-      appState.pushMessage(`프로젝트 "${name}"이(가) 복원되었습니다.`);
+      appState.pushMessage(
+        newName
+          ? `프로젝트 "${displayName(item)}"을(를) "${newName}"(으)로 복원했습니다.`
+          : `프로젝트 "${displayName(item)}"이(가) 복원되었습니다.`,
+      );
       await refresh();
     } catch (e: any) {
       appState.pushMessage(e.message || '프로젝트 복원에 실패했습니다.');
     }
   };
 
-  const handlePermanentDelete = (name: string) => {
+  const handlePermanentDelete = (key: string) => {
+    const item = findItem(key);
+    if (!item) return;
+    const shown = displayName(item);
     appState.pushDialog({
       type: 'confirm',
-      text: `"${name}" 프로젝트를 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
+      text: `"${shown}" 프로젝트를 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
       callback: async () => {
         // 일괄 작업 잠금(2026-07-18): 프로젝트 폴더 삭제는 무거워(수천 파일 가능)
         // 진행 중 다른 조작이 겹치면 렉/오류 여지 — 전체화면 잠금으로 차단.
@@ -86,11 +123,13 @@ export function ProjectTrashView() {
           total: 1,
         });
         try {
-          await trashService.permanentlyDeleteProject(name);
+          await trashService.permanentlyDeleteProject(item.name, item.dir);
+          appState.pushMessage(`프로젝트 "${shown}"이(가) 영구 삭제되었습니다.`);
+        } catch (e: any) {
+          appState.pushMessage(e?.message || '프로젝트 영구 삭제에 실패했습니다.');
         } finally {
           appState.setProgressDialog(undefined);
         }
-        appState.pushMessage(`프로젝트 "${name}"이(가) 영구 삭제되었습니다.`);
         await refresh();
       },
     });
@@ -109,7 +148,7 @@ export function ProjectTrashView() {
         try {
           for (const p of deletedProjects) {
             try {
-              await trashService.permanentlyDeleteProject(p.name);
+              await trashService.permanentlyDeleteProject(p.name, p.dir);
             } catch (e) {}
             appState.setProgressDialog({ text: lockText, done: ++done, total });
           }
@@ -122,53 +161,29 @@ export function ProjectTrashView() {
     });
   };
 
-  const isEmpty = deletedProjects.length === 0 && !loading;
-
+  // 목록 표시는 씬 휴지통과 같은 TrashList(2026-10-02 T1 — 개수 제한 없음·개수/모두 비우기 머리 줄 고정).
   return (
-    <div className="flex flex-col gap-2">
-      {deletedProjects.length > 0 && (
-        <div className="flex justify-end mb-1">
-          <button className="round-button back-red" onClick={handleEmptyAll}>
-            <FaTrash className="mr-1" />
-            모두 비우기
-          </button>
-        </div>
-      )}
-      {isEmpty ? (
-        <div className="text-center text-faint text-lg py-10">
-          휴지통이 비어있습니다
-        </div>
-      ) : (
-        deletedProjects.map((item) => (
-          <div
-            key={item.name}
-            className="flex items-center gap-3 p-3 border line-color rounded r-card bg-[var(--c-surface-2)]"
-          >
-            <div className="flex-1 min-w-0">
-              <div className="font-bold text-default truncate">
-                📁 {item.name}
-              </div>
-              <div className="text-sm text-faint">
-                삭제일 · {formatDate(item.deletedAt)}
-              </div>
-            </div>
-            <button
-              className="round-button back-green flex-none"
-              onClick={() => handleRestore(item.name)}
-            >
-              <FaTrashRestore className="mr-1" />
-              복원
-            </button>
-            <button
-              className="round-button back-red flex-none"
-              onClick={() => handlePermanentDelete(item.name)}
-            >
-              영구삭제
-            </button>
-          </div>
-        ))
-      )}
-    </div>
+    <TrashList
+      loading={loading}
+      notice={trashNoticeText('project')}
+      rows={deletedProjects.map((item) => ({
+        key: rowKey(item),
+        // 같은 이름이 여럿이면 강조 색 (2)(3) 접미사로 구분(내부 폴더 id 는 숨김, S2)
+        title: (
+          <>
+            📁 {item.name}
+            <TrashNameBadge
+              text={trashDuplicateSuffix(ordinals.get(rowKey(item))).trim()}
+              tone="orange"
+            />
+          </>
+        ),
+        subtitle: `삭제일 · ${formatTrashDate(item.deletedAt)}`,
+      }))}
+      onRestore={handleRestore}
+      onPermanentDelete={handlePermanentDelete}
+      onEmptyAll={handleEmptyAll}
+    />
   );
 }
 

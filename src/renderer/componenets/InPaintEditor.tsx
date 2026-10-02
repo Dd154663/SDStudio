@@ -277,7 +277,13 @@ const InPaintEditor = observer(
         text: '정말로 해당 씬을 삭제하시겠습니까? (휴지통으로 이동)',
         callback: async () => {
           const { trashService } = await import('../models');
-          await trashService.moveSceneToTrash(curSession!, editingScene!);
+          // 휴지통 이동 실패면 씬이 그대로 남는다(2026-10-02 S1) — 알리고 편집 창은 닫지 않는다.
+          try {
+            await trashService.moveSceneToTrash(curSession!, editingScene!);
+          } catch (e: any) {
+            appState.pushMessage(e?.message || '씬을 휴지통으로 옮기지 못했습니다.');
+            return;
+          }
           onConfirm();
           onDelete();
         },

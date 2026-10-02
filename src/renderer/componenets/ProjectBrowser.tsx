@@ -10,6 +10,7 @@ import {
 } from '../models';
 import { appState } from '../models/AppService';
 import { projectPath } from '../models/projectPaths';
+import { planFolderDeletePrompt } from '../models/folderDeleteFlow';
 import ModalOverlay from './ModalOverlay';
 import Tooltip from './Tooltip';
 import MobileColorPicker from './MobileColorPicker';
@@ -865,12 +866,16 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
         if (editingFolder === folder) cancelRename();
         refresh();
       };
-      const count = sessionService.getProjectsInFolder(folder).length;
+      // 판단·문구는 드로어와 공용(models/folderDeleteFlow.planFolderDeletePrompt — 하위 폴더 포함 개수)
+      const prompt = planFolderDeletePrompt(
+        sessionService.folderLeafName(folder),
+        sessionService.getProjectsInFolder(folder),
+      );
       // 빈 폴더 → 단순 확인
-      if (count === 0) {
+      if (prompt.kind === 'empty') {
         appState.pushDialog({
           type: 'confirm',
-          text: `폴더 "${sessionService.folderLeafName(folder)}"를 삭제할까요?`,
+          text: prompt.text,
           callback: async () => {
             try {
               await sessionService.deleteFolder(folder);
@@ -885,10 +890,10 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
       // 프로젝트가 있는 폴더 → 삭제 방식 선택
       appState.pushDialog({
         type: 'select',
-        text: `폴더 "${sessionService.folderLeafName(folder)}" 삭제 (${count}개 프로젝트)`,
+        text: prompt.text,
         items: [
-          { text: '폴더만 삭제 (프로젝트는 미분류로 이동)', value: 'folderOnly' },
-          { text: '⚠️ 폴더와 프로젝트 모두 삭제', value: 'withProjects' },
+          { text: prompt.folderOnlyText, value: 'folderOnly' },
+          { text: prompt.withProjectsText, value: 'withProjects' },
         ],
         callback: async (value) => {
           if (value === 'folderOnly') {
@@ -902,7 +907,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
             // 위험 동작 → 2차 확인
             appState.pushDialog({
               type: 'confirm',
-              text: `정말 폴더 "${sessionService.folderLeafName(folder)}"와 그 안의 ${count}개 프로젝트를 모두 삭제할까요?\n프로젝트는 휴지통으로 이동되어 복구할 수 있습니다.`,
+              text: prompt.confirmWithProjectsText,
               callback: async () => {
                 await appState.deleteFolderWithProjects(folder);
                 cleanup();

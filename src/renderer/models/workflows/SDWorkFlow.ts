@@ -751,6 +751,8 @@ const createMirrorHandler = () => {
     samples: number,
     meta?: any,
     onComplete?: (img: string) => void,
+    nodelay?: boolean,
+    generationSnapshot?: GenerationSettingsSnapshot,
   ) => {
     let front = '', back = '', globalUc = '';
     if (session.selectedWorkflow) {
@@ -776,9 +778,12 @@ const createMirrorHandler = () => {
       prompt: resolvedPrompt,
       uc: [globalUc, preset.uc].filter(Boolean).join(', '),
     };
+    // 예약 시점 스냅샷을 그대로 넘긴다(SPEC §11 — 일괄 예약의 공통 스냅샷 재사용).
+    // 예전에는 여기서 끊겨 미러 태스크마다 addTask 가 설정을 다시 읽었다(2026-10-02 P1).
     return innerHandler(
       session, scene, prompt, characterPrompts,
       mergedPreset, shared, samples, meta, onComplete,
+      nodelay, generationSnapshot,
     );
   };
   return handler;

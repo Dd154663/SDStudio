@@ -9,6 +9,8 @@ import {
   templateService,
 } from '.';
 import {
+  createMirrorCanvasMemo,
+  MirrorCanvasMemo,
   queueI2IWorkflow,
   queueMirrorWorkflow,
   queueWorkflow,
@@ -69,6 +71,8 @@ export const queueScene = async (
   scene: GenericScene,
   samples: number,
   generationSnapshot?: GenerationSettingsSnapshot,
+  // 일괄 예약 묶음이 공유하는 미러 합성 캔버스 기억(없으면 씬마다 새로 만든다)
+  mirrorCanvasMemo?: MirrorCanvasMemo,
 ) => {
   const snapshot =
     generationSnapshot ??
@@ -92,6 +96,7 @@ export const queueScene = async (
         samples,
         undefined,
         snapshot,
+        mirrorCanvasMemo,
       );
     } else {
       await queueI2IWorkflow(
@@ -363,6 +368,8 @@ export const addScenesToQueue = async (
         appState.pushMessage('생성 설정을 읽지 못해 예약하지 못했습니다.');
         return;
       }
+      // 미러 씬은 같은 원본·모드의 합성 캔버스를 묶음 안에서 한 번만 만든다(2026-10-02 P1)
+      const mirrorCanvasMemo = createMirrorCanvasMemo();
       await taskQueueService.withProgressBatch(async () => {
         for (const scene of scenes) {
           try {
@@ -371,6 +378,7 @@ export const addScenesToQueue = async (
               scene,
               appState.samples,
               generationSnapshot,
+              mirrorCanvasMemo,
             );
           } catch (e: any) {
             appState.pushMessage(`프롬프트 에러 (${scene.name}): ${e.message}`);

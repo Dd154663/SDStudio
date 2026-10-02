@@ -76,6 +76,7 @@ import {
   pieceLabel,
 } from './CombinationList';
 import { renameScene, mergeScene } from '../models/SessionService';
+import { isSceneEditorFocusTarget } from '../models/sceneEditorFocus';
 import {
   Scene,
   PromptPiece,
@@ -1454,8 +1455,8 @@ export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
 // 편집기에 포커스가 있으면 머리 줄을 [씬 이름 … 완료]로, 탭 줄·이미지/진행 막대 영역을 숨겨 편집기가 남는 높이를 쓴다.
 // V2 프롬프트 시트의 kbdOpen 판정(MobilePromptSheet)과 같은 규칙. 클래식·V2 공통(사용자 요청).
 const SCENE_EDITOR_KBD_SHRINK_PX = 120;
-const isEditableTarget = (el: Element | null): boolean =>
-  !!el && el.matches('textarea,input:not([type=checkbox]):not([type=range]),[contenteditable="true"]');
+// 머리 줄(씬 이름 등) 안의 입력은 집중 모드를 켜지 않는다 — 켜면 머리 줄이 바뀌며 그 입력이 사라진다(2026-10-02 B1).
+const isEditableTarget = isSceneEditorFocusTarget;
 
 const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props) => {
   const { curSession } = appState;
@@ -1802,7 +1803,13 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
                 text: '정말로 해당 씬을 삭제하시겠습니까? (휴지통으로 이동)',
                 callback: async () => {
                   const { trashService } = await import('../models');
-                  await trashService.moveSceneToTrash(curSession!, scene);
+                  // 휴지통 이동 실패면 씬이 그대로 남는다(2026-10-02 S1) — 알리고 편집 창은 닫지 않는다.
+                  try {
+                    await trashService.moveSceneToTrash(curSession!, scene);
+                  } catch (e: any) {
+                    appState.pushMessage(e?.message || '씬을 휴지통으로 옮기지 못했습니다.');
+                    return;
+                  }
                   onClosed();
                   if (onDeleted) {
                     onDeleted();

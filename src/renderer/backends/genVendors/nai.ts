@@ -33,6 +33,7 @@ import {
   normalizeNaiSampling,
   resolveNaiModelId,
 } from './naiModelCapabilities';
+import { padDigitEdgedWeightGroups } from '../../models/promptWeightSpacing';
 
 export interface NovelAiFetcher {
   fetchArrayBuffer(url: string, body: any, headers: any): Promise<ArrayBuffer>;
@@ -165,17 +166,24 @@ export class NovelAiImageGenService implements ImageGenService {
     // NAI 웹 패리티(2026-07-31): 퀄리티 태그/UC 프리셋은 API 필드가 아니라
     // 클라이언트가 텍스트를 병합해야 실제 반영된다(qualityToggle/ucPreset 은
     // 메타데이터 전용). 프롬프트 끝에 퀄리티 태그, 네거티브 앞에 UC 프리셋.
-    const finalPrompt = mergeQualityTags(
-      params.prompt,
-      modelVersionValue,
-      isV5
-        ? qualityPreset
-        : config.disableQuality
-          ? 'none'
-          : 'standard',
-      transparentBackground,
+    // NAI 자체 버그 회피(2026-10-02 N1): 숫자로 시작/끝나는 태그를 감싼 가중치 묶음 `1.5::0aaa0::` 은
+    // 태그 숫자가 가중치로 잘못 읽히므로 `1.5:: 0aaa0 ::` 로 공백을 넣어 보낸다. 모든 생성 계열(일반·인페인트·
+    // i2i·미러 등)이 지나는 전송 직전 한 곳 — 조각·랜덤·와일드카드·퀄리티 태그 병합이 모두 끝난 문자열. 멱등.
+    const finalPrompt = padDigitEdgedWeightGroups(
+      mergeQualityTags(
+        params.prompt,
+        modelVersionValue,
+        isV5
+          ? qualityPreset
+          : config.disableQuality
+            ? 'none'
+            : 'standard',
+        transparentBackground,
+      ),
     );
-    const finalUc = mergeUcPreset(params.uc, modelVersionValue, config.ucPreset);
+    const finalUc = padDigitEdgedWeightGroups(
+      mergeUcPreset(params.uc, modelVersionValue, config.ucPreset),
+    );
 
     // 시드 미지정 시 랜덤 — NAI 시드 공간은 32비트 전체(최대 4,294,967,295).
     // 과거 상한 2,100,000,000 은 임의 제한이라 제거(2026-07-25).
@@ -408,8 +416,9 @@ export class NovelAiImageGenService implements ImageGenService {
           : center;
       const characterEntries = params.characterPrompts
         .map((prompt, sourceIndex) => ({
-          prompt,
-          uc: params.characterUCs?.[sourceIndex] ?? '',
+          // 캐릭터 프롬프트·캐릭터 부정 프롬프트도 같은 공백 보정(N1).
+          prompt: padDigitEdgedWeightGroups(prompt),
+          uc: padDigitEdgedWeightGroups(params.characterUCs?.[sourceIndex] ?? ''),
           center: charaPos(sourceIndex),
         }))
         .filter((entry) => entry.prompt.trim().length > 0)

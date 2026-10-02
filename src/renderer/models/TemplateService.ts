@@ -812,6 +812,7 @@ export class TemplateService {
     let replaced = 0;
     let skipped = 0;
     const importedNames: string[] = [];
+    const moveFailed: string[] = [];
     for (const src of scenes) {
       // 크로스 프로젝트 씬 복사 선례(AppContextMenu '설정만 복사') 재사용 —
       // 템플릿 프로젝트에서 생성된 이미지/토너먼트 흔적은 가져오지 않는다.
@@ -828,7 +829,19 @@ export class TemplateService {
         }
         if (policy === 'overwrite') {
           const old = session.getScene(scene.type, scene.name);
-          if (old) await trashService.moveSceneToTrash(session, old);
+          // 기존 씬을 휴지통으로 옮기지 못하면(파일 잠금·다른 창 잠금) 덮어쓰지 않고 건너뛴다 —
+          // 이동 실패 시 기존 씬은 그대로 남는다(2026-10-02 S1).
+          if (old) {
+            try {
+              await trashService.moveSceneToTrash(session, old);
+            } catch (e) {
+              console.error('씬 템플릿 덮어쓰기: 기존 씬 휴지통 이동 실패:', scene.name, e);
+            }
+            if (session.hasScene(scene.type, scene.name)) {
+              moveFailed.push(scene.name);
+              continue;
+            }
+          }
           session.addScene(scene);
           replaced++;
           importedNames.push(scene.name);
@@ -847,6 +860,11 @@ export class TemplateService {
     const parts = [`추가 ${added}개`];
     if (replaced) parts.push(`덮어쓰기 ${replaced}개`);
     if (skipped) parts.push(`건너뜀 ${skipped}개`);
+    if (moveFailed.length) {
+      parts.push(
+        `기존 씬을 휴지통으로 옮기지 못해 건너뜀 ${moveFailed.length}개(${moveFailed.slice(0, 5).join(', ')}${moveFailed.length > 5 ? ' 외' : ''})`,
+      );
+    }
     appState.pushMessage(`씬 템플릿 가져오기 완료 — ${parts.join(', ')}`);
     return importedNames;
   }

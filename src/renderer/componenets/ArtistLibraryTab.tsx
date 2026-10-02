@@ -220,9 +220,9 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
     <>
       <ModalOverlay isOpen={true} onClose={onClose} title={artist.name} width="max-w-3xl">
         <div className="flex flex-col gap-3">
-          {/* 작가 태그 + 즐겨찾기 */}
-          <div className="flex items-center gap-2">
-            <span className="flex-1 text-sm font-mono px-2 py-1.5 rounded bg-[var(--c-surface)] text-default truncate">artist:{artist.name}</span>
+          {/* 작가 태그 + 즐겨찾기 — 모바일(md 미만)은 태그가 한 줄 전체를 쓰고 버튼은 다음 줄(2026-10-02 I1) */}
+          <div className="flex flex-wrap md:flex-nowrap items-center justify-end gap-2">
+            <span className="basis-full md:basis-auto flex-1 min-w-0 text-sm font-mono px-2 py-1.5 rounded bg-[var(--c-surface)] text-default truncate" title={'artist:' + artist.name}>artist:{artist.name}</span>
             <button className="back-sky !rounded-md px-3 py-1.5 text-sm" onClick={() => copyText('artist:' + artist.name, '작가 태그를 복사했습니다')}>
               <FaCopy className="inline mr-1" size={12} />복사
             </button>
@@ -451,14 +451,15 @@ const ArtistCard = observer(({
           </div>
         )}
       </div>
-      {/* 이름 + 큰 액션 버튼 */}
+      {/* 이름 + 큰 액션 버튼 — 모바일(md 미만)은 두 줄(이름 한 줄 전체 + 버튼 줄). 반 폭 카드에서 한 줄에 두면
+          버튼 3개(약 114px)에 밀려 이름이 한 글자만 보였다(2026-10-02 I1). PC(md 이상)는 예전 한 줄 그대로. */}
       <div className="p-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-medium text-default truncate cursor-pointer" onClick={handleClick}>{artist.name}</span>
-          <div className="flex gap-1.5 flex-none">
+        <div className="flex flex-col items-stretch gap-1 md:flex-row md:items-center md:justify-between md:gap-2">
+          <span className="block min-w-0 text-sm font-medium text-default truncate cursor-pointer" title={artist.name} onClick={handleClick}>{artist.name}</span>
+          <div className="flex gap-1.5 flex-none justify-end md:justify-start">
             <Tooltip content="작가 태그 복사">
               <button
-                className="p-2 rounded-lg text-muted hover:bg-sky-100 dark:hover:bg-sky-900/40 hover:text-sky-500 transition-colors"
+                className="p-2 max-md:inline-flex max-md:items-center max-md:justify-center max-md:min-w-9 max-md:min-h-9 rounded-lg text-muted hover:bg-sky-100 dark:hover:bg-sky-900/40 hover:text-sky-500 transition-colors"
                 onClick={(e) => { e.stopPropagation(); copyText('artist:' + artist.name, '작가 태그를 복사했습니다'); }}
               >
                 <FaCopy size={18} />
@@ -466,7 +467,7 @@ const ArtistCard = observer(({
             </Tooltip>
             <Tooltip content="Danbooru에서 검색">
               <button
-                className="p-2 rounded-lg text-muted hover:bg-sky-100 dark:hover:bg-sky-900/40 hover:text-sky-500 transition-colors"
+                className="p-2 max-md:inline-flex max-md:items-center max-md:justify-center max-md:min-w-9 max-md:min-h-9 rounded-lg text-muted hover:bg-sky-100 dark:hover:bg-sky-900/40 hover:text-sky-500 transition-colors"
                 onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('danbooru-search-request', { detail: { text: artist.name } })); }}
               >
                 <FaGlobe size={18} />
@@ -474,7 +475,7 @@ const ArtistCard = observer(({
             </Tooltip>
             <Tooltip content="즐겨찾기">
               <button
-                className="p-2 rounded-lg text-muted hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                className="p-2 max-md:inline-flex max-md:items-center max-md:justify-center max-md:min-w-9 max-md:min-h-9 rounded-lg text-muted hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
                 onClick={(e) => { e.stopPropagation(); artistLibraryService.toggleFavorite(artist.id); }}
               >
                 {artist.favorite ? <FaHeart size={18} className="text-red-500" /> : <FaRegHeart size={18} className="hover:text-red-500" />}

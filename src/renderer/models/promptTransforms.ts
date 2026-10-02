@@ -1,10 +1,20 @@
+import {
+  prefixedArtistNameOfSegment,
+  removePromptSegmentsKeepingGroups,
+} from './artistTags';
+import {
+  parsePromptWeightNumber,
+  PROMPT_WEIGHT_NUMBER_SOURCE,
+} from './promptWeightSyntax';
+
 export interface PromptWeightAdjustment {
   text: string;
   selectionStart: number;
   selectionEnd: number;
 }
 
-const WEIGHTED_PROMPT_RE = /^(-?\d+(?:\.\d+)?)::([\s\S]+)::$/;
+// 가중치 숫자는 promptWeightSyntax 단일 출처 — .6:: 처럼 0 을 생략한 표기도 0.6 으로 읽는다(2026-10-02 I2).
+const WEIGHTED_PROMPT_RE = new RegExp(`^(${PROMPT_WEIGHT_NUMBER_SOURCE})::([\\s\\S]+)::$`);
 
 /** 가중치 조절 한 단계(PC Ctrl+휠/Ctrl+↑↓, 모바일 키보드 위 칩 공통). */
 export const PROMPT_WEIGHT_STEP = 0.05;
@@ -50,8 +60,9 @@ export function getPromptWeightAtSelection(
   const weighted = core.match(WEIGHTED_PROMPT_RE);
   return {
     core,
-    inner: weighted ? weighted[2] : core,
-    weight: weighted ? Number(weighted[1]) : 1,
+    // `1.5:: 0aaa0 ::`(N1 공백 보정 형태, 메타데이터에서 불러온 프롬프트) 의 안쪽 공백은 표시에서 뺀다.
+    inner: weighted ? weighted[2].trim() : core,
+    weight: weighted ? parsePromptWeightNumber(weighted[1]) : 1,
   };
 }
 
@@ -86,12 +97,16 @@ export function adjustPromptWeightAtSelection(
   if (!core) return undefined;
 
   const weighted = core.match(WEIGHTED_PROMPT_RE);
-  const inner = weighted?.[2] ?? core;
+  const wrappedInner = weighted?.[2] ?? core;
   const oldPrefixLength = weighted?.[1].length
     ? weighted[1].length + 2
     : 0;
-  const currentWeight = weighted ? Number(weighted[1]) : 1;
+  const currentWeight = weighted ? parsePromptWeightNumber(weighted[1]) : 1;
   const nextWeight = Math.round((currentWeight + delta) * 100) / 100;
+  // 1.0 으로 풀 때는 안쪽 앞뒤 공백(`1.05:: 0aaa0 ::` 같은 N1 공백 보정 형태)을 걷어 이중 공백을 남기지 않는다.
+  const unwrapping = !!weighted && nextWeight === 1;
+  const innerLeadCut = unwrapping ? (wrappedInner.match(/^\s*/)?.[0].length ?? 0) : 0;
+  const inner = unwrapping ? wrappedInner.trim() : wrappedInner;
   const nextPrefix = nextWeight === 1 ? '' : `${formatWeight(nextWeight)}::`;
   const nextSuffix = nextWeight === 1 ? '' : '::';
   const nextCore = nextPrefix + inner + nextSuffix;
@@ -99,7 +114,7 @@ export function adjustPromptWeightAtSelection(
   const mapPosition = (position: number) => {
     const relative = clamp(position - segmentStart, 0, segment.length);
     const logical = clamp(
-      relative - leading.length - oldPrefixLength,
+      relative - leading.length - oldPrefixLength - innerLeadCut,
       0,
       inner.length,
     );
@@ -145,13 +160,11 @@ const ARTIST_FIELDS: (keyof ArtistPromptSources)[] = [
   'backgroundPrompt',
 ];
 
+// 구획 파싱·접두 판별은 artistTags 단일 출처(2026-10-02) — 가중치 묶음(1.5::artist:a, artist:b::)의
+// 첫·마지막 태그도 작가로 본다. 예전에는 묶음 첫 태그를 놓치고 마지막 태그를 artist:b:: 로 썼다.
 function artistTagOf(segment: string): string | undefined {
-  let core = segment.trim();
-  const weighted = core.match(WEIGHTED_PROMPT_RE);
-  if (weighted) core = weighted[2].trim();
-  core = core.replace(/^[{\[]+/, '').replace(/[}\]]+$/, '').trim();
-  if (!/^artist\s*:\s*.+$/i.test(core)) return undefined;
-  return core.replace(/^artist\s*:\s*/i, 'artist:').trim();
+  const name = prefixedArtistNameOfSegment(segment);
+  return name ? 'artist:' + name : undefined;
 }
 
 /** 현재 양의 프롬프트들에서 작가 태그 하나만 남긴 예약용 변형을 만든다. */
@@ -175,15 +188,13 @@ export function buildArtistPromptVariants(
     for (const field of ARTIST_FIELDS) {
       const value = sources[field];
       if (value === undefined) continue;
-      const segments = value.split(',');
-      variant[field] = segments
-        .filter((segment, index) => {
-          if (!artistTagOf(segment)) return true;
-          return field === selected.field && index === selected.index;
-        })
-        .map((segment) => segment.trim())
-        .filter(Boolean)
-        .join(', ');
+      // 뺀 작가가 가중치 묶음의 여는/닫는 쪽이면 그 표식은 남는 태그로 옮겨 짝을 유지한다(2026-10-02).
+      variant[field] = removePromptSegmentsKeepingGroups(
+        value,
+        (parts, index) =>
+          !!artistTagOf(parts.core) &&
+          !(field === selected.field && index === selected.index),
+      );
     }
     return variant;
   });

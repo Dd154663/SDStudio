@@ -53,6 +53,7 @@ import {
   autocompleteTagCategory,
   trimAutocompleteWord,
 } from '../models/promptAutocomplete';
+import { PROMPT_WEIGHT_OPEN_AT_START_RE } from '../models/promptWeightSyntax';
 
 interface PromptEditTextAreaProps {
   value: string;
@@ -978,13 +979,13 @@ function useLatest(value: any) {
 }
 
 function replaceMiddleWord(str: string, newWord: string) {
-  // 가중치 접두어/접미어 보존: (숫자)::내용::
-  const wpMatch = str.match(/^(-?\d+(?:\.\d+)?::)/);
-  const weightPrefix = wpMatch ? wpMatch[1] : '';
-  const hasSuffix = weightPrefix && str.endsWith('::');
-  const inner = hasSuffix
-    ? str.substring(weightPrefix.length, str.length - 2)
-    : str.substring(weightPrefix.length);
+  // 가중치 접두어/접미어 보존: (숫자)::내용:: — 숫자 표기(.6:: 포함)는 promptWeightSyntax 단일 출처.
+  // 가중치 묶음(1.5::a, b::)의 마지막 태그처럼 닫는 :: 만 있는 구획도 보존한다(2026-10-02).
+  const wpMatch = str.match(PROMPT_WEIGHT_OPEN_AT_START_RE);
+  const weightPrefix = wpMatch ? wpMatch[0] : '';
+  const afterPrefix = str.substring(weightPrefix.length);
+  const hasSuffix = afterPrefix.endsWith('::');
+  const inner = hasSuffix ? afterPrefix.slice(0, -2) : afterPrefix;
   // 괄호 보존: {[내용]}
   const leftMatch = inner.match(/^[{\[]*\s*(?:artist\s*:\s*)?/i);
   const trimmedLeft = leftMatch ? leftMatch[0] : '';

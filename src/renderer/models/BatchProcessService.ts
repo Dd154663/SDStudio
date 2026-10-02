@@ -115,6 +115,10 @@ export class BatchProcessService {
           for (const scene of selected) {
             try {
               await trashService.moveSceneToTrash(appState.curSession!, scene);
+              // 다른 창 잠금으로 조용히 돌아온 경우도 실패로 센다(이동 실패 시 씬은 남는다 — 2026-10-02 S1)
+              if (appState.curSession?.hasScene(scene.type, scene.name)) {
+                failedNames.push(scene.name);
+              }
             } catch (e) {
               console.error('씬 휴지통 이동 실패:', scene.name, e);
               failedNames.push(scene.name);

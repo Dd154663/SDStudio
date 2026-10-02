@@ -245,7 +245,8 @@ export class AppState {
   }
 
   // 만료 프로젝트 알림
-  @observable accessor pendingExpiredProjects: {name: string, deletedAt: number}[] = [];
+  // dir = 신 배치 휴지통 폴더(동명 구분용, 2026-10-02 S2)
+  @observable accessor pendingExpiredProjects: {name: string, deletedAt: number, dir?: string}[] = [];
 
   // 씬 카드 디자인 설정
   @observable accessor classicSceneCard: boolean = false;

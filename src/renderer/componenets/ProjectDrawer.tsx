@@ -55,6 +55,7 @@ import {
 import { TemplateManagerModal } from './TemplateManagerModal';
 import { isWorkspaceLayout, physicalDirOf } from '../models/storageLayout';
 import { workspacePath } from '../models/projectPaths';
+import { planFolderDeletePrompt } from '../models/folderDeleteFlow';
 import {
   EDGE_SWIPE_ZONE,
   shouldIgnoreEdgeSwipe,
@@ -780,13 +781,16 @@ const ProjectDrawer = observer(() => {
     const cleanup = () => {
       if (editingFolder === f) cancelRename();
     };
-    const count = sessionService
-      .list()
-      .filter((n) => sessionService.getFolderOf(n) === f).length;
-    if (count === 0) {
+    // 개수는 실제 삭제 대상과 같은 기준(하위 폴더 포함)으로 센다 — 직속만 세면 하위에만
+    // 프로젝트가 있을 때 단순 확인 뒤 조용히 미분류로 옮겨졌다(2026-10-02 S5).
+    const prompt = planFolderDeletePrompt(
+      leafName,
+      sessionService.getProjectsInFolder(f),
+    );
+    if (prompt.kind === 'empty') {
       appState.pushDialog({
         type: 'confirm',
-        text: `폴더 "${leafName}"를 삭제할까요?`,
+        text: prompt.text,
         callback: async () => {
           try {
             await sessionService.deleteFolder(f);
@@ -800,10 +804,10 @@ const ProjectDrawer = observer(() => {
     }
     appState.pushDialog({
       type: 'select',
-      text: `폴더 "${leafName}" 삭제 (${count}개 프로젝트)`,
+      text: prompt.text,
       items: [
-        { text: '폴더만 삭제 (프로젝트는 미분류로 이동)', value: 'folderOnly' },
-        { text: '⚠️ 폴더와 프로젝트 모두 삭제', value: 'withProjects' },
+        { text: prompt.folderOnlyText, value: 'folderOnly' },
+        { text: prompt.withProjectsText, value: 'withProjects' },
       ],
       callback: async (value) => {
         if (value === 'folderOnly') {
@@ -816,7 +820,7 @@ const ProjectDrawer = observer(() => {
         } else if (value === 'withProjects') {
           appState.pushDialog({
             type: 'confirm',
-            text: `정말 폴더 "${leafName}"와 그 안의 ${count}개 프로젝트를 모두 삭제할까요?\n프로젝트는 휴지통으로 이동되어 복구할 수 있습니다.`,
+            text: prompt.confirmWithProjectsText,
             callback: async () => {
               await appState.deleteFolderWithProjects(f);
               cleanup();

@@ -15,7 +15,9 @@ import ProjectBrowser from './ProjectBrowser';
 import { ImageHistoryPanel, ImageHistoryDrawer, ImageHistoryHandle } from './ImageHistory';
 import QuickModeTab from './QuickModeTab';
 import PreSetEditor from './PreSetEdtior';
-import SceneQueuControl, { SceneCell, SceneTrashView } from './SceneQueueControl';
+import SceneQueuControl, { SceneCell } from './SceneQueueControl';
+// 씬 휴지통 목록은 TrashViews(2026-10-02 T1 — 최근 삭제 순·개수 머리 줄). SceneQueueControl 의 옛 SceneTrashView 는 미사용.
+import { SceneTrashView } from './TrashViews';
 import ArtistTagModal from './ArtistTagModal';
 import { QuickMenu } from './QuickMenu';
 import BottomBar from './BottomBar';

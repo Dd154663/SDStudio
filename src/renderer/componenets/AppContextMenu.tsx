@@ -490,10 +490,29 @@ export const AppContextMenu = observer(() => {
             if (!session) return;
             // 우클릭한 씬과 같은 종류의 Map 에서만 대상을 찾는다. 이름만으로
             // scenes→inpaints 순으로 찾으면 변형 탭의 삭제가 같은 이름의 일반 씬을 지운다.
-            for (const scene of selectedScenesLike(ctx.scene)) {
-              try { await trashService.moveSceneToTrash(session, scene); } catch (e) {}
+            // 휴지통 이동에 실패한 씬은 그대로 남는다(2026-10-02 S1) — 건수·이름을 알린다.
+            const failedNames: string[] = [];
+            const targets = selectedScenesLike(ctx.scene);
+            for (const scene of targets) {
+              try {
+                await trashService.moveSceneToTrash(session, scene);
+                // 다른 창 잠금 등으로 조용히 돌아온 경우도 실패로 센다
+                if (session.hasScene(scene.type, scene.name)) failedNames.push(scene.name);
+              } catch (e) {
+                console.error('씬 휴지통 이동 실패:', scene.name, e);
+                failedNames.push(scene.name);
+              }
             }
             appState.clearSceneSelection();
+            if (failedNames.length > 0) {
+              appState.pushDialog({
+                type: 'yes-only',
+                text:
+                  `${targets.length - failedNames.length}개를 휴지통으로 옮겼습니다.\n` +
+                  `옮기지 못해 남겨 둔 씬 ${failedNames.length}개: ${failedNames.slice(0, 5).join(', ')}${failedNames.length > 5 ? ' 외' : ''}\n` +
+                  '파일이 다른 프로그램에서 열려 있거나 잠겨 있을 수 있습니다. 잠시 뒤 다시 시도해 주세요.',
+              });
+            }
           },
         });
       } else {
@@ -502,7 +521,11 @@ export const AppContextMenu = observer(() => {
           text: '정말로 삭제하시겠습니까? (휴지통으로 이동)',
           callback: async () => {
             const { trashService } = await import('../models');
-            await trashService.moveSceneToTrash(appState.curSession!, ctx.scene);
+            try {
+              await trashService.moveSceneToTrash(appState.curSession!, ctx.scene);
+            } catch (e: any) {
+              appState.pushMessage(e?.message || '씬을 휴지통으로 옮기지 못했습니다.');
+            }
           },
         });
       }

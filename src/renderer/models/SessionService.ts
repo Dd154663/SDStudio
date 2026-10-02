@@ -27,6 +27,7 @@ import { defaultUC } from './PromptService';
 import { ResourceSyncService } from './ResourceSyncService';
 import { persistService } from './PersistenceService';
 import { isOutputImageFile } from './imageFormats';
+import { isWorkspaceBakHealCandidate } from './trashList';
 import {
   projectPath,
   projectFolderPath,
@@ -340,7 +341,8 @@ export class SessionService extends ResourceSyncService<Session> {
         const hasDeleted = await backend.existFile(
           workspacePath(dir, PROJECT_JSON_FILE + '.deleted'),
         );
-        if (!hasDeleted) {
+        // 휴지통 프로젝트(.deleted 있음) 폴더는 자가치유 대상이 아니다(S2 — 동명 공존 시 부활 방지).
+        if (isWorkspaceBakHealCandidate({ hasJson: hasActive, hasDeleted })) {
           // 본문도 삭제본도 안 보임 — 쓰기 교체 창(모바일 2단계 rename)이나
           // 일시 오류일 수 있다. 삭제로 단정해 unregister 하지 않고 이번
           // 스캔에서만 제외한다(다음 주기에 재평가). 단 2단계 쓰기가 중간에
@@ -548,7 +550,15 @@ export class SessionService extends ResourceSyncService<Session> {
       }
       // 판정 이후 본문이 생겼으면(쓰기 교체 창 통과 등) 복원하지 않는다 —
       // 최신 본문을 스테일 .bak 으로 되돌리는 역주행 방지.
-      if (await backend.existFile(workspacePath(dir, PROJECT_JSON_FILE))) {
+      // 휴지통 프로젝트(project.json.deleted 있음)도 복원하지 않는다 — 판정 뒤 그 사이에
+      // 삭제된 경우까지 막는다(2026-10-02 S2, isWorkspaceBakHealCandidate).
+      const nowState = {
+        hasJson: await backend.existFile(workspacePath(dir, PROJECT_JSON_FILE)),
+        hasDeleted: await backend.existFile(
+          workspacePath(dir, PROJECT_JSON_FILE + '.deleted'),
+        ),
+      };
+      if (!isWorkspaceBakHealCandidate(nowState)) {
         return false;
       }
       await backend.writeFile(workspacePath(dir, PROJECT_JSON_FILE), raw);
@@ -987,6 +997,14 @@ export class SessionService extends ResourceSyncService<Session> {
     );
     for (const name of projectsInFolder) {
       await this.moveToFolder(name, null);
+    }
+    // moveToFolder 는 다른 창에서 열린 프로젝트면 조용히 반환한다. 그대로 진행하면 구 배치는
+    // 아래 deleteDir 가 그 프로젝트 파일까지 지운다 — 남은 프로젝트가 있으면 폴더를 지우지 않는다(2026-10-02 B2).
+    const remaining = this.getProjectsInFolder(folder);
+    if (remaining.length > 0) {
+      throw new Error(
+        `미분류로 옮기지 못한 프로젝트가 있어 폴더를 삭제하지 않았습니다(다른 창에서 열려 있을 수 있습니다): ${remaining.join(', ')}`,
+      );
     }
     // 신 배치엔 폴더 디렉터리가 없다 — 물리 삭제는 건너뛰고 사이드카(색상/순서)만 정리.
     if (!isWorkspaceLayout()) {
@@ -1515,9 +1533,24 @@ export class SessionService extends ResourceSyncService<Session> {
   async delete(name: string) {
     // 다른 창에서 열려 있으면 삭제 금지 (W6 P1 — 토스트+소유 창 포커스)
     if (!(await this.guardCrossWindowLock(name, '삭제'))) return;
-    // 같은 이름의 기존 휴지통 항목을 먼저 정리 (동명 프로젝트 재삭제 시 충돌/덮어쓰기 방지).
+    // 미로드 프로젝트(이번 실행에서 열지 않은 것)는 기본 delete 가 아무것도 하지 않고 반환해,
+    // 파일은 남는데 아래 휴지통 기록·즐겨찾기 정리만 실행되던 결함(2026-10-02 B2)이 있었다.
+    // 먼저 불러오고, 불러오지 못하면 어떤 부수 효과도 내기 전에 실패로 알린다.
+    if (!this.isLoaded(name)) {
+      await this.get(name);
+      if (!this.isLoaded(name)) {
+        throw new Error(`프로젝트 "${name}"을(를) 불러오지 못해 삭제하지 않았습니다.`);
+      }
+    }
+    // 구 배치: 같은 이름의 기존 휴지통 항목을 먼저 정리 (동명 프로젝트 재삭제 시 충돌/덮어쓰기 방지).
     // 이렇게 해야 super.delete 의 .json → .deleted rename 대상이 비어 있어 플랫폼 무관하게 안전.
-    await trashService.purgeDeletedProject(name);
+    // 신 배치(2026-10-02 S2): 프로젝트마다 고유 폴더(이름__id)라 .deleted 가 폴더별로 따로 있어
+    // 충돌하지 않는다 — 동명 휴지통 항목을 지우지 않고 공존시킨다. 휴지통 기록에는 이
+    // 폴더를 함께 남겨(moveProjectToTrash) 목록·복원·영구 삭제가 폴더 단위로 대상을 고른다.
+    const trashDir = isWorkspaceLayout() ? physicalDirOf(name) : undefined;
+    if (!isWorkspaceLayout()) {
+      await trashService.purgeDeletedProject(name);
+    }
     // 실제 삭제(파일 rename)를 먼저 수행 — 여기서 실패하면 프로젝트가 남으므로
     // 즐겨찾기/북마크/썸네일 등 메타데이터도 건드리지 않고 그대로 보존한다.
     await super.delete(name);
@@ -1540,8 +1573,8 @@ export class SessionService extends ResourceSyncService<Session> {
     if (keysToDelete.length > 0 || hadSceneBookmarks) {
       await this.saveBookmarks();
     }
-    // 휴지통에 삭제 시점 기록
-    await trashService.moveProjectToTrash(name);
+    // 휴지통에 삭제 시점 기록 (신 배치는 폴더별 시각도 함께)
+    await trashService.moveProjectToTrash(name, trashDir);
   }
 
   // 프로젝트 이름변경의 단일 관문 — 이미지 6루트 이동 → 세션 json·메타 이관.
@@ -2509,6 +2542,13 @@ export class SessionService extends ResourceSyncService<Session> {
   async importSessionDeepFromDir(dir: string, name: string) {
     if (this.isLoaded(name)) {
       throw new Error('Resource already exists');
+    }
+    // 목록에 이미 있는 이름(이번 실행에서 열지 않은 미로드 프로젝트 포함)이면 어떤 파일도
+    // 건드리기 전에 거부한다. 그대로 진행하면 신 배치는 살아 있는 프로젝트 물리 폴더에
+    // 이미지가 병합되고, 복사 실패 시 아래 롤백이 그 기존 폴더를 통째로 지울 수 있다
+    // (2026-10-02 S4). 호출부는 모두 목록에 없는 이름만 넘긴다(isProjectNameTaken 과 같은 기준).
+    if (this.list().includes(name)) {
+      throw new Error(`이미 같은 이름의 프로젝트가 있습니다: ${name}`);
     }
     const session: Session = JSON.parse(
       await backend.readFile(dir + '/project.json'),

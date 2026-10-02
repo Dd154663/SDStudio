@@ -91,7 +91,7 @@ const RULES: Rule[] = [
       'models/legacy.ts': 7,
       'models/SessionService.ts': 8,
       'models/TaskHandlers.ts': 3,
-      'models/TrashService.ts': 5,
+      // models/TrashService.ts: 0 — 2026-10-02 S1 에서 sceneMaskFileName(PNG_IMAGE_EXT) 로 정리
       'models/workflows/SDWorkFlow.ts': 1,
     },
   },
@@ -129,7 +129,7 @@ const RULES: Rule[] = [
   },
   {
     // 작가 태그(artist:) 접두 판별·제거 정규식은 models/artistTags.ts 가 단일 출처(2026-09-25).
-    // 기존 3곳(작가 분해 판별·자동완성 카테고리·편집기)은 의도적 잔류로 동결.
+    // 기존 2곳(자동완성 카테고리·편집기)은 의도적 잔류로 동결. 작가 분해(promptTransforms)는 2026-10-02 artistTags 로 이전(2→0).
     name: '작가 접두 정규식 리터럴(artist\\s*:) — models/artistTags.ts 사용',
     guide: '「작가 태그 접두(artist:) 계약」',
     dir: '',
@@ -137,7 +137,6 @@ const RULES: Rule[] = [
     exclude: ['models/artistTags.ts'],
     count: (c) => countMatches(c, /artist\\s\*:/g),
     allow: {
-      'models/promptTransforms.ts': 2,
       'models/promptAutocomplete.ts': 2,
       'componenets/PromptEditTextArea.tsx': 1,
     },

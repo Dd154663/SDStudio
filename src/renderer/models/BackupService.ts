@@ -94,6 +94,11 @@ import {
   suggestProjectName,
 } from './projectOverwrite';
 import { PROJECT_IMAGE_ROOTS } from './projectPaths';
+import { runFolderDeleteWithProjects, type FolderDeleteResult } from './folderDeleteFlow';
+import {
+  clearForFullBackupOverwrite,
+  FULL_BACKUP_OVERWRITE_TEXT,
+} from './fullBackupOverwrite';
 import {
   buildTemplateBackupStore,
   globalTemplateNames,
@@ -350,32 +355,65 @@ export class BackupService {
   // 폴더와 그 안의 프로젝트를 모두 삭제(프로젝트는 휴지통으로 이동, 복구 가능).
   // 핵심: 프로젝트를 먼저 미분류(루트)로 옮긴 뒤 삭제해야 .deleted 가 루트에 생겨
   //       폴더 디렉터리 제거(deleteDir) 후에도 휴지통에 보존된다.
+  // 2026-10-02(B2): 미로드 프로젝트가 삭제되지 않고 미분류로 남던 결함 수정 — 절차는
+  // folderDeleteFlow.ts. 전부 휴지통으로 보낸 것을 확인한 뒤에만 폴더를 지우고,
+  // 실패한 프로젝트는 원래 폴더로 되돌린 뒤 이름과 사유를 알린다.
   async deleteFolderWithProjects(folder: string) {
-    const names = sessionService.getProjectsInFolder(folder);
-    appState.setProgressDialog({ text: '프로젝트 삭제중..', done: 0, total: names.length });
-    let done = 0;
-    for (const name of names) {
-      try {
-        await sessionService.moveToFolder(name, null);
-        await sessionService.delete(name);
-      } catch (e) {
-        console.error('폴더 일괄 삭제 실패:', name, e);
-      }
-      appState.setProgressDialog({ text: '프로젝트 삭제중..', done: ++done, total: names.length });
-    }
+    const leaf = sessionService.folderLeafName(folder);
+    let result: FolderDeleteResult;
     try {
-      await sessionService.deleteFolder(folder);
-    } catch (e) {
-      // 폴더 안에 프로젝트가 모두 빠졌으면 빈 디렉터리만 제거됨
+      result = await runFolderDeleteWithProjects(folder, {
+        projectsInFolder: (f) => sessionService.getProjectsInFolder(f),
+        folderOf: (n) => sessionService.getFolderOf(n),
+        ensureLoaded: async (n) => {
+          await sessionService.get(n);
+          return sessionService.isLoaded(n);
+        },
+        isLoaded: (n) => sessionService.isLoaded(n),
+        moveToFolder: (n, f) => sessionService.moveToFolder(n, f),
+        deleteProject: async (n) => {
+          try {
+            await sessionService.delete(n);
+          } finally {
+            // 현재 열린 프로젝트가 실제로 지워졌으면 닫는다(단일 삭제와 같은 결과)
+            if (appState.curSession?.name === n && !sessionService.isLoaded(n)) {
+              appState.curSession = undefined;
+            }
+          }
+        },
+        deleteFolder: (f) => sessionService.deleteFolder(f),
+        onProgress: (done, total) =>
+          appState.setProgressDialog({ text: '프로젝트 삭제중..', done, total }),
+      });
+    } finally {
+      appState.setProgressDialog(undefined);
     }
-    // 현재 열린 프로젝트가 삭제 대상이었다면 해제
-    if (appState.curSession && names.includes(appState.curSession.name)) {
-      appState.curSession = undefined;
+    for (const f of result.failed) {
+      console.error('폴더 일괄 삭제 실패:', f.name, f.reason);
     }
-    appState.setProgressDialog(undefined);
-    appState.pushMessage(
-      `폴더 "${folder}"와 ${names.length}개 프로젝트를 삭제했습니다. (휴지통에서 복구 가능)`,
-    );
+    if (result.failed.length === 0 && result.folderDeleted) {
+      appState.pushMessage(
+        `폴더 "${leaf}"와 ${result.deleted.length}개 프로젝트를 삭제했습니다. (휴지통에서 복구 가능)`,
+      );
+      return;
+    }
+    if (result.failed.length === 0) {
+      appState.pushDialog({
+        type: 'yes-only',
+        text:
+          `${result.deleted.length}개 프로젝트는 휴지통으로 옮겼지만 폴더 "${leaf}"는 지우지 못했습니다.\n` +
+          (result.folderError ?? ''),
+      });
+      return;
+    }
+    const lines = result.failed.map((f) => `• ${f.name}: ${f.reason}`).join('\n');
+    appState.pushDialog({
+      type: 'yes-only',
+      text:
+        `${result.deleted.length}개 프로젝트를 휴지통으로 옮겼습니다.\n` +
+        `아래 ${result.failed.length}개 프로젝트는 삭제하지 못해 폴더 "${leaf}"를 그대로 두었습니다.\n\n` +
+        lines,
+    });
   }
 
   folderBackupMenu(folder: string) {
@@ -1198,6 +1236,8 @@ export class BackupService {
         let restored = 0;
         let skipped = 0;
         let overwritten = 0;
+        // 덮어쓰기에서 기존 프로젝트를 지우지 못해 건너뛴 이름(2026-10-02 S4)
+        const overwriteBlocked: string[] = [];
         for (const p of projects) {
           const origName = typeof p === 'string' ? p : p.name;
           const folder = typeof p === 'string' ? null : p.folder ?? null;
@@ -1218,16 +1258,25 @@ export class BackupService {
               // 기존 동명 프로젝트를 완전히 제거(.json + 이미지 디렉터리)한 뒤 복원.
               // delete로 .json→.deleted + 메모리 제거 → permanentlyDeleteProject가
               // 활성 .json이 없어진 상태에서 .deleted와 이미지 디렉터리를 정리한다.
-              try {
-                if (appState.curSession?.name === origName) {
-                  appState.curSession = undefined;
-                }
-                await sessionService.delete(origName);
-                await trashService.permanentlyDeleteProject(origName);
-                overwritten++;
-              } catch (e) {
-                console.error('덮어쓰기용 기존 프로젝트 제거 실패:', origName, e);
+              // 삭제가 확인(목록에서 사라짐)된 뒤에만 가져온다 — 다른 창 잠금·불러오기 실패로
+              // 지워지지 않았는데 가져오면 살아 있는 프로젝트에 병합되고, 복사 실패 롤백이
+              // 그 폴더를 지울 수 있다(2026-10-02 S4, models/fullBackupOverwrite.ts).
+              const cleared = await clearForFullBackupOverwrite(origName, {
+                listNames: () => sessionService.list(),
+                beforeRemove: (name) => {
+                  if (appState.curSession?.name === name) {
+                    appState.curSession = undefined;
+                  }
+                },
+                remove: (name) => sessionService.delete(name),
+                purge: (name) => trashService.permanentlyDeleteProject(name),
+              });
+              if (cleared.kind === 'blocked') {
+                overwriteBlocked.push(origName);
+                done++;
+                continue;
               }
+              overwritten++;
               pname = origName;
             } else {
               // rename: 빈 이름이 나올 때까지 (n) 부여
@@ -1266,11 +1315,19 @@ export class BackupService {
         const extra: string[] = [];
         if (skipped > 0) extra.push(`${skipped}개 건너뜀`);
         if (overwritten > 0) extra.push(`${overwritten}개 덮어씀`);
+        if (overwriteBlocked.length > 0) {
+          extra.push(
+            FULL_BACKUP_OVERWRITE_TEXT.blockedCount(overwriteBlocked.length),
+          );
+        }
         appState.pushDialog({
           type: 'yes-only',
           text:
             `${restored}/${total}개 프로젝트와 설정을 복원했습니다.` +
-            (extra.length ? `\n(${extra.join(', ')})` : ''),
+            (extra.length ? `\n(${extra.join(', ')})` : '') +
+            (overwriteBlocked.length
+              ? '\n' + FULL_BACKUP_OVERWRITE_TEXT.blockedDetail(overwriteBlocked)
+              : ''),
         });
       } else {
         appState.setProgressDialog({ text: '설정 병합중..', done: 0, total: 1 });

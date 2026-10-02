@@ -1,4 +1,8 @@
 import type { WordTag } from './Tags';
+import { PROMPT_WEIGHT_NUMBER_SOURCE } from './promptWeightSyntax';
+
+/** 맨 앞 여는 가중치 N::(.6:: 처럼 0 생략 포함)와 뒤 공백 — 숫자 표기는 promptWeightSyntax 단일 출처. */
+const LEADING_WEIGHT_RE = new RegExp(`^${PROMPT_WEIGHT_NUMBER_SOURCE}::\\s*`);
 
 /** Danbooru 태그 DB의 작가 카테고리. */
 export const ARTIST_TAG_CATEGORY = 1;
@@ -6,7 +10,7 @@ export const ARTIST_TAG_CATEGORY = 1;
 function unwrapAutocompleteStart(word: string): string {
   return word
     .trim()
-    .replace(/^-?\d+(?:\.\d+)?::\s*/, '')
+    .replace(LEADING_WEIGHT_RE, '')
     .replace(/^[{\[]*\s*/, '');
 }
 
@@ -21,7 +25,7 @@ export function autocompleteTagCategory(word: string): number | undefined {
 export function trimAutocompleteWord(word: string): string {
   return word
     .trim()
-    .replace(/^-?\d+(?:\.\d+)?::\s*/, '')
+    .replace(LEADING_WEIGHT_RE, '')
     .replace(/::$/, '')
     .replace(/^[{\[]*\s*(?:artist\s*:\s*)?/i, '')
     .replace(/[}\]]*$/, '')

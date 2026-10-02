@@ -2,25 +2,35 @@ import { backend, templateService, sessionService } from '.';
 import { persistService } from './PersistenceService';
 import { GenericScene, IInpaintScene, IScene, Session, genericSceneFromJSON } from './types';
 import { imageService } from '.';
-import { isOutputImageFile } from './imageFormats';
+import { isOutputImageFile, PNG_IMAGE_EXT } from './imageFormats';
 import {
   projectPath,
   projectFolderPath,
   projectJsonPath,
   workspacePath,
+  invalidProjectName,
   WORKSPACE_ROOT,
   PROJECT_JSON_ROOT,
   PROJECT_IMAGE_ROOTS,
+  PROJECT_SCENE_MASK_ROOTS,
 } from './projectPaths';
+import type { ProjectImageRoot } from './projectPaths';
 import {
   isWorkspaceLayout,
   physicalDirOf,
+  nameOfPhysicalDir,
   registerProjectDir,
   unregisterProjectDir,
   WorkspaceProjectMeta,
   PROJECT_META_FILE,
   PROJECT_JSON_FILE,
 } from './storageLayout';
+import {
+  pickTrashSlotName,
+  pickNewestTrashDir,
+  sceneTrashBelongsTo,
+  trashSlotCompareKey,
+} from './trashList';
 
 // 신 배치의 소프트 삭제 파일명(project.json.deleted).
 const WORKSPACE_DELETED_FILE = PROJECT_JSON_FILE + '.deleted';
@@ -31,18 +41,44 @@ interface TrashImageMeta {
   [filename: string]: number; // filename -> deletedAt timestamp
 }
 
+// trash.json 호환 규칙(2026-10-02 S1·S2): 새 필드는 전부 선택 필드다. 구버전(5.4.0 이하)은
+// 모르는 필드를 무시하고 키 `프로젝트:씬`·sceneData.name 으로만 동작하므로, 새 버전은
+// 키의 씬 부분 = 휴지통 폴더 이름 = sceneData.name(= 슬롯 이름)을 항상 일치시킨다.
 interface TrashSceneEntry {
   sceneData: IScene | IInpaintScene;
   deletedAt: number;
+  // 원래 씬 이름 — 슬롯 이름이 원래 이름과 다를 때(「S (삭제 2)」)만 기록. 표시용.
+  originalName?: string;
+  // 신 배치 물리 폴더(이름__짧은id) — 같은 이름 프로젝트(휴지통의 옛 P 와 활성 P)의 씬
+  // 기록을 구분한다. 없으면(구 배치·구버전 기록) 프로젝트 이름(키 접두)으로만 판정.
+  projectDir?: string;
 }
 
 interface TrashProjectEntry {
+  // 이 이름으로 가장 최근에 삭제된 시각(구버전이 읽는 값).
   deletedAt: number;
+  // 신 배치: 휴지통 폴더별 삭제 시각(동명 공존). 없는 폴더는 deletedAt 으로 해석.
+  dirs?: { [dir: string]: number };
 }
 
 interface TrashData {
   scenes: { [compositeKey: string]: TrashSceneEntry };
   projects: { [projectName: string]: TrashProjectEntry };
+}
+
+// 신 배치 workspace/ 1단 스캔 결과(폴더 1개).
+interface WorkspaceScanEntry {
+  name: string;
+  dir: string;
+  hasJson: boolean;
+  hasDeleted: boolean;
+}
+
+/** 휴지통 프로젝트 1건. dir = 신 배치 물리 폴더(동명 구분용 내부 식별자 — 화면에 내지 않는다). */
+export interface DeletedProjectInfo {
+  name: string;
+  deletedAt: number;
+  dir?: string;
 }
 
 // --- Constants ---
@@ -51,9 +87,23 @@ const TRASH_FILE = 'trash.json';
 const IMAGE_TRASH_DIR = '.trash';
 const TRASH_META_FILE = '.trash_meta.json';
 
-const IMAGE_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;    // 3 days
-const SCENE_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;   // 14 days
-const PROJECT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;  // 30 days
+// 보존 기간(일) — 휴지통 안내 문구(TrashViews·만료 확인 창)가 이 값을 그대로 쓴다(단일 출처, S3).
+export const IMAGE_RETENTION_DAYS = 3;
+export const SCENE_RETENTION_DAYS = 14;
+export const PROJECT_RETENTION_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const IMAGE_RETENTION_MS = IMAGE_RETENTION_DAYS * DAY_MS;
+const SCENE_RETENTION_MS = SCENE_RETENTION_DAYS * DAY_MS;
+const PROJECT_RETENTION_MS = PROJECT_RETENTION_DAYS * DAY_MS;
+
+// 변형 씬(구형) 마스크·원본 파일 이름 — inpaint_masks|inpaint_orgs/<프로젝트>/<씬>.png
+function sceneMaskFileName(sceneName: string): string {
+  return `${sceneName}.${PNG_IMAGE_EXT}`;
+}
+
+function isSceneMaskFileName(filename: string): boolean {
+  return filename.toLowerCase().endsWith(`.${PNG_IMAGE_EXT}`);
+}
 
 // --- Service class ---
 
@@ -344,62 +394,186 @@ export class TrashService extends EventTarget {
     if (!(await sessionService.guardCrossWindowLock(session.name, '씬 제거')))
       return;
     this.ensureLoaded();
-    const key = this.sceneKey(session.name, scene.name);
-    const now = Date.now();
-
-    // Store scene data in trash.json
-    this.data.scenes[key] = {
-      sceneData: scene.toJSON() as IScene | IInpaintScene,
-      deletedAt: now,
-    };
-
-    // Move scene output directory to .trash/ (projectPath 경유 — 신 배치 자동 분기)
+    // 2026-10-02 S1: 이동을 먼저 하고, 이동이 확인된 뒤에만 기록 저장·씬 제거를 한다.
+    // 예전에는 기록을 먼저 덮어쓰고 이동 실패를 console 로만 남긴 채 씬을 지워, 같은 이름
+    // 재삭제 시 옛 기록이 사라지거나(키 덮어씀) 이미지가 outs 에 남거나 휴지통 폴더에 병합됐다.
+    const fail = (reason: string) =>
+      new Error(
+        `씬 "${scene.name}"을(를) 휴지통으로 옮기지 못해 삭제하지 않았습니다. ${reason}`,
+      );
     const imgDir: 'outs' | 'inpaints' = scene.type === 'scene' ? 'outs' : 'inpaints';
-    const srcDir = projectPath(imgDir, session.name, scene.name);
-    const dstDir = projectPath(imgDir, session.name, IMAGE_TRASH_DIR, scene.name);
 
-    // Ensure .trash directory exists by writing a placeholder
-    try {
-      await backend.writeFile(projectPath(imgDir, session.name, IMAGE_TRASH_DIR, '.gitkeep'), '');
-    } catch (e) {}
+    // 1) 슬롯 이름 — 기록 키·휴지통 폴더·마스크 파일·sceneData.name 을 모두 이 이름으로 맞춘다.
+    const slot = await this.chooseSceneSlot(session, scene, fail);
 
-    try {
-      await backend.renameDir(srcDir, dstDir);
-    } catch (e) {
-      console.error('씬 디렉토리 휴지통 이동 실패:', e);
-    }
-
-    // For inpaint scenes, also move mask and org files
+    // 2) 변형 씬(구형)의 마스크·원본 파일 → .trash/<슬롯>.png (있을 때만). 실패하면 되돌리고 중단.
+    const movedFiles: { from: string; to: string }[] = [];
+    const revertMovedFiles = async (): Promise<string[]> => {
+      const stuck: string[] = [];
+      for (const m of movedFiles.slice().reverse()) {
+        try {
+          await backend.renameFile(m.to, m.from);
+        } catch (e) {
+          stuck.push(m.to);
+        }
+      }
+      return stuck;
+    };
     if (scene.type === 'inpaint') {
-      for (const dir of ['inpaint_masks', 'inpaint_orgs'] as const) {
-        const maskSrc = projectPath(dir, session.name, scene.name + '.png');
-        const maskDst = projectPath(dir, session.name, IMAGE_TRASH_DIR, scene.name + '.png');
+      for (const dir of PROJECT_SCENE_MASK_ROOTS) {
+        const maskSrc = projectPath(dir, session.name, sceneMaskFileName(scene.name));
+        if (!(await backend.existFile(maskSrc))) continue;
+        const maskDst = projectPath(dir, session.name, IMAGE_TRASH_DIR, sceneMaskFileName(slot));
         try {
           await backend.writeFile(projectPath(dir, session.name, IMAGE_TRASH_DIR, '.gitkeep'), '');
         } catch (e) {}
         try {
           await backend.renameFile(maskSrc, maskDst);
-        } catch (e) {}
+          movedFiles.push({ from: maskSrc, to: maskDst });
+        } catch (e) {
+          console.error('씬 마스크/원본 휴지통 이동 실패:', maskSrc, e);
+          const stuck = await revertMovedFiles();
+          throw fail(
+            '마스크/원본 파일을 옮기지 못했습니다.' +
+              (stuck.length ? ` 일부 파일이 휴지통 폴더에 남아 있습니다: ${stuck.join(', ')}` : ''),
+          );
+        }
       }
     }
 
-    // Remove scene from session
+    // 3) 씬 이미지 폴더 → .trash/<슬롯> (원본 폴더가 있을 때만 — 이미지 없는 씬은 폴더가 없어 정상).
+    const srcDir = projectPath(imgDir, session.name, scene.name);
+    const dstDir = projectPath(imgDir, session.name, IMAGE_TRASH_DIR, slot);
+    if (await backend.existFile(srcDir)) {
+      try {
+        await backend.writeFile(projectPath(imgDir, session.name, IMAGE_TRASH_DIR, '.gitkeep'), '');
+      } catch (e) {}
+      let moveError: unknown = undefined;
+      try {
+        await backend.renameDir(srcDir, dstDir);
+      } catch (e) {
+        moveError = e;
+      }
+      const srcLeft = await backend.existFile(srcDir);
+      const moved = !srcLeft && (moveError === undefined || (await backend.existFile(dstDir)));
+      if (!moved) {
+        console.error('씬 디렉토리 휴지통 이동 실패:', srcDir, moveError);
+        const partial = await backend.existFile(dstDir);
+        const stuck = await revertMovedFiles();
+        throw fail(
+          '이미지 폴더를 옮기지 못했습니다(파일 잠금·권한 등). 잠시 뒤 다시 시도해 주세요.' +
+            (partial
+              ? ` 일부 이미지가 휴지통 폴더(.trash/${slot})에 복사됐을 수 있습니다 — 원래 폴더는 그대로 남아 있습니다.`
+              : '') +
+            (stuck.length ? ` 되돌리지 못한 파일: ${stuck.join(', ')}` : ''),
+        );
+      }
+    }
+
+    // 4) 기록 저장 + 씬 제거
+    const sceneData = {
+      ...(scene.toJSON() as IScene | IInpaintScene),
+      name: slot,
+    } as IScene | IInpaintScene;
+    const entry: TrashSceneEntry = { sceneData, deletedAt: Date.now() };
+    if (slot !== scene.name) entry.originalName = scene.name;
+    const projectDir = isWorkspaceLayout() ? physicalDirOf(session.name) : undefined;
+    if (projectDir) entry.projectDir = projectDir;
+    this.data.scenes[this.sceneKey(session.name, slot)] = entry;
+
     session.removeScene(scene.type, scene.name);
 
     await this.saveTrash();
   }
 
-  getDeletedScenes(projectName: string): {name: string, type: 'scene' | 'inpaint', deletedAt: number}[] {
+  // 휴지통 슬롯 이름 결정(S1). 이미 쓰인 이름 = 이 프로젝트 이름의 기록 키(종류·소속 무관 —
+  // 키 유일성) + 다른 현재 씬 이름(복원 시 충돌 방지) + 대상 루트 .trash 안의 폴더/파일.
+  // .trash 목록을 못 읽으면(부재는 [] 로 흡수됨) 판단할 수 없으므로 삭제를 중단한다.
+  private async chooseSceneSlot(
+    session: Session,
+    scene: GenericScene,
+    fail: (reason: string) => Error,
+  ): Promise<string> {
+    const taken: string[] = [];
+    const prefix = session.name + ':';
+    for (const key of Object.keys(this.data.scenes)) {
+      if (key.startsWith(prefix)) taken.push(key.substring(prefix.length));
+    }
+    const selfKey = trashSlotCompareKey(scene.name);
+    for (const s of [...session.getScenes('scene'), ...session.getScenes('inpaint')]) {
+      if (trashSlotCompareKey(s.name) !== selfKey) taken.push(s.name);
+    }
+    const roots: ProjectImageRoot[] =
+      scene.type === 'scene' ? ['outs'] : ['inpaints', ...PROJECT_SCENE_MASK_ROOTS];
+    for (const root of roots) {
+      let names: string[];
+      try {
+        names = await backend.listFiles(projectPath(root, session.name, IMAGE_TRASH_DIR));
+      } catch (e) {
+        console.error('휴지통 폴더 목록 읽기 실패:', root, e);
+        throw fail('휴지통 폴더를 확인하지 못했습니다.');
+      }
+      const isMaskRoot = (PROJECT_SCENE_MASK_ROOTS as readonly string[]).includes(root);
+      for (const n of names) {
+        taken.push(n);
+        if (isMaskRoot && isSceneMaskFileName(n)) {
+          taken.push(n.slice(0, -(PNG_IMAGE_EXT.length + 1)));
+        }
+      }
+    }
+    return pickTrashSlotName(scene.name, taken);
+  }
+
+  // 씬 휴지통 기록의 파일 위치(.trash/…). 신 배치에서 기록의 projectDir 가 지금 그 이름으로
+  // 등록된 폴더와 다르면(같은 이름의 다른 프로젝트 — 휴지통의 옛 프로젝트 등) 기록이 가리키는
+  // 폴더를 직접 쓴다. 그 외에는 이름 관문(projectPath).
+  private sceneTrashPath(
+    projectName: string,
+    entry: TrashSceneEntry | undefined,
+    root: ProjectImageRoot,
+    leaf: string,
+  ): string {
+    if (
+      isWorkspaceLayout() &&
+      entry?.projectDir &&
+      physicalDirOf(projectName) !== entry.projectDir
+    ) {
+      return workspacePath(entry.projectDir, root, IMAGE_TRASH_DIR, leaf);
+    }
+    return projectPath(root, projectName, IMAGE_TRASH_DIR, leaf);
+  }
+
+  // 이 프로젝트(지금 그 이름으로 열려 있는 것) 소속 기록인지. 구 배치는 이름만으로 판정.
+  private sceneEntryBelongs(projectName: string, entry: TrashSceneEntry): boolean {
+    if (!isWorkspaceLayout()) return true;
+    return sceneTrashBelongsTo(entry, physicalDirOf(projectName));
+  }
+
+  getDeletedScenes(projectName: string): {
+    name: string;
+    type: 'scene' | 'inpaint';
+    deletedAt: number;
+    originalName?: string;
+  }[] {
     this.ensureLoaded();
     const prefix = projectName + ':';
-    const result: {name: string, type: 'scene' | 'inpaint', deletedAt: number}[] = [];
+    const result: {
+      name: string;
+      type: 'scene' | 'inpaint';
+      deletedAt: number;
+      originalName?: string;
+    }[] = [];
     for (const [key, entry] of Object.entries(this.data.scenes)) {
       if (key.startsWith(prefix)) {
+        if (!this.sceneEntryBelongs(projectName, entry)) continue;
         const sceneName = key.substring(prefix.length);
         result.push({
           name: sceneName,
           type: entry.sceneData.type === 'inpaint' ? 'inpaint' : 'scene',
           deletedAt: entry.deletedAt,
+          ...(typeof entry.originalName === 'string' && entry.originalName
+            ? { originalName: entry.originalName }
+            : {}),
         });
       }
     }
@@ -411,10 +585,14 @@ export class TrashService extends EventTarget {
     const key = this.sceneKey(session.name, sceneName);
     const entry = this.data.scenes[key];
     if (!entry) throw new Error('씬을 휴지통에서 찾을 수 없습니다');
+    // 신 배치: 같은 이름의 다른 프로젝트(휴지통의 옛 프로젝트 등) 소속 기록은 여기서 복원하지 않는다.
+    if (!this.sceneEntryBelongs(session.name, entry)) {
+      throw new Error('이 씬은 같은 이름의 다른 프로젝트 휴지통 항목이라 여기서 복원할 수 없습니다');
+    }
 
     const sceneType = entry.sceneData.type === 'inpaint' ? 'inpaint' : 'scene';
 
-    // Check name conflict
+    // Check name conflict — 복원 이름 = 키의 씬 이름(슬롯 이름, S1)
     if (session.hasScene(sceneType, sceneName)) {
       throw new Error('같은 이름의 씬이 이미 존재합니다');
     }
@@ -431,9 +609,9 @@ export class TrashService extends EventTarget {
 
     // For inpaint scenes, restore mask and org
     if (sceneType === 'inpaint') {
-      for (const dir of ['inpaint_masks', 'inpaint_orgs'] as const) {
-        const maskSrc = projectPath(dir, session.name, IMAGE_TRASH_DIR, sceneName + '.png');
-        const maskDst = projectPath(dir, session.name, sceneName + '.png');
+      for (const dir of PROJECT_SCENE_MASK_ROOTS) {
+        const maskSrc = projectPath(dir, session.name, IMAGE_TRASH_DIR, sceneMaskFileName(sceneName));
+        const maskDst = projectPath(dir, session.name, sceneMaskFileName(sceneName));
         try {
           await backend.renameFile(maskSrc, maskDst);
         } catch (e) {}
@@ -446,6 +624,8 @@ export class TrashService extends EventTarget {
       // 워크플로우 프리셋 역직렬화 실패 — 세션을 건드리지 않고 중단(휴지통 항목은 보존됨)
       throw new Error('씬 데이터를 복원할 수 없습니다: ' + sceneName);
     }
+    // 폴더 이름(키)과 씬 이름이 어긋난 옛 기록에서도 이미지 폴더와 씬이 짝을 이루도록 키 이름을 쓴다.
+    if (restoredScene.name !== sceneName) restoredScene.name = sceneName;
     session.addScene(restoredScene);
 
     // Remove from trash
@@ -456,21 +636,20 @@ export class TrashService extends EventTarget {
   async permanentlyDeleteScene(projectName: string, sceneName: string, sceneType: 'scene' | 'inpaint'): Promise<void> {
     this.ensureLoaded();
     const key = this.sceneKey(projectName, sceneName);
+    const entry = this.data.scenes[key] as TrashSceneEntry | undefined;
 
-    // Delete directory (projectPath 경유 — 신 배치 자동 분기)
+    // Delete directory (projectPath 경유 — 신 배치 자동 분기. 다른 동명 프로젝트 소속 기록은 그 폴더)
     const imgDir: 'outs' | 'inpaints' = sceneType === 'scene' ? 'outs' : 'inpaints';
     try {
-      await backend.deleteDir(
-        projectPath(imgDir, projectName, IMAGE_TRASH_DIR, sceneName),
-      );
+      await backend.deleteDir(this.sceneTrashPath(projectName, entry, imgDir, sceneName));
     } catch (e) {}
 
     // Delete mask/org for inpaint
     if (sceneType === 'inpaint') {
-      for (const maskDir of ['inpaint_masks', 'inpaint_orgs'] as const) {
+      for (const maskDir of PROJECT_SCENE_MASK_ROOTS) {
         try {
           await backend.deleteFile(
-            projectPath(maskDir, projectName, IMAGE_TRASH_DIR, sceneName + '.png'),
+            this.sceneTrashPath(projectName, entry, maskDir, sceneMaskFileName(sceneName)),
           );
         } catch (e) {}
       }
@@ -637,8 +816,11 @@ export class TrashService extends EventTarget {
   // 동명 프로젝트를 재삭제하기 직전에 호출 → "최신 1개만 유지"를 보장하고
   // 플랫폼별 rename 덮어쓰기/오류 불확실성을 제거한다.
   // 이미지 디렉터리(outs/<이름> 등)는 이름 공유이므로 건드리지 않는다.
+  // 신 배치는 고유 폴더(이름__id)로 동명 휴지통 항목이 공존하므로(2026-10-02 S2 사용자 결정)
+  // 정리하지 않는다 — 구 배치 전용.
   async purgeDeletedProject(name: string): Promise<void> {
     this.ensureLoaded();
+    if (isWorkspaceLayout()) return;
     const paths = await this.findAllDeletedPaths(name);
     for (const p of paths) {
       try {
@@ -651,10 +833,143 @@ export class TrashService extends EventTarget {
     }
   }
 
-  async moveProjectToTrash(projectName: string): Promise<void> {
+  // dir: 신 배치에서 방금 휴지통으로 옮긴 물리 폴더(SessionService.delete 가 삭제 전에 확보).
+  // 폴더별 삭제 시각을 따로 남겨 동명 휴지통 항목을 구분한다(S2). deletedAt 은 구버전 호환용
+  // 「이 이름의 가장 최근 삭제 시각」.
+  async moveProjectToTrash(projectName: string, dir?: string): Promise<void> {
     this.ensureLoaded();
-    this.data.projects[projectName] = { deletedAt: Date.now() };
+    const now = Date.now();
+    if (isWorkspaceLayout() && dir) {
+      const prev = this.data.projects[projectName];
+      const dirs: { [dir: string]: number } = { ...(prev?.dirs ?? {}) };
+      if (prev && !prev.dirs && prev.deletedAt > 0) {
+        // 폴더 구분 없는 옛 기록(구버전·이 수정 전) — 지금 휴지통에 있는 같은 이름 폴더들의
+        // 삭제 시각이 옛 값이므로 그 폴더들에 붙여 둔다(새 삭제 시각에 묻히지 않게).
+        try {
+          for (const e of await this.scanWorkspaceEntries()) {
+            if (e.name === projectName && e.hasDeleted && !e.hasJson && e.dir !== dir && !(e.dir in dirs)) {
+              dirs[e.dir] = prev.deletedAt;
+            }
+          }
+        } catch (e) {}
+      }
+      dirs[dir] = now;
+      this.data.projects[projectName] = { deletedAt: now, dirs };
+    } else {
+      this.data.projects[projectName] = { deletedAt: now };
+    }
     await this.saveTrash();
+  }
+
+  // 휴지통 프로젝트 1개(폴더)의 삭제 시각. 폴더별 기록이 없으면 이름 단위 시각으로 해석.
+  private projectDeletedAt(name: string, dir?: string): number {
+    const rec = this.data.projects[name];
+    if (!rec) return 0;
+    const byDir = dir && rec.dirs ? rec.dirs[dir] : undefined;
+    if (typeof byDir === 'number' && Number.isFinite(byDir)) return byDir;
+    return rec.deletedAt || 0;
+  }
+
+  // 휴지통 프로젝트 기록에서 폴더 하나를 뺀다. remainingDirs = 그 뒤에도 휴지통에 남는 같은 이름 폴더.
+  // 남는 폴더가 없으면 이름 기록 자체를 지운다. 반환: 변경 여부.
+  private dropProjectRecord(name: string, dir: string | undefined, remainingDirs: string[]): boolean {
+    const rec = this.data.projects[name];
+    if (!rec) return false;
+    if (remainingDirs.length === 0) {
+      delete this.data.projects[name];
+      return true;
+    }
+    if (dir && rec.dirs && dir in rec.dirs) delete rec.dirs[dir];
+    const times = remainingDirs
+      .map((d) => rec.dirs?.[d])
+      .filter((t): t is number => typeof t === 'number' && Number.isFinite(t));
+    if (times.length > 0) rec.deletedAt = Math.max(...times);
+    return true;
+  }
+
+  // 씬 휴지통 기록을 한 프로젝트 이름에서 다른 이름으로 옮긴다(신 배치에서만 projectDir 로 소속 확인).
+  // 옮길 키가 이미 다른 기록(같은 이름의 다른 프로젝트)에 쓰이고 있으면 슬롯을 새로 정해
+  // 휴지통 폴더·마스크 파일 이름도 함께 바꾼다(키 유일성 — 덮어쓰기 금지). 폴더 이름을 못 바꾸면
+  // 그 기록은 옛 키에 그대로 둔다(기록·파일 보존, 목록에서만 안 보임 — 자동 정리는 projectDir 로 찾아간다).
+  // 호출 전에 newName 이 이 프로젝트 폴더로 등록돼 있어야 한다(신 배치). 반환: 변경 여부.
+  private async moveSceneKeys(
+    oldName: string,
+    newName: string,
+    belongs: (entry: TrashSceneEntry) => boolean,
+  ): Promise<boolean> {
+    let changed = false;
+    const prefix = oldName + ':';
+    const newPrefix = newName + ':';
+    for (const key of Object.keys(this.data.scenes)) {
+      if (!key.startsWith(prefix)) continue;
+      const entry = this.data.scenes[key];
+      if (!entry || !belongs(entry)) continue;
+      const sceneName = key.substring(prefix.length);
+      let slot = sceneName;
+      if (this.data.scenes[newPrefix + slot] && newPrefix + slot !== key) {
+        if (!isWorkspaceLayout()) {
+          // 구 배치: 예전 동작 유지(덮어씀) — 이미지 폴더를 이름으로 공유하는 배치라 충돌 해소 대상 아님.
+        } else {
+          const reslotted = await this.reslotSceneEntry(newName, entry, sceneName);
+          if (!reslotted) continue;
+          slot = reslotted;
+        }
+      }
+      this.data.scenes[newPrefix + slot] = entry;
+      delete this.data.scenes[key];
+      changed = true;
+    }
+    return changed;
+  }
+
+  // moveSceneKeys 의 충돌 해소: newName 프로젝트(이 기록의 폴더)의 .trash 안에서 빈 슬롯을 골라
+  // 폴더·마스크 파일을 그 이름으로 옮기고 기록을 갱신한다. 실패하면 undefined(무변경).
+  private async reslotSceneEntry(
+    projectName: string,
+    entry: TrashSceneEntry,
+    slot: string,
+  ): Promise<string | undefined> {
+    try {
+      const isInpaint = entry.sceneData.type === 'inpaint';
+      const imgDir: ProjectImageRoot = isInpaint ? 'inpaints' : 'outs';
+      const taken: string[] = [];
+      const prefix = projectName + ':';
+      for (const k of Object.keys(this.data.scenes)) {
+        if (k.startsWith(prefix)) taken.push(k.substring(prefix.length));
+      }
+      const roots: ProjectImageRoot[] = isInpaint ? [imgDir, ...PROJECT_SCENE_MASK_ROOTS] : [imgDir];
+      for (const root of roots) {
+        const names = await backend.listFiles(projectPath(root, projectName, IMAGE_TRASH_DIR));
+        for (const n of names) {
+          taken.push(n);
+          if (root !== imgDir && isSceneMaskFileName(n)) {
+            taken.push(n.slice(0, -(PNG_IMAGE_EXT.length + 1)));
+          }
+        }
+      }
+      const next = pickTrashSlotName(slot, taken);
+      const src = projectPath(imgDir, projectName, IMAGE_TRASH_DIR, slot);
+      if (await backend.existFile(src)) {
+        await backend.renameDir(src, projectPath(imgDir, projectName, IMAGE_TRASH_DIR, next));
+        if (await backend.existFile(src)) return undefined;
+      }
+      if (isInpaint) {
+        for (const root of PROJECT_SCENE_MASK_ROOTS) {
+          const m = projectPath(root, projectName, IMAGE_TRASH_DIR, sceneMaskFileName(slot));
+          if (await backend.existFile(m)) {
+            try {
+              await backend.renameFile(m, projectPath(root, projectName, IMAGE_TRASH_DIR, sceneMaskFileName(next)));
+            } catch (e) {}
+          }
+        }
+      }
+      if (!entry.originalName) entry.originalName = entry.sceneData.name || slot;
+      entry.sceneData = { ...entry.sceneData, name: next } as IScene | IInpaintScene;
+      return next;
+    } catch (e) {
+      console.error('휴지통 씬 기록 이관 중 슬롯 변경 실패 — 옛 키 유지:', slot, e);
+      return undefined;
+    }
   }
 
   // 프로젝트 이름변경 시 trash.json 의 키를 새 이름으로 이관한다.
@@ -663,21 +978,22 @@ export class TrashService extends EventTarget {
   // 옮기지 않으면 기존 삭제 씬이 복원 불가한 유령이 된다.
   // 로드 실패 상태(!loaded)에서는 저장 자체가 기존 기록을 지울 수 있으므로
   // 이관을 조용히 건너뛴다 (rename 본체를 막지 않음 — loadTrash 주석 참조).
+  // 신 배치(S2): 이름이 바뀐 활성 프로젝트 소속(projectDir 일치 또는 기록 없음) 씬 기록만 옮기고,
+  // 휴지통 프로젝트 기록(projects[oldName])은 휴지통에 남은 같은 이름 폴더의 것이라 옮기지 않는다.
   async renameProjectKeys(oldName: string, newName: string): Promise<void> {
     if (!this.loaded) {
       console.error('trash.json 미로드 — 이름변경 키 이관 건너뜀:', oldName);
       return;
     }
-    let changed = false;
-    const prefix = oldName + ':';
-    for (const key of Object.keys(this.data.scenes)) {
-      if (key.startsWith(prefix)) {
-        const sceneName = key.substring(prefix.length);
-        this.data.scenes[newName + ':' + sceneName] = this.data.scenes[key];
-        delete this.data.scenes[key];
-        changed = true;
-      }
+    if (isWorkspaceLayout()) {
+      const dir = physicalDirOf(newName);
+      const changed = await this.moveSceneKeys(oldName, newName, (entry) =>
+        sceneTrashBelongsTo(entry, dir),
+      );
+      if (changed) await this.saveTrash();
+      return;
     }
+    let changed = await this.moveSceneKeys(oldName, newName, () => true);
     if (this.data.projects[oldName]) {
       this.data.projects[newName] = this.data.projects[oldName];
       delete this.data.projects[oldName];
@@ -686,8 +1002,26 @@ export class TrashService extends EventTarget {
     if (changed) await this.saveTrash();
   }
 
-  async getDeletedProjects(): Promise<{name: string, deletedAt: number}[]> {
+  // 신 배치 휴지통 프로젝트 목록(폴더 단위). 같은 폴더에 활성 project.json 이 함께 있는 비정상
+  // 상태는 휴지통으로 보지 않는다(복원 대상 아님). 스캔 실오류는 throw.
+  private async workspaceTrashEntries(): Promise<
+    { name: string; dir: string; deletedAt: number }[]
+  > {
+    const result: { name: string; dir: string; deletedAt: number }[] = [];
+    for (const e of await this.scanWorkspaceEntries()) {
+      if (!e.hasDeleted || e.hasJson) continue;
+      if (!e.name.trim()) continue;
+      result.push({ name: e.name, dir: e.dir, deletedAt: this.projectDeletedAt(e.name, e.dir) });
+    }
+    return result;
+  }
+
+  async getDeletedProjects(): Promise<DeletedProjectInfo[]> {
     this.ensureLoaded();
+    // 신 배치(S2): 고유 폴더 단위로 전부 돌려준다 — 같은 이름의 활성 프로젝트가 있어도 숨기지 않는다.
+    if (isWorkspaceLayout()) {
+      return await this.workspaceTrashEntries();
+    }
     // 루트 + 폴더 하위까지 .deleted / .json 을 모두 스캔 (폴더 소속 프로젝트 포함)
     const deletedMap = await this.scanProjectFiles('.deleted');
     const activeMap = await this.scanProjectFiles('.json');
@@ -720,14 +1054,24 @@ export class TrashService extends EventTarget {
     } catch (e) {}
   }
 
-  async restoreProject(name: string): Promise<void> {
+  // opts.dir: 신 배치에서 복원할 휴지통 폴더(동명 구분). 없으면 같은 이름 중 가장 최근 삭제분.
+  // opts.newName: 같은 이름의 활성 프로젝트가 있을 때 쓸 새 이름(신 배치 전용 — 구 배치는 무시).
+  async restoreProject(
+    name: string,
+    opts?: { dir?: string; newName?: string },
+  ): Promise<void> {
     this.ensureLoaded();
+    if (isWorkspaceLayout()) {
+      await this.restoreWorkspaceProject(name, opts);
+      return;
+    }
     const deletedMap = await this.scanProjectFiles('.deleted');
     const activeMap = await this.scanProjectFiles('.json');
     const deletedPath = deletedMap.get(name);
 
     if (activeMap.has(name)) {
-      // Orphan .deleted: 활성 프로젝트가 있으니 .deleted 만 제거(.bak 동반 정리)
+      // Orphan .deleted: 활성 프로젝트가 있으니 .deleted 만 제거(구 배치 — 이미지 폴더를
+      // 이름으로 공유해 동명 공존 불가)
       if (deletedPath) {
         try {
           await backend.deleteFile(deletedPath);
@@ -735,18 +1079,9 @@ export class TrashService extends EventTarget {
         await this.deleteWorkspaceBakSibling(deletedPath);
       }
     } else if (deletedPath) {
-      if (isWorkspaceLayout()) {
-        // 신 배치: project.json.deleted → project.json (접미 제거). 물리 폴더는
-        // 불변이라 폴더 소속(meta.folder)도 그대로 복원된다. 레지스트리 재등록.
-        const jsonPath = deletedPath.slice(0, -WORKSPACE_DELETED_FILE.length) + PROJECT_JSON_FILE;
-        await backend.renameFile(deletedPath, jsonPath);
-        const dir = deletedPath.split('/')[1];
-        if (dir) registerProjectDir(name, dir);
-      } else {
-        // 같은 위치(폴더 포함)에 .json 으로 되돌린다 → 폴더 소속도 복원됨
-        const jsonPath = deletedPath.replace(/\.deleted$/, '.json');
-        await backend.renameFile(deletedPath, jsonPath);
-      }
+      // 같은 위치(폴더 포함)에 .json 으로 되돌린다 → 폴더 소속도 복원됨
+      const jsonPath = deletedPath.replace(/\.deleted$/, '.json');
+      await backend.renameFile(deletedPath, jsonPath);
     } else {
       throw new Error('프로젝트를 휴지통에서 찾을 수 없습니다');
     }
@@ -754,7 +1089,142 @@ export class TrashService extends EventTarget {
     await this.saveTrash();
   }
 
-  async permanentlyDeleteProject(name: string): Promise<void> {
+  // 신 배치 복원(S2): project.json.deleted → project.json (접미 제거). 물리 폴더는 불변이라
+  // 폴더 소속(meta.folder)도 그대로 복원된다. 같은 이름의 활성 프로젝트가 있으면 새 이름이
+  // 있어야 하고, 그 경우 활성화 전에 meta.json 의 이름을 먼저 바꾼다(스캔·레지스트리는
+  // meta.name 이 진실 — 본문 name 은 불러올 때 onAttached 가 맞춘다). 예전처럼 활성 동명이
+  // 있다고 휴지통 쪽 .deleted 를 지우지 않는다.
+  private async restoreWorkspaceProject(
+    name: string,
+    opts?: { dir?: string; newName?: string },
+  ): Promise<void> {
+    const trashed = (await this.workspaceTrashEntries()).filter((e) => e.name === name);
+    const targetDir = opts?.dir
+      ? trashed.find((e) => e.dir === opts.dir)?.dir
+      : pickNewestTrashDir(trashed);
+    if (!targetDir) throw new Error('프로젝트를 휴지통에서 찾을 수 없습니다');
+
+    const finalName = opts?.newName !== undefined ? opts.newName : name;
+    const reason = invalidProjectName(finalName);
+    if (reason) throw new Error(`사용할 수 없는 프로젝트 이름입니다(${reason}).`);
+    if (
+      physicalDirOf(finalName) !== undefined ||
+      (await this.activeProjectFileExists(finalName))
+    ) {
+      throw new Error(
+        finalName === name
+          ? `같은 이름의 프로젝트 "${name}"이(가) 이미 있습니다. 새 이름으로 복원해 주세요.`
+          : `이미 존재하는 프로젝트 이름입니다: ${finalName}`,
+      );
+    }
+
+    const deletedPath = workspacePath(targetDir, WORKSPACE_DELETED_FILE);
+    const jsonPath = workspacePath(targetDir, PROJECT_JSON_FILE);
+    const metaPath = workspacePath(targetDir, PROJECT_META_FILE);
+    let prevMetaRaw: string | undefined;
+    if (finalName !== name) {
+      let meta: WorkspaceProjectMeta | undefined;
+      try {
+        prevMetaRaw = await backend.readFile(metaPath);
+        meta = JSON.parse(prevMetaRaw);
+      } catch (e) {
+        meta = undefined;
+      }
+      if (!meta || typeof meta !== 'object') {
+        throw new Error('프로젝트 정보(meta.json)를 읽지 못해 새 이름으로 복원하지 않았습니다.');
+      }
+      await backend.writeFile(metaPath, JSON.stringify({ ...meta, name: finalName }));
+    }
+    try {
+      await backend.renameFile(deletedPath, jsonPath);
+    } catch (e) {
+      // 활성화 실패 — 바꿔 둔 meta 이름을 되돌린다(휴지통 항목 그대로 유지).
+      if (prevMetaRaw !== undefined) {
+        try {
+          await backend.writeFile(metaPath, prevMetaRaw);
+        } catch (e2) {}
+      }
+      throw e;
+    }
+    registerProjectDir(finalName, targetDir);
+
+    // 휴지통 기록 정리: 이 폴더 소속 씬 기록을 새 이름으로, 프로젝트 기록에서 이 폴더 제외.
+    if (finalName !== name) {
+      await this.moveSceneKeys(name, finalName, (entry) => entry.projectDir === targetDir);
+    }
+    this.dropProjectRecord(
+      name,
+      targetDir,
+      trashed.filter((e) => e.dir !== targetDir).map((e) => e.dir),
+    );
+    await this.saveTrash();
+  }
+
+  // 신 배치 영구 삭제(S2): 대상은 휴지통 폴더 하나(dir, 없으면 같은 이름 중 가장 최근 삭제분).
+  // 같은 이름의 활성 프로젝트는 다른 폴더라 건드리지 않는다 — 대상 폴더 자체가 활성(본문 있음·
+  // 레지스트리 등록)이면 아무것도 지우지 않는다. 스캔이 실패하면 아무것도 바꾸지 않는다.
+  private async permanentlyDeleteWorkspaceProject(name: string, dir?: string): Promise<void> {
+    let entries: WorkspaceScanEntry[];
+    try {
+      entries = await this.scanWorkspaceEntries();
+    } catch (e) {
+      console.error('프로젝트 영구삭제: 스캔 실패 — 아무것도 지우지 않음:', name, e);
+      return;
+    }
+    const activeSameName = entries.some((e) => e.name === name && e.hasJson);
+    const trashed = entries
+      .filter((e) => e.name === name && e.hasDeleted && !e.hasJson)
+      .map((e) => ({ dir: e.dir, deletedAt: this.projectDeletedAt(name, e.dir) }));
+    const targetDir = dir
+      ? trashed.find((t) => t.dir === dir)?.dir
+      : pickNewestTrashDir(trashed);
+    const remaining = trashed.filter((t) => t.dir !== targetDir).map((t) => t.dir);
+
+    if (targetDir) {
+      const registered = nameOfPhysicalDir(targetDir) !== undefined;
+      const jsonExists = await backend.existFile(workspacePath(targetDir, PROJECT_JSON_FILE));
+      if (registered || jsonExists) {
+        console.error('프로젝트 영구삭제 거부 — 대상 폴더가 활성 상태:', targetDir);
+        return;
+      }
+      const deletedPath = workspacePath(targetDir, WORKSPACE_DELETED_FILE);
+      try {
+        await backend.deleteFile(deletedPath);
+      } catch (e) {}
+      // 남은 .bak 이 자가치유로 부활하지 않도록 함께 제거
+      await this.deleteWorkspaceBakSibling(deletedPath);
+      // 프로젝트 물리 폴더(workspace/<dir>) 통째 삭제 — 이미지 6루트 + json + meta(스펙 §A-4).
+      try {
+        await backend.deleteDir(workspacePath(targetDir));
+      } catch (e) {}
+      if (physicalDirOf(name) === targetDir) unregisterProjectDir(name);
+    }
+
+    // 기록 정리: 이 폴더 소속 씬 기록. 소속 기록이 없는 옛 씬 기록(이름만)은 같은 이름의
+    // 활성 프로젝트도 남은 휴지통 폴더도 없을 때만 지운다(누구 것인지 모르므로 보존 우선).
+    const lastOfName = !activeSameName && remaining.length === 0;
+    const prefix = name + ':';
+    for (const key of Object.keys(this.data.scenes)) {
+      if (!key.startsWith(prefix)) continue;
+      const entry = this.data.scenes[key];
+      const owned = entry?.projectDir
+        ? targetDir !== undefined && entry.projectDir === targetDir
+        : lastOfName;
+      if (owned) delete this.data.scenes[key];
+    }
+    this.dropProjectRecord(name, targetDir ?? dir, remaining);
+    await this.saveTrash();
+    // 템플릿 지정 해제 — 같은 이름이 더 이상 어디에도 없을 때만(활성 동명의 지정은 유지).
+    if (lastOfName) {
+      try {
+        await templateService.removeProject(name);
+      } catch (e) {}
+    }
+  }
+
+  // dir: 신 배치에서 영구 삭제할 휴지통 폴더(동명 구분). 없으면 같은 이름 중 가장 최근 삭제분
+  // (전체 백업 덮어쓰기처럼 방금 delete 한 프로젝트를 이름으로 지우는 호출부 호환).
+  async permanentlyDeleteProject(name: string, dir?: string): Promise<void> {
     this.ensureLoaded();
 
     // CRITICAL: 빈/공백 이름이나 경로 문자가 섞인 이름은 이미지 디렉터리 경로가
@@ -779,6 +1249,13 @@ export class TrashService extends EventTarget {
       return;
     }
 
+    // 신 배치: 고유 폴더 단위 영구 삭제(S2 — 동명 공존).
+    if (isWorkspaceLayout()) {
+      await this.permanentlyDeleteWorkspaceProject(name, dir);
+      return;
+    }
+
+    // ── 이하 구 배치 ──
     // CRITICAL: 같은 이름의 활성 .json 이 있으면(루트/폴더 어디든) 이미지 디렉터리를
     // 절대 지우지 않는다. 이미지 디렉터리는 이름 기준(outs/<이름> 등)이라 동명의
     // 새 프로젝트와 폴더를 공유하기 때문이다(삭제 후 동명 재생성 시 오삭제 위험).
@@ -834,29 +1311,14 @@ export class TrashService extends EventTarget {
     }
 
     if (safeToDeleteDirs) {
-      if (isWorkspaceLayout()) {
-        // 신 배치: 프로젝트 물리 폴더(workspace/<dir>) 통째 삭제 — 1연산으로
-        // 이미지 6루트 + json + meta 를 모두 제거(스펙 §A-4). dir 은 .deleted
-        // 경로에서 파생(소프트삭제라 레지스트리엔 없을 수 있음). dataPathGuard 는
-        // 2세그먼트(workspace/<dir>)라 통과.
-        if (deletedPath) {
-          const dir = deletedPath.split('/')[1];
-          if (dir) {
-            try {
-              await backend.deleteDir(workspacePath(dir));
-            } catch (e) {}
-            unregisterProjectDir(name);
-          }
-        }
-      } else {
-        // 삭제 대상 이미지 루트 목록은 PROJECT_IMAGE_ROOTS 단일 출처를 따른다
-        // (references 포함 6종 — 과거 references 누락으로 영구삭제 후
-        //  references/<이름>/ 고아 디렉터리가 남던 버그 수정, 2026-07-07).
-        for (const dir of PROJECT_IMAGE_ROOTS) {
-          try {
-            await backend.deleteDir(projectPath(dir, name));
-          } catch (e) {}
-        }
+      // (신 배치는 위 permanentlyDeleteWorkspaceProject 가 폴더 단위로 처리한다.)
+      // 삭제 대상 이미지 루트 목록은 PROJECT_IMAGE_ROOTS 단일 출처를 따른다
+      // (references 포함 6종 — 과거 references 누락으로 영구삭제 후
+      //  references/<이름>/ 고아 디렉터리가 남던 버그 수정, 2026-07-07).
+      for (const root of PROJECT_IMAGE_ROOTS) {
+        try {
+          await backend.deleteDir(projectPath(root, name));
+        } catch (e) {}
       }
     }
 
@@ -879,12 +1341,12 @@ export class TrashService extends EventTarget {
 
   // ===== Expired project management =====
 
-  async getExpiredProjects(): Promise<{name: string, deletedAt: number}[]> {
+  async getExpiredProjects(): Promise<DeletedProjectInfo[]> {
     this.ensureLoaded();
     const now = Date.now();
     // 스캔 실패 시(폴더 잠금/권한/동기화 등) 만료 목록을 비워 시작을 막지 않고,
     // 불확실한 상태에서 만료 다이얼로그를 띄워 삭제를 유도하지 않는다.
-    let deleted: { name: string; deletedAt: number }[];
+    let deleted: DeletedProjectInfo[];
     try {
       deleted = await this.getDeletedProjects();
     } catch (e) {
@@ -894,15 +1356,32 @@ export class TrashService extends EventTarget {
     return deleted.filter(p => (now - p.deletedAt) >= PROJECT_RETENTION_MS);
   }
 
-  async deferProjects(names: string[]): Promise<void> {
+  // 만료 확인 창의 「미루기」. 항목은 이름(구 배치·예전 호출) 또는 {이름, 폴더}(신 배치 동명 구분).
+  async deferProjects(items: (string | { name: string; dir?: string })[]): Promise<void> {
     this.ensureLoaded();
     const now = Date.now();
-    for (const name of names) {
-      if (this.data.projects[name]) {
-        this.data.projects[name].deletedAt = now;
+    for (const item of items) {
+      const name = typeof item === 'string' ? item : item.name;
+      const dir = typeof item === 'string' ? undefined : item.dir;
+      const rec = this.data.projects[name];
+      if (!rec) {
+        // 신 배치에서 기록이 없던 폴더(구버전이 지운 기록 등)는 새로 만들어 둔다 — 없으면 시각
+        // 0 으로 해석돼 미뤄도 매번 만료로 다시 뜬다.
+        if (isWorkspaceLayout() && dir) {
+          this.data.projects[name] = { deletedAt: now, dirs: { [dir]: now } };
+        }
+        continue;
+      }
+      rec.deletedAt = now;
+      if (isWorkspaceLayout()) {
+        if (dir) {
+          rec.dirs = { ...(rec.dirs ?? {}), [dir]: now };
+        } else if (rec.dirs) {
+          for (const d of Object.keys(rec.dirs)) rec.dirs[d] = now;
+        }
       }
     }
-    if (names.length > 0) {
+    if (items.length > 0) {
       await this.saveTrash();
     }
   }
@@ -914,25 +1393,29 @@ export class TrashService extends EventTarget {
     const now = Date.now();
 
     // 0. Silently clean orphan .deleted files (where .json also exists) — 폴더 포함
-    try {
-      const deletedMap = await this.scanProjectFiles('.deleted');
-      const activeMap = await this.scanProjectFiles('.json');
-      let changed = false;
-      for (const [name, path] of deletedMap) {
-        if (activeMap.has(name)) {
-          console.log('자동 정리: orphan .deleted 파일 제거 (활성 프로젝트 존재) - ' + name);
-          try {
-            await backend.deleteFile(path);
-          } catch (e) {}
-          await this.deleteWorkspaceBakSibling(path);
-          delete this.data.projects[name];
-          changed = true;
+    //    구 배치 전용(S2): 신 배치는 같은 이름의 활성 프로젝트와 휴지통 항목이 다른 폴더로
+    //    공존하므로 「동명 활성 존재 = 고아」가 아니다 — 지우면 휴지통 항목이 사라진다.
+    if (!isWorkspaceLayout()) {
+      try {
+        const deletedMap = await this.scanProjectFiles('.deleted');
+        const activeMap = await this.scanProjectFiles('.json');
+        let changed = false;
+        for (const [name, path] of deletedMap) {
+          if (activeMap.has(name)) {
+            console.log('자동 정리: orphan .deleted 파일 제거 (활성 프로젝트 존재) - ' + name);
+            try {
+              await backend.deleteFile(path);
+            } catch (e) {}
+            await this.deleteWorkspaceBakSibling(path);
+            delete this.data.projects[name];
+            changed = true;
+          }
         }
-      }
-      if (changed) {
-        await this.saveTrash();
-      }
-    } catch (e) {}
+        if (changed) {
+          await this.saveTrash();
+        }
+      } catch (e) {}
+    }
 
     // 1. Project cleanup is now handled by ExpiredProjectsDialog (user confirmation required)
     //    See getExpiredProjects() and deferProjects()

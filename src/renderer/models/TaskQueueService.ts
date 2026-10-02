@@ -276,6 +276,8 @@ export interface TaskLog {
 }
 
 const MAX_TASK_LOGS = 500;
+// 일괄 예약 묶음 안의 중간 진행 반영 간격(ms). 묶음이 이보다 짧으면 마지막 1회만 보낸다.
+export const PROGRESS_BATCH_INTERVAL_MS = 500;
 const TASK_LOGS_FILE = 'task_logs.json';
 
 export class TaskQueueService extends EventTarget {
@@ -308,6 +310,11 @@ export class TaskQueueService extends EventTarget {
   private snapshotThrottle: any = null;
   private progressBatchDepth = 0;
   private progressBatchPending = false;
+  // 묶음 안 중간 반영의 마지막 발행 시각(묶음 시작 시각으로 초기화)
+  private progressBatchLastEmitAt = 0;
+  // 큐를 통째로 다시 쌓는 동기 구간(씬 예약 제거) 수 — 그동안은 중간 반영 금지
+  // (반쯤 다시 쌓인 통계를 리스너가 읽지 않게)
+  private progressInterimBlocked = 0;
 
   constructor(handlers: TaskHandler[]) {
     super();
@@ -786,6 +793,19 @@ export class TaskQueueService extends EventTarget {
   dispatchProgress() {
     if (this.progressBatchDepth > 0) {
       this.progressBatchPending = true;
+      // 묶음이 길어지면(미러 일괄 예약처럼 씬마다 파일 쓰기가 끼는 경우) 끝날 때까지
+      // 예약 배지·진행 막대가 전혀 움직이지 않았다. 일정 간격마다 중간 반영을 1회
+      // 내보낸다 — 이벤트 수는 경과 시간에 비례해 상한이 있고(N 과 무관), 빠른 묶음은
+      // 종전처럼 마지막 1회뿐이다(2026-10-02 P1).
+      const now = Date.now();
+      if (
+        this.progressInterimBlocked === 0 &&
+        now - this.progressBatchLastEmitAt >= PROGRESS_BATCH_INTERVAL_MS
+      ) {
+        this.progressBatchPending = false;
+        this.progressBatchLastEmitAt = now;
+        this.emitProgress();
+      }
       return;
     }
     this.emitProgress();
@@ -797,12 +817,17 @@ export class TaskQueueService extends EventTarget {
     this.scheduleSnapshotBroadcast();
   }
 
-  private beginProgressBatch() {
+  // allowInterim=false(기본): 동기 재구성 구간 — 끝날 때 1회만 반영.
+  // allowInterim=true: withProgressBatch 의 비동기 일괄 예약 — 간격마다 중간 반영 허용.
+  private beginProgressBatch(allowInterim = false) {
+    if (this.progressBatchDepth === 0) this.progressBatchLastEmitAt = Date.now();
     this.progressBatchDepth++;
+    if (!allowInterim) this.progressInterimBlocked++;
   }
 
-  private endProgressBatch() {
+  private endProgressBatch(allowInterim = false) {
     this.progressBatchDepth--;
+    if (!allowInterim) this.progressInterimBlocked--;
     if (this.progressBatchDepth === 0 && this.progressBatchPending) {
       this.progressBatchPending = false;
       this.emitProgress();
@@ -810,13 +835,14 @@ export class TaskQueueService extends EventTarget {
   }
 
   // 한 번의 일괄 예약에서 수백 개의 progress 이벤트와 그에 따른 UI 전체
-  // 재계산이 발생하지 않도록, 중첩 가능한 범위 안의 변경을 마지막 1회로 합친다.
+  // 재계산이 발생하지 않도록, 중첩 가능한 범위 안의 변경을 합친다 — 마지막 1회 +
+  // 묶음이 PROGRESS_BATCH_INTERVAL_MS 를 넘게 걸리면 그 간격마다 중간 반영 1회.
   async withProgressBatch<T>(callback: () => Promise<T>): Promise<T> {
-    this.beginProgressBatch();
+    this.beginProgressBatch(true);
     try {
       return await callback();
     } finally {
-      this.endProgressBatch();
+      this.endProgressBatch(true);
     }
   }
 
@@ -1327,6 +1353,56 @@ export const queueI2IWorkflow = async (
   );
 };
 
+export type MirrorCanvasResult = Awaited<ReturnType<typeof prepareMirrorCanvas>>;
+
+// 세션 미러 원본으로 합성 캔버스·마스크를 만든다(파일 읽기 + 캔버스 디코드·PNG 인코딩 2회).
+const buildMirrorCanvas = async (
+  session: Session,
+  sourcePath: string,
+  mode: 'blank' | 'duplicate',
+): Promise<MirrorCanvasResult> => {
+  const srcData = await imageService.fetchVibeImage(session, sourcePath);
+  if (!srcData) {
+    throw new Error('미러 이미지를 불러올 수 없습니다.');
+  }
+  return prepareMirrorCanvas(dataUriToBase64(srcData), mode);
+};
+
+// 일괄 예약 한 번 동안 쓰는 합성 캔버스 기억(2026-10-02 P1). 미러 이미지를 올리면
+// 다른 미러 씬의 캔버스가 비워지므로(InPaintEditor) 일괄 예약은 씬마다 같은 원본·모드로
+// 같은 캔버스를 다시 만들었다 — 모바일에서 씬 N개면 원본 읽기·디코드·PNG 인코딩 2회가
+// N번. 결과는 (프로젝트, 원본 경로, 모드)로 결정되므로 묶음 안에서는 한 번만 만든다.
+// 씬마다 고유 파일로 저장하는 것은 그대로다(편집기가 씬 파일을 제자리에서 덮어쓰므로
+// 파일 공유 금지). 실패한 시도는 기억하지 않아 다음 씬이 종전처럼 다시 시도한다.
+// 묶음이 끝나면 호출부가 버린다(전역 보관 없음 — 캔버스 문자열이 수 MB).
+export interface MirrorCanvasMemo {
+  get(
+    session: Session,
+    sourcePath: string,
+    mode: 'blank' | 'duplicate',
+  ): Promise<MirrorCanvasResult>;
+}
+
+export const createMirrorCanvasMemo = (
+  build: typeof buildMirrorCanvas = buildMirrorCanvas,
+): MirrorCanvasMemo => {
+  const entries = new Map<string, Promise<MirrorCanvasResult>>();
+  return {
+    get(session, sourcePath, mode) {
+      const key = `${session.name}\n${sourcePath}\n${mode}`;
+      let entry = entries.get(key);
+      if (!entry) {
+        entry = build(session, sourcePath, mode);
+        entries.set(key, entry);
+        entry.catch(() => {
+          if (entries.get(key) === entry) entries.delete(key);
+        });
+      }
+      return entry;
+    },
+  };
+};
+
 export const queueMirrorWorkflow = async (
   session: Session,
   type: string,
@@ -1335,6 +1411,7 @@ export const queueMirrorWorkflow = async (
   samples: number,
   onComplete?: (path: string) => void,
   generationSnapshot?: GenerationSettingsSnapshot,
+  canvasMemo?: MirrorCanvasMemo,
 ) => {
   const def = workFlowService.getDef(type);
 
@@ -1343,17 +1420,14 @@ export const queueMirrorWorkflow = async (
     if (!session.mirrorImage) {
       throw new Error('미러 이미지를 먼저 업로드해주세요.');
     }
-    const srcData = await imageService.fetchVibeImage(
-      session,
-      session.mirrorImage,
-    );
-    if (!srcData) {
-      throw new Error('미러 이미지를 불러올 수 없습니다.');
-    }
-    const srcBase64 = dataUriToBase64(srcData);
-    const result = await prepareMirrorCanvas(srcBase64, session.mirrorMode || 'blank');
-    preset.image = await imageService.storeVibeImage(session, result.canvas);
-    preset.mask = await imageService.storeVibeImage(session, result.mask);
+    const mode = session.mirrorMode || 'blank';
+    const result = canvasMemo
+      ? await canvasMemo.get(session, session.mirrorImage, mode)
+      : await buildMirrorCanvas(session, session.mirrorImage, mode);
+    // primeCache: 바로 아래 핸들러(이미지·마스크)와 씬 카드가 같은 파일을 곧장 다시
+    // 읽으므로 쓴 내용을 캐시에 넣어 디스크 왕복을 생략한다.
+    preset.image = await imageService.storeVibeImage(session, result.canvas, true);
+    preset.mask = await imageService.storeVibeImage(session, result.mask, true);
     scene.resolution = 'custom';
     scene.resolutionWidth = result.width;
     scene.resolutionHeight = result.height;

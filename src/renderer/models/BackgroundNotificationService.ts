@@ -6,6 +6,7 @@ import { taskQueueService, backend, isMobile } from '.';
 export class BackgroundNotificationService {
   private lastUpdate = 0;
   private readonly throttleMs = 2500;
+  private trailingTimer: ReturnType<typeof setTimeout> | null = null;
 
   start() {
     if (!isMobile) return; // 모바일 전용 (데스크톱은 no-op)
@@ -27,7 +28,21 @@ export class BackgroundNotificationService {
 
   private update(force: boolean) {
     const now = Date.now();
-    if (!force && now - this.lastUpdate < this.throttleMs) return;
+    if (!force && now - this.lastUpdate < this.throttleMs) {
+      // 스로틀로 버린 마지막 변경도 창이 끝나면 한 번 반영한다(꼬리 갱신). 일괄 예약의
+      // 중간 진행 반영 뒤 최종 반영이 스로틀에 걸려 알림 수치가 멈춰 있지 않게(2026-10-02 P1).
+      if (!this.trailingTimer) {
+        this.trailingTimer = setTimeout(() => {
+          this.trailingTimer = null;
+          this.update(false);
+        }, this.throttleMs - (now - this.lastUpdate));
+      }
+      return;
+    }
+    if (this.trailingTimer) {
+      clearTimeout(this.trailingTimer);
+      this.trailingTimer = null;
+    }
     this.lastUpdate = now;
     try {
       const stats = taskQueueService.statsAllTasks();
