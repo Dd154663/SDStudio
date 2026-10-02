@@ -80,18 +80,6 @@ export class NaiApiError extends Error {
   }
 }
 
-/**
- * 요청 제한(429) 판정. NaiApiError 의 status/kind 를 먼저 보고, status·kind 가 없는 오류만
- * 메시지 문자열로 폴백한다(요청 ID·cf-ray 에 섞인 「429」 오판정 방지).
- */
-export function isNaiRateLimitError(e: unknown): boolean {
-  const err = e as any;
-  if (!err) return false;
-  if (typeof err.status === 'number') return err.status === 429;
-  if (typeof err.kind === 'string') return err.kind === 'rate-limit';
-  return typeof err.message === 'string' && /\b429\b/.test(err.message);
-}
-
 export function createNaiApiError(
   status: number,
   body: string,

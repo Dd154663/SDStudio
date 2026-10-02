@@ -32,17 +32,6 @@ import { observer } from 'mobx-react-lite';
 import { appState } from '../models/AppService';
 import { TaskLog } from '../models/TaskQueueService';
 import {
-  formatDelaySeconds,
-  normalizeRequestDelayJitterMs,
-  normalizeRequestDelayMs,
-  REQUEST_DELAY_DEFAULT_MS,
-  REQUEST_DELAY_JITTER_DEFAULT_MS,
-  REQUEST_DELAY_JITTER_MAX_MS,
-  REQUEST_DELAY_MAX_MS,
-  REQUEST_DELAY_STEP_MS,
-  withRequestDelaySettings,
-} from '../models/requestTiming';
-import {
   FaUser,
   FaFolder,
   FaCog,
@@ -1096,7 +1085,7 @@ const MigrationDiagSection = () => {
 
 /* ── 탭: 시스템 (기술·진단·정보) ── */
 const SystemTab = ({
-  requestDelayMs, setRequestDelayMs, requestDelayJitterMs, setRequestDelayJitterMs,
+  delayTime, setDelayTime,
   storageWriteGuard, setStorageWriteGuard,
   exportConcurrency, setExportConcurrency,
   autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality,
@@ -1168,33 +1157,15 @@ const SystemTab = ({
       </div>
       <hr className="line-color" />
       <div>
-        {/* 요청 사이 지연(2026-10-03): 실제 대기 = max(0, 지연 ± 랜덤), 단일 출처 requestTiming */}
-        <label htmlFor="cfgRequestDelay" className="block text-sm gray-label mb-1">
-          요청 사이 지연 (0 ~ 10초)
+        <label className="block text-sm gray-label mb-1">
+          기본 지연 시간 조정 (0ms ~ 1000ms)
         </label>
         <div className="flex items-center gap-2">
-          <input id="cfgRequestDelay" type="range" min={0} max={REQUEST_DELAY_MAX_MS} step={REQUEST_DELAY_STEP_MS}
-            value={requestDelayMs}
-            onChange={(e) => setRequestDelayMs(normalizeRequestDelayMs(Number(e.target.value)))}
+          <input type="range" min={0} max={1000} step={1}
+            value={delayTime} onChange={(e) => setDelayTime(parseInt(e.target.value))}
             className="flex-1 min-w-0" />
-          <span className="text-sm gray-label w-14 text-right flex-none tabular-nums">{formatDelaySeconds(requestDelayMs)}</span>
+          <span className="text-sm gray-label w-12 text-right flex-none">{delayTime}ms</span>
         </div>
-        <p className="text-xs text-faint mt-1">
-          생성 요청을 보내기 전에 기다리는 시간입니다. 생성 중에 바꾸면 다음 실행부터 적용됩니다.
-        </p>
-        <label htmlFor="cfgRequestDelayJitter" className="block text-sm gray-label mb-1 mt-3">
-          랜덤 지연 (0 ~ 5초)
-        </label>
-        <div className="flex items-center gap-2">
-          <input id="cfgRequestDelayJitter" type="range" min={0} max={REQUEST_DELAY_JITTER_MAX_MS} step={REQUEST_DELAY_STEP_MS}
-            value={requestDelayJitterMs}
-            onChange={(e) => setRequestDelayJitterMs(normalizeRequestDelayJitterMs(Number(e.target.value)))}
-            className="flex-1 min-w-0" />
-          <span className="text-sm gray-label w-14 text-right flex-none tabular-nums">{formatDelaySeconds(requestDelayJitterMs)}</span>
-        </div>
-        <p className="text-xs text-faint mt-1">
-          고정 지연에 ±이 값만큼 무작위로 더하거나 뺍니다. 예: 지연 6초·랜덤 5초 → 1~11초
-        </p>
       </div>
       <hr className="line-color" />
       <div>
@@ -2865,8 +2836,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [imageEditor, setImageEditor] = useState('');
   const [useGPU, setUseGPU] = useState(false);
   const [whiteMode, setWhiteMode] = useState(false);
-  const [requestDelayMs, setRequestDelayMs] = useState(REQUEST_DELAY_DEFAULT_MS);
-  const [requestDelayJitterMs, setRequestDelayJitterMs] = useState(REQUEST_DELAY_JITTER_DEFAULT_MS);
+  const [delayTime, setDelayTime] = useState(0);
   const [classicSceneCard, setClassicSceneCard] = useState(false);
   const [legacyProjectMode, setLegacyProjectMode] = useState(false);
   const [legacySceneEditor, setLegacySceneEditor] = useState(false);
@@ -2931,9 +2901,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     setAutoConvertWebp(config.autoConvertWebp ?? false);
     setAutoWebpQuality(config.autoConvertWebpQuality ?? 80);
     setUseLocalBgRemoval(config.useLocalBgRemoval ?? false);
-    // 새 키가 없으면(5.4.0 이하·새 설치) 기본 1초 — 옛 delayTime 은 이어받지 않는다.
-    setRequestDelayMs(normalizeRequestDelayMs(config.requestDelayMs));
-    setRequestDelayJitterMs(normalizeRequestDelayJitterMs(config.requestDelayJitterMs));
+    setDelayTime(config.delayTime ?? 0);
     setClassicSceneCard(config.classicSceneCard ?? false);
     setLegacyProjectMode(config.legacyProjectMode ?? false);
     setLegacySceneEditor(config.legacySceneEditor ?? false);
@@ -3103,8 +3071,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       autoConvertWebpQuality: autoWebpQuality,
       whiteMode: whiteMode,
       useLocalBgRemoval: useLocalBgRemoval,
-      // 요청 지연 새 키 2개 + 옛 키 delayTime 병기(min(지연, 1000) — 롤백 호환)
-      ...withRequestDelaySettings({}, requestDelayMs, requestDelayJitterMs),
+      delayTime: delayTime,
       classicSceneCard: classicSceneCard,
       legacyProjectMode: legacyProjectMode,
       legacySceneEditor: legacySceneEditor,
@@ -3249,7 +3216,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'storage':
         return <StorageImageTab {...{ saveLocation, dataRoot, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 'system':
-        return <SystemTab {...{ requestDelayMs, setRequestDelayMs, requestDelayJitterMs, setRequestDelayJitterMs, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality }} />;
+        return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality }} />;
       case 'drive':
         return <DriveSettingsTab active={activeTab === tabIdx} dirty={!!dirty} reloadConfig={loadConfig} syncFolder={syncFolder} setSyncFolder={setSyncFolder} selectSyncFolder={selectSyncFolder} />;
       case 'personal':
@@ -3281,8 +3248,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       autoWebpQuality !== (savedCfg.autoConvertWebpQuality ?? 80) ||
       whiteMode !== (savedCfg.whiteMode ?? false) ||
       useLocalBgRemoval !== (savedCfg.useLocalBgRemoval ?? false) ||
-      requestDelayMs !== normalizeRequestDelayMs(savedCfg.requestDelayMs) ||
-      requestDelayJitterMs !== normalizeRequestDelayJitterMs(savedCfg.requestDelayJitterMs) ||
+      delayTime !== (savedCfg.delayTime ?? 0) ||
       classicSceneCard !== (savedCfg.classicSceneCard ?? false) ||
       legacyProjectMode !== (savedCfg.legacyProjectMode ?? false) ||
       legacySceneEditor !== (savedCfg.legacySceneEditor ?? false) ||

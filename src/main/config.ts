@@ -60,14 +60,7 @@ export interface Config {
    *  모델별 제공 항목이 다르며(naiQualityPresets 단일 출처) 기본 'none' =
    *  기존 사용자 결과 무변화(옵트인). */
   ucPreset?: GenerationUcPreset;
-  /** 옛 요청 지연 키(5.4.0 이하, 0~1000ms 배수 구조). 새 버전은 읽지 않고, 저장할 때마다
-   *  min(requestDelayMs, 1000) 을 병기한다(롤백 시 옛 배수 로직이 큰 값을 곱하지 않게). */
   delayTime?: number;
-  /** 요청 사이 기본 지연(ms, 0~10000). 없으면 1000 — 옛 delayTime 은 이어받지 않는다.
-   *  실제 대기 = max(0, 기본 ± 랜덤). 단일 출처 models/requestTiming.ts. */
-  requestDelayMs?: number;
-  /** 요청 사이 랜덤 지연 폭(ms, 0~5000). 없으면 0. */
-  requestDelayJitterMs?: number;
   furryMode?: boolean;
   downloadSettings?: DownloadSettings;
   imageSaveSettings?: ImageSaveSettings;
