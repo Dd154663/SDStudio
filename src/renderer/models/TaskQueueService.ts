@@ -44,23 +44,26 @@ import { expandPieces, lowerPromptNode, toPARR } from './PromptService';
 import { dataUriToBase64 } from './ImageService';
 import { prepareMirrorCanvas } from './workflows/SDWorkFlow';
 import { getImageDimensions } from '../componenets/BrushTool';
+import { isNaiRateLimitError } from '../backends/genVendors/naiErrors';
+import {
+  computeLongBreakMs,
+  computeRequestDelayMs,
+  isRequestTimeoutError,
+  nextLongBreakCount,
+  nextRequestTimeoutMs,
+  queueAttemptTimeoutMs,
+  RequestDelaySettings,
+  RequestTimeoutError,
+  resolveRequestDelaySettings,
+  TASK_ESTIMATE_DEFAULT_MS,
+} from './requestTiming';
 
 export const FAST_TASK_TIME_ESTIMATOR_SAMPLE_COUNT = 16;
 export const TASK_TIME_ESTIMATOR_SAMPLE_COUNT = 128;
-export const TASK_DEFAULT_ESTIMATE = 22 * 1000;
-const RANDOM_DELAY_BIAS = 6.0;
-const RANDOM_DELAY_STD = 3.0;
-const LARGE_RANDOM_DELAY_BIAS = RANDOM_DELAY_BIAS * 2;
-const LARGE_RANDOM_DELAY_STD = RANDOM_DELAY_STD * 2;
-const LARGE_WAIT_DELAY_BIAS = 5 * 60;
-const LARGE_WAIT_DELAY_STD = 2.5 * 60;
-const LARGE_WAIT_INTERVAL_BIAS = 500;
-const LARGE_WAIT_INTERVAL_STD = 100;
-export const FAST_TASK_DEFAULT_ESTIMATE =
-  TASK_DEFAULT_ESTIMATE -
-  RANDOM_DELAY_BIAS * 1000 -
-  (RANDOM_DELAY_STD * 1000) / 2 +
-  1000;
+// 요청 사이 지연은 배수 구조를 폐지하고 「기본 ± 랜덤」 하나로 통일했다(2026-10-03,
+// requestTiming). 편집기 즉시 생성과 일반 큐의 평균 지연이 같아져 기본 예상도 같다.
+export const TASK_DEFAULT_ESTIMATE = TASK_ESTIMATE_DEFAULT_MS;
+export const FAST_TASK_DEFAULT_ESTIMATE = TASK_ESTIMATE_DEFAULT_MS;
 
 export interface TaskParam {
   session: Session;
@@ -209,12 +212,36 @@ export interface CostItem {
   text: string;
 }
 
+// 큐가 한 번의 시도마다 핸들러에 넘기는 문맥(2026-10-03 갈래 T). 구 호출부·테스트처럼
+// 생략하면 기본 타임아웃(120초)·취소 없음으로 동작한다.
+export interface TaskAttemptContext {
+  /** 이 시도의 세대 번호(서비스 전체에서 증가). */
+  attempt: number;
+  /** 이 시도가 폐기(바깥 타임아웃)되면 abort — fetcher 까지 넘겨 진행 중 요청을 끊고,
+   *  늦게 도착한 결과를 저장하지 않는 판정에도 쓴다. */
+  signal: AbortSignal;
+  /** 안쪽 요청 타임아웃(ms). 같은 작업이 타임아웃으로 실패할 때마다 늘어난다. */
+  requestTimeoutMs: number;
+  /** 사용자 입력(Anlas 확인 창 등)을 기다리는 동안 바깥 타임아웃을 멈추고, 끝나면 처음부터 다시 잰다. */
+  pauseTimeoutWhile<T>(fn: () => Promise<T>): Promise<T>;
+  /** 주 요청 직전에 바깥 타임아웃을 처음부터 다시 잰다(앞선 보조 요청·조회 시간 제외). */
+  restartTimeout(): void;
+}
+
 export interface TaskHandler {
   createTimeEstimator(): TaskTimeEstimator;
   checkTask(task: Task): boolean;
-  handleTask(task: Task, run: TaskQueueRun): Promise<boolean>;
+  handleTask(
+    task: Task,
+    run: TaskQueueRun,
+    ctx?: TaskAttemptContext,
+  ): Promise<boolean>;
   getNumTries(task: Task): number;
-  handleDelay(task: Task, numTry: number, delayTime: number): Promise<void>;
+  handleDelay(
+    task: Task,
+    numTry: number,
+    delay: RequestDelaySettings,
+  ): Promise<void>;
   getInfo(task: Task): TaskInfo;
   calculateCost(task: Task): CostItem[];
 }
@@ -223,29 +250,11 @@ export const getSceneKey = (session: Session, scene: GenericScene) => {
   return session.name + '/' + scene.type + '/' + scene.name;
 };
 
-export async function handleNAIDelay(
-  numTry: number,
-  fast: boolean,
-  delayTime: number,
-) {
-  if (numTry === 0 && fast) {
-    await sleep(delayTime);
-  } else if (numTry <= 2 && fast) {
-    await sleep((1 + Math.random() * RANDOM_DELAY_STD) * delayTime);
-  } else {
-    console.log('slow delay');
-    if (numTry === 0 && Math.random() > 0.98) {
-      await sleep(
-        (Math.random() * LARGE_RANDOM_DELAY_STD + LARGE_RANDOM_DELAY_BIAS) *
-          delayTime,
-      );
-    } else {
-      await sleep(
-        (Math.random() * RANDOM_DELAY_STD + RANDOM_DELAY_BIAS) * delayTime,
-      );
-    }
-  }
-  return;
+// NAI 요청 시도 앞 대기 = max(0, 기본 ± 랜덤). 편집기 즉시 생성·일반 큐·재시도 모두 같은 식
+// (종전 배수 구조 폐지, requestTiming).
+export async function handleNAIDelay(delay: RequestDelaySettings) {
+  const ms = computeRequestDelayMs(delay.baseMs, delay.jitterMs);
+  if (ms > 0) await sleep(ms);
 }
 
 export type ImageTaskType = 'gen' | 'inpaint' | 'i2i';
@@ -585,9 +594,7 @@ export class TaskQueueService extends EventTarget {
   }
 
   getDelayCnt() {
-    return Math.floor(
-      LARGE_WAIT_INTERVAL_BIAS + Math.random() * LARGE_WAIT_INTERVAL_STD,
-    );
+    return nextLongBreakCount();
   }
 
   runLocal() {
@@ -874,17 +881,78 @@ export class TaskQueueService extends EventTarget {
     delete this.taskSet[task.id!];
   }
 
-  private getRetryTimeoutMs(retryIndex: number): number {
-    if (retryIndex < 10) return 120 * 1000;
-    return 180 * 1000;
-  }
+  // 시도 세대 번호 — 폐기된 시도의 늦은 결과를 가려내는 키(ctx.attempt).
+  private attemptSeq = 0;
 
-  private withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Timeout')), timeoutMs);
-      promise.then(
-        (v) => { clearTimeout(timer); resolve(v); },
-        (e) => { clearTimeout(timer); reject(e); },
+  // 한 번의 시도를 큐 바깥 타임아웃(안쪽 + 10초)으로 감싼다. 바깥 타이머가 먼저 끝나면
+  // 시도의 AbortController 를 abort 해 진행 중 요청을 끊고(PC fetch abort, Android
+  // call.cancel) RequestTimeoutError 로 실패시킨다 — 재시도와 이전 요청이 겹치지 않고,
+  // 늦게 끝난 이전 시도의 결과는 핸들러가 signal 을 보고 저장하지 않는다.
+  // 사용자 입력 대기(ctx.pauseTimeoutWhile)는 측정에서 빼고, 끝난 뒤 처음부터 다시 잰다.
+  runAttemptWithTimeout(
+    handler: TaskHandler,
+    task: Task,
+    cur: TaskQueueRun,
+    requestTimeoutMs: number,
+  ): Promise<boolean> {
+    const controller = new AbortController();
+    const outerMs = queueAttemptTimeoutMs(requestTimeoutMs);
+    const attempt = ++this.attemptSeq;
+    return new Promise<boolean>((resolve, reject) => {
+      let settled = false;
+      let paused = 0;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const clear = () => {
+        if (timer != null) clearTimeout(timer);
+        timer = null;
+      };
+      const arm = () => {
+        clear();
+        if (settled || paused > 0) return;
+        timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          timer = null;
+          controller.abort();
+          reject(new RequestTimeoutError(outerMs, 'queue'));
+        }, outerMs);
+      };
+      const ctx: TaskAttemptContext = {
+        attempt,
+        signal: controller.signal,
+        requestTimeoutMs,
+        restartTimeout: arm,
+        pauseTimeoutWhile: async <T,>(fn: () => Promise<T>): Promise<T> => {
+          paused++;
+          clear();
+          try {
+            return await fn();
+          } finally {
+            paused--;
+            if (paused === 0) arm();
+          }
+        },
+      };
+      arm();
+      let p: Promise<boolean>;
+      try {
+        p = handler.handleTask(task, cur, ctx);
+      } catch (e) {
+        p = Promise.reject(e);
+      }
+      p.then(
+        (v) => {
+          if (settled) return;
+          settled = true;
+          clear();
+          resolve(v);
+        },
+        (e) => {
+          if (settled) return;
+          settled = true;
+          clear();
+          reject(e);
+        },
       );
     });
   }
@@ -892,7 +960,8 @@ export class TaskQueueService extends EventTarget {
   async runInternal(cur: TaskQueueRun) {
     this.dispatchProgress();
     const config = await backend.getConfig();
-    const delayTime = config.delayTime ?? 0;
+    // 지연 설정은 실행 시작 때 1회 읽는다(실행 중 변경은 다음 실행부터 — 종전 동작 유지).
+    const delay = resolveRequestDelaySettings(config);
     while (!this.queue.isEmpty()) {
       // 정지된 런은 즉시 종료 — stop() 후 새 런이 시작돼도 옛 루프가 큐를
       // 건드리지 않도록(같은 태스크 이중 처리 방지).
@@ -918,24 +987,31 @@ export class TaskQueueService extends EventTarget {
       const before = Date.now();
       const handler = this.handlers[task.cls];
       const numTries = handler.getNumTries(task);
+      // 이 작업이 「타임아웃으로」 실패한 횟수 — 다음 시도의 요청 타임아웃을 60초씩 늘린다
+      // (120→180→240→300 상한). 5xx·네트워크 등 다른 실패는 세지 않는다.
+      let timeoutFailures = 0;
       for (let i = 0; i < numTries; i++) {
         if (cur.stopped) {
           this.dispatchProgress();
           return;
         }
         try {
-          await handler.handleDelay(task, i, delayTime);
-          const timeoutMs = this.getRetryTimeoutMs(i);
-          await this.withTimeout(handler.handleTask(task, cur), timeoutMs);
+          await handler.handleDelay(task, i, delay);
+          // 대기 중에 정지됐으면 요청을 보내지 않는다(지연이 최대 15초까지 길어져 추가).
+          if (cur.stopped) {
+            this.dispatchProgress();
+            return;
+          }
+          const requestTimeoutMs = nextRequestTimeoutMs(timeoutFailures);
+          await this.runAttemptWithTimeout(handler, task, cur, requestTimeoutMs);
           const after = Date.now();
           this.timeEstimators[task.cls].addSample(after - before);
           done = true;
           cur.delayCnt--;
           if (cur.delayCnt === 0) {
-            await sleep(
-              (Math.random() * LARGE_WAIT_DELAY_STD + LARGE_WAIT_DELAY_BIAS) *
-                delayTime,
-            );
+            // 주기적 긴 휴식 5~7.5분 — 지연을 모두 끈(기본·랜덤 0) 경우는 쉬지 않는다.
+            const breakMs = computeLongBreakMs(delay);
+            if (breakMs > 0) await sleep(breakMs);
             cur.delayCnt = this.getDelayCnt();
           }
           if (!cur.stopped) {
@@ -969,8 +1045,9 @@ export class TaskQueueService extends EventTarget {
             this.stop();
             return;
           }
-          // 429 rate limit: 60초 대기 후 재시도
-          if (e.message && e.message.includes('429')) {
+          if (isRequestTimeoutError(e)) timeoutFailures++;
+          // 429 rate limit: 60초 대기 후 재시도(판정은 NaiApiError status/kind, 문자열은 폴백)
+          if (isNaiRateLimitError(e)) {
             this.addLog('warn', sceneName, `요청 제한 (429) - 60초 대기 후 재시도 [${i + 1}/${numTries}]`);
             console.log('Rate limited (429), waiting 60s before retry...');
             this.dispatchEvent(

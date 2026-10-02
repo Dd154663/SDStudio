@@ -6,6 +6,8 @@ import { appState } from '../models/AppService';
 import { Sampling, NoiseSchedule } from '../backends/imageGen';
 import PromptEditTextArea from './PromptEditTextArea';
 import { FileUploadBase64 } from './UtilComponents';
+import { useBackLayer } from '../models/BackStackService';
+import { useBackdropClose } from './backdropClose';
 
 // 스타일 프리셋 편집 모달 — 이름/대표이미지/프롬프트/샘플링 설정 수정.
 // GlobalPresetTab 의 편집 모달을 어댑터 기반으로 추출한 단일 출처:
@@ -131,10 +133,15 @@ export const PresetEditModal = observer(
     const numCls =
       'mt-1 w-full px-2 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default';
 
+    // Esc·Android 뒤로 가기로 닫기(SPEC §5 — 예전엔 뒤로 가기가 앱을 최소화), 바깥 클릭은 누름·뗌 모두
+    // 배경일 때만(프롬프트 글자를 드래그 선택하다 바깥에서 떼도 닫히지 않게). 2026-10-03 U1·X6.
+    useBackLayer(true, onClose);
+    const backdrop = useBackdropClose(onClose);
+
     return (
       <div
         className="fixed inset-0 bg-black/50 flex items-center justify-center z-[var(--z-modal)]"
-        onClick={onClose}
+        {...backdrop}
       >
         <div
           className="bg-[var(--c-zone)] rounded-lg r-modal p-5 max-w-2xl w-11/12 max-h-[88vh] flex flex-col shadow-2xl text-default"

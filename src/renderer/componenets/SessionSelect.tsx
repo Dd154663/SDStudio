@@ -7,6 +7,7 @@ import { pushRecentProject } from './ProjectBrowser';
 import Tooltip from './Tooltip';
 import { sessionService, backend, zipService, trashService, isMobile, templateService } from '../models';
 import { appState } from '../models/AppService';
+import { useBackLayer } from '../models/BackStackService';
 import { isV2, loadV2ShelfOpen, saveV2ShelfOpen } from '../models/mobileV2';
 import { observer } from 'mobx-react-lite';
 import { TOOLBAR_VIEW_MAIN, MOBILE_PROJECT_TOPROW_IDS, resolveToolbarView } from '../models/uiLayout';
@@ -24,7 +25,7 @@ import {
   useToolbarRowDrop,
 } from './ToolbarDnd';
 import { portableToolbarButtons } from './PortableToolbarButtons';
-import { TrashList, TrashNameBadge, formatTrashDate, trashNoticeText } from './TrashViews';
+import { TrashList, TrashNameBadge, formatTrashDate, reportEmptyResult, trashNoticeText } from './TrashViews';
 import {
   planProjectRestore,
   sortTrashNewestFirst,
@@ -142,20 +143,35 @@ export function ProjectTrashView() {
       callback: async () => {
         // 일괄 작업 잠금(2026-07-18): 저사양(특히 모바일) 보호 — finally 해제 보장
         const lockText = '프로젝트 휴지통 비우는 중...';
-        const total = deletedProjects.length;
+        const targets = deletedProjects.slice();
+        const total = targets.length;
         let done = 0;
+        const thrown = new Set<string>();
         appState.setProgressDialog({ text: lockText, done, total });
         try {
-          for (const p of deletedProjects) {
+          for (const p of targets) {
             try {
               await trashService.permanentlyDeleteProject(p.name, p.dir);
-            } catch (e) {}
+            } catch (e) {
+              console.error('프로젝트 영구 삭제 실패:', p.name, e);
+              thrown.add(rowKey(p));
+            }
             appState.setProgressDialog({ text: lockText, done: ++done, total });
           }
         } finally {
           appState.setProgressDialog(undefined);
         }
-        appState.pushMessage('프로젝트 휴지통을 비웠습니다.');
+        // 개별 실패를 세어 결과를 알린다 — 예외 또는 비운 뒤에도 휴지통에 남은 항목(활성 폴더 보호 등, X13)
+        let left: Set<string> | undefined;
+        try {
+          left = new Set((await trashService.getDeletedProjects()).map(rowKey));
+        } catch (e) {
+          left = undefined;
+        }
+        const failedNames = targets
+          .filter((p) => thrown.has(rowKey(p)) || left?.has(rowKey(p)))
+          .map((p) => displayName(p));
+        reportEmptyResult('프로젝트 휴지통', total, failedNames);
         await refresh();
       },
     });
@@ -206,6 +222,8 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   // 적용된 캐릭터 프리셋 칩의 팝오버(W4 다중 적용 — 목록·개별 해제)
   const [showPresetPopover, setShowPresetPopover] = useState(false);
+  // Esc·Android 뒤로 가기로 팝오버만 닫기(닫기 관문, 2026-10-03 U1·X6)
+  useBackLayer(showPresetPopover, () => setShowPresetPopover(false));
   // 팝오버 내 일괄 해제용 체크 선택 (팝오버를 열 때마다 초기화)
   const [presetClearSel, setPresetClearSel] = useState<Set<string>>(
     () => new Set(),

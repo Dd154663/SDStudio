@@ -39,6 +39,8 @@ import {
   taskQueueService,
 } from '../models';
 import { appState } from '../models/AppService';
+import { projectDeleteResultText, runTrashDelete } from '../models/deleteFlowRules';
+import { PROJECT_RETENTION_DAYS } from '../models/TrashService';
 import { backStackService } from '../models/BackStackService';
 import {
   queueFolderProjectsForGeneration,
@@ -146,6 +148,7 @@ const ProjectRow = observer(
           </span>
           <input
             autoFocus
+            data-esc-cancel
             value={editValue}
             onChange={(e) => onEditChange?.(e.target.value)}
             onKeyDown={onEditKeyDown}
@@ -456,9 +459,13 @@ const ProjectDrawer = observer(() => {
   // 안드로이드 뒤로가기로 드로어 닫기
   useEffect(() => {
     if (!open) return;
-    const handle = backStackService.push(() => {
-      appState.projectDrawerOpen = false;
-    });
+    // PC Esc 는 아래 단계별 닫기(drawerEscRef)로 — 닫기 관문 항목(위에 뜬 모달·확인 창이 먼저 받음, 2026-10-03 U1·X2)
+    const handle = backStackService.push(
+      () => {
+        appState.projectDrawerOpen = false;
+      },
+      { escape: () => drawerEscRef.current() },
+    );
     return () => handle.remove();
   }, [open]);
 
@@ -530,35 +537,29 @@ const ProjectDrawer = observer(() => {
     }
   }, [open]);
 
-  // Esc로 닫기
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        if (toolbarRef.current) {
-          setToolbar(null);
-          return;
-        }
-        if (colorPickerFor) {
-          setColorPickerFor(null);
-          return;
-        }
-        if (selectMode) {
-          setSelectMode(false);
-          setSelected(new Set());
-          return;
-        }
-        if (editingProject) {
-          setEditingProject(null);
-          return;
-        }
-        appState.projectDrawerOpen = false;
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [open, colorPickerFor, selectMode, editingProject]);
+  // Esc 단계별 닫기(툴바 → 색 → 선택 → 프로젝트 편집 → 드로어). 예전 window 캡처 리스너는 드로어 위에 뜬
+  // 모달(템플릿 관리 등)과 함께 실행돼 두 겹이 닫혔다 — 이제 닫기 관문의 드로어 항목이 Esc 를 받을 때만 실행한다.
+  const drawerEscRef = useRef<() => void>(() => {});
+  drawerEscRef.current = () => {
+    if (toolbarRef.current) {
+      setToolbar(null);
+      return;
+    }
+    if (colorPickerFor) {
+      setColorPickerFor(null);
+      return;
+    }
+    if (selectMode) {
+      setSelectMode(false);
+      setSelected(new Set());
+      return;
+    }
+    if (editingProject) {
+      setEditingProject(null);
+      return;
+    }
+    appState.projectDrawerOpen = false;
+  };
 
   // 플로팅 툴바 닫기 (외부 클릭 / Esc)
   useEffect(() => {
@@ -570,14 +571,10 @@ const ProjectDrawer = observer(() => {
         document.getElementById('floating-project-toolbar');
       if (el && !el.contains(e.target as Node)) close();
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close();
-    };
+    // Esc 는 위 drawerEscRef 첫 단계(닫기 관문)
     document.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('keydown', onKey, true);
     return () => {
       document.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('keydown', onKey, true);
     };
   }, [toolbar]);
 
@@ -860,7 +857,7 @@ const ProjectDrawer = observer(() => {
       });
       await sessionService.cloneFolder(sourceFolder, targetPath, withImages);
       appState.setProgressDialog(undefined);
-      appState.pushMessage(`"${value.trim}" 폴더로 복제되었습니다.`);
+      appState.pushMessage(`"${value.trim()}" 폴더로 복제되었습니다.`);
     } catch (e: any) {
       appState.setProgressDialog(undefined);
       appState.pushMessage(e.message || '폴더 복제에 실패했습니다.');
@@ -1516,9 +1513,18 @@ const ProjectDrawer = observer(() => {
       type: 'confirm',
       text: `프로젝트 "${name}"을(를) 삭제할까요?\n휴지통으로 이동되어 복구할 수 있습니다.`,
       callback: async () => {
-        await sessionService.get(name);
-        await sessionService.delete(name);
-        appState.pushMessage('프로젝트가 휴지통으로 이동되었습니다.');
+        // 예외·다른 창 잠금(조용히 반환 — 목록에 남음)은 성공 토스트 대신 실패 안내(X4).
+        // 툴바 「프로젝트 삭제」(AppService.deleteSession)와 같은 판정·문구.
+        const outcome = await runTrashDelete({
+          remove: async () => {
+            await sessionService.get(name);
+            await sessionService.delete(name);
+          },
+          stillExists: () => sessionService.list().includes(name),
+        });
+        appState.pushMessage(
+          projectDeleteResultText(outcome, PROJECT_RETENTION_DAYS).text,
+        );
       },
     });
   };
@@ -1863,6 +1869,7 @@ const ProjectDrawer = observer(() => {
                           </span>
                           <input
                             autoFocus
+                            data-esc-cancel
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             onKeyDown={(e) => {

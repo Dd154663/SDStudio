@@ -112,18 +112,8 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = observer(({
     }
   };
 
-  const handleEscape = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && views.length > 0) {
-      closeTopView();
-    }
-  };
-
-  useEffect(() => {
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [views]);
+  // Esc 는 닫기 관문(BackStackService)이 맨 위 항목만 처리한다 — 위 registerView 의 push 가 뒤로 가기와
+  // Esc 공용이다. 예전 document 리스너는 위에 뜬 모달·확인 창과 함께 닫히는 원인이라 없앴다(2026-10-03 U1·X2).
 
   // 안드로이드 뒤로가기 리스너를 부팅 직후 한 번 등록해 둔다. 오버레이가
   // 하나도 없을 때 뒤로가기를 눌러도 앱이 종료되지 않고 최소화되도록.

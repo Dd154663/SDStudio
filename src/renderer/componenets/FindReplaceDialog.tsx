@@ -445,7 +445,20 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
               <FaExchangeAlt className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" size={14} />
               <input type="text" placeholder="변환할 텍스트 (빈칸 = 삭제)" value={replaceText}
                 onChange={(e) => { setReplaceText(e.target.value); setReplaceComplete(null); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doReplaceAll(); } }}
+                // Enter 는 바로 변환하지 않고 확인 1회(되돌리기 없음 — 2026-10-03 U1·X14). [모두 변환] 버튼은 그대로 즉시.
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' || e.nativeEvent.isComposing || e.keyCode === 229) return;
+                  e.preventDefault();
+                  if (results.length === 0) return;
+                  void appState
+                    .confirmAsync({
+                      text: `${results.length}개 항목을 변환합니다.\n「${searchText}」 → 「${replaceText}」${replaceText ? '' : ' (삭제)'}`,
+                      confirmText: '모두 변환',
+                    })
+                    .then((ok) => {
+                      if (ok) void doReplaceAll();
+                    });
+                }}
                 className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
             </div>
             <button onClick={doReplaceAll}
@@ -528,7 +541,8 @@ const InsertTab = () => {
       if (e.key === 'ArrowDown') { e.preventDefault(); setAcSelected((s) => (s + 1) % acTags.length); return; }
       if (e.key === 'ArrowUp') { e.preventDefault(); setAcSelected((s) => (s - 1 + acTags.length) % acTags.length); return; }
       if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); acceptAcTag(acSelected); return; }
-      if (e.key === 'Escape') { e.preventDefault(); closeAc(); return; }
+      // 자동완성만 닫는다 — 전파를 멈춰 닫기 관문이 창까지 닫지 않게(2026-10-03 U1·X2)
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeAc(); return; }
     }
   };
 

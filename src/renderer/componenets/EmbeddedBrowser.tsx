@@ -1,5 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { FaArrowLeft, FaArrowRight, FaRedo, FaStar, FaPlus, FaTimes, FaPen, FaTrash } from 'react-icons/fa';
+import { useBackLayer } from '../models/BackStackService';
+import { useBackdropClose } from './backdropClose';
 
 interface Bookmark {
   id: string;
@@ -71,9 +73,12 @@ interface BookmarkDialogProps {
 const BookmarkDialog: React.FC<BookmarkDialogProps> = ({ mode, initialLabel, initialUrl, onConfirm, onDelete, onClose }) => {
   const [label, setLabel] = useState(initialLabel);
   const [url, setUrl] = useState(initialUrl);
+  // Esc·Android 뒤로 가기로 닫기, 바깥 클릭은 누름·뗌 모두 배경일 때만(2026-10-03 U1·X6)
+  useBackLayer(true, onClose);
+  const backdrop = useBackdropClose(onClose);
 
   return (
-    <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50" {...backdrop}>
       <div className="bg-[var(--c-zone)] rounded-lg r-modal p-4 w-80 flex flex-col gap-3 shadow-xl" onClick={e => e.stopPropagation()}>
         <h3 className="font-semibold text-default">
           {mode === 'add' ? '즐겨찾기 추가' : '즐겨찾기 편집'}

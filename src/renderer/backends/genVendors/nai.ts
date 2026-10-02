@@ -34,9 +34,52 @@ import {
   resolveNaiModelId,
 } from './naiModelCapabilities';
 import { padDigitEdgedWeightGroups } from '../../models/promptWeightSpacing';
+import {
+  NaiRequestOptions,
+  USER_DATA_TIMEOUT_MS,
+  withRequestTimeout,
+} from '../../models/requestTiming';
 
 export interface NovelAiFetcher {
-  fetchArrayBuffer(url: string, body: any, headers: any): Promise<ArrayBuffer>;
+  /** options 생략 = 기본 타임아웃(120초, requestTiming)·취소 없음. */
+  fetchArrayBuffer(
+    url: string,
+    body: any,
+    headers: any,
+    options?: NaiRequestOptions,
+  ): Promise<ArrayBuffer>;
+}
+
+// 옵션이 없으면 3인자로 호출한다(기존 호출 형태 유지).
+function fetchWithOptions(
+  fetcher: NovelAiFetcher,
+  url: string,
+  body: any,
+  headers: any,
+  options?: NaiRequestOptions,
+): Promise<ArrayBuffer> {
+  return options
+    ? fetcher.fetchArrayBuffer(url, body, headers, options)
+    : fetcher.fetchArrayBuffer(url, body, headers);
+}
+
+// `/user/data` 조회(잔량·할당량·토큰 검증) — 본문 읽기까지 30초 제한.
+function fetchUserData<T>(
+  url: string,
+  token: string,
+  read: (response: Response) => Promise<T>,
+): Promise<T> {
+  return withRequestTimeout(USER_DATA_TIMEOUT_MS, async (signal) => {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      signal,
+    });
+    return await read(response);
+  });
 }
 
 export class NovelAiImageGenService implements ImageGenService {
@@ -450,10 +493,12 @@ export class NovelAiImageGenService implements ImageGenService {
       Authorization: `Bearer ${authorization}`,
       'Content-Type': 'application/json',
     };
-    const arrayBuffer = await this.fetcher.fetchArrayBuffer(
+    const arrayBuffer = await fetchWithOptions(
+      this.fetcher,
       this.apiEndpoint2 + '/ai/generate-image',
       body,
       headers,
+      params.request,
     );
     const zip = await JSZip.loadAsync(arrayBuffer);
     const zipEntries = Object.keys(zip.files);
@@ -469,18 +514,12 @@ export class NovelAiImageGenService implements ImageGenService {
     // 2026-07 NovelAI 정책 변경: 서드파티 도구의 api.novelai.net 호출을 400 으로
     // 거부("update to the image URL") → 사용자 정보도 image.novelai.net 으로 호출.
     const url = this.apiEndpoint2;
-    const headers = {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    };
-    const reponse = await fetch(url + '/user/data', {
-      method: 'GET',
-      headers: headers,
+    const res = await fetchUserData(url + '/user/data', token, async (reponse) => {
+      if (!reponse.ok) {
+        throw new Error('HTTP error:' + reponse.status);
+      }
+      return await reponse.json();
     });
-    if (!reponse.ok) {
-      throw new Error('HTTP error:' + reponse.status);
-    }
-    const res = await reponse.json();
     const steps = res['subscription']['trainingStepsLeft'];
     return steps['fixedTrainingStepsLeft'] + steps['purchasedTrainingSteps'];
   }
@@ -489,17 +528,12 @@ export class NovelAiImageGenService implements ImageGenService {
     // Opus V5 회복형 할당량은 체험판 trial-status가 아니라 user/data의
     // subscription.usage에 있다. getRemainCredits와 같은 사용자 데이터 원본을
     // 사용해야 공식 웹의 Opus 잔량 표시와 일치한다.
-    const response = await fetch(this.apiEndpoint2 + '/user/data', {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
+    const raw = await fetchUserData(this.apiEndpoint2 + '/user/data', token, async (response) => {
+      if (!response.ok) {
+        throw new Error('HTTP error:' + response.status);
+      }
+      return await response.json();
     });
-    if (!response.ok) {
-      throw new Error('HTTP error:' + response.status);
-    }
-    const raw = await response.json();
     const subscription = raw?.subscription;
     // A non-Opus account can still carry usage.percent=100. Check entitlement
     // before reading usage; renewal/cancellation timestamps are not entitlement.
@@ -539,28 +573,29 @@ export class NovelAiImageGenService implements ImageGenService {
     try {
       // getRemainCredits 와 동일 사유로 image.novelai.net 사용 (api.novelai.net 은
       // 서드파티에 400 을 반환해 'error' 판정 → 로그인 상태가 영영 갱신되지 않았음)
-      const response = await fetch(this.apiEndpoint2 + '/user/data', {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+      return await fetchUserData(
+        this.apiEndpoint2 + '/user/data',
+        token,
+        async (response): Promise<LoginValidity> => {
+          if (response.ok) return 'valid';
+          if (response.status === 401 || response.status === 403) return 'invalid';
+          return 'error'; // 5xx 등 일시 오류 → 상태 유지
         },
-      });
-      if (response.ok) return 'valid';
-      if (response.status === 401 || response.status === 403) return 'invalid';
-      return 'error'; // 5xx 등 일시 오류 → 상태 유지
+      );
     } catch (e) {
-      return 'error'; // 네트워크 오류 → 상태 유지
+      return 'error'; // 네트워크 오류·30초 시간 초과 → 상태 유지
     }
   }
 
   async upscaleImage(authorization: string, params: ImageUpscaleInput) {
     const { width, height } = await getImageDimensions(params.image);
     estimateNaiUpscaleCost(width, height); // UI를 거치지 않는 위임 요청도 전송 전 검증
-    const response = await this.fetcher.fetchArrayBuffer(
+    const response = await fetchWithOptions(
+      this.fetcher,
       this.apiEndpoint2 + '/ai/upscale',
       { image: params.image, model: NAI_UPSCALE_MODEL, declared_blur_sigma: 0 },
       { Authorization: `Bearer ${authorization}`, 'Content-Type': 'application/json', Accept: 'application/zip' },
+      params.request,
     );
     const zip = await JSZip.loadAsync(response);
     // 공식 웹과 동일한 PNG 출력만 선택한다. 메타데이터/디렉터리를 이미지로 저장하지 않는다.
@@ -606,10 +641,12 @@ export class NovelAiImageGenService implements ImageGenService {
       'Content-Type': 'application/json',
     };
 
-    const arrayBuffer = await this.fetcher.fetchArrayBuffer(
+    const arrayBuffer = await fetchWithOptions(
+      this.fetcher,
       this.apiEndpoint2 + '/ai/augment-image',
       body,
       headers,
+      params.request,
     );
     const zip = await JSZip.loadAsync(arrayBuffer);
     const zipEntries = Object.keys(zip.files);
@@ -638,10 +675,12 @@ export class NovelAiImageGenService implements ImageGenService {
       'Content-Type': 'application/json',
     };
 
-    const arrayBuffer = await this.fetcher.fetchArrayBuffer(
+    const arrayBuffer = await fetchWithOptions(
+      this.fetcher,
       url + '/ai/encode-vibe',
       body,
       headers,
+      params.request,
     );
     return Buffer.from(arrayBuffer).toString('base64');
   }

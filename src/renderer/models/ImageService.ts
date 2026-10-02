@@ -8,6 +8,7 @@ import {
   trashService,
 } from '.';
 import { platform } from './platform';
+import type { NaiRequestOptions } from './requestTiming';
 import { getAppState } from './appStateRef';
 import { GenericScene, InpaintScene, Scene, Session } from './types';
 import { assert } from './util';
@@ -439,6 +440,70 @@ export class ImageService extends EventTarget {
         console.error('rename scene error:', e);
       }
     }
+  }
+
+  // 변형(인페인트) 씬 이름 변경의 파일 이동(2026-10-03 X15a). onRenameScene(일반 씬)과 달리
+  //  · 대상은 inpaints/<씬> 폴더와 구형 마스크·원본 파일(inpaint_masks|inpaint_orgs/<씬>.png)뿐 —
+  //    outs/ 는 일반 씬 몫이라 건드리지 않는다(같은 이름의 일반 씬 이미지가 딸려 가지 않게).
+  //  · 새 이름 쪽에 이미 폴더·파일이 있으면 아무것도 옮기지 않고 throw(남은 이미지와 병합 방지).
+  //  · 옮기는 중 실패하면 앞서 옮긴 것을 되돌리고 throw — 호출부는 이름·Map 을 바꾸지 않는다.
+  async renameInpaintSceneFiles(
+    session: Session,
+    oldName: string,
+    newName: string,
+  ): Promise<void> {
+    const moves: { from: string; to: string; dir: boolean }[] = [
+      {
+        from: projectPath('inpaints', session.name, oldName),
+        to: projectPath('inpaints', session.name, newName),
+        dir: true,
+      },
+      ...maskDirList.map((root) => ({
+        from: projectPath(root, session.name, oldName + '.' + PNG_IMAGE_EXT),
+        to: projectPath(root, session.name, newName + '.' + PNG_IMAGE_EXT),
+        dir: false,
+      })),
+    ];
+    const pending: typeof moves = [];
+    for (const m of moves) {
+      if (!(await backend.existFile(m.from))) continue;
+      if (await backend.existFile(m.to)) {
+        throw new Error(
+          `새 이름 "${newName}"의 이미지 폴더나 마스크 파일이 이미 있어 이름을 바꾸지 않았습니다.`,
+        );
+      }
+      pending.push(m);
+    }
+    const done: typeof moves = [];
+    for (const m of pending) {
+      try {
+        if (m.dir) await backend.renameDir(m.from, m.to);
+        else await backend.renameFile(m.from, m.to);
+        done.push(m);
+      } catch (e) {
+        console.error('변형 씬 이름 변경 파일 이동 실패:', m.from, e);
+        for (const d of done.reverse()) {
+          try {
+            if (d.dir) await backend.renameDir(d.to, d.from);
+            else await backend.renameFile(d.to, d.from);
+          } catch (e2) {
+            console.error('변형 씬 이름 변경 되돌리기 실패:', d.to, e2);
+          }
+        }
+        throw new Error(
+          '이미지 폴더를 옮기지 못해 이름을 바꾸지 않았습니다(파일 잠금·권한 등). 잠시 뒤 다시 시도해 주세요.',
+        );
+      }
+    }
+    // 캐시 키는 옛 경로 기준 — 옮긴 경로의 캐시를 비운다(onRenameScene 과 같은 방식)
+    const cache = this.cache.cache;
+    const stale: string[] = [];
+    for (const key of cache.keys()) {
+      for (const m of pending) {
+        if (key.startsWith(m.from)) stale.push(key);
+      }
+    }
+    for (const key of stale) this.cache.delete(key);
   }
 
   // 씬 병합: sourceName 씬 폴더의 이미지를 targetName 씬 폴더로 옮긴다.
@@ -1012,13 +1077,20 @@ export class ImageService extends EventTarget {
     }
   }
 
-  async encodeVibeImage(session: Session, path: string, info: number) {
+  async encodeVibeImage(
+    session: Session,
+    path: string,
+    info: number,
+    // 큐 시도의 호출별 타임아웃·취소 신호(requestTiming). 생략 = 기본 120초.
+    request?: NaiRequestOptions,
+  ) {
     const vibePath = this.getVibeImagePath(session, path);
     const data = await this.fetchVibeImage(session, vibePath);
     if (!data) return;
     const encoded = await backend.encodeVibeImage({
       image: dataUriToBase64(data),
       info: info,
+      ...(request ? { request } : {}),
     });
     await this.storeEncodedVibeImage(session, path, encoded, info);
     
@@ -1125,10 +1197,13 @@ export function toggleImageMain(
 // 반환값: 삭제(휴지통 이동)에 실패한 파일 수.
 // 실패 통지는 여기서 직접 한다 — 호출부 10여 곳이 반환값을 버려 실패가 무통지로
 // 삼켜지던 문제(2026-07-26). appState 는 순환 import 회피를 위해 getAppState() 경유.
+// 호출부는 이 알림을 다시 띄우지 않는다(중복 토스트, 2026-10-03 X13). 여러 씬을 돌며 한 번에
+// 알려야 하는 일괄 호출부만 { notify: false } 로 끄고 반환값을 모아 직접 한 줄로 알린다.
 export const deleteImageFiles = async (
   curSession: Session,
   paths: string[],
   scene?: GenericScene,
+  opts?: { notify?: boolean },
 ): Promise<number> => {
   if (scene) {
     let failed = 0;
@@ -1147,7 +1222,7 @@ export const deleteImageFiles = async (
       // 이미지가 화면에 그대로 남는다.
       await imageService.refresh(curSession, scene);
     }
-    if (failed > 0) {
+    if (failed > 0 && opts?.notify !== false) {
       try {
         getAppState().pushMessage(
           failed + '장의 이미지를 삭제하지 못했습니다. 잠시 후 다시 시도해주세요.',

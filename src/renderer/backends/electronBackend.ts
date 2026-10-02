@@ -11,6 +11,12 @@ import { Backend, FileEntry, ResizeImageInput, SelectFileOptions } from '../back
 import { assertDeletableDirPath } from './dataPathGuard';
 import { NovelAiFetcher, NovelAiImageGenService } from './genVendors/nai';
 import { createNaiApiError } from './genVendors/naiErrors';
+import {
+  NaiRequestOptions,
+  REQUEST_TIMEOUT_BASE_MS,
+  throwIfAborted,
+  withRequestTimeout,
+} from '../models/requestTiming';
 import { ImageContextAlt, SceneContextAlt } from '../models/types';
 import { embedSDStudioMetadataInPngBase64 } from '../../shared/sdstudioImageMetadata';
 import {
@@ -44,35 +50,37 @@ function driveFileError(res: any): DriveUploadError {
 const invoke = window.electron?.ipcRenderer?.invoke;
 
 class ElectronFetcher implements NovelAiFetcher {
+  // 호출별 타임아웃(기본 120초, requestTiming) — 시간이 다 되거나 큐 시도가 폐기되면
+  // fetch 를 abort 해 진행 중 요청을 실제로 끊는다(본문 읽기까지 포함).
   async fetchArrayBuffer(
     url: string,
     body: any,
     headers: any,
+    options?: NaiRequestOptions,
   ): Promise<ArrayBuffer> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, 120 * 1000);
-    try {
-      const response = await fetch(url, {
-        body: JSON.stringify(body),
-        headers: headers,
-        method: 'POST',
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        const detail = await response.text().catch(() => '');
-        const correlationId =
-          response.headers.get('x-correlation-id') ??
-          response.headers.get('x-request-id') ??
-          response.headers.get('cf-ray') ??
-          undefined;
-        throw createNaiApiError(response.status, detail, correlationId);
-      }
-      return await response.arrayBuffer();
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    const timeoutMs = options?.timeoutMs ?? REQUEST_TIMEOUT_BASE_MS;
+    return await withRequestTimeout(
+      timeoutMs,
+      async (signal) => {
+        const response = await fetch(url, {
+          body: JSON.stringify(body),
+          headers: headers,
+          method: 'POST',
+          signal,
+        });
+        if (!response.ok) {
+          const detail = await response.text().catch(() => '');
+          const correlationId =
+            response.headers.get('x-correlation-id') ??
+            response.headers.get('x-request-id') ??
+            response.headers.get('cf-ray') ??
+            undefined;
+          throw createNaiApiError(response.status, detail, correlationId);
+        }
+        return await response.arrayBuffer();
+      },
+      options?.signal,
+    );
   }
 }
 
@@ -146,12 +154,15 @@ export class ElectornBackend extends Backend {
         console.warn('SDStudio 생성 메타데이터 삽입 실패(원본 저장):', e);
       }
     }
+    // 폐기된 시도(바깥 타임아웃)의 늦은 결과는 저장하지 않는다.
+    throwIfAborted(arg.request?.signal);
     await this.writeDataFile(arg.outputFilePath, res);
   }
 
   async augmentImage(arg: ImageAugmentInput): Promise<void> {
     const token = await this.readToken();
     const res = await this.imageGenService.augmentImage(token, arg);
+    throwIfAborted(arg.request?.signal);
     await this.writeDataFile(arg.outputFilePath, res);
   }
 
@@ -163,6 +174,7 @@ export class ElectornBackend extends Backend {
   async upscaleImage(arg: ImageUpscaleInput): Promise<void> {
     const token = await this.readToken();
     const res = await this.imageGenService.upscaleImage(token, arg);
+    throwIfAborted(arg.request?.signal);
     await this.writeDataFile(arg.outputFilePath, res);
   }
 

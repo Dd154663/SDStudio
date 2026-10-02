@@ -29,8 +29,11 @@ import {
   SUPPORTED_GLOBAL_PRESET_TYPES,
 } from '../models/GlobalPresetService';
 import { appState } from '../models/AppService';
+import { batchResultLine, failedNamesLine } from '../models/deleteFlowRules';
 import Tooltip from './Tooltip';
 import { PresetEditModal } from './PresetEditModal';
+import { useBackLayer } from '../models/BackStackService';
+import { useBackdropClose } from './backdropClose';
 
 // 템플릿 관리(글로벌 프리셋 카드 선택)와 공유 — export
 export const GlobalVibeImage = observer(
@@ -545,14 +548,28 @@ export const GlobalPresetTab = observer(() => {
       type: 'confirm',
       text: `${selectedIds.size}개의 글로벌 프리셋을 삭제하시겠습니까?`,
       callback: async () => {
-        for (const id of Array.from(selectedIds)) {
+        // 실패를 삼키지 않는다 — 건수와 이름을 알린다(X13)
+        const ids = Array.from(selectedIds);
+        const failedNames: string[] = [];
+        for (const id of ids) {
           try {
             await globalPresetService.delete(id);
           } catch (e) {
-            /* ignore */
+            console.error('글로벌 프리셋 삭제 실패:', id, e);
+            failedNames.push(globalPresetService.get(id)?.name ?? id);
           }
         }
         exitMultiSelect();
+        if (failedNames.length > 0) {
+          appState.pushDialog({
+            type: 'yes-only',
+            text:
+              `글로벌 프리셋 ${batchResultLine(ids.length - failedNames.length, failedNames.length)}\n` +
+              `삭제하지 못한 프리셋: ${failedNamesLine(failedNames)}`,
+          });
+        } else {
+          appState.pushMessage(`글로벌 프리셋 ${ids.length}개를 삭제했습니다.`);
+        }
       },
     });
   };
@@ -890,6 +907,10 @@ export const GlobalPresetTab = observer(() => {
  */
 export const GlobalPresetPickerOverlay = observer(() => {
   const picker = appState.globalPresetPicker;
+  // Esc·Android 뒤로 가기로 닫기(SPEC §5), 바깥 클릭은 누름·뗌 모두 배경일 때만(2026-10-03 U1·X6)
+  const closePicker = () => appState.closeGlobalPresetPicker();
+  useBackLayer(!!picker, closePicker);
+  const pickerBackdrop = useBackdropClose(closePicker);
   if (!picker) return null;
   // 통합: 전체 글로벌 프리셋을 보여주고, 선택 시 현재 모드로 자동 변환해 적용한다.
   const entries = globalPresetService.list();
@@ -899,7 +920,7 @@ export const GlobalPresetPickerOverlay = observer(() => {
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-[var(--z-modal)]"
-      onClick={() => appState.closeGlobalPresetPicker()}
+      {...pickerBackdrop}
     >
       <div
         className="bg-[var(--c-zone)] rounded-lg r-modal p-6 max-w-5xl w-11/12 max-h-[85vh] flex flex-col shadow-2xl"

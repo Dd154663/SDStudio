@@ -86,6 +86,8 @@ import {
   CharacterPrompt,
 } from '../models/types';
 import { appState } from '../models/AppService';
+import { DELETE_RESULT_TEXT, runTrashDelete } from '../models/deleteFlowRules';
+import { promptCustomResolution } from '../models/customResolutionPrompt';
 import { observer } from 'mobx-react-lite';
 import {
   getOrderedBaseCharacterPrompts,
@@ -659,6 +661,7 @@ export const SlotPiece = observer(
           {editingName ? (
             <input
               autoFocus
+              data-esc-cancel
               className="gray-input text-xs px-1 py-0.5 w-full min-w-0"
               value={nameDraft}
               placeholder={pieceLabel(piece, colIndex, rowIndex)}
@@ -1729,35 +1732,21 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
                   ) {
                     appState.pushDialog({
                       type: 'confirm',
-                      text: '해당 해상도는 Anlas를 소모합니다 (유로임) 계속하시겠습니까?',
+                      text: '해당 해상도는 Anlas를 소모합니다 (유료임) 계속하시겠습니까?',
                       callback: () => {
                         scene.resolution = opt.value as Resolution;
                       },
                     });
                   } else if (opt.value === 'custom') {
-                    const width = await appState.pushDialogAsync({
-                      type: 'input-confirm',
-                      text: '해상도 너비를 입력해주세요',
+                    // 숫자 검증·64px 보정은 공용 흐름(빈칸·문자 거부 — 예전에는 0x0 저장, X15c)
+                    const size = await promptCustomResolution({
+                      width: scene.resolutionWidth,
+                      height: scene.resolutionHeight,
                     });
-                    if (width == null) return;
-                    const height = await appState.pushDialogAsync({
-                      type: 'input-confirm',
-                      text: '해상도 높이를 입력해주세요',
-                    });
-                    if (height == null) return;
-                    try {
-                      const customResolution = {
-                        width: parseInt(width),
-                        height: parseInt(height),
-                      };
-                      scene.resolution = opt.value as Resolution;
-                      scene.resolutionWidth =
-                        (customResolution.width + 63) & ~63;
-                      scene.resolutionHeight =
-                        (customResolution.height + 63) & ~63;
-                    } catch (e: any) {
-                      appState.pushMessage(e.message);
-                    }
+                    if (!size) return;
+                    scene.resolution = opt.value as Resolution;
+                    scene.resolutionWidth = size.width;
+                    scene.resolutionHeight = size.height;
                   } else {
                     scene.resolution = opt.value as Resolution;
                   }
@@ -1804,12 +1793,21 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
                 callback: async () => {
                   const { trashService } = await import('../models');
                   // 휴지통 이동 실패면 씬이 그대로 남는다(2026-10-02 S1) — 알리고 편집 창은 닫지 않는다.
-                  try {
-                    await trashService.moveSceneToTrash(curSession!, scene);
-                  } catch (e: any) {
-                    appState.pushMessage(e?.message || '씬을 휴지통으로 옮기지 못했습니다.');
+                  // 다른 창 잠금으로 조용히 돌아와 씬이 남아 있어도 실패로 센다(SPEC §8, X4).
+                  const outcome = await runTrashDelete({
+                    remove: () => trashService.moveSceneToTrash(curSession!, scene),
+                    stillExists: () => curSession!.hasScene(scene.type, scene.name),
+                  });
+                  if (outcome.kind === 'error') {
+                    appState.pushMessage(outcome.message || '씬을 휴지통으로 옮기지 못했습니다.');
                     return;
                   }
+                  if (outcome.kind === 'still-present') {
+                    appState.pushMessage(DELETE_RESULT_TEXT.sceneStillPresent);
+                    return;
+                  }
+                  // 지운 씬에 닫힐 때 자동 이름 변경이 다시 걸리지 않게 ref 를 원상태로 둔다(병합 경로와 같음)
+                  curNameRef.current = scene.name;
                   onClosed();
                   if (onDeleted) {
                     onDeleted();

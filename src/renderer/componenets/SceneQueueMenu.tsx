@@ -23,7 +23,9 @@ export default function SceneQueueMenu({ children, session, type, selectedOnly }
   useEffect(() => { setOpen(false); }, [session, type]);
   useEffect(() => {
     if (!open) return;
-    const handle = backStackService.push(() => setOpen(false));
+    // Esc 는 아래 자체 리스너가 닫고 토글 버튼으로 포커스를 돌린다 — 닫기 관문은 'self' 로 그 처리를 존중하고
+    // 아래 창으로 넘기지 않는다(2026-10-03 U1·X2).
+    const handle = backStackService.push(() => setOpen(false), { escape: 'self' });
     return () => handle.remove();
   }, [open]);
   useLayoutEffect(() => {

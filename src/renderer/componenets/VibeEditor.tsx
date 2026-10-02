@@ -133,6 +133,7 @@ export const EditableSliderValue = ({
     return (
       <input
         ref={inputRef}
+        data-esc-cancel
         className="w-14 flex-none text-sm text-center border border-sky-400 rounded bg-[var(--c-input-bg)] text-default outline-none px-0.5 py-0.5"
         value={inputValue}
         onChange={(e) => {

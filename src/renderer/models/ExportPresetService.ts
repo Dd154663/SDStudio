@@ -473,7 +473,7 @@ export class ExportPresetService {
       try {
         await zipService.zipFiles(paths, outFilePath);
       } catch (e: any) {
-        appState.pushMessage(e.message);
+        appState.pushMessage(e.message, 'error');
         appState.exportProgress = undefined;
         return;
       }

@@ -22,6 +22,16 @@ import {
   zipService,
 } from '.';
 import { setAppState } from './appStateRef';
+import { resolveToastKind, ToastKind } from './toastKind';
+import { confirmViaDialog } from './confirmKeys';
+import {
+  overlappingSceneNames,
+  pasteResultText,
+  projectDeleteResultText,
+  runTrashDelete,
+  sceneImportOverwriteText,
+} from './deleteFlowRules';
+import { PROJECT_RETENTION_DAYS } from './TrashService';
 import type { Config, UiToolbarConfig, UiLayoutSlots } from '../../main/config';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
@@ -134,7 +144,8 @@ export class AppState {
   @observable accessor storagePermissionBlocked: boolean = false;
   @observable accessor curSession: Session | undefined = undefined;
   // 토스트 메시지: 각 항목이 고유 id를 가져 개별 타이머/개별 닫기가 가능하다.
-  @observable accessor messages: { id: number; text: string }[] = [];
+  // kind = 색(오류 빨강·성공 초록·안내 중립) — pushMessage 의 kind 또는 문구 추론(models/toastKind.ts).
+  @observable accessor messages: { id: number; text: string; kind: ToastKind }[] = [];
   private messageIdCounter = 0;
   @observable accessor dialogs: Dialog[] = [];
   @observable accessor samples: number = 1;
@@ -571,8 +582,18 @@ export class AppState {
       type: 'confirm',
       text: '정말로 이 프로젝트를 삭제하시겠습니까? (휴지통으로 이동)',
       callback: async () => {
-        await sessionService.delete(this.curSession!.name);
-        this.curSession = undefined;
+        const name = this.curSession?.name;
+        if (!name) return;
+        // 예외·다른 창 잠금(조용히 반환 — 목록에 남음)은 실패로 안내하고 열린 프로젝트를 유지한다(X4).
+        const outcome = await runTrashDelete({
+          remove: () => sessionService.delete(name),
+          stillExists: () => sessionService.list().includes(name),
+        });
+        const result = projectDeleteResultText(outcome, PROJECT_RETENTION_DAYS);
+        if (result.ok && this.curSession?.name === name) {
+          this.curSession = undefined;
+        }
+        this.pushMessage(result.text);
       },
     });
   }
@@ -851,8 +872,12 @@ export class AppState {
   @observable accessor historyDrawerOpen: boolean = false;
 
   @action
-  addMessage(message: string): void {
-    this.messages.push({ id: ++this.messageIdCounter, text: message });
+  addMessage(message: string, kind?: ToastKind): void {
+    this.messages.push({
+      id: ++this.messageIdCounter,
+      text: message,
+      kind: resolveToastKind(message, kind),
+    });
     // 폭주 방지: 최대 8개만 유지(오래된 것부터 제거)
     if (this.messages.length > 8) {
       this.messages.splice(0, this.messages.length - 8);
@@ -875,8 +900,10 @@ export class AppState {
     this.samples = samples;
   }
 
-  pushMessage(msg: string) {
-    this.addMessage(msg);
+  // kind 생략 시 문구로 추론(오류 우선 — models/toastKind.ts). 문구로 알 수 없는 오류(예외 메시지 그대로)는
+  // 'error' 를 명시한다(2026-10-03 U1·X7).
+  pushMessage(msg: string, kind?: ToastKind) {
+    this.addMessage(msg, kind);
   }
 
   pushDialog(dialog: Dialog) {
@@ -895,6 +922,7 @@ export class AppState {
     }
     const targetDir = imageService.getOutputDir(session, scene);
     let copied = 0;
+    let failed = 0;
     for (const srcPath of this.imageClipboard) {
       try {
         // 원본 확장자 보존(webp/png) — 고정 .png 로 붙여넣으면 내용/확장자 불일치
@@ -903,11 +931,13 @@ export class AppState {
         await backend.copyFile(srcPath, targetDir + '/' + filename);
         copied++;
       } catch (e) {
+        failed++;
         console.error('이미지 붙여넣기 실패:', srcPath, e);
       }
     }
     await imageService.refresh(session, scene);
-    this.pushMessage(copied + '장의 이미지가 붙여넣어졌습니다.');
+    // 부분 실패도 한 줄로(성공 N · 실패 M, X13)
+    this.pushMessage(pasteResultText(copied, failed));
   }
 
   pushDialogAsync(dialog: Dialog) {
@@ -920,6 +950,19 @@ export class AppState {
       };
       this.dialogs.push(dialog);
     });
+  }
+
+  /**
+   * 확인 창(confirm)을 띄워 [확인]=true / [취소]·Esc·뒤로 가기=false 로 돌려준다(2026-10-03 U1·X14).
+   * pushDialogAsync 는 confirm 의 확인/취소를 구분하지 못해(둘 다 undefined) 같은 askConfirm 이 6곳에 복제돼
+   * 있었다 — 이 하나를 쓴다. 기본 [확인] 은 빨강(기존 confirm 과 같음), green: true 면 파랑.
+   */
+  confirmAsync(
+    opts: Omit<Dialog, 'type' | 'callback' | 'onCancel'> & {
+      type?: 'confirm' | 'yes-only';
+    },
+  ): Promise<boolean> {
+    return confirmViaDialog<Dialog>((d) => this.pushDialog(d), opts);
   }
 
   setProgressDialog(dialog: ProgressDialog | undefined) {
@@ -1053,6 +1096,25 @@ export class AppState {
               } else if (option === 'cur-project') {
                 const cur = this.curSession!;
                 const newJson: ISession = await sessionService.migrate(json);
+                // 같은 이름 씬의 slots·resolution 을 바꾸기 전에 확인 1회(X10, 겹치는 씬이 없으면 생략).
+                // 휴지통 보존이 없는 제자리 교체라 되돌릴 수 없음을 알린다.
+                const overlapping = overlappingSceneNames(
+                  Object.keys(newJson.scenes),
+                  (n) => cur.scenes.has(n),
+                );
+                if (overlapping.length > 0) {
+                  const go = await new Promise<boolean>((resolve) => {
+                    this.pushDialog({
+                      type: 'confirm',
+                      text: sceneImportOverwriteText(overlapping),
+                      callback: () => resolve(true),
+                      onCancel: () => resolve(false),
+                    });
+                  });
+                  if (!go) return;
+                  // 확인 창이 떠 있는 동안 프로젝트가 바뀌었으면 적용하지 않는다
+                  if (this.curSession !== cur) return;
+                }
                 for (const key of Object.keys(newJson.scenes)) {
                   if (cur.scenes.has(key)) {
                     cur.scenes.get(key)!.slots = newJson.scenes[key].slots.map(

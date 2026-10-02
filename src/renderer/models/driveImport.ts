@@ -190,18 +190,9 @@ async function downloadWithProgress(
   }
 }
 
-function askConfirm(text: string, confirmText: string): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    appState.pushDialog({
-      type: 'confirm',
-      green: true,
-      text,
-      confirmText,
-      callback: () => resolve(true),
-      onCancel: () => resolve(false),
-    });
-  });
-}
+// 확인/취소 구분 확인 창 — appState.confirmAsync 공용(2026-10-03 U1·X14, 예전엔 같은 함수가 6곳에 복제)
+const askConfirm = (text: string, confirmText: string): Promise<boolean> =>
+  appState.confirmAsync({ text, confirmText, green: true });
 
 // 토큰·알 수 없는 파일: 불러오지 않고, 확인 뒤 다운로드 폴더에 파일로만 저장.
 async function saveDriveBackupToDownloads(

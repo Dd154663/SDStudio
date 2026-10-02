@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { FaTrash, FaTrashRestore } from 'react-icons/fa';
 import { trashService } from '../models';
 import { appState } from '../models/AppService';
+import { batchResultLine, failedNamesLine } from '../models/deleteFlowRules';
 import {
   sceneTrashLabel,
   sortTrashNewestFirst,
@@ -25,6 +26,30 @@ export function trashNoticeText(kind: 'scene' | 'project'): string {
     image: IMAGE_RETENTION_DAYS,
     scene: SCENE_RETENTION_DAYS,
     project: PROJECT_RETENTION_DAYS,
+  });
+}
+
+/**
+ * 「모두 비우기」 결과 안내(2026-10-03 X13) — 전부 성공이면 토스트, 실패가 있으면
+ * 「삭제 N · 실패 N」과 실패한 이름을 확인 창(yes-only)으로.
+ */
+export function reportEmptyResult(
+  label: string,
+  total: number,
+  failedNames: readonly string[],
+): void {
+  const failed = failedNames.length;
+  const ok = Math.max(0, total - failed);
+  if (failed === 0) {
+    appState.pushMessage(`${label}을 비웠습니다. (${batchResultLine(ok, 0)})`);
+    return;
+  }
+  appState.pushDialog({
+    type: 'yes-only',
+    text:
+      `${label} 비우기: ${batchResultLine(ok, failed)}\n` +
+      `영구 삭제하지 못한 항목: ${failedNamesLine(failedNames)}\n` +
+      '다른 창에서 열려 있거나 파일이 잠겨 있을 수 있습니다. 잠시 뒤 다시 시도해 주세요.',
   });
 }
 
@@ -167,6 +192,16 @@ export function SceneTrashView({ projectName }: { projectName: string }) {
   }, [refresh]);
 
   const findItem = (name: string) => deletedScenes.find((s) => s.name === name);
+  const sceneKey = (it: { name: string; type: string }) => it.type + ':' + it.name;
+  // 삭제 뒤 휴지통에 남아 있는 항목(실패 판정용). 목록을 못 읽으면 undefined(판정 생략).
+  const remainingSceneKeys = async (): Promise<Set<string> | undefined> => {
+    try {
+      const items = await trashService.getDeletedScenes(projectName);
+      return new Set(items.map(sceneKey));
+    } catch (e) {
+      return undefined;
+    }
+  };
 
   const handleRestore = async (name: string) => {
     try {
@@ -183,7 +218,7 @@ export function SceneTrashView({ projectName }: { projectName: string }) {
     if (!item) return;
     appState.pushDialog({
       type: 'confirm',
-      text: `씬 "${item.name}"을(를) 영구 삭제하시겠습니까?`,
+      text: `씬 "${item.name}"을(를) 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
       callback: async () => {
         // 일괄 작업 잠금(2026-07-18): 씬 폴더 삭제(이미지 다수)는 무거움 — 전체화면 잠금
         appState.setProgressDialog({
@@ -191,14 +226,24 @@ export function SceneTrashView({ projectName }: { projectName: string }) {
           done: 0,
           total: 1,
         });
+        let error: string | undefined;
         try {
           await trashService.permanentlyDeleteScene(
             projectName,
             item.name,
             item.type,
           );
+        } catch (e: any) {
+          error = e?.message || '씬을 영구 삭제하지 못했습니다.';
         } finally {
           appState.setProgressDialog(undefined);
+        }
+        // 실패를 삼키지 않는다 — 예외이거나 목록에 그대로 남아 있으면 실패로 안내(X13)
+        const left = await remainingSceneKeys();
+        if (error || left?.has(sceneKey(item))) {
+          appState.pushMessage(error || `씬 "${item.name}"을(를) 영구 삭제하지 못했습니다.`);
+        } else {
+          appState.pushMessage(`씬 "${item.name}"을(를) 영구 삭제했습니다.`);
         }
         await refresh();
       },
@@ -213,24 +258,34 @@ export function SceneTrashView({ projectName }: { projectName: string }) {
       callback: async () => {
         // 일괄 작업 잠금(2026-07-18): 저사양(특히 모바일) 보호 — finally 해제 보장
         const lockText = '씬 휴지통 비우는 중...';
-        const total = deletedScenes.length;
+        const targets = deletedScenes.slice();
+        const total = targets.length;
         let done = 0;
+        const thrown = new Set<string>();
         appState.setProgressDialog({ text: lockText, done, total });
         try {
-          for (const item of deletedScenes) {
+          for (const item of targets) {
             try {
               await trashService.permanentlyDeleteScene(
                 projectName,
                 item.name,
                 item.type,
               );
-            } catch (e) {}
+            } catch (e) {
+              console.error('씬 영구 삭제 실패:', item.name, e);
+              thrown.add(sceneKey(item));
+            }
             appState.setProgressDialog({ text: lockText, done: ++done, total });
           }
         } finally {
           appState.setProgressDialog(undefined);
         }
-        appState.pushMessage('씬 휴지통을 비웠습니다.');
+        // 개별 실패를 세어 결과를 알린다 — 예외 또는 비운 뒤에도 목록에 남은 항목(X13)
+        const left = await remainingSceneKeys();
+        const failedNames = targets
+          .filter((it) => thrown.has(sceneKey(it)) || left?.has(sceneKey(it)))
+          .map((it) => it.name);
+        reportEmptyResult('씬 휴지통', total, failedNames);
         await refresh();
       },
     });

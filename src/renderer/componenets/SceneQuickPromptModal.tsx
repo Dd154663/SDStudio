@@ -5,6 +5,7 @@ import { observer } from 'mobx-react-lite';
 import { v4 as uuidv4 } from 'uuid';
 import { FaExpand, FaPuzzlePiece, FaTimes } from 'react-icons/fa';
 import ModalOverlay from './ModalOverlay';
+import { backStackService } from '../models/BackStackService';
 import PromptEditTextArea from './PromptEditTextArea';
 import { FloatView } from './FloatView';
 import { SlotEditor } from './SceneEditor';
@@ -57,18 +58,15 @@ const SceneQuickPromptModal = observer(
       setPos({ left, top });
     }, [usePopover, showFull, showPieces, anchor]);
 
-    // 팝오버 모드 ESC 닫기 (중앙 모달은 ModalOverlay가, 조합 에디터는 FloatView가 처리)
+    // 팝오버 모드 ESC 닫기 (중앙 모달은 ModalOverlay가, 조합 에디터는 FloatView가 처리) — 닫기 관문 항목
+    // (맨 위 한 겹만, 2026-10-03 U1·X2). 프롬프트 칸의 자동완성 Esc 는 입력칸이 먼저 받는다.
+    const onCloseRef = useRef(onClose);
+    onCloseRef.current = onClose;
     useEffect(() => {
       if (!usePopover || showFull) return;
-      const handler = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') {
-          e.stopPropagation();
-          onClose();
-        }
-      };
-      window.addEventListener('keydown', handler, true);
-      return () => window.removeEventListener('keydown', handler, true);
-    }, [usePopover, showFull, onClose]);
+      const handle = backStackService.push(() => onCloseRef.current());
+      return () => handle.remove();
+    }, [usePopover, showFull]);
 
     const piece = selectedPiece && scene.slots.some((slot) => slot.includes(selectedPiece))
       ? selectedPiece : scene.slots[0]?.[0];

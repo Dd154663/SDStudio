@@ -26,6 +26,7 @@ import { artistLibraryService, imageService, backend } from '../models';
 import { IArtistEntry, IArtistImage } from '../models/ArtistLibraryService';
 import { ModelSamplingFamily } from '../models/modelSamplingProfiles';
 import { appState } from '../models/AppService';
+import { batchResultLine, failedNamesLine } from '../models/deleteFlowRules';
 import { dataUriToBase64 } from '../models/ImageService';
 import { extractPromptDataFromBase64 } from '../models/util';
 import { IMPORT_IMAGE_ACCEPT } from '../models/imageFormats';
@@ -343,7 +344,22 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                   <button className="text-xs back-gray !rounded-md px-2 py-1" onClick={() => setShowPrompt((v) => !v)}>
                     <FaFileAlt className="inline mr-1" size={10} />{showPrompt ? '프롬프트 닫기' : '프롬프트 보기'}
                   </button>
-                  <button className="text-xs icon-button bg-red-500 text-white !rounded-md px-2 py-1" onClick={() => { artistLibraryService.removeImage(artist.id, selected.id); setSelectedId(null); setShowPrompt(false); }}>
+                  <button
+                    className="text-xs icon-button bg-red-500 text-white !rounded-md px-2 py-1"
+                    onClick={() => {
+                      // 샘플 이미지 파일을 영구 삭제하므로 확인 1회(X11)
+                      const imageId = selected.id;
+                      appState.pushDialog({
+                        type: 'confirm',
+                        text: '이 샘플 이미지를 삭제할까요? 파일이 영구 삭제되어 되돌릴 수 없습니다.',
+                        callback: async () => {
+                          await artistLibraryService.removeImage(artist.id, imageId);
+                          setSelectedId(null);
+                          setShowPrompt(false);
+                        },
+                      });
+                    }}
+                  >
                     <FaTrash className="inline mr-1" size={10} />이미지 삭제
                   </button>
                 </div>
@@ -548,10 +564,28 @@ const ArtistLibraryTab = observer(() => {
       type: 'confirm',
       text: `선택한 ${selectedIds.size}명의 작가를 삭제하시겠습니까?\n첨부된 이미지도 함께 삭제됩니다.`,
       callback: async () => {
-        for (const id of Array.from(selectedIds)) {
-          await artistLibraryService.deleteArtist(id);
+        // 한 명이 실패해도 나머지를 계속 지우고 결과를 알린다(X13 — 예전에는 첫 실패에서 멈추고 무안내)
+        const ids = Array.from(selectedIds);
+        const failedNames: string[] = [];
+        for (const id of ids) {
+          try {
+            await artistLibraryService.deleteArtist(id);
+          } catch (e) {
+            console.error('작가 삭제 실패:', id, e);
+            failedNames.push(artistLibraryService.getArtist(id)?.name ?? id);
+          }
         }
         exitMultiSelect();
+        if (failedNames.length > 0) {
+          appState.pushDialog({
+            type: 'yes-only',
+            text:
+              `작가 ${batchResultLine(ids.length - failedNames.length, failedNames.length)}\n` +
+              `삭제하지 못한 작가: ${failedNamesLine(failedNames)}`,
+          });
+        } else {
+          appState.pushMessage(`작가 ${ids.length}명을 삭제했습니다.`);
+        }
       },
     });
   };

@@ -30,6 +30,13 @@ import { dataUriToBase64 } from '../models/ImageService';
 import { InpaintScene, PromptPiece } from '../models/types';
 import { extractPromptDataFromBase64 } from '../models/util';
 import { appState } from '../models/AppService';
+import {
+  checkInpaintSceneRename,
+  DELETE_RESULT_TEXT,
+  runTrashDelete,
+} from '../models/deleteFlowRules';
+import { promptCustomResolution } from '../models/customResolutionPrompt';
+import { renameInpaintScene } from '../models/SessionService';
 import { observer } from 'mobx-react-lite';
 import { InnerPreSetEditor } from './PreSetEdtior';
 import { reaction } from 'mobx';
@@ -278,12 +285,22 @@ const InPaintEditor = observer(
         callback: async () => {
           const { trashService } = await import('../models');
           // 휴지통 이동 실패면 씬이 그대로 남는다(2026-10-02 S1) — 알리고 편집 창은 닫지 않는다.
-          try {
-            await trashService.moveSceneToTrash(curSession!, editingScene!);
-          } catch (e: any) {
-            appState.pushMessage(e?.message || '씬을 휴지통으로 옮기지 못했습니다.');
+          // 다른 창 잠금으로 조용히 돌아와 씬이 남아 있어도 실패로 센다(SPEC §8, X4).
+          const session = curSession!;
+          const outcome = await runTrashDelete({
+            remove: () => trashService.moveSceneToTrash(session, editingScene!),
+            stillExists: () => session.hasScene('inpaint', editingScene.name),
+          });
+          if (outcome.kind === 'error') {
+            appState.pushMessage(outcome.message || '씬을 휴지통으로 옮기지 못했습니다.');
             return;
           }
+          if (outcome.kind === 'still-present') {
+            appState.pushMessage(DELETE_RESULT_TEXT.sceneStillPresent);
+            return;
+          }
+          // 지운 씬에 닫힐 때 이름 확정이 걸리지 않게 입력값을 원상태로 둔다
+          nameDraftRef.current = editingScene.name;
           onConfirm();
           onDelete();
         },
@@ -337,6 +354,75 @@ const InPaintEditor = observer(
       };
     }, [editingScene, def?.hasMask, curSession]);
 
+    // 씬 이름(2026-10-03 X15a): 예전에는 매 키 입력마다 scene.name 만 바꿔 Map 키·inpaints 폴더가
+    // 옛 이름에 남았다. 입력은 초안으로만 두고 blur/Enter/닫을 때 확정 — 동명·잘못된 이름 거부,
+    // 폴더 이동은 renameInpaintScene(다른 창 잠금·withLock·이동 실패 시 무변경) 관문을 거친다.
+    const [nameDraft, setNameDraft] = useState(editingScene.name);
+    const nameDraftRef = useRef(editingScene.name);
+    const nameCommitRef = useRef<string | null>(null); // 진행 중인 확정 대상(중복 확정 방지)
+    const mountedRef = useRef(true);
+    useEffect(() => {
+      mountedRef.current = true;
+      return () => {
+        mountedRef.current = false;
+      };
+    }, []);
+    useEffect(() => {
+      setNameDraft(editingScene.name);
+      nameDraftRef.current = editingScene.name;
+      nameCommitRef.current = null;
+    }, [editingScene]);
+    const sceneRef = useRef(editingScene);
+    sceneRef.current = editingScene;
+    // 확정이 끝났을 때 다른 씬으로 바뀌어 있으면 그 씬의 입력값을 덮지 않는다
+    const updateNameDraft = (v: string, forScene = editingScene) => {
+      if (sceneRef.current !== forScene) return;
+      nameDraftRef.current = v;
+      if (mountedRef.current) setNameDraft(v);
+    };
+    const commitName = async (typed: string) => {
+      const session = curSession;
+      if (!session) return;
+      const scene = editingScene;
+      const oldName = scene.name;
+      const check = checkInpaintSceneRename(oldName, typed, (n) =>
+        session.inpaints.has(n),
+      );
+      if (check.kind === 'unchanged') return;
+      if (check.kind !== 'ok') {
+        appState.pushMessage(check.message);
+        updateNameDraft(oldName, scene);
+        return;
+      }
+      if (nameCommitRef.current === check.name) return;
+      nameCommitRef.current = check.name;
+      try {
+        if (session.inpaints.get(oldName) === scene) {
+          const changed = await renameInpaintScene(session, oldName, check.name);
+          if (!changed) {
+            updateNameDraft(scene.name, scene);
+            return;
+          }
+        } else {
+          // 아직 프로젝트에 등록되지 않은 씬(옮길 폴더 없음) — 이름만 바꾼다
+          scene.name = check.name;
+        }
+        updateNameDraft(scene.name, scene);
+      } catch (e: any) {
+        appState.pushMessage(e?.message || '씬 이름을 바꾸지 못했습니다.');
+        updateNameDraft(scene.name, scene);
+      } finally {
+        nameCommitRef.current = null;
+      }
+    };
+    // 닫을 때(Esc·저장·바깥) 확정되지 않은 이름이 남아 있으면 확정한다(일반 씬 편집 창과 같음)
+    useEffect(() => {
+      return () => {
+        const draft = nameDraftRef.current;
+        if (draft.trimEnd() !== editingScene.name) void commitName(draft);
+      };
+    }, [editingScene]);
+
     const confirm = async () => {
       await saveMask();
       onConfirm();
@@ -350,12 +436,17 @@ const InPaintEditor = observer(
               <input
                 type="text"
                 className="gray-input flex-1"
-                value={editingScene.name}
+                value={nameDraft}
                 onBlur={(e) => {
-                  editingScene.name = e.target.value.trimEnd();
+                  void commitName(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                    (e.target as HTMLInputElement).blur();
+                  }
                 }}
                 onChange={(e) => {
-                  editingScene.name = e.target.value;
+                  updateNameDraft(e.target.value);
                 }}
               />
               {editingScene && (
@@ -384,35 +475,21 @@ const InPaintEditor = observer(
                     ) {
                       appState.pushDialog({
                         type: 'confirm',
-                        text: '해당 해상도는 Anlas를 소모합니다 (유로임) 계속하시겠습니까?',
+                        text: '해당 해상도는 Anlas를 소모합니다 (유료임) 계속하시겠습니까?',
                         callback: () => {
                           editingScene.resolution = opt.value as Resolution;
                         },
                       });
                     } else if (opt.value === 'custom') {
-                      const width = await appState.pushDialogAsync({
-                        type: 'input-confirm',
-                        text: '해상도 너비를 입력해주세요',
+                      // 숫자 검증·64px 보정은 공용 흐름(빈칸·문자 거부 — 예전에는 0x0 저장, X15c)
+                      const size = await promptCustomResolution({
+                        width: editingScene.resolutionWidth,
+                        height: editingScene.resolutionHeight,
                       });
-                      if (width == null) return;
-                      const height = await appState.pushDialogAsync({
-                        type: 'input-confirm',
-                        text: '해상도 높이를 입력해주세요',
-                      });
-                      if (height == null) return;
-                      try {
-                        const customResolution = {
-                          width: parseInt(width),
-                          height: parseInt(height),
-                        };
-                        editingScene.resolution = opt.value as Resolution;
-                        editingScene.resolutionWidth =
-                          (customResolution.width + 63) & ~63;
-                        editingScene.resolutionHeight =
-                          (customResolution.height + 63) & ~63;
-                      } catch (e: any) {
-                        appState.pushMessage(e.message);
-                      }
+                      if (!size) return;
+                      editingScene.resolution = opt.value as Resolution;
+                      editingScene.resolutionWidth = size.width;
+                      editingScene.resolutionHeight = size.height;
                     } else {
                       editingScene.resolution = opt.value as Resolution;
                     }

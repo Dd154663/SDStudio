@@ -1,4 +1,4 @@
-import React, { ReactNode, useEffect, useCallback, useRef } from 'react';
+import React, { ReactNode, useEffect, useRef } from 'react';
 import { FaTimes } from 'react-icons/fa';
 import { appState } from '../models/AppService';
 import { backStackService } from '../models/BackStackService';
@@ -40,28 +40,13 @@ const ModalOverlay = ({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
+  // 같은 항목이 PC Esc 도 받는다(닫기 관문 — 맨 위 한 겹만, BackStackService). 예전의 자체 window
+  // 캡처 Esc 리스너는 아래·위 창과 동시에 닫히는 원인이라 없앴다(2026-10-03 U1·X2).
   useEffect(() => {
     if (!isOpen) return;
     const handle = backStackService.push(() => onCloseRef.current());
     return () => handle.remove();
   }, [isOpen]);
-
-  const handleEscape = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose();
-      }
-    },
-    [onClose],
-  );
-
-  useEffect(() => {
-    if (isOpen) {
-      window.addEventListener('keydown', handleEscape, true);
-      return () => window.removeEventListener('keydown', handleEscape, true);
-    }
-  }, [isOpen, handleEscape]);
 
   // 모달 열림/닫힘 시 카운터 관리 (드래그 오버레이 억제용)
   useEffect(() => {

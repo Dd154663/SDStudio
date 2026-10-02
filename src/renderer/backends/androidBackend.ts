@@ -27,6 +27,13 @@ import { NovelAiFetcher, NovelAiImageGenService } from './genVendors/nai';
 import { createNaiApiError } from './genVendors/naiErrors';
 import { assertDeletableDirPath } from './dataPathGuard';
 import FetchService from './fecthService';
+import {
+  NaiRequestOptions,
+  REQUEST_TIMEOUT_BASE_MS,
+  RequestTimeoutError,
+  throwIfAborted,
+  withRequestTimeout,
+} from '../models/requestTiming';
 import JSZip from 'jszip';
 import { BackgroundMode } from '@anuradev/capacitor-background-mode';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -131,17 +138,41 @@ function getDirName(filePath: string): string {
 }
 
 class AndroidFetcher implements NovelAiFetcher {
+  // 호출별 타임아웃(기본 120초)을 네이티브 OkHttp(read·write·call)에 넘긴다. 시간이 다 되거나
+  // 큐 시도가 폐기되면 요청 id 로 네이티브 call.cancel() 을 불러 진행 중 요청을 끊는다.
   async fetchArrayBuffer(
     url: string,
     body: any,
     headers: any,
+    options?: NaiRequestOptions,
   ): Promise<ArrayBuffer> {
-    const controller = new AbortController();
-    const response = await FetchService.fetchData({
-      url: url,
-      body: JSON.stringify(body),
-      headers: JSON.stringify(headers),
-    });
+    const timeoutMs = options?.timeoutMs ?? REQUEST_TIMEOUT_BASE_MS;
+    const requestId = uuidv4();
+    const response = await withRequestTimeout(
+      timeoutMs,
+      async (signal) => {
+        const onAbort = () => {
+          FetchService.cancel({ requestId }).catch(() => {});
+        };
+        signal.addEventListener('abort', onAbort);
+        try {
+          return await FetchService.fetchData({
+            url: url,
+            body: JSON.stringify(body),
+            headers: JSON.stringify(headers),
+            timeoutMs,
+            requestId,
+          });
+        } catch (e: any) {
+          // 네이티브가 먼저 시간 초과를 판정한 경우(OkHttp callTimeout 등).
+          if (e?.code === 'TIMEOUT') throw new RequestTimeoutError(timeoutMs);
+          throw e;
+        } finally {
+          signal.removeEventListener('abort', onAbort);
+        }
+      },
+      options?.signal,
+    );
     function base64ToArrayBuffer(base64: string) {
       // Decode the base64 string
       const binaryString = atob(base64);
@@ -395,18 +426,22 @@ export class AndroidBackend extends Backend {
         console.warn('SDStudio 생성 메타데이터 삽입 실패(원본 저장):', e);
       }
     }
+    // 폐기된 시도(바깥 타임아웃)의 늦은 결과는 저장하지 않는다.
+    throwIfAborted(arg.request?.signal);
     await this.writeDataFile(arg.outputFilePath, res);
   }
 
   async augmentImage(arg: ImageAugmentInput): Promise<void> {
     const token = await this.readFile('TOKEN.txt');
     const res = await this.imageGenService.augmentImage(token, arg);
+    throwIfAborted(arg.request?.signal);
     await this.writeDataFile(arg.outputFilePath, res);
   }
 
   async upscaleImage(arg: ImageUpscaleInput): Promise<void> {
     const token = await this.readFile('TOKEN.txt');
     const res = await this.imageGenService.upscaleImage(token, arg);
+    throwIfAborted(arg.request?.signal);
     await this.writeDataFile(arg.outputFilePath, res);
   }
 

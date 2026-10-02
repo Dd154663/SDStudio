@@ -2,6 +2,11 @@ import { useState } from 'react';
 import { FaChevronDown } from 'react-icons/fa';
 import { Resolution, resolutionMap } from '../backends/imageGen';
 import { appState } from '../models/AppService';
+import { useBackLayer } from '../models/BackStackService';
+import {
+  customResolutionAdjustedText,
+  parseCustomResolution,
+} from '../models/deleteFlowRules';
 
 // 해상도 표시 + 위로 열리는 드롭다운 피커 (2026-07-18, 퀵 생성 도입분을 공용 추출)
 //  - 프리셋 목록: 씬 편집기와 동일하게 small 계열 제외, custom 은 직접 입력칸이 대신
@@ -44,6 +49,8 @@ export const ResolutionPicker = ({
   triggerClassName,
 }: ResolutionPickerProps) => {
   const [open, setOpen] = useState(false);
+  // Esc·Android 뒤로 가기로 목록만 닫기(닫기 관문, 2026-10-03 U1·X6)
+  useBackLayer(open, () => setOpen(false));
   const [wText, setWText] = useState('');
   const [hText, setHText] = useState('');
   const cur = resolutionValueToSize(value);
@@ -71,19 +78,16 @@ export const ResolutionPicker = ({
   };
 
   const applyCustom = () => {
-    const w = parseInt(wText);
-    const h = parseInt(hText);
-    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
-      appState.pushMessage('올바른 숫자를 입력해주세요');
+    // 검증·64px 배수 올림 보정은 공용 규칙(씬 편집기·변형 씬·대량 작업 커스텀 해상도와 같음, X15c)
+    const parsed = parseCustomResolution(wText, hText);
+    if (!parsed.ok) {
+      appState.pushMessage(parsed.message);
       return;
     }
-    // 64px 배수로 올림 보정 (씬 편집기 커스텀 해상도와 동일 규칙)
-    const w64 = Math.max(64, (w + 63) & ~63);
-    const h64 = Math.max(64, (h + 63) & ~63);
     setOpen(false);
-    onApply({ resolution: 'custom', width: w64, height: h64 });
-    if (w64 !== w || h64 !== h) {
-      appState.pushMessage(`64px 배수로 보정되었습니다 — ${w64}x${h64}`);
+    onApply({ resolution: 'custom', width: parsed.width, height: parsed.height });
+    if (parsed.adjusted) {
+      appState.pushMessage(customResolutionAdjustedText(parsed.width, parsed.height));
     }
   };
 

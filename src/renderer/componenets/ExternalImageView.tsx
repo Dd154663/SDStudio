@@ -27,6 +27,7 @@ import {
 import { runInAction } from 'mobx';
 import { FaTimes } from 'react-icons/fa';
 import { v4 } from 'uuid';
+import { useBackdropClose } from './backdropClose';
 
 interface ImportOptions {
   prompt: boolean;
@@ -50,6 +51,9 @@ interface ExternalImageViewProps {
 export const ExternalImageView = observer(
   ({ image, onClose, scene }: ExternalImageViewProps) => {
     const [job, setJob] = useState<ImportableMetadata | undefined>(undefined);
+    // 바깥 클릭은 누름·뗌 모두 배경일 때만 닫기(글자 드래그 선택 중 닫힘 방지, 2026-10-03 U1·X6).
+    // Esc·뒤로 가기는 감싼 FloatView 가 닫기 관문으로 처리한다.
+    const backdrop = useBackdropClose(onClose);
     const [target, setTarget] = useState<string>('new-normal');
     const [importing, setImporting] = useState(false);
     const [options, setOptions] = useState<ImportOptions>({
@@ -369,7 +373,7 @@ export const ExternalImageView = observer(
           backdropFilter: 'blur(8px)',
           WebkitBackdropFilter: 'blur(8px)',
         }}
-        onClick={onClose}
+        {...backdrop}
       >
         <div
           className="w-[95vw] max-w-5xl max-h-[90vh] bg-[var(--c-zone)] rounded-xl shadow-2xl flex flex-col overflow-hidden border line-color"

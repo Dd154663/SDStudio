@@ -88,9 +88,18 @@ import { queueNaiUpscale } from '../models/workflows/NaiUpscaleFlow';
 import { estimateNaiUpscaleCost } from '../backends/genVendors/naiUpscale';
 import { getImageDimensions } from './BrushTool';
 import { dataUriToBase64, deleteImageFiles, toggleImageMain } from '../models/ImageService';
+import { IMAGE_RETENTION_DAYS } from '../models/TrashService';
+import {
+  NO_SELECTED_IMAGES_MESSAGE,
+  planGridImageDelete,
+  selectedImagesDeleteText,
+  shouldSkipImageDeleteConfirm,
+  showImageDeleteSkipOption,
+} from '../models/deleteFlowRules';
 import { getResultDirectory } from '../models/SessionService';
 import { extractPromptDataFromBase64 } from '../models/util';
 import { appState } from '../models/AppService';
+import { backStackService } from '../models/BackStackService';
 import { observer } from 'mobx-react-lite';
 import { DownloadDialog } from './DownloadDialog';
 import { Session, GenericScene as GenericSceneType } from '../models/types';
@@ -1905,6 +1914,13 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       forceUpdate({});
     }, []);
 
+    // 이미지 선택 모드 중 Android 뒤로 가기·PC Esc = 선택 모드 종료(닫기 관문, 2026-10-03 U1·X6 — 예전엔 그리드째 닫힘)
+    useEffect(() => {
+      if (!selectMode) return undefined;
+      const handle = backStackService.push(onClearSelection);
+      return () => handle.remove();
+    }, [selectMode, onClearSelection]);
+
     const onToggleFavoriteSelected = useCallback(() => {
       if (selectedImages.current.size === 0) return;
       for (const path_ of selectedImages.current) {
@@ -1979,12 +1995,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           .map(
             (p) => imageService.getOutputDir(curSession!, scene) + '/' + p,
           );
-      // 이동 실패(파일 잠금 등)를 조용히 넘기지 않고 사용자에게 알린다.
-      const reportFailed = (failed: number) => {
-        if (failed > 0) {
-          appState.pushMessage(`이미지 ${failed}장은 삭제하지 못했습니다.`);
-        }
-      };
+      // 이동 실패(파일 잠금 등)는 공용 deleteImageFiles 가 한 번 알린다(호출부에서 다시 알리지 않음, X13).
+      // 「다시 묻지 않음」은 단일 이미지 삭제에만 적용 — 여기의 일괄 삭제는 항상 확인한다(X12).
       appState.pushDialog({
         type: 'select',
         text: '이미지를 삭제합니다. 원하시는 작업을 선택해주세요.',
@@ -2004,20 +2016,12 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
         ],
         callback: async (value) => {
           if (value === 'all') {
-            const doDel = async () => {
-              reportFailed(
-                await deleteImageFiles(curSession!, currentPaths(), scene),
-              );
-            };
-            if (appState.skipImageDeleteConfirm) {
-              await doDel();
-              return;
-            }
             appState.pushDialog({
               type: 'confirm',
-              text: '정말로 모든 이미지를 삭제하시겠습니까?',
-              showSkipConfirm: true,
-              callback: doDel,
+              text: `정말로 모든 이미지를 삭제하시겠습니까? (이미지 휴지통으로 이동, ${IMAGE_RETENTION_DAYS}일 보관)`,
+              callback: async () => {
+                await deleteImageFiles(curSession!, currentPaths(), scene);
+              },
             });
           } else if (value === 'n') {
             appState.pushDialog({
@@ -2031,41 +2035,73 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                     appState.pushMessage(RANK_CUTOFF_INVALID_MESSAGE);
                     return;
                   }
-                  reportFailed(
-                    await deleteImageFiles(
-                      curSession!,
-                      currentPaths()
-                        .slice(n)
-                        .filter((x) => !isMainImage || !isMainImage(x)),
-                      scene,
-                    ),
+                  await deleteImageFiles(
+                    curSession!,
+                    currentPaths()
+                      .slice(n)
+                      .filter((x) => !isMainImage || !isMainImage(x)),
+                    scene,
                   );
                 }
               },
             });
-          } else {
-            const doDel = async () => {
-              reportFailed(
+          } else if (value === 'fav') {
+            // 값이 없을 때(취소·선택 없음) 이 분기로 떨어지지 않게 명시 비교한다.
+            appState.pushDialog({
+              type: 'confirm',
+              text: `정말로 즐겨찾기 외 모든 이미지를 삭제하시겠습니까? (이미지 휴지통으로 이동, ${IMAGE_RETENTION_DAYS}일 보관)`,
+              callback: async () => {
                 await deleteImageFiles(
                   curSession!,
                   currentPaths().filter(
                     (x) => !isMainImage || !isMainImage(x),
                   ),
                   scene,
-                ),
-              );
-            };
-            if (appState.skipImageDeleteConfirm) {
-              await doDel();
-              return;
-            }
-            appState.pushDialog({
-              type: 'confirm',
-              text: '정말로 즐겨찾기 외 모든 이미지를 삭제하시겠습니까?',
-              showSkipConfirm: true,
-              callback: doDel,
+                );
+              },
             });
           }
+        },
+      });
+    };
+
+    // 이미지 그리드 「삭제」 버튼(V2 하단 줄·PC 클래식 툴바 공용, X3):
+    // 선택 모드면 선택한 이미지만 지우고(확인 1회 — 「다시 묻지 않음」 미적용), 아니면 기존 씬 전체 삭제 메뉴.
+    const onDeleteButton = () => {
+      const current = gameService
+        .getOutputs(curSession!, scene)
+        .map((p) => imageService.getOutputDir(curSession!, scene) + '/' + p);
+      const plan = planGridImageDelete(
+        selectMode,
+        selectedImages.current,
+        current,
+      );
+      if (plan.kind === 'scene-menu') {
+        onDeleteImages(scene);
+        return;
+      }
+      if (plan.kind === 'empty-selection') {
+        appState.pushMessage(NO_SELECTED_IMAGES_MESSAGE);
+        return;
+      }
+      const targets = plan.paths;
+      appState.pushDialog({
+        type: 'confirm',
+        text: selectedImagesDeleteText(targets.length, IMAGE_RETENTION_DAYS),
+        callback: async () => {
+          await deleteImageFiles(curSession!, targets, scene);
+          // 지워진 이미지는 선택에서 뺀다(실패해 남은 것은 선택 유지 — 다시 시도 가능).
+          const remaining = new Set(
+            gameService
+              .getOutputs(curSession!, scene)
+              .map((p) => imageService.getOutputDir(curSession!, scene) + '/' + p),
+          );
+          for (const p of targets) {
+            if (!remaining.has(p)) selectedImages.current.delete(p);
+          }
+          gallaryRef.current?.refresh();
+          gallaryRef2.current?.refresh();
+          forceUpdate({});
         },
       });
     };
@@ -2225,15 +2261,22 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             filename,
           );
         } else if (action === 'image-delete') {
+          // 그리드 Del 단일 삭제 — 상세 보기와 같은 규칙(「다시 묻지 않음」 체크박스·설정 존중, X12)
+          const doDel = async () => {
+            await deleteImageFiles(curSession!, [activePaths[i]], scene);
+            const newCount = count - 1;
+            if (newCount === 0) setFocusedImageIndex(null);
+            else setFocusedImageIndex(Math.min(i, newCount - 1));
+          };
+          if (shouldSkipImageDeleteConfirm(appState.skipImageDeleteConfirm, 1)) {
+            void doDel();
+            return;
+          }
           appState.pushDialog({
             type: 'confirm',
             text: '정말로 파일을 삭제하시겠습니까?',
-            callback: async () => {
-              await deleteImageFiles(curSession!, [activePaths[i]], scene);
-              const newCount = count - 1;
-              if (newCount === 0) setFocusedImageIndex(null);
-              else setFocusedImageIndex(Math.min(i, newCount - 1));
-            },
+            showSkipConfirm: showImageDeleteSkipOption(1),
+            callback: doDel,
           });
         }
       };
@@ -2438,9 +2481,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       name: '삭제',
       icon: <FaTrash />,
       tone: 'danger',
-      onTap: () => {
-        onDeleteImages(scene);
-      },
+      // 선택 중 줄에서는 선택한 이미지만, 평소 줄에서는 씬 전체 삭제 메뉴(X3)
+      onTap: onDeleteButton,
     };
     const gallerySlots: V2SlotDef[] = v2
       ? [
@@ -2717,12 +2759,15 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                   </Tooltip>
                 </>
               )}
-              <Tooltip content="이미지 삭제">
+              <Tooltip
+                content={
+                  selectMode ? '선택한 이미지 삭제' : '이미지 삭제'
+                }
+              >
                 <button
                   className={`round-button back-red`}
-                  onClick={() => {
-                    onDeleteImages(scene);
-                  }}
+                  aria-label={selectMode ? '선택한 이미지 삭제' : '이미지 삭제'}
+                  onClick={onDeleteButton}
                 >
                   <FaTrash />
                 </button>

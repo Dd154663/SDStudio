@@ -53,6 +53,13 @@ import {
 } from './CharacterPresetCards';
 import { CharacterPresetInnerEditor } from './CharacterPresetInnerEditor';
 import HelpIcon from './HelpIcon';
+import { v4 } from 'uuid';
+import {
+  imageFileExt,
+  imageTokenBase,
+  isSafeImageToken,
+} from '../models/projectTemplateBackup';
+import { safeImportedImageName } from '../models/deleteFlowRules';
 
 // ─── 캐릭터 프리셋 내보내기/불러오기 ─────────────────────────
 
@@ -171,21 +178,46 @@ async function importCharacterPresets(session: any, file: File) {
 
   let imported = 0;
   for (const presetJson of data.presets) {
-    // 바이브 이미지 복원 (원래 파일명으로 직접 저장)
-    if (presetJson.vibeImages) {
+    // 파일 안의 이미지 파일명은 외부 입력이다(2026-10-03 X15b) — '..'·절대 경로·구분자가 섞이면
+    // 바이브/레퍼런스 폴더 밖(예: 프로젝트 파일·설정 파일)을 덮어쓸 수 있었다. 안전한 이름
+    // (projectTemplateBackup.isSafeImageToken)이 아니면 새 이름으로 저장하고 프리셋 참조를 그 이름으로 바꾼다.
+    // 저장 폴더는 항상 이 프로젝트의 vibes/·references/ 로 고정.
+    const newImageName = (orig: unknown) =>
+      v4() + '.' + imageFileExt(imageTokenBase(orig));
+    const renamedVibes = new Map<string, string>();
+    const renamedRefs = new Map<string, string>();
+    const remapRef = (path: unknown, map: Map<string, string>) => {
+      if (typeof path !== 'string') return path;
+      return map.get(path) ?? map.get(imageTokenBase(path)) ?? path;
+    };
+
+    // 바이브 이미지 복원 (원래 파일명으로 직접 저장 — 안전하지 않은 이름만 새 이름)
+    if (Array.isArray(presetJson.vibeImages)) {
       for (const img of presetJson.vibeImages) {
+        const safe = safeImportedImageName(img?.filename, isSafeImageToken, () =>
+          newImageName(img?.filename),
+        );
+        if (safe.renamed && typeof img?.filename === 'string') {
+          renamedVibes.set(img.filename, safe.name);
+        }
         try {
-          const path = imageService.getVibesDir(session) + '/' + img.filename;
+          const path = imageService.getVibesDir(session) + '/' + safe.name;
           await backend.writeDataFile(path, img.data);
         } catch (e) {}
       }
     }
 
     // 레퍼런스 이미지 복원
-    if (presetJson.referenceImages) {
+    if (Array.isArray(presetJson.referenceImages)) {
       for (const img of presetJson.referenceImages) {
+        const safe = safeImportedImageName(img?.filename, isSafeImageToken, () =>
+          newImageName(img?.filename),
+        );
+        if (safe.renamed && typeof img?.filename === 'string') {
+          renamedRefs.set(img.filename, safe.name);
+        }
         try {
-          const path = imageService.getReferenceDir(session) + '/' + img.filename;
+          const path = imageService.getReferenceDir(session) + '/' + safe.name;
           await backend.writeDataFile(path, img.data);
         } catch (e) {}
       }
@@ -193,10 +225,32 @@ async function importCharacterPresets(session: any, file: File) {
 
     // 대표 이미지 복원
     if (presetJson.representativeImageData && presetJson.representativeImage) {
+      const safe = safeImportedImageName(
+        presetJson.representativeImage,
+        isSafeImageToken,
+        () => newImageName(presetJson.representativeImage),
+      );
+      if (safe.renamed) {
+        renamedVibes.set(String(presetJson.representativeImage), safe.name);
+        presetJson.representativeImage = safe.name;
+      }
       try {
-        const path = imageService.getVibesDir(session) + '/' + presetJson.representativeImage;
+        const path = imageService.getVibesDir(session) + '/' + safe.name;
         await backend.writeDataFile(path, presetJson.representativeImageData);
       } catch (e) {}
+    }
+
+    // 새 이름으로 저장한 이미지의 참조를 맞춘다(바이브·레퍼런스 경로)
+    if (renamedVibes.size > 0 && Array.isArray(presetJson.vibes)) {
+      presetJson.vibes = presetJson.vibes.map((v: any) =>
+        v && typeof v === 'object' ? { ...v, path: remapRef(v.path, renamedVibes) } : v,
+      );
+    }
+    if (renamedRefs.size > 0 && Array.isArray((presetJson as any).characterReferences)) {
+      (presetJson as any).characterReferences = (presetJson as any).characterReferences.map(
+        (r: any) =>
+          r && typeof r === 'object' ? { ...r, path: remapRef(r.path, renamedRefs) } : r,
+      );
     }
 
     // 임시 필드 제거 후 프리셋 생성
@@ -273,6 +327,7 @@ const GlobalFolderRow = observer(
           {icon}
           <input
             autoFocus
+            data-esc-cancel
             value={editValue}
             onChange={(e) => onEditChange?.(e.target.value)}
             onKeyDown={(e) => {

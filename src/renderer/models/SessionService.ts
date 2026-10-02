@@ -2965,6 +2965,39 @@ export const renameScene = async (
   taskQueueService.onRenameScene(session.name, 'scene', oldName, newName);
 };
 
+// 변형(인페인트) 씬 이름 변경(2026-10-03 X15a). 예전 변형 씬 편집 창은 매 키 입력마다
+// scene.name 만 바꿔 Map 키·inpaints 폴더·예약 통계가 옛 이름에 남았다(새 이미지는 새 이름 폴더로,
+// 기존 이미지는 옛 폴더에 고아로 — 다시 열면 Map 키와 이름이 어긋남). 일반 씬 renameScene 과 같은
+// 관문(다른 창 잠금·withLock)을 쓰되, 파일 이동이 실패하면 이름을 바꾸지 않는다.
+// 반환: true=바뀜, false=다른 창 잠금으로 차단(안내는 소유 창에). 동명·이동 실패는 throw.
+export const renameInpaintScene = async (
+  session: Session,
+  oldName: string,
+  newName: string,
+): Promise<boolean> => {
+  newName = newName.trimEnd();
+  if (!newName || newName === oldName) return false;
+  if (!(await sessionService.guardCrossWindowLock(session.name, '씬 이름변경')))
+    return false;
+  await sessionService.withLock([session.name], async () => {
+    const scene = session.inpaints.get(oldName);
+    if (!scene) throw new Error(`변형 씬 "${oldName}"을(를) 찾을 수 없습니다.`);
+    if (session.inpaints.has(newName)) {
+      throw new Error(`같은 이름의 변형 씬 "${newName}"이(가) 이미 있습니다.`);
+    }
+    await imageService.renameInpaintSceneFiles(session, oldName, newName);
+    scene.name = newName;
+    // 순서 보존(renameScene 과 같은 재구성)
+    const rebuilt = new Map();
+    for (const [key, value] of session.inpaints) {
+      rebuilt.set(key === oldName ? newName : key, value);
+    }
+    session.inpaints = rebuilt as any;
+  });
+  taskQueueService.onRenameScene(session.name, 'inpaint', oldName, newName);
+  return true;
+};
+
 // 씬 병합: sourceName 씬을 기존 targetName 씬으로 합친다.
 // - 이미지: source → target 폴더로 이동(파일명 충돌 시 재지정, 손실 없음)
 // - 프롬프트/설정: 기존(target) 씬 것을 유지하고 source 씬은 제거한다.

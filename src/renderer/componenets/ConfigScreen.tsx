@@ -32,6 +32,17 @@ import { observer } from 'mobx-react-lite';
 import { appState } from '../models/AppService';
 import { TaskLog } from '../models/TaskQueueService';
 import {
+  formatDelaySeconds,
+  normalizeRequestDelayJitterMs,
+  normalizeRequestDelayMs,
+  REQUEST_DELAY_DEFAULT_MS,
+  REQUEST_DELAY_JITTER_DEFAULT_MS,
+  REQUEST_DELAY_JITTER_MAX_MS,
+  REQUEST_DELAY_MAX_MS,
+  REQUEST_DELAY_STEP_MS,
+  withRequestDelaySettings,
+} from '../models/requestTiming';
+import {
   FaUser,
   FaFolder,
   FaCog,
@@ -55,6 +66,8 @@ import {
 } from '../models/legacyCleanup';
 import type { LegacyScanResult } from '../models/legacyCleanup';
 import ModalOverlay from './ModalOverlay';
+import { useBackLayer } from '../models/BackStackService';
+import { useBackdropClose } from './backdropClose';
 import OpusUsageMeter, { OpusUsageHelp } from './OpusUsageMeter';
 import { useOpusUsage } from './OpusUsageBadge';
 import MobileColorPicker from './MobileColorPicker';
@@ -451,6 +464,8 @@ const LoginTab = ({
                       maxLength={40}
                       onChange={(e) => setProfileNameDraft(e.target.value)}
                       onBlur={() => void commitProfileRename(profile)}
+                      // Esc = 이름 편집 취소(창 닫기 아님) — 닫기 관문 규칙
+                      data-esc-cancel
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') e.currentTarget.blur();
                         if (e.key === 'Escape') setEditingProfileId(null);
@@ -757,15 +772,38 @@ const FolderCleanupSection = ({ folder, label, description }: { folder: string; 
   const oldFiles = files.filter((f) => now - f.mtime > days * 24 * 60 * 60 * 1000);
   const oldSize = oldFiles.reduce((sum, f) => sum + f.size, 0);
 
+  // 결과를 알린다 — 예전엔 실패를 삼키고 아무 안내도 없었다(2026-10-03 U1·X7).
   const deleteFiles = async (targets: { name: string }[]) => {
     setCleaning(true);
+    let failed = 0;
     for (const f of targets) {
       try {
         await backend.deleteFile(folder + '/' + f.name);
-      } catch {}
+      } catch (e) {
+        failed++;
+        console.error('파일 삭제 실패:', f.name, e);
+      }
     }
     await loadFiles();
     setCleaning(false);
+    const done = targets.length - failed;
+    if (failed > 0) {
+      appState.pushMessage(
+        `${label}: ${done}개 삭제, ${failed}개는 삭제하지 못했습니다.`,
+        'error',
+      );
+    } else {
+      appState.pushMessage(`${label}: 파일 ${done}개를 삭제했습니다.`, 'success');
+    }
+  };
+
+  // 네이티브 confirm/alert 대신 앱 확인 창·토스트(2026-10-03 U1·X7)
+  const confirmDelete = async (targets: { name: string }[], text: string) => {
+    const ok = await appState.confirmAsync({
+      text: `${text}\n삭제한 파일은 되돌릴 수 없습니다.`,
+      confirmText: '삭제',
+    });
+    if (ok) await deleteFiles(targets);
   };
 
   return (
@@ -791,11 +829,12 @@ const FolderCleanupSection = ({ folder, label, description }: { folder: string; 
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   className="btn text-sm back-red px-3 py-1.5 rounded"
-                  onClick={() => {
-                    if (confirm(`${label}의 모든 파일(${files.length}개, ${formatSize(totalSize)})을 삭제합니다.`)) {
-                      deleteFiles(files);
-                    }
-                  }}
+                  onClick={() =>
+                    void confirmDelete(
+                      files,
+                      `${label}의 모든 파일(${files.length}개, ${formatSize(totalSize)})을 삭제합니다.`,
+                    )
+                  }
                   disabled={cleaning}
                 >
                   전체 삭제
@@ -814,12 +853,13 @@ const FolderCleanupSection = ({ folder, label, description }: { folder: string; 
                     className="btn text-sm back-orange px-3 py-1.5 rounded"
                     onClick={() => {
                       if (oldFiles.length === 0) {
-                        alert(`${days}일 이전 파일이 없습니다.`);
+                        appState.pushMessage(`${days}일 이전 파일이 없습니다.`, 'info');
                         return;
                       }
-                      if (confirm(`${days}일 이전 파일 ${oldFiles.length}개(${formatSize(oldSize)})를 삭제합니다.`)) {
-                        deleteFiles(oldFiles);
-                      }
+                      void confirmDelete(
+                        oldFiles,
+                        `${days}일 이전 파일 ${oldFiles.length}개(${formatSize(oldSize)})를 삭제합니다.`,
+                      );
                     }}
                     disabled={cleaning || oldFiles.length === 0}
                   >
@@ -1056,7 +1096,7 @@ const MigrationDiagSection = () => {
 
 /* ── 탭: 시스템 (기술·진단·정보) ── */
 const SystemTab = ({
-  delayTime, setDelayTime,
+  requestDelayMs, setRequestDelayMs, requestDelayJitterMs, setRequestDelayJitterMs,
   storageWriteGuard, setStorageWriteGuard,
   exportConcurrency, setExportConcurrency,
   autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality,
@@ -1128,15 +1168,33 @@ const SystemTab = ({
       </div>
       <hr className="line-color" />
       <div>
-        <label className="block text-sm gray-label mb-1">
-          기본 지연 시간 조정 (0ms ~ 1000ms)
+        {/* 요청 사이 지연(2026-10-03): 실제 대기 = max(0, 지연 ± 랜덤), 단일 출처 requestTiming */}
+        <label htmlFor="cfgRequestDelay" className="block text-sm gray-label mb-1">
+          요청 사이 지연 (0 ~ 10초)
         </label>
         <div className="flex items-center gap-2">
-          <input type="range" min={0} max={1000} step={1}
-            value={delayTime} onChange={(e) => setDelayTime(parseInt(e.target.value))}
+          <input id="cfgRequestDelay" type="range" min={0} max={REQUEST_DELAY_MAX_MS} step={REQUEST_DELAY_STEP_MS}
+            value={requestDelayMs}
+            onChange={(e) => setRequestDelayMs(normalizeRequestDelayMs(Number(e.target.value)))}
             className="flex-1 min-w-0" />
-          <span className="text-sm gray-label w-12 text-right flex-none">{delayTime}ms</span>
+          <span className="text-sm gray-label w-14 text-right flex-none tabular-nums">{formatDelaySeconds(requestDelayMs)}</span>
         </div>
+        <p className="text-xs text-faint mt-1">
+          생성 요청을 보내기 전에 기다리는 시간입니다. 생성 중에 바꾸면 다음 실행부터 적용됩니다.
+        </p>
+        <label htmlFor="cfgRequestDelayJitter" className="block text-sm gray-label mb-1 mt-3">
+          랜덤 지연 (0 ~ 5초)
+        </label>
+        <div className="flex items-center gap-2">
+          <input id="cfgRequestDelayJitter" type="range" min={0} max={REQUEST_DELAY_JITTER_MAX_MS} step={REQUEST_DELAY_STEP_MS}
+            value={requestDelayJitterMs}
+            onChange={(e) => setRequestDelayJitterMs(normalizeRequestDelayJitterMs(Number(e.target.value)))}
+            className="flex-1 min-w-0" />
+          <span className="text-sm gray-label w-14 text-right flex-none tabular-nums">{formatDelaySeconds(requestDelayJitterMs)}</span>
+        </div>
+        <p className="text-xs text-faint mt-1">
+          고정 지연에 ±이 값만큼 무작위로 더하거나 뺍니다. 예: 지연 6초·랜덤 5초 → 1~11초
+        </p>
       </div>
       <hr className="line-color" />
       <div>
@@ -1406,6 +1464,10 @@ const PersonalTab = ({
 const TaskLogSection = () => {
   const [showDialog, setShowDialog] = useState(false);
   const logs = taskQueueService.taskLogs;
+  // 뒤로 가기·Esc 는 이 창만 닫는다(닫기 관문 — 예전엔 Esc 가 설정 창까지 함께 닫았다), 바깥 클릭은
+  // 누름·뗌 모두 배경일 때만(글자 드래그 선택 중 닫힘 방지). 2026-10-03 U1·X2·X6.
+  useBackLayer(showDialog, () => setShowDialog(false));
+  const logBackdrop = useBackdropClose(() => setShowDialog(false));
 
   const formatLog = (log: TaskLog) => {
     const date = new Date(log.timestamp);
@@ -1437,7 +1499,7 @@ const TaskLogSection = () => {
       </button>
       {showDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
-          onClick={(e) => { if (e.target === e.currentTarget) setShowDialog(false); }}>
+          {...logBackdrop}>
           <div className="bg-[var(--c-zone)] rounded-lg r-modal shadow-xl w-[90vw] max-w-lg max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between p-3 border-b line-color">
               <span className="font-bold text-default">작업 로그</span>
@@ -1477,6 +1539,13 @@ const KeyBindingsTab = () => {
   const refreshBindings = () => {
     setBindings(keyboardShortcutService?.getAllActions() ?? []);
   };
+
+  // 녹음 중 Esc = 녹음 취소(설정 창 닫기 아님). 닫기 관문이 맨 위 항목으로 받는다(2026-10-03 U1·X2 —
+  // 예전엔 설정 창의 Esc 리스너가 먼저 등록돼 녹음 취소 대신 설정 창이 닫혔다).
+  useBackLayer(!!recordingAction, () => {
+    setRecordingAction(null);
+    setConflict(null);
+  });
 
   useEffect(() => {
     if (!recordingAction) return;
@@ -2796,7 +2865,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [imageEditor, setImageEditor] = useState('');
   const [useGPU, setUseGPU] = useState(false);
   const [whiteMode, setWhiteMode] = useState(false);
-  const [delayTime, setDelayTime] = useState(0);
+  const [requestDelayMs, setRequestDelayMs] = useState(REQUEST_DELAY_DEFAULT_MS);
+  const [requestDelayJitterMs, setRequestDelayJitterMs] = useState(REQUEST_DELAY_JITTER_DEFAULT_MS);
   const [classicSceneCard, setClassicSceneCard] = useState(false);
   const [legacyProjectMode, setLegacyProjectMode] = useState(false);
   const [legacySceneEditor, setLegacySceneEditor] = useState(false);
@@ -2861,7 +2931,9 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     setAutoConvertWebp(config.autoConvertWebp ?? false);
     setAutoWebpQuality(config.autoConvertWebpQuality ?? 80);
     setUseLocalBgRemoval(config.useLocalBgRemoval ?? false);
-    setDelayTime(config.delayTime ?? 0);
+    // 새 키가 없으면(5.4.0 이하·새 설치) 기본 1초 — 옛 delayTime 은 이어받지 않는다.
+    setRequestDelayMs(normalizeRequestDelayMs(config.requestDelayMs));
+    setRequestDelayJitterMs(normalizeRequestDelayJitterMs(config.requestDelayJitterMs));
     setClassicSceneCard(config.classicSceneCard ?? false);
     setLegacyProjectMode(config.legacyProjectMode ?? false);
     setLegacySceneEditor(config.legacySceneEditor ?? false);
@@ -2921,21 +2993,11 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     };
   }, []);
 
-  // Escape 키로 닫기
-  const handleEscape = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose();
-      }
-    },
-    [onClose],
-  );
-
-  useEffect(() => {
-    window.addEventListener('keydown', handleEscape, true);
-    return () => window.removeEventListener('keydown', handleEscape, true);
-  }, [handleEscape]);
+  // Esc·Android 뒤로 가기로 닫기 — 닫기 관문(BackStackService) 한 항목. 이 화면은 열려 있을 때만 마운트된다.
+  // 예전엔 window 캡처 Esc 리스너라 위에 뜬 확인 창·작업 로그와 함께 닫혔고, 뒤로 가기는 앱을 최소화했다
+  // (SPEC §5 위반). 미저장 배지는 닫기를 막지 않는다(의도 유지). 2026-10-03 U1·X2·X6.
+  useBackLayer(true, onClose);
+  const configBackdrop = useBackdropClose(onClose);
 
   // 단축키 시스템에 ConfigScreen 열림 상태 전달
   useEffect(() => {
@@ -3041,7 +3103,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       autoConvertWebpQuality: autoWebpQuality,
       whiteMode: whiteMode,
       useLocalBgRemoval: useLocalBgRemoval,
-      delayTime: delayTime,
+      // 요청 지연 새 키 2개 + 옛 키 delayTime 병기(min(지연, 1000) — 롤백 호환)
+      ...withRequestDelaySettings({}, requestDelayMs, requestDelayJitterMs),
       classicSceneCard: classicSceneCard,
       legacyProjectMode: legacyProjectMode,
       legacySceneEditor: legacySceneEditor,
@@ -3186,7 +3249,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'storage':
         return <StorageImageTab {...{ saveLocation, dataRoot, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 'system':
-        return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality }} />;
+        return <SystemTab {...{ requestDelayMs, setRequestDelayMs, requestDelayJitterMs, setRequestDelayJitterMs, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality }} />;
       case 'drive':
         return <DriveSettingsTab active={activeTab === tabIdx} dirty={!!dirty} reloadConfig={loadConfig} syncFolder={syncFolder} setSyncFolder={setSyncFolder} selectSyncFolder={selectSyncFolder} />;
       case 'personal':
@@ -3218,7 +3281,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       autoWebpQuality !== (savedCfg.autoConvertWebpQuality ?? 80) ||
       whiteMode !== (savedCfg.whiteMode ?? false) ||
       useLocalBgRemoval !== (savedCfg.useLocalBgRemoval ?? false) ||
-      delayTime !== (savedCfg.delayTime ?? 0) ||
+      requestDelayMs !== normalizeRequestDelayMs(savedCfg.requestDelayMs) ||
+      requestDelayJitterMs !== normalizeRequestDelayJitterMs(savedCfg.requestDelayJitterMs) ||
       classicSceneCard !== (savedCfg.classicSceneCard ?? false) ||
       legacyProjectMode !== (savedCfg.legacyProjectMode ?? false) ||
       legacySceneEditor !== (savedCfg.legacySceneEditor ?? false) ||
@@ -3265,7 +3329,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
       }}
-      onClick={onClose}
+      {...configBackdrop}
     >
       <div
         className={'relative w-[90vw] max-w-xl md:max-w-2xl bg-[var(--c-zone)] rounded-xl shadow-2xl flex flex-col overflow-hidden border line-color ' + (mobileMode ? 'max-h-[90vh]' : 'max-h-[85vh]')}

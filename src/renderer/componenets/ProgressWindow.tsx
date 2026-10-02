@@ -1,5 +1,4 @@
-import { useContext, useEffect, useState } from 'react';
-import { DropdownSelect } from './UtilComponents';
+import { useBackLayer } from '../models/BackStackService';
 
 export interface ProgressDialog {
   text: string;
@@ -18,7 +17,12 @@ interface Props {
   dialog: ProgressDialog;
 }
 
+const NOOP = () => {};
+
 const ProgressWindow = ({ dialog }: Props) => {
+  // 진행 중에는 Esc·Android 뒤로 가기를 삼키기만 한다 — 아래 창이 대신 닫히거나 앱이 최소화되지 않게
+  // (닫기 관문, 2026-10-03 U1·X2·X6). 취소는 [취소] 버튼으로만. 확인 창 층이라 선점.
+  useBackLayer(true, NOOP, { escape: 'consume', back: 'consume', preempt: true });
   return (
     <div className="fixed flex justify-center w-full confirm-window">
       <div className="flex flex-col justify-between m-4 p-4 rounded-md r-modal shadow-xl bg-[var(--c-zone)] text-default w-96 max-w-[90vw]">

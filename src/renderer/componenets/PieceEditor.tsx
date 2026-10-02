@@ -136,11 +136,20 @@ export const PieceCell = observer(
           </div>
           <button
             className="ml-auto text-red-500 dark:text-white"
+            aria-label="조각 삭제"
             onClick={() => {
               if (!movePiece) return;
-              const index = curPieceLibrary.pieces.indexOf(piece);
-              curPieceLibrary.pieces.splice(index, 1);
-              onReloadDB?.();
+              // 조각은 휴지통이 없어 바로 사라진다 — 확인 1회(X11)
+              appState.pushDialog({
+                type: 'confirm',
+                text: `「${piece.name}」 조각을 삭제할까요? 되돌릴 수 없습니다.`,
+                callback: () => {
+                  const index = curPieceLibrary.pieces.indexOf(piece);
+                  if (index < 0) return;
+                  curPieceLibrary.pieces.splice(index, 1);
+                  onReloadDB?.();
+                },
+              });
             }}
           >
             <FaTrash size={20} />

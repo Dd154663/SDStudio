@@ -42,6 +42,10 @@ interface DropdownSelectProps<T> {
   menuPlacement?: 'top' | 'bottom' | 'auto';
   onSelect: (option: Option<T>) => void;
   disabled?: boolean;
+  // 값이 없을 때 보일 안내(미지정이면 react-select 기본 영어 문구) — 확인 창 dropdown 이 한국어로 쓴다(2026-10-03)
+  placeholder?: string;
+  // 목록 펼침/접힘 알림 — 확인 창이 펼쳐진 동안 Enter·Esc 를 목록에 양보한다(2026-10-03)
+  onMenuOpenChange?: (open: boolean) => void;
 }
 
 export const DropdownSelect = <T,>({
@@ -51,6 +55,8 @@ export const DropdownSelect = <T,>({
   options,
   disabled,
   onSelect,
+  placeholder,
+  onMenuOpenChange,
 }: DropdownSelectProps<T>) => {
   const handleChange = (selected: Option<T> | null) => {
     if (selected) {
@@ -68,6 +74,9 @@ export const DropdownSelect = <T,>({
       styles={{ menuPortal: (base) => ({ ...base, zIndex: 'var(--z-tooltip)' }) }}
       isDisabled={disabled}
       isSearchable={!isMobile}
+      placeholder={placeholder}
+      onMenuOpen={onMenuOpenChange ? () => onMenuOpenChange(true) : undefined}
+      onMenuClose={onMenuOpenChange ? () => onMenuOpenChange(false) : undefined}
       className={'my-react-select-container w-full ' + (className ?? '')}
       classNamePrefix="my-react-select"
     />

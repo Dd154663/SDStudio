@@ -17,6 +17,8 @@ import ModalOverlay from './ModalOverlay';
 import Tooltip from './Tooltip';
 import { sessionService, templateService } from '../models';
 import { appState } from '../models/AppService';
+import { projectDeleteResultText, runTrashDelete } from '../models/deleteFlowRules';
+import { PROJECT_RETENTION_DAYS } from '../models/TrashService';
 import { saveJsonFile } from '../models/exportUtil';
 import { interceptFileImportClick } from '../models/driveImport';
 import HelpIcon from './HelpIcon';
@@ -91,13 +93,17 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
       type: 'confirm',
       text: `씬 템플릿 "${name}"을(를) 삭제할까요?\n휴지통으로 이동되어 복구할 수 있습니다.`,
       callback: async () => {
-        try {
-          await sessionService.get(name);
-          await sessionService.delete(name);
-          appState.pushMessage('씬 템플릿이 휴지통으로 이동되었습니다.');
-        } catch (e: any) {
-          appState.pushMessage(e.message || '삭제에 실패했습니다.');
-        }
+        // 다른 창 잠금으로 조용히 돌아와 목록에 남아 있으면 성공으로 안내하지 않는다(X4)
+        const outcome = await runTrashDelete({
+          remove: async () => {
+            await sessionService.get(name);
+            await sessionService.delete(name);
+          },
+          stillExists: () => sessionService.list().includes(name),
+        });
+        appState.pushMessage(
+          projectDeleteResultText(outcome, PROJECT_RETENTION_DAYS, 'scene-template').text,
+        );
       },
     });
   };
@@ -233,6 +239,7 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
                 />
                 <input
                   autoFocus
+                  data-esc-cancel
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
                   onKeyDown={(e) => {

@@ -39,6 +39,7 @@ import {
   resolveQuickMenu,
 } from '../models/globalActions';
 import ModalOverlay from './ModalOverlay';
+import { backStackService } from '../models/BackStackService';
 import Tooltip from './Tooltip';
 
 // id → 아이콘 (툴바 공유 JSX 와 같은 아이콘 정체성 유지 — 라벨은 uiLayout name 단일 출처)
@@ -88,17 +89,11 @@ export const QuickMenu = observer(() => {
     appState.quickMenuOpen = false;
   };
 
-  // PC 팝오버 Escape 닫기(모바일은 ModalOverlay 가 자체 처리)
+  // PC 팝오버 Escape 닫기(모바일은 ModalOverlay 가 자체 처리) — 닫기 관문 항목(맨 위 한 겹만, 2026-10-03 U1·X2)
   useEffect(() => {
     if (isMobile || !open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        close();
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
+    const handle = backStackService.push(close);
+    return () => handle.remove();
   }, [open]);
 
   // 진입 버튼 표시 조건: 옵트인 토글(quickMenuButton, 기본 숨김 — 2026-07-18 피드백)

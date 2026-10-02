@@ -20,11 +20,21 @@ const backupService = {
   projectTemplateBackupImport: jest.fn(),
 };
 const templateService = { importSceneTemplateFile: jest.fn() };
-const appState = {
+const appState: any = {
   pushDialog: jest.fn(),
   pushDialogAsync: jest.fn(),
   pushMessage: jest.fn(),
   setProgressDialog: jest.fn(),
+  // 실제 AppService.confirmAsync 와 같은 모양 — pushDialog 를 거쳐 확인=true/취소=false(2026-10-03 U1·X14)
+  confirmAsync: (opts: any) =>
+    new Promise<boolean>((resolve) =>
+      appState.pushDialog({
+        ...opts,
+        type: 'confirm',
+        callback: () => resolve(true),
+        onCancel: () => resolve(false),
+      }),
+    ),
 };
 const platform = { supportsTargetFolder: true };
 const mockImportConfigText = jest.fn();

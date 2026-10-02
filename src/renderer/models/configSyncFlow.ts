@@ -81,17 +81,9 @@ function showConfigImportPreview(
   });
 }
 
-function askConfirm(text: string, confirmText: string): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    appState.pushDialog({
-      type: 'confirm',
-      text,
-      confirmText,
-      callback: () => resolve(true),
-      onCancel: () => resolve(false),
-    });
-  });
-}
+// 확인/취소 구분 확인 창 — appState.confirmAsync 공용(2026-10-03 U1·X14, 예전엔 같은 함수가 6곳에 복제)
+const askConfirm = (text: string, confirmText: string): Promise<boolean> =>
+  appState.confirmAsync({ text, confirmText });
 
 // ── 설정 불러오기 ──
 export async function importConfigText(

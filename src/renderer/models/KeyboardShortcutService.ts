@@ -52,7 +52,8 @@ const ACTIONS: ShortcutAction[] = [
   // 전역 액션
   { id: 'tab-1', label: '이미지생성 탭', category: 'global', defaultKey: 'Ctrl+1' },
   { id: 'tab-2', label: '이미지변형 탭', category: 'global', defaultKey: 'Ctrl+2' },
-  { id: 'tab-3', label: '웹 검색 탭', category: 'global', defaultKey: 'Ctrl+3' },
+  // 메인 탭 순서(App.tsx tabs): 1 이미지생성 · 2 이미지변형 · 3 글로벌 프리셋 · 4 작가 라이브러리 · 5 퀵 생성 · 6 웹 검색(PC)
+  { id: 'tab-3', label: '글로벌 프리셋 탭', category: 'global', defaultKey: 'Ctrl+3' },
   { id: 'toggle-left-panel', label: '좌측 패널 토글', category: 'global', defaultKey: 'Ctrl+Q' },
   { id: 'queue-all-scenes', label: '모든 씬 예약', category: 'global', defaultKey: 'Ctrl+G' },
   { id: 'toggle-project-favorite', label: '프로젝트 즐겨찾기 토글', category: 'global', defaultKey: 'Ctrl+F' },

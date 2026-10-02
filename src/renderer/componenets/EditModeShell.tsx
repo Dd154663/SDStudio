@@ -6,6 +6,7 @@ import { appState } from '../models/AppService';
 import { resolveLayout } from '../models/layoutTemplates';
 import type { UiLayoutSlots } from '../../main/config';
 import Tooltip from './Tooltip';
+import { backStackService } from '../models/BackStackService';
 
 // 편집 모드 셸 (PC 전용).
 // 사용자가 화면에서 UI 배치를 직접 조작하는 모드의 셸. 안내 바 + 슬롯 그립 칩 +
@@ -195,24 +196,25 @@ const EditModeShell = observer(() => {
     setBadges(measureBadges());
   }, []);
 
-  // 마운트 시 측정 + 리사이즈 재측정 + ESC 종료 리스너.
+  // 마운트 시 측정 + 리사이즈 재측정 + ESC 종료.
   useEffect(() => {
     remeasure();
     // 첫 프레임 이후 레이아웃이 확정된 뒤 한 번 더(패널 마운트 타이밍 보정).
     const raf = requestAnimationFrame(remeasure);
     window.addEventListener('resize', remeasure);
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
+    // Esc = 편집 모드 종료. 닫기 관문의 선점 항목이라 다른 창(모달 등)보다 먼저 받는다(종전 「편집 모드 Esc
+    // 선점」 유지 — 단 확인 창은 같은 선점이며 더 나중에 뜨므로 확인 창이 먼저). PC 전용 화면이라 뒤로 가기는 대상 아님.
+    // 예전 window 캡처 리스너는 다른 창의 Esc 와 함께 실행될 수 있어 관문으로 옮겼다(2026-10-03 U1·X2).
+    const handle = backStackService.push(
+      () => {
         appState.editMode = false;
-      }
-    };
-    // 캡처 단계에서 먼저 가로채 다른 ESC 핸들러(모달 등) 발동 전에 종료.
-    window.addEventListener('keydown', onKeyDown, true);
+      },
+      { preempt: true, back: 'skip' },
+    );
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', remeasure);
-      window.removeEventListener('keydown', onKeyDown, true);
+      handle.remove();
     };
   }, [remeasure]);
 

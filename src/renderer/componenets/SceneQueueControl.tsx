@@ -217,6 +217,7 @@ const SceneSeedGroupBadge = observer(
         {open && (
           <input
             autoFocus
+            data-esc-cancel
             type="text"
             inputMode="numeric"
             value={value}
@@ -1224,6 +1225,17 @@ const QueueControl = observer(
     useEffect(() => {
       if (appState.sceneSelectionMode) setV2Tier(false);
     }, [appState.sceneSelectionMode]);
+    // 씬 선택 모드 중 Android 뒤로 가기·PC Esc = 선택 모드 종료(닫기 관문, 2026-10-03 U1·X6 — 예전엔 앱 최소화).
+    // 보이는 메인 목록 하나만 등록한다(파생 목록 filterFunc·비활성 탭 제외).
+    const sceneSelectBackOn = !!appState.sceneSelectionMode && isActive && !filterFunc;
+    useEffect(() => {
+      if (!sceneSelectBackOn) return undefined;
+      const handle = backStackService.push(() => {
+        appState.sceneSelectionMode = false;
+        appState.clearSceneSelection();
+      });
+      return () => handle.remove();
+    }, [sceneSelectBackOn]);
     const { show: showSceneContextMenu } = useContextMenu({
       id: ContextMenuType.Scene,
     });
@@ -3089,6 +3101,7 @@ const QueueControl = observer(
             <FaSearch className="text-faint flex-none" />
             <input
               ref={sceneSearchRef}
+              data-esc-cancel
               type="text"
               className="flex-1 px-2 py-1 border line-color rounded bg-[var(--c-input-bg)] text-default outline-none focus:border-sky-500"
               placeholder="씬 이름 검색..."

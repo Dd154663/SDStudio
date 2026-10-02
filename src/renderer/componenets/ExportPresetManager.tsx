@@ -176,6 +176,7 @@ const ExportPresetManager = observer(() => {
                 {renamingIndex === i ? (
                   <input
                     autoFocus
+                    data-esc-cancel
                     type="text"
                     value={renameValue}
                     onClick={(e) => e.stopPropagation()}

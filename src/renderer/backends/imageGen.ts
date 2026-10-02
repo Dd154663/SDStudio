@@ -1,5 +1,6 @@
 import { CharacterPosition } from '../models/types';
 import type { SDStudioImageMetadataV1 } from '../../shared/sdstudioImageMetadata';
+import type { NaiRequestOptions } from '../models/requestTiming';
 
 export enum Model {
   Anime = 'anime',
@@ -170,6 +171,8 @@ export interface ImageGenInput {
   generationSettings?: GenerationSettingsSnapshot;
   /** SDStudio에서 앞으로 생성한 이미지에만 삽입하는 선택적 복원 메타데이터. */
   sdstudioMetadata?: SDStudioImageMetadataV1;
+  /** 호출별 타임아웃·취소 신호(큐 시도). JSON 으로 직렬화하지 않는다. */
+  request?: NaiRequestOptions;
 }
 
 export type AugmentMethod =
@@ -187,16 +190,19 @@ export interface ImageAugmentInput {
   prompt?: string;
   weaken?: number;
   image: string;
+  request?: NaiRequestOptions;
 }
 
 export interface ImageUpscaleInput {
   image: string;
   outputFilePath: string;
+  request?: NaiRequestOptions;
 }
 
 export interface EncodeVibeImageInput {
   image: string;
   info: number;
+  request?: NaiRequestOptions;
 }
 
 // 로그인(토큰) 검증 결과.

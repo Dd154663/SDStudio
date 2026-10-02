@@ -211,6 +211,12 @@ export class BackupService {
               await sessionService.exportSessionDeep(appState.curSession, path);
             } catch (e: any) {
               appState.setProgressDialog(undefined);
+              // 무음 실패였다(X13) — 사유를 알린다
+              console.error('프로젝트 백업 파일 생성 실패:', e);
+              appState.pushMessage(
+                '프로젝트 백업 파일을 만들지 못했습니다' +
+                  (e?.message ? `: ${e.message}` : '.'),
+              );
               return;
             }
             appState.setProgressDialog(undefined);
@@ -496,7 +502,7 @@ export class BackupService {
       await zipService.zipFiles(entries, outPath);
     } catch (e: any) {
       appState.setProgressDialog(undefined);
-      appState.pushMessage(e.message);
+      appState.pushMessage(e.message, 'error');
       return;
     }
     appState.setProgressDialog(undefined);
@@ -668,7 +674,7 @@ export class BackupService {
       await zipService.zipFiles(entries, outPath);
     } catch (e: any) {
       appState.setProgressDialog(undefined);
-      appState.pushMessage(e.message);
+      appState.pushMessage(e.message, 'error');
       return;
     }
     appState.setProgressDialog(undefined);
@@ -1037,7 +1043,7 @@ export class BackupService {
       await zipService.zipFiles(entries, outPath);
     } catch (e: any) {
       appState.setProgressDialog(undefined);
-      appState.pushMessage(e.message);
+      appState.pushMessage(e.message, 'error');
       return;
     }
     appState.setProgressDialog(undefined);
@@ -1556,7 +1562,7 @@ export class BackupService {
           await sessionService.importSessionDeep(tarPath, inputValue);
         } catch (e: any) {
           appState.setProgressDialog(undefined);
-          appState.pushMessage(e.message);
+          appState.pushMessage(e.message, 'error');
           return;
         }
         try {
@@ -1863,7 +1869,7 @@ export class BackupService {
       await zipService.zipFiles(allEntries, outPath);
     } catch (e: any) {
       appState.exportProgress = undefined;
-      appState.pushMessage(e.message);
+      appState.pushMessage(e.message, 'error');
       return;
     }
     appState.exportProgress = undefined;

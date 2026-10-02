@@ -271,6 +271,7 @@ const NavItem = ({
         {icon}
         <input
           autoFocus
+          data-esc-cancel
           value={editValue}
           onChange={(e) => onEditChange?.(e.target.value)}
           onKeyDown={(e) => {
@@ -946,7 +947,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
       await sessionService.cloneFolder(sourceFolder, targetPath, withImages);
       appState.setProgressDialog(undefined);
       refresh();
-      appState.pushMessage(`"${value.trim}" 폴더로 복제되었습니다.`);
+      appState.pushMessage(`"${value.trim()}" 폴더로 복제되었습니다.`);
     } catch (e: any) {
       appState.setProgressDialog(undefined);
       appState.pushMessage(e.message || '폴더 복제에 실패했습니다.');

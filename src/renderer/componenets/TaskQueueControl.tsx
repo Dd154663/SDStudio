@@ -9,6 +9,7 @@ import { Task } from '../models/TaskQueueService';
 import { appState } from '../models/AppService';
 import { isV2 } from '../models/mobileV2';
 import { observer } from 'mobx-react-lite';
+import Tooltip from './Tooltip';
 import { addScenesToQueue } from '../models/sceneQueueActions';
 
 interface ProgressBarProps {
@@ -373,17 +374,23 @@ const TaskQueueControl = observer(({}) => {
         <FaRegCalendarPlus size={18} />
       </button>
       </SceneQueueMenu>
-      <button
-        className={`round-button back-gray px-2 h-8 lg:px-6`}
-        onClick={() => {
-          taskQueueService.removeAllTasks();
-        }}
-      >
-        <FaRegCalendarTimes size={18} />
-      </button>
+      {/* 예약 전부 제거는 확인 없이 즉시(의도된 동작) — 이름·툴팁만 붙인다(X11) */}
+      <Tooltip content="모든 예약 제거">
+        <button
+          className={`round-button back-gray px-2 h-8 lg:px-6`}
+          aria-label="모든 예약 제거"
+          onClick={() => {
+            taskQueueService.removeAllTasks();
+          }}
+        >
+          <FaRegCalendarTimes size={18} />
+        </button>
+      </Tooltip>
       {!taskQueueService.isRunning() ? (
+        <Tooltip content="예약된 생성 시작">
         <button
           className={v2 ? 'round-button back-green flex-none !h-10 min-w-[96px] !px-4 gap-2 !rounded-xl font-bold text-[15px]' : `round-button back-green px-2 h-8 lg:px-6`}
+          aria-label="생성 시작"
           onClick={() => {
             (async () => {
               const costs = taskQueueService.calculateCost();
@@ -395,7 +402,7 @@ const TaskQueueControl = observer(({}) => {
                 appState.pushDialog({
                   type: 'confirm',
                   text:
-                    'Anals를 소모하는 유료 세팅입니다. 계속합니까?' +
+                    'Anlas를 소모하는 유료 세팅입니다. 계속합니까?' +
                     '\n' +
                     message,
                   callback: () => {
@@ -411,9 +418,12 @@ const TaskQueueControl = observer(({}) => {
           <FaPlay size={15} />
           {v2 && <span>생성</span>}
         </button>
+        </Tooltip>
       ) : (
+        <Tooltip content="생성 중지">
         <button
           className={v2 ? 'round-button back-red flex-none !h-10 min-w-[96px] !px-4 gap-2 !rounded-xl font-bold text-[15px]' : `round-button back-red px-2 h-8 lg:px-6`}
+          aria-label="생성 중지"
           onClick={() => {
             taskQueueService.stop();
           }}
@@ -421,6 +431,7 @@ const TaskQueueControl = observer(({}) => {
           <FaStop size={15} />
           {v2 && <span>중지</span>}
         </button>
+        </Tooltip>
       )}
     </div>
   );

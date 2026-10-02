@@ -1,6 +1,8 @@
 import { observer } from 'mobx-react-lite';
 import { getSnapshot } from 'mobx-state-tree';
 import { Item, Menu, Separator } from 'react-contexify';
+// 메뉴가 떠 있는 동안 뒤로 가기·Esc 는 메뉴만 닫는다(닫기 관문, 2026-10-03 U1·X6)
+import { contextMenuBackLayer } from './contextMenuBack';
 import {
   sessionService,
   backend,
@@ -13,6 +15,15 @@ import {
 } from '../models';
 import { appState } from '../models/AppService';
 import { dataUriToBase64, deleteImageFiles, toggleImageMain } from '../models/ImageService';
+import { IMAGE_RETENTION_DAYS } from '../models/TrashService';
+import {
+  batchResultLine,
+  DELETE_RESULT_TEXT,
+  runTrashDelete,
+  selectedImagesDeleteText,
+  shouldSkipImageDeleteConfirm,
+  showImageDeleteSkipOption,
+} from '../models/deleteFlowRules';
 import { createImageWithText, embedJSONInPNG } from '../models/SessionService';
 import {
   SceneContextAlt,
@@ -521,10 +532,16 @@ export const AppContextMenu = observer(() => {
           text: '정말로 삭제하시겠습니까? (휴지통으로 이동)',
           callback: async () => {
             const { trashService } = await import('../models');
-            try {
-              await trashService.moveSceneToTrash(appState.curSession!, ctx.scene);
-            } catch (e: any) {
-              appState.pushMessage(e?.message || '씬을 휴지통으로 옮기지 못했습니다.');
+            const session = appState.curSession!;
+            // 잠금으로 조용히 돌아와 씬이 남아 있어도 실패로 알린다(SPEC §8, X4)
+            const outcome = await runTrashDelete({
+              remove: () => trashService.moveSceneToTrash(session, ctx.scene),
+              stillExists: () => session.hasScene(ctx.scene.type, ctx.scene.name),
+            });
+            if (outcome.kind === 'error') {
+              appState.pushMessage(outcome.message || '씬을 휴지통으로 옮기지 못했습니다.');
+            } else if (outcome.kind === 'still-present') {
+              appState.pushMessage(DELETE_RESULT_TEXT.sceneStillPresent);
             }
           },
         });
@@ -608,25 +625,32 @@ export const AppContextMenu = observer(() => {
       const { scenes, totalImages } = collectTargets();
       appState.setProgressDialog({ text: '이미지 삭제 중...', done: 0, total: scenes.length });
       let done = 0;
-      for (const { scene, paths } of scenes) {
-        try {
-          await deleteImageFiles(session, paths, scene);
-        } catch (e) {
-          console.error('이미지 삭제 실패:', e);
+      let failed = 0;
+      try {
+        for (const { scene, paths } of scenes) {
+          try {
+            // 씬마다 토스트가 쌓이지 않게 공용 알림은 끄고 아래에서 한 번에 알린다(X13)
+            failed += await deleteImageFiles(session, paths, scene, { notify: false });
+          } catch (e) {
+            console.error('이미지 삭제 실패:', e);
+            failed += paths.length;
+          }
+          appState.setProgressDialog({ text: '이미지 삭제 중...', done: ++done, total: scenes.length });
         }
-        appState.setProgressDialog({ text: '이미지 삭제 중...', done: ++done, total: scenes.length });
+      } finally {
+        appState.setProgressDialog(undefined);
       }
-      appState.setProgressDialog(undefined);
-      appState.pushMessage(`${scenes.length}개 씬에서 ${totalImages}장의 이미지를 삭제했습니다.`);
+      const ok = Math.max(0, totalImages - failed);
+      appState.pushMessage(
+        failed > 0
+          ? `${scenes.length}개 씬 이미지 ${batchResultLine(ok, failed)}장 — 실패한 이미지는 잠시 후 다시 시도해주세요.`
+          : `${scenes.length}개 씬에서 ${ok}장의 이미지를 삭제했습니다.`,
+      );
     };
-    if (appState.skipImageDeleteConfirm) {
-      await doBatchDelete();
-      return;
-    }
+    // 여러 씬 일괄 삭제는 「다시 묻지 않음」과 무관하게 항상 확인한다(X12)
     appState.pushDialog({
       type: 'confirm',
-      text: `${preview.scenes.length}개 씬에서 ${label}${preview.totalImages}장의 이미지를 삭제할까요?`,
-      showSkipConfirm: true,
+      text: `${preview.scenes.length}개 씬에서 ${label}${preview.totalImages}장의 이미지를 삭제할까요? (이미지 휴지통으로 이동, ${IMAGE_RETENTION_DAYS}일 보관)`,
       callback: doBatchDelete,
     });
   };
@@ -692,14 +716,19 @@ export const AppContextMenu = observer(() => {
     const doDelete = async () => {
       await deleteImageFiles(appState.curSession!, ctx.path, ctx.scene);
     };
-    if (appState.skipImageDeleteConfirm) {
+    // 「다시 묻지 않음」은 단일 이미지 삭제에만 적용 — 여러 장(선택 모드 우클릭)은 항상 확인(X12)
+    const count = ctx.path.length;
+    if (shouldSkipImageDeleteConfirm(appState.skipImageDeleteConfirm, count)) {
       await doDelete();
       return;
     }
     appState.pushDialog({
       type: 'confirm',
-      text: '정말로 삭제하시겠습니까?',
-      showSkipConfirm: true,
+      text:
+        count > 1
+          ? selectedImagesDeleteText(count, IMAGE_RETENTION_DAYS)
+          : '정말로 삭제하시겠습니까?',
+      showSkipConfirm: showImageDeleteSkipOption(count),
       callback: doDelete,
     });
   };
@@ -847,13 +876,20 @@ export const AppContextMenu = observer(() => {
     await appState.exportPreset(appState.curSession!, ctx.preset);
   };
   const deleteStyle = async (ctx: StyleContextAlt) => {
+    // 「최소 1개」 검사는 확인 창 전에 한다 — 확인을 누른 뒤에야 거절당하지 않게(X9)
+    const before = appState.curSession?.presets.get(ctx.preset.type) ?? [];
+    if (before.length <= 1) {
+      appState.pushMessage('그림체는 최소 한 개 이상이어야 합니다');
+      return;
+    }
     appState.pushDialog({
       type: 'confirm',
       text: '정말로 삭제하시겠습니까?',
       callback: async () => {
         const curSession = appState.curSession;
-        const presets = appState.curSession!.presets.get(ctx.preset.type)!;
-        if (presets.length === 1) {
+        const presets = curSession?.presets.get(ctx.preset.type) ?? [];
+        // 확인 창이 떠 있는 동안 다른 곳에서 지워졌을 수 있어 한 번 더 본다
+        if (presets.length <= 1) {
           appState.pushMessage('그림체는 최소 한 개 이상이어야 합니다');
           return;
         }
@@ -945,7 +981,7 @@ export const AppContextMenu = observer(() => {
   };
   return (
     <>
-      <Menu id={ContextMenuType.Scene}>
+      <Menu id={ContextMenuType.Scene} onVisibilityChange={contextMenuBackLayer(ContextMenuType.Scene)}>
         <Item id="edit-prompt" onClick={handleSceneItemClick}>
           씬 편집기로
         </Item>
@@ -1011,7 +1047,7 @@ export const AppContextMenu = observer(() => {
           선택한 씬 이미지 모두 삭제 (즐겨찾기 제외)
         </Item>
       </Menu>
-      <Menu id={ContextMenuType.GallaryImage}>
+      <Menu id={ContextMenuType.GallaryImage} onVisibilityChange={contextMenuBackLayer(ContextMenuType.GallaryImage)}>
         <Item id="download" onClick={handleImageItemClick2}>
           이미지 다운로드
         </Item>
@@ -1051,7 +1087,7 @@ export const AppContextMenu = observer(() => {
           작가 라이브러리에 저장
         </Item>
       </Menu>
-      <Menu id={ContextMenuType.Image}>
+      <Menu id={ContextMenuType.Image} onVisibilityChange={contextMenuBackLayer(ContextMenuType.Image)}>
         <Item id="upscale" onClick={handleImageItemClick}>
           업스케일 ×2 (Anlas)
         </Item>
@@ -1085,7 +1121,7 @@ export const AppContextMenu = observer(() => {
           작가 라이브러리에 저장
         </Item>
       </Menu>
-      <Menu id={ContextMenuType.HistoryImage}>
+      <Menu id={ContextMenuType.HistoryImage} onVisibilityChange={contextMenuBackLayer(ContextMenuType.HistoryImage)}>
         <Item id="upscale" onClick={handleHistoryItemClick}>
           업스케일 ×2 (Anlas)
         </Item>
@@ -1111,7 +1147,7 @@ export const AppContextMenu = observer(() => {
           해당 이미지 삭제
         </Item>
       </Menu>
-      <Menu id={ContextMenuType.Style}>
+      <Menu id={ContextMenuType.Style} onVisibilityChange={contextMenuBackLayer(ContextMenuType.Style)}>
         <Item id="export" onClick={handleStyleItemClick}>
           해당 그림체 내보내기
         </Item>

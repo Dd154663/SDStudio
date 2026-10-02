@@ -1,7 +1,9 @@
-import { useContext, useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { DropdownSelect } from './UtilComponents';
 import { appState } from '../models/AppService';
 import { backStackService } from '../models/BackStackService';
+import { confirmEnterAction } from '../models/confirmKeys';
+import { isImeComposing } from '../models/escapeGate';
 import { observer } from 'mobx-react-lite';
 import { FaChevronDown, FaChevronRight } from 'react-icons/fa';
 import {
@@ -35,22 +37,55 @@ const ConfirmWindow = observer(() => {
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
   const [skipConfirm, setSkipConfirm] = useState(false);
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  const [dropdownMenuOpen, setDropdownMenuOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const topDialog = appState.dialogs[appState.dialogs.length - 1];
   const foldKey = topDialog?.type === 'select' ? topDialog.groupFoldKey : undefined;
   // 대화상자가 열릴 때 저장된 펼침 상태를 읽는다(foldKey 가 없으면 전부 접힘에서 시작)
   useEffect(() => {
     setOpenGroups(foldKey ? loadOpenGroups(foldKey) : new Set());
   }, [foldKey, topDialog]);
+  // 맨 위 대화상자가 바뀔 때마다 입력 상태를 새로 시작한다(뒤로 가기·Esc 로 닫힌 앞 창의 값이 남지 않게).
   // input-confirm 은 inputValue 가 있으면 그 값을 처음 값으로 채운다(없으면 빈 칸 —
   // 기존 동작). textarea-confirm 의 inputValue 는 종전대로 placeholder 로만 쓴다.
+  // 입력칸은 열릴 때 포커스(미리 채운 값은 전체 선택) — PC·모바일 공통(창이 화면 위쪽이라 키보드에 가리지 않고,
+  // 인라인 이름 편집 칸들도 양 플랫폼 autoFocus 관례). 2026-10-03 U1·X1.
   useEffect(() => {
-    if (topDialog?.type === 'input-confirm') {
-      setInputValue(topDialog.inputValue ?? '');
+    setInputValue(
+      topDialog?.type === 'input-confirm' ? topDialog.inputValue ?? '' : '',
+    );
+    setCheckedItems(new Set());
+    setSkipConfirm(false);
+    setDropdownMenuOpen(false);
+    if (topDialog?.type !== 'input-confirm' && topDialog?.type !== 'textarea-confirm') {
+      return undefined;
     }
+    const t = window.setTimeout(() => {
+      const el = topDialog.type === 'input-confirm' ? inputRef.current : textareaRef.current;
+      if (!el) return;
+      el.focus();
+      if (el.value) el.select();
+    }, 0);
+    return () => window.clearTimeout(t);
   }, [topDialog]);
+
+  // 맨 위 대화상자를 취소로 닫는다(취소 버튼·Esc·뒤로 가기 공용).
+  const cancelTop = () => {
+    const top = appState.dialogs[appState.dialogs.length - 1];
+    if (!top) return;
+    if (top.onCancel) top.onCancel();
+    appState.dialogs.pop();
+    setInputValue('');
+    setCheckedItems(new Set());
+    setSkipConfirm(false);
+  };
 
   const handleConfirm = () => {
     const currentDialog = appState.dialogs[appState.dialogs.length - 1];
+    // 드롭다운은 값을 고르기 전에는 확인하지 않는다(버튼도 비활성)
+    if (currentDialog?.type === 'dropdown' && !inputValue) return;
     if (appState.dialogs.length > 0) appState.dialogs.pop();
     if (currentDialog && currentDialog.callback) {
       if (currentDialog.showSkipConfirm && skipConfirm) {
@@ -77,29 +112,46 @@ const ConfirmWindow = observer(() => {
   };
 
   const curDialog = appState.dialogs[appState.dialogs.length - 1];
+  // Enter 규칙(models/confirmKeys.ts): 타입별 확인/무시, IME 조합·창 안 버튼·textarea·펼친 드롭다운은 양보.
+  // 캡처 단계에서 받아 확인 창이 떠 있는 동안 Enter 가 아래 화면(입력칸의 Enter 동작 등)으로 새지 않게 한다.
+  const handleConfirmRef = useRef(handleConfirm);
+  handleConfirmRef.current = handleConfirm;
+  const enterCtxRef = useRef({ dropdownMenuOpen, dropdownChosen: !!inputValue });
+  enterCtxRef.current = { dropdownMenuOpen, dropdownChosen: !!inputValue };
+  const hasDialog = appState.dialogs.length > 0;
   useEffect(() => {
+    if (!hasDialog) return undefined;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        if (curDialog?.type === 'textarea-confirm') return;
-        if (curDialog) e.preventDefault();
-        handleConfirm();
-      }
+      if (e.key !== 'Enter') return;
+      const top = appState.dialogs[appState.dialogs.length - 1];
+      if (!top) return;
+      const target = e.target as HTMLElement | null;
+      const inDialog = !!target && !!rootRef.current?.contains(target);
+      const action = confirmEnterAction(top.type, {
+        composing: isImeComposing(e),
+        inTextarea: inDialog && target!.tagName === 'TEXTAREA',
+        onDialogButton: inDialog && target!.tagName === 'BUTTON',
+        ...enterCtxRef.current,
+      });
+      if (action === 'pass') return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (action === 'confirm') handleConfirmRef.current();
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [inputValue, checkedItems, appState.dialogs]);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [hasDialog]);
 
-  // 안드로이드 뒤로가기로 최상단 다이얼로그를 취소한다. 다이얼로그는
+  // 안드로이드 뒤로가기·PC Esc(닫기 관문)로 최상단 다이얼로그를 취소한다. 다이얼로그는
   // appState.dialogs 배열로 쌓이므로 length 가 바뀔 때마다 백스택 항목을
   // 최상단으로 갱신하고, onClose 는 호출 시점의 top 을 취소한다(취소 콜백 포함).
+  // preempt: 확인 창은 화면 맨 위 층(--z-confirm)이라 나중에 열린 모달·편집 모드보다도 먼저 Esc 를 받는다.
+  const cancelTopRef = useRef(cancelTop);
+  cancelTopRef.current = cancelTop;
   useEffect(() => {
     if (appState.dialogs.length === 0) return;
-    const handle = backStackService.push(() => {
-      const top = appState.dialogs[appState.dialogs.length - 1];
-      if (top?.onCancel) top.onCancel();
-      appState.dialogs.pop();
+    const handle = backStackService.push(() => cancelTopRef.current(), {
+      preempt: true,
     });
     return () => handle.remove();
   }, [appState.dialogs.length]);
@@ -108,12 +160,16 @@ const ConfirmWindow = observer(() => {
     <>
       {appState.dialogs.length > 0 && (
         <div className="fixed flex justify-center w-full confirm-window">
-          <div className="flex flex-col justify-between m-4 p-4 rounded-md r-modal shadow-xl bg-[var(--c-zone)] text-default w-96 max-w-[90vw]">
+          <div
+            ref={rootRef}
+            className="flex flex-col justify-between m-4 p-4 rounded-md r-modal shadow-xl bg-[var(--c-zone)] text-default w-96 max-w-[90vw]"
+          >
             <div className="break-keep text-center text-default whitespace-pre-wrap">
               {curDialog.text}
             </div>
             {curDialog.type === 'input-confirm' && (
               <input
+                ref={inputRef}
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
@@ -122,6 +178,7 @@ const ConfirmWindow = observer(() => {
             )}
             {curDialog.type === 'textarea-confirm' && (
               <textarea
+                ref={textareaRef}
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 className={`gray-input mt-4 mb-4 resize-none`}
@@ -161,12 +218,7 @@ const ConfirmWindow = observer(() => {
                   </button>
                    <button
                     className="px-4 py-2 rounded back-gray clickable "
-                    onClick={() => {
-                      if (curDialog.onCancel) curDialog.onCancel();
-                      appState.dialogs.pop();
-                      setInputValue('');
-                      setSkipConfirm(false);
-                    }}
+                    onClick={cancelTop}
                   >
                     {curDialog.cancelText ?? '취소'}
                   </button>
@@ -190,11 +242,7 @@ const ConfirmWindow = observer(() => {
                   </button>
                   <button
                     className="px-4 py-2 rounded back-gray clickable"
-                    onClick={() => {
-                      if (curDialog.onCancel) curDialog.onCancel();
-                      appState.dialogs.pop();
-                      setInputValue('');
-                    }}
+                    onClick={cancelTop}
                   >
                     취소
                   </button>
@@ -285,10 +333,7 @@ const ConfirmWindow = observer(() => {
                   </div>
                   <button
                     className="w-full px-4 py-2 clickable rounded back-gray shrink-0"
-                    onClick={() => {
-                      if (curDialog.onCancel) curDialog.onCancel();
-                      appState.dialogs.pop();
-                    }}
+                    onClick={cancelTop}
                   >
                     취소
                   </button>
@@ -296,13 +341,18 @@ const ConfirmWindow = observer(() => {
               )}
               {curDialog.type === 'dropdown' && (
                 <>
-                  <div className="w-full mt-4">
+                  {/* 목록이 펼쳐진 동안 Esc 는 목록 닫기(창 취소 아님) — data-esc-cancel(닫기 관문 규칙) */}
+                  <div
+                    className="w-full mt-4"
+                    data-esc-cancel={dropdownMenuOpen ? 'true' : 'false'}
+                  >
                     <DropdownSelect
                       className="z-20 w-full"
-                      selectedOption={curDialog.items!.find(
-                        (item) => item.value === inputValue,
-                      )}
+                      // 선택값은 value 문자열로 넘긴다(예전엔 항목 객체를 넘겨 고른 값이 칸에 표시되지 않았다)
+                      selectedOption={inputValue || undefined}
                       menuPlacement="bottom"
+                      placeholder="선택하세요"
+                      onMenuOpenChange={setDropdownMenuOpen}
                       options={curDialog.items!.map((item: any) => ({
                         label: item.text,
                         value: item.value,
@@ -316,17 +366,13 @@ const ConfirmWindow = observer(() => {
                     <button
                       className="flex-1 px-4 py-2 block rounded back-sky clickable"
                       onClick={handleConfirm}
+                      disabled={!inputValue}
                     >
                       확인
                     </button>
                     <button
                       className="flex-1 px-4 py-2 block rounded back-gray clickable"
-                      onClick={() => {
-                        if (curDialog.onCancel) curDialog.onCancel();
-                        appState.dialogs.pop();
-                        setInputValue('');
-                        setCheckedItems(new Set());
-                      }}
+                      onClick={cancelTop}
                     >
                       취소
                     </button>
@@ -365,12 +411,7 @@ const ConfirmWindow = observer(() => {
                     </button>
                     <button
                       className="flex-1 px-4 py-2 rounded back-gray clickable"
-                      onClick={() => {
-                        if (curDialog.onCancel) curDialog.onCancel();
-                        appState.dialogs.pop();
-                        setInputValue('');
-                        setCheckedItems(new Set());
-                      }}
+                      onClick={cancelTop}
                     >
                       취소
                     </button>

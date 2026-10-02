@@ -3,6 +3,7 @@ import { useDrag, useDragLayer, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
 import { observer } from 'mobx-react-lite';
 import ModalOverlay from './ModalOverlay';
+import { backStackService } from '../models/BackStackService';
 import { isMobile } from '../models';
 import { appState } from '../models/AppService';
 import {
@@ -254,17 +255,12 @@ const ToolbarOverflowMenu = observer(({
       const root = popRef.current?.parentElement;
       if (root && !root.contains(e.target as Node)) onClose();
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose();
-      }
-    };
+    // Escape = 닫기 관문 항목(맨 위 한 겹만 — 이미지 그리드 등 아래 창이 함께 닫히지 않게, 2026-10-03 U1·X2)
+    const handle = backStackService.push(onClose);
     document.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey, true);
     return () => {
       document.removeEventListener('mousedown', onDown);
-      window.removeEventListener('keydown', onKey, true);
+      handle.remove();
     };
   }, [isOpen, onClose, dragging, dndType]);
 

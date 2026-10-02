@@ -49,15 +49,8 @@ interface TrashItem {
   thumbnail?: string | null;
 }
 
-const confirmAction = (text: string) =>
-  new Promise<boolean>((resolve) => {
-    appState.pushDialog({
-      type: 'confirm',
-      text,
-      callback: () => resolve(true),
-      onCancel: () => resolve(false),
-    });
-  });
+// appState.confirmAsync 공용(2026-10-03 U1·X14)
+const confirmAction = (text: string) => appState.confirmAsync({ text });
 
 const collectReviewItems = (
   session: Session,
@@ -303,12 +296,26 @@ const ImageReview = ({
 
   const permanentlyDeleteTrashItem = async (entry: TrashItem) => {
     if (!trashScene) return;
-    if (!(await confirmAction(`${entry.filename} 파일을 영구 삭제할까요?`))) {
+    if (
+      !(await confirmAction(
+        `${entry.filename} 파일을 영구 삭제할까요? 되돌릴 수 없습니다.`,
+      ))
+    ) {
       return;
     }
-    await trashService.permanentlyDeleteImages(session, trashScene, [
-      entry.filename,
-    ]);
+    // 실패를 삼키지 않는다(X13) — 반환값(실패 수)·예외를 알린다
+    try {
+      const failed = await trashService.permanentlyDeleteImages(session, trashScene, [
+        entry.filename,
+      ]);
+      if (failed > 0) {
+        appState.pushMessage(
+          `${entry.filename} 파일을 영구 삭제하지 못했습니다. 잠시 후 다시 시도해주세요.`,
+        );
+      }
+    } catch (e: any) {
+      appState.pushMessage(`영구 삭제 실패: ${e?.message ?? e}`);
+    }
     await loadTrash(trashScene);
   };
 

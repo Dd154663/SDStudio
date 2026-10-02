@@ -725,7 +725,7 @@ export const App = observer(() => {
         {isMobile && <MobileKeyboardChip onSearch={goDanbooruSearch} />}
         <ErrorBoundary
           onErr={(error, errorInfo) => {
-            appState.pushMessage(`${error.message}`);
+            appState.pushMessage(`${error.message}`, 'error');
           }}
         >
           {/* 부팅 게이트: bootstrapApp() 완료 전에는 메인 UI 를 마운트하지 않아

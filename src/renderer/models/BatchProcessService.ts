@@ -23,6 +23,8 @@ import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { Dialog } from '../componenets/ConfirmWindow';
 import { cropMirrorResultFromDataUri, dataUriToBase64, deleteImageFiles } from './ImageService';
+import { IMAGE_RETENTION_DAYS } from './TrashService';
+import { promptCustomResolution } from './customResolutionPrompt';
 import {
   createImageWithText,
   embedJSONInPNG,
@@ -170,20 +172,30 @@ export class BatchProcessService {
         freshOutputs(scene).map(
           (x) => imageService.getOutputDir(appState.curSession!, scene) + '/' + x,
         );
-      // 이동 실패(파일 잠금 등)를 조용히 넘기지 않는다 — 이미지 그리드의 삭제와 같은 알림.
+      // 이동 실패(파일 잠금 등)를 조용히 넘기지 않는다. 여러 씬을 돌므로 공용 함수의 씬별 알림은 끄고
+      // 여기서 한 번만 알린다(중복 토스트 제거, 2026-10-03 X13).
       const deleteAndReport = async (
         pick: (scene: GenericScene, paths: string[]) => string[],
       ) => {
         let failed = 0;
         for (const scene of selected) {
-          failed += await deleteImageFiles(
-            appState.curSession!,
-            pick(scene, freshPaths(scene)),
-            scene,
-          );
+          const targets = pick(scene, freshPaths(scene));
+          try {
+            failed += await deleteImageFiles(
+              appState.curSession!,
+              targets,
+              scene,
+              { notify: false },
+            );
+          } catch (e) {
+            console.error('이미지 삭제 실패:', scene.name, e);
+            failed += targets.length;
+          }
         }
         if (failed > 0) {
-          appState.pushMessage(`이미지 ${failed}장은 삭제하지 못했습니다.`);
+          appState.pushMessage(
+            `이미지 ${failed}장은 삭제하지 못했습니다. 잠시 후 다시 시도해주세요.`,
+          );
         }
       };
       if (value === 'removeImage') {
@@ -205,14 +217,12 @@ export class BatchProcessService {
             },
           ],
           callback: async (menu) => {
+            // 여러 씬 일괄 삭제는 「다시 묻지 않음」과 무관하게 항상 확인한다(X12)
             if (menu === 'all') {
-              const doDel = () => deleteAndReport((_scene, paths) => paths);
-              if (appState.skipImageDeleteConfirm) { await doDel(); return; }
               appState.pushDialog({
                 type: 'confirm',
-                text: '정말로 모든 이미지를 삭제하시겠습니까?',
-                showSkipConfirm: true,
-                callback: doDel,
+                text: `정말로 모든 이미지를 삭제하시겠습니까? (이미지 휴지통으로 이동, ${IMAGE_RETENTION_DAYS}일 보관)`,
+                callback: () => deleteAndReport((_scene, paths) => paths),
               });
             } else if (menu === 'n') {
               appState.pushDialog({
@@ -231,16 +241,13 @@ export class BatchProcessService {
                 },
               });
             } else if (menu === 'fav') {
-              const doDel = () =>
-                deleteAndReport((scene, paths) =>
-                  paths.filter((x) => !isMain(scene, x)),
-                );
-              if (appState.skipImageDeleteConfirm) { await doDel(); return; }
               appState.pushDialog({
                 type: 'confirm',
-                text: '정말로 즐겨찾기 외 모든 이미지를 삭제하시겠습니까?',
-                showSkipConfirm: true,
-                callback: doDel,
+                text: `정말로 즐겨찾기 외 모든 이미지를 삭제하시겠습니까? (이미지 휴지통으로 이동, ${IMAGE_RETENTION_DAYS}일 보관)`,
+                callback: () =>
+                  deleteAndReport((scene, paths) =>
+                    paths.filter((x) => !isMain(scene, x)),
+                  ),
               });
             }
           },
@@ -697,26 +704,13 @@ export class BatchProcessService {
       callback: async (value?: string) => {
         if (!value) return;
         if (value === 'custom') {
-          const width = await appState.pushDialogAsync({
-            type: 'input-confirm',
-            text: '해상도 너비를 입력해주세요',
-          });
-          if (width == null) return;
-          const height = await appState.pushDialogAsync({
-            type: 'input-confirm',
-            text: '해상도 높이를 입력해주세요',
-          });
-          if (height == null) return;
-          try {
-            const w = (parseInt(width) + 63) & ~63;
-            const h = (parseInt(height) + 63) & ~63;
-            for (const scene of selected) {
-              scene.resolution = 'custom' as Resolution;
-              scene.resolutionWidth = w;
-              scene.resolutionHeight = h;
-            }
-          } catch (e: any) {
-            appState.pushMessage(e.message);
+          // 숫자 검증·64px 보정은 공용 흐름(빈칸·문자는 거부 — 예전에는 0x0 저장, X15c)
+          const size = await promptCustomResolution();
+          if (!size) return;
+          for (const scene of selected) {
+            scene.resolution = 'custom' as Resolution;
+            scene.resolutionWidth = size.width;
+            scene.resolutionHeight = size.height;
           }
           return;
         }

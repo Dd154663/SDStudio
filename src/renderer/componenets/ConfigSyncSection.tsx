@@ -48,17 +48,9 @@ interface Props {
   onConfigImported: () => Promise<void> | void;
 }
 
-function askConfirm(text: string, confirmText: string): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    appState.pushDialog({
-      type: 'confirm',
-      text,
-      confirmText,
-      callback: () => resolve(true),
-      onCancel: () => resolve(false),
-    });
-  });
-}
+// 확인/취소 구분 확인 창 — appState.confirmAsync 공용(2026-10-03 U1·X14, 예전엔 같은 함수가 6곳에 복제)
+const askConfirm = (text: string, confirmText: string): Promise<boolean> =>
+  appState.confirmAsync({ text, confirmText });
 
 // PC: 드라이브 동기화 폴더(있으면)에서 JSON 필터로 선택기를 열고 원본 바이트를 읽는다.
 async function pickJsonTextPc(): Promise<string | undefined> {

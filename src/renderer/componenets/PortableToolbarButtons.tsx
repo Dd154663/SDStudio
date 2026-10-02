@@ -74,12 +74,15 @@ export function portableToolbarButtons(
     // icon-button(FaPlus 18), 씬으로 오면 씬 표준(배경형 18px+툴팁)으로 적응.
     'add-session':
       variant === 'project' ? (
-        <button
-          className={`icon-button touch-hit relative mx-1`}
-          onClick={() => appState.addSession()}
-        >
-          <FaPlus size={18} />
-        </button>
+        <Tooltip content="신규 프로젝트">
+          <button
+            className={`icon-button touch-hit relative mx-1`}
+            aria-label="신규 프로젝트"
+            onClick={() => appState.addSession()}
+          >
+            <FaPlus size={18} />
+          </button>
+        </Tooltip>
       ) : (
         iconButton(
           variant,
@@ -179,14 +182,17 @@ export function portableToolbarButtons(
     // icon-button(FaShare 기본 크기), 씬으로 오면 씬 표준(배경형 18px+툴팁)으로 적응
     'backup-export':
       variant === 'project' ? (
-        <button
-          className={`icon-button touch-hit relative mx-1`}
-          onClick={() => {
-            appState.projectBackupMenu();
-          }}
-        >
-          <FaShare />
-        </button>
+        <Tooltip content="프로젝트 백업/내보내기">
+          <button
+            className={`icon-button touch-hit relative mx-1`}
+            aria-label="프로젝트 백업/내보내기"
+            onClick={() => {
+              appState.projectBackupMenu();
+            }}
+          >
+            <FaShare />
+          </button>
+        </Tooltip>
       ) : (
         iconButton(
           variant,
