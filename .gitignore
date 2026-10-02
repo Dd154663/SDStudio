@@ -69,3 +69,8 @@ android/keystore.properties
 # node-gyp 자동 생성 파일 (사용자 로컬 경로가 하드코딩됨)
 # src/native/build/ 는 이미 상위 "build" 규칙으로 제외됨
 PROJECT_ARCHITECTURE.md
+
+# 빌드 시 주입 설정(Google OAuth 클라이언트 등 — 공개 저장소에 두지 않음, 예시 파일만 추적)
+.env
+.env.*
+!.env.example

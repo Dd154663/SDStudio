@@ -24,6 +24,9 @@ export interface DriveAuthStatus {
   error?: string;
   // 어느 창에서든 브라우저 승인을 기다리는 중이면 true(다른 창 표시 동기화용).
   connecting?: boolean;
+  // OAuth 클라이언트 값이 주입되지 않은 빌드(포크·기여자 빌드, CI Secrets 미등록, 2026-10-02).
+  // true 면 connected 는 항상 false 이고 연결할 수 없다. 저장된 인증 파일은 읽지도 지우지도 않는다.
+  notConfigured?: boolean;
 }
 
 export type DriveAuthErrorCode =
@@ -39,6 +42,7 @@ export type DriveAuthErrorCode =
   | 'expired'
   | 'network'
   | 'server'
+  | 'not-configured'
   | 'unknown';
 
 export const DRIVE_AUTH_ERROR_TEXT: Record<DriveAuthErrorCode, string> = {
@@ -55,6 +59,7 @@ export const DRIVE_AUTH_ERROR_TEXT: Record<DriveAuthErrorCode, string> = {
   expired: '연결이 만료되었거나 Google 계정에서 권한이 해제되었습니다. 다시 연결해 주세요.',
   network: '네트워크에 연결할 수 없습니다. 인터넷 연결을 확인해 주세요.',
   server: 'Google 서버 응답이 올바르지 않습니다. 잠시 뒤 다시 시도해 주세요.',
+  'not-configured': '이 빌드에는 Google 드라이브 연동 설정이 들어 있지 않습니다.',
   unknown: '알 수 없는 오류로 연결하지 못했습니다.',
 };
 

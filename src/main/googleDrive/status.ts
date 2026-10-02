@@ -2,6 +2,7 @@
 //
 // 토큰 값은 입력에 받지 않는다(구조상 renderer 로 새지 않게). jest 로 분기 검증.
 
+import { DRIVE_AUTH_ERROR_TEXT } from '../../shared/googleDriveAuth';
 import type { DriveAuthQuota, DriveAuthStatus } from '../../shared/googleDriveAuth';
 
 export interface DriveAuthStateSnapshot {
@@ -12,9 +13,20 @@ export interface DriveAuthStateSnapshot {
   quota?: DriveAuthQuota;
   error?: string;
   connecting: boolean;
+  // OAuth 클라이언트 값이 주입되지 않은 빌드면 false(생략 = true).
+  configured?: boolean;
 }
 
 export function buildDriveAuthStatus(s: DriveAuthStateSnapshot): DriveAuthStatus {
+  // 설정 없는 빌드 — 세션·오류·연결 중 여부와 무관하게 「설정 없음」 하나로 고정한다.
+  if (s.configured === false) {
+    return {
+      connected: false,
+      persistent: s.storageAvailable,
+      notConfigured: true,
+      error: DRIVE_AUTH_ERROR_TEXT['not-configured'],
+    };
+  }
   const out: DriveAuthStatus = s.session
     ? {
         connected: true,

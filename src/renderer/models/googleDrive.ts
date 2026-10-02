@@ -22,6 +22,7 @@ export const GOOGLE_DRIVE_TEXT = {
     disconnected: '연결 안 됨',
     connecting: '연결 중…',
     loading: '확인 중…',
+    notConfigured: '사용 불가',
   },
   connectButton: 'Google 계정 연결',
   disconnectButton: '연결 해제',
@@ -66,6 +67,9 @@ export const GOOGLE_DRIVE_TEXT = {
   unsupportedHintMobile:
     'Google Play 서비스가 필요합니다. 내보내기·불러오기는 기존처럼 다운로드 폴더·공유와 파일 선택으로 할 수 있습니다.',
   backupListDisconnected: '연결하면 드라이브의 백업 목록이 여기에 표시됩니다.',
+  // 클라이언트 값이 주입되지 않은 빌드(2026-10-02). 본문은 DRIVE_AUTH_ERROR_TEXT['not-configured'].
+  notConfiguredHint:
+    '환경설정 내보내기·불러오기와 로컬 동기화 폴더는 그대로 사용할 수 있습니다.',
 
   // ─── 백업 목록·받기 (드라이브 API ③) ───
   managerTitle: 'Google 드라이브 백업',
@@ -140,7 +144,12 @@ export function formatQuota(usage?: number, limit?: number): string {
   return GOOGLE_DRIVE_TEXT.quotaUsed(u, l || undefined);
 }
 
-export type DriveStatusTone = 'loading' | 'connecting' | 'connected' | 'disconnected';
+export type DriveStatusTone =
+  | 'loading'
+  | 'connecting'
+  | 'connected'
+  | 'disconnected'
+  | 'not-configured';
 
 export interface DriveStatusView {
   tone: DriveStatusTone;
@@ -153,6 +162,10 @@ export interface DriveStatusView {
   persistenceNote?: string;
   error?: string;
   canConnect: boolean;
+  // 연결 버튼을 보이되 누를 수 없게(설정 없는 빌드).
+  connectDisabled?: boolean;
+  // 오류가 아닌 안내 문구(설정 없는 빌드).
+  notice?: string;
   canDisconnect: boolean;
   canCancel: boolean;
 }
@@ -172,6 +185,19 @@ export function describeStatus(
       canConnect: false,
       canDisconnect: false,
       canCancel: localConnecting,
+    };
+  }
+  if (status.notConfigured) {
+    return {
+      tone: 'not-configured',
+      label: T.status.notConfigured,
+      tagClass: 'back-gray',
+      detail: '',
+      notice: DRIVE_AUTH_ERROR_TEXT['not-configured'],
+      canConnect: false,
+      connectDisabled: true,
+      canDisconnect: false,
+      canCancel: false,
     };
   }
   const connecting = localConnecting || !!status.connecting;

@@ -50,6 +50,8 @@ const DriveSettingsTab = ({
   const supported = backend.driveAuthSupported();
   // null = 아직 모름(목록·고급 구역을 잠시 보류).
   const [connected, setConnected] = useState<boolean | null>(null);
+  // 클라이언트 값이 주입되지 않은 빌드(2026-10-02) — 백업 목록 구역을 숨긴다.
+  const [notConfigured, setNotConfigured] = useState(false);
 
   useEffect(() => {
     if (!supported) return undefined;
@@ -65,6 +67,7 @@ const DriveSettingsTab = ({
 
   const onStatusChange = useCallback((s: DriveAuthStatus) => {
     setConnected(!!s.connected);
+    setNotConfigured(!!s.notConfigured);
   }, []);
 
   // 고급 구역: PC 만, 미지원이거나 연결 안 됐을 때만(연결 여부를 모르는 동안은 보류).
@@ -86,7 +89,7 @@ const DriveSettingsTab = ({
       )}
 
       {/* ② 백업 목록(관리 모드 인라인) */}
-      {supported && (
+      {supported && !notConfigured && (
         <>
           <hr className="line-color" />
           <div className="space-y-2">

@@ -11,9 +11,12 @@ import baseConfig from './webpack.config.base';
 import webpackPaths from './webpack.paths';
 import checkNodeEnv from '../scripts/check-node-env';
 import deleteSourceMaps from '../scripts/delete-source-maps';
+import { loadDotEnv } from './loadDotEnv';
 
 checkNodeEnv('production');
 deleteSourceMaps();
+// 저장소 루트 .env(gitignore)의 빌드 설정을 읽는다. 이미 설정된 환경 변수(CI Secrets)가 우선.
+loadDotEnv(path.join(webpackPaths.rootPath, '.env'));
 
 const configuration: webpack.Configuration = {
   devtool: 'source-map',
@@ -62,6 +65,10 @@ const configuration: webpack.Configuration = {
       NODE_ENV: 'production',
       DEBUG_PROD: false,
       START_MINIMIZED: false,
+      // Google 드라이브 연동 OAuth 클라이언트(src/main/googleDrive/client.ts) — main 번들에만 주입.
+      // 값이 없으면 빈 문자열로 빌드되고 앱은 「연동 설정 없음」으로 동작한다.
+      SDSTUDIO_GOOGLE_CLIENT_ID: '',
+      SDSTUDIO_GOOGLE_CLIENT_SECRET: '',
     }),
 
     new webpack.DefinePlugin({

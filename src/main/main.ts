@@ -10,6 +10,8 @@
  */
 // 반드시 최상단 — sharp/첫 threadpool 사용 전에 UV_THREADPOOL_SIZE 를 확정한다.
 import './uvThreadpool';
+// 개발 실행에서만 .env 를 읽는다 — googleDrive(클라이언트 값)를 불러오는 모듈보다 먼저 둔다.
+import './devDotEnv';
 import path from 'path';
 import { copyFileUnlessSame } from './copyFileUnlessSame';
 import { openExportDirectory } from './openExportDirectory';

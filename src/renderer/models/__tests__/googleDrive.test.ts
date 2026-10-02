@@ -61,6 +61,31 @@ describe('describeStatus', () => {
     expect(v.persistenceNote).toBeUndefined();
   });
 
+  test('설정 없는 빌드 = 연결 버튼 비활성·안내 문구(오류 표시 아님)', () => {
+    const v = describeStatus({
+      connected: false,
+      persistent: false,
+      notConfigured: true,
+      error: DRIVE_AUTH_ERROR_TEXT['not-configured'],
+    });
+    expect(v).toMatchObject({
+      tone: 'not-configured',
+      label: GOOGLE_DRIVE_TEXT.status.notConfigured,
+      tagClass: 'back-gray',
+      notice: DRIVE_AUTH_ERROR_TEXT['not-configured'],
+      canConnect: false,
+      connectDisabled: true,
+      canDisconnect: false,
+      canCancel: false,
+    });
+    expect(v.error).toBeUndefined();
+    expect(v.persistenceNote).toBeUndefined();
+    // 이 창에서 연결 중이라고 해도 설정 없음이 우선
+    expect(describeStatus({ connected: false, persistent: true, notConfigured: true }, true).tone).toBe(
+      'not-configured',
+    );
+  });
+
   test('연결 안 됨 + 암호화 저장 불가 = 사전 경고', () => {
     const v = describeStatus({ connected: false, persistent: false });
     expect(v.persistenceNote).toBe(GOOGLE_DRIVE_TEXT.notPersistentBefore);

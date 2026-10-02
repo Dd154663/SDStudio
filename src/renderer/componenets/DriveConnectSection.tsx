@@ -81,7 +81,7 @@ const DriveConnectSection = ({ onStatusChange }: Props) => {
   const view = describeStatus(status, connecting);
 
   const connect = async () => {
-    if (connecting || busy) return;
+    if (connecting || busy || view.connectDisabled) return;
     setConnecting(true);
     try {
       const s = await backend.driveAuthConnect();
@@ -140,8 +140,12 @@ const DriveConnectSection = ({ onStatusChange }: Props) => {
         <p className="text-sm text-body break-all">{view.detail}</p>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        {view.canConnect && (
-          <button className={btn + ' back-sky'} disabled={busy} onClick={connect}>
+        {(view.canConnect || view.connectDisabled) && (
+          <button
+            className={btn + ' back-sky'}
+            disabled={busy || !!view.connectDisabled}
+            onClick={connect}
+          >
             {GOOGLE_DRIVE_TEXT.connectButton}
           </button>
         )}
@@ -164,6 +168,12 @@ const DriveConnectSection = ({ onStatusChange }: Props) => {
           </button>
         )}
       </div>
+      {view.notice && (
+        <div className="space-y-1">
+          <p className="text-sm text-body break-words">{view.notice}</p>
+          <p className="text-xs text-muted break-words">{GOOGLE_DRIVE_TEXT.notConfiguredHint}</p>
+        </div>
+      )}
       {view.error && <p className="text-xs text-red-500 break-words">{view.error}</p>}
       {view.persistenceNote && (
         <p className="text-xs text-faint break-words">{view.persistenceNote}</p>

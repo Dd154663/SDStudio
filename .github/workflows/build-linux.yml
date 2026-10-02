@@ -43,6 +43,10 @@ jobs:
 
       - name: Build application
         run: npm run build
+        env:
+          # Google 드라이브 연동 OAuth 클라이언트(main 번들에 빌드 시 주입). Secrets 미등록이면 빈 값 → 연동 설정 없는 빌드.
+          SDSTUDIO_GOOGLE_CLIENT_ID: ${{ secrets.SDSTUDIO_GOOGLE_CLIENT_ID }}
+          SDSTUDIO_GOOGLE_CLIENT_SECRET: ${{ secrets.SDSTUDIO_GOOGLE_CLIENT_SECRET }}
 
       - name: Package (AppImage)
         run: npx electron-builder build --linux --publish never

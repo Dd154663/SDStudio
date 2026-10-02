@@ -10,6 +10,8 @@
 //   바꾸고 파일 삭제.
 // - 해제: 로컬 인증 정보(메모리·파일)를 먼저 지운 뒤 revoke 요청(실패해도 해제는 완료).
 // - getAccessToken() 은 ②(업로드) 이후 Drive 호출이 쓴다.
+// - 설정 없는 빌드(클라이언트 값 미주입, 2026-10-02): 저장된 인증 파일을 읽지도 지우지도 않고,
+//   상태는 항상 notConfigured, 연결은 'not-configured' 로 거부한다(client.ts 참조).
 
 import { BrowserWindow, shell } from 'electron';
 import log from 'electron-log';
@@ -32,6 +34,7 @@ import {
   GOOGLE_OAUTH_CLIENT_SECRET,
   GOOGLE_REVOKE_ENDPOINT,
   GOOGLE_TOKEN_ENDPOINT,
+  isGoogleOAuthConfigured,
 } from './client';
 import { LoopbackAuthorization, startLoopbackAuthorization } from './auth';
 import {
@@ -75,6 +78,8 @@ let generation = 0;
 function ensureLoaded(): Promise<void> {
   if (!loadPromise) {
     loadPromise = (async () => {
+      // 설정 없는 빌드는 인증 파일을 건드리지 않는다(클라이언트 불일치로 삭제되는 것도 막는다).
+      if (!isGoogleOAuthConfigured()) return;
       const record = await loadAuthRecord(GOOGLE_OAUTH_CLIENT_ID);
       if (record && !session) {
         session = { record, persistent: true };
@@ -98,6 +103,7 @@ function currentStatus(): DriveAuthStatus {
     quota,
     error: lastError,
     connecting: !!pending,
+    configured: isGoogleOAuthConfigured(),
   });
 }
 
@@ -155,6 +161,7 @@ async function refreshAccessToken(): Promise<string> {
 
 // Drive API 호출용 access token(②~에서 사용). 연결 안 됨·만료는 DriveAuthError.
 export async function getAccessToken(): Promise<string> {
+  if (!isGoogleOAuthConfigured()) throw new DriveAuthError('not-configured');
   await ensureLoaded();
   if (!session) throw new DriveAuthError('not-connected');
   if (access && isAccessTokenFresh(access, Date.now(), ACCESS_TOKEN_REFRESH_MARGIN_MS)) {
@@ -245,6 +252,7 @@ async function revokeToken(token: string): Promise<void> {
 }
 
 export async function connect(): Promise<DriveAuthStatus> {
+  if (!isGoogleOAuthConfigured()) throw new DriveAuthError('not-configured');
   await ensureLoaded();
   if (pending) throw new DriveAuthError('busy');
   if (session) throw new DriveAuthError('already-connected');
@@ -334,6 +342,8 @@ export function cancelConnect(): void {
 }
 
 export async function disconnect(): Promise<void> {
+  // 설정 없는 빌드는 연결된 적이 없다 — 다른 빌드가 남긴 인증 파일을 지우지 않는다.
+  if (!isGoogleOAuthConfigured()) return;
   await ensureLoaded();
   cancelConnect();
   const token = session?.record.refreshToken;
