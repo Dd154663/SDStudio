@@ -68,12 +68,33 @@ import {
 import type {
   TaskHandler,
   TaskQueueRun,
+  TaskAttemptContext,
   CostItem,
   ImageTaskType,
   Task,
   TaskParam,
   TaskInfo,
 } from './TaskQueueService';
+import { NaiRequestOptions, throwIfAborted } from './requestTiming';
+
+// 큐 시도 문맥 → backend 요청 옵션(호출별 타임아웃·취소 신호). 문맥이 없으면(구 호출부·테스트)
+// 옵션을 넘기지 않아 backend 기본값(120초)을 쓴다.
+function requestOptions(ctx?: TaskAttemptContext): NaiRequestOptions | undefined {
+  return ctx ? { timeoutMs: ctx.requestTimeoutMs, signal: ctx.signal } : undefined;
+}
+
+// 사용자 입력 대기는 큐 바깥 타임아웃 측정에서 뺀다(확인이 끝난 뒤부터 다시 잰다).
+function waitForUser<T>(ctx: TaskAttemptContext | undefined, fn: () => Promise<T>): Promise<T> {
+  return ctx ? ctx.pauseTimeoutWhile(fn) : fn();
+}
+
+// 폐기된 시도(바깥 타임아웃)가 backend 저장 직후에 끝난 경우: 방금 쓴 파일을 지우고 결과를
+// 버린다(재시도와 겹친 늦은 결과가 씬에 중복 추가되지 않게).
+async function discardIfStale(ctx: TaskAttemptContext | undefined, writtenPath: string) {
+  if (!ctx?.signal.aborted) return;
+  await backend.deleteFile(writtenPath).catch(() => {});
+  throwIfAborted(ctx.signal);
+}
 
 // 생성 완료 처리 (W6 P3). 위임 태스크(호스트에서 실행 중)면 완료를 원 창에 브리지하고
 // 호스트 자기 세션은 건드리지 않는다(imageMap 미갱신 → dirty/저장 없음). 로컬 태스크
@@ -161,7 +182,7 @@ class GenerateImageTaskHandler implements TaskHandler {
     return false;
   }
 
-  async handleTask(task: Task, run: TaskQueueRun) {
+  async handleTask(task: Task, run: TaskQueueRun, ctx?: TaskAttemptContext) {
     const job: SDAbstractJob<PromptNode> = task.params
       .job as SDAbstractJob<PromptNode>;
     const config =
@@ -216,6 +237,7 @@ class GenerateImageTaskHandler implements TaskHandler {
               task.params.session,
               vibe.path,
               vibe.info,
+              requestOptions(ctx),
             );
           }
           let encoded =
@@ -245,6 +267,8 @@ class GenerateImageTaskHandler implements TaskHandler {
             strength: vibe.strength,
           };
         } catch (e) {
+          // 폐기된 시도면 안내 없이 그대로 끝낸다(새 시도가 다시 인코딩한다).
+          throwIfAborted(ctx?.signal);
           console.warn(`바이브 이미지 처리 오류 (${vibe.path}):`, e);
           appState.pushMessage(`바이브 이미지 처리 실패 (${vibe.path}). 이미지를 다시 첨부해주세요.`);
           return null;
@@ -500,7 +524,10 @@ class GenerateImageTaskHandler implements TaskHandler {
           : usage
           ? `현재 무료 할당량은 ${usage.percent}%입니다.`
           : '현재 무료 할당량을 확인하지 못했습니다.';
-        const choice = await appState.pushDialogAsync({
+        // 폐기된 시도가 확인 창을 띄우지 않게 먼저 확인한다.
+        throwIfAborted(ctx?.signal);
+        // 확인 창 대기는 타임아웃 측정에서 뺀다(확인이 끝난 뒤부터 다시 잰다).
+        const choice = await waitForUser(ctx, () => appState.pushDialogAsync({
           type: 'select',
           text:
             `${detail}\n이후 생성은 Anlas를 소비할 수 있습니다. ` +
@@ -512,7 +539,7 @@ class GenerateImageTaskHandler implements TaskHandler {
               value: 'continue',
             },
           ],
-        });
+        }));
         if (choice !== 'continue') {
           taskQueueService.stop();
           throw new Error('Opus 할당량 확인에서 생성을 중단했습니다.');
@@ -521,16 +548,27 @@ class GenerateImageTaskHandler implements TaskHandler {
       }
     }
 
+    // 주 요청 직전: 폐기된 시도면 보내지 않고, 바깥 타임아웃은 여기서부터 다시 잰다
+    // (바이브 인코딩·할당량 조회 시간을 빼고 안쪽 요청 타임아웃과 같은 기준에 맞춘다).
+    throwIfAborted(ctx?.signal);
+    ctx?.restartTimeout();
+    const request = requestOptions(ctx);
+    if (request) arg.request = request;
+
     // IP 확인 최적화 - 세션당 한 번만 확인
     try {
       await backend.generateImage(arg);
     } catch (e: any) {
       if (e?.kind === 'quota') {
-        opusUsageService.refresh(true).catch(() => {});
+        // 할당량 오류 뒤에는 `/user/data` 캐시를 건너뛰고 새로 읽는다.
+        opusUsageService.refresh(true, { fresh: true }).catch(() => {});
       }
       throw e;
     }
-    if (isV5) opusUsageService.refresh(true).catch(() => {});
+    // 폐기된 시도의 늦은 결과 — 저장된 파일을 지우고 씬에 추가하지 않는다.
+    await discardIfStale(ctx, outputFilePath);
+    // 생성 직후 잔량은 캐시를 건너뛰고 새로 읽는다(다음 생성 직전 확인은 이 결과를 재사용).
+    if (isV5) opusUsageService.refresh(true, { fresh: true }).catch(() => {});
 
     if (job.seed) {
       job.seed = stepSeed(job.seed);
@@ -570,6 +608,7 @@ class GenerateImageTaskHandler implements TaskHandler {
       }
     }
 
+    await discardIfStale(ctx, finalPath);
     finishOrBridgeImage(task, finalPath, replacedPath);
 
     return true;
@@ -703,7 +742,7 @@ class AugmentTaskHandler implements TaskHandler {
     await handleNAIDelay(numTry, false, delayTime);
   }
 
-  async handleTask(task: Task, run: TaskQueueRun) {
+  async handleTask(task: Task, run: TaskQueueRun, ctx?: TaskAttemptContext) {
     const outputFilePath =
       task.params.outputPath + '/' + Date.now().toString() + '.png';
     const job = task.params.job as AugmentJob;
@@ -716,7 +755,12 @@ class AugmentTaskHandler implements TaskHandler {
       weaken: job.weaken,
       image: job.image,
     };
+    throwIfAborted(ctx?.signal);
+    ctx?.restartTimeout();
+    const request = requestOptions(ctx);
+    if (request) params.request = request;
     await backend.augmentImage(params);
+    await discardIfStale(ctx, outputFilePath);
     finishOrBridgeImage(task, outputFilePath);
     return true;
   }
@@ -770,13 +814,17 @@ class UpscaleTaskHandler implements TaskHandler {
     await handleNAIDelay(numTry, false, delayTime);
   }
 
-  async handleTask(task: Task, run: TaskQueueRun) {
+  async handleTask(task: Task, run: TaskQueueRun, ctx?: TaskAttemptContext) {
     const job = task.params.job as UpscaleJob;
     const outputFilePath = task.params.outputPath + '/' + v4() + '.' + PNG_IMAGE_EXT;
     const image = job.imagePath
       ? dataUriToBase64(await backend.readDataFile(job.imagePath))
       : job.image;
-    await backend.upscaleImage({ image, outputFilePath });
+    throwIfAborted(ctx?.signal);
+    ctx?.restartTimeout();
+    const request = requestOptions(ctx);
+    await backend.upscaleImage({ image, outputFilePath, ...(request ? { request } : {}) });
+    await discardIfStale(ctx, outputFilePath);
     finishOrBridgeImage(task, outputFilePath);
     return true;
   }

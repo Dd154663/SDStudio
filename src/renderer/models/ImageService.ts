@@ -8,6 +8,7 @@ import {
   trashService,
 } from '.';
 import { platform } from './platform';
+import type { NaiRequestOptions } from './requestTiming';
 import { getAppState } from './appStateRef';
 import { GenericScene, InpaintScene, Scene, Session } from './types';
 import { assert } from './util';
@@ -1080,6 +1081,8 @@ export class ImageService extends EventTarget {
     session: Session,
     path: string,
     info: number,
+    // 큐 시도의 호출별 타임아웃·취소 신호(requestTiming). 생략 = 기본 120초.
+    request?: NaiRequestOptions,
   ) {
     const vibePath = this.getVibeImagePath(session, path);
     const data = await this.fetchVibeImage(session, vibePath);
@@ -1087,6 +1090,7 @@ export class ImageService extends EventTarget {
     const encoded = await backend.encodeVibeImage({
       image: dataUriToBase64(data),
       info: info,
+      ...(request ? { request } : {}),
     });
     await this.storeEncodedVibeImage(session, path, encoded, info);
     

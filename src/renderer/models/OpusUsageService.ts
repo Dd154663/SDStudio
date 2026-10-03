@@ -23,7 +23,14 @@ export class OpusUsageService extends EventTarget {
     super();
   }
 
-  async refresh(force = false): Promise<OpusUsageStatus | undefined> {
+  // force = 이 서비스의 30초 캐시를 건너뛴다. 그래도 backend 의 `/user/data` 10초 캐시·동시 호출
+  // 합치기는 탄다(생성 직전 확인 등 — 연속 조회 방지, 2026-10-03 갈래 T2).
+  // options.fresh = backend 캐시까지 건너뛰고 서버에서 새로 읽는다(생성 직후 잔량 갱신·
+  // 할당량 오류 뒤·사용자가 누른 새로고침).
+  async refresh(
+    force = false,
+    options?: { fresh?: boolean },
+  ): Promise<OpusUsageStatus | undefined> {
     const fresh = Date.now() - this.fetchedAt < 30_000;
     if (!force && fresh && this.status) return this.status;
     if (this.inFlight) return this.inFlight;
@@ -32,8 +39,11 @@ export class OpusUsageService extends EventTarget {
     this.refreshing = true;
     this.state = this.status ? 'stale' : 'loading';
     this.emitChange();
-    this.inFlight = this.backend
-      .getOpusUsageStatus()
+    this.inFlight = (
+      options?.fresh
+        ? this.backend.getOpusUsageStatus({ force: true })
+        : this.backend.getOpusUsageStatus()
+    )
       .then((status) => {
         if (revision !== this.revision) return undefined;
         this.status = status;

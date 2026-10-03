@@ -204,10 +204,17 @@ export abstract class Backend {
   abstract copyImageToClipboard(imagePath: string): Promise<void>;
   abstract spawnLocalAI(): Promise<void>;
   abstract isLocalAIRunning(): Promise<boolean>;
-  abstract getRemainCredits(): Promise<number>;
-  abstract getOpusUsageStatus(): Promise<import('./backends/imageGen').OpusUsageStatus>;
+  // `/user/data` 조회 — 같은 토큰이면 10초 안의 직전 결과를 재사용하고 동시 호출은 합친다
+  // (requestTiming USER_DATA_CACHE_MS). options.force = 캐시를 건너뛰고 새로 읽는다.
+  abstract getRemainCredits(
+    options?: import('./models/requestTiming').RecentRequestOptions,
+  ): Promise<number>;
+  abstract getOpusUsageStatus(
+    options?: import('./models/requestTiming').RecentRequestOptions,
+  ): Promise<import('./backends/imageGen').OpusUsageStatus>;
   abstract getOpusUsageStatusForToken(
     token: string,
+    options?: import('./models/requestTiming').RecentRequestOptions,
   ): Promise<import('./backends/imageGen').OpusUsageStatus>;
   abstract removeBackground(
     inputImageBase64: string,

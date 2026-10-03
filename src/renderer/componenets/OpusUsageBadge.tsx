@@ -247,7 +247,7 @@ const OpusUsageBadge = observer(
                   <button
                     className="btn back-sky rounded px-3 py-1.5 text-xs"
                     disabled={busy}
-                    onClick={() => void usage.refresh(true)}
+                    onClick={() => void usage.refresh(true, { fresh: true })}
                   >
                     {busy ? '확인 중…' : '새로고침'}
                   </button>

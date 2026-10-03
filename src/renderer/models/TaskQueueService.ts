@@ -44,6 +44,15 @@ import { expandPieces, lowerPromptNode, toPARR } from './PromptService';
 import { dataUriToBase64 } from './ImageService';
 import { prepareMirrorCanvas } from './workflows/SDWorkFlow';
 import { getImageDimensions } from '../componenets/BrushTool';
+import { isNaiRateLimitError } from '../backends/genVendors/naiErrors';
+import {
+  isRequestTimeoutError,
+  nextRequestTimeoutMs,
+  queueAttemptTimeoutMs,
+  RequestTimeoutError,
+  retryWaitMs,
+  sleepUnlessStopped,
+} from './requestTiming';
 
 export const FAST_TASK_TIME_ESTIMATOR_SAMPLE_COUNT = 16;
 export const TASK_TIME_ESTIMATOR_SAMPLE_COUNT = 128;
@@ -209,10 +218,30 @@ export interface CostItem {
   text: string;
 }
 
+// 큐가 한 번의 시도마다 핸들러에 넘기는 문맥(2026-10-03 갈래 T2, requestTiming). 구 호출부·
+// 테스트처럼 생략하면 backend 기본 타임아웃(120초)·취소 없음으로 동작한다.
+export interface TaskAttemptContext {
+  /** 이 시도의 세대 번호(서비스 전체에서 증가). */
+  attempt: number;
+  /** 이 시도가 폐기(바깥 타임아웃)되면 abort — fetcher 까지 넘겨 진행 중 요청을 끊고,
+   *  늦게 도착한 결과를 저장하지 않는 판정에도 쓴다. */
+  signal: AbortSignal;
+  /** 안쪽 요청 타임아웃(ms). 같은 작업이 타임아웃으로 실패할 때마다 늘어난다. */
+  requestTimeoutMs: number;
+  /** 사용자 입력(Anlas 확인 창 등)을 기다리는 동안 바깥 타임아웃을 멈추고, 끝나면 처음부터 다시 잰다. */
+  pauseTimeoutWhile<T>(fn: () => Promise<T>): Promise<T>;
+  /** 주 요청 직전에 바깥 타임아웃을 처음부터 다시 잰다(앞선 보조 요청·조회 시간 제외). */
+  restartTimeout(): void;
+}
+
 export interface TaskHandler {
   createTimeEstimator(): TaskTimeEstimator;
   checkTask(task: Task): boolean;
-  handleTask(task: Task, run: TaskQueueRun): Promise<boolean>;
+  handleTask(
+    task: Task,
+    run: TaskQueueRun,
+    ctx?: TaskAttemptContext,
+  ): Promise<boolean>;
   getNumTries(task: Task): number;
   handleDelay(task: Task, numTry: number, delayTime: number): Promise<void>;
   getInfo(task: Task): TaskInfo;
@@ -874,17 +903,82 @@ export class TaskQueueService extends EventTarget {
     delete this.taskSet[task.id!];
   }
 
-  private getRetryTimeoutMs(retryIndex: number): number {
-    if (retryIndex < 10) return 120 * 1000;
-    return 180 * 1000;
-  }
+  // 시도 세대 번호 — 폐기된 시도의 늦은 결과를 가려내는 키(ctx.attempt).
+  private attemptSeq = 0;
 
-  private withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Timeout')), timeoutMs);
-      promise.then(
-        (v) => { clearTimeout(timer); resolve(v); },
-        (e) => { clearTimeout(timer); reject(e); },
+  // 재시도 전 대기(정지하면 즉시 끝남). 테스트가 실제 시간을 쓰지 않도록 바꿔 끼울 수 있다.
+  retryWait: (ms: number, shouldStop: () => boolean) => Promise<boolean> =
+    sleepUnlessStopped;
+
+  // 한 번의 시도를 큐 바깥 타임아웃(안쪽 + 10초)으로 감싼다. 바깥 타이머가 먼저 끝나면
+  // 시도의 AbortController 를 abort 해 진행 중 요청을 끊고(PC fetch abort, Android
+  // call.cancel) RequestTimeoutError 로 실패시킨다 — 재시도와 이전 요청이 겹치지 않고,
+  // 늦게 끝난 이전 시도의 결과는 핸들러가 signal 을 보고 저장하지 않는다.
+  // 사용자 입력 대기(ctx.pauseTimeoutWhile)는 측정에서 빼고, 끝난 뒤 처음부터 다시 잰다.
+  runAttemptWithTimeout(
+    handler: TaskHandler,
+    task: Task,
+    cur: TaskQueueRun,
+    requestTimeoutMs: number,
+  ): Promise<boolean> {
+    const controller = new AbortController();
+    const outerMs = queueAttemptTimeoutMs(requestTimeoutMs);
+    const attempt = ++this.attemptSeq;
+    return new Promise<boolean>((resolve, reject) => {
+      let settled = false;
+      let paused = 0;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const clear = () => {
+        if (timer != null) clearTimeout(timer);
+        timer = null;
+      };
+      const arm = () => {
+        clear();
+        if (settled || paused > 0) return;
+        timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          timer = null;
+          controller.abort();
+          reject(new RequestTimeoutError(outerMs, 'queue'));
+        }, outerMs);
+      };
+      const ctx: TaskAttemptContext = {
+        attempt,
+        signal: controller.signal,
+        requestTimeoutMs,
+        restartTimeout: arm,
+        pauseTimeoutWhile: async <T,>(fn: () => Promise<T>): Promise<T> => {
+          paused++;
+          clear();
+          try {
+            return await fn();
+          } finally {
+            paused--;
+            if (paused === 0) arm();
+          }
+        },
+      };
+      arm();
+      let p: Promise<boolean>;
+      try {
+        p = handler.handleTask(task, cur, ctx);
+      } catch (e) {
+        p = Promise.reject(e);
+      }
+      p.then(
+        (v) => {
+          if (settled) return;
+          settled = true;
+          clear();
+          resolve(v);
+        },
+        (e) => {
+          if (settled) return;
+          settled = true;
+          clear();
+          reject(e);
+        },
       );
     });
   }
@@ -918,6 +1012,11 @@ export class TaskQueueService extends EventTarget {
       const before = Date.now();
       const handler = this.handlers[task.cls];
       const numTries = handler.getNumTries(task);
+      // 이 작업이 「타임아웃으로」 실패한 횟수 — 다음 시도의 요청 타임아웃을 60초씩 늘린다
+      // (120→180→240→300 상한). 5xx·네트워크 등 다른 실패는 세지 않는다.
+      let timeoutFailures = 0;
+      // 이 작업의 재시도 가능한 실패 횟수 — 다음 시도 전 대기 사다리(5→10→20→40→60초).
+      let failures = 0;
       for (let i = 0; i < numTries; i++) {
         if (cur.stopped) {
           this.dispatchProgress();
@@ -925,8 +1024,13 @@ export class TaskQueueService extends EventTarget {
         }
         try {
           await handler.handleDelay(task, i, delayTime);
-          const timeoutMs = this.getRetryTimeoutMs(i);
-          await this.withTimeout(handler.handleTask(task, cur), timeoutMs);
+          // 지연 대기 중에 정지됐으면 요청을 보내지 않는다.
+          if (cur.stopped) {
+            this.dispatchProgress();
+            return;
+          }
+          const requestTimeoutMs = nextRequestTimeoutMs(timeoutFailures);
+          await this.runAttemptWithTimeout(handler, task, cur, requestTimeoutMs);
           const after = Date.now();
           this.timeEstimators[task.cls].addSample(after - before);
           done = true;
@@ -969,18 +1073,25 @@ export class TaskQueueService extends EventTarget {
             this.stop();
             return;
           }
-          // 429 rate limit: 60초 대기 후 재시도
-          if (e.message && e.message.includes('429')) {
-            this.addLog('warn', sceneName, `요청 제한 (429) - 60초 대기 후 재시도 [${i + 1}/${numTries}]`);
-            console.log('Rate limited (429), waiting 60s before retry...');
+          if (isRequestTimeoutError(e)) timeoutFailures++;
+          failures++;
+          // 429 판정은 NaiApiError status/kind 우선, 문자열은 폴백(요청 ID 의 「429」 오판정 방지).
+          const rateLimited = isNaiRateLimitError(e);
+          // 다음 시도가 남아 있고 재시도 가능한 실패면 대기 — 실패 횟수 사다리 5→10→20→40→60초
+          // ±20%, 429 는 최소 60초. 기존 요청 지연(handleDelay)은 이 대기 뒤에 종전대로 더해진다.
+          const willRetry = e?.retryable !== false && i + 1 < numTries;
+          const waitMs = willRetry ? retryWaitMs(failures, rateLimited) : 0;
+          const waitLabel = willRetry ? ` - ${Math.round(waitMs / 1000)}초 대기 후 재시도` : '';
+          if (rateLimited) {
+            this.addLog('warn', sceneName, `요청 제한 (429)${waitLabel} [${i + 1}/${numTries}]`);
+            console.log(`Rate limited (429), waiting ${waitMs}ms before retry...`);
             this.dispatchEvent(
               new CustomEvent('error', {
-                detail: { error: '요청 제한 (429) - 60초 대기 후 재시도', task: task },
+                detail: { error: `요청 제한 (429)${waitLabel}`, task: task },
               }),
             );
-            await sleep(60 * 1000);
           } else {
-            this.addLog('error', sceneName, `${e.message} [${i + 1}/${numTries}]`);
+            this.addLog('error', sceneName, `${e.message}${waitLabel} [${i + 1}/${numTries}]`);
             this.dispatchEvent(
               new CustomEvent('error', {
                 detail: { error: e.message, task: task },
@@ -991,6 +1102,8 @@ export class TaskQueueService extends EventTarget {
           // 인증·프롬프트 한도·미지원 필드·Anlas/할당량 오류는 같은 요청을
           // 40회 반복해도 회복되지 않는다. 서버/네트워크/429만 기존 재시도를 유지한다.
           if (e?.retryable === false) break;
+          // 대기 중 정지하면 남은 대기를 버린다(다음 반복 머리에서 정지 처리).
+          if (waitMs > 0) await this.retryWait(waitMs, () => cur.stopped);
         }
         if (done) {
           break;

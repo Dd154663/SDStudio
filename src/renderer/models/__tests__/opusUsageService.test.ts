@@ -148,6 +148,19 @@ describe('OpusUsageService', () => {
   });
 });
 
+describe('`/user/data` 캐시 전달(2026-10-03 갈래 T2)', () => {
+  test('force 는 backend 캐시를 쓰고, fresh 만 backend 에 force 를 넘긴다', async () => {
+    const getOpusUsageStatus = jest.fn(async () => ({
+      percent: 50, isNegative: false, timeUntilNextPercent: 30,
+    }));
+    const service = new OpusUsageService({ getOpusUsageStatus } as any);
+    await service.refresh(true);
+    expect(getOpusUsageStatus).toHaveBeenLastCalledWith();
+    await service.refresh(true, { fresh: true });
+    expect(getOpusUsageStatus).toHaveBeenLastCalledWith({ force: true });
+  });
+});
+
 describe('Anlas 소비 세션 승인', () => {
   test('승인하지 않은 새 세션은 소진 확인이 필요하다', () => {
     const service = new OpusUsageService({ getOpusUsageStatus: jest.fn() } as any);
