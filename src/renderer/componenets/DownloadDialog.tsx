@@ -444,7 +444,7 @@ export const DownloadDialog = observer(
               onClick={onClose}
               disabled={isDownloading}
             >
-              <FaTimes className="mr-2" />
+              {/* ✕ 아이콘은 머리의 닫기 버튼 하나만 — 바닥은 글자 「취소」(2026-10-03 D3) */}
               취소
             </button>
           </div>

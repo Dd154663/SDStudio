@@ -328,11 +328,12 @@ export const App = observer(() => {
         appState.pushDialog({
           type: 'select',
           text: `새로운 버전(${latest})이 있습니다.\n새로 다운 받으시겠습니까?`,
-          green: true,
           items: [
             { text: '다운로드 페이지 열기', value: 'open' },
             { text: '다시 알리지 않음', value: 'dismiss' },
           ],
+          // 내장 취소의 뜻은 「나중에」(다음 실행 때 다시 알린다)
+          cancelText: '나중에',
           callback: (value?: string) => {
             if (value === 'open') {
               backend.openWebPage('https://github.com/Dd154663/SDStudio/releases');
@@ -356,11 +357,9 @@ export const App = observer(() => {
     appState.pushDialog({
       type: 'select',
       text: MOBILE_V2_INTRO_TEXT,
-      green: true,
-      items: [
-        { text: '확인', value: 'ok' },
-        { text: '클래식으로 되돌리기', value: 'classic' },
-      ],
+      // 예전 [확인] 항목은 취소와 같은 동작이라 내장 취소(「닫기」 = V2 그대로 사용) 하나로 합쳤다(D3)
+      items: [{ text: '클래식으로 되돌리기', value: 'classic' }],
+      cancelText: '닫기',
       callback: (value?: string) => {
         if (value === 'classic') {
           revertMobileV2ToClassic().catch((e) => console.error('클래식 되돌리기 실패:', e));

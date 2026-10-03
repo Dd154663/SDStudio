@@ -152,6 +152,62 @@ const RULES: Rule[] = [
     count: (c) => countMatches(c, /z-kbd-action/g),
     allow: {},
   },
+  {
+    // 확인 창의 select·checkbox·dropdown 은 내장 취소 하나만 그린다(2026-10-03 D3). items 에 「취소」류 항목·
+    // value 'cancel' 을 넣으면 같은 뜻의 버튼이 둘이 된다 — 라벨을 바꾸려면 cancelText 를 쓴다.
+    name: "확인 창 선택지의 「취소」류 항목(text: '취소' 등·value: 'cancel') — 내장 취소·cancelText 사용",
+    guide: '§5',
+    dir: '',
+    exts: ['.ts', '.tsx'],
+    exclude: [],
+    count: (c) =>
+      countMatches(c, /text:\s*['"`](취소|닫기|아니오|아니요|나중에)['"`]/g) +
+      countMatches(c, /value:\s*['"`]cancel['"`]/g),
+    allow: {},
+  },
+  {
+    // 확인/취소를 구분하는 확인은 appState.confirmAsync 하나(2026-10-03 D3). 콜백/onCancel 로 Promise 를
+    // 손으로 푸는 복제 금지. 본체(confirmKeys.confirmViaDialog)는 제외, androidBackend 의 내보내기 선택 2곳은
+    // 기존 잔류로 동결.
+    name: '손으로 만든 확인 Promise(onCancel: () => resolve(…)) — appState.confirmAsync 사용',
+    guide: '§5',
+    dir: '',
+    exts: ['.ts', '.tsx'],
+    exclude: ['models/confirmKeys.ts'],
+    count: (c) => countMatches(c, /onCancel:\s*\(\)\s*=>\s*resolve\(/g),
+    allow: {
+      'backends/androidBackend.ts': 2,
+    },
+  },
+  {
+    // 확인 창의 파랑/빨강은 위험도(danger)로만 정한다 — 예전 green 옵션(빨강 대신 파랑)은 없앴다(2026-10-03 D1).
+    name: '확인 창 green 옵션 — danger(없음/true/permanent) 사용',
+    guide: '§5',
+    dir: '',
+    exts: ['.ts', '.tsx'],
+    exclude: [],
+    count: (c) => countMatches(c, /^\s*green:\s*(true|false)\s*,/gm),
+    allow: {},
+  },
+  {
+    // 이름을 묻는 입력 창은 models/nameInput.promptName 하나(2026-10-03 D2) — 검증·중복 문구·미리 채움·실패 시 창 유지.
+    // 아래 allowlist 는 이름이 아닌 입력(숫자·프롬프트·캐릭터 접두·대체 문자·찾을 씬 검색어) 16곳으로 동결 — 늘리지 않는다.
+    name: "input-confirm 직접 호출(type: 'input-confirm') — 이름 입력은 promptName 사용",
+    guide: '§5',
+    dir: '',
+    exts: ['.ts', '.tsx'],
+    exclude: ['models/nameInput.ts'],
+    count: (c) => countMatches(c, /type:\s*['"]input-confirm['"]/g),
+    allow: {
+      'componenets/ResultViewer.tsx': 1, // 몇 등 이하 삭제(숫자)
+      'componenets/SceneQueueControl.tsx': 1, // 찾을 씬 검색어
+      'models/BackupService.ts': 4, // 캐릭터 이름(파일명 접두) 2·이미지 크기 1·파일명 구분자 1
+      'models/BatchProcessService.ts': 5, // 순위 숫자 2·대체 문자 1·WebP 품질 2
+      'models/customResolutionPrompt.ts': 2, // 해상도 너비·높이
+      'models/ExportPresetService.ts': 1, // 캐릭터 접두
+      'models/workflows/OneTimeFlows.ts': 2, // 프롬프트
+    },
+  },
 ];
 
 function listFiles(dirAbs: string, exts: string[]): string[] {

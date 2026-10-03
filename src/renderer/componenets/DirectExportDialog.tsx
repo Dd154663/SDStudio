@@ -32,9 +32,10 @@ function DirectExportForm({ request }: { request: DirectExportRequest }) {
       </fieldset>}
       <div className="text-xs text-muted">즐겨찾기가 없는 씬은 첫 이미지를 사용합니다. 원본 이미지는 변경하지 않습니다.</div>
       <div className="flex justify-end gap-2">
-        <button type="button" className="round-button back-gray" onClick={close}>취소</button>
+        {/* [확인][취소] 순서(2026-10-03 D1) */}
         <button type="button" className="round-button back-sky" disabled={!isExportFormValid(form)}
           onClick={() => request.resolve({ preset: exportFormToPreset(form), charsToReplace: form.autoConvertSeparator ? detected : characters })}>내보내기</button>
+        <button type="button" className="round-button back-gray" onClick={close}>취소</button>
       </div>
     </div>
   </ModalOverlay>;

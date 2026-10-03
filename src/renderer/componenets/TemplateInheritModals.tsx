@@ -108,7 +108,8 @@ export const FolderTemplateModal = observer(
       const id = await appState.pushDialogAsync({
         type: 'select',
         text: '어떤 전역 템플릿을 불러올까요? (현재 구성 전체를 1회 덮어씁니다)',
-        items: globals.map((t) => ({ text: t.name, value: t.id })),
+        // 고르는 즉시 현재 구성 전체를 덮어쓴다 — 선택지 모두 빨강(D1)
+        items: globals.map((t) => ({ text: t.name, value: t.id, danger: true })),
       });
       if (!id) return;
       try {
@@ -126,6 +127,7 @@ export const FolderTemplateModal = observer(
       if (!localId) return;
       appState.pushDialog({
         type: 'confirm',
+        danger: true,
         text: `"${folder}" 폴더의 기본 템플릿 지정을 해제하시겠습니까?\n(이 폴더 전용 템플릿 구성도 삭제됩니다)`,
         callback: async () => {
           await projectTemplateService.delete(localId);
@@ -169,6 +171,7 @@ export const FolderTemplateModal = observer(
             const tplId = localId;
             appState.pushDialog({
               type: 'confirm',
+              danger: true,
               text: `변경 내용을 상속 중인 자식 프로젝트 ${children.length}개에 덮어쓸까요? (템플릿에서 비어있는 영역은 건너뜁니다)`,
               callback: async () => {
                 await projectTemplateService.flushSave();

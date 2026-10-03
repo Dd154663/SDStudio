@@ -90,7 +90,7 @@ const StorageManageModal = observer(
                     className="text-sm btn back-red px-3 py-1 rounded"
                     onClick={() => projectSizeService.cancelBulk()}
                   >
-                    중지
+                    중단
                   </button>
                 </>
               ) : (

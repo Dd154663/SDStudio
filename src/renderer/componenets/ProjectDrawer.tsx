@@ -39,6 +39,13 @@ import {
   taskQueueService,
 } from '../models';
 import { appState } from '../models/AppService';
+import {
+  nameErrorMessage,
+  projectNameRules,
+  promptName,
+  suggestFolderCopyName,
+  validateName,
+} from '../models/nameInput';
 import { projectDeleteResultText, runTrashDelete } from '../models/deleteFlowRules';
 import { PROJECT_RETENTION_DAYS } from '../models/TrashService';
 import { backStackService } from '../models/BackStackService';
@@ -407,6 +414,8 @@ const ProjectDrawer = observer(() => {
   const [editingProject, setEditingProject] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editProjectValue, setEditProjectValue] = useState('');
+  // 인라인 프로젝트 이름 변경 처리 중(중복 확정 차단)
+  const projectRenameBusyRef = useRef(false);
   // 커스텀 컬러 피커 저장 디바운스 타이머 (훅 규칙: 조기 반환 이전에 선언)
   const customColorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 저장 공간 관리 모달
@@ -635,19 +644,14 @@ const ProjectDrawer = observer(() => {
   };
 
   const createProject = async (folder: string | null) => {
-    const name = await appState.pushDialogAsync({
-      type: 'input-confirm',
-      text: folder
+    // 이름 규칙·중복(어느 폴더에 있는지 포함)은 입력 창 안에서 검사(D2)
+    const name = await promptName({
+      title: folder
         ? `"${folder}" 폴더에 새 프로젝트 이름`
         : '신규 프로젝트 이름',
+      ...projectNameRules(sessionService),
     });
     if (!name) return;
-    if (sessionService.list().includes(name)) {
-      const conflictFolder = sessionService.getFolderOf(name);
-      const where = conflictFolder ? `"${conflictFolder}" 폴더에 ` : '';
-      appState.pushMessage(`같은 이름의 프로젝트가 ${where}이미 존재합니다.`);
-      return;
-    }
     // 폴더 기본 템플릿(조상 폴더 포함, 프로젝트 상속 v2)이 있으면 선택
     // 다이얼로그를 건너뛰고 자동 적용한다.
     const folderTpl = await templateService.resolveFolderTemplate(folder);
@@ -687,7 +691,10 @@ const ProjectDrawer = observer(() => {
       }
       close();
     } catch (e: any) {
-      appState.pushMessage(e.message || '프로젝트 생성에 실패했습니다.');
+      appState.pushMessage(
+        nameErrorMessage(e, 'project', name, '프로젝트 생성에 실패했습니다.'),
+        'error',
+      );
     }
   };
 
@@ -695,14 +702,17 @@ const ProjectDrawer = observer(() => {
     const hint = parentPath
       ? `"${sessionService.folderLeafName(parentPath)}" 안에 새 폴더 (예: 서브폴더 또는 상위/하위)`
       : '새 폴더 이름을 입력하세요 (예: 폴더 또는 상위/하위)';
-    const value = await appState.pushDialogAsync({
-      type: 'input-confirm',
-      text: hint,
+    // 「상위/하위」 경로 입력 허용 — 단계마다 경로 안전 검사, 같은 경로의 폴더는 창 안에서 거부(D2)
+    const toFull = (v: string) => (parentPath ? parentPath + '/' + v : v);
+    const value = await promptName({
+      title: hint,
+      kind: 'folder',
+      pathSafe: true,
+      allowSlash: true,
+      existing: (v) => sessionService.listFolders().includes(toFull(v)),
     });
     if (!value) return;
-    const fullPath = parentPath
-      ? parentPath + '/' + value.trim()
-      : value.trim();
+    const fullPath = toFull(value);
     try {
       await sessionService.createFolder(fullPath);
       setExpanded((prev) => {
@@ -787,6 +797,7 @@ const ProjectDrawer = observer(() => {
     if (prompt.kind === 'empty') {
       appState.pushDialog({
         type: 'confirm',
+        danger: true,
         text: prompt.text,
         callback: async () => {
           try {
@@ -802,9 +813,10 @@ const ProjectDrawer = observer(() => {
     appState.pushDialog({
       type: 'select',
       text: prompt.text,
+      // 두 선택지 모두 삭제(폴더만은 즉시 실행, 프로젝트 포함은 확인 1회 더) — 빨강(D1)
       items: [
-        { text: prompt.folderOnlyText, value: 'folderOnly' },
-        { text: prompt.withProjectsText, value: 'withProjects' },
+        { text: prompt.folderOnlyText, value: 'folderOnly', danger: true },
+        { text: prompt.withProjectsText, value: 'withProjects', danger: true },
       ],
       callback: async (value) => {
         if (value === 'folderOnly') {
@@ -817,6 +829,7 @@ const ProjectDrawer = observer(() => {
         } else if (value === 'withProjects') {
           appState.pushDialog({
             type: 'confirm',
+            danger: true,
             text: prompt.confirmWithProjectsText,
             callback: async () => {
               await appState.deleteFolderWithProjects(f);
@@ -830,9 +843,17 @@ const ProjectDrawer = observer(() => {
 
   const cloneFolder = async (sourceFolder: string) => {
     const leafName = sessionService.folderLeafName(sourceFolder);
-    const value = await appState.pushDialogAsync({
-      type: 'input-confirm',
-      text: `"${leafName}" 폴더를 복제합니다. 새 폴더 이름을 입력하세요.`,
+    const parent = sessionService.folderParentPath(sourceFolder);
+    const toTarget = (v: string) => (parent ? parent + '/' + v : v);
+    // 원본 이름 기반 제안값을 채워 연다(D2) — 같은 자리의 폴더와 겹치면 창 안에서 거부
+    const value = await promptName({
+      title: `"${leafName}" 폴더를 복제합니다. 새 폴더 이름을 입력하세요.`,
+      initial: suggestFolderCopyName(leafName, (v) =>
+        sessionService.listFolders().includes(toTarget(v)),
+      ),
+      kind: 'folder',
+      pathSafe: true,
+      existing: (v) => sessionService.listFolders().includes(toTarget(v)),
     });
     if (!value) return;
 
@@ -847,8 +868,7 @@ const ProjectDrawer = observer(() => {
     if (!mode) return;
 
     const withImages = mode === 'with-images';
-    const parent = sessionService.folderParentPath(sourceFolder);
-    const targetPath = parent ? parent + '/' + value.trim() : value.trim();
+    const targetPath = toTarget(value);
     try {
       appState.setProgressDialog({
         text: '폴더 복제 중...',
@@ -857,7 +877,7 @@ const ProjectDrawer = observer(() => {
       });
       await sessionService.cloneFolder(sourceFolder, targetPath, withImages);
       appState.setProgressDialog(undefined);
-      appState.pushMessage(`"${value.trim()}" 폴더로 복제되었습니다.`);
+      appState.pushMessage(`"${value}" 폴더로 복제되었습니다.`);
     } catch (e: any) {
       appState.setProgressDialog(undefined);
       appState.pushMessage(e.message || '폴더 복제에 실패했습니다.');
@@ -1467,24 +1487,39 @@ const ProjectDrawer = observer(() => {
     }
   };
 
+  // 인라인 이름 변경 확정(Enter·저장 버튼) — 실패하면 편집을 유지하고 입력을 보존한다(D2 인라인 규칙).
+  // 처리 중 다시 누르면 무시(중복 확정 차단 — projectRenameBusyRef).
   const commitProjectRename = async () => {
     const old = editingProject;
+    if (!old || projectRenameBusyRef.current) return;
     const newName = editProjectValue.trim();
-    setEditingProject(null);
-    if (!old || !newName || old === newName) return;
-    if (sessionService.list().includes(newName)) {
-      const conflictFolder = sessionService.getFolderOf(newName);
-      const where = conflictFolder ? `"${conflictFolder}" 폴더에 ` : '';
-      appState.pushMessage(`같은 이름의 프로젝트가 ${where}이미 존재합니다.`);
+    if (!newName || old === newName) {
+      // 빈 값·변경 없음 = 편집 종료(기존 동작)
+      setEditingProject(null);
       return;
     }
-    await sessionService.get(old);
+    const problem = validateName(newName, {
+      current: old,
+      ...projectNameRules(sessionService),
+    });
+    if (problem) {
+      appState.pushMessage(problem, 'error');
+      return;
+    }
+    projectRenameBusyRef.current = true;
     try {
+      await sessionService.get(old);
       await sessionService.renameProject(old, newName);
     } catch (e: any) {
-      appState.pushMessage(e.message || '프로젝트 이름변경에 실패했습니다.');
+      appState.pushMessage(
+        nameErrorMessage(e, 'project', newName, '프로젝트 이름변경에 실패했습니다.'),
+        'error',
+      );
       return;
+    } finally {
+      projectRenameBusyRef.current = false;
     }
+    setEditingProject((cur) => (cur === old ? null : cur));
     const sess = sessionService.getLoaded(newName);
     if (sess) {
       sess.name = newName;
@@ -1511,6 +1546,7 @@ const ProjectDrawer = observer(() => {
   const handleProjectDelete = async (name: string) => {
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: `프로젝트 "${name}"을(를) 삭제할까요?\n휴지통으로 이동되어 복구할 수 있습니다.`,
       callback: async () => {
         // 예외·다른 창 잠금(조용히 반환 — 목록에 남음)은 성공 토스트 대신 실패 안내(X4).
@@ -1534,6 +1570,7 @@ const ProjectDrawer = observer(() => {
   const handleBreakInheritance = (name: string) => {
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: '이 프로젝트가 더 이상 폴더 템플릿 변경을 따라가지 않습니다. 이미 적용된 구성은 유지됩니다.',
       callback: async () => {
         await templateService.breakInheritance(name);

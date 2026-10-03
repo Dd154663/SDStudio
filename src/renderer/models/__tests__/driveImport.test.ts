@@ -26,10 +26,11 @@ const appState: any = {
   pushMessage: jest.fn(),
   setProgressDialog: jest.fn(),
   // 실제 AppService.confirmAsync 와 같은 모양 — pushDialog 를 거쳐 확인=true/취소=false(2026-10-03 U1·X14)
-  confirmAsync: (opts: any) =>
+  // 객체형 confirmAsync({ text, ... })·위치형 confirmAsync(text, confirmText, { danger }) 모두(2026-10-03 D1)
+  confirmAsync: (a: any, confirmText?: string, o?: any) =>
     new Promise<boolean>((resolve) =>
       appState.pushDialog({
-        ...opts,
+        ...(typeof a === 'string' ? { text: a, confirmText, ...o } : a),
         type: 'confirm',
         callback: () => resolve(true),
         onCancel: () => resolve(false),

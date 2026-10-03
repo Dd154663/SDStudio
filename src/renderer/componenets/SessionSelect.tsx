@@ -32,7 +32,7 @@ import {
   trashDuplicateOrdinals,
   trashDuplicateSuffix,
 } from '../models/trashList';
-import { checkNewProjectName } from '../models/projectOverwrite';
+import { projectNameRules, promptName } from '../models/nameInput';
 
 // ===== ProjectTrashView 컴포넌트 (씬 휴지통 SceneTrashView 패턴 재사용) =====
 // 전역 오버레이(App.tsx)에서 마운트 — appState.projectTrashOpen 호스트가 사용한다.
@@ -80,18 +80,13 @@ export function ProjectTrashView() {
       const plan = planProjectRestore(item.name, active);
       let newName: string | undefined;
       if (plan.needsNewName && item.dir) {
-        const input = await appState.pushDialogAsync({
-          type: 'input-confirm',
-          text: `같은 이름의 프로젝트 "${item.name}"이(가) 이미 있습니다.\n복원할 프로젝트의 새 이름을 입력해 주세요.`,
-          inputValue: plan.defaultName,
+        // 이름 규칙·중복은 입력 창 안에서 검사(실패해도 창 유지 — D2)
+        const typed = await promptName({
+          title: `같은 이름의 프로젝트 "${item.name}"이(가) 이미 있습니다.\n복원할 프로젝트의 새 이름을 입력해 주세요.`,
+          initial: plan.defaultName,
+          ...projectNameRules(sessionService),
         });
-        const typed = (input ?? '').trim();
         if (!typed) return;
-        const problem = checkNewProjectName(typed, sessionService.list());
-        if (problem) {
-          appState.pushMessage(problem);
-          return;
-        }
         newName = typed;
       }
       await trashService.restoreProject(item.name, { dir: item.dir, newName });
@@ -114,6 +109,8 @@ export function ProjectTrashView() {
     const shown = displayName(item);
     appState.pushDialog({
       type: 'confirm',
+      danger: 'permanent',
+      confirmText: '영구 삭제',
       text: `"${shown}" 프로젝트를 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
       callback: async () => {
         // 일괄 작업 잠금(2026-07-18): 프로젝트 폴더 삭제는 무거워(수천 파일 가능)
@@ -139,6 +136,8 @@ export function ProjectTrashView() {
   const handleEmptyAll = () => {
     appState.pushDialog({
       type: 'confirm',
+      danger: 'permanent',
+      confirmText: '영구 삭제',
       text: `휴지통의 모든 프로젝트(${deletedProjects.length}개)를 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
       callback: async () => {
         // 일괄 작업 잠금(2026-07-18): 저사양(특히 모바일) 보호 — finally 해제 보장

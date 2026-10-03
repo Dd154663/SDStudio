@@ -109,6 +109,7 @@ export class BatchProcessService {
     const deleteScenes = async (selected: GenericScene[]) => {
       appState.pushDialog({
         type: 'confirm',
+        danger: true,
         text: `정말로 선택한 ${selected.length}개의 씬을 삭제하시겠습니까? (휴지통으로 이동)`,
         callback: async () => {
           // 한 건이 실패(타 창 잠금·파일 잠금 등)해도 나머지는 계속 처리하고 결과를 숨기지 않는다.
@@ -221,6 +222,7 @@ export class BatchProcessService {
             if (menu === 'all') {
               appState.pushDialog({
                 type: 'confirm',
+                danger: true,
                 text: `정말로 모든 이미지를 삭제하시겠습니까? (이미지 휴지통으로 이동, ${IMAGE_RETENTION_DAYS}일 보관)`,
                 callback: () => deleteAndReport((_scene, paths) => paths),
               });
@@ -243,6 +245,7 @@ export class BatchProcessService {
             } else if (menu === 'fav') {
               appState.pushDialog({
                 type: 'confirm',
+                danger: true,
                 text: `정말로 즐겨찾기 외 모든 이미지를 삭제하시겠습니까? (이미지 휴지통으로 이동, ${IMAGE_RETENTION_DAYS}일 보관)`,
                 callback: () =>
                   deleteAndReport((scene, paths) =>
@@ -255,6 +258,7 @@ export class BatchProcessService {
       } else if (value === 'removeAllFav') {
         appState.pushDialog({
           type: 'confirm',
+          danger: true,
           text: '정말로 모든 즐겨찾기를 해제하겠습니까?',
           callback: () => {
             for (const scene of selected) {
@@ -531,6 +535,7 @@ export class BatchProcessService {
                     if (selected.length === 0) return;
                     appState.pushDialog({
                       type: 'confirm',
+                      danger: true,
                       text: `원본 '${sourceName}'의 내용을 선택한 ${selected.length}개 씬에 덮어씌우시겠습니까?`,
                       callback: () => {
                         if (sourceScene.type === 'scene' && type === 'scene') {
@@ -741,7 +746,7 @@ export class BatchProcessService {
       ? '원본 PNG는 삭제됩니다.'
       : '원본 PNG는 복구 가능한 휴지통으로 이동합니다.';
     const warn = platform.isMobile
-      ? '\n⚠ 모바일에서는 기기 사양에 따라 부하가 크고 매우 오래 걸릴 수 있습니다. 변환 중 취소하면 그때까지 변환된 분량은 안전하게 저장됩니다.'
+      ? '\n⚠ 모바일에서는 기기 사양에 따라 부하가 크고 매우 오래 걸릴 수 있습니다. 변환 중 중단하면 그때까지 변환된 분량은 안전하게 저장됩니다.'
       : '';
     return `${head}(품질 ${quality})로 변환합니다.\n프롬프트 메타데이터는 보존되며, ${origin}${warn} 계속할까요?`;
   }
@@ -774,6 +779,7 @@ export class BatchProcessService {
 
         appState.pushDialog({
           type: 'confirm',
+          danger: true,
           text: this.webpConfirmText(
             `선택한 ${selected.length}개 씬의 PNG 이미지를 WebP`,
             quality,
@@ -815,6 +821,7 @@ export class BatchProcessService {
 
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: this.webpConfirmText(
         `프로젝트 [${name}]의 모든 PNG 이미지(씬+인페인트)를 WebP`,
         quality,

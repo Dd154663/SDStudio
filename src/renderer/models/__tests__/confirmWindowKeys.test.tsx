@@ -34,7 +34,12 @@ jest.mock('../../componenets/UtilComponents', () => ({
 
 import ConfirmWindow from '../../componenets/ConfirmWindow';
 import { backStackService } from '../BackStackService';
-import { confirmViaDialog, confirmEnterAction } from '../confirmKeys';
+import {
+  confirmViaDialog,
+  confirmEnterAction,
+  isCancelLikeItem,
+  withoutCancelLikeItems,
+} from '../confirmKeys';
 
 let root: Root;
 let container: HTMLDivElement;
@@ -80,6 +85,155 @@ describe('confirmEnterAction (순수 규칙)', () => {
     expect(confirmEnterAction('dropdown', { dropdownMenuOpen: true })).toBe('pass');
     expect(confirmEnterAction('dropdown', { dropdownChosen: false })).toBe('ignore');
     expect(confirmEnterAction('dropdown', { dropdownChosen: true })).toBe('confirm');
+  });
+  test('위험도: 없음·true 는 Enter=확인, permanent 만 Enter 무시(D1)', () => {
+    expect(confirmEnterAction('confirm', { danger: false })).toBe('confirm');
+    expect(confirmEnterAction('confirm', { danger: true })).toBe('confirm');
+    expect(confirmEnterAction('confirm', { danger: 'permanent' })).toBe('ignore');
+    // permanent 여도 IME·창 안 버튼은 종전대로 양보
+    expect(confirmEnterAction('confirm', { danger: 'permanent', onDialogButton: true })).toBe('pass');
+  });
+});
+
+describe('내장 취소 단일화(D3)', () => {
+  test('「취소」류 항목 판정', () => {
+    expect(isCancelLikeItem({ text: '취소', value: 'x' })).toBe(true);
+    expect(isCancelLikeItem({ text: ' 나중에 ', value: 'x' })).toBe(true);
+    expect(isCancelLikeItem({ text: '닫기', value: 'x' })).toBe(true);
+    expect(isCancelLikeItem({ text: '아니요', value: 'x' })).toBe(true);
+    expect(isCancelLikeItem({ text: '무엇이든', value: 'cancel' })).toBe(true);
+    expect(isCancelLikeItem({ text: '취소된 항목 보기', value: 'x' })).toBe(false);
+    expect(isCancelLikeItem({ text: '거절', value: 'decline' })).toBe(false);
+    const items = [{ text: 'A', value: 'a' }];
+    expect(withoutCancelLikeItems(items)).toBe(items);
+    expect(withoutCancelLikeItems(undefined)).toEqual([]);
+  });
+
+  test('select: 「취소」 항목은 그리지 않고 경고, 내장 취소 하나만(cancelText 적용)', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const onCancel = jest.fn();
+      await act(async () =>
+        push({
+          type: 'select',
+          text: '고르세요',
+          items: [
+            { text: 'A', value: 'a' },
+            { text: '취소', value: 'cancel' },
+          ],
+          cancelText: '나중에',
+          onCancel,
+        }),
+      );
+      const labels = Array.from(document.querySelectorAll('.confirm-window button')).map(
+        (b) => b.textContent,
+      );
+      expect(labels).toEqual(['A', '나중에']);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const later = Array.from(document.querySelectorAll('.confirm-window button')).find(
+        (b) => b.textContent === '나중에',
+      ) as HTMLButtonElement;
+      await act(async () => later.click());
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      expect(state.dialogs.length).toBe(0);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test('select: danger 항목만 빨강', async () => {
+    await act(async () =>
+      push({
+        type: 'select',
+        text: '처리 방식',
+        items: [
+          { text: '건너뛰기', value: 'skip' },
+          { text: '덮어쓰기', value: 'overwrite', danger: true },
+        ],
+      }),
+    );
+    const btn = (label: string) =>
+      Array.from(document.querySelectorAll('.confirm-window button')).find(
+        (b) => b.textContent === label,
+      ) as HTMLButtonElement;
+    expect(btn('건너뛰기').className).toContain('back-sky');
+    expect(btn('덮어쓰기').className).toContain('back-red');
+  });
+});
+
+describe('ConfirmWindow 위험도 표시·Enter(D1)', () => {
+  const confirmButton = () =>
+    document.querySelector('.confirm-window button') as HTMLButtonElement;
+
+  test('기본 confirm 은 중립 파랑, danger 면 빨강 — [확인][취소] 순서', async () => {
+    await act(async () => push({ type: 'confirm', text: '진행?' }));
+    expect(confirmButton().className).toContain('back-sky');
+    expect(
+      Array.from(document.querySelectorAll('.confirm-window button')).map((b) => b.textContent),
+    ).toEqual(['확인', '취소']);
+    await key(document.body, 'Escape');
+    await act(async () => push({ type: 'confirm', text: '삭제?', danger: true }));
+    expect(confirmButton().className).toContain('back-red');
+  });
+
+  test("danger: 'permanent' 는 Enter 로 확정하지 않는다(창 유지, 아래로 새지 않음) — 버튼은 동작", async () => {
+    const callback = jest.fn();
+    await act(async () =>
+      push({
+        type: 'confirm',
+        text: '영구 삭제?',
+        danger: 'permanent',
+        confirmText: '영구 삭제',
+        callback,
+      }),
+    );
+    expect(confirmButton().className).toContain('back-red');
+    const leak = jest.fn();
+    window.addEventListener('keydown', leak);
+    await key(document.body, 'Enter');
+    window.removeEventListener('keydown', leak);
+    expect(callback).not.toHaveBeenCalled();
+    expect(leak).not.toHaveBeenCalled();
+    expect(state.dialogs.length).toBe(1);
+    await act(async () => confirmButton().click());
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(state.dialogs.length).toBe(0);
+  });
+
+  test('requireClick: 중립(파랑)이어도 Enter 무시, 버튼 클릭으로만 확정', async () => {
+    expect(confirmEnterAction('confirm', { requireClick: true })).toBe('ignore');
+    const callback = jest.fn();
+    await act(async () =>
+      push({ type: 'confirm', text: 'Anlas 소비?', requireClick: true, callback }),
+    );
+    expect(confirmButton().className).toContain('back-sky');
+    await key(document.body, 'Enter');
+    expect(callback).not.toHaveBeenCalled();
+    expect(state.dialogs.length).toBe(1);
+    await act(async () => confirmButton().click());
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(state.dialogs.length).toBe(0);
+  });
+
+  test('danger: true 는 Enter = 확인 유지', async () => {
+    const callback = jest.fn();
+    await act(async () => push({ type: 'confirm', text: '휴지통으로?', danger: true, callback }));
+    await key(document.body, 'Enter');
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+
+  test('확인 콜백이 새 창을 쌓으면 그 창이 맨 위에 남는다(pop → callback 순서)', async () => {
+    await act(async () =>
+      push({
+        type: 'confirm',
+        text: '1차',
+        callback: () => push({ type: 'confirm', text: '2차' }),
+      }),
+    );
+    await key(document.body, 'Enter');
+    expect(state.dialogs.length).toBe(1);
+    expect(state.dialogs[0].text).toBe('2차');
+    await key(document.body, 'Escape');
   });
 });
 
@@ -282,5 +436,96 @@ describe('confirmViaDialog (appState.confirmAsync 본체)', () => {
     });
     await act(async () => btn('삭제').click());
     await expect(p).resolves.toBe(true);
+  });
+});
+
+describe('입력 검증 validate(D2 이름 입력 규칙)', () => {
+  const textInput = () =>
+    document.querySelector('.confirm-window input[type="text"]') as HTMLInputElement;
+  const okButton = () =>
+    Array.from(document.querySelectorAll('.confirm-window button')).find(
+      (b) => b.textContent === '확인',
+    ) as HTMLButtonElement;
+  const setInput = (el: HTMLInputElement | HTMLTextAreaElement, value: string) =>
+    act(async () => {
+      const proto = Object.getPrototypeOf(el);
+      Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(el, value);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+  test('오류면 창을 닫지 않고 입력칸 아래에 표시·입력 보존, 고치면 오류가 지워지고 확인 = 콜백', async () => {
+    const callback = jest.fn();
+    const validate = jest.fn((v: string) => (v === 'bad' ? '쓸 수 없는 이름' : null));
+    await act(async () =>
+      push({ type: 'input-confirm', text: '이름', inputValue: 'bad', validate, callback }),
+    );
+    await key(textInput(), 'Enter');
+    expect(validate).toHaveBeenCalledWith('bad');
+    expect(callback).not.toHaveBeenCalled();
+    expect(state.dialogs.length).toBe(1);
+    expect(textInput().value).toBe('bad');
+    expect(document.querySelector('[data-input-error]')?.textContent).toBe('쓸 수 없는 이름');
+    expect(document.activeElement).toBe(textInput());
+    await setInput(textInput(), 'good');
+    expect(document.querySelector('[data-input-error]')).toBeNull();
+    await act(async () => okButton().click());
+    expect(callback).toHaveBeenCalledWith('good', '이름');
+    expect(state.dialogs.length).toBe(0);
+  });
+
+  test('비동기 검증 중에는 [확인]·Enter 중복을 막는다', async () => {
+    const callback = jest.fn();
+    let release!: (v: string | null) => void;
+    const validate = jest.fn(
+      () => new Promise<string | null>((resolve) => (release = resolve)),
+    );
+    await act(async () =>
+      push({ type: 'input-confirm', text: '이름', inputValue: 'a', validate, callback }),
+    );
+    await key(textInput(), 'Enter');
+    expect(okButton().disabled).toBe(true);
+    await key(textInput(), 'Enter');
+    await act(async () => okButton().click());
+    expect(validate).toHaveBeenCalledTimes(1);
+    await act(async () => release(null));
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(state.dialogs.length).toBe(0);
+  });
+
+  test('검증 중 Esc 로 취소하면 결과가 와도 콜백을 부르지 않는다', async () => {
+    const callback = jest.fn();
+    const onCancel = jest.fn();
+    let release!: (v: string | null) => void;
+    const validate = () => new Promise<string | null>((resolve) => (release = resolve));
+    await act(async () =>
+      push({ type: 'input-confirm', text: '이름', inputValue: 'a', validate, callback, onCancel }),
+    );
+    await key(textInput(), 'Enter');
+    await key(document.body, 'Escape');
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    await act(async () => release(null));
+    expect(callback).not.toHaveBeenCalled();
+    expect(state.dialogs.length).toBe(0);
+  });
+
+  test('textarea-confirm 도 버튼 확인 때 검증(창 유지·오류 표시)', async () => {
+    const callback = jest.fn();
+    await act(async () =>
+      push({
+        type: 'textarea-confirm',
+        text: '여러 이름',
+        validate: (v: string) => (v.includes('x') ? '2번째 줄 — 안 됨' : null),
+        callback,
+      }),
+    );
+    const ta = document.querySelector('.confirm-window textarea') as HTMLTextAreaElement;
+    await setInput(ta, 'a\nx');
+    await act(async () => okButton().click());
+    expect(callback).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-input-error]')?.textContent).toBe('2번째 줄 — 안 됨');
+    expect(ta.value).toBe('a\nx');
+    await setInput(ta, 'a\nb');
+    await act(async () => okButton().click());
+    expect(callback).toHaveBeenCalledWith('a\nb', '여러 이름');
   });
 });

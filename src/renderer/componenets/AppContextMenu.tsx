@@ -494,6 +494,7 @@ export const AppContextMenu = observer(() => {
         const kindLabel = ctx.scene.type === 'inpaint' ? '변형 씬' : '씬';
         appState.pushDialog({
           type: 'confirm',
+          danger: true,
           text: `선택한 ${selectedCount}개 ${kindLabel}을 삭제할까요? (휴지통으로 이동)`,
           callback: async () => {
             const { trashService } = await import('../models');
@@ -529,6 +530,7 @@ export const AppContextMenu = observer(() => {
       } else {
         appState.pushDialog({
           type: 'confirm',
+          danger: true,
           text: '정말로 삭제하시겠습니까? (휴지통으로 이동)',
           callback: async () => {
             const { trashService } = await import('../models');
@@ -650,6 +652,7 @@ export const AppContextMenu = observer(() => {
     // 여러 씬 일괄 삭제는 「다시 묻지 않음」과 무관하게 항상 확인한다(X12)
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: `${preview.scenes.length}개 씬에서 ${label}${preview.totalImages}장의 이미지를 삭제할까요? (이미지 휴지통으로 이동, ${IMAGE_RETENTION_DAYS}일 보관)`,
       callback: doBatchDelete,
     });
@@ -724,6 +727,7 @@ export const AppContextMenu = observer(() => {
     }
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text:
         count > 1
           ? selectedImagesDeleteText(count, IMAGE_RETENTION_DAYS)
@@ -884,6 +888,7 @@ export const AppContextMenu = observer(() => {
     }
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: '정말로 삭제하시겠습니까?',
       callback: async () => {
         const curSession = appState.curSession;
@@ -939,6 +944,7 @@ export const AppContextMenu = observer(() => {
     }
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: '정말로 삭제하시겠습니까?',
       showSkipConfirm: true,
       callback: doDelete,

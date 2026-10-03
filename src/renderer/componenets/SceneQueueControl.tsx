@@ -112,6 +112,7 @@ import {
 } from './ToolbarDnd';
 import { portableToolbarButtons } from './PortableToolbarButtons';
 import { appState, SceneSelectorItem } from '../models/AppService';
+import { splitNameLines, validateNameLines } from '../models/nameInput';
 import {
   createInpaintPreset,
   prepareMirrorCanvas,
@@ -1868,37 +1869,26 @@ const QueueControl = observer(
     }, [focusedSceneIndex, getFilteredScenes]);
 
     const addScene = () => {
+      // 줄마다 이름 규칙(경로 안전·같은 종류 씬 중복·입력 안 중복)을 창 안에서 검사 — 실패해도 창 유지(D2)
+      const checkLines = (value: string) =>
+        validateNameLines(value, {
+          kind: 'scene',
+          pathSafe: true,
+          existing: (n) => curSession.hasScene(type, n),
+        });
       appState.pushDialog({
         type: 'textarea-confirm',
         text: '신규 씬 이름을 입력해주세요\n(줄바꿈으로 여러 씬을 동시에 추가할 수 있습니다)',
         inputValue: '씬 이름 (한 줄에 하나씩)',
+        validate: checkLines,
         callback: async (inputValue) => {
           if (!inputValue) return;
-          const names = inputValue
-            .split('\n')
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0);
+          const names = splitNameLines(inputValue);
           if (names.length === 0) return;
-
-          const scenes = curSession.getScenes(type);
-          const existingNames = new Set(scenes.map((x) => x.name));
-          const duplicates = names.filter((n) => existingNames.has(n));
-          const seen = new Set<string>();
-          const inputDups: string[] = [];
-          for (const n of names) {
-            if (seen.has(n)) inputDups.push(n);
-            else seen.add(n);
-          }
-          if (duplicates.length > 0) {
-            appState.pushMessage(
-              `이미 존재하는 씬 이름: ${duplicates.join(', ')}`,
-            );
-            return;
-          }
-          if (inputDups.length > 0) {
-            appState.pushMessage(
-              `중복 입력된 이름: ${[...new Set(inputDups)].join(', ')}`,
-            );
+          // 창이 닫힌 뒤 다시 확인(그사이 같은 이름 씬이 생겼으면 추가하지 않는다)
+          const problem = checkLines(inputValue);
+          if (problem) {
+            appState.pushMessage(problem, 'error');
             return;
           }
 

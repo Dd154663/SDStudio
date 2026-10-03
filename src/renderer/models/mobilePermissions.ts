@@ -11,7 +11,9 @@ import { appState } from './AppService';
 // 권한은 시스템 창을 2번 거부하면 영구 차단되어 앱에서 복구할 수 없다.
 //
 // 동작 규칙:
-//  - 모달에서 '거절' → config 에 거절 플래그 저장, 이후 다시 안내하지 않음
+//  - 모달에서 '거절' 버튼 → config 에 거절 플래그 저장, 이후 다시 안내하지 않음
+//  - '나중에'(내장 취소)·Esc·뒤로 가기 → 저장하지 않음 → 다음 부팅 때 재안내(2026-10-03 D3 — 예전에는
+//    Esc·뒤로 가기도 영구 거절로 저장돼, 실수로 닫으면 다시 안내받을 수 없었다)
 //  - 모달에서 '확인' 후 시스템 창에서 거부 → 플래그를 세우지 않음 → 다음 부팅 때 재안내
 
 interface PermissionStep {
@@ -30,23 +32,23 @@ async function runStep(step: PermissionStep): Promise<void> {
     return; // 상태 조회가 안 되는 환경(구버전 OS 등)에서는 조용히 통과
   }
 
-  const accepted = await new Promise<boolean>((resolve) => {
-    appState.pushDialog({
-      type: 'confirm',
-      green: true,
-      text: step.text,
-      confirmText: '확인',
-      cancelText: '거절',
-      callback: () => resolve(true),
-      onCancel: () => resolve(false),
-    });
+  // [확인] [거절] + 내장 취소 「나중에」. 취소·Esc·뒤로 가기는 undefined(=나중에, 저장 없음).
+  const choice = await appState.pushDialogAsync({
+    type: 'select',
+    text: step.text,
+    items: [
+      { text: '확인', value: 'accept' },
+      { text: '거절', value: 'decline' },
+    ],
+    cancelText: '나중에',
   });
 
-  if (!accepted) {
+  if (choice === 'decline') {
     config[step.declinedKey] = true;
     await backend.setConfig(config);
     return;
   }
+  if (choice !== 'accept') return;
   try {
     await step.request();
   } catch {}
@@ -61,7 +63,7 @@ export async function runMobilePermissionOnboarding(): Promise<void> {
       '🔔 알림 권한 안내\n\n' +
       '백그라운드에서 이미지 생성을 이어가려면 진행 상태 알림 권한이 필요합니다. ' +
       '권한이 없으면 화면을 끄거나 다른 앱으로 이동했을 때 생성이 중단될 수 있습니다.\n\n' +
-      "'확인'을 누르면 권한 요청 창이 표시됩니다.\n'거절'을 누르면 다시 안내하지 않습니다.",
+      "'확인'을 누르면 권한 요청 창이 표시됩니다.\n'거절'을 누르면 다시 안내하지 않습니다.\n'나중에'를 누르면 다음 실행 때 다시 안내합니다.",
     isGranted: async () =>
       (await BackgroundMode.checkNotificationsPermission()).display ===
       'granted',
@@ -76,7 +78,7 @@ export async function runMobilePermissionOnboarding(): Promise<void> {
       '🔋 백그라운드 동작 안내\n\n' +
       '장시간 생성이 도중에 끊기지 않으려면 배터리 최적화 대상에서 SDStudio 를 ' +
       '제외해야 합니다.\n\n' +
-      "'확인'을 누르면 시스템 허용 창이 표시됩니다.\n'거절'을 누르면 다시 안내하지 않습니다.",
+      "'확인'을 누르면 시스템 허용 창이 표시됩니다.\n'거절'을 누르면 다시 안내하지 않습니다.\n'나중에'를 누르면 다음 실행 때 다시 안내합니다.",
     isGranted: async () =>
       (await BackgroundMode.checkBatteryOptimizations()).disabled,
     request: async () => {

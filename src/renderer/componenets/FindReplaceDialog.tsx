@@ -454,6 +454,7 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
                     .confirmAsync({
                       text: `${results.length}개 항목을 변환합니다.\n「${searchText}」 → 「${replaceText}」${replaceText ? '' : ' (삭제)'}`,
                       confirmText: '모두 변환',
+                      danger: true,
                     })
                     .then((ok) => {
                       if (ok) void doReplaceAll();

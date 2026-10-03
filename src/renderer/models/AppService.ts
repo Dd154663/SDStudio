@@ -24,6 +24,7 @@ import {
 import { setAppState } from './appStateRef';
 import { resolveToastKind, ToastKind } from './toastKind';
 import { confirmViaDialog } from './confirmKeys';
+import { NAME_INPUT_TEXT, nameErrorMessage, projectNameRules, promptName } from './nameInput';
 import {
   overlappingSceneNames,
   pasteResultText,
@@ -39,7 +40,7 @@ import { isOutputImageFile, isImportImageMime } from './imageFormats';
 import { projectPath } from './projectPaths';
 import { V2_SHEET_CLOSE_EVENT } from './uiEvents';
 import { ARTIST_LIBRARY_TAB_ACTION } from './ArtistLibraryService';
-import { Dialog } from '../componenets/ConfirmWindow';
+import { Dialog, DialogItem } from '../componenets/ConfirmWindow';
 import { cropMirrorResultFromDataUri, dataUriToBase64, deleteImageFiles } from './ImageService';
 import {
   createImageWithText,
@@ -129,6 +130,10 @@ export interface SceneSelectorItem {
   scenes?: GenericScene[];
 }
 
+/** appState.confirmAsync 의 객체형 인자 — confirm(또는 yes-only) 창의 표시 옵션. */
+export type ConfirmAsyncOptions = Omit<Dialog, 'type' | 'callback' | 'onCancel'> & {
+  type?: 'confirm' | 'yes-only';
+};
 
 export class AppState {
   // 부팅 완료 여부 — bootstrapApp() 이 모든 준비(설정·세션 스캔·로컬 데이터 로드)를
@@ -544,34 +549,31 @@ export class AppState {
   @action
   addSession() {
     (async () => {
-      this.pushDialog({
-        type: 'input-confirm',
-        text: '신규 프로젝트 이름을 입력해주세요',
-        callback: async (inputValue) => {
-          if (inputValue) {
-            if (sessionService.list().includes(inputValue)) {
-              this.pushMessage('이미 존재하는 프로젝트 이름입니다.');
-              return;
-            }
-            const tplId = await projectTemplateService.pickForCreate();
-            if (tplId === undefined) return; // 사용자가 템플릿 선택을 취소
-            try {
-              if (tplId) {
-                await sessionService.createSessionFromProjectTemplate(
-                  tplId,
-                  inputValue,
-                );
-              } else {
-                await sessionService.add(inputValue);
-              }
-              const newSession = (await sessionService.get(inputValue))!;
-              this.curSession = newSession;
-            } catch (e: any) {
-              this.pushMessage(e.message || '프로젝트 생성에 실패했습니다.');
-            }
-          }
-        },
+      // 이름 규칙·중복은 입력 창 안에서 검사(models/nameInput — 실패해도 창 유지)
+      const inputValue = await promptName({
+        title: '신규 프로젝트 이름을 입력해주세요',
+        ...projectNameRules(sessionService),
       });
+      if (!inputValue) return;
+      const tplId = await projectTemplateService.pickForCreate();
+      if (tplId === undefined) return; // 사용자가 템플릿 선택을 취소
+      try {
+        if (tplId) {
+          await sessionService.createSessionFromProjectTemplate(
+            tplId,
+            inputValue,
+          );
+        } else {
+          await sessionService.add(inputValue);
+        }
+        const newSession = (await sessionService.get(inputValue))!;
+        this.curSession = newSession;
+      } catch (e: any) {
+        this.pushMessage(
+          nameErrorMessage(e, 'project', inputValue, '프로젝트 생성에 실패했습니다.'),
+          'error',
+        );
+      }
     })();
   }
 
@@ -580,6 +582,7 @@ export class AppState {
   deleteSession() {
     this.pushDialog({
       type: 'confirm',
+      danger: true,
       text: '정말로 이 프로젝트를 삭제하시겠습니까? (휴지통으로 이동)',
       callback: async () => {
         const name = this.curSession?.name;
@@ -954,15 +957,32 @@ export class AppState {
 
   /**
    * 확인 창(confirm)을 띄워 [확인]=true / [취소]·Esc·뒤로 가기=false 로 돌려준다(2026-10-03 U1·X14).
-   * pushDialogAsync 는 confirm 의 확인/취소를 구분하지 못해(둘 다 undefined) 같은 askConfirm 이 6곳에 복제돼
-   * 있었다 — 이 하나를 쓴다. 기본 [확인] 은 빨강(기존 confirm 과 같음), green: true 면 파랑.
+   * 확인/취소를 구분하는 확인은 이것 하나만 쓴다(손으로 만든 Promise·askConfirm 래퍼 금지 — specGuard).
+   * 두 가지 호출형: confirmAsync({ text, confirmText, danger, cancelText, ... }) 또는
+   * confirmAsync(text, confirmText?, { danger?, cancelText?, requireClick? }).
+   * 기본 [확인] 은 중립 파랑, danger: true 면 빨강, danger: 'permanent' 면 빨강+Enter 무시(2026-10-03 D1).
+   * requireClick: true 는 색과 별개로 Enter 무시(버튼 클릭·탭 필수 — 생성 도중 비동기로 뜨는 과금 확인).
    */
+  confirmAsync(opts: ConfirmAsyncOptions): Promise<boolean>;
   confirmAsync(
-    opts: Omit<Dialog, 'type' | 'callback' | 'onCancel'> & {
-      type?: 'confirm' | 'yes-only';
-    },
+    text: string,
+    confirmText?: string,
+    opts?: Pick<Dialog, 'danger' | 'cancelText' | 'requireClick'>,
+  ): Promise<boolean>;
+  confirmAsync(
+    textOrOpts: string | ConfirmAsyncOptions,
+    confirmText?: string,
+    opts?: Pick<Dialog, 'danger' | 'cancelText' | 'requireClick'>,
   ): Promise<boolean> {
-    return confirmViaDialog<Dialog>((d) => this.pushDialog(d), opts);
+    const full: ConfirmAsyncOptions =
+      typeof textOrOpts === 'string'
+        ? {
+            text: textOrOpts,
+            ...(confirmText !== undefined ? { confirmText } : {}),
+            ...opts,
+          }
+        : textOrOpts;
+    return confirmViaDialog<Dialog>((d) => this.pushDialog(d), full);
   }
 
   setProgressDialog(dialog: ProgressDialog | undefined) {
@@ -1053,25 +1073,25 @@ export class AppState {
               text: '프로젝트를 임포트 했습니다',
             });
           } else {
-            this.pushDialog({
-              type: 'input-confirm',
-              text: '프로젝트를 임포트 합니다. 새 프로젝트 이름을 입력하세요.',
-              callback: async (value) => {
-                if (!value || value === '') {
-                  return;
-                }
-                try {
-                  await sessionService.importSessionShallow(
-                    json as ISession,
-                    value,
-                  );
-                  const newSession = (await sessionService.get(value))!;
-                  this.curSession = newSession;
-                } catch (e) {
-                  this.pushMessage('이미 존재하는 프로젝트 이름입니다.');
-                }
-              },
+            const value = await promptName({
+              title: '프로젝트를 임포트 합니다. 새 프로젝트 이름을 입력하세요.',
+              ...projectNameRules(sessionService),
             });
+            if (!value) return;
+            try {
+              await sessionService.importSessionShallow(
+                json as ISession,
+                value,
+              );
+              const newSession = (await sessionService.get(value))!;
+              this.curSession = newSession;
+            } catch (e) {
+              // 예전에는 모든 예외를 「이미 존재」로 보였다 — 실제 사유를 보인다(D2)
+              this.pushMessage(
+                nameErrorMessage(e, 'project', value, '프로젝트를 임포트하지 못했습니다.'),
+                'error',
+              );
+            }
           }
         };
         if (!this.curSession) {
@@ -1103,13 +1123,10 @@ export class AppState {
                   (n) => cur.scenes.has(n),
                 );
                 if (overlapping.length > 0) {
-                  const go = await new Promise<boolean>((resolve) => {
-                    this.pushDialog({
-                      type: 'confirm',
-                      text: sceneImportOverwriteText(overlapping),
-                      callback: () => resolve(true),
-                      onCancel: () => resolve(false),
-                    });
+                  const go = await this.confirmAsync({
+                    text: sceneImportOverwriteText(overlapping),
+                    confirmText: '덮어쓰기',
+                    danger: 'permanent',
                   });
                   if (!go) return;
                   // 확인 창이 떠 있는 동안 프로젝트가 바뀌었으면 적용하지 않는다
@@ -1158,16 +1175,18 @@ export class AppState {
           handleAddSession(converted);
         };
         if (pieceNames.length > 0) {
-          this.pushDialog({
-            type: 'input-confirm',
-            text: 'NAIS 프리셋에서 조각이 감지되었습니다 (' + pieceNames.join(', ') + '). 사용할 프롬프트조각 라이브러리 이름을 입력해 주세요.',
-            callback: (value) => {
-              if (!value || value === '') {
-                doConvert();
-              } else {
-                doConvert(value);
-              }
-            },
+          // 선택 입력 — 비워 두고 확인하면 라이브러리 없이 변환(취소는 아무것도 하지 않음, 기존 동작)
+          void promptName({
+            title: 'NAIS 프리셋에서 조각이 감지되었습니다 (' + pieceNames.join(', ') + '). 사용할 프롬프트조각 라이브러리 이름을 입력해 주세요.',
+            kind: 'pieceGroup',
+            allowEmpty: true,
+          }).then((value) => {
+            if (value === undefined) return;
+            if (!value) {
+              doConvert();
+            } else {
+              doConvert(value);
+            }
           });
         } else {
           doConvert();
@@ -1205,23 +1224,23 @@ export class AppState {
           if (srcOnly.length > 0) detail += `임포트에만 있는 조각(${srcOnly.length}개): ${srcOnly.slice(0, 5).join(', ')}${srcOnly.length > 5 ? ' ...' : ''}\n`;
           if (tgtOnly.length > 0) detail += `기존에만 있는 조각(${tgtOnly.length}개): ${tgtOnly.slice(0, 5).join(', ')}${tgtOnly.length > 5 ? ' ...' : ''}\n`;
 
-          const items: { text: string; value: string }[] = [];
+          // 취소는 창의 내장 취소 하나(D3). 덮어쓰는 선택지는 빨강(D1).
+          const items: DialogItem[] = [];
           if (overlap.length > 0) {
-            items.push({ text: '병합 (겹치는 조각 덮어쓰기)', value: 'merge-overwrite' });
+            items.push({ text: '병합 (겹치는 조각 덮어쓰기)', value: 'merge-overwrite', danger: true });
             items.push({ text: '병합 (겹치는 조각 건너뛰기)', value: 'merge-skip' });
           } else {
             items.push({ text: '병합 (양쪽 조각 모두 유지)', value: 'merge-skip' });
           }
-          items.push({ text: '통째로 덮어쓰기 (기존 조각 모두 교체)', value: 'overwrite' });
+          items.push({ text: '통째로 덮어쓰기 (기존 조각 모두 교체)', value: 'overwrite', danger: true });
           items.push({ text: '새 이름으로 임포트', value: 'rename' });
-          items.push({ text: '취소', value: 'cancel' });
 
           this.pushDialog({
             type: 'select',
             text: detail,
             items,
             callback: (action) => {
-              if (!action || action === 'cancel') return;
+              if (!action) return;
               if (action === 'merge-overwrite' || action === 'merge-skip') {
                 const overwriteDuplicates = action === 'merge-overwrite';
                 let added = 0, overwritten = 0, skipped = 0;
@@ -1251,20 +1270,21 @@ export class AppState {
                 afterImport();
                 this.pushMessage(`"${json.name}" 조각그룹을 덮어썼습니다`);
               } else if (action === 'rename') {
-                this.pushDialog({
-                  type: 'input-confirm',
-                  text: '새 조각그룹 이름을 입력하세요',
-                  callback: (newName) => {
-                    if (!newName) return;
-                    if (targetLibrary.has(newName)) {
-                      this.pushMessage('이미 존재하는 이름입니다');
-                      return;
-                    }
-                    srcLib.name = newName;
-                    targetLibrary.set(newName, srcLib);
-                    afterImport();
-                    this.pushMessage(`"${newName}" 조각그룹을 ${scopeLabel}에 임포트 했습니다`);
-                  },
+                void promptName({
+                  title: '새 조각그룹 이름을 입력하세요',
+                  kind: 'pieceGroup',
+                  existing: (n) => targetLibrary.has(n),
+                }).then((newName) => {
+                  if (!newName) return;
+                  // 창이 떠 있는 동안 같은 이름이 생겼으면 덮어쓰지 않는다
+                  if (targetLibrary.has(newName)) {
+                    this.pushMessage(NAME_INPUT_TEXT.duplicate('pieceGroup', newName), 'error');
+                    return;
+                  }
+                  srcLib.name = newName;
+                  targetLibrary.set(newName, srcLib);
+                  afterImport();
+                  this.pushMessage(`"${newName}" 조각그룹을 ${scopeLabel}에 임포트 했습니다`);
                 });
               }
             },
@@ -1319,16 +1339,9 @@ export class AppState {
     if (!trimmed) return;
     let artist = artistLibraryService.findArtistByName(trimmed);
     if (!artist) {
-      // confirm 형은 콜백이 값 없이 불려 pushDialogAsync 가 undefined 로 풀린다 → 콜백/취소로 직접 받는다
-      const ok = await new Promise<boolean>((resolve) => {
-        this.pushDialog({
-          type: 'confirm',
-          green: true,
-          text: `작가 라이브러리에 「${trimmed}」이(가) 없습니다. 새 카드를 만들까요?`,
-          callback: () => resolve(true),
-          onCancel: () => resolve(false),
-        });
-      });
+      const ok = await this.confirmAsync(
+        `작가 라이브러리에 「${trimmed}」이(가) 없습니다. 새 카드를 만들까요?`,
+      );
       if (!ok) return;
       artist = artistLibraryService.createArtist(trimmed);
       if (!artist) {
@@ -1369,9 +1382,10 @@ export class AppState {
         return;
       }
       const base64 = dataUriToBase64(dataUri);
-      const name = await this.pushDialogAsync({
-        type: 'input-confirm',
-        text: '글로벌 프리셋 이름을 입력하세요',
+      const name = await promptName({
+        title: '글로벌 프리셋 이름을 입력하세요',
+        kind: 'globalPreset',
+        existing: (n) => !!globalPresetService.getByName('SDImageGen', n),
       });
       if (!name) return;
       const entry = await globalPresetService.addImageAsPreset(base64, name);
@@ -1404,14 +1418,15 @@ export class AppState {
             : []),
         ],
       });
-      if (!mode || mode === 'cancel') return;
+      if (!mode) return;
 
       let artistId: string | undefined;
       let artistName = '';
       if (mode === 'new') {
-        const name = await this.pushDialogAsync({
-          type: 'input-confirm',
-          text: '작가 이름을 입력하세요 (예: suko mugi)',
+        // 같은 이름(대소문자·공백 무시)이 있으면 그 카드에 합친다(기존 동작) — 중복을 거부하지 않는다
+        const name = await promptName({
+          title: '작가 이름을 입력하세요 (예: suko mugi)',
+          kind: 'artist',
         });
         if (!name) return;
         const existing = artistLibraryService.findArtistByName(name);
@@ -1434,7 +1449,7 @@ export class AppState {
             value: a.id,
           })),
         });
-        if (!id || id === 'cancel') return;
+        if (!id) return;
         const a = artistLibraryService.getArtist(id);
         if (!a) {
           this.pushMessage('작가를 찾을 수 없습니다.');
@@ -1547,6 +1562,8 @@ export class AppState {
     }
     appState.pushDialog({
       type: 'confirm',
+      danger: 'permanent',
+      confirmText: '영구 삭제',
       text:
         `이 프로젝트의 ${scenesWithTrash}개 씬에서 삭제된 이미지 ` +
         `${totalImages}개를 영구 삭제하시겠습니까? (복원 불가)`,

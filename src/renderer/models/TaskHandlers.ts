@@ -533,20 +533,17 @@ class GenerateImageTaskHandler implements TaskHandler {
         // 폐기된 시도가 확인 창을 띄우지 않게 먼저 확인한다.
         throwIfAborted(ctx?.signal);
         // 확인 창 대기는 타임아웃 측정에서 뺀다(확인이 끝난 뒤부터 다시 잰다).
-        const choice = await waitForUser(ctx, () => appState.pushDialogAsync({
-          type: 'select',
-          text:
+        const ok = await waitForUser(ctx, () =>
+          appState.confirmAsync(
             `${detail}\n이후 생성은 Anlas를 소비할 수 있습니다. ` +
-            '서버 상태는 조회 직후에도 달라질 수 있습니다.\n' +
-            '계속하면 계정 전환을 포함해 앱을 다시 실행할 때까지 이 확인을 생략합니다.',
-          items: [
-            {
-              text: 'Anlas 소비 가능성을 이해하고 계속',
-              value: 'continue',
-            },
-          ],
-        }));
-        if (choice !== 'continue') {
+              '서버 상태는 조회 직후에도 달라질 수 있습니다.\n' +
+              '계속하면 계정 전환을 포함해 앱을 다시 실행할 때까지 이 확인을 생략합니다.',
+            'Anlas 소비 가능성을 이해하고 계속',
+            // 생성 도중 비동기로 뜨는 과금 확인 — 다른 칸에서 치던 Enter 로 승인되지 않게 버튼 클릭 필수
+            { requireClick: true },
+          ),
+        );
+        if (!ok) {
           taskQueueService.stop();
           throw new Error('Opus 할당량 확인에서 생성을 중단했습니다.');
         }

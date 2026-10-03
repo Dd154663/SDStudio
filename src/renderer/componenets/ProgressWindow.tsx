@@ -43,7 +43,8 @@ const ProgressWindow = ({ dialog }: Props) => {
             className="mt-3 self-center px-4 py-1.5 text-sm rounded btn back-red"
             onClick={dialog.onCancel}
           >
-            취소
+            {/* 진행 중인 작업 중단 — 창 닫기(취소)와 구분해 「중단」(2026-10-03 D3) */}
+            중단
           </button>
         )}
       </div>

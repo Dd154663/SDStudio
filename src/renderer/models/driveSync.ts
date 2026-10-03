@@ -433,7 +433,6 @@ async function uploadToGoogleDrive(
   if (isDriveWebUrl(link)) {
     appState.pushDialog({
       type: 'confirm',
-      green: true,
       text: savedText,
       confirmText: DRIVE_SYNC_TEXT.googleDriveOpen,
       cancelText: DRIVE_SYNC_TEXT.googleDriveClose,

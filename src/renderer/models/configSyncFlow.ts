@@ -81,10 +81,6 @@ function showConfigImportPreview(
   });
 }
 
-// 확인/취소 구분 확인 창 — appState.confirmAsync 공용(2026-10-03 U1·X14, 예전엔 같은 함수가 6곳에 복제)
-const askConfirm = (text: string, confirmText: string): Promise<boolean> =>
-  appState.confirmAsync({ text, confirmText });
-
 // ── 설정 불러오기 ──
 export async function importConfigText(
   text: string,
@@ -108,9 +104,10 @@ export async function importConfigText(
     return;
   }
   if (ctx.dirty) {
-    const ok = await askConfirm(
+    const ok = await appState.confirmAsync(
       CONFIG_SYNC_TEXT.unsavedConfirm,
       CONFIG_SYNC_TEXT.unsavedConfirmButton,
+      { danger: true },
     );
     if (!ok) return;
   }

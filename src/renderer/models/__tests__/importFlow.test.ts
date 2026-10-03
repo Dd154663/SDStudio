@@ -5,6 +5,7 @@
 const appState = {
   pushDialog: jest.fn(),
   pushDialogAsync: jest.fn(),
+  confirmAsync: jest.fn(),
 };
 jest.mock('../appStateRef', () => ({ getAppState: () => appState }));
 
@@ -116,7 +117,7 @@ describe('askImportPolicy / askImportPolicyWithConfirm', () => {
   });
   it('덮어쓰기는 확인 1회 — 확인하면 overwrite, 취소하면 undefined', async () => {
     appState.pushDialogAsync.mockResolvedValue('overwrite');
-    appState.pushDialog.mockImplementationOnce((d: any) => d.callback());
+    appState.confirmAsync.mockResolvedValueOnce(true);
     expect(
       await askImportPolicyWithConfirm({
         label: '작가 라이브러리',
@@ -125,12 +126,15 @@ describe('askImportPolicy / askImportPolicyWithConfirm', () => {
         protection: IMPORT_FLOW_TEXT.protection.replaceDeleted,
       }),
     ).toBe('overwrite');
-    expect(appState.pushDialog).toHaveBeenCalledTimes(1);
-    const dialog = appState.pushDialog.mock.calls[0][0];
-    expect(dialog.type).toBe('confirm');
+    expect(appState.confirmAsync).toHaveBeenCalledTimes(1);
+    expect(appState.pushDialog).not.toHaveBeenCalled();
+    const dialog = appState.confirmAsync.mock.calls[0][0];
+    // 기존 항목이 영구 삭제되는 덮어쓰기 = 빨강 + Enter 무시(2026-10-03 D1)
+    expect(dialog.danger).toBe('permanent');
+    expect(dialog.confirmText).toBe(IMPORT_FLOW_TEXT.overwriteConfirmButton);
     expect(dialog.text).toMatch(/^기존 작가 2개를 덮어씁니다\. 기존 항목은 영구 삭제된 뒤/);
 
-    appState.pushDialog.mockImplementationOnce((d: any) => d.onCancel());
+    appState.confirmAsync.mockResolvedValueOnce(false);
     expect(
       await askImportPolicyWithConfirm({
         label: 'x',
@@ -138,5 +142,7 @@ describe('askImportPolicy / askImportPolicyWithConfirm', () => {
         protection: 'p',
       }),
     ).toBeUndefined();
+    // 영구 삭제가 아닌 보호 방식의 덮어쓰기 = 빨강, Enter 는 확인
+    expect(appState.confirmAsync.mock.calls[1][0].danger).toBe(true);
   });
 });

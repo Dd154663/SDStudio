@@ -48,10 +48,6 @@ interface Props {
   onConfigImported: () => Promise<void> | void;
 }
 
-// 확인/취소 구분 확인 창 — appState.confirmAsync 공용(2026-10-03 U1·X14, 예전엔 같은 함수가 6곳에 복제)
-const askConfirm = (text: string, confirmText: string): Promise<boolean> =>
-  appState.confirmAsync({ text, confirmText });
-
 // PC: 드라이브 동기화 폴더(있으면)에서 JSON 필터로 선택기를 열고 원본 바이트를 읽는다.
 async function pickJsonTextPc(): Promise<string | undefined> {
   const syncFolder = await getSyncFolder();
@@ -84,7 +80,7 @@ const ConfigSyncSection = ({ dirty, onConfigImported }: Props) => {
       setIncludeToken(false);
       return;
     }
-    const ok = await askConfirm(
+    const ok = await appState.confirmAsync(
       CONFIG_SYNC_TEXT.tokenWarning,
       CONFIG_SYNC_TEXT.tokenWarningConfirm,
     );
@@ -370,9 +366,7 @@ const ConfigImportPreviewModal = ({
           <p className="text-xs text-faint">{CONFIG_SYNC_TEXT.previewThemePresetNote}</p>
         )}
         <div className="flex flex-wrap justify-end gap-2">
-          <button className={btn + ' back-gray'} onClick={cancel}>
-            {CONFIG_SYNC_TEXT.previewCancel}
-          </button>
+          {/* [확인][취소] 순서(2026-10-03 D1) */}
           <button
             className={btn + ' back-sky'}
             disabled={previewCount === 0 || applying}
@@ -380,6 +374,9 @@ const ConfigImportPreviewModal = ({
           >
             {CONFIG_SYNC_TEXT.previewApply}
             {previewCount > 0 ? ` (${previewCount})` : ''}
+          </button>
+          <button className={btn + ' back-gray'} onClick={cancel}>
+            {CONFIG_SYNC_TEXT.previewCancel}
           </button>
         </div>
       </div>

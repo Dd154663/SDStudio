@@ -256,6 +256,7 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
   const resetRanks = () => {
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: '정말로 순위를 초기화하시겠습니까?',
       callback: async () => {
         setPlayers([]);

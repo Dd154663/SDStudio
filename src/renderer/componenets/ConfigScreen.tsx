@@ -30,6 +30,7 @@ import {
 import { applyCompanionSlots } from './CompanionDnd';
 import { observer } from 'mobx-react-lite';
 import { appState } from '../models/AppService';
+import { promptName, validateName } from '../models/nameInput';
 import { TaskLog } from '../models/TaskQueueService';
 import {
   formatDelaySeconds,
@@ -115,6 +116,8 @@ const LoginTab = ({
   const [profileBusy, setProfileBusy] = useState(false);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [profileNameDraft, setProfileNameDraft] = useState('');
+  // Esc 로 편집을 취소한 뒤 따라오는 blur 가 확정하지 않도록(인라인 규칙 — D2)
+  const profileRenameCancelledRef = useRef(false);
   const [checkingProfileUsages, setCheckingProfileUsages] = useState(false);
   const [profileUsageChecks, setProfileUsageChecks] = useState<
     Record<string, LoginTokenUsageCheck>
@@ -177,20 +180,42 @@ const LoginTab = ({
 
   const startProfileRename = (profile: LoginTokenProfile) => {
     if (profileBusy) return;
+    profileRenameCancelledRef.current = false;
     setEditingProfileId(profile.id);
     setProfileNameDraft(profile.name);
   };
 
+  const cancelProfileRename = () => {
+    profileRenameCancelledRef.current = true;
+    setEditingProfileId(null);
+  };
+
+  // 확정(Enter → blur, 칸 밖 클릭 blur). 실패하면 편집을 유지하고 입력을 보존한다(D2 인라인 규칙).
   const commitProfileRename = async (profile: LoginTokenProfile) => {
+    if (profileRenameCancelledRef.current) return;
     if (editingProfileId !== profile.id || profileBusy) return;
     const nextName = profileNameDraft.trim();
-    setEditingProfileId(null);
-    if (nextName === profile.name) return;
+    if (nextName === profile.name) {
+      setEditingProfileId(null);
+      return;
+    }
+    const problem = validateName(nextName, {
+      kind: 'token',
+      current: profile.name,
+      maxLength: 40,
+      existing: (n) =>
+        profiles.some((p) => p.id !== profile.id && p.name.toLowerCase() === n.toLowerCase()),
+    });
+    if (problem) {
+      appState.pushMessage(problem, 'error');
+      return;
+    }
     setProfileBusy(true);
     try {
       await loginService.renameTokenProfile(profile.id, nextName);
+      setEditingProfileId((cur) => (cur === profile.id ? null : cur));
     } catch (e: any) {
-      appState.pushMessage(e.message || '토큰 이름 변경에 실패했습니다');
+      appState.pushMessage(e.message || '토큰 이름 변경에 실패했습니다', 'error');
     } finally {
       setProfileBusy(false);
     }
@@ -199,6 +224,7 @@ const LoginTab = ({
   const deleteProfile = (profile: LoginTokenProfile) => {
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text:
         `${profile.name} 토큰 프리셋을 삭제하시겠습니까?\n` +
         '현재 로그인 토큰은 삭제하거나 로그아웃하지 않습니다.',
@@ -471,7 +497,7 @@ const LoginTab = ({
                       data-esc-cancel
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') e.currentTarget.blur();
-                        if (e.key === 'Escape') setEditingProfileId(null);
+                        if (e.key === 'Escape') cancelProfileRename();
                       }}
                     />
                   ) : (
@@ -804,7 +830,8 @@ const FolderCleanupSection = ({ folder, label, description }: { folder: string; 
   const confirmDelete = async (targets: { name: string }[], text: string) => {
     const ok = await appState.confirmAsync({
       text: `${text}\n삭제한 파일은 되돌릴 수 없습니다.`,
-      confirmText: '삭제',
+      confirmText: '영구 삭제',
+      danger: 'permanent',
     });
     if (ok) await deleteFiles(targets);
   };
@@ -909,14 +936,15 @@ const LegacyCleanupSection = () => {
   const doClean = () => {
     if (!scan || scan.blocked || scan.remnants.length === 0 || cleaning) return;
     const summary = `${scan.remnants.length}개 항목 (파일 ${scan.totalFiles}개, 총 ${formatSize(scan.totalSize)})`;
+    // 모바일은 영구 삭제(Enter 로 확정하지 않음), PC 는 OS 휴지통 이동(D1)
     appState.pushDialog({
-      type: 'select',
+      type: 'confirm',
+      danger: isMobile ? 'permanent' : true,
       text: isMobile
         ? `구 저장소 잔재 ${summary}를 영구 삭제합니다.\n삭제 후에는 복구할 수 없습니다. 계속할까요?`
         : `구 저장소 잔재 ${summary}를 OS 휴지통으로 이동합니다.\n(필요 시 휴지통에서 복구할 수 있습니다)`,
-      items: [{ text: '정리 진행', value: 'yes' }],
-      callback: async (value?: string) => {
-        if (value !== 'yes') return;
+      confirmText: isMobile ? '영구 삭제' : '정리 진행',
+      callback: async () => {
         setCleaning(true);
         const res = await deleteLegacyRemnants(scan.remnants, (done, total) =>
           setProgress({ done, total }),
@@ -1024,13 +1052,12 @@ const MigrationDiagSection = () => {
       return;
     }
     appState.pushDialog({
-      type: 'select',
+      type: 'confirm',
       text:
         '마이그레이션을 시작하려면 프로그램을 다시 시작해야 합니다.\n' +
         '다시 시작하면 부팅 시 마이그레이션 안내가 표시됩니다.\n\n지금 다시 시작할까요?',
-      items: [{ text: '지금 다시 시작', value: 'restart' }],
-      callback: async (value?: string) => {
-        if (value !== 'restart') return;
+      confirmText: '지금 다시 시작',
+      callback: async () => {
         await migrationService.clearOptOut();
         // 모바일 reload 경로는 종료 시 저장 훅을 타지 않으므로 여기서 직접
         // flush 한다(데스크톱은 close 인터셉트가 한 번 더 flush — 무해).
@@ -1128,11 +1155,12 @@ const SystemTab = ({
         appState.pushDialog({
           type: 'select',
           text: `새로운 버전(${latest})이 있습니다.\n새로 다운 받으시겠습니까?`,
-          green: true,
           items: [
             { text: '다운로드 페이지 열기', value: 'open' },
             { text: '다시 알리지 않음', value: 'dismiss' },
           ],
+          // 내장 취소의 뜻은 「나중에」(다음 알림에서 다시 묻는다)
+          cancelText: '나중에',
           callback: (value?: string) => {
             if (value === 'open') {
               backend.openWebPage('https://github.com/Dd154663/SDStudio/releases');
@@ -1883,9 +1911,10 @@ const CustomizationTab = ({
   // 같은 이름 = 덮어쓰기 확인. 적용은 스냅샷 그대로 복원(저장 전이라 되돌리기 자유).
   const presets: NonNullable<Config['uiThemePresets']> = uiThemePresets ?? [];
   const saveCurrentAsPreset = async () => {
-    const name = await appState.pushDialogAsync({
-      type: 'input-confirm',
-      text: '프리셋 이름을 입력하세요',
+    // 같은 이름이면 아래에서 덮어쓰기를 묻는다(기존 동작) — 빈 값만 창 안에서 거부, 앞뒤 공백 제거(D2)
+    const name = await promptName({
+      title: '프리셋 이름을 입력하세요',
+      kind: 'themePreset',
     });
     if (!name) return;
     const snapshot = {
@@ -1897,6 +1926,7 @@ const CustomizationTab = ({
     if (presets.some((p: { name: string }) => p.name === name)) {
       appState.pushDialog({
         type: 'confirm',
+        danger: true,
         text: `"${name}" 프리셋이 이미 있습니다. 덮어쓸까요?`,
         callback: () => {
           setUiThemePresets(
@@ -2008,6 +2038,7 @@ const CustomizationTab = ({
                 onDelete={() => {
                   appState.pushDialog({
                     type: 'confirm',
+                    danger: true,
                     text: `"${p.name}" 프리셋을 삭제하시겠습니까?`,
                     callback: () => {
                       setUiThemePresets(
@@ -2642,6 +2673,7 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
               if (t.id === 'modern' && uiLayoutTemplate !== 'modern') {
                 appState.pushDialog({
                   type: 'confirm',
+                  danger: true,
                   text: '모던 사이드바를 적용하면 저장 시 프로젝트 툴바가 사라지고, 버튼 배치(툴바·동반 슬롯)가 초기화된 뒤 모던 기본 배치가 적용됩니다. 계속할까요?',
                   callback: () => {
                     setModernExitReset(false);
@@ -2656,6 +2688,7 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
                 setUiLayoutTemplate(t.id);
                 appState.pushDialog({
                   type: 'confirm',
+                  danger: true,
                   text: '모던 사이드바를 해제합니다. 저장 시 버튼과 레이아웃 배치를 기본값으로 초기화할까요? (취소 = 현재 배치 유지)',
                   callback: () => setModernExitReset(true),
                 });
@@ -2783,6 +2816,7 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
         onClick={() => {
           appState.pushDialog({
             type: 'confirm',
+            danger: true,
             text: '화면에서 직접 편집으로 옮긴 패널 좌/우 배치·생성 컨트롤 위치·동반 버튼 배치를 현재 템플릿의 기본값으로 되돌립니다. (선택한 템플릿은 유지됩니다.) 계속할까요?',
             callback: async () => {
               await resetLayoutArrangement();

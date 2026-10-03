@@ -34,6 +34,7 @@ import {
   templateService,
 } from '../models';
 import { appState } from '../models/AppService';
+import { nameErrorMessage, NAME_INPUT_TEXT, promptName } from '../models/nameInput';
 import { FaPlay, FaPause, FaStop, FaSync, FaDownload, FaUpload, FaGlobe, FaUsers, FaCloudUploadAlt, FaCloudDownloadAlt } from 'react-icons/fa';
 import type { IGlobalCharacterPresetEntry } from '../models/GlobalCharacterPresetService';
 import { saveJsonFile } from '../models/exportUtil';
@@ -663,13 +664,28 @@ export const CharacterPresetEditor = observer(({
           await globalCharacterPresetService.updateEntry(editGlobalId, preset);
         }
       } catch (e: any) {
-        appState.pushMessage(e.message || '글로벌 프리셋 저장 실패');
+        // 실패하면 편집 폼을 닫지 않는다(입력 보존 — D2)
+        appState.pushMessage(
+          nameErrorMessage(e, 'characterPreset', preset.name, '글로벌 프리셋 저장 실패'),
+          'error',
+        );
+        return;
       }
     } else {
       if (isNew) {
         curSession.addCharacterPreset(preset);
       } else {
-        curSession.updateCharacterPreset(editingPreset!.name, preset);
+        // 이름을 다른 로컬 프리셋 이름으로 바꾸면 updateCharacterPreset 이 그 프리셋을 조용히 덮어쓴다 —
+        // 저장 전에 거부하고 폼을 유지한다(D2, updateCharacterPreset 자체는 그대로).
+        const oldName = editingPreset!.name;
+        if (preset.name !== oldName && curSession.hasCharacterPreset(preset.name)) {
+          appState.pushMessage(
+            NAME_INPUT_TEXT.duplicate('characterPreset', preset.name),
+            'error',
+          );
+          return;
+        }
+        curSession.updateCharacterPreset(oldName, preset);
       }
     }
     setEditingPreset(null);
@@ -686,6 +702,7 @@ export const CharacterPresetEditor = observer(({
   const handleDelete = (preset: CharacterPreset) => {
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: `"${preset.name}" 프리셋을 삭제하시겠습니까?`,
       callback: () => {
         // 삭제하려는 프리셋이 현재 적용 중이면 먼저 해제 (해당 프리셋만 — W4 다중 적용)
@@ -800,24 +817,32 @@ export const CharacterPresetEditor = observer(({
     }
   };
 
-  const handleRenameGlobal = (entry: IGlobalCharacterPresetEntry) => {
-    appState.pushDialog({
-      type: 'input-confirm',
-      text: '새 글로벌 프리셋 이름을 입력해주세요',
-      callback: async (v?: string) => {
-        if (!v) return;
-        try {
-          await globalCharacterPresetService.rename(entry.id, v);
-        } catch (e: any) {
-          appState.pushMessage(e.message || '이름 변경에 실패했습니다');
-        }
+  const handleRenameGlobal = async (entry: IGlobalCharacterPresetEntry) => {
+    // 현재 이름을 채워 연다 — 다른 글로벌 캐릭터 프리셋과 겹치면 창 안에서 거부(D2)
+    const v = await promptName({
+      title: '새 글로벌 프리셋 이름을 입력해주세요',
+      kind: 'characterPreset',
+      current: entry.name,
+      existing: (n) => {
+        const other = globalCharacterPresetService.getByName(n);
+        return !!other && other.id !== entry.id;
       },
     });
+    if (!v) return;
+    try {
+      await globalCharacterPresetService.rename(entry.id, v);
+    } catch (e: any) {
+      appState.pushMessage(
+        nameErrorMessage(e, 'characterPreset', v, '이름 변경에 실패했습니다'),
+        'error',
+      );
+    }
   };
 
   const handleDeleteGlobal = (entry: IGlobalCharacterPresetEntry) => {
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: `글로벌 프리셋 "${entry.name}"을(를) 삭제하시겠습니까?\n(이 작업은 모든 프로젝트에 영향을 줍니다)`,
       callback: async () => {
         await globalCharacterPresetService.delete(entry.id);
@@ -835,6 +860,9 @@ export const CharacterPresetEditor = observer(({
 
     appState.pushDialog({
       type: 'confirm',
+      // 로컬 프리셋 삭제는 휴지통 없이 바로 사라진다(「복구할 수 없습니다」) — Enter 로 확정하지 않는다
+      danger: globalView ? true : 'permanent',
+      confirmText: globalView ? undefined : '영구 삭제',
       text: globalView
         ? `선택한 글로벌 프리셋 ${count}개를 삭제하시겠습니까?\n첨부 이미지도 함께 삭제되며, 이 작업은 모든 프로젝트에 영향을 줍니다.`
         : `선택한 로컬 프리셋 ${count}개를 삭제하시겠습니까?\n현재 프로젝트에서 삭제되며 복구할 수 없습니다.`,
@@ -908,12 +936,13 @@ export const CharacterPresetEditor = observer(({
     const v = await appState.pushDialogAsync({ type: 'select', text, items });
     if (!v) return undefined;
     if (v === '__new__') {
-      const name = await appState.pushDialogAsync({
-        type: 'input-confirm',
-        text: '새 폴더 이름을 입력해주세요',
+      // 이미 있는 폴더 이름이면 그 폴더로 옮긴다(기존 동작) — 빈 값만 창 안에서 거부
+      const name = await promptName({
+        title: '새 폴더 이름을 입력해주세요',
+        kind: 'folder',
       });
-      if (!name || !name.trim()) return undefined;
-      return name.trim();
+      if (!name) return undefined;
+      return name;
     }
     if (v === '__root__') return null;
     return v.slice(2);
@@ -999,6 +1028,7 @@ export const CharacterPresetEditor = observer(({
       .filter((e) => e.folder === folder).length;
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: `폴더 "${folder}"를 삭제할까요?\n소속 프리셋 ${count}개는 미분류로 이동합니다.`,
       callback: async () => {
         await globalCharacterPresetService.deleteFolder(folder);
@@ -1099,7 +1129,7 @@ export const CharacterPresetEditor = observer(({
               }}
             >
               <FaStop size={10} />
-              취소
+              중단
             </button>
           </div>
         </div>

@@ -49,9 +49,6 @@ interface TrashItem {
   thumbnail?: string | null;
 }
 
-// appState.confirmAsync 공용(2026-10-03 U1·X14)
-const confirmAction = (text: string) => appState.confirmAsync({ text });
-
 const collectReviewItems = (
   session: Session,
   type: 'scene' | 'inpaint',
@@ -182,8 +179,10 @@ const ImageReview = ({
       if (busy || !current) return;
       if (
         !skipConfirm &&
-        !(await confirmAction(
+        !(await appState.confirmAsync(
           `현재 이미지를 삭제할까요?\n${current.scene.name} / ${current.filename}`,
+          undefined,
+          { danger: true },
         ))
       ) {
         return;
@@ -297,8 +296,10 @@ const ImageReview = ({
   const permanentlyDeleteTrashItem = async (entry: TrashItem) => {
     if (!trashScene) return;
     if (
-      !(await confirmAction(
+      !(await appState.confirmAsync(
         `${entry.filename} 파일을 영구 삭제할까요? 되돌릴 수 없습니다.`,
+        '영구 삭제',
+        { danger: 'permanent' },
       ))
     ) {
       return;

@@ -112,13 +112,14 @@ const BookmarkDialog: React.FC<BookmarkDialogProps> = ({ mode, initialLabel, ini
               삭제
             </button>
           )}
-          <button className="px-3 py-1 text-sm back-llgray rounded" onClick={onClose}>취소</button>
+          {/* [삭제]는 왼쪽에 분리, 오른쪽은 [추가/저장][취소] 순서(2026-10-03 D1) */}
           <button
             className="px-3 py-1 text-sm back-sky rounded"
             onClick={() => { if (label.trim() && url.trim()) onConfirm(label.trim(), url.trim()); }}
           >
             {mode === 'add' ? '추가' : '저장'}
           </button>
+          <button className="px-3 py-1 text-sm back-llgray rounded" onClick={onClose}>취소</button>
         </div>
       </div>
     </div>

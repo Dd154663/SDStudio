@@ -75,13 +75,12 @@ export async function queueNaiUpscaleImages(
       return;
     }
     if (confirmBatch) {
-      const confirmed = await new Promise<boolean>((resolve) => appState.pushDialog({
-        type: 'confirm',
+      // Anlas 소모 확인 — 중립(파랑)
+      const confirmed = await appState.confirmAsync({
         text: `업스케일 ×2 · ${ready.length}장 · 예상 ${totalCost} Anlas` +
           (skipped ? `\n미지원·읽기 실패 ${skipped}장 제외` : ''),
         confirmText: '일괄 예약',
-        callback: () => resolve(true), onCancel: () => resolve(false),
-      }));
+      });
       if (!confirmed) return;
     }
     for (const { target, width, height } of ready) {

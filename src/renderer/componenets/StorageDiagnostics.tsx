@@ -310,6 +310,7 @@ export const StorageDiagnosticsSection = observer(() => {
   const repair = (b: BrokenEntry) => {
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: b.hasBak
         ? `'${b.name}' 프로젝트를 백업본에서 복원할까요?\n마지막 저장 직전 상태로 되돌아갑니다.`
         : `'${b.name}' 프로젝트는 설정 파일이 유실되어 부분 복구만 가능합니다.\n이미지와 씬 구성은 복원되지만, 프롬프트·프리셋 등 설정은 복구되지 않습니다.\n진행할까요?`,

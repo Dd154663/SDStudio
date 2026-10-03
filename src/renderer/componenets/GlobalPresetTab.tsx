@@ -29,6 +29,7 @@ import {
   SUPPORTED_GLOBAL_PRESET_TYPES,
 } from '../models/GlobalPresetService';
 import { appState } from '../models/AppService';
+import { nameErrorMessage, promptName } from '../models/nameInput';
 import { batchResultLine, failedNamesLine } from '../models/deleteFlowRules';
 import Tooltip from './Tooltip';
 import { PresetEditModal } from './PresetEditModal';
@@ -483,21 +484,31 @@ export const GlobalPresetTab = observer(() => {
   };
 
   const handleRename = async (entry: IGlobalPresetEntry) => {
-    const newName = await appState.pushDialogAsync({
-      type: 'input-confirm',
-      text: `새 이름을 입력하세요 (현재: ${entry.name})`,
+    // 현재 이름을 채워 연다 — 같은 종류(워크플로우)의 다른 프리셋과 겹치면 창 안에서 거부(D2)
+    const newName = await promptName({
+      title: `새 이름을 입력하세요 (현재: ${entry.name})`,
+      kind: 'globalPreset',
+      current: entry.name,
+      existing: (n) => {
+        const other = globalPresetService.getByName(entry.workflowType, n);
+        return !!other && other.id !== entry.id;
+      },
     });
     if (!newName) return;
     try {
       await globalPresetService.rename(entry.id, newName);
     } catch (e: any) {
-      appState.pushMessage(e.message || '이름 변경 실패');
+      appState.pushMessage(
+        nameErrorMessage(e, 'globalPreset', newName, '이름 변경 실패'),
+        'error',
+      );
     }
   };
 
   const handleDelete = (entry: IGlobalPresetEntry) => {
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: `"${entry.name}" 글로벌 프리셋을 삭제하시겠습니까?`,
       callback: async () => {
         try {
@@ -546,6 +557,7 @@ export const GlobalPresetTab = observer(() => {
     if (selectedIds.size === 0) return;
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: `${selectedIds.size}개의 글로벌 프리셋을 삭제하시겠습니까?`,
       callback: async () => {
         // 실패를 삼키지 않는다 — 건수와 이름을 알린다(X13)

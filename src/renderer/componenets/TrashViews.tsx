@@ -218,6 +218,8 @@ export function SceneTrashView({ projectName }: { projectName: string }) {
     if (!item) return;
     appState.pushDialog({
       type: 'confirm',
+      danger: 'permanent',
+      confirmText: '영구 삭제',
       text: `씬 "${item.name}"을(를) 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
       callback: async () => {
         // 일괄 작업 잠금(2026-07-18): 씬 폴더 삭제(이미지 다수)는 무거움 — 전체화면 잠금
@@ -254,6 +256,8 @@ export function SceneTrashView({ projectName }: { projectName: string }) {
   const handleEmptyAll = () => {
     appState.pushDialog({
       type: 'confirm',
+      danger: 'permanent',
+      confirmText: '영구 삭제',
       text: `휴지통의 모든 씬(${deletedScenes.length}개)을 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
       callback: async () => {
         // 일괄 작업 잠금(2026-07-18): 저사양(특히 모바일) 보호 — finally 해제 보장

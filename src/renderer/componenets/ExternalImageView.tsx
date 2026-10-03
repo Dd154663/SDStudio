@@ -109,14 +109,13 @@ export const ExternalImageView = observer(
     const applyImport = async () => {
       if (!job || !appState.curSession) return;
       if (canApplyExact && options.prompt) {
-        const choice = await appState.pushDialogAsync({
-          type: 'select',
-          text:
-            '현재 상위·추가·씬·하위 프롬프트를 이미지 생성 당시 값으로 덮어씁니다. ' +
+        const ok = await appState.confirmAsync(
+          '현재 상위·추가·씬·하위 프롬프트를 이미지 생성 당시 값으로 덮어씁니다. ' +
             '현재 씬의 조합은 생성에 사용된 한 조합으로 교체됩니다.',
-          items: [{ text: '정확 복원 실행', value: 'apply' }],
-        });
-        if (choice !== 'apply') return;
+          '정확 복원 실행',
+          { danger: true },
+        );
+        if (!ok) return;
       }
       setImporting(true);
 

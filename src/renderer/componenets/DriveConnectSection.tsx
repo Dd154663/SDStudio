@@ -19,10 +19,6 @@ import { appState } from '../models/AppService';
 import { describeStatus, GOOGLE_DRIVE_TEXT } from '../models/googleDrive';
 import type { DriveAuthStatus } from '../../shared/googleDriveAuth';
 
-// 확인/취소 구분 확인 창 — appState.confirmAsync 공용(2026-10-03 U1·X14, 예전엔 같은 함수가 6곳에 복제)
-const askConfirm = (text: string, confirmText: string): Promise<boolean> =>
-  appState.confirmAsync({ text, confirmText });
-
 const btn = 'round-button h-8 text-sm';
 const tag = 'text-xs px-2 py-1 rounded-full whitespace-nowrap';
 
@@ -103,9 +99,10 @@ const DriveConnectSection = ({ onStatusChange }: Props) => {
 
   const disconnect = async () => {
     if (busy) return;
-    const ok = await askConfirm(
+    const ok = await appState.confirmAsync(
       GOOGLE_DRIVE_TEXT.disconnectConfirm,
       GOOGLE_DRIVE_TEXT.disconnectConfirmButton,
+      { danger: true },
     );
     if (!ok) return;
     setBusy(true);

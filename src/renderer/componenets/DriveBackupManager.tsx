@@ -44,10 +44,6 @@ function errorReason(e: any): string {
   return e?.message || String(e);
 }
 
-// 확인/취소 구분 확인 창 — appState.confirmAsync 공용(2026-10-03 U1·X14, 예전엔 같은 함수가 6곳에 복제)
-const askConfirm = (text: string, confirmText: string): Promise<boolean> =>
-  appState.confirmAsync({ text, confirmText });
-
 interface DriveBackupListProps {
   mode: 'manage' | 'pick';
   // pick 모드의 고정 종류.
@@ -135,7 +131,9 @@ export const DriveBackupList = ({
 
   const trash = async (item: DriveBackupItem) => {
     if (busy) return;
-    const ok = await askConfirm(T.trashConfirm(item.name), T.trashConfirmButton);
+    const ok = await appState.confirmAsync(T.trashConfirm(item.name), T.trashConfirmButton, {
+      danger: true,
+    });
     if (!ok) return;
     setBusy(true);
     try {

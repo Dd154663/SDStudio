@@ -25,6 +25,8 @@ import { useDrag, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
 import { isValidPieceLibrary, Piece, PieceLibrary } from '../models/types';
 import { appState } from '../models/AppService';
+import { promptName } from '../models/nameInput';
+import type { DialogItem } from './ConfirmWindow';
 import { migratePieceLibrary } from '../models/legacy';
 import { stringifyExportJson } from '../models/jsonExport';
 import { observer } from 'mobx-react-lite';
@@ -117,18 +119,18 @@ export const PieceCell = observer(
             className="font-bold text-default"
             onDoubleClick={() => {
               if (!movePiece) return;
-              appState.pushDialog({
-                type: 'input-confirm',
-                text: '조각의 이름을 변경합니다',
-                callback: (name) => {
-                  if (!name) return;
-                  if (curPieceLibrary.pieces.find((p) => p.name === name)) {
-                    appState.pushMessage('조각이 이미 존재합니다');
-                    return;
-                  }
-                  piece!.name = name;
-                  onReloadDB?.();
-                },
+              // 현재 이름을 채워 연다 — 빈 값·공백만·다른 조각과 같은 이름은 창 안에서 거부(D2)
+              const target = piece!;
+              void promptName({
+                title: '조각의 이름을 변경합니다',
+                kind: 'piece',
+                current: target.name,
+                existing: (n) =>
+                  curPieceLibrary.pieces.some((p) => p !== target && p.name === n),
+              }).then((name) => {
+                if (!name) return;
+                target.name = name;
+                onReloadDB?.();
               });
             }}
           >
@@ -142,6 +144,8 @@ export const PieceCell = observer(
               // 조각은 휴지통이 없어 바로 사라진다 — 확인 1회(X11)
               appState.pushDialog({
                 type: 'confirm',
+                danger: 'permanent',
+                confirmText: '영구 삭제',
                 text: `「${piece.name}」 조각을 삭제할까요? 되돌릴 수 없습니다.`,
                 callback: () => {
                   const index = curPieceLibrary.pieces.indexOf(piece);
@@ -262,26 +266,21 @@ const PieceEditor = observer(() => {
         reloadDB();
         appState.pushMessage(`조각그룹 "${json.name}" 가져오기 완료`);
       } else {
-        appState.pushDialog({
-          type: 'input-confirm',
-          text: `"${json.name}" 이름의 조각그룹이 이미 존재합니다. 새 이름을 입력하세요.`,
-          callback: (newName) => {
-            if (!newName) return;
-            if (source.has(newName)) {
-              appState.pushMessage('이미 존재하는 조각그룹 이름입니다');
-              return;
-            }
-            json.name = newName;
-            const lib = PieceLibrary.fromJSON(json);
-            if (scope === 'local') {
-              source.set(newName, lib);
-            } else {
-              globalPieceService.addLibrary(newName, lib);
-            }
-            setSelectedPieceLibrary(newName);
-            reloadDB();
-          },
+        const newName = await promptName({
+          title: `"${json.name}" 이름의 조각그룹이 이미 존재합니다. 새 이름을 입력하세요.`,
+          kind: 'pieceGroup',
+          existing: (n) => source.has(n),
         });
+        if (!newName) return;
+        json.name = newName;
+        const lib = PieceLibrary.fromJSON(json);
+        if (scope === 'local') {
+          source.set(newName, lib);
+        } else {
+          globalPieceService.addLibrary(newName, lib);
+        }
+        setSelectedPieceLibrary(newName);
+        reloadDB();
       }
     } catch (e) {
       appState.pushMessage('JSON 파일을 읽는 중 오류가 발생했습니다');
@@ -400,37 +399,33 @@ const PieceEditor = observer(() => {
     }
   };
 
-  const addLibrary = () => {
-    appState.pushDialog({
-      type: 'input-confirm',
-      text: '조각그룹의 이름을 입력하세요',
-      callback: async (name) => {
-        if (!name) return;
-        const source = scope === 'local' ? curSession!.library : globalPieceService.library;
-        if (source.has(name)) {
-          appState.pushMessage('조각그룹이 이미 존재합니다');
-          return;
-        }
-        const newLib = PieceLibrary.fromJSON({
-          version: 1,
-          pieces: [],
-          name: name,
-        });
-        if (scope === 'local') {
-          source.set(name, newLib);
-        } else {
-          globalPieceService.addLibrary(name, newLib);
-        }
-        setSelectedPieceLibrary(name);
-        reloadDB();
-      },
+  const addLibrary = async () => {
+    const source = scope === 'local' ? curSession!.library : globalPieceService.library;
+    const name = await promptName({
+      title: '조각그룹의 이름을 입력하세요',
+      kind: 'pieceGroup',
+      existing: (n) => source.has(n),
     });
+    if (!name) return;
+    const newLib = PieceLibrary.fromJSON({
+      version: 1,
+      pieces: [],
+      name: name,
+    });
+    if (scope === 'local') {
+      source.set(name, newLib);
+    } else {
+      globalPieceService.addLibrary(name, newLib);
+    }
+    setSelectedPieceLibrary(name);
+    reloadDB();
   };
 
   const deleteLibrary = () => {
     if (!selectedPieceLibrary) return;
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: '정말로 삭제하시겠습니까?',
       callback: async () => {
         if (scope === 'local') {
@@ -547,24 +542,24 @@ const PieceEditor = observer(() => {
     if (srcOnly.length > 0) detail += `원본에만 있는 조각(${srcOnly.length}개): ${srcOnly.slice(0, 5).join(', ')}${srcOnly.length > 5 ? ' ...' : ''}\n`;
     if (tgtOnly.length > 0) detail += `대상에만 있는 조각(${tgtOnly.length}개): ${tgtOnly.slice(0, 5).join(', ')}${tgtOnly.length > 5 ? ' ...' : ''}\n`;
 
-    const items: { text: string; value: string }[] = [];
+    // 취소는 창의 내장 취소 하나(D3). 덮어쓰는 선택지는 빨강(D1).
+    const items: DialogItem[] = [];
     if (overlap.length > 0) {
-      items.push({ text: '병합 (겹치는 조각 덮어쓰기)', value: 'merge-overwrite' });
+      items.push({ text: '병합 (겹치는 조각 덮어쓰기)', value: 'merge-overwrite', danger: true });
       items.push({ text: '병합 (겹치는 조각 건너뛰기)', value: 'merge-skip' });
     } else {
       // 이름만 같고 조각이 안 겹침 → 병합이 곧 합치기
       items.push({ text: '병합 (양쪽 조각 모두 유지)', value: 'merge-skip' });
     }
-    items.push({ text: '통째로 덮어쓰기 (대상 조각 모두 교체)', value: 'overwrite' });
+    items.push({ text: '통째로 덮어쓰기 (대상 조각 모두 교체)', value: 'overwrite', danger: true });
     items.push({ text: '새 이름으로 복사', value: 'rename' });
-    items.push({ text: '취소', value: 'cancel' });
 
     appState.pushDialog({
       type: 'select',
       text: detail,
       items,
       callback: (action) => {
-        if (!action || action === 'cancel') return;
+        if (!action) return;
         if (action === 'merge-overwrite') {
           doMerge(selectedPieceLibrary!, true);
         } else if (action === 'merge-skip') {
@@ -574,17 +569,13 @@ const PieceEditor = observer(() => {
           else curSession!.library.delete(selectedPieceLibrary!);
           doFullCopy(selectedPieceLibrary!);
         } else if (action === 'rename') {
-          appState.pushDialog({
-            type: 'input-confirm',
-            text: '새 조각그룹 이름을 입력하세요',
-            callback: (newName) => {
-              if (!newName) return;
-              if (targetSource.has(newName)) {
-                appState.pushMessage('이미 존재하는 이름입니다');
-                return;
-              }
-              doFullCopy(newName);
-            },
+          void promptName({
+            title: '새 조각그룹 이름을 입력하세요',
+            kind: 'pieceGroup',
+            existing: (n) => targetSource.has(n),
+          }).then((newName) => {
+            if (!newName) return;
+            doFullCopy(newName);
           });
         }
       },
@@ -762,25 +753,20 @@ const PieceEditor = observer(() => {
             <button
               className="py-2 px-8 rounded-xl back-lllgray"
               onClick={async () => {
-                appState.pushDialog({
-                  type: 'input-confirm',
-                  text: '조각의 이름을 입력하세요',
-                  callback: (name) => {
-                    if (!name) return;
-                    if (curPieceLibrary.pieces.find((p) => p.name === name)) {
-                      appState.pushMessage('조각이 이미 존재합니다');
-                      return;
-                    }
-                    curPieceLibrary!.pieces.push(
-                      Piece.fromJSON({
-                        name: name,
-                        prompt: '',
-                        multi: false,
-                      }),
-                    );
-                    reloadDB();
-                  },
+                const name = await promptName({
+                  title: '조각의 이름을 입력하세요',
+                  kind: 'piece',
+                  existing: (n) => curPieceLibrary.pieces.some((p) => p.name === n),
                 });
+                if (!name) return;
+                curPieceLibrary!.pieces.push(
+                  Piece.fromJSON({
+                    name: name,
+                    prompt: '',
+                    multi: false,
+                  }),
+                );
+                reloadDB();
               }}
             >
               <FaPlus />

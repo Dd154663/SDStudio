@@ -7,6 +7,7 @@ import {
   projectTemplateService,
 } from '.';
 import { getAppState } from './appStateRef';
+import { nameErrorMessage, projectNameRules, promptName } from './nameInput';
 import { Session, genericSceneFromJSON } from './types';
 import { stringifyExportJson } from './jsonExport';
 import { askImportPolicy, notifyImportDone } from './importFlow';
@@ -559,20 +560,20 @@ export class TemplateService {
   // 관리 메뉴의 복제도 호출한다.
   async createSceneTemplate(session: Session): Promise<void> {
     const appState = getAppState();
-    const name = await appState.pushDialogAsync({
-      type: 'input-confirm',
-      text: `씬 템플릿 이름 (예: ${session.name} 씬템플릿)`,
+    // 씬 템플릿은 숨김 프로젝트 — 프로젝트와 같은 이름 규칙·중복 검사(창 안에서, D2)
+    const name = await promptName({
+      title: `씬 템플릿 이름 (예: ${session.name} 씬템플릿)`,
+      ...projectNameRules(sessionService),
     });
     if (!name) return;
-    if (sessionService.list().includes(name)) {
-      appState.pushMessage('같은 이름의 프로젝트가 이미 존재합니다.');
-      return;
-    }
     try {
       const json = await sessionService.exportSessionShallow(session);
       await sessionService.importSessionShallow(json, name);
     } catch (e: any) {
-      appState.pushMessage(e.message || '씬 템플릿 생성에 실패했습니다.');
+      appState.pushMessage(
+        nameErrorMessage(e, 'project', name, '씬 템플릿 생성에 실패했습니다.'),
+        'error',
+      );
       return;
     }
     await this.designateHiddenTemplate(name);
@@ -586,19 +587,18 @@ export class TemplateService {
   // 반환 = 만든 템플릿 이름(취소/실패=null) — 관리 모달이 성공 시 닫히도록.
   async createEmptySceneTemplate(): Promise<string | null> {
     const appState = getAppState();
-    const name = await appState.pushDialogAsync({
-      type: 'input-confirm',
-      text: '빈 씬 템플릿 이름',
+    const name = await promptName({
+      title: '빈 씬 템플릿 이름',
+      ...projectNameRules(sessionService),
     });
     if (!name) return null;
-    if (sessionService.list().includes(name)) {
-      appState.pushMessage('같은 이름의 프로젝트가 이미 존재합니다.');
-      return null;
-    }
     try {
       await sessionService.add(name);
     } catch (e: any) {
-      appState.pushMessage(e.message || '씬 템플릿 생성에 실패했습니다.');
+      appState.pushMessage(
+        nameErrorMessage(e, 'project', name, '씬 템플릿 생성에 실패했습니다.'),
+        'error',
+      );
       return null;
     }
     await this.designateHiddenTemplate(name);
@@ -801,7 +801,7 @@ export class TemplateService {
         text: `이름이 겹치는 씬이 ${conflicts.length}개 있습니다. 어떻게 할까요?`,
         items: [
           { text: '번호를 붙여 모두 추가 (씬_1, 씬_2…)', value: 'number' },
-          { text: '기존 씬을 덮어쓰기 (기존 씬은 휴지통으로)', value: 'overwrite' },
+          { text: '기존 씬을 덮어쓰기 (기존 씬은 휴지통으로)', value: 'overwrite', danger: true },
           { text: '겹치는 씬은 건너뛰기', value: 'skip' },
         ],
       });

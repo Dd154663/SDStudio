@@ -72,7 +72,8 @@ test('direct export keeps the captured project and never asks follow-up question
   expect(zipFiles.mock.calls[0][0]).toEqual([{ path: 'original-project/scene/image.webp', name: 'scene.webp' }]);
 });
 test('legacy optimization policy still asks and can cancel', async () => {
-  state.pushDialogAsync.mockResolvedValue('cancel');
+  // 내장 취소(취소 버튼·Esc·뒤로 가기) = undefined — 「취소」 항목은 없앴다(2026-10-03 D3)
+  state.pushDialogAsync.mockResolvedValue(undefined);
   await service.exportPackage('scene', undefined, { ...exportFormToPreset(emptyExportForm()), opt: 'lossy', reoptimize: undefined });
   expect(state.pushDialogAsync).toHaveBeenCalledTimes(1);
   expect(zipFiles).not.toHaveBeenCalled();

@@ -17,6 +17,7 @@ import ModalOverlay from './ModalOverlay';
 import Tooltip from './Tooltip';
 import { sessionService, templateService } from '../models';
 import { appState } from '../models/AppService';
+import { nameErrorMessage, projectNameRules, validateName } from '../models/nameInput';
 import { projectDeleteResultText, runTrashDelete } from '../models/deleteFlowRules';
 import { PROJECT_RETENTION_DAYS } from '../models/TrashService';
 import { saveJsonFile } from '../models/exportUtil';
@@ -33,6 +34,8 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
   // 인라인 이름 변경 (드로어 프로젝트 행과 같은 패턴)
   const [editing, setEditing] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  // 이름 변경 처리 중(중복 확정 차단)
+  const renameBusyRef = useRef(false);
   // [파일 불러오기] 의 숨은 파일 입력 — 출처 선택 뒤 「파일」이면 이걸 눌러 선택기를 연다.
   const importInputRef = useRef<HTMLInputElement | null>(null);
   // listSceneTemplates 는 sessionService.list()(비-observable)로 실존 필터를
@@ -59,23 +62,44 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
     setEditValue(name);
   };
 
+  // 확정(Enter·저장 버튼) — 실패하면 편집을 유지하고 입력을 보존한다(D2 인라인 규칙)
   const commitRename = async () => {
     const old = editing;
+    if (!old || renameBusyRef.current) return;
     const newName = editValue.trim();
-    setEditing(null);
-    if (!old || !newName || old === newName) return;
-    if (sessionService.list().includes(newName)) {
-      appState.pushMessage('같은 이름의 프로젝트가 이미 존재합니다.');
+    if (!newName || old === newName) {
+      setEditing(null);
       return;
     }
+    const problem = validateName(newName, {
+      current: old,
+      ...projectNameRules(sessionService),
+    });
+    if (problem) {
+      appState.pushMessage(problem, 'error');
+      return;
+    }
+    renameBusyRef.current = true;
     try {
+      // 미로드 템플릿이면 먼저 불러온다(renameProject 는 로드된 항목만 — 예전엔 'Resource not found')
+      const loadedOld = await sessionService.get(old);
+      if (!loadedOld) {
+        appState.pushMessage('씬 템플릿 프로젝트를 불러올 수 없습니다.', 'error');
+        return;
+      }
       // renameProject 캐스케이드가 sceneNames/hiddenNames 를 함께 이관한다
       await sessionService.renameProject(old, newName);
       const loaded = sessionService.getLoaded(newName);
       if (loaded) loaded.name = newName;
+      setEditing((cur) => (cur === old ? null : cur));
       appState.pushMessage('씬 템플릿 이름이 변경되었습니다.');
     } catch (e: any) {
-      appState.pushMessage(e.message || '이름 변경에 실패했습니다.');
+      appState.pushMessage(
+        nameErrorMessage(e, 'project', newName, '이름 변경에 실패했습니다.'),
+        'error',
+      );
+    } finally {
+      renameBusyRef.current = false;
     }
   };
 
@@ -91,6 +115,7 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
   const handleDelete = (name: string) => {
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: `씬 템플릿 "${name}"을(를) 삭제할까요?\n휴지통으로 이동되어 복구할 수 있습니다.`,
       callback: async () => {
         // 다른 창 잠금으로 조용히 돌아와 목록에 남아 있으면 성공으로 안내하지 않는다(X4)

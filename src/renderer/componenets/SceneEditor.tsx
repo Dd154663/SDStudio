@@ -86,6 +86,7 @@ import {
   CharacterPrompt,
 } from '../models/types';
 import { appState } from '../models/AppService';
+import { validateName } from '../models/nameInput';
 import { DELETE_RESULT_TEXT, runTrashDelete } from '../models/deleteFlowRules';
 import { promptCustomResolution } from '../models/customResolutionPrompt';
 import { observer } from 'mobx-react-lite';
@@ -1490,6 +1491,12 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
     return () => {
       const trimmedName = curNameRef.current.trimEnd();
       if (trimmedName && trimmedName !== scene.name) {
+        // 새 이름의 경로 안전 검사(금지 글자·점 시작 — 씬 이름은 이미지 폴더 이름, D2). 기존 이름은 건드리지 않는다.
+        const problem = validateName(trimmedName, { kind: 'scene', pathSafe: true });
+        if (problem) {
+          appState.pushMessage(problem + ' 이름 변경이 취소되었습니다.', 'error');
+          return;
+        }
         if (curSession!.hasScene(scene.type, trimmedName)) {
           appState.pushMessage(
             '같은 이름의 씬이 이미 있어 이름 변경이 취소되었습니다. (병합하려면 "이름 변경" 버튼을 사용하세요)',
@@ -1755,12 +1762,20 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
               const trimmedName = curName.trimEnd();
               if (!trimmedName) return;
               if (trimmedName === scene.name) return;
+              // 새 이름의 경로 안전 검사(씬 이름은 이미지 폴더 이름 — D2). 입력은 그대로 둔다.
+              const nameProblem = validateName(trimmedName, { kind: 'scene', pathSafe: true });
+              if (nameProblem) {
+                appState.pushMessage(nameProblem, 'error');
+                return;
+              }
               // 중복 이름 검사 (scenes는 Map이므로 hasScene으로 검사해야 함)
               if (curSession!.hasScene(scene.type, trimmedName)) {
                 // 중복 시 병합/취소 선택. 확인을 누르면 병합한다.
                 appState.pushDialog({
                   type: 'confirm',
-                  green: false,
+                  // 되돌릴 수 없는 병합(편집 중 씬의 프롬프트 소멸) — Enter 로 확정하지 않는다
+                  danger: 'permanent',
+                  confirmText: '병합',
                   text:
                     `"${trimmedName}" 씬이 이미 존재합니다.\n두 씬을 병합할까요?\n\n` +
                     `• 이미지: 두 씬의 이미지가 "${trimmedName}" 씬으로 합쳐집니다\n` +
@@ -1789,6 +1804,7 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
   const confirmDelete = () => {
               appState.pushDialog({
                 type: 'confirm',
+                danger: true,
                 text: '정말로 해당 씬을 삭제하시겠습니까? (휴지통으로 이동)',
                 callback: async () => {
                   const { trashService } = await import('../models');

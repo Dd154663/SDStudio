@@ -1,8 +1,9 @@
 import ExportSettingsFields from './ExportSettingsFields';
 import { ExportFormState as FormState, emptyExportForm as emptyForm, presetToExportForm as presetToForm, isExportFormValid, exportFormToPreset } from '../models/exportSettings';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import { appState, ExportPreset } from '../models/AppService';
+import { validateName } from '../models/nameInput';
 
 import ModalOverlay from './ModalOverlay';
 
@@ -14,6 +15,8 @@ const ExportPresetManager = observer(() => {
   const [form, setForm] = useState<FormState>(emptyForm());
   const [renamingIndex, setRenamingIndex] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  // Esc 로 취소했거나 이미 확정한 편집 — 뒤따르는 blur 가 다시 확정하지 않게(D2 인라인 규칙)
+  const renameClosedRef = useRef(false);
 
 
   useEffect(() => {
@@ -88,6 +91,7 @@ const ExportPresetManager = observer(() => {
   const requestDeletePreset = (idx: number) => {
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: `프리셋 "${presets[idx]?.name}"을(를) 정말 삭제하시겠습니까?`,
       callback: () => deletePreset(idx),
     });
@@ -95,6 +99,7 @@ const ExportPresetManager = observer(() => {
 
   // 인라인 이름 변경 (오버레이 없이 목록에서 바로)
   const startRename = (idx: number) => {
+    renameClosedRef.current = false;
     setRenamingIndex(idx);
     setRenameValue(presets[idx].name);
   };
@@ -109,12 +114,26 @@ const ExportPresetManager = observer(() => {
   };
 
   const commitRename = () => {
-    if (renamingIndex === null) return;
+    if (renamingIndex === null || renameClosedRef.current) return;
     const name = renameValue.trim();
-    if (!name) {
+    const currentName = presets[renamingIndex]?.name;
+    if (!name || name === currentName) {
+      renameClosedRef.current = true;
       setRenamingIndex(null);
       return;
     }
+    // 다른 프리셋과 같은 이름이면 거부 — 편집을 유지하고 입력을 보존한다
+    const idx = renamingIndex;
+    const problem = validateName(name, {
+      kind: 'exportPreset',
+      current: currentName,
+      existing: (n) => presets.some((p, i) => i !== idx && p.name === n),
+    });
+    if (problem) {
+      appState.pushMessage(problem, 'error');
+      return;
+    }
+    renameClosedRef.current = true;
     const updated = presets.map((p, i) =>
       i === renamingIndex ? { ...p, name } : p,
     );
@@ -125,7 +144,10 @@ const ExportPresetManager = observer(() => {
     setRenamingIndex(null);
   };
 
-  const cancelRename = () => setRenamingIndex(null);
+  const cancelRename = () => {
+    renameClosedRef.current = true;
+    setRenamingIndex(null);
+  };
 
   // 프리셋 복제 (고유 이름 부여, 바로 아래에 삽입). 복제본은 기본 프리셋 해제.
   const duplicatePreset = (idx: number) => {

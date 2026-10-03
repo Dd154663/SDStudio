@@ -9,6 +9,12 @@ import {
   templateService,
 } from '../models';
 import { appState } from '../models/AppService';
+import {
+  nameErrorMessage,
+  projectNameRules,
+  promptName,
+  suggestFolderCopyName,
+} from '../models/nameInput';
 import { projectPath } from '../models/projectPaths';
 import { planFolderDeletePrompt } from '../models/folderDeleteFlow';
 import ModalOverlay from './ModalOverlay';
@@ -572,17 +578,12 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
   const createProjectInView = useCallback(async () => {
     const folder =
       view !== 'all' && view !== 'fav' && view !== 'unfiled' ? view : null;
-    const name = await appState.pushDialogAsync({
-      type: 'input-confirm',
-      text: folder ? `"${folder}" 폴더에 새 프로젝트 이름` : '신규 프로젝트 이름',
+    // 이름 규칙·중복(어느 폴더에 있는지 포함)은 입력 창 안에서 검사(D2)
+    const name = await promptName({
+      title: folder ? `"${folder}" 폴더에 새 프로젝트 이름` : '신규 프로젝트 이름',
+      ...projectNameRules(sessionService),
     });
     if (!name) return;
-    if (sessionService.list().includes(name)) {
-      const conflictFolder = sessionService.getFolderOf(name);
-      const where = conflictFolder ? `"${conflictFolder}" 폴더에 ` : '';
-      appState.pushMessage(`같은 이름의 프로젝트가 ${where}이미 존재합니다.`);
-      return;
-    }
     try {
       await sessionService.add(name);
       if (folder) {
@@ -593,23 +594,20 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
       refresh();
       appState.pushMessage(`프로젝트 "${name}"을(를) 만들었습니다.`);
     } catch (e: any) {
-      appState.pushMessage(e.message || '프로젝트 생성에 실패했습니다.');
+      appState.pushMessage(
+        nameErrorMessage(e, 'project', name, '프로젝트 생성에 실패했습니다.'),
+        'error',
+      );
     }
   }, [view, refresh]);
 
   // 특정 폴더에 새 프로젝트 생성 (메뉴/버튼 공용)
   const createProjectInFolder = useCallback(async (folder: string) => {
-    const name = await appState.pushDialogAsync({
-      type: 'input-confirm',
-      text: `"${folder}" 폴더에 새 프로젝트 이름`,
+    const name = await promptName({
+      title: `"${folder}" 폴더에 새 프로젝트 이름`,
+      ...projectNameRules(sessionService),
     });
     if (!name) return;
-    if (sessionService.list().includes(name)) {
-      const conflictFolder = sessionService.getFolderOf(name);
-      const where = conflictFolder ? `"${conflictFolder}" 폴더에 ` : '';
-      appState.pushMessage(`같은 이름의 프로젝트가 ${where}이미 존재합니다.`);
-      return;
-    }
     try {
       await sessionService.add(name);
       try {
@@ -618,7 +616,10 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
       refresh();
       appState.pushMessage(`프로젝트 "${name}"을(를) 만들었습니다.`);
     } catch (e: any) {
-      appState.pushMessage(e.message || '프로젝트 생성에 실패했습니다.');
+      appState.pushMessage(
+        nameErrorMessage(e, 'project', name, '프로젝트 생성에 실패했습니다.'),
+        'error',
+      );
     }
   }, [refresh]);
 
@@ -791,18 +792,23 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
     const hint = parentPath
       ? `"${sessionService.folderLeafName(parentPath)}" 안에 새 폴더 (예: 서브폴더 또는 상위/하위)`
       : '새 폴더 이름을 입력하세요 (예: 폴더 또는 상위/하위)';
-    const value = await appState.pushDialogAsync({
-      type: 'input-confirm',
-      text: hint,
+    // 「상위/하위」 경로 입력 허용 — 단계마다 경로 안전 검사, 같은 경로의 폴더는 창 안에서 거부(D2)
+    const toFull = (v: string) => (parentPath ? parentPath + '/' + v : v);
+    const value = await promptName({
+      title: hint,
+      kind: 'folder',
+      pathSafe: true,
+      allowSlash: true,
+      existing: (v) => sessionService.listFolders().includes(toFull(v)),
     });
     if (!value) return;
-    const fullPath = parentPath ? parentPath + '/' + value.trim() : value.trim();
+    const fullPath = toFull(value);
     try {
       await sessionService.createFolder(fullPath);
-      setView(fullPath.trim());
+      setView(fullPath);
       refresh();
     } catch (e: any) {
-      appState.pushMessage(e.message || '폴더 생성에 실패했습니다.');
+      appState.pushMessage(e.message || '폴더 생성에 실패했습니다.', 'error');
     }
   }, [refresh]);
 
@@ -876,6 +882,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
       if (prompt.kind === 'empty') {
         appState.pushDialog({
           type: 'confirm',
+          danger: true,
           text: prompt.text,
           callback: async () => {
             try {
@@ -892,9 +899,10 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
       appState.pushDialog({
         type: 'select',
         text: prompt.text,
+        // 두 선택지 모두 삭제(폴더만은 즉시 실행, 프로젝트 포함은 확인 1회 더) — 빨강(D1)
         items: [
-          { text: prompt.folderOnlyText, value: 'folderOnly' },
-          { text: prompt.withProjectsText, value: 'withProjects' },
+          { text: prompt.folderOnlyText, value: 'folderOnly', danger: true },
+          { text: prompt.withProjectsText, value: 'withProjects', danger: true },
         ],
         callback: async (value) => {
           if (value === 'folderOnly') {
@@ -908,6 +916,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
             // 위험 동작 → 2차 확인
             appState.pushDialog({
               type: 'confirm',
+              danger: true,
               text: prompt.confirmWithProjectsText,
               callback: async () => {
                 await appState.deleteFolderWithProjects(folder);
@@ -923,9 +932,17 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
 
   const cloneFolder = useCallback(async (sourceFolder: string) => {
     const leafName = sessionService.folderLeafName(sourceFolder);
-    const value = await appState.pushDialogAsync({
-      type: 'input-confirm',
-      text: `"${leafName}" 폴더를 복제합니다. 새 폴더 이름을 입력하세요.`,
+    const parent = sessionService.folderParentPath(sourceFolder);
+    const toTarget = (v: string) => (parent ? parent + '/' + v : v);
+    // 원본 이름 기반 제안값을 채워 연다(D2) — 같은 자리의 폴더와 겹치면 창 안에서 거부
+    const value = await promptName({
+      title: `"${leafName}" 폴더를 복제합니다. 새 폴더 이름을 입력하세요.`,
+      initial: suggestFolderCopyName(leafName, (v) =>
+        sessionService.listFolders().includes(toTarget(v)),
+      ),
+      kind: 'folder',
+      pathSafe: true,
+      existing: (v) => sessionService.listFolders().includes(toTarget(v)),
     });
     if (!value) return;
 
@@ -940,17 +957,16 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
     if (!mode) return;
 
     const withImages = mode === 'with-images';
-    const parent = sessionService.folderParentPath(sourceFolder);
-    const targetPath = parent ? parent + '/' + value.trim() : value.trim();
+    const targetPath = toTarget(value);
     try {
       appState.setProgressDialog({ text: '폴더 복제 중...', done: 0, total: 1 });
       await sessionService.cloneFolder(sourceFolder, targetPath, withImages);
       appState.setProgressDialog(undefined);
       refresh();
-      appState.pushMessage(`"${value.trim()}" 폴더로 복제되었습니다.`);
+      appState.pushMessage(`"${value}" 폴더로 복제되었습니다.`);
     } catch (e: any) {
       appState.setProgressDialog(undefined);
-      appState.pushMessage(e.message || '폴더 복제에 실패했습니다.');
+      appState.pushMessage(e.message || '폴더 복제에 실패했습니다.', 'error');
     }
   }, [refresh]);
 

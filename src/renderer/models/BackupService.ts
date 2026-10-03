@@ -19,7 +19,7 @@ import { platform, buildImageOptimizeOptions } from './platform';
 import { runPool } from './concurrency';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
-import { Dialog } from '../componenets/ConfirmWindow';
+import { Dialog, DialogItem } from '../componenets/ConfirmWindow';
 import { cropMirrorResultFromDataUri, dataUriToBase64, deleteImageFiles } from './ImageService';
 import {
   createImageWithText,
@@ -81,8 +81,8 @@ import {
   readNamesFromStore,
   type ImportPolicy,
 } from './importFlow';
+import { nameErrorMessage, projectNameRules, promptName } from './nameInput';
 import {
-  checkNewProjectName,
   fileStemOf,
   overwriteFailureText,
   planProjectImport,
@@ -239,26 +239,28 @@ export class BackupService {
             appState.pushMessage('프로젝트를 먼저 선택해주세요');
             return;
           }
-          appState.pushDialog({
-            type: 'input-confirm',
-            text: '새로운 프로젝트 이름을 입력해주세요',
-            callback: async (inputValue) => {
-              if (!inputValue) return;
-              if (sessionService.list().includes(inputValue)) {
-                appState.pushMessage('이미 존재하는 프로젝트 이름입니다.');
-                return;
-              }
-              const oldName = appState.curSession!.name;
-              try {
-                await sessionService.renameProject(oldName, inputValue);
-              } catch (e: any) {
-                appState.pushMessage(e.message || '프로젝트 이름변경에 실패했습니다.');
-                return;
-              }
-              appState.curSession!.name = inputValue;
-              appState.pushMessage('프로젝트 이름이 변경되었습니다.');
-            },
+          // 현재 이름을 채워 연다 — 바꾸지 않고 확인하면 아무것도 하지 않는다(D2)
+          const session = appState.curSession;
+          const inputValue = await promptName({
+            title: '새로운 프로젝트 이름을 입력해주세요',
+            current: session.name,
+            ...projectNameRules(sessionService),
           });
+          if (!inputValue) return;
+          // 창이 떠 있는 동안 다른 프로젝트로 바뀌었으면 적용하지 않는다
+          if (appState.curSession !== session) return;
+          const oldName = session.name;
+          try {
+            await sessionService.renameProject(oldName, inputValue);
+          } catch (e: any) {
+            appState.pushMessage(
+              nameErrorMessage(e, 'project', inputValue, '프로젝트 이름변경에 실패했습니다.'),
+              'error',
+            );
+            return;
+          }
+          session.name = inputValue;
+          appState.pushMessage('프로젝트 이름이 변경되었습니다.');
         } else if (value === 'toggleFavorite') {
           if (!appState.curSession) {
             appState.pushMessage('프로젝트를 먼저 선택해주세요');
@@ -959,12 +961,11 @@ export class BackupService {
         if (b < 1024 * 1024 * 1024) return (b / (1024 * 1024)).toFixed(1) + ' MB';
         return (b / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
       };
-      const ans = await appState.pushDialogAsync({
-        type: 'select',
-        text: `이미지를 포함한 전체 백업의 예상 용량은 약 ${fmt(bytes)} 입니다.\n용량이 클 수 있으니 저장 공간을 확인하세요.\n계속할까요?`,
-        items: [{ text: '계속 진행', value: 'yes' }],
-      });
-      if (ans !== 'yes') return;
+      const ok = await appState.confirmAsync(
+        `이미지를 포함한 전체 백업의 예상 용량은 약 ${fmt(bytes)} 입니다.\n용량이 클 수 있으니 저장 공간을 확인하세요.\n계속할까요?`,
+        '계속 진행',
+      );
+      if (!ok) return;
     }
 
     const entries: { path: string; name: string }[] = [];
@@ -1143,12 +1144,11 @@ export class BackupService {
 
     // 설정만 모드: 충돌 정책 불필요 — 병합만.
     if (mode === 'settings') {
-      const ans = await appState.pushDialogAsync({
-        type: 'select',
-        text: '설정 백업을 불러옵니다.\n현재 데이터는 보존되며, 백업의 설정이 병합됩니다(덮어쓰지 않음).\n계속할까요?',
-        items: [{ text: '계속 진행', value: 'yes' }],
-      });
-      if (ans !== 'yes') {
+      const ok = await appState.confirmAsync(
+        '설정 백업을 불러옵니다.\n현재 데이터는 보존되며, 백업의 설정이 병합됩니다(덮어쓰지 않음).\n계속할까요?',
+        '계속 진행',
+      );
+      if (!ok) {
         await cleanup();
         return;
       }
@@ -1159,7 +1159,7 @@ export class BackupService {
     // 전체/이미지제외: 동명 프로젝트 처리 방식 선택.
     // 단, 이미지 없는 백업(noimg)은 덮어쓰기 금지 — 기존 이미지가 사라지고
     // 이미지 없는 버전으로 대체돼 순손실이 되기 때문.
-    const policyItems: { text: string; value: string }[] = [
+    const policyItems: DialogItem[] = [
       { text: '동명은 새 이름 (2)로 복원 (권장)', value: 'rename' },
       { text: '동명은 건너뛰기', value: 'skip' },
     ];
@@ -1167,6 +1167,7 @@ export class BackupService {
       policyItems.push({
         text: '⚠️ 동명을 덮어쓰기 (기존 영구 삭제)',
         value: 'overwrite',
+        danger: true,
       });
     }
     const choice = await appState.pushDialogAsync({
@@ -1178,29 +1179,23 @@ export class BackupService {
           : ''),
       items: policyItems,
     });
-    if (!choice || choice === 'cancel') {
+    if (!choice) {
       await cleanup();
       return;
     }
     const policy = choice as 'rename' | 'skip' | 'overwrite';
 
-    // 덮어쓰기는 파괴적 — 두 번 더 확인.
+    // 덮어쓰기는 파괴적 — 빨강 선택지(위) + 영구 삭제 확인 1회(Enter 로 확정하지 않음, 2026-10-03 D1).
+    // 예전의 1항목 선택 창 2연속을 하나로 줄였다(영구 삭제 전 명시 확인 1회는 유지).
     if (policy === 'overwrite') {
-      const c1 = await appState.pushDialogAsync({
-        type: 'select',
-        text: '⚠️ 덮어쓰기: 이름이 같은 기존 프로젝트와 그 이미지가 영구 삭제되고 백업으로 대체됩니다.\n정말로 진행할까요?',
-        items: [{ text: '예, 덮어씁니다', value: 'yes' }],
+      const ok = await appState.confirmAsync({
+        text:
+          '⚠️ 덮어쓰기: 이름이 같은 기존 프로젝트와 그 이미지가 영구 삭제되고 백업으로 대체됩니다.\n' +
+          '이 작업은 되돌릴 수 없습니다. 정말로 진행할까요?',
+        confirmText: '덮어쓰기',
+        danger: 'permanent',
       });
-      if (c1 !== 'yes') {
-        await cleanup();
-        return;
-      }
-      const c2 = await appState.pushDialogAsync({
-        type: 'select',
-        text: '정말 정말로 진행할까요?\n이 작업은 되돌릴 수 없습니다.',
-        items: [{ text: '예, 확실합니다', value: 'yes' }],
-      });
-      if (c2 !== 'yes') {
+      if (!ok) {
         await cleanup();
         return;
       }
@@ -1545,33 +1540,27 @@ export class BackupService {
     } catch (e) {}
   }
 
-  folderImportDeep(folder: string) {
-    appState.pushDialog({
-      type: 'input-confirm',
-      text: '새로운 프로젝트 이름을 입력해주세요',
-      callback: async (inputValue) => {
-        if (!inputValue) return;
-        if (sessionService.list().includes(inputValue)) {
-          appState.pushMessage('이미 존재하는 프로젝트 이름입니다.');
-          return;
-        }
-        const tarPath = await backend.selectFile();
-        if (!tarPath) return;
-        appState.setProgressDialog({ text: '프로젝트 백업을 불러오는 중입니다...', done: 0, total: 1 });
-        try {
-          await sessionService.importSessionDeep(tarPath, inputValue);
-        } catch (e: any) {
-          appState.setProgressDialog(undefined);
-          appState.pushMessage(e.message, 'error');
-          return;
-        }
-        try {
-          await sessionService.moveToFolder(inputValue, folder);
-        } catch (e) {}
-        appState.setProgressDialog(undefined);
-        appState.pushDialog({ type: 'yes-only', text: `"${folder}" 폴더로 백업을 불러왔습니다.` });
-      },
+  async folderImportDeep(folder: string) {
+    const inputValue = await promptName({
+      title: '새로운 프로젝트 이름을 입력해주세요',
+      ...projectNameRules(sessionService),
     });
+    if (!inputValue) return;
+    const tarPath = await backend.selectFile();
+    if (!tarPath) return;
+    appState.setProgressDialog({ text: '프로젝트 백업을 불러오는 중입니다...', done: 0, total: 1 });
+    try {
+      await sessionService.importSessionDeep(tarPath, inputValue);
+    } catch (e: any) {
+      appState.setProgressDialog(undefined);
+      appState.pushMessage(nameErrorMessage(e, 'project', inputValue), 'error');
+      return;
+    }
+    try {
+      await sessionService.moveToFolder(inputValue, folder);
+    } catch (e) {}
+    appState.setProgressDialog(undefined);
+    appState.pushDialog({ type: 'yes-only', text: `"${folder}" 폴더로 백업을 불러왔습니다.` });
   }
 
   // 파일 불러오기: 가져온 직후 새로 생긴 프로젝트(들)를 폴더로 이동
@@ -1709,10 +1698,10 @@ export class BackupService {
           items: [
             { text: '이미 최적화된 것은 원본 유지', value: 'skip' },
             { text: '전부 다시 최적화', value: 'all' },
-            { text: '취소', value: 'cancel' },
           ],
         });
-        if (!choice || choice === 'cancel') {
+        // 취소는 창의 내장 취소 하나(D3)
+        if (!choice) {
           appState.exportProgress = undefined;
           return;
         }
@@ -2092,20 +2081,14 @@ export class BackupService {
     }
 
     // 새 이름으로 추가 — 백업 이름(충돌 시 「이름 (n)」)을 기본값으로 제시.
-    const input = await appState.pushDialogAsync({
-      type: 'input-confirm',
-      text: PROJECT_IMPORT_TEXT.namePrompt,
-      inputValue: plan.renameDefault,
+    // 이름 규칙·중복은 입력 창 안에서 검사(실패해도 창 유지 — D2). 가져오기는 목록에 없는 이름만 넘긴다(§8-3).
+    const name = await promptName({
+      title: PROJECT_IMPORT_TEXT.namePrompt,
+      initial: plan.renameDefault,
+      ...projectNameRules(sessionService),
     });
-    const name = (input ?? '').trim();
     if (!name) {
       await cleanup();
-      return;
-    }
-    const problem = checkNewProjectName(name, sessionService.list());
-    if (problem) {
-      await cleanup();
-      appState.pushMessage(problem);
       return;
     }
     appState.setProgressDialog({
@@ -2155,12 +2138,12 @@ export class BackupService {
       protection: IMPORT_FLOW_TEXT.protection.trashWithBackup,
     });
     if (!ok1) return;
-    const ok2 = await appState.pushDialogAsync({
-      type: 'select',
-      text: PROJECT_IMPORT_TEXT.secondConfirm,
-      items: [{ text: PROJECT_IMPORT_TEXT.secondConfirmButton, value: 'yes' }],
-    });
-    if (ok2 !== 'yes') return;
+    const ok2 = await appState.confirmAsync(
+      PROJECT_IMPORT_TEXT.secondConfirm,
+      PROJECT_IMPORT_TEXT.secondConfirmButton,
+      { danger: true },
+    );
+    if (!ok2) return;
     if (zipService.isZipping) {
       appState.pushMessage(PROJECT_IMPORT_TEXT.busyZipping);
       return;

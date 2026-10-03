@@ -317,10 +317,10 @@ export class ExportPresetService {
             items: [
               { text: '이미 최적화된 것은 원본 유지', value: 'skip' },
               { text: '전부 다시 최적화', value: 'all' },
-              { text: '취소', value: 'cancel' },
             ],
           });
-          if (!choice || choice === 'cancel') {
+          // 취소는 창의 내장 취소 하나(D3)
+          if (!choice) {
             appState.exportProgress = undefined;
             return;
           }

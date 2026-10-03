@@ -276,15 +276,16 @@ export const PresetEditModal = observer(
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-4 flex-none">
-            <button className="round-button back-gray px-4 py-2" onClick={onClose}>
-              취소
-            </button>
+            {/* [확인][취소] 순서(2026-10-03 D1) */}
             <button
               className="round-button back-sky px-4 py-2"
               onClick={save}
               disabled={saving}
             >
               {saving ? '저장 중...' : '저장'}
+            </button>
+            <button className="round-button back-gray px-4 py-2" onClick={onClose}>
+              취소
             </button>
           </div>
         </div>

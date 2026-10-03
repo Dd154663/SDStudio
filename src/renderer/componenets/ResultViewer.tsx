@@ -228,6 +228,8 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
     if (selected.size === 0) return;
     appState.pushDialog({
       type: 'confirm',
+      danger: 'permanent',
+      confirmText: '영구 삭제',
       text: selected.size + '장의 이미지를 영구 삭제하시겠습니까?',
       callback: async () => {
         await stopThumbnailLoading();
@@ -265,6 +267,8 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
     if (trashImages.length === 0) return;
     appState.pushDialog({
       type: 'confirm',
+      danger: 'permanent',
+      confirmText: '영구 삭제',
       text: '휴지통을 비우시겠습니까? 모든 이미지가 영구 삭제됩니다.',
       callback: async () => {
         await stopThumbnailLoading();
@@ -1200,6 +1204,7 @@ const ResultDetailView = observer(
           }
           appState.pushDialog({
             type: 'confirm',
+            danger: true,
             text: '정말로 파일을 삭제하시겠습니까?',
             showSkipConfirm: true,
             callback: doDel,
@@ -1222,6 +1227,7 @@ const ResultDetailView = observer(
           }
           appState.pushDialog({
             type: 'confirm',
+            danger: true,
             text: '정말로 파일을 삭제하시겠습니까?',
             showSkipConfirm: true,
             callback: doDel,
@@ -1332,6 +1338,7 @@ const ResultDetailView = observer(
       }
       appState.pushDialog({
         type: 'confirm',
+        danger: true,
         text: '정말로 파일을 삭제하시겠습니까?',
         showSkipConfirm: true,
         callback: doDel,
@@ -2018,6 +2025,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           if (value === 'all') {
             appState.pushDialog({
               type: 'confirm',
+              danger: true,
               text: `정말로 모든 이미지를 삭제하시겠습니까? (이미지 휴지통으로 이동, ${IMAGE_RETENTION_DAYS}일 보관)`,
               callback: async () => {
                 await deleteImageFiles(curSession!, currentPaths(), scene);
@@ -2049,6 +2057,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             // 값이 없을 때(취소·선택 없음) 이 분기로 떨어지지 않게 명시 비교한다.
             appState.pushDialog({
               type: 'confirm',
+              danger: true,
               text: `정말로 즐겨찾기 외 모든 이미지를 삭제하시겠습니까? (이미지 휴지통으로 이동, ${IMAGE_RETENTION_DAYS}일 보관)`,
               callback: async () => {
                 await deleteImageFiles(
@@ -2087,6 +2096,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       const targets = plan.paths;
       appState.pushDialog({
         type: 'confirm',
+        danger: true,
         text: selectedImagesDeleteText(targets.length, IMAGE_RETENTION_DAYS),
         callback: async () => {
           await deleteImageFiles(curSession!, targets, scene);
@@ -2274,6 +2284,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           }
           appState.pushDialog({
             type: 'confirm',
+            danger: true,
             text: '정말로 파일을 삭제하시겠습니까?',
             showSkipConfirm: showImageDeleteSkipOption(1),
             callback: doDel,

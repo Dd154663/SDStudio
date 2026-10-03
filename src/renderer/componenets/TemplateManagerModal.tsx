@@ -30,6 +30,7 @@ import {
   templateService,
 } from '../models';
 import { appState } from '../models/AppService';
+import { nameErrorMessage, promptName } from '../models/nameInput';
 import { CharacterPreset, CharacterPrompt } from '../models/types';
 import { Sampling, NoiseSchedule } from '../backends/imageGen';
 import HelpIcon from './HelpIcon';
@@ -285,12 +286,13 @@ export const TemplateWorkflowEditor = observer(
             appState.pushMessage('열려 있는 프로젝트가 없습니다.');
             return;
           }
-          const flat: Array<{ text: string; value: string }> = [];
+          const flat: Array<{ text: string; value: string; danger?: boolean }> = [];
           const lookup: Record<string, any> = {};
           for (const [type, list] of session.presets.entries()) {
             for (const p of list) {
               const key = `${type} ${p.name}`;
-              flat.push({ text: `${p.name} (${type})`, value: key });
+              // 고르는 즉시 프롬프트·샘플링 설정을 덮어쓴다 — 빨강(D1)
+              flat.push({ text: `${p.name} (${type})`, value: key, danger: true });
               lookup[key] = p;
             }
           }
@@ -373,6 +375,7 @@ export const TemplateWorkflowEditor = observer(
       if (!entry || !entry.preset) return;
       appState.pushDialog({
         type: 'confirm',
+        danger: true,
         text: '프롬프트 영역(프리셋 1벌)을 비우시겠습니까?',
         callback: async () => {
           await projectTemplateService.removePreset(entry.id);
@@ -489,6 +492,7 @@ export const TemplateWorkflowEditor = observer(
       if (entry.scenes.length > 0) {
         appState.pushDialog({
           type: 'confirm',
+          danger: true,
           text: `기존 씬 구성 ${entry.scenes.length}개를 새 구성으로 교체합니다. 계속할까요?`,
           callback: run,
         });
@@ -1345,9 +1349,11 @@ export const TemplateManagerModal = observer(
     // ----- 템플릿 CRUD -----
     // 전환·닫기 시 프롬프트 커밋은 편집기의 언마운트 훅이 담당한다.
     const createTemplate = async () => {
-      const name = await appState.pushDialogAsync({
-        type: 'input-confirm',
-        text: '새 템플릿 이름을 입력해주세요',
+      const name = await promptName({
+        title: '새 템플릿 이름을 입력해주세요',
+        kind: 'template',
+        pathSafe: true,
+        existing: (n) => !!projectTemplateService.getByName(n),
       });
       if (!name) return;
       const created = await projectTemplateService.create(name);
@@ -1356,15 +1362,25 @@ export const TemplateManagerModal = observer(
 
     const renameTemplate = async () => {
       if (!entry) return;
-      const name = await appState.pushDialogAsync({
-        type: 'input-confirm',
-        text: '새 템플릿 이름을 입력해주세요',
+      // 현재 이름을 채워 연다 — 바꾸지 않고 확인하면 아무것도 하지 않는다(D2)
+      const name = await promptName({
+        title: '새 템플릿 이름을 입력해주세요',
+        kind: 'template',
+        pathSafe: true,
+        current: entry.name,
+        existing: (n) => {
+          const other = projectTemplateService.getByName(n);
+          return !!other && other.id !== entry.id;
+        },
       });
       if (!name) return;
       try {
         await projectTemplateService.rename(entry.id, name);
       } catch (e: any) {
-        appState.pushMessage(e.message || '이름 변경에 실패했습니다');
+        appState.pushMessage(
+          nameErrorMessage(e, 'template', name, '이름 변경에 실패했습니다'),
+          'error',
+        );
       }
     };
 
@@ -1399,6 +1415,7 @@ export const TemplateManagerModal = observer(
       if (!entry) return;
       appState.pushDialog({
         type: 'confirm',
+        danger: true,
         text: `템플릿 "${entry.name}"을(를) 삭제하시겠습니까?\n(이 템플릿을 쓰는 폴더 자동 적용 지정도 해제됩니다)`,
         callback: async () => {
           await projectTemplateService.delete(entry.id);

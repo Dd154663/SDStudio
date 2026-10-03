@@ -26,6 +26,7 @@ import { artistLibraryService, imageService, backend } from '../models';
 import { IArtistEntry, IArtistImage } from '../models/ArtistLibraryService';
 import { ModelSamplingFamily } from '../models/modelSamplingProfiles';
 import { appState } from '../models/AppService';
+import { promptName } from '../models/nameInput';
 import { batchResultLine, failedNamesLine } from '../models/deleteFlowRules';
 import { dataUriToBase64 } from '../models/ImageService';
 import { extractPromptDataFromBase64 } from '../models/util';
@@ -231,19 +232,14 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
               <button
                 className="icon-button back-gray !rounded-md px-3 py-1.5"
                 onClick={async () => {
-                  const newName = await appState.pushDialogAsync({
-                    type: 'input-confirm',
-                    text: `새 작가 이름을 입력하세요 (현재: ${artist.name})`,
+                  // 현재 이름을 채워 연다 — 다른 작가와 같은 이름(대소문자·공백 무시)은 창 안에서 거부(D2)
+                  const newName = await promptName({
+                    title: `새 작가 이름을 입력하세요 (현재: ${artist.name})`,
+                    kind: 'artist',
+                    current: artist.name,
+                    existing: (n) => !!artistLibraryService.findArtistByName(n, artist.id),
                   });
                   if (newName) {
-                    const duplicate = artistLibraryService.findArtistByName(
-                      newName,
-                      artist.id,
-                    );
-                    if (duplicate) {
-                      appState.pushMessage('동일한 이름의 작가가 있어 이름을 변경하지 않았습니다.');
-                      return;
-                    }
                     artistLibraryService.renameArtist(artist.id, newName);
                   }
                 }}
@@ -262,6 +258,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
               onClick={() => {
                 appState.pushDialog({
                   type: 'confirm',
+                  danger: true,
                   text: `"${artist.name}" 작가를 삭제하시겠습니까?\n첨부된 이미지도 함께 삭제됩니다.`,
                   callback: () => {
                     artistLibraryService.deleteArtist(artist.id);
@@ -351,6 +348,8 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                       const imageId = selected.id;
                       appState.pushDialog({
                         type: 'confirm',
+                        danger: 'permanent',
+                        confirmText: '영구 삭제',
                         text: '이 샘플 이미지를 삭제할까요? 파일이 영구 삭제되어 되돌릴 수 없습니다.',
                         callback: async () => {
                           await artistLibraryService.removeImage(artist.id, imageId);
@@ -562,6 +561,7 @@ const ArtistLibraryTab = observer(() => {
     if (selectedIds.size === 0) return;
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: `선택한 ${selectedIds.size}명의 작가를 삭제하시겠습니까?\n첨부된 이미지도 함께 삭제됩니다.`,
       callback: async () => {
         // 한 명이 실패해도 나머지를 계속 지우고 결과를 알린다(X13 — 예전에는 첫 실패에서 멈추고 무안내)
@@ -591,7 +591,8 @@ const ArtistLibraryTab = observer(() => {
   };
 
   const newArtist = async () => {
-    const name = await appState.pushDialogAsync({ type: 'input-confirm', text: '작가 이름을 입력하세요 (예: suko mugi)' });
+    // 같은 이름(대소문자·공백 무시)이 있으면 그 카드를 연다(기존 동작) — 중복을 거부하지 않는다
+    const name = await promptName({ title: '작가 이름을 입력하세요 (예: suko mugi)', kind: 'artist' });
     if (!name) return;
     const existing = artistLibraryService.findArtistByName(name);
     const a = artistLibraryService.createArtist(name);
@@ -616,6 +617,7 @@ const ArtistLibraryTab = observer(() => {
     );
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text:
         `동일한 이름의 작가 ${groups.length}그룹을 일괄 병합할까요?\n` +
         `대상 카드 ${cards}개 · 샘플 이미지 ${images}장\n\n` +

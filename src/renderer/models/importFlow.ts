@@ -169,19 +169,18 @@ export async function confirmOverwrite(opts: {
   count?: number;
   protection: string;
 }): Promise<boolean> {
-  // confirm 형은 콜백이 값 없이 불려 pushDialogAsync 로는 구분이 안 된다 → 콜백/취소로 받는다.
-  return await new Promise<boolean>((resolve) => {
-    getAppState().pushDialog({
-      type: 'confirm',
-      text: IMPORT_FLOW_TEXT.overwriteConfirm(
-        opts.label,
-        opts.count,
-        opts.protection,
-      ),
-      confirmText: IMPORT_FLOW_TEXT.overwriteConfirmButton,
-      callback: () => resolve(true),
-      onCancel: () => resolve(false),
-    });
+  // 파괴적(빨강). 기존 항목이 영구 삭제되는 보호 방식이면 Enter 로 확정하지 않는다(D1 'permanent').
+  return await getAppState().confirmAsync({
+    text: IMPORT_FLOW_TEXT.overwriteConfirm(
+      opts.label,
+      opts.count,
+      opts.protection,
+    ),
+    confirmText: IMPORT_FLOW_TEXT.overwriteConfirmButton,
+    danger:
+      opts.protection === IMPORT_FLOW_TEXT.protection.replaceDeleted
+        ? 'permanent'
+        : true,
   });
 }
 

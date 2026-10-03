@@ -190,16 +190,12 @@ async function downloadWithProgress(
   }
 }
 
-// 확인/취소 구분 확인 창 — appState.confirmAsync 공용(2026-10-03 U1·X14, 예전엔 같은 함수가 6곳에 복제)
-const askConfirm = (text: string, confirmText: string): Promise<boolean> =>
-  appState.confirmAsync({ text, confirmText, green: true });
-
 // 토큰·알 수 없는 파일: 불러오지 않고, 확인 뒤 다운로드 폴더에 파일로만 저장.
 async function saveDriveBackupToDownloads(
   item: DriveBackupItem,
   reason: 'token' | 'unknown',
 ): Promise<void> {
-  const ok = await askConfirm(
+  const ok = await appState.confirmAsync(
     reason === 'token' ? GOOGLE_DRIVE_TEXT.tokenDownloadOnly : GOOGLE_DRIVE_TEXT.unknownDownloadOnly,
     GOOGLE_DRIVE_TEXT.saveToDownloads,
   );

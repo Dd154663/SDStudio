@@ -63,6 +63,7 @@ import {
 } from '../models';
 import { toPARR } from '../models/PromptService';
 import { appState } from '../models/AppService';
+import { promptName, validateName } from '../models/nameInput';
 import { observer } from 'mobx-react-lite';
 import {
   WFAbstractVar,
@@ -406,18 +407,30 @@ const InnerEditor: React.FC<InnerEditorProps> = ({ type, shared, preset }) => {
         <button
           className={`round-button back-sky`}
           onClick={async () => {
-            if (presets.find((x) => x.name === name)) {
-              appState.pushMessage('이미 존재하는 그림체 이름입니다');
+            // 앞뒤 공백 제거·빈 값 거부·같은 이름이면 아무것도 하지 않음·다른 그림체와 겹치면 거부(D2 인라인 규칙)
+            const trimmed = name.trim();
+            if (trimmed === preset.name) {
+              setName(trimmed);
               return;
             }
+            const problem = validateName(trimmed, {
+              kind: 'style',
+              current: preset.name,
+              existing: (n) => presets.some((x) => x !== preset && x.name === n),
+            });
+            if (problem) {
+              appState.pushMessage(problem, 'error');
+              return;
+            }
+            setName(trimmed);
             if (curSession!.selectedWorkflow?.presetName === preset.name) {
-              preset.name = name;
+              preset.name = trimmed;
               curSession!.selectedWorkflow = {
                 workflowType: type,
-                presetName: name,
+                presetName: trimmed,
               };
             } else {
-              preset.name = name;
+              preset.name = trimmed;
             }
           }}
         >
@@ -593,15 +606,12 @@ const ProfilePreSetSelect = observer(({}) => {
           <div
             className="flex-1 w-10 flex m-4 items-center justify-center rounded-xl clickable back-lllgray"
             onClick={async () => {
-              const name = await appState.pushDialogAsync({
-                type: 'input-confirm',
-                text: '그림체 이름을 입력하세요',
+              const name = await promptName({
+                title: '그림체 이름을 입력하세요',
+                kind: 'style',
+                existing: (n) => presets.some((x) => x.name === n),
               });
               if (!name) return;
-              if (presets.find((x) => x.name === name)) {
-                appState.pushMessage('이미 존재하는 그림체 이름입니다');
-                return;
-              }
               const newPreset = workFlowService.buildPreset(type);
               newPreset.name = name;
               presets.push(newPreset);
@@ -727,6 +737,8 @@ const PreSetBulkManageModal = observer(
       }
       appState.pushDialog({
         type: 'confirm',
+        danger: 'permanent',
+        confirmText: '영구 삭제',
         text: `선택한 ${selected.size}개의 사전 세팅을 삭제하시겠습니까? 되돌릴 수 없습니다.`,
         callback: () => {
           const names = Array.from(selected);
@@ -892,15 +904,12 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
       <button
         className={`icon-button flex-none`}
         onClick={async () => {
-          const name = await appState.pushDialogAsync({
-            type: 'input-confirm',
-            text: '사전 세팅 이름을 입력하세요',
+          const name = await promptName({
+            title: '사전 세팅 이름을 입력하세요',
+            kind: 'preset',
+            existing: (n) => presets.some((x) => x.name === n),
           });
           if (!name) return;
-          if (presets.find((x) => x.name === name)) {
-            appState.pushMessage('이미 존재하는 사전 세팅 이름입니다');
-            return;
-          }
           const newPreset = workFlowService.buildPreset(workflowType);
           newPreset.name = name;
           curSession.addPreset(newPreset);
@@ -980,17 +989,15 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                 <button
                   onClick={async (e) => {
                     e.stopPropagation();
-                    const newName = await appState.pushDialogAsync({
-                      type: 'input-confirm',
-                      text: '새 사전 세팅 이름을 입력하세요',
+                    // 현재 이름을 채워 연다 — 바꾸지 않고 확인하면 아무것도 하지 않는다(D2)
+                    const newName = await promptName({
+                      title: '새 사전 세팅 이름을 입력하세요',
+                      kind: 'preset',
+                      current: option.name,
+                      existing: (n) =>
+                        presets.some((x) => x !== option && x.name === n),
                     });
                     if (!newName) return;
-                    if (presets.find((x) => x.name === newName)) {
-                      appState.pushMessage(
-                        '이미 존재하는 사전 세팅 이름입니다',
-                      );
-                      return;
-                    }
                     if (
                       curSession.selectedWorkflow?.presetName === option.name
                     ) {
@@ -1069,6 +1076,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                     }
                     appState.pushDialog({
                       type: 'confirm',
+                      danger: true,
                       text: '정말로 사전 세팅을 삭제하시겠습니까?',
                       callback: () => {
                         curSession!.removePreset(workflowType, option.name);
@@ -1634,6 +1642,7 @@ const NewSceneResolutionRow = observer(() => {
     }
     appState.pushDialog({
       type: 'confirm',
+      danger: true,
       text: `씬 탭의 모든 씬 ${scenes.length}개에 ${size.width}x${size.height} 해상도를 적용하시겠습니까?`,
       callback: () => {
         const v = value ?? { resolution: 'portrait' };
