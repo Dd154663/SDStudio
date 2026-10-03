@@ -11,6 +11,7 @@ import { isV2 } from '../models/mobileV2';
 import { observer } from 'mobx-react-lite';
 import Tooltip from './Tooltip';
 import { addScenesToQueue } from '../models/sceneQueueActions';
+import { REQUEST_DELAY_TEXT } from '../models/requestTiming';
 
 interface ProgressBarProps {
   duration: number;
@@ -23,9 +24,11 @@ interface ProgressBarProps {
   elapsed?: number;
   // 모바일 V2: 고정/클램프 폭 대신 부모가 준 폭을 그대로 채우고 시계 아이콘을 뺀다(예약 버튼을 덮던 문제, 2026-09-21 실기기).
   fit?: boolean;
+  // 긴 휴식 중(T3b): 채움을 회색 토큰(back-gray = --c-gray-bg/--c-gray-fg)으로 그린다.
+  isRest?: boolean;
 }
 
-const ProgressBar = ({ duration, isError, text, key, elapsed, fit }: ProgressBarProps) => {
+const ProgressBar = ({ duration, isError, text, key, elapsed, fit, isRest }: ProgressBarProps) => {
   const animStyle = {
     animationDuration: `${duration}s`,
     animationDelay: `-${elapsed ?? 0}s`,
@@ -47,12 +50,12 @@ const ProgressBar = ({ duration, isError, text, key, elapsed, fit }: ProgressBar
       <div
         className={
           'top-0 left-0 absolute w-full progress-transition rounded-full h-8 progress-clip-animation ' +
-          (!isError ? 'bg-sky-500 dark:bg-indigo-400' : 'bg-red-500')
+          (isRest ? 'back-gray' : !isError ? 'bg-sky-500 dark:bg-indigo-400' : 'bg-red-500')
         }
         style={animStyle}
       ></div>
       <div
-        className={`top-0 left-0 w-full h-8 absolute flex items-center justify-center text-white gap-2 ${fit ? 'px-1.5' : 'px-2'} md:px-0 progress-clip-animation`}
+        className={`top-0 left-0 w-full h-8 absolute flex items-center justify-center ${isRest ? 'back-gray !bg-transparent' : 'text-white'} gap-2 ${fit ? 'px-1.5' : 'px-2'} md:px-0 progress-clip-animation`}
         style={animStyle}
       >
         {!fit && <FaRegClock size={20} className="flex-none" />}
@@ -89,6 +92,9 @@ export const TaskProgressBar = ({ fast, fit }: TaskProgressBarProps) => {
   const [isError, setIsError] = useState(false);
   const [error, setError] = useState<string>('');
   const [_, rerender] = useState<{}>({});
+  // 긴 휴식(T3b) — 서비스의 휴식 상태가 바뀔 때만 막대를 새로 그린다(key 교체).
+  const restRef = useRef<boolean>(taskQueueService.isLongBreak());
+  const isRest = taskQueueService.isRunning() && taskQueueService.isLongBreak();
   const formatTime = (ms: number) => {
     const seconds = ms / 1000;
     const minutes = seconds / 60;
@@ -125,6 +131,19 @@ export const TaskProgressBar = ({ fast, fit }: TaskProgressBarProps) => {
         setElapsed(0);
         setIsError(false);
         setError('');
+      }
+      // 휴식 시작·끝: 막대를 새로 그린다. 끝나면 다음 작업 사이클을 처음부터(서비스가 사이클
+      // 시작 시각도 다시 찍는다).
+      const rest = taskQueueService.isLongBreak();
+      if (rest !== restRef.current) {
+        restRef.current = rest;
+        nextKey();
+        if (!rest && taskQueueService.isRunning()) {
+          setIsError(false);
+          setError('');
+          setElapsed(0);
+          setDuration(taskQueueService.estimateTopTaskTime('mean') / 1000);
+        }
       }
       rerender({});
     };
@@ -169,9 +188,27 @@ export const TaskProgressBar = ({ fast, fit }: TaskProgressBarProps) => {
     };
   }, []);
 
+  // 휴식 중에는 남은 시간 문구를 1초마다 다시 그린다(채움 애니메이션은 CSS 가 이어 그림).
+  useEffect(() => {
+    if (!isRest) return;
+    const timer = setInterval(() => rerender({}), 1000);
+    return () => clearInterval(timer);
+  }, [isRest]);
+
+  // 휴식 중 막대: 길이 = 휴식 전체, 경과 = 휴식 시작부터(재마운트돼도 서비스 시각 기준으로 이어 그림).
+  const rest = isRest ? taskQueueService.longBreakWindow() : null;
+  const restDuration = rest ? Math.max(0, (rest.until - rest.startedAt) / 1000) : 0;
+  const restElapsed = rest ? Math.max(0, (Date.now() - rest.startedAt) / 1000) : 0;
+
   return (
     <div
-      onClick={() => {
+      onClick={(e) => {
+        if (isRest) {
+          // 휴식 안내만 띄운다(목록 펼치기 등 바깥 클릭 동작은 막는다). 기존 확인 한 개 창 경로.
+          e.stopPropagation();
+          void appState.pushDialogAsync({ type: 'yes-only', text: REQUEST_DELAY_TEXT.breakNotice });
+          return;
+        }
         if (error !== '') {
           appState.pushMessage('Error: ' + error);
         }
@@ -179,10 +216,15 @@ export const TaskProgressBar = ({ fast, fit }: TaskProgressBarProps) => {
     >
       <ProgressBar
         key={key.current}
-        isError={isError}
-        duration={duration}
-        elapsed={elapsed}
-        text={getProgressText()}
+        isError={rest ? false : isError}
+        isRest={!!rest}
+        duration={rest ? restDuration : duration}
+        elapsed={rest ? restElapsed : elapsed}
+        text={
+          rest
+            ? REQUEST_DELAY_TEXT.breakProgress(rest.until - Date.now(), fit)
+            : getProgressText()
+        }
         fit={fit}
       />
     </div>

@@ -32,6 +32,20 @@ import { observer } from 'mobx-react-lite';
 import { appState } from '../models/AppService';
 import { TaskLog } from '../models/TaskQueueService';
 import {
+  formatDelaySeconds,
+  normalizeRequestDelayJitterMs,
+  normalizeRequestDelayMs,
+  REQUEST_DELAY_DEFAULT_MS,
+  REQUEST_DELAY_JITTER_DEFAULT_MS,
+  REQUEST_DELAY_JITTER_MAX_MS,
+  REQUEST_DELAY_MAX_MS,
+  REQUEST_DELAY_STEP_MS,
+  REQUEST_DELAY_TEXT,
+  resolveRequestDelaySettings,
+  shouldWarnShortRequestDelay,
+  withRequestDelaySettings,
+} from '../models/requestTiming';
+import {
   FaUser,
   FaFolder,
   FaCog,
@@ -1085,7 +1099,7 @@ const MigrationDiagSection = () => {
 
 /* ── 탭: 시스템 (기술·진단·정보) ── */
 const SystemTab = ({
-  delayTime, setDelayTime,
+  requestDelayMs, setRequestDelayMs, requestDelayJitterMs, setRequestDelayJitterMs,
   storageWriteGuard, setStorageWriteGuard,
   exportConcurrency, setExportConcurrency,
   autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality,
@@ -1157,15 +1171,30 @@ const SystemTab = ({
       </div>
       <hr className="line-color" />
       <div>
-        <label className="block text-sm gray-label mb-1">
-          기본 지연 시간 조정 (0ms ~ 1000ms)
+        {/* 요청 사이 지연(2026-10-03 T3): 대기 = max(0, 지연 ± 무작위 폭), 단일 출처 requestTiming */}
+        <label htmlFor="cfgRequestDelay" className="block text-sm gray-label mb-1">
+          {REQUEST_DELAY_TEXT.delayLabel}
         </label>
         <div className="flex items-center gap-2">
-          <input type="range" min={0} max={1000} step={1}
-            value={delayTime} onChange={(e) => setDelayTime(parseInt(e.target.value))}
+          <input id="cfgRequestDelay" type="range" min={0} max={REQUEST_DELAY_MAX_MS} step={REQUEST_DELAY_STEP_MS}
+            value={requestDelayMs}
+            onChange={(e) => setRequestDelayMs(normalizeRequestDelayMs(Number(e.target.value)))}
             className="flex-1 min-w-0" />
-          <span className="text-sm gray-label w-12 text-right flex-none">{delayTime}ms</span>
+          <span className="text-sm gray-label w-14 text-right flex-none tabular-nums">{formatDelaySeconds(requestDelayMs)}</span>
         </div>
+        <label htmlFor="cfgRequestDelayJitter" className="block text-sm gray-label mb-1 mt-3">
+          {REQUEST_DELAY_TEXT.jitterLabel}
+        </label>
+        <div className="flex items-center gap-2">
+          <input id="cfgRequestDelayJitter" type="range" min={0} max={REQUEST_DELAY_JITTER_MAX_MS} step={REQUEST_DELAY_STEP_MS}
+            value={requestDelayJitterMs}
+            onChange={(e) => setRequestDelayJitterMs(normalizeRequestDelayJitterMs(Number(e.target.value)))}
+            className="flex-1 min-w-0" />
+          <span className="text-sm gray-label w-14 text-right flex-none tabular-nums">±{formatDelaySeconds(requestDelayJitterMs)}</span>
+        </div>
+        <p className="text-xs text-faint mt-1">
+          {REQUEST_DELAY_TEXT.help}
+        </p>
       </div>
       <hr className="line-color" />
       <div>
@@ -2836,7 +2865,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [imageEditor, setImageEditor] = useState('');
   const [useGPU, setUseGPU] = useState(false);
   const [whiteMode, setWhiteMode] = useState(false);
-  const [delayTime, setDelayTime] = useState(0);
+  const [requestDelayMs, setRequestDelayMs] = useState(REQUEST_DELAY_DEFAULT_MS);
+  const [requestDelayJitterMs, setRequestDelayJitterMs] = useState(REQUEST_DELAY_JITTER_DEFAULT_MS);
   const [classicSceneCard, setClassicSceneCard] = useState(false);
   const [legacyProjectMode, setLegacyProjectMode] = useState(false);
   const [legacySceneEditor, setLegacySceneEditor] = useState(false);
@@ -2901,7 +2931,13 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     setAutoConvertWebp(config.autoConvertWebp ?? false);
     setAutoWebpQuality(config.autoConvertWebpQuality ?? 80);
     setUseLocalBgRemoval(config.useLocalBgRemoval ?? false);
-    setDelayTime(config.delayTime ?? 0);
+    // 새 키가 없으면 옛 delayTime 을 ×7.5·×1.5 로 환산(5.4.0 이하), 그것도 없으면 기본값(T3b —
+    // 실행 루프와 같은 resolveRequestDelaySettings).
+    {
+      const delay = resolveRequestDelaySettings(config);
+      setRequestDelayMs(delay.baseMs);
+      setRequestDelayJitterMs(delay.jitterMs);
+    }
     setClassicSceneCard(config.classicSceneCard ?? false);
     setLegacyProjectMode(config.legacyProjectMode ?? false);
     setLegacySceneEditor(config.legacySceneEditor ?? false);
@@ -3060,6 +3096,21 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
 
   const handleSave = async () => {
     const old = await backend.getConfig();
+    // 짧은 지연 경고(T3): 권장 최소값(REQUEST_DELAY_WARNING_BELOW_MS) 미만으로 바꿔 저장하면 저장 전에 묻는다. 선택형 확인 창 —
+    // [이해했습니다]=저장, [다시 알리지 않음]=저장+표식, 취소·Esc·뒤로 가기=저장하지 않음.
+    let warningDismissed = old.requestDelayWarningDismissed === true;
+    if (shouldWarnShortRequestDelay(requestDelayMs, old.requestDelayMs, warningDismissed)) {
+      const choice = await appState.pushDialogAsync({
+        type: 'select',
+        text: REQUEST_DELAY_TEXT.warningText,
+        items: [
+          { text: REQUEST_DELAY_TEXT.warningOk, value: 'ok' },
+          { text: REQUEST_DELAY_TEXT.warningDismiss, value: 'dismiss' },
+        ],
+      });
+      if (choice !== 'ok' && choice !== 'dismiss') return;
+      if (choice === 'dismiss') warningDismissed = true;
+    }
     const config: Config = {
       ...old,
       imageEditor: imageEditor as ImageEditor,
@@ -3071,7 +3122,9 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       autoConvertWebpQuality: autoWebpQuality,
       whiteMode: whiteMode,
       useLocalBgRemoval: useLocalBgRemoval,
-      delayTime: delayTime,
+      // 요청 지연 새 키 2개 + 옛 키 delayTime 병기(min(지연, 1000) — 롤백 호환)
+      ...withRequestDelaySettings({}, requestDelayMs, requestDelayJitterMs),
+      requestDelayWarningDismissed: warningDismissed || undefined,
       classicSceneCard: classicSceneCard,
       legacyProjectMode: legacyProjectMode,
       legacySceneEditor: legacySceneEditor,
@@ -3216,7 +3269,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'storage':
         return <StorageImageTab {...{ saveLocation, dataRoot, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 'system':
-        return <SystemTab {...{ delayTime, setDelayTime, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality }} />;
+        return <SystemTab {...{ requestDelayMs, setRequestDelayMs, requestDelayJitterMs, setRequestDelayJitterMs, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality }} />;
       case 'drive':
         return <DriveSettingsTab active={activeTab === tabIdx} dirty={!!dirty} reloadConfig={loadConfig} syncFolder={syncFolder} setSyncFolder={setSyncFolder} selectSyncFolder={selectSyncFolder} />;
       case 'personal':
@@ -3248,7 +3301,9 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       autoWebpQuality !== (savedCfg.autoConvertWebpQuality ?? 80) ||
       whiteMode !== (savedCfg.whiteMode ?? false) ||
       useLocalBgRemoval !== (savedCfg.useLocalBgRemoval ?? false) ||
-      delayTime !== (savedCfg.delayTime ?? 0) ||
+      // 지연은 불러오기와 같은 해석(옛 delayTime 환산 포함) — 환산만으로 미저장 표시가 뜨지 않게.
+      requestDelayMs !== resolveRequestDelaySettings(savedCfg).baseMs ||
+      requestDelayJitterMs !== resolveRequestDelaySettings(savedCfg).jitterMs ||
       classicSceneCard !== (savedCfg.classicSceneCard ?? false) ||
       legacyProjectMode !== (savedCfg.legacyProjectMode ?? false) ||
       legacySceneEditor !== (savedCfg.legacySceneEditor ?? false) ||

@@ -20,6 +20,11 @@
 // import 하지 않는다(문구·형식·계산만).
 
 import type { Config } from '../../main/config';
+import {
+  legacyDelayTimeFor,
+  normalizeRequestDelayJitterMs,
+  normalizeRequestDelayMs,
+} from './requestTiming';
 
 export const CONFIG_FILE_TYPE = 'sdstudio-config';
 export const CONFIG_FILE_VERSION = 1;
@@ -48,6 +53,8 @@ export const CONFIG_GROUP_FIELDS = {
     'furryMode',
     'removeBgQuality',
     'imageSaveSettings',
+    'requestDelayMs',
+    'requestDelayJitterMs',
   ] as const,
   theme: [
     'uiTheme',
@@ -95,6 +102,8 @@ export const CONFIG_SYNC_EXCLUDED = [
   'exportConcurrency',
   'storageWriteGuard',
   'delayTime',
+  // 짧은 지연 경고 「다시 알리지 않음」 — 기기별 확인 표식(mobileV2IntroDone 과 같은 취급).
+  'requestDelayWarningDismissed',
   'wdTaggerModel',
   'notifPermissionDeclined',
   'batteryPermissionDeclined',
@@ -116,7 +125,14 @@ export const CONFIG_SYNC_EXCLUDED = [
 const EXCLUDED_TYPED: readonly (keyof Config)[] = CONFIG_SYNC_EXCLUDED;
 void EXCLUDED_TYPED;
 
-type FieldKind = 'boolean' | 'string' | 'object' | 'stringArray' | 'themePresets';
+type FieldKind =
+  | 'boolean'
+  | 'string'
+  | 'object'
+  | 'stringArray'
+  | 'themePresets'
+  | 'delayMs'
+  | 'delayJitterMs';
 
 const FIELD_KIND: Partial<Record<keyof Config, FieldKind>> = {
   modelVersion: 'string',
@@ -127,6 +143,8 @@ const FIELD_KIND: Partial<Record<keyof Config, FieldKind>> = {
   furryMode: 'boolean',
   removeBgQuality: 'string',
   imageSaveSettings: 'object',
+  requestDelayMs: 'delayMs',
+  requestDelayJitterMs: 'delayJitterMs',
   uiTheme: 'object',
   uiThemePresets: 'themePresets',
   whiteMode: 'boolean',
@@ -241,6 +259,11 @@ function sanitizeFieldValue(field: keyof Config, v: unknown): unknown | null | u
       return Array.isArray(v) && v.every((x) => typeof x === 'string') ? [...v] : undefined;
     case 'themePresets':
       return sanitizeThemePresets(v);
+    // 지연(ms): 숫자만 받고 범위를 보정한다(음수 → 0, 상한 초과 → 상한).
+    case 'delayMs':
+      return typeof v === 'number' && Number.isFinite(v) ? normalizeRequestDelayMs(v) : undefined;
+    case 'delayJitterMs':
+      return typeof v === 'number' && Number.isFinite(v) ? normalizeRequestDelayJitterMs(v) : undefined;
     default:
       return undefined;
   }
@@ -254,6 +277,10 @@ function clone<T>(v: T): T {
 // generationSettings 의 ?? false). 없음과 false 를 같은 값으로 본다.
 function comparable(field: keyof Config, v: unknown): unknown {
   if (FIELD_KIND[field] === 'boolean') return v === true;
+  // 지연은 「없음 = 기본값」(requestTiming 기본값)으로 읽힌다 — 없음과 기본값을 같은 값으로 본다.
+  // 옛 delayTime 환산(resolveRequestDelaySettings)은 고려하지 않는다: 동기화 파일의 새 키끼리 비교용이다.
+  if (FIELD_KIND[field] === 'delayMs') return normalizeRequestDelayMs(v);
+  if (FIELD_KIND[field] === 'delayJitterMs') return normalizeRequestDelayJitterMs(v);
   // 객체형(테마 색·요소 순서 등)은 빈 객체와 없음이 같은 뜻(저장 시 {} 로 쓰는 필드가 있다).
   if (FIELD_KIND[field] === 'object' && isPlainObject(v) && Object.keys(v).length === 0) {
     return null;
@@ -439,6 +466,10 @@ export function applyConfigGroups(
       else (next as any)[field] = clone(v);
     }
   }
+  // 요청 지연을 바꿨으면 옛 키 delayTime 에도 min(…, 1000) 을 병기한다(롤백 호환 — requestTiming).
+  if (next.requestDelayMs !== current.requestDelayMs) {
+    next.delayTime = legacyDelayTimeFor(next.requestDelayMs);
+  }
   return next;
 }
 
@@ -452,6 +483,8 @@ export const CONFIG_FIELD_LABEL: Partial<Record<keyof Config, string>> = {
   furryMode: '퍼리 모드',
   removeBgQuality: '배경 제거 품질',
   imageSaveSettings: '이미지 저장 방식',
+  requestDelayMs: '생성 사이 지연',
+  requestDelayJitterMs: '무작위 폭',
   uiTheme: '테마 색',
   uiThemePresets: '내 테마 프리셋',
   whiteMode: '화이트 모드',

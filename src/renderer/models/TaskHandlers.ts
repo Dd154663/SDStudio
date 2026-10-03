@@ -75,7 +75,11 @@ import type {
   TaskParam,
   TaskInfo,
 } from './TaskQueueService';
-import { NaiRequestOptions, throwIfAborted } from './requestTiming';
+import {
+  NaiRequestOptions,
+  RequestDelaySettings,
+  throwIfAborted,
+} from './requestTiming';
 
 // 큐 시도 문맥 → backend 요청 옵션(호출별 타임아웃·취소 신호). 문맥이 없으면(구 호출부·테스트)
 // 옵션을 넘기지 않아 backend 기본값(120초)을 쓴다.
@@ -164,9 +168,11 @@ class GenerateImageTaskHandler implements TaskHandler {
   async handleDelay(
     task: Task,
     numTry: number,
-    delayTime: number,
+    delay: RequestDelaySettings,
+    pendingCount: number,
   ): Promise<void> {
-    await handleNAIDelay(numTry, this.fast, delayTime);
+    // 편집기 즉시 생성(fast)도 같은 식, 급등만 없음(2026-10-03 T3).
+    await handleNAIDelay(numTry, this.fast, delay, pendingCount);
   }
 
   checkTask(task: Task): boolean {
@@ -687,7 +693,8 @@ class RemoveBgTaskHandler implements TaskHandler {
   async handleDelay(
     task: Task,
     numTry: number,
-    delayTime: number,
+    delay: RequestDelaySettings,
+    pendingCount: number,
   ): Promise<void> {
     return;
   }
@@ -737,9 +744,10 @@ class AugmentTaskHandler implements TaskHandler {
   async handleDelay(
     task: Task,
     numTry: number,
-    delayTime: number,
+    delay: RequestDelaySettings,
+    pendingCount: number,
   ): Promise<void> {
-    await handleNAIDelay(numTry, false, delayTime);
+    await handleNAIDelay(numTry, false, delay, pendingCount);
   }
 
   async handleTask(task: Task, run: TaskQueueRun, ctx?: TaskAttemptContext) {
@@ -810,8 +818,13 @@ class UpscaleTaskHandler implements TaskHandler {
     return new TaskTimeEstimator(TASK_TIME_ESTIMATOR_SAMPLE_COUNT, TASK_DEFAULT_ESTIMATE);
   }
 
-  async handleDelay(task: Task, numTry: number, delayTime: number) {
-    await handleNAIDelay(numTry, false, delayTime);
+  async handleDelay(
+    task: Task,
+    numTry: number,
+    delay: RequestDelaySettings,
+    pendingCount: number,
+  ) {
+    await handleNAIDelay(numTry, false, delay, pendingCount);
   }
 
   async handleTask(task: Task, run: TaskQueueRun, ctx?: TaskAttemptContext) {

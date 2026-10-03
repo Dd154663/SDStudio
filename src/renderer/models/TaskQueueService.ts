@@ -46,30 +46,27 @@ import { prepareMirrorCanvas } from './workflows/SDWorkFlow';
 import { getImageDimensions } from '../componenets/BrushTool';
 import { isNaiRateLimitError } from '../backends/genVendors/naiErrors';
 import {
+  computeLongBreakMs,
+  computeRequestDelayMs,
   isRequestTimeoutError,
+  nextLongBreakCount,
   nextRequestTimeoutMs,
   queueAttemptTimeoutMs,
+  RequestDelaySettings,
   RequestTimeoutError,
+  resolveRequestDelaySettings,
   retryWaitMs,
+  shouldResetLongBreakCounter,
   sleepUnlessStopped,
+  TASK_ESTIMATE_DEFAULT_MS,
 } from './requestTiming';
 
 export const FAST_TASK_TIME_ESTIMATOR_SAMPLE_COUNT = 16;
 export const TASK_TIME_ESTIMATOR_SAMPLE_COUNT = 128;
-export const TASK_DEFAULT_ESTIMATE = 22 * 1000;
-const RANDOM_DELAY_BIAS = 6.0;
-const RANDOM_DELAY_STD = 3.0;
-const LARGE_RANDOM_DELAY_BIAS = RANDOM_DELAY_BIAS * 2;
-const LARGE_RANDOM_DELAY_STD = RANDOM_DELAY_STD * 2;
-const LARGE_WAIT_DELAY_BIAS = 5 * 60;
-const LARGE_WAIT_DELAY_STD = 2.5 * 60;
-const LARGE_WAIT_INTERVAL_BIAS = 500;
-const LARGE_WAIT_INTERVAL_STD = 100;
-export const FAST_TASK_DEFAULT_ESTIMATE =
-  TASK_DEFAULT_ESTIMATE -
-  RANDOM_DELAY_BIAS * 1000 -
-  (RANDOM_DELAY_STD * 1000) / 2 +
-  1000;
+// 요청 사이 지연은 배수 구조를 폐지하고 「기본 ± 무작위」 하나로 통일했다(2026-10-03 T3,
+// requestTiming). 빠른 생성과 일반 큐의 평균 지연이 거의 같아(급등은 2%·×1.5~2) 기본 예상도 같다.
+export const TASK_DEFAULT_ESTIMATE = TASK_ESTIMATE_DEFAULT_MS;
+export const FAST_TASK_DEFAULT_ESTIMATE = TASK_ESTIMATE_DEFAULT_MS;
 
 export interface TaskParam {
   session: Session;
@@ -131,6 +128,9 @@ export interface QueueMirror {
   byOrigin: { [originWindowId: number]: number };
   // 씬 단위 통계(getSceneKey 키) — 보조 창의 씬 카드 예약 배지용(2026-07-17 실기 피드백).
   sceneStats: { [sceneKey: string]: TaskStats };
+  // 긴 휴식 표시(T3b): 휴식 시작·끝 시각(epoch ms, 휴식 아님 = 0). 구 호스트 미러에는 없을 수 있다.
+  longBreakStartedAt?: number;
+  longBreakUntil?: number;
 }
 
 export interface Task {
@@ -201,7 +201,7 @@ export class TaskTimeEstimator {
 
 export interface TaskQueueRun {
   stopped: boolean;
-  delayCnt: number;
+  // (T3b) 긴 휴식 카운터는 run 이 아니라 서비스 수준(TaskQueueService.longBreakRemaining)이다.
   // 캐싱된 데이터 - 동일 세션/씬에서 재사용
   cachedVibes?: Map<string, { image: string; info: number; strength: number }>;
   cachedReferences?: Map<string, { image: string; info: number; strength: number; fidelity: number; referenceType: string; description: string }>;
@@ -243,7 +243,13 @@ export interface TaskHandler {
     ctx?: TaskAttemptContext,
   ): Promise<boolean>;
   getNumTries(task: Task): number;
-  handleDelay(task: Task, numTry: number, delayTime: number): Promise<void>;
+  /** 시도 앞 대기. pendingCount = 대기 시점의 큐 잔량(장, 소량 예약 완화 판정용). */
+  handleDelay(
+    task: Task,
+    numTry: number,
+    delay: RequestDelaySettings,
+    pendingCount: number,
+  ): Promise<void>;
   getInfo(task: Task): TaskInfo;
   calculateCost(task: Task): CostItem[];
 }
@@ -252,29 +258,21 @@ export const getSceneKey = (session: Session, scene: GenericScene) => {
   return session.name + '/' + scene.type + '/' + scene.name;
 };
 
+// NAI 요청 시도 앞 대기(2026-10-03 T3, 식은 requestTiming.computeRequestDelayMs).
+// 첫 시도(numTry 0)에만 기다린다 — 재시도는 큐의 오류 재시도 대기(retryWaitMs 사다리)만 쓴다
+// (예전엔 둘 다 기다리는 이중 대기). 빠른 생성(fast)은 급등 없음, 큐 잔량 20장 이하는 소량 완화.
+// 실제로 기다린 시간(ms)을 돌려준다(재시도·0 이면 0).
 export async function handleNAIDelay(
   numTry: number,
   fast: boolean,
-  delayTime: number,
-) {
-  if (numTry === 0 && fast) {
-    await sleep(delayTime);
-  } else if (numTry <= 2 && fast) {
-    await sleep((1 + Math.random() * RANDOM_DELAY_STD) * delayTime);
-  } else {
-    console.log('slow delay');
-    if (numTry === 0 && Math.random() > 0.98) {
-      await sleep(
-        (Math.random() * LARGE_RANDOM_DELAY_STD + LARGE_RANDOM_DELAY_BIAS) *
-          delayTime,
-      );
-    } else {
-      await sleep(
-        (Math.random() * RANDOM_DELAY_STD + RANDOM_DELAY_BIAS) * delayTime,
-      );
-    }
-  }
-  return;
+  settings: RequestDelaySettings,
+  pendingCount: number,
+  rand: () => number = Math.random,
+): Promise<number> {
+  if (numTry >= 1) return 0;
+  const ms = computeRequestDelayMs(settings, { fast, pendingCount }, rand);
+  if (ms > 0) await sleep(ms);
+  return ms;
 }
 
 export type ImageTaskType = 'gen' | 'inpaint' | 'i2i';
@@ -323,6 +321,18 @@ export class TaskQueueService extends EventTarget {
   // 진행 바(TaskProgressBar)가 도크↔플로팅 이동 등으로 재마운트돼도 경과분을
   // 이어 그릴 수 있게 하는 단일 출처(컴포넌트 로컬 상태는 재마운트에 유실됨).
   progressCycleStartedAt = 0;
+  // ─── 주기적 긴 휴식(2026-10-03 T3b, 식·상수는 requestTiming) ───
+  // 다음 휴식까지 남은 성공 장수. run 마다 초기화하지 않는다 — 프로젝트·씬·보조 창 위임 작업
+  // 구분 없이 큐 하나의 성공 수로 세고, 여러 번 나눠 실행해도 이어서 센다. 휴식을 끝까지 쉬었거나
+  // 새 실행이 직전 실행 종료 뒤 2분 이상 유휴 뒤에 시작될 때만 새로 센다(300~399).
+  longBreakRemaining = nextLongBreakCount();
+  // 직전 실행 루프(runInternal)가 끝난 시각(epoch ms, 0 = 아직 없음) — 유휴 판정용.
+  lastRunEndedAt = 0;
+  // 지금 돌고 있는 실행 루프 수(정지 뒤 진행 중 요청을 마무리하는 옛 루프 포함).
+  private activeRunLoops = 0;
+  // 긴 휴식 중이면 시작·끝 시각(epoch ms), 아니면 0. 진행 바가 「휴식 중」을 그린다.
+  longBreakStartedAt = 0;
+  longBreakUntil = 0;
   private logsLoaded = false;
   private logsSaveTimer: any = null;
 
@@ -608,22 +618,55 @@ export class TaskQueueService extends EventTarget {
     if (this.currentRun) {
       this.currentRun.stopped = true;
       this.currentRun = undefined;
+      // 휴식 중 정지 — 휴식 표시를 바로 끈다(대기 자체도 sleepUnlessStopped 라 곧 끝난다).
+      this.endLongBreakDisplay();
       this.dispatchEvent(new CustomEvent('stop', {}));
       this.scheduleSnapshotBroadcast();
     }
   }
 
-  getDelayCnt() {
-    return Math.floor(
-      LARGE_WAIT_INTERVAL_BIAS + Math.random() * LARGE_WAIT_INTERVAL_STD,
-    );
+  // 긴 휴식 중인가. 보조 창은 호스트 미러 기준.
+  isLongBreak(): boolean {
+    if (!this.isGenerationHost) return (this.mirror?.longBreakUntil ?? 0) > 0;
+    return this.longBreakUntil > 0;
+  }
+
+  // 진행 바용 휴식 시작·끝 시각(epoch ms, 휴식 아님 = 0). 보조 창은 호스트 미러 기준.
+  longBreakWindow(): { startedAt: number; until: number } {
+    if (!this.isGenerationHost)
+      return {
+        startedAt: this.mirror?.longBreakStartedAt ?? 0,
+        until: this.mirror?.longBreakUntil ?? 0,
+      };
+    return { startedAt: this.longBreakStartedAt, until: this.longBreakUntil };
+  }
+
+  // 휴식 표시를 끈다(이미 꺼져 있으면 아무것도 하지 않음). 다음 작업의 진행 바 경과에 휴식
+  // 시간이 섞이지 않도록 사이클 시작 시각을 다시 찍는다.
+  private endLongBreakDisplay() {
+    if (this.longBreakUntil === 0 && this.longBreakStartedAt === 0) return;
+    this.longBreakStartedAt = 0;
+    this.longBreakUntil = 0;
+    this.progressCycleStartedAt = Date.now();
+    this.dispatchProgress();
+  }
+
+  // 큐 잔량(장) = 큐 안 모든 작업의 (total − done) 합(현재 작업 포함). 소량 예약 완화 판정용
+  // (requestTiming.isSmallQueueRelief). total 이 오염(NaN 등)된 작업은 세지 않는다.
+  pendingImageCount(): number {
+    let n = 0;
+    for (const task of this.queue) {
+      if (!task) continue;
+      const left = task.total - task.done;
+      if (Number.isFinite(left) && left > 0) n += left;
+    }
+    return n;
   }
 
   runLocal() {
     if (!this.currentRun) {
       const cur: TaskQueueRun = {
         stopped: false,
-        delayCnt: this.getDelayCnt(),
       };
       this.currentRun = cur;
       // 실행 루프가 어떤 예외로 죽어도 currentRun 이 반드시 해제되도록 보장.
@@ -910,6 +953,10 @@ export class TaskQueueService extends EventTarget {
   retryWait: (ms: number, shouldStop: () => boolean) => Promise<boolean> =
     sleepUnlessStopped;
 
+  // 주기적 긴 휴식(2~4분) 대기 — 정지하면 즉시 끝난다. 테스트가 바꿔 끼울 수 있다.
+  longBreakWait: (ms: number, shouldStop: () => boolean) => Promise<boolean> =
+    sleepUnlessStopped;
+
   // 한 번의 시도를 큐 바깥 타임아웃(안쪽 + 10초)으로 감싼다. 바깥 타이머가 먼저 끝나면
   // 시도의 AbortController 를 abort 해 진행 중 요청을 끊고(PC fetch abort, Android
   // call.cancel) RequestTimeoutError 로 실패시킨다 — 재시도와 이전 요청이 겹치지 않고,
@@ -983,10 +1030,31 @@ export class TaskQueueService extends EventTarget {
     });
   }
 
+  // 실행 루프 하나. 긴 휴식 카운터의 유휴 재설정과 종료 시각 기록을 감싼다(T3b) — 종료 경로
+  // (큐 소진·정지·IP 중단·예외)가 무엇이든 finally 에서 종료 시각을 남긴다.
   async runInternal(cur: TaskQueueRun) {
+    // 다른 실행 루프가 아직 돌고 있으면(정지 뒤 진행 중 요청 마무리) 유휴가 아니다 — 이어서 센다.
+    if (
+      this.activeRunLoops === 0 &&
+      shouldResetLongBreakCounter(this.lastRunEndedAt, Date.now())
+    ) {
+      this.longBreakRemaining = nextLongBreakCount();
+    }
+    this.activeRunLoops++;
+    try {
+      await this.runLoop(cur);
+    } finally {
+      this.activeRunLoops--;
+      this.lastRunEndedAt = Date.now();
+    }
+  }
+
+  private async runLoop(cur: TaskQueueRun) {
     this.dispatchProgress();
     const config = await backend.getConfig();
-    const delayTime = config.delayTime ?? 0;
+    // 지연 설정은 실행 시작 때 1회 읽는다(실행 중 변경은 다음 실행부터 — 종전 동작 유지).
+    // 옛 키 delayTime 은 읽지 않는다(requestTiming).
+    const delay = resolveRequestDelaySettings(config);
     while (!this.queue.isEmpty()) {
       // 정지된 런은 즉시 종료 — stop() 후 새 런이 시작돼도 옛 루프가 큐를
       // 건드리지 않도록(같은 태스크 이중 처리 방지).
@@ -1023,7 +1091,8 @@ export class TaskQueueService extends EventTarget {
           return;
         }
         try {
-          await handler.handleDelay(task, i, delayTime);
+          // 첫 시도 앞에만 요청 사이 지연(재시도는 아래 오류 재시도 대기만). 잔량은 소량 예약 완화 판정용.
+          await handler.handleDelay(task, i, delay, this.pendingImageCount());
           // 지연 대기 중에 정지됐으면 요청을 보내지 않는다.
           if (cur.stopped) {
             this.dispatchProgress();
@@ -1034,14 +1103,8 @@ export class TaskQueueService extends EventTarget {
           const after = Date.now();
           this.timeEstimators[task.cls].addSample(after - before);
           done = true;
-          cur.delayCnt--;
-          if (cur.delayCnt === 0) {
-            await sleep(
-              (Math.random() * LARGE_WAIT_DELAY_STD + LARGE_WAIT_DELAY_BIAS) *
-                delayTime,
-            );
-            cur.delayCnt = this.getDelayCnt();
-          }
+          // 실제로 보낸 성공 요청이므로 정지된 루프의 마지막 성공도 센다(서비스 수준 카운터).
+          this.longBreakRemaining--;
           if (!cur.stopped) {
             task.done++;
             if (task.id! in this.taskSet) {
@@ -1065,6 +1128,26 @@ export class TaskQueueService extends EventTarget {
           this.progressCycleStartedAt = Date.now();
           this.dispatchEvent(new CustomEvent('complete', {}));
           this.dispatchProgress();
+          // 주기적 긴 휴식: 성공 300~399장마다 2~4분(지연 설정과 무관, requestTiming). 이번 장의 완료
+          // 집계 뒤에 쉬므로 휴식 중 정지해도 방금 만든 장이 미완료로 남지 않는다. 정지하면 즉시 끝나고,
+          // 남은 예약이 없으면 쉬지 않는다. 휴식에 들어갔으면 카운터를 새로 센다 — 휴식 중 사용자가
+          // 정지해도 끝까지 쉰 것과 같이 본다(「정지하면 바로 끝납니다」). 큐 소진·정지로 휴식에
+          // 들어가지 못했으면 0 이하로 남겨, 다음 실행이 2분 안에 시작되면 첫 성공 뒤 바로 쉰다(T3b).
+          if (this.longBreakRemaining <= 0 && !cur.stopped && this.pendingImageCount() > 0) {
+            const breakMs = computeLongBreakMs();
+            const startedAt = Date.now();
+            const until = startedAt + breakMs;
+            this.longBreakStartedAt = startedAt;
+            this.longBreakUntil = until;
+            this.dispatchProgress();
+            this.longBreakRemaining = nextLongBreakCount();
+            try {
+              await this.longBreakWait(breakMs, () => cur.stopped);
+            } finally {
+              // 이 휴식의 표시만 끈다(정지가 이미 껐거나 새 실행이 새 휴식을 시작했으면 건드리지 않음).
+              if (this.longBreakUntil === until) this.endLongBreakDisplay();
+            }
+          }
         } catch (e: any) {
           const sceneName = task.params.scene?.name ?? '(unknown)';
           if (e.message === 'IP') {
@@ -1078,7 +1161,7 @@ export class TaskQueueService extends EventTarget {
           // 429 판정은 NaiApiError status/kind 우선, 문자열은 폴백(요청 ID 의 「429」 오판정 방지).
           const rateLimited = isNaiRateLimitError(e);
           // 다음 시도가 남아 있고 재시도 가능한 실패면 대기 — 실패 횟수 사다리 5→10→20→40→60초
-          // ±20%, 429 는 최소 60초. 기존 요청 지연(handleDelay)은 이 대기 뒤에 종전대로 더해진다.
+          // ±20%, 429 는 최소 60초. 재시도에는 요청 사이 지연(handleDelay)을 더하지 않는다(T3).
           const willRetry = e?.retryable !== false && i + 1 < numTries;
           const waitMs = willRetry ? retryWaitMs(failures, rateLimited) : 0;
           const waitLabel = willRetry ? ` - ${Math.round(waitMs / 1000)}초 대기 후 재시도` : '';
@@ -1353,7 +1436,9 @@ export class TaskQueueService extends EventTarget {
     const prevDone = prev?.doneTotal ?? 0;
     this.mirror = snap;
     // 진행 바 사이클 갱신 — 이미지 1장 완료(done 증가)나 실행 시작 시 리셋.
-    if (snap.doneTotal > prevDone || (snap.running && !prevRunning)) {
+    // 긴 휴식이 끝났을 때도 리셋 — 다음 작업의 경과에 휴식 시간이 섞이지 않게(T3b).
+    const breakEnded = (prev?.longBreakUntil ?? 0) > 0 && (snap.longBreakUntil ?? 0) === 0;
+    if (snap.doneTotal > prevDone || (snap.running && !prevRunning) || breakEnded) {
       this.progressCycleStartedAt = Date.now();
     }
     this.dispatchEvent(new CustomEvent('progress', {}));
@@ -1402,6 +1487,8 @@ export class TaskQueueService extends EventTarget {
       projectRunning: snap.running,
       byOrigin,
       sceneStats,
+      longBreakStartedAt: this.longBreakStartedAt,
+      longBreakUntil: this.longBreakUntil,
     };
   }
 }
