@@ -9,6 +9,8 @@ const handle = (): FocusedPromptEditor => ({
   element: {} as HTMLElement,
   adjustWeight: () => {},
   getCaretWeight: () => undefined,
+  toggleComment: () => {},
+  isCaretInComment: () => false,
 });
 
 describe('포커스된 프롬프트 편집기 등록소', () => {

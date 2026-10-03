@@ -13,6 +13,10 @@ export interface FocusedPromptEditor {
   adjustWeight(delta: number): void;
   /** 커서 구획의 현재 가중치. 빈 구획이면 undefined. */
   getCaretWeight(): PromptWeightInfo | undefined;
+  /** 커서 기준 ##주석## 토글(promptTransforms.togglePromptCommentAtSelection). 바꿀 수 없으면 아무것도 하지 않는다. */
+  toggleComment(): void;
+  /** 커서가 주석 안인지(promptTransforms.getPromptCommentAtSelection, 칩 # 버튼 활성 표시용). */
+  isCaretInComment(): boolean;
 }
 
 let focused: FocusedPromptEditor | null = null;

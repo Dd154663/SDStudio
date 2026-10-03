@@ -42,8 +42,13 @@ import { highlightPrompt } from '../models/PromptService';
 import { WordTag, calcGapMatch } from '../models/Tags';
 import { appState } from '../models/AppService';
 import { observer } from 'mobx-react-lite';
-import { adjustPromptWeightAtSelection,
-  getPromptWeightAtSelection } from '../models/promptTransforms';
+import {
+  adjustPromptWeightAtSelection,
+  getPromptCommentAtSelection,
+  getPromptWeightAtSelection,
+  togglePromptCommentAtSelection,
+} from '../models/promptTransforms';
+import type { PromptWeightAdjustment } from '../models/promptTransforms';
 import {
   clearFocusedPromptEditor,
   setFocusedPromptEditor,
@@ -1249,15 +1254,8 @@ const NativeEditTextArea = observer(
         redo.clear();
       };
 
-      const adjustWeight = (delta: number) => {
-        const start = textareaRef.current.selectionStart;
-        const end = textareaRef.current.selectionEnd;
-        const adjusted = adjustPromptWeightAtSelection(
-          textareaRef.current.value,
-          start,
-          end,
-          delta,
-        );
+      // 칩 조작(가중치·주석)의 텍스트 치환 결과를 적용 — 값·커서 → onUpdated → 하이라이트 → 히스토리.
+      const applyCaretEdit = (adjusted: PromptWeightAdjustment | undefined) => {
         if (!adjusted) return;
         textareaRef.current.value = adjusted.text;
         textareaRef.current.selectionStart = adjusted.selectionStart;
@@ -1265,6 +1263,27 @@ const NativeEditTextArea = observer(
         onUpdated(adjusted.text);
         renderText();
         pushHistory();
+      };
+
+      const adjustWeight = (delta: number) => {
+        applyCaretEdit(
+          adjustPromptWeightAtSelection(
+            textareaRef.current.value,
+            textareaRef.current.selectionStart,
+            textareaRef.current.selectionEnd,
+            delta,
+          ),
+        );
+      };
+
+      const toggleComment = () => {
+        applyCaretEdit(
+          togglePromptCommentAtSelection(
+            textareaRef.current.value,
+            textareaRef.current.selectionStart,
+            textareaRef.current.selectionEnd,
+          ),
+        );
       };
 
       const doUndo = () => {
@@ -1314,6 +1333,12 @@ const NativeEditTextArea = observer(
           adjustWeight,
           getCaretWeight: () =>
             getPromptWeightAtSelection(
+              textareaRef.current.value,
+              textareaRef.current.selectionStart ?? 0,
+            ),
+          toggleComment,
+          isCaretInComment: () =>
+            !!getPromptCommentAtSelection(
               textareaRef.current.value,
               textareaRef.current.selectionStart ?? 0,
             ),

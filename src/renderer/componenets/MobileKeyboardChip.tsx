@@ -14,6 +14,8 @@ import {
  *    [구획 이름][−][◂ 값 ▸][+] 로 조절 — PC 의 Ctrl+휠/Ctrl+↑↓ 와 같은 함수·단위(0.05).
  *    탭=한 단계, 값 트랙을 좌우로 문지르면 KBD_CHIP_SCRUB_PX 마다 한 단계(문지르는 동안 값 말풍선),
  *    −/+ 길게 누르면 KBD_CHIP_HOLD_MS 뒤 KBD_CHIP_REPEAT_MS 간격 반복. 초기화·범위 제한 없음(음수 허용).
+ *    [+] 오른쪽 [#] = 커서 기준 ##주석## 토글(2026-10-03, 주석 안이면 풀기·밖이면 구획을 감싸기, 주석 안이면 활성 표시).
+ *    [#] 는 구분선으로 [+] 와 분리(2026-10-03 실기 피드백 — 오터치 방지, [+]~[#] 간격 약 17px).
  * 칩 전체는 pointerdown 기본 동작을 막아 편집기 포커스·선택을 유지한다(키보드가 내려가지 않게).
  */
 export const KBD_CHIP_HOLD_MS = 350;
@@ -27,7 +29,7 @@ export const KBD_CHIP_RESERVE_PX = 56;
 
 type ChipState =
   | { mode: 'search'; text: string }
-  | { mode: 'adjust'; name: string; weight: number }
+  | { mode: 'adjust'; name: string; weight: number; inComment: boolean }
   | null;
 
 function keyboardOffset(): number {
@@ -64,7 +66,12 @@ function readState(): ChipState {
   if (!editor || editor.element !== el) return null;
   const weight = editor.getCaretWeight();
   return weight
-    ? { mode: 'adjust', name: weight.inner, weight: weight.weight }
+    ? {
+        mode: 'adjust',
+        name: weight.inner,
+        weight: weight.weight,
+        inComment: editor.isCaretInComment(),
+      }
     : null;
 }
 
@@ -78,6 +85,7 @@ export default function MobileKeyboardChip({
   const [scrubbing, setScrubbing] = useState(false);
   const holdRef = useRef<{ timer: number; repeating: boolean } | null>(null);
   const dragRef = useRef<{ x: number; acc: number } | null>(null);
+  const commentPressRef = useRef(false);
 
   const refresh = () => {
     setState(readState());
@@ -116,6 +124,21 @@ export default function MobileKeyboardChip({
     const editor = getFocusedPromptEditor();
     if (!editor || editor.element !== document.activeElement) return;
     editor.adjustWeight(delta);
+    refresh();
+  };
+  // # : 주석 토글 — −/+ 처럼 손을 뗄 때 한 번(길게 누르기 반복 없음)
+  const onCommentDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    commentPressRef.current = true;
+  };
+  const onCommentUp = (e: React.PointerEvent) => {
+    const pressed = commentPressRef.current;
+    commentPressRef.current = false;
+    if (!pressed || e.type !== 'pointerup') return;
+    const editor = getFocusedPromptEditor();
+    if (!editor || editor.element !== document.activeElement) return;
+    editor.toggleComment();
     refresh();
   };
   const clearHold = () => {
@@ -215,18 +238,19 @@ export default function MobileKeyboardChip({
   }
 
   const label = formatPromptWeightLabel(state.weight);
-  const stepBtn =
-    'relative touch-hit flex-none w-8 h-[30px] rounded-lg bg-white/10 active:bg-white/20 text-lg leading-none';
+  const btnShape =
+    'relative touch-hit flex-none w-8 h-[30px] rounded-lg leading-none';
+  const stepBtn = btnShape + ' bg-white/10 active:bg-white/20 text-lg';
   return (
     <div
       data-kbd-chip="adjust"
-      className={base + ' gap-1.5 pl-3 pr-1 py-1'}
+      className={base + ' gap-1.5 pl-3 pr-1.5 py-1'}
       style={{ bottom }}
       onPointerDown={(e) => e.preventDefault()}
     >
       <span
         data-kbd-chip-name
-        className="max-w-[34vw] truncate text-sky-300/90 font-normal"
+        className="max-w-[24vw] truncate text-sky-300/90 font-normal"
       >
         {state.name}
       </span>
@@ -279,6 +303,30 @@ export default function MobileKeyboardChip({
         onPointerCancel={endHold(PROMPT_WEIGHT_STEP)}
       >
         +
+      </button>
+      {/* [+] 와 [#] 를 별도 영역으로: gap 6 + mx-0.5 2 + 선 1 + 2 + gap 6 = 약 17px(터치 판정 확장 4px 씩 빼도 9px) */}
+      <span
+        aria-hidden
+        data-kbd-chip-divider
+        className="flex-none self-center h-5 mx-0.5 border-l border-white/15"
+      />
+      <button
+        type="button"
+        aria-label="주석 토글(##로 감싸기/풀기)"
+        aria-pressed={state.inComment}
+        data-kbd-chip-comment
+        className={
+          btnShape +
+          ' text-base font-semibold ' +
+          (state.inComment
+            ? 'bg-sky-500/80 active:bg-sky-500 text-white'
+            : 'bg-white/10 active:bg-white/20')
+        }
+        onPointerDown={onCommentDown}
+        onPointerUp={onCommentUp}
+        onPointerCancel={onCommentUp}
+      >
+        #
       </button>
     </div>
   );
