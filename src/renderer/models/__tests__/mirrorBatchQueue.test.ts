@@ -45,10 +45,13 @@ jest.mock('../../componenets/BrushTool', () => ({
 import {
   createMirrorCanvasMemo,
   PROGRESS_BATCH_INTERVAL_MS,
+  queueI2IWorkflow,
   queueMirrorWorkflow,
   TaskHandler,
   TaskQueueService,
 } from '../TaskQueueService';
+import { COMBO_EXPANDED_KEY } from '../variantCombo';
+import { PromptPiece } from '../types';
 import { prepareMirrorCanvas, SDMirrorDef } from '../workflows/SDWorkFlow';
 import { BackgroundNotificationService } from '../BackgroundNotificationService';
 
@@ -305,5 +308,54 @@ describe('모바일 알림 꼬리 갱신', () => {
     fakeQueue.dispatchEvent(new CustomEvent('start'));
     expect(updateBackgroundNotification).toHaveBeenLastCalledWith('SDStudio', '대기 중 · 3개 예약됨');
     jest.useRealTimers();
+  });
+});
+
+// 조합 전개 예약(2026-10-04 B4 — SPEC §7-4): 미러·I2I 조합 모드가 같은 공용 경로로 조합 수만큼 핸들러를 부른다.
+describe('조합 전개 예약 — 미러·I2I 조합 모드', () => {
+  const session = { name: 'project', mirrorImage: 'src.png', mirrorMode: 'blank', library: new Map() } as any;
+  const piece = (prompt: string, enabled?: boolean) =>
+    PromptPiece.fromJSON({ prompt, characterPrompts: [], id: prompt, enabled } as any);
+
+  test('미러: 2×2 조합 = 4번, 활성 조각이 없는 열이 있으면 0번(예전 DFS 는 빈 문자열로 예약)', async () => {
+    const handler = jest.fn(async () => {});
+    getDef.mockReturnValue({ handler });
+    const scene = makeScene(0);
+    scene.slots = [[piece('a'), piece('b')], [piece('x'), piece('y')]];
+    scene.preset = { image: 'kept.png', mask: 'm.png', uc: '' };
+    expect(await queueMirrorWorkflow(session, 'SDMirror', scene.preset, scene, 1)).toBe(4);
+    expect(handler).toHaveBeenCalledTimes(4);
+    for (const call of handler.mock.calls as any[][]) {
+      expect(call[4][COMBO_EXPANDED_KEY]).toBeDefined();
+    }
+    handler.mockClear();
+    scene.slots = [[piece('a')], [piece('z', false)]];
+    expect(await queueMirrorWorkflow(session, 'SDMirror', scene.preset, scene, 1)).toBe(0);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  test('I2I 조합 모드는 조합 수만큼, 단일 I2I·이미지 변형 메뉴(임시 씬)는 1번', async () => {
+    const handler = jest.fn(async () => {});
+    getDef.mockReturnValue({ handler });
+    const combo = {
+      type: 'inpaint',
+      name: 'i2i',
+      workflowType: 'SDI2I',
+      comboMode: 'snapshot',
+      slots: [[piece('a'), piece('b'), piece('c')]],
+      preset: { image: 'img.png', uc: 'scene', frontPrompt: 'F', backPrompt: 'B', globalUc: 'G' },
+    } as any;
+    expect(await queueI2IWorkflow(session, 'SDI2I', combo.preset, combo, 1)).toBe(3);
+    expect(handler).toHaveBeenCalledTimes(3);
+    expect((handler.mock.calls[0] as any[])[4].uc).toBe('G, scene');
+
+    handler.mockClear();
+    const single = { ...combo, comboMode: undefined };
+    expect(await queueI2IWorkflow(session, 'SDI2I', single.preset, single, 1)).toBe(1);
+    expect((handler.mock.calls[0] as any[])[4]).toBe(single.preset);
+
+    handler.mockClear();
+    const general = { type: 'scene', name: 's', slots: combo.slots } as any;
+    expect(await queueI2IWorkflow(session, 'SDI2I', { image: 'x' }, general, 1)).toBe(1);
   });
 });

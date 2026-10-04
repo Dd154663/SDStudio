@@ -71,7 +71,8 @@ import {
   imageDownloadService,
   trashService,
 } from '../models';
-import { queueI2IWorkflow, queueWorkflow } from '../models/TaskQueueService';
+import { queueWorkflow } from '../models/TaskQueueService';
+import { queueScene } from '../models/sceneQueueActions';
 import { queueNaiUpscale } from '../models/workflows/NaiUpscaleFlow';
 import { estimateNaiUpscaleCost } from '../backends/genVendors/naiUpscale';
 import { getImageDimensions } from './BrushTool';
@@ -2377,7 +2378,12 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       if (scene.type === 'scene') {
         await queueWorkflow(curSession!, curSession!.selectedWorkflow!, scene, appState.samples);
       } else {
-        await queueI2IWorkflow(curSession!, scene.workflowType, scene.preset, scene, appState.samples);
+        // 변형 씬은 씬 툴바 예약과 같은 관문(미러 합성 캔버스·미러/I2I 조합 전개 — 2026-10-04 B4 C6, 예전엔 조합 무시)
+        try {
+          await queueScene(curSession!, scene, appState.samples);
+        } catch (e: any) {
+          appState.pushMessage(e?.message ? String(e.message) : '예약하지 못했습니다.', 'error');
+        }
       }
     };
     const actQueueRemove = () => {

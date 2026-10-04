@@ -203,6 +203,20 @@ export function suggestFolderCopyName(base: string, taken: (name: string) => boo
   return first;
 }
 
+/**
+ * 번호 접미 이름 — 「이름」이 비어 있으면 그대로, 겹치면 「이름 (2)」·(3)… 중 빈 첫 이름
+ * (대량 작업 「I2I로 이미지생성 씬 복사」 — 원본 이름 그대로, 변형 탭에 있으면 접미, 2026-10-04 B1).
+ * taken 은 같은 묶음에서 앞서 정한 이름도 함께 판정해야 한다(호출부가 집합을 넘긴다).
+ */
+export function numberedName(base: string, taken: (name: string) => boolean): string {
+  if (!taken(base)) return base;
+  for (let i = 2; i < 10000; i++) {
+    const candidate = `${base} (${i})`;
+    if (!taken(candidate)) return candidate;
+  }
+  return `${base} (${Date.now()})`;
+}
+
 /** 프로젝트 이름 규칙 —경로 안전 + 활성 프로젝트 이름 중복(어느 폴더에 있는지 함께). */
 export function projectNameRules(svc: {
   list(): string[];

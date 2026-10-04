@@ -42,6 +42,12 @@ import {
 import { expandPieces, lowerPromptNode, toPARR } from './PromptService';
 import { dataUriToBase64 } from './ImageService';
 import { prepareMirrorCanvas } from './workflows/SDWorkFlow';
+import { variantComboMode } from './comboMode';
+import {
+  comboHandlerPreset,
+  expandVariantCombos,
+  variantComboSource,
+} from './variantCombo';
 import { getImageDimensions } from '../componenets/BrushTool';
 import {
   isNaiAuthError,
@@ -1616,6 +1622,41 @@ export const queueWorkflow = async (
   }
 };
 
+/**
+ * 조합 전개 예약(미러·I2I 조합 모드 공용, 2026-10-04 B4 — SPEC §7-4). 생성 경로(createSDPrompts)와 같은 규칙으로
+ * 조합마다 핸들러를 한 번 부른다. 반환 = 예약한 조합 수(활성 조각이 없는 열이 있으면 0 — 이미지생성 씬과 같음).
+ */
+const queueComboVariant = async (
+  session: Session,
+  type: string,
+  preset: any,
+  scene: InpaintScene,
+  samples: number,
+  onComplete?: (path: string) => void,
+  generationSnapshot?: GenerationSettingsSnapshot,
+): Promise<number> => {
+  const def = workFlowService.getDef(type)!;
+  const source = variantComboSource(session, scene, preset)!;
+  const combos = await expandVariantCombos(session, scene, source, preset);
+  for (const combo of combos) {
+    await def.handler(
+      session,
+      scene,
+      combo.prompt,
+      combo.characterPrompts.map((cp) => cp.prompt),
+      comboHandlerPreset(preset, combo, source.globalUc),
+      undefined,
+      samples,
+      undefined,
+      onComplete,
+      undefined,
+      generationSnapshot,
+    );
+  }
+  return combos.length;
+};
+
+/** 변형 씬 예약. 반환 = 예약한 조합 수(단일 프롬프트는 1). I2I 조합 모드 씬은 조합 전개(queueComboVariant). */
 export const queueI2IWorkflow = async (
   session: Session,
   type: string,
@@ -1624,7 +1665,23 @@ export const queueI2IWorkflow = async (
   samples: number,
   onComplete?: (path: string) => void,
   generationSnapshot?: GenerationSettingsSnapshot,
-) => {
+): Promise<number> => {
+  // 저장된 변형 씬 자신의 프리셋일 때만 조합 전개(이미지 변형 메뉴의 임시 프리셋은 단일 프롬프트)
+  if (
+    scene.type === 'inpaint' &&
+    (scene as InpaintScene).workflowType === type &&
+    variantComboMode(scene as InpaintScene)
+  ) {
+    return queueComboVariant(
+      session,
+      type,
+      preset,
+      scene as InpaintScene,
+      samples,
+      onComplete,
+      generationSnapshot,
+    );
+  }
   const def = workFlowService.getDef(type)!;
   console.log('queueI2IWorkflow', type, preset, scene, samples, onComplete);
   await def.handler(
@@ -1640,6 +1697,7 @@ export const queueI2IWorkflow = async (
     undefined,
     generationSnapshot,
   );
+  return 1;
 };
 
 export type MirrorCanvasResult = Awaited<ReturnType<typeof prepareMirrorCanvas>>;
@@ -1701,9 +1759,7 @@ export const queueMirrorWorkflow = async (
   onComplete?: (path: string) => void,
   generationSnapshot?: GenerationSettingsSnapshot,
   canvasMemo?: MirrorCanvasMemo,
-) => {
-  const def = workFlowService.getDef(type);
-
+): Promise<number> => {
   // 미러 이미지가 씬에 아직 설정되지 않았으면 세션 미러 이미지로 자동 생성
   if (!preset.image) {
     if (!session.mirrorImage) {
@@ -1723,63 +1779,15 @@ export const queueMirrorWorkflow = async (
     scene.mirrorCropX = result.cropX;
   }
 
-  if (scene.slots.length === 0) {
-    await def!.handler(
-      session,
-      scene,
-      { type: 'text', text: '' },
-      [],
-      preset,
-      undefined,
-      samples,
-      undefined,
-      onComplete,
-      undefined,
-      generationSnapshot,
-    );
-    return;
-  }
-
-  const combinations: string[][] = [];
-  const current: string[] = [];
-  const traverse = () => {
-    if (current.length === scene.slots.length) {
-      combinations.push([...current]);
-      return;
-    }
-    const level = current.length;
-    let hasEnabled = false;
-    for (const piece of scene.slots[level]) {
-      if (piece.enabled === undefined || piece.enabled) {
-        hasEnabled = true;
-        current.push(piece.prompt);
-        traverse();
-        current.pop();
-      }
-    }
-    if (!hasEnabled) {
-      current.push('');
-      traverse();
-      current.pop();
-    }
-  };
-  traverse();
-
-  for (const combo of combinations) {
-    const middlePrompt = combo.filter(Boolean).join(', ');
-    const mergedPreset = { ...preset, prompt: middlePrompt };
-    await def!.handler(
-      session,
-      scene,
-      { type: 'text', text: '' },
-      [],
-      mergedPreset,
-      undefined,
-      samples,
-      undefined,
-      onComplete,
-      undefined,
-      generationSnapshot,
-    );
-  }
+  // 조합 전개는 I2I 조합 모드와 같은 공용 경로(variantCombo — 생성 경로 createSDPrompts 규칙, SPEC §7-4).
+  // 슬롯이 없으면 preset.prompt 한 조각으로 본다. 예전 미러 전용 DFS(빈 열 '' 대입·`|` 교차 없음·조각 캐릭터 무시)는 없앴다.
+  return queueComboVariant(
+    session,
+    type,
+    preset,
+    scene,
+    samples,
+    onComplete,
+    generationSnapshot,
+  );
 };

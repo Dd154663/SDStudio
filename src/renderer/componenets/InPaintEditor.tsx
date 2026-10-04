@@ -25,7 +25,12 @@ import {
   taskQueueService,
 } from '../models';
 import { dataUriToBase64 } from '../models/ImageService';
-import { InpaintScene, PromptPiece } from '../models/types';
+import { InpaintScene, PromptPiece, Scene } from '../models/types';
+import { COMBO_EDITOR_TEXT, COMBO_EMPTY_TEXT, variantComboMode } from '../models/comboMode';
+import {
+  combinationMiddlePrompt,
+  enumerateCombinations,
+} from '../models/PromptService';
 import { extractPromptDataFromBase64 } from '../models/util';
 import { appState } from '../models/AppService';
 import {
@@ -39,7 +44,7 @@ import { promptCustomResolution } from '../models/customResolutionPrompt';
 import { renameInpaintScene } from '../models/SessionService';
 import { observer } from 'mobx-react-lite';
 import { InnerPreSetEditor } from './PreSetEdtior';
-import { reaction } from 'mobx';
+import { reaction, runInAction } from 'mobx';
 import { FloatView } from './FloatView';
 import { TaskProgressBar } from './TaskQueueControl';
 import {
@@ -56,7 +61,7 @@ import {
   resolutionFromImage,
   workflowUsesImageResolution,
 } from '../models/inpaintResolution';
-import { prepareMirrorCanvas } from '../models/workflows/SDWorkFlow';
+import { prepareMirrorCanvas, SDI2IComboUI } from '../models/workflows/SDWorkFlow';
 import PromptEditTextArea from './PromptEditTextArea';
 import { SlotEditor } from './SceneEditor';
 import { v4 as uuidv4 } from 'uuid';
@@ -131,7 +136,9 @@ const InPaintEditor = observer(
     // Focused 영역 도구(2026-10-04 S2) — 브러시 모드의 하위 도구(지우개처럼). 이동 모드로 바꾸면 쉬고 돌아오면 다시 영역.
     const [focusTool, setFocusTool] = useState(false);
     const [open, setOpen] = useState(false);
-    const def = workFlowService.getDef(editingScene.workflowType)!;
+    // PC 조합 탭(0=프롬프트 에디터, 1=조합 에디터) — 조합 에디터면 이미지 패널을 숨겨 왼쪽을 넓힌다(모바일 FloatView 무관)
+    const [pcComboTab, setPcComboTab] = useState(0);
+    const def =workFlowService.getDef(editingScene.workflowType)!;
     const isMirror = editingScene.workflowType === 'SDMirror';
     // 미러 프리셋에는 focus 키가 없다(영역 버튼·오버레이 숨김).
     const supportsFocus = !!def?.hasMask && !isMirror && presetSupportsFocus(editingScene.preset);
@@ -162,9 +169,25 @@ const InPaintEditor = observer(
       setBrushing(true);
       editingScene.preset.focusEnabled = true;
     };
-    const globalPreset = isMirror && curSession?.selectedWorkflow
+    // 조합 에디터 탭(2026-10-04 B4, SPEC §7-4) — 미러('shared') 또는 조합 모드 I2I('shared'·'snapshot').
+    // 'shared' 는 상위/하위/전역 네거티브 칸이 현재 사전 세팅에 바로 쓰고(실시간 공유), 'snapshot' 은 씬 프리셋의 고정값.
+    const comboMode = variantComboMode(editingScene);
+    const isComboI2I = !isMirror && !!comboMode;
+    const globalPreset = comboMode === 'shared' && curSession?.selectedWorkflow
       ? curSession.getCommonSetup(curSession.selectedWorkflow)[1]
       : null;
+    const showComboTabs = comboMode === 'snapshot' || (comboMode === 'shared' && !!globalPreset);
+    // 조합 탭이 사라졌다 다시 생기면 TabComponent 는 0번 탭으로 새로 시작한다 — 상태도 맞춘다
+    useEffect(() => {
+      if (!showComboTabs) setPcComboTab(0);
+    }, [showComboTabs]);
+    // PC 조합 에디터 탭: 이미지 패널을 hidden(display:none)으로 숨긴다 — 언마운트하지 않아 마스크 캔버스·붓질 이력·
+    // Focused 영역이 그대로 남고, 오버레이 크기는 다시 보일 때 ResizeObserver 가 재측정한다. md 미만(모바일)은 불변.
+    const pcComboWide = showComboTabs && pcComboTab === 1;
+    // 조합 모드 I2I 는 단일 「프롬프트」 칸이 없는 편집 칸(중간 프롬프트·조합 에디터가 대신한다)
+    const presetEditorElement = isComboI2I
+      ? SDI2IComboUI
+      : workFlowService.getI2IEditor(editingScene.workflowType);
     const getMiddlePrompt = () => {
       if (editingScene.slots.length > 0 && editingScene.slots[0].length > 0) {
         return editingScene.slots[0][0].prompt;
@@ -191,6 +214,135 @@ const InPaintEditor = observer(
         ]];
       }
     };
+
+    // 「조합 모드 끄기」 — slots 는 남기고 comboMode 만 지운다. 단일 프롬프트 = 첫 조합의 중간 프롬프트.
+    const turnOffComboMode = async () => {
+      const first = enumerateCombinations(editingScene as unknown as Scene, 1)[0];
+      const middle = first ? combinationMiddlePrompt(first) : getMiddlePrompt();
+      const ok = await appState.confirmAsync({
+        text: COMBO_EDITOR_TEXT.turnOffConfirm(middle),
+        confirmText: COMBO_EDITOR_TEXT.turnOff,
+      });
+      if (!ok) return;
+      runInAction(() => {
+        editingScene.preset.prompt = middle;
+        editingScene.comboMode = undefined;
+      });
+    };
+
+    // 「프롬프트 에디터」 탭 칸(상위·중간·하위·전역 네거티브) — 모바일 FloatView·PC 오른쪽 패널 공용
+    const comboPromptRows: {
+      label: string;
+      value: string;
+      onChange: (v: string) => void;
+    }[] =
+      comboMode === 'snapshot'
+        ? [
+            {
+              label: COMBO_EDITOR_TEXT.snapshotFront,
+              value: editingScene.preset.frontPrompt || '',
+              onChange: (v) => { editingScene.preset.frontPrompt = v; },
+            },
+            { label: COMBO_EDITOR_TEXT.middle, value: getMiddlePrompt(), onChange: setMiddlePrompt },
+            {
+              label: COMBO_EDITOR_TEXT.snapshotBack,
+              value: editingScene.preset.backPrompt || '',
+              onChange: (v) => { editingScene.preset.backPrompt = v; },
+            },
+            {
+              label: COMBO_EDITOR_TEXT.snapshotUc,
+              value: editingScene.preset.globalUc || '',
+              onChange: (v) => { editingScene.preset.globalUc = v; },
+            },
+          ]
+        : globalPreset
+          ? [
+              {
+                label: COMBO_EDITOR_TEXT.sharedFront,
+                value: globalPreset.frontPrompt || '',
+                onChange: (v) => { globalPreset.frontPrompt = v; },
+              },
+              { label: COMBO_EDITOR_TEXT.middle, value: getMiddlePrompt(), onChange: setMiddlePrompt },
+              {
+                label: COMBO_EDITOR_TEXT.sharedBack,
+                value: globalPreset.backPrompt || '',
+                onChange: (v) => { globalPreset.backPrompt = v; },
+              },
+              {
+                label: COMBO_EDITOR_TEXT.sharedUc,
+                value: globalPreset.uc || '',
+                onChange: (v) => { globalPreset.uc = v; },
+              },
+            ]
+          : [];
+
+    const comboTabs = (pc: boolean) => [
+      {
+        label: '프롬프트 에디터',
+        emoji: <FaImages />,
+        onClick: pc ? () => setPcComboTab(0) : undefined,
+        content: (
+          <div className={`flex flex-col h-full overflow-auto ${pc ? 'gap-1' : 'p-2 gap-2'}`}>
+            {isComboI2I && (
+              <div className="flex-none flex flex-wrap items-center gap-2">
+                <span className="gray-label text-xs">
+                  {comboMode === 'snapshot'
+                    ? COMBO_EDITOR_TEXT.modeSnapshot
+                    : COMBO_EDITOR_TEXT.modeShared}
+                </span>
+                <button
+                  className="round-button back-gray btn-sm flex-none ml-auto"
+                  onClick={turnOffComboMode}
+                >
+                  {COMBO_EDITOR_TEXT.turnOff}
+                </button>
+              </div>
+            )}
+            {comboPromptRows.map((row) => (
+              <div key={row.label} className="contents">
+                <div className="flex-none font-bold text-sub">{row.label}</div>
+                <div className="flex-none h-20">
+                  <PromptEditTextArea value={row.value} onChange={row.onChange} />
+                </div>
+              </div>
+            ))}
+            {pc ? (
+              <div className="flex-1 overflow-hidden min-h-0">
+                <InnerPreSetEditor
+                  nopad
+                  type={editingScene.workflowType}
+                  preset={editingScene.preset}
+                  shared={undefined}
+                  element={presetEditorElement}
+                  middlePromptMode={false}
+                  onImageUploaded={onImageUploaded}
+                />
+              </div>
+            ) : (
+              <InnerPreSetEditor
+                type={editingScene.workflowType}
+                preset={editingScene.preset}
+                shared={undefined}
+                element={presetEditorElement}
+                middlePromptMode={false}
+                onImageUploaded={onImageUploaded}
+              />
+            )}
+          </div>
+        ),
+      },
+      {
+        label: '조합 에디터',
+        emoji: <FaPuzzlePiece />,
+        onClick: pc
+          ? () => {
+              ensureSlots();
+              setPcComboTab(1);
+            }
+          : ensureSlots,
+        content: <SlotEditor scene={editingScene} />,
+      },
+    ];
 
     const uploadMirrorImage = async () => {
       // 모드 선택 다이얼로그
@@ -540,8 +692,14 @@ const InPaintEditor = observer(
       onConfirm();
     };
     return (
-      <div className="flex flex-col md:flex-row py-3 h-full w-full overflow-hidden">
-        <div className="px-3 flex flex-col flex-none md:h-auto md:w-1/2 xl:w-1/3 gap-2 overflow-hidden">
+      <div
+        className={`flex flex-col ${pcComboWide ? '' : 'md:flex-row'} py-3 h-full w-full overflow-hidden`}
+      >
+        <div
+          className={`px-3 flex flex-col flex-none ${
+            pcComboWide ? 'md:flex-1 md:min-h-0 md:w-full' : 'md:h-auto md:w-1/2 xl:w-1/3'
+          } gap-2 overflow-hidden`}
+        >
           <div className="flex flex-wrap gap-2">
             <div className="mb-1 flex items-center gap-3 flex-none">
               <label className="gray-label">씬 이름: </label>
@@ -641,63 +799,8 @@ const InPaintEditor = observer(
           )}
           {open && (
             <FloatView priority={1} onEscape={() => setOpen(false)}>
-              {isMirror && globalPreset ? (
-                <TabComponent
-                  tabs={[
-                    {
-                      label: '프롬프트 에디터',
-                      emoji: <FaImages />,
-                      content: (
-                        <div className="flex flex-col h-full overflow-auto p-2 gap-2">
-                          <div className="flex-none font-bold text-sub">상위 프롬프트 (전역):</div>
-                          <div className="flex-none h-20">
-                            <PromptEditTextArea
-                              value={globalPreset.frontPrompt || ''}
-                              onChange={(v: string) => { globalPreset.frontPrompt = v; }}
-                            />
-                          </div>
-                          <div className="flex-none font-bold text-sub">중간 프롬프트 (이 씬에만 적용됨):</div>
-                          <div className="flex-none h-20">
-                            <PromptEditTextArea
-                              value={getMiddlePrompt()}
-                              onChange={setMiddlePrompt}
-                            />
-                          </div>
-                          <div className="flex-none font-bold text-sub">하위 프롬프트 (전역):</div>
-                          <div className="flex-none h-20">
-                            <PromptEditTextArea
-                              value={globalPreset.backPrompt || ''}
-                              onChange={(v: string) => { globalPreset.backPrompt = v; }}
-                            />
-                          </div>
-                          <div className="flex-none font-bold text-sub">네거티브 프롬프트 (전역):</div>
-                          <div className="flex-none h-20">
-                            <PromptEditTextArea
-                              value={globalPreset.uc || ''}
-                              onChange={(v: string) => { globalPreset.uc = v; }}
-                            />
-                          </div>
-                          <InnerPreSetEditor
-                            type={editingScene.workflowType}
-                            preset={editingScene.preset}
-                            shared={undefined}
-                            element={workFlowService.getI2IEditor(
-                              editingScene.workflowType,
-                            )}
-                            middlePromptMode={false}
-                            onImageUploaded={onImageUploaded}
-                          />
-                        </div>
-                      ),
-                    },
-                    {
-                      label: '조합 에디터',
-                      emoji: <FaPuzzlePiece />,
-                      onClick: ensureSlots,
-                      content: <SlotEditor scene={editingScene} />,
-                    },
-                  ]}
-                />
+              {showComboTabs ? (
+                <TabComponent tabs={comboTabs(false)} />
               ) : (
                 <InnerPreSetEditor
                   type={editingScene.workflowType}
@@ -720,65 +823,9 @@ const InPaintEditor = observer(
               씬 세팅 열기
             </button>
           </div>
-          {isMirror && globalPreset ? (
+          {showComboTabs ? (
             <div className="flex-1 hidden md:flex flex-col overflow-hidden">
-              <TabComponent
-                tabs={[
-                  {
-                    label: '프롬프트 에디터',
-                    emoji: <FaImages />,
-                    content: (
-                      <div className="flex flex-col h-full overflow-auto gap-1">
-                        <div className="flex-none font-bold text-sub">상위 프롬프트 (전역):</div>
-                        <div className="flex-none h-20">
-                          <PromptEditTextArea
-                            value={globalPreset.frontPrompt || ''}
-                            onChange={(v: string) => { globalPreset.frontPrompt = v; }}
-                          />
-                        </div>
-                        <div className="flex-none font-bold text-sub">중간 프롬프트 (이 씬에만 적용됨):</div>
-                        <div className="flex-none h-20">
-                          <PromptEditTextArea
-                            value={getMiddlePrompt()}
-                            onChange={setMiddlePrompt}
-                          />
-                        </div>
-                        <div className="flex-none font-bold text-sub">하위 프롬프트 (전역):</div>
-                        <div className="flex-none h-20">
-                          <PromptEditTextArea
-                            value={globalPreset.backPrompt || ''}
-                            onChange={(v: string) => { globalPreset.backPrompt = v; }}
-                          />
-                        </div>
-                        <div className="flex-none font-bold text-sub">네거티브 프롬프트 (전역):</div>
-                        <div className="flex-none h-20">
-                          <PromptEditTextArea
-                            value={globalPreset.uc || ''}
-                            onChange={(v: string) => { globalPreset.uc = v; }}
-                          />
-                        </div>
-                        <div className="flex-1 overflow-hidden min-h-0">
-                          <InnerPreSetEditor
-                            nopad
-                            type={editingScene.workflowType}
-                            preset={editingScene.preset}
-                            shared={undefined}
-                            element={workFlowService.getI2IEditor(editingScene.workflowType)}
-                            middlePromptMode={false}
-                            onImageUploaded={onImageUploaded}
-                          />
-                        </div>
-                      </div>
-                    ),
-                  },
-                  {
-                    label: '조합 에디터',
-                    emoji: <FaPuzzlePiece />,
-                    onClick: ensureSlots,
-                    content: <SlotEditor scene={editingScene} />,
-                  },
-                ]}
-              />
+              <TabComponent tabs={comboTabs(true)} />
             </div>
           ) : (
             <div className="flex-1 hidden md:block overflow-hidden">
@@ -794,7 +841,11 @@ const InPaintEditor = observer(
             </div>
           )}
           {def?.hasMask && (
-            <div className="flex items-center gap-2 md:gap-4 md:ml-auto pb-2 overflow-hidden w-full">
+            <div
+              className={`flex items-center gap-2 md:gap-4 md:ml-auto pb-2 overflow-hidden w-full ${
+                pcComboWide ? 'md:hidden' : ''
+              }`}
+            >
               {
                 <button
                   className={`rounded-full h-8 w-8 back-gray flex-none flex items-center justify-center clickable`}
@@ -913,7 +964,9 @@ const InPaintEditor = observer(
           {supportsFocus && (focusTool || focusEnabled) && (
             // U4 마스크 규칙 미리보기 — 맥락 띠의 마스크는 요청 때 지워지고, 안쪽이 비면 안쪽 전체를 인페인트.
             <div
-              className="flex-none flex flex-wrap items-center gap-x-2 text-xs text-muted pb-2"
+              className={`flex-none flex flex-wrap items-center gap-x-2 text-xs text-muted pb-2 ${
+                pcComboWide ? 'md:hidden' : ''
+              }`}
               data-focus-hint
             >
               <span className="font-bold">
@@ -938,8 +991,11 @@ const InPaintEditor = observer(
             </div>
           )}
         </div>
-        <div className="flex flex-col flex-1 overflow-hidden">
-          <div className="flex-1 overflow-hidden">
+        <div
+          className={`flex flex-col flex-1 ${pcComboWide ? 'md:flex-none' : ''} overflow-hidden`}
+        >
+          {/* PC 조합 에디터 탭: 이미지만 숨기고 아래 생성 바는 남긴다(언마운트 금지 — 마스크·Focused 보존) */}
+          <div className={`flex-1 overflow-hidden ${pcComboWide ? 'md:hidden' : ''}`}>
             <TransformWrapper
               disabled={pointerTarget !== 'pan'}
               minScale={0.7}
@@ -1014,24 +1070,27 @@ const InPaintEditor = observer(
                     setImage(dataUriToBase64(data!));
                   })();
                 };
-                if (isMirror) {
-                  await queueMirrorWorkflow(
-                    curSession!,
-                    editingScene.workflowType,
-                    editingScene.preset,
-                    editingScene,
-                    1,
-                    onGenComplete,
-                  );
-                } else {
-                  await queueI2IWorkflow(
-                    curSession!,
-                    editingScene.workflowType,
-                    editingScene.preset,
-                    editingScene,
-                    1,
-                    onGenComplete,
-                  );
+                // 미러·조합 모드 I2I 는 조합 수만큼 예약(활성 조각이 없는 열이 있으면 0 — 생성 경로와 같은 규칙)
+                const queued = isMirror
+                  ? await queueMirrorWorkflow(
+                      curSession!,
+                      editingScene.workflowType,
+                      editingScene.preset,
+                      editingScene,
+                      1,
+                      onGenComplete,
+                    )
+                  : await queueI2IWorkflow(
+                      curSession!,
+                      editingScene.workflowType,
+                      editingScene.preset,
+                      editingScene,
+                      1,
+                      onGenComplete,
+                    );
+                if (queued === 0) {
+                  appState.pushMessage(COMBO_EMPTY_TEXT);
+                  return;
                 }
                 taskQueueService.run();
               }}

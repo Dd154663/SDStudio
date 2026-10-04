@@ -262,4 +262,4 @@ test.each([100, 500, 1000])('%i cards use a constant number of list scans per pr
   expect(queue.count('progress')).toBe(0);
   expect(session.getScenes).not.toHaveBeenCalled();
   expect(images.fetchVibeImage).not.toHaveBeenCalled();
-});
+}, 20000); // 1000카드 jsdom 렌더가 병렬 실행에서 5초를 넘기는 간헐 실패(2026-10-04) — 횟수 단언이라 타임아웃만 연장

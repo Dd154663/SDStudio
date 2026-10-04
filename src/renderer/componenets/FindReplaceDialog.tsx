@@ -11,7 +11,8 @@ import {
 import { renameScene } from '../models/SessionService';
 import ModalOverlay from './ModalOverlay';
 import { FaSearch, FaExchangeAlt, FaPlus } from 'react-icons/fa';
-import { Scene, CharacterPreset, PromptPiece } from '../models/types';
+import { Scene, CharacterPreset, PromptPiece, InpaintScene } from '../models/types';
+import { variantComboMode } from '../models/comboMode';
 
 /** 검색 결과 한 건. setText 가 false 를 반환하면 "건너뜀"(이름 충돌·차단 등). */
 interface SearchResult {
@@ -21,6 +22,66 @@ interface SearchResult {
 }
 
 type SearchScope = 'scene' | 'character' | 'preset' | 'global' | 'sceneNames' | 'projectName';
+
+// 씬 선택 목록의 변형 씬 키 — 이미지생성 씬 이름과 겹치지 않게 접두를 붙인다(이름에 ':' 는 경로 안전 규칙상 없음).
+const VARIANT_KEY_PREFIX = 'inpaint:';
+const variantKey = (name: string) => VARIANT_KEY_PREFIX + name;
+const sceneKeyLabel = (key: string) =>
+  key.startsWith(VARIANT_KEY_PREFIX) ? `[변형] ${key.slice(VARIANT_KEY_PREFIX.length)}` : key;
+// 단일 프롬프트(preset.prompt)를 검색하는 변형 워크플로우(조합 모드가 아닐 때)
+const SINGLE_PROMPT_VARIANTS = new Set(['SDI2I', 'SDInpaint']);
+
+/**
+ * 변형 씬의 「씬 프롬프트」 검색 대상(2026-10-04 B4 C6, SPEC §7-4) — 미러·I2I 조합 모드는 조합 슬롯(조각·조각 캐릭터란,
+ * 슬롯이 없으면 preset.prompt)과 「복사 시점 1회 복제」의 상위·하위, 단일 프롬프트 I2I·인페인트는 preset.prompt.
+ */
+function collectVariantResults(scene: InpaintScene, q: string, results: SearchResult[]) {
+  const head = `[변형: ${scene.name}]`;
+  const preset = scene.preset;
+  const mode = variantComboMode(scene);
+  const pushPresetField = (key: string, label: string) => {
+    if (typeof preset?.[key] === 'string' && preset[key].includes(q)) {
+      results.push({
+        location: `${head} ${label}`,
+        getText: () => preset[key],
+        setText: (v) => { preset[key] = v; },
+      });
+    }
+  };
+  if (!mode) {
+    if (SINGLE_PROMPT_VARIANTS.has(scene.workflowType)) pushPresetField('prompt', '프롬프트');
+    return;
+  }
+  if (scene.slots.length === 0) pushPresetField('prompt', '중간 프롬프트');
+  scene.slots.forEach((slot, si) => {
+    slot.forEach((piece, pi) => {
+      if (piece.prompt.includes(q)) {
+        results.push({
+          location: `${head} 프롬프트 슬롯 ${si + 1}-${pi + 1}`,
+          getText: () => piece.prompt,
+          setText: (v) => {
+            // 첫 조각은 preset.prompt 와 이중 보관(편집 창 중간 프롬프트) — 함께 맞춘다
+            if (si === 0 && pi === 0 && preset && preset.prompt === piece.prompt) preset.prompt = v;
+            piece.prompt = v;
+          },
+        });
+      }
+      piece.characterPrompts.forEach((cp, ci) => {
+        if (cp.includes(q)) {
+          results.push({
+            location: `${head} 슬롯 ${si + 1}-${pi + 1} 캐릭터란 ${ci + 1}`,
+            getText: () => piece.characterPrompts[ci],
+            setText: (v) => { piece.characterPrompts[ci] = v; },
+          });
+        }
+      });
+    });
+  });
+  if (mode === 'snapshot') {
+    pushPresetField('frontPrompt', '상위 프롬프트(고정)');
+    pushPresetField('backPrompt', '하위 프롬프트(고정)');
+  }
+}
 
 function collectResults(
   query: string,
@@ -58,6 +119,10 @@ function collectResults(
           });
         });
       });
+    }
+    for (const scene of session.inpaints.values()) {
+      if (hasFilter && !selectedScenes!.has(variantKey(scene.name))) continue;
+      collectVariantResults(scene, q, results);
     }
   }
 
@@ -249,10 +314,14 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
    ═══════════════════════════════════════════════════════════════════ */
 const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInputElement> }) => {
   const session = appState.curSession;
+  // 이미지생성 씬 이름 + 변형 씬 키(「[변형] 이름」으로 표시 — 씬 프롬프트 범위만 해당)
   const sceneList = useMemo(() => {
     if (!session) return [];
-    return Array.from(session.scenes.values()).map((s) => s.name);
-  }, [session, session?.scenes.size]);
+    return [
+      ...Array.from(session.scenes.values()).map((s) => s.name),
+      ...Array.from(session.inpaints.values()).map((s) => variantKey(s.name)),
+    ];
+  }, [session, session?.scenes.size, session?.inpaints.size]);
 
   const [searchText, setSearchText] = useState('');
   const [replaceText, setReplaceText] = useState('');
@@ -275,7 +344,7 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
   const filteredSceneList = useMemo(() => {
     if (!sceneFilter.trim()) return sceneList;
     const q = sceneFilter.toLowerCase();
-    return sceneList.filter((name) => name.toLowerCase().includes(q));
+    return sceneList.filter((name) => sceneKeyLabel(name).toLowerCase().includes(q));
   }, [sceneList, sceneFilter]);
 
   const toggleScene = (name: string) => {
@@ -389,7 +458,7 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
             <label key={name} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 rounded px-1 py-0.5">
               <input type="checkbox" checked={selectedScenes.has(name)} onChange={() => toggleScene(name)}
                 className="rounded line-color" />
-              <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{name}</span>
+              <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{sceneKeyLabel(name)}</span>
             </label>
           ))}
           {filteredSceneList.length === 0 && (

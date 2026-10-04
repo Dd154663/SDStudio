@@ -51,6 +51,8 @@ import {
   resolveSceneCharacterPrompts,
   usesSceneCharacterPromptData,
 } from '../sceneCharacterPrompts';
+import { applyImportedJob } from './importedJob';
+import { comboExpandedOf, resolvePresetPromptNode } from '../variantCombo';
 
 const SDImageGenPreset = new WFVarBuilder()
   .addIntVar('cfgRescale', 0, 1, 0.01, 0)
@@ -193,19 +195,15 @@ const SDImageGenEasyInnerUI = wfiStack([
   ], 'sampling-group'),
 ]);
 
-const SDImageGenHandler = async (
-  session: Session,
+// 일반 씬 생성 잡 조립(예약 핸들러와 대량 작업 「I2I로 이미지생성 씬 복사」가 같은 규칙을 쓴다 — 2026-10-04 B1).
+// 프롬프트·캐릭터 프롬프트는 createPrompt·createCharacterPrompts 가 만든 한 조합, 네거티브는 씬 전용 덧붙임까지 포함.
+export const buildSDImageGenJob = (
   scene: GenericScene,
   prompt: PromptNode,
   characterPrompts: PromptNode[],
   preset: any,
   shared: any,
-  samples: number,
-  meta?: any,
-  onComplete?: (img: string) => void,
-  nodelay?: boolean,
-  generationSnapshot?: GenerationSettingsSnapshot,
-) => {
+): SDJob => {
   const sceneObj = scene as Scene;
   const allCharacterPrompts = resolveSceneCharacterPrompts(
     preset,
@@ -258,6 +256,23 @@ const SDImageGenHandler = async (
   if (sceneObj.sceneUC) {
     job.uc = job.uc + ', ' + sceneObj.sceneUC;
   }
+  return job;
+};
+
+const SDImageGenHandler = async (
+  session: Session,
+  scene: GenericScene,
+  prompt: PromptNode,
+  characterPrompts: PromptNode[],
+  preset: any,
+  shared: any,
+  samples: number,
+  meta?: any,
+  onComplete?: (img: string) => void,
+  nodelay?: boolean,
+  generationSnapshot?: GenerationSettingsSnapshot,
+) => {
+  const job = buildSDImageGenJob(scene, prompt, characterPrompts, preset, shared);
   const param: TaskParam = {
     session: session,
     job: job,
@@ -429,18 +444,28 @@ const createSDI2IHandler = (type: string) => {
       dataUriToBase64(
         (await imageService.fetchVibeImage(session, preset.mask))!,
       );
+    // 조합 전개 결과(미러·I2I 조합 모드 — variantCombo, SPEC §7-4)가 실려 있으면 그것을, 아니면 단일 프롬프트.
+    // 단일 프롬프트도 `<조각>` 은 생성 경로처럼 푼다(2026-10-04 B4 C4 — 예전엔 글자 그대로 보냈다).
+    // 이미지 변형 메뉴(OneTimeFlows)가 넘기는 임시 이미지생성 씬의 메타데이터 프롬프트는 글자 그대로 둔다.
+    const expanded = comboExpandedOf(preset);
     const job: SDInpaintJob | SDI2IJob = {
       type: isInpaint ? 'sd_inpaint' : 'sd_i2i',
       cfgRescale: preset.cfgRescale,
       steps: preset.steps,
       promptGuidance: preset.promptGuidance,
-      prompt: { type: 'text', text: preset.prompt },
+      prompt: expanded
+        ? expanded.prompt
+        : scene?.type === 'inpaint'
+          ? resolvePresetPromptNode(preset.prompt, session, scene)
+          : { type: 'text', text: preset.prompt },
       sampling: preset.sampling,
       uc: preset.uc,
-      characterPrompts: (preset.characterPrompts || []).map((p: CharacterPrompt) => ({
-        ...p,
-        prompt: { type: 'text', text: p.prompt || '' },
-      })),
+      characterPrompts: expanded
+        ? expanded.characterPrompts.map((p) => ({ ...p }))
+        : (preset.characterPrompts || []).map((p: CharacterPrompt) => ({
+            ...p,
+            prompt: { type: 'text', text: p.prompt || '' },
+          })),
       useCoords: preset.useCoords,
       legacyPromptConditioning: preset.legacyPromptConditioning,
       normalizeStrength: preset.normalizeStrength,
@@ -498,10 +523,15 @@ export const SDInpaintDef = new WFDefBuilder('SDInpaint')
   .setCreatePreset(createInpaintPreset)
   .build();
 
+// frontPrompt·backPrompt·globalUc = I2I 조합 모드 「복사 시점 설정을 1회 복제」(comboMode 'snapshot')의 고정값(2026-10-04 B4,
+// SPEC §7-4). 그 밖의 I2I 씬은 빈 값 그대로(전개에 쓰이지 않음). 옛 씬 JSON 은 키가 없어 기본값 '' — 5.4.0 롤백 시 값만 소실.
 const SDI2IPreset = SDInpaintPreset.clone()
   .addIntVar('noise', 0, 1, 0.01, 0)
   .addStringVar('overrideResolution', '',)
-  .addCharacterReferenceVar('characterReferences');
+  .addCharacterReferenceVar('characterReferences')
+  .addPromptVar('frontPrompt', '')
+  .addPromptVar('backPrompt', '')
+  .addPromptVar('globalUc', '');
 
 const SDI2IUI = wfiStack([
   wfiInlineInput('이미지', 'image', 'preset', 'flex-none'),
@@ -547,26 +577,52 @@ const SDI2IUI = wfiStack([
   // wfiInlineInput('시드', 'seed', true, 'flex-none'),
 ]);
 
-// 이미지에서 가져온 부분 메타데이터(Director Tools 출력 등은 prompt만 있음)가
-// 기본값을 undefined로 지우지 않도록 누락 값은 기본 프리셋 값을 유지한다.
-// createInpaintPreset과 동일 계약(SPEC_GUIDE §12).
-function applyImportedJob(preset: any, job?: Partial<SDAbstractJob<string>>) {
-  preset.cfgRescale = job?.cfgRescale ?? preset.cfgRescale;
-  preset.promptGuidance = job?.promptGuidance ?? preset.promptGuidance;
-  preset.sampling = job?.sampling ?? preset.sampling;
-  preset.noiseSchedule = job?.noiseSchedule ?? preset.noiseSchedule;
-  preset.prompt = job?.prompt ?? preset.prompt;
-  preset.uc = job?.uc ?? preset.uc;
-  preset.characterPrompts = job?.characterPrompts ?? preset.characterPrompts;
-  preset.useCoords = job?.useCoords ?? preset.useCoords;
-  preset.legacyPromptConditioning =
-    job?.legacyPromptConditioning ?? preset.legacyPromptConditioning;
-  preset.normalizeStrength = job?.normalizeStrength ?? preset.normalizeStrength;
-  preset.varietyPlus = job?.varietyPlus ?? preset.varietyPlus;
-  preset.deliberateEulerAncestralBug =
-    job?.deliberateEulerAncestralBug ?? preset.deliberateEulerAncestralBug;
-  return preset;
-}
+// I2I 조합 모드 편집 칸(2026-10-04 B4) — 프롬프트는 편집 창의 「프롬프트 에디터」 탭(상위·중간·하위)·「조합 에디터」 탭이
+// 맡으므로 단일 「프롬프트」 칸을 뺀다(중복 방지). 네거티브 칸 = 씬 네거티브(전역 네거티브 앞에 붙음 — 미러와 같음).
+export const SDI2IComboUI = wfiStack([
+  wfiInlineInput('이미지', 'image', 'preset', 'flex-none'),
+  wfiInlineInput('강도', 'strength', 'preset', 'flex-none'),
+  wfiInlineInput('노이즈', 'noise', 'preset', 'flex-none'),
+  wfiInlineInput('씬 네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
+  wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
+  wfiGroup('샘플링/모델 설정', [
+    wfiPush('top'),
+    wfiInlineInput('스탭 수', 'steps', 'preset', 'flex-none'),
+    wfiInlineInput(
+      '프롬프트 가이던스',
+      'promptGuidance',
+      'preset',
+      'flex-none',
+    ),
+    wfiInlineInput('샘플링', 'sampling', 'preset', 'flex-none'),
+    wfiInlineInput('노이즈 스케줄', 'noiseSchedule', 'preset', 'flex-none'),
+    wfiInlineInput('CFG 리스케일', 'cfgRescale', 'preset', 'flex-none'),
+    wfiInlineInput(
+      'Legacy Prompt Conditioning 모드',
+      'legacyPromptConditioning',
+      'preset',
+      'flex-none',
+    ),
+    wfiInlineInput(
+      '바이브 강도 정규화',
+      'normalizeStrength',
+      'preset',
+      'flex-none',
+    ),
+    wfiInlineInput('Variety+', 'varietyPlus', 'preset', 'flex-none'),
+    wfiInlineInput(
+      'Deliberate Euler Ancestral Bug',
+      'deliberateEulerAncestralBug',
+      'preset',
+      'flex-none',
+    ),
+  ], 'sampling-group'),
+  wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
+  wfiInlineInput('캐릭터 레퍼런스', 'characterReferences', 'preset', 'flex-none'),
+]);
+
+// 이미지에서 가져온 부분 메타데이터를 변형 프리셋에 옮기는 규칙은 importedJob.ts 단일 출처
+// (createInpaintPreset과 동일 계약, SPEC_GUIDE §12 — 대량 작업 「I2I로 이미지생성 씬 복사」도 같은 규칙).
 
 export function createI2IPreset(
   job?: Partial<SDAbstractJob<string>>,
@@ -782,6 +838,16 @@ const createMirrorHandler = () => {
     nodelay?: boolean,
     generationSnapshot?: GenerationSettingsSnapshot,
   ) => {
+    // 예약 경로(queueMirrorWorkflow)는 조합을 생성 경로와 같은 규칙으로 이미 전개해 넘긴다(variantCombo, SPEC §7-4)
+    // — 상위·하위·전역 네거티브가 들어 있으므로 다시 붙이지 않는다.
+    if (comboExpandedOf(preset)) {
+      return innerHandler(
+        session, scene, prompt, characterPrompts,
+        { ...preset, focusEnabled: false }, shared, samples, meta, onComplete,
+        nodelay, generationSnapshot,
+      );
+    }
+    // 전개 없이 불린 경우(직접 호출)의 예전 규칙 — 상위 + 프리셋 프롬프트 + 하위.
     let front = '', back = '', globalUc = '';
     if (session.selectedWorkflow) {
       const [, genPreset] = session.getCommonSetup(session.selectedWorkflow);

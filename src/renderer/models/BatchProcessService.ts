@@ -70,6 +70,9 @@ import {
 import { appState } from './AppService';
 import type { SceneSelectorItem } from './AppService';
 import { collectFavoriteUpscaleTargets, queueNaiUpscaleImages } from './workflows/NaiUpscaleFlow';
+import { I2I_BATCH_TEXT } from './i2iBatch';
+import { openI2ICopyFlow, openImageAttachFlow } from './i2iBatchFlow';
+import { copyComboContent } from './variantCombo';
 
 export class BatchProcessService {
   openBatchProcessMenu(
@@ -443,7 +446,12 @@ export class BatchProcessService {
         { text: '⏹️ 예약 일괄 제거', value: 'cancelReservations' },
       ];
       if (type === 'inpaint') {
-        items.push({ text: '🪞 이미지생성 탭 씬 이미지미러로 복제', value: 'mirrorDuplicate', group: '씬' });
+        // I2I 일괄 작업(2026-10-04 B1·B2)은 미러 복제 바로 뒤 — 흐름 i2iBatchFlow.ts, 계약 SPEC §6 「대량 작업 I2I」
+        items.push(
+          { text: '🪞 이미지생성 탭 씬 이미지미러로 복제', value: 'mirrorDuplicate', group: '씬' },
+          { text: I2I_BATCH_TEXT.copyMenu, value: 'i2iCopy', group: '씬' },
+          { text: I2I_BATCH_TEXT.attachMenu, value: 'imageAttach', group: '씬' },
+        );
       }
       if (!platform.supportsWebpConvert) {
         items = items.filter((x) => x.value !== 'convertToWebp');
@@ -467,6 +475,10 @@ export class BatchProcessService {
           }
           if (value === 'changeResolution') {
             this.openChangeResolutionMenu(type, setSceneSelector);
+            return;
+          }
+          if (value === 'i2iCopy' || value === 'imageAttach') {
+            (value === 'i2iCopy' ? openI2ICopyFlow : openImageAttachFlow)(type, setSceneSelector);
             return;
           }
           if (value === 'mirrorDuplicate') {
@@ -588,6 +600,9 @@ export class BatchProcessService {
                             t.preset = srcJSON.preset && workFlowService.presetFromJSON(srcJSON.preset);
                             // 첨부 이미지(preset.image)를 함께 복사하므로 해상도도 같이 맞춘다(R-res ⓔ, SPEC §7-3).
                             copySceneResolution(srcJSON, t);
+                            // 조합(미러·I2I 조합 모드)도 함께 — 씬마다 깊은 복사. 조합을 쓰지 않는 결과면 slots 를 비운다
+                            // (2026-10-04 B4 C6, SPEC §7-4 — 예전엔 slots 를 옮기지 않아 미러→미러도 조합이 사라졌다).
+                            copyComboContent(srcJSON, t);
                           }
                         }
                         appState.pushMessage(`${selected.length}개 씬에 내용이 복제되었습니다.`);

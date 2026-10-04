@@ -196,7 +196,8 @@ const RULES: Rule[] = [
   },
   {
     // 이름을 묻는 입력 창은 models/nameInput.promptName 하나(2026-10-03 D2) — 검증·중복 문구·미리 채움·실패 시 창 유지.
-    // 아래 allowlist 는 이름이 아닌 입력(숫자·프롬프트·캐릭터 접두·대체 문자·찾을 씬 검색어) 16곳으로 동결 — 늘리지 않는다.
+    // 아래 allowlist 는 이름이 아닌 입력(숫자·프롬프트·캐릭터 접두·대체 문자·찾을 씬 검색어) 17곳으로 동결 — 늘리지 않는다.
+    // (2026-10-04 B1·B2 I2I 일괄의 강도·노이즈 숫자 입력 1곳 추가 — 사용자 사양 「값 입력」, 창 안 0~1 검증 helper 하나)
     name: "input-confirm 직접 호출(type: 'input-confirm') — 이름 입력은 promptName 사용",
     guide: '§5',
     dir: '',
@@ -210,6 +211,7 @@ const RULES: Rule[] = [
       'models/BatchProcessService.ts': 5, // 순위 숫자 2·대체 문자 1·WebP 품질 2
       'models/customResolutionPrompt.ts': 2, // 해상도 너비·높이
       'models/ExportPresetService.ts': 1, // 캐릭터 접두
+      'models/i2iBatch.ts': 1, // I2I 일괄 강도·노이즈(숫자 0~1, helper 하나를 두 번 호출)
       'models/workflows/OneTimeFlows.ts': 2, // 프롬프트
     },
   },

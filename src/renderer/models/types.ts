@@ -21,6 +21,8 @@ import type {
 } from '../../shared/sdstudioImageMetadata';
 import { WFWorkFlow, WorkFlowDef } from './workflows/WorkFlow';
 import type { FocusedInpaintSpec } from './focusedInpaint';
+import { normalizeComboMode } from './comboMode';
+import type { ComboMode } from './comboMode';
 
 export type PARR = string[];
 
@@ -384,6 +386,8 @@ export interface IInpaintScene extends IAbstractScene {
   sourceImage?: string;
   slots?: IPromptPieceSlot[];
   mirrorCropX?: number;
+  // I2I 조합 모드(2026-10-04 B4, comboMode.ts·SPEC §7-4) — 없으면 조합 모드 아님(5.4.0 은 무시).
+  comboMode?: ComboMode;
 }
 
 export class InpaintScene extends AbstractScene implements IInpaintScene {
@@ -394,6 +398,7 @@ export class InpaintScene extends AbstractScene implements IInpaintScene {
   @observable accessor sourceImage: string | undefined = undefined;
   @observable accessor slots: PromptPieceSlot[] = [];
   @observable accessor mirrorCropX: number | undefined = undefined;
+  @observable accessor comboMode: ComboMode | undefined = undefined;
 
   static fromJSON(json: IInpaintScene): InpaintScene | null {
     const scene = new InpaintScene();
@@ -409,6 +414,8 @@ export class InpaintScene extends AbstractScene implements IInpaintScene {
     scene.slots = (json.slots || []).map((slot) =>
       slot.map((piece) => PromptPiece.fromJSON(piece)),
     );
+    // 알 수 없는 값·손상값은 조합 모드 아님(단일 프롬프트로 동작)
+    scene.comboMode = normalizeComboMode(json.comboMode);
     return scene;
   }
 
@@ -424,6 +431,7 @@ export class InpaintScene extends AbstractScene implements IInpaintScene {
         slots: this.slots.map((slot) => slot.map((piece) => piece.toJSON())),
       }),
       ...(this.mirrorCropX != null && { mirrorCropX: this.mirrorCropX }),
+      ...(this.comboMode && { comboMode: this.comboMode }),
     };
   }
 }

@@ -11,6 +11,7 @@ import {
   Session,
 } from './types';
 import { resolveSceneCharacterPrompts } from './sceneCharacterPrompts';
+import { variantComboMode } from './comboMode';
 import {
   makeExplicitWeightRangeRegex,
   parsePromptWeightNumber,
@@ -176,8 +177,11 @@ export class PromptService extends EventTarget {
 
     // 씬의 모든 슬롯 프롬프트에서 <lib.piece> 패턴 수집
     const prompts: string[] = [];
-    if (scene.type === 'scene') {
-      for (const slot of (scene as Scene).slots) {
+    // 조합을 쓰는 변형 씬(미러·I2I 조합 모드)도 slots 가 실제 프롬프트다(2026-10-04 B4 — 예전엔 preset.prompt 만 봤다).
+    const comboMode =
+      scene.type === 'inpaint' ? variantComboMode(scene as InpaintScene) : undefined;
+    if (scene.type === 'scene' || comboMode) {
+      for (const slot of scene.slots) {
         for (const piece of slot) {
           if (piece.prompt) prompts.push(piece.prompt);
         }
@@ -185,6 +189,12 @@ export class PromptService extends EventTarget {
     }
     if ('preset' in scene && scene.preset?.prompt) {
       prompts.push(scene.preset.prompt);
+    }
+    // 「복사 시점 1회 복제」 I2I 는 상위·하위도 씬 프리셋 값이다.
+    if (comboMode === 'snapshot') {
+      const preset = (scene as InpaintScene).preset;
+      if (preset?.frontPrompt) prompts.push(preset.frontPrompt);
+      if (preset?.backPrompt) prompts.push(preset.backPrompt);
     }
 
     for (const text of prompts) {
@@ -472,6 +482,39 @@ export function combinationMiddlePrompt(combo: Combination): string {
     .join(', ');
 }
 
+/**
+ * 이지 모드 상위 재배열 — 인원 태그(1girl 등)·캐릭터 태그(category 4)를 앞으로, 나머지는 뒤로(순서 유지).
+ * 생성 경로(createSDPrompts)와 I2I 조합 「복사 시점 설정을 1회 복제」(variantCombo.snapshotComboFields)가 같은 규칙을 쓴다.
+ */
+export async function reorderEasyFront(front: string[]): Promise<string[]> {
+  const newFront = [];
+  const rest = [];
+  const regex = /^\d+(boy|girl|other)s?$/;
+  for (const word of front) {
+    if (
+      regex.test(word) ||
+      word === 'multiple girls' ||
+      word === 'multiple boys' ||
+      word === 'multiple others'
+    ) {
+      newFront.push(word);
+    } else {
+      const tag = await backend.lookupTag(word);
+      if (tag && tag.category === 4) {
+        newFront.push(word);
+      } else {
+        rest.push(word);
+      }
+    }
+  }
+  return newFront.concat(rest);
+}
+
+/**
+ * 조합 전개(생성 경로 단일 출처) — 열마다 활성 조각 하나씩 고른 데카르트 곱마다 PromptNode 하나.
+ * 상위(+이지 모드 캐릭터 태그 재배열)→추가→중간(`|` 교차)→(이지 배경)→하위, 조각은 parseWord 로 풀린다.
+ * 이미지생성 씬 예약과 변형 씬(미러·I2I 조합 모드 — variantCombo.expandVariantCombos)이 같은 함수를 쓴다(SPEC §11-4).
+ */
 export const createSDPrompts = async (
   session: Session,
   preset: any,
@@ -486,28 +529,9 @@ export const createSDPrompts = async (
     async (promptComb) => {
       let front = toPARR(preset.frontPrompt);
       if (shared.type === 'SDImageGenEasy') {
-        front = front.concat(toPARR(shared.characterPrompt));
-        const newFront = [];
-        const rest = [];
-        const regex = /^\d+(boy|girl|other)s?$/;
-        for (const word of front) {
-          if (
-            regex.test(word) ||
-            word === 'multiple girls' ||
-            word === 'multiple boys' ||
-            word === 'multiple others'
-          ) {
-            newFront.push(word);
-          } else {
-            const tag = await backend.lookupTag(word);
-            if (tag && tag.category === 4) {
-              newFront.push(word);
-            } else {
-              rest.push(word);
-            }
-          }
-        }
-        front = newFront.concat(rest);
+        front = await reorderEasyFront(
+          front.concat(toPARR(shared.characterPrompt)),
+        );
       }
 
       // 추가 프롬프트 (2026-07-18): 상위(및 이지 모드 캐릭터 태그 재배열) 뒤,
