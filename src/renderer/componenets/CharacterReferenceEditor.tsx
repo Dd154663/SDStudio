@@ -2,7 +2,8 @@ import * as React from 'react';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { v4 } from 'uuid';
-import { FaCloudUploadAlt, FaPortrait, FaTimes, FaToggleOff, FaToggleOn, FaTrash } from 'react-icons/fa';
+import { FaPortrait, FaTimes, FaToggleOff, FaToggleOn, FaTrash } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import { FileUploadBase64 } from './UtilComponents';
 import Tooltip from './Tooltip';
 import { ReferenceItem } from '../models/types';
@@ -217,7 +218,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
             </div>
             {getField().length === 0 && !isMobile && (
               <div className="flex flex-col items-center justify-center flex-1 text-faint p-8">
-                <FaCloudUploadAlt size={48} className="mb-4 opacity-60" />
+                <ActionIcon id="import" size={48} className="mb-4 opacity-60" />
                 <p className="text-base font-medium mb-1">이미지를 드래그하거나</p>
                 <p className="text-base font-medium">Ctrl+V로 붙여넣기 할 수 있습니다</p>
               </div>

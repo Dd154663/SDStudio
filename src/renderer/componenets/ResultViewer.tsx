@@ -11,7 +11,6 @@ import React, {
   useImperativeHandle,
   forwardRef,
 } from 'react';
-import { BiBrush, BiImage } from 'react-icons/bi';
 import {
   FixedSizeGrid as Grid,
   GridChildComponentProps,
@@ -25,27 +24,19 @@ import ShortcutCheatsheet from './ShortcutCheatsheet';
 import {
   FaArrowLeft,
   FaArrowRight,
-  FaBookmark,
-  FaCalendarTimes,
   FaCheck,
   FaDice,
   FaDownload,
-  FaEdit,
   FaFolder,
-  FaPaintBrush,
-  FaRegObjectGroup,
   FaStar,
   FaTrash,
-  FaTrashRestore,
-  FaClone,
   FaShareSquare,
   FaChevronUp,
-  FaCog,
-  FaEllipsisH,
   FaExchangeAlt,
   FaSearchPlus,
   FaTrophy,
 } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import { isV2, V2_SHEET_PEEK_PX } from '../models/mobileV2';
 import { V2MainRow, V2TierRows, type V2SlotDef, type V2TierItem } from './MobileV2Bars';
 import { PromptHighlighter } from './SceneEditor';
@@ -53,9 +44,6 @@ import QueueControl from './SceneQueueControl';
 import { FloatView } from './FloatView';
 import memoizeOne from 'memoize-one';
 import {
-  FaPlus,
-  FaRegSquareCheck,
-  FaCopy,
   FaPaste,
   FaChevronLeft,
   FaChevronRight,
@@ -335,7 +323,7 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
           onClick={handleRestore}
           disabled={selected.size === 0}
         >
-          <FaTrashRestore className="mr-1" />
+          <ActionIcon id="restore" className="mr-1" />
           선택 복원 ({selected.size})
         </button>
         <button className={`round-button back-gray`} onClick={selectAll}>
@@ -691,7 +679,7 @@ const Cell = memo(
               )}
               {isBookmarked && (
                 <div className="absolute right-0 top-0 z-10 text-orange-500 m-2 text-md">
-                  <FaBookmark />
+                  <ActionIcon id="bookmark" />
                 </div>
               )}
               {selectedImages.has(path) && (
@@ -1450,13 +1438,13 @@ const ResultDetailView = observer(
     const otherBtns = v2 ? buttons.filter((b: any) => b !== favBtn && b !== inpaintBtn) : [];
     const detailSlots: V2SlotDef[] = v2
       ? [
-          { key: 'download', name: '다운로드', icon: <FaDownload />, onTap: () => void actDownloadFile() },
-          { key: 'delete', name: '삭제', icon: <FaTrash />, tone: 'danger', onTap: actDeleteFile },
-          { key: 'settings', name: '설정 추출', icon: <FaCog />, onTap: actLoadSettings, disabled: !image },
+          { key: 'download', name: '다운로드', icon: <ActionIcon id="download" />, onTap: () => void actDownloadFile() },
+          { key: 'delete', name: '삭제', icon: <ActionIcon id="delete" />, tone: 'danger', onTap: actDeleteFile },
+          { key: 'settings', name: '설정 추출', icon: <ActionIcon id="gen-settings" />, onTap: actLoadSettings, disabled: !image },
           {
             key: 'fav',
             name: '즐겨찾기',
-            icon: <FaStar />,
+            icon: <ActionIcon id="favorite" />,
             tone: favBtn && /해제/.test(pluginLabel(favBtn)) ? 'accent' : 'default',
             onTap: () => favBtn && runPlugin(favBtn),
             disabled: !favBtn,
@@ -1464,11 +1452,11 @@ const ResultDetailView = observer(
           {
             key: 'inpaint',
             name: '인페인트',
-            icon: <FaPaintBrush />,
+            icon: <ActionIcon id="inpaint" />,
             onTap: () => inpaintBtn && runPlugin(inpaintBtn),
             disabled: !inpaintBtn,
           },
-          { key: 'more', name: '더보기', icon: <FaEllipsisH />, onTap: () => setV2More((v) => !v), expanded: v2More },
+          { key: 'more', name: '더보기', icon: <ActionIcon id="more" />, onTap: () => setV2More((v) => !v), expanded: v2More },
         ]
       : [];
     const detailTier: V2TierItem[] = v2
@@ -1477,8 +1465,8 @@ const ResultDetailView = observer(
             id: 'bookmark',
             label: isImageBm ? '북마크 해제' : '북마크',
             node: (
-              <button className={`round-button ${isImageBm ? 'back-orange' : 'back-gray'}`} onClick={actToggleBookmark}>
-                <FaBookmark />
+              <button className={`round-button ${isImageBm ? 'back-orange' : 'back-gray'}`} onClick={actToggleBookmark} aria-label={isImageBm ? '북마크 해제' : '북마크'}>
+                <ActionIcon id="bookmark" />
               </button>
             ),
           },
@@ -1486,8 +1474,8 @@ const ResultDetailView = observer(
             id: 'copy',
             label: '복사',
             node: (
-              <button className="round-button back-sky" onClick={actCopyImage}>
-                <FaCopy />
+              <button className="round-button back-sky" onClick={actCopyImage} aria-label="복사">
+                <ActionIcon id="copy" />
               </button>
             ),
           },
@@ -1504,7 +1492,7 @@ const ResultDetailView = observer(
             id: `plugin-${i}`,
             label: pluginLabel(b),
             node: (
-              <button className={`round-button ${b.className}`} onClick={() => runPlugin(b)}>
+              <button className={`round-button ${b.className}`} onClick={() => runPlugin(b)} aria-label={pluginLabel(b)}>
                 <FaExchangeAlt />
               </button>
             ),
@@ -1562,14 +1550,14 @@ const ResultDetailView = observer(
               className={`round-button ${isImageBm ? 'back-orange' : 'back-gray'}`}
               onClick={actToggleBookmark}
             >
-              <FaBookmark className="mr-1" />
+              <ActionIcon id="bookmark" className="mr-1" />
               {isImageBm ? '북마크 해제' : '북마크'}
             </button>
             <button
               className={`round-button back-sky`}
               onClick={actCopyImage}
             >
-              <FaCopy className="mr-1" />
+              <ActionIcon id="copy" className="mr-1" />
               이미지 복사
             </button>
             <button
@@ -1698,6 +1686,7 @@ const ResultDetailView = observer(
                   (selectedIndex - 1 + paths.length) % paths.length,
                 );
               }}
+              aria-label="이전 이미지"
             >
               <FaArrowLeft />
             </button>
@@ -1706,6 +1695,7 @@ const ResultDetailView = observer(
               onClick={() => {
                 setSelectedIndex((selectedIndex + 1) % paths.length);
               }}
+              aria-label="다음 이미지"
             >
               <FaArrowRight />
             </button>
@@ -2492,21 +2482,21 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     const moreSlot: V2SlotDef = {
       key: 'more',
       name: '더보기',
-      icon: <FaEllipsisH />,
+      icon: <ActionIcon id="more" />,
       onTap: () => setV2More((v) => !v),
       expanded: v2More,
     };
     const deleteSlot: V2SlotDef = {
       key: 'delete',
       name: '삭제',
-      icon: <FaTrash />,
+      icon: <ActionIcon id="delete" />,
       tone: 'danger',
       // 선택 중 줄에서는 선택한 이미지만, 평소 줄에서는 씬 전체 삭제 메뉴(X3)
       onTap: onDeleteButton,
     };
     const gallerySlots: V2SlotDef[] = v2
       ? [
-          { key: 'select', name: '선택', icon: <FaRegSquareCheck />, onTap: actToggleSelect },
+          { key: 'select', name: '선택', icon: <ActionIcon id="multi-select" />, onTap: actToggleSelect },
           deleteSlot,
           isMainImage
             ? {
@@ -2520,11 +2510,11 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                 ),
                 onTap: actSelectFavorites,
               }
-            : { key: 'download', name: '다운로드', icon: <FaDownload />, onTap: actDownload },
+            : { key: 'download', name: '다운로드', icon: <ActionIcon id="download" />, onTap: actDownload },
           {
             key: 'bookmark',
             name: '북마크',
-            icon: <FaBookmark />,
+            icon: <ActionIcon id="bookmark" />,
             tone: bookmarkedImageFilename ? 'accent' : 'default',
             onTap: actGoBookmark,
           },
@@ -2533,11 +2523,11 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       : [];
     const gallerySelectSlots: V2SlotDef[] = v2
       ? [
-          { key: 'all', name: '전체', icon: <FaRegSquareCheck />, onTap: actSelectAll },
+          { key: 'all', name: '전체', icon: <ActionIcon id="select-all" />, onTap: actSelectAll },
           {
             key: 'fav-toggle',
             name: '즐겨찾기',
-            icon: <FaStar />,
+            icon: <ActionIcon id="favorite" />,
             onTap: () => {
               if (selectedCount === 0) {
                 appState.pushMessage('이미지를 먼저 선택해주세요.');
@@ -2555,18 +2545,18 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       id,
       label,
       node: (
-        <button className={`round-button ${className}`} onClick={onClick} disabled={disabled}>
+        <button className={`round-button ${className}`} onClick={onClick} disabled={disabled} aria-label={label}>
           {icon}
         </button>
       ),
     });
     const galleryTier: V2TierItem[] = v2
       ? [
-          tierItem('queue-add', '예약 추가', 'back-green', <FaPlus />, () => void actQueueAdd()),
-          tierItem('queue-remove', '예약 제거', 'back-gray', <FaCalendarTimes />, actQueueRemove),
-          tierItem('edit', '씬 편집', 'back-orange', <FaEdit />, () => onEdit(scene)),
-          tierItem('download', '다운로드', 'back-green', <FaDownload />, actDownload),
-          tierItem('copy', '복사', 'back-sky', <FaCopy />, actCopyImages),
+          tierItem('queue-add', '예약 추가', 'back-green', <ActionIcon id="queue-add" />, () => void actQueueAdd()),
+          tierItem('queue-remove', '예약 제거', 'back-gray', <ActionIcon id="queue-remove" />, actQueueRemove),
+          tierItem('edit', '씬 편집', 'back-orange', <ActionIcon id="edit" />, () => onEdit(scene)),
+          tierItem('download', '다운로드', 'back-green', <ActionIcon id="download" />, actDownload),
+          tierItem('copy', '복사', 'back-sky', <ActionIcon id="copy" />, actCopyImages),
           tierItem('paste', '붙여넣기', appState.imageClipboard.length > 0 ? 'back-sky' : 'back-gray', <FaPaste />, actPaste),
           ...(onSampleExtract ? [tierItem('sample', '샘플 뽑기', 'back-sky', <FaDice />, () => void actSampleExtract())] : []),
           tierItem('tournament', '월드컵', 'back-sky', <FaTrophy />, () => setTournament(true)),
@@ -2574,9 +2564,9 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       : [];
     const gallerySelectTier: V2TierItem[] = v2
       ? [
-          tierItem('download', '다운로드', 'back-green', <FaDownload />, actDownload),
-          tierItem('copy', '복사', 'back-sky', <FaCopy />, actCopyImages),
-          tierItem('duplicate', '복제', 'back-sky', <FaClone />, () => void onDuplicateSelected(), selectedCount === 0),
+          tierItem('download', '다운로드', 'back-green', <ActionIcon id="download" />, actDownload),
+          tierItem('copy', '복사', 'back-sky', <ActionIcon id="copy" />, actCopyImages),
+          tierItem('duplicate', '복제', 'back-sky', <ActionIcon id="duplicate" />, () => void onDuplicateSelected(), selectedCount === 0),
           tierItem('copy-to', '다른 씬', 'back-sky', <FaShareSquare />, onCopyToSceneSelected, selectedCount === 0),
           ...(onSampleExtract ? [tierItem('sample', '샘플 뽑기', 'back-sky', <FaDice />, () => void actSampleExtract())] : []),
           ...(isMainImage ? [tierItem('fav-select', '즐겨찾기 선택', 'back-yellow', <FaStar />, actSelectFavorites)] : []),
@@ -2666,8 +2656,9 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               <button
                 className={`round-button back-green`}
                 onClick={actQueueAdd}
+                aria-label="예약 추가"
               >
-                {!isMobile ? '예약 추가' : <FaPlus />}
+                {!isMobile ? '예약 추가' : <ActionIcon id="queue-add" />}
               </button>
               <Tooltip content="예약 제거">
                 <button
@@ -2676,7 +2667,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                     taskQueueService.removeTasksFromScene(scene);
                   }}
                 >
-                  {!isMobile ? '예약 제거' : <FaCalendarTimes />}
+                  {!isMobile ? '예약 제거' : <ActionIcon id="queue-remove" />}
                 </button>
               </Tooltip>
               <Tooltip content="씬 편집">
@@ -2686,7 +2677,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                     onEdit(scene);
                   }}
                 >
-                  {!isMobile ? '씬 편집' : <FaEdit />}
+                  {!isMobile ? '씬 편집' : <ActionIcon id="edit" />}
                 </button>
               </Tooltip>
               {!isMobile && (
@@ -2710,7 +2701,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                   }
                   onClick={actToggleSelect}
                 >
-                  <FaRegSquareCheck />
+                  <ActionIcon id="multi-select" />
                 </button>
               </Tooltip>
               {isMainImage && (
@@ -2740,7 +2731,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                   className={`round-button back-sky`}
                   onClick={actCopyImages}
                 >
-                  <FaCopy />
+                  <ActionIcon id="copy" />
                 </button>
               </Tooltip>
               <Tooltip content="이미지 붙여넣기">
@@ -2766,7 +2757,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                       className="round-button back-sky"
                       onClick={onDuplicateSelected}
                     >
-                      <FaClone />
+                      <ActionIcon id="duplicate" />
                     </button>
                   </Tooltip>
                   <Tooltip content="선택 이미지를 다른 씬으로 복사">
@@ -2807,7 +2798,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                   className={`round-button ${bookmarkedImageFilename ? 'back-orange' : 'back-gray'}`}
                   onClick={actGoBookmark}
                 >
-                  <FaBookmark />
+                  <ActionIcon id="bookmark" />
                 </button>
               </Tooltip>
             </div>

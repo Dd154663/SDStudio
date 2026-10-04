@@ -5,9 +5,9 @@ import {
   FaDownload,
   FaFolder,
   FaCheck,
-  FaCog,
   FaEye,
 } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import { appState } from '../models/AppService';
 import { imageDownloadService } from '../models';
 import { GenericScene, Session, CharacterPreset } from '../models/types';
@@ -297,7 +297,7 @@ export const DownloadDialog = observer(
                 className="flex items-center gap-2 text-sm text-muted hover:text-gray-800 dark:hover:text-gray-200"
                 onClick={() => setShowSettings(!showSettings)}
               >
-                <FaCog />
+                <ActionIcon id="gen-settings" />
                 <span>고급 설정</span>
                 <span>{showSettings ? '▼' : '▶'}</span>
               </button>

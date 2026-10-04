@@ -8,17 +8,15 @@ import BrushTool, {
 import { DropdownSelect, TabComponent } from './UtilComponents';
 import { Resolution, resolutionMap } from '../backends/imageGen';
 import {
-  FaArrowAltCircleLeft,
   FaArrowLeft,
   FaArrowsAlt,
-  FaPaintBrush,
   FaPlay,
   FaStop,
   FaUndo,
-  FaUpload,
   FaImages,
   FaPuzzlePiece,
 } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import {
   isMobile,
@@ -510,7 +508,7 @@ const InPaintEditor = observer(
                 className="round-button back-sky flex-none"
                 onClick={uploadMirrorImage}
               >
-                <FaUpload className="inline mr-1" />
+                <ActionIcon id="import" className="inline mr-1" />
                 미러 이미지 {curSession?.mirrorImage ? '변경' : '업로드'}
               </button>
               {curSession?.mirrorImage && (
@@ -675,11 +673,12 @@ const InPaintEditor = observer(
               {
                 <button
                   className={`rounded-full h-8 w-8 back-gray flex-none flex items-center justify-center clickable`}
+                  aria-label={brushing ? '이동 모드로 전환' : '브러시 모드로 전환'}
                   onClick={() => {
                     setBrushing(!brushing);
                   }}
                 >
-                  {brushing ? <FaArrowsAlt /> : <FaPaintBrush />}
+                  {brushing ? <FaArrowsAlt /> : <ActionIcon id="brush" />}
                 </button>
               }
               <div className="flex-none flex items-center gap-1">
@@ -773,6 +772,7 @@ const InPaintEditor = observer(
           <div className="flex-none flex ml-auto gap-2 items-center mr-2 mt-2">
             <button
               className={`round-button back-gray h-8 w-16 flex items-center justify-center`}
+              aria-label="결과 이미지를 원본으로 적용"
               onClick={async () => {
                 if (!image || !editingScene.preset.image) return;
                 await imageService.writeVibeImage(
@@ -787,6 +787,7 @@ const InPaintEditor = observer(
             <TaskProgressBar fast />
             <button
               className={`round-button back-green h-8 w-16 md:w-36 flex items-center justify-center`}
+              aria-label="생성"
               onClick={async () => {
                 if (isMirror) {
                   if (!curSession?.mirrorImage) {

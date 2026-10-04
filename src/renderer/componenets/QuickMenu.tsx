@@ -7,30 +7,10 @@
 import { observer } from 'mobx-react-lite';
 import {
   CSSProperties,
-  ReactNode,
   useEffect,
   useRef,
   useState,
 } from 'react';
-import {
-  FaBolt,
-  FaBroom,
-  FaExchangeAlt,
-  FaFileExport,
-  FaFileImage,
-  FaFilm,
-  FaFolderMinus,
-  FaPaintBrush,
-  FaPlus,
-  FaPuzzlePiece,
-  FaQuestion,
-  FaShare,
-  FaThLarge,
-  FaTrash,
-  FaTrashRestore,
-  FaUsers,
-  FaWindowRestore,
-} from 'react-icons/fa';
 import { appState } from '../models/AppService';
 import { isMobile } from '../models';
 import {
@@ -41,29 +21,10 @@ import {
 import ModalOverlay from './ModalOverlay';
 import { backStackService } from '../models/BackStackService';
 import Tooltip from './Tooltip';
+import { ActionIcon, ActionIconById } from './ActionIcon';
 
-// id → 아이콘 (툴바 공유 JSX 와 같은 아이콘 정체성 유지 — 라벨은 uiLayout name 단일 출처)
-const ACTION_ICONS: Record<string, ReactNode> = {
-  'piece-editor': <FaPuzzlePiece size={18} />,
-  'find-replace': <FaExchangeAlt size={18} />,
-  'backup-export': <FaShare size={18} />,
-  'empty-image-trash': <FaBroom size={18} />,
-  'quick-export': <span className="text-base leading-none">⚡</span>,
-  'export-images': <FaFileExport size={18} />,
-  // FaThLarge→FaFilm(씬 템플릿 개편): project-browser 와 동일 아이콘 혼동 분리 —
-  // 툴바 공유 JSX 와 동일 정체성.
-  'scene-template': <FaFilm size={18} />,
-  'import-image': <FaFileImage size={18} />,
-  'shortcut-help': <FaQuestion size={18} />,
-  'project-browser': <FaThLarge size={18} />,
-  'character-presets': <FaUsers size={18} />,
-  'project-trash': <FaTrashRestore size={18} />,
-  'add-session': <FaPlus size={18} />,
-  'delete-session': <FaFolderMinus size={18} />,
-  'artist-tag': <FaPaintBrush size={18} />,
-  'scene-trash': <FaTrash size={18} />,
-  'new-window': <FaWindowRestore size={18} />,
-};
+// id → 아이콘은 아이콘 의미 사전(models/iconDictionary.ts) 단일 출처 — 툴바·V2 칸과 같은 아이콘.
+// 사전에 없는 id 는 번개(quick-export 와 같은 모양)로 대신한다. 라벨은 uiLayout name 단일 출처.
 
 const EMPTY_GUIDE = '퀵 메뉴가 비어 있습니다 — 환경설정 → 툴바에서 구성하세요';
 
@@ -214,7 +175,7 @@ export const QuickMenu = observer(() => {
               appState.quickMenuOpen = !appState.quickMenuOpen;
             }}
           >
-            <FaBolt size={16} />
+            <ActionIcon id="quick-menu" size={16} />
           </button>
         </Tooltip>
       )}
@@ -233,7 +194,7 @@ export const QuickMenu = observer(() => {
                     disabled={!enabled}
                     onClick={() => runAction(a)}
                   >
-                    {ACTION_ICONS[a.id] ?? <FaBolt size={18} />}
+                    <ActionIconById id={a.id} fallback="quick-export" size={18} />
                     <span className="text-xs text-center leading-tight">{name}</span>
                   </button>
                 );
@@ -268,7 +229,7 @@ export const QuickMenu = observer(() => {
                       onClick={() => runAction(a)}
                     >
                       <span className="flex-none w-5 flex justify-center">
-                        {ACTION_ICONS[a.id] ?? <FaBolt size={18} />}
+                        <ActionIconById id={a.id} fallback="quick-export" size={18} />
                       </span>
                       <span className="flex-1 truncate">{name}</span>
                     </button>

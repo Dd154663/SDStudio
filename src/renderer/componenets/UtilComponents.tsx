@@ -10,16 +10,8 @@ import React, {
 
 import Select from 'react-select';
 import { isMobile } from '../models';
-import {
-  FaAddressBook,
-  FaAmilia,
-  FaDAndD,
-  FaFileUpload,
-  FaPenNib,
-  FaTimes,
-} from 'react-icons/fa';
 import { Scrollbars } from 'react-custom-scrollbars-2';
-import { FaAnchor, FaOpencart, FaPerson } from 'react-icons/fa6';
+import { ActionIcon } from './ActionIcon';
 import { FloatView } from './FloatView';
 import MobilePromptSheet from './MobilePromptSheet';
 import { V2MainRow } from './MobileV2Bars';
@@ -154,6 +146,8 @@ export const FileUploadBase64: React.FC<{
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       onClick={handleClick}
+      role="button"
+      aria-label="파일 선택"
       className="w-full h-8 overflow-hidden rounded-full back-sky clickable flex items-center justify-center"
       style={{
         backgroundColor: dragging ? '#0ea5e9' : undefined,
@@ -166,7 +160,7 @@ export const FileUploadBase64: React.FC<{
         className="hidden"
       />
       <p className="whitespace-nowrap">
-        {file && !notext ? file.name : <FaFileUpload />}
+        {file && !notext ? file.name : <ActionIcon id="import" />}
       </p>
     </div>
   );
@@ -297,6 +291,7 @@ export const TabComponent: React.FC<TabComponentProps> = ({
                   (wideTabs ? 'flex-1 basis-0 min-w-0 h-9 ' : 'h-10 flex-none ') +
                   (index === activeTab ? `back-sky` : 'back-llgray tab-seg-off')
                 }
+                aria-label={tab.label}
                 onClick={() => handleTabClick(index)}
               >
                 {tab.emoji}

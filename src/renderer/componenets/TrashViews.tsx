@@ -5,7 +5,8 @@
 //  · 복원·영구 삭제·휴지통 비우기의 동작은 예전 그대로(TrashService 관문 경유).
 import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
-import { FaTrash, FaTrashRestore } from 'react-icons/fa';
+import { FaTrash } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import { trashService } from '../models';
 import { appState } from '../models/AppService';
 import {
@@ -152,7 +153,7 @@ export function TrashList({
             className="round-button back-green flex-none"
             onClick={() => onRestore(row.key)}
           >
-            <FaTrashRestore className="mr-1" />
+            <ActionIcon id="restore" className="mr-1" />
             복원
           </button>
           <button

@@ -388,6 +388,7 @@ export const ExternalImageView = observer(
             </div>
             <button
               className="p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors"
+              aria-label="닫기"
               onClick={onClose}
             >
               <FaTimes size={16} />

@@ -9,7 +9,8 @@ import { deleteConfirmText } from '../models/deleteFlowRules';
 import ModalOverlay from './ModalOverlay';
 import { useGuardedClose } from './backdropClose';
 
-import { FaPlus, FaTrash, FaPen, FaCopy } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaPen } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 
 const ExportPresetManager = observer(() => {
   const [presets, setPresets] = useState<ExportPreset[]>([]);
@@ -240,7 +241,13 @@ const ExportPresetManager = observer(() => {
                   />
                 ) : (
                   <div className="text-sm font-medium text-default truncate flex items-center gap-1">
-                    {p.isDefault && <span title="빠른 내보내기 기본 프리셋">⚡</span>}
+                    {p.isDefault && (
+                      <ActionIcon
+                        id="quick-export"
+                        className="flex-none text-amber-500"
+                        aria-label="빠른 내보내기 기본 프리셋"
+                      />
+                    )}
                     {p.name}
                   </div>
                 )}
@@ -262,7 +269,7 @@ const ExportPresetManager = observer(() => {
                     onClick={(e) => { e.stopPropagation(); duplicatePreset(i); }}
                     className="p-1.5 rounded text-faint hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/20 transition-colors"
                   >
-                    <FaCopy size={11} />
+                    <ActionIcon id="duplicate" size={11} />
                   </button>
                   <button
                     title="삭제"
@@ -305,7 +312,8 @@ const ExportPresetManager = observer(() => {
               className="w-4 h-4 accent-sky-500"
             />
             <span className="text-sm text-gray-700 dark:text-gray-300">
-              ⚡ 빠른 내보내기 기본 프리셋으로 사용
+              <ActionIcon id="quick-export" className="inline-block mr-1 align-[-0.125em]" />
+              빠른 내보내기 기본 프리셋으로 사용
             </span>
           </label>
 

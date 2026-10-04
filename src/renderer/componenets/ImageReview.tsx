@@ -493,6 +493,7 @@ const ImageReview = ({
             </strong>
             <button
               className="round-button back-gray"
+              aria-label="닫기"
               onClick={() => setTrashScene(undefined)}
             >
               <FaTimes />

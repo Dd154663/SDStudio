@@ -11,16 +11,13 @@ import { DropdownSelect } from './UtilComponents';
 import Tooltip from './Tooltip';
 import PromptEditTextArea from './PromptEditTextArea';
 import {
-  FaArrowCircleUp,
   FaExchangeAlt,
-  FaFileExport,
   FaFileImport,
   FaPlus,
   FaPuzzlePiece,
-  FaShare,
-  FaTrashAlt,
+  FaTrash,
 } from 'react-icons/fa';
-import { FaTrash } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import { useDrag, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
 import { isValidPieceLibrary, Piece, PieceLibrary } from '../models/types';
@@ -672,7 +669,7 @@ const PieceEditor = observer(() => {
             className="icon-button h-8 px-3 flex items-center gap-1"
             onClick={exportLibrary}
           >
-            <FaShare size={14} /> <span className="text-sm hidden md:inline">내보내기</span>
+            <ActionIcon id="export" size={14} /> <span className="text-sm hidden md:inline">내보내기</span>
           </button>
         </Tooltip>
         <Tooltip content="조각그룹 삭제">
@@ -680,7 +677,7 @@ const PieceEditor = observer(() => {
             className="icon-button h-8 px-3 back-red flex items-center gap-1"
             onClick={deleteLibrary}
           >
-            <FaTrashAlt size={14} /> <span className="text-sm hidden md:inline">삭제</span>
+            <ActionIcon id="delete" size={14} /> <span className="text-sm hidden md:inline">삭제</span>
           </button>
         </Tooltip>
         {curPieceLibrary && (scope === 'local' ? true : !!curSession) && (
@@ -699,7 +696,7 @@ const PieceEditor = observer(() => {
               className="icon-button h-8 px-3 back-orange flex items-center gap-1"
               onClick={exportAllGlobal}
             >
-              <FaFileExport size={14} /> <span className="text-sm hidden md:inline">전체 백업</span>
+              <ActionIcon id="backup" size={14} /> <span className="text-sm hidden md:inline">전체 백업</span>
             </button>
           </Tooltip>
         )}

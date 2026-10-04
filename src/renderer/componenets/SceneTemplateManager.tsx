@@ -3,16 +3,11 @@ import { observer } from 'mobx-react-lite';
 import {
   FaFilm,
   FaPen,
-  FaCopy,
-  FaTrashAlt,
-  FaFileImport,
-  FaFileExport,
   FaPlus,
   FaCheck,
   FaTimes,
-  FaDownload,
-  FaUpload,
 } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import ModalOverlay from './ModalOverlay';
 import Tooltip from './Tooltip';
 import { sessionService, templateService } from '../models';
@@ -204,7 +199,7 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
             disabled={!curSession}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap disabled:opacity-40"
           >
-            <FaFileExport size={13} /> 현재 씬 전체로 만들기
+            <ActionIcon id="copy-to-global" size={13} /> 현재 씬 전체로 만들기
           </button>
         </Tooltip>
         <Tooltip content="빈 템플릿을 만들어 바로 열어줍니다">
@@ -221,7 +216,7 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
             disabled={!curSession || templates.length === 0}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap disabled:opacity-40"
           >
-            <FaFileImport size={13} /> 현재 프로젝트로 복사
+            <ActionIcon id="copy-to-project" size={13} /> 현재 프로젝트로 복사
           </button>
         </Tooltip>
         <Tooltip content="다른 기기에서 내보낸 씬 템플릿 파일을 추가합니다">
@@ -230,7 +225,7 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap cursor-pointer"
             onClick={(e) => interceptFileImportClick(e, importInputRef.current, 'scene-template')}
           >
-            <FaUpload size={13} /> 파일 불러오기
+            <ActionIcon id="import" size={13} /> 파일 불러오기
             <input
               ref={importInputRef}
               type="file"
@@ -329,7 +324,7 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
                     }}
                     className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
                   >
-                    <FaCopy size={13} />
+                    <ActionIcon id="duplicate" size={13} />
                   </button>
                 </Tooltip>
                 <Tooltip content="파일로 내보내기 (다른 기기로 이동)">
@@ -340,7 +335,7 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
                     }}
                     className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
                   >
-                    <FaDownload size={13} />
+                    <ActionIcon id="export" size={13} />
                   </button>
                 </Tooltip>
                 <Tooltip content="삭제 (휴지통으로 이동)">
@@ -351,7 +346,7 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
                     }}
                     className="btn-ghost p-2 rounded-md text-faint hover:text-red-500"
                   >
-                    <FaTrashAlt size={13} />
+                    <ActionIcon id="delete" size={13} />
                   </button>
                 </Tooltip>
               </div>

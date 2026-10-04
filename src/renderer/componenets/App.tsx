@@ -45,7 +45,8 @@ import {
   FLOAT_VIEW_WIDE_ANCHOR_ID,
 } from './FloatView';
 import { observer, useObserver } from 'mobx-react-lite';
-import { FaGlobe, FaImages, FaPenFancy, FaStar, FaPalette, FaSearch, FaBolt } from 'react-icons/fa';
+import { FaGlobe, FaImages, FaPenFancy, FaPalette, FaBolt } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import { GlobalPresetTab, GlobalPresetPickerOverlay } from './GlobalPresetTab';
 import ModalOverlay from './ModalOverlay';
 import { ProjectTrashView } from './SessionSelect';
@@ -535,7 +536,7 @@ export const App = observer(() => {
     {
       label: '글로벌 프리셋',
       content: <GlobalPresetTab />,
-      emoji: <FaStar />,
+      emoji: <ActionIcon id="global-presets" />,
       banToggle: true,
       onClick: () => {
         appState.curMainTab = 'other';

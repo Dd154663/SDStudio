@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { FaArrowLeft, FaArrowRight, FaRedo, FaStar, FaPlus, FaTimes, FaPen, FaTrash } from 'react-icons/fa';
+import { FaArrowLeft, FaArrowRight, FaRedo, FaStar, FaPlus, FaTrash } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import { useBackLayer } from '../models/BackStackService';
 import { useBackdropClose } from './backdropClose';
 
@@ -354,6 +355,7 @@ const DesktopBrowser: React.FC = () => {
         <button
           className="p-1.5 rounded btn-ghost disabled:opacity-30 text-gray-700 dark:text-gray-300"
           disabled={!canGoBack}
+          aria-label="뒤로"
           onClick={() => webviewRef.current?.goBack()}
         >
           <FaArrowLeft size={12} />
@@ -361,12 +363,14 @@ const DesktopBrowser: React.FC = () => {
         <button
           className="p-1.5 rounded btn-ghost disabled:opacity-30 text-gray-700 dark:text-gray-300"
           disabled={!canGoForward}
+          aria-label="앞으로"
           onClick={() => webviewRef.current?.goForward()}
         >
           <FaArrowRight size={12} />
         </button>
         <button
           className="p-1.5 rounded btn-ghost text-gray-700 dark:text-gray-300"
+          aria-label={loading ? '중지' : '새로고침'}
           onClick={() => loading ? webviewRef.current?.stop() : webviewRef.current?.reload()}
         >
           <FaRedo size={12} className={loading ? 'animate-spin' : ''} />
@@ -427,7 +431,7 @@ const DesktopBrowser: React.FC = () => {
             className="w-full text-left px-3 py-1.5 text-sm btn-ghost text-gray-700 dark:text-gray-300 flex items-center gap-2"
             onClick={() => { setDialog({ mode: 'edit', bookmark: contextMenu.bookmark }); setContextMenu(null); }}
           >
-            <FaPen size={10} /> 편집
+            <ActionIcon id="edit" size={10} /> 편집
           </button>
           <button
             className="w-full text-left px-3 py-1.5 text-sm btn-ghost text-red-500 flex items-center gap-2"

@@ -50,7 +50,6 @@ import {
 import {
   FaUser,
   FaFolder,
-  FaCog,
   FaTimes,
   FaKeyboard,
   FaWrench,
@@ -61,6 +60,7 @@ import {
   FaPen,
   FaGoogleDrive,
 } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import { keyboardShortcutService, KeyboardShortcutService } from '../models/KeyboardShortcutService';
 import { migrationService } from '../models/MigrationService';
 import type { MigrationDiagStatus } from '../models/MigrationService';
@@ -2348,7 +2348,8 @@ const QuickMenuEditor = ({
           onChange={(e) => setShowButton(e.target.checked)}
         />
         <label htmlFor="cfgQuickMenuButton" className="text-sm gray-label">
-          ⚡ 플로팅 버튼 표시
+          <ActionIcon id="quick-menu" className="inline-block mr-1 align-[-0.125em]" />
+          플로팅 버튼 표시
         </label>
       </div>
       <p className="text-xs text-faint mb-2 ml-6">
@@ -3295,7 +3296,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     // (PC) 고급 로컬 동기화 폴더. 라벨 축약(저장경로·커스텀·단축키)과 탭 버튼 여백(px-2.5·gap-1)은 PC 설정
     // 창 폭(md:max-w-2xl)에 8탭이 한 줄로 들어가게 하려는 것(2026-10-01 사용자 결정).
     { key: 'drive', label: '드라이브', icon: <FaGoogleDrive size={14} /> },
-    { key: 'system', label: '시스템', icon: <FaCog size={14} /> },
+    { key: 'system', label: '시스템', icon: <ActionIcon id="system-settings" size={14} /> },
     { key: 'personal', label: '커스텀', icon: <FaSlidersH size={14} /> },
     // 복구는 모바일 전용 탭(데스크탑은 '저장경로' 탭 안에 동일 기능 존재)
     ...(mobileMode ? [{ key: 'recovery', label: '복구', icon: <FaWrench size={14} /> }] : []),
@@ -3411,6 +3412,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
           <h1 className="text-base font-semibold text-default">환경설정</h1>
           <button
             className="p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors"
+            aria-label="닫기"
             onClick={onClose}
           >
             <FaTimes size={16} />

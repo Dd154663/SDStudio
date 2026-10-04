@@ -19,6 +19,27 @@ export const TOUCH_HOLD_MS = 400;
 export const TOUCH_LINGER_MS = 3000;
 const TOUCH_SLOP_PX = 10;
 
+// 접근성(2026-10-04 I1): 자식이 버튼·클릭 요소(DOM)이고 이름(aria-label/aria-labelledby)이 없으면
+// 툴팁 문구를 aria-label 로 붙인다 — 아이콘만 있는 버튼도 화면 낭독기·테스트가 이름으로 찾는다.
+// 자식이 직접 정한 aria-label 이 항상 우선이고, 컴포넌트 자식(SceneQueueMenu 등)에는 손대지 않는다.
+const CLICKABLE_TAGS = new Set(['button', 'a', 'label', 'summary']);
+export function withTooltipAriaLabel(
+  children: ReactNode,
+  content: string,
+): ReactNode {
+  if (!content || !React.isValidElement(children)) return children;
+  const el = children as React.ReactElement<Record<string, unknown>>;
+  if (typeof el.type !== 'string') return children;
+  const p = el.props;
+  if (p['aria-label'] != null || p['aria-labelledby'] != null) return children;
+  const clickable =
+    CLICKABLE_TAGS.has(el.type) ||
+    typeof p.onClick === 'function' ||
+    p.role === 'button';
+  if (!clickable) return children;
+  return React.cloneElement(el, { 'aria-label': content });
+}
+
 const TooltipPortal = ({
   content,
   triggerRect,
@@ -285,7 +306,7 @@ const Tooltip = ({
       onContextMenu={handleContextMenu}
       className="contents"
     >
-      {children}
+      {withTooltipAriaLabel(children, content)}
       {visible && triggerRect && (
         <TooltipPortal
           content={content}

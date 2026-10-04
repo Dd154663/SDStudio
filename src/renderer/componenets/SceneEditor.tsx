@@ -23,14 +23,10 @@ import {
   FaSearch,
   FaStar,
   FaStop,
-  FaTimes,
   FaTrash,
   FaUser,
-  FaUserAlt,
-  FaCheck,
   FaToggleOn,
   FaToggleOff,
-  FaEdit,
   FaQuestionCircle,
   FaArrowUp,
   FaArrowDown,
@@ -39,6 +35,7 @@ import {
   FaChevronDown,
   FaChevronRight,
 } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import Denque from 'denque';
 import { writeFileSync } from 'original-fs';
 import { windowsStore } from 'process';
@@ -627,6 +624,7 @@ export const SlotPiece = observer(
         </Tooltip>
         <button
           className={'active:brightness-90 hover:brightness-95 ml-auto text-red-500 dark:text-red-400' + (wide ? ' relative touch-hit' : '')}
+          aria-label="셀 삭제"
           onClick={() => {
             if (!moveSlotPiece) return;
             removePiece && removePiece(piece);
@@ -691,7 +689,7 @@ export const SlotPiece = observer(
               <span className="truncate">
                 {pieceLabel(piece, colIndex, rowIndex)}
               </span>
-              <FaEdit size={11} className="flex-none text-faint" />
+              <ActionIcon id="rename" size={11} className="flex-none text-faint" />
             </button>
           )}
           {wide && pieceControls}
@@ -1073,6 +1071,7 @@ const SceneCharacterPromptEditor = observer(({
                     </button>
                     <button
                       className="icon-button back-red"
+                      aria-label="캐릭터 삭제"
                       onClick={() => removeCharacter(character.id)}
                     >
                       <FaTrash />
@@ -1304,6 +1303,7 @@ export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
             ))}
             <button
               className="p-2 m-2 w-14 back-lllgray clickable rounded-xl flex justify-center"
+              aria-label="행 추가"
               onClick={() => {
                 slot.push(
                   PromptPiece.fromJSON({
@@ -1321,6 +1321,7 @@ export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
         ))}
         <button
           className="p-2 m-2 h-14 flex items-center back-lllgray clickable rounded-xl"
+          aria-label="열 추가"
           onClick={() => {
             scene.slots.push([
               PromptPiece.fromJSON({

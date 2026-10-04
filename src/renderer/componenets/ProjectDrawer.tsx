@@ -14,22 +14,18 @@ import {
   FaFolderPlus,
   FaCheck,
   FaPen,
-  FaTrashAlt,
-  FaFileExport,
   FaEllipsisV,
   FaHdd,
   FaFileArchive,
-  FaCopy,
   FaLayerGroup,
   FaThLarge,
   FaFilm,
   FaMagic,
-  FaFileImport,
   FaUnlink,
-  FaCalendarPlus,
   FaWindowRestore,
   FaFolderOpen,
 } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import {
   sessionService,
   isMobile,
@@ -396,6 +392,7 @@ export const ProjectDrawerHandle = observer(() => {
     <button
       className="fixed left-0 top-1/2 -translate-y-1/2 md:hidden flex items-center justify-center w-5 h-14 rounded-r-md border border-l-0 line-color bg-[var(--c-surface-2)] opacity-70 active:opacity-100"
       style={{ zIndex: 'var(--z-drawer-handle)' }}
+      aria-label={open ? '프로젝트 서랍 닫기' : '프로젝트 서랍 열기'}
       onClick={() => appState.toggleSideDrawer('project')}
     >
       {open ? (
@@ -1660,6 +1657,7 @@ const ProjectDrawer = observer(() => {
             )}
             <button
               className="p-1.5 rounded-md hover:bg-gray-200 dark:hover:bg-slate-600 text-muted"
+              aria-label="닫기"
               onClick={close}
             >
               <FaTimes size={18} />
@@ -2330,7 +2328,7 @@ const ProjectDrawer = observer(() => {
                   }}
                   className="btn-ghost p-2 rounded-md text-faint hover:text-amber-500"
                 >
-                  <FaFileExport size={14} />
+                  <ActionIcon id="backup-export" size={14} />
                 </button>
               </Tooltip>
               <Tooltip content="폴더 복제">
@@ -2341,7 +2339,7 @@ const ProjectDrawer = observer(() => {
                   }}
                   className="btn-ghost p-2 rounded-md text-faint hover:text-green-500"
                 >
-                  <FaCopy size={14} />
+                  <ActionIcon id="duplicate" size={14} />
                 </button>
               </Tooltip>
               <Tooltip content="폴더 색상">
@@ -2376,7 +2374,7 @@ const ProjectDrawer = observer(() => {
                   }}
                   className="btn-ghost p-2 rounded-md text-faint hover:text-red-500"
                 >
-                  <FaTrashAlt size={15} />
+                  <ActionIcon id="delete" size={15} />
                 </button>
               </Tooltip>
               <Tooltip content="새 프로젝트">
@@ -2426,7 +2424,7 @@ const ProjectDrawer = observer(() => {
                   }}
                   className="btn-ghost p-2 rounded-md text-faint hover:text-green-500"
                 >
-                  <FaCalendarPlus size={14} />
+                  <ActionIcon id="queue-add" size={14} />
                 </button>
               </Tooltip>
             </div>
@@ -2472,7 +2470,7 @@ const ProjectDrawer = observer(() => {
                   }}
                   className="btn-ghost p-2 rounded-md text-faint hover:text-amber-500"
                 >
-                  <FaFileExport size={14} />
+                  <ActionIcon id="backup-export" size={14} />
                 </button>
               </Tooltip>
               <Tooltip content="프로젝트 복제">
@@ -2483,7 +2481,7 @@ const ProjectDrawer = observer(() => {
                   }}
                   className="btn-ghost p-2 rounded-md text-faint hover:text-green-500"
                 >
-                  <FaCopy size={14} />
+                  <ActionIcon id="duplicate" size={14} />
                 </button>
               </Tooltip>
               <Tooltip content="이름 편집">
@@ -2516,7 +2514,7 @@ const ProjectDrawer = observer(() => {
                   }}
                   className="btn-ghost p-2 rounded-md text-faint hover:text-purple-500"
                 >
-                  <FaFileImport size={14} />
+                  <ActionIcon id="copy-to-project" size={14} />
                 </button>
               </Tooltip>
               {templateService.getInheritedApplication(toolbar.name) && (
@@ -2540,7 +2538,7 @@ const ProjectDrawer = observer(() => {
                   }}
                   className="btn-ghost p-2 rounded-md text-faint hover:text-green-500"
                 >
-                  <FaCalendarPlus size={14} />
+                  <ActionIcon id="queue-add" size={14} />
                 </button>
               </Tooltip>
               <Tooltip content="프로젝트 삭제">
@@ -2551,7 +2549,7 @@ const ProjectDrawer = observer(() => {
                   }}
                   className="btn-ghost p-2 rounded-md text-faint hover:text-red-500"
                 >
-                  <FaTrashAlt size={15} />
+                  <ActionIcon id="delete" size={15} />
                 </button>
               </Tooltip>
             </div>

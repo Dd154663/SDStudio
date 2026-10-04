@@ -10,6 +10,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
+import { TOOLBAR_VIEW_MAIN } from '../uiLayout';
 
 const RENDERER_ROOT = path.resolve(__dirname, '..', '..');
 
@@ -25,6 +26,10 @@ interface Rule {
 
 const countMatches = (content: string, re: RegExp) =>
   (content.match(re) || []).length;
+
+// 툴바 버튼 id 전체(레지스트리 도출) — 아이콘 사전 밖에서 id→아이콘을 다시 정하는 코드 탐지용(§6).
+// (id 는 영소문자·하이픈만이라 정규식 이스케이프가 필요 없다.)
+const TOOLBAR_IDS_RE = TOOLBAR_VIEW_MAIN.flatMap((a) => a.registry.map((b) => b.id)).join('|');
 
 const RULES: Rule[] = [
   {
@@ -222,6 +227,37 @@ const RULES: Rule[] = [
     allow: {
       'componenets/CharacterPresetEditor.tsx': 1, // 캐릭터 프리셋 폴더 삭제(소속 프리셋은 미분류로)
       'models/folderDeleteFlow.ts': 2, // 프로젝트 폴더 삭제(빈 폴더·폴더와 프로젝트 모두)
+    },
+  },
+  {
+    // 아이콘 의미 사전(2026-10-04 I1) — 툴바 id 의 아이콘은 models/iconDictionary.ts 한 곳에서만 정한다.
+    // 컴포넌트별 id→아이콘 맵(옛 QuickMenu ACTION_ICONS)·「'id': <Fa…」·V2 칸 「key: 'id' … icon: <Fa…」 재정의 금지.
+    name: '툴바 id 아이콘 재정의(ACTION_ICONS·id→<Fa…>) — models/iconDictionary.ts 사용',
+    guide: '§6',
+    dir: '',
+    exts: ['.ts', '.tsx'],
+    exclude: ['models/iconDictionary.ts'],
+    count: (c) =>
+      countMatches(c, /\bACTION_ICONS\b/g) +
+      countMatches(c, new RegExp(`['"](${TOOLBAR_IDS_RE})['"]\\s*:\\s*<(Fa|Bi|Md)`, 'g')) +
+      countMatches(
+        c,
+        new RegExp(`key:\\s*'(${TOOLBAR_IDS_RE})',[^}]*?icon:\\s*<(Fa|Bi|Md)`, 'g'),
+      ),
+    allow: {},
+  },
+  {
+    // 전용 아이콘(§6 아이콘 의미 사전): 구름(FaCloud*)=드라이브·FaCog=환경설정·FaPaintBrush=인페인트.
+    // 다른 뜻에는 사전의 뜻별 아이콘을 쓴다. 남은 건수는 그 뜻 그대로의 자리(환경설정 버튼·검수 화면 인페인트).
+    name: '전용 아이콘 직접 사용(<FaCloud*·<FaCog·<FaPaintBrush) — 아이콘 의미 사전 사용',
+    guide: '§6',
+    dir: '',
+    exts: ['.ts', '.tsx'],
+    exclude: ['models/iconDictionary.ts'],
+    count: (c) => countMatches(c, /<(FaCloud\w*|FaCog|FaPaintBrush)\b/g),
+    allow: {
+      'componenets/TobBar.tsx': 2,
+      'componenets/ImageReview.tsx': 1,
     },
   },
   {

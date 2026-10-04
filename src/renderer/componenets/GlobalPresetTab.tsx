@@ -3,20 +3,14 @@ import { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Buffer } from 'buffer';
 import {
-  FaStar,
-  FaRegStar,
   FaTrash,
-  FaShare,
-  FaFont,
-  FaDownload,
   FaTimes,
   FaCheckSquare,
   FaSquare,
-  FaFileUpload,
-  FaPen,
   FaFileArchive,
   FaFileImport,
 } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import {
   backend,
   globalPresetService,
@@ -163,7 +157,7 @@ const EasyCard = observer(
               className="absolute top-2 left-2 bg-orange-500 text-white rounded-full p-2 shadow-lg"
               title="기본으로 지정됨"
             >
-              <FaStar size={16} />
+              <ActionIcon id="pin-default" size={16} />
             </div>
           )}
           {/* 멀티선택 체크박스 */}
@@ -189,7 +183,7 @@ const EasyCard = observer(
                 onImportToSession();
               }}
             >
-              <FaDownload size={16} />
+              <ActionIcon id="copy-to-project" size={16} />
               프로젝트로 복사
             </button>
           )}
@@ -204,7 +198,7 @@ const EasyCard = observer(
                     onToggleDefault();
                   }}
                 >
-                  {entry.isDefault ? <FaStar size={18} /> : <FaRegStar size={18} />}
+                  <ActionIcon id="pin-default" size={18} className={entry.isDefault ? undefined : 'opacity-50'} />
                 </button>
               </Tooltip>
               <Tooltip content="이름 변경">
@@ -215,7 +209,7 @@ const EasyCard = observer(
                     onRename();
                   }}
                 >
-                  <FaFont size={18} />
+                  <ActionIcon id="rename" size={18} />
                 </button>
               </Tooltip>
               <Tooltip content="편집 (프롬프트·설정·대표 이미지)">
@@ -226,7 +220,7 @@ const EasyCard = observer(
                     onEdit();
                   }}
                 >
-                  <FaPen size={18} />
+                  <ActionIcon id="edit" size={18} />
                 </button>
               </Tooltip>
               <Tooltip content="PNG로 내보내기">
@@ -237,7 +231,7 @@ const EasyCard = observer(
                     onExport();
                   }}
                 >
-                  <FaShare size={18} />
+                  <ActionIcon id="export" size={18} />
                 </button>
               </Tooltip>
               <Tooltip content="삭제">
@@ -270,28 +264,28 @@ const EasyCard = observer(
                 onClick={onToggleDefault}
                 title={entry.isDefault ? '기본 해제' : '기본으로 지정'}
               >
-                {entry.isDefault ? <FaStar size={18} /> : <FaRegStar size={18} />}
+                <ActionIcon id="pin-default" size={18} className={entry.isDefault ? undefined : 'opacity-50'} />
               </button>
               <button
                 className="icon-button btn-solid-green py-2.5 rounded flex items-center justify-center"
                 onClick={onRename}
                 title="이름 변경"
               >
-                <FaFont size={18} />
+                <ActionIcon id="rename" size={18} />
               </button>
               <button
                 className="icon-button btn-solid-indigo py-2.5 rounded flex items-center justify-center"
                 onClick={onEdit}
                 title="편집"
               >
-                <FaPen size={18} />
+                <ActionIcon id="edit" size={18} />
               </button>
               <button
                 className="icon-button btn-solid-sky py-2.5 rounded flex items-center justify-center"
                 onClick={onExport}
                 title="내보내기"
               >
-                <FaShare size={18} />
+                <ActionIcon id="export" size={18} />
               </button>
               <button
                 className="icon-button btn-solid-red py-2.5 rounded flex items-center justify-center"
@@ -346,6 +340,7 @@ const GenRow = observer(
           {multiSelectMode && (
             <button
               className="icon-button flex-none"
+              aria-label={selected ? '선택 해제' : '선택'}
               onClick={onToggleSelect}
             >
               {selected ? (
@@ -360,11 +355,11 @@ const GenRow = observer(
             onClick={onToggleDefault}
             title={entry.isDefault ? '기본 해제' : '기본으로 지정'}
           >
-            {entry.isDefault ? (
-              <FaStar className="text-orange-500" size={22} />
-            ) : (
-              <FaRegStar className="text-faint" size={22} />
-            )}
+            <ActionIcon
+              id="pin-default"
+              className={entry.isDefault ? 'text-orange-500' : 'text-faint'}
+              size={22}
+            />
           </button>
           <span className="flex-1 truncate text-default text-base font-medium">
             {entry.name}
@@ -385,7 +380,7 @@ const GenRow = observer(
                 className="icon-button btn-solid-green p-3 rounded"
                 onClick={onRename}
               >
-                <FaFont size={16} />
+                <ActionIcon id="rename" size={16} />
               </button>
             </Tooltip>
             <Tooltip content="PNG로 내보내기">
@@ -393,7 +388,7 @@ const GenRow = observer(
                 className="icon-button btn-solid-sky p-3 rounded"
                 onClick={onExport}
               >
-                <FaShare size={16} />
+                <ActionIcon id="export" size={16} />
               </button>
             </Tooltip>
             <Tooltip content="삭제">
@@ -671,7 +666,7 @@ export const GlobalPresetTab = observer(() => {
               className="round-button back-sky h-8 !px-3 text-sm flex items-center gap-1.5"
               onClick={() => fileInputRef.current?.click()}
             >
-              <FaFileUpload size={14} />
+              <ActionIcon id="import" size={14} />
               <span>PNG 불러오기</span>
             </button>
             <Tooltip content="글로벌 프리셋 전체를 tar 파일로 백업">
@@ -748,7 +743,7 @@ export const GlobalPresetTab = observer(() => {
             className="round-button back-sky flex items-center gap-2 px-4 py-2 text-base"
             onClick={() => fileInputRef.current?.click()}
           >
-            <FaFileUpload size={18} />
+            <ActionIcon id="import" size={18} />
             <span>PNG 불러오기</span>
           </button>
         </Tooltip>
@@ -951,6 +946,7 @@ export const GlobalPresetPickerOverlay = observer(() => {
           </h2>
           <button
             className="icon-button p-2 text-default"
+            aria-label="닫기"
             onClick={() => appState.closeGlobalPresetPicker()}
           >
             <FaTimes size={20} />
@@ -981,7 +977,7 @@ export const GlobalPresetPickerOverlay = observer(() => {
                   </div>
                   {entry.isDefault && (
                     <div className="absolute top-2 left-2 bg-orange-500 text-white rounded-full p-2 shadow-lg">
-                      <FaStar size={14} />
+                      <ActionIcon id="pin-default" size={14} />
                     </div>
                   )}
                 </div>

@@ -4,16 +4,14 @@ import { v4 } from 'uuid';
 import {
   FaPlus,
   FaPen,
-  FaCopy,
-  FaTrashAlt,
   FaTimes,
-  FaCloudDownloadAlt,
   FaToggleOn,
   FaToggleOff,
   FaTrash,
   FaFileArchive,
   FaFileImport,
 } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import ModalOverlay from './ModalOverlay';
 import Tooltip from './Tooltip';
 import PromptEditTextArea from './PromptEditTextArea';
@@ -566,7 +564,7 @@ export const TemplateWorkflowEditor = observer(
                   </Tooltip>
                 )}
                 <button className={addBtnCls} onClick={importStylePreset}>
-                  <FaCloudDownloadAlt className="inline mr-1" size={11} />
+                  <ActionIcon id="copy-to-project" className="inline mr-1" size={11} />
                   복사해 오기
                 </button>
               </div>
@@ -726,7 +724,7 @@ export const TemplateWorkflowEditor = observer(
                   새로 만들기
                 </button>
                 <button className={addBtnCls} onClick={importCharacterPreset}>
-                  <FaCloudDownloadAlt className="inline mr-1" size={11} />
+                  <ActionIcon id="copy-to-project" className="inline mr-1" size={11} />
                   복사해 오기
                 </button>
               </div>
@@ -751,7 +749,7 @@ export const TemplateWorkflowEditor = observer(
                       className={iconBtnCls}
                       onClick={() => startEditCharPreset(i)}
                     >
-                      <FaPen size={12} />
+                      <ActionIcon id="edit" size={12} />
                     </button>
                   </Tooltip>
                   <Tooltip content="제거">
@@ -1200,7 +1198,7 @@ export const TemplateWorkflowEditor = observer(
                   씬 구성 ({entry.scenes.length})
                 </span>
                 <button className={addBtnCls} onClick={importScenes}>
-                  <FaCloudDownloadAlt className="inline mr-1" size={11} />
+                  <ActionIcon id="copy-to-project" className="inline mr-1" size={11} />
                   복사해 오기
                 </button>
               </div>
@@ -1520,7 +1518,7 @@ export const TemplateManagerModal = observer(
                         className={iconBtnCls}
                         onClick={duplicateTemplate}
                       >
-                        <FaCopy size={14} />
+                        <ActionIcon id="duplicate" size={14} />
                       </button>
                     </Tooltip>
                     <Tooltip content="삭제">
@@ -1528,7 +1526,7 @@ export const TemplateManagerModal = observer(
                         className={iconBtnCls + ' hover:text-red-500'}
                         onClick={deleteTemplate}
                       >
-                        <FaTrashAlt size={14} />
+                        <ActionIcon id="delete" size={14} />
                       </button>
                     </Tooltip>
                   </>

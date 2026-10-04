@@ -340,6 +340,7 @@ export const ImageHistoryHandle = observer(() => {
     <button
       className="fixed right-0 top-1/2 -translate-y-1/2 md:hidden flex items-center justify-center w-5 h-14 rounded-l-md border border-r-0 line-color bg-[var(--c-surface-2)] opacity-70 active:opacity-100"
       style={{ zIndex: 'var(--z-drawer-handle)' }}
+      aria-label={open ? '히스토리 닫기' : '히스토리 열기'}
       onClick={() => appState.toggleSideDrawer('history')}
     >
       {open ? (
@@ -445,6 +446,7 @@ export const ImageHistoryDrawer = observer(() => {
             <HistoryColumnsToggle />
             <button
               className="icon-button"
+              aria-label="닫기"
               onClick={() => {
                 appState.historyDrawerOpen = false;
               }}

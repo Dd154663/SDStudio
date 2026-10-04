@@ -7,22 +7,9 @@
 // 그래서 각 버튼은 "홈 영역에서는 원본 모습 그대로", 타 영역에서는 그 영역의
 // 표준 스타일로 렌더한다(variant = 표시 영역).
 import { ReactNode, Fragment } from 'react';
-import {
-  FaBroom,
-  FaExchangeAlt,
-  FaFilm,
-  FaFolderMinus,
-  FaPaintBrush,
-  FaShare,
-  FaPuzzlePiece,
-  FaThLarge,
-  FaTrash,
-  FaUsers,
-  FaPlus,
-  FaTrashRestore,
-  FaWindowRestore,
-} from 'react-icons/fa';
+// 아이콘은 아이콘 의미 사전(models/iconDictionary.ts) 단일 출처 — 같은 id 는 씬 툴바·퀵 메뉴·V2 칸과 같은 아이콘.
 import Tooltip from './Tooltip';
+import { ActionIcon } from './ActionIcon';
 import { appState } from '../models/AppService';
 import { CompanionButtonSlot } from './CompanionDnd';
 
@@ -80,14 +67,14 @@ export function portableToolbarButtons(
             aria-label="신규 프로젝트"
             onClick={() => appState.addSession()}
           >
-            <FaPlus size={18} />
+            <ActionIcon id="add-session" size={18} />
           </button>
         </Tooltip>
       ) : (
         iconButton(
           variant,
           '신규 프로젝트',
-          <FaPlus size={18} />,
+          <ActionIcon id="add-session" size={18} />,
           () => appState.addSession(),
         )
       ),
@@ -102,14 +89,14 @@ export function portableToolbarButtons(
             className={`icon-button touch-hit relative mx-1`}
             onClick={() => appState.deleteSession()}
           >
-            <FaFolderMinus size={18} />{' '}
+            <ActionIcon id="delete-session" size={18} />{' '}
           </button>
         </Tooltip>
       ) : (
         iconButton(
           variant,
           '프로젝트 삭제',
-          <FaFolderMinus size={18} />,
+          <ActionIcon id="delete-session" size={18} />,
           () => appState.deleteSession(),
         )
       ),
@@ -118,20 +105,20 @@ export function portableToolbarButtons(
     'project-trash': iconButton(
       variant,
       '프로젝트 휴지통',
-      <FaTrashRestore size={18} />,
+      <ActionIcon id="project-trash" size={18} />,
       () => appState.openProjectTrash(),
     ),
     // SceneQueueControl 로컬 맵에서 이관 — 홈(scene)에서는 원본과 동일 렌더
     'empty-image-trash': iconButton(
       variant,
       '모든 씬 내 삭제한 이미지 일괄 비우기',
-      <FaBroom size={18} />,
+      <ActionIcon id="empty-image-trash" size={18} />,
       () => appState.emptyProjectImageTrashWithConfirm(),
     ),
     'find-replace': iconButton(
       variant,
       '찾기 및 변환 (Ctrl+H)',
-      <FaExchangeAlt size={18} />,
+      <ActionIcon id="find-replace" size={18} />,
       () => appState.openFindReplace(),
     ),
     // SceneQueueControl 로컬 맵에서 이관(B군 승격, 퀵 메뉴 P2) — 홈(scene)에서는
@@ -139,13 +126,13 @@ export function portableToolbarButtons(
     'artist-tag': iconButton(
       variant,
       '아티스트 태깅 (그림체 분석)',
-      <FaPaintBrush size={18} />,
+      <ActionIcon id="artist-tag" size={18} />,
       () => appState.openArtistTag(),
     ),
     'scene-trash': iconButton(
       variant,
       '씬 휴지통',
-      <FaTrash size={18} />,
+      <ActionIcon id="scene-trash" size={18} />,
       () => appState.openSceneTrash(),
     ),
     // SessionSelect 고정 버튼에서 레지스트리 편입(④ 자유 위치) — 홈(project)은
@@ -153,7 +140,7 @@ export function portableToolbarButtons(
     'project-browser': iconButton(
       variant,
       '프로젝트 탐색',
-      <FaThLarge size={variant === 'project' ? 16 : 18} />,
+      <ActionIcon id="project-browser" size={variant === 'project' ? 16 : 18} />,
       () => {
         appState.projectBrowserOpen = true;
       },
@@ -165,7 +152,7 @@ export function portableToolbarButtons(
     'scene-template': iconButton(
       variant,
       '씬 템플릿',
-      <FaFilm size={18} />,
+      <ActionIcon id="scene-template" size={18} />,
       () => {
         appState.sceneTemplateManagerOpen = true;
       },
@@ -175,11 +162,12 @@ export function portableToolbarButtons(
     'new-window': iconButton(
       variant,
       '새 창',
-      <FaWindowRestore size={18} />,
+      <ActionIcon id="new-window" size={18} />,
       () => appState.openNewWindow(),
     ),
-    // SessionSelect 로컬 맵에서 이관 — 홈(project)은 원본대로 Tooltip 없는
-    // icon-button(FaShare 기본 크기), 씬으로 오면 씬 표준(배경형 18px+툴팁)으로 적응
+    // SessionSelect 로컬 맵에서 이관 — 홈(project)은 원본대로 icon-button(기본 크기),
+    // 씬으로 오면 씬 표준(배경형 18px+툴팁)으로 적응. 아이콘은 사전의 합성 아이콘(백업 본체+작은
+    // 내보내기 화살표, 2026-10-04) — 같은 메뉴를 여는 프로젝트 서랍·탐색 버튼과 같은 아이콘.
     'backup-export':
       variant === 'project' ? (
         <Tooltip content="프로젝트 백업/내보내기">
@@ -190,14 +178,14 @@ export function portableToolbarButtons(
               appState.projectBackupMenu();
             }}
           >
-            <FaShare />
+            <ActionIcon id="backup-export" />
           </button>
         </Tooltip>
       ) : (
         iconButton(
           variant,
           '프로젝트 백업/내보내기',
-          <FaShare size={18} />,
+          <ActionIcon id="backup-export" size={18} />,
           () => appState.projectBackupMenu(),
         )
       ),
@@ -227,7 +215,7 @@ export function portableToolbarButtons(
           {/* FaUserAlt→FaUsers(② A 실기 피드백 2): 하단 아이콘 행에서 캐릭터 프롬프트
               (FaUserAlt)와 동일 아이콘이 한 행에 겹쳐 혼동 — 프리셋 "관리(여럿)" 의미의
               아이콘으로 전역 교체(퀵 메뉴 맵도 동일). */}
-          <FaUsers size={18} />
+          <ActionIcon id="character-presets" size={18} />
         </button>
       </Tooltip>
     ),
@@ -247,7 +235,7 @@ export function portableToolbarButtons(
           }
           onClick={() => appState.openPieceEditor()}
         >
-          <FaPuzzlePiece size={18} />
+          <ActionIcon id="piece-editor" size={18} />
         </button>
       </Tooltip>
     ) : (
@@ -258,7 +246,7 @@ export function portableToolbarButtons(
         }
         onClick={() => appState.openPieceEditor()}
       >
-        <FaPuzzlePiece size={18} />
+        <ActionIcon id="piece-editor" size={18} />
         <span className="hidden md:inline">프롬프트조각</span>
       </button>
     ),

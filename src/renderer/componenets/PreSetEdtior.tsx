@@ -13,21 +13,13 @@ import PromptEditTextArea, { PromptAccessorySlotContext } from './PromptEditText
 import { PresetCompactContext, PresetFocusContext, WFI_KEY_ATTR } from './MobilePromptSheet';
 import { V2_SHEET_HALF_KEYS } from '../models/mobileV2';
 import {
-  FaCopy,
-  FaFont,
-  FaImage,
   FaPlus,
-  FaShare,
-  FaStar,
   FaTrash,
   FaTimes,
-  FaTrashAlt,
   FaUserAlt,
   FaSlidersH,
-  FaArrowsAlt,
   FaToggleOn,
   FaToggleOff,
-  FaFolderOpen,
   FaChevronDown,
   FaChevronRight,
   FaArrowUp,
@@ -98,7 +90,7 @@ import {
 import { StackFixed, StackGrow, VerticalStack } from './LayoutComponents';
 import Tooltip from './Tooltip';
 import ModalOverlay from './ModalOverlay';
-import { FaCloudUploadAlt } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import {
   getOrderedBaseCharacterPrompts,
   reorderBaseCharacterPrompts,
@@ -628,7 +620,7 @@ const ProfilePreSetSelect = observer(({}) => {
               await appState.importMultiplePresets();
             }}
           >
-            <FaFolderOpen />
+            <ActionIcon id="import" />
           </div>
           </Tooltip>
           <Tooltip content="글로벌 프리셋을 프로젝트로 복사">
@@ -638,7 +630,7 @@ const ProfilePreSetSelect = observer(({}) => {
               appState.openGlobalPresetPicker('SDImageGenEasy');
             }}
           >
-            <FaStar />
+            <ActionIcon id="copy-to-project" />
           </div>
           </Tooltip>
         </div>
@@ -868,7 +860,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
     'preset-select',
     appState.uiCompanionSlots,
   );
-  // variant 'project': 이 행의 이웃 버튼(+·★·🗑)이 무배경 icon-button 이라 동반 버튼도
+  // variant 'project': 이 행의 이웃 버튼(+·글로벌 복사·🗑)이 무배경 icon-button 이라 동반 버튼도
   // 무배경으로 적응(배경형 companion 스타일은 이 행에서 이질적 — 실기 보정).
   const companions =
     companionIds.length > 0
@@ -885,7 +877,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
         <div className="flex-none gray-label">사전세팅선택:</div>
       )}
       {/* flex-1 !min-w-0 + truncate: 이름이 길어도 행 폭을 밀어내지 않고 말줄임 —
-          우측 +·★·🗑 버튼이 밖으로 밀려 못 누르게 되던 문제 방지.
+          우측 +·글로벌 복사·🗑 버튼이 밖으로 밀려 못 누르게 되던 문제 방지.
           !min-w-0 필수: .round-button 의 min-width(App.css, md 미디어 룰의 unset)가
           Tailwind min-w-0 보다 캐스케이드에서 뒤라 ! 없이는 축소가 막힌다.
           span 쪽 min-w-0 도 필수(플렉스 아이템 기본 min-width:auto 로는 truncate 미발동). */}
@@ -917,6 +909,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
             presetName: name,
           };
         }}
+        aria-label="새 사전 세팅"
       >
         <FaPlus />
       </button>
@@ -928,7 +921,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
               appState.openGlobalPresetPicker('SDImageGen');
             }}
           >
-            <FaStar />
+            <ActionIcon id="copy-to-project" />
           </button>
         </Tooltip>
       )}
@@ -937,7 +930,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
           className={`icon-button flex-none`}
           onClick={() => setBulkOpen(true)}
         >
-          <FaTrashAlt />
+          <ActionIcon id="delete" />
         </button>
       </Tooltip>
       {companions}
@@ -1010,8 +1003,9 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                     }
                   }}
                   className="p-2 mx-1 icon-button btn-solid-green"
+                  aria-label="이름 변경"
                 >
-                  <FaFont />
+                  <ActionIcon id="rename" />
                 </button>
                 <Tooltip content="그림체 복제">
                 <button
@@ -1035,7 +1029,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                   }}
                   className="p-2 mx-1 icon-button btn-solid-sky"
                 >
-                  <FaCopy />
+                  <ActionIcon id="duplicate" />
                 </button>
                 </Tooltip>
                 <Tooltip content="그림체 내보내기">
@@ -1046,7 +1040,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                   }}
                   className="p-2 mx-1 icon-button btn-solid-orange"
                 >
-                  <FaShare />
+                  <ActionIcon id="export" />
                 </button>
                 </Tooltip>
                 {(workflowType === 'SDImageGen' ||
@@ -1059,7 +1053,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                       }}
                       className="p-2 mx-1 icon-button btn-solid-yellow"
                     >
-                      <FaStar />
+                      <ActionIcon id="copy-to-global" />
                     </button>
                   </Tooltip>
                 )}

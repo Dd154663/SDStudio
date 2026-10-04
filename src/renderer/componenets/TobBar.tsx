@@ -135,6 +135,7 @@ const TobBar = observer(() => {
   const mobileSettingsButton = (
     <button
       className="icon-button flex-none"
+      aria-label="환경설정"
       onClick={() => {
         setSettings(true);
       }}

@@ -5,15 +5,9 @@ import Tooltip from './Tooltip';
 import {
   FaPlus,
   FaTrash,
-  FaCopy,
-  FaFont,
   FaUserAlt,
   FaCheck,
   FaTimes,
-  FaEdit,
-  FaArrowLeft,
-  FaToggleOn,
-  FaToggleOff,
   FaFolder,
   FaPen,
   FaCheckSquare,
@@ -35,7 +29,8 @@ import {
 } from '../models';
 import { appState } from '../models/AppService';
 import { nameErrorMessage, NAME_INPUT_TEXT, promptName } from '../models/nameInput';
-import { FaPlay, FaPause, FaStop, FaSync, FaDownload, FaUpload, FaGlobe, FaUsers, FaCloudUploadAlt, FaCloudDownloadAlt } from 'react-icons/fa';
+import { FaPlay, FaPause, FaStop, FaSync, FaGlobe, FaUsers } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import type { IGlobalCharacterPresetEntry } from '../models/GlobalCharacterPresetService';
 import { saveJsonFile } from '../models/exportUtil';
 import { syncFileName } from '../models/driveSync';
@@ -1220,7 +1215,7 @@ export const CharacterPresetEditor = observer(({
                 disabled={bulkSending}
                 onClick={handleSendAllToGlobal}
               >
-                <FaCloudUploadAlt size={11} />
+                <ActionIcon id="copy-to-global" size={11} />
                 {bulkSending ? '복사하는 중...' : '모두 글로벌로 복사'}
               </button>
             </Tooltip>
@@ -1231,7 +1226,7 @@ export const CharacterPresetEditor = observer(({
                 className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5"
                 onClick={() => exportCharacterPresets(curSession)}
               >
-                <FaDownload size={11} />
+                <ActionIcon id="export" size={11} />
                 내보내기
               </button>
             </Tooltip>
@@ -1239,7 +1234,7 @@ export const CharacterPresetEditor = observer(({
           {!globalView && (
             <Tooltip content="프리셋 파일 불러오기">
               <label className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 cursor-pointer">
-                <FaUpload size={11} />
+                <ActionIcon id="import" size={11} />
                 불러오기
                 <input
                   type="file"
@@ -1264,7 +1259,7 @@ export const CharacterPresetEditor = observer(({
                 className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5"
                 onClick={exportGlobalCharacterPresets}
               >
-                <FaDownload size={11} />
+                <ActionIcon id="export" size={11} />
                 내보내기
               </button>
             </Tooltip>
@@ -1279,7 +1274,7 @@ export const CharacterPresetEditor = observer(({
                   interceptFileImportClick(e, globalImportInputRef.current, 'character-presets')
                 }
               >
-                <FaUpload size={11} />
+                <ActionIcon id="import" size={11} />
                 불러오기
                 <input
                   ref={globalImportInputRef}

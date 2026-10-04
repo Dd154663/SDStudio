@@ -73,6 +73,7 @@ function ShortcutCheatsheet({ scope, onClose }: ShortcutCheatsheetProps) {
         <button
           type="button"
           className="text-muted hover:text-default transition-colors cursor-pointer"
+          aria-label="닫기"
           onClick={onClose}
         >
           <FaTimes size={12} />

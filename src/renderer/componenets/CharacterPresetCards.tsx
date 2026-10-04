@@ -4,9 +4,6 @@ import { observer } from 'mobx-react-lite';
 import { useDrag, useDrop } from 'react-dnd';
 import {
   FaCheck,
-  FaCloudDownloadAlt,
-  FaCloudUploadAlt,
-  FaCopy,
   FaEdit,
   FaFolder,
   FaFont,
@@ -14,6 +11,7 @@ import {
   FaTrash,
   FaUserAlt,
 } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import Tooltip from './Tooltip';
 import { CharacterPreset } from '../models/types';
 import { imageService, globalCharacterPresetService } from '../models';
@@ -253,7 +251,7 @@ export const CharacterPresetCard = observer(({
             className="w-8 h-8 rounded-full btn-solid-orange flex items-center justify-center shadow-lg transition-colors"
             onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
           >
-            <FaCopy size={12} />
+            <ActionIcon id="duplicate" size={12} />
           </button>
         </Tooltip>
         {onCopyToGlobal && (
@@ -262,7 +260,7 @@ export const CharacterPresetCard = observer(({
               className="w-8 h-8 rounded-full btn-solid-purple flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onCopyToGlobal(); }}
             >
-              <FaCloudUploadAlt size={13} />
+              <ActionIcon id="copy-to-global" size={13} />
             </button>
           </Tooltip>
         )}
@@ -551,7 +549,7 @@ export const GlobalCharacterPresetCard = observer(({
               className="w-8 h-8 rounded-full btn-solid-purple flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onLoad(); }}
             >
-              <FaCloudDownloadAlt size={13} />
+              <ActionIcon id="copy-to-project" size={13} />
             </button>
           </Tooltip>
           <Tooltip content="복제">
@@ -559,7 +557,7 @@ export const GlobalCharacterPresetCard = observer(({
               className="w-8 h-8 rounded-full btn-solid-orange flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
             >
-              <FaCopy size={12} />
+              <ActionIcon id="duplicate" size={12} />
             </button>
           </Tooltip>
           {onMoveToFolder && (

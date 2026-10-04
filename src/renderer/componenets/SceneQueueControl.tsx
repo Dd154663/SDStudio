@@ -14,28 +14,15 @@ import {
   useCallback,
 } from 'react';
 import {
-  FaBookmark,
   FaCheck,
-  FaCheckSquare,
   FaChevronDown,
-  FaEdit,
-  FaEllipsisH,
-  FaFileExport,
-  FaFileImage,
   FaPen,
-  FaPaintBrush,
-  FaPlus,
-  FaQuestion,
-  FaRegCalendarPlus,
-  FaRegCalendarTimes,
   FaSearch,
   FaStar,
-  FaTasks,
   FaTimes,
   FaToggleOn,
-  FaTrash,
-  FaTrashRestore,
 } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import { createPortal } from 'react-dom';
 import { useDrag, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
@@ -847,7 +834,7 @@ export const SceneCell = observer(
                 addToQueue(scene);
               }}
             >
-              <FaPlus />
+              <ActionIcon id="queue-add" />
             </button>
           </Tooltip>
           <Tooltip content="예약 제거">
@@ -858,7 +845,7 @@ export const SceneCell = observer(
                 removeFromQueue(scene);
               }}
             >
-              <FaRegCalendarTimes />
+              <ActionIcon id="queue-remove" />
             </button>
           </Tooltip>
           <Tooltip content="씬 편집">
@@ -869,7 +856,7 @@ export const SceneCell = observer(
                 setEditingScene?.(scene);
               }}
             >
-              <FaEdit />
+              <ActionIcon id="edit" />
             </button>
           </Tooltip>
           <Tooltip content="씬 북마크">
@@ -880,7 +867,7 @@ export const SceneCell = observer(
                 onToggleBookmark?.();
               }}
             >
-              <FaBookmark />
+              <ActionIcon id="bookmark" />
             </button>
           </Tooltip>
         </>
@@ -1003,7 +990,13 @@ export const SceneCell = observer(
               className={`p-2 flex text-lg text-default ${cellSizes3[cellSize]}`}
             >
               <div className="truncate flex-1">
-                {isBookmarked && <span className="text-orange-500">📌</span>}
+                {isBookmarked && (
+                  <ActionIcon
+                    id="bookmark"
+                    className="inline-block text-orange-500 mr-0.5 align-[-0.125em]"
+                    aria-label="북마크됨"
+                  />
+                )}
                 {emoji}
                 {scene.name}
               </div>
@@ -1124,7 +1117,11 @@ export const SceneCell = observer(
                 <div className="flex items-center text-sm text-white">
                   <div className="truncate flex-1 font-medium drop-shadow">
                     {isBookmarked && (
-                      <span className="text-orange-500 mr-0.5">📌</span>
+                      <ActionIcon
+                        id="bookmark"
+                        className="inline-block text-orange-500 mr-0.5 align-[-0.125em]"
+                        aria-label="북마크됨"
+                      />
                     )}
                     {emoji}
                     {scene.name}
@@ -2564,7 +2561,7 @@ const QueueControl = observer(
       'add-scene': (
         <Tooltip content="씬 추가">
           <button className="round-button back-sky" onClick={addScene}>
-            {iconMode ? <FaPlus size={18} /> : '씬 추가'}
+            {iconMode ? <ActionIcon id="add-scene" size={18} /> : '씬 추가'}
           </button>
         </Tooltip>
       ),
@@ -2572,6 +2569,11 @@ const QueueControl = observer(
         <SceneQueueMenu session={curSession} type={type} selectedOnly={selectedCount > 0}>
           <button
             className="round-button back-sky"
+            aria-label={
+              selectedCount > 0
+                ? `선택한 씬 예약 추가 (${selectedCount})`
+                : '모든 씬 예약 추가'
+            }
             onClick={
               selectedCount > 0
                 ? addSelectedToQueue
@@ -2579,9 +2581,9 @@ const QueueControl = observer(
             }
           >
             {iconMode ? (
-              // 예약제거(달력✕, 씬 카드)와 짝을 이루는 달력+ 아이콘. 선택 중엔 수 병기
+              // 예약제거(달력✕, 씬 카드)와 짝을 이루는 달력+ 아이콘(사전 queue-add). 선택 중엔 수 병기
               <>
-                <FaRegCalendarPlus size={18} />
+                <ActionIcon id="queue-add" size={18} />
                 {selectedCount > 0 && (
                   <span className="ml-1 text-xs">
                     {selectedCount}
@@ -2603,7 +2605,7 @@ const QueueControl = observer(
             onClick={() => appState.exportPackage(type)}
           >
             {iconMode ? (
-              <FaFileExport size={18} />
+              <ActionIcon id="export-images" size={18} />
             ) : (
               <>
                 {isMobile ? '' : '이미지 '}
@@ -2619,14 +2621,17 @@ const QueueControl = observer(
             className="round-button back-sky"
             onClick={() => appState.quickExportPackage(type)}
           >
-            {/* 아이콘 모드 = 번개+내보내기 아이콘 조합(2026-07-18 사용자) */}
+            {/* 아이콘 모드 = 번개+내보내기 아이콘 조합(2026-07-18 사용자). ⚡ 글자 → 사전 아이콘(2026-10-04 I1) */}
             {iconMode ? (
               <>
-                ⚡
-                <FaFileExport size={18} className="ml-0.5" />
+                <ActionIcon id="quick-export" size={18} />
+                <ActionIcon id="export-images" size={18} className="ml-0.5" />
               </>
             ) : (
-              <>⚡{isMobile ? '' : ' 빠른 내보내기'}</>
+              <>
+                <ActionIcon id="quick-export" size={18} />
+                {isMobile ? '' : ' 빠른 내보내기'}
+              </>
             )}
           </button>
         </Tooltip>
@@ -2640,7 +2645,7 @@ const QueueControl = observer(
             }}
           >
             {/* PC 는 아이콘 모드에서도 텍스트 유지(2026-07-18 사용자) — 모바일만 아이콘 */}
-            {mobileIcon ? <FaTasks size={18} /> : '대량 작업'}
+            {mobileIcon ? <ActionIcon id="batch-process" size={18} /> : '대량 작업'}
           </button>
         </Tooltip>
       ),
@@ -2661,7 +2666,7 @@ const QueueControl = observer(
           >
             {iconMode ? (
               <>
-                <FaCheckSquare size={18} />
+                <ActionIcon id="multi-select" size={18} />
                 {selectedCount > 0 && (
                   <span className="ml-1 text-xs">
                     {selectedCount}
@@ -2706,7 +2711,7 @@ const QueueControl = observer(
             className="round-button back-gray"
             onClick={pickImportImage}
           >
-            <FaFileImage size={18} />
+            <ActionIcon id="import-image" size={18} />
           </button>
         </Tooltip>
       ),
@@ -2718,7 +2723,7 @@ const QueueControl = observer(
             className={`round-button ${showSceneSearch ? 'back-sky' : 'back-gray'}`}
             onClick={toggleSceneSearch}
           >
-            <FaSearch size={18} />
+            <ActionIcon id="scene-search" size={18} />
           </button>
         </Tooltip>
       ),
@@ -2728,7 +2733,7 @@ const QueueControl = observer(
             className="round-button back-gray"
             onClick={() => setImageReview({})}
           >
-            <FaFileImage size={18} />
+            <ActionIcon id="image-review" size={18} />
             {!iconMode && <span className="ml-1">이미지 검수</span>}
           </button>
         </Tooltip>
@@ -2736,7 +2741,7 @@ const QueueControl = observer(
       'scene-find': (
         <Tooltip content="필터하지 않고 씬 위치로 이동">
           <button className="round-button back-gray" onClick={findScene}>
-            <FaSearch size={18} />
+            <ActionIcon id="scene-find" size={18} />
             {!iconMode && <span className="ml-1">씬 찾기</span>}
           </button>
         </Tooltip>
@@ -2747,7 +2752,7 @@ const QueueControl = observer(
             className="round-button back-gray"
             onClick={() => queueArtistBreakdown(curSession)}
           >
-            <FaPaintBrush size={18} />
+            <ActionIcon id="artist-breakdown" size={18} />
             {!iconMode && <span className="ml-1">작가 분해</span>}
           </button>
         </Tooltip>
@@ -2759,10 +2764,7 @@ const QueueControl = observer(
             className="round-button back-gray"
             onClick={() => applyArtistPrefixBatch(curSession)}
           >
-            <span className="relative inline-flex">
-              <FaPaintBrush size={18} />
-              <FaToggleOn size={10} className="absolute -right-2 -bottom-1" />
-            </span>
+            <ActionIcon id="artist-prefix-toggle" size={18} />
             {!iconMode && <span className="ml-1">작가 접두 전환</span>}
           </button>
         </Tooltip>
@@ -2797,7 +2799,7 @@ const QueueControl = observer(
               }
             }}
           >
-            <FaBookmark size={18} />
+            <ActionIcon id="bookmark-jump" size={18} />
           </button>
         </Tooltip>
       ),
@@ -2811,7 +2813,7 @@ const QueueControl = observer(
               appState.showSceneCheatsheet = !appState.showSceneCheatsheet;
             }}
           >
-            <FaQuestion size={14} />
+            <ActionIcon id="shortcut-help" size={14} />
             <span className="ml-1 text-xs hidden lg:inline">H</span>
           </button>
         </Tooltip>
@@ -2952,7 +2954,7 @@ const QueueControl = observer(
                   >
                     {iconMode ? (
                       <>
-                        <FaCheckSquare size={18} />
+                        <ActionIcon id="select-all" size={18} />
                         <span className="ml-1 text-xs">전체</span>
                       </>
                     ) : (
@@ -3001,7 +3003,7 @@ const QueueControl = observer(
                             setShowToolbarMenu(!showToolbarMenu);
                         }}
                       >
-                        <FaEllipsisH size={18} />
+                        <ActionIcon id="more" size={18} />
                       </button>
                     </Tooltip>
                   </ToolbarMenuDropTarget>
@@ -3106,6 +3108,7 @@ const QueueControl = observer(
             />
             <button
               className="round-button back-gray"
+              aria-label="씬 검색 닫기"
               onClick={() => {
                 setSceneSearchQuery('');
                 setShowSceneSearch(false);
@@ -3225,7 +3228,7 @@ const QueueControl = observer(
                       style={{ alignSelf: 'stretch', justifySelf: 'stretch', aspectRatio: '1 / 1.15' }}
                       onClick={addScene}
                     >
-                      <FaPlus size={22} />
+                      <ActionIcon id="add-scene" size={22} />
                       <span className="text-sm">새 씬</span>
                     </button>
                   )}
@@ -3257,7 +3260,7 @@ const QueueControl = observer(
               {
                 key: 'multi-select',
                 name: '다중 선택',
-                icon: <FaCheckSquare size={17} />,
+                icon: <ActionIcon id="multi-select" size={17} />,
                 onTap: () => {
                   appState.sceneSelectionMode = true;
                 },
@@ -3265,7 +3268,7 @@ const QueueControl = observer(
               {
                 key: 'export',
                 name: '내보내기',
-                icon: <FaFileExport size={17} />,
+                icon: <ActionIcon id="export-images" size={17} />,
                 onTap: () => appState.exportPackage(type),
                 swipeUp: {
                   name: '빠른 내보내기',
@@ -3275,20 +3278,20 @@ const QueueControl = observer(
               {
                 key: 'batch-process',
                 name: '대량 작업',
-                icon: <FaTasks size={17} />,
+                icon: <ActionIcon id="batch-process" size={17} />,
                 onTap: () => appState.openBatchProcessMenu(type, setSceneSelector),
               },
               {
                 key: 'import-image',
                 name: '프롬프트 추출',
-                icon: <FaFileImage size={17} />,
+                icon: <ActionIcon id="import-image" size={17} />,
                 onTap: pickImportImage,
               },
               {
                 // 둘째 줄(2계층)로 펼친다. 열린 동안은 백드롭이 재탭을 흡수해 접히므로 여기서는 열기만.
                 key: 'more',
                 name: '더보기',
-                icon: <FaEllipsisH size={17} />,
+                icon: <ActionIcon id="more" size={17} />,
                 onTap: () => setV2Tier(true),
                 disabled: moreIds.length === 0,
                 expanded: v2Tier,
@@ -3300,7 +3303,7 @@ const QueueControl = observer(
               {
                 key: 'select-all',
                 name: '전체',
-                icon: <FaCheckSquare size={17} />,
+                icon: <ActionIcon id="select-all" size={17} />,
                 onTap: () =>
                   appState.addScenesToSelection(
                     getFilteredScenes().map((scene) => scene.name),
@@ -3311,7 +3314,7 @@ const QueueControl = observer(
                 // 고른 씬만 내보낸다(내보내기 함수가 대상 목록을 받는다 — 대량 작업과 같은 경로). 위로 밀면 빠른 내보내기.
                 key: 'export-selected',
                 name: '내보내기',
-                icon: <FaFileExport size={17} />,
+                icon: <ActionIcon id="export-images" size={17} />,
                 disabled: selectedNames.length === 0,
                 onTap: () => appState.exportPackage(type, selectedScenesNow()),
                 swipeUp: {
@@ -3325,7 +3328,7 @@ const QueueControl = observer(
               {
                 key: 'selection-actions',
                 name: '선택 작업',
-                icon: <FaTasks size={17} />,
+                icon: <ActionIcon id="batch-process" size={17} />,
                 disabled: selectedNames.length === 0,
                 // 선택을 대상으로 동작하는 기능(해상도 변경·이미지 삭제·씬 삭제·복사·시드 그룹 등)은 기존 컨텍스트 메뉴에 있다 → 그대로 연다
                 onTap: (e) => {
@@ -3343,7 +3346,7 @@ const QueueControl = observer(
               {
                 key: 'queue-selected',
                 name: '예약 추가',
-                icon: <FaRegCalendarPlus size={17} />,
+                icon: <ActionIcon id="queue-add" size={17} />,
                 disabled: selectedNames.length === 0,
                 onTap: () => void addScenesToQueue(curSession, type, true),
               },

@@ -1,7 +1,7 @@
 import SceneQueueMenu from './SceneQueueMenu';
 import { useContext, useEffect, useRef, useState } from 'react';
-import { FaSpinner } from 'react-icons/fa';
-import { FaPlay, FaRegCalendarPlus, FaRegCalendarTimes, FaStop } from 'react-icons/fa';
+import { FaPlay, FaStop } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import { FaTimes } from 'react-icons/fa';
 import { FaRegClock } from 'react-icons/fa';
 import { taskQueueService, cyclingSessionService } from '../models';
@@ -277,6 +277,7 @@ const TaskQueueList = ({
     >
       <button
         className="ml-auto mt-2 mr-2 text-muted hover:text-gray-700 flex-none"
+        aria-label="닫기"
         onClick={() => {
           onClose?.();
         }}
@@ -413,7 +414,7 @@ const TaskQueueControl = observer(({}) => {
           }
         }}
       >
-        <FaRegCalendarPlus size={18} />
+        <ActionIcon id="queue-add" size={18} />
       </button>
       </SceneQueueMenu>
       {/* 예약 전부 제거는 확인 없이 즉시(의도된 동작) — 이름·툴팁만 붙인다(X11) */}
@@ -425,7 +426,7 @@ const TaskQueueControl = observer(({}) => {
             taskQueueService.removeAllTasks();
           }}
         >
-          <FaRegCalendarTimes size={18} />
+          <ActionIcon id="queue-remove" size={18} />
         </button>
       </Tooltip>
       {!taskQueueService.isRunning() ? (

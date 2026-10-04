@@ -11,7 +11,6 @@ import {
   FaTrash,
   FaImage,
   FaFileAlt,
-  FaStar,
   FaPen,
   FaFileArchive,
   FaFileImport,
@@ -21,6 +20,7 @@ import {
   FaCompressArrowsAlt,
   FaMagic,
 } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import { queueArtistSample } from '../models/sceneQueueActions';
 import { artistLibraryService, imageService, backend } from '../models';
 import { IArtistEntry, IArtistImage } from '../models/ArtistLibraryService';
@@ -135,7 +135,7 @@ const TagPresetManageModal = observer(({ onClose }: { onClose: () => void }) => 
           {artistLibraryService.tagPresets.map((t) => (
             <span key={t} className="flex items-center gap-1 text-sm px-2 py-1 rounded-md bg-[var(--c-surface)] text-body">
               {t}
-              <button className="text-faint hover:text-red-500" onClick={() => artistLibraryService.removeTagPreset(t)}>
+              <button className="text-faint hover:text-red-500" aria-label={`태그 프리셋 ${t} 삭제`} onClick={() => artistLibraryService.removeTagPreset(t)}>
                 <FaTrash size={11} />
               </button>
             </span>
@@ -303,6 +303,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                   </div>
                 ))}
                 <button className="w-14 h-14 rounded border border-dashed line-color flex items-center justify-center text-faint hover:text-sky-500"
+                  aria-label="이미지 추가"
                   onClick={() => fileRef.current?.click()}>
                   <FaPlus />
                 </button>
@@ -347,7 +348,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                 <div className="flex gap-2 mt-2">
                   {artist.images[0]?.id !== selected.id && (
                     <button className="text-xs back-gray !rounded-md px-2 py-1" onClick={() => artistLibraryService.setThumbnail(artist.id, selected.id)}>
-                      <FaStar className="inline mr-1" size={10} />대표로 지정
+                      <ActionIcon id="pin-default" className="inline mr-1" size={10} />대표로 지정
                     </button>
                   )}
                   <button className="text-xs back-gray !rounded-md px-2 py-1" onClick={() => setShowPrompt((v) => !v)}>
@@ -398,7 +399,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs text-muted">태그 프리셋 (클릭해서 추가)</span>
                 <button className="text-xs btn-link" onClick={() => setManagePreset(true)}>
-                  <FaPen className="inline mr-1" size={9} />관리
+                  <ActionIcon id="edit" className="inline mr-1" size={9} />관리
                 </button>
               </div>
               <div className="flex flex-wrap gap-1.5">

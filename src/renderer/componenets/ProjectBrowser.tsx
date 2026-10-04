@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
-import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck, FaPen, FaTrashAlt, FaTimes, FaPalette, FaFileExport, FaCopy, FaChevronDown, FaChevronRight, FaFolderPlus, FaWindowRestore } from 'react-icons/fa';
+import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck, FaPen, FaTimes, FaPalette, FaChevronDown, FaChevronRight, FaFolderPlus, FaWindowRestore } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import {
   sessionService,
   imageService,
@@ -375,7 +376,7 @@ const NavItem = ({
                 active ? 'text-white' : 'hover:text-amber-500'
               }`}
             >
-              <FaFileExport size={11} />
+              <ActionIcon id="backup-export" size={11} />
             </span>
             </Tooltip>
           )}
@@ -391,7 +392,7 @@ const NavItem = ({
                 active ? 'text-white' : 'hover:text-green-500'
               }`}
             >
-              <FaCopy size={11} />
+              <ActionIcon id="duplicate" size={11} />
             </span>
             </Tooltip>
           )}
@@ -435,7 +436,7 @@ const NavItem = ({
               }}
               className={`flex-none opacity-60 hover:opacity-100 ${active ? 'text-white' : 'hover:text-red-500'}`}
             >
-              <FaTrashAlt size={11} />
+              <ActionIcon id="delete" size={11} />
             </span>
             </Tooltip>
           )}

@@ -2,7 +2,8 @@ import * as React from 'react';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { v4 } from 'uuid';
-import { FaCloudUploadAlt, FaImages, FaTimes, FaTrash } from 'react-icons/fa';
+import { FaImages, FaTimes, FaTrash } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import { FileUploadBase64 } from './UtilComponents';
 import Tooltip from './Tooltip';
 import { ReferenceItem, VibeItem } from '../models/types';
@@ -282,7 +283,7 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
           <div className="h-full overflow-auto">
             {getField().length === 0 && !isMobile && (
               <div className="flex flex-col items-center justify-center h-full text-faint p-8">
-                <FaCloudUploadAlt size={48} className="mb-4 opacity-60" />
+                <ActionIcon id="import" size={48} className="mb-4 opacity-60" />
                 <p className="text-base font-medium mb-1">이미지를 드래그하거나</p>
                 <p className="text-base font-medium">Ctrl+V로 붙여넣기 할 수 있습니다</p>
               </div>

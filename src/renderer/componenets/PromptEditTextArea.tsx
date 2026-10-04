@@ -16,16 +16,14 @@ import Denque from 'denque';
 import {
   FaBook,
   FaBox,
-  FaBrush,
   FaDatabase,
   FaExpand,
-  FaPaintBrush,
   FaTag,
   FaTimes,
-  FaTimesCircle,
   FaUndo,
 } from 'react-icons/fa';
-import { FaPerson, FaStar } from 'react-icons/fa6';
+import { FaPerson } from 'react-icons/fa6';
+import { ActionIcon } from './ActionIcon';
 import { FixedSizeList as List } from 'react-window';
 import getCaretCoordinates from 'textarea-caret';
 import { isMobile, backend } from '../models';
@@ -811,7 +809,7 @@ const PromptAutoComplete = ({
   const listRef = createRef<any>();
   const categoryIcon = (category: number) => {
     if (category === 0) return <FaTag />;
-    if (category === 1) return <FaPaintBrush />;
+    if (category === 1) return <ActionIcon id="artist" />;
     if (category === 3) return <FaBook />;
     if (category === 4) return <FaPerson />;
     if (category === 5) return <FaDatabase />;
@@ -903,7 +901,7 @@ const PromptAutoComplete = ({
       >
         <span className="text-muted mr-1 flex-none">
           {tags[index].word.startsWith('<') ? (
-            <FaStar></FaStar>
+            <ActionIcon id="piece-editor" />
           ) : (
             categoryIcon(tags[index].category)
           )}
@@ -1703,7 +1701,7 @@ const PromptEditTextArea = observer(
           appState.openArtistInLibrary(name);
         }}
       >
-        <FaPaintBrush size={10} className="flex-none" />
+        <ActionIcon id="artist" size={10} className="flex-none" />
         <span className="truncate">{name}</span>
       </button>
     );
@@ -1753,6 +1751,7 @@ const PromptEditTextArea = observer(
           <div className="absolute right-0 top-0 z-10 flex items-center gap-1">
             {caretArtist && !accessorySlot && artistButton(caretArtist, 'mt-1')}
             <button
+              aria-label={!fullScreen ? '크게 편집' : '크게 편집 닫기'}
               onClick={() => {
                 if (!disabled) setFullScreen(!fullScreen);
               }}
@@ -1781,6 +1780,8 @@ const PromptEditTextArea = observer(
             <div className="absolute right-0 bottom-0 z-10 p-1 active:brightness-90">
               <FaUndo
                 size={20}
+                role="button"
+                aria-label="실행 취소"
                 className="opacity-50 mr-1 mb-1"
                 onClick={() => {
                   editorRef.current!.undo();

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
-import { FaCloudDownloadAlt } from 'react-icons/fa';
+import { ActionIcon } from './ActionIcon';
 import ModalOverlay from './ModalOverlay';
 import { TemplateWorkflowEditor } from './TemplateManagerModal';
 import { FOLDER_COLORS } from './folderColors';
@@ -232,7 +232,7 @@ export const FolderTemplateModal = observer(
                   className="px-3 py-1.5 rounded-lg text-sm btn-solid-sky"
                   onClick={importGlobalTemplate}
                 >
-                  <FaCloudDownloadAlt className="inline mr-1.5" size={12} />
+                  <ActionIcon id="copy-to-project" className="inline mr-1.5" size={12} />
                   전역 템플릿에서 복사
                 </button>
                 <button
