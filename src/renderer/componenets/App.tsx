@@ -295,6 +295,7 @@ export const App = observer(() => {
       appState.uiFloatViewMode = conf.uiFloatViewMode ?? 'cover';
       appState.uiFont = conf.uiFont ?? 'system';
       appState.uiClassicFinish = conf.uiClassicFinish ?? false;
+      appState.uiPillButtons = conf.uiPillButtons ?? false;
       appState.allowDuplicateProjectOpen = conf.allowDuplicateProjectOpen ?? false;
     };
     refreshDarkMode();
@@ -319,6 +320,14 @@ export const App = observer(() => {
       appState.uiClassicFinish,
     );
   }, [appState.uiClassicFinish]);
+  // 알약형 버튼 옵션(환경설정 → 커스텀) 적용 — 켜면 html 에 클래스를 얹어
+  // 버튼 반경 토큰 --r-btn 을 알약으로 바꾼다(App.css 의 html.pill-buttons).
+  useEffect(() => {
+    document.documentElement.classList.toggle(
+      'pill-buttons',
+      appState.uiPillButtons,
+    );
+  }, [appState.uiPillButtons]);
   // 부팅 경고(저장 경로 폴백)는 SaveLocationGate 전면 게이트가 담당한다 —
   // 사후 다이얼로그는 다른 게이트/창에 가려져 "프로젝트 전부 초기화"로 오해되던
   // 문제로 격상(2026-07-25). 상태는 bootstrap 이 appState.saveLocationFallback 에 채운다.

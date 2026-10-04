@@ -63,6 +63,7 @@ export const CONFIG_GROUP_FIELDS = {
     'trueDark',
     'uiFont',
     'uiClassicFinish',
+    'uiPillButtons',
   ] as const,
   layout: [
     'quickMenu',
@@ -151,6 +152,7 @@ const FIELD_KIND: Partial<Record<keyof Config, FieldKind>> = {
   trueDark: 'boolean',
   uiFont: 'string',
   uiClassicFinish: 'boolean',
+  uiPillButtons: 'boolean',
   quickMenu: 'stringArray',
   quickMenuButton: 'boolean',
   uiPresetLayout: 'object',
@@ -491,6 +493,7 @@ export const CONFIG_FIELD_LABEL: Partial<Record<keyof Config, string>> = {
   trueDark: '트루 다크',
   uiFont: '글꼴',
   uiClassicFinish: '클래식 마감',
+  uiPillButtons: '알약형 버튼',
   quickMenu: '퀵 메뉴 구성',
   quickMenuButton: '퀵 메뉴 버튼',
   uiPresetLayout: '프리셋 요소 순서',

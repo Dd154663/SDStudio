@@ -1383,6 +1383,7 @@ const PersonalTab = ({
   sceneToolbarLegacyText, setSceneToolbarLegacyText,
   uiFont, setUiFont,
   uiClassicFinish, setUiClassicFinish,
+  uiPillButtons, setUiPillButtons,
   allowDuplicateProjectOpen, setAllowDuplicateProjectOpen,
 }: any) => (
   <div className="space-y-4">
@@ -1426,6 +1427,26 @@ const PersonalTab = ({
       </div>
       <p className="text-xs text-faint mt-1 ml-6">
         켜면 테두리·구분선 등 세부 마감을 디자인 개선 이전 모양으로 되돌립니다.
+      </p>
+    </div>
+    <hr className="line-color" />
+    <div>
+      <div className="flex items-center gap-2">
+        {/* 클래식 마감이 켜져 있으면 버튼은 항상 알약형이라 이 옵션은 효과가 없다 — 비활성 표시. */}
+        <input type="checkbox" id="cfgPillButtons"
+          checked={uiClassicFinish || uiPillButtons}
+          disabled={uiClassicFinish}
+          onChange={(e) => setUiPillButtons(e.target.checked)} />
+        <label htmlFor="cfgPillButtons"
+          className={'text-sm gray-label' + (uiClassicFinish ? ' opacity-50' : '')}>
+          알약형 버튼
+        </label>
+        {uiClassicFinish && (
+          <span className="text-xs text-faint">클래식 마감에서는 항상 알약형</span>
+        )}
+      </div>
+      <p className="text-xs text-faint mt-1 ml-6">
+        버튼 모서리를 둥근 사각형 대신 알약형으로 표시합니다. 클래식 마감에서는 항상 알약형입니다.
       </p>
     </div>
     <hr className="line-color" />
@@ -2947,6 +2968,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [uiFloatViewMode, setUiFloatViewMode] = useState<'cover' | 'center'>('cover');
   const [uiFont, setUiFont] = useState<'pretendard' | 'system'>('system');
   const [uiClassicFinish, setUiClassicFinish] = useState(false);
+  const [uiPillButtons, setUiPillButtons] = useState(false);
   const [allowDuplicateProjectOpen, setAllowDuplicateProjectOpen] = useState(false);
   const [multiTokenAutoRotate, setMultiTokenAutoRotate] = useState(false);
   const [multiTokenRotateWarning, setMultiTokenRotateWarning] = useState(10);
@@ -3003,6 +3025,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     setUiFloatViewMode(config.uiFloatViewMode ?? 'cover');
     setUiFont(config.uiFont ?? 'system');
     setUiClassicFinish(config.uiClassicFinish ?? false);
+    setUiPillButtons(config.uiPillButtons ?? false);
     setAllowDuplicateProjectOpen(config.allowDuplicateProjectOpen ?? false);
     const rotateWarning = normalizeTokenRotateWarning(
       config.multiTokenRotateWarningPercent,
@@ -3188,6 +3211,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiFloatViewMode: uiFloatViewMode,
       uiFont: uiFont,
       uiClassicFinish: uiClassicFinish,
+      uiPillButtons: uiPillButtons,
       allowDuplicateProjectOpen: allowDuplicateProjectOpen,
       multiTokenAutoRotate: multiTokenAutoRotate,
       multiTokenRotateWarningPercent: multiTokenRotateWarning,
@@ -3246,6 +3270,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.uiFloatViewMode = uiFloatViewMode;
     appState.uiFont = uiFont;
     appState.uiClassicFinish = uiClassicFinish;
+    appState.uiPillButtons = uiPillButtons;
     appState.allowDuplicateProjectOpen = allowDuplicateProjectOpen;
     appState.storageWriteGuard = storageWriteGuard;
     appState.fullWordAutoComplete = fullWordAc;
@@ -3315,7 +3340,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'drive':
         return <DriveSettingsTab active={activeTab === tabIdx} dirty={!!dirty} reloadConfig={loadConfig} syncFolder={syncFolder} setSyncFolder={setSyncFolder} selectSyncFolder={selectSyncFolder} />;
       case 'personal':
-        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, legacySceneEditor, setLegacySceneEditor, legacyWorkflowMode, setLegacyWorkflowMode, sceneToolbarLegacyText, setSceneToolbarLegacyText, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish, allowDuplicateProjectOpen, setAllowDuplicateProjectOpen }} />;
+        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, legacySceneEditor, setLegacySceneEditor, legacyWorkflowMode, setLegacyWorkflowMode, sceneToolbarLegacyText, setSceneToolbarLegacyText, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish, uiPillButtons, setUiPillButtons, allowDuplicateProjectOpen, setAllowDuplicateProjectOpen }} />;
       case 'customization':
         return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark, uiThemePresets, setUiThemePresets }} />;
       case 'toolbar':
@@ -3369,6 +3394,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiFloatViewMode !== (savedCfg.uiFloatViewMode ?? 'cover') ||
       uiFont !== (savedCfg.uiFont ?? 'system') ||
       uiClassicFinish !== (savedCfg.uiClassicFinish ?? false) ||
+      uiPillButtons !== (savedCfg.uiPillButtons ?? false) ||
       allowDuplicateProjectOpen !== (savedCfg.allowDuplicateProjectOpen ?? false) ||
       multiTokenAutoRotate !== (savedCfg.multiTokenAutoRotate ?? false) ||
       multiTokenRotateWarning !== normalizeTokenRotateWarning(

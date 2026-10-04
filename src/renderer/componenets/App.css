@@ -77,7 +77,8 @@
   --c-orange-bg: #f97316; --c-orange-fg: #ffffff;
   --c-yellow-bg: #eab308; --c-yellow-fg: #ffffff; /* yellow-500 */
   /* 버튼 반경 토큰(2026-10-04 B1 ①) — .round-button·.icon-button·확인 창 버튼(.r-btn)이 따른다.
-     모던 = 8px 둥근 사각, 클래식 마감 = 알약(아래 html.finish-classic). 색과 무관해 테마별 재정의 없음. */
+     모던 = 8px 둥근 사각, 클래식 마감·알약형 버튼 옵션 = 알약(아래 html.finish-classic·html.pill-buttons).
+     색과 무관해 테마별 재정의 없음. */
   --r-btn: 8px;
 }
 .dark {
@@ -132,6 +133,11 @@ html.finish-classic .true-dark {
   --c-line: #2a2a2a;
   --c-line-strong: #2a2a2a;
   --c-input-ring: transparent;
+}
+/* 알약형 버튼(config uiPillButtons → html.pill-buttons) — 모던 마감에서도 버튼 반경만 알약.
+   토큰만 바꾸므로 테마와 무관. 클래식 마감은 위 블록에서 이미 알약. */
+html.pill-buttons {
+  --r-btn: 9999px;
 }
 
 body {
