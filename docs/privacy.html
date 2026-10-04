@@ -57,7 +57,7 @@
 <div class="wrap">
   <p><a href="./">&larr; SDStudio 홈 / Home</a></p>
   <h1>SDStudio 개인정보처리방침 / Privacy Policy</h1>
-  <p class="meta">시행일 / Effective date: 2026-09-28</p>
+  <p class="meta">시행일 / Effective date: 2026-10-05</p>
   <nav class="lang-nav" aria-label="언어 선택 / Language">
     <a href="#ko">한국어</a>
     <a href="#en">English</a>
@@ -67,7 +67,7 @@
     <!-- 한국어 -->
     <section class="policy" id="ko" lang="ko">
       <h2>개인정보처리방침</h2>
-      <p class="meta">시행일: 2026년 9월 28일</p>
+      <p class="meta">시행일: 2026년 10월 5일</p>
 
       <h3>1. 개요</h3>
       <p>SDStudio(이하 「앱」)는 NovelAI 이미지 생성을 위한 오픈소스 데스크톱(Windows·macOS·Linux) 및 Android 앱입니다. 앱의 개발자는 사용자 데이터를 수집하거나 보관하는 서버를 운영하지 않습니다. 앱이 다루는 모든 데이터는 사용자의 기기에 저장되며, 사용자가 직접 실행한 기능에 필요한 경우에만 아래에 명시한 외부 서비스로 전송됩니다.</p>
@@ -81,20 +81,22 @@
         <li>사용자가 직접 입력한 NovelAI API 토큰</li>
       </ul>
       <p>이 데이터는 개발자에게 전송되지 않습니다. 사용자는 앱의 데이터 폴더를 삭제하거나 앱을 제거하여 언제든지 기기에 저장된 데이터를 지울 수 있습니다.</p>
+      <p>환경설정 내보내기에서 사용자가 「NovelAI 토큰 파일도 함께 내보내기」를 직접 켠 경우에만 NovelAI API 토큰이 별도 파일로 기기의 다운로드 폴더에 저장됩니다. 이 파일의 토큰은 암호화되지 않으며, 파일을 가진 사람은 사용자의 NovelAI 계정으로 이미지를 생성할 수 있습니다. 이 파일은 안전하게 보관하고 다른 사람과 공유하지 마세요. 앱은 토큰 파일을 Google 드라이브에 올리지 않습니다.</p>
 
       <h3>3. NovelAI로의 전송</h3>
       <p>사용자가 이미지 생성 등 NovelAI 기능을 실행하면, 그 요청을 처리하는 데 필요한 프롬프트, 생성 설정, 이미지, NovelAI API 토큰이 NovelAI(<a href="https://novelai.net">https://novelai.net</a>)로 직접 전송됩니다. 이 전송은 사용자의 기기와 NovelAI 사이에서만 이루어지며 개발자의 서버를 거치지 않습니다. NovelAI로 전송된 데이터는 NovelAI의 <a href="https://novelai.net/privacy">개인정보처리방침</a>에 따라 처리됩니다. SDStudio는 NovelAI와 무관한 독립 오픈소스 프로젝트입니다.</p>
 
       <h3>4. Google 드라이브 연동</h3>
-      <p>이 절은 사용자가 앱에서 Google 드라이브 연동 기능을 사용하기 위해 Google 계정을 연결한 경우에만 적용됩니다.</p>
+      <p>이 절은 사용자가 앱(데스크톱·Android)에서 Google 드라이브 연동 기능을 사용하기 위해 Google 계정을 연결한 경우에만 적용됩니다.</p>
       <ul>
         <li><strong>요청 권한 범위:</strong> 앱은 <code>https://www.googleapis.com/auth/drive.file</code> 범위 하나만 요청합니다. 이 범위로 앱은 앱이 직접 만든 파일과 폴더(Google 드라이브 안의 SDStudio 폴더와 그 안의 백업 파일)에만 접근할 수 있으며, 사용자의 다른 드라이브 파일은 보거나 읽거나 수정할 수 없습니다.</li>
         <li><strong>읽는 계정 정보:</strong> 앱은 연결 상태를 표시하기 위해 Google 계정의 이메일 주소와 드라이브 저장 용량 정보만 읽습니다. 그 밖의 Google 계정 정보는 읽지 않습니다.</li>
-        <li><strong>사용 방식:</strong> 자동 동기화는 없습니다. 백업 파일을 드라이브에 올리거나 드라이브에서 받는 작업은 사용자가 앱에서 직접 실행할 때에만 이루어집니다.</li>
+        <li><strong>사용 방식:</strong> 자동 동기화는 없습니다. 백업 파일(프로젝트, 프리셋, 템플릿, 환경설정)을 드라이브에 올리거나 드라이브에서 받는 작업은 사용자가 앱에서 직접 실행할 때에만 이루어집니다.</li>
         <li><strong>파일 삭제:</strong> 앱에서 드라이브의 파일을 삭제하면 그 파일은 영구 삭제되지 않고 Google 드라이브 휴지통으로 이동합니다.</li>
         <li><strong>토큰 보관:</strong> 데스크톱 앱은 Google 인증 토큰을 운영체제가 제공하는 보안 저장 기능으로 암호화하여 기기에만 저장합니다. Android 앱에서는 Google Play 서비스가 인증을 관리하며, 앱은 Google 인증 토큰을 따로 영구 저장하지 않습니다.</li>
         <li><strong>연결 해제:</strong> 앱에서 연결을 해제하면 앱은 Google 인증 토큰을 폐기합니다. 또한 사용자는 언제든지 <a href="https://myaccount.google.com/permissions">Google 계정 권한 페이지</a>에서 앱의 접근 권한을 철회할 수 있습니다.</li>
         <li><strong>전송 대상:</strong> Google 드라이브와 주고받는 데이터는 사용자의 기기와 Google 사이에서만 오가며, 개발자나 다른 제3자의 서버로 전송되지 않습니다.</li>
+        <li><strong>Google Play 서비스가 없는 Android 기기:</strong> 이 경우 앱은 Google 계정을 연결하지 않으며, 백업 파일은 Android 공유 기능으로 사용자가 고른 앱에 넘겨집니다. 이후 처리는 사용자가 고른 앱의 방침을 따릅니다.</li>
       </ul>
       <p>SDStudio가 Google API로부터 받은 정보를 사용하고 다른 앱으로 전송하는 행위는 Limited Use(제한적 사용) 요건을 포함한 <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API 서비스 사용자 데이터 정책(Google API Services User Data Policy)</a>을 준수합니다. 앱은 Google 사용자 데이터를 사용자에게 보이는 기능(백업 파일 올리기·받기와 연결 상태 표시)을 제공하는 목적으로만 사용하며, 광고에 사용하거나 판매하지 않고, 사람이 열람하지 않습니다.</p>
 
@@ -119,7 +121,7 @@
     <!-- English -->
     <section class="policy" id="en" lang="en">
       <h2>Privacy Policy</h2>
-      <p class="meta">Effective date: September 28, 2026</p>
+      <p class="meta">Effective date: October 5, 2026</p>
 
       <h3>1. Overview</h3>
       <p>SDStudio (the &ldquo;App&rdquo;) is an open-source desktop (Windows, macOS, Linux) and Android app for creating images with NovelAI. The developer does not operate any server that collects or stores user data. All data handled by the App is stored on your device, and it is sent to the external services described below only when a feature you start requires it.</p>
@@ -133,20 +135,22 @@
         <li>The NovelAI API token you enter</li>
       </ul>
       <p>None of this data is sent to the developer. You can delete the data stored on your device at any time by deleting the App&rsquo;s data folder or uninstalling the App.</p>
+      <p>Only if you turn on &ldquo;Also export NovelAI token file&rdquo; in the settings export does the App save your NovelAI API token as a separate file in your device&rsquo;s Downloads folder. The token in this file is not encrypted, and anyone who has the file can generate images with your NovelAI account. Keep this file safe and do not share it. The App never uploads the token file to Google Drive.</p>
 
       <h3>3. Data Sent to NovelAI</h3>
       <p>When you use a NovelAI feature, such as generating an image, the prompts, generation settings, images, and NovelAI API token needed for that request are sent directly to NovelAI (<a href="https://novelai.net">https://novelai.net</a>). This transfer takes place only between your device and NovelAI and does not pass through any developer server. Data sent to NovelAI is handled under NovelAI&rsquo;s <a href="https://novelai.net/privacy">Privacy Policy</a>. SDStudio is an independent open-source project and is not affiliated with NovelAI.</p>
 
       <h3>4. Google Drive Integration</h3>
-      <p>This section applies only if you connect your Google account in the App to use the Google Drive integration.</p>
+      <p>This section applies only if you connect your Google account in the App (desktop or Android) to use the Google Drive integration.</p>
       <ul>
         <li><strong>Requested scope:</strong> The App requests only the <code>https://www.googleapis.com/auth/drive.file</code> scope. With this scope, the App can access only the files and folders it creates (the SDStudio folder in your Google Drive and the backup files inside it). It cannot see, read, or modify any other files in your Drive.</li>
         <li><strong>Account information read:</strong> To show the connection status, the App reads only your Google account email address and your Drive storage quota. It does not read any other Google account information.</li>
-        <li><strong>How it is used:</strong> There is no automatic sync. Backup files are uploaded to or downloaded from Drive only when you start the action yourself in the App.</li>
+        <li><strong>How it is used:</strong> There is no automatic sync. Backup files (projects, presets, templates, and settings) are uploaded to or downloaded from Drive only when you start the action yourself in the App.</li>
         <li><strong>File deletion:</strong> When you delete a Drive file from the App, the file is moved to your Google Drive trash rather than permanently deleted.</li>
         <li><strong>Token storage:</strong> On desktop, the App encrypts your Google authorization token with the operating system&rsquo;s secure storage and keeps it only on your device. On Android, authorization is managed by Google Play services, and the App does not persistently store your Google authorization token.</li>
         <li><strong>Disconnecting:</strong> When you disconnect in the App, the App revokes and discards the Google authorization token. You can also revoke the App&rsquo;s access at any time on your <a href="https://myaccount.google.com/permissions">Google Account permissions page</a>.</li>
         <li><strong>Where data goes:</strong> Data exchanged with Google Drive travels only between your device and Google. It is never sent to the developer or to any other third-party server.</li>
+        <li><strong>Android devices without Google Play services:</strong> On these devices the App does not connect a Google account. Instead, backup files are handed to an app you choose through the Android share sheet, and that app&rsquo;s own policy applies from then on.</li>
       </ul>
       <p>SDStudio&rsquo;s use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. The App uses Google user data only to provide user-facing features (uploading and downloading backup files and showing the connection status). It does not use this data for advertising, does not sell it, and no person reads it.</p>
 
