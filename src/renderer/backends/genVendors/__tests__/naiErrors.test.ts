@@ -23,4 +23,12 @@ describe('NovelAI API 오류 진단', () => {
     expect(createNaiApiError(429, '').retryable).toBe(true);
     expect(createNaiApiError(503, 'maintenance').retryable).toBe(true);
   });
+
+  test('409(이전 요청 처리 중)는 미지원 요청이 아니라 재시도 가능한 concurrent(T4)', () => {
+    const error = createNaiApiError(409, 'Concurrent generation is locked', 'req-409');
+    expect(error.kind).toBe('concurrent');
+    expect(error.retryable).toBe(true);
+    expect(error.message).toContain('이전 요청 처리 중 (409)');
+    expect(error.message).toContain('req-409');
+  });
 });

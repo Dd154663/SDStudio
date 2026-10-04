@@ -39,15 +39,19 @@ import {
   SelectedWorkflow,
   Session,
 } from './types';
-import { sleep } from './util';
 import { expandPieces, lowerPromptNode, toPARR } from './PromptService';
 import { dataUriToBase64 } from './ImageService';
 import { prepareMirrorCanvas } from './workflows/SDWorkFlow';
 import { getImageDimensions } from '../componenets/BrushTool';
-import { isNaiRateLimitError } from '../backends/genVendors/naiErrors';
+import {
+  isNaiConcurrentError,
+  isNaiRateLimitError,
+  naiErrorKindLabel,
+} from '../backends/genVendors/naiErrors';
 import {
   computeLongBreakMs,
   computeRequestDelayMs,
+  CONSECUTIVE_FAILURE_STOP,
   isRequestTimeoutError,
   nextLongBreakCount,
   nextRequestTimeoutMs,
@@ -59,6 +63,7 @@ import {
   shouldResetLongBreakCounter,
   sleepUnlessStopped,
   TASK_ESTIMATE_DEFAULT_MS,
+  TASK_FAILURE_TEXT,
 } from './requestTiming';
 
 export const FAST_TASK_TIME_ESTIMATOR_SAMPLE_COUNT = 16;
@@ -243,13 +248,18 @@ export interface TaskHandler {
     ctx?: TaskAttemptContext,
   ): Promise<boolean>;
   getNumTries(task: Task): number;
-  /** 시도 앞 대기. pendingCount = 대기 시점의 큐 잔량(장, 소량 예약 완화 판정용). */
+  /** 시도 앞 대기. pendingCount = 대기 시점의 큐 잔량(장, 소량 예약 완화 판정용).
+   *  shouldStop 이 참이 되면 남은 대기를 버리고 바로 끝난다(큐는 `() => cur.stopped`, T4). */
   handleDelay(
     task: Task,
     numTry: number,
     delay: RequestDelaySettings,
     pendingCount: number,
+    shouldStop: () => boolean,
   ): Promise<void>;
+  /** 실패를 사용자에게 알릴 별도 문구(없으면 오류 메시지 그대로). 문구가 있으면 큐가 로그·진행 바·
+   *  오류 토스트에 그 문구를 쓴다 — 예: 업스케일 타임아웃(재시도하지 않는 이유 안내, T4). */
+  failureNotice?(task: Task, error: unknown): string | undefined;
   getInfo(task: Task): TaskInfo;
   calculateCost(task: Task): CostItem[];
 }
@@ -261,17 +271,19 @@ export const getSceneKey = (session: Session, scene: GenericScene) => {
 // NAI 요청 시도 앞 대기(2026-10-03 T3, 식은 requestTiming.computeRequestDelayMs).
 // 첫 시도(numTry 0)에만 기다린다 — 재시도는 큐의 오류 재시도 대기(retryWaitMs 사다리)만 쓴다
 // (예전엔 둘 다 기다리는 이중 대기). 빠른 생성(fast)은 급등 없음, 큐 잔량 20장 이하는 소량 완화.
-// 실제로 기다린 시간(ms)을 돌려준다(재시도·0 이면 0).
+// 대기는 정지 가능(sleepUnlessStopped — shouldStop 이 참이면 즉시 끝남, T4). 정지 뒤 요청을 보내지
+// 않는 판정은 큐(runLoop)가 한다. 계산한 대기 시간(ms)을 돌려준다(재시도·0 이면 0).
 export async function handleNAIDelay(
   numTry: number,
   fast: boolean,
   settings: RequestDelaySettings,
   pendingCount: number,
+  shouldStop: () => boolean,
   rand: () => number = Math.random,
 ): Promise<number> {
   if (numTry >= 1) return 0;
   const ms = computeRequestDelayMs(settings, { fast, pendingCount }, rand);
-  if (ms > 0) await sleep(ms);
+  if (ms > 0) await sleepUnlessStopped(ms, shouldStop);
   return ms;
 }
 
@@ -330,6 +342,9 @@ export class TaskQueueService extends EventTarget {
   lastRunEndedAt = 0;
   // 지금 돌고 있는 실행 루프 수(정지 뒤 진행 중 요청을 마무리하는 옛 루프 포함).
   private activeRunLoops = 0;
+  // 재시도를 소진해 건너뛴 작업의 연속 수(T4). 작업 성공·새 실행 시작·연속 실패 정지 때 0.
+  // CONSECUTIVE_FAILURE_STOP 에 닿으면 그 작업을 남긴 채 큐를 정지하고 확인 창으로 알린다.
+  consecutiveTaskFailures = 0;
   // 긴 휴식 중이면 시작·끝 시각(epoch ms), 아니면 0. 진행 바가 「휴식 중」을 그린다.
   longBreakStartedAt = 0;
   longBreakUntil = 0;
@@ -669,6 +684,8 @@ export class TaskQueueService extends EventTarget {
         stopped: false,
       };
       this.currentRun = cur;
+      // 사용자가 실행을 새로 시작하면 연속 실패 수를 새로 센다(T4).
+      this.consecutiveTaskFailures = 0;
       // 실행 루프가 어떤 예외로 죽어도 currentRun 이 반드시 해제되도록 보장.
       // 해제되지 않으면 isRunning() 이 영구 true 가 되어 시작 버튼이 다시
       // 나타나지 않고 생성이 완전히 멈춘다.
@@ -971,6 +988,7 @@ export class TaskQueueService extends EventTarget {
     const controller = new AbortController();
     const outerMs = queueAttemptTimeoutMs(requestTimeoutMs);
     const attempt = ++this.attemptSeq;
+    const sceneName = task?.params?.scene?.name ?? '(unknown)';
     return new Promise<boolean>((resolve, reject) => {
       let settled = false;
       let paused = 0;
@@ -986,6 +1004,8 @@ export class TaskQueueService extends EventTarget {
           if (settled) return;
           settled = true;
           timer = null;
+          // 진행 중 요청을 끊는다는 사실을 남긴다(Android 는 abort → FetchService.cancel).
+          this.addLog('warn', sceneName, TASK_FAILURE_TEXT.outerTimeoutAbort(attempt));
           controller.abort();
           reject(new RequestTimeoutError(outerMs, 'queue'));
         }, outerMs);
@@ -1085,6 +1105,10 @@ export class TaskQueueService extends EventTarget {
       let timeoutFailures = 0;
       // 이 작업의 재시도 가능한 실패 횟수 — 다음 시도 전 대기 사다리(5→10→20→40→60초).
       let failures = 0;
+      // 이 작업의 마지막 실패 문구 — 연속 실패 정지 창의 「마지막 오류」.
+      let lastErrorText = '';
+      // 핸들러가 준 별도 실패 문구(업스케일 타임아웃 등) — 건너뜀 때 진행 바에도 그 문구를 남긴다.
+      let lastNotice: string | undefined;
       for (let i = 0; i < numTries; i++) {
         if (cur.stopped) {
           this.dispatchProgress();
@@ -1092,7 +1116,8 @@ export class TaskQueueService extends EventTarget {
         }
         try {
           // 첫 시도 앞에만 요청 사이 지연(재시도는 아래 오류 재시도 대기만). 잔량은 소량 예약 완화 판정용.
-          await handler.handleDelay(task, i, delay, this.pendingImageCount());
+          // 대기 중 정지하면 남은 대기를 버린다(T4 — 예전엔 끝까지 기다린 뒤 정지 판정).
+          await handler.handleDelay(task, i, delay, this.pendingImageCount(), () => cur.stopped);
           // 지연 대기 중에 정지됐으면 요청을 보내지 않는다.
           if (cur.stopped) {
             this.dispatchProgress();
@@ -1103,6 +1128,8 @@ export class TaskQueueService extends EventTarget {
           const after = Date.now();
           this.timeEstimators[task.cls].addSample(after - before);
           done = true;
+          // 성공했으니 연속 실패를 새로 센다(T4).
+          this.consecutiveTaskFailures = 0;
           // 실제로 보낸 성공 요청이므로 정지된 루프의 마지막 성공도 센다(서비스 수준 카운터).
           this.longBreakRemaining--;
           if (!cur.stopped) {
@@ -1160,30 +1187,51 @@ export class TaskQueueService extends EventTarget {
           failures++;
           // 429 판정은 NaiApiError status/kind 우선, 문자열은 폴백(요청 ID 의 「429」 오판정 방지).
           const rateLimited = isNaiRateLimitError(e);
+          // 409(이전 요청 처리 중)는 429 가 아닐 때만 — 사다리 대신 고정 30초(T4).
+          const concurrent = !rateLimited && isNaiConcurrentError(e);
+          // 핸들러 별도 문구(업스케일 타임아웃 안내 등) — 있으면 로그·진행 바·오류 토스트에 쓴다.
+          const notice = handler.failureNotice?.(task, e);
+          if (notice) lastNotice = notice;
+          lastErrorText = notice ?? String(e?.message ?? e);
           // 다음 시도가 남아 있고 재시도 가능한 실패면 대기 — 실패 횟수 사다리 5→10→20→40→60초
-          // ±20%, 429 는 최소 60초. 재시도에는 요청 사이 지연(handleDelay)을 더하지 않는다(T3).
+          // ±20%, 429 는 최소 60초, 409 는 고정 30초. 재시도에는 요청 사이 지연(handleDelay)을 더하지 않는다(T3).
           const willRetry = e?.retryable !== false && i + 1 < numTries;
-          const waitMs = willRetry ? retryWaitMs(failures, rateLimited) : 0;
-          const waitLabel = willRetry ? ` - ${Math.round(waitMs / 1000)}초 대기 후 재시도` : '';
+          const waitMs = willRetry
+            ? retryWaitMs(failures, rateLimited ? 'rate-limit' : concurrent ? 'concurrent' : 'other')
+            : 0;
+          const waitLabel = willRetry ? TASK_FAILURE_TEXT.waitSuffix(waitMs) : '';
+          const attemptLabel = TASK_FAILURE_TEXT.attempt(i + 1, numTries);
           if (rateLimited) {
-            this.addLog('warn', sceneName, `요청 제한 (429)${waitLabel} [${i + 1}/${numTries}]`);
+            this.addLog('warn', sceneName, `요청 제한 (429)${waitLabel}${attemptLabel}`);
             console.log(`Rate limited (429), waiting ${waitMs}ms before retry...`);
             this.dispatchEvent(
               new CustomEvent('error', {
                 detail: { error: `요청 제한 (429)${waitLabel}`, task: task },
               }),
             );
-          } else {
-            this.addLog('error', sceneName, `${e.message}${waitLabel} [${i + 1}/${numTries}]`);
+          } else if (concurrent) {
+            const label = `${naiErrorKindLabel('concurrent')} (409)`;
+            this.addLog('warn', sceneName, `${label}${waitLabel}${attemptLabel}`);
             this.dispatchEvent(
               new CustomEvent('error', {
-                detail: { error: e.message, task: task },
+                detail: { error: `${label}${waitLabel}`, task: task },
               }),
             );
+            // 다시 시도할 때만 안내(마지막 시도면 아래 건너뜀·연속 실패 처리로 알린다).
+            if (willRetry) appState.pushMessage(TASK_FAILURE_TEXT.concurrentRetry, 'info');
+          } else {
+            const text = notice ?? e.message;
+            this.addLog('error', sceneName, `${text}${waitLabel}${attemptLabel}`);
+            this.dispatchEvent(
+              new CustomEvent('error', {
+                detail: { error: text, task: task },
+              }),
+            );
+            if (notice) appState.pushMessage(notice, 'error');
           }
           console.error(e);
           // 인증·프롬프트 한도·미지원 필드·Anlas/할당량 오류는 같은 요청을
-          // 40회 반복해도 회복되지 않는다. 서버/네트워크/429만 기존 재시도를 유지한다.
+          // 반복해도 회복되지 않는다. 서버/네트워크/429/409만 재시도한다.
           if (e?.retryable === false) break;
           // 대기 중 정지하면 남은 대기를 버린다(다음 반복 머리에서 정지 처리).
           if (waitMs > 0) await this.retryWait(waitMs, () => cur.stopped);
@@ -1199,13 +1247,33 @@ export class TaskQueueService extends EventTarget {
           this.dispatchProgress();
           return;
         }
-        // 실패한 태스크를 건너뛰고 다음 태스크로 진행
         const sceneName = task.params.scene?.name ?? '(unknown)';
-        this.addLog('error', sceneName, `${numTries}회 재시도 실패 - 건너뜀`);
+        // 연속 실패 정지(T4): 재시도를 소진한 작업이 CONSECUTIVE_FAILURE_STOP 개 연속이면 이 작업은
+        // 건너뛰지 않고(큐에 남김) 큐를 완전히 정지한 뒤, 사용자가 확인을 누를 때까지 남는 창으로 알린다.
+        this.consecutiveTaskFailures++;
+        if (this.consecutiveTaskFailures >= CONSECUTIVE_FAILURE_STOP) {
+          this.consecutiveTaskFailures = 0;
+          const text = TASK_FAILURE_TEXT.consecutiveStop(lastErrorText);
+          cur.stopped = true;
+          this.stop();
+          this.addLog('error', sceneName, text.replace(/\n/g, ' '));
+          this.dispatchEvent(
+            new CustomEvent('error', {
+              detail: { error: text.split('\n')[0], task: task },
+            }),
+          );
+          appState.pushDialog({ type: 'yes-only', text });
+          // 모바일 백그라운드 알림(BackgroundNotificationService)이 같은 문구를 표시한다.
+          this.dispatchEvent(new CustomEvent('failure-stop', { detail: { text } }));
+          this.dispatchProgress();
+          return;
+        }
+        // 실패한 태스크를 건너뛰고 다음 태스크로 진행
+        this.addLog('error', sceneName, TASK_FAILURE_TEXT.retriesExhausted(numTries));
         console.log('SKIPPING FAILED TASK:', task.params.scene?.name);
         this.dispatchEvent(
           new CustomEvent('error', {
-            detail: { error: '재시도 초과로 건너뜀', task: task },
+            detail: { error: lastNotice ?? TASK_FAILURE_TEXT.retriesExhaustedShort, task: task },
           }),
         );
         // 위임 태스크 실패 — 원 창에 토스트로 통지(브리지).

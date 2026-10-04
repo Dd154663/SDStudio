@@ -7,12 +7,25 @@ export class BackgroundNotificationService {
   private lastUpdate = 0;
   private readonly throttleMs = 2500;
   private trailingTimer: ReturnType<typeof setTimeout> | null = null;
+  // 연속 실패로 큐가 정지됐을 때의 안내(T4) — 다음 실행 시작 전까지 「대기 중」 대신 표시한다.
+  // 이 알림은 포그라운드 서비스의 상주 알림(무음 채널)이라 따로 울리지 않고 문구만 바뀐다.
+  private stopNotice: string | null = null;
 
   start() {
     if (!isMobile) return; // 모바일 전용 (데스크톱은 no-op)
     const onChange = () => this.update(false);
     const onForce = () => this.update(true);
-    taskQueueService.addEventListener('start', onForce);
+    const onStart = () => {
+      this.stopNotice = null;
+      this.update(true);
+    };
+    const onFailureStop = (e: Event) => {
+      const text = (e as CustomEvent<{ text?: string }>).detail?.text;
+      this.stopNotice = typeof text === 'string' && text ? text.replace(/\n/g, ' ') : null;
+      this.update(true);
+    };
+    taskQueueService.addEventListener('start', onStart);
+    taskQueueService.addEventListener('failure-stop', onFailureStop);
     taskQueueService.addEventListener('progress', onChange);
     taskQueueService.addEventListener('stop', onForce);
     taskQueueService.addEventListener('complete', onChange);
@@ -51,6 +64,8 @@ export class BackgroundNotificationService {
       if (taskQueueService.isRunning() && remain > 0) {
         const ms = taskQueueService.estimateTime('mean');
         text = `이미지 생성 중 · ${remain}개 남음 (예상 ${this.formatTime(ms)})`;
+      } else if (this.stopNotice) {
+        text = this.stopNotice;
       } else if (remain > 0) {
         text = `대기 중 · ${remain}개 예약됨`;
       } else {

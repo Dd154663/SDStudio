@@ -33,6 +33,10 @@ import {
   nextRequestTimeoutMs,
   queueAttemptTimeoutMs,
   RATE_LIMIT_MIN_WAIT_MS,
+  CONCURRENT_RETRY_WAIT_MS,
+  CONSECUTIVE_FAILURE_STOP,
+  NAI_MAX_TRIES,
+  TASK_FAILURE_TEXT,
   RecentRequestCache,
   RequestTimeoutError,
   retryBackoffMs,
@@ -42,7 +46,12 @@ import {
   USER_DATA_CACHE_MS,
   withRequestTimeout,
 } from '../requestTiming';
-import { createNaiApiError, isNaiRateLimitError } from '../../backends/genVendors/naiErrors';
+import {
+  createNaiApiError,
+  isNaiConcurrentError,
+  isNaiRateLimitError,
+} from '../../backends/genVendors/naiErrors';
+import { inferToastKind } from '../toastKind';
 import {
   applyConfigGroups,
   buildConfigExport,
@@ -519,6 +528,65 @@ describe('오류 재시도 대기 사다리', () => {
     expect(retryWaitMs(4, true, () => 0.999999)).toBe(60000);
     expect(retryWaitMs(5, true, () => 0.999999)).toBe(72000);
     expect(retryWaitMs(1, false, mid)).toBe(5000);
+  });
+
+  test('종류 인자: rate-limit = true 와 같고, other = false 와 같다', () => {
+    expect(retryWaitMs(1, 'rate-limit', mid)).toBe(retryWaitMs(1, true, mid));
+    expect(retryWaitMs(3, 'other', mid)).toBe(retryWaitMs(3, false, mid));
+  });
+
+  test('409(concurrent)는 실패 횟수·난수와 무관하게 고정 30초(T4)', () => {
+    expect(CONCURRENT_RETRY_WAIT_MS).toBe(30000);
+    const rand = jest.fn(() => 0.999999);
+    for (const n of [1, 2, 5, 9]) expect(retryWaitMs(n, 'concurrent', rand)).toBe(30000);
+    expect(rand).not.toHaveBeenCalled();
+  });
+});
+
+describe('409 판정(T4 — kind/status 우선, 문구는 폴백)', () => {
+  test('NaiApiError 409 와 「Concurrent generation is locked」', () => {
+    const e = createNaiApiError(409, JSON.stringify({ message: 'Concurrent generation is locked' }));
+    expect(e.kind).toBe('concurrent');
+    expect(e.retryable).toBe(true);
+    expect(e.message).toBe('이전 요청 처리 중 (409): Concurrent generation is locked');
+    expect(isNaiConcurrentError(e)).toBe(true);
+    // 상태가 409 가 아니어도 서버 문구로 판정
+    const e2 = createNaiApiError(400, 'Concurrent generation is locked');
+    expect(e2.kind).toBe('concurrent');
+    expect(isNaiConcurrentError(e2)).toBe(true);
+  });
+
+  test('429·5xx·요청 ID 의 409·타임아웃은 409 가 아니다', () => {
+    expect(isNaiConcurrentError(createNaiApiError(429, ''))).toBe(false);
+    expect(isNaiConcurrentError(createNaiApiError(500, 'oops', 'ray-409-abc'))).toBe(false);
+    expect(isNaiConcurrentError(new RequestTimeoutError(1000))).toBe(false);
+    expect(isNaiConcurrentError(new Error('HTTP error:409'))).toBe(false);
+    expect(isNaiConcurrentError(undefined)).toBe(false);
+    // 409 는 429 판정에도 걸리지 않는다
+    expect(isNaiRateLimitError(createNaiApiError(409, ''))).toBe(false);
+  });
+
+  test('status·kind 가 없는 오류만 문구 폴백', () => {
+    expect(isNaiConcurrentError(new Error('Concurrent generation is locked'))).toBe(true);
+    expect(isNaiConcurrentError({ kind: 'concurrent', message: '' })).toBe(true);
+  });
+});
+
+describe('재시도 횟수·연속 실패 문구(T4)', () => {
+  test('상수와 문구', () => {
+    expect(NAI_MAX_TRIES).toBe(10);
+    expect(CONSECUTIVE_FAILURE_STOP).toBe(3);
+    expect(TASK_FAILURE_TEXT.attempt(3, NAI_MAX_TRIES)).toBe(' [3/10]');
+    expect(TASK_FAILURE_TEXT.retriesExhausted(NAI_MAX_TRIES)).toBe('10회 재시도 실패 - 건너뜀');
+    expect(TASK_FAILURE_TEXT.consecutiveStop('서버 오류')).toBe(
+      '작업 3개가 연속으로 실패해 예약을 중지했습니다.\n마지막 오류: 서버 오류\n서버 상태를 확인한 뒤 다시 시작해 주세요.',
+    );
+    expect(TASK_FAILURE_TEXT.outerTimeoutAbort(7)).toBe('요청 시간 초과 — 진행 중 요청 취소 요청(ID 7)');
+  });
+
+  test('토스트 종류: 409 안내는 info, 업스케일 타임아웃 안내는 error', () => {
+    expect(inferToastKind(TASK_FAILURE_TEXT.concurrentRetry)).toBe('info');
+    expect(inferToastKind(TASK_FAILURE_TEXT.upscaleTimeout)).toBe('error');
   });
 });
 

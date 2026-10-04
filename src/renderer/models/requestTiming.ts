@@ -28,6 +28,12 @@
  * ── 오류 재시도 대기(연타 방지) ──
  *  · 한 작업 안에서 재시도 가능한 실패 뒤 다음 시도 전 대기 = 실패 횟수 사다리
  *    5→10→20→40→60초(상한 60초) ±20% 무작위. 429 는 종전 60초를 최소값으로 유지.
+ *    409(이전 요청 처리 중)는 사다리 대신 고정 30초(T4).
+ *
+ * ── 재시도 횟수·연속 실패 정지(T4, 2026-10-04 사용자 결정 5차) ──
+ *  · 생성·증강 작업은 최대 10회 시도(`NAI_MAX_TRIES`), 업스케일은 1회(유료 이중 과금 방지).
+ *  · 작업 3개(`CONSECUTIVE_FAILURE_STOP`)가 연속으로 재시도를 소진하면 큐를 완전히 정지하고
+ *    닫히지 않는 확인 창으로 알린다(`TASK_FAILURE_TEXT.consecutiveStop`).
  *
  * ── `/user/data` 연속 조회 방지 ──
  *  · 같은 키(토큰)의 조회가 10초 안에 다시 오면 직전 성공 결과를 재사용, 진행 중이면 그 Promise 공유.
@@ -434,15 +440,61 @@ export function retryBackoffMs(
   return Math.max(0, Math.round(step * (1 + offset)));
 }
 
-/** 재시도 전 대기: 429 면 max(사다리, 60초), 그 외는 사다리 그대로. */
+/** 409(이전 요청 처리 중) 뒤 대기 — 사다리 대신 고정(무작위 없음). */
+export const CONCURRENT_RETRY_WAIT_MS = 30_000;
+
+/** 재시도 전 대기의 종류: 429(요청 제한)·409(이전 요청 처리 중)·그 밖. */
+export type RetryWaitReason = 'rate-limit' | 'concurrent' | 'other';
+
+/**
+ * 재시도 전 대기: 429 면 max(사다리, 60초), 409 면 고정 30초(난수 미사용), 그 외는 사다리 그대로.
+ * 두 번째 인자의 boolean 은 구 호출 호환(true = 429).
+ */
 export function retryWaitMs(
   failureCount: number,
-  rateLimited: boolean,
+  reason: boolean | RetryWaitReason,
   rand: () => number = Math.random,
 ): number {
+  const kind: RetryWaitReason =
+    reason === true ? 'rate-limit' : reason === false ? 'other' : reason;
+  if (kind === 'concurrent') return CONCURRENT_RETRY_WAIT_MS;
   const ladder = retryBackoffMs(failureCount, rand);
-  return rateLimited ? Math.max(ladder, RATE_LIMIT_MIN_WAIT_MS) : ladder;
+  return kind === 'rate-limit' ? Math.max(ladder, RATE_LIMIT_MIN_WAIT_MS) : ladder;
 }
+
+// ── 재시도 횟수·연속 실패 정지(T4) ──
+
+/** 생성·증강 작업의 최대 시도 횟수(첫 시도 포함). 업스케일은 1회(TaskHandlers). */
+export const NAI_MAX_TRIES = 10;
+/** 재시도를 소진한 작업이 이만큼 연속되면 큐를 완전히 정지한다(그 작업은 큐에 남긴다). */
+export const CONSECUTIVE_FAILURE_STOP = 3;
+
+/** 큐 실패 처리 문구(숫자는 위 상수에서 만든다). */
+export const TASK_FAILURE_TEXT = {
+  /** 시도 번호 꼬리표 「 [3/10]」. */
+  attempt: (index: number, numTries: number) => ` [${index}/${numTries}]`,
+  /** 재시도 대기 꼬리표 「 - 30초 대기 후 재시도」. */
+  waitSuffix: (ms: number) => ` - ${Math.round(ms / 1000)}초 대기 후 재시도`,
+  /** 재시도를 다 써서 작업을 건너뛸 때의 로그. */
+  retriesExhausted: (numTries: number) => `${numTries}회 재시도 실패 - 건너뜀`,
+  /** 같은 상황의 진행 바 오류 문구. */
+  retriesExhaustedShort: '재시도 초과로 건너뜀',
+  /** 연속 실패 정지 확인 창(닫히지 않는 yes-only). */
+  consecutiveStop: (lastError: string) =>
+    `작업 ${CONSECUTIVE_FAILURE_STOP}개가 연속으로 실패해 예약을 중지했습니다.\n` +
+    `마지막 오류: ${lastError}\n` +
+    `서버 상태를 확인한 뒤 다시 시작해 주세요.`,
+  /** 409 재시도 안내 토스트(중립색 — toastKind 추론도 info). */
+  concurrentRetry:
+    `서버가 이전 요청을 아직 처리 중입니다. ${sec(CONCURRENT_RETRY_WAIT_MS)} 후 다시 시도합니다.`,
+  /** 업스케일 타임아웃(1회라 바로 건너뜀) — 유료 요청이라 다시 보내지 않는다. */
+  upscaleTimeout:
+    '업스케일 요청이 시간을 초과했습니다. 서버에서 처리되어 Anlas 가 소비됐을 수 있어 다시 시도하지 않습니다. ' +
+    '결과는 NovelAI 사이트에서 확인해 주세요.',
+  /** 큐 바깥 타임아웃이 시도를 abort 할 때의 로그(PC fetch abort·Android FetchService.cancel). */
+  outerTimeoutAbort: (attempt: number) =>
+    `요청 시간 초과 — 진행 중 요청 취소 요청(ID ${attempt})`,
+};
 
 /**
  * 정지 가능한 대기. shouldStop 이 참이 되면(폴링 간격 pollMs) 남은 시간을 버리고 false 로

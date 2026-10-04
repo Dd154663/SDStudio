@@ -286,4 +286,24 @@ describe('모바일 알림 꼬리 갱신', () => {
     expect(updateBackgroundNotification).toHaveBeenCalledTimes(2);
     expect(updateBackgroundNotification).toHaveBeenLastCalledWith('SDStudio', '대기 중 · 200개 예약됨');
   });
+
+  test('연속 실패 정지(failure-stop)는 다음 시작 전까지 안내 문구를 한 줄로 보이고, 시작하면 지운다(T4)', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(500_000);
+    const svc = new BackgroundNotificationService();
+    svc.start();
+    fakeQueue.isRunning.mockReturnValue(false);
+    fakeQueue.statsAllTasks.mockReturnValue({ done: 0, total: 3 });
+    fakeQueue.dispatchEvent(
+      new CustomEvent('failure-stop', { detail: { text: '첫 줄\n마지막 오류: x\n끝' } }),
+    );
+    expect(updateBackgroundNotification).toHaveBeenLastCalledWith('SDStudio', '첫 줄 마지막 오류: x 끝');
+    // 스로틀 꼬리 갱신·진행 이벤트도 안내를 유지한다
+    jest.advanceTimersByTime(3000);
+    fakeQueue.dispatchEvent(new CustomEvent('progress'));
+    expect(updateBackgroundNotification).toHaveBeenLastCalledWith('SDStudio', '첫 줄 마지막 오류: x 끝');
+    fakeQueue.dispatchEvent(new CustomEvent('start'));
+    expect(updateBackgroundNotification).toHaveBeenLastCalledWith('SDStudio', '대기 중 · 3개 예약됨');
+    jest.useRealTimers();
+  });
 });

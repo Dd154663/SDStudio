@@ -76,8 +76,11 @@ import type {
   TaskInfo,
 } from './TaskQueueService';
 import {
+  isRequestTimeoutError,
+  NAI_MAX_TRIES,
   NaiRequestOptions,
   RequestDelaySettings,
+  TASK_FAILURE_TEXT,
   throwIfAborted,
 } from './requestTiming';
 
@@ -170,9 +173,10 @@ class GenerateImageTaskHandler implements TaskHandler {
     numTry: number,
     delay: RequestDelaySettings,
     pendingCount: number,
+    shouldStop: () => boolean,
   ): Promise<void> {
-    // 편집기 즉시 생성(fast)도 같은 식, 급등만 없음(2026-10-03 T3).
-    await handleNAIDelay(numTry, this.fast, delay, pendingCount);
+    // 편집기 즉시 생성(fast)도 같은 식, 급등만 없음(2026-10-03 T3). 정지하면 대기를 바로 끝낸다(T4).
+    await handleNAIDelay(numTry, this.fast, delay, pendingCount, shouldStop);
   }
 
   checkTask(task: Task): boolean {
@@ -630,8 +634,9 @@ class GenerateImageTaskHandler implements TaskHandler {
     };
   }
 
+  // 최대 시도 횟수는 requestTiming 단일 출처(T4 — 40 → 10).
   getNumTries(task: Task) {
-    return 40;
+    return NAI_MAX_TRIES;
   }
 
   calculateCost(task: Task): CostItem[] {
@@ -692,6 +697,7 @@ class RemoveBgTaskHandler implements TaskHandler {
     numTry: number,
     delay: RequestDelaySettings,
     pendingCount: number,
+    shouldStop: () => boolean,
   ): Promise<void> {
     return;
   }
@@ -743,8 +749,9 @@ class AugmentTaskHandler implements TaskHandler {
     numTry: number,
     delay: RequestDelaySettings,
     pendingCount: number,
+    shouldStop: () => boolean,
   ): Promise<void> {
-    await handleNAIDelay(numTry, false, delay, pendingCount);
+    await handleNAIDelay(numTry, false, delay, pendingCount, shouldStop);
   }
 
   async handleTask(task: Task, run: TaskQueueRun, ctx?: TaskAttemptContext) {
@@ -777,8 +784,9 @@ class AugmentTaskHandler implements TaskHandler {
     );
   }
 
+  // 최대 시도 횟수는 requestTiming 단일 출처(T4 — 40 → 10).
   getNumTries(task: Task) {
-    return 40;
+    return NAI_MAX_TRIES;
   }
 
   getInfo(task: Task) {
@@ -820,8 +828,9 @@ class UpscaleTaskHandler implements TaskHandler {
     numTry: number,
     delay: RequestDelaySettings,
     pendingCount: number,
+    shouldStop: () => boolean,
   ) {
-    await handleNAIDelay(numTry, false, delay, pendingCount);
+    await handleNAIDelay(numTry, false, delay, pendingCount, shouldStop);
   }
 
   async handleTask(task: Task, run: TaskQueueRun, ctx?: TaskAttemptContext) {
@@ -845,6 +854,12 @@ class UpscaleTaskHandler implements TaskHandler {
 
   // 유료 요청의 응답 유실/저장 실패에 재호출하면 이중 과금될 수 있다.
   getNumTries() { return 1; }
+
+  // 타임아웃이면 서버가 이미 처리해 Anlas 가 소비됐을 수 있다 — 다시 보내지 않는 이유와 확인
+  // 방법을 알린다(T4). 그 밖의 실패는 오류 메시지 그대로.
+  failureNotice(_task: Task, error: unknown): string | undefined {
+    return isRequestTimeoutError(error) ? TASK_FAILURE_TEXT.upscaleTimeout : undefined;
+  }
 
   getInfo(task: Task) {
     return { name: task.params.scene?.name ?? '(none)', emoji: '🔎' };
