@@ -51,6 +51,17 @@ import { dataUriToBase64 } from './ImageService';
 import { prepareMirrorCanvas } from './workflows/SDWorkFlow';
 import { getImageDimensions } from '../componenets/BrushTool';
 import {
+  FocusedInpaintSpec,
+  focusedRequestSize,
+  isFocusRectInput,
+  remapCharacterCenter,
+} from './focusedInpaint';
+import {
+  composeFocusedResult,
+  FocusedRequest,
+  prepareFocusedRequest,
+} from './focusedInpaintCanvas';
+import {
   normalizeTokenRotateBalance,
   normalizeTokenRotateTarget,
   normalizeTokenRotateWarning,
@@ -103,6 +114,18 @@ async function discardIfStale(ctx: TaskAttemptContext | undefined, writtenPath: 
   throwIfAborted(ctx.signal);
 }
 
+// Focused inpainting(SPEC §7) 을 이 작업에 적용할지 — 인페인트 잡에 사각형이 있고 미러 씬이 아닐 때만.
+// 미러(SDMirror)는 좌우 합성 캔버스 전체가 요청 단위라 영역 개념이 없다(프리셋 키도 없지만 이중으로 막는다).
+export function activeFocusSpec(task: Task): FocusedInpaintSpec | undefined {
+  const job = task.params.job as SDInpaintJob;
+  if (job?.type !== 'sd_inpaint' || !job.focus) return undefined;
+  if ((task.params.scene as InpaintScene | undefined)?.workflowType === 'SDMirror') return undefined;
+  return isFocusRectInput(job.focus) ? job.focus : undefined;
+}
+
+export const FOCUSED_COMPOSE_FAILED_TEXT =
+  'Focused 합성 실패 — 서버 결과 원본을 저장했습니다';
+
 // 생성 완료 처리 (W6 P3). 위임 태스크(호스트에서 실행 중)면 완료를 원 창에 브리지하고
 // 호스트 자기 세션은 건드리지 않는다(imageMap 미갱신 → dirty/저장 없음). 로컬 태스크
 // (단일 창 포함)는 종전과 동일하게 onComplete + imageMap 갱신을 수행한다.
@@ -144,6 +167,39 @@ function finishOrBridgeImage(
         outputFilePath,
       );
     }
+  }
+}
+
+// Focused 결과 합성: backend 가 저장한 서버 결과를 읽어 원본에 섞고 같은 경로에 덮어쓴다(원자적 쓰기).
+// 실패하면 서버 결과 원본을 그대로 두고 알린다. 폐기된 시도면 쓰지 않고 파일을 지운다(discardIfStale).
+async function composeFocusedOutput(
+  focused: FocusedRequest,
+  originalBase64: string,
+  outputFilePath: string,
+  ctx?: TaskAttemptContext,
+) {
+  let composed: string | undefined;
+  try {
+    const raw = dataUriToBase64(await backend.readDataFile(outputFilePath));
+    composed = await composeFocusedResult({
+      originalBase64,
+      resultPngBase64: raw,
+      rect: focused.rect,
+      rectMask: focused.rectMask,
+    });
+  } catch (e: any) {
+    if (!ctx?.signal.aborted) {
+      console.error('Focused 합성 실패(서버 결과 유지):', e?.message || e);
+      appState.pushMessage(FOCUSED_COMPOSE_FAILED_TEXT);
+    }
+  }
+  await discardIfStale(ctx, outputFilePath);
+  if (!composed) return;
+  try {
+    await backend.writeDataFile(outputFilePath, composed);
+  } catch (e: any) {
+    console.error('Focused 합성 저장 실패(서버 결과 유지):', e?.message || e);
+    appState.pushMessage(FOCUSED_COMPOSE_FAILED_TEXT);
   }
 }
 
@@ -449,6 +505,7 @@ class GenerateImageTaskHandler implements TaskHandler {
         arg.characterPositions?.push(character.position);
       }
     }
+    let focused: FocusedRequest | undefined;
     if (this.type === 'inpaint') {
       const inpaintJob = job as SDInpaintJob;
       arg.model = Model.Inpaint;
@@ -457,6 +514,34 @@ class GenerateImageTaskHandler implements TaskHandler {
       arg.originalImage = inpaintJob.originalImage;
       arg.imageStrength = inpaintJob.strength;
       arg.noise = inpaintJob.noise;
+      const focus = activeFocusSpec(task);
+      if (focus) {
+        // Focused: 사각형을 잘라 ≈1MP 로 키운 이미지·마스크와 그 해상도로 요청한다. 서버는 크롭 맥락까지
+        // 다시 그리므로 add_original_image 는 끄고 합성은 아래에서 클라이언트가 한다.
+        try {
+          focused = await prepareFocusedRequest({
+            imageBase64: inpaintJob.image,
+            maskBase64: inpaintJob.mask,
+            rect: focus,
+            context: focus.context,
+          });
+        } catch (e: any) {
+          throwIfAborted(ctx?.signal);
+          const err: any = new Error(`Focused 영역 준비 실패: ${e?.message || e}`);
+          err.retryable = false; // 같은 입력이면 다시 해도 같은 결과
+          throw err;
+        }
+        const prepared = focused;
+        arg.image = prepared.imageBase64;
+        arg.mask = prepared.maskBase64;
+        arg.resolution = { width: prepared.width, height: prepared.height };
+        arg.addOriginalImage = false;
+        arg.characterPositions = arg.characterPositions?.map((p) =>
+          p
+            ? remapCharacterCenter(p, prepared.rect, prepared.imageWidth, prepared.imageHeight)
+            : p,
+        );
+      }
     }
     if (this.type === 'i2i') {
       const i2iJob = job as SDI2IJob;
@@ -574,6 +659,9 @@ class GenerateImageTaskHandler implements TaskHandler {
     }
     // 폐기된 시도의 늦은 결과 — 저장된 파일을 지우고 씬에 추가하지 않는다.
     await discardIfStale(ctx, outputFilePath);
+    if (focused) {
+      await composeFocusedOutput(focused, (job as SDInpaintJob).image, outputFilePath, ctx);
+    }
     // 생성 직후 잔량은 캐시를 건너뛰고 새로 읽는다(다음 생성 직전 확인은 이 결과를 재사용).
     if (isV5) opusUsageService.refresh(true, { fresh: true }).catch(() => {});
 
@@ -653,6 +741,26 @@ class GenerateImageTaskHandler implements TaskHandler {
     const resolution = job.overrideResolution
       ? job.overrideResolution
       : task.params.scene.resolution;
+    const focus = activeFocusSpec(task);
+    if (focus) {
+      // Focused 는 실제 요청 해상도(≈1MP 이하)로 판단한다 — 씬 해상도 = 첨부 이미지 크기
+      // (R-res 로 보장: 씬 생성·이미지 교체 때 맞춤, 기존 불일치 씬은 편집 창 안내 — SPEC §7-3).
+      const image = lowerResolution(
+        resolution as Resolution,
+        task.params.scene.resolutionWidth,
+        task.params.scene.resolutionHeight,
+      );
+      // 크기를 모르는 씬(Custom 값 없음)은 이미지 경계 없이 사각형만으로 계산한다.
+      const size = focusedRequestSize(
+        focus,
+        image.width || Infinity,
+        image.height || Infinity,
+      );
+      if (size && size.width * size.height > 1024 * 1024) {
+        res.push({ scene: name, text: '씬 해상도가 큼' });
+      }
+      return res;
+    }
     if (
       resolution === Resolution.WallpaperLandscape ||
       resolution === Resolution.LargeLandscape ||

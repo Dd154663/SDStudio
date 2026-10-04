@@ -3,6 +3,7 @@ import {
   NoiseSchedule,
   Sampling,
 } from '../../backends/imageGen';
+import { NAI_FREE_PIXEL_LIMIT } from '../../backends/genVendors/naiModelCapabilities';
 import {
   WFDefBuilder,
   wfiExtraPromptInput,
@@ -39,6 +40,13 @@ import { imageService, promptService, taskQueueService, workFlowService } from '
 import { TaskParam } from '../TaskQueueService';
 import { dataUriToBase64 } from '../ImageService';
 import { resolveSceneSeed } from '../sceneSeedGroups';
+import {
+  FOCUS_CONTEXT_DEFAULT,
+  FOCUS_CONTEXT_MAX,
+  FOCUS_CONTEXT_MIN,
+  FOCUS_GRID,
+  focusSpecFromPreset,
+} from '../focusedInpaint';
 import {
   resolveSceneCharacterPrompts,
   usesSceneCharacterPromptData,
@@ -331,6 +339,24 @@ const SDInpaintPreset = new WFVarBuilder()
   .addVibeSetVar('vibes')
   .addNullIntVar('seed');
 
+// Focused inpainting(2026-10-04 S1) — 인페인트 워크플로우에만 있는 키. I2I·미러(SDInpaintPreset.clone())
+// 에는 넣지 않는다(미러는 좌우 합성 캔버스라 영역 개념이 없음 — 핸들러에서도 무시).
+// 좌표는 원본 이미지 픽셀(8 배수), 기존 씬 JSON 에는 키가 없어 fromJSON 이 기본값(꺼짐·null·48)을 유지한다.
+// 편집기 UI(영역 도구·맥락 여백 슬라이더)는 S2 — InPaintEditor·FocusAreaOverlay. 계약: SPEC_GUIDE §7-2.
+const SDInpaintFocusedPreset = SDInpaintPreset.clone()
+  .addBoolVar('focusEnabled', false)
+  .addNullIntVar('focusX')
+  .addNullIntVar('focusY')
+  .addNullIntVar('focusW')
+  .addNullIntVar('focusH')
+  .addIntVar(
+    'focusContext',
+    FOCUS_CONTEXT_MIN,
+    FOCUS_CONTEXT_MAX,
+    FOCUS_GRID,
+    FOCUS_CONTEXT_DEFAULT,
+  );
+
 const SDInpaintUI = wfiStack([
   wfiInlineInput('이미지', 'image', 'preset', 'flex-none'),
   wfiInlineInput('인페인트 강도', 'strength', 'preset', 'flex-none'),
@@ -432,6 +458,9 @@ const createSDI2IHandler = (type: string) => {
       image: image,
       mask: isInpaint && preset.mask ? await getMask() : '',
     };
+    // Focused 사양은 켜져 있고 사각형이 있을 때만 잡에 싣는다(미러 프리셋에는 키가 없어 항상 없음).
+    const focus = isInpaint ? focusSpecFromPreset(preset) : undefined;
+    if (focus) (job as SDInpaintJob).focus = focus;
     const param: TaskParam = {
       session: session,
       job: job,
@@ -462,7 +491,7 @@ export const SDInpaintDef = new WFDefBuilder('SDInpaint')
   .setEmoji('🖌️')
   .setI2I(true)
   .setHasMask(true)
-  .setPresetVars(SDInpaintPreset.build())
+  .setPresetVars(SDInpaintFocusedPreset.build())
   .setSharedVars(new WFVarBuilder().build())
   .setEditor(SDInpaintUI)
   .setHandler(createSDI2IHandler('SDInpaint'))
@@ -564,7 +593,6 @@ export const SDI2IDef = new WFDefBuilder('SDI2I')
 
 // ── SDMirror (캐릭터 미러) ──
 
-const NAI_FREE_PIXEL_LIMIT = 1024 * 1024; // 1,048,576
 const MIRROR_MIN_GAP = 32; // 최소 구분선 두께 (px)
 
 // 미러 캔버스 크기 계산 — 갭이 64 정렬 패딩을 흡수하여 좌우 대칭 보장
@@ -777,6 +805,8 @@ const createMirrorHandler = () => {
       ...preset,
       prompt: resolvedPrompt,
       uc: [globalUc, preset.uc].filter(Boolean).join(', '),
+      // 미러는 Focused 를 쓰지 않는다(좌우 합성 캔버스 전체가 요청 단위). 프리셋에 키가 없어도 명시로 끈다.
+      focusEnabled: false,
     };
     // 예약 시점 스냅샷을 그대로 넘긴다(SPEC §11 — 일괄 예약의 공통 스냅샷 재사용).
     // 예전에는 여기서 끊겨 미러 태스크마다 addTask 가 설정을 다시 읽었다(2026-10-02 P1).

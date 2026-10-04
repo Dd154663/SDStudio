@@ -276,6 +276,92 @@ describe('NovelAI V5 최소 요청', () => {
     expect(body.model).toBe('nai-diffusion-5-full-inpainting');
   });
 
+  test.each([true, false])(
+    'V5 Full 인페인트는 add_original_image=%s 를 그대로 보낸다',
+    async (originalImage) => {
+      const { service, fetchArrayBuffer } = makeService();
+      const input = makeInput();
+      input.model = Model.Inpaint;
+      input.image = 'image';
+      input.mask = 'mask';
+      input.originalImage = originalImage;
+      input.generationSettings = {
+        schemaVersion: 1,
+        modelVersion: ModelVersion.V5,
+        furryMode: false,
+        disableQuality: true,
+        ucPreset: 'none',
+        autoConvertWebp: false,
+        autoConvertWebpQuality: 80,
+      };
+
+      await service.generateImage('test-token', input);
+
+      const [, body] = fetchArrayBuffer.mock.calls[0];
+      expect(body.model).toBe('nai-diffusion-5-full-inpainting');
+      expect(body.action).toBe('infill');
+      expect(body.parameters.add_original_image).toBe(originalImage);
+    },
+  );
+
+  test.each([Model.Anime, Model.I2I])(
+    'V5 인페인트가 아닌 요청(%s)에는 add_original_image 를 보내지 않는다',
+    async (model) => {
+      const { service, fetchArrayBuffer } = makeService();
+      const input = makeInput();
+      input.model = model;
+      input.originalImage = true;
+      if (model === Model.I2I) input.image = 'image';
+      input.generationSettings = {
+        schemaVersion: 1,
+        modelVersion: ModelVersion.V5,
+        furryMode: false,
+        disableQuality: true,
+        ucPreset: 'none',
+        autoConvertWebp: false,
+        autoConvertWebpQuality: 80,
+      };
+
+      await service.generateImage('test-token', input);
+
+      const [, body] = fetchArrayBuffer.mock.calls[0];
+      expect(body.parameters).not.toHaveProperty('add_original_image');
+    },
+  );
+
+  test.each([ModelVersion.V5, ModelVersion.V4_5])(
+    'Focused 인페인트(addOriginalImage=false)는 토글이 켜져 있어도 false·핸들러 해상도로 보낸다(%s)',
+    async (modelVersion) => {
+      const { service, fetchArrayBuffer } = makeService();
+      const input = makeInput();
+      input.model = Model.Inpaint;
+      input.image = 'crop';
+      input.mask = 'cropmask';
+      input.originalImage = true;
+      input.addOriginalImage = false;
+      input.resolution = { width: 1024, height: 1024 };
+      input.generationSettings = {
+        schemaVersion: 1,
+        modelVersion,
+        furryMode: false,
+        disableQuality: true,
+        ucPreset: 'none',
+        autoConvertWebp: false,
+        autoConvertWebpQuality: 80,
+      };
+
+      await service.generateImage('test-token', input);
+
+      const [, body] = fetchArrayBuffer.mock.calls[0];
+      expect(body.action).toBe('infill');
+      expect(body.parameters.add_original_image).toBe(false);
+      expect(body.parameters.width).toBe(1024);
+      expect(body.parameters.height).toBe(1024);
+      expect(body.parameters.image).toBe('crop');
+      expect(body.parameters.mask).toBe('cropmask');
+    },
+  );
+
   test('V5 Light·UC 힌트·투명 배경을 공식 요청 형태로 보낸다', async () => {
     const { service, fetchArrayBuffer } = makeService();
     const input = makeInput();

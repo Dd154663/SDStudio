@@ -159,6 +159,11 @@ export interface ImageGenInput {
   imageStrength?: number;
   seed?: number;
   originalImage?: boolean;
+  /**
+   * 인페인트 `add_original_image` 를 명시로 정할 때(없으면 `originalImage` 토글을 따른다).
+   * Focused inpainting 은 크롭 맥락까지 다시 그린 결과를 클라이언트가 합성하므로 항상 false(SPEC §7).
+   */
+  addOriginalImage?: boolean;
   useCoords?: boolean;
   legacyPromptConditioning?: boolean;
   normalizeStrength?: boolean;

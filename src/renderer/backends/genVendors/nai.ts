@@ -253,6 +253,8 @@ export class NovelAiImageGenService implements ImageGenService {
         break;
     }
     const url = this.apiEndpoint;
+    // add_original_image: 명시값(Focused=false)이 있으면 그것, 없으면 「비마스크 영역 편집 방지」 토글.
+    const addOriginalImage = params.addOriginalImage ?? !!params.originalImage;
     const legacyParameters: any = {
         params_version: 3,
         width: resolutionValue.width,
@@ -279,7 +281,7 @@ export class NovelAiImageGenService implements ImageGenService {
         legacy_uc: params.legacyPromptConditioning,
         inpaintImg2ImgStrength: params.imageStrength,
         cfg_rescale: params.cfgRescale,
-        add_original_image: params.originalImage ? true : false,
+        add_original_image: addOriginalImage,
         normalize_reference_strength_multiple:
           params.normalizeStrength ?? false,
         skip_cfg_above_sigma: null,
@@ -352,6 +354,11 @@ export class NovelAiImageGenService implements ImageGenService {
       parameters: isV5 ? v5Parameters : legacyParameters,
     };
     if (isV5) body.use_new_shared_trial = true;
+    // V5 인페인트도 add_original_image 를 받는다(2026-10-04 실험 확인: true 면 마스크 밖이
+    // 원본과 비트 동일, 없으면 마스크 밖 전체가 미세하게 변함). 「비마스크 영역 편집 방지」 토글.
+    if (isV5 && action === 'infill') {
+      body.parameters.add_original_image = addOriginalImage;
+    }
     if (!isV5 && params.vibes.length) {
       body.parameters.reference_image_multiple = params.vibes.map(
         (v) => v.image,

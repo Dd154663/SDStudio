@@ -20,6 +20,7 @@ import type {
   SDStudioPromptSourceV1,
 } from '../../shared/sdstudioImageMetadata';
 import { WFWorkFlow, WorkFlowDef } from './workflows/WorkFlow';
+import type { FocusedInpaintSpec } from './focusedInpaint';
 
 export type PARR = string[];
 
@@ -112,6 +113,8 @@ export interface SDInpaintJob extends SDAbstractJob<PromptNode> {
   strength: number;
   noise: number;
   originalImage?: boolean;
+  /** Focused inpainting 영역(원본 픽셀)·context — 켜진 인페인트 프리셋만(SPEC §7). */
+  focus?: FocusedInpaintSpec;
 }
 
 export interface SDI2IJob extends SDAbstractJob<PromptNode> {

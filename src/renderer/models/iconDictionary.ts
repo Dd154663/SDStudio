@@ -60,6 +60,7 @@ import {
   FaDownload,
   FaUserEdit,
   FaUsers,
+  FaVectorSquare,
   FaWindowRestore,
 } from 'react-icons/fa';
 
@@ -157,6 +158,7 @@ export const ICON_DICTIONARY = {
   'copy-to-global': FaArrowCircleUp, // 프로젝트 → 글로벌·템플릿 복사(현재 씬으로 템플릿 만들기 포함)
   inpaint: FaPaintBrush, // 인페인트 — FaPaintBrush 전용
   brush: FaBrush, // 마스크 브러시 도구
+  'focus-area': FaVectorSquare, // 인페인트 Focused 영역 도구(사각형 선택 — 그 안만 확대해 다시 그림)
   artist: FaUserEdit, // 작가(자동완성 작가 태그·작가 라이브러리 칩)
   preferences: FaCog, // 환경설정 — FaCog 전용
   'gen-settings': FaSlidersH, // 생성 설정 적용·고급 설정

@@ -1,4 +1,5 @@
 import {
+  ReactNode,
   forwardRef,
   useEffect,
   useImperativeHandle,
@@ -6,6 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { MaskCanvasInputs, maskCanvasAction } from '../models/maskCanvasSync';
 
 export function base64ToDataUri(data: string) {
   return 'data:image/png;base64,' + data;
@@ -74,6 +76,10 @@ interface Props {
   imageWidth: number;
   imageHeight: number;
   onDrawEnd?: () => void;
+  /** 캔버스와 같은 상자에 겹칠 레이어(Focused 영역 오버레이, 2026-10-04 S2). 감싸는 칸은 pointer-events 없음. */
+  overlay?: ReactNode;
+  /** 씬이 바뀌면 달라지는 값 — 바뀌면 캔버스를 mask 로 다시 그린다(이미지만 바뀌면 유지). */
+  resetKey?: unknown;
 }
 
 export interface BrushToolRef {
@@ -82,6 +88,8 @@ export interface BrushToolRef {
   stopBrushing(): void;
   clear(): void;
   undo(): void;
+  /** 마우스 위치 미리보기(칠할 칸 테두리)를 지우고 현재 마스크만 남긴다. */
+  clearPreview(): void;
 }
 
 const CHUNK_SIZE = 8;
@@ -175,6 +183,8 @@ const BrushTool = forwardRef<BrushToolRef, Props>(
       brushSize,
       eraserMode = false,
       onDrawEnd,
+      overlay,
+      resetKey,
     },
     ref,
   ) => {
@@ -224,13 +234,49 @@ const BrushTool = forwardRef<BrushToolRef, Props>(
       stopBrushing() {
         brushingRef.current = false;
       },
+      clearPreview() {
+        const canvas = canvasRef.current as any;
+        if (!canvas || !curImageRef.current) return;
+        canvas.getContext('2d').putImageData(curImageRef.current, 0, 0);
+      },
     }));
 
+    // 오버레이 칸을 캔버스의 레이아웃 상자(변환 전 크기)에 맞춘다 — 확대·이동은 조상 transform 이 함께 적용.
+    const [canvasBox, setCanvasBox] = useState({ w: 0, h: 0 });
+    useEffect(() => {
+      if (!overlay) return undefined;
+      const canvas = canvasRef.current as HTMLCanvasElement | null;
+      if (!canvas) return undefined;
+      const measure = () => {
+        const w = canvas.offsetWidth;
+        const h = canvas.offsetHeight;
+        setCanvasBox((b) => (b.w === w && b.h === h ? b : { w, h }));
+      };
+      measure();
+      if (typeof ResizeObserver === 'undefined') return undefined;
+      const ro = new ResizeObserver(measure);
+      ro.observe(canvas);
+      return () => ro.disconnect();
+    }, [!!overlay, imageWidth, imageHeight]);
+
+    // 마지막으로 캔버스를 다시 그린 기준(마스크·크기·씬) — 표시 이미지만 바뀌면 붓질을 지우지 않는다.
+    const appliedRef = useRef<MaskCanvasInputs | undefined>(undefined);
     useEffect(() => {
       const canvas = canvasRef.current as any;
       const ctx = canvas.getContext('2d')!;
 
       if (imageWidth === 0 || imageHeight === 0) return;
+
+      // 생성 결과 표시·원본 다시 읽기처럼 이미지만 바뀐 경우: 캔버스 크기 재설정(내용 소거)과
+      // 열 때 마스크로 되돌리기를 하지 않는다(마스크 롤백·점멸 방지, maskCanvasSync.ts).
+      const next: MaskCanvasInputs = {
+        mask,
+        width: imageWidth,
+        height: imageHeight,
+        resetKey,
+      };
+      if (maskCanvasAction(appliedRef.current, next) === 'keep') return;
+      appliedRef.current = next;
 
       canvas.width = imageWidth;
       canvas.height = imageHeight;
@@ -280,7 +326,7 @@ const BrushTool = forwardRef<BrushToolRef, Props>(
       } else {
         setLoaded(true);
       }
-    }, [mask, image, imageHeight, imageWidth]);
+    }, [mask, image, imageHeight, imageWidth, resetKey]);
 
     useEffect(() => {
       const canvas = canvasRef.current;
@@ -426,6 +472,14 @@ const BrushTool = forwardRef<BrushToolRef, Props>(
           width={imageWidth}
           height={imageHeight}
         />
+        {overlay && (
+          <div
+            className="absolute top-0 left-0 pointer-events-none"
+            style={{ width: canvasBox.w, height: canvasBox.h, zIndex: 3 }}
+          >
+            {overlay}
+          </div>
+        )}
       </div>
     );
   },

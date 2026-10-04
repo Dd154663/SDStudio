@@ -42,11 +42,41 @@ import { InnerPreSetEditor } from './PreSetEdtior';
 import { reaction } from 'mobx';
 import { FloatView } from './FloatView';
 import { TaskProgressBar } from './TaskQueueControl';
-import { queueI2IWorkflow, queueMirrorWorkflow } from '../models/TaskQueueService';
+import {
+  lowerResolution,
+  queueI2IWorkflow,
+  queueMirrorWorkflow,
+} from '../models/TaskQueueService';
+import {
+  applyImageResolution,
+  IMAGE_RESOLUTION_TEXT,
+  ImageResolution,
+  imageResolutionMismatch,
+  paidResolutionNotice,
+  resolutionFromImage,
+  workflowUsesImageResolution,
+} from '../models/inpaintResolution';
 import { prepareMirrorCanvas } from '../models/workflows/SDWorkFlow';
 import PromptEditTextArea from './PromptEditTextArea';
 import { SlotEditor } from './SceneEditor';
 import { v4 as uuidv4 } from 'uuid';
+import FocusAreaOverlay from './FocusAreaOverlay';
+import {
+  FOCUS_CONTEXT_MAX,
+  FOCUS_CONTEXT_MIN,
+  FOCUS_GRID,
+  normalizeFocusContext,
+} from '../models/focusedInpaint';
+import {
+  FOCUS_EDITOR_TEXT,
+  FocusDragResult,
+  focusRectPresetPatch,
+  focusRequestLabel,
+  inpaintPointerTarget,
+  presetFocusRect,
+  presetSupportsFocus,
+  reconcileFocusRect,
+} from '../models/focusedInpaintEditor';
 
 interface Props {
   editingScene: InpaintScene;
@@ -59,6 +89,8 @@ let brushSizeSaved = 10;
 const InPaintEditor = observer(
   ({ editingScene, onConfirm, onDelete }: Props) => {
     const [_, rerender] = useState({});
+    const editingSceneRef = useRef(editingScene);
+    editingSceneRef.current = editingScene;
     useEffect(() => {
       const handleProgress = () => {
         rerender({});
@@ -88,13 +120,48 @@ const InPaintEditor = observer(
     const [image, setImage] = useState('');
     const [width, setWidth] = useState(0);
     const [height, setHeight] = useState(0);
+    // 크기를 잰 이미지(같은 이미지일 때만 해상도 불일치 안내 — 씬 전환 직후 옛 크기로 판단하지 않게)
+    const [loadedDims, setLoadedDims] = useState<
+      { image: string; width: number; height: number } | undefined
+    >(undefined);
     const [mask, setMask] = useState<string | undefined>(undefined);
     const [brushSize, setBrushSize] = useState(brushSizeSaved);
     const [eraserMode, setEraserMode] = useState(false);
     const [brushing, setBrushing] = useState(true);
+    // Focused 영역 도구(2026-10-04 S2) — 브러시 모드의 하위 도구(지우개처럼). 이동 모드로 바꾸면 쉬고 돌아오면 다시 영역.
+    const [focusTool, setFocusTool] = useState(false);
     const [open, setOpen] = useState(false);
     const def = workFlowService.getDef(editingScene.workflowType)!;
     const isMirror = editingScene.workflowType === 'SDMirror';
+    // 미러 프리셋에는 focus 키가 없다(영역 버튼·오버레이 숨김).
+    const supportsFocus = !!def?.hasMask && !isMirror && presetSupportsFocus(editingScene.preset);
+    const pointerTarget = inpaintPointerTarget({
+      hasMask: !!def?.hasMask,
+      brushing,
+      focusTool: supportsFocus && focusTool,
+    });
+    const focusRect = supportsFocus ? presetFocusRect(editingScene.preset) : null;
+    const focusEnabled = supportsFocus && editingScene.preset.focusEnabled === true;
+    const focusContext = normalizeFocusContext(editingScene.preset.focusContext);
+    // 사각형·켜짐 값은 프리셋에 바로 쓴다(다른 프리셋 토글과 같은 경로 — 씬 toJSON reaction → 저장 큐).
+    const applyFocusRect = (rect: Parameters<typeof focusRectPresetPatch>[0]) => {
+      Object.assign(editingScene.preset, focusRectPresetPatch(rect));
+    };
+    const commitFocusDrag = (result: FocusDragResult) => {
+      if (result.kind === 'set') applyFocusRect(result.rect);
+      else if (result.kind === 'clear') applyFocusRect(null);
+    };
+    const selectFocusTool = () => {
+      if (focusTool && brushing) {
+        // 켜진 영역 도구를 다시 누르면 Focused 끄기(사각형 값은 보존 — 다시 켜면 복원).
+        setFocusTool(false);
+        editingScene.preset.focusEnabled = false;
+        return;
+      }
+      setFocusTool(true);
+      setBrushing(true);
+      editingScene.preset.focusEnabled = true;
+    };
     const globalPreset = isMirror && curSession?.selectedWorkflow
       ? curSession.getCommonSetup(curSession.selectedWorkflow)[1]
       : null;
@@ -212,6 +279,7 @@ const InPaintEditor = observer(
     };
 
     useEffect(() => {
+      setFocusTool(false);
       if (isMobile) {
         setBrushing(false);
       }
@@ -263,20 +331,60 @@ const InPaintEditor = observer(
       };
     }, [editingScene]);
     useEffect(() => {
-      if (brushing) {
+      // 영역 도구가 포인터를 받는 동안 마스크 캔버스는 칠하지 않는다(오버레이가 위에서 받음 — 이중 차단).
+      if (pointerTarget === 'brush') {
         brushTool.current!.startBrushing();
       } else {
         brushTool.current!.stopBrushing();
+        if (pointerTarget === 'focus') brushTool.current!.clearPreview();
       }
-    }, [brushing]);
+    }, [pointerTarget]);
     useEffect(() => {
+      const scene = editingScene;
       getImageDimensions(image)
         .then(({ width, height }) => {
           setWidth(width);
           setHeight(height);
+          if (image) setLoadedDims({ image, width, height });
+          // 표시 이미지 크기에 저장된 Focused 사각형을 맞춘다(다른 이미지·작은 이미지 — 무효면 해제).
+          // 그사이 다른 씬으로 바뀌었으면 손대지 않는다.
+          if (!image || scene !== editingSceneRef.current) return;
+          if (!presetSupportsFocus(scene.preset) || scene.workflowType === 'SDMirror') return;
+          const r = reconcileFocusRect(presetFocusRect(scene.preset), width, height);
+          if (r.kind === 'set') Object.assign(scene.preset, focusRectPresetPatch(r.rect));
+          else if (r.kind === 'clear') Object.assign(scene.preset, focusRectPresetPatch(null));
         })
         .catch(() => {});
     }, [image]);
+
+    // 씬 해상도 = 첨부 이미지 크기(R-res, SPEC §7-3) — 업로드·「이미지 크기로 맞추기」 공용.
+    const applyResolution = (scene: InpaintScene, r: ImageResolution) => {
+      applyImageResolution(scene, r);
+      const notice = paidResolutionNotice(r);
+      if (notice) appState.pushMessage(notice, 'info');
+    };
+    // 편집 창 이미지 입력칸에 새 이미지를 올리면(ⓑ) 저장 뒤 씬 해상도를 그 크기로 맞춘다.
+    const onImageUploaded = async (field: string, base64: string) => {
+      const scene = editingScene;
+      if (field !== 'image' || !workflowUsesImageResolution(scene.workflowType)) return;
+      const r = await resolutionFromImage(base64);
+      if (r) applyResolution(scene, r);
+    };
+    // 기존 씬 불일치 안내(자동 변경 없음) — 표시 이미지 크기와 요청 해상도(lowerResolution)가 다를 때만.
+    const sceneSize =
+      editingScene.resolution in resolutionMap
+        ? lowerResolution(
+            editingScene.resolution as Resolution,
+            editingScene.resolutionWidth,
+            editingScene.resolutionHeight,
+          )
+        : { width: undefined, height: undefined };
+    const fitTarget =
+      image &&
+      loadedDims?.image === image &&
+      workflowUsesImageResolution(editingScene.workflowType)
+        ? imageResolutionMismatch(sceneSize, loadedDims.width, loadedDims.height)
+        : undefined;
 
     const deleteScene = () => {
       appState.pushDialog({
@@ -501,6 +609,19 @@ const InPaintEditor = observer(
                 />
               </div>
             </div>
+            {fitTarget && loadedDims && (
+              <div className="w-full flex flex-wrap items-center gap-2">
+                <span className="gray-label text-xs">
+                  {IMAGE_RESOLUTION_TEXT.mismatch(loadedDims, sceneSize)}
+                </span>
+                <button
+                  className="round-button back-sky flex-none"
+                  onClick={() => applyResolution(editingScene, fitTarget)}
+                >
+                  {IMAGE_RESOLUTION_TEXT.fitButton}
+                </button>
+              </div>
+            )}
           </div>
           {isMirror && (
             <div className="flex flex-wrap gap-2 mt-1">
@@ -564,6 +685,7 @@ const InPaintEditor = observer(
                               editingScene.workflowType,
                             )}
                             middlePromptMode={false}
+                            onImageUploaded={onImageUploaded}
                           />
                         </div>
                       ),
@@ -585,6 +707,7 @@ const InPaintEditor = observer(
                     editingScene.workflowType,
                   )}
                   middlePromptMode={false}
+                  onImageUploaded={onImageUploaded}
                 />
               )}
             </FloatView>
@@ -642,6 +765,7 @@ const InPaintEditor = observer(
                             shared={undefined}
                             element={workFlowService.getI2IEditor(editingScene.workflowType)}
                             middlePromptMode={false}
+                            onImageUploaded={onImageUploaded}
                           />
                         </div>
                       </div>
@@ -665,6 +789,7 @@ const InPaintEditor = observer(
                 shared={undefined}
                 element={workFlowService.getI2IEditor(editingScene.workflowType)}
                 middlePromptMode={false}
+                onImageUploaded={onImageUploaded}
               />
             </div>
           )}
@@ -683,23 +808,39 @@ const InPaintEditor = observer(
               }
               <div className="flex-none flex items-center gap-1">
                 <button
-                  className={`round-button ${eraserMode ? 'back-gray' : 'back-sky'}`}
+                  className={`round-button ${eraserMode || focusTool ? 'back-gray' : 'back-sky'}`}
                   onClick={() => {
                     setEraserMode(false);
+                    setFocusTool(false);
                     setBrushing(true);
                   }}
                 >
                   브러시
                 </button>
                 <button
-                  className={`round-button ${eraserMode ? 'back-red' : 'back-gray'}`}
+                  className={`round-button ${eraserMode && !focusTool ? 'back-red' : 'back-gray'}`}
                   onClick={() => {
                     setEraserMode(true);
+                    setFocusTool(false);
                     setBrushing(true);
                   }}
                 >
                   지우개
                 </button>
+                {supportsFocus && (
+                  <Tooltip content={FOCUS_EDITOR_TEXT.toolTooltip}>
+                    <button
+                      className={`round-button icon-only ${focusTool ? 'back-sky' : 'back-gray'}${
+                        focusEnabled && !focusTool ? ' ring-2 ring-red-500' : ''
+                      }`}
+                      aria-label={FOCUS_EDITOR_TEXT.toolLabel}
+                      aria-pressed={focusTool}
+                      onClick={selectFocusTool}
+                    >
+                      <ActionIcon id="focus-area" />
+                    </button>
+                  </Tooltip>
+                )}
               </div>
               {isMobile && (
                 <Tooltip content="되돌리기">
@@ -713,26 +854,54 @@ const InPaintEditor = observer(
                 </button>
                 </Tooltip>
               )}
-              <label className="flex-none gray-label" htmlFor="brushSize">
-                {isMobile
-                  ? ''
-                  : eraserMode
-                    ? '지우개 크기:'
-                    : '브러시 크기:'}{' '}
-                <span className="inline-block w-4">{brushSize}</span>
-              </label>
-              <input
-                id="brushSize"
-                type="range"
-                min="1"
-                max="100"
-                value={brushSize}
-                className="inline-block flex-1 min-w-[180px] max-w-[360px]"
-                onChange={(e: any) => {
-                  setBrushSize(e.target.value);
-                  brushSizeSaved = e.target.value;
-                }}
-              />
+              {supportsFocus && focusTool ? (
+                <>
+                  {/* 영역 도구 = 브러시 크기 자리에 「맥락 여백」(공식 Minimum Context Area, 32~96 step 8) */}
+                  <Tooltip content={FOCUS_EDITOR_TEXT.contextTooltip}>
+                    <label className="flex-none gray-label" htmlFor="focusContext">
+                      {isMobile ? '' : FOCUS_EDITOR_TEXT.contextLabel}{' '}
+                      <span className="inline-block">{focusContext}px</span>
+                    </label>
+                  </Tooltip>
+                  <input
+                    id="focusContext"
+                    type="range"
+                    min={FOCUS_CONTEXT_MIN}
+                    max={FOCUS_CONTEXT_MAX}
+                    step={FOCUS_GRID}
+                    value={focusContext}
+                    className="inline-block flex-1 min-w-[80px] md:min-w-[180px] max-w-[360px]"
+                    onChange={(e) => {
+                      editingScene.preset.focusContext = normalizeFocusContext(
+                        Number(e.target.value),
+                      );
+                    }}
+                  />
+                </>
+              ) : (
+                <>
+                  <label className="flex-none gray-label" htmlFor="brushSize">
+                    {isMobile
+                      ? ''
+                      : eraserMode
+                        ? '지우개 크기:'
+                        : '브러시 크기:'}{' '}
+                    <span className="inline-block w-4">{brushSize}</span>
+                  </label>
+                  <input
+                    id="brushSize"
+                    type="range"
+                    min="1"
+                    max="100"
+                    value={brushSize}
+                    className="inline-block flex-1 min-w-[80px] md:min-w-[180px] max-w-[360px]"
+                    onChange={(e: any) => {
+                      setBrushSize(e.target.value);
+                      brushSizeSaved = e.target.value;
+                    }}
+                  />
+                </>
+              )}
               <button
                 className={`round-button back-sky flex-none`}
                 onClick={() => brushTool.current!.clear()}
@@ -741,11 +910,38 @@ const InPaintEditor = observer(
               </button>
             </div>
           )}
+          {supportsFocus && (focusTool || focusEnabled) && (
+            // U4 마스크 규칙 미리보기 — 맥락 띠의 마스크는 요청 때 지워지고, 안쪽이 비면 안쪽 전체를 인페인트.
+            <div
+              className="flex-none flex flex-wrap items-center gap-x-2 text-xs text-muted pb-2"
+              data-focus-hint
+            >
+              <span className="font-bold">
+                {!focusEnabled
+                  ? 'Focused 꺼짐'
+                  : focusRect
+                    ? `영역 ${focusRect.w}×${focusRect.h} · ${focusRequestLabel(focusRect, width, height)}`
+                    : 'Focused 켜짐'}
+              </span>
+              <span>{focusRect ? FOCUS_EDITOR_TEXT.maskRule : FOCUS_EDITOR_TEXT.noRect}</span>
+              {focusEnabled && (
+                <button
+                  className="btn-link"
+                  onClick={() => {
+                    setFocusTool(false);
+                    editingScene.preset.focusEnabled = false;
+                  }}
+                >
+                  {FOCUS_EDITOR_TEXT.off}
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex flex-col flex-1 overflow-hidden">
           <div className="flex-1 overflow-hidden">
             <TransformWrapper
-              disabled={!!def?.hasMask && brushing}
+              disabled={pointerTarget !== 'pan'}
               minScale={0.7}
               initialScale={0.7}
               centerOnInit={true}
@@ -755,11 +951,26 @@ const InPaintEditor = observer(
                   brushSize={brushSize}
                   eraserMode={eraserMode}
                   mask={mask ? base64ToDataUri(mask) : undefined}
+                  // 씬이 바뀔 때만 캔버스를 mask 로 다시 그린다 — 생성 결과 표시(setImage)로는 붓질 유지
+                  resetKey={editingScene}
                   ref={brushTool}
                   image={base64ToDataUri(image)}
                   imageWidth={width}
                   imageHeight={height}
                   onDrawEnd={onDrawEnd}
+                  overlay={
+                    supportsFocus ? (
+                      <FocusAreaOverlay
+                        imageWidth={width}
+                        imageHeight={height}
+                        rect={focusRect}
+                        context={focusContext}
+                        visible={focusEnabled || focusTool}
+                        interactive={pointerTarget === 'focus'}
+                        onCommit={commitFocusDrag}
+                      />
+                    ) : undefined
+                  }
                 />
               </TransformComponent>
               {!isMobile && def.hasMask && (

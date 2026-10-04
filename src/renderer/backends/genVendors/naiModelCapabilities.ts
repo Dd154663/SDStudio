@@ -139,6 +139,9 @@ export function normalizeNaiSampling(
   return supported.includes(sampling) ? sampling : Sampling.KEulerAncestral;
 }
 
+/** Opus 무료 생성 픽셀 상한(1MP = 1024×1024) — 무료 판정·미러 캔버스 축소·인페인트 해상도 안내 공용. */
+export const NAI_FREE_PIXEL_LIMIT = 1_048_576;
+
 export interface OpusFreeEligibilityInput {
   version: ModelVersion;
   width: number;
@@ -157,7 +160,7 @@ export function isOpusFreeEligible({
   return (
     isV5ModelVersion(version) &&
     !hasCharacterReference &&
-    width * height <= 1_048_576 &&
+    width * height <= NAI_FREE_PIXEL_LIMIT &&
     steps <= 28
   );
 }
