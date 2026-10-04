@@ -3,7 +3,10 @@ import {
   UiToolbarConfig,
 } from '../../main/config';
 import {
+  groupToolbarIds,
   moveToolbarButton,
+  TOOLBAR_GROUP_OTHER,
+  TOOLBAR_GROUP_OTHER_HINT,
   ToolbarButtonMeta,
   ToolbarRegistryEntry,
 } from '../models/uiLayout';
@@ -63,6 +66,27 @@ const ToolbarLayoutEditor = ({
     onChange(moveToolbarButton(registries, value, { id, toArea: home.area, slot }));
   };
 
+  // PC 씬 툴바 그룹(2026-10-04 T5): 그룹이 있는 레지스트리는 PC 에서 그룹별 소제목으로 나눠 보여 준다
+  // (표시만 — 저장 형식·배치 선택은 그대로). 모바일은 툴바에 그룹이 없으므로 종전 목록 그대로.
+  const sectionsOf = (
+    group: ToolbarEditorGroup,
+  ): { title: string | null; hint?: string; metas: ToolbarButtonMeta[] }[] => {
+    const visible = group.registry.filter((b) => !(mobileMode && b.pcOnly));
+    if (mobileMode || !visible.some((b) => b.group)) {
+      return [{ title: null, metas: visible }];
+    }
+    const byId = new Map(visible.map((b) => [b.id, b] as const));
+    return groupToolbarIds(
+      visible.map((b) => b.id),
+      [{ area: group.area, registry: group.registry }],
+    ).map((seg) => ({
+      title: seg.caption,
+      // 「기타」 칸 = 그룹 없는 버튼 — 더보기에서 꺼내면 툴바 끝 기타 칸에 모인다는 안내를 소제목 아래에.
+      hint: seg.group === TOOLBAR_GROUP_OTHER ? TOOLBAR_GROUP_OTHER_HINT : undefined,
+      metas: seg.ids.map((id) => byId.get(id)!),
+    }));
+  };
+
   return (
     <div className="space-y-3">
       <div>
@@ -91,36 +115,51 @@ const ToolbarLayoutEditor = ({
             <div className="text-sm font-semibold text-default mb-1.5">
               {group.title}
             </div>
-            <div className="space-y-1">
-              {group.registry
-                .filter((b) => !(mobileMode && b.pcOnly))
-                .map((b) => (
-                  <div key={b.id} className="flex items-center gap-2">
-                    <span className="text-sm text-body flex-1 min-w-0 truncate">
-                      {b.name}
-                    </span>
-                    <select
-                      className="gray-input text-sm py-1 px-2 flex-none"
-                      value={value.buttons?.[b.id] ?? 'default'}
-                      onChange={(e) =>
-                        setPlacement(
-                          b.id,
-                          e.target.value as ToolbarButtonPlacement,
-                        )
-                      }
-                    >
-                      <option value="default">
-                        기본 ({defaultPlaceLabel(b, mobileMode)})
-                      </option>
-                      <option value="pinned">툴바 고정</option>
-                      <option value="menu">⋯ 메뉴로</option>
-                      <option value="hidden">숨김</option>
-                    </select>
+            {sectionsOf(group).map((section) => (
+              <div key={section.title ?? 'all'}>
+                {section.title !== null && (
+                  <div className="text-xs text-faint mt-2 mb-1">
+                    {section.title}
                   </div>
-                ))}
-            </div>
+                )}
+                {section.hint && (
+                  <p className="text-xs text-faint -mt-0.5 mb-1">{section.hint}</p>
+                )}
+                <div className="space-y-1">
+                  {section.metas.map((b) => (
+                    <div key={b.id} className="flex items-center gap-2">
+                      <span className="text-sm text-body flex-1 min-w-0 truncate">
+                        {b.name}
+                      </span>
+                      <select
+                        className="gray-input text-sm py-1 px-2 flex-none"
+                        value={value.buttons?.[b.id] ?? 'default'}
+                        onChange={(e) =>
+                          setPlacement(
+                            b.id,
+                            e.target.value as ToolbarButtonPlacement,
+                          )
+                        }
+                      >
+                        <option value="default">
+                          기본 ({defaultPlaceLabel(b, mobileMode)})
+                        </option>
+                        <option value="pinned">툴바 고정</option>
+                        <option value="menu">⋯ 메뉴로</option>
+                        <option value="hidden">숨김</option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         ))}
+        {!mobileMode && (
+          <p className="text-xs text-faint mb-2">
+            PC 씬 툴바는 위 묶음 순서로 칸을 나눠 표시합니다. {TOOLBAR_GROUP_OTHER_HINT}
+          </p>
+        )}
         <button
           className="round-button back-gray btn-sm"
           onClick={() => onChange({ classic: value.classic })}

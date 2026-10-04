@@ -67,7 +67,11 @@ jest.mock('../workflows/OneTimeFlows', () => ({ oneTimeFlows: [], oneTimeFlowMap
 jest.mock('../sceneSeedGroups', () => ({ getSceneSeedGroupInfo: () => undefined }));
 jest.mock('../combinationSelection', () => ({}));
 jest.mock('../companionSlots', () => ({ companionAssignedIds: () => new Set() }));
-jest.mock('../uiLayout', () => ({ TOOLBAR_VIEW_MAIN: [], resolveToolbarView: () => [] }));
+jest.mock('../uiLayout', () => ({
+  TOOLBAR_VIEW_MAIN: [],
+  resolveToolbarView: () => [],
+  groupToolbarIds: () => [],
+}));
 jest.mock('../BackStackService', () => ({ backStackService: { push: () => ({ remove() {} }) } }));
 jest.mock('../../componenets/FloatView', () => ({ FloatView: ({ children }: any) => children }));
 jest.mock('../../componenets/ModalOverlay', () => ({ children }: any) => children);

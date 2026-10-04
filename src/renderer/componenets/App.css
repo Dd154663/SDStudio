@@ -455,6 +455,49 @@ html.font-pretendard body {
 .scene-toolbar-row .round-button {
   height: 2rem;
 }
+/* PC 씬 툴바 그룹(2026-10-04 T5, 2-D 그룹 캡션) — SPEC_GUIDE §6 「툴바 그룹」. 모바일·클래식 툴바는 미사용.
+   칸 = [캡션 12px][버튼 줄 32px], 칸 안 간격 8px(§2), 칸 사이 12px = 구분선 칸(margin 6 + 선 1 + padding 6).
+   구분선은 다음 칸의 ::before 라 줄바꿈해도 줄 끝에 선만 남지 않는다(칸과 함께 넘어간다).
+   선 색은 --c-line-strong(라이트 --c-line 은 너무 옅다) — 버튼 줄 높이 가운데 20px. */
+.scene-toolbar-grouped {
+  align-items: flex-end;
+  row-gap: 0.5rem;
+}
+.scene-toolbar-grouped > * {
+  flex: none;
+}
+.toolbar-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.toolbar-group-sep {
+  position: relative;
+  margin-left: 6px;
+  padding-left: 7px;
+}
+.toolbar-group-sep::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 6px;
+  height: 20px;
+  border-left: 1px solid var(--c-line-strong);
+}
+.toolbar-group-caption {
+  height: 12px;
+  padding-left: 2px;
+  font-size: 10.5px;
+  line-height: 12px;
+  white-space: nowrap;
+  user-select: none;
+}
+.toolbar-group-buttons {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
+}
 
 .btn-sm {
   @apply px-2 py-0.5 text-xs;

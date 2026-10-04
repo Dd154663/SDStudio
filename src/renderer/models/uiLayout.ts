@@ -26,36 +26,63 @@ export interface ToolbarButtonMeta {
   portable?: boolean;
   // 모바일 V2 더보기 둘째 줄의 칸 라벨(약 6자까지 들어간다). 없으면 name 을 그대로 쓴다 — SPEC_GUIDE §6-2.
   v2Label?: string;
+  // PC 씬 툴바 그룹(2026-10-04 T5, 2-D 그룹 캡션). 툴바에 인라인으로 놓일 때 이 그룹 칸에 묶인다.
+  // 없으면 어느 그룹에도 억지로 넣지 않는다 — 인라인으로 꺼내면 맨 끝 「기타」 칸(TOOLBAR_GROUP_OTHER). 기본 tier 와 무관
+  // (overflow 버튼에 group 이 있어도 기본은 ⋯ 메뉴 그대로, 사용자가 툴바로 꺼낼 때만 그룹에 들어간다).
+  // 'other' 는 레지스트리에 직접 적지 않는다 — group 이 없으면 저절로 「기타」.
+  group?: Exclude<ToolbarButtonGroup, 'other'>;
 }
+
+// PC 씬 툴바 그룹 — 순서(고정)·캡션 문구의 단일 출처. SPEC_GUIDE §6 「툴바 그룹」.
+// 모바일(V2 칸·클래식 모바일 툴바·퀵 메뉴)과 클래식 툴바는 그룹을 쓰지 않는다.
+// 마지막 'other'(기타) = group 없는 버튼(그룹 없는 씬 버튼·다른 영역에서 온 portable 버튼)을 ⋯ 더보기에서
+// 툴바로 꺼냈을 때 모이는 칸. 기본 배치에는 해당 버튼이 없어 칸이 그려지지 않는다.
+export type ToolbarButtonGroup = 'create' | 'export' | 'navigate' | 'edit' | 'other';
+export const TOOLBAR_GROUP_OTHER = 'other' as const;
+export const TOOLBAR_GROUPS: readonly { id: ToolbarButtonGroup; caption: string }[] = [
+  { id: 'create', caption: '생성' },
+  { id: 'export', caption: '내보내기' },
+  { id: 'navigate', caption: '탐색' },
+  { id: 'edit', caption: '편집 도구' },
+  { id: TOOLBAR_GROUP_OTHER, caption: '기타' },
+];
+// 「기타」 칸 캡션(환경설정 배치 편집의 소제목·안내 문구에도 같은 값) — TOOLBAR_GROUPS 에서 파생.
+export const TOOLBAR_GROUP_OTHER_LABEL = TOOLBAR_GROUPS.find(
+  (g) => g.id === TOOLBAR_GROUP_OTHER,
+)!.caption;
+// 더보기에서 그룹 없는 버튼을 꺼낼 때의 안내(환경설정 툴바 탭·⋯ 메뉴 툴팁 공용).
+export const TOOLBAR_GROUP_OTHER_HINT = `더보기에서 꺼낸 버튼 중 그룹이 없는 것은 툴바 끝 「${TOOLBAR_GROUP_OTHER_LABEL}」 칸에 모입니다.`;
 
 // 씬 툴바 (이미지생성/이미지변형 탭 상단) — SceneQueueControl.tsx 가 사용
 export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
-  { id: 'add-scene', name: '씬 추가', tier: 'primary' },
-  { id: 'queue-add', name: '예약 추가', tier: 'primary' },
-  { id: 'export-images', name: '이미지 내보내기', tier: 'secondary' },
-  { id: 'quick-export', name: '빠른 내보내기', tier: 'primary' },
-  { id: 'batch-process', name: '대량 작업', tier: 'primary' },
-  { id: 'multi-select', name: '다중 선택', tier: 'primary' },
-  { id: 'change-resolution', name: '해상도 변경', tier: 'secondary' },
+  { id: 'add-scene', name: '씬 추가', tier: 'primary', group: 'create' },
+  { id: 'queue-add', name: '예약 추가', tier: 'primary', group: 'create' },
+  { id: 'export-images', name: '이미지 내보내기', tier: 'secondary', group: 'export' },
+  { id: 'quick-export', name: '빠른 내보내기', tier: 'primary', group: 'export' },
+  { id: 'batch-process', name: '대량 작업', tier: 'primary', group: 'create' },
+  { id: 'multi-select', name: '다중 선택', tier: 'primary', group: 'navigate' },
+  { id: 'change-resolution', name: '해상도 변경', tier: 'secondary', group: 'edit' },
   // pcOnly 해제(2026-07-18): 모바일도 wasm libwebp 로 일괄 변환 지원(경고+취소 포함)
+  // 그룹 없음(T5): 프로젝트 안 이미지를 바꾸는 저장 작업이라 「내보내기(앱→파일)」·「편집 도구」 어느 쪽에도 맞지 않는다.
   { id: 'webp-convert', name: 'WebP 변환', tier: 'overflow' },
   // 모바일 실사용 빈도가 높아 모바일만 인라인 (PC 는 기존대로 ⋯ 메뉴)
-  { id: 'import-image', name: '이미지 프롬프트 추출', tier: 'mobile-primary', v2Label: '프롬프트 추출' },
+  { id: 'import-image', name: '이미지 프롬프트 추출', tier: 'mobile-primary', v2Label: '프롬프트 추출', group: 'edit' },
   // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환
-  { id: 'artist-tag', name: '아티스트 태깅', pcOnly: true, tier: 'overflow', portable: true },
-  { id: 'scene-search', name: '씬 검색', tier: 'primary' },
-  { id: 'scene-find', name: '씬 찾기', tier: 'overflow' },
-  { id: 'image-review', name: '이미지 검수', tier: 'overflow' },
-  { id: 'artist-breakdown', name: '작가 분해', tier: 'overflow' },
+  { id: 'artist-tag', name: '아티스트 태깅', pcOnly: true, tier: 'overflow', portable: true, group: 'edit' },
+  { id: 'scene-search', name: '씬 검색', tier: 'primary', group: 'navigate' },
+  { id: 'scene-find', name: '씬 찾기', tier: 'overflow', group: 'navigate' },
+  { id: 'image-review', name: '이미지 검수', tier: 'overflow', group: 'navigate' },
+  { id: 'artist-breakdown', name: '작가 분해', tier: 'overflow', group: 'edit' },
   // 작가 태그 artist: 접두 전환(2026-09-26, 공통) — 긍정 프롬프트 칸 전체, 구획마다 있으면 떼고 없는 작가엔 붙임. SPEC_GUIDE 「작가 태그 접두 계약」
-  { id: 'artist-prefix-toggle', name: '작가 접두 전환', tier: 'overflow', v2Label: '접두 전환' },
-  { id: 'bookmark-jump', name: '북마크된 씬으로 이동', tier: 'secondary', v2Label: '북마크 이동' },
+  { id: 'artist-prefix-toggle', name: '작가 접두 전환', tier: 'overflow', v2Label: '접두 전환', group: 'edit' },
+  { id: 'bookmark-jump', name: '북마크된 씬으로 이동', tier: 'secondary', v2Label: '북마크 이동', group: 'navigate' },
   // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환
+  // 그룹 없음(T5): 휴지통 열기·삭제 이미지 비우기·단축키 도움말은 어느 그룹에도 맞지 않아 ⋯ 메뉴 유지.
   { id: 'scene-trash', name: '씬 휴지통', tier: 'overflow', portable: true },
   // 'scene-template' 은 씬 템플릿 개편(2026-07-18)으로 프로젝트 바 레지스트리로 이동 —
   // 매크로성 기능 승격(사용자 확정). id 는 그대로라 과거 씬 영역 배치 설정은 조용히 무시됨.
   { id: 'empty-image-trash', name: '삭제 이미지 일괄 비우기', tier: 'overflow', portable: true, v2Label: '삭제 비우기' },
-  { id: 'find-replace', name: '찾기 및 변환', tier: 'secondary', portable: true, v2Label: '찾기·변환' },
+  { id: 'find-replace', name: '찾기 및 변환', tier: 'secondary', portable: true, v2Label: '찾기·변환', group: 'navigate' },
   { id: 'shortcut-help', name: '단축키 도움말', pcOnly: true, tier: 'overflow' },
 ];
 
@@ -173,6 +200,41 @@ export function portableButtonMetas(): { id: string; name: string }[] {
     }
   }
   return out;
+}
+
+// ── PC 씬 툴바 그룹 렌더(2026-10-04 T5, 2-D 그룹 캡션) ─────────────────────
+// 해석이 끝난 인라인 id 목록(resolveToolbarView 결과 — hidden·동반 슬롯 제외 반영됨)을 그룹 칸으로 나눈다.
+// - 그룹 순서는 TOOLBAR_GROUPS 고정, 그룹 안은 입력 순서(=사용자 순서) 그대로.
+// - group 없는 버튼(그룹 없는 씬 버튼·타 영역에서 온 portable 버튼·레지스트리에 없는 id)은
+//   맨 끝 「기타」 칸(group='other')으로. 빈 그룹(기타 포함)은 만들지 않는다.
+// 저장 데이터(uiToolbar)는 건드리지 않는 순수 렌더 파생이다 — 그룹 경계를 넘는 드래그도 저장은 되고,
+// 표시만 제 그룹 칸에 묶인다.
+export interface ToolbarGroupSegment {
+  group: ToolbarButtonGroup;
+  caption: string;
+  ids: string[];
+}
+
+export function groupToolbarIds(
+  ids: readonly string[],
+  registries: ToolbarRegistryEntry[] = TOOLBAR_VIEW_MAIN,
+): ToolbarGroupSegment[] {
+  const groupOf = new Map<string, ToolbarButtonGroup>();
+  for (const { registry } of registries) {
+    for (const b of registry) {
+      if (b.group && !groupOf.has(b.id)) groupOf.set(b.id, b.group);
+    }
+  }
+  const segments: ToolbarGroupSegment[] = [];
+  for (const g of TOOLBAR_GROUPS) {
+    const inGroup = ids.filter(
+      (id) => (groupOf.get(id) ?? TOOLBAR_GROUP_OTHER) === g.id,
+    );
+    if (inGroup.length > 0) {
+      segments.push({ group: g.id, caption: g.caption, ids: inGroup });
+    }
+  }
+  return segments;
 }
 
 export interface ToolbarAreaResolved {

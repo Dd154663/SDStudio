@@ -107,7 +107,7 @@ export const ICON_DICTIONARY = {
   'quick-export': FaBolt, // 기본 프리셋으로 한 번에 내보내기(번개 = 「빠른」)
   'batch-process': FaTasks, // 대량 작업 메뉴
   'multi-select': FaCheckSquare, // 선택 모드(켜짐=강조 배경, 같은 아이콘)
-  'change-resolution': FaRulerCombined, // 해상도 변경(툴바는 글자 버튼 — 사전 항목만)
+  'change-resolution': FaRulerCombined, // 해상도 변경(PC 그룹 툴바는 아이콘, 모바일 클래식 툴바는 글자)
   'webp-convert': FaFileImage, // WebP 변환(툴바는 글자 버튼 — 사전 항목만)
   'import-image': FaEyeDropper, // 이미지에서 프롬프트 추출(메타→설정)
   'artist-tag': FaTags, // 아티스트 태깅(그림체 분석)

@@ -32,6 +32,8 @@ export interface OverflowMenuItem {
   id: string;
   name: string;
   node: ReactNode;
+  // 행 툴팁(title) — PC 씬 툴바에서 그룹 없는 버튼에 「꺼내면 기타 칸」 안내(uiLayout TOOLBAR_GROUP_OTHER_HINT).
+  hint?: string;
 }
 
 interface ToolbarOverflowMenuProps {
@@ -164,6 +166,7 @@ const MenuRow = ({
   return (
     <div
       ref={rowRef}
+      title={item.hint}
       onTouchStart={onTouchStart}
       onTouchMove={clearArmTimer}
       onTouchEnd={onTouchEndOrCancel}

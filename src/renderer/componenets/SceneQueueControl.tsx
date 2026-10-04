@@ -82,7 +82,13 @@ import {
 import { extractPromptDataFromBase64 } from '../models/util';
 import { IMPORT_IMAGE_ACCEPT } from '../models/imageFormats';
 import { platform } from '../models/platform';
-import { TOOLBAR_VIEW_MAIN, resolveToolbarView } from '../models/uiLayout';
+import {
+  TOOLBAR_GROUP_OTHER,
+  TOOLBAR_GROUP_OTHER_HINT,
+  TOOLBAR_VIEW_MAIN,
+  groupToolbarIds,
+  resolveToolbarView,
+} from '../models/uiLayout';
 import { companionAssignedIds } from '../models/companionSlots';
 import ToolbarOverflowMenu from './ToolbarOverflowMenu';
 import { V2MainRow, V2SlotDef, V2TierRows } from './MobileV2Bars';
@@ -2557,6 +2563,11 @@ const QueueControl = observer(
       (!isMobile &&
         !appState.uiToolbar.classic &&
         !appState.sceneToolbarLegacyText);
+    // PC 아이콘 모드만(모바일 제외) — 모바일 글자 버튼을 그대로 두면서 PC 만 아이콘으로 바꿀 때 쓴다.
+    const pcIconMode = !isMobile && iconMode;
+    // PC 씬 툴바 그룹(2026-10-04 T5, 2-D 그룹 캡션) — 모바일·클래식 툴바는 그룹 없이 종전 그대로.
+    // 레거시 글자 설정(sceneToolbarLegacyText)은 버튼만 글자로 바꾸고 그룹·캡션은 유지한다.
+    const groupedToolbar = !isMobile && !appState.uiToolbar.classic;
     const toolbarButtons: Record<string, ReactNode> = {
       'add-scene': (
         <Tooltip content="씬 추가">
@@ -2639,13 +2650,13 @@ const QueueControl = observer(
       'batch-process': (
         <Tooltip content="대량 작업">
           <button
-            className={`round-button${mobileIcon ? ' icon-only' : ''} back-gray`}
+            className={`round-button${iconMode ? ' icon-only' : ''} back-gray`}
             onClick={() => {
               appState.openBatchProcessMenu(type, setSceneSelector);
             }}
           >
-            {/* PC 는 아이콘 모드에서도 텍스트 유지(2026-07-18 사용자) — 모바일만 아이콘 */}
-            {mobileIcon ? <ActionIcon id="batch-process" size={18} /> : '대량 작업'}
+            {/* PC 도 아이콘 모드면 아이콘(2026-10-04 T5 그룹 툴바 — 이전엔 PC 글자 유지). 글자는 레거시 글자 설정·클래식 툴바 */}
+            {iconMode ? <ActionIcon id="batch-process" size={18} /> : '대량 작업'}
           </button>
         </Tooltip>
       ),
@@ -2681,16 +2692,27 @@ const QueueControl = observer(
           </button>
         </Tooltip>
       ),
-      // 해상도 변경은 아이콘 모드에서도 텍스트 유지(2026-07-18 사용자)
-      'change-resolution': (
+      // 해상도 변경: PC 아이콘 모드는 아이콘+툴팁(2026-10-04 T5 그룹 툴바). 모바일은 글자·툴팁 없음 그대로(2026-07-18 사용자)
+      'change-resolution': isMobile ? (
         <button
           className="round-button back-gray"
           onClick={() => {
             appState.openChangeResolutionMenu(type, setSceneSelector);
           }}
         >
-          {isMobile ? '해상도' : '해상도 변경'}
+          해상도
         </button>
+      ) : (
+        <Tooltip content="해상도 변경">
+          <button
+            className={`round-button${pcIconMode ? ' icon-only' : ''} back-gray`}
+            onClick={() => {
+              appState.openChangeResolutionMenu(type, setSceneSelector);
+            }}
+          >
+            {pcIconMode ? <ActionIcon id="change-resolution" size={18} /> : '해상도 변경'}
+          </button>
+        </Tooltip>
       ),
       'webp-convert': (
         <Tooltip content="선택 씬의 PNG를 WebP로 변환(용량 절감, 메타데이터 보존)">
@@ -2862,6 +2884,31 @@ const QueueControl = observer(
       }
       return id;
     };
+    // 인라인 버튼(드래그 재배치 래퍼 포함) — 그룹 칸이든 종전 한 줄이든 같은 노드를 쓴다.
+    // index 는 해석된 inline 배열상의 위치(그룹 렌더 순서와 다를 수 있음 — 삽입은 앵커 id 기준).
+    const inlineToolbarButton = (id: string) => (
+      <DraggableToolbarButton
+        key={id}
+        group="scene"
+        id={id}
+        name={sceneName(id)}
+        area="scene"
+        index={toolbarLayout.inline.indexOf(id)}
+        disabled={!!appState.uiToolbar.classic}
+      >
+        {buttonNode(id)}
+      </DraggableToolbarButton>
+    );
+    const toolbarSegments = groupedToolbar
+      ? groupToolbarIds(toolbarLayout.inline)
+      : [];
+    // ⋯ 더보기(PC 그룹 툴바)에서 그룹 없는 버튼 행에 「꺼내면 툴바 끝 기타 칸」 안내 툴팁.
+    const otherMenuIds = new Set(
+      groupedToolbar
+        ? groupToolbarIds(toolbarLayout.menu).find((s) => s.group === TOOLBAR_GROUP_OTHER)
+            ?.ids ?? []
+        : [],
+    );
 
     return (
       <div
@@ -2926,7 +2973,7 @@ const QueueControl = observer(
         {/* 씬 휴지통·아티스트 태깅 모달은 App.tsx 전역 오버레이로 이관(B군 승격) */}
         {panel}
         {!!showPannel && !v2Layout && (
-          <div className="flex flex-none pb-1.5 flex-wrap">
+          <div className={`flex flex-none pb-1.5 flex-wrap${groupedToolbar ? ' items-end' : ''}`}>
             {/* 모바일(비클래식): 줄바꿈 대신 가로 스크롤 — 어떤 기기 폭에서도 1줄 보장.
                 행 전체가 드롭 타깃(놓으면 인라인 고정) */}
             {/* 모바일: 스크롤바를 숨긴 행이라 가려진 버튼이 있을 때 양 끝에 옅은 화살표 힌트를 띄운다
@@ -2935,16 +2982,21 @@ const QueueControl = observer(
             <div
               ref={toolbarRowRef}
               onScroll={mobileIcon ? updateToolbarScrollHint : undefined}
-              className={`scene-toolbar-row flex gap-1 md:gap-2 items-center ${
-                mobileIcon
-                  ? 'flex-nowrap overflow-x-auto no-scrollbars min-w-0 max-w-full [&>*]:flex-none'
-                  : 'flex-wrap'
+              className={`scene-toolbar-row flex ${
+                groupedToolbar
+                  ? 'scene-toolbar-grouped flex-wrap'
+                  : `gap-1 md:gap-2 items-center ${
+                      mobileIcon
+                        ? 'flex-nowrap overflow-x-auto no-scrollbars min-w-0 max-w-full [&>*]:flex-none'
+                        : 'flex-wrap'
+                    }`
               }${toolbarRowHighlightClass(toolbarDrag, toolbarRowOver)}`}
             >
               {appState.sceneSelectionMode && (
                 <Tooltip content="현재 표시된 씬 모두 선택">
                   <button
-                    className="round-button back-sky"
+                    // 그룹 툴바는 행 gap 이 없어(칸 간격은 구분선 칸이 맡음) 첫 칸과 12px 띄운다
+                    className={`round-button back-sky${groupedToolbar ? ' mr-3' : ''}`}
                     onClick={() =>
                       appState.addScenesToSelection(
                         getFilteredScenes().map((scene) => scene.name),
@@ -2963,19 +3015,26 @@ const QueueControl = observer(
                   </button>
                 </Tooltip>
               )}
-              {toolbarLayout.inline.map((id, i) => (
-                <DraggableToolbarButton
-                  key={id}
-                  group="scene"
-                  id={id}
-                  name={sceneName(id)}
-                  area="scene"
-                  index={i}
-                  disabled={!!appState.uiToolbar.classic}
-                >
-                  {buttonNode(id)}
-                </DraggableToolbarButton>
-              ))}
+              {groupedToolbar
+                ? // PC 그룹 칸: 그룹 순서 고정·그룹 안은 사용자 순서·그룹 없는 버튼은 맨 끝 「기타」 칸(비면 없음).
+                  // 칸 사이 구분선은 다음 칸의 ::before(.toolbar-group-sep) — 줄 끝에 선만 남지 않는다.
+                  toolbarSegments.map((seg, si) => (
+                    <div
+                      key={seg.group}
+                      role="group"
+                      aria-label={seg.caption}
+                      data-toolbar-group={seg.group}
+                      className={`toolbar-group${si > 0 ? ' toolbar-group-sep' : ''}`}
+                    >
+                      <div className="toolbar-group-caption text-faint" aria-hidden="true">
+                        {seg.caption}
+                      </div>
+                      <div className="toolbar-group-buttons">
+                        {seg.ids.map(inlineToolbarButton)}
+                      </div>
+                    </div>
+                  ))
+                : toolbarLayout.inline.map(inlineToolbarButton)}
               {(toolbarLayout.menu.length > 0 || toolbarDragActive) && (
                 // 모바일 가로 스크롤에서도 ⋯ 는 우측에 항상 노출(sticky) —
                 // 끝까지 스크롤하면 제자리에 자연 합류. PC 는 팝오버 앵커용 relative.
@@ -2984,7 +3043,9 @@ const QueueControl = observer(
                   className={
                     mobileIcon
                       ? 'sticky right-0 bg-[var(--c-surface)] pl-1'
-                      : 'relative'
+                      : groupedToolbar && toolbarSegments.length > 0
+                        ? 'relative toolbar-group-sep'
+                        : 'relative'
                   }
                 >
                   {mobileIcon && toolbarScrollHint.right && (
@@ -3026,6 +3087,7 @@ const QueueControl = observer(
                         // 노드를 캐시하지 않고 매 렌더 참조 — 상태 의존 라벨
                         // ("선택 씬 예약추가 (N)" 등)이 메뉴가 열린 채로도 갱신되도록
                         node: buttonNode(id),
+                        hint: otherMenuIds.has(id) ? TOOLBAR_GROUP_OTHER_HINT : undefined,
                       }))}
                     />
                   )}
