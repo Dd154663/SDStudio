@@ -824,6 +824,14 @@ const PreSetBulkManageModal = observer(
   },
 );
 
+// 사전세팅선택 목록 행 버튼(SPEC_GUIDE §6 「사전세팅선택」): 무배경 .icon-button(--c-icon-text 중립)·
+// 시각 모바일 28·PC 24px·hover/active 옅은 배경. touch-hit 는 positioned 필요 → relative.
+const PRESET_ROW_BTN =
+  'relative touch-hit icon-button icon-only flex-none inline-flex items-center justify-center ' +
+  'w-7 h-7 md:w-6 md:h-6 transition-colors hover:bg-black/5 active:bg-black/10 ' +
+  'dark:hover:bg-white/10 dark:active:bg-white/20';
+const PRESET_ROW_ICON = 'w-4 h-4 md:w-3.5 md:h-3.5';
+
 const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
   const curSession = appState.curSession!;
   const [isOpen, setIsOpen] = useState(false);
@@ -981,13 +989,13 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                 }
               }}
               className={
-                'text-default flex items-center justify-between p-2 clickable ' +
+                'text-default flex items-center justify-between gap-2 px-2 py-1 clickable ' +
                 (curSession.selectedWorkflow?.presetName === option.name
                   ? 'bg-[var(--c-input-bg)]'
                   : 'bg-[var(--c-surface)]')
               }
             >
-              <span className="flex flex-1 min-w-0 items-center gap-2 text-left">
+              <span className="flex flex-1 min-w-0 items-center gap-1.5 text-left">
                 {curSession.selectedWorkflow?.presetName === option.name && (
                   <FaCheck className="flex-none text-sky-500" aria-hidden />
                 )}
@@ -996,7 +1004,9 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                 {option.name}
                 </span>
               </span>
-              <div className="flex">
+              {/* 행 버튼(2026-10-04 피드백 — 두껍고 알록달록): 무배경 중립 아이콘, 시각 PC 24·모바일 28px,
+                  모바일은 touch-hit 로 판정 확장(간격 8px — SPEC §2 이웃 판정 겹침 회피), 삭제만 빨간 아이콘. */}
+              <div className="flex flex-none items-center gap-2 md:gap-1">
                 <button
                   onClick={async (e) => {
                     e.stopPropagation();
@@ -1021,10 +1031,10 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                       option.name = newName;
                     }
                   }}
-                  className="p-2 mx-1 icon-button btn-solid-green"
+                  className={PRESET_ROW_BTN}
                   aria-label="이름 변경"
                 >
-                  <ActionIcon id="rename" />
+                  <ActionIcon id="rename" className={PRESET_ROW_ICON} />
                 </button>
                 <Tooltip content="그림체 복제">
                 <button
@@ -1046,9 +1056,9 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                     newPreset.name = newName;
                     curSession!.addPreset(newPreset);
                   }}
-                  className="p-2 mx-1 icon-button btn-solid-sky"
+                  className={PRESET_ROW_BTN}
                 >
-                  <ActionIcon id="duplicate" />
+                  <ActionIcon id="duplicate" className={PRESET_ROW_ICON} />
                 </button>
                 </Tooltip>
                 <Tooltip content="그림체 내보내기">
@@ -1057,9 +1067,9 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                     e.stopPropagation();
                     await appState.exportPreset(curSession, option);
                   }}
-                  className="p-2 mx-1 icon-button btn-solid-orange"
+                  className={PRESET_ROW_BTN}
                 >
-                  <ActionIcon id="export" />
+                  <ActionIcon id="export" className={PRESET_ROW_ICON} />
                 </button>
                 </Tooltip>
                 {(workflowType === 'SDImageGen' ||
@@ -1070,9 +1080,9 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                         e.stopPropagation();
                         appState.exportPresetToGlobal(curSession, option);
                       }}
-                      className="p-2 mx-1 icon-button btn-solid-yellow"
+                      className={PRESET_ROW_BTN}
                     >
-                      <ActionIcon id="copy-to-global" />
+                      <ActionIcon id="copy-to-global" className={PRESET_ROW_ICON} />
                     </button>
                   </Tooltip>
                 )}
@@ -1103,9 +1113,12 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                       },
                     });
                   }}
-                  className="p-2 mx-1 icon-button btn-solid-red"
+                  className={PRESET_ROW_BTN}
                 >
-                  <FaTrash />
+                  <ActionIcon
+                    id="delete"
+                    className={`${PRESET_ROW_ICON} text-red-500 dark:text-red-400`}
+                  />
                 </button>
                 </Tooltip>
               </div>
