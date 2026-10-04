@@ -23,7 +23,12 @@ import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { Dialog } from '../componenets/ConfirmWindow';
 import { cropMirrorResultFromDataUri, dataUriToBase64, deleteImageFiles } from './ImageService';
-import { IMAGE_RETENTION_DAYS } from './TrashService';
+import { IMAGE_RETENTION_DAYS, SCENE_RETENTION_DAYS } from './TrashService';
+import {
+  deleteConfirmText,
+  imageDeleteScopeLine,
+  NO_IMAGES_TO_DELETE_MESSAGE,
+} from './deleteFlowRules';
 import { promptCustomResolution } from './customResolutionPrompt';
 import {
   createImageWithText,
@@ -109,8 +114,11 @@ export class BatchProcessService {
     const deleteScenes = async (selected: GenericScene[]) => {
       appState.pushDialog({
         type: 'confirm',
-        danger: true,
-        text: `정말로 선택한 ${selected.length}개의 씬을 삭제하시겠습니까? (휴지통으로 이동)`,
+        ...deleteConfirmText({
+          kind: selected[0]?.type === 'inpaint' ? 'inpaintScene' : 'scene',
+          count: selected.length,
+          outcome: { trashDays: SCENE_RETENTION_DAYS },
+        }),
         callback: async () => {
           // 한 건이 실패(타 창 잠금·파일 잠금 등)해도 나머지는 계속 처리하고 결과를 숨기지 않는다.
           // 예전에는 예외가 루프를 끊어 일부만 삭제된 채 알림 없이 끝났다(2026-09-21).
@@ -151,7 +159,7 @@ export class BatchProcessService {
       }
       appState.pushDialog({
         type: 'yes-only',
-        text: `${selected.length}개 씬에서 총 ${totalCancelled}개의 예약이 취소되었습니다.`,
+        text: `${selected.length}개 씬에서 총 ${totalCancelled}개의 예약이 제거되었습니다.`,
       });
     };
 
@@ -199,6 +207,29 @@ export class BatchProcessService {
           );
         }
       };
+      // 대상 개수를 세어 확인 창에 보인 뒤 삭제한다(삭제 확인 문구 단일 출처, 2026-10-03 E1).
+      // 실제 대상은 deleteAndReport 가 쓰기 직전에 다시 계산한다. 0장이면 안내만.
+      const confirmDeleteImages = (
+        pick: (scene: GenericScene, paths: string[]) => string[],
+        scope: Parameters<typeof imageDeleteScopeLine>[0],
+      ) => {
+        let count = 0;
+        for (const scene of selected) count += pick(scene, freshPaths(scene)).length;
+        if (count === 0) {
+          appState.pushMessage(NO_IMAGES_TO_DELETE_MESSAGE);
+          return;
+        }
+        appState.pushDialog({
+          type: 'confirm',
+          ...deleteConfirmText({
+            kind: 'image',
+            count,
+            outcome: { trashDays: IMAGE_RETENTION_DAYS },
+            extra: imageDeleteScopeLine({ ...scope, sceneCount: selected.length }),
+          }),
+          callback: () => deleteAndReport(pick),
+        });
+      };
       if (value === 'removeImage') {
         appState.pushDialog({
           type: 'select',
@@ -220,12 +251,7 @@ export class BatchProcessService {
           callback: async (menu) => {
             // 여러 씬 일괄 삭제는 「다시 묻지 않음」과 무관하게 항상 확인한다(X12)
             if (menu === 'all') {
-              appState.pushDialog({
-                type: 'confirm',
-                danger: true,
-                text: `정말로 모든 이미지를 삭제하시겠습니까? (이미지 휴지통으로 이동, ${IMAGE_RETENTION_DAYS}일 보관)`,
-                callback: () => deleteAndReport((_scene, paths) => paths),
-              });
+              confirmDeleteImages((_scene, paths) => paths, {});
             } else if (menu === 'n') {
               appState.pushDialog({
                 type: 'input-confirm',
@@ -237,21 +263,18 @@ export class BatchProcessService {
                     appState.pushMessage(RANK_CUTOFF_INVALID_MESSAGE);
                     return;
                   }
-                  await deleteAndReport((scene, paths) =>
-                    paths.slice(n).filter((x) => !isMain(scene, x)),
+                  // 예전엔 입력만 받고 확인 없이 지웠다 — 개수를 보이고 한 번 확인한다(E1-3)
+                  confirmDeleteImages(
+                    (scene, paths) => paths.slice(n).filter((x) => !isMain(scene, x)),
+                    { rankBelow: n },
                   );
                 },
               });
             } else if (menu === 'fav') {
-              appState.pushDialog({
-                type: 'confirm',
-                danger: true,
-                text: `정말로 즐겨찾기 외 모든 이미지를 삭제하시겠습니까? (이미지 휴지통으로 이동, ${IMAGE_RETENTION_DAYS}일 보관)`,
-                callback: () =>
-                  deleteAndReport((scene, paths) =>
-                    paths.filter((x) => !isMain(scene, x)),
-                  ),
-              });
+              confirmDeleteImages(
+                (scene, paths) => paths.filter((x) => !isMain(scene, x)),
+                { excludeFav: true },
+              );
             }
           },
         });
@@ -416,7 +439,7 @@ export class BatchProcessService {
         { text: '📝 씬 이름 내보내기', value: 'exportSceneNames', group: '씬' },
         { text: '🔤 씬 이름순 정렬', value: 'sortScenes', group: '씬' },
         { text: '🗂️ 씬 일괄 삭제', value: 'deleteScenes', group: '씬' },
-        { text: '⏹️ 예약 일괄 취소', value: 'cancelReservations' },
+        { text: '⏹️ 예약 일괄 제거', value: 'cancelReservations' },
       ];
       if (type === 'inpaint') {
         items.push({ text: '🪞 이미지생성 탭 씬 이미지미러로 복제', value: 'mirrorDuplicate', group: '씬' });

@@ -612,7 +612,7 @@ export class BackupService {
     let done = 0;
     let restored = 0;
     for (const origName of manifest.projects) {
-      appState.setProgressDialog({ text: '프로젝트 복원중..', done, total });
+      appState.setProgressDialog({ text: '프로젝트 불러오는 중..', done, total });
       let pname = origName;
       let j = 2;
       while (sessionService.list().includes(pname)) {
@@ -633,7 +633,7 @@ export class BackupService {
     appState.setProgressDialog(undefined);
     appState.pushDialog({
       type: 'yes-only',
-      text: `폴더 "${folderName}"(으)로 ${restored}/${total}개 프로젝트를 복원했습니다.`,
+      text: `폴더 "${folderName}"(으)로 ${restored}/${total}개 프로젝트를 불러왔습니다.`,
     });
   }
 
@@ -769,14 +769,14 @@ export class BackupService {
       await cleanup();
       return;
     }
-    appState.setProgressDialog({ text: '복원중..', done: 0, total: 1 });
+    appState.setProgressDialog({ text: '백업 불러오는 중..', done: 0, total: 1 });
     let res: { added: number; skipped: number; overwritten: number };
     try {
       res = await opts.restore(root, policy);
     } catch (e: any) {
       appState.setProgressDialog(undefined);
       await cleanup();
-      appState.pushMessage('복원 실패: ' + (e.message || e));
+      appState.pushMessage('백업 불러오기 실패: ' + (e.message || e));
       return;
     }
     appState.setProgressDialog(undefined);
@@ -1160,7 +1160,7 @@ export class BackupService {
     // 단, 이미지 없는 백업(noimg)은 덮어쓰기 금지 — 기존 이미지가 사라지고
     // 이미지 없는 버전으로 대체돼 순손실이 되기 때문.
     const policyItems: DialogItem[] = [
-      { text: '동명은 새 이름 (2)로 복원 (권장)', value: 'rename' },
+      { text: '동명은 새 이름 (2)로 불러오기 (권장)', value: 'rename' },
       { text: '동명은 건너뛰기', value: 'skip' },
     ];
     if (mode !== 'noimg') {
@@ -1246,7 +1246,7 @@ export class BackupService {
             done++;
             continue;
           }
-          appState.setProgressDialog({ text: '프로젝트 복원중..', done, total });
+          appState.setProgressDialog({ text: '프로젝트 불러오는 중..', done, total });
           let pname = origName;
           const exists = sessionService.list().includes(origName);
           if (exists) {
@@ -1324,7 +1324,7 @@ export class BackupService {
         appState.pushDialog({
           type: 'yes-only',
           text:
-            `${restored}/${total}개 프로젝트와 설정을 복원했습니다.` +
+            `${restored}/${total}개 프로젝트와 설정을 불러왔습니다.` +
             (extra.length ? `\n(${extra.join(', ')})` : '') +
             (overwriteBlocked.length
               ? '\n' + FULL_BACKUP_OVERWRITE_TEXT.blockedDetail(overwriteBlocked)
@@ -2267,13 +2267,13 @@ export class BackupService {
 
     const items: { text: string; value: string }[] = [
       {
-        text: `현재 세션의 프리셋으로 가져오기`,
+        text: `현재 세션의 프리셋으로 불러오기`,
         value: 'session',
       },
     ];
     if (isGlobalSupported) {
       items.push({
-        text: '글로벌 프리셋으로 저장',
+        text: '글로벌 프리셋으로 불러오기',
         value: 'global',
       });
     }
@@ -2291,7 +2291,7 @@ export class BackupService {
 
     appState.pushDialog({
       type: 'select',
-      text: `이미지에서 ${presetLabel}프리셋${typeLabel}을(를) 발견했습니다.\n어떻게 가져올까요?`,
+      text: `이미지에서 ${presetLabel}프리셋${typeLabel}을(를) 발견했습니다.\n어떻게 불러올까요?`,
       items,
       callback: async (option?: string) => {
         if (!option) return;
@@ -2305,13 +2305,13 @@ export class BackupService {
               };
               appState.pushDialog({
                 type: 'yes-only',
-                text: `"${preset.name}" 프리셋을 현재 세션에 가져왔습니다.`,
+                text: `"${preset.name}" 프리셋을 현재 세션으로 불러왔습니다.`,
               });
             } else {
               appState.externalImage = base64;
             }
           } catch (e: any) {
-            appState.pushMessage('세션 임포트 실패: ' + (e.message || e));
+            appState.pushMessage('세션으로 불러오기 실패: ' + (e.message || e));
           }
         } else if (option === 'global') {
           try {
@@ -2319,13 +2319,13 @@ export class BackupService {
             if (entry) {
               appState.pushDialog({
                 type: 'yes-only',
-                text: `"${entry.name}" 프리셋을 글로벌 프리셋에 저장했습니다.`,
+                text: `"${entry.name}" 프리셋을 글로벌 프리셋으로 불러왔습니다.`,
               });
             } else {
-              appState.pushMessage('글로벌 프리셋 저장 실패: 유효하지 않은 메타데이터');
+              appState.pushMessage('글로벌 프리셋으로 불러오기 실패: 유효하지 않은 메타데이터');
             }
           } catch (e: any) {
-            appState.pushMessage('글로벌 프리셋 저장 실패: ' + (e.message || e));
+            appState.pushMessage('글로벌 프리셋으로 불러오기 실패: ' + (e.message || e));
           }
         } else if (option === 'extract') {
           appState.externalImage = base64;

@@ -60,7 +60,7 @@ import {
   imageTokenBase,
   isSafeImageToken,
 } from '../models/projectTemplateBackup';
-import { safeImportedImageName } from '../models/deleteFlowRules';
+import { deleteConfirmText, safeImportedImageName } from '../models/deleteFlowRules';
 
 // ─── 캐릭터 프리셋 내보내기/불러오기 ─────────────────────────
 
@@ -433,10 +433,13 @@ const GlobalFolderRow = observer(
 // ─── 메인 프리셋 매니저 (목록/편집 전환) ───────────────────────
 interface CharacterPresetEditorProps {
   onApplyPreset?: (preset: CharacterPreset, mode: 'easy' | 'character') => void;
+  /** 안쪽 편집 폼의 미저장 판정을 바깥 창에 넘기는 자리(2026-10-03 E2-4, CharacterPresetInnerEditor.dirtyRef) */
+  editDirtyRef?: React.MutableRefObject<(() => boolean) | null>;
 }
 
 export const CharacterPresetEditor = observer(({
   onApplyPreset,
+  editDirtyRef,
 }: CharacterPresetEditorProps) => {
   const { curSession } = appState;
   const [editingPreset, setEditingPreset] = useState<CharacterPreset | null>(null);
@@ -699,11 +702,14 @@ export const CharacterPresetEditor = observer(({
     setEditGlobalId(null);
   };
 
+  // 글로벌 프리셋 삭제 확인 창의 덧붙임 줄 — 단건·여러 개 공통
+  const GLOBAL_PRESET_DELETE_EXTRA = '첨부 이미지도 함께 삭제되며, 모든 프로젝트에 영향을 줍니다.';
+
   const handleDelete = (preset: CharacterPreset) => {
     appState.pushDialog({
       type: 'confirm',
-      danger: true,
-      text: `"${preset.name}" 프리셋을 삭제하시겠습니까?`,
+      // 로컬 프리셋은 휴지통 없이 바로 사라진다 — 영구 삭제(Enter 무시, 2026-10-03 E1)
+      ...deleteConfirmText({ kind: 'characterPreset', name: preset.name, outcome: 'permanent' }),
       callback: () => {
         // 삭제하려는 프리셋이 현재 적용 중이면 먼저 해제 (해당 프리셋만 — W4 다중 적용)
         if (appState.appliedCharacterPresetNames.includes(preset.name)) {
@@ -749,7 +755,7 @@ export const CharacterPresetEditor = observer(({
           );
         } catch (err: any) {
           appState.pushMessage(
-            err.message || `"${e.name}" 불러오기에 실패했습니다`,
+            err.message || `"${e.name}"을(를) 프로젝트로 복사하지 못했습니다`,
           );
         }
       }
@@ -811,9 +817,9 @@ export const CharacterPresetEditor = observer(({
         curSession,
         entry.id,
       );
-      appState.pushMessage(`"${p.name}"을(를) 프로젝트로 불러왔습니다`);
+      appState.pushMessage(`"${p.name}"을(를) 프로젝트로 복사했습니다`);
     } catch (e: any) {
-      appState.pushMessage(e.message || '불러오기에 실패했습니다');
+      appState.pushMessage(e.message || '프로젝트로 복사하지 못했습니다');
     }
   };
 
@@ -842,8 +848,12 @@ export const CharacterPresetEditor = observer(({
   const handleDeleteGlobal = (entry: IGlobalCharacterPresetEntry) => {
     appState.pushDialog({
       type: 'confirm',
-      danger: true,
-      text: `글로벌 프리셋 "${entry.name}"을(를) 삭제하시겠습니까?\n(이 작업은 모든 프로젝트에 영향을 줍니다)`,
+      ...deleteConfirmText({
+        kind: 'globalPreset',
+        name: entry.name,
+        outcome: 'permanent',
+        extra: GLOBAL_PRESET_DELETE_EXTRA,
+      }),
       callback: async () => {
         await globalCharacterPresetService.delete(entry.id);
       },
@@ -860,12 +870,20 @@ export const CharacterPresetEditor = observer(({
 
     appState.pushDialog({
       type: 'confirm',
-      // 로컬 프리셋 삭제는 휴지통 없이 바로 사라진다(「복구할 수 없습니다」) — Enter 로 확정하지 않는다
-      danger: globalView ? true : 'permanent',
-      confirmText: globalView ? undefined : '영구 삭제',
-      text: globalView
-        ? `선택한 글로벌 프리셋 ${count}개를 삭제하시겠습니까?\n첨부 이미지도 함께 삭제되며, 이 작업은 모든 프로젝트에 영향을 줍니다.`
-        : `선택한 로컬 프리셋 ${count}개를 삭제하시겠습니까?\n현재 프로젝트에서 삭제되며 복구할 수 없습니다.`,
+      // 글로벌·로컬 모두 휴지통 없이 바로 사라진다 — 영구 삭제(Enter 무시, 2026-10-03 E1)
+      ...(globalView
+        ? deleteConfirmText({
+            kind: 'globalPreset',
+            count,
+            outcome: 'permanent',
+            extra: GLOBAL_PRESET_DELETE_EXTRA,
+          })
+        : deleteConfirmText({
+            kind: 'characterPreset',
+            count,
+            outcome: 'permanent',
+            extra: '현재 프로젝트의 로컬 프리셋입니다.',
+          })),
       callback: async () => {
         if (globalView) {
           const ids = Array.from(selectedGlobalIds);
@@ -912,7 +930,7 @@ export const CharacterPresetEditor = observer(({
         entry.id,
       );
       if (onApplyPreset) onApplyPreset(local, mode);
-      appState.pushMessage(`"${entry.name}"을(를) 불러와 적용했습니다`);
+      appState.pushMessage(`"${entry.name}"을(를) 프로젝트로 복사해 적용했습니다`);
     } catch (e: any) {
       appState.pushMessage(e.message || '적용에 실패했습니다');
     }
@@ -1063,6 +1081,7 @@ export const CharacterPresetEditor = observer(({
         onSave={handleSave}
         onCancel={handleCancel}
         isNew={isNew}
+        dirtyRef={editDirtyRef}
         imageBackend={
           editTarget === 'global'
             ? globalImageBackend
@@ -1202,7 +1221,7 @@ export const CharacterPresetEditor = observer(({
                 onClick={handleSendAllToGlobal}
               >
                 <FaCloudUploadAlt size={11} />
-                {bulkSending ? '보내는 중...' : '모두 글로벌로 보내기'}
+                {bulkSending ? '복사하는 중...' : '모두 글로벌로 복사'}
               </button>
             </Tooltip>
           )}
@@ -1661,7 +1680,7 @@ export const CharacterPresetEditor = observer(({
                       }}
                       className="text-xs btn-link"
                     >
-                      씬 템플릿 가져오기
+                      씬 템플릿을 프로젝트로 복사
                     </button>
                     <button
                       onClick={() => {
@@ -1763,14 +1782,19 @@ export const CharacterPresetModalEditor = observer(({
   onClose,
   onApplyPreset,
 }: CharacterPresetFloatEditorProps) => {
+  // 안쪽 편집 중 변경이 있으면 ✕·바깥 클릭으로 관리 창 전체를 닫을 때 한 번 묻는다(2026-10-03 E2-4).
+  // Esc·뒤로 가기는 안쪽 편집 폼이 먼저 받아 「목록으로」 간다(같은 가드).
+  const editDirtyRef = React.useRef<(() => boolean) | null>(null);
   return (
     <ModalOverlay
       isOpen={true}
       onClose={onClose}
+      dirty={() => editDirtyRef.current?.() ?? false}
       title="캐릭터 프리셋 관리"
       width="max-w-5xl"
     >
       <CharacterPresetEditor
+        editDirtyRef={editDirtyRef}
         onApplyPreset={(preset, mode) => {
           if (onApplyPreset) onApplyPreset(preset, mode);
         }}

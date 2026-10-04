@@ -1,14 +1,18 @@
 // 휴지통 목록 공용 부품 + 씬 휴지통 — 2026-10-02 T1.
 //  · 남아 있는 항목을 개수 제한 없이 전부 렌더하고, 스크롤은 ModalOverlay 내용 영역(overflow-auto)이 맡는다.
-//  · 머리 줄(개수·「모두 비우기」)은 스크롤해도 위에 붙어 있어 긴 목록에서도 개수와 일괄 비우기가 보인다.
+//  · 머리 줄(개수·「휴지통 비우기」)은 스크롤해도 위에 붙어 있어 긴 목록에서도 개수와 일괄 비우기가 보인다.
 //  · 정렬은 models/trashList.sortTrashNewestFirst(최근 삭제 순) — 프로젝트·씬 휴지통 공통.
-//  · 복원·영구 삭제·모두 비우기의 동작은 예전 그대로(TrashService 관문 경유).
+//  · 복원·영구 삭제·휴지통 비우기의 동작은 예전 그대로(TrashService 관문 경유).
 import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { FaTrash, FaTrashRestore } from 'react-icons/fa';
 import { trashService } from '../models';
 import { appState } from '../models/AppService';
-import { batchResultLine, failedNamesLine } from '../models/deleteFlowRules';
+import {
+  batchResultLine,
+  deleteConfirmText,
+  failedNamesLine,
+} from '../models/deleteFlowRules';
 import {
   sceneTrashLabel,
   sortTrashNewestFirst,
@@ -20,8 +24,11 @@ import {
   SCENE_RETENTION_DAYS,
 } from '../models/TrashService';
 
+// 「휴지통 비우기」 확인 창의 덧붙임 줄 — 프로젝트·씬·이미지 휴지통 공통(2026-10-03 E1-5).
+export const EMPTY_TRASH_EXTRA = '휴지통에 있는 항목 전부입니다.';
+
 // 보존 기간 안내 문구(S3) — 기간 숫자는 TrashService 상수가 단일 출처.
-export function trashNoticeText(kind: 'scene' | 'project'): string {
+export function trashNoticeText(kind: 'scene' | 'project' | 'image'): string {
   return trashRetentionNotice(kind, {
     image: IMAGE_RETENTION_DAYS,
     scene: SCENE_RETENTION_DAYS,
@@ -125,7 +132,7 @@ export function TrashList({
           </span>
           <button className="round-button back-red flex-none" onClick={onEmptyAll}>
             <FaTrash className="mr-1" />
-            모두 비우기
+            휴지통 비우기
           </button>
         </div>
         {notice && (
@@ -152,7 +159,7 @@ export function TrashList({
             className="round-button back-red flex-none"
             onClick={() => onPermanentDelete(row.key)}
           >
-            영구삭제
+            영구 삭제
           </button>
         </div>
       ))}
@@ -218,9 +225,11 @@ export function SceneTrashView({ projectName }: { projectName: string }) {
     if (!item) return;
     appState.pushDialog({
       type: 'confirm',
-      danger: 'permanent',
-      confirmText: '영구 삭제',
-      text: `씬 "${item.name}"을(를) 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
+      ...deleteConfirmText({
+        kind: item.type === 'inpaint' ? 'inpaintScene' : 'scene',
+        name: item.name,
+        outcome: 'permanent',
+      }),
       callback: async () => {
         // 일괄 작업 잠금(2026-07-18): 씬 폴더 삭제(이미지 다수)는 무거움 — 전체화면 잠금
         appState.setProgressDialog({
@@ -252,13 +261,16 @@ export function SceneTrashView({ projectName }: { projectName: string }) {
     });
   };
 
-  // 프로젝트 휴지통과 동일하게 "모두 비우기"를 제공(휴지통 3종 기능 일관성).
+  // 프로젝트 휴지통과 동일하게 「휴지통 비우기」를 제공(휴지통 3종 기능 일관성).
   const handleEmptyAll = () => {
     appState.pushDialog({
       type: 'confirm',
-      danger: 'permanent',
-      confirmText: '영구 삭제',
-      text: `휴지통의 모든 씬(${deletedScenes.length}개)을 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
+      ...deleteConfirmText({
+        kind: 'scene',
+        count: deletedScenes.length,
+        outcome: 'permanent',
+        extra: EMPTY_TRASH_EXTRA,
+      }),
       callback: async () => {
         // 일괄 작업 잠금(2026-07-18): 저사양(특히 모바일) 보호 — finally 해제 보장
         const lockText = '씬 휴지통 비우는 중...';

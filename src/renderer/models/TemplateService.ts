@@ -773,13 +773,13 @@ export class TemplateService {
     );
     if (templates.length === 0) {
       appState.pushMessage(
-        '가져올 씬 템플릿이 없습니다. 먼저 "현재 씬 전체로 템플릿 만들기"로 템플릿을 만들어주세요.',
+        '프로젝트로 복사할 씬 템플릿이 없습니다. 먼저 "현재 씬 전체로 템플릿 만들기"로 템플릿을 만들어주세요.',
       );
       return null;
     }
     const tplName = await appState.pushDialogAsync({
       type: 'select',
-      text: '가져올 씬 템플릿을 선택해주세요',
+      text: '프로젝트로 복사할 씬 템플릿을 선택해주세요',
       items: templates.map((n) => ({ text: n, value: n })),
     });
     if (!tplName) return null;
@@ -865,7 +865,7 @@ export class TemplateService {
         `기존 씬을 휴지통으로 옮기지 못해 건너뜀 ${moveFailed.length}개(${moveFailed.slice(0, 5).join(', ')}${moveFailed.length > 5 ? ' 외' : ''})`,
       );
     }
-    appState.pushMessage(`씬 템플릿 가져오기 완료 — ${parts.join(', ')}`);
+    appState.pushMessage(`씬 템플릿을 프로젝트로 복사했습니다 — ${parts.join(', ')}`);
     return importedNames;
   }
 

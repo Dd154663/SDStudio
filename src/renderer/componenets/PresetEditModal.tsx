@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { FaTimes } from 'react-icons/fa';
 import { appState } from '../models/AppService';
@@ -7,7 +7,7 @@ import { Sampling, NoiseSchedule } from '../backends/imageGen';
 import PromptEditTextArea from './PromptEditTextArea';
 import { FileUploadBase64 } from './UtilComponents';
 import { useBackLayer } from '../models/BackStackService';
-import { useBackdropClose } from './backdropClose';
+import { useBackdropClose, useGuardedClose } from './backdropClose';
 
 // 스타일 프리셋 편집 모달 — 이름/대표이미지/프롬프트/샘플링 설정 수정.
 // GlobalPresetTab 의 편집 모달을 어댑터 기반으로 추출한 단일 출처:
@@ -98,6 +98,24 @@ export const PresetEditModal = observer(
     const [newRepImage, setNewRepImage] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
 
+    // 미저장 가드(2026-10-03 E2-3·E2-4): 처음 값과 달라졌거나 새 대표 이미지를 골랐으면 「변경 있음」.
+    const formSnapshot = () =>
+      JSON.stringify([
+        name,
+        frontPrompt,
+        backPrompt,
+        uc,
+        steps,
+        promptGuidance,
+        cfgRescale,
+        sampling,
+        noiseSchedule,
+      ]);
+    const initialSnapshot = useRef<string | null>(null);
+    if (initialSnapshot.current === null) initialSnapshot.current = formSnapshot();
+    const isDirty = () =>
+      newRepImage !== null || formSnapshot() !== initialSnapshot.current;
+
     const save = async () => {
       if (saving) return;
       const nm = name.trim();
@@ -122,6 +140,7 @@ export const PresetEditModal = observer(
           newRepImage,
         );
         appState.pushMessage('저장되었습니다.');
+        // 저장 뒤 닫기는 미저장 가드를 거치지 않는다
         onClose();
       } catch (e: any) {
         appState.pushMessage(e.message || '저장 실패');
@@ -135,8 +154,11 @@ export const PresetEditModal = observer(
 
     // Esc·Android 뒤로 가기로 닫기(SPEC §5 — 예전엔 뒤로 가기가 앱을 최소화), 바깥 클릭은 누름·뗌 모두
     // 배경일 때만(프롬프트 글자를 드래그 선택하다 바깥에서 떼도 닫히지 않게). 2026-10-03 U1·X6.
-    useBackLayer(true, onClose);
-    const backdrop = useBackdropClose(onClose);
+    // ✕·바깥 클릭·Esc/뒤로 가기·[취소] 는 모두 미저장 가드를 거친다(E2-3). 프롬프트 칸의 Esc 는 먼저
+    // 자동완성을 닫고(닫기 관문이 입력칸 Esc 를 버블 단계로 미룸), 그다음 Esc 가 이 닫기 요청으로 온다.
+    const requestClose = useGuardedClose(isDirty, onClose);
+    useBackLayer(true, requestClose);
+    const backdrop = useBackdropClose(requestClose);
 
     return (
       <div
@@ -149,7 +171,11 @@ export const PresetEditModal = observer(
         >
           <div className="flex items-center justify-between mb-3 flex-none">
             <h2 className="text-lg font-bold">{title}</h2>
-            <button className="icon-button p-2 text-default" onClick={onClose}>
+            <button
+              className="icon-button p-2 text-default"
+              onClick={requestClose}
+              aria-label="닫기"
+            >
               <FaTimes size={20} />
             </button>
           </div>
@@ -284,7 +310,7 @@ export const PresetEditModal = observer(
             >
               {saving ? '저장 중...' : '저장'}
             </button>
-            <button className="round-button back-gray px-4 py-2" onClick={onClose}>
+            <button className="round-button back-gray px-4 py-2" onClick={requestClose}>
               취소
             </button>
           </div>

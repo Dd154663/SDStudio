@@ -327,7 +327,7 @@ export class ProjectTemplateService extends EventTarget {
     const target = this.get(targetId);
     if (!target) throw new Error('템플릿을 찾을 수 없습니다');
     const src = this.get(sourceId);
-    if (!src) throw new Error('불러올 템플릿을 찾을 수 없습니다');
+    if (!src) throw new Error('복사해 올 템플릿을 찾을 수 없습니다');
     for (const token of this.collectImageTokens(target)) {
       await this.deleteImageData(token);
     }

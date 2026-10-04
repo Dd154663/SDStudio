@@ -529,7 +529,7 @@ export const GlobalCharacterPresetCard = observer(({
         </div>
         <div className={`absolute top-0 left-0 right-0 flex flex-wrap justify-center items-center gap-1 z-20 py-1.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200 ${cyclingMode ? 'hidden' : ''}`}>
           {isEasyMode && (
-            <Tooltip content="불러와서 이지모드 적용">
+            <Tooltip content="프로젝트로 복사해 이지모드 적용">
               <button
                 className="w-8 h-8 rounded-full btn-solid-sky flex items-center justify-center shadow-lg transition-colors"
                 onClick={(e) => { e.stopPropagation(); onApplyEasy(); }}
@@ -538,7 +538,7 @@ export const GlobalCharacterPresetCard = observer(({
               </button>
             </Tooltip>
           )}
-          <Tooltip content="불러와서 캐릭터 프롬프트 적용">
+          <Tooltip content="프로젝트로 복사해 캐릭터 프롬프트 적용">
             <button
               className="w-8 h-8 rounded-full btn-solid-yellow flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onApplyCharacter(); }}
@@ -546,7 +546,7 @@ export const GlobalCharacterPresetCard = observer(({
               <FaUserAlt size={12} />
             </button>
           </Tooltip>
-          <Tooltip content="프로젝트로 불러오기">
+          <Tooltip content="프로젝트로 복사">
             <button
               className="w-8 h-8 rounded-full btn-solid-purple flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onLoad(); }}

@@ -13,6 +13,8 @@ import { FaTimes } from 'react-icons/fa';
 import { isMobile } from '../models';
 import { appState } from '../models/AppService';
 import { backStackService, BackStackHandle } from '../models/BackStackService';
+import { GuardedCloseState, runGuardedClose } from '../models/escapeGate';
+import { confirmDiscardChanges } from './backdropClose';
 
 // 창 배치 'cover'(기본)일 때 오버레이를 포털로 옮겨 붙일 앵커의 DOM id.
 // App.tsx 도크 행의 "넓은 앵커"(프로젝트/프리셋/중앙을 감싸는 래퍼)가 이 id 를
@@ -30,6 +32,8 @@ interface FloatView {
   // BottomBar 가 실행 컨트롤을 숨겨 버튼 중복 노출을 막는다(showToolbar 와 대칭 계약).
   ownsGenControl?: boolean;
   onEscape?: () => void;
+  // 미저장 가드(2026-10-03 E2-3) — 참이면 ✕·Esc·뒤로 가기로 닫을 때 「버리고 닫을까요?」를 묻는다
+  dirty?: () => boolean;
 }
 
 interface FloatViewContextProps {
@@ -66,6 +70,26 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = observer(({
   // ownsGenControl 뷰 id 집합 — setViews 업데이터 밖에서 증감을 처리하기 위한 장부.
   const genControlOwnerIds = useRef<Set<number>>(new Set());
 
+  // 뷰별 미저장 가드 상태(확인 창이 떠 있는 동안 중복 요청 차단)
+  const guardStates = useRef<Map<number, GuardedCloseState>>(new Map());
+
+  // 닫기 요청 — 좌상단 ✕·Esc·뒤로 가기 공통(2026-10-03 E2-3). view 는 updateView 가 제자리에서
+  // 갱신하므로 늦게 읽으면 최신 onEscape·dirty 를 쓴다. dirty 가 없으면 곧바로 onEscape(예전과 같음).
+  const requestCloseView = (view: FloatView) => {
+    if (!view.onEscape) return;
+    let state = guardStates.current.get(view.id);
+    if (!state) {
+      state = { pending: false };
+      guardStates.current.set(view.id, state);
+    }
+    void runGuardedClose(
+      state,
+      view.dirty,
+      () => view.onEscape?.(),
+      confirmDiscardChanges,
+    );
+  };
+
   const registerView = (view: FloatView) => {
     setViews((prevViews) => [...prevViews, view].sort((a, b) => b.id - a.id));
     appState.incrementFloatView();
@@ -76,7 +100,7 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = observer(({
     // view 객체는 updateView 가 제자리에서 갱신하므로 여기서 늦게 읽으면 최신 onEscape 가 불린다
     backHandles.current.set(
       view.id,
-      backStackService.push(() => view.onEscape?.()),
+      backStackService.push(() => requestCloseView(view)),
     );
   };
 
@@ -103,13 +127,12 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = observer(({
       handle.remove();
       backHandles.current.delete(id);
     }
+    guardStates.current.delete(id);
   };
 
   const closeTopView = () => {
     const topView = views[0];
-    if (topView && topView.onEscape) {
-      topView.onEscape();
-    }
+    if (topView) requestCloseView(topView);
   };
 
   // Esc 는 닫기 관문(BackStackService)이 맨 위 항목만 처리한다 — 위 registerView 의 push 가 뒤로 가기와
@@ -139,8 +162,10 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = observer(({
         >
           <div className="flex flex-col h-full w-full">
             <div className="flex-none border-b line-color">
+              {/* 전체 화면 보기의 닫기 = 좌상단 「뒤로」 ✕ 하나(모달은 우상단 — SPEC §5 닫기 규칙, 2026-10-03 E2-1) */}
               <button
                 className="text-default button"
+                aria-label="뒤로"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -180,12 +205,13 @@ interface FloatViewProps {
   showToolbar?: boolean;
   ownsGenControl?: boolean;
   onEscape?: () => void;
+  dirty?: () => boolean;
 }
 
 let viewId = 0;
 
 export const FloatView: React.FC<FloatViewProps> = memo(
-  ({ children, priority, showToolbar, ownsGenControl, onEscape }) => {
+  ({ children, priority, showToolbar, ownsGenControl, onEscape, dirty }) => {
     const { registerView, unregisterView, updateView } = useFloatView();
     const id = useRef(++viewId);
     const mounted = useRef(false);
@@ -196,6 +222,7 @@ export const FloatView: React.FC<FloatViewProps> = memo(
         component: children,
         priority,
         onEscape,
+        dirty,
         showToolbar,
         ownsGenControl,
       };
@@ -207,8 +234,8 @@ export const FloatView: React.FC<FloatViewProps> = memo(
     // 부모가 다시 그리면 오버레이 내용도 따라간다(children 은 렌더마다 새 요소라 매 렌더 갱신 — 제자리 갱신이라 가볍다)
     useEffect(() => {
       if (!mounted.current) return;
-      updateView(id.current, { component: children, onEscape, showToolbar });
-    }, [children, onEscape, showToolbar]);
+      updateView(id.current, { component: children, onEscape, dirty, showToolbar });
+    }, [children, onEscape, dirty, showToolbar]);
 
     return null;
   },

@@ -47,7 +47,7 @@ const ACTIONS: ShortcutAction[] = [
   { id: 'scene-clear-select', label: '선택 모드 취소', category: 'scene', defaultKey: 'Ctrl+X' },
   { id: 'scene-toggle-bookmark', label: '씬 북마크 토글', category: 'scene', defaultKey: 'Ctrl+B' },
   { id: 'queue-run', label: '예약 실행', category: 'scene', defaultKey: 'Space' },
-  { id: 'queue-clear', label: '모든 씬 예약 취소', category: 'scene', defaultKey: 'Ctrl+D' },
+  { id: 'queue-clear', label: '모든 예약 제거', category: 'scene', defaultKey: 'Ctrl+D' },
 
   // 전역 액션
   { id: 'tab-1', label: '이미지생성 탭', category: 'global', defaultKey: 'Ctrl+1' },

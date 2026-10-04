@@ -10,6 +10,7 @@ import {
   templateService,
 } from '../models';
 import { appState } from '../models/AppService';
+import { deleteConfirmText } from '../models/deleteFlowRules';
 import HelpIcon from './HelpIcon';
 
 // 프로젝트 상속 v2 (2026-07-16 합의) — 폴더 기본 템플릿 / 수동 재적용 모달.
@@ -107,7 +108,7 @@ export const FolderTemplateModal = observer(
       }
       const id = await appState.pushDialogAsync({
         type: 'select',
-        text: '어떤 전역 템플릿을 불러올까요? (현재 구성 전체를 1회 덮어씁니다)',
+        text: '어떤 전역 템플릿에서 복사해 올까요? (현재 구성 전체를 1회 덮어씁니다)',
         // 고르는 즉시 현재 구성 전체를 덮어쓴다 — 선택지 모두 빨강(D1)
         items: globals.map((t) => ({ text: t.name, value: t.id, danger: true })),
       });
@@ -116,10 +117,10 @@ export const FolderTemplateModal = observer(
         await projectTemplateService.overwriteFromTemplate(entry.id, id);
         setSyncSignal((s) => s + 1);
         appState.pushMessage(
-          '전역 템플릿 구성을 불러왔습니다. 이 폴더 전용으로 자유롭게 세부 조정할 수 있습니다.',
+          '전역 템플릿 구성을 복사해 왔습니다. 이 폴더 전용으로 자유롭게 세부 조정할 수 있습니다.',
         );
       } catch (e: any) {
-        appState.pushMessage(e.message || '불러오기에 실패했습니다.');
+        appState.pushMessage(e.message || '복사하지 못했습니다.');
       }
     };
 
@@ -127,8 +128,12 @@ export const FolderTemplateModal = observer(
       if (!localId) return;
       appState.pushDialog({
         type: 'confirm',
-        danger: true,
-        text: `"${folder}" 폴더의 기본 템플릿 지정을 해제하시겠습니까?\n(이 폴더 전용 템플릿 구성도 삭제됩니다)`,
+        // 이 폴더 전용 템플릿 구성이 지워진다(휴지통 없음) — 영구 삭제(Enter 무시, 2026-10-03 E1)
+        ...deleteConfirmText({
+          kind: 'template',
+          outcome: 'permanent',
+          extra: `"${folder}" 폴더 전용 템플릿 구성이며, 폴더의 기본 템플릿 지정도 해제됩니다.`,
+        }),
         callback: async () => {
           await projectTemplateService.delete(localId);
           appState.pushMessage(
@@ -218,7 +223,7 @@ export const FolderTemplateModal = observer(
             <>
               <p className="text-sm text-muted">
                 이 폴더(하위 폴더 포함)에서 새 프로젝트를 만들 때 아래 구성이
-                자동 적용됩니다. 전역 템플릿을 불러온 뒤 이 폴더 전용으로 세부
+                자동 적용됩니다. 전역 템플릿을 복사해 온 뒤 이 폴더 전용으로 세부
                 조정할 수 있고(전역 원본에는 영향 없음), 아무것도 세팅하지 않고
                 닫으면 지정이 해제됩니다.
               </p>
@@ -228,7 +233,7 @@ export const FolderTemplateModal = observer(
                   onClick={importGlobalTemplate}
                 >
                   <FaCloudDownloadAlt className="inline mr-1.5" size={12} />
-                  전역 템플릿 불러오기
+                  전역 템플릿에서 복사
                 </button>
                 <button
                   className="px-3 py-1.5 rounded-lg text-sm btn-solid-red"

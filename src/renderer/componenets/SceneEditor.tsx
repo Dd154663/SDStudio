@@ -87,7 +87,12 @@ import {
 } from '../models/types';
 import { appState } from '../models/AppService';
 import { validateName } from '../models/nameInput';
-import { DELETE_RESULT_TEXT, runTrashDelete } from '../models/deleteFlowRules';
+import {
+  DELETE_RESULT_TEXT,
+  deleteConfirmText,
+  runTrashDelete,
+} from '../models/deleteFlowRules';
+import { SCENE_RETENTION_DAYS } from '../models/TrashService';
 import { promptCustomResolution } from '../models/customResolutionPrompt';
 import { observer } from 'mobx-react-lite';
 import {
@@ -1804,8 +1809,11 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
   const confirmDelete = () => {
               appState.pushDialog({
                 type: 'confirm',
-                danger: true,
-                text: '정말로 해당 씬을 삭제하시겠습니까? (휴지통으로 이동)',
+                ...deleteConfirmText({
+                  kind: 'scene',
+                  name: scene.name,
+                  outcome: { trashDays: SCENE_RETENTION_DAYS },
+                }),
                 callback: async () => {
                   const { trashService } = await import('../models');
                   // 휴지통 이동 실패면 씬이 그대로 남는다(2026-10-02 S1) — 알리고 편집 창은 닫지 않는다.

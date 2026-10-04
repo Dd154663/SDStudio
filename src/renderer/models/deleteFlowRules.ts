@@ -6,6 +6,124 @@
 //  · 이미지 그리드 선택 모드의 「삭제」는 선택한 이미지만 지운다(씬 전체 삭제 메뉴를 열지 않는다).
 //  · 삭제 결과는 실제로 사라졌는지 확인한 뒤에 안내한다(다른 창 잠금으로 조용히 돌아오면 실패로 셈 — SPEC §8).
 
+import type { ConfirmDanger } from './confirmKeys';
+import { josaEulReul, NAME_KIND_LABEL, type NameKind } from './nameInput';
+
+// ── 삭제 확인 문구 — 단일 출처(2026-10-03 E1, SPEC_GUIDE §8 「삭제 확인 문구」) ──
+//
+// 삭제 확인 창의 본문·[확인] 라벨·위험도는 이 함수 하나로 만든다(호출부에서 「정말로 삭제…」 직접 작성 금지 — specGuard).
+//  · 휴지통으로 가는 삭제: 「{대상}을(를) 삭제할까요? / 휴지통으로 이동되어 N일 동안 복원할 수 있습니다.」
+//    [삭제] · danger true(Enter = 확인). N 은 호출부가 TrashService 의 보존 일수 상수로 넘긴다(리터럴 금지).
+//  · 되돌릴 수 없는 삭제: 「{대상}을(를) 영구 삭제할까요? / 이 작업은 되돌릴 수 없습니다.」
+//    [영구 삭제] · danger 'permanent'(Enter 무시 — 버튼을 직접 눌러야 한다).
+//  · 대상: 단건 「{종류} "{이름}"」(이름 없으면 「이 {종류}」), 복수 「{종류} {count}개」(이미지 장·작가 명).
+//  · extra: 본문 끝에 덧붙일 줄(첨부 이미지도 함께 삭제됨·모든 프로젝트에 영향 등).
+
+export type DeleteTargetKind = NameKind;
+
+export type DeleteOutcome = { trashDays: number } | 'permanent';
+
+export interface DeleteConfirmInput {
+  kind: DeleteTargetKind;
+  /** 단건 대상의 이름(없으면 「이 {종류}」) */
+  name?: string;
+  /** 여러 개 — 주면 이름 대신 개수로 적는다 */
+  count?: number;
+  outcome: DeleteOutcome;
+  /** 본문 끝에 덧붙일 안내(줄 단위) */
+  extra?: string;
+}
+
+export interface DeleteConfirmText {
+  text: string;
+  confirmText: string;
+  danger: ConfirmDanger;
+}
+
+/** 개수 단위 — 기본 「개」. */
+const DELETE_COUNT_UNIT: Partial<Record<DeleteTargetKind, string>> = {
+  image: '장',
+  sampleImage: '장',
+  artist: '명',
+};
+
+/** 문구의 대상 부분(「씬 "이름"」·「이미지 3장」·「이 조각그룹」)과 그 뒤에 붙일 을/를. */
+export function deleteTargetPhrase(
+  kind: DeleteTargetKind,
+  name?: string,
+  count?: number,
+): { phrase: string; josa: string } {
+  const label = NAME_KIND_LABEL[kind];
+  if (count !== undefined) {
+    const unit = DELETE_COUNT_UNIT[kind] ?? '개';
+    const phrase = `${label} ${count}${unit}`;
+    return { phrase, josa: josaEulReul(unit) };
+  }
+  if (name !== undefined && name !== '') {
+    return { phrase: `${label} "${name}"`, josa: josaEulReul(name) };
+  }
+  return { phrase: `이 ${label}`, josa: josaEulReul(label) };
+}
+
+export const DELETE_CONFIRM_LABEL = {
+  trash: '삭제',
+  permanent: '영구 삭제',
+} as const;
+
+export function deleteConfirmText(input: DeleteConfirmInput): DeleteConfirmText {
+  const { phrase, josa } = deleteTargetPhrase(input.kind, input.name, input.count);
+  const tail = input.extra ? `\n${input.extra}` : '';
+  if (input.outcome === 'permanent') {
+    return {
+      text: `${phrase}${josa} 영구 삭제할까요?\n이 작업은 되돌릴 수 없습니다.${tail}`,
+      confirmText: DELETE_CONFIRM_LABEL.permanent,
+      danger: 'permanent',
+    };
+  }
+  return {
+    text: `${phrase}${josa} 삭제할까요?\n휴지통으로 이동되어 ${input.outcome.trashDays}일 동안 복원할 수 있습니다.${tail}`,
+    confirmText: DELETE_CONFIRM_LABEL.trash,
+    danger: true,
+  };
+}
+
+/**
+ * 템플릿 첨부(캐릭터 프리셋·바이브·레퍼런스) 제거 확인(2026-10-03 E1-4) — 제거하면 딸린 이미지 파일이 바로
+ * 영구 삭제된다(ProjectTemplateService.deleteImageData). 첨부를 빼는 흐름이라 [제거]·danger true(Enter 허용).
+ */
+export function attachmentRemoveConfirmText(input: {
+  what: '이미지' | '캐릭터 프리셋';
+  name: string;
+}): DeleteConfirmText {
+  const tail =
+    input.what === '이미지'
+      ? '파일이 영구 삭제됩니다.'
+      : '딸린 이미지 파일이 영구 삭제됩니다.';
+  return {
+    text: `첨부 ${input.what} "${input.name}"${josaEulReul(input.name)} 제거할까요?\n${tail}`,
+    confirmText: '제거',
+    danger: true,
+  };
+}
+
+/**
+ * 여러 장 이미지 삭제 확인 창의 범위 줄(deleteConfirmText 의 extra) — 「대상: 씬 3개 · 5등 이하 · 즐겨찾기 제외」.
+ * n등 이하 삭제는 즐겨찾기를 늘 빼므로 「즐겨찾기 제외」를 함께 적는다. 덧붙일 것이 없으면 undefined.
+ */
+export function imageDeleteScopeLine(scope: {
+  sceneCount?: number;
+  excludeFav?: boolean;
+  rankBelow?: number;
+}): string | undefined {
+  const parts: string[] = [];
+  if (scope.sceneCount !== undefined) parts.push(`씬 ${scope.sceneCount}개`);
+  if (scope.rankBelow !== undefined) parts.push(`${scope.rankBelow}등 이하`);
+  if (scope.excludeFav || scope.rankBelow !== undefined) parts.push('즐겨찾기 제외');
+  return parts.length > 0 ? `대상: ${parts.join(' · ')}` : undefined;
+}
+
+export const NO_IMAGES_TO_DELETE_MESSAGE = '삭제할 이미지가 없습니다.';
+
 // ── 이미지 삭제 확인 규칙 ──
 
 /** 확인 창을 건너뛰어도 되는가 — 「다시 묻지 않음」이 켜져 있고 **정확히 1장**일 때만. */
@@ -21,12 +139,16 @@ export function showImageDeleteSkipOption(count: number): boolean {
   return count === 1;
 }
 
-/** 선택한 이미지 삭제 확인 문구. */
+/** 선택한 이미지 삭제 확인 문구 — deleteConfirmText 로 위임(2026-10-03 E1). */
 export function selectedImagesDeleteText(
   count: number,
   retentionDays: number,
 ): string {
-  return `선택한 ${count}장을 삭제할까요? (이미지 휴지통으로 이동, ${retentionDays}일 보관)`;
+  return deleteConfirmText({
+    kind: 'image',
+    count,
+    outcome: { trashDays: retentionDays },
+  }).text;
 }
 
 export const NO_SELECTED_IMAGES_MESSAGE = '선택된 이미지가 없습니다.';
@@ -263,7 +385,7 @@ export function sceneImportOverwriteText(
   limit = 5,
 ): string {
   return (
-    `같은 이름의 씬 ${overlapping.length}개(${failedNamesLine(overlapping, limit)})의 프롬프트 구성과 해상도를 가져온 내용으로 바꿉니다.\n` +
+    `같은 이름의 씬 ${overlapping.length}개(${failedNamesLine(overlapping, limit)})의 프롬프트 구성과 해상도를 불러온 내용으로 바꿉니다.\n` +
     '기존 씬의 프롬프트 구성이 바뀝니다. 되돌릴 수 없습니다.\n계속할까요?'
   );
 }

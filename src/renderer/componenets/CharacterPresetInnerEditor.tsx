@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import {
   FaArrowLeft,
@@ -17,6 +17,8 @@ import PromptEditTextArea from './PromptEditTextArea';
 import { getRefDefaults } from './CharacterReferenceEditor';
 import { EditableSliderValue } from './VibeEditor';
 import { PresetImageBackend, VibeImage } from './CharacterPresetCards';
+import { useBackLayer } from '../models/BackStackService';
+import { useGuardedClose } from './backdropClose';
 
 // CharacterPresetEditor.tsx 에서 분리된 프리셋 편집 폼.
 // ─── 편집 폼 ─────────────────────────────────────────────────
@@ -26,6 +28,13 @@ interface CharacterPresetInnerEditorProps {
   onCancel: () => void;
   isNew: boolean;
   imageBackend: PresetImageBackend;
+  /**
+   * 미저장 판정을 바깥 창(캐릭터 프리셋 관리 ModalOverlay 의 dirty)에 알려 주는 자리(2026-10-03 E2-4).
+   * 편집 중에는 「처음 값과 다른가」 함수를, 편집이 끝나면(언마운트) null 을 넣는다.
+   * 이 prop 을 준 곳(캐릭터 프리셋 관리)만 미저장 가드·「목록으로」 닫기 층이 켜진다 — 일괄 생성·템플릿 관리의
+   * 인라인 편집은 예전 그대로.
+   */
+  dirtyRef?: React.MutableRefObject<(() => boolean) | null>;
 }
 
 export const CharacterPresetInnerEditor = observer(({
@@ -34,6 +43,7 @@ export const CharacterPresetInnerEditor = observer(({
   onCancel,
   isNew,
   imageBackend,
+  dirtyRef,
 }: CharacterPresetInnerEditorProps) => {
   const [name, setName] = useState(preset.name);
   const [characterPrompt, setCharacterPrompt] = useState(preset.characterPrompt);
@@ -52,6 +62,35 @@ export const CharacterPresetInnerEditor = observer(({
   );
   // 대표 이미지 선택 모드
   const [showRepImagePicker, setShowRepImagePicker] = useState(false);
+
+  // ── 미저장 가드(2026-10-03 E2-3·E2-4) ──
+  // 저장 대상 필드의 처음 값과 비교한다(바이브·레퍼런스는 toJSON 으로 비교).
+  const formSnapshot = () =>
+    JSON.stringify({
+      name,
+      characterPrompt,
+      characterUC,
+      vibes,
+      characterReferences,
+      representativeImage,
+      filenamePrefix,
+      filenameSuffix,
+    });
+  const initialSnapshot = useRef<string | null>(null);
+  if (initialSnapshot.current === null) initialSnapshot.current = formSnapshot();
+  const isDirty = () => formSnapshot() !== initialSnapshot.current;
+  if (dirtyRef) dirtyRef.current = isDirty;
+  useEffect(
+    () => () => {
+      if (dirtyRef) dirtyRef.current = null;
+    },
+    [dirtyRef],
+  );
+  // 안쪽 편집의 Esc·뒤로 가기·「돌아가기」·[취소] = 목록으로(편집 폼 자체가 한 겹 — 관리 창 전체를 닫지 않는다).
+  // 변경이 있으면 「버리고 닫을까요?」 확인 뒤 목록으로. 이름 칸 등 data-esc-cancel 입력칸의 Esc 는 그 칸이 처리한다.
+  const guarded = !!dirtyRef;
+  const requestBackToList = useGuardedClose(guarded ? isDirty : undefined, onCancel);
+  useBackLayer(guarded, requestBackToList);
 
   // 바이브 이미지 추가
   const handleVibeChange = async (vibe: string) => {
@@ -187,7 +226,7 @@ export const CharacterPresetInnerEditor = observer(({
       <div className="flex items-center mb-4">
         <button
           className="flex items-center gap-1.5 text-sm text-muted hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
-          onClick={onCancel}
+          onClick={requestBackToList}
         >
           <FaArrowLeft size={12} />
           돌아가기
@@ -535,7 +574,7 @@ export const CharacterPresetInnerEditor = observer(({
         </button>
         <button
           className="flex-1 px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
-          onClick={onCancel}
+          onClick={requestBackToList}
         >
           취소
         </button>

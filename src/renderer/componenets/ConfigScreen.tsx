@@ -31,6 +31,7 @@ import { applyCompanionSlots } from './CompanionDnd';
 import { observer } from 'mobx-react-lite';
 import { appState } from '../models/AppService';
 import { promptName, validateName } from '../models/nameInput';
+import { deleteConfirmText } from '../models/deleteFlowRules';
 import { TaskLog } from '../models/TaskQueueService';
 import {
   formatDelaySeconds,
@@ -224,10 +225,13 @@ const LoginTab = ({
   const deleteProfile = (profile: LoginTokenProfile) => {
     appState.pushDialog({
       type: 'confirm',
-      danger: true,
-      text:
-        `${profile.name} 토큰 프리셋을 삭제하시겠습니까?\n` +
-        '현재 로그인 토큰은 삭제하거나 로그아웃하지 않습니다.',
+      // 휴지통이 없다 — 영구 삭제(Enter 무시, 2026-10-03 E1)
+      ...deleteConfirmText({
+        kind: 'token',
+        name: profile.name,
+        outcome: 'permanent',
+        extra: '현재 로그인 토큰은 삭제하거나 로그아웃하지 않습니다.',
+      }),
       callback: async () => {
         setProfileBusy(true);
         try {
@@ -2022,7 +2026,7 @@ const CustomizationTab = ({
         </div>
         <p className="text-xs text-muted mb-2">
           현재 색 구성과 기본 테마(다크/화이트)를 스냅샷으로 저장합니다. 칩을
-          누르면 저장 당시 모습 그대로 복원되고, <b>저장</b>해야 앱에 적용됩니다.
+          누르면 저장 당시 구성이 그대로 적용되고, <b>저장</b>해야 앱에 반영됩니다.
         </p>
         {presets.length === 0 ? (
           <div className="text-xs text-faint">
@@ -2038,8 +2042,11 @@ const CustomizationTab = ({
                 onDelete={() => {
                   appState.pushDialog({
                     type: 'confirm',
-                    danger: true,
-                    text: `"${p.name}" 프리셋을 삭제하시겠습니까?`,
+                    ...deleteConfirmText({
+                      kind: 'themePreset',
+                      name: p.name,
+                      outcome: 'permanent',
+                    }),
                     callback: () => {
                       setUiThemePresets(
                         presets.filter(

@@ -2,7 +2,10 @@
 // 의존성이 없는 모듈이라 mock 없이 직접 import 한다(isSafeImageToken 도 순수).
 
 import {
+  attachmentRemoveConfirmText,
   batchResultLine,
+  deleteConfirmText,
+  imageDeleteScopeLine,
   checkInpaintSceneRename,
   failedNamesLine,
   overlappingSceneNames,
@@ -50,9 +53,9 @@ describe('이미지 그리드 「삭제」 대상(X3)', () => {
       kind: 'empty-selection',
     });
   });
-  it('확인 문구에 장수와 보관 기간', () => {
+  it('확인 문구에 장수와 보관 기간(deleteConfirmText 로 위임, E1)', () => {
     expect(selectedImagesDeleteText(3, 3)).toBe(
-      '선택한 3장을 삭제할까요? (이미지 휴지통으로 이동, 3일 보관)',
+      '이미지 3장을 삭제할까요?\n휴지통으로 이동되어 3일 동안 복원할 수 있습니다.',
     );
   });
 });
@@ -186,6 +189,85 @@ describe('변형 씬 이름 확정(X15a)', () => {
   });
   it('정상 이름은 끝 공백을 뗀 이름으로', () => {
     expect(checkInpaintSceneRename('A', 'D ', exists)).toEqual({ kind: 'ok', name: 'D' });
+  });
+});
+
+describe('삭제 확인 문구 단일 출처 deleteConfirmText(E1)', () => {
+  it('휴지통 — 단건 이름·[삭제]·danger true·전달한 보존 일수', () => {
+    expect(deleteConfirmText({ kind: 'scene', name: '숲', outcome: { trashDays: 14 } })).toEqual({
+      text: '씬 "숲"을 삭제할까요?\n휴지통으로 이동되어 14일 동안 복원할 수 있습니다.',
+      confirmText: '삭제',
+      danger: true,
+    });
+    expect(
+      deleteConfirmText({ kind: 'project', name: '바다', outcome: { trashDays: 30 } }).text,
+    ).toBe('프로젝트 "바다"를 삭제할까요?\n휴지통으로 이동되어 30일 동안 복원할 수 있습니다.');
+  });
+  it('영구 — [영구 삭제]·danger permanent(Enter 무시)·되돌릴 수 없음', () => {
+    expect(deleteConfirmText({ kind: 'pieceGroup', name: 'abc', outcome: 'permanent' })).toEqual({
+      text: '조각그룹 "abc"을(를) 영구 삭제할까요?\n이 작업은 되돌릴 수 없습니다.',
+      confirmText: '영구 삭제',
+      danger: 'permanent',
+    });
+  });
+  it('이름 없으면 「이 {종류}」, 복수는 개수(이미지 장·작가 명·그 밖 개)', () => {
+    expect(deleteConfirmText({ kind: 'image', outcome: { trashDays: 3 } }).text).toBe(
+      '이 이미지를 삭제할까요?\n휴지통으로 이동되어 3일 동안 복원할 수 있습니다.',
+    );
+    expect(deleteConfirmText({ kind: 'image', count: 5, outcome: 'permanent' }).text).toMatch(
+      /^이미지 5장을 영구 삭제할까요\?/,
+    );
+    expect(deleteConfirmText({ kind: 'artist', count: 2, outcome: 'permanent' }).text).toMatch(
+      /^작가 2명을 영구 삭제할까요\?/,
+    );
+    expect(
+      deleteConfirmText({ kind: 'globalPreset', count: 4, outcome: 'permanent' }).text,
+    ).toMatch(/^글로벌 프리셋 4개를 영구 삭제할까요\?/);
+    expect(
+      deleteConfirmText({ kind: 'inpaintScene', count: 2, outcome: { trashDays: 14 } }).text,
+    ).toMatch(/^변형 씬 2개를 삭제할까요\?/);
+  });
+  it('extra 는 본문 끝 줄', () => {
+    const r = deleteConfirmText({
+      kind: 'artist',
+      name: '작가A',
+      outcome: 'permanent',
+      extra: '첨부된 이미지도 함께 삭제됩니다.',
+    });
+    expect(r.text.split('\n')).toEqual([
+      '작가 "작가A"을(를) 영구 삭제할까요?',
+      '이 작업은 되돌릴 수 없습니다.',
+      '첨부된 이미지도 함께 삭제됩니다.',
+    ]);
+  });
+  it('여러 장 이미지 범위 줄 — n등 이하는 즐겨찾기 제외를 함께', () => {
+    expect(imageDeleteScopeLine({})).toBeUndefined();
+    expect(imageDeleteScopeLine({ excludeFav: true })).toBe('대상: 즐겨찾기 제외');
+    expect(imageDeleteScopeLine({ rankBelow: 5 })).toBe('대상: 5등 이하 · 즐겨찾기 제외');
+    expect(imageDeleteScopeLine({ sceneCount: 3, rankBelow: 2 })).toBe(
+      '대상: 씬 3개 · 2등 이하 · 즐겨찾기 제외',
+    );
+    // n등 이하 확인 창(E1-3) — 개수·범위가 함께 보인다
+    const t = deleteConfirmText({
+      kind: 'image',
+      count: 7,
+      outcome: { trashDays: 3 },
+      extra: imageDeleteScopeLine({ rankBelow: 5 }),
+    });
+    expect(t.danger).toBe(true);
+    expect(t.text).toBe(
+      '이미지 7장을 삭제할까요?\n휴지통으로 이동되어 3일 동안 복원할 수 있습니다.\n대상: 5등 이하 · 즐겨찾기 제외',
+    );
+  });
+  it('템플릿 첨부 제거(E1-4) — [제거]·danger true(Enter 허용)', () => {
+    expect(attachmentRemoveConfirmText({ what: '이미지', name: '바이브 1' })).toEqual({
+      text: '첨부 이미지 "바이브 1"을(를) 제거할까요?\n파일이 영구 삭제됩니다.',
+      confirmText: '제거',
+      danger: true,
+    });
+    expect(
+      attachmentRemoveConfirmText({ what: '캐릭터 프리셋', name: '하나' }).text,
+    ).toBe('첨부 캐릭터 프리셋 "하나"를 제거할까요?\n딸린 이미지 파일이 영구 삭제됩니다.');
   });
 });
 

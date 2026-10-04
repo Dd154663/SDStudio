@@ -269,7 +269,7 @@ export class GlobalPresetService extends EventTarget {
     }
     if (!SUPPORTED_GLOBAL_PRESET_TYPES.includes(preset.type)) {
       throw new Error(
-        `이 워크플로우 타입(${preset.type})은 글로벌 프리셋으로 저장할 수 없습니다`,
+        `이 워크플로우 타입(${preset.type})은 글로벌로 복사할 수 없습니다`,
       );
     }
 
@@ -337,7 +337,7 @@ export class GlobalPresetService extends EventTarget {
     }
     if (!SUPPORTED_GLOBAL_PRESET_TYPES.includes(preset.type)) {
       throw new Error(
-        `이 워크플로우 타입(${preset.type})은 글로벌 프리셋으로 저장할 수 없습니다`,
+        `이 워크플로우 타입(${preset.type})은 글로벌로 복사할 수 없습니다`,
       );
     }
 
@@ -395,7 +395,7 @@ export class GlobalPresetService extends EventTarget {
 
     if (!SUPPORTED_GLOBAL_PRESET_TYPES.includes(json.type)) {
       throw new Error(
-        `이 워크플로우 타입(${json.type})은 글로벌 프리셋으로 저장할 수 없습니다`,
+        `이 워크플로우 타입(${json.type})은 글로벌 프리셋으로 불러올 수 없습니다`,
       );
     }
 

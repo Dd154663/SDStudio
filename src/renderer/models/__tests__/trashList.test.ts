@@ -147,6 +147,10 @@ describe('trashRetentionNotice — 보존 기간 안내(S3)', () => {
     expect(trashRetentionNotice('scene', days)).toContain('14일');
     expect(trashRetentionNotice('scene', days)).toContain('3일');
     expect(trashRetentionNotice('project', days)).toContain('30일');
+    // 이미지 휴지통 탭·검수 휴지통 보기(E1-5)
+    expect(trashRetentionNotice('image', days)).toBe(
+      '이미지는 3일이 지나면 자동으로 영구 삭제됩니다.',
+    );
   });
 });
 

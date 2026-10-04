@@ -64,6 +64,7 @@ import {
 import { toPARR } from '../models/PromptService';
 import { appState } from '../models/AppService';
 import { promptName, validateName } from '../models/nameInput';
+import { deleteConfirmText } from '../models/deleteFlowRules';
 import { observer } from 'mobx-react-lite';
 import {
   WFAbstractVar,
@@ -620,7 +621,7 @@ const ProfilePreSetSelect = observer(({}) => {
             <FaPlus />
           </div>
           </Tooltip>
-          <Tooltip content="여러 그림체 파일 가져오기">
+          <Tooltip content="여러 그림체 파일 불러오기">
           <div
             className="flex-1 w-10 flex m-4 items-center justify-center rounded-xl clickable back-lllgray"
             onClick={async () => {
@@ -630,7 +631,7 @@ const ProfilePreSetSelect = observer(({}) => {
             <FaFolderOpen />
           </div>
           </Tooltip>
-          <Tooltip content="글로벌 프리셋에서 가져오기">
+          <Tooltip content="글로벌 프리셋을 프로젝트로 복사">
           <div
             className="flex-1 w-10 flex m-4 items-center justify-center rounded-xl clickable back-lllgray"
             onClick={() => {
@@ -737,9 +738,7 @@ const PreSetBulkManageModal = observer(
       }
       appState.pushDialog({
         type: 'confirm',
-        danger: 'permanent',
-        confirmText: '영구 삭제',
-        text: `선택한 ${selected.size}개의 사전 세팅을 삭제하시겠습니까? 되돌릴 수 없습니다.`,
+        ...deleteConfirmText({ kind: 'preset', count: selected.size, outcome: 'permanent' }),
         callback: () => {
           const names = Array.from(selected);
           const curName = curSession.selectedWorkflow?.presetName;
@@ -922,7 +921,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
         <FaPlus />
       </button>
       {workflowType === 'SDImageGen' && (
-        <Tooltip content="글로벌 프리셋에서 가져오기">
+        <Tooltip content="글로벌 프리셋을 프로젝트로 복사">
           <button
             className={`icon-button flex-none`}
             onClick={() => {
@@ -1052,7 +1051,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                 </Tooltip>
                 {(workflowType === 'SDImageGen' ||
                   workflowType === 'SDImageGenEasy') && (
-                  <Tooltip content="글로벌 프리셋으로 저장">
+                  <Tooltip content="글로벌로 복사">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1076,8 +1075,12 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                     }
                     appState.pushDialog({
                       type: 'confirm',
-                      danger: true,
-                      text: '정말로 사전 세팅을 삭제하시겠습니까?',
+                      // 휴지통이 없다 — 이름을 보이고 영구 삭제(Enter 무시). 버튼 툴팁(「그림체 삭제」)과 같은 라벨
+                      ...deleteConfirmText({
+                        kind: 'style',
+                        name: option.name,
+                        outcome: 'permanent',
+                      }),
                       callback: () => {
                         curSession!.removePreset(workflowType, option.name);
                         curSession!.selectedWorkflow = {

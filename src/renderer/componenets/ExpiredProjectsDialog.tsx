@@ -6,6 +6,7 @@ import { trashService } from '../models';
 import { PROJECT_RETENTION_DAYS } from '../models/TrashService';
 import { trashDuplicateOrdinals, trashDuplicateSuffix } from '../models/trashList';
 import { TrashNameBadge } from './TrashViews';
+import { deleteConfirmText } from '../models/deleteFlowRules';
 import { useBackLayer } from '../models/BackStackService';
 
 // 항목 키: 신 배치는 휴지통 폴더(dir — 동명 구분용 내부 식별자, 화면에 내지 않음), 구 배치는 이름.
@@ -132,6 +133,10 @@ const ExpiredProjectsDialog = observer(() => {
 
   const selectedKeys = Array.from(selected);
   const allKeys = projects.map(itemKey);
+  // 창 안 확인 줄의 문구·버튼 라벨 — 삭제 확인 문구 단일 출처(2026-10-03 E1)
+  const pendingConfirm = pendingDelete
+    ? deleteConfirmText({ kind: 'project', count: pendingDelete.length, outcome: 'permanent' })
+    : null;
 
   return (
     <div
@@ -207,8 +212,8 @@ const ExpiredProjectsDialog = observer(() => {
         {pendingDelete ? (
           // 영구 삭제 확인 1회(되돌릴 수 없음) — [영구 삭제] / [취소]
           <div className="flex flex-col gap-2 mt-2" data-expired-confirm>
-            <div className="text-center text-sm text-default">
-              {pendingDelete.length}개 프로젝트를 영구 삭제합니다. 되돌릴 수 없습니다.
+            <div className="text-center text-sm text-default whitespace-pre-line">
+              {pendingConfirm!.text}
             </div>
             <div className="flex gap-2">
               <button
@@ -220,7 +225,7 @@ const ExpiredProjectsDialog = observer(() => {
                   setPendingDelete(null);
                 }}
               >
-                {deleting ? '삭제 중…' : '영구 삭제'}
+                {deleting ? '삭제 중…' : pendingConfirm!.confirmText}
               </button>
               <button
                 className="flex-1 px-3 py-2 rounded back-gray clickable text-sm disabled:opacity-40"

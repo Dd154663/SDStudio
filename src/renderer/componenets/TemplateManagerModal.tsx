@@ -31,6 +31,10 @@ import {
 } from '../models';
 import { appState } from '../models/AppService';
 import { nameErrorMessage, promptName } from '../models/nameInput';
+import {
+  attachmentRemoveConfirmText,
+  deleteConfirmText,
+} from '../models/deleteFlowRules';
 import { CharacterPreset, CharacterPrompt } from '../models/types';
 import { Sampling, NoiseSchedule } from '../backends/imageGen';
 import HelpIcon from './HelpIcon';
@@ -95,7 +99,7 @@ const GlobalPresetPickerModal = observer(
       <ModalOverlay
         isOpen={isOpen}
         onClose={onClose}
-        title="글로벌 프리셋 불러오기"
+        title="글로벌 프리셋에서 복사"
         width="max-w-3xl"
       >
         <div className="flex flex-col gap-3">
@@ -263,7 +267,7 @@ export const TemplateWorkflowEditor = observer(
       if (!entry) return;
       const source = await appState.pushDialogAsync({
         type: 'select',
-        text: '어디서 불러올까요? (프롬프트·샘플링 설정을 1회 덮어씁니다)',
+        text: '어디서 복사해 올까요? (프롬프트·샘플링 설정을 1회 덮어씁니다)',
         items: [
           { text: '🌐 글로벌 프리셋에서', value: 'global' },
           { text: '📁 현재 프로젝트에서', value: 'session' },
@@ -302,7 +306,7 @@ export const TemplateWorkflowEditor = observer(
           }
           const key = await appState.pushDialogAsync({
             type: 'select',
-            text: '불러올 프리셋',
+            text: '복사해 올 프리셋',
             items: flat,
           });
           if (!key) return;
@@ -314,7 +318,7 @@ export const TemplateWorkflowEditor = observer(
         setSyncKey((k) => k + 1);
         appState.pushMessage('프롬프트·샘플링 설정을 덮어썼습니다.');
       } catch (e: any) {
-        appState.pushMessage(e.message || '불러오기에 실패했습니다.');
+        appState.pushMessage(e.message || '복사하지 못했습니다.');
       }
     };
 
@@ -326,7 +330,7 @@ export const TemplateWorkflowEditor = observer(
         setSyncKey((k) => k + 1);
         appState.pushMessage('프롬프트·샘플링 설정을 덮어썼습니다.');
       } catch (e: any) {
-        appState.pushMessage(e.message || '불러오기에 실패했습니다.');
+        appState.pushMessage(e.message || '복사하지 못했습니다.');
       }
     };
 
@@ -389,7 +393,7 @@ export const TemplateWorkflowEditor = observer(
       if (!entry) return;
       const source = await appState.pushDialogAsync({
         type: 'select',
-        text: '어디서 불러올까요? (목록에 추가됩니다)',
+        text: '어디서 복사해 올까요? (목록에 추가됩니다)',
         items: [
           { text: '🌐 글로벌 캐릭터 프리셋에서', value: 'global' },
           { text: '📁 현재 프로젝트에서', value: 'session' },
@@ -410,7 +414,7 @@ export const TemplateWorkflowEditor = observer(
           }
           const id = await appState.pushDialogAsync({
             type: 'select',
-            text: '불러올 캐릭터 프리셋',
+            text: '복사해 올 캐릭터 프리셋',
             items,
           });
           if (!id) return;
@@ -431,7 +435,7 @@ export const TemplateWorkflowEditor = observer(
           }
           const name = await appState.pushDialogAsync({
             type: 'select',
-            text: '불러올 캐릭터 프리셋',
+            text: '복사해 올 캐릭터 프리셋',
             items: names.map((n) => ({ text: n, value: n })),
           });
           if (!name) return;
@@ -445,7 +449,7 @@ export const TemplateWorkflowEditor = observer(
         }
         appState.pushMessage('캐릭터 프리셋을 추가했습니다.');
       } catch (e: any) {
-        appState.pushMessage(e.message || '불러오기에 실패했습니다.');
+        appState.pushMessage(e.message || '복사하지 못했습니다.');
       }
     };
 
@@ -464,7 +468,7 @@ export const TemplateWorkflowEditor = observer(
       }
       if (items.length === 0) {
         appState.pushMessage(
-          '불러올 소스가 없습니다. 씬 프리셋(씬 템플릿)을 만들거나 프로젝트를 열어주세요.',
+          '복사해 올 소스가 없습니다. 씬 프리셋(씬 템플릿)을 만들거나 프로젝트를 열어주세요.',
         );
         return;
       }
@@ -483,10 +487,10 @@ export const TemplateWorkflowEditor = observer(
           appState.pushMessage(
             added > 0
               ? `씬 구성을 ${added}개 씬으로 교체했습니다.`
-              : '불러올 씬이 없어 기존 구성을 유지합니다.',
+              : '복사해 올 씬이 없어 기존 구성을 유지합니다.',
           );
         } catch (e: any) {
-          appState.pushMessage(e.message || '불러오기에 실패했습니다.');
+          appState.pushMessage(e.message || '복사하지 못했습니다.');
         }
       };
       if (entry.scenes.length > 0) {
@@ -563,12 +567,12 @@ export const TemplateWorkflowEditor = observer(
                 )}
                 <button className={addBtnCls} onClick={importStylePreset}>
                   <FaCloudDownloadAlt className="inline mr-1" size={11} />
-                  불러오기
+                  복사해 오기
                 </button>
               </div>
               {!entry.preset && (
                 <div className="text-xs text-faint">
-                  아래에 직접 입력하거나 글로벌 프리셋을 불러오세요. 비워 두면
+                  아래에 직접 입력하거나 글로벌 프리셋에서 복사해 오세요. 비워 두면
                   새 프로젝트는 기본 프리셋으로 시작합니다.
                 </div>
               )}
@@ -723,12 +727,12 @@ export const TemplateWorkflowEditor = observer(
                 </button>
                 <button className={addBtnCls} onClick={importCharacterPreset}>
                   <FaCloudDownloadAlt className="inline mr-1" size={11} />
-                  불러오기
+                  복사해 오기
                 </button>
               </div>
               {entry.characterPresets.length === 0 && (
                 <div className="text-xs text-faint">
-                  없음 — 직접 만들거나 불러오면 새 프로젝트에 캐릭터
+                  없음 — 직접 만들거나 복사해 오면 새 프로젝트에 캐릭터
                   프리셋(바이브·레퍼런스 포함)이 선적용됩니다.
                 </div>
               )}
@@ -753,12 +757,19 @@ export const TemplateWorkflowEditor = observer(
                   <Tooltip content="제거">
                     <button
                       className={iconBtnCls + ' hover:text-red-500'}
-                      onClick={() =>
-                        projectTemplateService.removeCharacterPreset(
-                          entry.id,
-                          i,
+                      onClick={async () => {
+                        // 제거하면 딸린 이미지 파일이 바로 영구 삭제된다 — 확인 1회(2026-10-03 E1-4)
+                        if (
+                          !(await appState.confirmAsync(
+                            attachmentRemoveConfirmText({ what: '캐릭터 프리셋', name: cp.name }),
+                          ))
                         )
-                      }
+                          return;
+                        // 확인 창이 떠 있는 동안 목록이 바뀌어 같은 자리에 다른 항목이 오면 지우지 않는다
+                        const cur = projectTemplateService.get(entry.id)?.characterPresets[i];
+                        if (!cur || cur.name !== cp.name) return;
+                        await projectTemplateService.removeCharacterPreset(entry.id, i);
+                      }}
                     >
                       <FaTimes size={13} />
                     </button>
@@ -969,9 +980,18 @@ export const TemplateWorkflowEditor = observer(
                       <Tooltip content="바이브 삭제">
                         <button
                           className="round-button h-8 px-6 back-red"
-                          onClick={() =>
-                            projectTemplateService.removeVibe(entry.id, i)
-                          }
+                          onClick={async () => {
+                            // 제거하면 이미지 파일이 바로 영구 삭제된다 — 확인 1회(2026-10-03 E1-4)
+                            if (
+                              !(await appState.confirmAsync(
+                                attachmentRemoveConfirmText({ what: '이미지', name: `바이브 ${i + 1}` }),
+                              ))
+                            )
+                              return;
+                            const cur = projectTemplateService.get(entry.id)?.vibes?.[i];
+                            if (!cur || cur.path !== v.path) return;
+                            await projectTemplateService.removeVibe(entry.id, i);
+                          }}
                         >
                           <FaTrash />
                         </button>
@@ -1044,12 +1064,21 @@ export const TemplateWorkflowEditor = observer(
                       <Tooltip content="레퍼런스 삭제">
                         <button
                           className="round-button h-8 px-6 back-red"
-                          onClick={() =>
-                            projectTemplateService.removeCharacterReference(
-                              entry.id,
-                              i,
+                          onClick={async () => {
+                            // 제거하면 이미지 파일이 바로 영구 삭제된다 — 확인 1회(2026-10-03 E1-4)
+                            if (
+                              !(await appState.confirmAsync(
+                                attachmentRemoveConfirmText({
+                                  what: '이미지',
+                                  name: `레퍼런스 ${i + 1}`,
+                                }),
+                              ))
                             )
-                          }
+                              return;
+                            const cur = projectTemplateService.get(entry.id)?.characterReferences?.[i];
+                            if (!cur || cur.path !== r.path) return;
+                            await projectTemplateService.removeCharacterReference(entry.id, i);
+                          }}
                         >
                           <FaTrash />
                         </button>
@@ -1172,17 +1201,17 @@ export const TemplateWorkflowEditor = observer(
                 </span>
                 <button className={addBtnCls} onClick={importScenes}>
                   <FaCloudDownloadAlt className="inline mr-1" size={11} />
-                  불러오기
+                  복사해 오기
                 </button>
               </div>
               {entry.scenes.length === 0 ? (
                 <div className="text-xs text-faint">
-                  없음 — 새 프로젝트는 빈 씬 1개로 시작합니다. 불러오기 = 선택한
+                  없음 — 새 프로젝트는 빈 씬 1개로 시작합니다. 복사해 오기 = 선택한
                   프로젝트/씬 프리셋의 씬 전체로 교체.
                 </div>
               ) : (
                 <div className="text-xs text-faint">
-                  씬 내용 수정은 원본 프로젝트에서 고친 뒤 다시 불러와
+                  씬 내용 수정은 원본 프로젝트에서 고친 뒤 다시 복사해 와
                   교체해주세요.
                 </div>
               )}
@@ -1415,8 +1444,13 @@ export const TemplateManagerModal = observer(
       if (!entry) return;
       appState.pushDialog({
         type: 'confirm',
-        danger: true,
-        text: `템플릿 "${entry.name}"을(를) 삭제하시겠습니까?\n(이 템플릿을 쓰는 폴더 자동 적용 지정도 해제됩니다)`,
+        // 템플릿은 휴지통이 없다 — 영구 삭제(Enter 무시, 2026-10-03 E1)
+        ...deleteConfirmText({
+          kind: 'template',
+          name: entry.name,
+          outcome: 'permanent',
+          extra: '이 템플릿을 쓰는 폴더 자동 적용 지정도 해제됩니다.',
+        }),
         callback: async () => {
           await projectTemplateService.delete(entry.id);
           setSelectedId(projectTemplateService.listGlobal()[0]?.id ?? '');
@@ -1448,10 +1482,10 @@ export const TemplateManagerModal = observer(
             <>
               <p className="text-sm text-muted">
                 템플릿은 새 프로젝트의 시작 구성을 미리 세팅하는
-                워크플로우입니다. 모든 영역은 직접 편집할 수 있고, 불러오기는
+                워크플로우입니다. 모든 영역은 직접 편집할 수 있고, 복사해 오기는
                 설정을 1회 덮어쓰는 편의 기능입니다. 프롬프트 수정은 아래{' '}
                 <b>[저장]</b> 버튼 또는 창을 닫을 때 저장되고, 그 외 변경
-                (불러오기·캐릭터·씬)은 즉시 저장됩니다.
+                (복사해 오기·캐릭터·씬)은 즉시 저장됩니다.
               </p>
               {/* 템플릿 선택 + CRUD */}
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -1518,14 +1552,14 @@ export const TemplateManagerModal = observer(
                       <span>백업</span>
                     </button>
                   </Tooltip>
-                  <Tooltip content="백업 파일에서 프로젝트 템플릿 복원 (동명 처리 선택)">
+                  <Tooltip content="백업 파일에서 프로젝트 템플릿 불러오기 (동명 처리 선택)">
                     <button
                       type="button"
                       className={backupBtnCls}
                       onClick={restoreTemplates}
                     >
                       <FaFileImport size={14} />
-                      <span>복원</span>
+                      <span>백업 불러오기</span>
                     </button>
                   </Tooltip>
                 </div>
@@ -1535,7 +1569,7 @@ export const TemplateManagerModal = observer(
           {!entry ? (
             <div className="text-sm text-default py-6 text-center">
               템플릿이 없습니다. <b>+</b> 버튼으로 새 템플릿을 만들거나{' '}
-              <b>[복원]</b>으로 백업 파일에서 불러와 주세요.
+              <b>[백업 불러오기]</b>로 백업 파일에서 불러와 주세요.
             </div>
           ) : (
             <TemplateWorkflowEditor

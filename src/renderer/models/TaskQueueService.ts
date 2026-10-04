@@ -429,7 +429,7 @@ export class TaskQueueService extends EventTarget {
     if (!this.isGenerationHost) {
       backend
         .delegateCancel({ all: true })
-        .catch((e) => console.error('예약 취소 위임 실패:', e));
+        .catch((e) => console.error('예약 제거 위임 실패:', e));
       return;
     }
     while (!this.queue.isEmpty()) {
@@ -461,7 +461,7 @@ export class TaskQueueService extends EventTarget {
             sceneName: scene.name,
             sceneType: scene.type,
           })
-          .catch((e) => console.error('씬 예약 취소 위임 실패:', e));
+          .catch((e) => console.error('씬 예약 제거 위임 실패:', e));
       }
       return;
     }

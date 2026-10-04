@@ -112,7 +112,7 @@ export const ExternalImageView = observer(
         const ok = await appState.confirmAsync(
           '현재 상위·추가·씬·하위 프롬프트를 이미지 생성 당시 값으로 덮어씁니다. ' +
             '현재 씬의 조합은 생성에 사용된 한 조합으로 교체됩니다.',
-          '정확 복원 실행',
+          '정확히 적용',
           { danger: true },
         );
         if (!ok) return;
@@ -238,12 +238,12 @@ export const ExternalImageView = observer(
             );
             appState.pushDialog({
               type: 'yes-only',
-              text: `"${entry.name}" 프리셋을 글로벌에 저장했습니다.`,
+              text: `"${entry.name}" 프리셋을 글로벌로 복사했습니다.`,
             });
             onClose();
           } catch (e: any) {
             appState.pushMessage(
-              '글로벌 저장 실패: ' + (e?.message || e),
+              '글로벌로 복사 실패: ' + (e?.message || e),
             );
           }
           return;
@@ -381,7 +381,7 @@ export const ExternalImageView = observer(
           {/* 헤더 */}
           <div className="flex items-center justify-between px-5 py-3 border-b line-color flex-none">
             <div>
-              <h1 className="text-base font-semibold text-default">메타데이터 불러오기</h1>
+              <h1 className="text-base font-semibold text-default">메타데이터 적용</h1>
               <p className="text-xs text-muted mt-0.5">
                 이미지에서 생성 설정을 추출하여 프리셋에 적용합니다.
               </p>
@@ -456,11 +456,11 @@ export const ExternalImageView = observer(
                     <div className="font-semibold text-default">
                       {job.sdstudioMetadata
                         ? 'SDStudio 생성 구획 메타데이터 있음'
-                        : '통합 프롬프트로 복원'}
+                        : '통합 프롬프트로 적용'}
                     </div>
                     <div className="text-xs text-muted mt-1">
                       {job.sdstudioMetadata
-                        ? '현재 설정에 적용할 때 같은 워크플로우와 씬이면 상위·추가·씬·하위 구획을 정확히 복원합니다.'
+                        ? '현재 설정에 적용할 때 같은 워크플로우와 씬이면 상위·추가·씬·하위 구획별로 정확히 적용합니다.'
                         : '이전 SDStudio 또는 NAI 공식 이미지로, 긍정 프롬프트를 상위 프롬프트에 통합해 적용합니다.'}
                     </div>
                   </div>
@@ -587,7 +587,7 @@ export const ExternalImageView = observer(
                     ) : hasVibes ? (
                       <div className="text-sm text-muted">
                         <p className="text-xs text-muted mb-2">
-                          원본 이미지는 없지만, 인코딩된 바이브 데이터를 복원합니다.
+                          원본 이미지는 없지만, 인코딩된 바이브 데이터로 적용합니다.
                         </p>
                         {job.vibes.map((v, i) => (
                           <div key={i} className="flex items-center gap-3 py-1.5 px-2.5 bg-[var(--c-surface)] rounded-lg mb-1.5">
@@ -629,7 +629,7 @@ export const ExternalImageView = observer(
                           </div>
                         ) : (
                           <div className="text-xs text-muted">
-                            원본 이미지는 없지만, 인코딩된 레퍼런스 데이터를 복원합니다.
+                            원본 이미지는 없지만, 인코딩된 레퍼런스 데이터로 적용합니다.
                           </div>
                         )}
                       </div>

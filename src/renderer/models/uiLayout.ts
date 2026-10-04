@@ -33,7 +33,7 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'add-scene', name: '씬 추가', tier: 'primary' },
   { id: 'queue-add', name: '예약 추가', tier: 'primary' },
   { id: 'export-images', name: '이미지 내보내기', tier: 'secondary' },
-  { id: 'quick-export', name: '빠른 export', tier: 'primary' },
+  { id: 'quick-export', name: '빠른 내보내기', tier: 'primary' },
   { id: 'batch-process', name: '대량 작업', tier: 'primary' },
   { id: 'multi-select', name: '다중 선택', tier: 'primary' },
   { id: 'change-resolution', name: '해상도 변경', tier: 'secondary' },

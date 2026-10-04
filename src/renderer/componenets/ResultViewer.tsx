@@ -90,12 +90,15 @@ import { getImageDimensions } from './BrushTool';
 import { dataUriToBase64, deleteImageFiles, toggleImageMain } from '../models/ImageService';
 import { IMAGE_RETENTION_DAYS } from '../models/TrashService';
 import {
+  deleteConfirmText,
+  imageDeleteScopeLine,
+  NO_IMAGES_TO_DELETE_MESSAGE,
   NO_SELECTED_IMAGES_MESSAGE,
   planGridImageDelete,
-  selectedImagesDeleteText,
   shouldSkipImageDeleteConfirm,
   showImageDeleteSkipOption,
 } from '../models/deleteFlowRules';
+import { EMPTY_TRASH_EXTRA, trashNoticeText } from './TrashViews';
 import { getResultDirectory } from '../models/SessionService';
 import { extractPromptDataFromBase64 } from '../models/util';
 import { appState } from '../models/AppService';
@@ -228,9 +231,7 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
     if (selected.size === 0) return;
     appState.pushDialog({
       type: 'confirm',
-      danger: 'permanent',
-      confirmText: '영구 삭제',
-      text: selected.size + '장의 이미지를 영구 삭제하시겠습니까?',
+      ...deleteConfirmText({ kind: 'image', count: selected.size, outcome: 'permanent' }),
       callback: async () => {
         await stopThumbnailLoading();
         // 일괄 작업 잠금(2026-07-18): 저사양(특히 모바일) 보호 — finally 해제 보장
@@ -267,9 +268,12 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
     if (trashImages.length === 0) return;
     appState.pushDialog({
       type: 'confirm',
-      danger: 'permanent',
-      confirmText: '영구 삭제',
-      text: '휴지통을 비우시겠습니까? 모든 이미지가 영구 삭제됩니다.',
+      ...deleteConfirmText({
+        kind: 'image',
+        count: trashImages.length,
+        outcome: 'permanent',
+        extra: EMPTY_TRASH_EXTRA,
+      }),
       callback: async () => {
         await stopThumbnailLoading();
         // 일괄 작업 잠금(2026-07-18): 저사양(특히 모바일) 보호 — finally 해제 보장
@@ -310,16 +314,21 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
 
   const cellSize = isMobile ? imageSize / 2.5 : Math.min(imageSize, 400);
 
+  // 보존 기간 안내(2026-10-03 E1-5) — 씬·프로젝트 휴지통(TrashViews notice)과 같은 형식, 일수는 TrashService 상수
+  const retentionNotice = trashNoticeText('image');
+
   if (trashImages.length === 0 && !loading) {
     return (
-      <div className="flex items-center justify-center h-full text-faint text-lg">
-        휴지통이 비어있습니다
+      <div className="flex flex-col items-center justify-center h-full text-center px-4">
+        <div className="text-faint text-lg">휴지통이 비어있습니다</div>
+        <div className="mt-2 text-xs text-faint break-keep">{retentionNotice}</div>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col h-full">
+      <div className="flex-none px-2 pt-2 text-xs text-faint break-keep">{retentionNotice}</div>
       <div className="flex-none p-2 flex gap-2 flex-wrap border-b line-color">
         <button
           className={`round-button back-green`}
@@ -337,7 +346,7 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
           onClick={handlePermanentDelete}
           disabled={selected.size === 0}
         >
-          선택 영구삭제
+          선택 영구 삭제
         </button>
         <button
           className={`round-button back-red ml-auto`}
@@ -1204,8 +1213,7 @@ const ResultDetailView = observer(
           }
           appState.pushDialog({
             type: 'confirm',
-            danger: true,
-            text: '정말로 파일을 삭제하시겠습니까?',
+            ...deleteConfirmText({ kind: 'image', outcome: { trashDays: IMAGE_RETENTION_DAYS } }),
             showSkipConfirm: true,
             callback: doDel,
           });
@@ -1227,8 +1235,7 @@ const ResultDetailView = observer(
           }
           appState.pushDialog({
             type: 'confirm',
-            danger: true,
-            text: '정말로 파일을 삭제하시겠습니까?',
+            ...deleteConfirmText({ kind: 'image', outcome: { trashDays: IMAGE_RETENTION_DAYS } }),
             showSkipConfirm: true,
             callback: doDel,
           });
@@ -1338,8 +1345,7 @@ const ResultDetailView = observer(
       }
       appState.pushDialog({
         type: 'confirm',
-        danger: true,
-        text: '정말로 파일을 삭제하시겠습니까?',
+        ...deleteConfirmText({ kind: 'image', outcome: { trashDays: IMAGE_RETENTION_DAYS } }),
         showSkipConfirm: true,
         callback: doDel,
       });
@@ -1570,7 +1576,7 @@ const ResultDetailView = observer(
               className="round-button back-sky"
               onClick={actLoadSettings}
             >
-              생성 설정 불러오기
+              생성 설정 적용
             </button>
             <button
               className="round-button back-sky"
@@ -2022,15 +2028,32 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           },
         ],
         callback: async (value) => {
-          if (value === 'all') {
+          const notFav = (x: string) => !isMainImage || !isMainImage(x);
+          // 확인 창은 대상 개수를 보인다(삭제 확인 문구 단일 출처, 2026-10-03 E1). 대상은 실행 시점에 다시 계산한다.
+          const confirmDelete = (
+            count: number,
+            scope: Parameters<typeof imageDeleteScopeLine>[0],
+            targets: () => string[],
+          ) => {
+            if (count === 0) {
+              appState.pushMessage(NO_IMAGES_TO_DELETE_MESSAGE);
+              return;
+            }
             appState.pushDialog({
               type: 'confirm',
-              danger: true,
-              text: `정말로 모든 이미지를 삭제하시겠습니까? (이미지 휴지통으로 이동, ${IMAGE_RETENTION_DAYS}일 보관)`,
+              ...deleteConfirmText({
+                kind: 'image',
+                count,
+                outcome: { trashDays: IMAGE_RETENTION_DAYS },
+                extra: imageDeleteScopeLine(scope),
+              }),
               callback: async () => {
-                await deleteImageFiles(curSession!, currentPaths(), scene);
+                await deleteImageFiles(curSession!, targets(), scene);
               },
             });
+          };
+          if (value === 'all') {
+            confirmDelete(currentPaths().length, {}, () => currentPaths());
           } else if (value === 'n') {
             appState.pushDialog({
               type: 'input-confirm',
@@ -2043,32 +2066,16 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                     appState.pushMessage(RANK_CUTOFF_INVALID_MESSAGE);
                     return;
                   }
-                  await deleteImageFiles(
-                    curSession!,
-                    currentPaths()
-                      .slice(n)
-                      .filter((x) => !isMainImage || !isMainImage(x)),
-                    scene,
-                  );
+                  // 예전엔 입력만 받고 확인 없이 지웠다 — 개수를 보이고 한 번 확인한다(E1-3)
+                  const targets = () => currentPaths().slice(n).filter(notFav);
+                  confirmDelete(targets().length, { rankBelow: n }, targets);
                 }
               },
             });
           } else if (value === 'fav') {
             // 값이 없을 때(취소·선택 없음) 이 분기로 떨어지지 않게 명시 비교한다.
-            appState.pushDialog({
-              type: 'confirm',
-              danger: true,
-              text: `정말로 즐겨찾기 외 모든 이미지를 삭제하시겠습니까? (이미지 휴지통으로 이동, ${IMAGE_RETENTION_DAYS}일 보관)`,
-              callback: async () => {
-                await deleteImageFiles(
-                  curSession!,
-                  currentPaths().filter(
-                    (x) => !isMainImage || !isMainImage(x),
-                  ),
-                  scene,
-                );
-              },
-            });
+            const targets = () => currentPaths().filter(notFav);
+            confirmDelete(targets().length, { excludeFav: true }, targets);
           }
         },
       });
@@ -2096,8 +2103,11 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       const targets = plan.paths;
       appState.pushDialog({
         type: 'confirm',
-        danger: true,
-        text: selectedImagesDeleteText(targets.length, IMAGE_RETENTION_DAYS),
+        ...deleteConfirmText({
+          kind: 'image',
+          count: targets.length,
+          outcome: { trashDays: IMAGE_RETENTION_DAYS },
+        }),
         callback: async () => {
           await deleteImageFiles(curSession!, targets, scene);
           // 지워진 이미지는 선택에서 뺀다(실패해 남은 것은 선택 유지 — 다시 시도 가능).
@@ -2284,8 +2294,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           }
           appState.pushDialog({
             type: 'confirm',
-            danger: true,
-            text: '정말로 파일을 삭제하시겠습니까?',
+            ...deleteConfirmText({ kind: 'image', outcome: { trashDays: IMAGE_RETENTION_DAYS } }),
             showSkipConfirm: showImageDeleteSkipOption(1),
             callback: doDel,
           });

@@ -15,12 +15,13 @@ import {
 } from '../models';
 import { appState } from '../models/AppService';
 import { dataUriToBase64, deleteImageFiles, toggleImageMain } from '../models/ImageService';
-import { IMAGE_RETENTION_DAYS } from '../models/TrashService';
+import { IMAGE_RETENTION_DAYS, SCENE_RETENTION_DAYS } from '../models/TrashService';
 import {
   batchResultLine,
   DELETE_RESULT_TEXT,
+  deleteConfirmText,
+  imageDeleteScopeLine,
   runTrashDelete,
-  selectedImagesDeleteText,
   shouldSkipImageDeleteConfirm,
   showImageDeleteSkipOption,
 } from '../models/deleteFlowRules';
@@ -491,11 +492,13 @@ export const AppContextMenu = observer(() => {
     } else if (id === 'delete') {
       const selectedCount = appState.selectedSceneCount(ctx.scene.type);
       if (selectedCount > 1) {
-        const kindLabel = ctx.scene.type === 'inpaint' ? '변형 씬' : '씬';
         appState.pushDialog({
           type: 'confirm',
-          danger: true,
-          text: `선택한 ${selectedCount}개 ${kindLabel}을 삭제할까요? (휴지통으로 이동)`,
+          ...deleteConfirmText({
+            kind: ctx.scene.type === 'inpaint' ? 'inpaintScene' : 'scene',
+            count: selectedCount,
+            outcome: { trashDays: SCENE_RETENTION_DAYS },
+          }),
           callback: async () => {
             const { trashService } = await import('../models');
             const session = appState.curSession;
@@ -530,8 +533,11 @@ export const AppContextMenu = observer(() => {
       } else {
         appState.pushDialog({
           type: 'confirm',
-          danger: true,
-          text: '정말로 삭제하시겠습니까? (휴지통으로 이동)',
+          ...deleteConfirmText({
+            kind: ctx.scene.type === 'inpaint' ? 'inpaintScene' : 'scene',
+            name: ctx.scene.name,
+            outcome: { trashDays: SCENE_RETENTION_DAYS },
+          }),
           callback: async () => {
             const { trashService } = await import('../models');
             const session = appState.curSession!;
@@ -621,7 +627,6 @@ export const AppContextMenu = observer(() => {
       return;
     }
 
-    const label = excludeFav ? '즐겨찾기 제외 ' : '';
     const doBatchDelete = async () => {
       // 실행 시점 재계산 — 확인 다이얼로그 대기 중 생성분까지 반영.
       const { scenes, totalImages } = collectTargets();
@@ -652,8 +657,12 @@ export const AppContextMenu = observer(() => {
     // 여러 씬 일괄 삭제는 「다시 묻지 않음」과 무관하게 항상 확인한다(X12)
     appState.pushDialog({
       type: 'confirm',
-      danger: true,
-      text: `${preview.scenes.length}개 씬에서 ${label}${preview.totalImages}장의 이미지를 삭제할까요? (이미지 휴지통으로 이동, ${IMAGE_RETENTION_DAYS}일 보관)`,
+      ...deleteConfirmText({
+        kind: 'image',
+        count: preview.totalImages,
+        outcome: { trashDays: IMAGE_RETENTION_DAYS },
+        extra: imageDeleteScopeLine({ sceneCount: preview.scenes.length, excludeFav }),
+      }),
       callback: doBatchDelete,
     });
   };
@@ -727,11 +736,11 @@ export const AppContextMenu = observer(() => {
     }
     appState.pushDialog({
       type: 'confirm',
-      danger: true,
-      text:
-        count > 1
-          ? selectedImagesDeleteText(count, IMAGE_RETENTION_DAYS)
-          : '정말로 삭제하시겠습니까?',
+      ...deleteConfirmText({
+        kind: 'image',
+        count: count > 1 ? count : undefined,
+        outcome: { trashDays: IMAGE_RETENTION_DAYS },
+      }),
       showSkipConfirm: showImageDeleteSkipOption(count),
       callback: doDelete,
     });
@@ -888,8 +897,8 @@ export const AppContextMenu = observer(() => {
     }
     appState.pushDialog({
       type: 'confirm',
-      danger: true,
-      text: '정말로 삭제하시겠습니까?',
+      // 그림체는 휴지통이 없다 — 영구 삭제(Enter 무시, 2026-10-03 E1)
+      ...deleteConfirmText({ kind: 'style', name: ctx.preset.name, outcome: 'permanent' }),
       callback: async () => {
         const curSession = appState.curSession;
         const presets = curSession?.presets.get(ctx.preset.type) ?? [];
@@ -944,8 +953,7 @@ export const AppContextMenu = observer(() => {
     }
     appState.pushDialog({
       type: 'confirm',
-      danger: true,
-      text: '정말로 삭제하시겠습니까?',
+      ...deleteConfirmText({ kind: 'image', outcome: { trashDays: IMAGE_RETENTION_DAYS } }),
       showSkipConfirm: true,
       callback: doDelete,
     });
@@ -1087,7 +1095,7 @@ export const AppContextMenu = observer(() => {
         )}
         <Separator />
         <Item id="save-global" onClick={handleImageItemClick2}>
-          글로벌 프리셋으로 저장
+          글로벌 프리셋으로 복사
         </Item>
         <Item id="save-artist" onClick={handleImageItemClick2}>
           작가 라이브러리에 저장
@@ -1121,7 +1129,7 @@ export const AppContextMenu = observer(() => {
         )}
         <Separator />
         <Item id="save-global" onClick={handleImageItemClick}>
-          글로벌 프리셋으로 저장
+          글로벌 프리셋으로 복사
         </Item>
         <Item id="save-artist" onClick={handleImageItemClick}>
           작가 라이브러리에 저장
@@ -1158,7 +1166,7 @@ export const AppContextMenu = observer(() => {
           해당 그림체 내보내기
         </Item>
         <Item id="to-global" onClick={handleStyleItemClick}>
-          글로벌 프리셋으로 저장
+          글로벌로 복사
         </Item>
         <Item id="edit" onClick={handleStyleItemClick}>
           해당 그림체 편집

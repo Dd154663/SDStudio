@@ -33,8 +33,10 @@ import { appState } from '../models/AppService';
 import {
   checkInpaintSceneRename,
   DELETE_RESULT_TEXT,
+  deleteConfirmText,
   runTrashDelete,
 } from '../models/deleteFlowRules';
+import { SCENE_RETENTION_DAYS } from '../models/TrashService';
 import { promptCustomResolution } from '../models/customResolutionPrompt';
 import { renameInpaintScene } from '../models/SessionService';
 import { observer } from 'mobx-react-lite';
@@ -281,8 +283,11 @@ const InPaintEditor = observer(
     const deleteScene = () => {
       appState.pushDialog({
         type: 'confirm',
-        danger: true,
-        text: '정말로 해당 씬을 삭제하시겠습니까? (휴지통으로 이동)',
+        ...deleteConfirmText({
+          kind: 'inpaintScene',
+          name: editingScene.name,
+          outcome: { trashDays: SCENE_RETENTION_DAYS },
+        }),
         callback: async () => {
           const { trashService } = await import('../models');
           // 휴지통 이동 실패면 씬이 그대로 남는다(2026-10-02 S1) — 알리고 편집 창은 닫지 않는다.

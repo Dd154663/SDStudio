@@ -4,7 +4,6 @@ import { observer } from 'mobx-react-lite';
 import {
   FaDownload,
   FaFolder,
-  FaTimes,
   FaCheck,
   FaCog,
   FaEye,
@@ -159,8 +158,18 @@ export const DownloadDialog = observer(
 
     const isSingleImage = imagePaths.length === 1;
 
+    // 닫기 요청(FloatView 좌상단 ✕·Esc·뒤로 가기 공통) — 다운로드 중에는 닫지 않고 알린다(2026-10-03 E2-1).
+    // 예전에는 카드 우상단에 ✕ 가 하나 더 있었다(전체 화면 보기의 ✕ 는 좌상단 「뒤로」 하나만).
+    const requestClose = () => {
+      if (isDownloading) {
+        appState.pushMessage('다운로드가 끝난 뒤에 닫을 수 있습니다.');
+        return;
+      }
+      onClose();
+    };
+
     return (
-      <FloatView priority={2} onEscape={onClose}>
+      <FloatView priority={2} onEscape={requestClose}>
         <div className="w-full max-w-lg mx-auto bg-[var(--c-zone)] rounded-lg r-modal shadow-xl overflow-hidden">
           {/* 헤더 */}
           <div className="flex items-center justify-between p-4 border-b line-color">
@@ -170,13 +179,6 @@ export const DownloadDialog = observer(
                 {isSingleImage ? '이미지 다운로드' : '일괄 다운로드'}
               </span>
             </div>
-            <button
-              className="icon-button back-gray"
-              onClick={onClose}
-              disabled={isDownloading}
-            >
-              <FaTimes />
-            </button>
           </div>
 
           {/* 본문 */}
@@ -444,7 +446,7 @@ export const DownloadDialog = observer(
               onClick={onClose}
               disabled={isDownloading}
             >
-              {/* ✕ 아이콘은 머리의 닫기 버튼 하나만 — 바닥은 글자 「취소」(2026-10-03 D3) */}
+              {/* ✕ 아이콘은 전체 화면 보기 좌상단 하나만 — 바닥은 글자 「취소」(2026-10-03 D3·E2-1) */}
               취소
             </button>
           </div>

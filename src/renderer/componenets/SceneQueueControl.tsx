@@ -2626,7 +2626,7 @@ const QueueControl = observer(
                 <FaFileExport size={18} className="ml-0.5" />
               </>
             ) : (
-              <>⚡{isMobile ? '' : ' 빠른 export'}</>
+              <>⚡{isMobile ? '' : ' 빠른 내보내기'}</>
             )}
           </button>
         </Tooltip>

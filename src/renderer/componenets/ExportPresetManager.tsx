@@ -4,8 +4,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import { appState, ExportPreset } from '../models/AppService';
 import { validateName } from '../models/nameInput';
+import { deleteConfirmText } from '../models/deleteFlowRules';
 
 import ModalOverlay from './ModalOverlay';
+import { useGuardedClose } from './backdropClose';
 
 import { FaPlus, FaTrash, FaPen, FaCopy } from 'react-icons/fa';
 
@@ -17,6 +19,14 @@ const ExportPresetManager = observer(() => {
   const [renameValue, setRenameValue] = useState('');
   // Esc 로 취소했거나 이미 확정한 편집 — 뒤따르는 blur 가 다시 확정하지 않게(D2 인라인 규칙)
   const renameClosedRef = useRef(false);
+  // 미저장 가드(2026-10-03 E2-4): 편집 폼의 기준값(불러오기·선택·새로 만들기·저장 때 갱신).
+  // 폼이 기준값과 다르면 ✕·바깥 클릭·Esc·뒤로 가기·[취소] 로 닫을 때 「버리고 닫을까요?」를 묻는다.
+  const [baseline, setBaseline] = useState<FormState>(emptyForm());
+  const isDirty = () => JSON.stringify(form) !== JSON.stringify(baseline);
+  const setFormAndBaseline = (next: FormState) => {
+    setForm(next);
+    setBaseline(next);
+  };
 
 
   useEffect(() => {
@@ -24,12 +34,16 @@ const ExportPresetManager = observer(() => {
       const loaded = appState.loadExportPresets();
       setPresets(loaded);
       setEditingIndex(null);
-      setForm(emptyForm());
+      setFormAndBaseline(emptyForm());
     }
   }, [appState.exportPresetManagerOpen]);
 
+  // 바닥 [취소] 도 ✕·바깥 클릭·Esc 와 같은 닫기 요청(가드 경유) — 폼만 되돌리고 창을 남기지 않는다
+  const requestClose = useGuardedClose(isDirty, () => onClose());
+
   if (!appState.exportPresetManagerOpen) return null;
 
+  // 닫으면 내보내기 선택 창을 다시 연다(기존 동작)
   const onClose = () => {
     appState.closeExportPresetManager();
     const type = appState.lastExportType || 'scene';
@@ -42,12 +56,12 @@ const ExportPresetManager = observer(() => {
 
   const selectPreset = (idx: number) => {
     setEditingIndex(idx);
-    setForm(presetToForm(presets[idx]));
+    setFormAndBaseline(presetToForm(presets[idx]));
   };
 
   const newPreset = () => {
     setEditingIndex(null);
-    setForm(emptyForm());
+    setFormAndBaseline(emptyForm());
   };
 
   const isFormValid = () => isExportFormValid(form, true);
@@ -69,6 +83,8 @@ const ExportPresetManager = observer(() => {
     }
     setPresets(updated);
     appState.saveExportPresets(updated);
+    // 저장한 폼이 새 기준값 — 저장 뒤 닫기는 가드를 타지 않는다
+    setBaseline(form);
     if (editingIndex === null) {
       setEditingIndex(updated.length - 1);
     }
@@ -81,7 +97,7 @@ const ExportPresetManager = observer(() => {
     appState.saveExportPresets(updated);
     if (editingIndex === idx) {
       setEditingIndex(null);
-      setForm(emptyForm());
+      setFormAndBaseline(emptyForm());
     } else if (editingIndex !== null && editingIndex > idx) {
       setEditingIndex(editingIndex - 1);
     }
@@ -91,8 +107,11 @@ const ExportPresetManager = observer(() => {
   const requestDeletePreset = (idx: number) => {
     appState.pushDialog({
       type: 'confirm',
-      danger: true,
-      text: `프리셋 "${presets[idx]?.name}"을(를) 정말 삭제하시겠습니까?`,
+      ...deleteConfirmText({
+        kind: 'exportPreset',
+        name: presets[idx]?.name,
+        outcome: 'permanent',
+      }),
       callback: () => deletePreset(idx),
     });
   };
@@ -139,8 +158,11 @@ const ExportPresetManager = observer(() => {
     );
     setPresets(updated);
     appState.saveExportPresets(updated);
-    // 편집 중인 폼이 이 프리셋이면 폼 이름도 동기화
-    if (editingIndex === renamingIndex) setForm((f) => ({ ...f, name }));
+    // 편집 중인 폼이 이 프리셋이면 폼 이름도 동기화(이미 저장된 이름이라 기준값도 함께)
+    if (editingIndex === renamingIndex) {
+      setForm((f) => ({ ...f, name }));
+      setBaseline((b) => ({ ...b, name }));
+    }
     setRenamingIndex(null);
   };
 
@@ -171,7 +193,13 @@ const ExportPresetManager = observer(() => {
   };
 
   return (
-    <ModalOverlay isOpen={true} onClose={onClose} title="내보내기 프리셋 관리" width="max-w-lg">
+    <ModalOverlay
+      isOpen={true}
+      onClose={onClose}
+      dirty={isDirty}
+      title="내보내기 프리셋 관리"
+      width="max-w-lg"
+    >
       <div className="flex flex-col gap-4">
         {/* 새 프리셋 버튼 */}
         <button
@@ -212,7 +240,7 @@ const ExportPresetManager = observer(() => {
                   />
                 ) : (
                   <div className="text-sm font-medium text-default truncate flex items-center gap-1">
-                    {p.isDefault && <span title="빠른 export 기본 프리셋">⚡</span>}
+                    {p.isDefault && <span title="빠른 내보내기 기본 프리셋">⚡</span>}
                     {p.name}
                   </div>
                 )}
@@ -277,18 +305,24 @@ const ExportPresetManager = observer(() => {
               className="w-4 h-4 accent-sky-500"
             />
             <span className="text-sm text-gray-700 dark:text-gray-300">
-              ⚡ 빠른 export 기본 프리셋으로 사용
+              ⚡ 빠른 내보내기 기본 프리셋으로 사용
             </span>
           </label>
 
-          {/* 저장 버튼 */}
-          <div className="flex justify-end pt-2">
+          {/* 저장·취소 버튼 — [확인][취소] 순서(SPEC §5). 취소 = 창 닫기 요청(미저장 가드 경유, 2026-10-03 E2-4) */}
+          <div className="flex justify-end gap-2 pt-2">
             <button
               onClick={savePreset}
               disabled={!isFormValid()}
               className="px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 text-white text-sm font-medium transition-colors"
             >
               {editingIndex !== null ? '수정 저장' : '프리셋 추가'}
+            </button>
+            <button
+              onClick={requestClose}
+              className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+            >
+              취소
             </button>
           </div>
         </div>

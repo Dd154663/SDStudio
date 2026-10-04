@@ -26,17 +26,33 @@ export const NAME_KIND_LABEL = {
   themePreset: '테마 프리셋',
   exportPreset: '내보내기 프리셋',
   token: '토큰',
+  // 삭제 확인 문구(deleteFlowRules.deleteConfirmText)에서만 쓰는 종류 — 이름 입력에는 쓰지 않는다
+  image: '이미지',
+  inpaintScene: '변형 씬',
+  sampleImage: '샘플 이미지',
 } as const;
 
 export type NameKind = keyof typeof NAME_KIND_LABEL;
 
+/** 마지막 글자의 받침 유무 — 한글 음절이 아니거나 빈 값이면 undefined(조사를 「이(가)」처럼 병기). */
+function lastSyllableHasBatchim(word: string): boolean | undefined {
+  const last = word.trim().slice(-1);
+  if (!last) return undefined;
+  const code = last.charCodeAt(0) - 0xac00;
+  if (code < 0 || code >= 11172) return undefined;
+  return code % 28 !== 0;
+}
+
 /** 받침 유무로 이/가 고르기. 한글 음절이 아니면 「이(가)」. */
 export function josaIGa(word: string): string {
-  const last = word.trim().slice(-1);
-  if (!last) return '이(가)';
-  const code = last.charCodeAt(0) - 0xac00;
-  if (code < 0 || code >= 11172) return '이(가)';
-  return code % 28 === 0 ? '가' : '이';
+  const b = lastSyllableHasBatchim(word);
+  return b === undefined ? '이(가)' : b ? '이' : '가';
+}
+
+/** 받침 유무로 을/를 고르기. 한글 음절이 아니면 「을(를)」(삭제 확인 문구 — deleteFlowRules). */
+export function josaEulReul(word: string): string {
+  const b = lastSyllableHasBatchim(word);
+  return b === undefined ? '을(를)' : b ? '을' : '를';
 }
 
 export const NAME_INPUT_TEXT = {

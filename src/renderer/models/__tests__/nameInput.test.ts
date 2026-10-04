@@ -11,6 +11,7 @@ jest.mock('../appStateRef', () => ({
 }));
 
 import {
+  josaEulReul,
   josaIGa,
   NAME_INPUT_TEXT,
   nameErrorMessage,
@@ -100,6 +101,13 @@ describe('조사·문구', () => {
     expect(josaIGa('조각그룹')).toBe('이');
     expect(josaIGa('작가')).toBe('가');
     expect(josaIGa('ABC')).toBe('이(가)');
+    // 을/를(삭제 확인 문구 — deleteFlowRules)
+    expect(josaEulReul('프로젝트')).toBe('를');
+    expect(josaEulReul('씬')).toBe('을');
+    expect(josaEulReul('장')).toBe('을');
+    expect(josaEulReul('개')).toBe('를');
+    expect(josaEulReul('ABC')).toBe('을(를)');
+    expect(josaEulReul('')).toBe('을(를)');
     expect(NAME_INPUT_TEXT.duplicate('scene')).toBe('같은 이름의 씬이 이미 있습니다.');
     expect(NAME_INPUT_TEXT.duplicate('template', 't')).toBe(
       '같은 이름의 템플릿이 이미 있습니다: t',

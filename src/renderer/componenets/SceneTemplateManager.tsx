@@ -18,7 +18,11 @@ import Tooltip from './Tooltip';
 import { sessionService, templateService } from '../models';
 import { appState } from '../models/AppService';
 import { nameErrorMessage, projectNameRules, validateName } from '../models/nameInput';
-import { projectDeleteResultText, runTrashDelete } from '../models/deleteFlowRules';
+import {
+  deleteConfirmText,
+  projectDeleteResultText,
+  runTrashDelete,
+} from '../models/deleteFlowRules';
 import { PROJECT_RETENTION_DAYS } from '../models/TrashService';
 import { saveJsonFile } from '../models/exportUtil';
 import { interceptFileImportClick } from '../models/driveImport';
@@ -115,8 +119,11 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
   const handleDelete = (name: string) => {
     appState.pushDialog({
       type: 'confirm',
-      danger: true,
-      text: `씬 템플릿 "${name}"을(를) 삭제할까요?\n휴지통으로 이동되어 복구할 수 있습니다.`,
+      ...deleteConfirmText({
+        kind: 'sceneTemplate',
+        name,
+        outcome: { trashDays: PROJECT_RETENTION_DAYS },
+      }),
       callback: async () => {
         // 다른 창 잠금으로 조용히 돌아와 목록에 남아 있으면 성공으로 안내하지 않는다(X4)
         const outcome = await runTrashDelete({
@@ -181,7 +188,7 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
           씬 템플릿 관리
           <HelpIcon
             content={
-              '자주 쓰는 씬 묶음을 템플릿으로 저장해 두고 아무 프로젝트에나 가져올 수 있습니다.\n' +
+              '자주 쓰는 씬 묶음을 템플릿으로 저장해 두고 아무 프로젝트로나 복사할 수 있습니다.\n' +
               '행을 클릭하면 템플릿을 열어 씬을 직접 수정할 수 있습니다.'
             }
           />
@@ -214,7 +221,7 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
             disabled={!curSession || templates.length === 0}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap disabled:opacity-40"
           >
-            <FaFileImport size={13} /> 현재 프로젝트로 가져오기
+            <FaFileImport size={13} /> 현재 프로젝트로 복사
           </button>
         </Tooltip>
         <Tooltip content="다른 기기에서 내보낸 씬 템플릿 파일을 추가합니다">

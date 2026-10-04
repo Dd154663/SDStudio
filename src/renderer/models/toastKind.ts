@@ -39,8 +39,9 @@ const ERROR_PATTERNS: RegExp[] = [
   /\b[45]\d\d\b.*(error|status)|status\s*[45]\d\d/i,
 ];
 
-// 취소는 실패도 성공도 아닌 중립 안내
-const INFO_OVERRIDE_PATTERNS: RegExp[] = [/취소/];
+// 취소는 실패도 성공도 아닌 중립 안내. 예약 제거(2026-10-04 E3 — 예전 「예약 취소」 문구를 「예약 제거」로
+// 통일)도 예전처럼 중립으로 둔다.
+const INFO_OVERRIDE_PATTERNS: RegExp[] = [/취소/, /예약[이을]?\s?(일괄\s?)?제거/];
 
 const SUCCESS_PATTERNS: RegExp[] = [
   /완료/,

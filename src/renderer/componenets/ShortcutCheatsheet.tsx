@@ -18,7 +18,7 @@ const SCENE_SHORTCUTS: ShortcutEntry[] = [
   { keys: ['Ctrl+X'], desc: '선택 모드 취소' },
   { keys: ['Ctrl+A'], desc: '포커스/선택 씬 예약 추가' },
   { keys: ['Space'], desc: '예약 실행' },
-  { keys: ['Ctrl+D'], desc: '모든 예약 취소' },
+  { keys: ['Ctrl+D'], desc: '모든 예약 제거' },
   { keys: ['Ctrl+B'], desc: '씬 북마크 토글' },
   { keys: ['Shift+드래그'], desc: '선택 영역 해제' },
   { keys: ['Alt+드래그'], desc: '영역 내 씬 예약 제거' },

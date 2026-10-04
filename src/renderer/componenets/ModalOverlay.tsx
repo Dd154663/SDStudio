@@ -3,6 +3,7 @@ import { FaTimes } from 'react-icons/fa';
 import { appState } from '../models/AppService';
 import { backStackService } from '../models/BackStackService';
 import { isMobile } from '../models';
+import { useGuardedClose } from './backdropClose';
 
 interface ModalOverlayProps {
   isOpen: boolean;
@@ -20,6 +21,9 @@ interface ModalOverlayProps {
   // 층(z-index) 교체 — 기본 var(--z-modal). 다른 모달·드로어 위에 떠야 하는 전역 창
   // (Google 드라이브 백업 창·환경설정 불러오기 미리보기)만 var(--z-modal-top) 을 쓴다.
   zIndex?: string;
+  // 미저장 가드(2026-10-03 E2-3): 참을 돌려주면 ✕·바깥 클릭·Esc·뒤로 가기로 닫을 때
+  // 「저장하지 않은 변경이 있습니다. 버리고 닫을까요?」를 묻고 확인했을 때만 onClose. 없으면 예전과 같다.
+  dirty?: () => boolean;
 }
 
 const ModalOverlay = ({
@@ -31,14 +35,17 @@ const ModalOverlay = ({
   hidden,
   fullscreen,
   zIndex,
+  dirty,
 }: ModalOverlayProps) => {
   const mouseDownOnBackdrop = useRef(false);
 
-  // 안드로이드 뒤로가기로 이 모달을 닫는다. onClose 는 매 렌더마다 새 함수일 수
-  // 있으므로 ref 로 최신값을 보관하고, 백스택 push/remove 는 isOpen 전환 시에만
-  // 실행해 스택 순서가 렌더로 흔들리지 않게 한다.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  // ✕·바깥 클릭·Esc/뒤로 가기 세 경로를 이 닫기 요청 하나로 모은다(미저장 가드 — dirty 가 없으면 곧바로 onClose).
+  const requestClose = useGuardedClose(dirty, onClose);
+
+  // 안드로이드 뒤로가기로 이 모달을 닫는다. requestClose 는 dirty·onClose 를 늦게 읽고,
+  // 백스택 push/remove 는 isOpen 전환 시에만 실행해 스택 순서가 렌더로 흔들리지 않게 한다.
+  const onCloseRef = useRef(requestClose);
+  onCloseRef.current = requestClose;
 
   // 같은 항목이 PC Esc 도 받는다(닫기 관문 — 맨 위 한 겹만, BackStackService). 예전의 자체 window
   // 캡처 Esc 리스너는 아래·위 창과 동시에 닫히는 원인이라 없앴다(2026-10-03 U1·X2).
@@ -78,7 +85,7 @@ const ModalOverlay = ({
         // mousedown도 backdrop에서 시작되고 click도 backdrop인 경우에만 닫기
         // (드래그로 밖에 나갔다 놓는 경우 방지)
         if (e.target === e.currentTarget && mouseDownOnBackdrop.current) {
-          onClose();
+          requestClose();
         }
         mouseDownOnBackdrop.current = false;
       }}
@@ -100,7 +107,8 @@ const ModalOverlay = ({
           </h2>
           <button
             className="p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors"
-            onClick={onClose}
+            onClick={requestClose}
+            aria-label="닫기"
           >
             <FaTimes size={16} />
           </button>

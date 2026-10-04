@@ -26,6 +26,7 @@ import { getEmptyImage } from 'react-dnd-html5-backend';
 import { isValidPieceLibrary, Piece, PieceLibrary } from '../models/types';
 import { appState } from '../models/AppService';
 import { promptName } from '../models/nameInput';
+import { deleteConfirmText } from '../models/deleteFlowRules';
 import type { DialogItem } from './ConfirmWindow';
 import { migratePieceLibrary } from '../models/legacy';
 import { stringifyExportJson } from '../models/jsonExport';
@@ -144,9 +145,7 @@ export const PieceCell = observer(
               // 조각은 휴지통이 없어 바로 사라진다 — 확인 1회(X11)
               appState.pushDialog({
                 type: 'confirm',
-                danger: 'permanent',
-                confirmText: '영구 삭제',
-                text: `「${piece.name}」 조각을 삭제할까요? 되돌릴 수 없습니다.`,
+                ...deleteConfirmText({ kind: 'piece', name: piece.name, outcome: 'permanent' }),
                 callback: () => {
                   const index = curPieceLibrary.pieces.indexOf(piece);
                   if (index < 0) return;
@@ -264,7 +263,7 @@ const PieceEditor = observer(() => {
         }
         setSelectedPieceLibrary(json.name);
         reloadDB();
-        appState.pushMessage(`조각그룹 "${json.name}" 가져오기 완료`);
+        appState.pushMessage(`조각그룹 "${json.name}" 불러오기 완료`);
       } else {
         const newName = await promptName({
           title: `"${json.name}" 이름의 조각그룹이 이미 존재합니다. 새 이름을 입력하세요.`,
@@ -352,7 +351,7 @@ const PieceEditor = observer(() => {
     );
 
     reloadDB();
-    appState.pushMessage(`와일드카드 "${finalName}" 가져오기 완료 (${lines.length}줄, 랜덤 줄 선택 모드 활성화)`);
+    appState.pushMessage(`와일드카드 "${finalName}" 불러오기 완료 (${lines.length}줄, 랜덤 줄 선택 모드 활성화)`);
   };
 
   const handleDragEnter = (e: React.DragEvent) => {
@@ -425,8 +424,12 @@ const PieceEditor = observer(() => {
     if (!selectedPieceLibrary) return;
     appState.pushDialog({
       type: 'confirm',
-      danger: true,
-      text: '정말로 삭제하시겠습니까?',
+      // 조각그룹은 휴지통이 없다 — 이름을 보이고 영구 삭제(Enter 무시, 2026-10-03 E1)
+      ...deleteConfirmText({
+        kind: 'pieceGroup',
+        name: selectedPieceLibrary,
+        outcome: 'permanent',
+      }),
       callback: async () => {
         if (scope === 'local') {
           curSession!.library.delete(selectedPieceLibrary!);
@@ -656,12 +659,12 @@ const PieceEditor = observer(() => {
             <FaPlus size={14} /> <span className="text-sm hidden md:inline">추가</span>
           </button>
         </Tooltip>
-        <Tooltip content="와일드카드(.txt) 또는 조각그룹(.json) 가져오기">
+        <Tooltip content="와일드카드(.txt) 또는 조각그룹(.json) 불러오기">
           <button
             className="icon-button h-8 px-3 back-green flex items-center gap-1"
             onClick={() => fileInputRef.current?.click()}
           >
-            <FaFileImport size={14} /> <span className="text-sm hidden md:inline">가져오기 (.txt/.json)</span>
+            <FaFileImport size={14} /> <span className="text-sm hidden md:inline">불러오기 (.txt/.json)</span>
           </button>
         </Tooltip>
         <Tooltip content="선택한 조각그룹 내보내기">
@@ -716,13 +719,13 @@ const PieceEditor = observer(() => {
         <div className="flex flex-col items-center justify-center py-12 text-faint">
           <FaPuzzlePiece size={48} className="mb-4 opacity-30" />
           <p className="text-lg mb-2">조각그룹이 없습니다</p>
-          <p className="text-sm mb-4">조각그룹을 추가하거나 와일드카드 파일을 가져오세요</p>
+          <p className="text-sm mb-4">조각그룹을 추가하거나 와일드카드 파일을 불러오세요</p>
           <div className="flex gap-2">
             <button className="round-button back-sky" onClick={addLibrary}>
               조각그룹 추가
             </button>
             <button className="round-button back-green" onClick={() => fileInputRef.current?.click()}>
-              와일드카드 가져오기
+              와일드카드 불러오기
             </button>
           </div>
         </div>

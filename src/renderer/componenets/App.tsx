@@ -416,7 +416,7 @@ export const App = observer(() => {
         return '이미지에서 프롬프트 메타데이터를 추출합니다';
       }
       if (type === 'application/json') {
-        return '프로젝트 또는 프롬프트조각을 임포트합니다';
+        return '프로젝트 또는 프롬프트조각을 불러옵니다';
       }
       // tar 백업(프로젝트/폴더). 드래그 중에는 보안상 파일명(dataTransfer.files)을 읽을 수 없고,
       // tar 의 MIME 도 환경마다 application/x-tar 또는 빈 문자열로 다르게 보고된다.

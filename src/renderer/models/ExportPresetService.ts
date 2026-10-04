@@ -600,7 +600,7 @@ export class ExportPresetService {
     const def = presets.find((p) => p.isDefault);
     if (!def) {
       appState.pushMessage(
-        '빠른 export 기본 프리셋이 없습니다. 프리셋 관리에서 "기본 프리셋"을 지정해주세요.',
+        '빠른 내보내기 기본 프리셋이 없습니다. 프리셋 관리에서 "기본 프리셋"을 지정해주세요.',
       );
       return;
     }

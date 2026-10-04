@@ -25,7 +25,15 @@ import {
   useToolbarRowDrop,
 } from './ToolbarDnd';
 import { portableToolbarButtons } from './PortableToolbarButtons';
-import { TrashList, TrashNameBadge, formatTrashDate, reportEmptyResult, trashNoticeText } from './TrashViews';
+import {
+  EMPTY_TRASH_EXTRA,
+  TrashList,
+  TrashNameBadge,
+  formatTrashDate,
+  reportEmptyResult,
+  trashNoticeText,
+} from './TrashViews';
+import { deleteConfirmText } from '../models/deleteFlowRules';
 import {
   planProjectRestore,
   sortTrashNewestFirst,
@@ -109,9 +117,7 @@ export function ProjectTrashView() {
     const shown = displayName(item);
     appState.pushDialog({
       type: 'confirm',
-      danger: 'permanent',
-      confirmText: '영구 삭제',
-      text: `"${shown}" 프로젝트를 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
+      ...deleteConfirmText({ kind: 'project', name: shown, outcome: 'permanent' }),
       callback: async () => {
         // 일괄 작업 잠금(2026-07-18): 프로젝트 폴더 삭제는 무거워(수천 파일 가능)
         // 진행 중 다른 조작이 겹치면 렉/오류 여지 — 전체화면 잠금으로 차단.
@@ -136,9 +142,12 @@ export function ProjectTrashView() {
   const handleEmptyAll = () => {
     appState.pushDialog({
       type: 'confirm',
-      danger: 'permanent',
-      confirmText: '영구 삭제',
-      text: `휴지통의 모든 프로젝트(${deletedProjects.length}개)를 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
+      ...deleteConfirmText({
+        kind: 'project',
+        count: deletedProjects.length,
+        outcome: 'permanent',
+        extra: EMPTY_TRASH_EXTRA,
+      }),
       callback: async () => {
         // 일괄 작업 잠금(2026-07-18): 저사양(특히 모바일) 보호 — finally 해제 보장
         const lockText = '프로젝트 휴지통 비우는 중...';

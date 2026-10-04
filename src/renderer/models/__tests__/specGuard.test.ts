@@ -208,6 +208,38 @@ const RULES: Rule[] = [
       'models/workflows/OneTimeFlows.ts': 2, // 프롬프트
     },
   },
+  {
+    // 삭제 확인 문구는 models/deleteFlowRules.deleteConfirmText 하나(2026-10-03 E1) — 대상·휴지통 보존 일수/영구·
+    // [삭제]/[영구 삭제] 라벨·위험도를 함께 정한다. 「정말로 삭제…」·「…삭제하시겠습니까?」 직접 작성 금지.
+    // 아래 allowlist 는 함수 밖 예외(폴더 삭제 — 프로젝트는 미분류/휴지통, 캐릭터 프리셋 폴더는 미분류 이동)로 동결.
+    name: '삭제 확인 문구 직접 작성(삭제하시겠·삭제할까요·정말로 … 삭제) — deleteConfirmText 사용',
+    guide: '§8',
+    dir: '',
+    exts: ['.ts', '.tsx'],
+    exclude: ['models/deleteFlowRules.ts'],
+    count: (c) =>
+      countMatches(c, /삭제하시겠|삭제할까요|정말로?[^'"`\n]{0,20}삭제/g),
+    allow: {
+      'componenets/CharacterPresetEditor.tsx': 1, // 캐릭터 프리셋 폴더 삭제(소속 프리셋은 미분류로)
+      'models/folderDeleteFlow.ts': 2, // 프로젝트 폴더 삭제(빈 폴더·폴더와 프로젝트 모두)
+    },
+  },
+  {
+    // 사용자 노출 용어 사전(2026-10-04 E3) — 불러오기=파일·드라이브→앱, 복사=글로벌↔프로젝트, 적용=이미지
+    // 메타데이터→설정, 내보내기=앱→파일. 구 동사(임포트·세션으로 가져오기·글로벌 프리셋으로 저장)와 표기
+    // (빠른 export·영구삭제·예약 취소)를 새 문구에 쓰지 않는다. 주석은 세지 않는다(식별자는 영문이라 무관).
+    name: '구 용어(임포트·빠른 export·영구삭제·예약 취소·세션으로 가져오기·글로벌 프리셋으로 저장) — 용어 사전 사용',
+    guide: '§12-3',
+    dir: '',
+    exts: ['.ts', '.tsx'],
+    exclude: [],
+    count: (c) =>
+      countMatches(
+        c.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1'),
+        /임포트|빠른 export|영구삭제|예약 (일괄 )?취소|예약이 취소|세션으로 (일괄 )?가져오|글로벌 프리셋으로 저장/g,
+      ),
+    allow: {},
+  },
 ];
 
 function listFiles(dirAbs: string, exts: string[]): string[] {

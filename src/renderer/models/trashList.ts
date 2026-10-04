@@ -162,9 +162,13 @@ export function isWorkspaceBakHealCandidate(state: {
 // ===== S3. 보존 기간 안내 =====
 
 export function trashRetentionNotice(
-  kind: 'scene' | 'project',
+  kind: 'scene' | 'project' | 'image',
   days: { image: number; scene: number; project: number },
 ): string {
+  // 이미지 휴지통 탭·검수 휴지통 보기(2026-10-03 E1-5)
+  if (kind === 'image') {
+    return `이미지는 ${days.image}일이 지나면 자동으로 영구 삭제됩니다.`;
+  }
   if (kind === 'scene') {
     return `씬은 ${days.scene}일, 이미지는 ${days.image}일이 지나면 자동으로 영구 삭제됩니다.`;
   }

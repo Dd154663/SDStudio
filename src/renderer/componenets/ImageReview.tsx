@@ -25,6 +25,9 @@ import {
 import { backStackService } from '../models/BackStackService';
 import { appState } from '../models/AppService';
 import { deleteImageFiles } from '../models/ImageService';
+import { deleteConfirmText } from '../models/deleteFlowRules';
+import { IMAGE_RETENTION_DAYS } from '../models/TrashService';
+import { trashNoticeText } from './TrashViews';
 import { queueScene } from '../models/sceneQueueActions';
 import { GenericScene, Session } from '../models/types';
 import Tooltip from './Tooltip';
@@ -180,9 +183,11 @@ const ImageReview = ({
       if (
         !skipConfirm &&
         !(await appState.confirmAsync(
-          `현재 이미지를 삭제할까요?\n${current.scene.name} / ${current.filename}`,
-          undefined,
-          { danger: true },
+          deleteConfirmText({
+            kind: 'image',
+            outcome: { trashDays: IMAGE_RETENTION_DAYS },
+            extra: `${current.scene.name} / ${current.filename}`,
+          }),
         ))
       ) {
         return;
@@ -297,9 +302,7 @@ const ImageReview = ({
     if (!trashScene) return;
     if (
       !(await appState.confirmAsync(
-        `${entry.filename} 파일을 영구 삭제할까요? 되돌릴 수 없습니다.`,
-        '영구 삭제',
-        { danger: 'permanent' },
+        deleteConfirmText({ kind: 'image', name: entry.filename, outcome: 'permanent' }),
       ))
     ) {
       return;
@@ -495,6 +498,10 @@ const ImageReview = ({
               <FaTimes />
             </button>
           </header>
+          {/* 보존 기간 안내(2026-10-03 E1-5) — 휴지통 목록과 같은 형식 */}
+          <div className="flex-none px-3 pt-2 text-xs text-faint break-keep">
+            {trashNoticeText('image')}
+          </div>
           <div className="grid flex-1 grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2 overflow-auto p-3">
             {trashLoading && (
               <div className="text-muted">불러오는 중...</div>

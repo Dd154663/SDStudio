@@ -107,3 +107,47 @@ export function hasOwnEscCancel(target: EventTarget | null): boolean {
 export function isImeComposing(e: { isComposing?: boolean; keyCode?: number }): boolean {
   return !!e.isComposing || e.keyCode === 229;
 }
+
+// ── 미저장 가드(2026-10-03 E2-3) ──
+// 초안 창(편집 내용을 [저장]해야 반영되는 창)을 ✕·바깥 클릭·Esc·뒤로 가기로 닫을 때, 저장하지 않은 변경이
+// 있으면 한 번 묻는다. ModalOverlay·FloatView 의 `dirty` prop 과 직접 만든 창의 useGuardedClose(backdropClose.ts)가
+// 이 함수 하나를 쓴다. dirty 를 넘기지 않으면(또는 거짓이면) 곧바로(동기) 닫는다 — 예전 동작과 같다.
+// [저장] 뒤 닫기는 이 가드를 거치지 않는다(호출부가 onClose 를 직접 부른다).
+
+export const DISCARD_CHANGES_TEXT = '저장하지 않은 변경이 있습니다. 버리고 닫을까요?';
+export const DISCARD_CHANGES_CONFIRM = '버리고 닫기';
+
+/** 창마다 하나 — 확인 창이 떠 있는 동안 다시 들어온 닫기 요청을 막는다. */
+export interface GuardedCloseState {
+  pending: boolean;
+}
+
+/**
+ * 닫기 요청 하나를 처리한다. 닫았으면 true.
+ * @param confirm 「버리고 닫을까요?」 확인(appState.confirmAsync) — 참이면 닫는다
+ */
+export function runGuardedClose(
+  state: GuardedCloseState,
+  dirty: (() => boolean) | undefined,
+  onClose: () => void,
+  confirm: () => Promise<boolean>,
+): Promise<boolean> {
+  if (state.pending) return Promise.resolve(false);
+  if (!dirty || !dirty()) {
+    onClose();
+    return Promise.resolve(true);
+  }
+  state.pending = true;
+  return confirm().then(
+    (ok) => {
+      state.pending = false;
+      if (ok) onClose();
+      return ok;
+    },
+    (e) => {
+      state.pending = false;
+      console.error('닫기 확인 실패:', e);
+      return false;
+    },
+  );
+}

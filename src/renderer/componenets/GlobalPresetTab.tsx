@@ -30,7 +30,11 @@ import {
 } from '../models/GlobalPresetService';
 import { appState } from '../models/AppService';
 import { nameErrorMessage, promptName } from '../models/nameInput';
-import { batchResultLine, failedNamesLine } from '../models/deleteFlowRules';
+import {
+  batchResultLine,
+  deleteConfirmText,
+  failedNamesLine,
+} from '../models/deleteFlowRules';
 import Tooltip from './Tooltip';
 import { PresetEditModal } from './PresetEditModal';
 import { useBackLayer } from '../models/BackStackService';
@@ -186,7 +190,7 @@ const EasyCard = observer(
               }}
             >
               <FaDownload size={16} />
-              불러오기
+              프로젝트로 복사
             </button>
           )}
           {/* PC: 하단 액션 바 (솔리드 색·확대·균등 배치 — 씬 카드 스타일) */}
@@ -258,7 +262,7 @@ const EasyCard = observer(
               className="w-full round-button back-sky text-sm py-2.5 font-medium"
               onClick={onImportToSession}
             >
-              불러오기
+              프로젝트로 복사
             </button>
             <div className="grid grid-cols-3 gap-1.5">
               <button
@@ -373,7 +377,7 @@ const GenRow = observer(
             onClick={onImportToSession}
             disabled={multiSelectMode}
           >
-            세션으로 가져오기
+            프로젝트로 복사
           </button>
           <div className="flex gap-2 md:ml-auto">
             <Tooltip content="이름 변경">
@@ -436,7 +440,7 @@ export const GlobalPresetTab = observer(() => {
   const handleFiles = async (files: FileList) => {
     if (!files || files.length === 0) return;
     appState.setProgressDialog({
-      text: '글로벌 프리셋 가져오는 중...',
+      text: '글로벌 프리셋 불러오는 중...',
       done: 0,
       total: files.length,
     });
@@ -460,7 +464,7 @@ export const GlobalPresetTab = observer(() => {
         console.error('Failed to import global preset:', file.name, e);
       }
       appState.setProgressDialog({
-        text: '글로벌 프리셋 가져오는 중...',
+        text: '글로벌 프리셋 불러오는 중...',
         done: i + 1,
         total: files.length,
       });
@@ -469,7 +473,7 @@ export const GlobalPresetTab = observer(() => {
     if (fail === 0) {
       appState.pushDialog({
         type: 'yes-only',
-        text: `${ok}개의 글로벌 프리셋을 가져왔습니다.`,
+        text: `${ok}개의 글로벌 프리셋을 불러왔습니다.`,
       });
     } else {
       appState.pushDialog({
@@ -508,8 +512,8 @@ export const GlobalPresetTab = observer(() => {
   const handleDelete = (entry: IGlobalPresetEntry) => {
     appState.pushDialog({
       type: 'confirm',
-      danger: true,
-      text: `"${entry.name}" 글로벌 프리셋을 삭제하시겠습니까?`,
+      // 휴지통이 없다 — 영구 삭제(Enter 무시, 2026-10-03 E1)
+      ...deleteConfirmText({ kind: 'globalPreset', name: entry.name, outcome: 'permanent' }),
       callback: async () => {
         try {
           await globalPresetService.delete(entry.id);
@@ -557,8 +561,11 @@ export const GlobalPresetTab = observer(() => {
     if (selectedIds.size === 0) return;
     appState.pushDialog({
       type: 'confirm',
-      danger: true,
-      text: `${selectedIds.size}개의 글로벌 프리셋을 삭제하시겠습니까?`,
+      ...deleteConfirmText({
+        kind: 'globalPreset',
+        count: selectedIds.size,
+        outcome: 'permanent',
+      }),
       callback: async () => {
         // 실패를 삼키지 않는다 — 건수와 이름을 알린다(X13)
         const ids = Array.from(selectedIds);
@@ -594,7 +601,7 @@ export const GlobalPresetTab = observer(() => {
     }
     const session = appState.curSession;
     appState.setProgressDialog({
-      text: '세션으로 가져오는 중...',
+      text: '프로젝트로 복사하는 중...',
       done: 0,
       total: selectedIds.size,
     });
@@ -609,14 +616,14 @@ export const GlobalPresetTab = observer(() => {
       }
       done++;
       appState.setProgressDialog({
-        text: '세션으로 가져오는 중...',
+        text: '프로젝트로 복사하는 중...',
         done,
         total: selectedIds.size,
       });
     }
     appState.setProgressDialog(undefined);
     appState.pushMessage(
-      `${done - fail}개 가져오기 완료${fail > 0 ? ` (${fail}개 실패)` : ''}`,
+      `${done - fail}개 프로젝트로 복사 완료${fail > 0 ? ` (${fail}개 실패)` : ''}`,
     );
     exitMultiSelect();
   };
@@ -665,15 +672,15 @@ export const GlobalPresetTab = observer(() => {
               onClick={() => fileInputRef.current?.click()}
             >
               <FaFileUpload size={14} />
-              <span>PNG 가져오기</span>
+              <span>PNG 불러오기</span>
             </button>
             <Tooltip content="글로벌 프리셋 전체를 tar 파일로 백업">
               <button type="button" className="round-button back-gray h-8 w-9 !min-w-0 !px-0 flex items-center justify-center" aria-label="백업" onClick={() => appState.globalPresetBackupExport()}>
                 <FaFileArchive size={14} />
               </button>
             </Tooltip>
-            <Tooltip content="백업 파일에서 글로벌 프리셋 복원 (동명 처리 선택)">
-              <button type="button" className="round-button back-gray h-8 w-9 !min-w-0 !px-0 flex items-center justify-center" aria-label="복원" onClick={() => appState.globalPresetBackupImport()}>
+            <Tooltip content="백업 파일에서 글로벌 프리셋 불러오기 (동명 처리 선택)">
+              <button type="button" className="round-button back-gray h-8 w-9 !min-w-0 !px-0 flex items-center justify-center" aria-label="백업 불러오기" onClick={() => appState.globalPresetBackupImport()}>
                 <FaFileImport size={14} />
               </button>
             </Tooltip>
@@ -715,7 +722,7 @@ export const GlobalPresetTab = observer(() => {
           </div>
           {multiSelectMode && (
             <div className="flex items-center gap-1.5">
-              <button type="button" className="round-button back-sky h-8 flex-1 !min-w-0 !px-1 text-xs" disabled={selectedIds.size === 0} onClick={handleBulkImportToSession}>세션으로 가져오기</button>
+              <button type="button" className="round-button back-sky h-8 flex-1 !min-w-0 !px-1 text-xs" disabled={selectedIds.size === 0} onClick={handleBulkImportToSession}>프로젝트로 복사</button>
               <button type="button" className="round-button back-orange h-8 flex-1 !min-w-0 !px-1 text-xs" disabled={selectedIds.size === 0} onClick={() => handleBulkSetDefault(true)}>기본 지정</button>
               <button type="button" className="round-button back-gray h-8 flex-1 !min-w-0 !px-1 text-xs" disabled={selectedIds.size === 0} onClick={() => handleBulkSetDefault(false)}>기본 해제</button>
               <button type="button" className="round-button back-red h-8 flex-1 !min-w-0 !px-1 text-xs" disabled={selectedIds.size === 0} onClick={handleBulkDelete}>삭제</button>
@@ -736,13 +743,13 @@ export const GlobalPresetTab = observer(() => {
       )}
       {!isMobile && (
       <div className="flex-none p-3 border-b line-color flex flex-wrap gap-3 items-center bg-[var(--c-surface)]">
-        <Tooltip content="글로벌 프리셋 이미지뿐 아니라, 프롬프트 메타데이터가 있는 PNG도 그림체 프리셋으로 가져옵니다.">
+        <Tooltip content="글로벌 프리셋 이미지뿐 아니라, 프롬프트 메타데이터가 있는 PNG도 그림체 프리셋으로 불러옵니다.">
           <button
             className="round-button back-sky flex items-center gap-2 px-4 py-2 text-base"
             onClick={() => fileInputRef.current?.click()}
           >
             <FaFileUpload size={18} />
-            <span>PNG 가져오기</span>
+            <span>PNG 불러오기</span>
           </button>
         </Tooltip>
         <input
@@ -765,13 +772,13 @@ export const GlobalPresetTab = observer(() => {
             <span>백업</span>
           </button>
         </Tooltip>
-        <Tooltip content="백업 파일에서 글로벌 프리셋 복원 (동명 처리 선택)">
+        <Tooltip content="백업 파일에서 글로벌 프리셋 불러오기 (동명 처리 선택)">
           <button
             className="round-button back-gray flex items-center gap-2 px-4 py-2 text-base"
             onClick={() => appState.globalPresetBackupImport()}
           >
             <FaFileImport size={16} />
-            <span>복원</span>
+            <span>백업 불러오기</span>
           </button>
         </Tooltip>
         <button
@@ -795,7 +802,7 @@ export const GlobalPresetTab = observer(() => {
               disabled={selectedIds.size === 0}
               onClick={handleBulkImportToSession}
             >
-              세션으로 일괄 가져오기
+              프로젝트로 일괄 복사
             </button>
             <button
               className="round-button back-orange px-4 py-2 text-base"
@@ -851,10 +858,10 @@ export const GlobalPresetTab = observer(() => {
           <div className="flex flex-col items-center justify-center h-full text-muted">
             <p className="mb-2 text-lg">글로벌 프리셋이 비어있습니다.</p>
             <p className="text-sm">
-              세션 프리셋을 우클릭하여 "글로벌 프리셋으로 저장"하거나,
+              세션 프리셋을 우클릭하여 "글로벌로 복사"하거나,
             </p>
             <p className="text-sm">
-              상단의 "PNG 가져오기" 버튼을 사용하세요.
+              상단의 "PNG 불러오기" 버튼을 사용하세요.
             </p>
           </div>
         )}
@@ -940,7 +947,7 @@ export const GlobalPresetPickerOverlay = observer(() => {
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold text-default">
-            글로벌 프리셋에서 가져오기 <span className="text-sm font-normal text-muted">(→ {displayName}로 적용)</span>
+            글로벌 프리셋을 프로젝트로 복사 <span className="text-sm font-normal text-muted">(→ {displayName}로 적용)</span>
           </h2>
           <button
             className="icon-button p-2 text-default"

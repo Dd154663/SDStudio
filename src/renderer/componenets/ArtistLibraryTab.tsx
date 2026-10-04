@@ -27,7 +27,14 @@ import { IArtistEntry, IArtistImage } from '../models/ArtistLibraryService';
 import { ModelSamplingFamily } from '../models/modelSamplingProfiles';
 import { appState } from '../models/AppService';
 import { promptName } from '../models/nameInput';
-import { batchResultLine, failedNamesLine } from '../models/deleteFlowRules';
+import {
+  batchResultLine,
+  deleteConfirmText,
+  failedNamesLine,
+} from '../models/deleteFlowRules';
+
+// 작가 삭제 확인 창의 덧붙임 줄 — 단건·여러 명 공통
+const ARTIST_DELETE_EXTRA = '첨부된 이미지도 함께 삭제됩니다.';
 import { dataUriToBase64 } from '../models/ImageService';
 import { extractPromptDataFromBase64 } from '../models/util';
 import { IMPORT_IMAGE_ACCEPT } from '../models/imageFormats';
@@ -258,8 +265,13 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
               onClick={() => {
                 appState.pushDialog({
                   type: 'confirm',
-                  danger: true,
-                  text: `"${artist.name}" 작가를 삭제하시겠습니까?\n첨부된 이미지도 함께 삭제됩니다.`,
+                  // 휴지통이 없다 — 영구 삭제(Enter 무시, 2026-10-03 E1)
+                  ...deleteConfirmText({
+                    kind: 'artist',
+                    name: artist.name,
+                    outcome: 'permanent',
+                    extra: ARTIST_DELETE_EXTRA,
+                  }),
                   callback: () => {
                     artistLibraryService.deleteArtist(artist.id);
                     onClose();
@@ -348,9 +360,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                       const imageId = selected.id;
                       appState.pushDialog({
                         type: 'confirm',
-                        danger: 'permanent',
-                        confirmText: '영구 삭제',
-                        text: '이 샘플 이미지를 삭제할까요? 파일이 영구 삭제되어 되돌릴 수 없습니다.',
+                        ...deleteConfirmText({ kind: 'sampleImage', outcome: 'permanent' }),
                         callback: async () => {
                           await artistLibraryService.removeImage(artist.id, imageId);
                           setSelectedId(null);
@@ -561,8 +571,12 @@ const ArtistLibraryTab = observer(() => {
     if (selectedIds.size === 0) return;
     appState.pushDialog({
       type: 'confirm',
-      danger: true,
-      text: `선택한 ${selectedIds.size}명의 작가를 삭제하시겠습니까?\n첨부된 이미지도 함께 삭제됩니다.`,
+      ...deleteConfirmText({
+        kind: 'artist',
+        count: selectedIds.size,
+        outcome: 'permanent',
+        extra: ARTIST_DELETE_EXTRA,
+      }),
       callback: async () => {
         // 한 명이 실패해도 나머지를 계속 지우고 결과를 알린다(X13 — 예전에는 첫 실패에서 멈추고 무안내)
         const ids = Array.from(selectedIds);
@@ -712,9 +726,9 @@ const ArtistLibraryTab = observer(() => {
             <FaFileArchive size={13} /> 백업
           </button>
         </Tooltip>
-        <Tooltip content="백업 파일에서 복원 (동명 처리 선택)">
+        <Tooltip content="백업 파일 불러오기 (동명 처리 선택)">
           <button className="round-button back-gray px-3 py-2 text-sm flex items-center gap-1" onClick={() => appState.artistLibraryBackupImport()}>
-            <FaFileImport size={13} /> 복원
+            <FaFileImport size={13} /> 백업 불러오기
           </button>
         </Tooltip>
         {!multiSelectMode ? (

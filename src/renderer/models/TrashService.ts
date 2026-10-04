@@ -1168,7 +1168,7 @@ export class TrashService extends EventTarget {
     try {
       entries = await this.scanWorkspaceEntries();
     } catch (e) {
-      console.error('프로젝트 영구삭제: 스캔 실패 — 아무것도 지우지 않음:', name, e);
+      console.error('프로젝트 영구 삭제: 스캔 실패 — 아무것도 지우지 않음:', name, e);
       return;
     }
     const activeSameName = entries.some((e) => e.name === name && e.hasJson);
@@ -1184,7 +1184,7 @@ export class TrashService extends EventTarget {
       const registered = nameOfPhysicalDir(targetDir) !== undefined;
       const jsonExists = await backend.existFile(workspacePath(targetDir, PROJECT_JSON_FILE));
       if (registered || jsonExists) {
-        console.error('프로젝트 영구삭제 거부 — 대상 폴더가 활성 상태:', targetDir);
+        console.error('프로젝트 영구 삭제 거부 — 대상 폴더가 활성 상태:', targetDir);
         return;
       }
       const deletedPath = workspacePath(targetDir, WORKSPACE_DELETED_FILE);
@@ -1239,7 +1239,7 @@ export class TrashService extends EventTarget {
       name.includes('..')
     ) {
       console.error(
-        '프로젝트 영구삭제 거부 — 유효하지 않은 이름:',
+        '프로젝트 영구 삭제 거부 — 유효하지 않은 이름:',
         JSON.stringify(name),
       );
       if (name in this.data.projects) {
@@ -1272,7 +1272,7 @@ export class TrashService extends EventTarget {
       activeExists = activeMap.has(name);
     } catch (e) {
       console.error(
-        '프로젝트 영구삭제: 활성 여부 스캔 실패 — 이미지 디렉터리 보존:',
+        '프로젝트 영구 삭제: 활성 여부 스캔 실패 — 이미지 디렉터리 보존:',
         name,
         e,
       );
@@ -1302,7 +1302,7 @@ export class TrashService extends EventTarget {
       } catch (e) {
         // 재확인 자체가 실패 → 불확실하므로 삭제 중단
         console.error(
-          '프로젝트 영구삭제: 활성 .json 재확인 실패 — 이미지 디렉터리 보존:',
+          '프로젝트 영구 삭제: 활성 .json 재확인 실패 — 이미지 디렉터리 보존:',
           name,
           e,
         );

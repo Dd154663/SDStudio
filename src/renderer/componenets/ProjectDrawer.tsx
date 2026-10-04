@@ -46,9 +46,14 @@ import {
   suggestFolderCopyName,
   validateName,
 } from '../models/nameInput';
-import { projectDeleteResultText, runTrashDelete } from '../models/deleteFlowRules';
+import {
+  deleteConfirmText,
+  projectDeleteResultText,
+  runTrashDelete,
+} from '../models/deleteFlowRules';
 import { PROJECT_RETENTION_DAYS } from '../models/TrashService';
 import { backStackService } from '../models/BackStackService';
+import { useBackdropClose } from './backdropClose';
 import {
   queueFolderProjectsForGeneration,
   queueProjectForGeneration,
@@ -1346,6 +1351,16 @@ const ProjectDrawer = observer(() => {
     };
   }, [render]);
 
+  // 바깥(어두운 배경) 클릭 닫기 — ModalOverlay 와 같은 규칙(2026-10-03 E2-2): 누른 곳과 뗀 곳이 모두
+  // 래퍼 자신일 때만 닫는다(어두운 배경 층은 pointer-events 없음 → 배경 클릭의 대상은 래퍼). 패널 안에서 글자를
+  // 끌어 선택하다 배경에서 떼도 닫히지 않는다. 떠 있는 컨텍스트 툴바를 닫는 클릭(누를 때 툴바가 열려 있었음)은
+  // 드로어를 유지하고 툴바만 닫는다(예외 유지).
+  const toolbarAtDownRef = useRef(false);
+  const backdropClose = useBackdropClose(() => {
+    if (toolbar || toolbarAtDownRef.current) return;
+    close();
+  });
+
   // 드로어가 닫혀 있으면 여기서 렌더 종료. 모든 훅 호출 이후이므로 훅 순서가 안전하다
   // (터치 드래그용 useRef/useEffect를 조기 return보다 앞에 두기 위해 위치를 내렸다).
   if (!render) return null;
@@ -1546,8 +1561,11 @@ const ProjectDrawer = observer(() => {
   const handleProjectDelete = async (name: string) => {
     appState.pushDialog({
       type: 'confirm',
-      danger: true,
-      text: `프로젝트 "${name}"을(를) 삭제할까요?\n휴지통으로 이동되어 복구할 수 있습니다.`,
+      ...deleteConfirmText({
+        kind: 'project',
+        name,
+        outcome: { trashDays: PROJECT_RETENTION_DAYS },
+      }),
       callback: async () => {
         // 예외·다른 창 잠금(조용히 반환 — 목록에 남음)은 성공 토스트 대신 실패 안내(X4).
         // 툴바 「프로젝트 삭제」(AppService.deleteSession)와 같은 판정·문구.
@@ -1585,11 +1603,11 @@ const ProjectDrawer = observer(() => {
     <div
       className="fixed inset-0 titlebar-no-drag"
       style={{ zIndex: 'var(--z-drawer)' }}
-      onClick={() => {
-        // 떠 있는 컨텍스트 툴바를 닫는 클릭이면 드로어는 유지하고 툴바만 닫는다.
-        if (toolbar) return;
-        close();
+      onMouseDown={(e) => {
+        toolbarAtDownRef.current = !!toolbar;
+        backdropClose.onMouseDown(e);
       }}
+      onClick={backdropClose.onClick}
       // 닫기 스와이프는 패널과 어두운 배경 어디에서 시작해도 받는다
       onTouchStart={onPanelTouchStart}
       onTouchMove={onPanelTouchMove}
@@ -1597,7 +1615,7 @@ const ProjectDrawer = observer(() => {
       onTouchCancel={onPanelTouchEnd}
     >
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 pointer-events-none"
         style={{
           backgroundColor: 'rgba(0,0,0,0.35)',
           opacity: shown ? 1 : 0,
@@ -1732,7 +1750,7 @@ const ProjectDrawer = observer(() => {
                 <span className="hidden md:inline">템플릿</span>
               </button>
             </Tooltip>
-            <Tooltip content="전체 백업 / 복원">
+            <Tooltip content="전체 백업 / 불러오기">
               <button
                 onClick={() => appState.fullBackupMenu()}
                 className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap"

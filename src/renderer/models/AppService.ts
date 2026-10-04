@@ -26,6 +26,7 @@ import { resolveToastKind, ToastKind } from './toastKind';
 import { confirmViaDialog } from './confirmKeys';
 import { NAME_INPUT_TEXT, nameErrorMessage, projectNameRules, promptName } from './nameInput';
 import {
+  deleteConfirmText,
   overlappingSceneNames,
   pasteResultText,
   projectDeleteResultText,
@@ -582,8 +583,12 @@ export class AppState {
   deleteSession() {
     this.pushDialog({
       type: 'confirm',
-      danger: true,
-      text: '정말로 이 프로젝트를 삭제하시겠습니까? (휴지통으로 이동)',
+      // 대상 이름을 보인다(드로어 삭제와 같은 문구 — 2026-10-03 E1)
+      ...deleteConfirmText({
+        kind: 'project',
+        name: this.curSession?.name,
+        outcome: { trashDays: PROJECT_RETENTION_DAYS },
+      }),
       callback: async () => {
         const name = this.curSession?.name;
         if (!name) return;
@@ -1070,11 +1075,11 @@ export class AppState {
             this.curSession = newSession;
             this.pushDialog({
               type: 'yes-only',
-              text: '프로젝트를 임포트 했습니다',
+              text: '프로젝트를 불러왔습니다',
             });
           } else {
             const value = await promptName({
-              title: '프로젝트를 임포트 합니다. 새 프로젝트 이름을 입력하세요.',
+              title: '프로젝트를 불러옵니다. 새 프로젝트 이름을 입력하세요.',
               ...projectNameRules(sessionService),
             });
             if (!value) return;
@@ -1088,7 +1093,7 @@ export class AppState {
             } catch (e) {
               // 예전에는 모든 예외를 「이미 존재」로 보였다 — 실제 사유를 보인다(D2)
               this.pushMessage(
-                nameErrorMessage(e, 'project', value, '프로젝트를 임포트하지 못했습니다.'),
+                nameErrorMessage(e, 'project', value, '프로젝트를 불러오지 못했습니다.'),
                 'error',
               );
             }
@@ -1099,14 +1104,14 @@ export class AppState {
         } else {
           this.pushDialog({
             type: 'select',
-            text: '프로젝트를 임포트 합니다. 원하시는 방식을 선택해주세요.',
+            text: '프로젝트를 불러옵니다. 원하시는 방식을 선택해주세요.',
             items: [
               {
-                text: '새 프로젝트로 임포트',
+                text: '새 프로젝트로 불러오기',
                 value: 'new-project',
               },
               {
-                text: '현재 프로젝트에 씬만 임포트 (⚠️! 씬이 덮어씌워짐)',
+                text: '현재 프로젝트에 씬만 불러오기 (⚠️! 씬이 덮어씌워짐)',
                 value: 'cur-project',
               },
             ],
@@ -1149,7 +1154,7 @@ export class AppState {
                 }
                 appState.pushDialog({
                   type: 'yes-only',
-                  text: '씬을 임포트 했습니다',
+                  text: '씬을 불러왔습니다',
                 });
               }
             },
@@ -1206,7 +1211,7 @@ export class AppState {
             afterImport();
             this.pushDialog({
               type: 'yes-only',
-              text: `조각모음을 ${scopeLabel}에 임포트 했습니다`,
+              text: `조각모음을 ${scopeLabel}에 불러왔습니다`,
             });
             return;
           }
@@ -1221,7 +1226,7 @@ export class AppState {
 
           let detail = `${scopeLabel}에 "${json.name}" 조각그룹이 이미 존재합니다.\n\n`;
           if (overlap.length > 0) detail += `겹치는 조각(${overlap.length}개): ${overlap.slice(0, 5).join(', ')}${overlap.length > 5 ? ' ...' : ''}\n`;
-          if (srcOnly.length > 0) detail += `임포트에만 있는 조각(${srcOnly.length}개): ${srcOnly.slice(0, 5).join(', ')}${srcOnly.length > 5 ? ' ...' : ''}\n`;
+          if (srcOnly.length > 0) detail += `불러온 파일에만 있는 조각(${srcOnly.length}개): ${srcOnly.slice(0, 5).join(', ')}${srcOnly.length > 5 ? ' ...' : ''}\n`;
           if (tgtOnly.length > 0) detail += `기존에만 있는 조각(${tgtOnly.length}개): ${tgtOnly.slice(0, 5).join(', ')}${tgtOnly.length > 5 ? ' ...' : ''}\n`;
 
           // 취소는 창의 내장 취소 하나(D3). 덮어쓰는 선택지는 빨강(D1).
@@ -1233,7 +1238,7 @@ export class AppState {
             items.push({ text: '병합 (양쪽 조각 모두 유지)', value: 'merge-skip' });
           }
           items.push({ text: '통째로 덮어쓰기 (기존 조각 모두 교체)', value: 'overwrite', danger: true });
-          items.push({ text: '새 이름으로 임포트', value: 'rename' });
+          items.push({ text: '새 이름으로 불러오기', value: 'rename' });
 
           this.pushDialog({
             type: 'select',
@@ -1284,7 +1289,7 @@ export class AppState {
                   srcLib.name = newName;
                   targetLibrary.set(newName, srcLib);
                   afterImport();
-                  this.pushMessage(`"${newName}" 조각그룹을 ${scopeLabel}에 임포트 했습니다`);
+                  this.pushMessage(`"${newName}" 조각그룹을 ${scopeLabel}에 불러왔습니다`);
                 });
               }
             },
@@ -1300,7 +1305,7 @@ export class AppState {
         // 세션이 있으면 로컬/전역 선택
         this.pushDialog({
           type: 'select',
-          text: '조각그룹을 어디에 임포트하시겠습니까?',
+          text: '조각그룹을 어디로 불러올까요?',
           items: [
             { text: '현재 프로젝트 (로컬)', value: 'local' },
             { text: '전역 (모든 프로젝트)', value: 'global' },
@@ -1391,10 +1396,10 @@ export class AppState {
       const entry = await globalPresetService.addImageAsPreset(base64, name);
       this.pushDialog({
         type: 'yes-only',
-        text: `"${entry.name}" 글로벌 프리셋으로 저장했습니다.`,
+        text: `"${entry.name}" 글로벌 프리셋으로 복사했습니다.`,
       });
     } catch (e: any) {
-      this.pushMessage('글로벌 프리셋 저장 실패: ' + (e.message || e));
+      this.pushMessage('글로벌로 복사 실패: ' + (e.message || e));
     }
   }
 
@@ -1476,9 +1481,9 @@ export class AppState {
         session,
         preset,
       );
-      this.pushMessage(`글로벌 프리셋에 추가: ${entry.name}`);
+      this.pushMessage(`글로벌로 복사: ${entry.name}`);
     } catch (e: any) {
-      this.pushMessage('글로벌로 내보내기 실패: ' + (e.message || e));
+      this.pushMessage('글로벌로 복사 실패: ' + (e.message || e));
     }
   }
 
@@ -1498,10 +1503,10 @@ export class AppState {
           workflowType: preset.type,
           presetName: preset.name,
         };
-        this.pushMessage(`세션에 추가: ${preset.name}`);
+        this.pushMessage(`프로젝트로 복사: ${preset.name}`);
       }
     } catch (e: any) {
-      this.pushMessage('가져오기 실패: ' + (e.message || e));
+      this.pushMessage('프로젝트로 복사 실패: ' + (e.message || e));
     }
   }
 
@@ -1562,11 +1567,12 @@ export class AppState {
     }
     appState.pushDialog({
       type: 'confirm',
-      danger: 'permanent',
-      confirmText: '영구 삭제',
-      text:
-        `이 프로젝트의 ${scenesWithTrash}개 씬에서 삭제된 이미지 ` +
-        `${totalImages}개를 영구 삭제하시겠습니까? (복원 불가)`,
+      ...deleteConfirmText({
+        kind: 'image',
+        count: totalImages,
+        outcome: 'permanent',
+        extra: `이 프로젝트의 씬 ${scenesWithTrash}개에서 휴지통에 있는 이미지입니다.`,
+      }),
       callback: async () => {
         // 일괄 작업 잠금(2026-07-18): 저사양(특히 모바일)에서 청소 도중 다른 조작이
         // 겹치면 렉/오류가 나므로 전체화면 progressDialog 로 입력을 차단한다.
@@ -1863,7 +1869,7 @@ export class AppState {
     }
 
     this.setProgressDialog({
-      text: '그림체 가져오는 중...',
+      text: '그림체 불러오는 중...',
       done: 0,
       total: files.length,
     });
@@ -1898,7 +1904,7 @@ export class AppState {
       }
 
       this.setProgressDialog({
-        text: '그림체 가져오는 중...',
+        text: '그림체 불러오는 중...',
         done: i + 1,
         total: files.length,
       });
@@ -1910,12 +1916,12 @@ export class AppState {
     if (results.success > 0 && results.failed === 0) {
       this.pushDialog({
         type: 'yes-only',
-        text: `${results.success}개의 그림체를 성공적으로 가져왔습니다.`,
+        text: `${results.success}개의 그림체를 성공적으로 불러왔습니다.`,
       });
     } else if (results.success > 0 && results.failed > 0) {
       this.pushDialog({
         type: 'yes-only',
-        text: `${results.success}개의 그림체를 가져왔습니다.\n${results.failed}개의 파일은 유효한 그림체 파일이 아닙니다:\n${results.failedNames.slice(0, 5).join('\n')}${results.failedNames.length > 5 ? '\n...' : ''}`,
+        text: `${results.success}개의 그림체를 불러왔습니다.\n${results.failed}개의 파일은 유효한 그림체 파일이 아닙니다:\n${results.failedNames.slice(0, 5).join('\n')}${results.failedNames.length > 5 ? '\n...' : ''}`,
       });
     } else {
       this.pushDialog({
