@@ -149,7 +149,7 @@ const TRANSPARENT_BACKGROUND_HELP =
 
 const ImageSelect = observer(({ input }: { input: WFIInlineInput }) => {
   const { curSession } = appState;
-  const { type, preset, shared, meta, editVibe } =
+  const { type, preset, shared, meta, editVibe, onImageUploaded } =
     useContext(WFElementContext)!;
   const getField = () => {
     if (input.fieldType === 'preset') return preset[input.field];
@@ -173,6 +173,8 @@ const ImageSelect = observer(({ input }: { input: WFIInlineInput }) => {
             } else {
               await imageService.writeVibeImage(curSession!, getField(), file);
             }
+            // 씬 문맥은 모른다 — 편집 창(InPaintEditor)이 받아 씬 해상도를 맞춘다(R-res ⓑ).
+            onImageUploaded?.(input.field, file);
           }}
         ></FileUploadBase64>
       </div>
@@ -2560,6 +2562,7 @@ interface ImplProps {
   onMiddlePromptChange?: (txt: string) => void;
   getCharacterMiddlePrompt?: (index: number) => string;
   onCharacterMiddlePromptChange?: (index: number, txt: string) => void;
+  onImageUploaded?: (field: string, base64: string) => void;
 }
 
 export const PreSetEditorImpl = observer(
@@ -2575,6 +2578,7 @@ export const PreSetEditorImpl = observer(
     onMiddlePromptChange,
     getCharacterMiddlePrompt,
     onCharacterMiddlePromptChange,
+    onImageUploaded,
   }: ImplProps) => {
     const [editVibe, setEditVibe] = useState<WFIInlineInput | undefined>(
       undefined,
@@ -2673,6 +2677,7 @@ export const PreSetEditorImpl = observer(
             onMiddlePromptChange,
             getCharacterMiddlePrompt,
             onCharacterMiddlePromptChange,
+            onImageUploaded,
           }}
         >
           <WFGroupContext.Provider value={{}}>
@@ -2739,6 +2744,8 @@ interface InnerProps {
   onMiddlePromptChange?: (txt: string) => void;
   getCharacterMiddlePrompt?: (index: number) => string;
   onCharacterMiddlePromptChange?: (index: number, txt: string) => void;
+  /** 이미지 입력칸에 파일을 올린 뒤(저장 완료 후) 호출 — 필드명과 base64. */
+  onImageUploaded?: (field: string, base64: string) => void;
 }
 
 interface UnionProps {
@@ -2767,6 +2774,7 @@ export const InnerPreSetEditor = observer(
     getCharacterMiddlePrompt,
     onCharacterMiddlePromptChange,
     nopad,
+    onImageUploaded,
   }: InnerProps) => {
     return (
       <VerticalStack className={nopad ? '' : 'p-2 md:p-3'}>
@@ -2782,6 +2790,7 @@ export const InnerPreSetEditor = observer(
           onMiddlePromptChange={onMiddlePromptChange}
           getCharacterMiddlePrompt={getCharacterMiddlePrompt}
           onCharacterMiddlePromptChange={onCharacterMiddlePromptChange}
+          onImageUploaded={onImageUploaded}
         />
       </VerticalStack>
     );

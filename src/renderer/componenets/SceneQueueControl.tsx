@@ -80,6 +80,13 @@ import {
   Session,
 } from '../models/types';
 import { extractPromptDataFromBase64 } from '../models/util';
+import {
+  applyImageResolution,
+  inpaintSceneResolutionFields,
+  paidResolutionNotice,
+  resolutionFromImage,
+  workflowUsesImageResolution,
+} from '../models/inpaintResolution';
 import { IMPORT_IMAGE_ACCEPT } from '../models/imageFormats';
 import { platform } from '../models/platform';
 import {
@@ -2055,13 +2062,18 @@ const QueueControl = observer(
           setInpaintEditScene(newScene);
         }
       } else {
+        // 해상도 = 첨부 이미지 크기(R-res, SPEC §7-3). 이미 받은 이미지로 생성 전에 정해 씬 등록 1회로 끝낸다.
+        // 크기를 모르거나 대상 아닌 워크플로우면 원본 씬 해상도(커스텀 너비·높이 포함 — 예전엔 enum 만 복사).
+        const fromImage = workflowUsesImageResolution(workflowType)
+          ? await resolutionFromImage(image)
+          : undefined;
         preset.image = await imageService.storeVibeImage(curSession!, image);
         const newScene = InpaintScene.fromJSON({
           type: 'inpaint',
           name,
           workflowType,
           preset,
-          resolution: scene.resolution,
+          ...inpaintSceneResolutionFields(workflowType, scene, fromImage),
           sceneRef: scene.type === 'scene' ? scene.name : undefined,
           sourceImage: scene.type === 'scene' ? sourceImage : undefined,
           imageMap: [],
@@ -2073,7 +2085,25 @@ const QueueControl = observer(
           curSession!.addScene(newScene);
           close();
           setInpaintEditScene(newScene);
+          const notice = fromImage && paidResolutionNotice(fromImage);
+          if (notice) appState.pushMessage(notice, 'info');
         }
+      }
+    };
+
+    // 기존 변형 씬의 이미지를 결과 이미지로 바꾸고 씬 해상도를 그 크기로 맞춘다(R-res ⓒ·ⓓ).
+    // 미러·이미지 수정 등 대상 아닌 워크플로우는 이미지만 바꾼다(기존 동작).
+    const replaceInpaintSceneImage = async (scene: InpaintScene, path: string) => {
+      let image = await imageService.fetchImage(path);
+      image = dataUriToBase64(image!);
+      const fromImage = workflowUsesImageResolution(scene.workflowType)
+        ? await resolutionFromImage(image)
+        : undefined;
+      await imageService.writeVibeImage(curSession!, scene.preset.image, image);
+      if (fromImage) {
+        applyImageResolution(scene, fromImage);
+        const notice = paidResolutionNotice(fromImage);
+        if (notice) appState.pushMessage(notice, 'info');
       }
     };
 
@@ -2103,13 +2133,7 @@ const QueueControl = observer(
                 path: string,
                 close: () => void,
               ) => {
-                let image = await imageService.fetchImage(path);
-                image = dataUriToBase64(image!);
-                await imageService.writeVibeImage(
-                  curSession!,
-                  scene.preset.image,
-                  image,
-                );
+                await replaceInpaintSceneImage(scene, path);
                 close();
                 setInpaintEditScene(scene as InpaintScene);
               },
@@ -2951,13 +2975,7 @@ const QueueControl = observer(
                 );
                 return;
               }
-              let source = await imageService.fetchImage(path);
-              source = dataUriToBase64(source!);
-              await imageService.writeVibeImage(
-                curSession,
-                scene.preset.image,
-                source,
-              );
+              await replaceInpaintSceneImage(scene, path);
               setImageReview(undefined);
               setInpaintEditScene(scene);
             }}

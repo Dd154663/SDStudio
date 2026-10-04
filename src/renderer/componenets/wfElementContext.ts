@@ -26,6 +26,8 @@ export interface IWFElementContext {
   onMiddlePromptChange?: (txt: string) => void;
   getCharacterMiddlePrompt?: (index: number) => string;
   onCharacterMiddlePromptChange?: (index: number, txt: string) => void;
+  /** 이미지 입력칸(ImageSelect) 업로드 완료 알림 — 변형 씬 편집 창이 씬 해상도를 맞출 때 쓴다(R-res). */
+  onImageUploaded?: (field: string, base64: string) => void;
   modelVersion: ModelVersion;
 }
 

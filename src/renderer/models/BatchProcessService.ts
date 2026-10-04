@@ -59,6 +59,7 @@ import { extractPromptDataFromBase64, getFirstFile } from './util';
 import { ImageOptimizeMethod } from '../backend';
 import { v4 } from 'uuid';
 import { Resolution, resolutionMap } from '../backends/imageGen';
+import { copySceneResolution } from './inpaintResolution';
 import { ProgressDialog } from '../componenets/ProgressWindow';
 import { migratePieceLibrary } from './legacy';
 import {
@@ -585,6 +586,8 @@ export class BatchProcessService {
                             const t = target as InpaintScene;
                             t.workflowType = srcJSON.workflowType;
                             t.preset = srcJSON.preset && workFlowService.presetFromJSON(srcJSON.preset);
+                            // 첨부 이미지(preset.image)를 함께 복사하므로 해상도도 같이 맞춘다(R-res ⓔ, SPEC §7-3).
+                            copySceneResolution(srcJSON, t);
                           }
                         }
                         appState.pushMessage(`${selected.length}개 씬에 내용이 복제되었습니다.`);
