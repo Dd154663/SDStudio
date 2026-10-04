@@ -313,7 +313,8 @@ const RULES: Rule[] = [
     allow: {},
   },
   {
-    // 버튼 반경은 --r-btn 토큰(모던 8px·클래식 알약). 버튼 클래스에 rounded-full 을 직접 붙이면 토큰을 우회한다.
+    // 버튼 반경은 토큰(--r-btn 글자 버튼 알약·--r-btn-icon 아이콘만 버튼 모던 8px). 버튼 클래스에 rounded-full 을
+    // 직접 붙이면 토큰을 우회한다(아이콘만 버튼이 옵션과 무관하게 알약이 됨).
     // 알약·원 유지 대상(태그·칩·배지·진행바·원형 오버레이·FAB)은 round-button/icon-button 을 쓰지 않는다.
     name: '버튼 클래스에 rounded-full 직접(round-button/icon-button) — --r-btn 토큰 사용',
     guide: '§2',

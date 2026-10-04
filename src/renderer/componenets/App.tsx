@@ -321,7 +321,7 @@ export const App = observer(() => {
     );
   }, [appState.uiClassicFinish]);
   // 알약형 버튼 옵션(환경설정 → 커스텀) 적용 — 켜면 html 에 클래스를 얹어
-  // 버튼 반경 토큰 --r-btn 을 알약으로 바꾼다(App.css 의 html.pill-buttons).
+  // 아이콘만 버튼 반경 토큰 --r-btn-icon 을 알약으로 바꾼다(App.css 의 html.pill-buttons).
   useEffect(() => {
     document.documentElement.classList.toggle(
       'pill-buttons',

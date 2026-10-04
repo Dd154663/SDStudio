@@ -339,7 +339,7 @@ export class AppState {
   // 적용은 App.tsx 가 html 에 finish-classic 클래스를 토글하는 방식(App.css 참조).
   @observable accessor uiClassicFinish = false;
 
-  // 알약형 버튼(config.uiPillButtons 미러) — true 면 모던 마감에서도 버튼 반경을 알약으로.
+  // 알약형 버튼(config.uiPillButtons 미러) — true 면 모던 마감에서도 아이콘만 버튼 반경을 알약으로.
   // 적용은 App.tsx 가 html 에 pill-buttons 클래스를 토글하는 방식(App.css 참조).
   @observable accessor uiPillButtons = false;
 

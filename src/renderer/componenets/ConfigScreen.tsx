@@ -1432,7 +1432,8 @@ const PersonalTab = ({
     <hr className="line-color" />
     <div>
       <div className="flex items-center gap-2">
-        {/* 클래식 마감이 켜져 있으면 버튼은 항상 알약형이라 이 옵션은 효과가 없다 — 비활성 표시. */}
+        {/* 글자 버튼은 항상 알약형, 이 옵션은 아이콘만 있는 작은 버튼(.icon-only)의 반경만 바꾼다.
+            클래식 마감이 켜져 있으면 아이콘 버튼도 항상 알약형이라 효과가 없다 — 비활성 표시. */}
         <input type="checkbox" id="cfgPillButtons"
           checked={uiClassicFinish || uiPillButtons}
           disabled={uiClassicFinish}
@@ -1446,7 +1447,7 @@ const PersonalTab = ({
         )}
       </div>
       <p className="text-xs text-faint mt-1 ml-6">
-        버튼 모서리를 둥근 사각형 대신 알약형으로 표시합니다. 클래식 마감에서는 항상 알약형입니다.
+        아이콘만 있는 작은 버튼도 둥근 사각형 대신 알약형으로 표시합니다. 클래식 마감에서는 항상 알약형입니다.
       </p>
     </div>
     <hr className="line-color" />
