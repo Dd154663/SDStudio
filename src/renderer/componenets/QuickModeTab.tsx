@@ -376,7 +376,7 @@ const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
           className={
             (v2Bar
               ? 'round-button font-bold text-[15px] flex-1 min-w-0 !h-10 !rounded-xl px-3 select-none whitespace-nowrap '
-              : 'round-button font-semibold text-base px-10 !py-2.5 w-full max-w-md select-none ') +
+              : 'round-button font-semibold text-base px-10 py-2.5 w-full max-w-md select-none ') +
             (autoOn ? 'back-red' : busy ? 'back-gray' : 'back-sky')
           }
           onPointerDown={onPointerDown}

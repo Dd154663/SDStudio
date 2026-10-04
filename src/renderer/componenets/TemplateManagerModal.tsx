@@ -67,7 +67,7 @@ const addBtnCls =
 const iconBtnCls = 'btn-ghost p-1.5 rounded-md text-faint';
 // 백업/복원(드라이브 동기화 ④) — 글로벌 프리셋 탭 모바일 툴바 버튼과 같은 모양(작은 알약)
 const backupBtnCls =
-  'round-button back-gray h-8 !px-3 text-sm flex items-center gap-1.5';
+  'round-button back-gray h-8 px-3 text-sm flex items-center gap-1.5';
 // 샘플링 인라인 컨트롤 입력 (PresetEditModal 과 동일 스타일)
 const numCls =
   'mt-1 w-full px-2 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default';
@@ -977,7 +977,7 @@ export const TemplateWorkflowEditor = observer(
                     <div className="flex justify-end mt-auto">
                       <Tooltip content="바이브 삭제">
                         <button
-                          className="round-button h-8 px-6 back-red"
+                          className="round-button icon-only h-8 back-red"
                           onClick={async () => {
                             // 제거하면 이미지 파일이 바로 영구 삭제된다 — 확인 1회(2026-10-03 E1-4)
                             if (
@@ -1061,7 +1061,7 @@ export const TemplateWorkflowEditor = observer(
                       </button>
                       <Tooltip content="레퍼런스 삭제">
                         <button
-                          className="round-button h-8 px-6 back-red"
+                          className="round-button icon-only h-8 back-red"
                           onClick={async () => {
                             // 제거하면 이미지 파일이 바로 영구 삭제된다 — 확인 1회(2026-10-03 E1-4)
                             if (

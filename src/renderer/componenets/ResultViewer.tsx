@@ -1680,7 +1680,7 @@ const ResultDetailView = observer(
           )}
           <div className={'absolute bottom-0 md:bottom-auto right-0 md:top-10 flex gap-3 p-4 w-full md:w-auto' + (v2 ? ' opacity-60' : '')}>
             <button
-              className={`round-button  ml-0 md:ml-auto h-10 md:h-8 w-20 md:w-auto bg-[var(--c-input-bg)] text-body mr-auto md:mr-0 text-xl md:text-base`}
+              className={`round-button icon-only  ml-0 md:ml-auto h-10 md:h-8 w-20 md:w-auto bg-[var(--c-input-bg)] text-body mr-auto md:mr-0 text-xl md:text-base`}
               onClick={() => {
                 setSelectedIndex(
                   (selectedIndex - 1 + paths.length) % paths.length,
@@ -1691,7 +1691,7 @@ const ResultDetailView = observer(
               <FaArrowLeft />
             </button>
             <button
-              className={`round-button h-10 md:h-8 w-20 md:w-auto bg-[var(--c-input-bg)] text-xl text-body md:text-base`}
+              className={`round-button icon-only h-10 md:h-8 w-20 md:w-auto bg-[var(--c-input-bg)] text-xl text-body md:text-base`}
               onClick={() => {
                 setSelectedIndex((selectedIndex + 1) % paths.length);
               }}
@@ -2625,7 +2625,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               <span className="ml-auto flex-none inline-flex items-center gap-1 md:gap-2 pl-2">
                 <Tooltip content="이전 씬 그리드 (Ctrl+←)">
                   <button
-                    className={`round-button back-gray ${!sceneNav.hasPrev ? 'opacity-40' : ''}`}
+                    className={`round-button icon-only back-gray ${!sceneNav.hasPrev ? 'opacity-40' : ''}`}
                     disabled={!sceneNav.hasPrev}
                     onClick={() => sceneNav.go(-1)}
                   >
@@ -2634,7 +2634,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                 </Tooltip>
                 <Tooltip content="다음 씬 그리드 (Ctrl+→)">
                   <button
-                    className={`round-button back-gray ${!sceneNav.hasNext ? 'opacity-40' : ''}`}
+                    className={`round-button icon-only back-gray ${!sceneNav.hasNext ? 'opacity-40' : ''}`}
                     disabled={!sceneNav.hasNext}
                     onClick={() => sceneNav.go(1)}
                   >
@@ -2654,7 +2654,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                 이상형 월드컵
               </button>
               <button
-                className={`round-button back-green`}
+                className={`round-button${isMobile ? ' icon-only' : ''} back-green`}
                 onClick={actQueueAdd}
                 aria-label="예약 추가"
               >
@@ -2662,7 +2662,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               </button>
               <Tooltip content="예약 제거">
                 <button
-                  className={`round-button back-gray`}
+                  className={`round-button${isMobile ? ' icon-only' : ''} back-gray`}
                   onClick={() => {
                     taskQueueService.removeTasksFromScene(scene);
                   }}
@@ -2672,7 +2672,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               </Tooltip>
               <Tooltip content="씬 편집">
                 <button
-                  className={`round-button back-orange`}
+                  className={`round-button${isMobile ? ' icon-only' : ''} back-orange`}
                   onClick={() => {
                     onEdit(scene);
                   }}
@@ -2683,7 +2683,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               {!isMobile && (
                 <Tooltip content="폴더 열기">
                   <button
-                    className={`round-button back-sky`}
+                    className={`round-button icon-only back-sky`}
                     onClick={async () => {
                       await backend.showFile(
                         getResultDirectory(curSession!, scene),
@@ -2697,7 +2697,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               <Tooltip content="이미지 선택 모드">
                 <button
                   className={
-                    `round-button ` + (selectMode ? 'back-sky' : 'back-gray')
+                    `round-button icon-only ` + (selectMode ? 'back-sky' : 'back-gray')
                   }
                   onClick={actToggleSelect}
                 >
@@ -2707,7 +2707,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               {isMainImage && (
                 <Tooltip content="즐겨찾기 이미지 일괄 선택">
                   <button
-                    className={`round-button back-yellow`}
+                    className={`round-button icon-only back-yellow`}
                     onClick={actSelectFavorites}
                   >
                     {/* 즐겨찾기 '선택' 헬퍼: 별+체크 배지로 토글 버튼(순수 별)과 구분 */}
@@ -2720,7 +2720,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               )}
               <Tooltip content="이미지 다운로드">
                 <button
-                  className={`round-button back-green`}
+                  className={`round-button icon-only back-green`}
                   onClick={actDownload}
                 >
                   <FaDownload />
@@ -2728,7 +2728,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               </Tooltip>
               <Tooltip content="이미지 복사">
                 <button
-                  className={`round-button back-sky`}
+                  className={`round-button icon-only back-sky`}
                   onClick={actCopyImages}
                 >
                   <ActionIcon id="copy" />
@@ -2736,7 +2736,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               </Tooltip>
               <Tooltip content="이미지 붙여넣기">
                 <button
-                  className={`round-button ${appState.imageClipboard.length > 0 ? 'back-sky' : 'back-gray'}`}
+                  className={`round-button icon-only ${appState.imageClipboard.length > 0 ? 'back-sky' : 'back-gray'}`}
                   onClick={actPaste}
                 >
                   <FaPaste />
@@ -2746,7 +2746,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                 <>
                   <Tooltip content="선택 이미지 즐겨찾기 토글">
                     <button
-                      className="round-button back-yellow"
+                      className="round-button icon-only back-yellow"
                       onClick={onToggleFavoriteSelected}
                     >
                       <FaStar />
@@ -2754,7 +2754,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                   </Tooltip>
                   <Tooltip content="선택 이미지 복제">
                     <button
-                      className="round-button back-sky"
+                      className="round-button icon-only back-sky"
                       onClick={onDuplicateSelected}
                     >
                       <ActionIcon id="duplicate" />
@@ -2762,7 +2762,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                   </Tooltip>
                   <Tooltip content="선택 이미지를 다른 씬으로 복사">
                     <button
-                      className="round-button back-sky"
+                      className="round-button icon-only back-sky"
                       onClick={onCopyToSceneSelected}
                     >
                       <FaShareSquare />
@@ -2776,7 +2776,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                 }
               >
                 <button
-                  className={`round-button back-red`}
+                  className={`round-button icon-only back-red`}
                   aria-label={selectMode ? '선택한 이미지 삭제' : '이미지 삭제'}
                   onClick={onDeleteButton}
                 >
@@ -2786,7 +2786,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               {onSampleExtract && (
                 <Tooltip content="샘플 뽑기 (시드 추출)">
                   <button
-                    className={`round-button back-sky`}
+                    className={`round-button icon-only back-sky`}
                     onClick={actSampleExtract}
                   >
                     <FaDice />
@@ -2795,7 +2795,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               )}
               <Tooltip content="북마크된 이미지로 이동">
                 <button
-                  className={`round-button ${bookmarkedImageFilename ? 'back-orange' : 'back-gray'}`}
+                  className={`round-button icon-only ${bookmarkedImageFilename ? 'back-orange' : 'back-gray'}`}
                   onClick={actGoBookmark}
                 >
                   <ActionIcon id="bookmark" />

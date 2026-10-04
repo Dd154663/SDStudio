@@ -237,7 +237,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
             </button>
             <Tooltip content="작가 이름 변경">
               <button
-                className="icon-button back-gray !rounded-md px-3 py-1.5"
+                className="icon-button back-gray !rounded-md p-2"
                 onClick={async () => {
                   // 현재 이름을 채워 연다 — 다른 작가와 같은 이름(대소문자·공백 무시)은 창 안에서 거부(D2)
                   const newName = await promptName({
@@ -255,13 +255,13 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
               </button>
             </Tooltip>
             <Tooltip content="즐겨찾기">
-              <button className="icon-button back-gray !rounded-md px-3 py-1.5" onClick={() => artistLibraryService.toggleFavorite(artist.id)}>
+              <button className="icon-button back-gray !rounded-md p-2" onClick={() => artistLibraryService.toggleFavorite(artist.id)}>
                 {artist.favorite ? <FaHeart className="text-red-500" /> : <FaRegHeart />}
               </button>
             </Tooltip>
             <Tooltip content="작가 삭제">
             <button
-              className="icon-button bg-red-500 text-white !rounded-md px-3 py-1.5"
+              className="icon-button bg-red-500 text-white !rounded-md p-2"
               onClick={() => {
                 appState.pushDialog({
                   type: 'confirm',

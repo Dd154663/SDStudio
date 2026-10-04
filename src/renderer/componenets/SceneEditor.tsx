@@ -1873,7 +1873,7 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
             <span className="flex-1 min-w-0 truncate text-sm font-semibold gray-label">{curName || scene.name}</span>
             <button
               type="button"
-              className="round-button back-sky text-sm !px-3 !py-0.5 !min-w-0 !min-h-0"
+              className="round-button back-sky text-sm px-3 py-0.5 min-w-0 min-h-0"
               onClick={finishEditing}
             >
               완료
@@ -1901,7 +1901,7 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
             <div className="flex-none w-[8.5rem]">{resolutionSelect}</div>
             <button
               type="button"
-              className="round-button back-red flex-none !min-w-0 w-9 h-9 !px-0"
+              className="round-button back-red flex-none min-w-0 w-9 h-9 px-0"
               aria-label="씬 삭제"
               onClick={confirmDelete}
             >

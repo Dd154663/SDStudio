@@ -405,7 +405,7 @@ const ImageReview = ({
           {counter}
         </span>
         <Tooltip content="이미지 검수 닫기">
-          <button className="round-button back-gray" onClick={onClose}>
+          <button className="round-button icon-only back-gray" onClick={onClose}>
             <FaTimes />
           </button>
         </Tooltip>
@@ -428,12 +428,12 @@ const ImageReview = ({
 
       <footer className="flex flex-none flex-wrap items-center justify-center gap-2 border-t line-color bg-[var(--c-surface-2)] px-3 py-2">
         <Tooltip content="이전 이미지">
-          <button className="round-button back-gray" onClick={() => move(-1)}>
+          <button className="round-button icon-only back-gray" onClick={() => move(-1)}>
             <FaArrowLeft />
           </button>
         </Tooltip>
         <Tooltip content="다음 이미지">
-          <button className="round-button back-gray" onClick={() => move(1)}>
+          <button className="round-button icon-only back-gray" onClick={() => move(1)}>
             <FaArrowRight />
           </button>
         </Tooltip>
@@ -492,7 +492,7 @@ const ImageReview = ({
               {trashScene.name} / 휴지통
             </strong>
             <button
-              className="round-button back-gray"
+              className="round-button icon-only back-gray"
               aria-label="닫기"
               onClick={() => setTrashScene(undefined)}
             >

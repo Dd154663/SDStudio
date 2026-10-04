@@ -387,7 +387,7 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                       <Tooltip content="바이브 삭제">
                       <button
                         className={
-                          `round-button h-8 px-8 ml-auto ` +
+                          `round-button icon-only h-8 ml-auto ` +
                           (disabled ? 'back-gray' : 'back-red')
                         }
                         onClick={() => {
@@ -503,7 +503,7 @@ export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
           }
         >
           <button
-            className={`round-button h-8 flex-1 !min-w-0 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
+            className={`round-button h-8 flex-1 min-w-0 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
             onClick={onClick}
             disabled={locked}
           >

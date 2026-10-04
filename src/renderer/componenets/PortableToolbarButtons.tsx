@@ -42,8 +42,8 @@ const iconButton = (
         variant === 'project'
           ? 'icon-button touch-hit relative mx-1'
           : variant === 'companion'
-            ? 'round-button back-gray h-8'
-            : 'round-button back-gray'
+            ? 'round-button icon-only back-gray h-8'
+            : 'round-button icon-only back-gray'
       }
       onClick={onClick}
     >
@@ -205,9 +205,9 @@ export function portableToolbarButtons(
         <button
           className={
             variant === 'scene'
-              ? `round-button ${appState.appliedCharacterPresetNames.length > 0 ? 'back-green' : 'back-gray'}`
+              ? `round-button icon-only ${appState.appliedCharacterPresetNames.length > 0 ? 'back-green' : 'back-gray'}`
               : variant === 'companion'
-                ? `round-button h-8 ${appState.appliedCharacterPresetNames.length > 0 ? 'back-green' : 'back-gray'}`
+                ? `round-button icon-only h-8 ${appState.appliedCharacterPresetNames.length > 0 ? 'back-green' : 'back-gray'}`
                 : `icon-button touch-hit relative mx-1 ${appState.appliedCharacterPresetNames.length > 0 ? 'back-green' : ''}`
           }
           onClick={() => appState.openCharacterPresets()}
@@ -230,7 +230,7 @@ export function portableToolbarButtons(
             // 원이 무배경 이웃과 어긋나던 것을 무배경+녹색 전경으로 통일(② A 피드백 3).
             variant === 'project'
               ? 'icon-button touch-hit relative back-green mx-1'
-              : 'round-button back-green' +
+              : 'round-button icon-only back-green' +
                 (variant === 'companion' ? ' h-8' : '')
           }
           onClick={() => appState.openPieceEditor()}

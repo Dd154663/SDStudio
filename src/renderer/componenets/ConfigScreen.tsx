@@ -1788,7 +1788,7 @@ const TemplateVariantChip = ({
   onApply: () => void;
 }) => (
   <button
-    className="flex items-center justify-center gap-1.5 flex-1 rounded-full border line-color px-2.5 py-1.5 clickable"
+    className="flex items-center justify-center gap-1.5 flex-1 rounded-[var(--r-btn)] border line-color px-2.5 py-1.5 clickable"
     style={{ backgroundColor: variant.surface }}
     onClick={onApply}
   >

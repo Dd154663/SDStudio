@@ -273,7 +273,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                       <Tooltip content="레퍼런스 삭제">
                       <button
                         className={
-                          `round-button h-8 px-4 ` +
+                          `round-button icon-only h-8 ` +
                           (disabled ? 'back-gray' : 'back-red')
                         }
                         onClick={() => {
@@ -490,7 +490,7 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
           }
         >
           <button
-            className={`round-button h-8 flex-1 !min-w-0 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
+            className={`round-button h-8 flex-1 min-w-0 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
             onClick={onClick}
             disabled={locked}
           >

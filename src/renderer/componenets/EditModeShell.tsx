@@ -312,7 +312,7 @@ const EditModeShell = observer(() => {
           편집 모드 — 버튼을 드래그해 배치·순서를 바꾸고, 패널 손잡이(✥)로 위치를 이동하세요
         </span>
         <button
-          className="round-button back-sky text-sm !px-3 !py-1 !min-w-0 !min-h-0"
+          className="round-button back-sky text-sm px-3 py-1 min-w-0 min-h-0"
           onClick={() => {
             appState.editMode = false;
           }}

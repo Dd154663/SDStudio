@@ -432,7 +432,7 @@ const TaskQueueControl = observer(({}) => {
       {!taskQueueService.isRunning() ? (
         <Tooltip content="예약된 생성 시작">
         <button
-          className={v2 ? 'round-button back-green flex-none !h-10 min-w-[96px] !px-4 gap-2 !rounded-xl font-bold text-[15px]' : `round-button back-green px-2 h-8 lg:px-6`}
+          className={v2 ? 'round-button back-green flex-none !h-10 min-w-[96px] px-4 gap-2 !rounded-xl font-bold text-[15px]' : `round-button back-green px-2 h-8 lg:px-6`}
           aria-label="생성 시작"
           onClick={() => {
             (async () => {
@@ -465,7 +465,7 @@ const TaskQueueControl = observer(({}) => {
       ) : (
         <Tooltip content="생성 중지">
         <button
-          className={v2 ? 'round-button back-red flex-none !h-10 min-w-[96px] !px-4 gap-2 !rounded-xl font-bold text-[15px]' : `round-button back-red px-2 h-8 lg:px-6`}
+          className={v2 ? 'round-button back-red flex-none !h-10 min-w-[96px] px-4 gap-2 !rounded-xl font-bold text-[15px]' : `round-button back-red px-2 h-8 lg:px-6`}
           aria-label="생성 중지"
           onClick={() => {
             taskQueueService.stop();

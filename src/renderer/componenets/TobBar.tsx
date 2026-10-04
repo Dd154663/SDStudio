@@ -200,7 +200,7 @@ const TobBar = observer(() => {
       {appState.uiToolbar.classic ? (
         <div className="md:hidden flex flex-col items-center gap-1 titlebar-no-drag flex-none">
           <button
-            className="round-button back-sky text-sm !px-3 !py-1 !min-w-0 !min-h-0"
+            className="round-button back-sky text-sm px-3 py-1 min-w-0 min-h-0"
             onClick={() => {
               setSettings(true);
             }}

@@ -164,7 +164,7 @@ export const ResolutionPicker = ({
                   onKeyDown={(e) => e.key === 'Enter' && applyCustom()}
                 />
                 <button
-                  className="round-button back-sky text-sm !py-1 px-2.5 flex-none"
+                  className="round-button back-sky text-sm py-1 px-2.5 flex-none"
                   onClick={applyCustom}
                 >
                   적용

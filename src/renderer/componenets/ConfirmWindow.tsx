@@ -319,7 +319,7 @@ const ConfirmWindow = observer(() => {
                   {/* [확인][취소] 순서 고정. 색은 위험도로만 — 중립 파랑, 파괴적(danger) 빨강 */}
                   <button
                     className={
-                      'mr-2 px-4 py-2 rounded clickable ' +
+                      'mr-2 px-4 py-2 rounded r-btn clickable ' +
                       (curDialog.danger ? 'back-red' : 'back-sky')
                     }
                     data-danger={curDialog.danger ? String(curDialog.danger) : undefined}
@@ -328,7 +328,7 @@ const ConfirmWindow = observer(() => {
                     {curDialog.confirmText ?? '확인'}
                   </button>
                   <button
-                    className="px-4 py-2 rounded back-gray clickable"
+                    className="px-4 py-2 rounded r-btn back-gray clickable"
                     onClick={cancelTop}
                   >
                     {curDialog.cancelText ?? '취소'}
@@ -337,7 +337,7 @@ const ConfirmWindow = observer(() => {
               )}
               {curDialog.type === 'yes-only' && (
                 <button
-                  className="px-4 py-2 rounded back-sky clickable"
+                  className="px-4 py-2 rounded r-btn back-sky clickable"
                   onClick={handleConfirm}
                 >
                   확인
@@ -346,14 +346,14 @@ const ConfirmWindow = observer(() => {
               {(curDialog.type === 'input-confirm' || curDialog.type === 'textarea-confirm') && (
                 <>
                   <button
-                    className="mr-2 px-4 py-2 rounded back-sky clickable"
+                    className="mr-2 px-4 py-2 rounded r-btn back-sky clickable"
                     onClick={handleConfirm}
                     disabled={validating}
                   >
                     확인
                   </button>
                   <button
-                    className="px-4 py-2 rounded back-gray clickable"
+                    className="px-4 py-2 rounded r-btn back-gray clickable"
                     onClick={cancelTop}
                   >
                     취소
@@ -369,7 +369,7 @@ const ConfirmWindow = observer(() => {
                         <button
                           key={key}
                           className={
-                            'w-full px-4 py-2 rounded clickable shrink-0 ' +
+                            'w-full px-4 py-2 rounded r-btn clickable shrink-0 ' +
                             (item.danger
                               ? 'back-red'
                               : curDialog.graySelect
@@ -447,7 +447,7 @@ const ConfirmWindow = observer(() => {
                   </div>
                   {/* 내장 취소 — select 의 유일한 취소(items 에 「취소」를 넣지 않는다) */}
                   <button
-                    className="w-full px-4 py-2 clickable rounded back-gray shrink-0"
+                    className="w-full px-4 py-2 clickable rounded r-btn back-gray shrink-0"
                     onClick={cancelTop}
                   >
                     {curDialog.cancelText ?? '취소'}
@@ -479,14 +479,14 @@ const ConfirmWindow = observer(() => {
                   </div>
                   <div className="flex gap-2 ml-auto mt-5">
                     <button
-                      className="flex-1 px-4 py-2 block rounded back-sky clickable"
+                      className="flex-1 px-4 py-2 block rounded r-btn back-sky clickable"
                       onClick={handleConfirm}
                       disabled={!inputValue}
                     >
                       확인
                     </button>
                     <button
-                      className="flex-1 px-4 py-2 block rounded back-gray clickable"
+                      className="flex-1 px-4 py-2 block rounded r-btn back-gray clickable"
                       onClick={cancelTop}
                     >
                       {curDialog.cancelText ?? '취소'}
@@ -523,13 +523,13 @@ const ConfirmWindow = observer(() => {
                   </div>
                   <div className="flex gap-2 mt-2 w-full">
                     <button
-                      className="flex-1 px-4 py-2 rounded back-sky clickable"
+                      className="flex-1 px-4 py-2 rounded r-btn back-sky clickable"
                       onClick={handleConfirm}
                     >
                       확인
                     </button>
                     <button
-                      className="flex-1 px-4 py-2 rounded back-gray clickable"
+                      className="flex-1 px-4 py-2 rounded r-btn back-gray clickable"
                       onClick={cancelTop}
                     >
                       {curDialog.cancelText ?? '취소'}

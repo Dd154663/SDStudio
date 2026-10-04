@@ -276,6 +276,42 @@ const RULES: Rule[] = [
       ),
     allow: {},
   },
+  {
+    // .round-button·.icon-button 은 @layer components(2026-10-04 B1) — 사용처 유틸이 이미 이기므로
+    // 패딩·최소 크기 덮어쓰기에 ! 를 붙이지 않는다. 버튼 문자열(따옴표·백틱 리터럴) 안의 !p*-·!min-w/h- 를 센다.
+    name: '버튼 패딩 ! 덮어쓰기(round-button/icon-button + !px-·!py-·!min-w-0 등) — ! 없이 유틸 사용',
+    guide: '§2',
+    dir: '',
+    exts: ['.ts', '.tsx'],
+    exclude: [],
+    count: (c) => {
+      let n = 0;
+      for (const m of c.matchAll(/`[^`]*`|"[^"\n]*"|'[^'\n]*'/g)) {
+        if (!/(^|[^\w-])(round|icon)-button([^\w-]|$)/.test(m[0])) continue;
+        n += countMatches(m[0], /(^|[\s'"`])!(p[xytblr]?|min-w|min-h)-/g);
+      }
+      return n;
+    },
+    allow: {},
+  },
+  {
+    // 버튼 반경은 --r-btn 토큰(모던 8px·클래식 알약). 버튼 클래스에 rounded-full 을 직접 붙이면 토큰을 우회한다.
+    // 알약·원 유지 대상(태그·칩·배지·진행바·원형 오버레이·FAB)은 round-button/icon-button 을 쓰지 않는다.
+    name: '버튼 클래스에 rounded-full 직접(round-button/icon-button) — --r-btn 토큰 사용',
+    guide: '§2',
+    dir: '',
+    exts: ['.ts', '.tsx'],
+    exclude: [],
+    count: (c) => {
+      let n = 0;
+      for (const m of c.matchAll(/`[^`]*`|"[^"\n]*"|'[^'\n]*'/g)) {
+        if (!/(^|[^\w-])(round|icon)-button([^\w-]|$)/.test(m[0])) continue;
+        n += countMatches(m[0], /(^|[\s'"`!:])rounded-full([^\w-]|$)/g);
+      }
+      return n;
+    },
+    allow: {},
+  },
 ];
 
 function listFiles(dirAbs: string, exts: string[]): string[] {

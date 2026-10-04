@@ -2560,7 +2560,7 @@ const QueueControl = observer(
     const toolbarButtons: Record<string, ReactNode> = {
       'add-scene': (
         <Tooltip content="씬 추가">
-          <button className="round-button back-sky" onClick={addScene}>
+          <button className={`round-button${iconMode ? ' icon-only' : ''} back-sky`} onClick={addScene}>
             {iconMode ? <ActionIcon id="add-scene" size={18} /> : '씬 추가'}
           </button>
         </Tooltip>
@@ -2568,7 +2568,7 @@ const QueueControl = observer(
       'queue-add': (
         <SceneQueueMenu session={curSession} type={type} selectedOnly={selectedCount > 0}>
           <button
-            className="round-button back-sky"
+            className={`round-button${iconMode && selectedCount === 0 ? ' icon-only' : ''} back-sky`}
             aria-label={
               selectedCount > 0
                 ? `선택한 씬 예약 추가 (${selectedCount})`
@@ -2601,7 +2601,7 @@ const QueueControl = observer(
       'export-images': (
         <Tooltip content="이미지 내보내기">
           <button
-            className="round-button back-gray"
+            className={`round-button${iconMode ? ' icon-only' : ''} back-gray`}
             onClick={() => appState.exportPackage(type)}
           >
             {iconMode ? (
@@ -2639,7 +2639,7 @@ const QueueControl = observer(
       'batch-process': (
         <Tooltip content="대량 작업">
           <button
-            className="round-button back-gray"
+            className={`round-button${mobileIcon ? ' icon-only' : ''} back-gray`}
             onClick={() => {
               appState.openBatchProcessMenu(type, setSceneSelector);
             }}
@@ -2652,7 +2652,7 @@ const QueueControl = observer(
       'multi-select': (
         <Tooltip content="드래그 선택 모드">
           <button
-            className={`round-button ${
+            className={`round-button${iconMode && selectedCount === 0 ? ' icon-only' : ''} ${
               appState.sceneSelectionMode ? 'back-sky' : 'back-gray'
             }`}
             onClick={() => {
@@ -2708,7 +2708,7 @@ const QueueControl = observer(
       'import-image': (
         <Tooltip content="이미지 프롬프트 추출">
           <button
-            className="round-button back-gray"
+            className="round-button icon-only back-gray"
             onClick={pickImportImage}
           >
             <ActionIcon id="import-image" size={18} />
@@ -2720,7 +2720,7 @@ const QueueControl = observer(
       'scene-search': (
         <Tooltip content="씬 검색">
           <button
-            className={`round-button ${showSceneSearch ? 'back-sky' : 'back-gray'}`}
+            className={`round-button icon-only ${showSceneSearch ? 'back-sky' : 'back-gray'}`}
             onClick={toggleSceneSearch}
           >
             <ActionIcon id="scene-search" size={18} />
@@ -2730,7 +2730,7 @@ const QueueControl = observer(
       'image-review': (
         <Tooltip content="이미지를 크게 넘겨보며 검수">
           <button
-            className="round-button back-gray"
+            className={`round-button${iconMode ? ' icon-only' : ''} back-gray`}
             onClick={() => setImageReview({})}
           >
             <ActionIcon id="image-review" size={18} />
@@ -2740,7 +2740,7 @@ const QueueControl = observer(
       ),
       'scene-find': (
         <Tooltip content="필터하지 않고 씬 위치로 이동">
-          <button className="round-button back-gray" onClick={findScene}>
+          <button className={`round-button${iconMode ? ' icon-only' : ''} back-gray`} onClick={findScene}>
             <ActionIcon id="scene-find" size={18} />
             {!iconMode && <span className="ml-1">씬 찾기</span>}
           </button>
@@ -2749,7 +2749,7 @@ const QueueControl = observer(
       'artist-breakdown': (
         <Tooltip content="좌측 프롬프트의 작가 태그를 하나씩 분리해 default 씬에 예약">
           <button
-            className="round-button back-gray"
+            className={`round-button${iconMode ? ' icon-only' : ''} back-gray`}
             onClick={() => queueArtistBreakdown(curSession)}
           >
             <ActionIcon id="artist-breakdown" size={18} />
@@ -2761,7 +2761,7 @@ const QueueControl = observer(
       'artist-prefix-toggle': (
         <Tooltip content="긍정 프롬프트의 작가 태그 artist: 접두 전환 — 있으면 제거, 없으면 추가(태그 DB 기준)">
           <button
-            className="round-button back-gray"
+            className={`round-button${iconMode ? ' icon-only' : ''} back-gray`}
             onClick={() => applyArtistPrefixBatch(curSession)}
           >
             <ActionIcon id="artist-prefix-toggle" size={18} />
@@ -2772,7 +2772,7 @@ const QueueControl = observer(
       'bookmark-jump': (
         <Tooltip content="북마크된 씬으로 이동">
           <button
-            className={`round-button ${sceneBookmark ? 'back-orange' : 'back-gray'}`}
+            className={`round-button icon-only ${sceneBookmark ? 'back-orange' : 'back-gray'}`}
             onClick={() => {
               if (!sceneBookmark) {
                 appState.pushMessage('북마크된 씬이 없습니다.');
@@ -2997,7 +2997,7 @@ const QueueControl = observer(
                   <ToolbarMenuDropTarget group="scene" area="scene">
                     <Tooltip content="더보기">
                       <button
-                        className={`round-button ${showToolbarMenu ? 'back-sky' : 'back-gray'}${toolbarLayout.menu.length === 0 ? ' opacity-40' : ''}`}
+                        className={`round-button icon-only ${showToolbarMenu ? 'back-sky' : 'back-gray'}${toolbarLayout.menu.length === 0 ? ' opacity-40' : ''}`}
                         onClick={() => {
                           if (toolbarLayout.menu.length > 0)
                             setShowToolbarMenu(!showToolbarMenu);
@@ -3107,7 +3107,7 @@ const QueueControl = observer(
               }}
             />
             <button
-              className="round-button back-gray"
+              className="round-button icon-only back-gray"
               aria-label="씬 검색 닫기"
               onClick={() => {
                 setSceneSearchQuery('');

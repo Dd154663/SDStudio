@@ -401,7 +401,7 @@ export const CharacterPresetInnerEditor = observer(({
               <div className="flex justify-end mt-auto">
                 <Tooltip content="바이브 삭제">
                   <button
-                    className="round-button h-8 px-6 back-red"
+                    className="round-button icon-only h-8 back-red"
                     onClick={() => {
                       if (representativeImage === vibe.path) setRepresentativeImage('');
                       setVibes(vibes.filter((_, i) => i !== index));
@@ -466,7 +466,7 @@ export const CharacterPresetInnerEditor = observer(({
                 </button>
                 <Tooltip content="레퍼런스 삭제">
                   <button
-                    className="round-button h-8 px-6 back-red"
+                    className="round-button icon-only h-8 back-red"
                     onClick={() => {
                       if (representativeImage === ref.path) setRepresentativeImage('');
                       setCharacterReferences(characterReferences.filter((_, i) => i !== index));

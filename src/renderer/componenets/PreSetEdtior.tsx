@@ -853,7 +853,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
     };
   };
   // 동반 슬롯 (④ 호스트 확대): 사전세팅선택 행 옆에 portable 버튼을 붙인다.
-  // 빈 배열이면 슬롯 없음 = 현행 렌더 100% 동일. 드롭다운은 이미 flex-1 !min-w-0
+  // 빈 배열이면 슬롯 없음 = 현행 렌더 100% 동일. 드롭다운은 이미 flex-1 min-w-0
   // truncate 라 아이콘 버튼 자리를 자연스럽게 내준다. 편집모드 밖은
   // CompanionHostRow 가 fragment 라 렌더 무변화.
   const companionIds = resolveCompanionButtons(
@@ -876,16 +876,16 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
       {companions.length === 0 && (
         <div className="flex-none gray-label">사전세팅선택:</div>
       )}
-      {/* flex-1 !min-w-0 + truncate: 이름이 길어도 행 폭을 밀어내지 않고 말줄임 —
+      {/* flex-1 min-w-0 + truncate: 이름이 길어도 행 폭을 밀어내지 않고 말줄임 —
           우측 +·글로벌 복사·🗑 버튼이 밖으로 밀려 못 누르게 되던 문제 방지.
-          !min-w-0 필수: .round-button 의 min-width(App.css, md 미디어 룰의 unset)가
-          Tailwind min-w-0 보다 캐스케이드에서 뒤라 ! 없이는 축소가 막힌다.
+          min-w-0 필수: .round-button 의 min-width 를 덮는다(2026-10-04 B1 부터 .round-button 은
+          @layer components 라 유틸이 이긴다 — 예전의 ! 우회 불필요).
           span 쪽 min-w-0 도 필수(플렉스 아이템 기본 min-width:auto 로는 truncate 미발동). */}
       <button
         type="button"
         aria-haspopup="listbox"
         aria-expanded={isOpen}
-        className="round-button back-gray h-8 flex-1 !min-w-0 overflow-hidden"
+        className="round-button back-gray h-8 flex-1 min-w-0 overflow-hidden"
         onClick={() => setIsOpen((open) => !open)}
       >
         <span className="min-w-0 truncate">
@@ -1555,7 +1555,7 @@ const WFRGroup = observer(({ element }: WFElementProps) => {
       <CompanionHostRow hostKey={hostKey}>
         <Tooltip content={grp.label}>
           <button
-            className="round-button back-gray h-8 flex-1 !min-w-0"
+            className="round-button back-gray h-8 flex-1 min-w-0"
             onClick={() => {
               setShowGroupOverlay(grp.label);
             }}
@@ -1668,7 +1668,7 @@ const NewSceneResolutionRow = observer(() => {
       />
       <Tooltip content="씬 탭의 모든 씬에 이 해상도를 일괄 적용합니다 (인페인트 씬 제외)">
         <button
-          className="round-button back-gray text-sm flex-none !px-2.5 !py-1 !min-w-0"
+          className="round-button back-gray text-sm flex-none px-2.5 py-1 min-w-0"
           onClick={applyAll}
         >
           일괄 적용
@@ -1741,7 +1741,7 @@ const PresetRootRender = observer(
           </span>
           <button
             type="button"
-            className="round-button back-sky text-sm !px-3 !py-0.5 !min-w-0 !min-h-0"
+            className="round-button back-sky text-sm px-3 py-0.5 min-w-0 min-h-0"
             onClick={focus.done}
           >
             완료
@@ -1842,7 +1842,7 @@ const PresetRootRender = observer(
         {hasOverride && (
           <div className="flex-none flex justify-end mb-1">
             <button
-              className="round-button back-gray text-sm !px-2 !py-0.5 !min-w-0 !min-h-0"
+              className="round-button back-gray text-sm px-2 py-0.5 min-w-0 min-h-0"
               onClick={() => resetPresetOrder(slotKey!)}
               title="이 화면의 요소 순서를 기본값으로 되돌립니다"
             >
@@ -2286,7 +2286,7 @@ export const CharacterButton = observer(({ input }: { input: WFIInlineInput }) =
       <CompanionHostRow hostKey={hostKey}>
         <Tooltip content="캐릭터 프롬프트 열기">
           <button
-            className={`round-button ${hasPresetApplied ? 'back-green' : anyCharacters ? 'back-sky' : 'back-gray'} h-8 flex-1 !min-w-0`}
+            className={`round-button ${hasPresetApplied ? 'back-green' : anyCharacters ? 'back-sky' : 'back-gray'} h-8 flex-1 min-w-0`}
             onClick={onClick}
           >
             <FaUserAlt size={14} className="inline-block" />
@@ -2335,7 +2335,7 @@ export const CharacterButton = observer(({ input }: { input: WFIInlineInput }) =
           className={`w-full mt-2 md:mt-3${hasCompanions ? ' flex gap-1 items-stretch' : ''}`}
         >
           <button
-            className={`round-button ${hasPresetApplied ? 'back-green' : 'back-sky'} h-8 ${hostWidth} flex justify-between items-center`}
+            className={`round-button ${hasPresetApplied ? 'back-green' : 'back-sky'} h-8 ${hostWidth} flex items-center`}
             onClick={onClick}
           >
             <div className="flex items-center">

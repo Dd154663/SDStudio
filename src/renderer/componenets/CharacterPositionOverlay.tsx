@@ -324,7 +324,7 @@ export const CharacterPositionOverlay = ({
               type="button"
               data-char-pos-guide-btn={g.key}
               aria-pressed={guide === g.key}
-              className={`round-button h-8 text-xs !px-2.5 ${guide === g.key ? 'back-sky' : 'back-llgray tab-seg-off'}`}
+              className={`round-button h-8 text-xs px-2.5 ${guide === g.key ? 'back-sky' : 'back-llgray tab-seg-off'}`}
               onClick={() => {
                 setGuide(g.key);
                 saveGuide(g.key);

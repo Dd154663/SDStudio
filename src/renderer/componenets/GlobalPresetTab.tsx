@@ -260,35 +260,35 @@ const EasyCard = observer(
             </button>
             <div className="grid grid-cols-3 gap-1.5">
               <button
-                className="icon-button btn-solid-orange py-2.5 rounded flex items-center justify-center"
+                className="icon-button btn-solid-orange py-2.5 flex items-center justify-center"
                 onClick={onToggleDefault}
                 title={entry.isDefault ? '기본 해제' : '기본으로 지정'}
               >
                 <ActionIcon id="pin-default" size={18} className={entry.isDefault ? undefined : 'opacity-50'} />
               </button>
               <button
-                className="icon-button btn-solid-green py-2.5 rounded flex items-center justify-center"
+                className="icon-button btn-solid-green py-2.5 flex items-center justify-center"
                 onClick={onRename}
                 title="이름 변경"
               >
                 <ActionIcon id="rename" size={18} />
               </button>
               <button
-                className="icon-button btn-solid-indigo py-2.5 rounded flex items-center justify-center"
+                className="icon-button btn-solid-indigo py-2.5 flex items-center justify-center"
                 onClick={onEdit}
                 title="편집"
               >
                 <ActionIcon id="edit" size={18} />
               </button>
               <button
-                className="icon-button btn-solid-sky py-2.5 rounded flex items-center justify-center"
+                className="icon-button btn-solid-sky py-2.5 flex items-center justify-center"
                 onClick={onExport}
                 title="내보내기"
               >
                 <ActionIcon id="export" size={18} />
               </button>
               <button
-                className="icon-button btn-solid-red py-2.5 rounded flex items-center justify-center"
+                className="icon-button btn-solid-red py-2.5 flex items-center justify-center"
                 onClick={onDelete}
                 title="삭제"
               >
@@ -377,7 +377,7 @@ const GenRow = observer(
           <div className="flex gap-2 md:ml-auto">
             <Tooltip content="이름 변경">
               <button
-                className="icon-button btn-solid-green p-3 rounded"
+                className="icon-button btn-solid-green p-3"
                 onClick={onRename}
               >
                 <ActionIcon id="rename" size={16} />
@@ -385,7 +385,7 @@ const GenRow = observer(
             </Tooltip>
             <Tooltip content="PNG로 내보내기">
               <button
-                className="icon-button btn-solid-sky p-3 rounded"
+                className="icon-button btn-solid-sky p-3"
                 onClick={onExport}
               >
                 <ActionIcon id="export" size={16} />
@@ -393,7 +393,7 @@ const GenRow = observer(
             </Tooltip>
             <Tooltip content="삭제">
               <button
-                className="icon-button btn-solid-red p-3 rounded"
+                className="icon-button btn-solid-red p-3"
                 onClick={onDelete}
               >
                 <FaTrash size={16} />
@@ -663,26 +663,26 @@ export const GlobalPresetTab = observer(() => {
           <div className="flex items-center gap-1.5">
             <button
               type="button"
-              className="round-button back-sky h-8 !px-3 text-sm flex items-center gap-1.5"
+              className="round-button back-sky h-8 px-3 text-sm flex items-center gap-1.5"
               onClick={() => fileInputRef.current?.click()}
             >
               <ActionIcon id="import" size={14} />
               <span>PNG 불러오기</span>
             </button>
             <Tooltip content="글로벌 프리셋 전체를 tar 파일로 백업">
-              <button type="button" className="round-button back-gray h-8 w-9 !min-w-0 !px-0 flex items-center justify-center" aria-label="백업" onClick={() => appState.globalPresetBackupExport()}>
+              <button type="button" className="round-button back-gray h-8 w-9 min-w-0 px-0 flex items-center justify-center" aria-label="백업" onClick={() => appState.globalPresetBackupExport()}>
                 <FaFileArchive size={14} />
               </button>
             </Tooltip>
             <Tooltip content="백업 파일에서 글로벌 프리셋 불러오기 (동명 처리 선택)">
-              <button type="button" className="round-button back-gray h-8 w-9 !min-w-0 !px-0 flex items-center justify-center" aria-label="백업 불러오기" onClick={() => appState.globalPresetBackupImport()}>
+              <button type="button" className="round-button back-gray h-8 w-9 min-w-0 px-0 flex items-center justify-center" aria-label="백업 불러오기" onClick={() => appState.globalPresetBackupImport()}>
                 <FaFileImport size={14} />
               </button>
             </Tooltip>
             <Tooltip content={multiSelectMode ? '멀티선택 취소' : '멀티선택 모드'}>
               <button
                 type="button"
-                className={`round-button h-8 w-9 !min-w-0 !px-0 flex items-center justify-center ${multiSelectMode ? 'back-orange' : 'back-gray'}`}
+                className={`round-button h-8 w-9 min-w-0 px-0 flex items-center justify-center ${multiSelectMode ? 'back-orange' : 'back-gray'}`}
                 aria-pressed={multiSelectMode}
                 aria-label="멀티선택 모드"
                 onClick={() => {
@@ -717,10 +717,10 @@ export const GlobalPresetTab = observer(() => {
           </div>
           {multiSelectMode && (
             <div className="flex items-center gap-1.5">
-              <button type="button" className="round-button back-sky h-8 flex-1 !min-w-0 !px-1 text-xs" disabled={selectedIds.size === 0} onClick={handleBulkImportToSession}>프로젝트로 복사</button>
-              <button type="button" className="round-button back-orange h-8 flex-1 !min-w-0 !px-1 text-xs" disabled={selectedIds.size === 0} onClick={() => handleBulkSetDefault(true)}>기본 지정</button>
-              <button type="button" className="round-button back-gray h-8 flex-1 !min-w-0 !px-1 text-xs" disabled={selectedIds.size === 0} onClick={() => handleBulkSetDefault(false)}>기본 해제</button>
-              <button type="button" className="round-button back-red h-8 flex-1 !min-w-0 !px-1 text-xs" disabled={selectedIds.size === 0} onClick={handleBulkDelete}>삭제</button>
+              <button type="button" className="round-button back-sky h-8 flex-1 min-w-0 px-1 text-xs" disabled={selectedIds.size === 0} onClick={handleBulkImportToSession}>프로젝트로 복사</button>
+              <button type="button" className="round-button back-orange h-8 flex-1 min-w-0 px-1 text-xs" disabled={selectedIds.size === 0} onClick={() => handleBulkSetDefault(true)}>기본 지정</button>
+              <button type="button" className="round-button back-gray h-8 flex-1 min-w-0 px-1 text-xs" disabled={selectedIds.size === 0} onClick={() => handleBulkSetDefault(false)}>기본 해제</button>
+              <button type="button" className="round-button back-red h-8 flex-1 min-w-0 px-1 text-xs" disabled={selectedIds.size === 0} onClick={handleBulkDelete}>삭제</button>
             </div>
           )}
           <input

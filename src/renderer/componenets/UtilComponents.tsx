@@ -148,7 +148,7 @@ export const FileUploadBase64: React.FC<{
       onClick={handleClick}
       role="button"
       aria-label="파일 선택"
-      className="w-full h-8 overflow-hidden rounded-full back-sky clickable flex items-center justify-center"
+      className="w-full h-8 overflow-hidden rounded-[var(--r-btn)] back-sky clickable flex items-center justify-center"
       style={{
         backgroundColor: dragging ? '#0ea5e9' : undefined,
       }}
