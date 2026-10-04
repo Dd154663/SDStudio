@@ -468,7 +468,7 @@ export function applyConfigGroups(
       else (next as any)[field] = clone(v);
     }
   }
-  // 요청 지연을 바꿨으면 옛 키 delayTime 에도 min(…, 1000) 을 병기한다(롤백 호환 — requestTiming).
+  // 요청 지연을 바꿨으면 옛 키 delayTime 에도 역환산값(÷7.5, 0~1000)을 병기한다(롤백 호환 — requestTiming).
   if (next.requestDelayMs !== current.requestDelayMs) {
     next.delayTime = legacyDelayTimeFor(next.requestDelayMs);
   }

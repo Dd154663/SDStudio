@@ -8,8 +8,9 @@
  *  · 옛 값 환산(T3b): 새 키 `requestDelayMs` 가 없고 옛 키 `delayTime` 이 0 보다 크면
  *    기본 = delayTime × 7.5, 무작위 폭 = delayTime × 1.5(옛 일반 큐 배수 6~9 = 평균 7.5 ± 1.5 의
  *    등가, 100ms 단위 반올림·상한 보정). 옛 값이 0·없음·NaN 이면 기본값.
- *  · 하위 호환: 저장할 때마다 옛 키 `delayTime` 에 min(requestDelayMs, 1000) 을 함께 쓴다 —
- *    5.4.0 이하로 롤백해도 옛 배수 로직이 1000 초과 값을 곱하지 않는다.
+ *  · 하위 호환: 저장할 때마다 옛 키 `delayTime` 에 역환산값 round(requestDelayMs ÷ 7.5)
+ *    (1ms 정수, 0~1000 보정)을 함께 쓴다 — 5.4.0 이하로 롤백하면 옛 배수(평균 ×7.5)가 곱해져
+ *    새 설정과 비슷한 대기가 되고, 다시 올리면 정방향 환산과 왕복이 맞는다.
  *  · 1회 대기 = max(0, 기본 + uniform(-무작위 폭, +무작위 폭)). 작업의 첫 시도에만 적용하고,
  *    재시도는 이 지연 없이 아래 「오류 재시도 대기」 사다리만 기다린다.
  *  · 일반 큐(빠른 생성 아님)는 2% 확률로 그 대기에 ×1.5~2.0(급등).
@@ -34,6 +35,8 @@
  *  · 생성·증강 작업은 최대 10회 시도(`NAI_MAX_TRIES`), 업스케일은 1회(유료 이중 과금 방지).
  *  · 작업 3개(`CONSECUTIVE_FAILURE_STOP`)가 연속으로 재시도를 소진하면 큐를 완전히 정지하고
  *    닫히지 않는 확인 창으로 알린다(`TASK_FAILURE_TEXT.consecutiveStop`).
+ *  · 인증 오류(401·403, `isNaiAuthError`)는 재시도·누적 없이 그 작업을 큐에 남긴 채 바로 정지하고
+ *    같은 방식의 창으로 알린다(`TASK_FAILURE_TEXT.authStop`).
  *
  * ── `/user/data` 연속 조회 방지 ──
  *  · 같은 키(토큰)의 조회가 10초 안에 다시 오면 직전 성공 결과를 재사용, 진행 중이면 그 Promise 공유.
@@ -135,9 +138,14 @@ export function resolveRequestDelaySettings(
   };
 }
 
-/** 옛 키 `delayTime` 에 병기할 값 = min(기본 지연, 1000). */
+/**
+ * 옛 키 `delayTime` 에 병기할 값 = 기본 지연 ÷ 7.5(정방향 환산 `delayTime × 7.5` 의 역)를
+ * 1ms 정수로 반올림해 0~1000 으로 보정. 5.4.0 이하로 롤백하면 옛 배수(평균 ×7.5)가 다시 곱해져
+ * 실제 대기가 새 설정과 비슷해진다. 예: 1500→200, 7500→1000, 750→100, 0→0.
+ */
 export function legacyDelayTimeFor(requestDelayMs: unknown): number {
-  return Math.min(normalizeRequestDelayMs(requestDelayMs), LEGACY_DELAY_TIME_MAX_MS);
+  const legacy = Math.round(normalizeRequestDelayMs(requestDelayMs) / LEGACY_DELAY_BASE_FACTOR);
+  return Math.min(LEGACY_DELAY_TIME_MAX_MS, Math.max(0, legacy));
 }
 
 /** 지연 설정 3키(새 키 2개 + 옛 키 병기)를 config 에 써 넣은 새 객체. */
@@ -484,6 +492,11 @@ export const TASK_FAILURE_TEXT = {
     `작업 ${CONSECUTIVE_FAILURE_STOP}개가 연속으로 실패해 예약을 중지했습니다.\n` +
     `마지막 오류: ${lastError}\n` +
     `서버 상태를 확인한 뒤 다시 시작해 주세요.`,
+  /** 인증 오류(401·403) 즉시 정지 확인 창(닫히지 않는 yes-only) — 재시도·연속 실패 누적 없이 바로. */
+  authStop: (message: string) =>
+    `로그인 인증 오류로 예약을 중지했습니다.\n` +
+    `토큰을 확인한 뒤 다시 시작해 주세요.\n` +
+    `${message}`,
   /** 409 재시도 안내 토스트(중립색 — toastKind 추론도 info). */
   concurrentRetry:
     `서버가 이전 요청을 아직 처리 중입니다. ${sec(CONCURRENT_RETRY_WAIT_MS)} 후 다시 시도합니다.`,

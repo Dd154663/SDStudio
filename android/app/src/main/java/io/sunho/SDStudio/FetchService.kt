@@ -35,7 +35,9 @@ class FetchService : Plugin() {
     .build()
 
   private val inFlight = ConcurrentHashMap<String, Call>()
-  private val canceledByJs = ConcurrentHashMap.newKeySet<String>()
+  // ConcurrentHashMap.newKeySet() 은 API 24+ 전용이라 minSdk 22 기기에서 NoSuchMethodError 로 죽는다.
+  private val canceledByJs: MutableSet<String> =
+    java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
 
   @PluginMethod
   fun fetchData(call: PluginCall) {

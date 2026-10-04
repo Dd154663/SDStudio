@@ -44,6 +44,7 @@ import { dataUriToBase64 } from './ImageService';
 import { prepareMirrorCanvas } from './workflows/SDWorkFlow';
 import { getImageDimensions } from '../componenets/BrushTool';
 import {
+  isNaiAuthError,
   isNaiConcurrentError,
   isNaiRateLimitError,
   naiErrorKindLabel,
@@ -1073,7 +1074,7 @@ export class TaskQueueService extends EventTarget {
     this.dispatchProgress();
     const config = await backend.getConfig();
     // 지연 설정은 실행 시작 때 1회 읽는다(실행 중 변경은 다음 실행부터 — 종전 동작 유지).
-    // 옛 키 delayTime 은 읽지 않는다(requestTiming).
+    // 옛 키 delayTime 은 새 키가 없을 때 환산해 읽는다(requestTiming).
     const delay = resolveRequestDelaySettings(config);
     while (!this.queue.isEmpty()) {
       // 정지된 런은 즉시 종료 — stop() 후 새 런이 시작돼도 옛 루프가 큐를
@@ -1109,6 +1110,8 @@ export class TaskQueueService extends EventTarget {
       let lastErrorText = '';
       // 핸들러가 준 별도 실패 문구(업스케일 타임아웃 등) — 건너뜀 때 진행 바에도 그 문구를 남긴다.
       let lastNotice: string | undefined;
+      // 인증 오류(401·403)로 실패했는가 — 재시도·연속 실패 누적 없이 바로 정지한다.
+      let authFailed = false;
       for (let i = 0; i < numTries; i++) {
         if (cur.stopped) {
           this.dispatchProgress();
@@ -1230,7 +1233,12 @@ export class TaskQueueService extends EventTarget {
             if (notice) appState.pushMessage(notice, 'error');
           }
           console.error(e);
-          // 인증·프롬프트 한도·미지원 필드·Anlas/할당량 오류는 같은 요청을
+          // 인증 오류는 토큰을 고치기 전까지 모든 작업이 같은 이유로 실패하므로 아래에서 바로 정지한다.
+          if (isNaiAuthError(e)) {
+            authFailed = true;
+            break;
+          }
+          // 프롬프트 한도·미지원 필드·Anlas/할당량 오류는 같은 요청을
           // 반복해도 회복되지 않는다. 서버/네트워크/429/409만 재시도한다.
           if (e?.retryable === false) break;
           // 대기 중 정지하면 남은 대기를 버린다(다음 반복 머리에서 정지 처리).
@@ -1248,24 +1256,18 @@ export class TaskQueueService extends EventTarget {
           return;
         }
         const sceneName = task.params.scene?.name ?? '(unknown)';
+        // 인증 오류 즉시 정지: 재시도 소진·연속 실패 누적을 기다리지 않고 이 작업을 큐에 남긴 채 정지한다.
+        if (authFailed) {
+          this.consecutiveTaskFailures = 0;
+          this.stopForFailure(cur, task, sceneName, TASK_FAILURE_TEXT.authStop(lastErrorText));
+          return;
+        }
         // 연속 실패 정지(T4): 재시도를 소진한 작업이 CONSECUTIVE_FAILURE_STOP 개 연속이면 이 작업은
         // 건너뛰지 않고(큐에 남김) 큐를 완전히 정지한 뒤, 사용자가 확인을 누를 때까지 남는 창으로 알린다.
         this.consecutiveTaskFailures++;
         if (this.consecutiveTaskFailures >= CONSECUTIVE_FAILURE_STOP) {
           this.consecutiveTaskFailures = 0;
-          const text = TASK_FAILURE_TEXT.consecutiveStop(lastErrorText);
-          cur.stopped = true;
-          this.stop();
-          this.addLog('error', sceneName, text.replace(/\n/g, ' '));
-          this.dispatchEvent(
-            new CustomEvent('error', {
-              detail: { error: text.split('\n')[0], task: task },
-            }),
-          );
-          appState.pushDialog({ type: 'yes-only', text });
-          // 모바일 백그라운드 알림(BackgroundNotificationService)이 같은 문구를 표시한다.
-          this.dispatchEvent(new CustomEvent('failure-stop', { detail: { text } }));
-          this.dispatchProgress();
+          this.stopForFailure(cur, task, sceneName, TASK_FAILURE_TEXT.consecutiveStop(lastErrorText));
           return;
         }
         // 실패한 태스크를 건너뛰고 다음 태스크로 진행
@@ -1300,6 +1302,25 @@ export class TaskQueueService extends EventTarget {
       this.dispatchEvent(new CustomEvent('stop', {}));
       this.currentRun = undefined;
     }
+    this.dispatchProgress();
+  }
+
+  /**
+   * 실패로 큐를 완전히 정지(연속 실패·인증 오류 공통). 작업은 큐에 남기고, 사용자가 확인을 누를
+   * 때까지 남는 창과 'failure-stop' 이벤트(모바일 상주 알림 문구)로 알린다.
+   */
+  private stopForFailure(cur: TaskQueueRun, task: Task, sceneName: string, text: string) {
+    cur.stopped = true;
+    this.stop();
+    this.addLog('error', sceneName, text.replace(/\n/g, ' '));
+    this.dispatchEvent(
+      new CustomEvent('error', {
+        detail: { error: text.split('\n')[0], task: task },
+      }),
+    );
+    appState.pushDialog({ type: 'yes-only', text });
+    // 모바일 백그라운드 알림(BackgroundNotificationService)이 같은 문구를 표시한다.
+    this.dispatchEvent(new CustomEvent('failure-stop', { detail: { text } }));
     this.dispatchProgress();
   }
 

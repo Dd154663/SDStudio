@@ -71,7 +71,7 @@ import {
   RequestTimeoutError,
   TASK_FAILURE_TEXT,
 } from '../requestTiming';
-import { createNaiApiError } from '../../backends/genVendors/naiErrors';
+import { createNaiApiError, isNaiAuthError } from '../../backends/genVendors/naiErrors';
 import { appState } from '../AppService';
 
 const pushMessage = appState.pushMessage as jest.Mock;
@@ -607,6 +607,110 @@ describe('재시도 횟수·연속 실패 정지·409·업스케일 타임아웃
     expect(service.taskLogs.some((l) => l.level === 'error' && l.message.startsWith('작업 3개가'))).toBe(true);
     // 정지와 함께 연속 수를 새로 센다.
     expect(service.consecutiveTaskFailures).toBe(0);
+    cleanup(service);
+  });
+
+  test('인증 오류(401)는 첫 작업에서 재시도 없이 바로 정지하고 작업을 큐에 남긴 채 확인 창으로 알린다', async () => {
+    const handler = makeHandler({
+      getNumTries: () => NAI_MAX_TRIES,
+      handleTask: jest.fn(async () => {
+        throw createNaiApiError(401, JSON.stringify({ message: 'Invalid token' }));
+      }),
+    });
+    const service = new TaskQueueService([handler]);
+    const waits = recordWaits(service);
+    const cur = run();
+    service.currentRun = cur;
+    const events: string[] = [];
+    let stopText = '';
+    service.addEventListener('stop', () => events.push('stop'));
+    service.addEventListener('failure-stop', (e: any) => {
+      events.push('failure-stop');
+      stopText = e.detail.text;
+    });
+    for (const name of ['a', 'b']) service.addTaskLocal(makeParam(name), 1);
+    await service.runInternal(cur);
+    expect(handler.handleTask).toHaveBeenCalledTimes(1);
+    expect(waits).toEqual([]);
+    expect(cur.stopped).toBe(true);
+    expect(service.currentRun).toBeUndefined();
+    expect(service.queue.peek().params.session.name).toBe('a');
+    expect(service.statsAllTasks()).toEqual({ done: 0, total: 2 });
+    expect(events).toEqual(['stop', 'failure-stop']);
+    expect(pushDialog).toHaveBeenCalledTimes(1);
+    const dialog = pushDialog.mock.calls[0][0];
+    expect(dialog.type).toBe('yes-only');
+    const message = createNaiApiError(401, JSON.stringify({ message: 'Invalid token' })).message;
+    expect(dialog.text).toBe(TASK_FAILURE_TEXT.authStop(message));
+    expect(dialog.text).toBe(
+      `로그인 인증 오류로 예약을 중지했습니다.\n토큰을 확인한 뒤 다시 시작해 주세요.\n${message}`,
+    );
+    expect(stopText).toBe(dialog.text);
+    expect(service.taskLogs.some((l) => l.message.includes('건너뜀'))).toBe(false);
+    expect(service.consecutiveTaskFailures).toBe(0);
+    cleanup(service);
+  });
+
+  test('403 도 인증 오류로 즉시 정지, 판정은 kind 우선·문자열 폴백 없음', async () => {
+    expect(isNaiAuthError(createNaiApiError(403, 'Forbidden'))).toBe(true);
+    expect(isNaiAuthError(createNaiApiError(402, 'Anlas'))).toBe(false);
+    expect(isNaiAuthError(createNaiApiError(500, 'x'))).toBe(false);
+    expect(isNaiAuthError({ status: 401 })).toBe(true);
+    expect(isNaiAuthError({ kind: 'quota', status: 401 })).toBe(false);
+    expect(isNaiAuthError(new Error('요청 ID 401'))).toBe(false);
+    expect(isNaiAuthError(null)).toBe(false);
+    const handler = makeHandler({
+      getNumTries: () => 2,
+      handleTask: jest.fn(async () => { throw createNaiApiError(403, 'Forbidden'); }),
+    });
+    const service = new TaskQueueService([handler]);
+    recordWaits(service);
+    service.addTaskLocal(makeParam('a'), 1);
+    await service.runInternal(run());
+    expect(handler.handleTask).toHaveBeenCalledTimes(1);
+    expect(service.queue.isEmpty()).toBe(false);
+    expect(pushDialog).toHaveBeenCalledTimes(1);
+    cleanup(service);
+  });
+
+  test('할당량 오류(402)는 종전대로 재시도 없이 건너뛰고 연속 실패로 센다(즉시 정지 아님)', async () => {
+    const handler = makeHandler({
+      getNumTries: () => NAI_MAX_TRIES,
+      handleTask: jest.fn(async (task: any) => {
+        if (task.params.session.name === 'a') {
+          throw createNaiApiError(402, JSON.stringify({ message: 'Not enough Anlas' }));
+        }
+        return true;
+      }),
+    });
+    const service = new TaskQueueService([handler]);
+    recordWaits(service);
+    for (const name of ['a', 'b']) service.addTaskLocal(makeParam(name), 1);
+    await service.runInternal(run());
+    expect(handler.handleTask).toHaveBeenCalledTimes(2); // a 1회(재시도 불가) + b 성공
+    expect(pushDialog).not.toHaveBeenCalled();
+    expect(service.queue.isEmpty()).toBe(true);
+    expect(service.taskLogs.some((l) => l.message.includes('건너뜀'))).toBe(true);
+    cleanup(service);
+  });
+
+  test('할당량 오류(402)만 연속이면 종전대로 3개째에서 연속 실패 정지', async () => {
+    const handler = makeHandler({
+      getNumTries: () => NAI_MAX_TRIES,
+      handleTask: jest.fn(async () => {
+        throw createNaiApiError(402, JSON.stringify({ message: 'Not enough Anlas' }));
+      }),
+    });
+    const service = new TaskQueueService([handler]);
+    recordWaits(service);
+    for (const name of ['a', 'b', 'c']) service.addTaskLocal(makeParam(name), 1);
+    await service.runInternal(run());
+    expect(handler.handleTask).toHaveBeenCalledTimes(3);
+    expect(pushDialog).toHaveBeenCalledTimes(1);
+    expect(pushDialog.mock.calls[0][0].text).toContain(
+      `작업 ${CONSECUTIVE_FAILURE_STOP}개가 연속으로 실패해 예약을 중지했습니다.`,
+    );
+    expect(service.queue.peek().params.session.name).toBe('c');
     cleanup(service);
   });
 

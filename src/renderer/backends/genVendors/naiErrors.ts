@@ -102,6 +102,18 @@ export function isNaiRateLimitError(e: unknown): boolean {
   return typeof err.message === 'string' && /\b429\b/.test(err.message);
 }
 
+/**
+ * 로그인 인증 오류(401·403) 판정. NaiApiError 의 kind 를 먼저 보고, kind 가 없는 오류만 status 로
+ * 판정한다(메시지 문자열은 보지 않는다 — 요청 ID 의 「401」 오판정 방지). 큐는 이 오류를 재시도·연속
+ * 실패 누적 없이 바로 정지한다(토큰을 고치기 전엔 같은 요청이 계속 실패 — requestTiming authStop).
+ */
+export function isNaiAuthError(e: unknown): boolean {
+  const err = e as any;
+  if (!err) return false;
+  if (typeof err.kind === 'string') return err.kind === 'auth';
+  return typeof err.status === 'number' && (err.status === 401 || err.status === 403);
+}
+
 /** 오류 종류의 사용자 표시 이름(예: 「이전 요청 처리 중」). */
 export function naiErrorKindLabel(kind: NaiApiErrorKind): string {
   return KIND_LABEL[kind];

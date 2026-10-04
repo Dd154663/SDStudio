@@ -234,6 +234,20 @@ describe('설정 읽기: 기본값·범위 보정·옛 키 환산', () => {
     expect(resolveRequestDelaySettings(saved)).toEqual(resolved);
   });
 
+  test('정방향 환산(×7.5)과 옛 키 역환산(÷7.5)의 왕복: 1000→7500→1000, 200→1500→200', () => {
+    for (const legacy of [1000, 200, 100, 333, 1]) {
+      const { baseMs } = legacyRequestDelaySettings(legacy)!;
+      // 정방향은 100ms 단위 반올림이라 1ms 단위 값은 근사 왕복(오차 ≤ 50/7.5 ≈ 7ms)
+      expect(Math.abs(legacyDelayTimeFor(baseMs) - legacy)).toBeLessThanOrEqual(7);
+    }
+    expect(legacyDelayTimeFor(legacyRequestDelaySettings(1000)!.baseMs)).toBe(1000);
+    expect(legacyDelayTimeFor(legacyRequestDelaySettings(200)!.baseMs)).toBe(200);
+    expect(legacyDelayTimeFor(legacyRequestDelaySettings(400)!.baseMs)).toBe(400);
+    // 새 값 → 옛 키 → 다시 환산
+    expect(legacyRequestDelaySettings(legacyDelayTimeFor(1500))!.baseMs).toBe(1500);
+    expect(legacyRequestDelaySettings(legacyDelayTimeFor(7500))!.baseMs).toBe(7500);
+  });
+
   test('음수·NaN·문자열·상한 초과 보정', () => {
     expect(normalizeRequestDelayMs(-1)).toBe(0);
     expect(normalizeRequestDelayMs(NaN)).toBe(1500);
@@ -254,22 +268,27 @@ describe('설정 읽기: 기본값·범위 보정·옛 키 환산', () => {
     });
   });
 
-  test('저장 시 옛 키 delayTime 에 min(지연, 1000) 병기', () => {
-    expect(legacyDelayTimeFor(6000)).toBe(1000);
-    expect(legacyDelayTimeFor(400)).toBe(400);
+  test('저장 시 옛 키 delayTime 에 역환산 round(지연 ÷ 7.5) 병기(1ms 정수, 0~1000)', () => {
+    expect(legacyDelayTimeFor(1500)).toBe(200);
+    expect(legacyDelayTimeFor(7500)).toBe(1000);
+    expect(legacyDelayTimeFor(750)).toBe(100);
     expect(legacyDelayTimeFor(0)).toBe(0);
-    expect(legacyDelayTimeFor(undefined)).toBe(1000);
+    expect(legacyDelayTimeFor(10000)).toBe(1000); // 1333 → 상한 1000
+    expect(legacyDelayTimeFor(6000)).toBe(800);
+    expect(legacyDelayTimeFor(400)).toBe(53); // 53.33 → 53
+    expect(legacyDelayTimeFor(-5)).toBe(0);
+    expect(legacyDelayTimeFor(undefined)).toBe(200); // 기본 1500 의 역환산
     const saved = withRequestDelaySettings({ furryMode: true, delayTime: 0 }, 6500, 2000);
     expect(saved).toEqual({
       furryMode: true,
       requestDelayMs: 6500,
       requestDelayJitterMs: 2000,
-      delayTime: 1000,
+      delayTime: 867,
     });
     expect(withRequestDelaySettings({}, 300, -1)).toEqual({
       requestDelayMs: 300,
       requestDelayJitterMs: 0,
-      delayTime: 300,
+      delayTime: 40,
     });
   });
 });
@@ -382,15 +401,17 @@ describe('환경설정 동기화(생성 설정 군) 포함', () => {
     expect(parsed.value.groups.generation).toEqual({ requestDelayMs: 10000 });
   });
 
-  test('적용하면 옛 키 delayTime 에 min(…, 1000) 병기', () => {
+  test('적용하면 옛 키 delayTime 에 역환산(÷7.5) 병기', () => {
     const next = applyConfigGroups(
       { delayTime: 0 },
       { generation: { requestDelayMs: 4000, requestDelayJitterMs: 1000 } },
       { generation: true },
     );
-    expect(next).toEqual({ delayTime: 1000, requestDelayMs: 4000, requestDelayJitterMs: 1000 });
+    expect(next).toEqual({ delayTime: 533, requestDelayMs: 4000, requestDelayJitterMs: 1000 });
     const small = applyConfigGroups({}, { generation: { requestDelayMs: 300 } }, { generation: true });
-    expect(small.delayTime).toBe(300);
+    expect(small.delayTime).toBe(40);
+    const max = applyConfigGroups({}, { generation: { requestDelayMs: 7500 } }, { generation: true });
+    expect(max.delayTime).toBe(1000);
   });
 
   test('없음과 기본값(1.5초·±0.5초)은 바뀌는 항목이 아니다', () => {

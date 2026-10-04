@@ -3188,7 +3188,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       autoConvertWebpQuality: autoWebpQuality,
       whiteMode: whiteMode,
       useLocalBgRemoval: useLocalBgRemoval,
-      // 요청 지연 새 키 2개 + 옛 키 delayTime 병기(min(지연, 1000) — 롤백 호환)
+      // 요청 지연 새 키 2개 + 옛 키 delayTime 병기(지연 ÷ 7.5 역환산, 0~1000 — 롤백 호환)
       ...withRequestDelaySettings({}, requestDelayMs, requestDelayJitterMs),
       requestDelayWarningDismissed: warningDismissed || undefined,
       classicSceneCard: classicSceneCard,
