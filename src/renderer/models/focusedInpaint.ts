@@ -231,16 +231,30 @@ export function requestMaskFromRectMask(
   width: number,
   height: number,
 ): Uint8Array {
+  return snapMaskToGrid(scaleMaskNearest(rectMask, rw, rh, width, height), width, height, FOCUS_GRID);
+}
+
+/**
+ * 이진 마스크 최근접 크기 변경(픽셀 중심 표본, 결과도 0/1 — 회색 없음). 순수 계산.
+ * Focused 요청 마스크와 대량 작업 「인페인트 마스크 일괄 적용」(크기가 다른 대상, SPEC §7-2)이 같이 쓴다.
+ */
+export function scaleMaskNearest(
+  mask: Uint8Array,
+  sw: number,
+  sh: number,
+  width: number,
+  height: number,
+): Uint8Array {
   const scaled = new Uint8Array(width * height);
   const sxOf = new Int32Array(width);
-  for (let x = 0; x < width; x++) sxOf[x] = Math.min(rw - 1, Math.floor(((x + 0.5) * rw) / width));
+  for (let x = 0; x < width; x++) sxOf[x] = Math.min(sw - 1, Math.floor(((x + 0.5) * sw) / width));
   for (let y = 0; y < height; y++) {
-    const sy = Math.min(rh - 1, Math.floor(((y + 0.5) * rh) / height));
-    const src = sy * rw;
+    const sy = Math.min(sh - 1, Math.floor(((y + 0.5) * sh) / height));
+    const src = sy * sw;
     const dst = y * width;
-    for (let x = 0; x < width; x++) scaled[dst + x] = rectMask[src + sxOf[x]] ? 1 : 0;
+    for (let x = 0; x < width; x++) scaled[dst + x] = mask[src + sxOf[x]] ? 1 : 0;
   }
-  return snapMaskToGrid(scaled, width, height, FOCUS_GRID);
+  return scaled;
 }
 
 /** 이진 마스크 정사각 팽창(반경 r, 분리형 누적합 — O(w·h)). */

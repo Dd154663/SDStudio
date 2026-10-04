@@ -5,6 +5,7 @@
 // - 'snapshot' = 복사 시점 값을 I2I 프리셋(frontPrompt·backPrompt·globalUc)에 고정해 그 값을 쓴다.
 // - 없음(undefined) = 조합 모드 아님 — 단일 프롬프트(preset.prompt). 남아 있는 slots 는 무시한다.
 // 미러(SDMirror)는 필드 없이 항상 'shared' 와 같은 경로를 탄다(동작 = 실시간 공유).
+// 조합 모드를 고를 수 있는 워크플로우 = I2I(SDI2I)·인페인트(SDInpaint, 2026-10-04 P1 — Focused·마스크는 그대로).
 
 export type ComboMode = 'shared' | 'snapshot';
 
@@ -12,6 +13,13 @@ export const COMBO_MODES: readonly ComboMode[] = ['shared', 'snapshot'];
 
 export const MIRROR_WORKFLOW = 'SDMirror';
 export const I2I_COMBO_WORKFLOW = 'SDI2I';
+export const INPAINT_COMBO_WORKFLOW = 'SDInpaint';
+
+/** comboMode 필드를 쓰는 워크플로우(I2I·인페인트). 미러는 필드 없이 항상 조합. */
+export const COMBO_OPTIONAL_WORKFLOWS: ReadonlySet<string> = new Set([
+  I2I_COMBO_WORKFLOW,
+  INPAINT_COMBO_WORKFLOW,
+]);
 
 /** 저장값 해석 — 알 수 없는 값·손상값은 조합 모드 아님(undefined). */
 export function normalizeComboMode(value: unknown): ComboMode | undefined {
@@ -19,23 +27,26 @@ export function normalizeComboMode(value: unknown): ComboMode | undefined {
 }
 
 /**
- * 변형 씬의 조합 전개 방식 — 미러 = 'shared', 조합 모드 I2I = 저장값, 그 밖(인페인트·단일 I2I·이미지 수정) = undefined.
+ * 변형 씬의 조합 전개 방식 — 미러 = 'shared', 조합 모드 I2I·인페인트 = 저장값,
+ * 그 밖(단일 I2I·단일 인페인트·이미지 수정) = undefined.
  */
 export function variantComboMode(scene: {
   workflowType?: string;
   comboMode?: unknown;
 }): ComboMode | undefined {
   if (scene.workflowType === MIRROR_WORKFLOW) return 'shared';
-  if (scene.workflowType === I2I_COMBO_WORKFLOW) return normalizeComboMode(scene.comboMode);
+  if (scene.workflowType && COMBO_OPTIONAL_WORKFLOWS.has(scene.workflowType)) {
+    return normalizeComboMode(scene.comboMode);
+  }
   return undefined;
 }
 
-/** 조합 에디터·조합 전개를 쓰는 변형 씬인가(미러 또는 조합 모드 I2I). */
+/** 조합 에디터·조합 전개를 쓰는 변형 씬인가(미러 또는 조합 모드 I2I·인페인트). */
 export function isComboVariant(scene: { workflowType?: string; comboMode?: unknown }): boolean {
   return variantComboMode(scene) !== undefined;
 }
 
-/** 편집 창(InPaintEditor) 문구 — 조합 모드 I2I·미러의 「프롬프트 에디터」 탭. */
+/** 편집 창(InPaintEditor) 문구 — 조합 모드 I2I·인페인트·미러의 「프롬프트 에디터」 탭. */
 export const COMBO_EDITOR_TEXT = {
   sharedFront: '상위 프롬프트 (전역):',
   sharedBack: '하위 프롬프트 (전역):',

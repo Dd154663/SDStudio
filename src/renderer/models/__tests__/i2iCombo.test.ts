@@ -56,7 +56,7 @@ import {
 } from '../variantCombo';
 import { createSDPrompts, lowerPromptNode } from '../PromptService';
 import { WFWorkFlow } from '../workflows/WorkFlow';
-import { SDI2IDef, SDMirrorDef } from '../workflows/SDWorkFlow';
+import { SDI2IDef, SDInpaintDef, SDMirrorDef } from '../workflows/SDWorkFlow';
 import { askComboMode, I2I_BATCH_TEXT, i2iComboPresetFromJob } from '../i2iBatch';
 
 beforeEach(() => {
@@ -127,12 +127,36 @@ describe('comboMode 직렬화·판정', () => {
     expect(variantComboMode(old)).toBeUndefined(); // 단일 프롬프트로 동작
   });
 
-  test('판정 — 미러 = shared, I2I = 저장값, 인페인트는 값이 있어도 아님', () => {
+  test('판정 — 미러 = shared, I2I·인페인트(P1) = 저장값, 이미지 수정은 값이 있어도 아님', () => {
     expect(variantComboMode({ workflowType: 'SDMirror' })).toBe('shared');
     expect(variantComboMode({ workflowType: 'SDI2I', comboMode: 'snapshot' })).toBe('snapshot');
     expect(variantComboMode({ workflowType: 'SDI2I' })).toBeUndefined();
-    expect(variantComboMode({ workflowType: 'SDInpaint', comboMode: 'shared' })).toBeUndefined();
+    expect(variantComboMode({ workflowType: 'SDInpaint', comboMode: 'shared' })).toBe('shared');
+    expect(variantComboMode({ workflowType: 'SDInpaint' })).toBeUndefined();
+    expect(variantComboMode({ workflowType: 'Augment', comboMode: 'shared' })).toBeUndefined();
     expect(isComboVariant({ workflowType: 'SDMirror' })).toBe(true);
+  });
+
+  test('인페인트 프리셋의 고정값 키(P1) — Focused 키와 함께, 기본 빈 값·옛 JSON 기본값·왕복 보존', () => {
+    const wf = new WFWorkFlow(SDInpaintDef);
+    const preset = wf.buildPreset();
+    expect(preset).toMatchObject({
+      frontPrompt: '',
+      backPrompt: '',
+      globalUc: '',
+      focusEnabled: false,
+      focusContext: 48,
+    });
+    const old = wf.presetFromJSON({ type: 'SDInpaint', prompt: 'p', image: 'a.png', mask: 'm.png' });
+    expect(old.frontPrompt).toBe('');
+    expect(old.mask).toBe('m.png');
+    Object.assign(preset, { frontPrompt: 'f', backPrompt: 'b', globalUc: 'u' });
+    const back = wf.presetFromJSON(JSON.parse(JSON.stringify(preset.toJSON())));
+    expect(back).toMatchObject({ frontPrompt: 'f', backPrompt: 'b', globalUc: 'u' });
+    // 미러 프리셋(SDInpaintPreset.clone)에는 고정값·Focused 키가 없다
+    const mirror = new WFWorkFlow(SDMirrorDef).buildPreset();
+    expect(mirror).not.toHaveProperty('frontPrompt');
+    expect(mirror).not.toHaveProperty('focusEnabled');
   });
 
   test('I2I 프리셋의 고정값 키 — 기본 빈 값, 옛 JSON 은 기본값 유지, 왕복 보존', () => {
@@ -301,6 +325,33 @@ describe('핸들러 — 전개 결과 사용·단일 프롬프트 조각 해석'
     expect(job.uc).toBe('U, scene-uc');
     expect(job.focus).toBeUndefined();
   });
+
+  test('인페인트 조합 모드(P1) — 전개 결과를 쓰고 마스크·Focused 영역은 프리셋 그대로', async () => {
+    const preset = new WFWorkFlow(SDInpaintDef).buildPreset();
+    Object.assign(preset, {
+      image: 'RAWBASE64',
+      mask: 'mask.png',
+      uc: 'scene-uc',
+      strength: 0.6,
+      focusEnabled: true,
+      focusX: 64,
+      focusY: 64,
+      focusW: 256,
+      focusH: 256,
+    });
+    const scene = inpaintScene({ workflowType: 'SDInpaint', comboMode: 'snapshot' });
+    const combo = { prompt: { type: 'text' as const, text: 'F, mid, B' }, characterPrompts: [] };
+    await SDInpaintDef.handler(
+      session, scene, combo.prompt, [], comboHandlerPreset(preset, combo, 'G'), undefined, 1,
+    );
+    const job = (addTask.mock.calls[0] as any[])[0].job;
+    expect(job.type).toBe('sd_inpaint');
+    expect(job.prompt).toBe(combo.prompt);
+    expect(job.uc).toBe('G, scene-uc');
+    expect(job.mask).toBe('FETCHED');
+    expect(job.strength).toBe(0.6);
+    expect(job.focus).toMatchObject({ x: 64, y: 64, w: 256, h: 256 });
+  });
 });
 
 describe('B1 「I2I로 이미지생성 씬 복사」 조합 모드 규칙', () => {
@@ -363,6 +414,33 @@ describe('B1 「I2I로 이미지생성 씬 복사」 조합 모드 규칙', () =
     expect(src.slots[1][0].prompt).toBe('x');
   });
 
+  test('P1 인페인트 복사 — 같은 함수로 인페인트 프리셋에 고정값을 넣고 조합 모드 씬이 된다', () => {
+    const preset = i2iComboPresetFromJob(new WFWorkFlow(SDInpaintDef).buildPreset(), job, {
+      middlePrompt: 'a, x',
+      sceneUc: 'scene-uc',
+      characterPrompts: chars,
+      mode: 'snapshot',
+      snapshot: { frontPrompt: 'F', backPrompt: 'B', globalUc: 'G' },
+    });
+    expect(preset).toMatchObject({
+      prompt: 'a, x',
+      uc: 'scene-uc',
+      frontPrompt: 'F',
+      backPrompt: 'B',
+      globalUc: 'G',
+      mask: '',
+      focusEnabled: false,
+    });
+    const scene = inpaintScene({
+      workflowType: 'SDInpaint',
+      comboMode: 'snapshot',
+      slots: [[{ prompt: 'a', characterPrompts: [], id: 'p1' }]],
+    });
+    expect(variantComboMode(scene)).toBe('snapshot');
+    const back = new WFWorkFlow(SDInpaintDef).presetFromJSON(JSON.parse(JSON.stringify(preset.toJSON())));
+    expect(comboSourceFromSnapshot(back)).toMatchObject({ front: 'F', back: 'B', globalUc: 'G' });
+  });
+
   test('묻기 — [실시간 공유][1회 복제], 취소면 undefined', async () => {
     answers.push('snapshot');
     expect(await askComboMode()).toBe('snapshot');
@@ -390,14 +468,19 @@ describe('「씬 내용 복제」 변형 씬의 조합', () => {
     expect(t2.slots[0][0].prompt).toBe('a');
   });
 
-  test('미러 → 미러: slots 복사, 조합을 쓰지 않는 결과(인페인트)는 slots 를 비운다', () => {
+  test('미러 → 미러: slots 복사, 조합을 쓰지 않는 결과(단일 인페인트)는 slots 를 비운다', () => {
     const mirror = inpaintScene({ workflowType: 'SDMirror' });
     copyComboContent({ slots: srcJSON.slots }, mirror);
     expect(mirror.slots).toHaveLength(1);
     expect(mirror.comboMode).toBeUndefined();
     const inpaint = inpaintScene({ workflowType: 'SDInpaint', slots: srcJSON.slots });
-    copyComboContent({ comboMode: 'shared', slots: srcJSON.slots }, inpaint);
+    copyComboContent({ slots: srcJSON.slots }, inpaint);
     expect(inpaint.slots).toHaveLength(0);
+    // 조합 모드 인페인트(P1) → 인페인트: comboMode·slots 복사
+    const comboInpaint = inpaintScene({ workflowType: 'SDInpaint' });
+    copyComboContent({ comboMode: 'shared', slots: srcJSON.slots }, comboInpaint);
+    expect(comboInpaint.comboMode).toBe('shared');
+    expect(comboInpaint.slots).toHaveLength(1);
   });
 });
 

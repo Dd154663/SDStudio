@@ -71,7 +71,9 @@ import { appState } from './AppService';
 import type { SceneSelectorItem } from './AppService';
 import { collectFavoriteUpscaleTargets, queueNaiUpscaleImages } from './workflows/NaiUpscaleFlow';
 import { I2I_BATCH_TEXT } from './i2iBatch';
-import { openI2ICopyFlow, openImageAttachFlow } from './i2iBatchFlow';
+import { openImageAttachFlow, openVariantCopyFlow } from './i2iBatchFlow';
+import { openMaskApplyFlow, openStrengthBatchFlow } from './variantBatchFlow';
+import { VARIANT_BATCH_TEXT } from './variantBatch';
 import { copyComboContent } from './variantCombo';
 
 export class BatchProcessService {
@@ -446,11 +448,16 @@ export class BatchProcessService {
         { text: '⏹️ 예약 일괄 제거', value: 'cancelReservations' },
       ];
       if (type === 'inpaint') {
-        // I2I 일괄 작업(2026-10-04 B1·B2)은 미러 복제 바로 뒤 — 흐름 i2iBatchFlow.ts, 계약 SPEC §6 「대량 작업 I2I」
+        // I2I 일괄 작업(2026-10-04 B1·B2)은 미러 복제 바로 뒤, 인페인트 복사(P1)는 I2I 복사 바로 뒤,
+        // 마스크 일괄 적용(P3)·강도·노이즈 일괄 변경(P4)은 이미지 첨부 뒤 — 흐름 i2iBatchFlow.ts·variantBatchFlow.ts,
+        // 계약 SPEC §6 「대량 작업 I2I」
         items.push(
           { text: '🪞 이미지생성 탭 씬 이미지미러로 복제', value: 'mirrorDuplicate', group: '씬' },
           { text: I2I_BATCH_TEXT.copyMenu, value: 'i2iCopy', group: '씬' },
+          { text: I2I_BATCH_TEXT.inpaintCopyMenu, value: 'inpaintCopy', group: '씬' },
           { text: I2I_BATCH_TEXT.attachMenu, value: 'imageAttach', group: '씬' },
+          { text: VARIANT_BATCH_TEXT.maskMenu, value: 'maskApply', group: '씬' },
+          { text: VARIANT_BATCH_TEXT.strengthMenu, value: 'strengthBatch', group: '씬' },
         );
       }
       if (!platform.supportsWebpConvert) {
@@ -477,8 +484,20 @@ export class BatchProcessService {
             this.openChangeResolutionMenu(type, setSceneSelector);
             return;
           }
-          if (value === 'i2iCopy' || value === 'imageAttach') {
-            (value === 'i2iCopy' ? openI2ICopyFlow : openImageAttachFlow)(type, setSceneSelector);
+          if (value === 'i2iCopy' || value === 'inpaintCopy') {
+            openVariantCopyFlow(type, setSceneSelector, value === 'i2iCopy' ? 'SDI2I' : 'SDInpaint');
+            return;
+          }
+          if (value === 'imageAttach') {
+            openImageAttachFlow(type, setSceneSelector);
+            return;
+          }
+          if (value === 'maskApply') {
+            openMaskApplyFlow(type, setSceneSelector);
+            return;
+          }
+          if (value === 'strengthBatch') {
+            void openStrengthBatchFlow(type, setSceneSelector);
             return;
           }
           if (value === 'mirrorDuplicate') {

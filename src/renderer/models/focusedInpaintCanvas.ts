@@ -20,6 +20,7 @@ import {
   FocusRect,
   innerContextRect,
   requestMaskFromRectMask,
+  scaleMaskNearest,
 } from './focusedInpaint';
 import { imageExtFromBase64 } from './imageFormats';
 import { transferTextChunks } from './pngTextChunks';
@@ -210,4 +211,26 @@ export async function composeFocusedResult({
     new Uint8Array(composed.buffer, composed.byteOffset, composed.length),
   );
   return Buffer.from(withMeta).toString('base64');
+}
+
+/**
+ * 마스크 PNG(raw base64) 크기 변경(2026-10-04 P3 「인페인트 마스크 일괄 적용」) — 이진화(검정 아님+불투명=흰) 뒤
+ * 최근접 크기 변경(`focusedInpaint.scaleMaskNearest`)으로 흰/검정 불투명 PNG 를 만든다(회색·반투명 없음 —
+ * BrushTool.maskToBase64 와 같은 형식). 크기가 같아도 같은 형식으로 다시 쓴다(호출부는 같으면 원본을 그대로 쓴다).
+ */
+export async function resizeMaskPng(
+  maskBase64: string,
+  width: number,
+  height: number,
+): Promise<string> {
+  const img = await loadImageFromBase64(maskBase64);
+  const sw = img.naturalWidth || img.width;
+  const sh = img.naturalHeight || img.height;
+  const [, srcCtx] = makeCanvas(sw, sh);
+  srcCtx.drawImage(img, 0, 0);
+  const binary = binarize(srcCtx.getImageData(0, 0, sw, sh).data);
+  const scaled = scaleMaskNearest(binary, sw, sh, width, height);
+  const [canvas, ctx] = makeCanvas(width, height);
+  ctx.putImageData(binaryToImageData(scaled, width, height), 0, 0);
+  return canvasPngBase64(canvas);
 }

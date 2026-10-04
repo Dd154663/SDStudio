@@ -112,6 +112,7 @@ import {
 } from './ToolbarDnd';
 import { portableToolbarButtons } from './PortableToolbarButtons';
 import { appState, SceneSelectorItem } from '../models/AppService';
+import { registerSceneSelectorHost } from '../models/sceneSelectorHost';
 import { splitNameLines, validateNameLines } from '../models/nameInput';
 import {
   createInpaintPreset,
@@ -2472,6 +2473,11 @@ const QueueControl = observer(
     const [sceneSelector, setSceneSelector] = useState<
       SceneSelectorItem | undefined
     >(undefined);
+    // 컨텍스트 메뉴 「선택 작업」의 변형 씬 일괄 작업이 이 탭의 씬 선택 창을 빌려 쓴다(2026-10-04 P2~P4, sceneSelectorHost).
+    useEffect(() => {
+      if (!isActive) return;
+      return registerSceneSelectorHost(type, setSceneSelector);
+    }, [type, isActive]);
 
     // 씬 휴지통·아티스트 태깅은 전역 승격(appState.sceneTrashOpen/artistTagOpen,
     // 퀵 메뉴 P2) — 모달 호스트는 App.tsx 전역 오버레이, 버튼은 portable 공유 JSX.
@@ -3416,6 +3422,8 @@ const QueueControl = observer(
                     .getScenes(type)
                     .find((x) => x.name === selectedNames[0]);
                   if (first) {
+                    // 메뉴 라벨의 선택 수·변형 탭 전용 항목은 이 값(씬 종류)을 본다 — 우클릭(onContext)과 같게 맞춘다
+                    appState.contextSceneType = first.type;
                     showSceneContextMenu({
                       event: e,
                       props: { ctx: { type: 'scene', scene: first } },

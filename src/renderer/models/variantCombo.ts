@@ -1,4 +1,4 @@
-// 변형 씬 조합 전개(2026-10-04 B4) — 미러·I2I 조합 모드 씬의 프롬프트를 이미지생성 씬과 같은 규칙으로 전개한다.
+// 변형 씬 조합 전개(2026-10-04 B4) — 미러·I2I·인페인트(P1) 조합 모드 씬의 프롬프트를 이미지생성 씬과 같은 규칙으로 전개한다.
 // 판정은 comboMode.ts, 계약은 SPEC_GUIDE §7-4 「I2I 조합 모드」·§11-4 「조합 전개 공용 함수」.
 //
 // - 전개 = PromptService.createSDPrompts·createSDCharacterPrompts 그대로(`|` 교차·추가 프롬프트·조각 캐릭터 프롬프트·
@@ -153,7 +153,7 @@ export function cloneSlots(
 
 /**
  * 대량 작업 「씬 내용 복제」(변형 씬) — 조합 모드·조합(slots)을 옮긴다. 대상 workflowType 을 먼저 맞춘 뒤 부른다.
- * 결과가 조합을 쓰지 않는 씬(인페인트·단일 I2I)이면 slots 를 비운다(남은 조각이 다시 쓰이지 않게).
+ * 결과가 조합을 쓰지 않는 씬(단일 인페인트·단일 I2I·이미지 수정)이면 slots 를 비운다(남은 조각이 다시 쓰이지 않게).
  */
 export function copyComboContent(
   source: { comboMode?: unknown; slots?: readonly (PromptPieceSlot | IPromptPieceSlot)[] },

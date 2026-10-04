@@ -53,6 +53,9 @@ import {
   listSceneSeedGroups,
   removeScenesFromSeedGroups,
 } from '../models/sceneSeedGroups';
+import { openImageAttachFlow } from '../models/i2iBatchFlow';
+import { openMaskApplyFlow, openStrengthBatchFlow } from '../models/variantBatchFlow';
+import { sceneSelectorHost } from '../models/sceneSelectorHost';
 
 export const AppContextMenu = observer(() => {
   // 선택은 (종류, 이름) 쌍이다 — 변형 탭의 선택으로 같은 이름의 일반 씬을 다루지 않는다
@@ -485,6 +488,25 @@ export const AppContextMenu = observer(() => {
       appState.changeResolutionOfScenes(
         selectedScenes.length > 0 ? selectedScenes : [ctx.scene],
       );
+    } else if (
+      id === 'variant-attach-image' ||
+      id === 'variant-apply-mask' ||
+      id === 'variant-strength'
+    ) {
+      // 변형 씬 일괄 작업(2026-10-04 P2~P4) — 해상도 변경과 같은 규칙: 같은 종류의 선택이 2개 이상이면 선택한 씬 전부,
+      // 아니면 이 씬 하나. 씬 선택 창은 건너뛰고(이미 고름), 이미지·마스크 원본 고르기는 변형 탭의 씬 선택 창을 빌린다.
+      if (ctx.scene.type !== 'inpaint') return;
+      const selectedScenes =
+        appState.selectedSceneCount(ctx.scene.type) > 1 ? selectedScenesLike(ctx.scene) : [];
+      const targets = selectedScenes.length > 0 ? selectedScenes : [ctx.scene];
+      const host =
+        sceneSelectorHost('inpaint') ??
+        ((item) => {
+          if (item) appState.pushMessage('씬 선택 창을 열 수 없습니다. 변형 탭에서 다시 시도해 주세요.');
+        });
+      if (id === 'variant-attach-image') openImageAttachFlow('inpaint', host, targets);
+      else if (id === 'variant-apply-mask') openMaskApplyFlow('inpaint', host, targets);
+      else void openStrengthBatchFlow('inpaint', host, targets);
     } else if (id === 'move-front') {
       moveSceneFront(ctx);
     } else if (id === 'move-back') {
@@ -1036,6 +1058,22 @@ export const AppContextMenu = observer(() => {
             ? `선택한 씬(${selCount}) 해상도 변경`
             : '해당 씬 해상도 변경'}
         </Item>
+        {/* 변형 탭 전용 일괄 작업(2026-10-04 P2~P4) — 대량 작업 메뉴와 같은 흐름에 이미 고른 씬을 넘긴다 */}
+        {appState.contextSceneType === 'inpaint' && (
+          <Item id="variant-attach-image" onClick={handleSceneItemClick}>
+            {selCount > 1 ? `선택한 씬(${selCount})에 이미지 첨부` : '해당 씬에 이미지 첨부'}
+          </Item>
+        )}
+        {appState.contextSceneType === 'inpaint' && (
+          <Item id="variant-apply-mask" onClick={handleSceneItemClick}>
+            {selCount > 1 ? `선택한 씬(${selCount})에 인페인트 마스크 적용` : '해당 씬에 인페인트 마스크 적용'}
+          </Item>
+        )}
+        {appState.contextSceneType === 'inpaint' && (
+          <Item id="variant-strength" onClick={handleSceneItemClick}>
+            {selCount > 1 ? `선택한 씬(${selCount}) 강도·노이즈 변경` : '해당 씬 강도·노이즈 변경'}
+          </Item>
+        )}
         <Separator />
         {selCount > 1 && (
           <Item id="seed-group-set" onClick={handleSceneItemClick}>

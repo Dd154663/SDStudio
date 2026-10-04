@@ -370,7 +370,12 @@ const SDInpaintFocusedPreset = SDInpaintPreset.clone()
     FOCUS_CONTEXT_MAX,
     FOCUS_GRID,
     FOCUS_CONTEXT_DEFAULT,
-  );
+  )
+  // 인페인트 조합 모드(2026-10-04 P1, SPEC §7-4) 「복사 시점 설정을 1회 복제」 고정값 — I2I(SDI2IPreset)와 같은 키·기본 ''.
+  // 조합 모드가 아닌 인페인트 씬은 빈 값 그대로(전개에 쓰이지 않음). 옛 씬 JSON 은 키가 없어 기본값 — 롤백 시 값만 소실.
+  .addPromptVar('frontPrompt', '')
+  .addPromptVar('backPrompt', '')
+  .addPromptVar('globalUc', '');
 
 const SDInpaintUI = wfiStack([
   wfiInlineInput('이미지', 'image', 'preset', 'flex-none'),
@@ -420,6 +425,54 @@ const SDInpaintUI = wfiStack([
   // wfiInlineInput('시드', 'seed', true, 'flex-none'),
 ]);
 
+// 인페인트 조합 모드 편집 칸(2026-10-04 P1) — SDI2IComboUI 와 같은 이유로 단일 「프롬프트」 칸을 빼고 네거티브 칸 = 씬 네거티브.
+// 마스크·Focused 영역은 편집 창 이미지 패널(브러시·영역 도구)이 그대로 맡는다.
+export const SDInpaintComboUI = wfiStack([
+  wfiInlineInput('이미지', 'image', 'preset', 'flex-none'),
+  wfiInlineInput('인페인트 강도', 'strength', 'preset', 'flex-none'),
+  wfiInlineInput(
+    '비마스크 영역 편집 방지',
+    'originalImage',
+    'preset',
+    'flex-none',
+  ),
+  wfiInlineInput('씬 네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
+  wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
+  wfiGroup('샘플링/모델 설정', [
+    wfiPush('top'),
+    wfiInlineInput('스탭 수', 'steps', 'preset', 'flex-none'),
+    wfiInlineInput(
+      '프롬프트 가이던스',
+      'promptGuidance',
+      'preset',
+      'flex-none',
+    ),
+    wfiInlineInput('샘플링', 'sampling', 'preset', 'flex-none'),
+    wfiInlineInput('노이즈 스케줄', 'noiseSchedule', 'preset', 'flex-none'),
+    wfiInlineInput('CFG 리스케일', 'cfgRescale', 'preset', 'flex-none'),
+    wfiInlineInput(
+      'Legacy Prompt Conditioning 모드',
+      'legacyPromptConditioning',
+      'preset',
+      'flex-none',
+    ),
+    wfiInlineInput(
+      '바이브 강도 정규화',
+      'normalizeStrength',
+      'preset',
+      'flex-none',
+    ),
+    wfiInlineInput('Variety+', 'varietyPlus', 'preset', 'flex-none'),
+    wfiInlineInput(
+      'Deliberate Euler Ancestral Bug',
+      'deliberateEulerAncestralBug',
+      'preset',
+      'flex-none',
+    ),
+  ], 'sampling-group'),
+  wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
+]);
+
 const createSDI2IHandler = (type: string) => {
   const handler = async (
     session: Session,
@@ -444,7 +497,8 @@ const createSDI2IHandler = (type: string) => {
       dataUriToBase64(
         (await imageService.fetchVibeImage(session, preset.mask))!,
       );
-    // 조합 전개 결과(미러·I2I 조합 모드 — variantCombo, SPEC §7-4)가 실려 있으면 그것을, 아니면 단일 프롬프트.
+    // 조합 전개 결과(미러·I2I·인페인트 조합 모드 — variantCombo, SPEC §7-4)가 실려 있으면 그것을, 아니면 단일 프롬프트.
+    // 인페인트 조합 모드도 마스크·Focused 는 프리셋 그대로(조합마다 같은 마스크·영역).
     // 단일 프롬프트도 `<조각>` 은 생성 경로처럼 푼다(2026-10-04 B4 C4 — 예전엔 글자 그대로 보냈다).
     // 이미지 변형 메뉴(OneTimeFlows)가 넘기는 임시 이미지생성 씬의 메타데이터 프롬프트는 글자 그대로 둔다.
     const expanded = comboExpandedOf(preset);

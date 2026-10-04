@@ -1656,7 +1656,10 @@ const queueComboVariant = async (
   return combos.length;
 };
 
-/** 변형 씬 예약. 반환 = 예약한 조합 수(단일 프롬프트는 1). I2I 조합 모드 씬은 조합 전개(queueComboVariant). */
+/**
+ * 변형 씬 예약. 반환 = 예약한 조합 수(단일 프롬프트는 1). I2I·인페인트 조합 모드 씬은 조합 전개(queueComboVariant —
+ * 인페인트는 조합마다 같은 마스크·Focused 영역, 2026-10-04 P1).
+ */
 export const queueI2IWorkflow = async (
   session: Session,
   type: string,

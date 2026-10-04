@@ -1,4 +1,4 @@
-// 대량 작업 I2I 일괄(2026-10-04 B1 「I2I로 이미지생성 씬 복사」·B2 「일괄 이미지 첨부」) — models/i2iBatch.ts·
+// 대량 작업 I2I 일괄(2026-10-04 B1 「I2I로 이미지생성 씬 복사」·P1 「인페인트로 …」·B2/P2 「일괄 이미지 첨부」) — models/i2iBatch.ts·
 // workflows/importedJob.ts·nameInput.numberedName 의 순수 규칙. 계약: SPEC_GUIDE §6 「대량 작업 I2I」·§7-3.
 const pushed: any[] = [];
 const answers: (string | undefined)[] = [];
@@ -16,6 +16,7 @@ import { applyImportedJob, IMPORTED_JOB_KEYS } from '../workflows/importedJob';
 import {
   applyStrengthNoise,
   askImageSource,
+  attachMaskDecision,
   askStrengthNoise,
   batchResultKind,
   I2I_BATCH_TEXT,
@@ -24,7 +25,9 @@ import {
   imageAttachResultText,
   lowerJobForI2I,
   parseUnitInterval,
-  splitI2ITargets,
+  splitAttachTargets,
+  variantCopyMenuText,
+  workflowHasNoise,
 } from '../i2iBatch';
 
 beforeEach(() => {
@@ -170,8 +173,8 @@ describe('프리셋 변환(i2iPresetFromGeneralJob — 「즐겨찾기 이미지
   });
 });
 
-describe('대상 필터(splitI2ITargets — B2 는 I2I 씬에만)', () => {
-  test('SDI2I 만 대상, 인페인트·미러·이미지 수정은 건너뜀', () => {
+describe('대상 필터(splitAttachTargets — B2 는 I2I·인페인트 씬, P2)', () => {
+  test('SDI2I·SDInpaint 가 대상, 미러·이미지 수정은 건너뜀', () => {
     const scenes = [
       { name: 'a', workflowType: 'SDI2I' },
       { name: 'b', workflowType: 'SDInpaint' },
@@ -179,9 +182,23 @@ describe('대상 필터(splitI2ITargets — B2 는 I2I 씬에만)', () => {
       { name: 'd', workflowType: 'SDI2I' },
       { name: 'e', workflowType: 'Augment' },
     ];
-    const { targets, skipped } = splitI2ITargets(scenes);
-    expect(targets.map((s) => s.name)).toEqual(['a', 'd']);
-    expect(skipped.map((s) => s.name)).toEqual(['b', 'c', 'e']);
+    const { targets, skipped } = splitAttachTargets(scenes);
+    expect(targets.map((s) => s.name)).toEqual(['a', 'b', 'd']);
+    expect(skipped.map((s) => s.name)).toEqual(['c', 'e']);
+  });
+
+  test('인페인트 마스크 판정 — 크기 같으면 유지, 다르거나 못 읽으면 초기화, 없으면 none', () => {
+    const img = { width: 832, height: 1216 };
+    expect(attachMaskDecision(false, undefined, img)).toBe('none');
+    expect(attachMaskDecision(true, { width: 832, height: 1216 }, img)).toBe('keep');
+    expect(attachMaskDecision(true, { width: 1024, height: 1024 }, img)).toBe('reset');
+    expect(attachMaskDecision(true, undefined, img)).toBe('reset');
+  });
+
+  test('노이즈가 있는 워크플로우는 I2I 만', () => {
+    expect(workflowHasNoise('SDI2I')).toBe(true);
+    expect(workflowHasNoise('SDInpaint')).toBe(false);
+    expect(workflowHasNoise('SDMirror')).toBe(false);
   });
 });
 
@@ -193,6 +210,24 @@ describe('강도·노이즈 적용', () => {
     const p2: any = { strength: 1, noise: 0 };
     applyStrengthNoise(p2, undefined);
     expect(p2).toEqual({ strength: 1, noise: 0 });
+  });
+
+  test('인페인트(allowNoise 거짓)·노이즈 미입력이면 noise 키를 만들지 않는다', () => {
+    const inpaint: any = { strength: 1 };
+    applyStrengthNoise(inpaint, { strength: 0.4, noise: 0.2 }, false);
+    expect(inpaint).toEqual({ strength: 0.4 });
+    const i2i: any = { strength: 1, noise: 0.3 };
+    applyStrengthNoise(i2i, { strength: 0.5 });
+    expect(i2i).toEqual({ strength: 0.5, noise: 0.3 });
+  });
+
+  test('askStrengthNoise — 인페인트만(withNoise 거짓)이면 강도만 묻는다', async () => {
+    answers.push('with-values', '0.45');
+    await expect(askStrengthNoise({ strength: 1 }, false)).resolves.toEqual({
+      values: { strength: 0.45 },
+    });
+    expect(pushed[0].text).toBe(I2I_BATCH_TEXT.strengthOnlyQuestion);
+    expect(pushed).toHaveLength(2);
   });
 
   test('0~1 숫자 해석(0.01 반올림), 범위 밖·문자·빈 값은 거부', () => {
@@ -258,14 +293,24 @@ describe('토스트 집계', () => {
     ).toBe('1개 I2I 씬 생성(이미지 첨부 1개) · 실패 2개: x, y\n첫 오류: 조각 없음');
   });
 
-  test('B2 — 첨부 N개 + 건너뜀 K개(인페인트/미러 등) + 실패', () => {
+  test('P1 — 인페인트 복사 토스트·메뉴 문구', () => {
+    expect(i2iCopyResultText({ created: 2, withImage: 1, failed: [], workflow: 'SDInpaint' })).toBe(
+      '2개 인페인트 씬 생성(이미지 첨부 1개)',
+    );
+    expect(variantCopyMenuText('SDInpaint').menu).toBe('🖌️ 인페인트로 이미지생성 씬 복사');
+    expect(variantCopyMenuText('SDI2I').menu).toBe(I2I_BATCH_TEXT.copyMenu);
+  });
+
+  test('B2 — 첨부 N개 + 마스크 초기화 + 건너뜀 K개(미러 등) + 실패', () => {
     expect(imageAttachResultText({ applied: 2, skipped: 0, failed: [] })).toBe(
-      '2개 I2I 씬에 이미지를 첨부했습니다',
+      '2개 씬(I2I·인페인트)에 이미지를 첨부했습니다',
     );
-    expect(imageAttachResultText({ applied: 2, skipped: 3, failed: ['z'] })).toBe(
-      '2개 I2I 씬에 이미지를 첨부했습니다 · 건너뜀 3개(인페인트/미러 등) · 실패 1개: z',
+    expect(imageAttachResultText({ applied: 2, skipped: 3, failed: ['z'], maskReset: 1 })).toBe(
+      '2개 씬(I2I·인페인트)에 이미지를 첨부했습니다 · 마스크 초기화 1개 · 건너뜀 3개(미러 등) · 실패 1개: z',
     );
-    expect(I2I_BATCH_TEXT.noI2ITargets(2)).toContain('건너뜀 2개');
+    expect(I2I_BATCH_TEXT.noAttachTargets(2)).toContain('건너뜀 2개');
+    expect(I2I_BATCH_TEXT.overwriteConfirm(1, 3, 2)).toContain('마스크가 있는 인페인트 씬 2개');
+    expect(I2I_BATCH_TEXT.overwriteConfirm(1, 3, 0)).not.toContain('마스크');
   });
 
   test('실패 이름은 5개까지만', () => {
