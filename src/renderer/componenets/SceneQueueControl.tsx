@@ -2935,7 +2935,7 @@ const QueueControl = observer(
             <div
               ref={toolbarRowRef}
               onScroll={mobileIcon ? updateToolbarScrollHint : undefined}
-              className={`scene-toolbar-row flex gap-1 md:gap-1.5 items-center ${
+              className={`scene-toolbar-row flex gap-1 md:gap-2 items-center ${
                 mobileIcon
                   ? 'flex-nowrap overflow-x-auto no-scrollbars min-w-0 max-w-full [&>*]:flex-none'
                   : 'flex-wrap'
