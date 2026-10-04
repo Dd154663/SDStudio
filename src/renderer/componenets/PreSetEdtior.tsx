@@ -843,6 +843,22 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
       window.removeEventListener('pointerdown', close);
     };
   }, [isOpen]);
+  // 목록을 열 때마다 현재 선택 항목을 목록 가운데로 맞춘다(목록이 길면 맨 위부터 내려 찾기 힘듦).
+  // scrollIntoView 는 조상(페이지·시트)까지 스크롤하므로 쓰지 않고 목록(ul) 자신의 scrollTop 만 바꾼다.
+  // ul 이 absolute 라 li.offsetTop 은 ul 기준. 선택 항목이 없으면 새로 마운트된 ul 이라 맨 위 그대로.
+  // 포커스는 건드리지 않는다.
+  const listRef = React.useRef<HTMLUListElement>(null);
+  React.useLayoutEffect(() => {
+    if (!isOpen) return;
+    const list = listRef.current;
+    if (!list) return;
+    const selected = list.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!selected) return;
+    list.scrollTop = Math.max(
+      0,
+      selected.offsetTop - (list.clientHeight - selected.offsetHeight) / 2,
+    );
+  }, [isOpen]);
 
   const selectPreset = (presetName: string) => {
     // 메뉴 닫기를 전역 click 버블링에 맡기지 않고 선택 시점에 확정한다.
@@ -944,6 +960,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
       )}
       {isOpen && (
         <ul
+          ref={listRef}
           role="listbox"
           className="left-0 top-10 absolute max-h-60 z-20 w-full mt-1 bg-white border-2 line-color rounded-md r-popover shadow-lg overflow-auto dark:bg-slate-700"
         >
