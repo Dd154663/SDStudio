@@ -26,15 +26,12 @@ import { FaPerson } from 'react-icons/fa6';
 import { ActionIcon } from './ActionIcon';
 import { FixedSizeList as List } from 'react-window';
 import getCaretCoordinates from 'textarea-caret';
-import { isMobile, backend } from '../models';
+import { isMobile, backend, artistLibraryService } from '../models';
 import { backStackService } from '../models/BackStackService';
 import {
-  hasArtistPrefix,
-  isTransformableCore,
+  artistNameOfSegment,
   makeArtistLookup,
-  parsePromptSegment,
   promptSegmentAt,
-  stripArtistPrefix,
 } from '../models/artistTags';
 import { highlightPrompt } from '../models/PromptService';
 import { WordTag, calcGapMatch } from '../models/Tags';
@@ -1506,7 +1503,11 @@ const NativeEditTextArea = observer(
 );
 
 // 커서 구획의 작가 판별용 태그 DB 조회(앱 수명 동안 캐시).
-const caretArtistLookup = makeArtistLookup((w) => backend.lookupTag(w));
+// 접두 없는 작가 = 작가 라이브러리 이름 또는 태그 DB 작가(artistTags.makeArtistLookup, 2026-10-05 라이브러리 대조 추가).
+const caretArtistLookup = makeArtistLookup(
+  (w) => backend.lookupTag(w),
+  (n) => !!artistLibraryService.findArtistByName(n),
+);
 
 /**
  * 편집기 부속 버튼(작가 라이브러리 열기)을 편집기 바깥 라벨 줄에 두기 위한 슬롯(2026-09-26 사용자 요청).
@@ -1556,12 +1557,10 @@ const PromptEditTextArea = observer(
         caretTimer.current = null;
         const seq = (caretSeq.current += 1);
         const seg = editorRef.current?.getCaretSegment?.() ?? '';
-        const core = parsePromptSegment(seg).core;
+        // 구획 → 핵심 이름(가중치·괄호·공백·접두 제거)은 artistTags 단일 출처.
+        const cand = artistNameOfSegment(seg);
         let name: string | null = null;
-        if (isTransformableCore(core)) {
-          if (hasArtistPrefix(core)) name = stripArtistPrefix(core);
-          else if (await caretArtistLookup(core.trim())) name = core.trim();
-        }
+        if (cand && (cand.prefixed || (await caretArtistLookup(cand.name)))) name = cand.name;
         if (seq === caretSeq.current) setCaretArtist(name);
       }, 150);
     };

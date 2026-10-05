@@ -35,6 +35,7 @@ import {
   hasArtistNamed,
   makeArtistLookup,
   removeArtistSegments,
+  resolveUnprefixedArtistNames,
   transformArtistPrefix,
 } from './artistTags';
 import { artistLibraryService } from '.';
@@ -190,6 +191,13 @@ export const queueQuickScene = async (
   }
 };
 
+/** 앱의 접두 없는 작가 판별 = 작가 라이브러리 이름 + 태그 DB 작가(규칙은 artistTags.makeArtistLookup). */
+const makeAppArtistLookup = () =>
+  makeArtistLookup(
+    (w) => backend.lookupTag(w),
+    (n) => !!artistLibraryService.findArtistByName(n),
+  );
+
 const ensureArtistBreakdownScene = (session: Session): Scene => {
   let scene = session.scenes.get('default');
   if (scene) return scene;
@@ -232,7 +240,7 @@ export const queueArtistBreakdown = async (session: Session) => {
     return;
   }
 
-  const variants = buildArtistPromptVariants({
+  const sources = {
     frontPrompt: preset.frontPrompt ?? '',
     extraPrompt: session.extraPrompt ?? '',
     backPrompt: preset.backPrompt ?? '',
@@ -240,9 +248,15 @@ export const queueArtistBreakdown = async (session: Session) => {
       type === 'SDImageGenEasy' ? shared.characterPrompt ?? '' : undefined,
     backgroundPrompt:
       type === 'SDImageGenEasy' ? shared.backgroundPrompt ?? '' : undefined,
-  });
+  };
+  // 접두 없는 작가(0.8::aaa:: 등)도 라이브러리·태그 DB 로 판별해 함께 분해한다(2026-10-05 사용자 요청).
+  const isUnprefixedArtist = await resolveUnprefixedArtistNames(
+    Object.values(sources).filter((v): v is string => typeof v === 'string'),
+    makeAppArtistLookup(),
+  );
+  const variants = buildArtistPromptVariants(sources, isUnprefixedArtist);
   if (variants.length === 0) {
-    appState.pushMessage('좌측 프롬프트에서 artist: 태그를 찾지 못했습니다.');
+    appState.pushMessage('좌측 프롬프트에서 작가 태그를 찾지 못했습니다(artist: 접두·작가 라이브러리·태그 DB 기준).');
     return;
   }
 
@@ -554,7 +568,7 @@ export const removeScenesFromQueue = (
 
 /**
  * 긍정 프롬프트 칸 전체의 작가 태그 artist: 접두를 전환한다(2026-09-25 추가/제거 → 2026-09-26 사용자 결정으로 버튼 하나의 반전).
- * 구획마다 접두가 있으면 떼고, 없는데 태그 DB(카테고리 1)상 작가면 붙인다 — 섞여 있어도 한쪽으로 몰지 않는다.
+ * 구획마다 접두가 있으면 떼고, 없는데 작가 라이브러리 이름이거나 태그 DB(카테고리 1)상 작가면 붙인다 — 섞여 있어도 한쪽으로 몰지 않는다.
  * 대상 = preset.frontPrompt·backPrompt, session.extraPrompt, (이지) shared.characterPrompt·backgroundPrompt,
  * 캐릭터 프롬프트 배열의 prompt. 부정(uc)은 제외(사용자 결정: 수정할 일이 적고 태그 명시가 의도적일 수 있음).
  * 변환 결과를 먼저 계산해 붙일/뗄 개수를 확인창에 보여 주고, 확인 뒤에만 적용한다. models/artistTags.ts 가 단일 출처.
@@ -573,7 +587,7 @@ export const applyArtistPrefixBatch = async (
     appState.pushMessage('이미지 생성 프리셋에서만 작가 접두 전환을 사용할 수 있습니다.');
     return;
   }
-  const lookup = makeArtistLookup((w) => backend.lookupTag(w));
+  const lookup = makeAppArtistLookup();
   type Field = { label: string; get: () => string; set: (v: string) => void };
   const fields: Field[] = [];
   const addField = (label: string, holder: any, key: string) => {
@@ -616,7 +630,7 @@ export const applyArtistPrefixBatch = async (
     appState.pushMessage(
       artists > 0
         ? '바꿀 artist: 접두가 없습니다.'
-        : '긍정 프롬프트에서 작가 태그를 찾지 못했습니다(태그 DB 기준).',
+        : '긍정 프롬프트에서 작가 태그를 찾지 못했습니다(작가 라이브러리·태그 DB 기준).',
     );
     return;
   }
@@ -658,7 +672,13 @@ export const queueArtistSample = async (
   const name = artistName.trim();
   if (!name) return false;
 
-  const strip = (v?: string) => removeArtistSegments(v ?? '');
+  // 다른 작가는 접두 유무와 관계없이 빼고(작가 분해와 같은 기준), 대상 작가의 접두 없는 구획은 가중치째 남긴다.
+  const isUnprefixedArtist = await resolveUnprefixedArtistNames(
+    [preset.frontPrompt ?? '', session.extraPrompt ?? '', preset.backPrompt ?? '',
+      ...(type === 'SDImageGenEasy' ? [shared.characterPrompt ?? '', shared.backgroundPrompt ?? ''] : [])],
+    makeAppArtistLookup(),
+  );
+  const strip = (v?: string) => removeArtistSegments(v ?? '', isUnprefixedArtist, name);
   let frontPrompt = strip(preset.frontPrompt);
   const extraPrompt = strip(session.extraPrompt);
   const backPrompt = strip(preset.backPrompt);

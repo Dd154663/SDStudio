@@ -12,6 +12,27 @@ import {
 } from './SessionService';
 import { extractPromptDataFromBase64 } from './util';
 import { decoratePresetExportImage } from './presetExportDecoration';
+import { planPromptImport } from './sdstudioPromptImport';
+import type { ImportableMetadata } from './types';
+
+/**
+ * 이미지 메타 → 그림체 프리셋의 상위·하위(SDStudio 구획 메타가 있으면 나눠 담고, 없으면 통합 → 상위).
+ * 추가 프롬프트는 상위 끝에 합친다. 씬 구획은 프로젝트 이미지면(씬이 이미 가짐) 빼고, 외부 파일이면 하위 앞에 합친다.
+ */
+function globalPresetPromptsFromJob(
+  job: ImportableMetadata | undefined,
+  middle: 'omit' | 'fold',
+): {
+  frontPrompt: string;
+  backPrompt: string;
+} {
+  const plan = planPromptImport(job?.prompt, job?.sdstudioMetadata?.promptSource, {
+    targetType: 'SDImageGen',
+    placeExtra: false,
+    middle,
+  });
+  return { frontPrompt: plan.frontPrompt, backPrompt: plan.backPrompt ?? '' };
+}
 
 const GLOBAL_PRESETS_FILE = 'global_presets.json';
 const GLOBAL_VIBES_DIR = 'global_vibes';
@@ -455,8 +476,7 @@ export class GlobalPresetService extends EventTarget {
 
     const preset: any = workFlowService.buildPreset('SDImageGen');
     preset.name = 'external image';
-    preset.frontPrompt = job.prompt ?? '';
-    preset.backPrompt = '';
+    Object.assign(preset, globalPresetPromptsFromJob(job, 'fold'));
     preset.uc = job.uc ?? '';
     if ((job.characterPrompts?.length ?? 0) > 0) {
       preset.characterPrompts = job.characterPrompts;
@@ -486,8 +506,7 @@ export class GlobalPresetService extends EventTarget {
     const job = await extractPromptDataFromBase64(base64);
     const preset: any = workFlowService.buildPreset('SDImageGen');
     preset.name = name;
-    preset.frontPrompt = job?.prompt ?? '';
-    preset.backPrompt = '';
+    Object.assign(preset, globalPresetPromptsFromJob(job, 'omit'));
     preset.uc = job?.uc ?? '';
     if ((job?.characterPrompts?.length ?? 0) > 0) {
       preset.characterPrompts = job!.characterPrompts;

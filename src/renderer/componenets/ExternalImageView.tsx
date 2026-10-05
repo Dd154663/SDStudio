@@ -7,6 +7,10 @@ import {
   VibeItem,
   ReferenceItem,
 } from '../models/types';
+import {
+  planPromptImport,
+  sceneSlotsMatchMiddle,
+} from '../models/sdstudioPromptImport';
 import { base64ToDataUri } from './BrushTool';
 import { PromptHighlighter } from './SceneEditor';
 import { extractPromptDataFromBase64 } from '../models/util';
@@ -40,6 +44,8 @@ interface ImportOptions {
   seed: boolean;
   resolution: boolean;
   modelSettings: boolean;
+  /** SDStudio 구획 메타가 있을 때 씬(중간) 구획으로 현재 씬 조합을 교체할지(기본: 현재 사전설정 대상만). */
+  sceneMiddle: boolean;
 }
 
 interface ExternalImageViewProps {
@@ -67,7 +73,12 @@ export const ExternalImageView = observer(
       seed: true,
       resolution: true,
       modelSettings: true,
+      sceneMiddle: false,
     });
+    // 씬 교체 기본값은 대상에 따른다 — 현재 사전설정이면 생성 당시 그대로(예전 「정확히 적용」), 새 사전설정이면 씬 유지.
+    useEffect(() => {
+      setOptions((prev) => ({ ...prev, sceneMiddle: target === 'current' }));
+    }, [target]);
 
     useEffect(() => {
       (async () => {
@@ -99,23 +110,60 @@ export const ExternalImageView = observer(
     const hasResolution = !!job?.resolution;
     const exactSource = job?.sdstudioMetadata?.promptSource;
     const currentWorkflowType = appState.curSession?.selectedWorkflow?.workflowType;
-    const canApplyExact = !!(
-      exactSource &&
-      target === 'current' &&
-      scene?.type === 'scene' &&
-      exactSource.workflowType === currentWorkflowType
-    );
+    const isGlobalTarget = target.startsWith('new-global');
+    // 구획 분배 계획(단일 출처 sdstudioPromptImport) — 메타가 없거나 생성 프리셋이 아니면 통합 프롬프트 → 상위.
+    const targetPresetType =
+      target === 'new-easy'
+        ? 'SDImageGenEasy'
+        : target === 'current'
+          ? currentWorkflowType
+          : 'SDImageGen';
+    const normalScene = scene?.type === 'scene' ? scene : undefined;
+    const middleMode: 'scene' | 'omit' | 'fold' = !normalScene
+      ? 'fold'
+      : options.sceneMiddle && !isGlobalTarget
+        ? 'scene'
+        : 'omit';
+    const promptPlan = job
+      ? planPromptImport(job.prompt, exactSource, {
+          targetType: targetPresetType,
+          placeExtra: !isGlobalTarget,
+          middle: middleMode,
+        })
+      : undefined;
+    const splitPrompt = !!promptPlan?.split;
 
     const applyImport = async () => {
-      if (!job || !appState.curSession) return;
-      if (canApplyExact && options.prompt) {
-        const ok = await appState.confirmAsync(
-          '현재 상위·추가·씬·하위 프롬프트를 이미지 생성 당시 값으로 덮어씁니다. ' +
-            '현재 씬의 조합은 생성에 사용된 한 조합으로 교체됩니다.',
-          '정확히 적용',
-          { danger: true },
-        );
-        if (!ok) return;
+      if (!job || !appState.curSession || !promptPlan) return;
+      if (options.prompt && promptPlan.split) {
+        // 프로젝트·씬 단위로 덮어쓰는 것이 있으면(값이 실제로 바뀔 때만) 확인을 받는다.
+        const overwrites: string[] = [];
+        const curExtra = appState.curSession.extraPrompt ?? '';
+        if (
+          promptPlan.extraPrompt !== undefined &&
+          curExtra.trim() &&
+          promptPlan.extraPrompt !== curExtra
+        ) {
+          overwrites.push('프로젝트 추가 프롬프트를 생성 당시 값으로 바꿉니다.');
+        }
+        if (
+          promptPlan.middlePrompt !== undefined &&
+          normalScene &&
+          !sceneSlotsMatchMiddle(normalScene.slots, promptPlan.middlePrompt)
+        ) {
+          overwrites.push(
+            `「${normalScene.name}」 씬의 조합을 생성에 사용된 한 조합으로 교체합니다.`,
+          );
+        }
+        if (overwrites.length > 0) {
+          const ok = await appState.confirmAsync(
+            '상위·추가·씬·하위 프롬프트를 이미지 생성 당시 구획대로 적용합니다. ' +
+              overwrites.join(' '),
+            '정확히 적용',
+            { danger: true },
+          );
+          if (!ok) return;
+        }
       }
       setImporting(true);
 
@@ -155,28 +203,39 @@ export const ExternalImageView = observer(
 
         runInAction(() => {
           if (options.prompt) {
-            if (canApplyExact && exactSource && scene?.type === 'scene') {
-              preset.frontPrompt = exactSource.frontPrompt;
-              preset.backPrompt = exactSource.backPrompt;
-              session.extraPrompt = exactSource.extraPrompt;
-              scene.slots = exactSource.middlePrompt.trim()
-                ? [[
-                    PromptPiece.fromJSON({
-                      id: v4(),
-                      prompt: exactSource.middlePrompt,
-                      characterPrompts: [],
-                      enabled: true,
-                    }),
-                  ]]
-                : [];
-              if (presetType === 'SDImageGenEasy') {
-                const shared = ensureShared();
-                shared.characterPrompt = exactSource.characterPrompt ?? '';
-                shared.backgroundPrompt = exactSource.backgroundPrompt ?? '';
+            preset.frontPrompt = promptPlan.frontPrompt;
+            if (promptPlan.split) {
+              preset.backPrompt = promptPlan.backPrompt ?? '';
+              if (!isGlobal && promptPlan.extraPrompt !== undefined) {
+                session.extraPrompt = promptPlan.extraPrompt;
               }
-            } else {
-              preset.frontPrompt = job.prompt ?? '';
-              if (isNew || isGlobal) preset.backPrompt = '';
+              if (
+                promptPlan.middlePrompt !== undefined &&
+                normalScene &&
+                !sceneSlotsMatchMiddle(normalScene.slots, promptPlan.middlePrompt)
+              ) {
+                normalScene.slots = promptPlan.middlePrompt.trim()
+                  ? [[
+                      PromptPiece.fromJSON({
+                        id: v4(),
+                        prompt: promptPlan.middlePrompt,
+                        characterPrompts: [],
+                        enabled: true,
+                      }),
+                    ]]
+                  : [];
+              }
+              if (
+                !isGlobal &&
+                presetType === 'SDImageGenEasy' &&
+                promptPlan.characterPrompt !== undefined
+              ) {
+                const shared = ensureShared();
+                shared.characterPrompt = promptPlan.characterPrompt;
+                shared.backgroundPrompt = promptPlan.backgroundPrompt ?? '';
+              }
+            } else if (isNew || isGlobal) {
+              preset.backPrompt = '';
             }
           }
           if (options.uc) {
@@ -455,14 +514,18 @@ export const ExternalImageView = observer(
                   )}
                   <div className="mb-4 rounded-lg border line-color p-3 bg-[var(--c-surface)] text-sm">
                     <div className="font-semibold text-default">
-                      {job.sdstudioMetadata
-                        ? 'SDStudio 생성 구획 메타데이터 있음'
+                      {splitPrompt
+                        ? 'SDStudio 생성 구획대로 적용'
                         : '통합 프롬프트로 적용'}
                     </div>
                     <div className="text-xs text-muted mt-1">
-                      {job.sdstudioMetadata
-                        ? '현재 설정에 적용할 때 같은 워크플로우와 씬이면 상위·추가·씬·하위 구획별로 정확히 적용합니다.'
-                        : '이전 SDStudio 또는 NAI 공식 이미지로, 긍정 프롬프트를 상위 프롬프트에 통합해 적용합니다.'}
+                      {splitPrompt
+                        ? isGlobalTarget
+                          ? '그림체에는 상위(+추가)·하위 프롬프트만 나눠 담습니다. 씬 프롬프트는 프로젝트의 씬에 남습니다.'
+                          : '상위·하위는 사전설정에, 추가는 프로젝트 추가 프롬프트에 나눠 적용합니다.'
+                        : job.sdstudioMetadata
+                          ? '이 사전설정 종류에는 구획을 나눌 수 없어 긍정 프롬프트를 상위 프롬프트에 통합해 적용합니다.'
+                          : '이전 SDStudio·NAI 공식 이미지 또는 이미지 수정 결과로, 긍정 프롬프트를 상위 프롬프트에 통합해 적용합니다.'}
                     </div>
                   </div>
                   {/* 적용 대상 */}
@@ -500,10 +563,56 @@ export const ExternalImageView = observer(
                     checked={options.prompt}
                     onChange={(v) => setOpt('prompt', v)}
                   >
-                    <PromptHighlighter
-                      text={job.prompt}
-                      className="w-full max-h-28 overflow-auto text-sm p-2 rounded"
-                    />
+                    {promptPlan?.split ? (
+                      <div className="flex flex-col gap-2">
+                        {(
+                          [
+                            ['상위 프롬프트', promptPlan.frontPrompt],
+                            ...(promptPlan.characterPrompt !== undefined
+                              ? [['캐릭터 관련 태그', promptPlan.characterPrompt]]
+                              : []),
+                            ...(promptPlan.extraPrompt !== undefined
+                              ? [['추가 프롬프트(프로젝트)', promptPlan.extraPrompt]]
+                              : []),
+                            ...(promptPlan.middlePrompt !== undefined
+                              ? [[`씬 프롬프트(${normalScene?.name ?? ''})`, promptPlan.middlePrompt]]
+                              : []),
+                            ...(promptPlan.backgroundPrompt !== undefined
+                              ? [['배경 관련 태그', promptPlan.backgroundPrompt]]
+                              : []),
+                            ['하위 프롬프트', promptPlan.backPrompt ?? ''],
+                          ] as [string, string][]
+                        ).map(([label, text]) => (
+                          <div key={label}>
+                            <div className="text-xs text-muted mb-0.5">{label}</div>
+                            {text.trim() ? (
+                              <PromptHighlighter
+                                text={text}
+                                className="w-full max-h-28 overflow-auto text-sm p-2 rounded"
+                              />
+                            ) : (
+                              <div className="text-xs text-muted px-2">(비어 있음)</div>
+                            )}
+                          </div>
+                        ))}
+                        {normalScene && !isGlobalTarget && (
+                          <label className="flex items-center gap-1.5 text-xs text-muted">
+                            <input
+                              type="checkbox"
+                              checked={options.sceneMiddle}
+                              onChange={(e) => setOpt('sceneMiddle', e.target.checked)}
+                              className="w-3.5 h-3.5 accent-sky-500"
+                            />
+                            씬 프롬프트도 「{normalScene.name}」 씬에 적용(조합을 생성 당시 한 조합으로 교체)
+                          </label>
+                        )}
+                      </div>
+                    ) : (
+                      <PromptHighlighter
+                        text={job.prompt}
+                        className="w-full max-h-28 overflow-auto text-sm p-2 rounded"
+                      />
+                    )}
                   </CheckboxRow>
 
                   {/* 네거티브 */}

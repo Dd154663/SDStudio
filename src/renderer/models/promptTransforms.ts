@@ -1,6 +1,8 @@
 import {
-  prefixedArtistNameOfSegment,
+  artistNameOfSegment,
+  joinPromptSegment,
   removePromptSegmentsKeepingGroups,
+  splitPromptSegments,
 } from './artistTags';
 import {
   parsePromptWeightNumber,
@@ -273,26 +275,32 @@ const ARTIST_FIELDS: (keyof ArtistPromptSources)[] = [
   'backgroundPrompt',
 ];
 
-// 구획 파싱·접두 판별은 artistTags 단일 출처(2026-10-02) — 가중치 묶음(1.5::artist:a, artist:b::)의
-// 첫·마지막 태그도 작가로 본다. 예전에는 묶음 첫 태그를 놓치고 마지막 태그를 artist:b:: 로 썼다.
-function artistTagOf(segment: string): string | undefined {
-  const name = prefixedArtistNameOfSegment(segment);
-  return name ? 'artist:' + name : undefined;
+// 구획 → 핵심 이름은 artistTags.artistNameOfSegment 단일 출처(2026-10-02 묶음, 2026-10-05 접두 없는 작가) —
+// 가중치 묶음(1.5::artist:a, artist:b::)의 첫·마지막 태그, 0.8::aaa:: 처럼 접두 없는 작가도 본다.
+// 접두 없는 구획은 isUnprefixedArtist(라이브러리·태그 DB 를 미리 조회한 결과)가 작가라 답할 때만 작가다.
+function artistOf(
+  segment: string,
+  isUnprefixedArtist?: (name: string) => boolean,
+): { tag: string; key: string } | undefined {
+  const n = artistNameOfSegment(segment);
+  if (!n) return undefined;
+  if (!n.prefixed && !isUnprefixedArtist?.(n.name)) return undefined;
+  return { tag: n.prefixed ? 'artist:' + n.name : n.name, key: n.name.toLocaleLowerCase() };
 }
 
 /** 현재 양의 프롬프트들에서 작가 태그 하나만 남긴 예약용 변형을 만든다. */
 export function buildArtistPromptVariants(
   sources: ArtistPromptSources,
+  isUnprefixedArtist?: (name: string) => boolean,
 ): ArtistPromptVariant[] {
   const found: ArtistSegment[] = [];
   for (const field of ARTIST_FIELDS) {
-    const segments = (sources[field] ?? '').split(',');
+    const segments = splitPromptSegments(sources[field] ?? '');
     segments.forEach((segment, index) => {
-      const tag = artistTagOf(segment);
-      if (!tag) return;
-      const key = tag.toLocaleLowerCase();
-      if (found.some((item) => item.key === key)) return;
-      found.push({ field, index, tag, key });
+      const artist = artistOf(segment, isUnprefixedArtist);
+      if (!artist) return;
+      if (found.some((item) => item.key === artist.key)) return;
+      found.push({ field, index, tag: artist.tag, key: artist.key });
     });
   }
 
@@ -305,7 +313,7 @@ export function buildArtistPromptVariants(
       variant[field] = removePromptSegmentsKeepingGroups(
         value,
         (parts, index) =>
-          !!artistTagOf(parts.core) &&
+          !!artistOf(joinPromptSegment(parts), isUnprefixedArtist) &&
           !(field === selected.field && index === selected.index),
       );
     }
