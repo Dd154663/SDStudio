@@ -1,3 +1,4 @@
+import type { SaveLocationInsideInstall } from '../shared/installDir';
 import { Config } from '../main/config';
 import type { DriveAuthStatus } from '../shared/googleDriveAuth';
 import type {
@@ -153,6 +154,7 @@ export abstract class Backend {
   abstract getBootWarnings(): Promise<{
     saveLocationFallback: { attempted: string; code: string } | null;
     configLoadFailure: { path: string; code: string } | null;
+    saveLocationInsideInstall: SaveLocationInsideInstall | null;
   } | null>;
   // 현재 실행에서 실제로 사용 중인 데이터 루트. 기본 위치도 절대/표시 경로로 노출한다.
   abstract getDataRoot(): Promise<string>;

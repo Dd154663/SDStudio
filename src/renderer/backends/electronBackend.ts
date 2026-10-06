@@ -1,3 +1,4 @@
+import type { SaveLocationInsideInstall } from '../../shared/installDir';
 import { Config } from '../../main/config';
 import {
   EncodeVibeImageInput,
@@ -393,6 +394,7 @@ export class ElectornBackend extends Backend {
   async getBootWarnings(): Promise<{
     saveLocationFallback: { attempted: string; code: string } | null;
     configLoadFailure: { path: string; code: string } | null;
+    saveLocationInsideInstall: SaveLocationInsideInstall | null;
   } | null> {
     return await invoke('get-boot-warnings');
   }

@@ -422,6 +422,12 @@ export class AppState {
     code: string;
   } | null = null;
   @observable accessor saveLocationFallbackAcked: boolean = false;
+  // 저장 위치가 프로그램 설치 폴더 안(데스크톱): 업데이트 설치 때 삭제될 수 있다. bootstrap 이
+  // 채우고 App.tsx 가 부팅 후 1회 안내한다(전면 차단 없음·경로 무변경). 안내하면 null 로 되돌린다.
+  @observable accessor saveLocationInsideInstall: {
+    path: string;
+    installDir: string;
+  } | null = null;
   // config.json 이 존재하지만 읽기·파싱에 실패한 상태. 저장 경로 자체를 신뢰할 수
   // 없으므로 프로젝트 스캔과 저장을 시작하지 않고 재시작 안내 게이트를 표시한다.
   @observable accessor configLoadFailure: {

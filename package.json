@@ -349,7 +349,8 @@
       "output": "release/build"
     },
     "extraResources": [
-      "./assets/**"
+      "./assets/**",
+      "!assets/installer.nsh"
     ],
     "publish": {
       "provider": "github",

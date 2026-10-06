@@ -78,6 +78,7 @@ import { useOpusUsage } from './OpusUsageBadge';
 import MobileColorPicker from './MobileColorPicker';
 import { StorageDiagnosticsSection } from './StorageDiagnostics';
 import { DRIVE_SYNC_TEXT } from '../models/driveSync';
+import { INSIDE_INSTALL_DIR_CODE, INSTALL_DIR_TEXT } from '../../shared/installDir';
 import DriveSettingsTab from './DriveSettingsTab';
 import type {
   LoginTokenProfile,
@@ -3119,6 +3120,11 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     // 지정하면 다음 부팅에서 그 경로에 쓰기가 막혀(부팅 폴백이 없던 구버전은) 앱이
     // 무반응 상태로 벽돌이 되므로, 애초에 못 고르게 막는다.
     const check = await backend.checkWritable(folder);
+    // 설치 폴더 안은 업데이트 때 삭제되므로 쓰기 가능 여부와 별개로 거부된다(main check-writable).
+    if (!check.ok && check.code === INSIDE_INSTALL_DIR_CODE) {
+      appState.pushDialog({ type: 'yes-only', text: INSTALL_DIR_TEXT.selectRejected });
+      return;
+    }
     if (!check.ok) {
       appState.pushDialog({
         type: 'yes-only',
@@ -3148,6 +3154,10 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     const folder = await backend.selectDir();
     if (!folder) return;
     const check = await backend.checkWritable(folder);
+    if (!check.ok && check.code === INSIDE_INSTALL_DIR_CODE) {
+      appState.pushDialog({ type: 'yes-only', text: INSTALL_DIR_TEXT.syncFolderRejected });
+      return;
+    }
     if (!check.ok) {
       appState.pushDialog({
         type: 'yes-only',

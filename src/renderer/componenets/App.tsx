@@ -25,6 +25,7 @@ import { GenControlFloating } from './GenControlWidget';
 import EditModeShell from './EditModeShell';
 import { resolveLayout, dockOrder, DOCK_RANK, defaultLayoutTemplateId } from '../models/layoutTemplates';
 import { MOBILE_V2_INTRO_TEXT, revertMobileV2ToClassic } from '../models/mobileV2Default';
+import { INSTALL_DIR_TEXT } from '../../shared/installDir';
 import TobBar from './TobBar';
 import AlertWindow from './AlertWindow';
 import { DropdownSelect, TabComponent } from './UtilComponents';
@@ -377,6 +378,17 @@ export const App = observer(() => {
       },
     });
   }, [appState.bootReady, appState.mobileV2IntroPending]);
+  // 저장 위치가 프로그램 설치 폴더 안(데스크톱, 2026-10-06): 업데이트 설치 때 삭제될 수 있어
+  // 메인 UI 가 뜬 뒤 한 번 안내한다. 경고만 — 경로는 바꾸지 않고 사용자가 환경설정에서 옮긴다.
+  useEffect(() => {
+    const inside = appState.saveLocationInsideInstall;
+    if (!appState.bootReady || !inside) return;
+    appState.saveLocationInsideInstall = null;
+    appState.pushDialog({
+      type: 'yes-only',
+      text: INSTALL_DIR_TEXT.bootWarning(inside.path, inside.installDir),
+    });
+  }, [appState.bootReady, appState.saveLocationInsideInstall]);
   useEffect(() => {
     const removeDonwloadProgressListener = backend.onDownloadProgress(
       (progress: any) => {

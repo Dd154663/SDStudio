@@ -71,6 +71,11 @@ import { cleanupDriveDownload, downloadDriveFileForIpc } from './googleDrive/dow
 import { listBackupsForIpc, trashBackupFileForIpc } from './googleDrive/manage';
 import { DRIVE_AUTH_CHANNEL } from '../shared/googleDriveAuth';
 import { DRIVE_FILE_CHANNEL, isDriveWebUrl } from '../shared/googleDrive';
+import {
+  INSIDE_INSTALL_DIR_CODE,
+  SaveLocationInsideInstall,
+} from '../shared/installDir';
+import { isSameOrInside, resolveInstallDir } from './installDirGuard';
 
 interface DataBaseConns {
   tagDBId: number;
@@ -346,6 +351,8 @@ async function readFileAsDataURL(filePath: any) {
 
 const DEFAULT_APP_DIR = app.getPath('userData') + '/' + 'SDStudio';
 let APP_DIR = DEFAULT_APP_DIR;
+// 프로그램 설치 폴더(패키징된 실행 파일이 있는 폴더). 개발 실행은 null.
+const INSTALL_DIR = resolveInstallDir(app.isPackaged, process.execPath);
 
 let config: Config = {};
 let configLoadFailure: { path: string; code: string } | null = null;
@@ -405,7 +412,7 @@ ipcMain.handle('get-runtime-diag', async () => {
 // 부팅 경고 조회: 설정 파일 읽기 실패 또는 사용자 지정 저장 경로 접근 실패를
 // 렌더러에 전달한다. 렌더러는 사용자 데이터 IO 전에 조회해 전면 가드로 안내한다.
 ipcMain.handle('get-boot-warnings', async () => {
-  return { saveLocationFallback, configLoadFailure };
+  return { saveLocationFallback, configLoadFailure, saveLocationInsideInstall };
 });
 
 ipcMain.handle('get-data-root', async () => APP_DIR);
@@ -426,6 +433,11 @@ ipcMain.handle('backup-failed-config', async () => {
 // 저장 경로 사전 검증: 사용자가 폴더를 저장 경로로 지정하기 전에 실제 쓰기 가능
 // 여부를 확인한다(권한 없는 드라이브 지정 → 다음 부팅 벽돌화 예방). 데스크톱 전용.
 ipcMain.handle('check-writable', async (event, absPath: string) => {
+  // 설치 폴더(또는 그 하위)는 쓰기 가능해도 거부한다 — 업데이트 설치가 설치 폴더의 파일을
+  // 교체하면서 데이터가 삭제될 수 있다. 쓰기 검사(폴더 생성)보다 먼저 판정한다.
+  if (INSTALL_DIR && isSameOrInside(absPath, INSTALL_DIR)) {
+    return { ok: false, code: INSIDE_INSTALL_DIR_CODE };
+  }
   try {
     await fs.mkdir(absPath, { recursive: true });
     const probe = path.join(absPath, '.' + uuidv4() + '.wtest');
@@ -2212,6 +2224,10 @@ async function init() {
 // 일어났을 때 채워진다. 렌더러가 부팅 후 get-boot-warnings 로 조회해 사용자에게
 // 안내한다(설정에서 경로 재지정 유도). 폴백이 없으면 null.
 let saveLocationFallback: { attempted: string; code: string } | null = null;
+// 최종 데이터 루트(APP_DIR)가 설치 폴더와 같거나 그 아래일 때 채워진다. 업데이트 설치 때
+// 삭제될 수 있으므로 렌더러가 부팅 후 1회 경고한다. 저장 경로는 자동으로 바꾸지 않는다
+// (데이터를 그대로 두고 사용자가 환경설정에서 옮기게 한다).
+let saveLocationInsideInstall: SaveLocationInsideInstall | null = null;
 
 async function initFolder() {
   if (config.saveLocation) {
@@ -2241,6 +2257,10 @@ async function initFolder() {
       // 기본 경로 자체가 실패면 더 손쓸 수 없다 — 원래대로 throw.
       throw e;
     }
+  }
+  // 폴백까지 반영한 최종 데이터 루트로 판정한다(경고만, 경로·데이터 무변경).
+  if (INSTALL_DIR && isSameOrInside(APP_DIR, INSTALL_DIR)) {
+    saveLocationInsideInstall = { path: APP_DIR, installDir: INSTALL_DIR };
   }
   // 원자 쓰기(tmp+rename)가 쓰기와 rename 사이 강제 종료로 남긴 고아 tmp 파일 정리.
   // tmp 는 항상 uuid v4 파일명(확장자 없음)이라 정확히 그 형태만 지운다.

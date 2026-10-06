@@ -1,3 +1,4 @@
+import type { SaveLocationInsideInstall } from '../../shared/installDir';
 import { Config } from '../../main/config';
 import {
   EncodeVibeImageInput,
@@ -1048,6 +1049,7 @@ export class AndroidBackend extends Backend {
   async getBootWarnings(): Promise<{
     saveLocationFallback: { attempted: string; code: string } | null;
     configLoadFailure: { path: string; code: string } | null;
+    saveLocationInsideInstall: SaveLocationInsideInstall | null;
   } | null> {
     // 모바일은 saveLocation(사용자 지정 저장 경로)을 쓰지 않는다 — 부팅 경고 미해당.
     return null;
