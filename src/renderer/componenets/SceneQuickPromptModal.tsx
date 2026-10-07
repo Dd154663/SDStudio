@@ -11,6 +11,8 @@ import { FloatView } from './FloatView';
 import { SlotEditor } from './SceneEditor';
 import Tooltip from './Tooltip';
 import { isMobile } from '../models';
+import { appState } from '../models/AppService';
+import { sceneCharacterContext } from '../models/sceneCharacterPrompts';
 import { PromptPiece, Scene } from '../models/types';
 
 interface SceneQuickPromptModalProps {
@@ -80,6 +82,15 @@ const SceneQuickPromptModal = observer(
     </div>;
     const pieceCount = scene.slots.reduce((acc, slot) => acc + slot.length, 0);
 
+    // 조각 캐릭터 배지·편집기 번호에 쓰는 기준 캐릭터 — SceneEditor 와 같은 getCommonSetup 해석. 선택 워크플로우가 없으면 undefined(개수만 표시).
+    const quickCharacterContext = () => {
+      const session = appState.curSession;
+      const flow = session?.selectedWorkflow;
+      if (!session || !flow) return undefined;
+      const [, preset, shared] = session.getCommonSetup(flow);
+      return sceneCharacterContext(preset, shared, scene);
+    };
+
     if (showFull) {
       return (
         <FloatView priority={2} onEscape={() => setShowFull(false)}>
@@ -88,7 +99,8 @@ const SceneQuickPromptModal = observer(
               🧩 씬 {scene.name} — 조합 에디터
             </div>
             <div className="flex-1 min-h-0 overflow-hidden">
-              <SlotEditor scene={scene} big />
+              {/* 조각 캐릭터란 기준 = 씬 편집 창과 같은 해석(선택 워크플로우의 프리셋·공유, 2026-10-07) */}
+              <SlotEditor scene={scene} big characterContext={quickCharacterContext()} />
             </div>
           </div>
         </FloatView>

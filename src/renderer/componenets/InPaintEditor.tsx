@@ -68,6 +68,7 @@ import {
 } from '../models/workflows/SDWorkFlow';
 import PromptEditTextArea from './PromptEditTextArea';
 import { SlotEditor } from './SceneEditor';
+import { variantCharacterContext } from '../models/sceneCharacterPrompts';
 import { v4 as uuidv4 } from 'uuid';
 import FocusAreaOverlay from './FocusAreaOverlay';
 import {
@@ -348,7 +349,13 @@ const InPaintEditor = observer(
               setPcComboTab(1);
             }
           : ensureSlots,
-        content: <SlotEditor scene={editingScene} />,
+        // 조각 캐릭터란 기준 = 이 씬 프리셋의 캐릭터 프롬프트(expandVariantCombos 와 같음 — 씬 캐릭터 역할 모드 없음)
+        content: (
+          <SlotEditor
+            scene={editingScene}
+            characterContext={variantCharacterContext(editingScene.preset)}
+          />
+        ),
       },
     ];
 

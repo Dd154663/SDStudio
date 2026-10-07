@@ -66,6 +66,7 @@ import {
   highlightPrompt,
   lowerPromptNode,
   combinationCount,
+  enumerateCombinations,
 } from '../models/PromptService';
 import {
   CombinationList,
@@ -93,10 +94,17 @@ import { SCENE_RETENTION_DAYS } from '../models/TrashService';
 import { promptCustomResolution } from '../models/customResolutionPrompt';
 import { observer } from 'mobx-react-lite';
 import {
+  analyzePieceCharacterPrompts,
+  buildComboCharacterPreviews,
+  characterTargetSourceText,
+  ComboCharacterPreview,
   getOrderedBaseCharacterPrompts,
   getSceneCharacterPromptMode,
+  PIECE_CHARACTER_TEXT,
+  PieceCharacterContext,
   reorderBaseCharacterPrompts,
   reorderSceneCharacterPrompts,
+  sceneCharacterContext,
   SceneCharacterPromptMode,
   setSceneCharacterPromptMode,
 } from '../models/sceneCharacterPrompts';
@@ -210,6 +218,8 @@ const FoldHead = ({ open, label, onToggle }: { open: boolean; label: string; onT
 interface SlotEditorProps {
   scene: { slots: PromptPieceSlot[] };
   big?: boolean;
+  /** 조각 캐릭터란이 붙는 기준 캐릭터(부모가 계산 — 이미지생성 씬 sceneCharacterContext·변형 씬 variantCharacterContext) */
+  characterContext?: PieceCharacterContext;
 }
 
 interface BigPromptEditorProps {
@@ -471,15 +481,37 @@ interface SlotPieceProps {
   style?: React.CSSProperties;
   /** 모바일 열 단위 보기: 카드가 열 폭을 채우고 편집기 h-16, 이름·활성화·캐릭터·삭제는 한 줄(2026-09-26) */
   wide?: boolean;
+  /** 조각 캐릭터란 ↔ 기준 캐릭터 대응(없으면 대응 판정 없이 개수만 — 드래그 미리보기 등) */
+  characterContext?: PieceCharacterContext;
 }
 
 interface CharacterPromptsEditorProps {
   piece: PromptPiece;
   onClose: () => void;
+  characterContext?: PieceCharacterContext;
 }
 
+/** 캐릭터 번호 원 — 씬 역할 탭·조각 캐릭터 편집기·최종 프롬프트 미리보기 공용(색 = sceneCharColors 순환). */
+const CharacterNumberDot = ({ index, small }: { index: number; small?: boolean }) => (
+  <div
+    className={
+      (small ? 'w-5 h-5 text-[10px]' : 'w-6 h-6 text-xs') +
+      ' rounded-full flex-none flex items-center justify-center font-bold text-white'
+    }
+    style={{ backgroundColor: sceneCharColors[index % sceneCharColors.length] }}
+  >
+    {index + 1}
+  </div>
+);
+
+/** 적용된 캐릭터 프리셋 이름 줄 — 씬 역할 탭 기본 캐릭터 행과 조각 캐릭터 편집기 공용. */
+const CharacterPresetLine = ({ name }: { name?: string }) =>
+  name ? (
+    <div className="text-[11px] text-muted truncate">프리셋: {name}</div>
+  ) : null;
+
 const CharacterPromptsEditor = observer(
-  ({ piece, onClose }: CharacterPromptsEditorProps) => {
+  ({ piece, onClose, characterContext }: CharacterPromptsEditorProps) => {
     const addCharacterPrompt = () => {
       piece.characterPrompts.push('');
     };
@@ -492,36 +524,90 @@ const CharacterPromptsEditor = observer(
       piece.characterPrompts.splice(index, 1);
     };
 
+    // 칸 j ↔ 기준 캐릭터 j 대응·미반영 판정(단일 출처 analyzePieceCharacterPrompts — 배지·최종 미리보기와 같음)
+    const analysis = analyzePieceCharacterPrompts(
+      piece.characterPrompts,
+      characterContext?.targets,
+    );
+    const targetCount = characterContext?.targets.length ?? 0;
+
     return (
       <div className="w-full h-full overflow-hidden flex flex-col p-3">
+        {/* 안내 머리 — 씬 역할 탭처럼 기준을 먼저 밝힌다 */}
+        <div className="flex-none mb-1">
+          <div className="text-base font-medium text-default flex items-center gap-2">
+            <FaUser className="flex-none" />
+            조각 캐릭터 프롬프트
+          </div>
+          <div className="text-xs text-muted mt-1">
+            이 조각이 뽑힌 조합에서 각 칸의 내용이 같은 번호 캐릭터의 프롬프트 뒤에 덧붙습니다.
+          </div>
+          {characterContext && (
+            <div className="text-xs text-muted mt-0.5" data-piece-char-basis="">
+              기준: {characterContext.basis} · 캐릭터 {targetCount}명
+            </div>
+          )}
+        </div>
         <div className="flex-1 overflow-hidden">
           <div className="h-full overflow-auto">
             {piece.characterPrompts.length > 0 &&
-              piece.characterPrompts.map((prompt, index) => (
-                <div key={index} className="border rounded-md mt-3 p-3">
-                  <div className="flex justify-between items-center mb-2">
-                    <div className="flex items-center gap-2 gray-label">
-                      캐릭터 프롬프트
+              piece.characterPrompts.map((prompt, index) => {
+                const slot = analysis.slots[index];
+                const target = slot?.target;
+                return (
+                  <div
+                    key={index}
+                    className="border line-color rounded-md mt-3 p-3"
+                    data-piece-char-slot={index + 1}
+                  >
+                    <div className="flex justify-between items-start gap-2 mb-2">
+                      <div className="flex items-start gap-2 min-w-0">
+                        <CharacterNumberDot index={index} />
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-default">
+                            캐릭터 {index + 1} 프롬프트 뒤에 덧붙임
+                          </div>
+                          {target && (
+                            <>
+                              <div className="text-xs text-body truncate">
+                                {target.character.prompt || '(비어 있음)'}
+                              </div>
+                              <div className="text-[11px] text-muted truncate">
+                                {characterTargetSourceText(target)}
+                              </div>
+                              <CharacterPresetLine name={target.character.fromPreset} />
+                            </>
+                          )}
+                          {slot?.problem && (
+                            <div
+                              className="text-xs text-red-500 dark:text-red-400 mt-0.5"
+                              data-piece-char-warn={slot.problem}
+                            >
+                              {PIECE_CHARACTER_TEXT.problem[slot.problem]}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-none">
+                        <Tooltip content="캐릭터 프롬프트 삭제">
+                        <button
+                          className="icon-button back-red"
+                          onClick={() => removePrompt(index)}
+                        >
+                          <FaTrash />
+                        </button>
+                        </Tooltip>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Tooltip content="캐릭터 프롬프트 삭제">
-                      <button
-                        className="icon-button back-red"
-                        onClick={() => removePrompt(index)}
-                      >
-                        <FaTrash />
-                      </button>
-                      </Tooltip>
+                    <div className="mb-2">
+                      <PromptEditTextArea
+                        value={prompt}
+                        onChange={(value) => updatePrompt(index, value)}
+                      />
                     </div>
                   </div>
-                  <div className="mb-2">
-                    <PromptEditTextArea
-                      value={prompt}
-                      onChange={(value) => updatePrompt(index, value)}
-                    />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
           </div>
         </div>
         <div className="flex-none mt-auto pt-2 flex gap-2 items-center">
@@ -544,8 +630,13 @@ const CharacterPromptsEditor = observer(
 );
 
 export const SlotPiece = observer(
-  ({ scene, piece, removePiece, moveSlotPiece, style, wide }: SlotPieceProps) => {
+  ({ scene, piece, removePiece, moveSlotPiece, style, wide, characterContext }: SlotPieceProps) => {
     const [showCharacterPrompts, setShowCharacterPrompts] = useState(false);
+    // FaUser 배지 — 내용 있는 칸 수, 미반영 칸(넘침·기준 0명·꺼진 캐릭터)이 있으면 「!」(단일 출처 판정)
+    const characterBadge = analyzePieceCharacterPrompts(
+      piece.characterPrompts,
+      characterContext?.targets,
+    ).badge;
     // 셀 이름 인라인 편집 상태. 편집 확정 시 빈 값은 undefined 로 정규화(직렬화 오염 방지).
     const [editingName, setEditingName] = useState(false);
     const [nameDraft, setNameDraft] = useState('');
@@ -560,14 +651,14 @@ export const SlotPiece = observer(
     const [{ isDragging }, drag, preview] = useDrag(
       () => ({
         type: 'slot',
-        item: { scene, piece },
+        item: { scene, piece, characterContext },
         collect: (monitor) => {
           return {
             isDragging: monitor.isDragging(),
           };
         },
       }),
-      [scene, piece],
+      [scene, piece, characterContext],
     );
 
     const [{ isOver }, drop] = useDrop(
@@ -606,18 +697,31 @@ export const SlotPiece = observer(
             piece.enabled = e.currentTarget.checked;
           }}
         />
-        <Tooltip content="캐릭터 프롬프트 편집">
+        <Tooltip
+          content={
+            characterBadge?.warn
+              ? `${PIECE_CHARACTER_TEXT.editTooltip}\n${characterBadge.label}`
+              : PIECE_CHARACTER_TEXT.editTooltip
+          }
+        >
+        {/* 배지(absolute)의 기준이 되도록 항상 relative — 전에는 모바일 열 보기(wide)에서만 붙어
+            PC 에서 배지가 상위 컨테이너 우상단으로 튀었다(호버 때는 filter 가 포함 블록을 만들어 정상처럼 보임, 2026-10-07). */}
         <button
-          className={'active:brightness-90 hover:brightness-95 text-blue-600 dark:text-blue-400' + (wide ? ' relative touch-hit' : '')}
+          className={'relative active:brightness-90 hover:brightness-95 text-blue-600 dark:text-blue-400' + (wide ? ' touch-hit' : '')}
           onClick={() => {
             if (!moveSlotPiece) return;
             setShowCharacterPrompts(true);
           }}
         >
           <FaUser size={20} />
-          {piece.characterPrompts.length > 0 && (
-            <span className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/3 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs">
-              {piece.characterPrompts.length}
+          {/* 배지 색 bg-red-500 은 SPEC §1 의도적 예외(상태 강조 bg-*-500 text-white) — back-red 는 다크에서 반투명이라 아이콘 위 배지가 흐려진다 */}
+          {characterBadge && (
+            <span
+              className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/3 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs font-bold"
+              data-piece-char-badge={characterBadge.warn ? 'warn' : 'count'}
+              aria-hidden
+            >
+              {characterBadge.text}
             </span>
           )}
         </button>
@@ -655,6 +759,7 @@ export const SlotPiece = observer(
           >
             <CharacterPromptsEditor
               piece={piece}
+              characterContext={characterContext}
               onClose={() => setShowCharacterPrompts(false)}
             />
           </FloatView>
@@ -907,21 +1012,12 @@ const SceneCharacterPromptEditor = observer(({
                     <FaGripVertical />
                   </span>
                 )}
-                <div
-                  className="w-6 h-6 rounded-full flex-none flex items-center justify-center text-xs font-bold text-white"
-                  style={{ backgroundColor: sceneCharColors[index % sceneCharColors.length] }}
-                >
-                  {index + 1}
-                </div>
+                <CharacterNumberDot index={index} />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs text-default truncate">
                     {character.prompt || '(비어 있음)'}
                   </div>
-                  {character.fromPreset && (
-                    <div className="text-[11px] text-muted truncate">
-                      프리셋: {character.fromPreset}
-                    </div>
-                  )}
+                  <CharacterPresetLine name={character.fromPreset} />
                 </div>
                 <button
                   type="button"
@@ -1020,7 +1116,7 @@ const SceneCharacterPromptEditor = observer(({
                         <FaGripVertical />
                       </span>
                     )}
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: sceneCharColors[index % sceneCharColors.length] }}>{index + 1}</div>
+                    <CharacterNumberDot index={index} small />
                     <div className="min-w-0">
                       <div className="font-medium text-default">씬 캐릭터 역할 {index + 1}</div>
                       {mode === 'mix' && (
@@ -1173,7 +1269,7 @@ const SceneCharacterPromptEditor = observer(({
   );
 });
 
-export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
+export const SlotEditor = observer(({ scene, big, characterContext }: SlotEditorProps) => {
   useEffect(() => {
     for (const slot of scene.slots) {
       for (const piece of slot) {
@@ -1295,6 +1391,7 @@ export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
                 key={piece.id!}
                 scene={scene}
                 piece={piece}
+                characterContext={characterContext}
                 removePiece={(piece: PromptPiece) =>
                   removePiece(slot, slot.indexOf(piece)!)
                 }
@@ -1421,6 +1518,7 @@ export const SlotEditor = observer(({ scene, big }: SlotEditorProps) => {
                       key={piece.id!}
                       scene={scene}
                       piece={piece}
+                      characterContext={characterContext}
                       wide
                       removePiece={(p: PromptPiece) => removePiece(slot, slot.indexOf(p)!)}
                       moveSlotPiece={moveSlotPiece}
@@ -1643,10 +1741,23 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
   };
 
   const [previews, setPreviews] = useState<PromptNode[]>([]);
+  // 조합마다 캐릭터 프롬프트 구획(긍정만) — previews 와 같은 순서(2026-10-07)
+  const [previewChars, setPreviewChars] = useState<ComboCharacterPreview[]>([]);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  // 캐릭터 구획(캐릭터가 생기거나 미반영 경고가 있는 조합)이 하나도 없으면 예전 표시 그대로 — 조합마다 한 덩이를 전부 나열(상한 없음).
+  const hasPreviewChars = previewChars.some(
+    (c) => c.characters.length > 0 || c.unreflected.length > 0,
+  );
+  const unreflectedLine = (chars: ComboCharacterPreview) =>
+    chars.unreflected
+      .map(({ columnIndex, piece, slot }) => {
+        const row = scene.slots[columnIndex]?.indexOf(piece as PromptPiece) ?? 0;
+        return `「${pieceLabel(piece as PromptPiece, columnIndex, Math.max(0, row))}」 ${slot.index + 1}번 칸`;
+      })
+      .join(', ');
   const PromptPreview = previewError ? (
     <div className="bg-red-500 p-2 m-2">{previewError}</div>
-  ) : (
+  ) : !hasPreviewChars ? (
     <div>
       {previews.map((preview, index) => (
         <PromptHighlighter
@@ -1656,9 +1767,55 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
         />
       ))}
     </div>
+  ) : (
+    <div>
+      {previews.map((preview, index) => {
+        const chars = previewChars[index];
+        return (
+          <div key={index} className="m-2" data-preview-combo={index + 1}>
+            <PromptHighlighter
+              className="inline-block word-breaks p-2"
+              text={lowerPromptNode(preview)}
+            />
+            {chars && chars.characters.length > 0 && (
+              <div className="mt-1 ml-3 pl-2 border-l-2 line-color flex flex-col gap-1" data-preview-chars="">
+                <div className="text-xs gray-label">캐릭터 프롬프트</div>
+                {chars.characters.map(({ target, text }) => (
+                  <div key={target.index} className="flex items-start gap-2 min-w-0">
+                    <span className="mt-1">
+                      <CharacterNumberDot index={target.index} small />
+                    </span>
+                    <PromptHighlighter
+                      className="inline-block word-breaks px-2 py-1 min-w-0"
+                      text={text}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+            {chars && chars.unreflected.length > 0 && (
+              <div
+                className="mt-1 ml-3 text-xs text-red-500 dark:text-red-400 break-words"
+                data-preview-char-warn=""
+              >
+                캐릭터 프롬프트 미반영: {unreflectedLine(chars)} — 대응하는 캐릭터가 없거나 꺼져 있어 생성에 반영되지 않습니다
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 
-  const SmallSlotEditor = <SlotEditor scene={scene} big={false} />;
+  // 조각 캐릭터란이 붙는 기준 캐릭터(생성과 같은 해석 — resolveSceneCharacterPrompts). 조각 편집기·배지·미리보기 공용.
+  const pieceCharacterContext = sceneCharacterContext(preset, shared, scene);
+  const SmallSlotEditor = (
+    <SlotEditor
+      scene={scene}
+      big={false}
+      characterContext={pieceCharacterContext}
+    />
+  );
 
   const BigEditor = (
     <BigPromptEditor
@@ -1693,7 +1850,32 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
           preset,
           shared,
         );
+        // 캐릭터 프롬프트 — 생성과 같은 함수(createCharacterPrompts = createSDCharacterPrompts), 같은 번호 조합끼리 짝.
+        // 새 전개 경로를 쓰지 않는다(SPEC §11-4). 캐릭터 함수가 없는 워크플로우는 구획 없음.
+        const characterNodes: PromptNode[][] = workFlowService.getDef(type)
+          ?.createCharacterPrompts
+          ? await workFlowService.createCharacterPrompts(
+              type,
+              curSession!,
+              scene,
+              preset,
+              shared,
+            )
+          : [];
+        // 조합 i 에 뽑힌 조각 — enumerateCombinations 는 생성 DFS 와 같은 순서(combinationEnumerate.test)
+        const combos = enumerateCombinations(scene);
+        const context = sceneCharacterContext(preset, shared, scene);
+        setPreviewChars(
+          buildComboCharacterPreviews(
+            context.targets,
+            prompts.map((_, i) =>
+              (characterNodes[i] || []).map((node) => lowerPromptNode(node)),
+            ),
+            prompts.map((_, i) => combos[i]),
+          ),
+        );
         setPreviews(prompts);
+        setPreviewError(null);
       } catch (e: any) {
         setPreviewError(e.message);
       }
