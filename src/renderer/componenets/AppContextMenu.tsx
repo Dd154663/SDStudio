@@ -676,7 +676,11 @@ export const AppContextMenu = observer(() => {
           : `${scenes.length}개 씬에서 ${ok}장의 이미지를 삭제했습니다.`,
       );
     };
-    // 여러 씬 일괄 삭제는 「다시 묻지 않음」과 무관하게 항상 확인한다(X12)
+    // 여러 씬 일괄 삭제도 이미지 삭제 — 「다시 묻지 않음」 체크박스·설정 존중(v5.4.0 범위, deleteFlowRules)
+    if (shouldSkipImageDeleteConfirm(appState.skipImageDeleteConfirm, preview.totalImages)) {
+      await doBatchDelete();
+      return;
+    }
     appState.pushDialog({
       type: 'confirm',
       ...deleteConfirmText({
@@ -685,6 +689,7 @@ export const AppContextMenu = observer(() => {
         outcome: { trashDays: IMAGE_RETENTION_DAYS },
         extra: imageDeleteScopeLine({ sceneCount: preview.scenes.length, excludeFav }),
       }),
+      showSkipConfirm: showImageDeleteSkipOption(preview.totalImages),
       callback: doBatchDelete,
     });
   };
@@ -750,7 +755,7 @@ export const AppContextMenu = observer(() => {
     const doDelete = async () => {
       await deleteImageFiles(appState.curSession!, ctx.path, ctx.scene);
     };
-    // 「다시 묻지 않음」은 단일 이미지 삭제에만 적용 — 여러 장(선택 모드 우클릭)은 항상 확인(X12)
+    // 「다시 묻지 않음」은 장수와 무관하게 적용 — 단일·여러 장(선택 모드 우클릭) 모두 체크박스·설정 존중(deleteFlowRules)
     const count = ctx.path.length;
     if (shouldSkipImageDeleteConfirm(appState.skipImageDeleteConfirm, count)) {
       await doDelete();
@@ -969,14 +974,14 @@ export const AppContextMenu = observer(() => {
       await deleteImageFiles(session, [ctx.entry.path], scene);
       imageHistoryService.remove(ctx.entry.id);
     };
-    if (appState.skipImageDeleteConfirm) {
+    if (shouldSkipImageDeleteConfirm(appState.skipImageDeleteConfirm, 1)) {
       await doDelete();
       return;
     }
     appState.pushDialog({
       type: 'confirm',
       ...deleteConfirmText({ kind: 'image', outcome: { trashDays: IMAGE_RETENTION_DAYS } }),
-      showSkipConfirm: true,
+      showSkipConfirm: showImageDeleteSkipOption(1),
       callback: doDelete,
     });
   };

@@ -22,16 +22,21 @@ import {
 } from '../deleteFlowRules';
 import { isSafeImageToken } from '../projectTemplateBackup';
 
-describe('「다시 묻지 않음」 적용 범위(X12)', () => {
-  it('단일 이미지 삭제에서만 확인을 건너뛴다', () => {
+describe('「다시 묻지 않음」 적용 범위(v5.4.0 범위 복원, 2026-10-08)', () => {
+  it('설정이 켜져 있으면 장수와 무관하게(1장 이상) 확인을 건너뛴다', () => {
     expect(shouldSkipImageDeleteConfirm(true, 1)).toBe(true);
-    expect(shouldSkipImageDeleteConfirm(true, 2)).toBe(false);
+    expect(shouldSkipImageDeleteConfirm(true, 2)).toBe(true);
+    expect(shouldSkipImageDeleteConfirm(true, 500)).toBe(true);
+  });
+  it('0장이거나 설정이 꺼져 있으면 건너뛰지 않는다', () => {
     expect(shouldSkipImageDeleteConfirm(true, 0)).toBe(false);
     expect(shouldSkipImageDeleteConfirm(false, 1)).toBe(false);
+    expect(shouldSkipImageDeleteConfirm(false, 3)).toBe(false);
   });
-  it('체크박스는 단일 삭제 확인 창에만 보인다', () => {
+  it('체크박스는 이미지 삭제 확인 창이면 장수와 무관하게 보인다(0장은 없음)', () => {
     expect(showImageDeleteSkipOption(1)).toBe(true);
-    expect(showImageDeleteSkipOption(3)).toBe(false);
+    expect(showImageDeleteSkipOption(3)).toBe(true);
+    expect(showImageDeleteSkipOption(0)).toBe(false);
   });
 });
 

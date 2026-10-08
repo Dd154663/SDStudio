@@ -28,6 +28,8 @@ import {
   deleteConfirmText,
   imageDeleteScopeLine,
   NO_IMAGES_TO_DELETE_MESSAGE,
+  shouldSkipImageDeleteConfirm,
+  showImageDeleteSkipOption,
 } from './deleteFlowRules';
 import { promptCustomResolution } from './customResolutionPrompt';
 import {
@@ -225,6 +227,11 @@ export class BatchProcessService {
           appState.pushMessage(NO_IMAGES_TO_DELETE_MESSAGE);
           return;
         }
+        // 「다시 묻지 않음」 — 여러 씬 일괄도 이미지 삭제라 체크박스·설정 존중(v5.4.0 범위, deleteFlowRules)
+        if (shouldSkipImageDeleteConfirm(appState.skipImageDeleteConfirm, count)) {
+          void deleteAndReport(pick);
+          return;
+        }
         appState.pushDialog({
           type: 'confirm',
           ...deleteConfirmText({
@@ -233,6 +240,7 @@ export class BatchProcessService {
             outcome: { trashDays: IMAGE_RETENTION_DAYS },
             extra: imageDeleteScopeLine({ ...scope, sceneCount: selected.length }),
           }),
+          showSkipConfirm: showImageDeleteSkipOption(count),
           callback: () => deleteAndReport(pick),
         });
       };
@@ -255,7 +263,7 @@ export class BatchProcessService {
             },
           ],
           callback: async (menu) => {
-            // 여러 씬 일괄 삭제는 「다시 묻지 않음」과 무관하게 항상 확인한다(X12)
+            // 「다시 묻지 않음」이 켜져 있으면 개수 확인 창만 생략한다(confirmDeleteImages) — n등 이하 입력 창은 늘 띄운다.
             if (menu === 'all') {
               confirmDeleteImages((_scene, paths) => paths, {});
             } else if (menu === 'n') {

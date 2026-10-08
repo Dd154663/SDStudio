@@ -1196,14 +1196,14 @@ const ResultDetailView = observer(
           const doDel = async () => {
             await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
           };
-          if (appState.skipImageDeleteConfirm) {
+          if (shouldSkipImageDeleteConfirm(appState.skipImageDeleteConfirm, 1)) {
             await doDel();
             return;
           }
           appState.pushDialog({
             type: 'confirm',
             ...deleteConfirmText({ kind: 'image', outcome: { trashDays: IMAGE_RETENTION_DAYS } }),
-            showSkipConfirm: true,
+            showSkipConfirm: showImageDeleteSkipOption(1),
             callback: doDel,
           });
         }
@@ -1218,14 +1218,14 @@ const ResultDetailView = observer(
           const doDel = async () => {
             await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
           };
-          if (appState.skipImageDeleteConfirm) {
+          if (shouldSkipImageDeleteConfirm(appState.skipImageDeleteConfirm, 1)) {
             await doDel();
             return;
           }
           appState.pushDialog({
             type: 'confirm',
             ...deleteConfirmText({ kind: 'image', outcome: { trashDays: IMAGE_RETENTION_DAYS } }),
-            showSkipConfirm: true,
+            showSkipConfirm: showImageDeleteSkipOption(1),
             callback: doDel,
           });
         } else if (action === 'toggle-favorite') {
@@ -1328,14 +1328,14 @@ const ResultDetailView = observer(
       const doDel = async () => {
         await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
       };
-      if (appState.skipImageDeleteConfirm) {
+      if (shouldSkipImageDeleteConfirm(appState.skipImageDeleteConfirm, 1)) {
         doDel();
         return;
       }
       appState.pushDialog({
         type: 'confirm',
         ...deleteConfirmText({ kind: 'image', outcome: { trashDays: IMAGE_RETENTION_DAYS } }),
-        showSkipConfirm: true,
+        showSkipConfirm: showImageDeleteSkipOption(1),
         callback: doDel,
       });
     };
@@ -2000,7 +2000,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             (p) => imageService.getOutputDir(curSession!, scene) + '/' + p,
           );
       // 이동 실패(파일 잠금 등)는 공용 deleteImageFiles 가 한 번 알린다(호출부에서 다시 알리지 않음, X13).
-      // 「다시 묻지 않음」은 단일 이미지 삭제에만 적용 — 여기의 일괄 삭제는 항상 확인한다(X12).
+      // 「다시 묻지 않음」은 장수와 무관하게 이미지 삭제 전부에 적용(v5.4.0 범위) — 고르는 메뉴(select)와
+      // n등 이하의 입력 창은 늘 띄우고, 그 뒤 개수 확인 창만 설정에 따라 생략한다(deleteFlowRules).
       appState.pushDialog({
         type: 'select',
         text: '이미지를 삭제합니다. 원하시는 작업을 선택해주세요.',
@@ -2030,6 +2031,13 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               appState.pushMessage(NO_IMAGES_TO_DELETE_MESSAGE);
               return;
             }
+            const doDel = async () => {
+              await deleteImageFiles(curSession!, targets(), scene);
+            };
+            if (shouldSkipImageDeleteConfirm(appState.skipImageDeleteConfirm, count)) {
+              void doDel();
+              return;
+            }
             appState.pushDialog({
               type: 'confirm',
               ...deleteConfirmText({
@@ -2038,9 +2046,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                 outcome: { trashDays: IMAGE_RETENTION_DAYS },
                 extra: imageDeleteScopeLine(scope),
               }),
-              callback: async () => {
-                await deleteImageFiles(curSession!, targets(), scene);
-              },
+              showSkipConfirm: showImageDeleteSkipOption(count),
+              callback: doDel,
             });
           };
           if (value === 'all') {
@@ -2073,7 +2080,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     };
 
     // 이미지 그리드 「삭제」 버튼(V2 하단 줄·PC 클래식 툴바 공용, X3):
-    // 선택 모드면 선택한 이미지만 지우고(확인 1회 — 「다시 묻지 않음」 미적용), 아니면 기존 씬 전체 삭제 메뉴.
+    // 선택 모드면 선택한 이미지만 지우고(확인 1회 — 「다시 묻지 않음」 체크박스·설정 존중), 아니면 기존 씬 전체 삭제 메뉴.
     const onDeleteButton = () => {
       const current = gameService
         .getOutputs(curSession!, scene)
@@ -2092,6 +2099,25 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
         return;
       }
       const targets = plan.paths;
+      const doDel = async () => {
+        await deleteImageFiles(curSession!, targets, scene);
+        // 지워진 이미지는 선택에서 뺀다(실패해 남은 것은 선택 유지 — 다시 시도 가능).
+        const remaining = new Set(
+          gameService
+            .getOutputs(curSession!, scene)
+            .map((p) => imageService.getOutputDir(curSession!, scene) + '/' + p),
+        );
+        for (const p of targets) {
+          if (!remaining.has(p)) selectedImages.current.delete(p);
+        }
+        gallaryRef.current?.refresh();
+        gallaryRef2.current?.refresh();
+        forceUpdate({});
+      };
+      if (shouldSkipImageDeleteConfirm(appState.skipImageDeleteConfirm, targets.length)) {
+        void doDel();
+        return;
+      }
       appState.pushDialog({
         type: 'confirm',
         ...deleteConfirmText({
@@ -2099,21 +2125,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           count: targets.length,
           outcome: { trashDays: IMAGE_RETENTION_DAYS },
         }),
-        callback: async () => {
-          await deleteImageFiles(curSession!, targets, scene);
-          // 지워진 이미지는 선택에서 뺀다(실패해 남은 것은 선택 유지 — 다시 시도 가능).
-          const remaining = new Set(
-            gameService
-              .getOutputs(curSession!, scene)
-              .map((p) => imageService.getOutputDir(curSession!, scene) + '/' + p),
-          );
-          for (const p of targets) {
-            if (!remaining.has(p)) selectedImages.current.delete(p);
-          }
-          gallaryRef.current?.refresh();
-          gallaryRef2.current?.refresh();
-          forceUpdate({});
-        },
+        showSkipConfirm: showImageDeleteSkipOption(targets.length),
+        callback: doDel,
       });
     };
 
@@ -2272,7 +2285,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             filename,
           );
         } else if (action === 'image-delete') {
-          // 그리드 Del 단일 삭제 — 상세 보기와 같은 규칙(「다시 묻지 않음」 체크박스·설정 존중, X12)
+          // 그리드 Del 단일 삭제 — 상세 보기와 같은 규칙(「다시 묻지 않음」 체크박스·설정 존중, deleteFlowRules)
           const doDel = async () => {
             await deleteImageFiles(curSession!, [activePaths[i]], scene);
             const newCount = count - 1;

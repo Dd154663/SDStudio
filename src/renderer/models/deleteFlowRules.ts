@@ -1,8 +1,10 @@
 // 삭제 흐름·입력 검증의 순수 판단(2026-10-03 정비 묶음 U2 — X3·X4·X12·X13·X15).
 //
 // UI·서비스·backend 의존 없음 — __tests__/deleteFlowRules.test.ts 로 판단만 검증한다.
-//  · 「다시 묻지 않음」(appState.skipImageDeleteConfirm)은 **단일 이미지 삭제에만** 적용한다.
-//    여러 장·일괄(모든 이미지·즐겨찾기 제외·여러 씬·선택분)은 항상 확인한다.
+//  · 「다시 묻지 않음」(appState.skipImageDeleteConfirm)은 **씬 이미지 삭제 전부**에 장수와 무관하게 적용한다
+//    (단일·선택분·모든 이미지·즐겨찾기 제외·n등 이하·여러 씬 일괄·기록 — v5.4.0 범위, 2026-10-08 X12 제한 되돌림).
+//    씬·프로젝트·템플릿·폴더 삭제와 휴지통 영구 삭제에는 적용하지 않는다. n등 이하는 입력 창을 늘 띄우고 그 뒤 확인만 생략한다.
+//    검수(ImageReview)는 v5.4.0 과 같이 설정과 무관(일반 삭제는 항상 확인, Alt+→ 는 즉시 삭제).
 //  · 이미지 그리드 선택 모드의 「삭제」는 선택한 이미지만 지운다(씬 전체 삭제 메뉴를 열지 않는다).
 //  · 삭제 결과는 실제로 사라졌는지 확인한 뒤에 안내한다(다른 창 잠금으로 조용히 돌아오면 실패로 셈 — SPEC §8).
 
@@ -126,17 +128,20 @@ export const NO_IMAGES_TO_DELETE_MESSAGE = '삭제할 이미지가 없습니다.
 
 // ── 이미지 삭제 확인 규칙 ──
 
-/** 확인 창을 건너뛰어도 되는가 — 「다시 묻지 않음」이 켜져 있고 **정확히 1장**일 때만. */
+/**
+ * 이미지 삭제 확인 창을 건너뛰어도 되는가 — 「다시 묻지 않음」이 켜져 있고 지울 이미지가 1장 이상이면(장수 무관).
+ * 0장은 건너뛸 것이 없다(호출부가 「삭제할 이미지가 없습니다」 안내).
+ */
 export function shouldSkipImageDeleteConfirm(
   skipSetting: boolean,
   count: number,
 ): boolean {
-  return !!skipSetting && count === 1;
+  return !!skipSetting && count >= 1;
 }
 
-/** 확인 창에 「다시 묻지 않음」 체크박스를 보일지 — 단일 이미지 삭제에서만. */
+/** 이미지 삭제 확인 창에 「다시 묻지 않음」 체크박스를 보일지 — 이미지 삭제라면 장수와 무관하게(1장 이상). */
 export function showImageDeleteSkipOption(count: number): boolean {
-  return count === 1;
+  return count >= 1;
 }
 
 /** 선택한 이미지 삭제 확인 문구 — deleteConfirmText 로 위임(2026-10-03 E1). */
