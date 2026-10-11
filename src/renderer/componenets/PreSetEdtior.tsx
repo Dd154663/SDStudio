@@ -65,6 +65,7 @@ import {
   WFIGroup,
   WFIIfIn,
   WFIInlineInput,
+  WFIMainSamplingNotice,
   WFIMiddlePlaceholderInput,
   WFIPush,
   WFISceneOnly,
@@ -80,6 +81,7 @@ import {
   presetRowLabel,
 } from '../models/presetLayout';
 import { resolveCompanionButtons } from '../models/companionSlots';
+import { mainSamplingSummary, readMainSampling } from '../models/variantSampling';
 import { renderCompanionButtons } from './PortableToolbarButtons';
 import { CompanionHostRow } from './CompanionDnd';
 import {
@@ -1197,6 +1199,8 @@ const WFRenderElement = observer(({ element }: WFElementProps) => {
       return <WFRExtraPrompt element={element} />;
     case 'showImage':
       return <WFRShowImage element={element} />;
+    case 'mainSamplingNotice':
+      return <WFRMainSamplingNotice element={element} />;
     case 'ifIn':
       return <WFRIfIn element={element} />;
     case 'sceneOnly':
@@ -1258,6 +1262,29 @@ const WFRShowImage = observer(({ element }: WFElementProps) => {
           path={imageService.getVibeImagePath(curSession!, getField())}
           className="flex-none w-40 h-40 object-cover"
         />
+      )}
+    </div>
+  );
+});
+
+// 변형 씬 편집 칸의 「샘플링·모델 설정은 메인 사전 세팅을 따릅니다」 안내 줄(2026-10-11, SPEC §7-5).
+// 생성은 메인 사전 세팅 값을 쓰므로(variantSampling) 이 칸에는 입력을 두지 않고, 현재 메인 값 요약만 읽기 전용으로 보인다.
+// observer — 메인 사전 세팅(선택 사전 세팅·값)이 바뀌면 바로 갱신. 메인을 못 읽으면 요약은 생략한다.
+const WFRMainSamplingNotice = observer(({ element }: WFElementProps) => {
+  const { editVibe, showGroup } = useContext(WFElementContext)!;
+  const input = element as WFIMainSamplingNotice;
+  if (showGroup || editVibe) {
+    return <></>;
+  }
+  const read = readMainSampling(appState.curSession);
+  const summary = read.ok ? mainSamplingSummary(read.main.preset) : undefined;
+  return (
+    <div className="flex-none mt-2 md:mt-3" data-main-sampling-notice="">
+      <div className="gray-label text-sm">{input.label}</div>
+      {summary && (
+        <div className="text-xs text-sub mt-0.5" data-main-sampling-summary="">
+          {summary}
+        </div>
       )}
     </div>
   );

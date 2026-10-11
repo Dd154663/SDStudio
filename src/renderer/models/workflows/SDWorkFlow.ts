@@ -9,6 +9,7 @@ import {
   wfiExtraPromptInput,
   wfiGroup,
   wfiInlineInput,
+  wfiMainSamplingNotice,
   wfiMiddlePlaceholderInput,
   wfiPresetSelect,
   wfiProfilePresetSelect,
@@ -53,6 +54,7 @@ import {
 } from '../sceneCharacterPrompts';
 import { applyImportedJob } from './importedJob';
 import { comboExpandedOf, resolvePresetPromptNode } from '../variantCombo';
+import { resolveVariantSampling, VARIANT_SAMPLING_TEXT } from '../variantSampling';
 
 const SDImageGenPreset = new WFVarBuilder()
   .addIntVar('cfgRescale', 0, 1, 0.01, 0)
@@ -389,38 +391,8 @@ const SDInpaintUI = wfiStack([
   wfiInlineInput('프롬프트', 'prompt', 'preset', 'flex-1'),
   wfiInlineInput('네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
-  wfiGroup('샘플링/모델 설정', [
-    wfiPush('top'),
-    wfiInlineInput('스탭 수', 'steps', 'preset', 'flex-none'),
-    wfiInlineInput(
-      '프롬프트 가이던스',
-      'promptGuidance',
-      'preset',
-      'flex-none',
-    ),
-    wfiInlineInput('샘플링', 'sampling', 'preset', 'flex-none'),
-    wfiInlineInput('노이즈 스케줄', 'noiseSchedule', 'preset', 'flex-none'),
-    wfiInlineInput('CFG 리스케일', 'cfgRescale', 'preset', 'flex-none'),
-    wfiInlineInput(
-      'Legacy Prompt Conditioning 모드',
-      'legacyPromptConditioning',
-      'preset',
-      'flex-none',
-    ),
-    wfiInlineInput(
-      '바이브 강도 정규화',
-      'normalizeStrength',
-      'preset',
-      'flex-none',
-    ),
-    wfiInlineInput('Variety+', 'varietyPlus', 'preset', 'flex-none'),
-    wfiInlineInput(
-      'Deliberate Euler Ancestral Bug',
-      'deliberateEulerAncestralBug',
-      'preset',
-      'flex-none',
-    ),
-  ], 'sampling-group'),
+  // 샘플링·모델 설정은 메인 사전 세팅을 따른다(2026-10-11, SPEC §7-5) — 그룹 대신 안내 줄+메인 값 요약.
+  wfiMainSamplingNotice(VARIANT_SAMPLING_TEXT.notice, 'main-sampling-notice'),
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
   // wfiInlineInput('시드', 'seed', true, 'flex-none'),
 ]);
@@ -438,38 +410,8 @@ export const SDInpaintComboUI = wfiStack([
   ),
   wfiInlineInput('씬 네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
-  wfiGroup('샘플링/모델 설정', [
-    wfiPush('top'),
-    wfiInlineInput('스탭 수', 'steps', 'preset', 'flex-none'),
-    wfiInlineInput(
-      '프롬프트 가이던스',
-      'promptGuidance',
-      'preset',
-      'flex-none',
-    ),
-    wfiInlineInput('샘플링', 'sampling', 'preset', 'flex-none'),
-    wfiInlineInput('노이즈 스케줄', 'noiseSchedule', 'preset', 'flex-none'),
-    wfiInlineInput('CFG 리스케일', 'cfgRescale', 'preset', 'flex-none'),
-    wfiInlineInput(
-      'Legacy Prompt Conditioning 모드',
-      'legacyPromptConditioning',
-      'preset',
-      'flex-none',
-    ),
-    wfiInlineInput(
-      '바이브 강도 정규화',
-      'normalizeStrength',
-      'preset',
-      'flex-none',
-    ),
-    wfiInlineInput('Variety+', 'varietyPlus', 'preset', 'flex-none'),
-    wfiInlineInput(
-      'Deliberate Euler Ancestral Bug',
-      'deliberateEulerAncestralBug',
-      'preset',
-      'flex-none',
-    ),
-  ], 'sampling-group'),
+  // 샘플링·모델 설정은 메인 사전 세팅을 따른다(2026-10-11, SPEC §7-5) — 그룹 대신 안내 줄+메인 값 요약.
+  wfiMainSamplingNotice(VARIANT_SAMPLING_TEXT.notice, 'main-sampling-notice'),
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
 ]);
 
@@ -487,6 +429,11 @@ const createSDI2IHandler = (type: string) => {
     _nodelay?: boolean,
     generationSnapshot?: GenerationSettingsSnapshot,
   ) => {
+    // 샘플링·모델 설정(스텝·가이던스·CFG·샘플러·노이즈 스케줄·legacy·Variety+·DEA 버그·바이브 강도 정규화)은
+    // 생성 시점의 메인 사전 세팅 값(2026-10-11 사용자 결정, SPEC §7-5 — variantSampling 단일 출처). 변형 생성 경로는
+    // 전부 이 핸들러를 지나므로(미러·조합 전개·이미지 변형 메뉴·대량 작업) 여기 한 곳에서만 적용한다.
+    // 씬 프리셋 객체는 바꾸지 않는다(사본) — 메인을 못 읽으면 씬 값 그대로 + 경고.
+    preset = resolveVariantSampling(session, preset);
     const image = preset.image.endsWith('.png')
       ? dataUriToBase64(
           (await imageService.fetchVibeImage(session, preset.image))!,
@@ -594,38 +541,8 @@ const SDI2IUI = wfiStack([
   wfiInlineInput('프롬프트', 'prompt', 'preset', 'flex-1'),
   wfiInlineInput('네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
-  wfiGroup('샘플링/모델 설정', [
-    wfiPush('top'),
-    wfiInlineInput('스탭 수', 'steps', 'preset', 'flex-none'),
-    wfiInlineInput(
-      '프롬프트 가이던스',
-      'promptGuidance',
-      'preset',
-      'flex-none',
-    ),
-    wfiInlineInput('샘플링', 'sampling', 'preset', 'flex-none'),
-    wfiInlineInput('노이즈 스케줄', 'noiseSchedule', 'preset', 'flex-none'),
-    wfiInlineInput('CFG 리스케일', 'cfgRescale', 'preset', 'flex-none'),
-    wfiInlineInput(
-      'Legacy Prompt Conditioning 모드',
-      'legacyPromptConditioning',
-      'preset',
-      'flex-none',
-    ),
-    wfiInlineInput(
-      '바이브 강도 정규화',
-      'normalizeStrength',
-      'preset',
-      'flex-none',
-    ),
-    wfiInlineInput('Variety+', 'varietyPlus', 'preset', 'flex-none'),
-    wfiInlineInput(
-      'Deliberate Euler Ancestral Bug',
-      'deliberateEulerAncestralBug',
-      'preset',
-      'flex-none',
-    ),
-  ], 'sampling-group'),
+  // 샘플링·모델 설정은 메인 사전 세팅을 따른다(2026-10-11, SPEC §7-5) — 그룹 대신 안내 줄+메인 값 요약.
+  wfiMainSamplingNotice(VARIANT_SAMPLING_TEXT.notice, 'main-sampling-notice'),
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
   wfiInlineInput('캐릭터 레퍼런스', 'characterReferences', 'preset', 'flex-none'),
   // wfiInlineInput('시드', 'seed', true, 'flex-none'),
@@ -639,38 +556,8 @@ export const SDI2IComboUI = wfiStack([
   wfiInlineInput('노이즈', 'noise', 'preset', 'flex-none'),
   wfiInlineInput('씬 네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
-  wfiGroup('샘플링/모델 설정', [
-    wfiPush('top'),
-    wfiInlineInput('스탭 수', 'steps', 'preset', 'flex-none'),
-    wfiInlineInput(
-      '프롬프트 가이던스',
-      'promptGuidance',
-      'preset',
-      'flex-none',
-    ),
-    wfiInlineInput('샘플링', 'sampling', 'preset', 'flex-none'),
-    wfiInlineInput('노이즈 스케줄', 'noiseSchedule', 'preset', 'flex-none'),
-    wfiInlineInput('CFG 리스케일', 'cfgRescale', 'preset', 'flex-none'),
-    wfiInlineInput(
-      'Legacy Prompt Conditioning 모드',
-      'legacyPromptConditioning',
-      'preset',
-      'flex-none',
-    ),
-    wfiInlineInput(
-      '바이브 강도 정규화',
-      'normalizeStrength',
-      'preset',
-      'flex-none',
-    ),
-    wfiInlineInput('Variety+', 'varietyPlus', 'preset', 'flex-none'),
-    wfiInlineInput(
-      'Deliberate Euler Ancestral Bug',
-      'deliberateEulerAncestralBug',
-      'preset',
-      'flex-none',
-    ),
-  ], 'sampling-group'),
+  // 샘플링·모델 설정은 메인 사전 세팅을 따른다(2026-10-11, SPEC §7-5) — 그룹 대신 안내 줄+메인 값 요약.
+  wfiMainSamplingNotice(VARIANT_SAMPLING_TEXT.notice, 'main-sampling-notice'),
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
   wfiInlineInput('캐릭터 레퍼런스', 'characterReferences', 'preset', 'flex-none'),
 ]);
@@ -842,38 +729,8 @@ const SDMirrorUI = wfiStack([
   ),
   wfiInlineInput('씬 네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
-  wfiGroup('샘플링/모델 설정', [
-    wfiPush('top'),
-    wfiInlineInput('스탭 수', 'steps', 'preset', 'flex-none'),
-    wfiInlineInput(
-      '프롬프트 가이던스',
-      'promptGuidance',
-      'preset',
-      'flex-none',
-    ),
-    wfiInlineInput('샘플링', 'sampling', 'preset', 'flex-none'),
-    wfiInlineInput('노이즈 스케줄', 'noiseSchedule', 'preset', 'flex-none'),
-    wfiInlineInput('CFG 리스케일', 'cfgRescale', 'preset', 'flex-none'),
-    wfiInlineInput(
-      'Legacy Prompt Conditioning 모드',
-      'legacyPromptConditioning',
-      'preset',
-      'flex-none',
-    ),
-    wfiInlineInput(
-      '바이브 강도 정규화',
-      'normalizeStrength',
-      'preset',
-      'flex-none',
-    ),
-    wfiInlineInput('Variety+', 'varietyPlus', 'preset', 'flex-none'),
-    wfiInlineInput(
-      'Deliberate Euler Ancestral Bug',
-      'deliberateEulerAncestralBug',
-      'preset',
-      'flex-none',
-    ),
-  ], 'sampling-group'),
+  // 샘플링·모델 설정은 메인 사전 세팅을 따른다(2026-10-11, SPEC §7-5) — 그룹 대신 안내 줄+메인 값 요약.
+  wfiMainSamplingNotice(VARIANT_SAMPLING_TEXT.notice, 'main-sampling-notice'),
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
 ]);
 

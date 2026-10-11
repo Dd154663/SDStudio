@@ -4,6 +4,8 @@
 // 기본값을 undefined로 지우지 않도록 누락 값은 기본 프리셋 값을 유지한다.
 // createInpaintPreset·createI2IPreset·createMirrorPreset·대량 작업 「I2I로 이미지생성 씬 복사」가 같은 규칙을 쓴다
 // (SPEC_GUIDE §12). 이미지·마스크·강도·노이즈·스텝·시드·바이브·캐릭터 레퍼런스는 옮기지 않는다.
+// 샘플링 키(가이던스·CFG·샘플러 등)는 롤백 호환을 위해 계속 옮기지만, 변형 씬 생성에는 메인 사전 세팅 값이 쓰인다
+// (2026-10-11, variantSampling.ts — SPEC_GUIDE §7-5).
 import type { SDAbstractJob } from '../types';
 
 /** 옮기는 키(순서 = 대입 순서). 여기에 없는 프리셋 키는 기본값 그대로. */

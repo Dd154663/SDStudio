@@ -237,6 +237,13 @@ export interface WFIShowImage extends WFIAbstract {
   fieldType: WFFieldType;
 }
 
+// 변형 씬 편집 칸의 「샘플링·모델 설정은 메인 사전 세팅을 따릅니다」 안내 줄+메인 값 요약(2026-10-11, SPEC §7-5).
+// 필드에 바인딩되지 않는 읽기 전용 요소라 명시 id 가 필요하다(L1-1 키 계약). 렌더는 PreSetEdtior WFRMainSamplingNotice.
+export interface WFIMainSamplingNotice extends WFIAbstract {
+  type: 'mainSamplingNotice';
+  label: string;
+}
+
 export interface WFIPush extends WFIAbstract {
   type: 'push';
   direction: 'top' | 'bottom' | 'left' | 'right';
@@ -251,6 +258,7 @@ export type WFIElement =
   | WFIMiddlePlaceholderInput
   | WFIExtraPromptInput
   | WFIPush
+  | WFIMainSamplingNotice
   | WFIIfIn
   | WFISceneOnly
   | WFIShowImage;
@@ -626,6 +634,13 @@ export function wfiPush(
   id?: string,
 ): WFIPush {
   return { type: 'push', direction, id };
+}
+
+export function wfiMainSamplingNotice(
+  label: string,
+  id: string,
+): WFIMainSamplingNotice {
+  return { type: 'mainSamplingNotice', label, id };
 }
 
 export function wfiIfIn(
