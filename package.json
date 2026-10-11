@@ -256,6 +256,7 @@
   "build": {
     "productName": "SDStudio",
     "appId": "io.sunho.SDStudio",
+    "afterPack": "./.erb/scripts/macAdhocSign.js",
     "asar": true,
     "asarUnpack": [
       "**\\*.{node,dll}",
