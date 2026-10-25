@@ -333,6 +333,17 @@ const RULES: Rule[] = [
     },
     allow: {},
   },
+  {
+    // Opus 할당량을 무료분(percent)만으로 직접 비교하면 추가 충전분(purchasedPercent)을 놓친다(2026-10-25).
+    // 과금 위험·저잔량·전환·순회 판정은 opusUsageRules 헬퍼를 쓴다.
+    name: 'Opus 할당량 percent 직접 비교 — opusUsageRules 헬퍼 사용',
+    guide: '§14',
+    dir: '',
+    exts: ['.ts', '.tsx'],
+    exclude: ['models/opusUsageRules.ts'],
+    count: (c) => countMatches(c, /\b(usage|status)\??\.percent\s*(<=|>=|<|>)/g),
+    allow: {},
+  },
 ];
 
 function listFiles(dirAbs: string, exts: string[]): string[] {

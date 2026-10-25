@@ -148,6 +148,74 @@ describe('OpusUsageService', () => {
   });
 });
 
+describe('추가 충전(purchasedPercent)·할당량 경고 하지 않음(2026-10-25)', () => {
+  const st = (percent: number, purchasedPercent: number, isNegative = false) => ({
+    opusSubscribed: true, percent, purchasedPercent, isNegative, timeUntilNextPercent: 60,
+  });
+
+  test('무료 0·추가 충전 남음은 Anlas 확인 대상이 아니고, 모두 소진(isNegative)이면 확인한다', () => {
+    const service = new OpusUsageService({ getOpusUsageStatus: jest.fn() } as any);
+    expect(service.isPaidRisk(st(0, 100))).toBe(false);
+    expect(service.needsPaidConfirm(st(0, 100))).toBe(false);
+    expect(service.needsPaidConfirm(st(0, 0, true))).toBe(true);
+    expect(service.needsPaidConfirm(st(0, 0, true), true)).toBe(false);
+    service.approvePaidRisk();
+    expect(service.needsPaidConfirm(st(0, 0, true))).toBe(false);
+  });
+
+  test('저잔량 경고는 합산 기준이며 quiet 면 띄우지 않고 표식도 소모하지 않는다', () => {
+    const service = new OpusUsageService({ getOpusUsageStatus: jest.fn() } as any);
+    expect(service.takeLowWarning(st(5, 100), 10)).toBe(false);
+    expect(service.takeLowWarning(st(3, 4), 10, true)).toBe(false);
+    expect(service.takeLowWarning(st(3, 4), 10)).toBe(true);
+    expect(service.takeLowWarning(st(3, 4), 10)).toBe(false);
+  });
+
+  test('전환 안내는 세션당 최초 1회 — 무료분이 1% 차올랐다 다시 0 이 돼도, 로그아웃·계정 전환에도 반복하지 않는다', () => {
+    const service = new OpusUsageService({ getOpusUsageStatus: jest.fn() } as any);
+    expect(service.takePurchasedNotice(st(3, 100))).toBe(false);
+    expect(service.takePurchasedNotice(st(0, 100), true)).toBe(false); // quiet
+    expect(service.takePurchasedNotice(st(0, 100))).toBe(true);
+    expect(service.takePurchasedNotice(st(1, 100))).toBe(false);
+    expect(service.takePurchasedNotice(st(0, 99))).toBe(false);
+    service.invalidateAccount();
+    service.clear();
+    expect(service.takePurchasedNotice(st(0, 98))).toBe(false);
+    const restarted = new OpusUsageService({ getOpusUsageStatus: jest.fn() } as any);
+    expect(restarted.takePurchasedNotice(st(0, 98))).toBe(true);
+  });
+
+  test('quiet 토글은 config 에 즉시 저장하고 change 를 알린다(다른 키 보존)', async () => {
+    let config: any = { multiTokenAutoRotate: true };
+    const backend = {
+      getOpusUsageStatus: jest.fn(),
+      getConfig: jest.fn(async () => ({ ...config })),
+      setConfig: jest.fn(async (next: any) => { config = next; }),
+    };
+    const service = new OpusUsageService(backend as any);
+    const onChange = jest.fn();
+    service.addEventListener('change', onChange);
+    await expect(service.loadQuiet()).resolves.toBe(false);
+    await service.setQuiet(true);
+    expect(config).toEqual({ multiTokenAutoRotate: true, opusUsageQuiet: true });
+    expect(service.quiet).toBe(true);
+    expect(onChange).toHaveBeenCalled();
+    const other = new OpusUsageService(backend as any);
+    await expect(other.loadQuiet()).resolves.toBe(true);
+  });
+
+  test('quiet 저장 실패는 이전 값으로 되돌린다', async () => {
+    const backend = {
+      getOpusUsageStatus: jest.fn(),
+      getConfig: jest.fn(async () => ({})),
+      setConfig: jest.fn(async () => { throw new Error('disk'); }),
+    };
+    const service = new OpusUsageService(backend as any);
+    await expect(service.setQuiet(true)).rejects.toThrow('disk');
+    expect(service.quiet).toBe(false);
+  });
+});
+
 describe('`/user/data` 캐시 전달(2026-10-03 갈래 T2)', () => {
   test('force 는 backend 캐시를 쓰고, fresh 만 backend 에 force 를 넘긴다', async () => {
     const getOpusUsageStatus = jest.fn(async () => ({

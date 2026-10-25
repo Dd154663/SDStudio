@@ -76,6 +76,9 @@
   --c-gray-bg: #6b7280;   --c-gray-fg: #ffffff;
   --c-orange-bg: #f97316; --c-orange-fg: #ffffff;
   --c-yellow-bg: #eab308; --c-yellow-fg: #ffffff; /* yellow-500 */
+  /* 보라 = Opus 추가 충전(Usage Boost)분 막대 전용(2026-10-25). 버튼 색 아님 — 커스텀 테마(uiTheme)는
+     재정의하지 않아 라이트/다크 기본값을 따르고, 트루다크는 .dark 값을 그대로 쓴다. */
+  --c-purple-bg: #a855f7; --c-purple-fg: #ffffff; /* purple-500 */
   /* 버튼 반경 토큰(2026-10-04 B1 ①, 같은 날 실기 피드백으로 범위 축소) — 색과 무관해 테마별 재정의 없음.
      --r-btn      = 글자·아이콘+글자 버튼(.round-button·.icon-button·확인 창 .r-btn) — 알약, 모던·클래식 공통.
      --r-btn-icon = 아이콘 하나짜리 버튼(.icon-only) — 모던 8px 둥근 사각, 클래식 마감·알약형 버튼 옵션은
@@ -105,6 +108,7 @@
   --c-gray-bg: rgba(156, 163, 175, 0.25);  --c-gray-fg: #e5e7eb;   /* gray-200 */
   --c-orange-bg: rgba(251, 146, 60, 0.25); --c-orange-fg: #fed7aa; /* orange-200 */
   --c-yellow-bg: rgba(129, 140, 248, 0.25); --c-yellow-fg: #818cf8; /* indigo-400 */
+  --c-purple-bg: rgba(192, 132, 252, 0.25); --c-purple-fg: #c084fc; /* purple-400 (막대는 다크에서 fg 를 칠한다) */
 }
 .true-dark {
   --c-surface: #0a0a0a;

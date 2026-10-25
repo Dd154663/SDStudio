@@ -32,6 +32,8 @@ jest.mock('..', () => ({
   opusUsageService: {
     refresh: opusRefresh,
     takeLowWarning: jest.fn(() => false),
+    takePurchasedNotice: jest.fn(() => false),
+    needsPaidConfirm: jest.fn(() => false),
     isPaidRisk: jest.fn(() => false),
     hasSessionPaidApproval: jest.fn(() => true),
   },

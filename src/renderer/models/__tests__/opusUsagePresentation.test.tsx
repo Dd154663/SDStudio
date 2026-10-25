@@ -72,6 +72,61 @@ test('미구독은 X로 표시하고 잔량·예상 장수·소진 경고를 표
   expect(html).not.toContain('progressbar');
 });
 
+describe('추가 충전(purchasedPercent) 표시(2026-10-25)', () => {
+  const boosted = (percent: number, purchasedPercent: number, isNegative = false) => ({
+    opusSubscribed: true, percent, purchasedPercent, isNegative, timeUntilNextPercent: 0,
+  });
+
+  test('배지 글자는 합산, 상세는 「X% + Y%」, 예상 장수는 합산', () => {
+    const view = presentOpusUsage(boosted(80, 100));
+    expect(view).toMatchObject({
+      text: '180%', detailText: '80% + 100%', percent: 180, free: 80, purchased: 100,
+      images: Math.floor(180 * 17.3), tone: 'green', usingPurchased: false,
+    });
+  });
+
+  test('막대 기준 폭 = max(100, 합) — 합산 막대(보라)와 무료 막대(위)', () => {
+    expect(presentOpusUsage(boosted(80, 100))).toMatchObject({ fill: 100, freeFill: 44.44 });
+    expect(presentOpusUsage(boosted(30, 50))).toMatchObject({ fill: 80, freeFill: 30 });
+    // 추가 충전분 0 이면 종전 모양(기준 100, 초과분은 100 에서 자름)
+    expect(presentOpusUsage(boosted(111, 0))).toMatchObject({ fill: 100, freeFill: 100, text: '111%', detailText: '111%' });
+  });
+
+  test('2중첩 막대는 추가 충전분이 있을 때만 보라 토큰으로 그린다', () => {
+    const html = render(<OpusUsageBar status={boosted(80, 100)} />);
+    expect(html).toContain('data-opus-bar="purchased"');
+    expect(html).toContain('var(--c-purple-bg)');
+    expect(html).toContain('width:44.44%');
+    const plain = render(<OpusUsageBar status={boosted(80, 0)} />);
+    expect(plain).not.toContain('data-opus-bar="purchased"');
+    expect(plain).not.toContain('--c-purple');
+  });
+
+  test('무료 0·추가 충전 남음은 Anlas 문구 없이 「추가 충전분 사용 중」', () => {
+    const view = presentOpusUsage(boosted(0, 100));
+    expect(view).toMatchObject({ text: '100%', tone: 'green', usingPurchased: true });
+    const html = render(<OpusUsageMeter status={boosted(0, 100)} />);
+    expect(html).toContain('0% + 100%');
+    expect(html).toContain('추가 충전분 사용 중');
+    expect(html).not.toContain('Anlas 사용');
+  });
+
+  test('모두 소진(isNegative)이면 0%·빨강·Anlas 문구', () => {
+    const view = presentOpusUsage(boosted(0, 100, true));
+    expect(view).toMatchObject({ text: '0%', tone: 'red', purchased: 0 });
+    expect(render(<OpusUsageMeter status={boosted(0, 100, true)} />)).toContain('생성 시 Anlas 사용');
+  });
+
+  test('저잔량 색은 합산 기준, 「기본 한도 초과」는 무료분 기준', () => {
+    expect(presentOpusUsage(boosted(5, 100), 10).tone).toBe('green');
+    expect(presentOpusUsage(boosted(3, 4), 10).tone).toBe('orange');
+    expect(presentOpusUsage(boosted(50, 100)).tone).toBe('green');
+    const html = render(<OpusUsageMeter status={boosted(50, 100)} />);
+    expect(html).not.toContain('초과');
+    expect(render(<OpusUsageMeter status={boosted(111, 100)} />)).toContain('11%p 초과');
+  });
+});
+
 test('확인 시각 표시는 조회 없이 시간 차이를 계산한다', () => {
   expect(opusCheckedLabel(0)).toBe('아직 확인하지 않음');
   expect(opusCheckedLabel(1000, 1001)).toBe('방금 확인');

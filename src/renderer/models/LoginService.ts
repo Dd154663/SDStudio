@@ -2,6 +2,7 @@ import { backend } from '.';
 import type { LoginValidity, OpusUsageStatus } from '../backends/imageGen';
 import { persistService } from './PersistenceService';
 import { minimumBalancedTokenPercent } from './tokenAutoRotation';
+import { rotationCandidateTier } from './opusUsageRules';
 import { planTokenImport } from './configSync';
 
 const TOKEN_PROFILE_STORE_KEY = 'auth:TOKEN_PROFILES.json';
@@ -316,18 +317,25 @@ export class LoginService extends EventTarget {
     return results;
   }
 
+  // 임계(저잔량) 순회. minimumPercent = 후보의 무료분 최소 여유(사용 토큰 여유값).
+  // options.allowPurchased = 무료분 후보가 없을 때 추가 충전분 계정(이용 가능량이 기준 이상)으로 옮겨도 되는가
+  // (opusUsageRules.allowPurchasedRotationFallback — 현재 계정도 추가 충전분까지 부족할 때만).
   async tryAutoRotateToken(
     minimumPercent: number,
+    options?: { allowPurchased?: boolean },
   ): Promise<LoginTokenRotationResult> {
     if (this.autoRotationInFlight) return this.autoRotationInFlight;
     this.autoRotationInFlight = this.tryAutoRotateTokenInternal(
       minimumPercent,
+      'urgent',
+      options?.allowPurchased === true,
     ).finally(() => {
       this.autoRotationInFlight = undefined;
     });
     return this.autoRotationInFlight;
   }
 
+  // 여유(균형) 순회 — currentPercent·후보 비교 모두 무료분만 본다(추가 충전분 계정으로 자동 이동하지 않음).
   async tryAutoBalanceToken(
     balancePercent: number,
     currentPercent: number,
@@ -344,6 +352,7 @@ export class LoginService extends EventTarget {
     this.autoRotationInFlight = this.tryAutoRotateTokenInternal(
       minimumPercent,
       'balance',
+      false,
     ).finally(() => {
       this.autoRotationInFlight = undefined;
     });
@@ -352,7 +361,8 @@ export class LoginService extends EventTarget {
 
   private async tryAutoRotateTokenInternal(
     minimumPercent: number,
-    mode: 'urgent' | 'balance' = 'urgent',
+    mode: 'urgent' | 'balance',
+    allowPurchased: boolean,
   ): Promise<LoginTokenRotationResult> {
     const revision = this.validationRevision;
     await this.ensureTokenProfilesLoaded();
@@ -389,6 +399,10 @@ export class LoginService extends EventTarget {
     minimumPercent = Math.max(1, Math.min(100, Math.round(minimumPercent)));
     const from = this.tokenProfiles[activeIndex];
 
+    // 후보마다 한 번만 조회한다. 무료분 후보('free')는 찾는 즉시 전환하고, 추가 충전분 후보('purchased',
+    // 임계 순회 + allowPurchased 일 때만)는 저장 순서상 첫 번째를 기억해 두었다가 무료분 후보가 없을 때 쓴다.
+    let fallback: { candidate: StoredTokenProfile; usage: OpusUsageStatus } | undefined;
+    let chosen: { candidate: StoredTokenProfile; usage: OpusUsageStatus } | undefined;
     for (let offset = 1; offset < this.tokenProfiles.length; offset++) {
       const candidate =
         this.tokenProfiles[(activeIndex + offset) % this.tokenProfiles.length];
@@ -399,8 +413,20 @@ export class LoginService extends EventTarget {
       } catch (e) {
         continue;
       }
-      if (usage.opusSubscribed === false || usage.isNegative || usage.percent < minimumPercent) continue;
-
+      const tier = rotationCandidateTier(
+        usage,
+        minimumPercent,
+        mode === 'urgent' && allowPurchased,
+      );
+      if (tier === 'free') {
+        chosen = { candidate, usage };
+        break;
+      }
+      if (tier === 'purchased' && !fallback) fallback = { candidate, usage };
+    }
+    chosen ??= fallback;
+    if (chosen) {
+      const { candidate, usage } = chosen;
       if (revision !== this.validationRevision) return { switched: false, reason: 'not-ready' };
       try {
         await this.writeLoginToken(candidate.token);

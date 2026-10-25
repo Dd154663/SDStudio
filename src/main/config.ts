@@ -55,6 +55,10 @@ export interface Config {
   multiTokenBalanceRotate?: boolean;
   /** 균형 순회 후보로 볼 최소 잔량. 60~100, 기본 80. */
   multiTokenRotateBalancePercent?: number;
+  /** 「할당량 경고 하지 않음」(2026-10-25). true 면 Opus 저잔량 경고·추가 충전 전환 안내·모두 소진 시 Anlas
+   *  확인 창을 생략하고 조용히 Anlas 를 쓴다. 누락/false = 종전 안내. 다중 토큰 순회와는 무관.
+   *  구버전은 모르는 선택 필드라 무시한다(롤백 안전). 판정은 renderer/models/opusUsageRules.ts. */
+  opusUsageQuiet?: boolean;
   modelVersion?: ModelVersion;
   /** NAI Undesired Content Preset — 생성 시 네거티브 앞에 병합되는 기본 프리셋.
    *  모델별 제공 항목이 다르며(naiQualityPresets 단일 출처) 기본 'none' =

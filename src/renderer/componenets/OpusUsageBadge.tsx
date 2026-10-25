@@ -7,6 +7,7 @@ import { appState } from '../models/AppService';
 import { backStackService } from '../models/BackStackService';
 import { presentOpusUsage } from '../models/opusUsagePresentation';
 import OpusUsageMeter, { OpusUsageBar, OpusUsageHelp } from './OpusUsageMeter';
+import OpusUsageQuietToggle from './OpusUsageQuietToggle';
 
 export function useOpusUsage() {
   const [, redraw] = useState(0);
@@ -162,10 +163,10 @@ const OpusUsageBadge = observer(
         <button
           ref={buttonRef}
           className={`btn titlebar-no-drag overflow-hidden text-center tabular-nums ${mobile ? (inline ? 'relative inline-flex items-stretch align-middle rounded-lg h-7 !p-0 text-xs leading-[25px] whitespace-nowrap' : 'round-tag inline-grid leading-none align-middle !p-0') : `account-status-control account-quota-control back-${view.tone}`}`}
-          aria-label={`${mobile ? `Anlas ${credits}, ` : ''}${usage.status?.opusSubscribed === false ? 'Opus 미구독' : `무료 생성 할당량 ${view.text}`}, 상세 보기`}
+          aria-label={`${mobile ? `Anlas ${credits}, ` : ''}${usage.status?.opusSubscribed === false ? 'Opus 미구독' : `Opus 생성 할당량 ${view.text}${view.purchased > 0 ? `(무료 ${view.free}% + 추가 충전 ${view.purchased}%)` : ''}`}, 상세 보기`}
           aria-haspopup="dialog"
           aria-expanded={open}
-          title={usage.status?.opusSubscribed === false ? 'Opus 미구독 · 무료 할당량 대상 아님' : 'Opus 무료 생성 할당량'}
+          title={usage.status?.opusSubscribed === false ? 'Opus 미구독 · 무료 할당량 대상 아님' : view.purchased > 0 ? `Opus 생성 할당량 · 무료 ${view.free}% + 추가 충전 ${view.purchased}%` : 'Opus 무료 생성 할당량'}
           onClick={() => setOpen(!open)}
         >
           {mobile && (
@@ -213,13 +214,13 @@ const OpusUsageBadge = observer(
                 ref={panelRef}
                 role="dialog"
                 aria-modal="true"
-                aria-label="Opus 무료 생성 할당량"
+                aria-label="Opus 생성 할당량"
                 className="fixed w-80 max-w-[calc(100vw-16px)] max-h-[80vh] overflow-auto rounded-lg r-popover border line-color bg-[var(--c-zone)] shadow-2xl p-4 text-default space-y-3"
                 style={position}
               >
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="font-semibold text-sm">
-                    Opus 무료 생성 할당량
+                    Opus 생성 할당량
                   </h2>
                   <button
                     className="btn btn-ghost text-muted rounded p-1"
@@ -274,6 +275,9 @@ const OpusUsageBadge = observer(
                   </div>
                 )}
                 {switchError && <p role="alert" className="back-red rounded px-2 py-1.5 text-xs">{switchError}</p>}
+                <div className="border-t line-color pt-3">
+                  <OpusUsageQuietToggle id="opusUsageQuietOverlay" />
+                </div>
                 <OpusUsageHelp />
               </div>
             </div>,

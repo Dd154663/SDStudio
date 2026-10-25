@@ -353,6 +353,61 @@ describe('LoginService 토큰 프리셋', () => {
     expect(backend.getOpusUsageStatusForToken).not.toHaveBeenCalled();
   });
 
+  describe('추가 충전(purchasedPercent) 계정 순회(2026-10-25 사용자 결정)', () => {
+    const usageMap = (map: Record<string, [number, number]>) =>
+      backend.getOpusUsageStatusForToken.mockImplementation(async (token: string) => ({
+        opusSubscribed: true,
+        percent: map[token]?.[0] ?? 0,
+        purchasedPercent: map[token]?.[1] ?? 0,
+        isNegative: false,
+        timeUntilNextPercent: 60,
+      }) as any);
+
+    async function setup() {
+      const service = new LoginService();
+      await service.saveTokenProfile('현재', 'cur');
+      await service.saveTokenProfile('충전 계정', 'boost');
+      await service.saveTokenProfile('무료 계정', 'free');
+      const [first, second, third] = service.listTokenProfiles();
+      await service.activateTokenProfile(first.id);
+      backend.loginWithToken.mockClear();
+      backend.getOpusUsageStatusForToken.mockClear();
+      return { service, second, third };
+    }
+
+    test('임계 순회는 저장 순서와 무관하게 무료분 계정을 먼저 고른다', async () => {
+      const { service, third } = await setup();
+      usageMap({ boost: [5, 100], free: [40, 0] });
+      const result = await service.tryAutoRotateToken(25, { allowPurchased: true });
+      expect(result).toMatchObject({ switched: true, to: { id: third.id } });
+      expect(currentToken).toBe('free');
+    });
+
+    test('무료분 계정이 없으면(허용 시) 추가 충전분 계정으로 옮긴다', async () => {
+      const { service, second } = await setup();
+      usageMap({ boost: [5, 100], free: [10, 0] });
+      const result = await service.tryAutoRotateToken(25, { allowPurchased: true });
+      expect(result).toMatchObject({ switched: true, to: { id: second.id }, usage: { purchasedPercent: 100 } });
+      expect(currentToken).toBe('boost');
+      // 후보마다 한 번만 조회
+      expect(backend.getOpusUsageStatusForToken).toHaveBeenCalledTimes(2);
+    });
+
+    test('허용하지 않으면(현재 계정에 추가 충전분이 넉넉하면) 추가 충전분 계정으로 옮기지 않는다', async () => {
+      const { service } = await setup();
+      usageMap({ boost: [5, 100], free: [10, 0] });
+      await expect(service.tryAutoRotateToken(25)).resolves.toEqual({ switched: false, reason: 'no-candidate' });
+      expect(backend.loginWithToken).not.toHaveBeenCalled();
+    });
+
+    test('여유 순회는 무료분만 비교한다(추가 충전분 계정으로 자동 이동하지 않음)', async () => {
+      const { service } = await setup();
+      usageMap({ boost: [60, 300], free: [70, 0] });
+      await expect(service.tryAutoBalanceToken(80, 70)).resolves.toEqual({ switched: false, reason: 'no-candidate' });
+      expect(backend.loginWithToken).not.toHaveBeenCalled();
+    });
+  });
+
   test('활성 저장 토큰이 없으면 자동 순회를 수행하지 않는다', async () => {
     const service = new LoginService();
     await service.saveTokenProfile('계정 1', 'secret-token-1');

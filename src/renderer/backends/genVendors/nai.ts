@@ -34,6 +34,7 @@ import {
   resolveNaiModelId,
 } from './naiModelCapabilities';
 import { padDigitEdgedWeightGroups } from '../../models/promptWeightSpacing';
+import { parsePurchasedPercent } from '../../models/opusUsageRules';
 import {
   NaiRequestOptions,
   RecentRequestCache,
@@ -567,7 +568,8 @@ export class NovelAiImageGenService implements ImageGenService {
       throw new Error('Opus subscription data is unavailable');
     }
     if (!subscription.active || subscription.tier !== 3) {
-      return { opusSubscribed: false, percent: 0, isNegative: false, timeUntilNextPercent: 0 };
+      // 미구독 계정에 purchasedPercent 가 남아 있어도 쓰지 않는다(공식 웹도 Opus 구독 없으면 usage 를 무시).
+      return { opusSubscribed: false, percent: 0, purchasedPercent: 0, isNegative: false, timeUntilNextPercent: 0 };
     }
     const usage = subscription.usage;
     const percent = Number(usage?.percent);
@@ -584,6 +586,8 @@ export class NovelAiImageGenService implements ImageGenService {
       opusSubscribed: true,
       // Preserve server-reported surplus; only the UI progress bar caps at 100.
       percent: Math.max(0, Math.round(percent)),
+      // 추가 충전(Usage Boost) 사용분 — 선택 필드. 없거나 숫자가 아니면 0(구버전 응답 호환, 조회 실패로 보지 않음).
+      purchasedPercent: parsePurchasedPercent(usage.purchasedPercent),
       isNegative: usage.isNegative,
       timeUntilNextPercent: Math.max(0, timeUntilNextPercent),
     };

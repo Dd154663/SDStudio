@@ -499,6 +499,8 @@ describe('NovelAI Opus 사용량 조회', () => {
     await expect(service.getOpusUsageStatus('test-token')).resolves.toEqual({
       opusSubscribed: true,
       percent: 88,
+      // 필드가 없는 구버전 응답은 추가 충전 0
+      purchasedPercent: 0,
       isNegative: false,
       timeUntilNextPercent: 123,
     });
@@ -507,6 +509,48 @@ describe('NovelAI Opus 사용량 조회', () => {
       expect.objectContaining({ method: 'GET' }),
     );
     (global as any).fetch = originalFetch;
+  });
+
+  test.each([
+    [100, 100],
+    [0, 0],
+    [37.6, 38],
+    [-5, 0],
+    ['100', 0],
+    [null, 0],
+    [true, 0],
+  ])('추가 충전 purchasedPercent=%p → %p (숫자가 아니면 0, 조회 실패 아님)', async (raw, expected) => {
+    const originalFetch = (global as any).fetch;
+    (global as any).fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ subscription: { active: true, tier: 3, usage: {
+        percent: 0, purchasedPercent: raw, isNegative: false, timeUntilNextPercent: 6048,
+      } } }),
+    });
+    try {
+      await expect(makeService().service.getOpusUsageStatus('test-token')).resolves.toEqual({
+        opusSubscribed: true, percent: 0, purchasedPercent: expected, isNegative: false, timeUntilNextPercent: 6048,
+      });
+    } finally {
+      (global as any).fetch = originalFetch;
+    }
+  });
+
+  test('미구독 계정에 남은 purchasedPercent 는 쓰지 않는다', async () => {
+    const originalFetch = (global as any).fetch;
+    (global as any).fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ subscription: { active: true, tier: 2, usage: {
+        percent: 100, purchasedPercent: 200, isNegative: false, timeUntilNextPercent: 0,
+      } } }),
+    });
+    try {
+      await expect(makeService().service.getOpusUsageStatus('test-token')).resolves.toMatchObject({
+        opusSubscribed: false, percent: 0, purchasedPercent: 0,
+      });
+    } finally {
+      (global as any).fetch = originalFetch;
+    }
   });
 
   test('usage가 없으면 가짜 0퍼센트 대신 조회 실패로 처리한다', async () => {

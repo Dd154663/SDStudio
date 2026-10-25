@@ -58,6 +58,8 @@ export function normalizeTokenRotateBalance(value: unknown): number {
   );
 }
 
+// currentPercent = 현재 계정의 **무료분**(opusUsageRules.freePercentOf). 여유 순회는 추가 충전분을 보지 않는다
+// (2026-10-25 사용자 결정 — 회복되지 않는 추가 충전분 계정으로 자동 이동하지 않음).
 export function minimumBalancedTokenPercent(
   currentPercent: unknown,
   balancePercent: unknown,

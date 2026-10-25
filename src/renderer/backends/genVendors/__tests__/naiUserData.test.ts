@@ -48,6 +48,21 @@ test('잔량과 Opus 할당량은 같은 토큰이면 10초 안에 한 번만 �
   expect(fetchMock.mock.calls[0][0]).toBe('https://image.novelai.net/user/data');
 });
 
+test('추가 충전(purchasedPercent)도 같은 `/user/data` 응답에서 읽는다(추가 조회 없음)', async () => {
+  fetchMock.mockImplementation(async () => okResponse({
+    subscription: {
+      ...userData.subscription,
+      usage: { percent: 0, purchasedPercent: 100, isNegative: false, timeUntilNextPercent: 30 },
+    },
+  }));
+  const service = makeService();
+  await expect(service.getOpusUsageStatus('tokenA')).resolves.toEqual({
+    opusSubscribed: true, percent: 0, purchasedPercent: 100, isNegative: false, timeUntilNextPercent: 30,
+  });
+  await service.getRemainCredits('tokenA');
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
 test('10초가 지나면 다시 조회', async () => {
   jest.useFakeTimers();
   jest.setSystemTime(new Date('2026-10-03T00:00:00Z'));

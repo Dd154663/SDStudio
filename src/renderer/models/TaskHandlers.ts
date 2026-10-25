@@ -67,6 +67,15 @@ import {
   normalizeTokenRotateWarning,
 } from './tokenAutoRotation';
 import {
+  allowPurchasedRotationFallback,
+  canBalanceRotate,
+  describeOpusUsage,
+  freePercentOf,
+  isOpusUsageQuiet,
+  needsUrgentRotation,
+  OPUS_USAGE_TEXT,
+} from './opusUsageRules';
+import {
   TaskTimeEstimator,
   TASK_DEFAULT_ESTIMATE,
   FAST_TASK_DEFAULT_ESTIMATE,
@@ -572,18 +581,24 @@ class GenerateImageTaskHandler implements TaskHandler {
       const rotateBalance = normalizeTokenRotateBalance(
         runtimeConfig.multiTokenRotateBalancePercent,
       );
+      // 「할당량 경고 하지 않음」 — 저잔량 경고·추가 충전 전환 안내·Anlas 확인을 생략(순회는 그대로).
+      const quiet = isOpusUsageQuiet(runtimeConfig);
       if (runtimeConfig.multiTokenAutoRotate === true && usage) {
-        const urgent = usage.opusSubscribed === false || usage.isNegative || usage.percent <= rotateWarning;
+        // 순회 규칙(opusUsageRules, 2026-10-25): 임계 판정·여유 비교는 무료분 기준, 임계 시 무료분 계정 우선 →
+        // 없으면(현재 계정도 추가 충전분까지 부족할 때만) 추가 충전분 계정.
+        const urgent = needsUrgentRotation(usage, rotateWarning);
         const balance =
           !urgent &&
           runtimeConfig.multiTokenBalanceRotate === true &&
-          !usage.isNegative;
+          canBalanceRotate(usage);
         const rotation = urgent
-          ? await loginService.tryAutoRotateToken(rotateTarget)
+          ? await loginService.tryAutoRotateToken(rotateTarget, {
+              allowPurchased: allowPurchasedRotationFallback(usage, rotateWarning),
+            })
           : balance
             ? await loginService.tryAutoBalanceToken(
                 rotateBalance,
-                usage.percent,
+                freePercentOf(usage),
               )
             : undefined;
         if (rotation?.switched) {
@@ -592,7 +607,7 @@ class GenerateImageTaskHandler implements TaskHandler {
           opusUsageService.adoptKnownStatus(rotation.usage);
           appState.pushMessage(
             `${reason}: ${rotation.from.name}에서 ${rotation.to.name}(으)로 전환했습니다. ` +
-              `새 토큰의 V5 할당량은 ${rotation.usage.percent}%입니다.`,
+              `새 토큰의 V5 할당량은 ${describeOpusUsage(rotation.usage)}입니다.`,
           );
           if (!rotation.stateSaved) {
             appState.pushMessage(
@@ -605,19 +620,20 @@ class GenerateImageTaskHandler implements TaskHandler {
           );
         }
       }
-      if (opusUsageService.takeLowWarning(usage, rotateWarning)) {
-        appState.pushMessage(
-          `Opus V5 무료 할당량이 ${usage!.percent}% 남았습니다. 소진 후에는 Anlas가 소비될 수 있습니다.`,
-        );
+      // 저잔량 경고는 무료+추가 충전 합산 기준(세션 1회).
+      if (opusUsageService.takeLowWarning(usage, rotateWarning, quiet)) {
+        appState.pushMessage(OPUS_USAGE_TEXT.lowWarning(usage), 'info');
       }
-      if (
-        opusUsageService.isPaidRisk(usage) &&
-        !opusUsageService.hasSessionPaidApproval()
-      ) {
+      // 무료분을 다 써서 추가 충전분으로 넘어가는 순간 — 세션당 최초 1회 안내만, 생성은 막지 않는다.
+      if (opusUsageService.takePurchasedNotice(usage, quiet)) {
+        appState.pushMessage(OPUS_USAGE_TEXT.purchasedNotice(usage), 'info');
+      }
+      // Anlas 확인 = 과금 위험(미확인·미구독·isNegative)일 때만. 추가 충전분이 남아 있으면 묻지 않는다.
+      if (opusUsageService.needsPaidConfirm(usage, quiet)) {
         const detail = usage?.opusSubscribed === false
           ? '현재 계정은 Opus 무료 할당량 대상이 아닙니다.'
           : usage
-          ? `현재 무료 할당량은 ${usage.percent}%입니다.`
+          ? `현재 Opus 할당량(무료·추가 충전)이 모두 소진됐습니다. (${describeOpusUsage(usage)})`
           : '현재 무료 할당량을 확인하지 못했습니다.';
         // 폐기된 시도가 확인 창을 띄우지 않게 먼저 확인한다.
         throwIfAborted(ctx?.signal);

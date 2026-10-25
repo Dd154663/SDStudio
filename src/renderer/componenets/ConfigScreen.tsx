@@ -75,6 +75,8 @@ import { useBackLayer } from '../models/BackStackService';
 import { useBackdropClose } from './backdropClose';
 import OpusUsageMeter, { OpusUsageHelp } from './OpusUsageMeter';
 import { useOpusUsage } from './OpusUsageBadge';
+import OpusUsageQuietToggle from './OpusUsageQuietToggle';
+import { OPUS_USAGE_TEXT } from '../models/opusUsageRules';
 import MobileColorPicker from './MobileColorPicker';
 import { StorageDiagnosticsSection } from './StorageDiagnostics';
 import { DRIVE_SYNC_TEXT } from '../models/driveSync';
@@ -315,6 +317,15 @@ const LoginTab = ({
       </div>
 
       <hr className="line-color" />
+      <div className="space-y-2">
+        <p className="text-sm font-semibold gray-label">Opus 할당량 안내</p>
+        <div className="rounded-lg border line-color bg-[var(--c-surface-2)] p-3">
+          {/* 할당량 상세 창(상단 배지)의 토글과 같은 값 — 바꾸는 즉시 저장된다. */}
+          <OpusUsageQuietToggle id="cfgOpusUsageQuiet" />
+        </div>
+      </div>
+
+      <hr className="line-color" />
       <div className="space-y-3">
         <div>
           <div className="flex items-center gap-2">
@@ -355,6 +366,9 @@ const LoginTab = ({
           <p className="text-xs text-muted">
             정상 Opus 토큰이 2개 이상 저장된 경우에만 동작합니다. 무료 할당량 대상
             V5 생성에서 한 장이 끝난 뒤 다음 장을 시작하기 전에 전환합니다.
+          </p>
+          <p className="text-xs text-muted" data-opus-rotation-rule>
+            {OPUS_USAGE_TEXT.rotationRule}
           </p>
           <div className={multiTokenAutoRotate ? 'space-y-3' : 'space-y-3 opacity-50'}>
             <div>
@@ -414,7 +428,7 @@ const LoginTab = ({
                 </label>
               </div>
               <p className="text-xs text-muted">
-                느리게 회복된 다른 계정이 현재 계정보다 5%p 이상 여유로울 때 전환합니다.
+                느리게 회복된 다른 계정의 무료 할당량이 현재 계정보다 5%p 이상 여유로울 때 전환합니다.
                 후보 조회와 계정 전환은 최대 30분에 한 번만 수행합니다.
               </p>
               <div className={multiTokenBalanceRotate ? '' : 'opacity-50'}>

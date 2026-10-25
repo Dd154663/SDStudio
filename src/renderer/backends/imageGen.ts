@@ -230,7 +230,11 @@ export interface ImageGenService {
 export interface OpusUsageStatus {
   // Absent only for legacy in-memory callers. Backend responses always set this.
   opusSubscribed?: boolean;
+  /** 무료 회복형 할당량(%, 0~100+). */
   percent: number;
+  /** 추가 충전(Usage Boost) 사용분(%, 0~400, 회복되지 않음). backend 응답은 항상 설정하며 필드가 없던
+   *  구버전 응답·옛 메모리 호출부는 0 으로 본다. 판정·표시는 models/opusUsageRules.ts 를 경유한다. */
+  purchasedPercent?: number;
   isNegative: boolean;
   timeUntilNextPercent: number;
 }
