@@ -96,7 +96,10 @@ test('추가 충전분이 있으면 배지는 합산 수치를 보인다', async
     const button = container.querySelector('button')!;
     expect(button.textContent).toContain('180%');
     expect(button.getAttribute('aria-label')).toContain('추가 충전 100%');
-    expect(button.querySelector('[data-opus-bar="purchased"]')).not.toBeNull();
+    // 눈금 0~100 고정: 보라 = min(100, 100), 무료 80, 겹침 0~80
+    expect(button.querySelector<HTMLElement>('[data-opus-bar="purchased"]')!.style.width).toBe('100%');
+    expect(button.querySelector<HTMLElement>('[data-opus-bar="free"]')!.style.width).toBe('80%');
+    expect(button.querySelector<HTMLElement>('[data-opus-bar="overlap"]')!.style.width).toBe('80%');
   } finally {
     (usage as any).status = saved;
   }

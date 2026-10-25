@@ -27,11 +27,16 @@ export interface OpusUsageView {
   /** 무료 회복분(%) / 추가 충전분(%). 미구독·미확인 0. */
   free: number;
   purchased: number;
-  /** 합산 막대 폭(%). 추가 충전분이 없으면 기준 100(초과분은 100 에서 자름 — 종전 그대로),
-   *  있으면 공식 웹처럼 기준 = max(100, 합). */
+  /** 막대 눈금은 0~100 고정(2026-10-25 §11). 무료·유료 막대는 둘 다 0 에서 시작해 겹치고,
+   *  100 초과분은 막대에서만 자른다(수치·예상 장수는 합산 그대로).
+   *  fill = 막대가 눈금상 차지하는 길이 = max(freeFill, purchasedFill) — aria-valuenow 용. */
   fill: number;
-  /** 무료분(위에 겹치는 막대) 폭(%) — 같은 기준. */
+  /** 무료분 막대(톤 색, 보라 위) 폭(%) = min(free, 100). */
   freeFill: number;
+  /** 추가 충전분 막대(보라, 맨 아래) 폭(%) = min(purchased, 100). 추가 충전분 0 이면 0. */
+  purchasedFill: number;
+  /** 겹침 구간(맨 위, 무료 색에 푸른 기운) 폭(%) = min(freeFill, purchasedFill). 어느 한쪽이 0 이면 0. */
+  overlapFill: number;
   images: number | undefined;
   tone: OpusUsageTone;
   /** 무료분 소진·추가 충전분 사용 중(Anlas 아님). */
@@ -52,6 +57,8 @@ export function presentOpusUsage(
     purchased: 0,
     fill: 0,
     freeFill: 0,
+    purchasedFill: 0,
+    overlapFill: 0,
     images: undefined,
     tone: 'gray' as OpusUsageTone,
     usingPurchased: false,
@@ -65,7 +72,8 @@ export function presentOpusUsage(
   const free = freePercentOf(status);
   const purchased = purchasedPercentOf(status);
   const total = free + purchased;
-  const scale = purchased > 0 ? Math.max(100, total) : 100;
+  const freeFill = roundWidth(free);
+  const purchasedFill = roundWidth(purchased);
   const text = `${total}%`;
   return {
     text,
@@ -73,8 +81,10 @@ export function presentOpusUsage(
     percent: total,
     free,
     purchased,
-    fill: roundWidth((total / scale) * 100),
-    freeFill: roundWidth((free / scale) * 100),
+    fill: Math.max(freeFill, purchasedFill),
+    freeFill,
+    purchasedFill,
+    overlapFill: Math.min(freeFill, purchasedFill),
     images: Math.floor(total * OPUS_IMAGES_PER_PERCENT),
     // 빨강 = 과금 위험(무료+추가 충전 모두 0), 주황 = 합산 저잔량, 노랑 = 무료분만 기본 한도(100) 초과.
     tone: (isOpusPaidRisk(status)

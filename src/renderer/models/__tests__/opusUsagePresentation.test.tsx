@@ -85,21 +85,58 @@ describe('추가 충전(purchasedPercent) 표시(2026-10-25)', () => {
     });
   });
 
-  test('막대 기준 폭 = max(100, 합) — 합산 막대(보라)와 무료 막대(위)', () => {
-    expect(presentOpusUsage(boosted(80, 100))).toMatchObject({ fill: 100, freeFill: 44.44 });
-    expect(presentOpusUsage(boosted(30, 50))).toMatchObject({ fill: 80, freeFill: 30 });
-    // 추가 충전분 0 이면 종전 모양(기준 100, 초과분은 100 에서 자름)
-    expect(presentOpusUsage(boosted(111, 0))).toMatchObject({ fill: 100, freeFill: 100, text: '111%', detailText: '111%' });
+  test('막대 눈금 0~100 고정 — 무료·추가 충전 막대는 각자 길이로 0 에서 시작해 겹친다', () => {
+    // 무료 < 추가 충전: 보라 50 위에 무료 30, 겹침 0~30
+    expect(presentOpusUsage(boosted(30, 50))).toMatchObject({
+      fill: 50, freeFill: 30, purchasedFill: 50, overlapFill: 30, text: '80%',
+    });
+    // 무료 > 추가 충전: 무료 80 이 보라 20 을 다 덮음 — 겹침 0~20 으로 드러냄
+    expect(presentOpusUsage(boosted(80, 20))).toMatchObject({
+      fill: 80, freeFill: 80, purchasedFill: 20, overlapFill: 20,
+    });
+    // 100 초과는 막대에서만 자르고 수치·예상 장수는 합산 그대로
+    expect(presentOpusUsage(boosted(80, 150))).toMatchObject({
+      fill: 100, freeFill: 80, purchasedFill: 100, overlapFill: 80,
+      text: '230%', images: Math.floor(230 * 17.3),
+    });
+    expect(presentOpusUsage(boosted(120, 150))).toMatchObject({
+      fill: 100, freeFill: 100, purchasedFill: 100, overlapFill: 100,
+    });
+    // 추가 충전분 0 이면 종전 단일 막대(초과분 100 에서 자름), 보라·겹침 없음
+    expect(presentOpusUsage(boosted(111, 0))).toMatchObject({
+      fill: 100, freeFill: 100, purchasedFill: 0, overlapFill: 0, text: '111%', detailText: '111%',
+    });
+    // 무료 0·추가 충전만: 보라만, 겹침 없음
+    expect(presentOpusUsage(boosted(0, 40))).toMatchObject({
+      fill: 40, freeFill: 0, purchasedFill: 40, overlapFill: 0,
+    });
   });
 
-  test('2중첩 막대는 추가 충전분이 있을 때만 보라 토큰으로 그린다', () => {
-    const html = render(<OpusUsageBar status={boosted(80, 100)} />);
-    expect(html).toContain('data-opus-bar="purchased"');
+  test('2중첩 막대는 보라(아래)→무료(위)→겹침(맨 위) 순서로 그리고, 추가 충전분 0 이면 단일 막대', () => {
+    const html = render(<OpusUsageBar status={boosted(30, 50)} />);
+    const order = ['purchased', 'free', 'overlap'].map((k) => html.indexOf(`data-opus-bar="${k}"`));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
     expect(html).toContain('var(--c-purple-bg)');
-    expect(html).toContain('width:44.44%');
+    expect(html).toMatch(/data-opus-bar="purchased"[^>]*width:50%/);
+    expect(html).toMatch(/data-opus-bar="free"[^>]*width:30%/);
+    expect(html).toMatch(/data-opus-bar="overlap"[^>]*width:30%/);
+    expect(html).toContain('opus-usage-bar-overlap');
+    // aria-valuenow = 눈금상 막대 길이(더 긴 막대 끝), valuetext 는 분리 수치
+    expect(html).toContain('aria-valuenow="50"');
+    expect(html).toContain('무료 30%, 추가 충전 50% 남음');
     const plain = render(<OpusUsageBar status={boosted(80, 0)} />);
     expect(plain).not.toContain('data-opus-bar="purchased"');
+    expect(plain).not.toContain('data-opus-bar="overlap"');
     expect(plain).not.toContain('--c-purple');
+    const boostOnly = render(<OpusUsageBar status={boosted(0, 40)} />);
+    expect(boostOnly).toMatch(/data-opus-bar="purchased"[^>]*width:40%/);
+    expect(boostOnly).not.toContain('data-opus-bar="overlap"');
+    // 배지 하단 선(line)도 같은 세 겹
+    const lineHtml = render(<OpusUsageBar status={boosted(80, 20)} line />);
+    expect(lineHtml).toContain('h-[3px]');
+    expect(lineHtml).toMatch(/data-opus-bar="overlap"[^>]*width:20%/);
+    expect(lineHtml).not.toContain('rounded-full');
   });
 
   test('무료 0·추가 충전 남음은 Anlas 문구 없이 「추가 충전분 사용 중」', () => {

@@ -44,17 +44,31 @@ export function OpusUsageBar({
   const view = presentOpusUsage(status, warningPercent);
   if (status?.opusSubscribed === false) return null;
   const round = line ? '' : ' rounded-full';
+  // 막대 한 겹 — 세 겹 모두 왼쪽 0 에서 시작하는 절대 배치라 DOM 순서가 곧 쌓임 순서다.
+  const layer = (
+    kind: 'purchased' | 'free' | 'overlap',
+    width: number,
+    className: string,
+    style?: Record<string, string>,
+  ) => (
+    <div
+      data-opus-bar={kind}
+      className={`absolute inset-y-0 left-0 ${className}${round}`}
+      style={{ width: `${width}%`, ...style } as React.CSSProperties}
+    />
+  );
   return (
     <div
       className={
         line
-          ? 'absolute inset-x-0 bottom-0 h-[3px] bg-[var(--c-input-bg)]'
+          ? 'absolute inset-x-0 bottom-0 h-[3px] overflow-hidden bg-[var(--c-input-bg)]'
           : 'relative h-1.5 w-full overflow-hidden rounded-full bg-[var(--c-input-bg)]'
       }
       role="progressbar"
       aria-label="Opus 생성 할당량"
       aria-valuemin={0}
       aria-valuemax={100}
+      // 눈금 0~100 고정 막대가 실제로 차지하는 길이(= 더 긴 막대 끝). 무료·추가 충전 각각은 valuetext 로 읽힌다.
       aria-valuenow={view.percent === undefined ? undefined : view.fill}
       aria-valuetext={
         view.percent === undefined
@@ -64,31 +78,20 @@ export function OpusUsageBar({
             : `${view.text} 남음`
       }
     >
-      {/* 추가 충전분이 있으면 2중첩 — 아래 보라(합산 길이) 위에 무료분 막대를 겹친다(기준 폭 = max(100, 합)). */}
-      {view.purchased > 0 && (
-        <div
-          data-opus-bar="purchased"
-          className={`absolute inset-y-0 left-0 opus-usage-bar-fill${round}`}
-          style={
-            {
-              width: `${view.fill}%`,
-              '--opus-fill-bg': 'var(--c-purple-bg)',
-              '--opus-fill-fg': 'var(--c-purple-fg)',
-            } as React.CSSProperties
-          }
-        />
-      )}
-      <div
-        data-opus-bar="free"
-        className={`relative h-full opus-usage-bar-fill${round}`}
-        style={
-          {
-            width: `${view.freeFill}%`,
-            '--opus-fill-bg': `var(--c-${view.tone}-bg)`,
-            '--opus-fill-fg': `var(--c-${view.tone}-fg)`,
-          } as React.CSSProperties
-        }
-      />
+      {/* 눈금 0~100 고정(§11): 아래 보라(추가 충전분) → 위 무료분(톤 색) → 맨 위 겹침 구간.
+          무료분이 추가 충전분보다 길어 보라를 다 덮어도 겹침 구간 색으로 추가 충전분 길이가 드러난다.
+          추가 충전분 0 이면 보라·겹침 없이 종전 단일 막대. */}
+      {view.purchasedFill > 0 &&
+        layer('purchased', view.purchasedFill, 'opus-usage-bar-fill', {
+          '--opus-fill-bg': 'var(--c-purple-bg)',
+          '--opus-fill-fg': 'var(--c-purple-fg)',
+        })}
+      {layer('free', view.freeFill, 'opus-usage-bar-fill', {
+        '--opus-fill-bg': `var(--c-${view.tone}-bg)`,
+        '--opus-fill-fg': `var(--c-${view.tone}-fg)`,
+      })}
+      {view.overlapFill > 0 &&
+        layer('overlap', view.overlapFill, 'opus-usage-bar-overlap')}
     </div>
   );
 }

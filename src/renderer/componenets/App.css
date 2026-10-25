@@ -316,6 +316,13 @@ html.font-pretendard body {
    dark button background. Keep short/thin bars readable on every surface. */
 .opus-usage-bar-fill { background-color: var(--opus-fill-bg); }
 .dark .opus-usage-bar-fill { background-color: var(--opus-fill-fg); }
+/* 겹침 구간(무료·추가 충전 막대가 함께 있는 0~min 구간, 2026-10-25 §11) — 무료 막대 바로 위에
+   하늘색 토큰을 30% 불투명도로 얹어 「무료 색 70% + 파랑 30%」로 보이게 한다. 겹침 구간은 항상
+   무료 막대 위(겹침 ≤ 무료)라 결과는 color-mix(in srgb, 무료 70%, 파랑 30%)와 같고, color-mix 를
+   지원하지 않는 옛 Android WebView(Chromium 111 미만 — 5.1~6.0 지원 대상)에서도 폴백 분기 없이 같다.
+   막대 규칙과 같이 라이트는 bg, 다크·트루다크는 fg 토큰. 커스텀 테마는 sky 를 재정의하지 않는다. */
+.opus-usage-bar-overlap { background-color: var(--c-sky-bg); opacity: 0.3; }
+.dark .opus-usage-bar-overlap { background-color: var(--c-sky-fg); }
 
 /* One geometry contract for the desktop account/status block. These are not
    inline text badges: all three controls share height, center and spacing. */
