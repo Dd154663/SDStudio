@@ -43,6 +43,10 @@ import {
   USER_DATA_TIMEOUT_MS,
   withRequestTimeout,
 } from '../../models/requestTiming';
+import {
+  DEV_NAI_API_BASE_WARNING,
+  resolveNaiEndpoints,
+} from '../../../shared/naiEndpoints';
 
 export interface NovelAiFetcher {
   /** options 생략 = 기본 타임아웃(120초, requestTiming)·취소 없음. */
@@ -95,13 +99,43 @@ export class NovelAiImageGenService implements ImageGenService {
   // 경로라 캐시를 쓰지 않는다(타임아웃만).
   private readonly userDataCache = new RecentRequestCache<any>(USER_DATA_CACHE_MS);
 
-  constructor(fetcher: NovelAiFetcher) {
-    this.apiEndpoint = 'https://api.novelai.net';
-    this.apiEndpoint2 = 'https://image.novelai.net';
+  // 개발자용 API 주소 전환(2026-11-01, shared/naiEndpoints.ts): PC backend 가 main 의 환경 변수 값을
+  // 비동기로 넘기면, 그 값이 올 때까지 요청을 잠깐 세운 뒤 주소를 정한다(첫 응답 뒤에는 null — 대기 없음).
+  // 인자를 주지 않으면(Android·테스트) 대기 자체가 없고 실제 NovelAI 상수 그대로다.
+  private endpointsPending: Promise<void> | null = null;
+
+  constructor(
+    fetcher: NovelAiFetcher,
+    devApiBase?: Promise<string | null | undefined>,
+  ) {
+    const endpoints = resolveNaiEndpoints();
+    this.apiEndpoint = endpoints.api;
+    this.apiEndpoint2 = endpoints.image;
     this.headers = {
       'Content-Type': 'application/json',
     };
     this.fetcher = fetcher;
+    if (devApiBase) {
+      this.endpointsPending = devApiBase
+        .then(
+          (base) => {
+            const resolved = resolveNaiEndpoints(base);
+            if (!resolved.overridden) return;
+            this.apiEndpoint = resolved.api;
+            this.apiEndpoint2 = resolved.image;
+            console.warn(`${DEV_NAI_API_BASE_WARNING}: ${resolved.image}`);
+          },
+          () => undefined, // 조회 실패 = 전환 안 함(실제 주소)
+        )
+        .finally(() => {
+          this.endpointsPending = null;
+        });
+    }
+  }
+
+  // 주소가 정해진 뒤 run 을 부른다(대기할 것이 없으면 바로 — 종전 경로와 같은 동기 호출).
+  private afterEndpoints<T>(run: () => Promise<T>): Promise<T> {
+    return this.endpointsPending ? this.endpointsPending.then(run) : run();
   }
 
   private async getCachedConfig() {
@@ -164,6 +198,7 @@ export class NovelAiImageGenService implements ImageGenService {
         libsodium_wrappers_sumo_1.crypto_pwhash_ALG_ARGON2ID13,
         'base64',
       ).slice(0, 64);
+      if (this.endpointsPending) await this.endpointsPending;
       const url = this.apiEndpoint;
       const reponse = await fetch(url + '/user/login', {
         method: 'POST',
@@ -509,6 +544,7 @@ export class NovelAiImageGenService implements ImageGenService {
       Authorization: `Bearer ${authorization}`,
       'Content-Type': 'application/json',
     };
+    if (this.endpointsPending) await this.endpointsPending;
     const arrayBuffer = await fetchWithOptions(
       this.fetcher,
       this.apiEndpoint2 + '/ai/generate-image',
@@ -534,12 +570,14 @@ export class NovelAiImageGenService implements ImageGenService {
     return this.userDataCache.get(
       token,
       () =>
-        fetchUserData(this.apiEndpoint2 + '/user/data', token, async (response) => {
-          if (!response.ok) {
-            throw new Error('HTTP error:' + response.status);
-          }
-          return await response.json();
-        }),
+        this.afterEndpoints(() =>
+          fetchUserData(this.apiEndpoint2 + '/user/data', token, async (response) => {
+            if (!response.ok) {
+              throw new Error('HTTP error:' + response.status);
+            }
+            return await response.json();
+          }),
+        ),
       options,
     );
   }
@@ -598,6 +636,7 @@ export class NovelAiImageGenService implements ImageGenService {
   async validateToken(token: string): Promise<LoginValidity> {
     if (!token || !token.trim()) return 'invalid';
     try {
+      if (this.endpointsPending) await this.endpointsPending;
       // getRemainCredits 와 동일 사유로 image.novelai.net 사용 (api.novelai.net 은
       // 서드파티에 400 을 반환해 'error' 판정 → 로그인 상태가 영영 갱신되지 않았음)
       return await fetchUserData(
@@ -617,6 +656,7 @@ export class NovelAiImageGenService implements ImageGenService {
   async upscaleImage(authorization: string, params: ImageUpscaleInput) {
     const { width, height } = await getImageDimensions(params.image);
     estimateNaiUpscaleCost(width, height); // UI를 거치지 않는 위임 요청도 전송 전 검증
+    if (this.endpointsPending) await this.endpointsPending;
     const response = await fetchWithOptions(
       this.fetcher,
       this.apiEndpoint2 + '/ai/upscale',
@@ -668,6 +708,7 @@ export class NovelAiImageGenService implements ImageGenService {
       'Content-Type': 'application/json',
     };
 
+    if (this.endpointsPending) await this.endpointsPending;
     const arrayBuffer = await fetchWithOptions(
       this.fetcher,
       this.apiEndpoint2 + '/ai/augment-image',
@@ -686,6 +727,7 @@ export class NovelAiImageGenService implements ImageGenService {
   }
 
   async encodeVibeImage(authorization: string, params: EncodeVibeImageInput) {
+    if (this.endpointsPending) await this.endpointsPending;
     const url = this.apiEndpoint2;
     const config = await this.getCachedConfig();
     const modelValue = this.translateModel(

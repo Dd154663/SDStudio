@@ -43,6 +43,7 @@ import {
   DriveUploadResult,
   isDriveUploadErrorCode,
 } from '../../shared/googleDrive';
+import { DEV_NAI_API_BASE_CHANNEL } from '../../shared/naiEndpoints';
 
 // { ok:false, code, detail } IPC 결과 → DriveUploadError(모르는 코드는 unknown).
 function driveFileError(res: any): DriveUploadError {
@@ -91,7 +92,11 @@ export class ElectornBackend extends Backend {
   private imageGenService: ImageGenService;
   constructor() {
     super();
-    this.imageGenService = new NovelAiImageGenService(new ElectronFetcher());
+    // 개발자용 API 주소 전환(shared/naiEndpoints.ts) — main 이 읽은 환경 변수 값(없으면 null)을 1회 받는다.
+    this.imageGenService = new NovelAiImageGenService(
+      new ElectronFetcher(),
+      invoke ? invoke(DEV_NAI_API_BASE_CHANNEL) : undefined,
+    );
   }
 
   // 로그인 토큰 — 저장 경로(saveLocation)와 무관하게 이 PC 전역(userData,

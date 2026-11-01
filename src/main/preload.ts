@@ -50,6 +50,7 @@ export type Channels =
   | 'backup-failed-config'
   | 'check-writable'
   | 'get-version'
+  | 'get-dev-nai-api-base'
   | 'open-web-page'
   | 'search-tags'
   | 'load-pieces-db'

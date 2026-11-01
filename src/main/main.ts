@@ -76,6 +76,12 @@ import {
   SaveLocationInsideInstall,
 } from '../shared/installDir';
 import { isSameOrInside, resolveInstallDir } from './installDirGuard';
+import {
+  DEV_NAI_API_BASE_CHANNEL,
+  DEV_NAI_API_BASE_ENV,
+  DEV_NAI_API_BASE_WARNING,
+  normalizeDevNaiApiBase,
+} from '../shared/naiEndpoints';
 
 interface DataBaseConns {
   tagDBId: number;
@@ -396,6 +402,21 @@ ipcMain.handle('set-config', async (event, newConfig) => {
 ipcMain.handle('get-version', async (event) => {
   return app.getVersion();
 });
+
+// 개발자용 NovelAI API 주소 전환(2026-11-01, 부스트 모드 디버그 — shared/naiEndpoints.ts).
+// 부팅 때 환경 변수를 1회 읽어 루프백 주소만 받는다(패키징된 앱에서도 동작 — 변수를 준 사람만 해당).
+// 변수가 없으면 null 을 돌려주고 렌더러는 실제 NovelAI 주소를 그대로 쓴다. webpack EnvironmentPlugin 목록에
+// 넣지 않는다(빌드 시점 값으로 굳으면 안 됨 — 실행 시점 process.env 를 읽어야 한다).
+const devNaiApiBaseRaw = process.env[DEV_NAI_API_BASE_ENV];
+const devNaiApiBase = normalizeDevNaiApiBase(devNaiApiBaseRaw) ?? null;
+if (devNaiApiBase) {
+  log.warn(`${DEV_NAI_API_BASE_WARNING}: ${devNaiApiBase} (${DEV_NAI_API_BASE_ENV})`);
+} else if (devNaiApiBaseRaw && devNaiApiBaseRaw.trim()) {
+  log.warn(
+    `${DEV_NAI_API_BASE_ENV} 값을 무시합니다(이 PC 안 http(s) 주소만 허용, 예 http://127.0.0.1:18080) — 실제 NovelAI 로 연결합니다.`,
+  );
+}
+ipcMain.handle(DEV_NAI_API_BASE_CHANNEL, async () => devNaiApiBase);
 
 // 런타임 진단(트랙2 WebP): 감지 코어 수와 실효 libuv 스레드풀 크기(=동시 인코딩
 // 상한)를 노출한다. 환경설정 시스템 탭에서 병렬 상한이 실제로 코어 수로 잡혔는지
