@@ -31,6 +31,9 @@ interface FloatView {
   // PC 하단바는 오버레이에 덮이지 않으므로, 이 플래그가 켜진 뷰가 떠 있는 동안
   // BottomBar 가 실행 컨트롤을 숨겨 버튼 중복 노출을 막는다(showToolbar 와 대칭 계약).
   ownsGenControl?: boolean;
+  // 이 창이 열려 있어도 전역 되돌리기/다시 실행 단축키(Ctrl+Z/Y)를 허용(2026-11-01 U1, D9 — 씬 편집 창·이미지
+  // 그리드/상세만). 열린 창이 모두 허용일 때만 통과한다 — 인페인트 편집 창(붓 Ctrl+Z 전용) 등은 붙이지 않는다.
+  allowUndo?: boolean;
   onEscape?: () => void;
   // 미저장 가드(2026-10-03 E2-3) — 참이면 ✕·Esc·뒤로 가기로 닫을 때 「버리고 닫을까요?」를 묻는다
   dirty?: () => boolean;
@@ -69,6 +72,8 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = observer(({
 
   // ownsGenControl 뷰 id 집합 — setViews 업데이터 밖에서 증감을 처리하기 위한 장부.
   const genControlOwnerIds = useRef<Set<number>>(new Set());
+  // allowUndo 뷰 id 집합(같은 장부 방식 — 되돌리기 단축키 허용 판정)
+  const undoAllowIds = useRef<Set<number>>(new Set());
 
   // 뷰별 미저장 가드 상태(확인 창이 떠 있는 동안 중복 요청 차단)
   const guardStates = useRef<Map<number, GuardedCloseState>>(new Map());
@@ -97,6 +102,10 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = observer(({
       genControlOwnerIds.current.add(view.id);
       appState.incrementGenControlOverlay();
     }
+    if (view.allowUndo) {
+      undoAllowIds.current.add(view.id);
+      appState.incrementUndoFloatView();
+    }
     // view 객체는 updateView 가 제자리에서 갱신하므로 여기서 늦게 읽으면 최신 onEscape 가 불린다
     backHandles.current.set(
       view.id,
@@ -121,6 +130,9 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = observer(({
     appState.decrementFloatView();
     if (genControlOwnerIds.current.delete(id)) {
       appState.decrementGenControlOverlay();
+    }
+    if (undoAllowIds.current.delete(id)) {
+      appState.decrementUndoFloatView();
     }
     const handle = backHandles.current.get(id);
     if (handle) {
@@ -204,6 +216,7 @@ interface FloatViewProps {
   priority: number;
   showToolbar?: boolean;
   ownsGenControl?: boolean;
+  allowUndo?: boolean;
   onEscape?: () => void;
   dirty?: () => boolean;
 }
@@ -211,7 +224,7 @@ interface FloatViewProps {
 let viewId = 0;
 
 export const FloatView: React.FC<FloatViewProps> = memo(
-  ({ children, priority, showToolbar, ownsGenControl, onEscape, dirty }) => {
+  ({ children, priority, showToolbar, ownsGenControl, allowUndo, onEscape, dirty }) => {
     const { registerView, unregisterView, updateView } = useFloatView();
     const id = useRef(++viewId);
     const mounted = useRef(false);
@@ -225,6 +238,7 @@ export const FloatView: React.FC<FloatViewProps> = memo(
         dirty,
         showToolbar,
         ownsGenControl,
+        allowUndo,
       };
       registerView(view);
       mounted.current = true;

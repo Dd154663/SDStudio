@@ -7,6 +7,9 @@ export interface ShortcutAction {
   label: string;
   category: 'global' | 'viewer' | 'scene' | 'image-grid';
   defaultKey: string;
+  // 전역(global) 액션이 FloatView 안에서도 통과할 수 있음(2026-11-01 되돌리기 U1). 열린 FloatView 가
+  // **모두** 허용 창(FloatView allowUndo — 씬 편집 창·이미지 그리드/상세)일 때만 통과한다.
+  allowInFloatView?: true;
 }
 
 const ACTIONS: ShortcutAction[] = [
@@ -65,7 +68,50 @@ const ACTIONS: ShortcutAction[] = [
   { id: 'open-project-drawer', label: '프로젝트 드로어 열기/닫기', category: 'global', defaultKey: 'F1' },
   { id: 'open-project-grid', label: '프로젝트 그리드 열기/닫기', category: 'global', defaultKey: 'Ctrl+E' },
   { id: 'quick-menu', label: '퀵 메뉴 열기/닫기', category: 'global', defaultKey: 'Ctrl+K' },
+  // 되돌리기/다시 실행(2026-11-01 U1) — 다시 실행은 Ctrl+Y 하나(Ctrl+Shift+Z 미등록, 사용자 결정 D11=C).
+  // 입력 칸·편집기 포커스 중에는 공통 억제(아래 isInputFocused)라 편집기 자체 이력이 받는다.
+  { id: 'undo', label: '되돌리기', category: 'global', defaultKey: 'Ctrl+Z', allowInFloatView: true },
+  { id: 'redo', label: '다시 실행', category: 'global', defaultKey: 'Ctrl+Y', allowInFloatView: true },
 ];
+
+/** 범주별 활성 조건 판정에 쓰는 앱 상태(순수 판정용 — 테스트가 직접 넘긴다) */
+export interface ShortcutGateState {
+  imageGridFocusable: boolean;
+  resultViewerOpen: boolean;
+  dialogCount: number;
+  floatViewCount: number;
+  /** 열린 FloatView 중 allowUndo(전역 되돌리기 허용) 창 수 */
+  undoFloatViewCount: number;
+  configScreenOpen: boolean;
+  pieceEditorOpen: boolean;
+  findReplaceOpen: boolean;
+}
+
+/** 이 액션이 지금 통과할 수 있는가(입력 칸 포커스 억제는 호출 전에 따로 본다) */
+export function isShortcutActionActive(
+  action: ShortcutAction,
+  st: ShortcutGateState,
+): boolean {
+  if (action.category === 'image-grid') {
+    return st.imageGridFocusable && st.dialogCount === 0;
+  }
+  if (action.category === 'viewer') {
+    return st.resultViewerOpen && st.dialogCount === 0;
+  }
+  if (st.floatViewCount > 0) {
+    // 전역 허용 액션은 열린 창이 전부 허용 창일 때만(인페인트 편집 창 등 하나라도 섞이면 억제)
+    const floatOk =
+      action.category === 'global' &&
+      action.allowInFloatView === true &&
+      st.floatViewCount === st.undoFloatViewCount;
+    if (!floatOk) return false;
+  }
+  if (st.dialogCount > 0) return false;
+  if (st.configScreenOpen) return false;
+  if (st.pieceEditorOpen) return false;
+  if (st.findReplaceOpen) return false;
+  return true;
+}
 
 const STORAGE_KEY = 'sdstudio-key-bindings';
 
@@ -234,30 +280,20 @@ export class KeyboardShortcutService {
     // 같은 키에 여러 카테고리 액션이 매핑될 수 있음 (예: ArrowLeft = viewer:prev-image + scene:scene-left)
     // ACTIONS 배열 정의 순서(viewer → scene → global)가 우선순위를 결정:
     // 뷰어가 열려 있으면 viewer 액션이 먼저 통과, 아니면 scene/global로 폴스루
+    const gate: ShortcutGateState = {
+      imageGridFocusable: appState.imageGridFocusable,
+      resultViewerOpen: appState.resultViewerOpen,
+      dialogCount: appState.dialogs.length,
+      floatViewCount: appState.floatViewCount,
+      undoFloatViewCount: appState.undoFloatViewCount,
+      configScreenOpen: appState.configScreenOpen,
+      pieceEditorOpen: appState.pieceEditorOpen,
+      findReplaceOpen: appState.findReplaceOpen,
+    };
     for (const actionId of actionIds) {
       const action = this.getActionDef(actionId);
       if (!action) continue;
-
-      if (action.category === 'image-grid') {
-        if (!appState.imageGridFocusable) continue;
-        if (appState.dialogs.length > 0) continue;
-      } else if (action.category === 'viewer') {
-        if (!appState.resultViewerOpen) continue;
-        if (appState.dialogs.length > 0) continue;
-      } else if (action.category === 'scene') {
-        if (appState.floatViewCount > 0) continue;
-        if (appState.dialogs.length > 0) continue;
-        if (appState.configScreenOpen) continue;
-        if (appState.pieceEditorOpen) continue;
-        if (appState.findReplaceOpen) continue;
-      } else {
-        // global
-        if (appState.floatViewCount > 0) continue;
-        if (appState.dialogs.length > 0) continue;
-        if (appState.configScreenOpen) continue;
-        if (appState.pieceEditorOpen) continue;
-        if (appState.findReplaceOpen) continue;
-      }
+      if (!isShortcutActionActive(action, gate)) continue;
 
       // 첫 번째로 조건을 통과한 액션 실행
       e.preventDefault();

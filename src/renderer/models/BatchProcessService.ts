@@ -80,6 +80,8 @@ import { openImageAttachFlow, openVariantCopyFlow } from './i2iBatchFlow';
 import { openMaskApplyFlow, openStrengthBatchFlow } from './variantBatchFlow';
 import { VARIANT_BATCH_TEXT } from './variantBatch';
 import { copyComboContent } from './variantCombo';
+import { recordSceneOrder } from './sceneOrderUndo';
+import { UNDO_TEXT } from './undoService';
 
 export class BatchProcessService {
   openBatchProcessMenu(
@@ -455,9 +457,13 @@ export class BatchProcessService {
         const indices = allScenes
           .map((s, i) => selectedSet.has(s.name) ? i : -1)
           .filter(i => i !== -1);
-        for (let i = 0; i < indices.length; i++) {
-          appState.curSession!.moveScene(selectedSorted[i], indices[i]);
-        }
+        const sortSession = appState.curSession!;
+        // 되돌리기 계측(U1): 정렬 전체가 1항목(순서가 그대로면 기록 없음)
+        recordSceneOrder(sortSession, type, UNDO_TEXT.sceneSortByName, () => {
+          for (let i = 0; i < indices.length; i++) {
+            sortSession.moveScene(selectedSorted[i], indices[i]);
+          }
+        });
         appState.pushMessage('씬 정렬 완료');
       } else {
         console.log('Not implemented');

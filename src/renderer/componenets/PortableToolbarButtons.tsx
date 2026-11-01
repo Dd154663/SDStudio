@@ -12,6 +12,11 @@ import Tooltip from './Tooltip';
 import { ActionIcon } from './ActionIcon';
 import { appState } from '../models/AppService';
 import { CompanionButtonSlot } from './CompanionDnd';
+import { undoService, UNDO_TEXT } from '../models/undoService';
+import {
+  KeyboardShortcutService,
+  keyboardShortcutService,
+} from '../models/KeyboardShortcutService';
 
 // 렌더 컨텍스트: variant = 이 버튼이 실제로 표시되는 영역(스타일 적응 기준).
 // mobileIcon = 씬 툴바의 모바일 아이콘 축약 여부(현재 이관 버튼은 미사용이나 계약 유지).
@@ -52,11 +57,48 @@ const iconButton = (
   </Tooltip>
 );
 
+// 되돌리기/다시 실행(2026-11-01 U1) — 표시 영역 표준 클래스 + 실행할 것이 없으면 비활성(disabled·흐리게).
+// 툴팁 = 다음에 되돌릴/다시 실행할 작업 이름. 활성 여부는 undoService.version(observable)을 읽어 다시 그린다.
+const undoRedoButton = (
+  variant: 'scene' | 'project' | 'companion',
+  dir: 'undo' | 'redo',
+): ReactNode => {
+  const enabled = dir === 'undo' ? undoService.canUndo : undoService.canRedo;
+  // 단축키 안내는 PC(단축키 서비스가 있을 때)만, 사용자가 바꾼 키를 그대로
+  const bound = keyboardShortcutService?.getBinding(dir);
+  const keyHint = bound ? KeyboardShortcutService.keyDisplayName(bound) : undefined;
+  const tooltip =
+    dir === 'undo'
+      ? UNDO_TEXT.undoTooltip(undoService.undoLabel, keyHint)
+      : UNDO_TEXT.redoTooltip(undoService.redoLabel, keyHint);
+  const name = dir === 'undo' ? UNDO_TEXT.undoName : UNDO_TEXT.redoName;
+  return (
+    <Tooltip content={tooltip}>
+      <button
+        className={
+          (variant === 'project'
+            ? 'icon-button touch-hit relative mx-1'
+            : variant === 'companion'
+              ? 'round-button icon-only back-gray h-8'
+              : 'round-button icon-only back-gray') + ' disabled:opacity-40'
+        }
+        aria-label={name}
+        disabled={!enabled}
+        onClick={() => void (dir === 'undo' ? undoService.undo() : undoService.redo())}
+      >
+        <ActionIcon id={dir} size={18} />
+      </button>
+    </Tooltip>
+  );
+};
+
 export function portableToolbarButtons(
   ctx: PortableButtonsContext,
 ): Record<string, ReactNode> {
   const { variant } = ctx;
   return {
+    undo: undoRedoButton(variant, 'undo'),
+    redo: undoRedoButton(variant, 'redo'),
     // SessionSelect 로컬 맵에서 이관 — 홈(project)은 원본대로 Tooltip 없는
     // icon-button(FaPlus 18), 씬으로 오면 씬 표준(배경형 18px+툴팁)으로 적응.
     'add-session':

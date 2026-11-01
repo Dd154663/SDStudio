@@ -47,6 +47,7 @@ import { BatchProcessService } from './BatchProcessService';
 import { ExportPresetService } from './ExportPresetService';
 import { ImageHistoryService } from './ImageHistoryService';
 import { OpusUsageService } from './OpusUsageService';
+import { undoService } from './undoService';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -79,6 +80,9 @@ export const zipService = new ZipService();
 // 비동기 IO 를 동반하는 초기화(로드/스캔/루프 시작)는 전부 bootstrap.ts 의
 // bootstrapApp() 이 명시적 순서로 수행한다 — 모듈 평가 시점 사이드이펙트 금지.
 export const sessionService = new SessionService();
+
+// 되돌리기 스택의 미러(읽기 전용) 판정 배선 — undoService 는 순환 import 를 피하려 sessionService 를 직접 참조하지 않는다
+undoService.configure({ isMirror: (s) => sessionService.isMirror(s.name) });
 
 export const imageService = new ImageService();
 

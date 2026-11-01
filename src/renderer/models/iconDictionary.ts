@@ -58,6 +58,8 @@ import {
   FaTrashRestore,
   FaTrashRestoreAlt,
   FaDownload,
+  FaRedo,
+  FaUndo,
   FaUserEdit,
   FaUsers,
   FaVectorSquare,
@@ -122,6 +124,8 @@ export const ICON_DICTIONARY = {
   'empty-image-trash': FaBroom, // 삭제 이미지 일괄 비우기
   'find-replace': FaExchangeAlt, // 찾기 및 변환
   'shortcut-help': FaQuestion, // 단축키 도움말
+  undo: FaUndo, // 되돌리기(전역 스택 — 편집기·붓 자체 되돌리기 버튼도 같은 모양)
+  redo: FaRedo, // 다시 실행
   // ── 프로젝트 바(projectToolbarRegistry) ──
   'project-browser': FaThLarge, // 프로젝트 탐색
   'add-session': FaPlus, // 신규 프로젝트

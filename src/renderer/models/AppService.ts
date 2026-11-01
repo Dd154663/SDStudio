@@ -414,6 +414,20 @@ export class AppState {
     this.floatViewCount = Math.max(0, this.floatViewCount - 1);
   }
 
+  // 열린 FloatView 중 전역 되돌리기 단축키를 허용하는 창(allowUndo — 씬 편집 창·이미지 그리드/상세) 수.
+  // 단축키 판정은 floatViewCount === undoFloatViewCount(열린 창이 모두 허용일 때만, 2026-11-01 U1).
+  @observable accessor undoFloatViewCount: number = 0;
+
+  @action
+  incrementUndoFloatView() {
+    this.undoFloatViewCount++;
+  }
+
+  @action
+  decrementUndoFloatView() {
+    this.undoFloatViewCount = Math.max(0, this.undoFloatViewCount - 1);
+  }
+
   // 저장 경로 폴백 상태(데스크톱): 지정 저장 폴더 접근 불가로 기본 위치에서
   // 임시 실행 중. bootstrap 이 채우고, SaveLocationGate 가 확인을 받기 전까지
   // 메인 UI 를 가린다 — 조용히 부팅하면 "프로젝트 전부 초기화"로 오해된다.

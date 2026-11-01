@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import { MaskCanvasInputs, maskCanvasAction } from '../models/maskCanvasSync';
+import { isTextEntryFocused } from '../models/keyTargetGuard';
 
 export function base64ToDataUri(data: string) {
   return 'data:image/png;base64,' + data;
@@ -385,6 +386,8 @@ const BrushTool = forwardRef<BrushToolRef, Props>(
 
       const undo = (e: any) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+          // 입력 칸(프롬프트 편집기 등) 포커스 중의 Ctrl+Z 는 그 칸의 되돌리기 — 붓 이력까지 함께 되돌리지 않는다(2026-11-01 K2)
+          if (isTextEntryFocused()) return;
           undoImpl();
         }
       };

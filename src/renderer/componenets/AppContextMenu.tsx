@@ -56,6 +56,8 @@ import {
 import { openImageAttachFlow } from '../models/i2iBatchFlow';
 import { openMaskApplyFlow, openStrengthBatchFlow } from '../models/variantBatchFlow';
 import { sceneSelectorHost } from '../models/sceneSelectorHost';
+import { recordSceneOrder } from '../models/sceneOrderUndo';
+import { UNDO_TEXT } from '../models/undoService';
 
 export const AppContextMenu = observer(() => {
   // 선택은 (종류, 이름) 쌍이다 — 변형 탭의 선택으로 같은 이름의 일반 씬을 다루지 않는다
@@ -352,11 +354,19 @@ export const AppContextMenu = observer(() => {
   };
   const moveSceneFront = (ctx: SceneContextAlt) => {
     const curSession = appState.curSession;
-    curSession!.moveScene(ctx.scene, 0);
+    if (!curSession) return;
+    recordSceneOrder(curSession, ctx.scene.type, UNDO_TEXT.sceneMoveFront, () =>
+      curSession.moveScene(ctx.scene, 0),
+    );
   };
   const moveSceneBack = (ctx: SceneContextAlt) => {
     const curSession = appState.curSession;
-    curSession!.moveScene(ctx.scene, curSession!.scenes.size - 1);
+    if (!curSession) return;
+    // 맨 뒤 = 그 씬 종류 목록의 마지막(예전엔 변형 씬도 일반 씬 수 기준이라 어긋났다 — 2026-11-01 A3)
+    const last = curSession.getScenes(ctx.scene.type).length - 1;
+    recordSceneOrder(curSession, ctx.scene.type, UNDO_TEXT.sceneMoveBack, () =>
+      curSession.moveScene(ctx.scene, last),
+    );
   };
   const copySceneToProject = async (ctx: SceneContextAlt) => {
     await copyScenesToProject([ctx.scene]);

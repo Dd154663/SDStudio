@@ -20,6 +20,7 @@ interface Rule {
   dir: string; // RENDERER_ROOT 기준 스캔 시작점 ('' = 전체)
   exts: string[];
   exclude: string[]; // renderer 상대 posix 경로
+  include?: string[]; // 있으면 이 파일들만 검사(renderer 상대 posix 경로 — 특정 모듈 전용 규칙)
   count: (content: string) => number;
   allow: Record<string, number>; // renderer 상대 posix 경로 → 허용 건수
 }
@@ -30,6 +31,13 @@ const countMatches = (content: string, re: RegExp) =>
 // 툴바 버튼 id 전체(레지스트리 도출) — 아이콘 사전 밖에서 id→아이콘을 다시 정하는 코드 탐지용(§6).
 // (id 는 영소문자·하이픈만이라 정규식 이스케이프가 필요 없다.)
 const TOOLBAR_IDS_RE = TOOLBAR_VIEW_MAIN.flatMap((a) => a.registry.map((b) => b.id)).join('|');
+
+// 주석을 뺀 코드(주석 속 금지어는 세지 않는 규칙용)
+const stripComments = (c: string) =>
+  c.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+// 되돌리기 계약(2026-11-01 U1)을 지키는 모듈 — 잠금·씬 직접 제거 금지 규칙의 대상
+const UNDO_MODULES = ['models/undoService.ts', 'models/sceneOrderUndo.ts'];
 
 const RULES: Rule[] = [
   {
@@ -344,6 +352,29 @@ const RULES: Rule[] = [
     count: (c) => countMatches(c, /\b(usage|status)\??\.percent\s*(<=|>=|<|>)/g),
     allow: {},
   },
+  {
+    // 되돌리기 모듈은 잠금을 쓰지 않는다(2026-11-01 U1) — 항목은 공개 서비스 메서드만 부르고 그 메서드가 각자 잠근다.
+    // 되돌림 실행부가 잠금을 잡으면 같은 이름 withLock 중첩(교착)이 생긴다. 주석은 세지 않는다.
+    name: '되돌리기 모듈의 withLock 사용 — 공개 서비스 메서드 경유',
+    guide: '「되돌리기 계약」',
+    dir: 'models',
+    exts: ['.ts'],
+    exclude: [],
+    include: UNDO_MODULES,
+    count: (c) => countMatches(stripComments(c), /withLock/g),
+    allow: {},
+  },
+  {
+    // 씬 제거는 TrashService(moveSceneToTrash) 경유(§8 씬 유실 가드) — 되돌리기 항목이 Map 에서 씬을 직접 빼지 않는다.
+    name: '되돌리기 모듈의 removeScene( 직접 호출 — TrashService 경유',
+    guide: '「되돌리기 계약」·§8',
+    dir: 'models',
+    exts: ['.ts'],
+    exclude: [],
+    include: UNDO_MODULES,
+    count: (c) => countMatches(stripComments(c), /removeScene\(/g),
+    allow: {},
+  },
 ];
 
 function listFiles(dirAbs: string, exts: string[]): string[] {
@@ -364,6 +395,13 @@ const toRel = (abs: string) =>
   path.relative(RENDERER_ROOT, abs).split(path.sep).join('/');
 
 describe('SPEC_GUIDE 가드 (하드코딩 신규 유입 차단)', () => {
+  test('include 규칙의 대상 파일이 실제로 있다(경로 오타로 조용히 통과하지 않게)', () => {
+    for (const rule of RULES) {
+      for (const rel of rule.include ?? []) {
+        expect(fs.existsSync(path.join(RENDERER_ROOT, rel))).toBe(true);
+      }
+    }
+  });
   for (const rule of RULES) {
     test(rule.name, () => {
       const files = listFiles(path.join(RENDERER_ROOT, rule.dir), rule.exts);
@@ -371,6 +409,7 @@ describe('SPEC_GUIDE 가드 (하드코딩 신규 유입 차단)', () => {
       for (const f of files) {
         const rel = toRel(f);
         if (rule.exclude.includes(rel)) continue;
+        if (rule.include && !rule.include.includes(rel)) continue;
         const n = rule.count(fs.readFileSync(f, 'utf8'));
         if (n > 0) actual[rel] = n;
       }

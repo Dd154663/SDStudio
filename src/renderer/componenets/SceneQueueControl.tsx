@@ -133,6 +133,8 @@ import {
 } from '../models/combinationSelection';
 import CompactCombinationPieces from './CompactCombinationPieces';
 import { backStackService } from '../models/BackStackService';
+import { recordSceneOrder } from '../models/sceneOrderUndo';
+import { UNDO_TEXT } from '../models/undoService';
 
 // createMissingPiecesForSession / queueScene 는 models/sceneQueueActions.ts 로 이전
 // (AppContextMenu 우클릭 메뉴와 공유 — 중복 제거)
@@ -2275,8 +2277,10 @@ const QueueControl = observer(
               </FloatView>
             )}
             {editingScene && (
+              // 씬 편집 창 — 전역 되돌리기 단축키 허용(D9). 인페인트 편집 창은 붓 Ctrl+Z 전용이라 붙이지 않는다(D10)
               <FloatView
                 priority={2}
+                allowUndo
                 onEscape={() => setEditingScene(undefined)}
               >
                 <SceneEditor
@@ -2380,6 +2384,8 @@ const QueueControl = observer(
             key={displayScene.type + '-' + displayScene.name}
             priority={2}
             showToolbar
+            // 이미지 그리드(그 안의 이미지 상세도 허용 창) — 전역 되돌리기 단축키 허용(D9)
+            allowUndo
             onEscape={() => {
               gameService.refreshList(curSession!, displayScene);
               setDisplayScene(undefined);
@@ -2525,8 +2531,13 @@ const QueueControl = observer(
       });
     }, []);
 
+    // 씬 카드 드래그의 순서 변경(단일 드롭·드롭 없이 끝난 원위치 복귀) — 되돌리기 계측(U1).
+    // react-dnd 는 hover 중 순서를 바꾸지 않아 드롭 1회 = 변경 1회. 원위치 복귀처럼 순서가 그대로면 기록하지 않는다(A13).
     const moveScene = (draggingScene: GenericScene, targetIndex: number) => {
-      curSession!.moveScene(draggingScene, targetIndex);
+      if (!curSession) return;
+      recordSceneOrder(curSession, draggingScene.type, UNDO_TEXT.sceneOrderDrag, () =>
+        curSession.moveScene(draggingScene, targetIndex),
+      );
     };
 
     const moveScenes = (
@@ -2556,16 +2567,10 @@ const QueueControl = observer(
         remaining.splice(insertAt + i, 0, sorted[i]);
       }
 
-      // 맵 재구성
-      const final = remaining.reduce((acc: Map<string, GenericScene>, s) => {
-        acc.set(s.name, s);
-        return acc;
-      }, new Map()) as any;
-      if (stype === 'scene') {
-        curSession.scenes = final;
-      } else {
-        curSession.inpaints = final;
-      }
+      // 맵 재구성 — 순서 변경 단일 지점(Session.reorderScenes). 다중 드롭 1회 = 되돌리기 1항목(U1)
+      recordSceneOrder(curSession, stype, UNDO_TEXT.sceneOrderDrag, () =>
+        curSession.reorderScenes(stype, remaining),
+      );
     };
 
     // ── 씬 툴바 버튼 바인딩: 레지스트리 id → 실제 버튼 노드 ──

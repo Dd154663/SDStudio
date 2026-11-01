@@ -2901,6 +2901,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           {selectedImageIndex != null && (
             <FloatView
               priority={1}
+              // 이미지 상세 — 전역 되돌리기 단축키 허용(D9, 바깥 이미지 그리드 창도 허용이라 함께 통과)
+              allowUndo
               onEscape={() => setSelectedImageIndex(undefined)}
             >
               <ResultDetailView

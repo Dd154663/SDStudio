@@ -74,6 +74,7 @@ import {
   isMobile,
 } from '../models';
 import { appState } from '../models/AppService';
+import { undoService } from '../models/undoService';
 import { openStoragePermissionSettings } from '../models/storagePermissionGate';
 import { keyboardShortcutService } from '../models/KeyboardShortcutService';
 import { buildDanbooruSearchUrl } from '../models/util';
@@ -249,6 +250,13 @@ export const App = observer(() => {
           break;
         case 'quick-menu':
           appState.quickMenuOpen = !appState.quickMenuOpen;
+          break;
+        // 되돌리기/다시 실행(2026-11-01 U1) — 현재 프로젝트 스택(미러·빈 스택이면 무시)
+        case 'undo':
+          void undoService.undo();
+          break;
+        case 'redo':
+          void undoService.redo();
           break;
         case 'toggle-history-panel':
           if (isMobile) {

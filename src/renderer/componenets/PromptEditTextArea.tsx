@@ -590,7 +590,7 @@ class CursorMemorizeEditor {
           this.compositionBuffer = [];
           this.historyBuf.push(entry);
           this.updateCurText(entry.text, false);
-          this.updateDOM(this.curText, entry.curPos, false);
+          this.updateDOM(this.curText, entry.cursorPos, false);
           await this.setCaretPosition(entry.cursorPos);
         }
         return;

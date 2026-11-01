@@ -15,6 +15,7 @@ import {
   ToolbarButtonMeta,
 } from './uiLayout';
 import { IMPORT_IMAGE_ACCEPT } from './imageFormats';
+import { undoService } from './undoService';
 
 export interface GlobalAction {
   id: string;
@@ -96,6 +97,9 @@ export const GLOBAL_ACTIONS: GlobalAction[] = [
   { id: 'scene-trash', run: () => appState.openSceneTrash(), available: hasSession },
   // ── 기타 전역 ──
   { id: 'new-window', run: () => appState.openNewWindow() },
+  // 되돌리기/다시 실행(2026-11-01 U1) — 현재 프로젝트 스택. 기본 퀵 메뉴에는 넣지 않는다(사용자가 추가, D19 보류)
+  { id: 'undo', run: () => void undoService.undo(), available: () => undoService.canUndo },
+  { id: 'redo', run: () => void undoService.redo(), available: () => undoService.canRedo },
 ];
 
 // id → 툴바 레지스트리 메타(표시명·pcOnly 단일 출처). 퀵 메뉴 대상 id 는 전부

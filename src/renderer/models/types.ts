@@ -548,15 +548,40 @@ export class Session implements Serealizable {
     }
   }
 
+  // 씬 하나를 index 자리로(드래그·맨 앞/뒤·정렬). 순서 바꾸기는 reorderScenes 한 곳으로 모은다(되돌리기 계약).
+  @action
   moveScene(targetScene: GenericScene, index: number) {
     const scenes = this.getScenes(targetScene.type);
     const reorderedScenes = scenes.filter((scene) => scene !== targetScene);
     reorderedScenes.splice(index, 0, targetScene);
-    const final = reorderedScenes.reduce((acc, scene) => {
+    this.reorderScenes(targetScene.type, reorderedScenes);
+  }
+
+  /**
+   * 씬 순서를 order 대로 다시 세운다(2026-11-01 되돌리기 U1 — 순서 변경의 단일 지점).
+   * - order 안에서 지금 이 프로젝트에 없는 씬(지워졌거나 다른 객체로 바뀐 것)은 건너뛴다.
+   * - order 에 없는 씬(그사이 새로 생긴 씬 등)은 지금 상대 순서대로 뒤에 남긴다 — 되돌림이 새 씬을 지우지 않는다.
+   * - 씬 객체·이미지 필드는 건드리지 않고 Map 의 순서만 바꾼다(키 = 씬 이름).
+   */
+  @action
+  reorderScenes(type: 'scene' | 'inpaint', order: readonly GenericScene[]): void {
+    const current = this.getScenes(type);
+    const present = new Set<GenericScene>(current);
+    const placed = new Set<GenericScene>();
+    const next: GenericScene[] = [];
+    for (const scene of order) {
+      if (!present.has(scene) || placed.has(scene)) continue;
+      placed.add(scene);
+      next.push(scene);
+    }
+    for (const scene of current) {
+      if (!placed.has(scene)) next.push(scene);
+    }
+    const final = next.reduce((acc, scene) => {
       acc.set(scene.name, scene);
       return acc;
     }, new Map()) as any;
-    if (targetScene.type === 'scene') {
+    if (type === 'scene') {
       this.scenes = final;
     } else {
       this.inpaints = final;
