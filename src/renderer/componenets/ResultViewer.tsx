@@ -82,6 +82,7 @@ import { IMAGE_RETENTION_DAYS } from '../models/TrashService';
 import {
   deleteConfirmText,
   imageDeleteScopeLine,
+  imageRestoreResultText,
   NO_IMAGES_TO_DELETE_MESSAGE,
   NO_SELECTED_IMAGES_MESSAGE,
   planGridImageDelete,
@@ -211,10 +212,15 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
   const handleRestore = async () => {
     if (selected.size === 0) return;
     await stopThumbnailLoading();
-    await trashService.restoreImages(session, scene, Array.from(selected));
+    const { restored, failed } = await trashService.restoreImages(
+      session,
+      scene,
+      Array.from(selected),
+    );
     await imageService.refresh(session, scene);
-    appState.pushMessage(selected.size + '장의 이미지가 복원되었습니다.');
-    setSelected(new Set());
+    appState.pushMessage(imageRestoreResultText(restored.length, failed.length));
+    // 복원하지 못한 것만 선택으로 남긴다(무엇이 남았는지 보이도록).
+    setSelected(new Set(failed));
     await refresh();
   };
 

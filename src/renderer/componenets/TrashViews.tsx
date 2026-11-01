@@ -11,6 +11,7 @@ import { trashService } from '../models';
 import { appState } from '../models/AppService';
 import {
   batchResultLine,
+  DELETE_RESULT_TEXT,
   deleteConfirmText,
   failedNamesLine,
 } from '../models/deleteFlowRules';
@@ -213,8 +214,11 @@ export function SceneTrashView({ projectName }: { projectName: string }) {
 
   const handleRestore = async (name: string) => {
     try {
-      await trashService.restoreScene(appState.curSession!, name);
-      appState.pushMessage(`씬 "${name}"이(가) 복원되었습니다.`);
+      const restored = await trashService.restoreScene(appState.curSession!, name);
+      // undefined = 다른 창 잠금으로 조용히 돌아옴(씬·기록 그대로) — 성공 문구를 내지 않는다.
+      appState.pushMessage(
+        restored ? `씬 "${name}"이(가) 복원되었습니다.` : DELETE_RESULT_TEXT.sceneRestoreBlocked,
+      );
       await refresh();
     } catch (e: any) {
       appState.pushMessage(e.message || '씬 복원에 실패했습니다.');

@@ -105,11 +105,58 @@ function isSceneMaskFileName(filename: string): boolean {
   return filename.toLowerCase().endsWith(`.${PNG_IMAGE_EXT}`);
 }
 
+/**
+ * 키별 직렬 실행(2026-11-01 U0-a T3) — 같은 키의 작업을 도착 순서대로 하나씩 실행한다.
+ * 이미지 휴지통 meta(.trash_meta.json)의 읽고-고치고-쓰기(휴지통 이동·복원·영구 삭제·자동 정리)가
+ * 서로 끼어들면 나중 쓰기가 앞 작업의 항목을 덮어써 잃는다(발견 E3).
+ * ResourceSyncService.withLock 과 독립된 체인이라 그 잠금 안에서 불려도 교착하지 않는다.
+ * 주의: run 안에서 같은 키로 run 을 다시 부르면(중첩) 교착 — 키당 한 겹만 잡는다.
+ */
+export class KeyedSerialQueue {
+  private tails = new Map<string, Promise<void>>();
+
+  async run<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.tails.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = prev.then(() => gate);
+    this.tails.set(key, tail);
+    await prev; // 체인은 gate 들로만 이뤄져 reject 되지 않는다.
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.tails.get(key) === tail) this.tails.delete(key);
+    }
+  }
+
+  /** 테스트·진단용 — 대기·실행 중인 키 수. */
+  get pendingKeys(): number {
+    return this.tails.size;
+  }
+}
+
+/** 이미지 휴지통 이동 결과 — 입력으로 받은 경로(fullPath) 그대로. */
+export interface ImageTrashMoveResult {
+  moved: string[];
+  failed: string[];
+}
+
+/** 이미지 휴지통 복원 결과 — 파일 이름(filename). */
+export interface ImageTrashRestoreResult {
+  restored: string[];
+  failed: string[];
+}
+
 // --- Service class ---
 
 export class TrashService extends EventTarget {
   private data: TrashData = { scenes: {}, projects: {} };
   private loaded: boolean = false;
+  // 이미지 휴지통 meta 경로별 직렬화(T3). 키 = getImageTrashMetaPath / autoCleanup 의 같은 경로 문자열.
+  private imageMetaQueue = new KeyedSerialQueue();
 
   // ===== Core persistence =====
 
@@ -186,33 +233,48 @@ export class TrashService extends EventTarget {
   }
 
   // 반환값: 이동에 실패한 파일 수(잠금/권한 등). 호출부가 사용자에게 알릴 수 있도록
-  // 조용히 삼키지 않고 집계해 돌려준다.
+  // 조용히 삼키지 않고 집계해 돌려준다. 옮겨진 목록이 필요하면 moveImagesToTrashDetailed.
   async moveImagesToTrash(session: Session, scene: GenericScene, fullPaths: string[]): Promise<number> {
+    return (await this.moveImagesToTrashDetailed(session, scene, fullPaths)).failed.length;
+  }
+
+  // 반환값: 실제로 옮겨진 경로·실패한 경로(입력 fullPath 그대로, U0-a T5).
+  // meta 읽고-쓰기는 meta 경로별로 직렬화한다(T3).
+  async moveImagesToTrashDetailed(
+    session: Session,
+    scene: GenericScene,
+    fullPaths: string[],
+  ): Promise<ImageTrashMoveResult> {
     const trashDir = this.getImageTrashDir(session, scene);
-    const meta = await this.loadImageTrashMeta(session, scene);
-    const now = Date.now();
+    const metaPath = this.getImageTrashMetaPath(session, scene);
+    return this.imageMetaQueue.run(metaPath, async () => {
+      const meta = await this.loadImageTrashMeta(session, scene);
+      const now = Date.now();
 
-    // Ensure .trash directory exists by writing meta first
-    // (writeFile auto-creates parent dirs)
-    if (Object.keys(meta).length === 0 && fullPaths.length > 0) {
-      await this.saveImageTrashMeta(session, scene, meta);
-    }
-
-    let failed = 0;
-    for (const fullPath of fullPaths) {
-      const filename = fullPath.split('/').pop()!;
-      try {
-        await backend.renameFile(fullPath, trashDir + '/' + filename);
-        meta[filename] = now;
-      } catch (e) {
-        failed++;
-        console.error('이미지 휴지통 이동 실패:', fullPath, e);
+      // Ensure .trash directory exists by writing meta first
+      // (writeFile auto-creates parent dirs)
+      if (Object.keys(meta).length === 0 && fullPaths.length > 0) {
+        await this.saveImageTrashMeta(session, scene, meta);
       }
-    }
 
-    await this.saveImageTrashMeta(session, scene, meta);
-    this.dispatchEvent(new CustomEvent('trash-updated'));
-    return failed;
+      const moved: string[] = [];
+      const failed: string[] = [];
+      for (const fullPath of fullPaths) {
+        const filename = fullPath.split('/').pop()!;
+        try {
+          await backend.renameFile(fullPath, trashDir + '/' + filename);
+          meta[filename] = now;
+          moved.push(fullPath);
+        } catch (e) {
+          failed.push(fullPath);
+          console.error('이미지 휴지통 이동 실패:', fullPath, e);
+        }
+      }
+
+      await this.saveImageTrashMeta(session, scene, meta);
+      this.dispatchEvent(new CustomEvent('trash-updated'));
+      return { moved, failed };
+    });
   }
 
   async getTrashImages(session: Session, scene: GenericScene): Promise<{filename: string, deletedAt: number}[]> {
@@ -235,81 +297,124 @@ export class TrashService extends EventTarget {
     return this.getImageTrashDir(session, scene) + '/' + filename;
   }
 
-  async restoreImages(session: Session, scene: GenericScene, filenames: string[]): Promise<void> {
+  // 반환값(U0-a T2): 복원된 파일 이름·복원하지 못한 파일 이름. 호출부가 결과로 안내한다.
+  // - 원래 위치에 같은 이름 파일이 이미 있으면 **덮어쓰지 않고** failed(존재 확인을 먼저 —
+  //   rename 자체는 PC(fs.rename)·Android(Capacitor — 대상 삭제 후 renameTo) 모두 대상을 덮어쓴다).
+  // - 이동 오류가 났어도 실제로 옮겨졌으면(원본 없음·대상 있음) 복원으로 센다(moveSceneToTrash 와 같은 검증).
+  // - meta 읽고-쓰기는 meta 경로별로 직렬화(T3). 복원된 것이 없으면 meta 를 다시 쓰지 않는다.
+  async restoreImages(
+    session: Session,
+    scene: GenericScene,
+    filenames: string[],
+  ): Promise<ImageTrashRestoreResult> {
     const trashDir = this.getImageTrashDir(session, scene);
     const outputDir = scene.type === 'scene'
       ? projectPath('outs', session.name, scene.name)
       : projectPath('inpaints', session.name, scene.name);
-    const meta = await this.loadImageTrashMeta(session, scene);
-    const restoredTrashPaths: string[] = [];
+    const metaPath = this.getImageTrashMetaPath(session, scene);
+    return this.imageMetaQueue.run(metaPath, async () => {
+      const meta = await this.loadImageTrashMeta(session, scene);
+      const restored: string[] = [];
+      const failed: string[] = [];
+      const restoredTrashPaths: string[] = [];
 
-    for (const filename of filenames) {
-      try {
+      for (const filename of filenames) {
         const trashPath = trashDir + '/' + filename;
-        await backend.renameFile(trashPath, outputDir + '/' + filename);
-        delete meta[filename];
-        restoredTrashPaths.push(trashPath);
-      } catch (e) {
-        console.error('이미지 복원 실패:', filename, e);
+        const dstPath = outputDir + '/' + filename;
+        try {
+          if (await backend.existFile(dstPath)) {
+            console.warn('이미지 복원 건너뜀(같은 이름 파일이 이미 있음):', dstPath);
+            failed.push(filename);
+            continue;
+          }
+          let moveError: unknown = undefined;
+          try {
+            await backend.renameFile(trashPath, dstPath);
+          } catch (e) {
+            moveError = e;
+          }
+          if (moveError !== undefined) {
+            const moved =
+              !(await backend.existFile(trashPath)) && (await backend.existFile(dstPath));
+            if (!moved) {
+              console.error('이미지 복원 실패:', filename, moveError);
+              failed.push(filename);
+              continue;
+            }
+          }
+          delete meta[filename];
+          restored.push(filename);
+          restoredTrashPaths.push(trashPath);
+        } catch (e) {
+          console.error('이미지 복원 실패:', filename, e);
+          failed.push(filename);
+        }
       }
-    }
 
-    // 휴지통 썸네일은 디렉터리 단위로 한 번만 정리한다.
-    try {
-      await imageService.invalidateCacheBatch(restoredTrashPaths);
-    } catch (e) {}
+      // 휴지통 썸네일은 디렉터리 단위로 한 번만 정리한다.
+      try {
+        await imageService.invalidateCacheBatch(restoredTrashPaths);
+      } catch (e) {}
 
-    await this.saveImageTrashMeta(session, scene, meta);
-    this.dispatchEvent(new CustomEvent('trash-updated'));
+      if (restored.length > 0) {
+        await this.saveImageTrashMeta(session, scene, meta);
+      }
+      this.dispatchEvent(new CustomEvent('trash-updated'));
+      return { restored, failed };
+    });
   }
 
   // onProgress: 일괄 작업 잠금(progressDialog)용 진행 통지 — 파일 1개 삭제마다 호출 (옵셔널=기존 호출 무변경)
   // 반환값: 삭제에 실패한 파일 수. 실패한 파일은 meta 항목을 보존해 자동 정리
   // (autoCleanup)가 다음에 재시도할 수 있게 한다 — 과거엔 실패해도 meta 를 지워
   // 해당 파일이 자동 삭제 대상에서 영구히 빠졌다(2026-07-26 webp 미삭제 버그).
+  // meta 읽고-쓰기는 meta 경로별로 직렬화(U0-a T3).
   async permanentlyDeleteImages(session: Session, scene: GenericScene, filenames: string[], onProgress?: (done: number, total: number) => void): Promise<number> {
     const trashDir = this.getImageTrashDir(session, scene);
-    const meta = await this.loadImageTrashMeta(session, scene);
+    const metaPath = this.getImageTrashMetaPath(session, scene);
+    return this.imageMetaQueue.run(metaPath, async () => {
+      const meta = await this.loadImageTrashMeta(session, scene);
 
-    let done = 0;
-    let failed = 0;
-    let lastProgressAt = 0;
-    const removedPaths: string[] = [];
-    for (const filename of filenames) {
-      const trashPath = trashDir + '/' + filename;
-      let removed = false;
-      try {
-        await backend.deleteFile(trashPath);
-        removed = true;
-      } catch (e) {
-        // 이미 없는 파일(ENOENT)이면 정리된 것으로 간주. 확인 자체가 실패하면
-        // 보수적으로 "아직 있음"으로 취급해 meta 를 보존한다.
-        removed = !(await backend.existFile(trashPath).catch(() => true));
-        if (!removed) {
-          failed++;
-          console.error('이미지 영구 삭제 실패:', filename, e);
+      let done = 0;
+      let failed = 0;
+      let lastProgressAt = 0;
+      const removedPaths: string[] = [];
+      for (const filename of filenames) {
+        const trashPath = trashDir + '/' + filename;
+        let removed = false;
+        try {
+          await backend.deleteFile(trashPath);
+          removed = true;
+        } catch (e) {
+          // 이미 없는 파일(ENOENT)이면 정리된 것으로 간주. 확인 자체가 실패하면
+          // 보수적으로 "아직 있음"으로 취급해 meta 를 보존한다.
+          removed = !(await backend.existFile(trashPath).catch(() => true));
+          if (!removed) {
+            failed++;
+            console.error('이미지 영구 삭제 실패:', filename, e);
+          }
+        }
+        if (removed) {
+          delete meta[filename];
+          removedPaths.push(trashPath);
+        }
+        done++;
+        const now = Date.now();
+        if (done === filenames.length || done === 1 || now - lastProgressAt >= 100) {
+          onProgress?.(done, filenames.length);
+          lastProgressAt = now;
         }
       }
-      if (removed) {
-        delete meta[filename];
-        removedPaths.push(trashPath);
-      }
-      done++;
-      const now = Date.now();
-      if (done === filenames.length || done === 1 || now - lastProgressAt >= 100) {
-        onProgress?.(done, filenames.length);
-        lastProgressAt = now;
-      }
-    }
 
-    // 파일별 3회 디스크 캐시 삭제 대신 .trash/fastcache를 한 번만 제거한다.
-    try {
-      await imageService.invalidateCacheBatch(removedPaths);
-    } catch (e) {}
+      // 파일별 3회 디스크 캐시 삭제 대신 .trash/fastcache를 한 번만 제거한다.
+      try {
+        await imageService.invalidateCacheBatch(removedPaths);
+      } catch (e) {}
 
-    await this.saveImageTrashMeta(session, scene, meta);
-    this.dispatchEvent(new CustomEvent('trash-updated'));
-    return failed;
+      await this.saveImageTrashMeta(session, scene, meta);
+      this.dispatchEvent(new CustomEvent('trash-updated'));
+      return failed;
+    });
   }
 
   // 반환값: 삭제에 실패한 파일 수 (permanentlyDeleteImages 와 동일 의미)
@@ -388,11 +493,13 @@ export class TrashService extends EventTarget {
     return projectName + ':' + sceneName;
   }
 
-  async moveSceneToTrash(session: Session, scene: GenericScene): Promise<void> {
+  // 반환값(U0-a T4): 휴지통 슬롯 이름(기록 키의 씬 부분 = restoreScene 에 넘길 이름).
+  // 다른 창 잠금으로 조용히 돌아오면 undefined(씬은 그대로 남음). 이동 실패는 throw.
+  async moveSceneToTrash(session: Session, scene: GenericScene): Promise<string | undefined> {
     // 씬 제거는 outs 폴더를 .trash 로 옮기는 구조 변경 — 다른 창이 소유(=이 창이
     // 미러)한 프로젝트에서는 차단하고 소유 창에 토스트를 띄운다(P3, W6 후속).
     if (!(await sessionService.guardCrossWindowLock(session.name, '씬 제거')))
-      return;
+      return undefined;
     this.ensureLoaded();
     // 2026-10-02 S1: 이동을 먼저 하고, 이동이 확인된 뒤에만 기록 저장·씬 제거를 한다.
     // 예전에는 기록을 먼저 덮어쓰고 이동 실패를 console 로만 남긴 채 씬을 지워, 같은 이름
@@ -484,6 +591,7 @@ export class TrashService extends EventTarget {
     session.removeScene(scene.type, scene.name);
 
     await this.saveTrash();
+    return slot;
   }
 
   // 휴지통 슬롯 이름 결정(S1). 이미 쓰인 이름 = 이 프로젝트 이름의 기록 키(종류·소속 무관 —
@@ -580,7 +688,17 @@ export class TrashService extends EventTarget {
     return result;
   }
 
-  async restoreScene(session: Session, sceneName: string): Promise<void> {
+  // 반환값(U0-a T1): 세션에 다시 넣은 씬 객체. 다른 창 잠금으로 조용히 돌아오면 undefined
+  // (씬·기록·파일 무변경 — 소유 창에 토스트). 그 밖의 실패는 throw.
+  // 순서 = 검사(기록·소속·이름 충돌·역직렬화) → (변형 씬 구형) 마스크·원본 복귀 → 이미지 폴더 복귀
+  // → **이동이 확인된 뒤에만** 씬 추가·기록 삭제(moveSceneToTrash 와 같은 검증). 휴지통 쪽 원본이
+  // 있는데 옮기지 못했거나, 원래 위치에 같은 이름 폴더·파일이 이미 있으면(병합·덮어쓰기 금지)
+  // 먼저 옮긴 것을 되돌리고 throw — 씬·기록 무변경. 휴지통 쪽에 원본이 없으면(이미지 없는 씬) 정상.
+  // 복원 이름 = 슬롯 이름, 위치 = 맨 뒤(원래 이름·위치 복구는 호출부 몫).
+  async restoreScene(session: Session, sceneName: string): Promise<GenericScene | undefined> {
+    // 씬 복원도 outs 폴더를 옮기는 구조 변경 — 다른 창 소유 프로젝트면 차단(moveSceneToTrash 와 같은 방식).
+    if (!(await sessionService.guardCrossWindowLock(session.name, '씬 복원')))
+      return undefined;
     this.ensureLoaded();
     const key = this.sceneKey(session.name, sceneName);
     const entry = this.data.scenes[key];
@@ -597,40 +715,100 @@ export class TrashService extends EventTarget {
       throw new Error('같은 이름의 씬이 이미 존재합니다');
     }
 
-    // Move directory back (projectPath 경유 — 신 배치 자동 분기)
-    const imgDir: 'outs' | 'inpaints' = sceneType === 'scene' ? 'outs' : 'inpaints';
-    const srcDir = projectPath(imgDir, session.name, IMAGE_TRASH_DIR, sceneName);
-    const dstDir = projectPath(imgDir, session.name, sceneName);
-    try {
-      await backend.renameDir(srcDir, dstDir);
-    } catch (e) {
-      console.error('씬 디렉토리 복원 실패:', e);
-    }
-
-    // For inpaint scenes, restore mask and org
-    if (sceneType === 'inpaint') {
-      for (const dir of PROJECT_SCENE_MASK_ROOTS) {
-        const maskSrc = projectPath(dir, session.name, IMAGE_TRASH_DIR, sceneMaskFileName(sceneName));
-        const maskDst = projectPath(dir, session.name, sceneMaskFileName(sceneName));
-        try {
-          await backend.renameFile(maskSrc, maskDst);
-        } catch (e) {}
-      }
-    }
-
-    // Re-add scene to session
+    // 역직렬화를 파일 이동보다 먼저 — 실패하면 아무것도 옮기지 않는다(예전엔 폴더를 먼저 옮겨
+    // 씬 없는 outs 폴더가 남았다). 휴지통 항목은 보존.
     const restoredScene = genericSceneFromJSON(entry.sceneData);
     if (!restoredScene) {
-      // 워크플로우 프리셋 역직렬화 실패 — 세션을 건드리지 않고 중단(휴지통 항목은 보존됨)
       throw new Error('씬 데이터를 복원할 수 없습니다: ' + sceneName);
     }
     // 폴더 이름(키)과 씬 이름이 어긋난 옛 기록에서도 이미지 폴더와 씬이 짝을 이루도록 키 이름을 쓴다.
     if (restoredScene.name !== sceneName) restoredScene.name = sceneName;
-    session.addScene(restoredScene);
 
-    // Remove from trash
+    const fail = (reason: string) =>
+      new Error(`씬 "${sceneName}"을(를) 휴지통에서 복원하지 못했습니다. ${reason}`);
+    const movedFiles: { from: string; to: string }[] = [];
+    const revertMovedFiles = async (): Promise<string[]> => {
+      const stuck: string[] = [];
+      for (const m of movedFiles.slice().reverse()) {
+        try {
+          await backend.renameFile(m.to, m.from);
+        } catch (e) {
+          stuck.push(m.to);
+        }
+      }
+      return stuck;
+    };
+    const stuckLine = (stuck: string[]) =>
+      stuck.length ? ` 되돌리지 못한 파일: ${stuck.join(', ')}` : '';
+
+    // 1) 변형 씬(구형) 마스크·원본 파일 → 원래 위치 (휴지통 쪽에 있을 때만)
+    if (sceneType === 'inpaint') {
+      for (const dir of PROJECT_SCENE_MASK_ROOTS) {
+        const maskSrc = projectPath(dir, session.name, IMAGE_TRASH_DIR, sceneMaskFileName(sceneName));
+        if (!(await backend.existFile(maskSrc))) continue;
+        const maskDst = projectPath(dir, session.name, sceneMaskFileName(sceneName));
+        if (await backend.existFile(maskDst)) {
+          const stuck = await revertMovedFiles();
+          throw fail('원래 위치에 같은 이름의 마스크/원본 파일이 이미 있습니다.' + stuckLine(stuck));
+        }
+        let moveError: unknown = undefined;
+        try {
+          await backend.renameFile(maskSrc, maskDst);
+        } catch (e) {
+          moveError = e;
+        }
+        if (moveError !== undefined) {
+          const moved = !(await backend.existFile(maskSrc)) && (await backend.existFile(maskDst));
+          if (!moved) {
+            console.error('씬 마스크/원본 복원 실패:', maskSrc, moveError);
+            const stuck = await revertMovedFiles();
+            throw fail('마스크/원본 파일을 옮기지 못했습니다.' + stuckLine(stuck));
+          }
+        }
+        movedFiles.push({ from: maskSrc, to: maskDst });
+      }
+    }
+
+    // 2) 씬 이미지 폴더 → 원래 위치 (projectPath 경유 — 신 배치 자동 분기)
+    const imgDir: 'outs' | 'inpaints' = sceneType === 'scene' ? 'outs' : 'inpaints';
+    const srcDir = projectPath(imgDir, session.name, IMAGE_TRASH_DIR, sceneName);
+    const dstDir = projectPath(imgDir, session.name, sceneName);
+    if (await backend.existFile(srcDir)) {
+      // 원래 자리에 같은 이름 폴더가 있으면 병합하지 않는다(PC Windows renameDir 은 실패 시
+      // 복사로 넘어가 합쳐지고, Android 는 거부 — 존재 확인을 먼저 해 양쪽을 같게).
+      if (await backend.existFile(dstDir)) {
+        const stuck = await revertMovedFiles();
+        throw fail(
+          '원래 위치에 같은 이름의 이미지 폴더가 이미 있어 합치지 않았습니다.' + stuckLine(stuck),
+        );
+      }
+      let moveError: unknown = undefined;
+      try {
+        await backend.renameDir(srcDir, dstDir);
+      } catch (e) {
+        moveError = e;
+      }
+      const srcLeft = await backend.existFile(srcDir);
+      const moved = !srcLeft && (moveError === undefined || (await backend.existFile(dstDir)));
+      if (!moved) {
+        console.error('씬 디렉토리 복원 실패:', srcDir, moveError);
+        const partial = srcLeft && (await backend.existFile(dstDir));
+        const stuck = await revertMovedFiles();
+        throw fail(
+          '이미지 폴더를 옮기지 못했습니다(파일 잠금·권한 등). 잠시 뒤 다시 시도해 주세요.' +
+            (partial
+              ? ' 일부 이미지가 원래 위치에 복사됐을 수 있습니다 — 휴지통 쪽 폴더는 그대로 남아 있습니다.'
+              : '') +
+            stuckLine(stuck),
+        );
+      }
+    }
+
+    // 3) 이동이 확인된 뒤에만 씬 추가·기록 삭제
+    session.addScene(restoredScene);
     delete this.data.scenes[key];
     await this.saveTrash();
+    return restoredScene;
   }
 
   async permanentlyDeleteScene(projectName: string, sceneName: string, sceneType: 'scene' | 'inpaint'): Promise<void> {
@@ -1502,58 +1680,61 @@ export class TrashService extends EventTarget {
           if (sceneDir === IMAGE_TRASH_DIR || sceneDir.startsWith('.')) continue;
           const trashMetaPath = projectPath(imgDir, projectName, sceneDir, IMAGE_TRASH_DIR, TRASH_META_FILE);
           if (!(await backend.existFile(trashMetaPath))) continue;
-          try {
-            const metaStr = await backend.readFile(trashMetaPath);
-            const meta: TrashImageMeta = JSON.parse(metaStr);
-            let metaChanged = false;
-            const removedPaths: string[] = [];
-            // 고아 입양: .trash 에 실재하지만 meta 에 없는 파일(과거 삭제 실패로
-            // meta 만 지워진 잔재 등)은 지금 시각으로 등록해 보관 기한(3일)의
-            // 시계를 다시 돌린다 — 등록이 없으면 자동 정리 대상에서 영구히 빠진다.
+          // meta 읽고-쓰기 직렬화(U0-a T3) — 키는 getImageTrashMetaPath 와 같은 경로 문자열.
+          await this.imageMetaQueue.run(trashMetaPath, async () => {
             try {
-              const actual = (
-                await backend.listFiles(
-                  projectPath(imgDir, projectName, sceneDir, IMAGE_TRASH_DIR),
-                )
-              ).filter(isOutputImageFile);
-              for (const f of actual) {
-                if (!(f in meta)) {
-                  meta[f] = now;
-                  metaChanged = true;
+              const metaStr = await backend.readFile(trashMetaPath);
+              const meta: TrashImageMeta = JSON.parse(metaStr);
+              let metaChanged = false;
+              const removedPaths: string[] = [];
+              // 고아 입양: .trash 에 실재하지만 meta 에 없는 파일(과거 삭제 실패로
+              // meta 만 지워진 잔재 등)은 지금 시각으로 등록해 보관 기한(3일)의
+              // 시계를 다시 돌린다 — 등록이 없으면 자동 정리 대상에서 영구히 빠진다.
+              try {
+                const actual = (
+                  await backend.listFiles(
+                    projectPath(imgDir, projectName, sceneDir, IMAGE_TRASH_DIR),
+                  )
+                ).filter(isOutputImageFile);
+                for (const f of actual) {
+                  if (!(f in meta)) {
+                    meta[f] = now;
+                    metaChanged = true;
+                  }
+                }
+              } catch (e) {}
+              for (const [filename, deletedAt] of Object.entries(meta)) {
+                const age = now - deletedAt;
+                if (age >= IMAGE_RETENTION_MS) {
+                  const trashPath = projectPath(
+                    imgDir, projectName, sceneDir, IMAGE_TRASH_DIR, filename,
+                  );
+                  let removed = false;
+                  try {
+                    await backend.deleteFile(trashPath);
+                    removed = true;
+                  } catch (e) {
+                    // ENOENT(이미 없음)만 정리로 간주 — 잠금 등 실패는 meta 를
+                    // 남겨 다음 자동 정리에서 재시도한다.
+                    removed = !(await backend.existFile(trashPath).catch(() => true));
+                  }
+                  if (removed) {
+                    delete meta[filename];
+                    metaChanged = true;
+                    removedPaths.push(trashPath);
+                  }
                 }
               }
-            } catch (e) {}
-            for (const [filename, deletedAt] of Object.entries(meta)) {
-              const age = now - deletedAt;
-              if (age >= IMAGE_RETENTION_MS) {
-                const trashPath = projectPath(
-                  imgDir, projectName, sceneDir, IMAGE_TRASH_DIR, filename,
-                );
-                let removed = false;
-                try {
-                  await backend.deleteFile(trashPath);
-                  removed = true;
-                } catch (e) {
-                  // ENOENT(이미 없음)만 정리로 간주 — 잠금 등 실패는 meta 를
-                  // 남겨 다음 자동 정리에서 재시도한다.
-                  removed = !(await backend.existFile(trashPath).catch(() => true));
-                }
-                if (removed) {
-                  delete meta[filename];
-                  metaChanged = true;
-                  removedPaths.push(trashPath);
-                }
+              try {
+                await imageService.invalidateCacheBatch(removedPaths);
+              } catch (e) {}
+              if (metaChanged) {
+                await persistService.write(trashMetaPath, JSON.stringify(meta));
               }
+            } catch (e) {
+              // No trash meta = no trash images to clean
             }
-            try {
-              await imageService.invalidateCacheBatch(removedPaths);
-            } catch (e) {}
-            if (metaChanged) {
-              await persistService.write(trashMetaPath, JSON.stringify(meta));
-            }
-          } catch (e) {
-            // No trash meta = no trash images to clean
-          }
+          });
         }
       }
     }

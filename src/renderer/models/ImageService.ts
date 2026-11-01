@@ -1205,11 +1205,32 @@ export const deleteImageFiles = async (
   scene?: GenericScene,
   opts?: { notify?: boolean },
 ): Promise<number> => {
+  const result = await deleteImageFilesDetailed(curSession, paths, scene, opts);
+  // scene 없는 경로(OS 휴지통)는 예전처럼 0 — 실패를 세지 않던 기존 계약 유지.
+  return scene ? result.failed.length : 0;
+};
+
+/** deleteImageFilesDetailed 결과 — 입력 경로(paths 원소) 그대로. */
+export interface DeleteImageFilesResult {
+  /** 실제로 휴지통(scene 있으면 앱 휴지통, 없으면 OS 휴지통)으로 옮겨진 경로 */
+  moved: string[];
+  /** 옮기지 못한 경로 */
+  failed: string[];
+}
+
+// deleteImageFiles 와 같은 동작(휴지통 이동·캐시 무효화·목록 재로딩·실패 토스트)에
+// 실제로 옮겨진 경로 목록을 함께 돌려준다(2026-11-01 U0-a T5 — 되돌리기 기록용).
+export const deleteImageFilesDetailed = async (
+  curSession: Session,
+  paths: string[],
+  scene?: GenericScene,
+  opts?: { notify?: boolean },
+): Promise<DeleteImageFilesResult> => {
   if (scene) {
-    let failed = 0;
+    let result: DeleteImageFilesResult = { moved: [], failed: [] };
     try {
       // 휴지통으로 이동
-      failed = await trashService.moveImagesToTrash(curSession, scene, paths);
+      result = await trashService.moveImagesToTrashDetailed(curSession, scene, paths);
       for (const path of paths) {
         try {
           await imageService.invalidateCache(path);
@@ -1222,6 +1243,7 @@ export const deleteImageFiles = async (
       // 이미지가 화면에 그대로 남는다.
       await imageService.refresh(curSession, scene);
     }
+    const failed = result.failed.length;
     if (failed > 0 && opts?.notify !== false) {
       try {
         getAppState().pushMessage(
@@ -1229,17 +1251,22 @@ export const deleteImageFiles = async (
         );
       } catch (e) {}
     }
-    return failed;
+    return result;
   } else {
     // scene이 없는 경우 기존 동작 유지 (OS 휴지통)
+    const moved: string[] = [];
+    const failed: string[] = [];
     for (const path of paths) {
       try {
         await backend.trashFile(path);
-      } catch (e) {}
+        moved.push(path);
+      } catch (e) {
+        failed.push(path);
+      }
       await imageService.invalidateCache(path);
     }
     await imageService.refreshBatch(curSession);
-    return 0;
+    return { moved, failed };
   }
 };
 

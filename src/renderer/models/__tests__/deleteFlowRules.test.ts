@@ -10,6 +10,7 @@ import {
   planFavOnlyImageDelete,
   deleteConfirmText,
   imageDeleteScopeLine,
+  imageRestoreResultText,
   checkInpaintSceneRename,
   failedNamesLine,
   overlappingSceneNames,
@@ -175,6 +176,15 @@ describe('일괄 결과 문구(X13)', () => {
   it('붙여넣기 결과는 한 줄', () => {
     expect(pasteResultText(4, 0)).toBe('4장의 이미지가 붙여넣어졌습니다.');
     expect(pasteResultText(3, 1)).toBe('이미지 붙여넣기: 성공 3 · 실패 1');
+  });
+  it('이미지 휴지통 복원 결과(U0-a T2) — 전부 성공·일부 실패·전부 실패', () => {
+    expect(imageRestoreResultText(3, 0)).toBe('3장의 이미지가 복원되었습니다.');
+    expect(imageRestoreResultText(2, 1)).toBe(
+      '이미지 복원: 성공 2 · 실패 1 (원래 위치에 같은 이름 파일이 있거나 파일을 옮기지 못했습니다)',
+    );
+    expect(imageRestoreResultText(0, 2)).toBe(
+      '이미지를 복원하지 못했습니다(2장). 원래 위치에 같은 이름 파일이 있거나 파일을 옮기지 못했습니다.',
+    );
   });
 });
 

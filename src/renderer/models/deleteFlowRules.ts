@@ -297,6 +297,21 @@ export function pasteResultText(copied: number, failed: number): string {
   return `이미지 붙여넣기: 성공 ${copied} · 실패 ${failed}`;
 }
 
+/** 이미지 휴지통 복원 실패 사유(같은 이름 파일 있음 / 파일 이동 실패) — 결과 문구 공용. */
+export const IMAGE_RESTORE_FAIL_REASON =
+  '원래 위치에 같은 이름 파일이 있거나 파일을 옮기지 못했습니다';
+
+/**
+ * 이미지 휴지통 복원 결과 한 줄(2026-11-01 U0-a T2) — `TrashService.restoreImages` 의
+ * `{ restored, failed }` 개수로 만든다. 전부 성공은 기존 문구와 같다.
+ */
+export function imageRestoreResultText(restored: number, failed: number): string {
+  if (failed === 0) return `${restored}장의 이미지가 복원되었습니다.`;
+  if (restored === 0)
+    return `이미지를 복원하지 못했습니다(${failed}장). ${IMAGE_RESTORE_FAIL_REASON}.`;
+  return `이미지 복원: 성공 ${restored} · 실패 ${failed} (${IMAGE_RESTORE_FAIL_REASON})`;
+}
+
 // ── 프로젝트·씬 삭제 결과 판정(X4) ──
 
 export type TrashDeleteOutcome =
@@ -308,8 +323,8 @@ export type TrashDeleteOutcome =
   | { kind: 'error'; message: string };
 
 export interface TrashDeleteDeps {
-  /** 휴지통 관문 삭제(sessionService.delete / trashService.moveSceneToTrash 등) */
-  remove(): Promise<void>;
+  /** 휴지통 관문 삭제(sessionService.delete / trashService.moveSceneToTrash 등) — 반환값은 쓰지 않는다 */
+  remove(): Promise<unknown>;
   /** 삭제 뒤에도 남아 있는가(sessionService.list() 에 이름이 있음 / session.hasScene) */
   stillExists(): boolean;
 }
@@ -335,6 +350,9 @@ export const DELETE_RESULT_TEXT = {
     '삭제하지 못했습니다(다른 창에서 열려 있을 수 있습니다).',
   sceneStillPresent:
     '씬을 삭제하지 못했습니다(다른 창에서 열려 있을 수 있습니다).',
+  /** restoreScene 이 다른 창 잠금으로 조용히 돌아옴(U0-a T1) */
+  sceneRestoreBlocked:
+    '씬을 복원하지 못했습니다(다른 창에서 열려 있을 수 있습니다).',
 } as const;
 
 /** 프로젝트 삭제 결과 안내 문구 — 실패면 failMessage 우선, 없으면 기본. */
