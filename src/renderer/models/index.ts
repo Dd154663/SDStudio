@@ -23,6 +23,7 @@ import { LoginService } from './LoginService';
 import { PromptService } from './PromptService';
 import { SessionService } from './SessionService';
 import { TaskQueueService } from './TaskQueueService';
+import { BoostPlanner } from './boostPlanner';
 import { taskHandlers } from './TaskHandlers';
 import { LocalAIService } from './LocalAIService';
 import { AppUpdateNoticeService } from './AppUpdateNoticeService';
@@ -118,6 +119,17 @@ export const promptService = new PromptService();
 export const taskQueueService = new TaskQueueService(taskHandlers);
 
 export const loginService = new LoginService();
+
+// 부스트 모드 참여 계정 결정(B2). 토큰은 LoginService → 판정기 → 큐 워커 메모리로만 흐른다(IPC·미러·로그 없음).
+const boostPlanner = new BoostPlanner({
+  getConfig: () => backend.getConfig(),
+  getAccountSnapshot: () => loginService.getBoostAccountSnapshot(),
+  getUsageForToken: (token) => backend.getOpusUsageStatusForToken(token),
+});
+taskQueueService.boostPlanner = boostPlanner;
+// 토큰 목록·활성 토큰이 바뀌면 마지막 참여 결과를 버린다(다음 예약·실행이 새로 조회).
+loginService.addEventListener('token-profiles-change', () => boostPlanner.invalidate());
+loginService.addEventListener('change', () => boostPlanner.invalidate());
 
 export const gameService = new GameService();
 

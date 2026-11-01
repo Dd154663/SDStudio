@@ -22,6 +22,7 @@ import type {
 import { WFWorkFlow, WorkFlowDef } from './workflows/WorkFlow';
 import type { FocusedInpaintSpec } from './focusedInpaint';
 import { normalizeComboMode } from './comboMode';
+import { normalizeImageAccounts } from './boostMode';
 import type { ComboMode } from './comboMode';
 
 export type PARR = string[];
@@ -269,6 +270,9 @@ export interface IAbstractScene {
   round?: Round;
   imageMap: string[];
   mains: string[];
+  // 부스트 다중 계정 실행에서 그 이미지를 만든 계정의 프로필 이름(파일명 → 이름, 2026-11-01 B2 D8). 앱 내부 표식 전용 —
+  // 이미지 메타·공유용 내보내기에는 넣지 않는다. 없으면 키 생략(구버전은 모르는 키라 무시 = 롤백 안전).
+  imageAccounts?: Record<string, string>;
 }
 
 export class AbstractScene implements IAbstractScene {
@@ -280,6 +284,8 @@ export class AbstractScene implements IAbstractScene {
   @observable.ref accessor round: Round | undefined = undefined;
   @observable.shallow accessor imageMap: string[] = [];
   @observable accessor mains: string[] = [];
+  // 부스트 내부 표식(D8, boostMode.recordImageAccount 로 통째 교체 — 손상 값은 normalizeImageAccounts 가 버림).
+  @observable.ref accessor imageAccounts: Record<string, string> | undefined = undefined;
 
   // 반환 타입에 null 포함: InpaintScene.fromJSON 이 역직렬화 실패 시 null 을
   // 반환하므로 서브클래스 정적 시그니처와의 호환을 위해 필요.
@@ -293,10 +299,12 @@ export class AbstractScene implements IAbstractScene {
     scene.mains = json.mains;
     scene.resolutionWidth = json.resolutionWidth;
     scene.resolutionHeight = json.resolutionHeight;
+    scene.imageAccounts = normalizeImageAccounts(json.imageAccounts);
     return scene;
   }
 
   toJSON(): IAbstractScene {
+    const accounts = this.imageAccounts;
     return {
       name: this.name,
       resolution: this.resolution,
@@ -306,6 +314,7 @@ export class AbstractScene implements IAbstractScene {
       mains: this.mains,
       resolutionHeight: this.resolutionHeight,
       resolutionWidth: this.resolutionWidth,
+      ...(accounts && Object.keys(accounts).length > 0 ? { imageAccounts: accounts } : {}),
     };
   }
 }
@@ -353,6 +362,8 @@ export class Scene extends AbstractScene implements IScene {
       : undefined;
     scene.sceneCharacterUC = json.sceneCharacterUC || '';
     scene.sceneUC = json.sceneUC || '';
+    // 부스트 내부 표식(D8) — Object.assign 으로 들어온 원본을 정리(손상 값·빈 맵은 없음으로)
+    scene.imageAccounts = normalizeImageAccounts(json.imageAccounts);
     // 씬 전용 시드: 0~2^32-1 정수만 인정, 그 외(문자열·음수·소수·없음)는 미설정으로(구 데이터·손상 JSON 자가치유)
     const seed = (json as any).sceneSeed;
     scene.sceneSeed =
@@ -416,6 +427,8 @@ export class InpaintScene extends AbstractScene implements IInpaintScene {
     );
     // 알 수 없는 값·손상값은 조합 모드 아님(단일 프롬프트로 동작)
     scene.comboMode = normalizeComboMode(json.comboMode);
+    // 부스트 내부 표식(D8)
+    scene.imageAccounts = normalizeImageAccounts(json.imageAccounts);
     return scene;
   }
 

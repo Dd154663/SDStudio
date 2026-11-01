@@ -290,6 +290,34 @@ export class LoginService extends EventTarget {
     );
   }
 
+  /**
+   * 부스트 모드(B2) 참여 후보 스냅샷 — 저장된 토큰 프로필(저장 순서) 중 현재 로그인 토큰(TOKEN.txt)과 **같은 토큰은
+   * 뺀다**(그 계정은 기본 워커가 맡는다 — 같은 계정 동시 2요청 = 409 방지). active = 현재 로그인 토큰과 같은 프로필
+   * (없으면 수동 로그인). 토큰은 반환값(메모리)으로만 흐른다 — 호출부는 로그·미러·IPC·이미지 메타·씬 데이터에
+   * 싣지 않는다(이름만). 로그인 토큰을 읽지 못하면 throw(중복 여부를 모르면 부스트를 하지 않는다).
+   */
+  async getBoostAccountSnapshot(): Promise<{
+    active?: LoginTokenProfile;
+    candidates: { id: string; name: string; token: string }[];
+  }> {
+    await this.ensureTokenProfilesLoaded();
+    const current = ((await backend.readLoginToken()) ?? '').trim();
+    const activeProfile = current
+      ? this.tokenProfiles.find((p) => p.token === current)
+      : undefined;
+    const seen = new Set<string>(current ? [current] : []);
+    const candidates: { id: string; name: string; token: string }[] = [];
+    for (const p of this.tokenProfiles) {
+      if (!p.token || seen.has(p.token)) continue;
+      seen.add(p.token);
+      candidates.push({ id: p.id, name: p.name, token: p.token });
+    }
+    return {
+      ...(activeProfile ? { active: { id: activeProfile.id, name: activeProfile.name } } : {}),
+      candidates,
+    };
+  }
+
   async checkTokenProfileUsages(): Promise<LoginTokenUsageCheck[]> {
     await this.ensureTokenProfilesLoaded();
     const results: LoginTokenUsageCheck[] = [];

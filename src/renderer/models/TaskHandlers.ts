@@ -88,9 +88,23 @@ import { advanceSeedCursor, seedForImageIndex } from './seedSchedule';
 import { nextOutputPngPath } from './outputFileName';
 import {
   createWorkerDeclinedError,
+  createWorkerDropError,
   isWorkerDeclinedError,
   WORKER_POOL_TEXT,
 } from './queueWorkerPool';
+import {
+  BOOST_TEXT,
+  BoostJobFacts,
+  boostCostClass,
+  boostUsageSummary,
+  BoostWorkerPolicy,
+  canBoostAccountGenerate,
+  imageAccountKey,
+  isBoostTargetJob,
+  needsBoostQuotaCheck,
+  recordImageAccount,
+  shouldSkipAutoRotation,
+} from './boostMode';
 import type {
   TaskHandler,
   TaskQueueRun,
@@ -144,10 +158,13 @@ export const FOCUSED_COMPOSE_FAILED_TEXT =
 // 생성 완료 처리 (W6 P3). 위임 태스크(호스트에서 실행 중)면 완료를 원 창에 브리지하고
 // 호스트 자기 세션은 건드리지 않는다(imageMap 미갱신 → dirty/저장 없음). 로컬 태스크
 // (단일 창 포함)는 종전과 동일하게 onComplete + imageMap 갱신을 수행한다.
+// accountName(부스트 B2, D8) = 다중 계정 실행에서 이 장을 만든 계정의 프로필 이름 — 앱 내부 씬 데이터(`imageAccounts`)
+// 에만 남긴다(이미지 메타·내보내기 파일에는 넣지 않음). 위임이면 원 창이 자기 씬에 남긴다. 토큰은 오지 않는다.
 function finishOrBridgeImage(
   task: Task,
   outputFilePath: string,
   replacedPath?: string,
+  accountName?: string,
 ) {
   if (task.params.delegation) {
     backend
@@ -156,9 +173,22 @@ function finishOrBridgeImage(
         status: 'ok',
         path: outputFilePath,
         replacedPath,
+        ...(accountName ? { accountName } : {}),
       })
       .catch(() => {});
     return;
+  }
+  if (accountName && task.params.scene) {
+    // onAddImage 가 찾는 씬 객체(세션 Map 의 것)에 남긴다 — 씬 저장(ResourceSync)이 함께 저장한다(새 쓰기 경로 없음).
+    const scene =
+      (task.params.scene.type === 'inpaint'
+        ? task.params.session.inpaints?.get(task.params.scene.name)
+        : task.params.session.scenes?.get(task.params.scene.name)) ?? task.params.scene;
+    scene.imageAccounts = recordImageAccount(
+      scene.imageAccounts,
+      imageAccountKey(outputFilePath),
+      accountName,
+    );
   }
   if (replacedPath && task.params.scene) {
     imageService.removeImageReference(
@@ -250,10 +280,46 @@ class GenerateImageTaskHandler implements TaskHandler {
     await handleNAIDelay(numTry, this.fast, delay, pendingCount, shouldStop);
   }
 
-  // 다른 계정 워커(부스트 B1)가 처리할 수 있는가 — 일반 큐 생성만(빠른 생성은 기본 계정). 인페인트·I2I 의
-  // 부스트 적용 여부(별도 토글, D2)는 B2 참여 판정에서 정한다.
-  supportsWorkerAccount(task: Task): boolean {
-    return !this.fast;
+  // 다른 계정 워커(부스트)가 처리할 수 있는가 — 일반 큐 생성만(빠른 생성은 기본 계정). policy(B2 설정 부스트)가 있으면
+  // 대상 판정(boostMode.isBoostTargetJob: 인페인트·I2I·미러는 변형 작업 토글, Anlas 작업은 'anlas' 범위만)까지.
+  // A 배수 대상 판정(예약 시점)도 이 함수다. policy 가 없으면(개발 플래그) B1 그대로.
+  supportsWorkerAccount(task: Task, policy?: BoostWorkerPolicy): boolean {
+    if (this.fast) return false;
+    if (!policy) return true;
+    return isBoostTargetJob(this.boostFacts(task, policy.fallbackModelVersion), policy);
+  }
+
+  // 예약 값으로 계산한 작업 사실(비용 갈래 판정용) — handleTask 의 요청 조립과 같은 해석(해상도·Focused 영역·스텝·
+  // 캐릭터 레퍼런스·모델). 실제 요청 직전에는 조립된 값으로 다시 판정한다.
+  boostFacts(task: Task, fallbackModelVersion?: unknown): BoostJobFacts | undefined {
+    const job = task.params.job as SDAbstractJob<PromptNode>;
+    const scene = task.params.scene;
+    if (!job || !scene) return undefined;
+    const version = (task.params.generationSnapshot?.modelVersion ??
+      (fallbackModelVersion as ModelVersion | undefined) ??
+      ModelVersion.V4_5) as ModelVersion;
+    const isV5 = isV5ModelVersion(version);
+    const isV4 = version === ModelVersion.V4 || version === ModelVersion.V4Curated;
+    const resol = job.overrideResolution ? job.overrideResolution : (scene.resolution as Resolution);
+    let size = lowerResolution(resol as any, scene.resolutionWidth, scene.resolutionHeight);
+    const focus = this.type === 'inpaint' ? activeFocusSpec(task) : undefined;
+    if (focus) {
+      const req = focusedRequestSize(focus, size.width || Infinity, size.height || Infinity);
+      if (req) size = { width: req.width, height: req.height };
+    }
+    const hasCharacterReference =
+      !isV4 &&
+      !isV5 &&
+      (job.characterReferences ?? []).some((ref: any) => ref?.enabled !== false && !!ref?.path);
+    return {
+      kind: this.type,
+      fast: this.fast,
+      isV5,
+      width: Number(size?.width),
+      height: Number(size?.height),
+      steps: Math.min(Number(job.steps), 50),
+      hasCharacterReference,
+    };
   }
 
   checkTask(task: Task): boolean {
@@ -588,7 +654,41 @@ class GenerateImageTaskHandler implements TaskHandler {
       arg.imageStrength = i2iJob.strength;
     }
     // 할당량 확인·자동 순회·저잔량 경고·Anlas 확인은 활성 계정(기본 워커) 경로에서만 종전대로.
-    // 다른 계정 워커의 계정별 할당량 확인·탈락은 B2 에서 이 자리에 붙인다(B1 은 개발 플래그 전용이라 건너뜀).
+    // 다른 계정 워커 + 설정 부스트(B2): 조립된 실제 요청으로 대상을 다시 판정하고(대상 아님 = 기본 계정에 넘김),
+    // 할당량을 쓰는 V5 요청이면 그 계정의 할당량을 다시 확인한다(토큰 키 `/user/data` 캐시) — 참여 조건(D1)을 잃었으면
+    // 그 워커만 탈락. Anlas 확인 창은 띄우지 않는다('anlas' 범위는 설정이 곧 동의, 그 밖은 탈락).
+    let boostQuotaRefresh = false;
+    if (!onDefaultAccount && ctx?.boost) {
+      const facts: BoostJobFacts = {
+        kind: this.type,
+        fast: this.fast,
+        isV5,
+        width: arg.resolution.width,
+        height: arg.resolution.height,
+        steps: Math.min(arg.steps, 50),
+        hasCharacterReference: finalReferences.length > 0,
+      };
+      if (!isBoostTargetJob(facts, ctx.boost)) {
+        throw createWorkerDeclinedError(WORKER_POOL_TEXT.declined);
+      }
+      const cost = boostCostClass(facts);
+      if (needsBoostQuotaCheck(ctx.boost.scope, cost)) {
+        let usage;
+        try {
+          usage = await backend.getOpusUsageStatusForToken(accountToken!);
+        } catch (e: any) {
+          throwIfAborted(ctx.signal);
+          // 조회 실패는 재시도 대상(네트워크 등) — 확인하지 못한 채 보내지 않는다.
+          throw new Error(`${BOOST_TEXT.quotaCheckFailed(worker!.name)}: ${e?.message ?? e}`);
+        }
+        if (!canBoostAccountGenerate(ctx.boost.scope, usage, cost)) {
+          throw createWorkerDropError(
+            BOOST_TEXT.quotaDropped(worker!.name, ctx.boost.scope, boostUsageSummary(usage)),
+          );
+        }
+        boostQuotaRefresh = true;
+      }
+    }
     if (
       onDefaultAccount &&
       isOpusFreeEligible({
@@ -613,7 +713,12 @@ class GenerateImageTaskHandler implements TaskHandler {
       );
       // 「할당량 경고 하지 않음」 — 저잔량 경고·추가 충전 전환 안내·Anlas 확인을 생략(순회는 그대로).
       const quiet = isOpusUsageQuiet(runtimeConfig);
-      if (runtimeConfig.multiTokenAutoRotate === true && usage) {
+      // 부스트가 켜져 있으면 순회(TOKEN.txt 교체)를 건너뛴다(D12 상호 배타 — 다른 계정 워커와 같은 계정 동시 요청 방지).
+      if (
+        runtimeConfig.multiTokenAutoRotate === true &&
+        usage &&
+        !shouldSkipAutoRotation(runtimeConfig)
+      ) {
         // 순회 규칙(opusUsageRules, 2026-10-25): 임계 판정·여유 비교는 무료분 기준, 임계 시 무료분 계정 우선 →
         // 없으면(현재 계정도 추가 충전분까지 부족할 때만) 추가 충전분 계정.
         const urgent = needsUrgentRotation(usage, rotateWarning);
@@ -709,8 +814,12 @@ class GenerateImageTaskHandler implements TaskHandler {
     if (focused) {
       await composeFocusedOutput(focused, (job as SDInpaintJob).image, outputFilePath, ctx);
     }
-    // 생성 직후 잔량은 캐시를 건너뛰고 새로 읽는다(다음 생성 직전 확인은 이 결과를 재사용). 활성 계정만.
+    // 생성 직후 잔량은 캐시를 건너뛰고 새로 읽는다(다음 생성 직전 확인은 이 결과를 재사용). 활성 계정은 서비스,
+    // 다른 계정 워커(B2)는 그 토큰의 `/user/data` 캐시를 force 로 갱신한다(토큰은 backend 인자로만).
     if (isV5 && onDefaultAccount) opusUsageService.refresh(true, { fresh: true }).catch(() => {});
+    if (boostQuotaRefresh) {
+      backend.getOpusUsageStatusForToken(accountToken!, { force: true }).catch(() => {});
+    }
 
     // 큐 밖 직접 호출(장 번호 없음)만 시드 커서를 한 장 소비 — 예전 `job.seed = stepSeed(job.seed)` 와 같은
     // 자리·같은 조건(연쇄하는 시드만). 큐 실행은 장 번호를 큐가 관리한다(B1 — 성공 = 그 번호 소비).
@@ -754,7 +863,7 @@ class GenerateImageTaskHandler implements TaskHandler {
     }
 
     await discardIfStale(ctx, finalPath);
-    finishOrBridgeImage(task, finalPath, replacedPath);
+    finishOrBridgeImage(task, finalPath, replacedPath, ctx?.worker?.markName);
 
     return true;
   }

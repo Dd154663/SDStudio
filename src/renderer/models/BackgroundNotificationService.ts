@@ -1,4 +1,5 @@
 import { taskQueueService, backend, isMobile } from '.';
+import { BOOST_TEXT } from './boostMode';
 
 // 모바일 백그라운드(포그라운드 서비스) 알림에 생성 진행 상태를 표시한다.
 // - TaskQueueService 의 start/progress/stop/complete 이벤트를 구독해 알림 내용을 갱신.
@@ -63,7 +64,10 @@ export class BackgroundNotificationService {
       let text: string;
       if (taskQueueService.isRunning() && remain > 0) {
         const ms = taskQueueService.estimateTime('mean');
-        text = `이미지 생성 중 · ${remain}개 남음 (예상 ${this.formatTime(ms)})`;
+        // 부스트(다중 계정 동시 생성, B2)면 「부스트 ×W」를 덧붙인다(남은 시간은 이미 ÷ W).
+        const workers = taskQueueService.boostWorkerCount();
+        const boost = workers > 1 ? ` · ${BOOST_TEXT.progressTag(workers)}` : '';
+        text = `이미지 생성 중${boost} · ${remain}개 남음 (예상 ${this.formatTime(ms)})`;
       } else if (this.stopNotice) {
         text = this.stopNotice;
       } else if (remain > 0) {

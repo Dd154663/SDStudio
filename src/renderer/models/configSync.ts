@@ -123,6 +123,11 @@ export const CONFIG_SYNC_EXCLUDED = [
   'multiTokenRotateBalancePercent',
   // 「할당량 경고 하지 않음」 — Anlas 를 확인 없이 쓰게 하는 과금 관련 동의라 기기마다 직접 켠다.
   'opusUsageQuiet',
+  // 부스트 모드(다계정 동시 생성) — 제재·과금 위험 동의라 기기마다 직접 켠다(B2).
+  'boostMode',
+  'boostAccountScope',
+  'boostVariantTasks',
+  'boostWarningDismissed',
   'syncFolder',
 ] as const;
 const EXCLUDED_TYPED: readonly (keyof Config)[] = CONFIG_SYNC_EXCLUDED;

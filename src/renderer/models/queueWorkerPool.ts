@@ -185,3 +185,20 @@ export function createWorkerDeclinedError(reason: string): Error {
 export function isWorkerDeclinedError(e: unknown): boolean {
   return !!e && typeof e === 'object' && (e as any)[WORKER_DECLINED_MARK] === true;
 }
+
+/**
+ * 핸들러가 「이 워커(계정)는 이 실행에서 빠져야 함」을 알리는 오류 표식(부스트 B2 — 생성 직전 재확인에서 참여 조건을
+ * 잃음). 큐는 실패로 세지 않고 그 워커만 탈락시킨다(B: 쥔 장 반납 / A: 그 계정 몫 취소). 기본 워커에는 오지 않는다.
+ */
+export const WORKER_DROP_MARK = 'workerDrop';
+
+export function createWorkerDropError(reason: string): Error {
+  const err: any = new Error(reason);
+  err[WORKER_DROP_MARK] = true;
+  err.retryable = false;
+  return err;
+}
+
+export function isWorkerDropError(e: unknown): boolean {
+  return !!e && typeof e === 'object' && (e as any)[WORKER_DROP_MARK] === true;
+}

@@ -2270,6 +2270,7 @@ export class SessionService extends ResourceSyncService<Session> {
       json.mains = [];
       json.game = undefined;
       json.round = undefined;
+      delete json.imageAccounts; // 부스트 내부 표식(D8)은 이미지와 함께 버린다
       out[json.name] = json;
     }
     return out;
@@ -2361,6 +2362,8 @@ export class SessionService extends ResourceSyncService<Session> {
       scene.round = undefined;
       scene.imageMap = [];
       scene.mains = [];
+      // 부스트 내부 표식(D8, 계정 이름)은 공유용 내보내기에 넣지 않는다.
+      delete scene.imageAccounts;
     }
     sess.inpaints = {};
 

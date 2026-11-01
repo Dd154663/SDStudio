@@ -59,6 +59,18 @@ export interface Config {
    *  확인 창을 생략하고 조용히 Anlas 를 쓴다. 누락/false = 종전 안내. 다중 토큰 순회와는 무관.
    *  구버전은 모르는 선택 필드라 무시한다(롤백 안전). 판정은 renderer/models/opusUsageRules.ts. */
   opusUsageQuiet?: boolean;
+  /** 부스트 모드(다계정 동시 생성, 2026-11-01 B2). 'replicate' = A(같은 예약을 참여 계정 수만큼 배수),
+   *  'split' = B(예약을 계정들이 나눠 처리), 'off'·누락·알 수 없는 값 = 꺼짐. 켜져 있으면 다중 토큰 자동 순회는
+   *  실행 경로에서 건너뛴다(상호 배타). 구버전은 모르는 선택 필드라 무시한다(= 꺼짐, 롤백 안전).
+   *  판정은 renderer/models/boostMode.ts 단일 출처. */
+  boostMode?: 'off' | 'replicate' | 'split';
+  /** 부스트 참여 계정 범위(3택1): 'free' = 무료 할당만(기본) · 'purchased' = 추가 충전 할당까지 ·
+   *  'anlas' = Anlas 소비까지(이 설정 자체가 Anlas 소비 동의). 누락·알 수 없는 값 = 'free'. */
+  boostAccountScope?: 'free' | 'purchased' | 'anlas';
+  /** 인페인트·I2I·미러 등 변형 작업까지 부스트 적용(기본 false = 일반 이미지 생성만). */
+  boostVariantTasks?: boolean;
+  /** 부스트 첫 활성화 경고 창의 「다시 보지 않음」(기기별 확인 표식 — 화면은 B3). */
+  boostWarningDismissed?: boolean;
   modelVersion?: ModelVersion;
   /** NAI Undesired Content Preset — 생성 시 네거티브 앞에 병합되는 기본 프리셋.
    *  모델별 제공 항목이 다르며(naiQualityPresets 단일 출처) 기본 'none' =

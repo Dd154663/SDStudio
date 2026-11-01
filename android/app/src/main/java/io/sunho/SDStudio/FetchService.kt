@@ -23,11 +23,22 @@ class FetchService : Plugin() {
     private const val DEFAULT_TIMEOUT_MS = 120_000L
     // JS 상한(300초)보다 넉넉한 안전 상한 — 잘못된 값이 무한 대기가 되지 않게.
     private const val MAX_TIMEOUT_MS = 600_000L
+    // 부스트 모드(다계정 동시 생성, 2026-11-01 B2): OkHttp 기본 동시 요청은 호스트당 5개라 참여 계정이 많으면
+    // 요청이 네이티브 대기열에 선다(그동안 큐 바깥 타임아웃이 흐름). 계정 수 상한은 두지 않으므로(D10) 넉넉히 올린다.
+    // 계정당 진행 중 요청은 JS 워커 풀이 1개로 보장한다 — 이 값은 동시 연결 수 상한일 뿐이다.
+    private const val MAX_REQUESTS_PER_HOST = 16
+    private const val MAX_REQUESTS = 64
   }
 
   // 공용 클라이언트(커넥션 풀 공유). 호출마다 newBuilder() 로 타임아웃만 바꿔 파생한다.
   private val client = OkHttpClient.
     Builder()
+    .dispatcher(
+      Dispatcher().apply {
+        maxRequestsPerHost = MAX_REQUESTS_PER_HOST
+        maxRequests = MAX_REQUESTS
+      },
+    )
     .connectTimeout(CONNECT_TIMEOUT_SEC, TimeUnit.SECONDS)
     .readTimeout(DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
     .writeTimeout(DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS)

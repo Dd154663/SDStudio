@@ -95,6 +95,7 @@ import { backStackService } from '../models/BackStackService';
 import { observer } from 'mobx-react-lite';
 import { DownloadDialog } from './DownloadDialog';
 import { Session, GenericScene as GenericSceneType } from '../models/types';
+import { BOOST_TEXT } from '../models/boostMode';
 
 // ===== TrashImageView 컴포넌트 =====
 
@@ -1382,6 +1383,13 @@ const ResultDetailView = observer(
               <span className="gray-label">파일이름: </span>
               <span>{filename}</span>
             </div>
+            {/* 부스트 다중 계정 실행으로 만든 이미지만 — 만든 계정(프로필 이름, D8 앱 내부 표식). 메타·내보내기에는 없음. */}
+            {scene.imageAccounts?.[filename] && (
+              <div className="max-w-full mb-2 text-sub" data-image-account>
+                <span className="gray-label">{BOOST_TEXT.accountLabel}: </span>
+                <span>{scene.imageAccounts[filename]}</span>
+              </div>
+            )}
             <div className="w-full mb-2">
               <div className="gray-label">프롬프트 </div>
               <PromptHighlighter

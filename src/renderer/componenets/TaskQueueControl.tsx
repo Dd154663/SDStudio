@@ -12,6 +12,7 @@ import { observer } from 'mobx-react-lite';
 import Tooltip from './Tooltip';
 import { addScenesToQueue } from '../models/sceneQueueActions';
 import { REQUEST_DELAY_TEXT } from '../models/requestTiming';
+import { BOOST_TEXT } from '../models/boostMode';
 
 interface ProgressBarProps {
   duration: number;
@@ -114,6 +115,18 @@ export const TaskProgressBar = ({ fast, fit }: TaskProgressBarProps) => {
     const remain = Math.max(0, stats.total - stats.done);
     const ms = taskQueueService.estimateTime('mean');
     const timeEstimate = formatTime(ms);
+    // 부스트(다중 계정 동시 생성, B2): 「부스트 ×W」 표식을 앞에 붙인다(남은 시간은 서비스가 이미 ÷ W). 계정 몇 개가
+    // 긴 휴식 중이면 그 수를 「휴식 중 n/W」로 대신 보인다(한 계정의 휴식을 큐 전체 회색 막대로 그리지 않는다).
+    const workers = taskQueueService.isRunning() ? taskQueueService.boostWorkerCount() : 1;
+    if (workers > 1) {
+      const resting = taskQueueService.boostRestingCount();
+      const tag =
+        resting > 0
+          ? BOOST_TEXT.restTag(resting, workers, fit)
+          : BOOST_TEXT.progressTag(workers, fit);
+      if (fit) return `${tag}·${remain}개·${timeEstimate}`;
+      return `${tag} · ${remain}개 (${timeEstimate})`;
+    }
     // 좁은 막대(fit)는 짧은 문구 — "12개 · 3분"
     if (fit) return `${remain}개·${timeEstimate}`;
     return `${remain}개 남음 (예상 ${timeEstimate})`;

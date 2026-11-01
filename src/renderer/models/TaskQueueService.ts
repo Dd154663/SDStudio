@@ -76,6 +76,7 @@ import {
   DEFAULT_WORKER_ID,
   isTaskSettled,
   isWorkerDeclinedError,
+  isWorkerDropError,
   normalizeWorkerAccounts,
   QueueWorkerAccount,
   RATE_LIMIT_IP_WINDOW_MS,
@@ -88,6 +89,24 @@ import {
   unclaimedImageCount,
   WORKER_POOL_TEXT,
 } from './queueWorkerPool';
+import {
+  BOOST_TEXT,
+  BoostWorkerPolicy,
+  cancelWorkerShares,
+  imageAccountKey,
+  isShareTask,
+  pickShare,
+  recordImageAccount,
+  replicateFactor,
+  resolveBoostSettings,
+  settleSharesForSurvivor,
+  unuseShare,
+  useShare,
+} from './boostMode';
+import {
+  BoostPlannerLike,
+  RESERVATION_PARTICIPANT_MAX_AGE_MS,
+} from './boostPlanner';
 
 export const FAST_TASK_TIME_ESTIMATOR_SAMPLE_COUNT = 16;
 export const TASK_TIME_ESTIMATOR_SAMPLE_COUNT = 128;
@@ -138,10 +157,14 @@ export interface DelegatedTaskPayload {
 
 // 호스트 → 원 창 완료/실패 브리지 페이로드.
 export interface DelegateCompletePayload extends DelegationInfo {
-  status: 'ok' | 'fail' | 'done';
+  // 'skip'(부스트 B2) = 다중 계정 실행에서 장 하나만 건너뜀 — 원 창은 안내 토스트만 띄우고 onComplete 대행 콜백은
+  // 유지한다('fail' 은 콜백을 지워 남은 장 결과가 끊긴다). 같은 앱의 창끼리만 오가므로 구버전 수신 창은 없다.
+  status: 'ok' | 'fail' | 'done' | 'skip';
   path?: string;
   replacedPath?: string;
   message?: string;
+  // 'ok' 에서 그 장을 만든 계정의 프로필 이름(부스트 다중 계정 실행만, D8 내부 표식) — 토큰은 싣지 않는다.
+  accountName?: string;
 }
 
 // 호스트 → 보조 창 큐 상태 미러(단일 출처라 합산 불필요).
@@ -162,6 +185,8 @@ export interface QueueMirror {
   // 동시에 생성 중인 워커(계정) 수(부스트 B1). 구 호스트 미러에는 없다 — 없으면 1. etaMean·topTaskTimeMean 은
   // 호스트가 이미 이 수로 나눈 값이다(보조 창이 다시 나누지 않는다).
   boostWorkers?: number;
+  // 다중 계정 실행에서 지금 긴 휴식 중인 계정 수(부스트 B2). 없으면 0.
+  boostResting?: number;
 }
 
 export interface Task {
@@ -191,6 +216,11 @@ export interface Task {
   returnedImageIndices?: number[];
   // 이 작업을 「기본 계정 필요」로 넘긴 워커 id(그 워커는 다시 꺼내지 않는다).
   declinedWorkerIds?: string[];
+  // ─── A(replicate) 배수 예약의 몫(부스트 B2, 메모리 전용 — 규칙은 boostMode) ───
+  // 예약 시점 참여 계정 수 M(2 이상일 때만, total = 예약 장 수 × M). 다중 워커 실행은 몫 단위로 나눠 맡는다.
+  boostShares?: number;
+  boostShareUsed?: number[];
+  boostShareCancelled?: boolean[];
 }
 
 // 고정 시드 연쇄(xorshift32)는 순수 모듈 seedSchedule 이 단일 출처(부스트 B0) — 구 import 호환 재수출.
@@ -275,6 +305,9 @@ export interface TaskAttemptContext {
   imageIndex?: number;
   /** 이 시도를 맡은 워커(부스트 B1). 없거나 기본 워커면 종전대로 활성 계정(TOKEN.txt). */
   worker?: TaskAttemptWorker;
+  /** 부스트 참여 범위·대상 정책(B2). 설정으로 켠 부스트 실행에서만 — 개발 플래그·단일 워커는 없음. 다른 계정 워커는
+   *  이 정책으로 생성 직전 대상·할당량을 다시 확인한다. */
+  boost?: BoostWorkerPolicy;
 }
 
 // 시도를 맡은 워커 정보. token 은 메모리로만 흐른다 — 로그·미러·IPC·이미지 메타에 싣지 않는다.
@@ -284,6 +317,8 @@ export interface TaskAttemptWorker {
   isDefault: boolean;
   /** 기본 워커가 아니면 이 계정의 토큰(backend.generateImage(arg, { token })). */
   token?: string;
+  /** 이 장을 만든 계정으로 남길 이름(D8 내부 표식 — 다중 계정 실행에서만, 기본 워커 포함). 없으면 표식 없음. */
+  markName?: string;
 }
 
 export interface TaskHandler {
@@ -307,8 +342,9 @@ export interface TaskHandler {
   /** 실패를 사용자에게 알릴 별도 문구(없으면 오류 메시지 그대로). 문구가 있으면 큐가 로그·진행 바·
    *  오류 토스트에 그 문구를 쓴다 — 예: 업스케일 타임아웃(재시도하지 않는 이유 안내, T4). */
   failureNotice?(task: Task, error: unknown): string | undefined;
-  /** 기본 워커가 아닌 워커(다른 계정 토큰)가 이 작업을 처리할 수 있는가(부스트 B1). 없으면 기본 워커만. */
-  supportsWorkerAccount?(task: Task): boolean;
+  /** 기본 워커가 아닌 워커(다른 계정 토큰)가 이 작업을 처리할 수 있는가(부스트 B1). 없으면 기본 워커만.
+   *  policy(B2) 가 있으면 부스트 대상 판정(D1 범위·D2 변형 작업 토글)까지 — A 배수 대상 판정도 같은 함수. */
+  supportsWorkerAccount?(task: Task, policy?: BoostWorkerPolicy): boolean;
   getInfo(task: Task): TaskInfo;
   calculateCost(task: Task): CostItem[];
 }
@@ -382,6 +418,8 @@ interface QueueClaim {
   released: boolean;
   /** 번호를 이미 처리했는가(소비 = 그 시드를 썼다 / 반납 = 다른 워커가 이어받음). */
   indexSettled: boolean;
+  /** A 배수 예약에서 이 장이 속한 몫 번호(다중 워커만, B2). */
+  share?: number;
 }
 
 interface QueueWorker {
@@ -414,6 +452,16 @@ interface QueuePool {
   rateLimitHits: RateLimitHit[];
   /** 전 워커 일시 대기 끝 시각(epoch ms, 0 = 없음) — 여러 계정의 429(IP 제한 추정). */
   pauseUntil: number;
+  /** 설정으로 켠 부스트 실행의 정책(B2). 개발 플래그·단일 워커는 없음. */
+  boost?: BoostWorkerPolicy;
+  /** A 몫 소유자(작업 → 몫 번호별 워커 id). 실행마다 새로 정한다. */
+  shareOwners: Map<Task, (string | undefined)[]>;
+  /** A 에서 1계정만 남아 「부스트 중지」를 적용했는가(D4). */
+  boostEnded: boolean;
+  /** 「부스트 중지」 뒤 남은 계정 몫으로 정리한 작업. */
+  endedTasks: Set<Task>;
+  /** 지금 긴 휴식 중인 워커 id(다중 워커 표시용). */
+  resting: Set<string>;
 }
 
 export class TaskQueueService extends EventTarget {
@@ -455,6 +503,10 @@ export class TaskQueueService extends EventTarget {
   private workerLongBreak = new Map<string, number>();
   // 할 일이 없어 기다리는 워커들 — 장 반납·작업 추가·정지 때 깨운다.
   private poolWakers: Array<() => void> = [];
+  // 부스트 참여 계정 결정(B2) — index.ts 가 BoostPlanner 를 넣는다. 없으면(테스트·구 경로) 부스트 없음 = 종전.
+  boostPlanner?: BoostPlannerLike;
+  // 「함께 생성할 다른 계정이 없음」 안내는 앱 세션당 1번만.
+  private boostNoParticipantNoticeShown = false;
   private logsLoaded = false;
   private logsSaveTimer: any = null;
 
@@ -645,7 +697,42 @@ export class TaskQueueService extends EventTarget {
       this.delegateSubmit(capturedParams, n);
       return;
     }
-    this.addTaskLocal(capturedParams, n);
+    // A(replicate) 배수는 호스트에서만 정한다(보조 창 위임도 receiveDelegatedTask 가 같은 판정, D3).
+    // 부스트 판정기가 없으면 await 없이 종전 경로 그대로.
+    const shares = this.boostPlanner ? await this.boostSharesFor(capturedParams, n) : 1;
+    this.addTaskLocal(capturedParams, n, shares);
+  }
+
+  /**
+   * A(replicate) 배수(D3) — 예약 시점 참여 가능 계정 수(기본 계정 포함). A 가 아니거나 대상 작업이 아니거나 다른
+   * 참여 계정이 없으면 1. 참여 수는 마지막 조회 결과(RESERVATION_PARTICIPANT_MAX_AGE_MS 안)를 재사용하고 없으면 이때
+   * 한 번 조회한다(일괄 예약은 첫 작업만 기다림). 조회 실패는 배수 없음(1) — 예약 자체는 막지 않는다.
+   */
+  private async boostSharesFor(params: TaskParam, numExec: number): Promise<number> {
+    const planner = this.boostPlanner;
+    if (!planner) return 1;
+    try {
+      const settings = await planner.getSettings();
+      if (settings.mode !== 'replicate') return 1;
+      const probe: Task = { id: undefined, cls: -1, params, done: 0, total: numExec };
+      try {
+        probe.cls = this.getTaskCls(probe);
+      } catch {
+        return 1;
+      }
+      const policy: BoostWorkerPolicy = {
+        scope: settings.scope,
+        variantTasks: settings.variantTasks,
+        fallbackModelVersion: settings.modelVersion,
+      };
+      const target = this.handlers[probe.cls]?.supportsWorkerAccount?.(probe, policy) === true;
+      if (!target) return 1;
+      const plan = await planner.getParticipants(settings.scope, RESERVATION_PARTICIPANT_MAX_AGE_MS);
+      return replicateFactor(settings, 1 + plan.participants.length, true);
+    } catch (e) {
+      console.error('부스트 배수 판정 실패(배수 없이 예약):', e);
+      return 1;
+    }
   }
 
   // 한 번의 사용자 예약 동작에서 공유할 생성 설정 스냅샷을 만든다.
@@ -656,7 +743,9 @@ export class TaskQueueService extends EventTarget {
 
   // 로컬 큐에 실제로 태스크를 넣는다(기존 addTask 본체). 호스트의 위임 수신 경로도
   // 이 메서드를 직접 호출한다(재위임 방지).
-  addTaskLocal(params: TaskParam, numExec: number) {
+  // boostShares(B2) = A 배수 M — 2 이상이면 total = numExec × M 이고 다중 워커 실행이 몫 단위로 나눠 맡는다.
+  // 생략·1 이하면 종전(예약 장 수 그대로).
+  addTaskLocal(params: TaskParam, numExec: number, boostShares = 1) {
     // 마지막 방어선: NaN/음수/비유한 값이 큐에 들어오면 통계가 NaN 으로 영구
     // 오염되고(NaN-x=NaN) 실행 루프가 완료 판정(done >= total)을 영원히 통과하지
     // 못한다. 입력 UI 검증과 별개로 여기서 반드시 정규화한다.
@@ -665,12 +754,15 @@ export class TaskQueueService extends EventTarget {
       appState.pushMessage('예약 개수가 올바르지 않습니다.');
       return;
     }
+    const m = Math.floor(Number(boostShares));
+    const shares = Number.isFinite(m) && m >= 2 ? m : 1;
     const task: Task = {
       id: v4(),
       cls: -1,
       params: params,
       done: 0,
-      total: n,
+      total: n * shares,
+      ...(shares >= 2 ? { boostShares: shares } : {}),
     };
     task.cls = this.getTaskCls(task);
     this.addTaskInternal(task);
@@ -898,12 +990,24 @@ export class TaskQueueService extends EventTarget {
     return this.activeWorkerCount();
   }
 
-  private activeWorkerCount(): number {
-    // 현재 실행의 풀, 없으면(실행 루프를 직접 부른 경우) 정지되지 않은 가장 최근 풀.
+  // 다중 계정 실행에서 지금 긴 휴식 중인 계정 수(B2 진행 표시 「휴식 중 n/W」). 보조 창은 미러 기준.
+  boostRestingCount(): number {
+    if (!this.isGenerationHost) return Math.max(0, this.mirror?.boostResting ?? 0);
+    const pool = this.currentPool();
+    return pool ? pool.resting.size : 0;
+  }
+
+  private currentPool(): QueuePool | undefined {
     let pool = this.currentRun ? this.pools.get(this.currentRun) : undefined;
     if (!pool) {
       for (const p of this.pools.values()) if (!p.run.stopped) pool = p;
     }
+    return pool;
+  }
+
+  private activeWorkerCount(): number {
+    // 현재 실행의 풀, 없으면(실행 루프를 직접 부른 경우) 정지되지 않은 가장 최근 풀.
+    const pool = this.currentPool();
     if (!pool) return 1;
     const live = pool.workers.filter((w) => !w.dropped && !w.exited).length;
     return Math.max(1, live);
@@ -1137,7 +1241,7 @@ export class TaskQueueService extends EventTarget {
     cur: TaskQueueRun,
     requestTimeoutMs: number,
     // 워커 풀(B1)이 넘기는 장 번호·워커. 생략(구 호출부·테스트)하면 문맥에 넣지 않는다.
-    assignment?: { imageIndex?: number; worker?: TaskAttemptWorker },
+    assignment?: { imageIndex?: number; worker?: TaskAttemptWorker; boost?: BoostWorkerPolicy },
   ): Promise<boolean> {
     const controller = new AbortController();
     const outerMs = queueAttemptTimeoutMs(requestTimeoutMs);
@@ -1171,6 +1275,7 @@ export class TaskQueueService extends EventTarget {
         restartTimeout: arm,
         ...(assignment?.imageIndex !== undefined ? { imageIndex: assignment.imageIndex } : {}),
         ...(assignment?.worker ? { worker: assignment.worker } : {}),
+        ...(assignment?.boost ? { boost: assignment.boost } : {}),
         pauseTimeoutWhile: async <T,>(fn: () => Promise<T>): Promise<T> => {
           paused++;
           clear();
@@ -1240,10 +1345,59 @@ export class TaskQueueService extends EventTarget {
     return this.devWorkerAccounts.length;
   }
 
-  private createPool(cur: TaskQueueRun, delay: RequestDelaySettings): QueuePool {
+  /**
+   * 이 실행의 추가 워커(다른 계정)를 정한다. 개발 플래그(B1)가 있으면 그것, 아니면 설정으로 켠 부스트(B2) —
+   * 참여 판정기(boostPlanner)가 저장 순서대로 한 번씩 조회해 범위(D1)에 맞는 계정만 고른다(현재 로그인 계정과 같은
+   * 토큰은 이미 빠짐 — 기본 워커가 맡는다). 부스트가 꺼졌거나 참여 계정이 없으면 추가 워커 0 = 종전 단일 경로.
+   */
+  private async resolvePoolAccounts(config: unknown): Promise<{
+    extra: QueueWorkerAccount[];
+    policy?: BoostWorkerPolicy;
+    defaultName: string;
+  }> {
+    const defaultName = WORKER_POOL_TEXT.defaultWorkerName;
+    if (this.devWorkerAccounts.length > 0) return { extra: this.devWorkerAccounts, defaultName };
+    const settings = resolveBoostSettings(config);
+    if (settings.mode === 'off' || !this.boostPlanner) return { extra: [], defaultName };
+    let plan: { activeName?: string; participants: { id: string; name: string; token: string }[] };
+    try {
+      plan = await this.boostPlanner.getParticipants(settings.scope, 0);
+    } catch (e) {
+      console.error('부스트 참여 계정 조회 실패(현재 계정으로만 생성):', e);
+      plan = { participants: [] };
+    }
+    const extra = normalizeWorkerAccounts(
+      plan.participants.map((p) => ({ id: p.id, profileId: p.id, name: p.name, token: p.token })),
+    );
+    if (extra.length === 0) {
+      this.addLog('info', '', BOOST_TEXT.noParticipants);
+      if (!this.boostNoParticipantNoticeShown) {
+        this.boostNoParticipantNoticeShown = true;
+        appState.pushMessage(BOOST_TEXT.noParticipants, 'info');
+      }
+      return { extra: [], defaultName };
+    }
+    return {
+      extra,
+      policy: {
+        scope: settings.scope,
+        variantTasks: settings.variantTasks,
+        fallbackModelVersion: (config as any)?.modelVersion,
+      },
+      defaultName: plan.activeName?.trim() || defaultName,
+    };
+  }
+
+  private createPool(
+    cur: TaskQueueRun,
+    delay: RequestDelaySettings,
+    extra: QueueWorkerAccount[] = [],
+    policy?: BoostWorkerPolicy,
+    defaultName: string = WORKER_POOL_TEXT.defaultWorkerName,
+  ): QueuePool {
     const accounts: QueueWorkerAccount[] = [
-      { id: DEFAULT_WORKER_ID, name: WORKER_POOL_TEXT.defaultWorkerName },
-      ...this.devWorkerAccounts,
+      { id: DEFAULT_WORKER_ID, name: defaultName },
+      ...extra,
     ];
     const count = accounts.length;
     const workers = accounts.map((a, order): QueueWorker => {
@@ -1283,6 +1437,11 @@ export class TaskQueueService extends EventTarget {
       delay,
       rateLimitHits: [],
       pauseUntil: 0,
+      ...(policy ? { boost: policy } : {}),
+      shareOwners: new Map(),
+      boostEnded: false,
+      endedTasks: new Set(),
+      resting: new Set(),
     };
   }
 
@@ -1294,7 +1453,9 @@ export class TaskQueueService extends EventTarget {
     // 지연 설정은 실행 시작 때 1회 읽는다(실행 중 변경은 다음 실행부터 — 종전 동작 유지).
     // 옛 키 delayTime 은 새 키가 없을 때 환산해 읽는다(requestTiming).
     const delay = resolveRequestDelaySettings(config);
-    const pool = this.createPool(cur, delay);
+    // 추가 워커(다른 계정)는 부스트 설정·개발 플래그가 있을 때만 — 없으면 조회도 없이 종전 단일 경로.
+    const { extra, policy, defaultName } = await this.resolvePoolAccounts(config);
+    const pool = this.createPool(cur, delay, extra, policy, defaultName);
     this.pools.set(cur, pool);
     if (pool.multi) {
       // 로그에는 계정 이름만(토큰 없음).
@@ -1337,7 +1498,7 @@ export class TaskQueueService extends EventTarget {
           return;
         }
         if (w.dropped) return;
-        const claim = this.claimNext(w);
+        const claim = this.claimNext(pool, w);
         if (!claim) {
           if (this.poolHasOtherBusyWorker(pool, w)) {
             // 쉬는 동안엔 다른 워커를 깨우지 않는다 — 쉬는 워커끼리 서로 깨우면 마이크로태스크 무한 반복이 된다.
@@ -1366,7 +1527,7 @@ export class TaskQueueService extends EventTarget {
 
   // 큐 순서대로 보며 끝난 작업은 그 자리에서 치우고(종전: 머리에서 치움 — 단일 워커는 끝난 작업이 늘 머리),
   // 이 워커가 꺼낼 수 있는 첫 작업의 다음 장을 꺼낸다. 장 번호는 이때 확정한다(시드 연쇄 위치).
-  private claimNext(w: QueueWorker): QueueClaim | undefined {
+  private claimNext(pool: QueuePool, w: QueueWorker): QueueClaim | undefined {
     const tasks: Task[] = [];
     for (const t of this.queue) if (t) tasks.push(t);
     for (const task of tasks) {
@@ -1383,13 +1544,29 @@ export class TaskQueueService extends EventTarget {
         this.removeFromQueue(task);
         continue;
       }
-      if (!this.canWorkerTake(w, task)) continue;
+      if (!this.canWorkerTake(pool, w, task)) continue;
+      // A 배수 예약(다중 워커만, D4): 자기 몫에서만 꺼낸다(없거나 다 썼으면 아직 아무도 맡지 않은 몫을 맡음).
+      let share: number | undefined;
+      if (pool.multi && isShareTask(task)) {
+        const owners = this.shareOwnersOf(pool, task);
+        if (pool.boostEnded && !pool.endedTasks.has(task)) {
+          // 「부스트 중지」 뒤 처음 보는 작업 — 남은 계정 몫만 남기고 나머지는 취소.
+          pool.endedTasks.add(task);
+          this.decStatTotal(task, settleSharesForSurvivor(task, owners, w.id));
+          if (unclaimedImageCount(task) <= 0) continue;
+        }
+        const s = pickShare(task, owners, w.id);
+        if (s < 0) continue;
+        share = s;
+        useShare(task, s);
+      }
       const claim: QueueClaim = {
         task,
         index: takeImageIndex(task),
         attempting: false,
         released: false,
         indexSettled: false,
+        ...(share !== undefined ? { share } : {}),
       };
       task.inFlight = (task.inFlight ?? 0) + 1;
       w.claim = claim;
@@ -1398,12 +1575,35 @@ export class TaskQueueService extends EventTarget {
     return undefined;
   }
 
-  private canWorkerTake(w: QueueWorker, task: Task): boolean {
+  private canWorkerTake(pool: QueuePool, w: QueueWorker, task: Task): boolean {
     if (unclaimedImageCount(task) <= 0) return false;
     if (w.isDefault) return true;
     // 기본 워커가 아닌 워커는 다른 계정 토큰을 받을 수 있는 작업만(증강·업스케일·배경 제거·빠른 생성은 기본 계정).
+    // 설정으로 켠 부스트(B2)는 대상 판정(D1 범위 — Anlas 작업은 'anlas' 범위만, D2 변형 작업 토글)까지.
     if (task.declinedWorkerIds?.includes(w.id)) return false;
-    return this.handlers[task.cls]?.supportsWorkerAccount?.(task) === true;
+    return this.handlers[task.cls]?.supportsWorkerAccount?.(task, pool.boost) === true;
+  }
+
+  // A 몫 소유자 배열(이 실행 전용).
+  private shareOwnersOf(pool: QueuePool, task: Task): (string | undefined)[] {
+    let owners = pool.shareOwners.get(task);
+    if (!owners) {
+      owners = [];
+      pool.shareOwners.set(task, owners);
+    }
+    return owners;
+  }
+
+  // 통계 total 에서 n 장을 뺀다(장 단위 건너뜀·몫 취소 — 큐에서 이미 빠진 작업은 건드리지 않음).
+  private decStatTotal(task: Task, n: number) {
+    if (n <= 0 || !(task.id! in this.taskSet)) return;
+    this.groupStats[task.cls].total -= n;
+    const sceneKey =
+      task.sceneKey ??
+      (task.params.scene ? getSceneKey(task.params.session, task.params.scene) : '');
+    if (sceneKey in this.sceneStats) this.sceneStats[sceneKey].total -= n;
+    const projectKey = task.projectKey ?? task.params.session.name;
+    if (projectKey in this.projectStats) this.projectStats[projectKey].total -= n;
   }
 
   // 큐에서 작업 하나를 뺀다 — 머리면 종전처럼 dequeue, 아니면(다중 워커) 순서를 지켜 다시 쌓는다.
@@ -1457,7 +1657,13 @@ export class TaskQueueService extends EventTarget {
   private settleClaimIndex(claim: QueueClaim, consumed: boolean) {
     if (claim.indexSettled) return;
     claim.indexSettled = true;
-    if (!consumed) returnImageIndex(claim.task, claim.index);
+    if (consumed) return;
+    // A 몫의 장: 몫에 돌려준다. 그 몫이 이미 취소됐으면 이 장도 건너뜀(번호는 소비, 통계 total −1).
+    if (claim.share !== undefined && unuseShare(claim.task, claim.share) === 'skipped') {
+      this.decStatTotal(claim.task, 1);
+      return;
+    }
+    returnImageIndex(claim.task, claim.index);
   }
 
   private finishClaim(w: QueueWorker, claim: QueueClaim, consumed: boolean) {
@@ -1520,34 +1726,73 @@ export class TaskQueueService extends EventTarget {
     const task = claim.task;
     this.settleClaimIndex(claim, true);
     task.skipped = (task.skipped ?? 0) + 1;
-    if (!(task.id! in this.taskSet)) return;
-    this.groupStats[task.cls].total--;
-    const sceneKey =
-      task.sceneKey ??
-      (task.params.scene ? getSceneKey(task.params.session, task.params.scene) : '');
-    if (sceneKey in this.sceneStats) this.sceneStats[sceneKey].total--;
-    const projectKey = task.projectKey ?? task.params.session.name;
-    if (projectKey in this.projectStats) this.projectStats[projectKey].total--;
+    this.decStatTotal(task, 1);
   }
 
   // 워커 하나를 이 실행에서 뺀다(연속 실패·인증 오류). 쥐고 있던 장은 같은 번호·시드로 다른 워커가 이어받는다.
   // 남은 워커가 있으면 그 사실만 알리고, 없으면 호출부가 종전 stopForFailure 로 전체를 멈춘다.
+  // notify 'info'(B2) = 생성 직전 재확인에서 참여 조건을 잃은 계정 — 안내 토스트(오류 아님).
+  // A 배수 예약(다중 워커, D4): 쥔 장은 반납하지 않고 그 계정 몫으로 건너뛰며, 그 계정이 맡은 다른 몫도 모두 취소한다
+  // (재분배 없음). 그 뒤 1계정만 남으면 「부스트 중지」(maybeEndBoost). B·일반 작업은 종전(장 반납 → 이어받음).
   private dropWorker(
     pool: QueuePool,
     w: QueueWorker,
     claim: QueueClaim,
     sceneName: string,
     text: string,
-    notify: 'toast' | 'dialog',
+    notify: 'toast' | 'dialog' | 'info',
   ) {
     w.dropped = true;
-    this.finishClaim(w, claim, false);
-    this.addLog('error', sceneName, text.replace(/\n/g, ' '));
+    if (pool.multi && claim.share !== undefined) {
+      this.skipClaimedImage(claim);
+      this.finishClaim(w, claim, true);
+    } else {
+      this.finishClaim(w, claim, false);
+    }
+    this.cancelSharesOfWorker(pool, w);
+    this.addLog(notify === 'info' ? 'warn' : 'error', sceneName, text.replace(/\n/g, ' '));
     if (this.hasLiveWorker(pool)) {
       if (notify === 'dialog') appState.pushDialog({ type: 'yes-only', text });
-      else appState.pushMessage(text, 'error');
+      else appState.pushMessage(text, notify === 'info' ? 'info' : 'error');
     }
+    this.maybeEndBoost(pool);
     this.dispatchProgress();
+  }
+
+  // 빠진 워커가 이 실행에서 맡은 A 몫을 모두 취소한다(D4 — 남은 장은 건너뜀, 다른 계정이 이어받지 않음).
+  private cancelSharesOfWorker(pool: QueuePool, w: QueueWorker) {
+    if (!pool.multi) return;
+    let total = 0;
+    for (const [task, owners] of pool.shareOwners) {
+      const n = cancelWorkerShares(task, owners, w.id);
+      this.decStatTotal(task, n);
+      total += n;
+    }
+    if (total > 0) this.addLog('info', '', BOOST_TEXT.sharesCancelled(w.name, total));
+  }
+
+  // D4 A 「1계정만 남으면 부스트 중지」: 다중 워커로 시작한 실행에서 남은 워커가 1개가 되면, A 배수 예약마다 남은
+  // 계정 몫만 남기고 나머지 몫(다른 계정 몫·아직 아무도 맡지 않은 몫)을 취소한다. 남은 계정은 자기 몫과 일반·B 작업을
+  // 계속 처리한다(B 는 「1개 남아도 계속」). 나중에 처음 꺼내는 A 작업도 같은 정리를 한다(claimNext).
+  private maybeEndBoost(pool: QueuePool) {
+    if (!pool.multi || pool.boostEnded) return;
+    const live = pool.workers.filter((x) => !x.dropped);
+    if (live.length !== 1) return;
+    pool.boostEnded = true;
+    const survivor = live[0];
+    let hasShareTask = false;
+    for (const task of this.queue) {
+      if (!task || !isShareTask(task)) continue;
+      hasShareTask = true;
+      pool.endedTasks.add(task);
+      this.decStatTotal(task, settleSharesForSurvivor(task, this.shareOwnersOf(pool, task), survivor.id));
+    }
+    if (hasShareTask) {
+      const text = BOOST_TEXT.replicateEnded(survivor.name);
+      this.addLog('warn', '', text);
+      appState.pushMessage(text, 'info');
+    }
+    this.notifyPoolChange();
   }
 
   // 꺼낸 장 하나를 처리한다 — 예전 runLoop 의 작업 하나 처리(지연 → 시도 → 재시도 사다리 → 성공 집계·긴 휴식
@@ -1567,6 +1812,8 @@ export class TaskQueueService extends EventTarget {
       name: w.name,
       isDefault: w.isDefault,
       ...(w.token !== undefined ? { token: w.token } : {}),
+      // 다중 계정 실행이면 만든 계정 이름을 이미지 표식으로 남긴다(D8 — 앱 내부 씬 데이터만, 기본 계정 포함).
+      ...(pool.multi ? { markName: w.name } : {}),
     };
     const exitStopped = (): 'exit' => {
       this.finishClaim(w, claim, false);
@@ -1607,6 +1854,7 @@ export class TaskQueueService extends EventTarget {
           await this.runAttemptWithTimeout(handler, task, cur, requestTimeoutMs, {
             imageIndex: claim.index,
             worker: attemptWorker,
+            ...(pool.boost ? { boost: pool.boost } : {}),
           });
         } finally {
           claim.attempting = false;
@@ -1639,6 +1887,10 @@ export class TaskQueueService extends EventTarget {
               this.projectStats[projectKey].done++;
             }
           }
+        } else if (claim.share !== undefined && unuseShare(task, claim.share) === 'skipped') {
+          // 정지 뒤 끝난 A 몫의 장 — 집계하지 않으므로(새 실행이 다시 만든다) 몫 사용량도 되돌린다(B2). 몫이 이미
+          // 취소됐으면 그 장은 건너뜀으로 센다.
+          this.decStatTotal(task, 1);
         }
         this.finishClaim(w, claim, true);
         this.progressCycleStartedAt = Date.now();
@@ -1665,6 +1917,9 @@ export class TaskQueueService extends EventTarget {
             this.dispatchProgress();
           } else {
             this.addLog('info', '', WORKER_POOL_TEXT.longBreak(w.name, breakMs));
+            // 다중 워커는 쉬는 계정 수만 진행 막대에 「휴식 중 n/W」로 보인다(B2).
+            pool.resting.add(w.id);
+            this.dispatchProgress();
           }
           this.setLongBreakRemaining(w, nextLongBreakCount());
           try {
@@ -1672,6 +1927,7 @@ export class TaskQueueService extends EventTarget {
           } finally {
             // 이 휴식의 표시만 끈다(정지가 이미 껐거나 새 실행이 새 휴식을 시작했으면 건드리지 않음).
             if (display && this.longBreakUntil === until) this.endLongBreakDisplay();
+            if (!display && pool.resting.delete(w.id)) this.dispatchProgress();
           }
         }
       } catch (e: any) {
@@ -1680,9 +1936,24 @@ export class TaskQueueService extends EventTarget {
         // 이 작업을 다시 꺼내지 않는다(실패로 세지 않음). 기본 워커에는 이 신호가 오지 않는다.
         if (!w.isDefault && isWorkerDeclinedError(e)) {
           (task.declinedWorkerIds ??= []).push(w.id);
+          // A 몫: 이 계정은 이 작업을 더 못 꺼내므로 맡은 몫을 내려놓는다(실패가 아니라 처리 능력 문제 — 기본 계정이
+          // 자기 몫을 마친 뒤 이어 맡는다).
+          if (claim.share !== undefined) {
+            const owners = this.shareOwnersOf(pool, task);
+            for (let s = 0; s < owners.length; s++) if (owners[s] === w.id) owners[s] = undefined;
+          }
           this.finishClaim(w, claim, false);
           this.addLog('info', sceneName, WORKER_POOL_TEXT.declined + tag);
           return 'next';
+        }
+        // 생성 직전 재확인에서 참여 조건(D1 범위)을 잃은 계정 — 실패로 세지 않고 그 워커만 뺀다(B2, 안내 토스트).
+        if (!w.isDefault && isWorkerDropError(e)) {
+          this.setConsecutiveFailures(w, 0);
+          this.dropWorker(pool, w, claim, sceneName, String(e?.message ?? e), 'info');
+          if (!this.hasLiveWorker(pool)) {
+            this.stopForFailure(cur, task, sceneName, String(e?.message ?? e));
+          }
+          return 'exit';
         }
         if (e.message === 'IP') {
           this.addLog('error', sceneName, 'IP 변경 감지로 중단');
@@ -1813,6 +2084,16 @@ export class TaskQueueService extends EventTarget {
           detail: { error: lastNotice ?? WORKER_POOL_TEXT.imageSkippedShort, task: task },
         }),
       );
+      // 위임 작업이면 원 창에 안내만 보낸다('skip' — 'fail' 과 달리 원 창의 onComplete 대행 콜백은 유지, B2).
+      if (task.params.delegation) {
+        backend
+          .delegateComplete({
+            ...task.params.delegation,
+            status: 'skip',
+            message: BOOST_TEXT.delegatedImageSkipped(sceneName),
+          })
+          .catch(() => {});
+      }
       this.skipClaimedImage(claim);
       this.finishClaim(w, claim, true);
       this.dispatchProgress();
@@ -1983,7 +2264,9 @@ export class TaskQueueService extends EventTarget {
           sceneType: payload.sceneType,
         },
       };
-      this.addTaskLocal(param, payload.samples);
+      // A 배수(D3)는 호스트가 정한다 — 보조 창 예약도 로컬 예약과 같은 판정.
+      const shares = this.boostPlanner ? await this.boostSharesFor(param, payload.samples) : 1;
+      this.addTaskLocal(param, payload.samples, shares);
     } catch (e: any) {
       console.error('위임 태스크 수신 실패:', e);
       fail(`위임 처리 오류: ${e?.message ?? e}`);
@@ -2041,6 +2324,11 @@ export class TaskQueueService extends EventTarget {
       this.delegatedCallbacks.delete(payload.taskId);
       return;
     }
+    if (payload.status === 'skip') {
+      // 다중 계정 실행에서 장 하나만 건너뜀 — 안내만(남은 장 결과를 계속 받아야 하므로 콜백은 지우지 않는다).
+      if (payload.message) appState.pushMessage(payload.message);
+      return;
+    }
     // status === 'ok' — 자기 세션 인스턴스의 그리드/imageMap 을 갱신한다.
     // (chokidar 감시는 config.refreshImage OFF 면 안 돌므로 이 브리지가 정식 경로)
     const session = sessionService.getFast(payload.sessionName);
@@ -2051,6 +2339,14 @@ export class TaskQueueService extends EventTarget {
           : session.scenes.get(payload.sceneName);
       if (scene && payload.replacedPath) {
         imageService.removeImageReference(session, scene, payload.replacedPath);
+      }
+      // 부스트 다중 계정 실행의 내부 표식(D8) — 이 창의 씬 데이터에만 남긴다(저장은 기존 씬 저장 흐름).
+      if (scene && payload.accountName) {
+        scene.imageAccounts = recordImageAccount(
+          scene.imageAccounts,
+          imageAccountKey(payload.path),
+          payload.accountName,
+        );
       }
       if (payload.sceneType === 'inpaint') {
         imageService.onAddInPaint(session, payload.sceneName, payload.path);
@@ -2123,6 +2419,7 @@ export class TaskQueueService extends EventTarget {
       longBreakStartedAt: this.longBreakStartedAt,
       longBreakUntil: this.longBreakUntil,
       boostWorkers: this.activeWorkerCount(),
+      boostResting: this.boostRestingCount(),
     };
   }
 }
