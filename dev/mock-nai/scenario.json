@@ -1,0 +1,72 @@
+{
+  "_설명": "가짜 NovelAI 서버 시나리오 샘플. 고쳐 쓰려면 같은 폴더에 scenario.local.json 으로 복사하세요(서버가 그 파일을 먼저 읽고, git 에서 제외됩니다). 여기 적는 토큰은 가짜 문자열이며 반드시 mock- 로 시작합니다. 여기에 없는 토큰은 아무 문자열이든 defaults 값으로 자동 등록됩니다(strictTokens: true 로 끄면 401).",
+  "strictTokens": false,
+  "defaults": {
+    "delayMs": 2000,
+    "delayJitterMs": 500,
+    "usagePerImage": 5,
+    "anlasPerImage": 20,
+    "timeUntilNextPercent": 300
+  },
+  "accounts": [
+    {
+      "token": "mock-alpha-0001",
+      "name": "가짜 A(넉넉)",
+      "opusSubscribed": true,
+      "percent": 100,
+      "purchasedPercent": 0,
+      "isNegative": false,
+      "anlas": 1000,
+      "color": "#3b82f6"
+    },
+    {
+      "token": "mock-bravo-0002",
+      "name": "가짜 B(곧 소진)",
+      "opusSubscribed": true,
+      "percent": 15,
+      "purchasedPercent": 10,
+      "isNegative": false,
+      "anlas": 0,
+      "color": "#22c55e"
+    },
+    {
+      "token": "mock-charlie-0003",
+      "name": "가짜 C(느림·429)",
+      "opusSubscribed": true,
+      "percent": 100,
+      "purchasedPercent": 0,
+      "isNegative": false,
+      "anlas": 500,
+      "delayMs": 4000,
+      "rateLimit429Every": 4,
+      "color": "#f97316"
+    },
+    {
+      "token": "mock-delta-0004",
+      "name": "가짜 D(미구독)",
+      "opusSubscribed": false,
+      "percent": 100,
+      "purchasedPercent": 0,
+      "isNegative": false,
+      "anlas": 100,
+      "color": "#a855f7"
+    },
+    {
+      "token": "mock-echo-0005",
+      "name": "가짜 E(가끔 실패)",
+      "opusSubscribed": true,
+      "percent": 100,
+      "purchasedPercent": 0,
+      "isNegative": false,
+      "anlas": 0,
+      "failEvery": 3,
+      "color": "#ef4444"
+    },
+    {
+      "token": "mock-foxtrot-0006",
+      "name": "가짜 F(만료 토큰)",
+      "authFail": true,
+      "color": "#64748b"
+    }
+  ]
+}
