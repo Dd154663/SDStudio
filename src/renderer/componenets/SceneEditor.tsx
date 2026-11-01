@@ -74,6 +74,7 @@ import {
   pieceLabel,
 } from './CombinationList';
 import { renameScene, mergeScene } from '../models/SessionService';
+import { recordSceneRename, sceneInSession } from '../models/sceneStructureUndo';
 import { isSceneEditorFocusTarget } from '../models/sceneEditorFocus';
 import {
   Scene,
@@ -1580,10 +1581,12 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
   }
 
   const curNameRef = useRef('');
+  // scene.name 도 의존 — 되돌리기·다시 실행(U2a)으로 이 창이 열린 채 이름이 바뀌면 입력 칸·닫을 때 자동 적용 기준을 맞춘다
+  // (안 맞추면 닫을 때 입력 칸의 옛 이름으로 다시 바꿔 버린다)
   useEffect(() => {
     setCurName(scene.name);
     curNameRef.current = scene.name;
-  }, [scene]);
+  }, [scene, scene.name]);
 
   // 씬 이름 변경 ref 동기화
   useEffect(() => {
@@ -1594,6 +1597,8 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
   useEffect(() => {
     return () => {
       const trimmedName = curNameRef.current.trimEnd();
+      // 그사이 씬이 프로젝트에서 빠졌으면(되돌리기로 휴지통행 등) 이름을 바꾸지 않는다
+      if (!sceneInSession(curSession!, scene)) return;
       if (trimmedName && trimmedName !== scene.name) {
         // 새 이름의 경로 안전 검사(금지 글자·점 시작 — 씬 이름은 이미지 폴더 이름, D2). 기존 이름은 건드리지 않는다.
         const problem = validateName(trimmedName, { kind: 'scene', pathSafe: true });
@@ -1607,7 +1612,12 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
           );
           return;
         }
-        renameScene(curSession!, scene.name, trimmedName);
+        const session = curSession!;
+        const oldName = scene.name;
+        // 이름 변경이 끝난 뒤 되돌리기 기록(U2a) — 다른 창 잠금으로 안 바뀌었으면 기록하지 않음
+        void renameScene(session, oldName, trimmedName).then(() =>
+          recordSceneRename(session, scene, oldName),
+        );
       }
     };
   }, [scene]);
@@ -1987,7 +1997,10 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
                 });
                 return;
               }
-              await renameScene(curSession!, scene.name, trimmedName);
+              const oldName = scene.name;
+              await renameScene(curSession!, oldName, trimmedName);
+              // 이름 변경이 끝난 뒤 되돌리기 기록(U2a) — 다른 창 잠금으로 안 바뀌었으면 기록하지 않음
+              recordSceneRename(curSession!, scene, oldName);
   };
   const confirmDelete = () => {
               appState.pushDialog({

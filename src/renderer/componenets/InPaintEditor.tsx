@@ -42,6 +42,7 @@ import {
 import { SCENE_RETENTION_DAYS } from '../models/TrashService';
 import { promptCustomResolution } from '../models/customResolutionPrompt';
 import { renameInpaintScene } from '../models/SessionService';
+import { recordSceneRename } from '../models/sceneStructureUndo';
 import { observer } from 'mobx-react-lite';
 import { InnerPreSetEditor } from './PreSetEdtior';
 import { reaction, runInAction } from 'mobx';
@@ -682,6 +683,8 @@ const InPaintEditor = observer(
             updateNameDraft(scene.name, scene);
             return;
           }
+          // 이름 변경이 끝난 뒤(잠금이 풀린 뒤) 되돌리기 기록(U2a)
+          recordSceneRename(session, scene, oldName);
         } else {
           // 아직 프로젝트에 등록되지 않은 씬(옮길 폴더 없음) — 이름만 바꾼다
           scene.name = check.name;

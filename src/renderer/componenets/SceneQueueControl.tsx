@@ -134,6 +134,7 @@ import {
 import CompactCombinationPieces from './CompactCombinationPieces';
 import { backStackService } from '../models/BackStackService';
 import { recordSceneOrder } from '../models/sceneOrderUndo';
+import { mirrorImageHooks, recordScenesCreated, toggleSceneBookmarkRecorded } from '../models/sceneStructureUndo';
 import { UNDO_TEXT } from '../models/undoService';
 
 // createMissingPiecesForSession / queueScene 는 models/sceneQueueActions.ts 로 이전
@@ -1219,6 +1220,27 @@ const QueueControl = observer(
     const [displayFocus, setDisplayFocus] = useState<string | undefined>(
       undefined,
     );
+    // 열린 씬 편집 창(일반 씬)·이미지 그리드의 씬이 프로젝트에서 빠지면 그 창을 닫는다(2026-11-01 되돌리기 U2a) —
+    // 두 창은 안에서 되돌리기 단축키가 동작하므로(D9) 그 씬의 생성을 되돌리면 휴지통으로 간 씬 객체를 계속 편집하게 된다.
+    // 이름이 아니라 객체로 확인한다(이름 변경 도중 잠깐 키와 이름이 어긋나도 닫지 않게).
+    useEffect(() => {
+      const editing = type === 'scene' ? editingScene : undefined;
+      if (!editing && !displayScene) return;
+      return reaction(
+        () => [
+          !!editing && !curSession.getScenes(editing.type).includes(editing),
+          !!displayScene && !curSession.getScenes(displayScene.type).includes(displayScene),
+        ],
+        ([editGone, displayGone]) => {
+          if (editGone) setEditingScene(undefined);
+          if (displayGone) {
+            setDisplayScene(undefined);
+            setDisplayFocus(undefined);
+          }
+        },
+        { equals: (a, b) => a[0] === b[0] && a[1] === b[1] },
+      );
+    }, [type, editingScene, displayScene, curSession]);
     const [cellSize, setCellSize] = useState(1);
     const [focusedSceneIndex, setFocusedSceneIndex] = useState<number | null>(
       null,
@@ -1757,11 +1779,8 @@ const QueueControl = observer(
         } else if (action === 'scene-toggle-bookmark') {
           if (focusedSceneIndex != null && focusedSceneIndex < scenes.length) {
             const scene = scenes[focusedSceneIndex];
-            sessionService.toggleSceneBookmark(
-              curSession.name,
-              scene.name,
-              scene.type,
-            );
+            // 절대값 + 되돌리기 기록(U2a)
+            void toggleSceneBookmarkRecorded(curSession, scene);
           }
         } else if (action === 'queue-run') {
           taskQueueService.run();
@@ -1914,30 +1933,32 @@ const QueueControl = observer(
             resolutionHeight:
               defRes?.resolution === 'custom' ? defRes.height : undefined,
           };
+          // 되돌리기(U2a): 이번에 등록한 씬들 = 1항목(되돌림 = 휴지통행, 다시 실행 = 휴지통 복원)
+          const created: GenericScene[] = [];
           if (type === 'scene') {
             for (const name of names) {
-              curSession.addScene(
-                Scene.fromJSON({
-                  type: 'scene',
-                  name,
-                  ...defResFields,
-                  slots: [
-                    [
-                      {
-                        id: v4(),
-                        prompt: '',
-                        characterPrompts: [],
-                        enabled: true,
-                      },
-                    ],
+              const scene = Scene.fromJSON({
+                type: 'scene',
+                name,
+                ...defResFields,
+                slots: [
+                  [
+                    {
+                      id: v4(),
+                      prompt: '',
+                      characterPrompts: [],
+                      enabled: true,
+                    },
                   ],
-                  mains: [],
-                  imageMap: [],
-                  meta: {},
-                  round: undefined,
-                  game: undefined,
-                }),
-              );
+                ],
+                mains: [],
+                imageMap: [],
+                meta: {},
+                round: undefined,
+                game: undefined,
+              });
+              curSession.addScene(scene);
+              created.push(scene);
             }
           } else {
             const menu = await appState.pushDialogAsync({
@@ -1950,22 +1971,23 @@ const QueueControl = observer(
             });
             if (!menu) return;
             for (const name of names) {
-              curSession.addScene(
-                // 방금 buildPreset 으로 만든 프리셋이라 역직렬화 실패(null)가 불가능
-                InpaintScene.fromJSON({
-                  type: 'inpaint',
-                  name,
-                  ...defResFields,
-                  workflowType: menu,
-                  preset: workFlowService.buildPreset(menu).toJSON(),
-                  mains: [],
-                  imageMap: [],
-                  round: undefined,
-                  game: undefined,
-                })!,
-              );
+              // 방금 buildPreset 으로 만든 프리셋이라 역직렬화 실패(null)가 불가능
+              const scene = InpaintScene.fromJSON({
+                type: 'inpaint',
+                name,
+                ...defResFields,
+                workflowType: menu,
+                preset: workFlowService.buildPreset(menu).toJSON(),
+                mains: [],
+                imageMap: [],
+                round: undefined,
+                game: undefined,
+              })!;
+              curSession.addScene(scene);
+              created.push(scene);
             }
           }
+          recordScenesCreated(curSession, created, UNDO_TEXT.sceneAdd(created.map((x) => x.name)));
         },
       });
     };
@@ -2030,6 +2052,7 @@ const QueueControl = observer(
           curSession!,
           image,
         );
+        const prevMirrorImage = curSession!.mirrorImage;
         curSession!.mirrorImage = storedPath;
         const result = await prepareMirrorCanvas(
           image,
@@ -2061,6 +2084,10 @@ const QueueControl = observer(
         });
         if (newScene) {
           curSession!.addScene(newScene);
+          // 되돌리기(U2a): 씬은 휴지통행, 세션 미러 원본은 이번 값 그대로일 때만 이전 값으로(새 이미지 파일은 남김)
+          recordScenesCreated(curSession, [newScene], UNDO_TEXT.variantSceneCreate(newScene.name), {
+            ...mirrorImageHooks(curSession!, prevMirrorImage, storedPath),
+          });
           close();
           setInpaintEditScene(newScene);
         }
@@ -2086,6 +2113,8 @@ const QueueControl = observer(
         });
         if (newScene) {
           curSession!.addScene(newScene);
+          // 되돌리기(U2a): 씬은 휴지통행(저장한 첨부 이미지 파일은 남김)
+          recordScenesCreated(curSession, [newScene], UNDO_TEXT.variantSceneCreate(newScene.name));
           close();
           setInpaintEditScene(newScene);
           const notice = fromImage && paidResolutionNotice(fromImage);
@@ -3295,11 +3324,8 @@ const QueueControl = observer(
                       scene.name,
                     )}
                     onToggleBookmark={() =>
-                      sessionService.toggleSceneBookmark(
-                        curSession.name,
-                        scene.name,
-                        scene.type,
-                      )}
+                      // 절대값 + 되돌리기 기록(U2a)
+                      void toggleSceneBookmarkRecorded(curSession, scene)}
                     disableHover={!!(editingScene || displayScene)}
                     isFocused={focusedSceneIndex === sceneIdx}
                   />

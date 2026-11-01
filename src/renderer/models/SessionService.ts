@@ -1354,10 +1354,24 @@ export class SessionService extends ResourceSyncService<Session> {
 
   async toggleSceneBookmark(projectName: string, sceneName: string, sceneType: string) {
     const current = this.bookmarkData.scenes[projectName];
-    if (current?.name === sceneName) {
-      delete this.bookmarkData.scenes[projectName];
+    await this.setSceneBookmark(
+      projectName,
+      current?.name === sceneName ? undefined : { name: sceneName, type: sceneType },
+    );
+  }
+
+  // 절대값 지정(2026-11-01 되돌리기 U2a — 토글의 이전 값 복원용). undefined = 북마크 없음. 같은 값이면 저장하지 않는다.
+  async setSceneBookmark(
+    projectName: string,
+    value: { name: string; type: string } | undefined,
+  ) {
+    const current = this.bookmarkData.scenes[projectName];
+    if (value) {
+      if (current?.name === value.name && current?.type === value.type) return;
+      this.bookmarkData.scenes[projectName] = { name: value.name, type: value.type };
     } else {
-      this.bookmarkData.scenes[projectName] = { name: sceneName, type: sceneType };
+      if (!current) return;
+      delete this.bookmarkData.scenes[projectName];
     }
     await this.saveBookmarks();
   }

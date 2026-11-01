@@ -27,6 +27,8 @@ type UndoRunResult = void | UndoOutcome;
 
 export interface UndoEntryInit {
   label: string;
+  /** 되돌림 방향 전용 문구(없으면 label). 이름 변경처럼 방향이 있는 작업은 「B → A」로 준다(2026-11-01 실기 지적) */
+  undoLabel?: string;
   kind?: UndoKind;
   mergeKey?: string;
   undo(): UndoRunResult | Promise<UndoRunResult>;
@@ -93,6 +95,25 @@ export const UNDO_TEXT = {
   sceneMoveFront: '씬 맨 앞으로',
   sceneMoveBack: '씬 맨 뒤로',
   sceneSortByName: '씬 이름순 정렬',
+  // U2a 씬 구조(생성·이름·북마크) — sceneStructureUndo.ts
+  sceneAdd: (names: readonly string[]) =>
+    names.length === 1 ? `씬 추가: ${names[0]}` : `씬 추가 ${names.length}개`,
+  sceneDuplicate: (name: string) => `씬 복제: ${name}`,
+  sceneRegenerate: (name: string) => `이미지에서 씬 재생성: ${name}`,
+  variantSceneCreate: (name: string) => `변형 씬 생성: ${name}`,
+  mirrorDuplicate: (names: readonly string[]) =>
+    names.length === 1 ? `미러로 복제: ${names[0]}` : `미러로 복제 ${names.length}개`,
+  // workflowLabel = i2iBatch.variantCopyLabel(…)(「I2I」·「인페인트」)
+  variantCopy: (workflowLabel: string, count: number) => `${workflowLabel}로 씬 복사 ${count}개`,
+  sceneRename: (from: string, to: string) => `씬 이름 변경: ${from} → ${to}`,
+  sceneBookmarkOn: (name: string) => `씬 북마크: ${name}`,
+  sceneBookmarkOff: (name: string) => `씬 북마크 해제: ${name}`,
+  // 실패 이유(되돌릴 수 없습니다: …)
+  sceneGone: (name: string) => `씬 "${name}"이(가) 이미 없습니다`,
+  sceneStructureBlocked: '다른 창에서 열려 있는 프로젝트라 처리하지 못했습니다',
+  sceneNotInTrash: '휴지통에 기록이 없습니다',
+  sceneNameChanged: (name: string) => `씬 이름이 그사이 바뀌었습니다(현재 "${name}")`,
+  sceneNameTaken: (name: string) => `같은 이름의 씬 "${name}"이(가) 이미 있습니다`,
 } as const;
 
 // ── 참조 손잡이 ───────────────────────────────────────────────────────────
@@ -322,7 +343,9 @@ export class UndoService {
     if (!session || this.#deps.isMirror(session)) return undefined;
     const st = this.#stacks.get(session);
     const list = dir === 'undo' ? st?.past : st?.future;
-    return list && list.length > 0 ? list[list.length - 1].label : undefined;
+    if (!list || list.length === 0) return undefined;
+    const top = list[list.length - 1];
+    return dir === 'undo' ? (top.undoLabel ?? top.label) : top.label;
   }
 
   /** 테스트·진단용 스택 사본 */
@@ -428,7 +451,8 @@ export class UndoService {
       const dst = dir === 'undo' ? st.future : st.past;
       dst.push(entry);
       while (dst.length > this.maxDepth) dst.shift();
-      const base = dir === 'undo' ? UNDO_TEXT.undone(entry.label) : UNDO_TEXT.redone(entry.label);
+      const base =
+        dir === 'undo' ? UNDO_TEXT.undone(entry.undoLabel ?? entry.label) : UNDO_TEXT.redone(entry.label);
       const partial =
         outcome && outcome.failed > 0 ? UNDO_TEXT.partial(outcome.failed, outcome.total) : '';
       this.#deps.toast(base + partial, partial ? 'error' : 'info');

@@ -21,7 +21,7 @@ import { ImageService } from './ImageService';
 import { ImageDownloadService } from './ImageDownloadService';
 import { LoginService } from './LoginService';
 import { PromptService } from './PromptService';
-import { SessionService } from './SessionService';
+import { renameInpaintScene, renameScene, SessionService } from './SessionService';
 import { TaskQueueService } from './TaskQueueService';
 import { BoostPlanner } from './boostPlanner';
 import { BOOST_TEXT } from './boostMode';
@@ -48,6 +48,7 @@ import { ExportPresetService } from './ExportPresetService';
 import { ImageHistoryService } from './ImageHistoryService';
 import { OpusUsageService } from './OpusUsageService';
 import { undoService } from './undoService';
+import { configureSceneStructureUndo } from './sceneStructureUndo';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -87,6 +88,16 @@ undoService.configure({ isMirror: (s) => sessionService.isMirror(s.name) });
 export const imageService = new ImageService();
 
 export const trashService = new TrashService();
+
+// 씬 구조(생성·이름·북마크) 되돌리기가 부르는 공개 서비스 메서드 배선 — 각 메서드가 자기 관문(다른 창 잠금·withLock·이동 검증)을 지킨다
+configureSceneStructureUndo({
+  moveSceneToTrash: (s, scene) => trashService.moveSceneToTrash(s, scene),
+  restoreScene: (s, slot) => trashService.restoreScene(s, slot),
+  renameScene: (s, from, to) => renameScene(s, from, to),
+  renameInpaintScene: (s, from, to) => renameInpaintScene(s, from, to),
+  getSceneBookmark: (project) => sessionService.getSceneBookmark(project),
+  setSceneBookmark: (project, value) => sessionService.setSceneBookmark(project, value),
+});
 
 export const imageDownloadService = new ImageDownloadService();
 

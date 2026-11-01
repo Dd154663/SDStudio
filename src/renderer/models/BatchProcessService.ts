@@ -81,6 +81,7 @@ import { openMaskApplyFlow, openStrengthBatchFlow } from './variantBatchFlow';
 import { VARIANT_BATCH_TEXT } from './variantBatch';
 import { copyComboContent } from './variantCombo';
 import { recordSceneOrder } from './sceneOrderUndo';
+import { recordScenesCreated } from './sceneStructureUndo';
 import { UNDO_TEXT } from './undoService';
 
 export class BatchProcessService {
@@ -561,6 +562,9 @@ export class BatchProcessService {
                   text: `선택한 ${selected.length}개 씬을 이미지미러 씬으로 복제하시겠습니까?`,
                   callback: () => {
                     let count = 0;
+                    // 되돌리기(U2a): 이번에 만든 미러 씬 전부 = 1항목
+                    const session = appState.curSession!;
+                    const created: InpaintScene[] = [];
                     for (const scene of selected) {
                       const src = scene as Scene;
                       const srcJSON = src.toJSON();
@@ -596,10 +600,16 @@ export class BatchProcessService {
                         slots: srcJSON.slots,
                       });
                       if (newScene) {
-                        appState.curSession!.addScene(newScene);
+                        session.addScene(newScene);
+                        created.push(newScene);
                         count++;
                       }
                     }
+                    recordScenesCreated(
+                      session,
+                      created,
+                      UNDO_TEXT.mirrorDuplicate(created.map((x) => x.name)),
+                    );
                     appState.pushMessage(
                       `${count}개 씬이 이미지미러로 복제되었습니다.`,
                     );

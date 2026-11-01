@@ -56,9 +56,12 @@ import {
   imageAttachResultText,
   INPAINT_WORKFLOW_TYPE,
   splitAttachTargets,
+  variantCopyLabel,
   variantCopyMenuText,
   workflowHasNoise,
 } from './i2iBatch';
+import { recordScenesCreated } from './sceneStructureUndo';
+import { UNDO_TEXT } from './undoService';
 import type { StrengthNoise, VariantCopyWorkflow } from './i2iBatch';
 
 type SetSceneSelector = SceneSelectorSetter;
@@ -324,6 +327,8 @@ async function createVariantCopyScenes(
       session.addScene(scene);
     }
   });
+  // 되돌리기(U2a): 이번에 만든 변형 씬 전부 = 1항목(되돌림 = 휴지통행 — 씬마다 저장한 첨부 이미지 파일은 남김)
+  recordScenesCreated(session, prepared, UNDO_TEXT.variantCopy(variantCopyLabel(workflow), prepared.length));
 
   const withImage = image ? prepared.length : 0;
   appState.pushMessage(

@@ -57,6 +57,7 @@ import { openImageAttachFlow } from '../models/i2iBatchFlow';
 import { openMaskApplyFlow, openStrengthBatchFlow } from '../models/variantBatchFlow';
 import { sceneSelectorHost } from '../models/sceneSelectorHost';
 import { recordSceneOrder } from '../models/sceneOrderUndo';
+import { recordScenesCreated } from '../models/sceneStructureUndo';
 import { UNDO_TEXT } from '../models/undoService';
 
 export const AppContextMenu = observer(() => {
@@ -151,7 +152,10 @@ export const AppContextMenu = observer(() => {
       cnt++;
     }
     newScene.name = newName();
-    appState.curSession!.addScene(newScene);
+    const session = appState.curSession!;
+    session.addScene(newScene);
+    // 되돌리기(U2a): 되돌림 = 휴지통행, 다시 실행 = 휴지통 복원
+    recordScenesCreated(session, [newScene], UNDO_TEXT.sceneDuplicate(newScene.name));
   };
 
   const regenerateSceneFromImages = async (ctx: SceneContextAlt) => {
@@ -192,6 +196,9 @@ export const AppContextMenu = observer(() => {
       .getScenes(sourceScene.type)
       .findIndex((scene) => scene === sourceScene);
     if (sourceIndex >= 0) session.moveScene(regenerated, sourceIndex + 1);
+    // 되돌리기(U2a): 씬 생성만 기록 — 아래 예약·복원한 바이브/레퍼런스 파일은 되돌리지 않는다
+    // (되돌리면 예약이 남은 씬을 휴지통으로 보내는 일반 씬 삭제와 같다)
+    recordScenesCreated(session, [regenerated], UNDO_TEXT.sceneRegenerate(regenerated.name));
 
     if (files.length === 0) {
       appState.pushMessage(

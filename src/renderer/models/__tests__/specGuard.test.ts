@@ -37,7 +37,8 @@ const stripComments = (c: string) =>
   c.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 // 되돌리기 계약(2026-11-01 U1)을 지키는 모듈 — 잠금·씬 직접 제거 금지 규칙의 대상
-const UNDO_MODULES = ['models/undoService.ts', 'models/sceneOrderUndo.ts'];
+// U2a: 씬 구조(생성·이름·북마크) 계측 모듈 추가
+const UNDO_MODULES = ['models/undoService.ts', 'models/sceneOrderUndo.ts', 'models/sceneStructureUndo.ts'];
 
 const RULES: Rule[] = [
   {
