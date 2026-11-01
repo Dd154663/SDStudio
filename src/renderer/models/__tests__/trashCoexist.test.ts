@@ -446,3 +446,39 @@ describe('S2 — 구 배치 분기 불변', () => {
     expect(Object.keys(trashJson().projects.P)).toEqual(['deletedAt']);
   });
 });
+
+describe('U0-b I3 — 구 배치 폴더 삭제 전 폴더 안 휴지통 프로젝트 보존', () => {
+  test('폴더 안 .deleted 를 루트로 옮기고, 휴지통 목록·복원(미분류)이 그대로 동작', async () => {
+    files.set('projects/F/.keep', '');
+    files.set('projects/F/A.deleted', '{"a":1}');
+    files.set('projects/F/.deleted', 'ghost'); // 이름 없는 유령 점 파일은 옮기지 않는다
+    files.set('trash.json', JSON.stringify({ scenes: {}, projects: { A: { deletedAt: 5 } } }));
+    const svc = await loaded();
+    expect(await svc.evacuateFolderTrashToRoot('F')).toBe(1);
+    expect(files.get('projects/A.deleted')).toBe('{"a":1}');
+    expect(files.has('projects/F/A.deleted')).toBe(false);
+    // 이어지는 폴더 deleteDir 가 지워도 휴지통 항목은 남는다
+    for (const k of Array.from(files.keys())) if (k.startsWith('projects/F/')) files.delete(k);
+    const list = await svc.getDeletedProjects();
+    expect(list).toEqual([{ name: 'A', deletedAt: 5 }]);
+    await svc.restoreProject('A');
+    expect(files.get('projects/A.json')).toBe('{"a":1}');
+  });
+
+  test('루트에 같은 이름 .deleted 가 있으면 아무것도 옮기지 않고 throw(덮어쓰기 금지)', async () => {
+    files.set('projects/A.deleted', 'root');
+    files.set('projects/F/A.deleted', 'folder');
+    files.set('projects/F/B.deleted', 'b');
+    const svc = await loaded();
+    await expect(svc.evacuateFolderTrashToRoot('F')).rejects.toThrow('이미 있어');
+    expect(files.get('projects/A.deleted')).toBe('root');
+    expect(files.get('projects/F/A.deleted')).toBe('folder');
+    expect(files.get('projects/F/B.deleted')).toBe('b');
+  });
+
+  test('신 배치는 no-op', async () => {
+    setWorkspaceLayoutActive(true);
+    const svc = await loaded();
+    expect(await svc.evacuateFolderTrashToRoot('F')).toBe(0);
+  });
+});

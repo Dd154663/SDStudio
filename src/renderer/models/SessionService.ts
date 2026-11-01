@@ -1008,6 +1008,9 @@ export class SessionService extends ResourceSyncService<Session> {
     }
     // 신 배치엔 폴더 디렉터리가 없다 — 물리 삭제는 건너뛰고 사이드카(색상/순서)만 정리.
     if (!isWorkspaceLayout()) {
+      // 폴더 안 휴지통 프로젝트(<이름>.deleted)를 루트로 먼저 옮긴다 — 그대로 지우면 확인 없이
+      // 영구 삭제된다(2026-11-01 U0-b I3). 옮기지 못하면 throw → 폴더를 지우지 않는다.
+      await trashService.evacuateFolderTrashToRoot(folder);
       await backend.deleteDir(this.folderDirPath(folder));
     }
     // 폴더 색상 정리

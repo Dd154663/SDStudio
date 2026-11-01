@@ -1,5 +1,6 @@
 import { canStartSelectionBox, imagePathsInSelectionBox } from '../models/dragSelection';
 import { parseRankCutoff, RANK_CUTOFF_INVALID_MESSAGE } from '../models/rankCutoff';
+import { isTextEntryFocused, shouldIgnoreViewerRawKey } from '../models/keyTargetGuard';
 import React, {
   useState,
   useEffect,
@@ -868,6 +869,7 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
       const handleKey = (e: KeyboardEvent) => {
         if (e.key !== 'f' && e.key !== 'F') return;
         if (isHidden) return;
+        if (appState.dialogs.length > 0) return; // 확인 창 위에서 즐겨찾기가 바뀌지 않게(U0-b E8)
         const idx = hoveredIndexRef.current;
         if (idx == null || idx >= filePaths.length) return;
         const tag = (e.target as HTMLElement)?.tagName;
@@ -1189,6 +1191,14 @@ const ResultDetailView = observer(
       fetchImage();
       filenameRef.current = paths[selectedIndex].split('/').pop()!;
       const handleKeyDown = async (e: KeyboardEvent) => {
+        // 입력 칸 포커스 중엔 전부, 확인 창이 열려 있으면 Delete/Backspace 무시(2026-11-01 U0-b E7)
+        if (
+          shouldIgnoreViewerRawKey(e.key, {
+            inputFocused: isTextEntryFocused(),
+            dialogOpen: appState.dialogs.length > 0,
+          })
+        )
+          return;
         if (e.key === 'ArrowLeft') {
           setSelectedIndex((selectedIndex - 1 + paths.length) % paths.length);
         } else if (e.key === 'ArrowRight') {

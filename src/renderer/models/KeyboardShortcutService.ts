@@ -1,5 +1,6 @@
 import { appState } from './AppService';
 import { isMobile } from '.';
+import { isTextEntryFocused } from './keyTargetGuard';
 
 export interface ShortcutAction {
   id: string;
@@ -211,15 +212,9 @@ export class KeyboardShortcutService {
       .replace('Space', '␣');
   }
 
+  // 판정 기준은 keyTargetGuard 단일 출처(raw keydown 리스너와 공유 — 2026-11-01 U0-b E7)
   private isInputFocused(): boolean {
-    const el = document.activeElement;
-    if (!el) return false;
-    const tag = el.tagName.toLowerCase();
-    if (tag === 'input' || tag === 'textarea') return true;
-    if ((el as HTMLElement).isContentEditable) return true;
-    // webview 내부 포커스도 체크
-    if (tag === 'webview') return true;
-    return false;
+    return isTextEntryFocused();
   }
 
   private getActionDef(actionId: string): ShortcutAction | undefined {

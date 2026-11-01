@@ -812,6 +812,51 @@ export class TrashService extends EventTarget {
     return result;
   }
 
+  // 구 배치 폴더 삭제(SessionService.deleteFolder)의 deleteDir 직전 단계(2026-11-01 U0-b I3):
+  // 폴더 디렉터리 바로 아래의 휴지통 프로젝트(<이름>.deleted)를 루트(projects/<이름>.deleted)로 옮긴다.
+  // 그대로 두면 이어지는 deleteDir 가 휴지통 프로젝트를 확인 없이 영구 삭제한다.
+  // - 구 배치 휴지통 기록은 이름 키라 그대로 유효하다. 목록·복원·영구 삭제는 스캔한 위치를 쓰므로
+  //   (scanProjectFiles — 루트+1단 폴더) 복원하면 미분류로 돌아온다(폴더 안 활성 프로젝트를 미분류로
+  //   옮기는 deleteFolder 와 같은 결과). 하위 폴더는 deleteFolder 가 자식부터 따로 부르므로 각 단계에서 옮겨진다.
+  // - 먼저 전부 확인하고 하나라도 문제면 아무것도 옮기지 않고 throw(호출부는 폴더를 지우지 않는다):
+  //   목록을 못 읽음(불확실하면 보존)·루트에 같은 이름 .deleted 가 이미 있음(덮어쓰기 금지)·
+  //   프로젝트 이름으로 쓸 수 없는 이름.
+  // - 이름 없는 점(.) 파일('.deleted' 등)은 스캔이 제외하는 유령(2026-07-06 사고 원인)이라 옮기지 않는다.
+  // 신 배치는 폴더 디렉터리가 없다 — no-op. 반환값 = 옮긴 개수.
+  async evacuateFolderTrashToRoot(folder: string): Promise<number> {
+    if (isWorkspaceLayout()) return 0;
+    const dir = projectFolderPath(folder);
+    const stats = await backend.listFilesWithStats(dir); // ENOENT→[], 실오류→throw
+    const names: string[] = [];
+    for (const s of stats) {
+      const fname: string = s?.name ?? '';
+      if (fname.startsWith('.')) continue;
+      if (!fname.endsWith('.deleted')) continue;
+      names.push(fname.slice(0, -'.deleted'.length));
+    }
+    const moves: { from: string; to: string }[] = [];
+    for (const name of names) {
+      const reason = invalidProjectName(name);
+      if (reason) {
+        throw new Error(
+          `폴더 안 휴지통 항목 "${name}"을(를) 옮길 수 없어(${reason}) 폴더를 삭제하지 않았습니다.`,
+        );
+      }
+      const from = projectJsonPath(name, folder).replace(/\.json$/, '.deleted');
+      const to = projectJsonPath(name).replace(/\.json$/, '.deleted');
+      if (await backend.existFile(to)) {
+        throw new Error(
+          `휴지통에 같은 이름의 프로젝트 "${name}"이(가) 이미 있어 폴더를 삭제하지 않았습니다. 휴지통에서 그 항목을 먼저 복원하거나 영구 삭제해 주세요.`,
+        );
+      }
+      moves.push({ from, to });
+    }
+    for (const m of moves) {
+      await backend.renameFile(m.from, m.to);
+    }
+    return moves.length;
+  }
+
   // 같은 이름의 기존 휴지통(.deleted) 항목을 모두 제거한다.
   // 동명 프로젝트를 재삭제하기 직전에 호출 → "최신 1개만 유지"를 보장하고
   // 플랫폼별 rename 덮어쓰기/오류 불확실성을 제거한다.
