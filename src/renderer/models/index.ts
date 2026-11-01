@@ -24,6 +24,7 @@ import { PromptService } from './PromptService';
 import { SessionService } from './SessionService';
 import { TaskQueueService } from './TaskQueueService';
 import { BoostPlanner } from './boostPlanner';
+import { BOOST_TEXT } from './boostMode';
 import { taskHandlers } from './TaskHandlers';
 import { LocalAIService } from './LocalAIService';
 import { AppUpdateNoticeService } from './AppUpdateNoticeService';
@@ -130,6 +131,10 @@ taskQueueService.boostPlanner = boostPlanner;
 // 토큰 목록·활성 토큰이 바뀌면 마지막 참여 결과를 버린다(다음 예약·실행이 새로 조회).
 loginService.addEventListener('token-profiles-change', () => boostPlanner.invalidate());
 loginService.addEventListener('change', () => boostPlanner.invalidate());
+// 부스트 다중 계정 실행 중에는 수동 계정 전환·토큰 로그인·토큰 삭제를 서비스에서 거부한다(B3 — UI 비활성과 같은 판정).
+loginService.setAccountSwitchGuard(() =>
+  taskQueueService.isBoostAccountLocked() ? BOOST_TEXT.accountSwitchLocked : undefined,
+);
 
 export const gameService = new GameService();
 

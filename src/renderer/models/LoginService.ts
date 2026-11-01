@@ -56,6 +56,12 @@ export class LoginService extends EventTarget {
   private nextAutoRotationAttemptAt = 0;
   private nextAutoBalanceAttemptAt = 0;
 
+  // 부스트 모드(B3): 다중 계정 실행 중이면 수동 계정 전환·토큰 로그인·토큰 삭제를 거부한다. index.ts 가 큐 상태를 보는
+  // 판정을 주입한다(LoginService 는 큐를 import 하지 않는다). 막아야 하면 사용자 안내 문구, 아니면 undefined.
+  private accountSwitchGuard?: () => string | undefined;
+  /** D11 경고 창을 이번 앱 세션에서 확인했는가(영속 저장 안 함 — 앱을 다시 실행하면 다시 묻는다). */
+  boostWarningAccepted = false;
+
   private validationRevision = 0;
   private retryTimer?: ReturnType<typeof setTimeout>;
   private retryDelay = 30_000;
@@ -125,6 +131,24 @@ export class LoginService extends EventTarget {
     await restore;
   }
 
+  setAccountSwitchGuard(guard: (() => string | undefined) | undefined): void {
+    this.accountSwitchGuard = guard;
+  }
+
+  /** 지금 계정을 바꿀 수 없으면 그 이유(안내 문구), 바꿀 수 있으면 undefined — UI 비활성 판단과 서비스 거부가 같은 값. */
+  accountSwitchBlockedReason(): string | undefined {
+    try {
+      return this.accountSwitchGuard?.();
+    } catch (e) {
+      return undefined;
+    }
+  }
+
+  private assertAccountSwitchAllowed(): void {
+    const reason = this.accountSwitchBlockedReason();
+    if (reason) throw new Error(reason);
+  }
+
   constructor() {
     super();
     this.loggedIn = false;
@@ -134,15 +158,18 @@ export class LoginService extends EventTarget {
   }
 
   async login(email: string, password: string) {
+    this.assertAccountSwitchAllowed();
     await backend.login(email, password);
     await this.refresh(true);
   }
 
   async loginWithToken(token: string) {
+    this.assertAccountSwitchAllowed();
     token = token.trim();
     const validity = await backend.validateToken(token);
     if (validity === 'invalid') throw new Error('토큰이 유효하지 않습니다');
     if (validity !== 'valid') throw new Error('네트워크 오류로 토큰을 확인할 수 없습니다. 다시 시도해주세요');
+    this.assertAccountSwitchAllowed();
     await this.writeLoginToken(token);
     // 방금 검증한 토큰을 저장했으므로 중복 조회 실패로 성공을 취소하지 않는다.
     this.loggedIn = true;
@@ -248,11 +275,14 @@ export class LoginService extends EventTarget {
     if (!profile) throw new Error('토큰 프리셋을 찾을 수 없습니다');
 
     // 후보를 먼저 검증해 잘못된 저장값으로 현재 정상 토큰을 덮어쓰지 않는다.
+    this.assertAccountSwitchAllowed();
     const validity = await backend.validateToken(profile.token);
     if (validity === 'invalid') throw new Error('저장된 토큰이 유효하지 않습니다');
     if (validity === 'error') {
       throw new Error('네트워크 오류로 토큰을 확인할 수 없습니다');
     }
+    // 검증하는 사이 부스트 실행이 시작됐으면 쓰지 않는다.
+    this.assertAccountSwitchAllowed();
 
     await this.writeLoginToken(profile.token);
     this.loggedIn = true;
@@ -315,6 +345,18 @@ export class LoginService extends EventTarget {
     return {
       ...(activeProfile ? { active: { id: activeProfile.id, name: activeProfile.name } } : {}),
       candidates,
+    };
+  }
+
+  /**
+   * 설정 화면의 부스트 참여 후보 미리보기(B3) — 스냅샷과 같은 규칙(현재 로그인 토큰과 같은 프로필 제외)의 **이름만**.
+   * 할당량은 조회하지 않는다(실제 참여는 실행 시작 때 판정기가 정한다).
+   */
+  async getBoostParticipantPreview(): Promise<{ activeName?: string; names: string[] }> {
+    const snap = await this.getBoostAccountSnapshot();
+    return {
+      ...(snap.active ? { activeName: snap.active.name } : {}),
+      names: snap.candidates.map((c) => c.name),
     };
   }
 
@@ -393,6 +435,8 @@ export class LoginService extends EventTarget {
     allowPurchased: boolean,
   ): Promise<LoginTokenRotationResult> {
     const revision = this.validationRevision;
+    // 부스트 다중 계정 실행 중에는 자동 순회도 TOKEN.txt 를 바꾸지 않는다(D12 — 실행 경로도 건너뛰지만 이중 방어).
+    if (this.accountSwitchBlockedReason()) return { switched: false, reason: 'not-ready' };
     await this.ensureTokenProfilesLoaded();
     let currentToken: string | undefined;
     try {
@@ -494,6 +538,7 @@ export class LoginService extends EventTarget {
   }
 
   async deleteTokenProfile(id: string): Promise<void> {
+    this.assertAccountSwitchAllowed();
     await this.ensureTokenProfilesLoaded();
     if (!this.tokenProfiles.some((p) => p.id === id)) return;
     await this.persistTokenProfiles(

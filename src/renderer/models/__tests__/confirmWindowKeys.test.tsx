@@ -439,6 +439,66 @@ describe('confirmViaDialog (appState.confirmAsync 본체)', () => {
   });
 });
 
+describe('confirmCheck 선택 체크(2026-11-01 부스트 B3)', () => {
+  const btn = (label: string) =>
+    Array.from(document.querySelectorAll('.confirm-window button')).find(
+      (b) => b.textContent === label,
+    ) as HTMLButtonElement;
+  const check = () =>
+    document.querySelector('.confirm-window [data-confirm-check] input') as HTMLInputElement;
+
+  test('꺼짐에서 시작, 바꿀 때마다 onChange, 확인 = true(requireClick·danger 와 함께 — Enter 무시)', async () => {
+    const onChange = jest.fn();
+    let p!: Promise<boolean>;
+    await act(async () => {
+      p = confirmViaDialog((d: any) => push(d), {
+        text: '경고',
+        confirmText: '켜기',
+        danger: true,
+        requireClick: true,
+        confirmCheck: { label: '다시 보지 않음', onChange },
+      } as any);
+    });
+    expect(document.querySelector('.confirm-window [data-confirm-check]')?.textContent).toBe('다시 보지 않음');
+    expect(check().checked).toBe(false);
+    // 이미지 삭제용 체크(showSkipConfirm)는 그리지 않는다
+    expect(document.body.textContent).not.toContain('이번 세션에서 다시 묻지 않음');
+    await act(async () => check().click());
+    expect(onChange).toHaveBeenLastCalledWith(true);
+    expect(check().checked).toBe(true);
+    await key(document.body, 'Enter');
+    expect(state.dialogs.length).toBe(1);
+    expect(btn('켜기').className).toContain('back-red');
+    await act(async () => btn('켜기').click());
+    await expect(p).resolves.toBe(true);
+    expect(state.skipImageDeleteConfirm).toBe(false);
+  });
+
+  test('취소하면 false — 체크 값을 어떻게 쓸지는 호출부 몫(창은 체크만 알린다), 다음 창은 다시 꺼짐', async () => {
+    const onChange = jest.fn();
+    let p!: Promise<boolean>;
+    await act(async () => {
+      p = confirmViaDialog((d: any) => push(d), {
+        text: '경고',
+        confirmCheck: { label: '다시 보지 않음', onChange },
+      } as any);
+    });
+    await act(async () => check().click());
+    await act(async () => btn('취소').click());
+    await expect(p).resolves.toBe(false);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      p = confirmViaDialog((d: any) => push(d), {
+        text: '경고2',
+        confirmCheck: { label: '다시 보지 않음', onChange },
+      } as any);
+    });
+    expect(check().checked).toBe(false);
+    await key(document.body, 'Escape');
+    await expect(p).resolves.toBe(false);
+  });
+});
+
 describe('입력 검증 validate(D2 이름 입력 규칙)', () => {
   const textInput = () =>
     document.querySelector('.confirm-window input[type="text"]') as HTMLInputElement;

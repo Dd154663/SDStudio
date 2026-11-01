@@ -7,7 +7,9 @@ const login = Object.assign(new EventTarget(), {
   listTokenProfiles: jest.fn(() => [{ id: 'one', name: '주 계정' }, { id: 'two', name: '보조 계정' }]),
   loadTokenProfiles: jest.fn(async () => {}),
   activateTokenProfile: jest.fn(async (_id: string) => 'valid'),
+  accountSwitchBlockedReason: jest.fn((): string | undefined => undefined),
 });
+const queue = new EventTarget();
 const usage = Object.assign(new EventTarget(), {
   status: { percent: 91, isNegative: false, timeUntilNextPercent: 1 },
   state: 'ready', fetchedAt: Date.now(), refreshing: false,
@@ -16,7 +18,7 @@ const usage = Object.assign(new EventTarget(), {
   loadQuiet: jest.fn(async () => false),
   setQuiet: jest.fn(async (value: boolean) => { usage.quiet = value; }),
 });
-jest.mock('..', () => ({ loginService: login, opusUsageService: usage }));
+jest.mock('..', () => ({ loginService: login, opusUsageService: usage, taskQueueService: queue }));
 jest.mock('../AppService', () => ({ appState: { incrementModalOverlay: jest.fn(), decrementModalOverlay: jest.fn() } }));
 jest.mock('../BackStackService', () => ({ backStackService: { push: () => ({ remove() {} }) } }));
 import OpusUsageBadge from '../../componenets/OpusUsageBadge';
@@ -30,6 +32,7 @@ beforeEach(() => {
   login.activeProfileId = 'one';
   login.listTokenProfiles.mockReturnValue([{ id: 'one', name: '주 계정' }, { id: 'two', name: '보조 계정' }]);
   login.activateTokenProfile.mockResolvedValue('valid');
+  login.accountSwitchBlockedReason.mockReturnValue(undefined);
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -118,4 +121,17 @@ test('모바일 일렬 표기(inline)는 Anlas·할당량 두 칸과 하단 선 
   button = container.querySelector('button')!;
   expect(button.className).toContain('round-tag');
   expect(button.querySelector('[role="progressbar"]')!.className).toContain('h-1.5');
+});
+
+test('부스트 다중 계정 실행 중이면 전환 버튼을 막고 안내하며, 큐가 멈추면 다시 풀린다(B3)', async () => {
+  login.accountSwitchBlockedReason.mockReturnValue('부스트 실행 중에는 계정을 바꿀 수 없습니다. 생성을 멈춘 뒤 바꿔 주세요.');
+  await open();
+  expect(target()!.disabled).toBe(true);
+  expect(document.querySelector('[data-boost-switch-locked]')?.textContent).toContain('부스트 실행 중');
+  await act(async () => target()!.click());
+  expect(login.activateTokenProfile).not.toHaveBeenCalled();
+  login.accountSwitchBlockedReason.mockReturnValue(undefined);
+  await act(async () => { queue.dispatchEvent(new CustomEvent('stop')); });
+  expect(target()!.disabled).toBe(false);
+  expect(document.querySelector('[data-boost-switch-locked]')).toBeNull();
 });

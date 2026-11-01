@@ -97,6 +97,7 @@ import {
   isShareTask,
   pickShare,
   recordImageAccount,
+  isBoostAccountSwitchLocked,
   replicateFactor,
   resolveBoostSettings,
   settleSharesForSurvivor,
@@ -507,6 +508,8 @@ export class TaskQueueService extends EventTarget {
   boostPlanner?: BoostPlannerLike;
   // 「함께 생성할 다른 계정이 없음」 안내는 앱 세션당 1번만.
   private boostNoParticipantNoticeShown = false;
+  // 부스트 실행이 참여 계정을 고르는 중인 실행 수(B3 — 그동안도 수동 계정 전환을 막는다. 호스트 창만).
+  private boostPoolResolving = 0;
   private logsLoaded = false;
   private logsSaveTimer: any = null;
 
@@ -990,6 +993,19 @@ export class TaskQueueService extends EventTarget {
     return this.activeWorkerCount();
   }
 
+  /**
+   * 부스트 다중 계정 실행 중이라 계정(TOKEN.txt)을 바꾸면 안 되는가(B3 — `boostMode.isBoostAccountSwitchLocked`).
+   * 실행 중이고 동시 생성 계정이 2개 이상이거나, 호스트에서 부스트 실행이 참여 계정을 고르는 중이면 true.
+   * 보조 창은 호스트 미러 기준(참여 계정을 고르는 짧은 순간은 모른다).
+   */
+  isBoostAccountLocked(): boolean {
+    return isBoostAccountSwitchLocked({
+      running: this.isRunning(),
+      workers: this.boostWorkerCount(),
+      starting: this.isGenerationHost && this.boostPoolResolving > 0,
+    });
+  }
+
   // 다중 계정 실행에서 지금 긴 휴식 중인 계정 수(B2 진행 표시 「휴식 중 n/W」). 보조 창은 미러 기준.
   boostRestingCount(): number {
     if (!this.isGenerationHost) return Math.max(0, this.mirror?.boostResting ?? 0);
@@ -1454,9 +1470,22 @@ export class TaskQueueService extends EventTarget {
     // 옛 키 delayTime 은 새 키가 없을 때 환산해 읽는다(requestTiming).
     const delay = resolveRequestDelaySettings(config);
     // 추가 워커(다른 계정)는 부스트 설정·개발 플래그가 있을 때만 — 없으면 조회도 없이 종전 단일 경로.
-    const { extra, policy, defaultName } = await this.resolvePoolAccounts(config);
+    // 부스트가 켜져 있으면 참여 계정을 고르는 동안에도 수동 계정 전환을 막는다(B3 — 고르는 사이 TOKEN.txt 가 바뀌면
+    // 기본 워커 계정이 참여 계정과 겹칠 수 있다). 꺼져 있으면 종전처럼 아무것도 하지 않는다.
+    const resolving =
+      this.devWorkerAccounts.length > 0 || resolveBoostSettings(config).mode !== 'off';
+    if (resolving) this.boostPoolResolving++;
+    let accounts: { extra: QueueWorkerAccount[]; policy?: BoostWorkerPolicy; defaultName: string };
+    try {
+      accounts = await this.resolvePoolAccounts(config);
+    } finally {
+      if (resolving) this.boostPoolResolving--;
+    }
+    const { extra, policy, defaultName } = accounts;
     const pool = this.createPool(cur, delay, extra, policy, defaultName);
     this.pools.set(cur, pool);
+    // 참여 계정이 없어 단일 워커가 됐으면 계정 잠금이 풀렸음을 화면에 알린다(다중이면 아래 poolStart 의 progress).
+    if (resolving && !pool.multi) this.dispatchProgress();
     if (pool.multi) {
       // 로그에는 계정 이름만(토큰 없음).
       this.addLog('info', '', WORKER_POOL_TEXT.poolStart(pool.workers.map((w) => w.name)));

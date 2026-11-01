@@ -45,6 +45,10 @@ export interface Dialog {
   items?: DialogItem[];
   groupFoldKey?: string;
   showSkipConfirm?: boolean;
+  // confirm 전용 범용 선택 체크(2026-11-01 부스트 B3 — 예: 「다시 보지 않음」). 체크를 바꿀 때마다 onChange(checked).
+  // 창이 열릴 때 꺼짐에서 시작하고, 값을 어떻게 쓸지(확인으로 닫혔을 때만 저장 등)는 호출부가 confirmAsync 결과와 함께
+  // 정한다. 이미지 삭제의 「이번 세션에서 다시 묻지 않음」은 showSkipConfirm 그대로(별개).
+  confirmCheck?: { label: string; onChange: (checked: boolean) => void };
   // confirmText = confirm 의 [확인] 라벨(미지정 시 「확인」).
   // cancelText = confirm·select·dropdown·checkbox 의 내장 취소 라벨(미지정 시 「취소」, 예: 「나중에」).
   confirmText?: string;
@@ -59,6 +63,7 @@ const ConfirmWindow = observer(() => {
   const [inputValue, setInputValue] = useState<string>('');
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
   const [skipConfirm, setSkipConfirm] = useState(false);
+  const [extraChecked, setExtraChecked] = useState(false);
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [dropdownMenuOpen, setDropdownMenuOpen] = useState(false);
   // 입력 검증(validate) 오류 문구 — 입력칸 아래 표시, 입력을 고치면 지운다.
@@ -86,6 +91,7 @@ const ConfirmWindow = observer(() => {
     );
     setCheckedItems(new Set());
     setSkipConfirm(false);
+    setExtraChecked(false);
     setDropdownMenuOpen(false);
     setInputError(null);
     validatingRef.current = null;
@@ -314,6 +320,23 @@ const ConfirmWindow = observer(() => {
                         className="w-4 h-4 rounded accent-sky-500"
                       />
                       이번 세션에서 다시 묻지 않음
+                    </label>
+                  )}
+                  {curDialog.confirmCheck && (
+                    <label
+                      className="flex items-center gap-2 mt-3 text-sm text-muted cursor-pointer select-none"
+                      data-confirm-check=""
+                    >
+                      <input
+                        type="checkbox"
+                        checked={extraChecked}
+                        onChange={(e) => {
+                          setExtraChecked(e.target.checked);
+                          curDialog.confirmCheck!.onChange(e.target.checked);
+                        }}
+                        className="w-4 h-4 rounded accent-sky-500"
+                      />
+                      {curDialog.confirmCheck.label}
                     </label>
                   )}
                   {/* [확인][취소] 순서 고정. 색은 위험도로만 — 중립 파랑, 파괴적(danger) 빨강 */}

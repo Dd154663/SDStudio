@@ -97,6 +97,22 @@ import {
   TOKEN_ROTATE_WARNING_MAX,
   TOKEN_ROTATE_WARNING_MIN,
 } from '../models/tokenAutoRotation';
+import {
+  BOOST_ACCOUNT_SCOPES,
+  BOOST_SCOPE_LABEL,
+  BOOST_TEXT,
+  BoostActiveMode,
+  BoostSettings,
+  boostActiveModeOf,
+  boostParticipantPreviewText,
+  boostSettingsLock,
+  boostSettingsToConfig,
+  isBoostEnabled,
+  needsBoostWarning,
+  resolveBoostSettings,
+  sameBoostSettings,
+} from '../models/boostMode';
+import { useBoostAccountLock } from './boostAccountLock';
 
 interface ConfigScreenProps {
   onSave: () => void;
@@ -112,8 +128,12 @@ const LoginTab = ({
   multiTokenRotateTarget, setMultiTokenRotateTarget,
   multiTokenBalanceRotate, setMultiTokenBalanceRotate,
   multiTokenRotateBalance, setMultiTokenRotateBalance,
+  boostSettings, setBoostSettings,
+  boostModeChoice, setBoostModeChoice,
 }: any) => {
   const currentUsage = useOpusUsage();
+  // 부스트 다중 계정 실행 중이면 계정 전환·토큰 로그인·토큰 삭제를 막는다(B3 — 서비스도 같은 조건으로 거부).
+  const switchLocked = useBoostAccountLock();
   const [profiles, setProfiles] = useState<LoginTokenProfile[]>([]);
   const [profileToken, setProfileToken] = useState('');
   const [profilesReady, setProfilesReady] = useState(false);
@@ -127,6 +147,18 @@ const LoginTab = ({
     Record<string, LoginTokenUsageCheck>
   >({});
   const rotateTargetMin = minimumTokenRotateTarget(multiTokenRotateWarning);
+  const boost = boostSettings as BoostSettings;
+  const boostOn = isBoostEnabled(boost);
+  // D12 상호 배타 + 토큰 2개 조건 — 켜려는 쪽만 막는다(상대를 자동으로 끄지 않음).
+  const boostLock = boostSettingsLock({
+    boostOn,
+    rotationOn: !!multiTokenAutoRotate,
+    profileCount: profilesReady ? profiles.length : 0,
+  });
+  const [boostBusy, setBoostBusy] = useState(false);
+  const [boostPreview, setBoostPreview] = useState<
+    { activeName?: string; names: string[] } | 'error' | undefined
+  >(undefined);
 
   const changeRotateWarning = (value: number) => {
     const warning = normalizeTokenRotateWarning(value);
@@ -154,6 +186,96 @@ const LoginTab = ({
     return () =>
       loginService.removeEventListener('token-profiles-change', onChange);
   }, [syncProfiles]);
+
+  // 부스트 참여 후보 미리보기(이름만, 할당량 조회 없음) — 토큰 목록·로그인이 바뀌면 다시 읽는다.
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      loginService
+        .getBoostParticipantPreview()
+        .then((preview) => {
+          if (!cancelled) setBoostPreview(preview);
+        })
+        .catch(() => {
+          if (!cancelled) setBoostPreview('error');
+        });
+    };
+    load();
+    loginService.addEventListener('token-profiles-change', load);
+    loginService.addEventListener('change', load);
+    return () => {
+      cancelled = true;
+      loginService.removeEventListener('token-profiles-change', load);
+      loginService.removeEventListener('change', load);
+    };
+  }, []);
+
+  // 부스트 켜기/끄기. 켤 때(끄기 → 켜기)는 D11 경고 창 — 확인 버튼 클릭으로만 켜지고(Enter 무시), 취소·Esc·뒤로 가기는
+  // 켜지 않는다. 「다시 보지 않음」은 확인했을 때만 기기별 config(boostWarningDismissed)에 바로 저장(동기화 제외).
+  // 이번 앱 세션에서 한 번 확인했으면 다시 묻지 않는다(LoginService.boostWarningAccepted — 앱 재실행 시 다시).
+  const toggleBoost = async (next: boolean) => {
+    if (boostBusy) return;
+    if (!next) {
+      setBoostSettings((cur: BoostSettings) => ({ ...cur, mode: 'off' }));
+      return;
+    }
+    if (boostOn || boostLock.boostBlocked) return;
+    setBoostBusy(true);
+    try {
+      let dismissed = false;
+      try {
+        dismissed = (await backend.getConfig()).boostWarningDismissed === true;
+      } catch (e) {}
+      if (
+        needsBoostWarning({
+          wasOn: boostOn,
+          nextOn: true,
+          dismissed,
+          acceptedThisSession: loginService.boostWarningAccepted,
+        })
+      ) {
+        let dontShowAgain = false;
+        const ok = await appState.confirmAsync({
+          text: BOOST_TEXT.warningText(boost.scope),
+          confirmText: BOOST_TEXT.warningConfirm,
+          danger: true,
+          requireClick: true,
+          confirmCheck: {
+            label: BOOST_TEXT.warningDismiss,
+            onChange: (checked: boolean) => {
+              dontShowAgain = checked;
+            },
+          },
+        });
+        if (!ok) return;
+        loginService.boostWarningAccepted = true;
+        if (dontShowAgain) {
+          try {
+            const latest = await backend.getConfig();
+            await backend.setConfig({ ...latest, boostWarningDismissed: true });
+          } catch (e) {
+            appState.pushMessage('「다시 보지 않음」 설정을 저장하지 못했습니다', 'error');
+          }
+        }
+      }
+      setBoostSettings((cur: BoostSettings) => ({ ...cur, mode: boostModeChoice }));
+    } finally {
+      setBoostBusy(false);
+    }
+  };
+
+  const chooseBoostMode = (mode: BoostActiveMode) => {
+    setBoostModeChoice(mode);
+    if (boostOn) setBoostSettings((cur: BoostSettings) => ({ ...cur, mode }));
+  };
+
+  // 다중 계정 위험 경고(순회·부스트 공용 문구) — 순회 또는 부스트가 켜져 있을 때 각 영역에 표시.
+  const multiAccountWarning = (
+    <div className="back-orange rounded-lg p-3 text-xs">
+      다중 계정 사용은 NovelAI 정책에 따라 제재 또는 계정 제한 위험이 있을 수
+      있으며, 사용에 대한 책임은 사용자에게 있습니다.
+    </div>
+  );
 
   const saveProfile = async () => {
     if (profileBusy) return;
@@ -285,10 +407,16 @@ const LoginTab = ({
               : <span className={`${roundTag} back-red`}>No</span>}
           </p>
           <button className="btn back-sky py-1 px-3 rounded ml-auto"
+            disabled={!!switchLocked}
             onClick={loginWithToken}>
             토큰 로그인
           </button>
         </div>
+        {switchLocked && (
+          <p className="text-xs text-muted mt-2" data-boost-switch-locked>
+            {switchLocked}
+          </p>
+        )}
       </div>
       <hr className="line-color" />
       {/* 토큰 발급/로그인 가이드 */}
@@ -353,7 +481,7 @@ const LoginTab = ({
               id="cfgMultiTokenAutoRotate"
               type="checkbox"
               checked={multiTokenAutoRotate}
-              disabled={!profilesReady || profiles.length < 2}
+              disabled={!profilesReady || profiles.length < 2 || boostLock.rotationBlocked}
               onChange={(e) => setMultiTokenAutoRotate(e.target.checked)}
             />
             <label
@@ -363,6 +491,11 @@ const LoginTab = ({
               V5 할당량 기반 자동 순회
             </label>
           </div>
+          {boostLock.rotationBlocked && (
+            <p className="text-xs text-muted" data-boost-rotation-locked>
+              {BOOST_TEXT.rotationLocked}
+            </p>
+          )}
           <p className="text-xs text-muted">
             정상 Opus 토큰이 2개 이상 저장된 경우에만 동작합니다. 무료 할당량 대상
             V5 생성에서 한 장이 끝난 뒤 다음 장을 시작하기 전에 전환합니다.
@@ -452,12 +585,7 @@ const LoginTab = ({
               </div>
             </div>
           </div>
-          {multiTokenAutoRotate && (
-            <div className="back-orange rounded-lg p-3 text-xs">
-              다중 계정 사용은 NovelAI 정책에 따라 제재 또는 계정 제한 위험이 있을 수
-              있으며, 사용에 대한 책임은 사용자에게 있습니다.
-            </div>
-          )}
+          {multiTokenAutoRotate && multiAccountWarning}
           {profilesReady && profiles.length < 2 && (
             <p className="text-xs text-muted">
               자동 순회를 사용하려면 토큰을 2개 이상 저장해 주세요.
@@ -487,6 +615,11 @@ const LoginTab = ({
           <p className="text-sm text-muted">저장된 토큰 프리셋이 없습니다.</p>
         ) : (
           <div className="space-y-2">
+            {switchLocked && (
+              <p className="text-xs text-muted" data-boost-switch-locked>
+                {switchLocked}
+              </p>
+            )}
             {profiles.map((profile) => {
               const active = loginService.activeProfileId === profile.id;
               const usageCheck = profileUsageChecks[profile.id];
@@ -545,14 +678,14 @@ const LoginTab = ({
                   )}
                   <button
                     className="btn back-sky rounded px-3 py-1 text-xs flex-none"
-                    disabled={profileBusy || active}
+                    disabled={profileBusy || active || !!switchLocked}
                     onClick={() => activateProfile(profile)}
                   >
                     전환
                   </button>
                   <button
                     className="btn back-red rounded px-3 py-1 text-xs flex-none"
-                    disabled={profileBusy}
+                    disabled={profileBusy || !!switchLocked}
                     onClick={() => deleteProfile(profile)}
                   >
                     삭제
@@ -568,6 +701,121 @@ const LoginTab = ({
           </div>
         )}
         <OpusUsageHelp />
+      </div>
+
+      <hr className="line-color" />
+      {/* 부스트 모드(B3, PC·모바일 공통) — 값은 다른 다중 토큰 설정처럼 「저장」 때 config 에 쓴다(경고 창의
+          「다시 보지 않음」만 즉시 저장). 판정·문구 단일 출처 models/boostMode.ts. */}
+      <div className="space-y-3" data-boost-settings>
+        <div>
+          <p className="text-sm font-semibold gray-label">{BOOST_TEXT.settingsTitle}</p>
+          <p className="text-xs text-muted mt-1">{BOOST_TEXT.settingsDescription}</p>
+        </div>
+        <div className="rounded-lg border line-color bg-[var(--c-surface-2)] p-3 space-y-3">
+          <div className="flex items-center gap-2">
+            <input
+              id="cfgBoostMode"
+              type="checkbox"
+              checked={boostOn}
+              disabled={boostBusy || (!boostOn && !!boostLock.boostBlocked)}
+              onChange={(e) => void toggleBoost(e.target.checked)}
+            />
+            <label htmlFor="cfgBoostMode" className="text-sm font-medium text-default">
+              {BOOST_TEXT.settingsToggle}
+            </label>
+          </div>
+          {boostLock.boostBlocked === 'rotation' && (
+            <p className="text-xs text-muted" data-boost-locked="rotation">
+              {BOOST_TEXT.boostLockedByRotation}
+            </p>
+          )}
+          {profilesReady && profiles.length < 2 && (
+            <p className="text-xs text-muted" data-boost-locked="profiles">
+              {BOOST_TEXT.profilesRequired}
+            </p>
+          )}
+          {(() => {
+            // 켤 수 없는 상태(토큰 부족·순회 켜짐)면 방식·범위도 고를 수 없다. 꺼져 있어도 고를 수는 있다(켜면 그 값으로).
+            const areaDisabled = !boostOn && !!boostLock.boostBlocked;
+            return (
+              <div
+                className={'space-y-3 ' + (boostOn ? '' : 'opacity-60')}
+                aria-disabled={areaDisabled || undefined}
+              >
+                <fieldset className="space-y-1.5" disabled={areaDisabled}>
+                  <legend className="text-xs font-medium text-body mb-1">
+                    {BOOST_TEXT.modeHeading}
+                  </legend>
+                  {(['replicate', 'split'] as BoostActiveMode[]).map((mode) => (
+                    <label key={mode} className="flex items-start gap-2 text-xs text-default cursor-pointer">
+                      <input
+                        type="radio"
+                        name="cfgBoostActiveMode"
+                        className="mt-0.5 flex-none"
+                        checked={boostModeChoice === mode}
+                        onChange={() => chooseBoostMode(mode)}
+                      />
+                      <span className="min-w-0">
+                        <span className="block">{BOOST_TEXT.modeLabel[mode]}</span>
+                        <span className="block text-muted">{BOOST_TEXT.modeHint[mode]}</span>
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
+                <fieldset className="space-y-1.5 border-t line-color pt-3" disabled={areaDisabled}>
+                  <legend className="text-xs font-medium text-body mb-1">
+                    {BOOST_TEXT.scopeHeading}
+                  </legend>
+                  {BOOST_ACCOUNT_SCOPES.map((scope) => (
+                    <label key={scope} className="flex items-start gap-2 text-xs text-default cursor-pointer">
+                      <input
+                        type="radio"
+                        name="cfgBoostScope"
+                        className="mt-0.5 flex-none"
+                        checked={boost.scope === scope}
+                        onChange={() =>
+                          setBoostSettings((cur: BoostSettings) => ({ ...cur, scope }))
+                        }
+                      />
+                      <span className="min-w-0">
+                        <span className="block">{BOOST_SCOPE_LABEL[scope]}</span>
+                        <span className="block text-muted">{BOOST_TEXT.scopeHint[scope]}</span>
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
+                <div className="border-t line-color pt-3 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="cfgBoostVariantTasks"
+                      type="checkbox"
+                      checked={boost.variantTasks}
+                      disabled={areaDisabled}
+                      onChange={(e) =>
+                        setBoostSettings((cur: BoostSettings) => ({
+                          ...cur,
+                          variantTasks: e.target.checked,
+                        }))
+                      }
+                    />
+                    <label htmlFor="cfgBoostVariantTasks" className="text-xs font-medium text-default">
+                      {BOOST_TEXT.variantToggle}
+                    </label>
+                  </div>
+                  <p className="text-xs text-muted">{BOOST_TEXT.variantHint}</p>
+                </div>
+                <p className="text-xs text-body border-t line-color pt-3" data-boost-preview>
+                  {boostPreview === 'error'
+                    ? '참여 후보를 불러오지 못했습니다.'
+                    : boostPreview
+                      ? boostParticipantPreviewText(boostPreview)
+                      : '참여 후보를 불러오는 중…'}
+                </p>
+              </div>
+            );
+          })()}
+          {boostOn && multiAccountWarning}
+        </div>
       </div>
     </div>
   );
@@ -2991,6 +3239,9 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [multiTokenRotateTarget, setMultiTokenRotateTarget] = useState(25);
   const [multiTokenBalanceRotate, setMultiTokenBalanceRotate] = useState(false);
   const [multiTokenRotateBalance, setMultiTokenRotateBalance] = useState(80);
+  // 부스트 모드(B3) — config 키 boostMode·boostAccountScope·boostVariantTasks(저장 때). 방식 선택은 꺼져 있을 때도 기억.
+  const [boostSettings, setBoostSettings] = useState<BoostSettings>(resolveBoostSettings(undefined));
+  const [boostModeChoice, setBoostModeChoice] = useState<BoostActiveMode>(boostActiveModeOf('off'));
   // 미저장 변경 감지 기준 — 로드/저장 시점의 config 스냅샷 (#17)
   const [savedCfg, setSavedCfg] = useState<Config | null>(null);
   const mobileMode = isMobile;
@@ -3058,6 +3309,11 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     setMultiTokenRotateBalance(
       normalizeTokenRotateBalance(config.multiTokenRotateBalancePercent),
     );
+    {
+      const boostLoaded = resolveBoostSettings(config);
+      setBoostSettings(boostLoaded);
+      setBoostModeChoice(boostActiveModeOf(boostLoaded.mode));
+    }
     setModernExitReset(false);
     setSavedCfg(config);
   };
@@ -3243,6 +3499,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       multiTokenRotateTargetPercent: multiTokenRotateTarget,
       multiTokenBalanceRotate: multiTokenBalanceRotate,
       multiTokenRotateBalancePercent: multiTokenRotateBalance,
+      // 부스트 모드 3키(boostWarningDismissed 는 경고 창이 따로 즉시 저장 — old 에서 그대로 이어진다)
+      ...boostSettingsToConfig(boostSettings),
     };
     // 모던 사이드바 "최초 전환" 시(② A 결정 2): 버튼 배치(툴바·동반 슬롯)를 초기화하고
     // 모던 기본 배치+하단 아이콘 행을 강제 적용한다. 이후 재커스텀 자유, 해제(다른
@@ -3357,7 +3615,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     const key = tabs[tabIdx]?.key;
     switch (key) {
       case 'login':
-        return <LoginTab {...{ accessToken, setAccessToken, loggedIn, loginWithToken, roundTag, multiTokenAutoRotate, setMultiTokenAutoRotate, multiTokenRotateWarning, setMultiTokenRotateWarning, multiTokenRotateTarget, setMultiTokenRotateTarget, multiTokenBalanceRotate, setMultiTokenBalanceRotate, multiTokenRotateBalance, setMultiTokenRotateBalance }} />;
+        return <LoginTab {...{ accessToken, setAccessToken, loggedIn, loginWithToken, roundTag, multiTokenAutoRotate, setMultiTokenAutoRotate, multiTokenRotateWarning, setMultiTokenRotateWarning, multiTokenRotateTarget, setMultiTokenRotateTarget, multiTokenBalanceRotate, setMultiTokenBalanceRotate, multiTokenRotateBalance, setMultiTokenRotateBalance, boostSettings, setBoostSettings, boostModeChoice, setBoostModeChoice }} />;
       case 'storage':
         return <StorageImageTab {...{ saveLocation, dataRoot, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 'system':
@@ -3432,7 +3690,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       multiTokenBalanceRotate !== (savedCfg.multiTokenBalanceRotate ?? false) ||
       multiTokenRotateBalance !== normalizeTokenRotateBalance(
         savedCfg.multiTokenRotateBalancePercent,
-      ));
+      ) ||
+      !sameBoostSettings(boostSettings, resolveBoostSettings(savedCfg)));
 
   return (
     <div

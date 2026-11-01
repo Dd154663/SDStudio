@@ -8,6 +8,7 @@ import { backStackService } from '../models/BackStackService';
 import { presentOpusUsage } from '../models/opusUsagePresentation';
 import OpusUsageMeter, { OpusUsageBar, OpusUsageHelp } from './OpusUsageMeter';
 import OpusUsageQuietToggle from './OpusUsageQuietToggle';
+import { useBoostAccountLock } from './boostAccountLock';
 
 export function useOpusUsage() {
   const [, redraw] = useState(0);
@@ -43,6 +44,8 @@ const OpusUsageBadge = observer(
     const switchingRef = useRef(false);
     const [switchError, setSwitchError] = useState('');
     const [, redrawProfiles] = useState(0);
+    // 부스트 다중 계정 실행 중이면 계정 전환 버튼을 막는다(B3 — 서비스도 같은 조건으로 거부).
+    const switchLocked = useBoostAccountLock();
     const buttonRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const downOnBackdrop = useRef(false);
@@ -69,7 +72,7 @@ const OpusUsageBadge = observer(
     }, [open]);
 
     const switchProfile = async (id: string) => {
-      if (switchingRef.current || id === loginService.activeProfileId) return;
+      if (switchingRef.current || id === loginService.activeProfileId || switchLocked) return;
       switchingRef.current = true;
       setSwitchingId(id);
       setSwitchError('');
@@ -256,6 +259,11 @@ const OpusUsageBadge = observer(
                 {profiles.length >= 2 && (
                   <div className="border-t line-color pt-3 space-y-2">
                     <h3 className="text-xs font-semibold text-body">계정 전환</h3>
+                    {switchLocked && (
+                      <p className="text-xs text-muted" data-boost-switch-locked>
+                        {switchLocked}
+                      </p>
+                    )}
                     <div className="space-y-1 max-h-40 overflow-auto">
                       {profiles.map((profile) => {
                         const active = profile.id === loginService.activeProfileId;
@@ -264,7 +272,7 @@ const OpusUsageBadge = observer(
                             <span className="min-w-0 flex-1 truncate text-sm" title={profile.name}>{profile.name}</span>
                             <button className={`btn rounded px-3 py-1.5 text-xs flex-none ${active ? 'back-green' : 'back-sky'}`}
                               aria-label={`${profile.name}으로 전환`}
-                              disabled={!!switchingId || active}
+                              disabled={!!switchingId || active || !!switchLocked}
                               onClick={() => void switchProfile(profile.id)}>
                               {switchingId === profile.id ? '전환 중…' : active ? '사용 중' : '전환'}
                             </button>

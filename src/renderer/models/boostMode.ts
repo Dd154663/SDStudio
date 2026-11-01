@@ -380,6 +380,118 @@ export function imageAccountKey(path: string): string {
   return path.split('/').pop() ?? path;
 }
 
+// ─── 설정 화면(B3, 2026-11-01) ───
+
+/** 부스트를 켤 수 있는 최소 저장 토큰 프로필 수(기본 계정 + 다른 계정 1개 이상). */
+export const BOOST_MIN_TOKEN_PROFILES = 2;
+
+/** 설정 화면에서 「켜기」 상태일 때의 방식(A/B). 끄기는 config `boostMode: 'off'`. */
+export type BoostActiveMode = Exclude<BoostMode, 'off'>;
+/**
+ * 방식을 아직 고른 적이 없을 때의 기본값 — B(나눠 생성). A 는 예약 장 수를 계정 수만큼 늘리므로 사용자가 직접 고르게 한다
+ * (2026-11-01 B3 가정 — 플랜 §10).
+ */
+export const DEFAULT_BOOST_ACTIVE_MODE: BoostActiveMode = 'split';
+
+/** 저장된 모드에서 설정 화면의 방식 선택 처음 값(꺼짐이면 기본 방식). */
+export function boostActiveModeOf(mode: BoostMode): BoostActiveMode {
+  return mode === 'off' ? DEFAULT_BOOST_ACTIVE_MODE : mode;
+}
+
+/** 설정 → config 키 3개(저장 왕복 — 읽기는 resolveBoostSettings). `boostWarningDismissed` 는 경고 창이 따로 쓴다. */
+export function boostSettingsToConfig(settings: BoostSettings): {
+  boostMode: BoostMode;
+  boostAccountScope: BoostAccountScope;
+  boostVariantTasks: boolean;
+} {
+  return {
+    boostMode: normalizeBoostMode(settings.mode),
+    boostAccountScope: normalizeBoostAccountScope(settings.scope),
+    boostVariantTasks: settings.variantTasks === true,
+  };
+}
+
+/** 두 설정이 같은가(미저장 표시 — 정규화한 값으로 비교). */
+export function sameBoostSettings(a: BoostSettings, b: BoostSettings): boolean {
+  const x = boostSettingsToConfig(a);
+  const y = boostSettingsToConfig(b);
+  return (
+    x.boostMode === y.boostMode &&
+    x.boostAccountScope === y.boostAccountScope &&
+    x.boostVariantTasks === y.boostVariantTasks
+  );
+}
+
+export interface BoostSettingsLockInput {
+  /** 화면의 부스트 켜짐(저장 전 로컬 값). */
+  boostOn: boolean;
+  /** 화면의 다중 토큰 자동 순회 켜짐(저장 전 로컬 값). 균형 순회는 자동 순회 아래 옵션이라 이것만 본다. */
+  rotationOn: boolean;
+  /** 저장 토큰 프로필 수(불러오기 전이면 0). */
+  profileCount: number;
+}
+
+export interface BoostSettingsLock {
+  /** 부스트 토글을 켤 수 없는 이유(이미 켜져 있으면 끄기는 늘 허용 — undefined). */
+  boostBlocked?: 'profiles' | 'rotation';
+  /** 자동 순회·균형 순회를 켤 수 없는가(D12 — 부스트가 켜져 있음, 이미 켜진 순회를 끄는 것은 허용). */
+  rotationBlocked: boolean;
+}
+
+/**
+ * D12 상호 배타 + 토큰 수 조건 — 켜려는 쪽만 막고 상대를 자동으로 끄지 않는다(사용자가 직접 끈다).
+ * 이미 켜진 쪽은 끌 수 있어야 하므로(구 config 에서 둘 다 켜진 경우 포함) 「켜기」만 막는다.
+ */
+export function boostSettingsLock(input: BoostSettingsLockInput): BoostSettingsLock {
+  let boostBlocked: BoostSettingsLock['boostBlocked'];
+  if (!input.boostOn) {
+    if (input.rotationOn) boostBlocked = 'rotation';
+    else if (input.profileCount < BOOST_MIN_TOKEN_PROFILES) boostBlocked = 'profiles';
+  }
+  return {
+    ...(boostBlocked ? { boostBlocked } : {}),
+    rotationBlocked: input.boostOn && !input.rotationOn,
+  };
+}
+
+/**
+ * D11 경고 창을 띄워야 하는가 — 끄기 → 켜기 전환일 때만, 「다시 보지 않음」(기기별 config) 이 없고 이번 앱 세션에서
+ * 아직 확인하지 않았을 때. A ↔ B 방식만 바꾸는 것은 전환이 아니다.
+ */
+export function needsBoostWarning(input: {
+  wasOn: boolean;
+  nextOn: boolean;
+  dismissed: boolean;
+  acceptedThisSession: boolean;
+}): boolean {
+  return !input.wasOn && input.nextOn && !input.dismissed && !input.acceptedThisSession;
+}
+
+/**
+ * 계정 수동 전환·토큰 로그인·토큰 삭제를 막아야 하는가 — 부스트 다중 계정 실행 중(워커 2개 이상)이거나 부스트 실행이
+ * 참여 계정을 고르는 중(starting — 호스트 창만 안다). 실행 중 TOKEN.txt 가 바뀌면 기본 워커 계정이 참여 계정과 겹칠 수
+ * 있다(같은 계정 동시 2요청 = 409).
+ */
+export function isBoostAccountSwitchLocked(input: {
+  running: boolean;
+  workers: number;
+  starting?: boolean;
+}): boolean {
+  return input.running && (input.workers > 1 || input.starting === true);
+}
+
+/** 참여 후보 미리보기 한 줄(이름만 — 할당량은 조회하지 않는다). */
+export function boostParticipantPreviewText(preview: {
+  activeName?: string;
+  names: string[];
+}): string {
+  const head = preview.activeName ? `현재 계정(${preview.activeName})` : '현재 로그인 계정';
+  if (preview.names.length === 0) {
+    return `참여 후보: ${head}만 — 함께 생성할 다른 저장 토큰이 없습니다.`;
+  }
+  return `참여 후보: ${head} + ${preview.names.join(', ')} — 실제 참여는 생성을 시작할 때 참여 범위와 할당량으로 판정합니다.`;
+}
+
 // ─── 문구 ───
 
 export const BOOST_SCOPE_LABEL: Record<BoostAccountScope, string> = {
@@ -411,4 +523,41 @@ export const BOOST_TEXT = {
   /** 다중 계정에서 장 하나만 건너뛰었을 때 원 창(보조 창) 안내. */
   delegatedImageSkipped: (sceneName: string) =>
     `생성 실패(재시도 초과) — 이 장만 건너뛰고 계속합니다: ${sceneName}`,
+
+  // ── 설정 화면·경고 창(B3) ──
+  settingsTitle: '부스트 모드',
+  settingsToggle: '부스트 모드 켜기',
+  settingsDescription:
+    '저장된 여러 토큰(계정)으로 동시에 생성해 예약을 더 빨리 처리합니다. 설정은 「저장」을 눌러야 반영됩니다.',
+  modeHeading: '방식',
+  modeLabel: {
+    replicate: 'A · 모든 계정이 같은 예약을 받아 계정 수만큼 생성',
+    split: 'B · 예약을 계정 수로 나눠 생성',
+  } as Record<BoostActiveMode, string>,
+  modeHint: {
+    replicate: '예: 3계정 · 30장 예약 → 90장. 씬 예약 수가 참여 계정 수만큼 늘어납니다.',
+    split: '예: 3계정 · 30장 예약 → 계정마다 약 10장씩, 총 30장.',
+  } as Record<BoostActiveMode, string>,
+  scopeHeading: '참여 범위',
+  scopeHint: {
+    free: 'Opus 구독의 무료 할당량이 남은 계정만 참여합니다.',
+    purchased: '무료 할당량 또는 추가 충전 할당량이 남은 계정이 참여합니다.',
+    anlas: 'Anlas 가 차감됩니다. 로그인할 수 있는 모든 저장 계정이 참여합니다.',
+  } as Record<BoostAccountScope, string>,
+  variantToggle: '인페인트·I2I·미러 등 변형 작업에도 적용',
+  variantHint: '끄면 일반 이미지 생성 예약만 여러 계정으로 나눕니다.',
+  profilesRequired: '토큰이 2개 이상 저장돼 있어야 합니다.',
+  /** 부스트가 켜져 있어 자동 순회를 켤 수 없을 때. */
+  rotationLocked: '부스트 모드와 함께 쓸 수 없습니다. 부스트 모드를 끈 뒤 켜 주세요.',
+  /** 자동 순회가 켜져 있어 부스트를 켤 수 없을 때. */
+  boostLockedByRotation: '자동 순회와 함께 쓸 수 없습니다. 자동 순회를 끈 뒤 켜 주세요.',
+  /** 부스트 다중 계정 실행 중 수동 전환·로그인·삭제 차단(UI 안내·서비스 거부 오류 공용). */
+  accountSwitchLocked: '부스트 실행 중에는 계정을 바꿀 수 없습니다. 생성을 멈춘 뒤 바꿔 주세요.',
+  /** D11 경고 창 본문(범위가 Anlas 이면 한 줄 추가). */
+  warningText: (scope: BoostAccountScope) =>
+    '부스트 모드는 저장된 여러 NovelAI 계정으로 한 기기에서 동시에 생성합니다.\n' +
+    'NovelAI 정책상 다계정 동시 사용은 제재·계정 정지 대상이 될 수 있으며, 이에 따른 모든 책임은 사용자에게 있습니다.' +
+    (scope === 'anlas' ? '\nAnlas 가 각 계정에서 차감됩니다.' : ''),
+  warningConfirm: '위험을 이해하고 켜기',
+  warningDismiss: '다시 보지 않음',
 };
