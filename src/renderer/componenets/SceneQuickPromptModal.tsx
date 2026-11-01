@@ -14,6 +14,8 @@ import { isMobile } from '../models';
 import { appState } from '../models/AppService';
 import { sceneCharacterContext } from '../models/sceneCharacterPrompts';
 import { PromptPiece, Scene } from '../models/types';
+import { flushSceneFieldEdit, touchSceneFieldEdit } from '../models/sceneFieldUndo';
+import { UNDO_TEXT } from '../models/undoService';
 
 interface SceneQuickPromptModalProps {
   scene: Scene;
@@ -32,6 +34,8 @@ const SceneQuickPromptModal = observer(
     const [showPieces, setShowPieces] = useState(false);
     const [selectedPiece, setSelectedPiece] = useState<PromptPiece>();
     useEffect(() => { setSelectedPiece(undefined); setShowPieces(false); }, [scene]);
+    // 닫힐 때 열린 프롬프트 편집 세션(D13)을 확정 — 편집기가 사라지며 blur 가 오지 않을 수 있다(U2b)
+    useEffect(() => () => { flushSceneFieldEdit(); }, []);
     const usePopover = !isMobile && !!anchor;
 
     // 단순 씬 에디터와 동일한 보장: slots 가 비어 있으면 첫 조각을 만든다
@@ -111,6 +115,9 @@ const SceneQuickPromptModal = observer(
       <PromptEditTextArea key={piece.id}
         value={piece.prompt}
         onChange={(v: string) => {
+          if (piece.prompt === v) return;
+          // 편집기를 떠날 때 1항목(D13) — 씬 조합 slots 통째(U2b)
+          touchSceneFieldEdit(appState.curSession, scene, ['slots'], UNDO_TEXT.comboPiecePrompt(scene.name));
           piece.prompt = v;
         }}
       />

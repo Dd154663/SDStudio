@@ -83,6 +83,7 @@ import { copyComboContent } from './variantCombo';
 import { recordSceneOrder } from './sceneOrderUndo';
 import { recordScenesCreated } from './sceneStructureUndo';
 import { UNDO_TEXT } from './undoService';
+import { editScenesFields, restoreSceneFieldValue, SCENE_CONTENT_COPY_KEYS } from './sceneFieldUndo';
 
 export class BatchProcessService {
   openBatchProcessMenu(
@@ -646,6 +647,25 @@ export class BatchProcessService {
                       danger: true,
                       text: `원본 '${sourceName}'의 내용을 선택한 ${selected.length}개 씬에 덮어씌우시겠습니까?`,
                       callback: () => {
+                        // 되돌리기(U2b): 대상 씬들의 내용 필드만 묶음 1항목 — 이미지 필드(imageMap·mains·game·round)는 담지 않는다
+                        // (그사이 생성된 이미지 보존). 변형 씬 preset 은 presetFromJSON 으로 되살린다.
+                        editScenesFields(
+                          appState.curSession,
+                          sourceScene.type === type ? selected : [],
+                          SCENE_CONTENT_COPY_KEYS[type],
+                          UNDO_TEXT.sceneContentCopy(sourceName, selected.length),
+                          () => copyContent(),
+                          {
+                            restore: (key, plain, current) =>
+                              key === 'preset'
+                                ? plain && workFlowService.presetFromJSON(plain)
+                                : restoreSceneFieldValue(key, plain, current),
+                          },
+                        );
+                        appState.pushMessage(`${selected.length}개 씬에 내용이 복제되었습니다.`);
+                      },
+                    });
+                    const copyContent = () => {
                         if (sourceScene.type === 'scene' && type === 'scene') {
                           const src = sourceScene as Scene;
                           const srcJSON = src.toJSON();
@@ -677,9 +697,7 @@ export class BatchProcessService {
                             copyComboContent(srcJSON, t);
                           }
                         }
-                        appState.pushMessage(`${selected.length}개 씬에 내용이 복제되었습니다.`);
-                      },
-                    });
+                    };
                   },
                 });
               },
@@ -805,6 +823,15 @@ export class BatchProcessService {
   // 대량 작업·툴바는 씬 선택 창을 거쳐 오고, 컨텍스트 메뉴(선택 작업)는 이미 고른 씬을 그대로 넘긴다(2026-09-21).
   changeResolutionOfScenes(selected: GenericScene[]) {
     if (selected.length === 0) return;
+    // 되돌리기(U2b): 적용 1회 = 묶음 1항목(바뀐 씬만, 되돌림 역순)
+    const editResolution = (mutate: () => void) =>
+      editScenesFields(
+        appState.curSession,
+        selected,
+        ['resolution', 'resolutionWidth', 'resolutionHeight'],
+        UNDO_TEXT.scenesResolution(selected.length),
+        mutate,
+      );
     const options = Object.entries(resolutionMap)
       .filter((x) => !x[0].includes('small'))
       .map(([key, value]) => {
@@ -825,17 +852,21 @@ export class BatchProcessService {
           // 숫자 검증·64px 보정은 공용 흐름(빈칸·문자는 거부 — 예전에는 0x0 저장, X15c)
           const size = await promptCustomResolution();
           if (!size) return;
-          for (const scene of selected) {
-            scene.resolution = 'custom' as Resolution;
-            scene.resolutionWidth = size.width;
-            scene.resolutionHeight = size.height;
-          }
+          editResolution(() => {
+            for (const scene of selected) {
+              scene.resolution = 'custom' as Resolution;
+              scene.resolutionWidth = size.width;
+              scene.resolutionHeight = size.height;
+            }
+          });
           return;
         }
         const action = () => {
-          for (const scene of selected) {
-            scene.resolution = value as Resolution;
-          }
+          editResolution(() => {
+            for (const scene of selected) {
+              scene.resolution = value as Resolution;
+            }
+          });
         };
         if (value.includes('large') || value.includes('wallpaper')) {
           appState.pushDialog({

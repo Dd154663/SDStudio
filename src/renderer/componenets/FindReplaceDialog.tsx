@@ -13,6 +13,8 @@ import ModalOverlay from './ModalOverlay';
 import { FaSearch, FaExchangeAlt, FaPlus } from 'react-icons/fa';
 import { Scene, CharacterPreset, PromptPiece, InpaintScene } from '../models/types';
 import { variantComboMode } from '../models/comboMode';
+import { editScenesFields } from '../models/sceneFieldUndo';
+import { UNDO_TEXT } from '../models/undoService';
 
 /** 검색 결과 한 건. setText 가 false 를 반환하면 "건너뜀"(이름 충돌·차단 등). */
 interface SearchResult {
@@ -685,42 +687,42 @@ const InsertTab = () => {
   const doInsert = () => {
     if (!session || !insertText.trim()) return;
     let applied = 0;
-
-    for (const scene of session.scenes.values()) {
-      if (!selectedScenes.has(scene.name)) continue;
-
-      if (slotTarget === 'new-column') {
-        // 새 열(슬롯)을 맨 뒤에 추가
-        const newPiece = PromptPiece.fromJSON({
-          prompt: insertText.trim(),
-          characterPrompts: [],
-          enabled: true,
-          id: uuidv4(),
-        });
-        scene.slots.push([newPiece]);
-        applied++;
-        continue;
-      }
-
-      const targetSlots = slotTarget === 'all'
-        ? scene.slots
-        : (slotTarget < scene.slots.length ? [scene.slots[slotTarget as number]] : []);
-
-      for (const slot of targetSlots) {
-        for (const piece of slot) {
-          if (position === 'append') {
-            piece.prompt = piece.prompt
-              ? piece.prompt + ', ' + insertText.trim()
-              : insertText.trim();
-          } else {
-            piece.prompt = piece.prompt
-              ? insertText.trim() + ', ' + piece.prompt
-              : insertText.trim();
-          }
+    // 되돌리기(U2b): 삽입 1회 = 대상 씬들의 조합 slots 묶음 1항목(바뀐 씬만, 되돌림 역순).
+    // 찾기/바꾸기 「모두 변환」은 보류 영역이라 기록하지 않는다.
+    const targets = Array.from(session.scenes.values()).filter((scene) => selectedScenes.has(scene.name));
+    editScenesFields(session, targets, ['slots'], UNDO_TEXT.comboBatchInsert(targets.length), () => {
+      for (const scene of targets) {
+        if (slotTarget === 'new-column') {
+          // 새 열(슬롯)을 맨 뒤에 추가
+          const newPiece = PromptPiece.fromJSON({
+            prompt: insertText.trim(),
+            characterPrompts: [],
+            enabled: true,
+            id: uuidv4(),
+          });
+          scene.slots.push([newPiece]);
           applied++;
+          continue;
+        }
+        const targetSlots = slotTarget === 'all'
+          ? scene.slots
+          : (slotTarget < scene.slots.length ? [scene.slots[slotTarget as number]] : []);
+        for (const slot of targetSlots) {
+          for (const piece of slot) {
+            if (position === 'append') {
+              piece.prompt = piece.prompt
+                ? piece.prompt + ', ' + insertText.trim()
+                : insertText.trim();
+            } else {
+              piece.prompt = piece.prompt
+                ? insertText.trim() + ', ' + piece.prompt
+                : insertText.trim();
+            }
+            applied++;
+          }
         }
       }
-    }
+    });
 
     setInsertComplete(applied);
   };

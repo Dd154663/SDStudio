@@ -35,6 +35,11 @@ export interface UndoEntryInit {
   redo(): UndoRunResult | Promise<UndoRunResult>;
   /** 실행 직전 검사 — 문자열(이유)이면 실행하지 않고 그 항목만 버린다 */
   verify?(dir: UndoDirection): true | string;
+  /**
+   * 기록 밖 변경과 겹쳤는가(D16) — true 면 실행 전에 확인 창(`deps.confirm`)을 띄운다. 확인 = 실행, 취소 = 항목 유지
+   * (폐기 아님 — 다시 누르면 다시 묻는다). 통째 복원 항목(capture·drag·focusEdit)이 「현재 값 ≠ 기록 시 결과」로 판정한다.
+   */
+  conflict?(dir: UndoDirection): boolean;
 }
 
 export interface UndoEntry extends UndoEntryInit {
@@ -61,6 +66,13 @@ export interface UndoSnapshotAdapter<S> {
   restore(snapshot: S): void;
   /** 같음 판정(없으면 깊은 비교) — 같으면 기록하지 않는다 */
   equals?(a: S, b: S): boolean;
+  /**
+   * 통째 덮어쓰는 복원인가(D16) — true 면 실행 직전 현재 상태가 기록 시 결과(되돌림 = 이후 값, 다시 실행 = 이전 값)와
+   * 다를 때 확인 창을 띄운다. 병합 복원(씬 순서 — 그사이 생긴 씬은 뒤에 남김)은 덮어쓰지 않으므로 끈다.
+   */
+  detectConflict?: boolean;
+  /** 실행 직전 검사(대상이 아직 있는가 등) — 문자열(이유)이면 실행하지 않고 그 항목만 버린다 */
+  verify?(): true | string;
 }
 
 export interface UndoDeps {
@@ -68,6 +80,8 @@ export interface UndoDeps {
   isMirror(session: Session): boolean;
   toast(message: string, kind: ToastKind): void;
   now(): number;
+  /** 기록 밖 변경과 겹친 항목의 실행 확인(D16) — true = 계속. 기본은 appState.confirmAsync(danger 아님) */
+  confirm(message: string, confirmText: string): Promise<boolean>;
 }
 
 export const UNDO_MAX_DEPTH = 100;
@@ -114,6 +128,41 @@ export const UNDO_TEXT = {
   sceneNotInTrash: '휴지통에 기록이 없습니다',
   sceneNameChanged: (name: string) => `씬 이름이 그사이 바뀌었습니다(현재 "${name}")`,
   sceneNameTaken: (name: string) => `같은 이름의 씬 "${name}"이(가) 이미 있습니다`,
+  // D16 — 기록 밖 변경과 겹친 통째 복원 항목의 확인 창(danger 아님, 취소 = 항목 유지)
+  conflictUndo: (label: string) =>
+    `「${label}」 뒤에 같은 내용이 되돌리기 기록 밖에서 또 바뀌었습니다.\n` +
+    '되돌리면 이후 바뀐 내용도 함께 되돌아갑니다. 계속할까요?',
+  conflictRedo: (label: string) =>
+    `「${label}」을(를) 되돌린 뒤 같은 내용이 되돌리기 기록 밖에서 또 바뀌었습니다.\n` +
+    '다시 실행하면 이후 바뀐 내용도 함께 바뀝니다. 계속할까요?',
+  // U2b 씬 필드·조합·씬 캐릭터·시드 그룹 — sceneFieldUndo.ts
+  sceneSeed: (name: string) => `씬 전용 시드: ${name}`,
+  sceneResolution: (name: string) => `해상도 변경: ${name}`,
+  scenesResolution: (count: number) => `해상도 일괄 변경 ${count}개`,
+  sceneMiddlePrompt: (name: string) => `중간 프롬프트 편집: ${name}`,
+  sceneCharacterMiddlePrompt: (name: string) => `캐릭터 중간 프롬프트 편집: ${name}`,
+  sceneNegative: (name: string) => `씬 전용 네거티브 편집: ${name}`,
+  comboAddColumn: (name: string) => `조합 열 추가: ${name}`,
+  comboAddRow: (name: string) => `조합 행 추가: ${name}`,
+  comboRemovePiece: (name: string) => `조합 셀 삭제: ${name}`,
+  comboMovePiece: (name: string) => `조합 셀 이동: ${name}`,
+  comboTogglePiece: (name: string) => `조합 셀 활성화 변경: ${name}`,
+  comboRenamePiece: (name: string) => `조합 셀 이름 변경: ${name}`,
+  comboPiecePrompt: (name: string) => `조합 셀 프롬프트 편집: ${name}`,
+  comboPieceCharacter: (name: string) => `조각 캐릭터 프롬프트 변경: ${name}`,
+  comboQuickToggle: (name: string) => `조합 퀵 토글: ${name}`,
+  comboBatchInsert: (count: number) => `일괄 삽입 ${count}개 씬`,
+  sceneCharacterRoles: (name: string) => `씬 캐릭터 역할 변경: ${name}`,
+  sceneCharacterRoleText: (name: string) => `씬 캐릭터 역할 편집: ${name}`,
+  sceneCharacterRoleOrder: (name: string) => `씬 캐릭터 역할 순서: ${name}`,
+  sceneCharacterPosition: (name: string) => `캐릭터 위치 이동: ${name}`,
+  sceneCharacterMode: (name: string) => `캐릭터 모드 변경: ${name}`,
+  sceneCharacterNegative: (name: string) => `씬 캐릭터 공통 네거티브 편집: ${name}`,
+  baseCharacterOrder: '기본 캐릭터 순서 변경',
+  seedGroupSet: (count: number) => `시드 그룹 설정 ${count}개 씬`,
+  seedGroupRemove: '시드 그룹 해제',
+  seedGroupSeed: (label: string) => `그룹 ${label} 시드 변경`,
+  sceneContentCopy: (source: string, count: number) => `씬 내용 복제: ${source} → ${count}개`,
 } as const;
 
 // ── 참조 손잡이 ───────────────────────────────────────────────────────────
@@ -257,6 +306,14 @@ const defaultDeps: UndoDeps = {
     }
   },
   now: () => Date.now(),
+  confirm: (message, confirmText) => {
+    try {
+      return getAppState().confirmAsync(message, confirmText);
+    } catch {
+      // 부팅 전(확인 창을 띄울 수 없음) — 묻지 않고 진행(그때는 되돌릴 기록도 없다)
+      return Promise.resolve(true);
+    }
+  },
 };
 
 export class UndoService {
@@ -436,6 +493,15 @@ export class UndoService {
     try {
       const v = entry.verify?.(dir);
       if (v !== undefined && v !== true) return fail(v);
+      // D16 — 기록 밖 변경과 겹쳤으면 묻는다. 취소면 항목을 그대로 둔다(다시 누르면 다시 묻는다).
+      if (entry.conflict?.(dir)) {
+        const label = dir === 'undo' ? (entry.undoLabel ?? entry.label) : entry.label;
+        const ok = await this.#deps.confirm(
+          dir === 'undo' ? UNDO_TEXT.conflictUndo(label) : UNDO_TEXT.conflictRedo(label),
+          dir === 'undo' ? UNDO_TEXT.undoName : UNDO_TEXT.redoName,
+        );
+        if (!ok) return false;
+      }
       let outcome: UndoRunResult;
       this.#applying = true;
       try {
@@ -477,7 +543,13 @@ export class UndoService {
     key: K,
     next: T[K],
     label: string,
-    opts: { mergeMs?: number } = {},
+    opts: {
+      mergeMs?: number;
+      /** 되돌림·다시 실행 때 대입할 객체를 손잡이로(삭제 복원으로 객체가 바뀌어도 따라간다) */
+      ref?: UndoRef<T>;
+      /** 실행 직전 검사(대상이 아직 있는가 등) */
+      verify?: () => true | string;
+    } = {},
   ): void {
     const prev = target[key];
     if (Object.is(prev, next)) return;
@@ -485,7 +557,8 @@ export class UndoService {
       target[key] = next;
     });
     if (!this.canRecord(session)) return;
-    const mergeKey = `set:${targetId(target)}:${String(key)}`;
+    const ref = opts.ref;
+    const mergeKey = `set:${targetId(ref ?? target)}:${String(key)}`;
     const mergeMs = opts.mergeMs ?? UNDO_MERGE_MS;
     const now = this.#deps.now();
     const frame = this.#openFrame(session);
@@ -508,12 +581,14 @@ export class UndoService {
     }
     const assign = (v: unknown) =>
       runInAction(() => {
-        target[key] = v as T[K];
+        (ref ? ref.current : target)[key] = v as T[K];
       });
     const state: SetMergeState = { before: prev, after: next, assign };
+    const verify = opts.verify;
     const entry = this.record(session, {
       label,
       mergeKey,
+      ...(verify ? { verify: () => verify() } : {}),
       undo: () => state.assign(state.before),
       redo: () => state.assign(state.after),
     });
@@ -545,6 +620,8 @@ export class UndoService {
     opts: { restore?: (key: keyof T, plain: unknown) => unknown },
   ): UndoSnapshotAdapter<unknown[]> {
     return {
+      // 통째 덮어쓰는 복원 — 기록 밖 변경과 겹치면 확인(D16)
+      detectConflict: true,
       snapshot: () => keys.map((k) => undoDeepClone(target[k])),
       restore: (snap) =>
         runInAction(() => {
@@ -577,10 +654,16 @@ export class UndoService {
         settle();
         if (!this.canRecord(session)) return false;
         const after = adapter.snapshot();
-        const same = adapter.equals ? adapter.equals(before, after) : undoDeepEqual(before, after);
-        if (same) return false;
+        const eq = (a: S, b: S) => (adapter.equals ? adapter.equals(a, b) : undoDeepEqual(a, b));
+        if (eq(before, after)) return false;
+        const verify = adapter.verify;
         this.record(session, {
           label,
+          ...(verify ? { verify: () => verify() } : {}),
+          // D16 — 되돌림은 지금이 「이후 값」, 다시 실행은 지금이 「이전 값」이어야 겹침 없음
+          ...(adapter.detectConflict
+            ? { conflict: (dir: UndoDirection) => !eq(adapter.snapshot(), dir === 'undo' ? after : before) }
+            : {}),
           undo: () => adapter.restore(before),
           redo: () => adapter.restore(after),
         });
@@ -714,6 +797,8 @@ export class UndoService {
         const entry = this.#makeEntry({
           label,
           kind,
+          // D16 — 하위 항목 하나라도 겹치면 묶음 전체를 한 번 묻는다(하위마다 묻지 않음)
+          conflict: (dir) => children.some((c) => !!c.conflict?.(dir)),
           undo: () => runAll('undo'),
           redo: () => runAll('redo'),
         });
@@ -747,6 +832,11 @@ export class UndoService {
     });
     this.#pendingDrags.set(session, pending);
     return pending;
+  }
+
+  /** 이 프로젝트의 끝나지 않은 drag(·편집 세션)가 아직 pending 인가 — 되돌리기 실행·다음 drag 로 확정됐으면 false */
+  isPendingOpen(session: Session | undefined, pending: UndoPending): boolean {
+    return !!session && this.#pendingDrags.get(session) === pending;
   }
 
   /** 입력 칸 포커스 진입 값을 보관하고, 떠날 때(commit) 바뀌었으면 1항목 */

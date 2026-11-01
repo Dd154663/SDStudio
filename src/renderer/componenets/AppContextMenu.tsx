@@ -59,6 +59,7 @@ import { sceneSelectorHost } from '../models/sceneSelectorHost';
 import { recordSceneOrder } from '../models/sceneOrderUndo';
 import { recordScenesCreated } from '../models/sceneStructureUndo';
 import { UNDO_TEXT } from '../models/undoService';
+import { editSeedGroups } from '../models/sceneFieldUndo';
 
 export const AppContextMenu = observer(() => {
   // 선택은 (종류, 이름) 쌍이다 — 변형 탭의 선택으로 같은 이름의 일반 씬을 다루지 않는다
@@ -107,12 +108,14 @@ export const AppContextMenu = observer(() => {
     });
     if (!choice) return;
 
-    const group =
+    // 만들기·추가 = 한 번의 동작 1항목(U2b — 씬별 그룹 키만, 되돌림 역순)
+    const group = editSeedGroups(session, UNDO_TEXT.seedGroupSet(scenes.length), () =>
       choice === '__new__'
         ? createSceneSeedGroup(session, scenes)
         : assignScenesToSeedGroup(session, scenes, choice)
           ? listSceneSeedGroups(session).find((item) => item.id === choice)
-          : undefined;
+          : undefined,
+    );
     if (!group) {
       appState.pushMessage('시드 그룹을 설정하지 못했습니다.');
       return;
@@ -126,14 +129,14 @@ export const AppContextMenu = observer(() => {
   const removeSceneSeedGroup = (ctx: SceneContextAlt) => {
     const session = appState.curSession;
     if (!session || ctx.scene.type !== 'scene') return;
+    const ctxScene = ctx.scene;
     const selected = selectedNormalScenes();
-    let changed = 0;
-    if (selected.length > 0) {
-      changed = removeScenesFromSeedGroups(selected);
-    } else {
-      const group = getSceneSeedGroupInfo(session, ctx.scene);
-      if (group) changed = dissolveSceneSeedGroup(session, group.id);
-    }
+    // 해제 = 한 번의 동작 1항목(U2b)
+    const changed = editSeedGroups(session, UNDO_TEXT.seedGroupRemove, () => {
+      if (selected.length > 0) return removeScenesFromSeedGroups(selected);
+      const group = getSceneSeedGroupInfo(session, ctxScene);
+      return group ? dissolveSceneSeedGroup(session, group.id) : 0;
+    });
     if (changed === 0) {
       appState.pushMessage('해제할 시드 그룹이 없습니다.');
       return;

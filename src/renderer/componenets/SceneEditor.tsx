@@ -75,6 +75,15 @@ import {
 } from './CombinationList';
 import { renameScene, mergeScene } from '../models/SessionService';
 import { recordSceneRename, sceneInSession } from '../models/sceneStructureUndo';
+import {
+  dragSceneFields,
+  editBaseCharacterOrder,
+  editSceneFields,
+  flushSceneFieldEdit,
+  setSceneField,
+  touchSceneFieldEdit,
+} from '../models/sceneFieldUndo';
+import { UNDO_TEXT } from '../models/undoService';
 import { isSceneEditorFocusTarget } from '../models/sceneEditorFocus';
 import {
   Scene,
@@ -84,6 +93,20 @@ import {
   CharacterPreset,
   CharacterPrompt,
 } from '../models/types';
+import type { GenericScene } from '../models/types';
+
+// 조합 편집기는 { slots } 만 받는다 — 되돌리기 기록(U2b)은 실제 씬(세션에 등록된 객체)일 때만 남는다(sceneFieldUndo 가 판정).
+type SlotsHolder = { slots: PromptPieceSlot[] };
+const slotsScene = (s: SlotsHolder) => s as unknown as GenericScene;
+const slotsSceneName = (s: SlotsHolder) => (s as { name?: string }).name ?? '';
+/** 조합(slots) 통째 1항목 — 열·행 추가, 셀 삭제·이동·활성·이름, 조각 캐릭터 추가·삭제 */
+function editSlots(scene: SlotsHolder, label: string, mutate: () => void) {
+  editSceneFields(appState.curSession, slotsScene(scene), ['slots'], label, mutate);
+}
+/** 조합 칸의 글자 편집 — 첫 변경 직전에 부르고, 편집기를 떠날 때 1항목(D13) */
+function touchSlots(scene: SlotsHolder, label: string) {
+  touchSceneFieldEdit(appState.curSession, slotsScene(scene), ['slots'], label);
+}
 import { appState } from '../models/AppService';
 import { validateName } from '../models/nameInput';
 import {
@@ -487,6 +510,8 @@ interface SlotPieceProps {
 }
 
 interface CharacterPromptsEditorProps {
+  /** 조각이 든 씬 — 되돌리기 기록(slots 통째) 대상 */
+  scene: SlotsHolder;
   piece: PromptPiece;
   onClose: () => void;
   characterContext?: PieceCharacterContext;
@@ -512,17 +537,25 @@ const CharacterPresetLine = ({ name }: { name?: string }) =>
   ) : null;
 
 const CharacterPromptsEditor = observer(
-  ({ piece, onClose, characterContext }: CharacterPromptsEditorProps) => {
+  ({ scene, piece, onClose, characterContext }: CharacterPromptsEditorProps) => {
+    // 되돌리기(U2b): 추가·삭제 = 한 동작 1항목, 칸 글자 = 편집기를 떠날 때 1항목 — 모두 씬 slots 통째
+    const label = UNDO_TEXT.comboPieceCharacter(slotsSceneName(scene));
     const addCharacterPrompt = () => {
-      piece.characterPrompts.push('');
+      editSlots(scene, label, () => {
+        piece.characterPrompts.push('');
+      });
     };
 
     const updatePrompt = (index: number, value: string) => {
+      if (piece.characterPrompts[index] === value) return;
+      touchSlots(scene, label);
       piece.characterPrompts[index] = value;
     };
 
     const removePrompt = (index: number) => {
-      piece.characterPrompts.splice(index, 1);
+      editSlots(scene, label, () => {
+        piece.characterPrompts.splice(index, 1);
+      });
     };
 
     // 칸 j ↔ 기준 캐릭터 j 대응·미반영 판정(단일 출처 analyzePieceCharacterPrompts — 배지·최종 미리보기와 같음)
@@ -646,7 +679,13 @@ export const SlotPiece = observer(
     const rowIndex = colIndex >= 0 ? scene.slots[colIndex].indexOf(piece) : 0;
     const commitName = () => {
       const trimmed = nameDraft.trim();
-      piece.name = trimmed === '' ? undefined : trimmed;
+      const next = trimmed === '' ? undefined : trimmed;
+      // Enter 뒤 blur 로 두 번 불려도 값이 같으면 기록 없음(U2b)
+      if (piece.name !== next) {
+        editSlots(scene, UNDO_TEXT.comboRenamePiece(slotsSceneName(scene)), () => {
+          piece.name = next;
+        });
+      }
       setEditingName(false);
     };
     const [{ isDragging }, drag, preview] = useDrag(
@@ -695,7 +734,10 @@ export const SlotPiece = observer(
           checked={piece.enabled == undefined || piece.enabled}
           onChange={(e) => {
             if (!moveSlotPiece) return;
-            piece.enabled = e.currentTarget.checked;
+            const checked = e.currentTarget.checked;
+            editSlots(scene, UNDO_TEXT.comboTogglePiece(slotsSceneName(scene)), () => {
+              piece.enabled = checked;
+            });
           }}
         />
         <Tooltip
@@ -759,6 +801,7 @@ export const SlotPiece = observer(
             onEscape={() => setShowCharacterPrompts(false)}
           >
             <CharacterPromptsEditor
+              scene={scene}
               piece={piece}
               characterContext={characterContext}
               onClose={() => setShowCharacterPrompts(false)}
@@ -807,6 +850,9 @@ export const SlotPiece = observer(
             value={piece.prompt}
             onChange={(s) => {
               if (!moveSlotPiece) return;
+              if (piece.prompt === s) return;
+              // 편집기를 떠날 때 1항목(D13) — 조합 slots 통째
+              touchSlots(scene, UNDO_TEXT.comboPiecePrompt(slotsSceneName(scene)));
               piece.prompt = s;
             }}
           />
@@ -835,7 +881,10 @@ const SceneCharacterPromptEditor = observer(({
   const [posOverlay, setPosOverlay] = useState<{ selectedId?: string; bg: PositionBackground } | null>(null);
   const openPositionOverlay = (selectedId?: string) =>
     setPosOverlay({ selectedId, bg: resolvePositionBackground(appState.curSession, scene) });
-  const closePositionOverlay = () => setPosOverlay(null);
+  const closePositionOverlay = () => {
+    endPositionDrag(); // 누른 채 닫혀도 그때까지의 이동을 확정(U2b)
+    setPosOverlay(null);
+  };
   // 모바일 접이식 구역(2026-09-26): 기본 캐릭터·공통 네거티브는 기본 접힘, 기기에 기억.
   const [foldBase, setFoldBase] = useState(() => loadSceneEditorFold('base', true));
   const [foldNeg, setFoldNeg] = useState(() => loadSceneEditorFold('neg', true));
@@ -846,6 +895,11 @@ const SceneCharacterPromptEditor = observer(({
   const [draggingBaseIndex, setDraggingBaseIndex] = useState<number | null>(null);
   const [draggingRoleIndex, setDraggingRoleIndex] = useState<number | null>(null);
 
+  // 되돌리기(U2b): 역할 배열(sceneCharacterPrompts) 통째 — 추가·삭제·켜기·순서 = 한 동작 1항목, 글자 = 편집기를 떠날 때 1항목,
+  // 위치 = 위치 지정 창에서 누름~뗌 1항목. 세션은 동작 시점의 curSession.
+  const editRoles = (label: string, mutate: () => void) =>
+    editSceneFields(appState.curSession, scene, ['sceneCharacterPrompts'], label, mutate);
+
   const addCharacter = () => {
     const newCharacter: CharacterPrompt = {
       id: uuidv4(),
@@ -854,11 +908,15 @@ const SceneCharacterPromptEditor = observer(({
       position: { x: 0.5, y: 0.5 },
       enabled: true,
     };
-    scene.sceneCharacterPrompts = [...(scene.sceneCharacterPrompts || []), newCharacter];
+    editRoles(UNDO_TEXT.sceneCharacterRoles(scene.name), () => {
+      scene.sceneCharacterPrompts = [...(scene.sceneCharacterPrompts || []), newCharacter];
+    });
   };
 
   const removeCharacter = (id: string) => {
-    scene.sceneCharacterPrompts = (scene.sceneCharacterPrompts || []).filter(c => c.id !== id);
+    editRoles(UNDO_TEXT.sceneCharacterRoles(scene.name), () => {
+      scene.sceneCharacterPrompts = (scene.sceneCharacterPrompts || []).filter(c => c.id !== id);
+    });
   };
 
   const updateCharacter = (id: string, updates: Partial<CharacterPrompt>) => {
@@ -867,10 +925,41 @@ const SceneCharacterPromptEditor = observer(({
     );
   };
 
-  const toggleCharacter = (id: string) => {
-    scene.sceneCharacterPrompts = (scene.sceneCharacterPrompts || []).map(c =>
-      c.id === id ? { ...c, enabled: c.enabled === false ? true : false } : c
+  // 역할 프롬프트·네거티브 글자 — 값이 바뀔 때만 편집 세션을 연다(편집기를 떠날 때 1항목, D13)
+  const updateCharacterText = (id: string, field: 'prompt' | 'uc', value: string) => {
+    const cur = (scene.sceneCharacterPrompts || []).find(c => c.id === id);
+    if (!cur || cur[field] === value) return;
+    touchSceneFieldEdit(
+      appState.curSession,
+      scene,
+      ['sceneCharacterPrompts'],
+      UNDO_TEXT.sceneCharacterRoleText(scene.name),
     );
+    updateCharacter(id, { [field]: value });
+  };
+
+  const toggleCharacter = (id: string) => {
+    editRoles(UNDO_TEXT.sceneCharacterRoles(scene.name), () => {
+      scene.sceneCharacterPrompts = (scene.sceneCharacterPrompts || []).map(c =>
+        c.id === id ? { ...c, enabled: c.enabled === false ? true : false } : c
+      );
+    });
+  };
+
+  // 위치 지정 창 드래그 — 누를 때 보관, 뗄 때 확정(변화 없으면 기록 없음)
+  const positionDragRef = useRef<{ commit(): boolean } | null>(null);
+  const beginPositionDrag = () => {
+    positionDragRef.current?.commit();
+    positionDragRef.current = dragSceneFields(
+      appState.curSession,
+      scene,
+      ['sceneCharacterPrompts'],
+      UNDO_TEXT.sceneCharacterPosition(scene.name),
+    );
+  };
+  const endPositionDrag = () => {
+    positionDragRef.current?.commit();
+    positionDragRef.current = null;
   };
 
   const characters = scene.sceneCharacterPrompts || [];
@@ -879,11 +968,37 @@ const SceneCharacterPromptEditor = observer(({
   const enabledCount = characters.filter(c => c.enabled !== false).length;
 
   const moveBase = (from: number, to: number) => {
-    reorderBaseCharacterPrompts(preset, shared, from, to);
+    // 기본 캐릭터 순서는 사전 세팅·공유 쪽 order 값만 보관·복원(내용은 건드리지 않음)
+    editBaseCharacterOrder(appState.curSession, preset, shared, UNDO_TEXT.baseCharacterOrder, () =>
+      reorderBaseCharacterPrompts(preset, shared, from, to),
+    );
   };
 
   const moveRole = (from: number, to: number) => {
-    reorderSceneCharacterPrompts(scene, from, to);
+    editRoles(UNDO_TEXT.sceneCharacterRoleOrder(scene.name), () => {
+      reorderSceneCharacterPrompts(scene, from, to);
+    });
+  };
+
+  const setMode = (value: SceneCharacterPromptMode) => {
+    editSceneFields(
+      appState.curSession,
+      scene,
+      ['sceneCharacterPromptMode', 'useSceneCharacterPrompts'],
+      UNDO_TEXT.sceneCharacterMode(scene.name),
+      () => setSceneCharacterPromptMode(scene, value),
+    );
+  };
+
+  const setCharacterUC = (value: string) => {
+    if ((scene.sceneCharacterUC || '') === value) return;
+    touchSceneFieldEdit(
+      appState.curSession,
+      scene,
+      ['sceneCharacterUC'],
+      UNDO_TEXT.sceneCharacterNegative(scene.name),
+    );
+    scene.sceneCharacterUC = value;
   };
 
   const modeButton = (
@@ -895,7 +1010,7 @@ const SceneCharacterPromptEditor = observer(({
       className={`btn rounded px-3 py-1.5 text-sm ${
         mode === value ? 'btn-solid-sky' : 'btn-neutral'
       }`}
-      onClick={() => setSceneCharacterPromptMode(scene, value)}
+      onClick={() => setMode(value)}
     >
       {label}
     </button>
@@ -925,7 +1040,7 @@ const SceneCharacterPromptEditor = observer(({
                 type="button"
                 className={`round-button flex-1 basis-0 min-w-0 h-8 text-sm ${mode === value ? 'back-sky' : 'back-llgray tab-seg-off'}`}
                 aria-pressed={mode === value}
-                onClick={() => setSceneCharacterPromptMode(scene, value)}
+                onClick={() => setMode(value)}
               >
                 {label}
               </button>
@@ -1072,6 +1187,8 @@ const SceneCharacterPromptEditor = observer(({
               enabled: c.enabled !== false,
             }))}
             onMove={(id, position) => updateCharacter(id, { position })}
+            onMoveStart={beginPositionDrag}
+            onMoveEnd={endPositionDrag}
             onDone={closePositionOverlay}
             initialSelectedId={posOverlay.selectedId}
             backgroundPath={posOverlay.bg.path}
@@ -1183,7 +1300,7 @@ const SceneCharacterPromptEditor = observer(({
                   <div className={isMobile ? 'h-16' : undefined}>
                     <PromptEditTextArea
                       value={character.prompt}
-                      onChange={(value) => updateCharacter(character.id, { prompt: value })}
+                      onChange={(value) => updateCharacterText(character.id, 'prompt', value)}
                     />
                   </div>
                 </div>
@@ -1195,7 +1312,7 @@ const SceneCharacterPromptEditor = observer(({
                   <div className={isMobile ? 'h-16' : undefined}>
                     <PromptEditTextArea
                       value={character.uc}
-                      onChange={(value) => updateCharacter(character.id, { uc: value })}
+                      onChange={(value) => updateCharacterText(character.id, 'uc', value)}
                     />
                   </div>
                 </div>
@@ -1233,9 +1350,7 @@ const SceneCharacterPromptEditor = observer(({
             <div className="h-16 mb-2">
               <PromptEditTextArea
                 value={scene.sceneCharacterUC || ''}
-                onChange={(value) => {
-                  scene.sceneCharacterUC = value;
-                }}
+                onChange={setCharacterUC}
               />
             </div>
           )}
@@ -1259,9 +1374,7 @@ const SceneCharacterPromptEditor = observer(({
           </label>
           <PromptEditTextArea
             value={scene.sceneCharacterUC || ''}
-            onChange={(value) => {
-              scene.sceneCharacterUC = value;
-            }}
+            onChange={setCharacterUC}
           />
         </div>
       </div>
@@ -1288,14 +1401,19 @@ export const SlotEditor = observer(({ scene, big, characterContext }: SlotEditor
       appState.pushMessage('첫 번째 슬롯(1열 1행)은 프롬프트 에디터와 연동되어 삭제할 수 없습니다');
       return;
     }
-    slot.splice(pieceIndex, 1);
-    if (slot.length === 0) {
-      scene.slots.splice(slotIndex, 1);
-    }
+    editSlots(scene, UNDO_TEXT.comboRemovePiece(slotsSceneName(scene)), () => {
+      slot.splice(pieceIndex, 1);
+      if (slot.length === 0) {
+        scene.slots.splice(slotIndex, 1);
+      }
+    });
   };
 
   const moveSlotPiece = (from: string, to: string) => {
     if (from === to) return;
+    editSlots(scene, UNDO_TEXT.comboMovePiece(slotsSceneName(scene)), () => movePieceById(from, to));
+  };
+  const movePieceById = (from: string, to: string) => {
     const fromSlotIndex = scene.slots.findIndex((slot) =>
       slot.some((piece) => piece.id === from),
     );
@@ -1403,14 +1521,16 @@ export const SlotEditor = observer(({ scene, big, characterContext }: SlotEditor
               className="p-2 m-2 w-14 back-lllgray clickable rounded-xl flex justify-center"
               aria-label="행 추가"
               onClick={() => {
-                slot.push(
-                  PromptPiece.fromJSON({
-                    prompt: '',
-                    characterPrompts: [],
-                    enabled: true,
-                    id: uuidv4(),
-                  }),
-                );
+                editSlots(scene, UNDO_TEXT.comboAddRow(slotsSceneName(scene)), () => {
+                  slot.push(
+                    PromptPiece.fromJSON({
+                      prompt: '',
+                      characterPrompts: [],
+                      enabled: true,
+                      id: uuidv4(),
+                    }),
+                  );
+                });
               }}
             >
               <FaPlus />
@@ -1421,14 +1541,16 @@ export const SlotEditor = observer(({ scene, big, characterContext }: SlotEditor
           className="p-2 m-2 h-14 flex items-center back-lllgray clickable rounded-xl"
           aria-label="열 추가"
           onClick={() => {
-            scene.slots.push([
-              PromptPiece.fromJSON({
-                prompt: '',
-                characterPrompts: [],
-                enabled: true,
-                id: uuidv4(),
-              }),
-            ]);
+            editSlots(scene, UNDO_TEXT.comboAddColumn(slotsSceneName(scene)), () => {
+              scene.slots.push([
+                PromptPiece.fromJSON({
+                  prompt: '',
+                  characterPrompts: [],
+                  enabled: true,
+                  id: uuidv4(),
+                }),
+              ]);
+            });
           }}
         >
           <FaPlus />
@@ -1478,7 +1600,9 @@ export const SlotEditor = observer(({ scene, big, characterContext }: SlotEditor
                   className="round-button btn-sm flex-none back-lllgray"
                   aria-label="열 추가"
                   onClick={() => {
-                    scene.slots.push([newPiece()]);
+                    editSlots(scene, UNDO_TEXT.comboAddColumn(slotsSceneName(scene)), () => {
+                      scene.slots.push([newPiece()]);
+                    });
                     setTimeout(() => goCol(scene.slots.length - 1), 80);
                   }}
                 >
@@ -1528,7 +1652,11 @@ export const SlotEditor = observer(({ scene, big, characterContext }: SlotEditor
                   <button
                     className="mx-2 mb-2 h-10 border-2 border-dashed line-color rounded-xl text-sm text-sub flex items-center justify-center gap-1"
                     style={{ width: 'calc(100% - 1rem)' }}
-                    onClick={() => slot.push(newPiece())}
+                    onClick={() =>
+                      editSlots(scene, UNDO_TEXT.comboAddRow(slotsSceneName(scene)), () => {
+                        slot.push(newPiece());
+                      })
+                    }
                   >
                     <FaPlus size={11} /> 조각 추가
                   </button>
@@ -1596,6 +1724,8 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
   // 컴포넌트 언마운트(편집 창 닫기) 시 이름이 바뀌었으면 자동 적용
   useEffect(() => {
     return () => {
+      // 열린 프롬프트 편집 세션(D13)은 창이 닫힐 때 확정 — 편집기가 사라지며 blur 가 오지 않을 수 있다(U2b)
+      flushSceneFieldEdit();
       const trimmedName = curNameRef.current.trimEnd();
       // 그사이 씬이 프로젝트에서 빠졌으면(되돌리기로 휴지통행 등) 이름을 바꾸지 않는다
       if (!sceneInSession(curSession!, scene)) return;
@@ -1629,10 +1759,14 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
     return scene.slots[0][0].prompt;
   };
 
+  // 중간 프롬프트·캐릭터 중간 프롬프트·씬 네거티브 — 값이 바뀔 때만 편집 세션을 연다(편집기를 떠날 때 1항목, D13 — U2b).
+  // 편집기 자체 이력(편집 중 Ctrl+Z)은 그대로 — 편집 중에는 전역 단축키가 억제되어 이중 기록이 없다.
   const onMiddlePromptChange = (txt: string) => {
     if (scene.slots.length === 0 || scene.slots[0].length === 0) {
       return;
     }
+    if (scene.slots[0][0].prompt === txt) return;
+    touchSceneFieldEdit(appState.curSession, scene, ['slots'], UNDO_TEXT.sceneMiddlePrompt(scene.name));
     scene.slots[0][0].prompt = txt;
   };
 
@@ -1647,6 +1781,8 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
     if (scene.slots.length === 0 || scene.slots[0].length === 0) {
       return;
     }
+    if ((scene.slots[0][0].characterPrompts[index] || '') === txt) return;
+    touchSceneFieldEdit(appState.curSession, scene, ['slots'], UNDO_TEXT.sceneCharacterMiddlePrompt(scene.name));
     scene.slots[0][0].characterPrompts[index] = txt;
   };
 
@@ -1655,6 +1791,8 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
   // 씬 전용 네거티브 프롬프트 (단순 씬 에디터 전용) — 생성 시 네거티브 뒤에 붙는다
   const getSceneUC = () => scene.sceneUC ?? '';
   const setSceneUC = (txt: string) => {
+    if ((scene.sceneUC ?? '') === txt) return;
+    touchSceneFieldEdit(appState.curSession, scene, ['sceneUC'], UNDO_TEXT.sceneNegative(scene.name));
     scene.sceneUC = txt;
   };
 
@@ -1844,7 +1982,8 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
       keyboardCompact={focusMode}
       sceneSeed={scene.sceneSeed}
       onSceneSeedChange={(seed) => {
-        scene.sceneSeed = seed;
+        // 입력 칸 blur/Enter 확정 1회 = 1항목(같은 칸 1초 안 연속은 합침, D12 — U2b)
+        setSceneField(appState.curSession, scene, 'sceneSeed', seed, UNDO_TEXT.sceneSeed(scene.name));
       }}
     />
   );
@@ -1939,7 +2078,9 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
                       type: 'confirm',
                       text: '해당 해상도는 Anlas를 소모합니다 (유료임) 계속하시겠습니까?',
                       callback: () => {
-                        scene.resolution = opt.value as Resolution;
+                        editResolution(() => {
+                          scene.resolution = opt.value as Resolution;
+                        });
                       },
                     });
                   } else if (opt.value === 'custom') {
@@ -1949,13 +2090,26 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
                       height: scene.resolutionHeight,
                     });
                     if (!size) return;
-                    scene.resolution = opt.value as Resolution;
-                    scene.resolutionWidth = size.width;
-                    scene.resolutionHeight = size.height;
+                    editResolution(() => {
+                      scene.resolution = opt.value as Resolution;
+                      scene.resolutionWidth = size.width;
+                      scene.resolutionHeight = size.height;
+                    });
                   } else {
-                    scene.resolution = opt.value as Resolution;
+                    editResolution(() => {
+                      scene.resolution = opt.value as Resolution;
+                    });
                   }
   };
+  // 해상도 3필드 = 한 번의 선택 1항목(U2b)
+  const editResolution = (mutate: () => void) =>
+    editSceneFields(
+      appState.curSession,
+      scene,
+      ['resolution', 'resolutionWidth', 'resolutionHeight'],
+      UNDO_TEXT.sceneResolution(scene.name),
+      mutate,
+    );
   const commitRename = async () => {
               const trimmedName = curName.trimEnd();
               if (!trimmedName) return;

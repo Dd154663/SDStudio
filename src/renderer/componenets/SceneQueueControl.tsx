@@ -136,6 +136,7 @@ import { backStackService } from '../models/BackStackService';
 import { recordSceneOrder } from '../models/sceneOrderUndo';
 import { mirrorImageHooks, recordScenesCreated, toggleSceneBookmarkRecorded } from '../models/sceneStructureUndo';
 import { UNDO_TEXT } from '../models/undoService';
+import { editSceneFields, editSeedGroups } from '../models/sceneFieldUndo';
 
 // createMissingPiecesForSession / queueScene 는 models/sceneQueueActions.ts 로 이전
 // (AppContextMenu 우클릭 메뉴와 공유 — 중복 제거)
@@ -200,7 +201,11 @@ const SceneSeedGroupBadge = observer(
         setValue(group.seed?.toString() ?? '');
         return;
       }
-      if (setSceneSeedGroupSeed(session, group.id, seed)) {
+      // 그룹 모든 씬의 시드 = 한 번의 입력 1항목(U2b — 씬별 그룹 키만 보관·복원, 같은 값이면 기록 없음)
+      const ok = editSeedGroups(session, UNDO_TEXT.seedGroupSeed(group.label), () =>
+        setSceneSeedGroupSeed(session, group.id, seed),
+      );
+      if (ok) {
         sessionService.markDirty(session.name);
       }
     };
@@ -381,10 +386,12 @@ const CombinationQuickToggle = observer(
                   className="btn rounded px-3 py-1.5 btn-solid-sky text-sm"
                   disabled={!valid}
                   onClick={() => {
-                    const changed = applyCombinationPieceSelection(
-                      scene,
-                      selected,
-                    );
+                    // 확인 1회 = 조합 slots 통째 1항목(U2b). 실제로 켜기/끄기가 바뀐 조각이 없으면 기록하지 않는다
+                    // (enabled 미설정 → true 정규화만 일어난 경우).
+                    let changed = 0;
+                    editSceneFields(session, scene, ['slots'], UNDO_TEXT.comboQuickToggle(scene.name), () => {
+                      changed = applyCombinationPieceSelection(scene, selected);
+                    }, { skipIf: () => changed === 0 });
                     if (changed > 0) sessionService.markDirty(session.name);
                     setOpen(false);
                   }}

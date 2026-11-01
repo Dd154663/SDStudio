@@ -43,6 +43,8 @@ import { SCENE_RETENTION_DAYS } from '../models/TrashService';
 import { promptCustomResolution } from '../models/customResolutionPrompt';
 import { renameInpaintScene } from '../models/SessionService';
 import { recordSceneRename } from '../models/sceneStructureUndo';
+import { editSceneFields } from '../models/sceneFieldUndo';
+import { UNDO_TEXT } from '../models/undoService';
 import { observer } from 'mobx-react-lite';
 import { InnerPreSetEditor } from './PreSetEdtior';
 import { reaction, runInAction } from 'mobx';
@@ -116,6 +118,15 @@ const InPaintEditor = observer(
       };
     });
     const { curSession } = appState;
+    // 해상도 3필드 = 한 번의 선택 1항목(U2b) — 세션에 등록된 변형 씬일 때만 기록(새 씬 초안은 기록 없음)
+    const editResolution = (mutate: () => void) =>
+      editSceneFields(
+        appState.curSession,
+        editingScene,
+        ['resolution', 'resolutionWidth', 'resolutionHeight'],
+        UNDO_TEXT.sceneResolution(editingScene.name),
+        mutate,
+      );
     const resolutionOptions = Object.entries(resolutionMap)
       .map(([key, value]) => {
         const resolVal =
@@ -765,7 +776,9 @@ const InPaintEditor = observer(
                         type: 'confirm',
                         text: '해당 해상도는 Anlas를 소모합니다 (유료임) 계속하시겠습니까?',
                         callback: () => {
-                          editingScene.resolution = opt.value as Resolution;
+                          editResolution(() => {
+                            editingScene.resolution = opt.value as Resolution;
+                          });
                         },
                       });
                     } else if (opt.value === 'custom') {
@@ -775,11 +788,15 @@ const InPaintEditor = observer(
                         height: editingScene.resolutionHeight,
                       });
                       if (!size) return;
-                      editingScene.resolution = opt.value as Resolution;
-                      editingScene.resolutionWidth = size.width;
-                      editingScene.resolutionHeight = size.height;
+                      editResolution(() => {
+                        editingScene.resolution = opt.value as Resolution;
+                        editingScene.resolutionWidth = size.width;
+                        editingScene.resolutionHeight = size.height;
+                      });
                     } else {
-                      editingScene.resolution = opt.value as Resolution;
+                      editResolution(() => {
+                        editingScene.resolution = opt.value as Resolution;
+                      });
                     }
                   }}
                 />

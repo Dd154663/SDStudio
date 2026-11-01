@@ -37,8 +37,13 @@ const stripComments = (c: string) =>
   c.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 // 되돌리기 계약(2026-11-01 U1)을 지키는 모듈 — 잠금·씬 직접 제거 금지 규칙의 대상
-// U2a: 씬 구조(생성·이름·북마크) 계측 모듈 추가
-const UNDO_MODULES = ['models/undoService.ts', 'models/sceneOrderUndo.ts', 'models/sceneStructureUndo.ts'];
+// U2a: 씬 구조(생성·이름·북마크) 계측 모듈 추가 · U2b: 씬 필드·조합·씬 캐릭터·시드 그룹 계측 모듈 추가
+const UNDO_MODULES = [
+  'models/undoService.ts',
+  'models/sceneOrderUndo.ts',
+  'models/sceneStructureUndo.ts',
+  'models/sceneFieldUndo.ts',
+];
 
 const RULES: Rule[] = [
   {
@@ -374,6 +379,18 @@ const RULES: Rule[] = [
     exclude: [],
     include: UNDO_MODULES,
     count: (c) => countMatches(stripComments(c), /removeScene\(/g),
+    allow: {},
+  },
+  {
+    // 이미지 필드 통째 복원 금지(2026-11-01 U2b, 최우선 원칙 — 생성 중 새로 생긴 이미지를 지운다).
+    // 되돌리기 모듈은 imageMap·mains·game·round 에 대입하지 않는다(즐겨찾기·순서는 이후 단계에서 절대값·병합 메서드로).
+    name: '되돌리기 모듈의 이미지 필드 대입 — 필드 단위·병합 복원만',
+    guide: '「되돌리기 계약」',
+    dir: 'models',
+    exts: ['.ts'],
+    exclude: [],
+    include: UNDO_MODULES,
+    count: (c) => countMatches(stripComments(c), /\.(imageMap|mains|game|round)\s*=(?!=)/g),
     allow: {},
   },
 ];

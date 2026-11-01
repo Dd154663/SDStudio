@@ -65,6 +65,10 @@ const saveGuide = (g: PositionGuide) => {
 interface Props {
   markers: PositionMarker[];
   onMove: (id: string, position: CharacterPosition) => void;
+  /** 누르기 시작(첫 onMove 직전) — 되돌리기 기록이 이때 이전 위치를 보관한다(2026-11-01 U2b, 선택) */
+  onMoveStart?: () => void;
+  /** 뗌·취소 — 누름~뗌 동안의 이동이 되돌리기 1항목으로 확정된다(선택) */
+  onMoveEnd?: () => void;
   onDone: () => void;
   initialSelectedId?: string;
   /** 배경 이미지 경로(없으면 빈 캔버스). */
@@ -77,6 +81,8 @@ interface Props {
 export const CharacterPositionOverlay = ({
   markers,
   onMove,
+  onMoveStart,
+  onMoveEnd,
   onDone,
   initialSelectedId,
   backgroundPath,
@@ -149,6 +155,9 @@ export const CharacterPositionOverlay = ({
     if (!id) return;
     e.preventDefault();
     setSelectedId(id);
+    // 놓친 pointerup 이 있으면 먼저 끝내고 새로 시작
+    if (draggingRef.current) onMoveEnd?.();
+    onMoveStart?.();
     draggingRef.current = id;
     try {
       frameRef.current?.setPointerCapture(e.pointerId);
@@ -168,6 +177,7 @@ export const CharacterPositionOverlay = ({
   const endDrag = (e: React.PointerEvent) => {
     if (!draggingRef.current) return;
     draggingRef.current = null;
+    onMoveEnd?.();
     try {
       frameRef.current?.releasePointerCapture(e.pointerId);
     } catch (err) {}
