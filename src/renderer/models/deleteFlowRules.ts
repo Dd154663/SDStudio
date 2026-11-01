@@ -4,6 +4,7 @@
 //  · 「다시 묻지 않음」(appState.skipImageDeleteConfirm)은 **씬 이미지 삭제 전부**에 장수와 무관하게 적용한다
 //    (단일·선택분·모든 이미지·즐겨찾기 제외·n등 이하·여러 씬 일괄·기록 — v5.4.0 범위, 2026-10-08 X12 제한 되돌림).
 //    씬·프로젝트·템플릿·폴더 삭제와 휴지통 영구 삭제에는 적용하지 않는다. n등 이하는 입력 창을 늘 띄우고 그 뒤 확인만 생략한다.
+//    예외: 대량 작업 「⚠️ 즐겨찾기한 이미지만 삭제」는 설정과 무관하게 늘 확인 2회(planFavOnlyImageDelete, 2026-11-01 A8).
 //    검수(ImageReview)는 v5.4.0 과 같이 설정과 무관(일반 삭제는 항상 확인, Alt+→ 는 즉시 삭제).
 //  · 이미지 그리드 선택 모드의 「삭제」는 선택한 이미지만 지운다(씬 전체 삭제 메뉴를 열지 않는다).
 //  · 삭제 결과는 실제로 사라졌는지 확인한 뒤에 안내한다(다른 창 잠금으로 조용히 돌아오면 실패로 셈 — SPEC §8).
@@ -111,17 +112,98 @@ export function attachmentRemoveConfirmText(input: {
 /**
  * 여러 장 이미지 삭제 확인 창의 범위 줄(deleteConfirmText 의 extra) — 「대상: 씬 3개 · 5등 이하 · 즐겨찾기 제외」.
  * n등 이하 삭제는 즐겨찾기를 늘 빼므로 「즐겨찾기 제외」를 함께 적는다. 덧붙일 것이 없으면 undefined.
+ * favOnly(즐겨찾기한 이미지만 삭제, 2026-11-01 A8)는 「즐겨찾기한 이미지만」 — 제외 범위와 함께 쓰지 않는다.
  */
 export function imageDeleteScopeLine(scope: {
   sceneCount?: number;
   excludeFav?: boolean;
   rankBelow?: number;
+  favOnly?: boolean;
 }): string | undefined {
   const parts: string[] = [];
   if (scope.sceneCount !== undefined) parts.push(`씬 ${scope.sceneCount}개`);
-  if (scope.rankBelow !== undefined) parts.push(`${scope.rankBelow}등 이하`);
-  if (scope.excludeFav || scope.rankBelow !== undefined) parts.push('즐겨찾기 제외');
+  if (scope.favOnly) {
+    parts.push('즐겨찾기한 이미지만');
+  } else {
+    if (scope.rankBelow !== undefined) parts.push(`${scope.rankBelow}등 이하`);
+    if (scope.excludeFav || scope.rankBelow !== undefined) parts.push('즐겨찾기 제외');
+  }
   return parts.length > 0 ? `대상: ${parts.join(' · ')}` : undefined;
+}
+
+// ── 대량 작업 「⚠️ 즐겨찾기한 이미지만 삭제」(2026-11-01 A8) ──
+//
+// 즐겨찾기 = 사용자가 마음에 들어 표시한 이미지라 위험도가 높다 → 확인 2회, 「이번 세션에서 다시 묻지 않음」과 무관.
+//  ① deleteConfirmText 형식(범위 줄 「대상: 씬 N개 · 즐겨찾기한 이미지만」) · [삭제] · danger true(Enter = 확인) · 체크박스 없음
+//  ② 다시 확인 · [삭제] · danger true + requireClick(Enter 무시 — 버튼을 직접 눌러야 한다) · 체크박스 없음
+// 삭제는 두 번 모두 확인한 뒤 기존 휴지통 경로(BatchProcessService.deleteAndReport)로만 한다.
+
+export const FAV_ONLY_IMAGE_DELETE = {
+  value: 'favOnly',
+  /** select 항목 라벨 — 기존 위험 선택지(폴더와 프로젝트 모두 삭제 등)와 같은 ⚠️ 표기 */
+  label: '⚠️ 즐겨찾기한 이미지만 삭제',
+} as const;
+
+/**
+ * 즐겨찾기 전용 삭제 대상 — paths(「출력 폴더/파일명」) 중 파일명이 씬 mains(즐겨찾기)에 있는 것만, 순서 유지.
+ * 대량 작업 메뉴 「즐겨찾기 제외」('fav' — BatchProcessService.isMain 의 반대)의 정확한 반대 집합.
+ */
+export function pickFavoriteImagePaths(
+  mains: readonly string[] | undefined,
+  paths: readonly string[],
+): string[] {
+  if (!mains || mains.length === 0) return [];
+  const fav = new Set(mains);
+  return paths.filter((p) => fav.has(p.split('/').pop()!));
+}
+
+/** 즐겨찾기 전용 삭제는 「다시 묻지 않음」으로 건너뛸 수 없다(체크박스도 내지 않는다). */
+export const FAV_ONLY_IMAGE_DELETE_SKIPPABLE = false;
+
+export interface FavOnlyDeleteConfirmStep extends DeleteConfirmText {
+  /** Enter 무시(버튼 클릭·탭 필수) */
+  requireClick?: boolean;
+  /** 「이번 세션에서 다시 묻지 않음」 체크박스 — 즐겨찾기 전용 삭제는 늘 false */
+  showSkipConfirm: false;
+}
+
+export type FavOnlyDeletePlan =
+  /** 대상 0장 — NO_IMAGES_TO_DELETE_MESSAGE 안내만 */
+  | { kind: 'empty' }
+  /** 두 확인을 차례로 모두 통과해야 삭제 */
+  | { kind: 'confirm'; steps: [FavOnlyDeleteConfirmStep, FavOnlyDeleteConfirmStep] };
+
+/**
+ * 즐겨찾기 전용 삭제의 확인 계획. skipSetting(appState.skipImageDeleteConfirm)은 받아도 **쓰지 않는다** —
+ * 켜져 있어도 두 확인을 모두 띄운다(FAV_ONLY_IMAGE_DELETE_SKIPPABLE).
+ */
+export function planFavOnlyImageDelete(input: {
+  count: number;
+  trashDays: number;
+  sceneCount?: number;
+  skipSetting?: boolean;
+}): FavOnlyDeletePlan {
+  if (input.count <= 0) return { kind: 'empty' };
+  const first: FavOnlyDeleteConfirmStep = {
+    ...deleteConfirmText({
+      kind: 'image',
+      count: input.count,
+      outcome: { trashDays: input.trashDays },
+      extra: imageDeleteScopeLine({ sceneCount: input.sceneCount, favOnly: true }),
+    }),
+    showSkipConfirm: false,
+  };
+  const second: FavOnlyDeleteConfirmStep = {
+    text:
+      `즐겨찾기한 이미지 ${input.count}장을 휴지통으로 보냅니다.\n` +
+      '마음에 들어 표시해 두신 이미지가 모두 포함됩니다.\n' +
+      '정말 삭제하시겠습니까?',
+    confirmText: DELETE_CONFIRM_LABEL.trash,
+    danger: true,
+    requireClick: true,
+    showSkipConfirm: false,
+  };
+  return { kind: 'confirm', steps: [first, second] };
 }
 
 export const NO_IMAGES_TO_DELETE_MESSAGE = '삭제할 이미지가 없습니다.';

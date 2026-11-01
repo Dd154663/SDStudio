@@ -4,6 +4,10 @@
 import {
   attachmentRemoveConfirmText,
   batchResultLine,
+  FAV_ONLY_IMAGE_DELETE,
+  FAV_ONLY_IMAGE_DELETE_SKIPPABLE,
+  pickFavoriteImagePaths,
+  planFavOnlyImageDelete,
   deleteConfirmText,
   imageDeleteScopeLine,
   checkInpaintSceneRename,
@@ -37,6 +41,55 @@ describe('「다시 묻지 않음」 적용 범위(v5.4.0 범위 복원, 2026-10
     expect(showImageDeleteSkipOption(1)).toBe(true);
     expect(showImageDeleteSkipOption(3)).toBe(true);
     expect(showImageDeleteSkipOption(0)).toBe(false);
+  });
+});
+
+describe('대량 작업 「즐겨찾기한 이미지만 삭제」(A8, 2026-11-01)', () => {
+  it('항목 값·라벨 — ⚠️ 표기', () => {
+    expect(FAV_ONLY_IMAGE_DELETE.value).toBe('favOnly');
+    expect(FAV_ONLY_IMAGE_DELETE.label).toBe('⚠️ 즐겨찾기한 이미지만 삭제');
+  });
+  it('대상 = 파일명이 mains 에 있는 경로만(순서 유지) — 「즐겨찾기 제외」의 반대 집합', () => {
+    const paths = ['out/s/a.png', 'out/s/b.png', 'out/s/c.png', 'out/s/d.png'];
+    const mains = ['c.png', 'a.png', 'z.png'];
+    const fav = pickFavoriteImagePaths(mains, paths);
+    expect(fav).toEqual(['out/s/a.png', 'out/s/c.png']);
+    const excludeFav = paths.filter((p) => !mains.includes(p.split('/').pop()!));
+    expect([...fav, ...excludeFav].sort()).toEqual([...paths].sort());
+    expect(fav.filter((p) => excludeFav.includes(p))).toEqual([]);
+    expect(pickFavoriteImagePaths([], paths)).toEqual([]);
+    expect(pickFavoriteImagePaths(undefined, paths)).toEqual([]);
+  });
+  it('0장이면 확인 없이 안내만(empty)', () => {
+    expect(planFavOnlyImageDelete({ count: 0, trashDays: 3, sceneCount: 2 })).toEqual({
+      kind: 'empty',
+    });
+  });
+  it('확인 2회 — ① deleteConfirmText 형식+범위 줄 ② requireClick 다시 확인', () => {
+    const plan = planFavOnlyImageDelete({ count: 4, trashDays: 3, sceneCount: 2 });
+    if (plan.kind !== 'confirm') throw new Error('confirm 이어야 함');
+    const [first, second] = plan.steps;
+    expect(first.text).toBe(
+      '이미지 4장을 삭제할까요?\n휴지통으로 이동되어 3일 동안 복원할 수 있습니다.\n대상: 씬 2개 · 즐겨찾기한 이미지만',
+    );
+    expect(first.confirmText).toBe('삭제');
+    expect(first.danger).toBe(true);
+    expect(first.requireClick).toBeFalsy();
+    expect(second.text).toBe(
+      '즐겨찾기한 이미지 4장을 휴지통으로 보냅니다.\n마음에 들어 표시해 두신 이미지가 모두 포함됩니다.\n정말 삭제하시겠습니까?',
+    );
+    expect(second.confirmText).toBe('삭제');
+    expect(second.danger).toBe(true);
+    expect(second.requireClick).toBe(true);
+  });
+  it('「다시 묻지 않음」이 켜져 있어도 건너뛰지 않고 체크박스도 내지 않는다', () => {
+    expect(FAV_ONLY_IMAGE_DELETE_SKIPPABLE).toBe(false);
+    const on = planFavOnlyImageDelete({ count: 1, trashDays: 3, sceneCount: 1, skipSetting: true });
+    const off = planFavOnlyImageDelete({ count: 1, trashDays: 3, sceneCount: 1, skipSetting: false });
+    expect(on).toEqual(off);
+    if (on.kind !== 'confirm') throw new Error('confirm 이어야 함');
+    expect(on.steps).toHaveLength(2);
+    for (const step of on.steps) expect(step.showSkipConfirm).toBe(false);
   });
 });
 
@@ -251,6 +304,11 @@ describe('삭제 확인 문구 단일 출처 deleteConfirmText(E1)', () => {
     expect(imageDeleteScopeLine({ rankBelow: 5 })).toBe('대상: 5등 이하 · 즐겨찾기 제외');
     expect(imageDeleteScopeLine({ sceneCount: 3, rankBelow: 2 })).toBe(
       '대상: 씬 3개 · 2등 이하 · 즐겨찾기 제외',
+    );
+    // 즐겨찾기한 이미지만(A8) — 제외 범위 표기와 섞이지 않는다
+    expect(imageDeleteScopeLine({ favOnly: true })).toBe('대상: 즐겨찾기한 이미지만');
+    expect(imageDeleteScopeLine({ sceneCount: 2, favOnly: true })).toBe(
+      '대상: 씬 2개 · 즐겨찾기한 이미지만',
     );
     // n등 이하 확인 창(E1-3) — 개수·범위가 함께 보인다
     const t = deleteConfirmText({

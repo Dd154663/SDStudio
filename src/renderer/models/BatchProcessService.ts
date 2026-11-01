@@ -26,8 +26,11 @@ import { cropMirrorResultFromDataUri, dataUriToBase64, deleteImageFiles } from '
 import { IMAGE_RETENTION_DAYS, SCENE_RETENTION_DAYS } from './TrashService';
 import {
   deleteConfirmText,
+  FAV_ONLY_IMAGE_DELETE,
   imageDeleteScopeLine,
   NO_IMAGES_TO_DELETE_MESSAGE,
+  pickFavoriteImagePaths,
+  planFavOnlyImageDelete,
   shouldSkipImageDeleteConfirm,
   showImageDeleteSkipOption,
 } from './deleteFlowRules';
@@ -261,6 +264,12 @@ export class BatchProcessService {
               text: '즐겨찾기 제외 n등 이하 이미지 삭제',
               value: 'n',
             },
+            // 즐겨찾기(main)만 지운다 — 확인 2회·「다시 묻지 않음」 무관(deleteFlowRules A8). 빨강(폴더 삭제 선택지와 같은 표기)
+            {
+              text: FAV_ONLY_IMAGE_DELETE.label,
+              value: FAV_ONLY_IMAGE_DELETE.value,
+              danger: true,
+            },
           ],
           callback: async (menu) => {
             // 「다시 묻지 않음」이 켜져 있으면 개수 확인 창만 생략한다(confirmDeleteImages) — n등 이하 입력 창은 늘 띄운다.
@@ -289,6 +298,26 @@ export class BatchProcessService {
                 (scene, paths) => paths.filter((x) => !isMain(scene, x)),
                 { excludeFav: true },
               );
+            } else if (menu === FAV_ONLY_IMAGE_DELETE.value) {
+              // 'fav' 의 반대 집합. 실제 대상은 deleteAndReport 가 쓰기 직전에 다시 계산한다.
+              const pick = (scene: GenericScene, paths: string[]) =>
+                pickFavoriteImagePaths(scene?.mains, paths);
+              let count = 0;
+              for (const scene of selected) count += pick(scene, freshPaths(scene)).length;
+              const plan = planFavOnlyImageDelete({
+                count,
+                trashDays: IMAGE_RETENTION_DAYS,
+                sceneCount: selected.length,
+                skipSetting: appState.skipImageDeleteConfirm, // 쓰지 않음 — 늘 2회 확인
+              });
+              if (plan.kind === 'empty') {
+                appState.pushMessage(NO_IMAGES_TO_DELETE_MESSAGE);
+                return;
+              }
+              for (const step of plan.steps) {
+                if (!(await appState.confirmAsync(step))) return;
+              }
+              await deleteAndReport(pick);
             }
           },
         });
