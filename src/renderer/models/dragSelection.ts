@@ -5,7 +5,8 @@ export function canStartSelectionBox(
   contentSelector: string,
 ): boolean {
   if (!(target instanceof Element)) return false;
-  if (target.closest('button,input,textarea,select,a,[contenteditable="true"],.scrollbar-thumb,.scrollbar-track,.scene-btn,[data-no-scene-drag]')) return false;
+  // react-select 드롭다운(.my-react-select-container)은 mousedown 에서 메뉴를 열므로 시작점에서 제외한다(2026-11-01: 작업모드 드롭다운 좌클릭 무반응).
+  if (target.closest('button,input,textarea,select,a,[contenteditable="true"],.my-react-select-container,.scrollbar-thumb,.scrollbar-track,.scene-btn,[data-no-scene-drag]')) return false;
   return selectionMode || !target.closest(contentSelector);
 }
 
@@ -13,7 +14,7 @@ export function canStartSelectionBox(
 export function mainSceneDragSurface(target: EventTarget | null): HTMLElement | null {
   if (!(target instanceof Element)) return null;
   const surface = target.closest<HTMLElement>('.scene-selection-surface');
-  if (!surface || target.closest('[data-no-scene-drag],input,textarea,select,button,a,label,[contenteditable]:not([contenteditable="false"]),[role="button"],[role="dialog"],[role="menu"],[role="slider"],[role="separator"],.r-popover,.r-modal,.react-contexify,.scrollbar-thumb,.scrollbar-track')) return null;
+  if (!surface || target.closest('[data-no-scene-drag],input,textarea,select,button,a,label,[contenteditable]:not([contenteditable="false"]),[role="button"],[role="dialog"],[role="menu"],[role="slider"],[role="separator"],.my-react-select-container,.r-popover,.r-modal,.react-contexify,.scrollbar-thumb,.scrollbar-track')) return null;
   for (let node: Element | null = target; node && node !== surface; node = node.parentElement) {
     const style = window.getComputedStyle(node);
     if (style.position === 'fixed' || Number(style.zIndex) >= 100 || style.cursor.includes('resize')) return null;

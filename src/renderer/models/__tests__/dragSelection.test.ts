@@ -16,6 +16,15 @@ test('focused text editing stays independent of a drag starting outside', () => 
   expect(document.activeElement).toBe(document.querySelector('textarea'));
 });
 
+test('react-select dropdown control never starts a box (menu opens on mousedown)', () => {
+  document.body.innerHTML = '<main class="scene-selection-surface"><div class="field-row"><span class="gray-label">작업모드:</span><div class="my-react-select-container"><div class="my-react-select__control"><div class="my-react-select__value-container"><div class="my-react-select__single-value">이미지 생성</div></div><div class="my-react-select__indicators"><div class="my-react-select__indicator"><svg></svg></div></div></div></div></div></main>';
+  for (const selector of ['.my-react-select__single-value', '.my-react-select__control', 'svg']) {
+    expect(mainSceneDragSurface(document.querySelector(selector))).toBeNull();
+    expect(canStartSelectionBox(document.querySelector(selector), false, '[id^="scene-cell-"]')).toBe(false);
+  }
+  expect(mainSceneDragSurface(document.querySelector('.gray-label'))).toBe(document.querySelector('main'));
+});
+
 test('native scrollbar hit area is excluded while scrollable content is allowed', () => {
   const node = document.createElement('div');
   node.style.overflowY = 'auto';
