@@ -72,6 +72,22 @@ import {
   TASK_ESTIMATE_DEFAULT_MS,
   TASK_FAILURE_TEXT,
 } from './requestTiming';
+import {
+  DEFAULT_WORKER_ID,
+  isTaskSettled,
+  isWorkerDeclinedError,
+  normalizeWorkerAccounts,
+  QueueWorkerAccount,
+  RATE_LIMIT_IP_WINDOW_MS,
+  RateLimitHit,
+  remainingImageCount,
+  returnImageIndex,
+  shouldPauseAllForRateLimit,
+  staggeredLongBreakCount,
+  takeImageIndex,
+  unclaimedImageCount,
+  WORKER_POOL_TEXT,
+} from './queueWorkerPool';
 
 export const FAST_TASK_TIME_ESTIMATOR_SAMPLE_COUNT = 16;
 export const TASK_TIME_ESTIMATOR_SAMPLE_COUNT = 128;
@@ -143,6 +159,9 @@ export interface QueueMirror {
   // 긴 휴식 표시(T3b): 휴식 시작·끝 시각(epoch ms, 휴식 아님 = 0). 구 호스트 미러에는 없을 수 있다.
   longBreakStartedAt?: number;
   longBreakUntil?: number;
+  // 동시에 생성 중인 워커(계정) 수(부스트 B1). 구 호스트 미러에는 없다 — 없으면 1. etaMean·topTaskTimeMean 은
+  // 호스트가 이미 이 수로 나눈 값이다(보조 창이 다시 나누지 않는다).
+  boostWorkers?: number;
 }
 
 export interface Task {
@@ -157,20 +176,25 @@ export interface Task {
   // 프로젝트 통계 키도 예약 시점에 고정한다. 프로젝트 이름 변경 시 명시적으로
   // 이관해 추가·완료·제거가 항상 같은 버킷을 사용하도록 한다.
   projectKey?: string;
+  // 고정 시드 연쇄 위치(메모리 전용, 부스트 B0) — 이 작업에서 시드를 소비한 장 수. 다음 장의 시드 =
+  // seedSchedule.seedForImageIndex(job.seed, seedCursor). job 은 변이하지 않는다. 없으면 0.
+  // B1 부터 큐 실행은 장 번호(ctx.imageIndex)를 쓰고, 이 커서는 큐 밖에서 핸들러를 직접 부를 때만 쓴다.
+  seedCursor?: number;
+  // ─── 장 단위 할당(부스트 B1, 메모리 전용 — 규칙은 queueWorkerPool) ───
+  // 워커가 꺼냈지만 아직 끝나지 않은 장 수. 꺼낼 수 있는 조건 = done + skipped + inFlight < total.
+  inFlight?: number;
+  // 다중 워커에서 재시도를 다 써 그 장만 건너뛴 수(D6). 단일 워커는 종전대로 예약 전체를 건너뛰므로 늘지 않는다.
+  // 통계(group/scene/project)의 total 에는 total − skipped 로 들어간다.
+  skipped?: number;
+  // 다음에 줄 새 장 번호(0부터)와 돌려받은 번호(오름차순) — 장 번호 = 시드 연쇄 위치.
+  nextImageIndex?: number;
+  returnedImageIndices?: number[];
+  // 이 작업을 「기본 계정 필요」로 넘긴 워커 id(그 워커는 다시 꺼내지 않는다).
+  declinedWorkerIds?: string[];
 }
 
-// 고정 시드 연속 생성 시 다음 시드 계산(xorshift32). NAI 시드 공간은 32비트
-// 전체(0~4,294,967,295)다 — 과거의 % 2,100,000,000 접기는 임의 제한이라 제거
-// (2026-07-25). 21억 이상 시드도 그대로 순회한다.
-export function stepSeed(seed: number) {
-  seed = seed >>> 0;
-  seed ^= seed << 13;
-  seed >>>= 0;
-  seed ^= seed >>> 17;
-  seed ^= seed << 5;
-  seed >>>= 0;
-  return Math.max(1, seed);
-}
+// 고정 시드 연쇄(xorshift32)는 순수 모듈 seedSchedule 이 단일 출처(부스트 B0) — 구 import 호환 재수출.
+export { stepSeed } from './seedSchedule';
 
 // IP check function removed for performance optimization
 
@@ -211,6 +235,8 @@ export class TaskTimeEstimator {
   }
 }
 
+// 실행(run) 하나. 워커 풀(B1)에서는 기본 워커가 이 객체를 그대로 쓰고, 추가 워커는 stopped 를 이 객체와
+// 공유하는(접근자) 별도 객체를 받는다 — 캐시(cachedVibes 등)는 워커마다 따로, 정지는 그룹 전체가 함께.
 export interface TaskQueueRun {
   stopped: boolean;
   // (T3b) 긴 휴식 카운터는 run 이 아니라 서비스 수준(TaskQueueService.longBreakRemaining)이다.
@@ -244,6 +270,20 @@ export interface TaskAttemptContext {
   pauseTimeoutWhile<T>(fn: () => Promise<T>): Promise<T>;
   /** 주 요청 직전에 바깥 타임아웃을 처음부터 다시 잰다(앞선 보조 요청·조회 시간 제외). */
   restartTimeout(): void;
+  /** 이 시도가 맡은 장 번호(0부터, 큐가 꺼낼 때 확정 — 재시도는 같은 번호). 생성 핸들러는 이 번호로
+   *  시드를 정한다(seedForImageIndex). 없으면(큐 밖 직접 호출) Task.seedCursor 폴백(B0). */
+  imageIndex?: number;
+  /** 이 시도를 맡은 워커(부스트 B1). 없거나 기본 워커면 종전대로 활성 계정(TOKEN.txt). */
+  worker?: TaskAttemptWorker;
+}
+
+// 시도를 맡은 워커 정보. token 은 메모리로만 흐른다 — 로그·미러·IPC·이미지 메타에 싣지 않는다.
+export interface TaskAttemptWorker {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  /** 기본 워커가 아니면 이 계정의 토큰(backend.generateImage(arg, { token })). */
+  token?: string;
 }
 
 export interface TaskHandler {
@@ -267,6 +307,8 @@ export interface TaskHandler {
   /** 실패를 사용자에게 알릴 별도 문구(없으면 오류 메시지 그대로). 문구가 있으면 큐가 로그·진행 바·
    *  오류 토스트에 그 문구를 쓴다 — 예: 업스케일 타임아웃(재시도하지 않는 이유 안내, T4). */
   failureNotice?(task: Task, error: unknown): string | undefined;
+  /** 기본 워커가 아닌 워커(다른 계정 토큰)가 이 작업을 처리할 수 있는가(부스트 B1). 없으면 기본 워커만. */
+  supportsWorkerAccount?(task: Task): boolean;
   getInfo(task: Task): TaskInfo;
   calculateCost(task: Task): CostItem[];
 }
@@ -279,7 +321,7 @@ export const getSceneKey = (session: Session, scene: GenericScene) => {
 // 첫 시도(numTry 0)에만 기다린다 — 재시도는 큐의 오류 재시도 대기(retryWaitMs 사다리)만 쓴다
 // (예전엔 둘 다 기다리는 이중 대기). 빠른 생성(fast)은 급등 없음, 큐 잔량 20장 이하는 소량 완화.
 // 대기는 정지 가능(sleepUnlessStopped — shouldStop 이 참이면 즉시 끝남, T4). 정지 뒤 요청을 보내지
-// 않는 판정은 큐(runLoop)가 한다. 계산한 대기 시간(ms)을 돌려준다(재시도·0 이면 0).
+// 않는 판정은 큐(워커 루프 processClaim)가 한다. 계산한 대기 시간(ms)을 돌려준다(재시도·0 이면 0).
 export async function handleNAIDelay(
   numTry: number,
   fast: boolean,
@@ -326,6 +368,54 @@ const MAX_TASK_LOGS = 500;
 export const PROGRESS_BATCH_INTERVAL_MS = 500;
 const TASK_LOGS_FILE = 'task_logs.json';
 
+// ─── 워커 풀(부스트 B1, 메모리 전용) ───
+// 워커 하나 = 계정 하나 = 동시에 진행 중인 요청 최대 1개(409 「concurrent generation is locked」 회피).
+
+// 워커가 꺼낸 장 하나.
+interface QueueClaim {
+  task: Task;
+  /** 장 번호(시드 연쇄 위치). */
+  index: number;
+  /** 지금 이 장의 요청(시도)이 진행 중인가 — 정지 때 번호를 바로 돌려줄지 가른다. */
+  attempting: boolean;
+  /** inFlight 를 이미 내렸는가(정지·완료·반납 — 두 번 내리지 않는다). */
+  released: boolean;
+  /** 번호를 이미 처리했는가(소비 = 그 시드를 썼다 / 반납 = 다른 워커가 이어받음). */
+  indexSettled: boolean;
+}
+
+interface QueueWorker {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  /** 메모리 전용. 기본 워커는 undefined(= TOKEN.txt). */
+  token?: string;
+  /** 0 = 기본 워커. */
+  order: number;
+  /** 핸들러에 넘기는 run — 기본 워커는 그룹 run 그 자체, 나머지는 stopped 를 공유하는 별도 객체. */
+  run: TaskQueueRun;
+  /** 연속 실패·인증 오류로 이 실행에서 빠졌는가. */
+  dropped: boolean;
+  /** 할 일이 없어 루프를 끝냈는가(활성 워커 수에서 뺀다). */
+  exited: boolean;
+  /** 꺼낼 장이 없어 다른 워커를 기다리는 중인가(모두 쉬면 모두 끝난다). */
+  idle: boolean;
+  /** 기본 워커가 아닌 워커의 연속 실패 수(기본 워커는 서비스의 consecutiveTaskFailures). */
+  consecutiveFailures: number;
+  claim?: QueueClaim;
+}
+
+interface QueuePool {
+  run: TaskQueueRun;
+  workers: QueueWorker[];
+  /** 시작할 때 워커가 2개 이상이었는가 — 장 단위 건너뜀·워커 탈락 규칙(다중)과 종전 규칙(단일)을 가른다. */
+  multi: boolean;
+  delay: RequestDelaySettings;
+  rateLimitHits: RateLimitHit[];
+  /** 전 워커 일시 대기 끝 시각(epoch ms, 0 = 없음) — 여러 계정의 429(IP 제한 추정). */
+  pauseUntil: number;
+}
+
 export class TaskQueueService extends EventTarget {
   queue: CircularQueue<Task>;
   handlers: TaskHandler[];
@@ -355,6 +445,16 @@ export class TaskQueueService extends EventTarget {
   // 긴 휴식 중이면 시작·끝 시각(epoch ms), 아니면 0. 진행 바가 「휴식 중」을 그린다.
   longBreakStartedAt = 0;
   longBreakUntil = 0;
+  // ─── 워커 풀(부스트 B1) ───
+  // 숨은 개발 플래그로만 넣는 추가 워커 계정(메모리 전용 — 저장·동기화·config 키 없음). 비어 있으면 워커 1개 =
+  // 종전 단일 루프. 다음 실행 시작 때 읽는다. 참여 판정·설정 UI 는 B2/B3.
+  private devWorkerAccounts: QueueWorkerAccount[] = [];
+  // 돌고 있는 실행(run)별 워커 풀 — 정지 때 꺼낸 장을 돌려주고, 진행 표시가 활성 워커 수를 읽는다.
+  private pools = new Map<TaskQueueRun, QueuePool>();
+  // 추가 워커의 긴 휴식 카운터(워커 id → 남은 성공 장수). 기본 워커는 longBreakRemaining. 유휴 재설정도 함께.
+  private workerLongBreak = new Map<string, number>();
+  // 할 일이 없어 기다리는 워커들 — 장 반납·작업 추가·정지 때 깨운다.
+  private poolWakers: Array<() => void> = [];
   private logsLoaded = false;
   private logsSaveTimer: any = null;
 
@@ -579,7 +679,9 @@ export class TaskQueueService extends EventTarget {
   addTaskInternal(task: Task) {
     this.queue.enqueue(task);
     this.taskSet[task.id!] = true;
-    this.groupStats[task.cls].total += task.total;
+    // 통계 total 은 장 단위로 건너뛴 장(다중 워커, B1)을 뺀 값 — 제거(removeTaskInternal)와 대칭.
+    const statTotal = this.statTotalOf(task);
+    this.groupStats[task.cls].total += statTotal;
     this.groupStats[task.cls].done += task.done;
     // 키는 최초 1회만 계산·고정(재등록 시 기존 키 유지 — 제거와 대칭 보장).
     task.sceneKey ??= task.params.scene
@@ -590,15 +692,22 @@ export class TaskQueueService extends EventTarget {
       this.sceneStats[sceneKey] = { done: 0, total: 0 };
     }
     this.sceneStats[sceneKey].done += task.done;
-    this.sceneStats[sceneKey].total += task.total;
+    this.sceneStats[sceneKey].total += statTotal;
     task.projectKey ??= task.params.session.name;
     const projectKey = task.projectKey;
     if (!(projectKey in this.projectStats)) {
       this.projectStats[projectKey] = { done: 0, total: 0 };
     }
     this.projectStats[projectKey].done += task.done;
-    this.projectStats[projectKey].total += task.total;
+    this.projectStats[projectKey].total += statTotal;
     this.dispatchProgress();
+    // 할 일이 없어 기다리던 워커가 새 작업을 집어 가게 깨운다(단일 워커는 기다리지 않으므로 무영향).
+    this.notifyPoolChange();
+  }
+
+  // 통계에 넣는 작업의 장 수 = total − 장 단위로 건너뛴 수(B1, 단일 워커는 항상 total).
+  private statTotalOf(task: Task): number {
+    return task.total - (task.skipped ?? 0);
   }
 
   getTaskCls(task: Task) {
@@ -638,8 +747,12 @@ export class TaskQueueService extends EventTarget {
       return;
     }
     if (this.currentRun) {
-      this.currentRun.stopped = true;
+      const stoppedRun = this.currentRun;
+      stoppedRun.stopped = true;
       this.currentRun = undefined;
+      // 정지된 실행의 워커가 꺼낸 장을 돌려준다(B1) — 바로 다시 시작한 새 실행이 종전처럼 같은 장부터
+      // 이어서 처리한다(진행 중인 요청은 옛 워커가 마무리).
+      this.releasePoolClaimsOnStop(stoppedRun);
       // 휴식 중 정지 — 휴식 표시를 바로 끈다(대기 자체도 sleepUnlessStopped 라 곧 끝난다).
       this.endLongBreakDisplay();
       this.dispatchEvent(new CustomEvent('stop', {}));
@@ -673,14 +786,24 @@ export class TaskQueueService extends EventTarget {
     this.dispatchProgress();
   }
 
-  // 큐 잔량(장) = 큐 안 모든 작업의 (total − done) 합(현재 작업 포함). 소량 예약 완화 판정용
-  // (requestTiming.isSmallQueueRelief). total 이 오염(NaN 등)된 작업은 세지 않는다.
+  // 큐 잔량(장) = 큐 안 모든 작업의 (total − done − skipped) 합(진행 중인 장 포함). 소량 예약 완화 판정용
+  // (requestTiming.isSmallQueueRelief). total 이 오염(NaN 등)된 작업은 세지 않는다. skipped 는 다중 워커에서만 생긴다.
   pendingImageCount(): number {
     let n = 0;
     for (const task of this.queue) {
       if (!task) continue;
-      const left = task.total - task.done;
-      if (Number.isFinite(left) && left > 0) n += left;
+      n += remainingImageCount(task);
+    }
+    return n;
+  }
+
+  // 아직 어느 워커도 꺼내지 않은 장 수(긴 휴식 「남은 예약이 있는가」 판정 — 다른 워커가 진행 중인 장은 뺀다).
+  // 단일 워커에서는 휴식 판정 시점에 진행 중인 장이 없어 pendingImageCount 와 같다.
+  unclaimedImageCount(): number {
+    let n = 0;
+    for (const task of this.queue) {
+      if (!task) continue;
+      n += unclaimedImageCount(task);
     }
     return n;
   }
@@ -742,10 +865,12 @@ export class TaskQueueService extends EventTarget {
       return 0;
     }
     const task = this.queue.peek();
+    // 「다음 완료까지」 예상 = 한 장 평균 ÷ 동시에 생성 중인 워커 수(B1, 단일 워커 = 1 — 종전 값).
+    const workers = this.activeWorkerCount();
     if (type === 'mean') {
-      return this.timeEstimators[task.cls].estimateMean();
+      return this.timeEstimators[task.cls].estimateMean() / workers;
     }
-    return this.timeEstimators[task.cls].estimateMedian();
+    return this.timeEstimators[task.cls].estimateMedian() / workers;
   }
 
   estimateTime(type: 'median' | 'mean'): number {
@@ -762,7 +887,26 @@ export class TaskQueueService extends EventTarget {
           (this.groupStats[i].total - this.groupStats[i].done);
       }
     }
-    return res;
+    // 남은 시간 = 장 수 × 한 장 평균 ÷ 동시에 생성 중인 워커 수(B1, D7 — 단일 워커 = 1 이라 종전 값).
+    return res / this.activeWorkerCount();
+  }
+
+  // 지금 동시에 생성 중인 워커 수(빠지거나 할 일이 없어 끝난 워커 제외, 최소 1). 보조 창은 호스트 미러 기준
+  // (구 미러 = 1). 진행 바 표식(「부스트 ×W」)은 B2.
+  boostWorkerCount(): number {
+    if (!this.isGenerationHost) return Math.max(1, this.mirror?.boostWorkers ?? 1);
+    return this.activeWorkerCount();
+  }
+
+  private activeWorkerCount(): number {
+    // 현재 실행의 풀, 없으면(실행 루프를 직접 부른 경우) 정지되지 않은 가장 최근 풀.
+    let pool = this.currentRun ? this.pools.get(this.currentRun) : undefined;
+    if (!pool) {
+      for (const p of this.pools.values()) if (!p.run.stopped) pool = p;
+    }
+    if (!pool) return 1;
+    const live = pool.workers.filter((w) => !w.dropped && !w.exited).length;
+    return Math.max(1, live);
   }
 
   // 프로젝트(세션 이름)별 잔여 예약 수 + 현재 실행 중 프로젝트 스냅샷 —
@@ -947,8 +1091,9 @@ export class TaskQueueService extends EventTarget {
     // 실행 루프의 실패-스킵 경로가 같은 태스크를 또 제거) 통계가 이중 감산되어
     // "-1개 남음" 같은 음수가 된다. 이미 제거된 태스크는 무시한다.
     if (!(task.id! in this.taskSet)) return;
+    const statTotal = this.statTotalOf(task);
     this.groupStats[task.cls].done -= task.done;
-    this.groupStats[task.cls].total -= task.total;
+    this.groupStats[task.cls].total -= statTotal;
     // 추가 시점에 고정한 키를 그대로 사용(이름변경으로 재계산 키가 어긋나는 것 방지).
     const sceneKey =
       task.sceneKey ??
@@ -957,12 +1102,12 @@ export class TaskQueueService extends EventTarget {
         : '');
     if (sceneKey in this.sceneStats) {
       this.sceneStats[sceneKey].done -= task.done;
-      this.sceneStats[sceneKey].total -= task.total;
+      this.sceneStats[sceneKey].total -= statTotal;
     }
     const projectKey = task.projectKey ?? task.params.session.name;
     if (projectKey in this.projectStats) {
       this.projectStats[projectKey].done -= task.done;
-      this.projectStats[projectKey].total -= task.total;
+      this.projectStats[projectKey].total -= statTotal;
       if (this.projectStats[projectKey].total <= 0) {
         delete this.projectStats[projectKey];
       }
@@ -991,6 +1136,8 @@ export class TaskQueueService extends EventTarget {
     task: Task,
     cur: TaskQueueRun,
     requestTimeoutMs: number,
+    // 워커 풀(B1)이 넘기는 장 번호·워커. 생략(구 호출부·테스트)하면 문맥에 넣지 않는다.
+    assignment?: { imageIndex?: number; worker?: TaskAttemptWorker },
   ): Promise<boolean> {
     const controller = new AbortController();
     const outerMs = queueAttemptTimeoutMs(requestTimeoutMs);
@@ -1022,6 +1169,8 @@ export class TaskQueueService extends EventTarget {
         signal: controller.signal,
         requestTimeoutMs,
         restartTimeout: arm,
+        ...(assignment?.imageIndex !== undefined ? { imageIndex: assignment.imageIndex } : {}),
+        ...(assignment?.worker ? { worker: assignment.worker } : {}),
         pauseTimeoutWhile: async <T,>(fn: () => Promise<T>): Promise<T> => {
           paused++;
           clear();
@@ -1057,7 +1206,7 @@ export class TaskQueueService extends EventTarget {
     });
   }
 
-  // 실행 루프 하나. 긴 휴식 카운터의 유휴 재설정과 종료 시각 기록을 감싼다(T3b) — 종료 경로
+  // 실행 하나. 긴 휴식 카운터의 유휴 재설정과 종료 시각 기록을 감싼다(T3b) — 종료 경로
   // (큐 소진·정지·IP 중단·예외)가 무엇이든 finally 에서 종료 시각을 남긴다.
   async runInternal(cur: TaskQueueRun) {
     // 다른 실행 루프가 아직 돌고 있으면(정지 뒤 진행 중 요청 마무리) 유휴가 아니다 — 이어서 센다.
@@ -1066,243 +1215,107 @@ export class TaskQueueService extends EventTarget {
       shouldResetLongBreakCounter(this.lastRunEndedAt, Date.now())
     ) {
       this.longBreakRemaining = nextLongBreakCount();
+      // 추가 워커(B1)의 카운터도 같은 유휴로 새로 센다 — 다음 실행에서 다시 어긋나게 채운다.
+      this.workerLongBreak.clear();
     }
     this.activeRunLoops++;
     try {
-      await this.runLoop(cur);
+      await this.runPool(cur);
     } finally {
       this.activeRunLoops--;
       this.lastRunEndedAt = Date.now();
     }
   }
 
-  private async runLoop(cur: TaskQueueRun) {
+  // ─── 워커 풀(부스트 B1) ───
+
+  /**
+   * 숨은 개발 플래그 — 다음 실행부터 기본 워커 옆에 추가 워커(다른 계정)를 띄운다. 빈 배열·null 이면 끈다
+   * (워커 1개 = 종전 단일 루프). 메모리 전용(저장·config 키 없음). 토큰은 로그·미러·IPC 에 싣지 않는다.
+   * 활성 계정과 같은 계정을 넣으면 계정당 동시 1요청이 깨지므로 넣지 않는다(참여 판정은 B2).
+   * 반환 = 받아들인 추가 워커 수.
+   */
+  setDevWorkerAccounts(accounts: QueueWorkerAccount[] | null | undefined): number {
+    this.devWorkerAccounts = normalizeWorkerAccounts(accounts ?? []);
+    return this.devWorkerAccounts.length;
+  }
+
+  private createPool(cur: TaskQueueRun, delay: RequestDelaySettings): QueuePool {
+    const accounts: QueueWorkerAccount[] = [
+      { id: DEFAULT_WORKER_ID, name: WORKER_POOL_TEXT.defaultWorkerName },
+      ...this.devWorkerAccounts,
+    ];
+    const count = accounts.length;
+    const workers = accounts.map((a, order): QueueWorker => {
+      const isDefault = order === 0;
+      // 기본 워커는 그룹 run 을 그대로 쓴다(단일 워커 = 종전과 같은 캐시·정지 객체). 추가 워커는 캐시만 따로.
+      const run: TaskQueueRun = isDefault
+        ? cur
+        : {
+            get stopped() {
+              return cur.stopped;
+            },
+            set stopped(v: boolean) {
+              cur.stopped = v;
+            },
+          };
+      if (!isDefault && !this.workerLongBreak.has(a.id)) {
+        // 휴식이 서로 겹치지 않게 순번만큼 늦게 시작(D5).
+        this.workerLongBreak.set(a.id, staggeredLongBreakCount(order, count));
+      }
+      return {
+        id: a.id,
+        name: a.name,
+        isDefault,
+        ...(isDefault ? {} : { token: a.token }),
+        order,
+        run,
+        dropped: false,
+        exited: false,
+        idle: false,
+        consecutiveFailures: 0,
+      };
+    });
+    return {
+      run: cur,
+      workers,
+      multi: workers.length > 1,
+      delay,
+      rateLimitHits: [],
+      pauseUntil: 0,
+    };
+  }
+
+  // 워커 풀 실행: 워커마다 루프 하나(runWorker)를 돌리고 모두 끝나면 종전 루프의 끝 처리를 한다.
+  // 워커가 1개면(부스트 꺼짐) 예전 단일 루프(runLoop)와 같은 순서·같은 이벤트다.
+  private async runPool(cur: TaskQueueRun) {
     this.dispatchProgress();
     const config = await backend.getConfig();
     // 지연 설정은 실행 시작 때 1회 읽는다(실행 중 변경은 다음 실행부터 — 종전 동작 유지).
     // 옛 키 delayTime 은 새 키가 없을 때 환산해 읽는다(requestTiming).
     const delay = resolveRequestDelaySettings(config);
-    while (!this.queue.isEmpty()) {
-      // 정지된 런은 즉시 종료 — stop() 후 새 런이 시작돼도 옛 루프가 큐를
-      // 건드리지 않도록(같은 태스크 이중 처리 방지).
-      if (cur.stopped) {
-        this.dispatchProgress();
-        return;
-      }
-      const task = this.queue.peek();
-      // total 이 오염(NaN 등)된 태스크는 done >= total 이 영원히 거짓이라
-      // 큐 머리를 무한 점유한다 — 완료로 간주하고 폐기한다.
-      if (!Number.isFinite(task.total) || task.done >= task.total) {
-        // 위임 태스크가 전량 완료됨 — 원 창의 onComplete 대행 콜백 정리를 알린다.
-        if (task.params.delegation) {
-          backend
-            .delegateComplete({ ...task.params.delegation, status: 'done' })
-            .catch(() => {});
-        }
-        this.removeTaskInternal(task);
-        this.queue.dequeue();
-        continue;
-      }
-      let done = false;
-      const before = Date.now();
-      const handler = this.handlers[task.cls];
-      const numTries = handler.getNumTries(task);
-      // 이 작업이 「타임아웃으로」 실패한 횟수 — 다음 시도의 요청 타임아웃을 60초씩 늘린다
-      // (120→180→240→300 상한). 5xx·네트워크 등 다른 실패는 세지 않는다.
-      let timeoutFailures = 0;
-      // 이 작업의 재시도 가능한 실패 횟수 — 다음 시도 전 대기 사다리(5→10→20→40→60초).
-      let failures = 0;
-      // 이 작업의 마지막 실패 문구 — 연속 실패 정지 창의 「마지막 오류」.
-      let lastErrorText = '';
-      // 핸들러가 준 별도 실패 문구(업스케일 타임아웃 등) — 건너뜀 때 진행 바에도 그 문구를 남긴다.
-      let lastNotice: string | undefined;
-      // 인증 오류(401·403)로 실패했는가 — 재시도·연속 실패 누적 없이 바로 정지한다.
-      let authFailed = false;
-      for (let i = 0; i < numTries; i++) {
-        if (cur.stopped) {
-          this.dispatchProgress();
-          return;
-        }
-        try {
-          // 첫 시도 앞에만 요청 사이 지연(재시도는 아래 오류 재시도 대기만). 잔량은 소량 예약 완화 판정용.
-          // 대기 중 정지하면 남은 대기를 버린다(T4 — 예전엔 끝까지 기다린 뒤 정지 판정).
-          await handler.handleDelay(task, i, delay, this.pendingImageCount(), () => cur.stopped);
-          // 지연 대기 중에 정지됐으면 요청을 보내지 않는다.
-          if (cur.stopped) {
-            this.dispatchProgress();
-            return;
-          }
-          const requestTimeoutMs = nextRequestTimeoutMs(timeoutFailures);
-          await this.runAttemptWithTimeout(handler, task, cur, requestTimeoutMs);
-          const after = Date.now();
-          this.timeEstimators[task.cls].addSample(after - before);
-          done = true;
-          // 성공했으니 연속 실패를 새로 센다(T4).
-          this.consecutiveTaskFailures = 0;
-          // 실제로 보낸 성공 요청이므로 정지된 루프의 마지막 성공도 센다(서비스 수준 카운터).
-          this.longBreakRemaining--;
-          if (!cur.stopped) {
-            task.done++;
-            if (task.id! in this.taskSet) {
-              this.groupStats[task.cls].done++;
-              // 추가 시점에 고정한 키 사용 — 실행 중 씬/프로젝트 이름이 바뀌어도
-              // 미등록 키 접근(TypeError → 유령 생성 오류)이 나지 않도록 가드.
-              const sceneKey =
-                task.sceneKey ??
-                (task.params.scene
-                  ? getSceneKey(task.params.session, task.params.scene)
-                  : '');
-              if (sceneKey in this.sceneStats) {
-                this.sceneStats[sceneKey].done++;
-              }
-              const projectKey = task.projectKey ?? task.params.session.name;
-              if (projectKey in this.projectStats) {
-                this.projectStats[projectKey].done++;
-              }
-            }
-          }
-          this.progressCycleStartedAt = Date.now();
-          this.dispatchEvent(new CustomEvent('complete', {}));
-          this.dispatchProgress();
-          // 주기적 긴 휴식: 성공 300~399장마다 2~4분(지연 설정과 무관, requestTiming). 이번 장의 완료
-          // 집계 뒤에 쉬므로 휴식 중 정지해도 방금 만든 장이 미완료로 남지 않는다. 정지하면 즉시 끝나고,
-          // 남은 예약이 없으면 쉬지 않는다. 휴식에 들어갔으면 카운터를 새로 센다 — 휴식 중 사용자가
-          // 정지해도 끝까지 쉰 것과 같이 본다(「정지하면 바로 끝납니다」). 큐 소진·정지로 휴식에
-          // 들어가지 못했으면 0 이하로 남겨, 다음 실행이 2분 안에 시작되면 첫 성공 뒤 바로 쉰다(T3b).
-          if (this.longBreakRemaining <= 0 && !cur.stopped && this.pendingImageCount() > 0) {
-            const breakMs = computeLongBreakMs();
-            const startedAt = Date.now();
-            const until = startedAt + breakMs;
-            this.longBreakStartedAt = startedAt;
-            this.longBreakUntil = until;
-            this.dispatchProgress();
-            this.longBreakRemaining = nextLongBreakCount();
-            try {
-              await this.longBreakWait(breakMs, () => cur.stopped);
-            } finally {
-              // 이 휴식의 표시만 끈다(정지가 이미 껐거나 새 실행이 새 휴식을 시작했으면 건드리지 않음).
-              if (this.longBreakUntil === until) this.endLongBreakDisplay();
-            }
-          }
-        } catch (e: any) {
-          const sceneName = task.params.scene?.name ?? '(unknown)';
-          if (e.message === 'IP') {
-            this.addLog('error', sceneName, 'IP 변경 감지로 중단');
-            this.dispatchEvent(new CustomEvent('ip-check-fail', {}));
-            this.stop();
-            return;
-          }
-          if (isRequestTimeoutError(e)) timeoutFailures++;
-          failures++;
-          // 429 판정은 NaiApiError status/kind 우선, 문자열은 폴백(요청 ID 의 「429」 오판정 방지).
-          const rateLimited = isNaiRateLimitError(e);
-          // 409(이전 요청 처리 중)는 429 가 아닐 때만 — 사다리 대신 고정 30초(T4).
-          const concurrent = !rateLimited && isNaiConcurrentError(e);
-          // 핸들러 별도 문구(업스케일 타임아웃 안내 등) — 있으면 로그·진행 바·오류 토스트에 쓴다.
-          const notice = handler.failureNotice?.(task, e);
-          if (notice) lastNotice = notice;
-          lastErrorText = notice ?? String(e?.message ?? e);
-          // 다음 시도가 남아 있고 재시도 가능한 실패면 대기 — 실패 횟수 사다리 5→10→20→40→60초
-          // ±20%, 429 는 최소 60초, 409 는 고정 30초. 재시도에는 요청 사이 지연(handleDelay)을 더하지 않는다(T3).
-          const willRetry = e?.retryable !== false && i + 1 < numTries;
-          const waitMs = willRetry
-            ? retryWaitMs(failures, rateLimited ? 'rate-limit' : concurrent ? 'concurrent' : 'other')
-            : 0;
-          const waitLabel = willRetry ? TASK_FAILURE_TEXT.waitSuffix(waitMs) : '';
-          const attemptLabel = TASK_FAILURE_TEXT.attempt(i + 1, numTries);
-          if (rateLimited) {
-            this.addLog('warn', sceneName, `요청 제한 (429)${waitLabel}${attemptLabel}`);
-            console.log(`Rate limited (429), waiting ${waitMs}ms before retry...`);
-            this.dispatchEvent(
-              new CustomEvent('error', {
-                detail: { error: `요청 제한 (429)${waitLabel}`, task: task },
-              }),
-            );
-          } else if (concurrent) {
-            const label = `${naiErrorKindLabel('concurrent')} (409)`;
-            this.addLog('warn', sceneName, `${label}${waitLabel}${attemptLabel}`);
-            this.dispatchEvent(
-              new CustomEvent('error', {
-                detail: { error: `${label}${waitLabel}`, task: task },
-              }),
-            );
-            // 다시 시도할 때만 안내(마지막 시도면 아래 건너뜀·연속 실패 처리로 알린다).
-            if (willRetry) appState.pushMessage(TASK_FAILURE_TEXT.concurrentRetry, 'info');
-          } else {
-            const text = notice ?? e.message;
-            this.addLog('error', sceneName, `${text}${waitLabel}${attemptLabel}`);
-            this.dispatchEvent(
-              new CustomEvent('error', {
-                detail: { error: text, task: task },
-              }),
-            );
-            if (notice) appState.pushMessage(notice, 'error');
-          }
-          console.error(e);
-          // 인증 오류는 토큰을 고치기 전까지 모든 작업이 같은 이유로 실패하므로 아래에서 바로 정지한다.
-          if (isNaiAuthError(e)) {
-            authFailed = true;
-            break;
-          }
-          // 프롬프트 한도·미지원 필드·Anlas/할당량 오류는 같은 요청을
-          // 반복해도 회복되지 않는다. 서버/네트워크/429/409만 재시도한다.
-          if (e?.retryable === false) break;
-          // 대기 중 정지하면 남은 대기를 버린다(다음 반복 머리에서 정지 처리).
-          if (waitMs > 0) await this.retryWait(waitMs, () => cur.stopped);
-        }
-        if (done) {
-          break;
-        }
-      }
-      if (!done) {
-        // 재시도 도중 런이 정지됐으면 스킵 처리 없이 종료 — 정지 후 남은 큐를
-        // 옛 루프가 건드리면 새 런과 이중 제거가 발생한다.
-        if (cur.stopped) {
-          this.dispatchProgress();
-          return;
-        }
-        const sceneName = task.params.scene?.name ?? '(unknown)';
-        // 인증 오류 즉시 정지: 재시도 소진·연속 실패 누적을 기다리지 않고 이 작업을 큐에 남긴 채 정지한다.
-        if (authFailed) {
-          this.consecutiveTaskFailures = 0;
-          this.stopForFailure(cur, task, sceneName, TASK_FAILURE_TEXT.authStop(lastErrorText));
-          return;
-        }
-        // 연속 실패 정지(T4): 재시도를 소진한 작업이 CONSECUTIVE_FAILURE_STOP 개 연속이면 이 작업은
-        // 건너뛰지 않고(큐에 남김) 큐를 완전히 정지한 뒤, 사용자가 확인을 누를 때까지 남는 창으로 알린다.
-        this.consecutiveTaskFailures++;
-        if (this.consecutiveTaskFailures >= CONSECUTIVE_FAILURE_STOP) {
-          this.consecutiveTaskFailures = 0;
-          this.stopForFailure(cur, task, sceneName, TASK_FAILURE_TEXT.consecutiveStop(lastErrorText));
-          return;
-        }
-        // 실패한 태스크를 건너뛰고 다음 태스크로 진행
-        this.addLog('error', sceneName, TASK_FAILURE_TEXT.retriesExhausted(numTries));
-        console.log('SKIPPING FAILED TASK:', task.params.scene?.name);
-        this.dispatchEvent(
-          new CustomEvent('error', {
-            detail: { error: lastNotice ?? TASK_FAILURE_TEXT.retriesExhaustedShort, task: task },
-          }),
-        );
-        // 위임 태스크 실패 — 원 창에 토스트로 통지(브리지).
-        if (task.params.delegation) {
-          backend
-            .delegateComplete({
-              ...task.params.delegation,
-              status: 'fail',
-              message: `생성 실패(재시도 초과): ${sceneName}`,
-            })
-            .catch(() => {});
-        }
-        this.removeTaskInternal(task);
-        // 긴 재시도 구간 동안 사용자가 예약을 취소해 큐가 비었거나 머리가
-        // 바뀌었을 수 있다 — 빈 큐 dequeue 는 throw 라 반드시 머리 동일성 확인.
-        if (!this.queue.isEmpty() && this.queue.peek() === task) {
-          this.queue.dequeue();
-        }
-        this.dispatchProgress();
-        continue;
-      }
+    const pool = this.createPool(cur, delay);
+    this.pools.set(cur, pool);
+    if (pool.multi) {
+      // 로그에는 계정 이름만(토큰 없음).
+      this.addLog('info', '', WORKER_POOL_TEXT.poolStart(pool.workers.map((w) => w.name)));
+      this.dispatchProgress();
+    }
+    let results: PromiseSettledResult<void>[];
+    try {
+      results = await Promise.allSettled(pool.workers.map((w) => this.runWorker(pool, w)));
+    } finally {
+      // 어떤 경로로 끝나도 꺼낸 장이 남지 않게 한다(예외 대비 — 정상 경로는 워커가 이미 돌려줬다).
+      for (const w of pool.workers) if (w.claim) this.finishClaim(w, w.claim, false);
+      this.pools.delete(cur);
+    }
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (failed) throw failed.reason;
+    // 정지로 끝났으면 워커가 이미 progress 를 보냈다(종전 루프의 정지 반환과 같음).
+    if (cur.stopped) return;
+    if (pool.multi && !this.queue.isEmpty()) {
+      // 기본 계정이 빠져 기본 계정 전용 작업이 남은 경우 등.
+      this.addLog('warn', '', WORKER_POOL_TEXT.leftover);
     }
     if (cur == this.currentRun) {
       this.dispatchEvent(new CustomEvent('stop', {}));
@@ -1311,12 +1324,537 @@ export class TaskQueueService extends EventTarget {
     this.dispatchProgress();
   }
 
+  // 워커 하나의 루프: 다음 미할당 장을 꺼내(claimNext) 처리(processClaim)하기를 반복한다. 꺼낼 장이 없고
+  // 다른 워커가 아직 일하는 중이면 기다린다(그 워커가 장을 돌려주면 이어받는다). 단일 워커는 기다리지 않는다.
+  private async runWorker(pool: QueuePool, w: QueueWorker): Promise<void> {
+    const cur = pool.run;
+    try {
+      while (true) {
+        // 정지된 런은 즉시 종료 — stop() 후 새 런이 시작돼도 옛 루프가 큐를
+        // 건드리지 않도록(같은 태스크 이중 처리 방지).
+        if (cur.stopped) {
+          this.dispatchProgress();
+          return;
+        }
+        if (w.dropped) return;
+        const claim = this.claimNext(w);
+        if (!claim) {
+          if (this.poolHasOtherBusyWorker(pool, w)) {
+            // 쉬는 동안엔 다른 워커를 깨우지 않는다 — 쉬는 워커끼리 서로 깨우면 마이크로태스크 무한 반복이 된다.
+            // 마지막으로 일하던 워커가 할 일이 없으면 「쉬는 워커만 남음」을 보고 끝내고, 끝날 때(finally) 깨운다.
+            w.idle = true;
+            await this.waitPoolChange();
+            w.idle = false;
+            continue;
+          }
+          return;
+        }
+        const next = await this.processClaim(pool, w, claim);
+        if (next === 'exit') return;
+      }
+    } catch (e) {
+      // 예상 밖 예외 — 다른 워커도 멈추게 하고(같은 그룹) 종전처럼 실행을 끝낸다.
+      cur.stopped = true;
+      throw e;
+    } finally {
+      if (w.claim) this.finishClaim(w, w.claim, false);
+      w.exited = true;
+      w.idle = false;
+      this.notifyPoolChange();
+    }
+  }
+
+  // 큐 순서대로 보며 끝난 작업은 그 자리에서 치우고(종전: 머리에서 치움 — 단일 워커는 끝난 작업이 늘 머리),
+  // 이 워커가 꺼낼 수 있는 첫 작업의 다음 장을 꺼낸다. 장 번호는 이때 확정한다(시드 연쇄 위치).
+  private claimNext(w: QueueWorker): QueueClaim | undefined {
+    const tasks: Task[] = [];
+    for (const t of this.queue) if (t) tasks.push(t);
+    for (const task of tasks) {
+      // total 이 오염(NaN 등)된 태스크는 done >= total 이 영원히 거짓이라
+      // 큐 머리를 무한 점유한다 — 완료로 간주하고 폐기한다.
+      if (isTaskSettled(task)) {
+        // 위임 태스크가 전량 완료됨 — 원 창의 onComplete 대행 콜백 정리를 알린다.
+        if (task.params.delegation) {
+          backend
+            .delegateComplete({ ...task.params.delegation, status: 'done' })
+            .catch(() => {});
+        }
+        this.removeTaskInternal(task);
+        this.removeFromQueue(task);
+        continue;
+      }
+      if (!this.canWorkerTake(w, task)) continue;
+      const claim: QueueClaim = {
+        task,
+        index: takeImageIndex(task),
+        attempting: false,
+        released: false,
+        indexSettled: false,
+      };
+      task.inFlight = (task.inFlight ?? 0) + 1;
+      w.claim = claim;
+      return claim;
+    }
+    return undefined;
+  }
+
+  private canWorkerTake(w: QueueWorker, task: Task): boolean {
+    if (unclaimedImageCount(task) <= 0) return false;
+    if (w.isDefault) return true;
+    // 기본 워커가 아닌 워커는 다른 계정 토큰을 받을 수 있는 작업만(증강·업스케일·배경 제거·빠른 생성은 기본 계정).
+    if (task.declinedWorkerIds?.includes(w.id)) return false;
+    return this.handlers[task.cls]?.supportsWorkerAccount?.(task) === true;
+  }
+
+  // 큐에서 작업 하나를 뺀다 — 머리면 종전처럼 dequeue, 아니면(다중 워커) 순서를 지켜 다시 쌓는다.
+  private removeFromQueue(task: Task) {
+    if (this.queue.isEmpty()) return;
+    if (this.queue.peek() === task) {
+      this.queue.dequeue();
+      return;
+    }
+    let found = false;
+    const next = new CircularQueue<Task>();
+    for (const t of this.queue) {
+      if (!t) continue;
+      if (!found && t === task) {
+        found = true;
+        continue;
+      }
+      next.enqueue(t);
+    }
+    if (found) this.queue = next;
+  }
+
+  // 같은 풀에서 아직 일하는(쉬지도·빠지지도·끝나지도 않은) 다른 워커가 있는가.
+  private poolHasOtherBusyWorker(pool: QueuePool, w: QueueWorker): boolean {
+    return pool.workers.some((x) => x !== w && !x.dropped && !x.exited && !x.idle);
+  }
+
+  private hasLiveWorker(pool: QueuePool): boolean {
+    return pool.workers.some((x) => !x.dropped);
+  }
+
+  private waitPoolChange(): Promise<void> {
+    return new Promise<void>((resolve) => this.poolWakers.push(resolve));
+  }
+
+  private notifyPoolChange() {
+    if (this.poolWakers.length === 0) return;
+    const wakers = this.poolWakers;
+    this.poolWakers = [];
+    for (const wake of wakers) wake();
+  }
+
+  // 꺼낸 장의 진행 중 수를 내린다(한 번만).
+  private releaseClaimCount(claim: QueueClaim) {
+    if (claim.released) return;
+    claim.released = true;
+    claim.task.inFlight = Math.max(0, (claim.task.inFlight ?? 0) - 1);
+  }
+
+  // 장 번호를 처리한다(한 번만): consumed = 그 시드를 썼다(성공·장 단위 건너뜀), 아니면 돌려준다(다른 워커가 이어받음).
+  private settleClaimIndex(claim: QueueClaim, consumed: boolean) {
+    if (claim.indexSettled) return;
+    claim.indexSettled = true;
+    if (!consumed) returnImageIndex(claim.task, claim.index);
+  }
+
+  private finishClaim(w: QueueWorker, claim: QueueClaim, consumed: boolean) {
+    this.releaseClaimCount(claim);
+    this.settleClaimIndex(claim, consumed);
+    if (w.claim === claim) w.claim = undefined;
+    this.notifyPoolChange();
+  }
+
+  // 정지된 실행의 꺼낸 장을 돌려준다. 요청 중이 아닌 장(지연·재시도 대기 중)은 번호도 돌려주고, 요청 중인 장은
+  // 진행 수만 내린 뒤 결과를 기다린다(성공 = 그 시드는 쓴 것, 실패 = 번호 반납). 새 실행이 바로 같은 장을 이어간다.
+  private releasePoolClaimsOnStop(run: TaskQueueRun) {
+    const pool = this.pools.get(run);
+    if (pool) {
+      for (const w of pool.workers) {
+        const claim = w.claim;
+        if (!claim) continue;
+        this.releaseClaimCount(claim);
+        if (!claim.attempting) this.settleClaimIndex(claim, false);
+      }
+    }
+    this.notifyPoolChange();
+  }
+
+  // 워커별 카운터 — 기본 워커는 서비스 수준 필드(종전 계약·테스트가 읽는 값), 추가 워커는 따로.
+  private getConsecutiveFailures(w: QueueWorker): number {
+    return w.isDefault ? this.consecutiveTaskFailures : w.consecutiveFailures;
+  }
+
+  private setConsecutiveFailures(w: QueueWorker, v: number) {
+    if (w.isDefault) this.consecutiveTaskFailures = v;
+    else w.consecutiveFailures = v;
+  }
+
+  private getLongBreakRemaining(w: QueueWorker): number {
+    if (w.isDefault) return this.longBreakRemaining;
+    return this.workerLongBreak.get(w.id) ?? nextLongBreakCount();
+  }
+
+  private setLongBreakRemaining(w: QueueWorker, v: number) {
+    if (w.isDefault) this.longBreakRemaining = v;
+    else this.workerLongBreak.set(w.id, v);
+  }
+
+  // 429 기록 — 서로 다른 워커 2개 이상에서 1분 안에 나면 전 워커가 기존 429 대기만큼 멈춘다(IP 제한 추정).
+  private noteRateLimit(pool: QueuePool, w: QueueWorker, pauseMs: number, sceneName: string) {
+    if (!pool.multi) return;
+    const now = Date.now();
+    pool.rateLimitHits = pool.rateLimitHits.filter((h) => now - h.at < RATE_LIMIT_IP_WINDOW_MS);
+    pool.rateLimitHits.push({ workerId: w.id, at: now });
+    if (!shouldPauseAllForRateLimit(pool.rateLimitHits, now)) return;
+    const until = now + pauseMs;
+    if (until <= pool.pauseUntil) return;
+    pool.pauseUntil = until;
+    this.addLog('warn', sceneName, WORKER_POOL_TEXT.ipPause(pauseMs));
+  }
+
+  // 다중 워커에서 끝내 실패한 장 하나만 건너뛴다(D6) — 그 시드는 쓰지 않고, 통계 total 에서 1장을 뺀다.
+  private skipClaimedImage(claim: QueueClaim) {
+    const task = claim.task;
+    this.settleClaimIndex(claim, true);
+    task.skipped = (task.skipped ?? 0) + 1;
+    if (!(task.id! in this.taskSet)) return;
+    this.groupStats[task.cls].total--;
+    const sceneKey =
+      task.sceneKey ??
+      (task.params.scene ? getSceneKey(task.params.session, task.params.scene) : '');
+    if (sceneKey in this.sceneStats) this.sceneStats[sceneKey].total--;
+    const projectKey = task.projectKey ?? task.params.session.name;
+    if (projectKey in this.projectStats) this.projectStats[projectKey].total--;
+  }
+
+  // 워커 하나를 이 실행에서 뺀다(연속 실패·인증 오류). 쥐고 있던 장은 같은 번호·시드로 다른 워커가 이어받는다.
+  // 남은 워커가 있으면 그 사실만 알리고, 없으면 호출부가 종전 stopForFailure 로 전체를 멈춘다.
+  private dropWorker(
+    pool: QueuePool,
+    w: QueueWorker,
+    claim: QueueClaim,
+    sceneName: string,
+    text: string,
+    notify: 'toast' | 'dialog',
+  ) {
+    w.dropped = true;
+    this.finishClaim(w, claim, false);
+    this.addLog('error', sceneName, text.replace(/\n/g, ' '));
+    if (this.hasLiveWorker(pool)) {
+      if (notify === 'dialog') appState.pushDialog({ type: 'yes-only', text });
+      else appState.pushMessage(text, 'error');
+    }
+    this.dispatchProgress();
+  }
+
+  // 꺼낸 장 하나를 처리한다 — 예전 runLoop 의 작업 하나 처리(지연 → 시도 → 재시도 사다리 → 성공 집계·긴 휴식
+  // / 건너뜀·연속 실패·인증 정지)와 같은 순서. 'exit' = 이 워커 루프를 끝낸다.
+  private async processClaim(
+    pool: QueuePool,
+    w: QueueWorker,
+    claim: QueueClaim,
+  ): Promise<'next' | 'exit'> {
+    const cur = pool.run;
+    const task = claim.task;
+    const delay = pool.delay;
+    // 다중 워커 로그 꼬리표(계정 이름만) — 단일 워커는 종전 문구 그대로.
+    const tag = pool.multi ? WORKER_POOL_TEXT.tag(w.name) : '';
+    const attemptWorker: TaskAttemptWorker = {
+      id: w.id,
+      name: w.name,
+      isDefault: w.isDefault,
+      ...(w.token !== undefined ? { token: w.token } : {}),
+    };
+    const exitStopped = (): 'exit' => {
+      this.finishClaim(w, claim, false);
+      this.dispatchProgress();
+      return 'exit';
+    };
+    let done = false;
+    const before = Date.now();
+    const handler = this.handlers[task.cls];
+    const numTries = handler.getNumTries(task);
+    // 이 장이 「타임아웃으로」 실패한 횟수 — 다음 시도의 요청 타임아웃을 60초씩 늘린다
+    // (120→180→240→300 상한). 5xx·네트워크 등 다른 실패는 세지 않는다.
+    let timeoutFailures = 0;
+    // 이 장의 재시도 가능한 실패 횟수 — 다음 시도 전 대기 사다리(5→10→20→40→60초).
+    let failures = 0;
+    // 이 장의 마지막 실패 문구 — 연속 실패 정지 창의 「마지막 오류」.
+    let lastErrorText = '';
+    // 핸들러가 준 별도 실패 문구(업스케일 타임아웃 등) — 건너뜀 때 진행 바에도 그 문구를 남긴다.
+    let lastNotice: string | undefined;
+    // 인증 오류(401·403)로 실패했는가 — 재시도·연속 실패 누적 없이 바로 정지한다.
+    let authFailed = false;
+    for (let i = 0; i < numTries; i++) {
+      if (cur.stopped) return exitStopped();
+      try {
+        // 첫 시도 앞에만 요청 사이 지연(재시도는 아래 오류 재시도 대기만). 잔량은 소량 예약 완화 판정용(큐 전체).
+        // 대기 중 정지하면 남은 대기를 버린다(T4 — 예전엔 끝까지 기다린 뒤 정지 판정). 대기는 워커마다 따로.
+        await handler.handleDelay(task, i, delay, this.pendingImageCount(), () => cur.stopped);
+        // 지연 대기 중에 정지됐으면 요청을 보내지 않는다.
+        if (cur.stopped) return exitStopped();
+        // 여러 계정의 429 로 전 워커 일시 대기 중이면(다중 워커만) 그 끝까지 기다린다.
+        if (pool.pauseUntil > Date.now()) {
+          await this.retryWait(pool.pauseUntil - Date.now(), () => cur.stopped);
+          if (cur.stopped) return exitStopped();
+        }
+        const requestTimeoutMs = nextRequestTimeoutMs(timeoutFailures);
+        claim.attempting = true;
+        try {
+          await this.runAttemptWithTimeout(handler, task, cur, requestTimeoutMs, {
+            imageIndex: claim.index,
+            worker: attemptWorker,
+          });
+        } finally {
+          claim.attempting = false;
+        }
+        const after = Date.now();
+        this.timeEstimators[task.cls].addSample(after - before);
+        done = true;
+        // 성공했으니 연속 실패를 새로 센다(T4, 워커별).
+        this.setConsecutiveFailures(w, 0);
+        // 실제로 보낸 성공 요청이므로 정지된 루프의 마지막 성공도 센다(서비스·워커 수준 카운터).
+        this.setLongBreakRemaining(w, this.getLongBreakRemaining(w) - 1);
+        // 이 장의 시드는 썼다 — 정지 뒤 끝난 요청이면 종전처럼 집계하지 않고, 새 실행은 다른 번호로 그 장을 만든다.
+        this.settleClaimIndex(claim, true);
+        if (!cur.stopped) {
+          task.done++;
+          if (task.id! in this.taskSet) {
+            this.groupStats[task.cls].done++;
+            // 추가 시점에 고정한 키 사용 — 실행 중 씬/프로젝트 이름이 바뀌어도
+            // 미등록 키 접근(TypeError → 유령 생성 오류)이 나지 않도록 가드.
+            const sceneKey =
+              task.sceneKey ??
+              (task.params.scene
+                ? getSceneKey(task.params.session, task.params.scene)
+                : '');
+            if (sceneKey in this.sceneStats) {
+              this.sceneStats[sceneKey].done++;
+            }
+            const projectKey = task.projectKey ?? task.params.session.name;
+            if (projectKey in this.projectStats) {
+              this.projectStats[projectKey].done++;
+            }
+          }
+        }
+        this.finishClaim(w, claim, true);
+        this.progressCycleStartedAt = Date.now();
+        this.dispatchEvent(new CustomEvent('complete', {}));
+        this.dispatchProgress();
+        // 주기적 긴 휴식: 성공 300~399장마다 2~4분(지연 설정과 무관, requestTiming). 이번 장의 완료
+        // 집계 뒤에 쉬므로 휴식 중 정지해도 방금 만든 장이 미완료로 남지 않는다. 정지하면 즉시 끝나고,
+        // 남은(아직 아무 워커도 꺼내지 않은) 예약이 없으면 쉬지 않는다. 휴식에 들어갔으면 카운터를 새로 센다 —
+        // 휴식 중 사용자가 정지해도 끝까지 쉰 것과 같이 본다(「정지하면 바로 끝납니다」). 큐 소진·정지로 휴식에
+        // 들어가지 못했으면 0 이하로 남겨, 다음 실행이 2분 안에 시작되면 첫 성공 뒤 바로 쉰다(T3b).
+        // 다중 워커(B1)는 워커마다 따로 쉬고(D5), 한 워커의 휴식을 큐 전체 「휴식 중」으로 그리지 않는다(로그만).
+        if (
+          this.getLongBreakRemaining(w) <= 0 &&
+          !cur.stopped &&
+          this.unclaimedImageCount() > 0
+        ) {
+          const breakMs = computeLongBreakMs();
+          const startedAt = Date.now();
+          const until = startedAt + breakMs;
+          const display = !pool.multi;
+          if (display) {
+            this.longBreakStartedAt = startedAt;
+            this.longBreakUntil = until;
+            this.dispatchProgress();
+          } else {
+            this.addLog('info', '', WORKER_POOL_TEXT.longBreak(w.name, breakMs));
+          }
+          this.setLongBreakRemaining(w, nextLongBreakCount());
+          try {
+            await this.longBreakWait(breakMs, () => cur.stopped);
+          } finally {
+            // 이 휴식의 표시만 끈다(정지가 이미 껐거나 새 실행이 새 휴식을 시작했으면 건드리지 않음).
+            if (display && this.longBreakUntil === until) this.endLongBreakDisplay();
+          }
+        }
+      } catch (e: any) {
+        const sceneName = task.params.scene?.name ?? '(unknown)';
+        // 기본 계정 전용 처리(바이브 인코딩 등)가 필요하다는 핸들러 신호 — 이 장을 같은 번호로 돌려주고 이 워커는
+        // 이 작업을 다시 꺼내지 않는다(실패로 세지 않음). 기본 워커에는 이 신호가 오지 않는다.
+        if (!w.isDefault && isWorkerDeclinedError(e)) {
+          (task.declinedWorkerIds ??= []).push(w.id);
+          this.finishClaim(w, claim, false);
+          this.addLog('info', sceneName, WORKER_POOL_TEXT.declined + tag);
+          return 'next';
+        }
+        if (e.message === 'IP') {
+          this.addLog('error', sceneName, 'IP 변경 감지로 중단');
+          this.dispatchEvent(new CustomEvent('ip-check-fail', {}));
+          this.finishClaim(w, claim, false);
+          this.stop();
+          return 'exit';
+        }
+        if (isRequestTimeoutError(e)) timeoutFailures++;
+        failures++;
+        // 429 판정은 NaiApiError status/kind 우선, 문자열은 폴백(요청 ID 의 「429」 오판정 방지).
+        const rateLimited = isNaiRateLimitError(e);
+        // 409(이전 요청 처리 중)는 429 가 아닐 때만 — 사다리 대신 고정 30초(T4).
+        const concurrent = !rateLimited && isNaiConcurrentError(e);
+        // 핸들러 별도 문구(업스케일 타임아웃 안내 등) — 있으면 로그·진행 바·오류 토스트에 쓴다.
+        const notice = handler.failureNotice?.(task, e);
+        if (notice) lastNotice = notice;
+        lastErrorText = notice ?? String(e?.message ?? e);
+        // 다음 시도가 남아 있고 재시도 가능한 실패면 대기 — 실패 횟수 사다리 5→10→20→40→60초
+        // ±20%, 429 는 최소 60초, 409 는 고정 30초. 재시도에는 요청 사이 지연(handleDelay)을 더하지 않는다(T3).
+        const willRetry = e?.retryable !== false && i + 1 < numTries;
+        const waitMs = willRetry
+          ? retryWaitMs(failures, rateLimited ? 'rate-limit' : concurrent ? 'concurrent' : 'other')
+          : 0;
+        const waitLabel = willRetry ? TASK_FAILURE_TEXT.waitSuffix(waitMs) : '';
+        const attemptLabel = TASK_FAILURE_TEXT.attempt(i + 1, numTries);
+        if (rateLimited) {
+          this.addLog('warn', sceneName, `요청 제한 (429)${waitLabel}${attemptLabel}${tag}`);
+          console.log(`Rate limited (429), waiting ${waitMs}ms before retry...`);
+          this.dispatchEvent(
+            new CustomEvent('error', {
+              detail: { error: `요청 제한 (429)${waitLabel}`, task: task },
+            }),
+          );
+          // 다중 워커: 여러 계정에서 이어지면 전 워커 일시 대기(대기 길이 = 이 429 의 대기).
+          this.noteRateLimit(
+            pool,
+            w,
+            waitMs > 0 ? waitMs : retryWaitMs(failures, 'rate-limit'),
+            sceneName,
+          );
+        } else if (concurrent) {
+          const label = `${naiErrorKindLabel('concurrent')} (409)`;
+          this.addLog('warn', sceneName, `${label}${waitLabel}${attemptLabel}${tag}`);
+          this.dispatchEvent(
+            new CustomEvent('error', {
+              detail: { error: `${label}${waitLabel}`, task: task },
+            }),
+          );
+          // 다시 시도할 때만 안내(마지막 시도면 아래 건너뜀·연속 실패 처리로 알린다).
+          if (willRetry) appState.pushMessage(TASK_FAILURE_TEXT.concurrentRetry, 'info');
+        } else {
+          const text = notice ?? e.message;
+          this.addLog('error', sceneName, `${text}${waitLabel}${attemptLabel}${tag}`);
+          this.dispatchEvent(
+            new CustomEvent('error', {
+              detail: { error: text, task: task },
+            }),
+          );
+          if (notice) appState.pushMessage(notice, 'error');
+        }
+        console.error(e);
+        // 인증 오류는 토큰을 고치기 전까지 모든 작업이 같은 이유로 실패하므로 아래에서 바로 정지한다.
+        if (isNaiAuthError(e)) {
+          authFailed = true;
+          break;
+        }
+        // 프롬프트 한도·미지원 필드·Anlas/할당량 오류는 같은 요청을
+        // 반복해도 회복되지 않는다. 서버/네트워크/429/409만 재시도한다.
+        if (e?.retryable === false) break;
+        // 대기 중 정지하면 남은 대기를 버린다(다음 반복 머리에서 정지 처리).
+        if (waitMs > 0) await this.retryWait(waitMs, () => cur.stopped);
+      }
+      if (done) {
+        break;
+      }
+    }
+    if (done) return 'next';
+    // 재시도 도중 런이 정지됐으면 스킵 처리 없이 종료 — 정지 후 남은 큐를
+    // 옛 루프가 건드리면 새 런과 이중 제거가 발생한다.
+    if (cur.stopped) return exitStopped();
+    const sceneName = task.params.scene?.name ?? '(unknown)';
+    // 인증 오류 즉시 정지: 재시도 소진·연속 실패 누적을 기다리지 않고 이 작업을 큐에 남긴 채 정지한다.
+    // 다중 워커의 기본 계정이 아닌 워커는 그 워커만 빠지고(장은 반납), 남은 워커가 없을 때만 전체 정지.
+    if (authFailed) {
+      this.setConsecutiveFailures(w, 0);
+      if (!pool.multi || w.isDefault) {
+        this.finishClaim(w, claim, false);
+        this.stopForFailure(cur, task, sceneName, TASK_FAILURE_TEXT.authStop(lastErrorText));
+        return 'exit';
+      }
+      this.dropWorker(pool, w, claim, sceneName, WORKER_POOL_TEXT.authDropped(w.name, lastErrorText), 'dialog');
+      if (!this.hasLiveWorker(pool)) {
+        this.stopForFailure(cur, task, sceneName, TASK_FAILURE_TEXT.authStop(lastErrorText));
+      }
+      return 'exit';
+    }
+    // 연속 실패 정지(T4): 재시도를 소진한 작업(다중 워커는 장)이 CONSECUTIVE_FAILURE_STOP 개 연속이면 이 작업은
+    // 건너뛰지 않고(큐에 남김) 큐를 완전히 정지한 뒤, 사용자가 확인을 누를 때까지 남는 창으로 알린다.
+    // 다중 워커는 그 워커만 빠지고(장은 반납) 남은 워커가 없을 때만 같은 정지.
+    const fails = this.getConsecutiveFailures(w) + 1;
+    this.setConsecutiveFailures(w, fails);
+    if (fails >= CONSECUTIVE_FAILURE_STOP) {
+      this.setConsecutiveFailures(w, 0);
+      if (!pool.multi) {
+        this.finishClaim(w, claim, false);
+        this.stopForFailure(cur, task, sceneName, TASK_FAILURE_TEXT.consecutiveStop(lastErrorText));
+        return 'exit';
+      }
+      this.dropWorker(
+        pool,
+        w,
+        claim,
+        sceneName,
+        WORKER_POOL_TEXT.consecutiveDropped(w.name, lastErrorText),
+        'toast',
+      );
+      if (!this.hasLiveWorker(pool)) {
+        this.stopForFailure(cur, task, sceneName, TASK_FAILURE_TEXT.consecutiveStop(lastErrorText));
+      }
+      return 'exit';
+    }
+    if (pool.multi) {
+      // 다중 워커(D6): 끝내 실패한 그 장만 건너뛰고(그 시드는 쓰지 않음) 다음 장으로. 예약의 다른 장은 계속.
+      this.addLog('error', sceneName, WORKER_POOL_TEXT.imageSkipped(numTries) + tag);
+      this.dispatchEvent(
+        new CustomEvent('error', {
+          detail: { error: lastNotice ?? WORKER_POOL_TEXT.imageSkippedShort, task: task },
+        }),
+      );
+      this.skipClaimedImage(claim);
+      this.finishClaim(w, claim, true);
+      this.dispatchProgress();
+      return 'next';
+    }
+    // 실패한 태스크를 건너뛰고 다음 태스크로 진행(단일 워커 = 종전: 예약의 남은 장 전체)
+    this.addLog('error', sceneName, TASK_FAILURE_TEXT.retriesExhausted(numTries));
+    console.log('SKIPPING FAILED TASK:', task.params.scene?.name);
+    this.dispatchEvent(
+      new CustomEvent('error', {
+        detail: { error: lastNotice ?? TASK_FAILURE_TEXT.retriesExhaustedShort, task: task },
+      }),
+    );
+    // 위임 태스크 실패 — 원 창에 토스트로 통지(브리지).
+    if (task.params.delegation) {
+      backend
+        .delegateComplete({
+          ...task.params.delegation,
+          status: 'fail',
+          message: `생성 실패(재시도 초과): ${sceneName}`,
+        })
+        .catch(() => {});
+    }
+    this.finishClaim(w, claim, false);
+    this.removeTaskInternal(task);
+    // 긴 재시도 구간 동안 사용자가 예약을 취소해 큐가 비었거나 머리가
+    // 바뀌었을 수 있다 — 빈 큐 dequeue 는 throw 라 반드시 머리 동일성 확인.
+    if (!this.queue.isEmpty() && this.queue.peek() === task) {
+      this.queue.dequeue();
+    }
+    this.dispatchProgress();
+    return 'next';
+  }
+
   /**
    * 실패로 큐를 완전히 정지(연속 실패·인증 오류 공통). 작업은 큐에 남기고, 사용자가 확인을 누를
    * 때까지 남는 창과 'failure-stop' 이벤트(모바일 상주 알림 문구)로 알린다.
    */
   private stopForFailure(cur: TaskQueueRun, task: Task, sceneName: string, text: string) {
     cur.stopped = true;
+    // 이 실행의 다른 워커가 꺼낸 장도 돌려준다(B1 — 단일 워커는 이미 돌려줬다).
+    this.releasePoolClaimsOnStop(cur);
     this.stop();
     this.addLog('error', sceneName, text.replace(/\n/g, ' '));
     this.dispatchEvent(
@@ -1561,7 +2099,7 @@ export class TaskQueueService extends EventTarget {
     const snap = this.projectQueueSnapshot();
     const byOrigin: { [originWindowId: number]: number } = {};
     for (const task of this.queue) {
-      const remain = task!.total - task!.done;
+      const remain = remainingImageCount(task!);
       if (remain <= 0) continue;
       const oid = task!.params.delegation?.originWindowId ?? 0; // 0 = 호스트 자신
       byOrigin[oid] = (byOrigin[oid] ?? 0) + remain;
@@ -1584,6 +2122,7 @@ export class TaskQueueService extends EventTarget {
       sceneStats,
       longBreakStartedAt: this.longBreakStartedAt,
       longBreakUntil: this.longBreakUntil,
+      boostWorkers: this.activeWorkerCount(),
     };
   }
 }

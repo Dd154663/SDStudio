@@ -58,7 +58,12 @@ export abstract class Backend {
   abstract setConfig(newConfig: Config): Promise<void>;
   abstract getVersion(): Promise<string>;
   abstract openWebPage(url: string): Promise<void>;
-  abstract generateImage(arg: ImageGenInput): Promise<void>;
+  // options.token = 이 요청에만 쓸 토큰(부스트 B0, backends/requestToken). 생략하면 저장된 로그인 토큰.
+  // 토큰은 arg(ImageGenInput)·요청 옵션·로그·메타에 넣지 않는다.
+  abstract generateImage(
+    arg: ImageGenInput,
+    options?: import('./backends/requestToken').GenerateImageOptions,
+  ): Promise<void>;
   abstract augmentImage(arg: ImageAugmentInput): Promise<void>;
   abstract upscaleImage(arg: ImageUpscaleInput): Promise<void>;
   abstract login(email: string, password: string): Promise<void>;

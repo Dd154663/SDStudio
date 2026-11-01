@@ -162,6 +162,16 @@ export async function bootstrapApp(): Promise<void> {
   // "항상 호스트" no-op 이라 사실상 아무 배선도 하지 않는다(종전과 동일).
   await taskQueueService.initGenerationHostBridge();
 
+  // 부스트 B1 숨은 개발 플래그 — 개발 빌드에서만 DevTools 콘솔로 추가 워커 계정을 넣는다(배포 빌드엔 없음).
+  // 예: __sdsBoostDev.setAccounts([{ id: 'b', name: '계정B', token: '…' }]) → 다음 실행부터 동시 생성.
+  // 메모리 전용(저장·config 키 없음), 토큰은 로그·미러·IPC 에 싣지 않는다. 참여 판정·설정 UI 는 B2/B3.
+  if (process.env.NODE_ENV === 'development') {
+    (window as any).__sdsBoostDev = {
+      setAccounts: (accounts: any) => taskQueueService.setDevWorkerAccounts(accounts),
+      clear: () => taskQueueService.setDevWorkerAccounts(null),
+    };
+  }
+
   // 전역 저장소 동기화 수신 (W6 P2, 데스크톱 멀티 윈도우): 다른 창이 공유
   // 저장소를 저장하면 여기서 디스크 재로드로 반영한다(낙관적 쓰기+브로드캐스트).
   // 보낸 창은 main 이 제외하므로 자기 저장에 자기 재로드가 겹치지 않는다.

@@ -95,7 +95,7 @@ const RULES: Rule[] = [
       'models/ImageService.ts': 4,
       'models/legacy.ts': 7,
       'models/SessionService.ts': 8,
-      'models/TaskHandlers.ts': 3,
+      // models/TaskHandlers.ts: 0 — 2026-10-29 부스트 B0 에서 outputFileName.nextOutputPngPath(PNG_IMAGE_EXT) 로 정리
       // models/TrashService.ts: 0 — 2026-10-02 S1 에서 sceneMaskFileName(PNG_IMAGE_EXT) 로 정리
       'models/workflows/SDWorkFlow.ts': 1,
     },

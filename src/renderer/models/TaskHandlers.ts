@@ -82,9 +82,15 @@ import {
   FAST_TASK_TIME_ESTIMATOR_SAMPLE_COUNT,
   TASK_TIME_ESTIMATOR_SAMPLE_COUNT,
   lowerResolution,
-  stepSeed,
   handleNAIDelay,
 } from './TaskQueueService';
+import { advanceSeedCursor, seedForImageIndex } from './seedSchedule';
+import { nextOutputPngPath } from './outputFileName';
+import {
+  createWorkerDeclinedError,
+  isWorkerDeclinedError,
+  WORKER_POOL_TEXT,
+} from './queueWorkerPool';
 import type {
   TaskHandler,
   TaskQueueRun,
@@ -244,6 +250,12 @@ class GenerateImageTaskHandler implements TaskHandler {
     await handleNAIDelay(numTry, this.fast, delay, pendingCount, shouldStop);
   }
 
+  // 다른 계정 워커(부스트 B1)가 처리할 수 있는가 — 일반 큐 생성만(빠른 생성은 기본 계정). 인페인트·I2I 의
+  // 부스트 적용 여부(별도 토글, D2)는 B2 참여 판정에서 정한다.
+  supportsWorkerAccount(task: Task): boolean {
+    return !this.fast;
+  }
+
   checkTask(task: Task): boolean {
     if (task.params.job.type === 'sd' && this.type === 'gen') {
       return !!task.params.nodelay == !!this.fast;
@@ -264,14 +276,23 @@ class GenerateImageTaskHandler implements TaskHandler {
       task.params.generationSnapshot ?? (await backend.getConfig());
     let prompt = lowerPromptNode(job.prompt!);
     console.log('lowered prompt: ' + prompt);
-    const outputFilePath =
-      task.params.outputPath + '/' + Date.now().toString() + '.png';
+    // 같은 ms 의 다른 요청과 이름이 겹치지 않는 단조 증가 타임스탬프(outputFileName, B0).
+    const outputFilePath = nextOutputPngPath(task.params.outputPath);
     if (prompt === '') {
       prompt = '1girl';
     }
     if (config.furryMode) {
       prompt = 'fur dataset, ' + prompt;
     }
+
+    // 이 시도를 맡은 워커(부스트 B1). 기본 워커·문맥 없음 = 종전 경로(활성 계정·TOKEN.txt·과금 확인·순회).
+    // 다른 계정 워커는 그 토큰으로 생성만 보낸다 — 토큰은 이 지역 변수로만 흐르고 arg·로그·메타에 넣지 않는다.
+    const worker = ctx?.worker;
+    const accountToken = worker && !worker.isDefault ? worker.token ?? '' : undefined;
+    const onDefaultAccount = accountToken === undefined;
+    // 다른 계정 워커 + V5: V5 는 바이브를 요청에서 버리므로 인코딩·불러오기 자체를 건너뛴다(활성 계정 토큰 사용 방지).
+    const skipVibes =
+      !onDefaultAccount && isV5ModelVersion(config.modelVersion ?? ModelVersion.V4_5);
 
     // 세션이 변경되면 캐시 초기화
     const currentSessionName = task.params.session.name;
@@ -287,7 +308,7 @@ class GenerateImageTaskHandler implements TaskHandler {
 
     // 바이브 이미지 처리 - 캐싱 적용
     const allVibes = await Promise.all(
-      job.vibes.map(async (vibe) => {
+      (skipVibes ? [] : job.vibes).map(async (vibe) => {
         const cacheKey = `${vibe.path}:${vibe.info}`;
 
         // 캐시에서 먼저 확인
@@ -308,6 +329,8 @@ class GenerateImageTaskHandler implements TaskHandler {
             vibe.info,
           );
           if (!isEncoded) {
+            // 바이브 인코딩은 활성 계정 토큰을 쓰므로 기본 워커만 한다 — 다른 계정 워커는 이 작업을 기본 계정에 넘긴다.
+            if (!onDefaultAccount) throw createWorkerDeclinedError(WORKER_POOL_TEXT.declined);
             await imageService.encodeVibeImage(
               task.params.session,
               vibe.path,
@@ -341,7 +364,9 @@ class GenerateImageTaskHandler implements TaskHandler {
             info: vibe.info,
             strength: vibe.strength,
           };
-        } catch (e) {
+        } catch (e: any) {
+          // 기본 계정에 넘기는 신호는 그대로 큐까지 올린다(손상 바이브로 보고 빼지 않는다).
+          if (isWorkerDeclinedError(e)) throw e;
           // 폐기된 시도면 안내 없이 그대로 끝낸다(새 시도가 다시 인코딩한다).
           throwIfAborted(ctx?.signal);
           console.warn(`바이브 이미지 처리 오류 (${vibe.path}):`, e);
@@ -474,7 +499,9 @@ class GenerateImageTaskHandler implements TaskHandler {
       deliberateEulerAncestralBug: job.deliberateEulerAncestralBug,
       characterReferences: finalReferences,
       outputFilePath: outputFilePath,
-      seed: job.seed,
+      // 고정 시드 연쇄의 이 장 시드(seedSchedule) — job.seed 는 예약 때 정한 시작 시드 그대로 두고, 큐가 꺼낼 때
+      // 정한 장 번호(ctx.imageIndex, B1 — 재시도는 같은 번호)로 계산한다. 큐 밖 직접 호출은 시드 커서(B0) 폴백.
+      seed: seedForImageIndex(job.seed, ctx?.imageIndex ?? task.seedCursor ?? 0),
       generationSettings: task.params.generationSnapshot,
       ...(job.sdstudioPromptSource
         ? {
@@ -560,7 +587,10 @@ class GenerateImageTaskHandler implements TaskHandler {
       arg.originalImage = true;
       arg.imageStrength = i2iJob.strength;
     }
+    // 할당량 확인·자동 순회·저잔량 경고·Anlas 확인은 활성 계정(기본 워커) 경로에서만 종전대로.
+    // 다른 계정 워커의 계정별 할당량 확인·탈락은 B2 에서 이 자리에 붙인다(B1 은 개발 플래그 전용이라 건너뜀).
     if (
+      onDefaultAccount &&
       isOpusFreeEligible({
         version: curModelVersion,
         width: arg.resolution.width,
@@ -665,9 +695,10 @@ class GenerateImageTaskHandler implements TaskHandler {
 
     // IP 확인 최적화 - 세션당 한 번만 확인
     try {
-      await backend.generateImage(arg);
+      if (onDefaultAccount) await backend.generateImage(arg);
+      else await backend.generateImage(arg, { token: accountToken });
     } catch (e: any) {
-      if (e?.kind === 'quota') {
+      if (onDefaultAccount && e?.kind === 'quota') {
         // 할당량 오류 뒤에는 `/user/data` 캐시를 건너뛰고 새로 읽는다.
         opusUsageService.refresh(true, { fresh: true }).catch(() => {});
       }
@@ -678,11 +709,14 @@ class GenerateImageTaskHandler implements TaskHandler {
     if (focused) {
       await composeFocusedOutput(focused, (job as SDInpaintJob).image, outputFilePath, ctx);
     }
-    // 생성 직후 잔량은 캐시를 건너뛰고 새로 읽는다(다음 생성 직전 확인은 이 결과를 재사용).
-    if (isV5) opusUsageService.refresh(true, { fresh: true }).catch(() => {});
+    // 생성 직후 잔량은 캐시를 건너뛰고 새로 읽는다(다음 생성 직전 확인은 이 결과를 재사용). 활성 계정만.
+    if (isV5 && onDefaultAccount) opusUsageService.refresh(true, { fresh: true }).catch(() => {});
 
-    if (job.seed) {
-      job.seed = stepSeed(job.seed);
+    // 큐 밖 직접 호출(장 번호 없음)만 시드 커서를 한 장 소비 — 예전 `job.seed = stepSeed(job.seed)` 와 같은
+    // 자리·같은 조건(연쇄하는 시드만). 큐 실행은 장 번호를 큐가 관리한다(B1 — 성공 = 그 번호 소비).
+    // 생성 실패·위의 폐기 검사에서 끝난 시도는 여기까지 오지 않아 다음 시도가 같은 시드를 쓴다.
+    if (ctx?.imageIndex === undefined) {
+      task.seedCursor = advanceSeedCursor(job.seed, task.seedCursor);
     }
 
     // 자동 WebP 변환(옵트인, 데스크톱+모바일): 저장된 PNG 를 곧바로 WebP 로 재인코딩.
@@ -827,8 +861,7 @@ class RemoveBgTaskHandler implements TaskHandler {
   }
 
   async handleTask(task: Task, run: TaskQueueRun) {
-    const outputFilePath =
-      task.params.outputPath + '/' + Date.now().toString() + '.png';
+    const outputFilePath = nextOutputPngPath(task.params.outputPath);
     const job = task.params.job as AugmentJob;
     await localAIService.removeBg(job.image!, outputFilePath);
     finishOrBridgeImage(task, outputFilePath);
@@ -879,8 +912,7 @@ class AugmentTaskHandler implements TaskHandler {
   }
 
   async handleTask(task: Task, run: TaskQueueRun, ctx?: TaskAttemptContext) {
-    const outputFilePath =
-      task.params.outputPath + '/' + Date.now().toString() + '.png';
+    const outputFilePath = nextOutputPngPath(task.params.outputPath);
     const job = task.params.job as AugmentJob;
     let prompt = lowerPromptNode(job.prompt!);
     const params: ImageAugmentInput = {

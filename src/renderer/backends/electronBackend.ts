@@ -10,6 +10,7 @@ import {
 } from './imageGen';
 import { Backend, FileEntry, ResizeImageInput, SelectFileOptions } from '../backend';
 import { assertDeletableDirPath } from './dataPathGuard';
+import { GenerateImageOptions, resolveRequestToken } from './requestToken';
 import { NovelAiFetcher, NovelAiImageGenService } from './genVendors/nai';
 import { createNaiApiError } from './genVendors/naiErrors';
 import {
@@ -146,8 +147,9 @@ export class ElectornBackend extends Backend {
     await invoke('open-web-page', url);
   }
 
-  async generateImage(arg: ImageGenInput): Promise<void> {
-    const token = await this.readToken();
+  async generateImage(arg: ImageGenInput, options?: GenerateImageOptions): Promise<void> {
+    // 요청별 토큰(부스트 B0) — 없으면 종전처럼 TOKEN.txt.
+    const token = await resolveRequestToken(options, () => this.readToken());
     let res = await this.imageGenService.generateImage(token, arg);
     if (arg.sdstudioMetadata) {
       try {

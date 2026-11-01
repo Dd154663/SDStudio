@@ -27,6 +27,7 @@ import Pica from 'pica';
 import { NovelAiFetcher, NovelAiImageGenService } from './genVendors/nai';
 import { createNaiApiError } from './genVendors/naiErrors';
 import { assertDeletableDirPath } from './dataPathGuard';
+import { GenerateImageOptions, resolveRequestToken } from './requestToken';
 import FetchService from './fecthService';
 import {
   NaiRequestOptions,
@@ -418,8 +419,9 @@ export class AndroidBackend extends Backend {
     window.open(url);
   }
 
-  async generateImage(arg: ImageGenInput): Promise<void> {
-    const token = await this.readFile('TOKEN.txt');
+  async generateImage(arg: ImageGenInput, options?: GenerateImageOptions): Promise<void> {
+    // 요청별 토큰(부스트 B0) — 없으면 종전처럼 TOKEN.txt.
+    const token = await resolveRequestToken(options, () => this.readFile('TOKEN.txt'));
     let res = await this.imageGenService.generateImage(token, arg);
     if (arg.sdstudioMetadata) {
       try {
