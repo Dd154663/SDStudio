@@ -1386,10 +1386,24 @@ export class SessionService extends ResourceSyncService<Session> {
 
   async toggleImageBookmark(projectName: string, sceneName: string, imageFilename: string) {
     const key = projectName + ':' + sceneName;
-    if (this.bookmarkData.images[key] === imageFilename) {
-      delete this.bookmarkData.images[key];
-    } else {
+    await this.setImageBookmark(
+      projectName,
+      sceneName,
+      this.bookmarkData.images[key] === imageFilename ? undefined : imageFilename,
+    );
+  }
+
+  // 절대값 지정(2026-11-01 되돌리기 U3a — 토글의 이전 값 복원용). undefined = 그 씬의 이미지 북마크 없음(씬당 1개).
+  // 같은 값이면 저장하지 않는다.
+  async setImageBookmark(projectName: string, sceneName: string, imageFilename: string | undefined) {
+    const key = projectName + ':' + sceneName;
+    const current = this.bookmarkData.images[key];
+    if (imageFilename) {
+      if (current === imageFilename) return;
       this.bookmarkData.images[key] = imageFilename;
+    } else {
+      if (current === undefined) return;
+      delete this.bookmarkData.images[key];
     }
     await this.saveBookmarks();
   }

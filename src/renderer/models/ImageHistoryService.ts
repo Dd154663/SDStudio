@@ -1,6 +1,6 @@
 import { action, observable, runInAction } from 'mobx';
 import { backend, imageService, sessionService } from '.';
-import { toggleImageMain } from './ImageService';
+import { toggleImageFavorite } from './imageStateUndo';
 import { persistService } from './PersistenceService';
 import { projectPath } from './projectPaths';
 import { getAppState } from './appStateRef';
@@ -257,8 +257,8 @@ export class ImageHistoryService {
     const resolved = await this.resolve(entry);
     if (!resolved) return;
     const { session, scene } = resolved;
-    // 창 간 동기화 헬퍼(읽기 전용 미러): 소유 창 위임 + 로컬 반영
-    toggleImageMain(session, scene, entry.filename);
+    // 창 간 동기화 헬퍼(읽기 전용 미러): 소유 창 위임 + 로컬 반영. 되돌리기는 그 이미지의 프로젝트 기록에(U3a)
+    toggleImageFavorite(session, scene, entry.filename);
   }
 
   // 좌클릭/컨텍스트 메뉴 "해당 씬으로 이동" 공용 진입점.

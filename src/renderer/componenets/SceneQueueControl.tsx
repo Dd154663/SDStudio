@@ -61,9 +61,8 @@ import {
   getMainImage,
   dataUriToBase64,
   deleteImageFiles,
-  setImageMain,
-  toggleImageMain,
 } from '../models/ImageService';
+import { setImageFavorites, toggleImageFavorite } from '../models/imageStateUndo';
 import { queueWorkflow } from '../models/TaskQueueService';
 import {
   addScenesToQueue,
@@ -580,7 +579,7 @@ export const SceneCell = observer(
           e.stopPropagation();
           if (previewIndex < 0 || previewIndex >= totalImages) return;
           const filename = outputs[previewIndex];
-          toggleImageMain(curSession!, scene, filename);
+          toggleImageFavorite(curSession!, scene, filename);
         }
       };
       window.addEventListener('keydown', handler, true);
@@ -616,7 +615,7 @@ export const SceneCell = observer(
         } else if (detail.action === 'fav') {
           if (previewIndex < 0 || previewIndex >= totalImages) return;
           const filename = outputs[previewIndex];
-          toggleImageMain(curSession!, scene, filename);
+          toggleImageFavorite(curSession!, scene, filename);
         }
       };
       window.addEventListener('scene-image-nav', handler);
@@ -2028,8 +2027,8 @@ const QueueControl = observer(
       className: 'back-orange',
       onClick: async (scene: Scene, path: string, close: () => void) => {
         const filename = path.split('/').pop()!;
-        // 절대값 설정 + 창 간 위임(읽기 전용 미러)
-        setImageMain(curSession!, scene, filename, !isMainImage(path));
+        // 절대값 설정 + 창 간 위임(읽기 전용 미러) + 되돌리기 기록(U3a)
+        setImageFavorites(curSession!, scene, [filename], !isMainImage(path));
       },
     };
 

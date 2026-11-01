@@ -17,7 +17,7 @@ import { Buffer } from 'buffer';
 import { FileEntry } from '../backend';
 import { Session } from 'inspector';
 import { GameService } from './GameService';
-import { ImageService } from './ImageService';
+import { ImageService, setImageMain } from './ImageService';
 import { ImageDownloadService } from './ImageDownloadService';
 import { LoginService } from './LoginService';
 import { PromptService } from './PromptService';
@@ -49,6 +49,7 @@ import { ImageHistoryService } from './ImageHistoryService';
 import { OpusUsageService } from './OpusUsageService';
 import { undoService } from './undoService';
 import { configureSceneStructureUndo } from './sceneStructureUndo';
+import { configureImageStateUndo } from './imageStateUndo';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -152,6 +153,17 @@ loginService.setAccountSwitchGuard(() =>
 );
 
 export const gameService = new GameService();
+
+// 이미지 상태(즐겨찾기·북마크·순서·순위) 되돌리기가 부르는 공개 메서드 배선 — 이미지 필드 대입은 이 메서드들만 한다
+// (즐겨찾기 = setImageMain 절대값+다른 창 알림, 순서·순위 = GameService 병합 복원)
+configureImageStateUndo({
+  setImageMain: (s, scene, filename, on) => setImageMain(s, scene, filename, on),
+  getImageBookmark: (project, scene) => sessionService.getImageBookmark(project, scene),
+  setImageBookmark: (project, scene, filename) => sessionService.setImageBookmark(project, scene, filename),
+  applyImageOrder: (scene, order) => gameService.applyImageOrder(scene, order),
+  applyRanking: (s, scene, snap) => gameService.applyRanking(s, scene, snap),
+  refreshScene: (s, scene) => imageService.refresh(s, scene),
+});
 
 // 최근 생성 이미지 히스토리 (history.json 영속, 전체 최근 30장 — 우측 사이드바)
 export const imageHistoryService = new ImageHistoryService();

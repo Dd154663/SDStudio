@@ -77,7 +77,13 @@ import { queueScene } from '../models/sceneQueueActions';
 import { queueNaiUpscale } from '../models/workflows/NaiUpscaleFlow';
 import { estimateNaiUpscaleCost } from '../backends/genVendors/naiUpscale';
 import { getImageDimensions } from './BrushTool';
-import { dataUriToBase64, deleteImageFiles, toggleImageMain } from '../models/ImageService';
+import { dataUriToBase64, deleteImageFiles } from '../models/ImageService';
+import {
+  recordImageOrder,
+  setImageFavorites,
+  toggleImageBookmarkRecorded,
+  toggleImageFavorite,
+} from '../models/imageStateUndo';
 import { IMAGE_RETENTION_DAYS } from '../models/TrashService';
 import {
   deleteConfirmText,
@@ -587,40 +593,43 @@ const Cell = memo(
           const dropPath = path.split('/').pop()!;
 
           if (draggedPath !== dropPath) {
-            const getPlayer = (path: string) => {
-              if (mscene.game) {
-                for (const player of mscene.game) {
-                  if (player.path === path) {
-                    return player;
+            // 되돌리기 기록(U3a): 순서 사본·순위 깊은 사본 — 되돌림은 병합 복원(그사이 생성된 이미지 유지)
+            await recordImageOrder(curSession!, mscene, async () => {
+              const getPlayer = (path: string) => {
+                if (mscene.game) {
+                  for (const player of mscene.game) {
+                    if (player.path === path) {
+                      return player;
+                    }
                   }
                 }
+                return undefined;
+              };
+              const draggedPlayer = getPlayer(draggedPath);
+              const dropPlayer = getPlayer(dropPath);
+              if (draggedPlayer) {
+                mscene.game!.splice(mscene.game!.indexOf(draggedPlayer), 1);
               }
-              return undefined;
-            };
-            const draggedPlayer = getPlayer(draggedPath);
-            const dropPlayer = getPlayer(dropPath);
-            if (draggedPlayer) {
-              mscene.game!.splice(mscene.game!.indexOf(draggedPlayer), 1);
-            }
-            if (dropPlayer) {
-              mscene.game!.push({
-                path: draggedPath,
-                rank: dropPlayer.rank,
-              });
-            }
-            if (draggedPlayer || dropPlayer) {
-              gameService.cleanGame(mscene.game!);
-              mscene.round = undefined;
-            }
-            const draggedImageIndex = mscene.imageMap.indexOf(draggedPath);
-            mscene.imageMap.splice(draggedImageIndex, 1);
-            const dropImageIndex = mscene.imageMap.indexOf(dropPath);
-            if (draggedIndex < index) {
-              mscene.imageMap.splice(dropImageIndex, 0, draggedPath);
-            } else {
-              mscene.imageMap.splice(dropImageIndex + 1, 0, draggedPath);
-            }
-            await imageService.refresh(curSession!, mscene);
+              if (dropPlayer) {
+                mscene.game!.push({
+                  path: draggedPath,
+                  rank: dropPlayer.rank,
+                });
+              }
+              if (draggedPlayer || dropPlayer) {
+                gameService.cleanGame(mscene.game!);
+                mscene.round = undefined;
+              }
+              const draggedImageIndex = mscene.imageMap.indexOf(draggedPath);
+              mscene.imageMap.splice(draggedImageIndex, 1);
+              const dropImageIndex = mscene.imageMap.indexOf(dropPath);
+              if (draggedIndex < index) {
+                mscene.imageMap.splice(dropImageIndex, 0, draggedPath);
+              } else {
+                mscene.imageMap.splice(dropImageIndex + 1, 0, draggedPath);
+              }
+              await imageService.refresh(curSession!, mscene);
+            });
           }
         },
       }),
@@ -889,8 +898,8 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
         const path = filePaths[idx];
         if (!path) return;
         const filename = path.split('/').pop()!;
-        // 창 간 동기화 헬퍼(읽기 전용 미러): 소유 창 위임 + 로컬 반영
-        toggleImageMain(curSession!, scene, filename);
+        // 창 간 동기화 헬퍼(읽기 전용 미러): 소유 창 위임 + 로컬 반영 + 되돌리기 기록(U3a)
+        toggleImageFavorite(curSession!, scene, filename);
       };
       window.addEventListener('keydown', handleKey);
       return () => window.removeEventListener('keydown', handleKey);
@@ -1247,15 +1256,11 @@ const ResultDetailView = observer(
           });
         } else if (action === 'toggle-favorite') {
           const path = paths[selectedIndex].split('/').pop()!;
-          toggleImageMain(curSession!, scene, path);
+          toggleImageFavorite(curSession!, scene, path);
         } else if (action === 'toggle-bookmark') {
           const filename = paths[selectedIndex]?.split('/').pop();
           if (filename) {
-            sessionService.toggleImageBookmark(
-              curSession!.name,
-              scene.name,
-              filename,
-            );
+            void toggleImageBookmarkRecorded(curSession!, scene, filename);
           }
         } else if (action === 'save-image') {
           imageDownloadService.downloadSingleImage(
@@ -1358,7 +1363,7 @@ const ResultDetailView = observer(
     };
     const actToggleBookmark = () => {
       if (currentFilename) {
-        sessionService.toggleImageBookmark(curSession!.name, scene.name, currentFilename);
+        void toggleImageBookmarkRecorded(curSession!, scene, currentFilename);
       }
     };
     const actCopyImage = () => {
@@ -1951,10 +1956,13 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
 
     const onToggleFavoriteSelected = useCallback(() => {
       if (selectedImages.current.size === 0) return;
-      for (const path_ of selectedImages.current) {
-        const filename = path_.split('/').pop()!;
-        toggleImageMain(curSession!, scene, filename);
-      }
+      // 선택 이미지 즐겨찾기 일괄 전환 — 파일마다 반전, 되돌리기는 1항목(U3a)
+      setImageFavorites(
+        curSession!,
+        scene,
+        Array.from(selectedImages.current, (p) => p.split('/').pop()!),
+        'toggle',
+      );
       if (gallaryRef.current) gallaryRef.current.refresh();
       if (gallaryRef2.current) gallaryRef2.current.refresh();
       sessionService.markDirty(curSession!.name);
@@ -2300,14 +2308,10 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           if (originalIdx >= 0) setSelectedImageIndex(originalIdx);
         } else if (action === 'image-toggle-favorite') {
           const filename = activePaths[i].split('/').pop()!;
-          toggleImageMain(curSession!, scene, filename);
+          toggleImageFavorite(curSession!, scene, filename);
         } else if (action === 'image-toggle-bookmark') {
           const filename = activePaths[i].split('/').pop()!;
-          sessionService.toggleImageBookmark(
-            curSession!.name,
-            scene.name,
-            filename,
-          );
+          void toggleImageBookmarkRecorded(curSession!, scene, filename);
         } else if (action === 'image-delete') {
           // 그리드 Del 단일 삭제 — 상세 보기와 같은 규칙(「다시 묻지 않음」 체크박스·설정 존중, deleteFlowRules)
           const doDel = async () => {

@@ -163,6 +163,22 @@ export const UNDO_TEXT = {
   seedGroupRemove: '시드 그룹 해제',
   seedGroupSeed: (label: string) => `그룹 ${label} 시드 변경`,
   sceneContentCopy: (source: string, count: number) => `씬 내용 복제: ${source} → ${count}개`,
+  // U3a 이미지 상태(즐겨찾기·북마크·순서·순위·생성 설정 적용) — imageStateUndo.ts
+  imageFavoriteOn: (name: string, count: number) =>
+    count === 1 ? `이미지 즐겨찾기: ${name}` : `이미지 즐겨찾기 ${count}장: ${name}`,
+  imageFavoriteOff: (name: string, count: number) =>
+    count === 1 ? `이미지 즐겨찾기 해제: ${name}` : `이미지 즐겨찾기 해제 ${count}장: ${name}`,
+  imageFavoriteToggle: (name: string, count: number) => `이미지 즐겨찾기 전환 ${count}장: ${name}`,
+  favoritesClearAll: (sceneCount: number) => `즐겨찾기 전부 해제 ${sceneCount}개 씬`,
+  favoritesTopN: (n: number, sceneCount: number) => `상위 ${n}등 즐겨찾기 ${sceneCount}개 씬`,
+  imageBookmarkOn: (name: string) => `이미지 북마크: ${name}`,
+  imageBookmarkOff: (name: string) => `이미지 북마크 해제: ${name}`,
+  imageOrderDrag: (name: string) => `이미지 순서 변경: ${name}`,
+  rankingReset: (name: string) => `순위 초기화: ${name}`,
+  rankingReroll: (name: string) => `대진 리롤: ${name}`,
+  metaApply: '생성 설정 적용',
+  metaApplyConfigNotUndone:
+    '생성 설정 적용의 모델 설정(환경설정) 부분은 되돌리기에 포함되지 않습니다. 프로젝트 쪽 변경만 되돌릴 수 있습니다.',
 } as const;
 
 // ── 참조 손잡이 ───────────────────────────────────────────────────────────

@@ -14,7 +14,8 @@ import {
   taskQueueService,
 } from '../models';
 import { appState } from '../models/AppService';
-import { dataUriToBase64, deleteImageFiles, toggleImageMain } from '../models/ImageService';
+import { dataUriToBase64, deleteImageFiles } from '../models/ImageService';
+import { setImageFavorites } from '../models/imageStateUndo';
 import { IMAGE_RETENTION_DAYS, SCENE_RETENTION_DAYS } from '../models/TrashService';
 import {
   batchResultLine,
@@ -765,11 +766,13 @@ export const AppContextMenu = observer(() => {
   };
   const favImage = (ctx: GallaryImageContextAlt) => {
     if (!ctx.scene) return;
-    for (const path_ of ctx.path) {
-      const path = path_.split('/').pop()!;
-      // 창 간 동기화 헬퍼(읽기 전용 미러): 소유 창 위임 + 로컬 반영
-      toggleImageMain(appState.curSession!, ctx.scene, path);
-    }
+    // 창 간 동기화 헬퍼(읽기 전용 미러): 소유 창 위임 + 로컬 반영. 한 번의 메뉴 = 되돌리기 1항목(U3a, 단일·선택 여러 장 공용)
+    setImageFavorites(
+      appState.curSession!,
+      ctx.scene,
+      ctx.path.map((p) => p.split('/').pop()!),
+      'toggle',
+    );
   };
   const deleteImg = async (ctx: GallaryImageContextAlt) => {
     const doDelete = async () => {

@@ -61,7 +61,8 @@ import {
   backend,
   workFlowService,
 } from '../models';
-import { getMainImagePath, setImageMain } from '../models/ImageService';
+import { getMainImagePath } from '../models/ImageService';
+import { setImageFavorites } from '../models/imageStateUndo';
 import {
   highlightPrompt,
   lowerPromptNode,
@@ -1850,8 +1851,8 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
   const setMainImage = (path: string) => {
     const filename = path.split('/').pop()!;
     // 기존 `filename in scene.mains`(배열에 in 연산 = 인덱스 검사) 오검사 버그를
-    // setImageMain(절대값 on)으로 치환 — 중복 방지 + 창 간 위임(읽기 전용 미러).
-    setImageMain(curSession!, scene, filename, true);
+    // setImageMain(절대값 on)으로 치환 — 중복 방지 + 창 간 위임(읽기 전용 미러). 되돌리기 기록(U3a, 이미 지정이면 없음)
+    setImageFavorites(curSession!, scene, [filename], true);
   };
 
   // 모바일 집중 모드 판정: 루트 높이(키보드) + 편집 포커스

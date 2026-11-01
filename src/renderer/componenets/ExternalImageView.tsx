@@ -29,6 +29,8 @@ import {
   Sampling,
 } from '../backends/imageGen';
 import { runInAction } from 'mobx';
+import { beginMetaApplyRecord } from '../models/imageStateUndo';
+import { undoService, UNDO_TEXT } from '../models/undoService';
 import { FaTimes } from 'react-icons/fa';
 import { v4 } from 'uuid';
 import { useBackdropClose } from './backdropClose';
@@ -192,199 +194,218 @@ export const ExternalImageView = observer(
           if (!preset) { setImporting(false); return; }
         }
 
-        const ensureShared = () => {
-          let shared = session.presetShareds.get(presetType);
-          if (!shared) {
-            shared = workFlowService.buildShared(presetType);
-            session.presetShareds.set(presetType, shared);
-          }
-          return shared;
-        };
-
-        runInAction(() => {
-          if (options.prompt) {
-            preset.frontPrompt = promptPlan.frontPrompt;
-            if (promptPlan.split) {
-              preset.backPrompt = promptPlan.backPrompt ?? '';
-              if (!isGlobal && promptPlan.extraPrompt !== undefined) {
-                session.extraPrompt = promptPlan.extraPrompt;
-              }
-              if (
-                promptPlan.middlePrompt !== undefined &&
-                normalScene &&
-                !sceneSlotsMatchMiddle(normalScene.slots, promptPlan.middlePrompt)
-              ) {
-                normalScene.slots = promptPlan.middlePrompt.trim()
-                  ? [[
-                      PromptPiece.fromJSON({
-                        id: v4(),
-                        prompt: promptPlan.middlePrompt,
-                        characterPrompts: [],
-                        enabled: true,
-                      }),
-                    ]]
-                  : [];
-              }
-              if (
-                !isGlobal &&
-                presetType === 'SDImageGenEasy' &&
-                promptPlan.characterPrompt !== undefined
-              ) {
-                const shared = ensureShared();
-                shared.characterPrompt = promptPlan.characterPrompt;
-                shared.backgroundPrompt = promptPlan.backgroundPrompt ?? '';
-              }
-            } else if (isNew || isGlobal) {
-              preset.backPrompt = '';
+        // 되돌리기 기록(U3a) — 프로젝트(세션) 부분만: 추가 프롬프트·그림체·공용 설정·씬 조합·해상도·새 그림체 추가.
+        // 환경설정(모델 설정)·글로벌 프리셋 대상은 기록하지 않는다. 대상마다 바꾸기 직전에 이전 값을 보관하고 끝에 1항목.
+        const undoRec = beginMetaApplyRecord(session);
+        let configWritten = false;
+        try {
+          const ensureShared = () => {
+            let shared = session.presetShareds.get(presetType);
+            if (!shared) {
+              shared = workFlowService.buildShared(presetType);
+              session.presetShareds.set(presetType, shared);
             }
-          }
-          if (options.uc) {
-            preset.uc = job.uc ?? '';
-          }
-          if (options.characters && hasCharacters) {
-            if (options.charactersAppend && !isNew && !isGlobal) {
-              preset.characterPrompts = [
-                ...(preset.characterPrompts || []),
-                ...job.characterPrompts.map((cp, i) => ({
-                  ...cp,
-                  id: `imported_${Date.now()}_${i}`,
-                })),
-              ];
-            } else {
-              preset.characterPrompts = job.characterPrompts ?? [];
-            }
-          }
-          if (options.settings) {
-            preset.sampling = job.sampling ?? Sampling.KEulerAncestral;
-            preset.steps = job.steps ?? 28;
-            preset.noiseSchedule = job.noiseSchedule ?? 'karras';
-            preset.promptGuidance = job.promptGuidance ?? 5;
-            preset.cfgRescale = job.cfgRescale ?? 0;
-            preset.useCoords = job.useCoords ?? false;
-            preset.varietyPlus = job.varietyPlus ?? false;
-            preset.deliberateEulerAncestralBug = job.deliberateEulerAncestralBug ?? false;
-            preset.legacyPromptConditioning = job.legacyPromptConditioning ?? false;
-          }
-        });
+            undoRec.shared(shared);
+            return shared;
+          };
 
-        if (
-          target === 'current' &&
-          options.modelSettings &&
-          job.sdstudioMetadata?.generationSettings
-        ) {
-          const saved = job.sdstudioMetadata.generationSettings;
-          const config = await backend.getConfig();
-          await backend.setConfig({
-            ...config,
-            modelVersion: saved.modelVersion as ModelVersion,
-            furryMode: saved.furryMode,
-            disableQuality: saved.disableQuality,
-            qualityPreset: saved.qualityPreset,
-            ucPreset: saved.ucPreset as GenerationUcPreset,
-            transparentBackground: saved.transparentBackground ?? false,
-          });
-          sessionService.configChanged();
-        }
+          if (target === 'current') undoRec.preset(preset);
+          undoRec.scene(normalScene, ['slots']);
+          if (options.resolution && job.resolution) undoRec.scene(scene, ['resolution', 'resolutionWidth', 'resolutionHeight']);
 
-        // 글로벌 프리셋 대상: shared state(시드/바이브/캐릭터 레퍼런스)는 저장 안 함
-        // (글로벌 프리셋은 그림체 설정만 저장. 시드/바이브/레퍼런스는 세션 단위 데이터)
-        if (isGlobal) {
-          try {
-            const entry = await globalPresetService.addFromPresetAndImage(
-              preset,
-              image,
-              preset.name,
-            );
-            appState.pushDialog({
-              type: 'yes-only',
-              text: `"${entry.name}" 프리셋을 글로벌로 복사했습니다.`,
-            });
-            onClose();
-          } catch (e: any) {
-            appState.pushMessage(
-              '글로벌로 복사 실패: ' + (e?.message || e),
-            );
-          }
-          return;
-        }
-
-        // 시드는 presetShared에 저장
-        if (options.seed && job.seed != null) {
-          const shared = ensureShared();
           runInAction(() => {
-            shared.seed = job.seed;
+            if (options.prompt) {
+              preset.frontPrompt = promptPlan.frontPrompt;
+              if (promptPlan.split) {
+                preset.backPrompt = promptPlan.backPrompt ?? '';
+                if (!isGlobal && promptPlan.extraPrompt !== undefined) {
+                  session.extraPrompt = promptPlan.extraPrompt;
+                }
+                if (
+                  promptPlan.middlePrompt !== undefined &&
+                  normalScene &&
+                  !sceneSlotsMatchMiddle(normalScene.slots, promptPlan.middlePrompt)
+                ) {
+                  normalScene.slots = promptPlan.middlePrompt.trim()
+                    ? [[
+                        PromptPiece.fromJSON({
+                          id: v4(),
+                          prompt: promptPlan.middlePrompt,
+                          characterPrompts: [],
+                          enabled: true,
+                        }),
+                      ]]
+                    : [];
+                }
+                if (
+                  !isGlobal &&
+                  presetType === 'SDImageGenEasy' &&
+                  promptPlan.characterPrompt !== undefined
+                ) {
+                  const shared = ensureShared();
+                  shared.characterPrompt = promptPlan.characterPrompt;
+                  shared.backgroundPrompt = promptPlan.backgroundPrompt ?? '';
+                }
+              } else if (isNew || isGlobal) {
+                preset.backPrompt = '';
+              }
+            }
+            if (options.uc) {
+              preset.uc = job.uc ?? '';
+            }
+            if (options.characters && hasCharacters) {
+              if (options.charactersAppend && !isNew && !isGlobal) {
+                preset.characterPrompts = [
+                  ...(preset.characterPrompts || []),
+                  ...job.characterPrompts.map((cp, i) => ({
+                    ...cp,
+                    id: `imported_${Date.now()}_${i}`,
+                  })),
+                ];
+              } else {
+                preset.characterPrompts = job.characterPrompts ?? [];
+              }
+            }
+            if (options.settings) {
+              preset.sampling = job.sampling ?? Sampling.KEulerAncestral;
+              preset.steps = job.steps ?? 28;
+              preset.noiseSchedule = job.noiseSchedule ?? 'karras';
+              preset.promptGuidance = job.promptGuidance ?? 5;
+              preset.cfgRescale = job.cfgRescale ?? 0;
+              preset.useCoords = job.useCoords ?? false;
+              preset.varietyPlus = job.varietyPlus ?? false;
+              preset.deliberateEulerAncestralBug = job.deliberateEulerAncestralBug ?? false;
+              preset.legacyPromptConditioning = job.legacyPromptConditioning ?? false;
+            }
           });
-        }
 
-        if (options.vibes && hasVibes) {
-          const shared = ensureShared();
-          const newVibes: VibeItem[] = [];
-          for (let i = 0; i < job.vibes.length; i++) {
-            const vibe = job.vibes[i];
-            // 더미 파일명 생성 (인코딩된 데이터의 키로 사용)
-            const dummyName = v4() + '.png';
-            if (job.vibeImageData?.[i]) {
-              // 메타데이터의 바이브 데이터는 이미 인코딩된 상태
-              // storeVibeImage (raw 이미지 저장) 대신 storeEncodedVibeImage로 직접 저장
-              await imageService.storeEncodedVibeImage(
-                session, dummyName, job.vibeImageData[i], vibe.info,
+          if (
+            target === 'current' &&
+            options.modelSettings &&
+            job.sdstudioMetadata?.generationSettings
+          ) {
+            const saved = job.sdstudioMetadata.generationSettings;
+            const config = await backend.getConfig();
+            await backend.setConfig({
+              ...config,
+              modelVersion: saved.modelVersion as ModelVersion,
+              furryMode: saved.furryMode,
+              disableQuality: saved.disableQuality,
+              qualityPreset: saved.qualityPreset,
+              ucPreset: saved.ucPreset as GenerationUcPreset,
+              transparentBackground: saved.transparentBackground ?? false,
+            });
+            sessionService.configChanged();
+            configWritten = true;
+          }
+
+          // 글로벌 프리셋 대상: shared state(시드/바이브/캐릭터 레퍼런스)는 저장 안 함
+          // (글로벌 프리셋은 그림체 설정만 저장. 시드/바이브/레퍼런스는 세션 단위 데이터)
+          if (isGlobal) {
+            try {
+              const entry = await globalPresetService.addFromPresetAndImage(
+                preset,
+                image,
+                preset.name,
+              );
+              appState.pushDialog({
+                type: 'yes-only',
+                text: `"${entry.name}" 프리셋을 글로벌로 복사했습니다.`,
+              });
+              onClose();
+            } catch (e: any) {
+              appState.pushMessage(
+                '글로벌로 복사 실패: ' + (e?.message || e),
               );
             }
-            const item = new VibeItem();
-            item.path = dummyName;
-            item.strength = vibe.strength;
-            item.info = vibe.info;
-            newVibes.push(item);
+            return;
           }
-          runInAction(() => {
-            if (options.vibesAppend && !isNew) {
-              shared.vibes = [...(shared.vibes || []), ...newVibes];
-            } else {
-              shared.vibes = newVibes;
-            }
-            shared.normalizeStrength = job.normalizeStrength ?? true;
-          });
-        }
 
-        if (hasCharRefs) {
-          const shared = ensureShared();
-          const newRefs: ReferenceItem[] = [];
-          for (let i = 0; i < job.characterReferences.length; i++) {
-            const ref = job.characterReferences[i];
-            let path = '';
-            if (job.referenceImageData?.[i]) {
-              path = await imageService.storeReferenceImage(session, job.referenceImageData[i]);
-            }
-            const item = new ReferenceItem();
-            item.path = path;
-            item.strength = ref.strength;
-            item.fidelity = ref.fidelity;
-            item.info = ref.info;
-            item.referenceType = ref.referenceType;
-            item.enabled = true;
-            newRefs.push(item);
+          // 시드는 presetShared에 저장
+          if (options.seed && job.seed != null) {
+            const shared = ensureShared();
+            runInAction(() => {
+              shared.seed = job.seed;
+            });
           }
-          runInAction(() => {
-            shared.characterReferences = newRefs;
-          });
-        }
 
-        if (options.resolution && job.resolution && scene) {
-          runInAction(() => {
-            scene.resolution = Resolution.Custom;
-            scene.resolutionWidth = job.resolution!.width;
-            scene.resolutionHeight = job.resolution!.height;
-          });
-        }
+          if (options.vibes && hasVibes) {
+            const shared = ensureShared();
+            const newVibes: VibeItem[] = [];
+            for (let i = 0; i < job.vibes.length; i++) {
+              const vibe = job.vibes[i];
+              // 더미 파일명 생성 (인코딩된 데이터의 키로 사용)
+              const dummyName = v4() + '.png';
+              if (job.vibeImageData?.[i]) {
+                // 메타데이터의 바이브 데이터는 이미 인코딩된 상태
+                // storeVibeImage (raw 이미지 저장) 대신 storeEncodedVibeImage로 직접 저장
+                await imageService.storeEncodedVibeImage(
+                  session, dummyName, job.vibeImageData[i], vibe.info,
+                );
+              }
+              const item = new VibeItem();
+              item.path = dummyName;
+              item.strength = vibe.strength;
+              item.info = vibe.info;
+              newVibes.push(item);
+            }
+            runInAction(() => {
+              if (options.vibesAppend && !isNew) {
+                shared.vibes = [...(shared.vibes || []), ...newVibes];
+              } else {
+                shared.vibes = newVibes;
+              }
+              shared.normalizeStrength = job.normalizeStrength ?? true;
+            });
+          }
 
-        if (isNew) {
-          session.addPreset(preset);
-          session.selectedWorkflow = {
-            workflowType: preset.type,
-            presetName: preset.name,
-          };
+          if (hasCharRefs) {
+            const shared = ensureShared();
+            const newRefs: ReferenceItem[] = [];
+            for (let i = 0; i < job.characterReferences.length; i++) {
+              const ref = job.characterReferences[i];
+              let path = '';
+              if (job.referenceImageData?.[i]) {
+                path = await imageService.storeReferenceImage(session, job.referenceImageData[i]);
+              }
+              const item = new ReferenceItem();
+              item.path = path;
+              item.strength = ref.strength;
+              item.fidelity = ref.fidelity;
+              item.info = ref.info;
+              item.referenceType = ref.referenceType;
+              item.enabled = true;
+              newRefs.push(item);
+            }
+            runInAction(() => {
+              shared.characterReferences = newRefs;
+            });
+          }
+
+          if (options.resolution && job.resolution && scene) {
+            runInAction(() => {
+              scene.resolution = Resolution.Custom;
+              scene.resolutionWidth = job.resolution!.width;
+              scene.resolutionHeight = job.resolution!.height;
+            });
+          }
+
+          if (isNew) {
+            const prevSelected = session.selectedWorkflow;
+            session.addPreset(preset);
+            session.selectedWorkflow = {
+              workflowType: preset.type,
+              presetName: preset.name,
+            };
+            undoRec.presetAdded(preset, prevSelected);
+          }
+          onClose();
+        } finally {
+          undoRec.commit();
+          if (configWritten && undoService.canRecord(session)) {
+            appState.pushMessage(UNDO_TEXT.metaApplyConfigNotUndone, 'info');
+          }
         }
-        onClose();
       } finally {
         setImporting(false);
       }

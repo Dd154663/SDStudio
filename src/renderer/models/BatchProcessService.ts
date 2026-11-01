@@ -84,6 +84,7 @@ import { recordSceneOrder } from './sceneOrderUndo';
 import { recordScenesCreated } from './sceneStructureUndo';
 import { UNDO_TEXT } from './undoService';
 import { editScenesFields, restoreSceneFieldValue, SCENE_CONTENT_COPY_KEYS } from './sceneFieldUndo';
+import { setFavoritesInScenes } from './imageStateUndo';
 
 export class BatchProcessService {
   openBatchProcessMenu(
@@ -331,9 +332,13 @@ export class BatchProcessService {
           danger: true,
           text: '정말로 모든 즐겨찾기를 해제하겠습니까?',
           callback: () => {
-            for (const scene of selected) {
-              scene.mains = [];
-            }
+            // 파일마다 setImageMain 절대값(다른 창 알림 포함 — 예전 직접 대입은 알림이 없었다, 조사 E13)
+            // + 되돌리기 1항목(U3a, 되돌림 = 해제했던 파일만 다시 지정)
+            setFavoritesInScenes(
+              appState.curSession!,
+              selected.map((scene) => ({ scene, filenames: [...scene.mains], on: false })),
+              UNDO_TEXT.favoritesClearAll(selected.filter((s) => s.mains.length > 0).length),
+            );
           },
         });
       } else if (value === 'setFav') {
@@ -347,12 +352,21 @@ export class BatchProcessService {
               appState.pushMessage(RANK_CUTOFF_INVALID_MESSAGE);
               return;
             }
-            for (const scene of selected) {
-              const cands = freshOutputs(scene).slice(0, n);
-              scene.mains = scene.mains
-                .concat(cands)
-                .filter((x, i, self) => self.indexOf(x) === i);
-            }
+            // 기존 즐겨찾기 뒤에 상위 n장을 순서대로 추가(중복 제외 — 예전 concat+중복 제거와 같은 결과)를
+            // setImageMain 절대값으로(다른 창 알림 포함, E13) + 되돌리기 1항목(U3a, 새로 지정한 파일만 해제)
+            const plans = selected.map((scene) => ({
+              scene,
+              filenames: freshOutputs(scene).slice(0, n),
+              on: true,
+            }));
+            setFavoritesInScenes(
+              appState.curSession!,
+              plans,
+              UNDO_TEXT.favoritesTopN(
+                n,
+                plans.filter((p) => p.filenames.some((f) => !p.scene.mains.includes(f))).length,
+              ),
+            );
           },
         });
       } else if (value === 'removeBg') {

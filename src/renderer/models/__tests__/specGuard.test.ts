@@ -43,6 +43,7 @@ const UNDO_MODULES = [
   'models/sceneOrderUndo.ts',
   'models/sceneStructureUndo.ts',
   'models/sceneFieldUndo.ts',
+  'models/imageStateUndo.ts',
 ];
 
 const RULES: Rule[] = [
@@ -383,7 +384,8 @@ const RULES: Rule[] = [
   },
   {
     // 이미지 필드 통째 복원 금지(2026-11-01 U2b, 최우선 원칙 — 생성 중 새로 생긴 이미지를 지운다).
-    // 되돌리기 모듈은 imageMap·mains·game·round 에 대입하지 않는다(즐겨찾기·순서는 이후 단계에서 절대값·병합 메서드로).
+    // 되돌리기 모듈은 imageMap·mains·game·round 에 대입하지 않는다 — 즐겨찾기는 ImageService.setImageMain(절대값),
+    // 순서·순위는 GameService.applyImageOrder·applyRanking(병합 복원 전용 공개 메서드)만 부른다(U3a).
     name: '되돌리기 모듈의 이미지 필드 대입 — 필드 단위·병합 복원만',
     guide: '「되돌리기 계약」',
     dir: 'models',

@@ -7,6 +7,8 @@ import { shuffleArray } from '../models/GameService';
 import { isOutputImageFile } from '../models/imageFormats';
 import { Scene, InpaintScene, ContextMenuType, Player } from '../models/types';
 import { appState } from '../models/AppService';
+import { recordRanking } from '../models/imageStateUndo';
+import { UNDO_TEXT } from '../models/undoService';
 import ShortcutCheatsheet from './ShortcutCheatsheet';
 
 interface TournamentProps {
@@ -192,6 +194,21 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
     return () => window.removeEventListener('keydown', handler);
   }, [isInputFocused, scene]);
 
+  // 되돌리기·다시 실행이 이 씬의 순위를 되살리면(GameService.applyRanking) 화면의 대진을 다시 맞춘다(U3a).
+  // 되살린 round 가 없으면 열 때와 같이 다음 대진을 새로 뽑는다.
+  useEffect(() => {
+    const onRestored = (e: Event) => {
+      if ((e as CustomEvent).detail?.scene !== scene) return;
+      lock.current = false;
+      setPlayers([]);
+      setImages([]);
+      setFinalRank(-1);
+      if (scene.game) loadRoundInitial();
+    };
+    gameService.addEventListener('ranking-restored', onRestored);
+    return () => gameService.removeEventListener('ranking-restored', onRestored);
+  }, [scene]);
+
   useEffect(() => {
     setPlayers([]);
     setImages([]);
@@ -262,9 +279,12 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
         setPlayers([]);
         setFinalRank(-1);
         try {
-          scene.game = await gameService.createGame(path);
-          scene.round = undefined;
-          loadRoundInitial();
+          // 되돌리기 기록(U3a): game·round 깊은 사본 — 되돌림은 지금 있는 파일의 참가자만 남겨 새 객체로 복원
+          await recordRanking(curSession, scene, UNDO_TEXT.rankingReset(scene.name), async () => {
+            scene.game = await gameService.createGame(path);
+            scene.round = undefined;
+            loadRoundInitial();
+          });
         } catch (e: any) {
           appState.pushMessage(`Error: ${e.message}`);
         }
@@ -277,9 +297,12 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
     if (round.players.length <= 1) {
       return;
     }
-    const items = round.players.slice(round.curPlayer);
-    shuffleArray(items);
-    round.players = round.players.slice(0, round.curPlayer).concat(items);
+    // 되돌리기 기록(U3a) — 제자리 수정이라 저장 반응이 없던 경로(E5)도 되돌림은 새 round 객체로 복원된다
+    void recordRanking(curSession, scene, UNDO_TEXT.rankingReroll(scene.name), () => {
+      const items = round.players.slice(round.curPlayer);
+      shuffleArray(items);
+      round.players = round.players.slice(0, round.curPlayer).concat(items);
+    });
     setPlayers([
       round.players[round.curPlayer],
       round.players[round.curPlayer + 1],
