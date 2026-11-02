@@ -295,7 +295,8 @@ interface OpenEdit {
 let openEdit: OpenEdit | undefined;
 const editTargetIds = new WeakMap<object, number>();
 let nextEditTargetId = 1;
-function editTargetId(obj: object): number {
+/** 편집 세션 key 를 만들 때 쓰는 객체 번호(객체당 하나) — presetUndo 도 같은 번호를 쓴다 */
+export function editTargetId(obj: object): number {
   let id = editTargetIds.get(obj);
   if (id === undefined) {
     id = nextEditTargetId++;
@@ -319,6 +320,26 @@ export function touchSceneFieldEdit(
   const service = opts.service ?? undoService;
   if (!recordable(service, session, scene)) return;
   const key = `${editTargetId(undoRef(scene))}|${keys.join(',')}|${label}`;
+  touchUndoEdit(session, key, label, () => sceneFieldsAdapter(session, scene, keys, opts), {
+    service,
+    watch: opts.watch,
+  });
+}
+
+/**
+ * 편집 세션의 일반형(U3b — 사전 세팅·공용 설정·추가 프롬프트도 같은 세션 하나를 공유한다: 한 번에 하나만 열림).
+ * key 가 같은 세션이 열려 있으면 아무것도 하지 않고, 아니면 다른 세션을 먼저 확정한 뒤 makeAdapter() 로 이전 값을 보관한다.
+ * 기록 가능 여부(대상 범위·미러)는 호출부가 먼저 판정한다.
+ */
+export function touchUndoEdit(
+  session: Session,
+  key: string,
+  label: string,
+  makeAdapter: () => UndoSnapshotAdapter<unknown>,
+  opts: { service?: UndoService; watch?: FocusLeaveWatcher } = {},
+): void {
+  const service = opts.service ?? undoService;
+  if (!service.canRecord(session)) return;
   if (
     openEdit &&
     openEdit.key === key &&
@@ -329,7 +350,7 @@ export function touchSceneFieldEdit(
     return;
   }
   flushSceneFieldEdit();
-  const pending = service.drag(session, label, sceneFieldsAdapter(session, scene, keys, opts));
+  const pending = service.drag(session, label, makeAdapter());
   const edit: OpenEdit = { key, session, service, pending, dispose: () => {} };
   openEdit = edit;
   const dispose = (opts.watch ?? domFocusLeaveWatcher)(() => {

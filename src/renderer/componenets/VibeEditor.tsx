@@ -15,6 +15,13 @@ import { WFElementContext, PresetIconRowContext } from './wfElementContext';
 import { resolveCompanionButtons } from '../models/companionSlots';
 import { renderCompanionButtons } from './PortableToolbarButtons';
 import { CompanionHostRow } from './CompanionDnd';
+import {
+  beginWorkflowSlide,
+  commitOnPointerRelease,
+  editWorkflowFields,
+  setWorkflowItemValue,
+} from '../models/presetUndo';
+import { UNDO_TEXT } from '../models/undoService';
 
 // PreSetEdtior.tsx 에서 분리된 바이브(vibe) 편집기 계열.
 // VibeImage/EditableSliderValue 는 CharacterReferenceEditor 와 본체도 공용.
@@ -188,12 +195,35 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
     else if (editVibe!.fieldType === 'shared') shared[editVibe!.field] = val;
     else meta![editVibe!.field] = val;
   };
+  // 되돌리기(U3b): 그림체·공용 설정의 바이브 배열만 기록(변형 씬 프리셋은 대입만). 배열 통째 보관·복원 —
+  // 삭제는 파일을 지우지 않으므로 되돌리면 같은 경로 항목이 다시 보인다. 추가는 저장한 새 파일을 남긴다(무해).
+  const holders = { preset, shared, meta };
+  const editField = (label: string, mutate: () => void) =>
+    editWorkflowFields(appState.curSession, holders, [[editVibe!.fieldType, editVibe!.field]], label, mutate);
+  const setItemValue = (vibe: VibeItem, key: 'info' | 'strength', value: number) =>
+    setWorkflowItemValue(
+      appState.curSession,
+      holders,
+      editVibe!.fieldType,
+      editVibe!.field,
+      vibe,
+      key,
+      value,
+      UNDO_TEXT.vibeValue,
+    );
+  // 슬라이더 누름~뗌 = 1항목
+  const startSlide = () =>
+    commitOnPointerRelease(
+      beginWorkflowSlide(appState.curSession, holders, [[editVibe!.fieldType, editVibe!.field]], UNDO_TEXT.vibeValue),
+    );
   const vibeChange = async (vibe: string) => {
     if (!vibe) return;
     const path = await imageService.storeVibeImage(curSession!, vibe);
-    getField().push(
-      VibeItem.fromJSON({ path: path, info: 1.0, strength: 0.6 }),
-    );
+    editField(UNDO_TEXT.vibeAdd, () => {
+      getField().push(
+        VibeItem.fromJSON({ path: path, info: 1.0, strength: 0.6 }),
+      );
+    });
   };
 
   // Handle paste event (Ctrl+V)
@@ -319,8 +349,9 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                         min="0"
                         max="1"
                         value={vibe.info}
+                        onPointerDown={startSlide}
                         onChange={(e) => {
-                          vibe.info = parseFloat(e.target.value);
+                          setItemValue(vibe, 'info', parseFloat(e.target.value));
                         }}
                         disabled={disabled}
                       />
@@ -328,7 +359,7 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                         value={vibe.info}
                         min={0}
                         max={1}
-                        onChange={(v) => { vibe.info = v; }}
+                        onChange={(v) => setItemValue(vibe, 'info', v)}
                         disabled={disabled}
                       />
                     </div>
@@ -351,8 +382,9 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                         min="0"
                         max="1"
                         value={vibe.strength}
+                        onPointerDown={startSlide}
                         onChange={(e) => {
-                          vibe.strength = parseFloat(e.target.value);
+                          setItemValue(vibe, 'strength', parseFloat(e.target.value));
                         }}
                         disabled={disabled}
                       />
@@ -360,7 +392,7 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                         value={vibe.strength}
                         min={0}
                         max={1}
-                        onChange={(v) => { vibe.strength = v; }}
+                        onChange={(v) => setItemValue(vibe, 'strength', v)}
                         disabled={disabled}
                       />
                     </div>
@@ -392,7 +424,9 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
                         }
                         onClick={() => {
                           if (disabled) return;
-                          setField(getField().filter((x: any) => x !== vibe));
+                          editField(UNDO_TEXT.vibeRemove, () =>
+                            setField(getField().filter((x: any) => x !== vibe)),
+                          );
                         }}
                       >
                         <FaTrash />

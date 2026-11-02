@@ -58,6 +58,7 @@ import { openImageAttachFlow } from '../models/i2iBatchFlow';
 import { openMaskApplyFlow, openStrengthBatchFlow } from '../models/variantBatchFlow';
 import { sceneSelectorHost } from '../models/sceneSelectorHost';
 import { recordSceneOrder } from '../models/sceneOrderUndo';
+import { editPresetList } from '../models/presetUndo';
 import { recordScenesCreated } from '../models/sceneStructureUndo';
 import { UNDO_TEXT } from '../models/undoService';
 import { editSeedGroups } from '../models/sceneFieldUndo';
@@ -957,7 +958,10 @@ export const AppContextMenu = observer(() => {
           appState.pushMessage('그림체는 최소 한 개 이상이어야 합니다');
           return;
         }
-        curSession!.removePreset(ctx.preset.type, ctx.preset.name);
+        // 되돌리기(U3b) — 같은 객체를 원래 자리로(대표 이미지 파일은 지우지 않으므로 그대로)
+        editPresetList(curSession, UNDO_TEXT.presetRemove([ctx.preset.name]), () =>
+          curSession!.removePreset(ctx.preset.type, ctx.preset.name),
+        );
       },
     });
   };

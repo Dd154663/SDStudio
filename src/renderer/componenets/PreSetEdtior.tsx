@@ -126,9 +126,24 @@ import HelpIcon from './HelpIcon';
 import {
   activatePresetSamplingFamily,
   samplingFamilyForModel,
-  setPresetSamplingField,
   switchSessionSamplingFamily,
 } from '../models/modelSamplingProfiles';
+import {
+  beginWorkflowSlide,
+  commitOnPointerRelease,
+  editPresetList,
+  isProjectPreset,
+  renamePresetRecorded,
+  selectWorkflowRecorded,
+  setExtraPromptRecorded,
+  setNewSceneResolutionRecorded,
+  setWorkflowField,
+  workflowFieldLabel,
+  workflowOwnerName,
+  WorkflowFieldMode,
+} from '../models/presetUndo';
+import { editBaseCharacterOrder, editScenesFields } from '../models/sceneFieldUndo';
+import { UNDO_TEXT } from '../models/undoService';
 
 // 프롬프트 문법 도움말 (2026-07-18) — 상위 프롬프트 라벨 옆 (?) 아이콘.
 // 문법은 상위/하위/네거티브 공통이라 첫 프롬프트에만 1회 노출한다.
@@ -385,7 +400,11 @@ const InnerEditor: React.FC<InnerEditorProps> = ({ type, shared, preset }) => {
   const setMainImage = async (path: string) => {
     const newPath = imageService.getVibesDir(curSession!) + '/' + v4() + '.png';
     await backend.copyFile(path, newPath);
-    preset.profile = newPath.split('/').pop()!;
+    // 되돌리기 = 이전 대표 이미지 경로로(복사한 새 파일은 남는다 — 무해, U3b)
+    setWorkflowField(appState.curSession, { preset }, 'preset', 'profile', newPath.split('/').pop()!, {
+      label: UNDO_TEXT.presetMainImage(preset.name),
+      mode: 'discrete',
+    });
   };
   return (
     <div className="flex flex-col h-full">
@@ -420,15 +439,8 @@ const InnerEditor: React.FC<InnerEditorProps> = ({ type, shared, preset }) => {
               return;
             }
             setName(trimmed);
-            if (curSession!.selectedWorkflow?.presetName === preset.name) {
-              preset.name = trimmed;
-              curSession!.selectedWorkflow = {
-                workflowType: type,
-                presetName: trimmed,
-              };
-            } else {
-              preset.name = trimmed;
-            }
+            // 선택 중이면 선택 이름도 함께 — 되돌리기 1항목(U3b)
+            renamePresetRecorded(curSession, preset, trimmed);
           }}
         >
           이름변경
@@ -486,7 +498,10 @@ const DraggablePresetCard = observer(({
     accept: 'preset-card',
     drop: (item: { index: number }) => {
       if (item.index !== index) {
-        curSession.movePreset(type, item.index, index);
+        const moved = curSession.presets.get(type)?.[item.index];
+        editPresetList(curSession, UNDO_TEXT.presetMove(moved?.name ?? ''), () =>
+          curSession.movePreset(type, item.index, index),
+        );
         item.index = index;
       }
     },
@@ -578,10 +593,11 @@ const ProfilePreSetSelect = observer(({}) => {
             type={type}
             curSession={curSession!}
             onSelect={() => {
-              curSession!.selectedWorkflow = {
-                workflowType: type,
-                presetName: x.name,
-              };
+              selectWorkflowRecorded(
+                curSession,
+                { workflowType: type, presetName: x.name },
+                UNDO_TEXT.presetSelect(x.name),
+              );
             }}
             onContextMenu={(e) => {
               show({
@@ -611,7 +627,8 @@ const ProfilePreSetSelect = observer(({}) => {
               if (!name) return;
               const newPreset = workFlowService.buildPreset(type);
               newPreset.name = name;
-              presets.push(newPreset);
+              // addPreset 경유(이름 중복 처리 단일 지점 — 조사 F4. 선택은 바꾸지 않는 기존 동작 유지)
+              editPresetList(curSession, UNDO_TEXT.presetAdd(name), () => curSession!.addPreset(newPreset));
             }}
           >
             <FaPlus />
@@ -647,6 +664,7 @@ const IntSliderInput = ({
   label,
   value,
   onChange,
+  onSlideStart,
   disabled,
   step,
   min,
@@ -655,6 +673,8 @@ const IntSliderInput = ({
   label: string;
   value: number;
   onChange: (val: number) => void;
+  /** 누르기 시작(되돌리기: 누름~뗌 1항목) */
+  onSlideStart?: () => void;
   disabled: boolean;
   step: number;
   min: number;
@@ -673,6 +693,7 @@ const IntSliderInput = ({
           min={min}
           max={max}
           value={value}
+          onPointerDown={onSlideStart}
           onChange={(e) => {
             onChange(parseFloat(e.target.value));
           }}
@@ -738,17 +759,20 @@ const PreSetBulkManageModal = observer(
         callback: () => {
           const names = Array.from(selected);
           const curName = curSession.selectedWorkflow?.presetName;
-          for (const name of names) {
-            curSession.removePreset(workflowType, name);
-          }
-          // 현재 선택 중인 사전 세팅이 삭제되었으면 첫 항목으로 재설정
-          if (curName && names.includes(curName)) {
-            const remaining = curSession.presets.get(workflowType)!;
-            curSession.selectedWorkflow = {
-              workflowType,
-              presetName: remaining.length > 0 ? remaining[0].name : undefined,
-            };
-          }
+          // 삭제 + 선택 재설정 = 1항목(되돌리면 같은 객체를 원래 자리로 — 파일은 지우지 않으므로 그대로, U3b)
+          editPresetList(curSession, UNDO_TEXT.presetRemove(names), () => {
+            for (const name of names) {
+              curSession.removePreset(workflowType, name);
+            }
+            // 현재 선택 중인 사전 세팅이 삭제되었으면 첫 항목으로 재설정
+            if (curName && names.includes(curName)) {
+              const remaining = curSession.presets.get(workflowType)!;
+              curSession.selectedWorkflow = {
+                workflowType,
+                presetName: remaining.length > 0 ? remaining[0].name : undefined,
+              };
+            }
+          });
           setSelected(new Set());
         },
       });
@@ -875,10 +899,11 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
     // 같은 프리셋을 다시 눌러도 메뉴는 즉시 닫혀 클릭 반응을 분명히 보여준다.
     setIsOpen(false);
     if (curSession.selectedWorkflow?.presetName === presetName) return;
-    curSession.selectedWorkflow = {
-      workflowType,
-      presetName,
-    };
+    selectWorkflowRecorded(
+      curSession,
+      { workflowType, presetName },
+      UNDO_TEXT.presetSelect(presetName),
+    );
   };
   // 동반 슬롯 (④ 호스트 확대): 사전세팅선택 행 옆에 portable 버튼을 붙인다.
   // 빈 배열이면 슬롯 없음 = 현행 렌더 100% 동일. 드롭다운은 이미 flex-1 min-w-0
@@ -931,11 +956,14 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
           if (!name) return;
           const newPreset = workFlowService.buildPreset(workflowType);
           newPreset.name = name;
-          curSession.addPreset(newPreset);
-          curSession.selectedWorkflow = {
-            workflowType: workflowType,
-            presetName: name,
-          };
+          // 추가 + 선택 = 1항목(U3b)
+          editPresetList(curSession, UNDO_TEXT.presetAdd(name), () => {
+            curSession.addPreset(newPreset);
+            curSession.selectedWorkflow = {
+              workflowType: workflowType,
+              presetName: name,
+            };
+          });
         }}
         aria-label="새 사전 세팅"
       >
@@ -1021,17 +1049,8 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                         presets.some((x) => x !== option && x.name === n),
                     });
                     if (!newName) return;
-                    if (
-                      curSession.selectedWorkflow?.presetName === option.name
-                    ) {
-                      option.name = newName;
-                      curSession.selectedWorkflow = {
-                        workflowType: workflowType,
-                        presetName: newName,
-                      };
-                    } else {
-                      option.name = newName;
-                    }
+                    // 선택 중이면 선택 이름도 함께 — 되돌리기 1항목(U3b)
+                    renamePresetRecorded(curSession, option, newName);
                   }}
                   className={PRESET_ROW_BTN}
                   aria-label="이름 변경"
@@ -1056,7 +1075,9 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                     }
                     const newName = option.name + ' copy ' + num.toString();
                     newPreset.name = newName;
-                    curSession!.addPreset(newPreset);
+                    editPresetList(curSession, UNDO_TEXT.presetDuplicate(newName), () =>
+                      curSession!.addPreset(newPreset),
+                    );
                   }}
                   className={PRESET_ROW_BTN}
                 >
@@ -1107,11 +1128,13 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                         outcome: 'permanent',
                       }),
                       callback: () => {
-                        curSession!.removePreset(workflowType, option.name);
-                        curSession!.selectedWorkflow = {
-                          workflowType: workflowType,
-                          presetName: undefined,
-                        };
+                        editPresetList(curSession, UNDO_TEXT.presetRemove([option.name]), () => {
+                          curSession!.removePreset(workflowType, option.name);
+                          curSession!.selectedWorkflow = {
+                            workflowType: workflowType,
+                            presetName: undefined,
+                          };
+                        });
                       },
                     });
                   }}
@@ -1338,7 +1361,8 @@ const WFRExtraPrompt = observer(({ element }: WFElementProps) => {
         value={curSession.extraPrompt}
         disabled={false}
         onChange={(v: string) => {
-          curSession.extraPrompt = v;
+          // 편집 세션(D13) — 입력 칸을 떠날 때 1항목(U3b)
+          setExtraPromptRecorded(curSession, v);
         }}
       ></PromptEditTextArea>
     </EditorField>
@@ -1702,13 +1726,22 @@ const NewSceneResolutionRow = observer(() => {
       text: `씬 탭의 모든 씬 ${scenes.length}개에 ${size.width}x${size.height} 해상도를 적용하시겠습니까?`,
       callback: () => {
         const v = value ?? { resolution: 'portrait' };
-        for (const scene of scenes) {
-          scene.resolution = v.resolution;
-          if (v.resolution === 'custom') {
-            scene.resolutionWidth = v.width;
-            scene.resolutionHeight = v.height;
-          }
-        }
+        // 씬마다 해상도 3필드 — 바뀐 씬만 묶음 1항목(U3b)
+        editScenesFields(
+          curSession,
+          scenes,
+          ['resolution', 'resolutionWidth', 'resolutionHeight'],
+          UNDO_TEXT.newSceneResolutionApplyAll(scenes.length),
+          () => {
+            for (const scene of scenes) {
+              scene.resolution = v.resolution;
+              if (v.resolution === 'custom') {
+                scene.resolutionWidth = v.width;
+                scene.resolutionHeight = v.height;
+              }
+            }
+          },
+        );
         appState.pushMessage(`${scenes.length}개 씬에 해상도를 적용했습니다`);
       },
     });
@@ -1722,7 +1755,7 @@ const NewSceneResolutionRow = observer(() => {
         triggerClassName="w-full justify-between py-1.5"
         value={value}
         onApply={(v) => {
-          curSession.newSceneResolution = v;
+          setNewSceneResolutionRecorded(curSession, v);
         }}
       />
       <Tooltip content="씬 탭의 모든 씬에 이 해상도를 일괄 적용합니다 (인페인트 씬 제외)">
@@ -1978,10 +2011,12 @@ const CharacterPromptEditor = observer(
       return meta![input.field] || [];
     };
 
-    const setField = (val: any) => {
-      if (input.fieldType === 'preset') preset[input.field] = val;
-      else if (input.fieldType === 'shared') shared[input.field] = val;
-      else meta![input.field] = val;
+    // 되돌리기(U3b): 그림체·공용 설정의 캐릭터 프롬프트 배열 교체를 setWorkflowField 로 — 추가·삭제·켜기는 매번 1항목,
+    // 글자는 편집 세션, 위치는 누름~뗌(아래 overlay). 변형 씬 프리셋(InPaintEditor)은 대입만.
+    const holders = { preset, shared, meta };
+    const owner = workflowOwnerName(input.fieldType, holders);
+    const setField = (val: any, label: string, mode: WorkflowFieldMode = 'discrete') => {
+      setWorkflowField(appState.curSession, holders, input.fieldType, input.field, val, { label, mode });
     };
 
     const addCharacter = () => {
@@ -2006,26 +2041,32 @@ const CharacterPromptEditor = observer(
         position: { x: 0.5, y: 0.5 },
         enabled: true,
       });
-      setField(characters);
+      setField(characters, UNDO_TEXT.characterPromptAdd(owner));
     };
 
     const removeCharacter = (id: string) => {
       const characters = getField().filter((c: CharacterPrompt) => c.id !== id);
-      setField(characters);
+      setField(characters, UNDO_TEXT.characterPromptRemove(owner));
     };
 
-    const updateCharacter = (id: string, updates: Partial<CharacterPrompt>) => {
+    // 글자(prompt·uc)는 편집 세션 1항목, 위치는 누름~뗌 1항목(열린 슬라이드가 있으면 대입만)
+    const updateCharacter = (
+      id: string,
+      updates: Partial<CharacterPrompt>,
+      label: string = UNDO_TEXT.characterPromptText(owner),
+      mode: WorkflowFieldMode = 'edit',
+    ) => {
       const characters = getField().map((c: CharacterPrompt) =>
         c.id === id ? { ...c, ...updates } : c,
       );
-      setField(characters);
+      setField(characters, label, mode);
     };
 
     const toggleCharacter = (id: string) => {
       const characters = getField().map((c: CharacterPrompt) =>
         c.id === id ? { ...c, enabled: c.enabled === false ? true : false } : c,
       );
-      setField(characters);
+      setField(characters, UNDO_TEXT.characterPromptToggle(owner));
     };
 
     if (editCharacters !== input.field) {
@@ -2037,14 +2078,24 @@ const CharacterPromptEditor = observer(
     const [posOverlay, setPosOverlay] = useState<{ selectedId?: string; bg: PositionBackground } | null>(null);
     const openPositionOverlay = (selectedId?: string) =>
       setPosOverlay({ selectedId, bg: resolvePositionBackground(appState.curSession) });
-    const closePositionOverlay = () => setPosOverlay(null);
+    const closePositionOverlay = () => {
+      endPositionSlide(); // 누른 채 닫혀도 그때까지의 이동을 확정(U3b)
+      setPosOverlay(null);
+    };
     const allChars =
       input.fieldType === 'preset'
         ? getOrderedBaseCharacterPrompts(preset, shared)
         : getField();
     const moveCharacter = (from: number, to: number) => {
       if (input.fieldType === 'preset') {
-        reorderBaseCharacterPrompts(preset, shared, from, to);
+        // 그림체·공용 설정 캐릭터의 order 값만 보관·복원(씬 편집 창 「기본 캐릭터 순서」와 같은 헬퍼) — 프로젝트 그림체만 기록
+        if (isProjectPreset(appState.curSession, preset)) {
+          editBaseCharacterOrder(appState.curSession, preset, shared, UNDO_TEXT.characterPromptOrder(owner), () =>
+            reorderBaseCharacterPrompts(preset, shared, from, to),
+          );
+        } else {
+          reorderBaseCharacterPrompts(preset, shared, from, to);
+        }
         return;
       }
       const next = [...getField()];
@@ -2057,10 +2108,13 @@ const CharacterPromptEditor = observer(
       ) return;
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
-      setField(next.map((item: CharacterPrompt, index: number) => ({
-        ...item,
-        order: index,
-      })));
+      setField(
+        next.map((item: CharacterPrompt, index: number) => ({
+          ...item,
+          order: index,
+        })),
+        UNDO_TEXT.characterPromptOrder(owner),
+      );
     };
     const reachedV5CharacterLimit =
       (modelVersion === ModelVersion.V5 ||
@@ -2070,18 +2124,42 @@ const CharacterPromptEditor = observer(
       // preset(워크플로우) 캐릭터 프롬프트에서 찾기
       const inField = getField().find((c: CharacterPrompt) => c.id === charId);
       if (inField) {
-        updateCharacter(charId, { position });
+        updateCharacter(charId, { position }, UNDO_TEXT.characterPromptPosition(owner), 'merge');
         return;
       }
       // shared(캐릭터 프리셋) 캐릭터 프롬프트에서 찾기
       // in-place 변형은 자동 저장 reaction이 추적하지 못하므로 배열을 재할당한다.
       const inShared = sharedCPs.find((c: CharacterPrompt) => c.id === charId);
       if (inShared) {
-        shared.characterPrompts = (shared.characterPrompts || []).map(
-          (c: CharacterPrompt) =>
+        setWorkflowField(
+          appState.curSession,
+          holders,
+          'shared',
+          'characterPrompts',
+          (shared.characterPrompts || []).map((c: CharacterPrompt) =>
             c.id === charId ? { ...c, position } : c,
+          ),
+          { label: UNDO_TEXT.characterPromptPosition(owner) },
         );
       }
+    };
+    // 위치 지정 창의 누름~뗌 = 1항목(그림체·공용 설정 캐릭터 배열을 함께 보관 — 적용 프리셋 캐릭터도 옮길 수 있음)
+    const positionSlideRef = useRef<{ commit: () => boolean } | null>(null);
+    const beginPositionSlide = () => {
+      positionSlideRef.current?.commit();
+      positionSlideRef.current = beginWorkflowSlide(
+        appState.curSession,
+        holders,
+        [
+          [input.fieldType, input.field],
+          ['shared', 'characterPrompts'],
+        ],
+        UNDO_TEXT.characterPromptPosition(owner),
+      );
+    };
+    const endPositionSlide = () => {
+      positionSlideRef.current?.commit();
+      positionSlideRef.current = null;
     };
 
     const charColors = ['#38bdf8', '#f472b6', '#a78bfa', '#fb923c', '#4ade80', '#facc15', '#f87171', '#94a3b8'];
@@ -2093,7 +2171,11 @@ const CharacterPromptEditor = observer(
             type="checkbox"
             id="useCoords"
             checked={preset.useCoords ?? false}
-            onChange={(e) => { preset.useCoords = e.target.checked; }}
+            onChange={(e) => {
+              setWorkflowField(appState.curSession, holders, 'preset', 'useCoords', e.target.checked, {
+                label: UNDO_TEXT.characterCoordsMode(owner),
+              });
+            }}
           />
           <label htmlFor="useCoords" className="text-sm gray-label cursor-pointer">캐릭터 위치 지정 모드</label>
         </div>
@@ -2122,6 +2204,8 @@ const CharacterPromptEditor = observer(
                 }),
               )}
               onMove={setCharPosition}
+              onMoveStart={beginPositionSlide}
+              onMoveEnd={endPositionSlide}
               onDone={closePositionOverlay}
               initialSelectedId={posOverlay.selectedId}
               backgroundPath={posOverlay.bg.path}
@@ -2436,18 +2520,21 @@ const WFRInline = observer(({ element }: WFElementProps) => {
       return meta![input.field];
     }
   };
-  const setField = (val: any) => {
-    if (input.fieldType === 'preset') {
-      const family = samplingFamilyForModel(modelVersion);
-      if (!family || !setPresetSamplingField(preset, family, input.field, val)) {
-        preset[input.field] = val;
-      }
-    } else if (input.fieldType === 'shared') {
-      shared[input.field] = val;
-    } else {
-      meta![input.field] = val;
-    }
+  // 그림체·공용 설정 필드의 단일 지점(되돌리기 U3b 집약) — 샘플링 필드는 프로필 동기화까지 함께 바꾸고 함께 보관한다.
+  // 변형 씬 프리셋(InPaintEditor)·씬 메타는 대입만(기록 범위 밖). 렌더·마운트 중 보정은 이 함수를 거치지 않는다.
+  const fieldLabel = () => workflowFieldLabel(input.fieldType, input.label, { preset, shared, meta });
+  const setField = (val: any, mode: WorkflowFieldMode = 'merge') => {
+    setWorkflowField(appState.curSession, { preset, shared, meta }, input.fieldType, input.field, val, {
+      label: fieldLabel(),
+      mode,
+      family: samplingFamilyForModel(modelVersion),
+    });
   };
+  // 슬라이더 — 누름~뗌 1항목(D12)
+  const startSlide = () =>
+    commitOnPointerRelease(
+      beginWorkflowSlide(appState.curSession, { preset, shared, meta }, [[input.fieldType, input.field]], fieldLabel()),
+    );
   // 오버레이 내부에서는 curGroup이 설정됨 — showGroupOverlay와 비교
   // 일반 인라인에서는 기존대로 showGroup과 비교
   const isInOverlay = curGroup !== undefined && curGroup === showGroupOverlay;
@@ -2494,7 +2581,7 @@ const WFRInline = observer(({ element }: WFElementProps) => {
             key={key}
             value={getField()}
             disabled={false}
-            onChange={setField}
+            onChange={(v: string) => setField(v, 'edit')}
           ></PromptEditTextArea>
         </EditorField>
       );
@@ -2529,7 +2616,7 @@ const WFRInline = observer(({ element }: WFElementProps) => {
               label={input.label}
               value={getField()}
               disabled={false}
-              onChange={(val) => setField(val)}
+              onChange={(val) => setField(val, 'edit')}
               key={key}
             />
           </InlineEditorField>
@@ -2555,7 +2642,8 @@ const WFRInline = observer(({ element }: WFElementProps) => {
         <IntSliderInput
           label={input.label}
           value={getField()}
-          onChange={setField}
+          onChange={(v) => setField(v)}
+          onSlideStart={startSlide}
           disabled={false}
           min={field.min}
           max={field.max}
@@ -2968,9 +3056,7 @@ const PreSetEditor = observer(
                   label: x.getTitle(),
                 }))}
                 onSelect={(opt) => {
-                  curSession.selectedWorkflow = {
-                    workflowType: opt.value,
-                  };
+                  selectWorkflowRecorded(curSession, { workflowType: opt.value }, UNDO_TEXT.workflowMode);
                 }}
               />
             </StackFixed>

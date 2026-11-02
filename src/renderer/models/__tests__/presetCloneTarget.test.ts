@@ -30,7 +30,12 @@ test('A 활성 중 B의 그림체 복제는 B 내용과 이름을 사용하며 �
   const curSession = { selectedWorkflow: { presetName: 'A' }, addPreset: jest.fn(p => presets.push(p)) };
   const workFlowService = { presetFromJSON: jest.fn(data => JSON.parse(JSON.stringify(data))) };
   const code = ts.transpileModule(`return (${expression!.getText(source)});`, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
-  const handler = new Function('preset', 'option', 'presets', 'curSession', 'workFlowService', code)(preset, option, presets, curSession, workFlowService);
+  // 되돌리기 기록(U3b, editPresetList)은 감싸기만 — 여기서는 복제 대상·이름 계산을 본다
+  const editPresetList = jest.fn((_s: unknown, _label: string, fn: () => unknown) => fn());
+  const UNDO_TEXT = { presetDuplicate: (n: string) => `dup ${n}` };
+  const handler = new Function('preset', 'option', 'presets', 'curSession', 'workFlowService', 'editPresetList', 'UNDO_TEXT', code)(
+    preset, option, presets, curSession, workFlowService, editPresetList, UNDO_TEXT,
+  );
   const stopPropagation = jest.fn();
   handler({ stopPropagation });
   expect(curSession.addPreset).toHaveBeenLastCalledWith({ name: 'B copy 2', prompt: 'B prompt', refs: [{ strength: 0.5 }] });
@@ -39,4 +44,5 @@ test('A 활성 중 B의 그림체 복제는 B 내용과 이름을 사용하며 �
   expect(curSession.selectedWorkflow.presetName).toBe('A');
   expect(option.name).toBe('B');
   expect(stopPropagation).toHaveBeenCalledTimes(2);
+  expect(editPresetList).toHaveBeenLastCalledWith(curSession, 'dup B copy 3', expect.any(Function));
 });

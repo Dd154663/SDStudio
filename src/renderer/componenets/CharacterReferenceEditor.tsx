@@ -16,6 +16,13 @@ import { EditableSliderValue, VibeImage, useNarrowContainer } from './VibeEditor
 import { resolveCompanionButtons } from '../models/companionSlots';
 import { renderCompanionButtons } from './PortableToolbarButtons';
 import { CompanionHostRow } from './CompanionDnd';
+import {
+  beginWorkflowSlide,
+  commitOnPointerRelease,
+  editWorkflowFields,
+  setWorkflowItemValue,
+} from '../models/presetUndo';
+import { UNDO_TEXT } from '../models/undoService';
 
 // PreSetEdtior.tsx 에서 분리된 캐릭터 레퍼런스 편집기 계열.
 interface CharacterReferenceEditorProps {
@@ -64,19 +71,45 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
     else if (editCharacterReference!.fieldType === 'shared') shared[editCharacterReference!.field] = val;
     else meta![editCharacterReference!.field] = val;
   };
+  // 되돌리기(U3b): 그림체·공용 설정의 레퍼런스 배열만 기록(변형 씬 프리셋은 대입만). 배열 통째 보관·복원 —
+  // 삭제는 파일을 지우지 않으므로 되돌리면 같은 경로 항목이 다시 보인다. 추가는 저장한 새 파일을 남긴다(무해).
+  const holders = { preset, shared, meta };
+  const fieldTarget = (): [any, string][] => [
+    [editCharacterReference!.fieldType, editCharacterReference!.field],
+  ];
+  const editField = (label: string, mutate: () => void) =>
+    editWorkflowFields(appState.curSession, holders, fieldTarget(), label, mutate);
+  const setItemValue = (item: ReferenceItem, key: 'strength' | 'fidelity', value: number) =>
+    setWorkflowItemValue(
+      appState.curSession,
+      holders,
+      editCharacterReference!.fieldType,
+      editCharacterReference!.field,
+      item,
+      key,
+      value,
+      UNDO_TEXT.referenceValue,
+    );
+  // 슬라이더 누름~뗌 = 1항목
+  const startSlide = () =>
+    commitOnPointerRelease(
+      beginWorkflowSlide(appState.curSession, holders, fieldTarget(), UNDO_TEXT.referenceValue),
+    );
   const referenceChange = async (reference: string) => {
     if (!reference) return;
     const path = await imageService.storeReferenceImage(curSession!, reference);
     const defaults = getRefDefaults();
-    getField().push(
-      ReferenceItem.fromJSON({
-        path: path,
-        info: 1.0,
-        strength: defaults.strength,
-        fidelity: defaults.fidelity,
-        referenceType: defaults.referenceType,
-      }),
-    );
+    editField(UNDO_TEXT.referenceAdd, () => {
+      getField().push(
+        ReferenceItem.fromJSON({
+          path: path,
+          info: 1.0,
+          strength: defaults.strength,
+          fidelity: defaults.fidelity,
+          referenceType: defaults.referenceType,
+        }),
+      );
+    });
   };
 
   // Handle paste event (Ctrl+V)
@@ -260,7 +293,9 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                           className={`round-button h-8 px-4 ${reference.enabled !== false ? 'back-sky' : 'back-gray'}`}
                           onClick={() => {
                             if (disabled) return;
-                            reference.enabled = reference.enabled === false;
+                            editField(UNDO_TEXT.referenceValue, () => {
+                              reference.enabled = reference.enabled === false;
+                            });
                           }}
                           disabled={disabled}
                         >
@@ -278,7 +313,9 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                         }
                         onClick={() => {
                           if (disabled) return;
-                          setField(getField().filter((x: any) => x !== reference));
+                          editField(UNDO_TEXT.referenceRemove, () =>
+                            setField(getField().filter((x: any) => x !== reference)),
+                          );
                         }}
                       >
                         <FaTrash />
@@ -304,8 +341,9 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                         min="0"
                         max="2"
                         value={reference.strength}
+                        onPointerDown={startSlide}
                         onChange={(e) => {
-                          reference.strength = parseFloat(e.target.value);
+                          setItemValue(reference, 'strength', parseFloat(e.target.value));
                         }}
                         disabled={disabled}
                       />
@@ -313,7 +351,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                         value={reference.strength}
                         min={0}
                         max={2}
-                        onChange={(v) => { reference.strength = v; }}
+                        onChange={(v) => setItemValue(reference, 'strength', v)}
                         disabled={disabled}
                       />
                     </div>
@@ -336,8 +374,9 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                         min="0"
                         max="2"
                         value={reference.fidelity}
+                        onPointerDown={startSlide}
                         onChange={(e) => {
-                          reference.fidelity = parseFloat(e.target.value);
+                          setItemValue(reference, 'fidelity', parseFloat(e.target.value));
                         }}
                         disabled={disabled}
                       />
@@ -345,7 +384,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                         value={reference.fidelity}
                         min={0}
                         max={2}
-                        onChange={(v) => { reference.fidelity = v; }}
+                        onChange={(v) => setItemValue(reference, 'fidelity', v)}
                         disabled={disabled}
                       />
                     </div>
@@ -358,7 +397,9 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                           name={`refType-${reference.path}`}
                           checked={reference.referenceType === 'character'}
                           onChange={() => {
-                            reference.referenceType = 'character';
+                            editField(UNDO_TEXT.referenceValue, () => {
+                              reference.referenceType = 'character';
+                            });
                           }}
                           disabled={disabled}
                         />
@@ -370,7 +411,9 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                           name={`refType-${reference.path}`}
                           checked={reference.referenceType === 'style'}
                           onChange={() => {
-                            reference.referenceType = 'style';
+                            editField(UNDO_TEXT.referenceValue, () => {
+                              reference.referenceType = 'style';
+                            });
                           }}
                           disabled={disabled}
                         />
@@ -382,7 +425,9 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                           name={`refType-${reference.path}`}
                           checked={reference.referenceType === 'character&style'}
                           onChange={() => {
-                            reference.referenceType = 'character&style';
+                            editField(UNDO_TEXT.referenceValue, () => {
+                              reference.referenceType = 'character&style';
+                            });
                           }}
                           disabled={disabled}
                         />

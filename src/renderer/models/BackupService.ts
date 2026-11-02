@@ -105,6 +105,8 @@ import {
   readBackupTemplates,
   PROJECT_TEMPLATE_BACKUP,
 } from './projectTemplateBackup';
+import { beginPresetListRecord } from './presetUndo';
+import { UNDO_TEXT } from './undoService';
 
 // 전체 백업에 담는 전역 설정 파일. (백업엔 전부 담되, 설정 병합 복원 시
 // trash.json / folderOrder.json 은 의도적으로 제외 — 아래 mergeSettingsFromDir 참조)
@@ -2296,6 +2298,8 @@ export class BackupService {
       callback: async (option?: string) => {
         if (!option) return;
         if (option === 'session') {
+          // 되돌리기(U3b): 드롭으로 불러온 그림체 + 선택 = 1항목(저장한 대표 이미지 파일은 남김)
+          const undoRec = beginPresetListRecord(session, UNDO_TEXT.presetImport(1));
           try {
             const preset = await importPreset(session, base64);
             if (preset) {
@@ -2303,6 +2307,7 @@ export class BackupService {
                 workflowType: preset.type,
                 presetName: preset.name,
               };
+              undoRec.commit();
               appState.pushDialog({
                 type: 'yes-only',
                 text: `"${preset.name}" 프리셋을 현재 세션으로 불러왔습니다.`,

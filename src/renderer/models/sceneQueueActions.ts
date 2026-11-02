@@ -41,6 +41,8 @@ import {
 import { artistLibraryService } from '.';
 import { dataUriToBase64 } from './ImageService';
 import { samplingFamilyForModel } from './modelSamplingProfiles';
+import { editWorkflowFields } from './presetUndo';
+import { UNDO_TEXT } from './undoService';
 
 // 씬 큐 예약(추가/제거) 공유 로직 단일 출처.
 // SceneQueueControl(툴바·단축키·카드 버튼)과 AppContextMenu(우클릭 메뉴)가 함께 사용한다.
@@ -642,7 +644,22 @@ export const applyArtistPrefixBatch = async (
     type: 'confirm',
     text: `작가 태그의 artist: 접두를 전환합니다 — ${what}.\n(${where})`,
     callback: async () => {
-      results.forEach((r) => r.field.set(r.text));
+      // 되돌리기(U3b): 바뀐 칸 전부 = 1항목(그림체·공용 설정 프롬프트·캐릭터 프롬프트 배열·추가 프롬프트)
+      editWorkflowFields(
+        session,
+        { preset, shared },
+        [
+          ['preset', 'frontPrompt'],
+          ['preset', 'backPrompt'],
+          ['preset', 'characterPrompts'],
+          ['session', 'extraPrompt'],
+          ['shared', 'characterPrompt'],
+          ['shared', 'backgroundPrompt'],
+          ['shared', 'characterPrompts'],
+        ],
+        UNDO_TEXT.artistPrefix,
+        () => results.forEach((r) => r.field.set(r.text)),
+      );
       sessionService.markDirty(session.name);
       appState.pushMessage(`artist: 접두를 전환했습니다 — ${what}.`);
     },

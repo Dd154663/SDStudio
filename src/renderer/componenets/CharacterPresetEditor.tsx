@@ -56,6 +56,8 @@ import {
   isSafeImageToken,
 } from '../models/projectTemplateBackup';
 import { deleteConfirmText, safeImportedImageName } from '../models/deleteFlowRules';
+import { beginCharacterPresetRecord, editCharacterPresets } from '../models/presetUndo';
+import { UNDO_TEXT } from '../models/undoService';
 
 // ─── 캐릭터 프리셋 내보내기/불러오기 ─────────────────────────
 
@@ -670,8 +672,11 @@ export const CharacterPresetEditor = observer(({
         return;
       }
     } else {
+      // 되돌리기(U3b): 로컬 저장만 기록(글로벌 저장은 전역 라이브러리 — 보류). 편집 중 올린 이미지 파일은 남는다(무해)
       if (isNew) {
-        curSession.addCharacterPreset(preset);
+        editCharacterPresets(curSession, UNDO_TEXT.characterPresetAdd(preset.name), () =>
+          curSession.addCharacterPreset(preset),
+        );
       } else {
         // 이름을 다른 로컬 프리셋 이름으로 바꾸면 updateCharacterPreset 이 그 프리셋을 조용히 덮어쓴다 —
         // 저장 전에 거부하고 폼을 유지한다(D2, updateCharacterPreset 자체는 그대로).
@@ -683,7 +688,9 @@ export const CharacterPresetEditor = observer(({
           );
           return;
         }
-        curSession.updateCharacterPreset(oldName, preset);
+        editCharacterPresets(curSession, UNDO_TEXT.characterPresetSave(preset.name), () =>
+          curSession.updateCharacterPreset(oldName, preset),
+        );
       }
     }
     setEditingPreset(null);
@@ -706,11 +713,14 @@ export const CharacterPresetEditor = observer(({
       // 로컬 프리셋은 휴지통 없이 바로 사라진다 — 영구 삭제(Enter 무시, 2026-10-03 E1)
       ...deleteConfirmText({ kind: 'characterPreset', name: preset.name, outcome: 'permanent' }),
       callback: () => {
-        // 삭제하려는 프리셋이 현재 적용 중이면 먼저 해제 (해당 프리셋만 — W4 다중 적용)
-        if (appState.appliedCharacterPresetNames.includes(preset.name)) {
-          appState.removeAppliedCharacterPreset(preset.name);
-        }
-        curSession.removeCharacterPreset(preset.name);
+        // 해제 + 삭제 = 1항목(되돌리면 프리셋과 적용 항목이 함께 돌아온다 — U3b)
+        editCharacterPresets(curSession, UNDO_TEXT.characterPresetRemove([preset.name]), () => {
+          // 삭제하려는 프리셋이 현재 적용 중이면 먼저 해제 (해당 프리셋만 — W4 다중 적용)
+          if (appState.appliedCharacterPresetNames.includes(preset.name)) {
+            appState.removeAppliedCharacterPreset(preset.name);
+          }
+          curSession.removeCharacterPreset(preset.name);
+        });
       },
     });
   };
@@ -721,7 +731,9 @@ export const CharacterPresetEditor = observer(({
     // 복제본은 독립 로컬 — 글로벌 유래 링크를 끊어 원본만 재적용 갱신 대상으로 유지
     copy.fromGlobalId = '';
     copy.fromGlobalRev = 0;
-    curSession.addCharacterPreset(copy);
+    editCharacterPresets(curSession, UNDO_TEXT.characterPresetDuplicate(copy.name), () =>
+      curSession.addCharacterPreset(copy),
+    );
   };
 
   const handleApplyEasy = (preset: CharacterPreset) => {
@@ -740,21 +752,30 @@ export const CharacterPresetEditor = observer(({
       const entries = globalEntries.filter((e) => selectedGlobalIds.has(e.id));
       if (entries.length === 0) return;
       const locals: CharacterPreset[] = [];
-      for (const e of entries) {
-        try {
-          locals.push(
-            await globalCharacterPresetService.instantiateIntoSession(
-              curSession,
-              e.id,
-            ),
-          );
-        } catch (err: any) {
-          appState.pushMessage(
-            err.message || `"${e.name}"을(를) 프로젝트로 복사하지 못했습니다`,
-          );
+      // 되돌리기(U3b): 프로젝트로 복사 + 적용 = 1항목(복사한 이미지 파일은 남김)
+      const undoRec = beginCharacterPresetRecord(
+        curSession,
+        UNDO_TEXT.characterPresetApply(entries.map((e) => e.name)),
+      );
+      try {
+        for (const e of entries) {
+          try {
+            locals.push(
+              await globalCharacterPresetService.instantiateIntoSession(
+                curSession,
+                e.id,
+              ),
+            );
+          } catch (err: any) {
+            appState.pushMessage(
+              err.message || `"${e.name}"을(를) 프로젝트로 복사하지 못했습니다`,
+            );
+          }
         }
+        appState.applyCharacterPresets(locals);
+      } finally {
+        undoRec.commit();
       }
-      appState.applyCharacterPresets(locals);
     } else {
       appState.applyCharacterPresets(
         presets.filter((p) => selectedPresets.has(p.name)),
@@ -807,6 +828,8 @@ export const CharacterPresetEditor = observer(({
   };
 
   const handleLoadGlobal = async (entry: IGlobalCharacterPresetEntry) => {
+    // 되돌리기(U3b): 로컬 사본 추가·갱신 = 1항목(글로벌 쪽은 그대로, 복사한 이미지 파일은 남김)
+    const undoRec = beginCharacterPresetRecord(curSession, UNDO_TEXT.characterPresetFromGlobal(1, entry.name));
     try {
       const p = await globalCharacterPresetService.instantiateIntoSession(
         curSession,
@@ -815,6 +838,8 @@ export const CharacterPresetEditor = observer(({
       appState.pushMessage(`"${p.name}"을(를) 프로젝트로 복사했습니다`);
     } catch (e: any) {
       appState.pushMessage(e.message || '프로젝트로 복사하지 못했습니다');
+    } finally {
+      undoRec.commit();
     }
   };
 
@@ -902,8 +927,10 @@ export const CharacterPresetEditor = observer(({
         }
 
         const names = Array.from(selectedPresets);
-        appState.removeAppliedCharacterPresets(names);
-        for (const name of names) curSession.removeCharacterPreset(name);
+        editCharacterPresets(curSession, UNDO_TEXT.characterPresetRemove(names), () => {
+          appState.removeAppliedCharacterPresets(names);
+          for (const name of names) curSession.removeCharacterPreset(name);
+        });
         setSelectedPresets(new Set());
         appState.pushMessage(`${names.length}개 로컬 프리셋을 삭제했습니다`);
       },
@@ -919,6 +946,8 @@ export const CharacterPresetEditor = observer(({
     entry: IGlobalCharacterPresetEntry,
     mode: 'easy' | 'character',
   ) => {
+    // 되돌리기(U3b): 프로젝트로 복사 + 적용 = 1항목
+    const undoRec = beginCharacterPresetRecord(curSession, UNDO_TEXT.characterPresetApply([entry.name]));
     try {
       const local = await globalCharacterPresetService.instantiateIntoSession(
         curSession,
@@ -928,6 +957,8 @@ export const CharacterPresetEditor = observer(({
       appState.pushMessage(`"${entry.name}"을(를) 프로젝트로 복사해 적용했습니다`);
     } catch (e: any) {
       appState.pushMessage(e.message || '적용에 실패했습니다');
+    } finally {
+      undoRec.commit();
     }
   };
 
@@ -1640,7 +1671,11 @@ export const CharacterPresetEditor = observer(({
                   onApplyEasy={() => handleApplyEasy(preset)}
                   onApplyCharacter={() => handleApplyCharacter(preset)}
                   onDuplicate={() => handleDuplicate(preset)}
-                  onMove={(from, to) => curSession.moveCharacterPreset(from, to)}
+                  onMove={(from, to) =>
+                    editCharacterPresets(curSession, UNDO_TEXT.characterPresetMove, () =>
+                      curSession.moveCharacterPreset(from, to),
+                    )
+                  }
                   onCopyToGlobal={() => handleCopyToGlobal(preset)}
                   isEasyMode={isEasyMode}
                   hideActions={cyclingMode || selectMode}

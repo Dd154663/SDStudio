@@ -44,6 +44,7 @@ const UNDO_MODULES = [
   'models/sceneStructureUndo.ts',
   'models/sceneFieldUndo.ts',
   'models/imageStateUndo.ts',
+  'models/presetUndo.ts',
 ];
 
 const RULES: Rule[] = [

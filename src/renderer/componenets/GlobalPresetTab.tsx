@@ -33,6 +33,8 @@ import Tooltip from './Tooltip';
 import { PresetEditModal } from './PresetEditModal';
 import { useBackLayer } from '../models/BackStackService';
 import { useBackdropClose } from './backdropClose';
+import { beginPresetListRecord } from '../models/presetUndo';
+import { UNDO_TEXT } from '../models/undoService';
 
 // 템플릿 관리(글로벌 프리셋 카드 선택)와 공유 — export
 export const GlobalVibeImage = observer(
@@ -603,6 +605,8 @@ export const GlobalPresetTab = observer(() => {
     let done = 0;
     let fail = 0;
     const target = targetMode();
+    // 되돌리기(U3b): 프로젝트에 추가된 그림체 전부 = 1항목(글로벌 쪽은 바뀌지 않음)
+    const undoRec = beginPresetListRecord(session, UNDO_TEXT.presetFromGlobal(selectedIds.size));
     for (const id of Array.from(selectedIds)) {
       try {
         await globalPresetService.instantiateIntoSession(session, id, target);
@@ -617,6 +621,7 @@ export const GlobalPresetTab = observer(() => {
       });
     }
     appState.setProgressDialog(undefined);
+    undoRec.commit(UNDO_TEXT.presetFromGlobal(done - fail));
     appState.pushMessage(
       `${done - fail}개 프로젝트로 복사 완료${fail > 0 ? ` (${fail}개 실패)` : ''}`,
     );

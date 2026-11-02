@@ -679,8 +679,31 @@ export class Session implements Serealizable {
   updateCharacterPreset(oldName: string, preset: CharacterPreset): void {
     if (oldName !== preset.name) {
       this.characterPresets.delete(oldName);
+      // 이름이 바뀌면 적용 중인 항목의 출처 태그도 새 이름으로(2026-11-02 조사 F2) — 안 하면 다음 로드 때
+      // cleanupOrphanedPresetApplication 이 「없는 프리셋」 항목으로 보고 적용된 캐릭터 프롬프트·바이브·레퍼런스를 지운다.
+      this.renameAppliedCharacterPresetTags(oldName, preset.name);
     }
     this.characterPresets.set(preset.name, preset);
+  }
+
+  /** 공용 설정(presetShareds)의 캐릭터 프리셋 출처 태그(fromPreset·_appliedPresetName)를 from → to 로 바꾼다 */
+  @action
+  renameAppliedCharacterPresetTags(from: string, to: string): void {
+    if (!from || from === to) return;
+    for (const shared of this.presetShareds.values()) {
+      if (!shared) continue;
+      for (const key of ['vibes', 'characterReferences'] as const) {
+        const items = shared[key];
+        if (!Array.isArray(items) || !items.some((x: any) => x?.fromPreset === from)) continue;
+        for (const item of items) if (item?.fromPreset === from) item.fromPreset = to;
+        shared[key] = [...items];
+      }
+      const cps = shared.characterPrompts;
+      if (Array.isArray(cps) && cps.some((cp: any) => cp?.fromPreset === from)) {
+        shared.characterPrompts = cps.map((cp: any) => (cp?.fromPreset === from ? { ...cp, fromPreset: to } : cp));
+      }
+      if (shared._appliedPresetName === from) shared._appliedPresetName = to;
+    }
   }
 
   @action

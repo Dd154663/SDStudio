@@ -179,6 +179,59 @@ export const UNDO_TEXT = {
   metaApply: '생성 설정 적용',
   metaApplyConfigNotUndone:
     '생성 설정 적용의 모델 설정(환경설정) 부분은 되돌리기에 포함되지 않습니다. 프로젝트 쪽 변경만 되돌릴 수 있습니다.',
+  // U3b 사전 세팅(그림체)·공용 설정·바이브·레퍼런스·캐릭터 프리셋 — presetUndo.ts
+  presetAdd: (name: string) => `그림체 추가: ${name}`,
+  presetDuplicate: (name: string) => `그림체 복제: ${name}`,
+  presetRemove: (names: readonly string[]) =>
+    names.length === 1 ? `그림체 삭제: ${names[0]}` : `그림체 삭제 ${names.length}개`,
+  presetMove: (name: string) => `그림체 순서 변경: ${name}`,
+  presetRename: (from: string, to: string) => `그림체 이름 변경: ${from} → ${to}`,
+  presetSelect: (name: string) => `그림체 선택: ${name}`,
+  presetImport: (count: number) => `그림체 불러오기 ${count}개`,
+  presetFromGlobal: (count: number, name?: string) =>
+    count === 1 && name ? `글로벌 프리셋을 프로젝트로 복사: ${name}` : `글로벌 프리셋을 프로젝트로 복사 ${count}개`,
+  presetMainImage: (name: string) => `그림체 대표 이미지 지정: ${name}`,
+  workflowMode: '작업모드 변경',
+  // fieldLabel = 워크플로우 입력 칸 이름(「상위 프롬프트」·「샘플링」 등). 공용 설정은 그림체 이름 대신 「공용 설정」
+  presetField: (fieldLabel: string, presetName: string) => `${fieldLabel} 변경: ${presetName}`,
+  sharedField: (fieldLabel: string) => `${fieldLabel} 변경: 공용 설정`,
+  extraPromptEdit: '추가 프롬프트 편집',
+  newSceneResolution: '새 씬 해상도 변경',
+  newSceneResolutionApplyAll: (count: number) => `새 씬 해상도 일괄 적용 ${count}개 씬`,
+  characterPromptAdd: (owner: string) => `캐릭터 프롬프트 추가: ${owner}`,
+  characterPromptRemove: (owner: string) => `캐릭터 프롬프트 삭제: ${owner}`,
+  characterPromptToggle: (owner: string) => `캐릭터 프롬프트 켜기/끄기: ${owner}`,
+  characterPromptText: (owner: string) => `캐릭터 프롬프트 편집: ${owner}`,
+  characterPromptOrder: (owner: string) => `캐릭터 프롬프트 순서: ${owner}`,
+  characterPromptPosition: (owner: string) => `캐릭터 위치 이동: ${owner}`,
+  characterCoordsMode: (owner: string) => `캐릭터 위치 지정 모드: ${owner}`,
+  vibeAdd: '바이브 이미지 추가',
+  vibeValue: '바이브 값 변경',
+  vibeRemove: '바이브 이미지 삭제',
+  referenceAdd: '캐릭터 레퍼런스 추가',
+  referenceValue: '캐릭터 레퍼런스 값 변경',
+  referenceRemove: '캐릭터 레퍼런스 삭제',
+  appliedPresetRemove: (names: readonly string[]) =>
+    names.length === 1 ? `캐릭터 프리셋 해제: ${names[0]}` : `캐릭터 프리셋 해제 ${names.length}개`,
+  appliedPresetClear: '캐릭터 프리셋 전부 해제',
+  characterPresetApply: (names: readonly string[]) =>
+    names.length === 1 ? `캐릭터 프리셋 적용: ${names[0]}` : `캐릭터 프리셋 적용 ${names.length}개`,
+  characterPresetAdd: (name: string) => `캐릭터 프리셋 추가: ${name}`,
+  characterPresetSave: (name: string) => `캐릭터 프리셋 편집: ${name}`,
+  characterPresetRemove: (names: readonly string[]) =>
+    names.length === 1 ? `캐릭터 프리셋 삭제: ${names[0]}` : `캐릭터 프리셋 삭제 ${names.length}개`,
+  characterPresetDuplicate: (name: string) => `캐릭터 프리셋 복제: ${name}`,
+  characterPresetMove: '캐릭터 프리셋 순서 변경',
+  characterPresetFromGlobal: (count: number, name?: string) =>
+    count === 1 && name
+      ? `글로벌 캐릭터 프리셋을 프로젝트로 복사: ${name}`
+      : `글로벌 캐릭터 프리셋을 프로젝트로 복사 ${count}개`,
+  artistPrefix: '작가 artist: 접두 전환',
+  // 실패 이유
+  presetGone: (name: string) => `그림체 "${name}"이(가) 이미 없습니다`,
+  presetNameChanged: (name: string) => `그림체 이름이 그사이 바뀌었습니다(현재 "${name}")`,
+  presetNameTaken: (name: string) => `같은 이름의 그림체 "${name}"이(가) 이미 있습니다`,
+  sharedGone: '공용 설정이 그사이 바뀌어 되돌릴 대상이 없습니다',
 } as const;
 
 // ── 참조 손잡이 ───────────────────────────────────────────────────────────
@@ -292,6 +345,14 @@ interface SetMergeState {
 }
 
 const mergeStates = new WeakMap<UndoEntry, SetMergeState>();
+
+/** track(merge) 병합용 — 이전·이후 스냅숏 상자 */
+interface SnapshotMergeState {
+  before: unknown;
+  after: unknown;
+}
+
+const snapshotMerges = new WeakMap<UndoEntry, SnapshotMergeState>();
 
 const targetIds = new WeakMap<object, number>();
 let nextTargetId = 1;
@@ -625,9 +686,19 @@ export class UndoService {
     return this.#snapshotPending(session, label, this.#fieldsAdapter(target, keys, opts));
   }
 
-  /** 객체 필드가 아닌 상태(씬 순서 등)를 상태 짝으로 감싼다 — 시작에 보관, commit 때 바뀌었으면 1항목 */
-  track<S>(session: Session | undefined, label: string, adapter: UndoSnapshotAdapter<S>): UndoPending {
-    return this.#snapshotPending(session, label, adapter);
+  /**
+   * 객체 필드가 아닌 상태(씬 순서 등)를 상태 짝으로 감싼다 — 시작에 보관, commit 때 바뀌었으면 1항목.
+   * merge.key 를 주면 같은 key 의 맨 위 항목이 merge.ms(기본 1초) 안이면 그 항목의 「이후 값」만 바꾼다(set 과 같은 병합 —
+   * future 가 비었을 때만, 합친 결과가 처음 값과 같아지면 항목 삭제). 여러 필드를 한 번에 보관해야 하는 값 변경(U3b 사전 세팅
+   * 필드 + 샘플링 프로필)에 쓴다.
+   */
+  track<S>(
+    session: Session | undefined,
+    label: string,
+    adapter: UndoSnapshotAdapter<S>,
+    merge?: { key: string; ms?: number },
+  ): UndoPending {
+    return this.#snapshotPending(session, label, adapter, undefined, merge);
   }
 
   #fieldsAdapter<T extends object>(
@@ -654,6 +725,7 @@ export class UndoService {
     label: string,
     adapter: UndoSnapshotAdapter<S>,
     onSettle?: () => void,
+    merge?: { key: string; ms?: number },
   ): UndoPending {
     if (!this.canRecord(session)) {
       return { commit: () => false, cancel: () => {} };
@@ -672,23 +744,62 @@ export class UndoService {
         const after = adapter.snapshot();
         const eq = (a: S, b: S) => (adapter.equals ? adapter.equals(a, b) : undoDeepEqual(a, b));
         if (eq(before, after)) return false;
+        if (merge && this.#mergeSnapshot(session, merge, after, eq, label)) return true;
+        // 병합 가능한 항목은 이전·이후 값을 바꿀 수 있는 상자에 둔다(다음 병합이 after 만 갈아 끼움)
+        const state: SnapshotMergeState = { before, after };
         const verify = adapter.verify;
-        this.record(session, {
+        const entry = this.record(session, {
           label,
+          ...(merge ? { mergeKey: `track:${merge.key}` } : {}),
           ...(verify ? { verify: () => verify() } : {}),
           // D16 — 되돌림은 지금이 「이후 값」, 다시 실행은 지금이 「이전 값」이어야 겹침 없음
           ...(adapter.detectConflict
-            ? { conflict: (dir: UndoDirection) => !eq(adapter.snapshot(), dir === 'undo' ? after : before) }
+            ? {
+                conflict: (dir: UndoDirection) =>
+                  !eq(adapter.snapshot(), (dir === 'undo' ? state.after : state.before) as S),
+              }
             : {}),
-          undo: () => adapter.restore(before),
-          redo: () => adapter.restore(after),
+          undo: () => adapter.restore(state.before as S),
+          redo: () => adapter.restore(state.after as S),
         });
+        if (entry && merge) snapshotMerges.set(entry, state);
         return true;
       },
       cancel: () => {
         if (!done) settle();
       },
     };
+  }
+
+  /** track(merge) — 맨 위 항목이 같은 key 이고 시간 창 안이면 after 만 갈아 끼운다. 합쳤으면 true */
+  #mergeSnapshot<S>(
+    session: Session,
+    merge: { key: string; ms?: number },
+    after: S,
+    eq: (a: S, b: S) => boolean,
+    label: string,
+  ): boolean {
+    const now = this.#deps.now();
+    const frame = this.#openFrame(session);
+    const st = this.#stack(session);
+    const top = frame
+      ? frame.children[frame.children.length - 1]
+      : st.future.length === 0
+        ? st.past[st.past.length - 1]
+        : undefined;
+    if (!top || top.mergeKey !== `track:${merge.key}`) return false;
+    const state = snapshotMerges.get(top);
+    if (!state || now - top.updatedAt > (merge.ms ?? UNDO_MERGE_MS)) return false;
+    state.after = after;
+    top.updatedAt = now;
+    // 라벨은 마지막 동작 기준(그림체 선택처럼 값이 라벨에 들어가는 경우 — 같은 칸이면 대개 같은 문구)
+    top.label = label;
+    if (eq(state.before as S, after)) {
+      if (frame) this.#remove(frame.children, top);
+      else this.#remove(st.past, top);
+    }
+    this.#bump();
+    return true;
   }
 
   /**

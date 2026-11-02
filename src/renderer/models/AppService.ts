@@ -71,6 +71,12 @@ import {
   Session,
   genericSceneFromJSON,
 } from './types';
+import {
+  beginCharacterPresetRecord,
+  beginPresetListRecord,
+  editCharacterPresets,
+} from './presetUndo';
+import { UNDO_TEXT } from './undoService';
 import { extractPromptDataFromBase64, getFirstFile } from './util';
 import { ImageOptimizeMethod } from '../backend';
 import { v4 } from 'uuid';
@@ -723,16 +729,23 @@ export class AppState {
 
   // 캐릭터 프리셋 개별 해제(W4): 해당 프리셋 태그가 붙은 캐릭터 프롬프트/바이브/
   // 레퍼런스만 제거. 수동 항목·다른 프리셋 항목은 유지.
+  // 되돌리기(U3b): 해제·적용은 공용 설정의 캐릭터 항목 + 로컬 캐릭터 프리셋 상태를 통째 보관해 1항목(presetUndo).
+  // 바깥 흐름(캐릭터 프리셋 삭제·글로벌 적용)이 이미 기록 중이면 따로 기록하지 않는다.
   @action
   removeAppliedCharacterPreset(name: string) {
-    if (!this.removeAppliedCharacterPresetCore(name)) return;
+    const ok = editCharacterPresets(this.curSession, UNDO_TEXT.appliedPresetRemove([name]), () =>
+      this.removeAppliedCharacterPresetCore(name),
+    );
+    if (!ok) return;
     this.pushMessage(`"${name}" 프리셋이 해제되었습니다 (연결 항목 함께 제거)`);
   }
 
   // 일괄 해제(W4 후속): 팝오버 체크 선택 해제용 — 토스트는 1회로 묶는다.
   @action
   removeAppliedCharacterPresets(names: string[]) {
-    const removed = names.filter((n) => this.removeAppliedCharacterPresetCore(n));
+    const removed = editCharacterPresets(this.curSession, UNDO_TEXT.appliedPresetRemove(names), () =>
+      names.filter((n) => this.removeAppliedCharacterPresetCore(n)),
+    );
     if (removed.length === 0) return;
     this.pushMessage(
       removed.length === 1
@@ -785,7 +798,11 @@ export class AppState {
       return;
     }
 
-    if (!this.applyCharacterPresetToSession(curSession, workflowType, preset, mode)) {
+    if (
+      !editCharacterPresets(curSession, UNDO_TEXT.characterPresetApply([preset.name]), () =>
+        this.applyCharacterPresetToSession(curSession, workflowType, preset, mode),
+      )
+    ) {
       return;
     }
 
@@ -805,9 +822,11 @@ export class AppState {
       this.pushMessage('워크플로우를 먼저 선택해주세요');
       return;
     }
-    for (const p of presets) {
-      this.applyCharacterPresetToSession(curSession, workflowType, p, 'character');
-    }
+    editCharacterPresets(curSession, UNDO_TEXT.characterPresetApply(presets.map((p) => p.name)), () => {
+      for (const p of presets) {
+        this.applyCharacterPresetToSession(curSession, workflowType, p, 'character');
+      }
+    });
     this.characterPresetsOpen = false;
     this.pushMessage(
       presets.length === 1
@@ -1516,6 +1535,8 @@ export class AppState {
     globalId: string,
     targetType?: GlobalPresetType,
   ): Promise<void> {
+    // 되돌리기(U3b): 추가된 그림체 + 선택 = 1항목(글로벌 쪽은 바뀌지 않음, 복사한 대표 이미지 파일은 남김)
+    const rec = beginPresetListRecord(session, UNDO_TEXT.presetFromGlobal(1));
     try {
       const preset = await globalPresetService.instantiateIntoSession(
         session,
@@ -1527,10 +1548,13 @@ export class AppState {
           workflowType: preset.type,
           presetName: preset.name,
         };
+        rec.commit(UNDO_TEXT.presetFromGlobal(1, preset.name));
         this.pushMessage(`프로젝트로 복사: ${preset.name}`);
       }
     } catch (e: any) {
       this.pushMessage('프로젝트로 복사 실패: ' + (e.message || e));
+    } finally {
+      rec.commit();
     }
   }
 
@@ -1788,20 +1812,23 @@ export class AppState {
     const shared = this.curSession.presetShareds.get(workflowType);
     if (!shared) return;
 
-    // 프리셋에서 추가된 항목만 제거 (사용자 직접 추가 항목은 유지)
-    shared.vibes = (shared.vibes || []).filter((v: any) => !v.fromPreset);
-    shared.characterReferences = (shared.characterReferences || []).filter((r: any) => !r.fromPreset);
-    if (shared.characterPrompts) {
-      shared.characterPrompts = shared.characterPrompts.filter((cp: any) => !cp.fromPreset);
-    }
+    // 되돌리기(U3b) — 전부 해제 = 1항목
+    editCharacterPresets(this.curSession, UNDO_TEXT.appliedPresetClear, () => {
+      // 프리셋에서 추가된 항목만 제거 (사용자 직접 추가 항목은 유지)
+      shared.vibes = (shared.vibes || []).filter((v: any) => !v.fromPreset);
+      shared.characterReferences = (shared.characterReferences || []).filter((r: any) => !r.fromPreset);
+      if (shared.characterPrompts) {
+        shared.characterPrompts = shared.characterPrompts.filter((cp: any) => !cp.fromPreset);
+      }
 
-    if (workflowType === 'SDImageGenEasy') {
-      shared.characterPrompt = '';
-      shared.backgroundPrompt = '';
-      shared.uc = '';
-    }
+      if (workflowType === 'SDImageGenEasy') {
+        shared.characterPrompt = '';
+        shared.backgroundPrompt = '';
+        shared.uc = '';
+      }
 
-    shared._appliedPresetName = '';
+      shared._appliedPresetName = '';
+    });
     this.pushMessage('캐릭터 프리셋이 해제되었습니다');
   }
 
@@ -1897,6 +1924,8 @@ export class AppState {
       done: 0,
       total: files.length,
     });
+    // 되돌리기(U3b): 불러온 그림체 전부 + 마지막 선택 = 1항목(저장한 대표 이미지 파일은 남김)
+    const undoRec = beginPresetListRecord(this.curSession, UNDO_TEXT.presetImport(files.length));
 
     const results = {
       success: 0,
@@ -1965,6 +1994,7 @@ export class AppState {
         };
       }
     }
+    undoRec.commit(UNDO_TEXT.presetImport(results.success));
   }
 }
 
