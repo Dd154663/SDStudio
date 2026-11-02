@@ -56,6 +56,7 @@ import { undoService } from './undoService';
 import { configureSceneStructureUndo, SceneStructureOps } from './sceneStructureUndo';
 import { configureImageStateUndo } from './imageStateUndo';
 import { configureDeleteUndo } from './deleteUndo';
+import { configurePieceUndo } from './pieceUndo';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -131,6 +132,9 @@ export const projectTemplateService = new ProjectTemplateService();
 export const artistTagService = new ArtistTagService();
 
 export const globalPieceService = new GlobalPieceService();
+
+// 로컬 조각 되돌리기(U5) — 되살린 뒤 자동완성 조각 목록을 다시 만든다
+configurePieceUndo({ onRestored: (s) => void sessionService.reloadPieceLibraryDB(s) });
 
 export const globalPresetService = new GlobalPresetService();
 

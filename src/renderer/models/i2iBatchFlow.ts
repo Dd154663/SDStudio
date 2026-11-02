@@ -14,6 +14,7 @@ import { appState } from './AppService';
 import { chooseScenes } from './sceneSelectorHost';
 import type { SceneSelectorSetter } from './sceneSelectorHost';
 import { readVibeImageSize } from './variantBatchFlow';
+import { editVariantScenesFields, IMAGE_ATTACH_KEYS } from './variantSceneUndo';
 import { dataUriToBase64, getMainImagePath } from './ImageService';
 import { IMPORT_IMAGE_ACCEPT } from './imageFormats';
 import { getImageDimensions } from '../componenets/BrushTool';
@@ -425,36 +426,44 @@ async function attachImageToScenes(
   }
   let applied = 0;
   let maskReset = 0;
-  runInAction(() => {
-    for (const { scene, path, workflowType, mask, maskPath } of stored) {
-      // 고르는 사이 지워지거나 워크플로우가 바뀐 씬은 건너뛴다
-      if (
-        session.getScene('inpaint', scene.name) !== scene ||
-        scene.workflowType !== workflowType ||
-        !scene.preset
-      ) {
-        failed.push(scene.name);
-        continue;
-      }
-      scene.preset.image = path;
-      applyStrengthNoise(scene.preset, values, workflowHasNoise(workflowType));
-      applyImageResolution(scene, image.resolution);
-      if (workflowType === INPAINT_WORKFLOW_TYPE) {
-        // 크기가 다른 마스크는 참조만 비운다(파일은 지우지 않음 — 다른 씬이 같은 파일을 쓸 수 있다)
-        if (mask === 'reset' && (scene.preset.mask || '') === maskPath) {
-          scene.preset.mask = '';
-          maskReset++;
+  // 되돌리기(U5): 바뀐 씬 전부 = 1항목(경로·강도·노이즈·해상도·마스크 참조·Focused 값 복원 — 씬마다 저장한 새 파일은 남김)
+  editVariantScenesFields(
+    session,
+    stored.map((s) => s.scene),
+    IMAGE_ATTACH_KEYS,
+    (n) => UNDO_TEXT.imageAttachBatch(n),
+    () =>
+      runInAction(() => {
+        for (const { scene, path, workflowType, mask, maskPath } of stored) {
+          // 고르는 사이 지워지거나 워크플로우가 바뀐 씬은 건너뛴다
+          if (
+            session.getScene('inpaint', scene.name) !== scene ||
+            scene.workflowType !== workflowType ||
+            !scene.preset
+          ) {
+            failed.push(scene.name);
+            continue;
+          }
+          scene.preset.image = path;
+          applyStrengthNoise(scene.preset, values, workflowHasNoise(workflowType));
+          applyImageResolution(scene, image.resolution);
+          if (workflowType === INPAINT_WORKFLOW_TYPE) {
+            // 크기가 다른 마스크는 참조만 비운다(파일은 지우지 않음 — 다른 씬이 같은 파일을 쓸 수 있다)
+            if (mask === 'reset' && (scene.preset.mask || '') === maskPath) {
+              scene.preset.mask = '';
+              maskReset++;
+            }
+            // Focused 사각형은 편집기의 이미지 크기 변경(U5)과 같은 규칙으로 새 이미지에 맞춘다
+            if (presetSupportsFocus(scene.preset)) {
+              const r = reconcileFocusRect(presetFocusRect(scene.preset), image.width, image.height);
+              if (r.kind === 'set') Object.assign(scene.preset, focusRectPresetPatch(r.rect));
+              else if (r.kind === 'clear') Object.assign(scene.preset, focusRectPresetPatch(null));
+            }
+          }
+          applied++;
         }
-        // Focused 사각형은 편집기의 이미지 크기 변경(U5)과 같은 규칙으로 새 이미지에 맞춘다
-        if (presetSupportsFocus(scene.preset)) {
-          const r = reconcileFocusRect(presetFocusRect(scene.preset), image.width, image.height);
-          if (r.kind === 'set') Object.assign(scene.preset, focusRectPresetPatch(r.rect));
-          else if (r.kind === 'clear') Object.assign(scene.preset, focusRectPresetPatch(null));
-        }
-      }
-      applied++;
-    }
-  });
+      }),
+  );
   appState.pushMessage(
     imageAttachResultText({ applied, skipped: skippedCount, failed, maskReset }),
     batchResultKind(applied, failed.length),

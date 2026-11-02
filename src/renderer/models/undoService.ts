@@ -65,6 +65,8 @@ export interface UndoPending {
 export interface UndoGroupHandle extends UndoPending {
   /** 묶음 안에 항목을 직접 넣는다(헬퍼를 거치지 않는 경우) */
   add(init: UndoEntryInit): void;
+  /** commit 전에 묶음 라벨을 바꾼다(실제로 바뀐 씬 수처럼 끝나야 아는 문구 — U5 일괄 작업) */
+  setLabel(label: string): void;
 }
 
 /** drag·capture 용 상태 읽기/되살리기 짝 — 객체 필드가 아닌 상태(씬 순서 등)에 쓴다 */
@@ -266,6 +268,31 @@ export const UNDO_TEXT = {
   imagesMoveFailed: (count: number) => `${count}장은 휴지통으로 옮기지 못했습니다(파일 잠금 등)`,
   imagesAlreadyGone: (count: number) => `${count}장은 그사이 이미 없어졌습니다`,
   rankingNotRestored: '순위는 그사이 바뀌어 되돌리지 않았습니다',
+  // U5 변형 씬(I2I·인페인트) 필드·일괄 작업 — variantSceneUndo.ts
+  // fieldLabel = 편집 칸 이름(「강도」·「상위 프롬프트(고정)」 등)
+  variantField: (fieldLabel: string, sceneName: string) => `${fieldLabel} 변경: 변형 씬 ${sceneName}`,
+  variantFocusOn: (name: string) => `Focused 켜기: ${name}`,
+  variantFocusOff: (name: string) => `Focused 끄기: ${name}`,
+  variantFocusRect: (name: string) => `Focused 영역 변경: ${name}`,
+  variantFocusContext: (name: string) => `Focused 맥락 여백 변경: ${name}`,
+  variantComboOff: (name: string) => `조합 모드 끄기: ${name}`,
+  variantImageUpload: (name: string) => `변형 씬 이미지 교체: ${name}`,
+  variantFitResolution: (name: string) => `이미지 크기로 해상도 맞추기: ${name}`,
+  imageAttachBatch: (count: number) => `일괄 이미지 첨부 ${count}개 씬`,
+  maskApplyBatch: (count: number) => `인페인트 마스크 일괄 적용 ${count}개 씬`,
+  strengthNoiseBatch: (count: number) => `강도·노이즈 일괄 변경 ${count}개 씬`,
+  // U5 로컬 조각(프로젝트 조각그룹) — pieceUndo.ts. 전역 조각은 기록하지 않는다
+  pieceGroupAdd: (name: string) => `조각그룹 추가: ${name}`,
+  pieceGroupRemove: (name: string) => `조각그룹 삭제: ${name}`,
+  pieceGroupImport: (name: string) => `조각그룹 불러오기: ${name}`,
+  pieceGroupFromGlobal: (name: string, how: string) => `전역 조각그룹을 로컬로 복사(${how}): ${name}`,
+  pieceAdd: (group: string, name: string) => `조각 추가: ${group}.${name}`,
+  pieceWildcardImport: (group: string, name: string) => `와일드카드 불러오기: ${group}.${name}`,
+  pieceRename: (group: string, from: string, to: string) => `조각 이름 변경: ${group}.${from} → ${to}`,
+  pieceRemove: (group: string, name: string) => `조각 삭제: ${group}.${name}`,
+  piecePrompt: (group: string, name: string) => `조각 내용 편집: ${group}.${name}`,
+  pieceMulti: (group: string, name: string) => `조각 랜덤 줄 모드 변경: ${group}.${name}`,
+  pieceMove: (group: string) => `조각 순서 변경: ${group}`,
 } as const;
 
 // ── 참조 손잡이 ───────────────────────────────────────────────────────────
@@ -937,7 +964,7 @@ export class UndoService {
   /** 비동기 흐름용 묶음 — commit 까지 이 프로젝트의 기록이 묶음에 들어간다 */
   beginGroup(session: Session | undefined, label: string): UndoGroupHandle {
     if (!this.canRecord(session)) {
-      return { add: () => {}, commit: () => false, cancel: () => {} };
+      return { add: () => {}, setLabel: () => {}, commit: () => false, cancel: () => {} };
     }
     const frame: GroupFrame = { label, children: [] };
     let frames = this.#groups.get(session);
@@ -959,6 +986,9 @@ export class UndoService {
       add: (init) => {
         if (done || !this.canRecord(session)) return;
         frame.children.push(this.#makeEntry(init));
+      },
+      setLabel: (next) => {
+        if (!done) frame.label = next;
       },
       commit: () => {
         if (done) return false;
@@ -1003,7 +1033,7 @@ export class UndoService {
           return { total, failed, firstError, ...(notice ? { notice } : {}) };
         };
         const entry = this.#makeEntry({
-          label,
+          label: frame.label,
           kind,
           // D16 — 하위 항목 하나라도 겹치면 묶음 전체를 한 번 묻는다(하위마다 묻지 않음)
           conflict: (dir) => children.some((c) => !!c.conflict?.(dir)),

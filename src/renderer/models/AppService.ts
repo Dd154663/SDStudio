@@ -78,6 +78,7 @@ import {
   editCharacterPresets,
 } from './presetUndo';
 import { UNDO_TEXT } from './undoService';
+import { editLocalPieceGroups } from './pieceUndo';
 import { extractPromptDataFromBase64, getFirstFile } from './util';
 import { ImageOptimizeMethod } from '../backend';
 import { v4 } from 'uuid';
@@ -1235,9 +1236,14 @@ export class AppState {
             if (scopeLabel === '전역') globalPieceService.scheduleSave();
             if (this.curSession) sessionService.reloadPieceLibraryDB(this.curSession);
           };
+          // 되돌리기 = 로컬(현재 프로젝트) 대상만 1항목(U5) — 전역 대상이면 헬퍼가 그대로 실행만 한다
+          const recordLocal = (name: string, mutate: () => void) =>
+            editLocalPieceGroups(this.curSession, targetLibrary, [name], UNDO_TEXT.pieceGroupImport(name), mutate);
 
           if (!targetLibrary.has(json.name)) {
-            targetLibrary.set(json.name, PieceLibrary.fromJSON(json));
+            recordLocal(json.name, () => {
+              targetLibrary.set(json.name, PieceLibrary.fromJSON(json));
+            });
             afterImport();
             this.pushDialog({
               type: 'yes-only',
@@ -1279,20 +1285,22 @@ export class AppState {
               if (action === 'merge-overwrite' || action === 'merge-skip') {
                 const overwriteDuplicates = action === 'merge-overwrite';
                 let added = 0, overwritten = 0, skipped = 0;
-                for (const srcPiece of srcLib.pieces) {
-                  const existingIdx = targetLib.pieces.findIndex(p => p.name === srcPiece.name);
-                  if (existingIdx >= 0) {
-                    if (overwriteDuplicates) {
-                      targetLib.pieces[existingIdx] = Piece.fromJSON(srcPiece.toJSON());
-                      overwritten++;
+                recordLocal(json.name, () => {
+                  for (const srcPiece of srcLib.pieces) {
+                    const existingIdx = targetLib.pieces.findIndex(p => p.name === srcPiece.name);
+                    if (existingIdx >= 0) {
+                      if (overwriteDuplicates) {
+                        targetLib.pieces[existingIdx] = Piece.fromJSON(srcPiece.toJSON());
+                        overwritten++;
+                      } else {
+                        skipped++;
+                      }
                     } else {
-                      skipped++;
+                      targetLib.pieces.push(Piece.fromJSON(srcPiece.toJSON()));
+                      added++;
                     }
-                  } else {
-                    targetLib.pieces.push(Piece.fromJSON(srcPiece.toJSON()));
-                    added++;
                   }
-                }
+                });
                 afterImport();
                 const parts = [];
                 if (added > 0) parts.push(`${added}개 추가`);
@@ -1300,8 +1308,10 @@ export class AppState {
                 if (skipped > 0) parts.push(`${skipped}개 건너뜀`);
                 this.pushMessage(`"${json.name}" 병합 완료: ${parts.join(', ')}`);
               } else if (action === 'overwrite') {
-                targetLibrary.delete(json.name);
-                targetLibrary.set(json.name, srcLib);
+                recordLocal(json.name, () => {
+                  targetLibrary.delete(json.name);
+                  targetLibrary.set(json.name, srcLib);
+                });
                 afterImport();
                 this.pushMessage(`"${json.name}" 조각그룹을 덮어썼습니다`);
               } else if (action === 'rename') {
@@ -1317,7 +1327,9 @@ export class AppState {
                     return;
                   }
                   srcLib.name = newName;
-                  targetLibrary.set(newName, srcLib);
+                  recordLocal(newName, () => {
+                    targetLibrary.set(newName, srcLib);
+                  });
                   afterImport();
                   this.pushMessage(`"${newName}" 조각그룹을 ${scopeLabel}에 불러왔습니다`);
                 });

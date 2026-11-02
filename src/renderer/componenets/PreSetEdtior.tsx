@@ -128,10 +128,12 @@ import {
   samplingFamilyForModel,
   switchSessionSamplingFamily,
 } from '../models/modelSamplingProfiles';
+import { uploadVariantImageRecorded, variantSceneOfPreset } from '../models/variantSceneUndo';
 import {
   beginWorkflowSlide,
   commitOnPointerRelease,
   editPresetList,
+  editWorkflowFields,
   isProjectPreset,
   renamePresetRecorded,
   selectWorkflowRecorded,
@@ -184,6 +186,24 @@ const ImageSelect = observer(({ input }: { input: WFIInlineInput }) => {
       <div className="w-24 md:w-48">
         <FileUploadBase64
           onFileSelect={async (file: string) => {
+            // 변형 씬의 이미지 칸(U5): 저장 방식은 그대로(비었으면 새 파일, 있으면 제자리 덮어쓰기). 비어 있던 칸에 경로를
+            // 넣은 경우만 되돌리기 1항목(경로 + 해상도 맞춤) — 덮어쓰기는 파일 덮어쓰기라 기록하지 않는다(보류 D20).
+            const variant =
+              input.fieldType === 'preset' && input.field === 'image'
+                ? variantSceneOfPreset(curSession, preset)
+                : undefined;
+            if (variant) {
+              await uploadVariantImageRecorded(
+                curSession,
+                variant,
+                {
+                  store: () => imageService.storeVibeImage(curSession!, file),
+                  overwrite: (p) => imageService.writeVibeImage(curSession!, p, file),
+                },
+                () => onImageUploaded?.(input.field, file),
+              );
+              return;
+            }
             if (!getField()) {
               const path = await imageService.storeVibeImage(curSession!, file);
               setField(path);
@@ -2012,9 +2032,9 @@ const CharacterPromptEditor = observer(
     };
 
     // 되돌리기(U3b): 그림체·공용 설정의 캐릭터 프롬프트 배열 교체를 setWorkflowField 로 — 추가·삭제·켜기는 매번 1항목,
-    // 글자는 편집 세션, 위치는 누름~뗌(아래 overlay). 변형 씬 프리셋(InPaintEditor)은 대입만.
+    // 글자는 편집 세션, 위치는 누름~뗌(아래 overlay). 등록된 변형 씬 프리셋(InPaintEditor)도 같은 기록(U5), 초안은 대입만.
     const holders = { preset, shared, meta };
-    const owner = workflowOwnerName(input.fieldType, holders);
+    const owner = workflowOwnerName(input.fieldType, holders, appState.curSession);
     const setField = (val: any, label: string, mode: WorkflowFieldMode = 'discrete') => {
       setWorkflowField(appState.curSession, holders, input.fieldType, input.field, val, { label, mode });
     };
@@ -2094,7 +2114,14 @@ const CharacterPromptEditor = observer(
             reorderBaseCharacterPrompts(preset, shared, from, to),
           );
         } else {
-          reorderBaseCharacterPrompts(preset, shared, from, to);
+          // 등록된 변형 씬 프리셋이면 캐릭터 배열 1항목(U5), 그 밖(초안·글로벌 사본)은 헬퍼가 그대로 실행만 한다
+          editWorkflowFields(
+            appState.curSession,
+            holders,
+            [['preset', input.field]],
+            UNDO_TEXT.characterPromptOrder(owner),
+            () => reorderBaseCharacterPrompts(preset, shared, from, to),
+          );
         }
         return;
       }
@@ -2521,8 +2548,10 @@ const WFRInline = observer(({ element }: WFElementProps) => {
     }
   };
   // 그림체·공용 설정 필드의 단일 지점(되돌리기 U3b 집약) — 샘플링 필드는 프로필 동기화까지 함께 바꾸고 함께 보관한다.
-  // 변형 씬 프리셋(InPaintEditor)·씬 메타는 대입만(기록 범위 밖). 렌더·마운트 중 보정은 이 함수를 거치지 않는다.
-  const fieldLabel = () => workflowFieldLabel(input.fieldType, input.label, { preset, shared, meta });
+  // 등록된 변형 씬 프리셋(InPaintEditor)도 기록(U5 — 씬 손잡이로 따라감), 미등록 초안·씬 메타는 대입만(기록 범위 밖).
+  // 렌더·마운트 중 보정은 이 함수를 거치지 않는다.
+  const fieldLabel = () =>
+    workflowFieldLabel(input.fieldType, input.label, { preset, shared, meta }, appState.curSession);
   const setField = (val: any, mode: WorkflowFieldMode = 'merge') => {
     setWorkflowField(appState.curSession, { preset, shared, meta }, input.fieldType, input.field, val, {
       label: fieldLabel(),
@@ -2707,7 +2736,7 @@ interface ImplProps {
   onMiddlePromptChange?: (txt: string) => void;
   getCharacterMiddlePrompt?: (index: number) => string;
   onCharacterMiddlePromptChange?: (index: number, txt: string) => void;
-  onImageUploaded?: (field: string, base64: string) => void;
+  onImageUploaded?: (field: string, base64: string) => void | Promise<void>;
 }
 
 export const PreSetEditorImpl = observer(
@@ -2890,7 +2919,7 @@ interface InnerProps {
   getCharacterMiddlePrompt?: (index: number) => string;
   onCharacterMiddlePromptChange?: (index: number, txt: string) => void;
   /** 이미지 입력칸에 파일을 올린 뒤(저장 완료 후) 호출 — 필드명과 base64. */
-  onImageUploaded?: (field: string, base64: string) => void;
+  onImageUploaded?: (field: string, base64: string) => void | Promise<void>;
 }
 
 interface UnionProps {

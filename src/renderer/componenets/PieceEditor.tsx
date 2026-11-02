@@ -29,6 +29,17 @@ import { migratePieceLibrary } from '../models/legacy';
 import { stringifyExportJson } from '../models/jsonExport';
 import { observer } from 'mobx-react-lite';
 import HelpIcon from './HelpIcon';
+import {
+  beginLocalPieceDrag,
+  editLocalPieceGroups,
+  editLocalPieceLibrary,
+  movePieceInLibrary,
+  pieceDragItem,
+  renameLocalPieceRecorded,
+  touchLocalPieceEdit,
+} from '../models/pieceUndo';
+import type { UndoPending } from '../models/undoService';
+import { UNDO_TEXT } from '../models/undoService';
 
 interface PieceCellProps {
   piece: Piece;
@@ -69,28 +80,41 @@ export const PieceCell = observer(
       };
     }, []);
 
+    // 조각 순서 드래그 = 끌기 시작~끝 1항목(로컬 조각만 — 전역은 기록 안 함, U5)
+    const moveRecordRef = useRef<UndoPending | null>(null);
     const [{ isDragging }, drag, preview] = useDrag(
       {
         type: 'piece',
-        item: { piece, curPieceLibrary, name, width: curWidth },
+        // 끌기 시작 때 만든다 — 옮길 조각 이름(pieceName)을 담는다(F1: 예전엔 빠져 마지막 조각이 옮겨졌다)
+        item: () => {
+          moveRecordRef.current?.commit();
+          moveRecordRef.current = movePiece
+            ? beginLocalPieceDrag(appState.curSession, curPieceLibrary)
+            : null;
+          return pieceDragItem(piece, curPieceLibrary, name, curWidth);
+        },
+        end: () => {
+          moveRecordRef.current?.commit();
+          moveRecordRef.current = null;
+        },
         canDrag: () => true,
         collect: (monitor) => ({
           isDragging: monitor.isDragging(),
         }),
       },
-      [curWidth, piece],
+      [curWidth, piece, curPieceLibrary, name, !!movePiece],
     );
 
     const [, drop] = useDrop(
       {
         accept: 'piece',
         hover: (draggedItem: any) => {
-          if (draggedItem.piece !== piece) {
+          if (draggedItem.piece !== piece && draggedItem.curPieceLibrary === curPieceLibrary) {
             movePiece!(draggedItem.pieceName, piece.name);
           }
         },
       },
-      [curWidth, piece],
+      [curWidth, piece, curPieceLibrary],
     );
 
     useEffect(() => {
@@ -127,7 +151,7 @@ export const PieceCell = observer(
                   curPieceLibrary.pieces.some((p) => p !== target && p.name === n),
               }).then((name) => {
                 if (!name) return;
-                target.name = name;
+                renameLocalPieceRecorded(appState.curSession, curPieceLibrary, target, name);
                 onReloadDB?.();
               });
             }}
@@ -146,7 +170,14 @@ export const PieceCell = observer(
                 callback: () => {
                   const index = curPieceLibrary.pieces.indexOf(piece);
                   if (index < 0) return;
-                  curPieceLibrary.pieces.splice(index, 1);
+                  editLocalPieceLibrary(
+                    appState.curSession,
+                    curPieceLibrary,
+                    (g) => UNDO_TEXT.pieceRemove(g, piece.name),
+                    () => {
+                      curPieceLibrary.pieces.splice(index, 1);
+                    },
+                  );
                   onReloadDB?.();
                 },
               });
@@ -162,6 +193,8 @@ export const PieceCell = observer(
             lineHighlight
             value={piece.prompt}
             onChange={(txt) => {
+              // 글자 입력 = 입력 칸을 떠날 때 1항목(로컬 조각만)
+              if (txt !== piece.prompt) touchLocalPieceEdit(appState.curSession, curPieceLibrary, piece);
               piece.prompt = txt;
               onPieceContentChange?.();
             }}
@@ -174,7 +207,15 @@ export const PieceCell = observer(
             type="checkbox"
             onChange={(e) => {
               if (!movePiece) return;
-              piece.multi = e.target.checked;
+              const checked = e.target.checked;
+              editLocalPieceLibrary(
+                appState.curSession,
+                curPieceLibrary,
+                (g) => UNDO_TEXT.pieceMulti(g, piece.name),
+                () => {
+                  piece.multi = checked;
+                },
+              );
               onPieceContentChange?.();
             }}
           />{' '}
@@ -191,9 +232,6 @@ const PieceEditor = observer(() => {
   const [selectedPieceLibrary, setSelectedPieceLibrary] = useState<
     string | null
   >(null);
-  const [curPieceLibrary, setCurPieceLibrary] = useState<PieceLibrary | null>(
-    null,
-  );
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -208,18 +246,14 @@ const PieceEditor = observer(() => {
       }))
     : [];
 
-  useEffect(() => {
-    if (selectedPieceLibrary && librarySource) {
-      setCurPieceLibrary(librarySource.get(selectedPieceLibrary) ?? null);
-    } else {
-      setCurPieceLibrary(null);
-    }
-  }, [selectedPieceLibrary, librarySource]);
+  // 선택 그룹은 렌더마다 목록에서 찾는다(2026-11-02 U5) — 되돌리기로 그룹이 빠지거나 다시 들어와도 화면이 지금 객체를 보게.
+  // (예전엔 선택 때 찾아 둔 객체를 상태로 들고 있어, 같은 Map 에서 그룹이 지워져도 옛 객체가 계속 보였다)
+  const curPieceLibrary: PieceLibrary | null =
+    selectedPieceLibrary && librarySource ? librarySource.get(selectedPieceLibrary) ?? null : null;
 
   // 스코프 전환 시 선택 초기화
   useEffect(() => {
     setSelectedPieceLibrary(null);
-    setCurPieceLibrary(null);
   }, [scope]);
 
   const reloadDB = () => {
@@ -231,11 +265,9 @@ const PieceEditor = observer(() => {
     }
   };
 
+  // 이름을 못 찾으면 아무것도 하지 않는다(F1 — 예전엔 splice(-1, 1) 로 마지막 조각을 옮겼다)
   const movePiece = (from: string, to: string) => {
-    const fromIndex = curPieceLibrary!.pieces.findIndex((p) => p.name === from);
-    const toIndex = curPieceLibrary!.pieces.findIndex((p) => p.name === to);
-    const [movedKey] = curPieceLibrary!.pieces.splice(fromIndex, 1);
-    curPieceLibrary!.pieces.splice(toIndex, 0, movedKey);
+    if (!curPieceLibrary || !movePieceInLibrary(curPieceLibrary, from, to)) return;
     if (scope === 'global') globalPieceService.scheduleSave();
   };
 
@@ -251,13 +283,18 @@ const PieceEditor = observer(() => {
         json = migratePieceLibrary(json);
       }
       const source = scope === 'local' ? curSession!.library : globalPieceService.library;
+      // 되돌리기 = 로컬 대상만(U5) — 전역은 헬퍼가 그대로 실행만 한다
+      const addToSource = (name: string, lib: PieceLibrary) =>
+        editLocalPieceGroups(curSession, source, [name], UNDO_TEXT.pieceGroupImport(name), () => {
+          if (scope === 'local') {
+            source.set(name, lib);
+          } else {
+            globalPieceService.addLibrary(name, lib);
+          }
+        });
       if (!source.has(json.name)) {
         const lib = PieceLibrary.fromJSON(json);
-        if (scope === 'local') {
-          source.set(json.name, lib);
-        } else {
-          globalPieceService.addLibrary(json.name, lib);
-        }
+        addToSource(json.name, lib);
         setSelectedPieceLibrary(json.name);
         reloadDB();
         appState.pushMessage(`조각그룹 "${json.name}" 불러오기 완료`);
@@ -270,11 +307,7 @@ const PieceEditor = observer(() => {
         if (!newName) return;
         json.name = newName;
         const lib = PieceLibrary.fromJSON(json);
-        if (scope === 'local') {
-          source.set(newName, lib);
-        } else {
-          globalPieceService.addLibrary(newName, lib);
-        }
+        addToSource(newName, lib);
         setSelectedPieceLibrary(newName);
         reloadDB();
       }
@@ -311,41 +344,52 @@ const PieceEditor = observer(() => {
 
     const pieceName = file.name.replace(/\.txt$/i, '');
 
-    let targetLibrary = curPieceLibrary;
-    if (!targetLibrary) {
-      const libraryName = 'wildcards';
-      const source = scope === 'local' ? curSession!.library : globalPieceService.library;
-      if (!source.has(libraryName)) {
-        const newLib = PieceLibrary.fromJSON({
-          version: 1,
-          pieces: [],
-          name: libraryName,
-        });
-        if (scope === 'local') {
-          source.set(libraryName, newLib);
-        } else {
-          globalPieceService.addLibrary(libraryName, newLib);
-        }
-      }
-      targetLibrary = source.get(libraryName)!;
-      setSelectedPieceLibrary(libraryName);
-    }
+    const libraryName = 'wildcards';
+    const source = scope === 'local' ? curSession!.library : globalPieceService.library;
+    // 대상 그룹(선택된 그룹, 없으면 wildcards — 없으면 만든다). 그룹 생성+조각 추가 = 되돌리기 1항목(로컬만, U5)
+    const groupName = curPieceLibrary ? selectedPieceLibrary ?? curPieceLibrary.name : libraryName;
+    const existing = curPieceLibrary ?? source.get(libraryName);
 
     let finalName = pieceName;
     let counter = 1;
-    while (targetLibrary.pieces.find((p) => p.name === finalName)) {
+    while (existing?.pieces.find((p) => p.name === finalName)) {
       finalName = `${pieceName}_${counter}`;
       counter++;
     }
 
     const prompt = lines.join('\n');
-    targetLibrary.pieces.push(
-      Piece.fromJSON({
-        name: finalName,
-        prompt: prompt,
-        multi: true,
-      }),
+    editLocalPieceGroups(
+      curSession,
+      source,
+      [groupName],
+      UNDO_TEXT.pieceWildcardImport(groupName, finalName),
+      () => {
+        let targetLibrary = curPieceLibrary;
+        if (!targetLibrary) {
+          if (!source.has(libraryName)) {
+            const newLib = PieceLibrary.fromJSON({
+              version: 1,
+              pieces: [],
+              name: libraryName,
+            });
+            if (scope === 'local') {
+              source.set(libraryName, newLib);
+            } else {
+              globalPieceService.addLibrary(libraryName, newLib);
+            }
+          }
+          targetLibrary = source.get(libraryName)!;
+        }
+        targetLibrary.pieces.push(
+          Piece.fromJSON({
+            name: finalName,
+            prompt: prompt,
+            multi: true,
+          }),
+        );
+      },
     );
+    if (!curPieceLibrary) setSelectedPieceLibrary(libraryName);
 
     reloadDB();
     appState.pushMessage(`와일드카드 "${finalName}" 불러오기 완료 (${lines.length}줄, 랜덤 줄 선택 모드 활성화)`);
@@ -408,11 +452,13 @@ const PieceEditor = observer(() => {
       pieces: [],
       name: name,
     });
-    if (scope === 'local') {
-      source.set(name, newLib);
-    } else {
-      globalPieceService.addLibrary(name, newLib);
-    }
+    editLocalPieceGroups(curSession, source, [name], UNDO_TEXT.pieceGroupAdd(name), () => {
+      if (scope === 'local') {
+        source.set(name, newLib);
+      } else {
+        globalPieceService.addLibrary(name, newLib);
+      }
+    });
     setSelectedPieceLibrary(name);
     reloadDB();
   };
@@ -429,7 +475,11 @@ const PieceEditor = observer(() => {
       }),
       callback: async () => {
         if (scope === 'local') {
-          curSession!.library.delete(selectedPieceLibrary!);
+          // 되돌리기 = 같은 이름·내용·자리로 되살림(로컬만, U5)
+          const name = selectedPieceLibrary!;
+          editLocalPieceGroups(curSession, curSession!.library, [name], UNDO_TEXT.pieceGroupRemove(name), () => {
+            curSession!.library.delete(name);
+          });
         } else {
           globalPieceService.deleteLibrary(selectedPieceLibrary!);
         }
@@ -478,6 +528,10 @@ const PieceEditor = observer(() => {
       }
     };
 
+    // 되돌리기 = 대상이 로컬일 때만(전역 → 로컬 복사, U5) — 전역 대상이면 헬퍼가 그대로 실행만 한다
+    const recordTarget = <R,>(name: string, how: string, mutate: () => R): R =>
+      editLocalPieceGroups(curSession, targetSource, [name], UNDO_TEXT.pieceGroupFromGlobal(name, how), mutate);
+
     // 통째로 복사 (새 이름 또는 대상에 없는 경우)
     const doFullCopy = (name: string) => {
       const cloned = PieceLibrary.fromJSON(curPieceLibrary.toJSON());
@@ -524,7 +578,7 @@ const PieceEditor = observer(() => {
 
     if (!targetSource.has(selectedPieceLibrary)) {
       // 대상에 동명 라이브러리 없음 → 바로 복사
-      doFullCopy(selectedPieceLibrary);
+      recordTarget(selectedPieceLibrary, '새로', () => doFullCopy(selectedPieceLibrary));
       return;
     }
 
@@ -560,14 +614,17 @@ const PieceEditor = observer(() => {
       items,
       callback: (action) => {
         if (!action) return;
+        const name = selectedPieceLibrary!;
         if (action === 'merge-overwrite') {
-          doMerge(selectedPieceLibrary!, true);
+          recordTarget(name, '병합', () => doMerge(name, true));
         } else if (action === 'merge-skip') {
-          doMerge(selectedPieceLibrary!, false);
+          recordTarget(name, '병합', () => doMerge(name, false));
         } else if (action === 'overwrite') {
-          if (scope === 'local') globalPieceService.library.delete(selectedPieceLibrary!);
-          else curSession!.library.delete(selectedPieceLibrary!);
-          doFullCopy(selectedPieceLibrary!);
+          recordTarget(name, '덮어쓰기', () => {
+            if (scope === 'local') globalPieceService.library.delete(name);
+            else curSession!.library.delete(name);
+            doFullCopy(name);
+          });
         } else if (action === 'rename') {
           void promptName({
             title: '새 조각그룹 이름을 입력하세요',
@@ -575,7 +632,7 @@ const PieceEditor = observer(() => {
             existing: (n) => targetSource.has(n),
           }).then((newName) => {
             if (!newName) return;
-            doFullCopy(newName);
+            recordTarget(newName, '새 이름', () => doFullCopy(newName));
           });
         }
       },
@@ -759,12 +816,19 @@ const PieceEditor = observer(() => {
                   existing: (n) => curPieceLibrary.pieces.some((p) => p.name === n),
                 });
                 if (!name) return;
-                curPieceLibrary!.pieces.push(
-                  Piece.fromJSON({
-                    name: name,
-                    prompt: '',
-                    multi: false,
-                  }),
+                editLocalPieceLibrary(
+                  curSession,
+                  curPieceLibrary,
+                  (g) => UNDO_TEXT.pieceAdd(g, name),
+                  () => {
+                    curPieceLibrary!.pieces.push(
+                      Piece.fromJSON({
+                        name: name,
+                        prompt: '',
+                        multi: false,
+                      }),
+                    );
+                  },
                 );
                 reloadDB();
               }}

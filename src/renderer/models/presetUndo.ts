@@ -4,8 +4,8 @@
 // · 기록은 호출부(UI·흐름 계층)의 사용자 동작 지점에서만 이 모듈의 헬퍼로 한다. PreSetEditor 의 렌더 중 자동 보정
 //   (작업모드·사전 세팅 목록·공용 설정·선택 이름 보충)과 마운트 중 샘플링 계열 활성화는 이 헬퍼를 거치지 않는다(기록 금지).
 // · 기록 대상 범위 = 현재 프로젝트의 그림체(session.presets 안의 객체)·공용 설정(session.presetShareds 의 값)·프로젝트 필드
-//   (추가 프롬프트·새 씬 해상도·선택)·로컬 캐릭터 프리셋. 같은 편집기를 쓰는 변형 씬 프리셋(U5)·씬 메타(레거시 증강 워크플로우)·
-//   글로벌 라이브러리(보류)는 대입만 하고 기록하지 않는다.
+//   (추가 프롬프트·새 씬 해상도·선택)·로컬 캐릭터 프리셋 + 세션에 등록된 변형 씬의 프리셋(U5 — 씬 손잡이로 따라감).
+//   같은 편집기를 쓰는 미등록 변형 씬 초안·씬 메타(레거시 증강 워크플로우)·글로벌 라이브러리(보류)는 대입만 하고 기록하지 않는다.
 // · 그림체 목록(추가·복제·삭제·순서·불러오기·글로벌→프로젝트)은 「목록 차분」으로 되돌린다 — 그 동작이 넣은 객체는 빼고,
 //   뺀 객체는 **같은 객체**를 원래 자리에 다시 넣는다(삭제는 파일을 지우지 않으므로 대표 이미지 등은 그대로 — 손잡이 rebind 불필요).
 //   그사이 기록 밖에서 생긴 그림체는 지우지 않고 뒤에 남긴다(씬 순서와 같은 병합 복원). 다시 넣을 이름을 다른 그림체가 쓰면 그 항목만 실패.
@@ -17,12 +17,15 @@ import { runInAction } from 'mobx';
 import { MODEL_SAMPLING_FIELDS, setPresetSamplingField } from './modelSamplingProfiles';
 import type { ModelSamplingFamily } from './modelSamplingProfiles';
 import { editTargetId, flushSceneFieldEdit, touchUndoEdit } from './sceneFieldUndo';
+import { sceneInSession } from './sceneStructureUndo';
+import { variantSceneOfPreset } from './variantSceneUndo';
 import type { FocusLeaveWatcher } from './sceneFieldUndo';
 import { CharacterPreset, ReferenceItem, VibeItem } from './types';
 import type { ICharacterPreset, IReferenceItem, IVibeItem, SelectedWorkflow, Session } from './types';
 import {
   undoDeepClone,
   undoDeepEqual,
+  undoRef,
   undoService,
   UNDO_TEXT,
   UndoOutcome,
@@ -72,15 +75,26 @@ function holderOf(holders: WorkflowHolders, kind: WorkflowFieldType): any {
   return holders.meta;
 }
 
-/** 기록 대상인가 — 씬 메타(레거시 증강 워크플로우의 씬 전용 칸)는 기록하지 않는다 */
+/**
+ * 기록 대상인가 — 씬 메타(레거시 증강 워크플로우의 씬 전용 칸)는 기록하지 않는다.
+ * 그림체 칸은 프로젝트 그림체 + **세션에 등록된 변형 씬의 프리셋**(U5 — InPaintEditor 의 InnerPreSetEditor·VibeEditor·
+ * CharacterReferenceEditor·캐릭터 프롬프트 편집기가 같은 setField 를 쓴다). 미등록 변형 씬 초안·글로벌 사본은 대입만.
+ */
 function inScope(session: Session | undefined, kind: WorkflowFieldType, holder: unknown): boolean {
-  if (kind === 'preset') return isProjectPreset(session, holder);
+  if (kind === 'preset') return isProjectPreset(session, holder) || !!variantSceneOfPreset(session, holder);
   if (kind === 'shared') return isProjectShared(session, holder);
   return false;
 }
 
 /** 실행 직전 — 대상이 아직 이 프로젝트에 있는가 */
 function holderCheck(session: Session, kind: WorkflowFieldType | 'session', holder: any): () => true | string {
+  const variant = kind === 'preset' && !isProjectPreset(session, holder) ? variantSceneOfPreset(session, holder) : undefined;
+  if (variant) {
+    // 변형 씬 프리셋 — 씬 손잡이로 따라간다(씬 내용 복제 되돌림이 프리셋 객체를 바꿔도 그 씬의 지금 프리셋에 쓴다)
+    const ref = undoRef(variant);
+    return () =>
+      sceneInSession(session, ref.current) && ref.current.preset ? true : UNDO_TEXT.sceneGone(ref.current.name);
+  }
   if (kind === 'preset') {
     return () => (isProjectPreset(session, holder) ? true : UNDO_TEXT.presetGone(String(holder?.name ?? '')));
   }
@@ -90,14 +104,29 @@ function holderCheck(session: Session, kind: WorkflowFieldType | 'session', hold
   return () => true;
 }
 
-/** 라벨 — 그림체 칸이면 그림체 이름, 공용 설정이면 「공용 설정」 */
-export function workflowFieldLabel(kind: WorkflowFieldType, fieldLabel: string, holders: WorkflowHolders): string {
+/** 그림체 칸이 등록된 변형 씬의 프리셋이면 그 씬(라벨용) */
+function variantOwnerOf(kind: WorkflowFieldType, holders: WorkflowHolders, session: Session | undefined) {
+  if (kind !== 'preset' || !session || isProjectPreset(session, holders.preset)) return undefined;
+  return variantSceneOfPreset(session, holders.preset);
+}
+
+/** 라벨 — 그림체 칸이면 그림체 이름(등록된 변형 씬 프리셋이면 「변형 씬 {이름}」), 공용 설정이면 「공용 설정」 */
+export function workflowFieldLabel(
+  kind: WorkflowFieldType,
+  fieldLabel: string,
+  holders: WorkflowHolders,
+  session?: Session,
+): string {
+  const variant = variantOwnerOf(kind, holders, session);
+  if (variant) return UNDO_TEXT.variantField(fieldLabel, variant.name);
   if (kind === 'preset') return UNDO_TEXT.presetField(fieldLabel, String(holders.preset?.name ?? ''));
   return UNDO_TEXT.sharedField(fieldLabel);
 }
 
-/** 캐릭터 프롬프트 라벨의 주인(그림체 이름 또는 「공용 설정」) */
-export function workflowOwnerName(kind: WorkflowFieldType, holders: WorkflowHolders): string {
+/** 캐릭터 프롬프트 라벨의 주인(그림체 이름·변형 씬 이름 또는 「공용 설정」) */
+export function workflowOwnerName(kind: WorkflowFieldType, holders: WorkflowHolders, session?: Session): string {
+  const variant = variantOwnerOf(kind, holders, session);
+  if (variant) return variant.name;
   return kind === 'preset' ? String(holders.preset?.name ?? '') : '공용 설정';
 }
 
@@ -147,8 +176,21 @@ interface FieldTarget {
   keys: string[];
 }
 
+/** 실행 시점의 대상 객체 — 변형 씬 프리셋은 씬 손잡이로(그 씬의 지금 프리셋), 나머지는 기록 때 객체 그대로 */
+function holderResolver(session: Session, t: FieldTarget): () => any {
+  if (t.kind === 'preset' && !isProjectPreset(session, t.holder)) {
+    const scene = variantSceneOfPreset(session, t.holder);
+    if (scene) {
+      const ref = undoRef(scene);
+      return () => ref.current.preset;
+    }
+  }
+  return () => t.holder;
+}
+
 function fieldsAdapter(session: Session, targets: readonly FieldTarget[]): UndoSnapshotAdapter<unknown[][]> {
   const checks = targets.map((t) => holderCheck(session, t.kind, t.holder));
+  const holdersNow = targets.map((t) => holderResolver(session, t));
   return {
     // 통째 복원 — 기록 밖 변경과 겹치면 확인(D16)
     detectConflict: true,
@@ -159,14 +201,20 @@ function fieldsAdapter(session: Session, targets: readonly FieldTarget[]): UndoS
       }
       return true;
     },
-    snapshot: () => targets.map((t) => t.keys.map((k) => undoDeepClone(t.holder[k]))),
+    snapshot: () =>
+      targets.map((t, i) => {
+        const h = holdersNow[i]();
+        return t.keys.map((k) => undoDeepClone(h?.[k]));
+      }),
     restore: (snap) =>
       runInAction(() => {
         targets.forEach((t, i) => {
+          const h = holdersNow[i]();
+          if (!h) return;
           t.keys.forEach((k, j) => {
             const plain = undoDeepClone(snap[i]?.[j]);
-            if (plain === undefined && !(k in t.holder)) return;
-            t.holder[k] = restoreWorkflowValue(k, plain, t.holder[k]);
+            if (plain === undefined && !(k in h)) return;
+            h[k] = restoreWorkflowValue(k, plain, h[k]);
           });
         });
       }),

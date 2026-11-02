@@ -33,6 +33,12 @@ import {
   VARIANT_BATCH_TEXT,
 } from './variantBatch';
 import type { FocusPatch } from './variantBatch';
+import {
+  editVariantScenesFields,
+  MASK_APPLY_KEYS,
+  STRENGTH_BATCH_KEYS,
+} from './variantSceneUndo';
+import { UNDO_TEXT } from './undoService';
 
 /** 프로젝트 파일 이미지(첨부 이미지·마스크)의 크기. 읽지 못하면 undefined(i2iBatchFlow 의 마스크 판정과 공용). */
 export async function readVibeImageSize(
@@ -158,17 +164,25 @@ async function applyMaskToScenes(
     return;
   }
   let applied = 0;
-  runInAction(() => {
-    for (const { scene, path, focus } of prepared) {
-      if (!stillSame(session, scene, INPAINT_WORKFLOW_TYPE)) {
-        failed.push(scene.name);
-        continue;
-      }
-      scene.preset.mask = path;
-      Object.assign(scene.preset, focus);
-      applied++;
-    }
-  });
+  // 되돌리기(U5): 바뀐 씬 전부 = 1항목(마스크 경로·Focused 값 복원 — 씬마다 저장한 새 마스크 파일은 남김)
+  editVariantScenesFields(
+    session,
+    prepared.map((p) => p.scene),
+    MASK_APPLY_KEYS,
+    (n) => UNDO_TEXT.maskApplyBatch(n),
+    () =>
+      runInAction(() => {
+        for (const { scene, path, focus } of prepared) {
+          if (!stillSame(session, scene, INPAINT_WORKFLOW_TYPE)) {
+            failed.push(scene.name);
+            continue;
+          }
+          scene.preset.mask = path;
+          Object.assign(scene.preset, focus);
+          applied++;
+        }
+      }),
+  );
   appState.pushMessage(
     maskApplyResultText({ applied, resized, skipped: skippedCount, failed }),
     batchResultKind(applied, failed.length),
@@ -227,14 +241,22 @@ export function openStrengthBatchFlow(
     }
     const failed: string[] = [];
     let result = { changed: 0, noiseChanged: 0 };
-    runInAction(() => {
-      const live = targets.filter((s) => {
-        const ok = stillSame(session, s, s.workflowType);
-        if (!ok) failed.push(s.name);
-        return ok;
-      });
-      result = applyStrengthBatch(live, { strength, noise });
-    });
+    // 되돌리기(U5): 바뀐 씬 전부 = 1항목(강도·노이즈 복원)
+    editVariantScenesFields(
+      session,
+      targets,
+      STRENGTH_BATCH_KEYS,
+      (n) => UNDO_TEXT.strengthNoiseBatch(n),
+      () =>
+        runInAction(() => {
+          const live = targets.filter((s) => {
+            const ok = stillSame(session, s, s.workflowType);
+            if (!ok) failed.push(s.name);
+            return ok;
+          });
+          result = applyStrengthBatch(live, { strength, noise });
+        }),
+    );
     appState.pushMessage(
       strengthBatchResultText({
         changed: result.changed,

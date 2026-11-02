@@ -46,6 +46,15 @@ import { recordSceneRename } from '../models/sceneStructureUndo';
 import { beginSceneDelete } from '../models/deleteUndo';
 import { editSceneFields } from '../models/sceneFieldUndo';
 import { UNDO_TEXT } from '../models/undoService';
+import { commitOnPointerRelease, setWorkflowField, workflowFieldLabel } from '../models/presetUndo';
+import {
+  beginVariantSlide,
+  editVariantFields,
+  setVariantPresetField,
+  touchVariantEdit,
+  VARIANT_FOCUS_RECT_KEYS,
+  VARIANT_RESOLUTION_KEYS,
+} from '../models/variantSceneUndo';
 import { observer } from 'mobx-react-lite';
 import { InnerPreSetEditor } from './PreSetEdtior';
 import { reaction, runInAction } from 'mobx';
@@ -169,24 +178,53 @@ const InPaintEditor = observer(
     const focusEnabled = supportsFocus && editingScene.preset.focusEnabled === true;
     const focusContext = normalizeFocusContext(editingScene.preset.focusContext);
     // 사각형·켜짐 값은 프리셋에 바로 쓴다(다른 프리셋 토글과 같은 경로 — 씬 toJSON reaction → 저장 큐).
+    // 사용자 동작(영역 드래그·켜기/끄기·맥락 슬라이더)만 되돌리기 기록(U5) — 이미지 크기 맞춤 보정(아래 [image] 효과)은 기록 안 함.
     const applyFocusRect = (rect: Parameters<typeof focusRectPresetPatch>[0]) => {
-      Object.assign(editingScene.preset, focusRectPresetPatch(rect));
+      editVariantFields(
+        appState.curSession,
+        editingScene,
+        { preset: VARIANT_FOCUS_RECT_KEYS },
+        UNDO_TEXT.variantFocusRect(editingScene.name),
+        () => {
+          runInAction(() => {
+            Object.assign(editingScene.preset, focusRectPresetPatch(rect));
+          });
+        },
+      );
     };
     const commitFocusDrag = (result: FocusDragResult) => {
       if (result.kind === 'set') applyFocusRect(result.rect);
       else if (result.kind === 'clear') applyFocusRect(null);
     };
+    const setFocusEnabled = (on: boolean) =>
+      setVariantPresetField(
+        appState.curSession,
+        editingScene,
+        'focusEnabled',
+        on,
+        on ? UNDO_TEXT.variantFocusOn(editingScene.name) : UNDO_TEXT.variantFocusOff(editingScene.name),
+      );
     const selectFocusTool = () => {
       if (focusTool && brushing) {
         // 켜진 영역 도구를 다시 누르면 Focused 끄기(사각형 값은 보존 — 다시 켜면 복원).
         setFocusTool(false);
-        editingScene.preset.focusEnabled = false;
+        setFocusEnabled(false);
         return;
       }
       setFocusTool(true);
       setBrushing(true);
-      editingScene.preset.focusEnabled = true;
+      setFocusEnabled(true);
     };
+    // 맥락 여백 슬라이더 — 누름~뗌 1항목(D12), 키보드 조작은 1초 병합
+    const startFocusContextSlide = () =>
+      commitOnPointerRelease(
+        beginVariantSlide(
+          appState.curSession,
+          editingScene,
+          'focusContext',
+          UNDO_TEXT.variantFocusContext(editingScene.name),
+        ),
+      );
     // 조합 에디터 탭(2026-10-04 B4, SPEC §7-4) — 미러('shared') 또는 조합 모드 I2I·인페인트('shared'·'snapshot', 인페인트는 P1).
     // 'shared' 는 상위/하위/전역 네거티브 칸이 현재 사전 세팅에 바로 쓰고(실시간 공유), 'snapshot' 은 씬 프리셋의 고정값.
     const comboMode = variantComboMode(editingScene);
@@ -217,7 +255,16 @@ const InPaintEditor = observer(
       return editingScene.preset.prompt || '';
     };
 
+    // 중간 프롬프트 = 프리셋 prompt + 첫 조각(조합 에디터 첫 칸)을 함께 — 입력 칸을 떠날 때 1항목(D13, U5)
     const setMiddlePrompt = (txt: string) => {
+      if (txt !== getMiddlePrompt()) {
+        touchVariantEdit(
+          appState.curSession,
+          editingScene,
+          { scene: ['slots'], preset: ['prompt'] },
+          UNDO_TEXT.sceneMiddlePrompt(editingScene.name),
+        );
+      }
       editingScene.preset.prompt = txt;
       if (editingScene.slots.length > 0 && editingScene.slots[0].length > 0) {
         editingScene.slots[0][0].prompt = txt;
@@ -246,11 +293,28 @@ const InPaintEditor = observer(
         confirmText: COMBO_EDITOR_TEXT.turnOff,
       });
       if (!ok) return;
-      runInAction(() => {
-        editingScene.preset.prompt = middle;
-        editingScene.comboMode = undefined;
-      });
+      // 되돌리기 = 조합 모드·단일 프롬프트를 함께 되살림(U5 — 편집 창 UI 로는 다시 켤 수 없어 되돌리기가 유일한 복구)
+      editVariantFields(
+        appState.curSession,
+        editingScene,
+        { scene: ['comboMode'], preset: ['prompt'] },
+        UNDO_TEXT.variantComboOff(editingScene.name),
+        () => {
+          runInAction(() => {
+            editingScene.preset.prompt = middle;
+            editingScene.comboMode = undefined;
+          });
+        },
+      );
     };
+
+    // 「프롬프트 에디터」 탭의 글자 칸 — 'snapshot' 은 이 변형 씬 프리셋, 'shared' 는 현재 그림체(프로젝트 사전 세팅)에 쓴다.
+    // 둘 다 사전 세팅 setField 집약(setWorkflowField)과 같은 편집 세션 기록(D13, U5).
+    const setPromptRow = (target: any, field: string, rowLabel: string, v: string) =>
+      setWorkflowField(appState.curSession, { preset: target }, 'preset', field, v, {
+        label: workflowFieldLabel('preset', rowLabel, { preset: target }, appState.curSession),
+        mode: 'edit',
+      });
 
     // 「프롬프트 에디터」 탭 칸(상위·중간·하위·전역 네거티브) — 모바일 FloatView·PC 오른쪽 패널 공용
     const comboPromptRows: {
@@ -263,18 +327,20 @@ const InPaintEditor = observer(
             {
               label: COMBO_EDITOR_TEXT.snapshotFront,
               value: editingScene.preset.frontPrompt || '',
-              onChange: (v) => { editingScene.preset.frontPrompt = v; },
+              onChange: (v) =>
+                setPromptRow(editingScene.preset, 'frontPrompt', COMBO_EDITOR_TEXT.snapshotFront, v),
             },
             { label: COMBO_EDITOR_TEXT.middle, value: getMiddlePrompt(), onChange: setMiddlePrompt },
             {
               label: COMBO_EDITOR_TEXT.snapshotBack,
               value: editingScene.preset.backPrompt || '',
-              onChange: (v) => { editingScene.preset.backPrompt = v; },
+              onChange: (v) =>
+                setPromptRow(editingScene.preset, 'backPrompt', COMBO_EDITOR_TEXT.snapshotBack, v),
             },
             {
               label: COMBO_EDITOR_TEXT.snapshotUc,
               value: editingScene.preset.globalUc || '',
-              onChange: (v) => { editingScene.preset.globalUc = v; },
+              onChange: (v) => setPromptRow(editingScene.preset, 'globalUc', COMBO_EDITOR_TEXT.snapshotUc, v),
             },
           ]
         : globalPreset
@@ -282,18 +348,18 @@ const InPaintEditor = observer(
               {
                 label: COMBO_EDITOR_TEXT.sharedFront,
                 value: globalPreset.frontPrompt || '',
-                onChange: (v) => { globalPreset.frontPrompt = v; },
+                onChange: (v) => setPromptRow(globalPreset, 'frontPrompt', COMBO_EDITOR_TEXT.sharedFront, v),
               },
               { label: COMBO_EDITOR_TEXT.middle, value: getMiddlePrompt(), onChange: setMiddlePrompt },
               {
                 label: COMBO_EDITOR_TEXT.sharedBack,
                 value: globalPreset.backPrompt || '',
-                onChange: (v) => { globalPreset.backPrompt = v; },
+                onChange: (v) => setPromptRow(globalPreset, 'backPrompt', COMBO_EDITOR_TEXT.sharedBack, v),
               },
               {
                 label: COMBO_EDITOR_TEXT.sharedUc,
                 value: globalPreset.uc || '',
-                onChange: (v) => { globalPreset.uc = v; },
+                onChange: (v) => setPromptRow(globalPreset, 'uc', COMBO_EDITOR_TEXT.sharedUc, v),
               },
             ]
           : [];
@@ -543,7 +609,18 @@ const InPaintEditor = observer(
       const notice = paidResolutionNotice(r);
       if (notice) appState.pushMessage(notice, 'info');
     };
+    // 「이미지 크기로 맞추기」 버튼 = 해상도 3필드 1항목(U5)
+    const fitResolution = (r: ImageResolution) =>
+      editSceneFields(
+        appState.curSession,
+        editingScene,
+        VARIANT_RESOLUTION_KEYS,
+        UNDO_TEXT.variantFitResolution(editingScene.name),
+        () => applyResolution(editingScene, r),
+      );
     // 편집 창 이미지 입력칸에 새 이미지를 올리면(ⓑ) 저장 뒤 씬 해상도를 그 크기로 맞춘다.
+    // 등록된 씬의 비어 있던 이미지 칸이면 ImageSelect → uploadVariantImageRecorded 가 경로 설정 + 이 해상도 맞춤을 1항목으로 담는다
+    // (이미 있던 이미지를 덮어쓴 업로드는 기록하지 않음).
     const onImageUploaded = async (field: string, base64: string) => {
       const scene = editingScene;
       if (field !== 'image' || !workflowUsesImageResolution(scene.workflowType)) return;
@@ -812,7 +889,7 @@ const InPaintEditor = observer(
                 </span>
                 <button
                   className="round-button back-sky flex-none"
-                  onClick={() => applyResolution(editingScene, fitTarget)}
+                  onClick={() => fitResolution(fitTarget)}
                 >
                   {IMAGE_RESOLUTION_TEXT.fitButton}
                 </button>
@@ -960,9 +1037,14 @@ const InPaintEditor = observer(
                     step={FOCUS_GRID}
                     value={focusContext}
                     className="inline-block flex-1 min-w-[80px] md:min-w-[180px] max-w-[360px]"
+                    onPointerDown={startFocusContextSlide}
                     onChange={(e) => {
-                      editingScene.preset.focusContext = normalizeFocusContext(
-                        Number(e.target.value),
+                      setVariantPresetField(
+                        appState.curSession,
+                        editingScene,
+                        'focusContext',
+                        normalizeFocusContext(Number(e.target.value)),
+                        UNDO_TEXT.variantFocusContext(editingScene.name),
                       );
                     }}
                   />
@@ -1020,7 +1102,7 @@ const InPaintEditor = observer(
                   className="btn-link"
                   onClick={() => {
                     setFocusTool(false);
-                    editingScene.preset.focusEnabled = false;
+                    setFocusEnabled(false);
                   }}
                 >
                   {FOCUS_EDITOR_TEXT.off}
