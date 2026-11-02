@@ -13,7 +13,6 @@ import {
   sessionService,
   taskQueueService,
   templateService,
-  trashService,
   workFlowService,
   zipService,
 } from '.';
@@ -22,7 +21,7 @@ import { runPool } from './concurrency';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { Dialog } from '../componenets/ConfirmWindow';
-import { cropMirrorResultFromDataUri, dataUriToBase64, deleteImageFiles } from './ImageService';
+import { cropMirrorResultFromDataUri, dataUriToBase64 } from './ImageService';
 import { IMAGE_RETENTION_DAYS, SCENE_RETENTION_DAYS } from './TrashService';
 import {
   deleteConfirmText,
@@ -85,6 +84,7 @@ import { recordScenesCreated } from './sceneStructureUndo';
 import { UNDO_TEXT } from './undoService';
 import { editScenesFields, restoreSceneFieldValue, SCENE_CONTENT_COPY_KEYS } from './sceneFieldUndo';
 import { setFavoritesInScenes } from './imageStateUndo';
+import { beginImageDelete, beginSceneDelete } from './deleteUndo';
 
 export class BatchProcessService {
   openBatchProcessMenu(
@@ -138,10 +138,12 @@ export class BatchProcessService {
         callback: async () => {
           // 한 건이 실패(타 창 잠금·파일 잠금 등)해도 나머지는 계속 처리하고 결과를 숨기지 않는다.
           // 예전에는 예외가 루프를 끊어 일부만 삭제된 채 알림 없이 끝났다(2026-09-21).
+          // 실제로 옮긴 씬 전부 = 되돌리기 1항목(U4)
           const failedNames: string[] = [];
+          const rec = beginSceneDelete(appState.curSession);
           for (const scene of selected) {
             try {
-              await trashService.moveSceneToTrash(appState.curSession!, scene);
+              await rec.trash(scene);
               // 다른 창 잠금으로 조용히 돌아온 경우도 실패로 센다(이동 실패 시 씬은 남는다 — 2026-10-02 S1)
               if (appState.curSession?.hasScene(scene.type, scene.name)) {
                 failedNames.push(scene.name);
@@ -151,6 +153,7 @@ export class BatchProcessService {
               failedNames.push(scene.name);
             }
           }
+          rec.commit();
           const moved = selected.length - failedNames.length;
           const failedText =
             failedNames.length === 0
@@ -203,19 +206,20 @@ export class BatchProcessService {
         pick: (scene: GenericScene, paths: string[]) => string[],
       ) => {
         let failed = 0;
-        for (const scene of selected) {
-          const targets = pick(scene, freshPaths(scene));
-          try {
-            failed += await deleteImageFiles(
-              appState.curSession!,
-              targets,
-              scene,
-              { notify: false },
-            );
-          } catch (e) {
-            console.error('이미지 삭제 실패:', scene.name, e);
-            failed += targets.length;
+        // 선택한 씬 전부 = 되돌리기 1항목(U4 — 0장인 씬은 기록에 들어가지 않음)
+        const rec = beginImageDelete(appState.curSession);
+        try {
+          for (const scene of selected) {
+            const targets = pick(scene, freshPaths(scene));
+            try {
+              failed += (await rec.delete(scene, targets, { notify: false })).failed.length;
+            } catch (e) {
+              console.error('이미지 삭제 실패:', scene.name, e);
+              failed += targets.length;
+            }
           }
+        } finally {
+          rec.commit();
         }
         if (failed > 0) {
           appState.pushMessage(

@@ -76,6 +76,7 @@ import {
 } from './CombinationList';
 import { renameScene, mergeScene } from '../models/SessionService';
 import { recordSceneRename, sceneInSession } from '../models/sceneStructureUndo';
+import { beginSceneDelete } from '../models/deleteUndo';
 import {
   dragSceneFields,
   editBaseCharacterOrder,
@@ -2166,13 +2167,15 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
                   outcome: { trashDays: SCENE_RETENTION_DAYS },
                 }),
                 callback: async () => {
-                  const { trashService } = await import('../models');
                   // 휴지통 이동 실패면 씬이 그대로 남는다(2026-10-02 S1) — 알리고 편집 창은 닫지 않는다.
                   // 다른 창 잠금으로 조용히 돌아와 씬이 남아 있어도 실패로 센다(SPEC §8, X4).
+                  // 실제로 휴지통으로 간 경우만 되돌리기 기록(U4 — moveSceneToTrash 는 recorder 가 그대로 부른다)
+                  const rec = beginSceneDelete(curSession!);
                   const outcome = await runTrashDelete({
-                    remove: () => trashService.moveSceneToTrash(curSession!, scene),
+                    remove: () => rec.trash(scene),
                     stillExists: () => curSession!.hasScene(scene.type, scene.name),
                   });
+                  rec.commit();
                   if (outcome.kind === 'error') {
                     appState.pushMessage(outcome.message || '씬을 휴지통으로 옮기지 못했습니다.');
                     return;

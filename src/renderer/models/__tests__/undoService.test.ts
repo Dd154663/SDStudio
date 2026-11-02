@@ -227,6 +227,58 @@ describe('비동기 직렬화', () => {
   });
 });
 
+describe('비동기 실행 중 기록(U4 대기열)', () => {
+  test('비동기 항목을 기다리는 동안의 기록은 버리지 않고 끝난 뒤 순서대로 쌓는다(병합도 대기열 안에서)', async () => {
+    const { service, clock } = harness();
+    const { session } = makeSession();
+    const box = { v: 0, w: 0 };
+    let release!: () => void;
+    service.record(session, {
+      label: '파일',
+      kind: 'file',
+      undo: () => new Promise<void>((r) => (release = r)),
+      redo: () => {},
+    });
+    const running = service.undo(session);
+    expect(service.isBusy).toBe(true);
+    expect(service.isApplying).toBe(false);
+    service.set(session, box, 'v', 1, '값 v');
+    clock.t += 300;
+    service.set(session, box, 'v', 2, '값 v'); // 같은 칸 1초 안 → 대기열의 항목에 합침
+    service.set(session, box, 'w', 5, '값 w');
+    expect(service.entries(session).past.map((e) => e.label)).toEqual(['파일']); // 아직 쌓지 않음
+    release();
+    expect(await running).toBe(true);
+    const { past, future } = service.entries(session);
+    expect(past.map((e) => e.label)).toEqual(['값 v', '값 w']);
+    expect(future).toHaveLength(0);
+    await service.undo(session);
+    await service.undo(session);
+    expect(box).toEqual({ v: 0, w: 0 });
+  });
+
+  test('항목이 결과 안내(notice)를 주면 토스트 끝에 붙이고, 묶음은 하위 안내를 모은다', async () => {
+    const { service, toast } = harness();
+    const { session } = makeSession();
+    service.record(session, {
+      label: '삭제',
+      undo: async () => ({ total: 3, failed: 1, notice: '1장은 사라짐' }),
+      redo: () => {},
+    });
+    await service.undo(session);
+    expect(toast).toHaveBeenLastCalledWith(UNDO_TEXT.undone('삭제') + ' (1장은 사라짐)', 'error');
+    const g = service.beginGroup(session, '묶음');
+    g.add({ label: 'a', undo: async () => ({ total: 1, failed: 0, notice: '이름 유지' }), redo: () => {} });
+    g.add({ label: 'b', undo: () => { throw new Error('x'); }, redo: () => {} });
+    g.commit();
+    await service.undo(session);
+    expect(toast).toHaveBeenLastCalledWith(
+      UNDO_TEXT.undone('묶음') + ` (이름 유지 · ${UNDO_TEXT.partial(1, 2).trim()})`,
+      'error',
+    );
+  });
+});
+
 describe('set 병합(D12)', () => {
   test('같은 칸 1초 안 연속 변경은 1항목, 넘으면 새 항목', async () => {
     const { service, clock } = harness();

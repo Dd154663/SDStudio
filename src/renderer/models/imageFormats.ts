@@ -13,6 +13,15 @@ export function isOutputImageFile(filename: string): boolean {
   return OUTPUT_IMAGE_EXTS.some((ext) => filename.endsWith('.' + ext));
 }
 
+// 출력 이미지 경로의 확장자(소문자) — 출력 포맷이 아니면 png. 이미지 복제·다른 씬으로 복사·붙여넣기의 새 파일이
+// 원본 형식을 따르게 한다(webp 를 .png 로 고정 복사하던 결함 E9, 2026-11-02 되돌리기 U4).
+export function outputImageExtOf(path: string): string {
+  const name = path.split('/').pop() ?? '';
+  const dot = name.lastIndexOf('.');
+  const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : '';
+  return (OUTPUT_IMAGE_EXTS as readonly string[]).includes(ext) ? ext : PNG_IMAGE_EXT;
+}
+
 // 이미 손실 압축 최적화된 포맷. export 최적화 시 재인코딩하면 이중 손실(화질 저하).
 export const OPTIMIZED_IMAGE_EXTS = ['webp', 'avif'] as const;
 export function isOptimizedImageFile(filename: string): boolean {

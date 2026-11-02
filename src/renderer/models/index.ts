@@ -17,7 +17,12 @@ import { Buffer } from 'buffer';
 import { FileEntry } from '../backend';
 import { Session } from 'inspector';
 import { GameService } from './GameService';
-import { ImageService, setImageMain } from './ImageService';
+import {
+  copyImageFilesInto,
+  deleteImageFilesDetailed,
+  ImageService,
+  setImageMain,
+} from './ImageService';
 import { ImageDownloadService } from './ImageDownloadService';
 import { LoginService } from './LoginService';
 import { PromptService } from './PromptService';
@@ -30,7 +35,7 @@ import { LocalAIService } from './LocalAIService';
 import { AppUpdateNoticeService } from './AppUpdateNoticeService';
 import { WorkFlowService } from './workflows/WorkFlowService';
 import { registerWorkFlows } from './workflows';
-import { TrashService } from './TrashService';
+import { IMAGE_RETENTION_DAYS, SCENE_RETENTION_DAYS, TrashService } from './TrashService';
 import { CyclingSessionService } from './CyclingSessionService';
 import { GlobalPieceService } from './GlobalPieceService';
 import { GlobalPresetService } from './GlobalPresetService';
@@ -48,8 +53,9 @@ import { ExportPresetService } from './ExportPresetService';
 import { ImageHistoryService } from './ImageHistoryService';
 import { OpusUsageService } from './OpusUsageService';
 import { undoService } from './undoService';
-import { configureSceneStructureUndo } from './sceneStructureUndo';
+import { configureSceneStructureUndo, SceneStructureOps } from './sceneStructureUndo';
 import { configureImageStateUndo } from './imageStateUndo';
+import { configureDeleteUndo } from './deleteUndo';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -91,14 +97,24 @@ export const imageService = new ImageService();
 export const trashService = new TrashService();
 
 // 씬 구조(생성·이름·북마크) 되돌리기가 부르는 공개 서비스 메서드 배선 — 각 메서드가 자기 관문(다른 창 잠금·withLock·이동 검증)을 지킨다
-configureSceneStructureUndo({
+const sceneStructureOps: SceneStructureOps = {
   moveSceneToTrash: (s, scene) => trashService.moveSceneToTrash(s, scene),
   restoreScene: (s, slot) => trashService.restoreScene(s, slot),
   renameScene: (s, from, to) => renameScene(s, from, to),
   renameInpaintScene: (s, from, to) => renameInpaintScene(s, from, to),
   getSceneBookmark: (project) => sessionService.getSceneBookmark(project),
   setSceneBookmark: (project, value) => sessionService.setSceneBookmark(project, value),
-});
+  // 휴지통 기록이 아직 있는가(14일 경과·비우기·영구 삭제 판정 — 목록을 못 읽으면 판정을 restoreScene 에 맡김)
+  hasTrashedScene: (s, slot) => {
+    try {
+      return trashService.getDeletedScenes(s.name).some((d) => d.name === slot);
+    } catch (e) {
+      return true;
+    }
+  },
+  sceneRetentionDays: SCENE_RETENTION_DAYS,
+};
+configureSceneStructureUndo(sceneStructureOps);
 
 export const imageDownloadService = new ImageDownloadService();
 
@@ -163,6 +179,23 @@ configureImageStateUndo({
   applyImageOrder: (scene, order) => gameService.applyImageOrder(scene, order),
   applyRanking: (s, scene, snap) => gameService.applyRanking(s, scene, snap),
   refreshScene: (s, scene) => imageService.refresh(s, scene),
+});
+
+// 삭제·휴지통 복원·복제·복사·붙여넣기 되돌리기(U4)가 부르는 공개 메서드 배선 — 파일 이동은 휴지통 관문(이동 검증·meta 큐),
+// 이미지 필드 대입은 setImageMain·applyImageOrder·applyRanking 만. 씬 쪽은 씬 구조 되돌리기와 같은 배선을 쓴다.
+configureDeleteUndo({
+  images: {
+    outputDir: (s, scene) => imageService.getOutputDir(s, scene),
+    deleteImageFiles: (s, scene, paths, opts) => deleteImageFilesDetailed(s, paths, scene, opts),
+    restoreImages: (s, scene, filenames) => trashService.restoreImages(s, scene, filenames),
+    refreshScene: (s, scene) => imageService.refresh(s, scene),
+    setImageMain: (s, scene, filename, on) => setImageMain(s, scene, filename, on),
+    applyImageOrder: (scene, order) => gameService.applyImageOrder(scene, order),
+    applyRanking: (s, scene, snap) => gameService.applyRanking(s, scene, snap),
+    copyImageFiles: (s, scene, srcPaths) => copyImageFilesInto(s, scene, srcPaths),
+    imageRetentionDays: IMAGE_RETENTION_DAYS,
+  },
+  scenes: sceneStructureOps,
 });
 
 // 최근 생성 이미지 히스토리 (history.json 영속, 전체 최근 30장 — 우측 사이드바)

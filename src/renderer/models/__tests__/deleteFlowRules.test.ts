@@ -16,6 +16,7 @@ import {
   overlappingSceneNames,
   parseCustomResolution,
   pasteResultText,
+  imageCopyResultText,
   planGridImageDelete,
   projectDeleteResultText,
   runTrashDelete,
@@ -176,6 +177,10 @@ describe('일괄 결과 문구(X13)', () => {
   it('붙여넣기 결과는 한 줄', () => {
     expect(pasteResultText(4, 0)).toBe('4장의 이미지가 붙여넣어졌습니다.');
     expect(pasteResultText(3, 1)).toBe('이미지 붙여넣기: 성공 3 · 실패 1');
+    // U4 복제·복사 결과(전부 성공은 기존 문구 그대로)
+    expect(imageCopyResultText('복제', 2, 0)).toBe('이미지를 복제했습니다');
+    expect(imageCopyResultText('복사', 1, 1)).toBe('이미지 복사: 성공 1 · 실패 1');
+    expect(imageCopyResultText('복사', 0, 2)).toBe('이미지를 복사하지 못했습니다(2장).');
   });
   it('이미지 휴지통 복원 결과(U0-a T2) — 전부 성공·일부 실패·전부 실패', () => {
     expect(imageRestoreResultText(3, 0)).toBe('3장의 이미지가 복원되었습니다.');

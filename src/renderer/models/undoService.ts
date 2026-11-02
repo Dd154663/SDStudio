@@ -3,7 +3,9 @@
 // · 기록은 UI·흐름 계층에서 사용자 동작이 성공한 뒤에만 헬퍼(set·capture·run·group·beginGroup·drag·focusEdit)로 한다.
 //   서비스 내부(잠금 안)에서 기록하지 않는다 — 되돌림이 같은 잠금 안에서 서비스를 다시 부르는 교착을 막기 위함.
 // · 스택은 프로젝트(Session) 인스턴스별 WeakMap, 메모리 전용(재시작·인스턴스 교체 시 자연 소멸), 깊이 100.
-// · 실행은 하나씩(실행 중 연타는 무시하고 「진행 중」 안내), 실행 중에는 기록하지 않는다(되돌림이 또 기록되는 재귀 방지).
+// · 실행은 하나씩(실행 중 연타는 무시하고 「진행 중」 안내). 항목 함수를 **동기로 부르는 동안**만 기록을 무시한다(재귀 방지).
+//   비동기 항목(파일 이동)을 기다리는 동안 생긴 다른 사용자 동작의 기록은 버리지 않고 대기열에 두었다가 실행이 끝난 뒤
+//   도착 순서대로 쌓는다(2026-11-02 U4 — 「실행 중 동작은 되돌릴 수 없음」 공백 해소). 항목 함수는 기록 헬퍼를 부르지 않는다.
 // · 이 모듈은 잠금을 쓰지 않는다 — 항목은 MobX 대입이나 공개 서비스 메서드만 부르고, 그 메서드가 각자 잠근다.
 // · 미러(읽기 전용) 프로젝트는 기록·실행 모두 하지 않는다(저장되지 않는 편집이므로).
 // · 항목은 이미지 목록 필드(imageMap·mains·game·round)를 통째로 되살리지 않는다 — 생성 중 새로 생긴 이미지를 지운다.
@@ -21,6 +23,11 @@ export interface UndoOutcome {
   total: number;
   failed: number;
   firstError?: string;
+  /**
+   * 결과 안내(있으면 토스트 끝에 「(…)」로 붙이고 일반 부분 실패 문구를 대신한다) — 삭제 되돌림의
+   * 「N장은 휴지통에서 이미 사라졌습니다」처럼 사유를 나눠 알릴 때(U4). 전부 실패면 firstError 가 실패 이유.
+   */
+  notice?: string;
 }
 
 type UndoRunResult = void | UndoOutcome;
@@ -232,6 +239,33 @@ export const UNDO_TEXT = {
   presetNameChanged: (name: string) => `그림체 이름이 그사이 바뀌었습니다(현재 "${name}")`,
   presetNameTaken: (name: string) => `같은 이름의 그림체 "${name}"이(가) 이미 있습니다`,
   sharedGone: '공용 설정이 그사이 바뀌어 되돌릴 대상이 없습니다',
+  // U4 삭제·휴지통 복원·복제·복사·붙여넣기(휴지통 경유) — deleteUndo.ts
+  sceneDelete: (names: readonly string[]) =>
+    names.length === 1 ? `씬 삭제: ${names[0]}` : `씬 ${names.length}개 삭제`,
+  sceneTrashRestore: (name: string) => `휴지통 복원: 씬 ${name}`,
+  imageDelete: (count: number, sceneNames: readonly string[]) =>
+    sceneNames.length === 1
+      ? `이미지 ${count}장 삭제: ${sceneNames[0]}`
+      : `이미지 ${count}장 삭제(${sceneNames.length}개 씬)`,
+  imageTrashRestore: (count: number, sceneName: string) => `휴지통 복원: 이미지 ${count}장(${sceneName})`,
+  imageDuplicate: (count: number, sceneName: string) => `이미지 복제 ${count}장: ${sceneName}`,
+  imageCopyTo: (count: number, sceneName: string) => `이미지 ${count}장 다른 씬으로 복사: ${sceneName}`,
+  imagePaste: (count: number, sceneName: string) => `이미지 붙여넣기 ${count}장: ${sceneName}`,
+  // 실패·안내 이유
+  sceneTrashGone: (days: number) =>
+    `휴지통에서 이미 사라졌습니다(보존 기간 ${days}일 경과·휴지통 비우기·영구 삭제)`,
+  sceneSlotTaken: (name: string) =>
+    `같은 이름의 씬 "${name}"이(가) 있어 복원하지 않았습니다(그 씬 이름을 바꾼 뒤 휴지통 탭에서 복원할 수 있습니다)`,
+  sceneKeptSlotName: (slot: string, original: string) =>
+    `원래 이름 "${original}"을(를) 다른 씬이 쓰고 있어 "${slot}"(으)로 복원했습니다`,
+  imagesTrashGone: (count: number, days: number) =>
+    `${count}장은 휴지통에서 이미 사라졌습니다(보존 기간 ${days}일 경과·휴지통 비우기)`,
+  imagesRestoreBlocked: (count: number) =>
+    `${count}장은 원래 위치에 같은 이름 파일이 있거나 옮기지 못했습니다`,
+  imagesSceneGone: (count: number, name: string) => `씬 "${name}"이(가) 없어 ${count}장은 처리하지 못했습니다`,
+  imagesMoveFailed: (count: number) => `${count}장은 휴지통으로 옮기지 못했습니다(파일 잠금 등)`,
+  imagesAlreadyGone: (count: number) => `${count}장은 그사이 이미 없어졌습니다`,
+  rankingNotRestored: '순위는 그사이 바뀌어 되돌리지 않았습니다',
 } as const;
 
 // ── 참조 손잡이 ───────────────────────────────────────────────────────────
@@ -403,6 +437,8 @@ export class UndoService {
   #pendingDrags = new WeakMap<Session, UndoPending>();
   #busy = false;
   #applying = false;
+  /** 비동기 항목 실행 중 생긴 기록 — 실행이 끝나면 도착 순서대로 쌓는다(U4) */
+  #deferred: { session: Session; entry: UndoEntry }[] = [];
   #nextId = 1;
   maxDepth = UNDO_MAX_DEPTH;
 
@@ -431,7 +467,7 @@ export class UndoService {
     return st;
   }
 
-  /** 실행 중(되돌림·다시 실행 처리 중) — 이 동안 기록은 무시된다 */
+  /** 항목 함수를 동기로 부르는 중 — 이 동안 기록은 무시된다(재귀 방지). 비동기 대기 중에는 false(기록은 대기열로) */
   get isApplying(): boolean {
     return this.#applying;
   }
@@ -482,6 +518,51 @@ export class UndoService {
     return dir === 'undo' ? (top.undoLabel ?? top.label) : top.label;
   }
 
+  /** 실행이 끝난 뒤 — 대기열의 기록을 도착 순서대로 쌓는다(새 기록이므로 future 를 비운다) */
+  #flushDeferred() {
+    const list = this.#deferred;
+    this.#deferred = [];
+    for (const d of list) this.#pushNow(d.session, d.entry);
+  }
+
+  /** 병합(set·track merge) 대상 맨 위 항목 — 실행 중이면 스택이 아니라 대기열의 마지막 것만 */
+  #mergeTop(session: Session): { top: UndoEntry; drop: () => void } | undefined {
+    const frame = this.#openFrame(session);
+    if (frame) {
+      const top = frame.children[frame.children.length - 1];
+      return top ? { top, drop: () => this.#remove(frame.children, top) } : undefined;
+    }
+    if (this.#busy) {
+      for (let i = this.#deferred.length - 1; i >= 0; i--) {
+        const d = this.#deferred[i];
+        if (d.session !== session) continue;
+        return {
+          top: d.entry,
+          drop: () => {
+            const j = this.#deferred.indexOf(d);
+            if (j >= 0) this.#deferred.splice(j, 1);
+          },
+        };
+      }
+      return undefined;
+    }
+    const st = this.#stack(session);
+    if (st.future.length !== 0) return undefined;
+    const top = st.past[st.past.length - 1];
+    return top ? { top, drop: () => this.#remove(st.past, top) } : undefined;
+  }
+
+  /** 항목 함수 호출 — 동기 부분 동안만 기록을 막는다(재귀 방지) */
+  #invoke(entry: UndoEntry, dir: UndoDirection): UndoRunResult | Promise<UndoRunResult> {
+    const prev = this.#applying;
+    this.#applying = true;
+    try {
+      return entry[dir]();
+    } finally {
+      this.#applying = prev;
+    }
+  }
+
   /** 테스트·진단용 스택 사본 */
   entries(session: Session): { past: readonly UndoEntry[]; future: readonly UndoEntry[] } {
     const st = this.#stacks.get(session);
@@ -516,6 +597,15 @@ export class UndoService {
       frame.children.push(entry);
       return;
     }
+    // 비동기 항목 실행 중 — 지금 쌓으면 실행 중 항목의 자리 이동(past↔future)과 섞이므로 끝난 뒤에 쌓는다
+    if (this.#busy) {
+      this.#deferred.push({ session, entry });
+      return;
+    }
+    this.#pushNow(session, entry);
+  }
+
+  #pushNow(session: Session, entry: UndoEntry) {
     const st = this.#stack(session);
     st.past.push(entry);
     while (st.past.length > this.maxDepth) st.past.shift();
@@ -579,14 +669,8 @@ export class UndoService {
         );
         if (!ok) return false;
       }
-      let outcome: UndoRunResult;
-      this.#applying = true;
-      try {
-        const r = entry[dir]();
-        outcome = isThenable(r) ? await r : r;
-      } finally {
-        this.#applying = false;
-      }
+      const r = this.#invoke(entry, dir);
+      const outcome: UndoRunResult = isThenable(r) ? await r : r;
       if (outcome && outcome.total > 0 && outcome.failed >= outcome.total) {
         return fail(outcome.firstError ?? UNDO_TEXT.groupAllFailed);
       }
@@ -598,12 +682,14 @@ export class UndoService {
         dir === 'undo' ? UNDO_TEXT.undone(entry.undoLabel ?? entry.label) : UNDO_TEXT.redone(entry.label);
       const partial =
         outcome && outcome.failed > 0 ? UNDO_TEXT.partial(outcome.failed, outcome.total) : '';
-      this.#deps.toast(base + partial, partial ? 'error' : 'info');
+      const tail = outcome && outcome.notice ? ` (${outcome.notice})` : partial;
+      this.#deps.toast(base + tail, outcome && outcome.failed > 0 ? 'error' : 'info');
       return true;
     } catch (e) {
       return fail(errorText(e));
     } finally {
       this.#busy = false;
+      this.#flushDeferred();
       this.#bump();
     }
   }
@@ -638,21 +724,13 @@ export class UndoService {
     const mergeKey = `set:${targetId(ref ?? target)}:${String(key)}`;
     const mergeMs = opts.mergeMs ?? UNDO_MERGE_MS;
     const now = this.#deps.now();
-    const frame = this.#openFrame(session);
-    const st = this.#stack(session);
-    const top = frame
-      ? frame.children[frame.children.length - 1]
-      : st.future.length === 0
-        ? st.past[st.past.length - 1]
-        : undefined;
+    const mt = this.#mergeTop(session);
+    const top = mt?.top;
     const merge = top && top.mergeKey === mergeKey ? mergeStates.get(top) : undefined;
-    if (top && merge && now - top.updatedAt <= mergeMs) {
+    if (mt && top && merge && now - top.updatedAt <= mergeMs) {
       merge.after = next;
       top.updatedAt = now;
-      if (Object.is(merge.before, next)) {
-        if (frame) this.#remove(frame.children, top);
-        else this.#remove(st.past, top);
-      }
+      if (Object.is(merge.before, next)) mt.drop();
       this.#bump();
       return;
     }
@@ -780,24 +858,16 @@ export class UndoService {
     label: string,
   ): boolean {
     const now = this.#deps.now();
-    const frame = this.#openFrame(session);
-    const st = this.#stack(session);
-    const top = frame
-      ? frame.children[frame.children.length - 1]
-      : st.future.length === 0
-        ? st.past[st.past.length - 1]
-        : undefined;
-    if (!top || top.mergeKey !== `track:${merge.key}`) return false;
+    const mt = this.#mergeTop(session);
+    const top = mt?.top;
+    if (!mt || !top || top.mergeKey !== `track:${merge.key}`) return false;
     const state = snapshotMerges.get(top);
     if (!state || now - top.updatedAt > (merge.ms ?? UNDO_MERGE_MS)) return false;
     state.after = after;
     top.updatedAt = now;
     // 라벨은 마지막 동작 기준(그림체 선택처럼 값이 라벨에 들어가는 경우 — 같은 칸이면 대개 같은 문구)
     top.label = label;
-    if (eq(state.before as S, after)) {
-      if (frame) this.#remove(frame.children, top);
-      else this.#remove(st.past, top);
-    }
+    if (eq(state.before as S, after)) mt.drop();
     this.#bump();
     return true;
   }
@@ -901,6 +971,7 @@ export class UndoService {
           const total = order.length;
           let failed = 0;
           let firstError: string | undefined;
+          const notices: string[] = [];
           for (const c of order) {
             const v = c.verify?.(dir);
             if (v !== undefined && v !== true) {
@@ -910,8 +981,13 @@ export class UndoService {
               continue;
             }
             try {
-              const r = c[dir]();
-              if (isThenable(r)) await r;
+              const r = this.#invoke(c, dir);
+              const out = isThenable(r) ? await r : r;
+              // 하위 항목이 결과를 돌려주면(U4 삭제 항목 등) 전부 실패 = 실패, 안내는 모은다
+              if (out && out.total > 0 && out.failed >= out.total) {
+                throw new Error(out.firstError ?? UNDO_TEXT.groupAllFailed);
+              }
+              if (out && out.notice) notices.push(out.notice);
             } catch (e) {
               failed++;
               firstError ??= errorText(e);
@@ -919,7 +995,12 @@ export class UndoService {
               this.#remove(children, c);
             }
           }
-          return { total, failed, firstError };
+          // 하위 안내가 있으면 그것을 앞세우고 부분 실패 문구를 뒤에 붙인다(없으면 기존 부분 실패 문구 그대로)
+          const notice =
+            notices.length > 0
+              ? [...notices, ...(failed > 0 ? [UNDO_TEXT.partial(failed, total).trim()] : [])].join(' · ')
+              : undefined;
+          return { total, failed, firstError, ...(notice ? { notice } : {}) };
         };
         const entry = this.#makeEntry({
           label,

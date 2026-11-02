@@ -9,6 +9,7 @@ import { FaTrash } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
 import { trashService } from '../models';
 import { appState } from '../models/AppService';
+import { restoreSceneFromTrashRecorded } from '../models/deleteUndo';
 import {
   batchResultLine,
   DELETE_RESULT_TEXT,
@@ -214,7 +215,8 @@ export function SceneTrashView({ projectName }: { projectName: string }) {
 
   const handleRestore = async (name: string) => {
     try {
-      const restored = await trashService.restoreScene(appState.curSession!, name);
+      // 복원됐으면 되돌리기 기록(U4 — 되돌림 = 다시 휴지통으로, 다시 실행 = 다시 꺼냄)
+      const restored = await restoreSceneFromTrashRecorded(appState.curSession!, name);
       // undefined = 다른 창 잠금으로 조용히 돌아옴(씬·기록 그대로) — 성공 문구를 내지 않는다.
       appState.pushMessage(
         restored ? `씬 "${name}"이(가) 복원되었습니다.` : DELETE_RESULT_TEXT.sceneRestoreBlocked,

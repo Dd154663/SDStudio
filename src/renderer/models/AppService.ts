@@ -43,6 +43,7 @@ import { V2_SHEET_CLOSE_EVENT } from './uiEvents';
 import { ARTIST_LIBRARY_TAB_ACTION } from './ArtistLibraryService';
 import { Dialog, DialogItem } from '../componenets/ConfirmWindow';
 import { cropMirrorResultFromDataUri, dataUriToBase64, deleteImageFiles } from './ImageService';
+import { copyImagesRecorded } from './deleteUndo';
 import {
   createImageWithText,
   embedJSONInPNG,
@@ -971,24 +972,10 @@ export class AppState {
       this.pushMessage('복사된 이미지가 없습니다.');
       return;
     }
-    const targetDir = imageService.getOutputDir(session, scene);
-    let copied = 0;
-    let failed = 0;
-    for (const srcPath of this.imageClipboard) {
-      try {
-        // 원본 확장자 보존(webp/png) — 고정 .png 로 붙여넣으면 내용/확장자 불일치
-        const ext = srcPath.split('.').pop() || 'png';
-        const filename = Date.now().toString() + '_' + copied + '.' + ext;
-        await backend.copyFile(srcPath, targetDir + '/' + filename);
-        copied++;
-      } catch (e) {
-        failed++;
-        console.error('이미지 붙여넣기 실패:', srcPath, e);
-      }
-    }
-    await imageService.refresh(session, scene);
+    // 원본 확장자 보존·같은 ms·실패 뒤 이름 충돌 없음(E9 — copyImageFilesInto), 만든 파일만 되돌리기 기록(U4)
+    const r = await copyImagesRecorded(session, scene, [...this.imageClipboard], 'paste');
     // 부분 실패도 한 줄로(성공 N · 실패 M, X13)
-    this.pushMessage(pasteResultText(copied, failed));
+    this.pushMessage(pasteResultText(r.created.length, r.failed.length));
   }
 
   pushDialogAsync(dialog: Dialog) {

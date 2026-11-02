@@ -12,7 +12,7 @@ import type { NaiRequestOptions } from './requestTiming';
 import { getAppState } from './appStateRef';
 import { GenericScene, InpaintScene, Scene, Session } from './types';
 import { assert } from './util';
-import { isOutputImageFile, PNG_IMAGE_EXT } from './imageFormats';
+import { isOutputImageFile, outputImageExtOf, PNG_IMAGE_EXT } from './imageFormats';
 import {
   projectPath,
   PROJECT_IMAGE_ROOTS,
@@ -1268,6 +1268,74 @@ export const deleteImageFilesDetailed = async (
     await imageService.refreshBatch(curSession);
     return { moved, failed };
   }
+};
+
+/**
+ * 이미지 복제·다른 씬으로 복사·붙여넣기의 새 파일 이름(순수, 2026-11-02 U4 — 발견 E9 수정).
+ * `${stamp}_${n}.${확장자}` — 확장자 = 원본 형식(`outputImageExtOf`, webp 는 webp), n 은 0 부터 올려
+ * taken(대상 폴더에 이미 있는 이름) 과 이번에 고른 이름 모두와 겹치지 않게 한다(대소문자 무시).
+ * 예전 구현 4벌은 반복문 안 `Date.now()` 만으로 이름을 지어 같은 ms 에 덮어쓰거나 .png 로 고정했다.
+ */
+export function allocateImageCopyNames(
+  srcPaths: readonly string[],
+  taken: Iterable<string>,
+  stamp: number,
+): string[] {
+  const used = new Set<string>();
+  for (const t of taken) used.add(t.toLowerCase());
+  const out: string[] = [];
+  let n = 0;
+  for (const src of srcPaths) {
+    const ext = outputImageExtOf(src);
+    let name = `${stamp}_${n}.${ext}`;
+    while (used.has(name.toLowerCase())) {
+      n++;
+      name = `${stamp}_${n}.${ext}`;
+    }
+    used.add(name.toLowerCase());
+    out.push(name);
+    n++;
+  }
+  return out;
+}
+
+/** copyImageFilesInto 결과 — created 는 새로 만든 파일 이름(대상 폴더 기준), failed 는 복사하지 못한 원본 경로 */
+export interface CopyImageFilesResult {
+  created: string[];
+  failed: string[];
+}
+
+/**
+ * 원본 이미지들을 scene 의 출력 폴더로 복사하고 목록을 다시 읽는다(복제·다른 씬으로 복사·붙여넣기 공용, U4).
+ * 새 이름은 allocateImageCopyNames(대상 폴더의 기존 파일·imageMap 과 겹치지 않음 — 덮어쓰지 않는다).
+ * 실제로 만든 파일 이름을 돌려준다(되돌리기 = 이 파일들만 휴지통으로).
+ */
+export const copyImageFilesInto = async (
+  session: Session,
+  scene: GenericScene,
+  srcPaths: readonly string[],
+): Promise<CopyImageFilesResult> => {
+  const dir = imageService.getOutputDir(session, scene);
+  let existing: string[] = [];
+  try {
+    existing = await backend.listFiles(dir);
+  } catch (e) {
+    existing = []; // 폴더가 아직 없음(이미지 없는 씬) — copyFile 이 만든다
+  }
+  const names = allocateImageCopyNames(srcPaths, [...existing, ...scene.imageMap], Date.now());
+  const created: string[] = [];
+  const failed: string[] = [];
+  for (let i = 0; i < srcPaths.length; i++) {
+    try {
+      await backend.copyFile(srcPaths[i], dir + '/' + names[i]);
+      created.push(names[i]);
+    } catch (e) {
+      console.error('이미지 복사 실패:', srcPaths[i], e);
+      failed.push(srcPaths[i]);
+    }
+  }
+  await imageService.refresh(session, scene);
+  return { created, failed };
 };
 
 export const renameImage = async (oldPath: string, newPath: string) => {

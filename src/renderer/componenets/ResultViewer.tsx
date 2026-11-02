@@ -77,7 +77,12 @@ import { queueScene } from '../models/sceneQueueActions';
 import { queueNaiUpscale } from '../models/workflows/NaiUpscaleFlow';
 import { estimateNaiUpscaleCost } from '../backends/genVendors/naiUpscale';
 import { getImageDimensions } from './BrushTool';
-import { dataUriToBase64, deleteImageFiles } from '../models/ImageService';
+import { dataUriToBase64 } from '../models/ImageService';
+import {
+  copyImagesRecorded,
+  deleteImageFilesRecorded,
+  restoreTrashImagesRecorded,
+} from '../models/deleteUndo';
 import {
   recordImageOrder,
   setImageFavorites,
@@ -87,6 +92,7 @@ import {
 import { IMAGE_RETENTION_DAYS } from '../models/TrashService';
 import {
   deleteConfirmText,
+  imageCopyResultText,
   imageDeleteScopeLine,
   imageRestoreResultText,
   NO_IMAGES_TO_DELETE_MESSAGE,
@@ -218,7 +224,8 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
   const handleRestore = async () => {
     if (selected.size === 0) return;
     await stopThumbnailLoading();
-    const { restored, failed } = await trashService.restoreImages(
+    // 복원된 것이 있으면 되돌리기 기록(U4 — 되돌림 = 다시 휴지통으로)
+    const { restored, failed } = await restoreTrashImagesRecorded(
       session,
       scene,
       Array.from(selected),
@@ -1220,7 +1227,7 @@ const ResultDetailView = observer(
           setSelectedIndex((selectedIndex + 1) % paths.length);
         } else if (e.key === 'Delete' || e.key === 'Backspace') {
           const doDel = async () => {
-            await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
+            await deleteImageFilesRecorded(curSession!, [paths[selectedIndex]], scene);
           };
           if (shouldSkipImageDeleteConfirm(appState.skipImageDeleteConfirm, 1)) {
             await doDel();
@@ -1242,7 +1249,7 @@ const ResultDetailView = observer(
           setSelectedIndex((selectedIndex + 1) % paths.length);
         } else if (action === 'delete-image') {
           const doDel = async () => {
-            await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
+            await deleteImageFilesRecorded(curSession!, [paths[selectedIndex]], scene);
           };
           if (shouldSkipImageDeleteConfirm(appState.skipImageDeleteConfirm, 1)) {
             await doDel();
@@ -1348,7 +1355,7 @@ const ResultDetailView = observer(
     };
     const actDeleteFile = () => {
       const doDel = async () => {
-        await deleteImageFiles(curSession!, [paths[selectedIndex]], scene);
+        await deleteImageFilesRecorded(curSession!, [paths[selectedIndex]], scene);
       };
       if (shouldSkipImageDeleteConfirm(appState.skipImageDeleteConfirm, 1)) {
         doDel();
@@ -1971,18 +1978,11 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
 
     const onDuplicateSelected = useCallback(async () => {
       if (selectedImages.current.size === 0) return;
-      let counter = 0;
-      for (const path of selectedImages.current) {
-        const tmp = path.slice(0, path.lastIndexOf('/'));
-        await backend.copyFile(
-          path,
-          tmp + '/' + Date.now().toString() + '_' + counter++ + '.png',
-        );
-      }
-      imageService.refresh(curSession!, scene);
+      // 원본 확장자 보존(.png 고정이던 결함)·같은 ms 이름 충돌 없음(E9), 만든 파일만 되돌리기 기록(U4)
+      const r = await copyImagesRecorded(curSession!, scene, [...selectedImages.current], 'duplicate');
       appState.pushDialog({
         type: 'yes-only',
-        text: '이미지를 복제했습니다',
+        text: imageCopyResultText('복제', r.created.length, r.failed.length),
       });
     }, [scene, curSession]);
 
@@ -2000,22 +2000,16 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           const targetScene = curSession!.scenes.get(value);
           if (!targetScene) return;
 
-          let counter = 0;
-          for (const path of selectedImages.current) {
-            await backend.copyFile(
-              path,
-              imageService.getImageDir(curSession!, targetScene) +
-                '/' +
-                Date.now().toString() +
-                '_' +
-                counter++ +
-                '.png',
-            );
-          }
-          imageService.refresh(curSession!, targetScene);
+          // 원본 확장자 보존·이름 충돌 없음(E9), 만든 파일만 되돌리기 기록(U4 — 대상 씬 기준)
+          const r = await copyImagesRecorded(
+            curSession!,
+            targetScene,
+            [...selectedImages.current],
+            'copy',
+          );
           appState.pushDialog({
             type: 'yes-only',
-            text: '이미지를 복사했습니다',
+            text: imageCopyResultText('복사', r.created.length, r.failed.length),
           });
         },
       });
@@ -2064,7 +2058,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               return;
             }
             const doDel = async () => {
-              await deleteImageFiles(curSession!, targets(), scene);
+              await deleteImageFilesRecorded(curSession!, targets(), scene);
             };
             if (shouldSkipImageDeleteConfirm(appState.skipImageDeleteConfirm, count)) {
               void doDel();
@@ -2132,7 +2126,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       }
       const targets = plan.paths;
       const doDel = async () => {
-        await deleteImageFiles(curSession!, targets, scene);
+        await deleteImageFilesRecorded(curSession!, targets, scene);
         // 지워진 이미지는 선택에서 뺀다(실패해 남은 것은 선택 유지 — 다시 시도 가능).
         const remaining = new Set(
           gameService
@@ -2315,7 +2309,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
         } else if (action === 'image-delete') {
           // 그리드 Del 단일 삭제 — 상세 보기와 같은 규칙(「다시 묻지 않음」 체크박스·설정 존중, deleteFlowRules)
           const doDel = async () => {
-            await deleteImageFiles(curSession!, [activePaths[i]], scene);
+            await deleteImageFilesRecorded(curSession!, [activePaths[i]], scene);
             const newCount = count - 1;
             if (newCount === 0) setFocusedImageIndex(null);
             else setFocusedImageIndex(Math.min(i, newCount - 1));

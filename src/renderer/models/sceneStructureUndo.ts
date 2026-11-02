@@ -17,6 +17,7 @@ import {
   undoService,
   UNDO_TEXT,
   UndoEntryInit,
+  UndoOutcome,
   UndoRef,
   UndoService,
 } from './undoService';
@@ -38,6 +39,13 @@ export interface SceneStructureOps {
   renameInpaintScene(session: Session, oldName: string, newName: string): Promise<boolean>;
   getSceneBookmark(projectName: string): SceneBookmarkValue | undefined;
   setSceneBookmark(projectName: string, value: SceneBookmarkValue | undefined): Promise<void>;
+  /**
+   * 휴지통에 그 슬롯 기록이 아직 있는가(U4) — false 면 보존 기간 경과·휴지통 비우기·영구 삭제로 사라진 것.
+   * 없으면(테스트 등) 검사를 건너뛰고 restoreScene 의 오류로 판정한다.
+   */
+  hasTrashedScene?(session: Session, slot: string): boolean;
+  /** 실패 문구용 씬 휴지통 보존 기간(일, TrashService.SCENE_RETENTION_DAYS) */
+  sceneRetentionDays?: number;
 }
 
 let configuredOps: SceneStructureOps | undefined;
@@ -71,6 +79,82 @@ interface CreatedHooks {
   afterRedo?: () => void;
 }
 
+/** 이미 휴지통에 있는 씬(삭제 직후) — 슬롯·원래 이름·원래 자리 */
+export interface TrashedSceneInfo {
+  slot: string;
+  name: string;
+  index: number;
+}
+
+/**
+ * 씬 하나를 「세션에 있음 ↔ 휴지통」으로 오가는 짝(U2a 생성 되돌림, U4 삭제·휴지통 복원이 같이 쓴다).
+ * - toTrash = moveSceneToTrash(슬롯·이름·자리 기억, 다른 창 잠금이면 실패)
+ * - fromTrash = restoreScene(슬롯) → rebind(옛 객체 → 새 객체) → 슬롯 이름 ≠ 원래 이름이면 비어 있을 때 원래 이름으로
+ *   (쓰이고 있으면 슬롯 이름 유지 + 안내) → 원래 자리로 이동
+ * initial 이 있으면 지금 휴지통에 있는 상태(삭제 직후)에서 시작한다.
+ */
+function sceneTrashPair(
+  session: Session,
+  scene: GenericScene,
+  getOps: () => SceneStructureOps,
+  initial?: TrashedSceneInfo,
+) {
+  const ref: UndoRef<GenericScene> = undoRef(scene);
+  const type = scene.type;
+  let slot: string | undefined = initial?.slot; // 휴지통 슬롯(세션에 있으면 undefined)
+  let name = initial?.name ?? scene.name; // 휴지통에 보낼 때의 이름(꺼낸 뒤 이 이름으로)
+  let index = initial?.index ?? -1; // 휴지통에 보낼 때의 자리
+  const checkInSession = (): true | string =>
+    sceneInSession(session, ref.current) ? true : UNDO_TEXT.sceneGone(ref.current.name);
+  const checkInTrash = (): true | string => {
+    if (!slot) return UNDO_TEXT.sceneNotInTrash;
+    const ops = getOps();
+    if (ops.hasTrashedScene && !ops.hasTrashedScene(session, slot)) {
+      return UNDO_TEXT.sceneTrashGone(ops.sceneRetentionDays ?? 14);
+    }
+    // 복원 이름 = 슬롯 이름 — 같은 종류에 그 이름이 쓰이고 있으면 restoreScene 이 거부한다(먼저 알린다)
+    if (session.hasScene(type, slot)) return UNDO_TEXT.sceneSlotTaken(slot);
+    return true;
+  };
+  const toTrash = async (): Promise<void> => {
+    const cur = ref.current;
+    if (!sceneInSession(session, cur)) throw new Error(UNDO_TEXT.sceneGone(cur.name));
+    const curName = cur.name;
+    const curIndex = session.getScenes(type).indexOf(cur);
+    const s = await getOps().moveSceneToTrash(session, cur);
+    // 다른 창 잠금으로 조용히 돌아온 경우(씬이 남아 있음)
+    if (!s || sceneInSession(session, cur)) throw new Error(UNDO_TEXT.sceneStructureBlocked);
+    slot = s;
+    name = curName;
+    index = curIndex;
+  };
+  const fromTrash = async (): Promise<UndoOutcome | void> => {
+    if (!slot) throw new Error(UNDO_TEXT.sceneNotInTrash);
+    const ops = getOps();
+    const restored = await ops.restoreScene(session, slot);
+    if (!restored) throw new Error(UNDO_TEXT.sceneStructureBlocked);
+    // 그 아래·위 항목(순서·이름 등)이 잡은 손잡이도 새 객체를 가리키게
+    rebind(ref.current, restored);
+    slot = undefined;
+    let notice: string | undefined;
+    // 슬롯 이름이 원래 이름과 다르면(휴지통에 같은 이름 기록이 있었음) 비어 있을 때 원래 이름으로
+    if (restored.name !== name) {
+      if (!session.hasScene(type, name)) {
+        try {
+          if (type === 'scene') await ops.renameScene(session, restored.name, name);
+          else await ops.renameInpaintScene(session, restored.name, name);
+        } catch (e) {
+          console.warn('원래 씬 이름으로 바꾸지 못했습니다(휴지통 슬롯 이름 유지):', e);
+        }
+      }
+      if (restored.name !== name) notice = UNDO_TEXT.sceneKeptSlotName(restored.name, name);
+    }
+    if (index >= 0 && sceneInSession(session, restored)) session.moveScene(restored, index);
+    return notice ? { total: 1, failed: 0, notice } : undefined;
+  };
+  return { ref, checkInSession, checkInTrash, toTrash, fromTrash };
+}
+
 function createdEntry(
   session: Session,
   scene: GenericScene,
@@ -78,54 +162,54 @@ function createdEntry(
   getOps: () => SceneStructureOps,
   hooks: CreatedHooks = {},
 ): UndoEntryInit {
-  const ref: UndoRef<GenericScene> = undoRef(scene);
-  const type = scene.type;
-  let slot: string | undefined; // 되돌린 뒤 휴지통 슬롯
-  let name = scene.name; // 되돌릴 때의 이름(다시 실행 후 이 이름으로)
-  let index = -1; // 되돌릴 때의 자리
+  const pair = sceneTrashPair(session, scene, getOps);
   return {
     label,
     kind: 'file',
-    verify: (dir) => {
-      if (dir === 'undo') {
-        return sceneInSession(session, ref.current) ? true : UNDO_TEXT.sceneGone(ref.current.name);
-      }
-      return slot ? true : UNDO_TEXT.sceneNotInTrash;
-    },
+    verify: (dir) => (dir === 'undo' ? pair.checkInSession() : pair.checkInTrash()),
     undo: async () => {
-      const cur = ref.current;
-      if (!sceneInSession(session, cur)) throw new Error(UNDO_TEXT.sceneGone(cur.name));
-      const curName = cur.name;
-      const curIndex = session.getScenes(type).indexOf(cur);
-      const s = await getOps().moveSceneToTrash(session, cur);
-      // 다른 창 잠금으로 조용히 돌아온 경우(씬이 남아 있음)
-      if (!s || sceneInSession(session, cur)) throw new Error(UNDO_TEXT.sceneStructureBlocked);
-      slot = s;
-      name = curName;
-      index = curIndex;
+      await pair.toTrash();
       hooks.afterUndo?.();
     },
     redo: async () => {
-      if (!slot) throw new Error(UNDO_TEXT.sceneNotInTrash);
-      const ops = getOps();
-      const restored = await ops.restoreScene(session, slot);
-      if (!restored) throw new Error(UNDO_TEXT.sceneStructureBlocked);
-      // 그 아래·위 항목(순서·이름 등)이 잡은 손잡이도 새 객체를 가리키게
-      rebind(ref.current, restored);
-      slot = undefined;
-      // 슬롯 이름이 원래 이름과 다르면(휴지통에 같은 이름 기록이 있었음) 비어 있을 때 원래 이름으로
-      if (restored.name !== name && !session.hasScene(type, name)) {
-        try {
-          if (type === 'scene') await ops.renameScene(session, restored.name, name);
-          else await ops.renameInpaintScene(session, restored.name, name);
-        } catch (e) {
-          console.warn('다시 실행: 원래 씬 이름으로 바꾸지 못했습니다(휴지통 슬롯 이름 유지):', e);
-        }
-      }
-      if (index >= 0 && sceneInSession(session, restored)) session.moveScene(restored, index);
+      const out = await pair.fromTrash();
       hooks.afterRedo?.();
+      return out;
     },
   };
+}
+
+/**
+ * 삭제(휴지통행)된 씬의 항목(U4) — 생성 항목의 반대: 되돌림 = 휴지통에서 꺼냄(원래 이름·자리·rebind),
+ * 다시 실행 = 다시 휴지통으로(확인 없음 D17 — 새 슬롯을 기억).
+ */
+export function sceneDeletedEntry(
+  session: Session,
+  scene: GenericScene,
+  info: TrashedSceneInfo,
+  label: string,
+  opts: SceneStructureUndoOptions = {},
+): UndoEntryInit {
+  const pair = sceneTrashPair(session, scene, () => resolveOps(opts.ops), info);
+  return {
+    label,
+    kind: 'file',
+    verify: (dir) => (dir === 'undo' ? pair.checkInTrash() : pair.checkInSession()),
+    undo: () => pair.fromTrash(),
+    redo: () => pair.toTrash(),
+  };
+}
+
+/**
+ * 휴지통에서 꺼낸 씬의 항목(U4 휴지통 탭 복원) — 생성 항목과 같다: 되돌림 = 다시 휴지통으로, 다시 실행 = 다시 꺼냄.
+ */
+export function sceneRestoredEntry(
+  session: Session,
+  scene: GenericScene,
+  label: string,
+  opts: SceneStructureUndoOptions = {},
+): UndoEntryInit {
+  return createdEntry(session, scene, label, () => resolveOps(opts.ops));
 }
 
 /**

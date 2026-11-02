@@ -24,7 +24,7 @@ import {
 } from '../models';
 import { backStackService } from '../models/BackStackService';
 import { appState } from '../models/AppService';
-import { deleteImageFiles } from '../models/ImageService';
+import { deleteImageFilesRecorded, restoreTrashImagesRecorded } from '../models/deleteUndo';
 import { deleteConfirmText, imageRestoreResultText } from '../models/deleteFlowRules';
 import { IMAGE_RETENTION_DAYS } from '../models/TrashService';
 import { trashNoticeText } from './TrashViews';
@@ -194,7 +194,8 @@ const ImageReview = ({
       }
       setBusy(true);
       try {
-        const failed = await deleteImageFiles(
+        // 되돌리기 기록(U4) — 검수 목록은 되살리지 않는다(이미지는 씬으로 돌아감)
+        const failed = await deleteImageFilesRecorded(
           session,
           [current.path],
           current.scene,
@@ -278,7 +279,7 @@ const ImageReview = ({
 
   const restoreTrashItem = async (entry: TrashItem) => {
     if (!trashScene) return;
-    const result = await trashService.restoreImages(session, trashScene, [entry.filename]);
+    const result = await restoreTrashImagesRecorded(session, trashScene, [entry.filename]);
     if (!result.restored.includes(entry.filename)) {
       // 같은 이름 파일이 이미 있거나 이동 실패 — 검수 목록에 넣지 않고 휴지통 목록만 새로 고친다.
       appState.pushMessage(imageRestoreResultText(0, result.failed.length || 1));

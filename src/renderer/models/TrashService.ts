@@ -148,6 +148,11 @@ export interface ImageTrashMoveResult {
 export interface ImageTrashRestoreResult {
   restored: string[];
   failed: string[];
+  /**
+   * failed 중 휴지통에 파일이 없던 것(보존 기간 경과 자동 정리·휴지통 비우기·영구 삭제 — 2026-11-02 U4 사유 구분).
+   * 나머지 failed 는 원래 위치에 같은 이름 파일이 있거나 이동에 실패한 것.
+   */
+  missing: string[];
 }
 
 // --- Service class ---
@@ -302,6 +307,7 @@ export class TrashService extends EventTarget {
   //   rename 자체는 PC(fs.rename)·Android(Capacitor — 대상 삭제 후 renameTo) 모두 대상을 덮어쓴다).
   // - 이동 오류가 났어도 실제로 옮겨졌으면(원본 없음·대상 있음) 복원으로 센다(moveSceneToTrash 와 같은 검증).
   // - meta 읽고-쓰기는 meta 경로별로 직렬화(T3). 복원된 것이 없으면 meta 를 다시 쓰지 않는다.
+  // - 실패 사유 구분(U4): 휴지통에도 원래 위치에도 파일이 없으면 missing(failed 에도 포함) — 되돌리기 안내가 나눠 알린다.
   async restoreImages(
     session: Session,
     scene: GenericScene,
@@ -316,6 +322,7 @@ export class TrashService extends EventTarget {
       const meta = await this.loadImageTrashMeta(session, scene);
       const restored: string[] = [];
       const failed: string[] = [];
+      const missing: string[] = [];
       const restoredTrashPaths: string[] = [];
 
       for (const filename of filenames) {
@@ -334,11 +341,13 @@ export class TrashService extends EventTarget {
             moveError = e;
           }
           if (moveError !== undefined) {
-            const moved =
-              !(await backend.existFile(trashPath)) && (await backend.existFile(dstPath));
+            const srcLeft = await backend.existFile(trashPath);
+            const dstNow = await backend.existFile(dstPath);
+            const moved = !srcLeft && dstNow;
             if (!moved) {
               console.error('이미지 복원 실패:', filename, moveError);
               failed.push(filename);
+              if (!srcLeft && !dstNow) missing.push(filename);
               continue;
             }
           }
@@ -360,7 +369,7 @@ export class TrashService extends EventTarget {
         await this.saveImageTrashMeta(session, scene, meta);
       }
       this.dispatchEvent(new CustomEvent('trash-updated'));
-      return { restored, failed };
+      return { restored, failed, missing };
     });
   }
 

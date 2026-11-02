@@ -43,6 +43,7 @@ import { SCENE_RETENTION_DAYS } from '../models/TrashService';
 import { promptCustomResolution } from '../models/customResolutionPrompt';
 import { renameInpaintScene } from '../models/SessionService';
 import { recordSceneRename } from '../models/sceneStructureUndo';
+import { beginSceneDelete } from '../models/deleteUndo';
 import { editSceneFields } from '../models/sceneFieldUndo';
 import { UNDO_TEXT } from '../models/undoService';
 import { observer } from 'mobx-react-lite';
@@ -574,14 +575,16 @@ const InPaintEditor = observer(
           outcome: { trashDays: SCENE_RETENTION_DAYS },
         }),
         callback: async () => {
-          const { trashService } = await import('../models');
           // 휴지통 이동 실패면 씬이 그대로 남는다(2026-10-02 S1) — 알리고 편집 창은 닫지 않는다.
           // 다른 창 잠금으로 조용히 돌아와 씬이 남아 있어도 실패로 센다(SPEC §8, X4).
+          // 실제로 휴지통으로 간 경우만 되돌리기 기록(U4)
           const session = curSession!;
+          const rec = beginSceneDelete(session);
           const outcome = await runTrashDelete({
-            remove: () => trashService.moveSceneToTrash(session, editingScene!),
+            remove: () => rec.trash(editingScene!),
             stillExists: () => session.hasScene('inpaint', editingScene.name),
           });
+          rec.commit();
           if (outcome.kind === 'error') {
             appState.pushMessage(outcome.message || '씬을 휴지통으로 옮기지 못했습니다.');
             return;

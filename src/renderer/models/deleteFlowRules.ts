@@ -297,6 +297,16 @@ export function pasteResultText(copied: number, failed: number): string {
   return `이미지 붙여넣기: 성공 ${copied} · 실패 ${failed}`;
 }
 
+/**
+ * 이미지 복제·다른 씬으로 복사 결과 한 줄(2026-11-02 U4 — copyImageFilesInto 결과). 전부 성공은 기존 문구
+ * 「이미지를 복제했습니다」·「이미지를 복사했습니다」 그대로.
+ */
+export function imageCopyResultText(verb: '복제' | '복사', done: number, failed: number): string {
+  if (failed === 0) return `이미지를 ${verb}했습니다`;
+  if (done === 0) return `이미지를 ${verb}하지 못했습니다(${failed}장).`;
+  return `이미지 ${verb}: 성공 ${done} · 실패 ${failed}`;
+}
+
 /** 이미지 휴지통 복원 실패 사유(같은 이름 파일 있음 / 파일 이동 실패) — 결과 문구 공용. */
 export const IMAGE_RESTORE_FAIL_REASON =
   '원래 위치에 같은 이름 파일이 있거나 파일을 옮기지 못했습니다';

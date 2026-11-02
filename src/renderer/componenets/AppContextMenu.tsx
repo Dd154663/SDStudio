@@ -21,6 +21,7 @@ import {
   batchResultLine,
   DELETE_RESULT_TEXT,
   deleteConfirmText,
+  imageCopyResultText,
   imageDeleteScopeLine,
   runTrashDelete,
   shouldSkipImageDeleteConfirm,
@@ -60,6 +61,12 @@ import { sceneSelectorHost } from '../models/sceneSelectorHost';
 import { recordSceneOrder } from '../models/sceneOrderUndo';
 import { editPresetList } from '../models/presetUndo';
 import { recordScenesCreated } from '../models/sceneStructureUndo';
+import {
+  beginImageDelete,
+  beginSceneDelete,
+  copyImagesRecorded,
+  deleteImageFilesRecorded,
+} from '../models/deleteUndo';
 import { UNDO_TEXT } from '../models/undoService';
 import { editSeedGroups } from '../models/sceneFieldUndo';
 
@@ -544,17 +551,18 @@ export const AppContextMenu = observer(() => {
             outcome: { trashDays: SCENE_RETENTION_DAYS },
           }),
           callback: async () => {
-            const { trashService } = await import('../models');
             const session = appState.curSession;
             if (!session) return;
             // 우클릭한 씬과 같은 종류의 Map 에서만 대상을 찾는다. 이름만으로
             // scenes→inpaints 순으로 찾으면 변형 탭의 삭제가 같은 이름의 일반 씬을 지운다.
             // 휴지통 이동에 실패한 씬은 그대로 남는다(2026-10-02 S1) — 건수·이름을 알린다.
+            // 실제로 옮긴 씬 전부 = 되돌리기 1항목(U4, 되돌림은 역순으로 원래 이름·자리)
             const failedNames: string[] = [];
             const targets = selectedScenesLike(ctx.scene);
+            const rec = beginSceneDelete(session);
             for (const scene of targets) {
               try {
-                await trashService.moveSceneToTrash(session, scene);
+                await rec.trash(scene);
                 // 다른 창 잠금 등으로 조용히 돌아온 경우도 실패로 센다
                 if (session.hasScene(scene.type, scene.name)) failedNames.push(scene.name);
               } catch (e) {
@@ -562,6 +570,7 @@ export const AppContextMenu = observer(() => {
                 failedNames.push(scene.name);
               }
             }
+            rec.commit();
             appState.clearSceneSelection();
             if (failedNames.length > 0) {
               appState.pushDialog({
@@ -583,13 +592,14 @@ export const AppContextMenu = observer(() => {
             outcome: { trashDays: SCENE_RETENTION_DAYS },
           }),
           callback: async () => {
-            const { trashService } = await import('../models');
             const session = appState.curSession!;
-            // 잠금으로 조용히 돌아와 씬이 남아 있어도 실패로 알린다(SPEC §8, X4)
+            // 잠금으로 조용히 돌아와 씬이 남아 있어도 실패로 알린다(SPEC §8, X4). 옮겼으면 되돌리기 기록(U4)
+            const rec = beginSceneDelete(session);
             const outcome = await runTrashDelete({
-              remove: () => trashService.moveSceneToTrash(session, ctx.scene),
+              remove: () => rec.trash(ctx.scene),
               stillExists: () => session.hasScene(ctx.scene.type, ctx.scene.name),
             });
+            rec.commit();
             if (outcome.kind === 'error') {
               appState.pushMessage(outcome.message || '씬을 휴지통으로 옮기지 못했습니다.');
             } else if (outcome.kind === 'still-present') {
@@ -677,11 +687,13 @@ export const AppContextMenu = observer(() => {
       appState.setProgressDialog({ text: '이미지 삭제 중...', done: 0, total: scenes.length });
       let done = 0;
       let failed = 0;
+      // 여러 씬 일괄 삭제 = 되돌리기 1항목(U4)
+      const rec = beginImageDelete(session);
       try {
         for (const { scene, paths } of scenes) {
           try {
             // 씬마다 토스트가 쌓이지 않게 공용 알림은 끄고 아래에서 한 번에 알린다(X13)
-            failed += await deleteImageFiles(session, paths, scene, { notify: false });
+            failed += (await rec.delete(scene, paths, { notify: false })).failed.length;
           } catch (e) {
             console.error('이미지 삭제 실패:', e);
             failed += paths.length;
@@ -689,6 +701,7 @@ export const AppContextMenu = observer(() => {
           appState.setProgressDialog({ text: '이미지 삭제 중...', done: ++done, total: scenes.length });
         }
       } finally {
+        rec.commit();
         appState.setProgressDialog(undefined);
       }
       const ok = Math.max(0, totalImages - failed);
@@ -717,16 +730,11 @@ export const AppContextMenu = observer(() => {
   };
   const duplicateImage = async (ctx: GallaryImageContextAlt) => {
     if (!ctx.scene) return;
-    for (const path of ctx.path) {
-      const tmp = path.slice(0, path.lastIndexOf('/'));
-      // 원본 확장자 보존(webp/png) — 고정 .png 로 복제하면 내용/확장자 불일치
-      const ext = path.split('.').pop() || 'png';
-      await backend.copyFile(path, tmp + '/' + Date.now().toString() + '.' + ext);
-    }
-    imageService.refresh(appState.curSession!, ctx.scene);
+    // 원본 확장자 보존·같은 ms 이름 충돌 없음(E9 — copyImageFilesInto), 만든 파일만 되돌리기 기록(U4)
+    const r = await copyImagesRecorded(appState.curSession!, ctx.scene, ctx.path, 'duplicate');
     appState.pushDialog({
       type: 'yes-only',
-      text: '이미지를 복제했습니다',
+      text: imageCopyResultText('복제', r.created.length, r.failed.length),
     });
   };
   const copyImage = (ctx: GallaryImageContextAlt) => {
@@ -745,19 +753,11 @@ export const AppContextMenu = observer(() => {
           return;
         }
 
-        for (const path of ctx.path) {
-          await backend.copyFile(
-            path,
-            imageService.getImageDir(appState.curSession!, scene) +
-              '/' +
-              Date.now().toString() +
-              '.png',
-          );
-        }
-        imageService.refresh(appState.curSession!, scene);
+        // 원본 확장자 보존(.png 고정이던 결함)·같은 ms 이름 충돌 없음(E9), 만든 파일만 되돌리기 기록(U4)
+        const r = await copyImagesRecorded(appState.curSession!, scene, ctx.path, 'copy');
         appState.pushDialog({
           type: 'yes-only',
-          text: '이미지를 복사했습니다',
+          text: imageCopyResultText('복사', r.created.length, r.failed.length),
         });
       },
     });
@@ -777,7 +777,9 @@ export const AppContextMenu = observer(() => {
   };
   const deleteImg = async (ctx: GallaryImageContextAlt) => {
     const doDelete = async () => {
-      await deleteImageFiles(appState.curSession!, ctx.path, ctx.scene);
+      // 되돌리기 기록(U4) — 휴지통 이동·실패 알림은 deleteImageFiles 와 같다
+      if (ctx.scene) await deleteImageFilesRecorded(appState.curSession!, ctx.path, ctx.scene);
+      else await deleteImageFiles(appState.curSession!, ctx.path, ctx.scene);
     };
     // 「다시 묻지 않음」은 장수와 무관하게 적용 — 단일·여러 장(선택 모드 우클릭) 모두 체크박스·설정 존중(deleteFlowRules)
     const count = ctx.path.length;
@@ -998,7 +1000,8 @@ export const AppContextMenu = observer(() => {
     if (!resolved) return;
     const { session, scene } = resolved;
     const doDelete = async () => {
-      await deleteImageFiles(session, [ctx.entry.path], scene);
+      // 그 이미지의 프로젝트 스택에 되돌리기 기록(U4 — 히스토리 항목은 되살리지 않음, 1차)
+      await deleteImageFilesRecorded(session, [ctx.entry.path], scene);
       imageHistoryService.remove(ctx.entry.id);
     };
     if (shouldSkipImageDeleteConfirm(appState.skipImageDeleteConfirm, 1)) {

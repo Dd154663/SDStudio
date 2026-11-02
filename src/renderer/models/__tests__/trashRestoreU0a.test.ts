@@ -332,7 +332,8 @@ describe('T2 restoreImages — { restored, failed }, 같은 이름은 덮어쓰�
     files.set(META, JSON.stringify({ 'a.png': 10 }));
     const svc = await loaded();
     const r = await svc.restoreImages(sess, scene, ['a.png']);
-    expect(r).toEqual({ restored: [], failed: ['a.png'] });
+    // missing(U4 사유 구분) = 휴지통에도 원래 위치에도 없던 것 — 같은 이름 충돌은 아님
+    expect(r).toEqual({ restored: [], failed: ['a.png'], missing: [] });
     expect(files.get('outs/P/S/a.png')).toBe('current');
     expect(files.get('outs/P/S/.trash/a.png')).toBe('deleted');
     expect(meta()).toEqual({ 'a.png': 10 });
@@ -354,6 +355,8 @@ describe('T2 restoreImages — { restored, failed }, 같은 이름은 덮어쓰�
     const r = await svc.restoreImages(sess, scene, ['a.png', 'b.png', 'c.png', 'd.png', 'e.png']);
     expect(r.restored).toEqual(['b.png', 'e.png']);
     expect(r.failed).toEqual(['a.png', 'c.png', 'd.png']);
+    // 사유 구분(U4): 휴지통에 없던 c 만 missing — a(같은 이름 있음)·d(이동 실패)는 아님
+    expect(r.missing).toEqual(['c.png']);
     expect(files.get('outs/P/S/b.png')).toBe('B');
     expect(files.get('outs/P/S/e.png')).toBe('E');
     expect(files.get('outs/P/S/.trash/d.png')).toBe('D');
