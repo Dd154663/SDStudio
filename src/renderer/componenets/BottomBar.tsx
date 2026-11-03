@@ -7,6 +7,7 @@ import { GenControlHandle } from './GenControlWidget';
 import { appState } from '../models/AppService';
 import { isMobile } from '../models';
 import { BottomBarPlacement } from '../models/layoutTemplates';
+import { UndoBarSlot } from './UndoBarSlot';
 
 // 메인 화면 하단 바: 세션 선택(PC 전용) + 실행/중지 컨트롤.
 // 레이아웃 템플릿(배치 변경) 대비로 App.tsx 인라인에서 분리 — 기본(bottom) 모양·클래스는 기존과 동일.
@@ -40,9 +41,11 @@ const BottomBar = observer(
   const bar = (
     <StackFixed>
       {/* zone-bar: 구역 카드화 마감 — PC 새 마감에선 캔버스 프레임에 통합(App.css) */}
+      {/* data-undo-anchor + UndoBarSlot: 되돌리기 버튼 바(UndoRedoBar)가 이 막대 위 중앙에 붙는다(relative = 자리 기준) */}
       <div
         data-gen-dock
-        className="zone-bar px-3 pt-2 border-t flex gap-3 items-center line-color"
+        data-undo-anchor=""
+        className="zone-bar relative px-3 pt-2 border-t flex gap-3 items-center line-color"
         style={{
           // 제스처바가 있는 기기에서 실행/중지 버튼이 바에 가리지 않도록
           // 기존 하단 여백(0.5rem)에 safe-area 를 더한다(inset 0이면 기존과 동일).
@@ -83,6 +86,7 @@ const BottomBar = observer(
             </div>
           )}
         </div>
+        <UndoBarSlot tone="bar" />
       </div>
     </StackFixed>
   );

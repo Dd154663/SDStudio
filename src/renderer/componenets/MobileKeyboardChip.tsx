@@ -6,6 +6,7 @@ import {
   formatPromptWeightLabel,
   PROMPT_WEIGHT_STEP,
 } from '../models/promptTransforms';
+import { setKeyboardChipVisible } from '../models/keyboardChipState';
 
 /**
  * 모바일 키보드 위 칩(2026-09-26). 화면 하단 중앙, 키보드 바로 위(visualViewport)에 하나만 뜬다.
@@ -119,6 +120,12 @@ export default function MobileKeyboardChip({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 칩 표시 여부를 관찰 상자로 알린다 — 되돌리기 버튼 바(UndoRedoBar)가 칩이 떠 있는 동안 숨는다.
+  useEffect(() => {
+    setKeyboardChipVisible(!!state);
+  }, [state]);
+  useEffect(() => () => setKeyboardChipVisible(false), []);
 
   const step = (delta: number) => {
     const editor = getFocusedPromptEditor();

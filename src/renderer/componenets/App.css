@@ -790,7 +790,13 @@ html:not(.finish-classic) .tab-seg > .tab-seg-off:hover {
      사라지므로 토스트를 하단 중앙에 배치한다. 하단 footer 바를 가리지 않도록 여백 확보. */
   /* 제스처 내비게이션 바가 있는 기기(edge-to-edge)에서 토스트가 바에 가리지 않도록
      safe-area 만큼 더 띄운다. inset이 0인 기기에선 기존 56px 그대로(무회귀). */
-  bottom: calc(56px + env(safe-area-inset-bottom));
+  /* 되돌리기 버튼 바(UndoRedoBar, U6)가 보이는 동안은 그 위로 — 바가 :root 에 --undo-bar-top(바 위 모서리의 화면 아래로부터
+     거리, 바 자신의 safe-area 처리 포함)을 두고, 숨으면 지운다(변수 없음 → 기존 56px+safe-area 그대로).
+     -8px: 안쪽 m-4(16px)·토스트 mb-2(8px) 때문에 토스트 아래 끝은 이 bottom 보다 24px 위 → 바와 16px 띄운다. */
+  bottom: max(
+    calc(56px + env(safe-area-inset-bottom)),
+    calc(var(--undo-bar-top, 0px) - 8px)
+  );
   z-index: var(--z-toast);
 }
 

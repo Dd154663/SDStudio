@@ -15,7 +15,7 @@ import {
   ToolbarButtonMeta,
 } from './uiLayout';
 import { IMPORT_IMAGE_ACCEPT } from './imageFormats';
-import { undoService } from './undoService';
+import { undoService, UNDO_TEXT } from './undoService';
 
 export interface GlobalAction {
   id: string;
@@ -97,17 +97,26 @@ export const GLOBAL_ACTIONS: GlobalAction[] = [
   { id: 'scene-trash', run: () => appState.openSceneTrash(), available: hasSession },
   // ── 기타 전역 ──
   { id: 'new-window', run: () => appState.openNewWindow() },
-  // 되돌리기/다시 실행(2026-11-01 U1) — 현재 프로젝트 스택. 기본 퀵 메뉴에는 넣지 않는다(사용자가 추가, D19 보류)
+  // 되돌리기/다시 실행(2026-11-01 U1) — 현재 프로젝트 스택. 기본 퀵 메뉴에는 넣지 않는다(사용자가 추가).
+  // 2026-11-03 U6(D19): 툴바 레지스트리에서는 빠졌다(하단 상시 버튼 바 UndoRedoBar) — 표시 메타는 QUICK_MENU_ONLY_META.
   { id: 'undo', run: () => void undoService.undo(), available: () => undoService.canUndo },
   { id: 'redo', run: () => void undoService.redo(), available: () => undoService.canRedo },
 ];
 
-// id → 툴바 레지스트리 메타(표시명·pcOnly 단일 출처). 퀵 메뉴 대상 id 는 전부
-// 씬/프로젝트 레지스트리에 존재한다(없으면 undefined — 호출부가 조용히 건너뜀).
+// 툴바 레지스트리에 없는 퀵 메뉴 전용 액션의 표시 메타(2026-11-03 U6) — 되돌리기/다시 실행은 툴바(⋯ 메뉴)에서 빠지고
+// 하단 상시 버튼 바(UndoRedoBar)가 맡지만 퀵 메뉴에는 남는다. 이름은 UNDO_TEXT 단일 출처. tier 는 형식상 값(툴바에 안 쓰임).
+export const QUICK_MENU_ONLY_META: ToolbarButtonMeta[] = [
+  { id: 'undo', name: UNDO_TEXT.undoName, tier: 'overflow' },
+  { id: 'redo', name: UNDO_TEXT.redoName, tier: 'overflow' },
+];
+
+// id → 표시 메타(표시명·pcOnly 단일 출처). 툴바에도 있는 액션은 씬/프로젝트 레지스트리, 퀵 메뉴 전용 액션은
+// QUICK_MENU_ONLY_META(없으면 undefined — 호출부가 조용히 건너뜀).
 export function globalActionMeta(id: string): ToolbarButtonMeta | undefined {
   return (
     sceneToolbarRegistry.find((b) => b.id === id) ??
-    projectToolbarRegistry.find((b) => b.id === id)
+    projectToolbarRegistry.find((b) => b.id === id) ??
+    QUICK_MENU_ONLY_META.find((b) => b.id === id)
   );
 }
 

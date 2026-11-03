@@ -135,6 +135,7 @@ import { backStackService } from '../models/BackStackService';
 import { recordSceneOrder } from '../models/sceneOrderUndo';
 import { mirrorImageHooks, recordScenesCreated, toggleSceneBookmarkRecorded } from '../models/sceneStructureUndo';
 import { UNDO_TEXT } from '../models/undoService';
+import { UNDO_BAR_HEIGHT_PX } from './UndoBarSlot';
 import { editSceneFields, editSeedGroups } from '../models/sceneFieldUndo';
 
 // createMissingPiecesForSession / queueScene 는 models/sceneQueueActions.ts 로 이전
@@ -3278,8 +3279,12 @@ const QueueControl = observer(
                         ...(isMobile
                           ? { scrollbarGutter: 'stable both-edges' }
                           : {}),
+                        // 되돌리기 버튼 바(UndoRedoBar)가 하단 막대 위로 바 높이만큼 격자 아래 끝을 덮는다 → 스크롤 바닥에
+                        // 같은 높이의 여백을 두어 끝까지 내리면 마지막 줄 카드가 바 위로 올라오게(PC·모바일 공통, 상시).
+                        // 패딩은 스크롤 영역 안 끝에만 붙으므로 선택 상자 좌표(toGridContentXY = 위·왼쪽 기준+스크롤)는 불변.
+                        paddingBottom: UNDO_BAR_HEIGHT_PX,
                       }
-                    : undefined
+                    : { paddingBottom: UNDO_BAR_HEIGHT_PX }
                 }
               >
                 {dragBox && isDraggingRef.current && !mainDragSurface && (

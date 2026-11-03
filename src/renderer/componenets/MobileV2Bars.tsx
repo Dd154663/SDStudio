@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { appState } from '../models/AppService';
 import { backStackService } from '../models/BackStackService';
 import { tierRows } from '../models/mobileV2';
+import { UndoBarSlot, V2_ROW_SELECT_TINT } from './UndoBarSlot';
 
 // 모바일 V2 의 하단 메인 줄(탭 바 모양)과 "위로 밀기 빠른 실행"(2026-09-21).
 //  · 메인 줄: 아이콘+이름이 세로로 놓인 같은 폭의 칸. 칸 구성은 고정(사용자 결정) — 길게 눌러 이동 대상이 아니다.
@@ -274,6 +275,8 @@ export const V2TierRows: React.FC<{
       <div
         ref={tierRef}
         data-v2-tier=""
+        // 되돌리기 버튼 바(UndoRedoBar)는 펼쳐진 둘째 줄 위로 올라간다(자리 = 끝의 UndoBarSlot, absolute 라 기준이 된다)
+        data-undo-anchor=""
         data-edge-swipe-ignore=""
         className="absolute left-0 right-0 bottom-full z-20 flex flex-col bg-[var(--c-zone)] border-t line-color shadow-[0_-6px_16px_rgba(0,0,0,0.25)]"
       >
@@ -324,6 +327,7 @@ export const V2TierRows: React.FC<{
             )}
           </div>
         ))}
+        <UndoBarSlot tone="tier" />
       </div>
     </>
   );
@@ -335,12 +339,15 @@ export const V2MainRow: React.FC<{ slots: V2SlotDef[]; selecting?: boolean }> = 
 }) => (
   <div
     data-v2-main-row={selecting ? 'select' : 'main'}
+    // 되돌리기 버튼 바(UndoRedoBar)가 보이는 메인 줄 중 가장 위의 것 위 중앙에 붙는다(relative = 끝의 UndoBarSlot 기준)
+    data-undo-anchor=""
     data-edge-swipe-ignore=""
-    className="flex-none flex items-center gap-0.5 px-1 pt-[3px] pb-0.5 border-t line-color"
-    style={{ background: selecting ? 'rgba(14,165,233,0.10)' : undefined }}
+    className="relative flex-none flex items-center gap-0.5 px-1 pt-[3px] pb-0.5 border-t line-color"
+    style={{ background: selecting ? V2_ROW_SELECT_TINT : undefined }}
   >
     {slots.map((def) => (
       <V2Slot key={def.key} def={def} />
     ))}
+    <UndoBarSlot tone={selecting ? 'row-select' : 'row'} />
   </div>
 );

@@ -40,6 +40,13 @@ const IMAGE_GRID_SHORTCUTS: ShortcutEntry[] = [
   { keys: ['H'], desc: '단축키 도움말' },
 ];
 
+// 전역 단축키(KeyboardShortcutService global 범주) — 씬 목록·이미지 그리드·상세에서도 통한다(되돌리기 계약).
+// 월드컵(토너먼트) 창은 되돌리기 허용 창이 아니라 넣지 않는다. 키는 기본값(설정 화면에서 바꿀 수 있음).
+export const GLOBAL_SHORTCUTS: ShortcutEntry[] = [
+  { keys: ['Ctrl+Z'], desc: '되돌리기' },
+  { keys: ['Ctrl+Y'], desc: '다시 실행' },
+];
+
 const TOURNAMENT_SHORTCUTS: ShortcutEntry[] = [
   { keys: ['A', ','], desc: '왼쪽 우승' },
   { keys: ['D', '.'], desc: '오른쪽 우승' },
@@ -54,6 +61,24 @@ interface ShortcutCheatsheetProps {
   onClose: () => void;
 }
 
+function ShortcutRow({ entry }: { entry: ShortcutEntry }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-muted whitespace-nowrap">{entry.desc}</span>
+      <span className="flex gap-1">
+        {entry.keys.map((k) => (
+          <kbd
+            key={k}
+            className="px-1.5 py-0.5 rounded bg-[var(--c-input-bg)] text-[var(--c-input-text)] font-mono text-[11px] border line-color leading-none"
+          >
+            {k}
+          </kbd>
+        ))}
+      </span>
+    </div>
+  );
+}
+
 function ShortcutCheatsheet({ scope, onClose }: ShortcutCheatsheetProps) {
   const shortcuts =
     scope === 'scene'
@@ -61,6 +86,7 @@ function ShortcutCheatsheet({ scope, onClose }: ShortcutCheatsheetProps) {
       : scope === 'image-grid'
         ? IMAGE_GRID_SHORTCUTS
         : TOURNAMENT_SHORTCUTS;
+  const globals = scope === 'tournament' ? [] : GLOBAL_SHORTCUTS;
   const panelRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -81,25 +107,21 @@ function ShortcutCheatsheet({ scope, onClose }: ShortcutCheatsheetProps) {
       </div>
       <div className="px-3 py-2 space-y-1.5 max-h-[380px] overflow-y-auto">
         {shortcuts.map((entry) => (
-          <div
-            key={entry.desc}
-            className="flex items-center justify-between gap-3"
-          >
-            <span className="text-muted whitespace-nowrap">
-              {entry.desc}
-            </span>
-            <span className="flex gap-1">
-              {entry.keys.map((k) => (
-                <kbd
-                  key={k}
-                  className="px-1.5 py-0.5 rounded bg-[var(--c-input-bg)] text-[var(--c-input-text)] font-mono text-[11px] border line-color leading-none"
-                >
-                  {k}
-                </kbd>
-              ))}
-            </span>
-          </div>
+          <ShortcutRow key={entry.desc} entry={entry} />
         ))}
+        {globals.length > 0 && (
+          <>
+            <div
+              data-shortcut-section="global"
+              className="pt-1.5 mt-1.5 border-t line-color text-[11px] font-bold text-sub"
+            >
+              전체
+            </div>
+            {globals.map((entry) => (
+              <ShortcutRow key={entry.desc} entry={entry} />
+            ))}
+          </>
+        )}
       </div>
     </div>
   );

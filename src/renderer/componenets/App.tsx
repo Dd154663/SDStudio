@@ -28,6 +28,7 @@ import { MOBILE_V2_INTRO_TEXT, revertMobileV2ToClassic } from '../models/mobileV
 import { INSTALL_DIR_TEXT } from '../../shared/installDir';
 import TobBar from './TobBar';
 import AlertWindow from './AlertWindow';
+import UndoRedoBar from './UndoRedoBar';
 import { DropdownSelect, TabComponent } from './UtilComponents';
 import PieceEditor, { PieceCell } from './PieceEditor';
 import { CharacterPresetFloatEditor } from './CharacterPresetEditor';
@@ -977,6 +978,9 @@ export const App = observer(() => {
             )}
           </div>
         )}
+        {/* 되돌리기/다시 실행 버튼 바(U6·D19) — 하단 막대 위 중앙 상시 노출(막대 안 자리 UndoBarSlot 에 포털, z-widget: FloatView 위·모달 아래).
+            테마 루트 안이라 다크·커스텀 토큰을 받는다. 파일 드롭 안내 중에는 숨긴다. */}
+        <UndoRedoBar suppressed={!!dragOverlay} />
         <AlertWindow />
         <ConfirmWindow />
         <ExpiredProjectsDialog />

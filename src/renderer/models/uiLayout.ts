@@ -84,10 +84,9 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'empty-image-trash', name: '삭제 이미지 일괄 비우기', tier: 'overflow', portable: true, v2Label: '삭제 비우기' },
   { id: 'find-replace', name: '찾기 및 변환', tier: 'secondary', portable: true, v2Label: '찾기·변환', group: 'navigate' },
   { id: 'shortcut-help', name: '단축키 도움말', pcOnly: true, tier: 'overflow' },
-  // 되돌리기/다시 실행(2026-11-01 U1) — 임시 배치: 양쪽 ⋯ 메뉴(overflow). 최종 배치(플로팅·눈에 띄는 고정 칸)는
-  // 별도 논의(D19 보류). appState·undoService 만 의존 → portable(공유 JSX = PortableToolbarButtons).
-  { id: 'undo', name: '되돌리기', tier: 'overflow', portable: true, v2Label: '되돌리기', group: 'edit' },
-  { id: 'redo', name: '다시 실행', tier: 'overflow', portable: true, v2Label: '다시 실행', group: 'edit' },
+  // 'undo'·'redo'(2026-11-01 U1 임시 ⋯ 메뉴 배치)는 2026-11-03 U6(D19)에서 제거 — 되돌리기/다시 실행은 하단 막대 위
+  // 상시 버튼 바(componenets/UndoRedoBar.tsx)가 맡는다. 퀵 메뉴(globalActions GLOBAL_ACTIONS)의 같은 id 는 유지.
+  // 저장된 배치에 남은 두 id 는 레지스트리에 없는 id 라 조용히 무시된다(resolveToolbar·resolveToolbarView·동반 슬롯 공통).
 ];
 
 // 프로젝트 바 (프로젝트 선택기 옆 버튼들) — SessionSelect.tsx 가 사용.

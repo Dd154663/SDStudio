@@ -182,8 +182,8 @@ describe('레지스트리 group 계약', () => {
       create: ['add-scene', 'queue-add', 'batch-process'],
       export: ['export-images', 'quick-export'],
       navigate: ['multi-select', 'scene-search', 'scene-find', 'image-review', 'bookmark-jump', 'find-replace'],
-      // undo·redo(2026-11-01 U1): 기본 ⋯ 메뉴(overflow), 툴바로 꺼내면 편집 도구 칸
-      edit: ['change-resolution', 'import-image', 'artist-tag', 'artist-breakdown', 'artist-prefix-toggle', 'undo', 'redo'],
+      // undo·redo 는 2026-11-03 U6(D19)에서 레지스트리 제거 — 하단 상시 버튼 바(UndoRedoBar)가 맡는다
+      edit: ['change-resolution', 'import-image', 'artist-tag', 'artist-breakdown', 'artist-prefix-toggle'],
       none: ['webp-convert', 'scene-trash', 'empty-image-trash', 'shortcut-help'],
     });
     for (const b of sceneToolbarRegistry.filter((x) => x.group === undefined)) {
