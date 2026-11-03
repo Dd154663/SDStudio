@@ -3341,18 +3341,6 @@ const QueueControl = observer(
                     }}
                   />
                 )}
-                {renderedScenes.length === 0 && (
-                  <div className="w-full col-span-full py-16 flex flex-col items-center justify-center gap-1 text-faint text-sm select-none">
-                    {sceneSearchQuery.trim() ? (
-                      <span>검색 결과가 없습니다</span>
-                    ) : (
-                      <>
-                        <span>아직 씬이 없습니다</span>
-                        <span>{filterFunc ? '상단 툴바의 [씬 추가] 버튼으로 첫 씬을 만들어 보세요' : '아래 [새 씬] 카드나 툴바의 [씬 추가] 버튼으로 첫 씬을 만들어 보세요'}</span>
-                      </>
-                    )}
-                  </div>
-                )}
                 {renderedScenes.map((scene, sceneIdx) => (
                   <SceneCell
                     cellSize={effectiveCellSize}
@@ -3403,6 +3391,20 @@ const QueueControl = observer(
                       <span className="text-sm">새 씬</span>
                     </button>
                   )}
+                {/* 빈 목록 안내 — 「새 씬」 카드 뒤에 두어 카드가 첫 칸(실제 씬이 생길 자리)에 놓이게 한다(2026-11-03, 사용자 지적:
+                    안내가 첫 줄을 차지해 카드가 둘째 줄로 밀렸음). 카드가 숨는 경우(검색·파생 목록)는 안내만 남는다. */}
+                {renderedScenes.length === 0 && (
+                  <div className="w-full col-span-full py-8 flex flex-col items-center justify-center gap-1 text-faint text-sm select-none">
+                    {sceneSearchQuery.trim() ? (
+                      <span>검색 결과가 없습니다</span>
+                    ) : (
+                      <>
+                        <span>아직 씬이 없습니다</span>
+                        <span>{filterFunc ? '상단 툴바의 [씬 추가] 버튼으로 첫 씬을 만들어 보세요' : '위 [새 씬] 카드나 툴바의 [씬 추가] 버튼으로 첫 씬을 만들어 보세요'}</span>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })()}
