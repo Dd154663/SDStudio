@@ -26,16 +26,9 @@ import {
 } from './inpaintResolution';
 import type { ImageResolution } from './inpaintResolution';
 import { numberedName } from './nameInput';
-import { combinationMiddlePrompt, enumerateCombinations } from './PromptService';
-import { GenericScene, InpaintScene, PromptNode, Scene, Session } from './types';
-import { buildSDImageGenJob } from './workflows/SDWorkFlow';
-import {
-  resolveSceneCharacterPrompts,
-  usesSceneCharacterPromptData,
-} from './sceneCharacterPrompts';
+import { GenericScene, InpaintScene, Scene, Session } from './types';
 import type { ComboMode } from './comboMode';
-import { joinPromptParts, snapshotComboFields } from './variantCombo';
-import type { ComboSnapshotFields } from './variantCombo';
+import { buildComboFromScene, prepareComboContext } from './comboSource';
 import {
   focusRectPresetPatch,
   presetFocusRect,
@@ -50,9 +43,7 @@ import {
   attachMaskDecision,
   batchResultKind,
   I2I_BATCH_TEXT,
-  I2I_COPY_SOURCE_WORKFLOWS,
   I2I_WORKFLOW_TYPE,
-  i2iComboPresetFromJob,
   i2iCopyResultText,
   imageAttachResultText,
   INPAINT_WORKFLOW_TYPE,
@@ -66,9 +57,6 @@ import { UNDO_TEXT } from './undoService';
 import type { StrengthNoise, VariantCopyWorkflow } from './i2iBatch';
 
 type SetSceneSelector = SceneSelectorSetter;
-
-/** 잡 조립용 빈 프롬프트(B1 은 생성 설정만 옮기고 프롬프트는 조합 모드 규칙으로 채운다). */
-const EMPTY_PROMPT: PromptNode = { type: 'text', text: '' };
 
 /** 고른 이미지 — raw base64(데이터 URL 머리 없음)·실제 크기·크기 기준 해상도. */
 interface PickedImage {
@@ -236,24 +224,11 @@ async function createVariantCopyScenes(
   mode: ComboMode,
   workflow: VariantCopyWorkflow,
 ) {
-  const selectedWorkflow = session.selectedWorkflow;
-  const [genType, genPreset, genShared] = selectedWorkflow
-    ? session.getCommonSetup(selectedWorkflow)
-    : [undefined, undefined, undefined];
-  if (!genType || !genPreset || !I2I_COPY_SOURCE_WORKFLOWS.has(genType)) {
+  // 현재 생성 설정·「복사 시점 1회 복제」 고정값 — 묶음 전체가 같은 사전 세팅이므로 한 번만 만든다(comboSource 단일 출처)
+  const ctx = await prepareComboContext(session, mode);
+  if (!ctx) {
     appState.pushMessage(I2I_BATCH_TEXT.noCopySetup, 'error');
     return;
-  }
-  // 「복사 시점 1회 복제」 고정값 — 묶음 전체가 같은 사전 세팅이므로 한 번만 만든다
-  let snapshot: ComboSnapshotFields | undefined;
-  if (mode === 'snapshot') {
-    try {
-      snapshot = await snapshotComboFields(genType, genPreset, genShared, session.extraPrompt);
-    } catch (e: any) {
-      console.error('변형 씬 복사 고정값 만들기 실패:', e);
-      appState.pushMessage(I2I_BATCH_TEXT.noCopySetup, 'error');
-      return;
-    }
   }
 
   const prepared: InpaintScene[] = [];
@@ -264,19 +239,9 @@ async function createVariantCopyScenes(
   for (const src of sources) {
     try {
       // 생성 설정(샘플링 등)은 예약과 같은 잡 조립에서 옮기고, 프롬프트는 조합 모드 규칙(조합은 slots 로 복사 —
-      // 예약 때 생성 경로와 같은 규칙으로 전개, SPEC §7-4). 조각은 여기서 풀지 않는다.
-      const job = buildSDImageGenJob(src, EMPTY_PROMPT, [], genPreset, genShared);
-      const first = enumerateCombinations(src, 1)[0];
-      const preset = i2iComboPresetFromJob(workFlowService.buildPreset(workflow), job, {
-        middlePrompt: first ? combinationMiddlePrompt(first) : '',
-        sceneUc: joinPromptParts(
-          usesSceneCharacterPromptData(src) ? src.sceneCharacterUC : '',
-          src.sceneUC,
-        ),
-        characterPrompts: resolveSceneCharacterPrompts(genPreset, genShared, src),
-        mode,
-        snapshot,
-      });
+      // 예약 때 생성 경로와 같은 규칙으로 전개, SPEC §7-4). 조각은 여기서 풀지 않는다. 규칙 단일 출처 = comboSource.
+      const combo = buildComboFromScene(src, workflow, mode, ctx);
+      const preset = combo.preset;
       if (image) {
         applyStrengthNoise(preset, values, workflowHasNoise(workflow));
         // 씬마다 고유 파일(공유 금지) — 쓴 내용을 읽기 캐시에 선적재
@@ -292,10 +257,10 @@ async function createVariantCopyScenes(
         // 이미지가 있으면 그 크기(R-res ⓕ), 없으면 원본 씬 해상도(커스텀 너비·높이 포함)
         ...inpaintSceneResolutionFields(workflow, src, image?.resolution),
         // 원본 씬 연결 — 결과 보기 「원본 씬으로 이미지 복사」·이미지 상세의 변형 씬 목록
-        sceneRef: src.name,
+        sceneRef: combo.sceneRef,
         // 조합 깊은 복사(toJSON→fromJSON — 원본 씬과 조각 객체를 공유하지 않음)·조합 모드
-        slots: src.toJSON().slots,
-        comboMode: mode,
+        slots: combo.slots,
+        comboMode: combo.comboMode,
         mains: [],
         imageMap: [],
         round: undefined,

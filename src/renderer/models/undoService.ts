@@ -276,6 +276,7 @@ export const UNDO_TEXT = {
   variantFocusRect: (name: string) => `Focused 영역 변경: ${name}`,
   variantFocusContext: (name: string) => `Focused 맥락 여백 변경: ${name}`,
   variantComboOff: (name: string) => `조합 모드 끄기: ${name}`,
+  variantComboOn: (name: string) => `조합 모드 켜기: ${name}`,
   variantImageUpload: (name: string) => `변형 씬 이미지 교체: ${name}`,
   variantFitResolution: (name: string) => `이미지 크기로 해상도 맞추기: ${name}`,
   imageAttachBatch: (count: number) => `일괄 이미지 첨부 ${count}개 씬`,

@@ -27,6 +27,7 @@ import {
 import { dataUriToBase64 } from '../models/ImageService';
 import { InpaintScene, PromptPiece, Scene } from '../models/types';
 import { COMBO_EDITOR_TEXT, COMBO_EMPTY_TEXT, variantComboMode } from '../models/comboMode';
+import { canChooseComboMode, turnOnComboMode } from '../models/comboSource';
 import {
   combinationMiddlePrompt,
   enumerateCombinations,
@@ -294,7 +295,7 @@ const InPaintEditor = observer(
         confirmText: COMBO_EDITOR_TEXT.turnOff,
       });
       if (!ok) return;
-      // 되돌리기 = 조합 모드·단일 프롬프트를 함께 되살림(U5 — 편집 창 UI 로는 다시 켤 수 없어 되돌리기가 유일한 복구)
+      // 되돌리기 = 조합 모드·단일 프롬프트를 함께 되살림(U5). 다시 켜기는 프롬프트 칸 머리 「조합 모드 켜기」(2026-11-03)
       editVariantFields(
         appState.curSession,
         editingScene,
@@ -308,6 +309,24 @@ const InPaintEditor = observer(
         },
       );
     };
+
+    // 「조합 모드 켜기」(2026-11-03, 끄기의 짝 — SPEC §7-4) — 단일 I2I·인페인트(미러·조합 모드 씬 제외).
+    // 단일 계열 편집 칸(SDI2IUI·SDInpaintUI)의 「프롬프트」 칸 머리 줄 오른쪽 끝(끄기 = 중간 프롬프트 머리 줄과 같은 자리 감각).
+    // 공유/고정·출처 선택·적용·되돌리기 기록은 comboSource.turnOnComboMode 단일 출처. 켜지면 조합 계열 창(comboTabs)으로 바뀐다.
+    const canTurnOn = !isMirror && !comboMode && canChooseComboMode(editingScene.workflowType);
+    const singleHeaderEnds = canTurnOn
+      ? {
+          prompt: () => (
+            <button
+              className="round-button back-gray btn-sm flex-none"
+              data-combo-turn-on=""
+              onClick={() => void turnOnComboMode(appState.curSession, editingScene)}
+            >
+              {COMBO_EDITOR_TEXT.turnOn}
+            </button>
+          ),
+        }
+      : undefined;
 
     // 「프롬프트 에디터」 탭의 글자 칸 — 'snapshot' 은 이 변형 씬 프리셋, 'shared' 는 현재 그림체(프로젝트 사전 세팅)에 쓴다.
     // 둘 다 사전 세팅 setField 집약(setWorkflowField)과 같은 편집 세션 기록(D13, U5).
@@ -847,6 +866,7 @@ const InPaintEditor = observer(
                   )}
                   middlePromptMode={false}
                   onImageUploaded={onImageUploaded}
+                  fieldHeaderEnds={singleHeaderEnds}
                 />
               )}
             </FloatView>
@@ -873,6 +893,7 @@ const InPaintEditor = observer(
                 element={workFlowService.getI2IEditor(editingScene.workflowType)}
                 middlePromptMode={false}
                 onImageUploaded={onImageUploaded}
+                fieldHeaderEnds={singleHeaderEnds}
               />
             </div>
           )}

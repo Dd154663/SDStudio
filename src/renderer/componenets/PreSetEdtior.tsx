@@ -83,7 +83,7 @@ import {
 } from '../models/presetLayout';
 import { resolveCompanionButtons } from '../models/companionSlots';
 import { mainSamplingSummary, readMainSampling } from '../models/variantSampling';
-import { VARIANT_SEED_TEXT } from '../models/sceneSeedGroups';
+import { SEED_INPUT_TEXT } from '../models/sceneSeedGroups';
 import { renderCompanionButtons } from './PortableToolbarButtons';
 import { CompanionHostRow } from './CompanionDnd';
 import {
@@ -2583,7 +2583,7 @@ export const CharacterButton = observer(({ input }: { input: WFIInlineInput }) =
 });
 
 const WFRInline = observer(({ element }: WFElementProps) => {
-  const { editVibe, editCharacters, type, showGroup, showGroupOverlay, preset, shared, meta, modelVersion } =
+  const { editVibe, editCharacters, type, showGroup, showGroupOverlay, preset, shared, meta, modelVersion, fieldHeaderEnds } =
     useContext(WFElementContext)!;
   const { curGroup } = useContext(WFGroupContext)!;
   const input = element as WFIInlineInput;
@@ -2655,6 +2655,8 @@ const WFRInline = observer(({ element }: WFElementProps) => {
               ? '작성됨'
               : undefined
           }
+          // 호출부가 넘긴 머리 줄 오른쪽 끝 요소(단일 I2I·인페인트 「조합 모드 켜기」) — 없으면 그대로
+          headerEnd={fieldHeaderEnds?.[input.field]?.() ?? undefined}
         >
           <PromptEditTextArea
             key={key}
@@ -2699,7 +2701,7 @@ const WFRInline = observer(({ element }: WFElementProps) => {
               value={getField()}
               disabled={false}
               onChange={(val) => setField(val, 'edit')}
-              placeholder={variantSeed ? VARIANT_SEED_TEXT.placeholder : undefined}
+              placeholder={variantSeed ? SEED_INPUT_TEXT.placeholder : undefined}
               key={key}
             />
           </InlineEditorField>
@@ -2793,6 +2795,7 @@ interface ImplProps {
   onCharacterMiddlePromptChange?: (index: number, txt: string) => void;
   onImageUploaded?: (field: string, base64: string) => void | Promise<void>;
   customSlots?: Record<string, (() => React.ReactNode) | undefined>;
+  fieldHeaderEnds?: Record<string, (() => React.ReactNode) | undefined>;
 }
 
 export const PreSetEditorImpl = observer(
@@ -2810,6 +2813,7 @@ export const PreSetEditorImpl = observer(
     onCharacterMiddlePromptChange,
     onImageUploaded,
     customSlots,
+    fieldHeaderEnds,
   }: ImplProps) => {
     const [editVibe, setEditVibe] = useState<WFIInlineInput | undefined>(
       undefined,
@@ -2910,6 +2914,7 @@ export const PreSetEditorImpl = observer(
             onCharacterMiddlePromptChange,
             onImageUploaded,
             customSlots,
+            fieldHeaderEnds,
           }}
         >
           <WFGroupContext.Provider value={{}}>
@@ -2980,6 +2985,8 @@ interface InnerProps {
   onImageUploaded?: (field: string, base64: string) => void | Promise<void>;
   /** `wfiCustomSlot` 칸의 렌더 함수(id → 함수) — 조합 계열 변형 씬 편집 창(SPEC §7-4). */
   customSlots?: Record<string, (() => React.ReactNode) | undefined>;
+  /** 프롬프트 칸 머리 줄 오른쪽 끝(필드명 → 렌더 함수) — 단일 I2I·인페인트 「조합 모드 켜기」(SPEC §7-4). */
+  fieldHeaderEnds?: Record<string, (() => React.ReactNode) | undefined>;
 }
 
 interface UnionProps {
@@ -3010,6 +3017,7 @@ export const InnerPreSetEditor = observer(
     nopad,
     onImageUploaded,
     customSlots,
+    fieldHeaderEnds,
   }: InnerProps) => {
     return (
       <VerticalStack className={nopad ? '' : 'p-2 md:p-3'}>
@@ -3027,6 +3035,7 @@ export const InnerPreSetEditor = observer(
           onCharacterMiddlePromptChange={onCharacterMiddlePromptChange}
           onImageUploaded={onImageUploaded}
           customSlots={customSlots}
+          fieldHeaderEnds={fieldHeaderEnds}
         />
       </VerticalStack>
     );

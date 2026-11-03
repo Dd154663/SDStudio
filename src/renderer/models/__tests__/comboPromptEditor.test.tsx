@@ -91,6 +91,7 @@ import {
 import { VARIANT_SAMPLING_TEXT } from '../variantSampling';
 import { COMBO_EDITOR_TEXT } from '../comboMode';
 import { ComboPromptEditor, resetComboGlobalUcFold } from '../../componenets/ComboPromptEditor';
+import { InnerPreSetEditor } from '../../componenets/PreSetEdtior';
 import { Session } from '../types';
 import { undoService } from '../undoService';
 
@@ -375,5 +376,40 @@ describe('미러 — 같은 순서, 모드 표시·끄기 없음', () => {
       COMBO_EDITOR_TEXT.sharedUc,
       COMBO_EDITOR_TEXT.sceneUc,
     ]);
+  });
+});
+
+describe('단일 I2I·인페인트 — 「조합 모드 켜기」 자리(2026-11-03)', () => {
+  const renderSingle = async (def: any, headerEnds?: any) => {
+    const preset = new WFWorkFlow(def).buildPreset();
+    await act(async () => {
+      root.render(
+        <InnerPreSetEditor
+          nopad
+          type={def.type}
+          preset={preset}
+          shared={undefined}
+          element={def.editor}
+          middlePromptMode={false}
+          fieldHeaderEnds={headerEnds}
+        />,
+      );
+    });
+  };
+  const turnOn = () => <button>{COMBO_EDITOR_TEXT.turnOn}</button>;
+
+  test.each([
+    ['I2I', SDI2IDef, '노이즈'],
+    ['인페인트', SDInpaintDef, '비마스크 영역 편집 방지'],
+  ])('%s: 「프롬프트」 칸 머리 줄 끝에 버튼(네거티브 칸보다 앞), 넘기지 않으면 없음', async (_n, def, before) => {
+    await renderSingle(def, { prompt: turnOn });
+    expectOrder([before as string, '프롬프트', COMBO_EDITOR_TEXT.turnOn, '네거티브 프롬프트']);
+    const b = button(COMBO_EDITOR_TEXT.turnOn)!;
+    // 머리 줄(EditorField headerEnd) 안 — 끄기 버튼과 같은 자리 감각
+    expect(b.closest('[data-editor-field-header-end]')).not.toBeNull();
+    expect(container.querySelectorAll('[data-editor-field-header-end]')).toHaveLength(1);
+    await renderSingle(def, undefined);
+    expect(button(COMBO_EDITOR_TEXT.turnOn)).toBeUndefined();
+    expect(container.querySelectorAll('[data-editor-field-header-end]')).toHaveLength(0);
   });
 });

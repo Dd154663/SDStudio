@@ -47,7 +47,7 @@ import { Resolution, resolutionMap } from '../backends/imageGen';
 import { FloatView } from './FloatView';
 import ModalOverlay from './ModalOverlay';
 import { CharacterPositionOverlay } from './CharacterPositionOverlay';
-import { isValidNaiSeed, MAX_NAI_SEED } from '../models/sceneSeedGroups';
+import { isValidNaiSeed, MAX_NAI_SEED, SEED_INPUT_TEXT } from '../models/sceneSeedGroups';
 import { PositionBackground, resolvePositionBackground } from '../models/characterPositionBackground';
 import { isV2 } from '../models/mobileV2';
 import { v4 as uuidv4 } from 'uuid';
@@ -180,7 +180,7 @@ function saveSceneEditorFold(key: SceneEditorFoldKey, folded: boolean) {
   } catch (e) {}
 }
 /**
- * 씬 전용 시드 입력(2026-09-26). 비우면 미설정(→ 그룹 시드 → 프롬프트 시드 → 랜덤). blur/Enter 에 저장, 범위 밖이면
+ * 씬 전용 시드 입력(2026-09-26). 비우면 미설정(→ 그룹 시드 → 사전 세팅 시드 → 랜덤, 안내 문구는 변형 씬과 공용 SEED_INPUT_TEXT). blur/Enter 에 저장, 범위 밖이면
  * 알림 뒤 이전 값으로 되돌린다(시드 그룹 배지 입력과 같은 규칙). 값은 Scene.sceneSeed(직렬화 포함).
  */
 const SceneSeedInput = ({
@@ -218,7 +218,7 @@ const SceneSeedInput = ({
       className="gray-input flex-1 min-w-0 h-8 text-sm"
       disabled={disabled}
       value={text}
-      placeholder="비우면 그룹 시드 → 프롬프트 시드 → 랜덤"
+      placeholder={SEED_INPUT_TEXT.placeholder}
       onChange={(e) => setText(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {

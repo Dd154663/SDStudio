@@ -138,6 +138,15 @@ import { mirrorImageHooks, recordScenesCreated, toggleSceneBookmarkRecorded } fr
 import { UNDO_TEXT } from '../models/undoService';
 import { UNDO_BAR_HEIGHT_PX } from './UndoBarSlot';
 import { editSceneFields, editSeedGroups } from '../models/sceneFieldUndo';
+import {
+  askVariantPromptLayout,
+  canChooseComboMode,
+  chooseNewVariantCombo,
+  COMBO_SOURCE_TEXT,
+  emptyCombo,
+  prepareComboContext,
+} from '../models/comboSource';
+import type { ComboContext } from '../models/comboSource';
 
 // createMissingPiecesForSession / queueScene 는 models/sceneQueueActions.ts 로 이전
 // (AppContextMenu 우클릭 메뉴와 공유 — 중복 제거)
@@ -1983,14 +1992,33 @@ const QueueControl = observer(
               })),
             });
             if (!menu) return;
+            // 프롬프트 구성 3택(2026-11-03, SPEC §7-4) — I2I·인페인트만, 여러 줄 이름이면 한 번만 묻고 전부 같은 선택.
+            // 조합이면 빈 조합(중간 프롬프트 ''·1×1 빈 칸, 고정이면 메인 사전 세팅 고정값). 취소 = 아무것도 만들지 않음.
+            let comboCtx: ComboContext | undefined;
+            let comboLayout: 'shared' | 'snapshot' | undefined;
+            if (canChooseComboMode(menu)) {
+              const layout = await askVariantPromptLayout();
+              if (!layout) return;
+              if (layout !== 'single') {
+                comboCtx = await prepareComboContext(curSession, layout);
+                if (!comboCtx) {
+                  appState.pushMessage(COMBO_SOURCE_TEXT.noSetup, 'error');
+                  return;
+                }
+                comboLayout = layout;
+              }
+            }
             for (const name of names) {
+              const combo =
+                comboLayout && comboCtx ? emptyCombo(menu, comboLayout, comboCtx) : undefined;
               // 방금 buildPreset 으로 만든 프리셋이라 역직렬화 실패(null)가 불가능
               const scene = InpaintScene.fromJSON({
                 type: 'inpaint',
                 name,
                 ...defResFields,
                 workflowType: menu,
-                preset: workFlowService.buildPreset(menu).toJSON(),
+                preset: (combo ? combo.preset : workFlowService.buildPreset(menu)).toJSON(),
+                ...(combo && { slots: combo.slots, comboMode: combo.comboMode }),
                 mains: [],
                 imageMap: [],
                 round: undefined,
@@ -2045,6 +2073,10 @@ const QueueControl = observer(
       path: string,
       close: () => void,
     ) => {
+      // 프롬프트 구성(2026-11-03, SPEC §7-4) — 이미지를 저장하기 전에 정한다(취소 = 아무것도 만들지 않음).
+      // I2I·인페인트만 대상: 원본이 조합 모드 변형 씬이면 묻지 않고 승계, 그 밖은 3택(단일 = 기존 동작 그대로).
+      const comboChoice = await chooseNewVariantCombo(curSession!, scene, workflowType);
+      if (!comboChoice) return;
       const sourceImage = path.split('/').pop();
       let image = await imageService.fetchImage(path);
       image = dataUriToBase64(image!);
@@ -2124,8 +2156,13 @@ const QueueControl = observer(
           round: undefined,
           game: undefined,
         });
+        // 조합 선택이면 프롬프트 계열 칸·slots·comboMode 만 바꾼다(이미지·해상도·강도·마스크는 위 기존 규칙 그대로) — 등록 전
+        if (newScene && comboChoice.kind === 'combo') comboChoice.apply(newScene);
         if (newScene) {
           curSession!.addScene(newScene);
+          if (comboChoice.kind === 'combo' && comboChoice.fromCurrent) {
+            appState.pushMessage(COMBO_SOURCE_TEXT.currentNotice, 'info');
+          }
           // 되돌리기(U2a): 씬은 휴지통행(저장한 첨부 이미지 파일은 남김)
           recordScenesCreated(curSession, [newScene], UNDO_TEXT.variantSceneCreate(newScene.name));
           close();

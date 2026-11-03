@@ -250,7 +250,10 @@ export function resolveVariantSceneSeed(
   return validSeed(mainSeed) ? mainSeed : undefined;
 }
 
-/** 변형 편집 칸 「시드」 줄의 안내(비었을 때 placeholder). */
-export const VARIANT_SEED_TEXT = {
-  placeholder: '비우면 그룹 시드 → 메인 사전 세팅 시드 → 랜덤',
+/**
+ * 시드 입력 칸의 안내(비었을 때 placeholder) — 일반 씬 「씬 전용 시드」(SceneEditor)와 변형 편집 칸 「시드」 줄 공용(2026-11-03 통일).
+ * 두 칸 모두 비우면 「그룹 시드 → 사전 세팅 시드 → 랜덤」으로 같은 대상을 가리키므로 문구도 하나만 둔다.
+ */
+export const SEED_INPUT_TEXT = {
+  placeholder: '비우면 그룹 시드 → 사전 세팅 시드 → 랜덤',
 } as const;

@@ -31,6 +31,11 @@ export interface IWFElementContext {
   modelVersion: ModelVersion;
   /** 호출부가 그려 넣는 칸(`wfiCustomSlot` id → 렌더 함수) — 조합 계열 변형 씬 편집 창(SPEC §7-4). 없으면 빈 칸. */
   customSlots?: Record<string, (() => React.ReactNode) | undefined>;
+  /**
+   * 프롬프트 칸 머리 줄 오른쪽 끝 요소(필드명 → 렌더 함수, EditorField headerEnd) — 단일 I2I·인페인트 편집 창의
+   * 「조합 모드 켜기」(SPEC §7-4, 2026-11-03). 없으면 머리 줄 그대로.
+   */
+  fieldHeaderEnds?: Record<string, (() => React.ReactNode) | undefined>;
 }
 
 export const WFElementContext = React.createContext<IWFElementContext | null>(null);
