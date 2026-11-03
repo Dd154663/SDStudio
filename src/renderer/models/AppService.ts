@@ -30,9 +30,9 @@ import {
   overlappingSceneNames,
   pasteResultText,
   projectDeleteResultText,
-  runTrashDelete,
   sceneImportOverwriteText,
 } from './deleteFlowRules';
+import { runProjectTrashDelete } from './projectDeleteFlow';
 import { PROJECT_RETENTION_DAYS } from './TrashService';
 import type { Config, UiToolbarConfig, UiLayoutSlots } from '../../main/config';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
@@ -625,14 +625,9 @@ export class AppState {
         const name = this.curSession?.name;
         if (!name) return;
         // 예외·다른 창 잠금(조용히 반환 — 목록에 남음)은 실패로 안내하고 열린 프로젝트를 유지한다(X4).
-        const outcome = await runTrashDelete({
-          remove: () => sessionService.delete(name),
-          stillExists: () => sessionService.list().includes(name),
-        });
+        // 현재 프로젝트 닫기는 공통 관문(projectDeleteFlow — 드로어·씬 템플릿·폴더 흐름과 같은 규칙).
+        const outcome = await runProjectTrashDelete(name);
         const result = projectDeleteResultText(outcome, PROJECT_RETENTION_DAYS);
-        if (result.ok && this.curSession?.name === name) {
-          this.curSession = undefined;
-        }
         this.pushMessage(result.text);
       },
     });

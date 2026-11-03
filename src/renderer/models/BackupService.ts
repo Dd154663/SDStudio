@@ -95,6 +95,7 @@ import {
 } from './projectOverwrite';
 import { PROJECT_IMAGE_ROOTS } from './projectPaths';
 import { runFolderDeleteWithProjects, type FolderDeleteResult } from './folderDeleteFlow';
+import { deleteProjectForFolderFlow } from './projectDeleteFlow';
 import {
   clearForFullBackupOverwrite,
   FULL_BACKUP_OVERWRITE_TEXT,
@@ -381,15 +382,10 @@ export class BackupService {
         },
         isLoaded: (n) => sessionService.isLoaded(n),
         moveToFolder: (n, f) => sessionService.moveToFolder(n, f),
+        // 공통 관문(projectDeleteFlow): 현재 열린 프로젝트가 실제로 지워졌으면(메모리에서 내려감)
+        // 닫는다 — 단일 삭제와 같은 규칙. 예외는 같은 메시지로 다시 던져 실패 사유에 남는다.
         deleteProject: async (n) => {
-          try {
-            await sessionService.delete(n);
-          } finally {
-            // 현재 열린 프로젝트가 실제로 지워졌으면 닫는다(단일 삭제와 같은 결과)
-            if (appState.curSession?.name === n && !sessionService.isLoaded(n)) {
-              appState.curSession = undefined;
-            }
-          }
+          await deleteProjectForFolderFlow(n);
         },
         deleteFolder: (f) => sessionService.deleteFolder(f),
         onProgress: (done, total) =>

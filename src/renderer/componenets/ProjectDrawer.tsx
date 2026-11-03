@@ -45,8 +45,8 @@ import {
 import {
   deleteConfirmText,
   projectDeleteResultText,
-  runTrashDelete,
 } from '../models/deleteFlowRules';
+import { runProjectTrashDelete } from '../models/projectDeleteFlow';
 import { PROJECT_RETENTION_DAYS } from '../models/TrashService';
 import { backStackService } from '../models/BackStackService';
 import { useBackdropClose } from './backdropClose';
@@ -1566,13 +1566,9 @@ const ProjectDrawer = observer(() => {
       callback: async () => {
         // 예외·다른 창 잠금(조용히 반환 — 목록에 남음)은 성공 토스트 대신 실패 안내(X4).
         // 툴바 「프로젝트 삭제」(AppService.deleteSession)와 같은 판정·문구.
-        const outcome = await runTrashDelete({
-          remove: async () => {
-            await sessionService.get(name);
-            await sessionService.delete(name);
-          },
-          stillExists: () => sessionService.list().includes(name),
-        });
+        // 지운 것이 현재 열린 프로젝트면 닫는다(projectDeleteFlow — 예전엔 열린 채 남아
+        // 씬을 누르면 「미등록 프로젝트의 경로」 오류가 났다, 2026-11-03).
+        const outcome = await runProjectTrashDelete(name);
         appState.pushMessage(
           projectDeleteResultText(outcome, PROJECT_RETENTION_DAYS).text,
         );

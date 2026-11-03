@@ -16,8 +16,8 @@ import { nameErrorMessage, projectNameRules, validateName } from '../models/name
 import {
   deleteConfirmText,
   projectDeleteResultText,
-  runTrashDelete,
 } from '../models/deleteFlowRules';
+import { runProjectTrashDelete } from '../models/projectDeleteFlow';
 import { PROJECT_RETENTION_DAYS } from '../models/TrashService';
 import { saveJsonFile } from '../models/exportUtil';
 import { interceptFileImportClick } from '../models/driveImport';
@@ -120,14 +120,9 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
         outcome: { trashDays: PROJECT_RETENTION_DAYS },
       }),
       callback: async () => {
-        // 다른 창 잠금으로 조용히 돌아와 목록에 남아 있으면 성공으로 안내하지 않는다(X4)
-        const outcome = await runTrashDelete({
-          remove: async () => {
-            await sessionService.get(name);
-            await sessionService.delete(name);
-          },
-          stillExists: () => sessionService.list().includes(name),
-        });
+        // 다른 창 잠금으로 조용히 돌아와 목록에 남아 있으면 성공으로 안내하지 않는다(X4).
+        // 행 클릭으로 연 템플릿(현재 프로젝트)을 지웠으면 닫는다(projectDeleteFlow, 2026-11-03).
+        const outcome = await runProjectTrashDelete(name);
         appState.pushMessage(
           projectDeleteResultText(outcome, PROJECT_RETENTION_DAYS, 'scene-template').text,
         );
