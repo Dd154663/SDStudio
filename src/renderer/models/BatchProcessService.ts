@@ -713,6 +713,8 @@ export class BatchProcessService {
                             // 조합(미러·I2I 조합 모드)도 함께 — 씬마다 깊은 복사. 조합을 쓰지 않는 결과면 slots 를 비운다
                             // (2026-10-04 B4 C6, SPEC §7-4 — 예전엔 slots 를 옮기지 않아 미러→미러도 조합이 사라졌다).
                             copyComboContent(srcJSON, t);
+                            // 씬 메타(시드 그룹 소속, 2026-11-03)도 일반 씬처럼 함께 — 원본이 그룹에 있으면 대상도 같은 그룹
+                            t.meta = new Map(Object.entries(srcJSON.meta ?? {}));
                           }
                         }
                     };

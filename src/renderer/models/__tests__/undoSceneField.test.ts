@@ -324,6 +324,47 @@ describe('시드 그룹(씬 meta 의 그룹 키만)', () => {
   });
 });
 
+describe('시드 그룹 — 변형 씬(2026-11-03)', () => {
+  const variant = (session: Session, name: string) => {
+    const scene = InpaintScene.fromJSON({ type: 'inpaint', name, workflowType: 'SDI2I', imageMap: [], mains: [] } as any)!;
+    session.addScene(scene);
+    return scene;
+  };
+
+  test('type inpaint: 바뀐 변형 씬만 기록, 일반 씬·다른 meta 키는 그대로, 되돌림·다시 실행', async () => {
+    const { service } = harness();
+    const { session, scenes } = makeSession('A', 'B');
+    const ng = createSceneSeedGroup(session, scenes)!;
+    const [v1, v2, v3] = ['V1', 'V2', 'V3'].map((n) => variant(session, n));
+    v1.meta.set('other', { keep: 1 });
+    const trackSpy = jest.spyOn(service, 'track');
+    const group = editSeedGroups(
+      session,
+      UNDO_TEXT.seedGroupSet(2),
+      () => createSceneSeedGroup(session, [v1, v2]),
+      { service, type: 'inpaint' },
+    );
+    expect(group?.label).toBe('A');
+    // 변형 씬 3개만 보관(일반 씬은 추적하지 않음)
+    expect(trackSpy).toHaveBeenCalledTimes(3);
+    expect(service.entries(session).past).toHaveLength(1);
+    await service.undo(session);
+    expect([v1, v2, v3].every((s) => readSceneSeedGroup(s) === undefined)).toBe(true);
+    expect(v1.meta.get('other')).toEqual({ keep: 1 });
+    expect(listSceneSeedGroups(session)[0].id).toBe(ng.id);
+    await service.redo(session);
+    expect(listSceneSeedGroups(session, 'inpaint')[0].scenes).toEqual([v1, v2]);
+    // 그룹 시드 값 — 같은 값이면 기록 없음
+    const vg = listSceneSeedGroups(session, 'inpaint')[0];
+    editSeedGroups(session, 's', () => setSceneSeedGroupSeed(session, vg.id, 7, 'inpaint'), { service, type: 'inpaint' });
+    expect(service.entries(session).past).toHaveLength(2);
+    editSeedGroups(session, 's', () => setSceneSeedGroupSeed(session, vg.id, 7, 'inpaint'), { service, type: 'inpaint' });
+    expect(service.entries(session).past).toHaveLength(2);
+    await service.undo(session);
+    expect(listSceneSeedGroups(session, 'inpaint')[0].seed).toBeUndefined();
+  });
+});
+
 describe('씬 내용 복제(덮어쓰기) — 이미지 필드 제외', () => {
   test('★ 복제 뒤 생성 결과로 새 이미지가 생긴 상태에서 되돌림 → 내용만 복원, 새 이미지 유지', async () => {
     const { service } = harness();
@@ -363,6 +404,30 @@ describe('씬 내용 복제(덮어쓰기) — 이미지 필드 제외', () => {
     }
     const inpaint = new InpaintScene();
     expect(inpaint.type).toBe('inpaint');
+  });
+
+  test('변형 씬 복제는 meta(시드 그룹 소속)도 담고 되돌린다(2026-11-03)', async () => {
+    const { service } = harness();
+    const session = new Session();
+    session.name = 'p';
+    const mk = (name: string) => {
+      const scene = InpaintScene.fromJSON({ type: 'inpaint', name, workflowType: 'SDI2I', imageMap: [], mains: [] } as any)!;
+      session.addScene(scene);
+      return scene;
+    };
+    const [src, other, t] = [mk('SRC'), mk('O'), mk('T')];
+    expect(SCENE_CONTENT_COPY_KEYS.inpaint).toContain('meta');
+    createSceneSeedGroup(session, [src, other]);
+    const srcJSON = src.toJSON();
+    editScenesFields(session, [t], SCENE_CONTENT_COPY_KEYS.inpaint, UNDO_TEXT.sceneContentCopy('SRC', 1), () => {
+      t.meta = new Map(Object.entries(srcJSON.meta ?? {}));
+    }, { service });
+    expect(readSceneSeedGroup(t)?.id).toBe(readSceneSeedGroup(src)?.id);
+    await service.undo(session);
+    expect(readSceneSeedGroup(t)).toBeUndefined();
+    expect(typeof t.meta.get).toBe('function');
+    await service.redo(session);
+    expect(listSceneSeedGroups(session, 'inpaint')[0].scenes).toHaveLength(3);
   });
 });
 

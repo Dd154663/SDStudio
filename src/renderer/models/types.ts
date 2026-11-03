@@ -399,6 +399,9 @@ export interface IInpaintScene extends IAbstractScene {
   mirrorCropX?: number;
   // I2I 조합 모드(2026-10-04 B4, comboMode.ts·SPEC §7-4) — 없으면 조합 모드 아님(5.4.0 은 무시).
   comboMode?: ComboMode;
+  // 씬 메타(2026-11-03 — 현재는 시드 그룹 키 `__sdstudioSceneSeedGroupV1` 만, sceneSeedGroups.ts). 비어 있으면 키 생략,
+  // 5.5.2 이하는 모르는 키라 무시(롤백 시 그 버전이 저장하면 그룹만 소실).
+  meta?: Record<string, any>;
 }
 
 export class InpaintScene extends AbstractScene implements IInpaintScene {
@@ -410,6 +413,8 @@ export class InpaintScene extends AbstractScene implements IInpaintScene {
   @observable accessor slots: PromptPieceSlot[] = [];
   @observable accessor mirrorCropX: number | undefined = undefined;
   @observable accessor comboMode: ComboMode | undefined = undefined;
+  // 씬 메타(2026-11-03, Scene.meta 와 같은 Map — 변형 씬 시드 그룹). 직렬화는 비어 있지 않을 때만 `meta` 키.
+  @observable accessor meta: Map<string, any> = new Map();
 
   static fromJSON(json: IInpaintScene): InpaintScene | null {
     const scene = new InpaintScene();
@@ -427,6 +432,12 @@ export class InpaintScene extends AbstractScene implements IInpaintScene {
     );
     // 알 수 없는 값·손상값은 조합 모드 아님(단일 프롬프트로 동작)
     scene.comboMode = normalizeComboMode(json.comboMode);
+    // 씬 메타: 평범한 객체만 인정 — 키 없음(구 JSON)·손상값(배열·문자열 등)은 빈 Map(Object.assign 으로 들어온 원본 대체)
+    const rawMeta = (json as any).meta;
+    scene.meta =
+      rawMeta && typeof rawMeta === 'object' && !Array.isArray(rawMeta)
+        ? new Map(Object.entries(rawMeta))
+        : new Map();
     // 부스트 내부 표식(D8)
     scene.imageAccounts = normalizeImageAccounts(json.imageAccounts);
     return scene;
@@ -445,6 +456,7 @@ export class InpaintScene extends AbstractScene implements IInpaintScene {
       }),
       ...(this.mirrorCropX != null && { mirrorCropX: this.mirrorCropX }),
       ...(this.comboMode && { comboMode: this.comboMode }),
+      ...(this.meta.size > 0 && { meta: Object.fromEntries(this.meta.entries()) }),
     };
   }
 }

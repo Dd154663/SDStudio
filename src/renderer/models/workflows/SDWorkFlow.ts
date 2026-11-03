@@ -40,7 +40,7 @@ import {
 import { imageService, promptService, taskQueueService, workFlowService } from '..';
 import { TaskParam } from '../TaskQueueService';
 import { dataUriToBase64 } from '../ImageService';
-import { resolveSceneSeed } from '../sceneSeedGroups';
+import { resolveSceneSeed, resolveVariantSceneSeed } from '../sceneSeedGroups';
 import {
   FOCUS_CONTEXT_DEFAULT,
   FOCUS_CONTEXT_MAX,
@@ -54,7 +54,7 @@ import {
 } from '../sceneCharacterPrompts';
 import { applyImportedJob } from './importedJob';
 import { comboExpandedOf, resolvePresetPromptNode } from '../variantCombo';
-import { resolveVariantSampling, VARIANT_SAMPLING_TEXT } from '../variantSampling';
+import { readMainSampling, resolveVariantSampling, VARIANT_SAMPLING_TEXT } from '../variantSampling';
 
 const SDImageGenPreset = new WFVarBuilder()
   .addIntVar('cfgRescale', 0, 1, 0.01, 0)
@@ -393,8 +393,9 @@ const SDInpaintUI = wfiStack([
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
   // 샘플링·모델 설정은 메인 사전 세팅을 따른다(2026-10-11, SPEC §7-5) — 그룹 대신 안내 줄+메인 값 요약.
   wfiMainSamplingNotice(VARIANT_SAMPLING_TEXT.notice, 'main-sampling-notice'),
+  // 변형 씬 시드(2026-11-03 이슈 #9): 비우면 그룹 시드 → 메인 사전 세팅 시드 → 랜덤(sceneSeedGroups.resolveVariantSceneSeed).
+  wfiInlineInput('시드', 'seed', 'preset', 'flex-none'),
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
-  // wfiInlineInput('시드', 'seed', true, 'flex-none'),
 ]);
 
 // 인페인트 조합 모드 편집 칸(2026-10-04 P1) — SDI2IComboUI 와 같은 이유로 단일 「프롬프트」 칸을 빼고 네거티브 칸 = 씬 네거티브.
@@ -412,6 +413,8 @@ export const SDInpaintComboUI = wfiStack([
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
   // 샘플링·모델 설정은 메인 사전 세팅을 따른다(2026-10-11, SPEC §7-5) — 그룹 대신 안내 줄+메인 값 요약.
   wfiMainSamplingNotice(VARIANT_SAMPLING_TEXT.notice, 'main-sampling-notice'),
+  // 변형 씬 시드(2026-11-03 이슈 #9): 비우면 그룹 시드 → 메인 사전 세팅 시드 → 랜덤(sceneSeedGroups.resolveVariantSceneSeed).
+  wfiInlineInput('시드', 'seed', 'preset', 'flex-none'),
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
 ]);
 
@@ -434,6 +437,15 @@ const createSDI2IHandler = (type: string) => {
     // 전부 이 핸들러를 지나므로(미러·조합 전개·이미지 변형 메뉴·대량 작업) 여기 한 곳에서만 적용한다.
     // 씬 프리셋 객체는 바꾸지 않는다(사본) — 메인을 못 읽으면 씬 값 그대로 + 경고.
     preset = resolveVariantSampling(session, preset);
+    // 시드(2026-11-03 이슈 #9, SPEC §11): 변형 씬 시드(프리셋 seed) → 변형 씬 시드 그룹 → 메인 사전 세팅 프롬프트 시드 → 랜덤.
+    // applyMainSampling 은 seed 를 덮지 않는다(샘플링 필드 목록에 없음) — 씬 프리셋 seed 가 1순위.
+    // 메인을 못 읽으면 메인 시드 단계는 없음(undefined).
+    const mainRead = readMainSampling(session);
+    const seed = resolveVariantSceneSeed(
+      scene,
+      preset,
+      mainRead.ok ? mainRead.main.shared?.seed : undefined,
+    );
     const image = preset.image.endsWith('.png')
       ? dataUriToBase64(
           (await imageService.fetchVibeImage(session, preset.image))!,
@@ -483,6 +495,8 @@ const createSDI2IHandler = (type: string) => {
       originalImage: isInpaint ? preset.originalImage : true,
       image: image,
       mask: isInpaint && preset.mask ? await getMask() : '',
+      // 예약 때 정한 시작 시드 — 장마다의 시드는 큐가 seedForImageIndex 로 잇는다(sd/sd_i2i/sd_inpaint 공용)
+      seed,
     };
     // Focused 사양은 켜져 있고 사각형이 있을 때만 잡에 싣는다(미러 프리셋에는 키가 없어 항상 없음).
     const focus = isInpaint ? focusSpecFromPreset(preset) : undefined;
@@ -543,9 +557,10 @@ const SDI2IUI = wfiStack([
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
   // 샘플링·모델 설정은 메인 사전 세팅을 따른다(2026-10-11, SPEC §7-5) — 그룹 대신 안내 줄+메인 값 요약.
   wfiMainSamplingNotice(VARIANT_SAMPLING_TEXT.notice, 'main-sampling-notice'),
+  // 변형 씬 시드(2026-11-03 이슈 #9): 비우면 그룹 시드 → 메인 사전 세팅 시드 → 랜덤(sceneSeedGroups.resolveVariantSceneSeed).
+  wfiInlineInput('시드', 'seed', 'preset', 'flex-none'),
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
   wfiInlineInput('캐릭터 레퍼런스', 'characterReferences', 'preset', 'flex-none'),
-  // wfiInlineInput('시드', 'seed', true, 'flex-none'),
 ]);
 
 // I2I 조합 모드 편집 칸(2026-10-04 B4) — 프롬프트는 편집 창의 「프롬프트 에디터」 탭(상위·중간·하위)·「조합 에디터」 탭이
@@ -558,6 +573,8 @@ export const SDI2IComboUI = wfiStack([
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
   // 샘플링·모델 설정은 메인 사전 세팅을 따른다(2026-10-11, SPEC §7-5) — 그룹 대신 안내 줄+메인 값 요약.
   wfiMainSamplingNotice(VARIANT_SAMPLING_TEXT.notice, 'main-sampling-notice'),
+  // 변형 씬 시드(2026-11-03 이슈 #9): 비우면 그룹 시드 → 메인 사전 세팅 시드 → 랜덤(sceneSeedGroups.resolveVariantSceneSeed).
+  wfiInlineInput('시드', 'seed', 'preset', 'flex-none'),
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
   wfiInlineInput('캐릭터 레퍼런스', 'characterReferences', 'preset', 'flex-none'),
 ]);
@@ -731,6 +748,8 @@ const SDMirrorUI = wfiStack([
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
   // 샘플링·모델 설정은 메인 사전 세팅을 따른다(2026-10-11, SPEC §7-5) — 그룹 대신 안내 줄+메인 값 요약.
   wfiMainSamplingNotice(VARIANT_SAMPLING_TEXT.notice, 'main-sampling-notice'),
+  // 변형 씬 시드(2026-11-03 이슈 #9): 비우면 그룹 시드 → 메인 사전 세팅 시드 → 랜덤(sceneSeedGroups.resolveVariantSceneSeed).
+  wfiInlineInput('시드', 'seed', 'preset', 'flex-none'),
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
 ]);
 

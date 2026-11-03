@@ -82,6 +82,7 @@ import {
 } from '../models/presetLayout';
 import { resolveCompanionButtons } from '../models/companionSlots';
 import { mainSamplingSummary, readMainSampling } from '../models/variantSampling';
+import { VARIANT_SEED_TEXT } from '../models/sceneSeedGroups';
 import { renderCompanionButtons } from './PortableToolbarButtons';
 import { CompanionHostRow } from './CompanionDnd';
 import {
@@ -1181,6 +1182,7 @@ interface NullIntInputProps {
   value: number | null;
   disabled: boolean;
   onChange: (val: number | undefined) => void;
+  placeholder?: string;
 }
 
 const NullIntInput = ({
@@ -1188,11 +1190,13 @@ const NullIntInput = ({
   value,
   onChange,
   disabled,
+  placeholder,
 }: NullIntInputProps) => {
   return (
     <input
       className={`w-full gray-input`}
       disabled={disabled}
+      placeholder={placeholder}
       value={value ? value.toString() : ''}
       onChange={(e) => {
         try {
@@ -2634,10 +2638,13 @@ const WFRInline = observer(({ element }: WFElementProps) => {
       );
     case 'characterPrompts':
       return <CharacterButton input={input} key={key} />;
-    case 'nullInt':
+    case 'nullInt': {
+      // 변형 씬 프리셋의 시드 줄(2026-11-03 이슈 #9) — 메인 시드 줄(shared)과 같은 렌더러. 투명 배경 줄은 메인 쪽에만,
+      // 변형 쪽은 비었을 때 폴백 순서 안내(placeholder)만 더한다(메인 줄 표시 불변).
+      const variantSeed = input.field === 'seed' && input.fieldType === 'preset';
       return (
         <>
-          {input.field === 'seed' && (
+          {input.field === 'seed' && !variantSeed && (
             <TransparentBackgroundMainRow modelVersion={modelVersion} />
           )}
           <InlineEditorField label={input.label}>
@@ -2646,11 +2653,13 @@ const WFRInline = observer(({ element }: WFElementProps) => {
               value={getField()}
               disabled={false}
               onChange={(val) => setField(val, 'edit')}
+              placeholder={variantSeed ? VARIANT_SEED_TEXT.placeholder : undefined}
               key={key}
             />
           </InlineEditorField>
         </>
       );
+    }
     case 'vibeSet':
       return <VibeButton input={input} key={key} />;
     case 'characterReferences':

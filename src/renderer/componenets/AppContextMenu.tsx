@@ -37,7 +37,6 @@ import {
   GallaryImageContextAlt,
   GenericScene,
   HistoryImageContextAlt,
-  Scene,
   SDJob,
 } from '../models/types';
 import { oneTimeFlowMap, oneTimeFlows } from '../models/workflows/OneTimeFlows';
@@ -55,6 +54,7 @@ import {
   listSceneSeedGroups,
   removeScenesFromSeedGroups,
 } from '../models/sceneSeedGroups';
+import type { SeedGroupScene, SeedGroupSceneKind } from '../models/sceneSeedGroups';
 import { openImageAttachFlow } from '../models/i2iBatchFlow';
 import { openMaskApplyFlow, openStrengthBatchFlow } from '../models/variantBatchFlow';
 import { sceneSelectorHost } from '../models/sceneSelectorHost';
@@ -73,15 +73,19 @@ import { editSeedGroups } from '../models/sceneFieldUndo';
 export const AppContextMenu = observer(() => {
   // 선택은 (종류, 이름) 쌍이다 — 변형 탭의 선택으로 같은 이름의 일반 씬을 다루지 않는다
   // (models/sceneSelection.ts, SPEC_GUIDE 드래그 다중 선택 절).
-  const selectedNormalScenes = (fallback?: GenericScene): Scene[] => {
+  // 시드 그룹 대상(2026-11-03 — 변형 탭도): 우클릭한 씬의 종류와 같은 종류의 선택만, 선택이 없으면 우클릭한 씬 하나.
+  const selectedSeedGroupScenes = (
+    type: SeedGroupSceneKind,
+    fallback?: GenericScene,
+  ): SeedGroupScene[] => {
     const session = appState.curSession;
     if (!session) return [];
-    if (appState.selectedSceneCount('scene') > 0) {
+    if (appState.selectedSceneCount(type) > 0) {
       return Array.from(appState.selectedScenes)
-        .map((name) => session.scenes.get(name))
-        .filter((scene): scene is Scene => scene !== undefined);
+        .map((name) => session.getScene(type, name))
+        .filter((scene): scene is SeedGroupScene => scene !== undefined);
     }
-    return fallback?.type === 'scene' ? [fallback] : [];
+    return fallback?.type === type ? [fallback] : [];
   };
   // 우클릭한 씬과 같은 종류의 선택만 그 종류의 Map 에서 조회한다.
   const selectedScenesLike = (ctxScene: GenericScene): GenericScene[] => {
@@ -97,13 +101,17 @@ export const AppContextMenu = observer(() => {
   const configureSceneSeedGroup = async (ctx: SceneContextAlt) => {
     const session = appState.curSession;
     if (!session) return;
-    const scenes = selectedNormalScenes(ctx.scene);
+    const type: SeedGroupSceneKind = ctx.scene.type;
+    const scenes = selectedSeedGroupScenes(type, ctx.scene);
     if (scenes.length < 2) {
-      appState.pushMessage('일반 씬을 2개 이상 선택한 뒤 실행해 주세요.');
+      appState.pushMessage(
+        `${type === 'inpaint' ? '변형' : '일반'} 씬을 2개 이상 선택한 뒤 실행해 주세요.`,
+      );
       return;
     }
 
-    const groups = listSceneSeedGroups(session);
+    // 그룹·이름표는 탭(씬 종류)별 — 이 탭의 그룹에만 추가할 수 있다
+    const groups = listSceneSeedGroups(session, type);
     const choice = await appState.pushDialogAsync({
       type: 'select',
       text: `선택한 ${scenes.length}개 씬의 시드 그룹을 설정합니다.`,
@@ -118,12 +126,16 @@ export const AppContextMenu = observer(() => {
     if (!choice) return;
 
     // 만들기·추가 = 한 번의 동작 1항목(U2b — 씬별 그룹 키만, 되돌림 역순)
-    const group = editSeedGroups(session, UNDO_TEXT.seedGroupSet(scenes.length), () =>
-      choice === '__new__'
-        ? createSceneSeedGroup(session, scenes)
-        : assignScenesToSeedGroup(session, scenes, choice)
-          ? listSceneSeedGroups(session).find((item) => item.id === choice)
-          : undefined,
+    const group = editSeedGroups(
+      session,
+      UNDO_TEXT.seedGroupSet(scenes.length),
+      () =>
+        choice === '__new__'
+          ? createSceneSeedGroup(session, scenes)
+          : assignScenesToSeedGroup(session, scenes, choice)
+            ? listSceneSeedGroups(session, type).find((item) => item.id === choice)
+            : undefined,
+      { type },
     );
     if (!group) {
       appState.pushMessage('시드 그룹을 설정하지 못했습니다.');
@@ -137,15 +149,21 @@ export const AppContextMenu = observer(() => {
 
   const removeSceneSeedGroup = (ctx: SceneContextAlt) => {
     const session = appState.curSession;
-    if (!session || ctx.scene.type !== 'scene') return;
+    if (!session) return;
     const ctxScene = ctx.scene;
-    const selected = selectedNormalScenes();
+    const type: SeedGroupSceneKind = ctxScene.type;
+    const selected = selectedSeedGroupScenes(type);
     // 해제 = 한 번의 동작 1항목(U2b)
-    const changed = editSeedGroups(session, UNDO_TEXT.seedGroupRemove, () => {
-      if (selected.length > 0) return removeScenesFromSeedGroups(selected);
-      const group = getSceneSeedGroupInfo(session, ctxScene);
-      return group ? dissolveSceneSeedGroup(session, group.id) : 0;
-    });
+    const changed = editSeedGroups(
+      session,
+      UNDO_TEXT.seedGroupRemove,
+      () => {
+        if (selected.length > 0) return removeScenesFromSeedGroups(selected);
+        const group = getSceneSeedGroupInfo(session, ctxScene);
+        return group ? dissolveSceneSeedGroup(session, group.id, type) : 0;
+      },
+      { type },
+    );
     if (changed === 0) {
       appState.pushMessage('해제할 시드 그룹이 없습니다.');
       return;

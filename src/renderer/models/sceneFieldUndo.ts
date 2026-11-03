@@ -15,9 +15,10 @@
 import { runInAction } from 'mobx';
 import { isTextEntryElement } from './keyTargetGuard';
 import { SCENE_SEED_GROUP_META_KEY } from './sceneSeedGroups';
+import type { SeedGroupScene, SeedGroupSceneKind } from './sceneSeedGroups';
 import { sceneInSession } from './sceneStructureUndo';
 import { PromptPiece } from './types';
-import type { CharacterPrompt, GenericScene, IPromptPiece, Scene, Session } from './types';
+import type { CharacterPrompt, GenericScene, IPromptPiece, Session } from './types';
 import {
   undoDeepClone,
   undoDeepEqual,
@@ -52,6 +53,7 @@ export const SCENE_IMAGE_FIELDS = ['imageMap', 'mains', 'game', 'round', 'imageA
 /**
  * 대량 작업 「씬 내용 복제(덮어쓰기)」가 바꾸는 내용 필드 — 되돌리기는 이것만 담는다(이미지 필드 제외, BatchProcessService).
  * 일반 씬은 sceneUC·sceneSeed·해상도를 복제하지 않는다(기존 동작), 변형 씬은 해상도도 맞춘다(R-res).
+ * meta(시드 그룹 소속)는 양쪽 다 복제한다 — 변형 씬 meta 는 2026-11-03 신설(일반 씬과 같은 동작).
  */
 export const SCENE_CONTENT_COPY_KEYS: Readonly<Record<'scene' | 'inpaint', readonly SceneFieldKey[]>> = {
   scene: [
@@ -62,7 +64,7 @@ export const SCENE_CONTENT_COPY_KEYS: Readonly<Record<'scene' | 'inpaint', reado
     'sceneCharacterPromptMode',
     'sceneCharacterUC',
   ],
-  inpaint: ['workflowType', 'preset', 'resolution', 'resolutionWidth', 'resolutionHeight', 'comboMode', 'slots'],
+  inpaint: ['workflowType', 'preset', 'resolution', 'resolutionWidth', 'resolutionHeight', 'comboMode', 'slots', 'meta'],
 };
 
 export interface SceneFieldUndoOptions {
@@ -376,15 +378,15 @@ export function hasOpenSceneFieldEdit(): boolean {
 
 // ── 시드 그룹(씬 meta 의 한 키만) ─────────────────────────────────────────
 
-function seedGroupMetaAdapter(session: Session, scene: Scene): UndoSnapshotAdapter<unknown> {
+function seedGroupMetaAdapter(session: Session, scene: SeedGroupScene): UndoSnapshotAdapter<unknown> {
   const ref = undoRef(scene);
   return {
     detectConflict: true,
     verify: sceneGoneCheck(session, scene),
-    snapshot: () => undoDeepClone((ref.current as Scene).meta.get(SCENE_SEED_GROUP_META_KEY)),
+    snapshot: () => undoDeepClone((ref.current as SeedGroupScene).meta.get(SCENE_SEED_GROUP_META_KEY)),
     restore: (snap) =>
       runInAction(() => {
-        const meta = (ref.current as Scene).meta;
+        const meta = (ref.current as SeedGroupScene).meta;
         const v = undoDeepClone(snap);
         if (v === undefined) meta.delete(SCENE_SEED_GROUP_META_KEY);
         else meta.set(SCENE_SEED_GROUP_META_KEY, v);
@@ -393,20 +395,20 @@ function seedGroupMetaAdapter(session: Session, scene: Scene): UndoSnapshotAdapt
 }
 
 /**
- * 시드 그룹 만들기·추가·해제·그룹 시드 값 — 일반 씬 전부의 그룹 키를 보관했다가 바뀐 씬만 묶음 1항목(되돌림 역순).
- * meta 의 다른 키(워크플로우 메타)는 건드리지 않는다.
+ * 시드 그룹 만들기·추가·해제·그룹 시드 값 — 그 종류(`opts.type`, 기본 이미지생성 씬 · 변형 탭은 'inpaint' — 2026-11-03)
+ * 씬 전부의 그룹 키를 보관했다가 바뀐 씬만 묶음 1항목(되돌림 역순). meta 의 다른 키(워크플로우 메타)는 건드리지 않는다.
  */
 export function editSeedGroups<R>(
   session: Session | undefined,
   label: string,
   mutate: () => R,
-  opts: { service?: UndoService } = {},
+  opts: { service?: UndoService; type?: SeedGroupSceneKind } = {},
 ): R {
   const service = opts.service ?? undoService;
   if (!session || !service.canRecord(session)) return mutate();
   flushSceneFieldEdit();
   const group = service.beginGroup(session, label);
-  const pendings = (session.getScenes('scene') as Scene[]).map((s) =>
+  const pendings = (session.getScenes(opts.type ?? 'scene') as SeedGroupScene[]).map((s) =>
     service.track(session, label, seedGroupMetaAdapter(session, s)),
   );
   try {

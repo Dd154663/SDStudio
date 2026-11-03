@@ -67,7 +67,8 @@ import {
   SDMirrorDef,
 } from '../workflows/SDWorkFlow';
 import { queueI2IWorkflow, queueMirrorWorkflow } from '../TaskQueueService';
-import { InpaintScene, PromptPiece } from '../types';
+import { InpaintScene, PromptPiece, Scene } from '../types';
+import { SCENE_SEED_GROUP_META_KEY } from '../sceneSeedGroups';
 
 // 메인 사전 세팅 — 기본값(28/5/0/k_euler_ancestral/karras)과 모두 다른 값
 const MAIN_PRESET = {
@@ -382,5 +383,91 @@ describe('예약 경로 — 단일·조합 모드(shared/snapshot)·미러·이�
     const job = jobs()[0];
     expect(samplingOf(job)).toEqual(MAIN_EXPECT);
     expect(job).toMatchObject({ prompt: { type: 'text', text: 'meta prompt' }, strength: 0.4 });
+  });
+});
+
+// 변형 씬 시드(2026-11-03 이슈 #9, SPEC §11): 프리셋 seed → 변형 씬 시드 그룹 → 메인 사전 세팅 프롬프트 시드(shared.seed) → 랜덤.
+describe('핸들러 — 잡의 시드', () => {
+  const MAIN_SEED = 123;
+  const seededSession = (seed: any = MAIN_SEED) =>
+    mainSession('SDImageGen', {
+      getCommonSetup: (flow: any) => [flow.workflowType, { ...MAIN_PRESET }, { ...MAIN_SHARED, seed }, undefined],
+    });
+  const variantScene = (workflowType: string, groupSeed?: number) => {
+    const scene = InpaintScene.fromJSON({ type: 'inpaint', name: 'v', workflowType } as any)!;
+    if (groupSeed !== undefined) {
+      scene.meta.set(SCENE_SEED_GROUP_META_KEY, { version: 1, id: 'g', order: 0, seed: groupSeed });
+    }
+    return scene;
+  };
+  const presetOf = (def: any, extra: any = {}) => {
+    const preset = new WFWorkFlow(def).buildPreset();
+    Object.assign(preset, { image: 'RAW', mask: '' }, extra);
+    return preset;
+  };
+  const run = async (def: any, session: any, scene: any, preset: any) => {
+    addTask.mockClear();
+    await def.handler(session, scene, { type: 'text', text: '' }, [], preset, undefined, 1);
+    return jobs()[0];
+  };
+
+  test.each([
+    ['SDI2I', SDI2IDef],
+    ['SDInpaint', SDInpaintDef],
+    ['SDMirror', SDMirrorDef],
+  ])('%s: 프리셋 → 그룹 → 메인 → 랜덤', async (wf, def) => {
+    expect((await run(def, seededSession(), variantScene(wf, 777), presetOf(def, { seed: 42 }))).seed).toBe(42);
+    expect((await run(def, seededSession(), variantScene(wf, 777), presetOf(def, { seed: null }))).seed).toBe(777);
+    expect((await run(def, seededSession(), variantScene(wf), presetOf(def))).seed).toBe(MAIN_SEED);
+    expect((await run(def, seededSession(null), variantScene(wf), presetOf(def))).seed).toBeUndefined();
+    // 메인을 못 읽으면 메인 시드 단계 없음(그룹까지는 그대로)
+    const noMain = { name: 'project', selectedWorkflow: undefined } as any;
+    expect((await run(def, noMain, variantScene(wf), presetOf(def))).seed).toBeUndefined();
+    expect((await run(def, noMain, variantScene(wf, 9), presetOf(def))).seed).toBe(9);
+  });
+
+  test('변형 편집 칸 5종: 「시드」 줄(preset seed)이 안내 줄 바로 아래', () => {
+    const { SDInpaintComboUI, SDI2IComboUI } = jest.requireActual('../workflows/SDWorkFlow');
+    for (const stack of [SDInpaintDef.editor, SDI2IDef.editor, SDMirrorDef.editor, SDInpaintComboUI, SDI2IComboUI]) {
+      const inputs = (stack as WFIStack).inputs;
+      const at = inputs.findIndex((x) => x.type === 'mainSamplingNotice');
+      expect(inputs[at + 1]).toMatchObject({ type: 'inline', label: '시드', field: 'seed', fieldType: 'preset' });
+    }
+  });
+
+  test('applyMainSampling 은 seed 를 덮지 않는다(씬 프리셋 seed 가 1순위)', async () => {
+    const out = applyMainSampling({ seed: 42, steps: 28 } as any, {
+      preset: { ...MAIN_PRESET, seed: 9 },
+      shared: { ...MAIN_SHARED, seed: 8 },
+    });
+    expect(out.seed).toBe(42);
+    const preset = presetOf(SDI2IDef, { seed: 42 });
+    const job = await run(SDI2IDef, seededSession(), variantScene('SDI2I'), preset);
+    expect(job.seed).toBe(42);
+    expect(samplingOf(job)).toEqual(MAIN_EXPECT);
+    expect(preset.seed).toBe(42);
+  });
+
+  test('조합 전개: 조합마다 별도 작업이고 모두 같은 시작 시드(일반 씬 조합과 같음)', async () => {
+    const piece = (prompt: string) =>
+      PromptPiece.fromJSON({ prompt, characterPrompts: [], id: prompt, enabled: true } as any);
+    const scene = variantScene('SDI2I', 777);
+    scene.comboMode = 'shared';
+    scene.preset = presetOf(SDI2IDef);
+    scene.slots = [[piece('a'), piece('b')]];
+    addTask.mockClear();
+    expect(await queueI2IWorkflow(seededSession(), 'SDI2I', scene.preset, scene, 1)).toBe(2);
+    expect(jobs().map((j: any) => j.seed)).toEqual([777, 777]);
+  });
+
+  test('이미지 변형 메뉴(이미지생성 씬 전달): 그 씬의 그룹·씬 전용 시드는 옮기지 않고 메인 시드만', async () => {
+    const scene = new Scene();
+    scene.name = 's';
+    scene.sceneSeed = 55;
+    scene.meta.set(SCENE_SEED_GROUP_META_KEY, { version: 1, id: 'g', order: 0, seed: 999 });
+    const preset = createI2IPreset({ prompt: 'meta prompt' } as any, 'RAW');
+    addTask.mockClear();
+    await queueI2IWorkflow(seededSession(), 'SDI2I', preset, scene, 1);
+    expect(jobs()[0].seed).toBe(MAIN_SEED);
   });
 });

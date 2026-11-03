@@ -123,6 +123,7 @@ import {
   MAX_NAI_SEED,
   setSceneSeedGroupSeed,
 } from '../models/sceneSeedGroups';
+import type { SeedGroupScene } from '../models/sceneSeedGroups';
 import {
   activeCombinationPieceKeys,
   allCombinationPieceKeys,
@@ -156,7 +157,8 @@ function getSelectedSceneNames(
 
 interface SceneSeedGroupBadgeProps {
   session: Session;
-  scene: Scene;
+  // 이미지생성 씬·변형 씬(2026-11-03) 공통 — 그룹·이름표는 씬 종류(탭)별
+  scene: SeedGroupScene;
 }
 
 const SCENE_SEED_GROUP_COLOR_CLASSES = [
@@ -202,8 +204,11 @@ const SceneSeedGroupBadge = observer(
         return;
       }
       // 그룹 모든 씬의 시드 = 한 번의 입력 1항목(U2b — 씬별 그룹 키만 보관·복원, 같은 값이면 기록 없음)
-      const ok = editSeedGroups(session, UNDO_TEXT.seedGroupSeed(group.label), () =>
-        setSceneSeedGroupSeed(session, group.id, seed),
+      const ok = editSeedGroups(
+        session,
+        UNDO_TEXT.seedGroupSeed(group.label),
+        () => setSceneSeedGroupSeed(session, group.id, seed, scene.type),
+        { type: scene.type },
       );
       if (ok) {
         sessionService.markDirty(session.name);
@@ -905,10 +910,11 @@ export const SceneCell = observer(
       { names: appState.selectedScenes, type: appState.selectedScenesType },
       scene,
     );
-    const seedGroupBadge =
-      scene.type === 'scene' ? (
-        <SceneSeedGroupBadge session={curSession} scene={scene} />
-      ) : null;
+    // 시드 그룹 배지 — 이미지생성 씬·변형 씬 공통(2026-11-03). 변형 카드는 연필·조합 토글이 없고 R 만 right-1 top-1 이라
+    // 배지(right-9/right-10 top-1)와 8px 간격이 그대로 유지된다.
+    const seedGroupBadge = (
+      <SceneSeedGroupBadge session={curSession} scene={scene} />
+    );
     const combinationQuickToggle =
       scene.type === 'scene' ? (
         <CombinationQuickToggle
