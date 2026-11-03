@@ -46,15 +46,27 @@ export function isComboVariant(scene: { workflowType?: string; comboMode?: unkno
   return variantComboMode(scene) !== undefined;
 }
 
-/** 편집 창(InPaintEditor) 문구 — 조합 모드 I2I·인페인트·미러의 「프롬프트 에디터」 탭. */
+/**
+ * 편집 창(InPaintEditor·ComboPromptEditor) 문구 — 조합 모드 I2I·인페인트·미러의 「프롬프트 에디터」 탭.
+ * 칸 라벨은 프롬프트 칸 머리(EditorField) 꼴이라 끝에 쌍점을 붙이지 않는다(2026-11-03 편집 창 정렬, SPEC §7-4).
+ */
 export const COMBO_EDITOR_TEXT = {
-  sharedFront: '상위 프롬프트 (전역):',
-  sharedBack: '하위 프롬프트 (전역):',
-  sharedUc: '네거티브 프롬프트 (전역):',
-  snapshotFront: '상위 프롬프트 (복사 시점 고정):',
-  snapshotBack: '하위 프롬프트 (복사 시점 고정):',
-  snapshotUc: '전역 네거티브 프롬프트 (복사 시점 고정):',
-  middle: '중간 프롬프트 (이 씬에만 적용됨):',
+  sharedFront: '상위 프롬프트 (전역)',
+  sharedBack: '하위 프롬프트 (전역)',
+  sharedUc: '전역 네거티브 프롬프트 (사전 세팅과 공유)',
+  snapshotFront: '상위 프롬프트 (복사 시점 고정)',
+  snapshotBack: '하위 프롬프트 (복사 시점 고정)',
+  snapshotUc: '전역 네거티브 프롬프트 (복사 시점 고정)',
+  middle: '중간 프롬프트 (이 씬에만 적용됨)',
+  /** 씬 프리셋 `uc` 칸(SDI2IComboUI·SDInpaintComboUI·SDMirrorUI) — 일반 씬 단순 모드의 「씬 전용 네거티브」와 같은 이름. */
+  sceneUc: '씬 전용 네거티브 프롬프트',
+  /** 편집 칸 자리 라벨(편집 모드 끌기 행 이름) — 실제 칸 라벨은 모드별 위 문구. */
+  frontBackSlot: '상위·하위 프롬프트',
+  globalUcSlot: '전역 네거티브 프롬프트',
+  /** 전역 네거티브 「사용」 토글(씬 프리셋 `useGlobalUc`, 끄면 생성에서 전역 몫 제외). */
+  useGlobalUc: '사용',
+  useGlobalUcField: '전역 네거티브 사용',
+  globalUcExcluded: '생성에서 제외',
   modeShared: '조합 모드 · 사전 세팅과 실시간 공유',
   modeSnapshot: '조합 모드 · 복사 시점 설정 고정',
   turnOff: '조합 모드 끄기',
@@ -62,6 +74,21 @@ export const COMBO_EDITOR_TEXT = {
     `조합 모드를 끌까요?\n앞으로 이 씬은 단일 프롬프트(첫 조합: ${middle || '(비어 있음)'})로 생성합니다.\n` +
     '상위·하위 프롬프트와 전역 네거티브는 더 이상 붙지 않고, 조합(슬롯)은 남지만 쓰이지 않습니다. 다시 켤 수는 없습니다.',
 } as const;
+
+/**
+ * 조합 계열 편집 칸(SDI2IComboUI·SDInpaintComboUI·SDMirrorUI)의 호출부 칸 id(`wfiCustomSlot`, 2026-11-03).
+ * 내용은 편집 창(ComboPromptEditor)이 그린다. 주의: wfiElementKey 계약 — 배포 후 바꾸지 않는다(편집 모드 순서 저장 키).
+ */
+export const COMBO_SLOT_IDS = {
+  middle: 'combo-middle-prompt',
+  frontBack: 'combo-front-back',
+  globalUc: 'combo-global-uc',
+} as const;
+
+/** 조합 계열 변형 씬이 전역 네거티브를 생성에 넣는가 — 씬 프리셋 `useGlobalUc`(키 없음·옛 씬 = 넣음, false 일 때만 뺌). */
+export function comboUsesGlobalUc(preset: { useGlobalUc?: unknown } | undefined | null): boolean {
+  return preset?.useGlobalUc !== false;
+}
 
 /** 조합이 0종이라 예약하지 않았을 때(활성 조각이 없는 열이 있음 — 조합 에디터 「미리보기 0종」과 같은 규칙). */
 export const COMBO_EMPTY_TEXT =

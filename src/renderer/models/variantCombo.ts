@@ -23,7 +23,7 @@ import {
   Scene,
   Session,
 } from './types';
-import { isComboVariant, normalizeComboMode, variantComboMode } from './comboMode';
+import { comboUsesGlobalUc, isComboVariant, normalizeComboMode, variantComboMode } from './comboMode';
 
 /** 이지 모드 사전 세팅 타입 — 상위에 캐릭터 태그, 하위 앞에 배경 태그, 네거티브 앞에 태그 밴이 붙는다. */
 const EASY_WORKFLOW = 'SDImageGenEasy';
@@ -239,7 +239,10 @@ export async function expandVariantCombos(
   }));
 }
 
-/** 조합 하나를 넘길 프리셋 사본 — 네거티브 = 전역 네거티브 + 씬 네거티브(미러 기존 규칙). */
+/**
+ * 조합 하나를 넘길 프리셋 사본 — 네거티브 = 전역 네거티브 + 씬 전용 네거티브(미러 기존 규칙).
+ * 씬 프리셋 `useGlobalUc === false`(편집 창 전역 네거티브 「사용」 끔, 2026-11-03)면 전역 몫을 뺀다 — shared·snapshot·미러 공통 한 곳.
+ */
 export function comboHandlerPreset(
   preset: any,
   combo: ExpandedCombo,
@@ -247,7 +250,7 @@ export function comboHandlerPreset(
 ): any {
   return {
     ...preset,
-    uc: joinPromptParts(globalUc, preset?.uc),
+    uc: joinPromptParts(comboUsesGlobalUc(preset) ? globalUc : '', preset?.uc),
     [COMBO_EXPANDED_KEY]: combo,
   };
 }

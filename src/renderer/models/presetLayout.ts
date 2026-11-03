@@ -27,6 +27,7 @@ import {
   WFIMiddlePlaceholderInput,
   WFIExtraPromptInput,
   WFIMainSamplingNotice,
+  WFICustomSlot,
   WFIIfIn,
   WFISceneOnly,
   wfiElementKey,
@@ -196,7 +197,8 @@ export function presetRowLabel(el: WFIElement): string {
     cur.type === 'group' ||
     cur.type === 'middlePlaceholder' ||
     cur.type === 'extraPrompt' ||
-    cur.type === 'mainSamplingNotice'
+    cur.type === 'mainSamplingNotice' ||
+    cur.type === 'customSlot'
   ) {
     const label = (
       cur as
@@ -205,6 +207,7 @@ export function presetRowLabel(el: WFIElement): string {
         | WFIMiddlePlaceholderInput
         | WFIExtraPromptInput
         | WFIMainSamplingNotice
+        | WFICustomSlot
     ).label;
     if (label && label.length > 0) return label;
   }

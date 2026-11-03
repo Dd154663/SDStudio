@@ -244,6 +244,15 @@ export interface WFIMainSamplingNotice extends WFIAbstract {
   label: string;
 }
 
+// 호출부가 그려 넣는 칸(2026-11-03 조합 계열 편집 창 정렬, SPEC §7-4) — 워크플로우 변수에 바인딩되지 않고
+// InnerPreSetEditor 의 `customSlots[id]` 렌더 함수가 내용을 낸다(함수가 없거나 null 이면 아무것도 그리지 않음).
+// 명시 id 필수(L1-1 키 계약). grow = 세로로 남는 높이를 나눠 갖는 칸(프롬프트 칸처럼 — 편집 모드 래퍼 flex-1).
+export interface WFICustomSlot extends WFIAbstract {
+  type: 'customSlot';
+  label: string;
+  grow?: boolean;
+}
+
 export interface WFIPush extends WFIAbstract {
   type: 'push';
   direction: 'top' | 'bottom' | 'left' | 'right';
@@ -259,6 +268,7 @@ export type WFIElement =
   | WFIExtraPromptInput
   | WFIPush
   | WFIMainSamplingNotice
+  | WFICustomSlot
   | WFIIfIn
   | WFISceneOnly
   | WFIShowImage;
@@ -641,6 +651,14 @@ export function wfiMainSamplingNotice(
   id: string,
 ): WFIMainSamplingNotice {
   return { type: 'mainSamplingNotice', label, id };
+}
+
+export function wfiCustomSlot(
+  label: string,
+  id: string,
+  grow = false,
+): WFICustomSlot {
+  return { type: 'customSlot', label, id, grow };
 }
 
 export function wfiIfIn(

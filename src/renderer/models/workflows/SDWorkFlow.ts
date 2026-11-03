@@ -6,6 +6,7 @@ import {
 import { NAI_FREE_PIXEL_LIMIT } from '../../backends/genVendors/naiModelCapabilities';
 import {
   WFDefBuilder,
+  wfiCustomSlot,
   wfiExtraPromptInput,
   wfiGroup,
   wfiInlineInput,
@@ -55,6 +56,7 @@ import {
 import { applyImportedJob } from './importedJob';
 import { comboExpandedOf, resolvePresetPromptNode } from '../variantCombo';
 import { readMainSampling, resolveVariantSampling, VARIANT_SAMPLING_TEXT } from '../variantSampling';
+import { COMBO_EDITOR_TEXT, COMBO_SLOT_IDS, comboUsesGlobalUc } from '../comboMode';
 
 const SDImageGenPreset = new WFVarBuilder()
   .addIntVar('cfgRescale', 0, 1, 0.01, 0)
@@ -377,7 +379,10 @@ const SDInpaintFocusedPreset = SDInpaintPreset.clone()
   // 조합 모드가 아닌 인페인트 씬은 빈 값 그대로(전개에 쓰이지 않음). 옛 씬 JSON 은 키가 없어 기본값 — 롤백 시 값만 소실.
   .addPromptVar('frontPrompt', '')
   .addPromptVar('backPrompt', '')
-  .addPromptVar('globalUc', '');
+  .addPromptVar('globalUc', '')
+  // 조합 계열 전역 네거티브 「사용」 토글(2026-11-03, SPEC §7-4) — false 면 조합 전개 때 전역 몫을 뺀다(씬 전용 네거티브는 그대로).
+  // 기본 true·옛 씬 JSON 은 키가 없어 true, 5.5.2 이하는 키를 몰라 무시(= 늘 넣음). 조합 모드가 아닌 씬에는 쓰이지 않는다.
+  .addBoolVar('useGlobalUc', true);
 
 const SDInpaintUI = wfiStack([
   wfiInlineInput('이미지', 'image', 'preset', 'flex-none'),
@@ -398,7 +403,17 @@ const SDInpaintUI = wfiStack([
   wfiInlineInput('바이브 설정', 'vibes', 'preset', 'flex-none'),
 ]);
 
-// 인페인트 조합 모드 편집 칸(2026-10-04 P1) — SDI2IComboUI 와 같은 이유로 단일 「프롬프트」 칸을 빼고 네거티브 칸 = 씬 네거티브.
+// 조합 계열 편집 칸의 프롬프트 자리(2026-11-03 편집 창 정렬, SPEC §7-4) — 단일 계열의 「프롬프트」 자리에 중간 프롬프트,
+// 그 아래 상위·하위(레거시 씬 편집기 모드만)·전역 네거티브(접힘+「사용」 토글). 내용은 편집 창 ComboPromptEditor 가 그린다.
+// 뒤따르는 'uc' 칸 = 씬 전용 네거티브(전역 네거티브 뒤에 붙음).
+const comboPromptSlots = () => [
+  wfiCustomSlot(COMBO_EDITOR_TEXT.middle, COMBO_SLOT_IDS.middle, true),
+  wfiCustomSlot(COMBO_EDITOR_TEXT.frontBackSlot, COMBO_SLOT_IDS.frontBack, true),
+  wfiCustomSlot(COMBO_EDITOR_TEXT.globalUcSlot, COMBO_SLOT_IDS.globalUc, true),
+  wfiInlineInput(COMBO_EDITOR_TEXT.sceneUc, 'uc', 'preset', 'flex-1'),
+];
+
+// 인페인트 조합 모드 편집 칸(2026-10-04 P1) — SDI2IComboUI 와 같은 구성(단일 「프롬프트」 칸 대신 조합 프롬프트 자리).
 // 마스크·Focused 영역은 편집 창 이미지 패널(브러시·영역 도구)이 그대로 맡는다.
 export const SDInpaintComboUI = wfiStack([
   wfiInlineInput('이미지', 'image', 'preset', 'flex-none'),
@@ -409,7 +424,7 @@ export const SDInpaintComboUI = wfiStack([
     'preset',
     'flex-none',
   ),
-  wfiInlineInput('씬 네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
+  ...comboPromptSlots(),
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
   // 샘플링·모델 설정은 메인 사전 세팅을 따른다(2026-10-11, SPEC §7-5) — 그룹 대신 안내 줄+메인 값 요약.
   wfiMainSamplingNotice(VARIANT_SAMPLING_TEXT.notice, 'main-sampling-notice'),
@@ -546,7 +561,9 @@ const SDI2IPreset = SDInpaintPreset.clone()
   .addCharacterReferenceVar('characterReferences')
   .addPromptVar('frontPrompt', '')
   .addPromptVar('backPrompt', '')
-  .addPromptVar('globalUc', '');
+  .addPromptVar('globalUc', '')
+  // 조합 계열 전역 네거티브 「사용」 토글(2026-11-03) — 인페인트(SDInpaintFocusedPreset)와 같은 키·기본 true.
+  .addBoolVar('useGlobalUc', true);
 
 const SDI2IUI = wfiStack([
   wfiInlineInput('이미지', 'image', 'preset', 'flex-none'),
@@ -563,13 +580,13 @@ const SDI2IUI = wfiStack([
   wfiInlineInput('캐릭터 레퍼런스', 'characterReferences', 'preset', 'flex-none'),
 ]);
 
-// I2I 조합 모드 편집 칸(2026-10-04 B4) — 프롬프트는 편집 창의 「프롬프트 에디터」 탭(상위·중간·하위)·「조합 에디터」 탭이
-// 맡으므로 단일 「프롬프트」 칸을 뺀다(중복 방지). 네거티브 칸 = 씬 네거티브(전역 네거티브 앞에 붙음 — 미러와 같음).
+// I2I 조합 모드 편집 칸(2026-10-04 B4, 2026-11-03 정렬) — 단일 「프롬프트」 칸 대신 조합 프롬프트 자리(중간·[상위/하위]·전역
+// 네거티브 — comboPromptSlots), 그 뒤 씬 전용 네거티브(전역 네거티브 뒤에 붙음 — 미러와 같음). 순서 = 단일 계열 SDI2IUI 와 같음.
 export const SDI2IComboUI = wfiStack([
   wfiInlineInput('이미지', 'image', 'preset', 'flex-none'),
   wfiInlineInput('강도', 'strength', 'preset', 'flex-none'),
   wfiInlineInput('노이즈', 'noise', 'preset', 'flex-none'),
-  wfiInlineInput('씬 네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
+  ...comboPromptSlots(),
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
   // 샘플링·모델 설정은 메인 사전 세팅을 따른다(2026-10-11, SPEC §7-5) — 그룹 대신 안내 줄+메인 값 요약.
   wfiMainSamplingNotice(VARIANT_SAMPLING_TEXT.notice, 'main-sampling-notice'),
@@ -734,8 +751,10 @@ export async function prepareMirrorCanvas(
   };
 }
 
-const SDMirrorPreset = SDInpaintPreset.clone();
+// 미러 = 항상 조합('shared'). 전역 네거티브 「사용」 토글 키만 더한다(2026-11-03 — I2I·인페인트와 같은 키·기본 true).
+const SDMirrorPreset = SDInpaintPreset.clone().addBoolVar('useGlobalUc', true);
 
+// 미러 편집 칸(2026-11-03 정렬) — 강도 → 비마스크 보호 → 조합 프롬프트 자리 → 씬 전용 네거티브 → 캐릭터 → 안내 → 시드 → 바이브.
 const SDMirrorUI = wfiStack([
   wfiInlineInput('인페인트 강도', 'strength', 'preset', 'flex-none'),
   wfiInlineInput(
@@ -744,7 +763,7 @@ const SDMirrorUI = wfiStack([
     'preset',
     'flex-none',
   ),
-  wfiInlineInput('씬 네거티브 프롬프트', 'uc', 'preset', 'flex-1'),
+  ...comboPromptSlots(),
   wfiInlineInput('캐릭터 프롬프트', 'characterPrompts', 'preset', 'flex-none'),
   // 샘플링·모델 설정은 메인 사전 세팅을 따른다(2026-10-11, SPEC §7-5) — 그룹 대신 안내 줄+메인 값 요약.
   wfiMainSamplingNotice(VARIANT_SAMPLING_TEXT.notice, 'main-sampling-notice'),
@@ -784,7 +803,8 @@ const createMirrorHandler = () => {
       if (genPreset) {
         front = genPreset.frontPrompt || '';
         back = genPreset.backPrompt || '';
-        globalUc = genPreset.uc || '';
+        // 전역 네거티브 「사용」 끔(2026-11-03)이면 전개 경로와 같이 전역 몫을 뺀다
+        globalUc = comboUsesGlobalUc(preset) ? genPreset.uc || '' : '';
       }
     }
     const combined = [front, preset.prompt, back]

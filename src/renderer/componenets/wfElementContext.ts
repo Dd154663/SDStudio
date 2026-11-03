@@ -29,6 +29,8 @@ export interface IWFElementContext {
   /** 이미지 입력칸(ImageSelect) 업로드 완료 알림 — 변형 씬 편집 창이 씬 해상도를 맞출 때 쓴다(R-res). */
   onImageUploaded?: (field: string, base64: string) => void | Promise<void>;
   modelVersion: ModelVersion;
+  /** 호출부가 그려 넣는 칸(`wfiCustomSlot` id → 렌더 함수) — 조합 계열 변형 씬 편집 창(SPEC §7-4). 없으면 빈 칸. */
+  customSlots?: Record<string, (() => React.ReactNode) | undefined>;
 }
 
 export const WFElementContext = React.createContext<IWFElementContext | null>(null);

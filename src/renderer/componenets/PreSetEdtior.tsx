@@ -66,6 +66,7 @@ import {
   WFIIfIn,
   WFIInlineInput,
   WFIMainSamplingNotice,
+  WFICustomSlot,
   WFIMiddlePlaceholderInput,
   WFIPush,
   WFISceneOnly,
@@ -257,7 +258,7 @@ function setPromptFold(key: string, folded: boolean) {
   } catch (e) {}
 }
 
-const EditorField = ({
+export const EditorField = ({
   label,
   full,
   children,
@@ -266,6 +267,9 @@ const EditorField = ({
   foldKey,
   defaultFolded,
   foldedBadge,
+  folded: foldedProp,
+  onFoldedChange,
+  headerEnd,
 }: {
   label: string;
   children: React.ReactNode;
@@ -278,26 +282,44 @@ const EditorField = ({
   defaultFolded?: boolean;
   // 접힘 상태에서 내용이 있을 때 라벨 옆에 표시할 배지 (보이지 않는 프롬프트 방지)
   foldedBadge?: string;
+  // 제어형 접기(2026-11-03 조합 계열 전역 네거티브) — onFoldedChange 가 있으면 접힘 상태를 호출부가 갖는다(저장 안 함).
+  // foldKey(localStorage 영속)와 함께 쓰지 않는다.
+  folded?: boolean;
+  onFoldedChange?: (folded: boolean) => void;
+  // 머리 줄 오른쪽 끝 요소(모드 표시·버튼·토글) — 좁으면 다음 줄 오른쪽으로 넘어간다
+  headerEnd?: React.ReactNode;
 }) => {
-  const [folded, setFolded] = useState(() =>
+  const controlled = !!onFoldedChange;
+  const [foldedState, setFolded] = useState(() =>
     foldKey ? getPromptFold(foldKey, !!defaultFolded) : false,
   );
+  const folded = controlled ? !!foldedProp : foldedState;
+  const foldable = controlled || !!foldKey;
   // 편집기 부속 버튼(작가 라이브러리 열기) 자리 — 라벨 줄 오른쪽 끝. 편집기 안 우상단에 두면 첫 줄 프롬프트를
   // 가려 수정을 방해한다(2026-09-26 사용자 실기기 지적). PromptEditTextArea 가 컨텍스트로 노드를 보낸다.
   const [accessory, setAccessory] = useState<React.ReactNode>(null);
   const toggle = () => {
+    if (controlled) {
+      onFoldedChange!(!folded);
+      return;
+    }
     if (!foldKey) return;
     setPromptFold(foldKey, !folded);
     setFolded(!folded);
   };
   return (
     <>
-      <div className={'pt-2 md:pt-3 pb-1 gray-label flex items-center min-w-0'}>
+      <div
+        className={
+          'pt-2 md:pt-3 pb-1 gray-label flex items-center min-w-0' +
+          (headerEnd ? ' flex-wrap gap-y-1' : '')
+        }
+      >
         <span
-          className={foldKey ? 'cursor-pointer select-none' : undefined}
-          onClick={foldKey ? toggle : undefined}
+          className={foldable ? 'cursor-pointer select-none' : undefined}
+          onClick={foldable ? toggle : undefined}
         >
-          {foldKey && (
+          {foldable && (
             <span className="inline-block mr-1 text-faint align-middle">
               {folded ? (
                 <FaChevronRight size={9} />
@@ -321,6 +343,14 @@ const EditorField = ({
         {accessory && (
           <span data-editor-field-accessory className="ml-auto pl-2 flex-none flex items-center">
             {accessory}
+          </span>
+        )}
+        {headerEnd && (
+          <span
+            data-editor-field-header-end=""
+            className={`${accessory ? '' : 'ml-auto '}pl-2 flex-none flex flex-wrap items-center justify-end gap-2`}
+          >
+            {headerEnd}
           </span>
         )}
       </div>
@@ -1248,6 +1278,8 @@ const WFRenderElement = observer(({ element }: WFElementProps) => {
       return <WFRShowImage element={element} />;
     case 'mainSamplingNotice':
       return <WFRMainSamplingNotice element={element} />;
+    case 'customSlot':
+      return <WFRCustomSlot element={element} />;
     case 'ifIn':
       return <WFRIfIn element={element} />;
     case 'sceneOnly':
@@ -1335,6 +1367,19 @@ const WFRMainSamplingNotice = observer(({ element }: WFElementProps) => {
       )}
     </div>
   );
+});
+
+// 호출부가 그려 넣는 칸(2026-11-03, SPEC §7-4) — 조합 계열 변형 씬 편집 창의 중간 프롬프트·상위/하위·전역 네거티브.
+// 렌더 함수는 이 observer 안에서 불리므로 읽은 값이 바뀌면 이 칸만 다시 그린다. 그룹 오버레이·바이브 편집 중엔 숨김.
+const WFRCustomSlot = observer(({ element }: WFElementProps) => {
+  const { editVibe, showGroup, customSlots } = useContext(WFElementContext)!;
+  const input = element as WFICustomSlot;
+  if (showGroup || editVibe) {
+    return <></>;
+  }
+  const render = input.id ? customSlots?.[input.id] : undefined;
+  if (!render) return <></>;
+  return <>{render()}</>;
 });
 
 const WFRMiddlePlaceholder = observer(({ element }: WFElementProps) => {
@@ -1726,6 +1771,7 @@ function presetRowGrows(el: WFIElement): boolean {
   }
   if (cur.type === 'middlePlaceholder') return true;
   if (cur.type === 'extraPrompt') return true;
+  if (cur.type === 'customSlot') return !!(cur as WFICustomSlot).grow;
   if (cur.type === 'inline') return (cur as WFIInlineInput).flex === 'flex-1';
   return false;
 }
@@ -2746,6 +2792,7 @@ interface ImplProps {
   getCharacterMiddlePrompt?: (index: number) => string;
   onCharacterMiddlePromptChange?: (index: number, txt: string) => void;
   onImageUploaded?: (field: string, base64: string) => void | Promise<void>;
+  customSlots?: Record<string, (() => React.ReactNode) | undefined>;
 }
 
 export const PreSetEditorImpl = observer(
@@ -2762,6 +2809,7 @@ export const PreSetEditorImpl = observer(
     getCharacterMiddlePrompt,
     onCharacterMiddlePromptChange,
     onImageUploaded,
+    customSlots,
   }: ImplProps) => {
     const [editVibe, setEditVibe] = useState<WFIInlineInput | undefined>(
       undefined,
@@ -2861,6 +2909,7 @@ export const PreSetEditorImpl = observer(
             getCharacterMiddlePrompt,
             onCharacterMiddlePromptChange,
             onImageUploaded,
+            customSlots,
           }}
         >
           <WFGroupContext.Provider value={{}}>
@@ -2929,6 +2978,8 @@ interface InnerProps {
   onCharacterMiddlePromptChange?: (index: number, txt: string) => void;
   /** 이미지 입력칸에 파일을 올린 뒤(저장 완료 후) 호출 — 필드명과 base64. */
   onImageUploaded?: (field: string, base64: string) => void | Promise<void>;
+  /** `wfiCustomSlot` 칸의 렌더 함수(id → 함수) — 조합 계열 변형 씬 편집 창(SPEC §7-4). */
+  customSlots?: Record<string, (() => React.ReactNode) | undefined>;
 }
 
 interface UnionProps {
@@ -2958,6 +3009,7 @@ export const InnerPreSetEditor = observer(
     onCharacterMiddlePromptChange,
     nopad,
     onImageUploaded,
+    customSlots,
   }: InnerProps) => {
     return (
       <VerticalStack className={nopad ? '' : 'p-2 md:p-3'}>
@@ -2974,6 +3026,7 @@ export const InnerPreSetEditor = observer(
           getCharacterMiddlePrompt={getCharacterMiddlePrompt}
           onCharacterMiddlePromptChange={onCharacterMiddlePromptChange}
           onImageUploaded={onImageUploaded}
+          customSlots={customSlots}
         />
       </VerticalStack>
     );

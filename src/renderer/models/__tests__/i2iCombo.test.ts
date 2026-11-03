@@ -171,6 +171,52 @@ describe('comboMode 직렬화·판정', () => {
   });
 });
 
+describe('전역 네거티브 「사용」 키(useGlobalUc, 2026-11-03)', () => {
+  test.each([
+    ['SDI2I', SDI2IDef],
+    ['SDInpaint', SDInpaintDef],
+    ['SDMirror', SDMirrorDef],
+  ] as [string, any][])('%s 프리셋: 기본 true·toJSON 에 키·옛 JSON(키 없음) = true·false 왕복 보존', (type, def) => {
+    const wf = new WFWorkFlow(def);
+    const preset = wf.buildPreset();
+    expect(preset.useGlobalUc).toBe(true);
+    expect(preset.toJSON()).toHaveProperty('useGlobalUc', true);
+    const old = wf.presetFromJSON({ type, prompt: 'p', image: 'a.png' });
+    expect(old.useGlobalUc).toBe(true);
+    preset.useGlobalUc = false;
+    const back = wf.presetFromJSON(JSON.parse(JSON.stringify(preset.toJSON())));
+    expect(back.useGlobalUc).toBe(false);
+  });
+
+  test('comboHandlerPreset — false 면 전역 몫 없음, 키 없음·true 면 전역 + 씬', () => {
+    const combo = { prompt: { type: 'text' as const, text: 'p' }, characterPrompts: [] };
+    expect(comboHandlerPreset({ uc: 'scene', useGlobalUc: false }, combo, 'G').uc).toBe('scene');
+    expect(comboHandlerPreset({ uc: '', useGlobalUc: false }, combo, 'G').uc).toBe('');
+    expect(comboHandlerPreset({ uc: 'scene' }, combo, 'G').uc).toBe('G, scene');
+    expect(comboHandlerPreset({ uc: 'scene', useGlobalUc: true }, combo, 'G').uc).toBe('G, scene');
+    // 씬 프리셋 자체는 바꾸지 않는다(사본)
+    const preset = { uc: 'scene', useGlobalUc: false };
+    comboHandlerPreset(preset, combo, 'G');
+    expect(preset).toEqual({ uc: 'scene', useGlobalUc: false });
+  });
+
+  test('미러 핸들러 직접 호출(전개 없음) 경로도 끄면 사전 세팅 네거티브를 붙이지 않는다', async () => {
+    const mirrorSession: any = {
+      ...session,
+      selectedWorkflow: { workflowType: 'SDImageGen' },
+      getCommonSetup: () => ['SDImageGen', { frontPrompt: 'F', backPrompt: 'B', uc: 'U' }, {}],
+    };
+    const preset = new WFWorkFlow(SDMirrorDef).buildPreset();
+    Object.assign(preset, { image: 'RAWBASE64', uc: 'scene-uc', prompt: 'mid' });
+    const scene = inpaintScene({ workflowType: 'SDMirror' });
+    await SDMirrorDef.handler(mirrorSession, scene, { type: 'text', text: '' }, [], preset, undefined, 1);
+    expect((addTask.mock.calls[0] as any[])[0].job.uc).toBe('U, scene-uc');
+    preset.useGlobalUc = false;
+    await SDMirrorDef.handler(mirrorSession, scene, { type: 'text', text: '' }, [], preset, undefined, 1);
+    expect((addTask.mock.calls[1] as any[])[0].job.uc).toBe('scene-uc');
+  });
+});
+
 describe('조합 전개 공용 함수 — 생성 경로(createSDPrompts)와 같은 결과', () => {
   const genPreset = { frontPrompt: 'f1, |, f2', backPrompt: 'bk', uc: 'guc', characterPrompts: [] };
   const genShared = { type: 'SDImageGen', characterPrompts: [] };

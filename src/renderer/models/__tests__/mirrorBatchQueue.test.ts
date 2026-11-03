@@ -359,3 +359,54 @@ describe('조합 전개 예약 — 미러·I2I 조합 모드', () => {
     expect(await queueI2IWorkflow(session, 'SDI2I', { image: 'x' }, general, 1)).toBe(1);
   });
 });
+
+// 전역 네거티브 「사용」 토글(2026-11-03, SPEC §7-4) — 씬 프리셋 useGlobalUc === false 면 조합 전개 예약의 uc 에서 전역 몫만 뺀다.
+// 결합 지점 = comboHandlerPreset 한 곳(snapshot·shared·미러 공통). 키 없음(옛 씬) = 넣음.
+describe('조합 전개 예약 — 전역 네거티브 「사용」(useGlobalUc)', () => {
+  const piece = (prompt: string) => PromptPiece.fromJSON({ prompt, characterPrompts: [], id: prompt } as any);
+  const sharedSession = {
+    name: 'project',
+    mirrorImage: 'src.png',
+    mirrorMode: 'blank',
+    library: new Map(),
+    selectedWorkflow: { workflowType: 'SDImageGen', presetName: 'main' },
+    getCommonSetup: () => ['SDImageGen', { frontPrompt: 'F', backPrompt: 'B', uc: 'MAIN-UC' }, {}],
+  } as any;
+  const variant = (comboMode: 'shared' | 'snapshot', preset: any, workflowType = 'SDI2I') =>
+    ({
+      type: 'inpaint',
+      name: 'v',
+      workflowType,
+      comboMode,
+      slots: [[piece('a')]],
+      preset: { image: 'img.png', uc: 'scene', frontPrompt: 'SF', backPrompt: 'SB', globalUc: 'SNAP-UC', ...preset },
+      resolution: 'portrait',
+    }) as any;
+  const ucOf = async (scene: any, mirror = false) => {
+    const handler = jest.fn(async () => {});
+    getDef.mockReturnValue({ handler });
+    if (mirror) await queueMirrorWorkflow(sharedSession, 'SDMirror', scene.preset, scene, 1);
+    else await queueI2IWorkflow(sharedSession, scene.workflowType, scene.preset, scene, 1);
+    expect(handler).toHaveBeenCalledTimes(1);
+    return (handler.mock.calls[0] as any[])[4].uc;
+  };
+
+  test('snapshot: 끄면 씬 전용 네거티브만, 키 없음·켜짐은 고정 전역 + 씬', async () => {
+    expect(await ucOf(variant('snapshot', { useGlobalUc: false }))).toBe('scene');
+    expect(await ucOf(variant('snapshot', { useGlobalUc: true }))).toBe('SNAP-UC, scene');
+    expect(await ucOf(variant('snapshot', {}))).toBe('SNAP-UC, scene');
+  });
+
+  test('shared: 끄면 사전 세팅 네거티브를 빼고, 키 없음은 사전 세팅 + 씬(인페인트 조합 모드도 같음)', async () => {
+    expect(await ucOf(variant('shared', { useGlobalUc: false }))).toBe('scene');
+    expect(await ucOf(variant('shared', {}))).toBe('MAIN-UC, scene');
+    expect(await ucOf(variant('shared', { useGlobalUc: false }, 'SDInpaint'))).toBe('scene');
+    expect(await ucOf(variant('snapshot', { useGlobalUc: false, uc: '' }, 'SDInpaint'))).toBe('');
+  });
+
+  test('미러: 끄면 사전 세팅 네거티브 제외, 키 없음은 포함', async () => {
+    const mirror = (preset: any) => ({ ...variant('shared', preset, 'SDMirror'), comboMode: undefined, name: 'm' });
+    expect(await ucOf(mirror({ useGlobalUc: false }), true)).toBe('scene');
+    expect(await ucOf(mirror({}), true)).toBe('MAIN-UC, scene');
+  });
+});

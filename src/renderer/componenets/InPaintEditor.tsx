@@ -57,6 +57,7 @@ import {
 } from '../models/variantSceneUndo';
 import { observer } from 'mobx-react-lite';
 import { InnerPreSetEditor } from './PreSetEdtior';
+import { ComboPromptEditor } from './ComboPromptEditor';
 import { reaction, runInAction } from 'mobx';
 import { FloatView } from './FloatView';
 import { TaskProgressBar } from './TaskQueueControl';
@@ -79,7 +80,6 @@ import {
   SDI2IComboUI,
   SDInpaintComboUI,
 } from '../models/workflows/SDWorkFlow';
-import PromptEditTextArea from './PromptEditTextArea';
 import { SlotEditor } from './SceneEditor';
 import { variantCharacterContext } from '../models/sceneCharacterPrompts';
 import { v4 as uuidv4 } from 'uuid';
@@ -227,6 +227,7 @@ const InPaintEditor = observer(
       );
     // 조합 에디터 탭(2026-10-04 B4, SPEC §7-4) — 미러('shared') 또는 조합 모드 I2I·인페인트('shared'·'snapshot', 인페인트는 P1).
     // 'shared' 는 상위/하위/전역 네거티브 칸이 현재 사전 세팅에 바로 쓰고(실시간 공유), 'snapshot' 은 씬 프리셋의 고정값.
+    // 칸 배치(단일 계열 순서·상위/하위 레거시 전용·전역 네거티브 접힘+「사용」)는 ComboPromptEditor(2026-11-03).
     const comboMode = variantComboMode(editingScene);
     // 조합 모드를 끌 수 있는 씬(I2I·인페인트) — 미러는 항상 조합이라 끄기·모드 표시 없음
     const isComboOptional = !isMirror && !!comboMode;
@@ -241,7 +242,7 @@ const InPaintEditor = observer(
     // PC 조합 에디터 탭: 이미지 패널을 hidden(display:none)으로 숨긴다 — 언마운트하지 않아 마스크 캔버스·붓질 이력·
     // Focused 영역이 그대로 남고, 오버레이 크기는 다시 보일 때 ResizeObserver 가 재측정한다. md 미만(모바일)은 불변.
     const pcComboWide = showComboTabs && pcComboTab === 1;
-    // 조합 모드 I2I·인페인트는 단일 「프롬프트」 칸이 없는 편집 칸(중간 프롬프트·조합 에디터가 대신한다).
+    // 조합 모드 I2I·인페인트는 단일 「프롬프트」 칸 대신 조합 프롬프트 자리가 있는 편집 칸(내용 = ComboPromptEditor).
     // 인페인트의 마스크·Focused 영역 도구는 이미지 패널 그대로.
     const presetEditorElement = isComboOptional
       ? editingScene.workflowType === 'SDInpaint'
@@ -316,107 +317,27 @@ const InPaintEditor = observer(
         mode: 'edit',
       });
 
-    // 「프롬프트 에디터」 탭 칸(상위·중간·하위·전역 네거티브) — 모바일 FloatView·PC 오른쪽 패널 공용
-    const comboPromptRows: {
-      label: string;
-      value: string;
-      onChange: (v: string) => void;
-    }[] =
-      comboMode === 'snapshot'
-        ? [
-            {
-              label: COMBO_EDITOR_TEXT.snapshotFront,
-              value: editingScene.preset.frontPrompt || '',
-              onChange: (v) =>
-                setPromptRow(editingScene.preset, 'frontPrompt', COMBO_EDITOR_TEXT.snapshotFront, v),
-            },
-            { label: COMBO_EDITOR_TEXT.middle, value: getMiddlePrompt(), onChange: setMiddlePrompt },
-            {
-              label: COMBO_EDITOR_TEXT.snapshotBack,
-              value: editingScene.preset.backPrompt || '',
-              onChange: (v) =>
-                setPromptRow(editingScene.preset, 'backPrompt', COMBO_EDITOR_TEXT.snapshotBack, v),
-            },
-            {
-              label: COMBO_EDITOR_TEXT.snapshotUc,
-              value: editingScene.preset.globalUc || '',
-              onChange: (v) => setPromptRow(editingScene.preset, 'globalUc', COMBO_EDITOR_TEXT.snapshotUc, v),
-            },
-          ]
-        : globalPreset
-          ? [
-              {
-                label: COMBO_EDITOR_TEXT.sharedFront,
-                value: globalPreset.frontPrompt || '',
-                onChange: (v) => setPromptRow(globalPreset, 'frontPrompt', COMBO_EDITOR_TEXT.sharedFront, v),
-              },
-              { label: COMBO_EDITOR_TEXT.middle, value: getMiddlePrompt(), onChange: setMiddlePrompt },
-              {
-                label: COMBO_EDITOR_TEXT.sharedBack,
-                value: globalPreset.backPrompt || '',
-                onChange: (v) => setPromptRow(globalPreset, 'backPrompt', COMBO_EDITOR_TEXT.sharedBack, v),
-              },
-              {
-                label: COMBO_EDITOR_TEXT.sharedUc,
-                value: globalPreset.uc || '',
-                onChange: (v) => setPromptRow(globalPreset, 'uc', COMBO_EDITOR_TEXT.sharedUc, v),
-              },
-            ]
-          : [];
-
     const comboTabs = (pc: boolean) => [
       {
         label: '프롬프트 에디터',
         emoji: <FaImages />,
         onClick: pc ? () => setPcComboTab(0) : undefined,
+        // 단일 계열과 같은 순서의 편집 칸(중간 프롬프트·[상위/하위]·전역 네거티브를 편집 칸 안 「프롬프트」 자리에 끼움,
+        // 2026-11-03 정렬 — ComboPromptEditor). 모바일 FloatView·PC 오른쪽 패널 공용.
         content: (
-          <div className={`flex flex-col h-full overflow-auto ${pc ? 'gap-1' : 'p-2 gap-2'}`}>
-            {isComboOptional && (
-              <div className="flex-none flex flex-wrap items-center gap-2">
-                <span className="gray-label text-xs">
-                  {comboMode === 'snapshot'
-                    ? COMBO_EDITOR_TEXT.modeSnapshot
-                    : COMBO_EDITOR_TEXT.modeShared}
-                </span>
-                <button
-                  className="round-button back-gray btn-sm flex-none ml-auto"
-                  onClick={turnOffComboMode}
-                >
-                  {COMBO_EDITOR_TEXT.turnOff}
-                </button>
-              </div>
-            )}
-            {comboPromptRows.map((row) => (
-              <div key={row.label} className="contents">
-                <div className="flex-none font-bold text-sub">{row.label}</div>
-                <div className="flex-none h-20">
-                  <PromptEditTextArea value={row.value} onChange={row.onChange} />
-                </div>
-              </div>
-            ))}
-            {pc ? (
-              <div className="flex-1 overflow-hidden min-h-0">
-                <InnerPreSetEditor
-                  nopad
-                  type={editingScene.workflowType}
-                  preset={editingScene.preset}
-                  shared={undefined}
-                  element={presetEditorElement}
-                  middlePromptMode={false}
-                  onImageUploaded={onImageUploaded}
-                />
-              </div>
-            ) : (
-              <InnerPreSetEditor
-                type={editingScene.workflowType}
-                preset={editingScene.preset}
-                shared={undefined}
-                element={presetEditorElement}
-                middlePromptMode={false}
-                onImageUploaded={onImageUploaded}
-              />
-            )}
-          </div>
+          <ComboPromptEditor
+            scene={editingScene}
+            mode={comboMode!}
+            globalPreset={globalPreset}
+            element={presetEditorElement}
+            canTurnOff={isComboOptional}
+            pc={pc}
+            getMiddlePrompt={getMiddlePrompt}
+            setMiddlePrompt={setMiddlePrompt}
+            setPromptRow={setPromptRow}
+            onTurnOff={turnOffComboMode}
+            onImageUploaded={onImageUploaded}
+          />
         ),
       },
       {
