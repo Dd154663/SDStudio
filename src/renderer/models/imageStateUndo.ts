@@ -12,7 +12,7 @@
 // · 생성 설정 적용은 프로젝트(세션) 부분만 — 환경설정(config)·글로벌 프리셋 대상은 기록하지 않는다.
 // · 서비스는 models/index.ts 가 configureImageStateUndo 로 넣는다(순환 import 회피 — 테스트는 ops 를 직접 넘긴다).
 import { runInAction } from 'mobx';
-import { cloneRanking, rankingForFiles, RankingSnapshot, sameRanking } from './imageRanking';
+import { cloneRanking, rankingForFiles, RankingSnapshot, roundStartRanking, sameRanking } from './imageRanking';
 import { captureSceneFields, flushSceneFieldEdit, SceneFieldKey } from './sceneFieldUndo';
 import { sceneInSession } from './sceneStructureUndo';
 import { ReferenceItem, VibeItem } from './types';
@@ -303,13 +303,42 @@ export async function recordRanking(
   mutate: () => unknown,
   opts: ImageStateUndoOptions = {},
 ): Promise<void> {
+  return recordRankingFrom(session, scene, label, mutate, () => cloneRanking(scene), opts);
+}
+
+/**
+ * 월드컵 라운드 완료(2026-11-03 2차 P4, 사용자 결정 D5 = 라운드 단위) — Tournament.nextMatch 의 라운드 끝 분기
+ * (마지막 매치 승패 반영 → finalizeMatch → nextRound → 다음 라운드 대입)를 감싸 1항목.
+ * 이전 값 = **이 라운드의 시작 상태**(roundStartRanking — 같은 game·같은 참가자·승패 없음·첫 매치): 라운드 안 매치 진행은
+ * 기록하지 않으므로, 되돌리면 그 라운드를 처음부터 다시 하게 된다(라운드 도중 화면을 연 경우에도 같은 시작 상태).
+ * 이후 값 = 다음 라운드 첫 매치(마지막 라운드면 확정된 순위). 그사이 다음 라운드를 진행했으면 D16 확인.
+ */
+export function recordRankingRound(
+  session: Session | undefined,
+  scene: GenericScene,
+  label: string,
+  mutate: () => unknown,
+  opts: ImageStateUndoOptions = {},
+): Promise<void> {
+  return recordRankingFrom(session, scene, label, mutate, () => roundStartRanking(scene), opts);
+}
+
+/** 순위 1항목 기록 본체 — beforeOf 는 mutate 직전에 부른다(이전 값 사본) */
+async function recordRankingFrom(
+  session: Session | undefined,
+  scene: GenericScene,
+  label: string,
+  mutate: () => unknown,
+  beforeOf: () => RankingSnapshot,
+  opts: ImageStateUndoOptions,
+): Promise<void> {
   const service = opts.service ?? undoService;
   if (!session || !recordable(service, session, scene)) {
     await mutate();
     return;
   }
   flushSceneFieldEdit();
-  const before = cloneRanking(scene);
+  const before = beforeOf();
   await mutate();
   const after = cloneRanking(scene);
   if (sameRanking(before, after)) return;

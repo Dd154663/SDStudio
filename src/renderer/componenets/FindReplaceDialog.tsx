@@ -15,13 +15,14 @@ import { Scene, CharacterPreset, PromptPiece, InpaintScene } from '../models/typ
 import { variantComboMode } from '../models/comboMode';
 import { editScenesFields } from '../models/sceneFieldUndo';
 import { UNDO_TEXT } from '../models/undoService';
+import { replaceAllRecorded, unrecordedScopesOf } from '../models/findReplaceUndo';
+import type { FindReplaceItem } from '../models/findReplaceUndo';
 
-/** 검색 결과 한 건. setText 가 false 를 반환하면 "건너뜀"(이름 충돌·차단 등). */
-interface SearchResult {
-  location: string;
-  getText: () => string;
-  setText: (v: string) => void | boolean | Promise<void | boolean>;
-}
+/**
+ * 검색 결과 한 건. setText 가 false 를 반환하면 "건너뜀"(이름 충돌·차단 등).
+ * target = 결과가 쓰는 대상의 종류·씬(되돌리기 기록 분기용 — 2026-11-03 2차 P3, 화면 표시와 무관).
+ */
+type SearchResult = FindReplaceItem;
 
 type SearchScope = 'scene' | 'character' | 'preset' | 'global' | 'sceneNames' | 'projectName';
 
@@ -47,6 +48,7 @@ function collectVariantResults(scene: InpaintScene, q: string, results: SearchRe
         location: `${head} ${label}`,
         getText: () => preset[key],
         setText: (v) => { preset[key] = v; },
+        target: { kind: 'variant', scene },
       });
     }
   };
@@ -66,6 +68,7 @@ function collectVariantResults(scene: InpaintScene, q: string, results: SearchRe
             if (si === 0 && pi === 0 && preset && preset.prompt === piece.prompt) preset.prompt = v;
             piece.prompt = v;
           },
+          target: { kind: 'variant', scene },
         });
       }
       piece.characterPrompts.forEach((cp, ci) => {
@@ -74,6 +77,7 @@ function collectVariantResults(scene: InpaintScene, q: string, results: SearchRe
             location: `${head} 슬롯 ${si + 1}-${pi + 1} 캐릭터란 ${ci + 1}`,
             getText: () => piece.characterPrompts[ci],
             setText: (v) => { piece.characterPrompts[ci] = v; },
+            target: { kind: 'variant', scene },
           });
         }
       });
@@ -108,6 +112,7 @@ function collectResults(
               location: `[${sceneName}] 프롬프트 슬롯 ${si + 1}-${pi + 1}`,
               getText: () => piece.prompt,
               setText: (v) => { piece.prompt = v; },
+              target: { kind: 'sceneSlots', scene },
             });
           }
           piece.characterPrompts.forEach((cp, ci) => {
@@ -116,6 +121,7 @@ function collectResults(
                 location: `[${sceneName}] 슬롯 ${si + 1}-${pi + 1} 캐릭터란 ${ci + 1}`,
                 getText: () => piece.characterPrompts[ci],
                 setText: (v) => { piece.characterPrompts[ci] = v; },
+                target: { kind: 'sceneSlots', scene },
               });
             }
           });
@@ -139,6 +145,7 @@ function collectResults(
             location: `[${sceneName}] 씬 캐릭터 ${i + 1} 프롬프트`,
             getText: () => cp.prompt,
             setText: (v) => { cp.prompt = v; },
+            target: { kind: 'sceneCharacter', scene },
           });
         }
         if (cp.uc && cp.uc.includes(q)) {
@@ -146,6 +153,7 @@ function collectResults(
             location: `[${sceneName}] 씬 캐릭터 ${i + 1} UC`,
             getText: () => cp.uc,
             setText: (v) => { cp.uc = v; },
+            target: { kind: 'sceneCharacter', scene },
           });
         }
       });
@@ -154,6 +162,7 @@ function collectResults(
           location: `[${sceneName}] 씬 캐릭터 UC`,
           getText: () => scene.sceneCharacterUC,
           setText: (v) => { scene.sceneCharacterUC = v; },
+          target: { kind: 'sceneCharacter', scene },
         });
       }
     }
@@ -168,6 +177,7 @@ function collectResults(
           location: `[프리셋: ${pName}] 캐릭터 프롬프트`,
           getText: () => preset.characterPrompt,
           setText: (v) => { preset.characterPrompt = v; },
+          target: { kind: 'characterPreset' },
         });
       }
       if (preset.characterUC && preset.characterUC.includes(q)) {
@@ -175,6 +185,7 @@ function collectResults(
           location: `[프리셋: ${pName}] 캐릭터 UC`,
           getText: () => preset.characterUC,
           setText: (v) => { preset.characterUC = v; },
+          target: { kind: 'characterPreset' },
         });
       }
       if (preset.backgroundPrompt && preset.backgroundPrompt.includes(q)) {
@@ -182,6 +193,7 @@ function collectResults(
           location: `[프리셋: ${pName}] 배경 프롬프트`,
           getText: () => preset.backgroundPrompt,
           setText: (v) => { preset.backgroundPrompt = v; },
+          target: { kind: 'characterPreset' },
         });
       }
     }
@@ -212,6 +224,7 @@ function collectResults(
             location: `[글로벌 캐릭터: ${entry.name}] ${label}`,
             getText: () => p[key],
             setText: (v) => { p[key] = v; touch(); },
+            target: { kind: 'global' },
           });
         }
       }
@@ -235,6 +248,7 @@ function collectResults(
             location: `[글로벌 프리셋: ${entry.name}] ${label}`,
             getText: () => p[key],
             setText: (v) => { p[key] = v; touch(); },
+            target: { kind: 'global' },
           });
         }
       }
@@ -259,6 +273,7 @@ function collectResults(
           await renameScene(session, sceneName, nm);
           return session.scenes.has(nm); // 창 간 잠금 차단 시 false
         },
+        target: { kind: 'sceneName', scene },
       });
     }
   }
@@ -279,10 +294,13 @@ function collectResults(
             console.error('프로젝트 이름 변환 실패:', e);
             return false;
           }
+          // 이름 변경은 세션 인스턴스를 그대로 새 이름으로 옮긴다(되돌리기 스택 유지). 다른 창 잠금(구 배치 rename 은
+          // 조용히 돌아옴)으로 바뀌지 않았으면 건너뜀으로 센다(종전엔 성공으로 셌다 — 2026-11-03 2차 P3 안내 판정용).
           const sess = sessionService.getLoaded(nm);
           if (sess) sess.name = nm;
-          return true;
+          return !!sess;
         },
+        target: { kind: 'projectName' },
       });
     }
   }
@@ -332,6 +350,8 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
   const [searched, setSearched] = useState(false);
   const [replaceComplete, setReplaceComplete] = useState<number | null>(null);
   const [replaceSkipped, setReplaceSkipped] = useState(0);
+  // 바뀌었지만 되돌리기에 담지 않은 범위 안내(글로벌 프리셋·프로젝트 이름 — 2차 P3)
+  const [replaceNotice, setReplaceNotice] = useState<string | null>(null);
   // 공백 검색: 검색어를 trim 하지 않고 그대로 사용 — 공백만으로도 검색/변환 가능
   // (예: 공백 → 언더스코어 일괄 치환)
   const [wsSearch, setWsSearch] = useState(false);
@@ -386,27 +406,31 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
 
   const doReplaceAll = useCallback(async () => {
     if (results.length === 0) return;
-    let replaced = 0;
-    let skipped = 0;
-    // 이름 변환(씬/프로젝트 rename)은 비동기 — 순차 await 로 안전하게 처리
-    for (const r of results) {
-      const cur = r.getText();
-      const next = cur.replaceAll(searchText, replaceText);
-      if (cur === next) continue;
-      try {
-        const ok = await r.setText(next);
-        if (ok === false) skipped++;
-        else replaced++;
-      } catch (e) {
-        console.error('변환 실패:', r.location, e);
-        skipped++;
-      }
-    }
-    setReplaceComplete(replaced);
-    setReplaceSkipped(skipped);
+    // 되돌리기(2026-11-03 2차 P3): 한 번의 「모두 변환」 = 1항목(프로젝트 범위 — 씬 조합·씬 캐릭터·변형 씬·캐릭터 프리셋·씬 이름).
+    // 글로벌 프리셋·프로젝트 이름은 기록하지 않고(사용자 결정 D4), 실제로 바뀌었으면 결과 문구에 안내한다.
+    // 이름 변환(씬/프로젝트 rename)은 비동기 — 안에서 순차 await.
+    const out = await replaceAllRecorded(appState.curSession, results, searchText, replaceText);
+    setReplaceComplete(out.replaced);
+    setReplaceSkipped(out.skipped);
+    setReplaceNotice(out.notUndone.length > 0 ? UNDO_TEXT.findReplaceNotUndone(out.notUndone) : null);
     setResults(collectResults(searchText, scopes, selectedScenes));
     setSearched(true);
   }, [results, searchText, replaceText, scopes, selectedScenes]);
+
+  // 「모두 변환」 확인 1회 — Enter·버튼 공용(발견 A11: 버튼은 확인 없이 즉시였다). 글로벌 프리셋·프로젝트 이름 변경은
+  // 되돌릴 수 없음을 결과에 그 범위가 있을 때만 알린다(프로젝트 범위는 되돌리기 가능).
+  const confirmReplaceAll = useCallback(() => {
+    if (results.length === 0) return;
+    void appState
+      .confirmAsync({
+        text: UNDO_TEXT.findReplaceConfirm(results.length, searchText, replaceText, unrecordedScopesOf(results)),
+        confirmText: UNDO_TEXT.findReplaceConfirmButton,
+        danger: true,
+      })
+      .then((ok) => {
+        if (ok) void doReplaceAll();
+      });
+  }, [results, searchText, replaceText, doReplaceAll]);
 
   const toggleScope = (scope: SearchScope) => {
     setScopes((prev) => ({ ...prev, [scope]: !prev[scope] }));
@@ -516,24 +540,16 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
               <FaExchangeAlt className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" size={14} />
               <input type="text" placeholder="변환할 텍스트 (빈칸 = 삭제)" value={replaceText}
                 onChange={(e) => { setReplaceText(e.target.value); setReplaceComplete(null); }}
-                // Enter 는 바로 변환하지 않고 확인 1회(되돌리기 없음 — 2026-10-03 U1·X14). [모두 변환] 버튼은 그대로 즉시.
+                // Enter·[모두 변환] 버튼 모두 확인 1회(2026-10-03 U1·X14, 버튼은 2026-11-03 A11). 프로젝트 범위는 되돌리기로
+                // 되돌릴 수 있고, 글로벌 프리셋·프로젝트 이름 변경은 되돌릴 수 없다(확인 창에 표시).
                 onKeyDown={(e) => {
                   if (e.key !== 'Enter' || e.nativeEvent.isComposing || e.keyCode === 229) return;
                   e.preventDefault();
-                  if (results.length === 0) return;
-                  void appState
-                    .confirmAsync({
-                      text: `${results.length}개 항목을 변환합니다.\n「${searchText}」 → 「${replaceText}」${replaceText ? '' : ' (삭제)'}`,
-                      confirmText: '모두 변환',
-                      danger: true,
-                    })
-                    .then((ok) => {
-                      if (ok) void doReplaceAll();
-                    });
+                  confirmReplaceAll();
                 }}
                 className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
             </div>
-            <button onClick={doReplaceAll}
+            <button onClick={confirmReplaceAll}
               className="px-4 py-2 rounded-lg btn-solid-orange text-sm font-medium transition-colors flex-none">모두 변환</button>
           </div>
           {replaceComplete !== null && (
@@ -541,6 +557,9 @@ const FindTab = ({ searchInputRef }: { searchInputRef: React.RefObject<HTMLInput
               ✓ {replaceComplete}개 항목이 변환되었습니다{results.length > 0 && ` (잔여 ${results.length}개)`}
               {replaceSkipped > 0 && (
                 <span className="text-amber-600 dark:text-amber-400"> — {replaceSkipped}개 건너뜀 (이름 충돌/빈 이름 등)</span>
+              )}
+              {replaceNotice && (
+                <div className="text-xs text-amber-600 dark:text-amber-400 font-normal mt-0.5">{replaceNotice}</div>
               )}
             </div>
           )}
@@ -688,7 +707,7 @@ const InsertTab = () => {
     if (!session || !insertText.trim()) return;
     let applied = 0;
     // 되돌리기(U2b): 삽입 1회 = 대상 씬들의 조합 slots 묶음 1항목(바뀐 씬만, 되돌림 역순).
-    // 찾기/바꾸기 「모두 변환」은 보류 영역이라 기록하지 않는다.
+    // 찾기/바꾸기 「모두 변환」은 findReplaceUndo.replaceAllRecorded 가 따로 기록한다(2차 P3).
     const targets = Array.from(session.scenes.values()).filter((scene) => selectedScenes.has(scene.name));
     editScenesFields(session, targets, ['slots'], UNDO_TEXT.comboBatchInsert(targets.length), () => {
       for (const scene of targets) {

@@ -39,6 +39,7 @@ const stripComments = (c: string) =>
 // 되돌리기 계약(2026-11-01 U1)을 지키는 모듈 — 잠금·씬 직접 제거 금지 규칙의 대상
 // U2a: 씬 구조(생성·이름·북마크) 계측 모듈 추가 · U2b: 씬 필드·조합·씬 캐릭터·시드 그룹 계측 모듈 추가
 // U4: 삭제·휴지통 복원·복제·복사·붙여넣기 계측 모듈 추가 · U5: 변형 씬 필드·일괄 작업, 로컬 조각 계측 모듈 추가
+// 2차 P3(2026-11-03): 찾기/바꾸기 「모두 변환」 계측 모듈 추가
 const UNDO_MODULES = [
   'models/undoService.ts',
   'models/sceneOrderUndo.ts',
@@ -49,6 +50,7 @@ const UNDO_MODULES = [
   'models/deleteUndo.ts',
   'models/variantSceneUndo.ts',
   'models/pieceUndo.ts',
+  'models/findReplaceUndo.ts',
 ];
 
 const RULES: Rule[] = [

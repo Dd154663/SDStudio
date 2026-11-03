@@ -141,6 +141,23 @@ export function editVariantFields<R>(
   }
 }
 
+/**
+ * 시작에 보관하고 commit 때 바뀌었으면 1항목 — 여러 대상을 한 흐름에서 바꾸는 묶음(찾기/바꾸기 「모두 변환」 2차 P3)이
+ * 바깥 beginGroup 안에서 쓴다. 기록 대상이 아니면(초안·미러·실행 중) 빈 손잡이.
+ */
+export function captureVariantFields(
+  session: Session | undefined,
+  scene: InpaintScene,
+  keys: VariantFieldKeys,
+  label: string,
+  opts: VariantUndoOptions = {},
+): UndoPending {
+  const service = opts.service ?? undoService;
+  if (!recordable(service, session, scene)) return NOOP;
+  flushSceneFieldEdit();
+  return service.track(session, label, variantFieldsAdapter(session, scene, keys));
+}
+
 // ── 슬라이더(누름~뗌 1항목) ─────────────────────────────────────────────────
 
 interface OpenSlide {

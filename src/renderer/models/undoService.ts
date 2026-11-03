@@ -96,6 +96,11 @@ export interface UndoDeps {
 export const UNDO_MAX_DEPTH = 100;
 export const UNDO_MERGE_MS = 1000;
 
+/** 라벨에 넣는 사용자 입력(검색어 등)이 길면 줄인다 — 토스트·툴팁 한 줄 유지 */
+function clipUndoText(text: string, max = 20): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
 /** 사용자에게 보이는 문구 — 한 곳에서만 정한다 */
 export const UNDO_TEXT = {
   undoName: '되돌리기',
@@ -294,6 +299,18 @@ export const UNDO_TEXT = {
   piecePrompt: (group: string, name: string) => `조각 내용 편집: ${group}.${name}`,
   pieceMulti: (group: string, name: string) => `조각 랜덤 줄 모드 변경: ${group}.${name}`,
   pieceMove: (group: string) => `조각 순서 변경: ${group}`,
+  // 2차 P3 찾기/바꾸기 「모두 변환」 — findReplaceUndo.ts. 글로벌 프리셋·프로젝트 이름은 기록하지 않는다(사용자 결정 D4)
+  findReplaceAll: (search: string, replace: string, count: number) =>
+    `모두 변환 ${count}개: 「${clipUndoText(search)}」 → ${replace ? `「${clipUndoText(replace)}」` : '(삭제)'}`,
+  // scopes = 실제로 바뀐 기록 밖 범위 이름(findReplaceUndo.FIND_REPLACE_UNRECORDED_LABEL)
+  findReplaceNotUndone: (scopes: readonly string[]) => `${scopes.join('·')} 변경은 되돌리기 대상이 아닙니다`,
+  // 「모두 변환」 확인 창(Enter·버튼 공용, 발견 A11). unrecorded = 결과에 들어 있는 기록 밖 범위 이름
+  findReplaceConfirm: (count: number, search: string, replace: string, unrecorded: readonly string[]) =>
+    `${count}개 항목을 변환합니다.\n「${search}」 → 「${replace}」${replace ? '' : ' (삭제)'}` +
+    (unrecorded.length > 0 ? `\n${unrecorded.join('·')} 변경은 되돌릴 수 없습니다.` : ''),
+  findReplaceConfirmButton: '모두 변환',
+  // 2차 P4 월드컵 라운드 완료(라운드 단위 1항목 — 매치별 진행은 기록하지 않는다, 사용자 결정 D5). stage = 「8강」·「결승전」 등
+  rankingRound: (name: string, stage: string) => `월드컵 ${stage} 완료: ${name}`,
 } as const;
 
 // ── 참조 손잡이 ───────────────────────────────────────────────────────────

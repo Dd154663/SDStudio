@@ -7,7 +7,7 @@ import { shuffleArray } from '../models/GameService';
 import { isOutputImageFile } from '../models/imageFormats';
 import { Scene, InpaintScene, ContextMenuType, Player } from '../models/types';
 import { appState } from '../models/AppService';
-import { recordRanking } from '../models/imageStateUndo';
+import { recordRanking, recordRankingRound } from '../models/imageStateUndo';
 import { UNDO_TEXT } from '../models/undoService';
 import ShortcutCheatsheet from './ShortcutCheatsheet';
 
@@ -96,13 +96,18 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
     const round = scene.round!;
     round.curPlayer += 2;
     if (round.curPlayer + 1 >= round.players.length) {
-      finalizeMatch();
-      const [finalizedRank, newRound] = gameService.nextRound(scene.game!);
-      if (newRound) {
-        scene.round = newRound;
-        setPlayers([newRound.players[0], newRound.players[1]]);
-      }
-      setFinalRank(finalizedRank);
+      // 되돌리기(2026-11-03 2차 P4, 사용자 결정 D5): 라운드 완료 = 1항목(이 라운드 시작 상태 ↔ 다음 라운드 첫 매치·확정 순위).
+      // 매치별 진행(curPlayer·승패)과 화면 안 「실행취소」는 기록하지 않는다(기존 국소 동작). 본문은 동기로 바로 실행된다.
+      const stage = getCurWinRank();
+      void recordRankingRound(curSession, scene, UNDO_TEXT.rankingRound(scene.name, stage), () => {
+        finalizeMatch();
+        const [finalizedRank, newRound] = gameService.nextRound(scene.game!);
+        if (newRound) {
+          scene.round = newRound;
+          setPlayers([newRound.players[0], newRound.players[1]]);
+        }
+        setFinalRank(finalizedRank);
+      });
       sessionUpdated();
       lock.current = false;
       return;
@@ -195,7 +200,8 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
   }, [isInputFocused, scene]);
 
   // 되돌리기·다시 실행이 이 씬의 순위를 되살리면(GameService.applyRanking) 화면의 대진을 다시 맞춘다(U3a).
-  // 되살린 round 가 없으면 열 때와 같이 다음 대진을 새로 뽑는다.
+  // 되살린 round 가 없으면 열 때와 같이 다음 대진을 새로 뽑는다. 라운드 완료 항목(2차 P4)도 같은 경로 — 되살린 round 는
+  // 첫 매치(curPlayer 0)라 loadRoundInitial 이 그 round 의 첫 대진을 띄우고, 확정 순위(마지막 라운드)면 「모든 순위가 확정」.
   useEffect(() => {
     const onRestored = (e: Event) => {
       if ((e as CustomEvent).detail?.scene !== scene) return;

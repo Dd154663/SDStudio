@@ -82,6 +82,24 @@ export function cloneRanking(scene: Pick<GenericScene, 'game' | 'round'>): Ranki
 }
 
 /**
+ * 진행 중 라운드의 「시작 상태」 사본(2026-11-03 되돌리기 2차 P4) — 라운드 안의 매치 진행은 round 의 winMask·curPlayer 만 바꾸고
+ * game(순위)은 라운드가 끝날 때(finalizeMatch) 한 번 바뀌므로, 같은 game + 같은 참가자 순서 + 승패 없음 + 첫 매치(curPlayer 0)
+ * = GameService.nextRound 가 만든 그 라운드의 처음 모습. round 가 없으면 지금 사본 그대로. 항상 새 객체.
+ */
+export function roundStartRanking(scene: Pick<GenericScene, 'game' | 'round'>): RankingSnapshot {
+  const snap = cloneRanking(scene);
+  if (!snap.round) return snap;
+  return {
+    game: snap.game,
+    round: {
+      players: snap.round.players,
+      winMask: snap.round.players.map(() => false),
+      curPlayer: 0,
+    },
+  };
+}
+
+/**
  * 지금 있는 파일(files)에 맞춘 순위 사본 — 참가자는 있는 파일만 남기고, 빠진 참가자가 있으면 결번을 정규화한다
  * (ImageService.refresh 의 죽은 참조 정리와 같은 규칙). 남은 참가자가 없으면 game 없음.
  * round 는 참가자 중 하나라도 없으면 없음(진행 중 대진은 짝이 맞아야 하므로 refresh 와 같은 규칙). 항상 새 객체.
