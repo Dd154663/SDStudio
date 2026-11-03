@@ -19,6 +19,7 @@ import {
 } from '.';
 import { IBatchPlanItem, resolveBatchName } from './batchCreatePlan';
 import type { TemplateProtectArea } from './TemplateService';
+import type { ProjectSidecarSnapshot } from './TrashService';
 import { getAppState } from './appStateRef';
 import { FileEntry } from '../backend';
 import defaultassets from '../defaultassets';
@@ -65,6 +66,21 @@ import encodeChunks from 'png-chunks-encode';
 import * as legacy from './legacy';
 
 const SESSION_SERVICE_INTERVAL = 5000;
+
+/** 복원 때 다시 붙이지 못한 사이드카 항목(썸네일은 캐시라 제외). */
+export type ProjectSidecarPart = 'favorite' | 'bookmark';
+
+/** `SessionService.restoreProjectFromTrash` 결과(2026-11-03 — 되돌리기 2차가 재사용). */
+export interface ProjectRestoreOutcome {
+  /** 최종 이름(새 이름 복원이면 새 이름) */
+  name: string;
+  /** 신 배치에서 복원한 물리 폴더 */
+  dir?: string;
+  /** 휴지통 항목에 사이드카 스냅숏이 있어 재적용을 시도했는가(옛 항목은 false) */
+  sidecarRestored: boolean;
+  /** 재적용 중 저장에 실패한 항목(복원 자체는 유지) */
+  sidecarFailed: ProjectSidecarPart[];
+}
 
 export class SessionService extends ResourceSyncService<Session> {
   favorites: Set<string> = new Set();
@@ -1591,6 +1607,9 @@ export class SessionService extends ResourceSyncService<Session> {
     if (isWorkspaceLayout()) {
       unregisterProjectDir(name);
     }
+    // 사이드카 스냅숏(2026-11-03): 아래 정리 직전의 즐겨찾기·북마크·썸네일을 휴지통 항목에 남겨
+    // 복원 때 되살린다(restoreProjectFromTrash). 삭제가 실패하면 여기까지 오지 않는다.
+    const sidecar = this.captureProjectSidecar(name);
     // 이하 메타데이터 정리 (프로젝트는 이미 삭제 완료)
     this.favorites.delete(name);
     await this.saveFavorites();
@@ -1604,8 +1623,102 @@ export class SessionService extends ResourceSyncService<Session> {
     if (keysToDelete.length > 0 || hadSceneBookmarks) {
       await this.saveBookmarks();
     }
-    // 휴지통에 삭제 시점 기록 (신 배치는 폴더별 시각도 함께)
-    await trashService.moveProjectToTrash(name, trashDir);
+    // 휴지통에 삭제 시점 기록 (신 배치는 폴더별 시각도 함께) + 사이드카 스냅숏
+    await trashService.moveProjectToTrash(name, trashDir, sidecar);
+  }
+
+  // 프로젝트 하나의 루트 사이드카 몫을 스냅숏으로(읽기만). 이미지 북마크 키는 `이름:` 접두를 뗀다.
+  // 되살릴 것이 없으면 undefined(휴지통 항목에 키를 만들지 않음).
+  private captureProjectSidecar(name: string): ProjectSidecarSnapshot | undefined {
+    const snap: ProjectSidecarSnapshot = { favorite: this.favorites.has(name) };
+    const sb = this.bookmarkData.scenes[name];
+    if (sb) snap.sceneBookmark = { name: sb.name, type: sb.type };
+    const prefix = name + ':';
+    const images: Record<string, string> = {};
+    for (const [k, v] of Object.entries(this.bookmarkData.images)) {
+      if (k.startsWith(prefix) && k.length > prefix.length) images[k.slice(prefix.length)] = v;
+    }
+    if (Object.keys(images).length > 0) snap.imageBookmarks = images;
+    const th = this.thumbnailData[name];
+    if (th) snap.thumbnail = { scene: th.scene, image: th.image };
+    if (!snap.favorite && !snap.sceneBookmark && !snap.imageBookmarks && !snap.thumbnail) return undefined;
+    return snap;
+  }
+
+  /**
+   * 휴지통 프로젝트 복원의 관문(2026-11-03) — `trashService.restoreProject` 로 프로젝트를 되살린 뒤
+   * 휴지통 항목에 남겨 둔 사이드카 스냅숏(즐겨찾기·씬 북마크·이미지 북마크·썸네일)을 최종 이름으로 다시
+   * 붙이고 목록을 갱신한다. UI 복원(SessionSelect)과 되돌리기 2차는 이 메서드만 쓴다.
+   * 재적용 실패는 복원을 되돌리지 않는다(프로젝트 복원 우선) — 결과의 `sidecarFailed` 로 알린다.
+   * 옛 휴지통 항목(스냅숏 없음)은 예전처럼 아무것도 되살리지 않는다.
+   */
+  async restoreProjectFromTrash(
+    name: string,
+    opts: { dir?: string; newName?: string } = {},
+  ): Promise<ProjectRestoreOutcome> {
+    const restored = await trashService.restoreProject(name, {
+      dir: opts.dir,
+      newName: opts.newName,
+    });
+    const finalName = restored.name;
+    const applied = await this.applyProjectSidecar(finalName, restored.sidecar);
+    // 복원은 .deleted→.json 파일만 바꾸므로 목록 재스캔을 즉시 트리거한다.
+    await this.update();
+    return {
+      name: finalName,
+      dir: restored.dir,
+      sidecarRestored: applied.restored,
+      sidecarFailed: applied.failed,
+    };
+  }
+
+  // 스냅숏 재적용. 저장 차단(metaSaveBlocked)이면 save 함수가 메모리 반영만 하고 저장을 건너뛴다(기존 규칙).
+  // 실패는 항목별로 모아 돌려준다(복원은 그대로 유지).
+  private async applyProjectSidecar(
+    name: string,
+    snap: ProjectSidecarSnapshot | undefined,
+  ): Promise<{ restored: boolean; failed: ProjectSidecarPart[] }> {
+    const failed: ProjectSidecarPart[] = [];
+    if (!snap) return { restored: false, failed };
+    if (snap.favorite && !this.favorites.has(name)) {
+      this.favorites.add(name);
+      try {
+        // saveFavorites 가 다른 창 알림(session-meta)까지 보낸다 — toggleFavorite 와 같은 경로.
+        await this.saveFavorites();
+      } catch (e) {
+        console.warn('복원 프로젝트 즐겨찾기 저장 실패:', name, e);
+        failed.push('favorite');
+      }
+    }
+    let bookmarkChanged = false;
+    if (snap.sceneBookmark) {
+      this.bookmarkData.scenes[name] = {
+        name: snap.sceneBookmark.name,
+        type: snap.sceneBookmark.type,
+      };
+      bookmarkChanged = true;
+    }
+    for (const [sceneName, file] of Object.entries(snap.imageBookmarks ?? {})) {
+      this.bookmarkData.images[name + ':' + sceneName] = file;
+      bookmarkChanged = true;
+    }
+    if (bookmarkChanged) {
+      try {
+        await this.saveBookmarks();
+      } catch (e) {
+        console.warn('복원 프로젝트 북마크 저장 실패:', name, e);
+        failed.push('bookmark');
+      }
+    }
+    // 썸네일은 캐시(다시 만들 수 있음) — 실패해도 알리지 않는다. 저장은 기존 지연 저장.
+    if (snap.thumbnail) {
+      try {
+        this.setThumbnailRef(name, snap.thumbnail.scene, snap.thumbnail.image);
+      } catch (e) {
+        console.warn('복원 프로젝트 썸네일 참조 복원 실패(무시):', name, e);
+      }
+    }
+    return { restored: true, failed };
   }
 
   // 프로젝트 이름변경의 단일 관문 — 이미지 6루트 이동 → 세션 json·메타 이관.

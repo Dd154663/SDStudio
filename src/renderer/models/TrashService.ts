@@ -54,11 +54,66 @@ interface TrashSceneEntry {
   projectDir?: string;
 }
 
+/**
+ * 프로젝트 사이드카 스냅숏(2026-11-03) — 프로젝트를 휴지통으로 보낼 때 정리되는 루트 사이드카
+ * (favorites.json·bookmarks.json·thumbnails.json)의 그 프로젝트 몫. 복원할 때 되살린다.
+ * 이름에 묶인 키는 빼고 저장한다(이미지 북마크 키는 `이름:` 접두를 뗀 씬 이름) — 새 이름으로
+ * 복원해도 그 이름으로 다시 붙일 수 있게.
+ */
+export interface ProjectSidecarSnapshot {
+  favorite: boolean;
+  sceneBookmark?: { name: string; type: string };
+  /** 키 = 씬 이름(bookmarks.json images 키에서 `프로젝트이름:` 을 뗀 나머지), 값 = 이미지 파일 이름 */
+  imageBookmarks?: Record<string, string>;
+  /** thumbnails.json 의 값(캐시 — 되살리지 못해도 무해) */
+  thumbnail?: { scene: string; image: string };
+}
+
 interface TrashProjectEntry {
   // 이 이름으로 가장 최근에 삭제된 시각(구버전이 읽는 값).
   deletedAt: number;
   // 신 배치: 휴지통 폴더별 삭제 시각(동명 공존). 없는 폴더는 deletedAt 으로 해석.
   dirs?: { [dir: string]: number };
+  // 사이드카 스냅숏(2026-11-03, 선택 필드 — 5.5.2 이하는 모르는 키라 무시한다).
+  // 신 배치: 휴지통 폴더별(동명 공존). 구 배치: 이름 단위(같은 이름 휴지통 항목은 하나뿐).
+  sidecars?: { [dir: string]: ProjectSidecarSnapshot };
+  sidecar?: ProjectSidecarSnapshot;
+}
+
+/** 휴지통 프로젝트 복원 결과 — `name` = 최종 이름(새 이름 복원이면 새 이름). */
+export interface ProjectTrashRestoreResult {
+  name: string;
+  /** 신 배치에서 복원한 물리 폴더 */
+  dir?: string;
+  /** 휴지통 항목에서 꺼낸 사이드카 스냅숏(없으면 옛 기록·저장할 것이 없던 삭제·실제로 되살리지 않은 경우) */
+  sidecar?: ProjectSidecarSnapshot;
+}
+
+/**
+ * trash.json 에서 읽은 사이드카 값을 검사해 정상 모양만 돌려준다(손상·수동 편집 대비).
+ * 되살릴 것이 하나도 없으면 undefined.
+ */
+export function normalizeProjectSidecar(raw: unknown): ProjectSidecarSnapshot | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as any;
+  const out: ProjectSidecarSnapshot = { favorite: r.favorite === true };
+  const sb = r.sceneBookmark;
+  if (sb && typeof sb === 'object' && typeof sb.name === 'string' && typeof sb.type === 'string') {
+    out.sceneBookmark = { name: sb.name, type: sb.type };
+  }
+  if (r.imageBookmarks && typeof r.imageBookmarks === 'object') {
+    const ib: Record<string, string> = {};
+    for (const [k, v] of Object.entries(r.imageBookmarks)) {
+      if (k && typeof v === 'string') ib[k] = v;
+    }
+    if (Object.keys(ib).length > 0) out.imageBookmarks = ib;
+  }
+  const th = r.thumbnail;
+  if (th && typeof th === 'object' && typeof th.scene === 'string' && typeof th.image === 'string') {
+    out.thumbnail = { scene: th.scene, image: th.image };
+  }
+  if (!out.favorite && !out.sceneBookmark && !out.imageBookmarks && !out.thumbnail) return undefined;
+  return out;
 }
 
 interface TrashData {
@@ -1068,29 +1123,78 @@ export class TrashService extends EventTarget {
   // dir: 신 배치에서 방금 휴지통으로 옮긴 물리 폴더(SessionService.delete 가 삭제 전에 확보).
   // 폴더별 삭제 시각을 따로 남겨 동명 휴지통 항목을 구분한다(S2). deletedAt 은 구버전 호환용
   // 「이 이름의 가장 최근 삭제 시각」.
-  async moveProjectToTrash(projectName: string, dir?: string): Promise<void> {
+  // sidecar(2026-11-03): 삭제 직전의 즐겨찾기·북마크·썸네일 스냅숏(SessionService.delete 가 만든다).
+  // 신 배치는 폴더별(sidecars[dir]), 구 배치는 이름 단위(sidecar)로 남긴다. 없으면 키를 만들지 않는다.
+  async moveProjectToTrash(
+    projectName: string,
+    dir?: string,
+    sidecar?: ProjectSidecarSnapshot,
+  ): Promise<void> {
     this.ensureLoaded();
     const now = Date.now();
+    const snap = normalizeProjectSidecar(sidecar);
     if (isWorkspaceLayout() && dir) {
       const prev = this.data.projects[projectName];
       const dirs: { [dir: string]: number } = { ...(prev?.dirs ?? {}) };
+      const sidecars: { [dir: string]: ProjectSidecarSnapshot } = { ...(prev?.sidecars ?? {}) };
+      let legacySidecar = prev?.sidecar;
       if (prev && !prev.dirs && prev.deletedAt > 0) {
         // 폴더 구분 없는 옛 기록(구버전·이 수정 전) — 지금 휴지통에 있는 같은 이름 폴더들의
         // 삭제 시각이 옛 값이므로 그 폴더들에 붙여 둔다(새 삭제 시각에 묻히지 않게).
+        const attached: string[] = [];
         try {
           for (const e of await this.scanWorkspaceEntries()) {
             if (e.name === projectName && e.hasDeleted && !e.hasJson && e.dir !== dir && !(e.dir in dirs)) {
               dirs[e.dir] = prev.deletedAt;
+              attached.push(e.dir);
             }
           }
         } catch (e) {}
+        // 구 배치 시절 이름 단위 스냅숏은 그 폴더(구 배치는 같은 이름 휴지통 항목이 하나뿐) 몫으로 옮긴다.
+        if (legacySidecar && attached.length === 1 && !(attached[0] in sidecars)) {
+          sidecars[attached[0]] = legacySidecar;
+          legacySidecar = undefined;
+        }
       }
       dirs[dir] = now;
-      this.data.projects[projectName] = { deletedAt: now, dirs };
+      // 다른 휴지통 폴더(동명)의 스냅숏은 그대로 두고 이 폴더 것만 새로 쓴다.
+      if (snap) sidecars[dir] = snap;
+      else delete sidecars[dir];
+      const rec: TrashProjectEntry = { deletedAt: now, dirs };
+      if (Object.keys(sidecars).length > 0) rec.sidecars = sidecars;
+      if (legacySidecar) rec.sidecar = legacySidecar;
+      this.data.projects[projectName] = rec;
     } else {
-      this.data.projects[projectName] = { deletedAt: now };
+      // 구 배치: 같은 이름 휴지통 항목은 삭제 전에 purge 되므로 이름 단위 하나로 충분하다.
+      this.data.projects[projectName] = snap ? { deletedAt: now, sidecar: snap } : { deletedAt: now };
     }
     await this.saveTrash();
+  }
+
+  // 복원이 성공한 직후(같은 saveTrash 전) 휴지통 항목에서 사이드카 스냅숏을 꺼내고 항목에서 지운다.
+  // 신 배치: sidecars[dir]. 없고 그 폴더의 시각 기록도 없으면(구 배치 시절 삭제 → 저장소 v2 전환분)
+  // 이름 단위 sidecar. 저장은 호출부(restoreProject)의 saveTrash 가 한다 — 복원이 실패하면 부르지
+  // 않으므로 스냅숏은 휴지통 항목에 그대로 남는다.
+  private takeProjectSidecar(name: string, dir?: string): ProjectSidecarSnapshot | undefined {
+    const rec = this.data.projects[name];
+    if (!rec) return undefined;
+    if (isWorkspaceLayout() && dir) {
+      if (rec.sidecars && dir in rec.sidecars) {
+        const own = rec.sidecars[dir];
+        delete rec.sidecars[dir];
+        if (Object.keys(rec.sidecars).length === 0) delete rec.sidecars;
+        return normalizeProjectSidecar(own);
+      }
+      if (rec.sidecar !== undefined && !(rec.dirs && dir in rec.dirs)) {
+        const legacy = rec.sidecar;
+        delete rec.sidecar;
+        return normalizeProjectSidecar(legacy);
+      }
+      return undefined;
+    }
+    const snap = rec.sidecar;
+    delete rec.sidecar;
+    return normalizeProjectSidecar(snap);
   }
 
   // 휴지통 프로젝트 1개(폴더)의 삭제 시각. 폴더별 기록이 없으면 이름 단위 시각으로 해석.
@@ -1110,6 +1214,14 @@ export class TrashService extends EventTarget {
     if (remainingDirs.length === 0) {
       delete this.data.projects[name];
       return true;
+    }
+    // 그 폴더의 사이드카 스냅숏도 함께 버린다(2026-11-03 — 영구 삭제·복원 공통). 폴더별 스냅숏이
+    // 없고 시각 기록도 없는 폴더(구 배치 시절 삭제분)면 이름 단위 스냅숏이 그 폴더 몫(takeProjectSidecar 와 같은 규칙).
+    if (dir && rec.sidecars && dir in rec.sidecars) {
+      delete rec.sidecars[dir];
+      if (Object.keys(rec.sidecars).length === 0) delete rec.sidecars;
+    } else if (dir && rec.sidecar !== undefined && !(rec.dirs && dir in rec.dirs)) {
+      delete rec.sidecar;
     }
     if (dir && rec.dirs && dir in rec.dirs) delete rec.dirs[dir];
     const times = remainingDirs
@@ -1288,18 +1400,21 @@ export class TrashService extends EventTarget {
 
   // opts.dir: 신 배치에서 복원할 휴지통 폴더(동명 구분). 없으면 같은 이름 중 가장 최근 삭제분.
   // opts.newName: 같은 이름의 활성 프로젝트가 있을 때 쓸 새 이름(신 배치 전용 — 구 배치는 무시).
+  // 반환(2026-11-03): 최종 이름·복원 폴더·휴지통 항목에서 꺼낸 사이드카 스냅숏. 즐겨찾기·북마크·썸네일
+  // 재적용은 호출부 SessionService.restoreProjectFromTrash(UI 복원의 유일한 관문)가 한다 — 이 메서드는
+  // 프로젝트 파일과 trash.json 만 바꾼다.
   async restoreProject(
     name: string,
     opts?: { dir?: string; newName?: string },
-  ): Promise<void> {
+  ): Promise<ProjectTrashRestoreResult> {
     this.ensureLoaded();
     if (isWorkspaceLayout()) {
-      await this.restoreWorkspaceProject(name, opts);
-      return;
+      return await this.restoreWorkspaceProject(name, opts);
     }
     const deletedMap = await this.scanProjectFiles('.deleted');
     const activeMap = await this.scanProjectFiles('.json');
     const deletedPath = deletedMap.get(name);
+    let sidecar: ProjectSidecarSnapshot | undefined;
 
     if (activeMap.has(name)) {
       // Orphan .deleted: 활성 프로젝트가 있으니 .deleted 만 제거(구 배치 — 이미지 폴더를
@@ -1314,11 +1429,14 @@ export class TrashService extends EventTarget {
       // 같은 위치(폴더 포함)에 .json 으로 되돌린다 → 폴더 소속도 복원됨
       const jsonPath = deletedPath.replace(/\.deleted$/, '.json');
       await backend.renameFile(deletedPath, jsonPath);
+      // 실제로 되살린 경우에만 스냅숏을 돌려준다(위 고아 정리 분기는 활성 프로젝트의 사이드카를 건드리지 않는다).
+      sidecar = this.takeProjectSidecar(name);
     } else {
       throw new Error('프로젝트를 휴지통에서 찾을 수 없습니다');
     }
     delete this.data.projects[name];
     await this.saveTrash();
+    return { name, sidecar };
   }
 
   // 신 배치 복원(S2): project.json.deleted → project.json (접미 제거). 물리 폴더는 불변이라
@@ -1329,7 +1447,7 @@ export class TrashService extends EventTarget {
   private async restoreWorkspaceProject(
     name: string,
     opts?: { dir?: string; newName?: string },
-  ): Promise<void> {
+  ): Promise<ProjectTrashRestoreResult> {
     const trashed = (await this.workspaceTrashEntries()).filter((e) => e.name === name);
     const targetDir = opts?.dir
       ? trashed.find((e) => e.dir === opts.dir)?.dir
@@ -1379,6 +1497,8 @@ export class TrashService extends EventTarget {
       throw e;
     }
     registerProjectDir(finalName, targetDir);
+    // 사이드카 스냅숏은 아래 기록 정리(dropProjectRecord — 항목을 지운다)보다 먼저 꺼낸다.
+    const sidecar = this.takeProjectSidecar(name, targetDir);
 
     // 휴지통 기록 정리: 이 폴더 소속 씬 기록을 새 이름으로, 프로젝트 기록에서 이 폴더 제외.
     if (finalName !== name) {
@@ -1390,6 +1510,7 @@ export class TrashService extends EventTarget {
       trashed.filter((e) => e.dir !== targetDir).map((e) => e.dir),
     );
     await this.saveTrash();
+    return { name: finalName, dir: targetDir, sidecar };
   }
 
   // 신 배치 영구 삭제(S2): 대상은 휴지통 폴더 하나(dir, 없으면 같은 이름 중 가장 최근 삭제분).

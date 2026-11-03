@@ -33,7 +33,7 @@ import {
   reportEmptyResult,
   trashNoticeText,
 } from './TrashViews';
-import { deleteConfirmText } from '../models/deleteFlowRules';
+import { deleteConfirmText, projectRestoreResultText } from '../models/deleteFlowRules';
 import {
   planProjectRestore,
   sortTrashNewestFirst,
@@ -97,13 +97,13 @@ export function ProjectTrashView() {
         if (!typed) return;
         newName = typed;
       }
-      await trashService.restoreProject(item.name, { dir: item.dir, newName });
-      // 복원은 .deleted→.json 파일만 바꾸므로 목록 재스캔을 즉시 트리거한다.
-      await sessionService.update();
+      // 복원 관문(2026-11-03): 즐겨찾기·북마크·썸네일 재적용과 목록 재스캔까지 한다.
+      const result = await sessionService.restoreProjectFromTrash(item.name, {
+        dir: item.dir,
+        newName,
+      });
       appState.pushMessage(
-        newName
-          ? `프로젝트 "${displayName(item)}"을(를) "${newName}"(으)로 복원했습니다.`
-          : `프로젝트 "${displayName(item)}"이(가) 복원되었습니다.`,
+        projectRestoreResultText(displayName(item), newName, result.sidecarFailed.length > 0),
       );
       await refresh();
     } catch (e: any) {

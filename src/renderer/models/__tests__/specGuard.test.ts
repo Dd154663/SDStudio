@@ -400,6 +400,17 @@ const RULES: Rule[] = [
     count: (c) => countMatches(stripComments(c), /\.(imageMap|mains|game|round)\s*=(?!=)/g),
     allow: {},
   },
+  {
+    // 휴지통 프로젝트 복원은 SessionService.restoreProjectFromTrash 관문만(2026-11-03 사이드카 보존) —
+    // trashService.restoreProject 를 직접 부르면 즐겨찾기·북마크·썸네일 스냅숏이 버려진다.
+    name: 'trashService.restoreProject 직접 호출 — restoreProjectFromTrash 경유',
+    guide: '§8-3 「프로젝트 휴지통 사이드카 보존」',
+    dir: '',
+    exts: ['.ts', '.tsx'],
+    exclude: [],
+    count: (c) => countMatches(stripComments(c), /\.restoreProject\(/g),
+    allow: { 'models/SessionService.ts': 1 },
+  },
 ];
 
 function listFiles(dirAbs: string, exts: string[]): string[] {

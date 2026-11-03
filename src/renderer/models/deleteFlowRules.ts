@@ -363,7 +363,29 @@ export const DELETE_RESULT_TEXT = {
   /** restoreScene 이 다른 창 잠금으로 조용히 돌아옴(U0-a T1) */
   sceneRestoreBlocked:
     '씬을 복원하지 못했습니다(다른 창에서 열려 있을 수 있습니다).',
+  /** 휴지통 프로젝트 복원(원래 이름) */
+  projectRestored: (shown: string) => `프로젝트 "${shown}"이(가) 복원되었습니다.`,
+  /** 휴지통 프로젝트 복원(동명 공존 — 새 이름) */
+  projectRestoredAs: (shown: string, newName: string) =>
+    `프로젝트 "${shown}"을(를) "${newName}"(으)로 복원했습니다.`,
+  /** 복원은 됐지만 즐겨찾기·북마크를 다시 붙이지 못함(2026-11-03 사이드카 보존 — 복원은 유지) */
+  projectSidecarRestoreFailed: '즐겨찾기·북마크 일부는 되살리지 못했습니다.',
 } as const;
+
+/**
+ * 휴지통 프로젝트 복원 결과 안내 한 줄(2026-11-03). shown = 휴지통 표시 이름(동명 번호 포함),
+ * newName = 새 이름으로 복원했으면 그 이름, sidecarFailed = 사이드카 재적용에 실패한 항목이 있는가.
+ */
+export function projectRestoreResultText(
+  shown: string,
+  newName: string | undefined,
+  sidecarFailed: boolean,
+): string {
+  const base = newName
+    ? DELETE_RESULT_TEXT.projectRestoredAs(shown, newName)
+    : DELETE_RESULT_TEXT.projectRestored(shown);
+  return sidecarFailed ? `${base} ${DELETE_RESULT_TEXT.projectSidecarRestoreFailed}` : base;
+}
 
 /** 프로젝트 삭제 결과 안내 문구 — 실패면 failMessage 우선, 없으면 기본. */
 export function projectDeleteResultText(
