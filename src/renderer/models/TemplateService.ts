@@ -10,6 +10,7 @@ import { getAppState } from './appStateRef';
 import { nameErrorMessage, projectNameRules, promptName } from './nameInput';
 import { Session, genericSceneFromJSON } from './types';
 import { stringifyExportJson } from './jsonExport';
+import type { ProjectTemplateEntrySnapshot } from './ProjectTemplateService';
 import { askImportPolicy, notifyImportDone } from './importFlow';
 
 const SIDECAR_PATH = 'templates.json';
@@ -18,6 +19,13 @@ const SIDECAR_PATH = 'templates.json';
 // templateId = ProjectTemplateService 엔티티 id (불변 — 이름변경 캐스케이드 불필요).
 export interface IFolderTemplateEntry {
   templateId: string;
+}
+
+/** 폴더 삭제 되돌리기용 템플릿 스냅숏(snapshotFolderTemplates) — 메모리에만 둔다 */
+export interface FolderTemplateSnapshot {
+  assignments: { folder: string; templateId: string }[];
+  locals: ProjectTemplateEntrySnapshot[];
+  applications: { project: string; templateId: string; record: ITemplateApplicationRecord }[];
 }
 
 // 템플릿 적용 기록 (프로젝트 상속 마감, 2026-07-16 합의).
@@ -476,6 +484,82 @@ export class TemplateService {
       this.folderTemplates = next;
     });
     await this.save();
+  }
+
+  // 폴더 삭제 되돌리기용(2026-11-04 되돌리기 2차 묶음 3 P1-b, 사용자 결정 D7 ①) — removeFolder 가 지울 것을 미리 떠 둔다:
+  // 폴더·하위 폴더의 기본 템플릿 지정, 그중 폴더 전용 로컬 템플릿 엔티티(이미지 포함), 그 엔티티의 적용 기록(♟ 상속 링크 —
+  // ProjectTemplateService.delete 가 함께 지운다). 지정 저장소를 못 읽으면 빈 스냅숏(그때는 removeFolder 도 아무것도 지우지 않는다).
+  async snapshotFolderTemplates(folder: string): Promise<FolderTemplateSnapshot> {
+    const snap: FolderTemplateSnapshot = { assignments: [], locals: [], applications: [] };
+    await this.ensureLoaded();
+    if (!this.loaded) return snap;
+    const prefix = folder + '/';
+    for (const [f, entry] of Object.entries(this.folderTemplates)) {
+      if (f === folder || f.startsWith(prefix)) {
+        snap.assignments.push({ folder: f, templateId: entry.templateId });
+      }
+    }
+    if (snap.assignments.length === 0) return snap;
+    try {
+      await projectTemplateService.ensureLoaded();
+    } catch (e) {
+      return snap;
+    }
+    const localIds = new Set<string>();
+    for (const a of snap.assignments) {
+      if (localIds.has(a.templateId)) continue;
+      if (!projectTemplateService.get(a.templateId)?.folderLocal) continue;
+      const s = await projectTemplateService.snapshotEntry(a.templateId);
+      if (!s) continue;
+      localIds.add(a.templateId);
+      snap.locals.push(s);
+    }
+    for (const [project, byTpl] of Object.entries(this.templateApplications)) {
+      for (const [templateId, record] of Object.entries(byTpl)) {
+        if (localIds.has(templateId)) {
+          snap.applications.push({ project, templateId, record: JSON.parse(JSON.stringify(record)) });
+        }
+      }
+    }
+    return snap;
+  }
+
+  /**
+   * snapshotFolderTemplates 의 결과를 다시 붙인다 — 로컬 템플릿 재생성(같은 id) → 지정(비어 있는 폴더만) → 적용 기록(비어 있는 것만).
+   * 이미 있는 것은 건드리지 않는다(여러 번 불러도 같다). 다시 붙이지 못한 폴더 지정 수를 돌려준다.
+   */
+  async restoreFolderTemplates(snap: FolderTemplateSnapshot): Promise<{ failed: number }> {
+    let failed = 0;
+    if (snap.assignments.length === 0) return { failed };
+    await this.ensureLoaded();
+    if (!this.loaded) return { failed: snap.assignments.length };
+    try {
+      await projectTemplateService.ensureLoaded();
+    } catch (e) {
+      return { failed: snap.assignments.length };
+    }
+    for (const s of snap.locals) {
+      try {
+        await projectTemplateService.restoreEntry(s);
+      } catch (e) {
+        console.warn('폴더 전용 템플릿 재생성 실패:', s.entry.id, e);
+      }
+    }
+    const folders = new Set(sessionService.listFolders());
+    for (const a of snap.assignments) {
+      if (this.folderTemplates[a.folder]) continue;
+      if (!folders.has(a.folder) || !projectTemplateService.get(a.templateId)) {
+        failed++;
+        continue;
+      }
+      await this.setFolderTemplate(a.folder, a.templateId);
+    }
+    for (const app of snap.applications) {
+      if (this.templateApplications[app.project]?.[app.templateId]) continue;
+      if (!projectTemplateService.get(app.templateId)) continue;
+      await this.recordApplication(app.project, app.templateId, app.record);
+    }
+    return { failed };
   }
 
   async removeFolder(folder: string): Promise<void> {

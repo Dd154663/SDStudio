@@ -362,6 +362,21 @@ export const UNDO_TEXT = {
   folderOrderChanged: '폴더 목록·순서가 그사이 바뀌었습니다',
   folderNotEmpty: (folder: string) => `폴더 "${folder}"에 프로젝트나 하위 폴더가 생겨 지우지 않았습니다`,
   folderHasTemplate: (folder: string) => `폴더 "${folder}"에 기본 템플릿이 지정돼 있어 지우지 않았습니다`,
+  // 2차 묶음 3 P1-b 프로젝트·폴더 삭제류(전역 스택) — projectDeleteUndo.ts. 되돌려도 프로젝트를 열지 않는다(D8)
+  projectDelete: (name: string) => `프로젝트 삭제: ${name}`,
+  sceneTemplateDelete: (name: string) => `씬 템플릿 삭제: ${name}`,
+  projectTrashRestore: (name: string) => `휴지통 복원: 프로젝트 ${name}`,
+  folderDelete: (folder: string) => `폴더 삭제: ${folder}`,
+  folderDeleteWithProjects: (folder: string, count: number) =>
+    count > 0 ? `폴더와 프로젝트 ${count}개 삭제: ${folder}` : `폴더 삭제: ${folder}`,
+  // 실패·안내 이유
+  projectNameActive: (name: string) => `같은 이름의 프로젝트 "${name}"이(가) 있어 되돌리지 않았습니다`,
+  projectNotInTrash: (name: string) => `프로젝트 "${name}"이(가) 휴지통에 없습니다(영구 삭제·보존 기간 경과·휴지통 비우기)`,
+  projectDeleteBlocked: (name: string) => `프로젝트 "${name}"이(가) 다른 창에서 열려 있어 휴지통으로 옮기지 못했습니다`,
+  projectRestoredElsewhere: (name: string, folder: string) =>
+    `원래 폴더가 없어 프로젝트 "${name}"은(는) ${folder}에 복원했습니다`,
+  projectSidecarNotRestored: (name: string) => `프로젝트 "${name}"의 즐겨찾기·북마크 일부를 되살리지 못했습니다`,
+  folderTemplatesNotRestored: (count: number) => `폴더 기본 템플릿 지정 ${count}개를 되살리지 못했습니다`,
 } as const;
 
 // ── 참조 손잡이 ───────────────────────────────────────────────────────────

@@ -28,6 +28,7 @@ import {
   setFolderOrderRecorded,
   toggleFavoriteRecorded,
 } from '../models/projectFolderUndo';
+import { deleteFolderRecorded } from '../models/projectDeleteUndo';
 import ModalOverlay from './ModalOverlay';
 import Tooltip from './Tooltip';
 import MobileColorPicker from './MobileColorPicker';
@@ -897,7 +898,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
           text: prompt.text,
           callback: async () => {
             try {
-              await sessionService.deleteFolder(folder);
+              await deleteFolderRecorded(folder);
               cleanup();
             } catch (e: any) {
               appState.pushMessage(e.message || '폴더 삭제에 실패했습니다.');
@@ -918,7 +919,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
         callback: async (value) => {
           if (value === 'folderOnly') {
             try {
-              await sessionService.deleteFolder(folder);
+              await deleteFolderRecorded(folder);
               cleanup();
             } catch (e: any) {
               appState.pushMessage(e.message || '폴더 삭제에 실패했습니다.');

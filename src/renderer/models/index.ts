@@ -58,6 +58,9 @@ import { configureImageStateUndo } from './imageStateUndo';
 import { configureDeleteUndo } from './deleteUndo';
 import { configurePieceUndo } from './pieceUndo';
 import { configureProjectFolderUndo } from './projectFolderUndo';
+import { configureProjectDeleteUndo } from './projectDeleteUndo';
+import { runProjectTrashDelete } from './projectDeleteFlow';
+import { physicalDirOf } from './storageLayout';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -150,6 +153,28 @@ configureProjectFolderUndo({
     await templateService.ensureLoaded();
     return !!templateService.getFolderTemplate(folder);
   },
+});
+
+// 프로젝트·폴더 삭제류 되돌리기(2차 묶음 3 P1-b, 전역 스택) — 삭제는 projectDeleteFlow, 복원은 restoreProjectFromTrash 관문만
+configureProjectDeleteUndo({
+  listProjects: () => sessionService.list(),
+  listFolders: () => sessionService.listFolders(),
+  getFolderOf: (name) => sessionService.getFolderOf(name),
+  physicalDirOf: (name) => physicalDirOf(name),
+  getDeletedProjects: () => trashService.getDeletedProjects(),
+  deleteProject: (name) => runProjectTrashDelete(name),
+  restoreFromTrash: (name, opts) => sessionService.restoreProjectFromTrash(name, opts),
+  moveToFolder: (name, folder) => sessionService.moveToFolder(name, folder),
+  createFolder: (folder) => sessionService.createFolder(folder),
+  deleteFolder: (folder) => sessionService.deleteFolder(folder),
+  folderDeleteTarget: (folder) => sessionService.folderDeleteTarget(folder),
+  getFolderColor: (folder) => sessionService.getFolderColor(folder),
+  setFolderColor: (folder, color) => sessionService.setFolderColor(folder, color),
+  getOrderedFolders: () => sessionService.getOrderedFolders(),
+  setFolderOrder: (order) => sessionService.setFolderOrder(order),
+  getProjectsInFolder: (folder) => sessionService.getProjectsInFolder(folder),
+  snapshotFolderTemplates: (folder) => templateService.snapshotFolderTemplates(folder),
+  restoreFolderTemplates: (snap) => templateService.restoreFolderTemplates(snap),
 });
 
 // 아티스트 태깅 (데스크톱 전용, 시작 시 비용 없음 — 모달에서 지연 사용)

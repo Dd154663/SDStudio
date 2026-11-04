@@ -34,6 +34,7 @@ import {
   trashNoticeText,
 } from './TrashViews';
 import { deleteConfirmText, projectRestoreResultText } from '../models/deleteFlowRules';
+import { restoreProjectRecorded } from '../models/projectDeleteUndo';
 import {
   planProjectRestore,
   sortTrashNewestFirst,
@@ -97,8 +98,8 @@ export function ProjectTrashView() {
         if (!typed) return;
         newName = typed;
       }
-      // 복원 관문(2026-11-03): 즐겨찾기·북마크·썸네일 재적용과 목록 재스캔까지 한다.
-      const result = await sessionService.restoreProjectFromTrash(item.name, {
+      // 복원 관문(2026-11-03): 즐겨찾기·북마크·썸네일 재적용과 목록 재스캔까지 한다. 되돌리기 기록(2차 P1-b — 되돌림 = 다시 휴지통으로)
+      const result = await restoreProjectRecorded(item.name, {
         dir: item.dir,
         newName,
       });

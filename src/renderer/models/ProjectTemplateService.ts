@@ -109,6 +109,12 @@ export function blankTemplatePreset(name: string): any {
   };
 }
 
+/** 되돌리기용 엔티티 스냅숏 — entry = 깊은 사본, images = 이미지 토큰 → 내용(data URI). 메모리에만 둔다. */
+export interface ProjectTemplateEntrySnapshot {
+  entry: IProjectTemplateEntry;
+  images: Record<string, string>;
+}
+
 export interface IProjectTemplateStore {
   version: 1;
   templates: IProjectTemplateEntry[];
@@ -412,6 +418,59 @@ export class ProjectTemplateService extends EventTarget {
     try {
       await templateService.clearApplicationsByTemplateId(id);
     } catch (e) {}
+  }
+
+  // ---------- 되돌리기용 스냅숏·재생성 (2026-11-04 되돌리기 2차 묶음 3 P1-b, 사용자 결정 D7 ①) ----------
+  // 폴더 삭제(SessionService.deleteFolder → TemplateService.removeFolder)는 폴더 전용 로컬 템플릿을 delete 로
+  // 이미지 파일까지 영구 삭제한다. 삭제 직전에 엔티티 JSON 과 이미지 내용(data URI, 메모리 보관)을 떠 두고,
+  // 되돌리면 같은 id 로 다시 만든다(폴더 지정·적용 기록이 id 로 참조). 이미지는 기존 저장 경로(storeImageData —
+  // 새 파일명)로 다시 쓰고 엔티티 참조를 새 파일명으로 바꾼다(remapTemplateImages — 백업 복원과 같은 규칙).
+
+  /** 엔티티 깊은 사본 + 이미지 내용(토큰 → data URI). 없으면 undefined. 읽지 못한 이미지는 빠진다(복원 때 참조째 제외). */
+  async snapshotEntry(id: string): Promise<ProjectTemplateEntrySnapshot | undefined> {
+    await this.ensureLoaded();
+    const entry = this.get(id);
+    if (!entry) return undefined;
+    const images: Record<string, string> = {};
+    for (const token of this.collectImageTokens(entry)) {
+      if (token in images) continue;
+      const data = await this.fetchImageData(token);
+      if (data) images[token] = data;
+    }
+    return { entry: JSON.parse(JSON.stringify(entry)), images };
+  }
+
+  /**
+   * snapshotEntry 의 결과로 엔티티를 다시 만든다(id·이름·folderLocal·배지 색·작성/수정 시각 유지 — 수정 시각을 바꾸면
+   * 폴더 모달의 「자식 전파 확인」이 뜬다). 같은 id 가 이미 있으면 아무것도 하지 않고 false.
+   */
+  @action
+  async restoreEntry(snap: ProjectTemplateEntrySnapshot): Promise<boolean> {
+    await this.ensureLoaded();
+    if (this.get(snap.entry.id)) return false;
+    const map = new Map<string, string>();
+    for (const token of collectTemplateImageTokens(snap.entry)) {
+      if (map.has(token)) continue;
+      const data = snap.images[token];
+      if (!data) continue;
+      map.set(token, await this.storeImageData(data));
+    }
+    const content = remapTemplateImages(snap.entry, map);
+    const src = snap.entry;
+    const conflict = this.getByName(src.name);
+    const entry: IProjectTemplateEntry = {
+      id: src.id,
+      name: conflict ? this.resolveNameCollision(src.name) : src.name,
+      createdAt: src.createdAt,
+      updatedAt: src.updatedAt,
+      ...content,
+      ...(src.folderLocal ? { folderLocal: true } : {}),
+      ...(src.badgeColor ? { badgeColor: src.badgeColor } : {}),
+    };
+    this.templates = [...this.templates, entry];
+    this.scheduleSave();
+    this.dispatchEvent(new CustomEvent('changed', {}));
+    return true;
   }
 
   // 프리셋 프로필·캐릭터 프리셋 이미지·수동 바이브/레퍼런스 영역(단일 출처 = projectTemplateBackup)

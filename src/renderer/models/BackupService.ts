@@ -96,6 +96,7 @@ import {
 import { PROJECT_IMAGE_ROOTS } from './projectPaths';
 import { runFolderDeleteWithProjects, type FolderDeleteResult } from './folderDeleteFlow';
 import { deleteProjectForFolderFlow } from './projectDeleteFlow';
+import { deleteFolderWithProjectsRecorded } from './projectDeleteUndo';
 import {
   clearForFullBackupOverwrite,
   FULL_BACKUP_OVERWRITE_TEXT,
@@ -373,9 +374,21 @@ export class BackupService {
   // 실패한 프로젝트는 원래 폴더로 되돌린 뒤 이름과 사유를 알린다.
   async deleteFolderWithProjects(folder: string) {
     const leaf = sessionService.folderLeafName(folder);
-    let result: FolderDeleteResult;
-    try {
-      result = await runFolderDeleteWithProjects(folder, {
+    // 흐름 1회 실행(진행 창 포함) — 되돌리기 기록(2차 P1-b-3)이 흐름 전체를 한 항목으로 묶고, 다시 실행도 이 함수를 부른다.
+    // 개별 프로젝트 삭제(deleteProjectForFolderFlow)는 따로 기록하지 않는다(이중 기록 금지).
+    const run = async (): Promise<FolderDeleteResult> => {
+      try {
+        return await this.runFolderDeleteFlow(folder);
+      } finally {
+        appState.setProgressDialog(undefined);
+      }
+    };
+    const result = await deleteFolderWithProjectsRecorded(folder, run);
+    this.reportFolderDeleteResult(leaf, result);
+  }
+
+  private runFolderDeleteFlow(folder: string): Promise<FolderDeleteResult> {
+    return runFolderDeleteWithProjects(folder, {
         projectsInFolder: (f) => sessionService.getProjectsInFolder(f),
         folderOf: (n) => sessionService.getFolderOf(n),
         ensureLoaded: async (n) => {
@@ -393,9 +406,9 @@ export class BackupService {
         onProgress: (done, total) =>
           appState.setProgressDialog({ text: '프로젝트 삭제중..', done, total }),
       });
-    } finally {
-      appState.setProgressDialog(undefined);
-    }
+  }
+
+  private reportFolderDeleteResult(leaf: string, result: FolderDeleteResult) {
     for (const f of result.failed) {
       console.error('폴더 일괄 삭제 실패:', f.name, f.reason);
     }

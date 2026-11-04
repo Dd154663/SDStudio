@@ -46,7 +46,7 @@ import {
   deleteConfirmText,
   projectDeleteResultText,
 } from '../models/deleteFlowRules';
-import { runProjectTrashDelete } from '../models/projectDeleteFlow';
+import { deleteFolderRecorded, deleteProjectRecorded } from '../models/projectDeleteUndo';
 import { PROJECT_RETENTION_DAYS } from '../models/TrashService';
 import { backStackService } from '../models/BackStackService';
 import { useBackdropClose } from './backdropClose';
@@ -818,7 +818,7 @@ const ProjectDrawer = observer(() => {
         text: prompt.text,
         callback: async () => {
           try {
-            await sessionService.deleteFolder(f);
+            await deleteFolderRecorded(f);
             cleanup();
           } catch (e: any) {
             appState.pushMessage(e.message || '폴더 삭제에 실패했습니다.');
@@ -838,7 +838,7 @@ const ProjectDrawer = observer(() => {
       callback: async (value) => {
         if (value === 'folderOnly') {
           try {
-            await sessionService.deleteFolder(f);
+            await deleteFolderRecorded(f);
             cleanup();
           } catch (e: any) {
             appState.pushMessage(e.message || '폴더 삭제에 실패했습니다.');
@@ -1583,7 +1583,7 @@ const ProjectDrawer = observer(() => {
         // 툴바 「프로젝트 삭제」(AppService.deleteSession)와 같은 판정·문구.
         // 지운 것이 현재 열린 프로젝트면 닫는다(projectDeleteFlow — 예전엔 열린 채 남아
         // 씬을 누르면 「미등록 프로젝트의 경로」 오류가 났다, 2026-11-03).
-        const outcome = await runProjectTrashDelete(name);
+        const outcome = await deleteProjectRecorded(name);
         appState.pushMessage(
           projectDeleteResultText(outcome, PROJECT_RETENTION_DAYS).text,
         );
