@@ -29,6 +29,7 @@ import { INSTALL_DIR_TEXT } from '../../shared/installDir';
 import TobBar from './TobBar';
 import AlertWindow from './AlertWindow';
 import UndoRedoBar from './UndoRedoBar';
+import { toggleFavoriteRecorded } from '../models/projectFolderUndo';
 import { DropdownSelect, TabComponent } from './UtilComponents';
 import PieceEditor, { PieceCell } from './PieceEditor';
 import { CharacterPresetFloatEditor } from './CharacterPresetEditor';
@@ -227,7 +228,8 @@ export const App = observer(() => {
           break;
         case 'toggle-project-favorite':
           if (appState.curSession) {
-            sessionService.toggleFavorite(appState.curSession.name).then(() => {
+            // 되돌리기 전역 스택에 기록(2차 묶음 2 P1-a)
+            toggleFavoriteRecorded(appState.curSession.name).then(() => {
               const isFav = sessionService.isFavorite(appState.curSession!.name);
               appState.pushMessage(isFav ? '즐겨찾기에 추가되었습니다' : '즐겨찾기에서 제거되었습니다');
             });
@@ -252,7 +254,7 @@ export const App = observer(() => {
         case 'quick-menu':
           appState.quickMenuOpen = !appState.quickMenuOpen;
           break;
-        // 되돌리기/다시 실행(2026-11-01 U1) — 현재 프로젝트 스택(미러·빈 스택이면 무시)
+        // 되돌리기/다시 실행(2026-11-01 U1) — 현재 프로젝트 스택(미러면 제외)과 전역 스택 중 최근 항목(2차 묶음 2), 둘 다 비면 무시
         case 'undo':
           void undoService.undo();
           break;

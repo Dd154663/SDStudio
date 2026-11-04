@@ -57,6 +57,7 @@ import { configureSceneStructureUndo, SceneStructureOps } from './sceneStructure
 import { configureImageStateUndo } from './imageStateUndo';
 import { configureDeleteUndo } from './deleteUndo';
 import { configurePieceUndo } from './pieceUndo';
+import { configureProjectFolderUndo } from './projectFolderUndo';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -127,6 +128,29 @@ export const templateService = new TemplateService();
 
 // 프로젝트 템플릿 엔티티 (프로젝트 상속 v2 — 시작 시 로드 없음, 지연 로드)
 export const projectTemplateService = new ProjectTemplateService();
+
+// 프로젝트·폴더 되돌리기(2차 묶음 2 P1-a, 전역 스택)가 부르는 공개 서비스 메서드 배선 — 각 메서드가 자기 관문을 지킨다
+configureProjectFolderUndo({
+  listProjects: () => sessionService.list(),
+  listFolders: () => sessionService.listFolders(),
+  isFavorite: (name) => sessionService.isFavorite(name),
+  setFavorite: (name, on) => sessionService.setFavorite(name, on),
+  getFolderColor: (folder) => sessionService.getFolderColor(folder),
+  setFolderColor: (folder, color) => sessionService.setFolderColor(folder, color),
+  getOrderedFolders: () => sessionService.getOrderedFolders(),
+  setFolderOrder: (order) => sessionService.setFolderOrder(order),
+  getFolderOf: (name) => sessionService.getFolderOf(name),
+  moveToFolder: (name, folder) => sessionService.moveToFolder(name, folder),
+  renameFolder: (from, to) => sessionService.renameFolder(from, to),
+  createFolder: (folder) => sessionService.createFolder(folder),
+  deleteFolder: (folder) => sessionService.deleteFolder(folder),
+  getProjectsInFolder: (folder) => sessionService.getProjectsInFolder(folder),
+  // 지연 로드 서비스 — 읽기 전에 불러온다(못 읽으면 지정 없음으로 — 그때는 removeFolder 도 지정을 건드리지 않는다)
+  hasFolderTemplate: async (folder) => {
+    await templateService.ensureLoaded();
+    return !!templateService.getFolderTemplate(folder);
+  },
+});
 
 // 아티스트 태깅 (데스크톱 전용, 시작 시 비용 없음 — 모달에서 지연 사용)
 export const artistTagService = new ArtistTagService();

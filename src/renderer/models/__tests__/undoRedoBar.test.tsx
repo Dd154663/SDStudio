@@ -42,6 +42,7 @@ jest.mock('../undoService', () => {
     canRedo: false,
     undoLabel: undefined as string | undefined,
     redoLabel: undefined as string | undefined,
+    hasGlobalEntries: false,
   });
   return {
     ...actual,
@@ -58,6 +59,9 @@ jest.mock('../undoService', () => {
       },
       get redoLabel() {
         return state.redoLabel;
+      },
+      get hasGlobalEntries() {
+        return state.hasGlobalEntries;
       },
       undo: jest.fn(async () => true),
       redo: jest.fn(async () => true),
@@ -98,6 +102,7 @@ const undoState = (undoModule as any).__state as {
   canRedo: boolean;
   undoLabel?: string;
   redoLabel?: string;
+  hasGlobalEntries: boolean;
 };
 const mirrors = (models as any).__mirrors as Set<string>;
 const { undoService } = undoModule;
@@ -114,6 +119,7 @@ beforeEach(() => {
     undoState.canRedo = false;
     undoState.undoLabel = undefined;
     undoState.redoLabel = undefined;
+    undoState.hasGlobalEntries = false;
     mirrors.clear();
   });
   setKeyboardChipVisible(false);
@@ -182,6 +188,34 @@ describe('UndoRedoBar 숨김 조건', () => {
     runInAction(() => ((appState as any).curSession = undefined));
     render();
     expect(bar()).toBeNull();
+  });
+
+  // 2차 묶음 2 — 전역 스택(프로젝트 즐겨찾기·폴더 작업)에 항목이 있으면 프로젝트가 없거나 미러여도 보이고 동작한다
+  test('프로젝트 없이 전역 항목만 있으면 표시·활성, 클릭 → undoService.undo(undefined)', () => {
+    runInAction(() => {
+      (appState as any).curSession = undefined;
+      undoState.hasGlobalEntries = true;
+      undoState.canUndo = true;
+      undoState.undoLabel = '폴더 색 변경: f';
+    });
+    render();
+    expect(bar()).not.toBeNull();
+    expect(btn('undo')!.disabled).toBe(false);
+    expect(btn('redo')!.disabled).toBe(true);
+    act(() => btn('undo')!.click());
+    expect(undoService.undo).toHaveBeenCalledWith(undefined);
+    // 전역 항목이 모두 없어지면 다시 숨는다
+    act(() => runInAction(() => (undoState.hasGlobalEntries = false)));
+    expect(bar()).toBeNull();
+  });
+
+  test('미러 프로젝트라도 전역 항목이 있으면 표시', () => {
+    runInAction(() => {
+      mirrors.add('p1');
+      undoState.hasGlobalEntries = true;
+    });
+    render();
+    expect(bar()).not.toBeNull();
   });
 
   test('읽기 전용 미러 프로젝트 → 미렌더(미러 해제 시 다시 표시)', () => {

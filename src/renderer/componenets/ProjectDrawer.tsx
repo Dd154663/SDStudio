@@ -66,6 +66,18 @@ import { TemplateManagerModal } from './TemplateManagerModal';
 import { isWorkspaceLayout, physicalDirOf } from '../models/storageLayout';
 import { workspacePath } from '../models/projectPaths';
 import { planFolderDeletePrompt } from '../models/folderDeleteFlow';
+// 프로젝트·폴더 작업 되돌리기 기록(2차 묶음 2 P1-a, 전역 스택) — 서비스 메서드와 1:1
+import {
+  createFolderRecorded,
+  groupProjectFolderOps,
+  moveProjectsToFolderRecorded,
+  moveToFolderRecorded,
+  renameFolderRecorded,
+  setFolderColorRecorded,
+  setFolderOrderRecorded,
+  toggleFavoriteRecorded,
+} from '../models/projectFolderUndo';
+import { UNDO_TEXT } from '../models/undoService';
 import {
   EDGE_SWIPE_ZONE,
   shouldIgnoreEdgeSwipe,
@@ -222,7 +234,7 @@ const ProjectRow = observer(
               onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                sessionService.toggleFavorite(name);
+                void toggleFavoriteRecorded(name);
               }}
               className="flex-none -m-1 p-1 rounded cursor-pointer hover:bg-black/10 dark:hover:bg-white/10"
             >
@@ -716,7 +728,7 @@ const ProjectDrawer = observer(() => {
     if (!value) return;
     const fullPath = toFull(value);
     try {
-      await sessionService.createFolder(fullPath);
+      await createFolderRecorded(fullPath);
       setExpanded((prev) => {
         const next = new Set(prev);
         next.add(fullPath);
@@ -732,7 +744,7 @@ const ProjectDrawer = observer(() => {
   const pickColor = async (f: string, c: string | null) => {
     setColorPickerFor(null);
     try {
-      await sessionService.setFolderColor(f, c);
+      await setFolderColorRecorded(f, c);
     } catch (e) {}
   };
 
@@ -742,7 +754,7 @@ const ProjectDrawer = observer(() => {
   const pickCustomColor = (f: string, c: string) => {
     if (customColorTimer.current) clearTimeout(customColorTimer.current);
     customColorTimer.current = setTimeout(() => {
-      sessionService.setFolderColor(f, c).catch(() => {});
+      setFolderColorRecorded(f, c).catch(() => {});
     }, 200);
   };
 
@@ -770,7 +782,7 @@ const ProjectDrawer = observer(() => {
     const parent = sessionService.folderParentPath(f);
     const newFullPath = parent ? parent + '/' + newLeaf : newLeaf;
     try {
-      await sessionService.renameFolder(f, newFullPath);
+      await renameFolderRecorded(f, newFullPath);
       setExpanded((prev) => {
         const next = new Set(prev);
         if (next.has(f)) {
@@ -954,7 +966,7 @@ const ProjectDrawer = observer(() => {
   };
 
   // ===== 드래그&드롭 =====
-  const reorderFolders = (moved: string, target: string) => {
+  const reorderFolders = (moved: string, target: string): Promise<void> | undefined => {
     if (moved === target) return;
     const cur = sessionService.getOrderedFolders();
     const from = cur.indexOf(moved);
@@ -964,13 +976,13 @@ const ProjectDrawer = observer(() => {
     const tIdx = without.indexOf(target);
     const insertAt = from < to ? tIdx + 1 : tIdx;
     without.splice(insertAt, 0, moved);
-    sessionService.setFolderOrder(without);
+    return setFolderOrderRecorded(without);
   };
 
   const moveProjectTo = async (name: string, folder: string | null) => {
     if (sessionService.getFolderOf(name) === folder) return;
     try {
-      await sessionService.moveToFolder(name, folder);
+      await moveToFolderRecorded(name, folder);
     } catch (e: any) {
       appState.pushMessage(e?.message || '이동에 실패했습니다.');
     }
@@ -993,15 +1005,18 @@ const ProjectDrawer = observer(() => {
       const srcParent = sessionService.folderParentPath(source);
       const tgtParent = sessionService.folderParentPath(targetFolder);
       if (srcParent === tgtParent) {
-        reorderFolders(source, targetFolder);
+        void reorderFolders(source, targetFolder);
       } else {
         // 다른 부모: target과 형제가 되도록 부모를 옮긴 뒤 그 자리에 배치.
         // (루트 폴더 헤더에 서브폴더를 떨구면 루트로 빠져나오는 등)
         const leaf = sessionService.folderLeafName(source);
         const newPath = tgtParent ? tgtParent + '/' + leaf : leaf;
         try {
-          await sessionService.renameFolder(source, newPath);
-          reorderFolders(newPath, targetFolder);
+          // 이름(부모) 변경 + 순서 = 되돌리기 한 항목
+          await groupProjectFolderOps(UNDO_TEXT.folderMove(source, newPath), async () => {
+            await renameFolderRecorded(source, newPath, { move: true });
+            await reorderFolders(newPath, targetFolder);
+          });
         } catch (e: any) {
           appState.pushMessage(e?.message || '폴더 이동에 실패했습니다.');
         }
@@ -1026,7 +1041,7 @@ const ProjectDrawer = observer(() => {
         return;
       const leaf = sessionService.folderLeafName(d.name);
       try {
-        await sessionService.renameFolder(d.name, targetFolder + '/' + leaf);
+        await renameFolderRecorded(d.name, targetFolder + '/' + leaf, { move: true });
       } catch (e: any) {
         appState.pushMessage(e?.message || '폴더 이동에 실패했습니다.');
       }
@@ -1047,7 +1062,7 @@ const ProjectDrawer = observer(() => {
       if (parent === null) return; // 이미 루트
       const leaf = sessionService.folderLeafName(d.name);
       try {
-        await sessionService.renameFolder(d.name, leaf);
+        await renameFolderRecorded(d.name, leaf, { move: true });
       } catch (e: any) {
         appState.pushMessage(e?.message || '폴더 이동에 실패했습니다.');
       }
@@ -1396,11 +1411,8 @@ const ProjectDrawer = observer(() => {
     });
     if (!target) return;
     const folder = target === '__root__' ? null : target;
-    for (const name of selected) {
-      try {
-        await sessionService.moveToFolder(name, folder);
-      } catch (e) {}
-    }
+    // 한 번의 일괄 이동 = 되돌리기 한 항목(프로젝트별 오류는 종전처럼 건너뜀)
+    await moveProjectsToFolderRecorded(selected, folder);
     exitSelect();
     appState.pushMessage(`${count}개 프로젝트를 이동했습니다.`);
   };

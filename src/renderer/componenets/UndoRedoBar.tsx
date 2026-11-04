@@ -21,7 +21,7 @@
 // 바가 보이는 동안 :root 의 --undo-bar-top(바 위 모서리의 화면 아래로부터 거리)을 설정 → 토스트(.alert-window)가 그 위로
 // 올라간다. 숨으면 지운다.
 //
-// 숨김: 프로젝트 없음·읽기 전용 미러 프로젝트·파일 드롭 안내 중(suppressed — App 의 dragOverlay)·앱 안 드래그 중
+// 숨김: 프로젝트 없음·읽기 전용 미러 프로젝트(단 전역 스택 — 프로젝트 즐겨찾기·폴더 작업 — 에 항목이 있으면 보인다, 2차 묶음 2)·파일 드롭 안내 중(suppressed — App 의 dragOverlay)·앱 안 드래그 중
 // (react-dnd)·모바일 키보드 칩 표시 중(keyboardChipState)·모바일 V2 시트 키보드 중(하단 바도 숨는 때).
 // 되돌리기 로직은 undoService 그대로 — 이 파일은 UI 만.
 import { observer } from 'mobx-react-lite';
@@ -176,9 +176,11 @@ export function pickUndoAnchor(): UndoAnchorPick | null {
 const UndoRedoBar = observer(({ suppressed }: { suppressed?: boolean }) => {
   const dragging = useDragLayer((monitor) => monitor.isDragging());
   const session = appState.curSession;
+  // 프로젝트 스택(있고 미러 아님) 또는 전역 스택 항목 — 프로젝트가 없거나 미러여도 전역 항목은 되돌릴 수 있다(2차 묶음 2)
+  const hasTarget =
+    (!!session && !sessionService.isMirror(session.name)) || undoService.hasGlobalEntries;
   const shown =
-    !!session &&
-    !sessionService.isMirror(session.name) &&
+    hasTarget &&
     !suppressed &&
     !dragging &&
     !keyboardChipVisible.get() &&

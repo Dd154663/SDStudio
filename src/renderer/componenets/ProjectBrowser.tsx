@@ -18,6 +18,16 @@ import {
 } from '../models/nameInput';
 import { projectPath } from '../models/projectPaths';
 import { planFolderDeletePrompt } from '../models/folderDeleteFlow';
+// 프로젝트·폴더 작업 되돌리기 기록(2차 묶음 2 P1-a, 전역 스택) — 서비스 메서드와 1:1
+import {
+  createFolderRecorded,
+  moveProjectsToFolderRecorded,
+  moveToFolderRecorded,
+  renameFolderRecorded,
+  setFolderColorRecorded,
+  setFolderOrderRecorded,
+  toggleFavoriteRecorded,
+} from '../models/projectFolderUndo';
 import ModalOverlay from './ModalOverlay';
 import Tooltip from './Tooltip';
 import MobileColorPicker from './MobileColorPicker';
@@ -571,7 +581,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
   }, [onClose]);
 
   const toggleFav = useCallback((name: string) => {
-    sessionService.toggleFavorite(name);
+    void toggleFavoriteRecorded(name);
     refresh();
   }, [refresh]);
 
@@ -680,11 +690,8 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
     });
     if (!target) return;
     const folder = target === '__root__' ? null : target;
-    for (const name of selected) {
-      try {
-        await sessionService.moveToFolder(name, folder);
-      } catch (e) {}
-    }
+    // 한 번의 일괄 이동 = 되돌리기 한 항목(프로젝트별 오류는 종전처럼 건너뜀)
+    await moveProjectsToFolderRecorded(selected, folder);
     exitSelect();
     refresh();
     appState.pushMessage(`${count}개 프로젝트를 이동했습니다.`);
@@ -710,7 +717,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
     });
     if (!target) return;
     try {
-      await sessionService.moveToFolder(name, target === '__root__' ? null : target);
+      await moveToFolderRecorded(name, target === '__root__' ? null : target);
       refresh();
     } catch (e: any) {
       appState.pushMessage(e.message || '폴더 이동에 실패했습니다.');
@@ -737,14 +744,14 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
     const tIdx = without.indexOf(target);
     const insertAt = from < to ? tIdx + 1 : tIdx;
     without.splice(insertAt, 0, moved);
-    sessionService.setFolderOrder(without);
+    void setFolderOrderRecorded(without);
   }, []);
 
   const moveProjectTo = useCallback(
     async (name: string, folder: string | null) => {
       if (sessionService.getFolderOf(name) === folder) return;
       try {
-        await sessionService.moveToFolder(name, folder);
+        await moveToFolderRecorded(name, folder);
         refresh();
       } catch (e: any) {
         appState.pushMessage(e?.message || '이동에 실패했습니다.');
@@ -770,7 +777,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
           const leaf = sessionService.folderLeafName(source);
           const newPath = targetFolder + '/' + leaf;
           try {
-            await sessionService.renameFolder(source, newPath);
+            await renameFolderRecorded(source, newPath, { move: true });
             refresh();
           } catch (e: any) {
             appState.pushMessage(e?.message || '폴더 이동에 실패했습니다.');
@@ -805,7 +812,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
     if (!value) return;
     const fullPath = toFull(value);
     try {
-      await sessionService.createFolder(fullPath);
+      await createFolderRecorded(fullPath);
       setView(fullPath);
       refresh();
     } catch (e: any) {
@@ -820,7 +827,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
   const pickColor = useCallback(async (folder: string, c: string | null) => {
     setColorPickerFor(null);
     try {
-      await sessionService.setFolderColor(folder, c);
+      await setFolderColorRecorded(folder, c);
     } catch (e) {}
   }, []);
 
@@ -831,7 +838,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
   const pickCustomColor = useCallback((folder: string, c: string) => {
     if (customColorTimer.current) clearTimeout(customColorTimer.current);
     customColorTimer.current = setTimeout(() => {
-      sessionService.setFolderColor(folder, c).catch(() => {});
+      setFolderColorRecorded(folder, c).catch(() => {});
     }, 200);
   }, []);
 
@@ -858,7 +865,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
     const parent = sessionService.folderParentPath(folder);
     const newFullPath = parent ? parent + '/' + newLeaf : newLeaf;
     try {
-      await sessionService.renameFolder(folder, newFullPath);
+      await renameFolderRecorded(folder, newFullPath);
       if (view === folder) setView(newFullPath);
       cancelRename();
       refresh();

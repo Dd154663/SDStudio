@@ -782,11 +782,14 @@ export class SessionService extends ResourceSyncService<Session> {
   }
 
   async toggleFavorite(name: string) {
-    if (this.favorites.has(name)) {
-      this.favorites.delete(name);
-    } else {
-      this.favorites.add(name);
-    }
+    await this.setFavorite(name, !this.favorites.has(name));
+  }
+
+  // 절대값 지정(2026-11-03 되돌리기 2차 묶음 2 — 되돌림·다시 실행이 「켬/끔」을 그대로 다시 적용). toggleFavorite 도 이것을 부른다.
+  // 저장·다른 창 알림·목록 갱신은 종전 toggleFavorite 와 같다(같은 값이어도 그대로 수행 — 종전 동작 유지).
+  async setFavorite(name: string, on: boolean) {
+    if (on) this.favorites.add(name);
+    else this.favorites.delete(name);
     await this.saveFavorites();
     await this.update();
   }

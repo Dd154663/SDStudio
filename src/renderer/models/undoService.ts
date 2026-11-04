@@ -10,6 +10,10 @@
 // · 미러(읽기 전용) 프로젝트는 기록·실행 모두 하지 않는다(저장되지 않는 편집이므로).
 // · 항목은 이미지 목록 필드(imageMap·mains·game·round)를 통째로 되살리지 않는다 — 생성 중 새로 생긴 이미지를 지운다.
 //   필드 단위·병합 복원만 쓴다(씬 순서는 Session.reorderScenes: 그사이 생긴 씬은 뒤에 남김).
+// · 전역 스택(2026-11-03 2차 묶음 2, 사용자 결정 D2 ①): 프로젝트 밖 작업(프로젝트 즐겨찾기·폴더)은 키 GLOBAL_UNDO_SCOPE 의
+//   스택 하나에 쌓는다(프로젝트 전환과 무관, 미러 판정 없음). undo/redo·canUndo·라벨은 「현재 프로젝트 스택(없거나 미러면 제외)과
+//   전역 스택의 맨 위 중 더 최근 것」을 고른다 — 최근 = 서비스 전역 단조 증가 순번 seq(쌓일 때·병합될 때·past↔future 로 옮길 때
+//   새로 부여). 새 기록은 자기 스택과 「짝 스택」(프로젝트 기록 → 전역, 전역 기록 → 현재 프로젝트)의 future 를 함께 비운다(한 이력).
 import { isObservableMap, isObservableSet, makeObservable, observable, runInAction } from 'mobx';
 import type { Session } from './types';
 import type { ToastKind } from './toastKind';
@@ -54,6 +58,25 @@ export interface UndoEntry extends UndoEntryInit {
   kind: UndoKind;
   readonly createdAt: number;
   updatedAt: number;
+  /**
+   * 「가장 최근」 판정용 서비스 전역 단조 증가 순번(2차 묶음 2 — 전역 스택과 프로젝트 스택 중 고르기).
+   * 스택에 쌓일 때·병합으로 갱신될 때·되돌림/다시 실행으로 past↔future 를 옮길 때 새로 받는다.
+   */
+  seq: number;
+}
+
+/** 프로젝트와 무관한 전역 스택의 키(2차 묶음 2) — 프로젝트 즐겨찾기·폴더 작업 */
+export interface GlobalUndoScope {
+  readonly kind: 'global';
+}
+
+export const GLOBAL_UNDO_SCOPE: GlobalUndoScope = Object.freeze({ kind: 'global' as const });
+
+/** 스택 키 — 프로젝트(Session 인스턴스) 또는 전역 */
+export type UndoScope = Session | GlobalUndoScope;
+
+export function isGlobalUndoScope(scope: UndoScope | undefined): scope is GlobalUndoScope {
+  return scope === GLOBAL_UNDO_SCOPE;
 }
 
 /** 시작~끝을 감싸는 기록(capture·drag·focusEdit) — commit 은 기록했으면 true, 변화가 없어 버렸으면 false */
@@ -72,7 +95,8 @@ export interface UndoGroupHandle extends UndoPending {
 /** drag·capture 용 상태 읽기/되살리기 짝 — 객체 필드가 아닌 상태(씬 순서 등)에 쓴다 */
 export interface UndoSnapshotAdapter<S> {
   snapshot(): S;
-  restore(snapshot: S): void;
+  /** 되살리기 — 서비스 메서드를 부르는 비동기 복원(전역 항목: 폴더 색·순서)도 허용(실행부가 기다린다) */
+  restore(snapshot: S): void | Promise<void>;
   /** 같음 판정(없으면 깊은 비교) — 같으면 기록하지 않는다 */
   equals?(a: S, b: S): boolean;
   /**
@@ -82,6 +106,11 @@ export interface UndoSnapshotAdapter<S> {
   detectConflict?: boolean;
   /** 실행 직전 검사(대상이 아직 있는가 등) — 문자열(이유)이면 실행하지 않고 그 항목만 버린다 */
   verify?(): true | string;
+  /**
+   * 기록 밖 변경을 실패로 다룬다(전역 항목 — 2차 묶음 2): 실행 직전 현재 상태가 기록 시 결과(되돌림 = 이후 값, 다시 실행 =
+   * 이전 값)와 다르면 이 이유로 실행하지 않고 항목을 버린다(D15 — 다른 창이 사이드카를 바꾼 경우). D16 확인 창 대신.
+   */
+  staleReason?: string;
 }
 
 export interface UndoDeps {
@@ -311,6 +340,28 @@ export const UNDO_TEXT = {
   findReplaceConfirmButton: '모두 변환',
   // 2차 P4 월드컵 라운드 완료(라운드 단위 1항목 — 매치별 진행은 기록하지 않는다, 사용자 결정 D5). stage = 「8강」·「결승전」 등
   rankingRound: (name: string, stage: string) => `월드컵 ${stage} 완료: ${name}`,
+  // 2차 묶음 2 P1-a 프로젝트·폴더(전역 스택) — projectFolderUndo.ts. folder = 폴더 경로(「상위/하위」), null = 미분류
+  projectFavoriteOn: (name: string) => `프로젝트 즐겨찾기: ${name}`,
+  projectFavoriteOff: (name: string) => `프로젝트 즐겨찾기 해제: ${name}`,
+  folderColor: (folder: string) => `폴더 색 변경: ${folder}`,
+  folderOrder: '폴더 순서 변경',
+  unfiled: '미분류',
+  projectMove: (names: readonly string[], folder: string) =>
+    names.length === 1 ? `프로젝트 폴더 이동: ${names[0]} → ${folder}` : `프로젝트 ${names.length}개 폴더 이동 → ${folder}`,
+  folderRename: (from: string, to: string) => `폴더 이름 변경: ${from} → ${to}`,
+  folderMove: (from: string, to: string) => `폴더 이동: ${from} → ${to}`,
+  folderCreate: (folder: string) => `폴더 만들기: ${folder}`,
+  // 실패 이유(되돌릴 수 없습니다: …) — 대개 다른 창이 같은 사이드카를 바꾼 경우(D15)
+  projectGone: (name: string) => `프로젝트 "${name}"이(가) 이미 없습니다`,
+  projectFavoriteChanged: (name: string) => `프로젝트 "${name}"의 즐겨찾기가 그사이 바뀌었습니다`,
+  projectFolderChanged: (name: string) => `프로젝트 "${name}"의 폴더가 그사이 바뀌었습니다`,
+  projectMoveBlocked: (name: string) => `프로젝트 "${name}"이(가) 다른 창에서 열려 있어 옮기지 못했습니다`,
+  folderGone: (folder: string) => `폴더 "${folder}"이(가) 이미 없습니다`,
+  folderNameTaken: (folder: string) => `같은 이름의 폴더·프로젝트 "${folder}"이(가) 이미 있습니다`,
+  folderColorChanged: (folder: string) => `폴더 "${folder}"의 색이 그사이 바뀌었습니다`,
+  folderOrderChanged: '폴더 목록·순서가 그사이 바뀌었습니다',
+  folderNotEmpty: (folder: string) => `폴더 "${folder}"에 프로젝트나 하위 폴더가 생겨 지우지 않았습니다`,
+  folderHasTemplate: (folder: string) => `폴더 "${folder}"에 기본 템플릿이 지정돼 있어 지우지 않았습니다`,
 } as const;
 
 // ── 참조 손잡이 ───────────────────────────────────────────────────────────
@@ -477,14 +528,16 @@ export class UndoService {
   @observable accessor version: number = 0;
 
   #deps: UndoDeps;
-  #stacks = new WeakMap<Session, Stack>();
-  #groups = new WeakMap<Session, GroupFrame[]>();
-  #pendingDrags = new WeakMap<Session, UndoPending>();
+  #stacks = new WeakMap<UndoScope, Stack>();
+  #groups = new WeakMap<UndoScope, GroupFrame[]>();
+  #pendingDrags = new WeakMap<UndoScope, UndoPending>();
   #busy = false;
   #applying = false;
   /** 비동기 항목 실행 중 생긴 기록 — 실행이 끝나면 도착 순서대로 쌓는다(U4) */
-  #deferred: { session: Session; entry: UndoEntry }[] = [];
+  #deferred: { session: UndoScope; entry: UndoEntry }[] = [];
   #nextId = 1;
+  /** 「가장 최근」 순번(UndoEntry.seq) — 프로젝트·전역 스택 공용 */
+  #nextSeq = 1;
   maxDepth = UNDO_MAX_DEPTH;
 
   constructor(deps: Partial<UndoDeps> = {}) {
@@ -503,7 +556,7 @@ export class UndoService {
     });
   }
 
-  #stack(session: Session): Stack {
+  #stack(session: UndoScope): Stack {
     let st = this.#stacks.get(session);
     if (!st) {
       st = { past: [], future: [] };
@@ -521,14 +574,48 @@ export class UndoService {
     return this.#busy;
   }
 
-  /** 이 프로젝트에 기록할 수 있는가(실행 중·미러면 아니오) */
-  canRecord(session: Session | undefined): session is Session {
+  /** 이 스택에 기록할 수 있는가(실행 중·미러 프로젝트면 아니오. 전역 스택은 미러와 무관) */
+  canRecord(session: UndoScope | undefined): session is UndoScope {
     if (!session) return false;
     if (this.#applying) return false;
+    if (isGlobalUndoScope(session)) return true;
     return !this.#deps.isMirror(session);
   }
 
-  // ── 조회(UI) — curSession 기준 ──
+  /** 되돌리기 대상이 되는 프로젝트 스택인가(있고 미러가 아님) */
+  #usableProject(session: Session | undefined): session is Session {
+    return !!session && !isGlobalUndoScope(session) && !this.#deps.isMirror(session);
+  }
+
+  /** 이 프로젝트에서 고를 수 있는 스택 키 — 프로젝트(쓸 수 있으면)와 전역 */
+  #scopesFor(session: Session | undefined): UndoScope[] {
+    return this.#usableProject(session) ? [session, GLOBAL_UNDO_SCOPE] : [GLOBAL_UNDO_SCOPE];
+  }
+
+  /** 고를 수 있는 스택 중 그 방향 맨 위가 가장 최근(seq 최대)인 것 */
+  #pick(
+    session: Session | undefined,
+    dir: UndoDirection,
+  ): { scope: UndoScope; st: Stack; src: UndoEntry[]; entry: UndoEntry } | undefined {
+    let best: { scope: UndoScope; st: Stack; src: UndoEntry[]; entry: UndoEntry } | undefined;
+    for (const scope of this.#scopesFor(session)) {
+      const st = this.#stacks.get(scope);
+      const src = dir === 'undo' ? st?.past : st?.future;
+      if (!st || !src || src.length === 0) continue;
+      const entry = src[src.length - 1];
+      if (!best || entry.seq > best.entry.seq) best = { scope, st, src, entry };
+    }
+    return best;
+  }
+
+  /** 전역 스택에 되돌리기·다시 실행할 항목이 있는가 — 프로젝트가 없어도 버튼 바를 보일지(UndoRedoBar) */
+  get hasGlobalEntries(): boolean {
+    void this.version; // 관찰 구독
+    const st = this.#stacks.get(GLOBAL_UNDO_SCOPE);
+    return !!st && st.past.length + st.future.length > 0;
+  }
+
+  // ── 조회(UI) — curSession 기준(프로젝트 스택 + 전역 스택 중 최근) ──
   get canUndo(): boolean {
     return this.canUndoFor(this.#deps.curSession());
   }
@@ -555,11 +642,8 @@ export class UndoService {
 
   peekLabel(session: Session | undefined, dir: UndoDirection): string | undefined {
     void this.version; // 관찰 구독
-    if (!session || this.#deps.isMirror(session)) return undefined;
-    const st = this.#stacks.get(session);
-    const list = dir === 'undo' ? st?.past : st?.future;
-    if (!list || list.length === 0) return undefined;
-    const top = list[list.length - 1];
+    const top = this.#pick(session, dir)?.entry;
+    if (!top) return undefined;
     return dir === 'undo' ? (top.undoLabel ?? top.label) : top.label;
   }
 
@@ -571,7 +655,7 @@ export class UndoService {
   }
 
   /** 병합(set·track merge) 대상 맨 위 항목 — 실행 중이면 스택이 아니라 대기열의 마지막 것만 */
-  #mergeTop(session: Session): { top: UndoEntry; drop: () => void } | undefined {
+  #mergeTop(session: UndoScope): { top: UndoEntry; drop: () => void } | undefined {
     const frame = this.#openFrame(session);
     if (frame) {
       const top = frame.children[frame.children.length - 1];
@@ -609,12 +693,12 @@ export class UndoService {
   }
 
   /** 테스트·진단용 스택 사본 */
-  entries(session: Session): { past: readonly UndoEntry[]; future: readonly UndoEntry[] } {
+  entries(session: UndoScope): { past: readonly UndoEntry[]; future: readonly UndoEntry[] } {
     const st = this.#stacks.get(session);
     return { past: [...(st?.past ?? [])], future: [...(st?.future ?? [])] };
   }
 
-  clear(session: Session): void {
+  clear(session: UndoScope): void {
     this.#stacks.delete(session);
     this.#bump();
   }
@@ -628,15 +712,21 @@ export class UndoService {
       id: this.#nextId++,
       createdAt: now,
       updatedAt: now,
+      seq: this.#nextSeq++,
     };
   }
 
-  #openFrame(session: Session): GroupFrame | undefined {
+  /** 병합·이동으로 「가장 최근」이 된 항목에 새 순번 */
+  #touchSeq(entry: UndoEntry) {
+    entry.seq = this.#nextSeq++;
+  }
+
+  #openFrame(session: UndoScope): GroupFrame | undefined {
     const frames = this.#groups.get(session);
     return frames && frames.length > 0 ? frames[frames.length - 1] : undefined;
   }
 
-  #push(session: Session, entry: UndoEntry) {
+  #push(session: UndoScope, entry: UndoEntry) {
     const frame = this.#openFrame(session);
     if (frame) {
       frame.children.push(entry);
@@ -650,23 +740,30 @@ export class UndoService {
     this.#pushNow(session, entry);
   }
 
-  #pushNow(session: Session, entry: UndoEntry) {
+  #pushNow(session: UndoScope, entry: UndoEntry) {
     const st = this.#stack(session);
+    this.#touchSeq(entry);
     st.past.push(entry);
     while (st.past.length > this.maxDepth) st.past.shift();
     st.future = [];
+    // 한 이력처럼 — 새 동작 뒤에는 짝 스택(프로젝트 ↔ 전역)의 다시 실행도 끊는다
+    const partner: UndoScope | undefined = isGlobalUndoScope(session)
+      ? this.#deps.curSession()
+      : GLOBAL_UNDO_SCOPE;
+    const pst = partner ? this.#stacks.get(partner) : undefined;
+    if (pst && pst !== st) pst.future = [];
     this.#bump();
   }
 
   /** 항목 하나를 기록한다. 실행 중·미러면 무시(undefined) */
-  record(session: Session | undefined, init: UndoEntryInit): UndoEntry | undefined {
+  record(session: UndoScope | undefined, init: UndoEntryInit): UndoEntry | undefined {
     if (!this.canRecord(session)) return undefined;
     const entry = this.#makeEntry(init);
     this.#push(session, entry);
     return entry;
   }
 
-  // ── 실행 ──
+  // ── 실행 — 프로젝트 스택(없거나 미러면 제외)과 전역 스택 중 맨 위가 더 최근인 쪽 ──
   undo(session: Session | undefined = this.#deps.curSession()): Promise<boolean> {
     return this.#execute(session, 'undo');
   }
@@ -681,17 +778,17 @@ export class UndoService {
   }
 
   async #execute(session: Session | undefined, dir: UndoDirection): Promise<boolean> {
-    if (!session || this.#deps.isMirror(session)) return false;
+    // 프로젝트가 없거나 미러여도 전역 항목이 있으면 진행
+    if (!this.#usableProject(session) && !this.hasGlobalEntries) return false;
     if (this.#busy) {
       this.#deps.toast(UNDO_TEXT.busy, 'info');
       return false;
     }
     // 끝나지 않은 드래그가 있으면 먼저 확정(놓친 pointerup — 기록 순서 보존)
-    this.#pendingDrags.get(session)?.commit();
-    const st = this.#stacks.get(session);
-    const src = dir === 'undo' ? st?.past : st?.future;
-    if (!st || !src || src.length === 0) return false;
-    const entry = src[src.length - 1];
+    for (const scope of this.#scopesFor(session)) this.#pendingDrags.get(scope)?.commit();
+    const picked = this.#pick(session, dir);
+    if (!picked) return false;
+    const { st, src, entry } = picked;
     const fail = (reason: string) => {
       this.#remove(src, entry);
       this.#deps.toast(
@@ -721,6 +818,8 @@ export class UndoService {
       }
       this.#remove(src, entry);
       const dst = dir === 'undo' ? st.future : st.past;
+      // 옮긴 항목이 그 방향의 「가장 최근」 — 다시 실행은 최근 되돌린 것부터, 되돌리기는 최근 다시 실행한 것부터
+      this.#touchSeq(entry);
       dst.push(entry);
       while (dst.length > this.maxDepth) dst.shift();
       const base =
@@ -746,7 +845,7 @@ export class UndoService {
    * 합친 결과가 처음 값과 같아지면 항목을 지운다. 값은 원시값·불변 값 전용(객체는 capture 를 쓴다).
    */
   set<T extends object, K extends keyof T>(
-    session: Session | undefined,
+    session: UndoScope | undefined,
     target: T,
     key: K,
     next: T[K],
@@ -775,6 +874,7 @@ export class UndoService {
     if (mt && top && merge && now - top.updatedAt <= mergeMs) {
       merge.after = next;
       top.updatedAt = now;
+      this.#touchSeq(top);
       if (Object.is(merge.before, next)) mt.drop();
       this.#bump();
       return;
@@ -800,7 +900,7 @@ export class UndoService {
    * restore 를 주면 사본(평범한 JSON 형)을 클래스 객체로 되돌린다(fromJSON 등).
    */
   capture<T extends object>(
-    session: Session | undefined,
+    session: UndoScope | undefined,
     label: string,
     target: T,
     keys: (keyof T)[],
@@ -816,7 +916,7 @@ export class UndoService {
    * 필드 + 샘플링 프로필)에 쓴다.
    */
   track<S>(
-    session: Session | undefined,
+    session: UndoScope | undefined,
     label: string,
     adapter: UndoSnapshotAdapter<S>,
     merge?: { key: string; ms?: number },
@@ -844,7 +944,7 @@ export class UndoService {
   }
 
   #snapshotPending<S>(
-    session: Session | undefined,
+    session: UndoScope | undefined,
     label: string,
     adapter: UndoSnapshotAdapter<S>,
     onSettle?: () => void,
@@ -871,10 +971,26 @@ export class UndoService {
         // 병합 가능한 항목은 이전·이후 값을 바꿀 수 있는 상자에 둔다(다음 병합이 after 만 갈아 끼움)
         const state: SnapshotMergeState = { before, after };
         const verify = adapter.verify;
+        const stale = adapter.staleReason;
         const entry = this.record(session, {
           label,
           ...(merge ? { mergeKey: `track:${merge.key}` } : {}),
-          ...(verify ? { verify: () => verify() } : {}),
+          ...(verify || stale !== undefined
+            ? {
+                verify: (dir: UndoDirection) => {
+                  const v = verify ? verify() : true;
+                  if (v !== true) return v;
+                  // 기록 밖 변경 = 실패(전역 항목 — 다른 창이 바꿨으면 덮어쓰지 않고 버린다)
+                  if (
+                    stale !== undefined &&
+                    !eq(adapter.snapshot(), (dir === 'undo' ? state.after : state.before) as S)
+                  ) {
+                    return stale;
+                  }
+                  return true;
+                },
+              }
+            : {}),
           // D16 — 되돌림은 지금이 「이후 값」, 다시 실행은 지금이 「이전 값」이어야 겹침 없음
           ...(adapter.detectConflict
             ? {
@@ -896,7 +1012,7 @@ export class UndoService {
 
   /** track(merge) — 맨 위 항목이 같은 key 이고 시간 창 안이면 after 만 갈아 끼운다. 합쳤으면 true */
   #mergeSnapshot<S>(
-    session: Session,
+    session: UndoScope,
     merge: { key: string; ms?: number },
     after: S,
     eq: (a: S, b: S) => boolean,
@@ -910,6 +1026,7 @@ export class UndoService {
     if (!state || now - top.updatedAt > (merge.ms ?? UNDO_MERGE_MS)) return false;
     state.after = after;
     top.updatedAt = now;
+    this.#touchSeq(top);
     // 라벨은 마지막 동작 기준(그림체 선택처럼 값이 라벨에 들어가는 경우 — 같은 칸이면 대개 같은 문구)
     top.label = label;
     if (eq(state.before as S, after)) mt.drop();
@@ -922,7 +1039,7 @@ export class UndoService {
    * 실패(예외)면 기록하지 않고 예외를 그대로 던진다.
    */
   run<R>(
-    session: Session | undefined,
+    session: UndoScope | undefined,
     label: string,
     op: {
       apply: () => R;
@@ -954,7 +1071,7 @@ export class UndoService {
   }
 
   /** fn 안에서 생긴 기록을 1항목으로 묶는다(되돌림 역순·다시 실행 정순). fn 이 실패해도 생긴 기록은 남긴다. */
-  group<R>(session: Session | undefined, label: string, fn: () => R): R {
+  group<R>(session: UndoScope | undefined, label: string, fn: () => R): R {
     const g = this.beginGroup(session, label);
     let r: R;
     try {
@@ -980,7 +1097,7 @@ export class UndoService {
   }
 
   /** 비동기 흐름용 묶음 — commit 까지 이 프로젝트의 기록이 묶음에 들어간다 */
-  beginGroup(session: Session | undefined, label: string): UndoGroupHandle {
+  beginGroup(session: UndoScope | undefined, label: string): UndoGroupHandle {
     if (!this.canRecord(session)) {
       return { add: () => {}, setLabel: () => {}, commit: () => false, cancel: () => {} };
     }
@@ -1072,7 +1189,7 @@ export class UndoService {
    * 객체 필드(target, keys) 또는 상태 짝(adapter)을 받는다. 같은 프로젝트에 끝나지 않은 드래그가 있으면 먼저 확정한다.
    */
   drag<T extends object>(
-    session: Session | undefined,
+    session: UndoScope | undefined,
     label: string,
     target: T | UndoSnapshotAdapter<unknown>,
     keys?: (keyof T)[],
@@ -1091,13 +1208,13 @@ export class UndoService {
   }
 
   /** 이 프로젝트의 끝나지 않은 drag(·편집 세션)가 아직 pending 인가 — 되돌리기 실행·다음 drag 로 확정됐으면 false */
-  isPendingOpen(session: Session | undefined, pending: UndoPending): boolean {
+  isPendingOpen(session: UndoScope | undefined, pending: UndoPending): boolean {
     return !!session && this.#pendingDrags.get(session) === pending;
   }
 
   /** 입력 칸 포커스 진입 값을 보관하고, 떠날 때(commit) 바뀌었으면 1항목 */
   focusEdit<T extends object, K extends keyof T>(
-    session: Session | undefined,
+    session: UndoScope | undefined,
     target: T,
     key: K,
     label: string,

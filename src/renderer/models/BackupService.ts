@@ -107,6 +107,7 @@ import {
   PROJECT_TEMPLATE_BACKUP,
 } from './projectTemplateBackup';
 import { beginPresetListRecord } from './presetUndo';
+import { toggleFavoriteRecorded } from './projectFolderUndo';
 import { UNDO_TEXT } from './undoService';
 
 // 전체 백업에 담는 전역 설정 파일. (백업엔 전부 담되, 설정 병합 복원 시
@@ -269,7 +270,8 @@ export class BackupService {
             appState.pushMessage('프로젝트를 먼저 선택해주세요');
             return;
           }
-          await sessionService.toggleFavorite(appState.curSession.name);
+          // 되돌리기 전역 스택에 기록(2차 묶음 2 P1-a)
+          await toggleFavoriteRecorded(appState.curSession.name);
           const isFav = sessionService.isFavorite(appState.curSession.name);
           appState.pushMessage(isFav ? '즐겨찾기에 추가되었습니다' : '즐겨찾기가 해제되었습니다');
         } else {
