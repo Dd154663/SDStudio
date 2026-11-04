@@ -48,6 +48,7 @@ import OpusUsageQuietToggle from './OpusUsageQuietToggle';
 import { OPUS_USAGE_TEXT } from '../models/opusUsageRules';
 import { DRIVE_SYNC_TEXT } from '../models/driveSync';
 import { INSIDE_INSTALL_DIR_CODE, INSTALL_DIR_TEXT } from '../../shared/installDir';
+import { runSaveLocationChange } from '../models/saveLocationChangeFlow';
 import DriveSettingsTab from './DriveSettingsTab';
 import KeyBindingsTab from './ConfigKeyBindingsTab';
 import PersonalTab from './ConfigPersonalTab';
@@ -1002,33 +1003,14 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.pushDialog({ type: 'yes-only', text: '이미지 캐시 초기화 완료' });
   };
 
+  // 저장 경로 변경(2026-11-04 안전장치): 쓰기 검사(하위 데이터 폴더 포함) → 데이터 미이동·재시작 안내 선택 창
+  // → 저장 → 재시작 또는 보류 표시. 흐름 단일 출처 models/saveLocationChangeFlow.ts. 표시하는 데이터 루트는
+  // 실제 루트(getDataRoot) 그대로 두고, 새 경로는 saveLocation(「다음 부팅부터」)으로만 보인다.
   const selectFolder = async () => {
-    const folder = await backend.selectDir();
-    if (!folder) return;
-    // 저장하기 전에 실제 쓰기 가능 여부를 검증한다. 권한 없는 드라이브를 저장 경로로
-    // 지정하면 다음 부팅에서 그 경로에 쓰기가 막혀(부팅 폴백이 없던 구버전은) 앱이
-    // 무반응 상태로 벽돌이 되므로, 애초에 못 고르게 막는다.
-    const check = await backend.checkWritable(folder);
-    // 설치 폴더 안은 업데이트 때 삭제되므로 쓰기 가능 여부와 별개로 거부된다(main check-writable).
-    if (!check.ok && check.code === INSIDE_INSTALL_DIR_CODE) {
-      appState.pushDialog({ type: 'yes-only', text: INSTALL_DIR_TEXT.selectRejected });
-      return;
+    const result = await runSaveLocationChange({ backend, appState });
+    if (result.kind === 'same' || result.kind === 'pending' || result.kind === 'restarting') {
+      setSaveLocation(result.folder);
     }
-    if (!check.ok) {
-      appState.pushDialog({
-        type: 'yes-only',
-        text:
-          `이 폴더에는 쓰기 권한이 없어 저장 위치로 사용할 수 없습니다.\n(${check.code})\n\n` +
-          `다른 위치를 선택하거나, 해당 드라이브의 쓰기 권한을 먼저 확인해 주세요.`,
-      });
-      return;
-    }
-    const config = await backend.getConfig();
-    config.saveLocation = folder;
-    await backend.setConfig(config);
-    setSaveLocation(folder);
-    setDataRoot(folder);
-    appState.pushDialog({ type: 'yes-only', text: '저장 위치 지정 완료. 프로그램을 껐다 켜주세요' });
   };
 
   const selectDefaultExportFolder = async () => {

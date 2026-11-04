@@ -76,6 +76,12 @@ import {
   SaveLocationInsideInstall,
 } from '../shared/installDir';
 import { isSameOrInside, resolveInstallDir } from './installDirGuard';
+import { probeSaveLocation } from './saveLocationProbe';
+import type {
+  CheckWritableOptions,
+  CheckWritableResult,
+  SaveLocationSubdirWarning,
+} from '../shared/saveLocationChange';
 import {
   DEV_NAI_API_BASE_CHANNEL,
   DEV_NAI_API_BASE_ENV,
@@ -433,7 +439,12 @@ ipcMain.handle('get-runtime-diag', async () => {
 // 부팅 경고 조회: 설정 파일 읽기 실패 또는 사용자 지정 저장 경로 접근 실패를
 // 렌더러에 전달한다. 렌더러는 사용자 데이터 IO 전에 조회해 전면 가드로 안내한다.
 ipcMain.handle('get-boot-warnings', async () => {
-  return { saveLocationFallback, configLoadFailure, saveLocationInsideInstall };
+  return {
+    saveLocationFallback,
+    configLoadFailure,
+    saveLocationInsideInstall,
+    saveLocationSubdirWarning: await awaitSubdirWarning(),
+  };
 });
 
 ipcMain.handle('get-data-root', async () => APP_DIR);
@@ -453,22 +464,30 @@ ipcMain.handle('backup-failed-config', async () => {
 
 // 저장 경로 사전 검증: 사용자가 폴더를 저장 경로로 지정하기 전에 실제 쓰기 가능
 // 여부를 확인한다(권한 없는 드라이브 지정 → 다음 부팅 벽돌화 예방). 데스크톱 전용.
-ipcMain.handle('check-writable', async (event, absPath: string) => {
-  // 설치 폴더(또는 그 하위)는 쓰기 가능해도 거부한다 — 업데이트 설치가 설치 폴더의 파일을
-  // 교체하면서 데이터가 삭제될 수 있다. 쓰기 검사(폴더 생성)보다 먼저 판정한다.
-  if (INSTALL_DIR && isSameOrInside(absPath, INSTALL_DIR)) {
-    return { ok: false, code: INSIDE_INSTALL_DIR_CODE };
-  }
-  try {
-    await fs.mkdir(absPath, { recursive: true });
-    const probe = path.join(absPath, '.' + uuidv4() + '.wtest');
-    await fs.writeFile(probe, 'ok', 'utf-8');
-    await fs.rm(probe).catch(() => {});
-    return { ok: true };
-  } catch (e: any) {
-    return { ok: false, code: String(e?.code || e?.message || e) };
-  }
-});
+// dataSubdirs(저장 경로 지정 전용, 2026-11-04): 고른 폴더에 이미 SDStudio 데이터 배치가 있으면
+// 그 데이터 폴더와 직계 자식(프로젝트 폴더)까지 상한(SAVE_LOCATION_PROBE_LIMIT) 안에서 쓰기 검사한다
+// (saveLocationProbe.ts). 실패하면 failedPath 에 그 폴더를 싣는다.
+ipcMain.handle(
+  'check-writable',
+  async (
+    event,
+    absPath: string,
+    options?: CheckWritableOptions,
+  ): Promise<CheckWritableResult> => {
+    // 설치 폴더(또는 그 하위)는 쓰기 가능해도 거부한다 — 업데이트 설치가 설치 폴더의 파일을
+    // 교체하면서 데이터가 삭제될 수 있다. 쓰기 검사(폴더 생성)보다 먼저 판정한다.
+    if (INSTALL_DIR && isSameOrInside(absPath, INSTALL_DIR)) {
+      return { ok: false, code: INSIDE_INSTALL_DIR_CODE };
+    }
+    const r = await probeSaveLocation(absPath, {
+      dataSubdirs: options?.dataSubdirs === true,
+    });
+    if (r.ok) return { ok: true };
+    return r.failedPath
+      ? { ok: false, code: r.code, failedPath: r.failedPath }
+      : { ok: false, code: r.code };
+  },
+);
 
 ipcMain.handle('open-web-page', async (event, url) => {
   await shell.openExternal(url);
@@ -2249,6 +2268,26 @@ let saveLocationFallback: { attempted: string; code: string } | null = null;
 // 삭제될 수 있으므로 렌더러가 부팅 후 1회 경고한다. 저장 경로는 자동으로 바꾸지 않는다
 // (데이터를 그대로 두고 사용자가 환경설정에서 옮기게 한다).
 let saveLocationInsideInstall: SaveLocationInsideInstall | null = null;
+// 데이터 루트 안의 일부 데이터 폴더(프로젝트 폴더 포함)에 쓸 수 없을 때 채워진다(2026-11-04).
+// 폴백하지 않고 경고만 — 렌더러가 부팅 후 1회 안내한다. 검사는 initFolder 끝에서 기다리지 않고
+// 시작하고(부팅 지연 없음), get-boot-warnings 가 상한 시간까지만 결과를 기다린다.
+let saveLocationSubdirWarning: SaveLocationSubdirWarning | null = null;
+let saveLocationSubdirCheck: Promise<void> | null = null;
+const SUBDIR_CHECK_WAIT_MS = 3000;
+
+async function awaitSubdirWarning(): Promise<SaveLocationSubdirWarning | null> {
+  if (saveLocationSubdirCheck) {
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      saveLocationSubdirCheck,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, SUBDIR_CHECK_WAIT_MS);
+      }),
+    ]);
+    if (timer) clearTimeout(timer);
+  }
+  return saveLocationSubdirWarning;
+}
 
 async function initFolder() {
   if (config.saveLocation) {
@@ -2282,6 +2321,27 @@ async function initFolder() {
   // 폴백까지 반영한 최종 데이터 루트로 판정한다(경고만, 경로·데이터 무변경).
   if (INSTALL_DIR && isSameOrInside(APP_DIR, INSTALL_DIR)) {
     saveLocationInsideInstall = { path: APP_DIR, installDir: INSTALL_DIR };
+  }
+  // 하위 데이터 폴더 쓰기 검사(경고만, 2026-11-04). 루트는 위에서 이미 확인했다. 폴백 중이면
+  // SaveLocationGate 가 따로 안내하므로 건너뛴다. 기다리지 않는다(부팅 지연 없음).
+  if (!saveLocationFallback) {
+    const root = APP_DIR;
+    saveLocationSubdirCheck = probeSaveLocation(root, {
+      probeRoot: false,
+      dataSubdirs: true,
+    })
+      .then((r) => {
+        if (!r.ok) {
+          saveLocationSubdirWarning = {
+            path: r.failedPath ?? root,
+            code: r.code ?? 'unknown',
+          };
+          log.warn(`저장 위치 하위 폴더 쓰기 불가: ${saveLocationSubdirWarning.path} (${saveLocationSubdirWarning.code})`);
+        }
+      })
+      .catch((e) => {
+        log.warn('저장 위치 하위 폴더 검사 실패:', e);
+      });
   }
   // 원자 쓰기(tmp+rename)가 쓰기와 rename 사이 강제 종료로 남긴 고아 tmp 파일 정리.
   // tmp 는 항상 uuid v4 파일명(확장자 없음)이라 정확히 그 형태만 지운다.

@@ -1,4 +1,9 @@
 import type { SaveLocationInsideInstall } from '../../shared/installDir';
+import type {
+  CheckWritableOptions,
+  CheckWritableResult,
+  SaveLocationSubdirWarning,
+} from '../../shared/saveLocationChange';
 import { Config } from '../../main/config';
 import {
   EncodeVibeImageInput,
@@ -402,6 +407,7 @@ export class ElectornBackend extends Backend {
     saveLocationFallback: { attempted: string; code: string } | null;
     configLoadFailure: { path: string; code: string } | null;
     saveLocationInsideInstall: SaveLocationInsideInstall | null;
+    saveLocationSubdirWarning: SaveLocationSubdirWarning | null;
   } | null> {
     return await invoke('get-boot-warnings');
   }
@@ -416,8 +422,9 @@ export class ElectornBackend extends Backend {
 
   async checkWritable(
     absolutePath: string,
-  ): Promise<{ ok: boolean; code?: string }> {
-    return await invoke('check-writable', absolutePath);
+    options?: CheckWritableOptions,
+  ): Promise<CheckWritableResult> {
+    return await invoke('check-writable', absolutePath, options);
   }
 
   async searchTags(word: string, category?: number): Promise<any> {

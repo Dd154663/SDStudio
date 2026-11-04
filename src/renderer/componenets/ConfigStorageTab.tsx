@@ -6,6 +6,9 @@ import {
 import { platform } from '../models/platform';
 import { appState } from '../models/AppService';
 import { StorageDiagnosticsSection } from './StorageDiagnostics';
+import { observer } from 'mobx-react-lite';
+import { SAVE_LOCATION_CHANGE_TEXT } from '../../shared/saveLocationChange';
+import { SaveLocationRestartButton } from './SaveLocationPendingBar';
 
 /* ── 탭 2: 이미지 편집 및 배경 제거 ── */
 const ImageEditTab = ({
@@ -77,6 +80,28 @@ const ImageEditTab = ({
   </div>
 );
 
+/* 저장 경로 변경 보류 표시(2026-11-04) — 「나중에 재시작」 뒤 재시작 전까지. 위 「현재 저장경로」는 실제 루트
+   (getDataRoot) 그대로 두고, 새 경로는 「다음 부팅부터 쓸 위치」로 구분해 보인다. observer 라 보류 상태 변화에
+   바로 반응한다(문구 단일 출처 shared/saveLocationChange.ts). */
+const SaveLocationPendingNotice = observer(() => {
+  const pending = appState.saveLocationPending;
+  if (!pending) return null;
+  return (
+    <div
+      data-save-location-pending
+      className="mt-2 rounded px-3 py-2 text-sm bg-[var(--c-yellow-bg)] text-[color:var(--c-yellow-fg)] space-y-2"
+    >
+      <div className="whitespace-pre-line">
+        {SAVE_LOCATION_CHANGE_TEXT.pendingNotice(pending.previousRoot)}
+      </div>
+      <div className="text-xs break-all">
+        {SAVE_LOCATION_CHANGE_TEXT.pendingNextRootLabel}: {pending.nextRoot}
+      </div>
+      <SaveLocationRestartButton />
+    </div>
+  );
+});
+
 /* ── 탭 3: 이미지 및 데이터 저장경로 ── */
 const StorageTab = ({
   saveLocation, dataRoot, selectFolder, clearImageCache,
@@ -93,10 +118,14 @@ const StorageTab = ({
       <div className="text-xs text-muted mt-1">
         {appState.saveLocationFallback
           ? '지정 위치 접근 실패로 기본 위치를 임시 사용 중'
-          : saveLocation
+          : appState.saveLocationPending
+            ? '지금 실제로 저장되는 위치'
+            : saveLocation
             ? '사용자 지정 위치'
             : '기본 위치'}
-      </div>
+        <SaveLocationPendingNotice />
+    </div>
+      <SaveLocationPendingNotice />
     </div>
     <button className="btn w-full back-green py-2 rounded"
       onClick={selectFolder}>

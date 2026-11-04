@@ -26,6 +26,8 @@ import EditModeShell from './EditModeShell';
 import { resolveLayout, dockOrder, DOCK_RANK, defaultLayoutTemplateId } from '../models/layoutTemplates';
 import { MOBILE_V2_INTRO_TEXT, revertMobileV2ToClassic } from '../models/mobileV2Default';
 import { INSTALL_DIR_TEXT } from '../../shared/installDir';
+import { showSubdirBootWarningOnce } from '../models/saveLocationChangeFlow';
+import SaveLocationPendingBar from './SaveLocationPendingBar';
 import TobBar from './TobBar';
 import AlertWindow from './AlertWindow';
 import UndoRedoBar from './UndoRedoBar';
@@ -400,6 +402,11 @@ export const App = observer(() => {
       text: INSTALL_DIR_TEXT.bootWarning(inside.path, inside.installDir),
     });
   }, [appState.bootReady, appState.saveLocationInsideInstall]);
+  // 저장 위치 안의 일부 데이터 폴더에 쓸 수 없음(데스크톱, 2026-11-04): main initFolder 의 하위 폴더
+  // 쓰기 검사 결과. 폴백하지 않고 메인 UI 가 뜬 뒤 한 번 안내한다(설치 폴더 경고와 같은 방식).
+  useEffect(() => {
+    showSubdirBootWarningOnce(appState);
+  }, [appState.bootReady, appState.saveLocationSubdirWarning]);
   useEffect(() => {
     const removeDonwloadProgressListener = backend.onDownloadProgress(
       (progress: any) => {
@@ -793,6 +800,12 @@ export const App = observer(() => {
             {!isMobile && (
               <StackFixed>
                 <TobBar />
+              </StackFixed>
+            )}
+            {/* 저장 경로 변경 보류 안내(PC, 2026-11-04) — 재시작 전까지 이전 위치에 저장 중임을 한 줄로 */}
+            {!isMobile && appState.saveLocationPending && (
+              <StackFixed>
+                <SaveLocationPendingBar />
               </StackFixed>
             )}
             {/* zone-canvas: 구역 카드화(D) — 도크 행을 캔버스 배경+여백으로, 각 구역은

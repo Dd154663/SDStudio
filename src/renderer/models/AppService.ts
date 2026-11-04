@@ -451,6 +451,19 @@ export class AppState {
     path: string;
     installDir: string;
   } | null = null;
+  // 저장 위치 안의 일부 데이터 폴더에 쓸 수 없음(데스크톱, 2026-11-04): bootstrap 이 채우고 App.tsx 가
+  // 부팅 후 1회 안내한 뒤 null 로 되돌린다(폴백·차단 없음).
+  @observable accessor saveLocationSubdirWarning: {
+    path: string;
+    code: string;
+  } | null = null;
+  // 저장 경로를 바꿨지만 아직 재시작하지 않은 상태(데스크톱, 2026-11-04 — 세션 메모리, 이 창 한정).
+  // 재시작 전까지는 previousRoot 에 계속 저장된다. 설정 화면 저장 경로 줄과 화면 위 한 줄 안내
+  // (SaveLocationPendingBar)가 보여 준다. 흐름 단일 출처 models/saveLocationChangeFlow.ts.
+  @observable accessor saveLocationPending: {
+    previousRoot: string;
+    nextRoot: string;
+  } | null = null;
   // config.json 이 존재하지만 읽기·파싱에 실패한 상태. 저장 경로 자체를 신뢰할 수
   // 없으므로 프로젝트 스캔과 저장을 시작하지 않고 재시작 안내 게이트를 표시한다.
   @observable accessor configLoadFailure: {

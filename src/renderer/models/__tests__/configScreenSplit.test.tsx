@@ -583,11 +583,15 @@ test('5: 할당량 경고 하지 않음·부스트 다시 보지 않음·레이�
   expect(appState.uiLayoutSlots).toEqual({});
 
   // ④ 저장 위치 변경(저장경로 탭) — 즉시 저장, 미저장 비교 대상 아님
+  //    (2026-11-04: 하위 폴더 포함 쓰기 검사 → 선택 창 「나중에 재시작」 → 저장+보류 상태)
   const storage = await selectTab('저장경로');
+  appState.pushDialogAsync.mockImplementationOnce(async () => 'restart-later');
   await click(buttonByText(storage, '이미지 및 데이터 저장 위치 변경'));
-  expect(backend.checkWritable).toHaveBeenCalledWith('/new-data');
+  expect(backend.checkWritable).toHaveBeenCalledWith('/new-data', { dataSubdirs: true });
   expect(store.config.saveLocation).toBe('/new-data');
-  expect(storage.textContent).toContain('/new-data');
+  expect(appState.saveLocationPending).toEqual({ previousRoot: '/data-root', nextRoot: '/new-data' });
+  // 표시 루트는 실제 루트 그대로(새 경로로 바꾸지 않는다)
+  expect(storage.textContent).toContain('/data-root');
 
   // ⑤ 다른 탭 값을 바꿔 「저장」 — 즉시 저장 값이 모두 유지된다
   await selectTab('시스템');

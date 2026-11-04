@@ -1,4 +1,9 @@
 import type { SaveLocationInsideInstall } from '../shared/installDir';
+import type {
+  CheckWritableOptions,
+  CheckWritableResult,
+  SaveLocationSubdirWarning,
+} from '../shared/saveLocationChange';
 import { Config } from '../main/config';
 import type { DriveAuthStatus } from '../shared/googleDriveAuth';
 import type {
@@ -160,6 +165,7 @@ export abstract class Backend {
     saveLocationFallback: { attempted: string; code: string } | null;
     configLoadFailure: { path: string; code: string } | null;
     saveLocationInsideInstall: SaveLocationInsideInstall | null;
+    saveLocationSubdirWarning: SaveLocationSubdirWarning | null;
   } | null>;
   // 현재 실행에서 실제로 사용 중인 데이터 루트. 기본 위치도 절대/표시 경로로 노출한다.
   abstract getDataRoot(): Promise<string>;
@@ -167,7 +173,12 @@ export abstract class Backend {
   abstract backupFailedConfig(): Promise<string>;
   // 폴더가 실제 쓰기 가능한지 사전 검증(저장 경로 지정 전). 권한 없는 드라이브를
   // 저장 경로로 지정해 다음 부팅이 벽돌화되는 것을 예방. 데스크톱 전용(모바일은 항상 ok).
-  abstract checkWritable(absolutePath: string): Promise<{ ok: boolean; code?: string }>;
+  // options.dataSubdirs(저장 경로 지정 전용) = 고른 폴더 안의 SDStudio 데이터 폴더·프로젝트 폴더까지
+  // 검사하고, 실패하면 failedPath 에 그 폴더를 싣는다(shared/saveLocationChange.ts).
+  abstract checkWritable(
+    absolutePath: string,
+    options?: CheckWritableOptions,
+  ): Promise<CheckWritableResult>;
   abstract searchTags(word: string, category?: number): Promise<any>;
   abstract lookupTag(word: string): Promise<any>;
   abstract loadPiecesDB(pieces: string[]): Promise<void>;

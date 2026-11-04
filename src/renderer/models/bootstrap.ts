@@ -217,6 +217,8 @@ export async function bootstrapApp(): Promise<void> {
     appState.saveLocationFallback = bootWarnings?.saveLocationFallback ?? null;
     appState.saveLocationInsideInstall =
       bootWarnings?.saveLocationInsideInstall ?? null;
+    appState.saveLocationSubdirWarning =
+      bootWarnings?.saveLocationSubdirWarning ?? null;
     if (appState.configLoadFailure) {
       // 일반 종료도 가능해야 한다. main 은 렌더러의 close 응답을 받을 때까지 창을
       // 닫지 않으므로, 저장은 전혀 하지 않고 종료 게이트만 해제하는 훅을 연결한다.
