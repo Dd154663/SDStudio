@@ -212,6 +212,16 @@ export interface ImageTrashRestoreResult {
 
 // --- Service class ---
 
+/**
+ * 구 배치 폴더 삭제 때 폴더 안 휴지통 항목(<이름>.deleted)을 옮길 폴더(2026-11-04 A12).
+ * null = 루트. 구 배치 휴지통 스캔은 루트+1단 폴더만 보므로 2단 이상이면 그 1단 조상으로 올린다.
+ */
+export function trashEvacuationFolder(targetFolder: string | null): string | null {
+  if (!targetFolder) return null;
+  const idx = targetFolder.indexOf('/');
+  return idx >= 0 ? targetFolder.substring(0, idx) : targetFolder;
+}
+
 export class TrashService extends EventTarget {
   private data: TrashData = { scenes: {}, projects: {} };
   private loaded: boolean = false;
@@ -1054,19 +1064,26 @@ export class TrashService extends EventTarget {
     return result;
   }
 
-  // 구 배치 폴더 삭제(SessionService.deleteFolder)의 deleteDir 직전 단계(2026-11-01 U0-b I3):
-  // 폴더 디렉터리 바로 아래의 휴지통 프로젝트(<이름>.deleted)를 루트(projects/<이름>.deleted)로 옮긴다.
-  // 그대로 두면 이어지는 deleteDir 가 휴지통 프로젝트를 확인 없이 영구 삭제한다.
+  // 구 배치 폴더 삭제(SessionService.deleteFolder)의 deleteDir 직전 단계(2026-11-01 U0-b I3, 2026-11-04 A12):
+  // 폴더 디렉터리 바로 아래의 휴지통 프로젝트(<이름>.deleted)를 targetFolder(삭제 대상 최상위 폴더의 상위 폴더,
+  // null = 루트 projects/<이름>.deleted)로 옮긴다. 그대로 두면 이어지는 deleteDir 가 휴지통 프로젝트를 확인 없이 영구 삭제한다.
   // - 구 배치 휴지통 기록은 이름 키라 그대로 유효하다. 목록·복원·영구 삭제는 스캔한 위치를 쓰므로
-  //   (scanProjectFiles — 루트+1단 폴더) 복원하면 미분류로 돌아온다(폴더 안 활성 프로젝트를 미분류로
-  //   옮기는 deleteFolder 와 같은 결과). 하위 폴더는 deleteFolder 가 자식부터 따로 부르므로 각 단계에서 옮겨진다.
+  //   (scanProjectFiles — **루트+1단 폴더만**) 옮긴 곳이 스캔 범위여야 휴지통에 보인다. 그래서 targetFolder 가
+  //   2단 이상이면(예: 'A/B') 스캔되는 그 1단 조상('A')으로 옮긴다(trashEvacuationFolder). 복원하면 옮긴 폴더로 돌아온다
+  //   (활성 프로젝트를 상위 폴더로 옮기는 deleteFolder 와 같은 방향). 하위 폴더는 deleteFolder 가 자식부터 따로 부르므로 각 단계에서 옮겨진다.
   // - 먼저 전부 확인하고 하나라도 문제면 아무것도 옮기지 않고 throw(호출부는 폴더를 지우지 않는다):
-  //   목록을 못 읽음(불확실하면 보존)·루트에 같은 이름 .deleted 가 이미 있음(덮어쓰기 금지)·
+  //   목록을 못 읽음(불확실하면 보존)·옮길 곳에 같은 이름 .deleted 가 이미 있음(덮어쓰기 금지)·
   //   프로젝트 이름으로 쓸 수 없는 이름.
+  // - 옮길 곳이 폴더 자신이면 아무것도 하지 않는다(안전장치 — 삭제 대상은 늘 옮길 곳의 하위라 정상 흐름엔 없음).
   // - 이름 없는 점(.) 파일('.deleted' 등)은 스캔이 제외하는 유령(2026-07-06 사고 원인)이라 옮기지 않는다.
   // 신 배치는 폴더 디렉터리가 없다 — no-op. 반환값 = 옮긴 개수.
-  async evacuateFolderTrashToRoot(folder: string): Promise<number> {
+  async evacuateFolderTrash(
+    folder: string,
+    targetFolder: string | null = null,
+  ): Promise<number> {
     if (isWorkspaceLayout()) return 0;
+    const dest = trashEvacuationFolder(targetFolder);
+    if (dest === folder) return 0;
     const dir = projectFolderPath(folder);
     const stats = await backend.listFilesWithStats(dir); // ENOENT→[], 실오류→throw
     const names: string[] = [];
@@ -1085,7 +1102,7 @@ export class TrashService extends EventTarget {
         );
       }
       const from = projectJsonPath(name, folder).replace(/\.json$/, '.deleted');
-      const to = projectJsonPath(name).replace(/\.json$/, '.deleted');
+      const to = projectJsonPath(name, dest).replace(/\.json$/, '.deleted');
       if (await backend.existFile(to)) {
         throw new Error(
           `휴지통에 같은 이름의 프로젝트 "${name}"이(가) 이미 있어 폴더를 삭제하지 않았습니다. 휴지통에서 그 항목을 먼저 복원하거나 영구 삭제해 주세요.`,

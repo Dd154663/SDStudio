@@ -56,3 +56,26 @@ describe('planFolderDeletePrompt', () => {
     expect(p).toEqual({ kind: 'empty', text: '폴더 "빈"를 삭제할까요?' });
   });
 });
+
+describe('A12(2026-11-04) — 「폴더만 삭제」 문구에 프로젝트가 갈 곳', () => {
+  test('서브폴더 → 상위 폴더 이름', () => {
+    const p = planFolderDeletePrompt('child', inTree('B/child'), 'B');
+    expect(p.kind === 'choose' && p.folderOnlyText).toBe(
+      '폴더만 삭제 (프로젝트는 상위 폴더 "B"로 이동)',
+    );
+  });
+  test('루트 폴더(상위 null) → 미분류', () => {
+    const p = planFolderDeletePrompt('B', inTree('B'), null);
+    expect(p.kind === 'choose' && p.folderOnlyText).toBe(
+      '폴더만 삭제 (프로젝트는 미분류로 이동)',
+    );
+  });
+  test('그 외 문구(모두 삭제·확인)는 상위 폴더와 무관하게 불변', () => {
+    const a = planFolderDeletePrompt('child', inTree('B/child'), 'B');
+    const b = planFolderDeletePrompt('child', inTree('B/child'), null);
+    if (a.kind !== 'choose' || b.kind !== 'choose') throw new Error('choose 기대');
+    expect(a.withProjectsText).toBe(b.withProjectsText);
+    expect(a.confirmWithProjectsText).toBe(b.confirmWithProjectsText);
+    expect(a.text).toBe(b.text);
+  });
+});

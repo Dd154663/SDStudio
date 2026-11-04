@@ -83,7 +83,7 @@ jest.mock('../types', () => ({
   genericSceneFromJSON: (j: any) => ({ ...j }),
 }));
 
-import { TrashService } from '../TrashService';
+import { TrashService, trashEvacuationFolder } from '../TrashService';
 import { templateService } from '../index';
 import {
   physicalDirOf,
@@ -454,7 +454,7 @@ describe('U0-b I3 — 구 배치 폴더 삭제 전 폴더 안 휴지통 프로�
     files.set('projects/F/.deleted', 'ghost'); // 이름 없는 유령 점 파일은 옮기지 않는다
     files.set('trash.json', JSON.stringify({ scenes: {}, projects: { A: { deletedAt: 5 } } }));
     const svc = await loaded();
-    expect(await svc.evacuateFolderTrashToRoot('F')).toBe(1);
+    expect(await svc.evacuateFolderTrash('F')).toBe(1);
     expect(files.get('projects/A.deleted')).toBe('{"a":1}');
     expect(files.has('projects/F/A.deleted')).toBe(false);
     // 이어지는 폴더 deleteDir 가 지워도 휴지통 항목은 남는다
@@ -470,7 +470,7 @@ describe('U0-b I3 — 구 배치 폴더 삭제 전 폴더 안 휴지통 프로�
     files.set('projects/F/A.deleted', 'folder');
     files.set('projects/F/B.deleted', 'b');
     const svc = await loaded();
-    await expect(svc.evacuateFolderTrashToRoot('F')).rejects.toThrow('이미 있어');
+    await expect(svc.evacuateFolderTrash('F')).rejects.toThrow('이미 있어');
     expect(files.get('projects/A.deleted')).toBe('root');
     expect(files.get('projects/F/A.deleted')).toBe('folder');
     expect(files.get('projects/F/B.deleted')).toBe('b');
@@ -479,6 +479,45 @@ describe('U0-b I3 — 구 배치 폴더 삭제 전 폴더 안 휴지통 프로�
   test('신 배치는 no-op', async () => {
     setWorkspaceLayoutActive(true);
     const svc = await loaded();
-    expect(await svc.evacuateFolderTrashToRoot('F')).toBe(0);
+    expect(await svc.evacuateFolderTrash('F')).toBe(0);
+  });
+});
+
+describe('A12(2026-11-04) — 서브폴더 삭제 시 휴지통 항목은 상위 폴더로 피신', () => {
+  test('F/S 삭제(대상 F) → projects/F/A.deleted, 휴지통 목록·복원은 F 로', async () => {
+    files.set('projects/F/.keep', '');
+    files.set('projects/F/S/.keep', '');
+    files.set('projects/F/S/A.deleted', '{"a":1}');
+    files.set('trash.json', JSON.stringify({ scenes: {}, projects: { A: { deletedAt: 5 } } }));
+    const svc = await loaded();
+    expect(await svc.evacuateFolderTrash('F/S', 'F')).toBe(1);
+    expect(files.get('projects/F/A.deleted')).toBe('{"a":1}');
+    expect(files.has('projects/F/S/A.deleted')).toBe(false);
+    for (const k of Array.from(files.keys())) if (k.startsWith('projects/F/S/')) files.delete(k);
+    expect(await svc.getDeletedProjects()).toEqual([{ name: 'A', deletedAt: 5 }]);
+    await svc.restoreProject('A');
+    expect(files.get('projects/F/A.json')).toBe('{"a":1}');
+  });
+
+  test('대상이 2단 이상(F/S)이면 휴지통 스캔 범위(1단)인 F 로 올린다', async () => {
+    files.set('projects/F/S/T/A.deleted', 'x');
+    const svc = await loaded();
+    expect(await svc.evacuateFolderTrash('F/S/T', 'F/S')).toBe(1);
+    expect(files.get('projects/F/A.deleted')).toBe('x');
+  });
+
+  test('대상 폴더에 같은 이름 .deleted 가 있으면 아무것도 옮기지 않고 throw', async () => {
+    files.set('projects/F/A.deleted', 'parent');
+    files.set('projects/F/S/A.deleted', 'child');
+    const svc = await loaded();
+    await expect(svc.evacuateFolderTrash('F/S', 'F')).rejects.toThrow('이미 있어');
+    expect(files.get('projects/F/A.deleted')).toBe('parent');
+    expect(files.get('projects/F/S/A.deleted')).toBe('child');
+  });
+
+  test('trashEvacuationFolder: null→null, 1단 그대로, 2단 이상→1단 조상', () => {
+    expect(trashEvacuationFolder(null)).toBeNull();
+    expect(trashEvacuationFolder('F')).toBe('F');
+    expect(trashEvacuationFolder('F/S/T')).toBe('F');
   });
 });

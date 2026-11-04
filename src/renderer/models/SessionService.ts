@@ -994,42 +994,63 @@ export class SessionService extends ResourceSyncService<Session> {
     await this.update();
   }
 
-  // 비파괴적 삭제: 안의 프로젝트는 루트(미분류)로 옮기고 폴더만 제거한다.
-  // 하위 폴더가 있으면 먼저 자식 폴더들을 삭제한다.
+  // 비파괴적 삭제: 안의 프로젝트(하위 폴더 포함)는 삭제 대상 폴더의 **상위 폴더**로 옮기고 폴더만 제거한다.
+  // 루트 폴더(상위 없음)는 상위 = 미분류(null)라 종전과 같다(2026-11-04 A12 사용자 결정).
+  // 상위 폴더가 목록에 없으면(비정상) 미분류로 폴백한다 — moveToFolder 가 없는 대상 폴더를 거부하므로.
   async deleteFolder(folder: string): Promise<void> {
     if (!this.folderList.includes(folder)) {
       throw new Error('폴더를 찾을 수 없습니다.');
     }
-    // 하위 폴더 먼저 삭제 (깊은 순서로)
-    const descendants = this.getDescendantFolders(folder)
-      .filter((f) => f !== folder)
-      .sort((a, b) => b.split('/').length - a.split('/').length);
-    for (const child of descendants) {
-      await this.deleteFolder(child);
+    const parent = this.folderParentPath(folder);
+    const target = this.folderDeleteTarget(folder);
+    if (parent !== null && target === null) {
+      console.warn(
+        `[폴더 삭제] 상위 폴더 "${parent}" 가 목록에 없어 프로젝트를 미분류로 옮깁니다: ${folder}`,
+      );
     }
-    // 해당 폴더 및 하위 폴더에 있는 프로젝트를 루트로
-    const projectsInFolder = Object.keys(this.folderMap).filter(
-      (n) => {
-        const f = this.folderMap[n];
-        return f === folder || (f !== null && f.startsWith(folder + '/'));
-      },
-    );
-    for (const name of projectsInFolder) {
-      await this.moveToFolder(name, null);
+    await this.deleteFolderInto(folder, target);
+  }
+
+  /** 「폴더만 삭제」 때 안의 프로젝트가 갈 폴더 — 상위 폴더(목록에 있을 때), 아니면 null(미분류). 확인 창 문구도 이것을 쓴다. */
+  folderDeleteTarget(folder: string): string | null {
+    const parent = this.folderParentPath(folder);
+    return parent !== null && this.folderList.includes(parent) ? parent : null;
+  }
+
+  /** 삭제 대상 폴더(최상위)의 상위 폴더(target)로 모으는 deleteFolder 본체. 하위 폴더 재귀도 같은 target 을 쓴다. */
+  private async deleteFolderInto(
+    folder: string,
+    target: string | null,
+  ): Promise<void> {
+    if (!this.folderList.includes(folder)) {
+      throw new Error('폴더를 찾을 수 없습니다.');
+    }
+    // 폴더와 하위 폴더의 프로젝트를 **먼저 한 번에** target 으로 옮긴다 — 하위 폴더를 지우기 전에 옮겨야
+    // 깊은 하위의 프로젝트가 중간 폴더에 들렀다 가지 않고, 하나라도 못 옮기면 아무 폴더도 지우기 전에 멈춘다.
+    const label = target === null ? '미분류' : `상위 폴더 "${this.folderLeafName(target)}"`;
+    for (const name of this.getProjectsInFolder(folder)) {
+      await this.moveToFolder(name, target);
     }
     // moveToFolder 는 다른 창에서 열린 프로젝트면 조용히 반환한다. 그대로 진행하면 구 배치는
     // 아래 deleteDir 가 그 프로젝트 파일까지 지운다 — 남은 프로젝트가 있으면 폴더를 지우지 않는다(2026-10-02 B2).
     const remaining = this.getProjectsInFolder(folder);
     if (remaining.length > 0) {
       throw new Error(
-        `미분류로 옮기지 못한 프로젝트가 있어 폴더를 삭제하지 않았습니다(다른 창에서 열려 있을 수 있습니다): ${remaining.join(', ')}`,
+        `${label}로 옮기지 못한 프로젝트가 있어 폴더를 삭제하지 않았습니다(다른 창에서 열려 있을 수 있습니다): ${remaining.join(', ')}`,
       );
+    }
+    // 하위 폴더 삭제 (깊은 순서로) — 프로젝트는 이미 비었다. 구 배치 휴지통 피신도 같은 target 으로.
+    const descendants = this.getDescendantFolders(folder)
+      .filter((f) => f !== folder)
+      .sort((a, b) => b.split('/').length - a.split('/').length);
+    for (const child of descendants) {
+      await this.deleteFolderInto(child, target);
     }
     // 신 배치엔 폴더 디렉터리가 없다 — 물리 삭제는 건너뛰고 사이드카(색상/순서)만 정리.
     if (!isWorkspaceLayout()) {
-      // 폴더 안 휴지통 프로젝트(<이름>.deleted)를 루트로 먼저 옮긴다 — 그대로 지우면 확인 없이
-      // 영구 삭제된다(2026-11-01 U0-b I3). 옮기지 못하면 throw → 폴더를 지우지 않는다.
-      await trashService.evacuateFolderTrashToRoot(folder);
+      // 폴더 안 휴지통 프로젝트(<이름>.deleted)를 target(상위 폴더, 없으면 루트)으로 먼저 옮긴다 — 그대로 지우면
+      // 확인 없이 영구 삭제된다(2026-11-01 U0-b I3, 2026-11-04 A12). 옮기지 못하면 throw → 폴더를 지우지 않는다.
+      await trashService.evacuateFolderTrash(folder, target);
       await backend.deleteDir(this.folderDirPath(folder));
     }
     // 폴더 색상 정리

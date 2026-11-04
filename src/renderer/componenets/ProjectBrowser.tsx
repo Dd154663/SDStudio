@@ -882,9 +882,12 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
         refresh();
       };
       // 판단·문구는 드로어와 공용(models/folderDeleteFlow.planFolderDeletePrompt — 하위 폴더 포함 개수)
+      // 「폴더만 삭제」는 프로젝트를 상위 폴더(루트 폴더면 미분류)로 옮긴다 — 문구에 상위 폴더 이름(2026-11-04 A12)
+      const deleteTarget = sessionService.folderDeleteTarget(folder);
       const prompt = planFolderDeletePrompt(
         sessionService.folderLeafName(folder),
         sessionService.getProjectsInFolder(folder),
+        deleteTarget !== null ? sessionService.folderLeafName(deleteTarget) : null,
       );
       // 빈 폴더 → 단순 확인
       if (prompt.kind === 'empty') {

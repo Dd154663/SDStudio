@@ -31,7 +31,11 @@ export const FOLDER_DELETE_TEXT = {
   confirmEmpty: (leaf: string) => `폴더 "${leaf}"를 삭제할까요?`,
   chooseTitle: (leaf: string, n: number) =>
     `폴더 "${leaf}" 삭제 (그 안의 프로젝트 ${n}개, 하위 폴더 포함)`,
-  folderOnly: '폴더만 삭제 (프로젝트는 미분류로 이동)',
+  /** parentLeaf = 상위 폴더 표시 이름(null = 루트 폴더 → 미분류). 2026-11-04 A12: 서브폴더는 상위 폴더로 모은다 */
+  folderOnly: (parentLeaf: string | null) =>
+    parentLeaf
+      ? `폴더만 삭제 (프로젝트는 상위 폴더 "${parentLeaf}"로 이동)`
+      : '폴더만 삭제 (프로젝트는 미분류로 이동)',
   withProjects: '⚠️ 폴더와 프로젝트 모두 삭제',
   confirmWithProjects: (leaf: string, n: number) =>
     `정말 폴더 "${leaf}"와 그 안의 프로젝트 ${n}개(하위 폴더 포함)를 모두 삭제할까요?\n프로젝트는 휴지통으로 이동되어 복구할 수 있습니다.`,
@@ -50,10 +54,15 @@ export type FolderDeletePrompt =
       confirmWithProjectsText: string;
     };
 
-/** projectsInTree = 폴더와 하위 폴더의 프로젝트(sessionService.getProjectsInFolder(folder)) */
+/**
+ * projectsInTree = 폴더와 하위 폴더의 프로젝트(sessionService.getProjectsInFolder(folder)).
+ * parentLeafName = 상위 폴더의 표시 이름(sessionService.folderLeafName(folderParentPath(folder))), 루트 폴더면 null.
+ * 「폴더만 삭제」는 SessionService.deleteFolder 가 프로젝트를 상위 폴더(루트면 미분류)로 옮긴다(2026-11-04 A12).
+ */
 export function planFolderDeletePrompt(
   leafName: string,
   projectsInTree: readonly string[],
+  parentLeafName: string | null = null,
 ): FolderDeletePrompt {
   const count = projectsInTree.length;
   if (count === 0) {
@@ -63,7 +72,7 @@ export function planFolderDeletePrompt(
     kind: 'choose',
     count,
     text: FOLDER_DELETE_TEXT.chooseTitle(leafName, count),
-    folderOnlyText: FOLDER_DELETE_TEXT.folderOnly,
+    folderOnlyText: FOLDER_DELETE_TEXT.folderOnly(parentLeafName),
     withProjectsText: FOLDER_DELETE_TEXT.withProjects,
     confirmWithProjectsText: FOLDER_DELETE_TEXT.confirmWithProjects(
       leafName,

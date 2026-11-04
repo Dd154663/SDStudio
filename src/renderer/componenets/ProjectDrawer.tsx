@@ -804,9 +804,12 @@ const ProjectDrawer = observer(() => {
     };
     // 개수는 실제 삭제 대상과 같은 기준(하위 폴더 포함)으로 센다 — 직속만 세면 하위에만
     // 프로젝트가 있을 때 단순 확인 뒤 조용히 미분류로 옮겨졌다(2026-10-02 S5).
+    // 「폴더만 삭제」는 프로젝트를 상위 폴더(루트 폴더면 미분류)로 옮긴다 — 문구에 상위 폴더 이름(2026-11-04 A12)
+    const deleteTarget = sessionService.folderDeleteTarget(f);
     const prompt = planFolderDeletePrompt(
       leafName,
       sessionService.getProjectsInFolder(f),
+      deleteTarget !== null ? sessionService.folderLeafName(deleteTarget) : null,
     );
     if (prompt.kind === 'empty') {
       appState.pushDialog({

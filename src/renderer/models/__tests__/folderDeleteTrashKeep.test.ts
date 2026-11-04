@@ -1,5 +1,5 @@
 // U0-b I3(2026-11-01): 구 배치 SessionService.deleteFolder 는 폴더 디렉터리를 지우기 전에
-// 폴더 안 휴지통 프로젝트(<이름>.deleted)를 루트로 옮긴다(trashService.evacuateFolderTrashToRoot).
+// 폴더 안 휴지통 프로젝트(<이름>.deleted)를 루트로 옮긴다(trashService.evacuateFolderTrash).
 // 옮기지 못하면 deleteDir 를 부르지 않는다 — 휴지통 프로젝트가 확인 없이 영구 삭제되지 않게.
 // (옮기는 동작 자체는 trashCoexist.test.ts 「U0-b I3」.)
 
@@ -15,7 +15,7 @@ const backend = {
   }),
 };
 const trashService = {
-  evacuateFolderTrashToRoot: jest.fn(async (f: string) => {
+  evacuateFolderTrash: jest.fn(async (f: string) => {
     calls.push('evacuate:' + f);
     return 0;
   }),
@@ -67,7 +67,7 @@ describe('U0-b I3 — 구 배치 deleteFolder 의 휴지통 프로젝트 보존'
   });
 
   test('옮기기에 실패하면 폴더 디렉터리를 지우지 않고 오류를 그대로 알린다', async () => {
-    trashService.evacuateFolderTrashToRoot.mockImplementationOnce(async () => {
+    trashService.evacuateFolderTrash.mockImplementationOnce(async () => {
       throw new Error('휴지통에 같은 이름의 프로젝트 "A"이(가) 이미 있어 폴더를 삭제하지 않았습니다.');
     });
     const svc = makeSvc();
