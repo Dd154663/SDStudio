@@ -484,3 +484,33 @@ export async function copyImagesRecorded(
   }
   return r;
 }
+
+/**
+ * 「원본 씬으로 이미지 복사」(변형 씬 결과 → 원본 씬, 2026-11-04 되돌리기 2차 묶음 5) — 결과 이미지를 원본 씬으로 복사
+ * (copyImagesRecorded — 원본 형식·겹치지 않는 이름)하고, findSource 가 찾은 원본 이미지(인페인트 전 원본)를 휴지통으로
+ * (deleteImageFilesRecorded)보낸다. 두 기록 = 1항목(묶음): 되돌림(역순) = 원본 이미지 복원 → 복사본 휴지통, 다시 실행(정순)
+ * = 복사본 복원 → 원본 다시 휴지통. findSource 는 방금 만든 파일 이름을 받는다(후보에서 빼야 한다). 원본을 못 찾으면 목록만 새로 읽는다.
+ */
+export async function copyImageToOriginalRecorded(
+  session: Session,
+  original: GenericScene,
+  resultPath: string,
+  findSource: (created: readonly string[]) => Promise<string | undefined>,
+  opts: DeleteUndoOptions = {},
+): Promise<{ copied: boolean; sourceDeleted: boolean }> {
+  const service = opts.service ?? undoService;
+  const g = service.beginGroup(session, UNDO_TEXT.imageCopyToOriginal(original.name));
+  try {
+    const r = await copyImagesRecorded(session, original, [resultPath], 'copy', opts);
+    if (r.created.length === 0) return { copied: false, sourceDeleted: false };
+    const source = await findSource(r.created);
+    if (source) {
+      const failed = await deleteImageFilesRecorded(session, [source], original, opts);
+      return { copied: true, sourceDeleted: failed === 0 };
+    }
+    await imageOpsOf(opts).refreshScene(session, original);
+    return { copied: true, sourceDeleted: false };
+  } finally {
+    g.commit();
+  }
+}

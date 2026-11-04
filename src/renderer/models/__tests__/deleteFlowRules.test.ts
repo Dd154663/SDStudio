@@ -358,11 +358,12 @@ describe('씬만 가져오기 덮어쓰기 확인(X10)', () => {
     ]);
     expect(overlappingSceneNames(['x'], (n) => cur.has(n))).toEqual([]);
   });
-  it('문구에 개수·이름 일부·되돌릴 수 없음', () => {
+  it('문구에 개수·이름 일부·되돌리기 가능(2차 묶음 5)', () => {
     const t = sceneImportOverwriteText(['a', 'b', 'c', 'd', 'e', 'f']);
     expect(t).toContain('6개');
     expect(t).toContain('「a」');
     expect(t).toContain('외 1개');
-    expect(t).toContain('기존 씬의 프롬프트 구성이 바뀝니다. 되돌릴 수 없습니다.');
+    expect(t).toContain('기존 씬의 프롬프트 구성이 바뀝니다(되돌리기로 복구할 수 있습니다).');
+    expect(t).not.toContain('되돌릴 수 없습니다');
   });
 });

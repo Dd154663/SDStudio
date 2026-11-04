@@ -56,6 +56,7 @@ const UNDO_MODULES = [
   'models/projectFolderUndo.ts',
   'models/projectDeleteUndo.ts',
   'models/globalLibraryUndo.ts',
+  'models/sceneImportUndo.ts',
 ];
 
 const RULES: Rule[] = [

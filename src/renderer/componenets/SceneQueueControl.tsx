@@ -60,8 +60,8 @@ import {
 import {
   getMainImage,
   dataUriToBase64,
-  deleteImageFiles,
 } from '../models/ImageService';
+import { copyImageToOriginalRecorded } from '../models/deleteUndo';
 import { setImageFavorites, toggleImageFavorite } from '../models/imageStateUndo';
 import { queueWorkflow } from '../models/TaskQueueService';
 import {
@@ -2237,48 +2237,39 @@ const QueueControl = observer(
                   appState.pushMessage('원본 씬이 삭제되었거나 이동했습니다.');
                   return;
                 }
-                await backend.copyFile(
-                  path,
-                  `${imageService.getImageDir(
-                    curSession!,
-                    orgScene,
-                  )}/${Date.now().toString()}.png`,
-                );
-                let sourcePath = scene.sourceImage
-                  ? `${imageService.getImageDir(curSession!, orgScene)}/${scene.sourceImage}`
-                  : undefined;
-                if (!sourcePath && scene.preset?.image) {
-                  try {
-                    const sourceData = dataUriToBase64(
-                      (await imageService.fetchVibeImage(
-                        curSession!,
-                        scene.preset.image,
-                      ))!,
-                    );
-                    for (const filename of imageService.getOutputs(
-                      curSession!,
-                      orgScene,
-                    )) {
-                      const candidate = `${imageService.getImageDir(
-                        curSession!,
-                        orgScene,
-                      )}/${filename}`;
-                      const candidateData = dataUriToBase64(
-                        (await imageService.fetchImage(candidate))!,
+                const session = curSession!;
+                // 되돌리기(2차 묶음 5): 복사 + 원본 이미지 휴지통 = 1항목(deleteUndo.copyImageToOriginalRecorded — 되돌림 = 원본 복원 →
+                // 복사본 휴지통, 다시 실행 = 역순). 복사는 원본 형식 유지·겹치지 않는 이름(E9 — webp 가 .png 로 복사되던 결함도 함께 해소)
+                const { copied } = await copyImageToOriginalRecorded(session, orgScene, path, async (created) => {
+                  let sourcePath = scene.sourceImage
+                    ? `${imageService.getImageDir(session, orgScene)}/${scene.sourceImage}`
+                    : undefined;
+                  if (!sourcePath && scene.preset?.image) {
+                    try {
+                      const sourceData = dataUriToBase64(
+                        (await imageService.fetchVibeImage(session, scene.preset.image))!,
                       );
-                      if (candidateData === sourceData) {
-                        sourcePath = candidate;
-                        break;
+                      for (const filename of imageService.getOutputs(session, orgScene)) {
+                        // 방금 만든 복사본은 후보가 아니다(복사가 목록을 다시 읽어 이제 목록에 있다)
+                        if (created.includes(filename)) continue;
+                        const candidate = `${imageService.getImageDir(session, orgScene)}/${filename}`;
+                        const candidateData = dataUriToBase64(
+                          (await imageService.fetchImage(candidate))!,
+                        );
+                        if (candidateData === sourceData) {
+                          sourcePath = candidate;
+                          break;
+                        }
                       }
+                    } catch (e) {
+                      console.warn('원본 인페인트 이미지 확인 실패:', e);
                     }
-                  } catch (e) {
-                    console.warn('원본 인페인트 이미지 확인 실패:', e);
                   }
-                }
-                if (sourcePath && (await backend.existFile(sourcePath))) {
-                  await deleteImageFiles(curSession!, [sourcePath], orgScene);
-                } else {
-                  await imageService.refresh(curSession!, orgScene);
+                  return sourcePath && (await backend.existFile(sourcePath)) ? sourcePath : undefined;
+                });
+                if (!copied) {
+                  appState.pushMessage('이미지를 원본 씬으로 복사하지 못했습니다.', 'error');
+                  return;
                 }
                 setDisplayScene(undefined);
                 if (onClose) onClose(0);

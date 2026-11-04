@@ -507,7 +507,7 @@ export function checkInpaintSceneRename(
   return { kind: 'ok', name };
 }
 
-// ── 프로젝트 JSON 「현재 프로젝트에 씬만 임포트」 덮어쓰기 확인(X10) ──
+// ── 프로젝트 JSON 「현재 프로젝트에 씬만 임포트」 덮어쓰기 확인(X10 — 2026-11-04 2차 묶음 5 부터 되돌리기 가능) ──
 
 /** 가져올 씬 이름 중 현재 프로젝트에 이미 있는 것(가져올 파일 순서 유지). */
 export function overlappingSceneNames(
@@ -523,6 +523,6 @@ export function sceneImportOverwriteText(
 ): string {
   return (
     `같은 이름의 씬 ${overlapping.length}개(${failedNamesLine(overlapping, limit)})의 프롬프트 구성과 해상도를 불러온 내용으로 바꿉니다.\n` +
-    '기존 씬의 프롬프트 구성이 바뀝니다. 되돌릴 수 없습니다.\n계속할까요?'
+    '기존 씬의 프롬프트 구성이 바뀝니다(되돌리기로 복구할 수 있습니다).\n계속할까요?'
   );
 }

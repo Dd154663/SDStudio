@@ -63,6 +63,7 @@ import { configureProjectDeleteUndo } from './projectDeleteUndo';
 import { configureGlobalLibraryUndo } from './globalLibraryUndo';
 import { runProjectTrashDelete } from './projectDeleteFlow';
 import { physicalDirOf } from './storageLayout';
+import { getAppState } from './appStateRef';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -185,7 +186,20 @@ export const artistTagService = new ArtistTagService();
 export const globalPieceService = new GlobalPieceService();
 
 // 로컬 조각 되돌리기(U5) — 되살린 뒤 자동완성 조각 목록을 다시 만든다
-configurePieceUndo({ onRestored: (s) => void sessionService.reloadPieceLibraryDB(s) });
+// 조각 되돌리기 배선 — 로컬 = 자동완성 재구성, 전역(2차 묶음 5 — 전역 스택) = 저장 예약(기존 scheduleSave 경로) + 현재 프로젝트 자동완성
+configurePieceUndo({
+  onRestored: (s) => void sessionService.reloadPieceLibraryDB(s),
+  globalLibrary: () => globalPieceService.library,
+  onGlobalRestored: () => {
+    globalPieceService.scheduleSave();
+    try {
+      const cur = getAppState().curSession;
+      if (cur) void sessionService.reloadPieceLibraryDB(cur);
+    } catch {
+      /* 부팅 전 — 자동완성은 다음 프로젝트 열기 때 다시 만든다 */
+    }
+  },
+});
 
 export const globalPresetService = new GlobalPresetService();
 

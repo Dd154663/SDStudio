@@ -9,6 +9,7 @@ import {
 import { getAppState } from './appStateRef';
 import { nameErrorMessage, projectNameRules, promptName } from './nameInput';
 import { Session, genericSceneFromJSON } from './types';
+import type { GenericScene } from './types';
 import { stringifyExportJson } from './jsonExport';
 import type { ProjectTemplateEntrySnapshot } from './ProjectTemplateService';
 import { askImportPolicy, notifyImportDone } from './importFlow';
@@ -46,6 +47,17 @@ export interface ITemplateApplicationRecord {
   vibePaths: string[];
   referencePaths: string[];
   protectAreas?: TemplateProtectArea[];
+}
+
+/**
+ * importSceneTemplate 결과(2026-11-04 되돌리기 2차 묶음 5) — 호출부가 sceneImportUndo.recordSceneTemplateImport 로 기록한다.
+ * added = 세션에 들어간 씬 객체(들어간 순서), trashed = 덮어쓰기로 휴지통에 보낸 기존 씬(휴지통 슬롯·직전 이름·자리).
+ */
+export interface SceneTemplateImportResult {
+  template: string;
+  names: string[];
+  added: GenericScene[];
+  trashed: { scene: GenericScene; info: { slot: string; name: string; index: number } }[];
 }
 
 /**
@@ -847,9 +859,11 @@ export class TemplateService {
   // 덮어쓰기는 기존 씬을 moveSceneToTrash 경유로 제거한다 — 씬 제거 시 outs 폴더
   // .trash 이동 규칙(project_scene_loss_guard) 준수. 직접 Map 삭제 금지.
   // 공개 메서드 — 씬 툴바 ⋯메뉴 외에 순차 생성 설정 패널에서도 호출한다.
-  // 반환 = 실제로 세션에 들어간 씬 이름 목록(추가+덮어쓰기, 최종 이름 기준).
+  // 반환 = SceneTemplateImportResult(names = 실제로 세션에 들어간 씬 이름 목록 — 추가+덮어쓰기, 최종 이름 기준).
   // 취소·실패 시 null (호출처가 자동 선택 등 후속을 건너뛰도록).
-  async importSceneTemplate(session: Session): Promise<string[] | null> {
+  // 되돌리기(2026-11-04 2차 묶음 5): 여기서는 기록하지 않는다(서비스 안 기록 금지 — SPEC 「되돌리기 계약」). 들어간 씬 객체·
+  // 휴지통으로 보낸 기존 씬(슬롯·원래 이름·자리)을 돌려주고 호출부가 sceneImportUndo.recordSceneTemplateImport 로 1항목 기록한다.
+  async importSceneTemplate(session: Session): Promise<SceneTemplateImportResult | null> {
     const appState = getAppState();
     await this.ensureLoaded();
     const templates = this.listSceneTemplates().filter(
@@ -896,6 +910,8 @@ export class TemplateService {
     let replaced = 0;
     let skipped = 0;
     const importedNames: string[] = [];
+    const addedScenes: GenericScene[] = [];
+    const trashedScenes: SceneTemplateImportResult['trashed'] = [];
     const moveFailed: string[] = [];
     for (const src of scenes) {
       // 크로스 프로젝트 씬 복사 선례(AppContextMenu '설정만 복사') 재사용 —
@@ -916,8 +932,11 @@ export class TemplateService {
           // 기존 씬을 휴지통으로 옮기지 못하면(파일 잠금·다른 창 잠금) 덮어쓰지 않고 건너뛴다 —
           // 이동 실패 시 기존 씬은 그대로 남는다(2026-10-02 S1).
           if (old) {
+            const oldName = old.name;
+            const oldIndex = session.getScenes(old.type).indexOf(old);
+            let slot: string | undefined;
             try {
-              await trashService.moveSceneToTrash(session, old);
+              slot = await trashService.moveSceneToTrash(session, old);
             } catch (e) {
               console.error('씬 템플릿 덮어쓰기: 기존 씬 휴지통 이동 실패:', scene.name, e);
             }
@@ -925,10 +944,12 @@ export class TemplateService {
               moveFailed.push(scene.name);
               continue;
             }
+            if (slot) trashedScenes.push({ scene: old, info: { slot, name: oldName, index: oldIndex } });
           }
           session.addScene(scene);
           replaced++;
           importedNames.push(scene.name);
+          addedScenes.push(scene);
           continue;
         }
         // number: 기존 크로스 복사와 동일한 '_n' 접미 관례
@@ -940,6 +961,7 @@ export class TemplateService {
       session.addScene(scene);
       added++;
       importedNames.push(scene.name);
+      addedScenes.push(scene);
     }
     const parts = [`추가 ${added}개`];
     if (replaced) parts.push(`덮어쓰기 ${replaced}개`);
@@ -950,7 +972,7 @@ export class TemplateService {
       );
     }
     appState.pushMessage(`씬 템플릿을 프로젝트로 복사했습니다 — ${parts.join(', ')}`);
-    return importedNames;
+    return { template: tplName, names: importedNames, added: addedScenes, trashed: trashedScenes };
   }
 
   // ===== 퀵 생성 전용 프로젝트 (퀵 생성 개편, 2026-07-18 합의) =====

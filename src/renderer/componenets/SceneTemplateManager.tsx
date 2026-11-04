@@ -18,6 +18,7 @@ import {
   projectDeleteResultText,
 } from '../models/deleteFlowRules';
 import { deleteProjectRecorded } from '../models/projectDeleteUndo';
+import { recordSceneTemplateImport } from '../models/sceneImportUndo';
 import { PROJECT_RETENTION_DAYS } from '../models/TrashService';
 import { saveJsonFile } from '../models/exportUtil';
 import { interceptFileImportClick } from '../models/driveImport';
@@ -142,8 +143,10 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
 
   const importToCurrent = async () => {
     if (!curSession) return;
-    const names = await templateService.importSceneTemplate(curSession);
-    if (names && names.length > 0) onClose(); // 가져온 씬을 바로 보도록
+    const result = await templateService.importSceneTemplate(curSession);
+    // 되돌리기 1항목(들어간 씬 + 덮어쓰기로 휴지통에 보낸 기존 씬 — 2차 묶음 5)
+    recordSceneTemplateImport(curSession, result);
+    if (result && result.names.length > 0) onClose(); // 가져온 씬을 바로 보도록
   };
 
   // 파일 내보내기/불러오기 (PC↔모바일 크로스 작업 이동, 2026-07-18) —

@@ -56,9 +56,9 @@ export const FIND_REPLACE_VARIANT_KEYS: VariantFieldKeys = {
   preset: ['prompt', 'frontPrompt', 'backPrompt'],
 };
 
-/** 되돌리기에 담지 않는 범위의 이름(안내·확인 창 문구) */
+/** 되돌리기에 담지 않는 범위의 이름(안내·확인 창 문구) — global 범위 = 글로벌 그림체 + 글로벌 캐릭터 프리셋(2차 묶음 5 문구 보정) */
 export const FIND_REPLACE_UNRECORDED_LABEL: Readonly<Record<'global' | 'projectName', string>> = {
-  global: '글로벌 프리셋',
+  global: '글로벌 프리셋·글로벌 캐릭터 프리셋',
   projectName: '프로젝트 이름',
 };
 

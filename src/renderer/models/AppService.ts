@@ -78,7 +78,8 @@ import {
   editCharacterPresets,
 } from './presetUndo';
 import { UNDO_TEXT } from './undoService';
-import { editLocalPieceGroups } from './pieceUndo';
+import { editPieceGroups } from './pieceUndo';
+import { importProjectScenesRecorded } from './sceneImportUndo';
 import { extractPromptDataFromBase64, getFirstFile } from './util';
 import { ImageOptimizeMethod } from '../backend';
 import { v4 } from 'uuid';
@@ -1148,7 +1149,7 @@ export class AppState {
                 const cur = this.curSession!;
                 const newJson: ISession = await sessionService.migrate(json);
                 // 같은 이름 씬의 slots·resolution 을 바꾸기 전에 확인 1회(X10, 겹치는 씬이 없으면 생략).
-                // 휴지통 보존이 없는 제자리 교체라 되돌릴 수 없음을 알린다.
+                // 제자리 교체지만 되돌리기로 복구된다(2026-11-04 2차 묶음 5 — 덮어쓰기+새 씬 1항목).
                 const overlapping = overlappingSceneNames(
                   Object.keys(newJson.scenes),
                   (n) => cur.scenes.has(n),
@@ -1157,27 +1158,39 @@ export class AppState {
                   const go = await this.confirmAsync({
                     text: sceneImportOverwriteText(overlapping),
                     confirmText: '덮어쓰기',
-                    danger: 'permanent',
+                    // 되돌리기로 복구되므로 영구 삭제 등급(Enter 무시)이 아니라 일반 위험 등급(2차 묶음 5)
+                    danger: true,
                   });
                   if (!go) return;
                   // 확인 창이 떠 있는 동안 프로젝트가 바뀌었으면 적용하지 않는다
                   if (this.curSession !== cur) return;
                 }
-                for (const key of Object.keys(newJson.scenes)) {
-                  if (cur.scenes.has(key)) {
-                    cur.scenes.get(key)!.slots = newJson.scenes[key].slots.map(
-                      (slot: any) =>
-                        slot.map((piece: any) => PromptPiece.fromJSON(piece)),
-                    );
-                    cur.scenes.get(key)!.resolution =
-                      newJson.scenes[key].resolution;
-                  } else {
-                    const scene = newJson.scenes[key];
-                    cur.scenes.set(key, Scene.fromJSON(scene));
-                    cur.scenes.get(key)!.mains = [];
-                    cur.scenes.get(key)!.game = undefined;
+                const keys = Object.keys(newJson.scenes);
+                const overwriteTargets = keys
+                  .filter((key) => cur.scenes.has(key))
+                  .map((key) => cur.scenes.get(key)!);
+                // 되돌리기 1항목(덮어쓴 slots·resolution + 새 씬 — sceneImportUndo, 2차 묶음 5). 동작은 종전 그대로.
+                importProjectScenesRecorded(cur, overwriteTargets, () => {
+                  const created: GenericScene[] = [];
+                  for (const key of keys) {
+                    if (cur.scenes.has(key)) {
+                      cur.scenes.get(key)!.slots = newJson.scenes[key].slots.map(
+                        (slot: any) =>
+                          slot.map((piece: any) => PromptPiece.fromJSON(piece)),
+                      );
+                      cur.scenes.get(key)!.resolution =
+                        newJson.scenes[key].resolution;
+                    } else {
+                      const scene = Scene.fromJSON(newJson.scenes[key]);
+                      scene.mains = [];
+                      scene.game = undefined;
+                      // 키 = 파일의 씬 키(종전과 같은 Map 등록 — addScene 은 scene.name 을 키로 쓰므로 바꾸지 않았다)
+                      cur.scenes.set(key, scene);
+                      created.push(scene);
+                    }
                   }
-                }
+                  return created;
+                });
                 appState.pushDialog({
                   type: 'yes-only',
                   text: '씬을 불러왔습니다',
@@ -1231,9 +1244,9 @@ export class AppState {
             if (scopeLabel === '전역') globalPieceService.scheduleSave();
             if (this.curSession) sessionService.reloadPieceLibraryDB(this.curSession);
           };
-          // 되돌리기 = 로컬(현재 프로젝트) 대상만 1항목(U5) — 전역 대상이면 헬퍼가 그대로 실행만 한다
+          // 되돌리기 1항목 — 로컬 = 프로젝트 스택(U5), 전역 = 전역 스택(2차 묶음 5, 프로젝트 없이도). 헬퍼가 대상 Map 으로 판정
           const recordLocal = (name: string, mutate: () => void) =>
-            editLocalPieceGroups(this.curSession, targetLibrary, [name], UNDO_TEXT.pieceGroupImport(name), mutate);
+            editPieceGroups(this.curSession, targetLibrary, [name], UNDO_TEXT.pieceGroupImport(name), mutate);
 
           if (!targetLibrary.has(json.name)) {
             recordLocal(json.name, () => {

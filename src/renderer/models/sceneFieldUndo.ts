@@ -26,6 +26,7 @@ import {
   undoService,
   UNDO_TEXT,
   UndoPending,
+  UndoScope,
   UndoService,
   UndoSnapshotAdapter,
 } from './undoService';
@@ -288,7 +289,8 @@ export const domFocusLeaveWatcher: FocusLeaveWatcher = (onLeave) => {
 
 interface OpenEdit {
   key: string;
-  session: Session;
+  /** 프로젝트 스택 또는 전역 스택(전역 조각 — 2차 묶음 5) */
+  session: UndoScope;
   service: UndoService;
   pending: UndoPending;
   dispose: () => void;
@@ -334,7 +336,7 @@ export function touchSceneFieldEdit(
  * 기록 가능 여부(대상 범위·미러)는 호출부가 먼저 판정한다.
  */
 export function touchUndoEdit(
-  session: Session,
+  session: UndoScope,
   key: string,
   label: string,
   makeAdapter: () => UndoSnapshotAdapter<unknown>,

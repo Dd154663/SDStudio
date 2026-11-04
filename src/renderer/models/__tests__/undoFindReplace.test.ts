@@ -262,7 +262,7 @@ describe('「모두 변환」 = 되돌리기 1항목(프로젝트 범위)', () =
     expect(out.recorded).toBe(false);
     expect(out.replaced).toBe(2);
     expect(out.notUndone).toEqual([FIND_REPLACE_UNRECORDED_LABEL.global, FIND_REPLACE_UNRECORDED_LABEL.projectName]);
-    expect(UNDO_TEXT.findReplaceNotUndone(out.notUndone)).toBe('글로벌 프리셋·프로젝트 이름 변경은 되돌리기 대상이 아닙니다');
+    expect(UNDO_TEXT.findReplaceNotUndone(out.notUndone)).toBe('글로벌 프리셋·글로벌 캐릭터 프리셋·프로젝트 이름 변경은 되돌리기 대상이 아닙니다');
     expect(w.session.name).toBe('proj dog');
     expect(service.entries(w.session).past).toHaveLength(1); // 이전 기록 유지·새 항목 없음
   });
@@ -333,9 +333,9 @@ describe('확인 창 문구(A11 — Enter·버튼 공용)', () => {
     const w = makeWorld();
     const project = { name: w.session.name };
     const all = collect(w, 'cat', { project });
-    expect(unrecordedScopesOf(all)).toEqual(['글로벌 프리셋', '프로젝트 이름']);
+    expect(unrecordedScopesOf(all)).toEqual(['글로벌 프리셋·글로벌 캐릭터 프리셋', '프로젝트 이름']);
     expect(UNDO_TEXT.findReplaceConfirm(3, 'cat', '', unrecordedScopesOf(all))).toBe(
-      '3개 항목을 변환합니다.\n「cat」 → 「」 (삭제)\n글로벌 프리셋·프로젝트 이름 변경은 되돌릴 수 없습니다.',
+      '3개 항목을 변환합니다.\n「cat」 → 「」 (삭제)\n글로벌 프리셋·글로벌 캐릭터 프리셋·프로젝트 이름 변경은 되돌릴 수 없습니다.',
     );
     const projectOnly = all.filter((i) => i.target.kind === 'sceneSlots');
     expect(UNDO_TEXT.findReplaceConfirm(1, 'cat', 'dog', unrecordedScopesOf(projectOnly))).toBe(

@@ -30,13 +30,13 @@ import { stringifyExportJson } from '../models/jsonExport';
 import { observer } from 'mobx-react-lite';
 import HelpIcon from './HelpIcon';
 import {
-  beginLocalPieceDrag,
-  editLocalPieceGroups,
-  editLocalPieceLibrary,
+  beginPieceDrag,
+  editPieceGroups,
+  editPieceLibrary,
   movePieceInLibrary,
   pieceDragItem,
-  renameLocalPieceRecorded,
-  touchLocalPieceEdit,
+  renamePieceRecorded,
+  touchPieceEdit,
 } from '../models/pieceUndo';
 import type { UndoPending } from '../models/undoService';
 import { UNDO_TEXT } from '../models/undoService';
@@ -80,7 +80,7 @@ export const PieceCell = observer(
       };
     }, []);
 
-    // 조각 순서 드래그 = 끌기 시작~끝 1항목(로컬 조각만 — 전역은 기록 안 함, U5)
+    // 조각 순서 드래그 = 끌기 시작~끝 1항목(로컬 = 프로젝트 스택 U5, 전역 = 전역 스택 2차 묶음 5)
     const moveRecordRef = useRef<UndoPending | null>(null);
     const [{ isDragging }, drag, preview] = useDrag(
       {
@@ -89,7 +89,7 @@ export const PieceCell = observer(
         item: () => {
           moveRecordRef.current?.commit();
           moveRecordRef.current = movePiece
-            ? beginLocalPieceDrag(appState.curSession, curPieceLibrary)
+            ? beginPieceDrag(appState.curSession, curPieceLibrary)
             : null;
           return pieceDragItem(piece, curPieceLibrary, name, curWidth);
         },
@@ -151,7 +151,7 @@ export const PieceCell = observer(
                   curPieceLibrary.pieces.some((p) => p !== target && p.name === n),
               }).then((name) => {
                 if (!name) return;
-                renameLocalPieceRecorded(appState.curSession, curPieceLibrary, target, name);
+                renamePieceRecorded(appState.curSession, curPieceLibrary, target, name);
                 onReloadDB?.();
               });
             }}
@@ -170,7 +170,7 @@ export const PieceCell = observer(
                 callback: () => {
                   const index = curPieceLibrary.pieces.indexOf(piece);
                   if (index < 0) return;
-                  editLocalPieceLibrary(
+                  editPieceLibrary(
                     appState.curSession,
                     curPieceLibrary,
                     (g) => UNDO_TEXT.pieceRemove(g, piece.name),
@@ -193,8 +193,8 @@ export const PieceCell = observer(
             lineHighlight
             value={piece.prompt}
             onChange={(txt) => {
-              // 글자 입력 = 입력 칸을 떠날 때 1항목(로컬 조각만)
-              if (txt !== piece.prompt) touchLocalPieceEdit(appState.curSession, curPieceLibrary, piece);
+              // 글자 입력 = 입력 칸을 떠날 때 1항목(로컬·전역 조각)
+              if (txt !== piece.prompt) touchPieceEdit(appState.curSession, curPieceLibrary, piece);
               piece.prompt = txt;
               onPieceContentChange?.();
             }}
@@ -208,7 +208,7 @@ export const PieceCell = observer(
             onChange={(e) => {
               if (!movePiece) return;
               const checked = e.target.checked;
-              editLocalPieceLibrary(
+              editPieceLibrary(
                 appState.curSession,
                 curPieceLibrary,
                 (g) => UNDO_TEXT.pieceMulti(g, piece.name),
@@ -283,9 +283,9 @@ const PieceEditor = observer(() => {
         json = migratePieceLibrary(json);
       }
       const source = scope === 'local' ? curSession!.library : globalPieceService.library;
-      // 되돌리기 = 로컬 대상만(U5) — 전역은 헬퍼가 그대로 실행만 한다
+      // 되돌리기 = 로컬 대상은 프로젝트 스택(U5), 전역 대상은 전역 스택(2차 묶음 5) — 헬퍼가 대상 Map 으로 판정
       const addToSource = (name: string, lib: PieceLibrary) =>
-        editLocalPieceGroups(curSession, source, [name], UNDO_TEXT.pieceGroupImport(name), () => {
+        editPieceGroups(curSession, source, [name], UNDO_TEXT.pieceGroupImport(name), () => {
           if (scope === 'local') {
             source.set(name, lib);
           } else {
@@ -346,7 +346,7 @@ const PieceEditor = observer(() => {
 
     const libraryName = 'wildcards';
     const source = scope === 'local' ? curSession!.library : globalPieceService.library;
-    // 대상 그룹(선택된 그룹, 없으면 wildcards — 없으면 만든다). 그룹 생성+조각 추가 = 되돌리기 1항목(로컬만, U5)
+    // 대상 그룹(선택된 그룹, 없으면 wildcards — 없으면 만든다). 그룹 생성+조각 추가 = 되돌리기 1항목(로컬·전역, U5·2차 묶음 5)
     const groupName = curPieceLibrary ? selectedPieceLibrary ?? curPieceLibrary.name : libraryName;
     const existing = curPieceLibrary ?? source.get(libraryName);
 
@@ -358,7 +358,7 @@ const PieceEditor = observer(() => {
     }
 
     const prompt = lines.join('\n');
-    editLocalPieceGroups(
+    editPieceGroups(
       curSession,
       source,
       [groupName],
@@ -452,7 +452,7 @@ const PieceEditor = observer(() => {
       pieces: [],
       name: name,
     });
-    editLocalPieceGroups(curSession, source, [name], UNDO_TEXT.pieceGroupAdd(name), () => {
+    editPieceGroups(curSession, source, [name], UNDO_TEXT.pieceGroupAdd(name), () => {
       if (scope === 'local') {
         source.set(name, newLib);
       } else {
@@ -474,15 +474,16 @@ const PieceEditor = observer(() => {
         outcome: 'permanent',
       }),
       callback: async () => {
-        if (scope === 'local') {
-          // 되돌리기 = 같은 이름·내용·자리로 되살림(로컬만, U5)
-          const name = selectedPieceLibrary!;
-          editLocalPieceGroups(curSession, curSession!.library, [name], UNDO_TEXT.pieceGroupRemove(name), () => {
-            curSession!.library.delete(name);
-          });
-        } else {
-          globalPieceService.deleteLibrary(selectedPieceLibrary!);
-        }
+        // 되돌리기 = 같은 이름·내용·자리로 되살림(로컬 = 프로젝트 스택 U5, 전역 = 전역 스택 2차 묶음 5)
+        const name = selectedPieceLibrary!;
+        const source = scope === 'local' ? curSession!.library : globalPieceService.library;
+        editPieceGroups(curSession, source, [name], UNDO_TEXT.pieceGroupRemove(name), () => {
+          if (scope === 'local') {
+            source.delete(name);
+          } else {
+            globalPieceService.deleteLibrary(name);
+          }
+        });
         setSelectedPieceLibrary(null);
         reloadDB();
       },
@@ -528,9 +529,15 @@ const PieceEditor = observer(() => {
       }
     };
 
-    // 되돌리기 = 대상이 로컬일 때만(전역 → 로컬 복사, U5) — 전역 대상이면 헬퍼가 그대로 실행만 한다
+    // 되돌리기 = 대상 범위의 스택에 1항목(전역 → 로컬 = 프로젝트 스택 U5, 로컬 → 전역 = 전역 스택 2차 묶음 5)
     const recordTarget = <R,>(name: string, how: string, mutate: () => R): R =>
-      editLocalPieceGroups(curSession, targetSource, [name], UNDO_TEXT.pieceGroupFromGlobal(name, how), mutate);
+      editPieceGroups(
+        curSession,
+        targetSource,
+        [name],
+        scope === 'local' ? UNDO_TEXT.pieceGroupToGlobal(name, how) : UNDO_TEXT.pieceGroupFromGlobal(name, how),
+        mutate,
+      );
 
     // 통째로 복사 (새 이름 또는 대상에 없는 경우)
     const doFullCopy = (name: string) => {
@@ -816,7 +823,7 @@ const PieceEditor = observer(() => {
                   existing: (n) => curPieceLibrary.pieces.some((p) => p.name === n),
                 });
                 if (!name) return;
-                editLocalPieceLibrary(
+                editPieceLibrary(
                   curSession,
                   curPieceLibrary,
                   (g) => UNDO_TEXT.pieceAdd(g, name),

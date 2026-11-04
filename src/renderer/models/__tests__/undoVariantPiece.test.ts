@@ -36,15 +36,15 @@ import {
   variantSceneOfPreset,
 } from '../variantSceneUndo';
 import {
-  beginLocalPieceDrag,
+  beginPieceDrag,
   configurePieceUndo,
-  editLocalPieceGroups,
-  editLocalPieceLibrary,
+  editPieceGroups,
+  editPieceLibrary,
   localGroupNameOf,
   movePieceInLibrary,
   pieceDragItem,
-  renameLocalPieceRecorded,
-  touchLocalPieceEdit,
+  renamePieceRecorded,
+  touchPieceEdit,
 } from '../pieceUndo';
 
 interface Harness {
@@ -526,7 +526,7 @@ describe('로컬 조각 — 그룹', () => {
     const session = pieceSession();
     const onRestored = jest.fn();
     configurePieceUndo({ onRestored });
-    editLocalPieceGroups(session, session.library, ['g3'], UNDO_TEXT.pieceGroupAdd('g3'), () => {
+    editPieceGroups(session, session.library, ['g3'], UNDO_TEXT.pieceGroupAdd('g3'), () => {
       session.library.set('g3', lib('g3', ['n', 'N']));
     }, { service });
     await service.undo(session);
@@ -540,7 +540,7 @@ describe('로컬 조각 — 그룹', () => {
     const { service } = harness();
     const session = pieceSession();
     session.library.set('g3', lib('g3'));
-    editLocalPieceGroups(session, session.library, ['g1'], UNDO_TEXT.pieceGroupRemove('g1'), () => {
+    editPieceGroups(session, session.library, ['g1'], UNDO_TEXT.pieceGroupRemove('g1'), () => {
       session.library.delete('g1');
     }, { service });
     session.library.set('later', lib('later')); // 기록 밖에서 생긴 그룹은 뒤에 남는다
@@ -552,12 +552,12 @@ describe('로컬 조각 — 그룹', () => {
   test('JSON 불러오기·전역 → 로컬 병합 복사 = 대상 그룹 단위 1항목', async () => {
     const { service } = harness();
     const session = pieceSession();
-    editLocalPieceGroups(session, session.library, ['imp'], UNDO_TEXT.pieceGroupImport('imp'), () => {
+    editPieceGroups(session, session.library, ['imp'], UNDO_TEXT.pieceGroupImport('imp'), () => {
       session.library.set('imp', lib('imp', ['i', 'I']));
     }, { service });
     const g2 = session.library.get('g2')!;
     const x = g2.pieces[0];
-    editLocalPieceGroups(session, session.library, ['g2'], UNDO_TEXT.pieceGroupFromGlobal('g2', '병합'), () => {
+    editPieceGroups(session, session.library, ['g2'], UNDO_TEXT.pieceGroupFromGlobal('g2', '병합'), () => {
       g2.pieces[0] = Piece.fromJSON({ name: 'x', prompt: 'X from global' });
       g2.pieces.push(Piece.fromJSON({ name: 'y', prompt: 'Y' }));
     }, { service });
@@ -577,13 +577,13 @@ describe('로컬 조각 — 조각 단위(객체 참조 유지)', () => {
     const session = pieceSession();
     const g1 = session.library.get('g1')!;
     const [a, b, c] = g1.pieces;
-    editLocalPieceLibrary(session, g1, (g) => UNDO_TEXT.pieceAdd(g, 'd'), () => {
+    editPieceLibrary(session, g1, (g) => UNDO_TEXT.pieceAdd(g, 'd'), () => {
       g1.pieces.push(Piece.fromJSON({ name: 'd', prompt: '', multi: false }));
     }, { service });
-    editLocalPieceLibrary(session, g1, (g) => UNDO_TEXT.pieceRemove(g, 'b'), () => {
+    editPieceLibrary(session, g1, (g) => UNDO_TEXT.pieceRemove(g, 'b'), () => {
       g1.pieces.splice(1, 1);
     }, { service });
-    editLocalPieceLibrary(session, g1, (g) => UNDO_TEXT.pieceMulti(g, 'a'), () => {
+    editPieceLibrary(session, g1, (g) => UNDO_TEXT.pieceMulti(g, 'a'), () => {
       a.multi = true;
     }, { service });
     expect(service.entries(session).past.map((e) => e.label)).toEqual([
@@ -608,7 +608,7 @@ describe('로컬 조각 — 조각 단위(객체 참조 유지)', () => {
     const session = pieceSession();
     const g1 = session.library.get('g1')!;
     const b = g1.pieces[1];
-    renameLocalPieceRecorded(session, g1, b, 'bee', { service });
+    renamePieceRecorded(session, g1, b, 'bee', { service });
     expect(b.name).toBe('bee');
     expect(service.peekLabel(session, 'undo')).toBe(UNDO_TEXT.pieceRename('g1', 'bee', 'b'));
     await service.undo(session);
@@ -626,7 +626,7 @@ describe('로컬 조각 — 조각 단위(객체 참조 유지)', () => {
     const a = g1.pieces[0];
     const { watch, leave } = manualWatch();
     for (const t of ['A1', 'A12', 'A123']) {
-      touchLocalPieceEdit(session, g1, a, { service, watch });
+      touchPieceEdit(session, g1, a, { service, watch });
       a.prompt = t;
     }
     leave();
@@ -641,13 +641,13 @@ describe('로컬 조각 — 조각 단위(객체 참조 유지)', () => {
     const session = pieceSession();
     const g1 = session.library.get('g1')!;
     const objs = [...g1.pieces];
-    const drag = beginLocalPieceDrag(session, g1, { service });
+    const drag = beginPieceDrag(session, g1, { service });
     movePieceInLibrary(g1, 'a', 'b');
     movePieceInLibrary(g1, 'a', 'c');
     expect(names(g1)).toEqual(['b', 'c', 'a']);
     drag.commit();
     expect(service.entries(session).past.map((e) => e.label)).toEqual([UNDO_TEXT.pieceMove('g1')]);
-    const still = beginLocalPieceDrag(session, g1, { service });
+    const still = beginPieceDrag(session, g1, { service });
     expect(still.commit()).toBe(false);
     await service.undo(session);
     expect(names(g1)).toEqual(['a', 'b', 'c']);
@@ -659,7 +659,7 @@ describe('로컬 조각 — 조각 단위(객체 참조 유지)', () => {
     const { service, confirm } = harness();
     const session = pieceSession();
     const g1 = session.library.get('g1')!;
-    editLocalPieceLibrary(session, g1, (g) => UNDO_TEXT.pieceAdd(g, 'd'), () => {
+    editPieceLibrary(session, g1, (g) => UNDO_TEXT.pieceAdd(g, 'd'), () => {
       g1.pieces.push(Piece.fromJSON({ name: 'd', prompt: '' }));
     }, { service });
     g1.pieces[0].prompt = 'outside';
@@ -675,20 +675,20 @@ describe('로컬 조각 — 조각 단위(객체 참조 유지)', () => {
   });
 });
 
-describe('전역 조각은 기록하지 않는다', () => {
-  test('대상이 session.library 가 아니거나 그룹이 로컬에 없으면 실행만', () => {
+describe('범위 밖 Map 은 기록하지 않는다(전역 조각 기록은 2차 묶음 5 — undoBundle5.test.ts)', () => {
+  test('대상이 session.library·배선된 전역 Map 이 아니면 실행만', () => {
     const { service } = harness();
     const session = pieceSession();
     const globalMap = new Map<string, PieceLibrary>([['gg', lib('gg', ['p', 'P'], ['q', 'Q'])]]);
     const gg = globalMap.get('gg')!;
     expect(localGroupNameOf(session, gg)).toBeUndefined();
-    editLocalPieceGroups(session, globalMap, ['new'], 'x', () => globalMap.set('new', lib('new')), { service });
-    editLocalPieceLibrary(session, gg, (g) => g, () => gg.pieces.push(Piece.fromJSON({ name: 'r', prompt: '' })), {
+    editPieceGroups(session, globalMap, ['new'], 'x', () => globalMap.set('new', lib('new')), { service });
+    editPieceLibrary(session, gg, (g) => g, () => gg.pieces.push(Piece.fromJSON({ name: 'r', prompt: '' })), {
       service,
     });
-    renameLocalPieceRecorded(session, gg, gg.pieces[0], 'pp', { service });
-    touchLocalPieceEdit(session, gg, gg.pieces[1], { service });
-    expect(beginLocalPieceDrag(session, gg, { service }).commit()).toBe(false);
+    renamePieceRecorded(session, gg, gg.pieces[0], 'pp', { service });
+    touchPieceEdit(session, gg, gg.pieces[1], { service });
+    expect(beginPieceDrag(session, gg, { service }).commit()).toBe(false);
     expect(globalMap.has('new')).toBe(true);
     expect(names(gg)).toEqual(['pp', 'q', 'r']);
     expect(hasOpenSceneFieldEdit()).toBe(false);
@@ -699,7 +699,7 @@ describe('전역 조각은 기록하지 않는다', () => {
     const { service, mirror } = harness();
     const session = pieceSession();
     mirror.on = true;
-    editLocalPieceGroups(session, session.library, ['g9'], 'x', () => session.library.set('g9', lib('g9')), {
+    editPieceGroups(session, session.library, ['g9'], 'x', () => session.library.set('g9', lib('g9')), {
       service,
     });
     expect(session.library.has('g9')).toBe(true);

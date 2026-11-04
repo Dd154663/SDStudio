@@ -57,6 +57,7 @@ import {
 } from '../models/projectTemplateBackup';
 import { deleteConfirmText, safeImportedImageName } from '../models/deleteFlowRules';
 import { beginCharacterPresetRecord, editCharacterPresets } from '../models/presetUndo';
+import { recordSceneTemplateImport } from '../models/sceneImportUndo';
 import { UNDO_TEXT } from '../models/undoService';
 import {
   createGlobalCharacterFolderRecorded,
@@ -1707,8 +1708,11 @@ export const CharacterPresetEditor = observer(({
                         (2026-07-18 재검증 피드백 1) — 가져온 씬은 자동 선택 */}
                     <button
                       onClick={async () => {
-                        const names =
+                        const result =
                           await templateService.importSceneTemplate(curSession);
+                        // 되돌리기 1항목(들어간 씬 + 덮어쓰기로 휴지통에 보낸 기존 씬 — 2차 묶음 5)
+                        recordSceneTemplateImport(curSession, result);
+                        const names = result?.names;
                         if (names && names.length > 0) {
                           setSelectedScenes((prev) => {
                             const next = new Set(prev);

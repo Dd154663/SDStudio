@@ -316,7 +316,7 @@ export const UNDO_TEXT = {
   imageAttachBatch: (count: number) => `일괄 이미지 첨부 ${count}개 씬`,
   maskApplyBatch: (count: number) => `인페인트 마스크 일괄 적용 ${count}개 씬`,
   strengthNoiseBatch: (count: number) => `강도·노이즈 일괄 변경 ${count}개 씬`,
-  // U5 로컬 조각(프로젝트 조각그룹) — pieceUndo.ts. 전역 조각은 기록하지 않는다
+  // U5 로컬 조각(프로젝트 조각그룹) — pieceUndo.ts. 전역 조각은 2차 묶음 5 에서 전역 스택에 같은 라벨 + 「전역」 머리(globalPieceLabel)
   pieceGroupAdd: (name: string) => `조각그룹 추가: ${name}`,
   pieceGroupRemove: (name: string) => `조각그룹 삭제: ${name}`,
   pieceGroupImport: (name: string) => `조각그룹 불러오기: ${name}`,
@@ -328,6 +328,15 @@ export const UNDO_TEXT = {
   piecePrompt: (group: string, name: string) => `조각 내용 편집: ${group}.${name}`,
   pieceMulti: (group: string, name: string) => `조각 랜덤 줄 모드 변경: ${group}.${name}`,
   pieceMove: (group: string) => `조각 순서 변경: ${group}`,
+  // 2차 묶음 5 전역 조각(GlobalPieceService.library — 전역 스택) — pieceUndo.ts 가 위 라벨에 머리를 붙인다(이미 「전역」이 있으면 그대로)
+  globalPieceLabel: (label: string) => (label.includes('전역') ? label : `전역 ${label}`),
+  pieceGroupToGlobal: (name: string, how: string) => `로컬 조각그룹을 전역으로 복사(${how}): ${name}`,
+  globalPieceChanged: (groups: string) => `전역 조각그룹 「${groups}」이(가) 그사이 바뀌었습니다`,
+  // 2차 묶음 5 씬 불러오기 — sceneImportUndo.ts
+  sceneTemplateImport: (template: string, count: number) => `씬 템플릿에서 씬 ${count}개 불러오기: ${template}`,
+  sceneImportToProject: (count: number) => `현재 프로젝트에 씬 ${count}개 불러오기`,
+  // 2차 묶음 5 원본 씬으로 이미지 복사(복사 + 원본 휴지통 — deleteUndo 두 기록의 묶음)
+  imageCopyToOriginal: (sceneName: string) => `원본 씬으로 이미지 복사: ${sceneName}`,
   // 2차 P3 찾기/바꾸기 「모두 변환」 — findReplaceUndo.ts. 글로벌 프리셋·프로젝트 이름은 기록하지 않는다(사용자 결정 D4)
   findReplaceAll: (search: string, replace: string, count: number) =>
     `모두 변환 ${count}개: 「${clipUndoText(search)}」 → ${replace ? `「${clipUndoText(replace)}」` : '(삭제)'}`,
