@@ -5,12 +5,19 @@ import { observer } from 'mobx-react-lite';
 import { appState, ExportPreset } from '../models/AppService';
 import { validateName } from '../models/nameInput';
 import { deleteConfirmText } from '../models/deleteFlowRules';
+import { ExportPresetOps, saveExportPresetsRecorded } from '../models/globalLibraryUndo';
+import { UNDO_TEXT } from '../models/undoService';
 
 import ModalOverlay from './ModalOverlay';
 import { useGuardedClose } from './backdropClose';
 
 import { FaPlus, FaTrash, FaPen } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
+
+const EXPORT_PRESET_OPS: ExportPresetOps<ExportPreset> = {
+  load: () => appState.loadExportPresets(),
+  save: (presets) => appState.saveExportPresets(presets),
+};
 
 const ExportPresetManager = observer(() => {
   const [presets, setPresets] = useState<ExportPreset[]>([]);
@@ -33,11 +40,42 @@ const ExportPresetManager = observer(() => {
   useEffect(() => {
     if (appState.exportPresetManagerOpen) {
       const loaded = appState.loadExportPresets();
+      presetsRef.current = loaded;
       setPresets(loaded);
       setEditingIndex(null);
       setFormAndBaseline(emptyForm());
     }
   }, [appState.exportPresetManagerOpen]);
+
+  // 되돌리기·다시 실행(2차 묶음 4 P5)이 목록을 바꾸면 열린 창도 다시 읽는다 — 이 창의 낡은 목록으로 덮어쓰지 않게.
+  // 이 창 자신의 저장(commitPresets)은 같은 배열이 돌아오므로 무시한다. 편집 중이던 프리셋은 이름으로 다시 찾는다.
+  const presetsRef = useRef<ExportPreset[]>(presets);
+  const editingIndexRef = useRef<number | null>(editingIndex);
+  presetsRef.current = presets;
+  editingIndexRef.current = editingIndex;
+  useEffect(() => {
+    if (!appState.exportPresetManagerOpen) return;
+    return appState.subscribeExportPresets((list) => {
+      if (list === presetsRef.current) return;
+      const prev = presetsRef.current;
+      const ei = editingIndexRef.current;
+      const editingName = ei !== null ? prev[ei]?.name : undefined;
+      presetsRef.current = list;
+      setPresets(list);
+      setRenamingIndex(null);
+      if (ei !== null) {
+        const ni = editingName !== undefined ? list.findIndex((p) => p.name === editingName) : -1;
+        setEditingIndex(ni >= 0 ? ni : null);
+      }
+    });
+  }, [appState.exportPresetManagerOpen]);
+
+  // 목록 저장 공용 — 되돌리기 전역 스택에 한 항목(통째 스냅숏). 읽기·저장은 종전처럼 appState 위임 경유
+  const commitPresets = (updated: ExportPreset[], label: string) => {
+    presetsRef.current = updated;
+    setPresets(updated);
+    saveExportPresetsRecorded(updated, label, { ops: { exportPresets: EXPORT_PRESET_OPS } });
+  };
 
   // 바닥 [취소] 도 ✕·바깥 클릭·Esc 와 같은 닫기 요청(가드 경유) — 폼만 되돌리고 창을 남기지 않는다
   const requestClose = useGuardedClose(isDirty, () => onClose());
@@ -82,8 +120,10 @@ const ExportPresetManager = observer(() => {
         p === preset ? p : { ...p, isDefault: false },
       );
     }
-    setPresets(updated);
-    appState.saveExportPresets(updated);
+    commitPresets(
+      updated,
+      editingIndex !== null ? UNDO_TEXT.exportPresetSave(preset.name) : UNDO_TEXT.exportPresetAdd(preset.name),
+    );
     // 저장한 폼이 새 기준값 — 저장 뒤 닫기는 가드를 타지 않는다
     setBaseline(form);
     if (editingIndex === null) {
@@ -94,8 +134,7 @@ const ExportPresetManager = observer(() => {
 
   const deletePreset = (idx: number) => {
     const updated = presets.filter((_, i) => i !== idx);
-    setPresets(updated);
-    appState.saveExportPresets(updated);
+    commitPresets(updated, UNDO_TEXT.exportPresetDelete(presets[idx]?.name ?? ''));
     if (editingIndex === idx) {
       setEditingIndex(null);
       setFormAndBaseline(emptyForm());
@@ -157,8 +196,7 @@ const ExportPresetManager = observer(() => {
     const updated = presets.map((p, i) =>
       i === renamingIndex ? { ...p, name } : p,
     );
-    setPresets(updated);
-    appState.saveExportPresets(updated);
+    commitPresets(updated, UNDO_TEXT.exportPresetRename(currentName ?? '', name));
     // 편집 중인 폼이 이 프리셋이면 폼 이름도 동기화(이미 저장된 이름이라 기준값도 함께)
     if (editingIndex === renamingIndex) {
       setForm((f) => ({ ...f, name }));
@@ -184,8 +222,7 @@ const ExportPresetManager = observer(() => {
     const copy: ExportPreset = { ...src, name, isDefault: false };
     const updated = [...presets];
     updated.splice(idx + 1, 0, copy);
-    setPresets(updated);
-    appState.saveExportPresets(updated);
+    commitPresets(updated, UNDO_TEXT.exportPresetDuplicate(name));
     // 삽입으로 뒤쪽 인덱스가 밀리므로 편집 중 인덱스 보정
     if (editingIndex !== null && editingIndex > idx) {
       setEditingIndex(editingIndex + 1);

@@ -26,6 +26,16 @@ import { artistLibraryService, imageService, backend } from '../models';
 import { IArtistEntry, IArtistImage } from '../models/ArtistLibraryService';
 import { ModelSamplingFamily } from '../models/modelSamplingProfiles';
 import { appState } from '../models/AppService';
+import {
+  addArtistTagPresetRecorded,
+  addArtistTagRecorded,
+  removeArtistTagPresetRecorded,
+  removeArtistTagRecorded,
+  renameArtistRecorded,
+  setArtistImageFamilyRecorded,
+  setArtistThumbnailRecorded,
+  toggleArtistFavoriteRecorded,
+} from '../models/globalLibraryUndo';
 import { promptName } from '../models/nameInput';
 import {
   batchResultLine,
@@ -124,9 +134,9 @@ const TagPresetManageModal = observer(({ onClose }: { onClose: () => void }) => 
             placeholder="새 태그 (예: 러프)"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { artistLibraryService.addTagPreset(input); setInput(''); } }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { addArtistTagPresetRecorded(input); setInput(''); } }}
           />
-          <button className="back-sky !rounded-md px-3 py-1.5 text-sm" onClick={() => { artistLibraryService.addTagPreset(input); setInput(''); }}>추가</button>
+          <button className="back-sky !rounded-md px-3 py-1.5 text-sm" onClick={() => { addArtistTagPresetRecorded(input); setInput(''); }}>추가</button>
         </div>
         <div className="flex flex-wrap gap-2">
           {artistLibraryService.tagPresets.length === 0 && (
@@ -135,7 +145,7 @@ const TagPresetManageModal = observer(({ onClose }: { onClose: () => void }) => 
           {artistLibraryService.tagPresets.map((t) => (
             <span key={t} className="flex items-center gap-1 text-sm px-2 py-1 rounded-md bg-[var(--c-surface)] text-body">
               {t}
-              <button className="text-faint hover:text-red-500" aria-label={`태그 프리셋 ${t} 삭제`} onClick={() => artistLibraryService.removeTagPreset(t)}>
+              <button className="text-faint hover:text-red-500" aria-label={`태그 프리셋 ${t} 삭제`} onClick={() => removeArtistTagPresetRecorded(t)}>
                 <FaTrash size={11} />
               </button>
             </span>
@@ -247,7 +257,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                     existing: (n) => !!artistLibraryService.findArtistByName(n, artist.id),
                   });
                   if (newName) {
-                    artistLibraryService.renameArtist(artist.id, newName);
+                    renameArtistRecorded(artist.id, newName);
                   }
                 }}
               >
@@ -255,7 +265,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
               </button>
             </Tooltip>
             <Tooltip content="즐겨찾기">
-              <button className="icon-button back-gray !rounded-md p-2" onClick={() => artistLibraryService.toggleFavorite(artist.id)}>
+              <button className="icon-button back-gray !rounded-md p-2" onClick={() => toggleArtistFavoriteRecorded(artist.id)}>
                 {artist.favorite ? <FaHeart className="text-red-500" /> : <FaRegHeart />}
               </button>
             </Tooltip>
@@ -335,7 +345,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                     <button
                       key={f}
                       className={'px-2 py-0.5 rounded-full border ' + (selected.family === f ? 'border-sky-500 text-sky-500 bg-sky-100 dark:bg-sky-900/40' : 'line-color text-muted hover:border-sky-400')}
-                      onClick={() => artistLibraryService.setImageFamily(artist.id, selected.id, selected.family === f ? undefined : f)}
+                      onClick={() => setArtistImageFamilyRecorded(artist.id, selected.id, selected.family === f ? undefined : f)}
                       title="이 샘플이 나온 모델 계열(다시 누르면 미지정)"
                     >
                       {FAMILY_LABEL[f]}
@@ -347,7 +357,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
               {selected && (
                 <div className="flex gap-2 mt-2">
                   {artist.images[0]?.id !== selected.id && (
-                    <button className="text-xs back-gray !rounded-md px-2 py-1" onClick={() => artistLibraryService.setThumbnail(artist.id, selected.id)}>
+                    <button className="text-xs back-gray !rounded-md px-2 py-1" onClick={() => setArtistThumbnailRecorded(artist.id, selected.id)}>
                       <ActionIcon id="pin-default" className="inline mr-1" size={10} />대표로 지정
                     </button>
                   )}
@@ -385,7 +395,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                 {artist.tags.map((t) => (
                   <span key={t} className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300">
                     {t}
-                    <button className="hover:text-red-500" onClick={() => artistLibraryService.removeTag(artist.id, t)}>×</button>
+                    <button className="hover:text-red-500" onClick={() => removeArtistTagRecorded(artist.id, t)}>×</button>
                   </span>
                 ))}
               </div>
@@ -394,7 +404,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                 placeholder="태그 추가 후 Enter (예: 러프)"
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { artistLibraryService.addTag(artist.id, tagInput); setTagInput(''); } }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { addArtistTagRecorded(artist.id, tagInput); setTagInput(''); } }}
               />
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs text-muted">태그 프리셋 (클릭해서 추가)</span>
@@ -411,7 +421,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
                   return (
                     <button key={t} disabled={has}
                       className={'text-xs px-2.5 py-1 rounded-full border ' + (has ? 'line-color text-gray-300 dark:text-gray-600' : 'line-color text-muted hover:border-sky-500 hover:text-sky-500')}
-                      onClick={() => artistLibraryService.addTag(artist.id, t)}>
+                      onClick={() => addArtistTagRecorded(artist.id, t)}>
                       + {t}
                     </button>
                   );
@@ -502,7 +512,7 @@ const ArtistCard = observer(({
             <Tooltip content="즐겨찾기">
               <button
                 className="p-2 max-md:inline-flex max-md:items-center max-md:justify-center max-md:min-w-9 max-md:min-h-9 rounded-lg text-muted hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
-                onClick={(e) => { e.stopPropagation(); artistLibraryService.toggleFavorite(artist.id); }}
+                onClick={(e) => { e.stopPropagation(); toggleArtistFavoriteRecorded(artist.id); }}
               >
                 {artist.favorite ? <FaHeart size={18} className="text-red-500" /> : <FaRegHeart size={18} className="hover:text-red-500" />}
               </button>

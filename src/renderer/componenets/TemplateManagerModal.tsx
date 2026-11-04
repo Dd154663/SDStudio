@@ -36,6 +36,7 @@ import {
 import { CharacterPreset, CharacterPrompt } from '../models/types';
 import { Sampling, NoiseSchedule } from '../backends/imageGen';
 import HelpIcon from './HelpIcon';
+import { renameTemplateRecorded } from '../models/globalLibraryUndo';
 
 // "템플릿 관리" 오버레이 (프로젝트 상속 v2 — 2026-07-16 워크플로우형 재설계).
 //
@@ -1402,7 +1403,7 @@ export const TemplateManagerModal = observer(
       });
       if (!name) return;
       try {
-        await projectTemplateService.rename(entry.id, name);
+        await renameTemplateRecorded(entry.id, name);
       } catch (e: any) {
         appState.pushMessage(
           nameErrorMessage(e, 'template', name, '이름 변경에 실패했습니다'),

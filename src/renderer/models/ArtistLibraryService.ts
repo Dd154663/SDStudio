@@ -305,7 +305,15 @@ export class ArtistLibraryService extends EventTarget {
   toggleFavorite(id: string): void {
     const a = this.getArtist(id);
     if (!a) return;
-    a.favorite = !a.favorite;
+    this.setFavorite(id, !a.favorite);
+  }
+
+  // 즐겨찾기 절대값(2차 P5 되돌리기 — toggleFavorite 도 이것을 부른다, 동작 불변)
+  @action
+  setFavorite(id: string, on: boolean): void {
+    const a = this.getArtist(id);
+    if (!a) return;
+    a.favorite = on;
     a.updatedAt = Date.now();
     this.artists = [...this.artists];
     this.scheduleSave();
@@ -380,6 +388,28 @@ export class ArtistLibraryService extends EventTarget {
     this.scheduleSave();
   }
 
+  // 샘플 이미지 순서 통째 지정(2차 P5 — 대표 썸네일 지정의 되돌리기). imageIds 에 없는 이미지는 원래 순서로 뒤에 둔다
+  // (목록에 없는 id 는 무시) — 이미지를 더하거나 빼지 않는다.
+  @action
+  setImageOrder(id: string, imageIds: string[]): void {
+    const a = this.getArtist(id);
+    if (!a) return;
+    const byId = new Map(a.images.map((i) => [i.id, i]));
+    const ordered: IArtistImage[] = [];
+    for (const imageId of imageIds) {
+      const img = byId.get(imageId);
+      if (!img) continue;
+      ordered.push(img);
+      byId.delete(imageId);
+    }
+    for (const img of a.images) if (byId.has(img.id)) ordered.push(img);
+    if (ordered.every((img, i) => img === a.images[i])) return;
+    a.images = ordered;
+    a.updatedAt = Date.now();
+    this.artists = [...this.artists];
+    this.scheduleSave();
+  }
+
   // ---------- tags ----------
 
   // 태그 정규화: 공백 제거, 앞에 # 보장.
@@ -411,6 +441,23 @@ export class ArtistLibraryService extends EventTarget {
     this.scheduleSave();
   }
 
+  // 태그 목록 통째 지정(2차 P5 — 태그 추가·제거의 되돌리기, 원래 자리 유지). 정규화·중복 제거는 addTag 와 같다.
+  @action
+  setTags(id: string, tags: string[]): void {
+    const a = this.getArtist(id);
+    if (!a) return;
+    const next: string[] = [];
+    for (const tag of tags) {
+      const t = this.normalizeTag(tag);
+      if (t && !next.includes(t)) next.push(t);
+    }
+    if (next.length === a.tags.length && next.every((t, i) => t === a.tags[i])) return;
+    a.tags = next;
+    a.updatedAt = Date.now();
+    this.artists = [...this.artists];
+    this.scheduleSave();
+  }
+
   // ---------- tag presets ----------
 
   @action
@@ -424,6 +471,19 @@ export class ArtistLibraryService extends EventTarget {
   @action
   removeTagPreset(tag: string): void {
     this.tagPresets = this.tagPresets.filter((t) => t !== tag);
+    this.scheduleSave();
+  }
+
+  // 태그 프리셋 팔레트 통째 지정(2차 P5 — 추가·제거의 되돌리기, 원래 자리 유지)
+  @action
+  setTagPresets(tags: string[]): void {
+    const next: string[] = [];
+    for (const tag of tags) {
+      const t = this.normalizeTag(tag);
+      if (t && !next.includes(t)) next.push(t);
+    }
+    if (next.length === this.tagPresets.length && next.every((t, i) => t === this.tagPresets[i])) return;
+    this.tagPresets = next;
     this.scheduleSave();
   }
 

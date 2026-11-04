@@ -129,6 +129,24 @@ export class ExportPresetService {
         console.error('내보내기 프리셋 저장 실패:', e);
       },
     );
+    // 열려 있는 프리셋 관리 창이 되돌리기·다시 실행으로 바뀐 목록을 다시 읽게 알린다(2차 P5)
+    for (const fn of Array.from(this.exportPresetListeners)) {
+      try {
+        fn(presets);
+      } catch (e) {
+        console.error('내보내기 프리셋 변경 알림 실패:', e);
+      }
+    }
+  }
+
+  private exportPresetListeners = new Set<(presets: ExportPreset[]) => void>();
+
+  /** 목록 저장 알림 구독(받는 값 = 저장된 배열 그대로). 반환 = 구독 해제 */
+  subscribeExportPresets(fn: (presets: ExportPreset[]) => void): () => void {
+    this.exportPresetListeners.add(fn);
+    return () => {
+      this.exportPresetListeners.delete(fn);
+    };
   }
 
   private formatExportPresetLabel(p: ExportPreset): string {

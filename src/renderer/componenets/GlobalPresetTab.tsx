@@ -35,6 +35,11 @@ import { useBackLayer } from '../models/BackStackService';
 import { useBackdropClose } from './backdropClose';
 import { beginPresetListRecord } from '../models/presetUndo';
 import { UNDO_TEXT } from '../models/undoService';
+import {
+  renameGlobalPresetRecorded,
+  setGlobalPresetDefaultRecorded,
+  setGlobalPresetsDefaultRecorded,
+} from '../models/globalLibraryUndo';
 
 // 템플릿 관리(글로벌 프리셋 카드 선택)와 공유 — export
 export const GlobalVibeImage = observer(
@@ -497,7 +502,7 @@ export const GlobalPresetTab = observer(() => {
     });
     if (!newName) return;
     try {
-      await globalPresetService.rename(entry.id, newName);
+      await renameGlobalPresetRecorded(entry.id, newName);
     } catch (e: any) {
       appState.pushMessage(
         nameErrorMessage(e, 'globalPreset', newName, '이름 변경 실패'),
@@ -523,7 +528,7 @@ export const GlobalPresetTab = observer(() => {
 
   const handleToggleDefault = async (entry: IGlobalPresetEntry) => {
     try {
-      await globalPresetService.setDefault(entry.id, !entry.isDefault);
+      await setGlobalPresetDefaultRecorded(entry.id, !entry.isDefault);
     } catch (e: any) {
       appState.pushMessage(e.message || '기본 설정 실패');
     }
@@ -630,13 +635,8 @@ export const GlobalPresetTab = observer(() => {
 
   const handleBulkSetDefault = async (value: boolean) => {
     if (selectedIds.size === 0) return;
-    for (const id of Array.from(selectedIds)) {
-      try {
-        await globalPresetService.setDefault(id, value);
-      } catch (e) {
-        /* ignore */
-      }
-    }
+    // 한 동작 = 되돌리기 한 항목(2차 묶음 4 P5) — 개별 오류는 종전처럼 삼킨다
+    await setGlobalPresetsDefaultRecorded(Array.from(selectedIds), value);
     exitMultiSelect();
   };
 

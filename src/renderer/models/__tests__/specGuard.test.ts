@@ -41,6 +41,7 @@ const stripComments = (c: string) =>
 // U4: 삭제·휴지통 복원·복제·복사·붙여넣기 계측 모듈 추가 · U5: 변형 씬 필드·일괄 작업, 로컬 조각 계측 모듈 추가
 // 2차 P3(2026-11-03): 찾기/바꾸기 「모두 변환」 계측 모듈 추가
 // 2차 묶음 2(2026-11-03): 프로젝트·폴더(전역 스택) 계측 모듈 추가 · 2차 묶음 3(2026-11-04): 프로젝트·폴더 삭제류 계측 모듈 추가
+// 2차 묶음 4(2026-11-04): 전역 라이브러리(파일 부작용 없는 작업) 계측 모듈 추가
 const UNDO_MODULES = [
   'models/undoService.ts',
   'models/sceneOrderUndo.ts',
@@ -54,6 +55,7 @@ const UNDO_MODULES = [
   'models/findReplaceUndo.ts',
   'models/projectFolderUndo.ts',
   'models/projectDeleteUndo.ts',
+  'models/globalLibraryUndo.ts',
 ];
 
 const RULES: Rule[] = [

@@ -377,6 +377,58 @@ export const UNDO_TEXT = {
     `원래 폴더가 없어 프로젝트 "${name}"은(는) ${folder}에 복원했습니다`,
   projectSidecarNotRestored: (name: string) => `프로젝트 "${name}"의 즐겨찾기·북마크 일부를 되살리지 못했습니다`,
   folderTemplatesNotRestored: (count: number) => `폴더 기본 템플릿 지정 ${count}개를 되살리지 못했습니다`,
+  // 2차 묶음 4 P5 전역 라이브러리(파일 부작용 없는 작업만, 전역 스택) — globalLibraryUndo.ts. folder null = 미분류
+  globalCharacterRename: (from: string, to: string) => `글로벌 캐릭터 이름 변경: ${from} → ${to}`,
+  globalCharacterOrder: '글로벌 캐릭터 순서 변경',
+  globalCharacterMove: (names: readonly string[], folder: string) =>
+    names.length === 1
+      ? `글로벌 캐릭터 폴더 이동: ${names[0]} → ${folder}`
+      : `글로벌 캐릭터 ${names.length}개 폴더 이동 → ${folder}`,
+  globalCharacterFolderCreate: (folder: string) => `글로벌 캐릭터 폴더 만들기: ${folder}`,
+  globalCharacterFolderRename: (from: string, to: string) => `글로벌 캐릭터 폴더 이름 변경: ${from} → ${to}`,
+  globalCharacterFolderDelete: (folder: string) => `글로벌 캐릭터 폴더 삭제: ${folder}`,
+  globalPresetRename: (from: string, to: string) => `글로벌 프리셋 이름 변경: ${from} → ${to}`,
+  globalPresetDefaultOn: (name: string) => `글로벌 프리셋 기본 지정: ${name}`,
+  globalPresetDefaultOff: (name: string) => `글로벌 프리셋 기본 해제: ${name}`,
+  globalPresetDefaultBulk: (count: number, on: boolean) =>
+    on ? `글로벌 프리셋 ${count}개 기본 지정` : `글로벌 프리셋 ${count}개 기본 해제`,
+  artistRename: (from: string, to: string) => `작가 이름 변경: ${from} → ${to}`,
+  artistFavoriteOn: (name: string) => `작가 즐겨찾기: ${name}`,
+  artistFavoriteOff: (name: string) => `작가 즐겨찾기 해제: ${name}`,
+  artistThumbnail: (name: string) => `작가 대표 썸네일 지정: ${name}`,
+  artistImageFamily: (name: string) => `작가 샘플 모델 계열 변경: ${name}`,
+  artistTagAdd: (name: string, tag: string) => `작가 태그 추가: ${name} ${tag}`,
+  artistTagRemove: (name: string, tag: string) => `작가 태그 삭제: ${name} ${tag}`,
+  artistTagPresetAdd: (tag: string) => `태그 프리셋 추가: ${tag}`,
+  artistTagPresetRemove: (tag: string) => `태그 프리셋 삭제: ${tag}`,
+  exportPresetAdd: (name: string) => `내보내기 프리셋 추가: ${name}`,
+  exportPresetSave: (name: string) => `내보내기 프리셋 저장: ${name}`,
+  exportPresetDelete: (name: string) => `내보내기 프리셋 삭제: ${name}`,
+  exportPresetRename: (from: string, to: string) => `내보내기 프리셋 이름 변경: ${from} → ${to}`,
+  exportPresetDuplicate: (name: string) => `내보내기 프리셋 복제: ${name}`,
+  templateRename: (from: string, to: string) => `템플릿 이름 변경: ${from} → ${to}`,
+  templateBadgeColor: (name: string) => `템플릿 배지 색 변경: ${name}`,
+  // 실패 이유(되돌릴 수 없습니다: …) — 대개 다른 창이 같은 저장소를 바꾼 경우(D15)
+  globalCharacterGone: (name: string) => `글로벌 캐릭터 "${name}"이(가) 이미 없습니다`,
+  globalCharacterChanged: (name: string) => `글로벌 캐릭터 "${name}"이(가) 그사이 바뀌었습니다`,
+  globalCharacterNameTaken: (name: string) => `같은 이름의 글로벌 캐릭터 "${name}"이(가) 이미 있습니다`,
+  globalCharacterOrderChanged: '글로벌 캐릭터 목록·순서가 그사이 바뀌었습니다',
+  globalCharacterFolderGone: (folder: string) => `글로벌 캐릭터 폴더 "${folder}"이(가) 이미 없습니다`,
+  globalCharacterFolderTaken: (folder: string) => `같은 이름의 글로벌 캐릭터 폴더 "${folder}"이(가) 이미 있습니다`,
+  globalCharacterFolderNotEmpty: (folder: string) =>
+    `글로벌 캐릭터 폴더 "${folder}"에 프리셋이 들어 있어 지우지 않았습니다`,
+  globalPresetGone: (name: string) => `글로벌 프리셋 "${name}"이(가) 이미 없습니다`,
+  globalPresetChanged: (name: string) => `글로벌 프리셋 "${name}"이(가) 그사이 바뀌었습니다`,
+  globalPresetNameTaken: (name: string) => `같은 이름의 글로벌 프리셋 "${name}"이(가) 이미 있습니다`,
+  artistGone: (name: string) => `작가 "${name}"이(가) 이미 없습니다`,
+  artistChanged: (name: string) => `작가 "${name}"이(가) 그사이 바뀌었습니다`,
+  artistNameTaken: (name: string) => `같은 이름의 작가 "${name}"이(가) 이미 있습니다`,
+  artistImageGone: (name: string) => `작가 "${name}"의 샘플 이미지가 이미 없습니다`,
+  artistTagPresetsChanged: '태그 프리셋 목록이 그사이 바뀌었습니다',
+  exportPresetsChanged: '내보내기 프리셋 목록이 그사이 바뀌었습니다',
+  templateGone: (name: string) => `템플릿 "${name}"이(가) 이미 없습니다`,
+  templateChanged: (name: string) => `템플릿 "${name}"이(가) 그사이 바뀌었습니다`,
+  templateNameTaken: (name: string) => `같은 이름의 템플릿 "${name}"이(가) 이미 있습니다`,
 } as const;
 
 // ── 참조 손잡이 ───────────────────────────────────────────────────────────

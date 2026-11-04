@@ -58,6 +58,15 @@ import {
 import { deleteConfirmText, safeImportedImageName } from '../models/deleteFlowRules';
 import { beginCharacterPresetRecord, editCharacterPresets } from '../models/presetUndo';
 import { UNDO_TEXT } from '../models/undoService';
+import {
+  createGlobalCharacterFolderRecorded,
+  deleteGlobalCharacterFolderRecorded,
+  renameGlobalCharacterFolderRecorded,
+  renameGlobalCharacterRecorded,
+  reorderGlobalCharactersRecorded,
+  setGlobalCharacterFolderRecorded,
+  setGlobalCharactersFolderRecorded,
+} from '../models/globalLibraryUndo';
 
 // ─── 캐릭터 프리셋 내보내기/불러오기 ─────────────────────────
 
@@ -313,7 +322,8 @@ const GlobalFolderRow = observer(
         accept: 'global-character-preset-card',
         drop: (item: { index: number }) => {
           const entry = globalCharacterPresetService.list()[item.index];
-          if (entry) globalCharacterPresetService.setFolder(entry.id, dropFolder);
+          // 되돌리기 전역 스택에 기록(2차 묶음 4 P5)
+          if (entry) void setGlobalCharacterFolderRecorded(entry.id, dropFolder ?? null).catch(() => {});
         },
         collect: (m) => ({ isOver: m.isOver() }),
       }),
@@ -856,7 +866,7 @@ export const CharacterPresetEditor = observer(({
     });
     if (!v) return;
     try {
-      await globalCharacterPresetService.rename(entry.id, v);
+      await renameGlobalCharacterRecorded(entry.id, v);
     } catch (e: any) {
       appState.pushMessage(
         nameErrorMessage(e, 'characterPreset', v, '이름 변경에 실패했습니다'),
@@ -999,7 +1009,7 @@ export const CharacterPresetEditor = observer(({
     );
     if (target === undefined) return;
     try {
-      await globalCharacterPresetService.setFolder(entry.id, target);
+      await setGlobalCharacterFolderRecorded(entry.id, target);
     } catch (e: any) {
       appState.pushMessage(e.message || '폴더 이동에 실패했습니다');
     }
@@ -1015,9 +1025,8 @@ export const CharacterPresetEditor = observer(({
     );
     if (target === undefined) return;
     try {
-      for (const id of ids) {
-        await globalCharacterPresetService.setFolder(id, target);
-      }
+      // 한 동작 = 되돌리기 한 항목(2차 묶음 4 P5)
+      await setGlobalCharactersFolderRecorded(ids, target);
       appState.pushMessage(
         target
           ? `${ids.length}개를 "${target}" 폴더로 이동했습니다`
@@ -1037,7 +1046,7 @@ export const CharacterPresetEditor = observer(({
       return;
     }
     try {
-      const created = await globalCharacterPresetService.createFolder(name);
+      const created = await createGlobalCharacterFolderRecorded(name);
       setFolderFilter(created);
       setNewFolderMode(false);
       setNewFolderValue('');
@@ -1056,7 +1065,7 @@ export const CharacterPresetEditor = observer(({
       return;
     }
     try {
-      await globalCharacterPresetService.renameFolder(oldName, newName);
+      await renameGlobalCharacterFolderRecorded(oldName, newName);
       // 현재 필터가 이 폴더였으면 새 이름을 따라간다
       setFolderFilter((prev) => (prev === oldName ? newName : prev));
       setEditingFolder(null);
@@ -1075,7 +1084,7 @@ export const CharacterPresetEditor = observer(({
       danger: true,
       text: `폴더 "${folder}"를 삭제할까요?\n소속 프리셋 ${count}개는 미분류로 이동합니다.`,
       callback: async () => {
-        await globalCharacterPresetService.deleteFolder(folder);
+        await deleteGlobalCharacterFolderRecorded(folder);
         setFolderFilter((prev) => (prev === folder ? '__all__' : prev));
       },
     });
@@ -1597,7 +1606,7 @@ export const CharacterPresetEditor = observer(({
                   onDuplicate={() => handleDuplicateGlobal(entry)}
                   onDelete={() => handleDeleteGlobal(entry)}
                   onMove={(from, to) =>
-                    globalCharacterPresetService.reorder(from, to)
+                    reorderGlobalCharactersRecorded(from, to)
                   }
                   onMoveToFolder={() => handleMoveToFolder(entry)}
                 />

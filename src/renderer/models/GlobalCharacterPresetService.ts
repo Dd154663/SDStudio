@@ -149,14 +149,18 @@ export class GlobalCharacterPresetService extends EventTarget {
   }
 
   // 새 폴더 등록 (빈 폴더 허용) — trim·중복 거부. 반환 = 정규화된 이름.
+  // at = 레지스트리 안 위치(없거나 범위 밖이면 끝) — 폴더 삭제 되돌리기가 원래 자리로 되살릴 때만 쓴다(2차 P5).
   @action
-  async createFolder(name: string): Promise<string> {
+  async createFolder(name: string, at?: number): Promise<string> {
     name = (name ?? '').trim();
     if (!name) throw new Error('폴더 이름을 입력해 주세요');
     if (this.listFolders().includes(name)) {
       throw new Error('이미 존재하는 폴더입니다');
     }
-    this.folders = [...this.folders, name];
+    const next = [...this.folders];
+    if (at !== undefined && at >= 0 && at < next.length) next.splice(at, 0, name);
+    else next.push(name);
+    this.folders = next;
     this.scheduleSave();
     this.dispatchEvent(new CustomEvent('changed', {}));
     return name;

@@ -20,7 +20,7 @@ beforeEach(() => {
   mobile = false;
   resolve = jest.fn();
   state.directExportRequest = { projectName: 'project', sceneNames: ['a b'], resolve };
-  Object.assign(state, { exportPresetManagerOpen: true, loadExportPresets: () => [], saveExportPresets: jest.fn(), pushMessage: jest.fn() });
+  Object.assign(state, { exportPresetManagerOpen: true, loadExportPresets: () => [], saveExportPresets: jest.fn(), subscribeExportPresets: () => () => {}, pushMessage: jest.fn() });
   container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
@@ -59,4 +59,21 @@ test('new preset saves the same defaults used by the direct form', async () => {
   act(() => Simulate.change(name, { target: { value: 'new' } } as any));
   act(() => click('프리셋 추가'));
   expect(state.saveExportPresets).toHaveBeenCalledWith([{ ...exportFormToPreset(emptyExportForm()), name: 'new' }]);
+});
+
+// 되돌리기·다시 실행(2차 묶음 4 P5)이 목록을 바꾸면 열린 관리 창이 다시 읽는다 — 자기 저장은 무시
+test('preset manager re-reads the list when undo restores it from outside', async () => {
+  let listener: ((list: any[]) => void) | undefined;
+  state.loadExportPresets = () => [{ ...exportFormToPreset(emptyExportForm()), name: 'A' }];
+  state.subscribeExportPresets = (fn: any) => {
+    listener = fn;
+    return () => {
+      listener = undefined;
+    };
+  };
+  await act(async () => root.render(<ExportPresetManager />));
+  expect(container.textContent).toContain('A');
+  expect(listener).toBeDefined();
+  act(() => listener!([{ ...exportFormToPreset(emptyExportForm()), name: 'A' }, { ...exportFormToPreset(emptyExportForm()), name: 'B' }]));
+  expect(container.textContent).toContain('B');
 });

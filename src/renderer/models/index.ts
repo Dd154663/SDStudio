@@ -39,6 +39,7 @@ import { IMAGE_RETENTION_DAYS, SCENE_RETENTION_DAYS, TrashService } from './Tras
 import { CyclingSessionService } from './CyclingSessionService';
 import { GlobalPieceService } from './GlobalPieceService';
 import { GlobalPresetService } from './GlobalPresetService';
+import type { GlobalPresetType } from './GlobalPresetService';
 import { GlobalCharacterPresetService } from './GlobalCharacterPresetService';
 import { BackgroundNotificationService } from './BackgroundNotificationService';
 import { BackgroundKeepAliveService } from './BackgroundKeepAliveService';
@@ -59,6 +60,7 @@ import { configureDeleteUndo } from './deleteUndo';
 import { configurePieceUndo } from './pieceUndo';
 import { configureProjectFolderUndo } from './projectFolderUndo';
 import { configureProjectDeleteUndo } from './projectDeleteUndo';
+import { configureGlobalLibraryUndo } from './globalLibraryUndo';
 import { runProjectTrashDelete } from './projectDeleteFlow';
 import { physicalDirOf } from './storageLayout';
 
@@ -199,6 +201,55 @@ export const batchProcessService = new BatchProcessService();
 
 // 내보내기 프리셋/패키지 (AppService 에서 분리). 생성자 비용 없음.
 export const exportPresetService = new ExportPresetService();
+
+// 전역 라이브러리 되돌리기(2차 묶음 4 P5, 전역 스택)가 부르는 공개 서비스 메서드 배선 — 저장·changed·다른 창 알림은 각 메서드가 한다
+configureGlobalLibraryUndo({
+  characters: {
+    list: () => globalCharacterPresetService.list(),
+    get: (id) => globalCharacterPresetService.get(id),
+    getByName: (name) => globalCharacterPresetService.getByName(name),
+    listFolders: () => globalCharacterPresetService.listFolders(),
+    registeredFolders: () => globalCharacterPresetService.folders.slice(),
+    rename: (id, name) => globalCharacterPresetService.rename(id, name),
+    reorder: (from, to) => globalCharacterPresetService.reorder(from, to),
+    setFolder: (id, folder) => globalCharacterPresetService.setFolder(id, folder),
+    createFolder: (name, at) => globalCharacterPresetService.createFolder(name, at),
+    renameFolder: (from, to) => globalCharacterPresetService.renameFolder(from, to),
+    deleteFolder: (name) => globalCharacterPresetService.deleteFolder(name),
+  },
+  presets: {
+    get: (id) => globalPresetService.get(id),
+    getByName: (type, name) => globalPresetService.getByName(type as GlobalPresetType, name),
+    rename: (id, name) => globalPresetService.rename(id, name),
+    setDefault: (id, value) => globalPresetService.setDefault(id, value),
+  },
+  artists: {
+    getArtist: (id) => artistLibraryService.getArtist(id),
+    findArtistByName: (name, excludeId) => artistLibraryService.findArtistByName(name, excludeId),
+    tagPresets: () => artistLibraryService.tagPresets.slice(),
+    renameArtist: (id, name) => artistLibraryService.renameArtist(id, name),
+    setFavorite: (id, on) => artistLibraryService.setFavorite(id, on),
+    setThumbnail: (id, imageId) => artistLibraryService.setThumbnail(id, imageId),
+    setImageOrder: (id, ids) => artistLibraryService.setImageOrder(id, ids),
+    setImageFamily: (id, imageId, family) => artistLibraryService.setImageFamily(id, imageId, family),
+    addTag: (id, tag) => artistLibraryService.addTag(id, tag),
+    removeTag: (id, tag) => artistLibraryService.removeTag(id, tag),
+    setTags: (id, tags) => artistLibraryService.setTags(id, tags),
+    addTagPreset: (tag) => artistLibraryService.addTagPreset(tag),
+    removeTagPreset: (tag) => artistLibraryService.removeTagPreset(tag),
+    setTagPresets: (tags) => artistLibraryService.setTagPresets(tags),
+  },
+  exportPresets: {
+    load: () => exportPresetService.loadExportPresets(),
+    save: (presets) => exportPresetService.saveExportPresets(presets as any),
+  },
+  templates: {
+    get: (id) => projectTemplateService.get(id),
+    getByName: (name) => projectTemplateService.getByName(name),
+    rename: (id, name) => projectTemplateService.rename(id, name),
+    setBadgeColor: (id, color) => projectTemplateService.setBadgeColor(id, color),
+  },
+});
 
 export const promptService = new PromptService();
 

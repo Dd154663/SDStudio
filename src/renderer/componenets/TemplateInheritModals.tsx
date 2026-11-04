@@ -12,6 +12,7 @@ import {
 import { appState } from '../models/AppService';
 import { deleteConfirmText } from '../models/deleteFlowRules';
 import HelpIcon from './HelpIcon';
+import { setTemplateBadgeColorRecorded } from '../models/globalLibraryUndo';
 
 // 프로젝트 상속 v2 (2026-07-16 합의) — 폴더 기본 템플릿 / 수동 재적용 모달.
 
@@ -263,9 +264,7 @@ export const FolderTemplateModal = observer(
                         key={c}
                         title={c}
                         onClick={() =>
-                          projectTemplateService
-                            .setBadgeColor(entry.id, c)
-                            .catch(() => {})
+                          setTemplateBadgeColorRecorded(entry.id, c).catch(() => {})
                         }
                         className="w-6 h-6 rounded-full flex-none transition-transform hover:scale-110"
                         style={{
@@ -279,9 +278,7 @@ export const FolderTemplateModal = observer(
                   })}
                   <button
                     onClick={() =>
-                      projectTemplateService
-                        .setBadgeColor(entry.id, null)
-                        .catch(() => {})
+                      setTemplateBadgeColorRecorded(entry.id, null).catch(() => {})
                     }
                     className="px-2 h-6 rounded-md text-xs flex-none btn-neutral text-gray-600 dark:text-gray-200"
                   >
