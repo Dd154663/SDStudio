@@ -273,6 +273,7 @@ export const EditorField = ({
   folded: foldedProp,
   onFoldedChange,
   headerEnd,
+  foldLocked,
 }: {
   label: string;
   children: React.ReactNode;
@@ -291,17 +292,21 @@ export const EditorField = ({
   onFoldedChange?: (folded: boolean) => void;
   // 머리 줄 오른쪽 끝 요소(모드 표시·버튼·토글) — 좁으면 다음 줄 오른쪽으로 넘어간다
   headerEnd?: React.ReactNode;
+  // 접힘 고정(2026-11-06 V5M 네거티브 칸) — true 면 접힌 채로 그리고 머리 줄 클릭으로 열리지 않는다(라벨 흐리게).
+  // 기억된 접힘 상태(foldKey·제어형 값)는 건드리지 않으므로 false 로 돌아오면 원래 접힘 상태로 그린다.
+  foldLocked?: boolean;
 }) => {
   const controlled = !!onFoldedChange;
   const [foldedState, setFolded] = useState(() =>
     foldKey ? getPromptFold(foldKey, !!defaultFolded) : false,
   );
-  const folded = controlled ? !!foldedProp : foldedState;
-  const foldable = controlled || !!foldKey;
+  const folded = foldLocked ? true : controlled ? !!foldedProp : foldedState;
+  const foldable = controlled || !!foldKey || !!foldLocked;
   // 편집기 부속 버튼(작가 라이브러리 열기) 자리 — 라벨 줄 오른쪽 끝. 편집기 안 우상단에 두면 첫 줄 프롬프트를
   // 가려 수정을 방해한다(2026-09-26 사용자 실기기 지적). PromptEditTextArea 가 컨텍스트로 노드를 보낸다.
   const [accessory, setAccessory] = useState<React.ReactNode>(null);
   const toggle = () => {
+    if (foldLocked) return;
     if (controlled) {
       onFoldedChange!(!folded);
       return;
@@ -319,8 +324,16 @@ export const EditorField = ({
         }
       >
         <span
-          className={foldable ? 'cursor-pointer select-none' : undefined}
-          onClick={foldable ? toggle : undefined}
+          className={
+            foldLocked
+              ? 'cursor-not-allowed select-none opacity-50'
+              : foldable
+                ? 'cursor-pointer select-none'
+                : undefined
+          }
+          onClick={foldable && !foldLocked ? toggle : undefined}
+          data-editor-field-fold-locked={foldLocked ? '' : undefined}
+          aria-disabled={foldLocked ? true : undefined}
         >
           {foldable && (
             <span className="inline-block mr-1 text-faint align-middle">
@@ -1350,9 +1363,12 @@ const WFRShowImage = observer(({ element }: WFElementProps) => {
 });
 
 // V5 Medium 네거티브 안내 줄(2026-11-06) — 네거티브 칸 위(사전 세팅·씬 전용·이지 태그 밴 리스트·조합 전역 네거티브·변형 씬 안내).
-export const V5MediumNegativeNotice = () => (
+// under = 접힌 네거티브 칸 머리 줄 바로 아래(2026-11-06 추가 보정 — 칸 접기·비활성과 함께 쓴다).
+export const V5MediumNegativeNotice = ({ under }: { under?: boolean } = {}) => (
   <div
-    className="text-xs text-amber-600 dark:text-amber-400 mt-2 md:mt-3"
+    className={
+      'text-xs text-amber-600 dark:text-amber-400 ' + (under ? 'flex-none pb-1' : 'mt-2 md:mt-3')
+    }
     data-v5m-negative-notice=""
   >
     {V5_MEDIUM_TEXT.negativeNotice}
@@ -2665,10 +2681,10 @@ const WFRInline = observer(({ element }: WFElementProps) => {
   const key = `${type}_${preset.name}_${input.field}`;
   const isV5 = isV5ModelVersion(modelVersion);
   // V5 Medium(2026-11-06): 스텝·샘플러·CFG 리스케일은 고정값 표시+비활성(저장값은 그대로 — 다른 계열로 돌아가면 그 프로필),
-  // 네거티브 칸('uc' — 사전 세팅·씬 전용·이지 모드 태그 밴 리스트) 위에는 「쓰이지 않음」 안내.
+  // 네거티브 칸('uc' — 사전 세팅·씬 전용·이지 모드 태그 밴 리스트)은 접힘 고정(foldLocked — 머리 줄로 열리지 않음)
+  // + 머리 줄 아래 「쓰이지 않음」 안내(추가 보정). 값은 지우지 않고, 다른 계열로 돌아가면 기억된 접힘 상태로 그린다.
   const fixedSettings = naiFixedSettings(modelVersion);
-  const v5mNegativeNotice =
-    fixedSettings && input.field === 'uc' ? <V5MediumNegativeNotice /> : null;
+  const v5mNegativeLocked = !!fixedSettings && input.field === 'uc';
   if (
     isV5 &&
     [
@@ -2685,9 +2701,9 @@ const WFRInline = observer(({ element }: WFElementProps) => {
     case 'prompt':
       return (
         <>
-        {v5mNegativeNotice}
         <EditorField
           label={input.label}
+          foldLocked={v5mNegativeLocked}
           full={input.flex === 'flex-1'}
           // 문법 안내는 첫 프롬프트(상위)에만 1회 — 문법은 전 프롬프트 공통
           hint={input.field === 'frontPrompt' ? PROMPT_SYNTAX_HELP : undefined}
@@ -2709,6 +2725,7 @@ const WFRInline = observer(({ element }: WFElementProps) => {
             onChange={(v: string) => setField(v, 'edit')}
           ></PromptEditTextArea>
         </EditorField>
+        {v5mNegativeLocked && <V5MediumNegativeNotice under />}
         </>
       );
     case 'select':

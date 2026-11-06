@@ -70,8 +70,10 @@ export const ComboPromptEditor = observer(
     onImageUploaded,
   }: Props) => {
     const [globalUcFolded, setGlobalUcFolded] = useState(globalUcFoldedSaved);
-    // V5 Medium 이면 전역 네거티브 칸 위에도 「쓰이지 않음」 안내(2026-11-06) — 모델은 config 의 현재 값.
+    // V5 Medium 이면 전역 네거티브 칸은 접힘 고정·「사용」 토글 비활성 + 머리 줄 아래 「쓰이지 않음」 안내(2026-11-06 추가 보정).
+    // 모델은 config 의 현재 값. 접힘 기억(globalUcFoldedSaved)·useGlobalUc 값은 그대로 — 다른 계열로 돌아가면 원래대로.
     const { family: modelFamily } = useModelFamilySwitch();
+    const v5mLocked = modelFamily === 'v5m';
     const changeGlobalUcFolded = (folded: boolean) => {
       globalUcFoldedSaved = folded;
       setGlobalUcFolded(folded);
@@ -158,10 +160,10 @@ export const ComboPromptEditor = observer(
         const use = comboUsesGlobalUc(preset);
         return (
           <>
-          {modelFamily === 'v5m' && <V5MediumNegativeNotice />}
           <EditorField
             label={label}
             full
+            foldLocked={v5mLocked}
             folded={globalUcFolded}
             onFoldedChange={changeGlobalUcFolded}
             foldedBadge={value.trim() ? '작성됨' : undefined}
@@ -172,11 +174,17 @@ export const ComboPromptEditor = observer(
                     {COMBO_EDITOR_TEXT.globalUcExcluded}
                   </span>
                 )}
-                <label className="flex items-center gap-1 text-sm cursor-pointer select-none">
+                <label
+                  className={
+                    'flex items-center gap-1 text-sm select-none ' +
+                    (v5mLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')
+                  }
+                >
                   <input
                     type="checkbox"
                     data-combo-global-uc-toggle=""
                     checked={use}
+                    disabled={v5mLocked}
                     onChange={(e) => setUseGlobalUc(e.target.checked)}
                   />
                   {COMBO_EDITOR_TEXT.useGlobalUc}
@@ -190,6 +198,7 @@ export const ComboPromptEditor = observer(
               onChange={(v) => setPromptRow(owner, field, label, v)}
             />
           </EditorField>
+          {v5mLocked && <V5MediumNegativeNotice under />}
           </>
         );
       },

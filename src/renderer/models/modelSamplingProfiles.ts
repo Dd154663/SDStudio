@@ -211,7 +211,7 @@ export function switchSessionSamplingFamily(
 /** V5 Medium(V5M) 편집기 안내 문구 단일 출처(2026-11-06) — 사전 세팅 편집기·변형 씬 안내·조합 전역 네거티브 칸. */
 export const V5_MEDIUM_TEXT = {
   negativeNotice:
-    'V5M(Medium)에서는 네거티브가 쓰이지 않습니다. 프롬프트 안 `-3::태그::` 로 대체하세요',
+    'V5M(Medium)에서는 네거티브가 쓰이지 않습니다. 빼고 싶은 태그는 프롬프트 안에서 음수 가중치(예: `-1::태그::`, 값은 자유)로 대체하세요',
   fixedField: (value: string) => `V5M(Medium) 고정값: ${value}`,
   cfgRescaleUnsupported: 'V5M(Medium)에서는 CFG 리스케일이 쓰이지 않습니다',
   ucPresetFixed: 'V5M(Medium)에서는 네거티브 프리셋이 강함(Heavy)으로 고정됩니다',

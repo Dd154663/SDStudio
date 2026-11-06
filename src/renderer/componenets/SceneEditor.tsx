@@ -41,7 +41,8 @@ import { writeFileSync } from 'original-fs';
 import { windowsStore } from 'process';
 import Scrollbars from 'react-custom-scrollbars-2';
 import PromptEditTextArea from './PromptEditTextArea';
-import PreSetEditor, { UnionPreSetEditor } from './PreSetEdtior';
+import PreSetEditor, { EditorField, UnionPreSetEditor, V5MediumNegativeNotice } from './PreSetEdtior';
+import { useModelFamilySwitch } from './ModelFamilySwitch';
 import { TaskProgressBar } from './TaskQueueControl';
 import { Resolution, resolutionMap } from '../backends/imageGen';
 import { FloatView } from './FloatView';
@@ -321,6 +322,10 @@ export const BigPromptEditor = observer(
 
     const [promptOpen, setPromptOpen] = useState(false);
     const [editDisabled, setEditDisabled] = useState(true);
+    // V5 Medium(2026-11-06 추가 보정): 단순 씬 에디터의 씬 전용 네거티브는 접힘 고정(EditorField foldLocked) + 안내.
+    // 값(scene.sceneUC)은 그대로 — 다른 계열로 돌아가면 원래 입력 칸.
+    const { family: modelFamily } = useModelFamilySwitch();
+    const v5mSceneUcLocked = !!simplified && modelFamily === 'v5m';
 
     useEffect(() => {
       const timer = setTimeout(() => {
@@ -373,16 +378,33 @@ export const BigPromptEditor = observer(
                   value={getMiddlePrompt()}
                 />
               </div>
-              <div className="flex-none font-bold text-sub">
-                씬 전용 네거티브 프롬프트 (이 씬에만 적용됨)
-              </div>
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <PromptEditTextArea
-                  disabled={editDisabled}
-                  onChange={(t) => setSceneUC && setSceneUC(t)}
-                  value={getSceneUC ? getSceneUC() : ''}
-                />
-              </div>
+              {v5mSceneUcLocked ? (
+                <div className="flex-none" data-scene-uc-v5m-locked="">
+                  <EditorField
+                    label="씬 전용 네거티브 프롬프트 (이 씬에만 적용됨)"
+                    full={false}
+                    bold
+                    foldLocked
+                    foldedBadge={getSceneUC && getSceneUC().trim() ? '작성됨' : undefined}
+                  >
+                    {null}
+                  </EditorField>
+                  <V5MediumNegativeNotice under />
+                </div>
+              ) : (
+                <>
+                  <div className="flex-none font-bold text-sub">
+                    씬 전용 네거티브 프롬프트 (이 씬에만 적용됨)
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <PromptEditTextArea
+                      disabled={editDisabled}
+                      onChange={(t) => setSceneUC && setSceneUC(t)}
+                      value={getSceneUC ? getSceneUC() : ''}
+                    />
+                  </div>
+                </>
+              )}
               {onSceneSeedChange && (
                 // 씬 전용 시드(2026-09-26): 우선순위 씬 전용 → 그룹 → 프롬프트 → 랜덤(resolveSceneSeed)
                 <div className="flex-none flex items-center gap-2" data-scene-seed-row="">

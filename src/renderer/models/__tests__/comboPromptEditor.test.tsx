@@ -10,6 +10,8 @@ import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { configure, observable } from 'mobx';
 
+const mockConfig: any = { modelVersion: '4-5-full' };
+const mockConfigListeners = new Set<() => void>();
 const mockState: any = {
   uiPresetLayout: {},
   uiCompanionSlots: {},
@@ -30,8 +32,11 @@ jest.mock('..', () => {
   };
   return {
     isMobile: false,
-    backend: { getConfig: async () => ({ modelVersion: '4-5-full' }) },
-    sessionService: { addEventListener: () => {}, removeEventListener: () => {} },
+    backend: { getConfig: async () => ({ ...mockConfig }) },
+    sessionService: {
+      addEventListener: (_e: string, fn: () => void) => mockConfigListeners.add(fn),
+      removeEventListener: (_e: string, fn: () => void) => mockConfigListeners.delete(fn),
+    },
     imageService: { getVibeImagePath: () => '', fetchVibeImage: async () => '' },
     promptService: {},
     taskQueueService: {},
@@ -122,6 +127,7 @@ beforeEach(() => {
   root = createRoot(container);
 });
 afterEach(() => {
+  mockConfig.modelVersion = '4-5-full';
   act(() => root.unmount());
   container.remove();
   mockState.curSession = undefined;
@@ -411,5 +417,74 @@ describe('단일 I2I·인페인트 — 「조합 모드 켜기」 자리(2026-11
     await renderSingle(def, undefined);
     expect(button(COMBO_EDITOR_TEXT.turnOn)).toBeUndefined();
     expect(container.querySelectorAll('[data-editor-field-header-end]')).toHaveLength(0);
+  });
+});
+
+// V5 Medium 네거티브 칸 접힘 고정(2026-11-06 추가 보정, SPEC §11 「V5 Medium」)
+const setModel = async (modelVersion: string) => {
+  mockConfig.modelVersion = modelVersion;
+  await act(async () => {
+    for (const fn of [...mockConfigListeners]) fn();
+  });
+  await act(async () => {
+    await Promise.resolve();
+  });
+};
+const lockedHeads = () =>
+  [...container.querySelectorAll('[data-editor-field-fold-locked]')].map((e) => e.textContent ?? '');
+describe('V5M(Medium) 네거티브 칸 접힘 고정', () => {
+  test('조합 I2I: 전역 네거티브·씬 전용 네거티브 접힘 고정 + 「사용」 비활성, 머리를 눌러도 안 열림, 다른 계열이면 원래대로', async () => {
+    const preset = new WFWorkFlow(SDI2IDef).buildPreset();
+    Object.assign(preset, { globalUc: 'SNAP-UC', uc: 'SCENE-UC', prompt: 'MID' });
+    await renderCombo({ def: SDI2IDef, element: SDI2IComboUI, mode: 'snapshot', canTurnOff: true, preset });
+    // 펼쳐 둔 전역 네거티브(접힘 기억) — 4.5 에서
+    clickText(COMBO_EDITOR_TEXT.snapshotUc);
+    expect(textareaValues()).toEqual(['MID', 'SNAP-UC', 'SCENE-UC']);
+
+    await setModel('5-full-medium');
+    expect(textareaValues()).toEqual(['MID']);
+    expect(lockedHeads().some((t) => t.includes(COMBO_EDITOR_TEXT.snapshotUc))).toBe(true);
+    expect(lockedHeads().some((t) => t.includes(COMBO_EDITOR_TEXT.sceneUc))).toBe(true);
+    expect(toggle()!.disabled).toBe(true);
+    expect(container.querySelectorAll('[data-v5m-negative-notice]').length).toBeGreaterThanOrEqual(2);
+    // 머리 줄을 눌러도 열리지 않음
+    for (const head of container.querySelectorAll('[data-editor-field-fold-locked]')) {
+      act(() => head.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    }
+    expect(textareaValues()).toEqual(['MID']);
+    // 값은 지우지 않음
+    expect(preset.globalUc).toBe('SNAP-UC');
+    expect(preset.uc).toBe('SCENE-UC');
+    expect(preset.useGlobalUc).toBe(true);
+
+    await setModel('5-full');
+    expect(lockedHeads()).toEqual([]);
+    expect(toggle()!.disabled).toBe(false);
+    // 펼쳐 둔 상태(접힘 기억)·값 그대로 복원
+    expect(textareaValues()).toEqual(['MID', 'SNAP-UC', 'SCENE-UC']);
+    expect(container.querySelector('[data-v5m-negative-notice]')).toBeNull();
+  });
+
+  test('단일 인페인트(변형 씬): 네거티브 칸 접힘 고정 + 안내, 다른 계열이면 칸 복원', async () => {
+    const preset = new WFWorkFlow(SDInpaintDef).buildPreset();
+    Object.assign(preset, { uc: 'INP-UC' });
+    await act(async () => {
+      root.render(
+        <InnerPreSetEditor nopad type={SDInpaintDef.type} preset={preset} shared={undefined}
+          element={SDInpaintDef.editor} middlePromptMode={false} />,
+      );
+    });
+    await setModel('5-full-medium');
+    expect(textareaValues()).not.toContain('INP-UC');
+    expect(lockedHeads().some((t) => t.includes('네거티브 프롬프트'))).toBe(true);
+    // 「작성됨」 배지로 값이 남아 있음을 표시
+    expect(lockedHeads().length).toBe(1);
+    expect(indexOfText('작성됨')).toBeGreaterThan(indexOfText('네거티브 프롬프트'));
+    expect(container.querySelector('[data-v5m-negative-notice]')).toBeTruthy();
+    act(() => container.querySelector('[data-editor-field-fold-locked]')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(textareaValues()).not.toContain('INP-UC');
+    await setModel('4-5-full');
+    expect(textareaValues()).toContain('INP-UC');
+    expect(lockedHeads()).toEqual([]);
   });
 });

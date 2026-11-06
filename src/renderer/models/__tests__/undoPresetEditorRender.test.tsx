@@ -10,6 +10,7 @@ import { createRoot, Root } from 'react-dom/client';
 import { configure } from 'mobx';
 
 const mockConfig: any = { modelVersion: '5-full' };
+const mockConfigListeners = new Set<() => void>();
 const mockState: any = {
   uiPresetLayout: {},
   uiCompanionSlots: {},
@@ -30,7 +31,10 @@ jest.mock('..', () => {
   return {
     isMobile: false,
     backend: { getConfig: async () => ({ ...mockConfig }) },
-    sessionService: { addEventListener: () => {}, removeEventListener: () => {} },
+    sessionService: {
+      addEventListener: (_e: string, fn: () => void) => mockConfigListeners.add(fn),
+      removeEventListener: (_e: string, fn: () => void) => mockConfigListeners.delete(fn),
+    },
     imageService: { getVibeImagePath: () => '', getVibesDir: () => '', fetchVibeImage: async () => '' },
     promptService: {},
     taskQueueService: {},
@@ -188,7 +192,7 @@ test('★ 렌더 중 자동 보정·마운트 중 샘플링 활성화는 기록�
   expect(undoService.entries(session).past).toHaveLength(0);
 });
 
-test('V5M(Medium): 스텝·샘플러·CFG 리스케일은 고정값 표시+비활성, 네거티브 칸 위 안내, 저장값은 그대로(2026-11-06)', async () => {
+test('V5M(Medium): 스텝·샘플러·CFG 리스케일은 고정값 표시+비활성, 네거티브 칸 안내, 저장값은 그대로(2026-11-06)', async () => {
   mockConfig.modelVersion = '5-full-medium';
   const session = new Session();
   session.name = 'p';
@@ -200,7 +204,7 @@ test('V5M(Medium): 스텝·샘플러·CFG 리스케일은 고정값 표시+비�
   const preset = session.presets.get('SDImageGen')![0];
   expect(preset.samplingProfileFamily).toBe('v5m');
   const stepsSaved = preset.steps;
-  expect(container.querySelector('[data-v5m-negative-notice]')?.textContent).toContain('-3::태그::');
+  expect(container.querySelector('[data-v5m-negative-notice]')?.textContent).toContain('음수 가중치');
   await act(async () => {
     button('샘플링/모델 설정')!.click();
   });
@@ -212,5 +216,54 @@ test('V5M(Medium): 스텝·샘플러·CFG 리스케일은 고정값 표시+비�
   expect(slider('CFG 리스케일')!.disabled).toBe(true);
   // 저장값은 지우지 않는다(다른 계열로 돌아가면 그 계열 프로필)
   expect(preset.steps).toBe(stepsSaved);
+  expect(undoService.entries(session).past).toHaveLength(0);
+});
+
+test('V5M(Medium): 네거티브 칸은 접힘 고정(머리를 눌러도 안 열림)+머리 줄 아래 안내, 다른 계열로 돌아오면 칸·값 복원(2026-11-06 추가 보정)', async () => {
+  mockConfig.modelVersion = '5-full';
+  const session = new Session();
+  session.name = 'p';
+  mockState.curSession = session;
+  await act(async () => {
+    root.render(<PreSetEditor middlePromptMode={false} />);
+  });
+  await flush();
+  const preset = session.presets.get('SDImageGen')![0];
+  await act(async () => {
+    preset.uc = 'MY-UC';
+  });
+  await flush();
+  const values = () => [...container.querySelectorAll('textarea')].map((t) => t.value);
+  expect(values()).toContain('MY-UC');
+  expect(container.querySelector('[data-editor-field-fold-locked]')).toBeNull();
+
+  mockConfig.modelVersion = '5-full-medium';
+  await act(async () => {
+    for (const fn of [...mockConfigListeners]) fn();
+  });
+  await flush();
+  expect(values()).not.toContain('MY-UC');
+  const head = container.querySelector('[data-editor-field-fold-locked]') as HTMLElement;
+  expect(head?.textContent).toContain('네거티브 프롬프트');
+  expect(head.getAttribute('aria-disabled')).toBe('true');
+  expect(head.className).toContain('cursor-not-allowed');
+  // 안내는 접힌 머리 줄 아래
+  const notice = container.querySelector('[data-v5m-negative-notice]')!;
+  expect(notice.textContent).toContain('음수 가중치');
+  expect(head.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await act(async () => {
+    head.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  expect(values()).not.toContain('MY-UC');
+  expect(preset.uc).toBe('MY-UC');
+
+  mockConfig.modelVersion = '5-full';
+  await act(async () => {
+    for (const fn of [...mockConfigListeners]) fn();
+  });
+  await flush();
+  expect(values()).toContain('MY-UC');
+  expect(container.querySelector('[data-editor-field-fold-locked]')).toBeNull();
+  expect(container.querySelector('[data-v5m-negative-notice]')).toBeNull();
   expect(undoService.entries(session).past).toHaveLength(0);
 });
