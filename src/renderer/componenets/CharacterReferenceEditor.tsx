@@ -11,6 +11,7 @@ import { imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import { WFIInlineInput, wfiElementKey } from '../models/workflows/WorkFlow';
 import { ModelVersion } from '../backends/imageGen';
+import { isV5ModelVersion } from '../backends/genVendors/naiModelCapabilities';
 import { WFElementContext, PresetIconRowContext } from './wfElementContext';
 import { EditableSliderValue, VibeImage, useNarrowContainer } from './VibeEditor';
 import { resolveCompanionButtons } from '../models/companionSlots';
@@ -481,7 +482,7 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
 
   // v4 모델은 캐릭터 레퍼런스 미지원
   const isV4 = modelVersion === ModelVersion.V4 || modelVersion === ModelVersion.V4Curated;
-  const isV5 = modelVersion === ModelVersion.V5 || modelVersion === ModelVersion.V5Curated;
+  const isV5 = isV5ModelVersion(modelVersion);
   const locked = isV4 || isV5;
   const lockedLabel = isV5
     ? '캐릭터 레퍼런스 (V5 미지원)'

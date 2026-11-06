@@ -1,6 +1,44 @@
 import { ModelVersion } from '../backends/imageGen';
 
-export type ModelSamplingFamily = 'v4_5' | 'v5';
+/**
+ * 샘플링 프로필 계열 = 상단 퀵 전환 칸(2026-11-06: 'v5m' = V5 Full Medium Effort 추가, 라벨 V5M).
+ * 계열마다 샘플링 값을 따로 보관·복원한다. 저장 형식은 선택 키(`samplingProfiles.v5m`) 추가뿐 — 옛 JSON 은 키가 없어
+ * v5 프로필을 복사해 시작하고, 5.5.2 이하는 v5m 키를 모르고 버린다(그 버전의 v4_5·v5 값은 그대로).
+ */
+export type ModelSamplingFamily = 'v4_5' | 'v5' | 'v5m';
+
+/** 화풍(작가 라이브러리 샘플) 계열 — 모델 세대만 본다(V5 Medium 은 V5 의 증류 모델이라 'v5'). */
+export type ModelBaseFamily = 'v4_5' | 'v5';
+
+export const MODEL_SAMPLING_FAMILIES: readonly ModelSamplingFamily[] = ['v4_5', 'v5', 'v5m'];
+
+export function isModelSamplingFamily(value: unknown): value is ModelSamplingFamily {
+  return value === 'v4_5' || value === 'v5' || value === 'v5m';
+}
+
+/** 퀵 전환·편집기 표시용 라벨(칸 글자)과 이름(안내 문장용). */
+export const MODEL_FAMILY_LABEL: Readonly<Record<ModelSamplingFamily, string>> = {
+  v4_5: '4.5',
+  v5: '5',
+  v5m: 'V5M',
+};
+export const MODEL_FAMILY_NAME: Readonly<Record<ModelSamplingFamily, string>> = {
+  v4_5: 'v4.5',
+  v5: 'v5',
+  v5m: 'v5 medium',
+};
+
+/** 순환 토글(클래식 모바일 단일 버튼)의 다음 계열 — 4.5 → 5 → V5M → 4.5. */
+export function nextModelFamily(family: ModelSamplingFamily): ModelSamplingFamily {
+  const i = MODEL_SAMPLING_FAMILIES.indexOf(family);
+  return MODEL_SAMPLING_FAMILIES[(i + 1) % MODEL_SAMPLING_FAMILIES.length];
+}
+
+/** 샘플링 계열 → 화풍 계열(v5m → v5). */
+export function baseFamilyOf(family: ModelSamplingFamily | undefined): ModelBaseFamily | undefined {
+  if (!family) return undefined;
+  return family === 'v4_5' ? 'v4_5' : 'v5';
+}
 
 export const MODEL_SAMPLING_FIELDS = [
   'steps',
@@ -20,6 +58,7 @@ export type ModelSamplingProfiles = Record<ModelSamplingFamily, ModelSamplingPro
 export function samplingFamilyForModel(
   modelVersion?: ModelVersion,
 ): ModelSamplingFamily | undefined {
+  if (modelVersion === ModelVersion.V5Medium) return 'v5m';
   if (
     modelVersion === ModelVersion.V5 ||
     modelVersion === ModelVersion.V5Curated
@@ -37,7 +76,7 @@ export function samplingFamilyForModel(
  */
 export function samplingFamilyForModelId(
   modelId?: string | null,
-): ModelSamplingFamily | undefined {
+): ModelBaseFamily | undefined {
   const id = (modelId ?? '').trim().toLowerCase();
   if (/^nai-diffusion-5(-|$)/.test(id)) return 'v5';
   if (/^nai-diffusion-4-5(-|$)/.test(id)) return 'v4_5';
@@ -52,6 +91,8 @@ export function modelVersionForSamplingFamily(
     current === ModelVersion.V4_5Curated ||
     current === ModelVersion.V5Curated ||
     current === ModelVersion.V4Curated;
+  // V5 Medium 은 Curated 변형이 없다 — Curated 를 쓰던 사용자도 V5M 칸은 Full Medium.
+  if (family === 'v5m') return ModelVersion.V5Medium;
   if (family === 'v5') {
     return curated ? ModelVersion.V5Curated : ModelVersion.V5;
   }
@@ -93,6 +134,8 @@ export function normalizeSamplingProfiles(value: any): ModelSamplingProfiles | u
   return {
     v4_5: copyProfile(value.v4_5),
     v5: copyProfile(value.v5),
+    // 옛 JSON(v5m 없음) = v5 값으로 시작 — 가이던스 등 V5 계열 값이 이어진다(스텝·샘플러는 V5M 에서 고정이라 무관).
+    v5m: copyProfile(value.v5m && typeof value.v5m === 'object' ? value.v5m : value.v5),
   };
 }
 
@@ -106,7 +149,7 @@ function ensureSamplingProfiles(
     return existing;
   }
   const current = snapshotLegacySampling(preset);
-  const created = { v4_5: { ...current }, v5: { ...current } };
+  const created = { v4_5: { ...current }, v5: { ...current }, v5m: { ...current } };
   preset.samplingProfiles = created;
   preset.samplingProfileFamily = initialFamily;
   return created;
@@ -131,10 +174,9 @@ export function activatePresetSamplingFamily(
   const profiles = ensureSamplingProfiles(preset, targetFamily);
   if (!hadProfiles) return;
 
-  const sourceFamily: ModelSamplingFamily =
-    preset.samplingProfileFamily === 'v4_5' || preset.samplingProfileFamily === 'v5'
-      ? preset.samplingProfileFamily
-      : targetFamily;
+  const sourceFamily: ModelSamplingFamily = isModelSamplingFamily(preset.samplingProfileFamily)
+    ? preset.samplingProfileFamily
+    : targetFamily;
   profiles[sourceFamily] = snapshotLegacySampling(preset);
   if (sourceFamily !== targetFamily) applyProfile(preset, profiles[targetFamily]);
   preset.samplingProfileFamily = targetFamily;
@@ -165,3 +207,16 @@ export function switchSessionSamplingFamily(
     if (scene?.preset) activatePresetSamplingFamily(scene.preset, targetFamily);
   }
 }
+
+/** V5 Medium(V5M) 편집기 안내 문구 단일 출처(2026-11-06) — 사전 세팅 편집기·변형 씬 안내·조합 전역 네거티브 칸. */
+export const V5_MEDIUM_TEXT = {
+  negativeNotice:
+    'V5M(Medium)에서는 네거티브가 쓰이지 않습니다. 프롬프트 안 `-3::태그::` 로 대체하세요',
+  fixedField: (value: string) => `V5M(Medium) 고정값: ${value}`,
+  cfgRescaleUnsupported: 'V5M(Medium)에서는 CFG 리스케일이 쓰이지 않습니다',
+  ucPresetFixed: 'V5M(Medium)에서는 네거티브 프리셋이 강함(Heavy)으로 고정됩니다',
+  modelNotice:
+    'V5M(Medium Effort)은 스텝 14·Euler Ancestral·네거티브 프리셋 Heavy 로 고정되고, 입력한 네거티브는 쓰이지 않습니다. 비용은 V5 Full 보다 적습니다.',
+  variantSummary: (guidance: string) =>
+    `V5M 고정 · 스텝 14 · 가이던스 ${guidance} · 샘플러 k_euler_ancestral`,
+} as const;

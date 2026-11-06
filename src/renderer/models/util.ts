@@ -3,6 +3,9 @@ import { CharacterPrompt, ImportableMetadata, SDAbstractJob, SDJob } from './typ
 import {
   extractSDStudioMetadataFromBase64,
 } from '../../shared/sdstudioImageMetadata';
+import { ModelVersion } from '../backends/imageGen';
+import { modelVersionFromNaiSource } from '../backends/genVendors/naiModelCapabilities';
+import { stripUcPreset } from '../backends/genVendors/naiQualityPresets';
 
 export function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -229,8 +232,14 @@ export function buildNaiMetadataDiagnostics(
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
+  // 모델 해시 표(단일 출처 NAI_SOURCE_MODEL_HASHES)로 먼저 판정 — V5 Medium 은 해시로만 구분된다(2026-11-06).
+  const hashedVersion = modelVersionFromNaiSource(
+    [sourceText, modelHash].filter(Boolean).join(' '),
+  );
   let detectedModel = '알 수 없음';
-  if (lowerSource.includes('v5')) {
+  if (hashedVersion === ModelVersion.V5Medium) {
+    detectedModel = 'V5 Full Medium (V5M)';
+  } else if (lowerSource.includes('v5')) {
     detectedModel = lowerSource.includes('curated')
       ? 'V5 Curated'
       : /657484a5|0adf9ab7|full/.test(lowerSource)
@@ -257,6 +266,7 @@ export function buildNaiMetadataDiagnostics(
   }
   return {
     model: detectedModel,
+    ...(hashedVersion ? { modelVersion: hashedVersion } : {}),
     modelHash: modelHash || undefined,
     source: sourceText || undefined,
     paramsVersion,
@@ -276,7 +286,7 @@ export function buildNaiMetadataDiagnostics(
   };
 }
 
-function parseCommentToJob(
+export function parseCommentToJob(
   data: any,
   source?: string,
 ): ImportableMetadata | undefined {
@@ -335,6 +345,13 @@ function parseCommentToJob(
       ? { width: data['width'], height: data['height'] }
       : undefined;
 
+    const naiDiagnostics = buildNaiMetadataDiagnostics(data, source);
+    // V5 Medium 이미지(2026-11-06): uc 는 고정 Heavy 프리셋 문구뿐 — 사용자 네거티브가 아니므로 UC 칸에 넣지 않게 떼어 낸다.
+    const isV5Medium = naiDiagnostics.modelVersion === ModelVersion.V5Medium;
+    const uc =
+      isV5Medium && typeof data['uc'] === 'string'
+        ? stripUcPreset(data['uc'], ModelVersion.V5Medium, 'heavy')
+        : data['uc'];
     return {
       prompt: data['prompt'],
       seed: data['seed'],
@@ -343,7 +360,7 @@ function parseCommentToJob(
       sampling: data['sampler'],
       noiseSchedule: data['noise_schedule'],
       steps: data['steps'],
-      uc: data['uc'],
+      uc,
       vibes,
       normalizeStrength: data['normalize_reference_strength_multiple'] ?? true,
       varietyPlus: data['skip_cfg_above_sigma'] ? true : false,
@@ -356,7 +373,7 @@ function parseCommentToJob(
       vibeImageData: vibeImages.length > 0 ? vibeImages : undefined,
       referenceImageData: refImages.length > 0 ? refImages : undefined,
       resolution,
-      naiDiagnostics: buildNaiMetadataDiagnostics(data, source),
+      naiDiagnostics,
     };
   } catch (e) {
     return undefined;

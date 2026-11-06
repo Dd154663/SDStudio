@@ -8,9 +8,15 @@ import {
   ReferenceItem,
 } from '../models/types';
 import {
+  importedModelVersionOf,
   planPromptImport,
   sceneSlotsMatchMiddle,
+  skipsFixedSamplingImport,
 } from '../models/sdstudioPromptImport';
+import {
+  samplingFamilyForModel,
+  switchSessionSamplingFamily,
+} from '../models/modelSamplingProfiles';
 import { base64ToDataUri } from './BrushTool';
 import { PromptHighlighter } from './SceneEditor';
 import { extractPromptDataFromBase64 } from '../models/util';
@@ -111,6 +117,9 @@ export const ExternalImageView = observer(
     const hasCharRefs = (job?.characterReferences?.length ?? 0) > 0;
     const hasResolution = !!job?.resolution;
     const exactSource = job?.sdstudioMetadata?.promptSource;
+    // 맞출 모델(SDStudio 메타 또는 공식 PNG 의 V5 Medium 해시) — 고정값 모델이면 스텝·샘플러·리스케일은 적용하지 않는다.
+    const importedModel = importedModelVersionOf(job);
+    const skipFixedSampling = skipsFixedSamplingImport(importedModel);
     const currentWorkflowType = appState.curSession?.selectedWorkflow?.workflowType;
     const isGlobalTarget = target.startsWith('new-global');
     // 구획 분배 계획(단일 출처 sdstudioPromptImport) — 메타가 없거나 생성 프리셋이 아니면 통합 프롬프트 → 상위.
@@ -209,6 +218,12 @@ export const ExternalImageView = observer(
             return shared;
           };
 
+          // 모델도 맞출 때는 값을 넣기 전에 대상 계열 프로필로 먼저 전환한다 — 넣은 뒤 config 변경으로 편집기가 계열을
+          // 바꾸면 방금 넣은 값이 이전 계열 프로필로 들어가 사라진다(2026-11-06). 되돌리기는 전환 뒤 값부터 기록.
+          const applyModel =
+            target === 'current' && options.modelSettings ? importedModel : undefined;
+          const applyFamily = applyModel ? samplingFamilyForModel(applyModel) : undefined;
+          if (applyFamily) switchSessionSamplingFamily(session, applyFamily);
           if (target === 'current') undoRec.preset(preset);
           undoRec.scene(normalScene, ['slots']);
           if (options.resolution && job.resolution) undoRec.scene(scene, ['resolution', 'resolutionWidth', 'resolutionHeight']);
@@ -267,11 +282,13 @@ export const ExternalImageView = observer(
               }
             }
             if (options.settings) {
-              preset.sampling = job.sampling ?? Sampling.KEulerAncestral;
-              preset.steps = job.steps ?? 28;
+              if (!skipFixedSampling) {
+                preset.sampling = job.sampling ?? Sampling.KEulerAncestral;
+                preset.steps = job.steps ?? 28;
+                preset.cfgRescale = job.cfgRescale ?? 0;
+              }
               preset.noiseSchedule = job.noiseSchedule ?? 'karras';
               preset.promptGuidance = job.promptGuidance ?? 5;
-              preset.cfgRescale = job.cfgRescale ?? 0;
               preset.useCoords = job.useCoords ?? false;
               preset.varietyPlus = job.varietyPlus ?? false;
               preset.deliberateEulerAncestralBug = job.deliberateEulerAncestralBug ?? false;
@@ -280,15 +297,24 @@ export const ExternalImageView = observer(
           });
 
           if (
-            target === 'current' &&
-            options.modelSettings &&
+            applyModel &&
+            !job.sdstudioMetadata?.generationSettings
+          ) {
+            // 공식 웹 V5 Medium 이미지 — 모델만 맞춘다(품질·UC 프리셋 등은 SDStudio 메타가 있을 때만).
+            const config = await backend.getConfig();
+            await backend.setConfig({ ...config, modelVersion: applyModel });
+            sessionService.configChanged();
+            configWritten = true;
+          }
+          if (
+            applyModel &&
             job.sdstudioMetadata?.generationSettings
           ) {
             const saved = job.sdstudioMetadata.generationSettings;
             const config = await backend.getConfig();
             await backend.setConfig({
               ...config,
-              modelVersion: saved.modelVersion as ModelVersion,
+              modelVersion: applyModel,
               furryMode: saved.furryMode,
               disableQuality: saved.disableQuality,
               qualityPreset: saved.qualityPreset,
@@ -784,6 +810,11 @@ export const ExternalImageView = observer(
                       <div><span className="text-muted">Coords:</span> <span className="text-body">{job.useCoords ? 'ON' : 'OFF'}</span></div>
                       <div><span className="text-muted">Legacy UC:</span> <span className="text-body">{job.legacyPromptConditioning ? 'ON' : 'OFF'}</span></div>
                     </div>
+                      {skipFixedSampling && (
+                        <div className="text-xs text-muted mt-2" data-v5m-import-note="">
+                          V5M(Medium) 이미지라 스텝·샘플러·CFG 리스케일은 고정값이어서 적용하지 않습니다.
+                        </div>
+                      )}
                   </CheckboxRow>
 
                   {/* 시드 */}
@@ -794,7 +825,7 @@ export const ExternalImageView = observer(
                     disabled={job.seed == null}
                   />
 
-                  {job.sdstudioMetadata?.generationSettings && (
+                  {(job.sdstudioMetadata?.generationSettings || importedModel) && (
                     <CheckboxRow
                       label="모델·품질 전역 설정"
                       checked={options.modelSettings}
@@ -802,7 +833,9 @@ export const ExternalImageView = observer(
                       disabled={target !== 'current'}
                     >
                       <div className="text-xs text-muted">
-                        현재 설정에 적용할 때 모델, 품질, UC 프리셋과 투명 배경 설정을 생성 당시 값으로 맞춥니다.
+                        {job.sdstudioMetadata?.generationSettings
+                          ? '현재 설정에 적용할 때 모델, 품질, UC 프리셋과 투명 배경 설정을 생성 당시 값으로 맞춥니다.'
+                          : '현재 설정에 적용할 때 모델을 V5M(Medium)으로 맞춥니다.'}
                       </div>
                     </CheckboxRow>
                   )}

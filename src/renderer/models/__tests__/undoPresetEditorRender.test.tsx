@@ -9,6 +9,7 @@ import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { configure } from 'mobx';
 
+const mockConfig: any = { modelVersion: '5-full' };
 const mockState: any = {
   uiPresetLayout: {},
   uiCompanionSlots: {},
@@ -28,7 +29,7 @@ jest.mock('..', () => {
   const flow = (type: string) => flows().find((f: any) => f.getType() === type);
   return {
     isMobile: false,
-    backend: { getConfig: async () => ({ modelVersion: '5-full' }) },
+    backend: { getConfig: async () => ({ ...mockConfig }) },
     sessionService: { addEventListener: () => {}, removeEventListener: () => {} },
     imageService: { getVibeImagePath: () => '', getVibesDir: () => '', fetchVibeImage: async () => '' },
     promptService: {},
@@ -99,6 +100,7 @@ beforeEach(() => {
   root = createRoot(container);
 });
 afterEach(() => {
+  mockConfig.modelVersion = '5-full';
   act(() => root.unmount());
   container.remove();
   mockState.curSession = undefined;
@@ -183,5 +185,32 @@ test('★ 렌더 중 자동 보정·마운트 중 샘플링 활성화는 기록�
   });
   expect(preset.frontPrompt).toBe(front0);
   expect(session.presets.get('SDImageGen')).toEqual([preset]);
+  expect(undoService.entries(session).past).toHaveLength(0);
+});
+
+test('V5M(Medium): 스텝·샘플러·CFG 리스케일은 고정값 표시+비활성, 네거티브 칸 위 안내, 저장값은 그대로(2026-11-06)', async () => {
+  mockConfig.modelVersion = '5-full-medium';
+  const session = new Session();
+  session.name = 'p';
+  mockState.curSession = session;
+  await act(async () => {
+    root.render(<PreSetEditor middlePromptMode={false} />);
+  });
+  await flush();
+  const preset = session.presets.get('SDImageGen')![0];
+  expect(preset.samplingProfileFamily).toBe('v5m');
+  const stepsSaved = preset.steps;
+  expect(container.querySelector('[data-v5m-negative-notice]')?.textContent).toContain('-3::태그::');
+  await act(async () => {
+    button('샘플링/모델 설정')!.click();
+  });
+  const steps = slider('스탭 수')!;
+  expect(steps.disabled).toBe(true);
+  expect(steps.value).toBe('14');
+  expect(container.querySelector('[data-v5m-fixed="steps"]')).toBeTruthy();
+  expect(container.querySelector('[data-v5m-fixed="cfgRescale"]')).toBeTruthy();
+  expect(slider('CFG 리스케일')!.disabled).toBe(true);
+  // 저장값은 지우지 않는다(다른 계열로 돌아가면 그 계열 프로필)
+  expect(preset.steps).toBe(stepsSaved);
   expect(undoService.entries(session).past).toHaveLength(0);
 });

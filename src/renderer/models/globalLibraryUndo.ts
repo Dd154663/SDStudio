@@ -14,7 +14,7 @@
 //   추가·편집 저장(이름 포함)·삭제·백업, 작가 생성·샘플 추가·삭제·병합·백업, 템플릿 생성·복제·삭제·내용 편집·불러오기·적용·폴더 기본
 //   템플릿 지정/해제(엔티티 생성·영구 삭제와 한 동작), 내보내기 프리셋 백업 불러오기.
 // · 서비스는 models/index.ts 가 configureGlobalLibraryUndo 로 넣는다(순환 import 회피 — 테스트는 ops 를 직접 넘긴다).
-import type { ModelSamplingFamily } from './modelSamplingProfiles';
+import type { ModelBaseFamily } from './modelSamplingProfiles';
 import {
   GLOBAL_UNDO_SCOPE,
   undoDeepClone,
@@ -70,7 +70,7 @@ export interface ArtistEntryLike {
   id: string;
   name: string;
   favorite: boolean;
-  images: { id: string; family?: ModelSamplingFamily }[];
+  images: { id: string; family?: ModelBaseFamily }[];
   tags: string[];
 }
 
@@ -83,7 +83,7 @@ export interface ArtistOps {
   setFavorite(id: string, on: boolean): void;
   setThumbnail(id: string, imageId: string): void;
   setImageOrder(id: string, imageIds: string[]): void;
-  setImageFamily(id: string, imageId: string, family: ModelSamplingFamily | undefined): void;
+  setImageFamily(id: string, imageId: string, family: ModelBaseFamily | undefined): void;
   addTag(id: string, tag: string): void;
   removeTag(id: string, tag: string): void;
   setTags(id: string, tags: string[]): void;
@@ -661,7 +661,7 @@ export function setArtistThumbnailRecorded(id: string, imageId: string, opts: Gl
 export function setArtistImageFamilyRecorded(
   id: string,
   imageId: string,
-  family: ModelSamplingFamily | undefined,
+  family: ModelBaseFamily | undefined,
   opts: GlobalLibraryUndoOptions = {},
 ): void {
   const { service, ops } = resolve(opts, 'artists');

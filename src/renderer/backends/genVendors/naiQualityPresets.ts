@@ -2,6 +2,7 @@ import {
   GenerationQualityPreset,
   ModelVersion,
 } from '../imageGen';
+import { isV5ModelVersion } from './naiModelCapabilities';
 
 // NAI 웹 UI 패리티: Add Quality Tags / Undesired Content Preset (2026-07-31).
 //
@@ -27,6 +28,7 @@ export type UcPresetKey =
 // 퀄리티 태그 — 프롬프트 "끝"에 그대로 이어 붙는다(v4/v4.5 공통, 선행 ', ' 포함).
 export const QUALITY_TAGS: Record<ModelVersion, string> = {
   [ModelVersion.V5]: ', very aesthetic, masterpiece, no text',
+  [ModelVersion.V5Medium]: ', very aesthetic, masterpiece, no text',
   [ModelVersion.V5Curated]: ', very aesthetic, masterpiece, no text',
   [ModelVersion.V4_5]: ', very aesthetic, masterpiece, no text',
   [ModelVersion.V4_5Curated]:
@@ -77,6 +79,8 @@ const v5UcPresets = (): Partial<Record<UcPresetKey, string>> => ({
 // V4.5 Curated 는 +Human Focus, V4.5 Full 은 +Human Focus/Furry Focus.
 const UC_PRESETS: Record<ModelVersion, Partial<Record<UcPresetKey, string>>> = {
   [ModelVersion.V5]: v5UcPresets(),
+  // V5 Medium: 공식 웹은 Heavy 로 고정(fixedSettings) — 표는 V5 Full 과 같은 문구(번들 공용).
+  [ModelVersion.V5Medium]: v5UcPresets(),
   [ModelVersion.V5Curated]: v5UcPresets(),
   [ModelVersion.V4_5]: {
     heavy: V45_FULL_HEAVY,
@@ -167,7 +171,7 @@ export function mergeQualityTags(
     result = result ? `transparent background, ${result}` : 'transparent background';
   }
   if (preset === 'none') return result;
-  if (version === ModelVersion.V5 || version === ModelVersion.V5Curated) {
+  if (isV5ModelVersion(version)) {
     const suffix = V5_QUALITY_TAGS[preset];
     return suffix ? (result ? `${result}, ${suffix}` : suffix) : result;
   }
@@ -200,7 +204,7 @@ export function qualityPresetTextFor(
   preset: GenerationQualityPreset,
 ): string {
   if (preset === 'none') return '';
-  if (version === ModelVersion.V5 || version === ModelVersion.V5Curated) {
+  if (isV5ModelVersion(version)) {
     return V5_QUALITY_TAGS[preset];
   }
   return (QUALITY_TAGS[version] ?? '').replace(/^, /, '');
@@ -233,4 +237,18 @@ export function ucPresetApiIndex(
     none: 4,
   };
   return map[k];
+}
+
+/**
+ * 네거티브 앞에 붙은 UC 프리셋 문구를 떼어 낸다(mergeUcPreset 의 역 — 「생성 설정 적용」용, 2026-11-06).
+ * 프리셋 문구로 시작하지 않으면 그대로. V5 Medium 이미지의 uc 는 Heavy 문구뿐이라 빈 문자열이 된다.
+ */
+export function stripUcPreset(
+  uc: string,
+  version: ModelVersion,
+  key: UcPresetKey | undefined,
+): string {
+  const preset = ucPresetTextFor(version, key);
+  if (!preset || !uc.startsWith(preset)) return uc;
+  return uc.slice(preset.length).replace(/^\s*,\s*/, '');
 }

@@ -1,6 +1,7 @@
 import { action, observable, makeAutoObservable } from 'mobx';
 import type { GenerationSettingsSnapshot } from '../../backends/imageGen';
 import {
+  isModelSamplingFamily,
   normalizeSamplingProfiles,
   type ModelSamplingFamily,
   type ModelSamplingProfiles,
@@ -351,10 +352,9 @@ function materializeWFObj(type: string, vars: WFVar[], samplingProfiles = false)
     });
     if (samplingProfiles) {
       obj.samplingProfiles = normalizeSamplingProfiles(json.samplingProfiles);
-      obj.samplingProfileFamily =
-        json.samplingProfileFamily === 'v4_5' || json.samplingProfileFamily === 'v5'
-          ? json.samplingProfileFamily
-          : undefined;
+      obj.samplingProfileFamily = isModelSamplingFamily(json.samplingProfileFamily)
+        ? json.samplingProfileFamily
+        : undefined;
     }
   };
 

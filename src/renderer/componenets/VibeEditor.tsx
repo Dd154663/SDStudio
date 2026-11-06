@@ -11,6 +11,7 @@ import { imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import { WFIInlineInput, wfiElementKey } from '../models/workflows/WorkFlow';
 import { ModelVersion } from '../backends/imageGen';
+import { isV5ModelVersion } from '../backends/genVendors/naiModelCapabilities';
 import { WFElementContext, PresetIconRowContext } from './wfElementContext';
 import { resolveCompanionButtons } from '../models/companionSlots';
 import { renderCompanionButtons } from './PortableToolbarButtons';
@@ -485,7 +486,7 @@ export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
     return refs.some((ref: ReferenceItem) => ref.enabled !== false && ref.path);
   })();
   const isV4_5 = modelVersion === ModelVersion.V4_5 || modelVersion === ModelVersion.V4_5Curated;
-  const isV5 = modelVersion === ModelVersion.V5 || modelVersion === ModelVersion.V5Curated;
+  const isV5 = isV5ModelVersion(modelVersion);
   const locked = isV5 || (isV4_5 && hasCharacterReferences);
   const lockedLabel = isV5
     ? '바이브 이미지 설정 (V5 미지원)'

@@ -19,7 +19,8 @@ import {
 import { setWorkflowField, workflowFieldLabel } from '../models/presetUndo';
 import { InpaintScene } from '../models/types';
 import { WFIElement } from '../models/workflows/WorkFlow';
-import { EditorField, InnerPreSetEditor } from './PreSetEdtior';
+import { EditorField, InnerPreSetEditor, V5MediumNegativeNotice } from './PreSetEdtior';
+import { useModelFamilySwitch } from './ModelFamilySwitch';
 import PromptEditTextArea from './PromptEditTextArea';
 
 // 전역 네거티브 구획 접힘 — 앱 실행 동안만 기억한다(프로젝트·설정에 저장 안 함, InPaintEditor brushSizeSaved 와 같은 방식).
@@ -69,6 +70,8 @@ export const ComboPromptEditor = observer(
     onImageUploaded,
   }: Props) => {
     const [globalUcFolded, setGlobalUcFolded] = useState(globalUcFoldedSaved);
+    // V5 Medium 이면 전역 네거티브 칸 위에도 「쓰이지 않음」 안내(2026-11-06) — 모델은 config 의 현재 값.
+    const { family: modelFamily } = useModelFamilySwitch();
     const changeGlobalUcFolded = (folded: boolean) => {
       globalUcFoldedSaved = folded;
       setGlobalUcFolded(folded);
@@ -154,6 +157,8 @@ export const ComboPromptEditor = observer(
         const value: string = owner[field] || '';
         const use = comboUsesGlobalUc(preset);
         return (
+          <>
+          {modelFamily === 'v5m' && <V5MediumNegativeNotice />}
           <EditorField
             label={label}
             full
@@ -185,6 +190,7 @@ export const ComboPromptEditor = observer(
               onChange={(v) => setPromptRow(owner, field, label, v)}
             />
           </EditorField>
+          </>
         );
       },
     };

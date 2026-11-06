@@ -5,6 +5,7 @@ import {
   GenerationUcPreset,
   ModelVersion,
 } from './imageGen';
+import { normalizeModelVersion } from './genVendors/naiModelCapabilities';
 
 const UC_PRESETS: readonly GenerationUcPreset[] = [
   'heavy',
@@ -39,7 +40,8 @@ export function captureGenerationSettings(
 ): GenerationSettingsSnapshot {
   return {
     schemaVersion: 1,
-    modelVersion: config.modelVersion ?? ModelVersion.V4_5,
+    // 모르는 값은 같은 세대로 폴백(전진 호환, naiModelCapabilities.normalizeModelVersion)
+    modelVersion: normalizeModelVersion(config.modelVersion),
     furryMode: config.furryMode ?? false,
     disableQuality: config.disableQuality ?? false,
     qualityPreset: resolveQualityPreset(config),

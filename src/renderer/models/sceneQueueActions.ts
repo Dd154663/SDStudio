@@ -40,7 +40,7 @@ import {
 } from './artistTags';
 import { artistLibraryService } from '.';
 import { dataUriToBase64 } from './ImageService';
-import { samplingFamilyForModel } from './modelSamplingProfiles';
+import { baseFamilyOf, samplingFamilyForModel } from './modelSamplingProfiles';
 import { editWorkflowFields } from './presetUndo';
 import { UNDO_TEXT } from './undoService';
 
@@ -716,7 +716,8 @@ export const queueArtistSample = async (
     appState.pushMessage('생성 설정을 읽지 못해 예약하지 못했습니다.');
     return false;
   }
-  const family = samplingFamilyForModel(generationSnapshot.modelVersion);
+  // 작가 샘플의 계열은 화풍 세대(V5 Medium → v5)
+  const family = baseFamilyOf(samplingFamilyForModel(generationSnapshot.modelVersion));
 
   const targetScene = ensureArtistBreakdownScene(session);
   const promptScene = Scene.fromJSON({

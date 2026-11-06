@@ -9,6 +9,12 @@
 //   이지 모드 캐릭터 태그는 상위 끝, 배경 태그는 하위 앞(일반 대상일 때).
 // - 메타가 없거나(NAI 공식·옛 SDStudio·I2I/인페인트 결과) 대상이 다른 워크플로우면 예전처럼 통합 프롬프트 → 상위.
 import type { SDStudioPromptSourceV1 } from '../../shared/sdstudioImageMetadata';
+import type { ImportableMetadata } from './types';
+import { ModelVersion } from '../backends/imageGen';
+import {
+  isKnownModelVersion,
+  naiFixedSettings,
+} from '../backends/genVendors/naiModelCapabilities';
 
 /** 구획 분배를 지원하는 대상 프리셋 타입(이미지 생성 일반·이지). */
 export const SPLIT_PROMPT_WORKFLOWS: ReadonlySet<string> = new Set([
@@ -112,4 +118,26 @@ export function sceneSlotsMatchMiddle(
     slots[0][0].enabled !== false &&
     (slots[0][0].prompt ?? '') === middle
   );
+}
+
+/**
+ * 「생성 설정 적용」이 맞출 모델(2026-11-06). SDStudio 전용 메타의 modelVersion(알려진 값만)이 우선,
+ * 없으면 공식 웹 PNG 의 `Source` 모델 해시로 판정한 V5 Medium(util.buildNaiMetadataDiagnostics — 해시 표 단일 출처
+ * `NAI_SOURCE_MODEL_HASHES`). 그 밖의 공식 이미지는 종전처럼 모델을 건드리지 않는다(undefined).
+ */
+export function importedModelVersionOf(
+  job: Pick<ImportableMetadata, 'sdstudioMetadata' | 'naiDiagnostics'> | undefined,
+): ModelVersion | undefined {
+  const saved = job?.sdstudioMetadata?.generationSettings?.modelVersion;
+  if (isKnownModelVersion(saved)) return saved;
+  if (job?.naiDiagnostics?.modelVersion === ModelVersion.V5Medium) return ModelVersion.V5Medium;
+  return undefined;
+}
+
+/**
+ * 생성 설정 적용에서 고정값 모델(V5 Medium)이면 스텝·샘플러·CFG 리스케일 적용을 건너뛴다 — 이미지의 값(14·Euler A·없음)은
+ * 모델이 정한 고정값이라 사용자 설정이 아니다. UC 의 Heavy 프리셋 문구는 파싱 단계(util.parseCommentToJob)에서 이미 떼어 낸다.
+ */
+export function skipsFixedSamplingImport(version: ModelVersion | undefined): boolean {
+  return !!naiFixedSettings(version);
 }

@@ -24,8 +24,10 @@ import {
   workFlowService,
 } from '.';
 import {
+  effectiveNaiSteps,
   isOpusFreeEligible,
   isV5ModelVersion,
+  normalizeModelVersion,
 } from '../backends/genVendors/naiModelCapabilities';
 import { appState } from './AppService';
 import {
@@ -296,9 +298,9 @@ class GenerateImageTaskHandler implements TaskHandler {
     const job = task.params.job as SDAbstractJob<PromptNode>;
     const scene = task.params.scene;
     if (!job || !scene) return undefined;
-    const version = (task.params.generationSnapshot?.modelVersion ??
-      (fallbackModelVersion as ModelVersion | undefined) ??
-      ModelVersion.V4_5) as ModelVersion;
+    const version = normalizeModelVersion(
+      task.params.generationSnapshot?.modelVersion ?? fallbackModelVersion,
+    );
     const isV5 = isV5ModelVersion(version);
     const isV4 = version === ModelVersion.V4 || version === ModelVersion.V4Curated;
     const resol = job.overrideResolution ? job.overrideResolution : (scene.resolution as Resolution);
@@ -318,7 +320,8 @@ class GenerateImageTaskHandler implements TaskHandler {
       isV5,
       width: Number(size?.width),
       height: Number(size?.height),
-      steps: Math.min(Number(job.steps), 50),
+      // V5 Medium 은 스텝 14 고정 — 사용자 값 대신 실제로 보낼 값으로 판정
+      steps: effectiveNaiSteps(version, Math.min(Number(job.steps), 50)),
       hasCharacterReference,
     };
   }
@@ -529,7 +532,7 @@ class GenerateImageTaskHandler implements TaskHandler {
       : (task.params.scene!.resolution as Resolution);
 
     // 모델 버전에 따른 바이브/캐릭터 레퍼런스 필터링
-    const curModelVersion = config.modelVersion ?? ModelVersion.V4_5;
+    const curModelVersion = normalizeModelVersion(config.modelVersion);
     const isV4 = curModelVersion === ModelVersion.V4 || curModelVersion === ModelVersion.V4Curated;
     const isV4_5 = curModelVersion === ModelVersion.V4_5 || curModelVersion === ModelVersion.V4_5Curated;
     const isV5 = isV5ModelVersion(curModelVersion);
@@ -552,7 +555,8 @@ class GenerateImageTaskHandler implements TaskHandler {
       ),
       sampling: job.sampling as Sampling,
       vibes: finalVibes,
-      steps: job.steps,
+      // V5 Medium 은 14 고정(요청 조립 nai.ts 도 같은 값) — 무료 판정·부스트 비용 갈래가 실제 요청과 같게
+      steps: effectiveNaiSteps(curModelVersion, job.steps),
       cfgRescale: job.cfgRescale,
       noiseSchedule: job.noiseSchedule as NoiseSchedule,
       promptGuidance: job.promptGuidance,
@@ -895,7 +899,8 @@ class GenerateImageTaskHandler implements TaskHandler {
     const job: SDAbstractJob<PromptNode> = task.params
       .job as SDAbstractJob<PromptNode>;
     const name = task.params.scene.name;
-    if (job.steps > 28) {
+    const costVersion = task.params.generationSnapshot?.modelVersion;
+    if (effectiveNaiSteps(costVersion ? normalizeModelVersion(costVersion) : undefined, job.steps) > 28) {
       res.push({
         scene: name,
         text: '스탭 수 28개 초과',

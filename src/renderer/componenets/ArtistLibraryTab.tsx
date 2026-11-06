@@ -24,7 +24,7 @@ import { ActionIcon } from './ActionIcon';
 import { queueArtistSample } from '../models/sceneQueueActions';
 import { artistLibraryService, imageService, backend } from '../models';
 import { IArtistEntry, IArtistImage } from '../models/ArtistLibraryService';
-import { ModelSamplingFamily } from '../models/modelSamplingProfiles';
+import { ModelBaseFamily } from '../models/modelSamplingProfiles';
 import { appState } from '../models/AppService';
 import {
   addArtistTagPresetRecorded,
@@ -52,9 +52,9 @@ import Tooltip from './Tooltip';
 import ModalOverlay from './ModalOverlay';
 
 // ─── 모델 계열 보기(2026-09-26): 같은 작가라도 v4.5/v5 의 학습 여부·출력 화풍이 달라 구분한다 ───
-type FamilyView = 'all' | ModelSamplingFamily;
+type FamilyView = 'all' | ModelBaseFamily;
 const FAMILY_VIEW_KEY = 'sdstudio-artist-lib-family';
-const FAMILY_LABEL: Record<ModelSamplingFamily, string> = { v4_5: 'v4.5', v5: 'v5' };
+const FAMILY_LABEL: Record<ModelBaseFamily, string> = { v4_5: 'v4.5', v5: 'v5' };
 const loadFamilyView = (): FamilyView => {
   try {
     const v = localStorage.getItem(FAMILY_VIEW_KEY);
@@ -74,7 +74,7 @@ const saveFamilyView = (v: FamilyView) => {
 const imagesFor = (artist: IArtistEntry, view: FamilyView): IArtistImage[] =>
   view === 'all' ? artist.images : artist.images.filter((i) => i.family === view);
 /** 썸네일 구석의 계열 배지. 미지정은 표시하지 않는다. */
-const FamilyBadge = ({ family, className }: { family?: ModelSamplingFamily; className?: string }) =>
+const FamilyBadge = ({ family, className }: { family?: ModelBaseFamily; className?: string }) =>
   family ? (
     <span className={'pointer-events-none text-[10px] leading-none px-1 py-0.5 rounded bg-black/60 text-white ' + (className || '')}>
       {FAMILY_LABEL[family]}
@@ -341,7 +341,7 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
               {selected && (
                 <div className="flex items-center gap-1.5 mt-2 text-xs">
                   <span className="text-muted mr-1">모델 계열</span>
-                  {(['v4_5', 'v5'] as ModelSamplingFamily[]).map((f) => (
+                  {(['v4_5', 'v5'] as ModelBaseFamily[]).map((f) => (
                     <button
                       key={f}
                       className={'px-2 py-0.5 rounded-full border ' + (selected.family === f ? 'border-sky-500 text-sky-500 bg-sky-100 dark:bg-sky-900/40' : 'line-color text-muted hover:border-sky-400')}

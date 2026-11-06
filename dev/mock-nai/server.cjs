@@ -49,6 +49,26 @@ const CRC_TABLE = (() => {
   return table;
 })();
 
+/**
+ * V5 Full Medium Effort(2026-11-06) — `nai-diffusion-5-full-medium`(·`-inpainting`). 공식 웹 번들 비용 공식:
+ * Medium = 23스텝 High 비용 ÷ 1.75. 가짜 서버는 계정의 1장 비용(usagePerImage·anlasPerImage)을 「High 23스텝」 값으로 보고
+ * Medium 이면 ÷1.75 한다(Anlas 는 올림·최소 2, 할당 % 는 소수 둘째 자리). 실제 차감 비율은 추정(조사 문서 참고).
+ */
+const V5_MEDIUM_MODEL = /^nai-diffusion-5-full-medium(-inpainting)?$/;
+const V5_MEDIUM_COST_DIVISOR = 1.75;
+
+function isV5MediumModel(model) {
+  return V5_MEDIUM_MODEL.test(String(model || ''));
+}
+
+/** 1장 비용 → 모델 반영 비용. kind 'anlas' = 정수(올림·최소 2), 'percent' = 소수 둘째 자리. Medium 이 아니면 그대로. */
+function mediumAdjustedCost(model, cost, kind) {
+  const base = Math.max(0, Number(cost) || 0);
+  if (!isV5MediumModel(model) || base === 0) return base;
+  const v = base / V5_MEDIUM_COST_DIVISOR;
+  return kind === 'anlas' ? Math.max(2, Math.ceil(v)) : Math.round(v * 100) / 100;
+}
+
 function crc32(buf, crc = 0) {
   let c = (crc ^ 0xffffffff) >>> 0;
   for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
@@ -440,7 +460,7 @@ function createMockServer(options = {}) {
     if (isV5) {
       useAnlas = !state.opusSubscribed || state.isNegative;
       if (!useAnlas) {
-        const cost = Math.max(0, Number(account.usagePerImage) || 0);
+        const cost = mediumAdjustedCost(model, account.usagePerImage, 'percent');
         if (state.percent > 0) state.percent = Math.max(0, state.percent - cost);
         else if (state.purchasedPercent > 0) state.purchasedPercent = Math.max(0, state.purchasedPercent - cost);
         else useAnlas = true; // isNegative=false 인데 둘 다 0 인 경계 — Anlas 로
@@ -449,8 +469,10 @@ function createMockServer(options = {}) {
     } else {
       useAnlas = !(state.opusSubscribed && width * height <= 1048576 && (Number(steps) || 0) <= 28);
     }
+    let anlasCost = 0;
     if (useAnlas) {
-      const cost = Math.max(0, Number(account.anlasPerImage) || 0);
+      const cost = mediumAdjustedCost(model, account.anlasPerImage, 'anlas');
+      anlasCost = cost;
       if (state.anlas < cost) {
         // 실제 NovelAI 402 문구는 추정. 앱은 「anlas」 낱말로 할당량 오류(quota)로 분류한다.
         return { ok: false, status: 402, message: 'Not enough Anlas to perform this action.' };
@@ -458,7 +480,8 @@ function createMockServer(options = {}) {
       state.anlas -= cost;
     }
     const after = `free ${state.percent}% / boost ${state.purchasedPercent}% / anlas ${state.anlas}`;
-    return { ok: true, note: useAnlas ? `Anlas -${account.anlasPerImage} (${before} → ${after})` : `${before} → ${after}${state.isNegative ? ' [isNegative]' : ''}` };
+    const medium = isV5MediumModel(model) ? ' [V5 Medium ÷1.75]' : '';
+    return { ok: true, note: (useAnlas ? `Anlas -${anlasCost} (${before} → ${after})` : `${before} → ${after}${state.isNegative ? ' [isNegative]' : ''}`) + medium };
   }
 
   function stamp() {
@@ -548,7 +571,10 @@ function createMockServer(options = {}) {
           ['Source', `SDStudio mock NAI (${body.model || 'unknown'})`],
           ['Comment', JSON.stringify(comment)],
         ]);
-        logLine(who, req.method, req.url, 200, `${body.action || '?'} ${width}x${height} seed=${seed} #${state.generated} ${result.note}`);
+        // 받은 스텝·샘플러·네거티브(앞 60자)·cfg_rescale 유무 — V5 Medium 고정값 송신 확인용(2026-11-06)
+        const neg = String(params.negative_prompt ?? '');
+        const recv = `model=${body.model || '?'} steps=${params.steps ?? '-'} sampler=${params.sampler ?? '-'} cfg_rescale=${'cfg_rescale' in params ? params.cfg_rescale : '(없음)'} uc_hint=${params.tag_hint_uc_preset ?? '-'} neg="${neg.length > 60 ? neg.slice(0, 60) + '…' : neg}"`;
+        logLine(who, req.method, req.url, 200, `${body.action || '?'} ${width}x${height} seed=${seed} #${state.generated} ${result.note} | ${recv}`);
         return send(res, 200, makeZip([{ name: 'image_0.png', data: png }]), 'application/x-zip-compressed');
       }
       if (kind === 'augment') {
@@ -962,6 +988,12 @@ async function selfTest() {
     check('바이브 인코딩 200 + 바이트', vibe.status === 200 && vibe.body.length > 0);
     check('이메일 로그인 400', (await request(port, 'POST', '/user/login', { body: { key: 'x' } })).status === 400);
 
+    // V5 Medium 차감 = High ÷ 1.75(미구독 F: Anlas 20 → 12)
+    const sF2 = mock.stateOf('mock-st-f');
+    const anlasF2 = sF2.anlas;
+    await request(port, 'POST', '/ai/generate-image', { token: 'mock-st-f', body: { ...genBody(11), model: 'nai-diffusion-5-full-medium', parameters: { ...genBody(11).parameters, steps: 14 } } });
+    check('V5 Medium 미구독 = Anlas 20÷1.75 → 12 차감', sF2.anlas === anlasF2 - 12);
+
     // 시나리오 변경 반영(바뀐 값만) · reset
     s = mock.stateOf('mock-st-a');
     mock.setScenarioJson({ ...scenario, accounts: scenario.accounts.map((a) => (a.token === 'mock-st-a' ? { ...a, anlas: 500 } : a)) });
@@ -990,4 +1022,4 @@ async function selfTest() {
 
 if (require.main === module) main();
 
-module.exports = { createMockServer, makePng, makeZip, crc32, parseScenario };
+module.exports = { createMockServer, makePng, makeZip, crc32, parseScenario, isV5MediumModel, mediumAdjustedCost };

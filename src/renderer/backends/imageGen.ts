@@ -10,6 +10,8 @@ export enum Model {
 
 export enum ModelVersion {
   V5 = '5-full',
+  /** V5 Full 「Medium Effort」(2026-11-06, 약칭 V5M) — 모델 ID 교체·스텝/샘플러/UC 고정. Curated 변형 없음. SPEC §11 「V5 Medium」. */
+  V5Medium = '5-full-medium',
   V5Curated = '5-curated',
   V4_5 = '4-5-full',
   V4_5Curated = '4-5-curated',

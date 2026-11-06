@@ -7,8 +7,11 @@ const PNG_KEYWORD = 'SDStudio';
 const PNG_PREFIX = 'v1:';
 const WEBP_CHUNK = 'SDST';
 const MAX_METADATA_BYTES = 1024 * 1024;
+// renderer ModelVersion 값과 같은 목록(shared 는 renderer 를 import 하지 않음). '5-full-medium' = V5 Medium(2026-11-06).
+// 5.5.2 이하는 이 값을 몰라 generationSettings 를 통째로 버린다(프롬프트 구획은 그대로 읽힘 — 롤백 안전).
 const MODEL_VERSIONS = new Set([
   '5-full',
+  '5-full-medium',
   '5-curated',
   '4-5-full',
   '4-5-curated',

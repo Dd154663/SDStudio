@@ -5,6 +5,7 @@ import {
   Resolution,
   Sampling,
 } from '../backends/imageGen';
+import type { ModelVersion } from '../backends/imageGen';
 import {
   types,
   Instance,
@@ -91,6 +92,8 @@ export interface ImportableMetadata extends SDAbstractJob<string> {
   resolution?: { width: number; height: number };
   naiDiagnostics?: {
     model: string;
+    /** `Source` 모델 해시로 판정한 모델(알려진 해시만, 2026-11-06 — V5 Medium 구분용). */
+    modelVersion?: ModelVersion;
     modelHash?: string;
     source?: string;
     paramsVersion?: number;

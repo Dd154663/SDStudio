@@ -53,6 +53,8 @@ Copy-Item dev\mock-nai\scenario.json dev\mock-nai\scenario.local.json
 | `delayMs` / `delayJitterMs` | 생성 응답 시간 / ±흔들림 | 1500 / 0 |
 | `usagePerImage` | V5 생성 1장당 차감(%) | 5 |
 | `anlasPerImage` | Anlas 로 생성할 때 1장당 차감 | 20 |
+
+V5 Full Medium(`nai-diffusion-5-full-medium`·`-inpainting`, 2026-11-06)은 위 두 값을 「High 23스텝」 비용으로 보고 ÷1.75 로 차감합니다(Anlas 는 올림·최소 2, % 는 소수 둘째 자리). 생성 로그 줄 끝에 받은 `steps`·`sampler`·`cfg_rescale` 유무·`tag_hint_uc_preset`·네거티브(앞 60자)를 남깁니다.
 | `failEvery` | N번째 생성 시도마다 500(0 = 끔) | 0 |
 | `rateLimit429Every` | N번째 생성 시도마다 429(0 = 끔) | 0 |
 | `conflict409Every` | N번째 생성 시도마다 409 「Concurrent generation is locked」(0 = 끔) | 0 |

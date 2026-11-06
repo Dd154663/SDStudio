@@ -28,8 +28,10 @@ import {
 } from './naiQualityPresets';
 import { resolveQualityPreset } from '../generationSettings';
 import {
+  effectiveNaiSteps,
   getNaiModelSpec,
   isV5ModelVersion,
+  normalizeModelVersion,
   normalizeNaiSampling,
   resolveNaiModelId,
 } from './naiModelCapabilities';
@@ -234,15 +236,19 @@ export class NovelAiImageGenService implements ImageGenService {
     const resolutionValue = params.resolution;
     const config = params.generationSettings ?? (await this.getCachedConfig());
 
-    const modelVersionValue: ModelVersion =
-      config.modelVersion ?? ModelVersion.V4_5;
+    // 모르는 값(앞으로 생길 모델 등)은 같은 세대로 폴백 — 없으면 V4.5 Full(종전 기본).
+    const modelVersionValue: ModelVersion = normalizeModelVersion(
+      config.modelVersion,
+    );
     const modelValue = this.translateModel(params.model, modelVersionValue);
     const modelSpec = getNaiModelSpec(modelVersionValue);
     const isV5 = isV5ModelVersion(modelVersionValue);
-    const normalizedSampling = normalizeNaiSampling(
-      modelVersionValue,
-      params.sampling,
-    );
+    // V5 Medium(2026-11-06, SPEC §11 「V5 Medium」): 공식 웹처럼 송신 직전 고정 — 스텝·샘플러·UC(Heavy 프리셋만)·
+    // 캐릭터 UC "", tag_hint_uc_preset 2, cfg_rescale 키 없음. 가이던스·노이즈 스케줄·해상도·시드는 그대로.
+    const fixed = modelSpec.fixedSettings;
+    const normalizedSampling = fixed
+      ? fixed.sampler
+      : normalizeNaiSampling(modelVersionValue, params.sampling);
     const samplingValue = this.translateSampling(normalizedSampling);
     const qualityPreset = resolveQualityPreset(config);
     const transparentBackground =
@@ -272,9 +278,11 @@ export class NovelAiImageGenService implements ImageGenService {
         transparentBackground,
       ),
     );
-    const finalUc = padWeight(
-      mergeUcPreset(params.uc, modelVersionValue, config.ucPreset),
-    );
+    // 고정 UC 프리셋이 있으면 사용자·씬·전역 네거티브(작가 태그·공백 보정 포함)를 모두 버리고 프리셋 문구만 보낸다.
+    const ucPresetKey = fixed ? fixed.ucPreset : config.ucPreset;
+    const finalUc = fixed
+      ? mergeUcPreset('', modelVersionValue, fixed.ucPreset)
+      : padWeight(mergeUcPreset(params.uc, modelVersionValue, config.ucPreset));
 
     // 시드 미지정 시 랜덤 — NAI 시드 공간은 32비트 전체(최대 4,294,967,295).
     // 과거 상한 2,100,000,000 은 임의 제한이라 제거(2026-07-25).
@@ -351,10 +359,7 @@ export class NovelAiImageGenService implements ImageGenService {
         modelSpec.capabilities.maxPromptGuidance ?? params.promptGuidance,
       ),
       sampler: samplingValue,
-      steps: Math.min(
-        params.steps,
-        modelSpec.capabilities.maxSteps ?? params.steps,
-      ),
+      steps: effectiveNaiSteps(modelVersionValue, params.steps),
       noise: params.noise,
       seed,
       n_samples: 1,
@@ -367,10 +372,7 @@ export class NovelAiImageGenService implements ImageGenService {
       prefer_brownian: samplingValue === 'k_euler_ancestral',
       deliberate_euler_ancestral_bug: false,
       tag_hint_qt: qualityPresetHintId(qualityPreset),
-      tag_hint_uc_preset: ucPresetHintId(
-        modelVersionValue,
-        config.ucPreset,
-      ),
+      tag_hint_uc_preset: ucPresetHintId(modelVersionValue, ucPresetKey),
       tag_hint_transparent_background: transparentBackground,
       v4_prompt: {
         caption: {
@@ -387,6 +389,9 @@ export class NovelAiImageGenService implements ImageGenService {
         },
       },
     };
+    if (modelSpec.capabilities.supportsCfgRescale === false) {
+      delete v5Parameters.cfg_rescale;
+    }
     const body: any = {
       input: finalPrompt,
       model: modelValue,
@@ -516,7 +521,7 @@ export class NovelAiImageGenService implements ImageGenService {
         .map((prompt, sourceIndex) => ({
           // 캐릭터 프롬프트·캐릭터 부정 프롬프트도 같은 공백 보정(N1).
           prompt: padWeight(prompt),
-          uc: padWeight(params.characterUCs?.[sourceIndex] ?? ''),
+          uc: fixed ? '' : padWeight(params.characterUCs?.[sourceIndex] ?? ''),
           center: charaPos(sourceIndex),
         }))
         .filter((entry) => entry.prompt.trim().length > 0)
@@ -736,7 +741,7 @@ export class NovelAiImageGenService implements ImageGenService {
     const config = await this.getCachedConfig();
     const modelValue = this.translateModel(
       Model.Anime,
-      config.modelVersion ?? ModelVersion.V4_5,
+      normalizeModelVersion(config.modelVersion),
     );
     const body = {
       image: params.image,

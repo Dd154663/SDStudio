@@ -115,6 +115,8 @@ import {
 import { resolveQualityPreset } from '../backends/generationSettings';
 import {
   isV5ModelVersion,
+  naiFixedSettings,
+  normalizeModelVersion,
   V5_SAMPLERS,
 } from '../backends/genVendors/naiModelCapabilities';
 import { EditableSliderValue, VibeEditor, VibeButton, VibeImage } from './VibeEditor';
@@ -129,6 +131,7 @@ import {
   activatePresetSamplingFamily,
   samplingFamilyForModel,
   switchSessionSamplingFamily,
+  V5_MEDIUM_TEXT,
 } from '../models/modelSamplingProfiles';
 import { uploadVariantImageRecorded, variantSceneOfPreset } from '../models/variantSceneUndo';
 import {
@@ -1346,17 +1349,37 @@ const WFRShowImage = observer(({ element }: WFElementProps) => {
   );
 });
 
+// V5 Medium 네거티브 안내 줄(2026-11-06) — 네거티브 칸 위(사전 세팅·씬 전용·이지 태그 밴 리스트·조합 전역 네거티브·변형 씬 안내).
+export const V5MediumNegativeNotice = () => (
+  <div
+    className="text-xs text-amber-600 dark:text-amber-400 mt-2 md:mt-3"
+    data-v5m-negative-notice=""
+  >
+    {V5_MEDIUM_TEXT.negativeNotice}
+  </div>
+);
+
 // 변형 씬 편집 칸의 「샘플링·모델 설정은 메인 사전 세팅을 따릅니다」 안내 줄(2026-10-11, SPEC §7-5).
 // 생성은 메인 사전 세팅 값을 쓰므로(variantSampling) 이 칸에는 입력을 두지 않고, 현재 메인 값 요약만 읽기 전용으로 보인다.
 // observer — 메인 사전 세팅(선택 사전 세팅·값)이 바뀌면 바로 갱신. 메인을 못 읽으면 요약은 생략한다.
 const WFRMainSamplingNotice = observer(({ element }: WFElementProps) => {
-  const { editVibe, showGroup } = useContext(WFElementContext)!;
+  const { editVibe, showGroup, modelVersion } = useContext(WFElementContext)!;
   const input = element as WFIMainSamplingNotice;
   if (showGroup || editVibe) {
     return <></>;
   }
   const read = readMainSampling(appState.curSession);
-  const summary = read.ok ? mainSamplingSummary(read.main.preset) : undefined;
+  // V5 Medium: 스텝·샘플러는 고정값이라 메인 값 대신 고정값과 가이던스만 보인다.
+  const v5m = !!naiFixedSettings(modelVersion);
+  const summary = read.ok
+    ? v5m
+      ? V5_MEDIUM_TEXT.variantSummary(
+          typeof read.main.preset?.promptGuidance === 'number'
+            ? String(Math.round(read.main.preset.promptGuidance * 100) / 100)
+            : '-',
+        )
+      : mainSamplingSummary(read.main.preset)
+    : undefined;
   return (
     <div className="flex-none mt-2 md:mt-3" data-main-sampling-notice="">
       <div className="gray-label text-sm">{input.label}</div>
@@ -1365,6 +1388,7 @@ const WFRMainSamplingNotice = observer(({ element }: WFElementProps) => {
           {summary}
         </div>
       )}
+      {v5m && <V5MediumNegativeNotice />}
     </div>
   );
 });
@@ -1461,7 +1485,7 @@ const GlobalModelSettings = observer(() => {
   useEffect(() => {
     const load = async () => {
       const config = await backend.getConfig();
-      setModelVersion(config.modelVersion ?? ModelVersion.V4_5);
+      setModelVersion(normalizeModelVersion(config.modelVersion));
       setFurryMode(config.furryMode ?? false);
       setDisableQuality(config.disableQuality ?? false);
       setQualityPreset(resolveQualityPreset(config));
@@ -1501,6 +1525,10 @@ const GlobalModelSettings = observer(() => {
   };
 
   if (!loaded) return null;
+  const fixedSettings = naiFixedSettings(modelVersion);
+  const shownUcPreset: UcPresetKey = fixedSettings
+    ? fixedSettings.ucPreset
+    : effectiveUcPreset(modelVersion, ucPreset);
 
   return (
     <div className="mt-4 pt-4 border-t line-color">
@@ -1515,6 +1543,7 @@ const GlobalModelSettings = observer(() => {
             menuPlacement="auto"
             options={[
               { label: 'V5 Full', value: ModelVersion.V5 },
+              { label: 'V5 Full Medium (V5M)', value: ModelVersion.V5Medium },
               { label: 'V5 Curated', value: ModelVersion.V5Curated },
               { label: 'V4.5 Full', value: ModelVersion.V4_5 },
               { label: 'V4.5 Curated', value: ModelVersion.V4_5Curated },
@@ -1526,11 +1555,15 @@ const GlobalModelSettings = observer(() => {
             }}
             disabled={switchingModel}
           />
-          {(modelVersion === ModelVersion.V5 ||
-            modelVersion === ModelVersion.V5Curated) && (
+          {isV5ModelVersion(modelVersion) && (
             <div className="text-xs text-faint mt-1">
               V5에서는 Karras가 고정되며 Vibe·캐릭터 레퍼런스·Variety+·DDIM은
               생성 요청에서 안전하게 제외됩니다.
+            </div>
+          )}
+          {modelVersion === ModelVersion.V5Medium && (
+            <div className="text-xs text-sub mt-1" data-v5m-model-notice="">
+              {V5_MEDIUM_TEXT.modelNotice}
             </div>
           )}
           {modelVersion === ModelVersion.V5Curated && (
@@ -1554,8 +1587,7 @@ const GlobalModelSettings = observer(() => {
             퍼리 모드 켜기
           </label>
         </div>
-        {(modelVersion === ModelVersion.V5 ||
-          modelVersion === ModelVersion.V5Curated) ? (
+        {isV5ModelVersion(modelVersion) ? (
           <div>
             <label className="text-sm gray-label mb-1 block">품질 태그</label>
             <DropdownSelect
@@ -1612,19 +1644,26 @@ const GlobalModelSettings = observer(() => {
           <label className="text-sm gray-label mb-1 block">
             네거티브 프리셋 (Undesired Content Preset)
           </label>
+          {/* V5 Medium: Heavy 고정 표시 + 비활성(저장값 ucPreset 은 지우지 않음 — 다른 모델로 돌아가면 그대로) */}
           <DropdownSelect
-            selectedOption={effectiveUcPreset(modelVersion, ucPreset)}
+            selectedOption={shownUcPreset}
             menuPlacement="auto"
             options={ucPresetOptionsFor(modelVersion)}
             onSelect={(opt) => {
               setUcPreset(opt.value as UcPresetKey);
               saveConfig({ ucPreset: opt.value });
             }}
+            disabled={!!fixedSettings}
           />
-          {effectiveUcPreset(modelVersion, ucPreset) !== 'none' && (
+          {fixedSettings && (
+            <div className="text-xs text-sub mt-1" data-v5m-fixed="ucPreset">
+              {V5_MEDIUM_TEXT.ucPresetFixed}
+            </div>
+          )}
+          {shownUcPreset !== 'none' && (
             <div className="text-xs text-faint mt-1 break-all">
               네거티브 앞에 추가:{' '}
-              {ucPresetTextFor(modelVersion, ucPreset)}
+              {ucPresetTextFor(modelVersion, shownUcPreset)}
             </div>
           )}
         </div>
@@ -2095,8 +2134,7 @@ const CharacterPromptEditor = observer(
           ? (shared?.characterPrompts || []).length
           : 0;
       if (
-        (modelVersion === ModelVersion.V5 ||
-          modelVersion === ModelVersion.V5Curated) &&
+        isV5ModelVersion(modelVersion) &&
         sharedCount + getField().length >= 32
       ) {
         appState.pushMessage('V5 캐릭터 프롬프트는 최대 32개까지 사용할 수 있습니다.');
@@ -2194,8 +2232,7 @@ const CharacterPromptEditor = observer(
       );
     };
     const reachedV5CharacterLimit =
-      (modelVersion === ModelVersion.V5 ||
-        modelVersion === ModelVersion.V5Curated) &&
+      isV5ModelVersion(modelVersion) &&
       allChars.length >= 32;
     const setCharPosition = (charId: string, position: CharacterPosition) => {
       // preset(워크플로우) 캐릭터 프롬프트에서 찾기
@@ -2627,6 +2664,11 @@ const WFRInline = observer(({ element }: WFElementProps) => {
   }
   const key = `${type}_${preset.name}_${input.field}`;
   const isV5 = isV5ModelVersion(modelVersion);
+  // V5 Medium(2026-11-06): 스텝·샘플러·CFG 리스케일은 고정값 표시+비활성(저장값은 그대로 — 다른 계열로 돌아가면 그 프로필),
+  // 네거티브 칸('uc' — 사전 세팅·씬 전용·이지 모드 태그 밴 리스트) 위에는 「쓰이지 않음」 안내.
+  const fixedSettings = naiFixedSettings(modelVersion);
+  const v5mNegativeNotice =
+    fixedSettings && input.field === 'uc' ? <V5MediumNegativeNotice /> : null;
   if (
     isV5 &&
     [
@@ -2642,6 +2684,8 @@ const WFRInline = observer(({ element }: WFElementProps) => {
   switch (field.type) {
     case 'prompt':
       return (
+        <>
+        {v5mNegativeNotice}
         <EditorField
           label={input.label}
           full={input.flex === 'flex-1'}
@@ -2665,6 +2709,7 @@ const WFRInline = observer(({ element }: WFElementProps) => {
             onChange={(v: string) => setField(v, 'edit')}
           ></PromptEditTextArea>
         </EditorField>
+        </>
       );
     case 'select':
       return (
@@ -2723,27 +2768,41 @@ const WFRInline = observer(({ element }: WFElementProps) => {
           />
         </InlineEditorField>
       );
-    case 'int':
+    case 'int': {
+      const fixedInt =
+        fixedSettings && input.field === 'steps'
+          ? { value: fixedSettings.steps, note: V5_MEDIUM_TEXT.fixedField(String(fixedSettings.steps)) }
+          : fixedSettings && input.field === 'cfgRescale'
+            ? { value: 0, note: V5_MEDIUM_TEXT.cfgRescaleUnsupported }
+            : undefined;
       return (
-        <IntSliderInput
-          label={input.label}
-          value={getField()}
-          onChange={(v) => setField(v)}
-          onSlideStart={startSlide}
-          disabled={false}
-          min={field.min}
-          max={field.max}
-          step={field.step}
-          key={key}
-        />
+        <>
+          <IntSliderInput
+            label={input.label}
+            value={fixedInt ? fixedInt.value : getField()}
+            onChange={(v) => setField(v)}
+            onSlideStart={fixedInt ? undefined : startSlide}
+            disabled={!!fixedInt}
+            min={field.min}
+            max={field.max}
+            step={field.step}
+            key={key}
+          />
+          {fixedInt && (
+            <div className="text-xs text-sub" data-v5m-fixed={input.field}>
+              {fixedInt.note}
+            </div>
+          )}
+        </>
       );
+    }
     case 'sampling':
       return (
         <InlineEditorField label={input.label}>
           <DropdownSelect
             key={key}
-            selectedOption={getField()}
-            disabled={false}
+            selectedOption={fixedSettings ? fixedSettings.sampler : getField()}
+            disabled={!!fixedSettings}
             menuPlacement="auto"
             options={(isV5 ? V5_SAMPLERS : Object.values(Sampling)).map((x) => ({
               label: x,
@@ -2831,7 +2890,7 @@ export const PreSetEditorImpl = observer(
     useEffect(() => {
       const loadModel = async () => {
         const config = await backend.getConfig();
-        const next = config.modelVersion ?? ModelVersion.V4_5;
+        const next = normalizeModelVersion(config.modelVersion);
         const family = samplingFamilyForModel(next);
         if (family) activatePresetSamplingFamily(preset, family);
         setModelVersion(next);

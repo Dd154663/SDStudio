@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { backend } from '.';
 import { imageExtFromBase64 } from './imageFormats';
 import { extractPromptDataFromBase64 } from './util';
-import { ModelSamplingFamily, samplingFamilyForModelId } from './modelSamplingProfiles';
+import { ModelBaseFamily, samplingFamilyForModelId } from './modelSamplingProfiles';
 
 // 작가 라이브러리 전역 데이터.
 // 프로젝트(세션)와 무관하게 앱 루트의 artist_library.json + artist_library/ 폴더에 저장.
@@ -16,14 +16,14 @@ export interface IArtistImage {
   id: string;
   path: string; // artist_library/<artistId>/<imageId>.png
   /** 샘플이 나온 NAI 모델 계열(v4_5|v5). 추가 시 메타데이터로 자동 판정, 없으면 미지정(2026-09-26 선택 필드 — 예전 파일 호환). */
-  family?: ModelSamplingFamily;
+  family?: ModelBaseFamily;
 }
 
 /** 작가 라이브러리 탭은 메인 탭 묶음의 4번째(shortcut-action 'tab-4'). App.tsx 탭 순서와 함께 유지. */
 export const ARTIST_LIBRARY_TAB_ACTION = 'tab-4';
 
 /** 이미지 메타데이터(naiDiagnostics.model)로 모델 계열을 판정한다. 못 읽으면 undefined. */
-export async function detectImageFamily(base64: string): Promise<ModelSamplingFamily | undefined> {
+export async function detectImageFamily(base64: string): Promise<ModelBaseFamily | undefined> {
   try {
     const meta = await extractPromptDataFromBase64(base64);
     return samplingFamilyForModelId(meta?.naiDiagnostics?.model);
@@ -323,7 +323,7 @@ export class ArtistLibraryService extends EventTarget {
 
   // base64(원본 PNG 바이트) 첨부. 메타데이터 보존을 위해 그대로 저장.
   @action
-  async addImage(id: string, base64: string, family?: ModelSamplingFamily): Promise<void> {
+  async addImage(id: string, base64: string, family?: ModelBaseFamily): Promise<void> {
     const a = this.getArtist(id);
     if (!a) return;
     const detected = family ?? (await detectImageFamily(base64));
@@ -344,7 +344,7 @@ export class ArtistLibraryService extends EventTarget {
 
   // 샘플 이미지의 모델 계열을 수동 지정/해제한다(2026-09-26).
   @action
-  setImageFamily(id: string, imageId: string, family: ModelSamplingFamily | undefined): void {
+  setImageFamily(id: string, imageId: string, family: ModelBaseFamily | undefined): void {
     const a = this.getArtist(id);
     if (!a) return;
     a.images = a.images.map((img) => {
@@ -567,7 +567,7 @@ export class ArtistLibraryService extends EventTarget {
               ARTIST_LIBRARY_DIR + '/' + newId + '/' + imgId + '.' + srcExt;
             await backend.copyFile(srcPath, dest);
             // 모델 계열(family)은 유효한 값일 때만 보존(드라이브 동기화 ② B4 — 전엔 유실)
-            const family: ModelSamplingFamily | undefined =
+            const family: ModelBaseFamily | undefined =
               img.family === 'v4_5' || img.family === 'v5' ? img.family : undefined;
             newImages.push(
               family ? { id: imgId, path: dest, family } : { id: imgId, path: dest },
