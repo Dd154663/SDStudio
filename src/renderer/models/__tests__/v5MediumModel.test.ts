@@ -42,7 +42,7 @@ function preset() {
 describe('계열 3택(4.5 | 5 | V5M)', () => {
   test('모델 ↔ 계열', () => {
     expect(MODEL_SAMPLING_FAMILIES).toEqual(['v4_5', 'v5', 'v5m']);
-    expect(MODEL_FAMILY_LABEL.v5m).toBe('V5M');
+    expect(MODEL_FAMILY_LABEL.v5m).toBe('5M');
     expect(samplingFamilyForModel(ModelVersion.V5Medium)).toBe('v5m');
     expect(samplingFamilyForModel(ModelVersion.V5)).toBe('v5');
     expect(samplingFamilyForModel(ModelVersion.V5Curated)).toBe('v5');

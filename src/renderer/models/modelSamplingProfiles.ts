@@ -20,7 +20,7 @@ export function isModelSamplingFamily(value: unknown): value is ModelSamplingFam
 export const MODEL_FAMILY_LABEL: Readonly<Record<ModelSamplingFamily, string>> = {
   v4_5: '4.5',
   v5: '5',
-  v5m: 'V5M',
+  v5m: '5M',
 };
 export const MODEL_FAMILY_NAME: Readonly<Record<ModelSamplingFamily, string>> = {
   v4_5: 'v4.5',
