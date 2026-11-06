@@ -79,6 +79,7 @@ export const CONFIG_GROUP_FIELDS = {
     'legacySceneEditor',
     'legacyWorkflowMode',
     'sceneToolbarLegacyText',
+    'promptWeightSpacingFix',
   ] as const,
 };
 // 형식 확인(없는 필드명이면 typecheck 실패).
@@ -171,6 +172,7 @@ const FIELD_KIND: Partial<Record<keyof Config, FieldKind>> = {
   legacySceneEditor: 'boolean',
   legacyWorkflowMode: 'boolean',
   sceneToolbarLegacyText: 'boolean',
+  promptWeightSpacingFix: 'boolean',
 };
 
 // 사용자에게 보이는 문구는 전부 여기 한 곳에 둔다.
@@ -512,6 +514,7 @@ export const CONFIG_FIELD_LABEL: Partial<Record<keyof Config, string>> = {
   legacySceneEditor: '예전 씬 에디터',
   legacyWorkflowMode: '예전 작업 모드',
   sceneToolbarLegacyText: '씬 툴바 글자 표시',
+  promptWeightSpacingFix: '가중치 숫자 태그 공백 보정',
 };
 
 export function configFieldLabel(field: keyof Config): string {

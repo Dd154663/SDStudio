@@ -1,8 +1,9 @@
 // NovelAI 가중치 구문 숫자 태그 공백 보정 — SPEC_GUIDE §12 「가중치 숫자 태그 공백(N1)」(2026-10-02).
-//  · NAI 자체 버그: 양 끝 중 하나라도 숫자인 태그(예: 작가 0aaa0)를 `N::태그::` 로 감싸면 태그의 숫자가
-//    가중치 숫자로 잘못 읽힌다. 회피 = 여는 `N::` 뒤와 닫는 `::` 앞에 공백 하나씩.
-//    예: `1.5::0aaa0::` → `1.5:: 0aaa0 ::`
-//  · NovelAI 로 보내는 최종 문자열(nai.ts generateImage)에만 적용한다. 편집기 원문·저장 데이터는 바꾸지 않는다.
+//  · NAI 자체 버그: 숫자가 `::` 에 맞닿은 태그(예: 작가 0aaa0)를 `N::태그::` 로 감싸면 태그의 숫자가
+//    가중치 숫자로 잘못 읽힌다. 회피 = 숫자가 접촉한 쪽에만 공백 하나(2026-11-06 정밀화, 각 끝 독립 판정).
+//    예: `1.5::0aaa0::` → `1.5:: 0aaa0 ::`, `1.5::bbb1::` → `1.5::bbb1 ::`, `1.5::0aaa::` → `1.5:: 0aaa::`
+//  · 적용 지점(2026-11-06 개정): ① 프롬프트 칸 편집 확정 때 확인 창 [보정 적용](편집기 원문을 교체) ② NovelAI 로 보내는
+//    최종 문자열(nai.ts generateImage) — 둘 다 기능 켬·「이번 세션에는 보정 안 함」 아님일 때만. 판정·흐름은 promptWeightSpacingFlow.ts.
 //  · 멱등: 이미 공백이 있으면 더 넣지 않으므로 여러 번 적용해도 결과가 같다.
 //  · 숫자 표기는 promptWeightSyntax 단일 출처(`2`·`1.5`·`1.`·`.6`·`-1`·`-.5`).
 
@@ -72,12 +73,16 @@ export function findPromptWeightGroups(text: string): WeightGroup[] {
 }
 
 /**
- * 가중치 묶음 내용의 양 끝(여는 `N::` 바로 뒤·닫는 `::` 바로 앞에 닿는 태그 글자)이 숫자이면
- * 그 묶음의 여는 쪽 뒤와 닫는 쪽 앞에 공백 하나씩을 보장한다. 양 끝 모두 숫자가 아니면 그대로.
+ * 가중치 묶음 내용의 각 끝을 독립 판정해, 숫자가 `::` 에 접촉한 쪽에만 공백 하나를 보장한다
+ * (2026-11-06 사용자 결정: 문제는 부호와 숫자가 맞닿는 쪽뿐).
+ *  · 첫 글자(여는 `N::` 바로 뒤 태그 글자)가 숫자 → 여는 `::` 뒤에 공백.
+ *  · 마지막 글자(닫는 `::` 바로 앞 태그 글자)가 숫자 → 닫는 `::` 앞에 공백.
+ *    예: `1.5::0aaa0::` → `1.5:: 0aaa0 ::`, `1.5::bbb1::` → `1.5::bbb1 ::`, `1.5::0aaa::` → `1.5:: 0aaa::`
  *  · 판단은 앞뒤 공백을 뺀 내용 기준. 쉼표로 여러 태그면 첫 태그 첫 글자·마지막 태그 마지막 글자.
  *  · `.hack` 처럼 `.` 으로 시작하는 태그는 숫자로 보지 않는다(`0.5x` 는 숫자 시작).
  *  · 내용이 중첩 여는 표식(`1.5::0.8::x::::` 의 `0.8::`)으로 시작하면 그 숫자는 태그가 아니므로 보지 않는다.
- *  · 멱등.
+ *    순수 숫자 태그(`1.5::5::`)는 중첩 여는 표식과 구분할 수 없어 그대로 둔다.
+ *  · 이미 공백이 있으면 넣지 않는다(멱등).
  */
 export function padDigitEdgedWeightGroups(text: string): string {
   if (!text || text.indexOf('::') < 0) return text;
@@ -95,9 +100,8 @@ export function padDigitEdgedWeightGroups(text: string): string {
     const firstIsTagDigit = DIGIT_RE.test(text[a]) && !openerStarts.has(a);
     // 내용이 `-1::` 같은 중첩 여는 표식으로 시작하면 첫 글자는 `-` 라 숫자가 아니므로 따로 볼 필요 없다.
     const lastIsDigit = DIGIT_RE.test(text[b - 1]);
-    if (!firstIsTagDigit && !lastIsDigit) continue;
-    if (!isSpace(text[g.contentStart])) inserts.add(g.contentStart);
-    if (g.closeStart !== null && !isSpace(text[g.closeStart - 1])) {
+    if (firstIsTagDigit && !isSpace(text[g.contentStart])) inserts.add(g.contentStart);
+    if (lastIsDigit && g.closeStart !== null && !isSpace(text[g.closeStart - 1])) {
       inserts.add(g.closeStart);
     }
   }

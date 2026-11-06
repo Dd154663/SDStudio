@@ -26,7 +26,10 @@ import { FaPerson } from 'react-icons/fa6';
 import { ActionIcon } from './ActionIcon';
 import { FixedSizeList as List } from 'react-window';
 import getCaretCoordinates from 'textarea-caret';
-import { isMobile, backend, artistLibraryService } from '../models';
+import { isMobile, backend, artistLibraryService, sessionService } from '../models';
+import { isTextEntryElement } from '../models/keyTargetGuard';
+import { holdSceneFieldEdit } from '../models/sceneFieldUndo';
+import { offerWeightSpacing } from '../models/promptWeightSpacingFlow';
 import { backStackService } from '../models/BackStackService';
 import {
   artistNameOfSegment,
@@ -1529,6 +1532,14 @@ const PromptEditTextArea = observer(
   }: PromptEditTextAreaProps) => {
     const { curSession } = appState;
     const editorRef = useRef<EditTextAreaRef | null>(null);
+    // 가중치 숫자 태그 공백 보정(N1) 편집 확정 확인 — 칸에 들어올 때의 텍스트와 지금 텍스트(편집기 입력·외부 값).
+    const textRef = useRef(value);
+    const focusTextRef = useRef<string | null>(null);
+    const onChangeRef = useLatest(onChange);
+    const disabledRef = useLatest(disabled);
+    useEffect(() => {
+      textRef.current = value;
+    }, [value]);
     const historyRef = useRef<Denque<HistoryEntry>>(new Denque<HistoryEntry>());
     const redoRef = useRef<Denque<HistoryEntry>>(new Denque<HistoryEntry>());
     const [tags, setTags] = useState<any[]>([]);
@@ -1611,6 +1622,7 @@ const PromptEditTextArea = observer(
       closeAutoComplete();
     };
     const onUpdated = (text: string) => {
+      textRef.current = text;
       onChange(text);
     };
     const highlight = (
@@ -1675,6 +1687,41 @@ const PromptEditTextArea = observer(
       if (isMobile && autoExpand && !disabled && !fullScreen) setFullScreen(true);
     };
     const onBlur = () => {};
+    // 편집 확정(칸을 떠남) — 가중치 숫자 태그 공백 보정 확인(models/promptWeightSpacingFlow.ts, SPEC §12 N1).
+    // blur 순간 동기로 되돌리기 편집 세션 확정을 붙잡고(holdSceneFieldEdit), 다음 틱에 정말 칸을 떠났는지 본 뒤
+    // 이 포커스 동안 텍스트가 바뀌었고 보정 후보가 있으면 확인 창. [보정 적용] 의 교체는 같은 편집 세션 안이라
+    // 「편집 + 보정」이 되돌리기 1항목. 창이 닫히면(어느 선택이든) 붙잡은 확정을 푼다.
+    const onTextBlur = () => {
+      const release = holdSceneFieldEdit();
+      window.setTimeout(() => {
+        const root = rootRef.current;
+        const active = document.activeElement;
+        // 같은 편집기 안의 다른 입력 요소로 옮겼거나 창 전환(포커스 유지)이면 아직 편집 중.
+        if (root && active && root.contains(active) && isTextEntryElement(active)) {
+          release();
+          return;
+        }
+        const before = focusTextRef.current;
+        focusTextRef.current = null;
+        const text = textRef.current;
+        if (disabledRef.current || before === null || before === text) {
+          release();
+          return;
+        }
+        offerWeightSpacing(
+          text,
+          (padded) => {
+            // 창이 떠 있는 동안 다른 경로로 값이 바뀌었으면 덮어쓰지 않는다.
+            if (textRef.current !== text) return;
+            textRef.current = padded;
+            onChangeRef.current(padded);
+          },
+          { appState, backend, onConfigChanged: () => sessionService.configChanged() },
+        )
+          .catch(() => {})
+          .finally(release);
+      }, 0);
+    };
     const closeFullScreen = () => {
       setFullScreen(false);
       // 배경 탭·뒤로 가기 = 편집 끝. 포커스도 풀어 키보드를 내린다(X 버튼은 인라인 편집을 이어갈 수 있게 포커스 유지).
@@ -1727,13 +1774,20 @@ const PromptEditTextArea = observer(
           }}
           onKeyUp={refreshCaretArtist}
           onClick={refreshCaretArtist}
-          onFocusCapture={refreshCaretArtist}
-          onBlurCapture={() => {
+          onFocusCapture={(e) => {
+            refreshCaretArtist();
+            // 바깥에서 이 칸으로 들어온 순간의 텍스트 — 편집 확정 때 「바뀌었는가」 판정(가중치 공백 확인).
+            if (focusTextRef.current === null && isTextEntryElement(e.target as Element)) {
+              focusTextRef.current = textRef.current;
+            }
+          }}
+          onBlurCapture={(e) => {
             // 편집기 밖으로 나가면 버튼을 거둔다(버튼 자체로 가는 포커스는 유지)
             window.setTimeout(() => {
               const root = rootRef.current;
               if (root && !(document.activeElement && root.contains(document.activeElement))) setCaretArtist(null);
             }, 0);
+            if (isTextEntryElement(e.target as Element)) onTextBlur();
           }}
           spellCheck={false}
           draggable={true}

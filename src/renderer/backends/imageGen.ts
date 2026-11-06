@@ -174,6 +174,11 @@ export interface ImageGenInput {
   characterPositions?: CharacterPosition[];
   characterReferences?: CharacterReference[];
   generationSettings?: GenerationSettingsSnapshot;
+  /**
+   * 가중치 숫자 태그 공백 보정(N1)을 전송 문자열에 적용할지. 없으면 true(예전 호출·테스트 호환).
+   * 호출부(TaskHandlers)가 models/promptWeightSpacingFlow.weightSpacingSendOption 으로 계산해 넘긴다.
+   */
+  padWeightDigitTags?: boolean;
   /** SDStudio에서 앞으로 생성한 이미지에만 삽입하는 선택적 복원 메타데이터. */
   sdstudioMetadata?: SDStudioImageMetadataV1;
   /** 호출별 타임아웃·취소 신호(큐 시도). JSON 으로 직렬화하지 않는다. */

@@ -1,4 +1,5 @@
 import { MobileV2Parts, normalizeV2Parts } from '../models/mobileV2';
+import { isWeightSpacingFixEnabled } from '../models/promptWeightSpacingFlow';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { HScrollHintArrow, useHScrollHint } from './HScrollHint';
 import {
@@ -854,6 +855,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [uiClassicFinish, setUiClassicFinish] = useState(false);
   const [uiPillButtons, setUiPillButtons] = useState(false);
   const [allowDuplicateProjectOpen, setAllowDuplicateProjectOpen] = useState(false);
+  const [promptWeightSpacingFix, setPromptWeightSpacingFix] = useState(true);
   const [multiTokenAutoRotate, setMultiTokenAutoRotate] = useState(false);
   const [multiTokenRotateWarning, setMultiTokenRotateWarning] = useState(10);
   const [multiTokenRotateTarget, setMultiTokenRotateTarget] = useState(25);
@@ -914,6 +916,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     setUiClassicFinish(config.uiClassicFinish ?? false);
     setUiPillButtons(config.uiPillButtons ?? false);
     setAllowDuplicateProjectOpen(config.allowDuplicateProjectOpen ?? false);
+    setPromptWeightSpacingFix(isWeightSpacingFixEnabled(config));
     const rotateWarning = normalizeTokenRotateWarning(
       config.multiTokenRotateWarningPercent,
     );
@@ -1095,6 +1098,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiClassicFinish: uiClassicFinish,
       uiPillButtons: uiPillButtons,
       allowDuplicateProjectOpen: allowDuplicateProjectOpen,
+      promptWeightSpacingFix: promptWeightSpacingFix,
       multiTokenAutoRotate: multiTokenAutoRotate,
       multiTokenRotateWarningPercent: multiTokenRotateWarning,
       multiTokenRotateTargetPercent: multiTokenRotateTarget,
@@ -1156,6 +1160,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.uiClassicFinish = uiClassicFinish;
     appState.uiPillButtons = uiPillButtons;
     appState.allowDuplicateProjectOpen = allowDuplicateProjectOpen;
+    appState.promptWeightSpacingFix = promptWeightSpacingFix;
     appState.storageWriteGuard = storageWriteGuard;
     appState.fullWordAutoComplete = fullWordAc;
     // 모던 전환 강제 배치의 미러·로컬 상태 반영(위의 일괄 미러가 옛 상태 값을 덮으므로
@@ -1224,7 +1229,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'drive':
         return <DriveSettingsTab active={activeTab === tabIdx} dirty={!!dirty} reloadConfig={loadConfig} syncFolder={syncFolder} setSyncFolder={setSyncFolder} selectSyncFolder={selectSyncFolder} />;
       case 'personal':
-        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, legacySceneEditor, setLegacySceneEditor, legacyWorkflowMode, setLegacyWorkflowMode, sceneToolbarLegacyText, setSceneToolbarLegacyText, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish, uiPillButtons, setUiPillButtons, allowDuplicateProjectOpen, setAllowDuplicateProjectOpen }} />;
+        return <PersonalTab {...{ classicSceneCard, setClassicSceneCard, fullWordAc, setFullWordAc, legacyProjectMode, setLegacyProjectMode, legacySceneEditor, setLegacySceneEditor, legacyWorkflowMode, setLegacyWorkflowMode, sceneToolbarLegacyText, setSceneToolbarLegacyText, uiFont, setUiFont, uiClassicFinish, setUiClassicFinish, uiPillButtons, setUiPillButtons, allowDuplicateProjectOpen, setAllowDuplicateProjectOpen, promptWeightSpacingFix, setPromptWeightSpacingFix }} />;
       case 'customization':
         return <CustomizationTab {...{ uiTheme, setUiTheme, whiteMode, setWhiteMode, trueDark, setTrueDark, uiThemePresets, setUiThemePresets }} />;
       case 'toolbar':
@@ -1280,6 +1285,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiClassicFinish !== (savedCfg.uiClassicFinish ?? false) ||
       uiPillButtons !== (savedCfg.uiPillButtons ?? false) ||
       allowDuplicateProjectOpen !== (savedCfg.allowDuplicateProjectOpen ?? false) ||
+      promptWeightSpacingFix !== isWeightSpacingFixEnabled(savedCfg) ||
       multiTokenAutoRotate !== (savedCfg.multiTokenAutoRotate ?? false) ||
       multiTokenRotateWarning !== normalizeTokenRotateWarning(
         savedCfg.multiTokenRotateWarningPercent,

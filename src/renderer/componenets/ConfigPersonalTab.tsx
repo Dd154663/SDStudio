@@ -1,5 +1,7 @@
 // 설정 화면 탭: 커스텀(key 'personal', 라벨 「커스텀」) — PersonalTab
 
+import { WEIGHT_SPACING_TEXT } from '../models/promptWeightSpacingFlow';
+
 /* ── 탭: 커스텀 (취향 토글, 2026-10-01 라벨 「개인 설정」→「커스텀」) ── */
 // 앱 글꼴 선택지 — id 는 config 저장 키(uiFont)라 배포 후 불변. preview 는 각
 // 선택지 라벨을 해당 글꼴로 렌더해 고르기 전에 차이를 눈으로 보게 한다.
@@ -23,6 +25,7 @@ const PersonalTab = ({
   uiClassicFinish, setUiClassicFinish,
   uiPillButtons, setUiPillButtons,
   allowDuplicateProjectOpen, setAllowDuplicateProjectOpen,
+  promptWeightSpacingFix, setPromptWeightSpacingFix,
 }: any) => (
   <div className="space-y-4">
     <div>
@@ -93,6 +96,18 @@ const PersonalTab = ({
       <input type="checkbox" id="cfgFullWordAc" checked={fullWordAc}
         onChange={(e) => setFullWordAc(e.target.checked)} />
       <label htmlFor="cfgFullWordAc" className="text-sm gray-label">자동완성 시 콤마 사이 전체 단어 사용</label>
+    </div>
+    <hr className="line-color" />
+    <div>
+      <div className="flex items-center gap-2">
+        {/* 가중치 숫자 태그 공백 보정(N1) — 없으면 켬. 끄면 확인 창도 전송 보정도 하지 않는다(promptWeightSpacingFlow). */}
+        <input type="checkbox" id="cfgWeightSpacingFix" checked={promptWeightSpacingFix ?? true}
+          onChange={(e) => setPromptWeightSpacingFix(e.target.checked)} />
+        <label htmlFor="cfgWeightSpacingFix" className="text-sm gray-label">{WEIGHT_SPACING_TEXT.toggleLabel}</label>
+      </div>
+      <p className="text-xs text-faint mt-1 ml-6">
+        {WEIGHT_SPACING_TEXT.toggleHelp}
+      </p>
     </div>
     <hr className="line-color" />
     <div>

@@ -173,6 +173,10 @@ export interface Config {
   // 알약형 버튼(커스텀 탭) — true 면 모던 마감에서도 아이콘만 버튼을 알약형으로(--r-btn-icon 9999px).
   // 적용은 App.tsx 가 html 에 pill-buttons 클래스를 토글. 기본 false, 클래식 마감은 항상 알약.
   uiPillButtons?: boolean;
+  // 가중치 안 숫자 태그 공백 보정(N1, 커스텀 탭, 2026-11-06) — 없으면 true. 켜면 프롬프트 칸 편집 확정 때 확인 창을 띄우고
+  // NovelAI 로 보낼 때도 `1.5::0aaa0::` → `1.5:: 0aaa0 ::` 공백을 넣는다. false = 입력 그대로(묻지도 않음).
+  // 판정·문구 단일 출처 renderer models/promptWeightSpacingFlow.ts. Android 도 같은 Config 타입·기본값(없으면 true).
+  promptWeightSpacingFix?: boolean;
   // 프리셋 에디터 요소 순서 사용자 오버라이드(L1-2) — 워크플로우 타입별로 최상위 UI
   // 요소의 렌더 순서를 개인화한다. 키는 wfiElementKey(WorkFlow.ts)가 반환하는 안정 키
   // (배포 후 불변 계약). 미설정/빈 배열 = 오버라이드 없음 = 정의 순서 그대로(기존 동작).

@@ -185,3 +185,16 @@ test('같은 ms 에 연달아 생성해도 결과 경로가 겹치지 않는다(
   expect(new Set(paths).size).toBe(3);
   for (const p of paths) expect(p).toMatch(/^outs\/project\/scene\/\d+\.png$/);
 });
+
+// 가중치 숫자 태그 공백 보정(N1, 2026-11-06) — 핸들러가 전송 옵션을 계산해 nai 로 넘긴다(nai.ts 는 config·appState 를 보지 않음).
+test('전송 옵션 padWeightDigitTags = 기능 켬(없음=켬) && 이번 세션 보정 안 함 아님', async () => {
+  const { appState } = jest.requireMock('../AppService');
+  const sent = () => generateImage.mock.calls.map((c) => c[0].padWeightDigitTags);
+  await handler().handleTask(genTask(1), { stopped: false });
+  getConfig.mockResolvedValueOnce({ promptWeightSpacingFix: false } as any);
+  await handler().handleTask(genTask(1), { stopped: false });
+  appState.promptWeightSpacingSkipSession = true;
+  await handler().handleTask(genTask(1), { stopped: false });
+  appState.promptWeightSpacingSkipSession = false;
+  expect(sent()).toEqual([true, false, false]);
+});

@@ -18,6 +18,7 @@ import {
   editSeedGroups,
   flushSceneFieldEdit,
   hasOpenSceneFieldEdit,
+  holdSceneFieldEdit,
   SCENE_CONTENT_COPY_KEYS,
   setSceneField,
   touchSceneFieldEdit,
@@ -497,6 +498,49 @@ describe('편집 세션(D13) — 입력 칸을 떠날 때 1항목', () => {
     a.sceneUC = 'again';
     expect(flushSceneFieldEdit()).toBe(true);
     expect(service.entries(session).past.map((e) => e.label)).toEqual(['uc', 'seed', 'uc']);
+  });
+});
+
+describe('편집 확정 보류(holdSceneFieldEdit — 가중치 공백 [보정 적용], 2026-11-06)', () => {
+  test('보류 중 포커스 이탈은 미뤄지고, 보류 중 같은 칸 교체까지 1항목으로 확정된다', async () => {
+    const { service } = harness();
+    const { session, scenes } = makeSession('A');
+    const [a] = scenes;
+    let leave: () => void = () => {};
+    const watch: FocusLeaveWatcher = (onLeave) => {
+      leave = onLeave;
+      return () => {};
+    };
+    touchSceneFieldEdit(session, a, ['sceneUC'], 'uc', { service, watch });
+    a.sceneUC = '1.5::0aaa0::';
+    const release = holdSceneFieldEdit();
+    leave(); // 칸을 떠남 — 보류 중이라 확정하지 않는다
+    expect(hasOpenSceneFieldEdit()).toBe(true);
+    // 확인 창 [보정 적용] — 같은 칸 setter 가 다시 touch(같은 세션 유지) 후 교체
+    touchSceneFieldEdit(session, a, ['sceneUC'], 'uc', { service, watch });
+    a.sceneUC = '1.5:: 0aaa0 ::';
+    release();
+    expect(hasOpenSceneFieldEdit()).toBe(false);
+    expect(service.entries(session).past).toHaveLength(1);
+    await service.undo(session);
+    expect(a.sceneUC).toBe('');
+    await service.redo(session);
+    expect(a.sceneUC).toBe('1.5:: 0aaa0 ::');
+    release(); // 두 번 불러도 무해
+  });
+
+  test('보류 중 이탈이 없었으면 해제해도 세션은 이어진다', () => {
+    const { service } = harness();
+    const { session, scenes } = makeSession('A');
+    const [a] = scenes;
+    const watch: FocusLeaveWatcher = () => () => {};
+    touchSceneFieldEdit(session, a, ['sceneUC'], 'uc', { service, watch });
+    a.sceneUC = 'x';
+    const release = holdSceneFieldEdit();
+    release();
+    expect(hasOpenSceneFieldEdit()).toBe(true);
+    expect(flushSceneFieldEdit()).toBe(true);
+    expect(service.entries(session).past).toHaveLength(1);
   });
 });
 

@@ -427,7 +427,7 @@ describe('NovelAI V5 최소 요청', () => {
     expect(body.parameters.v4_negative_prompt.caption.char_captions).toHaveLength(32);
   });
 
-  test('숫자로 시작/끝나는 태그의 가중치 묶음은 모든 프롬프트 필드에 공백을 넣어 보낸다(N1)', async () => {
+  test('숫자로 시작/끝나는 태그의 가중치 묶음은 모든 프롬프트 필드에서 숫자가 접촉한 쪽에 공백을 넣어 보낸다(N1 — 옵션 없음=켬)', async () => {
     const { service, fetchArrayBuffer } = makeService();
     const input = makeInput();
     input.prompt = 'a, 1.5::0aaa0::';
@@ -449,16 +449,63 @@ describe('NovelAI V5 최소 요청', () => {
     const [, body] = fetchArrayBuffer.mock.calls[0];
     expect(body.input).toBe('a, 1.5:: 0aaa0 ::');
     expect(body.parameters.v4_prompt.caption.base_caption).toBe('a, 1.5:: 0aaa0 ::');
-    expect(body.parameters.negative_prompt).toBe('-1:: bad9 ::');
-    expect(body.parameters.v4_negative_prompt.caption.base_caption).toBe('-1:: bad9 ::');
+    expect(body.parameters.negative_prompt).toBe('-1::bad9 ::');
+    expect(body.parameters.v4_negative_prompt.caption.base_caption).toBe('-1::bad9 ::');
     expect(body.parameters.characterPrompts[0]).toMatchObject({
-      prompt: '.6:: 1girl ::',
-      uc: '2:: x0 ::',
+      prompt: '.6:: 1girl::',
+      uc: '2::x0 ::',
     });
-    expect(body.parameters.v4_prompt.caption.char_captions[0].char_caption).toBe('.6:: 1girl ::');
-    expect(body.parameters.v4_negative_prompt.caption.char_captions[0].char_caption).toBe('2:: x0 ::');
+    expect(body.parameters.v4_prompt.caption.char_captions[0].char_caption).toBe('.6:: 1girl::');
+    expect(body.parameters.v4_negative_prompt.caption.char_captions[0].char_caption).toBe('2::x0 ::');
     // 입력 객체(저장 데이터 쪽)는 바꾸지 않는다
     expect(input.prompt).toBe('a, 1.5::0aaa0::');
+  });
+
+  test('padWeightDigitTags=false(기능 끔·이번 세션 보정 안 함)면 모든 프롬프트 필드를 입력 그대로 보낸다(N1, 2026-11-06)', async () => {
+    const { service, fetchArrayBuffer } = makeService();
+    const input = makeInput();
+    input.prompt = 'a, 1.5::0aaa0::';
+    input.uc = '-1::bad9::';
+    input.characterPrompts = ['.6::1girl::'];
+    input.characterUCs = ['2::x0::'];
+    input.padWeightDigitTags = false;
+    input.generationSettings = {
+      schemaVersion: 1,
+      modelVersion: ModelVersion.V4_5,
+      furryMode: false,
+      disableQuality: true,
+      ucPreset: 'none',
+      autoConvertWebp: false,
+      autoConvertWebpQuality: 80,
+    };
+
+    await service.generateImage('test-token', input);
+
+    const [, body] = fetchArrayBuffer.mock.calls[0];
+    expect(body.input).toBe('a, 1.5::0aaa0::');
+    expect(body.parameters.negative_prompt).toBe('-1::bad9::');
+    expect(body.parameters.characterPrompts[0]).toMatchObject({ prompt: '.6::1girl::', uc: '2::x0::' });
+    expect(body.parameters.v4_prompt.caption.char_captions[0].char_caption).toBe('.6::1girl::');
+    expect(body.parameters.v4_negative_prompt.caption.char_captions[0].char_caption).toBe('2::x0::');
+  });
+
+  test('padWeightDigitTags=true 는 옵션 없음과 같다(패딩)', async () => {
+    const { service, fetchArrayBuffer } = makeService();
+    const input = makeInput();
+    input.prompt = 'a, 1.5::0aaa0::';
+    input.padWeightDigitTags = true;
+    input.generationSettings = {
+      schemaVersion: 1,
+      modelVersion: ModelVersion.V4_5,
+      furryMode: false,
+      disableQuality: true,
+      ucPreset: 'none',
+      autoConvertWebp: false,
+      autoConvertWebpQuality: 80,
+    };
+    await service.generateImage('test-token', input);
+    const [, body] = fetchArrayBuffer.mock.calls[0];
+    expect(body.input).toBe('a, 1.5:: 0aaa0 ::');
   });
 });
 

@@ -1,4 +1,5 @@
 import './App.css';
+import { isWeightSpacingFixEnabled } from '../models/promptWeightSpacingFlow';
 import './contexify.css';
 import {
   Component,
@@ -311,6 +312,7 @@ export const App = observer(() => {
       appState.uiClassicFinish = conf.uiClassicFinish ?? false;
       appState.uiPillButtons = conf.uiPillButtons ?? false;
       appState.allowDuplicateProjectOpen = conf.allowDuplicateProjectOpen ?? false;
+      appState.promptWeightSpacingFix = isWeightSpacingFixEnabled(conf);
     };
     refreshDarkMode();
     sessionService.addEventListener('config-changed', refreshDarkMode);

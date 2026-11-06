@@ -182,6 +182,7 @@ const INITIAL_CONFIG = {
   uiClassicFinish: false,
   uiPillButtons: false,
   allowDuplicateProjectOpen: false,
+  promptWeightSpacingFix: true,
   multiTokenAutoRotate: false,
   multiTokenRotateWarningPercent: 10,
   multiTokenRotateTargetPercent: 25,
@@ -469,6 +470,15 @@ const PC_CASES: [string, Case][] = [
       change: () => click(input('cfgLegacyProject')),
       expected: { legacyProjectMode: true },
       after: () => expect(appState.legacyProjectMode).toBe(true),
+    },
+  ],
+  [
+    '커스텀 — 가중치 숫자 태그 공백 보정 끄기',
+    {
+      tab: '커스텀',
+      change: () => click(input('cfgWeightSpacingFix')),
+      expected: { promptWeightSpacingFix: false },
+      after: () => expect(appState.promptWeightSpacingFix).toBe(false),
     },
   ],
   [

@@ -44,6 +44,7 @@ import {
   Session,
 } from './types';
 import { sleep } from './util';
+import { weightSpacingSendOption } from './promptWeightSpacingFlow';
 import { platform } from './platform';
 import { pngPathToWebp, PNG_IMAGE_EXT } from './imageFormats';
 import { expandPieces, lowerPromptNode, toPARR } from './PromptService';
@@ -797,6 +798,9 @@ class GenerateImageTaskHandler implements TaskHandler {
     ctx?.restartTimeout();
     const request = requestOptions(ctx);
     if (request) arg.request = request;
+    // 가중치 숫자 태그 공백 보정(N1) — 기능 켬·「이번 세션에는 보정 안 함」 아님일 때만 전송 문자열에 공백(nai.ts).
+    // 큐에서 꺼낼 때의 현재 설정을 따른다(예약 때 스냅숏이 아니라 — 끈 뒤 남은 예약도 입력 그대로).
+    arg.padWeightDigitTags = weightSpacingSendOption(await backend.getConfig(), appState);
 
     // IP 확인 최적화 - 세션당 한 번만 확인
     try {

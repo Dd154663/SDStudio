@@ -297,6 +297,9 @@ interface OpenEdit {
 }
 
 let openEdit: OpenEdit | undefined;
+/** 확정 보류(holdSceneFieldEdit) 중첩 수와, 보류 중 포커스 이탈로 미뤄진 확정이 있는지 */
+let editHolds = 0;
+let flushDeferred = false;
 const editTargetIds = new WeakMap<object, number>();
 let nextEditTargetId = 1;
 /** 편집 세션 key 를 만들 때 쓰는 객체 번호(객체당 하나) — presetUndo 도 같은 번호를 쓴다 */
@@ -358,19 +361,40 @@ export function touchUndoEdit(
   const edit: OpenEdit = { key, session, service, pending, dispose: () => {} };
   openEdit = edit;
   const dispose = (opts.watch ?? domFocusLeaveWatcher)(() => {
-    if (openEdit === edit) flushSceneFieldEdit();
-    else edit.dispose();
+    if (openEdit === edit) {
+      // 확정 보류 중(편집 확정 직후 확인 창 — 가중치 공백 보정)이면 보류가 풀릴 때 확정한다.
+      if (editHolds > 0) flushDeferred = true;
+      else flushSceneFieldEdit();
+    } else edit.dispose();
   });
   edit.dispose = dispose;
 }
 
 /** 열린 편집 세션을 확정(바뀌었으면 1항목) — 편집 창이 닫힐 때 호출부가 부른다 */
 export function flushSceneFieldEdit(): boolean {
+  flushDeferred = false;
   const e = openEdit;
   if (!e) return false;
   openEdit = undefined;
   e.dispose();
   return e.pending.commit();
+}
+
+/**
+ * 포커스 이탈에 의한 편집 세션 확정을 잠시 미룬다(반환 = 해제 함수, 여러 번 불러도 한 번만 해제).
+ * 편집 칸을 떠나는 순간(blur) 동기로 붙잡고, 그 뒤 확인 창에서 고른 결과(가중치 공백 [보정 적용])를 같은 칸에 반영한 뒤
+ * 해제하면 「편집 + 보정」이 되돌리기 1항목이 된다(D13 경계 안). 보류 중 이탈이 있었으면 해제 때 확정한다.
+ * 보류 중에도 다른 세션 시작·되돌리기 실행 직전·flushSceneFieldEdit 은 평소대로 즉시 확정한다.
+ */
+export function holdSceneFieldEdit(): () => void {
+  editHolds += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    editHolds -= 1;
+    if (editHolds === 0 && flushDeferred) flushSceneFieldEdit();
+  };
 }
 
 /** 테스트·진단용 — 열린 편집 세션이 있는가 */

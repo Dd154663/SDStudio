@@ -254,9 +254,13 @@ export class NovelAiImageGenService implements ImageGenService {
     // 클라이언트가 텍스트를 병합해야 실제 반영된다(qualityToggle/ucPreset 은
     // 메타데이터 전용). 프롬프트 끝에 퀄리티 태그, 네거티브 앞에 UC 프리셋.
     // NAI 자체 버그 회피(2026-10-02 N1): 숫자로 시작/끝나는 태그를 감싼 가중치 묶음 `1.5::0aaa0::` 은
-    // 태그 숫자가 가중치로 잘못 읽히므로 `1.5:: 0aaa0 ::` 로 공백을 넣어 보낸다. 모든 생성 계열(일반·인페인트·
+    // 태그 숫자가 가중치로 잘못 읽히므로 숫자가 `::` 에 맞닿은 쪽에만 공백을 넣어 보낸다(`1.5:: 0aaa0 ::`·`1.5::bbb1 ::`). 모든 생성 계열(일반·인페인트·
     // i2i·미러 등)이 지나는 전송 직전 한 곳 — 조각·랜덤·와일드카드·퀄리티 태그 병합이 모두 끝난 문자열. 멱등.
-    const finalPrompt = padDigitEdgedWeightGroups(
+    // 2026-11-06: 조건부 — 호출부가 넘기는 padWeightDigitTags(기능 끔·「이번 세션에는 보정 안 함」이면 false)를 따른다.
+    // 이 파일은 config·appState 를 직접 보지 않는다(없으면 true).
+    const padWeights = params.padWeightDigitTags !== false;
+    const padWeight = (s: string) => (padWeights ? padDigitEdgedWeightGroups(s) : s);
+    const finalPrompt = padWeight(
       mergeQualityTags(
         params.prompt,
         modelVersionValue,
@@ -268,7 +272,7 @@ export class NovelAiImageGenService implements ImageGenService {
         transparentBackground,
       ),
     );
-    const finalUc = padDigitEdgedWeightGroups(
+    const finalUc = padWeight(
       mergeUcPreset(params.uc, modelVersionValue, config.ucPreset),
     );
 
@@ -511,8 +515,8 @@ export class NovelAiImageGenService implements ImageGenService {
       const characterEntries = params.characterPrompts
         .map((prompt, sourceIndex) => ({
           // 캐릭터 프롬프트·캐릭터 부정 프롬프트도 같은 공백 보정(N1).
-          prompt: padDigitEdgedWeightGroups(prompt),
-          uc: padDigitEdgedWeightGroups(params.characterUCs?.[sourceIndex] ?? ''),
+          prompt: padWeight(prompt),
+          uc: padWeight(params.characterUCs?.[sourceIndex] ?? ''),
           center: charaPos(sourceIndex),
         }))
         .filter((entry) => entry.prompt.trim().length > 0)

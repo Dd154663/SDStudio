@@ -24,10 +24,10 @@ const TAG_DB: Record<string, { category: number }> = {
 };
 const lookup = makeArtistLookup(async (w) => TAG_DB[w], libraryHas);
 
-const WRAPPED = ['0.8::aaa::', '.6::aaa::', '1.5:: aaa ::', '{{aaa}}', '[aaa]', '  aaa  ', '0.8::{aaa}::', '{0.8::aaa::}'];
+const WRAPPED = ['0.8::aaa::', '.6::aaa::', '1.5:: aaa ::', '1.5:: aaa::', '1.5::aaa ::', '{{aaa}}', '[aaa]', '  aaa  ', '0.8::{aaa}::', '{0.8::aaa::}'];
 
 describe('구획 → 핵심 이름 정규화', () => {
-  it('가중치·.6:: 표기·N1 공백·강조 괄호·앞뒤 공백을 벗긴다', () => {
+  it('가중치·.6:: 표기·N1 공백(양쪽·한쪽)·강조 괄호·앞뒤 공백을 벗긴다', () => {
     for (const s of WRAPPED) {
       expect(artistNameOfSegment(s)).toMatchObject({ name: 'aaa', prefixed: false });
       expect(artistNameOfSegment(s.replace('aaa', 'artist:aaa'))).toMatchObject({ name: 'aaa', prefixed: true });
