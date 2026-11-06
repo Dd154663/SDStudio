@@ -35,6 +35,7 @@ import {
   FaFilter,
   FaFolderMinus,
   FaGoogleDrive,
+  FaGripVertical,
   FaHeart,
   FaMicrochip,
   FaPaintBrush,
@@ -126,6 +127,7 @@ export const ICON_DICTIONARY = {
   'shortcut-help': FaQuestion, // 단축키 도움말
   undo: FaUndo, // 되돌리기(전역 스택 — 편집기·붓 자체 되돌리기 버튼도 같은 모양)
   redo: FaRedo, // 다시 실행
+  'drag-handle': FaGripVertical, // 끌기 손잡이(점 6개 ⋮⋮ — 되돌리기 버튼 바 좌우 이동 등, 누르면 바로 끌기)
   // ── 프로젝트 바(projectToolbarRegistry) ──
   'project-browser': FaThLarge, // 프로젝트 탐색
   'add-session': FaPlus, // 신규 프로젝트

@@ -1,4 +1,5 @@
 import { KBD_CHIP_RESERVE_PX } from './MobileKeyboardChip';
+import { UNDO_ANCHOR_ATTR, UNDO_SHEET_ATTR } from './UndoBarSlot';
 import { PromptAutoExpandContext } from './PromptAutoExpand';
 import React, { createContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FaChevronUp } from 'react-icons/fa';
@@ -372,6 +373,12 @@ const MobilePromptSheet: React.FC<{ children: React.ReactNode }> = ({ children }
         <div
           ref={sheetRef}
           data-v2-sheet={state}
+          // 되돌리기 버튼 바(UndoRedoBar) 호스트(설계 E, 2026-11-04): 펼친 동안(반·전체·끄는 중)만 표식을 단다 → 바가 아래 메인
+          // 줄 대신 이 시트 위 모서리 바깥 위에 붙는다(시트 안 버튼 줄을 덮지 않음). 잘라내기(overflow:clip) 안이라 자리 대신
+          // 표식만 — 바가 위 모서리를 재서 fixed 로 붙는다. 값 = 상태(바뀌면 다시 잼), 끄는 중(drag)은 바를 잠시 감춘다.
+          {...(open || dragging
+            ? { [UNDO_ANCHOR_ATTR]: '', [UNDO_SHEET_ATTR]: dragging ? 'drag' : state }
+            : null)}
           data-edge-swipe-ignore=""
           className="absolute left-0 right-0 pointer-events-auto flex flex-col overflow-hidden rounded-t-2xl border-t line-color bg-[var(--c-zone)] shadow-[0_-6px_20px_rgba(0,0,0,0.35)]"
           style={{

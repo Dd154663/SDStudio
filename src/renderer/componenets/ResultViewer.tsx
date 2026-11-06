@@ -40,6 +40,7 @@ import {
 import { ActionIcon } from './ActionIcon';
 import { isV2, V2_SHEET_PEEK_PX } from '../models/mobileV2';
 import { V2MainRow, V2TierRows, type V2SlotDef, type V2TierItem } from './MobileV2Bars';
+import { UndoBarSlot, UNDO_ANCHOR_ATTR } from './UndoBarSlot';
 import { PromptHighlighter } from './SceneEditor';
 import QueueControl from './SceneQueueControl';
 import { FloatView } from './FloatView';
@@ -1746,10 +1747,14 @@ const ResultDetailView = observer(
               aria-label={showPrompt ? '자세한 정보 접기' : '자세한 정보 펼치기'}
               aria-expanded={showPrompt}
               data-v2-detail-info-handle=""
-              className="flex-none select-none cursor-pointer px-3 pt-1.5 border-t line-color bg-[var(--c-zone)]"
+              // 되돌리기 버튼 바(UndoRedoBar) 호스트(설계 E, 2026-11-04): 펼친 동안만 — 바가 아래 메인 줄 대신 이 손잡이 위
+              // 모서리 바깥에 붙어 펼친 정보를 덮지 않는다. 접히면 표식·자리가 빠져 메인 줄로 돌아간다.
+              {...(showPrompt ? { [UNDO_ANCHOR_ATTR]: '' } : null)}
+              className="relative flex-none select-none cursor-pointer px-3 pt-1.5 border-t line-color bg-[var(--c-zone)]"
               style={{ height: V2_SHEET_PEEK_PX }}
               onClick={() => setShowPrompt(!showPrompt)}
             >
+              {showPrompt && <UndoBarSlot tone="sheet" />}
               <div className="mx-auto mb-1.5 h-1 w-9 rounded-full bg-[var(--c-line)]" />
               <div className="flex items-center justify-center gap-1.5 text-[12px] text-sub">
                 <span>자세한 정보</span>

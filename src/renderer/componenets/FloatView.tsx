@@ -15,6 +15,7 @@ import { appState } from '../models/AppService';
 import { backStackService, BackStackHandle } from '../models/BackStackService';
 import { GuardedCloseState, runGuardedClose } from '../models/escapeGate';
 import { confirmDiscardChanges } from './backdropClose';
+import { UndoCornerSlot } from './UndoBarSlot';
 
 // 창 배치 'cover'(기본)일 때 오버레이를 포털로 옮겨 붙일 앵커의 DOM id.
 // App.tsx 도크 행의 "넓은 앵커"(프로젝트/프리셋/중앙을 감싸는 래퍼)가 이 id 를
@@ -34,6 +35,9 @@ interface FloatView {
   // 이 창이 열려 있어도 전역 되돌리기/다시 실행 단축키(Ctrl+Z/Y)를 허용(2026-11-01 U1, D9 — 씬 편집 창·이미지
   // 그리드/상세만). 열린 창이 모두 허용일 때만 통과한다 — 인페인트 편집 창(붓 Ctrl+Z 전용) 등은 붙이지 않는다.
   allowUndo?: boolean;
+  // 되돌리기 버튼 바 구석 자리(2026-11-04 설계 E) — 참이면 머리줄 오른쪽 빈 곳에 UndoCornerSlot 을 두어, 이 창이 보이는 동안
+  // 바가 하단 대신 그 구석에 임시로 놓인다. 하단에 여유가 없는 클래식 모바일 프롬프트 편집 창만 켠다.
+  undoCorner?: boolean;
   onEscape?: () => void;
   // 미저장 가드(2026-10-03 E2-3) — 참이면 ✕·Esc·뒤로 가기로 닫을 때 「버리고 닫을까요?」를 묻는다
   dirty?: () => boolean;
@@ -173,7 +177,8 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = observer(({
           style={{ position: 'absolute', zIndex: view.id }}
         >
           <div className="flex flex-col h-full w-full">
-            <div className="flex-none border-b line-color">
+            {/* relative: 되돌리기 버튼 바 구석 자리(undoCorner)의 기준 */}
+            <div className="relative flex-none border-b line-color">
               {/* 전체 화면 보기의 닫기 = 좌상단 「뒤로」 ✕ 하나(모달은 우상단 — SPEC §5 닫기 규칙, 2026-10-03 E2-1) */}
               <button
                 className="text-default button"
@@ -186,6 +191,7 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = observer(({
               >
                 <FaTimes size={20} />
               </button>
+              {view.undoCorner && <UndoCornerSlot />}
             </div>
             <div className="flex-1 overflow-hidden">{view.component}</div>
           </div>
@@ -217,6 +223,7 @@ interface FloatViewProps {
   showToolbar?: boolean;
   ownsGenControl?: boolean;
   allowUndo?: boolean;
+  undoCorner?: boolean;
   onEscape?: () => void;
   dirty?: () => boolean;
 }
@@ -224,7 +231,7 @@ interface FloatViewProps {
 let viewId = 0;
 
 export const FloatView: React.FC<FloatViewProps> = memo(
-  ({ children, priority, showToolbar, ownsGenControl, allowUndo, onEscape, dirty }) => {
+  ({ children, priority, showToolbar, ownsGenControl, allowUndo, undoCorner, onEscape, dirty }) => {
     const { registerView, unregisterView, updateView } = useFloatView();
     const id = useRef(++viewId);
     const mounted = useRef(false);
@@ -239,6 +246,7 @@ export const FloatView: React.FC<FloatViewProps> = memo(
         showToolbar,
         ownsGenControl,
         allowUndo,
+        undoCorner,
       };
       registerView(view);
       mounted.current = true;
@@ -248,8 +256,8 @@ export const FloatView: React.FC<FloatViewProps> = memo(
     // 부모가 다시 그리면 오버레이 내용도 따라간다(children 은 렌더마다 새 요소라 매 렌더 갱신 — 제자리 갱신이라 가볍다)
     useEffect(() => {
       if (!mounted.current) return;
-      updateView(id.current, { component: children, onEscape, dirty, showToolbar });
-    }, [children, onEscape, dirty, showToolbar]);
+      updateView(id.current, { component: children, onEscape, dirty, showToolbar, undoCorner });
+    }, [children, onEscape, dirty, showToolbar, undoCorner]);
 
     return null;
   },

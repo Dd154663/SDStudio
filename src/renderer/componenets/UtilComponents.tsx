@@ -307,7 +307,9 @@ export const TabComponent: React.FC<TabComponentProps> = ({
         style={v2 ? { paddingBottom: V2_SHEET_PEEK_PX } : undefined}
       >
         {!v2 && !tabs[activeTab].banToggle && toggleViewOpen && (
-          <FloatView priority={0} onEscape={() => setToggleViewOpen(false)}>
+          // undoCorner(설계 E): 전체 화면 편집 창이라 하단에 붙을 막대가 없고 바닥 대체 위치는 창 하단 버튼을 덮는다 →
+          // 모바일에서는 이 창이 보이는 동안 되돌리기 버튼 바를 머리줄 오른쪽 구석에 둔다(PC 는 이 버튼이 md:hidden)
+          <FloatView priority={0} undoCorner={isMobile} onEscape={() => setToggleViewOpen(false)}>
             {/* V2 「인라인 편집기」 부위만 켠 경우(메인 화면은 클래식): 시트 없이 집중 모드만 제공(2026-09-27) */}
             {isV2('editor') ? <PromptFocusShell>{toggleView}</PromptFocusShell> : toggleView}
           </FloatView>

@@ -13,6 +13,7 @@ import {
   moveToolbarButton,
 } from '../models/uiLayout';
 import { removeCompanion } from '../models/companionSlots';
+import { hapticTick } from './haptics';
 
 // 툴바 버튼 드래그 커스터마이징 공용 부품.
 // 드래그는 기존 uiToolbar.buttons 오버라이드('pinned'|'menu'|'hidden')를 조작하는
@@ -41,19 +42,8 @@ export const toolbarDragUi = observable({
 
 export const LONG_PRESS_MS = 400; // App.tsx DndProvider 의 delayTouchStart 와 동일 값
 
-// 잡힘 햅틱 — navigator.vibrate 는 Android WebView 미구현이라 Capacitor Haptics
-// 네이티브 경로를 쓴다 (VIBRATE 권한은 AndroidManifest 에 있음). 실패 시 무시.
-export async function hapticTick() {
-  if (!isMobile) return;
-  try {
-    const { Haptics, ImpactStyle } = await import('@capacitor/haptics');
-    await Haptics.impact({ style: ImpactStyle.Medium });
-  } catch {
-    try {
-      navigator.vibrate?.(30);
-    } catch {}
-  }
-}
+// 잡힘 햅틱 — 단일 출처는 가벼운 ./haptics(되돌리기 버튼 바도 사용). 기존 import 경로 호환을 위해 재export.
+export { hapticTick };
 
 export function armToolbarDrag(
   group: ToolbarGroup,

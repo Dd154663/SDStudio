@@ -28,8 +28,13 @@ jest.mock('../AppService', () => {
 jest.mock('..', () => {
   const { observable } = require('mobx');
   const mirrors: Set<string> = observable.set();
+  // isMobile 은 테스트가 바꿀 수 있게 상자 뒤 getter(기본 PC)
+  const flags = { mobile: false };
   return {
-    isMobile: false,
+    get isMobile() {
+      return flags.mobile;
+    },
+    __flags: flags,
     __mirrors: mirrors,
     sessionService: { isMirror: (name: string) => mirrors.has(name) },
   };
@@ -86,8 +91,23 @@ import UndoRedoBar, {
   UNDO_ANCHOR_ATTR,
   UNDO_BAR_TOP_VAR,
   undoBarTopCss,
+  UNDO_BAR_POS_KEY,
+  UNDO_BAR_EDGE_PX,
+  UNDO_BAR_TONE_CLASS,
+  clampUndoBarRatio,
+  loadUndoBarRatio,
+  saveUndoBarRatio,
+  undoBarDefaultRatio,
+  undoBarLeftStyle,
+  undoBarRatioFromLeft,
 } from '../../componenets/UndoRedoBar';
-import { UndoBarSlot, UndoSlotTone, V2_ROW_SELECT_TINT } from '../../componenets/UndoBarSlot';
+import {
+  UndoBarSlot,
+  UndoCornerSlot,
+  UndoSlotTone,
+  UNDO_SHEET_ATTR,
+  V2_ROW_SELECT_TINT,
+} from '../../componenets/UndoBarSlot';
 import ShortcutCheatsheet from '../../componenets/ShortcutCheatsheet';
 import {
   sceneToolbarRegistry,
@@ -105,6 +125,7 @@ const undoState = (undoModule as any).__state as {
   hasGlobalEntries: boolean;
 };
 const mirrors = (models as any).__mirrors as Set<string>;
+const platformFlags = (models as any).__flags as { mobile: boolean };
 const { undoService } = undoModule;
 
 let root: Root;
@@ -123,6 +144,10 @@ beforeEach(() => {
     mirrors.clear();
   });
   setKeyboardChipVisible(false);
+  platformFlags.mobile = false;
+  try {
+    localStorage.removeItem(UNDO_BAR_POS_KEY);
+  } catch {}
   (undoService.undo as jest.Mock).mockClear();
   (undoService.redo as jest.Mock).mockClear();
   container = document.createElement('div');
@@ -319,12 +344,16 @@ describe('부착 — 막대 안 자리(UndoBarSlot)에 포털', () => {
     });
   });
 
-  test('자리 = 막대 위 모서리 중앙 absolute(bottom-full left-1/2 -translate-x-1/2, z-widget)', () => {
+  test('자리 = 막대 위 모서리 바깥 막대 폭 높이 0 띠(absolute bottom-full left-0 right-0 h-0, 클릭 통과, z-widget), 바는 띠 바닥 맞춤', () => {
     const a = mountAnchor(window.innerHeight - 52, 52);
     const slot = slotOf(a);
-    for (const c of ['absolute', 'bottom-full', 'left-1/2', '-translate-x-1/2', 'z-[var(--z-widget)]'])
+    for (const c of ['absolute', 'bottom-full', 'left-0', 'right-0', 'h-0', 'pointer-events-none', 'z-[var(--z-widget)]'])
       expect(slot.className.split(' ')).toContain(c);
     expect(slot.getAttribute('data-undo-slot')).toBe('bar');
+    render();
+    const cls = bar()!.className.split(' ');
+    for (const c of ['absolute', 'bottom-0', 'pointer-events-auto', 'w-max']) expect(cls).toContain(c);
+    expect(bar()!.getAttribute('data-undo-bar-kind')).toBe('slot');
   });
 
   test('막대가 있으면 바는 그 자리 안(fixed 아님), 하단 바 색 = zone-bar + --c-surface, 위만 둥근 탭·막대와 같은 선', () => {
@@ -568,5 +597,375 @@ describe('단축키 도움말 전역 항목', () => {
   test('월드컵 도움말에는 넣지 않는다(되돌리기 허용 창 아님)', () => {
     act(() => root.render(<ShortcutCheatsheet scope="tournament" onClose={() => {}} />));
     expect(container.querySelector('[data-shortcut-section="global"]')).toBeNull();
+  });
+});
+
+// ── 설계 E(2026-11-04): 시트 호스트·구석 예외·수평 위치 ──
+const rectOf = (top: number, height: number, left = 0, width = 400) =>
+  ({ top, bottom: top + height, left, right: left + width, width, height, x: left, y: top, toJSON() {} }) as DOMRect;
+const flush = () =>
+  act(async () => {
+    // MutationObserver(마이크로태스크) → 한 프레임(raf 또는 16ms 대체) 뒤 다시 잰다
+    await new Promise((r) => setTimeout(r, 60));
+  });
+const pointer = (el: Element, type: string, clientX: number, clientY = 0) =>
+  act(() => {
+    el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX, clientY }));
+  });
+const ratioAttr = () => Number(bar()!.getAttribute('data-undo-bar-ratio'));
+
+describe('설계 E — 시트 호스트 우선(항상 맨 위 호스트 위)', () => {
+  const extras: HTMLElement[] = [];
+  /** V2 프롬프트 시트 흉내 — 자리 없이 표식(UNDO_ANCHOR_ATTR + UNDO_SHEET_ATTR=상태)만 */
+  const mountSheet = (top: number, state = 'half', height = 300) => {
+    const el = document.createElement('div');
+    el.setAttribute(UNDO_ANCHOR_ATTR, '');
+    el.setAttribute(UNDO_SHEET_ATTR, state);
+    el.getBoundingClientRect = () => rectOf(top, height, 10, 380);
+    document.body.appendChild(el);
+    extras.push(el);
+    return el;
+  };
+  afterEach(() => {
+    act(() => root.unmount());
+    root = createRoot(container);
+    anchorRoots.splice(0).forEach(({ root: r, host }) => {
+      act(() => r.unmount());
+      host.remove();
+    });
+    extras.splice(0).forEach((el) => el.remove());
+  });
+
+  test('펼친 프롬프트 시트가 아래 막대들보다 위 → 시트 위 모서리 바깥 위에 fixed(시트 색), 토스트는 시트 아래 가장 위 막대 기준', () => {
+    const vh = window.innerHeight;
+    mountAnchor(vh - 52, 52, 'bar');
+    mountAnchor(vh - 104, 52, 'row');
+    mountSheet(vh - 400);
+    const p = pickUndoAnchor()!;
+    expect(p.kind).toBe('sheet');
+    expect(p.slot).toBeNull();
+    expect(p.barBottomPx).toBe(400);
+    expect(p.hostLeft).toBe(10);
+    expect(p.hostWidth).toBe(380);
+    // 토스트 = 메인 줄(위 모서리 vh−104, 위 테두리 1px) 위 — 바 높이는 더하지 않는다(바가 거기 없음)
+    expect(p.toastBottomPx).toBe(104 - 1);
+    render();
+    expect(bar()!.parentElement).toBe(container);
+    expect(bar()!.getAttribute('data-undo-bar-kind')).toBe('sheet');
+    expect(bar()!.getAttribute('data-undo-bar-tone')).toBe('sheet');
+    const cls = bar()!.className.split(' ');
+    expect(cls).toContain('fixed');
+    expect(cls).toContain('bg-[var(--c-zone)]');
+    expect(bar()!.style.bottom).toBe('400px');
+    expect(topVar()).toBe(`${104 - 1}px`);
+    expect(UNDO_BAR_TONE_CLASS.sheet).toBe('bg-[var(--c-zone)]');
+  });
+
+  test('시트가 접히면(표식 제거) 다시 막대로, 다시 펼치면 시트로 — 속성 변화를 관찰해 다시 고른다', async () => {
+    const vh = window.innerHeight;
+    const row = mountAnchor(vh - 52, 52, 'row');
+    const sheet = mountSheet(vh - 300, 'half');
+    render();
+    expect(bar()!.getAttribute('data-undo-bar-kind')).toBe('sheet');
+    sheet.removeAttribute(UNDO_ANCHOR_ATTR);
+    sheet.removeAttribute(UNDO_SHEET_ATTR);
+    await flush();
+    expect(bar()!.parentElement).toBe(slotOf(row));
+    expect(topVar()).toBe(`${52 - 1 + 36}px`);
+    sheet.setAttribute(UNDO_ANCHOR_ATTR, '');
+    sheet.setAttribute(UNDO_SHEET_ATTR, 'full');
+    await flush();
+    expect(bar()!.getAttribute('data-undo-bar-kind')).toBe('sheet');
+  });
+
+  test('시트 상태 표식이 빠진 표식만 남으면 건너뛴다 · 끄는 중(drag)은 자리를 지키되 숨김', () => {
+    const vh = window.innerHeight;
+    const row = mountAnchor(vh - 52, 52, 'row');
+    const sheet = mountSheet(vh - 300, 'drag');
+    expect(pickUndoAnchor()!.hidden).toBe(true);
+    render();
+    expect(bar()!.style.visibility).toBe('hidden');
+    sheet.removeAttribute(UNDO_SHEET_ATTR);
+    expect(pickUndoAnchor()!.slot).toBe(slotOf(row));
+  });
+
+  test('시트 FLIP 전환 중(translateY)이어도 멈출 자리(rect − 이동량) 기준', () => {
+    const vh = window.innerHeight;
+    const sheet = mountSheet(vh - 300);
+    sheet.style.transform = 'translateY(40px)';
+    // rect 는 전환 중 보이는 자리(멈출 자리 vh−300 + 40)
+    sheet.getBoundingClientRect = () => rectOf(vh - 260, 300);
+    expect(pickUndoAnchor()!.barBottomPx).toBe(300);
+  });
+
+  test('이미지 「자세한 정보」 손잡이(자리 tone=sheet)가 펼쳐지면 메인 줄 대신 그 위', () => {
+    const vh = window.innerHeight;
+    mountAnchor(vh - 52, 52, 'row');
+    const handle = mountAnchor(vh - 52 - 200 - 44, 44, 'sheet');
+    render();
+    expect(bar()!.parentElement).toBe(slotOf(handle));
+    expect(bar()!.getAttribute('data-undo-bar-tone')).toBe('sheet');
+    expect(bar()!.getAttribute('data-undo-bar-kind')).toBe('slot');
+  });
+
+  test('위 모서리가 같은 두 호스트 → 쌓임 층 z 가 높은 쪽, 같으면 문서 뒤쪽', () => {
+    const vh = window.innerHeight;
+    const layerHost = document.createElement('div');
+    layerHost.style.position = 'absolute';
+    layerHost.style.zIndex = '20';
+    document.body.appendChild(layerHost);
+    extras.push(layerHost);
+    const high = mountAnchor(vh - 100, 50, 'tier', 1, layerHost);
+    mountAnchor(vh - 100, 50, 'row');
+    expect(pickUndoAnchor()!.slot).toBe(slotOf(high));
+    layerHost.style.zIndex = '';
+    layerHost.style.position = '';
+    const later = mountAnchor(vh - 100, 50, 'bar');
+    expect(pickUndoAnchor()!.slot).toBe(slotOf(later));
+  });
+
+  test('시트가 다른 요소(FloatView 등)에 가려지면 건너뛰고 보이는 막대', () => {
+    const vh = window.innerHeight;
+    const origEfp = document.elementFromPoint;
+    const row = mountAnchor(vh - 52, 52, 'row');
+    mountSheet(vh - 300);
+    const cover = document.createElement('div');
+    document.body.appendChild(cover);
+    extras.push(cover);
+    (document as any).elementFromPoint = (_x: number, y: number) => (y < vh - 52 ? cover : row);
+    try {
+      expect(pickUndoAnchor()!.slot).toBe(slotOf(row));
+    } finally {
+      (document as any).elementFromPoint = origEfp;
+    }
+  });
+});
+
+describe('설계 E — 클래식 모바일 프롬프트 편집 창 구석 예외', () => {
+  const hosts: { root: Root; host: HTMLElement }[] = [];
+  const mountCorner = () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const r = createRoot(host);
+    hosts.push({ root: r, host });
+    act(() =>
+      r.render(
+        <div className="relative">
+          <button type="button" aria-label="뒤로">
+            x
+          </button>
+          <UndoCornerSlot />
+        </div>,
+      ),
+    );
+    const header = host.firstElementChild as HTMLElement;
+    header.getBoundingClientRect = () => rectOf(48, 40);
+    return header.querySelector<HTMLElement>('[data-undo-corner]')!;
+  };
+  afterEach(() => {
+    act(() => root.unmount());
+    root = createRoot(container);
+    [...anchorRoots.splice(0), ...hosts.splice(0)].forEach(({ root: r, host }) => {
+      act(() => r.unmount());
+      host.remove();
+    });
+  });
+
+  test('구석 자리 = 머리줄 오른쪽 세로 가운데(닫기 버튼 반대편)', () => {
+    const corner = mountCorner();
+    for (const c of ['absolute', 'right-2', 'top-1/2', '-translate-y-1/2', 'z-[var(--z-widget)]'])
+      expect(corner.className.split(' ')).toContain(c);
+  });
+
+  test('구석 자리가 보이면 하단 막대보다 우선 — 그 안에 포털, 끌기 손잡이 없음, 사방 테두리, 토스트 변수 없음', () => {
+    mountAnchor(window.innerHeight - 52, 52, 'bar');
+    const corner = mountCorner();
+    expect(pickUndoAnchor()!.kind).toBe('corner');
+    render();
+    expect(bar()!.parentElement).toBe(corner);
+    expect(bar()!.getAttribute('data-undo-bar-kind')).toBe('corner');
+    expect(bar()!.querySelector('[data-undo-bar-grip]')).toBeNull();
+    expect(bar()!.hasAttribute('data-undo-bar-ratio')).toBe(false);
+    const cls = bar()!.className.split(' ');
+    expect(cls).toContain('rounded-[10px]');
+    expect(cls).not.toContain('border-b-0');
+    expect(cls).not.toContain('fixed');
+    expect(topVar()).toBe('');
+    // 구석에서는 꾹 누름·손잡이 끌기가 없다
+    pointer(bar()!, 'pointerdown', 200);
+    pointer(bar()!, 'pointermove', 50);
+    pointer(bar()!, 'pointerup', 50);
+    expect(localStorage.getItem(UNDO_BAR_POS_KEY)).toBeNull();
+  });
+
+  test('창이 닫히면(구석 자리 제거) 원래 막대로', async () => {
+    const a = mountAnchor(window.innerHeight - 52, 52, 'bar');
+    mountCorner();
+    render();
+    expect(bar()!.getAttribute('data-undo-bar-kind')).toBe('corner');
+    const h = hosts.pop()!;
+    act(() => h.root.unmount());
+    h.host.remove();
+    await flush();
+    expect(bar()!.parentElement).toBe(slotOf(a));
+  });
+});
+
+describe('설계 E — 수평 위치(기본·기억·clamp·끌기)', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    act(() => root.unmount());
+    root = createRoot(container);
+    anchorRoots.splice(0).forEach(({ root: r, host }) => {
+      act(() => r.unmount());
+      host.remove();
+    });
+  });
+
+  test('기본 위치 = 모바일 오른쪽 구석(1)·PC 중앙(0.5)', () => {
+    expect(undoBarDefaultRatio(true)).toBe(1);
+    expect(undoBarDefaultRatio(false)).toBe(0.5);
+    mountAnchor(window.innerHeight - 52, 52, 'bar');
+    render();
+    expect(ratioAttr()).toBe(0.5);
+    act(() => root.unmount());
+    root = createRoot(container);
+    platformFlags.mobile = true;
+    render();
+    expect(ratioAttr()).toBe(1);
+    expect(bar()!.querySelector('[data-undo-bar-grip]')).not.toBeNull();
+  });
+
+  test('가로 위치 스타일 — 비율로 CSS 계산(측정 없음), PC 중앙 = 50% / translateX(-50%)', () => {
+    const e = UNDO_BAR_EDGE_PX;
+    expect(undoBarLeftStyle(0.5)).toEqual({
+      left: `calc(${e}px + (100% - ${2 * e}px) * 0.5)`,
+      transform: 'translateX(-50%)',
+    });
+    expect(undoBarLeftStyle(1).transform).toBe('translateX(-100%)');
+    expect(undoBarLeftStyle(0).transform).toBe('translateX(0%)');
+    // 시트(fixed)는 시트 rect 기준
+    expect(undoBarLeftStyle(1, { left: 10, width: 380 }).left).toBe(
+      `calc(${10 + e}px + ${380 - 2 * e}px * 1)`,
+    );
+    // 범위 밖은 clamp
+    expect(undoBarLeftStyle(7).transform).toBe('translateX(-100%)');
+  });
+
+  test('기억 = 키 하나(PC/모바일 따로), 깨진 값·범위 밖은 기본·clamp', () => {
+    expect(loadUndoBarRatio(true)).toBe(1);
+    saveUndoBarRatio(true, 0.25);
+    saveUndoBarRatio(false, 0.75);
+    expect(JSON.parse(localStorage.getItem(UNDO_BAR_POS_KEY)!)).toEqual({ mobile: 0.25, pc: 0.75 });
+    expect(loadUndoBarRatio(true)).toBe(0.25);
+    expect(loadUndoBarRatio(false)).toBe(0.75);
+    saveUndoBarRatio(true, 3);
+    expect(loadUndoBarRatio(true)).toBe(1);
+    localStorage.setItem(UNDO_BAR_POS_KEY, '{broken');
+    expect(loadUndoBarRatio(false)).toBe(0.5);
+    localStorage.setItem(UNDO_BAR_POS_KEY, JSON.stringify({ pc: 'x' }));
+    expect(loadUndoBarRatio(false)).toBe(0.5);
+    expect(clampUndoBarRatio(-1)).toBe(0);
+    expect(clampUndoBarRatio(NaN)).toBe(0.5);
+  });
+
+  test('끌어 놓은 왼쪽 → 비율(호스트 폭 안 clamp, 빈 폭 없으면 가운데)', () => {
+    const e = UNDO_BAR_EDGE_PX;
+    // 띠 0~400, 바 폭 100 → 빈 폭 400 − 2e − 100
+    const free = 400 - 2 * e - 100;
+    expect(undoBarRatioFromLeft(0, 400, 100, e)).toBe(0);
+    expect(undoBarRatioFromLeft(0, 400, 100, e + free)).toBe(1);
+    expect(undoBarRatioFromLeft(0, 400, 100, e + free / 2)).toBeCloseTo(0.5);
+    expect(undoBarRatioFromLeft(0, 400, 100, -500)).toBe(0);
+    expect(undoBarRatioFromLeft(0, 400, 100, 5000)).toBe(1);
+    expect(undoBarRatioFromLeft(0, 50, 100, 10)).toBe(0.5);
+  });
+
+  const setupDrag = () => {
+    const a = mountAnchor(window.innerHeight - 52, 52, 'bar');
+    render();
+    slotOf(a).getBoundingClientRect = () => rectOf(window.innerHeight - 52, 0, 0, 400);
+    // PC 기본 중앙: 바 폭 100 → 왼쪽 = 8 + 0.5 × (400 − 16 − 100) = 150
+    bar()!.getBoundingClientRect = () => rectOf(window.innerHeight - 88, 36, 150, 100);
+    return a;
+  };
+
+  test('손잡이 ⋮⋮ = 누르자마자 끌기, 8px 미만은 끌기 아님, 놓으면 기억', () => {
+    setupDrag();
+    const grip = bar()!.querySelector('[data-undo-bar-grip]')!;
+    pointer(grip, 'pointerdown', 160);
+    expect(bar()!.hasAttribute('data-undo-bar-dragging')).toBe(true);
+    pointer(bar()!, 'pointermove', 165); // 5px — 끌기 아님
+    expect(ratioAttr()).toBe(0.5);
+    pointer(bar()!, 'pointermove', 160 + 142); // 바 왼쪽 292 = 오른쪽 끝(8 + 284)
+    expect(ratioAttr()).toBe(1);
+    pointer(bar()!, 'pointermove', 160 - 1000); // 왼쪽 밖 → clamp 0
+    expect(ratioAttr()).toBe(0);
+    pointer(bar()!, 'pointerup', 0);
+    expect(bar()!.hasAttribute('data-undo-bar-dragging')).toBe(false);
+    expect(JSON.parse(localStorage.getItem(UNDO_BAR_POS_KEY)!)).toEqual({ pc: 0 });
+  });
+
+  test('손잡이를 눌렀다 8px 안에서 놓으면 위치·기억 변화 없음', () => {
+    setupDrag();
+    const grip = bar()!.querySelector('[data-undo-bar-grip]')!;
+    pointer(grip, 'pointerdown', 160);
+    pointer(bar()!, 'pointermove', 167);
+    pointer(bar()!, 'pointerup', 167);
+    expect(ratioAttr()).toBe(0.5);
+    expect(localStorage.getItem(UNDO_BAR_POS_KEY)).toBeNull();
+  });
+
+  test('버튼 영역 = 꾹 누름(400ms) 뒤 끌기, 그 누름의 click 은 삼킨다(다음 탭은 정상)', () => {
+    jest.useFakeTimers();
+    runInAction(() => (undoState.canUndo = true));
+    setupDrag();
+    const undoBtn = btn('undo')!;
+    pointer(undoBtn, 'pointerdown', 170);
+    act(() => {
+      jest.advanceTimersByTime(399);
+    });
+    expect(bar()!.hasAttribute('data-undo-bar-dragging')).toBe(false);
+    act(() => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(bar()!.hasAttribute('data-undo-bar-dragging')).toBe(true);
+    pointer(bar()!, 'pointermove', 170 - 60);
+    expect(ratioAttr()).toBeLessThan(0.5);
+    pointer(bar()!, 'pointerup', 110);
+    act(() => undoBtn.click());
+    expect(undoService.undo).not.toHaveBeenCalled();
+    act(() => undoBtn.click());
+    expect(undoService.undo).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem(UNDO_BAR_POS_KEY)!).pc).toBeLessThan(0.5);
+  });
+
+  test('꾹 누름이 차기 전에 8px 이상 움직이면 끌기 아님(탭 그대로)', () => {
+    jest.useFakeTimers();
+    runInAction(() => (undoState.canUndo = true));
+    setupDrag();
+    const undoBtn = btn('undo')!;
+    pointer(undoBtn, 'pointerdown', 170);
+    pointer(bar()!, 'pointermove', 182);
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+    expect(bar()!.hasAttribute('data-undo-bar-dragging')).toBe(false);
+    pointer(bar()!, 'pointerup', 182);
+    act(() => undoBtn.click());
+    expect(undoService.undo).toHaveBeenCalledTimes(1);
+    expect(ratioAttr()).toBe(0.5);
+  });
+
+  test('WebView 함정 방어 — touch-action:none·select-none·contextmenu 억제', () => {
+    setupDrag();
+    const cls = bar()!.className.split(' ');
+    expect(cls).toContain('touch-none');
+    expect(cls).toContain('select-none');
+    const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+    act(() => {
+      bar()!.dispatchEvent(ev);
+    });
+    expect(ev.defaultPrevented).toBe(true);
   });
 });
