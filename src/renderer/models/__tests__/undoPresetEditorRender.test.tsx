@@ -204,7 +204,7 @@ test('V5M(Medium): 스텝·샘플러·CFG 리스케일은 고정값 표시+비�
   const preset = session.presets.get('SDImageGen')![0];
   expect(preset.samplingProfileFamily).toBe('v5m');
   const stepsSaved = preset.steps;
-  expect(container.querySelector('[data-v5m-negative-notice]')?.textContent).toContain('음수 가중치');
+  expect(container.querySelector('[data-v5m-negative-notice]')?.textContent).toContain('네거티브가 쓰이지 않습니다');
   await act(async () => {
     button('샘플링/모델 설정')!.click();
   });
@@ -249,7 +249,7 @@ test('V5M(Medium): 네거티브 칸은 접힘 고정(머리를 눌러도 안 열
   expect(head.className).toContain('cursor-not-allowed');
   // 안내는 접힌 머리 줄 아래
   const notice = container.querySelector('[data-v5m-negative-notice]')!;
-  expect(notice.textContent).toContain('음수 가중치');
+  expect(notice.textContent).toContain('네거티브가 쓰이지 않습니다');
   expect(head.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   await act(async () => {
     head.dispatchEvent(new MouseEvent('click', { bubbles: true }));
