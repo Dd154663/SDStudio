@@ -22,6 +22,8 @@ interface Rule {
   exclude: string[]; // renderer 상대 posix 경로
   include?: string[]; // 있으면 이 파일들만 검사(renderer 상대 posix 경로 — 특정 모듈 전용 규칙)
   count: (content: string) => number;
+  /** 있으면 초과 시 위반 행 번호(1부터)를 함께 보인다 */
+  locate?: (content: string) => number[];
   allow: Record<string, number>; // renderer 상대 posix 경로 → 허용 건수
 }
 
@@ -35,6 +37,23 @@ const TOOLBAR_IDS_RE = TOOLBAR_VIEW_MAIN.flatMap((a) => a.registry.map((b) => b.
 // 주석을 뺀 코드(주석 속 금지어는 세지 않는 규칙용)
 const stripComments = (c: string) =>
   c.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+// 행 번호를 보존하는 주석 제거(블록 주석은 줄바꿈만 남김) — locate 용
+const stripCommentsKeepLines = (c: string) =>
+  c
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ''))
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+// 일치 위치의 행 번호(1부터) — 여러 줄에 걸친 일치는 시작 행
+const matchLines = (content: string, re: RegExp): number[] => {
+  const code = stripCommentsKeepLines(content);
+  const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
+  return [...code.matchAll(g)].map((m) => code.slice(0, m.index ?? 0).split('\n').length);
+};
+
+// 프로젝트 휴지통 삭제의 직접 호출(sessionService.delete( — 공백·줄바꿈 허용). SessionService 내부의
+// super.delete·favorites.delete·Map delete 는 수신자가 sessionService 가 아니라 걸리지 않는다.
+const SESSION_DELETE_RE = /\bsessionService\s*\.\s*delete\s*\(/g;
 
 // 되돌리기 계약(2026-11-01 U1)을 지키는 모듈 — 잠금·씬 직접 제거 금지 규칙의 대상
 // U2a: 씬 구조(생성·이름·북마크) 계측 모듈 추가 · U2b: 씬 필드·조합·씬 캐릭터·시드 그룹 계측 모듈 추가
@@ -419,6 +438,20 @@ const RULES: Rule[] = [
     count: (c) => countMatches(stripComments(c), /\.restoreProject\(/g),
     allow: { 'models/SessionService.ts': 1 },
   },
+  {
+    // 프로젝트 삭제는 반드시 공용 흐름(projectDeleteFlow)을 거친다(2026-11-07 규약, A10 사고 2026-11-03:
+    // 드로어 삭제가 현재 프로젝트를 닫지 않아 「미등록 프로젝트의 경로」 오류). 호출부는
+    // runProjectTrashDelete / deleteProjectForFolderFlow / deleteProjectForReplaceFlow 또는 되돌리기 래퍼
+    // projectDeleteUndo.deleteProjectRecorded 를 쓴다. 주석은 세지 않는다.
+    name: 'sessionService.delete 직접 호출 — projectDeleteFlow 관문 경유',
+    guide: '§8 「프로젝트 삭제 관문」(관문 강제)',
+    dir: '',
+    exts: ['.ts', '.tsx'],
+    exclude: [],
+    count: (c) => countMatches(stripComments(c), SESSION_DELETE_RE),
+    locate: (c) => matchLines(c, SESSION_DELETE_RE),
+    allow: { 'models/projectDeleteFlow.ts': 1 },
+  },
 ];
 
 function listFiles(dirAbs: string, exts: string[]): string[] {
@@ -450,12 +483,17 @@ describe('SPEC_GUIDE 가드 (하드코딩 신규 유입 차단)', () => {
     test(rule.name, () => {
       const files = listFiles(path.join(RENDERER_ROOT, rule.dir), rule.exts);
       const actual: Record<string, number> = {};
+      const where: Record<string, number[]> = {};
       for (const f of files) {
         const rel = toRel(f);
         if (rule.exclude.includes(rel)) continue;
         if (rule.include && !rule.include.includes(rel)) continue;
-        const n = rule.count(fs.readFileSync(f, 'utf8'));
-        if (n > 0) actual[rel] = n;
+        const content = fs.readFileSync(f, 'utf8');
+        const n = rule.count(content);
+        if (n > 0) {
+          actual[rel] = n;
+          if (rule.locate) where[rel] = rule.locate(content);
+        }
       }
       const problems: string[] = [];
       const keys = new Set([...Object.keys(actual), ...Object.keys(rule.allow)]);
@@ -464,7 +502,7 @@ describe('SPEC_GUIDE 가드 (하드코딩 신규 유입 차단)', () => {
         const allowed = rule.allow[k] || 0;
         if (a > allowed)
           problems.push(
-            `[초과] ${k}: ${a}건(허용 ${allowed}) — SPEC_GUIDE.md ${rule.guide} 의 스펙을 사용할 것`,
+            `[초과] ${k}${where[k]?.length ? `:${where[k].join(',')}행` : ''}: ${a}건(허용 ${allowed}) — SPEC_GUIDE.md ${rule.guide} 의 스펙을 사용할 것`,
           );
         else if (a < allowed)
           problems.push(

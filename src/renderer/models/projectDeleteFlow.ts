@@ -17,6 +17,10 @@
 //    - 이동 뒤 부가 정리(즐겨찾기·북마크 저장 등)의 예외 = 이미 내려갔음 → 닫는다. 폴더 일괄 삭제
 //      (folderDeleteFlow)의 기존 판정(finally 에서 !isLoaded 면 닫음)과 같다.
 //  · 화면 갱신(빈 상태)은 App 이 curSession 없음을 그대로 그린다(툴바 삭제와 같은 결과).
+//  · 관문 강제(2026-11-07 규약 「프로젝트 삭제는 반드시 공용 흐름을 거친다」): sessionService.delete( 의
+//    직접 호출은 이 파일 안에서만 허용한다(specGuard). 백업 덮어쓰기처럼 호출부가 현재 프로젝트
+//    닫기·다시 열기 순서를 스스로 관리하는 흐름은 closeCurrent:false 로 경유한다
+//    (deleteProjectForReplaceFlow).
 
 import { sessionService } from '.';
 import { getAppState } from './appStateRef';
@@ -63,6 +67,14 @@ export function shouldCloseCurrentAfterDelete(
   return currentName === name && !stillLoaded;
 }
 
+export interface ProjectDeleteOptions {
+  /**
+   * 지워진 것이 현재 프로젝트면 닫는가(기본 true). false = 호출부가 삭제 전에 이미 닫고 끝난 뒤 다시
+   * 여는 흐름(백업 덮어쓰기 — 같은 이름으로 다시 만든다)이라 관문은 닫기를 건너뛴다.
+   */
+  closeCurrent?: boolean;
+}
+
 /**
  * 프로젝트(씬 템플릿 숨김 프로젝트 포함) 한 개를 휴지통으로 옮기고, 지워진 것이 현재 프로젝트면 닫는다.
  * 안내 문구는 호출부가 projectDeleteResultText(결과, …) 로 만든다(문구 종류는 호출부마다 다름).
@@ -70,10 +82,15 @@ export function shouldCloseCurrentAfterDelete(
 export async function runProjectTrashDelete(
   name: string,
   deps: ProjectDeleteDeps = defaultProjectDeleteDeps(),
+  options: ProjectDeleteOptions = {},
 ): Promise<ProjectDeleteOutcome> {
+  const allowClose = options.closeCurrent !== false;
   let closedCurrent = false;
   const closeIfGone = () => {
-    if (shouldCloseCurrentAfterDelete(name, deps.currentName(), deps.isLoaded(name))) {
+    if (
+      allowClose &&
+      shouldCloseCurrentAfterDelete(name, deps.currentName(), deps.isLoaded(name))
+    ) {
       deps.closeCurrent();
       closedCurrent = true;
     }
@@ -108,6 +125,24 @@ export async function deleteProjectForFolderFlow(
   deps: ProjectDeleteDeps = defaultProjectDeleteDeps(),
 ): Promise<ProjectDeleteOutcome> {
   const r = await runProjectTrashDelete(name, deps);
+  if (r.kind === 'error') {
+    throw new Error(r.message || '알 수 없는 오류');
+  }
+  return r;
+}
+
+/**
+ * 백업 덮어쓰기(BackupService — 전체 백업 복원 덮어쓰기·프로젝트 백업 덮어쓰기)의 remove 콜백 어댑터.
+ * 그 흐름들은 삭제 전에 현재 프로젝트를 스스로 닫고(beforeRemove/beforeSwap), 실패는 예외로,
+ * 남아 있음은 목록 재확인으로 판정하며, 끝나면 같은 이름 프로젝트를 다시 연다 — 그래서 관문의
+ * 닫기는 끄고(closeCurrent:false) 예외 결과만 같은 메시지로 다시 던진다. 되돌리기 기록 없음
+ * (백업 복원·덮어쓰기는 되돌리기 제외 ③).
+ */
+export async function deleteProjectForReplaceFlow(
+  name: string,
+  deps: ProjectDeleteDeps = defaultProjectDeleteDeps(),
+): Promise<ProjectDeleteOutcome> {
+  const r = await runProjectTrashDelete(name, deps, { closeCurrent: false });
   if (r.kind === 'error') {
     throw new Error(r.message || '알 수 없는 오류');
   }

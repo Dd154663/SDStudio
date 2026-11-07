@@ -31,11 +31,13 @@ jest.mock('../appStateRef', () => ({ getAppState: () => appState }));
 
 import {
   deleteProjectForFolderFlow,
+  deleteProjectForReplaceFlow,
   runProjectTrashDelete,
   shouldCloseCurrentAfterDelete,
 } from '../projectDeleteFlow';
 import { DELETE_RESULT_TEXT, projectDeleteResultText } from '../deleteFlowRules';
 import { runFolderDeleteWithProjects } from '../folderDeleteFlow';
+import { clearForFullBackupOverwrite } from '../fullBackupOverwrite';
 
 const setup = (names: string[], opts: { loaded?: string[]; current?: string } = {}) => {
   loaded.clear();
@@ -217,5 +219,89 @@ describe('폴더 일괄 삭제 — deleteProjectForFolderFlow 로 바꿔도 결�
     });
     expect(result.failed).toEqual([{ name: 'B', reason: '삭제하지 못했습니다(이동 실패)' }]);
     expect(result.folderDeleted).toBe(false);
+  });
+});
+
+// ── 백업 덮어쓰기(BackupService) — 직접 sessionService.delete 를 관문(deleteProjectForReplaceFlow)으로 (2026-11-07) ──
+
+const useModeImpl = (modeOf: (n: string) => DeleteMode) =>
+  sessionService.delete.mockImplementation(async (n: string) => {
+    const mode = modeOf(n);
+    if (mode === 'locked') return;
+    if (mode === 'throw-before') throw new Error('이동 실패');
+    loaded.delete(n);
+    listed.delete(n);
+    if (mode === 'throw-after') throw new Error('즐겨찾기 저장 실패');
+  });
+
+describe('runProjectTrashDelete — closeCurrent:false', () => {
+  test('지워져도 현재 프로젝트를 닫지 않는다(호출부가 닫기·다시 열기 관리)', async () => {
+    useModeImpl(() => 'ok');
+    setup(['A'], { current: 'A' });
+    const r = await runProjectTrashDelete('A', undefined, { closeCurrent: false });
+    expect(r.kind).toBe('deleted');
+    expect(r.closedCurrent).toBe(false);
+    expect(appState.curSession?.name).toBe('A');
+  });
+
+  test('기본값(옵션 없음)은 기존대로 닫는다', async () => {
+    useModeImpl(() => 'ok');
+    setup(['A'], { current: 'A' });
+    const r = await runProjectTrashDelete('A', undefined, {});
+    expect(r.closedCurrent).toBe(true);
+    expect(appState.curSession).toBeUndefined();
+  });
+});
+
+describe('deleteProjectForReplaceFlow — 전체 백업 덮어쓰기 판정 불변', () => {
+  const modes: DeleteMode[] = ['ok', 'locked', 'throw-before', 'throw-after'];
+  const runClear = async (mode: DeleteMode, remove: (n: string) => Promise<void>) => {
+    useModeImpl(() => mode);
+    setup(['A', 'B'], { current: 'A' });
+    const purge = jest.fn(async () => {});
+    const outcome = await clearForFullBackupOverwrite('A', {
+      listNames: () => sessionService.list(),
+      beforeRemove: (n) => {
+        if (appState.curSession?.name === n) appState.curSession = undefined;
+      },
+      remove,
+      purge,
+      logError: () => {},
+    });
+    return { outcome, purged: purge.mock.calls.length, cur: appState.curSession?.name, list: sessionService.list() };
+  };
+
+  test.each(modes)('%s', async (mode) => {
+    const before = await runClear(mode, async (n) => {
+      await sessionService.delete(n);
+    });
+    const after = await runClear(mode, async (n) => {
+      await deleteProjectForReplaceFlow(n);
+    });
+    expect(after).toEqual(before);
+  });
+
+  test('예외는 같은 메시지로 다시 던진다(프로젝트 백업 덮어쓰기의 실패 사유)', async () => {
+    useModeImpl(() => 'throw-before');
+    setup(['A']);
+    await expect(deleteProjectForReplaceFlow('A')).rejects.toThrow('이동 실패');
+  });
+
+  test('다른 창 잠금(남아 있음)은 예외 없이 돌아온다 — 호출부의 목록 재확인이 판정', async () => {
+    useModeImpl(() => 'locked');
+    setup(['A']);
+    const r = await deleteProjectForReplaceFlow('A');
+    expect(r.kind).toBe('still-present');
+    expect(sessionService.list()).toContain('A');
+  });
+
+  test('덮어쓰기 휴지통 이름(현재 아님)을 지우고 현재 프로젝트는 건드리지 않는다', async () => {
+    useModeImpl(() => 'ok');
+    setup(['원본 (덮어쓰기 전)', '원본 임시'], { current: '원본 (덮어쓰기 전)' });
+    const r = await deleteProjectForReplaceFlow('원본 (덮어쓰기 전)');
+    expect(r.kind).toBe('deleted');
+    expect(r.closedCurrent).toBe(false);
+    expect(sessionService.get).toHaveBeenCalledWith('원본 (덮어쓰기 전)');
+    expect(sessionService.delete).toHaveBeenCalledWith('원본 (덮어쓰기 전)');
   });
 });

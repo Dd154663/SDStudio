@@ -95,7 +95,10 @@ import {
 } from './projectOverwrite';
 import { PROJECT_IMAGE_ROOTS } from './projectPaths';
 import { runFolderDeleteWithProjects, type FolderDeleteResult } from './folderDeleteFlow';
-import { deleteProjectForFolderFlow } from './projectDeleteFlow';
+import {
+  deleteProjectForFolderFlow,
+  deleteProjectForReplaceFlow,
+} from './projectDeleteFlow';
 import { deleteFolderWithProjectsRecorded } from './projectDeleteUndo';
 import {
   clearForFullBackupOverwrite,
@@ -1282,7 +1285,10 @@ export class BackupService {
                     appState.curSession = undefined;
                   }
                 },
-                remove: (name) => sessionService.delete(name),
+                // 휴지통 관문(projectDeleteFlow — 닫기는 위 beforeRemove 가 이미 함)
+                remove: async (name) => {
+                  await deleteProjectForReplaceFlow(name);
+                },
                 purge: (name) => trashService.permanentlyDeleteProject(name),
               });
               if (cleared.kind === 'blocked') {
@@ -2141,7 +2147,7 @@ export class BackupService {
   // 사용자 결정: 임시 백업 + 휴지통 이관 2중 보호, 영구 삭제 없음). 절차 분기는
   // projectOverwrite.runProjectOverwrite(순수·jest), 여기서는 기존 관문만 연결한다:
   // flush=flushProjectNow, 백업=exportSessionDeep, 가져오기=importSessionDeepFromDir
-  // (이미지 선복사→createFrom), 이름변경=renameProject, 휴지통=sessionService.delete.
+  // (이미지 선복사→createFrom), 이름변경=renameProject, 휴지통=projectDeleteFlow.deleteProjectForReplaceFlow.
   // 새 lock 을 만들거나 중첩하지 않는다(각 관문이 자기 withLock·flushPath 를 쓴다).
   private async overwriteProjectFromDir(root: string, target: string) {
     // 확인 2회(프로젝트만 — §0-3).
@@ -2207,9 +2213,10 @@ export class BackupService {
           const s = sessionService.getLoaded(newName);
           if (s) s.name = newName;
         },
+        // 휴지통 관문(projectDeleteFlow — 닫기·다시 열기는 이 흐름이 beforeSwap·끝 처리로 관리)
         remove: async (name) => {
           await ensureLoaded(name);
-          await sessionService.delete(name);
+          await deleteProjectForReplaceFlow(name);
         },
         moveToFolder: (name, folder) => sessionService.moveToFolder(name, folder),
         onProgress: (stage) =>
