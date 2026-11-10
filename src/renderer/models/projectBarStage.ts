@@ -53,3 +53,24 @@ export function projectBarNeeds(
     ? { available, labelNeed: base, iconNeed: base - extra }
     : { available, labelNeed: base + extra, iconNeed: base };
 }
+
+// ── 칸 나눔 버튼 줄(2026-11-10 묶음 2 — 사전 세팅 하단 아이콘 행·그림체 세로 버튼) ─────────────
+// flex-1 로 줄을 나눠 갖는 버튼은 글자를 켜도 칸 크기가 그대로라 「줄 폭 합」으로는 판정할 수 없다.
+// 대신 버튼마다 「칸 안쪽 크기(room) ≥ 글자를 놓는 데 필요한 크기(need)」를 보고, 가장 빠듯한 버튼 하나를
+// 같은 판정(pickProjectBarStage)에 넘긴다 — 전체 동시 전환·히스테리시스는 그대로.
+export const SHARE_BUTTONS_HYSTERESIS_PX = 4;
+
+export interface ShareSlot {
+  room: number;
+  need: number;
+}
+
+export function shareButtonsNeeds(slots: readonly ShareSlot[]): ProjectBarNeeds {
+  if (slots.length === 0) return { available: 0, labelNeed: 0, iconNeed: 0 };
+  let tight = slots[0];
+  for (const s of slots) {
+    if (s.room - s.need < tight.room - tight.need) tight = s;
+  }
+  // 아이콘만 단계는 칸을 넘치지 않는다(iconNeed 0) — 'overflow' 단계는 생기지 않는다.
+  return { available: tight.room, labelNeed: tight.need, iconNeed: 0 };
+}

@@ -13,6 +13,8 @@ import { WFIInlineInput, wfiElementKey } from '../models/workflows/WorkFlow';
 import { ModelVersion } from '../backends/imageGen';
 import { isV5ModelVersion } from '../backends/genVendors/naiModelCapabilities';
 import { WFElementContext, PresetIconRowContext } from './wfElementContext';
+import { PresetIconRowLabelContext, StackedLabel, stackedButtonClass } from './PresetPanelLabel';
+import { presetIconRowLabelOf } from '../models/presetPanelLabels';
 import { resolveCompanionButtons } from '../models/companionSlots';
 import { renderCompanionButtons } from './PortableToolbarButtons';
 import { CompanionHostRow } from './CompanionDnd';
@@ -471,6 +473,7 @@ export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
   const { editVibe, setEditVibe, preset, shared, meta, modelVersion } =
     useContext(WFElementContext)!;
   const iconRow = useContext(PresetIconRowContext);
+  const iconRowLabel = useContext(PresetIconRowLabelContext);
   const [activeIndex, setActiveIndex] = useState(0);
 
   const getField = () => {
@@ -538,14 +541,18 @@ export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
           }
         >
           <button
-            className={`round-button h-8 flex-1 min-w-0 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
+            data-pb-share=""
+            className={`round-button flex-1 min-w-0 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}${stackedButtonClass(iconRowLabel)}`}
             onClick={onClick}
             disabled={locked}
           >
+            <span data-pb-top="" className="inline-flex items-center">
             <FaImages size={14} className="inline-block" />
             {field.length > 0 && (
               <span className="ml-1 text-xs">{field.length}</span>
             )}
+            </span>
+            <StackedLabel text={presetIconRowLabelOf(hostKey)} mode={iconRowLabel} />
           </button>
         </Tooltip>
         {companions}

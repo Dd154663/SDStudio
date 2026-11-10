@@ -125,6 +125,16 @@ import {
   CharacterReferenceButton,
 } from './CharacterReferenceEditor';
 import { WFElementContext, PresetIconRowContext } from './wfElementContext';
+import {
+  PresetIconRowLabelContext,
+  StackedLabel,
+  labelModeOf,
+  stackedButtonClass,
+} from './PresetPanelLabel';
+import { PRESET_ACTION_LABELS, presetIconRowLabelOf } from '../models/presetPanelLabels';
+import { measureShareButtons, useProjectBarStage } from './useProjectBarStage';
+import { PresetReleaseButton } from './PresetReleaseButton';
+import { SHARE_BUTTONS_HYSTERESIS_PX } from '../models/projectBarStage';
 import { ResolutionPicker, resolutionValueToSize } from './ResolutionPicker';
 import HelpIcon from './HelpIcon';
 import {
@@ -612,6 +622,8 @@ const DraggablePresetCard = observer(({
   );
 });
 
+const measureSideColumn = (row: HTMLElement) => measureShareButtons(row, 'height');
+
 const ProfilePreSetSelect = observer(({}) => {
   const { curSession } = appState;
   const { preset, type, shared, middlePromptMode } =
@@ -622,6 +634,15 @@ const ProfilePreSetSelect = observer(({}) => {
     id: ContextMenuType.Style,
   });
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const { rowRef: sideColRef, stage: sideStage } = useProjectBarStage(true, {
+    measure: measureSideColumn,
+    hysteresis: SHARE_BUTTONS_HYSTERESIS_PX,
+  });
+  const sideLabels = labelModeOf(sideStage);
+  const sideBtnClass =
+    'relative flex-1 flex m-4 items-center justify-center rounded-xl clickable back-lllgray ' +
+    // 글자 단계는 min-h-0 — 칸이 글자 높이 밑으로 줄 수 있어야 「모자람」을 잴 수 있다(아이콘만은 종전 그대로).
+    (sideLabels === 'show' ? 'w-16 flex-col min-h-0 overflow-hidden' : 'w-10 overflow-hidden');
   useEffect(() => {
     const onStyleEdit = (e: any) => {
       if (e.detail.container !== containerRef.current) return;
@@ -681,10 +702,16 @@ const ProfilePreSetSelect = observer(({}) => {
             }}
           />
         ))}
-        <div className="h-full relative flex-none flex flex-col gap-2">
+        {/* 묶음 2(2026-11-10): 세로 버튼마다 아이콘 위·짧은 글자 아래(presetPanelLabels). 칸 높이가 모자라면
+            (measureShareButtons 'height') 전체가 아이콘만 — 종전 w-10 모습. 글자 단계만 폭 w-16. */}
+        <div
+          ref={sideColRef as React.RefObject<HTMLDivElement>}
+          className="h-full relative flex-none flex flex-col gap-2"
+        >
           <Tooltip content="새 그림체 추가">
           <div
-            className="flex-1 w-10 flex m-4 items-center justify-center rounded-xl clickable back-lllgray"
+            data-pb-share=""
+            className={sideBtnClass}
             onClick={async () => {
               const name = await promptName({
                 title: '그림체 이름을 입력하세요',
@@ -698,27 +725,32 @@ const ProfilePreSetSelect = observer(({}) => {
               editPresetList(curSession, UNDO_TEXT.presetAdd(name), () => curSession!.addPreset(newPreset));
             }}
           >
-            <FaPlus />
+            <span data-pb-top="" className="inline-flex"><FaPlus /></span>
+            <StackedLabel text={PRESET_ACTION_LABELS.newStyle} mode={sideLabels} />
           </div>
           </Tooltip>
           <Tooltip content="여러 그림체 파일 불러오기">
           <div
-            className="flex-1 w-10 flex m-4 items-center justify-center rounded-xl clickable back-lllgray"
+            data-pb-share=""
+            className={sideBtnClass}
             onClick={async () => {
               await appState.importMultiplePresets();
             }}
           >
-            <ActionIcon id="import" />
+            <span data-pb-top="" className="inline-flex"><ActionIcon id="import" /></span>
+            <StackedLabel text={PRESET_ACTION_LABELS.importFiles} mode={sideLabels} />
           </div>
           </Tooltip>
           <Tooltip content="글로벌 프리셋을 프로젝트로 복사">
           <div
-            className="flex-1 w-10 flex m-4 items-center justify-center rounded-xl clickable back-lllgray"
+            data-pb-share=""
+            className={sideBtnClass}
             onClick={() => {
               appState.openGlobalPresetPicker('SDImageGenEasy');
             }}
           >
-            <ActionIcon id="copy-to-project" />
+            <span data-pb-top="" className="inline-flex"><ActionIcon id="copy-to-project" /></span>
+            <StackedLabel text={PRESET_ACTION_LABELS.copyFromGlobal} mode={sideLabels} />
           </div>
           </Tooltip>
         </div>
@@ -988,6 +1020,8 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
       : [];
   return (
     <CompanionHostRow hostKey="preset-select">
+    {/* 묶음 2(2026-11-10) 초안의 「두 줄 + 글자 라벨」은 실기에서 기각(사용자: 드롭다운에 붙은 한 줄이 대칭을 맞춰 줌)
+        → 종전 한 줄 유지. 바뀐 것은 ＋ 의 툴팁뿐. 라벨은 하단 아이콘 행·해제 버튼에만. */}
     <div
       ref={containerRef}
       className="field-row flex gap-2 mt-2 md:mt-3 items-center relative"
@@ -1012,6 +1046,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
           {curSession.selectedWorkflow?.presetName}
         </span>
       </button>
+      <Tooltip content="새 사전 세팅">
       <button
         className={`icon-button flex-none`}
         onClick={async () => {
@@ -1032,10 +1067,10 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
             };
           });
         }}
-        aria-label="새 사전 세팅"
       >
         <FaPlus />
       </button>
+      </Tooltip>
       {workflowType === 'SDImageGen' && (
         <Tooltip content="글로벌 프리셋을 프로젝트로 복사">
           <button
@@ -1745,6 +1780,7 @@ const WFRGroup = observer(({ element }: WFElementProps) => {
   const { editVibe, setShowGroupOverlay } =
     useContext(WFElementContext)!;
   const iconRow = useContext(PresetIconRowContext);
+  const iconRowLabel = useContext(PresetIconRowLabelContext);
   if (editVibe != undefined) {
     return <></>;
   }
@@ -1757,17 +1793,22 @@ const WFRGroup = observer(({ element }: WFElementProps) => {
   const companions = renderCompanionButtons(companionIds, hostKey);
   const hasCompanions = companions.length > 0;
   // 하단 아이콘 행(uiPresetIconRow) 안 — 아이콘 압축 형태. 동반 버튼은 그대로 이웃.
+  // 묶음 2(2026-11-10): 아이콘 위·짧은 그룹 이름 아래(presetIconRowLabelOf), 좁으면 아이콘만.
   if (iconRow) {
     return (
       <CompanionHostRow hostKey={hostKey}>
         <Tooltip content={grp.label}>
           <button
-            className="round-button back-gray h-8 flex-1 min-w-0"
+            data-pb-share=""
+            className={'round-button back-gray flex-1 min-w-0' + stackedButtonClass(iconRowLabel)}
             onClick={() => {
               setShowGroupOverlay(grp.label);
             }}
           >
-            <FaSlidersH size={14} className="inline-block" />
+            <span data-pb-top="" className="inline-flex items-center">
+              <FaSlidersH size={14} className="inline-block" />
+            </span>
+            <StackedLabel text={presetIconRowLabelOf(hostKey, grp.label)} mode={iconRowLabel} />
           </button>
         </Tooltip>
         {companions}
@@ -1906,6 +1947,31 @@ const PRESET_ICON_ROW_KEYS: readonly string[] = [
   'characterReferences',
 ];
 
+// 하단 아이콘 행(uiPresetIconRow) 줄(2026-11-10 묶음 2): 칸마다 아이콘 위·짧은 이름 아래(세로형 라벨).
+// 버튼은 flex-1 칸 나눔이라 measureShareButtons(폭 — 칸 안쪽 폭 ≥ 이름·윗줄 폭)로 재고, 가장 빠듯한 칸이
+// 모자라면 전체가 아이콘만(종전 모습)으로. PC·모바일 공통(모바일 V2 시트·클래식 편집 창 모두 같은 부품).
+const measureIconRow = (row: HTMLElement) => measureShareButtons(row, 'width');
+const PresetIconRowBar = ({ elements }: { elements: WFIElement[] }) => {
+  const { rowRef, stage } = useProjectBarStage(true, {
+    measure: measureIconRow,
+    hysteresis: SHARE_BUTTONS_HYSTERESIS_PX,
+  });
+  return (
+    <PresetIconRowContext.Provider value={true}>
+      <PresetIconRowLabelContext.Provider value={labelModeOf(stage)}>
+        <div
+          ref={rowRef as React.RefObject<HTMLDivElement>}
+          className="flex-none flex gap-1 items-stretch mt-2 md:mt-3"
+        >
+          {elements.map((x) => (
+            <WFRenderElement key={wfiElementKey(x)} element={x} />
+          ))}
+        </div>
+      </PresetIconRowLabelContext.Provider>
+    </PresetIconRowContext.Provider>
+  );
+};
+
 // 루트 스택 렌더의 단일 관문(L1-4). 편집모드 꺼짐(또는 모바일·비스택·키 없음)이면
 // 기존 경로(<WFRenderElement element/>)를 100% 그대로 태운다 = L1-3 회귀 기준 유지.
 // 편집모드 활성(PC) && 최상위 전 요소가 유효 키일 때만 각 요소를 세로 드래그 래퍼로 감싼다.
@@ -1994,13 +2060,7 @@ const PresetRootRender = observer(
     }
     const bottomRow =
       bottomEls.length > 0 ? (
-        <PresetIconRowContext.Provider value={true}>
-          <div className="flex-none flex gap-1 items-stretch mt-2 md:mt-3">
-            {bottomEls.map((x) => (
-              <WFRenderElement key={wfiElementKey(x)} element={x} />
-            ))}
-          </div>
-        </PresetIconRowContext.Provider>
+        <PresetIconRowBar elements={bottomEls} />
       ) : null;
 
     const editing =
@@ -2361,13 +2421,15 @@ const CharacterPromptEditor = observer(
                       : 'border-sky-500 bg-[var(--c-surface-2)]'
                 }`}
               >
-                <div className="flex justify-between items-center mb-2">
+                <div data-release-row="" className="flex justify-between items-center mb-2">
                   {/* 2026-09-26 사용자 지적: 미동작 끌기 손잡이와 자리만 차지하던 「캐릭터 프롬프트」 글자 제거(순서는 ↑↓) */}
-                  <div className="flex items-center gap-2 gray-label">
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: charColors[i % charColors.length] }}>{i + 1}</div>
+                  {/* 묶음 2(2026-11-10): 왼쪽은 줄 수 있게(min-w-0·이름 말줄임) — 오른쪽 해제 글자 판정은 최소 5rem 으로 센다(data-pb-flex). */}
+                  <div data-pb-flex="" className="flex items-center gap-2 gray-label min-w-[5rem]">
+                    <div className="flex-none w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: charColors[i % charColors.length] }}>{i + 1}</div>
                     {locked ? (
-                      <span className="flex items-center gap-1 text-green-700 dark:text-green-400">
-                        <FaLock size={11} /> 프리셋: {character.fromPreset}
+                      <span className="flex min-w-0 items-center gap-1 text-green-700 dark:text-green-400">
+                        <FaLock size={11} className="flex-none" />
+                        <span className="min-w-0 truncate">프리셋: {character.fromPreset}</span>
                       </span>
                     ) : null}
                   </div>
@@ -2391,16 +2453,7 @@ const CharacterPromptEditor = observer(
                       <FaArrowDown size={11} />
                     </button>
                     {locked ? (
-                      <Tooltip content={`${character.fromPreset} 프리셋 해제 — 연결된 바이브/레퍼런스 함께 제거`}>
-                        <button
-                          className="flex-none text-muted hover:text-red-500 dark:hover:text-red-400 p-1"
-                          onClick={() =>
-                            appState.removeAppliedCharacterPreset(character.fromPreset!)
-                          }
-                        >
-                          <FaTimes size={13} />
-                        </button>
-                      </Tooltip>
+                      <PresetReleaseButton presetName={character.fromPreset!} />
                     ) : (
                       <>
                     <Tooltip content={character.enabled !== false ? '비활성화' : '활성화'}>
@@ -2523,6 +2576,7 @@ export const CharacterButton = observer(({ input }: { input: WFIInlineInput }) =
   const { editCharacters, setEditCharacters, preset, shared, meta } =
     useContext(WFElementContext)!;
   const iconRow = useContext(PresetIconRowContext);
+  const iconRowLabel = useContext(PresetIconRowLabelContext);
 
   const getField = () => {
     if (input.fieldType === 'preset') return preset[input.field] || [];
@@ -2559,15 +2613,19 @@ export const CharacterButton = observer(({ input }: { input: WFIInlineInput }) =
       <CompanionHostRow hostKey={hostKey}>
         <Tooltip content="캐릭터 프롬프트 열기">
           <button
-            className={`round-button ${hasPresetApplied ? 'back-green' : anyCharacters ? 'back-sky' : 'back-gray'} h-8 flex-1 min-w-0`}
+            data-pb-share=""
+            className={`round-button ${hasPresetApplied ? 'back-green' : anyCharacters ? 'back-sky' : 'back-gray'} flex-1 min-w-0${stackedButtonClass(iconRowLabel)}`}
             onClick={onClick}
           >
-            <FaUserAlt size={14} className="inline-block" />
-            {totalCount > 0 && (
-              <span className="ml-1 text-xs">
-                {enabledCount}/{totalCount}
-              </span>
-            )}
+            <span data-pb-top="" className="inline-flex items-center">
+              <FaUserAlt size={14} className="inline-block" />
+              {totalCount > 0 && (
+                <span className="ml-1 text-xs">
+                  {enabledCount}/{totalCount}
+                </span>
+              )}
+            </span>
+            <StackedLabel text={presetIconRowLabelOf(hostKey)} mode={iconRowLabel} />
           </button>
         </Tooltip>
         {companions}
