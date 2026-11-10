@@ -10,7 +10,11 @@ import { appState } from '../models/AppService';
 import { useBackLayer } from '../models/BackStackService';
 import { isV2, loadV2ShelfOpen, saveV2ShelfOpen } from '../models/mobileV2';
 import { observer } from 'mobx-react-lite';
-import { TOOLBAR_VIEW_MAIN, MOBILE_PROJECT_TOPROW_IDS, resolveToolbarView } from '../models/uiLayout';
+import {
+  TOOLBAR_VIEW_MAIN,
+  MOBILE_PROJECT_TOPROW_IDS,
+  resolveToolbarView,
+} from '../models/uiLayout';
 import { HScrollHintArrow, useHScrollHint } from './HScrollHint';
 import { companionAssignedIds } from '../models/companionSlots';
 import ToolbarOverflowMenu from './ToolbarOverflowMenu';
@@ -25,6 +29,7 @@ import {
   useToolbarRowDrop,
 } from './ToolbarDnd';
 import { portableToolbarButtons } from './PortableToolbarButtons';
+import { useProjectBarStage } from './useProjectBarStage';
 import {
   EMPTY_TRASH_EXTRA,
   TrashList,
@@ -274,6 +279,18 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
   const toolbarDragActive = toolbarDrag.active;
   const { drop: toolbarRowDrop, isOver: toolbarRowOver } =
     useToolbarRowDrop('project', 'project');
+  // PC 가로 바 반응형 3단계(2026-11-10 아이콘 직관화 묶음 1, SPEC_GUIDE §6 「프로젝트 바 라벨 병행」):
+  // ① 글자+아이콘 → ② 아이콘만 → ③ 넘침(기존 줄바꿈·⋯ 규칙). 모바일(클래식·V2)과 사이드 바(w-12 세로)는
+  // 측정하지 않고 ② 고정 — 글자가 물리적으로 들어갈 폭이 없다.
+  const pcBar = variant === 'bar' && !isMobile;
+  const { rowRef: projectBarRef, stage: projectBarStage } = useProjectBarStage(pcBar);
+  const setProjectRowRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      projectBarRef.current = el;
+      (toolbarRowDrop as unknown as (node: HTMLDivElement | null) => void)(el);
+    },
+    [projectBarRef, toolbarRowDrop],
+  );
   useEffect(() => {
     const onListUpdated = () => {
       // 숨김 씬 템플릿 제외 (씬 템플릿 개편 2026-07-18)
@@ -306,13 +323,23 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
   // 프로젝트 바는 모바일 아이콘 축약 개념이 없어 mobileIcon=false(현 렌더와 동일).
   // variant='project': 타 영역발 버튼도 프로젝트 바 표준(무배경 icon-button)으로 적응.
   // 사이드 바(w-12 세로 스택)는 텍스트 버튼이 안 들어가므로 아이콘 축약(iconOnly).
+  // 인라인 버튼만 단계에 따라 글자(labels) — ⋯ 메뉴 행은 이름이 따로 붙으므로 종전 아이콘 노드(menuShared).
   const shared = portableToolbarButtons({
     mobileIcon: false,
     variant: 'project',
     iconOnly: variant === 'sidebar',
+    labels: pcBar ? (projectBarStage === 'label' ? 'show' : 'measure') : undefined,
   });
+  const menuShared = pcBar
+    ? portableToolbarButtons({
+        mobileIcon: false,
+        variant: 'project',
+      })
+    : shared;
   const buttonNode = (id: string): React.ReactNode =>
     toolbarButtons[id] ?? shared[id];
+  const menuButtonNode = (id: string): React.ReactNode =>
+    toolbarButtons[id] ?? menuShared[id];
 
   // 사용자 설정(appState.uiToolbar, observable)에 따라 인라인/⋯메뉴 배치 결정.
   // 편집 모드 v2: resolveToolbarView 가 전 영역을 해석 → 이 컴포넌트의 'project' 영역만 사용.
@@ -338,6 +365,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
     }
     return id;
   };
+
 
   // ── 적용된 캐릭터 프리셋 칩의 팝오버 (bar/sidebar 공용) ──
   // 적응형 fixed 배치(위 useLayoutEffect)라 칩이 상단/하단/사이드 어디에 있어도 동작.
@@ -537,7 +565,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
               items={toolbarLayout.menu.map((id) => ({
                 id,
                 name: projectName(id),
-                node: buttonNode(id),
+                node: menuButtonNode(id),
               }))}
             />
           </div>
@@ -569,6 +597,8 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
   const row1TopIds = mobileTwoRow ? [] : topRowIds;
   const row2IdsAll = mobileTwoRow ? [...topRowIds, ...clusterIds] : clusterIds;
   const row2Ids = v2Shelf ? row2IdsAll.filter((id) => id !== 'piece-editor') : row2IdsAll;
+  // PC 가로 바만 영역 바닥 선(2026-11-10 묶음 1-b, SPEC_GUIDE §6 「프로젝트 바 영역 바닥 선」). 모바일 2줄째는 가로 스크롤
+  // (overflow-x-auto 가 세로도 잘라 버튼 밖 선이 잘리거나 세로 스크롤이 생김)이라, 사이드 바는 세로 스택이라 끈다.
   const {
     ref: clusterScrollRef,
     hint: clusterScrollHint,
@@ -578,7 +608,8 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
   return (
     // 행 전체가 드롭 타깃 — 메뉴에서 끌어다 놓으면 인라인 고정(pinned)
     <div
-      ref={toolbarRowDrop as any}
+      ref={setProjectRowRef}
+      data-project-bar-stage={pcBar ? projectBarStage : undefined}
       className={`flex gap-2 items-center w-full flex-wrap${toolbarRowHighlightClass(toolbarDrag, toolbarRowOver)}`}
     >
       {/* 현재 적용된 캐릭터 프리셋 — 통합 칩 1개 + 팝오버(W4 다중 적용, 개별 해제) */}
@@ -614,7 +645,9 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
       {/* 프로젝트 선택 영역: 기본 = 버튼과 한 줄 공유(폭 변동은 truncate가 흡수, 최소폭 미달 시 버튼이 다음 줄로 래핑) / 클래식 = 모바일 1행 전체 */}
       {/* md:min-w-[13rem]: 좁은 창(W6 후속)에서 이 영역이 무한 축소(min-w-0)로 뭉개지는
           1순위였던 문제 수정 — 최소폭을 보장해 대신 뒤의 버튼들이 다음 줄로 래핑되게 한다. */}
+      {/* data-pb-flex: 반응형 단계 측정에서 이 칸은 실제 폭 대신 최소 폭(13rem)으로 센다(flex-1 로 남는 폭을 채우므로) */}
       <div
+        data-pb-flex=""
         className={`titlebar-no-drag flex items-center gap-1 ${
           appState.uiToolbar.classic
             ? 'w-full md:w-auto md:flex-1 md:min-w-[13rem] md:max-w-80 min-w-0'
@@ -749,7 +782,8 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
         ref={clusterScrollRef}
         onScroll={isMobile ? updateClusterScrollHint : undefined}
         // 2줄 배치는 버튼 8개가 360px 한 줄에 들어가도록 간격을 6px 로(터치 판정 36px 끼리는 겹치지 않음)
-        className={`titlebar-no-drag flex items-center ${mobileTwoRow ? 'gap-1.5' : 'gap-2'}${
+        // PC 바닥 선(2026-11-10 아이콘 직관화 묶음 1-b, 사용자 결정: 그룹·색 없이 버튼마다 개별 선) — App.css .pb-lines
+        className={`titlebar-no-drag flex items-center ${mobileTwoRow ? 'gap-1.5' : 'gap-2'}${pcBar ? ' pb-lines' : ''}${
           isMobile
             ? ' flex-nowrap overflow-x-auto no-scrollbars max-w-full [&>*]:flex-none'
             : ''
@@ -796,7 +830,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
             items={toolbarLayout.menu.map((id) => ({
               id,
               name: projectName(id),
-              node: buttonNode(id),
+              node: menuButtonNode(id),
             }))}
           />
         </div>

@@ -109,6 +109,7 @@
   --c-orange-bg: rgba(251, 146, 60, 0.25); --c-orange-fg: #fed7aa; /* orange-200 */
   --c-yellow-bg: rgba(129, 140, 248, 0.25); --c-yellow-fg: #818cf8; /* indigo-400 */
   --c-purple-bg: rgba(192, 132, 252, 0.25); --c-purple-fg: #c084fc; /* purple-400 (막대는 다크에서 fg 를 칠한다) */
+  /* 영역 바닥 선 — 다크 bg 토큰은 이미 25% 반투명이라 선명한 fg(teal·sky-400·gray-200)를 옅게 칠한다 */
 }
 .true-dark {
   --c-surface: #0a0a0a;
@@ -511,6 +512,27 @@ html.font-pretendard body {
   flex-wrap: nowrap;
   align-items: center;
   gap: 0.5rem;
+}
+/* PC 프로젝트 바 버튼 바닥 선(2026-11-10 아이콘 직관화 묶음 1-b, 사용자 결정: 그룹·색 구분 없이 버튼마다 개별 선) —
+   행(.pb-lines, SessionSelect PC 가로 바)의 직속 자식(드래그 래퍼) 아래에 같은 색 짧은 선. 양끝 4px 안쪽이라 이웃과
+   16px 떨어져 하나로 이어 보이지 않는다. 프롬프트조각(.round-button 글자 버튼, 자기 모양)은 제외. */
+.pb-lines > * {
+  position: relative;
+}
+.pb-lines > *::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: -3px;
+  height: 2px;
+  border-radius: 1px;
+  background-color: var(--c-line-strong);
+  opacity: 0.45;
+  pointer-events: none;
+}
+.pb-lines > *:has(> .round-button)::after {
+  display: none;
 }
 
 .btn-sm {

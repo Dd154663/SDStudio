@@ -26,12 +26,19 @@ export interface ToolbarButtonMeta {
   portable?: boolean;
   // 모바일 V2 더보기 둘째 줄의 칸 라벨(약 6자까지 들어간다). 없으면 name 을 그대로 쓴다 — SPEC_GUIDE §6-2.
   v2Label?: string;
+  // PC 프로젝트 바의 아이콘 옆 짧은 글자(2026-11-10 아이콘 직관화 묶음 1). 창 폭이 충분할 때만 보이고
+  // (반응형 3단계 — SPEC_GUIDE §6 「프로젝트 바 라벨 병행」), 툴팁은 계속 name(전체 이름)이다.
+  // 프로젝트 바에 놓일 수 있는 버튼(프로젝트 레지스트리 전부 + 씬 레지스트리의 portable)은 반드시 가진다(테스트).
+  // 공백 뺀 글자 수 PROJECT_LABEL_MAX_CHARS 이하.
+  label?: string;
   // PC 씬 툴바 그룹(2026-10-04 T5, 2-D 그룹 캡션). 툴바에 인라인으로 놓일 때 이 그룹 칸에 묶인다.
   // 없으면 어느 그룹에도 억지로 넣지 않는다 — 인라인으로 꺼내면 맨 끝 「기타」 칸(TOOLBAR_GROUP_OTHER). 기본 tier 와 무관
   // (overflow 버튼에 group 이 있어도 기본은 ⋯ 메뉴 그대로, 사용자가 툴바로 꺼낼 때만 그룹에 들어간다).
   // 'other' 는 레지스트리에 직접 적지 않는다 — group 이 없으면 저절로 「기타」.
   group?: Exclude<ToolbarButtonGroup, 'other'>;
+  // PC 프로젝트 바 영역(2026-11-10 아이콘 직관화 묶음 1-b, 「영역 바닥 선」). 프로젝트 바 인라인 버튼 아래 옅은 색 선의
 }
+
 
 // PC 씬 툴바 그룹 — 순서(고정)·캡션 문구의 단일 출처. SPEC_GUIDE §6 「툴바 그룹」.
 // 모바일(V2 칸·클래식 모바일 툴바·퀵 메뉴)과 클래식 툴바는 그룹을 쓰지 않는다.
@@ -68,7 +75,7 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   // 모바일 실사용 빈도가 높아 모바일만 인라인 (PC 는 기존대로 ⋯ 메뉴)
   { id: 'import-image', name: '이미지 프롬프트 추출', tier: 'mobile-primary', v2Label: '프롬프트 추출', group: 'edit' },
   // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환
-  { id: 'artist-tag', name: '아티스트 태깅', pcOnly: true, tier: 'overflow', portable: true, group: 'edit' },
+  { id: 'artist-tag', name: '아티스트 태깅', label: '작가 태깅', pcOnly: true, tier: 'overflow', portable: true, group: 'edit' },
   { id: 'scene-search', name: '씬 검색', tier: 'primary', group: 'navigate' },
   { id: 'scene-find', name: '씬 찾기', tier: 'overflow', group: 'navigate' },
   { id: 'image-review', name: '이미지 검수', tier: 'overflow', group: 'navigate' },
@@ -78,11 +85,11 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'bookmark-jump', name: '북마크된 씬으로 이동', tier: 'secondary', v2Label: '북마크 이동', group: 'navigate' },
   // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환
   // 그룹 없음(T5): 휴지통 열기·삭제 이미지 비우기·단축키 도움말은 어느 그룹에도 맞지 않아 ⋯ 메뉴 유지.
-  { id: 'scene-trash', name: '씬 휴지통', tier: 'overflow', portable: true },
+  { id: 'scene-trash', name: '씬 휴지통', label: '씬 휴지통', tier: 'overflow', portable: true },
   // 'scene-template' 은 씬 템플릿 개편(2026-07-18)으로 프로젝트 바 레지스트리로 이동 —
   // 매크로성 기능 승격(사용자 확정). id 는 그대로라 과거 씬 영역 배치 설정은 조용히 무시됨.
-  { id: 'empty-image-trash', name: '삭제 이미지 일괄 비우기', tier: 'overflow', portable: true, v2Label: '삭제 비우기' },
-  { id: 'find-replace', name: '찾기 및 변환', tier: 'secondary', portable: true, v2Label: '찾기·변환', group: 'navigate' },
+  { id: 'empty-image-trash', name: '삭제 이미지 일괄 비우기', label: '삭제 비우기', tier: 'overflow', portable: true, v2Label: '삭제 비우기' },
+  { id: 'find-replace', name: '찾기 및 변환', label: '찾기·변환', tier: 'secondary', portable: true, v2Label: '찾기·변환', group: 'navigate' },
   { id: 'shortcut-help', name: '단축키 도움말', pcOnly: true, tier: 'overflow' },
   // 'undo'·'redo'(2026-11-01 U1 임시 ⋯ 메뉴 배치)는 2026-11-03 U6(D19)에서 제거 — 되돌리기/다시 실행은 하단 막대 위
   // 상시 버튼 바(componenets/UndoRedoBar.tsx)가 맡는다. 퀵 메뉴(globalActions GLOBAL_ACTIONS)의 같은 id 는 유지.
@@ -97,19 +104,19 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
 export const projectToolbarRegistry: ToolbarButtonMeta[] = [
   // 기존 고정 버튼의 레지스트리 편입(④ 자유 위치, 2026-07-18) — 신규 기능 아님.
   // 선두 배치 = 기존 위치(프로젝트 선택기 옆) 근사 유지.
-  { id: 'project-browser', name: '프로젝트 탐색', tier: 'primary', portable: true },
-  { id: 'add-session', name: '신규 프로젝트', tier: 'primary', portable: true },
-  { id: 'character-presets', name: '캐릭터 프리셋 관리', tier: 'primary', portable: true },
+  { id: 'project-browser', name: '프로젝트 탐색', label: '탐색', tier: 'primary', portable: true },
+  { id: 'add-session', name: '신규 프로젝트', label: '새 프로젝트', tier: 'primary', portable: true },
+  { id: 'character-presets', name: '캐릭터 프리셋 관리', label: '캐릭터 프리셋', tier: 'primary', portable: true },
   // 씬 툴바 overflow 에서 이동(씬 템플릿 개편 2026-07-18) — 숨김 템플릿 관리 모달의
   // 주 진입점으로 승격. 프로젝트 바 관례(전부 primary 인라인)를 따른다(§6 overflow
   // 기본 규칙은 "신규 버튼 증식" 차단용 — 이 건은 기존 버튼의 영역 이동+승격 확정).
-  { id: 'scene-template', name: '씬 템플릿', tier: 'primary', portable: true },
-  { id: 'backup-export', name: '프로젝트 백업/내보내기', tier: 'primary', portable: true },
-  { id: 'delete-session', name: '프로젝트 삭제', tier: 'primary', portable: true },
-  { id: 'project-trash', name: '프로젝트 휴지통', tier: 'primary', portable: true },
-  { id: 'piece-editor', name: '프롬프트조각', tier: 'primary', portable: true },
+  { id: 'scene-template', name: '씬 템플릿', label: '씬 템플릿', tier: 'primary', portable: true },
+  { id: 'backup-export', name: '프로젝트 백업/내보내기', label: '백업', tier: 'primary', portable: true },
+  { id: 'delete-session', name: '프로젝트 삭제', label: '삭제', tier: 'primary', portable: true },
+  { id: 'project-trash', name: '프로젝트 휴지통', label: '휴지통', tier: 'primary', portable: true },
+  { id: 'piece-editor', name: '프롬프트조각', label: '프롬프트조각', tier: 'primary', portable: true },
   // 새 창(멀티 윈도우 W6) — 데스크톱 전용(모바일 미노출). portable 로 크로스 영역 이동 허용.
-  { id: 'new-window', name: '새 창', pcOnly: true, tier: 'primary', portable: true },
+  { id: 'new-window', name: '새 창', label: '새 창', pcOnly: true, tier: 'primary', portable: true },
 ];
 
 // 모바일 프로젝트 바 상단 행(프로젝트 선택기 옆) 고정 노출 id — 단일 출처(§6 배치
@@ -203,6 +210,17 @@ export function portableButtonMetas(): { id: string; name: string }[] {
     }
   }
   return out;
+}
+
+// 프로젝트 바 라벨(짧은 글자) 조회 — View 전체 레지스트리(크로스 영역 portable 포함)에서 찾는다.
+// 없으면 undefined(그 버튼은 글자 단계에서도 아이콘만 — 레지스트리 테스트가 누락을 막는다).
+export const PROJECT_LABEL_MAX_CHARS = 6;
+export function toolbarLabelOf(id: string): string | undefined {
+  for (const { registry } of TOOLBAR_VIEW_MAIN) {
+    const found = registry.find((b) => b.id === id);
+    if (found) return found.label;
+  }
+  return undefined;
 }
 
 // ── PC 씬 툴바 그룹 렌더(2026-10-04 T5, 2-D 그룹 캡션) ─────────────────────
