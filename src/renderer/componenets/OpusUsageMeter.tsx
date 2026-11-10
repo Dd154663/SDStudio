@@ -36,10 +36,14 @@ export function OpusUsageBar({
   status,
   warningPercent = 10,
   line = false,
+  onTone = false,
 }: {
   status?: OpusUsageStatus;
   warningPercent?: number;
   line?: boolean;
+  /** 톤 색 배경(배지 `back-<tone>`) 위에 놓일 때 — 라이트에서 무료분이 배경과 같은 색이라 안 보이던 결함(2026-11-10) →
+   *  App.css .opus-usage-bar--on-tone 이 무료분을 톤의 전경색(흰색)으로 칠한다. 팝오버의 독립 막대는 false. */
+  onTone?: boolean;
 }) {
   const view = presentOpusUsage(status, warningPercent);
   if (status?.opusSubscribed === false) return null;
@@ -59,11 +63,11 @@ export function OpusUsageBar({
   );
   return (
     <div
-      className={
+      className={`${
         line
           ? 'absolute inset-x-0 bottom-0 h-[3px] overflow-hidden bg-[var(--c-input-bg)]'
           : 'relative h-1.5 w-full overflow-hidden rounded-full bg-[var(--c-input-bg)]'
-      }
+      }${onTone ? ' opus-usage-bar--on-tone' : ''}`}
       role="progressbar"
       aria-label="Opus 생성 할당량"
       aria-valuemin={0}

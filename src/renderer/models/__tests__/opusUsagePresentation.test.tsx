@@ -139,6 +139,13 @@ describe('추가 충전(purchasedPercent) 표시(2026-10-25)', () => {
     expect(lineHtml).not.toContain('rounded-full');
   });
 
+  test('배지 안(onTone)에서는 라이트 무료분이 배경과 겹치지 않게 전경색 규칙 클래스가 붙는다(2026-11-10)', () => {
+    expect(render(<OpusUsageBar status={boosted(80, 0)} onTone />)).toContain('opus-usage-bar--on-tone');
+    expect(render(<OpusUsageBar status={boosted(80, 0)} />)).not.toContain('opus-usage-bar--on-tone');
+    const css = require('fs').readFileSync(require('path').join(__dirname, '../../componenets/App.css'), 'utf-8');
+    expect(css).toContain(".opus-usage-bar--on-tone .opus-usage-bar-fill[data-opus-bar='free'] { background-color: var(--opus-fill-fg); }");
+  });
+
   test('무료 0·추가 충전 남음은 Anlas 문구 없이 「추가 충전분 사용 중」', () => {
     const view = presentOpusUsage(boosted(0, 100));
     expect(view).toMatchObject({ text: '100%', tone: 'green', usingPurchased: true });

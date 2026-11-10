@@ -188,6 +188,7 @@ const OpusUsageBadge = observer(
             status={usage.status}
             warningPercent={warning}
             line={mobile && inline}
+            onTone
           />
         </button>
         {open &&

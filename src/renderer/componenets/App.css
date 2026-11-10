@@ -317,6 +317,10 @@ html.font-pretendard body {
    dark button background. Keep short/thin bars readable on every surface. */
 .opus-usage-bar-fill { background-color: var(--opus-fill-bg); }
 .dark .opus-usage-bar-fill { background-color: var(--opus-fill-fg); }
+/* 배지 안(톤 색 배경 back-<tone> 위, OpusUsageBar onTone) — 라이트는 배지 배경이 톤의 bg(진한 단색)라 무료분을 같은 bg 로
+   칠하면 보이지 않는다(2026-11-10 사용자 제보). 무료분만 톤의 fg(흰색)로 칠한다. 추가 충전분(보라 bg)·겹침(하늘 30%)은
+   초록·빨강 배경 위에서 구분되므로 그대로. 다크는 배지 배경이 반투명이라 기존 fg 규칙 그대로. */
+.opus-usage-bar--on-tone .opus-usage-bar-fill[data-opus-bar='free'] { background-color: var(--opus-fill-fg); }
 /* 겹침 구간(무료·추가 충전 막대가 함께 있는 0~min 구간, 2026-10-25 §11) — 무료 막대 바로 위에
    하늘색 토큰을 30% 불투명도로 얹어 「무료 색 70% + 파랑 30%」로 보이게 한다. 겹침 구간은 항상
    무료 막대 위(겹침 ≤ 무료)라 결과는 color-mix(in srgb, 무료 70%, 파랑 30%)와 같고, color-mix 를
