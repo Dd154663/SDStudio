@@ -141,9 +141,10 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
     if (name) onClose(); // 만든 템플릿이 열리므로 모달은 닫는다
   };
 
-  const importToCurrent = async () => {
+  // templateName 이 있으면(행 「프로젝트로 복사」) 선택 창 없이 그 템플릿을 바로 복사한다(2026-11-11 오버레이 묶음 1).
+  const importToCurrent = async (templateName?: string) => {
     if (!curSession) return;
-    const result = await templateService.importSceneTemplate(curSession);
+    const result = await templateService.importSceneTemplate(curSession, templateName);
     // 되돌리기 1항목(들어간 씬 + 덮어쓰기로 휴지통에 보낸 기존 씬 — 2차 묶음 5)
     recordSceneTemplateImport(curSession, result);
     if (result && result.names.length > 0) onClose(); // 가져온 씬을 바로 보도록
@@ -172,6 +173,11 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
     await templateService.importSceneTemplateFile(await file.text());
   };
 
+  const btnClass =
+    'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap disabled:opacity-40';
+
+  // 크기 등급 M(2026-11-11 오버레이 묶음 1): 폭 720 고정·최소 높이 360 — 빈 목록에서도 창이 쪼그라들지 않는다.
+  // 도구줄(만들기·복사·불러오기)은 toolbar 슬롯(스크롤 밖), 안내 문장은 본문 맨 위.
   return (
     <ModalOverlay
       isOpen={true}
@@ -187,59 +193,53 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
           />
         </span>
       }
-      width="max-w-2xl"
+      size="m"
+      toolbar={
+        <>
+          <Tooltip content="현재 프로젝트의 씬 전체를 복제해 새 템플릿으로 만듭니다">
+            <button onClick={createFromCurrent} disabled={!curSession} className={btnClass}>
+              <ActionIcon id="copy-to-global" size={13} /> 현재 씬 전체로 만들기
+            </button>
+          </Tooltip>
+          <Tooltip content="빈 템플릿을 만들어 바로 열어줍니다">
+            <button onClick={createEmpty} className={btnClass}>
+              <FaPlus size={13} /> 빈 템플릿
+            </button>
+          </Tooltip>
+          <Tooltip content="고른 템플릿의 씬들을 현재 프로젝트에 추가합니다(행의 복사 버튼으로 바로 고를 수도 있습니다)">
+            <button
+              onClick={() => importToCurrent()}
+              disabled={!curSession || templates.length === 0}
+              className={btnClass}
+            >
+              <ActionIcon id="copy-to-project" size={13} /> 현재 프로젝트로 복사
+            </button>
+          </Tooltip>
+          <Tooltip content="다른 기기에서 내보낸 씬 템플릿 파일을 추가합니다">
+            {/* PC 에서 Google 드라이브에 연결돼 있으면 출처를 먼저 묻는다(드라이브 API ③). */}
+            <label
+              className={btnClass + ' cursor-pointer'}
+              onClick={(e) => interceptFileImportClick(e, importInputRef.current, 'scene-template')}
+            >
+              <ActionIcon id="import" size={13} /> 파일 불러오기
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    await handleImportFile(file);
+                    e.target.value = '';
+                  }
+                }}
+              />
+            </label>
+          </Tooltip>
+        </>
+      }
     >
-      {/* 상단 액션 */}
-      <div className="flex flex-wrap gap-2 mb-3">
-        <Tooltip content="현재 프로젝트의 씬 전체를 복제해 새 템플릿으로 만듭니다">
-          <button
-            onClick={createFromCurrent}
-            disabled={!curSession}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap disabled:opacity-40"
-          >
-            <ActionIcon id="copy-to-global" size={13} /> 현재 씬 전체로 만들기
-          </button>
-        </Tooltip>
-        <Tooltip content="빈 템플릿을 만들어 바로 열어줍니다">
-          <button
-            onClick={createEmpty}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap"
-          >
-            <FaPlus size={13} /> 빈 템플릿
-          </button>
-        </Tooltip>
-        <Tooltip content="선택한 템플릿의 씬들을 현재 프로젝트에 추가합니다">
-          <button
-            onClick={importToCurrent}
-            disabled={!curSession || templates.length === 0}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap disabled:opacity-40"
-          >
-            <ActionIcon id="copy-to-project" size={13} /> 현재 프로젝트로 복사
-          </button>
-        </Tooltip>
-        <Tooltip content="다른 기기에서 내보낸 씬 템플릿 파일을 추가합니다">
-          {/* PC 에서 Google 드라이브에 연결돼 있으면 출처를 먼저 묻는다(드라이브 API ③). */}
-          <label
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap cursor-pointer"
-            onClick={(e) => interceptFileImportClick(e, importInputRef.current, 'scene-template')}
-          >
-            <ActionIcon id="import" size={13} /> 파일 불러오기
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".json"
-              className="hidden"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  await handleImportFile(file);
-                  e.target.value = '';
-                }
-              }}
-            />
-          </label>
-        </Tooltip>
-      </div>
       <div className="text-xs text-muted mb-3">
         템플릿은 숨김 프로젝트로 저장되어 일반 프로젝트 목록에는 보이지
         않습니다. 행을 클릭하면 열어서 씬을 수정할 수 있습니다.
@@ -247,8 +247,8 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
 
       {/* 템플릿 목록 */}
       {templates.length === 0 ? (
-        <div className="text-sm text-faint text-center py-10">
-          씬 템플릿이 없습니다 — 위 버튼으로 만들어보세요
+        <div className="text-sm text-faint text-center py-16">
+          씬 템플릿이 없습니다 — 위 버튼으로 만들어 보세요
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
@@ -303,6 +303,32 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
                 <span className="flex-1 min-w-0 truncate text-sm text-default">
                   {name}
                 </span>
+                <Tooltip
+                  content={
+                    curSession && curSession.name === name
+                      ? '지금 열려 있는 템플릿 자신에게는 복사할 수 없습니다'
+                      : '이 템플릿의 씬들을 현재 프로젝트에 추가합니다'
+                  }
+                >
+                  <button
+                    aria-label="프로젝트로 복사"
+                    // disabled 속성 대신 aria-disabled — 막힌 이유 툴팁이 뜨고, 클릭이 행(열기)으로 새지 않게
+                    aria-disabled={!curSession || curSession.name === name}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!curSession || curSession.name === name) return;
+                      importToCurrent(name);
+                    }}
+                    className={
+                      'btn-ghost p-2 rounded-md text-faint ' +
+                      (!curSession || curSession.name === name
+                        ? 'opacity-40 cursor-not-allowed'
+                        : 'hover:text-sky-500')
+                    }
+                  >
+                    <ActionIcon id="copy-to-project" size={13} />
+                  </button>
+                </Tooltip>
                 <Tooltip content="이름 변경">
                   <button
                     onClick={(e) => {

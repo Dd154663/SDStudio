@@ -863,7 +863,12 @@ export class TemplateService {
   // 취소·실패 시 null (호출처가 자동 선택 등 후속을 건너뛰도록).
   // 되돌리기(2026-11-04 2차 묶음 5): 여기서는 기록하지 않는다(서비스 안 기록 금지 — SPEC 「되돌리기 계약」). 들어간 씬 객체·
   // 휴지통으로 보낸 기존 씬(슬롯·원래 이름·자리)을 돌려주고 호출부가 sceneImportUndo.recordSceneTemplateImport 로 1항목 기록한다.
-  async importSceneTemplate(session: Session): Promise<SceneTemplateImportResult | null> {
+  // templateName(2026-11-11 오버레이 묶음 1): 씬 템플릿 관리 창의 행 「프로젝트로 복사」처럼 템플릿을 이미 고른 호출부는
+  // 이름을 넘겨 선택 창을 건너뛴다. 목록에 없는 이름(자기 자신·지워진 템플릿)이면 안내 후 null. 생략하면 종전처럼 고른다.
+  async importSceneTemplate(
+    session: Session,
+    templateName?: string,
+  ): Promise<SceneTemplateImportResult | null> {
     const appState = getAppState();
     await this.ensureLoaded();
     const templates = this.listSceneTemplates().filter(
@@ -875,11 +880,20 @@ export class TemplateService {
       );
       return null;
     }
-    const tplName = await appState.pushDialogAsync({
-      type: 'select',
-      text: '프로젝트로 복사할 씬 템플릿을 선택해주세요',
-      items: templates.map((n) => ({ text: n, value: n })),
-    });
+    let tplName: string | null | undefined;
+    if (templateName !== undefined) {
+      if (!templates.includes(templateName)) {
+        appState.pushMessage('이 씬 템플릿은 현재 프로젝트로 복사할 수 없습니다.');
+        return null;
+      }
+      tplName = templateName;
+    } else {
+      tplName = await appState.pushDialogAsync({
+        type: 'select',
+        text: '프로젝트로 복사할 씬 템플릿을 선택해주세요',
+        items: templates.map((n) => ({ text: n, value: n })),
+      });
+    }
     if (!tplName) return null;
     const tpl = await sessionService.get(tplName);
     if (!tpl) {

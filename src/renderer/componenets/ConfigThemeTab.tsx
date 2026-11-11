@@ -76,7 +76,7 @@ const TemplateVariantChip = ({
   onApply: () => void;
 }) => (
   <button
-    className="flex items-center justify-center gap-1.5 flex-1 rounded-[var(--r-btn)] border line-color px-2.5 py-1.5 clickable"
+    className="flex items-center justify-center gap-1.5 flex-[1_1_auto] min-w-0 rounded-[var(--r-btn)] border line-color px-2.5 py-1.5 clickable"
     style={{ backgroundColor: variant.surface }}
     onClick={onApply}
   >
@@ -273,13 +273,16 @@ const CustomizationTab = ({
           누르면 아래 색 설정 전체가 템플릿 값으로 바뀝니다(기존 커스텀 색은 덮어씀).
           미리보기로 확인 후 <b>저장</b>해야 적용됩니다.
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {/* 2단(cfg-two-col, PC) 안에서는 App.css 가 이 격자를 1열로 — 단 폭(≈370px)에 카드 2개면
+            라이트/다크 알약이 카드 밖으로 삐져나왔다(2026-11-11 실기 피드백 1 ①). 알약 줄은 flex-wrap 으로
+            그래도 모자라면 줄바꿈. 모바일(옛 창)은 종전 sm:grid-cols-2 그대로. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" data-theme-template-grid="">
           {themeTemplates.map((tpl) => (
-            <div key={tpl.name} className="rounded-md r-card border line-color p-2">
+            <div key={tpl.name} className="rounded-md r-card border line-color p-2 min-w-0">
               <div className="text-sm text-default mb-1.5">
                 {tpl.emoji} {tpl.name}
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2" data-theme-template-chips="">
                 {tpl.light && (
                   <TemplateVariantChip
                     variant={tpl.light}

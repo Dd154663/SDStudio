@@ -27,20 +27,46 @@ const outputModeOptions = [
   { value: 'files' as const, label: '개별 이미지 파일 (무압축)' },
 ];
 
-export default function ExportSettingsFields({ form, setForm, direct = false }: {
+// 라벨+입력 한 칸. 1열(기본) = 라벨(w-24)|입력 가로 한 줄 — 종전 DOM 그대로.
+// 2열(twoColumn, 2026-11-11 실기 피드백 1 ②) = 라벨 한 줄 위 + 입력이 셀 전폭 — 라벨 열이 셀 폭을 먹어
+// 드롭다운 문구가 잘리던 문제 보정. 체크박스 칸은 이 컴포넌트를 쓰지 않는다(라벨 옆 유지).
+const FieldRow = ({ label, stacked, children }: {
+  label: string;
+  stacked: boolean;
+  children: React.ReactNode;
+}) =>
+  stacked ? (
+    <div className="flex flex-col gap-1 min-w-0" data-export-field="stacked">
+      <label className="text-sm text-muted">{label}</label>
+      <div className="flex items-center gap-2 min-w-0">{children}</div>
+    </div>
+  ) : (
+    <div className="flex items-center gap-3">
+      <label className="text-sm text-muted flex-none w-24">{label}</label>
+      {children}
+    </div>
+  );
+
+export default function ExportSettingsFields({ form, setForm, direct = false, twoColumn = false }: {
   form: ExportFormState;
   setForm: React.Dispatch<React.SetStateAction<ExportFormState>>;
   direct?: boolean;
+  // 2열 격자(2026-11-11 오버레이 묶음 1, 내보내기 프리셋 관리 L 창): 칸마다 최소 300px — 폭이 모자라면 1열로 접힌다.
+  // 목표 폴더 묶음은 늘 한 줄 전체(col-span-full). 끄면 종전 세로 쌓기 그대로.
+  twoColumn?: boolean;
 }) {
   const optOptions = buildImageOptimizeOptions().map(({ text, value }) => ({ label: text, value }));
   const selectTargetFolder = async () => {
     const folder = await backend.selectDir();
     if (folder) setForm((current) => ({ ...current, targetFolder: folder }));
   };
-  return <div className="space-y-3">
+  return <div
+    className={twoColumn ? 'grid gap-x-6 gap-y-3 items-center' : 'space-y-3'}
+    style={twoColumn ? { gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' } : undefined}
+    data-export-fields-columns={twoColumn ? '2' : undefined}
+  >
           {/* 이미지 범위 */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-muted flex-none w-24">이미지 범위 *</label>
+          <FieldRow label="이미지 범위 *" stacked={twoColumn}>
             <div className="flex-1 min-w-0">
               <DropdownSelect
                 selectedOption={form.menu}
@@ -48,11 +74,10 @@ export default function ExportSettingsFields({ form, setForm, direct = false }: 
                 onSelect={(o: any) => setForm({ ...form, menu: o.value })}
               />
             </div>
-          </div>
+          </FieldRow>
 
           {/* 파일명 형식 */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-muted flex-none w-24">파일명 형식 *</label>
+          <FieldRow label="파일명 형식 *" stacked={twoColumn}>
             <div className="flex-1 min-w-0">
               <DropdownSelect
                 selectedOption={form.format}
@@ -60,11 +85,10 @@ export default function ExportSettingsFields({ form, setForm, direct = false }: 
                 onSelect={(o: any) => setForm({ ...form, format: o.value })}
               />
             </div>
-          </div>
+          </FieldRow>
 
           {/* 파일명 패턴 (프로젝트/폴더 접두) */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-muted flex-none w-24">파일명 패턴</label>
+          <FieldRow label="파일명 패턴" stacked={twoColumn}>
             <div className="flex-1 min-w-0">
               <DropdownSelect
                 selectedOption={form.filenamePattern}
@@ -72,11 +96,10 @@ export default function ExportSettingsFields({ form, setForm, direct = false }: 
                 onSelect={(o: any) => setForm({ ...form, filenamePattern: o.value })}
               />
             </div>
-          </div>
+          </FieldRow>
 
           {/* 출력 형태 (tar / 개별 파일) */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-muted flex-none w-24">출력 형태</label>
+          <FieldRow label="출력 형태" stacked={twoColumn}>
             <div className="flex-1 min-w-0">
               <DropdownSelect
                 selectedOption={form.outputMode}
@@ -84,12 +107,11 @@ export default function ExportSettingsFields({ form, setForm, direct = false }: 
                 onSelect={(o: any) => setForm({ ...form, outputMode: o.value })}
               />
             </div>
-          </div>
+          </FieldRow>
 
           {/* 캐릭터 이름 (format=prefix 시) */}
           {form.format === 'prefix' && (
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-muted flex-none w-24">캐릭터 이름 *</label>
+            <FieldRow label="캐릭터 이름 *" stacked={twoColumn}>
               <input
                 type="text"
                 value={form.prefix}
@@ -97,7 +119,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false }: 
                 placeholder="캐릭터 이름"
                 className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
               />
-            </div>
+            </FieldRow>
           )}
 
           {/* 캐릭터 프리셋 접두/접미사 적용 토글 */}
@@ -114,8 +136,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false }: 
           </label>
 
           {/* 최적화 방법 */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-muted flex-none w-24">최적화 *</label>
+          <FieldRow label="최적화 *" stacked={twoColumn}>
             <div className="flex-1 min-w-0">
               <DropdownSelect
                 selectedOption={form.opt}
@@ -123,12 +144,11 @@ export default function ExportSettingsFields({ form, setForm, direct = false }: 
                 onSelect={(o: any) => setForm({ ...form, opt: o.value })}
               />
             </div>
-          </div>
+          </FieldRow>
 
           {/* 이미지 크기 (opt≠original 시) */}
           {form.opt !== undefined && form.opt !== 'original' && (
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-muted flex-none w-24">이미지 크기 *</label>
+            <FieldRow label="이미지 크기 *" stacked={twoColumn}>
               <input
                 type="number"
                 value={form.imageSize}
@@ -137,13 +157,12 @@ export default function ExportSettingsFields({ form, setForm, direct = false }: 
                 className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
               />
               <span className="text-xs text-faint">px</span>
-            </div>
+            </FieldRow>
           )}
 
           {/* 압축 화질 (lossy/avif 시) — 픽셀 크기와 별개 축(해상도 vs 압축 강도) */}
           {(form.opt === 'lossy' || form.opt === 'avif') && (
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-muted flex-none w-24">화질</label>
+            <FieldRow label="화질" stacked={twoColumn}>
               <input
                 type="number"
                 min={1}
@@ -156,7 +175,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false }: 
                 className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
               />
               <span className="text-xs text-faint">1~100</span>
-            </div>
+            </FieldRow>
           )}
 
           {/* NAI 스테가노그래피 보존 (webp: lossy/lossless 시) */}
@@ -175,8 +194,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false }: 
           )}
 
           {/* 구분자 — 텍스트 입력, 빈 칸 허용 */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-muted flex-none w-24">파일명 구분자</label>
+          <FieldRow label="파일명 구분자" stacked={twoColumn}>
             <input
               type="text"
               value={form.separator}
@@ -184,7 +202,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false }: 
               placeholder="비워두면 구분자 없음"
               className="flex-1 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
             />
-          </div>
+          </FieldRow>
 
           {/* 구분자 자동 변환 (특수문자 묻지 않음) */}
           <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -201,7 +219,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false }: 
 
           {/* 목표 폴더 (데스크톱 전용 — 모바일은 임의 폴더 저장 미지원) */}
           {!isMobile && (
-            <div className="space-y-2 border-t line-color pt-3">
+            <div className="space-y-2 border-t line-color pt-3 col-span-full">
               <div className="text-xs text-muted">
                 내보내기 목표 폴더 (비우면 환경설정 기본 폴더, 둘 다 없으면 다운로드 폴더 사용)
               </div>
@@ -239,14 +257,13 @@ export default function ExportSettingsFields({ form, setForm, direct = false }: 
             </div>
           )}
 
-    {form.opt !== 'original' && <div className="flex items-center gap-3">
-      <label className="text-sm text-muted flex-none w-24">재최적화</label>
+    {form.opt !== 'original' && <FieldRow label="재최적화" stacked={twoColumn}>
       <div className="flex-1 min-w-0"><DropdownSelect selectedOption={form.reoptimize}
         options={[
           { value: 'skip', label: '이미 최적화된 이미지는 원본 유지' },
           { value: 'all', label: '모두 다시 최적화' },
           ...(!direct ? [{ value: 'ask', label: '실행할 때 확인' }] : []),
         ]} onSelect={(option: any) => setForm({ ...form, reoptimize: option.value })} /></div>
-    </div>}
+    </FieldRow>}
   </div>;
 }

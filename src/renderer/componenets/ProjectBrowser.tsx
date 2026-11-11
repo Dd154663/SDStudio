@@ -983,8 +983,13 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
   }, [refresh]);
 
   return (
-    <ModalOverlay isOpen={true} onClose={onClose} title="프로젝트 탐색" width="max-w-3xl md:max-w-7xl">
-      <div className="flex flex-col md:flex-row gap-3" style={{ height: '70vh' }}>
+    // 크기 등급 XL(2026-11-11 오버레이 묶음 1): PC 는 래퍼가 고정 높이 min(85vh, 860)을 주므로 본문은 h-full 로 채운다.
+    // 모바일은 등급 경로에 고정 높이가 없어(최대 85vh 만) 종전 70vh 를 그대로 둔다 — 모양 불변.
+    <ModalOverlay isOpen={true} onClose={onClose} title="프로젝트 탐색" size="xl">
+      <div
+        className={'flex flex-col md:flex-row gap-3' + (isMobile ? '' : ' h-full min-h-0')}
+        style={isMobile ? { height: '70vh' } : undefined}
+      >
         {/* 폴더 내비게이션 (PC: 좌측 세로 / 모바일: 상단 가로 스크롤) */}
         <div className="flex md:flex-col gap-1.5 md:w-64 md:flex-none flex-none md:min-h-0">
           {/* 스크롤 영역: 폴더 목록 */}

@@ -1464,3 +1464,21 @@ input[type='number']::-webkit-outer-spin-button {
   /* 툴바에서 온 아이콘만 버튼(.icon-only)도 칸 안에서는 정사각 규칙을 끈다(아이콘 폭 그대로, B1). */
   aspect-ratio: auto;
 }
+
+/* 환경설정 PC 2단 흐름(2026-11-11 오버레이 묶음 1, ConfigScreen PC_TWO_COLUMN_TABS) — 탭 본문 뿌리의 섹션(직계 자식)을
+   위→아래, 왼쪽 단→오른쪽 단으로 흘린다. 섹션은 단 사이에서 쪼개지지 않고, 단 구분은 가는 세로 선(구분용 hr 는 숨김). */
+.cfg-two-col > * {
+  column-count: 2;
+  column-gap: 2.5rem;
+  column-rule: 1px solid var(--c-line);
+}
+.cfg-two-col > * > * {
+  break-inside: avoid;
+}
+.cfg-two-col > * > hr {
+  display: none;
+}
+/* 2단 안 테마 템플릿 격자는 1열(단 폭에 카드 2개면 알약이 카드 밖으로 넘침 — 2026-11-11 실기 피드백 1 ①) */
+.cfg-two-col [data-theme-template-grid] {
+  grid-template-columns: minmax(0, 1fr);
+}

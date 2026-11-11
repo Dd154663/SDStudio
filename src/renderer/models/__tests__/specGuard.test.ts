@@ -51,6 +51,44 @@ const matchLines = (content: string, re: RegExp): number[] => {
   return [...code.matchAll(g)].map((m) => code.slice(0, m.index ?? 0).split('\n').length);
 };
 
+// <ModalOverlay …> 여는 태그 중 size= 가 없는 것(옛 width 클래스·기본 max-w-xl·fullscreen 경로)의 시작 위치.
+// 속성 안 화살표 함수(`() => …`)의 > 에 속지 않게 중괄호 깊이·따옴표를 따라 태그 끝을 찾는다.
+const modalOverlayWithoutSize = (content: string): number[] => {
+  const code = stripCommentsKeepLines(content);
+  const out: number[] = [];
+  const re = /<ModalOverlay\b/g;
+  for (const m of code.matchAll(re)) {
+    const start = m.index ?? 0;
+    let depth = 0;
+    let quote: string | null = null;
+    let end = code.length;
+    for (let i = start + m[0].length; i < code.length; i++) {
+      const ch = code[i];
+      if (quote) {
+        if (ch === quote && code[i - 1] !== '\\') quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === '`') quote = ch;
+      else if (ch === '{') depth++;
+      else if (ch === '}') depth--;
+      else if (ch === '>' && depth === 0) {
+        end = i;
+        break;
+      }
+    }
+    // 속성 이름 자리의 size= 만 센다(중괄호 안 표현식의 size= 는 제외 — 깊이 0 텍스트만 남김)
+    let top = '';
+    let d = 0;
+    for (const ch of code.slice(start, end)) {
+      if (ch === '{') d++;
+      else if (ch === '}') d--;
+      else if (d === 0) top += ch;
+    }
+    if (!/\ssize=/.test(top)) out.push(code.slice(0, start).split('\n').length);
+  }
+  return out;
+};
+
 // 프로젝트 휴지통 삭제의 직접 호출(sessionService.delete( — 공백·줄바꿈 허용). SessionService 내부의
 // super.delete·favorites.delete·Map delete 는 수신자가 sessionService 가 아니라 걸리지 않는다.
 const SESSION_DELETE_RE = /\bsessionService\s*\.\s*delete\s*\(/g;
@@ -110,7 +148,7 @@ const RULES: Rule[] = [
       ),
     allow: {
       'componenets/CharacterPresetEditor.tsx': 2,
-      'componenets/ExportPresetManager.tsx': 1,
+      // ExportPresetManager 1건은 2026-11-11 오버레이 묶음 1 에서 .btn-solid-sky 로 정리
     },
   },
   {
@@ -452,6 +490,38 @@ const RULES: Rule[] = [
     locate: (c) => matchLines(c, SESSION_DELETE_RE),
     allow: { 'models/projectDeleteFlow.ts': 1 },
   },
+  {
+    // 오버레이 창 크기 체계(2026-11-11 묶음 0) — 새 ModalOverlay 는 size(s|m|l|xl|full) 등급만 쓴다.
+    // 옛 width 폭 클래스·기본 max-w-xl·fullscreen 경로(= size 없는 호출)는 아래 allowlist 로 동결하고,
+    // 묶음 1 이후 창별로 size 로 옮기며 건수를 내린다(늘리지 않는다).
+    // 2026-11-11 묶음 1: 19파일 27곳 → 16파일 23곳(씬 템플릿 관리 m·내보내기 프리셋 l/s·프롬프트조각 l/m·프로젝트 탐색 xl,
+    // 환경설정은 직접 만든 창이라 집계 밖이었고 PC 경로를 size l 로 흡수).
+    name: 'ModalOverlay size 없는 호출(width 폭 클래스·기본값·fullscreen) — size 등급 사용',
+    guide: '「오버레이 창 크기 체계」',
+    dir: '',
+    exts: ['.tsx'],
+    exclude: [],
+    count: (c) => modalOverlayWithoutSize(c).length,
+    locate: (c) => modalOverlayWithoutSize(c),
+    allow: {
+      'componenets/App.tsx': 2, // 프로젝트 휴지통·씬 휴지통(프롬프트조각은 묶음 1 에서 PieceEditor 안 size l 로)
+      'componenets/ArtistLibraryTab.tsx': 2, // 태그 프리셋 관리·작가 상세
+      'componenets/CharacterPresetEditor.tsx': 1, // 캐릭터 프리셋 관리
+      'componenets/ConfigSyncSection.tsx': 1, // 환경설정 불러오기 미리보기
+      'componenets/ConfigSystemTab.tsx': 1, // 축하 영상
+      'componenets/DirectExportDialog.tsx': 1, // 직접 내보내기 설정
+      'componenets/DriveBackupManager.tsx': 1, // Google 드라이브 백업
+      'componenets/FindReplaceDialog.tsx': 1, // 찾기 및 변환
+      'componenets/PreSetEdtior.tsx': 3, // 사전 세팅 일괄 삭제·캐릭터 위치 지정(fullscreen)·샘플링 그룹
+      'componenets/QuickMenu.tsx': 1, // 퀵 메뉴(모바일)
+      'componenets/SceneEditor.tsx': 1, // 캐릭터 위치 지정(fullscreen)
+      'componenets/SceneQuickPromptModal.tsx': 1, // 중간 프롬프트 가운데 폴백(모바일)
+      'componenets/StorageManageModal.tsx': 1, // 프로젝트 저장 공간 관리
+      'componenets/TemplateInheritModals.tsx': 2, // 폴더 기본 템플릿·템플릿 적용
+      'componenets/TemplateManagerModal.tsx': 2, // 글로벌 프리셋에서 복사·템플릿 관리
+      'componenets/ToolbarOverflowMenu.tsx': 1, // ⋯ 메뉴(모바일)
+    },
+  },
 ];
 
 function listFiles(dirAbs: string, exts: string[]): string[] {
@@ -472,6 +542,18 @@ const toRel = (abs: string) =>
   path.relative(RENDERER_ROOT, abs).split(path.sep).join('/');
 
 describe('SPEC_GUIDE 가드 (하드코딩 신규 유입 차단)', () => {
+  test('ModalOverlay size 판정 스캐너 — 화살표 함수 > 와 중괄호 안 size= 에 속지 않는다', () => {
+    const src = [
+      '<ModalOverlay isOpen onClose={() => close()} title="a" width="max-w-md">',
+      '<ModalOverlay isOpen onClose={() => close()} size="m">',
+      '<ModalOverlay isOpen onClose={() => f({ size: 1 })} title="b" fullscreen>',
+      '<ModalOverlay',
+      '  isOpen',
+      '  size={big ? "l" : "m"}',
+      '>',
+    ].join('\n');
+    expect(modalOverlayWithoutSize(src)).toEqual([1, 3]);
+  });
   test('include 규칙의 대상 파일이 실제로 있다(경로 오타로 조용히 통과하지 않게)', () => {
     for (const rule of RULES) {
       for (const rel of rule.include ?? []) {

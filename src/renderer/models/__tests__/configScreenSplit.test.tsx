@@ -217,7 +217,8 @@ const BASE_SAVE = {
 // 걸리지 않도록 여유를 둔다(실제 소요는 케이스당 0.2~1.2초).
 jest.setTimeout(20000);
 
-const PC_TABS = ['로그인', '테마', '레이아웃', '저장경로', '드라이브', '시스템', '커스텀', '단축키'];
+// PC 는 왼쪽 세로 탭(2026-11-11 오버레이 묶음 1) — 「저장경로」 축약을 「저장 경로」로 풀었다(모바일엔 이 탭 없음).
+const PC_TABS = ['로그인', '테마', '레이아웃', '저장 경로', '드라이브', '시스템', '커스텀', '단축키'];
 const MOBILE_TABS = ['로그인', '테마', '툴바', '레이아웃', '드라이브', '시스템', '커스텀', '복구'];
 const DIRTY_BADGE = '저장 안 된 변경';
 
@@ -272,7 +273,8 @@ const panels = () =>
 const outsidePanels = (el: Element) => !panels().some((p) => p.contains(el));
 const tabButtons = () =>
   Array.from(container.querySelectorAll('button')).filter(
-    (b) => outsidePanels(b) && b.getAttribute('aria-label') !== '닫기' && b.textContent !== '저장',
+    // ✕(aria-label 닫기)·바닥줄 [저장][닫기](PC 2026-11-11) 는 탭이 아니다
+    (b) => outsidePanels(b) && b.getAttribute('aria-label') !== '닫기' && b.textContent !== '저장' && b.textContent !== '닫기',
   );
 const tabLabels = () => tabButtons().map((b) => b.textContent);
 const saveButton = () =>
@@ -318,7 +320,8 @@ test('1-PC: 탭 라벨 순서가 PC 8탭(저장경로·단축키 포함, 툴바�
   await open(false);
   expect(tabLabels()).toEqual(PC_TABS);
   expect(panels()).toHaveLength(PC_TABS.length);
-  expect(container.querySelector('h1')?.textContent).toBe('환경설정');
+  // PC = 공용 ModalOverlay 머리줄(h2), 모바일 = 직접 창(h1)
+  expect(container.querySelector('h1, h2')?.textContent).toBe('환경설정');
 });
 
 test('1-모바일: 탭 라벨 순서가 모바일 8탭(툴바·복구 포함, 저장경로·단축키 없음)이다', async () => {
@@ -327,13 +330,43 @@ test('1-모바일: 탭 라벨 순서가 모바일 8탭(툴바·복구 포함, �
   expect(panels()).toHaveLength(MOBILE_TABS.length);
 });
 
+// ─── 1-b. 창 틀(2026-11-11 오버레이 묶음 1): PC = ModalOverlay size l·세로 탭·바닥줄, 모바일 = 직접 창 그대로 ───
+
+test('1-PC 창 틀: 등급 l, 왼쪽 세로 탭 슬롯에 8탭, 바닥줄 [저장][닫기], 칸 많은 탭만 2단', async () => {
+  await open(false);
+  expect(container.querySelector('[data-modal-size]')?.getAttribute('data-modal-size')).toBe('l');
+  const side = container.querySelector('[data-modal-slot="side-tabs"]')!;
+  expect(Array.from(side.querySelectorAll('button')).map((b) => b.textContent)).toEqual(PC_TABS);
+  const footer = container.querySelector('[data-modal-slot="footer"]')!;
+  expect(Array.from(footer.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['저장', '닫기']);
+  // 2단 흐름 = 테마·시스템·커스텀만
+  const twoCol = panels().map((p) => !!p.querySelector('[data-cfg-two-col]'));
+  expect(PC_TABS.filter((_, i) => twoCol[i])).toEqual(['테마', '시스템', '커스텀']);
+  // [닫기] = 종전 ✕ 와 같이 묻지 않고 닫는다(미저장 가드 미연결 — H3 결정 전)
+  await click(input('cfgClassicScene'));
+  expect(dirty()).toBe(true);
+  expect(footer.contains(container.querySelector('[data-cfg-dirty-badge]'))).toBe(true);
+  await click(buttonByText(footer as HTMLElement, '닫기'));
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(appState.confirmAsync).not.toHaveBeenCalled();
+});
+
+test('1-모바일 창 틀: 직접 창(등급·세로 탭·바닥줄 슬롯 없음, h1 머리, 최대 90vh) 그대로', async () => {
+  await open(true);
+  expect(container.querySelector('[data-modal-size]')).toBeNull();
+  expect(container.querySelector('[data-modal-slot]')).toBeNull();
+  expect(container.querySelector('h1')?.textContent).toBe('환경설정');
+  expect(container.querySelector('.max-h-\\[90vh\\]')).not.toBeNull();
+  expect(container.querySelector('[data-cfg-two-col]')).toBeNull();
+});
+
 // ─── 2. 탭별 대표 문구 · 마운트 방식 ───
 
 const PC_TEXTS: Record<string, string[]> = {
   로그인: ['API 토큰으로 로그인', 'V5 할당량 기반 자동 순회', '부스트 모드 켜기'],
   테마: ['테마 템플릿', '내 프리셋'],
   레이아웃: ['화면 배치', '클래식 툴바 사용 (이전 배치로 되돌리기)', '퀵 메뉴 구성'],
-  저장경로: ['현재 저장경로', '선호 이미지 편집기', '로컬 배경 제거 모델 설치'],
+  '저장 경로': ['현재 저장경로', '선호 이미지 편집기', '로컬 배경 제거 모델 설치'],
   드라이브: ['드라이브 탭(모킹)'],
   시스템: ['저장소 불안정 시 자동 저장 보호 (권장)', '작업 로그 보기', 'exports 폴더 정리'],
   커스텀: ['글꼴', '레거시 프로젝트 모드'],
@@ -430,11 +463,11 @@ const PC_CASES: [string, Case][] = [
     '레이아웃 — 클래식 툴바',
     { tab: '레이아웃', change: () => click(input('cfgClassicToolbar')), expected: { uiToolbar: { classic: true } } },
   ],
-  ['저장경로 — 폴더 직접 편집 감지', { tab: '저장경로', change: () => click(input('cfgRefresh')), expected: { refreshImage: true } }],
+  ['저장경로 — 폴더 직접 편집 감지', { tab: '저장 경로', change: () => click(input('cfgRefresh')), expected: { refreshImage: true } }],
   [
     '저장경로 — 이미지 편집기',
     {
-      tab: '저장경로',
+      tab: '저장 경로',
       change: async (p) => {
         const select = Array.from(p.querySelectorAll('select')).find((s) => s.querySelector('option[value="mspaint"]'))!;
         await act(async () => {
@@ -594,7 +627,7 @@ test('5: 할당량 경고 하지 않음·부스트 다시 보지 않음·레이�
 
   // ④ 저장 위치 변경(저장경로 탭) — 즉시 저장, 미저장 비교 대상 아님
   //    (2026-11-04: 하위 폴더 포함 쓰기 검사 → 선택 창 「나중에 재시작」 → 저장+보류 상태)
-  const storage = await selectTab('저장경로');
+  const storage = await selectTab('저장 경로');
   appState.pushDialogAsync.mockImplementationOnce(async () => 'restart-later');
   await click(buttonByText(storage, '이미지 및 데이터 저장 위치 변경'));
   expect(backend.checkWritable).toHaveBeenCalledWith('/new-data', { dataSubdirs: true });
@@ -632,4 +665,41 @@ test('5-부스트: 경고 창에서 취소하면 켜지지 않고 아무것도 �
   expect(backend.setConfig).not.toHaveBeenCalled();
   expect(dirty()).toBe(false);
   expect(login.boostWarningAccepted).toBe(false);
+});
+
+// ─── 6. 실기 피드백 1(2026-11-11): 탭 전환 스크롤 맨 위 · 테마 템플릿 알약 넘침 ───
+
+test('6-PC: 탭을 바꾸면 ModalOverlay 본문 슬롯 스크롤이 맨 위로 돌아간다', async () => {
+  await open(false);
+  const body = container.querySelector<HTMLElement>('[data-modal-slot="body"]')!;
+  expect(body.contains(container.querySelector('[data-cfg-tab-panels]'))).toBe(true);
+  body.scrollTop = 240;
+  expect(body.scrollTop).toBe(240);
+  await selectTab('시스템');
+  expect(body.scrollTop).toBe(0);
+});
+
+test('6-모바일: 탭을 바꾸면 옛 창의 스크롤 영역이 맨 위로 돌아간다', async () => {
+  await open(true);
+  const body = container.querySelector<HTMLElement>('[data-cfg-mobile-body]')!;
+  expect(body.contains(container.querySelector('[data-cfg-tab-panels]'))).toBe(true);
+  body.scrollTop = 180;
+  await selectTab('레이아웃');
+  expect(body.scrollTop).toBe(0);
+});
+
+test('6-테마: 템플릿 격자는 2단 안(PC)에서 1열 규칙 대상, 알약 줄은 flex-wrap·알약은 min-w-0', async () => {
+  await open(false);
+  const panel = await selectTab('테마');
+  const grid = panel.querySelector<HTMLElement>('[data-theme-template-grid]')!;
+  expect(grid.closest('[data-cfg-two-col]')).not.toBeNull();
+  const chips = Array.from(grid.querySelectorAll<HTMLElement>('[data-theme-template-chips]'));
+  expect(chips.length).toBeGreaterThan(0);
+  for (const row of chips) {
+    expect(row.classList.contains('flex-wrap')).toBe(true);
+    for (const b of Array.from(row.querySelectorAll('button'))) expect(b.classList.contains('min-w-0')).toBe(true);
+  }
+  // 1열 규칙은 App.css(2단 안의 템플릿 격자만 — 모바일 옛 창은 sm:grid-cols-2 그대로)
+  const css = require('fs').readFileSync(require('path').join(__dirname, '../../componenets/App.css'), 'utf8');
+  expect(css).toMatch(/\.cfg-two-col \[data-theme-template-grid\]\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\);/);
 });

@@ -6,7 +6,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import { backend, promptService, sessionService, globalPieceService } from '../models';
+import { backend, isMobile, promptService, sessionService, globalPieceService } from '../models';
+import ModalOverlay, { scrollOverlayBodyToTop } from './ModalOverlay';
 import { DropdownSelect } from './UtilComponents';
 import Tooltip from './Tooltip';
 import PromptEditTextArea from './PromptEditTextArea';
@@ -226,9 +227,22 @@ export const PieceCell = observer(
   },
 );
 
-const PieceEditor = observer(() => {
+const PieceEditor = observer(({ onClose }: { onClose: () => void }) => {
   const { curSession } = appState;
-  const [scope, setScope] = useState<'local' | 'global'>('local');
+  const [scope, setScopeState] = useState<'local' | 'global'>('local');
+  // 범위(로컬/전역) 전환 = 본문·왼쪽 그룹 목록 스크롤 맨 위로(2026-11-11 실기 피드백 1 ③, 환경설정 탭과 같은 처리)
+  const contentRef = useRef<HTMLDivElement>(null);
+  const groupListScrollRef = useRef<HTMLDivElement>(null);
+  const setScope = (next: 'local' | 'global') => {
+    setScopeState(next);
+    scrollOverlayBodyToTop(contentRef.current);
+    const list = groupListScrollRef.current;
+    if (list) {
+      list.scrollTop = 0;
+      const aside = list.closest('[data-modal-slot="aside"]');
+      if (aside) aside.scrollTop = 0;
+    }
+  };
   const [selectedPieceLibrary, setSelectedPieceLibrary] = useState<
     string | null
   >(null);
@@ -646,13 +660,159 @@ const PieceEditor = observer(() => {
     });
   };
 
-  return (
+  // ── 화면 조각 ──
+  // PC(2026-11-11 오버레이 묶음 1): 크기 등급 L(1000·고정 높이) — 왼쪽 aside = 로컬/전역 전환 + 조각그룹 목록,
+  // 도구줄 = 그룹 추가·불러오기·내보내기·삭제·복사·백업(글자 라벨 상시), 본문 = 범위 안내 + 선택 그룹의 조각.
+  // 모바일은 종전 한 열 그대로(범위 탭 → 안내 → 드롭다운+버튼 → 조각). 조각 작업의 되돌리기 계측(pieceUndo 헬퍼)은
+  // 위 처리 함수 그대로 — 화면 자리만 옮겼다.
+  const wide = !isMobile;
+
+  const scopeToggle = (
+    <div className={wide ? 'flex gap-1 items-center' : 'flex gap-1 mb-3'}>
+      <button
+        className={`${wide ? 'flex-1 px-2' : 'px-4'} py-1.5 text-sm rounded-lg ${scope === 'local' ? 'back-sky font-bold' : 'back-llgray'}`}
+        onClick={() => setScope('local')}
+      >
+        로컬 조각
+      </button>
+      <button
+        className={`${wide ? 'flex-1 px-2' : 'px-4'} py-1.5 text-sm rounded-lg ${scope === 'global' ? 'bg-purple-500 text-white dark:bg-purple-400/25 dark:text-purple-300 font-bold' : 'back-llgray'}`}
+        onClick={() => setScope('global')}
+      >
+        전역 조각
+      </button>
+      <span className="inline-flex items-center ml-1">
+        <HelpIcon
+          content={
+            '조각은 프롬프트에서 <그룹.이름> 으로 참조하는 재사용 텍스트입니다.\n' +
+            '로컬은 현재 프로젝트 전용(전역보다 우선), 전역은 모든 프로젝트 공유입니다.'
+          }
+        />
+      </span>
+    </div>
+  );
+
+  const scopeNotice = (
+    <>
+      {scope === 'local' && (
+        <div className="mb-3 px-3 py-2 bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 text-sm rounded-lg border border-sky-200 dark:border-sky-700">
+          로컬 조각은 현재 프로젝트에서만 사용되며 전역 조각보다 우선됩니다. 프로젝트 내보내기에 포함됩니다.
+        </div>
+      )}
+      {scope === 'global' && (
+        <div className="mb-3 px-3 py-2 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-sm rounded-lg border border-purple-200 dark:border-purple-700">
+          전역 조각은 모든 프로젝트에서 공유됩니다. 프로젝트 내보내기에는 포함되지 않습니다.
+        </div>
+      )}
+    </>
+  );
+
+  // PC 는 글자 라벨을 늘 보인다(도구줄 한 줄), 모바일은 종전처럼 md 이상에서만
+  const labelClass = wide ? 'text-sm' : 'text-sm hidden md:inline';
+  const actionButtons = (
+    <>
+      <Tooltip content="조각그룹 추가">
+        <button
+          className="icon-button h-8 px-3 back-sky flex items-center gap-1"
+          onClick={addLibrary}
+        >
+          <FaPlus size={14} /> <span className={labelClass}>{wide ? '그룹 추가' : '추가'}</span>
+        </button>
+      </Tooltip>
+      <Tooltip content="와일드카드(.txt) 또는 조각그룹(.json) 불러오기">
+        <button
+          className="icon-button h-8 px-3 back-green flex items-center gap-1"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <FaFileImport size={14} /> <span className={labelClass}>불러오기 (.txt/.json)</span>
+        </button>
+      </Tooltip>
+      <Tooltip content="선택한 조각그룹 내보내기">
+        <button
+          className="icon-button h-8 px-3 flex items-center gap-1"
+          onClick={exportLibrary}
+        >
+          <ActionIcon id="export" size={14} /> <span className={labelClass}>내보내기</span>
+        </button>
+      </Tooltip>
+      <Tooltip content="조각그룹 삭제">
+        <button
+          className="icon-button h-8 px-3 back-red flex items-center gap-1"
+          onClick={deleteLibrary}
+        >
+          <ActionIcon id="delete" size={14} /> <span className={labelClass}>{wide ? '그룹 삭제' : '삭제'}</span>
+        </button>
+      </Tooltip>
+      {curPieceLibrary && (scope === 'local' ? true : !!curSession) && (
+        <Tooltip content={scope === 'local' ? '전역 조각으로 복사' : '로컬 조각으로 복사'}>
+          <button
+            className={`icon-button h-8 px-3 flex items-center gap-1 ${scope === 'local' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' : 'back-sky'}`}
+            onClick={copyToOtherScope}
+          >
+            <FaExchangeAlt size={14} /> <span className={labelClass}>{scope === 'local' ? '전역으로 복사' : '로컬로 복사'}</span>
+          </button>
+        </Tooltip>
+      )}
+      {scope === 'global' && (
+        <Tooltip content="전역 조각 전체 백업 내보내기">
+          <button
+            className="icon-button h-8 px-3 back-orange flex items-center gap-1"
+            onClick={exportAllGlobal}
+          >
+            <ActionIcon id="backup" size={14} /> <span className={labelClass}>전체 백업</span>
+          </button>
+        </Tooltip>
+      )}
+    </>
+  );
+
+  // 조각그룹 목록(PC aside) — 드롭다운과 같은 항목·같은 선택 상태
+  const groupList = (
+    <div className="flex flex-col h-full min-h-0" data-piece-group-list="">
+      <div className="flex-none p-3 border-b line-color">{scopeToggle}</div>
+      <div ref={groupListScrollRef} className="flex-1 min-h-0 overflow-auto p-2 flex flex-col gap-0.5">
+        {libraryOptions.length === 0 ? (
+          <div className="text-xs text-faint text-center py-6">조각그룹이 없습니다</div>
+        ) : (
+          libraryOptions.map((opt) => {
+            const selected = opt.value === selectedPieceLibrary;
+            const count = librarySource?.get(opt.value)?.pieces.length ?? 0;
+            return (
+              <button
+                key={opt.value}
+                aria-pressed={selected}
+                onClick={() => setSelectedPieceLibrary(opt.value)}
+                className={
+                  'w-full text-left px-3 py-1.5 rounded-md text-sm flex items-center gap-2 transition-colors ' +
+                  (selected
+                    ? scope === 'local'
+                      ? 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 font-semibold'
+                      : 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-semibold'
+                    : 'text-default hover:bg-gray-100 dark:hover:bg-slate-700/50')
+                }
+              >
+                <span className="flex-1 min-w-0 truncate">{opt.label}</span>
+                <span className="flex-none text-xs text-faint tabular-nums">{count}</span>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
+  const dropZoneProps = {
+    onDragEnter: handleDragEnter,
+    onDragLeave: handleDragLeave,
+    onDragOver: handleDragOver,
+    onDrop: handleDrop,
+  };
+
+  const content = (
     <div
-      className={`flex flex-col relative ${isDraggingFile ? 'ring-2 ring-sky-500 bg-sky-50 dark:bg-sky-900/20' : ''}`}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
+      ref={contentRef}
+      className={`flex flex-col relative ${wide ? 'min-h-full' : ''} ${isDraggingFile ? 'ring-2 ring-sky-500 bg-sky-50 dark:bg-sky-900/20' : ''}`}
+      {...dropZoneProps}
     >
       {/* Hidden file input for wildcard/json import */}
       <input
@@ -664,107 +824,28 @@ const PieceEditor = observer(() => {
         onChange={handleFileInputChange}
       />
 
-      {/* 스코프 토글 */}
-      <div className="flex gap-1 mb-3">
-        <button
-          className={`px-4 py-1.5 text-sm rounded-lg ${scope === 'local' ? 'back-sky font-bold' : 'back-llgray'}`}
-          onClick={() => setScope('local')}
-        >
-          로컬 조각
-        </button>
-        <button
-          className={`px-4 py-1.5 text-sm rounded-lg ${scope === 'global' ? 'bg-purple-500 text-white dark:bg-purple-400/25 dark:text-purple-300 font-bold' : 'back-llgray'}`}
-          onClick={() => setScope('global')}
-        >
-          전역 조각
-        </button>
-        <span className="inline-flex items-center ml-1">
-          <HelpIcon
-            content={
-              '조각은 프롬프트에서 <그룹.이름> 으로 참조하는 재사용 텍스트입니다.\n' +
-              '로컬은 현재 프로젝트 전용(전역보다 우선), 전역은 모든 프로젝트 공유입니다.'
-            }
-          />
-        </span>
-      </div>
+      {/* 스코프 토글(모바일 — PC 는 왼쪽 목록 머리) */}
+      {!wide && scopeToggle}
 
       {/* 스코프 안내 */}
-      {scope === 'local' && (
-        <div className="mb-3 px-3 py-2 bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 text-sm rounded-lg border border-sky-200 dark:border-sky-700">
-          로컬 조각은 현재 프로젝트에서만 사용되며 전역 조각보다 우선됩니다. 프로젝트 내보내기에 포함됩니다.
-        </div>
-      )}
-      {scope === 'global' && (
-        <div className="mb-3 px-3 py-2 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-sm rounded-lg border border-purple-200 dark:border-purple-700">
-          전역 조각은 모든 프로젝트에서 공유됩니다. 프로젝트 내보내기에는 포함되지 않습니다.
-        </div>
-      )}
+      {scopeNotice}
 
-      {/* 라이브러리 선택 + 액션 버튼 */}
-      <div className="flex gap-2 items-center mb-3 flex-wrap">
-        <div className="flex-1 min-w-48">
-          <DropdownSelect
-            selectedOption={selectedPieceLibrary}
-            menuPlacement="bottom"
-            options={libraryOptions}
-            onSelect={(opt) => {
-              setSelectedPieceLibrary(opt.value);
-            }}
-          />
+      {/* 라이브러리 선택 + 액션 버튼(모바일 — PC 는 왼쪽 목록·도구줄) */}
+      {!wide && (
+        <div className="flex gap-2 items-center mb-3 flex-wrap">
+          <div className="flex-1 min-w-48">
+            <DropdownSelect
+              selectedOption={selectedPieceLibrary}
+              menuPlacement="bottom"
+              options={libraryOptions}
+              onSelect={(opt) => {
+                setSelectedPieceLibrary(opt.value);
+              }}
+            />
+          </div>
+          {actionButtons}
         </div>
-        <Tooltip content="조각그룹 추가">
-          <button
-            className="icon-button h-8 px-3 back-sky flex items-center gap-1"
-            onClick={addLibrary}
-          >
-            <FaPlus size={14} /> <span className="text-sm hidden md:inline">추가</span>
-          </button>
-        </Tooltip>
-        <Tooltip content="와일드카드(.txt) 또는 조각그룹(.json) 불러오기">
-          <button
-            className="icon-button h-8 px-3 back-green flex items-center gap-1"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <FaFileImport size={14} /> <span className="text-sm hidden md:inline">불러오기 (.txt/.json)</span>
-          </button>
-        </Tooltip>
-        <Tooltip content="선택한 조각그룹 내보내기">
-          <button
-            className="icon-button h-8 px-3 flex items-center gap-1"
-            onClick={exportLibrary}
-          >
-            <ActionIcon id="export" size={14} /> <span className="text-sm hidden md:inline">내보내기</span>
-          </button>
-        </Tooltip>
-        <Tooltip content="조각그룹 삭제">
-          <button
-            className="icon-button h-8 px-3 back-red flex items-center gap-1"
-            onClick={deleteLibrary}
-          >
-            <ActionIcon id="delete" size={14} /> <span className="text-sm hidden md:inline">삭제</span>
-          </button>
-        </Tooltip>
-        {curPieceLibrary && (scope === 'local' ? true : !!curSession) && (
-          <Tooltip content={scope === 'local' ? '전역 조각으로 복사' : '로컬 조각으로 복사'}>
-            <button
-              className={`icon-button h-8 px-3 flex items-center gap-1 ${scope === 'local' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' : 'back-sky'}`}
-              onClick={copyToOtherScope}
-            >
-              <FaExchangeAlt size={14} /> <span className="text-sm hidden md:inline">{scope === 'local' ? '전역으로 복사' : '로컬로 복사'}</span>
-            </button>
-          </Tooltip>
-        )}
-        {scope === 'global' && (
-          <Tooltip content="전역 조각 전체 백업 내보내기">
-            <button
-              className="icon-button h-8 px-3 back-orange flex items-center gap-1"
-              onClick={exportAllGlobal}
-            >
-              <ActionIcon id="backup" size={14} /> <span className="text-sm hidden md:inline">전체 백업</span>
-            </button>
-          </Tooltip>
-        )}
-      </div>
+      )}
 
       {/* Drag and drop hint */}
       {isDraggingFile && (
@@ -795,7 +876,9 @@ const PieceEditor = observer(() => {
       {/* 라이브러리 미선택 상태 (라이브러리는 있지만 선택 안 함) */}
       {!curPieceLibrary && libraryOptions.length > 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-faint">
-          <p className="text-sm">위 드롭다운에서 조각그룹을 선택하세요</p>
+          <p className="text-sm">
+            {wide ? '왼쪽 목록에서 조각그룹을 선택하세요' : '위 드롭다운에서 조각그룹을 선택하세요'}
+          </p>
         </div>
       )}
 
@@ -846,6 +929,20 @@ const PieceEditor = observer(() => {
         </div>
       )}
     </div>
+  );
+
+  return (
+    <ModalOverlay
+      isOpen={true}
+      onClose={onClose}
+      title="프롬프트조각"
+      // 모바일 = 90vw(옛 max-w-3xl 768 에 가까운 m 720 상한 — 휴대폰에서는 폭이 그대로)
+      size={wide ? 'l' : 'm'}
+      toolbar={wide && curSession ? actionButtons : undefined}
+      aside={wide && curSession ? groupList : undefined}
+    >
+      {curSession && content}
+    </ModalOverlay>
   );
 });
 

@@ -1006,14 +1006,11 @@ export const App = observer(() => {
           <ProgressWindow dialog={appState.progressDialog} />
         )}
         <PromptTooltip />
-        <ModalOverlay
-          isOpen={appState.pieceEditorOpen}
-          onClose={() => appState.closePieceEditor()}
-          title="프롬프트조각"
-          width="max-w-3xl"
-        >
-          {appState.curSession && <PieceEditor />}
-        </ModalOverlay>
+        {/* 프롬프트조각 — 창(ModalOverlay size l·aside·도구줄)은 PieceEditor 가 직접 그린다(2026-11-11 오버레이 묶음 1).
+            열릴 때만 마운트 — 종전처럼 닫으면 범위·선택 그룹이 초기화된다. */}
+        {appState.pieceEditorOpen && (
+          <PieceEditor onClose={() => appState.closePieceEditor()} />
+        )}
         <FindReplaceDialog />
         <ModalOverlay
           isOpen={appState.projectTrashOpen}

@@ -43,6 +43,7 @@ import {
 import { ActionIcon } from './ActionIcon';
 import { useBackLayer } from '../models/BackStackService';
 import { useBackdropClose } from './backdropClose';
+import ModalOverlay, { scrollOverlayBodyToTop } from './ModalOverlay';
 import OpusUsageMeter, { OpusUsageHelp } from './OpusUsageMeter';
 import { useOpusUsage } from './OpusUsageBadge';
 import OpusUsageQuietToggle from './OpusUsageQuietToggle';
@@ -88,6 +89,10 @@ import {
   sameBoostSettings,
 } from '../models/boostMode';
 import { useBoostAccountLock } from './boostAccountLock';
+
+// PC 에서 섹션 단위 2단 흐름(cfg-two-col)을 쓰는 탭 key — 칸이 많고 세로로만 쌓이던 탭(2026-11-11 오버레이 묶음 1).
+// 로그인(안내 박스)·레이아웃(템플릿 그림 고르기)·저장 경로(긴 경로)·드라이브·단축키(표)는 한 열 유지.
+const PC_TWO_COLUMN_TABS = new Set(['customization', 'system', 'personal']);
 
 interface ConfigScreenProps {
   onSave: () => void;
@@ -799,6 +804,15 @@ const LoginTab = ({
 const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const { curSession } = appState;
   const [activeTab, setActiveTab] = useState(0);
+  // 탭 전환 = 본문 스크롤 맨 위로(2026-11-11 실기 피드백 1 ③). 탭 패널은 늘 마운트·visibility 전환이라
+  // 스크롤되는 요소는 패널이 아니라 그 바깥 본문 — PC = ModalOverlay 본문 슬롯, 모바일 = 옛 창의 스크롤 영역.
+  const tabPanelsRef = useRef<HTMLDivElement>(null);
+  const mobileBodyRef = useRef<HTMLDivElement>(null);
+  const selectTab = (i: number) => {
+    setActiveTab(i);
+    if (mobileBodyRef.current) mobileBodyRef.current.scrollTop = 0;
+    else scrollOverlayBodyToTop(tabPanelsRef.current);
+  };
 
   // 모바일 탭 바 가로 스크롤 힌트 — 각 방향에 가려진 탭이 있을 때만 양 끝에
   // 옅은 화살표를 띄운다(스크롤 가능함을 알리는 표시 전용, 클릭 무반응).
@@ -960,7 +974,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   // Esc·Android 뒤로 가기로 닫기 — 닫기 관문(BackStackService) 한 항목. 이 화면은 열려 있을 때만 마운트된다.
   // 예전엔 window 캡처 Esc 리스너라 위에 뜬 확인 창·작업 로그와 함께 닫혔고, 뒤로 가기는 앱을 최소화했다
   // (SPEC §5 위반). 미저장 배지는 닫기를 막지 않는다(의도 유지). 2026-10-03 U1·X2·X6.
-  useBackLayer(true, onClose);
+  // PC(2026-11-11 오버레이 묶음 1)는 공용 ModalOverlay 가 같은 닫기 관문·바깥 클릭을 맡으므로 모바일 직접 창만 단다.
+  useBackLayer(mobileMode, onClose);
   const configBackdrop = useBackdropClose(onClose);
 
   // 단축키 시스템에 ConfigScreen 열림 상태 전달
@@ -1205,10 +1220,11 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     // 모바일은 편집 모드가 없어 기존 select UI 가 유일한 수단이라 탭을 유지한다.
     ...(mobileMode ? [{ key: 'toolbar', label: '툴바', icon: <FaThLarge size={14} /> }] : []),
     { key: 'layout', label: '레이아웃', icon: <FaColumns size={14} /> },
-    ...(!mobileMode ? [{ key: 'storage', label: '저장경로', icon: <FaFolder size={14} /> }] : []),
+    ...(!mobileMode ? [{ key: 'storage', label: '저장 경로', icon: <FaFolder size={14} /> }] : []),
     // 드라이브(드라이브 API ⑤, PC·모바일 공통): Google 드라이브 연동·백업 목록·환경설정 내보내기/불러오기·
-    // (PC) 고급 로컬 동기화 폴더. 라벨 축약(저장경로·커스텀·단축키)과 탭 버튼 여백(px-2.5·gap-1)은 PC 설정
-    // 창 폭(md:max-w-2xl)에 8탭이 한 줄로 들어가게 하려는 것(2026-10-01 사용자 결정).
+    // (PC) 고급 로컬 동기화 폴더. 라벨 축약·좁은 탭 여백은 PC 가로 탭 8개를 672 폭에 넣으려던 것(2026-10-01) —
+    // 2026-11-11 오버레이 묶음 1 에서 PC 는 왼쪽 세로 탭(180px)이 되어 「저장경로」를 「저장 경로」로 풀었다.
+    // 「커스텀」(구 개인 설정)·「단축키」(구 키 바인딩)는 축약이 아니라 이름 자체를 바꾼 결정이라 그대로 둔다.
     { key: 'drive', label: '드라이브', icon: <FaGoogleDrive size={14} /> },
     { key: 'system', label: '시스템', icon: <ActionIcon id="system-settings" size={14} /> },
     { key: 'personal', label: '커스텀', icon: <FaSlidersH size={14} /> },
@@ -1300,6 +1316,100 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       ) ||
       !sameBoostSettings(boostSettings, resolveBoostSettings(savedCfg)));
 
+  // 탭 콘텐츠 — CSS Grid로 모든 탭을 같은 셀에 겹쳐 높이 통일(PC·모바일 공통 골격, 탭은 늘 마운트·visibility 전환).
+  // PC 의 칸 많은 탭(테마·시스템·커스텀)은 cfg-two-col(App.css — 섹션 단위 2단 흐름, 섹션은 단 사이에서 쪼개지지 않음).
+  const tabPanels = (
+    <div ref={tabPanelsRef} data-cfg-tab-panels="" style={{
+      display: 'grid',
+      gridTemplateColumns: '1fr',
+      gridTemplateRows: '1fr',
+    }}>
+      {tabs.map((tab, i) => (
+        <div
+          key={i}
+          style={{
+            gridRow: 1,
+            gridColumn: 1,
+            visibility: activeTab === i ? 'visible' : 'hidden',
+          }}
+        >
+          {!mobileMode && PC_TWO_COLUMN_TABS.has(tab.key) ? (
+            <div className="cfg-two-col" data-cfg-two-col="">{getTabContent(i)}</div>
+          ) : (
+            getTabContent(i)
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
+  // 미저장 변경 표시 (#17) — 닫기를 막지 않는 안내 전용(✕·바깥 클릭·Esc 는 묻지 않고 닫힘 — 현행 유지, H3 결정 전).
+  const dirtyBadgeClass =
+    'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap shadow-sm bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-900/80 dark:text-amber-200 dark:border-amber-600';
+  const dirtyBadgeContent = (
+    <>
+      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-300" />
+      저장 안 된 변경
+    </>
+  );
+
+  // PC(2026-11-11 오버레이 묶음 1): 공용 ModalOverlay 로 흡수 — 크기 등급 L(1000·고정 높이 min(85vh, 760)),
+  // 왼쪽 세로 탭(sideTabs, 아이콘+전체 라벨), 바닥줄 [저장][닫기](오른쪽)·미저장 배지(왼쪽 — 흐름 안이라 내용이 밀리지 않음).
+  // dirty 는 ModalOverlay 에 연결하지 않는다(미저장 확인 없이 닫힘 = 종전 의도 유지). 모바일은 아래 직접 창 그대로.
+  if (!mobileMode) {
+    return (
+      <ModalOverlay
+        isOpen={true}
+        onClose={onClose}
+        title="환경설정"
+        size="l"
+        sideTabs={
+          <div className="flex flex-col gap-0.5 px-2" role="tablist" aria-orientation="vertical">
+            {tabs.map((tab, i) => (
+              <button
+                key={tab.key}
+                role="tab"
+                aria-selected={activeTab === i}
+                className={
+                  'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-left whitespace-nowrap transition-colors ' +
+                  (activeTab === i
+                    ? 'bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400'
+                    : 'text-muted hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-700/50')
+                }
+                onClick={() => selectTab(i)}
+              >
+                <span className="flex-none w-4 flex justify-center">{tab.icon}</span>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        }
+        footerStart={
+          dirty ? (
+            <div className={dirtyBadgeClass} data-cfg-dirty-badge="">
+              {dirtyBadgeContent}
+            </div>
+          ) : undefined
+        }
+        footer={
+          <>
+            <button className="btn back-sky px-6 py-2 rounded-lg font-medium" onClick={handleSave}>
+              저장
+            </button>
+            <button
+              className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+              onClick={onClose}
+            >
+              닫기
+            </button>
+          </>
+        }
+      >
+        {tabPanels}
+      </ModalOverlay>
+    );
+  }
+
   return (
     <div
       className="fixed inset-0 flex items-center justify-center"
@@ -1361,7 +1471,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
                     ? 'border-sky-500 text-sky-600 dark:text-sky-400'
                     : 'border-transparent text-muted hover:text-gray-700 dark:hover:text-gray-200')
                 }
-                onClick={() => setActiveTab(i)}
+                onClick={() => selectTab(i)}
               >
                 {tab.icon}
                 {tab.label}
@@ -1376,25 +1486,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
           )}
         </div>
         {/* 탭 콘텐츠 — CSS Grid로 모든 탭을 같은 셀에 겹쳐 높이 통일 */}
-        <div className="flex-1 overflow-auto px-3 py-4 md:p-5 overflow-x-hidden" style={{ minHeight: 0 }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr',
-            gridTemplateRows: '1fr',
-          }}>
-            {tabs.map((_, i) => (
-              <div
-                key={i}
-                style={{
-                  gridRow: 1,
-                  gridColumn: 1,
-                  visibility: activeTab === i ? 'visible' : 'hidden',
-                }}
-              >
-                {getTabContent(i)}
-              </div>
-            ))}
-          </div>
+        <div ref={mobileBodyRef} className="flex-1 overflow-auto px-3 py-4 md:p-5 overflow-x-hidden" style={{ minHeight: 0 }} data-cfg-mobile-body="">
+          {tabPanels}
         </div>
         {/* 저장 버튼 */}
         <div className="flex-none px-3 py-4 md:p-4 border-t line-color">

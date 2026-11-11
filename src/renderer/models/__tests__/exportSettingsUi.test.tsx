@@ -6,7 +6,8 @@ let mobile = false;
 jest.mock('..', () => ({ get isMobile() { return mobile; }, backend: { selectDir: async () => '/chosen' } }));
 jest.mock('../AppService', () => ({ appState: state }));
 jest.mock('../platform', () => ({ buildImageOptimizeOptions: () => [{ text: '원본', value: 'original' }, { text: 'WebP', value: 'lossy' }, ...(!mobile ? [{ text: '무손실', value: 'lossless' }] : []), { text: 'AVIF', value: 'avif' }] }));
-jest.mock('../../componenets/ModalOverlay', () => ({ children }: any) => <div>{children}</div>);
+// 슬롯(도구줄·왼쪽 목록·바닥줄 — 2026-11-11 오버레이 묶음 1)도 함께 그린다
+jest.mock('../../componenets/ModalOverlay', () => ({ children, toolbar, aside, footer, footerStart }: any) => <div>{toolbar}{aside}{children}{footerStart}{footer}</div>);
 jest.mock('../../componenets/UtilComponents', () => ({ DropdownSelect: ({ selectedOption, options, onSelect }: any) => <select value={selectedOption} onChange={(e) => onSelect({ value: e.target.value })}>{options.map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> }));
 import DirectExportDialog from '../../componenets/DirectExportDialog';
 import ExportPresetManager from '../../componenets/ExportPresetManager';
