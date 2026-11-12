@@ -34,15 +34,55 @@ const countMatches = (content: string, re: RegExp) =>
 // (id 는 영소문자·하이픈만이라 정규식 이스케이프가 필요 없다.)
 const TOOLBAR_IDS_RE = TOOLBAR_VIEW_MAIN.flatMap((a) => a.registry.map((b) => b.id)).join('|');
 
+// 주석 제거 스캐너(2026-11-12 H4 묶음 0) — 문자열('…'·"…"·`…`) 안의 `/*`·`//` 는 주석이 아니다.
+// 종전 정규식은 `'image/*'` 의 `/*` 를 블록 주석 시작으로 읽어 ArtistTagModal·InPaintEditor 의 그 뒤 수십 행을
+// 모든 규칙에서 빠뜨렸다. keepLines 면 주석 자리를 줄바꿈만 남겨 행 번호를 보존한다(locate 용).
+// 정규식 리터럴 안의 `//`·`/*` 는 구분하지 않는다(이스케이프 없이 쓰일 일이 사실상 없음).
+const stripCommentsImpl = (c: string, keepLines: boolean): string => {
+  let out = '';
+  let i = 0;
+  const n = c.length;
+  while (i < n) {
+    const ch = c[i];
+    const next = c[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < n && c[i] !== '\n') i++;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      const end = c.indexOf('*/', i + 2);
+      const stop = end < 0 ? n : end + 2;
+      if (keepLines) out += c.slice(i, stop).replace(/[^\n]/g, '');
+      i = stop;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      let j = i + 1;
+      while (j < n) {
+        if (c[j] === '\\') {
+          j += 2;
+          continue;
+        }
+        if (c[j] === ch) break;
+        if (ch !== '`' && c[j] === '\n') break;
+        j++;
+      }
+      const stop = Math.min(j + 1, n);
+      out += c.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+};
+
 // 주석을 뺀 코드(주석 속 금지어는 세지 않는 규칙용)
-const stripComments = (c: string) =>
-  c.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+const stripComments = (c: string) => stripCommentsImpl(c, false);
 
 // 행 번호를 보존하는 주석 제거(블록 주석은 줄바꿈만 남김) — locate 용
-const stripCommentsKeepLines = (c: string) =>
-  c
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ''))
-    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+const stripCommentsKeepLines = (c: string) => stripCommentsImpl(c, true);
 
 // 일치 위치의 행 번호(1부터) — 여러 줄에 걸친 일치는 시작 행
 const matchLines = (content: string, re: RegExp): number[] => {
@@ -494,7 +534,7 @@ const RULES: Rule[] = [
     // 오버레이 창 크기 체계(2026-11-11 묶음 0) — 새 ModalOverlay 는 size(s|m|l|xl|full) 등급만 쓴다.
     // 옛 width 폭 클래스·기본 max-w-xl·fullscreen 경로(= size 없는 호출)는 아래 allowlist 로 동결하고,
     // 묶음 1 이후 창별로 size 로 옮기며 건수를 내린다(늘리지 않는다).
-    // 2026-11-11 묶음 1: 19파일 27곳 → 16파일 23곳(씬 템플릿 관리 m·내보내기 프리셋 l/s·프롬프트조각 l/m·프로젝트 탐색 xl,
+    // 2026-11-11 묶음 1: 19파일 27곳 → 16파일 23곳 → 2026-11-12 묶음 0 스캐너 보정으로 17파일 24곳(ArtistTagModal 1 추가)(씬 템플릿 관리 m·내보내기 프리셋 l/s·프롬프트조각 l/m·프로젝트 탐색 xl,
     // 환경설정은 직접 만든 창이라 집계 밖이었고 PC 경로를 size l 로 흡수).
     name: 'ModalOverlay size 없는 호출(width 폭 클래스·기본값·fullscreen) — size 등급 사용',
     guide: '「오버레이 창 크기 체계」',
@@ -506,6 +546,7 @@ const RULES: Rule[] = [
     allow: {
       'componenets/App.tsx': 2, // 프로젝트 휴지통·씬 휴지통(프롬프트조각은 묶음 1 에서 PieceEditor 안 size l 로)
       'componenets/ArtistLibraryTab.tsx': 2, // 태그 프리셋 관리·작가 상세
+      'componenets/ArtistTagModal.tsx': 1, // 아티스트 태깅(2026-11-12 묶음 0: 스캐너가 'image/*' 를 주석으로 오인해 빠져 있던 1곳)
       'componenets/CharacterPresetEditor.tsx': 1, // 캐릭터 프리셋 관리
       'componenets/ConfigSyncSection.tsx': 1, // 환경설정 불러오기 미리보기
       'componenets/ConfigSystemTab.tsx': 1, // 축하 영상
@@ -553,6 +594,25 @@ describe('SPEC_GUIDE 가드 (하드코딩 신규 유입 차단)', () => {
       '>',
     ].join('\n');
     expect(modalOverlayWithoutSize(src)).toEqual([1, 3]);
+  });
+  test('주석 제거 스캐너 — 문자열 안의 /* 와 // 는 주석이 아니고, 진짜 주석은 행 번호를 보존하며 지운다', () => {
+    const src = [
+      "input.accept = 'image/*'; // 뒤 주석",
+      'const url = "https://x/y"; /* 블록',
+      '주석 */ keep();',
+      '<ModalOverlay isOpen onClose={() => close()} width="max-w-md">',
+      '<ModalOverlay /* size="m" 주석 */ isOpen>',
+    ].join('\n');
+    const kept = stripCommentsKeepLines(src);
+    expect(kept.split('\n')).toHaveLength(5);
+    expect(kept).toContain("'image/*'");
+    expect(kept).toContain('"https://x/y"');
+    expect(kept).not.toContain('뒤 주석');
+    expect(kept).not.toContain('블록');
+    expect(kept).toContain('keep();');
+    expect(stripComments(src)).not.toContain('블록');
+    // 종전 정규식이면 'image/*' 부터 '주석 */' 까지가 통째로 사라져 4행 호출을 세지 못했다
+    expect(modalOverlayWithoutSize(src)).toEqual([4, 5]);
   });
   test('include 규칙의 대상 파일이 실제로 있다(경로 오타로 조용히 통과하지 않게)', () => {
     for (const rule of RULES) {
