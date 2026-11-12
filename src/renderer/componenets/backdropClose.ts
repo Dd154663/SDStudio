@@ -43,18 +43,22 @@ export function confirmDiscardChanges(): Promise<boolean> {
 export function useGuardedClose(
   dirty: (() => boolean) | undefined,
   onClose: () => void,
-): () => void {
+): () => Promise<boolean> {
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const state = useRef<GuardedCloseState>({ pending: false });
-  return useCallback(() => {
-    void runGuardedClose(
-      state.current,
-      dirtyRef.current,
-      () => onCloseRef.current(),
-      confirmDiscardChanges,
-    );
-  }, []);
+  // 반환값 = 실제로 닫았는지(거절·중복 요청이면 false). 닫힌 뒤에만 이어서 할 일(예: 환경설정 → 편집 모드 진입)이
+  // 있는 호출부가 await 해서 쓴다. onClick 에 그대로 넘겨도 된다(2026-11-12 H3).
+  return useCallback(
+    () =>
+      runGuardedClose(
+        state.current,
+        dirtyRef.current,
+        () => onCloseRef.current(),
+        confirmDiscardChanges,
+      ),
+    [],
+  );
 }

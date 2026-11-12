@@ -42,7 +42,7 @@ import {
 } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
 import { useBackLayer } from '../models/BackStackService';
-import { useBackdropClose } from './backdropClose';
+import { useBackdropClose, useGuardedClose } from './backdropClose';
 import ModalOverlay, { scrollOverlayBodyToTop } from './ModalOverlay';
 import OpusUsageMeter, { OpusUsageHelp } from './OpusUsageMeter';
 import { useOpusUsage } from './OpusUsageBadge';
@@ -973,10 +973,15 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
 
   // Esc·Android 뒤로 가기로 닫기 — 닫기 관문(BackStackService) 한 항목. 이 화면은 열려 있을 때만 마운트된다.
   // 예전엔 window 캡처 Esc 리스너라 위에 뜬 확인 창·작업 로그와 함께 닫혔고, 뒤로 가기는 앱을 최소화했다
-  // (SPEC §5 위반). 미저장 배지는 닫기를 막지 않는다(의도 유지). 2026-10-03 U1·X2·X6.
+  // (SPEC §5 위반). 2026-10-03 U1·X2·X6.
+  // 미저장 가드(2026-11-12 H3 A안): ✕·바깥 클릭·Esc/뒤로 가기·PC 바닥 [닫기] 를 닫기 요청 하나(requestClose)로 모아
+  // 저장 안 된 변경(아래 dirty)이 있으면 「버리고 닫을까요?」 확인 뒤에만 닫는다 — 다른 초안 창과 같은 규칙(SPEC §5).
+  // dirty 는 이 아래에서 계산되지만 useGuardedClose 가 닫기 요청 때 늦게 읽으므로 그때의 최신 값이 쓰인다.
+  // [저장] 성공 뒤 닫기(onSave)는 가드를 거치지 않는다. 확인 창이 떠 있는 동안의 중복 요청은 훅이 무시한다.
+  const requestClose = useGuardedClose(() => dirty, onClose);
   // PC(2026-11-11 오버레이 묶음 1)는 공용 ModalOverlay 가 같은 닫기 관문·바깥 클릭을 맡으므로 모바일 직접 창만 단다.
-  useBackLayer(mobileMode, onClose);
-  const configBackdrop = useBackdropClose(onClose);
+  useBackLayer(mobileMode, requestClose);
+  const configBackdrop = useBackdropClose(requestClose);
 
   // 단축키 시스템에 ConfigScreen 열림 상태 전달
   useEffect(() => {
@@ -1251,7 +1256,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'toolbar':
         return <ToolbarTab {...{ uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton }} />;
       case 'layout':
-        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }} />;
+        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose: requestClose }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':
@@ -1343,7 +1348,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     </div>
   );
 
-  // 미저장 변경 표시 (#17) — 닫기를 막지 않는 안내 전용(✕·바깥 클릭·Esc 는 묻지 않고 닫힘 — 현행 유지, H3 결정 전).
+  // 미저장 변경 표시 (#17) — 배지는 안내, 닫기 확인은 위 requestClose 가 맡는다(2026-11-12 H3 A안).
   const dirtyBadgeClass =
     'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap shadow-sm bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-900/80 dark:text-amber-200 dark:border-amber-600';
   const dirtyBadgeContent = (
@@ -1354,13 +1359,15 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   );
 
   // PC(2026-11-11 오버레이 묶음 1): 공용 ModalOverlay 로 흡수 — 크기 등급 L(1000·고정 높이 min(85vh, 760)),
-  // 왼쪽 세로 탭(sideTabs, 아이콘+전체 라벨), 바닥줄 [저장][닫기](오른쪽)·미저장 배지(왼쪽 — 흐름 안이라 내용이 밀리지 않음).
-  // dirty 는 ModalOverlay 에 연결하지 않는다(미저장 확인 없이 닫힘 = 종전 의도 유지). 모바일은 아래 직접 창 그대로.
+  // 왼쪽 세로 탭(sideTabs, 아이콘+전체 라벨), 바닥줄 [저장][닫기](오른쪽)·미저장 배지(왼쪽 — 흐름 안이라 내용이 밀리지 않음)
+  // 바닥줄 두 버튼은 내보내기 프리셋 관리 바닥줄과 같은 규격(px-4 py-2 text-sm, 확정 = btn-solid-sky·취소 = btn-neutral) — 크기 불균형 수정 2026-11-12..
+  // 미저장 가드(2026-11-12 H3 A안): ModalOverlay 의 ✕·바깥 클릭·Esc 와 바닥 [닫기] 가 같은 requestClose 를 쓴다.
+  // ModalOverlay 에 dirty 는 넘기지 않는다(requestClose 가 이미 가드 — 넘기면 확인이 두 번 겹친다). 모바일은 아래 직접 창.
   if (!mobileMode) {
     return (
       <ModalOverlay
         isOpen={true}
-        onClose={onClose}
+        onClose={requestClose}
         title="환경설정"
         size="l"
         sideTabs={
@@ -1393,12 +1400,12 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
         }
         footer={
           <>
-            <button className="btn back-sky px-6 py-2 rounded-lg font-medium" onClick={handleSave}>
+            <button className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors" onClick={handleSave}>
               저장
             </button>
             <button
               className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
-              onClick={onClose}
+              onClick={requestClose}
             >
               닫기
             </button>
@@ -1427,7 +1434,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       >
         {/* 미저장 변경 표시 (#17) — 헤더 중앙 빈 공간 위 절대배치 오버레이.
             흐름에 끼우면 열릴 때마다 내용이 밀리므로 absolute + pointer-events-none 로
-            레이아웃·클릭에 영향 0. 닫기를 막지 않는 안내 전용. */}
+            레이아웃·클릭에 영향 0. 안내 전용 — 닫기 확인은 requestClose(2026-11-12 H3 A안). */}
         {dirty && (
           <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-10 pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap shadow-sm bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-900/80 dark:text-amber-200 dark:border-amber-600">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-300" />
@@ -1440,7 +1447,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
           <button
             className="p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors"
             aria-label="닫기"
-            onClick={onClose}
+            onClick={requestClose}
           >
             <FaTimes size={16} />
           </button>

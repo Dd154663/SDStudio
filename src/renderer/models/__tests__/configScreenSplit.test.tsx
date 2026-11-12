@@ -151,6 +151,7 @@ import ConfigScreen from '../../componenets/ConfigScreen';
 import { keyboardShortcutService } from '../KeyboardShortcutService';
 import { normalizeV2Parts } from '../mobileV2';
 import { withRequestDelaySettings } from '../requestTiming';
+import { backStackService } from '../BackStackService';
 
 const INITIAL_CONFIG = {
   saveLocation: '/data',
@@ -342,13 +343,14 @@ test('1-PC 창 틀: 등급 l, 왼쪽 세로 탭 슬롯에 8탭, 바닥줄 [저�
   // 2단 흐름 = 테마·시스템·커스텀만
   const twoCol = panels().map((p) => !!p.querySelector('[data-cfg-two-col]'));
   expect(PC_TABS.filter((_, i) => twoCol[i])).toEqual(['테마', '시스템', '커스텀']);
-  // [닫기] = 종전 ✕ 와 같이 묻지 않고 닫는다(미저장 가드 미연결 — H3 결정 전)
-  await click(input('cfgClassicScene'));
-  expect(dirty()).toBe(true);
-  expect(footer.contains(container.querySelector('[data-cfg-dirty-badge]'))).toBe(true);
+  // [닫기] = 변경이 없으면 묻지 않고 바로 닫는다(미저장 가드 — 2026-11-12 H3 A안, 변경 있을 때는 아래 1-c)
   await click(buttonByText(footer as HTMLElement, '닫기'));
   expect(onClose).toHaveBeenCalledTimes(1);
   expect(appState.confirmAsync).not.toHaveBeenCalled();
+  // 바꾸면 배지가 바닥줄 왼쪽에 뜬다
+  await click(input('cfgClassicScene'));
+  expect(dirty()).toBe(true);
+  expect(footer.contains(container.querySelector('[data-cfg-dirty-badge]'))).toBe(true);
 });
 
 test('1-모바일 창 틀: 직접 창(등급·세로 탭·바닥줄 슬롯 없음, h1 머리, 최대 90vh) 그대로', async () => {
@@ -358,6 +360,133 @@ test('1-모바일 창 틀: 직접 창(등급·세로 탭·바닥줄 슬롯 없�
   expect(container.querySelector('h1')?.textContent).toBe('환경설정');
   expect(container.querySelector('.max-h-\\[90vh\\]')).not.toBeNull();
   expect(container.querySelector('[data-cfg-two-col]')).toBeNull();
+});
+
+// ─── 1-c. 미저장 가드(2026-11-12 H3 A안): ✕·바닥 [닫기]·바깥 클릭·뒤로 가기 = 같은 닫기 요청, [저장] 뒤엔 묻지 않음 ───
+
+const DISCARD_TEXT = '저장하지 않은 변경이 있습니다. 버리고 닫을까요?';
+const closeX = () => container.querySelector<HTMLButtonElement>('button[aria-label="닫기"]')!;
+const pcFooterClose = () =>
+  buttonByText(container.querySelector('[data-modal-slot="footer"]') as HTMLElement, '닫기');
+// 변경 하나 만들기(커스텀 탭 「클래식 씬 카드」 토글 — PC·모바일 공통)
+async function makeDirty() {
+  await click(input('cfgClassicScene'));
+  expect(dirty()).toBe(true);
+}
+const backPress = () => act(async () => backStackService.handleBack());
+
+test.each([
+  ['PC [닫기]', false, pcFooterClose],
+  ['PC ✕', false, closeX],
+  ['모바일 ✕', true, closeX],
+] as const)('1-c %s: 변경이 있으면 확인을 묻고, 거절하면 닫지 않고 승인하면 한 번 닫는다', async (_n, mobile, target) => {
+  await open(mobile);
+  await makeDirty();
+  appState.confirmAsync.mockImplementationOnce(async () => false);
+  await click(target());
+  expect(appState.confirmAsync).toHaveBeenCalledTimes(1);
+  expect(appState.confirmAsync.mock.calls[0][0]).toBe(DISCARD_TEXT);
+  expect(onClose).not.toHaveBeenCalled();
+  expect(dirty()).toBe(true);
+  // 승인(기본 모킹 = true)
+  await click(target());
+  expect(appState.confirmAsync).toHaveBeenCalledTimes(2);
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+test.each([['PC', false], ['모바일', true]] as const)('1-c %s 뒤로 가기(backStack 최상위): 변경이 있으면 같은 확인을 거친다', async (_n, mobile) => {
+  await open(mobile);
+  // 변경 없을 때는 묻지 않고 닫는다
+  await backPress();
+  await flush();
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(appState.confirmAsync).not.toHaveBeenCalled();
+  onClose.mockClear();
+  await makeDirty();
+  appState.confirmAsync.mockImplementationOnce(async () => false);
+  await backPress();
+  await flush();
+  expect(appState.confirmAsync).toHaveBeenCalledTimes(1);
+  expect(appState.confirmAsync.mock.calls[0][0]).toBe(DISCARD_TEXT);
+  expect(onClose).not.toHaveBeenCalled();
+  await backPress();
+  await flush();
+  expect(appState.confirmAsync).toHaveBeenCalledTimes(2);
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+test('1-c 모바일 바깥 클릭: 변경이 있으면 확인 뒤에만 닫는다', async () => {
+  await open(true);
+  await makeDirty();
+  const backdrop = container.firstElementChild as HTMLElement;
+  appState.confirmAsync.mockImplementationOnce(async () => false);
+  await act(async () => {
+    backdrop.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    backdrop.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await flush();
+  expect(appState.confirmAsync).toHaveBeenCalledTimes(1);
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+test('1-c PC 레이아웃 탭 「화면에서 직접 편집」: 같은 가드를 거쳐 실제로 닫혔을 때만 편집 모드로 들어간다', async () => {
+  await open(false);
+  await selectTab('레이아웃');
+  const editBtn = () =>
+    Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((b) =>
+      (b.textContent ?? '').includes('화면에서 직접 편집'),
+    )!;
+  // 변경 없음 → 묻지 않고 닫히며 편집 모드
+  await click(editBtn());
+  await flush();
+  expect(appState.confirmAsync).not.toHaveBeenCalled();
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(appState.editMode).toBe(true);
+  appState.editMode = false;
+  onClose.mockClear();
+  // 변경 있음 + 거절 → 창도 변경도 남고 편집 모드 아님
+  await makeDirty();
+  appState.confirmAsync.mockImplementationOnce(async () => false);
+  await click(editBtn());
+  await flush();
+  expect(appState.confirmAsync).toHaveBeenCalledTimes(1);
+  expect(appState.confirmAsync.mock.calls[0][0]).toBe(DISCARD_TEXT);
+  expect(onClose).not.toHaveBeenCalled();
+  expect(appState.editMode).toBe(false);
+  expect(dirty()).toBe(true);
+  // 승인 → 닫히고 편집 모드
+  await click(editBtn());
+  await flush();
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(appState.editMode).toBe(true);
+});
+
+test('1-c 확인 창이 떠 있는 동안 들어온 닫기 요청은 무시한다', async () => {
+  await open(false);
+  await makeDirty();
+  let resolve!: (v: boolean) => void;
+  appState.confirmAsync.mockImplementationOnce(() => new Promise<boolean>((r) => (resolve = r)));
+  await click(pcFooterClose());
+  await click(closeX());
+  await click(pcFooterClose());
+  expect(appState.confirmAsync).toHaveBeenCalledTimes(1);
+  await act(async () => resolve(true));
+  await flush();
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+test.each([['PC', false], ['모바일', true]] as const)('1-c %s [저장]: 변경 뒤 저장하면 묻지 않고 onSave 로 닫는다', async (_n, mobile) => {
+  await open(mobile);
+  await makeDirty();
+  await save();
+  expect(onSave).toHaveBeenCalledTimes(1);
+  expect(appState.confirmAsync).not.toHaveBeenCalled();
+  expect(onClose).not.toHaveBeenCalled();
+  // 저장 뒤에는 기준값이 갱신돼 배지가 사라지고, 닫기도 묻지 않는다
+  expect(dirty()).toBe(false);
+  await click(closeX());
+  expect(appState.confirmAsync).not.toHaveBeenCalled();
+  expect(onClose).toHaveBeenCalledTimes(1);
 });
 
 // ─── 2. 탭별 대표 문구 · 마운트 방식 ───

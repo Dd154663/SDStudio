@@ -349,11 +349,11 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
       <button
         type="button"
         disabled={mobileMode}
-        onClick={() => {
+        onClick={async () => {
           if (mobileMode) return;
-          appState.editMode = true;
-          // 기존 닫기 경로(onClose)를 그대로 태운다.
-          onClose();
+          // 닫기 요청(미저장 가드 포함, 2026-11-12 H3)을 태우고, 실제로 닫혔을 때만 편집 모드로 들어간다.
+          // 거절하면 창과 저장 안 된 변경이 그대로 남는다.
+          if (await onClose()) appState.editMode = true;
         }}
         className={
           'flex w-full items-center gap-3 rounded-md r-card border p-2.5 text-left clickable line-color ' +
