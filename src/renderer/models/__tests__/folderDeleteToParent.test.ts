@@ -44,7 +44,6 @@ jest.mock('../AppService', () => ({
 jest.mock('../appStateRef', () => ({
   getAppState: () => require('../AppService').appState,
 }));
-jest.mock('../../defaultassets', () => ({ __esModule: true, default: [] }));
 
 import { SessionService } from '../SessionService';
 import { setWorkspaceLayoutActive } from '../storageLayout';

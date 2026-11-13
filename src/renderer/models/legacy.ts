@@ -2,8 +2,6 @@ import { v4 } from 'uuid';
 import { backend, imageService, sessionService } from '.';
 import { dataUriToBase64 } from './ImageService';
 import ExifReader from 'exifreader';
-import defaultassets from '../defaultassets';
-import extractChunks from 'png-chunks-extract';
 import {
   IInpaintScene,
   IPieceLibrary,
@@ -13,68 +11,10 @@ import {
   IVibeItem,
   Round,
 } from './types';
-import { Buffer } from 'buffer';
 import { appState } from './AppService';
 import { projectPath } from './projectPaths';
 
 export const defaultUC = `worst quality, bad quality, displeasing, very displeasing, lowres, bad anatomy, bad perspective, bad proportions, bad aspect ratio, bad face, long face, bad teeth, bad neck, long neck, bad arm, bad hands, bad ass, bad leg, bad feet, bad reflection, bad shadow, bad link, bad source, wrong hand, wrong feet, missing limb, missing eye, missing tooth, missing ear, missing finger, extra faces, extra eyes, extra eyebrows, extra mouth, extra tongue, extra teeth, extra ears, extra breasts, extra arms, extra hands, extra legs, extra digits, fewer digits, cropped head, cropped torso, cropped shoulders, cropped arms, cropped legs, mutation, deformed, disfigured, unfinished, chromatic aberration, text, error, jpeg artifacts, watermark, scan, scan artifacts`;
-
-function readJSONFromPNG(base64PNG: string) {
-  const buffer = Buffer.from(base64PNG, 'base64');
-  // buffer 폴리필의 Buffer 는 Uint8Array 서브클래스 — 제네릭 표기 차이만 있어 캐스트
-  const chunks = extractChunks(buffer as unknown as Uint8Array);
-  const jsonChunk = chunks.find((chunk) => chunk.name === 'tEXt');
-  if (jsonChunk) {
-    let base64JsonData = Buffer.from(jsonChunk.data).toString();
-    const startIndex = base64JsonData.indexOf('json:') + 5;
-    base64JsonData = base64JsonData.slice(startIndex);
-    const jsonData = JSON.parse(
-      Buffer.from(base64JsonData, 'base64').toString(),
-    );
-    return jsonData;
-  } else {
-    throw new Error('No JSON data found in the PNG.');
-  }
-}
-
-async function importStyle(session: any, base64: string) {
-  const json = readJSONFromPNG(base64);
-  if (!json.profile) {
-    return undefined;
-  }
-  const preset: any = json;
-  const path = imageService.getVibesDir(session!) + '/' + v4() + '.png';
-  await backend.writeDataFile(path, base64);
-  preset.profile = path.split('/').pop()!;
-  const presets = session.presets.filter((p: any) => p.type === 'style');
-  let cnt = '';
-  while (presets.find((p: any) => p.name === preset.name + cnt)) {
-    cnt = cnt === '' ? '1' : (parseInt(cnt) + 1).toString();
-  }
-  preset.name = preset.name + cnt;
-  session.presets.push(preset);
-  session.presetMode = 'style';
-  return preset;
-}
-
-function blobToDataUri(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = (e) => reject(e);
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function importDefaultPresets(session: any) {
-  const images = await Promise.all(
-    defaultassets.map((x) => fetch(x).then((res) => res.blob())),
-  );
-  for (const image of images) {
-    const datauri = await blobToDataUri(image);
-    await importStyle(session, dataUriToBase64(datauri));
-  }
-}
 
 function getInpaintOrgPath(session: any, inpaint: any) {
   return projectPath('inpaint_orgs', session.name, inpaint.name + '.png');
@@ -175,7 +115,6 @@ async function migrateSessionLegacy(session: any) {
       newPresets.push(v);
     }
     session.presets = newPresets as any;
-    await importDefaultPresets(session);
     session.presetMode = 'preset';
   }
 
