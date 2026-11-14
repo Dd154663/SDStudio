@@ -1,8 +1,6 @@
 /**
  * PNG 텍스트 청크 이관(2026-10-04 Focused inpainting S1) — 파싱·인코딩 왕복·CRC·NAI 메타 이관.
  */
-import * as fs from 'fs';
-import * as path from 'path';
 import extractChunks from 'png-chunks-extract';
 import * as PngChunk from 'png-chunk-text';
 import {
@@ -16,26 +14,30 @@ import {
   transferTextChunks,
 } from '../pngTextChunks';
 
-// NAI 생성 PNG(tEXt: Title·Description·Software·Source·Generation time·Comment 등)
-const NAI_PNG = new Uint8Array(
-  fs.readFileSync(path.join(__dirname, '../../defaultassets/anime.png')),
-);
-
 function tinyPng(extra: { type: string; data: Uint8Array }[] = []) {
   const ihdr = new Uint8Array([0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0]);
   return encodePngChunks([
     { type: 'IHDR', data: ihdr },
     ...extra,
-    { type: 'IDAT', data: new Uint8Array([1, 2, 3]) },
+    { type: 'IDAT', data: new Uint8Array([120, 156, 99, 96, 96, 96, 248, 15, 0, 1, 4, 1, 0]) },
     { type: 'IEND', data: new Uint8Array(0) },
   ]);
 }
+
+// A one-pixel PNG with representative NovelAI text keys.
+const NAI_PNG = tinyPng([
+  makeTextChunk('Title', 'Synthetic test image'),
+  makeTextChunk('Description', 'landscape'),
+  makeTextChunk('Software', 'NovelAI'),
+  makeTextChunk('Source', 'NovelAI Diffusion'),
+  makeTextChunk('Comment', JSON.stringify({ prompt: 'landscape', seed: 42 })),
+]);
 
 test('CRC-32 는 PNG 표준 값', () => {
   expect(crc32(new Uint8Array(Buffer.from('IEND', 'latin1')))).toBe(0xae426082);
 });
 
-test('실제 NAI PNG 를 파싱·재인코딩하면 바이트가 같다', () => {
+test('메타데이터가 담긴 PNG 를 파싱·재인코딩하면 바이트가 같다', () => {
   const chunks = parsePngChunks(NAI_PNG);
   expect(chunks[0].type).toBe('IHDR');
   expect(chunks[chunks.length - 1].type).toBe('IEND');
@@ -65,7 +67,7 @@ test('다른 PNG 로 이관 — IEND 앞·순서 유지·외부 파서(CRC 검�
     .map((c: any) => PngChunk.decode(c.data));
   expect(outTexts).toEqual(srcTexts);
   // IDAT 은 그대로
-  expect(parsed.find((c: any) => c.name === 'IDAT')!.data).toEqual(new Uint8Array([1, 2, 3]));
+  expect(parsed.find((c: any) => c.name === 'IDAT')!.data).toEqual(parsePngChunks(target).find((chunk) => chunk.type === 'IDAT')!.data);
   // 이관 뒤 텍스트가 IDAT 보다 뒤(IEND 바로 앞)
   const names = parsed.map((c: any) => c.name);
   expect(names.indexOf('tEXt')).toBeGreaterThan(names.indexOf('IDAT'));

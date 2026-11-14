@@ -34,7 +34,6 @@ jest.mock('../appStateRef', () => ({
 }));
 
 // 생성자의 기본 프리셋 fetch 차단(sessionGuard.test.ts 와 같은 관례)
-jest.mock('../../defaultassets', () => ({ __esModule: true, default: [] }));
 
 import { SessionService } from '../SessionService';
 
