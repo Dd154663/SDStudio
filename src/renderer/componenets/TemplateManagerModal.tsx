@@ -18,7 +18,7 @@ import PromptEditTextArea from './PromptEditTextArea';
 import { CharacterPresetInnerEditor } from './CharacterPresetInnerEditor';
 import { PresetImageBackend, VibeImage } from './CharacterPresetCards';
 import { BatchCreatePanel } from './BatchCreateModal';
-import { GlobalVibeImage } from './GlobalPresetTab';
+import { GlobalPresetPicker } from './GlobalPresetPicker';
 import { EditableSliderValue } from './VibeEditor';
 import { FileUploadBase64 } from './UtilComponents';
 import {
@@ -74,70 +74,6 @@ const numCls =
   'mt-1 w-full px-2 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default';
 // 캐릭터 프롬프트 번호 마커 팔레트 (메인 화면 CharacterPromptEditor 와 동일)
 const charColors = ['#38bdf8', '#f472b6', '#a78bfa', '#fb923c', '#4ade80', '#facc15', '#f87171', '#94a3b8'];
-
-// ===== 글로벌 프리셋 카드 선택 모달 =====
-//
-// 프롬프트 영역 "불러오기"의 글로벌 소스 선택 — 텍스트 목록 대신 대표 이미지
-// 포함 카드 그리드로 고른다 (GlobalPresetTab 카드의 이미지+이름+타입 구성 재사용).
-const GlobalPresetPickerModal = observer(
-  ({
-    isOpen,
-    onClose,
-    onPick,
-  }: {
-    isOpen: boolean;
-    onClose: () => void;
-    onPick: (globalId: string) => void;
-  }) => {
-    useEffect(() => {
-      if (!isOpen) return;
-      if (!globalPresetService.loaded) globalPresetService.load();
-    }, [isOpen]);
-    const presets = globalPresetService.presets;
-    return (
-      <ModalOverlay
-        isOpen={isOpen}
-        onClose={onClose}
-        title="글로벌 프리셋에서 복사"
-        width="max-w-3xl"
-      >
-        <div className="flex flex-col gap-3">
-          <p className="text-sm text-muted">
-            선택한 프리셋의 프롬프트·샘플링 설정을 이 템플릿에 1회 덮어씁니다.
-          </p>
-          {presets.length === 0 ? (
-            <div className="text-sm text-default py-6 text-center">
-              글로벌 프리셋이 없습니다.
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto pr-1">
-              {presets.map((p) => (
-                <button
-                  key={p.id}
-                  className="btn rounded-lg overflow-hidden border-2 line-color hover:border-sky-500 flex flex-col text-left bg-[var(--c-surface-2)]"
-                  onClick={() => onPick(p.id)}
-                >
-                  <GlobalVibeImage
-                    profile={p.profile}
-                    className="w-full aspect-[3/4] object-cover"
-                  />
-                  <div className="px-2 py-1.5 w-full">
-                    <div className="text-sm text-default truncate">
-                      {p.name}
-                    </div>
-                    <div className="text-xs text-faint truncate">
-                      {p.workflowType}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </ModalOverlay>
-    );
-  },
-);
 
 // ===== 템플릿 워크플로우 편집기 (프롬프트/캐릭터/씬 3영역 + [저장]) =====
 //
@@ -1319,11 +1255,16 @@ export const TemplateWorkflowEditor = observer(
             );
           })()
         )}
+        {/* 글로벌 프리셋 카드 선택 — 공용 고르기 창(size xl·검색·정렬, 2026-11-14 M3). 고르면 덮어쓰기 확인 후
+            기존 importGlobalPreset 흐름(pickGlobalPreset) 그대로 */}
         {globalPickerOpen && (
-          <GlobalPresetPickerModal
+          <GlobalPresetPicker
             isOpen={globalPickerOpen}
             onClose={() => setGlobalPickerOpen(false)}
             onPick={pickGlobalPreset}
+            title="글로벌 프리셋에서 복사"
+            description="선택한 프리셋의 프롬프트·샘플링 설정을 이 템플릿에 1회 덮어씁니다."
+            danger
           />
         )}
       </>

@@ -541,6 +541,7 @@ const RULES: Rule[] = [
     // 17파일 24곳(실제 합계 23곳 — 종전 주석이 1 많았음) → 10파일 12곳.
     // 2026-11-14 묶음 B(프로젝트 휴지통·씬 휴지통 m — 창은 각 보기가 직접 그림, 저장 공간 관리 m·직접 내보내기 설정 m·
     // 사전 세팅 일괄 삭제 m): 10파일 12곳 → 6파일 7곳.
+    // 2026-11-14 M3(글로벌 프리셋 고르기 2창 → 공용 GlobalPresetPicker size xl): 6파일 7곳 → 6파일 6곳.
     name: 'ModalOverlay size 없는 호출(width 폭 클래스·기본값·fullscreen) — size 등급 사용',
     guide: '「오버레이 창 크기 체계」',
     dir: '',
@@ -553,7 +554,7 @@ const RULES: Rule[] = [
       'componenets/QuickMenu.tsx': 1, // 퀵 메뉴(모바일)
       'componenets/SceneQuickPromptModal.tsx': 1, // 중간 프롬프트 가운데 폴백(모바일)
       'componenets/TemplateInheritModals.tsx': 1, // 폴더 기본 템플릿(묶음 C — 템플릿 적용은 묶음 A 에서 size s)
-      'componenets/TemplateManagerModal.tsx': 2, // 글로벌 프리셋에서 복사·템플릿 관리
+      'componenets/TemplateManagerModal.tsx': 1, // 템플릿 관리(글로벌 프리셋에서 복사는 2026-11-14 M3 공용 고르기 창 xl)
       'componenets/ToolbarOverflowMenu.tsx': 1, // ⋯ 메뉴(모바일)
     },
   },

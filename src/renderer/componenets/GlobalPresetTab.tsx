@@ -4,7 +4,6 @@ import { observer } from 'mobx-react-lite';
 import { Buffer } from 'buffer';
 import {
   FaTrash,
-  FaTimes,
   FaCheckSquare,
   FaSquare,
   FaFileArchive,
@@ -31,8 +30,8 @@ import {
 } from '../models/deleteFlowRules';
 import Tooltip from './Tooltip';
 import { PresetEditModal } from './PresetEditModal';
-import { useBackLayer } from '../models/BackStackService';
-import { useBackdropClose } from './backdropClose';
+import { filterSortGlobalPresets, GlobalPresetSortBy } from '../models/globalPresetListView';
+import { GlobalPresetPicker } from './GlobalPresetPicker';
 import { beginPresetListRecord } from '../models/presetUndo';
 import { UNDO_TEXT } from '../models/undoService';
 import {
@@ -420,7 +419,7 @@ export const GlobalPresetTab = observer(() => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // 통합: 이지/일반 구분 없이 하나의 라이브러리 + 검색/정렬
   const [query, setQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'recent' | 'name' | 'default'>('recent');
+  const [sortBy, setSortBy] = useState<GlobalPresetSortBy>('recent');
   const [editing, setEditing] = useState<IGlobalPresetEntry | null>(null);
 
   const allPresets = globalPresetService.list();
@@ -642,22 +641,8 @@ export const GlobalPresetTab = observer(() => {
 
   const total = allPresets.length;
   const q = query.trim().toLowerCase();
-  let visible = q
-    ? allPresets.filter((p) => p.name.toLowerCase().includes(q))
-    : allPresets.slice();
-  visible = [...visible].sort((a, b) => {
-    if (sortBy === 'name')
-      return a.name.localeCompare(b.name, undefined, {
-        numeric: true,
-        sensitivity: 'base',
-      });
-    if (sortBy === 'default')
-      return (
-        (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0) ||
-        (b.updatedAt || 0) - (a.updatedAt || 0)
-      );
-    return (b.updatedAt || 0) - (a.updatedAt || 0); // recent
-  });
+  // 검색·정렬 규칙 단일 출처 — 공용 고르기 창(GlobalPresetPicker)과 같다
+  const visible = filterSortGlobalPresets(allPresets, query, sortBy);
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-[var(--c-surface)]">
@@ -923,74 +908,29 @@ export const GlobalPresetTab = observer(() => {
 /**
  * 현재 세션으로 가져오기 위한 글로벌 프리셋 선택 다이얼로그.
  * appState.globalPresetPicker가 설정되면 App.tsx에서 렌더링.
+ * 창 본체는 공용 GlobalPresetPicker(size xl·검색·정렬 — 2026-11-14 M3). Esc·뒤로 가기·바깥 클릭·모달 카운터는
+ * ModalOverlay 가 맡는다.
  */
 export const GlobalPresetPickerOverlay = observer(() => {
   const picker = appState.globalPresetPicker;
-  // Esc·Android 뒤로 가기로 닫기(SPEC §5), 바깥 클릭은 누름·뗌 모두 배경일 때만(2026-10-03 U1·X6)
-  const closePicker = () => appState.closeGlobalPresetPicker();
-  useBackLayer(!!picker, closePicker);
-  const pickerBackdrop = useBackdropClose(closePicker);
   if (!picker) return null;
   // 통합: 전체 글로벌 프리셋을 보여주고, 선택 시 현재 모드로 자동 변환해 적용한다.
-  const entries = globalPresetService.list();
   const displayName =
     picker.workflowType === 'SDImageGenEasy' ? '그림체 (이지모드)' : '그림체';
 
   return (
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[var(--z-modal)]"
-      {...pickerBackdrop}
-    >
-      <div
-        className="bg-[var(--c-zone)] rounded-lg r-modal p-6 max-w-5xl w-11/12 max-h-[85vh] flex flex-col shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-default">
-            글로벌 프리셋을 프로젝트로 복사 <span className="text-sm font-normal text-muted">(→ {displayName}로 적용)</span>
-          </h2>
-          <button
-            className="icon-button p-2 text-default"
-            aria-label="닫기"
-            onClick={() => appState.closeGlobalPresetPicker()}
-          >
-            <FaTimes size={20} />
-          </button>
-        </div>
-        <div className="flex-1 overflow-auto">
-          {entries.length === 0 ? (
-            <div className="text-center text-muted p-8 text-lg">
-              저장된 글로벌 프리셋이 없습니다.
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-4">
-              {entries.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="relative flex-none cursor-pointer hover:brightness-95 active:brightness-90 border-2 line-color rounded-lg overflow-hidden"
-                  onClick={() => picker.onSelect(entry.id)}
-                >
-                  <GlobalVibeImage
-                    profile={entry.profile}
-                    className="w-48 h-64 object-cover"
-                  />
-                  <div
-                    className="absolute bottom-0 right-0 bg-gray-700/80 text-sm text-white px-2 py-1 rounded-xl m-2 truncate"
-                    style={{ maxWidth: '90%' }}
-                  >
-                    {entry.name}
-                  </div>
-                  {entry.isDefault && (
-                    <div className="absolute top-2 left-2 bg-orange-500 text-white rounded-full p-2 shadow-lg">
-                      <ActionIcon id="pin-default" size={14} />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+    <GlobalPresetPicker
+      isOpen
+      onClose={() => appState.closeGlobalPresetPicker()}
+      onPick={(id) => picker.onSelect(id)}
+      title={
+        <>
+          글로벌 프리셋을 프로젝트로 복사{' '}
+          <span className="text-sm font-normal text-muted">
+            (→ {displayName}로 적용)
+          </span>
+        </>
+      }
+    />
   );
 });
