@@ -22,7 +22,6 @@ import type { TemplateProtectArea } from './TemplateService';
 import type { ProjectSidecarSnapshot } from './TrashService';
 import { getAppState } from './appStateRef';
 import { FileEntry } from '../backend';
-import defaultassets from '../defaultassets';
 import { dataUriToBase64 } from './ImageService';
 import { defaultUC } from './PromptService';
 import { ResourceSyncService } from './ResourceSyncService';
@@ -2974,7 +2973,6 @@ export class SessionService extends ResourceSyncService<Session> {
 export async function importDefaultPresets(session: Session) {
   // 글로벌 프리셋 서비스에서 "기본" 플래그 지정된 것들을 먼저 시도
   // 순환 임포트 방지를 위해 동적 import 사용
-  let hadGlobalDefaults = false;
   try {
     if (globalPresetService) {
       if (!globalPresetService.loaded) {
@@ -2985,7 +2983,6 @@ export async function importDefaultPresets(session: Session) {
       for (const entry of [...easyDefaults, ...genDefaults]) {
         try {
           await globalPresetService.instantiateIntoSession(session, entry.id);
-          hadGlobalDefaults = true;
         } catch (e) {
           console.warn(
             'Failed to instantiate global default preset:',
@@ -2998,32 +2995,6 @@ export async function importDefaultPresets(session: Session) {
   } catch (e) {
     console.warn('GlobalPresetService unavailable during session init:', e);
   }
-
-  // Fallback: SDImageGenEasy 프리셋이 비어있으면 기존 defaultassets 시드
-  // (신규 설치 첫 실행 UX 보존)
-  const hasEasyPresets =
-    session.presets.has('SDImageGenEasy') &&
-    session.presets.get('SDImageGenEasy')!.length > 0;
-  if (!hasEasyPresets) {
-    if (!session.presets.has('SDImageGenEasy')) {
-      session.presets.set('SDImageGenEasy', []);
-    }
-    const images = await Promise.all(
-      defaultassets.map((x) => fetch(x).then((res) => res.blob())),
-    );
-    for (const image of images) {
-      const datauri = await blobToDataUri(image);
-      await importPreset(session, dataUriToBase64(datauri));
-    }
-  }
-}
-function blobToDataUri(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = (e) => reject(e);
-    reader.readAsDataURL(blob);
-  });
 }
 
 export function embedJSONInPNG(inputBase64: string, jsonData: any) {

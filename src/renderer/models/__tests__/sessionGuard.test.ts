@@ -32,9 +32,6 @@ jest.mock('../appStateRef', () => ({
   getAppState: () => require('../AppService').appState,
 }));
 
-// 생성자가 비동기로 createDefault → importDefaultPresets(fetch) 를 호출하는데
-// jsdom 엔 fetch 가 없어 크래시한다. 기본 에셋을 빈 배열로 만들어 fetch 경로 차단.
-jest.mock('../../defaultassets', () => ({ __esModule: true, default: [] }));
 
 import { SessionService } from '../SessionService';
 import { appState } from '../AppService';
