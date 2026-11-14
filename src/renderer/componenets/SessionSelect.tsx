@@ -5,6 +5,7 @@ import {
   FaChevronUp, FaEllipsisH, FaUserAlt, FaTimes, FaBars, FaChevronDown, FaEye } from 'react-icons/fa';
 import { pushRecentProject } from './ProjectBrowser';
 import Tooltip from './Tooltip';
+import ModalOverlay from './ModalOverlay';
 import { sessionService, backend, zipService, trashService, isMobile, templateService } from '../models';
 import { appState } from '../models/AppService';
 import { useBackLayer } from '../models/BackStackService';
@@ -32,7 +33,7 @@ import { portableToolbarButtons } from './PortableToolbarButtons';
 import { useProjectBarStage } from './useProjectBarStage';
 import {
   EMPTY_TRASH_EXTRA,
-  TrashList,
+  useTrashListPanel,
   TrashNameBadge,
   formatTrashDate,
   reportEmptyResult,
@@ -49,8 +50,9 @@ import {
 import { projectNameRules, promptName } from '../models/nameInput';
 
 // ===== ProjectTrashView 컴포넌트 (씬 휴지통 SceneTrashView 패턴 재사용) =====
-// 전역 오버레이(App.tsx)에서 마운트 — appState.projectTrashOpen 호스트가 사용한다.
-export function ProjectTrashView() {
+// 전역 오버레이 — App.tsx 가 appState.projectTrashOpen 일 때만 마운트하고, 창(ModalOverlay size m·toolbar)은
+// 이 컴포넌트가 직접 그린다(2026-11-14 오버레이 묶음 B — 머리 줄은 useTrashListPanel 의 toolbar 슬롯).
+export function ProjectTrashView({ onClose }: { onClose: () => void }) {
   // dir = 신 배치 휴지통 폴더(동명 구분용 내부 식별자 — 화면에 내지 않는다, S2)
   const [deletedProjects, setDeletedProjects] = useState<
     { name: string; deletedAt: number; dir?: string }[]
@@ -191,29 +193,33 @@ export function ProjectTrashView() {
     });
   };
 
-  // 목록 표시는 씬 휴지통과 같은 TrashList(2026-10-02 T1 — 개수 제한 없음·개수/모두 비우기 머리 줄 고정).
+  // 목록 표시는 씬 휴지통과 같은 공용 패널(2026-10-02 T1 — 개수 제한 없음·개수/모두 비우기 머리 줄 고정,
+  // 2026-11-14 묶음 B — 머리 줄은 도구줄 슬롯).
+  const { toolbar, body } = useTrashListPanel({
+    loading,
+    notice: trashNoticeText('project'),
+    rows: deletedProjects.map((item) => ({
+      key: rowKey(item),
+      // 같은 이름이 여럿이면 강조 색 (2)(3) 접미사로 구분(내부 폴더 id 는 숨김, S2)
+      title: (
+        <>
+          📁 {item.name}
+          <TrashNameBadge
+            text={trashDuplicateSuffix(ordinals.get(rowKey(item))).trim()}
+            tone="orange"
+          />
+        </>
+      ),
+      subtitle: `삭제일 · ${formatTrashDate(item.deletedAt)}`,
+    })),
+    onRestore: handleRestore,
+    onPermanentDelete: handlePermanentDelete,
+    onEmptyAll: handleEmptyAll,
+  });
   return (
-    <TrashList
-      loading={loading}
-      notice={trashNoticeText('project')}
-      rows={deletedProjects.map((item) => ({
-        key: rowKey(item),
-        // 같은 이름이 여럿이면 강조 색 (2)(3) 접미사로 구분(내부 폴더 id 는 숨김, S2)
-        title: (
-          <>
-            📁 {item.name}
-            <TrashNameBadge
-              text={trashDuplicateSuffix(ordinals.get(rowKey(item))).trim()}
-              tone="orange"
-            />
-          </>
-        ),
-        subtitle: `삭제일 · ${formatTrashDate(item.deletedAt)}`,
-      }))}
-      onRestore={handleRestore}
-      onPermanentDelete={handlePermanentDelete}
-      onEmptyAll={handleEmptyAll}
-    />
+    <ModalOverlay isOpen onClose={onClose} title="🗑️ 프로젝트 휴지통" size="m" toolbar={toolbar}>
+      {body}
+    </ModalOverlay>
   );
 }
 

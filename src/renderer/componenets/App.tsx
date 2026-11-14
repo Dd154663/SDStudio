@@ -54,7 +54,6 @@ import { observer, useObserver } from 'mobx-react-lite';
 import { FaGlobe, FaImages, FaPenFancy, FaPalette, FaBolt } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
 import { GlobalPresetTab, GlobalPresetPickerOverlay } from './GlobalPresetTab';
-import ModalOverlay from './ModalOverlay';
 import { ProjectTrashView } from './SessionSelect';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -1014,25 +1013,19 @@ export const App = observer(() => {
         )}
         <FindReplaceDialog />
         <BatchInsertDialog />
-        <ModalOverlay
-          isOpen={appState.projectTrashOpen}
-          onClose={() => appState.closeProjectTrash()}
-          title="🗑️ 프로젝트 휴지통"
-        >
-          <ProjectTrashView />
-        </ModalOverlay>
-        {/* 씬 휴지통·아티스트 태깅 — B군 승격(퀵 메뉴 P2) 전역 오버레이 호스트 */}
-        <ModalOverlay
-          isOpen={appState.sceneTrashOpen && !!appState.curSession}
-          onClose={() => {
-            appState.sceneTrashOpen = false;
-          }}
-          title="🗑️ 씬 휴지통"
-        >
-          {appState.curSession && (
-            <SceneTrashView projectName={appState.curSession.name} />
-          )}
-        </ModalOverlay>
+        {/* 프로젝트 휴지통·씬 휴지통 — 창(ModalOverlay size m·도구줄)은 각 보기가 직접 그린다(2026-11-14 오버레이 묶음 B).
+            열려 있을 때만 마운트(종전과 같음). 씬 휴지통·아티스트 태깅 — B군 승격(퀵 메뉴 P2) 전역 오버레이 호스트 */}
+        {appState.projectTrashOpen && (
+          <ProjectTrashView onClose={() => appState.closeProjectTrash()} />
+        )}
+        {appState.sceneTrashOpen && appState.curSession && (
+          <SceneTrashView
+            projectName={appState.curSession.name}
+            onClose={() => {
+              appState.sceneTrashOpen = false;
+            }}
+          />
+        )}
         {appState.artistTagOpen && (
           <ArtistTagModal
             isOpen={appState.artistTagOpen}

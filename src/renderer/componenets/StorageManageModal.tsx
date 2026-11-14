@@ -70,56 +70,60 @@ const StorageManageModal = observer(
     const total = calced.reduce((s, n) => s + entries[n].bytes, 0);
     const bulk = projectSizeService.bulkProgress;
 
+    // 도구줄(2026-11-14 오버레이 묶음 B) — 계산 단추·진행·합계. 종전 붙박이 머리(음수 위 여백·surface-2 배경)는
+    // ModalOverlay toolbar 슬롯(스크롤 밖 고정)으로 옮겼다. 계산 동작은 그대로(projectSizeService).
+    const toolbar = (
+      <div className="flex items-center gap-2 flex-wrap" data-storage-toolbar>
+        {bulk ? (
+          <>
+            <span className="text-sm gray-label">
+              계산 중... {bulk.done}/{bulk.total}
+            </span>
+            <button
+              className="text-sm btn back-red px-3 py-1 rounded"
+              onClick={() => projectSizeService.cancelBulk()}
+            >
+              중단
+            </button>
+          </>
+        ) : (
+          <button
+            className="text-sm btn back-sky px-3 py-1 rounded disabled:opacity-50"
+            onClick={() => projectSizeService.calculateAll(sorted)}
+            disabled={names.length === 0}
+          >
+            전체 계산
+          </button>
+        )}
+        {calced.length > 0 && (
+          <span className="text-sm gray-label">
+            계산됨 {calced.length}/{names.length}개 · 총 {formatBytes(total)}
+          </span>
+        )}
+      </div>
+    );
+
     return (
       <ModalOverlay
         isOpen={isOpen}
         onClose={onClose}
         title="프로젝트 저장 공간 관리"
-        width="max-w-2xl"
+        size="m"
+        toolbar={toolbar}
       >
         <div className="space-y-3">
-          {/* 컨트롤 (모달 콘텐츠 스크롤 시에도 상단 고정) */}
-          <div className="sticky -top-5 z-10 bg-[var(--c-surface-2)] pt-1 pb-2 space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              {bulk ? (
-                <>
-                  <span className="text-sm gray-label">
-                    계산 중... {bulk.done}/{bulk.total}
-                  </span>
-                  <button
-                    className="text-sm btn back-red px-3 py-1 rounded"
-                    onClick={() => projectSizeService.cancelBulk()}
-                  >
-                    중단
-                  </button>
-                </>
-              ) : (
-                <button
-                  className="text-sm btn back-sky px-3 py-1 rounded disabled:opacity-50"
-                  onClick={() => projectSizeService.calculateAll(sorted)}
-                  disabled={names.length === 0}
-                >
-                  전체 계산
-                </button>
-              )}
-              {calced.length > 0 && (
-                <span className="text-sm gray-label">
-                  계산됨 {calced.length}/{names.length}개 · 총 {formatBytes(total)}
-                </span>
-              )}
-            </div>
-            <div className="text-xs text-faint">
-              프로젝트별 차지 용량(이미지 포함)을 계산합니다. 부하를 피하기 위해
-              자동으로 계산하지 않으며, 계산 결과는 저장되어 다음에도 표시됩니다.
-              3GB 이상 프로젝트는 붉게 강조됩니다.
-              {platform.supportsWebpConvert && (
-                <>
-                  {' '}
-                  [최적화]는 해당 프로젝트의 모든 PNG 이미지를 WebP로 변환해
-                  용량을 줄입니다.
-                </>
-              )}
-            </div>
+          {/* 안내 — 본문 첫 줄(스크롤과 함께 움직임) */}
+          <div className="text-xs text-faint">
+            프로젝트별 차지 용량(이미지 포함)을 계산합니다. 부하를 피하기 위해
+            자동으로 계산하지 않으며, 계산 결과는 저장되어 다음에도 표시됩니다.
+            3GB 이상 프로젝트는 붉게 강조됩니다.
+            {platform.supportsWebpConvert && (
+              <>
+                {' '}
+                [최적화]는 해당 프로젝트의 모든 PNG 이미지를 WebP로 변환해
+                용량을 줄입니다.
+              </>
+            )}
           </div>
 
           {/* 목록 */}
@@ -182,6 +186,8 @@ const StorageManageModal = observer(
                     className="text-xs btn back-gray px-2 py-1 rounded flex-none disabled:opacity-50"
                     disabled={busy || !!bulk}
                     onClick={() => projectSizeService.calculate(n)}
+                    aria-label={busy ? '계산 중' : e ? '다시 계산' : '계산'}
+                    title={busy ? '계산 중' : e ? '다시 계산' : '계산'}
                   >
                     {busy ? '...' : e ? '↻' : '계산'}
                   </button>

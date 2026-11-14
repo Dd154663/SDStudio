@@ -539,6 +539,8 @@ const RULES: Rule[] = [
     // 2026-11-12 묶음 A(「등급만 붙이면 끝」 10창 — 캐릭터 위치 지정 ×2 full·샘플링 그룹 m·축하 영상 m·태그 프리셋 관리 s·
     // 작가 상세 m·아티스트 태깅 l·환경설정 불러오기 미리보기 s·템플릿 적용 s·찾기 및 변환 m·Google 드라이브 백업 m):
     // 17파일 24곳(실제 합계 23곳 — 종전 주석이 1 많았음) → 10파일 12곳.
+    // 2026-11-14 묶음 B(프로젝트 휴지통·씬 휴지통 m — 창은 각 보기가 직접 그림, 저장 공간 관리 m·직접 내보내기 설정 m·
+    // 사전 세팅 일괄 삭제 m): 10파일 12곳 → 6파일 7곳.
     name: 'ModalOverlay size 없는 호출(width 폭 클래스·기본값·fullscreen) — size 등급 사용',
     guide: '「오버레이 창 크기 체계」',
     dir: '',
@@ -547,13 +549,9 @@ const RULES: Rule[] = [
     count: (c) => modalOverlayWithoutSize(c).length,
     locate: (c) => modalOverlayWithoutSize(c),
     allow: {
-      'componenets/App.tsx': 2, // 프로젝트 휴지통·씬 휴지통(프롬프트조각은 묶음 1 에서 PieceEditor 안 size l 로)
       'componenets/CharacterPresetEditor.tsx': 1, // 캐릭터 프리셋 관리
-      'componenets/DirectExportDialog.tsx': 1, // 직접 내보내기 설정
-      'componenets/PreSetEdtior.tsx': 1, // 사전 세팅 일괄 삭제(묶음 B — 캐릭터 위치 지정 full·샘플링 그룹 m 은 묶음 A 에서 size 로)
       'componenets/QuickMenu.tsx': 1, // 퀵 메뉴(모바일)
       'componenets/SceneQuickPromptModal.tsx': 1, // 중간 프롬프트 가운데 폴백(모바일)
-      'componenets/StorageManageModal.tsx': 1, // 프로젝트 저장 공간 관리
       'componenets/TemplateInheritModals.tsx': 1, // 폴더 기본 템플릿(묶음 C — 템플릿 적용은 묶음 A 에서 size s)
       'componenets/TemplateManagerModal.tsx': 2, // 글로벌 프리셋에서 복사·템플릿 관리
       'componenets/ToolbarOverflowMenu.tsx': 1, // ⋯ 메뉴(모바일)

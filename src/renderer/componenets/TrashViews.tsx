@@ -1,12 +1,14 @@
 // 휴지통 목록 공용 부품 + 씬 휴지통 — 2026-10-02 T1.
 //  · 남아 있는 항목을 개수 제한 없이 전부 렌더하고, 스크롤은 ModalOverlay 내용 영역(overflow-auto)이 맡는다.
-//  · 머리 줄(개수·「휴지통 비우기」)은 스크롤해도 위에 붙어 있어 긴 목록에서도 개수와 일괄 비우기가 보인다.
+//  · 머리 줄(개수·「휴지통 비우기」·보존 안내)은 ModalOverlay 도구줄(toolbar 슬롯, 스크롤 밖)에 있어 긴 목록에서도 보인다
+//    (2026-11-14 오버레이 묶음 B — 종전 sticky·음수 여백 머리를 대체, useTrashListPanel).
 //  · 정렬은 models/trashList.sortTrashNewestFirst(최근 삭제 순) — 프로젝트·씬 휴지통 공통.
 //  · 복원·영구 삭제·휴지통 비우기의 동작은 예전 그대로(TrashService 관문 경유).
 import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { FaTrash } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
+import ModalOverlay from './ModalOverlay';
 import { trashService } from '../models';
 import { appState } from '../models/AppService';
 import { restoreSceneFromTrashRecorded } from '../models/deleteUndo';
@@ -96,52 +98,59 @@ export function formatTrashDate(ts: number): string {
   })}`;
 }
 
-/** 휴지통 목록 표시(프로젝트·씬 공용). 비었으면 안내 문구. */
-export function TrashList({
+export interface TrashListPanelProps {
+  rows: TrashListRow[];
+  loading: boolean;
+  onRestore: (key: string) => void;
+  onPermanentDelete: (key: string) => void;
+  onEmptyAll: () => void;
+  // 보존 기간 안내(S3) — 도구줄 둘째 줄, 좁은 폭에서는 줄바꿈.
+  notice?: string;
+}
+
+/**
+ * 휴지통 목록 패널(프로젝트·씬 공용) — 2026-11-14 오버레이 묶음 B, 규약 ⑥(공용 본문의 슬롯 패턴).
+ * toolbar = 「N개 · 최근 삭제 순」 + [휴지통 비우기] + 보존 안내(ModalOverlay toolbar 슬롯 — 스크롤 밖 고정),
+ * body = 목록만(음수 여백·sticky 없음). 비었으면 본문에 안내 문구, 도구줄은 0개 + 비활성 [휴지통 비우기]
+ * (자리가 출렁이지 않게 숨기지 않는다). 창 안에 직접 그리는 호출부는 {toolbar}{body} 를 차례로 둔다.
+ */
+export function useTrashListPanel({
   rows,
   loading,
   onRestore,
   onPermanentDelete,
   onEmptyAll,
   notice,
-}: {
-  rows: TrashListRow[];
-  loading: boolean;
-  onRestore: (key: string) => void;
-  onPermanentDelete: (key: string) => void;
-  onEmptyAll: () => void;
-  // 보존 기간 안내(S3) — 머리 줄 아래 한 줄, 좁은 폭에서는 줄바꿈.
-  notice?: string;
-}) {
-  if (rows.length === 0) {
-    return (
-      <div className="text-center py-10">
-        <div className="text-faint text-lg">
-          {loading ? '불러오는 중…' : '휴지통이 비어있습니다'}
-        </div>
-        {notice && !loading && (
-          <div className="mt-2 text-xs text-faint break-keep">{notice}</div>
-        )}
+}: TrashListPanelProps): { toolbar: React.ReactNode; body: React.ReactNode } {
+  const empty = rows.length === 0;
+  const toolbar = (
+    <div className="w-full" data-trash-toolbar>
+      <div className="flex items-center gap-2">
+        <span className="flex-1 min-w-0 text-sm text-muted">
+          {rows.length}개 · 최근 삭제 순
+        </span>
+        <button
+          className="round-button back-red flex-none disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={onEmptyAll}
+          disabled={empty}
+        >
+          <FaTrash className="mr-1" />
+          휴지통 비우기
+        </button>
       </div>
-    );
-  }
-  return (
+      {notice && (
+        <div className="mt-1 text-xs text-faint break-keep">{notice}</div>
+      )}
+    </div>
+  );
+  const body = empty ? (
+    <div className="text-center py-10">
+      <div className="text-faint text-lg">
+        {loading ? '불러오는 중…' : '휴지통이 비어있습니다'}
+      </div>
+    </div>
+  ) : (
     <div className="flex flex-col gap-2" data-trash-list>
-      {/* 머리 줄: 모달 내용 영역(p-5) 위쪽 여백까지 덮어 스크롤 중에도 위에 붙는다 */}
-      <div className="sticky -top-5 z-10 -mx-5 -mt-5 px-5 pt-5 pb-2 bg-[var(--c-zone)] border-b line-color">
-        <div className="flex items-center gap-2">
-          <span className="flex-1 min-w-0 text-sm text-muted">
-            {rows.length}개 · 최근 삭제 순
-          </span>
-          <button className="round-button back-red flex-none" onClick={onEmptyAll}>
-            <FaTrash className="mr-1" />
-            휴지통 비우기
-          </button>
-        </div>
-        {notice && (
-          <div className="mt-1 text-xs text-faint break-keep">{notice}</div>
-        )}
-      </div>
       {rows.map((row) => (
         <div
           key={row.key}
@@ -168,11 +177,12 @@ export function TrashList({
       ))}
     </div>
   );
+  return { toolbar, body };
 }
 
 // ===== SceneTrashView (씬 휴지통) =====
-// 전역 오버레이(App.tsx)가 호스트. 예전 SceneQueueControl.tsx 의 같은 이름 컴포넌트를 대체한다
-// (T1 — 최근 삭제 순 정렬·개수 머리 줄 추가, 동작 불변).
+// 전역 오버레이 — App.tsx 가 열려 있을 때만 마운트하고, 창(ModalOverlay size m·toolbar)은 이 컴포넌트가 직접 그린다
+// (2026-11-14 오버레이 묶음 B). 예전 SceneQueueControl.tsx 의 같은 이름 컴포넌트를 대체(T1 — 최근 삭제 순·개수 머리 줄, 동작 불변).
 
 // name = 휴지통 슬롯 이름(복원 시 씬 이름, S1), originalName = 슬롯과 다를 때 원래 이름(표시용)
 type DeletedScene = {
@@ -182,7 +192,13 @@ type DeletedScene = {
   originalName?: string;
 };
 
-export function SceneTrashView({ projectName }: { projectName: string }) {
+export function SceneTrashView({
+  projectName,
+  onClose,
+}: {
+  projectName: string;
+  onClose: () => void;
+}) {
   const [deletedScenes, setDeletedScenes] = useState<DeletedScene[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -314,30 +330,34 @@ export function SceneTrashView({ projectName }: { projectName: string }) {
     });
   };
 
+  const { toolbar, body } = useTrashListPanel({
+    loading,
+    notice: trashNoticeText('scene'),
+    rows: deletedScenes.map((item) => {
+      // 같은 이름 재삭제·일반/변형 동명은 「S (삭제 2)」 슬롯으로 따로 보관된다 — 원래 이름 + 보조 표기
+      const label = sceneTrashLabel(item);
+      return {
+        key: item.name,
+        title: (
+          <>
+            {item.type === 'inpaint' ? '🎨 ' : '🖼️ '}
+            {label.base}
+            <TrashNameBadge text={label.suffix} tone="sky" />
+          </>
+        ),
+        subtitle:
+          `${item.type === 'inpaint' ? '인페인트' : '일반'} 씬 · ${formatTrashDate(item.deletedAt)}` +
+          (label.suffix ? ` · 복원하면 「${item.name}」 이름으로 돌아옵니다` : ''),
+      };
+    }),
+    onRestore: handleRestore,
+    onPermanentDelete: handlePermanentDelete,
+    onEmptyAll: handleEmptyAll,
+  });
+
   return (
-    <TrashList
-      loading={loading}
-      notice={trashNoticeText('scene')}
-      rows={deletedScenes.map((item) => {
-        // 같은 이름 재삭제·일반/변형 동명은 「S (삭제 2)」 슬롯으로 따로 보관된다 — 원래 이름 + 보조 표기
-        const label = sceneTrashLabel(item);
-        return {
-          key: item.name,
-          title: (
-            <>
-              {item.type === 'inpaint' ? '🎨 ' : '🖼️ '}
-              {label.base}
-              <TrashNameBadge text={label.suffix} tone="sky" />
-            </>
-          ),
-          subtitle:
-            `${item.type === 'inpaint' ? '인페인트' : '일반'} 씬 · ${formatTrashDate(item.deletedAt)}` +
-            (label.suffix ? ` · 복원하면 「${item.name}」 이름으로 돌아옵니다` : ''),
-        };
-      })}
-      onRestore={handleRestore}
-      onPermanentDelete={handlePermanentDelete}
-      onEmptyAll={handleEmptyAll}
-    />
+    <ModalOverlay isOpen onClose={onClose} title="🗑️ 씬 휴지통" size="m" toolbar={toolbar}>
+      {body}
+    </ModalOverlay>
   );
 }

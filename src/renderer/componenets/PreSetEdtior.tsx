@@ -877,12 +877,40 @@ const PreSetBulkManageModal = observer(
       });
     };
 
+    // 바닥줄(2026-11-14 오버레이 묶음 B): footerStart = 「N개 선택됨」, footer = [선택 삭제][닫기]
+    // (규약 ⑦ — 위험 확정 버튼은 단독으로 두지 않고 [닫기] 와 함께, [확정][닫기] 순서). s·m 창이라 양 플랫폼 공통.
+    const footerStart = (
+      <span className="text-sm text-gray-700 dark:text-gray-300" data-preset-bulk-count>
+        <span className="text-red-500 font-bold">{selected.size}</span>개
+        선택됨
+      </span>
+    );
+    const footer = (
+      <>
+        <button
+          onClick={doDelete}
+          disabled={selected.size === 0}
+          className="px-4 py-2 rounded-lg btn-solid-red disabled:bg-gray-300 dark:disabled:bg-gray-600 text-sm font-medium transition-colors"
+        >
+          선택 삭제
+        </button>
+        <button
+          onClick={onClose}
+          className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+        >
+          닫기
+        </button>
+      </>
+    );
+
     return (
       <ModalOverlay
         isOpen={true}
         onClose={onClose}
         title="사전 세팅 일괄 삭제"
-        width="max-w-lg"
+        size="m"
+        footer={footer}
+        footerStart={footerStart}
       >
         <div className="flex flex-col gap-3">
           <input
@@ -904,7 +932,8 @@ const PreSetBulkManageModal = observer(
               전체 {presets.length}개
             </span>
           </div>
-          <div className="max-h-72 overflow-y-auto border line-color rounded-lg p-2 space-y-0.5">
+          {/* 목록은 창 본문이 스크롤한다(안쪽 max-h 스크롤 없음 — 스크롤 안 스크롤 방지) */}
+          <div className="border line-color rounded-lg p-2 space-y-0.5" data-preset-bulk-list>
             {filtered.map((p) => (
               <label
                 key={p.name}
@@ -929,19 +958,6 @@ const PreSetBulkManageModal = observer(
                 일치하는 사전 세팅이 없습니다
               </div>
             )}
-          </div>
-          <div className="flex items-center justify-between pt-2 border-t line-color">
-            <span className="text-sm text-gray-700 dark:text-gray-300">
-              <span className="text-red-500 font-bold">{selected.size}</span>개
-              선택됨
-            </span>
-            <button
-              onClick={doDelete}
-              disabled={selected.size === 0}
-              className="px-4 py-2 rounded-lg btn-solid-red disabled:bg-gray-300 dark:disabled:bg-gray-600 text-sm font-medium transition-colors"
-            >
-              선택 삭제
-            </button>
           </div>
         </div>
       </ModalOverlay>
