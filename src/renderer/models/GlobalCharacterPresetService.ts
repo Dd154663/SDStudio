@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { backend, imageService } from '.';
 import { Session, CharacterPreset, ICharacterPreset } from './types';
 import { dataUriToBase64 } from './ImageService';
-import { suggestFolderCopyName } from './nameInput';
+import { numberedName, suggestFolderCopyName, taggedName } from './nameInput';
 
 const GLOBAL_CHAR_PRESETS_FILE = 'global_character_presets.json';
 const GLOBAL_CHAR_IMAGES_DIR = 'global_char_images';
@@ -257,12 +257,10 @@ export class GlobalCharacterPresetService extends EventTarget {
     } catch (e) {}
   }
 
-  // 이름 충돌 시 `_n` 접미사 부여 — 일괄 생성(batchCreatePlan)과 같은 관례
+  // 이름 충돌 시 「X (2)」·(3) 접미 — 가져오기·충돌 공통 규칙(2026-11-14 M2 K7, 종전 `_n`).
+  // 로컬→글로벌 복사·글로벌 파일 불러오기(rename)·글로벌 직접 등록·이름 바꾸기 충돌이 함께 쓴다.
   private resolveNameCollision(name: string): string {
-    if (!this.getByName(name)) return name;
-    let i = 1;
-    while (this.getByName(`${name}_${i}`)) i++;
-    return `${name}_${i}`;
+    return numberedName(name, (n) => !!this.getByName(n));
   }
 
   // ---------- 로컬 → 글로벌 ----------
@@ -380,21 +378,21 @@ export class GlobalCharacterPresetService extends EventTarget {
     preset.fromGlobalRev = entry.updatedAt;
     if (existing) {
       // 기존 사본을 자리에서 갱신 — 이름은 글로벌을 따라가되, 링크된 자기 자신이
-      // 아닌 다른 로컬과 충돌하면 접미. 이름이 유지되면 fromPreset 적용 태그도
-      // 그대로 이어진다.
-      let nm = preset.name;
-      while (
-        session.hasCharacterPreset(nm) &&
-        session.getCharacterPreset(nm) !== existing
-      )
-        nm = nm + ' (글로벌)';
-      preset.name = nm;
+      // 아닌 다른 로컬과 충돌하면 「X (글로벌)」→「X (글로벌 2)」 접미(M2 K6).
+      // 이름이 유지되면 fromPreset 적용 태그도 그대로 이어진다.
+      preset.name = taggedName(
+        preset.name,
+        '글로벌',
+        (n) =>
+          session.hasCharacterPreset(n) &&
+          session.getCharacterPreset(n) !== existing,
+      );
       session.updateCharacterPreset(existing.name, preset);
     } else {
-      // 최초 불러오기 — 로컬 이름 충돌 방지
-      let nm = preset.name;
-      while (session.hasCharacterPreset(nm)) nm = nm + ' (글로벌)';
-      preset.name = nm;
+      // 최초 불러오기 — 로컬 이름 충돌 방지 「X (글로벌)」→「X (글로벌 2)」(M2 K6)
+      preset.name = taggedName(preset.name, '글로벌', (n) =>
+        session.hasCharacterPreset(n),
+      );
       session.addCharacterPreset(preset);
     }
     return preset;
@@ -454,7 +452,7 @@ export class GlobalCharacterPresetService extends EventTarget {
   // 파일 데이터 → 글로벌 엔트리 등록. 이미지는 새 글로벌 파일명(uuid)으로 저장 후
   // path 재지정(기존 글로벌 이미지와 충돌 없음).
   // 이름이 같은 기존 항목 처리(policy, 드라이브 동기화 ② B2 — 기본 'rename' = 종전 동작):
-  //  - rename   : 새 엔트리로 추가, 이름은 `_n` 접미(resolveNameCollision 기존 규칙)
+  //  - rename   : 새 엔트리로 추가, 이름은 「X (2)」 접미(resolveNameCollision 공통 규칙)
   //  - skip     : 추가하지 않음(이미지도 저장하지 않음)
   //  - overwrite: updateEntry 로 **id 를 유지한 채 내용만 교체** — 프로젝트 사본의
   //               fromGlobalId 링크가 끊기지 않고, 다음 적용 때 fromGlobalRev 차이로

@@ -795,11 +795,11 @@ export const CharacterPresetEditor = observer(({
     }
   };
 
-  // 로컬 → 글로벌 일괄 복사 (무파괴 승격 — 원본 유지, 중복 이름은 _n 접미)
+  // 로컬 → 글로벌 일괄 복사 (무파괴 승격 — 원본 유지, 중복 이름은 「X (2)」 접미, M2 K7)
   const handleSendAllToGlobal = () => {
     appState.pushDialog({
       type: 'confirm',
-      text: `로컬 프리셋 ${presets.length}개를 모두 글로벌로 복사할까요?\n(원본은 유지되며, 중복 이름에는 _n 접미사가 붙습니다)`,
+      text: `로컬 프리셋 ${presets.length}개를 모두 글로벌로 복사할까요?\n(원본은 유지되며, 중복 이름에는 (2) 같은 번호가 붙습니다)`,
       callback: async () => {
         setBulkSending(true);
         let ok = 0;

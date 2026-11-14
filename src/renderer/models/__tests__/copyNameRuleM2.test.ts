@@ -53,7 +53,7 @@ jest.mock('../util', () => ({ extractPromptDataFromBase64: jest.fn() }));
 jest.mock('../presetExportDecoration', () => ({ decoratePresetExportImage: jest.fn() }));
 jest.mock('../sdstudioPromptImport', () => ({ planPromptImport: jest.fn() }));
 
-import { numberedName, suggestFolderCopyName } from '../nameInput';
+import { numberedName, suggestFolderCopyName, taggedName } from '../nameInput';
 import { GlobalCharacterPresetService } from '../GlobalCharacterPresetService';
 import { ProjectTemplateService } from '../ProjectTemplateService';
 import { GlobalPresetService } from '../GlobalPresetService';
@@ -355,5 +355,50 @@ describe('K8 그림체 → 글로벌(GlobalPresetService.resolveNameCollision �
     const c = await svc.addFromSessionPreset(session, preset('G'));
     expect([a.name, b.name, c.name]).toEqual(['G', 'G (2)', 'G (3)']);
     expectNoOldMarker([b.name, c.name]);
+  });
+});
+
+describe('K6 글로벌 캐릭터 → 프로젝트 「X (글로벌)」→「X (글로벌 2)」(taggedName)', () => {
+  test('비면 그대로, 겹치면 (글로벌), 또 겹치면 (글로벌 2)·(글로벌 3)', () => {
+    const taken = new Set(['X', 'X (글로벌)', 'X (글로벌 2)']);
+    const has = (n: string) => taken.has(n);
+    expect(taggedName('Y', '글로벌', has)).toBe('Y');
+    expect(taggedName('X', '글로벌', (n) => n === 'X')).toBe('X (글로벌)');
+    expect(taggedName('X', '글로벌', has)).toBe('X (글로벌 3)');
+    expect(taggedName('X', '글로벌', has)).not.toMatch(/\(글로벌\) \(글로벌\)/);
+  });
+
+  test('instantiateIntoSession 최초 불러오기 — 로컬 「X」·「X (글로벌)」 있으면 「X (글로벌 2)」', async () => {
+    const svc = new GlobalCharacterPresetService();
+    (svc as any).presets = [
+      { id: 'g1', name: 'X', createdAt: 1, updatedAt: 1, preset: { name: 'X', type: 'character' } },
+    ];
+    const local = new Map<string, any>([
+      ['X', { name: 'X' }],
+      ['X (글로벌)', { name: 'X (글로벌)' }],
+    ]);
+    const session: any = {
+      getCharacterPresets: () => [...local.values()],
+      hasCharacterPreset: (n: string) => local.has(n),
+      getCharacterPreset: (n: string) => local.get(n),
+      addCharacterPreset: (p: any) => local.set(p.name, p),
+      updateCharacterPreset: jest.fn(),
+    };
+    const p = await svc.instantiateIntoSession(session, 'g1');
+    expect(p.name).toBe('X (글로벌 2)');
+    expect(local.has('X (글로벌 2)')).toBe(true);
+  });
+});
+
+describe('K7 로컬 캐릭터 → 글로벌 복사(GlobalCharacterPresetService.resolveNameCollision)', () => {
+  test('「X」→「X (2)」→「X (3)」(종전 「X_1」)', async () => {
+    const svc = new GlobalCharacterPresetService();
+    const session: any = {};
+    const mk = (name: string) => ({ toJSON: () => ({ name, type: 'character' }) }) as any;
+    const a = await svc.addFromSessionPreset(session, mk('X'));
+    const b = await svc.addFromSessionPreset(session, mk('X'));
+    const c = await svc.addFromSessionPreset(session, mk('X'));
+    expect([a.name, b.name, c.name]).toEqual(['X', 'X (2)', 'X (3)']);
+    expect(svc.presets.map((e) => e.name).some((n) => /_1$/.test(n))).toBe(false);
   });
 });

@@ -217,6 +217,21 @@ export function numberedName(base: string, taken: (name: string) => boolean): st
   return `${base} (${Date.now()})`;
 }
 
+/**
+ * 꼬리표 접미 이름 — 「이름」이 비어 있으면 그대로, 겹치면 「이름 (꼬리표)」, 또 겹치면 「이름 (꼬리표 2)」·(꼬리표 3)…
+ * (글로벌 캐릭터 → 프로젝트 사본 「X (글로벌)」→「X (글로벌 2)」, 2026-11-14 M2 K6 — 종전 「X (글로벌) (글로벌)」 반복 덧붙임).
+ */
+export function taggedName(base: string, tag: string, taken: (name: string) => boolean): string {
+  if (!taken(base)) return base;
+  const first = `${base} (${tag})`;
+  if (!taken(first)) return first;
+  for (let i = 2; i < 10000; i++) {
+    const candidate = `${base} (${tag} ${i})`;
+    if (!taken(candidate)) return candidate;
+  }
+  return `${base} (${tag} ${Date.now()})`;
+}
+
 /** 프로젝트 이름 규칙 —경로 안전 + 활성 프로젝트 이름 중복(어느 폴더에 있는지 함께). */
 export function projectNameRules(svc: {
   list(): string[];

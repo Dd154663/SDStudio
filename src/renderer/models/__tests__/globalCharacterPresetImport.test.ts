@@ -80,14 +80,14 @@ afterEach(() => {
 });
 
 describe('importFromFileData 정책', () => {
-  it('기본(rename): 새 id 로 추가, 동명은 `_1`', async () => {
+  it('기본(rename): 새 id 로 추가, 동명은 「(2)」', async () => {
     const svc = new GlobalCharacterPresetService();
     seed(svc, [{ id: 'a', name: 'Alice' }]);
     const res = await svc.importFromFileData({
       presets: [fileItem('Alice', 'new'), fileItem('Bob', 'b')],
     });
     expect(res).toEqual({ added: 2, updated: 0, skipped: 0 });
-    expect(svc.presets.map((p) => p.name)).toEqual(['Alice', 'Alice_1', 'Bob']);
+    expect(svc.presets.map((p) => p.name)).toEqual(['Alice', 'Alice (2)', 'Bob']);
     expect((svc.get('a')!.preset as any).prompt).toBe('old');
   });
 
@@ -130,7 +130,7 @@ describe('importFromFileData 정책', () => {
     );
     expect(res).toEqual({ added: 1, updated: 1, skipped: 0 });
     expect((svc.get('a')!.preset as any).prompt).toBe('first');
-    expect(svc.presets.map((p) => p.name)).toEqual(['Alice', 'Alice_1']);
+    expect(svc.presets.map((p) => p.name)).toEqual(['Alice', 'Alice (2)']);
   });
 
   it('countFileConflicts: 이름 정규화(trim·빈 이름) 후 기존과 같은 항목 수', () => {
