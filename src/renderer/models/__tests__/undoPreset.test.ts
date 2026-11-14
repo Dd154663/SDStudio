@@ -16,6 +16,7 @@ import { WFWorkFlow } from '../workflows/WorkFlow';
 import { SDImageGenDef, SDImageGenEasyDef, SDInpaintDef } from '../workflows/SDWorkFlow';
 import { CharacterPreset, ReferenceItem, Session, VibeItem } from '../types';
 import { UNDO_TEXT, UndoService } from '../undoService';
+import { suggestFolderCopyName } from '../nameInput';
 import { flushSceneFieldEdit } from '../sceneFieldUndo';
 import type { FocusLeaveWatcher } from '../sceneFieldUndo';
 import {
@@ -287,8 +288,8 @@ describe('그림체 목록 차분', () => {
     const { service } = harness();
     const { session, presets } = makeSession('A');
     const copy = sdWf.presetFromJSON(presets[0].toJSON());
-    copy.name = 'A copy 1';
-    editPresetList(session, UNDO_TEXT.presetDuplicate('A copy 1'), () => session.addPreset(copy), { service });
+    copy.name = 'A 복사본';
+    editPresetList(session, UNDO_TEXT.presetDuplicate('A 복사본'), () => session.addPreset(copy), { service });
     const rec = beginPresetListRecord(session, UNDO_TEXT.presetImport(2), { service });
     await Promise.resolve();
     const e1 = makePreset('I1', easyWf);
@@ -296,7 +297,7 @@ describe('그림체 목록 차분', () => {
     session.selectedWorkflow = { workflowType: 'SDImageGenEasy', presetName: 'I1' };
     expect(rec.commit(UNDO_TEXT.presetImport(1))).toBe(true);
     expect(service.entries(session).past.map((e) => e.label)).toEqual([
-      UNDO_TEXT.presetDuplicate('A copy 1'),
+      UNDO_TEXT.presetDuplicate('A 복사본'),
       UNDO_TEXT.presetImport(1),
     ]);
     await service.undo(session);
@@ -539,24 +540,25 @@ describe('로컬 캐릭터 프리셋', () => {
     expect(service.entries(session).past.map((e) => e.label)).toEqual(['after']);
   });
 
-  // 2026-11-12 정비 M1 U1·U2 — 라벨 = 실제로 들어간 이름(공백 없는 숫자 규칙은 그대로)
-  test('U1 두 번째 복제부터 라벨 = 「X 복사본1」(실제 이름)', () => {
+  // 2026-11-12 정비 M1 U1·U2 — 라벨 = 실제로 들어간 이름. 2026-11-14 M2 C4 — 복제 호출부가 「X 복사본」·「(2)」… 빈 이름을
+  // 미리 정해 넘기므로 addCharacterPreset 의 공백 없는 숫자 규칙(「X 복사본1」)은 복제에서 걸리지 않는다(U2 의 새로 저장은 그대로)
+  test('U1 복제 라벨 = 실제 이름 「X 복사본」·「X 복사본 (2)」', () => {
     const { service } = harness();
     const { session } = makeSession('A');
     session.addCharacterPreset(cp('K'));
     const dup = () => {
       const c = cp('K');
-      c.name = 'K 복사본';
+      c.name = suggestFolderCopyName('K', (n) => session.hasCharacterPreset(n));
       return addCharacterPresetRecorded(session, c, UNDO_TEXT.characterPresetDuplicate, { service });
     };
     expect(dup()).toBe('K 복사본');
-    expect(dup()).toBe('K 복사본1');
-    expect(dup()).toBe('K 복사본2');
-    expect([...session.characterPresets.keys()]).toEqual(['K', 'K 복사본', 'K 복사본1', 'K 복사본2']);
+    expect(dup()).toBe('K 복사본 (2)');
+    expect(dup()).toBe('K 복사본 (3)');
+    expect([...session.characterPresets.keys()]).toEqual(['K', 'K 복사본', 'K 복사본 (2)', 'K 복사본 (3)']);
     expect(service.entries(session).past.map((e) => e.label)).toEqual([
       UNDO_TEXT.characterPresetDuplicate('K 복사본'),
-      UNDO_TEXT.characterPresetDuplicate('K 복사본1'),
-      UNDO_TEXT.characterPresetDuplicate('K 복사본2'),
+      UNDO_TEXT.characterPresetDuplicate('K 복사본 (2)'),
+      UNDO_TEXT.characterPresetDuplicate('K 복사본 (3)'),
     ]);
   });
 

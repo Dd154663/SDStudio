@@ -5,7 +5,7 @@ import { observer } from 'mobx-react-lite';
 import { isMobile } from '../models';
 import { appState, ExportPreset } from '../models/AppService';
 import Tooltip from './Tooltip';
-import { validateName } from '../models/nameInput';
+import { suggestFolderCopyName, validateName } from '../models/nameInput';
 import { deleteConfirmText } from '../models/deleteFlowRules';
 import { ExportPresetOps, saveExportPresetsRecorded } from '../models/globalLibraryUndo';
 import { UNDO_TEXT } from '../models/undoService';
@@ -229,12 +229,8 @@ const ExportPresetManager = observer(() => {
   // 프리셋 복제 (고유 이름 부여, 바로 아래에 삽입). 복제본은 기본 프리셋 해제.
   const duplicatePreset = (idx: number) => {
     const src = presets[idx];
-    const base = `${src.name} (복사)`;
-    let name = base;
-    let n = 2;
-    while (presets.some((p) => p.name === name)) {
-      name = `${base} ${n++}`;
-    }
+    // 복제 이름 단일 규칙(2026-11-14 M2 C3) — 「X 복사본」→「X 복사본 (2)」(종전 「X (복사)」·「X (복사) 2」)
+    const name = suggestFolderCopyName(src.name, (n) => presets.some((p) => p.name === n));
     const copy: ExportPreset = { ...src, name, isDefault: false };
     const updated = [...presets];
     updated.splice(idx + 1, 0, copy);

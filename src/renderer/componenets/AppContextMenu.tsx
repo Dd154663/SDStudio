@@ -68,6 +68,7 @@ import {
   deleteImageFilesRecorded,
 } from '../models/deleteUndo';
 import { UNDO_TEXT } from '../models/undoService';
+import { suggestFolderCopyName } from '../models/nameInput';
 import { editSeedGroups } from '../models/sceneFieldUndo';
 
 export const AppContextMenu = observer(() => {
@@ -175,14 +176,10 @@ export const AppContextMenu = observer(() => {
   const duplicateScene = async (ctx: SceneContextAlt) => {
     // 살아있는 씬의 toJSON() 재역직렬화라 null(프리셋 역직렬화 실패)이 나올 수 없다
     const newScene = genericSceneFromJSON(ctx.scene.toJSON())!;
-    let cnt = 0;
-    const newName = () =>
-      newScene.name + '_copy' + (cnt === 0 ? '' : cnt.toString());
-    while (appState.curSession!.hasScene(newScene.type, newName())) {
-      cnt++;
-    }
-    newScene.name = newName();
     const session = appState.curSession!;
+    // 복제 이름 단일 규칙(2026-11-14 M2 C7) — 「X 복사본」→「X 복사본 (2)」(종전 「X_copy」·「X_copy1」).
+    // 생성·변형 탭 공용 한 함수, 겹침 판정 범위는 종전과 같이 같은 종류(type) 씬만
+    newScene.name = suggestFolderCopyName(newScene.name, (n) => session.hasScene(newScene.type, n));
     session.addScene(newScene);
     // 되돌리기(U2a): 되돌림 = 휴지통행, 다시 실행 = 휴지통 복원
     recordScenesCreated(session, [newScene], UNDO_TEXT.sceneDuplicate(newScene.name));

@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { backend, imageService } from '.';
 import { Session, CharacterPreset, ICharacterPreset } from './types';
 import { dataUriToBase64 } from './ImageService';
+import { suggestFolderCopyName } from './nameInput';
 
 const GLOBAL_CHAR_PRESETS_FILE = 'global_character_presets.json';
 const GLOBAL_CHAR_IMAGES_DIR = 'global_char_images';
@@ -677,7 +678,9 @@ export class GlobalCharacterPresetService extends EventTarget {
       json.representativeImage = await this.copyImageToken(
         json.representativeImage,
       );
-    const name = this.resolveNameCollision((entry.name || '이름없음') + ' 복사본');
+    // 복제 이름 단일 규칙(2026-11-14 M2 C5) — 「X 복사본」→「X 복사본 (2)」. resolveNameCollision(`_n`)은
+    // 로컬→글로벌 복사·파일 불러오기·저장이 계속 쓴다
+    const name = suggestFolderCopyName(entry.name || '이름없음', (n) => !!this.getByName(n));
     json.name = name;
     const newEntry: IGlobalCharacterPresetEntry = {
       id: uuidv4(),

@@ -55,7 +55,7 @@ import {
 } from '../models';
 import { toPARR } from '../models/PromptService';
 import { appState } from '../models/AppService';
-import { promptName, validateName } from '../models/nameInput';
+import { promptName, suggestFolderCopyName, validateName } from '../models/nameInput';
 import { deleteConfirmText } from '../models/deleteFlowRules';
 import { observer } from 'mobx-react-lite';
 import {
@@ -1182,16 +1182,10 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                     const newPreset = workFlowService.presetFromJSON(
                       option.toJSON(),
                     );
-                    let num = 1;
-                    while (
-                      presets.find(
-                        (x) =>
-                          x.name === option.name + ' copy ' + num.toString(),
-                      )
-                    ) {
-                      num++;
-                    }
-                    const newName = option.name + ' copy ' + num.toString();
+                    // 복제 이름 단일 규칙(2026-11-14 M2 C6) — 「X 복사본」→「X 복사본 (2)」(종전 「X copy 1」)
+                    const newName = suggestFolderCopyName(option.name, (n) =>
+                      presets.some((x) => x.name === n),
+                    );
                     newPreset.name = newName;
                     editPresetList(curSession, UNDO_TEXT.presetDuplicate(newName), () =>
                       curSession!.addPreset(newPreset),

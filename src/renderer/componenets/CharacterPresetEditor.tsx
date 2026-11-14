@@ -28,7 +28,7 @@ import {
   templateService,
 } from '../models';
 import { appState } from '../models/AppService';
-import { nameErrorMessage, NAME_INPUT_TEXT, promptName } from '../models/nameInput';
+import { nameErrorMessage, NAME_INPUT_TEXT, numberedName, promptName, suggestFolderCopyName } from '../models/nameInput';
 import { FaPlay, FaPause, FaStop, FaSync, FaGlobe, FaUsers } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
 import type { IGlobalCharacterPresetEntry } from '../models/GlobalCharacterPresetService';
@@ -272,10 +272,8 @@ async function importCharacterPresets(session: any, file: File) {
 
     const preset = CharacterPreset.fromJSON(presetJson as ICharacterPreset);
 
-    // 중복 이름 처리
-    while (session.hasCharacterPreset(preset.name)) {
-      preset.name = preset.name + '_1';
-    }
+    // 중복 이름 처리 — 가져오기·충돌 규칙 「X」→「X (2)」(2026-11-14 M2 I4, 종전 「X_1_1」 반복 접미). 묻지 않고 조용히 바꾸는 정책은 그대로
+    preset.name = numberedName(preset.name, (n) => session.hasCharacterPreset(n));
 
     session.addCharacterPreset(preset);
     imported++;
@@ -741,11 +739,13 @@ export const CharacterPresetEditor = observer(({
 
   const handleDuplicate = (preset: CharacterPreset) => {
     const copy = CharacterPreset.fromJSON(preset.toJSON());
-    copy.name = preset.name + ' 복사본';
+    // 복제 이름 단일 규칙(2026-11-14 M2 C4) — 「X 복사본」→「X 복사본 (2)」. 현재 로컬 목록과 대조해 빈 이름을 넘기므로
+    // Session.addCharacterPreset 의 공백 없는 숫자 접미(「X 복사본1」)는 걸리지 않는다
+    copy.name = suggestFolderCopyName(preset.name, (n) => curSession.hasCharacterPreset(n));
     // 복제본은 독립 로컬 — 글로벌 유래 링크를 끊어 원본만 재적용 갱신 대상으로 유지
     copy.fromGlobalId = '';
     copy.fromGlobalRev = 0;
-    // 두 번째 복제부터 「X 복사본1」 — 라벨도 실제 이름으로(M1 U1)
+    // 라벨은 실제 이름으로(M1 U1)
     addCharacterPresetRecorded(curSession, copy, UNDO_TEXT.characterPresetDuplicate);
   };
 

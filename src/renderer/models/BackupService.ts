@@ -81,7 +81,7 @@ import {
   readNamesFromStore,
   type ImportPolicy,
 } from './importFlow';
-import { nameErrorMessage, projectNameRules, promptName } from './nameInput';
+import { nameErrorMessage, projectNameRules, promptName, suggestFolderCopyName } from './nameInput';
 import {
   fileStemOf,
   overwriteFailureText,
@@ -322,15 +322,9 @@ export class BackupService {
     });
     if (!mode) return;
 
-    // "(원본 이름) Copy" — 충돌 시 번호 부여
+    // 복제 이름 단일 규칙(2026-11-14 M2 C10) — 「X 복사본」→「X 복사본 (2)」(종전 「X Copy」). 묻지 않음·같은 폴더는 그대로
     const existing = sessionService.list();
-    const base = cur.name + ' Copy';
-    let newName = base;
-    let i = 2;
-    while (existing.includes(newName)) {
-      newName = `${base} (${i})`;
-      i++;
-    }
+    const newName = suggestFolderCopyName(cur.name, (n) => existing.includes(n));
     // 원본이 폴더 소속이면 같은 폴더에 복제
     const folder = sessionService.getFolderOf(cur.name);
 

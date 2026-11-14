@@ -11,6 +11,7 @@ import {
   globalCharacterPresetService,
 } from '.';
 import { getAppState } from './appStateRef';
+import { suggestFolderCopyName } from './nameInput';
 import {
   Session,
   CharacterPreset,
@@ -290,7 +291,9 @@ export class ProjectTemplateService extends EventTarget {
     if (!src) throw new Error('템플릿을 찾을 수 없습니다');
     const clone: IProjectTemplateEntry = JSON.parse(JSON.stringify(src));
     clone.id = uuidv4();
-    clone.name = this.resolveNameCollision(src.name);
+    // 복제 이름 단일 규칙(2026-11-14 M2 C8) — 「X 복사본」→「X 복사본 (2)」(종전 「X (2)」, 복사 표시 없음).
+    // resolveNameCollision 은 새로 만들기·불러오기 충돌이 계속 쓴다
+    clone.name = suggestFolderCopyName(src.name, (n) => !!this.getByName(n));
     clone.createdAt = Date.now();
     clone.updatedAt = Date.now();
     // 이미지 파일도 복제 — 엔트리 간 파일 공유가 생기면 한쪽 삭제가

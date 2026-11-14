@@ -12,7 +12,7 @@ import ModalOverlay from './ModalOverlay';
 import Tooltip from './Tooltip';
 import { sessionService, templateService } from '../models';
 import { appState } from '../models/AppService';
-import { nameErrorMessage, projectNameRules, validateName } from '../models/nameInput';
+import { nameErrorMessage, projectNameRules, suggestFolderCopyName, validateName } from '../models/nameInput';
 import {
   deleteConfirmText,
   projectDeleteResultText,
@@ -109,7 +109,11 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
       appState.pushMessage('씬 템플릿 프로젝트를 불러올 수 없습니다.');
       return;
     }
-    await templateService.createSceneTemplate(tpl);
+    // 복제 이름 단일 규칙(2026-11-14 M2 C9) — 이름 칸에 「X 복사본」(겹치면 「(2)」…)을 채워 둔다.
+    // 겹침 판정은 이름 칸 검증(projectNameRules — 숨김 포함 전체 프로젝트)과 같은 기준이라 제안값이 거부되지 않는다
+    await templateService.createSceneTemplate(tpl, {
+      initialName: suggestFolderCopyName(name, (n) => sessionService.list().includes(n)),
+    });
   };
 
   const handleDelete = (name: string) => {

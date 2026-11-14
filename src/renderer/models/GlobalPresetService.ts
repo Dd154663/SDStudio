@@ -13,6 +13,7 @@ import {
 import { extractPromptDataFromBase64 } from './util';
 import { decoratePresetExportImage } from './presetExportDecoration';
 import { planPromptImport } from './sdstudioPromptImport';
+import { numberedName } from './nameInput';
 import type { ImportableMetadata } from './types';
 
 /**
@@ -274,10 +275,8 @@ export class GlobalPresetService extends EventTarget {
     type: GlobalPresetType,
     name: string,
   ): string {
-    if (!this.getByName(type, name)) return name;
-    let i = 1;
-    while (this.getByName(type, `${name} (${i})`)) i++;
-    return `${name} (${i})`;
+    // 가져오기·충돌 규칙(2026-11-14 M2 K8) — 「X」→「X (2)」(종전 「X (1)」부터). 글로벌 복사·PNG/이미지 불러오기 공용
+    return numberedName(name, (n) => !!this.getByName(type, n));
   }
 
   @action

@@ -654,12 +654,18 @@ export class TemplateService {
   // 지정. 기존 얕은 복제(exportSessionShallow → importSessionShallow)를 재사용한다.
   // 공개 메서드 — ⋯메뉴(현재 세션) 외에 드로어 행 액션('씬 템플릿으로 만들기')과
   // 관리 메뉴의 복제도 호출한다.
-  async createSceneTemplate(session: Session): Promise<void> {
+  // opts.initialName = 이름 칸 처음 값 — 관리 창 「복제」만 넘긴다(2026-11-14 M2 C9, 「X 복사본」 제안).
+  // 「현재 씬 전체로 만들기」·드로어 「씬 템플릿으로 만들기」는 종전대로 빈 칸.
+  async createSceneTemplate(
+    session: Session,
+    opts?: { initialName?: string },
+  ): Promise<void> {
     const appState = getAppState();
     // 씬 템플릿은 숨김 프로젝트 — 프로젝트와 같은 이름 규칙·중복 검사(창 안에서, D2)
     const name = await promptName({
       title: `씬 템플릿 이름 (예: ${session.name} 씬템플릿)`,
       ...projectNameRules(sessionService),
+      ...(opts?.initialName ? { initial: opts.initialName } : {}),
     });
     if (!name) return;
     try {
