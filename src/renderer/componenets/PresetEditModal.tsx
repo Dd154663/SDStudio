@@ -8,6 +8,8 @@ import PromptEditTextArea from './PromptEditTextArea';
 import { FileUploadBase64 } from './UtilComponents';
 import { useBackLayer } from '../models/BackStackService';
 import { useBackdropClose, useGuardedClose } from './backdropClose';
+import { NAME_INPUT_TEXT } from '../models/nameInput';
+import type { NameKind } from '../models/nameInput';
 
 // 스타일 프리셋 편집 모달 — 이름/대표이미지/프롬프트/샘플링 설정 수정.
 // GlobalPresetTab 의 편집 모달을 어댑터 기반으로 추출한 단일 출처:
@@ -60,6 +62,9 @@ const AdapterProfileImage = ({
   return <img src={image} className={className} draggable={false} />;
 };
 
+// GlobalPresetService.rename 이 이름이 겹칠 때 던지는 문구(서비스 쪽은 그대로 둔다) — 화면에서는 공용 중복 문구로 바꾼다
+const PRESET_NAME_TAKEN_MESSAGE = '이미 존재하는 이름입니다';
+
 export const PresetEditModal = observer(
   ({
     title,
@@ -67,12 +72,15 @@ export const PresetEditModal = observer(
     preset,
     adapter,
     onClose,
+    nameKind = 'globalPreset',
   }: {
     title: string;
     initialName: string;
     preset: any; // frontPrompt/backPrompt/uc/샘플링 필드를 읽는 프리셋 JSON
     adapter: PresetEditAdapter;
     onClose: () => void;
+    /** 중복 이름 안내 문구의 종류(기본 = 글로벌 프리셋 — 현재 유일한 호출부) */
+    nameKind?: NameKind;
   }) => {
     const p: any = preset || {};
     const asStr = (v: any) => (typeof v === 'string' ? v : '');
@@ -143,7 +151,13 @@ export const PresetEditModal = observer(
         // 저장 뒤 닫기는 미저장 가드를 거치지 않는다
         onClose();
       } catch (e: any) {
-        appState.pushMessage(e.message || '저장 실패');
+        // 서비스(GlobalPresetService.rename)의 중복 예외 문구는 그대로 두고, 화면에서는 이름 입력 공용 문구로(SPEC D2, 2026-11-12 정비 M1)
+        appState.pushMessage(
+          e?.message === PRESET_NAME_TAKEN_MESSAGE
+            ? NAME_INPUT_TEXT.duplicate(nameKind, nm)
+            : e?.message || '저장 실패',
+          'error',
+        );
       } finally {
         setSaving(false);
       }

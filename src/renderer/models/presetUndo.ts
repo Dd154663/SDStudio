@@ -898,6 +898,52 @@ export function beginCharacterPresetRecord(
   };
 }
 
+/**
+ * 로컬 캐릭터 프리셋 추가·복제 1항목 — 겹치는 이름은 addCharacterPreset 과 같은 규칙(공백 없는 숫자)으로 **먼저** 확정해
+ * 되돌리기 라벨이 실제 이름과 같게 한다(2026-11-12 정비 M1 U1·U2). 확정한 이름을 돌려준다.
+ */
+export function addCharacterPresetRecorded(
+  session: Session,
+  preset: CharacterPreset,
+  labelOf: (name: string) => string,
+  opts: { service?: UndoService } = {},
+): string {
+  preset.name = session.uniqueCharacterPresetName(preset.name);
+  editCharacterPresets(session, labelOf(preset.name), () => session.addCharacterPreset(preset), opts);
+  return preset.name;
+}
+
+/**
+ * 글로벌 캐릭터 프리셋 → 프로젝트 사본(불러오기·적용) 1항목. 라벨은 실제로 프로젝트에 들어간 이름
+ * (겹치면 「X (글로벌)」)으로 commit 한다(2026-11-12 정비 M1 U3~U5). `after` 는 같은 항목 안에서 이어 할 일(적용).
+ * 하나도 못 만들면 라벨은 원래 이름 그대로(바뀐 것이 없으면 기록도 안 남는다).
+ */
+export async function instantiateGlobalCharacterPresetsRecorded(
+  session: Session,
+  entries: readonly { id: string; name: string }[],
+  instantiate: (id: string) => Promise<CharacterPreset>,
+  labelOf: (names: readonly string[]) => string,
+  after?: (presets: CharacterPreset[]) => void,
+  opts: { service?: UndoService } = {},
+): Promise<{ presets: CharacterPreset[]; failures: { entry: { id: string; name: string }; error: any }[] }> {
+  const rec = beginCharacterPresetRecord(session, labelOf(entries.map((e) => e.name)), opts);
+  const presets: CharacterPreset[] = [];
+  const failures: { entry: { id: string; name: string }; error: any }[] = [];
+  try {
+    for (const entry of entries) {
+      try {
+        presets.push(await instantiate(entry.id));
+      } catch (error) {
+        failures.push({ entry, error });
+      }
+    }
+    if (after) after(presets);
+  } finally {
+    rec.commit(presets.length > 0 ? labelOf(presets.map((p) => p.name)) : undefined);
+  }
+  return { presets, failures };
+}
+
 /** 테스트·진단용 */
 export function resetPresetUndoState(): void {
   characterDepth = 0;

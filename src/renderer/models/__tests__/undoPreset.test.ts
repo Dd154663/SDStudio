@@ -21,8 +21,10 @@ import type { FocusLeaveWatcher } from '../sceneFieldUndo';
 import {
   beginCharacterPresetRecord,
   beginPresetListRecord,
+  addCharacterPresetRecorded,
   beginWorkflowSlide,
   editCharacterPresets,
+  instantiateGlobalCharacterPresetsRecorded,
   editPresetList,
   editWorkflowFields,
   renamePresetRecorded,
@@ -535,6 +537,126 @@ describe('로컬 캐릭터 프리셋', () => {
     // 닫힌 뒤에는 다시 따로 기록된다
     editCharacterPresets(session, 'after', () => session.addCharacterPreset(cp('H')), { service });
     expect(service.entries(session).past.map((e) => e.label)).toEqual(['after']);
+  });
+
+  // 2026-11-12 정비 M1 U1·U2 — 라벨 = 실제로 들어간 이름(공백 없는 숫자 규칙은 그대로)
+  test('U1 두 번째 복제부터 라벨 = 「X 복사본1」(실제 이름)', () => {
+    const { service } = harness();
+    const { session } = makeSession('A');
+    session.addCharacterPreset(cp('K'));
+    const dup = () => {
+      const c = cp('K');
+      c.name = 'K 복사본';
+      return addCharacterPresetRecorded(session, c, UNDO_TEXT.characterPresetDuplicate, { service });
+    };
+    expect(dup()).toBe('K 복사본');
+    expect(dup()).toBe('K 복사본1');
+    expect(dup()).toBe('K 복사본2');
+    expect([...session.characterPresets.keys()]).toEqual(['K', 'K 복사본', 'K 복사본1', 'K 복사본2']);
+    expect(service.entries(session).past.map((e) => e.label)).toEqual([
+      UNDO_TEXT.characterPresetDuplicate('K 복사본'),
+      UNDO_TEXT.characterPresetDuplicate('K 복사본1'),
+      UNDO_TEXT.characterPresetDuplicate('K 복사본2'),
+    ]);
+  });
+
+  test('U2 같은 이름 새로 저장 — 라벨 = 「새 캐릭터 프리셋1」, 되돌리면 그 항목만 빠짐', async () => {
+    const { service } = harness();
+    const { session } = makeSession('A');
+    addCharacterPresetRecorded(session, cp('새 캐릭터 프리셋'), UNDO_TEXT.characterPresetAdd, { service });
+    const second = cp('새 캐릭터 프리셋');
+    expect(addCharacterPresetRecorded(session, second, UNDO_TEXT.characterPresetAdd, { service })).toBe('새 캐릭터 프리셋1');
+    expect(second.name).toBe('새 캐릭터 프리셋1');
+    expect(service.entries(session).past.map((e) => e.label)).toEqual([
+      UNDO_TEXT.characterPresetAdd('새 캐릭터 프리셋'),
+      UNDO_TEXT.characterPresetAdd('새 캐릭터 프리셋1'),
+    ]);
+    await service.undo(session);
+    expect([...session.characterPresets.keys()]).toEqual(['새 캐릭터 프리셋']);
+  });
+
+  // 2026-11-12 정비 M1 U3~U5 — 글로벌 → 프로젝트 사본의 라벨 = 실제 로컬 이름(겹치면 「X (글로벌)」)
+  const fakeInstantiate = (session: Session, taken: Record<string, string>) => async (id: string) => {
+    await Promise.resolve();
+    const p = cp(taken[id] ?? id);
+    session.addCharacterPreset(p);
+    return p;
+  };
+
+  test('U3 글로벌 → 프로젝트 복사 — 라벨 = 「G (글로벌)」, 1항목·되돌림', async () => {
+    const { service } = harness();
+    const { session } = makeSession('A');
+    session.addCharacterPreset(cp('G'));
+    const r = await instantiateGlobalCharacterPresetsRecorded(
+      session,
+      [{ id: 'g1', name: 'G' }],
+      fakeInstantiate(session, { g1: 'G (글로벌)' }),
+      (names) => UNDO_TEXT.characterPresetFromGlobal(names.length, names[0]),
+      undefined,
+      { service },
+    );
+    expect(r.presets.map((p) => p.name)).toEqual(['G (글로벌)']);
+    expect(r.failures).toEqual([]);
+    expect(service.entries(session).past.map((e) => e.label)).toEqual([
+      UNDO_TEXT.characterPresetFromGlobal(1, 'G (글로벌)'),
+    ]);
+    await service.undo(session);
+    expect([...session.characterPresets.keys()]).toEqual(['G']);
+  });
+
+  test('U4·U5 적용 — 라벨 = 실제 이름·성공한 개수, 실패는 돌려주고 적용은 같은 1항목', async () => {
+    const { service } = harness();
+    const { session, shared } = makeSession('A');
+    session.addCharacterPreset(cp('G'));
+    const instantiate = fakeInstantiate(session, { g1: 'G (글로벌)' });
+    const one = await instantiateGlobalCharacterPresetsRecorded(
+      session,
+      [{ id: 'g1', name: 'G' }],
+      instantiate,
+      UNDO_TEXT.characterPresetApply,
+      (locals) => apply(session, shared, locals[0]),
+      { service },
+    );
+    expect(shared._appliedPresetName).toBe('G (글로벌)');
+    expect(one.presets).toHaveLength(1);
+    const boom = new Error('복사 실패');
+    const many = await instantiateGlobalCharacterPresetsRecorded(
+      session,
+      [{ id: 'h1', name: 'H' }, { id: 'bad', name: 'Bad' }, { id: 'i1', name: 'I' }],
+      async (id) => {
+        if (id === 'bad') throw boom;
+        return instantiate(id);
+      },
+      UNDO_TEXT.characterPresetApply,
+      (locals) => locals.forEach((p) => apply(session, shared, p)),
+      { service },
+    );
+    expect(many.failures).toEqual([{ entry: { id: 'bad', name: 'Bad' }, error: boom }]);
+    expect(service.entries(session).past.map((e) => e.label)).toEqual([
+      UNDO_TEXT.characterPresetApply(['G (글로벌)']),
+      UNDO_TEXT.characterPresetApply(['h1', 'i1']), // 성공한 2개
+    ]);
+    await service.undo(session);
+    expect(session.characterPresets.has('h1')).toBe(false);
+    expect(shared._appliedPresetName).toBe('G (글로벌)');
+  });
+
+  test('글로벌 → 프로젝트 전부 실패 — 바뀐 것이 없으면 기록 없음', async () => {
+    const { service } = harness();
+    const { session } = makeSession('A');
+    const r = await instantiateGlobalCharacterPresetsRecorded(
+      session,
+      [{ id: 'g1', name: 'G' }],
+      async () => {
+        throw new Error('x');
+      },
+      UNDO_TEXT.characterPresetApply,
+      undefined,
+      { service },
+    );
+    expect(r.presets).toEqual([]);
+    expect(r.failures).toHaveLength(1);
+    expect(service.entries(session).past).toEqual([]);
   });
 });
 

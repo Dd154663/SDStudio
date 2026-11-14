@@ -3,6 +3,7 @@ import { FaArrowLeft, FaArrowRight, FaRedo, FaStar, FaPlus, FaTrash } from 'reac
 import { ActionIcon } from './ActionIcon';
 import { useBackLayer } from '../models/BackStackService';
 import { useBackdropClose } from './backdropClose';
+import { appState } from '../models/AppService';
 
 interface Bookmark {
   id: string;
@@ -71,7 +72,8 @@ interface BookmarkDialogProps {
   onClose: () => void;
 }
 
-const BookmarkDialog: React.FC<BookmarkDialogProps> = ({ mode, initialLabel, initialUrl, onConfirm, onDelete, onClose }) => {
+// 테스트(labelNoticesM1.test.tsx)용으로 내보낸다
+export const BookmarkDialog: React.FC<BookmarkDialogProps> = ({ mode, initialLabel, initialUrl, onConfirm, onDelete, onClose }) => {
   const [label, setLabel] = useState(initialLabel);
   const [url, setUrl] = useState(initialUrl);
   // Esc·Android 뒤로 가기로 닫기, 바깥 클릭은 누름·뗌 모두 배경일 때만(2026-10-03 U1·X6)
@@ -116,7 +118,15 @@ const BookmarkDialog: React.FC<BookmarkDialogProps> = ({ mode, initialLabel, ini
           {/* [삭제]는 왼쪽에 분리, 오른쪽은 [추가/저장][취소] 순서(2026-10-03 D1) */}
           <button
             className="px-3 py-1 text-sm back-sky rounded"
-            onClick={() => { if (label.trim() && url.trim()) onConfirm(label.trim(), url.trim()); }}
+            onClick={() => {
+              // 빠진 칸은 이름으로 안내(2026-11-12 정비 M1) — 예전엔 아무 반응이 없었다. 창은 그대로.
+              const missing = [!label.trim() && '이름', !url.trim() && 'URL'].filter(Boolean);
+              if (missing.length > 0) {
+                appState.pushMessage(`다음 칸을 확인해 주세요: ${missing.join(', ')}`, 'error');
+                return;
+              }
+              onConfirm(label.trim(), url.trim());
+            }}
           >
             {mode === 'add' ? '추가' : '저장'}
           </button>

@@ -677,16 +677,23 @@ export class Session implements Serealizable {
     return Array.from(this.characterPresets.values());
   }
 
+  /**
+   * addCharacterPreset 이 실제로 쓸 이름 — 겹치면 공백 없이 숫자(「X1」·「X2」…). 호출부가 되돌리기 라벨·토스트를
+   * 실제 이름과 맞추려고 먼저 계산할 때 쓴다(2026-11-12 정비 M1 U1·U2). 규칙은 addCharacterPreset 과 한 곳.
+   */
+  uniqueCharacterPresetName(name: string): string {
+    if (!this.characterPresets.has(name)) return name;
+    let i = 1;
+    while (this.characterPresets.has(name + i.toString())) {
+      i++;
+    }
+    return name + i.toString();
+  }
+
   @action
   addCharacterPreset(preset: CharacterPreset): void {
     // 이름 중복 처리
-    if (this.characterPresets.has(preset.name)) {
-      let i = 1;
-      while (this.characterPresets.has(preset.name + i.toString())) {
-        i++;
-      }
-      preset.name = preset.name + i.toString();
-    }
+    preset.name = this.uniqueCharacterPresetName(preset.name);
     this.characterPresets.set(preset.name, preset);
   }
 

@@ -114,6 +114,16 @@ const ExportPresetManager = observer(() => {
       return;
     }
     const preset = exportFormToPreset(form);
+    // 다른 프리셋과 같은 이름이면 거부 — 인라인 이름 바꾸기와 같은 문구, 폼·입력은 그대로(2026-11-12 정비 M1·R5).
+    // 수정 중인 자기 자신은 제외. 이미 있던 중복 이름 프리셋은 그대로 둔다(저장 때만 막음).
+    const duplicate = validateName(preset.name, {
+      kind: 'exportPreset',
+      existing: (n) => presets.some((p, i) => i !== editingIndex && p.name === n),
+    });
+    if (duplicate) {
+      appState.pushMessage(duplicate, 'error');
+      return;
+    }
     let updated = [...presets];
     if (editingIndex !== null) {
       updated[editingIndex] = preset;

@@ -56,7 +56,11 @@ import {
   isSafeImageToken,
 } from '../models/projectTemplateBackup';
 import { deleteConfirmText, safeImportedImageName } from '../models/deleteFlowRules';
-import { beginCharacterPresetRecord, editCharacterPresets } from '../models/presetUndo';
+import {
+  addCharacterPresetRecorded,
+  editCharacterPresets,
+  instantiateGlobalCharacterPresetsRecorded,
+} from '../models/presetUndo';
 import { recordSceneTemplateImport } from '../models/sceneImportUndo';
 import { UNDO_TEXT } from '../models/undoService';
 import {
@@ -685,9 +689,8 @@ export const CharacterPresetEditor = observer(({
     } else {
       // 되돌리기(U3b): 로컬 저장만 기록(글로벌 저장은 전역 라이브러리 — 보류). 편집 중 올린 이미지 파일은 남는다(무해)
       if (isNew) {
-        editCharacterPresets(curSession, UNDO_TEXT.characterPresetAdd(preset.name), () =>
-          curSession.addCharacterPreset(preset),
-        );
+        // 같은 이름이면 「X1」로 들어간다 — 라벨도 그 이름으로(M1 U2)
+        addCharacterPresetRecorded(curSession, preset, UNDO_TEXT.characterPresetAdd);
       } else {
         // 이름을 다른 로컬 프리셋 이름으로 바꾸면 updateCharacterPreset 이 그 프리셋을 조용히 덮어쓴다 —
         // 저장 전에 거부하고 폼을 유지한다(D2, updateCharacterPreset 자체는 그대로).
@@ -742,9 +745,8 @@ export const CharacterPresetEditor = observer(({
     // 복제본은 독립 로컬 — 글로벌 유래 링크를 끊어 원본만 재적용 갱신 대상으로 유지
     copy.fromGlobalId = '';
     copy.fromGlobalRev = 0;
-    editCharacterPresets(curSession, UNDO_TEXT.characterPresetDuplicate(copy.name), () =>
-      curSession.addCharacterPreset(copy),
-    );
+    // 두 번째 복제부터 「X 복사본1」 — 라벨도 실제 이름으로(M1 U1)
+    addCharacterPresetRecorded(curSession, copy, UNDO_TEXT.characterPresetDuplicate);
   };
 
   const handleApplyEasy = (preset: CharacterPreset) => {
@@ -762,30 +764,18 @@ export const CharacterPresetEditor = observer(({
     if (globalView) {
       const entries = globalEntries.filter((e) => selectedGlobalIds.has(e.id));
       if (entries.length === 0) return;
-      const locals: CharacterPreset[] = [];
-      // 되돌리기(U3b): 프로젝트로 복사 + 적용 = 1항목(복사한 이미지 파일은 남김)
-      const undoRec = beginCharacterPresetRecord(
+      // 되돌리기(U3b): 프로젝트로 복사 + 적용 = 1항목(복사한 이미지 파일은 남김). 라벨은 실제 로컬 이름(M1 U5)
+      const { failures } = await instantiateGlobalCharacterPresetsRecorded(
         curSession,
-        UNDO_TEXT.characterPresetApply(entries.map((e) => e.name)),
+        entries,
+        (id) => globalCharacterPresetService.instantiateIntoSession(curSession, id),
+        UNDO_TEXT.characterPresetApply,
+        (locals) => appState.applyCharacterPresets(locals),
       );
-      try {
-        for (const e of entries) {
-          try {
-            locals.push(
-              await globalCharacterPresetService.instantiateIntoSession(
-                curSession,
-                e.id,
-              ),
-            );
-          } catch (err: any) {
-            appState.pushMessage(
-              err.message || `"${e.name}"을(를) 프로젝트로 복사하지 못했습니다`,
-            );
-          }
-        }
-        appState.applyCharacterPresets(locals);
-      } finally {
-        undoRec.commit();
+      for (const { entry: e, error: err } of failures) {
+        appState.pushMessage(
+          err?.message || `"${e.name}"을(를) 프로젝트로 복사하지 못했습니다`,
+        );
       }
     } else {
       appState.applyCharacterPresets(
@@ -840,17 +830,17 @@ export const CharacterPresetEditor = observer(({
 
   const handleLoadGlobal = async (entry: IGlobalCharacterPresetEntry) => {
     // 되돌리기(U3b): 로컬 사본 추가·갱신 = 1항목(글로벌 쪽은 그대로, 복사한 이미지 파일은 남김)
-    const undoRec = beginCharacterPresetRecord(curSession, UNDO_TEXT.characterPresetFromGlobal(1, entry.name));
-    try {
-      const p = await globalCharacterPresetService.instantiateIntoSession(
-        curSession,
-        entry.id,
-      );
-      appState.pushMessage(`"${p.name}"을(를) 프로젝트로 복사했습니다`);
-    } catch (e: any) {
-      appState.pushMessage(e.message || '프로젝트로 복사하지 못했습니다');
-    } finally {
-      undoRec.commit();
+    // 라벨·토스트 모두 실제 로컬 이름(겹치면 「X (글로벌)」 — M1 U3)
+    const { presets, failures } = await instantiateGlobalCharacterPresetsRecorded(
+      curSession,
+      [entry],
+      (id) => globalCharacterPresetService.instantiateIntoSession(curSession, id),
+      (names) => UNDO_TEXT.characterPresetFromGlobal(names.length, names[0]),
+    );
+    if (presets.length > 0) {
+      appState.pushMessage(`"${presets[0].name}"을(를) 프로젝트로 복사했습니다`);
+    } else {
+      appState.pushMessage(failures[0]?.error?.message || '프로젝트로 복사하지 못했습니다');
     }
   };
 
@@ -958,18 +948,24 @@ export const CharacterPresetEditor = observer(({
     mode: 'easy' | 'character',
   ) => {
     // 되돌리기(U3b): 프로젝트로 복사 + 적용 = 1항목
-    const undoRec = beginCharacterPresetRecord(curSession, UNDO_TEXT.characterPresetApply([entry.name]));
+    // 라벨·토스트 모두 실제 로컬 이름(M1 U4)
     try {
-      const local = await globalCharacterPresetService.instantiateIntoSession(
+      const { presets, failures } = await instantiateGlobalCharacterPresetsRecorded(
         curSession,
-        entry.id,
+        [entry],
+        (id) => globalCharacterPresetService.instantiateIntoSession(curSession, id),
+        UNDO_TEXT.characterPresetApply,
+        (locals) => {
+          if (locals[0] && onApplyPreset) onApplyPreset(locals[0], mode);
+        },
       );
-      if (onApplyPreset) onApplyPreset(local, mode);
-      appState.pushMessage(`"${entry.name}"을(를) 프로젝트로 복사해 적용했습니다`);
+      if (presets.length > 0) {
+        appState.pushMessage(`"${presets[0].name}"을(를) 프로젝트로 복사해 적용했습니다`);
+      } else {
+        appState.pushMessage(failures[0]?.error?.message || '적용에 실패했습니다');
+      }
     } catch (e: any) {
       appState.pushMessage(e.message || '적용에 실패했습니다');
-    } finally {
-      undoRec.commit();
     }
   };
 
