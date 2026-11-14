@@ -2,7 +2,7 @@
 // 렌더 검사: 찾기 및 변환(l·aside 공용 씬 선택·씬 종류 칩·바닥줄 — 2026-11-12 재배치안 (가), 2026-11-14 A-3 일괄 삽입 분리로 탭 없음) · 환경설정 불러오기 미리보기(s·바닥줄 [불러오기 (N)][취소]·
 // --z-modal-top 유지) · 템플릿 적용(s·바닥줄 [적용][취소], [취소] = 닫기) · size="full" = 옛 fullscreen.
 // 소스 검사(큰 파일이라 렌더 대신): 캐릭터 위치 지정 ×2(full)·샘플링 그룹(m)·축하 영상(m)·태그 프리셋 관리(s)·
-// 작가 상세(m·도구줄 동작 줄)·아티스트 태깅(l·PC 만 h-full)·Google 드라이브 백업(m·--z-modal-top 유지).
+// 작가 상세(l — 2026-11-15 C-1 에서 m → l·도구줄 동작 줄)·아티스트 태깅(l·PC 만 h-full)·Google 드라이브 백업(m·--z-modal-top 유지).
 import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import * as fs from 'fs';
@@ -155,7 +155,7 @@ describe('소스 검사 — 10창의 등급(width·fullscreen 없음)', () => {
     ['샘플링·모델 설정 그룹', 'PreSetEdtior.tsx', 'title={showGroupOverlay', 'm', 1],
     ['축하 영상', 'ConfigSystemTab.tsx', 'title="🎉 축하합니다!"', 'm', 1],
     ['태그 프리셋 관리', 'ArtistLibraryTab.tsx', 'title="태그 프리셋 관리"', 's', 1],
-    ['작가 상세', 'ArtistLibraryTab.tsx', 'title={artist.name}', 'm', 1],
+    ['작가 상세', 'ArtistLibraryTab.tsx', 'title={artist.name}', 'l', 1], // 2026-11-15 C-1 m → l 두 열(overlayBundleC1.test.tsx)
     ['아티스트 태깅', 'ArtistTagModal.tsx', 'title="아티스트 태깅"', 'l', 1],
     ['환경설정 불러오기 미리보기', 'ConfigSyncSection.tsx', 'title={CONFIG_SYNC_TEXT.previewTitle}', 's', 1],
     ['템플릿 적용', 'TemplateInheritModals.tsx', 'title={`템플릿 적용', 's', 1],

@@ -22,7 +22,7 @@ import {
 } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
 import { queueArtistSample } from '../models/sceneQueueActions';
-import { artistLibraryService, imageService, backend } from '../models';
+import { artistLibraryService, imageService, backend, isMobile } from '../models';
 import { IArtistEntry, IArtistImage } from '../models/ArtistLibraryService';
 import { ModelBaseFamily } from '../models/modelSamplingProfiles';
 import { appState } from '../models/AppService';
@@ -96,8 +96,19 @@ const fileToBase64 = async (file: File): Promise<string> => {
 };
 
 // ─── 이미지 표시 ───
+// fit: 기본 'cover'(카드·썸네일). 작가 상세 PC 큰 이미지만 'contain'(창 높이를 채우되 잘리지 않게, 2026-11-15 C-1)
 const ArtistImage = observer(
-  ({ path, className, onClick }: { path: string; className?: string; onClick?: () => void }) => {
+  ({
+    path,
+    className,
+    onClick,
+    fit = 'cover',
+  }: {
+    path: string;
+    className?: string;
+    onClick?: () => void;
+    fit?: 'cover' | 'contain';
+  }) => {
     const [image, setImage] = useState<string | null>(null);
     useEffect(() => {
       let cancelled = false;
@@ -112,7 +123,7 @@ const ArtistImage = observer(
       return () => { cancelled = true; };
     }, [path]);
     if (image) {
-      return <img className={(className || '') + ' object-cover'} src={image} draggable={false} onClick={onClick} />;
+      return <img className={(className || '') + (fit === 'contain' ? ' object-contain' : ' object-cover')} src={image} draggable={false} onClick={onClick} />;
     }
     return (
       <div className={(className || '') + ' flex items-center justify-center bg-[var(--c-surface)]'} onClick={onClick}>
@@ -157,6 +168,8 @@ const TagPresetManageModal = observer(({ onClose }: { onClose: () => void }) => 
 });
 
 // ─── 프롬프트 보기 ───
+// 읽기 전용 표시 상자는 높이 상한·안쪽 스크롤 없이 글자만큼 자란다 — 창의 스크롤 하나(PC = 작가 상세 오른쪽 열,
+// 모바일 = 본문)가 맡는다(2026-11-15 C-1, SPEC 「높이 규칙 우선순위」 허용 (3)).
 const PromptView = observer(({ path }: { path: string }) => {
   const [loading, setLoading] = useState(true);
   const [prompt, setPrompt] = useState<string | null>(null);
@@ -196,7 +209,7 @@ const PromptView = observer(({ path }: { path: string }) => {
               <FaCopy className="inline mr-1" size={10} />복사
             </button>
           </div>
-          <div className="text-xs p-2 rounded bg-[var(--c-surface)] text-default break-words max-h-32 overflow-auto">{prompt}</div>
+          <div className="text-xs p-2 rounded bg-[var(--c-surface)] text-default break-words" data-artist-prompt-text="">{prompt}</div>
         </div>
       )}
       {uc && (
@@ -207,7 +220,7 @@ const PromptView = observer(({ path }: { path: string }) => {
               <FaCopy className="inline mr-1" size={10} />복사
             </button>
           </div>
-          <div className="text-xs p-2 rounded bg-[var(--c-surface)] text-default break-words max-h-24 overflow-auto">{uc}</div>
+          <div className="text-xs p-2 rounded bg-[var(--c-surface)] text-default break-words" data-artist-uc-text="">{uc}</div>
         </div>
       )}
     </div>
@@ -215,7 +228,7 @@ const PromptView = observer(({ path }: { path: string }) => {
 });
 
 // ─── 카드 상세 모달 ───
-const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; onClose: () => void }) => {
+export const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; onClose: () => void }) => {
   const artist = artistLibraryService.getArtist(artistId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
@@ -237,13 +250,15 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
 
   return (
     <>
-      {/* 작가 상세(2026-11-12 오버레이 묶음 A): m 등급(내용 높이). 작가 태그+동작 줄(복사·이름 변경·즐겨찾기·삭제)은
-          도구줄(toolbar) 슬롯 — 본문 스크롤 밖에 고정. 모바일(md 미만)은 태그가 한 줄 전체를 쓰고 버튼은 다음 줄(2026-10-02 I1) */}
+      {/* 작가 상세(2026-11-12 오버레이 묶음 A → 2026-11-15 C-1): l 등급(고정 높이) 두 열. 작가 태그+동작 줄(복사·이름 변경·
+          즐겨찾기·삭제)은 도구줄(toolbar) 슬롯 — 본문 스크롤 밖에 고정. 모바일(md 미만)은 태그가 한 줄 전체를 쓰고 버튼은 다음 줄(2026-10-02 I1).
+          PC 본문은 스크롤하지 않는다(h-full min-h-0): 왼쪽 = 이미지가 남은 높이를 채움(스크롤 없음), 오른쪽 = 이 창의 유일한
+          세로 스크롤(태그·태그 프리셋·이 이미지의 프롬프트). 모바일 = 한 열, 본문 스크롤 하나(SPEC 「높이 규칙 우선순위」) */}
       <ModalOverlay
         isOpen={true}
         onClose={onClose}
         title={artist.name}
-        size="m"
+        size="l"
         toolbar={
           <div className="w-full flex flex-wrap md:flex-nowrap items-center justify-end gap-2" data-artist-detail-actions="">
             <span className="basis-full md:basis-auto flex-1 min-w-0 text-sm font-mono px-2 py-1.5 rounded bg-[var(--c-surface)] text-default truncate" title={'artist:' + artist.name}>artist:{artist.name}</span>
@@ -300,141 +315,172 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
           </div>
         }
       >
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col md:flex-row gap-4">
-            {/* 좌: 이미지 */}
-            <div className="flex-1 min-w-0">
-              <div className="w-full aspect-[3/4] rounded-lg overflow-hidden bg-[var(--c-surface)] flex items-center justify-center">
-                {selected ? (
-                  <ArtistImage path={selected.path} className="w-full h-full" />
-                ) : (
-                  <div className="text-faint text-sm">이미지가 없습니다</div>
-                )}
-              </div>
-              {/* 썸네일 스트립 */}
-              <div className="flex flex-wrap gap-2 mt-2">
-                {artist.images.map((img) => (
-                  <div key={img.id} className={'relative w-14 h-14 rounded overflow-hidden cursor-pointer border-2 ' + (selected?.id === img.id ? 'border-sky-500' : 'border-transparent')}>
-                    <ArtistImage path={img.path} className="w-full h-full" onClick={() => { setSelectedId(img.id); setShowPrompt(false); }} />
-                    <FamilyBadge family={img.family} className="absolute left-0.5 bottom-0.5" />
-                  </div>
-                ))}
-                <button className="w-14 h-14 rounded border border-dashed line-color flex items-center justify-center text-faint hover:text-sky-500"
-                  aria-label="이미지 추가"
-                  onClick={() => fileRef.current?.click()}>
-                  <FaPlus />
-                </button>
-                {/* 샘플 생성(2026-09-26): 현재 프리셋에서 다른 작가 태그를 빼고 이 작가만으로 1장 생성해 카드에 저장 */}
-                <Tooltip content="현재 프리셋에서 다른 artist: 태그를 빼고 이 작가만으로 1장 생성해 카드에 저장">
-                  <button
-                    className="w-14 h-14 rounded border border-dashed line-color flex flex-col items-center justify-center gap-0.5 text-faint hover:text-sky-500 disabled:opacity-40"
-                    disabled={!appState.curSession}
-                    data-artist-sample-generate=""
-                    onClick={() => {
-                      if (!appState.curSession) {
-                        appState.pushMessage('프로젝트를 먼저 여세요.');
-                        return;
-                      }
-                      queueArtistSample(appState.curSession, artist.id, artist.name);
-                    }}
-                  >
-                    <FaMagic />
-                    <span className="text-[10px] leading-none">샘플 생성</span>
-                  </button>
-                </Tooltip>
-                <input type="file" accept={IMPORT_IMAGE_ACCEPT} multiple ref={fileRef} className="hidden"
-                  onChange={(e) => { if (e.target.files) addImages(e.target.files); e.target.value = ''; }} />
-              </div>
-              {selected && (
-                <div className="flex items-center gap-1.5 mt-2 text-xs">
-                  <span className="text-muted mr-1">모델 계열</span>
-                  {(['v4_5', 'v5'] as ModelBaseFamily[]).map((f) => (
-                    <button
-                      key={f}
-                      className={'px-2 py-0.5 rounded-full border ' + (selected.family === f ? 'border-sky-500 text-sky-500 bg-sky-100 dark:bg-sky-900/40' : 'line-color text-muted hover:border-sky-400')}
-                      onClick={() => setArtistImageFamilyRecorded(artist.id, selected.id, selected.family === f ? undefined : f)}
-                      title="이 샘플이 나온 모델 계열(다시 누르면 미지정)"
-                    >
-                      {FAMILY_LABEL[f]}
-                    </button>
-                  ))}
-                  {!selected.family && <span className="text-faint">미지정 — 메타데이터에서 못 읽음</span>}
-                </div>
+        <div
+          className={isMobile ? 'flex flex-col gap-4' : 'h-full min-h-0 flex gap-4'}
+          data-artist-detail-body=""
+        >
+          {/* 좌: 이미지(PC 는 스크롤 없음 — 큰 이미지가 남은 높이를 채우고 썸네일은 가로 띠 한 줄) */}
+          <div
+            className={isMobile ? 'min-w-0 flex flex-col' : 'flex-1 min-w-0 min-h-0 flex flex-col'}
+            data-artist-detail-left=""
+          >
+            <div
+              className={
+                (isMobile ? 'w-full aspect-[3/4]' : 'w-full flex-1 min-h-0') +
+                ' rounded-lg overflow-hidden bg-[var(--c-surface)] flex items-center justify-center'
+              }
+              data-artist-detail-image=""
+            >
+              {selected ? (
+                <ArtistImage path={selected.path} className="w-full h-full" fit={isMobile ? 'cover' : 'contain'} />
+              ) : (
+                <div className="text-faint text-sm">이미지가 없습니다</div>
               )}
-              {selected && (
-                <div className="flex gap-2 mt-2">
-                  {artist.images[0]?.id !== selected.id && (
-                    <button className="text-xs back-gray !rounded-md px-2 py-1" onClick={() => setArtistThumbnailRecorded(artist.id, selected.id)}>
-                      <ActionIcon id="pin-default" className="inline mr-1" size={10} />대표로 지정
-                    </button>
-                  )}
-                  <button className="text-xs back-gray !rounded-md px-2 py-1" onClick={() => setShowPrompt((v) => !v)}>
+            </div>
+            {/* 썸네일 스트립 — PC 는 한 줄 가로 스크롤(세로 중첩 아님), 모바일은 종전 줄바꿈 */}
+            <div
+              className={
+                isMobile
+                  ? 'flex flex-wrap gap-2 mt-2'
+                  : 'flex-none flex flex-nowrap overflow-x-auto gap-2 mt-2 pb-1'
+              }
+              data-artist-detail-thumbs=""
+            >
+              {artist.images.map((img) => (
+                <div key={img.id} className={'relative flex-none w-14 h-14 rounded overflow-hidden cursor-pointer border-2 ' + (selected?.id === img.id ? 'border-sky-500' : 'border-transparent')}>
+                  <ArtistImage path={img.path} className="w-full h-full" onClick={() => { setSelectedId(img.id); setShowPrompt(false); }} />
+                  <FamilyBadge family={img.family} className="absolute left-0.5 bottom-0.5" />
+                </div>
+              ))}
+              <button className="flex-none w-14 h-14 rounded border border-dashed line-color flex items-center justify-center text-faint hover:text-sky-500"
+                aria-label="이미지 추가"
+                onClick={() => fileRef.current?.click()}>
+                <FaPlus />
+              </button>
+              {/* 샘플 생성(2026-09-26): 현재 프리셋에서 다른 작가 태그를 빼고 이 작가만으로 1장 생성해 카드에 저장 */}
+              <Tooltip content="현재 프리셋에서 다른 artist: 태그를 빼고 이 작가만으로 1장 생성해 카드에 저장">
+                <button
+                  className="flex-none w-14 h-14 rounded border border-dashed line-color flex flex-col items-center justify-center gap-0.5 text-faint hover:text-sky-500 disabled:opacity-40"
+                  disabled={!appState.curSession}
+                  data-artist-sample-generate=""
+                  onClick={() => {
+                    if (!appState.curSession) {
+                      appState.pushMessage('프로젝트를 먼저 여세요.');
+                      return;
+                    }
+                    queueArtistSample(appState.curSession, artist.id, artist.name);
+                  }}
+                >
+                  <FaMagic />
+                  <span className="text-[10px] leading-none">샘플 생성</span>
+                </button>
+              </Tooltip>
+              <input type="file" accept={IMPORT_IMAGE_ACCEPT} multiple ref={fileRef} className="hidden"
+                onChange={(e) => { if (e.target.files) addImages(e.target.files); e.target.value = ''; }} />
+            </div>
+            {selected && (
+              <div className="flex-none flex items-center gap-1.5 mt-2 text-xs">
+                <span className="text-muted mr-1">모델 계열</span>
+                {(['v4_5', 'v5'] as ModelBaseFamily[]).map((f) => (
+                  <button
+                    key={f}
+                    className={'px-2 py-0.5 rounded-full border ' + (selected.family === f ? 'border-sky-500 text-sky-500 bg-sky-100 dark:bg-sky-900/40' : 'line-color text-muted hover:border-sky-400')}
+                    onClick={() => setArtistImageFamilyRecorded(artist.id, selected.id, selected.family === f ? undefined : f)}
+                    title="이 샘플이 나온 모델 계열(다시 누르면 미지정)"
+                  >
+                    {FAMILY_LABEL[f]}
+                  </button>
+                ))}
+                {!selected.family && <span className="text-faint">미지정 — 메타데이터에서 못 읽음</span>}
+              </div>
+            )}
+            {selected && (
+              <div className="flex-none flex gap-2 mt-2" data-artist-detail-image-actions="">
+                {artist.images[0]?.id !== selected.id && (
+                  <button className="text-xs back-gray !rounded-md px-2 py-1" onClick={() => setArtistThumbnailRecorded(artist.id, selected.id)}>
+                    <ActionIcon id="pin-default" className="inline mr-1" size={10} />대표로 지정
+                  </button>
+                )}
+                <button
+                  className="text-xs icon-button bg-red-500 text-white !rounded-md px-2 py-1"
+                  onClick={() => {
+                    // 샘플 이미지 파일을 영구 삭제하므로 확인 1회(X11)
+                    const imageId = selected.id;
+                    appState.pushDialog({
+                      type: 'confirm',
+                      ...deleteConfirmText({ kind: 'sampleImage', outcome: 'permanent' }),
+                      callback: async () => {
+                        await artistLibraryService.removeImage(artist.id, imageId);
+                        setSelectedId(null);
+                        setShowPrompt(false);
+                      },
+                    });
+                  }}
+                >
+                  <FaTrash className="inline mr-1" size={10} />이미지 삭제
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 우: 태그 → 태그 프리셋 → 이 이미지의 프롬프트(PC = 이 창의 유일한 세로 스크롤) */}
+          <div
+            className={isMobile ? 'min-w-0' : 'flex-1 min-w-0 min-h-0 overflow-y-auto pr-1'}
+            data-artist-detail-right=""
+          >
+            <div className="text-xs text-muted mb-1">태그</div>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {artist.tags.length === 0 && <span className="text-xs text-faint">태그 없음</span>}
+              {artist.tags.map((t) => (
+                <span key={t} className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300">
+                  {t}
+                  <button className="hover:text-red-500" onClick={() => removeArtistTagRecorded(artist.id, t)}>×</button>
+                </span>
+              ))}
+            </div>
+            <input
+              className="w-full gray-input text-sm mb-3"
+              placeholder="태그 추가 후 Enter (예: 러프)"
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { addArtistTagRecorded(artist.id, tagInput); setTagInput(''); } }}
+            />
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-muted">태그 프리셋 (클릭해서 추가)</span>
+              <button className="text-xs btn-link" onClick={() => setManagePreset(true)}>
+                <ActionIcon id="edit" className="inline mr-1" size={9} />관리
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {artistLibraryService.tagPresets.length === 0 && (
+                <span className="text-xs text-faint">프리셋 없음 — "관리"에서 추가</span>
+              )}
+              {artistLibraryService.tagPresets.map((t) => {
+                const has = artist.tags.includes(t);
+                return (
+                  <button key={t} disabled={has}
+                    className={'text-xs px-2.5 py-1 rounded-full border ' + (has ? 'line-color text-gray-300 dark:text-gray-600' : 'line-color text-muted hover:border-sky-500 hover:text-sky-500')}
+                    onClick={() => addArtistTagRecorded(artist.id, t)}>
+                    + {t}
+                  </button>
+                );
+              })}
+            </div>
+            {selected && (
+              <div className="mt-4 pt-3 border-t line-color" data-artist-detail-prompt-section="">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted">이 이미지의 프롬프트</span>
+                  <button
+                    className="text-xs back-gray !rounded-md px-2 py-1"
+                    data-artist-prompt-toggle=""
+                    onClick={() => setShowPrompt((v) => !v)}
+                  >
                     <FaFileAlt className="inline mr-1" size={10} />{showPrompt ? '프롬프트 닫기' : '프롬프트 보기'}
                   </button>
-                  <button
-                    className="text-xs icon-button bg-red-500 text-white !rounded-md px-2 py-1"
-                    onClick={() => {
-                      // 샘플 이미지 파일을 영구 삭제하므로 확인 1회(X11)
-                      const imageId = selected.id;
-                      appState.pushDialog({
-                        type: 'confirm',
-                        ...deleteConfirmText({ kind: 'sampleImage', outcome: 'permanent' }),
-                        callback: async () => {
-                          await artistLibraryService.removeImage(artist.id, imageId);
-                          setSelectedId(null);
-                          setShowPrompt(false);
-                        },
-                      });
-                    }}
-                  >
-                    <FaTrash className="inline mr-1" size={10} />이미지 삭제
-                  </button>
                 </div>
-              )}
-              {selected && showPrompt && <PromptView path={selected.path} />}
-            </div>
-
-            {/* 우: 태그 */}
-            <div className="flex-1 min-w-0">
-              <div className="text-xs text-muted mb-1">태그</div>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {artist.tags.length === 0 && <span className="text-xs text-faint">태그 없음</span>}
-                {artist.tags.map((t) => (
-                  <span key={t} className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300">
-                    {t}
-                    <button className="hover:text-red-500" onClick={() => removeArtistTagRecorded(artist.id, t)}>×</button>
-                  </span>
-                ))}
+                {showPrompt && <PromptView path={selected.path} />}
               </div>
-              <input
-                className="w-full gray-input text-sm mb-3"
-                placeholder="태그 추가 후 Enter (예: 러프)"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { addArtistTagRecorded(artist.id, tagInput); setTagInput(''); } }}
-              />
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-muted">태그 프리셋 (클릭해서 추가)</span>
-                <button className="text-xs btn-link" onClick={() => setManagePreset(true)}>
-                  <ActionIcon id="edit" className="inline mr-1" size={9} />관리
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {artistLibraryService.tagPresets.length === 0 && (
-                  <span className="text-xs text-faint">프리셋 없음 — "관리"에서 추가</span>
-                )}
-                {artistLibraryService.tagPresets.map((t) => {
-                  const has = artist.tags.includes(t);
-                  return (
-                    <button key={t} disabled={has}
-                      className={'text-xs px-2.5 py-1 rounded-full border ' + (has ? 'line-color text-gray-300 dark:text-gray-600' : 'line-color text-muted hover:border-sky-500 hover:text-sky-500')}
-                      onClick={() => addArtistTagRecorded(artist.id, t)}>
-                      + {t}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </ModalOverlay>

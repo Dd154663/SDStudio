@@ -250,7 +250,7 @@ const LegacyCleanupSection = () => {
             잔재 {scan.remnants.length}개 · 파일 {scan.totalFiles}개 · 총{' '}
             {formatSize(scan.totalSize)}
           </div>
-          <div className="text-xs text-muted rounded-md bg-[var(--c-zone)] p-2 max-h-32 overflow-y-auto flex flex-col gap-0.5">
+          <div className="text-xs text-muted rounded-md bg-[var(--c-zone)] p-2 flex flex-col gap-0.5">
             {scan.remnants.map((r) => (
               <div key={r.path} className="break-all">
                 {r.path}

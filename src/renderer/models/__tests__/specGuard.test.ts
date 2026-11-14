@@ -129,6 +129,11 @@ const modalOverlayWithoutSize = (content: string): number[] => {
   return out;
 };
 
+// 창 자식 vh 높이(2026-11-15 C-1) — Tailwind (min-|max-)?h-[NNvh] 와 인라인 height/maxHeight/minHeight 의
+// 문자열·템플릿 값에 들어간 NNvh(calc·min 안 포함). w-[90vw]·max-w-[calc(100vw-…)] 같은 폭은 걸리지 않는다.
+const VH_HEIGHT_RE =
+  /(?:min-|max-)?\bh-\[[0-9.]+d?vh\]|\b(?:maxHeight|minHeight|height)\s*:\s*['"`][^'"`\n]*?[0-9}]d?vh/g;
+
 // 프로젝트 휴지통 삭제의 직접 호출(sessionService.delete( — 공백·줄바꿈 허용). SessionService 내부의
 // super.delete·favorites.delete·Map delete 는 수신자가 sessionService 가 아니라 걸리지 않는다.
 const SESSION_DELETE_RE = /\bsessionService\s*\.\s*delete\s*\(/g;
@@ -558,6 +563,34 @@ const RULES: Rule[] = [
       'componenets/ToolbarOverflowMenu.tsx': 1, // ⋯ 메뉴(모바일)
     },
   },
+  {
+    // 높이 규칙 우선순위(2026-11-15 사용자 결정, C-1 신설) — 창 높이는 래퍼 등급(overlaySizes.ts)만 정한다.
+    // 창 자식이 vh 높이(Tailwind h-[NNvh]·max-h-[NNvh]·min-h-[NNvh], 인라인 height/maxHeight/minHeight 의 'NNvh'·
+    // 'calc(NNvh …)'·`…vh` 문자열)를 주면 이중 스크롤·창 크기 변동의 원인이 된다. 창 밖 팝오버·관문·직접 만든 창까지
+    // 포함해 파일별로 동결하고, 묶음이 지날수록 줄인다(늘리지 않는다). 주석은 세지 않는다.
+    // 2026-11-15 C-1: 환경설정 단축키 탭 maxHeight '50vh'·드라이브 탭 max-h-[40vh] 제거 → 12파일 13곳.
+    name: 'ModalOverlay 자식 vh 높이 — 높이 규칙 우선순위(2026-11-15)',
+    guide: '「오버레이 창 크기 체계」 높이 규칙 우선순위',
+    dir: 'componenets',
+    exts: ['.tsx'],
+    exclude: [],
+    count: (c) => countMatches(stripComments(c), VH_HEIGHT_RE),
+    locate: (c) => matchLines(c, VH_HEIGHT_RE),
+    allow: {
+      'componenets/CharacterPresetEditor.tsx': 1, // 캐릭터 프리셋 관리 폴더 열 md:max-h-[65vh] — C-3 대상
+      'componenets/ConfigScreen.tsx': 2, // 환경설정 직접 창(모바일 max-h-[90vh]·그 밖 85vh 삼항) — 대상 외(규약 모바일 예외)
+      'componenets/ConfirmWindow.tsx': 2, // 확인 창 본문·목록 — 체계 밖(별도 계열)
+      'componenets/ExpiredProjectsDialog.tsx': 1, // 만료 프로젝트 직접 창 — 남은 직접 창(체계 밖)
+      'componenets/ExternalImageView.tsx': 1, // 외부 이미지 보기 직접 창 max-h-[90vh] — 체계 밖
+      'componenets/MigrationGate.tsx': 1, // 저장소 관문(GateShell) — 체계 밖
+      'componenets/OpusUsageBadge.tsx': 1, // 사용량 팝오버 — 체계 밖
+      'componenets/ProjectBrowser.tsx': 1, // 프로젝트 탐색 모바일 height '70vh' — 규약 모바일 예외
+      'componenets/QuickMenu.tsx': 1, // 퀵 메뉴 PC 팝오버 — 체계 밖
+      'componenets/SceneQueueControl.tsx': 1, // 큐 팝오버 — 체계 밖
+      'componenets/SceneQuickPromptModal.tsx': 1, // 중간 프롬프트 조합 펼치기 50vh — C-4 대상(모바일 폴백)
+      'componenets/ToolbarOverflowMenu.tsx': 1, // ⋯ 메뉴 PC 팝오버 — 체계 밖
+    },
+  },
 ];
 
 function listFiles(dirAbs: string, exts: string[]): string[] {
@@ -608,6 +641,20 @@ describe('SPEC_GUIDE 가드 (하드코딩 신규 유입 차단)', () => {
     expect(stripComments(src)).not.toContain('블록');
     // 종전 정규식이면 'image/*' 부터 '주석 */' 까지가 통째로 사라져 4행 호출을 세지 못했다
     expect(modalOverlayWithoutSize(src)).toEqual([4, 5]);
+  });
+  test('창 자식 vh 높이 스캐너 — 높이 클래스·인라인 높이만 세고 폭·주석은 세지 않는다', () => {
+    const src = [
+      '<div className="md:max-h-[65vh] overflow-y-auto">', // 1
+      '<div className="h-[70vh] min-h-[30vh]">', // 2
+      "<div style={{ maxHeight: '50vh' }}>", // 1
+      '<div style={{ height: `calc(100vh - ${top}px)` }}>', // 1
+      '<div style={{ minHeight: `${n}vh` }}>', // 1
+      '<div className="w-[90vw] max-w-[calc(100vw-16px)] max-h-[85%]">', // 0
+      '// max-h-[40vh] 주석', // 0
+      "<div style={{ width: '50vw', height: 200 }}>", // 0
+    ].join('\n');
+    expect(countMatches(stripComments(src), VH_HEIGHT_RE)).toBe(6);
+    expect(matchLines(src, VH_HEIGHT_RE)).toEqual([1, 2, 2, 3, 4, 5]);
   });
   test('include 규칙의 대상 파일이 실제로 있다(경로 오타로 조용히 통과하지 않게)', () => {
     for (const rule of RULES) {

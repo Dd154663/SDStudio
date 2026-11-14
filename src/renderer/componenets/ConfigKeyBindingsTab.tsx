@@ -118,7 +118,9 @@ const KeyBindingsTab = () => {
   );
 
   return (
-    <div className="flex flex-col" style={{ maxHeight: '50vh' }}>
+    // 높이 상한·안쪽 스크롤 없음(2026-11-15 C-1, SPEC 「높이 규칙 우선순위」) — 환경설정 본문 스크롤 하나가 맡는다.
+    // 그룹 머리 sticky 는 본문 스크롤 기준으로 붙는다.
+    <div className="flex flex-col">
       <div className="text-sm text-muted mb-2 flex-none">
         "변경" 클릭 후 키 조합 입력. Esc로 취소. 그룹 내부에서만 키 충돌
         검사됩니다 (다른 그룹은 동작 상황이 달라 같은 키를 써도 OK).
@@ -128,10 +130,7 @@ const KeyBindingsTab = () => {
           {conflict}
         </div>
       )}
-      <div
-        className="overflow-y-auto flex-1 space-y-1"
-        style={{ minHeight: 0 }}
-      >
+      <div className="space-y-1">
         {groups.map((group, idx) =>
           group.items.length === 0 ? null : (
             <div key={group.title} className={idx > 0 ? 'mt-4' : ''}>

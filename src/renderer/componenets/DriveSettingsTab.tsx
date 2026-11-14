@@ -95,11 +95,11 @@ const DriveSettingsTab = ({
           <div className="space-y-2">
             <label className="block text-sm font-semibold gray-label">{T.managerTitle}</label>
             {connected === true && (
+              // 목록 높이 상한·안쪽 스크롤 없음(2026-11-15 C-1) — 환경설정 본문 스크롤 하나가 맡는다(PC·모바일 공통)
               <DriveBackupList
                 mode="manage"
                 active={active}
                 ctx={{ config: { dirty, onConfigImported: reloadConfig } }}
-                listClassName="max-h-[40vh] overflow-y-auto pr-1"
               />
             )}
             {connected === false && (
