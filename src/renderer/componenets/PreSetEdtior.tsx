@@ -2382,7 +2382,7 @@ const CharacterPromptEditor = observer(
           </div>
         )}
         {posOverlay && (
-          <ModalOverlay isOpen onClose={closePositionOverlay} title="캐릭터 위치 지정" fullscreen>
+          <ModalOverlay isOpen onClose={closePositionOverlay} title="캐릭터 위치 지정" size="full">
             <CharacterPositionOverlay
               markers={allChars.map(
                 (c: CharacterPrompt, i: number): PositionMarker => ({
@@ -3086,7 +3086,7 @@ export const PreSetEditorImpl = observer(
             isOpen={!!showGroupOverlay && !!groupElement}
             onClose={() => setShowGroupOverlay(undefined)}
             title={showGroupOverlay || ''}
-            width="max-w-xl"
+            size="m"
           >
             {showGroupOverlay && groupElement && (
               <WFGroupContext.Provider value={{ curGroup: showGroupOverlay }}>

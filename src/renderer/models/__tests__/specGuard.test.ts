@@ -536,6 +536,9 @@ const RULES: Rule[] = [
     // 묶음 1 이후 창별로 size 로 옮기며 건수를 내린다(늘리지 않는다).
     // 2026-11-11 묶음 1: 19파일 27곳 → 16파일 23곳 → 2026-11-12 묶음 0 스캐너 보정으로 17파일 24곳(ArtistTagModal 1 추가)(씬 템플릿 관리 m·내보내기 프리셋 l/s·프롬프트조각 l/m·프로젝트 탐색 xl,
     // 환경설정은 직접 만든 창이라 집계 밖이었고 PC 경로를 size l 로 흡수).
+    // 2026-11-12 묶음 A(「등급만 붙이면 끝」 10창 — 캐릭터 위치 지정 ×2 full·샘플링 그룹 m·축하 영상 m·태그 프리셋 관리 s·
+    // 작가 상세 m·아티스트 태깅 l·환경설정 불러오기 미리보기 s·템플릿 적용 s·찾기 및 변환 m·Google 드라이브 백업 m):
+    // 17파일 24곳(실제 합계 23곳 — 종전 주석이 1 많았음) → 10파일 12곳.
     name: 'ModalOverlay size 없는 호출(width 폭 클래스·기본값·fullscreen) — size 등급 사용',
     guide: '「오버레이 창 크기 체계」',
     dir: '',
@@ -545,20 +548,13 @@ const RULES: Rule[] = [
     locate: (c) => modalOverlayWithoutSize(c),
     allow: {
       'componenets/App.tsx': 2, // 프로젝트 휴지통·씬 휴지통(프롬프트조각은 묶음 1 에서 PieceEditor 안 size l 로)
-      'componenets/ArtistLibraryTab.tsx': 2, // 태그 프리셋 관리·작가 상세
-      'componenets/ArtistTagModal.tsx': 1, // 아티스트 태깅(2026-11-12 묶음 0: 스캐너가 'image/*' 를 주석으로 오인해 빠져 있던 1곳)
       'componenets/CharacterPresetEditor.tsx': 1, // 캐릭터 프리셋 관리
-      'componenets/ConfigSyncSection.tsx': 1, // 환경설정 불러오기 미리보기
-      'componenets/ConfigSystemTab.tsx': 1, // 축하 영상
       'componenets/DirectExportDialog.tsx': 1, // 직접 내보내기 설정
-      'componenets/DriveBackupManager.tsx': 1, // Google 드라이브 백업
-      'componenets/FindReplaceDialog.tsx': 1, // 찾기 및 변환
-      'componenets/PreSetEdtior.tsx': 3, // 사전 세팅 일괄 삭제·캐릭터 위치 지정(fullscreen)·샘플링 그룹
+      'componenets/PreSetEdtior.tsx': 1, // 사전 세팅 일괄 삭제(묶음 B — 캐릭터 위치 지정 full·샘플링 그룹 m 은 묶음 A 에서 size 로)
       'componenets/QuickMenu.tsx': 1, // 퀵 메뉴(모바일)
-      'componenets/SceneEditor.tsx': 1, // 캐릭터 위치 지정(fullscreen)
       'componenets/SceneQuickPromptModal.tsx': 1, // 중간 프롬프트 가운데 폴백(모바일)
       'componenets/StorageManageModal.tsx': 1, // 프로젝트 저장 공간 관리
-      'componenets/TemplateInheritModals.tsx': 2, // 폴더 기본 템플릿·템플릿 적용
+      'componenets/TemplateInheritModals.tsx': 1, // 폴더 기본 템플릿(묶음 C — 템플릿 적용은 묶음 A 에서 size s)
       'componenets/TemplateManagerModal.tsx': 2, // 글로벌 프리셋에서 복사·템플릿 관리
       'componenets/ToolbarOverflowMenu.tsx': 1, // ⋯ 메뉴(모바일)
     },

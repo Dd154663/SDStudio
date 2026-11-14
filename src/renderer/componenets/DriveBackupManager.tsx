@@ -265,7 +265,7 @@ export const DriveBackupManagerHost = observer(() => {
       isOpen={true}
       onClose={() => closeDriveBackupManager(null)}
       title={title}
-      width="max-w-2xl"
+      size="m"
       zIndex="var(--z-modal-top)"
     >
       <DriveBackupList

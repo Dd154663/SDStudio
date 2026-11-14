@@ -382,7 +382,28 @@ export const ReapplyTemplateModal = observer(
         isOpen={isOpen}
         onClose={onClose}
         title={`템플릿 적용 — ${target}`}
-        width="max-w-md"
+        size="s"
+        // 2026-11-12 오버레이 묶음 A: 바닥줄 [적용][취소]([확인][취소] 순서, 규격은 내보내기 프리셋 관리와 같다).
+        // [취소] = 닫기(onClose 그대로 — 미저장 가드 없음). 템플릿이 하나도 없으면 고를 것이 없어 [닫기] 하나.
+        footer={
+          <>
+            {hasAny && (
+              <button
+                className="px-4 py-2 rounded-lg btn-solid-sky disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+                disabled={!selected || busy}
+                onClick={apply}
+              >
+                {busy ? '적용 중...' : '적용'}
+              </button>
+            )}
+            <button
+              className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+              onClick={onClose}
+            >
+              {hasAny ? '취소' : '닫기'}
+            </button>
+          </>
+        }
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted">
@@ -428,15 +449,6 @@ export const ReapplyTemplateModal = observer(
                     {entry.characterReferences?.length ?? 0}
                   </span>
                 )}
-              </div>
-              <div className="flex gap-2 justify-end">
-                <button
-                  className="px-3 py-1.5 rounded-lg text-sm btn-solid-sky disabled:opacity-40"
-                  disabled={!selected || busy}
-                  onClick={apply}
-                >
-                  {busy ? '적용 중...' : '적용'}
-                </button>
               </div>
             </>
           )}

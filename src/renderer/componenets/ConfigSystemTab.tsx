@@ -591,7 +591,7 @@ const SystemTab = ({
           isOpen={true}
           onClose={() => setShowRickroll(false)}
           title="🎉 축하합니다!"
-          width="max-w-2xl"
+          size="m"
         >
           <div className="w-full aspect-video rounded-lg overflow-hidden bg-black">
             {/* file:// 출처에서는 iframe/embed 임베드가 YouTube에 막히므로(에러 150/153),

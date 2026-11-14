@@ -312,8 +312,27 @@ const ConfigImportPreviewModal = ({
       isOpen={true}
       onClose={cancel}
       title={CONFIG_SYNC_TEXT.previewTitle}
-      width="max-w-md"
+      size="s"
       zIndex="var(--z-modal-top)"
+      // 2026-11-12 오버레이 묶음 A: 바닥줄 [불러오기 (N)][취소] — [확인][취소] 순서(2026-10-03 D1), 규격은 내보내기 프리셋 관리와 같다
+      footer={
+        <>
+          <button
+            className="px-4 py-2 rounded-lg btn-solid-sky disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+            disabled={previewCount === 0 || applying}
+            onClick={apply}
+          >
+            {CONFIG_SYNC_TEXT.previewApply}
+            {previewCount > 0 ? ` (${previewCount})` : ''}
+          </button>
+          <button
+            className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+            onClick={cancel}
+          >
+            {CONFIG_SYNC_TEXT.previewCancel}
+          </button>
+        </>
+      }
     >
       <div className="space-y-3">
         <p className="text-xs text-muted break-words">
@@ -365,20 +384,6 @@ const ConfigImportPreviewModal = ({
         {themePresetChanged && (
           <p className="text-xs text-faint">{CONFIG_SYNC_TEXT.previewThemePresetNote}</p>
         )}
-        <div className="flex flex-wrap justify-end gap-2">
-          {/* [확인][취소] 순서(2026-10-03 D1) */}
-          <button
-            className={btn + ' back-sky'}
-            disabled={previewCount === 0 || applying}
-            onClick={apply}
-          >
-            {CONFIG_SYNC_TEXT.previewApply}
-            {previewCount > 0 ? ` (${previewCount})` : ''}
-          </button>
-          <button className={btn + ' back-gray'} onClick={cancel}>
-            {CONFIG_SYNC_TEXT.previewCancel}
-          </button>
-        </div>
       </div>
     </ModalOverlay>
   );

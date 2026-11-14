@@ -1201,7 +1201,7 @@ const SceneCharacterPromptEditor = observer(({
         </div>
       )}
       {posOverlay && (
-        <ModalOverlay isOpen onClose={closePositionOverlay} title="캐릭터 위치 지정" fullscreen>
+        <ModalOverlay isOpen onClose={closePositionOverlay} title="캐릭터 위치 지정" size="full">
           <CharacterPositionOverlay
             markers={characters.map((c, i) => ({
               id: c.id,

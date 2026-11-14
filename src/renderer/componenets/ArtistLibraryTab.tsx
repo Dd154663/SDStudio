@@ -126,7 +126,7 @@ const ArtistImage = observer(
 const TagPresetManageModal = observer(({ onClose }: { onClose: () => void }) => {
   const [input, setInput] = useState('');
   return (
-    <ModalOverlay isOpen={true} onClose={onClose} title="태그 프리셋 관리" width="max-w-md">
+    <ModalOverlay isOpen={true} onClose={onClose} title="태그 프리셋 관리" size="s">
       <div className="flex flex-col gap-3">
         <div className="flex gap-2">
           <input
@@ -237,10 +237,15 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
 
   return (
     <>
-      <ModalOverlay isOpen={true} onClose={onClose} title={artist.name} width="max-w-3xl">
-        <div className="flex flex-col gap-3">
-          {/* 작가 태그 + 즐겨찾기 — 모바일(md 미만)은 태그가 한 줄 전체를 쓰고 버튼은 다음 줄(2026-10-02 I1) */}
-          <div className="flex flex-wrap md:flex-nowrap items-center justify-end gap-2">
+      {/* 작가 상세(2026-11-12 오버레이 묶음 A): m 등급(내용 높이). 작가 태그+동작 줄(복사·이름 변경·즐겨찾기·삭제)은
+          도구줄(toolbar) 슬롯 — 본문 스크롤 밖에 고정. 모바일(md 미만)은 태그가 한 줄 전체를 쓰고 버튼은 다음 줄(2026-10-02 I1) */}
+      <ModalOverlay
+        isOpen={true}
+        onClose={onClose}
+        title={artist.name}
+        size="m"
+        toolbar={
+          <div className="w-full flex flex-wrap md:flex-nowrap items-center justify-end gap-2" data-artist-detail-actions="">
             <span className="basis-full md:basis-auto flex-1 min-w-0 text-sm font-mono px-2 py-1.5 rounded bg-[var(--c-surface)] text-default truncate" title={'artist:' + artist.name}>artist:{artist.name}</span>
             <button className="back-sky !rounded-md px-3 py-1.5 text-sm" onClick={() => copyText('artist:' + artist.name, '작가 태그를 복사했습니다')}>
               <FaCopy className="inline mr-1" size={12} />복사
@@ -293,7 +298,9 @@ const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: string; o
             </button>
             </Tooltip>
           </div>
-
+        }
+      >
+        <div className="flex flex-col gap-3">
           <div className="flex flex-col md:flex-row gap-4">
             {/* 좌: 이미지 */}
             <div className="flex-1 min-w-0">
