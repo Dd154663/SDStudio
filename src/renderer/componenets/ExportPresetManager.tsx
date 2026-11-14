@@ -11,6 +11,8 @@ import { ExportPresetOps, saveExportPresetsRecorded } from '../models/globalLibr
 import { UNDO_TEXT } from '../models/undoService';
 
 import ModalOverlay from './ModalOverlay';
+import { ListSearchBar } from './ListSearchBar';
+import { matchesQuery } from '../models/listSearch';
 import { useGuardedClose } from './backdropClose';
 
 import { FaPlus, FaTrash, FaPen } from 'react-icons/fa';
@@ -29,6 +31,9 @@ const ExportPresetManager = observer(() => {
   const [renameValue, setRenameValue] = useState('');
   // Esc 로 취소했거나 이미 확정한 편집 — 뒤따르는 blur 가 다시 확정하지 않게(D2 인라인 규칙)
   const renameClosedRef = useRef(false);
+  // 목록 이름 검색(2026-11-14 M4) — 보기 전용. 걸러도 편집 중인 프리셋 선택은 유지하고,
+  // 행 동작(이름 변경·복제·삭제·선택)은 원래 배열의 인덱스로 부른다.
+  const [query, setQuery] = useState('');
   // 미저장 가드(2026-10-03 E2-4): 편집 폼의 기준값(불러오기·선택·새로 만들기·저장 때 갱신).
   // 폼이 기준값과 다르면 ✕·바깥 클릭·Esc·뒤로 가기·[취소] 로 닫을 때 「버리고 닫을까요?」를 묻는다.
   const [baseline, setBaseline] = useState<FormState>(emptyForm());
@@ -46,6 +51,7 @@ const ExportPresetManager = observer(() => {
       setPresets(loaded);
       setEditingIndex(null);
       setFormAndBaseline(emptyForm());
+      setQuery('');
     }
   }, [appState.exportPresetManagerOpen]);
 
@@ -258,7 +264,28 @@ const ExportPresetManager = observer(() => {
     </button>
   );
 
-  const presetRows = presets.map((p, i) => (
+  // 검색에 맞는 행만 — i 는 원래 배열(presets)의 인덱스(걸러진 화면 위치가 아님)
+  const shownPresets = presets
+    .map((p, i) => ({ p, i }))
+    .filter(({ p }) => matchesQuery(p.name, query));
+
+  const searchBar = (
+    <ListSearchBar
+      compact
+      query={query}
+      onQueryChange={setQuery}
+      shown={shownPresets.length}
+      total={presets.length}
+    />
+  );
+
+  const noHits = (
+    <div className="text-xs text-faint text-center py-6" data-list-no-hits="">
+      검색 결과가 없습니다
+    </div>
+  );
+
+  const presetRows = shownPresets.map(({ p, i }) => (
     <div
       key={i}
       onClick={() => renamingIndex === null && selectPreset(i)}
@@ -410,8 +437,11 @@ const ExportPresetManager = observer(() => {
         aside={
           <div className="flex flex-col gap-2 p-3">
             {newPresetButton}
+            {presets.length > 0 && searchBar}
             {presets.length === 0 ? (
               <div className="text-xs text-faint text-center py-6">저장된 프리셋이 없습니다</div>
+            ) : shownPresets.length === 0 ? (
+              noHits
             ) : (
               <div className="border line-color rounded-lg divide-y divide-[color:var(--c-line)] overflow-hidden">
                 {presetRows}
@@ -443,12 +473,16 @@ const ExportPresetManager = observer(() => {
         {/* 새 프리셋 버튼 */}
         {newPresetButton}
 
-        {/* 프리셋 목록 */}
-        {presets.length > 0 && (
-          <div className="max-h-40 overflow-y-auto border line-color rounded-lg divide-y divide-[color:var(--c-line)]">
-            {presetRows}
-          </div>
-        )}
+        {/* 프리셋 목록 — 이름 검색(2026-11-14 M4) */}
+        {presets.length > 0 && searchBar}
+        {presets.length > 0 &&
+          (shownPresets.length === 0 ? (
+            noHits
+          ) : (
+            <div className="max-h-40 overflow-y-auto border line-color rounded-lg divide-y divide-[color:var(--c-line)]">
+              {presetRows}
+            </div>
+          ))}
 
         {/* 편집 폼 */}
         <div className="border line-color rounded-lg p-4 space-y-3">

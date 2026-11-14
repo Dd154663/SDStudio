@@ -3,6 +3,7 @@ import { observer } from 'mobx-react-lite';
 import ModalOverlay from './ModalOverlay';
 import { ActionIcon } from './ActionIcon';
 import { GlobalVibeImage } from './GlobalPresetTab';
+import { ListSearchBar } from './ListSearchBar';
 import { globalPresetService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import {
@@ -15,7 +16,7 @@ import {
 // 두 진입점이 같은 창을 쓴다:
 //  - 템플릿 관리 「불러오기 → 글로벌 프리셋에서」(템플릿 프롬프트·샘플링 1회 덮어쓰기 — danger 확인)
 //  - 사전 세팅 「글로벌에서 가져오기」(appState.globalPresetPicker 호스트 — 고르면 바로 프로젝트로 복사)
-// 창 = ModalOverlay size xl. 도구줄 = 이름 검색·정렬·개수, 본문 = 대표 이미지 카드 그리드(버튼 — 키보드 선택 가능).
+// 창 = ModalOverlay size xl. 도구줄 = 이름 검색·정렬·개수(공용 ListSearchBar, 2026-11-14 M4), 본문 = 대표 이미지 카드 그리드(버튼 — 키보드 선택 가능).
 // 검색·정렬 규칙은 글로벌 프리셋 탭과 같은 단일 출처 models/globalPresetListView.ts.
 
 export interface GlobalPresetPickerProps {
@@ -80,37 +81,19 @@ export const GlobalPresetPicker = observer(
     };
 
     const toolbar = (
-      <>
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="이름 검색"
-          aria-label="이름 검색"
-          autoFocus={!isMobile}
-          data-global-picker-search=""
-          className="flex-1 min-w-0 h-8 px-2.5 text-sm rounded border line-color bg-[var(--c-input-bg)] text-default focus:outline-none focus:ring-2 focus:ring-sky-400"
-        />
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as GlobalPresetSortBy)}
-          aria-label="정렬"
-          data-global-picker-sort=""
-          className="h-8 px-1.5 text-sm rounded border line-color bg-[var(--c-input-bg)] text-default flex-none"
-        >
-          {SORT_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <div
-          className="text-xs text-muted whitespace-nowrap flex-none"
-          data-global-picker-count=""
-        >
-          {`${visible.length} / 전체 ${all.length}`}
-        </div>
-      </>
+      <ListSearchBar
+        className="w-full"
+        query={query}
+        onQueryChange={setQuery}
+        autoFocus={!isMobile}
+        shown={visible.length}
+        total={all.length}
+        sort={{
+          value: sortBy,
+          onChange: (v) => setSortBy(v as GlobalPresetSortBy),
+          options: SORT_OPTIONS,
+        }}
+      />
     );
 
     return (

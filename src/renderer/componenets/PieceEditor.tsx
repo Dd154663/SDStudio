@@ -30,6 +30,8 @@ import { migratePieceLibrary } from '../models/legacy';
 import { stringifyExportJson } from '../models/jsonExport';
 import { observer } from 'mobx-react-lite';
 import HelpIcon from './HelpIcon';
+import { ListDragLockedHint, ListSearchBar } from './ListSearchBar';
+import { hasQuery, matchesQuery } from '../models/listSearch';
 import {
   beginPieceDrag,
   editPieceGroups,
@@ -51,6 +53,8 @@ interface PieceCellProps {
   movePiece?: (fromIndex: string, toIndex: string) => void;
   onReloadDB?: () => void;
   onPieceContentChange?: () => void;
+  // 검색 중(2026-11-14 M4) — 순서 드래그만 막는다(편집·삭제·이름 변경은 그대로)
+  reorderLocked?: boolean;
 }
 export const PieceCell = observer(
   ({
@@ -62,6 +66,7 @@ export const PieceCell = observer(
     style,
     onReloadDB,
     onPieceContentChange,
+    reorderLocked = false,
   }: PieceCellProps) => {
     const containerRef = useRef<any>();
     const elementRef = createRef<any>();
@@ -98,24 +103,25 @@ export const PieceCell = observer(
           moveRecordRef.current?.commit();
           moveRecordRef.current = null;
         },
-        canDrag: () => true,
+        canDrag: () => !reorderLocked,
         collect: (monitor) => ({
           isDragging: monitor.isDragging(),
         }),
       },
-      [curWidth, piece, curPieceLibrary, name, !!movePiece],
+      [curWidth, piece, curPieceLibrary, name, !!movePiece, reorderLocked],
     );
 
     const [, drop] = useDrop(
       {
         accept: 'piece',
         hover: (draggedItem: any) => {
+          if (reorderLocked) return;
           if (draggedItem.piece !== piece && draggedItem.curPieceLibrary === curPieceLibrary) {
             movePiece!(draggedItem.pieceName, piece.name);
           }
         },
       },
-      [curWidth, piece, curPieceLibrary],
+      [curWidth, piece, curPieceLibrary, reorderLocked],
     );
 
     useEffect(() => {
@@ -248,6 +254,9 @@ const PieceEditor = observer(({ onClose }: { onClose: () => void }) => {
   >(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 선택 그룹 안 조각 이름 검색(2026-11-14 M4) — 보기 전용. 범위·그룹을 바꾸면 비운다.
+  // 그룹 목록 검색은 범위 밖(그룹 목록은 그대로).
+  const [pieceQuery, setPieceQuery] = useState('');
 
   const librarySource = scope === 'local'
     ? curSession?.library
@@ -269,6 +278,9 @@ const PieceEditor = observer(({ onClose }: { onClose: () => void }) => {
   useEffect(() => {
     setSelectedPieceLibrary(null);
   }, [scope]);
+  useEffect(() => {
+    setPieceQuery('');
+  }, [scope, selectedPieceLibrary]);
 
   const reloadDB = () => {
     if (curSession) {
@@ -808,6 +820,11 @@ const PieceEditor = observer(({ onClose }: { onClose: () => void }) => {
     onDrop: handleDrop,
   };
 
+  const pieceSearching = hasQuery(pieceQuery);
+  const shownPieces = curPieceLibrary
+    ? Array.from(curPieceLibrary.pieces.values()).filter((p) => matchesQuery(p.name, pieceQuery))
+    : [];
+
   const content = (
     <div
       ref={contentRef}
@@ -882,20 +899,40 @@ const PieceEditor = observer(({ onClose }: { onClose: () => void }) => {
         </div>
       )}
 
+      {/* 조각 이름 검색(2026-11-14 M4) — 개수 = 선택 그룹 안 보이는 수 / 전체. 검색 중엔 순서 드래그 잠금 */}
+      {curPieceLibrary && curPieceLibrary.pieces.length > 0 && (
+        <div className="mb-1">
+          <ListSearchBar
+            query={pieceQuery}
+            onQueryChange={setPieceQuery}
+            placeholder="조각 이름 검색"
+            shown={shownPieces.length}
+            total={curPieceLibrary.pieces.length}
+          />
+          {pieceSearching && <ListDragLockedHint className="mt-1" />}
+        </div>
+      )}
+
       {/* 조각 목록 */}
       {curPieceLibrary && (
         <div className="flex-1 overflow-auto">
-          {Array.from(curPieceLibrary.pieces.values()).map((piece) => (
+          {shownPieces.map((piece) => (
             <PieceCell
               key={curPieceLibrary.name + ' ' + piece.name}
               piece={piece}
               name={curPieceLibrary.name}
               curPieceLibrary={curPieceLibrary}
               movePiece={movePiece}
+              reorderLocked={pieceSearching}
               onReloadDB={reloadDB}
               onPieceContentChange={scope === 'global' ? () => globalPieceService.scheduleSave() : undefined}
             />
           ))}
+          {pieceSearching && shownPieces.length === 0 && (
+            <div className="text-sm text-faint text-center py-6" data-list-no-hits="">
+              검색 결과가 없습니다
+            </div>
+          )}
           <Tooltip content="조각 추가">
             <button
               className="py-2 px-8 rounded-xl back-lllgray"

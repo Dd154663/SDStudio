@@ -129,7 +129,7 @@ const renderPicker = async (props: Partial<React.ComponentProps<typeof GlobalPre
   return { onPick, onClose };
 };
 const typeSearch = async (text: string) => {
-  const input = q('[data-global-picker-search]') as HTMLInputElement;
+  const input = q('[data-list-search]') as HTMLInputElement;
   await act(async () => {
     input.value = text;
     Simulate.change(input);
@@ -141,10 +141,11 @@ describe('GlobalPresetPicker — 공용 글로벌 프리셋 고르기 창', () =
     await renderPicker();
     expect(q('[data-modal-size]')!.getAttribute('data-modal-size')).toBe('xl');
     const toolbar = q('[data-modal-slot="toolbar"]')!;
-    expect(toolbar.querySelector('[data-global-picker-search]')).not.toBeNull();
-    expect((toolbar.querySelector('[data-global-picker-search]') as HTMLInputElement).placeholder).toBe('이름 검색');
+    // 도구줄 = 공용 ListSearchBar(2026-11-14 M4) — 검색어 없고 다 보이면 「전체 n개」
+    expect(toolbar.querySelector('[data-list-search]')).not.toBeNull();
+    expect((toolbar.querySelector('[data-list-search]') as HTMLInputElement).placeholder).toBe('이름 검색');
     expect((toolbar.querySelector('select') as HTMLSelectElement).value).toBe('default');
-    expect(toolbar.querySelector('[data-global-picker-count]')!.textContent).toBe('3 / 전체 3');
+    expect(toolbar.querySelector('[data-list-count]')!.textContent).toBe('전체 3개');
     expect(cards().every((c) => c.tagName === 'BUTTON' && c.getAttribute('type') === 'button')).toBe(true);
     expect(cardNames()).toEqual(['tree 2', 'Tree 10', 'Apple']);
     // 기본 지정 배지는 기본 프리셋 카드에만
@@ -154,7 +155,7 @@ describe('GlobalPresetPicker — 공용 글로벌 프리셋 고르기 창', () =
 
   test('정렬을 바꾸면 카드 순서가 바뀐다', async () => {
     await renderPicker();
-    const select = q('[data-global-picker-sort]') as HTMLSelectElement;
+    const select = q('[data-list-sort]') as HTMLSelectElement;
     await act(async () => {
       select.value = 'name';
       Simulate.change(select);
@@ -166,11 +167,11 @@ describe('GlobalPresetPicker — 공용 글로벌 프리셋 고르기 창', () =
     await renderPicker();
     await typeSearch('tree');
     expect(cardNames()).toEqual(['tree 2', 'Tree 10']);
-    expect(q('[data-global-picker-count]')!.textContent).toBe('2 / 전체 3');
+    expect(q('[data-list-count]')!.textContent).toBe('2 / 전체 3');
     await typeSearch('zzz');
     expect(cards()).toHaveLength(0);
     expect(container.textContent).toContain('검색 결과가 없습니다.');
-    expect(q('[data-global-picker-count]')!.textContent).toBe('0 / 전체 3');
+    expect(q('[data-list-count]')!.textContent).toBe('0 / 전체 3');
   });
 
   test('목록이 비면 「글로벌 프리셋이 없습니다.」', async () => {

@@ -49,6 +49,8 @@ import {
 } from './CharacterPresetCards';
 import { CharacterPresetInnerEditor } from './CharacterPresetInnerEditor';
 import HelpIcon from './HelpIcon';
+import { ListDragLockedHint, ListSearchBar } from './ListSearchBar';
+import { hasQuery, matchesQuery } from '../models/listSearch';
 import { v4 } from 'uuid';
 import {
   imageFileExt,
@@ -462,6 +464,9 @@ export const CharacterPresetEditor = observer(({
   // 글로벌 폴더 필터 (좌측 폴더 패널 — 1단계 평면):
   // '__all__' 전체 / '__unfiled__' 미분류 / 그 외 = 폴더 이름
   const [folderFilter, setFolderFilter] = useState<string>('__all__');
+  // 목록 이름 검색(2026-11-14 M4) — 보기 전용, 로컬/글로벌 공용 한 칸(보기를 바꾸면 비움).
+  // 글로벌은 지금 보이는 폴더 범위 안에서 거른다. 검색 중에는 카드 순서 드래그를 막는다.
+  const [listQuery, setListQuery] = useState('');
   // 폴더 패널 인라인 편집 상태 (새 폴더 입력 / 폴더 이름 변경)
   const [newFolderMode, setNewFolderMode] = useState(false);
   const [newFolderValue, setNewFolderValue] = useState('');
@@ -1104,6 +1109,45 @@ export const CharacterPresetEditor = observer(({
             ? !e.folder
             : e.folder === effectiveFolderFilter,
         );
+  // 검색 적용(2026-11-14 M4) — 「전체 선택」·순차 생성 개수도 이 보이는 목록 기준
+  const listSearching = hasQuery(listQuery);
+  const shownGlobalEntries = visibleGlobalEntries.filter((e) =>
+    matchesQuery(e.name, listQuery),
+  );
+  const shownPresets = presets.filter((p) => matchesQuery(p.name, listQuery));
+  // 「전체 선택/해제」 = 보이는 항목만 토글 — 폴더 필터·검색으로 숨은 항목의 선택은 유지
+  const allShownSelected = globalView
+    ? shownGlobalEntries.length > 0 &&
+      shownGlobalEntries.every((e) => selectedGlobalIds.has(e.id))
+    : shownPresets.length > 0 &&
+      shownPresets.every((p) => selectedPresets.has(p.name));
+  const toggleSelectAllShown = () => {
+    if (globalView) {
+      const next = new Set(selectedGlobalIds);
+      shownGlobalEntries.forEach((e) =>
+        allShownSelected ? next.delete(e.id) : next.add(e.id),
+      );
+      setSelectedGlobalIds(next);
+    } else {
+      const next = new Set(selectedPresets);
+      shownPresets.forEach((p) =>
+        allShownSelected ? next.delete(p.name) : next.add(p.name),
+      );
+      setSelectedPresets(next);
+    }
+  };
+  const listSearchBar = (total: number, shown: number) => (
+    <div className="mb-3">
+      <ListSearchBar
+        query={listQuery}
+        onQueryChange={setListQuery}
+        placeholder="프리셋 이름 검색"
+        shown={shown}
+        total={total}
+      />
+      {listSearching && <ListDragLockedHint className="mt-1" />}
+    </div>
+  );
 
   // 편집 모드
   if (editingPreset) {
@@ -1208,6 +1252,7 @@ export const CharacterPresetEditor = observer(({
             onClick={() => {
               if (cyclingMode) exitCyclingMode();
               if (selectMode) exitSelectMode();
+              setListQuery('');
               setGlobalView(!globalView);
             }}
           >
@@ -1349,40 +1394,9 @@ export const CharacterPresetEditor = observer(({
           </span>
           <button
             className="text-xs btn-link"
-            onClick={() => {
-              if (globalView) {
-                // 폴더 필터 중엔 보이는 항목만 토글 — 다른 폴더의 선택은 유지
-                const all =
-                  visibleGlobalEntries.length > 0 &&
-                  visibleGlobalEntries.every((e) =>
-                    selectedGlobalIds.has(e.id),
-                  );
-                const next = new Set(selectedGlobalIds);
-                visibleGlobalEntries.forEach((e) =>
-                  all ? next.delete(e.id) : next.add(e.id),
-                );
-                setSelectedGlobalIds(next);
-              } else {
-                const all =
-                  presets.length > 0 &&
-                  presets.every((p) => selectedPresets.has(p.name));
-                setSelectedPresets(
-                  new Set<string>(all ? [] : presets.map((p) => p.name)),
-                );
-              }
-            }}
+            onClick={toggleSelectAllShown}
           >
-            {(
-              globalView
-                ? visibleGlobalEntries.length > 0 &&
-                  visibleGlobalEntries.every((e) =>
-                    selectedGlobalIds.has(e.id),
-                  )
-                : presets.length > 0 &&
-                  presets.every((p) => selectedPresets.has(p.name))
-            )
-              ? '전체 해제'
-              : '전체 선택'}
+            {allShownSelected ? '전체 해제' : '전체 선택'}
           </button>
           <Tooltip content="선택한 프리셋을 캐릭터 프롬프트로 일괄 적용 (기존 적용에 추가)">
             <button
@@ -1438,42 +1452,13 @@ export const CharacterPresetEditor = observer(({
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
             프리셋 선택 (
             {globalView ? selectedGlobalIds.size : selectedPresets.size}/
-            {globalView ? visibleGlobalEntries.length : presets.length})
+            {globalView ? shownGlobalEntries.length : shownPresets.length})
           </span>
           <button
-            onClick={() => {
-              if (globalView) {
-                // 폴더 필터 중엔 보이는 항목만 토글 — 다른 폴더의 선택은 유지
-                const all =
-                  visibleGlobalEntries.length > 0 &&
-                  visibleGlobalEntries.every((e) =>
-                    selectedGlobalIds.has(e.id),
-                  );
-                const next = new Set(selectedGlobalIds);
-                visibleGlobalEntries.forEach((e) =>
-                  all ? next.delete(e.id) : next.add(e.id),
-                );
-                setSelectedGlobalIds(next);
-              } else {
-                const all =
-                  presets.length > 0 &&
-                  presets.every((p) => selectedPresets.has(p.name));
-                setSelectedPresets(
-                  new Set<string>(all ? [] : presets.map((p) => p.name)),
-                );
-              }
-            }}
+            onClick={toggleSelectAllShown}
             className="text-xs btn-link"
           >
-            {(
-              globalView
-                ? visibleGlobalEntries.length > 0 &&
-                  visibleGlobalEntries.every((e) => selectedGlobalIds.has(e.id))
-                : presets.length > 0 &&
-                  presets.every((p) => selectedPresets.has(p.name))
-            )
-              ? '전체 해제'
-              : '전체 선택'}
+            {allShownSelected ? '전체 해제' : '전체 선택'}
           </button>
         </div>
       )}
@@ -1560,8 +1545,10 @@ export const CharacterPresetEditor = observer(({
               </button>
             )}
           </div>
-          {/* 우측 카드 그리드 */}
+          {/* 우측 카드 그리드 — 맨 위 이름 검색(폴더 범위 안, 2026-11-14 M4) */}
           <div className="flex-1 min-w-0">
+            {globalEntries.length > 0 &&
+              listSearchBar(visibleGlobalEntries.length, shownGlobalEntries.length)}
             <div
               style={{
                 display: 'grid',
@@ -1584,7 +1571,7 @@ export const CharacterPresetEditor = observer(({
                   </span>
                 </div>
               )}
-              {visibleGlobalEntries.map((entry) => (
+              {shownGlobalEntries.map((entry) => (
                 <GlobalCharacterPresetCard
                   key={entry.id}
                   entry={entry}
@@ -1606,9 +1593,19 @@ export const CharacterPresetEditor = observer(({
                     reorderGlobalCharactersRecorded(from, to)
                   }
                   onMoveToFolder={() => handleMoveToFolder(entry)}
+                  reorderLocked={listSearching}
                 />
               ))}
-              {visibleGlobalEntries.length === 0 &&
+              {listSearching && shownGlobalEntries.length === 0 && (
+                <div
+                  className="col-span-full text-sm text-faint py-8 text-center"
+                  data-list-no-hits=""
+                >
+                  검색 결과가 없습니다
+                </div>
+              )}
+              {!listSearching &&
+                visibleGlobalEntries.length === 0 &&
                 (cyclingMode || selectMode) && (
                   <div className="col-span-full text-sm text-faint py-8 text-center">
                     이 폴더에 프리셋이 없습니다
@@ -1631,6 +1628,8 @@ export const CharacterPresetEditor = observer(({
           </button>
         </div>
       ) : (
+          <>
+          {listSearchBar(presets.length, shownPresets.length)}
           <div
             style={{
               display: 'grid',
@@ -1652,8 +1651,8 @@ export const CharacterPresetEditor = observer(({
               </div>
             )}
 
-            {/* 프리셋 카드들 */}
-            {presets.map((preset, i) => (
+            {/* 프리셋 카드들 — 검색으로 걸러도 index 는 원래 목록 위치(순서 이동 기준) */}
+            {shownPresets.map((preset) => (
               <div key={preset.name} className="relative">
                 {(cyclingMode || selectMode) && (
                   <div
@@ -1671,7 +1670,7 @@ export const CharacterPresetEditor = observer(({
                 )}
                 <CharacterPresetCard
                   preset={preset}
-                  index={i}
+                  index={presets.indexOf(preset)}
                   onEdit={() => (cyclingMode || selectMode) ? togglePresetSelection(preset.name) : handleEdit(preset)}
                   onDelete={() => handleDelete(preset)}
                   onApplyEasy={() => handleApplyEasy(preset)}
@@ -1685,10 +1684,20 @@ export const CharacterPresetEditor = observer(({
                   onCopyToGlobal={() => handleCopyToGlobal(preset)}
                   isEasyMode={isEasyMode}
                   hideActions={cyclingMode || selectMode}
+                  reorderLocked={listSearching}
                 />
               </div>
             ))}
+            {listSearching && shownPresets.length === 0 && (
+              <div
+                className="col-span-full text-sm text-faint py-8 text-center"
+                data-list-no-hits=""
+              >
+                검색 결과가 없습니다
+              </div>
+            )}
           </div>
+          </>
       )}
       {/* 순차 생성 설정 패널 (로컬/글로벌 공통) */}
       {cyclingMode && (

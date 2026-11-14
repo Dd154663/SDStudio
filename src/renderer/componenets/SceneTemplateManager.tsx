@@ -23,6 +23,15 @@ import { PROJECT_RETENTION_DAYS } from '../models/TrashService';
 import { saveJsonFile } from '../models/exportUtil';
 import { interceptFileImportClick } from '../models/driveImport';
 import HelpIcon from './HelpIcon';
+import { ListSearchBar } from './ListSearchBar';
+import { compareNames } from '../models/listSearch';
+
+// 목록 정렬(2026-11-14 M4) — 보기 전용(저장 순서 불변). 작은 목록이라 검색은 두지 않는다.
+type SceneTemplateSort = 'order' | 'name';
+const SCENE_TEMPLATE_SORT_OPTIONS: { value: SceneTemplateSort; label: string }[] = [
+  { value: 'order', label: '지정 순' },
+  { value: 'name', label: '이름순' },
+];
 
 // 씬 템플릿 관리 오버레이 (씬 템플릿 개편 후속, 2026-07-18 실기 피드백):
 // select 다이얼로그 연쇄(선택→동작→확인)가 불편 → 캐릭터 프리셋 관리와 같은
@@ -31,6 +40,10 @@ import HelpIcon from './HelpIcon';
 const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => {
   const templates = templateService.listSceneTemplates();
   const curSession = appState.curSession;
+  // 정렬 = 보기 상태(창을 닫으면 지정 순으로 돌아감, 되돌리기 기록 밖)
+  const [sortBy, setSortBy] = useState<SceneTemplateSort>('order');
+  const shownTemplates =
+    sortBy === 'name' ? templates.slice().sort(compareNames) : templates;
   // 인라인 이름 변경 (드로어 프로젝트 행과 같은 패턴)
   const [editing, setEditing] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -249,6 +262,21 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
         않습니다. 행을 클릭하면 열어서 씬을 수정할 수 있습니다.
       </div>
 
+      {/* 정렬·개수(2026-11-14 M4) — 검색 없음 */}
+      {templates.length > 0 && (
+        <ListSearchBar
+          compact
+          className="mb-2"
+          shown={shownTemplates.length}
+          total={templates.length}
+          sort={{
+            value: sortBy,
+            onChange: (v) => setSortBy(v as SceneTemplateSort),
+            options: SCENE_TEMPLATE_SORT_OPTIONS,
+          }}
+        />
+      )}
+
       {/* 템플릿 목록 */}
       {templates.length === 0 ? (
         <div className="text-sm text-faint text-center py-16">
@@ -256,7 +284,7 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
-          {templates.map((name) =>
+          {shownTemplates.map((name) =>
             editing === name ? (
               <div
                 key={name}

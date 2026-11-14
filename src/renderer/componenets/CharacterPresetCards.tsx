@@ -146,6 +146,8 @@ interface CharacterPresetCardProps {
   onCopyToGlobal?: () => void;
   isEasyMode: boolean;
   hideActions?: boolean;
+  // 목록 검색 중(2026-11-14 M4) — 순서 드래그를 막는다(보이는 카드 사이로 옮기면 숨은 카드를 건너뛰어 헷갈림)
+  reorderLocked?: boolean;
 }
 
 export const CharacterPresetCard = observer(({
@@ -160,19 +162,22 @@ export const CharacterPresetCard = observer(({
   onCopyToGlobal,
   isEasyMode,
   hideActions,
+  reorderLocked = false,
 }: CharacterPresetCardProps) => {
   const ref = React.useRef<HTMLDivElement>(null);
 
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'character-preset-card',
     item: { index },
+    canDrag: () => !reorderLocked,
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
     }),
-  }), [index]);
+  }), [index, reorderLocked]);
 
   const [{ isOver }, drop] = useDrop(() => ({
     accept: 'character-preset-card',
+    canDrop: () => !reorderLocked,
     drop: (item: { index: number }) => {
       if (item.index !== index) {
         onMove(item.index, index);
@@ -180,9 +185,9 @@ export const CharacterPresetCard = observer(({
       }
     },
     collect: (monitor) => ({
-      isOver: monitor.isOver(),
+      isOver: monitor.isOver() && monitor.canDrop(),
     }),
-  }), [index, onMove]);
+  }), [index, onMove, reorderLocked]);
 
   drag(drop(ref));
 
@@ -423,6 +428,7 @@ export const GlobalCharacterPresetCard = observer(({
   cyclingMode = false,
   selected = false,
   onToggleSelect,
+  reorderLocked = false,
 }: {
   entry: IGlobalCharacterPresetEntry;
   index: number;
@@ -439,6 +445,8 @@ export const GlobalCharacterPresetCard = observer(({
   cyclingMode?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
+  // 목록 검색 중(2026-11-14 M4) — 카드끼리 순서 바꾸기만 막는다. 끌어서 폴더 행에 놓는 폴더 이동은 그대로
+  reorderLocked?: boolean;
 }) => {
   const ref = React.useRef<HTMLDivElement>(null);
   const [{ isDragging }, drag] = useDrag(
@@ -452,15 +460,16 @@ export const GlobalCharacterPresetCard = observer(({
   const [{ isOver }, drop] = useDrop(
     () => ({
       accept: 'global-character-preset-card',
+      canDrop: () => !reorderLocked,
       drop: (item: { index: number }) => {
         if (item.index !== index) {
           onMove(item.index, index);
           item.index = index;
         }
       },
-      collect: (monitor) => ({ isOver: monitor.isOver() }),
+      collect: (monitor) => ({ isOver: monitor.isOver() && monitor.canDrop() }),
     }),
-    [index, onMove],
+    [index, onMove, reorderLocked],
   );
   drag(drop(ref));
 
