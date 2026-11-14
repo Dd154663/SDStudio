@@ -28,8 +28,6 @@ import {
 } from '../models/legacyCleanup';
 import type { LegacyScanResult } from '../models/legacyCleanup';
 import ModalOverlay from './ModalOverlay';
-import { useBackLayer } from '../models/BackStackService';
-import { useBackdropClose } from './backdropClose';
 
 /* ── 폴더 정리 공통 컴포넌트 ── */
 const FolderCleanupSection = ({ folder, label, description }: { folder: string; label: string; description?: string }) => {
@@ -622,13 +620,12 @@ const SystemTab = ({
 };
 
 /* ── 작업 로그 ── */
-const TaskLogSection = () => {
+// 테스트(overlayBundleD.test.tsx)용으로 내보낸다
+export const TaskLogSection = () => {
   const [showDialog, setShowDialog] = useState(false);
   const logs = taskQueueService.taskLogs;
-  // 뒤로 가기·Esc 는 이 창만 닫는다(닫기 관문 — 예전엔 Esc 가 설정 창까지 함께 닫았다), 바깥 클릭은
-  // 누름·뗌 모두 배경일 때만(글자 드래그 선택 중 닫힘 방지). 2026-10-03 U1·X2·X6.
-  useBackLayer(showDialog, () => setShowDialog(false));
-  const logBackdrop = useBackdropClose(() => setShowDialog(false));
+  // 창은 공용 ModalOverlay(2026-11-14 오버레이 묶음 D, size m) — 뒤로 가기·Esc 는 이 창만 닫고(닫기 관문),
+  // 바깥 클릭은 누름·뗌 모두 배경일 때만(글자 드래그 선택 중 닫힘 방지)이 래퍼에 내장돼 있다. 2026-10-03 U1·X2·X6.
 
   const formatLog = (log: TaskLog) => {
     const date = new Date(log.timestamp);
@@ -658,35 +655,52 @@ const TaskLogSection = () => {
         onClick={() => setShowDialog(true)}>
         작업 로그 보기
       </button>
-      {showDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
-          {...logBackdrop}>
-          <div className="bg-[var(--c-zone)] rounded-lg r-modal shadow-xl w-[90vw] max-w-lg max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between p-3 border-b line-color">
-              <span className="font-bold text-default">작업 로그</span>
-              <button className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-lg px-2"
-                onClick={() => setShowDialog(false)}>✕</button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-3 text-xs font-mono">
-              {logs.length === 0
-                ? <p className="text-faint text-center py-4">로그가 없습니다.</p>
-                : [...logs].reverse().map((log, i) => (
-                    <div key={i} className={'py-0.5 ' +
-                      (log.level === 'error' ? 'text-red-500' : log.level === 'warn' ? 'text-yellow-500' : 'text-default')}>
-                      {formatLog(log)}
-                    </div>
-                  ))
-              }
-            </div>
-            <div className="flex gap-2 p-3 border-t line-color">
-              <button className="btn flex-1 back-sky py-2 rounded text-sm"
-                onClick={downloadLogs} disabled={logs.length === 0}>다운로드</button>
-              <button className="btn flex-1 back-gray py-2 rounded text-sm"
-                onClick={() => taskQueueService.clearLogs()} disabled={logs.length === 0}>초기화</button>
-            </div>
-          </div>
+      <ModalOverlay
+        isOpen={showDialog}
+        onClose={() => setShowDialog(false)}
+        title="작업 로그"
+        size="m"
+        footer={
+          <>
+            {/* [다운로드][닫기] 순서(2026-10-03 D1) — 바닥 버튼 규격은 내보내기 프리셋 관리와 같음 */}
+            <button
+              className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
+              onClick={downloadLogs}
+              disabled={logs.length === 0}
+            >
+              다운로드
+            </button>
+            <button
+              className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+              onClick={() => setShowDialog(false)}
+            >
+              닫기
+            </button>
+          </>
+        }
+        footerStart={
+          // 위험 보조 동작은 바닥줄 왼쪽(슬롯 규약) — 동작은 종전 그대로(확인 없음)
+          <button
+            className="px-4 py-2 rounded-lg btn-solid-red text-sm font-medium transition-colors"
+            onClick={() => taskQueueService.clearLogs()}
+            disabled={logs.length === 0}
+          >
+            초기화
+          </button>
+        }
+      >
+        <div className="text-xs font-mono" data-task-log-list>
+          {logs.length === 0
+            ? <p className="text-faint text-center py-4">로그가 없습니다.</p>
+            : [...logs].reverse().map((log, i) => (
+                <div key={i} className={'py-0.5 ' +
+                  (log.level === 'error' ? 'text-red-500' : log.level === 'warn' ? 'text-yellow-500' : 'text-default')}>
+                  {formatLog(log)}
+                </div>
+              ))
+          }
         </div>
-      )}
+      </ModalOverlay>
     </>
   );
 };

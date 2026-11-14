@@ -1,13 +1,12 @@
 import * as React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
-import { FaTimes } from 'react-icons/fa';
 import { appState } from '../models/AppService';
 import { Sampling, NoiseSchedule } from '../backends/imageGen';
 import PromptEditTextArea from './PromptEditTextArea';
 import { FileUploadBase64 } from './UtilComponents';
-import { useBackLayer } from '../models/BackStackService';
-import { useBackdropClose, useGuardedClose } from './backdropClose';
+import { useGuardedClose } from './backdropClose';
+import ModalOverlay from './ModalOverlay';
 import { NAME_INPUT_TEXT } from '../models/nameInput';
 import type { NameKind } from '../models/nameInput';
 
@@ -166,170 +165,161 @@ export const PresetEditModal = observer(
     const numCls =
       'mt-1 w-full px-2 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default';
 
-    // Esc·Android 뒤로 가기로 닫기(SPEC §5 — 예전엔 뒤로 가기가 앱을 최소화), 바깥 클릭은 누름·뗌 모두
-    // 배경일 때만(프롬프트 글자를 드래그 선택하다 바깥에서 떼도 닫히지 않게). 2026-10-03 U1·X6.
-    // ✕·바깥 클릭·Esc/뒤로 가기·[취소] 는 모두 미저장 가드를 거친다(E2-3). 프롬프트 칸의 Esc 는 먼저
+    // 창은 공용 ModalOverlay(2026-11-14 오버레이 묶음 D, size m) — Esc·Android 뒤로 가기(같은 backStack 한 겹)와
+    // 바깥 클릭(누름·뗌 모두 배경일 때만 — 프롬프트 글자를 드래그 선택하다 바깥에서 떼도 닫히지 않게)은 래퍼 내장.
+    // ✕·바깥 클릭·Esc/뒤로 가기·[취소] 는 모두 이 미저장 가드를 거친다(E2-3) — 래퍼에는 dirty 를 넘기지 않고
+    // requestClose 를 onClose 로 준다(환경설정과 같은 방식, 이중 확인 방지). 프롬프트 칸의 Esc 는 먼저
     // 자동완성을 닫고(닫기 관문이 입력칸 Esc 를 버블 단계로 미룸), 그다음 Esc 가 이 닫기 요청으로 온다.
     const requestClose = useGuardedClose(isDirty, onClose);
-    useBackLayer(true, requestClose);
-    const backdrop = useBackdropClose(requestClose);
 
     return (
-      <div
-        className="fixed inset-0 bg-black/50 flex items-center justify-center z-[var(--z-modal)]"
-        {...backdrop}
-      >
-        <div
-          className="bg-[var(--c-zone)] rounded-lg r-modal p-5 max-w-2xl w-11/12 max-h-[88vh] flex flex-col shadow-2xl text-default"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex items-center justify-between mb-3 flex-none">
-            <h2 className="text-lg font-bold">{title}</h2>
+      <ModalOverlay
+        isOpen
+        onClose={requestClose}
+        title={title}
+        size="m"
+        footer={
+          <>
+            {/* [확인][취소] 순서(2026-10-03 D1) — 바닥 버튼 규격은 내보내기 프리셋 관리와 같음 */}
             <button
-              className="icon-button p-2 text-default"
-              onClick={requestClose}
-              aria-label="닫기"
-            >
-              <FaTimes size={20} />
-            </button>
-          </div>
-          <div className="flex-1 overflow-auto pr-1 flex flex-col gap-4">
-            {/* 이름 */}
-            <div>
-              <label className="text-sm font-medium mb-1 block">이름 *</label>
-              <input
-                className="w-full px-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 text-default"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-            {/* 대표 이미지 */}
-            <div className="p-3 border line-color rounded-lg">
-              <div className="text-sm font-medium mb-2">대표 이미지</div>
-              <div className="flex items-center gap-3">
-                <AdapterProfileImage
-                  adapter={adapter}
-                  className="w-20 h-28 object-cover rounded-lg flex-none border line-color"
-                />
-                <div className="flex flex-col gap-1.5">
-                  <div className="w-40">
-                    <FileUploadBase64
-                      notext
-                      onFileSelect={(b) => setNewRepImage(b)}
-                    />
-                  </div>
-                  {newRepImage && (
-                    <span className="text-xs text-green-600 dark:text-green-400">
-                      새 이미지 선택됨 (저장 시 적용)
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-            {/* 프롬프트 */}
-            <div>
-              <div className="text-sm font-medium mb-1">상위 프롬프트</div>
-              <PromptEditTextArea
-                value={frontPrompt}
-                onChange={setFrontPrompt}
-                disabled={false}
-              />
-            </div>
-            <div>
-              <div className="text-sm font-medium mb-1">하위 프롬프트</div>
-              <PromptEditTextArea
-                value={backPrompt}
-                onChange={setBackPrompt}
-                disabled={false}
-              />
-            </div>
-            <div>
-              <div className="text-sm font-medium mb-1">네거티브 프롬프트</div>
-              <PromptEditTextArea value={uc} onChange={setUc} disabled={false} />
-            </div>
-            {/* 샘플링 설정 */}
-            <div className="grid grid-cols-2 gap-3">
-              <label className="text-sm">
-                스탭 수
-                <input
-                  type="number"
-                  min={1}
-                  max={50}
-                  step={1}
-                  value={steps}
-                  onChange={(e) => setSteps(Number(e.target.value))}
-                  className={numCls}
-                />
-              </label>
-              <label className="text-sm">
-                프롬프트 가이던스
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
-                  step={0.1}
-                  value={promptGuidance}
-                  onChange={(e) => setPromptGuidance(Number(e.target.value))}
-                  className={numCls}
-                />
-              </label>
-              <label className="text-sm">
-                CFG 리스케일
-                <input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={cfgRescale}
-                  onChange={(e) => setCfgRescale(Number(e.target.value))}
-                  className={numCls}
-                />
-              </label>
-              <label className="text-sm">
-                샘플링
-                <select
-                  value={sampling}
-                  onChange={(e) => setSampling(e.target.value)}
-                  className={numCls}
-                >
-                  {Object.values(Sampling).map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm">
-                노이즈 스케줄
-                <select
-                  value={noiseSchedule}
-                  onChange={(e) => setNoiseSchedule(e.target.value)}
-                  className={numCls}
-                >
-                  {Object.values(NoiseSchedule).map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 mt-4 flex-none">
-            {/* [확인][취소] 순서(2026-10-03 D1) */}
-            <button
-              className="round-button back-sky px-4 py-2"
+              className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
               onClick={save}
               disabled={saving}
             >
               {saving ? '저장 중...' : '저장'}
             </button>
-            <button className="round-button back-gray px-4 py-2" onClick={requestClose}>
+            <button
+              className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+              onClick={requestClose}
+            >
               취소
             </button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4 text-default">
+          {/* 이름 */}
+          <div>
+            <label className="text-sm font-medium mb-1 block">이름 *</label>
+            <input
+              className="w-full px-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 text-default"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          {/* 대표 이미지 */}
+          <div className="p-3 border line-color rounded-lg">
+            <div className="text-sm font-medium mb-2">대표 이미지</div>
+            <div className="flex items-center gap-3">
+              <AdapterProfileImage
+                adapter={adapter}
+                className="w-20 h-28 object-cover rounded-lg flex-none border line-color"
+              />
+              <div className="flex flex-col gap-1.5">
+                <div className="w-40">
+                  <FileUploadBase64
+                    notext
+                    onFileSelect={(b) => setNewRepImage(b)}
+                  />
+                </div>
+                {newRepImage && (
+                  <span className="text-xs text-green-600 dark:text-green-400">
+                    새 이미지 선택됨 (저장 시 적용)
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          {/* 프롬프트 */}
+          <div>
+            <div className="text-sm font-medium mb-1">상위 프롬프트</div>
+            <PromptEditTextArea
+              value={frontPrompt}
+              onChange={setFrontPrompt}
+              disabled={false}
+            />
+          </div>
+          <div>
+            <div className="text-sm font-medium mb-1">하위 프롬프트</div>
+            <PromptEditTextArea
+              value={backPrompt}
+              onChange={setBackPrompt}
+              disabled={false}
+            />
+          </div>
+          <div>
+            <div className="text-sm font-medium mb-1">네거티브 프롬프트</div>
+            <PromptEditTextArea value={uc} onChange={setUc} disabled={false} />
+          </div>
+          {/* 샘플링 설정 */}
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm">
+              스탭 수
+              <input
+                type="number"
+                min={1}
+                max={50}
+                step={1}
+                value={steps}
+                onChange={(e) => setSteps(Number(e.target.value))}
+                className={numCls}
+              />
+            </label>
+            <label className="text-sm">
+              프롬프트 가이던스
+              <input
+                type="number"
+                min={0}
+                max={10}
+                step={0.1}
+                value={promptGuidance}
+                onChange={(e) => setPromptGuidance(Number(e.target.value))}
+                className={numCls}
+              />
+            </label>
+            <label className="text-sm">
+              CFG 리스케일
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.01}
+                value={cfgRescale}
+                onChange={(e) => setCfgRescale(Number(e.target.value))}
+                className={numCls}
+              />
+            </label>
+            <label className="text-sm">
+              샘플링
+              <select
+                value={sampling}
+                onChange={(e) => setSampling(e.target.value)}
+                className={numCls}
+              >
+                {Object.values(Sampling).map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              노이즈 스케줄
+              <select
+                value={noiseSchedule}
+                onChange={(e) => setNoiseSchedule(e.target.value)}
+                className={numCls}
+              >
+                {Object.values(NoiseSchedule).map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </div>
-      </div>
+      </ModalOverlay>
     );
   },
 );

@@ -4,9 +4,14 @@ import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { Simulate } from 'react-dom/test-utils';
 
-const state: any = { pushMessage: jest.fn() };
+const state: any = { pushMessage: jest.fn(), incrementModalOverlay: jest.fn(), decrementModalOverlay: jest.fn() };
 jest.mock('../AppService', () => ({ appState: state }));
-jest.mock('../BackStackService', () => ({ useBackLayer: () => {} }));
+// 두 창은 2026-11-14 오버레이 묶음 D 부터 공용 ModalOverlay(backStackService·isMobile 사용)
+jest.mock('../BackStackService', () => ({
+  useBackLayer: () => {},
+  backStackService: { push: () => ({ remove: () => {} }) },
+}));
+jest.mock('../index', () => ({ isMobile: false }));
 jest.mock('../../componenets/backdropClose', () => ({
   useBackdropClose: () => ({}),
   useGuardedClose: (_dirty: () => boolean, onClose: () => void) => onClose,

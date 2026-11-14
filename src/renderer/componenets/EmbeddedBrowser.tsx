@@ -1,8 +1,8 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { FaArrowLeft, FaArrowRight, FaRedo, FaStar, FaPlus, FaTrash } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
-import { useBackLayer } from '../models/BackStackService';
-import { useBackdropClose } from './backdropClose';
+import ModalOverlay from './ModalOverlay';
+import { useGuardedClose } from './backdropClose';
 import { appState } from '../models/AppService';
 
 interface Bookmark {
@@ -76,16 +76,59 @@ interface BookmarkDialogProps {
 export const BookmarkDialog: React.FC<BookmarkDialogProps> = ({ mode, initialLabel, initialUrl, onConfirm, onDelete, onClose }) => {
   const [label, setLabel] = useState(initialLabel);
   const [url, setUrl] = useState(initialUrl);
-  // Esc·Android 뒤로 가기로 닫기, 바깥 클릭은 누름·뗌 모두 배경일 때만(2026-10-03 U1·X6)
-  useBackLayer(true, onClose);
-  const backdrop = useBackdropClose(onClose);
+  // 창은 공용 ModalOverlay(2026-11-14 오버레이 묶음 D, size s) — Esc·Android 뒤로 가기·바깥 클릭(누름·뗌 모두
+  // 배경일 때만)은 래퍼에 내장. 미저장 가드(A안 통일): 이름·URL 이 처음 값과 다르면 ✕·바깥 클릭·Esc/뒤로 가기·
+  // [취소] 모두 「버리고 닫을까요?」 확인 뒤에만 닫는다. ModalOverlay 에 dirty 는 넘기지 않는다(이중 확인 방지).
+  const dirty = () => label !== initialLabel || url !== initialUrl;
+  const requestClose = useGuardedClose(dirty, onClose);
+
+  const confirm = () => {
+    // 빠진 칸은 이름으로 안내(2026-11-12 정비 M1) — 예전엔 아무 반응이 없었다. 창은 그대로.
+    const missing = [!label.trim() && '이름', !url.trim() && 'URL'].filter(Boolean);
+    if (missing.length > 0) {
+      appState.pushMessage(`다음 칸을 확인해 주세요: ${missing.join(', ')}`, 'error');
+      return;
+    }
+    onConfirm(label.trim(), url.trim());
+  };
 
   return (
-    <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50" {...backdrop}>
-      <div className="bg-[var(--c-zone)] rounded-lg r-modal p-4 w-80 flex flex-col gap-3 shadow-xl" onClick={e => e.stopPropagation()}>
-        <h3 className="font-semibold text-default">
-          {mode === 'add' ? '즐겨찾기 추가' : '즐겨찾기 편집'}
-        </h3>
+    <ModalOverlay
+      isOpen
+      onClose={requestClose}
+      title={mode === 'add' ? '즐겨찾기 추가' : '즐겨찾기 편집'}
+      size="s"
+      footer={
+        <>
+          {/* [추가/저장][취소] 순서(2026-10-03 D1) — 바닥 버튼 규격은 내보내기 프리셋 관리와 같음 */}
+          <button
+            className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
+            onClick={confirm}
+          >
+            {mode === 'add' ? '추가' : '저장'}
+          </button>
+          <button
+            className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+            onClick={requestClose}
+          >
+            취소
+          </button>
+        </>
+      }
+      footerStart={
+        mode === 'edit' && onDelete ? (
+          // [삭제]는 바닥줄 왼쪽(위험 보조 동작) — 종전 빨간 글자 모양 유지
+          <button
+            className="px-3 py-2 rounded-lg text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center gap-1"
+            onClick={onDelete}
+          >
+            <FaTrash size={10} />
+            삭제
+          </button>
+        ) : undefined
+      }
+    >
+      <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted">이름</label>
           <input
@@ -105,35 +148,8 @@ export const BookmarkDialog: React.FC<BookmarkDialogProps> = ({ mode, initialLab
             onChange={e => setUrl(e.target.value)}
           />
         </div>
-        <div className="flex gap-2 justify-end items-center">
-          {mode === 'edit' && onDelete && (
-            <button
-              className="px-3 py-1 text-sm rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 mr-auto flex items-center gap-1"
-              onClick={onDelete}
-            >
-              <FaTrash size={10} />
-              삭제
-            </button>
-          )}
-          {/* [삭제]는 왼쪽에 분리, 오른쪽은 [추가/저장][취소] 순서(2026-10-03 D1) */}
-          <button
-            className="px-3 py-1 text-sm back-sky rounded"
-            onClick={() => {
-              // 빠진 칸은 이름으로 안내(2026-11-12 정비 M1) — 예전엔 아무 반응이 없었다. 창은 그대로.
-              const missing = [!label.trim() && '이름', !url.trim() && 'URL'].filter(Boolean);
-              if (missing.length > 0) {
-                appState.pushMessage(`다음 칸을 확인해 주세요: ${missing.join(', ')}`, 'error');
-                return;
-              }
-              onConfirm(label.trim(), url.trim());
-            }}
-          >
-            {mode === 'add' ? '추가' : '저장'}
-          </button>
-          <button className="px-3 py-1 text-sm back-llgray rounded" onClick={onClose}>취소</button>
-        </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 
