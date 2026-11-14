@@ -1862,6 +1862,7 @@ const QueueControl = observer(
         if (appState.configScreenOpen) return;
         if (appState.pieceEditorOpen) return;
         if (appState.findReplaceOpen) return;
+        if (appState.batchInsertOpen) return;
 
         if (e.ctrlKey || e.metaKey || e.altKey) return;
 

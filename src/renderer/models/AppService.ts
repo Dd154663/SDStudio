@@ -381,6 +381,9 @@ export class AppState {
   // 찾기 및 변환 다이얼로그
   @observable accessor findReplaceOpen: boolean = false;
 
+  // 일괄 삽입 창(2026-11-14 A-3 — 찾기 및 변환 창에서 분리)
+  @observable accessor batchInsertOpen: boolean = false;
+
   // 프로젝트 휴지통 오버레이 (전역 액션 — 어느 화면에서든 열림)
   @observable accessor projectTrashOpen: boolean = false;
 
@@ -518,6 +521,16 @@ export class AppState {
   @action
   closeFindReplace() {
     this.findReplaceOpen = false;
+  }
+
+  @action
+  openBatchInsert() {
+    this.batchInsertOpen = true;
+  }
+
+  @action
+  closeBatchInsert() {
+    this.batchInsertOpen = false;
   }
 
   // 아티스트 태깅(B군 승격, 퀵 메뉴 P2) — 세션 무관·PC 전용(진입점이 pcOnly).

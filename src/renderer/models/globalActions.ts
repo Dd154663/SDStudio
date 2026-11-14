@@ -35,6 +35,7 @@ export const GLOBAL_ACTIONS: GlobalAction[] = [
   // ── portable 4종 (이미 전역) ──
   { id: 'piece-editor', run: () => appState.openPieceEditor(), available: hasSession },
   { id: 'find-replace', run: () => appState.openFindReplace(), available: hasSession },
+  { id: 'batch-insert', run: () => appState.openBatchInsert(), available: hasSession },
   { id: 'backup-export', run: () => appState.projectBackupMenu(), available: hasSession },
   {
     id: 'empty-image-trash',

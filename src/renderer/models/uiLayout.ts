@@ -90,6 +90,9 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   // 매크로성 기능 승격(사용자 확정). id 는 그대로라 과거 씬 영역 배치 설정은 조용히 무시됨.
   { id: 'empty-image-trash', name: '삭제 이미지 일괄 비우기', label: '삭제 비우기', tier: 'overflow', portable: true, v2Label: '삭제 비우기' },
   { id: 'find-replace', name: '찾기 및 변환', label: '찾기·변환', tier: 'secondary', portable: true, v2Label: '찾기·변환', group: 'navigate' },
+  // 일괄 삽입 독립 창(2026-11-14 A-3 사용자 결정) — 종전 찾기 및 변환 창의 탭을 떼어 냄. 「찾기·변환」 옆 같은 등급·그룹·portable
+  // (증식 차단 규칙의 의도된 예외 — 기존 기능의 창 분리라 같은 자리를 받음). 단축키 없음.
+  { id: 'batch-insert', name: '일괄 삽입', label: '일괄 삽입', tier: 'secondary', portable: true, v2Label: '일괄 삽입', group: 'navigate' },
   { id: 'shortcut-help', name: '단축키 도움말', pcOnly: true, tier: 'overflow' },
   // 'undo'·'redo'(2026-11-01 U1 임시 ⋯ 메뉴 배치)는 2026-11-03 U6(D19)에서 제거 — 되돌리기/다시 실행은 하단 막대 위
   // 상시 버튼 바(componenets/UndoRedoBar.tsx)가 맡는다. 퀵 메뉴(globalActions GLOBAL_ACTIONS)의 같은 id 는 유지.

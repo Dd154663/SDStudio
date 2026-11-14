@@ -184,6 +184,13 @@ export function portableToolbarButtons(
       () => appState.openFindReplace(),
       lab('find-replace'),
     ),
+    'batch-insert': iconButton(
+      variant,
+      '일괄 삽입 (선택한 씬 프롬프트에 태그 넣기)',
+      <ActionIcon id="batch-insert" size={18} />,
+      () => appState.openBatchInsert(),
+      lab('batch-insert'),
+    ),
     // SceneQueueControl 로컬 맵에서 이관(B군 승격, 퀵 메뉴 P2) — 홈(scene)에서는
     // 원본과 동일 렌더(배경형 아이콘+툴팁), 모달은 App.tsx 전역 오버레이가 호스트.
     'artist-tag': iconButton(

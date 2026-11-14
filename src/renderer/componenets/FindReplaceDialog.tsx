@@ -1,21 +1,19 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
-import { v4 as uuidv4 } from 'uuid';
 import { appState } from '../models/AppService';
 import {
-  backend,
   isMobile,
   sessionService,
   globalPresetService,
   globalCharacterPresetService,
 } from '../models';
 import { renameScene } from '../models/SessionService';
-import ModalOverlay, { scrollOverlayBodyToTop } from './ModalOverlay';
+import ModalOverlay from './ModalOverlay';
+import { SceneSelectAside, useSceneSelection, variantKey } from './SceneSelectAside';
 import HelpIcon from './HelpIcon';
-import { FaSearch, FaExchangeAlt, FaPlus } from 'react-icons/fa';
-import { Scene, CharacterPreset, PromptPiece, InpaintScene } from '../models/types';
+import { FaSearch, FaExchangeAlt } from 'react-icons/fa';
+import type { InpaintScene } from '../models/types';
 import { variantComboMode } from '../models/comboMode';
-import { editScenesFields } from '../models/sceneFieldUndo';
 import { UNDO_TEXT } from '../models/undoService';
 import { replaceAllRecorded, unrecordedScopesOf } from '../models/findReplaceUndo';
 import type { FindReplaceItem } from '../models/findReplaceUndo';
@@ -28,12 +26,8 @@ type SearchResult = FindReplaceItem;
 
 type SearchScope = 'scene' | 'character' | 'preset' | 'global' | 'sceneNames' | 'projectName';
 
-// 씬 선택 목록의 변형 씬 키 — 이미지생성 씬 이름과 겹치지 않게 접두를 붙인다(이름에 ':' 는 경로 안전 규칙상 없음).
-const VARIANT_KEY_PREFIX = 'inpaint:';
-const variantKey = (name: string) => VARIANT_KEY_PREFIX + name;
-const sceneKeyLabel = (key: string) =>
-  key.startsWith(VARIANT_KEY_PREFIX) ? `[변형] ${key.slice(VARIANT_KEY_PREFIX.length)}` : key;
-// 단일 프롬프트(preset.prompt)를 검색하는 변형 워크플로우(조합 모드가 아닐 때)
+// 씬 선택 목록의 변형 씬 키(`inpaint:` 접두)는 공용 부품 SceneSelectAside 가 정한다.
+// 단일 프롬프트(preset.prompt)를 검색하는 변형 워크플로우(조합 모드가 아닐 때) — models/batchInsert.ts 의 같은 이름 상수와 같은 값
 const SINGLE_PROMPT_VARIANTS = new Set(['SDI2I', 'SDInpaint']);
 
 /**
@@ -331,129 +325,16 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════════
-   공용 씬 선택(2026-11-12 재배치안 (가)) — 두 탭이 같은 선택 집합을 쓴다(탭 전환 때 선택 유지, 사용자 결정).
-   목록 = 이미지생성 씬 이름 + 변형 씬 키(「[변형] 이름」 — 찾기의 씬 프롬프트 범위만 해당, 일괄 삽입 대상 아님).
-   처음·씬 수가 바뀔 때 = 전체 선택(종전 찾기 탭 규칙. 종전 일괄 삽입 탭은 빈 선택에서 시작했다).
-   ═══════════════════════════════════════════════════════════════════ */
-type PanelTab = 'find' | 'insert';
-
 interface PanelParts {
   body: React.ReactNode;
   footer: React.ReactNode;
   status: React.ReactNode;
 }
 
-const PRIMARY_BUTTON =
-  'px-4 py-2 rounded-lg btn-solid-sky disabled:bg-gray-300 dark:disabled:bg-gray-600 text-sm font-medium transition-colors';
 const CLOSE_BUTTON = 'px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors';
 
-function useSceneSelection() {
-  const session = appState.curSession;
-  const sceneList = useMemo(() => {
-    if (!session) return [];
-    return [
-      ...Array.from(session.scenes.values()).map((s) => s.name),
-      ...Array.from(session.inpaints.values()).map((s) => variantKey(s.name)),
-    ];
-  }, [session, session?.scenes.size, session?.inpaints.size]);
-
-  const [selectedScenes, setSelectedScenes] = useState<Set<string>>(() => new Set(sceneList));
-  const [sceneFilter, setSceneFilter] = useState('');
-
-  // 씬 리스트가 변경되면 전체 선택으로 초기화
-  useEffect(() => {
-    setSelectedScenes(new Set(sceneList));
-  }, [sceneList.length]);
-
-  const filteredSceneList = useMemo(() => {
-    if (!sceneFilter.trim()) return sceneList;
-    const q = sceneFilter.toLowerCase();
-    return sceneList.filter((name) => sceneKeyLabel(name).toLowerCase().includes(q));
-  }, [sceneList, sceneFilter]);
-
-  const toggleScene = (name: string) => {
-    setSelectedScenes((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name); else next.add(name);
-      return next;
-    });
-  };
-
-  // 필터가 있으면 필터된 씬만 대상
-  const toggleAll = () => {
-    const target = filteredSceneList;
-    const allSelected = target.every((name) => selectedScenes.has(name));
-    setSelectedScenes((prev) => {
-      const next = new Set(prev);
-      if (allSelected) target.forEach((name) => next.delete(name));
-      else target.forEach((name) => next.add(name));
-      return next;
-    });
-  };
-
-  return { sceneList, filteredSceneList, selectedScenes, sceneFilter, setSceneFilter, toggleScene, toggleAll };
-}
-
-const SceneSelectAside = ({
-  sel,
-  activeTab,
-}: {
-  sel: ReturnType<typeof useSceneSelection>;
-  activeTab: PanelTab;
-}) => {
-  const { sceneList, filteredSceneList, selectedScenes, sceneFilter, setSceneFilter, toggleScene, toggleAll } = sel;
-  const selectedCount = sceneList.filter((k) => selectedScenes.has(k)).length;
-  const hasVariants = sceneList.some((k) => k.startsWith(VARIANT_KEY_PREFIX));
-  return (
-    // PC = 왼쪽 열 전체 높이(목록이 남은 높이를 채움), 모바일 = 본문 위에 쌓이므로 목록은 종전 max-h-36
-    <div className={isMobile ? 'flex flex-col gap-1' : 'h-full min-h-0 flex flex-col gap-1 p-3'} data-find-scene-select="">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          씬 선택 · <span data-find-scene-count="">선택 {selectedCount} / 전체 {sceneList.length}</span>
-        </span>
-        <button onClick={toggleAll} className="text-xs btn-link flex-none">
-          {filteredSceneList.every((n) => selectedScenes.has(n)) ? '전체 해제' : '전체 선택'}
-          {sceneFilter.trim() && ` (${filteredSceneList.length}개)`}
-        </button>
-      </div>
-      <input type="text" placeholder="씬 이름 검색..." value={sceneFilter}
-        onChange={(e) => setSceneFilter(e.target.value)}
-        className="w-full mb-1 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
-      {activeTab === 'insert' && hasVariants && (
-        <div className="text-xs text-faint">[변형] 씬은 일괄 삽입 대상이 아닙니다(찾기 전용).</div>
-      )}
-      <div
-        className={
-          (isMobile ? 'max-h-36' : 'flex-1 min-h-0') + ' overflow-y-auto border line-color rounded-lg p-2 space-y-1'
-        }
-        data-find-scene-list=""
-      >
-        {filteredSceneList.map((name) => {
-          const variant = name.startsWith(VARIANT_KEY_PREFIX);
-          return (
-            <label key={name}
-              className={
-                'flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 rounded px-1 py-0.5' +
-                (activeTab === 'insert' && variant ? ' opacity-50' : '')
-              }>
-              <input type="checkbox" checked={selectedScenes.has(name)} onChange={() => toggleScene(name)}
-                className="rounded line-color" />
-              <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{sceneKeyLabel(name)}</span>
-            </label>
-          );
-        })}
-        {sceneList.length === 0 && <div className="text-xs text-faint py-1">씬이 없습니다</div>}
-        {sceneList.length > 0 && filteredSceneList.length === 0 && (
-          <div className="text-xs text-faint py-1">일치하는 씬이 없습니다</div>
-        )}
-      </div>
-    </div>
-  );
-};
-
 /* ═══════════════════════════════════════════════════════════════════
-   찾기/변환 탭 — 본문·바닥줄·상태 문구를 함께 돌려주는 훅(두 탭 모두 늘 호출 — 탭 전환 때 입력·결과 유지)
+   찾기/변환 — 본문·바닥줄·상태 문구를 함께 돌려주는 훅
    ═══════════════════════════════════════════════════════════════════ */
 const FIND_HELP =
   '선택한 씬의 텍스트를 검색하고 일괄 변환합니다.\n' +
@@ -478,7 +359,7 @@ function useFindPanel(
   // (예: 공백 → 언더스코어 일괄 치환)
   const [wsSearch, setWsSearch] = useState(false);
 
-  // 씬 선택이 바뀌면(어느 탭에서든) 종전 toggleScene/toggleAll 처럼 결과를 비운다
+  // 씬 선택(씬·종류 칩)이 바뀌면 종전 toggleScene/toggleAll 처럼 결과를 비운다
   const firstSel = useRef(true);
   useEffect(() => {
     if (firstSel.current) { firstSel.current = false; return; }
@@ -650,262 +531,14 @@ function useFindPanel(
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   일괄 삽입 탭 — 대상 = 공용 선택 중 이미지생성 씬(변형 씬 키는 이름이 달라 자연히 빠진다)
-   ═══════════════════════════════════════════════════════════════════ */
-function useInsertPanel(selectedScenes: Set<string>): PanelParts {
-  const session = appState.curSession;
-  const sceneCount = session ? session.scenes.size : 0;
-
-  const [insertText, setInsertText] = useState('');
-  const [position, setPosition] = useState<'prepend' | 'append'>('append');
-  const [slotTarget, setSlotTarget] = useState<'all' | 'new-column' | number>(0);
-  const [insertComplete, setInsertComplete] = useState<number | null>(null);
-
-  // 태그 자동완성
-  const [acTags, setAcTags] = useState<any[]>([]);
-  const [acSelected, setAcSelected] = useState(0);
-  const acCntRef = useRef(0);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // 씬 선택이 바뀌면 완료 문구를 지운다(종전 toggleScene/toggleAll)
-  const firstSel = useRef(true);
-  useEffect(() => {
-    if (firstSel.current) { firstSel.current = false; return; }
-    setInsertComplete(null);
-  }, [selectedScenes]);
-
-  const closeAc = () => { setAcTags([]); setAcSelected(0); };
-
-  const handleInsertInput = (value: string) => {
-    setInsertText(value);
-    setInsertComplete(null);
-    // 마지막 콤마 이후의 현재 단어 추출
-    const lastComma = value.lastIndexOf(',');
-    const curWord = value.substring(lastComma + 1).trim();
-    if (!curWord) { closeAc(); return; }
-    acCntRef.current++;
-    const myId = acCntRef.current;
-    backend.searchTags(curWord).then((tags: any[]) => {
-      if (myId !== acCntRef.current) return;
-      if (tags.length > 0) { setAcTags(tags.slice(0, 8)); setAcSelected(0); }
-      else closeAc();
-    });
-  };
-
-  const acceptAcTag = (idx: number) => {
-    const tag = acTags[idx];
-    const tagWord = tag.redirect?.trim() !== 'null' ? tag.redirect?.trim() : tag.word;
-    // 마지막 콤마 이후를 교체
-    const lastComma = insertText.lastIndexOf(',');
-    const before = lastComma >= 0 ? insertText.substring(0, lastComma + 1) + ' ' : '';
-    setInsertText(before + tagWord);
-    closeAc();
-    inputRef.current?.focus();
-  };
-
-  const handleInsertKeyDown = (e: React.KeyboardEvent) => {
-    if (acTags.length > 0) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setAcSelected((s) => (s + 1) % acTags.length); return; }
-      if (e.key === 'ArrowUp') { e.preventDefault(); setAcSelected((s) => (s - 1 + acTags.length) % acTags.length); return; }
-      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); acceptAcTag(acSelected); return; }
-      // 자동완성만 닫는다 — 전파를 멈춰 닫기 관문이 창까지 닫지 않게(2026-10-03 U1·X2)
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeAc(); return; }
-    }
-  };
-
-  const maxSlotRow = useMemo(() => {
-    if (!session) return 0;
-    let max = 0;
-    for (const scene of session.scenes.values()) {
-      if (scene.slots.length > max) max = scene.slots.length;
-    }
-    return max;
-  }, [session]);
-
-  const affectedCount = useMemo(() => {
-    if (!session || !insertText.trim()) return 0;
-    let count = 0;
-    for (const scene of session.scenes.values()) {
-      if (!selectedScenes.has(scene.name)) continue;
-      if (slotTarget === 'new-column') {
-        count++; // 씬당 새 열 1개
-      } else if (slotTarget === 'all') {
-        for (const slot of scene.slots) {
-          count += slot.length;
-        }
-      } else {
-        const row = slotTarget as number;
-        if (row < scene.slots.length) {
-          count += scene.slots[row].length;
-        }
-      }
-    }
-    return count;
-  }, [session, insertText, selectedScenes, slotTarget]);
-
-  const doInsert = () => {
-    if (!session || !insertText.trim()) return;
-    let applied = 0;
-    // 되돌리기(U2b): 삽입 1회 = 대상 씬들의 조합 slots 묶음 1항목(바뀐 씬만, 되돌림 역순).
-    // 찾기/바꾸기 「모두 변환」은 findReplaceUndo.replaceAllRecorded 가 따로 기록한다(2차 P3).
-    const targets = Array.from(session.scenes.values()).filter((scene) => selectedScenes.has(scene.name));
-    editScenesFields(session, targets, ['slots'], UNDO_TEXT.comboBatchInsert(targets.length), () => {
-      for (const scene of targets) {
-        if (slotTarget === 'new-column') {
-          // 새 열(슬롯)을 맨 뒤에 추가
-          const newPiece = PromptPiece.fromJSON({
-            prompt: insertText.trim(),
-            characterPrompts: [],
-            enabled: true,
-            id: uuidv4(),
-          });
-          scene.slots.push([newPiece]);
-          applied++;
-          continue;
-        }
-        const targetSlots = slotTarget === 'all'
-          ? scene.slots
-          : (slotTarget < scene.slots.length ? [scene.slots[slotTarget as number]] : []);
-        for (const slot of targetSlots) {
-          for (const piece of slot) {
-            if (position === 'append') {
-              piece.prompt = piece.prompt
-                ? piece.prompt + ', ' + insertText.trim()
-                : insertText.trim();
-            } else {
-              piece.prompt = piece.prompt
-                ? insertText.trim() + ', ' + piece.prompt
-                : insertText.trim();
-            }
-            applied++;
-          }
-        }
-      }
-    });
-
-    setInsertComplete(applied);
-  };
-
-  const noScenes = !session || sceneCount === 0;
-
-  const body = noScenes ? (
-    <div className="text-sm text-faint" data-find-panel="insert">씬이 없습니다.</div>
-  ) : (
-    <div className="flex flex-col gap-4" data-find-panel="insert">
-      {/* 삽입 텍스트 */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">삽입할 텍스트</label>
-        <div className="relative">
-          <FaPlus className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" size={12} />
-          <input ref={inputRef} type="text" placeholder="태그 입력 (예: 1girl, masterpiece)" value={insertText}
-            onChange={(e) => handleInsertInput(e.target.value)}
-            onKeyDown={handleInsertKeyDown}
-            onBlur={() => setTimeout(closeAc, 150)}
-            className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
-          {acTags.length > 0 && (
-            <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-[var(--c-zone)] border line-color rounded-lg shadow-lg overflow-hidden">
-              {acTags.map((tag, i) => (
-                <div key={tag.word + i}
-                  onMouseDown={(e) => { e.preventDefault(); acceptAcTag(i); }}
-                  className={`px-3 py-1.5 text-sm cursor-pointer flex justify-between ${
-                    i === acSelected
-                      ? 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/10'
-                  }`}>
-                  <span className="truncate">{tag.word}</span>
-                  {tag.count != null && <span className="text-xs text-faint ml-2 flex-none">{tag.count}</span>}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="text-xs text-faint mt-1">
-          태그 삽입 시 구분자(,)는 삽입 위치에 맞게 자동으로 추가됩니다.
-        </div>
-      </div>
-
-      {/* 삽입 위치 + 대상 슬롯 */}
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">위치:</span>
-          <label className="flex items-center gap-1 cursor-pointer">
-            <input type="radio" name="insertPos" checked={position === 'prepend'} onChange={() => setPosition('prepend')} />
-            <span className="text-sm text-gray-700 dark:text-gray-300">앞에 추가</span>
-          </label>
-          <label className="flex items-center gap-1 cursor-pointer">
-            <input type="radio" name="insertPos" checked={position === 'append'} onChange={() => setPosition('append')} />
-            <span className="text-sm text-gray-700 dark:text-gray-300">뒤에 추가</span>
-          </label>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">대상:</span>
-          <select
-            value={slotTarget === 'all' ? 'all' : slotTarget === 'new-column' ? 'new-column' : String(slotTarget)}
-            onChange={(e) => {
-              const v = e.target.value;
-              setSlotTarget(v === 'all' ? 'all' : v === 'new-column' ? 'new-column' : Number(v));
-              setInsertComplete(null);
-            }}
-            className="text-sm rounded border line-color bg-[var(--c-input-bg)] text-default px-2 py-1"
-          >
-            <option value="all">모든 슬롯</option>
-            {Array.from({ length: maxSlotRow }, (_, i) => (
-              <option key={i} value={i}>열 {i + 1}만</option>
-            ))}
-            <option value="new-column">새 열로 추가</option>
-          </select>
-        </div>
-      </div>
-    </div>
-  );
-
-  // 상태 문구 — 완료 문구가 있으면 그것, 아니면 적용 예정 미리보기(종전 [적용] 옆 문구)
-  const status = noScenes ? null : insertComplete !== null ? (
-    <div className="text-sm text-green-600 dark:text-green-400 font-medium" data-find-status="">
-      ✓ {slotTarget === 'new-column'
-        ? `${insertComplete}개 씬에 새 열이 추가되었습니다`
-        : `${insertComplete}개 슬롯에 텍스트가 삽입되었습니다`}
-    </div>
-  ) : (
-    <span className="text-sm text-muted" data-find-status="">
-      {insertText.trim()
-        ? slotTarget === 'new-column'
-          ? <><span className="text-sky-500 font-bold">{affectedCount}</span>개 씬에 새 열 추가 예정</>
-          : <><span className="text-sky-500 font-bold">{affectedCount}</span>개 슬롯에 적용 예정</>
-        : '삽입할 텍스트를 입력하세요'}
-    </span>
-  );
-
-  const footer = (
-    <button onClick={doInsert} disabled={noScenes || !insertText.trim() || affectedCount === 0} className={PRIMARY_BUTTON}>
-      적용
-    </button>
-  );
-
-  return { body, footer, status };
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   메인 다이얼로그 — 2026-11-12 재배치안 (가): l 등급, aside = 공용 씬 선택, 본문 = 탭 알약 + 탭별 폼(찾기 결과가 남은
-   높이 전부), 바닥줄 = 탭별 확정 버튼 + [닫기], 왼쪽 = 상태 문구. 열려 있는 동안만 마운트(닫았다 열면 입력·결과 초기화 — 종전과 같음)
+   메인 다이얼로그 — l 등급, aside = 공용 씬 선택(componenets/SceneSelectAside, 처음 = 전체 선택), 본문 = 찾기 폼(결과가 남은
+   높이 전부), 바닥줄 = [모두 변환] + [닫기], 왼쪽 = 상태 문구. 일괄 삽입은 2026-11-14 A-3 에서 독립 창(BatchInsertDialog)으로
+   분리돼 탭이 없다. 열려 있는 동안만 마운트(닫았다 열면 입력·결과 초기화 — 종전과 같음)
    ═══════════════════════════════════════════════════════════════════ */
 const FindReplaceBody = observer(() => {
-  const [activeTab, setActiveTab] = useState<PanelTab>('find');
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const sel = useSceneSelection();
-  // 두 탭 훅은 늘 호출(탭 전환 때 각 탭의 입력·결과 유지)
+  const sel = useSceneSelection({ initial: 'all' });
   const find = useFindPanel(searchInputRef, sel.selectedScenes);
-  const insert = useInsertPanel(sel.selectedScenes);
-  const panel = activeTab === 'find' ? find : insert;
-
-  // 탭 전환 때 본문 스크롤을 맨 위로(2026-11-11 실기 피드백 1 ③ 과 같은 규칙 — 이전 탭의 스크롤 위치가 남지 않게)
-  const selectTab = (key: PanelTab) => {
-    if (key === activeTab) return;
-    setActiveTab(key);
-    scrollOverlayBodyToTop(contentRef.current);
-  };
 
   useEffect(() => {
     const t = setTimeout(() => searchInputRef.current?.focus(), 100);
@@ -915,48 +548,22 @@ const FindReplaceBody = observer(() => {
   const close = () => appState.closeFindReplace();
 
   return (
-    // 탭 2개 = §2 `.tab-seg` 알약 탭(탭 2~3개 → 상단 가로 알약). aside 는 PC·l 에서 왼쪽 열, 모바일은 본문 위에 쌓인다.
+    // aside 는 PC·l 에서 왼쪽 열, 모바일은 본문 위에 쌓인다.
     <ModalOverlay
       isOpen={true}
       onClose={close}
       title="찾기 및 변환"
       size="l"
-      aside={<SceneSelectAside sel={sel} activeTab={activeTab} />}
-      footerStart={panel.status}
+      aside={<SceneSelectAside sel={sel} />}
+      footerStart={find.status}
       footer={
         <>
-          {panel.footer}
+          {find.footer}
           <button onClick={close} className={CLOSE_BUTTON}>닫기</button>
         </>
       }
     >
-      <div className={isMobile ? 'flex flex-col gap-4' : 'h-full min-h-0 flex flex-col gap-4'} ref={contentRef}>
-        {/* 탭 헤더 — tab-seg 마커 계약(SPEC_GUIDE §2, back-llgray/rounded-md 는 클래식 마감 복원용 병기) */}
-        <div className="tab-seg flex gap-2 flex-none" role="tablist" data-find-replace-tabs="">
-          {(
-            [
-              ['find', '찾기 / 변환'],
-              ['insert', '일괄 삽입'],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              role="tab"
-              aria-selected={activeTab === key}
-              className={
-                'active:brightness-90 hover:brightness-95 select-none h-8 px-4 text-sm rounded-md transition-colors ' +
-                (activeTab === key ? 'back-sky' : 'back-llgray tab-seg-off')
-              }
-              onClick={() => selectTab(key)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* 탭 내용 */}
-        {panel.body}
-      </div>
+      {find.body}
     </ModalOverlay>
   );
 });

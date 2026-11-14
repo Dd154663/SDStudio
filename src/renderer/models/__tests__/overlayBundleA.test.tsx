@@ -1,5 +1,5 @@
 // 오버레이 묶음 A(2026-11-12) 「등급만 붙이면 끝」 10창 — size 등급·슬롯으로 옮긴 결과의 검사.
-// 렌더 검사: 찾기 및 변환(l·aside 공용 씬 선택·바닥줄 탭별 버튼·`.tab-seg` 알약 탭·탭 전환 시 본문 맨 위 — 2026-11-12 재배치안 (가)) · 환경설정 불러오기 미리보기(s·바닥줄 [불러오기 (N)][취소]·
+// 렌더 검사: 찾기 및 변환(l·aside 공용 씬 선택·씬 종류 칩·바닥줄 — 2026-11-12 재배치안 (가), 2026-11-14 A-3 일괄 삽입 분리로 탭 없음) · 환경설정 불러오기 미리보기(s·바닥줄 [불러오기 (N)][취소]·
 // --z-modal-top 유지) · 템플릿 적용(s·바닥줄 [적용][취소], [취소] = 닫기) · size="full" = 옛 fullscreen.
 // 소스 검사(큰 파일이라 렌더 대신): 캐릭터 위치 지정 ×2(full)·샘플링 그룹(m)·축하 영상(m)·태그 프리셋 관리(s)·
 // 작가 상세(m·도구줄 동작 줄)·아티스트 태깅(l·PC 만 h-full)·Google 드라이브 백업(m·--z-modal-top 유지).
@@ -258,10 +258,6 @@ const makeFindSession = () => {
     characterPresets: new Map(),
   };
 };
-const findTabButton = (label: string) =>
-  Array.from(container.querySelectorAll('[data-find-replace-tabs] button')).find(
-    (b) => b.textContent === label,
-  ) as HTMLButtonElement;
 const sceneCheckbox = (label: string) => {
   const row = Array.from(container.querySelectorAll('[data-find-scene-list] label')).find(
     (l) => l.textContent?.trim() === label,
@@ -276,7 +272,7 @@ const typeInto = async (input: HTMLInputElement, value: string) => {
   });
 };
 
-describe('찾기 및 변환 — size l·aside 공용 씬 선택·바닥줄·`.tab-seg` 알약 탭(재배치안 (가))', () => {
+describe('찾기 및 변환 — size l·aside 공용 씬 선택·바닥줄(재배치안 (가), 2026-11-14 A-3 일괄 삽입 분리 뒤 탭 없음)', () => {
   beforeEach(() => {
     mockAppState.curSession = makeFindSession();
   });
@@ -284,18 +280,13 @@ describe('찾기 및 변환 — size l·aside 공용 씬 선택·바닥줄·`.ta
     mockAppState.curSession = null;
   });
 
-  test('등급 l, 탭 2개가 본문 안 tab-seg 컨테이너의 알약 버튼(선택 = back-sky, 미선택 = tab-seg-off)', async () => {
+  test('등급 l, 탭 없음(찾기만) — 일괄 삽입 폼·탭 알약이 남지 않는다', async () => {
     await act(async () => root.render(<FindReplaceDialog />));
     expect(frame()?.getAttribute('data-modal-size')).toBe('l');
-    const tabs = container.querySelector<HTMLElement>('[data-find-replace-tabs]')!;
-    expect(tabs.classList.contains('tab-seg')).toBe(true);
-    expect(slot('body')!.contains(tabs)).toBe(true);
-    const [find, insert] = Array.from(tabs.querySelectorAll('button'));
-    expect(buttonsIn(tabs)).toEqual(['찾기 / 변환', '일괄 삽입']);
-    expect(find.className).toContain('back-sky');
-    expect(find.getAttribute('aria-selected')).toBe('true');
-    expect(insert.className).toContain('tab-seg-off');
-    expect(insert.getAttribute('aria-selected')).toBe('false');
+    expect(container.querySelector('[data-find-replace-tabs]')).toBeNull();
+    expect(container.querySelector('[role="tab"]')).toBeNull();
+    expect(slot('body')!.querySelector('[data-find-panel="find"]')).not.toBeNull();
+    expect(container.textContent).not.toContain('삽입할 텍스트');
   });
 
   test('PC: 씬 선택은 왼쪽 열(aside), 머리에 선택 n / 전체 m, 목록은 열 전체 높이(max-h 없음)', async () => {
@@ -313,37 +304,29 @@ describe('찾기 및 변환 — size l·aside 공용 씬 선택·바닥줄·`.ta
     expect(slot('body')!.querySelector('[data-find-scene-select]')).toBeNull();
   });
 
-  test('바닥줄: 찾기 = [모두 변환][닫기](결과 전 비활성), 일괄 삽입 = [적용][닫기], [닫기] = closeFindReplace', async () => {
+  test('씬 종류 칩 「생성 2」「변형 1」 — 변형을 끄면 목록·선택에서 빠지고, 다시 켜면 돌아온다(찾기 = 처음 전체 선택)', async () => {
+    await act(async () => root.render(<FindReplaceDialog />));
+    const chip = (k: string) => container.querySelector<HTMLElement>(`[data-scene-kind-chip="${k}"]`)!;
+    expect(chip('scene').textContent).toBe('생성 2');
+    expect(chip('variant').textContent).toBe('변형 1');
+    await act(async () => chip('variant').querySelector('input')!.click());
+    expect(sceneCheckbox('[변형] 변')).toBeUndefined();
+    expect(container.querySelector('[data-find-scene-count]')!.textContent).toBe('선택 2 / 전체 3');
+    await act(async () => chip('variant').querySelector('input')!.click());
+    expect(sceneCheckbox('[변형] 변').checked).toBe(true);
+  });
+
+  test('바닥줄: [모두 변환][닫기](결과 전 비활성), [닫기] = closeFindReplace', async () => {
     await act(async () => root.render(<FindReplaceDialog />));
     expect(buttonsIn(slot('footer'))).toEqual(['모두 변환', '닫기']);
-    const [replaceAll] = Array.from(slot('footer')!.querySelectorAll('button'));
+    const [replaceAll, close] = Array.from(slot('footer')!.querySelectorAll('button'));
     expect(replaceAll.disabled).toBe(true);
     expect(replaceAll.className).toContain('btn-solid-orange');
-    await act(async () => findTabButton('일괄 삽입').click());
-    expect(buttonsIn(slot('footer'))).toEqual(['적용', '닫기']);
-    const [apply, close] = Array.from(slot('footer')!.querySelectorAll('button'));
-    expect(apply.className).toContain('btn-solid-sky');
-    expect(apply.disabled).toBe(true);
     expect(close.className).toContain('btn-neutral');
-    expect(slot('footer')!.textContent).toContain('삽입할 텍스트를 입력하세요');
     // 본문에는 확정 버튼이 남지 않는다
-    expect(buttonsIn(slot('body'))).not.toContain('적용');
     expect(buttonsIn(slot('body'))).not.toContain('모두 변환');
     await act(async () => close.click());
     expect(mockAppState.closeFindReplace).toHaveBeenCalledTimes(1);
-  });
-
-  test('탭 전환 때 씬 선택이 유지된다(두 탭이 같은 선택)', async () => {
-    await act(async () => root.render(<FindReplaceDialog />));
-    await act(async () => sceneCheckbox('나').click());
-    expect(sceneCheckbox('나').checked).toBe(false);
-    expect(container.querySelector('[data-find-scene-count]')!.textContent).toBe('선택 2 / 전체 3');
-    await act(async () => findTabButton('일괄 삽입').click());
-    expect(sceneCheckbox('나').checked).toBe(false);
-    expect(sceneCheckbox('가').checked).toBe(true);
-    expect(container.querySelector('[data-find-scene-count]')!.textContent).toBe('선택 2 / 전체 3');
-    await act(async () => findTabButton('찾기 / 변환').click());
-    expect(sceneCheckbox('나').checked).toBe(false);
   });
 
   test('검색 → 결과 머리 「검색 결과 · n건」·결과 목록 max-h 없음·바닥 왼쪽 「n건 발견」·[모두 변환] = 확인 1회', async () => {
@@ -364,19 +347,6 @@ describe('찾기 및 변환 — size l·aside 공용 씬 선택·바닥줄·`.ta
     expect(replaceAll.disabled).toBe(false);
     await act(async () => replaceAll.click());
     expect(mockAppState.confirmAsync).toHaveBeenCalledTimes(1);
-  });
-
-  test('탭 전환 시 본문 스크롤이 맨 위로, 선택 표시가 옮겨 간다', async () => {
-    await act(async () => root.render(<FindReplaceDialog />));
-    const body = slot('body')!;
-    body.scrollTop = 250;
-    const insert = findTabButton('일괄 삽입');
-    await act(async () => insert.click());
-    expect(body.scrollTop).toBe(0);
-    expect(insert.className).toContain('back-sky');
-    body.scrollTop = 120;
-    await act(async () => findTabButton('찾기 / 변환').click());
-    expect(body.scrollTop).toBe(0);
   });
 
   test('모바일: 씬 선택은 본문 위에 쌓이고 목록 max-h-36·결과 max-h-48 유지', async () => {

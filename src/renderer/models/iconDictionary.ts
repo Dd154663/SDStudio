@@ -41,6 +41,7 @@ import {
   FaPaintBrush,
   FaPen,
   FaPlus,
+  FaPlusSquare,
   FaPuzzlePiece,
   FaQuestion,
   FaRegCalendarPlus,
@@ -124,6 +125,7 @@ export const ICON_DICTIONARY = {
   'scene-trash': FaTrashRestore, // 씬 휴지통 열기
   'empty-image-trash': FaBroom, // 삭제 이미지 일괄 비우기
   'find-replace': FaExchangeAlt, // 찾기 및 변환
+  'batch-insert': FaPlusSquare, // 일괄 삽입(선택한 씬 프롬프트에 태그 넣기 — 씬 추가 FaPlus 와 구분)
   'shortcut-help': FaQuestion, // 단축키 도움말
   undo: FaUndo, // 되돌리기(전역 스택 — 편집기·붓 자체 되돌리기 버튼도 같은 모양)
   redo: FaRedo, // 다시 실행

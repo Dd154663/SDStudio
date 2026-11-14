@@ -85,6 +85,8 @@ export interface ShortcutGateState {
   configScreenOpen: boolean;
   pieceEditorOpen: boolean;
   findReplaceOpen: boolean;
+  /** 일괄 삽입 창(찾기 및 변환과 같은 억제 — 없으면 닫힘으로 본다) */
+  batchInsertOpen?: boolean;
 }
 
 /** 이 액션이 지금 통과할 수 있는가(입력 칸 포커스 억제는 호출 전에 따로 본다) */
@@ -110,6 +112,7 @@ export function isShortcutActionActive(
   if (st.configScreenOpen) return false;
   if (st.pieceEditorOpen) return false;
   if (st.findReplaceOpen) return false;
+  if (st.batchInsertOpen) return false;
   return true;
 }
 
@@ -289,6 +292,7 @@ export class KeyboardShortcutService {
       configScreenOpen: appState.configScreenOpen,
       pieceEditorOpen: appState.pieceEditorOpen,
       findReplaceOpen: appState.findReplaceOpen,
+      batchInsertOpen: appState.batchInsertOpen,
     };
     for (const actionId of actionIds) {
       const action = this.getActionDef(actionId);

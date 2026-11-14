@@ -29,12 +29,14 @@ describe('groupToolbarIds — 기본 배치(PC)', () => {
     expect(asMap(pcSegments(undefined))).toEqual([
       ['create', '생성', ['add-scene', 'queue-add', 'batch-process']],
       ['export', '내보내기', ['export-images', 'quick-export']],
-      ['navigate', '탐색', ['multi-select', 'scene-search', 'bookmark-jump', 'find-replace']],
+      ['navigate', '탐색', ['multi-select', 'scene-search', 'bookmark-jump', 'find-replace', 'batch-insert']],
       ['edit', '편집 도구', ['change-resolution']],
     ]);
   });
 
-  it('그룹 렌더는 표시만 바꾼다 — 기본 인라인 집합은 그룹 도입 전과 같다(증식 차단)', () => {
+  // 2026-11-14 A-3: 일괄 삽입(batch-insert)은 찾기 및 변환 창에서 떼어 낸 기존 기능이라 「찾기·변환」과 같은 secondary 로
+  // 추가(사용자 결정 — 증식 차단 규칙의 의도된 예외). 그 밖의 기본 인라인 집합은 그룹 도입 전과 같다.
+  it('그룹 렌더는 표시만 바꾼다 — 기본 인라인 집합은 그룹 도입 전 + 일괄 삽입(증식 차단)', () => {
     const scene = resolveToolbarView(TOOLBAR_VIEW_MAIN, undefined, false).find(
       (a) => a.area === 'scene',
     )!;
@@ -49,6 +51,7 @@ describe('groupToolbarIds — 기본 배치(PC)', () => {
       'scene-search',
       'bookmark-jump',
       'find-replace',
+      'batch-insert',
     ]);
   });
 });
@@ -61,7 +64,7 @@ describe('groupToolbarIds — 사용자 배치', () => {
       slot: 'inline',
     });
     const nav = pcSegments(ov).find((s) => s.group === 'navigate')!;
-    expect(nav.ids).toEqual(['multi-select', 'scene-search', 'bookmark-jump', 'find-replace', 'scene-find']);
+    expect(nav.ids).toEqual(['multi-select', 'scene-search', 'bookmark-jump', 'find-replace', 'batch-insert', 'scene-find']);
     const edit = pcSegments({ buttons: { 'artist-tag': 'pinned', 'import-image': 'pinned' } }).find(
       (s) => s.group === 'edit',
     )!;
@@ -147,6 +150,7 @@ describe('groupToolbarIds — 사용자 배치', () => {
       'find-replace',
       'multi-select',
       'bookmark-jump',
+      'batch-insert',
     ]);
   });
 
@@ -181,7 +185,7 @@ describe('레지스트리 group 계약', () => {
     expect(byGroup).toEqual({
       create: ['add-scene', 'queue-add', 'batch-process'],
       export: ['export-images', 'quick-export'],
-      navigate: ['multi-select', 'scene-search', 'scene-find', 'image-review', 'bookmark-jump', 'find-replace'],
+      navigate: ['multi-select', 'scene-search', 'scene-find', 'image-review', 'bookmark-jump', 'find-replace', 'batch-insert'],
       // undo·redo 는 2026-11-03 U6(D19)에서 레지스트리 제거 — 하단 상시 버튼 바(UndoRedoBar)가 맡는다
       edit: ['change-resolution', 'import-image', 'artist-tag', 'artist-breakdown', 'artist-prefix-toggle'],
       none: ['webp-convert', 'scene-trash', 'empty-image-trash', 'shortcut-help'],

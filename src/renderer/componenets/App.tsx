@@ -91,6 +91,7 @@ import MobileKeyboardChip from './MobileKeyboardChip';
 import { configure } from 'mobx';
 import { ExternalImageView } from './ExternalImageView';
 import FindReplaceDialog from './FindReplaceDialog';
+import BatchInsertDialog from './BatchInsertDialog';
 import ExportPresetManager from './ExportPresetManager';
 import DirectExportDialog from './DirectExportDialog';
 configure({
@@ -1012,6 +1013,7 @@ export const App = observer(() => {
           <PieceEditor onClose={() => appState.closePieceEditor()} />
         )}
         <FindReplaceDialog />
+        <BatchInsertDialog />
         <ModalOverlay
           isOpen={appState.projectTrashOpen}
           onClose={() => appState.closeProjectTrash()}
