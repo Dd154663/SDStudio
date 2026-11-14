@@ -125,6 +125,10 @@ const mutex = new Mutex();
 
 const MAX_HISTORY_SIZE = 4096; // 1024 * 4096 bytes = 4 MB
 
+function normalizePromptLineEndings(text: string): string {
+  return text.replace(/\r\n?/g, '\n');
+}
+
 class CursorMemorizeEditor {
   compositionBuffer: string[];
   previousRange: number[] | any;
@@ -295,6 +299,12 @@ class CursorMemorizeEditor {
   updateCurText(text: string, push: boolean = true) {
     this.curText = text;
     this.onUpdated(text);
+  }
+
+  syncValue(value: string) {
+    this.curText = normalizePromptLineEndings(value);
+    this.onUpdated(value);
+    this.updateDOM(this.curText, 0, false);
   }
 
   pushHistory() {
@@ -767,12 +777,13 @@ class CursorMemorizeEditor {
     });
   }
 
-  async handlePaste(e: any) {
+  async handlePaste(e: ClipboardEvent) {
     e.preventDefault();
+    if (!e.clipboardData) return;
+    // Keep the stored text and the highlighted DOM on the same line endings.
+    const text = normalizePromptLineEndings(e.clipboardData.getData('text/plain'));
     await mutex.runExclusive(async () => {
       this.pushHistory();
-      const text = e.clipboardData.getData('text');
-      const selection = window.getSelection()!;
       const [start, end] = this.getCaretPosition();
       let cursor = start;
       if (this.flushCompositon(this.previousRange)) {
@@ -1068,8 +1079,7 @@ const EmulatedEditTextArea = observer(
           onEsc,
         );
         editorModelRef.current = editor;
-        editor.updateCurText(value);
-        editor.updateDOM(value, 0, false);
+        editor.syncValue(value);
         const handleKeyDown = (e: any) => editor.handleKeyDown(e);
         editorRef.current.addEventListener('keydown', handleKeyDown);
         const handleBeforeInput = (e: any) => editor.handleBeforeInput(e);
@@ -1082,7 +1092,7 @@ const EmulatedEditTextArea = observer(
             handleCompositionUpdate,
           );
         }
-        const handlePaste = (e: any) => editor.handlePaste(e);
+        const handlePaste = (e: ClipboardEvent) => editor.handlePaste(e);
         editorRef.current.addEventListener('paste', handlePaste);
         const handleWheel = (e: WheelEvent) => {
           if (!e.ctrlKey || e.deltaY === 0) return;
@@ -1161,9 +1171,8 @@ const EmulatedEditTextArea = observer(
 
       useEffect(() => {
         if (!editorRef.current) return;
-        if (value !== editorModelRef.current.curText) {
-          editorModelRef.current.updateCurText(value, false);
-          editorModelRef.current.updateDOM(value, 0, false);
+        if (normalizePromptLineEndings(value) !== editorModelRef.current.curText) {
+          editorModelRef.current.syncValue(value);
         }
       }, [value]);
 
