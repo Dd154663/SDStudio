@@ -747,8 +747,8 @@ export function useCharacterPresetPanel({
   const handleDelete = (preset: CharacterPreset) => {
     appState.pushDialog({
       type: 'confirm',
-      // 로컬 프리셋은 휴지통 없이 바로 사라진다 — 영구 삭제(Enter 무시, 2026-10-03 E1)
-      ...deleteConfirmText({ kind: 'characterPreset', name: preset.name, outcome: 'permanent' }),
+      // 로컬 프리셋은 휴지통 없이 바로 사라진다 — Enter 무시(2026-10-03 E1). editCharacterPresets 기록으로 되돌리기 가능(2026-11-15)
+      ...deleteConfirmText({ kind: 'characterPreset', name: preset.name, outcome: 'undoable' }),
       callback: () => {
         // 해제 + 삭제 = 1항목(되돌리면 프리셋과 적용 항목이 함께 돌아온다 — U3b)
         editCharacterPresets(curSession, UNDO_TEXT.characterPresetRemove([preset.name]), () => {
@@ -916,7 +916,8 @@ export function useCharacterPresetPanel({
 
     appState.pushDialog({
       type: 'confirm',
-      // 글로벌·로컬 모두 휴지통 없이 바로 사라진다 — 영구 삭제(Enter 무시, 2026-10-03 E1)
+      // 글로벌·로컬 모두 휴지통 없이 바로 사라진다 — Enter 무시(2026-10-03 E1). 글로벌 = 첨부 파일까지 지우고 기록 없음 →
+      // 영구, 로컬 = editCharacterPresets 기록 → 되돌리기 가능(2026-11-15)
       ...(globalView
         ? deleteConfirmText({
             kind: 'globalPreset',
@@ -927,7 +928,7 @@ export function useCharacterPresetPanel({
         : deleteConfirmText({
             kind: 'characterPreset',
             count,
-            outcome: 'permanent',
+            outcome: 'undoable',
             extra: '현재 프로젝트의 로컬 프리셋입니다.',
           })),
       callback: async () => {
@@ -1103,8 +1104,13 @@ export function useCharacterPresetPanel({
       .filter((e) => e.folder === folder).length;
     appState.pushDialog({
       type: 'confirm',
-      danger: true,
-      text: `폴더 "${folder}"를 삭제할까요?\n소속 프리셋 ${count}개는 미분류로 이동합니다.`,
+      // 공용 삭제 문구(2026-11-15) — deleteGlobalCharacterFolderRecorded 기록으로 되돌리기 가능(폴더·소속 복귀)
+      ...deleteConfirmText({
+        kind: 'folder',
+        name: folder,
+        outcome: 'undoable',
+        extra: `소속 프리셋 ${count}개는 미분류로 이동합니다.`,
+      }),
       callback: async () => {
         await deleteGlobalCharacterFolderRecorded(folder);
         setFolderFilter((prev) => (prev === folder ? '__all__' : prev));

@@ -173,6 +173,64 @@ describe('작가 상세 — 모바일 한 열', () => {
   });
 });
 
+// 태그 프리셋 관리 — 공백 입력이면 [추가] 비활성·Enter 무시, 이미 있는 태그면 안내 후 입력 유지(2026-11-15)
+describe('태그 프리셋 관리 — 추가 버튼 안내', () => {
+  const setInput = async (el: HTMLInputElement, value: string) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => {
+      setter.call(el, value);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+  const openManage = async () => {
+    await renderDetail();
+    const btn = Array.from(container.querySelectorAll('button')).find(
+      (b) => (b.textContent || '').trim() === '관리',
+    )!;
+    await act(async () => btn.click());
+    const add = q('[data-tag-preset-add]') as HTMLButtonElement;
+    const input = add.parentElement!.querySelector('input') as HTMLInputElement;
+    return { add, input };
+  };
+  const undo = () => jest.requireMock('../globalLibraryUndo');
+
+  test('빈칸·공백뿐이면 [추가] 비활성, Enter 로도 추가하지 않는다', async () => {
+    const { add, input } = await openManage();
+    expect(add.disabled).toBe(true);
+    expect(add.className).toContain('disabled:opacity-50');
+    await setInput(input, '   ');
+    expect((q('[data-tag-preset-add]') as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    expect(undo().addArtistTagPresetRecorded).not.toHaveBeenCalled();
+  });
+
+  test('이미 있는 태그면 안내 토스트 1줄·입력 유지, 새 태그면 추가 후 입력 비움', async () => {
+    const { input } = await openManage();
+    await setInput(input, '러프');
+    await act(async () => (q('[data-tag-preset-add]') as HTMLButtonElement).click());
+    expect(undo().addArtistTagPresetRecorded).toHaveBeenCalledWith('러프');
+    expect(mockAppState.pushMessage).toHaveBeenCalledWith('이미 있는 태그 프리셋입니다.');
+    expect(input.value).toBe('러프');
+
+    const svc = jest.requireMock('../index').artistLibraryService;
+    const before = svc.tagPresets;
+    undo().addArtistTagPresetRecorded.mockImplementationOnce((t: string) => {
+      svc.tagPresets = [...svc.tagPresets, t];
+    });
+    mockAppState.pushMessage.mockClear();
+    try {
+      await setInput(input, '선화');
+      await act(async () => (q('[data-tag-preset-add]') as HTMLButtonElement).click());
+      expect(mockAppState.pushMessage).not.toHaveBeenCalled();
+      expect(input.value).toBe('');
+    } finally {
+      svc.tagPresets = before;
+    }
+  });
+});
+
 describe('소스 검사 — 안쪽 스크롤·vh 높이 제거', () => {
   test('PromptView 에 max-h-·overflow-auto 가 없다', () => {
     const src = readComponent('ArtistLibraryTab.tsx');

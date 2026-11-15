@@ -170,10 +170,10 @@ export const PieceCell = observer(
             aria-label="조각 삭제"
             onClick={() => {
               if (!movePiece) return;
-              // 조각은 휴지통이 없어 바로 사라진다 — 확인 1회(X11)
+              // 조각은 휴지통이 없어 바로 사라진다 — 확인 1회(X11). editPieceLibrary 기록으로 되돌리기 가능(2026-11-15)
               appState.pushDialog({
                 type: 'confirm',
-                ...deleteConfirmText({ kind: 'piece', name: piece.name, outcome: 'permanent' }),
+                ...deleteConfirmText({ kind: 'piece', name: piece.name, outcome: 'undoable' }),
                 callback: () => {
                   const index = curPieceLibrary.pieces.indexOf(piece);
                   if (index < 0) return;
@@ -493,11 +493,11 @@ const PieceEditor = observer(({ onClose }: { onClose: () => void }) => {
     if (!selectedPieceLibrary) return;
     appState.pushDialog({
       type: 'confirm',
-      // 조각그룹은 휴지통이 없다 — 이름을 보이고 영구 삭제(Enter 무시, 2026-10-03 E1)
+      // 조각그룹은 휴지통이 없다 — 이름을 보이고 Enter 무시(2026-10-03 E1). editPieceGroups 기록으로 되돌리기 가능(2026-11-15)
       ...deleteConfirmText({
         kind: 'pieceGroup',
         name: selectedPieceLibrary,
-        outcome: 'permanent',
+        outcome: 'undoable',
       }),
       callback: async () => {
         // 되돌리기 = 같은 이름·내용·자리로 되살림(로컬 = 프로젝트 스택 U5, 전역 = 전역 스택 2차 묶음 5)

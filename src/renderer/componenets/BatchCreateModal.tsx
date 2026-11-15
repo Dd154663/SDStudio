@@ -442,6 +442,12 @@ export const BatchCreatePanel = observer(
               disabled={running}
               className="w-full px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
             />
+            {/* [N개 생성] 비활성 이유(2026-11-15) — 폴더 이름이 비면 canRun 거짓 */}
+            {folderNameMissing && (
+              <div className="text-xs text-faint" data-batch-folder-hint="">
+                대상 폴더 이름을 입력해 주세요
+              </div>
+            )}
             <div className="text-xs text-faint">
               실행하면 이 이름의 폴더를 만들고, 현재 템플릿의 사본을 폴더 기본
               템플릿으로 지정한 뒤 그 안에 생성합니다(전역 원본과는 무관).

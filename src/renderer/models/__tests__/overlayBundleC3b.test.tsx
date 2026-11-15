@@ -296,6 +296,30 @@ describe('템플릿 관리(xl) — PC 두 열', () => {
   });
 });
 
+// [N개 생성] 비활성 이유 안내(2026-11-15) — 전역 호스트에서 대상 폴더 이름이 비면 입력칸 아래 한 줄
+describe('일괄 생성 — 대상 폴더 이름 안내', () => {
+  test('비어 있으면 안내 한 줄, 이름을 넣으면 사라진다', async () => {
+    await renderManager();
+    await click(tabButton('일괄 생성'));
+    const hint = q('[data-batch-folder-hint]')!;
+    expect(hint).not.toBeNull();
+    expect(hint.textContent).toBe('대상 폴더 이름을 입력해 주세요');
+    expect(hint.className).toContain('text-xs text-faint');
+    const input = q('input[placeholder^="새 폴더 이름"]') as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => {
+      setter.call(input, '캐릭터CG');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(q('[data-batch-folder-hint]')).toBeNull();
+  });
+  test('폴더 호스트(대상 폴더 입력 없음)에는 안내가 없다', async () => {
+    await renderFolder();
+    await click(tabButton('일괄 생성'));
+    expect(q('[data-batch-folder-hint]')).toBeNull();
+  });
+});
+
 describe('폴더 기본 템플릿(l) — 같은 두 열', () => {
   test('템플릿 탭 두 열 + 캐릭터 편집 frame·여백 없음', async () => {
     await renderFolder();

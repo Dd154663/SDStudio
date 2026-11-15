@@ -136,6 +136,19 @@ const ArtistImage = observer(
 // ─── 태그 프리셋 관리 ───
 const TagPresetManageModal = observer(({ onClose }: { onClose: () => void }) => {
   const [input, setInput] = useState('');
+  // 공백뿐이면 [추가] 비활성·Enter 무시, 이미 있는 태그면 안내 후 입력 유지(2026-11-15). 판정 = 추가 전후 목록 길이
+  // (태그 정규화 규칙은 서비스 한 곳 — 여기서 다시 만들지 않는다)
+  const blank = !input.trim();
+  const add = () => {
+    if (blank) return;
+    const before = artistLibraryService.tagPresets.length;
+    addArtistTagPresetRecorded(input);
+    if (artistLibraryService.tagPresets.length === before) {
+      appState.pushMessage('이미 있는 태그 프리셋입니다.');
+      return;
+    }
+    setInput('');
+  };
   return (
     <ModalOverlay isOpen={true} onClose={onClose} title="태그 프리셋 관리" size="s">
       <div className="flex flex-col gap-3">
@@ -145,9 +158,9 @@ const TagPresetManageModal = observer(({ onClose }: { onClose: () => void }) => 
             placeholder="새 태그 (예: 러프)"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { addArtistTagPresetRecorded(input); setInput(''); } }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) add(); }}
           />
-          <button className="back-sky !rounded-md px-3 py-1.5 text-sm" onClick={() => { addArtistTagPresetRecorded(input); setInput(''); }}>추가</button>
+          <button className="back-sky !rounded-md px-3 py-1.5 text-sm disabled:opacity-50" disabled={blank} onClick={add} data-tag-preset-add="">추가</button>
         </div>
         <div className="flex flex-wrap gap-2">
           {artistLibraryService.tagPresets.length === 0 && (

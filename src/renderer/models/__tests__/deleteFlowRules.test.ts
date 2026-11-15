@@ -283,6 +283,28 @@ describe('삭제 확인 문구 단일 출처 deleteConfirmText(E1)', () => {
       danger: 'permanent',
     });
   });
+  it('되돌리기 가능 — [삭제]·danger permanent(빨강+Enter 무시)·Ctrl+Z 안내(2026-11-15)', () => {
+    expect(deleteConfirmText({ kind: 'piece', name: '머리', outcome: 'undoable' })).toEqual({
+      text: '조각 "머리"를 삭제할까요?\n되돌리기(Ctrl+Z)로 되살릴 수 있습니다.',
+      confirmText: '삭제',
+      danger: 'permanent',
+    });
+    expect(deleteConfirmText({ kind: 'preset', count: 3, outcome: 'undoable' }).text).toBe(
+      '사전 세팅 3개를 삭제할까요?\n되돌리기(Ctrl+Z)로 되살릴 수 있습니다.',
+    );
+    const folder = deleteConfirmText({
+      kind: 'folder',
+      name: '캐릭터',
+      outcome: 'undoable',
+      extra: '소속 프리셋 2개는 미분류로 이동합니다.',
+    });
+    expect(folder.text.split('\n')).toEqual([
+      '폴더 "캐릭터"를 삭제할까요?',
+      '되돌리기(Ctrl+Z)로 되살릴 수 있습니다.',
+      '소속 프리셋 2개는 미분류로 이동합니다.',
+    ]);
+    expect(folder.text).not.toMatch(/영구|되돌릴 수 없습니다/);
+  });
   it('이름 없으면 「이 {종류}」, 복수는 개수(이미지 장·작가 명·그 밖 개)', () => {
     expect(deleteConfirmText({ kind: 'image', outcome: { trashDays: 3 } }).text).toBe(
       '이 이미지를 삭제할까요?\n휴지통으로 이동되어 3일 동안 복원할 수 있습니다.',

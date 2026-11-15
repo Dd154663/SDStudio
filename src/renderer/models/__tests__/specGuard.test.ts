@@ -357,7 +357,7 @@ const RULES: Rule[] = [
     count: (c) =>
       countMatches(c, /삭제하시겠|삭제할까요|정말로?[^'"`\n]{0,20}삭제/g),
     allow: {
-      'componenets/CharacterPresetEditor.tsx': 1, // 캐릭터 프리셋 폴더 삭제(소속 프리셋은 미분류로)
+      // CharacterPresetEditor 1건(캐릭터 프리셋 폴더 삭제)은 2026-11-15 deleteConfirmText('undoable') 로 정리
       'models/folderDeleteFlow.ts': 2, // 프로젝트 폴더 삭제(빈 폴더·폴더와 프로젝트 모두)
     },
   },

@@ -854,7 +854,8 @@ const PreSetBulkManageModal = observer(
       }
       appState.pushDialog({
         type: 'confirm',
-        ...deleteConfirmText({ kind: 'preset', count: selected.size, outcome: 'permanent' }),
+        // 파일을 지우지 않고 editPresetList 기록 — 되돌리기 가능(2026-11-15)
+        ...deleteConfirmText({ kind: 'preset', count: selected.size, outcome: 'undoable' }),
         callback: () => {
           const names = Array.from(selected);
           const curName = curSession.selectedWorkflow?.presetName;
@@ -1233,11 +1234,12 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                     }
                     appState.pushDialog({
                       type: 'confirm',
-                      // 휴지통이 없다 — 이름을 보이고 영구 삭제(Enter 무시). 버튼 툴팁(「그림체 삭제」)과 같은 라벨
+                      // 휴지통이 없다 — 이름을 보이고 Enter 무시. 버튼 툴팁(「그림체 삭제」)과 같은 라벨.
+                      // editPresetList 기록으로 되돌리기 가능(2026-11-15)
                       ...deleteConfirmText({
                         kind: 'style',
                         name: option.name,
-                        outcome: 'permanent',
+                        outcome: 'undoable',
                       }),
                       callback: () => {
                         editPresetList(curSession, UNDO_TEXT.presetRemove([option.name]), () => {

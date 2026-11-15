@@ -28,6 +28,7 @@ export type ConfirmEnterAction = 'confirm' | 'ignore' | 'pass';
  * - 없음 = 중립: [확인] 파랑, Enter = 확인(진행·Anlas 소모·붙여넣기·복사 등)
  * - true = 파괴적: [확인] 빨강, Enter = 확인(삭제·휴지통 이동·덮어쓰기·초기화·연결 해제·상속 끊기·병합)
  * - 'permanent' = 되돌릴 수 없는 영구 삭제·덮어쓰기: [확인] 빨강, Enter 무시
+ *   ('permanent' = 빨강+Enter 무시 표시 등급 — 되돌리기 가능 삭제(deleteConfirmText 'undoable')도 사용, 2026-11-15)
  */
 export type ConfirmDanger = boolean | 'permanent';
 

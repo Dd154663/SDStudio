@@ -965,8 +965,8 @@ export const AppContextMenu = observer(() => {
     }
     appState.pushDialog({
       type: 'confirm',
-      // 그림체는 휴지통이 없다 — 영구 삭제(Enter 무시, 2026-10-03 E1)
-      ...deleteConfirmText({ kind: 'style', name: ctx.preset.name, outcome: 'permanent' }),
+      // 그림체는 휴지통이 없다 — Enter 무시(2026-10-03 E1). editPresetList 기록으로 되돌리기 가능(2026-11-15)
+      ...deleteConfirmText({ kind: 'style', name: ctx.preset.name, outcome: 'undoable' }),
       callback: async () => {
         const curSession = appState.curSession;
         const presets = curSession?.presets.get(ctx.preset.type) ?? [];

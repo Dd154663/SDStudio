@@ -172,7 +172,8 @@ const ExportPresetManager = observer(() => {
       ...deleteConfirmText({
         kind: 'exportPreset',
         name: presets[idx]?.name,
-        outcome: 'permanent',
+        // 파일 없는 JSON 목록·saveExportPresetsRecorded 기록 — 되돌리기로 되살아난다(2026-11-15)
+        outcome: 'undoable',
       }),
       callback: () => deletePreset(idx),
     });

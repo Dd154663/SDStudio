@@ -19,12 +19,15 @@ import { josaEulReul, NAME_KIND_LABEL, type NameKind } from './nameInput';
 //    [삭제] · danger true(Enter = 확인). N 은 호출부가 TrashService 의 보존 일수 상수로 넘긴다(리터럴 금지).
 //  · 되돌릴 수 없는 삭제: 「{대상}을(를) 영구 삭제할까요? / 이 작업은 되돌릴 수 없습니다.」
 //    [영구 삭제] · danger 'permanent'(Enter 무시 — 버튼을 직접 눌러야 한다).
+//  · 휴지통은 없지만 되돌리기(Ctrl+Z)로 되살아나는 삭제('undoable', 2026-11-15): 「{대상}을(를) 삭제할까요? /
+//    되돌리기(Ctrl+Z)로 되살릴 수 있습니다.」 [삭제] · danger 'permanent'(빨강 + Enter 무시 — 사용자 결정: 영구 삭제와
+//    같게). 파일(이미지·폴더)을 지우지 않고 되돌리기 기록(*Recorded·edit*·begin…commit)이 있는 삭제만 이 갈래.
 //  · 대상: 단건 「{종류} "{이름}"」(이름 없으면 「이 {종류}」), 복수 「{종류} {count}개」(이미지 장·작가 명).
 //  · extra: 본문 끝에 덧붙일 줄(첨부 이미지도 함께 삭제됨·모든 프로젝트에 영향 등).
 
 export type DeleteTargetKind = NameKind;
 
-export type DeleteOutcome = { trashDays: number } | 'permanent';
+export type DeleteOutcome = { trashDays: number } | 'permanent' | 'undoable';
 
 export interface DeleteConfirmInput {
   kind: DeleteTargetKind;
@@ -80,6 +83,13 @@ export function deleteConfirmText(input: DeleteConfirmInput): DeleteConfirmText 
     return {
       text: `${phrase}${josa} 영구 삭제할까요?\n이 작업은 되돌릴 수 없습니다.${tail}`,
       confirmText: DELETE_CONFIRM_LABEL.permanent,
+      danger: 'permanent',
+    };
+  }
+  if (input.outcome === 'undoable') {
+    return {
+      text: `${phrase}${josa} 삭제할까요?\n되돌리기(Ctrl+Z)로 되살릴 수 있습니다.${tail}`,
+      confirmText: DELETE_CONFIRM_LABEL.trash,
       danger: 'permanent',
     };
   }
