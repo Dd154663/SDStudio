@@ -138,7 +138,7 @@ export const ResolutionPicker = ({
                     {size.width}x{size.height}
                   </span>
                   {(key.startsWith('large') || key.startsWith('wallpaper')) && (
-                    <span className="text-[10px] text-amber-500">Anlas</span>
+                    <span className="text-[11px] text-amber-700 dark:text-amber-500">Anlas</span>
                   )}
                 </button>
               );
@@ -170,7 +170,7 @@ export const ResolutionPicker = ({
                   적용
                 </button>
               </div>
-              <div className="text-[10px] text-faint mt-1 px-0.5">
+              <div className="text-[11px] text-muted mt-1 px-0.5">
                 직접 입력 — 64px 배수로 자동 보정
               </div>
             </div>

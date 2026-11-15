@@ -76,7 +76,7 @@ const imagesFor = (artist: IArtistEntry, view: FamilyView): IArtistImage[] =>
 /** 썸네일 구석의 계열 배지. 미지정은 표시하지 않는다. */
 const FamilyBadge = ({ family, className }: { family?: ModelBaseFamily; className?: string }) =>
   family ? (
-    <span className={'pointer-events-none text-[10px] leading-none px-1 py-0.5 rounded bg-black/60 text-white ' + (className || '')}>
+    <span className={'pointer-events-none text-[11px] leading-none px-1 py-0.5 rounded bg-black/60 text-white ' + (className || '')}>
       {FAMILY_LABEL[family]}
     </span>
   ) : null;
@@ -385,7 +385,7 @@ export const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: st
                   }}
                 >
                   <FaMagic />
-                  <span className="text-[10px] leading-none">샘플 생성</span>
+                  <span className="text-[11px] leading-none">샘플 생성</span>
                 </button>
               </Tooltip>
               <input type="file" accept={IMPORT_IMAGE_ACCEPT} multiple ref={fileRef} className="hidden"

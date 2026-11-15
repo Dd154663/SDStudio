@@ -1410,7 +1410,7 @@ const ResultDetailView = observer(
       <>
             <div className="max-w-full mb-2 text-sub">
               <span className="gray-label">파일이름: </span>
-              <span>{filename}</span>
+              <span className="break-all">{filename}</span>
             </div>
             {/* 부스트 다중 계정 실행으로 만든 이미지만 — 만든 계정(프로필 이름, D8 앱 내부 표식). 메타·내보내기에는 없음. */}
             {scene.imageAccounts?.[filename] && (
@@ -2743,8 +2743,10 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               <Tooltip content="이미지 선택 모드">
                 <button
                   className={
-                    `round-button icon-only ` + (selectMode ? 'back-sky' : 'back-gray')
+                    `round-button icon-only ` + (selectMode ? 'back-sky toggle-on' : 'back-gray')
                   }
+                  aria-pressed={selectMode}
+                  data-viewer-toggle="select-mode"
                   onClick={actToggleSelect}
                 >
                   <ActionIcon id="multi-select" />
@@ -2782,7 +2784,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               </Tooltip>
               <Tooltip content="이미지 붙여넣기">
                 <button
-                  className={`round-button icon-only ${appState.imageClipboard.length > 0 ? 'back-sky' : 'back-gray'}`}
+                  className={`round-button icon-only ${appState.imageClipboard.length > 0 ? 'back-sky toggle-on' : 'back-gray'}`}
+                  data-viewer-toggle="paste"
                   onClick={actPaste}
                 >
                   <FaPaste />
@@ -2841,7 +2844,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               )}
               <Tooltip content="북마크된 이미지로 이동">
                 <button
-                  className={`round-button icon-only ${bookmarkedImageFilename ? 'back-orange' : 'back-gray'}`}
+                  className={`round-button icon-only ${bookmarkedImageFilename ? 'back-orange toggle-on' : 'back-gray'}`}
+                  data-viewer-toggle="bookmark-jump"
                   onClick={actGoBookmark}
                 >
                   <ActionIcon id="bookmark" />

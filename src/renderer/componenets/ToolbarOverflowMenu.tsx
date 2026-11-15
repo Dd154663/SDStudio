@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef } from 'react';
+import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useDrag, useDragLayer, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
 import { observer } from 'mobx-react-lite';
@@ -44,8 +44,10 @@ interface ToolbarOverflowMenuProps {
   // 데스크톱 팝오버를 앵커 위로 펼침 — 화면 하단 툴바(프로젝트 바 등)에서
   // 아래로 열면 뷰포트 밖으로 잘리므로 그 경우 true 로.
   dropUp?: boolean;
-  // 데스크톱 팝오버의 가로 정렬(기본 'left'=앵커 왼끝 맞춤·오른쪽으로 펼침).
+  // 데스크톱 팝오버의 가로 정렬('left'=앵커 왼끝 맞춤·오른쪽으로 펼침).
   // 우측 사이드 바처럼 오른쪽 가장자리에 앵커가 붙으면 'right' 로 왼쪽으로 펼친다.
+  // 생략하면 자동(2026-11-15 PC UX 결함 T1) — 기본 'left', 열 때 오른쪽이 잘리는 영역(뷰포트 또는 가장 가까운
+  // overflow 조상, 예 .zone-card)을 넘치면 'right'. 명시한 값은 그대로 우선한다.
   align?: 'left' | 'right';
   // 행 드래그 아웃용 react-dnd 아이템 타입 (미지정 = 드래그 비활성, 클래식 등)
   dndType?: string;
@@ -206,17 +208,60 @@ const MenuRow = ({
   );
 };
 
+// 자동 가로 정렬 판정(순수 함수 — 테스트 대상). 앵커(팝오버의 relative 부모) 가로 범위와 메뉴 폭, 잘리는 영역
+// 가로 범위로 정한다. 왼쪽 정렬이 넘치지 않으면 'left'. 넘치면 오른쪽 정렬로 바꾸되, 그쪽이 왼쪽으로 더 많이
+// 넘치면 'left' 를 유지한다(세로 dropUp 과 같은 「열 때 한 번 판정」).
+export function resolveOverflowAlign(
+  anchor: { left: number; right: number },
+  menuWidth: number,
+  clip: { left: number; right: number },
+): 'left' | 'right' {
+  const overRight = anchor.left + menuWidth - clip.right;
+  if (overRight <= 0) return 'left';
+  const overLeft = clip.left - (anchor.right - menuWidth);
+  return overLeft < overRight ? 'right' : 'left';
+}
+
+// 팝오버를 잘라 내는 가로 경계 — 앵커 자신부터 올라가 처음 만나는 overflow-x 가 visible 이 아닌 요소와 뷰포트의 교집합.
+function clipBoundsOf(el: HTMLElement): { left: number; right: number } {
+  let left = 0;
+  let right = window.innerWidth;
+  for (let p: HTMLElement | null = el; p; p = p.parentElement) {
+    const ox = window.getComputedStyle(p).overflowX;
+    if (ox && ox !== 'visible') {
+      const r = p.getBoundingClientRect();
+      left = Math.max(left, r.left);
+      right = Math.min(right, r.right);
+      break;
+    }
+  }
+  return { left, right };
+}
+
 const ToolbarOverflowMenu = observer(({
   isOpen,
   onClose,
   title,
   items,
   dropUp,
-  align = 'left',
+  align,
   dndType,
   group,
 }: ToolbarOverflowMenuProps) => {
   const popRef = useRef<HTMLDivElement>(null);
+  // align 생략 시 열 때마다 판정한 가로 정렬(T1). 첫 그림은 'left' — useLayoutEffect 가 페인트 전에 고친다.
+  const [autoAlign, setAutoAlign] = useState<'left' | 'right'>('left');
+  useLayoutEffect(() => {
+    if (!isOpen || isMobile || align) return;
+    const pop = popRef.current;
+    const anchor = pop?.parentElement;
+    if (!pop || !anchor) return;
+    const a = anchor.getBoundingClientRect();
+    setAutoAlign(
+      resolveOverflowAlign({ left: a.left, right: a.right }, pop.offsetWidth, clipBoundsOf(anchor)),
+    );
+  }, [isOpen, align, items.length]);
+  const effectiveAlign = align ?? autoAlign;
   // 행 목록 컨테이너 — 드래그 커서가 이 위에 있는 동안은 메뉴를 유지한다(재배열).
   const rowsRef = useRef<HTMLDivElement>(null);
 
@@ -300,7 +345,7 @@ const ToolbarOverflowMenu = observer(({
   return (
     <div
       ref={popRef}
-      className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} ${align === 'right' ? 'right-0' : 'left-0'} z-50 min-w-[240px] max-w-[80vw] max-h-[60vh] overflow-auto rounded-xl r-popover border line-color bg-[var(--c-zone)] shadow-2xl p-2${dragActive ? ' opacity-0 pointer-events-none' : ''}`}
+      className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} ${effectiveAlign === 'right' ? 'right-0' : 'left-0'} z-50 min-w-[240px] max-w-[80vw] max-h-[60vh] overflow-auto rounded-xl r-popover border line-color bg-[var(--c-zone)] shadow-2xl p-2${dragActive ? ' opacity-0 pointer-events-none' : ''}`}
     >
       {rows}
     </div>

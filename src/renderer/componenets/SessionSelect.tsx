@@ -521,7 +521,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
                   size={14}
                 />
                 {appState.appliedCharacterPresetNames.length > 1 && (
-                  <span className="absolute -top-1 -right-1 min-w-[1rem] h-4 px-0.5 rounded-full bg-green-500 text-white text-[10px] leading-4 text-center font-semibold">
+                  <span className="absolute -top-1 -right-1 min-w-[1rem] h-4 px-0.5 rounded-full bg-green-700 text-white text-[11px] leading-4 text-center font-semibold">
                     {appState.appliedCharacterPresetNames.length}
                   </span>
                 )}

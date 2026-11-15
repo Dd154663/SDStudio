@@ -790,22 +790,31 @@ const SystemTab = ({
 
 /* ── 작업 로그 ── */
 // 테스트(overlayBundleD.test.tsx)용으로 내보낸다
+// 로그 한 줄 서식 — 시간 서식기는 모듈에서 한 번만 만든다(줄마다 toLocaleTimeString 이 서식기를 새로 만들던 비용 제거,
+// 2026-11-15 성능 조사 F1). 출력은 종전 `toLocaleTimeString('ko-KR', { hour12: false })` 와 같은 HH:MM:SS.
+const taskLogTimeFormat = new Intl.DateTimeFormat('ko-KR', {
+  hourCycle: 'h23',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
+const formatTaskLog = (log: TaskLog) => {
+  const date = new Date(log.timestamp);
+  const day =
+    String(date.getMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(date.getDate()).padStart(2, '0');
+  const time = taskLogTimeFormat.format(date);
+  const levelLabel = log.level === 'error' ? '[오류]' : log.level === 'warn' ? '[경고]' : '[정보]';
+  return `${day} ${time} ${levelLabel} [${log.scene}] ${log.message}`;
+};
+
 export const TaskLogSection = () => {
   const [showDialog, setShowDialog] = useState(false);
   const logs = taskQueueService.taskLogs;
   // 창은 공용 ModalOverlay(2026-11-14 오버레이 묶음 D, size m) — 뒤로 가기·Esc 는 이 창만 닫고(닫기 관문),
   // 바깥 클릭은 누름·뗌 모두 배경일 때만(글자 드래그 선택 중 닫힘 방지)이 래퍼에 내장돼 있다. 2026-10-03 U1·X2·X6.
-
-  const formatLog = (log: TaskLog) => {
-    const date = new Date(log.timestamp);
-    const day =
-      String(date.getMonth() + 1).padStart(2, '0') +
-      '-' +
-      String(date.getDate()).padStart(2, '0');
-    const time = date.toLocaleTimeString('ko-KR', { hour12: false });
-    const levelLabel = log.level === 'error' ? '[오류]' : log.level === 'warn' ? '[경고]' : '[정보]';
-    return `${day} ${time} ${levelLabel} [${log.scene}] ${log.message}`;
-  };
+  const formatLog = formatTaskLog;
 
   const downloadLogs = () => {
     const text = logs.map(formatLog).join('\n');
@@ -858,17 +867,22 @@ export const TaskLogSection = () => {
           </button>
         }
       >
-        <div className="text-xs font-mono" data-task-log-list>
-          {logs.length === 0
-            ? <p className="text-faint text-center py-4">로그가 없습니다.</p>
-            : [...logs].reverse().map((log, i) => (
-                <div key={i} className={'py-0.5 ' +
-                  (log.level === 'error' ? 'text-red-500' : log.level === 'warn' ? 'text-yellow-500' : 'text-default')}>
-                  {formatLog(log)}
-                </div>
-              ))
-          }
-        </div>
+        {/* 목록은 창이 열렸을 때만 만든다 — 닫힌 ModalOverlay 는 아무것도 그리지 않지만 자식 JSX 는 부모 렌더 때
+            먼저 계산되므로, 조건 없이 두면 시스템 탭이 다시 그려질 때마다 최대 500줄 서식이 돈다(묶음 D 에서
+            `showDialog &&` 바깥으로 나갔던 것을 되돌림, 2026-11-15 성능 조사 F1). */}
+        {showDialog && (
+          <div className="text-xs font-mono" data-task-log-list>
+            {logs.length === 0
+              ? <p className="text-faint text-center py-4">로그가 없습니다.</p>
+              : [...logs].reverse().map((log, i) => (
+                  <div key={i} className={'py-0.5 ' +
+                    (log.level === 'error' ? 'text-red-500' : log.level === 'warn' ? 'text-yellow-500' : 'text-default')}>
+                    {formatLog(log)}
+                  </div>
+                ))
+            }
+          </div>
+        )}
       </ModalOverlay>
     </>
   );

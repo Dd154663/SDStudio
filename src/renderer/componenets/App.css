@@ -79,6 +79,9 @@
   /* 보라 = Opus 추가 충전(Usage Boost)분 막대 전용(2026-10-25). 버튼 색 아님 — 커스텀 테마(uiTheme)는
      재정의하지 않아 라이트/다크 기본값을 따르고, 트루다크는 .dark 값을 그대로 쓴다. */
   --c-purple-bg: #a855f7; --c-purple-fg: #ffffff; /* purple-500 */
+  /* 키보드 포커스 링·토글 켜짐 링 색(2026-11-15 PC UX 결함 D10) — 라이트 sky-700(흰 표면 5.93:1, zone 5.15, 입력 4.79).
+     다크·트루다크는 종전 sky-400(.dark 블록). 커스텀 테마(uiTheme.buildThemeVars)는 재정의하지 않아 기본 라이트/다크 값을 따른다. */
+  --c-focus-ring: #0369a1; /* sky-700 */
   /* 버튼 반경 토큰(2026-10-04 B1 ①, 같은 날 실기 피드백으로 범위 축소) — 색과 무관해 테마별 재정의 없음.
      --r-btn      = 글자·아이콘+글자 버튼(.round-button·.icon-button·확인 창 .r-btn) — 알약, 모던·클래식 공통.
      --r-btn-icon = 아이콘 하나짜리 버튼(.icon-only) — 모던 8px 둥근 사각, 클래식 마감·알약형 버튼 옵션은
@@ -109,6 +112,7 @@
   --c-orange-bg: rgba(251, 146, 60, 0.25); --c-orange-fg: #fed7aa; /* orange-200 */
   --c-yellow-bg: rgba(129, 140, 248, 0.25); --c-yellow-fg: #818cf8; /* indigo-400 */
   --c-purple-bg: rgba(192, 132, 252, 0.25); --c-purple-fg: #c084fc; /* purple-400 (막대는 다크에서 fg 를 칠한다) */
+  --c-focus-ring: rgb(56, 189, 248); /* sky-400 — 종전 포커스 링 색 그대로(트루다크도 이 값) */
   /* 영역 바닥 선 — 다크 bg 토큰은 이미 25% 반투명이라 선명한 fg(teal·sky-400·gray-200)를 옅게 칠한다 */
 }
 .true-dark {
@@ -506,7 +510,7 @@ html.font-pretendard body {
 .toolbar-group-caption {
   height: 12px;
   padding-left: 2px;
-  font-size: 10.5px;
+  font-size: 11px; /* 2026-11-15 PC UX 결함 D11 — 종전 10.5px(11px 미만) */
   line-height: 12px;
   white-space: nowrap;
   user-select: none;
@@ -590,8 +594,19 @@ html.font-pretendard body {
 .btn:focus-visible,
 .btn-ghost:focus-visible,
 .btn-link:focus-visible {
-  outline: 2px solid rgb(56, 189, 248);
+  outline: 2px solid var(--c-focus-ring);
   outline-offset: 1px;
+}
+
+/* 공통 상태 1-b: 토글 켜짐 표식(2026-11-15 PC UX 결함 S2) — 아이콘만 있는 켜짐/꺼짐 토글은 aria-pressed 와 함께
+   켜짐일 때 .toggle-on 을 붙인다. 색(back-sky/back-orange ↔ back-gray) 구분은 그대로 두고, 색 외 단서로
+   안쪽 2px 링(--c-focus-ring) + 그 안쪽 1px 표면색 띠를 준다(링 대 띠 대비 라이트 5.93·다크 6.83~8.33·트루다크 8.74 이상).
+   :hover 를 함께 적어 .round-button:hover 의 안쪽 링이 켜짐 표식을 덮지 않게 한다. */
+.toggle-on,
+.toggle-on:hover {
+  box-shadow:
+    inset 0 0 0 2px var(--c-focus-ring),
+    inset 0 0 0 3px var(--c-surface);
 }
 
 /* 공통 상태 2: 비활성 */
@@ -641,6 +656,12 @@ html.font-pretendard body {
   color: var(--c-input-text);
   /* 입력창 윤곽 링(B1) — 배경과 같은 계열 음영이라 묻히던 경계를 살린다. */
   box-shadow: inset 0 0 0 1px var(--c-input-ring);
+}
+/* 입력 포커스 표시(2026-11-15 PC UX 결함 S3) — 종전 focus:outline-0 로 포커스가 보이지 않던 것을 공용 링 색으로.
+   같은 특이도의 .gray-input:focus(outline-0) 보다 뒤에 두어 이긴다. 레이아웃 불변(outline). */
+.gray-input:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 0;
 }
 
 /* ── 라운딩 계층(B3) ── 새 마감에서만 기존 rounded-* 유틸을 덮는다(0,2,1 > 0,1,0).
@@ -827,12 +848,22 @@ html:not(.finish-classic) .tab-seg > .tab-seg-off:hover {
 }
 
 /* 가로 스크롤은 허용하되 스크롤바는 숨긴다(모바일 탭바 등). */
-/* 좁은 창(<1024, W6 후속) 전용 패널 폭 상한 — 프리셋/히스토리 패널이 함께 열려도
-   중앙 콘텐츠가 완전히 가려지지 않게 한다(36vw×2 → 중앙 최소 ~25vw 확보).
-   1024 이상에서는 미적용이라 사용자가 넓게 잡아둔 패널 레이아웃을 건드리지 않는다. */
+/* 패널 폭 상한 — 프리셋/히스토리 패널이 함께 열려도 중앙 콘텐츠가 완전히 가려지지 않게 한다.
+   좁은 창(<1024, W6 후속): 두 패널 공통 36vw(36vw×2 → 중앙 최소 ~25vw 확보).
+   1024 이상(2026-11-15 PC UX 결함 W1): 프리셋 40vw·히스토리 30vw — 큰 모니터에서 넓혀 둔 폭(저장값 최대 800/600)을
+   1,366 노트북에서 열어도 중앙이 0 이하로 눌리지 않게(1,366: 546+410+거터·레일 108 → 중앙 약 300px).
+   저장값·드래그 상한은 그대로라 창을 넓히면 복원된다. 프리셋의 인라인 minWidth 250 이 상한보다 우선. */
 @media (max-width: 1023px) {
   .panel-vw-clamp {
     max-width: 36vw;
+  }
+}
+@media (min-width: 1024px) {
+  .panel-vw-clamp.panel-vw-clamp-preset {
+    max-width: 40vw;
+  }
+  .panel-vw-clamp.panel-vw-clamp-history {
+    max-width: 30vw;
   }
 }
 

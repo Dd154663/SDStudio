@@ -2548,7 +2548,7 @@ const CharacterPromptEditor = observer(
                   // 위치 줄을 누르면 그 캐릭터가 선택된 상태로 위치 지정 창이 열린다(2026-09-26)
                   <button
                     type="button"
-                    className="flex items-center gap-2 text-xs text-sky-500 mt-1 relative touch-hit"
+                    className="btn-link flex items-center gap-2 text-xs mt-1 relative touch-hit"
                     onClick={() => openPositionOverlay(character.id)}
                   >
                     <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: charColors[i % charColors.length] }} />

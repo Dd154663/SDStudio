@@ -57,6 +57,13 @@ interface ModalOverlayProps {
 // 바닥줄 모양 — 래퍼 바닥줄과 표시 전용 OverlayFooterBar 가 같은 클래스를 쓴다(단일 출처, 2026-11-15 C-3)
 const OVERLAY_FOOTER_BAR_CLASS = 'flex-none flex items-center gap-2 px-5 py-3 border-t line-color';
 
+// 창 닫기 ✕ 모양 — 래퍼 머리줄 ✕ 와 직접 만든 창·패널(이미지 검수·단축키 도움말·작업 목록)의 ✕ 가 같은 클래스·아이콘
+// 크기를 쓴다(단일 출처, 2026-11-15 PC UX 결함 C2). 다크 hover 짝(dark:hover:bg-slate-600)을 포함 — 작업 목록 ✕ 가
+// 다크에서 hover 시 사라지던 결함(S1)을 같이 없앤다. 래퍼 DOM 은 종전과 같다.
+export const OVERLAY_CLOSE_BUTTON_CLASS =
+  'p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors';
+export const OVERLAY_CLOSE_ICON_SIZE = 16;
+
 const ModalOverlay = ({
   isOpen,
   onClose,
@@ -153,11 +160,11 @@ const ModalOverlay = ({
             {title}
           </h2>
           <button
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors"
+            className={OVERLAY_CLOSE_BUTTON_CLASS}
             onClick={requestClose}
             aria-label="닫기"
           >
-            <FaTimes size={16} />
+            <FaTimes size={OVERLAY_CLOSE_ICON_SIZE} />
           </button>
         </div>
         {/* 도구줄 — 스크롤 밖 고정 */}

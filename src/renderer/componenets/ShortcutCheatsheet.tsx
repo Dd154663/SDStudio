@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { FaTimes } from 'react-icons/fa';
+import { OVERLAY_CLOSE_BUTTON_CLASS, OVERLAY_CLOSE_ICON_SIZE } from './ModalOverlay';
 
 interface ShortcutEntry {
   keys: string[];
@@ -98,11 +99,11 @@ function ShortcutCheatsheet({ scope, onClose }: ShortcutCheatsheetProps) {
         <span className="font-bold text-sm text-default">단축키 도움말</span>
         <button
           type="button"
-          className="text-muted hover:text-default transition-colors cursor-pointer"
+          className={OVERLAY_CLOSE_BUTTON_CLASS}
           aria-label="닫기"
           onClick={onClose}
         >
-          <FaTimes size={12} />
+          <FaTimes size={OVERLAY_CLOSE_ICON_SIZE} />
         </button>
       </div>
       <div className="px-3 py-2 space-y-1.5 max-h-[380px] overflow-y-auto">

@@ -365,7 +365,7 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
           <div className="flex items-center gap-1.5">
             <span className="text-sm text-default">화면에서 직접 편집</span>
             {mobileMode && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--c-zone)] text-muted flex-none">
+              <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-[var(--c-zone)] text-muted flex-none">
                 PC 전용
               </span>
             )}
@@ -440,12 +440,12 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
               <div className="flex items-center gap-1.5">
                 <span className="text-sm text-default">{t.name}</span>
                 {!t.mobileAllowed && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--c-zone)] text-muted flex-none">
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-[var(--c-zone)] text-muted flex-none">
                     PC 전용
                   </span>
                 )}
                 {!t.desktopAllowed && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--c-zone)] text-muted flex-none">
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-[var(--c-zone)] text-muted flex-none">
                     모바일 전용
                   </span>
                 )}
@@ -526,7 +526,7 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm text-default">{m.name}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--c-zone)] text-muted flex-none">
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-[var(--c-zone)] text-muted flex-none">
                     PC 전용
                   </span>
                 </div>

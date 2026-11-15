@@ -31,6 +31,7 @@ import { trashNoticeText } from './TrashViews';
 import { queueScene } from '../models/sceneQueueActions';
 import { GenericScene, Session } from '../models/types';
 import Tooltip from './Tooltip';
+import { OVERLAY_CLOSE_BUTTON_CLASS, OVERLAY_CLOSE_ICON_SIZE } from './ModalOverlay';
 
 interface ReviewItem {
   scene: GenericScene;
@@ -412,8 +413,12 @@ const ImageReview = ({
           {counter}
         </span>
         <Tooltip content="이미지 검수 닫기">
-          <button className="round-button icon-only back-gray" onClick={onClose}>
-            <FaTimes />
+          <button
+            className={OVERLAY_CLOSE_BUTTON_CLASS}
+            aria-label="이미지 검수 닫기"
+            onClick={onClose}
+          >
+            <FaTimes size={OVERLAY_CLOSE_ICON_SIZE} />
           </button>
         </Tooltip>
       </header>
@@ -499,11 +504,11 @@ const ImageReview = ({
               {trashScene.name} / 휴지통
             </strong>
             <button
-              className="round-button icon-only back-gray"
+              className={OVERLAY_CLOSE_BUTTON_CLASS}
               aria-label="닫기"
               onClick={() => setTrashScene(undefined)}
             >
-              <FaTimes />
+              <FaTimes size={OVERLAY_CLOSE_ICON_SIZE} />
             </button>
           </header>
           {/* 보존 기간 안내(2026-10-03 E1-5) — 휴지통 목록과 같은 형식 */}

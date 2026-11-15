@@ -1344,7 +1344,7 @@ const SceneCharacterPromptEditor = observer(({
                 {/* 위치 줄을 누르면 그 캐릭터가 선택된 상태로 위치 지정 창이 열린다(2026-09-26, PC·모바일 공통) */}
                 <button
                   type="button"
-                  className="flex items-center gap-2 text-xs text-sky-500 relative touch-hit"
+                  className="btn-link flex items-center gap-2 text-xs relative touch-hit"
                   onClick={() => openPositionOverlay(character.id)}
                 >
                   <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: sceneCharColors[index % sceneCharColors.length] }} />

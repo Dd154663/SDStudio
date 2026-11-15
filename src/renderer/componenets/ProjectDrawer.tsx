@@ -1804,7 +1804,7 @@ const ProjectDrawer = observer(() => {
                 >
                   <button
                     onClick={() => toggleFolder('__favorites__')}
-                    className="w-full flex items-center gap-2 pl-1.5 pr-2 py-2.5 text-[15px] font-semibold text-body"
+                    className="btn w-full flex items-center gap-2 pl-1.5 pr-2 py-2.5 rounded-md text-[15px] font-semibold text-body"
                   >
                     {expanded.has('__favorites__') ? (
                       <FaChevronDown

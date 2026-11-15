@@ -2770,8 +2770,10 @@ const QueueControl = observer(
         <Tooltip content="드래그 선택 모드">
           <button
             className={`round-button${iconMode && selectedCount === 0 ? ' icon-only' : ''} ${
-              appState.sceneSelectionMode ? 'back-sky' : 'back-gray'
+              appState.sceneSelectionMode ? 'back-sky toggle-on' : 'back-gray'
             }`}
+            aria-pressed={appState.sceneSelectionMode}
+            data-toolbar-toggle="multi-select"
             onClick={() => {
               if (appState.sceneSelectionMode) {
                 appState.sceneSelectionMode = false;
@@ -2848,7 +2850,9 @@ const QueueControl = observer(
       'scene-search': (
         <Tooltip content="씬 검색">
           <button
-            className={`round-button icon-only ${showSceneSearch ? 'back-sky' : 'back-gray'}`}
+            className={`round-button icon-only ${showSceneSearch ? 'back-sky toggle-on' : 'back-gray'}`}
+            aria-pressed={showSceneSearch}
+            data-toolbar-toggle="scene-search"
             onClick={toggleSceneSearch}
           >
             <ActionIcon id="scene-search" size={18} />
@@ -2900,7 +2904,8 @@ const QueueControl = observer(
       'bookmark-jump': (
         <Tooltip content="북마크된 씬으로 이동">
           <button
-            className={`round-button icon-only ${sceneBookmark ? 'back-orange' : 'back-gray'}`}
+            className={`round-button icon-only ${sceneBookmark ? 'back-orange toggle-on' : 'back-gray'}`}
+            data-toolbar-toggle="bookmark-jump"
             onClick={() => {
               if (!sceneBookmark) {
                 appState.pushMessage('북마크된 씬이 없습니다.');
@@ -2941,7 +2946,7 @@ const QueueControl = observer(
               appState.showSceneCheatsheet = !appState.showSceneCheatsheet;
             }}
           >
-            <ActionIcon id="shortcut-help" size={14} />
+            <ActionIcon id="shortcut-help" size={18} />
             <span className="ml-1 text-xs hidden lg:inline">H</span>
           </button>
         </Tooltip>
@@ -3126,7 +3131,7 @@ const QueueControl = observer(
                       data-toolbar-group={seg.group}
                       className={`toolbar-group${si > 0 ? ' toolbar-group-sep' : ''}`}
                     >
-                      <div className="toolbar-group-caption text-faint" aria-hidden="true">
+                      <div className="toolbar-group-caption text-muted" aria-hidden="true">
                         {seg.caption}
                       </div>
                       <div className="toolbar-group-buttons">
@@ -3158,7 +3163,9 @@ const QueueControl = observer(
                   <ToolbarMenuDropTarget group="scene" area="scene">
                     <Tooltip content="더보기">
                       <button
-                        className={`round-button icon-only ${showToolbarMenu ? 'back-sky' : 'back-gray'}${toolbarLayout.menu.length === 0 ? ' opacity-40' : ''}`}
+                        className={`round-button icon-only ${showToolbarMenu ? 'back-sky toggle-on' : 'back-gray'}${toolbarLayout.menu.length === 0 ? ' opacity-40' : ''}`}
+                        aria-pressed={showToolbarMenu}
+                        data-toolbar-toggle="more"
                         onClick={() => {
                           if (toolbarLayout.menu.length > 0)
                             setShowToolbarMenu(!showToolbarMenu);

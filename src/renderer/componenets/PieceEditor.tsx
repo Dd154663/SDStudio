@@ -144,8 +144,11 @@ export const PieceCell = observer(
         }}
       >
         <div className="flex pb-2">
+          {/* 긴 조각 이름이 같은 줄 [삭제]를 밀어내지 않게 말줄임 + 전체 이름 Tooltip(2026-11-15 PC UX 결함 T3) */}
+          <Tooltip content={piece.name}>
           <div
-            className="font-bold text-default"
+            className="font-bold text-default min-w-0 truncate"
+            data-piece-name=""
             onDoubleClick={() => {
               if (!movePiece) return;
               // 현재 이름을 채워 연다 — 빈 값·공백만·다른 조각과 같은 이름은 창 안에서 거부(D2)
@@ -165,8 +168,9 @@ export const PieceCell = observer(
           >
             {piece.name}
           </div>
+          </Tooltip>
           <button
-            className="ml-auto text-red-500 dark:text-white"
+            className="ml-auto pl-2 flex-none text-red-500 dark:text-white"
             aria-label="조각 삭제"
             onClick={() => {
               if (!movePiece) return;
@@ -682,13 +686,15 @@ const PieceEditor = observer(({ onClose }: { onClose: () => void }) => {
   const scopeToggle = (
     <div className={wide ? 'flex gap-1 items-center' : 'flex gap-1 mb-3'}>
       <button
-        className={`${wide ? 'flex-1 px-2' : 'px-4'} py-1.5 text-sm rounded-lg ${scope === 'local' ? 'back-sky font-bold' : 'back-llgray'}`}
+        className={`btn ${wide ? 'flex-1 px-2' : 'px-4'} py-1.5 text-sm rounded-lg ${scope === 'local' ? 'back-sky font-bold' : 'back-llgray'}`}
+        aria-pressed={scope === 'local'}
         onClick={() => setScope('local')}
       >
         로컬 조각
       </button>
       <button
-        className={`${wide ? 'flex-1 px-2' : 'px-4'} py-1.5 text-sm rounded-lg ${scope === 'global' ? 'bg-purple-500 text-white dark:bg-purple-400/25 dark:text-purple-300 font-bold' : 'back-llgray'}`}
+        className={`btn ${wide ? 'flex-1 px-2' : 'px-4'} py-1.5 text-sm rounded-lg ${scope === 'global' ? 'bg-purple-500 text-white dark:bg-purple-400/25 dark:text-purple-300 font-bold' : 'back-llgray'}`}
+        aria-pressed={scope === 'global'}
         onClick={() => setScope('global')}
       >
         전역 조각

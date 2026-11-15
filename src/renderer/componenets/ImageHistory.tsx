@@ -109,7 +109,7 @@ const HistoryImageCell = observer(
             </div>
           )}
         </div>
-        <div className="text-[10px] text-faint truncate text-center leading-tight mt-0.5 mb-1">
+        <div className="text-[11px] text-muted truncate text-center leading-tight mt-0.5 mb-1">
           {caption}
         </div>
       </div>
@@ -254,8 +254,8 @@ export const ImageHistoryPanel = observer(() => {
       {!collapsed && (
         <div
           className={
-            // panel-vw-clamp(App.css): 좁은 창(<1024)에서만 폭 상한 — 프리셋 패널 주석 참고
-            'panel-vw-clamp zone-card flex flex-col h-full line-color bg-[var(--c-surface-2)] ' + borderSide
+            // panel-vw-clamp(App.css): 폭 상한(<1024 = 36vw, 그 이상 = 30vw, W1 2026-11-15) — 프리셋 패널 주석 참고
+            'panel-vw-clamp panel-vw-clamp-history zone-card flex flex-col h-full line-color bg-[var(--c-surface-2)] ' + borderSide
           }
           style={{ width: appState.historyPanelWidth }}
         >

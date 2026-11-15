@@ -306,13 +306,13 @@ const ConfirmWindow = observer(() => {
                 'justify-end mt-4 ' +
                 (curDialog.type === 'select' || curDialog.type === 'dropdown' || curDialog.type === 'checkbox'
                   ? 'flex flex-col gap-2'
-                  : 'flex')
+                  : 'flex items-center')
               }
             >
               {curDialog.type === 'confirm' && (
                 <>
                   {curDialog.showSkipConfirm && (
-                    <label className="flex items-center gap-2 mt-3 text-sm text-muted cursor-pointer select-none">
+                    <label className="flex items-center gap-2 mr-3 min-w-0 text-sm text-muted cursor-pointer select-none">
                       <input
                         type="checkbox"
                         checked={skipConfirm}
@@ -324,7 +324,7 @@ const ConfirmWindow = observer(() => {
                   )}
                   {curDialog.confirmCheck && (
                     <label
-                      className="flex items-center gap-2 mt-3 text-sm text-muted cursor-pointer select-none"
+                      className="flex items-center gap-2 mr-3 min-w-0 text-sm text-muted cursor-pointer select-none"
                       data-confirm-check=""
                     >
                       <input
@@ -369,7 +369,7 @@ const ConfirmWindow = observer(() => {
               {(curDialog.type === 'input-confirm' || curDialog.type === 'textarea-confirm') && (
                 <>
                   <button
-                    className="mr-2 px-4 py-2 rounded r-btn back-sky clickable"
+                    className="mr-2 px-4 py-2 rounded r-btn back-sky clickable disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={handleConfirm}
                     disabled={validating}
                   >

@@ -68,7 +68,7 @@ const ProjectSideBar = observer(({ side }: { side: PanelSide }) => {
           }}
         >
           <FaFolderOpen size={18} className="text-sky-500 dark:text-sky-300" />
-          <span className="text-[10px] leading-tight">프로젝트</span>
+          <span className="text-[11px] leading-tight">프로젝트</span>
         </button>
       </Tooltip>
       {/* 프로젝트 액션 (세로 스택) — ⋯ 팝오버가 바 밖으로 펼쳐져야 하므로 스크롤

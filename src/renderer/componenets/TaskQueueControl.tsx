@@ -10,6 +10,7 @@ import { appState } from '../models/AppService';
 import { isV2 } from '../models/mobileV2';
 import { observer } from 'mobx-react-lite';
 import Tooltip from './Tooltip';
+import { OVERLAY_CLOSE_BUTTON_CLASS, OVERLAY_CLOSE_ICON_SIZE } from './ModalOverlay';
 import { addScenesToQueue } from '../models/sceneQueueActions';
 import { REQUEST_DELAY_TEXT } from '../models/requestTiming';
 import { BOOST_TEXT } from '../models/boostMode';
@@ -289,13 +290,13 @@ const TaskQueueList = ({
       }
     >
       <button
-        className="ml-auto mt-2 mr-2 text-muted hover:text-gray-700 flex-none"
+        className={'ml-auto mt-2 mr-2 flex-none ' + OVERLAY_CLOSE_BUTTON_CLASS}
         aria-label="닫기"
         onClick={() => {
           onClose?.();
         }}
       >
-        <FaTimes size={20} />
+        <FaTimes size={OVERLAY_CLOSE_ICON_SIZE} />
       </button>
       <div className="flex-1 overflow-hidden pb-2">
         <div className="h-full overflow-auto">
@@ -308,7 +309,7 @@ const TaskQueueList = ({
               <div className="flex-1 truncate text-default">
                 {getTaskText(task)}
               </div>
-              <div className="flex-none ml-auto p-2 bg-gray-300 dark:bg-slate-500 dark:text-white rounded-lg font-medium text-sm text-gray-500">
+              <div className="flex-none ml-auto p-2 bg-gray-300 dark:bg-slate-500 dark:text-white rounded-lg font-medium text-sm text-gray-700">
                 {task!.done}/{task!.total}
               </div>
             </div>

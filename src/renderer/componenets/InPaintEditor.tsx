@@ -905,7 +905,7 @@ const InPaintEditor = observer(
             >
               {
                 <button
-                  className={`rounded-full h-8 w-8 back-gray flex-none flex items-center justify-center clickable`}
+                  className="round-button icon-only back-gray flex-none"
                   aria-label={brushing ? '이동 모드로 전환' : '브러시 모드로 전환'}
                   onClick={() => {
                     setBrushing(!brushing);
@@ -938,7 +938,7 @@ const InPaintEditor = observer(
                 {supportsFocus && (
                   <Tooltip content={FOCUS_EDITOR_TEXT.toolTooltip}>
                     <button
-                      className={`round-button icon-only ${focusTool ? 'back-sky' : 'back-gray'}${
+                      className={`round-button icon-only ${focusTool ? 'back-sky toggle-on' : 'back-gray'}${
                         focusEnabled && !focusTool ? ' ring-2 ring-red-500' : ''
                       }`}
                       aria-label={FOCUS_EDITOR_TEXT.toolLabel}
@@ -953,7 +953,8 @@ const InPaintEditor = observer(
               {isMobile && (
                 <Tooltip content="되돌리기">
                 <button
-                  className={`rounded-full h-8 w-8 back-gray flex-none flex items-center justify-center clickable`}
+                  className="round-button icon-only back-gray flex-none"
+                  aria-label="되돌리기"
                   onClick={() => {
                     brushTool.current!.undo();
                   }}
