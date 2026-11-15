@@ -180,7 +180,8 @@ export const QuickMenu = observer(() => {
         </Tooltip>
       )}
       {isMobile ? (
-        <ModalOverlay isOpen={open} onClose={close} title="⚡ 퀵 메뉴">
+        // m(내용 높이·최대 85vh, 모바일 전용 창 — 2026-11-15 묶음 C-4: size 없는 호출 0)
+        <ModalOverlay isOpen={open} onClose={close} title="⚡ 퀵 메뉴" size="m">
           {actions.length === 0 ? (
             <div className="text-sm text-muted p-4 text-center">{EMPTY_GUIDE}</div>
           ) : (

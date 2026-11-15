@@ -550,6 +550,7 @@ const RULES: Rule[] = [
     // 2026-11-15 C-2(템플릿 관리·폴더 기본 템플릿 l, 공용 편집기 슬롯 분리 useTemplateWorkflowPanel): 6파일 6곳 → 4파일 4곳.
     // 2026-11-15 C-3(캐릭터 프리셋 관리 xl, useCharacterPresetPanel 슬롯 분리·안쪽 편집기 layout="frame"): 4파일 4곳 → 3파일 3곳
     // (남은 = 모바일 전용 3창, C-4 대상).
+    // 2026-11-15 C-4(퀵 메뉴 m·⋯ 메뉴 s·중간 프롬프트 폴백 m): 3파일 3곳 → 0. 새 창은 반드시 size 를 쓴다.
     name: 'ModalOverlay size 없는 호출(width 폭 클래스·기본값·fullscreen) — size 등급 사용',
     guide: '「오버레이 창 크기 체계」',
     dir: '',
@@ -557,11 +558,7 @@ const RULES: Rule[] = [
     exclude: [],
     count: (c) => modalOverlayWithoutSize(c).length,
     locate: (c) => modalOverlayWithoutSize(c),
-    allow: {
-      'componenets/QuickMenu.tsx': 1, // 퀵 메뉴(모바일)
-      'componenets/SceneQuickPromptModal.tsx': 1, // 중간 프롬프트 가운데 폴백(모바일)
-      'componenets/ToolbarOverflowMenu.tsx': 1, // ⋯ 메뉴(모바일)
-    },
+    allow: {},
   },
   {
     // 높이 규칙 우선순위(2026-11-15 사용자 결정, C-1 신설) — 창 높이는 래퍼 등급(overlaySizes.ts)만 정한다.
@@ -588,7 +585,6 @@ const RULES: Rule[] = [
       'componenets/ProjectBrowser.tsx': 1, // 프로젝트 탐색 모바일 height '70vh' — 규약 모바일 예외
       'componenets/QuickMenu.tsx': 1, // 퀵 메뉴 PC 팝오버 — 체계 밖
       'componenets/SceneQueueControl.tsx': 1, // 큐 팝오버 — 체계 밖
-      'componenets/SceneQuickPromptModal.tsx': 1, // 중간 프롬프트 조합 펼치기 50vh — C-4 대상(모바일 폴백)
       'componenets/ToolbarOverflowMenu.tsx': 1, // ⋯ 메뉴 PC 팝오버 — 체계 밖
     },
   },

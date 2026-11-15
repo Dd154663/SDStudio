@@ -79,7 +79,8 @@ const SceneQuickPromptModal = observer(
     const columnIndex = scene.slots.findIndex((slot) => !!piece && slot.includes(piece));
     const rowIndex = columnIndex < 0 ? -1 : scene.slots[columnIndex].indexOf(piece!);
     const location = `${columnIndex + 1}-${rowIndex + 1}`;
-    const picker = <div className="max-h-[50vh] overflow-auto p-2">
+    // 조합 펼치기 목록은 높이 상한 없이 창 본문 스크롤 하나가 맡는다(2026-11-15 C-4, 높이 규칙 우선순위 — 옛 max-h-[50vh] 제거)
+    const picker = <div className="p-2">
       <CompactCombinationPieces scene={scene}
         selected={new Set([combinationPieceKey(columnIndex, rowIndex)])}
         onSelect={(_key, nextPiece) => { setSelectedPiece(nextPiece); setShowPieces(false); }} />
@@ -185,6 +186,8 @@ const SceneQuickPromptModal = observer(
         isOpen
         onClose={onClose}
         title={`✏️ ${scene.name} — 중간 프롬프트 (${location})`}
+        // m(내용 높이·최대 85vh — 모바일/앵커 없음 폴백, 2026-11-15 묶음 C-4)
+        size="m"
       >
         <div className="flex flex-col gap-3">
           {showPieces ? picker : <div className="h-40 md:h-52 overflow-hidden">{editor}</div>}

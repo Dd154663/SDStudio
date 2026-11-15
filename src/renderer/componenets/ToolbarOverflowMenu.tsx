@@ -287,7 +287,8 @@ const ToolbarOverflowMenu = observer(({
         isOpen={isOpen}
         onClose={onClose}
         title={title}
-        width="max-w-sm"
+        // s(480, 내용 높이 — 모바일 전용 창, 2026-11-15 묶음 C-4: 옛 width max-w-sm → size 등급)
+        size="s"
         hidden={dragActive}
       >
         {rows}
