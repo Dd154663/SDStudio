@@ -27,6 +27,17 @@ import {
   deleteLegacyRemnants,
 } from '../models/legacyCleanup';
 import type { LegacyScanResult } from '../models/legacyCleanup';
+import {
+  EXAMPLE_VIBE_TEXT,
+  removableItems,
+  summarizeExampleVibeScan,
+} from '../models/exampleVibeCleanup';
+import type { ExampleVibeItem, ExampleVibeScanResult } from '../models/exampleVibeCleanup';
+import {
+  deleteExampleVibesNow,
+  scanExampleVibesNow,
+} from '../models/exampleVibeCleanupRuntime';
+import { formatBytes } from '../models/googleDrive';
 import ModalOverlay from './ModalOverlay';
 
 /* ── 폴더 정리 공통 컴포넌트 ── */
@@ -275,6 +286,162 @@ const LegacyCleanupSection = () => {
                 ? '잔재 영구 삭제'
                 : '잔재를 휴지통으로 이동'}
           </button>
+        </>
+      )}
+    </div>
+  );
+};
+
+/* ── 시스템 탭 하위: 예제 프리셋 잔존 이미지 정리 (2026-11-15) ──
+   이전 버전(PR #11 cf7cb6d 이전)이 새 프로젝트마다 vibes/ 에 써 둔 예제 프리셋 PNG 3종을 크기→SHA-256 로
+   식별해, 프로젝트가 참조하지 않는 것만 사용자 확인 뒤 정리한다(models/exampleVibeCleanup.ts).
+   검사 = 무쓰기. PC = OS 휴지통 이동(복구 가능), 모바일 = 영구 삭제. 되돌리기 기록 없음(구 저장소 잔재 정리와 같은 범주).
+   저장소 배치와 무관하게 항상 표시한다. */
+export const ExampleVibeCleanupSection = () => {
+  const [scan, setScan] = useState<ExampleVibeScanResult | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const doScan = async () => {
+    setScanning(true);
+    try {
+      setScan(await scanExampleVibesNow());
+    } catch (e) {
+      setScan(null);
+      appState.pushMessage('예제 이미지 검사에 실패했습니다.', 'error');
+    }
+    setScanning(false);
+  };
+
+  const removable = scan ? removableItems(scan) : [];
+
+  const doClean = () => {
+    if (!scan || removable.length === 0 || cleaning) return;
+    const { summary, easyPresetCount } = summarizeExampleVibeScan(scan);
+    const easyLine =
+      easyPresetCount > 0
+        ? `\n퀵 생성 전용 프로젝트의 이지 모드 예제 프리셋 ${easyPresetCount}개도 함께 제거합니다.`
+        : '';
+    // 모바일은 영구 삭제(Enter 로 확정하지 않음), PC 는 OS 휴지통 이동 — LegacyCleanupSection 과 같은 두 문구 체계
+    appState.pushDialog({
+      type: 'confirm',
+      danger: isMobile ? 'permanent' : true,
+      text: isMobile
+        ? `예제 프리셋 잔존 이미지(${summary})를 영구 삭제합니다.${easyLine}\n삭제 후에는 복구할 수 없습니다. 계속할까요?`
+        : `예제 프리셋 잔존 이미지(${summary})를 OS 휴지통으로 이동합니다.${easyLine}\n(필요 시 휴지통에서 복구할 수 있습니다)`,
+      confirmText: isMobile ? '영구 삭제' : '정리 진행',
+      callback: async () => {
+        setCleaning(true);
+        const res = await deleteExampleVibesNow(removable, (done, total) =>
+          setProgress({ done, total }),
+        );
+        setCleaning(false);
+        setProgress(null);
+        appState.pushMessage(
+          res.failed.length > 0
+            ? `예제 이미지 ${res.deleted}개 정리, ${res.failed.length}개 실패`
+            : `예제 프리셋 잔존 이미지 ${res.deleted}개를 정리했습니다.` +
+              (res.presetsRemoved > 0 ? ` (이지 모드 프리셋 ${res.presetsRemoved}개 제거)` : ''),
+          res.failed.length > 0 ? 'error' : 'success',
+        );
+        await doScan();
+      },
+    });
+  };
+
+  // 프로젝트별 묶음(검사 순서 유지)
+  const groups: { project: string; items: ExampleVibeItem[] }[] = [];
+  for (const it of scan?.items ?? []) {
+    const last = groups[groups.length - 1];
+    if (last && last.project === it.project) last.items.push(it);
+    else groups.push({ project: it.project, items: [it] });
+  }
+  const summary = scan ? summarizeExampleVibeScan(scan) : null;
+
+  return (
+    <div className="space-y-2" data-example-vibe-section>
+      <div className="flex items-center gap-2">
+        <label className="block text-sm gray-label">{EXAMPLE_VIBE_TEXT.label}</label>
+        <button
+          className="btn text-xs back-gray px-2 py-0.5 rounded"
+          onClick={doScan}
+          disabled={scanning || cleaning}
+          data-example-vibe-scan
+        >
+          {scanning ? '검사 중...' : scan ? '새로고침' : '검사'}
+        </button>
+      </div>
+      <p className="text-xs text-faint">{EXAMPLE_VIBE_TEXT.description}</p>
+      {scan && scan.projectsFailed.length > 0 && (
+        <p className="text-xs text-orange-500 dark:text-orange-400" data-example-vibe-failed>
+          프로젝트 {scan.projectsFailed.length}개는 읽지 못해 검사하지 않았습니다:{' '}
+          {scan.projectsFailed.join(', ')}
+        </p>
+      )}
+      {scan && scan.items.length === 0 && (
+        <p className="text-xs text-faint" data-example-vibe-empty>
+          {EXAMPLE_VIBE_TEXT.none}
+        </p>
+      )}
+      {scan && summary && scan.items.length > 0 && (
+        <>
+          <div className="text-sm gray-label" data-example-vibe-summary>
+            {summary.summary}
+          </div>
+          {summary.referencedNote && (
+            <p className="text-xs text-faint">{summary.referencedNote}</p>
+          )}
+          <div
+            className="text-xs text-muted rounded-md bg-[var(--c-zone)] p-2 flex flex-col gap-1"
+            data-example-vibe-list
+          >
+            {groups.map((g) => (
+              <div key={g.project} data-example-vibe-project={g.project}>
+                <div className="font-bold break-all">{g.project}</div>
+                {g.items.map((it) => (
+                  <div
+                    key={it.fileName}
+                    className="pl-3 flex items-center gap-2 flex-wrap"
+                    data-example-vibe-item={it.fileName}
+                  >
+                    <span>
+                      {it.label} ({formatBytes(it.size)})
+                    </span>
+                    {!it.referenced && it.easyPresets && it.easyPresets.length > 0 && (
+                      <span className="px-1.5 rounded back-gray" data-example-vibe-easy-preset>
+                        {EXAMPLE_VIBE_TEXT.easyPresetBadge}
+                      </span>
+                    )}
+                    {it.referenced && (
+                      <span
+                        className="px-1.5 rounded back-gray"
+                        data-example-vibe-referenced
+                      >
+                        {EXAMPLE_VIBE_TEXT.referencedBadge}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          {removable.length > 0 && (
+            <button
+              className="btn text-sm back-red px-3 py-1.5 rounded"
+              onClick={doClean}
+              disabled={cleaning}
+              data-example-vibe-clean
+            >
+              {cleaning
+                ? progress
+                  ? `정리 중... ${progress.done}/${progress.total}`
+                  : '정리 중...'
+                : isMobile
+                  ? '영구 삭제'
+                  : '휴지통으로 이동'}
+            </button>
+          )}
         </>
       )}
     </div>
@@ -549,6 +716,8 @@ const SystemTab = ({
       <TaskLogSection />
       <hr className="line-color" />
       <MigrationDiagSection />
+      {/* 예제 프리셋 잔존 이미지 정리 — 구 저장소 잔재 정리 바로 아래, 저장소 배치와 무관하게 항상 표시 */}
+      <ExampleVibeCleanupSection />
       <hr className="line-color" />
       <div className="space-y-2">
         <label className="block text-sm gray-label mb-1">업데이트</label>
