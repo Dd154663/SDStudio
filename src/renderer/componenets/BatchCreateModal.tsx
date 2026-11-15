@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
-import { FaPlay, FaPlus, FaStop, FaUserAlt } from 'react-icons/fa';
+import { FaPlus, FaUserAlt } from 'react-icons/fa';
 import {
   GlobalFolderFilterChips,
   globalImageBackend,
@@ -22,7 +22,7 @@ import {
 
 // 프로젝트 일괄 생성 패널 (배치 R3 — 2026-07-17 탭 통합 스펙).
 //
-// 구 BatchCreateModal(오버레이 중첩)을 폐지하고 TemplateWorkflowEditor 의
+// 구 BatchCreateModal(오버레이 중첩)을 폐지하고 TemplateWorkflowBody 의
 // [일괄 생성] 탭 본문으로 렌더되는 비모달 패널로 개조했다. 프롬프트(+샘플링)
 // 섹션은 편집 탭과 같은 JSX 를 render prop 으로 공유받아 그대로 노출한다
 // (같은 화면에서 즉시 수정 가능 — JSX 중복 금지). 캐릭터 프롬프트·수동
@@ -76,6 +76,22 @@ const CharThumb = ({ entry }: { entry: IGlobalCharacterPresetEntry }) => {
 const sectionCls =
   'p-3 rounded-lg border line-color bg-[var(--c-surface)] flex flex-col gap-2';
 
+// 일괄 생성 조작 상태(2026-11-15 오버레이 묶음 C-2) — 패널 안 상태를 호스트 창 바닥줄([N개 생성]·진행·[취소])에
+// 알리는 값. execute·cancel 은 늘 최신 클로저를 부르는 고정 함수다(효과 의존성에 넣지 않아도 된다).
+export interface BatchCreateController {
+  count: number; // 만들 조합 수
+  canRun: boolean; // [N개 생성] 누를 수 있음(조합 있음·실행 중 아님·폴더 이름 있음)
+  running: boolean;
+  progress: { done: number; total: number; current: string } | null;
+  result: {
+    created: string[];
+    failed: { name: string; error: string }[];
+    cancelled: boolean;
+  } | null;
+  execute: () => void;
+  cancel: () => void; // 현재 항목 완료 후 중단
+}
+
 export const BatchCreatePanel = observer(
   ({
     templateId,
@@ -86,6 +102,7 @@ export const BatchCreatePanel = observer(
     beforeExecute,
     renderPromptSection,
     onEditingChange,
+    onControllerChange,
   }: {
     templateId: string;
     // 폴더 호스트(FolderTemplateModal)의 폴더 경로. 없으면 전역 템플릿 호스트 —
@@ -108,6 +125,9 @@ export const BatchCreatePanel = observer(
     // 헤더를, 호스트가 상단 조작을 숨기는 데 쓴다 (편집 탭의 캐릭터 프리셋
     // 편집과 같은 UX).
     onEditingChange?: (editing: boolean) => void;
+    // 바닥줄 조작 상태 통지(2026-11-15 묶음 C-2) — 호스트 창 footer 가 [N개 생성]·진행·[취소]를 그린다.
+    // 언마운트(탭 전환) 때 null.
+    onControllerChange?: (c: BatchCreateController | null) => void;
   }) => {
     const [selectedChars, setSelectedChars] = useState<Set<string>>(new Set());
     const [selectedScenes, setSelectedScenes] = useState<Set<string>>(
@@ -341,6 +361,34 @@ export const BatchCreatePanel = observer(
       }
     };
 
+    // 호스트 바닥줄에 조작 상태를 알린다 — execute·cancel 은 ref 경유 고정 함수(매 렌더 새 클로저라도 알림 반복 없음)
+    const executeRef = useRef(execute);
+    executeRef.current = execute;
+    const controllerFnsRef = useRef({
+      execute: () => executeRef.current(),
+      cancel: () => {
+        cancelRef.current = true;
+      },
+    });
+    const canRun = combos.length > 0 && !running && !folderNameMissing;
+    useEffect(() => {
+      onControllerChange?.({
+        count: combos.length,
+        canRun,
+        running,
+        progress,
+        result,
+        execute: controllerFnsRef.current.execute,
+        cancel: controllerFnsRef.current.cancel,
+      });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [combos.length, canRun, running, progress, result]);
+    useEffect(
+      () => () => onControllerChange?.(null),
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [],
+    );
+
     // 전역 프리셋 즉석 생성 중 — 패널 전체를 프리셋 에디터로 전환
     // (패널은 마운트 유지라 축 선택·폴더 입력은 보존된다)
     if (creatingPreset) {
@@ -427,7 +475,7 @@ export const BatchCreatePanel = observer(
               생성할 수 있습니다.
             </div>
           ) : (
-            <div className="max-h-48 overflow-y-auto flex flex-col gap-1 pr-1">
+            <div className="flex flex-col gap-1">
               {visibleChars.map((e) => (
                 <label
                   key={e.id}
@@ -479,7 +527,7 @@ export const BatchCreatePanel = observer(
               1개로 시작합니다.
             </div>
           ) : (
-            <div className="max-h-36 overflow-y-auto flex flex-col gap-1 pr-1">
+            <div className="flex flex-col gap-1">
               {sceneTemplates.map((s) => (
                 <label
                   key={s}
@@ -530,7 +578,7 @@ export const BatchCreatePanel = observer(
               캐릭터 축 또는 씬 축을 하나 이상 선택해주세요.
             </div>
           ) : (
-            <div className="max-h-32 overflow-y-auto text-xs text-muted pr-1">
+            <div className="text-xs text-muted">
               {previewNames.map((n, i) => (
                 <div key={i} className="truncate">
                   {combos[i].subfolder ? `${combos[i].subfolder}/` : ''}
@@ -541,15 +589,10 @@ export const BatchCreatePanel = observer(
           )}
         </div>
 
-        {/* 진행률 / 결과 */}
+        {/* 진행률 / 실패 목록 — 「생성 중 n/m」·[취소]·완료 요약·[N개 생성]은 호스트 창 바닥줄(2026-11-15 묶음 C-2).
+            목록 높이 상한 없음 — 창 본문 스크롤 하나가 맡는다(높이 규칙 우선순위). */}
         {running && progress && (
-          <div className={sectionCls}>
-            <div className="text-sm text-default">
-              생성 중... {progress.done}/{progress.total}
-              {progress.current && (
-                <span className="text-muted"> — {progress.current}</span>
-              )}
-            </div>
+          <div className={sectionCls} data-batch-progress="">
             <div className="w-full h-2 bg-[var(--c-surface-2)] rounded-full">
               <div
                 className="h-full bg-purple-500 rounded-full transition-all"
@@ -558,48 +601,24 @@ export const BatchCreatePanel = observer(
                 }}
               />
             </div>
-            <div className="flex justify-end">
-              <button
-                className="px-4 py-1.5 rounded-lg text-sm font-medium btn-solid-red flex items-center gap-1.5"
-                onClick={() => {
-                  cancelRef.current = true;
-                }}
-              >
-                <FaStop size={10} />
-                취소 (현재 항목 완료 후 중단)
-              </button>
-            </div>
-          </div>
-        )}
-        {result && !running && (
-          <div className={sectionCls}>
-            <div className="text-sm text-default">
-              완료 — 성공 {result.created.length}개
-              {result.cancelled && ' (취소로 중단됨)'}
-            </div>
-            {result.failed.length > 0 && (
-              <div className="max-h-24 overflow-y-auto text-xs text-red-500 dark:text-red-400 pr-1">
-                {result.failed.map((f, i) => (
-                  <div key={i} className="truncate">
-                    실패: {f.name} — {f.error}
-                  </div>
-                ))}
+            {progress.current && (
+              <div className="text-xs text-muted truncate">
+                현재: {progress.current}
               </div>
             )}
           </div>
         )}
-
-        {/* 실행 */}
-        <div className="flex justify-end gap-2">
-          <button
-            className="px-5 py-2 rounded-lg text-sm font-medium btn-solid-purple flex items-center gap-1.5"
-            disabled={combos.length === 0 || running || folderNameMissing}
-            onClick={execute}
-          >
-            <FaPlay size={10} />
-            {running ? '생성 중...' : `${combos.length}개 생성`}
-          </button>
-        </div>
+        {result && !running && result.failed.length > 0 && (
+          <div className={sectionCls} data-batch-failed="">
+            <div className="text-xs text-red-500 dark:text-red-400">
+              {result.failed.map((f, i) => (
+                <div key={i} className="truncate">
+                  실패: {f.name} — {f.error}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   },

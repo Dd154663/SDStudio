@@ -2,8 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { v4 } from 'uuid';
 import {
+  FaPlay,
   FaPlus,
   FaPen,
+  FaStop,
   FaTimes,
   FaToggleOn,
   FaToggleOff,
@@ -17,13 +19,14 @@ import Tooltip from './Tooltip';
 import PromptEditTextArea from './PromptEditTextArea';
 import { CharacterPresetInnerEditor } from './CharacterPresetInnerEditor';
 import { PresetImageBackend, VibeImage } from './CharacterPresetCards';
-import { BatchCreatePanel } from './BatchCreateModal';
+import { BatchCreatePanel, BatchCreateController } from './BatchCreateModal';
 import { GlobalPresetPicker } from './GlobalPresetPicker';
 import { EditableSliderValue } from './VibeEditor';
 import { FileUploadBase64 } from './UtilComponents';
 import {
   globalCharacterPresetService,
   globalPresetService,
+  isMobile,
   projectTemplateService,
   templateService,
 } from '../models';
@@ -48,7 +51,7 @@ import { renameTemplateRecorded } from '../models/globalLibraryUndo';
 //  - 씬 구성: 씬 템플릿/프로젝트에서 불러오기 = 전체 교체(일괄 적용)
 // 새 프로젝트에 적용은 "불러오기"일 뿐 — 생성 후 프로젝트에서 자유 조정.
 //
-// 편집기 본체(TemplateWorkflowEditor)는 폴더 기본 템플릿 모달과 공유한다
+// 편집기 본체(TemplateWorkflowBody + useTemplateWorkflowPanel)는 폴더 기본 템플릿 모달과 공유한다
 // (폴더 템플릿 = 동일 화면 + 상단 "전역 템플릿 불러오기").
 
 // 템플릿 이미지 디렉터리 기반 캐릭터 편집기 백엔드
@@ -75,22 +78,36 @@ const numCls =
 // 캐릭터 프롬프트 번호 마커 팔레트 (메인 화면 CharacterPromptEditor 와 동일)
 const charColors = ['#38bdf8', '#f472b6', '#a78bfa', '#fb923c', '#4ade80', '#facc15', '#f87171', '#94a3b8'];
 
-// ===== 템플릿 워크플로우 편집기 (프롬프트/캐릭터/씬 3영역 + [저장]) =====
+// ===== 템플릿 워크플로우 편집기 본문 (프롬프트/캐릭터/씬 3영역) =====
 //
 // 전역 "템플릿 관리"와 폴더 기본 템플릿 모달이 완전히 동일한 화면을 공유하는
 // 단일 출처. key={templateId} 로 마운트해 템플릿 전환 시 상태를 초기화하고,
 // 언마운트 시(창 닫기·전환 포함) 프롬프트 로컬 편집을 자동 커밋한다.
-export const TemplateWorkflowEditor = observer(
+// 2026-11-15 오버레이 묶음 C-2(SPEC 「오버레이 창 크기 체계」 슬롯 규약 ⑥ 보강): 탭 머리·[저장]·[N개 생성]은
+// 호스트 창의 도구줄·바닥줄로 옮겼다 — useTemplateWorkflowPanel 이 그 슬롯을 만들고, 프롬프트 상태·key 재마운트·
+// 언마운트 커밋은 이 본문 컴포넌트에 그대로 남는다(훅으로 옮기지 않는다).
+type TemplateWorkflowTab = 'template' | 'batch';
+
+const TemplateWorkflowBody = observer(
   ({
     templateId,
+    tab,
     syncSignal = 0,
     commitRef,
+    saveRef,
     onEditingCharChange,
     batchFolder,
     onBatchCompleted,
     onBatchRunningChange,
+    onControllerChange,
   }: {
     templateId: string;
+    // [템플릿]|[일괄 생성] 탭 — 상태는 호스트 훅(useTemplateWorkflowPanel)이 든다
+    tab: TemplateWorkflowTab;
+    // 바닥줄 [저장]이 부르는 명시적 저장(saveTemplate) — 매 렌더 최신 함수로 등록
+    saveRef?: React.MutableRefObject<() => Promise<void> | void>;
+    // 일괄 생성 탭 바닥줄 조작 상태(BatchCreatePanel → 호스트 바닥줄)
+    onControllerChange?: (c: BatchCreateController | null) => void;
     // 부모가 엔티티를 통째로 바꾼 뒤(전역 템플릿 불러오기 등) 재동기화 신호
     syncSignal?: number;
     // 부모가 언마운트 전에 강제 커밋해야 할 때(복제·닫기 처리) 쓰는 훅
@@ -118,12 +135,6 @@ export const TemplateWorkflowEditor = observer(
     const [syncKey, setSyncKey] = useState(0);
     // 글로벌 프리셋 카드 선택 모달 (프롬프트 영역 불러오기)
     const [globalPickerOpen, setGlobalPickerOpen] = useState(false);
-    // [템플릿]|[일괄 생성] 탭 (배치 R3) — 기본값=템플릿, 비영속(1회성)
-    const [tab, setTab] = useState<'template' | 'batch'>('template');
-    // 일괄 생성 실행 중 — 탭 전환 비활성+호스트 닫기 차단용
-    const [batchRunning, setBatchRunning] = useState(false);
-    // 배치 탭의 전역 프리셋 즉석 생성 중 — 탭 헤더 숨김(전체 영역 전환)
-    const [batchCharEditing, setBatchCharEditing] = useState(false);
     // 캐릭터 프리셋 편집 (CharacterPresetInnerEditor 인라인 전환)
     const [editChar, setEditChar] = useState<{
       index: number | null; // null = 새로 만들기
@@ -194,6 +205,7 @@ export const TemplateWorkflowEditor = observer(
       await projectTemplateService.flushSave();
       appState.pushMessage(`템플릿 "${entry.name}"이(가) 저장되었습니다.`);
     };
+    if (saveRef) saveRef.current = saveTemplate;
 
     // ----- 불러오기 -----
 
@@ -1150,10 +1162,9 @@ export const TemplateWorkflowEditor = observer(
                   교체해주세요.
                 </div>
               )}
-              {/* 씬이 많아도(수십 개) 모달 전체 스크롤이 밀리지 않도록
-                  목록만 자체 스크롤 컨테이너에 가둔다 */}
+              {/* 씬 목록 높이 상한 없음 — 창 본문 스크롤 하나가 맡는다(2026-11-15 높이 규칙 우선순위) */}
               {entry.scenes.length > 0 && (
-                <div className="max-h-60 overflow-y-auto pr-1 flex flex-col gap-2">
+                <div className="flex flex-col gap-2">
                   {entry.scenes.map((s, i) => (
                     <div key={i} className={rowCls + ' flex-none'}>
                       <span className="text-sm text-default truncate flex-1">
@@ -1175,66 +1186,23 @@ export const TemplateWorkflowEditor = observer(
               )}
             </div>
             );
-            // ----- 레이아웃: [템플릿]|[일괄 생성] 탭 전환 (배치 R3) -----
+            // ----- 레이아웃: [템플릿]|[일괄 생성] 탭 내용 (배치 R3) — 탭 머리는 호스트 도구줄,
+            // [저장]·[N개 생성]은 호스트 바닥줄(2026-11-15 묶음 C-2) -----
             return (
               <div className="flex flex-col gap-4">
-                {/* 탭 헤더 — tab-seg 마커 계약 (SPEC_GUIDE §2, back-llgray/
-                    rounded-md 는 클래식 마감 복원용 병기). 배치 탭의 프리셋
-                    즉석 생성(전체 영역 전환) 중에는 숨긴다. */}
-                {!batchCharEditing && (
-                <div className="tab-seg flex gap-2">
-                  {(
-                    [
-                      ['template', '템플릿'],
-                      ['batch', '일괄 생성'],
-                    ] as const
-                  ).map(([key, label]) => (
-                    <button
-                      key={key}
-                      className={
-                        'active:brightness-90 hover:brightness-95 select-none h-8 px-4 text-sm rounded-md transition-colors ' +
-                        (tab === key ? 'back-sky' : 'back-llgray tab-seg-off')
-                      }
-                      onClick={() => {
-                        if (batchRunning) {
-                          appState.pushMessage(
-                            '일괄 생성이 진행 중입니다 — 완료 후 전환할 수 있습니다.',
-                          );
-                          return;
-                        }
-                        setTab(key);
-                      }}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                )}
                 {tab === 'template' ? (
                   <>
                     {promptSection}
                     {charPresetSection}
                     {middleSections}
                     {sceneSection}
-                    {/* 명시적 저장 */}
-                    <div className="flex justify-end">
-                      <button
-                        className="px-5 py-2 rounded-lg text-sm font-medium btn-solid-sky"
-                        onClick={saveTemplate}
-                      >
-                        저장
-                      </button>
-                    </div>
                   </>
                 ) : (
                   <BatchCreatePanel
                     templateId={templateId}
                     batchFolder={batchFolder}
                     onCompleted={onBatchCompleted}
-                    onRunningChange={(r) => {
-                      setBatchRunning(r);
-                      onBatchRunningChange?.(r);
-                    }}
+                    onRunningChange={(r) => onBatchRunningChange?.(r)}
                     isPromptFilled={() =>
                       !!(
                         promptRef.current.frontPrompt.trim() ||
@@ -1243,12 +1211,10 @@ export const TemplateWorkflowEditor = observer(
                     }
                     beforeExecute={commitPrompts}
                     renderPromptSection={() => promptSection}
-                    onEditingChange={(v) => {
-                      setBatchCharEditing(v);
-                      // 호스트 상단 조작도 같이 숨긴다 (편집 탭의 캐릭터
-                      // 프리셋 편집과 같은 동선)
-                      onEditingCharChange?.(v);
-                    }}
+                    // 전역 프리셋 즉석 생성 중 — 호스트가 탭 머리·바닥줄·상단 조작을 숨긴다
+                    // (편집 탭의 캐릭터 프리셋 편집과 같은 동선)
+                    onEditingChange={(v) => onEditingCharChange?.(v)}
+                    onControllerChange={onControllerChange}
                   />
                 )}
               </div>
@@ -1272,17 +1238,200 @@ export const TemplateWorkflowEditor = observer(
   },
 );
 
+// ===== 공용 편집기 슬롯 훅 (2026-11-15 오버레이 묶음 C-2, SPEC 슬롯 규약 ⑥ 보강) =====
+//
+// 템플릿 관리·폴더 기본 템플릿 두 창이 같은 편집기를 ModalOverlay 슬롯에 나눠 넣는다:
+//  tabs = [템플릿][일괄 생성] 알약 탭(도구줄) · body = 편집기 본문(key={templateId} 재마운트·언마운트 커밋 그대로) ·
+//  footer = 템플릿 탭 [저장] / 일괄 생성 탭 [N개 생성] · footerStart = 일괄 생성 진행 「생성 중... n/m」+[취소] 또는 완료 요약.
+// 훅은 호스트 슬롯에 필요한 것(탭·실행 중·캐릭터 편집 중·일괄 생성 조작 상태)만 든다 — 프롬프트 상태는 본문에.
+// 캐릭터 프리셋 편집 중(charEditing)에는 tabs·footer·footerStart 가 비고(안쪽 편집기 자체 [저장][취소]), 호스트는
+// 상단 조작을 숨기거나 잠근다.
+export interface TemplateWorkflowPanelOptions {
+  // 부모가 엔티티를 통째로 바꾼 뒤(전역 템플릿 불러오기·백업 복원) 재동기화 신호
+  syncSignal?: number;
+  // 부모가 언마운트 전에 강제 커밋해야 할 때(복제·백업·닫기 처리)
+  commitRef?: React.MutableRefObject<() => void>;
+  // 일괄 생성 탭의 폴더 컨텍스트(폴더 기본 템플릿 창만)
+  batchFolder?: string;
+  // 일괄 생성 실행 완료 통지(폴더 창의 전파 확인 기준 리셋)
+  onBatchCompleted?: () => void;
+}
+
+export interface TemplateWorkflowPanel {
+  tab: TemplateWorkflowTab;
+  tabs: React.ReactNode;
+  body: React.ReactNode;
+  footer: React.ReactNode;
+  footerStart: React.ReactNode;
+  // 캐릭터 프리셋 편집(편집 탭)·전역 프리셋 즉석 생성(일괄 생성 탭) 중
+  charEditing: boolean;
+  // 일괄 생성 실행 중 — 호스트 닫기 차단·상단 조작 잠금
+  batchRunning: boolean;
+}
+
+export function useTemplateWorkflowPanel(
+  templateId: string | undefined,
+  opts: TemplateWorkflowPanelOptions = {},
+): TemplateWorkflowPanel {
+  const { syncSignal, commitRef, batchFolder, onBatchCompleted } = opts;
+  // 탭 — 템플릿이 바뀌면 렌더 즉시 「템플릿」(효과로 되돌리면 새 본문이 한 번 일괄 생성 탭으로 마운트된다)
+  const [tabState, setTabState] = useState<{
+    id: string | undefined;
+    tab: TemplateWorkflowTab;
+  }>({ id: undefined, tab: 'template' });
+  const tab: TemplateWorkflowTab =
+    tabState.id === templateId ? tabState.tab : 'template';
+  const [charEditing, setCharEditing] = useState(false);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [controller, setController] = useState<BatchCreateController | null>(
+    null,
+  );
+  const saveRef = useRef<() => Promise<void> | void>(() => {});
+
+  // 템플릿 전환 — 캐릭터 편집 표시도 비운다(새 본문은 편집 중이 아니다)
+  useEffect(() => {
+    setCharEditing(false);
+  }, [templateId]);
+
+  const selectTab = (key: TemplateWorkflowTab) => {
+    if (batchRunning) {
+      appState.pushMessage(
+        '일괄 생성이 진행 중입니다 — 완료 후 전환할 수 있습니다.',
+      );
+      return;
+    }
+    setTabState({ id: templateId, tab: key });
+  };
+
+  const show = !!templateId && !charEditing;
+
+  // 탭 머리 — tab-seg 마커 계약 (SPEC_GUIDE §2, back-llgray/rounded-md 는 클래식 마감 복원용 병기)
+  const tabs = show ? (
+    <div className="tab-seg flex gap-2" data-template-tabs="">
+      {(
+        [
+          ['template', '템플릿'],
+          ['batch', '일괄 생성'],
+        ] as const
+      ).map(([key, label]) => (
+        <button
+          key={key}
+          className={
+            'active:brightness-90 hover:brightness-95 select-none h-8 px-4 text-sm rounded-md transition-colors ' +
+            (tab === key ? 'back-sky' : 'back-llgray tab-seg-off')
+          }
+          aria-pressed={tab === key}
+          onClick={() => selectTab(key)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  const body = templateId ? (
+    <TemplateWorkflowBody
+      key={templateId}
+      templateId={templateId}
+      tab={tab}
+      syncSignal={syncSignal}
+      commitRef={commitRef}
+      saveRef={saveRef}
+      onEditingCharChange={setCharEditing}
+      batchFolder={batchFolder}
+      onBatchCompleted={onBatchCompleted}
+      onBatchRunningChange={setBatchRunning}
+      onControllerChange={setController}
+    />
+  ) : null;
+
+  // 바닥줄 — 확정 버튼 규격(SPEC §5)
+  let footer: React.ReactNode = null;
+  let footerStart: React.ReactNode = null;
+  if (show && tab === 'template') {
+    footer = (
+      <button
+        className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
+        data-template-save=""
+        onClick={() => {
+          saveRef.current();
+        }}
+      >
+        저장
+      </button>
+    );
+  } else if (show && tab === 'batch') {
+    const c = controller;
+    footer = (
+      <button
+        className="px-4 py-2 rounded-lg text-sm font-medium btn-solid-purple transition-colors flex items-center gap-1.5"
+        data-batch-run=""
+        disabled={!c?.canRun}
+        onClick={() => c?.execute()}
+      >
+        <FaPlay size={10} />
+        {c?.running ? '생성 중...' : `${c?.count ?? 0}개 생성`}
+      </button>
+    );
+    if (c?.running && c.progress) {
+      footerStart = (
+        <>
+          <span className="text-sm text-default" data-batch-status="running">
+            생성 중... {c.progress.done}/{c.progress.total}
+          </span>
+          <button
+            className="px-3 py-1.5 rounded-lg text-sm font-medium btn-solid-red flex items-center gap-1.5"
+            data-batch-cancel=""
+            title="현재 항목 완료 후 중단"
+            onClick={() => c.cancel()}
+          >
+            <FaStop size={10} />
+            취소
+          </button>
+        </>
+      );
+    } else if (c?.result && !c.running) {
+      footerStart = (
+        <span className="text-sm text-default" data-batch-status="done">
+          완료 — 성공 {c.result.created.length}개
+          {c.result.failed.length > 0 && (
+            <span className="text-red-500 dark:text-red-400">
+              {' '}
+              · 실패 {c.result.failed.length}개
+            </span>
+          )}
+          {c.result.cancelled && ' (취소로 중단됨)'}
+        </span>
+      );
+    }
+  }
+
+  return { tab, tabs, body, footer, footerStart, charEditing, batchRunning };
+}
+
 // ===== "템플릿 관리" 오버레이 (전역 템플릿 목록 + CRUD + 편집기) =====
+// 2026-11-15 오버레이 묶음 C-2: size l(고정 760). PC = aside [새 템플릿]+템플릿 목록(선택 행에 [이름 변경][복제][삭제]),
+// 도구줄 = [템플릿][일괄 생성] 탭 + [백업][백업 불러오기], 바닥줄 = 공용 훅의 [저장]/[N개 생성]·진행.
+// 모바일 = aside 대신 종전 <select>+CRUD 아이콘을 도구줄 첫 줄에. 본문 스크롤 하나(높이 규칙 우선순위).
 export const TemplateManagerModal = observer(
   ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
     const [selectedId, setSelectedId] = useState<string>('');
-    // 편집기가 캐릭터 편집 화면으로 전환되면 상단(안내문·CRUD 행)을 숨긴다
-    const [charEditing, setCharEditing] = useState(false);
-    // 일괄 생성(배치 탭) 실행 중 — 모달 닫기 차단 (배치 R3, 전역 호스트)
-    const [batchRunning, setBatchRunning] = useState(false);
     const commitRef = useRef<() => void>(() => {});
     // 백업 복원(덮어쓰기)으로 엔티티가 바뀐 뒤 편집기 프롬프트 재동기화 신호
     const [syncSignal, setSyncSignal] = useState(0);
+
+    const templates = projectTemplateService.listGlobal();
+    const entry = selectedId
+      ? projectTemplateService.get(selectedId)
+      : undefined;
+
+    // 공용 편집기 슬롯 — 편집기가 캐릭터 편집 화면으로 전환되면(charEditing) 상단 조작을 숨기고 목록을 잠근다.
+    // 일괄 생성(배치 탭) 실행 중(batchRunning)이면 모달 닫기 차단 (배치 R3, 전역 호스트)
+    const panel = useTemplateWorkflowPanel(entry?.id, {
+      syncSignal,
+      commitRef,
+    });
+    const { charEditing, batchRunning } = panel;
 
     // 실행 중 닫기 차단 — 진행률·취소 수단 유실 방지
     const guardedClose = () => {
@@ -1300,7 +1449,6 @@ export const TemplateManagerModal = observer(
       (async () => {
         await projectTemplateService.ensureLoaded();
         await templateService.ensureLoaded();
-        setCharEditing(false);
         setSelectedId((prev) => {
           const globals = projectTemplateService.listGlobal();
           return prev && globals.some((t) => t.id === prev)
@@ -1309,11 +1457,6 @@ export const TemplateManagerModal = observer(
         });
       })();
     }, [isOpen]);
-
-    const templates = projectTemplateService.listGlobal();
-    const entry = selectedId
-      ? projectTemplateService.get(selectedId)
-      : undefined;
 
     // ----- 템플릿 CRUD -----
     // 전환·닫기 시 프롬프트 커밋은 편집기의 언마운트 훅이 담당한다.
@@ -1398,6 +1541,220 @@ export const TemplateManagerModal = observer(
       });
     };
 
+    // 배치 실행 중·캐릭터 편집 중엔 목록·CRUD(전환·삭제 등)를 잠근다 — 실행 대상
+    // 템플릿을 도중에 바꾸거나 지우는 사고 방지 (배치 R3)
+    const listLocked = charEditing || batchRunning;
+    const lockedMessage = batchRunning
+      ? '일괄 생성이 진행 중입니다 — 완료 후 바꿀 수 있습니다.'
+      : '편집을 먼저 끝내세요';
+
+    // 백업/복원 — 편집 중·실행 중엔 숨긴다(종전 상단 줄과 같은 조건)
+    const backupButtons = !listLocked ? (
+      <div className="flex items-center gap-1.5 ml-auto" data-template-backup="">
+        <Tooltip
+          content={
+            templates.length === 0
+              ? '백업할 템플릿이 없습니다'
+              : '프로젝트 템플릿 전체를 tar 파일로 백업'
+          }
+        >
+          <button
+            type="button"
+            className={backupBtnCls}
+            disabled={templates.length === 0}
+            onClick={backupTemplates}
+          >
+            <FaFileArchive size={14} />
+            <span>백업</span>
+          </button>
+        </Tooltip>
+        <Tooltip content="백업 파일에서 프로젝트 템플릿 불러오기 (동명 처리 선택)">
+          <button
+            type="button"
+            className={backupBtnCls}
+            onClick={restoreTemplates}
+          >
+            <FaFileImport size={14} />
+            <span>백업 불러오기</span>
+          </button>
+        </Tooltip>
+      </div>
+    ) : null;
+
+    // 모바일 — 종전 템플릿 선택 + CRUD 줄(도구줄 첫 줄)
+    const mobileSelectRow =
+      isMobile && !listLocked ? (
+        <div
+          className="w-full flex items-center gap-1.5"
+          data-template-select-row=""
+        >
+          <select
+            className="gray-input flex-1 min-w-[140px]"
+            value={selectedId}
+            onChange={(e) => setSelectedId(e.target.value)}
+          >
+            {templates.length === 0 && <option value="">템플릿 없음</option>}
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <Tooltip content="새 템플릿">
+            <button
+              className={iconBtnCls}
+              aria-label="새 템플릿"
+              onClick={createTemplate}
+            >
+              <FaPlus size={14} />
+            </button>
+          </Tooltip>
+          {entry && (
+            <>
+              <Tooltip content="이름 변경">
+                <button
+                  className={iconBtnCls}
+                  aria-label="이름 변경"
+                  onClick={renameTemplate}
+                >
+                  <FaPen size={14} />
+                </button>
+              </Tooltip>
+              <Tooltip content="복제">
+                <button
+                  className={iconBtnCls}
+                  aria-label="복제"
+                  onClick={duplicateTemplate}
+                >
+                  <ActionIcon id="duplicate" size={14} />
+                </button>
+              </Tooltip>
+              <Tooltip content="삭제">
+                <button
+                  className={iconBtnCls + ' hover:text-red-500'}
+                  aria-label="삭제"
+                  onClick={deleteTemplate}
+                >
+                  <ActionIcon id="delete" size={14} />
+                </button>
+              </Tooltip>
+            </>
+          )}
+        </div>
+      ) : null;
+
+    const toolbar =
+      mobileSelectRow || panel.tabs || backupButtons ? (
+        <>
+          {mobileSelectRow}
+          {panel.tabs}
+          {backupButtons}
+        </>
+      ) : undefined;
+
+    // PC aside — [새 템플릿] + 이름 목록(선택 행 강조·행 동작). 잠금 중이면 누를 때 안내만(열 폭은 유지)
+    const rowActionCls = 'p-1.5 rounded text-faint transition-colors';
+    const aside = !isMobile ? (
+      <div
+        className={
+          'flex flex-col gap-2 p-3' + (listLocked ? ' opacity-60' : '')
+        }
+        data-template-aside=""
+        aria-disabled={listLocked || undefined}
+        onClickCapture={(e) => {
+          if (!listLocked) return;
+          e.preventDefault();
+          e.stopPropagation();
+          appState.pushMessage(lockedMessage);
+        }}
+      >
+        <button
+          onClick={createTemplate}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-dashed line-color hover:border-sky-400 dark:hover:border-sky-500 text-muted hover:text-sky-500 transition-colors text-sm"
+          data-template-new=""
+        >
+          <FaPlus size={12} />새 템플릿
+        </button>
+        {templates.length === 0 ? (
+          <div className="text-xs text-faint text-center py-6">
+            템플릿이 없습니다
+          </div>
+        ) : (
+          <div className="border line-color rounded-lg divide-y divide-[color:var(--c-line)] overflow-hidden">
+            {templates.map((t) => {
+              const selected = t.id === selectedId;
+              return (
+                <div
+                  key={t.id}
+                  data-template-row={t.id}
+                  aria-selected={selected}
+                  onClick={() => setSelectedId(t.id)}
+                  className={`px-3 py-2 cursor-pointer flex justify-between items-center gap-2 ${
+                    selected
+                      ? 'bg-sky-50 dark:bg-sky-900/30 border-l-2 border-sky-500'
+                      : 'hover:bg-gray-50 dark:hover:bg-slate-700/50'
+                  }`}
+                >
+                  <span className="min-w-0 text-sm font-medium text-default truncate">
+                    {t.name}
+                  </span>
+                  {selected && (
+                    <div className="flex-none flex items-center gap-0.5">
+                      <Tooltip content="이름 변경">
+                        <button
+                          aria-label="이름 변경"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            renameTemplate();
+                          }}
+                          className={
+                            rowActionCls +
+                            ' hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/20'
+                          }
+                        >
+                          <FaPen size={11} />
+                        </button>
+                      </Tooltip>
+                      <Tooltip content="복제">
+                        <button
+                          aria-label="복제"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            duplicateTemplate();
+                          }}
+                          className={
+                            rowActionCls +
+                            ' hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/20'
+                          }
+                        >
+                          <ActionIcon id="duplicate" size={11} />
+                        </button>
+                      </Tooltip>
+                      <Tooltip content="삭제">
+                        <button
+                          aria-label="삭제"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteTemplate();
+                          }}
+                          className={
+                            rowActionCls +
+                            ' hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
+                          }
+                        >
+                          <ActionIcon id="delete" size={11} />
+                        </button>
+                      </Tooltip>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    ) : undefined;
+
     return (
       <ModalOverlay
         isOpen={isOpen}
@@ -1407,121 +1764,37 @@ export const TemplateManagerModal = observer(
             템플릿 관리
             <HelpIcon
               content={
-                '새 프로젝트 생성 시 시작 구성(프리셋, 캐릭터, 바이브, 레퍼런스, 씬)을 자동 세팅합니다.\n' +
-                '프롬프트는 [저장] 시점에, 나머지 항목은 즉시 저장됩니다.'
+                '새 프로젝트를 만들 때 시작 구성(프리셋, 캐릭터, 바이브, 레퍼런스, 씬)을 미리 세팅하는 워크플로우입니다.\n' +
+                '모든 영역은 직접 편집할 수 있고, 복사해 오기는 설정을 1회 덮어쓰는 편의 기능입니다.\n' +
+                '프롬프트 수정은 바닥의 [저장] 버튼 또는 창을 닫을 때 저장되고, 그 외 변경(복사해 오기·캐릭터·씬)은 즉시 저장됩니다.'
               }
             />
           </span>
         }
-        width="max-w-3xl"
+        // xl(1280 고정, 2026-11-15 사용자 실기 피드백 — 작업 밀도가 높아 l 1000 은 좁음). 폴더 기본 템플릿은 l.
+        size="xl"
+        toolbar={toolbar}
+        aside={aside}
+        footer={panel.footer ?? undefined}
+        footerStart={panel.footerStart ?? undefined}
       >
-        <div className="flex flex-col gap-4">
-          {/* 배치 실행 중엔 상단 CRUD(전환·삭제 등)도 잠근다 — 실행 대상
-              템플릿을 도중에 바꾸거나 지우는 사고 방지 (배치 R3) */}
-          {!charEditing && !batchRunning && (
-            <>
-              <p className="text-sm text-muted">
-                템플릿은 새 프로젝트의 시작 구성을 미리 세팅하는
-                워크플로우입니다. 모든 영역은 직접 편집할 수 있고, 복사해 오기는
-                설정을 1회 덮어쓰는 편의 기능입니다. 프롬프트 수정은 아래{' '}
-                <b>[저장]</b> 버튼 또는 창을 닫을 때 저장되고, 그 외 변경
-                (복사해 오기·캐릭터·씬)은 즉시 저장됩니다.
-              </p>
-              {/* 템플릿 선택 + CRUD */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <select
-                  className="gray-input flex-1 min-w-[140px]"
-                  value={selectedId}
-                  onChange={(e) => setSelectedId(e.target.value)}
-                >
-                  {templates.length === 0 && (
-                    <option value="">템플릿 없음</option>
-                  )}
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-                <Tooltip content="새 템플릿">
-                  <button className={iconBtnCls} onClick={createTemplate}>
-                    <FaPlus size={14} />
-                  </button>
-                </Tooltip>
-                {entry && (
-                  <>
-                    <Tooltip content="이름 변경">
-                      <button className={iconBtnCls} onClick={renameTemplate}>
-                        <FaPen size={14} />
-                      </button>
-                    </Tooltip>
-                    <Tooltip content="복제">
-                      <button
-                        className={iconBtnCls}
-                        onClick={duplicateTemplate}
-                      >
-                        <ActionIcon id="duplicate" size={14} />
-                      </button>
-                    </Tooltip>
-                    <Tooltip content="삭제">
-                      <button
-                        className={iconBtnCls + ' hover:text-red-500'}
-                        onClick={deleteTemplate}
-                      >
-                        <ActionIcon id="delete" size={14} />
-                      </button>
-                    </Tooltip>
-                  </>
-                )}
-                {/* 백업/복원 — 좁은 화면에선 둘이 함께 다음 줄로 내려간다 */}
-                <div className="flex items-center gap-1.5 ml-auto">
-                  <Tooltip
-                    content={
-                      templates.length === 0
-                        ? '백업할 템플릿이 없습니다'
-                        : '프로젝트 템플릿 전체를 tar 파일로 백업'
-                    }
-                  >
-                    <button
-                      type="button"
-                      className={backupBtnCls}
-                      disabled={templates.length === 0}
-                      onClick={backupTemplates}
-                    >
-                      <FaFileArchive size={14} />
-                      <span>백업</span>
-                    </button>
-                  </Tooltip>
-                  <Tooltip content="백업 파일에서 프로젝트 템플릿 불러오기 (동명 처리 선택)">
-                    <button
-                      type="button"
-                      className={backupBtnCls}
-                      onClick={restoreTemplates}
-                    >
-                      <FaFileImport size={14} />
-                      <span>백업 불러오기</span>
-                    </button>
-                  </Tooltip>
-                </div>
-              </div>
-            </>
-          )}
-          {!entry ? (
-            <div className="text-sm text-default py-6 text-center">
-              템플릿이 없습니다. <b>+</b> 버튼으로 새 템플릿을 만들거나{' '}
-              <b>[백업 불러오기]</b>로 백업 파일에서 불러와 주세요.
-            </div>
-          ) : (
-            <TemplateWorkflowEditor
-              key={entry.id}
-              templateId={entry.id}
-              syncSignal={syncSignal}
-              commitRef={commitRef}
-              onEditingCharChange={setCharEditing}
-              onBatchRunningChange={setBatchRunning}
-            />
-          )}
-        </div>
+        {!entry ? (
+          <div className="text-sm text-default py-6 text-center">
+            {isMobile ? (
+              <>
+                템플릿이 없습니다. <b>+</b> 버튼으로 새 템플릿을 만들거나{' '}
+              </>
+            ) : (
+              <>
+                템플릿이 없습니다. 왼쪽 <b>[새 템플릿]</b>으로 새 템플릿을
+                만들거나{' '}
+              </>
+            )}
+            <b>[백업 불러오기]</b>로 백업 파일에서 불러와 주세요.
+          </div>
+        ) : (
+          panel.body
+        )}
       </ModalOverlay>
     );
   },

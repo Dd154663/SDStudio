@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { ActionIcon } from './ActionIcon';
 import ModalOverlay from './ModalOverlay';
-import { TemplateWorkflowEditor } from './TemplateManagerModal';
+import { useTemplateWorkflowPanel } from './TemplateManagerModal';
 import { FOLDER_COLORS } from './folderColors';
 import {
   projectTemplateService,
@@ -15,11 +15,13 @@ import HelpIcon from './HelpIcon';
 import { setTemplateBadgeColorRecorded } from '../models/globalLibraryUndo';
 
 // 프로젝트 상속 v2 (2026-07-16 합의) — 폴더 기본 템플릿 / 수동 재적용 모달.
+// 2026-11-15 오버레이 묶음 C-2: 폴더 기본 템플릿 = size l(고정 760), aside 없음. 도구줄 = 탭 + [전역 템플릿에서 복사] +
+// 배지 색 줄, 바닥줄 왼쪽 = [지정 해제](위험), 오른쪽 = 공용 훅의 [저장]/[N개 생성]. PC·모바일 같은 슬롯(규약 ⑧).
 
 // ===== 폴더 기본 템플릿 모달 =====
 //
 // 폴더 기본 템플릿 = "폴더 전용 로컬 템플릿"(folderLocal 엔티티). 설정 화면은
-// 전역 템플릿 관리와 완전히 동일(TemplateWorkflowEditor 공유)하되, 상단에
+// 전역 템플릿 관리와 완전히 동일(useTemplateWorkflowPanel 공유)하되, 상단에
 // [전역 템플릿 불러오기] 버튼이 추가된다 — 불러오기는 구성 전체의 1회성
 // 덮어쓰기이고, 이후 이 폴더 전용으로 자유롭게 세부 조정할 수 있다
 // (전역 원본에는 영향 없음). 지정하면 이 폴더(하위 폴더 포함)에서 새
@@ -40,12 +42,9 @@ export const FolderTemplateModal = observer(
     const [localId, setLocalId] = useState<string>('');
     // 전역 템플릿 불러오기(엔티티 통째 덮어쓰기) 후 편집기 재동기화 신호
     const [syncSignal, setSyncSignal] = useState(0);
-    const [charEditing, setCharEditing] = useState(false);
     const commitRef = useRef<() => void>(() => {});
     // 열 때의 updatedAt — 닫을 때 변경 여부(=전파 확인 트리거) 판정용
     const updatedAtOnOpenRef = useRef<number>(0);
-    // 일괄 생성(배치 탭) 실행 중 — 모달 닫기 차단 (배치 R3)
-    const [batchRunning, setBatchRunning] = useState(false);
 
     // 열 때 폴더 전용 로컬 템플릿을 확보한다:
     //  - 기존 지정이 로컬 템플릿이면 그대로 편집
@@ -53,7 +52,6 @@ export const FolderTemplateModal = observer(
     //  - 지정이 없으면 빈 로컬 템플릿 생성 (빈 채로 닫으면 자동 해제)
     useEffect(() => {
       if (!isOpen) return;
-      setCharEditing(false);
       setLocalId('');
       (async () => {
         await templateService.ensureLoaded();
@@ -87,6 +85,21 @@ export const FolderTemplateModal = observer(
     }, [isOpen, folder]);
 
     const entry = localId ? projectTemplateService.get(localId) : undefined;
+
+    // 공용 편집기 슬롯(탭·본문·바닥줄) — 캐릭터 편집 중(charEditing)·일괄 생성 실행 중(batchRunning, 닫기 차단)
+    const panel = useTemplateWorkflowPanel(entry?.id, {
+      syncSignal,
+      commitRef,
+      batchFolder: folder,
+      onBatchCompleted: () => {
+        // 일괄 생성 직후에는 자식이 이미 최신 구성이다 — 전파 확인
+        // 기준(updatedAt)을 리셋해, 닫을 때 방금 만든 자식에게
+        // "덮어쓸까요?"가 뜨는 비직관 동작을 막는다 (2026-07-16 실기).
+        updatedAtOnOpenRef.current =
+          projectTemplateService.get(localId)?.updatedAt ?? 0;
+      },
+    });
+    const { charEditing, batchRunning } = panel;
 
     // [전역 템플릿 불러오기] = 이 폴더 템플릿의 구성 전체 1회성 덮어쓰기
     const importGlobalTemplate = async () => {
@@ -210,107 +223,117 @@ export const FolderTemplateModal = observer(
       onClose();
     };
 
+    // 배치 실행 중·캐릭터 편집 중엔 상단 조작(불러오기·지정 해제·배지 색)을 숨긴다 —
+    // 실행 대상 템플릿을 도중에 바꾸거나 지우는 사고 방지 (배치 R3)
+    const controlsShown = !!entry && !charEditing && !batchRunning;
+
+    const toolbar =
+      panel.tabs || controlsShown ? (
+        <>
+          {panel.tabs}
+          {controlsShown && (
+            <button
+              className="ml-auto px-3 py-1.5 rounded-lg text-sm btn-solid-sky"
+              data-folder-template-import=""
+              onClick={importGlobalTemplate}
+            >
+              <ActionIcon id="copy-to-project" className="inline mr-1.5" size={12} />
+              전역 템플릿에서 복사
+            </button>
+          )}
+          {/* 배지 매직 컬러 — ♚(이 폴더)·♟(상속 자식) 배지를 이 색으로
+              표시해 어느 부모의 자식인지 구분한다. 선택 즉시 저장. */}
+          {controlsShown && entry && (
+            <div
+              className="w-full flex items-center gap-2 flex-wrap"
+              data-folder-template-badge=""
+            >
+              <span className="text-sm text-muted flex-none inline-flex items-center gap-1.5">
+                배지 색 (♚/♟)
+                <HelpIcon
+                  content={
+                    '♚ = 이 폴더의 기본 템플릿(부모)\n' +
+                    '♟ = 그 템플릿을 상속받은 프로젝트\n' +
+                    '배지 색으로 어느 부모의 자식인지 구분합니다.'
+                  }
+                />
+              </span>
+              {FOLDER_COLORS.map((c) => {
+                const selected = entry.badgeColor === c;
+                return (
+                  <button
+                    key={c}
+                    title={c}
+                    onClick={() =>
+                      setTemplateBadgeColorRecorded(entry.id, c).catch(() => {})
+                    }
+                    className="w-6 h-6 rounded-full flex-none transition-transform hover:scale-110"
+                    style={{
+                      backgroundColor: c,
+                      boxShadow: selected
+                        ? `0 0 0 2px #fff, 0 0 0 4px ${c}`
+                        : 'none',
+                    }}
+                  />
+                );
+              })}
+              <button
+                onClick={() =>
+                  setTemplateBadgeColorRecorded(entry.id, null).catch(() => {})
+                }
+                className="px-2 h-6 rounded-md text-xs flex-none btn-neutral text-gray-600 dark:text-gray-200"
+              >
+                기본
+              </button>
+            </div>
+          )}
+        </>
+      ) : undefined;
+
+    // 바닥줄 왼쪽 = [지정 해제](위험) + 일괄 생성 진행·결과. 편집 중·실행 중엔 [지정 해제]를 숨긴다(종전 상단 줄과 같은 조건)
+    const footerStart =
+      controlsShown || panel.footerStart ? (
+        <>
+          {controlsShown && (
+            <button
+              className="px-4 py-2 rounded-lg btn-solid-red text-sm font-medium transition-colors"
+              data-folder-template-clear=""
+              onClick={clearDesignation}
+            >
+              지정 해제
+            </button>
+          )}
+          {panel.footerStart}
+        </>
+      ) : undefined;
+
     return (
       <ModalOverlay
         isOpen={isOpen}
         onClose={handleClose}
-        title={`폴더 기본 템플릿 — ${folder}`}
-        width="max-w-3xl"
-      >
-        <div className="flex flex-col gap-4">
-          {/* 배치 실행 중엔 상단 조작(불러오기·지정 해제·배지 색)도 잠근다 —
-              실행 대상 템플릿을 도중에 바꾸거나 지우는 사고 방지 (배치 R3) */}
-          {!charEditing && !batchRunning && (
-            <>
-              <p className="text-sm text-muted">
-                이 폴더(하위 폴더 포함)에서 새 프로젝트를 만들 때 아래 구성이
-                자동 적용됩니다. 전역 템플릿을 복사해 온 뒤 이 폴더 전용으로 세부
-                조정할 수 있고(전역 원본에는 영향 없음), 아무것도 세팅하지 않고
-                닫으면 지정이 해제됩니다.
-              </p>
-              <div className="flex gap-2 justify-end flex-wrap">
-                <button
-                  className="px-3 py-1.5 rounded-lg text-sm btn-solid-sky"
-                  onClick={importGlobalTemplate}
-                >
-                  <ActionIcon id="copy-to-project" className="inline mr-1.5" size={12} />
-                  전역 템플릿에서 복사
-                </button>
-                <button
-                  className="px-3 py-1.5 rounded-lg text-sm btn-solid-red"
-                  onClick={clearDesignation}
-                >
-                  지정 해제
-                </button>
-              </div>
-              {/* 배지 매직 컬러 — ♚(이 폴더)·♟(상속 자식) 배지를 이 색으로
-                  표시해 어느 부모의 자식인지 구분한다. 선택 즉시 저장. */}
-              {entry && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm text-muted flex-none inline-flex items-center gap-1.5">
-                    배지 색 (♚/♟)
-                    <HelpIcon
-                      content={
-                        '♚ = 이 폴더의 기본 템플릿(부모)\n' +
-                        '♟ = 그 템플릿을 상속받은 프로젝트\n' +
-                        '배지 색으로 어느 부모의 자식인지 구분합니다.'
-                      }
-                    />
-                  </span>
-                  {FOLDER_COLORS.map((c) => {
-                    const selected = entry.badgeColor === c;
-                    return (
-                      <button
-                        key={c}
-                        title={c}
-                        onClick={() =>
-                          setTemplateBadgeColorRecorded(entry.id, c).catch(() => {})
-                        }
-                        className="w-6 h-6 rounded-full flex-none transition-transform hover:scale-110"
-                        style={{
-                          backgroundColor: c,
-                          boxShadow: selected
-                            ? `0 0 0 2px #fff, 0 0 0 4px ${c}`
-                            : 'none',
-                        }}
-                      />
-                    );
-                  })}
-                  <button
-                    onClick={() =>
-                      setTemplateBadgeColorRecorded(entry.id, null).catch(() => {})
-                    }
-                    className="px-2 h-6 rounded-md text-xs flex-none btn-neutral text-gray-600 dark:text-gray-200"
-                  >
-                    기본
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-          {entry ? (
-            <TemplateWorkflowEditor
-              key={entry.id}
-              templateId={entry.id}
-              syncSignal={syncSignal}
-              commitRef={commitRef}
-              onEditingCharChange={setCharEditing}
-              batchFolder={folder}
-              onBatchRunningChange={setBatchRunning}
-              onBatchCompleted={() => {
-                // 일괄 생성 직후에는 자식이 이미 최신 구성이다 — 전파 확인
-                // 기준(updatedAt)을 리셋해, 닫을 때 방금 만든 자식에게
-                // "덮어쓸까요?"가 뜨는 비직관 동작을 막는다 (2026-07-16 실기).
-                updatedAtOnOpenRef.current =
-                  projectTemplateService.get(localId)?.updatedAt ?? 0;
-              }}
+        title={
+          <span className="inline-flex items-center gap-1.5">
+            {`폴더 기본 템플릿 — ${folder}`}
+            <HelpIcon
+              content={
+                '이 폴더(하위 폴더 포함)에서 새 프로젝트를 만들 때 아래 구성이 자동 적용됩니다.\n' +
+                '전역 템플릿을 복사해 온 뒤 이 폴더 전용으로 세부 조정할 수 있고(전역 원본에는 영향 없음), 아무것도 세팅하지 않고 닫으면 지정이 해제됩니다.'
+              }
             />
-          ) : (
-            <div className="text-sm text-muted py-6 text-center">
-              불러오는 중...
-            </div>
-          )}
-        </div>
+          </span>
+        }
+        size="l"
+        toolbar={toolbar}
+        footer={panel.footer ?? undefined}
+        footerStart={footerStart}
+      >
+        {entry ? (
+          panel.body
+        ) : (
+          <div className="text-sm text-muted py-6 text-center">
+            불러오는 중...
+          </div>
+        )}
       </ModalOverlay>
     );
   },

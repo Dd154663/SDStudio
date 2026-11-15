@@ -64,7 +64,7 @@ jest.mock('../findReplaceUndo', () => ({
   replaceAllRecorded: jest.fn(),
   unrecordedScopesOf: jest.fn(() => []),
 }));
-jest.mock('../../componenets/TemplateManagerModal', () => ({ TemplateWorkflowEditor: () => null }));
+jest.mock('../../componenets/TemplateManagerModal', () => ({ useTemplateWorkflowPanel: () => ({}) }));
 jest.mock('../../componenets/ActionIcon', () => ({ ActionIcon: () => null }));
 jest.mock('../../componenets/HelpIcon', () => () => null);
 jest.mock('../globalLibraryUndo', () => ({ setTemplateBadgeColorRecorded: jest.fn() }));
