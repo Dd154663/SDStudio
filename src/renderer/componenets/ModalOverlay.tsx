@@ -54,6 +54,9 @@ interface ModalOverlayProps {
   dirty?: () => boolean;
 }
 
+// 바닥줄 모양 — 래퍼 바닥줄과 표시 전용 OverlayFooterBar 가 같은 클래스를 쓴다(단일 출처, 2026-11-15 C-3)
+const OVERLAY_FOOTER_BAR_CLASS = 'flex-none flex items-center gap-2 px-5 py-3 border-t line-color';
+
 const ModalOverlay = ({
   isOpen,
   onClose,
@@ -203,10 +206,7 @@ const ModalOverlay = ({
         )}
         {/* 바닥줄 — 스크롤 밖 고정. 왼쪽 = 위험 버튼, 오른쪽 = 확정·취소 */}
         {(footer != null || footerStart != null) && (
-          <div
-            className="flex-none flex items-center gap-2 px-5 py-3 border-t line-color"
-            data-modal-slot="footer"
-          >
+          <div className={OVERLAY_FOOTER_BAR_CLASS} data-modal-slot="footer">
             {footerStart != null && <div className="flex items-center gap-2">{footerStart}</div>}
             <div className="ml-auto flex items-center gap-2">{footer}</div>
           </div>
@@ -221,6 +221,18 @@ const ModalOverlay = ({
 export function scrollOverlayBodyToTop(from: Element | null | undefined) {
   const body = from?.closest('[data-modal-slot="body"]');
   if (body) body.scrollTop = 0;
+}
+
+// 표시 전용 바닥줄(2026-11-15 C-3, SPEC 슬롯 규약 ⑥ 보강) — 여러 호스트가 쓰는 하위 편집기(캐릭터 프리셋 안쪽 편집기
+// layout="frame")가 상태를 끌어올리지 않고 자기 바닥줄을 래퍼 바닥줄과 같은 모양으로 그린다. 왼쪽 = start, 오른쪽 = children.
+// 래퍼의 footer 슬롯과 구분되게 data-overlay-footer-bar 를 단다(data-modal-slot 은 래퍼만).
+export function OverlayFooterBar({ start, children }: { start?: ReactNode; children?: ReactNode }) {
+  return (
+    <div className={OVERLAY_FOOTER_BAR_CLASS} data-overlay-footer-bar="">
+      {start != null && <div className="flex items-center gap-2">{start}</div>}
+      <div className="ml-auto flex items-center gap-2">{children}</div>
+    </div>
+  );
 }
 
 export default ModalOverlay;

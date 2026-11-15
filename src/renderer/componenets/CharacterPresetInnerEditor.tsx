@@ -19,6 +19,7 @@ import { EditableSliderValue } from './VibeEditor';
 import { PresetImageBackend, VibeImage } from './CharacterPresetCards';
 import { useBackLayer } from '../models/BackStackService';
 import { useGuardedClose } from './backdropClose';
+import { OverlayFooterBar } from './ModalOverlay';
 
 // CharacterPresetEditor.tsx 에서 분리된 프리셋 편집 폼.
 // ─── 편집 폼 ─────────────────────────────────────────────────
@@ -35,6 +36,12 @@ interface CharacterPresetInnerEditorProps {
    * 인라인 편집은 예전 그대로.
    */
   dirtyRef?: React.MutableRefObject<(() => boolean) | null>;
+  /**
+   * 배치(2026-11-15 C-3). 'inline'(기본) = 종전 한 열 폼(템플릿 관리·일괄 생성·모바일 — DOM 그대로).
+   * 'frame' = 캐릭터 프리셋 관리(PC) 전용 — 창 본문(bodyPadding 'none')을 채우는 h-full 배치:
+   * 돌아가기 줄 → 두 열(열마다 스크롤) → 표시 전용 바닥줄 [프리셋 저장/추가][취소].
+   */
+  layout?: 'inline' | 'frame';
 }
 
 export const CharacterPresetInnerEditor = observer(({
@@ -44,6 +51,7 @@ export const CharacterPresetInnerEditor = observer(({
   isNew,
   imageBackend,
   dirtyRef,
+  layout = 'inline',
 }: CharacterPresetInnerEditorProps) => {
   const [name, setName] = useState(preset.name);
   const [characterPrompt, setCharacterPrompt] = useState(preset.characterPrompt);
@@ -220,10 +228,9 @@ export const CharacterPresetInnerEditor = observer(({
     return images;
   }, [vibes, characterReferences]);
 
-  return (
-    <div className="flex flex-col text-default">
-      {/* 상단 바 — 돌아가기만 */}
-      <div className="flex items-center mb-4">
+  // ── 화면 조각(2026-11-15 C-3) — inline 은 종전 순서 그대로, frame 은 캐릭터 프리셋 관리(PC) 전용 두 열 배치 ──
+  // 상단 바 — 돌아가기만
+  const backButton = (
         <button
           className="flex items-center gap-1.5 text-sm text-muted hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
           onClick={requestBackToList}
@@ -231,9 +238,15 @@ export const CharacterPresetInnerEditor = observer(({
           <FaArrowLeft size={12} />
           돌아가기
         </button>
+  );
+  const backBar = (
+      <div className="flex items-center mb-4">
+        {backButton}
       </div>
+  );
 
-      {/* 프리셋 이름 */}
+  // 프리셋 이름
+  const nameSection = (
       <div className="mb-4">
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">프리셋 이름 *</label>
         <input
@@ -244,8 +257,10 @@ export const CharacterPresetInnerEditor = observer(({
           placeholder="캐릭터 프리셋 이름"
         />
       </div>
+  );
 
-      {/* 대표 이미지 */}
+  // 대표 이미지
+  const repImageSection = (
       <div className="mb-4 p-3 border line-color rounded-lg">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">대표 이미지</div>
         <div className="flex items-start gap-3">
@@ -314,28 +329,42 @@ export const CharacterPresetInnerEditor = observer(({
           </div>
         )}
       </div>
+  );
 
-      {/* 캐릭터 프롬프트 */}
+  // 캐릭터 프롬프트
+  const promptSection = (
       <div className="mb-4">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">캐릭터 프롬프트</div>
-        <PromptEditTextArea
-          value={characterPrompt}
-          onChange={setCharacterPrompt}
-          disabled={false}
-        />
+        {/* grid min-h-20: 비어 있어도 3줄 높이를 보장해 클릭 영역을 넓힌다(2026-11-15 사용자 실기 피드백).
+            grid 는 단일 auto 행을 컨테이너 최소 높이까지 늘리므로 편집기의 h-full 이 그 높이를 받고,
+            글자가 많아지면 행이 함께 자란다(조각 칸 h-20 과 같은 높이 기준). */}
+        <div className="grid min-h-20" data-preset-prompt-box="prompt">
+          <PromptEditTextArea
+            value={characterPrompt}
+            onChange={setCharacterPrompt}
+            disabled={false}
+          />
+        </div>
       </div>
+  );
 
-      {/* 캐릭터 네거티브 프롬프트 */}
+  // 캐릭터 네거티브 프롬프트
+  const ucSection = (
       <div className="mb-4">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">캐릭터 네거티브 프롬프트</div>
-        <PromptEditTextArea
-          value={characterUC}
-          onChange={setCharacterUC}
-          disabled={false}
-        />
+        <div className="grid min-h-20" data-preset-prompt-box="uc">
+          <PromptEditTextArea
+            value={characterUC}
+            onChange={setCharacterUC}
+            disabled={false}
+          />
+        </div>
       </div>
+  );
 
-      {/* 배경 프롬프트 - 레거시 (읽기 전용) */}
+  // 배경 프롬프트 - 레거시 (읽기 전용)
+  const legacyBgSection = (
+    <>
       {backgroundPrompt && (
         <div className="mb-4 p-3 border rounded-lg border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20">
           <div className="text-sm font-medium text-amber-600 dark:text-amber-400 mb-1">
@@ -349,8 +378,11 @@ export const CharacterPresetInnerEditor = observer(({
           </div>
         </div>
       )}
+    </>
+  );
 
-      {/* 바이브 트랜스퍼 */}
+  // 바이브 트랜스퍼
+  const vibeSection = (
       <div
         className={`mb-4 p-3 border rounded-lg transition-colors ${isDraggingVibe ? 'ring-2 ring-sky-500 bg-sky-50 dark:bg-sky-900/20 border-sky-400' : 'line-color'}`}
         onDragEnter={handleVibeDragEnter}
@@ -415,8 +447,10 @@ export const CharacterPresetInnerEditor = observer(({
           </div>
         ))}
       </div>
+  );
 
-      {/* 캐릭터 레퍼런스 */}
+  // 캐릭터 레퍼런스
+  const refSection = (
       <div
         className={`mb-4 p-3 border rounded-lg transition-colors ${isDraggingRef ? 'ring-2 ring-sky-500 bg-sky-50 dark:bg-sky-900/20 border-sky-400' : 'line-color'}`}
         onDragEnter={handleRefDragEnter}
@@ -519,8 +553,10 @@ export const CharacterPresetInnerEditor = observer(({
           </div>
         ))}
       </div>
+  );
 
-      {/* 파일명 옵션 (옵셔널 섹션) */}
+  // 파일명 옵션 (옵셔널 섹션)
+  const filenameSection = (
       <div className="mb-4 p-3 border line-color rounded-lg">
         <div
           className="flex items-center justify-between cursor-pointer"
@@ -562,8 +598,10 @@ export const CharacterPresetInnerEditor = observer(({
           </div>
         )}
       </div>
+  );
 
-      {/* 하단 저장 버튼 */}
+  // 하단 저장 버튼
+  const saveBar = (
       <div className="flex gap-2 pt-2 border-t line-color">
         <button
           className="flex-1 px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
@@ -579,6 +617,62 @@ export const CharacterPresetInnerEditor = observer(({
           취소
         </button>
       </div>
+  );
+
+  if (layout === 'inline') {
+    return (
+      <div className="flex flex-col text-default">
+        {backBar}
+        {nameSection}
+        {repImageSection}
+        {promptSection}
+        {ucSection}
+        {legacyBgSection}
+        {vibeSection}
+        {refSection}
+        {filenameSection}
+        {saveBar}
+      </div>
+    );
+  }
+
+  // frame(2026-11-15 C-3): 창 본문을 채우는 h-full 세로 배치 = [돌아가기 줄(고정)] → [두 열, 열마다 스크롤 하나:
+  // 왼쪽 이름·대표 이미지·프롬프트·네거티브(·레거시 배경), 오른쪽 바이브·레퍼런스·파일명 옵션] → [바닥줄(고정) 저장·취소].
+  // 바닥줄은 래퍼 바닥줄과 같은 모양의 표시 전용 OverlayFooterBar(상태는 이 편집기 안에 그대로).
+  return (
+    <div className="h-full min-h-0 flex flex-col text-default" data-preset-editor-layout="frame">
+      <div className="flex-none flex items-center px-5 py-3 border-b line-color">
+        {backButton}
+      </div>
+      <div className="flex-1 min-h-0 flex gap-5 px-5" data-preset-editor-columns="">
+        <div className="flex-1 min-w-0 min-h-0 overflow-y-auto py-4" data-preset-editor-col="left">
+          {nameSection}
+          {repImageSection}
+          {promptSection}
+          {ucSection}
+          {legacyBgSection}
+        </div>
+        <div className="flex-1 min-w-0 min-h-0 overflow-y-auto py-4" data-preset-editor-col="right">
+          {vibeSection}
+          {refSection}
+          {filenameSection}
+        </div>
+      </div>
+      <OverlayFooterBar>
+        <button
+          className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
+          onClick={handleSave}
+          data-preset-editor-save=""
+        >
+          {isNew ? '프리셋 추가' : '프리셋 저장'}
+        </button>
+        <button
+          className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+          onClick={requestBackToList}
+        >
+          취소
+        </button>
+      </OverlayFooterBar>
     </div>
   );
 });

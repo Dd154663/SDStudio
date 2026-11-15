@@ -461,7 +461,8 @@ describe('① 캐릭터 프리셋 관리 — 이름 검색', () => {
   test('로컬: 보기 전환 시 검색 비움, 거르기·원래 인덱스·드래그 잠금', async () => {
     await act(async () => root.render(<CharacterPresetEditor />));
     await typeIn(search(), 'ali');
-    await act(async () => Simulate.click(buttonByText('글로벌')));
+    // C-3(2026-11-15): 보기 전환은 PC aside 의 [로컬 | 글로벌] 분할 버튼 — 검색은 도구줄 안
+    await act(async () => Simulate.click(buttonByText('로컬')));
     expect(search().value).toBe('');
     expect(cards().every((c) => c.getAttribute('data-test-card') === 'local')).toBe(true);
     expect(count()).toBe('전체 3개');

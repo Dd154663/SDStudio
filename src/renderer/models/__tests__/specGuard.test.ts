@@ -548,6 +548,8 @@ const RULES: Rule[] = [
     // 사전 세팅 일괄 삭제 m): 10파일 12곳 → 6파일 7곳.
     // 2026-11-14 M3(글로벌 프리셋 고르기 2창 → 공용 GlobalPresetPicker size xl): 6파일 7곳 → 6파일 6곳.
     // 2026-11-15 C-2(템플릿 관리·폴더 기본 템플릿 l, 공용 편집기 슬롯 분리 useTemplateWorkflowPanel): 6파일 6곳 → 4파일 4곳.
+    // 2026-11-15 C-3(캐릭터 프리셋 관리 xl, useCharacterPresetPanel 슬롯 분리·안쪽 편집기 layout="frame"): 4파일 4곳 → 3파일 3곳
+    // (남은 = 모바일 전용 3창, C-4 대상).
     name: 'ModalOverlay size 없는 호출(width 폭 클래스·기본값·fullscreen) — size 등급 사용',
     guide: '「오버레이 창 크기 체계」',
     dir: '',
@@ -556,7 +558,6 @@ const RULES: Rule[] = [
     count: (c) => modalOverlayWithoutSize(c).length,
     locate: (c) => modalOverlayWithoutSize(c),
     allow: {
-      'componenets/CharacterPresetEditor.tsx': 1, // 캐릭터 프리셋 관리
       'componenets/QuickMenu.tsx': 1, // 퀵 메뉴(모바일)
       'componenets/SceneQuickPromptModal.tsx': 1, // 중간 프롬프트 가운데 폴백(모바일)
       'componenets/ToolbarOverflowMenu.tsx': 1, // ⋯ 메뉴(모바일)
@@ -568,6 +569,8 @@ const RULES: Rule[] = [
     // 'calc(NNvh …)'·`…vh` 문자열)를 주면 이중 스크롤·창 크기 변동의 원인이 된다. 창 밖 팝오버·관문·직접 만든 창까지
     // 포함해 파일별로 동결하고, 묶음이 지날수록 줄인다(늘리지 않는다). 주석은 세지 않는다.
     // 2026-11-15 C-1: 환경설정 단축키 탭 maxHeight '50vh'·드라이브 탭 max-h-[40vh] 제거 → 12파일 13곳.
+    // 2026-11-15 C-3: 캐릭터 프리셋 관리 폴더 열 높이 상한 제거(PC 는 aside 로 이동, 모바일 가로 줄·태블릿 세로 목록은
+    // 본문 스크롤 하나 — 폰 폭(768px 미만)에서는 md 접두라 종전에도 무효였음) → 11파일 12곳.
     name: 'ModalOverlay 자식 vh 높이 — 높이 규칙 우선순위(2026-11-15)',
     guide: '「오버레이 창 크기 체계」 높이 규칙 우선순위',
     dir: 'componenets',
@@ -576,7 +579,6 @@ const RULES: Rule[] = [
     count: (c) => countMatches(stripComments(c), VH_HEIGHT_RE),
     locate: (c) => matchLines(c, VH_HEIGHT_RE),
     allow: {
-      'componenets/CharacterPresetEditor.tsx': 1, // 캐릭터 프리셋 관리 폴더 열 md:max-h-[65vh] — C-3 대상
       'componenets/ConfigScreen.tsx': 2, // 환경설정 직접 창(모바일 max-h-[90vh]·그 밖 85vh 삼항) — 대상 외(규약 모바일 예외)
       'componenets/ConfirmWindow.tsx': 2, // 확인 창 본문·목록 — 체계 밖(별도 계열)
       'componenets/ExpiredProjectsDialog.tsx': 1, // 만료 프로젝트 직접 창 — 남은 직접 창(체계 밖)

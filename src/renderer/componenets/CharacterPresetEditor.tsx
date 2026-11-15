@@ -449,10 +449,24 @@ interface CharacterPresetEditorProps {
   editDirtyRef?: React.MutableRefObject<(() => boolean) | null>;
 }
 
-export const CharacterPresetEditor = observer(({
+// 캐릭터 프리셋 관리 화면 조각(2026-11-15 C-3, SPEC 「오버레이 창 크기 체계」 슬롯 규약 ⑥) — 래퍼가 ModalOverlay
+// 슬롯에 넣는다. PC = xl 고정 높이: aside(로컬/글로벌 전환 + 폴더/프로젝트 행)·toolbar(모드·검색·파일 버튼, 선택 모드 둘째 줄)·
+// body(카드 그리드 = 유일한 스크롤 / 순차 생성 = 「카드 | 설정」 두 칸)·footer([순차 생성 시작])·footerStart(요약).
+// 안쪽 편집 중에는 body 만(bodyPadding 'none', 편집기 layout="frame" 이 자체 바닥줄을 그림).
+// 모바일은 종전 한 열 그대로 body 하나(가로 폴더 줄·본문 안 버튼·JS 최소 높이).
+export interface CharacterPresetPanel {
+  toolbar?: React.ReactNode;
+  aside?: React.ReactNode;
+  body: React.ReactNode;
+  footer?: React.ReactNode;
+  footerStart?: React.ReactNode;
+  bodyPadding: 'normal' | 'none';
+}
+
+export function useCharacterPresetPanel({
   onApplyPreset,
   editDirtyRef,
-}: CharacterPresetEditorProps) => {
+}: CharacterPresetEditorProps): CharacterPresetPanel {
   const { curSession } = appState;
   const [editingPreset, setEditingPreset] = useState<CharacterPreset | null>(null);
   const [isNew, setIsNew] = useState(false);
@@ -491,20 +505,23 @@ export const CharacterPresetEditor = observer(({
   // 프로젝트 파일 생성 모드: 프리셋마다 현재 프로젝트를 복제해 새 프로젝트로 생성
   const [projectFileMode, setProjectFileMode] = useState(false);
 
-  // 목록 높이 고정: 글로벌/로컬 전환·폴더 필터로 카드 수가 달라져도 지금까지
+  // 목록 높이 고정(모바일 전용 — 2026-11-15 C-3): 글로벌/로컬 전환·폴더 필터로 카드 수가 달라져도 지금까지
   // 본 것 중 가장 큰 높이를 minHeight 로 유지해 모달이 출렁이지 않게 한다.
   // (마운트 동안만 유효 — 모달을 닫으면 리셋, 창 크기 변경 시 재측정)
+  // PC 는 래퍼가 xl 고정 높이라 재지 않는다(SPEC 높이 규칙 우선순위 — JS 측정 높이 금지, 모바일 기존 장치만 허용).
   const listRootRef = useRef<HTMLDivElement | null>(null);
   // 글로벌 [불러오기] 의 숨은 파일 입력 — 출처 선택 뒤 「파일」이면 이걸 눌러 선택기를 연다.
   const globalImportInputRef = useRef<HTMLInputElement | null>(null);
   const [minListHeight, setMinListHeight] = useState(0);
   useLayoutEffect(() => {
+    if (!isMobile) return;
     const el = listRootRef.current;
     if (el && el.offsetHeight > minListHeight) {
       setMinListHeight(el.offsetHeight);
     }
   });
   useEffect(() => {
+    if (!isMobile) return;
     const onResize = () => setMinListHeight(0);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -527,7 +544,10 @@ export const CharacterPresetEditor = observer(({
   }, [scenes, sceneFilter]);
 
   if (!curSession) {
-    return <div className="p-4 text-muted">세션을 선택해주세요</div>;
+    return {
+      body: <div className="p-4 text-muted">세션을 선택해주세요</div>,
+      bodyPadding: 'normal',
+    };
   }
 
   const presets = curSession.getCharacterPresets();
@@ -1136,6 +1156,7 @@ export const CharacterPresetEditor = observer(({
       setSelectedPresets(next);
     }
   };
+  // 이름 검색 줄(모바일 — 본문 안. PC 는 도구줄 안 compact)
   const listSearchBar = (total: number, shown: number) => (
     <div className="mb-3">
       <ListSearchBar
@@ -1149,27 +1170,46 @@ export const CharacterPresetEditor = observer(({
     </div>
   );
 
-  // 편집 모드
+  // PC(2026-11-15 C-3) = 슬롯 배치(xl 고정 높이), 모바일 = 종전 한 열(body 하나)
+  const wide = !isMobile;
+
+  // 로컬/글로벌 보기 전환 — 모드·검색을 비우고 바꾼다(PC aside 분할 버튼·모바일 토글 공용). 같은 보기면 무동작.
+  const switchView = (toGlobal: boolean) => {
+    if (toGlobal === globalView) return;
+    if (cyclingMode) exitCyclingMode();
+    if (selectMode) exitSelectMode();
+    setListQuery('');
+    setGlobalView(toGlobal);
+  };
+
+  // 편집 모드 — PC 는 안쪽 편집기가 창 본문을 채우는 frame 배치(돌아가기 줄 · 두 열 · 자체 바닥줄),
+  // 도구줄·aside·바닥줄은 주지 않는다. 모바일은 종전 인라인 폼.
   if (editingPreset) {
-    return (
-      <CharacterPresetInnerEditor
-        preset={editingPreset}
-        onSave={handleSave}
-        onCancel={handleCancel}
-        isNew={isNew}
-        dirtyRef={editDirtyRef}
-        imageBackend={
-          editTarget === 'global'
-            ? globalImageBackend
-            : makeSessionImageBackend(curSession)
-        }
-      />
-    );
+    return {
+      body: (
+        <CharacterPresetInnerEditor
+          preset={editingPreset}
+          onSave={handleSave}
+          onCancel={handleCancel}
+          isNew={isNew}
+          dirtyRef={editDirtyRef}
+          layout={wide ? 'frame' : 'inline'}
+          imageBackend={
+            editTarget === 'global'
+              ? globalImageBackend
+              : makeSessionImageBackend(curSession)
+          }
+        />
+      ),
+      bodyPadding: wide ? 'none' : 'normal',
+    };
   }
 
-  // 순회 진행 중 상태 표시
+  // 순회 진행 중 상태 표시 — 고정 높이 본문 안에 그대로(슬롯 없음, [중단] 은 패널 안)
   if (cyclingState === 'running' || cyclingState === 'paused') {
-    return (
+    return {
+      bodyPadding: 'normal',
+      body: (
       <div className="text-default">
         <div className="p-4 border border-sky-300 dark:border-sky-600 rounded-lg bg-sky-50 dark:bg-sky-900/20">
           <div className="flex items-center gap-2 mb-3">
@@ -1229,11 +1269,624 @@ export const CharacterPresetEditor = observer(({
           </div>
         </div>
       </div>
-    );
+      ),
+    };
   }
 
-  // 카드 그리드 모드
-  return (
+  // ─── 카드 그리드 모드 — 조각 ───
+
+  // 로컬/글로벌 전환 토글(모바일 — 종전 한 버튼, 누르면 반대 보기)
+  const mobileViewToggle = (
+    <button
+      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+        globalView
+          ? 'bg-purple-500 text-white'
+          : 'btn-neutral text-body'
+      }`}
+      onClick={() => switchView(!globalView)}
+    >
+      {globalView ? <FaGlobe size={12} /> : <FaUsers size={12} />}
+      {globalView ? '글로벌' : '로컬'}
+    </button>
+  );
+
+  // 로컬/글로벌 분할 버튼(PC aside 맨 위 — 선례 프롬프트조각 aside 의 로컬/전역 전환)
+  const asideViewToggle = (
+    <div className="flex gap-1" role="group" aria-label="프리셋 보기" data-character-view-toggle="">
+      <button
+        aria-pressed={!globalView}
+        className={`flex-1 px-2 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
+          !globalView ? 'bg-sky-500 text-white' : 'btn-neutral text-body'
+        }`}
+        onClick={() => switchView(false)}
+      >
+        <FaUsers size={12} />
+        로컬
+      </button>
+      <button
+        aria-pressed={globalView}
+        className={`flex-1 px-2 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
+          globalView ? 'bg-purple-500 text-white' : 'btn-neutral text-body'
+        }`}
+        onClick={() => switchView(true)}
+      >
+        <FaGlobe size={12} />
+        글로벌
+      </button>
+    </div>
+  );
+
+  // [순차 생성 모드][선택]
+  const modeButtons = (
+    <>
+      {(globalView ? globalEntries.length >= 2 : presets.length >= 2) && (
+        <button
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+            cyclingMode
+              ? (globalView ? 'bg-purple-500 text-white' : 'bg-sky-500 text-white')
+              : 'btn-neutral text-body'
+          }`}
+          onClick={() => cyclingMode ? exitCyclingMode() : enterCyclingMode()}
+        >
+          <FaSync size={11} />
+          {cyclingMode ? '순차 생성 모드 끄기' : '순차 생성 모드'}
+        </button>
+      )}
+      {/* 일괄 선택 → 일괄 적용(양 뷰) / 폴더 이동(글로벌) — 순차 생성과 배타 */}
+      {(globalView ? globalEntries.length > 0 : presets.length > 0) && (
+        <button
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+            selectMode
+              ? globalView
+                ? 'bg-purple-500 text-white'
+                : 'bg-sky-500 text-white'
+              : 'btn-neutral text-body'
+          }`}
+          onClick={() => (selectMode ? exitSelectMode() : enterSelectMode())}
+        >
+          <FaCheckSquare size={11} />
+          {selectMode ? '선택 모드 끄기' : '선택'}
+        </button>
+      )}
+    </>
+  );
+
+  // [모두 글로벌로 복사](로컬)·[내보내기]·[불러오기]·도움말
+  const fileButtons = (
+    <>
+      {!globalView && presets.length > 0 && (
+        <Tooltip content="모든 로컬 프리셋을 글로벌로 복사 (원본 유지)">
+          <button
+            className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            disabled={bulkSending}
+            onClick={handleSendAllToGlobal}
+          >
+            <ActionIcon id="copy-to-global" size={11} />
+            {bulkSending ? '복사하는 중...' : '모두 글로벌로 복사'}
+          </button>
+        </Tooltip>
+      )}
+      {!globalView && presets.length > 0 && (
+        <Tooltip content="모든 프리셋 내보내기">
+          <button
+            className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5"
+            onClick={() => exportCharacterPresets(curSession)}
+          >
+            <ActionIcon id="export" size={11} />
+            내보내기
+          </button>
+        </Tooltip>
+      )}
+      {!globalView && (
+        <Tooltip content="프리셋 파일 불러오기">
+          <label className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 cursor-pointer">
+            <ActionIcon id="import" size={11} />
+            불러오기
+            <input
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  await importCharacterPresets(curSession, file);
+                  e.target.value = '';
+                }
+              }}
+            />
+          </label>
+        </Tooltip>
+      )}
+      {/* 글로벌 내보내기/불러오기 — PC↔모바일 크로스 작업 이동용.
+          파일 형식이 로컬과 동일해 로컬 내보내기 파일도 불러올 수 있다. */}
+      {globalView && globalEntries.length > 0 && (
+        <Tooltip content="모든 글로벌 프리셋 내보내기">
+          <button
+            className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5"
+            onClick={exportGlobalCharacterPresets}
+          >
+            <ActionIcon id="export" size={11} />
+            내보내기
+          </button>
+        </Tooltip>
+      )}
+      {globalView && (
+        <Tooltip content="프리셋 파일 불러오기 (로컬에서 내보낸 파일도 가능)">
+          {/* PC 에서 Google 드라이브에 연결돼 있으면 출처([Google 드라이브 / 파일])를 먼저 묻는다
+              (드라이브 API ③). Android·미연결은 기존처럼 바로 파일 선택기. */}
+          <label
+            className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 cursor-pointer"
+            onClick={(e) =>
+              interceptFileImportClick(e, globalImportInputRef.current, 'character-presets')
+            }
+          >
+            <ActionIcon id="import" size={11} />
+            불러오기
+            <input
+              ref={globalImportInputRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  await importGlobalCharacterPresets(file);
+                  e.target.value = '';
+                }
+              }}
+            />
+          </label>
+        </Tooltip>
+      )}
+      {/* 도움말은 행 맨 끝 고정 (버튼 사이 배치가 어색하다는 피드백) */}
+      <HelpIcon
+        content={
+          '캐릭터 프리셋은 캐릭터 프롬프트, 네거티브, 바이브, 레퍼런스의 묶음입니다.\n' +
+          '카드 버튼으로 현재 프로젝트에 적용/해제합니다 (여러 개 일괄 적용 가능).\n' +
+          '글로벌 프리셋은 모든 프로젝트에서 공유되며, 적용하면 현재 프로젝트로 사본이 들어갑니다.'
+        }
+      />
+    </>
+  );
+
+  // 일괄 선택 액션 바 — 다중 선택 후 일괄 적용(양 뷰) / 폴더 이동(글로벌). PC = 도구줄 둘째 줄, 모바일 = 본문 안
+  const selectionBar = (className: string) => (
+    <div className={className} data-character-selection-bar="">
+      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        {(globalView ? selectedGlobalIds.size : selectedPresets.size)}개
+        선택
+      </span>
+      <button
+        className="text-xs btn-link"
+        onClick={toggleSelectAllShown}
+      >
+        {allShownSelected ? '전체 해제' : '전체 선택'}
+      </button>
+      <Tooltip content="선택한 프리셋을 캐릭터 프롬프트로 일괄 적용 (기존 적용에 추가)">
+        <button
+          className="px-3 py-1 rounded-lg text-xs font-medium btn-solid-yellow"
+          disabled={
+            (globalView ? selectedGlobalIds.size : selectedPresets.size) ===
+            0
+          }
+          onClick={bulkApplyCharacter}
+        >
+          <FaUserAlt className="inline mr-1" size={10} />
+          선택 적용
+        </button>
+      </Tooltip>
+      {globalView && (
+        <button
+          className="px-3 py-1 rounded-lg text-xs font-medium btn-solid-purple"
+          disabled={selectedGlobalIds.size === 0}
+          onClick={bulkMoveToFolder}
+        >
+          <FaFolder className="inline mr-1" size={10} />
+          폴더로 이동
+        </button>
+      )}
+      <button
+        className="px-3 py-1 rounded-lg text-xs btn-neutral text-body"
+        disabled={
+          (globalView ? selectedGlobalIds.size : selectedPresets.size) === 0
+        }
+        onClick={() => {
+          setSelectedGlobalIds(new Set());
+          setSelectedPresets(new Set());
+        }}
+      >
+        선택 해제
+      </button>
+      <button
+        className="px-3 py-1 rounded-lg text-xs font-medium btn-solid-red disabled:opacity-50"
+        disabled={
+          (globalView ? selectedGlobalIds.size : selectedPresets.size) === 0
+        }
+        onClick={handleDeleteSelected}
+      >
+        <FaTrash className="inline mr-1" size={10} />
+        선택 삭제
+      </button>
+    </div>
+  );
+
+  // 프리셋 선택 바 (순차 생성 모드): 실제 선택 카드 바로 위에 두어 조작 위치를 일치시킴
+  const cyclingSelectBar = (className: string) => (
+    <div className={className}>
+      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        프리셋 선택 (
+        {globalView ? selectedGlobalIds.size : selectedPresets.size}/
+        {globalView ? shownGlobalEntries.length : shownPresets.length})
+      </span>
+      <button
+        onClick={toggleSelectAllShown}
+        className="text-xs btn-link"
+      >
+        {allShownSelected ? '전체 해제' : '전체 선택'}
+      </button>
+    </div>
+  );
+
+  // 글로벌 폴더 행(전체·미분류·폴더들·[＋ 새 폴더]) — PC aside 세로 목록 / 모바일 가로 줄(부모가 방향 결정)
+  const folderRows = (
+    <>
+      <GlobalFolderRow
+        label="전체"
+        icon={<FaFolder className="opacity-70 flex-none" size={13} />}
+        count={globalEntries.length}
+        active={effectiveFolderFilter === '__all__'}
+        onClick={() => setFolderFilter('__all__')}
+      />
+      <GlobalFolderRow
+        label="미분류"
+        icon={<FaFolder className="opacity-40 flex-none" size={13} />}
+        count={globalEntries.filter((e) => !e.folder).length}
+        active={effectiveFolderFilter === '__unfiled__'}
+        onClick={() => setFolderFilter('__unfiled__')}
+        droppable
+        dropFolder={null}
+      />
+      {globalFolders.map((f) => (
+        <GlobalFolderRow
+          key={f}
+          label={f}
+          icon={
+            <FaFolder
+              className="text-purple-400 dark:text-purple-500 flex-none"
+              size={13}
+            />
+          }
+          count={globalEntries.filter((e) => e.folder === f).length}
+          active={effectiveFolderFilter === f}
+          onClick={() => setFolderFilter(f)}
+          droppable
+          dropFolder={f}
+          onRename={() => {
+            setEditingFolder(f);
+            setEditFolderValue(f);
+          }}
+          onDelete={() => handleDeleteFolder(f)}
+          editing={editingFolder === f}
+          editValue={editFolderValue}
+          onEditChange={setEditFolderValue}
+          onEditCommit={commitFolderRename}
+          onEditCancel={() => setEditingFolder(null)}
+        />
+      ))}
+      {/* 새 폴더 — 인라인 입력 (Enter 확정 / Escape 취소) */}
+      {newFolderMode ? (
+        <GlobalFolderRow
+          label=""
+          icon={
+            <FaFolder
+              className="text-purple-400 dark:text-purple-500 flex-none"
+              size={13}
+            />
+          }
+          count={0}
+          active={false}
+          onClick={() => {}}
+          editing
+          editValue={newFolderValue}
+          onEditChange={setNewFolderValue}
+          onEditCommit={commitNewFolder}
+          onEditCancel={() => {
+            setNewFolderMode(false);
+            setNewFolderValue('');
+          }}
+        />
+      ) : (
+        <button
+          className="btn-ghost flex items-center justify-center md:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none md:w-full border border-dashed line-color text-muted"
+          onClick={() => {
+            setNewFolderMode(true);
+            setNewFolderValue('');
+          }}
+        >
+          <FaPlus size={11} />새 폴더
+        </button>
+      )}
+    </>
+  );
+
+  const gridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: isMobile
+      ? 'repeat(2, 1fr)'
+      : 'repeat(auto-fill, minmax(180px, 1fr))',
+    gap: '0.75rem',
+    alignContent: 'start',
+  };
+
+  // 글로벌 카드 그리드
+  const globalGrid = (
+    <div style={gridStyle} data-character-grid="global">
+      {/* 새 글로벌 프리셋 카드 (순차 생성·선택 모드가 아닐 때만) */}
+      {!cyclingMode && !selectMode && (
+        <div
+          className="rounded-lg border-2 border-dashed border-purple-300 dark:border-purple-600 hover:border-purple-500 cursor-pointer flex flex-col items-center justify-center aspect-[3/4] transition-colors group"
+          onClick={handleAddNewGlobal}
+        >
+          <FaPlus className="text-2xl text-purple-400 dark:text-purple-500 group-hover:text-purple-600 transition-colors mb-2" />
+          <span className="text-sm text-purple-400 dark:text-purple-500 group-hover:text-purple-600 transition-colors">
+            새 글로벌 프리셋
+          </span>
+        </div>
+      )}
+      {shownGlobalEntries.map((entry) => (
+        <GlobalCharacterPresetCard
+          key={entry.id}
+          entry={entry}
+          // 드래그 정렬·폴더 드롭은 전체 목록 기준 인덱스로 동작해야
+          // 한다 (폴더 필터로 걸러진 화면 인덱스와 다름)
+          index={globalEntries.indexOf(entry)}
+          isEasyMode={isEasyMode}
+          // 선택 모드도 순차 생성과 같은 체크 오버레이 UI 를 재사용
+          cyclingMode={cyclingMode || selectMode}
+          selected={selectedGlobalIds.has(entry.id)}
+          onToggleSelect={() => toggleGlobalSelection(entry.id)}
+          onApplyEasy={() => handleApplyGlobal(entry, 'easy')}
+          onApplyCharacter={() => handleApplyGlobal(entry, 'character')}
+          onLoad={() => handleLoadGlobal(entry)}
+          onEdit={() => handleEditGlobal(entry)}
+          onDuplicate={() => handleDuplicateGlobal(entry)}
+          onDelete={() => handleDeleteGlobal(entry)}
+          onMove={(from, to) =>
+            reorderGlobalCharactersRecorded(from, to)
+          }
+          onMoveToFolder={() => handleMoveToFolder(entry)}
+          reorderLocked={listSearching}
+        />
+      ))}
+      {listSearching && shownGlobalEntries.length === 0 && (
+        <div
+          className="col-span-full text-sm text-faint py-8 text-center"
+          data-list-no-hits=""
+        >
+          검색 결과가 없습니다
+        </div>
+      )}
+      {!listSearching &&
+        visibleGlobalEntries.length === 0 &&
+        (cyclingMode || selectMode) && (
+          <div className="col-span-full text-sm text-faint py-8 text-center">
+            이 폴더에 프리셋이 없습니다
+          </div>
+        )}
+    </div>
+  );
+
+  // 로컬 프리셋이 없을 때
+  const localEmpty = (
+    <div className="text-center py-12">
+      <FaUserAlt className="text-4xl mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+      <div className="text-muted mb-1">캐릭터 프리셋이 없습니다</div>
+      <div className="text-sm text-faint mb-4">새 프리셋을 추가해보세요</div>
+      <button
+        className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
+        onClick={handleAddNew}
+      >
+        <FaPlus className="inline mr-1.5" size={11} />
+        새 프리셋 추가
+      </button>
+    </div>
+  );
+
+  // 로컬 카드 그리드
+  const localGrid = (
+    <div style={gridStyle} data-character-grid="local">
+      {/* 새 프리셋 카드 (순회·선택 모드가 아닐 때만) */}
+      {!cyclingMode && !selectMode && (
+        <div
+          className="rounded-lg border-2 border-dashed line-color hover:border-sky-400 dark:hover:border-sky-500 cursor-pointer flex flex-col items-center justify-center aspect-[3/4] transition-colors group"
+          onClick={handleAddNew}
+        >
+          <FaPlus className="text-2xl text-faint group-hover:text-sky-500 transition-colors mb-2" />
+          <span className="text-sm text-faint group-hover:text-sky-500 transition-colors">
+            새 프리셋
+          </span>
+        </div>
+      )}
+
+      {/* 프리셋 카드들 — 검색으로 걸러도 index 는 원래 목록 위치(순서 이동 기준) */}
+      {shownPresets.map((preset) => (
+        <div key={preset.name} className="relative">
+          {(cyclingMode || selectMode) && (
+            <div
+              className="absolute top-2 left-2 z-30 cursor-pointer"
+              onClick={(e) => { e.stopPropagation(); togglePresetSelection(preset.name); }}
+            >
+              <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
+                selectedPresets.has(preset.name)
+                  ? 'bg-sky-500 border-sky-500 text-white'
+                  : 'bg-white/80 dark:bg-slate-800/80 line-color'
+              }`}>
+                {selectedPresets.has(preset.name) && <FaCheck size={12} />}
+              </div>
+            </div>
+          )}
+          <CharacterPresetCard
+            preset={preset}
+            index={presets.indexOf(preset)}
+            onEdit={() => (cyclingMode || selectMode) ? togglePresetSelection(preset.name) : handleEdit(preset)}
+            onDelete={() => handleDelete(preset)}
+            onApplyEasy={() => handleApplyEasy(preset)}
+            onApplyCharacter={() => handleApplyCharacter(preset)}
+            onDuplicate={() => handleDuplicate(preset)}
+            onMove={(from, to) =>
+              editCharacterPresets(curSession, UNDO_TEXT.characterPresetMove, () =>
+                curSession.moveCharacterPreset(from, to),
+              )
+            }
+            onCopyToGlobal={() => handleCopyToGlobal(preset)}
+            isEasyMode={isEasyMode}
+            hideActions={cyclingMode || selectMode}
+            reorderLocked={listSearching}
+          />
+        </div>
+      ))}
+      {listSearching && shownPresets.length === 0 && (
+        <div
+          className="col-span-full text-sm text-faint py-8 text-center"
+          data-list-no-hits=""
+        >
+          검색 결과가 없습니다
+        </div>
+      )}
+    </div>
+  );
+
+  // 지금 보기의 카드 영역(빈 로컬이면 안내)
+  const cardsArea = globalView ? globalGrid : presets.length === 0 ? localEmpty : localGrid;
+
+  // 순차 생성 — 씬 선택 머리 버튼(씬 템플릿 가져오기·전체 선택/해제)
+  const sceneHeaderButtons = (
+    <>
+      {/* 씬 템플릿을 현 프로젝트에 가져와 바로 순차 생성 대상으로 쓴다
+          (2026-07-18 재검증 피드백 1) — 가져온 씬은 자동 선택 */}
+      <button
+        onClick={async () => {
+          const result =
+            await templateService.importSceneTemplate(curSession);
+          // 되돌리기 1항목(들어간 씬 + 덮어쓰기로 휴지통에 보낸 기존 씬 — 2차 묶음 5)
+          recordSceneTemplateImport(curSession, result);
+          const names = result?.names;
+          if (names && names.length > 0) {
+            setSelectedScenes((prev) => {
+              const next = new Set(prev);
+              names.forEach((n) => next.add(n));
+              return next;
+            });
+          }
+        }}
+        className="text-xs btn-link"
+      >
+        씬 템플릿을 프로젝트로 복사
+      </button>
+      <button
+        onClick={() => {
+          const targets = filteredScenes.map((s) => s.name);
+          const allSelected = targets.every((n) => selectedScenes.has(n));
+          const next = new Set(selectedScenes);
+          targets.forEach((n) => allSelected ? next.delete(n) : next.add(n));
+          setSelectedScenes(next);
+        }}
+        className="text-xs btn-link"
+      >
+        {filteredScenes.every((s) => selectedScenes.has(s.name)) ? '전체 해제' : '전체 선택'}
+        {sceneFilter.trim() && ` (${filteredScenes.length}개)`}
+      </button>
+    </>
+  );
+
+  const sceneFilterInput = (
+    <input
+      type="text"
+      placeholder="씬 이름 검색..."
+      value={sceneFilter}
+      onChange={(e) => setSceneFilter(e.target.value)}
+      className="w-full mb-1 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+    />
+  );
+
+  // 씬 목록 — PC 는 설정 열의 남은 높이 전부(그 열의 유일한 스크롤), 모바일은 종전 높이 상한
+  const sceneList = (
+    <div
+      className={
+        (wide ? 'flex-1 min-h-0' : 'max-h-36') +
+        ' overflow-y-auto border line-color rounded-lg p-2 space-y-1'
+      }
+      data-cycling-scene-list=""
+    >
+      {filteredScenes.map((scene) => (
+        <label key={scene.name} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 rounded px-1 py-0.5">
+          <input
+            type="checkbox"
+            checked={selectedScenes.has(scene.name)}
+            onChange={() => toggleSceneSelection(scene.name)}
+            className="rounded line-color"
+          />
+          <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{scene.name}</span>
+        </label>
+      ))}
+      {filteredScenes.length === 0 && (
+        <div className="text-xs text-faint py-1">일치하는 씬이 없습니다</div>
+      )}
+    </div>
+  );
+
+  // 프로젝트 파일 생성 모드 토글
+  const projectFileToggle = (
+    <label className="flex items-start gap-2 mb-3 cursor-pointer select-none">
+      <input
+        type="checkbox"
+        checked={projectFileMode}
+        onChange={(e) => setProjectFileMode(e.target.checked)}
+        className="mt-0.5 rounded line-color"
+      />
+      <span className="text-sm text-gray-700 dark:text-gray-300">
+        <span className="font-medium">프로젝트 파일 생성으로 동작</span>
+        <span className="block text-xs text-muted">
+          각 프리셋을 프리셋 이름의 새 프로젝트로 복제(이미지 미포함)해 생성합니다. 원본 프로젝트는 그대로 유지됩니다.
+        </span>
+      </span>
+    </label>
+  );
+
+  const samplesInput = (
+    <div className="flex items-center gap-1.5">
+      <span className="text-sm text-muted">생성 수:</span>
+      <input
+        type="number"
+        min={1}
+        max={100}
+        value={cyclingSamples}
+        onChange={(e) => setCyclingSamples(Math.max(1, parseInt(e.target.value) || 1))}
+        className="w-16 px-2 py-1 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+      />
+    </div>
+  );
+
+  // [순차 생성 시작] — PC 는 바닥줄 오른쪽, 모바일은 설정 패널 맨 아래(종전)
+  const startCyclingButton = (extraClass: string) => (
+    <button
+      className={`${extraClass}px-4 py-1.5 rounded-lg text-white text-sm font-medium transition-colors flex items-center gap-1.5 ${
+        globalView ? 'bg-purple-500 hover:bg-purple-600' : 'bg-green-500 hover:bg-green-600'
+      }`}
+      onClick={startCycling}
+      disabled={selectedCyclingCount === 0 || selectedScenes.size === 0}
+      data-cycling-start=""
+    >
+      <FaPlay size={10} />
+      순차 생성 시작
+    </button>
+  );
+
+  // ─── 모바일 — 종전 한 열 그대로(본문 하나) ───
+  if (!wide) {
+    return {
+      bodyPadding: 'normal',
+      body: (
     <div
       ref={listRootRef}
       className="text-default"
@@ -1243,460 +1896,35 @@ export const CharacterPresetEditor = observer(({
       <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           {/* 로컬/글로벌 전환 토글 */}
-          <button
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
-              globalView
-                ? 'bg-purple-500 text-white'
-                : 'btn-neutral text-body'
-            }`}
-            onClick={() => {
-              if (cyclingMode) exitCyclingMode();
-              if (selectMode) exitSelectMode();
-              setListQuery('');
-              setGlobalView(!globalView);
-            }}
-          >
-            {globalView ? <FaGlobe size={12} /> : <FaUsers size={12} />}
-            {globalView ? '글로벌' : '로컬'}
-          </button>
-          {(globalView ? globalEntries.length >= 2 : presets.length >= 2) && (
-            <button
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
-                cyclingMode
-                  ? (globalView ? 'bg-purple-500 text-white' : 'bg-sky-500 text-white')
-                  : 'btn-neutral text-body'
-              }`}
-              onClick={() => cyclingMode ? exitCyclingMode() : enterCyclingMode()}
-            >
-              <FaSync size={11} />
-              {cyclingMode ? '순차 생성 모드 끄기' : '순차 생성 모드'}
-            </button>
-          )}
-          {/* 일괄 선택 → 일괄 적용(양 뷰) / 폴더 이동(글로벌) — 순차 생성과 배타 */}
-          {(globalView ? globalEntries.length > 0 : presets.length > 0) && (
-            <button
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
-                selectMode
-                  ? globalView
-                    ? 'bg-purple-500 text-white'
-                    : 'bg-sky-500 text-white'
-                  : 'btn-neutral text-body'
-              }`}
-              onClick={() => (selectMode ? exitSelectMode() : enterSelectMode())}
-            >
-              <FaCheckSquare size={11} />
-              {selectMode ? '선택 모드 끄기' : '선택'}
-            </button>
-          )}
+          {mobileViewToggle}
+          {modeButtons}
         </div>
-        <div className="flex items-center gap-2">
-          {!globalView && presets.length > 0 && (
-            <Tooltip content="모든 로컬 프리셋을 글로벌로 복사 (원본 유지)">
-              <button
-                className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 disabled:opacity-50"
-                disabled={bulkSending}
-                onClick={handleSendAllToGlobal}
-              >
-                <ActionIcon id="copy-to-global" size={11} />
-                {bulkSending ? '복사하는 중...' : '모두 글로벌로 복사'}
-              </button>
-            </Tooltip>
-          )}
-          {!globalView && presets.length > 0 && (
-            <Tooltip content="모든 프리셋 내보내기">
-              <button
-                className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5"
-                onClick={() => exportCharacterPresets(curSession)}
-              >
-                <ActionIcon id="export" size={11} />
-                내보내기
-              </button>
-            </Tooltip>
-          )}
-          {!globalView && (
-            <Tooltip content="프리셋 파일 불러오기">
-              <label className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 cursor-pointer">
-                <ActionIcon id="import" size={11} />
-                불러오기
-                <input
-                  type="file"
-                  accept=".json"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      await importCharacterPresets(curSession, file);
-                      e.target.value = '';
-                    }
-                  }}
-                />
-              </label>
-            </Tooltip>
-          )}
-          {/* 글로벌 내보내기/불러오기 — PC↔모바일 크로스 작업 이동용.
-              파일 형식이 로컬과 동일해 로컬 내보내기 파일도 불러올 수 있다. */}
-          {globalView && globalEntries.length > 0 && (
-            <Tooltip content="모든 글로벌 프리셋 내보내기">
-              <button
-                className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5"
-                onClick={exportGlobalCharacterPresets}
-              >
-                <ActionIcon id="export" size={11} />
-                내보내기
-              </button>
-            </Tooltip>
-          )}
-          {globalView && (
-            <Tooltip content="프리셋 파일 불러오기 (로컬에서 내보낸 파일도 가능)">
-              {/* PC 에서 Google 드라이브에 연결돼 있으면 출처([Google 드라이브 / 파일])를 먼저 묻는다
-                  (드라이브 API ③). Android·미연결은 기존처럼 바로 파일 선택기. */}
-              <label
-                className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 cursor-pointer"
-                onClick={(e) =>
-                  interceptFileImportClick(e, globalImportInputRef.current, 'character-presets')
-                }
-              >
-                <ActionIcon id="import" size={11} />
-                불러오기
-                <input
-                  ref={globalImportInputRef}
-                  type="file"
-                  accept=".json"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      await importGlobalCharacterPresets(file);
-                      e.target.value = '';
-                    }
-                  }}
-                />
-              </label>
-            </Tooltip>
-          )}
-          {/* 도움말은 행 맨 끝 고정 (버튼 사이 배치가 어색하다는 피드백) */}
-          <HelpIcon
-            content={
-              '캐릭터 프리셋은 캐릭터 프롬프트, 네거티브, 바이브, 레퍼런스의 묶음입니다.\n' +
-              '카드 버튼으로 현재 프로젝트에 적용/해제합니다 (여러 개 일괄 적용 가능).\n' +
-              '글로벌 프리셋은 모든 프로젝트에서 공유되며, 적용하면 현재 프로젝트로 사본이 들어갑니다.'
-            }
-          />
-        </div>
+        <div className="flex items-center gap-2">{fileButtons}</div>
       </div>
 
-      {/* 일괄 선택 액션 바 — 다중 선택 후 일괄 적용(양 뷰) / 폴더 이동(글로벌) */}
-      {selectMode && (
-        <div className="mb-2 flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {(globalView ? selectedGlobalIds.size : selectedPresets.size)}개
-            선택
-          </span>
-          <button
-            className="text-xs btn-link"
-            onClick={toggleSelectAllShown}
-          >
-            {allShownSelected ? '전체 해제' : '전체 선택'}
-          </button>
-          <Tooltip content="선택한 프리셋을 캐릭터 프롬프트로 일괄 적용 (기존 적용에 추가)">
-            <button
-              className="px-3 py-1 rounded-lg text-xs font-medium btn-solid-yellow"
-              disabled={
-                (globalView ? selectedGlobalIds.size : selectedPresets.size) ===
-                0
-              }
-              onClick={bulkApplyCharacter}
-            >
-              <FaUserAlt className="inline mr-1" size={10} />
-              선택 적용
-            </button>
-          </Tooltip>
-          {globalView && (
-            <button
-              className="px-3 py-1 rounded-lg text-xs font-medium btn-solid-purple"
-              disabled={selectedGlobalIds.size === 0}
-              onClick={bulkMoveToFolder}
-            >
-              <FaFolder className="inline mr-1" size={10} />
-              폴더로 이동
-            </button>
-          )}
-          <button
-            className="px-3 py-1 rounded-lg text-xs btn-neutral text-body"
-            disabled={
-              (globalView ? selectedGlobalIds.size : selectedPresets.size) === 0
-            }
-            onClick={() => {
-              setSelectedGlobalIds(new Set());
-              setSelectedPresets(new Set());
-            }}
-          >
-            선택 해제
-          </button>
-          <button
-            className="px-3 py-1 rounded-lg text-xs font-medium btn-solid-red disabled:opacity-50"
-            disabled={
-              (globalView ? selectedGlobalIds.size : selectedPresets.size) === 0
-            }
-            onClick={handleDeleteSelected}
-          >
-            <FaTrash className="inline mr-1" size={10} />
-            선택 삭제
-          </button>
-        </div>
-      )}
+      {selectMode && selectionBar('mb-2 flex items-center gap-2 flex-wrap')}
 
-      {/* 프리셋 선택 바 (순차 생성 모드): 실제 선택 카드 바로 위에 두어 조작 위치를 일치시킴 */}
-      {cyclingMode && (
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            프리셋 선택 (
-            {globalView ? selectedGlobalIds.size : selectedPresets.size}/
-            {globalView ? shownGlobalEntries.length : shownPresets.length})
-          </span>
-          <button
-            onClick={toggleSelectAllShown}
-            className="text-xs btn-link"
-          >
-            {allShownSelected ? '전체 해제' : '전체 선택'}
-          </button>
-        </div>
-      )}
+      {cyclingMode && cyclingSelectBar('mb-2 flex items-center justify-between')}
 
       {globalView ? (
         <div className="flex flex-col md:flex-row gap-3">
-          {/* 좌측 폴더 패널 (PC: 세로 목록 / 모바일: 상단 가로 스크롤 —
-              그리드 탐색기 좌측 패널 관례의 경량판) */}
-          <div className="flex md:flex-col gap-1.5 md:w-44 md:flex-none flex-none overflow-x-auto md:overflow-y-auto md:max-h-[65vh] pb-1 md:pb-0">
-            <GlobalFolderRow
-              label="전체"
-              icon={<FaFolder className="opacity-70 flex-none" size={13} />}
-              count={globalEntries.length}
-              active={effectiveFolderFilter === '__all__'}
-              onClick={() => setFolderFilter('__all__')}
-            />
-            <GlobalFolderRow
-              label="미분류"
-              icon={<FaFolder className="opacity-40 flex-none" size={13} />}
-              count={globalEntries.filter((e) => !e.folder).length}
-              active={effectiveFolderFilter === '__unfiled__'}
-              onClick={() => setFolderFilter('__unfiled__')}
-              droppable
-              dropFolder={null}
-            />
-            {globalFolders.map((f) => (
-              <GlobalFolderRow
-                key={f}
-                label={f}
-                icon={
-                  <FaFolder
-                    className="text-purple-400 dark:text-purple-500 flex-none"
-                    size={13}
-                  />
-                }
-                count={globalEntries.filter((e) => e.folder === f).length}
-                active={effectiveFolderFilter === f}
-                onClick={() => setFolderFilter(f)}
-                droppable
-                dropFolder={f}
-                onRename={() => {
-                  setEditingFolder(f);
-                  setEditFolderValue(f);
-                }}
-                onDelete={() => handleDeleteFolder(f)}
-                editing={editingFolder === f}
-                editValue={editFolderValue}
-                onEditChange={setEditFolderValue}
-                onEditCommit={commitFolderRename}
-                onEditCancel={() => setEditingFolder(null)}
-              />
-            ))}
-            {/* 새 폴더 — 인라인 입력 (Enter 확정 / Escape 취소) */}
-            {newFolderMode ? (
-              <GlobalFolderRow
-                label=""
-                icon={
-                  <FaFolder
-                    className="text-purple-400 dark:text-purple-500 flex-none"
-                    size={13}
-                  />
-                }
-                count={0}
-                active={false}
-                onClick={() => {}}
-                editing
-                editValue={newFolderValue}
-                onEditChange={setNewFolderValue}
-                onEditCommit={commitNewFolder}
-                onEditCancel={() => {
-                  setNewFolderMode(false);
-                  setNewFolderValue('');
-                }}
-              />
-            ) : (
-              <button
-                className="btn-ghost flex items-center justify-center md:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none md:w-full border border-dashed line-color text-muted"
-                onClick={() => {
-                  setNewFolderMode(true);
-                  setNewFolderValue('');
-                }}
-              >
-                <FaPlus size={11} />새 폴더
-              </button>
-            )}
+          {/* 폴더 줄 (모바일: 상단 가로 스크롤 / 태블릿 폭: 왼쪽 세로 목록 — 2026-11-15 C-3 에서 세로 높이 상한·안쪽 스크롤 제거, 본문 스크롤 하나) */}
+          <div className="flex md:flex-col gap-1.5 md:w-44 md:flex-none flex-none overflow-x-auto pb-1 md:pb-0">
+            {folderRows}
           </div>
           {/* 우측 카드 그리드 — 맨 위 이름 검색(폴더 범위 안, 2026-11-14 M4) */}
           <div className="flex-1 min-w-0">
             {globalEntries.length > 0 &&
               listSearchBar(visibleGlobalEntries.length, shownGlobalEntries.length)}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: isMobile
-                  ? 'repeat(2, 1fr)'
-                  : 'repeat(auto-fill, minmax(180px, 1fr))',
-                gap: '0.75rem',
-                alignContent: 'start',
-              }}
-            >
-              {/* 새 글로벌 프리셋 카드 (순차 생성·선택 모드가 아닐 때만) */}
-              {!cyclingMode && !selectMode && (
-                <div
-                  className="rounded-lg border-2 border-dashed border-purple-300 dark:border-purple-600 hover:border-purple-500 cursor-pointer flex flex-col items-center justify-center aspect-[3/4] transition-colors group"
-                  onClick={handleAddNewGlobal}
-                >
-                  <FaPlus className="text-2xl text-purple-400 dark:text-purple-500 group-hover:text-purple-600 transition-colors mb-2" />
-                  <span className="text-sm text-purple-400 dark:text-purple-500 group-hover:text-purple-600 transition-colors">
-                    새 글로벌 프리셋
-                  </span>
-                </div>
-              )}
-              {shownGlobalEntries.map((entry) => (
-                <GlobalCharacterPresetCard
-                  key={entry.id}
-                  entry={entry}
-                  // 드래그 정렬·폴더 드롭은 전체 목록 기준 인덱스로 동작해야
-                  // 한다 (폴더 필터로 걸러진 화면 인덱스와 다름)
-                  index={globalEntries.indexOf(entry)}
-                  isEasyMode={isEasyMode}
-                  // 선택 모드도 순차 생성과 같은 체크 오버레이 UI 를 재사용
-                  cyclingMode={cyclingMode || selectMode}
-                  selected={selectedGlobalIds.has(entry.id)}
-                  onToggleSelect={() => toggleGlobalSelection(entry.id)}
-                  onApplyEasy={() => handleApplyGlobal(entry, 'easy')}
-                  onApplyCharacter={() => handleApplyGlobal(entry, 'character')}
-                  onLoad={() => handleLoadGlobal(entry)}
-                  onEdit={() => handleEditGlobal(entry)}
-                  onDuplicate={() => handleDuplicateGlobal(entry)}
-                  onDelete={() => handleDeleteGlobal(entry)}
-                  onMove={(from, to) =>
-                    reorderGlobalCharactersRecorded(from, to)
-                  }
-                  onMoveToFolder={() => handleMoveToFolder(entry)}
-                  reorderLocked={listSearching}
-                />
-              ))}
-              {listSearching && shownGlobalEntries.length === 0 && (
-                <div
-                  className="col-span-full text-sm text-faint py-8 text-center"
-                  data-list-no-hits=""
-                >
-                  검색 결과가 없습니다
-                </div>
-              )}
-              {!listSearching &&
-                visibleGlobalEntries.length === 0 &&
-                (cyclingMode || selectMode) && (
-                  <div className="col-span-full text-sm text-faint py-8 text-center">
-                    이 폴더에 프리셋이 없습니다
-                  </div>
-                )}
-            </div>
+            {globalGrid}
           </div>
         </div>
       ) : presets.length === 0 ? (
-        <div className="text-center py-12">
-          <FaUserAlt className="text-4xl mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-          <div className="text-muted mb-1">캐릭터 프리셋이 없습니다</div>
-          <div className="text-sm text-faint mb-4">새 프리셋을 추가해보세요</div>
-          <button
-            className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
-            onClick={handleAddNew}
-          >
-            <FaPlus className="inline mr-1.5" size={11} />
-            새 프리셋 추가
-          </button>
-        </div>
+        localEmpty
       ) : (
           <>
           {listSearchBar(presets.length, shownPresets.length)}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(180px, 1fr))',
-              gap: '0.75rem',
-              alignContent: 'start',
-            }}
-          >
-            {/* 새 프리셋 카드 (순회·선택 모드가 아닐 때만) */}
-            {!cyclingMode && !selectMode && (
-              <div
-                className="rounded-lg border-2 border-dashed line-color hover:border-sky-400 dark:hover:border-sky-500 cursor-pointer flex flex-col items-center justify-center aspect-[3/4] transition-colors group"
-                onClick={handleAddNew}
-              >
-                <FaPlus className="text-2xl text-faint group-hover:text-sky-500 transition-colors mb-2" />
-                <span className="text-sm text-faint group-hover:text-sky-500 transition-colors">
-                  새 프리셋
-                </span>
-              </div>
-            )}
-
-            {/* 프리셋 카드들 — 검색으로 걸러도 index 는 원래 목록 위치(순서 이동 기준) */}
-            {shownPresets.map((preset) => (
-              <div key={preset.name} className="relative">
-                {(cyclingMode || selectMode) && (
-                  <div
-                    className="absolute top-2 left-2 z-30 cursor-pointer"
-                    onClick={(e) => { e.stopPropagation(); togglePresetSelection(preset.name); }}
-                  >
-                    <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
-                      selectedPresets.has(preset.name)
-                        ? 'bg-sky-500 border-sky-500 text-white'
-                        : 'bg-white/80 dark:bg-slate-800/80 line-color'
-                    }`}>
-                      {selectedPresets.has(preset.name) && <FaCheck size={12} />}
-                    </div>
-                  </div>
-                )}
-                <CharacterPresetCard
-                  preset={preset}
-                  index={presets.indexOf(preset)}
-                  onEdit={() => (cyclingMode || selectMode) ? togglePresetSelection(preset.name) : handleEdit(preset)}
-                  onDelete={() => handleDelete(preset)}
-                  onApplyEasy={() => handleApplyEasy(preset)}
-                  onApplyCharacter={() => handleApplyCharacter(preset)}
-                  onDuplicate={() => handleDuplicate(preset)}
-                  onMove={(from, to) =>
-                    editCharacterPresets(curSession, UNDO_TEXT.characterPresetMove, () =>
-                      curSession.moveCharacterPreset(from, to),
-                    )
-                  }
-                  onCopyToGlobal={() => handleCopyToGlobal(preset)}
-                  isEasyMode={isEasyMode}
-                  hideActions={cyclingMode || selectMode}
-                  reorderLocked={listSearching}
-                />
-              </div>
-            ))}
-            {listSearching && shownPresets.length === 0 && (
-              <div
-                className="col-span-full text-sm text-faint py-8 text-center"
-                data-list-no-hits=""
-              >
-                검색 결과가 없습니다
-              </div>
-            )}
-          </div>
+          {localGrid}
           </>
       )}
       {/* 순차 생성 설정 패널 (로컬/글로벌 공통) */}
@@ -1708,82 +1936,12 @@ export const CharacterPresetEditor = observer(({
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                     씬 선택 ({selectedScenes.size}/{scenes.length})
                   </span>
-                  <div className="flex items-center gap-3">
-                    {/* 씬 템플릿을 현 프로젝트에 가져와 바로 순차 생성 대상으로 쓴다
-                        (2026-07-18 재검증 피드백 1) — 가져온 씬은 자동 선택 */}
-                    <button
-                      onClick={async () => {
-                        const result =
-                          await templateService.importSceneTemplate(curSession);
-                        // 되돌리기 1항목(들어간 씬 + 덮어쓰기로 휴지통에 보낸 기존 씬 — 2차 묶음 5)
-                        recordSceneTemplateImport(curSession, result);
-                        const names = result?.names;
-                        if (names && names.length > 0) {
-                          setSelectedScenes((prev) => {
-                            const next = new Set(prev);
-                            names.forEach((n) => next.add(n));
-                            return next;
-                          });
-                        }
-                      }}
-                      className="text-xs btn-link"
-                    >
-                      씬 템플릿을 프로젝트로 복사
-                    </button>
-                    <button
-                      onClick={() => {
-                        const targets = filteredScenes.map((s) => s.name);
-                        const allSelected = targets.every((n) => selectedScenes.has(n));
-                        const next = new Set(selectedScenes);
-                        targets.forEach((n) => allSelected ? next.delete(n) : next.add(n));
-                        setSelectedScenes(next);
-                      }}
-                      className="text-xs btn-link"
-                    >
-                      {filteredScenes.every((s) => selectedScenes.has(s.name)) ? '전체 해제' : '전체 선택'}
-                      {sceneFilter.trim() && ` (${filteredScenes.length}개)`}
-                    </button>
-                  </div>
+                  <div className="flex items-center gap-3">{sceneHeaderButtons}</div>
                 </div>
-                <input
-                  type="text"
-                  placeholder="씬 이름 검색..."
-                  value={sceneFilter}
-                  onChange={(e) => setSceneFilter(e.target.value)}
-                  className="w-full mb-1 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
-                />
-                <div className="max-h-36 overflow-y-auto border line-color rounded-lg p-2 space-y-1">
-                  {filteredScenes.map((scene) => (
-                    <label key={scene.name} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 rounded px-1 py-0.5">
-                      <input
-                        type="checkbox"
-                        checked={selectedScenes.has(scene.name)}
-                        onChange={() => toggleSceneSelection(scene.name)}
-                        className="rounded line-color"
-                      />
-                      <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{scene.name}</span>
-                    </label>
-                  ))}
-                  {filteredScenes.length === 0 && (
-                    <div className="text-xs text-faint py-1">일치하는 씬이 없습니다</div>
-                  )}
-                </div>
+                {sceneFilterInput}
+                {sceneList}
               </div>
-              {/* 프로젝트 파일 생성 모드 토글 */}
-              <label className="flex items-start gap-2 mb-3 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={projectFileMode}
-                  onChange={(e) => setProjectFileMode(e.target.checked)}
-                  className="mt-0.5 rounded line-color"
-                />
-                <span className="text-sm text-gray-700 dark:text-gray-300">
-                  <span className="font-medium">프로젝트 파일 생성으로 동작</span>
-                  <span className="block text-xs text-muted">
-                    각 프리셋을 프리셋 이름의 새 프로젝트로 복제(이미지 미포함)해 생성합니다. 원본 프로젝트는 그대로 유지됩니다.
-                  </span>
-                </span>
-              </label>
+              {projectFileToggle}
               {/* 생성 수 + 시작 버튼 */}
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="text-sm text-muted">
@@ -1792,31 +1950,142 @@ export const CharacterPresetEditor = observer(({
                 <div className="text-sm text-muted">
                   씬: <span className="font-medium text-body">{selectedScenes.size}개</span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm text-muted">생성 수:</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={cyclingSamples}
-                    onChange={(e) => setCyclingSamples(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-16 px-2 py-1 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
-                  />
-                </div>
-                <button
-                  className={`ml-auto px-4 py-1.5 rounded-lg text-white text-sm font-medium transition-colors flex items-center gap-1.5 ${
-                    globalView ? 'bg-purple-500 hover:bg-purple-600' : 'bg-green-500 hover:bg-green-600'
-                  }`}
-                  onClick={startCycling}
-                  disabled={selectedCyclingCount === 0 || selectedScenes.size === 0}
-                >
-                  <FaPlay size={10} />
-                  순차 생성 시작
-                </button>
+                {samplesInput}
+                {startCyclingButton('ml-auto ')}
               </div>
             </div>
           )}
     </div>
+      ),
+    };
+  }
+
+  // ─── PC — xl 고정 높이 슬롯 배치 ───
+
+  // aside: 맨 위 [로컬 | 글로벌] → 글로벌 = 폴더 행 / 로컬 = 「이 프로젝트 · n개」 + 안내. 두 보기 공통이라 그리드 폭이 출렁이지 않는다.
+  // 폴더 행은 같은 React 트리라 카드 → 폴더 끌어 놓기(폴더로 이동)가 그대로 동작한다(검색 중에도 허용 — M4).
+  const aside = (
+    <div className="flex flex-col h-full min-h-0" data-character-preset-aside="">
+      <div className="flex-none p-3 border-b line-color">{asideViewToggle}</div>
+      <div
+        className="flex-1 min-h-0 overflow-y-auto p-2 flex flex-col gap-1.5"
+        data-character-aside-list={globalView ? 'global' : 'local'}
+      >
+        {globalView ? (
+          folderRows
+        ) : (
+          <>
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm bg-sky-500 text-white"
+              data-character-local-row=""
+            >
+              <FaUsers className="flex-none" size={12} />
+              <span className="flex-1 min-w-0 truncate">
+                이 프로젝트 · {presets.length}개
+              </span>
+            </div>
+            <div className="px-1 pt-1 text-xs text-faint leading-relaxed">
+              로컬 프리셋은 이 프로젝트에만 저장됩니다. 다른 프로젝트에서도 쓰려면 글로벌로 복사하세요.
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
+  // toolbar: 왼쪽 [순차 생성 모드][선택] + 이름 검색(스크롤해도 남게), 오른쪽 파일 버튼·도움말. 선택 모드면 둘째 줄 = 선택 바.
+  const showSearch = globalView ? globalEntries.length > 0 : presets.length > 0;
+  const toolbar = (
+    <div className="w-full flex flex-col gap-2" data-character-preset-toolbar="">
+      <div className="flex items-center gap-2 flex-wrap min-w-0">
+        {modeButtons}
+        {showSearch && (
+          <div className="flex-1 min-w-[12rem] max-w-md flex items-center gap-2">
+            <ListSearchBar
+              compact
+              className="flex-1"
+              query={listQuery}
+              onQueryChange={setListQuery}
+              placeholder="프리셋 이름 검색"
+              shown={globalView ? shownGlobalEntries.length : shownPresets.length}
+              total={globalView ? visibleGlobalEntries.length : presets.length}
+            />
+            {listSearching && <ListDragLockedHint className="flex-none whitespace-nowrap" />}
+          </div>
+        )}
+        <div className="ml-auto flex items-center gap-2">{fileButtons}</div>
+      </div>
+      {selectMode && selectionBar('flex items-center gap-2 flex-wrap')}
+    </div>
+  );
+
+  if (!cyclingMode) {
+    return {
+      toolbar,
+      aside,
+      bodyPadding: 'normal',
+      // 본문 = 카드 그리드만(창의 유일한 세로 스크롤)
+      body: <div className="text-default" data-character-preset-body="">{cardsArea}</div>,
+    };
+  }
+
+  // 순차 생성 모드: 「카드 | 설정 열」 두 칸(열마다 스크롤 하나), [순차 생성 시작] = 바닥줄
+  return {
+    toolbar,
+    aside,
+    bodyPadding: 'normal',
+    body: (
+      <div
+        className="text-default h-full min-h-0 flex gap-4"
+        data-character-preset-body=""
+        data-cycling-columns=""
+      >
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col" data-cycling-cards="">
+          {cyclingSelectBar('flex-none mb-2 flex items-center justify-between')}
+          <div className="flex-1 min-h-0 overflow-y-auto">{cardsArea}</div>
+        </div>
+        <div
+          className="flex-none w-[300px] min-h-0 flex flex-col pl-4 border-l line-color"
+          data-cycling-settings=""
+        >
+          {/* 씬 선택 — 목록이 이 열의 남은 높이를 채운다 */}
+          <div className="flex-1 min-h-0 flex flex-col mb-3">
+            <div className="flex-none mb-1">
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                씬 선택 ({selectedScenes.size}/{scenes.length})
+              </div>
+              <div className="flex items-center gap-3 flex-wrap">{sceneHeaderButtons}</div>
+            </div>
+            <div className="flex-none">{sceneFilterInput}</div>
+            {sceneList}
+          </div>
+          <div className="flex-none">
+            {projectFileToggle}
+            {samplesInput}
+          </div>
+        </div>
+      </div>
+    ),
+    footerStart: (
+      <span className="text-sm text-muted" data-cycling-summary="">
+        프리셋 {selectedCyclingCount}개 × 씬 {selectedScenes.size}개 · 샘플 {cyclingSamples}장
+      </span>
+    ),
+    footer: startCyclingButton(''),
+  };
+}
+
+// 인라인 사용(테스트·호환) — 슬롯을 차례로 그린다. 창에서는 CharacterPresetModalEditor 가 슬롯에 나눠 넣는다.
+export const CharacterPresetEditor = observer((props: CharacterPresetEditorProps) => {
+  const panel = useCharacterPresetPanel(props);
+  return (
+    <>
+      {panel.toolbar}
+      {panel.aside}
+      {panel.body}
+      {panel.footerStart}
+      {panel.footer}
+    </>
   );
 });
 
@@ -1833,20 +2102,27 @@ export const CharacterPresetModalEditor = observer(({
   // 안쪽 편집 중 변경이 있으면 ✕·바깥 클릭으로 관리 창 전체를 닫을 때 한 번 묻는다(2026-10-03 E2-4).
   // Esc·뒤로 가기는 안쪽 편집 폼이 먼저 받아 「목록으로」 간다(같은 가드).
   const editDirtyRef = React.useRef<(() => boolean) | null>(null);
+  const panel = useCharacterPresetPanel({
+    editDirtyRef,
+    onApplyPreset: (preset, mode) => {
+      if (onApplyPreset) onApplyPreset(preset, mode);
+    },
+  });
+  // xl 고정 높이(2026-11-15 C-3) — 목록·편집·순차 생성 전환에도 창 크기가 바뀌지 않는다
   return (
     <ModalOverlay
       isOpen={true}
       onClose={onClose}
       dirty={() => editDirtyRef.current?.() ?? false}
       title="캐릭터 프리셋 관리"
-      width="max-w-5xl"
+      size="xl"
+      toolbar={panel.toolbar}
+      aside={panel.aside}
+      footer={panel.footer}
+      footerStart={panel.footerStart}
+      bodyPadding={panel.bodyPadding}
     >
-      <CharacterPresetEditor
-        editDirtyRef={editDirtyRef}
-        onApplyPreset={(preset, mode) => {
-          if (onApplyPreset) onApplyPreset(preset, mode);
-        }}
-      />
+      {panel.body}
     </ModalOverlay>
   );
 });
