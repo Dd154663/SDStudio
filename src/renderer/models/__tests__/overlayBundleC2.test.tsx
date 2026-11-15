@@ -63,7 +63,12 @@ jest.mock('../index', () => ({
   },
   globalPresetService: { loaded: true, presets: [], load: jest.fn() },
   globalCharacterPresetService: { loaded: true, list: () => [], load: jest.fn() },
-  sessionService: { applyProjectTemplateToSession: jest.fn() },
+  sessionService: {
+    applyProjectTemplateToSession: jest.fn(),
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+  },
+  backend: { getConfig: jest.fn(async () => ({})) },
 }));
 const mockAppState: any = {
   curSession: null,
@@ -84,9 +89,11 @@ jest.mock('../types', () => ({
     }
   },
 }));
-jest.mock('../../backends/imageGen', () => ({
-  Sampling: { KEulerAncestral: 'k_euler_ancestral' },
-  NoiseSchedule: { Karras: 'karras' },
+// 실물 열거형(모델 계열 알약이 naiModelCapabilities 의 모델 표를 읽는다, 2026-11-15 B안)
+jest.mock('../../backends/imageGen', () => jest.requireActual('../../backends/imageGen'));
+// 사전 세팅 편집기(무거운 모듈)는 V5M 네거티브 안내만 쓴다
+jest.mock('../../componenets/PreSetEdtior', () => ({
+  V5MediumNegativeNotice: () => <div data-v5m-negative-notice="" />,
 }));
 jest.mock('../nameInput', () => ({ promptName: jest.fn(), nameErrorMessage: jest.fn() }));
 jest.mock('../deleteFlowRules', () => ({

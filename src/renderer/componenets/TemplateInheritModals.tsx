@@ -5,6 +5,7 @@ import ModalOverlay from './ModalOverlay';
 import { useTemplateWorkflowPanel } from './TemplateManagerModal';
 import { FOLDER_COLORS } from './folderColors';
 import {
+  isMobile,
   projectTemplateService,
   sessionService,
   templateService,
@@ -326,6 +327,8 @@ export const FolderTemplateModal = observer(
         toolbar={toolbar}
         footer={panel.footer ?? undefined}
         footerStart={footerStart}
+        // 캐릭터 편집(PC) = 안쪽 편집기 layout="frame" 이 창 본문을 채우고 자체 바닥줄을 그린다(2026-11-15 C-3b)
+        bodyPadding={panel.charEditing && !isMobile ? 'none' : 'normal'}
       >
         {entry ? (
           panel.body

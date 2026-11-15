@@ -9,6 +9,7 @@ import { CharacterPresetInnerEditor } from './CharacterPresetInnerEditor';
 import { CharacterPreset } from '../models/types';
 import {
   globalCharacterPresetService,
+  isMobile,
   projectTemplateService,
   sessionService,
   templateService,
@@ -75,6 +76,9 @@ const CharThumb = ({ entry }: { entry: IGlobalCharacterPresetEntry }) => {
 
 const sectionCls =
   'p-3 rounded-lg border line-color bg-[var(--c-surface)] flex flex-col gap-2';
+// PC 두 열의 열(2026-11-15 C-3b) — 열마다 세로 스크롤 하나. TemplateManagerModal templateColCls 와 같은 값.
+const batchColCls =
+  'flex-1 min-w-0 min-h-0 overflow-y-auto flex flex-col gap-4';
 
 // 일괄 생성 조작 상태(2026-11-15 오버레이 묶음 C-2) — 패널 안 상태를 호스트 창 바닥줄([N개 생성]·진행·[취소])에
 // 알리는 값. execute·cancel 은 늘 최신 클로저를 부르는 고정 함수다(효과 의존성에 넣지 않아도 된다).
@@ -399,12 +403,17 @@ export const BatchCreatePanel = observer(
           onSave={finishCreatePreset}
           onCancel={cancelCreatePreset}
           imageBackend={globalImageBackend}
+          // PC = 두 열 + 자체 바닥줄(호스트가 bodyPadding 'none' — 2026-11-15 C-3b), 모바일 = 종전 inline
+          layout={isMobile ? 'inline' : 'frame'}
         />
       );
     }
 
-    return (
-      <div className="flex flex-col gap-4">
+    // 2026-11-15 C-3b: PC = 두 열(SPEC 높이 규칙 우선순위 (2)) — 왼쪽 열 = 안내 + 공유 프롬프트(+샘플링) 섹션,
+    // 오른쪽 열 = 대상 폴더·캐릭터 축·씬 축·폴더 규칙·미리보기·진행률·실패 목록. 열마다 세로 스크롤 하나,
+    // 패널 자신은 h-full 로 창 본문을 채우고 스크롤하지 않는다. 모바일 = 종전 한 열(순서 그대로).
+    const introEl = (
+      <>
         <p className="text-sm text-muted">
           선택한 <b>캐릭터 프리셋 × 씬 템플릿</b> 조합마다 자식 프로젝트를
           만듭니다. 아래 프롬프트가 모든 자식의 공통 베이스가 되고(여기서 바로
@@ -415,7 +424,10 @@ export const BatchCreatePanel = observer(
           지정합니다. 템플릿의 캐릭터 프리셋·씬 구성은 배치에서 무시되며,
           생성된 자식의 캐릭터·씬 영역은 이후 재적용·전파에서 보호됩니다.
         </p>
-
+      </>
+    );
+    const targetFolderEl = (
+      <>
         {/* 대상 폴더 — 전역 템플릿 호스트 전용 (새 폴더+폴더 템플릿 사본 생성) */}
         {!batchFolder && (
           <div className={sectionCls}>
@@ -438,10 +450,16 @@ export const BatchCreatePanel = observer(
             </div>
           </div>
         )}
-
+      </>
+    );
+    const promptEl = (
+      <>
         {/* 프롬프트(+샘플링) — 편집 탭과 같은 실물 섹션 */}
         {renderPromptSection()}
-
+      </>
+    );
+    const restEl = (
+      <>
         {/* 캐릭터 축 (편집 탭의 캐릭터 프리셋 자리) */}
         <div className={sectionCls}>
           <div className="flex items-center gap-2">
@@ -619,6 +637,30 @@ export const BatchCreatePanel = observer(
             </div>
           </div>
         )}
+      </>
+    );
+
+    if (!isMobile) {
+      return (
+        <div className="h-full min-h-0 flex gap-4" data-batch-body="two-col">
+          <div className={batchColCls} data-batch-col="left">
+            {introEl}
+            {promptEl}
+          </div>
+          <div className={batchColCls} data-batch-col="right">
+            {targetFolderEl}
+            {restEl}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col gap-4">
+        {introEl}
+        {targetFolderEl}
+        {promptEl}
+        {restEl}
       </div>
     );
   },

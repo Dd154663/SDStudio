@@ -12,6 +12,8 @@ import {
   FaTrash,
   FaFileArchive,
   FaFileImport,
+  FaChevronDown,
+  FaChevronUp,
 } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
 import ModalOverlay from './ModalOverlay';
@@ -24,10 +26,12 @@ import { GlobalPresetPicker } from './GlobalPresetPicker';
 import { EditableSliderValue } from './VibeEditor';
 import { FileUploadBase64 } from './UtilComponents';
 import {
+  backend,
   globalCharacterPresetService,
   globalPresetService,
   isMobile,
   projectTemplateService,
+  sessionService,
   templateService,
 } from '../models';
 import { appState } from '../models/AppService';
@@ -37,9 +41,26 @@ import {
   deleteConfirmText,
 } from '../models/deleteFlowRules';
 import { CharacterPreset, CharacterPrompt } from '../models/types';
-import { Sampling, NoiseSchedule } from '../backends/imageGen';
+import { Sampling, NoiseSchedule, ModelVersion } from '../backends/imageGen';
 import HelpIcon from './HelpIcon';
 import { renameTemplateRecorded } from '../models/globalLibraryUndo';
+import { V5MediumNegativeNotice } from './PreSetEdtior';
+import { normalizeModelVersion } from '../backends/genVendors/naiModelCapabilities';
+import {
+  MODEL_FAMILY_LABEL,
+  MODEL_FAMILY_NAME,
+  MODEL_SAMPLING_FAMILIES,
+  ModelSamplingFamily,
+  V5_MEDIUM_TEXT,
+} from '../models/modelSamplingProfiles';
+import {
+  TEMPLATE_SAMPLING_TEXT,
+  TemplateSamplingField,
+  buildTemplateSamplingPatch,
+  initialTemplateSamplingFamily,
+  readTemplateSamplingValue,
+  templateSamplingLocks,
+} from '../models/templateSamplingFamily';
 
 // "템플릿 관리" 오버레이 (프로젝트 상속 v2 — 2026-07-16 워크플로우형 재설계).
 //
@@ -62,6 +83,8 @@ const templateImageBackend: PresetImageBackend = {
   referencePath: (t) => projectTemplateService.getImagePath(t),
 };
 
+// 씬 구성 목록 기본 접힘 기준(이 개수를 넘으면 접힌 채로 시작) — 2026-11-15 실기 피드백 3
+const SCENE_FOLD_THRESHOLD = 6;
 const sectionCls =
   'p-3 rounded-lg border line-color bg-[var(--c-surface)] flex flex-col gap-2';
 const rowCls =
@@ -75,6 +98,11 @@ const backupBtnCls =
 // 샘플링 인라인 컨트롤 입력 (PresetEditModal 과 동일 스타일)
 const numCls =
   'mt-1 w-full px-2 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default';
+// 모델이 고정·미사용으로 두는 샘플링 칸(V5M 스텝·샘플러·CFG 리스케일, V5 계열 노이즈 스케줄) — 표시만 고정, 저장값은 보존
+const lockedCls = ' opacity-60 cursor-not-allowed';
+// PC 두 열 본문의 열(2026-11-15 C-3b) — 열마다 세로 스크롤 하나(SPEC 높이 규칙 우선순위 (2)). 일괄 생성 패널(BatchCreateModal batchColCls)과 같은 값.
+const templateColCls =
+  'flex-1 min-w-0 min-h-0 overflow-y-auto flex flex-col gap-4';
 // 캐릭터 프롬프트 번호 마커 팔레트 (메인 화면 CharacterPromptEditor 와 동일)
 const charColors = ['#38bdf8', '#f472b6', '#a78bfa', '#fb923c', '#4ade80', '#facc15', '#f87171', '#94a3b8'];
 
@@ -135,15 +163,39 @@ const TemplateWorkflowBody = observer(
     const [syncKey, setSyncKey] = useState(0);
     // 글로벌 프리셋 카드 선택 모달 (프롬프트 영역 불러오기)
     const [globalPickerOpen, setGlobalPickerOpen] = useState(false);
+    // 씬 구성 목록 접기(2026-11-15 사용자 실기 피드백 3) — 씬이 많으면(기본 접힘 기준 SCENE_FOLD_THRESHOLD 초과)
+    // 오른쪽 열 스크롤이 길어져 기본 접힘. 템플릿별 본문(key 재마운트)마다 초기화되는 가벼운 보기 상태.
+    const [scenesOpen, setScenesOpen] = useState<boolean | null>(null);
     // 캐릭터 프리셋 편집 (CharacterPresetInnerEditor 인라인 전환)
     const [editChar, setEditChar] = useState<{
       index: number | null; // null = 새로 만들기
       preset: CharacterPreset;
     } | null>(null);
 
-    const entry = projectTemplateService.get(templateId);
+    // 샘플링 칸의 모델 계열 알약(2026-11-15 B안) — null = 아직 고르지 않음(미러 계열 → 앱 모델 계열 → 4.5 로 정한다).
+    // 템플릿별 본문(key 재마운트)마다 초기화되는 보기 상태이고, 알약 전환 자체는 저장하지 않는다.
+    const [pickedFamily, setPickedFamily] = useState<ModelSamplingFamily | null>(null);
+    const [globalModel, setGlobalModel] = useState<ModelVersion | undefined>(undefined);
+    useEffect(() => {
+      const loadModel = async () => {
+        try {
+          const config = await backend.getConfig();
+          setGlobalModel(normalizeModelVersion(config.modelVersion));
+        } catch {
+          // 설정을 못 읽으면 미러 계열 → 4.5 규칙만 쓴다
+        }
+      };
+      void loadModel();
+      sessionService.addEventListener('config-changed', loadModel);
+      return () => sessionService.removeEventListener('config-changed', loadModel);
+    }, []);
 
-    const asStr = (v: any) => (typeof v === 'string' ? v : '');
+    const entry = projectTemplateService.get(templateId);
+    const samplingFamily: ModelSamplingFamily =
+      pickedFamily ?? initialTemplateSamplingFamily(entry?.preset, globalModel);
+    const samplingLocks = templateSamplingLocks(samplingFamily);
+
+    const asStr =(v: any) => (typeof v === 'string' ? v : '');
 
     // 프롬프트 인라인 필드 동기화 — 마운트/불러오기/세부 설정 후에만
     // (타이핑 중에는 로컬 상태가 진실이므로 매 렌더 동기화 금지)
@@ -263,6 +315,7 @@ const TemplateWorkflowBody = observer(
           );
         }
         setSyncKey((k) => k + 1);
+        setPickedFamily(null); // 알약 = 복사해 온 프리셋의 미러 계열(없으면 앱 모델 계열)
         appState.pushMessage('프롬프트·샘플링 설정을 덮어썼습니다.');
       } catch (e: any) {
         appState.pushMessage(e.message || '복사하지 못했습니다.');
@@ -275,6 +328,7 @@ const TemplateWorkflowBody = observer(
       try {
         await projectTemplateService.importGlobalPreset(templateId, globalId);
         setSyncKey((k) => k + 1);
+        setPickedFamily(null); // 알약 = 복사해 온 글로벌 프리셋의 미러 계열(없으면 앱 모델 계열)
         appState.pushMessage('프롬프트·샘플링 설정을 덮어썼습니다.');
       } catch (e: any) {
         appState.pushMessage(e.message || '복사하지 못했습니다.');
@@ -284,9 +338,18 @@ const TemplateWorkflowBody = observer(
     // ----- 샘플링 인라인 커밋 -----
     // 숫자/셀렉트는 onChange 즉시 patchPreset 커밋 — 프롬프트와 달리 마운트
     // 클로저 캡처(저장 유실) 성질이 없어 안전하다. 값 표시는 entry.preset 직독.
-    const patchSampling = (patch: Record<string, any>) => {
-      projectTemplateService.patchPreset(templateId, patch).catch(() => {});
+    // 2026-11-15 B안: 선택 계열의 값으로 읽고 쓴다(겉 필드 + samplingProfiles[계열] + samplingProfileFamily 를 한 번에).
+    const patchSampling = (field: TemplateSamplingField, value: number | string) => {
+      const current = projectTemplateService.get(templateId)?.preset;
+      projectTemplateService
+        .patchPreset(
+          templateId,
+          buildTemplateSamplingPatch(current, samplingFamily, field, value),
+        )
+        .catch(() => {});
     };
+    const samplingValue = (field: TemplateSamplingField) =>
+      readTemplateSamplingValue(entry?.preset, samplingFamily, field);
 
     // ----- 캐릭터 프롬프트 (NAI 멀티 캐릭터, preset.characterPrompts) -----
     // 항상 서비스에서 최신 목록을 읽어 커밋한다 — 로컬 상태 캡처 없음(안전).
@@ -490,6 +553,9 @@ const TemplateWorkflowBody = observer(
             onCancel={() => setEditChar(null)}
             isNew={editChar.index === null}
             imageBackend={templateImageBackend}
+            // PC = 돌아가기 줄 고정 → 두 열(열마다 스크롤) → 자체 바닥줄 [저장][취소]. 호스트가 이때
+            // bodyPadding 'none' 을 준다(C-3a 캐릭터 프리셋 관리와 같은 모양, 2026-11-15 C-3b). 모바일 = 종전 inline.
+            layout={isMobile ? 'inline' : 'frame'}
           />
         ) : (
           (() => {
@@ -527,48 +593,112 @@ const TemplateWorkflowBody = observer(
                 <div className="text-xs font-medium text-muted mb-1">
                   상위 프롬프트
                 </div>
-                <PromptEditTextArea
-                  value={frontPrompt}
-                  onChange={(v: string) => {
-                    setFrontPrompt(v);
-                    promptRef.current = {
-                      ...promptRef.current,
-                      frontPrompt: v,
-                    };
-                  }}
-                  disabled={false}
-                />
+                {/* min-h-20·max-h-40: 비어 있어도 3줄, 길어도 약 6줄까지만 자라고 그 뒤는 칸 안 스크롤(SPEC 높이 규칙 (3) 입력칸 고정 높이 허용, 2026-11-15) */}
+                <div className="flex flex-col min-h-20 max-h-40" data-template-prompt-box="front">
+                  <PromptEditTextArea
+                    className="flex-1 min-h-0"
+                    value={frontPrompt}
+                    onChange={(v: string) => {
+                      setFrontPrompt(v);
+                      promptRef.current = {
+                        ...promptRef.current,
+                        frontPrompt: v,
+                      };
+                    }}
+                    disabled={false}
+                  />
+                </div>
               </div>
               <div>
                 <div className="text-xs font-medium text-muted mb-1">
                   하위 프롬프트
                 </div>
-                <PromptEditTextArea
-                  value={backPrompt}
-                  onChange={(v: string) => {
-                    setBackPrompt(v);
-                    promptRef.current = {
-                      ...promptRef.current,
-                      backPrompt: v,
-                    };
-                  }}
-                  disabled={false}
-                />
+                <div className="flex flex-col min-h-20 max-h-40" data-template-prompt-box="back">
+                  <PromptEditTextArea
+                    className="flex-1 min-h-0"
+                    value={backPrompt}
+                    onChange={(v: string) => {
+                      setBackPrompt(v);
+                      promptRef.current = {
+                        ...promptRef.current,
+                        backPrompt: v,
+                      };
+                    }}
+                    disabled={false}
+                  />
+                </div>
               </div>
               <div>
                 <div className="text-xs font-medium text-muted mb-1">
                   네거티브 프롬프트
                 </div>
-                <PromptEditTextArea
-                  value={uc}
-                  onChange={(v: string) => {
-                    setUc(v);
-                    promptRef.current = { ...promptRef.current, uc: v };
-                  }}
-                  disabled={false}
-                />
+                <div
+                  className={
+                    'flex flex-col min-h-20 max-h-40' +
+                    (samplingLocks.negativeUnused ? ' opacity-60' : '')
+                  }
+                  data-template-prompt-box="uc"
+                >
+                  <PromptEditTextArea
+                    className="flex-1 min-h-0"
+                    value={uc}
+                    onChange={(v: string) => {
+                      setUc(v);
+                      promptRef.current = { ...promptRef.current, uc: v };
+                    }}
+                    disabled={false}
+                  />
+                </div>
+                {/* V5M: 입력은 막지 않고(값 보존) 흐리게 + 「쓰이지 않음」 안내 */}
+                {samplingLocks.negativeUnused && <V5MediumNegativeNotice under />}
               </div>
-              {/* 샘플링 설정 (인라인 — 변경 즉시 저장) */}
+              {/* 샘플링 설정 (인라인 — 변경 즉시 저장). 2026-11-15 B안: 머리 알약으로 고칠 모델 계열을 고른다
+                  — 앱 모델은 바꾸지 않고, 선택 계열의 값(samplingProfiles[계열])을 읽고 쓴다.
+                  모바일은 알약을 둘째 줄로(줄바꿈 허용, 가로 스크롤 없음). */}
+              <div
+                className={
+                  isMobile
+                    ? 'flex flex-col gap-1.5'
+                    : 'flex items-center gap-2 flex-wrap'
+                }
+                data-template-sampling-head={isMobile ? 'stacked' : 'row'}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted">샘플링</span>
+                  {isMobile && (
+                    <HelpIcon content={TEMPLATE_SAMPLING_TEXT.familyHelp} size={13} />
+                  )}
+                </div>
+                <div
+                  className="flex items-center gap-1 flex-wrap"
+                  role="group"
+                  aria-label="샘플링 값을 고칠 모델 계열"
+                  data-template-sampling-family={samplingFamily}
+                >
+                  {MODEL_SAMPLING_FAMILIES.map((f) => {
+                    const selected = samplingFamily === f;
+                    return (
+                      <button
+                        key={f}
+                        type="button"
+                        className={
+                          'btn text-xs px-2 py-0.5 rounded-full ' +
+                          (selected ? 'back-sky' : 'btn-ghost text-default')
+                        }
+                        data-family={f}
+                        aria-pressed={selected}
+                        aria-label={MODEL_FAMILY_NAME[f] + ' 계열 값 편집'}
+                        onClick={() => setPickedFamily(f)}
+                      >
+                        {MODEL_FAMILY_LABEL[f]}
+                      </button>
+                    );
+                  })}
+                </div>
+                {!isMobile && (
+                  <HelpIcon content={TEMPLATE_SAMPLING_TEXT.familyHelp} size={13} />
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <label className="text-sm text-default">
                   스탭 수
@@ -577,16 +707,25 @@ const TemplateWorkflowBody = observer(
                     min={1}
                     max={50}
                     step={1}
-                    value={
-                      typeof entry.preset?.steps === 'number'
-                        ? entry.preset.steps
-                        : 28
-                    }
+                    value={samplingLocks.fixedSteps ?? samplingValue('steps')}
                     onChange={(e) =>
-                      patchSampling({ steps: Number(e.target.value) })
+                      patchSampling('steps', Number(e.target.value))
                     }
-                    className={numCls}
+                    disabled={samplingLocks.fixedSteps !== undefined}
+                    title={
+                      samplingLocks.fixedSteps !== undefined
+                        ? V5_MEDIUM_TEXT.fixedField(String(samplingLocks.fixedSteps))
+                        : undefined
+                    }
+                    className={
+                      numCls + (samplingLocks.fixedSteps !== undefined ? lockedCls : '')
+                    }
                   />
+                  {samplingLocks.fixedSteps !== undefined && (
+                    <div className="text-xs text-sub mt-1" data-template-v5m-fixed="steps">
+                      {V5_MEDIUM_TEXT.fixedField(String(samplingLocks.fixedSteps))}
+                    </div>
+                  )}
                 </label>
                 <label className="text-sm text-default">
                   프롬프트 가이던스
@@ -595,13 +734,9 @@ const TemplateWorkflowBody = observer(
                     min={0}
                     max={10}
                     step={0.1}
-                    value={
-                      typeof entry.preset?.promptGuidance === 'number'
-                        ? entry.preset.promptGuidance
-                        : 5
-                    }
+                    value={samplingValue('promptGuidance')}
                     onChange={(e) =>
-                      patchSampling({ promptGuidance: Number(e.target.value) })
+                      patchSampling('promptGuidance', Number(e.target.value))
                     }
                     className={numCls}
                   />
@@ -613,25 +748,40 @@ const TemplateWorkflowBody = observer(
                     min={0}
                     max={1}
                     step={0.01}
-                    value={
-                      typeof entry.preset?.cfgRescale === 'number'
-                        ? entry.preset.cfgRescale
-                        : 0
-                    }
+                    value={samplingValue('cfgRescale')}
                     onChange={(e) =>
-                      patchSampling({ cfgRescale: Number(e.target.value) })
+                      patchSampling('cfgRescale', Number(e.target.value))
                     }
-                    className={numCls}
+                    disabled={samplingLocks.cfgRescaleUnsupported}
+                    title={
+                      samplingLocks.cfgRescaleUnsupported
+                        ? V5_MEDIUM_TEXT.cfgRescaleUnsupported
+                        : undefined
+                    }
+                    className={
+                      numCls + (samplingLocks.cfgRescaleUnsupported ? lockedCls : '')
+                    }
                   />
+                  {samplingLocks.cfgRescaleUnsupported && (
+                    <div className="text-xs text-sub mt-1" data-template-v5m-fixed="cfgRescale">
+                      {V5_MEDIUM_TEXT.cfgRescaleUnsupported}
+                    </div>
+                  )}
                 </label>
                 <label className="text-sm text-default">
                   샘플링
                   <select
-                    value={entry.preset?.sampling ?? Sampling.KEulerAncestral}
-                    onChange={(e) =>
-                      patchSampling({ sampling: e.target.value })
+                    value={samplingLocks.fixedSampler ?? samplingValue('sampling')}
+                    onChange={(e) => patchSampling('sampling', e.target.value)}
+                    disabled={samplingLocks.fixedSampler !== undefined}
+                    title={
+                      samplingLocks.fixedSampler !== undefined
+                        ? V5_MEDIUM_TEXT.fixedField(samplingLocks.fixedSampler)
+                        : undefined
                     }
-                    className={numCls}
+                    className={
+                      numCls + (samplingLocks.fixedSampler !== undefined ? lockedCls : '')
+                    }
                   >
                     {Object.values(Sampling).map((s) => (
                       <option key={s} value={s}>
@@ -639,17 +789,24 @@ const TemplateWorkflowBody = observer(
                       </option>
                     ))}
                   </select>
+                  {samplingLocks.fixedSampler !== undefined && (
+                    <div className="text-xs text-sub mt-1" data-template-v5m-fixed="sampling">
+                      {V5_MEDIUM_TEXT.fixedField(samplingLocks.fixedSampler)}
+                    </div>
+                  )}
                 </label>
                 <label className="text-sm text-default">
                   노이즈 스케줄
                   <select
                     value={
-                      entry.preset?.noiseSchedule ?? NoiseSchedule.Karras
+                      samplingLocks.forcedNoiseSchedule ?? samplingValue('noiseSchedule')
                     }
-                    onChange={(e) =>
-                      patchSampling({ noiseSchedule: e.target.value })
+                    onChange={(e) => patchSampling('noiseSchedule', e.target.value)}
+                    disabled={samplingLocks.forcedNoiseSchedule !== undefined}
+                    className={
+                      numCls +
+                      (samplingLocks.forcedNoiseSchedule !== undefined ? lockedCls : '')
                     }
-                    className={numCls}
                   >
                     {Object.values(NoiseSchedule).map((s) => (
                       <option key={s} value={s}>
@@ -657,8 +814,20 @@ const TemplateWorkflowBody = observer(
                       </option>
                     ))}
                   </select>
+                  {samplingLocks.forcedNoiseSchedule !== undefined && (
+                    <div className="text-xs text-sub mt-1" data-template-forced="noiseSchedule">
+                      {TEMPLATE_SAMPLING_TEXT.noiseScheduleForced(
+                        samplingLocks.forcedNoiseSchedule,
+                      )}
+                    </div>
+                  )}
                 </label>
               </div>
+              {samplingLocks.negativeUnused && (
+                <div className="text-xs text-sub" data-template-v5m-notice="">
+                  {V5_MEDIUM_TEXT.modelNotice}
+                </div>
+              )}
             </div>
             );
             // 캐릭터 프리셋 목록 — 편집 탭 전용 (배치 탭은 이 자리에 캐릭터 축)
@@ -731,8 +900,9 @@ const TemplateWorkflowBody = observer(
             // (캐릭터 프롬프트 데이터는 프리셋 소속(preset.characterPrompts)
             // 이지만 사용자 관점에선 캐릭터 세팅의 일부 — 캐릭터 프리셋과
             // 바이브 사이 배치, 2026-07-16 실기 피드백)
-            const middleSections = (
-            <>
+            // 2026-11-15 C-3b: PC 두 열 배치를 위해 캐릭터 프롬프트(왼쪽 열 — 글 입력) / 바이브·레퍼런스(오른쪽 열 —
+            // 이미지)로 나눴다. JSX 실물은 그대로, 모바일 한 열 순서도 종전과 같다.
+            const charPromptSection = (
             <div className={sectionCls}>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-default flex-1">
@@ -811,25 +981,35 @@ const TemplateWorkflowBody = observer(
                     </div>
                   </div>
                   <div className="mb-2">
-                    <PromptEditTextArea
-                      value={character.prompt}
-                      onChange={(value: string) =>
-                        updateCharPrompt(character.id, { prompt: value })
-                      }
-                    />
+                    {/* min-h-20·max-h-40: 비어 있어도 3줄, 길어도 약 6줄까지만 자라고 그 뒤는 칸 안 스크롤(SPEC 높이 규칙 (3) 입력칸 고정 높이 허용, 2026-11-15) */}
+                    <div className="flex flex-col min-h-20 max-h-40" data-template-prompt-box="char-prompt">
+                      <PromptEditTextArea
+                        className="flex-1 min-h-0"
+                        value={character.prompt}
+                        onChange={(value: string) =>
+                          updateCharPrompt(character.id, { prompt: value })
+                        }
+                      />
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 gray-label mb-1">
                     네거티브 프롬프트
                   </div>
-                  <PromptEditTextArea
-                    value={character.uc}
-                    onChange={(value: string) =>
-                      updateCharPrompt(character.id, { uc: value })
-                    }
-                  />
+                  <div className="flex flex-col min-h-20 max-h-40" data-template-prompt-box="char-uc">
+                    <PromptEditTextArea
+                      className="flex-1 min-h-0"
+                      value={character.uc}
+                      onChange={(value: string) =>
+                        updateCharPrompt(character.id, { uc: value })
+                      }
+                    />
+                  </div>
                 </div>
               ))}
             </div>
+            );
+            const vibeRefSections = (
+            <>
             {/* 바이브 이미지 (프로젝트 공통 — 캐릭터 프리셋 없이 직접 지정) */}
             <div className={sectionCls}>
               <div className="flex items-center gap-2">
@@ -1140,12 +1320,29 @@ const TemplateWorkflowBody = observer(
             </>
             );
             // 씬 구성 — 편집 탭 전용 (배치 탭은 이 자리에 씬 축)
+            const scenesExpanded =
+              scenesOpen ?? entry.scenes.length <= SCENE_FOLD_THRESHOLD;
             const sceneSection = (
             <div className={sectionCls}>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-default flex-1">
                   씬 구성 ({entry.scenes.length})
                 </span>
+                {entry.scenes.length > 0 && (
+                  <button
+                    className={addBtnCls}
+                    onClick={() => setScenesOpen(!scenesExpanded)}
+                    aria-expanded={scenesExpanded}
+                    data-template-scenes-toggle=""
+                  >
+                    {scenesExpanded ? (
+                      <FaChevronUp className="inline mr-1" size={10} />
+                    ) : (
+                      <FaChevronDown className="inline mr-1" size={10} />
+                    )}
+                    {scenesExpanded ? '접기' : '펼치기'}
+                  </button>
+                )}
                 <button className={addBtnCls} onClick={importScenes}>
                   <ActionIcon id="copy-to-project" className="inline mr-1" size={11} />
                   복사해 오기
@@ -1162,9 +1359,9 @@ const TemplateWorkflowBody = observer(
                   교체해주세요.
                 </div>
               )}
-              {/* 씬 목록 높이 상한 없음 — 창 본문 스크롤 하나가 맡는다(2026-11-15 높이 규칙 우선순위) */}
-              {entry.scenes.length > 0 && (
-                <div className="flex flex-col gap-2">
+              {/* 씬 목록 높이 상한 없음 — 열 스크롤 하나가 맡는다(2026-11-15 높이 규칙 우선순위). 접힘이면 목록 자체를 그리지 않는다 */}
+              {entry.scenes.length > 0 && scenesExpanded && (
+                <div className="flex flex-col gap-2" data-template-scenes-list="">
                   {entry.scenes.map((s, i) => (
                     <div key={i} className={rowCls + ' flex-none'}>
                       <span className="text-sm text-default truncate flex-1">
@@ -1188,13 +1385,33 @@ const TemplateWorkflowBody = observer(
             );
             // ----- 레이아웃: [템플릿]|[일괄 생성] 탭 내용 (배치 R3) — 탭 머리는 호스트 도구줄,
             // [저장]·[N개 생성]은 호스트 바닥줄(2026-11-15 묶음 C-2) -----
+            // PC(2026-11-15 C-3b, SPEC 높이 규칙 우선순위 (2)): 본문은 h-full 로 창 본문을 채우고 스크롤하지 않으며,
+            // 왼쪽 열 = 글 입력(프롬프트·캐릭터 프롬프트) / 오른쪽 열 = 카드·이미지·목록(캐릭터 프리셋·바이브·
+            // 레퍼런스·씬 구성)이 열마다 스크롤 하나를 가진다. 일괄 생성 탭은 패널 안에서 같은 두 열을 만든다.
+            // 모바일 = 종전 한 열(창 본문 스크롤 하나).
+            if (!isMobile && tab === 'template') {
+              return (
+                <div className="h-full min-h-0 flex gap-4" data-template-body="two-col">
+                  <div className={templateColCls} data-template-col="left">
+                    {promptSection}
+                    {charPromptSection}
+                  </div>
+                  <div className={templateColCls} data-template-col="right">
+                    {charPresetSection}
+                    {vibeRefSections}
+                    {sceneSection}
+                  </div>
+                </div>
+              );
+            }
             return (
-              <div className="flex flex-col gap-4">
+              <div className={isMobile ? 'flex flex-col gap-4' : 'h-full min-h-0'}>
                 {tab === 'template' ? (
                   <>
                     {promptSection}
                     {charPresetSection}
-                    {middleSections}
+                    {charPromptSection}
+                    {vibeRefSections}
                     {sceneSection}
                   </>
                 ) : (
@@ -1777,6 +1994,8 @@ export const TemplateManagerModal = observer(
         aside={aside}
         footer={panel.footer ?? undefined}
         footerStart={panel.footerStart ?? undefined}
+        // 캐릭터 편집(PC) = 안쪽 편집기 layout="frame" 이 창 본문을 채우고 자체 바닥줄을 그린다(2026-11-15 C-3b)
+        bodyPadding={panel.charEditing && !isMobile ? 'none' : 'normal'}
       >
         {!entry ? (
           <div className="text-sm text-default py-6 text-center">

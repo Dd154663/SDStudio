@@ -335,11 +335,12 @@ export const CharacterPresetInnerEditor = observer(({
   const promptSection = (
       <div className="mb-4">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">캐릭터 프롬프트</div>
-        {/* grid min-h-20: 비어 있어도 3줄 높이를 보장해 클릭 영역을 넓힌다(2026-11-15 사용자 실기 피드백).
-            grid 는 단일 auto 행을 컨테이너 최소 높이까지 늘리므로 편집기의 h-full 이 그 높이를 받고,
-            글자가 많아지면 행이 함께 자란다(조각 칸 h-20 과 같은 높이 기준). */}
-        <div className="grid min-h-20" data-preset-prompt-box="prompt">
+        {/* 프롬프트 칸 높이 규칙(2026-11-15 사용자 실기 피드백 2건): flex 열 min-h-20·max-h-40 + 편집기 flex-1 min-h-0 —
+            비어 있어도 3줄(80px, 조각 칸 h-20 기준)로 클릭이 쉽고, 길어도 약 6줄(160px)까지만 자란 뒤 칸 안에서
+            스크롤해 창 열의 스크롤이 밀리지 않는다(SPEC 높이 규칙 우선순위 (3) 입력칸 고정 높이 허용). */}
+        <div className="flex flex-col min-h-20 max-h-40" data-preset-prompt-box="prompt">
           <PromptEditTextArea
+            className="flex-1 min-h-0"
             value={characterPrompt}
             onChange={setCharacterPrompt}
             disabled={false}
@@ -352,8 +353,9 @@ export const CharacterPresetInnerEditor = observer(({
   const ucSection = (
       <div className="mb-4">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">캐릭터 네거티브 프롬프트</div>
-        <div className="grid min-h-20" data-preset-prompt-box="uc">
+        <div className="flex flex-col min-h-20 max-h-40" data-preset-prompt-box="uc">
           <PromptEditTextArea
+            className="flex-1 min-h-0"
             value={characterUC}
             onChange={setCharacterUC}
             disabled={false}

@@ -980,6 +980,9 @@ interface PromptEditTextAreaProps {
   disabled?: boolean;
   lineHighlight?: boolean;
   onChange: (value: string) => void;
+  // 인라인 뿌리(div)에 덧붙일 클래스 — 호스트가 flex 열 안에서 높이를 주고 싶을 때(`flex-1 min-h-0`).
+  // 전체화면(fixed) 때는 흐름 밖이라 영향 없음(2026-11-15 프롬프트 칸 최소·최대 줄 수).
+  className?: string;
 }
 
 function useLatest(value: any) {
@@ -1538,6 +1541,7 @@ const PromptEditTextArea = observer(
     whiteBg,
     lineHighlight,
     innerRef,
+    className: extraClassName,
   }: PromptEditTextAreaProps) => {
     const { curSession } = appState;
     const editorRef = useRef<EditTextAreaRef | null>(null);
@@ -1807,7 +1811,8 @@ const PromptEditTextArea = observer(
               ? // input-ring: 인라인 입력 창 윤곽(B1). 전체화면은 shadow-lg 와 box-shadow 가
                 // 겹치므로 제외(그림자가 경계 역할).
                 ' input-ring overflow-hidden h-full relative rounded-md'
-              : ' left-0 m-4 p-2 overflow-hidden fixed z-[var(--z-prompt-popup)] h-96 prompt-full rounded-lg')
+              : ' left-0 m-4 p-2 overflow-hidden fixed z-[var(--z-prompt-popup)] h-96 prompt-full rounded-lg') +
+            (extraClassName ? ' ' + extraClassName : '')
           }
         >
           <div className="absolute right-0 top-0 z-10 flex items-center gap-1">
