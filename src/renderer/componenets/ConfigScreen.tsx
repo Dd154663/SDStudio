@@ -405,7 +405,7 @@ const LoginTab = ({
         <ol className="list-decimal list-inside space-y-1 mb-3 leading-relaxed text-body">
           <li>
             <a
-              className="text-sky-500 hover:text-sky-400 cursor-pointer underline"
+              className="btn-link cursor-pointer underline"
               onClick={() => backend.openWebPage('https://novelai.net')}
             >
               NovelAI 공식 웹사이트
@@ -650,7 +650,7 @@ const LoginTab = ({
                       onClick={() => startProfileRename(profile)}
                       onDoubleClick={() => startProfileRename(profile)}
                     >
-                      <FaPen size={11} />
+                      <FaPen size={14} />
                     </button>
                   )}
                   {active && (

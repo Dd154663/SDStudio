@@ -196,13 +196,13 @@ const ProjectCard = ({
         {!isMobile && (
           <Tooltip content="새 창에서 열기">
             <button
-              className="flex-none text-faint hover:text-sky-500 px-0.5"
+              className="flex-none text-muted hover:text-sky-500 px-0.5"
               onClick={(e) => {
                 e.stopPropagation();
                 backend.openNewWindow(name);
               }}
             >
-              <FaWindowRestore size={13} />
+              <FaWindowRestore size={14} />
             </button>
           </Tooltip>
         )}

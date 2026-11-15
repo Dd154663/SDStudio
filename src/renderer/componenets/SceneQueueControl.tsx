@@ -3583,19 +3583,19 @@ const QueueControl = observer(
                           <button
                             type="button"
                             aria-label="검색어 지우기"
-                            className="flex-none w-6 h-[30px] flex items-center justify-center rounded-md clickable text-faint"
+                            className="flex-none w-6 h-[30px] flex items-center justify-center rounded-md clickable text-muted"
                             onClick={() => setSceneSearchQuery('')}
                           >
-                            <FaTimes size={11} />
+                            <FaTimes size={14} />
                           </button>
                         ) : (
                           <button
                             type="button"
                             aria-label="씬 찾기·북마크 이동"
-                            className="flex-none w-6 h-[30px] flex items-center justify-center rounded-md clickable text-faint"
+                            className="flex-none w-6 h-[30px] flex items-center justify-center rounded-md clickable text-muted"
                             onClick={() => setV2Menu('find')}
                           >
-                            <FaChevronDown size={10} />
+                            <FaChevronDown size={14} />
                           </button>
                         )}
                       </label>

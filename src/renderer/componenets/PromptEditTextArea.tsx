@@ -1751,7 +1751,7 @@ const PromptEditTextArea = observer(
         title={`작가 라이브러리에서 「${name}」 열기`}
         aria-label={`작가 라이브러리에서 ${name} 열기`}
         className={
-          'flex items-center gap-1 px-1.5 h-5 rounded-md text-[11px] leading-none bg-[var(--c-zone)] border line-color text-sky-500 opacity-90 hover:opacity-100 max-w-[10rem] ' +
+          'flex items-center gap-1 px-1.5 h-5 rounded-md text-[11px] leading-none bg-[var(--c-zone)] border line-color text-link opacity-90 hover:opacity-100 max-w-[10rem] ' +
           extra
         }
         onMouseDown={(e) => e.preventDefault()}

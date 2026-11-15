@@ -384,7 +384,7 @@ const DesktopBrowser: React.FC = () => {
           aria-label="뒤로"
           onClick={() => webviewRef.current?.goBack()}
         >
-          <FaArrowLeft size={12} />
+          <FaArrowLeft size={14} />
         </button>
         <button
           className="p-1.5 rounded btn-ghost disabled:opacity-30 text-gray-700 dark:text-gray-300"
@@ -392,14 +392,14 @@ const DesktopBrowser: React.FC = () => {
           aria-label="앞으로"
           onClick={() => webviewRef.current?.goForward()}
         >
-          <FaArrowRight size={12} />
+          <FaArrowRight size={14} />
         </button>
         <button
           className="p-1.5 rounded btn-ghost text-gray-700 dark:text-gray-300"
           aria-label={loading ? '중지' : '새로고침'}
           onClick={() => loading ? webviewRef.current?.stop() : webviewRef.current?.reload()}
         >
-          <FaRedo size={12} className={loading ? 'animate-spin' : ''} />
+          <FaRedo size={14} className={loading ? 'animate-spin' : ''} />
         </button>
         <input
           className="flex-1 text-sm px-2 py-1 border rounded bg-[var(--c-input-bg)] line-color text-[var(--c-input-text)]"

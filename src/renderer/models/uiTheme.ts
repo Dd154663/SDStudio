@@ -82,9 +82,14 @@ export function buildThemeVars(
     vars['--c-text'] = base;
     vars['--c-text-sub'] = mix(base, bg, 0.18 * k);
     vars['--c-text-label'] = mix(base, bg, 0.28 * k);
-    vars['--c-text-muted'] = mix(base, bg, 0.5 * k);
-    vars['--c-text-faint'] = mix(base, bg, 0.68 * k);
+    // 보조·흐림은 2026-11-15 PC UX 결함 묶음 3(D5·D6)에서 기본 테마와 같이 한 단계 진하게(종전 0.5·0.68).
+    // 흰 배경 기준 muted #545454 7.57·faint #737373 4.74(종전 3.95·2.24), 다크 배경 #0f172a 기준 muted 10.8·faint 8.79.
+    vars['--c-text-muted'] = mix(base, bg, 0.33 * k);
+    vars['--c-text-faint'] = mix(base, bg, 0.45 * k);
     vars['--c-icon-text'] = mix(base, bg, 0.42 * k);
+    // 링크 글자(D9): 텍스트 패턴의 명암에 맞춰 App.css 기본 라이트/다크 값을 고른다.
+    vars['--c-link'] = t.textPattern === 'light' ? '#0369a1' : '#0ea5e9';
+    vars['--c-link-hover'] = t.textPattern === 'light' ? '#075985' : '#0284c7';
   }
 
   // 테두리/구분선(--c-line): 수동 지정 우선. 미지정이면 배경색 또는 텍스트 패턴이

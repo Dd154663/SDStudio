@@ -21,7 +21,7 @@ export const PresetReleaseButton = ({ presetName }: { presetName: string }) => {
         className={`relative flex-none text-muted hover:text-red-500 dark:hover:text-red-400 p-1${mode === 'show' ? INLINE_LABELED_CLASS : ''}`}
         onClick={() => appState.removeAppliedCharacterPreset(presetName)}
       >
-        <FaTimes size={13} />
+        <FaTimes size={14} />
         <InlineLabel text={PRESET_ACTION_LABELS.releasePreset} mode={mode} />
       </button>
     </Tooltip>

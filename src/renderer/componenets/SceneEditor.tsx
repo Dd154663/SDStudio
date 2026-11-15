@@ -1166,7 +1166,7 @@ const SceneCharacterPromptEditor = observer(({
                   onClick={() => moveBase(index, index - 1)}
                   title="위로"
                 >
-                  <FaArrowUp size={11} />
+                  <FaArrowUp size={14} />
                 </button>
                 <button
                   type="button"
@@ -1175,7 +1175,7 @@ const SceneCharacterPromptEditor = observer(({
                   onClick={() => moveBase(index, index + 1)}
                   title="아래로"
                 >
-                  <FaArrowDown size={11} />
+                  <FaArrowDown size={14} />
                 </button>
               </div>
             ))}
@@ -1296,7 +1296,7 @@ const SceneCharacterPromptEditor = observer(({
                       onClick={() => moveRole(index, index - 1)}
                       title="위로"
                     >
-                      <FaArrowUp size={11} />
+                      <FaArrowUp size={14} />
                     </button>
                     <button
                       type="button"
@@ -1305,7 +1305,7 @@ const SceneCharacterPromptEditor = observer(({
                       onClick={() => moveRole(index, index + 1)}
                       title="아래로"
                     >
-                      <FaArrowDown size={11} />
+                      <FaArrowDown size={14} />
                     </button>
                     <button
                       className="icon-button back-red"

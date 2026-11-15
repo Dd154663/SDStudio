@@ -2337,7 +2337,7 @@ const ProjectDrawer = observer(() => {
                     appState.folderBackupMenu(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-amber-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-amber-500"
                 >
                   <ActionIcon id="backup-export" size={14} />
                 </button>
@@ -2348,7 +2348,7 @@ const ProjectDrawer = observer(() => {
                     cloneFolder(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-green-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-green-500"
                 >
                   <ActionIcon id="duplicate" size={14} />
                 </button>
@@ -2361,7 +2361,7 @@ const ProjectDrawer = observer(() => {
                     );
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-sky-500"
                 >
                   <FaPalette size={15} />
                 </button>
@@ -2372,7 +2372,7 @@ const ProjectDrawer = observer(() => {
                     startRename(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-sky-500"
                 >
                   <FaPen size={15} />
                 </button>
@@ -2383,7 +2383,7 @@ const ProjectDrawer = observer(() => {
                     deleteFolderConfirm(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-red-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-red-500"
                 >
                   <ActionIcon id="delete" size={15} />
                 </button>
@@ -2394,7 +2394,7 @@ const ProjectDrawer = observer(() => {
                     createProject(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-sky-500"
                 >
                   <FaPlus size={15} />
                 </button>
@@ -2405,9 +2405,9 @@ const ProjectDrawer = observer(() => {
                     createFolder(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-indigo-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-indigo-500"
                 >
-                  <FaFolderPlus size={13} />
+                  <FaFolderPlus size={14} />
                 </button>
               </Tooltip>
               <Tooltip
@@ -2422,7 +2422,7 @@ const ProjectDrawer = observer(() => {
                     setFolderTemplateFor(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-purple-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-purple-500"
                 >
                   <FaMagic size={14} />
                 </button>
@@ -2433,7 +2433,7 @@ const ProjectDrawer = observer(() => {
                     queueFolderProjectsForGeneration(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-green-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-green-500"
                 >
                   <ActionIcon id="queue-add" size={14} />
                 </button>
@@ -2454,7 +2454,7 @@ const ProjectDrawer = observer(() => {
                     backend.openNewWindow(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-sky-500"
                 >
                   <FaWindowRestore size={14} />
                 </button>
@@ -2467,7 +2467,7 @@ const ProjectDrawer = observer(() => {
                       handleProjectOpenInExplorer(toolbar.name);
                       setToolbar(null);
                     }}
-                    className="btn-ghost p-2 rounded-md text-faint hover:text-yellow-500"
+                    className="btn-ghost p-2 rounded-md text-muted hover:text-yellow-500"
                   >
                     <FaFolderOpen size={14} />
                   </button>
@@ -2479,7 +2479,7 @@ const ProjectDrawer = observer(() => {
                     handleProjectExportImport(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-amber-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-amber-500"
                 >
                   <ActionIcon id="backup-export" size={14} />
                 </button>
@@ -2490,7 +2490,7 @@ const ProjectDrawer = observer(() => {
                     handleProjectClone(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-green-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-green-500"
                 >
                   <ActionIcon id="duplicate" size={14} />
                 </button>
@@ -2501,7 +2501,7 @@ const ProjectDrawer = observer(() => {
                     handleProjectRename(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-sky-500"
                 >
                   <FaPen size={15} />
                 </button>
@@ -2512,7 +2512,7 @@ const ProjectDrawer = observer(() => {
                     handleProjectSceneTemplateCreate(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-purple-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-purple-500"
                 >
                   <FaFilm size={14} />
                 </button>
@@ -2523,7 +2523,7 @@ const ProjectDrawer = observer(() => {
                     setReapplyFor(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-purple-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-purple-500"
                 >
                   <ActionIcon id="copy-to-project" size={14} />
                 </button>
@@ -2535,9 +2535,9 @@ const ProjectDrawer = observer(() => {
                       handleBreakInheritance(toolbar.name);
                       setToolbar(null);
                     }}
-                    className="btn-ghost p-2 rounded-md text-faint hover:text-amber-500"
+                    className="btn-ghost p-2 rounded-md text-muted hover:text-amber-500"
                   >
-                    <FaUnlink size={13} />
+                    <FaUnlink size={14} />
                   </button>
                 </Tooltip>
               )}
@@ -2547,7 +2547,7 @@ const ProjectDrawer = observer(() => {
                     queueProjectForGeneration(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-green-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-green-500"
                 >
                   <ActionIcon id="queue-add" size={14} />
                 </button>
@@ -2558,7 +2558,7 @@ const ProjectDrawer = observer(() => {
                     handleProjectDelete(toolbar.name);
                     setToolbar(null);
                   }}
-                  className="btn-ghost p-2 rounded-md text-faint hover:text-red-500"
+                  className="btn-ghost p-2 rounded-md text-muted hover:text-red-500"
                 >
                   <ActionIcon id="delete" size={15} />
                 </button>

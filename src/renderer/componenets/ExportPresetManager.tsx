@@ -260,7 +260,7 @@ const ExportPresetManager = observer(() => {
       onClick={newPreset}
       className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-dashed line-color hover:border-sky-400 dark:hover:border-sky-500 text-muted hover:text-sky-500 transition-colors text-sm"
     >
-      <FaPlus size={12} />
+      <FaPlus size={14} />
       새 프리셋 추가
     </button>
   );
@@ -332,28 +332,28 @@ const ExportPresetManager = observer(() => {
             className={`p-1.5 rounded transition-colors ${
               renamingIndex === i
                 ? 'text-sky-500 bg-sky-50 dark:bg-sky-900/20'
-                : 'text-faint hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/20'
+                : 'text-muted hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/20'
             }`}
           >
-            <FaPen size={11} />
+            <FaPen size={14} />
           </button>
         </Tooltip>
         <Tooltip content="복제">
           <button
             aria-label="복제"
             onClick={(e) => { e.stopPropagation(); duplicatePreset(i); }}
-            className="p-1.5 rounded text-faint hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/20 transition-colors"
+            className="p-1.5 rounded text-muted hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/20 transition-colors"
           >
-            <ActionIcon id="duplicate" size={11} />
+            <ActionIcon id="duplicate" size={14} />
           </button>
         </Tooltip>
         <Tooltip content="삭제">
           <button
             aria-label="삭제"
             onClick={(e) => { e.stopPropagation(); requestDeletePreset(i); }}
-            className="p-1.5 rounded text-faint hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            className="p-1.5 rounded text-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
           >
-            <FaTrash size={11} />
+            <FaTrash size={14} />
           </button>
         </Tooltip>
       </div>

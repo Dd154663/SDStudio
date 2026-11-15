@@ -308,17 +308,17 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
                 <Tooltip content="확인">
                   <button
                     onClick={commitRename}
-                    className="btn-ghost p-2 rounded-md text-faint hover:text-green-500"
+                    className="btn-ghost p-2 rounded-md text-muted hover:text-green-500"
                   >
-                    <FaCheck size={13} />
+                    <FaCheck size={14} />
                   </button>
                 </Tooltip>
                 <Tooltip content="취소">
                   <button
                     onClick={() => setEditing(null)}
-                    className="btn-ghost p-2 rounded-md text-faint hover:text-red-500"
+                    className="btn-ghost p-2 rounded-md text-muted hover:text-red-500"
                   >
-                    <FaTimes size={13} />
+                    <FaTimes size={14} />
                   </button>
                 </Tooltip>
               </div>
@@ -352,13 +352,13 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
                       importToCurrent(name);
                     }}
                     className={
-                      'btn-ghost p-2 rounded-md text-faint ' +
+                      'btn-ghost p-2 rounded-md text-muted ' +
                       (!curSession || curSession.name === name
                         ? 'opacity-40 cursor-not-allowed'
                         : 'hover:text-sky-500')
                     }
                   >
-                    <ActionIcon id="copy-to-project" size={13} />
+                    <ActionIcon id="copy-to-project" size={14} />
                   </button>
                 </Tooltip>
                 <Tooltip content="이름 변경">
@@ -367,9 +367,9 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
                       e.stopPropagation();
                       startRename(name);
                     }}
-                    className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
+                    className="btn-ghost p-2 rounded-md text-muted hover:text-sky-500"
                   >
-                    <FaPen size={13} />
+                    <FaPen size={14} />
                   </button>
                 </Tooltip>
                 <Tooltip content="복제">
@@ -378,9 +378,9 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
                       e.stopPropagation();
                       handleDuplicate(name);
                     }}
-                    className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
+                    className="btn-ghost p-2 rounded-md text-muted hover:text-sky-500"
                   >
-                    <ActionIcon id="duplicate" size={13} />
+                    <ActionIcon id="duplicate" size={14} />
                   </button>
                 </Tooltip>
                 <Tooltip content="파일로 내보내기 (다른 기기로 이동)">
@@ -389,9 +389,9 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
                       e.stopPropagation();
                       handleExportFile(name);
                     }}
-                    className="btn-ghost p-2 rounded-md text-faint hover:text-sky-500"
+                    className="btn-ghost p-2 rounded-md text-muted hover:text-sky-500"
                   >
-                    <ActionIcon id="export" size={13} />
+                    <ActionIcon id="export" size={14} />
                   </button>
                 </Tooltip>
                 <Tooltip content="삭제 (휴지통으로 이동)">
@@ -400,9 +400,9 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
                       e.stopPropagation();
                       handleDelete(name);
                     }}
-                    className="btn-ghost p-2 rounded-md text-faint hover:text-red-500"
+                    className="btn-ghost p-2 rounded-md text-muted hover:text-red-500"
                   >
-                    <ActionIcon id="delete" size={13} />
+                    <ActionIcon id="delete" size={14} />
                   </button>
                 </Tooltip>
               </div>

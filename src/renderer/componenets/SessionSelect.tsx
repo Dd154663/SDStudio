@@ -442,7 +442,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
                   }
                 }}
               >
-                <FaTimes size={12} />
+                <FaTimes size={14} />
               </button>
             </Tooltip>
           </div>

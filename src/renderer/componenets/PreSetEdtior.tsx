@@ -2453,7 +2453,7 @@ const CharacterPromptEditor = observer(
                       onClick={() => moveCharacter(i, i - 1)}
                       title="위로"
                     >
-                      <FaArrowUp size={11} />
+                      <FaArrowUp size={14} />
                     </button>
                     <button
                       type="button"
@@ -2462,7 +2462,7 @@ const CharacterPromptEditor = observer(
                       onClick={() => moveCharacter(i, i + 1)}
                       title="아래로"
                     >
-                      <FaArrowDown size={11} />
+                      <FaArrowDown size={14} />
                     </button>
                     {locked ? (
                       <PresetReleaseButton presetName={character.fromPreset!} />

@@ -57,8 +57,10 @@
   --c-text: #000000;
   --c-text-sub: #000000;
   --c-text-label: #374151; /* gray-700 (본문/라벨) */
-  --c-text-muted: #6b7280; /* gray-500 (보조 텍스트 L2) */
-  --c-text-faint: #9ca3af; /* gray-400 (흐린 텍스트/아이콘 L3) */
+  /* 보조·흐림 글자 한 단계 진하게(2026-11-15 PC UX 결함 묶음 3 D5·D6, 사용자 결정 안 1 — 종전 muted gray-500·faint gray-400).
+     대비: muted 흰 표면 7.56·zone 6.56·입력 6.10 / faint 4.83·4.19·3.90. */
+  --c-text-muted: #4b5563; /* gray-600 (보조 텍스트 L2) */
+  --c-text-faint: #6b7280; /* gray-500 (흐린 텍스트/아이콘 L3) */
   /* 보더 역할 분리(B1): --c-line=구분선·카드 경계(약하게) / --c-line-strong=셀렉트 등
      인터랙션 요소 테두리(선명하게) / --c-input-ring=텍스트 입력 창 윤곽 1px 링
      (프롬프트 영역 등 — 배경 음영뿐이던 입력 창에 경계를 준다. .input-ring 참조).
@@ -82,6 +84,11 @@
   /* 키보드 포커스 링·토글 켜짐 링 색(2026-11-15 PC UX 결함 D10) — 라이트 sky-700(흰 표면 5.93:1, zone 5.15, 입력 4.79).
      다크·트루다크는 종전 sky-400(.dark 블록). 커스텀 테마(uiTheme.buildThemeVars)는 재정의하지 않아 기본 라이트/다크 값을 따른다. */
   --c-focus-ring: #0369a1; /* sky-700 */
+  /* 링크 글자(2026-11-15 PC UX 결함 D9) — .btn-link·.text-link. 라이트 sky-700(흰 표면 5.93·zone 5.15·입력 4.79),
+     hover 한 단계 진하게 sky-800(7.56). 다크·트루다크는 종전 sky-500/hover sky-600(.dark 블록).
+     커스텀 테마는 buildThemeVars 가 텍스트 패턴(밝음/어두움)에 맞춰 이 두 값을 고른다. */
+  --c-link: #0369a1; /* sky-700 */
+  --c-link-hover: #075985; /* sky-800 */
   /* 버튼 반경 토큰(2026-10-04 B1 ①, 같은 날 실기 피드백으로 범위 축소) — 색과 무관해 테마별 재정의 없음.
      --r-btn      = 글자·아이콘+글자 버튼(.round-button·.icon-button·확인 창 .r-btn) — 알약, 모던·클래식 공통.
      --r-btn-icon = 아이콘 하나짜리 버튼(.icon-only) — 모던 8px 둥근 사각, 클래식 마감·알약형 버튼 옵션은
@@ -96,8 +103,10 @@
   --c-text: #ffffff;
   --c-text-sub: #e2e8f0; /* slate-200 */
   --c-text-label: #e2e8f0; /* slate-200 (본문/라벨) */
-  --c-text-muted: #9ca3af; /* gray-400 (보조 L2 — 다크는 더 옅음) */
-  --c-text-faint: #6b7280; /* gray-500 (흐림 L3 — 다크는 더 어두움) */
+  /* 묶음 3(2026-11-15) — 종전 muted gray-400·faint gray-500 에서 한 단계 밝게(=배경과 대비 강하게). 트루다크는 재정의 없이 이 값.
+     대비: muted surface 12.1·surface-2 9.93·입력 7.03 / faint 7.03·5.76·4.08, 트루다크 faint 7.80·7.38·6.86(muted 13.4·12.7·11.8). */
+  --c-text-muted: #d1d5db; /* gray-300 (보조 L2 — 다크는 더 옅음) */
+  --c-text-faint: #9ca3af; /* gray-400 (흐림 L3 — 다크는 더 어두움) */
   --c-line: #293548; /* slate-700↓ (개편 전 #334155) — 다크 격자 인상 완화 */
   --c-line-strong: #475569; /* slate-600 */
   --c-input-ring: rgba(255, 255, 255, 0.16);
@@ -113,6 +122,8 @@
   --c-yellow-bg: rgba(129, 140, 248, 0.25); --c-yellow-fg: #818cf8; /* indigo-400 */
   --c-purple-bg: rgba(192, 132, 252, 0.25); --c-purple-fg: #c084fc; /* purple-400 (막대는 다크에서 fg 를 칠한다) */
   --c-focus-ring: rgb(56, 189, 248); /* sky-400 — 종전 포커스 링 색 그대로(트루다크도 이 값) */
+  --c-link: #0ea5e9; /* sky-500 — 종전 그대로(surface 6.44·surface-2 5.28, 트루다크 7.14) */
+  --c-link-hover: #0284c7; /* sky-600 — 종전 hover 그대로 */
   /* 영역 바닥 선 — 다크 bg 토큰은 이미 25% 반투명이라 선명한 fg(teal·sky-400·gray-200)를 옅게 칠한다 */
 }
 .true-dark {
@@ -264,6 +275,10 @@ html.font-pretendard body {
 
 .text-faint {
   color: var(--c-text-faint);
+}
+/* 링크 역할 글자(2026-11-15 D9) — 버튼 모양이 아닌 링크·칩 글자. hover 변형은 생성되지 않으니 필요하면 .btn-link. */
+.text-link {
+  color: var(--c-link);
 }
 
 .round-tag {
@@ -647,11 +662,14 @@ html.font-pretendard body {
 
 /* .btn-link — 텍스트 링크형 버튼 */
 .btn-link {
-  @apply text-sky-500 hover:text-sky-600;
+  color: var(--c-link);
+}
+.btn-link:hover {
+  color: var(--c-link-hover);
 }
 
 .gray-input {
-  @apply focus:border-0 focus:outline-0 rounded-md focus:outline-black py-1 md:py-1.5 md:pl-2 md:pr-2 placeholder:text-gray-400;
+  @apply focus:border-0 focus:outline-0 rounded-md focus:outline-black py-1 md:py-1.5 md:pl-2 md:pr-2;
   background-color: var(--c-input-bg);
   color: var(--c-input-text);
   /* 입력창 윤곽 링(B1) — 배경과 같은 계열 음영이라 묻히던 경계를 살린다. */
@@ -662,6 +680,12 @@ html.font-pretendard body {
 .gray-input:focus-visible {
   outline: 2px solid var(--c-focus-ring);
   outline-offset: 0;
+}
+
+/* 입력 안내 문구(2026-11-15 PC UX 결함 D7) — 종전 placeholder:text-gray-400(라이트 입력 2.05). 커스텀 클래스라
+   placeholder: 변형 대신 CSS 규칙으로. 대비: 라이트 입력 6.10 · 다크 7.03 · 트루다크 11.8. */
+.gray-input::placeholder {
+  color: var(--c-text-muted);
 }
 
 /* ── 라운딩 계층(B3) ── 새 마감에서만 기존 rounded-* 유틸을 덮는다(0,2,1 > 0,1,0).
@@ -1130,14 +1154,17 @@ input[type='number']::-webkit-outer-spin-button {
   position: relative;
 }
 
+/* 프롬프트 문법 색(2026-11-15 PC UX 결함 D8) — 편집 칸 배경(라이트 #e5e7eb·다크 #334155·트루다크 #1a1a1a) 위 대비.
+   라이트 600~800대 / 다크·트루다크(:is(.dark) — 트루다크 루트도 .dark 를 함께 가짐) 200~400대. 수치 = 라이트 | 다크 | 트루다크.
+   종전: 라이트 sky-500 2.24·green-500 1.84·#ff8e38 1.85·purple-500 3.20·#c084fc 2.13·gray-400 2.05·red-500 3.04. */
 .syntax-error {
-  @apply text-red-500 dark:text-red-600;
+  color: #b91c1c; /* red-700 5.23 */
   white-space: inherit;
   word-break: inherit;
 }
 
 .syntax-comment {
-  @apply text-gray-400 dark:text-gray-500;
+  color: #4b5563; /* gray-600 6.10 */
   font-style: italic;
   white-space: inherit;
   word-break: inherit;
@@ -1190,7 +1217,7 @@ input[type='number']::-webkit-outer-spin-button {
 }
 
 .syntax-wildcard {
-  color: #0ea5e9;
+  color: #0369a1; /* sky-700 4.79 */
   white-space: inherit;
   word-break: inherit;
   /* font-size: 1.05em; */
@@ -1198,7 +1225,7 @@ input[type='number']::-webkit-outer-spin-button {
 }
 
 .syntax-multi-wildcard {
-  color: #22c55e;
+  color: #166534; /* green-800 5.76 */
   white-space: inherit;
   /* font-size: 1.05em; */
   font-weight: 800;
@@ -1206,14 +1233,14 @@ input[type='number']::-webkit-outer-spin-button {
 }
 
 .syntax-global-wildcard {
-  color: #a855f7;
+  color: #7e22ce; /* purple-700 5.64 */
   white-space: inherit;
   word-break: inherit;
   font-weight: 800;
 }
 
 .syntax-global-multi-wildcard {
-  color: #c084fc;
+  color: #6b21a8; /* purple-800 7.04 */
   white-space: inherit;
   font-weight: 800;
   word-break: inherit;
@@ -1232,11 +1259,20 @@ input[type='number']::-webkit-outer-spin-button {
 
 .syntax-split {
   /* font-size: 1.3em; */
-  color: #ff8e38;
+  color: #9a3412; /* orange-800 5.90 */
   white-space: inherit;
   font-weight: 800;
   word-break: inherit;
 }
+
+/* 다크·트루다크 짝(D8) — 다크 입력 | 트루다크 입력 대비 */
+:is(.dark) .syntax-error { color: #fca5a5; } /* red-300 5.46 | 9.17 */
+:is(.dark) .syntax-comment { color: #d1d5db; } /* gray-300 7.03 | 11.8 */
+:is(.dark) .syntax-wildcard { color: #38bdf8; } /* sky-400 4.83 | 8.12 */
+:is(.dark) .syntax-multi-wildcard { color: #4ade80; } /* green-400 5.94 | 9.99 */
+:is(.dark) .syntax-global-wildcard { color: #d8b4fe; } /* purple-300 5.86 | 9.85 */
+:is(.dark) .syntax-global-multi-wildcard { color: #e9d5ff; } /* purple-200 7.61 | 12.8 */
+:is(.dark) .syntax-split { color: #fdba74; } /* orange-300 6.14 | 10.3 */
 
 .bg-checkboard {
   background: repeating-conic-gradient(#e0e0e0 0% 25%, transparent 0% 50%) 50% /

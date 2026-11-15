@@ -169,8 +169,8 @@ const TagPresetManageModal = observer(({ onClose }: { onClose: () => void }) => 
           {artistLibraryService.tagPresets.map((t) => (
             <span key={t} className="flex items-center gap-1 text-sm px-2 py-1 rounded-md bg-[var(--c-surface)] text-body">
               {t}
-              <button className="text-faint hover:text-red-500" aria-label={`태그 프리셋 ${t} 삭제`} onClick={() => removeArtistTagPresetRecorded(t)}>
-                <FaTrash size={11} />
+              <button className="text-muted hover:text-red-500" aria-label={`태그 프리셋 ${t} 삭제`} onClick={() => removeArtistTagPresetRecorded(t)}>
+                <FaTrash size={14} />
               </button>
             </span>
           ))}
