@@ -12,7 +12,6 @@ import {
   projectSizeService,
   sessionService,
   taskQueueService,
-  templateService,
   workFlowService,
   zipService,
 } from '.';
@@ -57,13 +56,17 @@ import {
   PromptPiece,
   Scene,
   Session,
-  genericSceneFromJSON,
 } from './types';
 import { extractPromptDataFromBase64, getFirstFile } from './util';
 import { ImageOptimizeMethod } from '../backend';
 import { v4 } from 'uuid';
 import { Resolution, resolutionMap } from '../backends/imageGen';
 import { copySceneResolution } from './inpaintResolution';
+import {
+  copyScenesToProjectFlow,
+  defaultSceneCopyDeps,
+  sceneCopyTargets,
+} from './sceneCopyFlow';
 import { ProgressDialog } from '../componenets/ProgressWindow';
 import { migratePieceLibrary } from './legacy';
 import {
@@ -725,87 +728,23 @@ export class BatchProcessService {
             return;
           }
           if (value === 'copyToProject') {
-            const curName = appState.curSession!.name;
+            // 다른 프로젝트로 씬 복사 — 공용 흐름(models/sceneCopyFlow.ts, 우클릭 메뉴와 같은 흐름, 2026-11-16 M5 a)
+            const copyDeps = defaultSceneCopyDeps();
             // 숨김 씬 템플릿 제외 (씬 템플릿 개편 2026-07-18)
-            const allProjects = templateService
-              .filterVisibleProjects(sessionService.list())
-              .filter((n) => n !== curName);
-            if (allProjects.length === 0) {
-              appState.pushMessage('복사할 다른 프로젝트가 없습니다');
-              return;
-            }
+            // 이미지·첨부 파일 원본 = 씬 선택 창을 여는 지금의 프로젝트로 고정(피드백 1 ③ — 도중에 프로젝트를 바꿔도 같은 원본)
+            const copySource = appState.curSession!;
+            const allProjects = sceneCopyTargets(copyDeps, copySource.name);
+            if (!allProjects) return;
             setSceneSelector({
               type: type,
               text: '📦 다른 프로젝트로 복사할 씬 선택',
               callback: (selected) => {
                 setSceneSelector(undefined);
                 if (selected.length === 0) return;
-
-                appState.pushDialog({
-                  text: '씬을 복사할 프로젝트를 선택하세요',
-                  type: 'dropdown',
-                  items: allProjects.map((n) => ({ text: n, value: n })),
-                  callback: (targetName) => {
-                    if (!targetName) return;
-
-                    appState.pushDialog({
-                      text: '복사 방식을 선택하세요',
-                      type: 'select',
-                      items: [
-                        { text: '설정만 복사 (슬롯, 프롬프트 등)', value: 'config' },
-                        { text: '이미지 포함 복사', value: 'with-images' },
-                      ],
-                      callback: async (mode) => {
-                        if (!mode) return;
-
-                        const targetSession = await sessionService.get(targetName);
-                        if (!targetSession) {
-                          appState.pushMessage('프로젝트를 불러올 수 없습니다');
-                          return;
-                        }
-
-                        let totalCopied = 0;
-                        let totalImages = 0;
-                        for (const scene of selected) {
-                          // 살아있는 씬의 toJSON() 재역직렬화라 null 이 나올 수 없다
-                          const newScene = genericSceneFromJSON(scene.toJSON())!;
-                          let cnt = 0;
-                          const baseName = newScene.name;
-                          const newNameFn = () => baseName + (cnt === 0 ? '' : '_' + cnt);
-                          while (targetSession.hasScene(newScene.type, newNameFn())) {
-                            cnt++;
-                          }
-                          newScene.name = newNameFn();
-
-                          if (mode === 'config') {
-                            newScene.imageMap = [];
-                            newScene.mains = [];
-                          }
-
-                          targetSession.addScene(newScene);
-
-                          if (mode === 'with-images' && scene.imageMap.length > 0) {
-                            const srcDir = imageService.getOutputDir(appState.curSession!, scene);
-                            const dstDir = imageService.getOutputDir(targetSession, newScene);
-                            for (const img of scene.imageMap) {
-                              try {
-                                await backend.copyFile(srcDir + '/' + img, dstDir + '/' + img);
-                                totalImages++;
-                              } catch (e) {
-                                console.error('이미지 복사 실패:', img, e);
-                              }
-                            }
-                          }
-                          totalCopied++;
-                        }
-
-                        const msg = mode === 'with-images'
-                          ? `${totalCopied}개 씬이 "${targetName}" 프로젝트에 복사되었습니다 (이미지 ${totalImages}장)`
-                          : `${totalCopied}개 씬이 "${targetName}" 프로젝트에 복사되었습니다`;
-                        appState.pushMessage(msg);
-                      },
-                    });
-                  },
+                void copyScenesToProjectFlow(copyDeps, {
+                  scenes: selected,
+                  targets: allProjects,
+                  sourceSession: copySource,
                 });
               },
             });

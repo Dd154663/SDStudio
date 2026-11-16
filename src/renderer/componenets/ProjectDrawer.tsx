@@ -39,7 +39,6 @@ import {
   nameErrorMessage,
   projectNameRules,
   promptName,
-  suggestFolderCopyName,
   validateName,
 } from '../models/nameInput';
 import {
@@ -66,9 +65,13 @@ import { TemplateManagerModal } from './TemplateManagerModal';
 import { isWorkspaceLayout, physicalDirOf } from '../models/storageLayout';
 import { workspacePath } from '../models/projectPaths';
 import { planFolderDeletePrompt } from '../models/folderDeleteFlow';
+import {
+  createFolderFlow,
+  defaultFolderFlowDeps,
+  duplicateFolderFlow,
+} from '../models/folderFlow';
 // 프로젝트·폴더 작업 되돌리기 기록(2차 묶음 2 P1-a, 전역 스택) — 서비스 메서드와 1:1
 import {
-  createFolderRecorded,
   groupProjectFolderOps,
   moveProjectsToFolderRecorded,
   moveToFolderRecorded,
@@ -712,33 +715,20 @@ const ProjectDrawer = observer(() => {
     }
   };
 
+  // 폴더 만들기·복제 — 공용 흐름(models/folderFlow.ts, 프로젝트 탐색 창과 같은 흐름, 2026-11-16 M5 a)
   const createFolder = async (parentPath?: string) => {
-    const hint = parentPath
-      ? `"${sessionService.folderLeafName(parentPath)}" 안에 새 폴더 (예: 서브폴더 또는 상위/하위)`
-      : '새 폴더 이름을 입력하세요 (예: 폴더 또는 상위/하위)';
-    // 「상위/하위」 경로 입력 허용 — 단계마다 경로 안전 검사, 같은 경로의 폴더는 창 안에서 거부(D2)
-    const toFull = (v: string) => (parentPath ? parentPath + '/' + v : v);
-    const value = await promptName({
-      title: hint,
-      kind: 'folder',
-      pathSafe: true,
-      allowSlash: true,
-      existing: (v) => sessionService.listFolders().includes(toFull(v)),
+    await createFolderFlow(defaultFolderFlowDeps(), {
+      parentPath,
+      onCreated: (fullPath) => {
+        setExpanded((prev) => {
+          const next = new Set(prev);
+          next.add(fullPath);
+          // 부모도 펼쳐서 새 폴더가 보이게 함
+          if (parentPath) next.add(parentPath);
+          return next;
+        });
+      },
     });
-    if (!value) return;
-    const fullPath = toFull(value);
-    try {
-      await createFolderRecorded(fullPath);
-      setExpanded((prev) => {
-        const next = new Set(prev);
-        next.add(fullPath);
-        // 부모도 펼쳐서 새 폴더가 보이게 함
-        if (parentPath) next.add(parentPath);
-        return next;
-      });
-    } catch (e: any) {
-      appState.pushMessage(e.message || '폴더 생성에 실패했습니다.');
-    }
   };
 
   const pickColor = async (f: string, c: string | null) => {
@@ -859,46 +849,7 @@ const ProjectDrawer = observer(() => {
   };
 
   const cloneFolder = async (sourceFolder: string) => {
-    const leafName = sessionService.folderLeafName(sourceFolder);
-    const parent = sessionService.folderParentPath(sourceFolder);
-    const toTarget = (v: string) => (parent ? parent + '/' + v : v);
-    // 원본 이름 기반 제안값을 채워 연다(D2) — 같은 자리의 폴더와 겹치면 창 안에서 거부
-    const value = await promptName({
-      title: `"${leafName}" 폴더를 복제합니다. 새 폴더 이름을 입력하세요.`,
-      initial: suggestFolderCopyName(leafName, (v) =>
-        sessionService.listFolders().includes(toTarget(v)),
-      ),
-      kind: 'folder',
-      pathSafe: true,
-      existing: (v) => sessionService.listFolders().includes(toTarget(v)),
-    });
-    if (!value) return;
-
-    const mode = await appState.pushDialogAsync({
-      text: '이미지 파일을 함께 복사할까요?',
-      type: 'select',
-      items: [
-        { text: '설정만 복사 (프롬프트, 프리셋 등)', value: 'config' },
-        { text: '이미지 포함 복사 (휴지통 제외)', value: 'with-images' },
-      ],
-    });
-    if (!mode) return;
-
-    const withImages = mode === 'with-images';
-    const targetPath = toTarget(value);
-    try {
-      appState.setProgressDialog({
-        text: '폴더 복제 중...',
-        done: 0,
-        total: 1,
-      });
-      await sessionService.cloneFolder(sourceFolder, targetPath, withImages);
-      appState.setProgressDialog(undefined);
-      appState.pushMessage(`"${value}" 폴더로 복제되었습니다.`);
-    } catch (e: any) {
-      appState.setProgressDialog(undefined);
-      appState.pushMessage(e.message || '폴더 복제에 실패했습니다.');
-    }
+    await duplicateFolderFlow(defaultFolderFlowDeps(), sourceFolder);
   };
 
   // 모바일: 폴더마다 ⋮ 메뉴 (데스크톱은 인라인 버튼 유지)

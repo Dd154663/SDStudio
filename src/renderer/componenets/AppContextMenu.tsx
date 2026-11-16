@@ -10,7 +10,6 @@ import {
   isMobile,
   imageDownloadService,
   imageHistoryService,
-  templateService,
   taskQueueService,
 } from '../models';
 import { appState } from '../models/AppService';
@@ -70,6 +69,11 @@ import {
 import { UNDO_TEXT } from '../models/undoService';
 import { suggestFolderCopyName } from '../models/nameInput';
 import { editSeedGroups } from '../models/sceneFieldUndo';
+import {
+  copyScenesToProjectFlow,
+  defaultSceneCopyDeps,
+  sceneCopyTargets,
+} from '../models/sceneCopyFlow';
 
 export const AppContextMenu = observer(() => {
   // 선택은 (종류, 이름) 쌍이다 — 변형 탭의 선택으로 같은 이름의 일반 씬을 다루지 않는다
@@ -406,94 +410,20 @@ export const AppContextMenu = observer(() => {
     await copyScenesToProject([ctx.scene]);
   };
 
+  // 다른 프로젝트로 씬 복사 — 공용 흐름(models/sceneCopyFlow.ts, 대량 작업 메뉴와 같은 흐름, 2026-11-16 M5 a)
   const copyScenesToProject = async (scenes: GenericScene[]) => {
     const session = appState.curSession;
     if (!session || scenes.length === 0) return;
-    const curName = session.name;
+    const deps = defaultSceneCopyDeps();
     // 숨김 씬 템플릿 제외 (씬 템플릿 개편 2026-07-18)
-    const allProjects = templateService
-      .filterVisibleProjects(sessionService.list())
-      .filter((n) => n !== curName);
-    if (allProjects.length === 0) {
-      appState.pushMessage('복사할 다른 프로젝트가 없습니다');
-      return;
-    }
-
-    const countLabel = scenes.length > 1 ? `선택한 ${scenes.length}개 씬을` : '씬을';
-
-    // 1) 대상 프로젝트 선택
-    const targetName = await appState.pushDialogAsync({
-      text: `${countLabel} 복사할 프로젝트를 선택하세요`,
-      type: 'dropdown',
-      items: allProjects.map((n) => ({ text: n, value: n })),
+    const targets = sceneCopyTargets(deps, session.name);
+    if (!targets) return;
+    await copyScenesToProjectFlow(deps, {
+      scenes,
+      targets,
+      // 이미지·첨부 파일 원본 = 흐름 시작 때의 프로젝트
+      sourceSession: session,
     });
-    if (!targetName) return;
-
-    // 2) 복사 모드 선택
-    const mode = await appState.pushDialogAsync({
-      text: '복사 방식을 선택하세요',
-      type: 'select',
-      items: [
-        { text: '설정만 복사 (슬롯, 프롬프트 등)', value: 'config' },
-        { text: '이미지 포함 복사', value: 'with-images' },
-      ],
-    });
-    if (!mode) return;
-
-    // 3) 대상 세션 로드
-    const targetSession = await sessionService.get(targetName);
-    if (!targetSession) {
-      appState.pushMessage('프로젝트를 불러올 수 없습니다');
-      return;
-    }
-
-    let totalCopiedImages = 0;
-    let successCount = 0;
-
-    for (const srcScene of scenes) {
-      // 4) 씬 복제
-      const newScene = genericSceneFromJSON(srcScene.toJSON());
-      if (!newScene) continue;
-      let cnt = 0;
-      const baseName = newScene.name;
-      const newNameFn = () => baseName + (cnt === 0 ? '' : '_' + cnt);
-      while (targetSession.hasScene(newScene.type, newNameFn())) {
-        cnt++;
-      }
-      newScene.name = newNameFn();
-
-      if (mode === 'config') {
-        newScene.imageMap = [];
-        newScene.mains = [];
-        targetSession.addScene(newScene);
-        successCount++;
-      } else {
-        const srcDir = imageService.getOutputDir(session, srcScene);
-        const dstDir = imageService.getOutputDir(targetSession, newScene);
-        targetSession.addScene(newScene);
-
-        const allImages = [...srcScene.imageMap];
-        let copied = 0;
-        for (const img of allImages) {
-          try {
-            await backend.copyFile(srcDir + '/' + img, dstDir + '/' + img);
-            copied++;
-          } catch (e) {
-            console.error('이미지 복사 실패:', img, e);
-          }
-        }
-        totalCopiedImages += copied;
-        successCount++;
-      }
-    }
-
-    if (successCount > 1) {
-      const imgMsg = mode === 'with-images' ? ` (이미지 ${totalCopiedImages}장)` : '';
-      appState.pushMessage(`${successCount}개 씬을 "${targetName}" 프로젝트에 복사했습니다${imgMsg}`);
-    } else if (successCount === 1) {
-      const imgMsg = mode === 'with-images' ? ` (이미지 ${totalCopiedImages}장)` : '';
-      appState.pushMessage(`씬을 "${targetName}" 프로젝트에 복사했습니다${imgMsg}`);
-    }
   };
 
   const handleSceneItemClick = ({ id, props }: any) => {
