@@ -29,6 +29,12 @@ import { persistService } from './PersistenceService';
 import { isOutputImageFile } from './imageFormats';
 import { isWorkspaceBakHealCandidate } from './trashList';
 import {
+  copySceneAttachments,
+  defaultSceneCopyDeps,
+  sessionVariantAttachmentFiles,
+  type SceneAttachmentCopyStats,
+} from './sceneCopyFlow';
+import {
   projectPath,
   projectFolderPath,
   projectJsonPath,
@@ -1190,8 +1196,8 @@ export class SessionService extends ResourceSyncService<Session> {
         : targetFolder;
 
       try {
-        const proj = await this.exportSessionShallow(session);
-        await this.importSessionShallow(proj, newName);
+        // 변형 씬·첨부 파일까지 복제(2026-11-16 — 종전 exportSessionShallow 기본값은 변형 씬을 버렸다)
+        await this.cloneSessionShallow(session, newName);
         await this.moveToFolder(newName, destFolder);
 
         // 이미지 포함 복사 (휴지통 제외). projectPath 경유 — 신 배치 활성 시
@@ -2516,7 +2522,16 @@ export class SessionService extends ResourceSyncService<Session> {
     return projectPath('inpaint_masks', session.name, inpaint.name + '.png');
   }
 
-  async exportSessionShallow(session: Session) {
+  // 얕은 직렬화(이미지 제외 JSON). opts.includeVariants(2026-11-16, 플랜 2026-11-16-shallow-clone-variant-scenes):
+  //  · 생략(기본) = 종전 그대로 변형 씬(inpaints)을 버린다 — 프로젝트 파일 내보내기(JSON 한 장, 첨부 파일을 담지 못함)·
+  //    씬 템플릿(일반 씬 전용 형식)·순차 생성 파생 프로젝트.
+  //  · true = 변형 씬을 생성 씬과 같은 규칙(game·round·imageMap·mains 비움, imageAccounts 제거)으로 남긴다. 변형 씬이
+  //    가리키는 vibes·references 파일은 JSON 에 담지 않으므로 반드시 importSessionShallow(…, { attachmentsFrom }) 와
+  //    짝으로 쓴다(= cloneSessionShallow). 앱 안 복제 전용 — 파일로 내보내는 경로에는 쓰지 않는다.
+  async exportSessionShallow(
+    session: Session,
+    opts?: { includeVariants?: boolean },
+  ) {
     const sess: ISession = session.toJSON();
     if (sess.presetShareds.SDImageGenEasy) {
       sess.presetShareds.SDImageGenEasy.vibes = [];
@@ -2524,15 +2539,24 @@ export class SessionService extends ResourceSyncService<Session> {
     if (sess.presetShareds.SDImageGen) {
       sess.presetShareds.SDImageGen.vibes = [];
     }
-    for (const scene of Object.values(sess.scenes)) {
+    const stripImageState = (scene: { game?: unknown; round?: unknown; imageMap: string[]; mains: string[]; imageAccounts?: unknown }) => {
       scene.game = undefined;
       scene.round = undefined;
       scene.imageMap = [];
       scene.mains = [];
       // 부스트 내부 표식(D8, 계정 이름)은 공유용 내보내기에 넣지 않는다.
       delete scene.imageAccounts;
+    };
+    for (const scene of Object.values(sess.scenes)) {
+      stripImageState(scene);
     }
-    sess.inpaints = {};
+    if (opts?.includeVariants) {
+      for (const scene of Object.values(sess.inpaints ?? {})) {
+        stripImageState(scene);
+      }
+    } else {
+      sess.inpaints = {};
+    }
 
     for (const presetSet of Object.values(sess.presets)) {
       for (const preset of presetSet) {
@@ -2648,7 +2672,22 @@ export class SessionService extends ResourceSyncService<Session> {
     await zipService.zipFiles(entries, outPath);
   }
 
-  async importSessionShallow(session: ISession, name: string) {
+  // 앱 안 얕은 복제(폴더 복제·프로젝트 복제 「이미지 미포함」) — 변형 씬까지 생성 씬과 같은 수준으로 옮긴다
+  // (2026-11-16 사용자 판정 「생성 씬과 변형 씬은 기능상 동등」). 변형 씬 설정은 JSON 으로, 변형 씬이 가리키는
+  // 첨부 파일(원본·마스크·바이브·인코딩 캐시·캐릭터 레퍼런스·세션 미러 원본)은 새 프로젝트를 등록하기 전에 같은 이름으로
+  // 복사한다(sceneCopyFlow.copySceneAttachments 재사용 — 원본은 읽기·복사만). 이미지 파일 복사는 호출부(cloneFolder 「이미지 포함」).
+  async cloneSessionShallow(source: Session, newName: string): Promise<void> {
+    const proj = await this.exportSessionShallow(source, { includeVariants: true });
+    await this.importSessionShallow(proj, newName, { attachmentsFrom: source });
+  }
+
+  // opts.attachmentsFrom(선택): 주면 session JSON 의 변형 씬·미러 원본이 가리키는 첨부 파일을 그 프로젝트에서 새 프로젝트로
+  // 복사한다(createFrom 앞 — 새 프로젝트가 없는 파일을 가리키는 순간을 만들지 않는다). 생략 = 종전 그대로(파일 불러오기·템플릿 등).
+  async importSessionShallow(
+    session: ISession,
+    name: string,
+    opts?: { attachmentsFrom?: Session },
+  ) {
     if (this.isLoaded(name)) {
       throw new Error('Resource already exists');
     }
@@ -2686,6 +2725,25 @@ export class SessionService extends ResourceSyncService<Session> {
             } catch (e) {}
           }
         }
+      }
+    }
+    if (opts?.attachmentsFrom) {
+      // 대상 경로는 이름으로만 해석된다(imageService.getVibesDir 등 → projectPath 관문, 신 배치는 위에서 선등록 완료).
+      const target = { name } as Session;
+      const stats: SceneAttachmentCopyStats = { copied: 0, skipped: 0, missing: 0 };
+      await copySceneAttachments(
+        defaultSceneCopyDeps(),
+        opts.attachmentsFrom,
+        target,
+        sessionVariantAttachmentFiles(session),
+        new Set<string>(),
+        stats,
+      );
+      if (stats.missing > 0) {
+        this.addSystemLog(
+          'warn',
+          `"${name}" 복제: 변형 씬 첨부 파일 ${stats.missing}개를 원본에서 찾지 못했습니다(씬은 복제됨).`,
+        );
       }
     }
     await this.createFrom(name, session);

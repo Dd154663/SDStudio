@@ -122,6 +122,54 @@ export function sceneAttachmentFiles(scene: { type?: string; preset?: any } | nu
   return out;
 }
 
+/**
+ * 프로젝트 얕은 복제(폴더 복제·프로젝트 복제 「이미지 미포함」, 2026-11-16 플랜 `2026-11-16-shallow-clone-variant-scenes`)가
+ * 새 프로젝트로 함께 옮길 변형 쪽 첨부 파일(순수 함수, 중복 제거).
+ * = 세션 JSON 의 모든 변형 씬(inpaints) sceneAttachmentFiles 합 + 세션 미러 원본(mirrorImage — vibes 폴더 파일 이름,
+ *   storeVibeImage 결과). 손상 값(객체가 아님·문자열이 아님)은 건너뛴다.
+ */
+export function sessionVariantAttachmentFiles(
+  json: { inpaints?: unknown; mirrorImage?: unknown } | null | undefined,
+): SceneAttachmentFiles {
+  const out: SceneAttachmentFiles = { vibes: [], encodedVibes: [], references: [] };
+  if (!json || typeof json !== 'object') return out;
+  const vibeSet = new Set<string>();
+  const encodedSet = new Set<string>();
+  const refSet = new Set<string>();
+  const addVibe = (name: string | undefined) => {
+    if (name && !vibeSet.has(name)) {
+      vibeSet.add(name);
+      out.vibes.push(name);
+    }
+  };
+  const inpaints = json.inpaints;
+  const scenes =
+    inpaints && typeof inpaints === 'object' && !Array.isArray(inpaints)
+      ? Object.values(inpaints as Record<string, unknown>)
+      : [];
+  for (const scene of scenes) {
+    if (!scene || typeof scene !== 'object') continue;
+    const files = sceneAttachmentFiles(scene as { type?: string; preset?: any });
+    for (const name of files.vibes) addVibe(name);
+    for (const e of files.encodedVibes) {
+      const k = `${e.name}&info=${e.info}`;
+      if (!encodedSet.has(k)) {
+        encodedSet.add(k);
+        out.encodedVibes.push(e);
+      }
+    }
+    for (const name of files.references) {
+      if (!refSet.has(name)) {
+        refSet.add(name);
+        out.references.push(name);
+      }
+    }
+  }
+  const mirror = json.mirrorImage;
+  if (typeof mirror === 'string' && mirror.endsWith('.' + PNG_IMAGE_EXT)) addVibe(fileNameOf(mirror));
+  return out;
+}
+
 export interface SceneCopyDeps {
   /** 복사 대상 후보(숨김 씬 템플릿 제외 — templateService.filterVisibleProjects(sessionService.list())) */
   listProjects(): string[];

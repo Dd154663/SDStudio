@@ -318,8 +318,8 @@ describe('C10 프로젝트 복제(BackupService.duplicateProject)', () => {
     const sessionService = {
       list: () => list,
       getFolderOf: () => 'F',
-      exportSessionShallow: jest.fn(async () => ({})),
-      importSessionShallow: jest.fn(async (_j: any, n: string) => {
+      // 2026-11-16: 이미지 미포함 복제는 cloneSessionShallow(변형 씬·첨부 파일 동반) 한 번으로 바뀜
+      cloneSessionShallow: jest.fn(async (_s: any, n: string) => {
         list.push(n);
       }),
       duplicateSessionDeep: jest.fn(),
@@ -338,7 +338,7 @@ describe('C10 프로젝트 복제(BackupService.duplicateProject)', () => {
       suggestFolderCopyName,
     });
     await fn();
-    expect(sessionService.importSessionShallow).toHaveBeenLastCalledWith({}, 'P 복사본 (2)');
+    expect(sessionService.cloneSessionShallow).toHaveBeenLastCalledWith({ name: 'P' }, 'P 복사본 (2)');
     expect(sessionService.moveToFolder).toHaveBeenLastCalledWith('P 복사본 (2)', 'F');
     expect(appState.pushDialogAsync).toHaveBeenCalledTimes(1); // 방식 선택만, 이름은 묻지 않음
     expectNoOldMarker(['P 복사본 (2)']);

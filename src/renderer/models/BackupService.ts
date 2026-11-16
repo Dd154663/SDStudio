@@ -304,7 +304,7 @@ export class BackupService {
   }
   // 현재 프로젝트를 앱 내에서 복제한다. (이미지 포함/미포함 2택)
   // 결과적으로 "내보내기 후 재임포트"와 동일하며 기존 export/import 동작을 재사용한다.
-  // 미포함 = exportSessionShallow → importSessionShallow
+  // 미포함 = cloneSessionShallow(얕은 직렬화 + 변형 씬·첨부 파일 동반, 2026-11-16)
   // 포함  = duplicateSessionDeep (JSON + 모든 이미지 디렉터리 복사)
   async duplicateProject() {
     const cur = appState.curSession;
@@ -331,8 +331,8 @@ export class BackupService {
     appState.setProgressDialog({ text: '프로젝트 복제 중...', done: 0, total: 1 });
     try {
       if (mode === 'shallow') {
-        const proj = await sessionService.exportSessionShallow(cur);
-        await sessionService.importSessionShallow(proj, newName);
+        // 변형 씬·첨부 파일까지 복제(2026-11-16 — 종전 exportSessionShallow 기본값은 변형 씬을 버렸다)
+        await sessionService.cloneSessionShallow(cur, newName);
       } else {
         await sessionService.duplicateSessionDeep(cur, newName);
       }
