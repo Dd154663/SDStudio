@@ -693,7 +693,7 @@ const PieceEditor = observer(({ onClose }: { onClose: () => void }) => {
         로컬 조각
       </button>
       <button
-        className={`btn ${wide ? 'flex-1 px-2' : 'px-4'} py-1.5 text-sm rounded-lg ${scope === 'global' ? 'bg-purple-500 text-white dark:bg-purple-400/25 dark:text-purple-300 font-bold' : 'back-llgray'}`}
+        className={`btn ${wide ? 'flex-1 px-2' : 'px-4'} py-1.5 text-sm rounded-lg ${scope === 'global' ? 'bg-purple-600 text-white dark:bg-purple-400/25 dark:text-purple-300 font-bold' : 'back-llgray'}`}
         aria-pressed={scope === 'global'}
         onClick={() => setScope('global')}
       >

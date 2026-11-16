@@ -180,7 +180,9 @@ const RULES: Rule[] = [
     allow: {},
   },
   {
-    name: '솔리드 버튼 인라인(hover:bg-{액센트색}-600) — .btn-solid-* 사용',
+    // 2026-11-16 PC UX 결함 묶음 4: .btn-solid-* 가 라이트 600/hover 700·다크 500/hover 600 이 되어
+    // 인라인 복제도 hover 700(라이트)·600(다크 짝) 두 단계를 모두 잡는다.
+    name: '솔리드 버튼 인라인(hover:bg-{액센트색}-600/700) — .btn-solid-* 사용',
     guide: '§2',
     dir: '',
     exts: ['.ts', '.tsx'],
@@ -189,11 +191,14 @@ const RULES: Rule[] = [
     count: (c) =>
       countMatches(
         c,
-        /hover:bg-(sky|green|red|orange|yellow|indigo|purple|blue|rose|emerald|teal|amber|pink|lime|cyan|violet|fuchsia)-600/g,
+        /hover:bg-(sky|green|red|orange|yellow|indigo|purple|blue|rose|emerald|teal|amber|pink|lime|cyan|violet|fuchsia)-(600|700)/g,
       ),
     allow: {
-      'componenets/CharacterPresetEditor.tsx': 2,
+      // 오류 토스트 닫기 ✕(빨강 토스트 위 hover:bg-red-700) — 버튼 색이 아니라 토스트 층 위 눌림 표시(SPEC §1 토스트 예외).
+      // 700 확장으로 새로 잡힌 종전 코드(신규 유입 아님).
+      'componenets/AlertWindow.tsx': 1,
       // ExportPresetManager 1건은 2026-11-11 오버레이 묶음 1 에서 .btn-solid-sky 로 정리
+      // CharacterPresetEditor 2건(순차 생성 시작)은 2026-11-16 묶음 4 에서 .btn-solid-purple/green 으로 정리
     },
   },
   {

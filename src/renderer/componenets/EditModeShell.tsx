@@ -395,7 +395,7 @@ const EditModeShell = observer(() => {
               // 고대비: 진한 sky 배경 + 흰 그립 아이콘 → 다크·화이트 어느 테마에서도
               // 패널 위에서 묻히지 않는다.
               className={
-                'titlebar-no-drag fixed flex items-center justify-center rounded-md border border-sky-300 bg-sky-500 text-white shadow-lg select-none touch-none ' +
+                'titlebar-no-drag fixed flex items-center justify-center rounded-md border border-sky-300 bg-sky-600 text-white dark:bg-sky-500 shadow-lg select-none touch-none ' +
                 (isGen ? 'cursor-pointer ' : 'cursor-grab ') +
                 (isDraggingThis ? 'opacity-70 ' : '')
               }

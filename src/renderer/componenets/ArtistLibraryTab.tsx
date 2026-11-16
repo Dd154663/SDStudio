@@ -304,7 +304,7 @@ export const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: st
             </Tooltip>
             <Tooltip content="작가 삭제">
             <button
-              className="icon-button bg-red-500 text-white !rounded-md p-2"
+              className="icon-button btn-solid-red !rounded-md p-2"
               onClick={() => {
                 appState.pushDialog({
                   type: 'confirm',
@@ -415,7 +415,7 @@ export const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: st
                   </button>
                 )}
                 <button
-                  className="text-xs icon-button bg-red-500 text-white !rounded-md px-2 py-1"
+                  className="text-xs icon-button btn-solid-red !rounded-md px-2 py-1"
                   onClick={() => {
                     // 샘플 이미지 파일을 영구 삭제하므로 확인 1회(X11)
                     const imageId = selected.id;

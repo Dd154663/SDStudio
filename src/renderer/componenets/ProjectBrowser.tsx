@@ -348,7 +348,7 @@ const NavItem = ({
         dropping ? 'ring-2 ring-sky-400 ' : ''
       }${
         active
-          ? 'bg-sky-500 text-white'
+          ? 'bg-sky-600 text-white dark:bg-sky-500'
           : 'btn-neutral text-body'
       }`}
     >

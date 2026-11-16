@@ -278,7 +278,7 @@ export const DownloadDialog = observer(
                       key={i}
                       className={`w-8 h-8 rounded flex items-center justify-center text-sm ${
                         selectedImages.has(i)
-                          ? 'bg-sky-500 text-white'
+                          ? 'bg-sky-600 text-white dark:bg-sky-500'
                           : 'bg-gray-200 dark:bg-slate-600 text-muted'
                       }`}
                       onClick={() => toggleImageSelection(i)}

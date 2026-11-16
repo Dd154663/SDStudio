@@ -211,7 +211,7 @@ const ProjectRow = observer(
         style={dragging ? { opacity: 0.4 } : undefined}
         className={`w-full flex items-center gap-2 px-2.5 py-2.5 rounded-md text-[15px] text-left transition-colors ${
           highlighted
-            ? 'bg-sky-500 text-white shadow-sm'
+            ? 'bg-sky-600 text-white dark:bg-sky-500 shadow-sm'
             : queueRunning
               ? 'bg-emerald-100/70 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-default'
               : 'hover:bg-gray-100 dark:hover:bg-slate-700 text-default'
@@ -313,7 +313,7 @@ const ProjectRow = observer(
                 highlighted
                   ? 'bg-white/25 text-white'
                   : queueRunning
-                    ? 'bg-emerald-500 text-white'
+                    ? 'bg-emerald-600 text-white dark:bg-emerald-500'
                     : 'bg-sky-100 text-sky-600 dark:bg-sky-900/40 dark:text-sky-300'
               }`}
             >

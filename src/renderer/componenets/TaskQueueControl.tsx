@@ -52,7 +52,7 @@ const ProgressBar = ({ duration, isError, text, key, elapsed, fit, isRest }: Pro
       <div
         className={
           'top-0 left-0 absolute w-full progress-transition rounded-full h-8 progress-clip-animation ' +
-          (isRest ? 'back-gray' : !isError ? 'bg-sky-500 dark:bg-indigo-400' : 'bg-red-500')
+          (isRest ? 'back-gray' : !isError ? 'bg-sky-600 dark:bg-indigo-400' : 'bg-red-600 dark:bg-red-500')
         }
         style={animStyle}
       ></div>

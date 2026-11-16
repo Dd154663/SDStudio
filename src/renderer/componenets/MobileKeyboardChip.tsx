@@ -294,7 +294,7 @@ export default function MobileKeyboardChip({
         {scrubbing && (
           <div
             data-kbd-chip-bubble
-            className="absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+10px)] px-2.5 py-1 rounded-lg bg-sky-500 text-white font-bold text-[15px] shadow-lg pointer-events-none"
+            className="absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+10px)] px-2.5 py-1 rounded-lg bg-sky-600 text-white dark:bg-sky-500 font-bold text-[15px] shadow-lg pointer-events-none"
           >
             {label}
           </div>

@@ -72,12 +72,16 @@
   --c-input-text: #111827; /* gray-900 */
   --c-icon-text: #4b5563; /* gray-600 */
   --c-zone: #eceff4; /* 구분 구역(폴더 등). 커스텀 배경 색조 미추종 = 대비 보장 */
-  --c-green-bg: #22c55e;  --c-green-fg: #ffffff;
-  --c-sky-bg: #0ea5e9;    --c-sky-fg: #ffffff;
-  --c-red-bg: #ef4444;    --c-red-fg: #ffffff;
-  --c-gray-bg: #6b7280;   --c-gray-fg: #ffffff;
-  --c-orange-bg: #f97316; --c-orange-fg: #ffffff;
-  --c-yellow-bg: #eab308; --c-yellow-fg: #ffffff; /* yellow-500 */
+  /* 상태색 배경 한 단계 진하게(2026-11-16 PC UX 결함 묶음 4 D1, 사용자 결정 안 B — 종전 500 단계).
+     흰 글자 대비: green-600 3.30(종전 2.28) · sky-600 4.10(2.77) · red-600 4.83(3.76) · orange-600 3.56(2.80).
+     gray-500 4.83 는 그대로. 노랑은 사용자 결정으로 500 보류(1.92). 다크·트루다크(.dark 블록)는 불변.
+     커스텀 테마(uiTheme.buildThemeVars setBtn)가 색을 지정하면 그 값(반투명 틴트+흑/백 글자)이 이긴다. */
+  --c-green-bg: #16a34a;  --c-green-fg: #ffffff; /* green-600 */
+  --c-sky-bg: #0284c7;    --c-sky-fg: #ffffff;   /* sky-600 */
+  --c-red-bg: #dc2626;    --c-red-fg: #ffffff;   /* red-600 */
+  --c-gray-bg: #6b7280;   --c-gray-fg: #ffffff;  /* gray-500 */
+  --c-orange-bg: #ea580c; --c-orange-fg: #ffffff; /* orange-600 */
+  --c-yellow-bg: #eab308; --c-yellow-fg: #ffffff; /* yellow-500 — 보류(묶음 4 제외) */
   /* 보라 = Opus 추가 충전(Usage Boost)분 막대 전용(2026-10-25). 버튼 색 아님 — 커스텀 테마(uiTheme)는
      재정의하지 않아 라이트/다크 기본값을 따르고, 트루다크는 .dark 값을 그대로 쓴다. */
   --c-purple-bg: #a855f7; --c-purple-fg: #ffffff; /* purple-500 */
@@ -315,8 +319,9 @@ html.font-pretendard body {
   color: var(--c-gray-fg);
 }
 
+/* 라이트 gray-500 흰 글자 4.83(2026-11-16 묶음 4 — 종전 gray-400 2.54). 다크 값 불변. */
 .back-llgray {
-  @apply bg-gray-400 text-white dark:bg-gray-400/25 dark:text-gray-200;
+  @apply bg-gray-500 text-white dark:bg-gray-400/25 dark:text-gray-200;
 }
 
 .back-lllgray {
@@ -644,15 +649,17 @@ html.font-pretendard body {
   transition: filter 0.15s ease;
 }
 
-/* .btn-solid-* — 솔리드 원색 버튼(bg-{색}-500 hover:600 text-white) 캡슐화.
-   다크에서도 원색을 유지하는 기존 결정(P1.5 컬러버튼 유지)을 그대로 담는다. */
-.btn-solid-sky { @apply bg-sky-500 hover:bg-sky-600 text-white; }
-.btn-solid-green { @apply bg-green-500 hover:bg-green-600 text-white; }
-.btn-solid-red { @apply bg-red-500 hover:bg-red-600 text-white; }
-.btn-solid-orange { @apply bg-orange-500 hover:bg-orange-600 text-white; }
+/* .btn-solid-* — 솔리드 원색 버튼 캡슐화. 다크에서도 원색을 유지하는 기존 결정(P1.5 컬러버튼 유지)을 그대로 담는다.
+   2026-11-16 묶음 4(안 B): 라이트 bg-600 hover:700, 다크·트루다크(.dark 를 함께 가짐)는 종전 bg-500 hover:600.
+   라이트 흰 글자: sky 4.10 · green 3.30 · red 4.83 · orange 3.56 · indigo 6.29 · purple 5.38(종전 2.77·2.28·3.76·2.80·4.47·3.96).
+   yellow 는 사용자 결정으로 종전 500/600 보류. */
+.btn-solid-sky { @apply bg-sky-600 hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-600 text-white; }
+.btn-solid-green { @apply bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white; }
+.btn-solid-red { @apply bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 text-white; }
+.btn-solid-orange { @apply bg-orange-600 hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-600 text-white; }
 .btn-solid-yellow { @apply bg-yellow-500 hover:bg-yellow-600 text-white; }
-.btn-solid-indigo { @apply bg-indigo-500 hover:bg-indigo-600 text-white; }
-.btn-solid-purple { @apply bg-purple-500 hover:bg-purple-600 text-white; }
+.btn-solid-indigo { @apply bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white; }
+.btn-solid-purple { @apply bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600 text-white; }
 
 /* .btn-ghost — 배경 없는 아이콘/텍스트 버튼의 hover 배경 공용화.
    패딩·라운딩(p-2 rounded-md 등)과 hover:text-* 액센트는 사용처에서 조합 */

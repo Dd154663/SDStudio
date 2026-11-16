@@ -781,10 +781,10 @@ export const SlotPiece = observer(
           }}
         >
           <FaUser size={20} />
-          {/* 배지 색 bg-red-500 은 SPEC §1 의도적 예외(상태 강조 bg-*-500 text-white) — back-red 는 다크에서 반투명이라 아이콘 위 배지가 흐려진다 */}
+          {/* 배지 색 bg-red-600(다크 red-500) 은 SPEC §1 의도적 예외(상태 강조 원색 text-white, 2026-11-16 묶음 4 로 라이트 600) — back-red 는 다크에서 반투명이라 아이콘 위 배지가 흐려진다 */}
           {characterBadge && (
             <span
-              className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/3 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs font-bold"
+              className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/3 bg-red-600 text-white dark:bg-red-500 rounded-full w-4 h-4 flex items-center justify-center text-xs font-bold"
               data-piece-char-badge={characterBadge.warn ? 'warn' : 'count'}
               aria-hidden
             >

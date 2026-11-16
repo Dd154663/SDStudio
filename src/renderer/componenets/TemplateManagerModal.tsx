@@ -1170,7 +1170,7 @@ const TemplateWorkflowBody = observer(
                       <button
                         className={`text-sm px-3 py-1 rounded flex items-center gap-1 transition-colors ${
                           r.enabled !== false
-                            ? 'bg-sky-500 text-white'
+                            ? 'bg-sky-600 text-white dark:bg-sky-500'
                             : 'bg-gray-200 dark:bg-slate-600 text-muted'
                         }`}
                         onClick={() =>

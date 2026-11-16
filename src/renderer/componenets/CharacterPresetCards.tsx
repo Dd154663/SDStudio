@@ -239,7 +239,7 @@ export const CharacterPresetCard = observer(({
               className="w-8 h-8 rounded-full btn-solid-sky flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onApplyEasy(); }}
             >
-              <FaFont size={12} />
+              <FaFont size={14} />
             </button>
           </Tooltip>
         )}
@@ -248,7 +248,7 @@ export const CharacterPresetCard = observer(({
             className="w-8 h-8 rounded-full btn-solid-yellow flex items-center justify-center shadow-lg transition-colors"
             onClick={(e) => { e.stopPropagation(); onApplyCharacter(); }}
           >
-            <FaUserAlt size={12} />
+            <FaUserAlt size={14} />
           </button>
         </Tooltip>
         <Tooltip content="복제">
@@ -256,7 +256,7 @@ export const CharacterPresetCard = observer(({
             className="w-8 h-8 rounded-full btn-solid-orange flex items-center justify-center shadow-lg transition-colors"
             onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
           >
-            <ActionIcon id="duplicate" size={12} />
+            <ActionIcon id="duplicate" size={14} />
           </button>
         </Tooltip>
         {onCopyToGlobal && (
@@ -265,7 +265,7 @@ export const CharacterPresetCard = observer(({
               className="w-8 h-8 rounded-full btn-solid-purple flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onCopyToGlobal(); }}
             >
-              <ActionIcon id="copy-to-global" size={13} />
+              <ActionIcon id="copy-to-global" size={14} />
             </button>
           </Tooltip>
         )}
@@ -274,7 +274,7 @@ export const CharacterPresetCard = observer(({
             className="w-8 h-8 rounded-full btn-solid-red flex items-center justify-center shadow-lg transition-colors"
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
           >
-            <FaTrash size={12} />
+            <FaTrash size={14} />
           </button>
         </Tooltip>
       </div>}
@@ -306,7 +306,7 @@ export const GlobalFolderFilterChips = observer(
         <button
           className={`px-2.5 py-1 rounded-full text-xs whitespace-nowrap flex-none transition-colors ${
             value === '__all__'
-              ? 'bg-purple-500 text-white'
+              ? 'bg-purple-600 text-white dark:bg-purple-500'
               : 'btn-neutral text-body'
           }`}
           onClick={() => onChange('__all__')}
@@ -320,7 +320,7 @@ export const GlobalFolderFilterChips = observer(
             <button
               key={f}
               className={`px-2.5 py-1 rounded-full text-xs whitespace-nowrap flex-none transition-colors flex items-center gap-1 ${
-                selected ? 'bg-purple-500 text-white' : 'btn-neutral text-body'
+                selected ? 'bg-purple-600 text-white dark:bg-purple-500' : 'btn-neutral text-body'
               }`}
               onClick={() => onChange(f)}
               onContextMenu={
@@ -355,7 +355,7 @@ export const GlobalFolderFilterChips = observer(
         <button
           className={`px-2.5 py-1 rounded-full text-xs whitespace-nowrap flex-none transition-colors ${
             value === '__unfiled__'
-              ? 'bg-purple-500 text-white'
+              ? 'bg-purple-600 text-white dark:bg-purple-500'
               : 'btn-neutral text-body'
           }`}
           onClick={() => onChange('__unfiled__')}
@@ -541,7 +541,7 @@ export const GlobalCharacterPresetCard = observer(({
                 className="w-8 h-8 rounded-full btn-solid-sky flex items-center justify-center shadow-lg transition-colors"
                 onClick={(e) => { e.stopPropagation(); onApplyEasy(); }}
               >
-                <FaFont size={12} />
+                <FaFont size={14} />
               </button>
             </Tooltip>
           )}
@@ -550,7 +550,7 @@ export const GlobalCharacterPresetCard = observer(({
               className="w-8 h-8 rounded-full btn-solid-yellow flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onApplyCharacter(); }}
             >
-              <FaUserAlt size={12} />
+              <FaUserAlt size={14} />
             </button>
           </Tooltip>
           <Tooltip content="프로젝트로 복사">
@@ -558,7 +558,7 @@ export const GlobalCharacterPresetCard = observer(({
               className="w-8 h-8 rounded-full btn-solid-purple flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onLoad(); }}
             >
-              <ActionIcon id="copy-to-project" size={13} />
+              <ActionIcon id="copy-to-project" size={14} />
             </button>
           </Tooltip>
           <Tooltip content="복제">
@@ -566,7 +566,7 @@ export const GlobalCharacterPresetCard = observer(({
               className="w-8 h-8 rounded-full btn-solid-orange flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
             >
-              <ActionIcon id="duplicate" size={12} />
+              <ActionIcon id="duplicate" size={14} />
             </button>
           </Tooltip>
           {onMoveToFolder && (
@@ -575,7 +575,7 @@ export const GlobalCharacterPresetCard = observer(({
                 className="w-8 h-8 rounded-full btn-solid-indigo flex items-center justify-center shadow-lg transition-colors"
                 onClick={(e) => { e.stopPropagation(); onMoveToFolder(); }}
               >
-                <FaFolder size={12} />
+                <FaFolder size={14} />
               </button>
             </Tooltip>
           )}
@@ -584,7 +584,7 @@ export const GlobalCharacterPresetCard = observer(({
               className="w-8 h-8 rounded-full btn-solid-red flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onDelete(); }}
             >
-              <FaTrash size={12} />
+              <FaTrash size={14} />
             </button>
           </Tooltip>
         </div>

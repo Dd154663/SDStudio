@@ -147,7 +147,7 @@ const WdModelToggle = observer(
               'px-2.5 py-1 text-xs transition-colors ' +
               (stretch ? 'flex-1 ' : '') +
               (wdKey === m.key
-                ? 'bg-sky-500 text-white'
+                ? 'bg-sky-600 text-white dark:bg-sky-500'
                 : 'bg-transparent text-muted hover:bg-gray-100 dark:hover:bg-slate-700')
             }
             onClick={() => {

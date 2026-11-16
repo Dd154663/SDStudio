@@ -492,7 +492,7 @@ export const CharacterPresetInnerEditor = observer(({
                 <button
                   className={`text-sm px-3 py-1 rounded flex items-center gap-1 transition-colors ${
                     ref.enabled !== false
-                      ? 'bg-sky-500 text-white'
+                      ? 'bg-sky-600 text-white dark:bg-sky-500'
                       : 'bg-gray-200 dark:bg-slate-600 text-muted'
                   }`}
                   onClick={() => updateRefField(index, 'enabled', ref.enabled === false)}

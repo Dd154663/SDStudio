@@ -391,7 +391,7 @@ const GlobalFolderRow = observer(
           onClick={onClick}
           className={`group flex w-full items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${
             droppable && isOver ? 'ring-2 ring-purple-400 ' : ''
-          }${active ? 'bg-purple-500 text-white' : 'btn-neutral text-body'}`}
+          }${active ? 'bg-purple-600 text-white dark:bg-purple-500' : 'btn-neutral text-body'}`}
         >
           {icon}
           <span className="truncate min-w-0 max-w-[7rem] md:max-w-none md:flex-1 text-left">
@@ -1286,7 +1286,7 @@ export function useCharacterPresetPanel({
     <button
       className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
         globalView
-          ? 'bg-purple-500 text-white'
+          ? 'bg-purple-600 text-white dark:bg-purple-500'
           : 'btn-neutral text-body'
       }`}
       onClick={() => switchView(!globalView)}
@@ -1302,7 +1302,7 @@ export function useCharacterPresetPanel({
       <button
         aria-pressed={!globalView}
         className={`flex-1 px-2 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
-          !globalView ? 'bg-sky-500 text-white' : 'btn-neutral text-body'
+          !globalView ? 'bg-sky-600 text-white dark:bg-sky-500' : 'btn-neutral text-body'
         }`}
         onClick={() => switchView(false)}
       >
@@ -1312,7 +1312,7 @@ export function useCharacterPresetPanel({
       <button
         aria-pressed={globalView}
         className={`flex-1 px-2 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
-          globalView ? 'bg-purple-500 text-white' : 'btn-neutral text-body'
+          globalView ? 'bg-purple-600 text-white dark:bg-purple-500' : 'btn-neutral text-body'
         }`}
         onClick={() => switchView(true)}
       >
@@ -1329,7 +1329,7 @@ export function useCharacterPresetPanel({
         <button
           className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
             cyclingMode
-              ? (globalView ? 'bg-purple-500 text-white' : 'bg-sky-500 text-white')
+              ? (globalView ? 'bg-purple-600 text-white dark:bg-purple-500' : 'bg-sky-600 text-white dark:bg-sky-500')
               : 'btn-neutral text-body'
           }`}
           onClick={() => cyclingMode ? exitCyclingMode() : enterCyclingMode()}
@@ -1344,8 +1344,8 @@ export function useCharacterPresetPanel({
           className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
             selectMode
               ? globalView
-                ? 'bg-purple-500 text-white'
-                : 'bg-sky-500 text-white'
+                ? 'bg-purple-600 text-white dark:bg-purple-500'
+                : 'bg-sky-600 text-white dark:bg-sky-500'
               : 'btn-neutral text-body'
           }`}
           onClick={() => (selectMode ? exitSelectMode() : enterSelectMode())}
@@ -1877,7 +1877,7 @@ export function useCharacterPresetPanel({
   const startCyclingButton = (extraClass: string) => (
     <button
       className={`${extraClass}px-4 py-1.5 rounded-lg text-white text-sm font-medium transition-colors flex items-center gap-1.5 ${
-        globalView ? 'bg-purple-500 hover:bg-purple-600' : 'bg-green-500 hover:bg-green-600'
+        globalView ? 'btn-solid-purple' : 'btn-solid-green'
       }`}
       onClick={startCycling}
       disabled={selectedCyclingCount === 0 || selectedScenes.size === 0}
@@ -1982,7 +1982,7 @@ export function useCharacterPresetPanel({
         ) : (
           <>
             <div
-              className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm bg-sky-500 text-white"
+              className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm bg-sky-600 text-white dark:bg-sky-500"
               data-character-local-row=""
             >
               <FaUsers className="flex-none" size={12} />

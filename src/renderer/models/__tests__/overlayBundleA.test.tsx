@@ -199,8 +199,8 @@ describe('소스 검사 — 10창의 등급(width·fullscreen 없음)', () => {
     expect(toolbar).toContain('작가 이름 변경');
     expect(toolbar).toContain('즐겨찾기');
     expect(toolbar).toContain('작가 삭제');
-    // 삭제 버튼 원색은 결함 묶음 4 범위라 그대로
-    expect(toolbar).toContain('bg-red-500 text-white');
+    // 삭제 버튼 원색은 결함 묶음 4(2026-11-16)에서 .btn-solid-red(라이트 600·다크 500)로
+    expect(toolbar).toContain('btn-solid-red');
     const src = readComponent('ArtistLibraryTab.tsx');
     const afterTag = src.slice(src.indexOf(tag) + tag.length);
     const bodyEnd = afterTag.indexOf('</ModalOverlay>');
