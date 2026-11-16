@@ -543,7 +543,7 @@ const PieceEditor = observer(({ onClose }: { onClose: () => void }) => {
     const outPath = 'exports/global_pieces_backup_' + Date.now().toString() + '.json';
     await backend.writeFile(outPath, stringifyExportJson(allData));
     await backend.publishExport(outPath);
-    appState.pushMessage('전역 조각 전체 백업 완료');
+    appState.pushMessage('전역 조각 전체를 백업했습니다');
   };
 
   const copyToOtherScope = () => {
@@ -772,12 +772,12 @@ const PieceEditor = observer(({ onClose }: { onClose: () => void }) => {
         </Tooltip>
       )}
       {scope === 'global' && (
-        <Tooltip content="전역 조각 전체 백업 내보내기">
+        <Tooltip content="전역 조각 전체를 한 파일로 백업">
           <button
             className="icon-button h-8 px-3 back-orange flex items-center gap-1"
             onClick={exportAllGlobal}
           >
-            <ActionIcon id="backup" size={14} /> <span className={labelClass}>전체 백업</span>
+            <ActionIcon id="backup" size={14} /> <span className={labelClass}>백업</span>
           </button>
         </Tooltip>
       )}

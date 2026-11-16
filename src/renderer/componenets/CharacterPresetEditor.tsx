@@ -28,13 +28,13 @@ import {
   templateService,
 } from '../models';
 import { appState } from '../models/AppService';
-import { nameErrorMessage, NAME_INPUT_TEXT, numberedName, promptName, suggestFolderCopyName } from '../models/nameInput';
+import { nameErrorMessage, NAME_INPUT_TEXT, promptName, suggestFolderCopyName } from '../models/nameInput';
 import { FaPlay, FaPause, FaStop, FaSync, FaGlobe, FaUsers } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
 import type { IGlobalCharacterPresetEntry } from '../models/GlobalCharacterPresetService';
 import { saveJsonFile } from '../models/exportUtil';
 import { syncFileName } from '../models/driveSync';
-import { importGlobalCharacterPresetsText } from '../models/characterPresetImport';
+import { importGlobalCharacterPresetsText, importLocalCharacterPresetsText } from '../models/characterPresetImport';
 import { interceptFileImportClick } from '../models/driveImport';
 import { stringifyExportJson } from '../models/jsonExport';
 import { FileUploadBase64 } from './UtilComponents';
@@ -51,13 +51,7 @@ import { CharacterPresetInnerEditor } from './CharacterPresetInnerEditor';
 import HelpIcon from './HelpIcon';
 import { ListDragLockedHint, ListSearchBar } from './ListSearchBar';
 import { hasQuery, matchesQuery } from '../models/listSearch';
-import { v4 } from 'uuid';
-import {
-  imageFileExt,
-  imageTokenBase,
-  isSafeImageToken,
-} from '../models/projectTemplateBackup';
-import { deleteConfirmText, safeImportedImageName } from '../models/deleteFlowRules';
+import { deleteConfirmText } from '../models/deleteFlowRules';
 import {
   addCharacterPresetRecorded,
   editCharacterPresets,
@@ -89,7 +83,7 @@ interface ExportedPresetData {
 async function exportCharacterPresets(session: any) {
   const presets = session.getCharacterPresets() as CharacterPreset[];
   if (presets.length === 0) {
-    appState.pushMessage('내보낼 캐릭터 프리셋이 없습니다');
+    appState.pushMessage('백업할 캐릭터 프리셋이 없습니다');
     return;
   }
 
@@ -136,10 +130,10 @@ async function exportCharacterPresets(session: any) {
       stringifyExportJson(exportData),
     );
   } catch (e: any) {
-    appState.pushMessage('내보내기 실패: ' + e.message);
+    appState.pushMessage('백업 실패: ' + e.message);
     return;
   }
-  appState.pushMessage(`${presets.length}개 캐릭터 프리셋을 내보냈습니다`);
+  appState.pushMessage(`캐릭터 프리셋 ${presets.length}개를 백업했습니다`);
 }
 
 // ─── 글로벌 캐릭터 프리셋 내보내기/불러오기 (PC↔모바일 크로스, 2026-07-18) ───
@@ -150,7 +144,7 @@ async function exportCharacterPresets(session: any) {
 async function exportGlobalCharacterPresets() {
   const entries = globalCharacterPresetService.list();
   if (entries.length === 0) {
-    appState.pushMessage('내보낼 글로벌 프리셋이 없습니다');
+    appState.pushMessage('백업할 글로벌 캐릭터 프리셋이 없습니다');
     return;
   }
   try {
@@ -164,10 +158,10 @@ async function exportGlobalCharacterPresets() {
     );
     if (result === 'cancelled') return;
   } catch (e: any) {
-    appState.pushMessage('내보내기 실패: ' + e.message);
+    appState.pushMessage('백업 실패: ' + e.message);
     return;
   }
-  appState.pushMessage(`${entries.length}개 글로벌 프리셋을 내보냈습니다`);
+  appState.pushMessage(`글로벌 캐릭터 프리셋 ${entries.length}개를 백업했습니다`);
 }
 
 // 텍스트 이후 단계는 models/characterPresetImport.ts(드라이브에서 받은 파일과 공용 — 드라이브 API ③).
@@ -175,113 +169,10 @@ async function importGlobalCharacterPresets(file: File) {
   await importGlobalCharacterPresetsText(await file.text());
 }
 
+// 프로젝트 로컬 캐릭터 프리셋 파일 불러오기 — 이름이 같은 항목은 공용 정책 흐름으로 묻는다
+// (2026-11-16 M5 묶음 b R1-b, 종전 묻지 않고 「X (2)」). 본문은 models/characterPresetImport.ts.
 async function importCharacterPresets(session: any, file: File) {
-  const text = await file.text();
-  let data: ExportedPresetData;
-  try {
-    data = JSON.parse(text);
-  } catch (e) {
-    appState.pushMessage('올바른 캐릭터 프리셋 파일이 아닙니다');
-    return;
-  }
-
-  if (!data.presets || !Array.isArray(data.presets)) {
-    appState.pushMessage('올바른 캐릭터 프리셋 파일이 아닙니다');
-    return;
-  }
-
-  let imported = 0;
-  for (const presetJson of data.presets) {
-    // 파일 안의 이미지 파일명은 외부 입력이다(2026-10-03 X15b) — '..'·절대 경로·구분자가 섞이면
-    // 바이브/레퍼런스 폴더 밖(예: 프로젝트 파일·설정 파일)을 덮어쓸 수 있었다. 안전한 이름
-    // (projectTemplateBackup.isSafeImageToken)이 아니면 새 이름으로 저장하고 프리셋 참조를 그 이름으로 바꾼다.
-    // 저장 폴더는 항상 이 프로젝트의 vibes/·references/ 로 고정.
-    const newImageName = (orig: unknown) =>
-      v4() + '.' + imageFileExt(imageTokenBase(orig));
-    const renamedVibes = new Map<string, string>();
-    const renamedRefs = new Map<string, string>();
-    const remapRef = (path: unknown, map: Map<string, string>) => {
-      if (typeof path !== 'string') return path;
-      return map.get(path) ?? map.get(imageTokenBase(path)) ?? path;
-    };
-
-    // 바이브 이미지 복원 (원래 파일명으로 직접 저장 — 안전하지 않은 이름만 새 이름)
-    if (Array.isArray(presetJson.vibeImages)) {
-      for (const img of presetJson.vibeImages) {
-        const safe = safeImportedImageName(img?.filename, isSafeImageToken, () =>
-          newImageName(img?.filename),
-        );
-        if (safe.renamed && typeof img?.filename === 'string') {
-          renamedVibes.set(img.filename, safe.name);
-        }
-        try {
-          const path = imageService.getVibesDir(session) + '/' + safe.name;
-          await backend.writeDataFile(path, img.data);
-        } catch (e) {}
-      }
-    }
-
-    // 레퍼런스 이미지 복원
-    if (Array.isArray(presetJson.referenceImages)) {
-      for (const img of presetJson.referenceImages) {
-        const safe = safeImportedImageName(img?.filename, isSafeImageToken, () =>
-          newImageName(img?.filename),
-        );
-        if (safe.renamed && typeof img?.filename === 'string') {
-          renamedRefs.set(img.filename, safe.name);
-        }
-        try {
-          const path = imageService.getReferenceDir(session) + '/' + safe.name;
-          await backend.writeDataFile(path, img.data);
-        } catch (e) {}
-      }
-    }
-
-    // 대표 이미지 복원
-    if (presetJson.representativeImageData && presetJson.representativeImage) {
-      const safe = safeImportedImageName(
-        presetJson.representativeImage,
-        isSafeImageToken,
-        () => newImageName(presetJson.representativeImage),
-      );
-      if (safe.renamed) {
-        renamedVibes.set(String(presetJson.representativeImage), safe.name);
-        presetJson.representativeImage = safe.name;
-      }
-      try {
-        const path = imageService.getVibesDir(session) + '/' + safe.name;
-        await backend.writeDataFile(path, presetJson.representativeImageData);
-      } catch (e) {}
-    }
-
-    // 새 이름으로 저장한 이미지의 참조를 맞춘다(바이브·레퍼런스 경로)
-    if (renamedVibes.size > 0 && Array.isArray(presetJson.vibes)) {
-      presetJson.vibes = presetJson.vibes.map((v: any) =>
-        v && typeof v === 'object' ? { ...v, path: remapRef(v.path, renamedVibes) } : v,
-      );
-    }
-    if (renamedRefs.size > 0 && Array.isArray((presetJson as any).characterReferences)) {
-      (presetJson as any).characterReferences = (presetJson as any).characterReferences.map(
-        (r: any) =>
-          r && typeof r === 'object' ? { ...r, path: remapRef(r.path, renamedRefs) } : r,
-      );
-    }
-
-    // 임시 필드 제거 후 프리셋 생성
-    delete presetJson.vibeImages;
-    delete presetJson.referenceImages;
-    delete presetJson.representativeImageData;
-
-    const preset = CharacterPreset.fromJSON(presetJson as ICharacterPreset);
-
-    // 중복 이름 처리 — 가져오기·충돌 규칙 「X」→「X (2)」(2026-11-14 M2 I4, 종전 「X_1_1」 반복 접미). 묻지 않고 조용히 바꾸는 정책은 그대로
-    preset.name = numberedName(preset.name, (n) => session.hasCharacterPreset(n));
-
-    session.addCharacterPreset(preset);
-    imported++;
-  }
-
-  appState.pushMessage(`${imported}개 캐릭터 프리셋을 불러왔습니다`);
+  await importLocalCharacterPresetsText(session, await file.text());
 }
 
 // ─── 글로벌 폴더 패널 행 (그리드 탐색기 NavItem 경량판, 2026-07-16 UX 개편) ───
@@ -1357,7 +1248,8 @@ export function useCharacterPresetPanel({
     </>
   );
 
-  // [모두 글로벌로 복사](로컬)·[내보내기]·[불러오기]·도움말
+  // [모두 글로벌로 복사](로컬)·[백업]·[백업 불러오기]·도움말 — 명칭 규칙(2026-11-16 M5 묶음 b R1):
+  // 목록 전부를 한 파일로 = 「백업」, 그 파일 들여오기 = 「백업 불러오기」(아이콘 backup / import)
   const fileButtons = (
     <>
       {!globalView && presets.length > 0 && (
@@ -1373,21 +1265,21 @@ export function useCharacterPresetPanel({
         </Tooltip>
       )}
       {!globalView && presets.length > 0 && (
-        <Tooltip content="모든 프리셋 내보내기">
+        <Tooltip content="이 프로젝트의 캐릭터 프리셋 전체를 한 파일로 백업">
           <button
-            className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5"
+            className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 whitespace-nowrap"
             onClick={() => exportCharacterPresets(curSession)}
           >
-            <ActionIcon id="export" size={11} />
-            내보내기
+            <ActionIcon id="backup" size={11} />
+            백업
           </button>
         </Tooltip>
       )}
       {!globalView && (
-        <Tooltip content="프리셋 파일 불러오기">
-          <label className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 cursor-pointer">
+        <Tooltip content="백업 파일에서 캐릭터 프리셋 불러오기 (동명 처리 선택, 글로벌 백업 파일도 가능)">
+          <label className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap">
             <ActionIcon id="import" size={11} />
-            불러오기
+            백업 불러오기
             <input
               type="file"
               accept=".json"
@@ -1403,31 +1295,31 @@ export function useCharacterPresetPanel({
           </label>
         </Tooltip>
       )}
-      {/* 글로벌 내보내기/불러오기 — PC↔모바일 크로스 작업 이동용.
-          파일 형식이 로컬과 동일해 로컬 내보내기 파일도 불러올 수 있다. */}
+      {/* 글로벌 백업/백업 불러오기 — PC↔모바일 크로스 작업 이동용.
+          파일 형식이 로컬과 동일해 로컬 백업 파일도 불러올 수 있다. */}
       {globalView && globalEntries.length > 0 && (
-        <Tooltip content="모든 글로벌 프리셋 내보내기">
+        <Tooltip content="글로벌 캐릭터 프리셋 전체를 한 파일로 백업">
           <button
-            className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5"
+            className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 whitespace-nowrap"
             onClick={exportGlobalCharacterPresets}
           >
-            <ActionIcon id="export" size={11} />
-            내보내기
+            <ActionIcon id="backup" size={11} />
+            백업
           </button>
         </Tooltip>
       )}
       {globalView && (
-        <Tooltip content="프리셋 파일 불러오기 (로컬에서 내보낸 파일도 가능)">
+        <Tooltip content="백업 파일에서 글로벌 캐릭터 프리셋 불러오기 (동명 처리 선택, 로컬 백업 파일도 가능)">
           {/* PC 에서 Google 드라이브에 연결돼 있으면 출처([Google 드라이브 / 파일])를 먼저 묻는다
               (드라이브 API ③). Android·미연결은 기존처럼 바로 파일 선택기. */}
           <label
-            className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 cursor-pointer"
+            className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
             onClick={(e) =>
               interceptFileImportClick(e, globalImportInputRef.current, 'character-presets')
             }
           >
             <ActionIcon id="import" size={11} />
-            불러오기
+            백업 불러오기
             <input
               ref={globalImportInputRef}
               type="file"
@@ -1905,7 +1797,8 @@ export function useCharacterPresetPanel({
           {mobileViewToggle}
           {modeButtons}
         </div>
-        <div className="flex items-center gap-2">{fileButtons}</div>
+        {/* 「백업 불러오기」로 글자가 늘어 좁은 폭에서는 줄을 바꾼다(2026-11-16 R1) */}
+        <div className="flex items-center gap-2 flex-wrap">{fileButtons}</div>
       </div>
 
       {selectMode && selectionBar('mb-2 flex items-center gap-2 flex-wrap')}

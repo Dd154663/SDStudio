@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { appState } from '../models/AppService';
 import { isMobile } from '../models';
-import { DirectExportRequest, emptyExportForm, exportFormToPreset, exportFormProblems, exportSpecialChars } from '../models/exportSettings';
+import { DirectExportRequest, emptyExportForm, exportFormToPreset, exportFormProblems, exportSpecialChars, FOLDER_EXPORT_FIXED_NOTE } from '../models/exportSettings';
 import ModalOverlay from './ModalOverlay';
 import ExportSettingsFields from './ExportSettingsFields';
 
@@ -20,6 +20,11 @@ function DirectExportForm({ request }: { request: DirectExportRequest }) {
     };
   }, [request]);
   const close = () => request.resolve();
+  // 범위(2026-11-16 M5 묶음 b P8): 폴더 일괄은 같은 폼에서 쓰지 않는 칸을 숨기고 이유를 한 줄 안내한다.
+  const scope = request.scope ?? 'project';
+  const summary = scope === 'folder'
+    ? `폴더 "${request.projectName}" · 프로젝트 ${request.projectCount ?? 0}개 · 대상 씬 ${request.sceneNames.length}개`
+    : `${request.projectName} · 대상 씬 ${request.sceneNames.length}개`;
   // 빠진·잘못된 칸(2026-11-12 정비 M1): 비활성만 하던 [내보내기]를 내보내기 프리셋 관리와 같이 —
   // 버튼은 막지 않고 누르면 칸 이름 토스트, 바닥줄 왼쪽 한 줄 안내.
   const problems = exportFormProblems(form, false);
@@ -45,9 +50,10 @@ function DirectExportForm({ request }: { request: DirectExportRequest }) {
     : null;
   return <ModalOverlay isOpen onClose={close} title="직접 내보내기 설정" size="m" footer={footer} footerStart={footerStart}>
     <div className="space-y-4">
-      <div className="text-sm text-muted">{request.projectName} · 대상 씬 {request.sceneNames.length}개</div>
+      <div className="text-sm text-muted">{summary}</div>
       {/* PC 는 2열 격자(칸마다 최소 300px — m 창 폭이면 2열), 모바일은 종전 세로 쌓기 */}
-      <ExportSettingsFields form={form} setForm={setForm} direct twoColumn={!isMobile} />
+      <ExportSettingsFields form={form} setForm={setForm} direct twoColumn={!isMobile} scope={scope} />
+      {scope === 'folder' && <div className="text-xs text-muted" data-direct-export-folder-note="">{FOLDER_EXPORT_FIXED_NOTE}</div>}
       {!form.autoConvertSeparator && detected.length > 0 && <fieldset className="border line-color rounded p-3">
         <legend className="text-sm text-muted">구분자로 변환할 문자</legend>
         <div className="flex flex-wrap gap-3">{detected.map((char) => <label key={char} className="flex items-center gap-1 text-default">

@@ -4,11 +4,18 @@
 // JSON 형식 검사 → (이름이 같은 항목이 있으면) 정책 선택 → 덮어쓰기면 확인 1회(id 유지·내용만 교체,
 // 프로젝트 연결 보존) → 적용 → 「추가 · 갱신 · 건너뜀」 안내. 파일 형식은 로컬 내보내기(ExportedPresetData v1)
 // 와 같아 로컬 파일도 불러올 수 있다(GlobalCharacterPresetService.importFromFileData).
-// 프로젝트 로컬 캐릭터 프리셋 불러오기는 드라이브 대상이 아니라 CharacterPresetEditor 에 그대로 둔다.
+// 프로젝트 로컬 캐릭터 프리셋 불러오기는 드라이브 대상이 아니다 — 같은 정책 흐름(2026-11-16 M5 묶음 b R1-b)으로
+// importLocalCharacterPresetsText 가 받고, 적용 규칙은 localCharacterPresetImport.ts(서비스 의존 없음).
 
-import { globalCharacterPresetService } from '.';
+import { backend, globalCharacterPresetService, imageService } from '.';
 import { appState } from './AppService';
 import { askImportPolicyWithConfirm, IMPORT_FLOW_TEXT, notifyImportDone } from './importFlow';
+import { CharacterPreset, type ICharacterPreset, type Session } from './types';
+import {
+  applyLocalCharacterPresetImport,
+  countLocalCharacterPresetConflicts,
+  isLocalCharacterPresetFile,
+} from './localCharacterPresetImport';
 
 export const CHARACTER_PRESET_IMPORT_TEXT = {
   label: '캐릭터 프리셋',
@@ -38,6 +45,47 @@ export async function importGlobalCharacterPresetsText(text: string): Promise<vo
   if (!policy) return;
   try {
     const res = await globalCharacterPresetService.importFromFileData(data, policy);
+    notifyImportDone(CHARACTER_PRESET_IMPORT_TEXT.label, res);
+  } catch (e: any) {
+    appState.pushMessage(e.message || CHARACTER_PRESET_IMPORT_TEXT.failed);
+  }
+}
+
+/**
+ * 프로젝트 로컬 캐릭터 프리셋 파일 불러오기(캐릭터 프리셋 관리 「로컬」 탭 [백업 불러오기]).
+ * 형식 검사 → (이름이 같은 항목이 있으면) 정책 선택 → 덮어쓰기면 확인 1회 → 적용 → 「추가 · 갱신 · 건너뜀」 안내.
+ * 되돌리기 기록은 하지 않는다(종전 그대로 — 원장 「로컬 캐릭터 프리셋 파일 불러오기」 제외 행).
+ */
+export async function importLocalCharacterPresetsText(session: Session, text: string): Promise<void> {
+  let data: any;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    appState.pushMessage(CHARACTER_PRESET_IMPORT_TEXT.invalid);
+    return;
+  }
+  if (!isLocalCharacterPresetFile(data)) {
+    appState.pushMessage(CHARACTER_PRESET_IMPORT_TEXT.invalid);
+    return;
+  }
+  const policy = await askImportPolicyWithConfirm({
+    label: CHARACTER_PRESET_IMPORT_TEXT.label,
+    conflictCount: countLocalCharacterPresetConflicts(data, (n) => session.hasCharacterPreset(n)),
+    protection: IMPORT_FLOW_TEXT.protection.replaceContent,
+  });
+  if (!policy) return;
+  try {
+    const res = await applyLocalCharacterPresetImport(data, policy, {
+      has: (n) => session.hasCharacterPreset(n),
+      add: (json) => session.addCharacterPreset(CharacterPreset.fromJSON(json as ICharacterPreset)),
+      replace: (name, json) =>
+        session.updateCharacterPreset(name, CharacterPreset.fromJSON(json as ICharacterPreset)),
+      // 저장 폴더는 항상 이 프로젝트의 vibes/·references/ 로 고정(종전 그대로)
+      writeVibe: (fileName, imgData) =>
+        backend.writeDataFile(imageService.getVibesDir(session) + '/' + fileName, imgData),
+      writeReference: (fileName, imgData) =>
+        backend.writeDataFile(imageService.getReferenceDir(session) + '/' + fileName, imgData),
+    });
     notifyImportDone(CHARACTER_PRESET_IMPORT_TEXT.label, res);
   } catch (e: any) {
     appState.pushMessage(e.message || CHARACTER_PRESET_IMPORT_TEXT.failed);

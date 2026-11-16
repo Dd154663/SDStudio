@@ -1453,6 +1453,7 @@ export class AppState {
   subscribeExportPresets(fn: (presets: ExportPreset[]) => void) { return exportPresetService.subscribeExportPresets(fn); }
   detectSpecialCharsFromNames(sceneNames: string[], separator: string, autoConvert = false) { return exportPresetService.detectSpecialCharsFromNames(sceneNames, separator, autoConvert); }
   exportPackage(type: 'scene' | 'inpaint', selected?: GenericScene[]) { return exportPresetService.exportPackage(type, selected); }
+  requestDirectExport(info: Omit<import('./exportSettings').DirectExportRequest, 'resolve'>) { return exportPresetService.requestDirectExport(info); }
   quickExportPackage(type: 'scene' | 'inpaint', selected?: GenericScene[]) { return exportPresetService.quickExportPackage(type, selected); }
   exportPreset(session: Session, preset: any) { return exportPresetService.exportPreset(session, preset); }
 

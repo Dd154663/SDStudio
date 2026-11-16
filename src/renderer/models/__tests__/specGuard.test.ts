@@ -222,7 +222,7 @@ const RULES: Rule[] = [
     allow: {
       'models/AppService.ts': 1,
       'models/ArtistLibraryService.ts': 1,
-      'models/BackupService.ts': 3,
+      'models/BackupService.ts': 2, // 2026-11-16 M5 묶음 b P8: 폴더 직접 설정 연속 질문 제거로 3 → 2
       'models/BatchProcessService.ts': 2,
       'models/ExportPresetService.ts': 3,
       'models/GlobalCharacterPresetService.ts': 3,
@@ -342,7 +342,7 @@ const RULES: Rule[] = [
     allow: {
       'componenets/ResultViewer.tsx': 1, // 몇 등 이하 삭제(숫자)
       'componenets/SceneQueueControl.tsx': 1, // 찾을 씬 검색어
-      'models/BackupService.ts': 4, // 캐릭터 이름(파일명 접두) 2·이미지 크기 1·파일명 구분자 1
+      'models/BackupService.ts': 1, // 캐릭터 이름(프리셋 prefix_ask) 1 — 2026-11-16 M5 묶음 b P8: 폴더 직접 설정이 폼 한 창이 되어 4 → 1
       'models/BatchProcessService.ts': 5, // 순위 숫자 2·대체 문자 1·WebP 품질 2
       'models/customResolutionPrompt.ts': 2, // 해상도 너비·높이
       'models/ExportPresetService.ts': 1, // 캐릭터 접두

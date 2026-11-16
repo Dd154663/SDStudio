@@ -1,5 +1,5 @@
 import { transferExportArchive } from './exportArchiveTransfer';
-import { DirectExportResult, exportSpecialChars } from './exportSettings';
+import { DirectExportRequest, DirectExportResult, exportSpecialChars } from './exportSettings';
 import { persistService } from './PersistenceService';
 import {
   batchProcessService,
@@ -593,15 +593,28 @@ export class ExportPresetService {
       await runPreset(ep);
       return;
     }
+    const result = await this.requestDirectExport({
+      projectName: session.name,
+      sceneNames: selected!.map((scene) => scene.name),
+    });
+    if (result) await runPreset(result.preset, new Set(result.charsToReplace));
+  }
+
+  /**
+   * 직접 내보내기 폼 한 창(DirectExportDialog)을 띄우고 결과를 기다린다 — 프로젝트 이미지 내보내기와
+   * 폴더 일괄 이미지 내보내기(scope 'folder', 2026-11-16 M5 묶음 b P8) 공용. 이미 열려 있으면 안내 후 undefined.
+   */
+  async requestDirectExport(
+    info: Omit<DirectExportRequest, 'resolve'>,
+  ): Promise<DirectExportResult | undefined> {
     if (appState.directExportRequest) {
       appState.pushMessage('이미 직접 내보내기 설정이 열려 있습니다.');
-      return;
+      return undefined;
     }
-    const result = await new Promise<DirectExportResult | undefined>((resolve) => {
+    return new Promise<DirectExportResult | undefined>((resolve) => {
       let settled = false;
       appState.directExportRequest = {
-        projectName: session.name,
-        sceneNames: selected!.map((scene) => scene.name),
+        ...info,
         resolve: (value) => {
           if (settled) return;
           settled = true;
@@ -610,7 +623,6 @@ export class ExportPresetService {
         },
       };
     });
-    if (result) await runPreset(result.preset, new Set(result.charsToReplace));
   }
   // ⚡ 빠른 export: isDefault 로 지정된 프리셋을 선택 다이얼로그 없이 바로 실행.
   async quickExportPackage(type: 'scene' | 'inpaint', selected?: GenericScene[]) {

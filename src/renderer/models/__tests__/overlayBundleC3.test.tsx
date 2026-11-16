@@ -261,8 +261,9 @@ describe('C-3 캐릭터 프리셋 관리 — 등급·슬롯(PC)', () => {
     const tb = slot('toolbar')!;
     expect(buttonByText('순차 생성 모드', tb)).toBeTruthy();
     expect(buttonByText('선택', tb)).toBeTruthy();
-    expect(tb.textContent).toContain('내보내기');
-    expect(tb.textContent).toContain('불러오기');
+    // 2026-11-16 M5 묶음 b R1: 프로젝트 전체 파일 = 「백업」/「백업 불러오기」
+    expect(tb.textContent).toContain('백업');
+    expect(tb.textContent).toContain('백업 불러오기');
     expect(q('[data-list-search]', tb)).not.toBeNull();
     expect(q('[data-character-selection-bar]')).toBeNull();
     await click(buttonByText('선택', tb));

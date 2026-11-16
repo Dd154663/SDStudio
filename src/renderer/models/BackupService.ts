@@ -15,7 +15,7 @@ import {
   workFlowService,
   zipService,
 } from '.';
-import { platform, buildImageOptimizeOptions } from './platform';
+import { platform } from './platform';
 import { runPool } from './concurrency';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
@@ -61,6 +61,7 @@ import {
 import { appState } from './AppService';
 import type { ExportPreset } from './AppService';
 import { stringifyExportJson } from './jsonExport';
+import { folderImageOptionsFromPreset, type FolderImageOptions } from './exportSettings';
 import {
   chooseImportSource,
   deliverExport,
@@ -1805,23 +1806,30 @@ export class BackupService {
       appState.pushMessage('폴더에 프로젝트가 없습니다.');
       return;
     }
-    const opts = await this.askFolderImageOptions();
-    if (!opts) return;
+    // 폴더 내 모든 프로젝트의 씬 이름 — 특수문자 변환 질의용. 직접 설정 폼은 창 안에서 고르므로
+    // 그 경로에서만 먼저 모으고, 프리셋 경로는 종전처럼 옵션을 고른 뒤 모은다(한 번만 계산).
+    let sceneNamesCache: string[] | undefined;
+    const sceneNames = async (): Promise<string[]> => {
+      if (sceneNamesCache) return sceneNamesCache;
+      const out: string[] = [];
+      for (const name of names) {
+        try {
+          const session = await sessionService.get(name);
+          if (session) {
+            for (const s of session.getScenes('scene')) out.push(s.name);
+          }
+        } catch (e) {}
+      }
+      sceneNamesCache = out;
+      return out;
+    };
+    const picked = await this.askFolderImageOptions(folder, names.length, sceneNames);
+    if (!picked) return;
+    const opts = picked.opts;
 
-    // 폴더 내 모든 프로젝트의 씬 이름을 모아 특수문자 변환 여부를 한 번 질의
-    const sceneNames: string[] = [];
-    for (const name of names) {
-      try {
-        const session = await sessionService.get(name);
-        if (session) {
-          for (const s of session.getScenes('scene')) sceneNames.push(s.name);
-        }
-      } catch (e) {}
-    }
-    const charsToReplace = await appState.detectSpecialCharsFromNames(
-      sceneNames,
-      opts.separator,
-    );
+    // 직접 설정 폼은 변환할 특수문자를 창 안에서 받는다. 프리셋은 종전처럼 한 번 질의.
+    const charsToReplace = picked.charsToReplace ??
+      await appState.detectSpecialCharsFromNames(await sceneNames(), opts.separator);
     if (charsToReplace === undefined) return; // 취소
 
     if (zipService.isZipping) {
@@ -1883,10 +1891,14 @@ export class BackupService {
   }
 
   // 이미지 내보내기 옵션을 한 번 입력 받는다 (프리셋 또는 직접 설정).
-  // 특수문자 치환은 폴더 일괄에서는 생략(빈 Set 사용).
-  private async askFolderImageOptions(): Promise<
-    { prefix: string; fav: boolean; opt: string; imageSize: number; separator: string } | undefined
-  > {
+  // 직접 설정은 프로젝트 이미지 내보내기와 같은 폼 한 창(DirectExportDialog, scope 'folder' —
+  // 2026-11-16 M5 묶음 b P8, 종전 연속 질문 6~7개). 폴더 일괄이 쓰지 않는 칸은 폼에서 숨기고 이유를 안내한다.
+  // charsToReplace: 직접 설정 폼에서 고른 변환 문자(프리셋 경로는 undefined — 호출부가 따로 묻는다).
+  private async askFolderImageOptions(
+    folder: string,
+    projectCount: number,
+    sceneNames: () => Promise<string[]>,
+  ): Promise<{ opts: FolderImageOptions; charsToReplace?: Set<string> } | undefined> {
     const presets = appState.loadExportPresets();
     const presetItems: { text: string; value: string }[] = presets.map(
       (p: ExportPreset, idx: number) => ({ text: p.name, value: `preset_${idx}` }),
@@ -1906,87 +1918,29 @@ export class BackupService {
     if (choice.startsWith('preset_')) {
       const ep = presets[parseInt(choice.split('_')[1])];
       if (!ep) return undefined;
-      let epPrefix = '';
-      if (ep.format === 'prefix' && ep.prefix) {
-        epPrefix = ep.prefix + ep.separator;
-      } else if (ep.format === 'prefix_ask') {
+      let askedName = '';
+      if (ep.format === 'prefix_ask') {
         const inputName = await appState.pushDialogAsync({
           type: 'input-confirm',
           text: '캐릭터 이름을 입력해주세요',
         });
         if (!inputName) return undefined;
-        epPrefix = inputName + ep.separator;
+        askedName = inputName;
       }
-      return {
-        prefix: epPrefix,
-        fav: ep.menu === 'fav',
-        opt: ep.opt,
-        imageSize: ep.imageSize,
-        separator: ep.separator,
-      };
+      return { opts: folderImageOptionsFromPreset(ep, askedName) };
     }
-    // 직접 설정
-    const menu = await appState.pushDialogAsync({
-      type: 'select',
-      text: '내보낼 이미지를 선택해주세요',
-      items: [
-        { text: '즐겨찾기 이미지만 내보내기', value: 'fav' },
-        { text: '모든 이미지 전부 내보내기', value: 'all' },
-      ],
+    // 직접 설정 — 폼 한 창
+    const result = await appState.requestDirectExport({
+      projectName: folder,
+      projectCount,
+      sceneNames: await sceneNames(),
+      scope: 'folder',
     });
-    if (!menu) return undefined;
-    const format = await appState.pushDialogAsync({
-      type: 'select',
-      text: '파일 이름 형식을 선택해주세요',
-      items: [
-        { text: '(씬이름).(이미지 번호).png', value: 'normal' },
-        { text: '(캐릭터 이름).(씬이름).(이미지 번호)', value: 'prefix' },
-      ],
-    });
-    if (!format) return undefined;
-    const optItems = buildImageOptimizeOptions();
-    const opt = await appState.pushDialogAsync({
-      type: 'select',
-      text: '이미지 크기 최적화 방법을 선택해주세요',
-      items: optItems,
-    });
-    if (!opt) return undefined;
-    let imageSize = 0;
-    if (opt !== 'original') {
-      const inputImageSize = await appState.pushDialogAsync({
-        type: 'input-confirm',
-        text: '이미지 픽셀 크기를 결정해주세요 (추천값 1024)',
-      });
-      if (!inputImageSize) return undefined;
-      imageSize = parseInt(inputImageSize);
-      if (isNaN(imageSize)) return undefined;
-    }
-    const separatorInput = await appState.pushDialogAsync({
-      type: 'input-confirm',
-      text: '파일명 구분자를 입력해주세요 (기본값: .)',
-    });
-    if (separatorInput === undefined) return undefined;
-    const separatorOptions = await appState.pushDialogAsync({
-      type: 'checkbox',
-      text: '파일명 구분자 옵션',
-      items: [{ text: '구분자 없음', value: 'none' }],
-    });
-    if (separatorOptions === undefined) return undefined;
-    let noSeparator = false;
-    try {
-      noSeparator = JSON.parse(separatorOptions).includes('none');
-    } catch (e) {}
-    const separator = noSeparator ? '' : separatorInput || '.';
-    let prefix = '';
-    if (format === 'prefix') {
-      const inputPrefix = await appState.pushDialogAsync({
-        type: 'input-confirm',
-        text: '캐릭터 이름을 입력해주세요',
-      });
-      if (!inputPrefix) return undefined;
-      prefix = inputPrefix + separator;
-    }
-    return { prefix, fav: menu === 'fav', opt, imageSize, separator };
+    if (!result) return undefined;
+    return {
+      opts: folderImageOptionsFromPreset(result.preset),
+      charsToReplace: new Set(result.charsToReplace),
+    };
   }
 
   // ---------------- PNG 임포트 분기 ----------------

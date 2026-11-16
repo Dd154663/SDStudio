@@ -1,7 +1,7 @@
 import React from 'react';
 import { isMobile, backend } from '../models';
 import { buildImageOptimizeOptions } from '../models/platform';
-import { ExportFormState } from '../models/exportSettings';
+import { DirectExportScope, ExportFormState, isExportFieldShown } from '../models/exportSettings';
 import { DropdownSelect } from './UtilComponents';
 import { FaFolderOpen } from 'react-icons/fa';
 const menuOptions = [
@@ -47,15 +47,19 @@ const FieldRow = ({ label, stacked, children }: {
     </div>
   );
 
-export default function ExportSettingsFields({ form, setForm, direct = false, twoColumn = false }: {
+export default function ExportSettingsFields({ form, setForm, direct = false, twoColumn = false, scope = 'project' }: {
   form: ExportFormState;
   setForm: React.Dispatch<React.SetStateAction<ExportFormState>>;
   direct?: boolean;
+  // 직접 내보내기 범위(2026-11-16 M5 묶음 b P8): 'folder' 면 폴더 일괄이 쓰지 않는 칸을 숨긴다
+  // (FOLDER_EXPORT_UNUSED_FIELDS — 이유 안내는 DirectExportDialog 가 한 줄로).
+  scope?: DirectExportScope;
   // 2열 격자(2026-11-11 오버레이 묶음 1, 내보내기 프리셋 관리 L 창): 칸마다 최소 300px — 폭이 모자라면 1열로 접힌다.
   // 목표 폴더 묶음은 늘 한 줄 전체(col-span-full). 끄면 종전 세로 쌓기 그대로.
   twoColumn?: boolean;
 }) {
   const optOptions = buildImageOptimizeOptions().map(({ text, value }) => ({ label: text, value }));
+  const shown = (key: Parameters<typeof isExportFieldShown>[0]) => isExportFieldShown(key, scope);
   const selectTargetFolder = async () => {
     const folder = await backend.selectDir();
     if (folder) setForm((current) => ({ ...current, targetFolder: folder }));
@@ -88,7 +92,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
           </FieldRow>
 
           {/* 파일명 패턴 (프로젝트/폴더 접두) */}
-          <FieldRow label="파일명 패턴" stacked={twoColumn}>
+          {shown('filenamePattern') && <FieldRow label="파일명 패턴" stacked={twoColumn}>
             <div className="flex-1 min-w-0">
               <DropdownSelect
                 selectedOption={form.filenamePattern}
@@ -96,10 +100,10 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
                 onSelect={(o: any) => setForm({ ...form, filenamePattern: o.value })}
               />
             </div>
-          </FieldRow>
+          </FieldRow>}
 
           {/* 출력 형태 (tar / 개별 파일) */}
-          <FieldRow label="출력 형태" stacked={twoColumn}>
+          {shown('outputMode') && <FieldRow label="출력 형태" stacked={twoColumn}>
             <div className="flex-1 min-w-0">
               <DropdownSelect
                 selectedOption={form.outputMode}
@@ -107,7 +111,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
                 onSelect={(o: any) => setForm({ ...form, outputMode: o.value })}
               />
             </div>
-          </FieldRow>
+          </FieldRow>}
 
           {/* 캐릭터 이름 (format=prefix 시) */}
           {form.format === 'prefix' && (
@@ -123,7 +127,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
           )}
 
           {/* 캐릭터 프리셋 접두/접미사 적용 토글 */}
-          <label className="flex items-center gap-2 cursor-pointer select-none">
+          {shown('applyCharacterAffix') && <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={!!form.applyCharacterAffix}
@@ -133,7 +137,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
             <span className="text-sm text-default">
               캐릭터 프리셋 접두사/접미사 적용
             </span>
-          </label>
+          </label>}
 
           {/* 최적화 방법 */}
           <FieldRow label="최적화 *" stacked={twoColumn}>
@@ -161,7 +165,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
           )}
 
           {/* 압축 화질 (lossy/avif 시) — 픽셀 크기와 별개 축(해상도 vs 압축 강도) */}
-          {(form.opt === 'lossy' || form.opt === 'avif') && (
+          {shown('quality') && (form.opt === 'lossy' || form.opt === 'avif') && (
             <FieldRow label="화질" stacked={twoColumn}>
               <input
                 type="number"
@@ -179,7 +183,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
           )}
 
           {/* NAI 스테가노그래피 보존 (webp: lossy/lossless 시) */}
-          {(form.opt === 'lossy' || form.opt === 'lossless') && (
+          {shown('preserveStealth') && (form.opt === 'lossy' || form.opt === 'lossless') && (
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -218,7 +222,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
           </label>
 
           {/* 목표 폴더 (데스크톱 전용 — 모바일은 임의 폴더 저장 미지원) */}
-          {!isMobile && (
+          {!isMobile && shown('targetFolder') && (
             <div className="space-y-2 border-t line-color pt-3 col-span-full">
               <div className="text-xs text-muted">
                 내보내기 목표 폴더 (비우면 환경설정 기본 폴더, 둘 다 없으면 다운로드 폴더 사용)
@@ -257,7 +261,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
             </div>
           )}
 
-    {form.opt !== 'original' && <FieldRow label="재최적화" stacked={twoColumn}>
+    {shown('reoptimize') && form.opt !== 'original' && <FieldRow label="재최적화" stacked={twoColumn}>
       <div className="flex-1 min-w-0"><DropdownSelect selectedOption={form.reoptimize}
         options={[
           { value: 'skip', label: '이미 최적화된 이미지는 원본 유지' },
