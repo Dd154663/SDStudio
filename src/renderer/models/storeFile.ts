@@ -9,6 +9,8 @@
 //  - 손상(파싱 실패·구조 불일치)은 본 파일을 `<파일>.corrupt-<시각>` 으로 보존한 뒤 .tmp → .bak1~3 → .bak 순으로 유효한
 //    사본을 찾아 되살린다. 보존조차 못 하면 io-failed(덮어쓰기 금지).
 //  - 본 파일이 없는데 유효한 .tmp 가 있으면(Android 저장 중 종료 — renameFile 이 대상 삭제 후 이름 변경) .tmp 로 되살린다.
+//    Android 의 「없음」 판정은 약하므로(existFile 이 어떤 stat 실패에도 false) 사본으로 갈 때만 짧게 기다려 본 파일을 다시 보고,
+//    되돌려 쓰기 직전에 본 파일 존재를 한 번 더 확인한다 — 보이거나 확인이 실패하면 쓰지 않는다(Android 보강 A).
 //  - 세션(창)의 첫 저장 직전에 부팅 때 정상으로 읽은 본 파일 내용을 .bak1 로 남기고 .bak1→.bak2→.bak3 으로 민다(최대 3개,
 //    삭제 없이 이름 변경·덮어쓰기만 — dataPathGuard 대상인 디렉터리 삭제와 무관). 읽은 내용이 항목 0개면 회전하지 않는다.
 //  - 종료 저장(flush)은 바뀐 것(dirty·대기 중 저장)이 있을 때만.
@@ -40,6 +42,8 @@ export const STORE_RECOVERY_ORDER: StoreRecoverySource[] = ['tmp', 'bak1', 'bak2
 export const STORE_BACKUP_COPIES = 3;
 /** 읽기 재시도 간격(ms) — 시도 = 1 + 길이. 합계는 부팅이 눈에 띄게 늦어지지 않게 1초 안쪽 */
 export const STORE_READ_RETRY_DELAYS_MS = [150, 400];
+/** 본 파일 「없음」+ 유효한 사본이 있을 때, 사본으로 되살리기 전에 본 파일을 다시 보기까지 기다리는 시간(ms) — Android 보강 A */
+export const STORE_MISSING_RECHECK_DELAY_MS = 300;
 /** 저장 차단 토스트 최소 간격(ms) — 같은 저장소에서 연달아 거부돼도 한 번만 */
 const BLOCKED_NOTICE_INTERVAL_MS = 3000;
 
@@ -180,11 +184,18 @@ export async function judgeStoreFile<T>(
   spec: StoreFileJudgeSpec<T>,
   deps: StoreFileDeps,
 ): Promise<StoreLoadResult<T>> {
-  const main = await readMain(spec.file, deps);
+  let main = await readMain(spec.file, deps);
   if (main.status === 'failed') return { kind: 'io-failed', error: main.error };
   if (main.status === 'missing') {
     const copy = await findValidCopy(spec, deps);
-    return copy ? { kind: 'recovered', ...copy } : { kind: 'missing' };
+    if (!copy) return { kind: 'missing' }; // 신규 — 사본이 없으면 기다리지 않는다
+    // 사본으로 되살리기 직전 재확인(Android 보강 A) — Android 의 existFile 은 stat 이 어떤 이유로 실패해도 false 를 주고
+    // 오류에 errno 도 없어 「없음」 판정이 약하다. 오래된 사본이 최신 본 파일을 덮지 않게 짧게 기다린 뒤 한 번 더 본다.
+    await (deps.sleep ?? defaultSleep)(STORE_MISSING_RECHECK_DELAY_MS);
+    main = await readMain(spec.file, deps);
+    if (main.status === 'failed') return { kind: 'io-failed', error: main.error };
+    if (main.status === 'missing') return { kind: 'recovered', ...copy };
+    // 다시 읽혔다 — 아래 정상(ok)·손상 경로로
   }
   const data = tryParse(spec.parse, main.raw);
   if (data !== null && data !== undefined) return { kind: 'ok', data, raw: main.raw };
@@ -369,6 +380,28 @@ export class StoreFile<T> {
         return { ...res, keepMemory: false };
       }
       case 'recovered': {
+        // 본 파일이 「없음」이었던 쪽(손상본 보존이 아닌 쪽)은 되돌려 쓰기 직전에 존재를 한 번 더 확인한다(Android 보강 A).
+        // 있거나 확인 자체가 실패하면 쓰지 않는다 — 오판이면 사본이 최신 본 파일을 덮게 된다.
+        if (!res.corruptName) {
+          let exists: boolean;
+          try {
+            exists = await this.deps.backend().existFile(file);
+          } catch {
+            exists = true;
+          }
+          if (exists) {
+            const error = new Error('사본으로 되살리기 직전에 본 파일이 다시 확인되어 쓰지 않았습니다');
+            if (wasGood) {
+              console.error(`${label} 다시 읽기 판정 불확실(기존 목록 유지):`, error);
+              return { kind: 'io-failed', error, keepMemory: true };
+            }
+            const first = this.status !== 'blocked';
+            this.status = 'blocked';
+            console.error(`${label} 읽기 판정 불확실 — 저장 차단:`, error);
+            if (first) emitGlobalStoreNotice({ type: 'load-failed', label, file });
+            return { kind: 'io-failed', error, keepMemory: false };
+          }
+        }
         // 되살린 내용을 본 파일에 바로 되돌려 둔다(Android 는 종료 저장이 없어 다음 부팅까지 본 파일이 빈다).
         // 본 파일은 손상본이 보존됐거나 원래 없었으므로 이 쓰기로 잃는 것이 없다.
         if (!(await this.writeAtomic(res.raw))) {

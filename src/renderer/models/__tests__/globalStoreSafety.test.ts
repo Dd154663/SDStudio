@@ -14,16 +14,21 @@ const ops: string[] = [];
 const enoent = (p: string) =>
   new Error(`Error invoking remote method 'read-file': Error: ENOENT: no such file or directory, open '${p}'`);
 
+const readImpl = async (p: string) => {
+  const left = readFails.get(p) ?? 0;
+  if (left > 0) {
+    readFails.set(p, left - 1);
+    throw new Error(`Error invoking remote method 'read-file': Error: EBUSY: resource busy or locked, open '${p}'`);
+  }
+  if (!files.has(p)) throw enoent(p);
+  return files.get(p)!;
+};
+const existImpl = async (p: string) => {
+  if (existThrows) throw new Error('stat failed');
+  return files.has(p);
+};
 const backend = {
-  readFile: jest.fn(async (p: string) => {
-    const left = readFails.get(p) ?? 0;
-    if (left > 0) {
-      readFails.set(p, left - 1);
-      throw new Error(`Error invoking remote method 'read-file': Error: EBUSY: resource busy or locked, open '${p}'`);
-    }
-    if (!files.has(p)) throw enoent(p);
-    return files.get(p)!;
-  }),
+  readFile: jest.fn(readImpl),
   renameFile: jest.fn(async (a: string, b: string) => {
     ops.push(`rename ${a} -> ${b}`);
     if (!files.has(a)) throw enoent(a);
@@ -35,10 +40,7 @@ const backend = {
     if (!files.has(a)) throw enoent(a);
     files.set(b, files.get(a)!);
   }),
-  existFile: jest.fn(async (p: string) => {
-    if (existThrows) throw new Error('stat failed');
-    return files.has(p);
-  }),
+  existFile: jest.fn(existImpl),
   readDataFile: jest.fn(async () => null),
   writeDataFile: jest.fn(async (p: string) => {
     ops.push(`writeData ${p}`);
@@ -52,6 +54,10 @@ const write = jest.fn(async (p: string, d: string) => {
   ops.push(`write ${p}`);
   files.set(p, d);
 });
+const restoreBackendImpl = () => {
+  backend.readFile.mockImplementation(readImpl);
+  backend.existFile.mockImplementation(existImpl);
+};
 
 jest.mock('..', () => ({
   backend,
@@ -98,7 +104,13 @@ import {
   GlobalStoreNotice,
   GlobalStoreBlockedError,
   globalStoreNoticeView,
+  STORE_MISSING_RECHECK_DELAY_MS,
 } from '../storeFile';
+import {
+  flushGlobalStores,
+  installGlobalStoreHiddenFlush,
+  __resetGlobalStoreHiddenFlushForTest,
+} from '../globalStoreFlush';
 import { GlobalPresetService } from '../GlobalPresetService';
 import { GlobalCharacterPresetService } from '../GlobalCharacterPresetService';
 import { ProjectTemplateService } from '../ProjectTemplateService';
@@ -139,6 +151,7 @@ beforeEach(() => {
   notices.length = 0;
   memItems = [];
   jest.clearAllMocks();
+  restoreBackendImpl();
 });
 
 // =====================================================================
@@ -405,6 +418,212 @@ describe('A. StoreFile 세션 동작', () => {
     expect(
       globalStoreNoticeView({ type: 'corrupt-empty', label: 'X', file: 'f', corruptName: 'f.corrupt-1' }).text,
     ).toContain('f.corrupt-1');
+  });
+});
+
+// =====================================================================
+describe('Android 보강 A — 「없음」 오판으로 오래된 사본이 최신 본 파일을 덮지 않게', () => {
+  const parseItems = (t: string) => {
+    const j = JSON.parse(t);
+    return Array.isArray(j.items) ? j : null;
+  };
+
+  test('사본 있음 + 재확인에서 본 파일이 읽힘 → ok(사본을 쓰지 않음)', async () => {
+    files.set(FILE + '.bak1', body(['old']));
+    const sleeps: number[] = [];
+    // 첫 판정 때는 본 파일이 안 보이고(Android stat 실패 흉내), 잠시 뒤에는 보인다
+    let hidden = true;
+    backend.readFile.mockImplementation(async (p: string) => {
+      if (p === FILE && hidden) throw new Error('File does not exist.');
+      if (!files.has(p)) throw enoent(p);
+      return files.get(p)!;
+    });
+    backend.existFile.mockImplementation(async (p: string) => (p === FILE && hidden ? false : files.has(p)));
+    files.set(FILE, body(['newest']));
+    const d: StoreFileDeps = {
+      ...deps,
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        if (ms === STORE_MISSING_RECHECK_DELAY_MS) hidden = false;
+      },
+    };
+    const r = await judgeStoreFile({ file: FILE, parse: parseItems }, d);
+    expect(r).toMatchObject({ kind: 'ok', data: { items: ['newest'] } });
+    expect(sleeps).toContain(STORE_MISSING_RECHECK_DELAY_MS);
+    expect(ops).toEqual([]);
+    backend.readFile.mockReset();
+    backend.existFile.mockReset();
+    restoreBackendImpl();
+  });
+
+  test('재확인에서 본 파일이 손상으로 읽힘 → 손상 경로(보존 후 사본)', async () => {
+    files.set(FILE + '.bak1', body(['old']));
+    let hidden = true;
+    backend.readFile.mockImplementation(async (p: string) => {
+      if (p === FILE && hidden) throw new Error('File does not exist.');
+      if (!files.has(p)) throw enoent(p);
+      return files.get(p)!;
+    });
+    backend.existFile.mockImplementation(async (p: string) => (p === FILE && hidden ? false : files.has(p)));
+    files.set(FILE, '{"items":[');
+    const d: StoreFileDeps = { ...deps, sleep: async () => { hidden = false; } };
+    const r = await judgeStoreFile({ file: FILE, parse: parseItems }, d);
+    expect(r).toMatchObject({ kind: 'recovered', from: 'bak1', corruptName: `${FILE}.corrupt-1000` });
+    backend.readFile.mockReset();
+    backend.existFile.mockReset();
+    restoreBackendImpl();
+  });
+
+  test('재확인에서도 없음 → recovered(사본)', async () => {
+    files.set(FILE + '.tmp', body(['t']));
+    const sleeps: number[] = [];
+    const r = await judgeStoreFile(
+      { file: FILE, parse: parseItems },
+      { ...deps, sleep: async (ms) => void sleeps.push(ms) },
+    );
+    expect(r).toMatchObject({ kind: 'recovered', from: 'tmp' });
+    expect(sleeps).toEqual([STORE_MISSING_RECHECK_DELAY_MS]);
+  });
+
+  test('사본 없는 신규는 재확인 지연이 없다', async () => {
+    const sleeps: number[] = [];
+    const r = await judgeStoreFile(
+      { file: FILE, parse: parseItems },
+      { ...deps, sleep: async (ms) => void sleeps.push(ms) },
+    );
+    expect(r.kind).toBe('missing');
+    expect(sleeps).toEqual([]);
+  });
+
+  test('되돌려 쓰기 직전 존재 확인에서 본 파일이 보이면 쓰지 않고 차단(첫 로드)', async () => {
+    files.set(FILE + '.tmp', body(['old']));
+    const s = makeStore();
+    // 판정 동안에는 「없음」, 되돌려 쓰기 직전 확인에서는 「있음」
+    let calls = 0;
+    backend.existFile.mockImplementation(async (p: string) => {
+      if (p !== FILE) return files.has(p);
+      calls++;
+      return calls > 2; // readMain 두 번(첫 판정·재확인) 뒤의 확인 = 쓰기 직전
+    });
+    const r = await s.load();
+    expect(r).toMatchObject({ kind: 'io-failed', keepMemory: false });
+    expect(s.loadFailed).toBe(true);
+    expect(files.has(FILE)).toBe(false);
+    expect(ops.filter((o) => o.startsWith('write') || o.startsWith('rename'))).toEqual([]);
+    expect(notices.map((n) => n.type)).toEqual(['load-failed']);
+    backend.existFile.mockReset();
+    restoreBackendImpl();
+  });
+
+  test('되돌려 쓰기 직전 존재 확인 자체가 실패해도 쓰지 않는다', async () => {
+    files.set(FILE + '.tmp', body(['old']));
+    const s = makeStore();
+    let calls = 0;
+    backend.existFile.mockImplementation(async (p: string) => {
+      if (p !== FILE) return files.has(p);
+      calls++;
+      if (calls > 2) throw new Error('stat failed');
+      return false;
+    });
+    const r = await s.load();
+    expect(r.kind).toBe('io-failed');
+    expect(files.has(FILE)).toBe(false);
+    backend.existFile.mockReset();
+    restoreBackendImpl();
+  });
+
+  test('재로드(정상 로드 뒤) 때 같은 상황 → 메모리 유지, 차단하지 않음', async () => {
+    files.set(FILE, body(['a']));
+    const s = makeStore();
+    await s.load();
+    files.delete(FILE);
+    files.set(FILE + '.tmp', body(['old']));
+    let calls = 0;
+    backend.existFile.mockImplementation(async (p: string) => {
+      if (p !== FILE) return files.has(p);
+      calls++;
+      return calls > 2;
+    });
+    const r = await s.load();
+    expect(r).toMatchObject({ kind: 'io-failed', keepMemory: true });
+    expect(s.loadFailed).toBe(false);
+    expect(files.has(FILE)).toBe(false);
+    backend.existFile.mockReset();
+    restoreBackendImpl();
+  });
+
+  test('손상본 보존 뒤 복구(corruptName 있음)는 종전대로 되돌려 쓴다', async () => {
+    files.set(FILE, '{"items":[');
+    files.set(FILE + '.bak1', body(['b1']));
+    const s = makeStore();
+    const r = await s.load();
+    expect(r.kind).toBe('recovered');
+    expect(files.get(FILE)).toBe(body(['b1']));
+  });
+});
+
+// =====================================================================
+describe('Android 보강 B — 백그라운드 전환 때 글로벌 저장소 저장', () => {
+  beforeEach(() => __resetGlobalStoreHiddenFlushForTest());
+
+  const makeDoc = () => {
+    const listeners: (() => void)[] = [];
+    return {
+      hidden: false,
+      addEventListener: (_t: 'visibilitychange', fn: () => void) => void listeners.push(fn),
+      fire() {
+        for (const fn of listeners) fn();
+      },
+      listeners,
+    };
+  };
+
+  test('숨김 전환 때 dirty 인 저장소만 쓰고, 무변경이면 쓰기 0', async () => {
+    const GP = 'global_presets.json';
+    const AL = 'artist_library.json';
+    files.set(GP, JSON.stringify({ version: 2, presets: [{ id: 'a', name: 'A', workflowType: 'SDImageGen', isDefault: false, createdAt: 1, updatedAt: 1, preset: {} }] }));
+    files.set(AL, JSON.stringify({ version: 1, artists: [], tagPresets: [] }));
+    const gp = new GlobalPresetService();
+    const al = new ArtistLibraryService();
+    const pt = new ProjectTemplateService(); // 읽지 않은 저장소
+    await gp.load();
+    await al.load();
+    ops.length = 0;
+    const doc = makeDoc();
+    let done: Promise<void> = Promise.resolve();
+    const flush = () => (done = flushGlobalStores([gp, al, pt]));
+    expect(installGlobalStoreHiddenFlush(flush, doc)).toBe(true);
+    expect(installGlobalStoreHiddenFlush(flush, doc)).toBe(false); // 중복 설치 막음
+    expect(doc.listeners).toHaveLength(1);
+
+    // 무변경 숨김 → 쓰기 0
+    doc.hidden = true;
+    doc.fire();
+    await done;
+    expect(ops).toEqual([]);
+
+    // 보이는 쪽 전환은 무동작
+    doc.hidden = false;
+    await gp.rename('a', 'B'); // 2초 대기 중
+    doc.fire();
+    await done;
+    expect(ops).toEqual([]);
+
+    doc.hidden = true;
+    doc.fire();
+    await done;
+    expect(JSON.parse(files.get(GP)!).presets[0].name).toBe('B');
+    expect(ops.some((o) => o.includes(AL))).toBe(false);
+    expect(ops.some((o) => o.includes('project_templates'))).toBe(false);
+  });
+
+  test('한 저장소가 실패해도 다음 저장소는 비운다', async () => {
+    const calls: string[] = [];
+    await flushGlobalStores([
+      { flushSave: async () => { calls.push('a'); throw new Error('x'); } },
+      { flushSave: async () => void calls.push('b') },
+    ]);
+    expect(calls).toEqual(['a', 'b']);
   });
 });
 

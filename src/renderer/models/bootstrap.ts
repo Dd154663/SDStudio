@@ -27,6 +27,7 @@ import { applyMobileV2Default, StorageDetectKind } from './mobileV2Default';
 import { setWorkspaceLayoutActive } from './storageLayout';
 import { WORKSPACE_ROOT } from './projectPaths';
 import type { Session } from './types';
+import { flushGlobalStores, installGlobalStoreHiddenFlush } from './globalStoreFlush';
 
 // ── 명시적 부트 시퀀스 ──
 // 앱의 모든 비동기 초기화가 여기서 "정해진 순서"로 일어난다.
@@ -396,20 +397,31 @@ export async function bootstrapApp(): Promise<void> {
   runMobilePermissionOnboarding().catch(() => {});
 }
 
+// 글로벌 저장소 다섯 개를 「바뀐 것만」 지금 저장한다 — 종료 저장과 백그라운드 전환(Android 보강 B)이 함께 쓴다.
+// 프로젝트 템플릿은 부팅 때 읽지 않고(필요 시 ensureLoaded) 종전엔 종료 저장도 없었다 — 2초 대기 중 편집이
+// 닫기로 사라지지 않게 함께 비운다. 바뀐 것이 없거나 읽지 않았으면 아무것도 쓰지 않는다(storeFile flush).
+function flushGlobalStoresNow(): Promise<void> {
+  return flushGlobalStores([
+    globalPresetService,
+    globalPieceService,
+    globalCharacterPresetService,
+    artistLibraryService,
+    projectTemplateService,
+  ]);
+}
+
 // 앱 종료 시 저장되지 않은 편집을 마지막으로 저장한다.
 // (기존 models/index.ts 모듈 평가 시점 등록에서 이동 — 동작 동일)
+// 같은 조건(설정 읽기 실패 게이트 뒤)에서 백그라운드 전환 때 글로벌 저장소 저장 훅도 설치한다 — Android 는 종료 훅이
+// no-op 이라 이것이 유일한 마지막 저장 기회다(PC 도 같이 설치, 무변경이면 쓰지 않음). 작업 로그·persistService 전체
+// 비우기는 넣지 않는다.
 function registerOnCloseFlush() {
+  installGlobalStoreHiddenFlush(flushGlobalStoresNow);
   backend.onClose(() => {
     (async () => {
       try {
         await sessionService.flushOnClose();
-        await globalPresetService.flushSave();
-        await globalPieceService.flushSave();
-        await globalCharacterPresetService.flushSave();
-        await artistLibraryService.flushSave();
-        // 프로젝트 템플릿은 부팅 때 읽지 않고(필요 시 ensureLoaded) 종전엔 종료 저장도 없었다 — 2초 대기 중 편집이
-        // 닫기로 사라지지 않게 함께 비운다. 바뀐 것이 없거나 읽지 않았으면 아무것도 쓰지 않는다(storeFile flush).
-        await projectTemplateService.flushSave();
+        await flushGlobalStoresNow();
         await taskQueueService.flushSaveLogs();
         // 쓰기 파이프라인에 남아 있는(대기/진행 중) 저장까지 전부 디스크에 반영
         await persistService.flushAll();
