@@ -1518,9 +1518,10 @@ export class BackupService {
         } catch (e) {}
       }
     };
-    // 글로벌 프리셋
+    // 글로벌 프리셋 — 「비어 있음」이 읽기 실패 때문이면(loadFailed) 본 파일을 덮지 않는다(storeFile 묶음 1)
     try {
       if (
+        !globalPresetService.loadFailed &&
         globalPresetService.list().length === 0 &&
         (await backend.existFile(dir + '/global_presets.json'))
       ) {
@@ -1535,6 +1536,7 @@ export class BackupService {
     // 글로벌 프롬프트 조각
     try {
       if (
+        !globalPieceService.loadFailed &&
         globalPieceService.library.size === 0 &&
         (await backend.existFile(dir + '/global_pieces.json'))
       ) {
@@ -1548,6 +1550,7 @@ export class BackupService {
     // 글로벌 캐릭터 프리셋
     try {
       if (
+        !globalCharacterPresetService.loadFailed &&
         globalCharacterPresetService.presets.length === 0 &&
         (await backend.existFile(dir + '/global_character_presets.json'))
       ) {

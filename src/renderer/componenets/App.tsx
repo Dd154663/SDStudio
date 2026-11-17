@@ -76,6 +76,7 @@ import {
   localAIService,
   imageService,
   isMobile,
+  globalPresetService,
 } from '../models';
 import { appState } from '../models/AppService';
 import { undoService } from '../models/undoService';
@@ -93,6 +94,10 @@ import FindReplaceDialog from './FindReplaceDialog';
 import BatchInsertDialog from './BatchInsertDialog';
 import ExportPresetManager from './ExportPresetManager';
 import DirectExportDialog from './DirectExportDialog';
+import {
+  globalStoreNoticeView,
+  subscribeGlobalStoreNotices,
+} from '../models/storeFile';
 configure({
   enforceActions: 'never',
 });
@@ -538,21 +543,15 @@ export const App = observer(() => {
     };
   }, [appState.curSession]);
 
-  // 글로벌 프리셋 손상 복구 알림
+  // 글로벌 저장소(글로벌 프리셋·글로벌 캐릭터 프리셋·프로젝트 템플릿·작가 라이브러리·전역 조각·템플릿 지정 목록) 안내 —
+  // 읽기 실패(저장 차단)·사본에서 복구·손상본 보존은 확인 창 1회, 차단 중 변경 거부는 토스트(문구 단일 출처 storeFile).
+  // 부팅 로드가 이 구독보다 먼저 끝나도 허브가 모아 두었다가 넘긴다.
   useEffect(() => {
-    const handler = (e: any) => {
-      const backupName = e.detail?.backupName;
-      appState.pushDialog({
-        type: 'yes-only',
-        text:
-          '글로벌 프리셋 파일이 손상되어 빈 상태로 초기화되었습니다.' +
-          (backupName ? `\n\n백업: ${backupName}` : ''),
-      });
-    };
-    window.globalPresetService?.addEventListener('corrupted', handler);
-    return () => {
-      window.globalPresetService?.removeEventListener('corrupted', handler);
-    };
+    return subscribeGlobalStoreNotices((notice) => {
+      const view = globalStoreNoticeView(notice);
+      if (view.as === 'toast') appState.pushMessage(view.text, 'error');
+      else appState.pushDialog({ type: 'yes-only', text: view.text });
+    });
   }, []);
 
   // onClick: 퀵 메뉴 export 계열의 탭 문맥 추적(appState.curMainTab, D3) —
@@ -581,6 +580,8 @@ export const App = observer(() => {
       banToggle: true,
       onClick: () => {
         appState.curMainTab = 'other';
+        // 부팅 때 읽지 못해 막혀 있으면 탭을 열 때 한 번 다시 읽는다(성공하면 차단 해제)
+        void globalPresetService.reloadIfFailed();
       },
     },
     {

@@ -1,10 +1,11 @@
 import { observable, action } from 'mobx';
-import { persistService } from './PersistenceService';
 import { v4 as uuidv4 } from 'uuid';
 import { backend, imageService } from '.';
 import { Session, CharacterPreset, ICharacterPreset } from './types';
 import { dataUriToBase64 } from './ImageService';
 import { numberedName, suggestFolderCopyName, taggedName } from './nameInput';
+import { StoreFile } from './storeFile';
+import { globalStoreDeps } from './globalStoreDeps';
 
 const GLOBAL_CHAR_PRESETS_FILE = 'global_character_presets.json';
 const GLOBAL_CHAR_IMAGES_DIR = 'global_char_images';
@@ -40,13 +41,57 @@ export class GlobalCharacterPresetService extends EventTarget {
   // (파생 폴더 자동 복구 병합 포함).
   @observable accessor folders: string[] = [];
   @observable accessor loaded: boolean = false;
-  private saveTimeout: any = null;
+
+  // 로드 판정·저장·사본 회전(storeFile.ts 단일 출처, 2026-11-17 묶음 1). 형식은 종전 그대로.
+  private store = new StoreFile<IGlobalCharacterPresetStore>(
+    {
+      file: GLOBAL_CHAR_PRESETS_FILE,
+      label: '글로벌 캐릭터 프리셋',
+      parse: (raw) => {
+        const json = JSON.parse(raw);
+        return json && typeof json === 'object' && Array.isArray(json.presets)
+          ? (json as IGlobalCharacterPresetStore)
+          : null;
+      },
+      countItems: (s) =>
+        s.presets.length + (Array.isArray(s.folders) ? s.folders.length : 0),
+      serialize: () => {
+        const store: IGlobalCharacterPresetStore = {
+          version: 1,
+          presets: this.presets,
+          folders: this.folders,
+        };
+        return JSON.stringify(store);
+      },
+      saveDelayMs: 2000,
+      // 전역 저장소 동기화(W6 P2): 다른 창들이 디스크에서 재로드하도록 알림
+      afterWrite: () => {
+        backend.notifyGlobalStoreChanged('global-character-presets').catch(() => {});
+      },
+    },
+    globalStoreDeps,
+  );
+
+  /** 파일을 읽지 못해 저장·변경이 막힌 상태(앱을 다시 시작하거나 reload 성공 시 풀림) */
+  get loadFailed(): boolean {
+    return this.store.loadFailed;
+  }
 
   // ---------- lifecycle ----------
   async load() {
-    try {
-      const str = await backend.readFile(GLOBAL_CHAR_PRESETS_FILE);
-      const json = JSON.parse(str) as IGlobalCharacterPresetStore;
+    const res = await this.store.load();
+    if (res.keepMemory) return; // 재로드 실패 — 이미 가진 목록 유지
+    if (res.kind === 'io-failed') {
+      // 읽기 실패 — 빈 목록으로 보이되 저장·변경은 막힌다. loaded=false 로 두어 다음 진입이 다시 읽게 한다.
+      this.presets = [];
+      this.folders = [];
+      this.loaded = false;
+      this.dispatchEvent(new CustomEvent('changed', {}));
+      return;
+    }
+    {
+      const json: IGlobalCharacterPresetStore | null =
+        res.kind === 'ok' || res.kind === 'recovered' ? res.data : null;
       this.presets =
         json && Array.isArray(json.presets)
           ? json.presets
@@ -77,51 +122,29 @@ export class GlobalCharacterPresetService extends EventTarget {
         if (t && !folders.includes(t)) folders.push(t);
       }
       this.folders = folders;
-    } catch (e) {
-      this.presets = [];
-      this.folders = [];
     }
     this.loaded = true;
     this.dispatchEvent(new CustomEvent('changed', {}));
   }
 
+  /** 읽기 실패로 막혀 있으면 한 번 다시 읽는다(관리 화면 진입 때). 성공하면 차단이 풀린다 */
+  async reloadIfFailed(): Promise<void> {
+    if (this.store.loadFailed) await this.load();
+  }
+
+  // 저장: tmp → rename(실패 시 직접 쓰기), 세션 첫 저장 전 .bak1~3 회전, 읽기 실패 상태면 쓰지 않음(storeFile).
+  // 성공했을 때만 다른 창에 알린다(종전 동작).
   async save() {
-    const store: IGlobalCharacterPresetStore = {
-      version: 1,
-      presets: this.presets,
-      folders: this.folders,
-    };
-    const data = JSON.stringify(store);
-    const tmp = GLOBAL_CHAR_PRESETS_FILE + '.tmp';
-    try {
-      await persistService.write(tmp, data);
-      await backend.renameFile(tmp, GLOBAL_CHAR_PRESETS_FILE);
-    } catch (e) {
-      try {
-        await persistService.write(GLOBAL_CHAR_PRESETS_FILE, data);
-      } catch (e2) {
-        console.error('Failed to save global character presets:', e2);
-        return;
-      }
-    }
-    // 전역 저장소 동기화(W6 P2): 다른 창들이 디스크에서 재로드하도록 알림
-    backend.notifyGlobalStoreChanged('global-character-presets').catch(() => {});
+    await this.store.saveNow();
   }
 
   scheduleSave() {
-    if (this.saveTimeout) clearTimeout(this.saveTimeout);
-    this.saveTimeout = setTimeout(() => {
-      this.save();
-      this.saveTimeout = null;
-    }, 2000);
+    this.store.schedule();
   }
 
+  // 종료 직전 — 바뀐 것이 있을 때만 쓴다
   async flushSave() {
-    if (this.saveTimeout) {
-      clearTimeout(this.saveTimeout);
-      this.saveTimeout = null;
-    }
-    await this.save();
+    await this.store.flush();
   }
 
   // ---------- read ----------
@@ -153,6 +176,7 @@ export class GlobalCharacterPresetService extends EventTarget {
   // at = 레지스트리 안 위치(없거나 범위 밖이면 끝) — 폴더 삭제 되돌리기가 원래 자리로 되살릴 때만 쓴다(2차 P5).
   @action
   async createFolder(name: string, at?: number): Promise<string> {
+    this.store.assertWritable();
     name = (name ?? '').trim();
     if (!name) throw new Error('폴더 이름을 입력해 주세요');
     if (this.listFolders().includes(name)) {
@@ -170,6 +194,7 @@ export class GlobalCharacterPresetService extends EventTarget {
   // 폴더 삭제 — 소속 엔트리는 미분류로 이동, 레지스트리에서 제거.
   @action
   async deleteFolder(name: string): Promise<void> {
+    this.store.assertWritable();
     let entryChanged = false;
     this.presets = this.presets.map((p) => {
       if (p.folder !== name) return p;
@@ -187,6 +212,7 @@ export class GlobalCharacterPresetService extends EventTarget {
   // 새 폴더 이름이 오면 레지스트리에 자동 등록한다.
   @action
   async setFolder(id: string, folder: string | null): Promise<void> {
+    this.store.assertWritable();
     const entry = this.get(id);
     if (!entry) return;
     const f = (folder ?? '').trim();
@@ -205,6 +231,7 @@ export class GlobalCharacterPresetService extends EventTarget {
   // 폴더 이름 변경 — 레지스트리 이관 + 해당 폴더의 엔트리 일괄 이관.
   @action
   async renameFolder(oldName: string, newName: string): Promise<void> {
+    this.store.assertWritable();
     newName = newName.trim();
     if (!newName) throw new Error('폴더 이름을 입력해 주세요');
     if (oldName === newName) return;
@@ -269,6 +296,7 @@ export class GlobalCharacterPresetService extends EventTarget {
     session: Session,
     preset: CharacterPreset,
   ): Promise<IGlobalCharacterPresetEntry> {
+    this.store.assertWritable();
     const json: ICharacterPreset = preset.toJSON();
 
     for (const vibe of json.vibes || []) {
@@ -465,6 +493,7 @@ export class GlobalCharacterPresetService extends EventTarget {
     data: any,
     policy: 'rename' | 'skip' | 'overwrite' = 'rename',
   ): Promise<{ added: number; updated: number; skipped: number }> {
+    this.store.assertWritable();
     if (!data || !Array.isArray(data.presets)) {
       throw new Error('올바른 캐릭터 프리셋 파일이 아닙니다');
     }
@@ -588,12 +617,14 @@ export class GlobalCharacterPresetService extends EventTarget {
 
   // ---------- 편집기용 이미지 저장 (FileUploadBase64는 raw base64 제공) ----------
   async storeVibeForEditor(base64: string): Promise<string> {
+    this.store.assertWritable();
     const filename = uuidv4() + '.png';
     await backend.writeDataFile(GLOBAL_CHAR_IMAGES_DIR + '/' + filename, base64);
     return filename;
   }
 
   async storeReferenceForEditor(base64: string): Promise<string> {
+    this.store.assertWritable();
     // 글로벌 보관은 원본 유지; 실제 정규화/리사이즈는 프로젝트로 불러올 때 수행
     const filename = uuidv4() + '.png';
     await backend.writeDataFile(GLOBAL_CHAR_IMAGES_DIR + '/' + filename, base64);
@@ -621,6 +652,7 @@ export class GlobalCharacterPresetService extends EventTarget {
   async addPresetObject(
     preset: CharacterPreset,
   ): Promise<IGlobalCharacterPresetEntry> {
+    this.store.assertWritable();
     const json: ICharacterPreset = preset.toJSON();
     const name = this.resolveNameCollision(
       (json.name || '이름없음').trim() || '이름없음',
@@ -644,6 +676,7 @@ export class GlobalCharacterPresetService extends EventTarget {
 
   @action
   async updateEntry(id: string, preset: CharacterPreset): Promise<void> {
+    this.store.assertWritable();
     const entry = this.get(id);
     if (!entry) throw new Error('프리셋을 찾을 수 없습니다');
     const oldTokens = new Set(this.collectImageTokens(entry.preset));
@@ -665,6 +698,7 @@ export class GlobalCharacterPresetService extends EventTarget {
 
   @action
   async duplicateEntry(id: string): Promise<void> {
+    this.store.assertWritable();
     const entry = this.get(id);
     if (!entry) return;
     const json: ICharacterPreset = JSON.parse(JSON.stringify(entry.preset));
@@ -697,6 +731,7 @@ export class GlobalCharacterPresetService extends EventTarget {
 
   @action
   reorder(from: number, to: number) {
+    if (!this.store.canWrite()) return;
     if (
       from === to ||
       from < 0 ||
@@ -716,6 +751,7 @@ export class GlobalCharacterPresetService extends EventTarget {
   // ---------- write ----------
   @action
   async rename(id: string, newName: string) {
+    this.store.assertWritable();
     const entry = this.get(id);
     if (!entry) throw new Error('프리셋을 찾을 수 없습니다');
     newName = newName.trim();
@@ -732,6 +768,7 @@ export class GlobalCharacterPresetService extends EventTarget {
 
   @action
   async delete(id: string) {
+    this.store.assertWritable();
     const entry = this.get(id);
     if (!entry) return;
     const imgs: string[] = [];

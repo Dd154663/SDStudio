@@ -15,6 +15,8 @@ import { decoratePresetExportImage } from './presetExportDecoration';
 import { planPromptImport } from './sdstudioPromptImport';
 import { numberedName } from './nameInput';
 import type { ImportableMetadata } from './types';
+import { StoreFile } from './storeFile';
+import { globalStoreDeps } from './globalStoreDeps';
 
 /**
  * 이미지 메타 → 그림체 프리셋의 상위·하위(SDStudio 구획 메타가 있으면 나눠 담고, 없으면 통합 → 상위).
@@ -66,51 +68,70 @@ export interface IGlobalPresetStore {
 export class GlobalPresetService extends EventTarget {
   @observable accessor presets: IGlobalPresetEntry[] = [];
   @observable accessor loaded: boolean = false;
-  private saveTimeout: any = null;
+
+  // 로드 판정·저장·사본 회전(storeFile.ts 단일 출처, 2026-11-17 묶음 1). 형식은 종전 그대로.
+  private store = new StoreFile<IGlobalPresetStore>(
+    {
+      file: GLOBAL_PRESETS_FILE,
+      label: '글로벌 프리셋',
+      parse: (raw) => {
+        const json = JSON.parse(raw);
+        return json && typeof json === 'object' && Array.isArray(json.presets)
+          ? (json as IGlobalPresetStore)
+          : null;
+      },
+      countItems: (s) => s.presets.length,
+      serialize: () => {
+        const store: IGlobalPresetStore = {
+          version: GLOBAL_PRESETS_VERSION,
+          presets: this.presets,
+        };
+        return JSON.stringify(store);
+      },
+      saveDelayMs: 2000,
+    },
+    globalStoreDeps,
+  );
+
+  /** 파일을 읽지 못해 저장·변경이 막힌 상태(앱을 다시 시작하거나 reload 성공 시 풀림) */
+  get loadFailed(): boolean {
+    return this.store.loadFailed;
+  }
 
   // ---------- lifecycle ----------
 
   async load(): Promise<void> {
-    let loadedVersion = 1;
-    try {
-      const str = await backend.readFile(GLOBAL_PRESETS_FILE);
-      try {
-        const json = JSON.parse(str) as IGlobalPresetStore;
-        if (json && Array.isArray(json.presets)) {
-          this.presets = json.presets.filter(
-            (p) =>
-              p &&
-              typeof p.id === 'string' &&
-              typeof p.name === 'string' &&
-              SUPPORTED_GLOBAL_PRESET_TYPES.includes(p.workflowType),
-          );
-          loadedVersion = (json as any).version || 1;
-        } else {
-          this.presets = [];
-        }
-      } catch (parseErr) {
-        // Corruption: rename and start fresh
-        const corruptName = `${GLOBAL_PRESETS_FILE}.corrupt-${Date.now()}`;
-        try {
-          await backend.renameFile(GLOBAL_PRESETS_FILE, corruptName);
-        } catch (e) {
-          // ignore rename errors
-        }
-        this.presets = [];
-        this.dispatchEvent(
-          new CustomEvent('corrupted', { detail: { backupName: corruptName } }),
-        );
-      }
-    } catch (e) {
-      // File missing or read failed — start empty
+    const res = await this.store.load();
+    if (res.keepMemory) return; // 재로드 실패 — 이미 가진 목록 유지
+    if (res.kind === 'io-failed') {
+      // 읽기 실패 — 빈 목록으로 보이되 저장·변경은 막힌다. loaded=false 로 두어 다음 진입(피커·템플릿 관리 등)이 다시 읽게 한다.
+      this.presets = [];
+      this.loaded = false;
+      this.dispatchEvent(new CustomEvent('loaded', {}));
+      return;
+    }
+    let loadedVersion = GLOBAL_PRESETS_VERSION;
+    let sourceRaw: string | null = null;
+    if (res.kind === 'ok' || res.kind === 'recovered') {
+      this.presets = res.data.presets.filter(
+        (p) =>
+          p &&
+          typeof p.id === 'string' &&
+          typeof p.name === 'string' &&
+          SUPPORTED_GLOBAL_PRESET_TYPES.includes(p.workflowType),
+      );
+      loadedVersion = (res.data as any).version || 1;
+      sourceRaw = res.raw;
+    } else {
+      // missing(신규) · corrupt-empty(손상본 보존됨) — 옮길 v1 데이터가 없으므로 통합 이관·저장을 하지 않는다
       this.presets = [];
     }
     this.loaded = true;
     // v2 통합 마이그레이션: 이지/일반을 한 라이브러리로 보고 이름을 고유화한다.
-    // (멱등 — 한 번 v2로 저장되면 다시 실행되지 않음)
-    if (loadedVersion < GLOBAL_PRESETS_VERSION) {
+    // (멱등 — 한 번 v2로 저장되면 다시 실행되지 않음). 실제로 v1 데이터를 읽었을 때만.
+    if (sourceRaw !== null && loadedVersion < GLOBAL_PRESETS_VERSION) {
       try {
-        await this.migrateUnify();
+        await this.migrateUnify(sourceRaw);
       } catch (e) {
         console.error('글로벌 프리셋 통합 마이그레이션 실패:', e);
       }
@@ -118,19 +139,22 @@ export class GlobalPresetService extends EventTarget {
     this.dispatchEvent(new CustomEvent('loaded', {}));
   }
 
+  /** 읽기 실패로 막혀 있으면 한 번 다시 읽는다(관리 화면 진입 때). 성공하면 차단이 풀린다 */
+  async reloadIfFailed(): Promise<void> {
+    if (this.store.loadFailed) await this.load();
+  }
+
   // v2 통합 마이그레이션: 타입(이지/일반) 구분 없이 이름이 겹치면 뒤(나중에 만든)의
   // 것에 " (2)", " (3)"... 을 붙여 라이브러리 전체에서 이름을 고유하게 만든다.
-  // 비파괴: 먼저 원본을 .bak 으로 백업한다.
-  private async migrateUnify(): Promise<void> {
-    // 원본 백업 (있을 때만)
+  // 비파괴: 먼저 원본(방금 읽은 내용 그대로)을 .bak-unify-<시각> 으로 백업한다.
+  private async migrateUnify(sourceRaw: string): Promise<void> {
     try {
-      const cur = await backend.readFile(GLOBAL_PRESETS_FILE);
       await persistService.write(
         GLOBAL_PRESETS_FILE + '.bak-unify-' + Date.now(),
-        cur,
+        sourceRaw,
       );
     } catch (e) {
-      // 파일이 없었으면(신규 설치) 백업 불필요
+      console.warn('글로벌 프리셋 통합 이관 전 원본 백업 실패:', e);
     }
     if (this.presets.length > 0) {
       // createdAt 오름차순 — 먼저 만든 프리셋이 원래 이름을 유지
@@ -173,40 +197,18 @@ export class GlobalPresetService extends EventTarget {
     return out;
   }
 
+  // 저장: tmp → rename(실패 시 직접 쓰기), 세션 첫 저장 전 .bak1~3 회전, 읽기 실패 상태면 쓰지 않음(storeFile)
   async save(): Promise<void> {
-    const store: IGlobalPresetStore = {
-      version: GLOBAL_PRESETS_VERSION,
-      presets: this.presets,
-    };
-    const data = JSON.stringify(store);
-    const tmp = GLOBAL_PRESETS_FILE + '.tmp';
-    try {
-      await persistService.write(tmp, data);
-      await backend.renameFile(tmp, GLOBAL_PRESETS_FILE);
-    } catch (e) {
-      // Fallback: direct write if atomic rename fails
-      try {
-        await persistService.write(GLOBAL_PRESETS_FILE, data);
-      } catch (e2) {
-        console.error('Failed to save global presets:', e2);
-      }
-    }
+    await this.store.saveNow();
   }
 
   scheduleSave(): void {
-    if (this.saveTimeout) clearTimeout(this.saveTimeout);
-    this.saveTimeout = setTimeout(() => {
-      this.save();
-      this.saveTimeout = null;
-    }, 2000);
+    this.store.schedule();
   }
 
+  // 종료·백업 직전 — 바뀐 것이 있을 때만 쓴다
   async flushSave(): Promise<void> {
-    if (this.saveTimeout) {
-      clearTimeout(this.saveTimeout);
-      this.saveTimeout = null;
-    }
-    await this.save();
+    await this.store.flush();
   }
 
   // ---------- read ----------
@@ -284,6 +286,7 @@ export class GlobalPresetService extends EventTarget {
     session: Session,
     preset: any,
   ): Promise<IGlobalPresetEntry> {
+    this.store.assertWritable();
     if (!preset || !preset.type) {
       throw new Error('유효하지 않은 프리셋입니다');
     }
@@ -352,6 +355,7 @@ export class GlobalPresetService extends EventTarget {
     imageBase64: string | null,
     suggestedName: string,
   ): Promise<IGlobalPresetEntry> {
+    this.store.assertWritable();
     if (!preset || !preset.type) {
       throw new Error('유효하지 않은 프리셋입니다');
     }
@@ -408,6 +412,7 @@ export class GlobalPresetService extends EventTarget {
   async importFromPng(
     base64: string,
   ): Promise<IGlobalPresetEntry | undefined> {
+    this.store.assertWritable();
     let json = readJSONFromPNG(base64);
     if (!json || !json.type || !json.name) return undefined;
 
@@ -460,6 +465,7 @@ export class GlobalPresetService extends EventTarget {
   async importFromImage(
     base64: string,
   ): Promise<IGlobalPresetEntry | undefined> {
+    this.store.assertWritable();
     // 1) 정식 글로벌 프리셋 내보내기 이미지
     try {
       const entry = await this.importFromPng(base64);
@@ -502,6 +508,7 @@ export class GlobalPresetService extends EventTarget {
     base64: string,
     name: string,
   ): Promise<IGlobalPresetEntry> {
+    this.store.assertWritable();
     const job = await extractPromptDataFromBase64(base64);
     const preset: any = workFlowService.buildPreset('SDImageGen');
     preset.name = name;
@@ -554,6 +561,7 @@ export class GlobalPresetService extends EventTarget {
     root: string,
     policy: 'rename' | 'skip' | 'overwrite',
   ): Promise<{ added: number; skipped: number; overwritten: number }> {
+    this.store.assertWritable();
     let store: any;
     try {
       store = JSON.parse(await backend.readFile(root + '/global_presets.json'));
@@ -619,6 +627,7 @@ export class GlobalPresetService extends EventTarget {
 
   @action
   async rename(id: string, newName: string): Promise<void> {
+    this.store.assertWritable();
     const entry = this.get(id);
     if (!entry) throw new Error('프리셋을 찾을 수 없습니다');
     newName = newName.trim();
@@ -638,6 +647,7 @@ export class GlobalPresetService extends EventTarget {
   // 프리셋 내용(프롬프트·샘플링 설정 등) 부분 갱신. profile/이름은 별도 메서드 사용.
   @action
   async updatePreset(id: string, patch: Record<string, any>): Promise<void> {
+    this.store.assertWritable();
     const entry = this.get(id);
     if (!entry) throw new Error('프리셋을 찾을 수 없습니다');
     entry.preset = { ...(entry.preset || {}), ...patch };
@@ -649,6 +659,7 @@ export class GlobalPresetService extends EventTarget {
 
   @action
   async setDefault(id: string, value: boolean): Promise<void> {
+    this.store.assertWritable();
     const entry = this.get(id);
     if (!entry) throw new Error('프리셋을 찾을 수 없습니다');
     if (entry.isDefault === value) return;
@@ -661,6 +672,7 @@ export class GlobalPresetService extends EventTarget {
 
   @action
   async delete(id: string): Promise<void> {
+    this.store.assertWritable();
     const entry = this.get(id);
     if (!entry) return;
     if (entry.profile) {
@@ -673,6 +685,7 @@ export class GlobalPresetService extends EventTarget {
 
   @action
   async replaceProfileImage(id: string, base64: string): Promise<void> {
+    this.store.assertWritable();
     const entry = this.get(id);
     if (!entry) throw new Error('프리셋을 찾을 수 없습니다');
     const oldProfile = entry.profile;

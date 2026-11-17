@@ -13,8 +13,12 @@ import type { GenericScene } from './types';
 import { stringifyExportJson } from './jsonExport';
 import type { ProjectTemplateEntrySnapshot } from './ProjectTemplateService';
 import { askImportPolicy, notifyImportDone } from './importFlow';
+import { emitGlobalStoreNotice, judgeStoreFile } from './storeFile';
+import { globalStoreDeps } from './globalStoreDeps';
 
 const SIDECAR_PATH = 'templates.json';
+// 사용자 안내용 이름(storeFile 알림)
+const TEMPLATES_STORE_LABEL = '템플릿 지정 목록';
 
 // 폴더 기본 템플릿 지정 (프로젝트 상속 v2, 2026-07-16 합의).
 // templateId = ProjectTemplateService 엔티티 id (불변 — 이름변경 캐스케이드 불필요).
@@ -109,12 +113,42 @@ export class TemplateService {
 
   async ensureLoaded(): Promise<void> {
     if (this.loaded || this.loadFailed) return;
+    // 로드 판정은 글로벌 저장소 공용 규칙(storeFile, 2026-11-17 묶음 1): 「없음」은 확실할 때만, 읽기 실패는 짧게
+    // 재시도 후 차단, 손상(파싱 실패)은 `templates.json.corrupt-<시각>` 으로 보존한 뒤 사본(.tmp·.bak* — Android 쓰기가
+    // 남기는 .bak 포함)에서 되살리고 없으면 빈 목록. 저장 방식(직접 쓰기)·사본 회전은 바꾸지 않는다.
+    const res = await judgeStoreFile(
+      {
+        file: SIDECAR_PATH,
+        parse: (text) => {
+          const json = JSON.parse(text);
+          return json && typeof json === 'object' && !Array.isArray(json) ? json : null;
+        },
+      },
+      globalStoreDeps,
+    );
+    if (res.kind === 'io-failed') {
+      this.loadFailed = true;
+      console.error('templates.json 로드 실패(IO) — 템플릿 변경 차단:', res.error);
+      emitGlobalStoreNotice({ type: 'load-failed', label: TEMPLATES_STORE_LABEL, file: SIDECAR_PATH });
+      return;
+    }
+    if (res.kind === 'missing') {
+      this.loaded = true;
+      return;
+    }
+    if (res.kind === 'corrupt-empty') {
+      // 파손 → 빈 목록으로 재시작(지정만 잃음, 데이터 무손실). 손상본은 보존됨
+      emitGlobalStoreNotice({
+        type: 'corrupt-empty',
+        label: TEMPLATES_STORE_LABEL,
+        file: SIDECAR_PATH,
+        corruptName: res.corruptName,
+      });
+      this.loaded = true;
+      return;
+    }
     try {
-      if (!(await backend.existFile(SIDECAR_PATH))) {
-        this.loaded = true;
-        return;
-      }
-      const raw = JSON.parse(await backend.readFile(SIDECAR_PATH));
+      const raw: any = res.data;
       runInAction(() => {
         this.sceneNames = Array.isArray(raw?.sceneTemplates)
           ? raw.sceneTemplates.filter((n: unknown) => typeof n === 'string')
@@ -148,13 +182,25 @@ export class TemplateService {
       });
       this.loaded = true;
     } catch (e) {
-      if (e instanceof SyntaxError) {
-        // 파손 → 빈 목록으로 재시작 (지정만 잃음, 데이터 무손실)
-        this.loaded = true;
-        return;
-      }
+      // 형식 해석 중 예외(정상 JSON 이지만 예상 밖 구조) — 덮어쓰지 않도록 차단
       this.loadFailed = true;
-      console.error('templates.json 로드 실패(IO) — 템플릿 변경 차단:', e);
+      console.error('templates.json 해석 실패 — 템플릿 변경 차단:', e);
+      return;
+    }
+    if (res.kind === 'recovered') {
+      emitGlobalStoreNotice({
+        type: 'recovered',
+        label: TEMPLATES_STORE_LABEL,
+        file: SIDECAR_PATH,
+        fromFile: res.fromFile,
+        corruptName: res.corruptName,
+      });
+      // 되살린 내용을 본 파일에 되돌려 둔다(본 파일은 손상본이 보존됐거나 원래 없었다)
+      try {
+        await this.save();
+      } catch (e) {
+        console.error('templates.json 복구 내용 쓰기 실패:', e);
+      }
     }
   }
 

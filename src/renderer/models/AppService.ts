@@ -567,6 +567,8 @@ export class AppState {
       this.pushMessage('프로젝트를 먼저 선택해주세요');
       return;
     }
+    // 글로벌 캐릭터 프리셋을 부팅 때 읽지 못해 막혀 있으면 관리 창을 열 때 한 번 다시 읽는다(성공하면 차단 해제, storeFile)
+    void globalCharacterPresetService.reloadIfFailed();
     // 모바일 + 프리셋 적용 중: 해제/관리 선택 (W4 다중 적용 — 프리셋별 개별 해제)
     const appliedNames = this.appliedCharacterPresetNames;
     if (isMobile && appliedNames.length > 0) {

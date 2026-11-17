@@ -1,10 +1,11 @@
 import { observable, action } from 'mobx';
-import { persistService } from './PersistenceService';
 import { v4 as uuidv4 } from 'uuid';
 import { backend } from '.';
 import { imageExtFromBase64 } from './imageFormats';
 import { extractPromptDataFromBase64 } from './util';
 import { ModelBaseFamily, samplingFamilyForModelId } from './modelSamplingProfiles';
+import { StoreFile } from './storeFile';
+import { globalStoreDeps } from './globalStoreDeps';
 
 // 작가 라이브러리 전역 데이터.
 // 프로젝트(세션)와 무관하게 앱 루트의 artist_library.json + artist_library/ 폴더에 저장.
@@ -52,83 +53,85 @@ export class ArtistLibraryService extends EventTarget {
   @observable accessor artists: IArtistEntry[] = [];
   @observable accessor tagPresets: string[] = [];
   @observable accessor loaded: boolean = false;
-  private saveTimeout: any = null;
+
+  // 로드 판정·저장·사본 회전(storeFile.ts 단일 출처, 2026-11-17 묶음 1). 형식은 종전 그대로.
+  private store = new StoreFile<IArtistLibraryStore>(
+    {
+      file: ARTIST_LIBRARY_FILE,
+      label: '작가 라이브러리',
+      parse: (raw) => {
+        const json = JSON.parse(raw);
+        return json && typeof json === 'object' && Array.isArray(json.artists)
+          ? (json as IArtistLibraryStore)
+          : null;
+      },
+      countItems: (s) =>
+        s.artists.length + (Array.isArray(s.tagPresets) ? s.tagPresets.length : 0),
+      serialize: () => {
+        const store: IArtistLibraryStore = {
+          version: 1,
+          artists: this.artists,
+          tagPresets: this.tagPresets,
+        };
+        return JSON.stringify(store);
+      },
+      saveDelayMs: 1500,
+    },
+    globalStoreDeps,
+  );
+
+  /** 파일을 읽지 못해 저장·변경이 막힌 상태 */
+  get loadFailed(): boolean {
+    return this.store.loadFailed;
+  }
 
   // ---------- lifecycle ----------
 
   async load(): Promise<void> {
-    try {
-      const str = await backend.readFile(ARTIST_LIBRARY_FILE);
-      try {
-        const json = JSON.parse(str) as IArtistLibraryStore;
-        this.artists = Array.isArray(json?.artists)
-          ? json.artists.filter(
-              (a) =>
-                a &&
-                typeof a.id === 'string' &&
-                typeof a.name === 'string' &&
-                Array.isArray(a.images) &&
-                Array.isArray(a.tags),
-            )
-          : [];
-        this.tagPresets = Array.isArray(json?.tagPresets)
-          ? json.tagPresets.filter((t) => typeof t === 'string')
-          : [];
-      } catch (parseErr) {
-        const corruptName = `${ARTIST_LIBRARY_FILE}.corrupt-${Date.now()}`;
-        try {
-          await backend.renameFile(ARTIST_LIBRARY_FILE, corruptName);
-        } catch (e) {}
-        this.artists = [];
-        this.tagPresets = [];
-      }
-    } catch (e) {
-      // 파일 없음 — 빈 상태로 시작
+    const res = await this.store.load();
+    if (res.keepMemory) return; // 재로드 실패 — 이미 가진 목록 유지
+    if (res.kind === 'io-failed') {
+      // 읽기 실패 — 빈 목록으로 보이되 저장·추가는 막힌다
       this.artists = [];
       this.tagPresets = [];
+      this.loaded = false;
+      this.dispatchEvent(new CustomEvent('loaded', {}));
+      return;
     }
+    const json = res.kind === 'ok' || res.kind === 'recovered' ? res.data : null;
+    this.artists = Array.isArray(json?.artists)
+      ? json!.artists.filter(
+          (a) =>
+            a &&
+            typeof a.id === 'string' &&
+            typeof a.name === 'string' &&
+            Array.isArray(a.images) &&
+            Array.isArray(a.tags),
+        )
+      : [];
+    this.tagPresets = Array.isArray(json?.tagPresets)
+      ? json!.tagPresets.filter((t) => typeof t === 'string')
+      : [];
     this.loaded = true;
     this.dispatchEvent(new CustomEvent('loaded', {}));
   }
 
+  // 저장: tmp → rename(실패 시 직접 쓰기), 세션 첫 저장 전 .bak1~3 회전, 읽기 실패 상태면 쓰지 않음(storeFile)
   async save(): Promise<void> {
-    try {
-      await this.writeStoreOrThrow();
-    } catch (e) {
-      console.error('Failed to save artist library:', e);
-    }
+    await this.store.saveNow();
   }
 
   private async writeStoreOrThrow(): Promise<void> {
-    const store: IArtistLibraryStore = {
-      version: 1,
-      artists: this.artists,
-      tagPresets: this.tagPresets,
-    };
-    const data = JSON.stringify(store);
-    const tmp = ARTIST_LIBRARY_FILE + '.tmp';
-    try {
-      await persistService.write(tmp, data);
-      await backend.renameFile(tmp, ARTIST_LIBRARY_FILE);
-    } catch (e) {
-      await persistService.write(ARTIST_LIBRARY_FILE, data);
-    }
+    await this.store.saveNowOrThrow();
   }
 
   scheduleSave(): void {
-    if (this.saveTimeout) clearTimeout(this.saveTimeout);
-    this.saveTimeout = setTimeout(() => {
-      this.save();
-      this.saveTimeout = null;
-    }, 1500);
+    this.store.schedule();
   }
 
+  // 종료·백업 직전 — 바뀐 것이 있을 때만 쓴다
   async flushSave(): Promise<void> {
-    if (this.saveTimeout) {
-      clearTimeout(this.saveTimeout);
-      this.saveTimeout = null;
-    }
-    await this.save();
+    await this.store.flush();
   }
 
   // ---------- artists ----------
@@ -172,6 +175,7 @@ export class ArtistLibraryService extends EventTarget {
 
   @action
   createArtist(name: string): IArtistEntry | undefined {
+    if (!this.store.canWrite()) return undefined;
     name = this.normalizeArtistName(name);
     if (!name) return undefined;
     const existing = this.findArtistByName(name);
@@ -209,6 +213,7 @@ export class ArtistLibraryService extends EventTarget {
   async mergeDuplicateArtists(
     onProgress?: (done: number, total: number) => void,
   ): Promise<{ groups: number; mergedArtists: number; copiedImages: number }> {
+    this.store.assertWritable();
     const groups = this.getDuplicateArtistGroups();
     if (groups.length === 0) {
       return { groups: 0, mergedArtists: 0, copiedImages: 0 };
@@ -261,10 +266,7 @@ export class ArtistLibraryService extends EventTarget {
         onProgress?.(groupIndex + 1, groups.length);
       }
 
-      if (this.saveTimeout) {
-        clearTimeout(this.saveTimeout);
-        this.saveTimeout = null;
-      }
+      this.store.cancelScheduled();
       this.artists = nextArtists;
       await this.writeStoreOrThrow();
     } catch (e) {
@@ -462,6 +464,7 @@ export class ArtistLibraryService extends EventTarget {
 
   @action
   addTagPreset(tag: string): void {
+    if (!this.store.canWrite()) return;
     const t = this.normalizeTag(tag);
     if (!t || this.tagPresets.includes(t)) return;
     this.tagPresets = [...this.tagPresets, t];
@@ -477,6 +480,7 @@ export class ArtistLibraryService extends EventTarget {
   // 태그 프리셋 팔레트 통째 지정(2차 P5 — 추가·제거의 되돌리기, 원래 자리 유지)
   @action
   setTagPresets(tags: string[]): void {
+    if (!this.store.canWrite()) return;
     const next: string[] = [];
     for (const tag of tags) {
       const t = this.normalizeTag(tag);
@@ -513,6 +517,7 @@ export class ArtistLibraryService extends EventTarget {
     root: string,
     policy: 'rename' | 'skip' | 'overwrite',
   ): Promise<{ added: number; skipped: number; overwritten: number }> {
+    this.store.assertWritable();
     let store: any;
     try {
       store = JSON.parse(await backend.readFile(root + '/artist_library.json'));
