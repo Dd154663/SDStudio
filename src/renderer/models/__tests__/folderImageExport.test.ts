@@ -13,12 +13,15 @@ const mockBackend = {
   copyFile: jest.fn(async (_s: string, _d: string) => {}),
   copyFileToAbsolute: jest.fn(async (_s: string, _d: string) => 'copied'),
   deleteFile: jest.fn(async (_p: string) => {}),
-  writeDataFile: jest.fn(async () => {}),
+  writeDataFile: jest.fn(async (_p: string, _d: string) => {}),
 };
 const mockPlatform = { supportsTargetFolder: true, maxImageConcurrency: 2, exportConcurrency: 2 };
 const mockSessions = new Map<string, any>();
 const mockFolderMap: Record<string, string> = {};
 let mockOutputs: string[] = ['1.png'];
+// 씬별 출력 목록(b-3 — 변형 씬 즐겨찾기 확인용). 없으면 mockOutputs
+const mockSceneOutputs = new Map<string, string[]>();
+const mockOutputsFor = (scene: any) => mockSceneOutputs.get(scene.type + ':' + scene.name) ?? mockOutputs;
 let mockEps: any;
 
 jest.mock('..', () => ({
@@ -28,9 +31,11 @@ jest.mock('..', () => ({
   backend: mockBackend,
   imageService: {
     refreshBatch: jest.fn(async () => {}),
-    getOutputDir: (session: any, scene: any) => `${session.name}/outs/${scene.name}`,
+    getOutputDir: (session: any, scene: any) =>
+      `${session.name}/${scene.type === 'inpaint' ? 'inpaints' : 'outs'}/${scene.name}`,
+    fetchImage: jest.fn(async (p: string) => 'data:image/png;base64,' + p),
   },
-  gameService: { refreshList: jest.fn(async () => {}), getOutputs: () => mockOutputs },
+  gameService: { refreshList: jest.fn(async () => {}), getOutputs: (_s: any, scene: any) => mockOutputsFor(scene) },
   sessionService: {
     getProjectsInFolder: (folder: string) =>
       Object.keys(mockFolderMap).filter((n) => mockFolderMap[n] === folder || mockFolderMap[n].startsWith(folder + '/')),
@@ -44,7 +49,9 @@ jest.mock('../AppService', () => ({ appState: mockState }));
 jest.mock('../platform', () => ({ platform: mockPlatform }));
 jest.mock('../../backend', () => ({ ImageOptimizeMethod: { LOSSY: 'lossy', LOSSLESS: 'lossless', AVIF: 'avif' } }));
 jest.mock('../PersistenceService', () => ({ persistService: { write: jest.fn() } }));
-jest.mock('../ImageService', () => ({}));
+jest.mock('../ImageService', () => ({
+  cropMirrorResultFromDataUri: jest.fn(async (data: string, x: number) => 'cropped:' + x + ':' + data),
+}));
 jest.mock('../SessionService', () => ({}));
 jest.mock('../types', () => ({}));
 jest.mock('../util', () => ({}));
@@ -71,12 +78,26 @@ jest.mock('../undoService', () => ({}));
 
 import { ExportPresetService } from '../ExportPresetService';
 import { BackupService } from '../BackupService';
-import { emptyExportForm, exportFormToPreset, exportRunOptionsFromPreset } from '../exportSettings';
+import {
+  emptyExportForm,
+  exportFormToPreset,
+  exportRunOptionsFromPreset,
+  FOLDER_EXPORT_VARIANT_DIR,
+  folderExportSceneTypes,
+} from '../exportSettings';
+import type { FolderExportTarget } from '../exportSettings';
 import { appliedCharacterPresetOf, characterFilenameAffixOf } from '../appliedCharacterPreset';
 import type { ExportPreset } from '../AppService';
 
 // 적용 캐릭터 프리셋(선택 워크플로우 shared 의 _appliedPresetName)이 있는 세션
-function session(name: string, sceneNames: string[], affix?: { prefix?: string; suffix?: string }) {
+// 변형 씬(b-3): { name, mains?, mirror? } — mirror 면 SDMirror(잘라낸 tmp/ 본을 내보냄)
+type VariantSpec = { name: string; mains?: string[]; mirror?: boolean };
+function session(
+  name: string,
+  sceneNames: string[],
+  affix?: { prefix?: string; suffix?: string },
+  variants: VariantSpec[] = [],
+) {
   const presets = new Map<string, any>();
   const shared: any = {};
   if (affix) {
@@ -89,7 +110,15 @@ function session(name: string, sceneNames: string[], affix?: { prefix?: string; 
     presetShareds: new Map([['SDImageGen', shared]]),
     getCharacterPreset: (n: string) => presets.get(n),
     getScenes: (type: string) =>
-      type === 'scene' ? sceneNames.map((s) => ({ name: s, mains: [], type: 'scene' })) : [],
+      type === 'scene'
+        ? sceneNames.map((s) => ({ name: s, mains: [], type: 'scene' }))
+        : variants.map((v) => ({
+          name: v.name,
+          mains: v.mains ?? [],
+          type: 'inpaint',
+          workflowType: v.mirror ? 'SDMirror' : 'SDI2I',
+          mirrorCropX: v.mirror ? 10 : undefined,
+        })),
   };
 }
 
@@ -101,6 +130,7 @@ beforeEach(() => {
   mockSessions.clear();
   for (const k of Object.keys(mockFolderMap)) delete mockFolderMap[k];
   mockOutputs = ['1.png'];
+  mockSceneOutputs.clear();
   mockPlatform.supportsTargetFolder = true;
   mockBackend.getConfig.mockResolvedValue({});
   // 폴더 F: A(적용 프리셋 alice/end), B(하위 폴더 F/sub, 적용 프리셋 bob), C(적용 프리셋 없음)
@@ -131,14 +161,17 @@ beforeEach(() => {
 });
 
 // 직접 설정 폼 경로로 실행(폼 결과 = preset, 변환 문자 = chars)
-async function runDirect(preset: ExportPreset, chars: string[] = []) {
+// folderTarget 생략 = 폼 결과에 「대상」 없음(기본 = 생성 씬)
+async function runDirect(preset: ExportPreset, chars: string[] = [], folderTarget?: FolderExportTarget) {
   mockState.pushDialogAsync.mockResolvedValueOnce('_manual');
   const pending = backup.folderExportImages('F');
   for (let i = 0; i < 20 && !mockState.directExportRequest; i++) await Promise.resolve();
   expect(mockState.directExportRequest).toMatchObject({ scope: 'folder', projectName: 'F', projectCount: 3 });
-  mockState.directExportRequest.resolve({ preset, charsToReplace: chars });
+  lastRequest = mockState.directExportRequest;
+  mockState.directExportRequest.resolve({ preset, charsToReplace: chars, ...(folderTarget ? { folderTarget } : {}) });
   await pending;
 }
+let lastRequest: any;
 // 저장 프리셋 경로로 실행
 async function runPreset(preset: ExportPreset, ...answers: any[]) {
   mockState.loadExportPresets.mockReturnValue([preset]);
@@ -297,6 +330,130 @@ describe('폴더 일괄 이미지 내보내기 = 프로젝트 내보내기와 �
     mockSessions.delete('B');
     await runDirect(form({ applyCharacterAffix: false }));
     expect(entryNames()).toEqual(['A/s 1.png', 'C/s3.png']);
+  });
+});
+
+// M5 묶음 b-3(2026-11-17): 폴더 일괄 「대상」 — 생성 씬(기본)/변형 씬/둘 다, 변형 씬은 `프로젝트/변형/…`
+describe('폴더 일괄 「대상」(변형 씬 선택 포함)', () => {
+  beforeEach(() => {
+    // A: 생성 씬 「s 1」 + 같은 이름의 변형 씬 「s 1」·미러 씬 「m」 / B: 즐겨찾기(mains) 있는 변형 씬 「v」 / C: 변형 씬 없음
+    mockSessions.set('A', session('A', ['s 1'], { prefix: 'alice', suffix: 'end' }, [{ name: 's 1' }, { name: 'm', mirror: true }]));
+    mockSessions.set('B', session('B', ['s2'], { prefix: 'bob' }, [{ name: 'v', mains: ['2.png'] }]));
+    mockSceneOutputs.set('inpaint:v', ['1.png', '2.png']);
+  });
+  const V = FOLDER_EXPORT_VARIANT_DIR;
+
+  test('대상 → 씬 종류(생략·모르는 값 = 생성 씬)', () => {
+    expect(folderExportSceneTypes(undefined)).toEqual(['scene']);
+    expect(folderExportSceneTypes('scene')).toEqual(['scene']);
+    expect(folderExportSceneTypes('inpaint')).toEqual(['inpaint']);
+    expect(folderExportSceneTypes('both')).toEqual(['scene', 'inpaint']);
+    expect(V).toBe('변형');
+  });
+
+  test('머리 안내용: 직접 설정 요청에 생성·변형 씬 이름을 종류별로(창보다 먼저 수집)', async () => {
+    await runDirect(form());
+    expect(lastRequest.sceneNames).toEqual(['s 1', 's2', 's3']);
+    expect(lastRequest.variantSceneNames).toEqual(['s 1', 'm', 'v']);
+  });
+
+  test('기본값(대상 없음 = 생성 씬) = 종전 결과 그대로 — 변형 씬은 넣지 않음', async () => {
+    await runDirect(form());
+    expect(mockZipFiles.mock.calls[0][0]).toEqual([
+      { path: 'A/outs/s 1/1.png', name: 'A/alice.s 1.end.png' },
+      { path: 'B/outs/s2/1.png', name: 'B/bob.s2.png' },
+      { path: 'C/outs/s3/1.png', name: 'C/s3.png' },
+    ]);
+    await runDirect(form(), [], 'scene');
+    expect(mockZipFiles.mock.calls[1][0]).toEqual(mockZipFiles.mock.calls[0][0]);
+  });
+
+  test('「변형 씬」만 = `프로젝트/변형/…`, 미러 씬은 잘라낸 본, 즐겨찾기만 = 변형 씬의 mains', async () => {
+    await runDirect(form(), [], 'inpaint');
+    const entries = mockZipFiles.mock.calls[0][0] as any[];
+    expect(entries.map((e) => e.name)).toEqual([`A/${V}/alice.s 1.end.png`, `A/${V}/alice.m.end.png`, `B/${V}/bob.v.png`]);
+    expect(entries[0].path).toBe('A/inpaints/s 1/1.png');
+    // 미러 = 잘라 tmp/ 에 쓴 파일
+    expect(entries[1].path).toMatch(/^tmp\/.+\.png$/);
+    expect(mockBackend.writeDataFile).toHaveBeenCalledWith(entries[1].path, 'cropped:10:data:image/png;base64,A/inpaints/m/1.png');
+    // B 「v」 = mains 의 2.png 만
+    expect(entries[2].path).toBe('B/inpaints/v/2.png');
+    expect(mockState.pushDialog).toHaveBeenCalledWith({ type: 'yes-only', text: '폴더 "F" 이미지 내보내기가 완료되었습니다. (3장)' });
+  });
+
+  test('「둘 다」 = `프로젝트/…` + `프로젝트/변형/…`(같은 이름 씬이 섞이지 않음), 완료 장 수 = 합계', async () => {
+    await runDirect(form({ applyCharacterAffix: false }), [], 'both');
+    expect(entryNames()).toEqual([
+      'A/s 1.png', `A/${V}/s 1.png`, `A/${V}/m.png`,
+      'B/s2.png', `B/${V}/v.png`,
+      'C/s3.png',
+    ]);
+    expect(mockState.pushDialog).toHaveBeenCalledWith({ type: 'yes-only', text: '폴더 "F" 이미지 내보내기가 완료되었습니다. (6장)' });
+  });
+
+  test('「모든 이미지 전부」 = 변형 씬도 출력 전부', async () => {
+    await runDirect(form({ menu: 'all', applyCharacterAffix: false }), [], 'inpaint');
+    expect(entryNames()).toEqual([`A/${V}/s 1.png`, `A/${V}/m.png`, `B/${V}/v.1.png`, `B/${V}/v.2.png`]);
+  });
+
+  test('zip·개별 파일도 같은 구조', async () => {
+    await runDirect(form({ outputMode: 'zip', applyCharacterAffix: false }), [], 'both');
+    expect(mockZipFiles.mock.calls[0][1]).toMatch(/\.zip$/);
+    expect(entryNames()).toContain(`B/${V}/v.png`);
+    jest.clearAllMocks();
+    await runDirect(form({ outputMode: 'files', applyCharacterAffix: false }), [], 'both');
+    const dests = mockBackend.copyFile.mock.calls.map((c) => c[1]);
+    expect(dests).toHaveLength(6);
+    expect(dests[0]).toMatch(/^exports\/F_images_\d+\/A\/s 1\.png$/);
+    expect(dests[1]).toMatch(new RegExp(`^exports/F_images_\\d+/A/${V}/s 1\\.png$`));
+    expect(dests[4]).toMatch(new RegExp(`^exports/F_images_\\d+/B/${V}/v\\.png$`));
+  });
+
+  test('변형 씬 이름 = 프로젝트 변형 탭 내보내기와 같음(접두/접미사·패턴·특수문자 변환)', async () => {
+    const p = form({ filenamePattern: 'project.scene', separator: '_' });
+    await runDirect(p, [' '], 'inpaint');
+    const folderNames = entryNames().filter((n) => n.startsWith(`A/${V}/`)).map((n) => n.slice(`A/${V}/`.length));
+    jest.clearAllMocks();
+    mockState.curSession = mockSessions.get('A');
+    mockState.pushDialogAsync.mockResolvedValueOnce(JSON.stringify([' '])); // 특수문자 질의 = 띄어쓰기 변환
+    await mockEps.exportPackage('inpaint', undefined, p);
+    const projectNames = (mockZipFiles.mock.calls[0][0] as any[]).map((e) => e.name);
+    expect(folderNames).toEqual(['A_alice_s_1_end.png', 'A_alice_m_end.png']);
+    expect(projectNames).toEqual(folderNames);
+  });
+
+  test('재최적화 확인(ask)은 종류를 통틀어 한 번, 변환 확장자 = 출력 형식', async () => {
+    mockOutputs = ['1.webp'];
+    // 방법 선택 = 직접 설정, 재최적화 확인 = 전부 다시
+    mockState.pushDialogAsync.mockResolvedValueOnce('_manual').mockResolvedValueOnce('all');
+    const pending = backup.folderExportImages('F');
+    for (let i = 0; i < 20 && !mockState.directExportRequest; i++) await Promise.resolve();
+    mockState.directExportRequest.resolve({
+      preset: form({ opt: 'avif', reoptimize: 'ask', applyCharacterAffix: false }), charsToReplace: [], folderTarget: 'both',
+    });
+    await pending;
+    const selects = mockState.pushDialogAsync.mock.calls.filter((c: any[]) => String(c[0].text).includes('이미 최적화'));
+    expect(selects).toHaveLength(1);
+    // 미러 씬은 잘라낸 png 라 이미 최적화된 소스가 아님 — 6장 모두 변환
+    expect(mockBackend.resizeImage).toHaveBeenCalledTimes(6);
+    expect(entryNames()).toEqual([
+      'A/s 1.avif', `A/${V}/s 1.avif`, `A/${V}/m.avif`,
+      'B/s2.avif', `B/${V}/v.avif`,
+      'C/s3.avif',
+    ]);
+  });
+
+  test('저장 프리셋 경로 = 생성 씬만(프리셋 형식에 「대상」 없음)', async () => {
+    await runPreset(form({ autoConvertSeparator: true, applyCharacterAffix: false }));
+    expect(entryNames()).toEqual(['A/s.1.png', 'B/s2.png', 'C/s3.png']);
+  });
+
+  test('변형 씬이 하나도 없는 폴더에서 「변형 씬」 = 「내보낼 이미지가 없습니다.」', async () => {
+    mockSessions.set('A', session('A', ['s 1']));
+    mockSessions.set('B', session('B', ['s2']));
+    await runDirect(form(), [], 'inpaint');
+    expect(mockZipFiles).not.toHaveBeenCalled();
+    expect(mockState.pushMessage).toHaveBeenCalledWith('내보낼 이미지가 없습니다.');
   });
 });
 

@@ -75,7 +75,8 @@ describe('P8 폴더 일괄 「직접 설정」 = 직접 내보내기 폼(scope f
   test('폴더 범위: 숨김 칸 없이 프로젝트와 같은 칸 + 안내 한 줄, 머리에 폴더·프로젝트 수', async () => {
     state.directExportRequest = { projectName: 'F', projectCount: 3, sceneNames: ['a', 'b'], scope: 'folder', resolve };
     await act(async () => root.render(<DirectExportDialog />));
-    expect(container.textContent).toContain('폴더 "F" · 프로젝트 3개 · 대상 씬 2개');
+    // 2026-11-17 b-3: 종류별 개수(변형 씬 이름을 안 받으면 0개)
+    expect(container.textContent).toContain('폴더 "F" · 프로젝트 3개 · 생성 씬 2개 · 변형 씬 0개');
     expect(container.querySelector('[data-direct-export-folder-note]')!.textContent).toBe(FOLDER_EXPORT_FIXED_NOTE);
     // 2026-11-16 묶음 b-2: 파일명 패턴·출력 형태·접두/접미사 토글·목표 폴더도 보인다
     expect(selectWith('project.scene')).toBeDefined();
@@ -97,6 +98,59 @@ describe('P8 폴더 일괄 「직접 설정」 = 직접 내보내기 폼(scope f
     expect(container.textContent).toContain('특수문자 묻지 않고 구분자로 자동 변환');
     act(() => click('내보내기'));
     expect(resolve).toHaveBeenCalledTimes(1);
+    // 「대상」 기본값 = 생성 씬
+    expect(resolve.mock.calls[0][0].folderTarget).toBe('scene');
+  });
+
+  test('폴더 범위 「대상」 칸(b-3): 이미지 범위 앞, 세 선택지·도움말, 고른 값이 결과로, 특수문자 감지가 대상 따라감', async () => {
+    state.directExportRequest = {
+      projectName: 'F', projectCount: 2, sceneNames: ['a', 'b c'], variantSceneNames: ['v#1', 'w', 'x'], scope: 'folder', resolve,
+    };
+    await act(async () => root.render(<DirectExportDialog />));
+    expect(container.textContent).toContain('폴더 "F" · 프로젝트 2개 · 생성 씬 2개 · 변형 씬 3개');
+    const target = container.querySelector('[data-export-folder-target] select') as HTMLSelectElement;
+    expect(target).not.toBeNull();
+    expect(Array.from(target.options).map((o) => o.value)).toEqual(['scene', 'inpaint', 'both']);
+    expect(Array.from(target.options).map((o) => o.textContent)).toEqual(['생성 씬 — 기본', '변형 씬', '생성 씬 + 변형 씬']);
+    expect(target.value).toBe('scene');
+    expect(container.textContent).toContain('변형 씬 이미지는 프로젝트 폴더 안 「변형」 폴더에 따로 담깁니다.');
+    // 첫 칸 = 대상, 그다음 이미지 범위
+    const selects = Array.from(container.querySelectorAll('select'));
+    expect(selects[0]).toBe(target);
+    expect(selects[1].querySelector('option[value="fav"]')).not.toBeNull();
+    // 생성 씬만: 띄어쓰기만 감지
+    const charLabels = () => Array.from(container.querySelectorAll('fieldset label')).map((l) => l.textContent);
+    expect(charLabels()).toEqual(['띄어쓰기']);
+    await act(async () => {
+      target.value = 'inpaint';
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(charLabels()).toEqual(['#']);
+    await act(async () => {
+      target.value = 'both';
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(charLabels()).toEqual(['띄어쓰기', '#']);
+    act(() => click('내보내기'));
+    expect(resolve.mock.calls[0][0].folderTarget).toBe('both');
+    // 프리셋 저장 형식에는 넣지 않는다
+    expect(resolve.mock.calls[0][0].preset).not.toHaveProperty('folderTarget');
+  });
+
+  test('「대상」을 바꿔 감지 목록에서 빠진 문자는 결과에 넣지 않음', async () => {
+    state.directExportRequest = {
+      projectName: 'F', projectCount: 1, sceneNames: ['b c'], variantSceneNames: ['v#1'], scope: 'folder', resolve,
+    };
+    await act(async () => root.render(<DirectExportDialog />));
+    const box = container.querySelector('fieldset input[type="checkbox"]') as HTMLInputElement;
+    act(() => box.click());
+    const target = container.querySelector('[data-export-folder-target] select') as HTMLSelectElement;
+    await act(async () => {
+      target.value = 'inpaint';
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    act(() => click('내보내기'));
+    expect(resolve.mock.calls[0][0]).toMatchObject({ folderTarget: 'inpaint', charsToReplace: [] });
   });
 
   test('프로젝트 범위(종전): 숨김 없음, 안내 없음', async () => {
@@ -104,6 +158,11 @@ describe('P8 폴더 일괄 「직접 설정」 = 직접 내보내기 폼(scope f
     await act(async () => root.render(<DirectExportDialog />));
     expect(container.textContent).toContain('P · 대상 씬 1개');
     expect(container.querySelector('[data-direct-export-folder-note]')).toBeNull();
+    // 「대상」 칸은 폴더 범위 전용
+    expect(container.querySelector('[data-export-folder-target]')).toBeNull();
+    expect(selectWith('both')).toBeUndefined();
+    act(() => click('내보내기'));
+    expect(resolve.mock.calls[0][0]).not.toHaveProperty('folderTarget');
     expect(selectWith('project.scene')).toBeDefined();
     expect(selectWith('zip')).toBeDefined();
     expect(container.textContent).toContain('캐릭터 프리셋 접두사/접미사 적용');

@@ -1,7 +1,15 @@
 import React from 'react';
 import { isMobile, backend } from '../models';
 import { buildImageOptimizeOptions } from '../models/platform';
-import { DirectExportScope, ExportFormState, isExportFieldShown } from '../models/exportSettings';
+import {
+  DEFAULT_FOLDER_EXPORT_TARGET,
+  DirectExportScope,
+  ExportFormState,
+  FOLDER_EXPORT_TARGET_OPTIONS,
+  FOLDER_EXPORT_VARIANT_DIR,
+  FolderExportTarget,
+  isExportFieldShown,
+} from '../models/exportSettings';
 import { DropdownSelect } from './UtilComponents';
 import { FaFolderOpen } from 'react-icons/fa';
 const menuOptions = [
@@ -47,13 +55,17 @@ const FieldRow = ({ label, stacked, children }: {
     </div>
   );
 
-export default function ExportSettingsFields({ form, setForm, direct = false, twoColumn = false, scope = 'project' }: {
+export default function ExportSettingsFields({ form, setForm, direct = false, twoColumn = false, scope = 'project', folderTarget, setFolderTarget }: {
   form: ExportFormState;
   setForm: React.Dispatch<React.SetStateAction<ExportFormState>>;
   direct?: boolean;
   // 직접 내보내기 범위(2026-11-16 M5 묶음 b P8): 'folder' 면 FOLDER_EXPORT_UNUSED_FIELDS 의 칸을 숨긴다
   // (묶음 b-2 부터 비어 있음 — 안내는 DirectExportDialog 가 한 줄로).
   scope?: DirectExportScope;
+  // 폴더 일괄의 「대상」(2026-11-17 M5 묶음 b-3): scope 'folder' 이고 setFolderTarget 을 받았을 때만 보인다.
+  // 프리셋 저장 형식에 넣지 않으려고 폼 상태(ExportFormState)와 따로 받는다.
+  folderTarget?: FolderExportTarget;
+  setFolderTarget?: (target: FolderExportTarget) => void;
   // 2열 격자(2026-11-11 오버레이 묶음 1, 내보내기 프리셋 관리 L 창): 칸마다 최소 300px — 폭이 모자라면 1열로 접힌다.
   // 목표 폴더 묶음은 늘 한 줄 전체(col-span-full). 끄면 종전 세로 쌓기 그대로.
   twoColumn?: boolean;
@@ -69,6 +81,22 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
     style={twoColumn ? { gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' } : undefined}
     data-export-fields-columns={twoColumn ? '2' : undefined}
   >
+          {/* 대상(폴더 일괄 전용 — 프로젝트 범위는 탭이 대상을 정한다) */}
+          {scope === 'folder' && setFolderTarget && (
+            <FieldRow label="대상 *" stacked={twoColumn}>
+              <div className="flex-1 min-w-0" data-export-folder-target="">
+                <DropdownSelect
+                  selectedOption={folderTarget ?? DEFAULT_FOLDER_EXPORT_TARGET}
+                  options={[...FOLDER_EXPORT_TARGET_OPTIONS]}
+                  onSelect={(o: any) => setFolderTarget(o.value)}
+                />
+                <div className="text-xs text-muted mt-1">
+                  변형 씬 이미지는 프로젝트 폴더 안 「{FOLDER_EXPORT_VARIANT_DIR}」 폴더에 따로 담깁니다.
+                </div>
+              </div>
+            </FieldRow>
+          )}
+
           {/* 이미지 범위 */}
           <FieldRow label="이미지 범위 *" stacked={twoColumn}>
             <div className="flex-1 min-w-0">

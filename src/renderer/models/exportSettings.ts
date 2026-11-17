@@ -49,7 +49,37 @@ export function exportSpecialChars(names: string[]): string[] {
   return Array.from(new Set(names.flatMap((name) => name.match(/[^a-zA-Z0-9가-힣ぁ-んァ-ヶ一-龥　-〿]/g) ?? [])));
 }
 
-export interface DirectExportResult { preset: ExportPreset; charsToReplace: string[] }
+/**
+ * 폴더 일괄 이미지 내보내기의 「대상」(2026-11-17 M5 묶음 b-3, 사용자 결정 — 기본 = 생성 씬).
+ * 직접 설정 폼의 실행 옵션일 뿐 내보내기 프리셋(ExportPreset) 저장 형식에는 넣지 않는다 — 저장 프리셋 경로는 생성 씬만.
+ * 'scene' = 생성 씬, 'inpaint' = 변형 씬, 'both' = 둘 다.
+ */
+export type FolderExportTarget = 'scene' | 'inpaint' | 'both';
+
+export const DEFAULT_FOLDER_EXPORT_TARGET: FolderExportTarget = 'scene';
+
+export const FOLDER_EXPORT_TARGET_OPTIONS: readonly { value: FolderExportTarget; label: string }[] = [
+  { value: 'scene', label: '생성 씬 — 기본' },
+  { value: 'inpaint', label: '변형 씬' },
+  { value: 'both', label: '생성 씬 + 변형 씬' },
+];
+
+/** 변형 씬 이미지를 담는 프로젝트 하위 폴더 이름 — 결과 경로 `프로젝트/변형/…`(선택과 무관하게 일정) */
+export const FOLDER_EXPORT_VARIANT_DIR = '변형';
+
+/** 「대상」 선택 → 내보낼 씬 종류 목록(생성 → 변형 순) */
+export function folderExportSceneTypes(target: FolderExportTarget | undefined): ('scene' | 'inpaint')[] {
+  if (target === 'inpaint') return ['inpaint'];
+  if (target === 'both') return ['scene', 'inpaint'];
+  return ['scene'];
+}
+
+export interface DirectExportResult {
+  preset: ExportPreset;
+  charsToReplace: string[];
+  /** scope 'folder' 일 때만 — 「대상」 선택(생략 = 생성 씬) */
+  folderTarget?: FolderExportTarget;
+}
 
 /**
  * 직접 내보내기 창의 범위(2026-11-16 M5 묶음 b P8). 'project' = 프로젝트 이미지 내보내기(종전),
@@ -60,7 +90,10 @@ export type DirectExportScope = 'project' | 'folder';
 export interface DirectExportRequest {
   /** scope 'folder' 이면 폴더 이름 */
   projectName: string;
+  /** scope 'folder' 이면 폴더 안 생성 씬 이름 전부 */
   sceneNames: string[];
+  /** scope 'folder' 일 때 폴더 안 변형 씬 이름 전부(머리 안내 개수·「대상」에 따른 특수문자 감지) */
+  variantSceneNames?: string[];
   /** 생략 = 'project' */
   scope?: DirectExportScope;
   /** scope 'folder' 일 때 폴더 안 프로젝트 수(머리 안내용) */
@@ -87,7 +120,8 @@ export function isExportFieldShown(key: ExportFieldKey, scope: DirectExportScope
 
 /** 폴더 범위 직접 설정 창의 안내 한 줄 — 프로젝트 내보내기와 달라지는 사실만 */
 export const FOLDER_EXPORT_FIXED_NOTE =
-  '폴더 일괄 내보내기는 결과 안에 프로젝트마다 하위 폴더(프로젝트 이름)를 만들어 이미지를 나눠 담습니다. ' +
+  '폴더 일괄 내보내기는 결과 안에 프로젝트마다 하위 폴더(프로젝트 이름)를 만들어 이미지를 나눠 담습니다' +
+  `(변형 씬은 그 안의 「${FOLDER_EXPORT_VARIANT_DIR}」 폴더). ` +
   '파일명 패턴·캐릭터 프리셋 접두사/접미사는 프로젝트마다 그 프로젝트 기준으로 붙고, ' +
   '「프로젝트 폴더 경로로 하위 폴더 생성」은 이 폴더의 경로를 씁니다.';
 

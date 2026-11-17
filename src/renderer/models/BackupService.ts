@@ -56,7 +56,13 @@ import {
 import { appState } from './AppService';
 import type { ExportPreset } from './AppService';
 import { stringifyExportJson } from './jsonExport';
-import { exportRunOptionsFromPreset } from './exportSettings';
+import {
+  DEFAULT_FOLDER_EXPORT_TARGET,
+  exportRunOptionsFromPreset,
+  FOLDER_EXPORT_VARIANT_DIR,
+  folderExportSceneTypes,
+} from './exportSettings';
+import type { FolderExportTarget } from './exportSettings';
 import type { ExportImageItem } from './ExportPresetService';
 import { characterFilenameAffixOf } from './appliedCharacterPreset';
 import { sanitizeFilenamePart } from './exportPresetUtils';
@@ -146,6 +152,9 @@ async function readBackupNames(path: string, key: string): Promise<string[]> {
 export interface LibraryImportOptions {
   pickedPath?: string;
 }
+
+/** 폴더 일괄 이미지 내보내기 — 폴더 안 모든 프로젝트의 씬 이름(종류별, 2026-11-17 M5 묶음 b-3) */
+type FolderSceneNames = { scene: string[]; inpaint: string[] };
 
 export class BackupService {
   projectBackupMenu() {
@@ -1627,17 +1636,18 @@ export class BackupService {
       appState.pushMessage('폴더에 프로젝트가 없습니다.');
       return;
     }
-    // 폴더 내 모든 프로젝트의 씬 이름 — 특수문자 변환 질의용. 직접 설정 폼은 창 안에서 고르므로
-    // 그 경로에서만 먼저 모으고, 프리셋 경로는 종전처럼 옵션을 고른 뒤 모은다(한 번만 계산).
-    let sceneNamesCache: string[] | undefined;
-    const sceneNames = async (): Promise<string[]> => {
+    // 폴더 내 모든 프로젝트의 씬 이름(생성·변형) — 특수문자 변환 질의·머리 안내 개수용. 직접 설정 폼은 창 안에서
+    // 고르므로 그 경로에서만 먼저 모으고, 프리셋 경로는 종전처럼 옵션을 고른 뒤 모은다(한 번만 계산).
+    let sceneNamesCache: FolderSceneNames | undefined;
+    const sceneNames = async (): Promise<FolderSceneNames> => {
       if (sceneNamesCache) return sceneNamesCache;
-      const out: string[] = [];
+      const out: FolderSceneNames = { scene: [], inpaint: [] };
       for (const name of names) {
         try {
           const session = await sessionService.get(name);
           if (session) {
-            for (const s of session.getScenes('scene')) out.push(s.name);
+            for (const s of session.getScenes('scene')) out.scene.push(s.name);
+            for (const s of session.getScenes('inpaint')) out.inpaint.push(s.name);
           }
         } catch (e) {}
       }
@@ -1647,12 +1657,14 @@ export class BackupService {
     const picked = await this.askFolderImageOptions(folder, names.length, sceneNames);
     if (!picked) return;
     const run = exportRunOptionsFromPreset(picked.preset, picked.askedName);
+    // 「대상」(2026-11-17 M5 묶음 b-3): 직접 설정 폼에서만 고른다 — 저장 프리셋 경로는 생성 씬만(프리셋 형식 불변)
+    const sceneTypes = folderExportSceneTypes(picked.folderTarget);
 
     // 직접 설정 폼은 변환할 특수문자를 창 안에서 받는다. 프리셋은 프로젝트 내보내기처럼
     // 「특수문자 자동 변환」이 켜져 있으면 묻지 않고, 꺼져 있으면 한 번 질의.
     const charsToReplace = picked.charsToReplace ??
       await appState.detectSpecialCharsFromNames(
-        await sceneNames(),
+        (await sceneNames()).scene,
         run.separator,
         picked.preset.autoConvertSeparator === true,
       );
@@ -1677,15 +1689,24 @@ export class BackupService {
       try {
         const session = await sessionService.get(name);
         if (session) {
-          let entries = await exportPresetService.buildExportImageList(
-            session,
-            session.getScenes('scene'),
-            {
-              ...run,
-              charsToReplace,
-              characterAffix: run.applyCharacterAffix ? characterFilenameAffixOf(session) : null,
-            },
-          );
+          // 생성 씬 → `프로젝트/…`, 변형 씬 → `프로젝트/변형/…`. 같은 단계 함수·같은 옵션이라 프로젝트 탭별 내보내기와
+          // 같은 이름·변환(미러 씬 잘라내기·변형 씬 mains 기준 「즐겨찾기만」 포함 — 씬 객체의 type 으로 판정).
+          // 두 종류를 한 목록으로 합쳐 최적화해 재최적화 질문도 프로젝트당 한 번(그리고 폴더 전체에서 처음 한 번)만.
+          const imageOptions = {
+            ...run,
+            charsToReplace,
+            characterAffix: run.applyCharacterAffix ? characterFilenameAffixOf(session) : null,
+          };
+          let entries: ExportImageItem[] = [];
+          for (const type of sceneTypes) {
+            const built = await exportPresetService.buildExportImageList(
+              session,
+              session.getScenes(type),
+              imageOptions,
+            );
+            const sub = type === 'inpaint' ? FOLDER_EXPORT_VARIANT_DIR + '/' : '';
+            for (const e of built) entries.push({ path: e.path, name: sub + e.name });
+          }
           if (run.opt !== 'original') {
             const optimized = await exportPresetService.optimizeExportImages(entries, { ...run, reoptimize });
             // 재최적화 확인 창 취소 = 이 프로젝트만 건너뜀(종전 그대로)
@@ -1728,8 +1749,13 @@ export class BackupService {
   private async askFolderImageOptions(
     folder: string,
     projectCount: number,
-    sceneNames: () => Promise<string[]>,
-  ): Promise<{ preset: ExportPreset; askedName: string; charsToReplace?: Set<string> } | undefined> {
+    sceneNames: () => Promise<FolderSceneNames>,
+  ): Promise<{
+    preset: ExportPreset;
+    askedName: string;
+    charsToReplace?: Set<string>;
+    folderTarget?: FolderExportTarget;
+  } | undefined> {
     const presets = appState.loadExportPresets();
     const presetItems: { text: string; value: string }[] = presets.map(
       (p: ExportPreset, idx: number) => ({ text: p.name, value: `preset_${idx}` }),
@@ -1754,10 +1780,12 @@ export class BackupService {
       return { preset: ep, askedName };
     }
     // 직접 설정 — 폼 한 창
+    const names = await sceneNames();
     const result = await appState.requestDirectExport({
       projectName: folder,
       projectCount,
-      sceneNames: await sceneNames(),
+      sceneNames: names.scene,
+      variantSceneNames: names.inpaint,
       scope: 'folder',
     });
     if (!result) return undefined;
@@ -1765,6 +1793,7 @@ export class BackupService {
       preset: result.preset,
       askedName: '',
       charsToReplace: new Set(result.charsToReplace),
+      folderTarget: result.folderTarget ?? DEFAULT_FOLDER_EXPORT_TARGET,
     };
   }
 
