@@ -20,7 +20,8 @@ function DirectExportForm({ request }: { request: DirectExportRequest }) {
     };
   }, [request]);
   const close = () => request.resolve();
-  // 범위(2026-11-16 M5 묶음 b P8): 폴더 일괄은 같은 폼에서 쓰지 않는 칸을 숨기고 이유를 한 줄 안내한다.
+  // 범위(2026-11-16 M5 묶음 b P8): 폴더 일괄은 같은 폼 + 한 줄 안내(달라지는 사실만). 숨길 칸은 FOLDER_EXPORT_UNUSED_FIELDS
+  // (묶음 b-2 부터 비어 있음 — 폴더도 프로젝트와 같은 단계 함수로 모든 칸을 쓴다).
   const scope = request.scope ?? 'project';
   const summary = scope === 'folder'
     ? `폴더 "${request.projectName}" · 프로젝트 ${request.projectCount ?? 0}개 · 대상 씬 ${request.sceneNames.length}개`

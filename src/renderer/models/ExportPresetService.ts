@@ -1,5 +1,13 @@
 import { transferExportArchive } from './exportArchiveTransfer';
-import { DirectExportRequest, DirectExportResult, exportSpecialChars } from './exportSettings';
+import {
+  DirectExportRequest,
+  DirectExportResult,
+  exportRunOptionsFromPreset,
+  exportSpecialChars,
+} from './exportSettings';
+import type { ExportRunOptions } from './exportSettings';
+import { characterFilenameAffixOf } from './appliedCharacterPreset';
+import type { CharacterFilenameAffix } from './appliedCharacterPreset';
 import { persistService } from './PersistenceService';
 import {
   batchProcessService,
@@ -71,6 +79,45 @@ import {
 import type { FilenamePattern } from './exportPresetUtils';
 import { isOptimizedImageFile } from './imageFormats';
 import { decoratePresetExportImage } from './presetExportDecoration';
+
+/** 내보낼 이미지 한 장 — path = 앱 데이터 기준 원본(또는 tmp/ 변환본), name = 결과 안 상대 이름 */
+export interface ExportImageItem {
+  path: string;
+  name: string;
+}
+
+/** buildExportImageList 옵션 — 이름 짓기 규칙 */
+export interface ExportImageListOptions {
+  prefix: string;
+  fav: boolean;
+  opt: string;
+  separator: string;
+  charsToReplace: Set<string>;
+  filenamePattern: FilenamePattern | undefined;
+  /** 캐릭터 프리셋 파일명 접두/접미사. null = 붙이지 않음(토글 off) */
+  characterAffix: CharacterFilenameAffix | null;
+}
+
+/** optimizeExportImages 옵션 */
+export interface ExportImageOptimizeOptions {
+  opt: string;
+  imageSize: number;
+  quality: number | undefined;
+  preserveStealth: boolean;
+  reoptimize: 'ask' | 'skip' | 'all';
+}
+
+/** deliverExportImages 옵션 */
+export interface ExportDeliverOptions {
+  outputMode: 'tar' | 'zip' | 'files';
+  targetFolder: string | null;
+  /** 압축파일 경로(exports/…, 확장자 = 출력 형태) */
+  archivePath: string;
+  /** 개별 파일 출력 폴더 이름 */
+  filesDirName: string;
+  /** 목표 폴더 없이 압축파일을 만든 뒤의 완료 표시(생략 = appState.showExportComplete) */
+  onArchiveDone?: () => void;
+}
 
 export class ExportPresetService {
   // ── 내보내기 프리셋 헬퍼 ──
@@ -214,311 +261,44 @@ export class ExportPresetService {
     if (!session) return;
     // 설정 중 프로젝트를 바꿔도 시작한 대상과 캐릭터 파일명 설정을 유지한다.
     selected = [...(selected ?? session.getScenes(type))];
-    const character = appState.getAppliedCharacterPreset();
-    const characterAffix = { filenamePrefix: character?.filenamePrefix, filenameSuffix: character?.filenameSuffix };
+    const characterAffix = characterFilenameAffixOf(session);
     appState.lastExportType = type;
     appState.lastExportSelected = selected;
     appState.lastExportSession = session;
+    const scenes = selected;
+    // 단계 함수(buildExportImageList → optimizeExportImages → deliverExportImages)는 폴더 일괄 이미지 내보내기와 공용
     const exportImpl = async (
-      prefix: string,
-      fav: boolean,
-      opt: string,
-      imageSize: number,
-      quality: number | undefined,
-      preserveStealth: boolean,
-      separator: string,
+      run: ExportRunOptions,
       charsToReplace: Set<string>,
-      filenamePattern: FilenamePattern | undefined,
-      applyCharacterAffix: boolean,
       targetFolder: string | null,
-      outputMode: 'tar' | 'zip' | 'files',
-      reoptimize: 'ask' | 'skip' | 'all',
     ) => {
-      let paths: { path: string; name: string }[] = [];
-      await imageService.refreshBatch(session);
-      const scenes = selected ?? session.getScenes(type);
-      await Promise.allSettled(scenes.map((s) => gameService.refreshList(session, s)));
-
-      // 파일명 패턴 프리픽스(프로젝트/폴더명) — export 1회당 고정
-      const patternProjectName = session.name;
-      const patternFolderPath = sessionService.getFolderOf(patternProjectName);
-      const patternFolderName = patternFolderPath
-        ? sessionService.folderLeafName(patternFolderPath)
-        : '';
-      const patternPrefix = buildPatternPrefix(
-        filenamePattern,
-        patternFolderName,
-        patternProjectName,
-        separator,
-      );
-      for (const scene of scenes) {
-        const cands = gameService.getOutputs(session, scene);
-        const imageMap: any = {};
-        cands.forEach((x) => {
-          imageMap[x] = true;
-        });
-        const images = [];
-        if (fav) {
-          if (scene.mains.length) {
-            for (const main of scene.mains) {
-              if (imageMap[main]) images.push(main);
-            }
-          } else {
-            if (cands.length) {
-              images.push(cands[0]);
-            }
-          }
-        } else {
-          for (const cand of cands) {
-            images.push(cand);
-          }
-        }
+      let paths = await this.buildExportImageList(session, scenes, {
+        ...run,
+        charsToReplace,
         // 캐릭터 프리셋 파일명 옵션 적용 (토글 off 면 접두/접미사 미적용)
-        const characterPreset = applyCharacterAffix
-          ? characterAffix
-          : null;
-        const presetPrefix = characterPreset?.filenamePrefix || '';
-        const presetSuffix = characterPreset?.filenameSuffix || '';
-
-        let sceneName = scene.name;
-        let finalPrefix = prefix;
-        let finalPresetPrefix = presetPrefix ? presetPrefix + separator : '';
-        let finalPresetSuffix = presetSuffix ? separator + presetSuffix : '';
-        if (charsToReplace.size > 0) {
-          const escaped = Array.from(charsToReplace).map(
-            (c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-          ).join('|');
-          const regex = new RegExp(`(${escaped})+`, 'g');
-          sceneName = sceneName.replace(regex, separator);
-          finalPrefix = finalPrefix.replace(regex, separator);
-          finalPresetPrefix = finalPresetPrefix.replace(regex, separator);
-          finalPresetSuffix = finalPresetSuffix.replace(regex, separator);
-        }
-        const isMirror = scene.type === 'inpaint' && (scene as InpaintScene).workflowType === 'SDMirror';
-        for (let i = 0; i < images.length; i++) {
-          let imgPath = imageService.getOutputDir(session, scene) + '/' + images[i];
-          if (isMirror) {
-            const imgData = await imageService.fetchImage(imgPath);
-            if (imgData) {
-              const cropped = await cropMirrorResultFromDataUri(imgData, (scene as InpaintScene).mirrorCropX);
-              const tmpPath = 'tmp/' + v4() + '.png';
-              await backend.writeDataFile(tmpPath, cropped);
-              imgPath = tmpPath;
-            }
-          }
-          // 파일명: [patternPrefix][presetPrefix_][manualPrefix_]sceneName[_presetSuffix][_index].<ext>
-          // 확장자는 최종 출력 바이트에 맞춘다: 원본=소스 확장자(webp/png), 최적화=opt(webp/avif).
-          const outExt =
-            opt === 'original'
-              ? imgPath.split('.').pop() || 'png'
-              : opt === 'avif'
-                ? 'avif'
-                : 'webp';
-          const baseName =
-            patternPrefix + finalPresetPrefix + finalPrefix + sceneName + finalPresetSuffix;
-          const name = images.length === 1
-            ? baseName + '.' + outExt
-            : baseName + separator + (i + 1).toString() + '.' + outExt;
-          paths.push({ path: imgPath, name });
-        }
-      }
-      if (opt !== 'original') {
-        // 이중 최적화 가드: 이미 최적화(webp/avif)된 소스가 섞여 있으면 묻는다.
-        const alreadyOptCount = paths.filter((p) =>
-          isOptimizedImageFile(p.path),
-        ).length;
-        let skipAlreadyOpt = reoptimize === 'skip';
-        if (alreadyOptCount > 0 && reoptimize === 'ask') {
-          const choice = await appState.pushDialogAsync({
-            type: 'select',
-            text: `선택한 이미지 중 ${alreadyOptCount}개가 이미 최적화(webp/avif)되어 있습니다.\n다시 최적화하면 화질이 저하될 수 있습니다. 어떻게 할까요?`,
-            items: [
-              { text: '이미 최적화된 것은 원본 유지', value: 'skip' },
-              { text: '전부 다시 최적화', value: 'all' },
-            ],
-          });
-          // 취소는 창의 내장 취소 하나(D3)
-          if (!choice) {
-            appState.exportProgress = undefined;
-            return;
-          }
-          skipAlreadyOpt = choice === 'skip';
-        }
-        const ext = opt === 'avif' ? '.avif' : '.webp';
-        const optimizeMethod = opt === 'lossy'
-          ? ImageOptimizeMethod.LOSSY
-          : opt === 'avif'
-            ? ImageOptimizeMethod.AVIF
-            : ImageOptimizeMethod.LOSSLESS;
-        let done = 0;
-        let failCount = 0;
-        const config = await backend.getConfig();
-        const CONCURRENCY = Math.max(1, Math.min(platform.maxImageConcurrency, config.exportConcurrency ?? platform.exportConcurrency));
-        const results: (typeof paths[0] | null)[] = new Array(paths.length).fill(null);
-
-        appState.exportProgress = {
-          text: '이미지 크기 최적화 중..',
-          done: 0,
-          total: paths.length,
-        };
-
-        // 동시 실행 수 제한 병렬 처리 (공유 runPool — export/backup/webp일괄 단일 출처)
-        await runPool(paths, CONCURRENCY, async (item, idx) => {
-          // 원본 유지 선택 시: 이미 최적화된 소스는 재인코딩 없이 그대로(확장자 일치)
-          if (skipAlreadyOpt && isOptimizedImageFile(item.path)) {
-            const srcExt = item.path.split('.').pop() || 'webp';
-            results[idx] = {
-              path: item.path,
-              name: item.name.replace(/\.[^.]+$/, '.' + srcExt),
-            };
-            done++;
-            appState.exportProgress = {
-              text: '이미지 크기 최적화 중..',
-              done: done,
-              total: paths.length,
-            };
-            return;
-          }
-          const outputPath = 'tmp/' + v4() + ext;
-          try {
-            await backend.resizeImage({
-              inputPath: item.path,
-              outputPath: outputPath,
-              maxHeight: imageSize,
-              maxWidth: imageSize,
-              optimize: optimizeMethod,
-              quality: quality,
-              preserveStealth: preserveStealth,
-            });
-            results[idx] = {
-              path: outputPath,
-              // name 은 이미 최종 확장자(.webp/.avif)를 갖고 있으므로 그대로 사용
-              name: item.name,
-            };
-          } catch (e: any) {
-            failCount++;
-            console.error('이미지 최적화 실패:', item.path, e.message);
-          }
-          done++;
-          appState.exportProgress = {
-            text: '이미지 크기 최적화 중..',
-            done: done,
-            total: paths.length,
-          };
-        });
-
-        paths = results.filter((r): r is typeof paths[0] => r !== null);
-        if (failCount > 0) {
-          appState.pushMessage(`${failCount}개 이미지 최적화 실패 (건너뜀)`);
-        }
+        characterAffix: run.applyCharacterAffix ? characterAffix : null,
+      });
+      if (run.opt !== 'original') {
+        const optimized = await this.optimizeExportImages(paths, run);
+        if (!optimized) return;
+        paths = optimized.paths;
         if (paths.length === 0) {
           appState.pushMessage('최적화 가능한 이미지가 없습니다');
           appState.exportProgress = undefined;
           return;
         }
       }
-
-      // ── 개별 파일 출력(무압축): 목표 폴더가 있으면 그 아래, 없으면 exports/ 하위에 저장 ──
-      if (outputMode === 'files') {
-        const outDirName =
-          sanitizeFilenamePart(session.name) +
-          '_' +
-          Date.now().toString();
-        const baseDest = targetFolder
-          ? `${targetFolder}/${outDirName}`
-          : `exports/${outDirName}`;
-        appState.exportProgress = {
-          text: '이미지 복사 중..',
-          done: 0,
-          total: paths.length,
-        };
-        let copied = 0;
-        let copyFail = 0;
-        for (const item of paths) {
-          try {
-            if (targetFolder) {
-              await backend.copyFileToAbsolute(item.path, `${baseDest}/${item.name}`);
-            } else {
-              await backend.copyFile(item.path, `${baseDest}/${item.name}`);
-            }
-          } catch (e: any) {
-            copyFail++;
-            console.error('이미지 복사 실패:', item.path, e.message);
-          }
-          copied++;
-          appState.exportProgress = {
-            text: '이미지 복사 중..',
-            done: copied,
-            total: paths.length,
-          };
-        }
-        appState.exportProgress = undefined;
-        if (copyFail > 0) {
-          appState.pushMessage(`${copyFail}개 이미지 복사 실패 (건너뜀)`);
-        }
-        if (copyFail === paths.length) {
-          appState.pushMessage('내보낼 이미지가 없습니다');
-          return;
-        }
-        appState.showExportComplete();
-        if (targetFolder) {
-          await backend.openPath(baseDest);
-        } else {
-          await backend.publishExport(baseDest);
-        }
-        return;
-      }
-
-      appState.exportProgress = {
-        text: '이미지 압축파일 생성중..',
-        done: 0,
-        total: 1,
-      };
-      const outFilePath =
-        'exports/' +
-        session.name +
-        '_main_images_' +
-        Date.now().toString() +
-        (outputMode === 'zip' ? '.zip' : '.tar');
-      if (zipService.isZipping) {
-        appState.pushDialog({
-          type: 'yes-only',
-          text: '이미 다른 이미지 내보내기가 진행중입니다',
-        });
-        appState.exportProgress = undefined;
-        return;
-      }
-      try {
-        await zipService.zipFiles(paths, outFilePath);
-      } catch (e: any) {
-        appState.pushMessage(e.message, 'error');
-        appState.exportProgress = undefined;
-        return;
-      }
-      appState.exportProgress = undefined;
-      // 목표 폴더 지정 시(데스크톱) tar 를 그 폴더로 복사 후 원본(exports/) 정리
-      if (targetFolder) {
-        const tarName = outFilePath.split('/').pop()!;
-        const dest = `${targetFolder}/${tarName}`;
-        try {
-          const { cleanupFailed } = await transferExportArchive(backend, outFilePath, dest);
-          if (cleanupFailed) {
-            appState.pushMessage('내보내기는 완료됐지만 임시 압축파일을 정리하지 못했습니다.');
-          }
-        } catch (e: any) {
-          appState.pushMessage(
-            '목표 폴더로 복사하지 못해 기본 다운로드 폴더로 전환합니다: ' +
-              (e.message || e),
-          );
-          await backend.publishExport(outFilePath);
-          return;
-        }
-        appState.showExportComplete();
-        await backend.openPath(targetFolder);
-        return;
-      }
-      appState.showExportComplete();
-      await backend.publishExport(outFilePath);
+      await this.deliverExportImages(paths, {
+        outputMode: run.outputMode,
+        targetFolder,
+        archivePath:
+          'exports/' +
+          session.name +
+          '_main_images_' +
+          Date.now().toString() +
+          (run.outputMode === 'zip' ? '.zip' : '.tar'),
+        filesDirName: sanitizeFilenamePart(session.name) + '_' + Date.now().toString(),
+      });
     };
 
     // 프리셋 1개를 실행 (선택/빠른 export 공용). 캐릭터 이름 입력·특수문자·목표폴더 해석 포함.
@@ -530,33 +310,10 @@ export class ExportPresetService {
         ep.autoConvertSeparator === true,
       );
       if (charsToReplace === undefined) return;
-      let epPrefix = '';
-      if (ep.format === 'prefix' && ep.prefix) {
-        epPrefix = ep.prefix + ep.separator;
-      } else if (ep.format === 'prefix_ask') {
-        const inputName = await appState.pushDialogAsync({
-          type: 'input-confirm',
-          text: '캐릭터 이름을 입력해주세요',
-        });
-        if (!inputName) return;
-        epPrefix = inputName + ep.separator;
-      }
+      const askedName = await this.askPresetCharacterName(ep);
+      if (askedName === undefined) return;
       const targetFolder = await this.resolveTargetFolderFor(ep, session.name);
-      await exportImpl(
-        epPrefix,
-        ep.menu === 'fav',
-        ep.opt,
-        ep.imageSize,
-        ep.quality,
-        ep.preserveStealth === true,
-        ep.separator,
-        charsToReplace,
-        ep.filenamePattern,
-        ep.applyCharacterAffix !== false,
-        targetFolder,
-        ep.outputMode === 'files' || ep.outputMode === 'zip' ? ep.outputMode : 'tar',
-        ep.reoptimize ?? 'ask',
-      );
+      await exportImpl(exportRunOptionsFromPreset(ep, askedName), charsToReplace, targetFolder);
     };
 
     // 빠른 export: 선택 다이얼로그를 건너뛰고 지정된 프리셋을 바로 실행
@@ -642,14 +399,349 @@ export class ExportPresetService {
     preset: ExportPreset,
     projectName: string,
   ): Promise<string | null> {
+    return this.resolveExportTargetFolderAt(preset, sessionService.getFolderOf(projectName));
+  }
+
+  /**
+   * 목표 폴더(절대경로) 해석 — 「프로젝트 폴더 경로로 하위 폴더 생성」의 기준 폴더 경로를 직접 받는다
+   * (프로젝트 = 그 프로젝트가 속한 폴더, 폴더 일괄 = 내보내는 폴더 자신). 모바일은 항상 null.
+   */
+  async resolveExportTargetFolderAt(
+    preset: ExportPreset,
+    relativeFolder: string | null,
+  ): Promise<string | null> {
     if (!platform.supportsTargetFolder) return null;
     const config = await backend.getConfig();
-    const projectFolder = sessionService.getFolderOf(projectName);
     return resolveExportTargetFolder(
       preset,
-      projectFolder,
+      relativeFolder,
       config.defaultExportFolder,
     );
+  }
+
+  // ── 이미지 내보내기 단계 함수(세션 인자형) — 프로젝트 이미지 내보내기(exportPackage)와 폴더 일괄 이미지 내보내기
+  //    (BackupService.folderExportImages)가 같은 규칙으로 쓴다(2026-11-16 M5 묶음 b-2). ──
+
+  /**
+   * 파일명 형식이 「이름 직접 입력」(prefix_ask)이면 캐릭터 이름을 한 번 묻는다.
+   * 반환 = 입력한 이름(그 밖의 형식은 ''), 취소·빈 입력 = undefined.
+   */
+  async askPresetCharacterName(ep: ExportPreset): Promise<string | undefined> {
+    if (ep.format !== 'prefix_ask') return '';
+    const inputName = await appState.pushDialogAsync({
+      type: 'input-confirm',
+      text: '캐릭터 이름을 입력해주세요',
+    });
+    if (!inputName) return undefined;
+    return inputName;
+  }
+
+  /**
+   * 세션의 씬들에서 내보낼 이미지 목록과 파일 이름을 만든다(출력 목록 갱신 포함).
+   * 파일명: [패턴 접두(그 세션의 프로젝트·폴더 이름)][캐릭터 접두_][이름 접두]씬이름[_캐릭터 접미][_번호].<확장자>
+   * 확장자는 최종 출력 바이트에 맞춘다: 원본=소스 확장자(webp/png), 최적화=opt(webp/avif). 미러 씬은 잘라 tmp/ 에 쓴다.
+   */
+  async buildExportImageList(
+    session: Session,
+    scenes: GenericScene[],
+    o: ExportImageListOptions,
+  ): Promise<ExportImageItem[]> {
+    const { prefix, fav, opt, separator, charsToReplace, filenamePattern, characterAffix } = o;
+    const paths: ExportImageItem[] = [];
+    await imageService.refreshBatch(session);
+    await Promise.allSettled(scenes.map((s) => gameService.refreshList(session, s)));
+
+    // 파일명 패턴 프리픽스(프로젝트/폴더명) — 세션 1개당 고정
+    const patternProjectName = session.name;
+    const patternFolderPath = sessionService.getFolderOf(patternProjectName);
+    const patternFolderName = patternFolderPath
+      ? sessionService.folderLeafName(patternFolderPath)
+      : '';
+    const patternPrefix = buildPatternPrefix(
+      filenamePattern,
+      patternFolderName,
+      patternProjectName,
+      separator,
+    );
+    for (const scene of scenes) {
+      const cands = gameService.getOutputs(session, scene);
+      const imageMap: any = {};
+      cands.forEach((x) => {
+        imageMap[x] = true;
+      });
+      const images = [];
+      if (fav) {
+        if (scene.mains.length) {
+          for (const main of scene.mains) {
+            if (imageMap[main]) images.push(main);
+          }
+        } else {
+          if (cands.length) {
+            images.push(cands[0]);
+          }
+        }
+      } else {
+        for (const cand of cands) {
+          images.push(cand);
+        }
+      }
+      // 캐릭터 프리셋 파일명 옵션 (null = 토글 off 로 미적용)
+      const presetPrefix = characterAffix?.filenamePrefix || '';
+      const presetSuffix = characterAffix?.filenameSuffix || '';
+
+      let sceneName = scene.name;
+      let finalPrefix = prefix;
+      let finalPresetPrefix = presetPrefix ? presetPrefix + separator : '';
+      let finalPresetSuffix = presetSuffix ? separator + presetSuffix : '';
+      if (charsToReplace.size > 0) {
+        const escaped = Array.from(charsToReplace).map(
+          (c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        ).join('|');
+        const regex = new RegExp(`(${escaped})+`, 'g');
+        sceneName = sceneName.replace(regex, separator);
+        finalPrefix = finalPrefix.replace(regex, separator);
+        finalPresetPrefix = finalPresetPrefix.replace(regex, separator);
+        finalPresetSuffix = finalPresetSuffix.replace(regex, separator);
+      }
+      const isMirror = scene.type === 'inpaint' && (scene as InpaintScene).workflowType === 'SDMirror';
+      for (let i = 0; i < images.length; i++) {
+        let imgPath = imageService.getOutputDir(session, scene) + '/' + images[i];
+        if (isMirror) {
+          const imgData = await imageService.fetchImage(imgPath);
+          if (imgData) {
+            const cropped = await cropMirrorResultFromDataUri(imgData, (scene as InpaintScene).mirrorCropX);
+            const tmpPath = 'tmp/' + v4() + '.png';
+            await backend.writeDataFile(tmpPath, cropped);
+            imgPath = tmpPath;
+          }
+        }
+        const outExt =
+          opt === 'original'
+            ? imgPath.split('.').pop() || 'png'
+            : opt === 'avif'
+              ? 'avif'
+              : 'webp';
+        const baseName =
+          patternPrefix + finalPresetPrefix + finalPrefix + sceneName + finalPresetSuffix;
+        const name = images.length === 1
+          ? baseName + '.' + outExt
+          : baseName + separator + (i + 1).toString() + '.' + outExt;
+        paths.push({ path: imgPath, name });
+      }
+    }
+    return paths;
+  }
+
+  /**
+   * 이미지 크기 최적화(opt ≠ original). 이미 최적화(webp/avif)된 소스가 섞여 있고 reoptimize 가 'ask' 면 한 번 묻는다.
+   * 반환 undefined = 그 확인 창에서 취소(진행 표시는 지움). reoptimize = 실제로 쓴 정책('ask' 에서 고른 값,
+   * 묻지 않았으면 들어온 값 그대로) — 폴더 일괄이 다음 프로젝트에서 다시 묻지 않게 넘겨받는다.
+   * 실패한 이미지는 건너뛰고 「N개 이미지 최적화 실패 (건너뜀)」 토스트.
+   */
+  async optimizeExportImages(
+    items: ExportImageItem[],
+    o: ExportImageOptimizeOptions,
+  ): Promise<{ paths: ExportImageItem[]; reoptimize: 'ask' | 'skip' | 'all' } | undefined> {
+    const { opt, imageSize, quality, preserveStealth } = o;
+    let reoptimize = o.reoptimize;
+    if (opt === 'original') return { paths: items, reoptimize };
+    // 이중 최적화 가드: 이미 최적화(webp/avif)된 소스가 섞여 있으면 묻는다.
+    const alreadyOptCount = items.filter((p) =>
+      isOptimizedImageFile(p.path),
+    ).length;
+    let skipAlreadyOpt = reoptimize === 'skip';
+    if (alreadyOptCount > 0 && reoptimize === 'ask') {
+      const choice = await appState.pushDialogAsync({
+        type: 'select',
+        text: `선택한 이미지 중 ${alreadyOptCount}개가 이미 최적화(webp/avif)되어 있습니다.\n다시 최적화하면 화질이 저하될 수 있습니다. 어떻게 할까요?`,
+        items: [
+          { text: '이미 최적화된 것은 원본 유지', value: 'skip' },
+          { text: '전부 다시 최적화', value: 'all' },
+        ],
+      });
+      // 취소는 창의 내장 취소 하나(D3)
+      if (!choice) {
+        appState.exportProgress = undefined;
+        return undefined;
+      }
+      skipAlreadyOpt = choice === 'skip';
+      reoptimize = skipAlreadyOpt ? 'skip' : 'all';
+    }
+    const ext = opt === 'avif' ? '.avif' : '.webp';
+    const optimizeMethod = opt === 'lossy'
+      ? ImageOptimizeMethod.LOSSY
+      : opt === 'avif'
+        ? ImageOptimizeMethod.AVIF
+        : ImageOptimizeMethod.LOSSLESS;
+    let done = 0;
+    let failCount = 0;
+    const config = await backend.getConfig();
+    const CONCURRENCY = Math.max(1, Math.min(platform.maxImageConcurrency, config.exportConcurrency ?? platform.exportConcurrency));
+    const results: (ExportImageItem | null)[] = new Array(items.length).fill(null);
+
+    appState.exportProgress = {
+      text: '이미지 크기 최적화 중..',
+      done: 0,
+      total: items.length,
+    };
+
+    // 동시 실행 수 제한 병렬 처리 (공유 runPool — export/backup/webp일괄 단일 출처)
+    await runPool(items, CONCURRENCY, async (item, idx) => {
+      // 원본 유지 선택 시: 이미 최적화된 소스는 재인코딩 없이 그대로(확장자 일치)
+      if (skipAlreadyOpt && isOptimizedImageFile(item.path)) {
+        const srcExt = item.path.split('.').pop() || 'webp';
+        results[idx] = {
+          path: item.path,
+          name: item.name.replace(/\.[^.]+$/, '.' + srcExt),
+        };
+        done++;
+        appState.exportProgress = {
+          text: '이미지 크기 최적화 중..',
+          done: done,
+          total: items.length,
+        };
+        return;
+      }
+      const outputPath = 'tmp/' + v4() + ext;
+      try {
+        await backend.resizeImage({
+          inputPath: item.path,
+          outputPath: outputPath,
+          maxHeight: imageSize,
+          maxWidth: imageSize,
+          optimize: optimizeMethod,
+          quality: quality,
+          preserveStealth: preserveStealth,
+        });
+        results[idx] = {
+          path: outputPath,
+          // name 은 이미 최종 확장자(.webp/.avif)를 갖고 있으므로 그대로 사용
+          name: item.name,
+        };
+      } catch (e: any) {
+        failCount++;
+        console.error('이미지 최적화 실패:', item.path, e.message);
+      }
+      done++;
+      appState.exportProgress = {
+        text: '이미지 크기 최적화 중..',
+        done: done,
+        total: items.length,
+      };
+    });
+
+    const paths = results.filter((r): r is ExportImageItem => r !== null);
+    if (failCount > 0) {
+      appState.pushMessage(`${failCount}개 이미지 최적화 실패 (건너뜀)`);
+    }
+    return { paths, reoptimize };
+  }
+
+  /**
+   * 내보낼 이미지 목록을 출력 형태대로 내보낸다(압축파일 tar/zip · 개별 파일, 목표 폴더 포함).
+   * item.name 에 하위 경로(「프로젝트/파일」)가 있으면 압축파일 안·출력 폴더 안에서 그대로 하위 폴더가 된다.
+   * - files: 목표 폴더가 있으면 `<목표>/<filesDirName>/…` 로 복사 후 그 폴더 열기, 없으면 `exports/<filesDirName>/…` → publishExport
+   * - tar/zip: `archivePath`(exports/…)에 만든 뒤 목표 폴더가 있으면 그리로 옮기고(실패 시 기본 다운로드 폴더로 전환) 폴더 열기,
+   *   없으면 onArchiveDone(생략 = 완료 위젯) → publishExport
+   */
+  async deliverExportImages(
+    paths: ExportImageItem[],
+    d: ExportDeliverOptions,
+  ): Promise<void> {
+    const { outputMode, targetFolder } = d;
+    // ── 개별 파일 출력(무압축): 목표 폴더가 있으면 그 아래, 없으면 exports/ 하위에 저장 ──
+    if (outputMode === 'files') {
+      const baseDest = targetFolder
+        ? `${targetFolder}/${d.filesDirName}`
+        : `exports/${d.filesDirName}`;
+      appState.exportProgress = {
+        text: '이미지 복사 중..',
+        done: 0,
+        total: paths.length,
+      };
+      let copied = 0;
+      let copyFail = 0;
+      for (const item of paths) {
+        try {
+          if (targetFolder) {
+            await backend.copyFileToAbsolute(item.path, `${baseDest}/${item.name}`);
+          } else {
+            await backend.copyFile(item.path, `${baseDest}/${item.name}`);
+          }
+        } catch (e: any) {
+          copyFail++;
+          console.error('이미지 복사 실패:', item.path, e.message);
+        }
+        copied++;
+        appState.exportProgress = {
+          text: '이미지 복사 중..',
+          done: copied,
+          total: paths.length,
+        };
+      }
+      appState.exportProgress = undefined;
+      if (copyFail > 0) {
+        appState.pushMessage(`${copyFail}개 이미지 복사 실패 (건너뜀)`);
+      }
+      if (copyFail === paths.length) {
+        appState.pushMessage('내보낼 이미지가 없습니다');
+        return;
+      }
+      appState.showExportComplete();
+      if (targetFolder) {
+        await backend.openPath(baseDest);
+      } else {
+        await backend.publishExport(baseDest);
+      }
+      return;
+    }
+
+    appState.exportProgress = {
+      text: '이미지 압축파일 생성중..',
+      done: 0,
+      total: 1,
+    };
+    const outFilePath = d.archivePath;
+    if (zipService.isZipping) {
+      appState.pushDialog({
+        type: 'yes-only',
+        text: '이미 다른 이미지 내보내기가 진행중입니다',
+      });
+      appState.exportProgress = undefined;
+      return;
+    }
+    try {
+      await zipService.zipFiles(paths, outFilePath);
+    } catch (e: any) {
+      appState.pushMessage(e.message, 'error');
+      appState.exportProgress = undefined;
+      return;
+    }
+    appState.exportProgress = undefined;
+    // 목표 폴더 지정 시(데스크톱) tar 를 그 폴더로 복사 후 원본(exports/) 정리
+    if (targetFolder) {
+      const tarName = outFilePath.split('/').pop()!;
+      const dest = `${targetFolder}/${tarName}`;
+      try {
+        const { cleanupFailed } = await transferExportArchive(backend, outFilePath, dest);
+        if (cleanupFailed) {
+          appState.pushMessage('내보내기는 완료됐지만 임시 압축파일을 정리하지 못했습니다.');
+        }
+      } catch (e: any) {
+        appState.pushMessage(
+          '목표 폴더로 복사하지 못해 기본 다운로드 폴더로 전환합니다: ' +
+            (e.message || e),
+        );
+        await backend.publishExport(outFilePath);
+        return;
+      }
+      appState.showExportComplete();
+      await backend.openPath(targetFolder);
+      return;
+    }
+    if (d.onArchiveDone) d.onArchiveDone();
+    else appState.showExportComplete();
+    await backend.publishExport(outFilePath);
   }
 
   async exportPreset(session: Session, preset: any) {

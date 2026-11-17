@@ -51,8 +51,8 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
   form: ExportFormState;
   setForm: React.Dispatch<React.SetStateAction<ExportFormState>>;
   direct?: boolean;
-  // 직접 내보내기 범위(2026-11-16 M5 묶음 b P8): 'folder' 면 폴더 일괄이 쓰지 않는 칸을 숨긴다
-  // (FOLDER_EXPORT_UNUSED_FIELDS — 이유 안내는 DirectExportDialog 가 한 줄로).
+  // 직접 내보내기 범위(2026-11-16 M5 묶음 b P8): 'folder' 면 FOLDER_EXPORT_UNUSED_FIELDS 의 칸을 숨긴다
+  // (묶음 b-2 부터 비어 있음 — 안내는 DirectExportDialog 가 한 줄로).
   scope?: DirectExportScope;
   // 2열 격자(2026-11-11 오버레이 묶음 1, 내보내기 프리셋 관리 L 창): 칸마다 최소 300px — 폭이 모자라면 1열로 접힌다.
   // 목표 폴더 묶음은 늘 한 줄 전체(col-span-full). 끄면 종전 세로 쌓기 그대로.

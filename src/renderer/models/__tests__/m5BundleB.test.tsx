@@ -1,6 +1,7 @@
 // M5 묶음 b(2026-11-16, 플랜 guides/plans/2026-11-16-m5-flow-dedup.md):
-//  P8  폴더 일괄 이미지 내보내기 「직접 설정」 = DirectExportDialog 폼 한 창(scope 'folder') — 쓰지 않는 칸 숨김 + 이유 안내,
-//      결과 옵션은 종전 askFolderImageOptions 와 같은 의미(folderImageOptionsFromPreset)
+//  P8  폴더 일괄 이미지 내보내기 「직접 설정」 = DirectExportDialog 폼 한 창(scope 'folder') — 안내 한 줄,
+//      2026-11-16 묶음 b-2 부터 숨김 칸 없음(모든 칸을 프로젝트와 같은 규칙으로 씀 — folderImageExport.test.ts),
+//      폼 결과 → 실행 옵션은 프로젝트와 같은 exportRunOptionsFromPreset
 //  R1  파일 내보내기·불러오기 명칭 — 목록 전부를 한 파일로 = 「백업」/「백업 불러오기」, 한 건·선택분 = 「내보내기」/「불러오기」
 //  R1-b 로컬 캐릭터 프리셋 파일 불러오기 = 공용 정책 흐름(새 이름·건너뛰기·덮어쓰기, 겹침 없으면 묻지 않음)
 import fs from 'fs';
@@ -34,7 +35,7 @@ import DirectExportDialog from '../../componenets/DirectExportDialog';
 import {
   emptyExportForm,
   exportFormToPreset,
-  folderImageOptionsFromPreset,
+  exportRunOptionsFromPreset,
   FOLDER_EXPORT_FIXED_NOTE,
   FOLDER_EXPORT_UNUSED_FIELDS,
   isExportFieldShown,
@@ -71,27 +72,26 @@ describe('P8 폴더 일괄 「직접 설정」 = 직접 내보내기 폼(scope f
   const selectWith = (value: string) =>
     Array.from(container.querySelectorAll('select')).find((s) => s.querySelector(`option[value="${value}"]`));
 
-  test('폴더 범위: 쓰지 않는 칸은 숨기고 이유를 한 줄 안내, 머리에 폴더·프로젝트 수', async () => {
+  test('폴더 범위: 숨김 칸 없이 프로젝트와 같은 칸 + 안내 한 줄, 머리에 폴더·프로젝트 수', async () => {
     state.directExportRequest = { projectName: 'F', projectCount: 3, sceneNames: ['a', 'b'], scope: 'folder', resolve };
     await act(async () => root.render(<DirectExportDialog />));
     expect(container.textContent).toContain('폴더 "F" · 프로젝트 3개 · 대상 씬 2개');
     expect(container.querySelector('[data-direct-export-folder-note]')!.textContent).toBe(FOLDER_EXPORT_FIXED_NOTE);
-    // 파일명 패턴·출력 형태 드롭다운 없음
-    expect(selectWith('project.scene')).toBeUndefined();
-    expect(selectWith('zip')).toBeUndefined();
-    expect(container.textContent).not.toContain('캐릭터 프리셋 접두사/접미사 적용');
-    expect(container.textContent).not.toContain('폴더 선택');
-    // 최적화 lossy 로 바꿔도 화질·스테가노그래피·재최적화 칸은 없음, 이미지 크기는 있음
+    // 2026-11-16 묶음 b-2: 파일명 패턴·출력 형태·접두/접미사 토글·목표 폴더도 보인다
+    expect(selectWith('project.scene')).toBeDefined();
+    expect(selectWith('zip')).toBeDefined();
+    expect(container.textContent).toContain('캐릭터 프리셋 접두사/접미사 적용');
+    expect(container.textContent).toContain('폴더 선택');
+    // 최적화 lossy 면 화질·스테가노그래피·재최적화 칸도 보인다
     const opt = selectWith('avif')!;
     await act(async () => {
       opt.value = 'lossy';
       opt.dispatchEvent(new Event('change', { bubbles: true }));
     });
-    expect(container.querySelector('input[placeholder="80"]')).toBeNull();
-    expect(container.textContent).not.toContain('NAI 스테가노그래피 보존 (');
-    expect(container.textContent).not.toContain('재최적화');
+    expect(container.querySelector('input[placeholder="80"]')).not.toBeNull();
+    expect(container.textContent).toContain('NAI 스테가노그래피 보존 (');
+    expect(container.textContent).toContain('재최적화');
     expect(container.querySelector('input[placeholder="1024"]')).not.toBeNull();
-    // 남는 칸: 이미지 범위·파일명 형식·구분자·자동 변환
     expect(selectWith('fav')).toBeDefined();
     expect(selectWith('prefix')).toBeDefined();
     expect(container.textContent).toContain('특수문자 묻지 않고 구분자로 자동 변환');
@@ -110,37 +110,34 @@ describe('P8 폴더 일괄 「직접 설정」 = 직접 내보내기 폼(scope f
     expect(container.textContent).toContain('폴더 선택');
   });
 
-  test('숨김 칸 목록·판정', () => {
-    expect([...FOLDER_EXPORT_UNUSED_FIELDS].sort()).toEqual(
-      ['applyCharacterAffix', 'filenamePattern', 'outputMode', 'preserveStealth', 'quality', 'reoptimize', 'targetFolder'].sort(),
-    );
-    for (const key of FOLDER_EXPORT_UNUSED_FIELDS) {
-      expect(isExportFieldShown(key, 'folder')).toBe(false);
-      expect(isExportFieldShown(key, 'project')).toBe(true);
-      expect(isExportFieldShown(key)).toBe(true);
-    }
-    for (const key of ['menu', 'format', 'prefix', 'opt', 'imageSize', 'separator', 'autoConvertSeparator'] as const) {
+  test('숨김 칸 목록·판정 — 묶음 b-2 부터 비어 있음(모든 칸 표시)', () => {
+    expect([...FOLDER_EXPORT_UNUSED_FIELDS]).toEqual([]);
+    for (const key of ['menu', 'format', 'filenamePattern', 'outputMode', 'prefix', 'applyCharacterAffix', 'opt', 'imageSize',
+      'quality', 'preserveStealth', 'separator', 'autoConvertSeparator', 'targetFolder', 'reoptimize'] as const) {
       expect(isExportFieldShown(key, 'folder')).toBe(true);
+      expect(isExportFieldShown(key, 'project')).toBe(true);
     }
   });
 
-  test('폼 결과 → 폴더 옵션: 종전 연속 질문의 답과 같은 의미', () => {
+  test('폼 결과 → 실행 옵션(프로젝트·폴더 공용)', () => {
     const form = (patch: any) => exportFormToPreset({ ...emptyExportForm(), ...patch });
-    // 기본 폼 = 즐겨찾기만·원본·구분자 「.」·접두 없음
-    expect(folderImageOptionsFromPreset(form({}))).toEqual({ prefix: '', fav: true, opt: 'original', imageSize: 1024, separator: '.' });
-    // 「모든 이미지」·최적화 lossy 512
-    expect(folderImageOptionsFromPreset(form({ menu: 'all', opt: 'lossy', imageSize: 512 }))).toEqual({ prefix: '', fav: false, opt: 'lossy', imageSize: 512, separator: '.' });
-    // 캐릭터 이름 형식 = 「이름 + 구분자」(종전 inputPrefix + separator)
-    expect(folderImageOptionsFromPreset(form({ format: 'prefix', prefix: '앨리스', separator: '_' })).prefix).toBe('앨리스_');
-    // 구분자 비움 = 종전 「구분자 없음」 체크와 같은 '' (prefix 도 구분자 없이)
-    expect(folderImageOptionsFromPreset(form({ format: 'prefix', prefix: '앨리스', separator: '' }))).toMatchObject({ prefix: '앨리스', separator: '' });
+    // 기본 폼 = 즐겨찾기만·원본·구분자 「.」·접두 없음·tar·접두/접미사 켬·재최적화 skip
+    expect(exportRunOptionsFromPreset(form({}))).toEqual({
+      prefix: '', fav: true, opt: 'original', imageSize: 1024, quality: undefined, preserveStealth: false, separator: '.',
+      filenamePattern: 'scene', applyCharacterAffix: true, outputMode: 'tar', reoptimize: 'skip',
+    });
+    expect(exportRunOptionsFromPreset(form({ menu: 'all', opt: 'lossy', imageSize: 512 }))).toMatchObject({ fav: false, opt: 'lossy', imageSize: 512 });
+    // 캐릭터 이름 형식 = 「이름 + 구분자」
+    expect(exportRunOptionsFromPreset(form({ format: 'prefix', prefix: '앨리스', separator: '_' })).prefix).toBe('앨리스_');
+    // 구분자 비움 = 구분자 없음
+    expect(exportRunOptionsFromPreset(form({ format: 'prefix', prefix: '앨리스', separator: '' }))).toMatchObject({ prefix: '앨리스', separator: '' });
   });
 
-  test('저장된 프리셋 → 폴더 옵션(종전 프리셋 분기 그대로)', () => {
+  test('저장된 프리셋 → 실행 옵션(종전 프리셋 분기 그대로)', () => {
     const base = exportFormToPreset(emptyExportForm());
-    expect(folderImageOptionsFromPreset({ ...base, format: 'prefix', prefix: '' }).prefix).toBe('');
-    expect(folderImageOptionsFromPreset({ ...base, format: 'prefix_ask' }, '밥').prefix).toBe('밥.');
-    expect(folderImageOptionsFromPreset({ ...base, format: 'normal', prefix: '무시' }).prefix).toBe('');
+    expect(exportRunOptionsFromPreset({ ...base, format: 'prefix', prefix: '' }).prefix).toBe('');
+    expect(exportRunOptionsFromPreset({ ...base, format: 'prefix_ask' }, '밥').prefix).toBe('밥.');
+    expect(exportRunOptionsFromPreset({ ...base, format: 'normal', prefix: '무시' }).prefix).toBe('');
   });
 
   test('BackupService: 직접 설정은 폼 요청(scope folder)으로, 연속 질문 문구는 사라짐', () => {

@@ -86,6 +86,7 @@ import { v4 } from 'uuid';
 import { Resolution, resolutionMap } from '../backends/imageGen';
 import { ProgressDialog } from '../componenets/ProgressWindow';
 import { migratePieceLibrary } from './legacy';
+import { appliedCharacterPresetNameOf, appliedCharacterPresetOf } from './appliedCharacterPreset';
 import {
   EMPTY_SCENE_SELECTION,
   SceneKind,
@@ -175,12 +176,8 @@ export class AppState {
   /** 현재 적용된 캐릭터 프리셋 이름 (shared에서 읽음 — 영속화됨).
    *  다중 적용(W4) 이후엔 "마지막 적용" 표시용 잔존 — 목록은 appliedCharacterPresetNames 사용 */
   get appliedCharacterPreset(): string | undefined {
-    const session = this.curSession;
-    if (!session) return undefined;
-    const workflowType = session.selectedWorkflow?.workflowType;
-    if (!workflowType) return undefined;
-    const shared = session.presetShareds.get(workflowType);
-    return shared?._appliedPresetName || undefined;
+    // 세션별 판정 단일 출처(appliedCharacterPreset.ts — 폴더 일괄 이미지 내보내기도 같은 규칙, 2026-11-16 M5 b-2)
+    return appliedCharacterPresetNameOf(this.curSession);
   }
 
   /** 현재 적용된 캐릭터 프리셋 이름 목록(W4 다중 적용).
@@ -1877,10 +1874,7 @@ export class AppState {
    * @returns 현재 적용된 CharacterPreset 객체 또는 undefined
    */
   getAppliedCharacterPreset(): CharacterPreset | undefined {
-    if (!this.curSession || !this.appliedCharacterPreset) {
-      return undefined;
-    }
-    return this.curSession.getCharacterPreset(this.appliedCharacterPreset);
+    return appliedCharacterPresetOf(this.curSession);
   }
 
   /**

@@ -1,4 +1,5 @@
 import type { ExportPreset } from './AppService';
+import type { FilenamePattern } from './exportPresetUtils';
 
 export type ExportFormState = Omit<ExportPreset, 'quality'> & { quality: number | '' };
 
@@ -74,38 +75,47 @@ export type ExportFieldKey =
   | 'targetFolder' | 'reoptimize';
 
 /**
- * 폴더 일괄 이미지 내보내기가 쓰지 않는 칸(BackupService.folderExportImages·buildSessionImageEntries 대조).
- * 폼에서 숨기고 FOLDER_EXPORT_FIXED_NOTE 로 이유를 한 줄 안내한다(조용히 무시하지 않음).
+ * 폴더 일괄 이미지 내보내기가 쓰지 않는 칸. 2026-11-16 M5 묶음 b-2 부터 폴더도 프로젝트 이미지 내보내기와 같은
+ * 함수(ExportPresetService.buildExportImageList·optimizeExportImages·deliverExportImages)로 모든 칸을 쓰므로 비어 있다.
+ * 범위별로 칸을 숨길 일이 다시 생기면 여기에 넣고 FOLDER_EXPORT_FIXED_NOTE 로 이유를 안내한다(조용히 무시하지 않음).
  */
-export const FOLDER_EXPORT_UNUSED_FIELDS: readonly ExportFieldKey[] = [
-  'filenamePattern', 'outputMode', 'applyCharacterAffix', 'quality', 'preserveStealth',
-  'targetFolder', 'reoptimize',
-];
+export const FOLDER_EXPORT_UNUSED_FIELDS: readonly ExportFieldKey[] = [];
 
 export function isExportFieldShown(key: ExportFieldKey, scope: DirectExportScope = 'project'): boolean {
   return scope !== 'folder' || !FOLDER_EXPORT_UNUSED_FIELDS.includes(key);
 }
 
+/** 폴더 범위 직접 설정 창의 안내 한 줄 — 프로젝트 내보내기와 달라지는 사실만 */
 export const FOLDER_EXPORT_FIXED_NOTE =
-  '폴더 일괄 내보내기는 프로젝트별 하위 폴더로 묶은 tar 압축파일 하나를 기본 내보내기 위치에 만듭니다. ' +
-  '그래서 파일명 패턴·출력 형태·목표 폴더·화질·스테가노그래피 보존 칸은 쓰지 않고, ' +
-  '캐릭터 프리셋 접두사/접미사는 지금 적용된 캐릭터 프리셋 기준으로 늘 붙이며, ' +
-  '이미 최적화된 이미지가 있으면 프로젝트마다 다시 묻습니다.';
+  '폴더 일괄 내보내기는 결과 안에 프로젝트마다 하위 폴더(프로젝트 이름)를 만들어 이미지를 나눠 담습니다. ' +
+  '파일명 패턴·캐릭터 프리셋 접두사/접미사는 프로젝트마다 그 프로젝트 기준으로 붙고, ' +
+  '「프로젝트 폴더 경로로 하위 폴더 생성」은 이 폴더의 경로를 씁니다.';
 
-/** 폴더 일괄 이미지 내보내기가 실제로 쓰는 옵션(BackupService.buildSessionImageEntries 인자) */
-export interface FolderImageOptions {
+/**
+ * 프리셋 한 개를 실행할 때 쓰는 옵션(프로젝트 이미지 내보내기·폴더 일괄 이미지 내보내기 공용, 2026-11-16 M5 묶음 b-2).
+ * 변환할 특수문자·목표 폴더·캐릭터 접두/접미사 값은 실행 쪽이 따로 정한다.
+ */
+export interface ExportRunOptions {
+  /** 파일명 형식의 캐릭터 이름 접두(「이름+구분자」, 없으면 '') */
   prefix: string;
   fav: boolean;
   opt: string;
   imageSize: number;
+  quality: number | undefined;
+  preserveStealth: boolean;
   separator: string;
+  filenamePattern: FilenamePattern | undefined;
+  applyCharacterAffix: boolean;
+  outputMode: 'tar' | 'zip' | 'files';
+  reoptimize: 'ask' | 'skip' | 'all';
 }
 
 /**
- * 프리셋(저장된 프리셋 또는 직접 설정 폼 결과)을 폴더 일괄 옵션으로. 종전 askFolderImageOptions 의
- * 프리셋 분기와 같은 규칙: prefix 형식은 「이름+구분자」, prefix_ask 는 입력받은 이름+구분자, 그 밖은 빈 접두.
+ * 프리셋(저장된 프리셋 또는 직접 설정 폼 결과) → 실행 옵션. 종전 ExportPresetService.runPreset 의 인자 해석 그대로:
+ * prefix 형식은 「이름+구분자」, prefix_ask 는 입력받은 이름+구분자, 그 밖은 빈 접두 / 출력 형태 누락·모르는 값 = tar /
+ * 재최적화 누락 = ask(구 프리셋) / 접두·접미사 토글 누락 = 켬.
  */
-export function folderImageOptionsFromPreset(ep: ExportPreset, askedName = ''): FolderImageOptions {
+export function exportRunOptionsFromPreset(ep: ExportPreset, askedName = ''): ExportRunOptions {
   let prefix = '';
   if (ep.format === 'prefix' && ep.prefix) prefix = ep.prefix + ep.separator;
   else if (ep.format === 'prefix_ask') prefix = askedName + ep.separator;
@@ -114,6 +124,12 @@ export function folderImageOptionsFromPreset(ep: ExportPreset, askedName = ''): 
     fav: ep.menu === 'fav',
     opt: ep.opt,
     imageSize: ep.imageSize,
+    quality: ep.quality,
+    preserveStealth: ep.preserveStealth === true,
     separator: ep.separator,
+    filenamePattern: ep.filenamePattern,
+    applyCharacterAffix: ep.applyCharacterAffix !== false,
+    outputMode: ep.outputMode === 'files' || ep.outputMode === 'zip' ? ep.outputMode : 'tar',
+    reoptimize: ep.reoptimize ?? 'ask',
   };
 }
