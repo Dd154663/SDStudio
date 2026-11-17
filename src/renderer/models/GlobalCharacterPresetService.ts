@@ -4,8 +4,9 @@ import { backend, imageService } from '.';
 import { Session, CharacterPreset, ICharacterPreset } from './types';
 import { dataUriToBase64 } from './ImageService';
 import { numberedName, suggestFolderCopyName, taggedName } from './nameInput';
-import { StoreFile } from './storeFile';
+import { StoreFile, GLOBAL_STORE_SYNC_KEYS } from './storeFile';
 import { globalStoreDeps } from './globalStoreDeps';
+import { mergeById, mergeStringSet } from './storeMerge';
 
 const GLOBAL_CHAR_PRESETS_FILE = 'global_character_presets.json';
 const GLOBAL_CHAR_IMAGES_DIR = 'global_char_images';
@@ -66,7 +67,7 @@ export class GlobalCharacterPresetService extends EventTarget {
       saveDelayMs: 2000,
       // 전역 저장소 동기화(W6 P2): 다른 창들이 디스크에서 재로드하도록 알림
       afterWrite: () => {
-        backend.notifyGlobalStoreChanged('global-character-presets').catch(() => {});
+        backend.notifyGlobalStoreChanged(GLOBAL_STORE_SYNC_KEYS.globalCharacterPresets).catch(() => {});
       },
     },
     globalStoreDeps,
@@ -78,6 +79,44 @@ export class GlobalCharacterPresetService extends EventTarget {
   }
 
   // ---------- lifecycle ----------
+
+  /** 파일 내용 → 메모리 목록·폴더 레지스트리(load·다른 창 재로드·병합 기준이 같은 규칙을 쓴다) */
+  private static normalizeStore(json: IGlobalCharacterPresetStore | null): {
+    presets: IGlobalCharacterPresetEntry[];
+    folders: string[];
+  } {
+    const presets =
+      json && Array.isArray(json.presets)
+        ? json.presets
+            .filter(
+              (p) =>
+                p &&
+                typeof p.id === 'string' &&
+                typeof p.name === 'string' &&
+                p.preset,
+            )
+            // folder 문자열 방어 — 비문자열/빈 값은 루트로 정규화
+            .map((p) => ({
+              ...p,
+              folder:
+                typeof p.folder === 'string' && p.folder.trim()
+                  ? p.folder
+                  : undefined,
+            }))
+        : [];
+    // 폴더 레지스트리 로드 방어 — 문자열만·trim·중복 제거
+    const rawFolders = Array.isArray((json as any)?.folders)
+      ? ((json as any).folders as unknown[])
+      : [];
+    const folders: string[] = [];
+    for (const f of rawFolders) {
+      if (typeof f !== 'string') continue;
+      const t = f.trim();
+      if (t && !folders.includes(t)) folders.push(t);
+    }
+    return { presets, folders };
+  }
+
   async load() {
     const res = await this.store.load();
     if (res.keepMemory) return; // 재로드 실패 — 이미 가진 목록 유지
@@ -89,40 +128,11 @@ export class GlobalCharacterPresetService extends EventTarget {
       this.dispatchEvent(new CustomEvent('changed', {}));
       return;
     }
-    {
-      const json: IGlobalCharacterPresetStore | null =
-        res.kind === 'ok' || res.kind === 'recovered' ? res.data : null;
-      this.presets =
-        json && Array.isArray(json.presets)
-          ? json.presets
-              .filter(
-                (p) =>
-                  p &&
-                  typeof p.id === 'string' &&
-                  typeof p.name === 'string' &&
-                  p.preset,
-              )
-              // folder 문자열 방어 — 비문자열/빈 값은 루트로 정규화
-              .map((p) => ({
-                ...p,
-                folder:
-                  typeof p.folder === 'string' && p.folder.trim()
-                    ? p.folder
-                    : undefined,
-              }))
-          : [];
-      // 폴더 레지스트리 로드 방어 — 문자열만·trim·중복 제거
-      const rawFolders = Array.isArray((json as any)?.folders)
-        ? ((json as any).folders as unknown[])
-        : [];
-      const folders: string[] = [];
-      for (const f of rawFolders) {
-        if (typeof f !== 'string') continue;
-        const t = f.trim();
-        if (t && !folders.includes(t)) folders.push(t);
-      }
-      this.folders = folders;
-    }
+    const next = GlobalCharacterPresetService.normalizeStore(
+      res.kind === 'ok' || res.kind === 'recovered' ? res.data : null,
+    );
+    this.presets = next.presets;
+    this.folders = next.folders;
     this.loaded = true;
     this.dispatchEvent(new CustomEvent('changed', {}));
   }
@@ -130,6 +140,29 @@ export class GlobalCharacterPresetService extends EventTarget {
   /** 읽기 실패로 막혀 있으면 한 번 다시 읽는다(관리 화면 진입 때). 성공하면 차단이 풀린다 */
   async reloadIfFailed(): Promise<void> {
     if (this.store.loadFailed) await this.load();
+  }
+
+  /**
+   * 다른 창이 저장했다는 알림으로 다시 읽는다(여러 창 동기화). 아직 읽지 않았거나 읽기 실패 상태면 무동작(종전 경로).
+   * 저장 안 된 변경이 없으면 교체, 있으면 항목(id)·폴더(문자열 집합) 단위 병합 — 재로드만으로는 쓰지 않는다.
+   * 종전엔 load() 로 통째 교체해 2초 저장 대기 중이던 이 창의 편집이 사라졌다.
+   */
+  async reloadExternal(): Promise<void> {
+    if (!this.loaded) return;
+    const r = await this.store.reloadExternal({
+      replace: (remote) => {
+        const next = GlobalCharacterPresetService.normalizeStore(remote);
+        this.presets = next.presets;
+        this.folders = next.folders;
+      },
+      merge: (remote, base) => {
+        const b = GlobalCharacterPresetService.normalizeStore(base);
+        const rm = GlobalCharacterPresetService.normalizeStore(remote);
+        this.presets = mergeById(b.presets, this.presets, rm.presets);
+        this.folders = mergeStringSet(b.folders, this.folders, rm.folders);
+      },
+    });
+    if (r === 'replaced' || r === 'merged') this.dispatchEvent(new CustomEvent('changed', {}));
   }
 
   // 저장: tmp → rename(실패 시 직접 쓰기), 세션 첫 저장 전 .bak1~3 회전, 읽기 실패 상태면 쓰지 않음(storeFile).

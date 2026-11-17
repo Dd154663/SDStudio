@@ -15,8 +15,9 @@ import { decoratePresetExportImage } from './presetExportDecoration';
 import { planPromptImport } from './sdstudioPromptImport';
 import { numberedName } from './nameInput';
 import type { ImportableMetadata } from './types';
-import { StoreFile } from './storeFile';
+import { StoreFile, GLOBAL_STORE_SYNC_KEYS } from './storeFile';
 import { globalStoreDeps } from './globalStoreDeps';
+import { mergeById } from './storeMerge';
 
 /**
  * 이미지 메타 → 그림체 프리셋의 상위·하위(SDStudio 구획 메타가 있으면 나눠 담고, 없으면 통합 → 상위).
@@ -89,6 +90,10 @@ export class GlobalPresetService extends EventTarget {
         return JSON.stringify(store);
       },
       saveDelayMs: 2000,
+      // 여러 창 동기화(2026-11-17 묶음 2): 다른 창이 이 저장소를 다시 읽게 알린다(bootstrap 수신부 → reloadExternal)
+      afterWrite: () => {
+        backend.notifyGlobalStoreChanged(GLOBAL_STORE_SYNC_KEYS.globalPresets).catch(() => {});
+      },
     },
     globalStoreDeps,
   );
@@ -99,6 +104,18 @@ export class GlobalPresetService extends EventTarget {
   }
 
   // ---------- lifecycle ----------
+
+  /** 파일 내용 → 메모리 목록(load·다른 창 재로드·병합 기준이 같은 규칙을 쓴다) */
+  private static normalizeEntries(data: IGlobalPresetStore | null): IGlobalPresetEntry[] {
+    if (!data || !Array.isArray(data.presets)) return [];
+    return data.presets.filter(
+      (p) =>
+        p &&
+        typeof p.id === 'string' &&
+        typeof p.name === 'string' &&
+        SUPPORTED_GLOBAL_PRESET_TYPES.includes(p.workflowType),
+    );
+  }
 
   async load(): Promise<void> {
     const res = await this.store.load();
@@ -113,13 +130,7 @@ export class GlobalPresetService extends EventTarget {
     let loadedVersion = GLOBAL_PRESETS_VERSION;
     let sourceRaw: string | null = null;
     if (res.kind === 'ok' || res.kind === 'recovered') {
-      this.presets = res.data.presets.filter(
-        (p) =>
-          p &&
-          typeof p.id === 'string' &&
-          typeof p.name === 'string' &&
-          SUPPORTED_GLOBAL_PRESET_TYPES.includes(p.workflowType),
-      );
+      this.presets = GlobalPresetService.normalizeEntries(res.data);
       loadedVersion = (res.data as any).version || 1;
       sourceRaw = res.raw;
     } else {
@@ -142,6 +153,39 @@ export class GlobalPresetService extends EventTarget {
   /** 읽기 실패로 막혀 있으면 한 번 다시 읽는다(관리 화면 진입 때). 성공하면 차단이 풀린다 */
   async reloadIfFailed(): Promise<void> {
     if (this.store.loadFailed) await this.load();
+  }
+
+  /**
+   * 다른 창이 저장했다는 알림으로 다시 읽는다(여러 창 동기화). 아직 읽지 않았거나 읽기 실패 상태면 무동작(종전 경로).
+   * 저장 안 된 변경이 없으면 교체, 있으면 항목 단위 병합(storeMerge) — 재로드만으로는 쓰지 않는다.
+   * v2 통합 이관은 종전 조건 그대로(실제로 v1 을 읽었을 때만).
+   */
+  async reloadExternal(): Promise<void> {
+    if (!this.loaded) return;
+    let migrateRaw: string | null = null;
+    const r = await this.store.reloadExternal({
+      replace: (remote, raw) => {
+        this.presets = GlobalPresetService.normalizeEntries(remote);
+        if (((remote as any).version || 1) < GLOBAL_PRESETS_VERSION) migrateRaw = raw;
+      },
+      merge: (remote, base, raw) => {
+        this.presets = mergeById(
+          GlobalPresetService.normalizeEntries(base),
+          this.presets,
+          GlobalPresetService.normalizeEntries(remote),
+        );
+        if (((remote as any).version || 1) < GLOBAL_PRESETS_VERSION) migrateRaw = raw;
+      },
+    });
+    if (r !== 'replaced' && r !== 'merged') return;
+    if (migrateRaw !== null) {
+      try {
+        await this.migrateUnify(migrateRaw);
+      } catch (e) {
+        console.error('글로벌 프리셋 통합 마이그레이션 실패:', e);
+      }
+    }
+    this.dispatchEvent(new CustomEvent('changed', {}));
   }
 
   // v2 통합 마이그레이션: 타입(이지/일반) 구분 없이 이름이 겹치면 뒤(나중에 만든)의
@@ -690,9 +734,13 @@ export class GlobalPresetService extends EventTarget {
     if (!entry) throw new Error('프리셋을 찾을 수 없습니다');
     const oldProfile = entry.profile;
     const newProfile = await this.storeProfileImage(base64);
-    entry.profile = newProfile;
-    entry.updatedAt = Date.now();
-    this.presets = [...this.presets];
+    // await 도중 다른 창 저장으로 목록이 다시 읽혔으면(reloadExternal) 지금 목록의 같은 id 항목에 반영한다 — 옛 객체에 쓰면
+    // 새 대표 이미지가 조용히 사라진다. 다른 창이 지웠으면 이 창 편집을 살려 뒤에 붙인다(병합 규칙과 같음).
+    const live = this.get(id);
+    const target = live ?? entry;
+    target.profile = newProfile;
+    target.updatedAt = Date.now();
+    this.presets = live ? [...this.presets] : [...this.presets, target];
     if (oldProfile && oldProfile !== newProfile) {
       await this.deleteProfileImage(oldProfile);
     }

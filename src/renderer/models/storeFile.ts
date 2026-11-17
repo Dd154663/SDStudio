@@ -47,6 +47,16 @@ export const STORE_MISSING_RECHECK_DELAY_MS = 300;
 /** 저장 차단 토스트 최소 간격(ms) — 같은 저장소에서 연달아 거부돼도 한 번만 */
 const BLOCKED_NOTICE_INTERVAL_MS = 3000;
 
+/**
+ * 여러 창 동기화 알림 키(backend.notifyGlobalStoreChanged / onGlobalStoreChanged 의 key). 저장 성공 뒤 보내고,
+ * 받는 창은 bootstrap 수신부에서 그 저장소의 reloadExternal 을 부른다. 'global-character-presets' 는 종전 값 그대로.
+ */
+export const GLOBAL_STORE_SYNC_KEYS = {
+  globalPresets: 'global-presets',
+  globalCharacterPresets: 'global-character-presets',
+  projectTemplates: 'project-templates',
+} as const;
+
 export function storeSidePath(file: string, source: StoreRecoverySource): string {
   return source === 'tmp' ? `${file}.tmp` : `${file}.${source}`;
 }
@@ -308,6 +318,23 @@ export interface StoreFileSpec<T> extends StoreFileJudgeSpec<T> {
 /** load 결과 + keepMemory(true = 재로드 실패·없음 — 이미 메모리에 있는 정상 목록을 버리지 말 것) */
 export type StoreLoadOutcome<T> = StoreLoadResult<T> & { keepMemory: boolean };
 
+/**
+ * 다른 창 저장 알림으로 다시 읽을 때 서비스가 메모리에 반영하는 방법(둘 다 동기 — 저장 줄(chain) 안에서 불린다).
+ * raw = 방금 읽은 본 파일 원문(글로벌 프리셋 v1 통합 이관 판단·백업용).
+ */
+export interface StoreExternalHandlers<T> {
+  /** 이 창에 저장 안 된 변경이 없다 — 디스크 내용으로 교체 */
+  replace(remote: T, raw: string): void;
+  /** 저장 안 된 변경이 있다 — base(공통 조상, null = 빈 목록)·remote 로 항목 단위 병합해 메모리에 반영. 저장 예약은 StoreFile 이 한다 */
+  merge(remote: T, base: T | null, raw: string): void;
+}
+
+/**
+ * skipped = 아직 읽지 않았거나 읽기 실패로 막힌 상태(종전 재시도 경로에 맡김) · unchanged = 기준과 같은 내용 ·
+ * replaced/merged = 반영함 · kept = 다시 읽기 실패·본 파일 없음·손상 — 메모리 유지
+ */
+export type StoreExternalReloadResult = 'skipped' | 'unchanged' | 'replaced' | 'merged' | 'kept';
+
 type SessionStatus = 'unloaded' | 'ok' | 'missing' | 'blocked';
 
 export class StoreFile<T> {
@@ -317,6 +344,11 @@ export class StoreFile<T> {
   /** 첫 저장 직전에 .bak1 로 남길 내용(부팅 때 정상으로 읽은 본 파일) */
   private rotateRaw: string | null = null;
   private rotated = false;
+  /**
+   * 여러 창 병합의 기준(base) — 이 창이 본 파일에서 마지막으로 읽었거나 본 파일에 쓴 원문. null = 빈 목록(신규·손상 빈 시작).
+   * 평소엔 문자열 하나만 들고, 파싱은 병합이 필요할 때만 한다.
+   */
+  private baseRaw: string | null = null;
   private changeSeq = 0;
   private savedSeq = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -371,12 +403,14 @@ export class StoreFile<T> {
         this.status = 'missing';
         this.hadGoodLoad = true;
         this.rotateRaw = null;
+        this.baseRaw = null;
         return { ...res, keepMemory: false };
       }
       case 'ok': {
         this.status = 'ok';
         this.hadGoodLoad = true;
         this.rotateRaw = this.spec.countItems(res.data) > 0 ? res.raw : null;
+        this.baseRaw = res.raw;
         return { ...res, keepMemory: false };
       }
       case 'recovered': {
@@ -410,6 +444,7 @@ export class StoreFile<T> {
         }
         this.status = 'ok';
         this.hadGoodLoad = true;
+        this.baseRaw = res.raw;
         // .bakN 에서 되살렸으면 그 사본이 이미 남아 있으므로 회전하지 않는다(같은 내용으로 오래된 사본을 밀어내지 않게)
         this.rotateRaw =
           (res.from === 'tmp' || res.from === 'bak') && this.spec.countItems(res.data) > 0
@@ -434,9 +469,55 @@ export class StoreFile<T> {
         this.status = 'ok';
         this.hadGoodLoad = true;
         this.rotateRaw = null;
+        this.baseRaw = null;
         return { ...res, keepMemory: false };
       }
     }
+  }
+
+  /**
+   * 다른 창이 이 저장소를 저장했다는 알림으로 다시 읽는다(데스크톱 여러 창). 디스크에는 쓰지 않는다 — 병합했을 때만 저장을
+   * 예약해 병합 결과가 나가게 한다(알림 왕복 방지: 교체만 한 창은 쓰지 않으므로 다시 알리지 않는다).
+   *  - 아직 읽지 않았거나(unloaded) 읽기 실패로 막혔으면(blocked) 아무것도 하지 않는다 — 종전 재시도 경로에 맡긴다.
+   *  - 다시 읽기 실패·본 파일 없음·사본 복구 상황이면 메모리를 그대로 둔다(쓰지 않음).
+   *  - 본 파일이 손상이면(판정이 손상본을 보존해 둠) 메모리를 그대로 두고 저장을 예약해 메모리 내용으로 다시 쓰게 한다.
+   *  - 정상으로 읽히면: 기준과 같으면 무동작, 저장 안 된 변경이 없으면 교체, 있으면 병합 + 저장 예약.
+   * 신규(missing) 상태였던 창도 여기서 파일을 읽으면 정상 상태가 되어, 다음 저장이 「쓰기 충돌 차단」에 걸리지 않는다.
+   */
+  reloadExternal(handlers: StoreExternalHandlers<T>): Promise<StoreExternalReloadResult> {
+    return this.enqueue(() => this.doReloadExternal(handlers));
+  }
+
+  private async doReloadExternal(h: StoreExternalHandlers<T>): Promise<StoreExternalReloadResult> {
+    if (this.status === 'unloaded' || this.status === 'blocked') return 'skipped';
+    const { label } = this.spec;
+    const res = await judgeStoreFile(this.spec, this.deps);
+    if (res.kind !== 'ok') {
+      if (res.kind === 'corrupt-empty' || (res.kind === 'recovered' && res.corruptName)) {
+        console.error(`${label} 다른 창 저장 뒤 다시 읽기에서 손상 발견(손상본 보존, 이 창 목록으로 다시 씀)`);
+        this.schedule();
+      } else if (res.kind === 'io-failed') {
+        console.error(`${label} 다른 창 저장 뒤 다시 읽기 실패(기존 목록 유지):`, res.error);
+      }
+      return 'kept';
+    }
+    // 판정의 await 뒤에 확인한다 — 아래 반영까지 동기라 그 사이에 편집이 끼어들지 않는다
+    const pending = this.dirty || this.timer !== null;
+    if (this.status === 'ok' && res.raw === this.baseRaw) return 'unchanged';
+    // 아직 첫 저장 전이면, 그 저장이 덮을 내용(방금 읽은 최신본)을 .bak1 후보로
+    if (!this.rotated && this.spec.countItems(res.data) > 0) this.rotateRaw = res.raw;
+    if (!pending) {
+      h.replace(res.data, res.raw);
+      this.baseRaw = res.raw;
+      this.status = 'ok';
+      return 'replaced';
+    }
+    const base = this.baseRaw === null ? null : tryParse(this.spec.parse, this.baseRaw);
+    h.merge(res.data, base ?? null, res.raw);
+    this.baseRaw = res.raw;
+    this.status = 'ok';
+    this.schedule(); // 병합 결과를 저장(저장소를 바꾸는 경로는 반드시 dirty 를 세운다)
+    return 'merged';
   }
 
   /** 변경이 생겼음을 표시(디바운스 없이) */
@@ -545,6 +626,7 @@ export class StoreFile<T> {
       return false;
     }
     if (seq > this.savedSeq) this.savedSeq = seq;
+    this.baseRaw = data;
     if (this.status === 'missing') this.status = 'ok';
     try {
       this.spec.afterWrite?.();

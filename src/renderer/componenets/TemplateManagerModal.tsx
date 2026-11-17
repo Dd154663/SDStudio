@@ -159,6 +159,8 @@ const TemplateWorkflowBody = observer(
     const [backPrompt, setBackPrompt] = useState('');
     const [uc, setUc] = useState('');
     const promptRef = useRef({ frontPrompt: '', backPrompt: '', uc: '' });
+    // 마지막으로 템플릿에서 읽어 온(동기화한) 프롬프트 값 — 커밋할 칸을 가린다
+    const syncedPromptRef = useRef({ frontPrompt: '', backPrompt: '', uc: '' });
     // 외부 변경(불러오기·비우기) 후 인라인 필드 재동기화 트리거
     const [syncKey, setSyncKey] = useState(0);
     // 글로벌 프리셋 카드 선택 모달 (프롬프트 영역 불러오기)
@@ -210,26 +212,32 @@ const TemplateWorkflowBody = observer(
       setBackPrompt(next.backPrompt);
       setUc(next.uc);
       promptRef.current = next;
+      syncedPromptRef.current = { ...next };
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [templateId, syncKey, syncSignal]);
 
     // 프롬프트 로컬 편집값을 템플릿에 반영 — [저장]·언마운트 등 명시적
     // 시점에만 호출한다 (타이핑 중 자동 저장 없음).
+    // 커밋은 이 창에서 실제로 고친 칸만 — 마지막 동기화 때 값과 다른 칸. 다른 창 저장으로 목록이 다시 읽혀 바뀐 칸을
+    // 손대지 않은 초안 값으로 되돌려 덮지 않게 한다(2026-11-17 여러 창 동기화).
     const commitPrompts = () => {
       const e = projectTemplateService.get(templateId);
       if (!e) return;
       const v = promptRef.current;
       // 빈 템플릿에 빈 값 커밋 → 불필요한 골격 생성 방지
       if (!e.preset && !v.frontPrompt && !v.backPrompt && !v.uc) return;
-      if (
-        e.preset &&
-        asStr(e.preset.frontPrompt) === v.frontPrompt &&
-        asStr(e.preset.backPrompt) === v.backPrompt &&
-        asStr(e.preset.uc) === v.uc
-      ) {
-        return; // 변경 없음
+      const synced = syncedPromptRef.current;
+      const patch: Partial<typeof v> = {};
+      for (const k of ['frontPrompt', 'backPrompt', 'uc'] as const) {
+        if (v[k] !== synced[k] && asStr(e.preset?.[k]) !== v[k]) patch[k] = v[k];
       }
-      projectTemplateService.patchPreset(templateId, { ...v }).catch(() => {});
+      if (Object.keys(patch).length === 0) return; // 변경 없음
+      projectTemplateService
+        .patchPreset(templateId, patch)
+        .then(() => {
+          syncedPromptRef.current = { ...syncedPromptRef.current, ...patch };
+        })
+        .catch(() => {});
     };
     const commitPromptsRef = useRef(commitPrompts);
     commitPromptsRef.current = commitPrompts;

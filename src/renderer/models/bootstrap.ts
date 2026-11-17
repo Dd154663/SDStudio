@@ -28,6 +28,7 @@ import { setWorkspaceLayoutActive } from './storageLayout';
 import { WORKSPACE_ROOT } from './projectPaths';
 import type { Session } from './types';
 import { flushGlobalStores, installGlobalStoreHiddenFlush } from './globalStoreFlush';
+import { GLOBAL_STORE_SYNC_KEYS } from './storeFile';
 
 // ── 명시적 부트 시퀀스 ──
 // 앱의 모든 비동기 초기화가 여기서 "정해진 순서"로 일어난다.
@@ -183,8 +184,14 @@ export async function bootstrapApp(): Promise<void> {
         // main 의 config 는 이미 최신 — config-changed 경로(App.tsx 구독)가
         // get-config 재조회 + appState 미러 재적용을 수행한다.
         sessionService.configChanged();
-      } else if (key === 'global-character-presets') {
-        await globalCharacterPresetService.load();
+      } else if (key === GLOBAL_STORE_SYNC_KEYS.globalCharacterPresets) {
+        // 글로벌 저장소(2026-11-17 묶음 2): 저장 안 된 변경이 없으면 교체, 있으면 항목 단위 병합(종전 = load() 통째 교체로
+        // 2초 저장 대기 중 편집이 사라짐). 아직 읽지 않았거나 읽기 실패 상태면 무동작(종전 재시도 경로).
+        await globalCharacterPresetService.reloadExternal();
+      } else if (key === GLOBAL_STORE_SYNC_KEYS.globalPresets) {
+        await globalPresetService.reloadExternal();
+      } else if (key === GLOBAL_STORE_SYNC_KEYS.projectTemplates) {
+        await projectTemplateService.reloadExternal();
       } else if (key === 'trash') {
         await trashService.reloadExternal();
       } else if (key === 'session-meta') {

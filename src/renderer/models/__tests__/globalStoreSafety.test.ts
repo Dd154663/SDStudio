@@ -111,6 +111,7 @@ import {
   installGlobalStoreHiddenFlush,
   __resetGlobalStoreHiddenFlushForTest,
 } from '../globalStoreFlush';
+import { mergeById, mergeStringSet, canonicalJson } from '../storeMerge';
 import { GlobalPresetService } from '../GlobalPresetService';
 import { GlobalCharacterPresetService } from '../GlobalCharacterPresetService';
 import { ProjectTemplateService } from '../ProjectTemplateService';
@@ -624,6 +625,324 @@ describe('Android 보강 B — 백그라운드 전환 때 글로벌 저장소 �
       { flushSave: async () => void calls.push('b') },
     ]);
     expect(calls).toEqual(['a', 'b']);
+  });
+});
+
+// =====================================================================
+describe('여러 창 동기화 — 병합 순수 함수(storeMerge)', () => {
+  type It = { id: string; v: number; k?: string };
+  const it = (id: string, v: number): It => ({ id, v });
+
+  test('다른 창 추가 → 받아들여 뒤에 붙임 / 이 창 추가 → 유지', () => {
+    const base = [it('a', 1)];
+    const local = [it('a', 1), it('mine', 1)];
+    const remote = [it('a', 1), it('theirs', 1)];
+    expect(mergeById(base, local, remote).map((x) => x.id)).toEqual(['a', 'mine', 'theirs']);
+  });
+
+  test('다른 창이 지움 — local 이 base 와 같으면 지움, 고쳤으면 유지', () => {
+    const base = [it('a', 1), it('b', 1)];
+    const local = [it('a', 1), it('b', 2)];
+    const remote: It[] = [];
+    expect(mergeById(base, local, remote)).toEqual([it('b', 2)]);
+  });
+
+  test('이 창이 지움 → remote 가 고쳤어도 지운 채 유지', () => {
+    const base = [it('a', 1), it('b', 1)];
+    const local = [it('a', 1)];
+    const remote = [it('a', 1), it('b', 9)];
+    expect(mergeById(base, local, remote)).toEqual([it('a', 1)]);
+  });
+
+  test('양쪽에 있음 — local 이 base 와 같으면 remote, 다르면 local', () => {
+    const base = [it('a', 1), it('b', 1)];
+    const local = [it('a', 1), it('b', 5)];
+    const remote = [it('a', 7), it('b', 8)];
+    expect(mergeById(base, local, remote)).toEqual([it('a', 7), it('b', 5)]);
+  });
+
+  test('순서 = local 순서 유지, 다른 창 추가분은 remote 순서로 뒤에', () => {
+    const base = [it('a', 1), it('b', 1)];
+    const local = [it('b', 1), it('a', 1)];
+    const remote = [it('x', 1), it('a', 1), it('y', 1), it('b', 1)];
+    expect(mergeById(base, local, remote).map((x) => x.id)).toEqual(['b', 'a', 'x', 'y']);
+  });
+
+  test('키 순서만 다른 항목은 같은 값(고치지 않은 것으로 본다)', () => {
+    const base = [{ id: 'a', v: 1, k: 'p' }];
+    const local = [{ k: 'p', v: 1, id: 'a' } as It];
+    const remote = [{ id: 'a', v: 2, k: 'p' }];
+    expect(mergeById(base, local, remote)).toEqual([{ id: 'a', v: 2, k: 'p' }]);
+    expect(canonicalJson({ b: 1, a: { d: 1, c: undefined } })).toBe('{"a":{"d":1},"b":1}');
+  });
+
+  test('base 가 비어 있으면(신규 창) 이 창·다른 창 항목 모두 유지(지우지 않음)', () => {
+    expect(mergeById([], [it('m', 1)], [it('t', 1)]).map((x) => x.id)).toEqual(['m', 't']);
+  });
+
+  test('문자열 집합 — 추가는 받아들이고, 다른 창 삭제는 반영, 이 창 삭제는 유지', () => {
+    const base = ['A', 'B', 'C'];
+    const local = ['A', 'C', 'L']; // B 를 이 창이 지움, L 추가
+    const remote = ['A', 'B', 'R']; // C 를 다른 창이 지움, R 추가
+    expect(mergeStringSet(base, local, remote)).toEqual(['A', 'L', 'R']);
+    expect(mergeStringSet([], ['x', 'x'], ['x', 'y'])).toEqual(['x', 'y']);
+  });
+});
+
+// =====================================================================
+describe('여러 창 동기화 — StoreFile.reloadExternal', () => {
+  type It = { id: string; v: number };
+  let mem: It[] = [];
+  const IF = 'idstore.json';
+  const idBody = (items: It[]) => JSON.stringify({ items });
+  const makeIdStore = (afterWrite?: () => void) =>
+    new StoreFile<{ items: It[] }>(
+      {
+        file: IF,
+        label: '테스트 id 저장소',
+        parse: (raw) => {
+          const j = JSON.parse(raw);
+          return j && Array.isArray(j.items) ? j : null;
+        },
+        countItems: (s) => s.items.length,
+        serialize: () => JSON.stringify({ items: mem }),
+        saveDelayMs: 30,
+        afterWrite,
+      },
+      deps,
+    );
+  const handlers = () => {
+    const calls: { kind: string; remote: any; base: any }[] = [];
+    return {
+      calls,
+      h: {
+        replace: (remote: { items: It[] }) => {
+          calls.push({ kind: 'replace', remote, base: undefined });
+          mem = remote.items;
+        },
+        merge: (remote: { items: It[] }, base: { items: It[] } | null) => {
+          calls.push({ kind: 'merge', remote, base });
+          mem = mergeById(base?.items ?? [], mem, remote.items);
+        },
+      },
+    };
+  };
+  beforeEach(() => {
+    mem = [];
+  });
+
+  test('저장 안 된 변경 없음 → 디스크 내용으로 교체, 쓰지 않음', async () => {
+    files.set(IF, idBody([{ id: 'a', v: 1 }]));
+    const s = makeIdStore();
+    mem = (await s.load() as any).data.items;
+    files.set(IF, idBody([{ id: 'a', v: 2 }])); // 다른 창 저장
+    ops.length = 0;
+    const { calls, h } = handlers();
+    expect(await s.reloadExternal(h)).toBe('replaced');
+    expect(calls.map((c) => c.kind)).toEqual(['replace']);
+    expect(mem).toEqual([{ id: 'a', v: 2 }]);
+    expect(s.dirty).toBe(false);
+    expect(ops).toEqual([]);
+    // 같은 내용으로 다시 알림이 와도 무동작
+    expect(await s.reloadExternal(h)).toBe('unchanged');
+  });
+
+  test('dirty → base·remote 를 넘겨 병합, base 는 remote 로 갱신, 병합 결과를 저장', async () => {
+    files.set(IF, idBody([{ id: 'a', v: 1 }, { id: 'b', v: 1 }]));
+    const s = makeIdStore();
+    mem = (await s.load() as any).data.items;
+    mem = [{ id: 'a', v: 1 }, { id: 'b', v: 5 }]; // 이 창 편집(2초 대기 중)
+    s.schedule();
+    files.set(IF, idBody([{ id: 'a', v: 9 }, { id: 'b', v: 1 }, { id: 'c', v: 1 }])); // 다른 창 저장
+    const { calls, h } = handlers();
+    expect(await s.reloadExternal(h)).toBe('merged');
+    expect(calls[0].base).toEqual({ items: [{ id: 'a', v: 1 }, { id: 'b', v: 1 }] });
+    expect(mem).toEqual([{ id: 'a', v: 9 }, { id: 'b', v: 5 }, { id: 'c', v: 1 }]);
+    expect(s.dirty).toBe(true);
+    await s.flush();
+    expect(JSON.parse(files.get(IF)!).items).toEqual(mem);
+    // base 가 remote 로 갱신됐다 — 같은 원문 알림은 무동작
+    files.set(IF, idBody([{ id: 'a', v: 9 }, { id: 'b', v: 1 }, { id: 'c', v: 1 }]));
+    mem = [...mem, { id: 'd', v: 1 }];
+    s.schedule();
+    const second = handlers();
+    expect(await s.reloadExternal(second.h)).toBe('merged');
+    // 두 번째 병합의 기준은 방금 이 창이 쓴 내용
+    expect(second.calls[0].base.items.map((x: It) => x.v)).toEqual([9, 5, 1]);
+    s.cancelScheduled();
+  });
+
+  test('missing(신규) 창이 알림으로 파일을 읽으면 정상 상태 — 다음 저장이 쓰기 충돌로 막히지 않음', async () => {
+    const s = makeIdStore();
+    await s.load(); // 없음
+    mem = [{ id: 'mine', v: 1 }];
+    s.schedule(); // dirty
+    files.set(IF, idBody([{ id: 'theirs', v: 1 }])); // 다른 창이 먼저 만듦
+    const { calls, h } = handlers();
+    expect(await s.reloadExternal(h)).toBe('merged');
+    expect(calls[0].base).toBeNull(); // 기준 = 빈 목록
+    expect(mem.map((x) => x.id)).toEqual(['mine', 'theirs']);
+    expect(await s.saveNow()).toBe(true);
+    expect(s.loadFailed).toBe(false);
+    expect(notices.map((n) => n.type)).not.toContain('write-conflict');
+    expect(JSON.parse(files.get(IF)!).items.map((x: It) => x.id)).toEqual(['mine', 'theirs']);
+  });
+
+  test('missing 이고 변경 없음 → 교체 후 정상 상태', async () => {
+    const s = makeIdStore();
+    await s.load();
+    files.set(IF, idBody([{ id: 't', v: 1 }]));
+    const { h } = handlers();
+    expect(await s.reloadExternal(h)).toBe('replaced');
+    mem = [...mem, { id: 'n', v: 1 }];
+    expect(await s.saveNow()).toBe(true);
+    expect(notices.map((n) => n.type)).not.toContain('write-conflict');
+  });
+
+  test('아직 읽지 않음·읽기 실패 차단 → skipped(파일을 읽지도 않음)', async () => {
+    const s = makeIdStore();
+    const { h, calls } = handlers();
+    expect(await s.reloadExternal(h)).toBe('skipped');
+    files.set(IF, idBody([{ id: 'a', v: 1 }]));
+    readFails.set(IF, Infinity);
+    await s.load();
+    expect(s.loadFailed).toBe(true);
+    backend.readFile.mockClear();
+    expect(await s.reloadExternal(h)).toBe('skipped');
+    expect(backend.readFile).not.toHaveBeenCalled();
+    expect(calls).toEqual([]);
+  }, 10000);
+
+  test('다시 읽기 실패 → 메모리 유지(kept), 쓰지 않음', async () => {
+    files.set(IF, idBody([{ id: 'a', v: 1 }]));
+    const s = makeIdStore();
+    mem = (await s.load() as any).data.items;
+    readFails.set(IF, Infinity);
+    ops.length = 0;
+    const { h, calls } = handlers();
+    expect(await s.reloadExternal(h)).toBe('kept');
+    expect(calls).toEqual([]);
+    expect(ops).toEqual([]);
+  }, 10000);
+
+  test('교체만 한 창은 다른 창에 다시 알리지 않는다(알림 왕복 없음)', async () => {
+    const after = jest.fn();
+    files.set(IF, idBody([{ id: 'a', v: 1 }]));
+    const s = makeIdStore(after);
+    mem = (await s.load() as any).data.items;
+    files.set(IF, idBody([{ id: 'a', v: 2 }]));
+    await s.reloadExternal(handlers().h);
+    await s.flush();
+    expect(after).not.toHaveBeenCalled();
+  });
+});
+
+// =====================================================================
+describe('여러 창 동기화 — 서비스', () => {
+  const GC = 'global_character_presets.json';
+  const entry = (id: string, name: string) => ({
+    id,
+    name,
+    createdAt: 1,
+    updatedAt: 1,
+    preset: { name, vibes: [], characterReferences: [] },
+  });
+
+  test('글로벌 캐릭터: 편집 대기 중 다른 창 알림 → 이 창 편집 유지 + 다른 창 추가분 반영', async () => {
+    files.set(GC, JSON.stringify({ version: 1, presets: [entry('x', 'X'), entry('y', 'Y')], folders: ['F'] }));
+    const svc = new GlobalCharacterPresetService();
+    await svc.load();
+    await svc.rename('x', 'X2'); // 2초 저장 대기 중
+    await svc.createFolder('내 폴더');
+    // 다른 창: Y 를 지우고(이 창은 Y 를 안 건드림) Z 와 폴더 G 를 추가해 저장
+    files.set(
+      GC,
+      JSON.stringify({ version: 1, presets: [entry('x', 'X'), entry('z', 'Z')], folders: ['F', 'G'] }),
+    );
+    ops.length = 0;
+    await svc.reloadExternal();
+    expect(svc.presets.map((p) => p.name)).toEqual(['X2', 'Z']);
+    expect(svc.folders).toEqual(['F', '내 폴더', 'G']);
+    expect(ops).toEqual([]); // 병합 자체는 쓰지 않고 저장을 예약
+    await svc.flushSave();
+    const saved = JSON.parse(files.get(GC)!);
+    expect(saved.presets.map((p: any) => p.name)).toEqual(['X2', 'Z']);
+    expect(saved.folders).toEqual(['F', '내 폴더', 'G']);
+  });
+
+  test('글로벌 캐릭터: 변경 없는 창은 교체만(쓰기 0)', async () => {
+    files.set(GC, JSON.stringify({ version: 1, presets: [entry('x', 'X')], folders: [] }));
+    const svc = new GlobalCharacterPresetService();
+    await svc.load();
+    files.set(GC, JSON.stringify({ version: 1, presets: [entry('x', 'X'), entry('n', 'N')], folders: [] }));
+    ops.length = 0;
+    await svc.reloadExternal();
+    expect(svc.presets.map((p) => p.name)).toEqual(['X', 'N']);
+    await svc.flushSave();
+    expect(ops).toEqual([]);
+    expect(backend.notifyGlobalStoreChanged).not.toHaveBeenCalled();
+  });
+
+  test('글로벌 프리셋: 외부 재로드는 v2 면 통합 이관·저장을 하지 않고, 저장 성공 뒤 알림 키를 보낸다', async () => {
+    const GP = 'global_presets.json';
+    const p = (id: string, name: string) => ({ id, name, workflowType: 'SDImageGen', isDefault: false, createdAt: 1, updatedAt: 1, preset: {} });
+    files.set(GP, JSON.stringify({ version: 2, presets: [p('a', 'A')] }));
+    const svc = new GlobalPresetService();
+    await svc.load();
+    files.set(GP, JSON.stringify({ version: 2, presets: [p('a', 'A'), p('b', 'B')] }));
+    ops.length = 0;
+    await svc.reloadExternal();
+    expect(svc.presets.map((x) => x.name)).toEqual(['A', 'B']);
+    expect(ops).toEqual([]);
+    await svc.rename('a', 'A2');
+    await svc.flushSave();
+    expect(backend.notifyGlobalStoreChanged).toHaveBeenCalledWith('global-presets');
+  });
+
+  test('글로벌 프리셋: 아직 읽지 않았으면 무동작', async () => {
+    const svc = new GlobalPresetService();
+    await svc.reloadExternal();
+    expect(backend.readFile).not.toHaveBeenCalled();
+    expect(svc.loaded).toBe(false);
+  });
+
+  test('프로젝트 템플릿: 아직 읽지 않았으면(템플릿 화면을 연 적 없음) 무동작, 읽은 뒤엔 병합', async () => {
+    const PT = 'project_templates.json';
+    const t = (id: string, name: string) => ({ id, name, createdAt: 1, updatedAt: 1, preset: null, characterPresets: [], vibes: [], characterReferences: [], scenes: [] });
+    files.set(PT, JSON.stringify({ version: 1, templates: [t('t1', 'T1')] }));
+    const svc = new ProjectTemplateService();
+    await svc.reloadExternal();
+    expect(backend.readFile).not.toHaveBeenCalled();
+    await svc.ensureLoaded();
+    await svc.patchPreset('t1', { frontPrompt: 'mine' }); // 대기 중
+    files.set(PT, JSON.stringify({ version: 1, templates: [t('t1', 'T1'), t('t2', 'T2')] }));
+    await svc.reloadExternal();
+    expect(svc.list().map((x) => x.name)).toEqual(['T1', 'T2']);
+    expect(svc.get('t1')?.preset?.frontPrompt).toBe('mine');
+    await svc.flushSave();
+    expect(backend.notifyGlobalStoreChanged).toHaveBeenCalledWith('project-templates');
+  });
+
+  test('프로젝트 템플릿: await 도중 목록이 교체돼도 편집이 사라지지 않음(touch 방어)', async () => {
+    const PT = 'project_templates.json';
+    const t = (id: string, name: string) => ({ id, name, createdAt: 1, updatedAt: 1, preset: null, characterPresets: [], vibes: [], characterReferences: [], scenes: [] });
+    files.set(PT, JSON.stringify({ version: 1, templates: [t('t1', 'T1')] }));
+    const svc = new ProjectTemplateService();
+    await svc.ensureLoaded();
+    // 이미지 저장 await 도중 다른 창 저장 알림으로 교체되는 상황
+    let release: () => void = () => {};
+    backend.writeDataFile.mockImplementationOnce(
+      () => new Promise<void>((r) => (release = () => r())),
+    );
+    const adding = svc.addVibe('t1', 'AAAA');
+    await new Promise((r) => setTimeout(r, 0));
+    files.set(PT, JSON.stringify({ version: 1, templates: [t('t1', 'T1-renamed'), t('t2', 'T2')] }));
+    await svc.reloadExternal(); // 이 창은 아직 변경 없음 → 교체
+    release();
+    await adding;
+    expect(svc.list().map((x) => x.id)).toEqual(['t1', 't2']);
+    expect(svc.get('t1')?.vibes).toHaveLength(1);
+    await svc.flushSave();
   });
 });
 

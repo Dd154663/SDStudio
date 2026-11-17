@@ -23,8 +23,9 @@ import {
 } from './types';
 import { dataUriToBase64 } from './ImageService';
 import { imageExtFromBase64 } from './imageFormats';
-import { StoreFile } from './storeFile';
+import { StoreFile, GLOBAL_STORE_SYNC_KEYS } from './storeFile';
 import { globalStoreDeps } from './globalStoreDeps';
+import { mergeById } from './storeMerge';
 import {
   collectTemplateImageTokens,
   imageFileExt,
@@ -146,6 +147,10 @@ export class ProjectTemplateService extends EventTarget {
         return JSON.stringify(store);
       },
       saveDelayMs: 2000,
+      // 여러 창 동기화(2026-11-17 묶음 2): 다른 창이 이 저장소를 다시 읽게 알린다(bootstrap 수신부 → reloadExternal)
+      afterWrite: () => {
+        backend.notifyGlobalStoreChanged(GLOBAL_STORE_SYNC_KEYS.projectTemplates).catch(() => {});
+      },
     },
     globalStoreDeps,
   );
@@ -156,6 +161,40 @@ export class ProjectTemplateService extends EventTarget {
   }
 
   // ---------- lifecycle ----------
+
+  /** 파일 내용 → 메모리 목록(load·다른 창 재로드·병합 기준이 같은 규칙을 쓴다) */
+  private static normalizeTemplates(json: IProjectTemplateStore | null): IProjectTemplateEntry[] {
+    return json && Array.isArray(json.templates)
+      ? json.templates
+          .filter(
+            (t) =>
+              t && typeof t.id === 'string' && typeof t.name === 'string',
+          )
+          .map((t: any) => ({
+            ...t,
+            // 구형(프리셋 목록형) 데이터 호환: 첫 항목을 1벌로 승격
+            preset:
+              t.preset ??
+              (Array.isArray(t.presets) ? (t.presets[0] ?? null) : null),
+            presets: undefined,
+            characterPresets: Array.isArray(t.characterPresets)
+              ? t.characterPresets
+              : [],
+            // 구 데이터는 두 영역이 없음 → 빈 배열(호환 안전)
+            vibes: Array.isArray(t.vibes) ? t.vibes : [],
+            characterReferences: Array.isArray(t.characterReferences)
+              ? t.characterReferences
+              : [],
+            scenes: Array.isArray(t.scenes) ? t.scenes : [],
+            // 배지 색 문자열 방어
+            badgeColor:
+              typeof t.badgeColor === 'string' && t.badgeColor
+                ? t.badgeColor
+                : undefined,
+          }))
+      : [];
+  }
+
   async load() {
     const res = await this.store.load();
     if (res.keepMemory) return; // 재로드 실패 — 이미 가진 목록 유지
@@ -166,42 +205,33 @@ export class ProjectTemplateService extends EventTarget {
       this.dispatchEvent(new CustomEvent('changed', {}));
       return;
     }
-    {
-      const json: IProjectTemplateStore | null =
-        res.kind === 'ok' || res.kind === 'recovered' ? res.data : null;
-      this.templates =
-        json && Array.isArray(json.templates)
-          ? json.templates
-              .filter(
-                (t) =>
-                  t && typeof t.id === 'string' && typeof t.name === 'string',
-              )
-              .map((t: any) => ({
-                ...t,
-                // 구형(프리셋 목록형) 데이터 호환: 첫 항목을 1벌로 승격
-                preset:
-                  t.preset ??
-                  (Array.isArray(t.presets) ? (t.presets[0] ?? null) : null),
-                presets: undefined,
-                characterPresets: Array.isArray(t.characterPresets)
-                  ? t.characterPresets
-                  : [],
-                // 구 데이터는 두 영역이 없음 → 빈 배열(호환 안전)
-                vibes: Array.isArray(t.vibes) ? t.vibes : [],
-                characterReferences: Array.isArray(t.characterReferences)
-                  ? t.characterReferences
-                  : [],
-                scenes: Array.isArray(t.scenes) ? t.scenes : [],
-                // 배지 색 문자열 방어
-                badgeColor:
-                  typeof t.badgeColor === 'string' && t.badgeColor
-                    ? t.badgeColor
-                    : undefined,
-              }))
-          : [];
-    }
+    this.templates = ProjectTemplateService.normalizeTemplates(
+      res.kind === 'ok' || res.kind === 'recovered' ? res.data : null,
+    );
     this.loaded = true;
     this.dispatchEvent(new CustomEvent('changed', {}));
+  }
+
+  /**
+   * 다른 창이 저장했다는 알림으로 다시 읽는다(여러 창 동기화). 아직 읽지 않았거나(이 창에서 템플릿 화면을 연 적 없음)
+   * 읽기 실패 상태면 무동작 — 종전 ensureLoaded 경로가 나중에 최신본을 읽는다.
+   * 저장 안 된 변경이 없으면 교체, 있으면 항목(id) 단위 병합 — 재로드만으로는 쓰지 않는다.
+   */
+  async reloadExternal() {
+    if (!this.loaded) return;
+    const r = await this.store.reloadExternal({
+      replace: (remote) => {
+        this.templates = ProjectTemplateService.normalizeTemplates(remote);
+      },
+      merge: (remote, base) => {
+        this.templates = mergeById(
+          ProjectTemplateService.normalizeTemplates(base),
+          this.templates,
+          ProjectTemplateService.normalizeTemplates(remote),
+        );
+      },
+    });
+    if (r === 'replaced' || r === 'merged') this.dispatchEvent(new CustomEvent('changed', {}));
   }
 
   // 읽기 실패(loaded=false)면 부를 때마다 다시 읽는다 — 템플릿 관리·생성 창 진입이 곧 재시도
@@ -257,7 +287,17 @@ export class ProjectTemplateService extends EventTarget {
 
   private touch(entry: IProjectTemplateEntry) {
     entry.updatedAt = Date.now();
-    this.templates = [...this.templates];
+    if (this.templates.includes(entry)) {
+      this.templates = [...this.templates];
+    } else {
+      // 이미지 저장 등 await 도중 다른 창 저장으로 목록이 다시 읽혀(reloadExternal) 이 객체가 목록에서 빠졌다 — 방금 한 편집이
+      // 조용히 사라지지 않게 같은 id 자리에 넣거나(이 창 편집 우선 = 병합 규칙과 같음), 다른 창이 지웠으면 뒤에 붙인다.
+      const i = this.templates.findIndex((t) => t.id === entry.id);
+      this.templates =
+        i >= 0
+          ? this.templates.map((t, k) => (k === i ? entry : t))
+          : [...this.templates, entry];
+    }
     this.scheduleSave();
     this.dispatchEvent(new CustomEvent('changed', {}));
   }
