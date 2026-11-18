@@ -2463,7 +2463,7 @@ const ProjectDrawer = observer(() => {
                   }}
                   className="btn-ghost p-2 rounded-md text-muted hover:text-red-500"
                 >
-                  <ActionIcon id="delete" size={15} />
+                  <ActionIcon id="delete-session" size={15} />
                 </button>
               </Tooltip>
             </div>

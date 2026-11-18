@@ -76,7 +76,7 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'import-image', name: '이미지 프롬프트 추출', tier: 'mobile-primary', v2Label: '프롬프트 추출', group: 'edit' },
   // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환
   { id: 'artist-tag', name: '아티스트 태깅', label: '작가 태깅', pcOnly: true, tier: 'overflow', portable: true, group: 'edit' },
-  { id: 'scene-search', name: '씬 검색', tier: 'primary', group: 'navigate' },
+  { id: 'scene-search', name: '씬 필터', tier: 'primary', group: 'navigate' },
   { id: 'scene-find', name: '씬 찾기', tier: 'overflow', group: 'navigate' },
   { id: 'image-review', name: '이미지 검수', tier: 'overflow', group: 'navigate' },
   { id: 'artist-breakdown', name: '작가 분해', tier: 'overflow', group: 'edit' },

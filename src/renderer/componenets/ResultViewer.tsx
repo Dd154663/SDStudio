@@ -28,7 +28,7 @@ import {
   FaCheck,
   FaDice,
   FaDownload,
-  FaFolder,
+  FaFolderOpen,
   FaStar,
   FaTrash,
   FaShareSquare,
@@ -1478,7 +1478,7 @@ const ResultDetailView = observer(
       ? [
           { key: 'download', name: '다운로드', icon: <ActionIcon id="download" />, onTap: () => void actDownloadFile() },
           { key: 'delete', name: '삭제', icon: <ActionIcon id="delete" />, tone: 'danger', onTap: actDeleteFile },
-          { key: 'settings', name: '설정 추출', icon: <ActionIcon id="gen-settings" />, onTap: actLoadSettings, disabled: !image },
+          { key: 'settings', name: '설정 적용', icon: <ActionIcon id="gen-settings" />, onTap: actLoadSettings, disabled: !image },
           {
             key: 'fav',
             name: '즐겨찾기',
@@ -2736,7 +2736,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                       );
                     }}
                   >
-                    <FaFolder />
+                    <FaFolderOpen />
                   </button>
                 </Tooltip>
               )}

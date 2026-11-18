@@ -100,13 +100,13 @@ describe('아이콘 의미 사전', () => {
 describe('Tooltip 이 아이콘 버튼에 이름을 붙인다', () => {
   test('aria-label 이 없는 버튼에는 툴팁 문구를 aria-label 로', () => {
     render(
-      <Tooltip content="씬 검색">
+      <Tooltip content="씬 필터">
         <button type="button">
           <FaPlus />
         </button>
       </Tooltip>,
     );
-    expect(screen.getByRole('button', { name: '씬 검색' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '씬 필터' })).toBeTruthy();
   });
 
   test('자식이 정한 aria-label 이 우선', () => {

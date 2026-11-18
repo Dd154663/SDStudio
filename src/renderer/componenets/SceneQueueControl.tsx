@@ -2767,7 +2767,7 @@ const QueueControl = observer(
         </Tooltip>
       ),
       'multi-select': (
-        <Tooltip content="드래그 선택 모드">
+        <Tooltip content="다중 선택">
           <button
             className={`round-button${iconMode && selectedCount === 0 ? ' icon-only' : ''} ${
               appState.sceneSelectionMode ? 'back-sky toggle-on' : 'back-gray'
@@ -2848,7 +2848,7 @@ const QueueControl = observer(
       // 'artist-tag'·'scene-trash' 는 portable 공유 JSX(PortableToolbarButtons)로
       // 이관(B군 승격) — buttonNode 의 shared 폴백이 렌더한다.
       'scene-search': (
-        <Tooltip content="씬 검색">
+        <Tooltip content="씬 필터">
           <button
             className={`round-button icon-only ${showSceneSearch ? 'back-sky toggle-on' : 'back-gray'}`}
             aria-pressed={showSceneSearch}
@@ -3265,7 +3265,7 @@ const QueueControl = observer(
               data-esc-cancel
               type="text"
               className="flex-1 px-2 py-1 border line-color rounded bg-[var(--c-input-bg)] text-default outline-none focus:border-sky-500"
-              placeholder="씬 이름 검색..."
+              placeholder="씬 이름 필터..."
               value={sceneSearchQuery}
               onChange={(e) => setSceneSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -3277,7 +3277,7 @@ const QueueControl = observer(
             />
             <button
               className="round-button icon-only back-gray"
-              aria-label="씬 검색 닫기"
+              aria-label="씬 필터 닫기"
               onClick={() => {
                 setSceneSearchQuery('');
                 setShowSceneSearch(false);
@@ -3573,9 +3573,9 @@ const QueueControl = observer(
                         <input
                           ref={sceneSearchRef}
                           type="text"
-                          aria-label="씬 검색"
+                          aria-label="씬 필터"
                           className="flex-1 min-w-0 w-0 bg-transparent border-0 outline-none text-[13px] text-default"
-                          placeholder="씬 검색"
+                          placeholder="씬 필터"
                           value={sceneSearchQuery}
                           onChange={(e) => setSceneSearchQuery(e.target.value)}
                         />
