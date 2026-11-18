@@ -22,38 +22,33 @@ import {
   FaClone,
   FaCog,
   FaCopy,
-  FaCrosshairs,
   FaEdit,
   FaEllipsisH,
-  FaExchangeAlt,
-  FaEyeDropper,
   FaFileArchive,
   FaFileExport,
   FaFileImage,
   FaFileImport,
   FaFilm,
-  FaFilter,
   FaFolderMinus,
   FaGoogleDrive,
   FaGripVertical,
   FaHeart,
+  FaLayerGroup,
+  FaMapMarkerAlt,
   FaMicrochip,
   FaPaintBrush,
   FaPen,
   FaPlus,
-  FaPlusSquare,
   FaPuzzlePiece,
   FaQuestion,
   FaRegCalendarPlus,
   FaRegCalendarTimes,
-  FaRulerCombined,
+  FaSearch,
   FaShare,
-  FaSitemap,
   FaSlidersH,
   FaStar,
   FaSwatchbook,
   FaTags,
-  FaTasks,
   FaThLarge,
   FaThumbtack,
   FaTrash,
@@ -67,42 +62,57 @@ import {
   FaVectorSquare,
   FaWindowRestore,
 } from 'react-icons/fa';
+import {
+  MdAspectRatio,
+  MdCallSplit,
+  MdFindReplace,
+  MdImageSearch,
+  MdPostAdd,
+} from 'react-icons/md';
 
-// 합성 아이콘 — 본체 FaFileArchive(백업) 우하단에 본체의 55% 크기 FaShare(내보내기 화살표)를 겹친다.
+// 합성 아이콘 — 본체 아이콘 우하단에 작은 덧붙임 아이콘(본체의 ratio 크기)을 겹친다.
 // 씬 툴바 작가 접두 전환 아이콘과 같은 방식(relative inline-flex + absolute 우하단). 배경 원은 두지 않는다:
-// 이 키는 무배경 icon-button·back-gray·btn-ghost·강조(활성 탭) 칩 등 배경이 서로 다른 자리에서 쓰여
+// 합성 키는 무배경 icon-button·back-gray·btn-ghost·강조(활성 탭) 칩 등 배경이 서로 다른 자리에서 쓰여
 // 한 토큰으로 가리면 어딘가에서 얼룩처럼 보인다. 색은 currentColor 를 그대로 따른다.
-// size(숫자)에 비례해 작은 화살표 크기·위치를 정하고, 문자열·미지정이면 em 기준(기본 1em)으로 맞춘다.
+// size(숫자)에 비례해 덧붙임 크기·위치를 정하고, 문자열·미지정이면 em 기준(기본 1em)으로 맞춘다.
+// right·bottom 은 본체 밖으로 삐져나오는 정도(본체 크기 대비 비율 = em).
 // className·style 은 감싸는 span(여백·색 클래스가 합성 전체에 적용), 나머지 속성은 본체 아이콘에.
-const BACKUP_EXPORT_BADGE_RATIO = 0.55;
-export function BackupExportIcon({
-  size,
-  className,
-  style,
-  ...rest
-}: IconBaseProps) {
-  const numeric = typeof size === 'number';
-  const badge = numeric
-    ? Math.max(6, Math.round(size * BACKUP_EXPORT_BADGE_RATIO))
-    : `${BACKUP_EXPORT_BADGE_RATIO}em`;
-  const offset = (k: number) =>
-    numeric ? -Math.round(size * k) : `-${k}em`;
-  return createElement(
-    'span',
-    {
-      className: `relative inline-flex flex-none${className ? ` ${className}` : ''}`,
-      style,
-    },
-    createElement(FaFileArchive, { ...rest, size: size ?? '1em' }),
-    createElement(FaShare, {
-      size: badge,
-      color: rest.color,
-      'aria-hidden': true,
-      className: 'absolute',
-      style: { right: offset(0.3), bottom: offset(0.15) },
-    }),
-  );
+function composeBadgeIcon(
+  Base: IconType,
+  Badge: IconType,
+  ratio: number,
+  right: number,
+  bottom: number,
+): IconType {
+  return function BadgedIcon({ size, className, style, ...rest }: IconBaseProps) {
+    const numeric = typeof size === 'number';
+    const badge = numeric
+      ? Math.max(6, Math.round(size * ratio))
+      : `${ratio}em`;
+    const offset = (k: number) =>
+      numeric ? -Math.round(size * k) : `-${k}em`;
+    return createElement(
+      'span',
+      {
+        className: `relative inline-flex flex-none${className ? ` ${className}` : ''}`,
+        style,
+      },
+      createElement(Base, { ...rest, size: size ?? '1em' }),
+      createElement(Badge, {
+        size: badge,
+        color: rest.color,
+        'aria-hidden': true,
+        className: 'absolute',
+        style: { right: offset(right), bottom: offset(bottom) },
+      }),
+    );
+  };
 }
+
+// 백업(FaFileArchive) + 55% 내보내기 화살표(FaShare) — 프로젝트 바 통합 버튼.
+export const BackupExportIcon = composeBadgeIcon(FaFileArchive, FaShare, 0.55, 0.3, 0.15);
+// 북마크(FaBookmark) + 58% 이동 화살표(FaShare) — 북마크된 씬으로 이동(지정·표시 bookmark 와 구분).
+export const BookmarkJumpIcon = composeBadgeIcon(FaBookmark, FaShare, 0.58, 0.32, 0.18);
 
 export const ICON_DICTIONARY = {
   // ── 씬 툴바(sceneToolbarRegistry) ──
@@ -110,22 +120,22 @@ export const ICON_DICTIONARY = {
   'queue-add': FaRegCalendarPlus, // 예약 추가(씬 카드·하단 바·이미지 상세 공통)
   'export-images': FaFileExport, // 이미지 내보내기(앱→파일)
   'quick-export': FaBolt, // 기본 프리셋으로 한 번에 내보내기(번개 = 「빠른」)
-  'batch-process': FaTasks, // 대량 작업 메뉴
+  'batch-process': FaLayerGroup, // 대량 작업 메뉴(겹친 층 = 여러 씬에 한꺼번에)
   'multi-select': FaCheckSquare, // 선택 모드(켜짐=강조 배경, 같은 아이콘)
-  'change-resolution': FaRulerCombined, // 해상도 변경(PC 그룹 툴바는 아이콘, 모바일 클래식 툴바는 글자)
+  'change-resolution': MdAspectRatio, // 해상도 변경(가로세로 비율 틀)(PC 그룹 툴바는 아이콘, 모바일 클래식 툴바는 글자)
   'webp-convert': FaFileImage, // WebP 변환(툴바는 글자 버튼 — 사전 항목만)
-  'import-image': FaEyeDropper, // 이미지에서 프롬프트 추출(메타→설정)
+  'import-image': MdImageSearch, // 이미지에서 프롬프트 추출(이미지 속을 들여다봄, 메타→설정)
   'artist-tag': FaTags, // 아티스트 태깅(그림체 분석)
-  'scene-search': FaFilter, // 씬 검색(목록을 거른다)
-  'scene-find': FaCrosshairs, // 씬 찾기(거르지 않고 위치로 이동)
+  'scene-search': FaSearch, // 씬 검색(이름으로 목록을 좁힌다)
+  'scene-find': FaMapMarkerAlt, // 씬 위치로 이동(목록을 좁히지 않고 그 씬 자리로)
   'image-review': FaClipboardCheck, // 이미지 검수
-  'artist-breakdown': FaSitemap, // 작가 분해(태그를 하나씩 나눠 예약)
+  'artist-breakdown': MdCallSplit, // 작가 분해(갈라지는 화살표 — 태그를 하나씩 나눠 예약)
   'artist-prefix-toggle': FaAt, // 작가 태그 artist: 접두 전환
-  'bookmark-jump': FaBookmark, // 북마크된 씬으로 이동(bookmark 와 같은 모양)
+  'bookmark-jump': BookmarkJumpIcon, // 북마크된 씬으로 이동(책갈피+작은 이동 화살표 합성 — bookmark 와 구분)
   'scene-trash': FaTrashRestore, // 씬 휴지통 열기
   'empty-image-trash': FaBroom, // 삭제 이미지 일괄 비우기
-  'find-replace': FaExchangeAlt, // 찾기 및 변환
-  'batch-insert': FaPlusSquare, // 일괄 삽입(선택한 씬 프롬프트에 태그 넣기 — 씬 추가 FaPlus 와 구분)
+  'find-replace': MdFindReplace, // 찾기 및 변환(돋보기+순환 화살표)
+  'batch-insert': MdPostAdd, // 일괄 삽입(문서에 더하기 — 선택한 씬 프롬프트에 태그 넣기, 씬 추가 FaPlus 와 구분)
   'shortcut-help': FaQuestion, // 단축키 도움말
   undo: FaUndo, // 되돌리기(전역 스택 — 편집기·붓 자체 되돌리기 버튼도 같은 모양)
   redo: FaRedo, // 다시 실행
@@ -193,6 +203,7 @@ export const EXCLUSIVE_ICONS: {
   { icon: FaPaintBrush, keys: ['inpaint'], meaning: '인페인트' },
   { icon: FaCog, keys: ['preferences'], meaning: '환경설정' },
   { icon: FaHeart, keys: ['artist-favorite'], meaning: '작가 즐겨찾기' },
-  // 단독 FaShare 는 share 전용 — backup-export 합성 아이콘(BackupExportIcon) 안의 작은 화살표만 예외.
+  // 단독 FaShare 는 share 전용 — 합성 아이콘 안의 작은 화살표만 예외:
+  // backup-export(BackupExportIcon)·bookmark-jump(BookmarkJumpIcon). 합성은 사전 값이 별도 컴포넌트라 이 규칙에 걸리지 않는다.
   { icon: FaShare, keys: ['share'], meaning: '모바일 공유' },
 ];

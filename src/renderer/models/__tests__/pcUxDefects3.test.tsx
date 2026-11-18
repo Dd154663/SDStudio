@@ -124,7 +124,7 @@ describe('R2 작은 아이콘 버튼 — 아이콘 14px 이상, 흐린 색 미�
     const sqc = read('SceneQueueControl.tsx');
     expect(sqc).not.toContain('rounded-md clickable text-faint');
     expect(sqc).toMatch(/aria-label="검색어 지우기"[\s\S]{0,400}<FaTimes size=\{14\}/);
-    expect(sqc).toMatch(/aria-label="씬 찾기·북마크 이동"[\s\S]{0,400}<FaChevronDown size=\{14\}/);
+    expect(sqc).toMatch(/aria-label="씬 위치·북마크 이동"[\s\S]{0,400}<FaChevronDown size=\{14\}/);
     expect(read('ConfigScreen.tsx')).toMatch(/aria-label=\{`\$\{profile\.name\} 이름 변경`\}[\s\S]{0,400}<FaPen size=\{14\}/);
     expect(read('SessionSelect.tsx')).toMatch(/이 프리셋 해제 \(연결 항목 함께 제거\)[\s\S]{0,800}<FaTimes size=\{14\}/);
   });

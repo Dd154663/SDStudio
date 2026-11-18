@@ -2559,8 +2559,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             : { key: 'download', name: '다운로드', icon: <ActionIcon id="download" />, onTap: actDownload },
           {
             key: 'bookmark',
-            name: '북마크',
-            icon: <ActionIcon id="bookmark" />,
+            name: '북마크 이동',
+            icon: <ActionIcon id="bookmark-jump" />,
             tone: bookmarkedImageFilename ? 'accent' : 'default',
             onTap: actGoBookmark,
           },
@@ -2850,7 +2850,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                   data-viewer-toggle="bookmark-jump"
                   onClick={actGoBookmark}
                 >
-                  <ActionIcon id="bookmark" />
+                  <ActionIcon id="bookmark-jump" />
                 </button>
               </Tooltip>
             </div>

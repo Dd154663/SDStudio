@@ -4,6 +4,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import {
+  FaBookmark,
   FaCloud,
   FaCloudDownloadAlt,
   FaCloudUploadAlt,
@@ -16,6 +17,7 @@ import {
 } from 'react-icons/fa';
 import {
   BackupExportIcon,
+  BookmarkJumpIcon,
   EXCLUSIVE_ICONS,
   ICON_DICTIONARY,
   IconId,
@@ -61,6 +63,7 @@ describe('아이콘 의미 사전', () => {
     expect(keysUsing(FaPaintBrush)).toEqual(['inpaint']);
     expect(keysUsing(FaCog)).toEqual(['preferences']);
     expect(keysUsing(FaHeart)).toEqual(['artist-favorite']);
+    // 단독 FaShare 는 share 하나 — 합성(backup-export·bookmark-jump)은 별도 컴포넌트라 여기 걸리지 않는다.
     expect(keysUsing(FaShare)).toEqual(['share']);
   });
 
@@ -90,6 +93,24 @@ describe('아이콘 의미 사전', () => {
     expect(c2.querySelectorAll('svg')[1].getAttribute('width')).toBe('0.55em');
   });
 
+  test('bookmark-jump 는 합성 아이콘(책갈피 본체+58% 화살표) — 지정·표시 bookmark 와 별개', () => {
+    expect(iconOf('bookmark-jump')).toBe(BookmarkJumpIcon);
+    expect(iconOf('bookmark')).toBe(FaBookmark);
+    const { container } = render(<BookmarkJumpIcon size={18} />);
+    const wrap = container.firstElementChild as HTMLElement;
+    expect(wrap.tagName).toBe('SPAN');
+    const svgs = wrap.querySelectorAll('svg');
+    expect(svgs).toHaveLength(2);
+    expect(svgs[0].getAttribute('width')).toBe('18');
+    expect(svgs[1].getAttribute('width')).toBe('10');
+    expect(svgs[1].getAttribute('aria-hidden')).toBe('true');
+    const { container: c2 } = render(<BookmarkJumpIcon />);
+    const badge = c2.querySelectorAll('svg')[1] as unknown as HTMLElement;
+    expect(badge.getAttribute('width')).toBe('0.58em');
+    expect(badge.style.right).toBe('-0.32em');
+    expect(badge.style.bottom).toBe('-0.18em');
+  });
+
   test('사전에 없는 id 는 undefined(퀵 메뉴는 번개로 대신)', () => {
     expect(iconOf('no-such-action')).toBeUndefined();
     expect(iconOf('toString')).toBeUndefined();
@@ -100,13 +121,13 @@ describe('아이콘 의미 사전', () => {
 describe('Tooltip 이 아이콘 버튼에 이름을 붙인다', () => {
   test('aria-label 이 없는 버튼에는 툴팁 문구를 aria-label 로', () => {
     render(
-      <Tooltip content="씬 필터">
+      <Tooltip content="씬 검색">
         <button type="button">
           <FaPlus />
         </button>
       </Tooltip>,
     );
-    expect(screen.getByRole('button', { name: '씬 필터' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '씬 검색' })).toBeTruthy();
   });
 
   test('자식이 정한 aria-label 이 우선', () => {

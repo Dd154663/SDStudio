@@ -2856,7 +2856,7 @@ const QueueControl = observer(
       // 'artist-tag'·'scene-trash' 는 portable 공유 JSX(PortableToolbarButtons)로
       // 이관(B군 승격) — buttonNode 의 shared 폴백이 렌더한다.
       'scene-search': (
-        <Tooltip content="씬 필터">
+        <Tooltip content="씬 검색">
           <button
             className={`round-button icon-only ${showSceneSearch ? 'back-sky toggle-on' : 'back-gray'}`}
             aria-pressed={showSceneSearch}
@@ -2879,10 +2879,10 @@ const QueueControl = observer(
         </Tooltip>
       ),
       'scene-find': (
-        <Tooltip content="필터하지 않고 씬 위치로 이동">
+        <Tooltip content="목록을 좁히지 않고 씬 위치로 이동">
           <button className={`round-button${iconMode ? ' icon-only' : ''} back-gray`} onClick={findScene}>
             <ActionIcon id="scene-find" size={18} />
-            {!iconMode && <span className="ml-1">씬 찾기</span>}
+            {!iconMode && <span className="ml-1">씬 위치로 이동</span>}
           </button>
         </Tooltip>
       ),
@@ -3273,7 +3273,7 @@ const QueueControl = observer(
               data-esc-cancel
               type="text"
               className="flex-1 px-2 py-1 border line-color rounded bg-[var(--c-input-bg)] text-default outline-none focus:border-sky-500"
-              placeholder="씬 이름 필터..."
+              placeholder="씬 이름 검색..."
               value={sceneSearchQuery}
               onChange={(e) => setSceneSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -3285,7 +3285,7 @@ const QueueControl = observer(
             />
             <button
               className="round-button icon-only back-gray"
-              aria-label="씬 필터 닫기"
+              aria-label="씬 검색 닫기"
               onClick={() => {
                 setSceneSearchQuery('');
                 setShowSceneSearch(false);
@@ -3567,7 +3567,7 @@ const QueueControl = observer(
                 <ToolbarOverflowMenu
                   isOpen={v2Menu === 'find'}
                   onClose={() => setV2Menu(null)}
-                  title="찾기·이동"
+                  title="위치·북마크 이동"
                   group="scene"
                   items={['scene-find', 'bookmark-jump']
                     .filter((id) => !!buttonNode(id))
@@ -3581,9 +3581,9 @@ const QueueControl = observer(
                         <input
                           ref={sceneSearchRef}
                           type="text"
-                          aria-label="씬 필터"
+                          aria-label="씬 검색"
                           className="flex-1 min-w-0 w-0 bg-transparent border-0 outline-none text-[13px] text-default"
-                          placeholder="씬 필터"
+                          placeholder="씬 검색"
                           value={sceneSearchQuery}
                           onChange={(e) => setSceneSearchQuery(e.target.value)}
                         />
@@ -3597,10 +3597,10 @@ const QueueControl = observer(
                             <FaTimes size={14} />
                           </button>
                         ) : (
-                          <Tooltip content="씬 찾기·북마크 이동">
+                          <Tooltip content="씬 위치·북마크 이동">
                             <button
                               type="button"
-                              aria-label="씬 찾기·북마크 이동"
+                              aria-label="씬 위치·북마크 이동"
                               className="flex-none w-6 h-[30px] flex items-center justify-center rounded-md clickable text-muted"
                               onClick={() => setV2Menu('find')}
                             >
