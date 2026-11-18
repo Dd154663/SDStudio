@@ -13,12 +13,21 @@ import type { GenericScene } from './types';
 import { stringifyExportJson } from './jsonExport';
 import type { ProjectTemplateEntrySnapshot } from './ProjectTemplateService';
 import { askImportPolicy, notifyImportDone } from './importFlow';
-import { emitGlobalStoreNotice, judgeStoreFile } from './storeFile';
+import { GlobalStoreBlockedError, StoreFile } from './storeFile';
 import { globalStoreDeps } from './globalStoreDeps';
 
 const SIDECAR_PATH = 'templates.json';
 // 사용자 안내용 이름(storeFile 알림)
 const TEMPLATES_STORE_LABEL = '템플릿 지정 목록';
+
+/** 고아 숨김 자동 해제 안내(2026-11-18 T5) — 이름은 몇 개만 보인다 */
+export const TEMPLATE_STORE_TEXT = {
+  hiddenReleased: (names: string[]) => {
+    const shown = names.slice(0, 3).map((n) => `"${n}"`).join(', ');
+    const more = names.length > 3 ? ` 외 ${names.length - 3}개` : '';
+    return `숨겨져 있던 프로젝트 ${names.length}개를 다시 표시했습니다 — ${shown}${more}`;
+  },
+} as const;
 
 // 폴더 기본 템플릿 지정 (프로젝트 상속 v2, 2026-07-16 합의).
 // templateId = ProjectTemplateService 엔티티 id (불변 — 이름변경 캐스케이드 불필요).
@@ -64,6 +73,113 @@ export interface SceneTemplateImportResult {
   trashed: { scene: GenericScene; info: { slot: string; name: string; index: number } }[];
 }
 
+/** templates.json 을 해석한 메모리 형태(parseTemplatesSidecar 결과) */
+export interface TemplatesSidecarData {
+  sceneNames: string[];
+  hiddenNames: string[];
+  quickGenName: string | null;
+  folderTemplates: Record<string, IFolderTemplateEntry>;
+  templateApplications: Record<string, Record<string, ITemplateApplicationRecord>>;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+// 필드가 아예 없거나 null = 구버전·빈 값(정상). 있는데 형식이 다르면 손상
+const absent = (v: unknown) => v === undefined || v === null;
+
+// 적용 기록 로드 방어: 형식이 어긋난 항목은 걸러내고 필드 기본값을 채운다
+// (구버전 데이터는 이 필드가 없어 빈 객체 → 무해).
+function sanitizeApplications(
+  raw: unknown,
+): Record<string, Record<string, ITemplateApplicationRecord>> {
+  const out: Record<string, Record<string, ITemplateApplicationRecord>> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [project, byTpl] of Object.entries(raw as any)) {
+    if (!project || !byTpl || typeof byTpl !== 'object') continue;
+    const inner: Record<string, ITemplateApplicationRecord> = {};
+    for (const [tplId, rec] of Object.entries(byTpl as any)) {
+      if (!tplId || !rec || typeof rec !== 'object') continue;
+      const r = rec as any;
+      // 보호 영역: 알려진 값만 통과 (빈 배열이면 필드 생략)
+      const protect = Array.isArray(r.protectAreas)
+        ? (r.protectAreas.filter(
+            (x: any) => x === 'characterPresets' || x === 'scenes',
+          ) as TemplateProtectArea[])
+        : [];
+      inner[tplId] = {
+        ...(protect.length > 0 ? { protectAreas: protect } : {}),
+        inherited: !!r.inherited,
+        presets: Array.isArray(r.presets)
+          ? r.presets.filter(
+              (p: any) =>
+                p && typeof p.type === 'string' && typeof p.name === 'string',
+            )
+          : [],
+        characterPresetNames: Array.isArray(r.characterPresetNames)
+          ? r.characterPresetNames.filter((n: any) => typeof n === 'string')
+          : [],
+        vibePaths: Array.isArray(r.vibePaths)
+          ? r.vibePaths.filter((n: any) => typeof n === 'string')
+          : [],
+        referencePaths: Array.isArray(r.referencePaths)
+          ? r.referencePaths.filter((n: any) => typeof n === 'string')
+          : [],
+      };
+    }
+    if (Object.keys(inner).length > 0) out[project] = inner;
+  }
+  return out;
+}
+
+/**
+ * templates.json 원문 → 메모리 형태. 손상이면 null(StoreFile 이 손상본 보존 → 사본 복구 → 안내로 처리한다 — .tmp·.bak* 후보에도
+ * 같은 규칙이 쓰인다). 손상 = JSON 이 아님·최상위가 객체가 아님·**있는 필드의 형식이 다름**(sceneTemplates/hiddenSceneTemplates 가
+ * 배열이 아님, quickGenProject 가 문자열이 아님, folderTemplates/templateApplications 가 객체가 아님). 필드가 없거나 null 인 구버전
+ * 파일은 정상(빈 값). 배열·객체 안의 개별 항목이 어긋난 것은 종전대로 항목 단위로 걸러 낸다. (구) templates 필드는 무시.
+ * 해석 중 예외도 손상으로 본다(StoreFile 의 parse throw = 손상).
+ */
+export function parseTemplatesSidecar(text: string): TemplatesSidecarData | null {
+  const raw: any = JSON.parse(text);
+  if (!isPlainObject(raw)) return null;
+  const st = raw.sceneTemplates;
+  const hs = raw.hiddenSceneTemplates;
+  const qg = raw.quickGenProject;
+  const ftRaw = raw.folderTemplates;
+  const taRaw = raw.templateApplications;
+  if (!absent(st) && !Array.isArray(st)) return null;
+  if (!absent(hs) && !Array.isArray(hs)) return null;
+  if (!absent(qg) && typeof qg !== 'string') return null;
+  if (!absent(ftRaw) && !isPlainObject(ftRaw)) return null;
+  if (!absent(taRaw) && !isPlainObject(taRaw)) return null;
+  const ft: Record<string, IFolderTemplateEntry> = {};
+  if (isPlainObject(ftRaw)) {
+    for (const [folder, entry] of Object.entries(ftRaw)) {
+      if (folder && entry && typeof (entry as any).templateId === 'string') {
+        ft[folder] = { templateId: (entry as any).templateId };
+      }
+    }
+  }
+  return {
+    sceneNames: Array.isArray(st) ? st.filter((n: unknown) => typeof n === 'string') : [],
+    hiddenNames: Array.isArray(hs) ? hs.filter((n: unknown) => typeof n === 'string') : [],
+    quickGenName: typeof qg === 'string' && qg ? qg : null,
+    folderTemplates: ft,
+    templateApplications: sanitizeApplications(taRaw),
+  };
+}
+
+/** 사본 회전 기준 항목 수(0 이면 그 내용으로 .bak1 을 만들지 않는다) */
+export function countTemplatesSidecarItems(d: TemplatesSidecarData): number {
+  return (
+    d.sceneNames.length +
+    d.hiddenNames.length +
+    Object.keys(d.folderTemplates).length +
+    Object.keys(d.templateApplications).length +
+    (d.quickGenName ? 1 : 0)
+  );
+}
+
 /**
  * 템플릿 관련 사이드카(templates.json) 관리
  *
@@ -102,168 +218,193 @@ export class TemplateService {
     Record<string, ITemplateApplicationRecord>
   > = {};
 
+  // 지정 목록을 정상으로 읽었는가(ok·missing·recovered·corrupt-empty). false = 아직 안 읽음 또는 읽기 실패(차단)
   private loaded = false;
-  // IO 오류(권한 등)로 로드가 실패하면 저장을 차단해 기존 지정 목록을
-  // 빈 값으로 덮어쓰지 않는다 (trash.json 로드 실패 처리와 같은 취지).
-  private loadFailed = false;
+  // 동시에 여러 곳이 ensureLoaded 를 불러도 한 번만 읽는다(두 번째 읽기가 그 사이의 변경을 디스크 내용으로 되돌리지 않게)
+  private loading: Promise<void> | null = null;
+  /**
+   * 목록을 믿을 수 없어 변경이 막힌 상태(읽기 실패 또는 「없음」 뒤 쓰기 충돌) — 씬 템플릿 관리 창의 안내용 observable 사본.
+   * 진실은 store.loadFailed(StoreFile)이고, 로드·저장·쓰기 확인 뒤에 맞춘다.
+   */
+  @observable accessor listUnavailable = false;
+
+  // 로드 판정·저장·사본 회전·쓰기 충돌 차단(storeFile.ts 단일 출처, 2026-11-18 T3). 파일 형식은 종전 그대로.
+  // 저장은 변경마다 즉시(saveNowOrThrow) — Android 는 종료 훅이 없어 디바운스하지 않는다. 실패하면 dirty 가 남아
+  // 종료·백그라운드 전환 flush(bootstrap flushGlobalStoresNow)가 다시 시도한다.
+  private store = new StoreFile<TemplatesSidecarData>(
+    {
+      file: SIDECAR_PATH,
+      label: TEMPLATES_STORE_LABEL,
+      parse: parseTemplatesSidecar,
+      countItems: countTemplatesSidecarItems,
+      serialize: () => this.serialize(),
+      // 디바운스 저장(schedule)은 쓰지 않는다 — StoreFile 내부 경로용 값
+      saveDelayMs: 1000,
+    },
+    globalStoreDeps,
+  );
 
   constructor() {
     makeObservable(this);
   }
 
-  async ensureLoaded(): Promise<void> {
-    if (this.loaded || this.loadFailed) return;
-    // 로드 판정은 글로벌 저장소 공용 규칙(storeFile, 2026-11-17 묶음 1): 「없음」은 확실할 때만, 읽기 실패는 짧게
-    // 재시도 후 차단, 손상(파싱 실패)은 `templates.json.corrupt-<시각>` 으로 보존한 뒤 사본(.tmp·.bak* — Android 쓰기가
-    // 남기는 .bak 포함)에서 되살리고 없으면 빈 목록. 저장 방식(직접 쓰기)·사본 회전은 바꾸지 않는다.
-    const res = await judgeStoreFile(
-      {
-        file: SIDECAR_PATH,
-        parse: (text) => {
-          const json = JSON.parse(text);
-          return json && typeof json === 'object' && !Array.isArray(json) ? json : null;
-        },
-      },
-      globalStoreDeps,
-    );
-    if (res.kind === 'io-failed') {
-      this.loadFailed = true;
-      console.error('templates.json 로드 실패(IO) — 템플릿 변경 차단:', res.error);
-      emitGlobalStoreNotice({ type: 'load-failed', label: TEMPLATES_STORE_LABEL, file: SIDECAR_PATH });
-      return;
-    }
-    if (res.kind === 'missing') {
-      this.loaded = true;
-      return;
-    }
-    if (res.kind === 'corrupt-empty') {
-      // 파손 → 빈 목록으로 재시작(지정만 잃음, 데이터 무손실). 손상본은 보존됨
-      emitGlobalStoreNotice({
-        type: 'corrupt-empty',
-        label: TEMPLATES_STORE_LABEL,
-        file: SIDECAR_PATH,
-        corruptName: res.corruptName,
+  /** 파일을 읽지 못했거나 쓰기 충돌로 저장·변경이 막힌 상태 */
+  get loadFailed(): boolean {
+    return this.store.loadFailed;
+  }
+
+  /** 사용자 안내용 저장소 이름(storeFile 알림과 같은 값) */
+  get storeLabel(): string {
+    return TEMPLATES_STORE_LABEL;
+  }
+
+  private syncBlocked(): void {
+    const v = this.store.loadFailed;
+    if (this.listUnavailable !== v) {
+      runInAction(() => {
+        this.listUnavailable = v;
       });
-      this.loaded = true;
+    }
+  }
+
+  private serialize(): string {
+    return JSON.stringify({
+      version: 1,
+      sceneTemplates: this.sceneNames,
+      hiddenSceneTemplates: this.hiddenNames,
+      folderTemplates: this.folderTemplates,
+      templateApplications: this.templateApplications,
+      // null 이면 JSON.stringify 가 필드를 남기므로 undefined 로 생략
+      quickGenProject: this.quickGenName ?? undefined,
+    });
+  }
+
+  // 읽기 전이면 읽는다. 읽기 실패로 막힌 상태에서는 다시 읽지 않는다(재시도 지연이 잦은 호출부마다 붙지 않게) —
+  // 다시 읽기는 관련 화면 진입 때 reloadIfFailed() 로만.
+  async ensureLoaded(): Promise<void> {
+    if (this.loaded || this.store.loadFailed) return;
+    await this.load();
+  }
+
+  /** 읽기 실패로 막혀 있으면 한 번 다시 읽는다(씬 템플릿 관리·폴더 기본 템플릿 창·퀵 생성 진입 때). 성공하면 차단이 풀린다 */
+  async reloadIfFailed(): Promise<void> {
+    if (this.store.loadFailed) await this.load();
+  }
+
+  private load(): Promise<void> {
+    if (!this.loading) {
+      this.loading = this.doLoad().finally(() => {
+        this.loading = null;
+      });
+    }
+    return this.loading;
+  }
+
+  // 판정 규칙은 storeFile(§13-3): 「없음」은 확실할 때만, 읽기 실패는 짧게 재시도 후 차단(안내 창), 손상(형식 불일치 포함 —
+  // parseTemplatesSidecar)은 `.corrupt-<시각>` 보존 → 사본(.tmp·.bak1~3·.bak)에서 되살려 본 파일에 되돌려 씀(직전 재확인) →
+  // 없으면 빈 목록. 안내는 StoreFile 이 알림 허브로 낸다.
+  private async doLoad(): Promise<void> {
+    const res = await this.store.load();
+    this.syncBlocked();
+    if (res.keepMemory) return; // 쓰기 충돌 뒤 다시 읽기 실패 등 — 이미 가진 목록 유지
+    if (res.kind === 'io-failed') {
+      this.loaded = false; // 변경은 막히고 목록은 비어 보인다(관리 창은 「읽지 못했습니다」)
       return;
+    }
+    const d =
+      res.kind === 'ok' || res.kind === 'recovered'
+        ? res.data
+        : {
+            sceneNames: [],
+            hiddenNames: [],
+            quickGenName: null,
+            folderTemplates: {},
+            templateApplications: {},
+          };
+    runInAction(() => {
+      this.sceneNames = d.sceneNames;
+      this.hiddenNames = d.hiddenNames;
+      this.quickGenName = d.quickGenName;
+      this.folderTemplates = d.folderTemplates;
+      this.templateApplications = d.templateApplications;
+    });
+    this.loaded = true;
+    if (res.kind === 'ok') await this.releaseOrphanHidden();
+  }
+
+  /**
+   * 고아 숨김 자동 해제(2026-11-18 사용자 결정 — 푸는 버튼 대신 감지하면 보이게). 정상(ok) 로드에서만 부른다.
+   * 숨김 목록에 있지만 씬 템플릿 지정에도 없고 퀵 생성 프로젝트도 아닌 이름은 어디에도 보이지 않는다 → 숨김에서 빼 일반
+   * 프로젝트로 보이게 하고 저장(1회). 숨김에 넣는 경로(designateHiddenTemplate·이관·퀵 생성)는 모두 지정과 함께 넣으므로
+   * 정상 동작에서는 생기지 않는다. 프로젝트 파일 실존은 기준으로 쓰지 않는다(Android 권한 없음 = 오류 없이 안 보임).
+   * 반대(지정에만 있고 숨김에 없음)는 이관 전 구형 씬 템플릿의 정상 상태라 건드리지 않는다.
+   */
+  private async releaseOrphanHidden(): Promise<void> {
+    const orphans = this.hiddenNames.filter(
+      (n) => !this.sceneNames.includes(n) && n !== this.quickGenName,
+    );
+    if (orphans.length === 0) return;
+    runInAction(() => {
+      this.hiddenNames = this.hiddenNames.filter((n) => !orphans.includes(n));
+    });
+    try {
+      await this.save();
+    } catch (e) {
+      // 메모리에는 반영됨(보임) — dirty 가 남아 종료·백그라운드 전환 저장이 다시 시도한다
+      console.error('templates.json 고아 숨김 해제 저장 실패:', e);
     }
     try {
-      const raw: any = res.data;
-      runInAction(() => {
-        this.sceneNames = Array.isArray(raw?.sceneTemplates)
-          ? raw.sceneTemplates.filter((n: unknown) => typeof n === 'string')
-          : [];
-        this.hiddenNames = Array.isArray(raw?.hiddenSceneTemplates)
-          ? raw.hiddenSceneTemplates.filter(
-              (n: unknown) => typeof n === 'string',
-            )
-          : [];
-        this.quickGenName =
-          typeof raw?.quickGenProject === 'string' && raw.quickGenProject
-            ? raw.quickGenProject
-            : null;
-        const ft: Record<string, IFolderTemplateEntry> = {};
-        if (raw?.folderTemplates && typeof raw.folderTemplates === 'object') {
-          for (const [folder, entry] of Object.entries(raw.folderTemplates)) {
-            if (
-              typeof folder === 'string' &&
-              folder &&
-              entry &&
-              typeof (entry as any).templateId === 'string'
-            ) {
-              ft[folder] = { templateId: (entry as any).templateId };
-            }
-          }
-        }
-        this.folderTemplates = ft;
-        this.templateApplications = this.sanitizeApplications(
-          raw?.templateApplications,
-        );
-      });
-      this.loaded = true;
+      getAppState().pushMessage(TEMPLATE_STORE_TEXT.hiddenReleased(orphans));
     } catch (e) {
-      // 형식 해석 중 예외(정상 JSON 이지만 예상 밖 구조) — 덮어쓰지 않도록 차단
-      this.loadFailed = true;
-      console.error('templates.json 해석 실패 — 템플릿 변경 차단:', e);
-      return;
-    }
-    if (res.kind === 'recovered') {
-      emitGlobalStoreNotice({
-        type: 'recovered',
-        label: TEMPLATES_STORE_LABEL,
-        file: SIDECAR_PATH,
-        fromFile: res.fromFile,
-        corruptName: res.corruptName,
-      });
-      // 되살린 내용을 본 파일에 되돌려 둔다(본 파일은 손상본이 보존됐거나 원래 없었다)
-      try {
-        await this.save();
-      } catch (e) {
-        console.error('templates.json 복구 내용 쓰기 실패:', e);
-      }
+      console.warn('고아 숨김 해제 안내 실패:', e);
     }
   }
 
+  /**
+   * 지금 저장(변경마다 즉시 — 종전 방식). dirty 를 세운 뒤 쓴다: 실패해도 dirty 가 남아 flushSave 가 다시 시도한다.
+   * 종전 계약: 쓰기 오류는 호출부로 던진다. 차단(읽기 실패·「없음」 뒤 쓰기 충돌)은 던지지 않는다 — 안내는 StoreFile 이
+   * 했다(충돌 = 확인 창, 차단 = 토스트). 읽기 전·읽기 실패 상태에서는 아무것도 하지 않는다.
+   */
   private async save(): Promise<void> {
-    if (!this.loaded) return; // 로드 실패 상태에서 저장 금지
-    await persistService.write(
-      SIDECAR_PATH,
-      JSON.stringify({
-        version: 1,
-        sceneTemplates: this.sceneNames,
-        hiddenSceneTemplates: this.hiddenNames,
-        folderTemplates: this.folderTemplates,
-        templateApplications: this.templateApplications,
-        // null 이면 JSON.stringify 가 필드를 남기므로 undefined 로 생략
-        quickGenProject: this.quickGenName ?? undefined,
-      }),
-    );
+    if (!this.loaded) return;
+    this.store.markDirty();
+    try {
+      await this.store.saveNowOrThrow();
+    } catch (e) {
+      if (e instanceof GlobalStoreBlockedError) return;
+      throw e;
+    } finally {
+      this.syncBlocked();
+    }
   }
 
-  // 적용 기록 로드 방어: 형식이 어긋난 항목은 걸러내고 필드 기본값을 채운다
-  // (구버전 데이터는 이 필드가 없어 빈 객체 → 무해).
-  private sanitizeApplications(
-    raw: unknown,
-  ): Record<string, Record<string, ITemplateApplicationRecord>> {
-    const out: Record<string, Record<string, ITemplateApplicationRecord>> = {};
-    if (!raw || typeof raw !== 'object') return out;
-    for (const [project, byTpl] of Object.entries(raw as any)) {
-      if (!project || !byTpl || typeof byTpl !== 'object') continue;
-      const inner: Record<string, ITemplateApplicationRecord> = {};
-      for (const [tplId, rec] of Object.entries(byTpl as any)) {
-        if (!tplId || !rec || typeof rec !== 'object') continue;
-        const r = rec as any;
-        // 보호 영역: 알려진 값만 통과 (빈 배열이면 필드 생략)
-        const protect = Array.isArray(r.protectAreas)
-          ? (r.protectAreas.filter(
-              (x: any) => x === 'characterPresets' || x === 'scenes',
-            ) as TemplateProtectArea[])
-          : [];
-        inner[tplId] = {
-          ...(protect.length > 0 ? { protectAreas: protect } : {}),
-          inherited: !!r.inherited,
-          presets: Array.isArray(r.presets)
-            ? r.presets.filter(
-                (p: any) =>
-                  p &&
-                  typeof p.type === 'string' &&
-                  typeof p.name === 'string',
-              )
-            : [],
-          characterPresetNames: Array.isArray(r.characterPresetNames)
-            ? r.characterPresetNames.filter((n: any) => typeof n === 'string')
-            : [],
-          vibePaths: Array.isArray(r.vibePaths)
-            ? r.vibePaths.filter((n: any) => typeof n === 'string')
-            : [],
-          referencePaths: Array.isArray(r.referencePaths)
-            ? r.referencePaths.filter((n: any) => typeof n === 'string')
-            : [],
-        };
-      }
-      if (Object.keys(inner).length > 0) out[project] = inner;
-    }
-    return out;
+  /** 종료·백그라운드 전환 때 — 바뀐 것(저장 실패로 남은 dirty)이 있을 때만 쓴다 */
+  async flushSave(): Promise<void> {
+    await this.store.flush();
+    this.syncBlocked();
+  }
+
+  /**
+   * 변경 메서드 진입부: 읽기 전이면 읽고, 바꿀 수 있으면 true. 막혔으면 안내(토스트 — StoreFile 의 3초 간격 제한) 후 false.
+   * 던지지 않는다(프로젝트 이름 변경·삭제·폴더 변경 뒤의 연쇄 호출이 본 작업을 깨지 않게 — 종전 「조용히 반환」 계약).
+   */
+  private async ready(): Promise<boolean> {
+    await this.ensureLoaded();
+    if (this.loaded && !this.store.loadFailed) return true;
+    this.store.canWrite(); // 차단이면 안내
+    return false;
+  }
+
+  /**
+   * 되돌리기 어려운 작업(씬 템플릿·퀵 생성·폴더 기본 템플릿 엔티티 만들기 등) 직전 확인 — 지정을 저장할 수 없으면 만들기 전에
+   * 멈춘다(종전: 프로젝트만 만들어지고 지정이 빠진 채 「만들어졌습니다」). 「없음」으로 시작했는데 지금 파일이 있으면 쓰기 충돌로
+   * 막는다(StoreFile.confirmWritable — 아무것도 쓰지 않음). 막히면 안내 후 false.
+   */
+  async confirmWritable(): Promise<boolean> {
+    if (!(await this.ready())) return false;
+    const ok = await this.store.confirmWritable();
+    this.syncBlocked();
+    return ok;
   }
 
   isSceneTemplate(name: string): boolean {
@@ -292,11 +433,7 @@ export class TemplateService {
   }
 
   async toggleSceneTemplate(name: string): Promise<void> {
-    await this.ensureLoaded();
-    if (!this.loaded) {
-      getAppState().pushMessage('템플릿 목록을 불러오지 못해 변경할 수 없습니다.');
-      return;
-    }
+    if (!(await this.ready())) return; // 막혔으면 안내 토스트(종전 같은 취지의 메시지)
     runInAction(() => {
       this.sceneNames = this.isSceneTemplate(name)
         ? this.sceneNames.filter((n) => n !== name)
@@ -336,11 +473,7 @@ export class TemplateService {
   }
 
   async setFolderTemplate(folder: string, templateId: string): Promise<void> {
-    await this.ensureLoaded();
-    if (!this.loaded) {
-      getAppState().pushMessage('템플릿 목록을 불러오지 못해 변경할 수 없습니다.');
-      return;
-    }
+    if (!(await this.ready())) return; // 막혔으면 안내 토스트(종전 같은 취지의 메시지)
     runInAction(() => {
       this.folderTemplates = {
         ...this.folderTemplates,
@@ -352,8 +485,7 @@ export class TemplateService {
 
   // 템플릿 엔티티 삭제 시 해당 지정 일괄 해제 (ProjectTemplateService.delete 가 호출)
   async clearFolderTemplatesByTemplateId(templateId: string): Promise<void> {
-    await this.ensureLoaded();
-    if (!this.loaded) return;
+    if (!(await this.ready())) return; // 막혔으면 안내만(던지지 않음)
     const keys = Object.keys(this.folderTemplates).filter(
       (f) => this.folderTemplates[f].templateId === templateId,
     );
@@ -367,11 +499,7 @@ export class TemplateService {
   }
 
   async clearFolderTemplate(folder: string): Promise<void> {
-    await this.ensureLoaded();
-    if (!this.loaded) {
-      getAppState().pushMessage('템플릿 목록을 불러오지 못해 변경할 수 없습니다.');
-      return;
-    }
+    if (!(await this.ready())) return; // 막혔으면 안내 토스트(종전 같은 취지의 메시지)
     if (!this.folderTemplates[folder]) return;
     runInAction(() => {
       const next = { ...this.folderTemplates };
@@ -408,8 +536,7 @@ export class TemplateService {
     templateId: string,
     record: ITemplateApplicationRecord,
   ): Promise<void> {
-    await this.ensureLoaded();
-    if (!this.loaded) return;
+    if (!(await this.ready())) return; // 막혔으면 안내만(던지지 않음)
     runInAction(() => {
       const byTpl = { ...(this.templateApplications[project] ?? {}) };
       byTpl[templateId] = record;
@@ -424,8 +551,7 @@ export class TemplateService {
   // 상속 끊기 — 이 프로젝트의 모든 적용 기록을 inherited=false 로 전환.
   // 이미 적용된 구성은 유지(전파·배지만 해제), 기록 자체는 남는다.
   async breakInheritance(project: string): Promise<void> {
-    await this.ensureLoaded();
-    if (!this.loaded) return;
+    if (!(await this.ready())) return; // 막혔으면 안내만(던지지 않음)
     const byTpl = this.templateApplications[project];
     if (!byTpl) return;
     let changed = false;
@@ -467,8 +593,7 @@ export class TemplateService {
   }
 
   async removeApplicationsOfProject(project: string): Promise<void> {
-    await this.ensureLoaded();
-    if (!this.loaded) return;
+    if (!(await this.ready())) return; // 막혔으면 안내만(던지지 않음)
     if (!this.templateApplications[project]) return;
     runInAction(() => {
       const next = { ...this.templateApplications };
@@ -482,8 +607,7 @@ export class TemplateService {
     oldName: string,
     newName: string,
   ): Promise<void> {
-    await this.ensureLoaded();
-    if (!this.loaded) return;
+    if (!(await this.ready())) return; // 막혔으면 안내만(던지지 않음)
     if (!this.templateApplications[oldName]) return;
     runInAction(() => {
       const next = { ...this.templateApplications };
@@ -497,8 +621,7 @@ export class TemplateService {
   // 템플릿 엔티티 삭제 시 해당 템플릿의 적용 기록 일괄 해제
   // (ProjectTemplateService.delete 가 clearFolderTemplatesByTemplateId 옆에서 호출).
   async clearApplicationsByTemplateId(templateId: string): Promise<void> {
-    await this.ensureLoaded();
-    if (!this.loaded) return;
+    if (!(await this.ready())) return; // 막혔으면 안내만(던지지 않음)
     let changed = false;
     const next: Record<
       string,
@@ -524,8 +647,7 @@ export class TemplateService {
   // 폴더 이름변경/삭제 연동 — SessionService.renameFolder/deleteFolder 가 호출.
   // (folderColors/folderOrder 이관과 같은 규칙: 정확 일치 + 하위 경로 프리픽스)
   async renameFolder(oldPath: string, newPath: string): Promise<void> {
-    await this.ensureLoaded();
-    if (!this.loaded) return;
+    if (!(await this.ready())) return; // 막혔으면 안내만(던지지 않음)
     const oldPrefix = oldPath + '/';
     let changed = false;
     const next: Record<string, IFolderTemplateEntry> = {};
@@ -589,8 +711,7 @@ export class TemplateService {
   async restoreFolderTemplates(snap: FolderTemplateSnapshot): Promise<{ failed: number }> {
     let failed = 0;
     if (snap.assignments.length === 0) return { failed };
-    await this.ensureLoaded();
-    if (!this.loaded) return { failed: snap.assignments.length };
+    if (!(await this.ready())) return { failed: snap.assignments.length };
     try {
       await projectTemplateService.ensureLoaded();
     } catch (e) {
@@ -621,8 +742,7 @@ export class TemplateService {
   }
 
   async removeFolder(folder: string): Promise<void> {
-    await this.ensureLoaded();
-    if (!this.loaded) return;
+    if (!(await this.ready())) return; // 막혔으면 안내만(던지지 않음)
     const prefix = folder + '/';
     const keys = Object.keys(this.folderTemplates).filter(
       (f) => f === folder || f.startsWith(prefix),
@@ -650,8 +770,7 @@ export class TemplateService {
   // (사이드카 키 이관 — trash/project_sizes 와 같은 규칙, 트랙1 B2 참조)
   // 폴더 템플릿은 엔티티 id 참조라 프로젝트 이름과 무관 — 씬 템플릿만 이관.
   async renameProject(oldName: string, newName: string): Promise<void> {
-    await this.ensureLoaded();
-    if (!this.loaded) return;
+    if (!(await this.ready())) return; // 막혔으면 안내만(던지지 않음)
     // 적용 기록 키 이관 (씬 템플릿 지정과 함께 편승)
     await this.renameProjectApplications(oldName, newName);
     // 퀵 생성 전용 프로젝트도 이관 대상 (sceneNames 밖이라 별도 판정)
@@ -671,8 +790,7 @@ export class TemplateService {
   }
 
   async removeProject(name: string): Promise<void> {
-    await this.ensureLoaded();
-    if (!this.loaded) return;
+    if (!(await this.ready())) return; // 막혔으면 안내만(던지지 않음)
     // 적용 기록 정리 (하드 삭제 시점 — 씬 템플릿 지정과 동일 취지: 소프트
     // 삭제는 유지해 복원 시 되살아나고, 하드 삭제에서만 제거)
     await this.removeApplicationsOfProject(name);
@@ -707,6 +825,8 @@ export class TemplateService {
     opts?: { initialName?: string },
   ): Promise<void> {
     const appState = getAppState();
+    // 지정 목록을 저장할 수 없으면 이름을 묻기 전에 멈춘다(안내는 confirmWritable) — 종전엔 프로젝트만 만들어지고 지정이 빠졌다
+    if (!(await this.confirmWritable())) return;
     // 씬 템플릿은 숨김 프로젝트 — 프로젝트와 같은 이름 규칙·중복 검사(창 안에서, D2)
     const name = await promptName({
       title: `씬 템플릿 이름 (예: ${session.name} 씬템플릿)`,
@@ -714,6 +834,8 @@ export class TemplateService {
       ...(opts?.initialName ? { initial: opts.initialName } : {}),
     });
     if (!name) return;
+    // 이름을 입력하는 사이에 막혔을 수 있다(다른 창이 파일을 만듦 등) — 만들기 직전에 한 번 더
+    if (!(await this.confirmWritable())) return;
     try {
       const json = await sessionService.exportSessionShallow(session);
       await sessionService.importSessionShallow(json, name);
@@ -724,7 +846,10 @@ export class TemplateService {
       );
       return;
     }
-    await this.designateHiddenTemplate(name);
+    if (!(await this.designateHiddenTemplate(name))) {
+      appState.pushMessage(this.notDesignatedText(name), 'error');
+      return;
+    }
     appState.pushMessage(
       `씬 템플릿 "${name}"이(가) 만들어졌습니다. 씬 툴바 ⋯ → 씬 템플릿에서 관리할 수 있습니다.`,
     );
@@ -735,11 +860,13 @@ export class TemplateService {
   // 반환 = 만든 템플릿 이름(취소/실패=null) — 관리 모달이 성공 시 닫히도록.
   async createEmptySceneTemplate(): Promise<string | null> {
     const appState = getAppState();
+    if (!(await this.confirmWritable())) return null; // createSceneTemplate 과 같은 사전 확인
     const name = await promptName({
       title: '빈 씬 템플릿 이름',
       ...projectNameRules(sessionService),
     });
     if (!name) return null;
+    if (!(await this.confirmWritable())) return null;
     try {
       await sessionService.add(name);
     } catch (e: any) {
@@ -749,9 +876,13 @@ export class TemplateService {
       );
       return null;
     }
-    await this.designateHiddenTemplate(name);
+    const designated = await this.designateHiddenTemplate(name);
     const tpl = await sessionService.get(name);
     if (tpl) appState.curSession = tpl;
+    if (!designated) {
+      appState.pushMessage(this.notDesignatedText(name), 'error');
+      return name;
+    }
     appState.pushMessage(
       `빈 씬 템플릿 "${name}"을(를) 열었습니다. 씬을 추가해 구성해주세요.`,
     );
@@ -759,9 +890,9 @@ export class TemplateService {
   }
 
   // 이름을 씬 템플릿 + 숨김으로 지정한다 (생성/복제/이관 공용).
-  private async designateHiddenTemplate(name: string): Promise<void> {
-    await this.ensureLoaded();
-    if (!this.loaded) return;
+  // 반환 = 지정을 저장했는가(false = 막혀서 저장 못 함 — 프로젝트는 일반 프로젝트로 보인다). 쓰기 오류는 종전대로 던진다.
+  private async designateHiddenTemplate(name: string): Promise<boolean> {
+    if (!(await this.ready())) return false; // 막혔으면 안내만(던지지 않음)
     runInAction(() => {
       if (!this.sceneNames.includes(name))
         this.sceneNames = [...this.sceneNames, name];
@@ -769,6 +900,12 @@ export class TemplateService {
         this.hiddenNames = [...this.hiddenNames, name];
     });
     await this.save();
+    return !this.store.loadFailed;
+  }
+
+  // 만들기 직전 확인을 통과했는데도 지정 저장이 막힌 드문 경우(그 사이 쓰기 충돌) — 「만들어졌습니다」 대신 사실대로 알린다
+  private notDesignatedText(name: string): string {
+    return `"${name}" 프로젝트는 만들었지만 템플릿 지정 목록을 저장하지 못해 일반 프로젝트로 보입니다.`;
   }
 
   // ── 파일 내보내기/불러오기 (PC↔모바일 크로스 작업 이동, 2026-07-18) ──
@@ -814,11 +951,8 @@ export class TemplateService {
       appState.pushMessage('올바른 씬 템플릿 파일이 아닙니다.');
       return null;
     }
-    await this.ensureLoaded();
-    if (!this.loaded) {
-      appState.pushMessage('템플릿 목록을 불러오지 못해 변경할 수 없습니다.');
-      return null;
-    }
+    // 지정 목록을 저장할 수 없으면 프로젝트를 만들기 전에 멈춘다(안내는 confirmWritable)
+    if (!(await this.confirmWritable())) return null;
     // 프로젝트 이름은 경로 구성요소가 되므로 파일시스템 예약 문자를 제거하고,
     // 빈 이름은 기본값으로 대체 (데이터 루트 오삭제 방어와 같은 취지의 빈 이름 검증)
     const base =
@@ -835,6 +969,7 @@ export class TemplateService {
       notifyImportDone('씬 템플릿', { added: 0, updated: 0, skipped: 1 });
       return null;
     }
+    if (!(await this.confirmWritable())) return null; // 정책을 묻는 사이에 막혔을 수 있다
     let name = base;
     let i = 2;
     while (sessionService.list().includes(name)) {
@@ -847,7 +982,10 @@ export class TemplateService {
       appState.pushMessage(e?.message || '씬 템플릿 불러오기에 실패했습니다.');
       return null;
     }
-    await this.designateHiddenTemplate(name);
+    if (!(await this.designateHiddenTemplate(name))) {
+      appState.pushMessage(this.notDesignatedText(name), 'error');
+      return null;
+    }
     notifyImportDone('씬 템플릿', {
       added: 1,
       updated: 0,
@@ -864,12 +1002,15 @@ export class TemplateService {
   // 이관 대상 판정 = sceneNames 중 숨김이 아닌 실존 프로젝트 (멱등 —
   // 이관 후에는 모든 템플릿이 숨김이라 재실행해도 no-op).
   async migrateSceneTemplatesToHidden(): Promise<void> {
+    // 부팅 비차단 작업 — 막혔으면 조용히 건너뛴다(읽기 실패 안내 창이 이미 떴다)
     await this.ensureLoaded();
-    if (!this.loaded) return;
+    if (!this.loaded || this.store.loadFailed) return;
     const pending = this.listSceneTemplates().filter(
       (n) => !this.hiddenNames.includes(n),
     );
     if (pending.length === 0) return;
+    // 복제본 프로젝트를 만들기 전에 지정을 저장할 수 있는지 확인(못 하면 다음 부팅에 복제본이 또 생긴다)
+    if (!(await this.confirmWritable())) return;
     const appState = getAppState();
     let migrated = 0;
     for (const name of pending) {
@@ -893,6 +1034,8 @@ export class TemplateService {
           this.hiddenNames = [...this.hiddenNames, cloneName];
         });
         await this.save();
+        // 그 사이 쓰기 충돌로 막혔으면 복제본을 더 만들지 않는다
+        if (this.store.loadFailed) break;
         migrated++;
       } catch (e) {
         // 실패 항목은 지정을 유지 — 다음 부팅에서 재시도된다
@@ -1052,9 +1195,10 @@ export class TemplateService {
 
   // 전용 프로젝트를 확보해 반환한다 — 없거나 삭제됐으면 새로 만든다.
   async ensureQuickGenProject(): Promise<Session | null> {
-    await this.ensureLoaded();
-    if (!this.loaded) return null;
-    // 미지정이면 사이드카를 새로 읽어 다른 창이 만든 지정을 먼저 흡수한다
+    // 퀵 생성 탭 진입 = 명시적 진입점 — 읽기 실패로 막혀 있으면 여기서 한 번 다시 읽는다
+    await this.reloadIfFailed();
+    if (!(await this.ready())) return null; // 막혔으면 안내만(종전처럼 null)
+    // 미지정이면 사이드카를 새로 읽어 다른 창이 만든 지정을 먼저 흡수한다(읽기 전용 — 쓰지 않는다)
     // (templates.json 은 창 간 브로드캐스트 미대상 — 중복 생성 방지)
     if (!this.quickGenName) {
       try {
@@ -1080,6 +1224,9 @@ export class TemplateService {
         return s;
       }
     }
+    // 새로 만들기 전에 지정을 저장할 수 있는지 확인 — 「없음」 오판(Android) 뒤 「퀵 생성 (2)」를 만들고 저장해
+    // 본 파일(지정 전체)을 덮던 경로를 막는다(쓰기 충돌 차단 + 안내, 프로젝트는 만들지 않음)
+    if (!(await this.confirmWritable())) return null;
     // 새로 생성 — 이름 충돌 시 번호 부여
     let name = '퀵 생성';
     let i = 2;

@@ -55,6 +55,12 @@ export const FolderTemplateModal = observer(
       if (!isOpen) return;
       setLocalId('');
       (async () => {
+        // 창 열기 = 명시적 진입점 — 지정 목록(templates.json)을 읽지 못해 막혀 있으면 한 번 다시 읽는다(2026-11-18 T3)
+        try {
+          await templateService.reloadIfFailed();
+        } catch (e) {
+          console.error('템플릿 지정 목록 다시 읽기 실패:', e);
+        }
         await templateService.ensureLoaded();
         await projectTemplateService.ensureLoaded();
         const existing = templateService.getFolderTemplate(folder);
@@ -65,6 +71,12 @@ export const FolderTemplateModal = observer(
         if (existingEnt?.folderLocal) {
           id = existingEnt.id;
         } else {
+          // 지정을 저장할 수 없으면(읽기 실패·쓰기 충돌) 폴더 전용 템플릿을 만들지 않고 닫는다 — 막힌 동안은 기존 지정이
+          // 비어 보이므로 그대로 만들면 지정 없는 템플릿이 쌓인다(안내는 confirmWritable 의 토스트·확인 창)
+          if (!(await templateService.confirmWritable())) {
+            onClose();
+            return;
+          }
           const created = await projectTemplateService.create(
             `폴더 기본 (${folder})`,
             { folderLocal: true },
@@ -367,6 +379,12 @@ export const ReapplyTemplateModal = observer(
     useEffect(() => {
       if (!isOpen) return;
       (async () => {
+        // 창 열기 = 명시적 진입점 — 막혀 있으면 지정 목록을 한 번 다시 읽는다(적용 기록·폴더 기본 템플릿 판정용)
+        try {
+          await templateService.reloadIfFailed();
+        } catch (e) {
+          console.error('템플릿 지정 목록 다시 읽기 실패:', e);
+        }
         await templateService.ensureLoaded();
         await projectTemplateService.ensureLoaded();
         // 대상이 속한 폴더의 기본 템플릿을 초기 선택으로 제안

@@ -404,7 +404,7 @@ export async function bootstrapApp(): Promise<void> {
   runMobilePermissionOnboarding().catch(() => {});
 }
 
-// 글로벌 저장소 다섯 개를 「바뀐 것만」 지금 저장한다 — 종료 저장과 백그라운드 전환(Android 보강 B)이 함께 쓴다.
+// 글로벌 저장소 다섯 개 + 씬 템플릿 지정 목록을 「바뀐 것만」 지금 저장한다 — 종료 저장과 백그라운드 전환(Android 보강 B)이 함께 쓴다.
 // 프로젝트 템플릿은 부팅 때 읽지 않고(필요 시 ensureLoaded) 종전엔 종료 저장도 없었다 — 2초 대기 중 편집이
 // 닫기로 사라지지 않게 함께 비운다. 바뀐 것이 없거나 읽지 않았으면 아무것도 쓰지 않는다(storeFile flush).
 function flushGlobalStoresNow(): Promise<void> {
@@ -414,6 +414,9 @@ function flushGlobalStoresNow(): Promise<void> {
     globalCharacterPresetService,
     artistLibraryService,
     projectTemplateService,
+    // 씬 템플릿 지정 목록(templates.json, 2026-11-18 T3) — 변경마다 즉시 저장하므로 평소엔 쓸 것이 없고,
+    // 즉시 저장이 실패해 dirty 가 남았을 때만 여기서 다시 시도한다
+    templateService,
   ]);
 }
 

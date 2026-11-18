@@ -246,6 +246,9 @@ export const BatchCreatePanel = observer(
     };
 
     const run = async () => {
+      // 폴더 기본 템플릿 지정·적용 기록(templates.json)을 저장할 수 없으면(읽기 실패·쓰기 충돌) 폴더·사본·자식 프로젝트를
+      // 만들기 전에 멈춘다 — 그대로 진행하면 지정·♟ 기록 없이 만들어진다(안내는 confirmWritable, 2026-11-18 T5)
+      if (!(await templateService.confirmWritable())) return;
       setRunningNotify(true);
       setResult(null);
       cancelRef.current = false;

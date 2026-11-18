@@ -240,6 +240,10 @@ export const GLOBAL_STORE_TEXT = {
     (corruptName ? `\n\n손상된 파일은 ${corruptName} 로 보관했습니다.` : ''),
   corruptEmpty: (label: string, corruptName: string) =>
     `${label} 파일이 손상되었고 되살릴 사본이 없어 빈 목록으로 시작합니다.\n\n손상된 파일은 ${corruptName} 로 보관했습니다.`,
+  /** 관리 창 본문 — 읽기 실패·쓰기 충돌로 막혀 목록을 믿을 수 없을 때(「없습니다」 대신) */
+  listUnavailable: (label: string) =>
+    `${label} 파일을 읽지 못해 목록을 표시할 수 없습니다.\n기존 데이터를 지키기 위해 지금은 만들거나 바꿀 수 없습니다.\n\n[다시 읽기]로 다시 시도하거나 앱을 다시 시작해 주세요.`,
+  reloadAction: '다시 읽기',
 } as const;
 
 /** 알림 → 표시 문구·방식(창 = 확인 창 1회, 토스트 = 조작 거부 안내) */
@@ -573,6 +577,36 @@ export class StoreFile<T> {
     if (this.status !== 'blocked') return;
     this.noticeBlocked();
     throw new GlobalStoreBlockedError(this.spec.label);
+  }
+
+  /**
+   * 되돌리기 어려운 작업(프로젝트 만들기 등) 직전의 쓰기 가능 확인 — 아무것도 쓰지 않는다(저장 줄 안에서 판단).
+   * 차단 상태면 안내(토스트) 후 false. 첫 로드가 「없음」이었는데 지금 본 파일이 있으면(또는 확인 자체가 실패하면)
+   * 저장 때와 같은 쓰기 충돌 차단으로 막고 안내한 뒤 false — 다음 저장이 본 파일을 덮지 않게 미리 막는다.
+   * 지금은 씬 템플릿 지정 목록(TemplateService)만 쓴다. 기존 저장소 동작에는 영향이 없다(새 메서드).
+   */
+  confirmWritable(): Promise<boolean> {
+    return this.enqueue(async () => {
+      if (this.status === 'blocked') {
+        this.noticeBlocked();
+        return false;
+      }
+      if (this.status === 'missing') {
+        const { label, file } = this.spec;
+        let exists = true;
+        try {
+          exists = await this.deps.backend().existFile(file);
+        } catch {
+          exists = true;
+        }
+        if (exists) {
+          this.status = 'blocked';
+          emitGlobalStoreNotice({ type: 'write-conflict', label, file });
+          return false;
+        }
+      }
+      return true;
+    });
   }
 
   /** 변경 조작 진입부 가드(동기 메서드) — 차단 상태면 안내 후 false */
