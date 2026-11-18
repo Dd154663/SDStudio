@@ -54,6 +54,15 @@ import {
   queueProjectForGeneration,
 } from '../models/sceneQueueActions';
 import Tooltip from './Tooltip';
+import {
+  ContextMenuList,
+  ContextMenuRow,
+  folderDrawerMenu,
+  FolderDrawerMenuId,
+  MENU_SEPARATOR,
+  projectDrawerMenu,
+  ProjectDrawerMenuId,
+} from './ContextMenuList';
 import MobileColorPicker from './MobileColorPicker';
 import { pushRecentProject } from './ProjectBrowser';
 import StorageManageModal from './StorageManageModal';
@@ -1357,9 +1366,8 @@ const ProjectDrawer = observer(() => {
     onContextMenu: (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      const x = Math.min(e.clientX, window.innerWidth - 200);
-      const y = Math.min(e.clientY, window.innerHeight - 100);
-      setToolbar({ type: 'project', name: n, x, y });
+      // 화면 안 위치는 ContextMenuList 가 그린 크기를 재서 맞춘다(placeContextMenu)
+      setToolbar({ type: 'project', name: n, x: e.clientX, y: e.clientY });
     },
     onMenu: () => openProjectMenu(n),
     editing: editingProject === n,
@@ -1795,15 +1803,13 @@ const ProjectDrawer = observer(() => {
                           : (e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              const x = Math.min(
-                                e.clientX,
-                                window.innerWidth - 56,
-                              );
-                              const y = Math.min(
-                                e.clientY,
-                                window.innerHeight - 290,
-                              );
-                              setToolbar({ type: 'folder', name: f, x, y });
+                              // 화면 안 위치는 ContextMenuList 가 맞춘다(placeContextMenu)
+                              setToolbar({
+                                type: 'folder',
+                                name: f,
+                                x: e.clientX,
+                                y: e.clientY,
+                              });
                             }
                       }
                       onDragOver={(e) => {
@@ -2227,248 +2233,150 @@ const ProjectDrawer = observer(() => {
           />
         </div>
       )}
+      {/* 우클릭 창(2026-11-18 우클릭 메뉴 정비) — 세로 목록(왼쪽 아이콘 + 이름). 순서 표·구분선 정리·화면 안 위치 =
+          ContextMenuList.tsx(projectDrawerMenu·folderDrawerMenu·placeContextMenu). PC 전용(모바일은 우클릭 경로 없음 —
+          행·폴더의 onContextMenu 가 isMobile 게이트). 닫기 = 바깥 mousedown(아래 id 로 판정)·Esc(drawerEscRef 첫 단계)·줄을 누르면 동작 뒤. */}
       {toolbar &&
         createPortal(
           toolbar.type === 'folder' ? (
-            <div
+            <ContextMenuList
               id="floating-folder-toolbar"
-              className="fixed z-[var(--z-context-menu)] flex items-center gap-0.5 p-1.5 bg-[var(--c-surface-2)] rounded-lg shadow-xl border line-color"
-              style={{ left: toolbar.x, top: toolbar.y }}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <Tooltip content="내보내기/불러오기">
-                <button
-                  onClick={() => {
-                    appState.folderBackupMenu(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-amber-500"
-                >
-                  <ActionIcon id="backup-export" size={14} />
-                </button>
-              </Tooltip>
-              <Tooltip content="폴더 복제">
-                <button
-                  onClick={() => {
-                    cloneFolder(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-green-500"
-                >
-                  <ActionIcon id="duplicate" size={14} />
-                </button>
-              </Tooltip>
-              <Tooltip content="폴더 색상">
-                <button
-                  onClick={() => {
-                    setColorPickerFor((p) =>
-                      p === toolbar.name ? null : toolbar.name,
-                    );
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-sky-500"
-                >
-                  <FaPalette size={15} />
-                </button>
-              </Tooltip>
-              <Tooltip content="이름 편집">
-                <button
-                  onClick={() => {
-                    startRename(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-sky-500"
-                >
-                  <FaPen size={15} />
-                </button>
-              </Tooltip>
-              <Tooltip content="폴더 삭제">
-                <button
-                  onClick={() => {
-                    deleteFolderConfirm(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-red-500"
-                >
-                  <ActionIcon id="delete" size={15} />
-                </button>
-              </Tooltip>
-              <Tooltip content="새 프로젝트">
-                <button
-                  onClick={() => {
-                    createProject(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-sky-500"
-                >
-                  <FaPlus size={15} />
-                </button>
-              </Tooltip>
-              <Tooltip content="서브폴더 만들기">
-                <button
-                  onClick={() => {
-                    createFolder(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-indigo-500"
-                >
-                  <FaFolderPlus size={14} />
-                </button>
-              </Tooltip>
-              <Tooltip
-                content={
-                  templateService.getFolderTemplate(toolbar.name)
-                    ? '기본 템플릿 (지정됨)'
-                    : '기본 템플릿'
-                }
-              >
-                <button
-                  onClick={() => {
-                    setFolderTemplateFor(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-purple-500"
-                >
-                  <FaMagic size={14} />
-                </button>
-              </Tooltip>
-              <Tooltip content="일괄 생성 예약 (서브폴더 포함, 프로젝트마다 모든 씬)">
-                <button
-                  onClick={() => {
-                    queueFolderProjectsForGeneration(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-green-500"
-                >
-                  <ActionIcon id="queue-add" size={14} />
-                </button>
-              </Tooltip>
-            </div>
+              ariaLabel={`폴더 ${toolbar.name} 메뉴`}
+              x={toolbar.x}
+              y={toolbar.y}
+              onClose={() => setToolbar(null)}
+              entries={folderDrawerMenu().map((key) => {
+                if (key === MENU_SEPARATOR) return key;
+                const name = toolbar.name;
+                const rows: Record<FolderDrawerMenuId, ContextMenuRow> = {
+                  'new-project': {
+                    icon: <FaPlus size={14} />,
+                    label: '새 프로젝트',
+                    onSelect: () => createProject(name),
+                  },
+                  'new-subfolder': {
+                    icon: <FaFolderPlus size={14} />,
+                    label: '서브폴더 만들기',
+                    onSelect: () => createFolder(name),
+                  },
+                  'export-import': {
+                    icon: <ActionIcon id="backup-export" size={14} />,
+                    label: '내보내기/불러오기',
+                    onSelect: () => appState.folderBackupMenu(name),
+                  },
+                  clone: {
+                    icon: <ActionIcon id="duplicate" size={14} />,
+                    label: '폴더 복제',
+                    onSelect: () => cloneFolder(name),
+                  },
+                  rename: {
+                    icon: <FaPen size={14} />,
+                    label: '이름 편집',
+                    onSelect: () => startRename(name),
+                  },
+                  color: {
+                    icon: <FaPalette size={14} />,
+                    label: '폴더 색상',
+                    onSelect: () =>
+                      setColorPickerFor((p) => (p === name ? null : name)),
+                  },
+                  'folder-template': {
+                    icon: <FaMagic size={14} />,
+                    label: templateService.getFolderTemplate(name)
+                      ? '기본 템플릿 (지정됨)'
+                      : '기본 템플릿',
+                    onSelect: () => setFolderTemplateFor(name),
+                  },
+                  'queue-all': {
+                    icon: <ActionIcon id="queue-add" size={14} />,
+                    label: '일괄 생성 예약',
+                    tooltip: '일괄 생성 예약 (서브폴더 포함, 프로젝트마다 모든 씬)',
+                    onSelect: () => queueFolderProjectsForGeneration(name),
+                  },
+                  delete: {
+                    icon: <ActionIcon id="delete" size={14} />,
+                    label: '폴더 삭제',
+                    danger: true,
+                    onSelect: () => deleteFolderConfirm(name),
+                  },
+                };
+                return rows[key];
+              })}
+            />
           ) : (
-            <div
+            <ContextMenuList
               id="floating-project-toolbar"
-              className="fixed z-[var(--z-context-menu)] flex items-center gap-0.5 p-1.5 bg-[var(--c-surface-2)] rounded-lg shadow-xl border line-color"
-              style={{ left: toolbar.x, top: toolbar.y }}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              {/* 새 창에서 열기 (멀티 윈도우 W6 P1) — 이미 다른 창에서 열려 있으면
-                  새 창의 락 확보가 실패해 토스트+소유 창 포커스로 안내된다. */}
-              <Tooltip content="새 창에서 열기">
-                <button
-                  onClick={() => {
-                    backend.openNewWindow(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-sky-500"
-                >
-                  <FaWindowRestore size={14} />
-                </button>
-              </Tooltip>
-              {/* 파일 탐색기에서 열기 (PC 전용 — 모바일 롱프레스 툴바에선 숨김) */}
-              {!isMobile && (
-                <Tooltip content="파일 탐색기에서 열기">
-                  <button
-                    onClick={() => {
-                      handleProjectOpenInExplorer(toolbar.name);
-                      setToolbar(null);
-                    }}
-                    className="btn-ghost p-2 rounded-md text-muted hover:text-yellow-500"
-                  >
-                    <FaFolderOpen size={14} />
-                  </button>
-                </Tooltip>
-              )}
-              <Tooltip content="내보내기/불러오기">
-                <button
-                  onClick={() => {
-                    handleProjectExportImport(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-amber-500"
-                >
-                  <ActionIcon id="backup-export" size={14} />
-                </button>
-              </Tooltip>
-              <Tooltip content="프로젝트 복제">
-                <button
-                  onClick={() => {
-                    handleProjectClone(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-green-500"
-                >
-                  <ActionIcon id="duplicate" size={14} />
-                </button>
-              </Tooltip>
-              <Tooltip content="이름 편집">
-                <button
-                  onClick={() => {
-                    handleProjectRename(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-sky-500"
-                >
-                  <FaPen size={15} />
-                </button>
-              </Tooltip>
-              <Tooltip content="씬 템플릿으로 만들기 (복제)">
-                <button
-                  onClick={() => {
-                    handleProjectSceneTemplateCreate(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-purple-500"
-                >
-                  <FaFilm size={14} />
-                </button>
-              </Tooltip>
-              <Tooltip content="템플릿 적용">
-                <button
-                  onClick={() => {
-                    setReapplyFor(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-purple-500"
-                >
-                  <ActionIcon id="copy-to-project" size={14} />
-                </button>
-              </Tooltip>
-              {templateService.getInheritedApplication(toolbar.name) && (
-                <Tooltip content="상속 끊기">
-                  <button
-                    onClick={() => {
-                      handleBreakInheritance(toolbar.name);
-                      setToolbar(null);
-                    }}
-                    className="btn-ghost p-2 rounded-md text-muted hover:text-amber-500"
-                  >
-                    <FaUnlink size={14} />
-                  </button>
-                </Tooltip>
-              )}
-              <Tooltip content="일괄 예약 추가 (모든 씬, 즉시)">
-                <button
-                  onClick={() => {
-                    queueProjectForGeneration(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-green-500"
-                >
-                  <ActionIcon id="queue-add" size={14} />
-                </button>
-              </Tooltip>
-              <Tooltip content="프로젝트 삭제">
-                <button
-                  onClick={() => {
-                    handleProjectDelete(toolbar.name);
-                    setToolbar(null);
-                  }}
-                  className="btn-ghost p-2 rounded-md text-muted hover:text-red-500"
-                >
-                  <ActionIcon id="delete-session" size={15} />
-                </button>
-              </Tooltip>
-            </div>
+              ariaLabel={`프로젝트 ${toolbar.name} 메뉴`}
+              x={toolbar.x}
+              y={toolbar.y}
+              onClose={() => setToolbar(null)}
+              entries={projectDrawerMenu({
+                // 파일 탐색기에서 열기 = PC 전용
+                explorer: !isMobile,
+                inherited: !!templateService.getInheritedApplication(toolbar.name),
+              }).map((key) => {
+                if (key === MENU_SEPARATOR) return key;
+                const name = toolbar.name;
+                const rows: Record<ProjectDrawerMenuId, ContextMenuRow> = {
+                  // 새 창에서 열기 (멀티 윈도우 W6 P1) — 이미 다른 창에서 열려 있으면
+                  // 새 창의 락 확보가 실패해 토스트+소유 창 포커스로 안내된다.
+                  'new-window': {
+                    icon: <FaWindowRestore size={14} />,
+                    label: '새 창에서 열기',
+                    onSelect: () => backend.openNewWindow(name),
+                  },
+                  'open-explorer': {
+                    icon: <FaFolderOpen size={14} />,
+                    label: '파일 탐색기에서 열기',
+                    onSelect: () => handleProjectOpenInExplorer(name),
+                  },
+                  'export-import': {
+                    icon: <ActionIcon id="backup-export" size={14} />,
+                    label: '내보내기/불러오기',
+                    onSelect: () => handleProjectExportImport(name),
+                  },
+                  clone: {
+                    icon: <ActionIcon id="duplicate" size={14} />,
+                    label: '프로젝트 복제',
+                    onSelect: () => handleProjectClone(name),
+                  },
+                  rename: {
+                    icon: <FaPen size={14} />,
+                    label: '이름 편집',
+                    onSelect: () => handleProjectRename(name),
+                  },
+                  'make-scene-template': {
+                    icon: <FaFilm size={14} />,
+                    label: '씬 템플릿으로 만들기',
+                    tooltip: '씬 템플릿으로 만들기 (복제)',
+                    onSelect: () => handleProjectSceneTemplateCreate(name),
+                  },
+                  'apply-template': {
+                    icon: <ActionIcon id="copy-to-project" size={14} />,
+                    label: '템플릿 적용',
+                    onSelect: () => setReapplyFor(name),
+                  },
+                  'break-inheritance': {
+                    icon: <FaUnlink size={14} />,
+                    label: '상속 끊기',
+                    onSelect: () => handleBreakInheritance(name),
+                  },
+                  'queue-all': {
+                    icon: <ActionIcon id="queue-add" size={14} />,
+                    label: '일괄 예약 추가',
+                    tooltip: '일괄 예약 추가 (모든 씬, 즉시)',
+                    onSelect: () => queueProjectForGeneration(name),
+                  },
+                  delete: {
+                    icon: <ActionIcon id="delete-session" size={14} />,
+                    label: '프로젝트 삭제',
+                    danger: true,
+                    onSelect: () => handleProjectDelete(name),
+                  },
+                };
+                return rows[key];
+              })}
+            />
           ),
           document.body,
         )}
