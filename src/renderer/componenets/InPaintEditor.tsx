@@ -904,15 +904,17 @@ const InPaintEditor = observer(
               }`}
             >
               {
-                <button
-                  className="round-button icon-only back-gray flex-none"
-                  aria-label={brushing ? '이동 모드로 전환' : '브러시 모드로 전환'}
-                  onClick={() => {
-                    setBrushing(!brushing);
-                  }}
-                >
-                  {brushing ? <FaArrowsAlt /> : <ActionIcon id="brush" />}
-                </button>
+                <Tooltip content={brushing ? '이동 모드로 전환' : '브러시 모드로 전환'}>
+                  <button
+                    className="round-button icon-only back-gray flex-none"
+                    aria-label={brushing ? '이동 모드로 전환' : '브러시 모드로 전환'}
+                    onClick={() => {
+                      setBrushing(!brushing);
+                    }}
+                  >
+                    {brushing ? <FaArrowsAlt /> : <ActionIcon id="brush" />}
+                  </button>
+                </Tooltip>
               }
               <div className="flex-none flex items-center gap-1">
                 <button
@@ -1100,6 +1102,7 @@ const InPaintEditor = observer(
             </TransformWrapper>
           </div>
           <div className="flex-none flex ml-auto gap-2 items-center mr-2 mt-2">
+            <Tooltip content="결과 이미지를 원본으로 적용">
             <button
               className={`round-button back-gray h-8 w-16 flex items-center justify-center`}
               aria-label="결과 이미지를 원본으로 적용"
@@ -1114,7 +1117,9 @@ const InPaintEditor = observer(
             >
               <FaArrowLeft size={20} />
             </button>
+            </Tooltip>
             <TaskProgressBar fast />
+            <Tooltip content="생성">
             <button
               className={`round-button back-green h-8 w-16 md:w-36 flex items-center justify-center`}
               aria-label="생성"
@@ -1160,6 +1165,7 @@ const InPaintEditor = observer(
             >
               <FaPlay size={15} />
             </button>
+            </Tooltip>
             {taskQueueService.isRunning() && (
               <Tooltip content="중지">
                 <button

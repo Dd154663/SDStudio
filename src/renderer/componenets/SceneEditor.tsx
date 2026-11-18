@@ -469,22 +469,24 @@ export const BigPromptEditor = observer(
             </div>
             <div className="ml-auto flex-none flex gap-4 pt-2 mb-2 md:mb-0">
               {path && (
-                <button
-                  className={`round-button back-orange h-8 md:w-36 flex items-center justify-center`}
-                  onClick={() => {
-                    setMainImage && setMainImage(path);
-                  }}
-                >
-                  {general ? (
-                    !isMobile ? (
-                      '즐겨찾기 지정'
+                <Tooltip content={general && isMobile ? '즐겨찾기 지정' : ''}>
+                  <button
+                    className={`round-button back-orange h-8 md:w-36 flex items-center justify-center`}
+                    onClick={() => {
+                      setMainImage && setMainImage(path);
+                    }}
+                  >
+                    {general ? (
+                      !isMobile ? (
+                        '즐겨찾기 지정'
+                      ) : (
+                        <FaStar />
+                      )
                     ) : (
-                      <FaStar />
-                    )
-                  ) : (
-                    '프로필 지정'
-                  )}
-                </button>
+                      '프로필 지정'
+                    )}
+                  </button>
+                </Tooltip>
               )}
               <TaskProgressBar fast />
               {!taskQueueService.isRunning() ? (
@@ -793,6 +795,7 @@ export const SlotPiece = observer(
           )}
         </button>
         </Tooltip>
+        <Tooltip content="셀 삭제">
         <button
           className={'active:brightness-90 hover:brightness-95 ml-auto text-red-500 dark:text-red-400' + (wide ? ' relative touch-hit' : '')}
           aria-label="셀 삭제"
@@ -803,6 +806,7 @@ export const SlotPiece = observer(
         >
           <FaTrash size={20} />
         </button>
+        </Tooltip>
       </div>
     );
 
@@ -1159,24 +1163,26 @@ const SceneCharacterPromptEditor = observer(({
                   </div>
                   <CharacterPresetLine name={character.fromPreset} />
                 </div>
-                <button
-                  type="button"
-                  className="icon-button back-gray w-7 h-7"
-                  disabled={index === 0}
-                  onClick={() => moveBase(index, index - 1)}
-                  title="위로"
-                >
-                  <FaArrowUp size={14} />
-                </button>
-                <button
-                  type="button"
-                  className="icon-button back-gray w-7 h-7"
-                  disabled={index === baseCharacters.length - 1}
-                  onClick={() => moveBase(index, index + 1)}
-                  title="아래로"
-                >
-                  <FaArrowDown size={14} />
-                </button>
+                <Tooltip content="위로">
+                  <button
+                    type="button"
+                    className="icon-button back-gray w-7 h-7"
+                    disabled={index === 0}
+                    onClick={() => moveBase(index, index - 1)}
+                  >
+                    <FaArrowUp size={14} />
+                  </button>
+                </Tooltip>
+                <Tooltip content="아래로">
+                  <button
+                    type="button"
+                    className="icon-button back-gray w-7 h-7"
+                    disabled={index === baseCharacters.length - 1}
+                    onClick={() => moveBase(index, index + 1)}
+                  >
+                    <FaArrowDown size={14} />
+                  </button>
+                </Tooltip>
               </div>
             ))}
           </div>
@@ -1289,31 +1295,35 @@ const SceneCharacterPromptEditor = observer(({
                     </button>
                   </div>
                   <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      className="icon-button back-gray w-7 h-7"
-                      disabled={index === 0}
-                      onClick={() => moveRole(index, index - 1)}
-                      title="위로"
-                    >
-                      <FaArrowUp size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-button back-gray w-7 h-7"
-                      disabled={index === characters.length - 1}
-                      onClick={() => moveRole(index, index + 1)}
-                      title="아래로"
-                    >
-                      <FaArrowDown size={14} />
-                    </button>
-                    <button
-                      className="icon-button back-red"
-                      aria-label="캐릭터 삭제"
-                      onClick={() => removeCharacter(character.id)}
-                    >
-                      <FaTrash />
-                    </button>
+                    <Tooltip content="위로">
+                      <button
+                        type="button"
+                        className="icon-button back-gray w-7 h-7"
+                        disabled={index === 0}
+                        onClick={() => moveRole(index, index - 1)}
+                      >
+                        <FaArrowUp size={14} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="아래로">
+                      <button
+                        type="button"
+                        className="icon-button back-gray w-7 h-7"
+                        disabled={index === characters.length - 1}
+                        onClick={() => moveRole(index, index + 1)}
+                      >
+                        <FaArrowDown size={14} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="캐릭터 삭제">
+                      <button
+                        className="icon-button back-red"
+                        aria-label="캐릭터 삭제"
+                        onClick={() => removeCharacter(character.id)}
+                      >
+                        <FaTrash />
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
 
@@ -1541,6 +1551,7 @@ export const SlotEditor = observer(({ scene, big, characterContext }: SlotEditor
                 moveSlotPiece={moveSlotPiece}
               />
             ))}
+            <Tooltip content="행 추가">
             <button
               className="p-2 m-2 w-14 back-lllgray clickable rounded-xl flex justify-center"
               aria-label="행 추가"
@@ -1559,8 +1570,10 @@ export const SlotEditor = observer(({ scene, big, characterContext }: SlotEditor
             >
               <FaPlus />
             </button>
+            </Tooltip>
           </div>
         ))}
+        <Tooltip content="열 추가">
         <button
           className="p-2 m-2 h-14 flex items-center back-lllgray clickable rounded-xl"
           aria-label="열 추가"
@@ -1579,6 +1592,7 @@ export const SlotEditor = observer(({ scene, big, characterContext }: SlotEditor
         >
           <FaPlus />
         </button>
+        </Tooltip>
       </div>
     </>
   );
@@ -2274,14 +2288,16 @@ const SceneEditor = observer(({ scene, onClosed, onDeleted, initialTab }: Props)
               }}
             />
             <div className="flex-none w-[8.5rem]">{resolutionSelect}</div>
-            <button
-              type="button"
-              className="round-button back-red flex-none min-w-0 w-9 h-9 px-0"
-              aria-label="씬 삭제"
-              onClick={confirmDelete}
-            >
-              <FaTrash size={14} />
-            </button>
+            <Tooltip content="씬 삭제">
+              <button
+                type="button"
+                className="round-button back-red flex-none min-w-0 w-9 h-9 px-0"
+                aria-label="씬 삭제"
+                onClick={confirmDelete}
+              >
+                <FaTrash size={14} />
+              </button>
+            </Tooltip>
           </div>
         ) : (
         <div className="grow-0 pt-2 px-3 flex gap-3 items-center text-nowrap flex-wrap mb-2 md:mb-0">

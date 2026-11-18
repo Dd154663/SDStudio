@@ -8,6 +8,7 @@ import {
 } from '../models';
 import { appState } from '../models/AppService';
 import { platform } from '../models/platform';
+import Tooltip from './Tooltip';
 
 // 고용량 하이라이트 기준 (3GB)
 const HIGHLIGHT_BYTES = 3 * 1024 * 1024 * 1024;
@@ -184,15 +185,16 @@ const StorageManageModal = observer(
                       계산 안 됨
                     </span>
                   )}
-                  <button
-                    className="text-xs btn back-gray px-2 py-1 rounded flex-none disabled:opacity-50"
-                    disabled={busy || !!bulk}
-                    onClick={() => projectSizeService.calculate(n)}
-                    aria-label={busy ? '계산 중' : e ? '다시 계산' : '계산'}
-                    title={busy ? '계산 중' : e ? '다시 계산' : '계산'}
-                  >
-                    {busy ? '...' : e ? '↻' : '계산'}
-                  </button>
+                  <Tooltip content={busy ? '계산 중' : e ? '다시 계산' : '계산'}>
+                    <button
+                      className="text-xs btn back-gray px-2 py-1 rounded flex-none disabled:opacity-50"
+                      disabled={busy || !!bulk}
+                      onClick={() => projectSizeService.calculate(n)}
+                      aria-label={busy ? '계산 중' : e ? '다시 계산' : '계산'}
+                    >
+                      {busy ? '...' : e ? '↻' : '계산'}
+                    </button>
+                  </Tooltip>
                   {platform.supportsWebpConvert && (
                     <button
                       className="text-xs btn back-green px-2 py-1 rounded flex-none"

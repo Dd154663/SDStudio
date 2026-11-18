@@ -773,15 +773,17 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
         </Tooltip>
       )}
       {v2Shelf && (
-        <button
-          type="button"
-          aria-label={shelfOpen ? '프로젝트 도구 접기' : '프로젝트 도구 펼치기'}
-          aria-expanded={shelfOpen}
-          className={`titlebar-no-drag icon-button touch-hit relative flex-none ${shelfOpen ? 'back-sky' : ''}`}
-          onClick={() => setShelfOpen(!shelfOpen)}
-        >
-          {shelfOpen ? <FaChevronUp size={14} /> : <FaChevronDown size={14} />}
-        </button>
+        <Tooltip content={shelfOpen ? '프로젝트 도구 접기' : '프로젝트 도구 펼치기'}>
+          <button
+            type="button"
+            aria-label={shelfOpen ? '프로젝트 도구 접기' : '프로젝트 도구 펼치기'}
+            aria-expanded={shelfOpen}
+            className={`titlebar-no-drag icon-button touch-hit relative flex-none ${shelfOpen ? 'back-sky' : ''}`}
+            onClick={() => setShelfOpen(!shelfOpen)}
+          >
+            {shelfOpen ? <FaChevronUp size={14} /> : <FaChevronDown size={14} />}
+          </button>
+        </Tooltip>
       )}
       <div
         className={mobileTwoRow ? 'w-full min-w-0 flex items-center' : 'contents'}

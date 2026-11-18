@@ -410,10 +410,10 @@ const TaskQueueControl = observer(({}) => {
         <TaskProgressBar fit={v2} />
       </div>
       <SceneQueueMenu session={appState.curSession} type={queueType} selectedOnly={appState.selectedSceneCount(queueType) > 0}>
+      <Tooltip content={queueType === 'inpaint' ? '이미지변형 씬 일괄 예약 (선택한 씬이 있으면 선택 씬만)' : '씬 일괄 예약 (선택한 씬이 있으면 선택 씬만)'}>
       <button
         type="button"
         className="round-button back-sky px-2 h-8 lg:px-6 disabled:opacity-50"
-        title={queueType === 'inpaint' ? '이미지변형 씬 일괄 예약 (선택한 씬이 있으면 선택 씬만)' : '씬 일괄 예약 (선택한 씬이 있으면 선택 씬만)'}
         aria-label="씬 일괄 예약"
         disabled={!appState.curSession}
         onClick={() => {
@@ -430,6 +430,7 @@ const TaskQueueControl = observer(({}) => {
       >
         <ActionIcon id="queue-add" size={18} />
       </button>
+      </Tooltip>
       </SceneQueueMenu>
       {/* 예약 전부 제거는 확인 없이 즉시(의도된 동작) — 이름·툴팁만 붙인다(X11) */}
       <Tooltip content="모든 예약 제거">

@@ -1627,6 +1627,7 @@ export function useCharacterPresetPanel({
           {(cyclingMode || selectMode) && (
             <div
               className="absolute top-2 left-2 z-30 cursor-pointer"
+              aria-label={selectedPresets.has(preset.name) ? '선택 해제' : '선택'}
               onClick={(e) => { e.stopPropagation(); togglePresetSelection(preset.name); }}
             >
               <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${

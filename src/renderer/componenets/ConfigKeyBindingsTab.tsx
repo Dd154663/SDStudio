@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { keyboardShortcutService, KeyboardShortcutService } from '../models/KeyboardShortcutService';
 import { useBackLayer } from '../models/BackStackService';
+import Tooltip from './Tooltip';
 
 /* ── 탭: 단축키 (PC only, 2026-10-01 라벨 「키 바인딩」→「단축키」) ── */
 const KeyBindingsTab = () => {
@@ -103,17 +104,18 @@ const KeyBindingsTab = () => {
       >
         {recordingAction === action.id ? '취소' : '변경'}
       </button>
-      <button
-        className="text-xs px-1.5 py-1 rounded back-gray flex-shrink-0"
-        title="기본값으로 초기화"
-        onClick={() => {
-          keyboardShortcutService.resetBinding(action.id);
-          setConflict(null);
-          refreshBindings();
-        }}
-      >
-        ↺
-      </button>
+      <Tooltip content="기본값으로 초기화">
+        <button
+          className="text-xs px-1.5 py-1 rounded back-gray flex-shrink-0"
+          onClick={() => {
+            keyboardShortcutService.resetBinding(action.id);
+            setConflict(null);
+            refreshBindings();
+          }}
+        >
+          ↺
+        </button>
+      </Tooltip>
     </div>
   );
 

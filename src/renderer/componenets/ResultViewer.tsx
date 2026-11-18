@@ -2699,13 +2699,15 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               >
                 이상형 월드컵
               </button>
-              <button
-                className={`round-button${isMobile ? ' icon-only' : ''} back-green`}
-                onClick={actQueueAdd}
-                aria-label="예약 추가"
-              >
-                {!isMobile ? '예약 추가' : <ActionIcon id="queue-add" />}
-              </button>
+              <Tooltip content="예약 추가">
+                <button
+                  className={`round-button${isMobile ? ' icon-only' : ''} back-green`}
+                  onClick={actQueueAdd}
+                  aria-label="예약 추가"
+                >
+                  {!isMobile ? '예약 추가' : <ActionIcon id="queue-add" />}
+                </button>
+              </Tooltip>
               <Tooltip content="예약 제거">
                 <button
                   className={`round-button${isMobile ? ' icon-only' : ''} back-gray`}

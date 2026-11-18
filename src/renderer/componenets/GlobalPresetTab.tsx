@@ -266,41 +266,46 @@ const EasyCard = observer(
               프로젝트로 복사
             </button>
             <div className="grid grid-cols-3 gap-1.5">
-              <button
-                className="icon-button btn-solid-orange py-2.5 flex items-center justify-center"
-                onClick={onToggleDefault}
-                title={entry.isDefault ? '기본 해제' : '기본으로 지정'}
-              >
-                <ActionIcon id="pin-default" size={18} className={entry.isDefault ? undefined : 'opacity-50'} />
-              </button>
-              <button
-                className="icon-button btn-solid-green py-2.5 flex items-center justify-center"
-                onClick={onRename}
-                title="이름 변경"
-              >
-                <ActionIcon id="rename" size={18} />
-              </button>
-              <button
-                className="icon-button btn-solid-indigo py-2.5 flex items-center justify-center"
-                onClick={onEdit}
-                title="편집"
-              >
-                <ActionIcon id="edit" size={18} />
-              </button>
-              <button
-                className="icon-button btn-solid-sky py-2.5 flex items-center justify-center"
-                onClick={onExport}
-                title="내보내기"
-              >
-                <ActionIcon id="export" size={18} />
-              </button>
-              <button
-                className="icon-button btn-solid-red py-2.5 flex items-center justify-center"
-                onClick={onDelete}
-                title="삭제"
-              >
-                <FaTrash size={18} />
-              </button>
+              <Tooltip content={entry.isDefault ? '기본 해제' : '기본으로 지정'}>
+                <button
+                  className="icon-button btn-solid-orange py-2.5 flex items-center justify-center"
+                  onClick={onToggleDefault}
+                >
+                  <ActionIcon id="pin-default" size={18} className={entry.isDefault ? undefined : 'opacity-50'} />
+                </button>
+              </Tooltip>
+              <Tooltip content="이름 변경">
+                <button
+                  className="icon-button btn-solid-green py-2.5 flex items-center justify-center"
+                  onClick={onRename}
+                >
+                  <ActionIcon id="rename" size={18} />
+                </button>
+              </Tooltip>
+              <Tooltip content="편집">
+                <button
+                  className="icon-button btn-solid-indigo py-2.5 flex items-center justify-center"
+                  onClick={onEdit}
+                >
+                  <ActionIcon id="edit" size={18} />
+                </button>
+              </Tooltip>
+              <Tooltip content="내보내기">
+                <button
+                  className="icon-button btn-solid-sky py-2.5 flex items-center justify-center"
+                  onClick={onExport}
+                >
+                  <ActionIcon id="export" size={18} />
+                </button>
+              </Tooltip>
+              <Tooltip content="삭제">
+                <button
+                  className="icon-button btn-solid-red py-2.5 flex items-center justify-center"
+                  onClick={onDelete}
+                >
+                  <FaTrash size={18} />
+                </button>
+              </Tooltip>
             </div>
           </div>
         )}
@@ -357,17 +362,18 @@ const GenRow = observer(
               )}
             </button>
           )}
-          <button
-            className="icon-button p-1 flex-none"
-            onClick={onToggleDefault}
-            title={entry.isDefault ? '기본 해제' : '기본으로 지정'}
-          >
-            <ActionIcon
-              id="pin-default"
-              className={entry.isDefault ? 'text-orange-500' : 'text-faint'}
-              size={22}
-            />
-          </button>
+          <Tooltip content={entry.isDefault ? '기본 해제' : '기본으로 지정'}>
+            <button
+              className="icon-button p-1 flex-none"
+              onClick={onToggleDefault}
+            >
+              <ActionIcon
+                id="pin-default"
+                className={entry.isDefault ? 'text-orange-500' : 'text-faint'}
+                size={22}
+              />
+            </button>
+          </Tooltip>
           <span className="flex-1 truncate text-default text-base font-medium">
             {entry.name}
           </span>

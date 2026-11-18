@@ -169,6 +169,7 @@ export const PieceCell = observer(
             {piece.name}
           </div>
           </Tooltip>
+          <Tooltip content="조각 삭제">
           <button
             className="ml-auto pl-2 flex-none text-red-500 dark:text-white"
             aria-label="조각 삭제"
@@ -196,6 +197,7 @@ export const PieceCell = observer(
           >
             <FaTrash size={20} />
           </button>
+          </Tooltip>
         </div>
         <div className="h-20">
           <PromptEditTextArea

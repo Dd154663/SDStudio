@@ -57,6 +57,7 @@ import {
   trimAutocompleteWord,
 } from '../models/promptAutocomplete';
 import { PROMPT_WEIGHT_OPEN_AT_START_RE } from '../models/promptWeightSyntax';
+import Tooltip from './Tooltip';
 
 interface PromptEditTextAreaProps {
   value: string;
@@ -1817,15 +1818,17 @@ const PromptEditTextArea = observer(
         >
           <div className="absolute right-0 top-0 z-10 flex items-center gap-1">
             {caretArtist && !accessorySlot && artistButton(caretArtist, 'mt-1')}
-            <button
-              aria-label={!fullScreen ? '크게 편집' : '크게 편집 닫기'}
-              onClick={() => {
-                if (!disabled) setFullScreen(!fullScreen);
-              }}
-              className="text-gray-500 hover:text-gray-600 dark:text-slate-400 dark:hover:text-slate-300 opacity-50 mr-1 mt-1"
-            >
-              {!fullScreen ? <FaExpand></FaExpand> : <FaTimes></FaTimes>}
-            </button>
+            <Tooltip content={!fullScreen ? '크게 편집' : '크게 편집 닫기'}>
+              <button
+                aria-label={!fullScreen ? '크게 편집' : '크게 편집 닫기'}
+                onClick={() => {
+                  if (!disabled) setFullScreen(!fullScreen);
+                }}
+                className="text-gray-500 hover:text-gray-600 dark:text-slate-400 dark:hover:text-slate-300 opacity-50 mr-1 mt-1"
+              >
+                {!fullScreen ? <FaExpand></FaExpand> : <FaTimes></FaTimes>}
+              </button>
+            </Tooltip>
           </div>
           <EditTextAreaImpl
             ref={editorRef}

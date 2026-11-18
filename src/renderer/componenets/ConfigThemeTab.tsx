@@ -10,6 +10,7 @@ import { appState } from '../models/AppService';
 import { promptName } from '../models/nameInput';
 import { deleteConfirmText } from '../models/deleteFlowRules';
 import MobileColorPicker from './MobileColorPicker';
+import Tooltip from './Tooltip';
 
 /* ── 메인 ConfigScreen ── */
 // 색 한 칸 선택 UI: 데스크톱=네이티브 색 피커, 모바일=MobileColorPicker(상위에서 띄움).
@@ -151,14 +152,15 @@ const MyThemePresetChip = ({
           ))}
         </span>
       </button>
-      <button
-        className="clickable text-xs px-1 flex-none"
-        style={{ color: labelColor }}
-        onClick={onDelete}
-        title="프리셋 삭제"
-      >
-        ✕
-      </button>
+      <Tooltip content="프리셋 삭제">
+        <button
+          className="clickable text-xs px-1 flex-none"
+          style={{ color: labelColor }}
+          onClick={onDelete}
+        >
+          ✕
+        </button>
+      </Tooltip>
     </div>
   );
 };

@@ -326,22 +326,24 @@ const ProjectRow = observer(
           </Tooltip>
         )}
         {isMobile && !selectMode && onMenu && (
-          <span
-            role="button"
-            aria-label="프로젝트 메뉴"
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              onMenu();
-            }}
-            className={`flex-none -mr-1 p-1.5 rounded ${
-              active
-                ? 'text-sky-100 hover:bg-white/15'
-                : 'text-faint hover:bg-black/10 dark:hover:bg-white/10'
-            }`}
-          >
-            <FaEllipsisV size={15} />
-          </span>
+          <Tooltip content="프로젝트 메뉴">
+            <span
+              role="button"
+              aria-label="프로젝트 메뉴"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onMenu();
+              }}
+              className={`flex-none -mr-1 p-1.5 rounded ${
+                active
+                  ? 'text-sky-100 hover:bg-white/15'
+                  : 'text-faint hover:bg-black/10 dark:hover:bg-white/10'
+              }`}
+            >
+              <FaEllipsisV size={15} />
+            </span>
+          </Tooltip>
         )}
       </button>
     );

@@ -4,6 +4,7 @@ import { FaChevronDown } from 'react-icons/fa';
 import { Session } from '../models/types';
 import { addScenesToQueue, SceneQueueFilter } from '../models/sceneQueueActions';
 import { backStackService } from '../models/BackStackService';
+import Tooltip from './Tooltip';
 
 // 툴바 overflow와 하단 도크에서도 잘리지 않도록 포털로 표시한다.
 export default function SceneQueueMenu({ children, session, type, selectedOnly }: {
@@ -70,6 +71,7 @@ export default function SceneQueueMenu({ children, session, type, selectedOnly }
     {children}
     {/* 분할 화살표 ▾(2026-10-04): PC 는 폭 최소 28px(min-w-7·좌우 6px)·높이 32 — 18px 이던 폭이 너무 좁아 누르기 어려웠다.
         모바일은 .round-button 의 36×36 최소 크기 그대로. 씬 툴바·하단 예약 도크가 이 한 곳을 같이 쓴다. SPEC_GUIDE §2. */}
+    <Tooltip content="부분 일괄 예약 옵션">
     <button ref={toggle} type="button" className="round-button back-sky px-1 md:px-1.5 md:min-w-7 h-8"
       aria-label="부분 일괄 예약 옵션" aria-expanded={open} disabled={!session}
       onClick={() => { focusRequested.current = !open; setOpen(!open); }}
@@ -82,6 +84,7 @@ export default function SceneQueueMenu({ children, session, type, selectedOnly }
       }}>
       <FaChevronDown size={10} />
     </button>
+    </Tooltip>
     {open && createPortal(<div ref={panel} role="group" aria-label="부분 일괄 예약"
       className="fixed z-[var(--z-widget)] bg-[var(--c-surface-2)] text-default border line-color rounded-lg shadow-lg p-1 flex flex-col gap-1"
       style={{ ...position, maxWidth: 'calc(100vw - 8px)' }}>

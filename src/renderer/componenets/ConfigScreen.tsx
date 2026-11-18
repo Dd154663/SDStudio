@@ -89,6 +89,7 @@ import {
   sameBoostSettings,
 } from '../models/boostMode';
 import { useBoostAccountLock } from './boostAccountLock';
+import Tooltip from './Tooltip';
 
 // PC 에서 섹션 단위 2단 흐름(cfg-two-col)을 쓰는 탭 key — 칸이 많고 세로로만 쌓이던 탭(2026-11-11 오버레이 묶음 1).
 // 로그인(안내 박스)·레이아웃(템플릿 그림 고르기)·저장 경로(긴 경로)·드라이브·단축키(표)는 한 열 유지.
@@ -642,16 +643,17 @@ const LoginTab = ({
                     </span>
                   )}
                   {editingProfileId !== profile.id && (
-                    <button
-                      className="btn btn-ghost rounded p-1 text-muted flex-none"
-                      title="토큰 이름 변경"
-                      aria-label={`${profile.name} 이름 변경`}
-                      disabled={profileBusy}
-                      onClick={() => startProfileRename(profile)}
-                      onDoubleClick={() => startProfileRename(profile)}
-                    >
-                      <FaPen size={14} />
-                    </button>
+                    <Tooltip content="토큰 이름 변경">
+                      <button
+                        className="btn btn-ghost rounded p-1 text-muted flex-none"
+                        aria-label={`${profile.name} 이름 변경`}
+                        disabled={profileBusy}
+                        onClick={() => startProfileRename(profile)}
+                        onDoubleClick={() => startProfileRename(profile)}
+                      >
+                        <FaPen size={14} />
+                      </button>
+                    </Tooltip>
                   )}
                   {active && (
                     <span className={`${roundTag} back-green flex-none`}>사용 중</span>

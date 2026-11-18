@@ -272,12 +272,13 @@ describe('프로젝트 저장 공간 관리 — size m·도구줄·안내는 본
     expect(mockSize.cancelBulk).toHaveBeenCalled();
   });
 
-  test('행 계산 단추에 aria-label·title(계산 안 됨 = 「계산」, 계산됨 = 「다시 계산」)', async () => {
+  test('행 계산 단추에 aria-label·Tooltip(계산 안 됨 = 「계산」, 계산됨 = 「다시 계산」)', async () => {
     mockSize.entries = { 프로젝트A: { bytes: 10, at: Date.now() } };
     await renderStorage();
     const again = container.querySelector<HTMLButtonElement>('button[aria-label="다시 계산"]')!;
     expect(again.textContent).toBe('↻');
-    expect(again.title).toBe('다시 계산');
+    // 설명은 Tooltip 이 띄운다 — title 을 겹쳐 두면 설명이 두 번 뜬다(2026-11-18 아이콘 설명 메우기)
+    expect(again.hasAttribute('title')).toBe(false);
     const calc = container.querySelector<HTMLButtonElement>('button[aria-label="계산"]')!;
     expect(calc.textContent).toBe('계산');
     act(() => calc.click());

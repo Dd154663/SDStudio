@@ -4,6 +4,7 @@ import { ActionIcon } from './ActionIcon';
 import ModalOverlay from './ModalOverlay';
 import { useGuardedClose } from './backdropClose';
 import { appState } from '../models/AppService';
+import Tooltip from './Tooltip';
 
 interface Bookmark {
   id: string;
@@ -367,13 +368,14 @@ const DesktopBrowser: React.FC = () => {
             {bm.label}
           </button>
         ))}
-        <button
-          className="flex-none text-xs px-2 py-1 rounded btn-ghost text-muted"
-          onClick={() => setDialog({ mode: 'add' })}
-          title="즐겨찾기 추가"
-        >
-          <FaPlus size={10} />
-        </button>
+        <Tooltip content="즐겨찾기 추가">
+          <button
+            className="flex-none text-xs px-2 py-1 rounded btn-ghost text-muted"
+            onClick={() => setDialog({ mode: 'add' })}
+          >
+            <FaPlus size={10} />
+          </button>
+        </Tooltip>
       </div>
 
       {/* 네비게이션 바 */}

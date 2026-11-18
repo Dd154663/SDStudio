@@ -1156,6 +1156,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
               {/* 행 버튼(2026-10-04 피드백 — 두껍고 알록달록): 무배경 중립 아이콘, 시각 PC 24·모바일 28px,
                   모바일은 touch-hit 로 판정 확장(간격 8px — SPEC §2 이웃 판정 겹침 회피), 삭제만 빨간 아이콘. */}
               <div className="flex flex-none items-center gap-2 md:gap-1">
+                <Tooltip content="이름 변경">
                 <button
                   onClick={async (e) => {
                     e.stopPropagation();
@@ -1176,6 +1177,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                 >
                   <ActionIcon id="rename" className={PRESET_ROW_ICON} />
                 </button>
+                </Tooltip>
                 <Tooltip content="그림체 복제">
                 <button
                   onClick={(e) => {
@@ -2446,24 +2448,26 @@ const CharacterPromptEditor = observer(
                     ) : null}
                   </div>
                   <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      className="icon-button back-gray w-7 h-7"
-                      disabled={i === 0}
-                      onClick={() => moveCharacter(i, i - 1)}
-                      title="위로"
-                    >
-                      <FaArrowUp size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-button back-gray w-7 h-7"
-                      disabled={i === allChars.length - 1}
-                      onClick={() => moveCharacter(i, i + 1)}
-                      title="아래로"
-                    >
-                      <FaArrowDown size={14} />
-                    </button>
+                    <Tooltip content="위로">
+                      <button
+                        type="button"
+                        className="icon-button back-gray w-7 h-7"
+                        disabled={i === 0}
+                        onClick={() => moveCharacter(i, i - 1)}
+                      >
+                        <FaArrowUp size={14} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="아래로">
+                      <button
+                        type="button"
+                        className="icon-button back-gray w-7 h-7"
+                        disabled={i === allChars.length - 1}
+                        onClick={() => moveCharacter(i, i + 1)}
+                      >
+                        <FaArrowDown size={14} />
+                      </button>
+                    </Tooltip>
                     {locked ? (
                       <PresetReleaseButton presetName={character.fromPreset!} />
                     ) : (

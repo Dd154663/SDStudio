@@ -337,17 +337,19 @@ export const GlobalFolderFilterChips = observer(
               {f} ({count})
               {/* 선택된 칩에만 이름 변경 아이콘 노출 (롱프레스 불필요) */}
               {selected && onRenameFolder && (
-                <span
-                  role="button"
-                  aria-label="폴더 이름 변경"
-                  className="-mr-0.5 p-0.5 rounded hover:bg-white/20"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRenameFolder(f);
-                  }}
-                >
-                  <FaPen size={9} />
-                </span>
+                <Tooltip content="폴더 이름 변경">
+                  <span
+                    role="button"
+                    aria-label="폴더 이름 변경"
+                    className="-mr-0.5 p-0.5 rounded hover:bg-white/20"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRenameFolder(f);
+                    }}
+                  >
+                    <FaPen size={9} />
+                  </span>
+                </Tooltip>
               )}
             </button>
           );
@@ -501,6 +503,7 @@ export const GlobalCharacterPresetCard = observer(({
         {cyclingMode && (
           <div
             className="absolute top-2 right-2 z-30 cursor-pointer"
+            aria-label={selected ? '선택 해제' : '선택'}
             onClick={(e) => { e.stopPropagation(); onToggleSelect?.(); }}
           >
             <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${

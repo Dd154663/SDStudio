@@ -20,6 +20,7 @@ import { observer } from 'mobx-react-lite';
 import OpusUsageBadge from './OpusUsageBadge';
 import { normalizeTokenRotateWarning } from '../models/tokenAutoRotation';
 import ModelFamilySwitch from './ModelFamilySwitch';
+import Tooltip from './Tooltip';
 
 const TobBar = observer(() => {
   // 컴팩트 템플릿(PC)은 하단바가 없어 세션(프로젝트) 선택을 상단바로 올린다.
@@ -133,15 +134,17 @@ const TobBar = observer(() => {
   // 모바일 기본 툴바의 환경설정 버튼·계정 표기. 모바일은 SessionSelect 의 2줄 배치 슬롯
   // (1줄째 맨 앞=환경설정·계정 표기, 그 뒤 프로젝트 선택)으로, 좁은 PC 창은 기존 인라인 묶음으로 렌더.
   const mobileSettingsButton = (
-    <button
-      className="icon-button flex-none"
-      aria-label="환경설정"
-      onClick={() => {
-        setSettings(true);
-      }}
-    >
-      <FaCog size={18} />
-    </button>
+    <Tooltip content="환경설정">
+      <button
+        className="icon-button flex-none"
+        aria-label="환경설정"
+        onClick={() => {
+          setSettings(true);
+        }}
+      >
+        <FaCog size={18} />
+      </button>
+    </Tooltip>
   );
   const mobileAccountBadge = !loggedIn ? (
     <span className="round-tag back-red text-sm !px-2 !py-1">로그인필요</span>
@@ -253,18 +256,21 @@ const TobBar = observer(() => {
         >
           <button
             className="window-control-btn"
+            aria-label="최소화"
             onClick={handleMinimize}
           >
             <VscChromeMinimize size={16} />
           </button>
           <button
             className="window-control-btn"
+            aria-label={isMaximized ? '이전 크기로 복원' : '최대화'}
             onClick={handleMaximize}
           >
             {isMaximized ? <VscChromeRestore size={16} /> : <VscChromeMaximize size={16} />}
           </button>
           <button
             className="window-control-btn window-control-close"
+            aria-label="닫기"
             onClick={handleClose}
           >
             <VscChromeClose size={16} />

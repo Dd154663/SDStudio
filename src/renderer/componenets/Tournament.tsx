@@ -10,6 +10,7 @@ import { appState } from '../models/AppService';
 import { recordRanking, recordRankingRound } from '../models/imageStateUndo';
 import { UNDO_TEXT } from '../models/undoService';
 import ShortcutCheatsheet from './ShortcutCheatsheet';
+import Tooltip from './Tooltip';
 
 interface TournamentProps {
   scene: Scene | InpaintScene;
@@ -352,16 +353,17 @@ const Tournament = observer(({ scene, path }: TournamentProps) => {
           <span className="font-bold text-xl">모든 순위가 확정되었습니다</span>
         )}
         <div className="flex-1" />
-        <button
-          className="text-default opacity-50 hover:opacity-100 transition-opacity cursor-pointer flex items-center gap-1"
-          onClick={() => {
-            appState.showTournamentCheatsheet = !appState.showTournamentCheatsheet;
-          }}
-          title="단축키 도움말 (H)"
-        >
-          <FaQuestion size={14} />
-          <span className="text-xs hidden lg:inline">H</span>
-        </button>
+        <Tooltip content="단축키 도움말 (H)">
+          <button
+            className="text-default opacity-50 hover:opacity-100 transition-opacity cursor-pointer flex items-center gap-1"
+            onClick={() => {
+              appState.showTournamentCheatsheet = !appState.showTournamentCheatsheet;
+            }}
+          >
+            <FaQuestion size={14} />
+            <span className="text-xs hidden lg:inline">H</span>
+          </button>
+        </Tooltip>
       </div>
       <div className="px-2 pb-2 md:px-4 md:pb-4 flex flex-none gap-2 w-full border-b line-color flex-wrap">
         <button className="round-button back-sky" onClick={showFolder}>

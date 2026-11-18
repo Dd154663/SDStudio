@@ -23,6 +23,7 @@ import {
   FaSlidersH,
 } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
+import Tooltip from './Tooltip';
 
 /* ── 탭: 툴바 버튼 구성 (테마 탭에서 분리 — 두 기능이 한 탭에 있으면 스크롤이 과도) ── */
 /* ── 퀵 메뉴 구성 (트랙2 ① P3) ── */
@@ -89,10 +90,15 @@ const QuickMenuEditor = ({
           candidates.some((a) => a.id === id) ? (
             <div key={id} className="flex items-center gap-1 px-2 py-1">
               <span className="flex-1 text-sm text-default truncate">{nameOf(id)}</span>
-              <button className="btn-ghost rounded px-1.5 py-0.5 text-xs" onClick={() => move(id, -1)}>▲</button>
-              <button className="btn-ghost rounded px-1.5 py-0.5 text-xs" onClick={() => move(id, 1)}>▼</button>
+              <Tooltip content="위로">
+                <button className="btn-ghost rounded px-1.5 py-0.5 text-xs" onClick={() => move(id, -1)}>▲</button>
+              </Tooltip>
+              <Tooltip content="아래로">
+                <button className="btn-ghost rounded px-1.5 py-0.5 text-xs" onClick={() => move(id, 1)}>▼</button>
+              </Tooltip>
               <button
                 className="btn-ghost rounded px-1.5 py-0.5 text-xs"
+                aria-label="제거"
                 onClick={() => onChange(list.filter((x) => x !== id))}
               >
                 ✕

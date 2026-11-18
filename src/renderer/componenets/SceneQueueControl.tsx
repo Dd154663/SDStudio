@@ -2684,6 +2684,13 @@ const QueueControl = observer(
       ),
       'queue-add': (
         <SceneQueueMenu session={curSession} type={type} selectedOnly={selectedCount > 0}>
+          <Tooltip
+            content={
+              selectedCount > 0
+                ? `선택한 씬 예약 추가 (${selectedCount})`
+                : '모든 씬 예약 추가'
+            }
+          >
           <button
             className={`round-button${iconMode && selectedCount === 0 ? ' icon-only' : ''} back-sky`}
             aria-label={
@@ -2713,6 +2720,7 @@ const QueueControl = observer(
               '모두 예약추가'
             )}
           </button>
+          </Tooltip>
         </SceneQueueMenu>
       ),
       'export-images': (
@@ -3589,14 +3597,16 @@ const QueueControl = observer(
                             <FaTimes size={14} />
                           </button>
                         ) : (
-                          <button
-                            type="button"
-                            aria-label="씬 찾기·북마크 이동"
-                            className="flex-none w-6 h-[30px] flex items-center justify-center rounded-md clickable text-muted"
-                            onClick={() => setV2Menu('find')}
-                          >
-                            <FaChevronDown size={14} />
-                          </button>
+                          <Tooltip content="씬 찾기·북마크 이동">
+                            <button
+                              type="button"
+                              aria-label="씬 찾기·북마크 이동"
+                              className="flex-none w-6 h-[30px] flex items-center justify-center rounded-md clickable text-muted"
+                              onClick={() => setV2Menu('find')}
+                            >
+                              <FaChevronDown size={14} />
+                            </button>
+                          </Tooltip>
                         )}
                       </label>
                     </>,
