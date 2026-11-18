@@ -39,8 +39,19 @@ import {
   type TemplateImportPolicy,
 } from './projectTemplateBackup';
 
-const PROJECT_TEMPLATES_FILE = 'project_templates.json';
-const PROJECT_TEMPLATE_IMAGES_DIR = 'project_template_images';
+// 데이터 루트 직하 파일·폴더 이름 — 전체 백업이 같은 이름으로 `__settings__/` 아래에 담는다(2026-11-18 T1)
+export const PROJECT_TEMPLATES_FILE = 'project_templates.json';
+export const PROJECT_TEMPLATE_IMAGES_DIR = 'project_template_images';
+
+/** 전체 백업의 프로젝트 템플릿 채택 결과(adoptFromFullBackupIfEmpty) */
+export type FullBackupTemplateAdoptOutcome =
+  /** 백업에 프로젝트 템플릿이 없음(예전 백업·빈 목록·손상) */
+  | { kind: 'none' }
+  /** 받는 쪽에 이미 있어 그대로 둠 */
+  | { kind: 'kept' }
+  /** 받는 쪽 파일을 읽지 못했거나 저장이 막혀 건너뜀 */
+  | { kind: 'blocked' }
+  | { kind: 'adopted'; count: number };
 
 // 신규 프로젝트 생성 다이얼로그의 '빈 프로젝트' 값 — uuid 와 충돌 불가한 문자.
 const BLANK_VALUE = '/blank';
@@ -132,12 +143,7 @@ export class ProjectTemplateService extends EventTarget {
     {
       file: PROJECT_TEMPLATES_FILE,
       label: '프로젝트 템플릿',
-      parse: (raw) => {
-        const json = JSON.parse(raw);
-        return json && typeof json === 'object' && Array.isArray(json.templates)
-          ? (json as IProjectTemplateStore)
-          : null;
-      },
+      parse: (raw) => ProjectTemplateService.parseStore(raw),
       countItems: (s) => s.templates.length,
       serialize: () => {
         const store: IProjectTemplateStore = {
@@ -161,6 +167,14 @@ export class ProjectTemplateService extends EventTarget {
   }
 
   // ---------- lifecycle ----------
+
+  /** 파일 원문 → 저장 형식(구조가 어긋나면 null, JSON 이 아니면 throw — StoreFile 은 둘 다 손상으로 본다) */
+  private static parseStore(raw: string): IProjectTemplateStore | null {
+    const json = JSON.parse(raw);
+    return json && typeof json === 'object' && Array.isArray(json.templates)
+      ? (json as IProjectTemplateStore)
+      : null;
+  }
 
   /** 파일 내용 → 메모리 목록(load·다른 창 재로드·병합 기준이 같은 규칙을 쓴다) */
   private static normalizeTemplates(json: IProjectTemplateStore | null): IProjectTemplateEntry[] {
@@ -625,6 +639,73 @@ export class ProjectTemplateService extends EventTarget {
     this.scheduleSave();
     this.dispatchEvent(new CustomEvent('changed', {}));
     return { added, skipped, overwritten };
+  }
+
+  // ---------- 전체 백업 복원 (2026-11-18 T1) ----------
+  /**
+   * 전체 백업 `__settings__/` 의 프로젝트 템플릿을, 받는 쪽이 **정상으로 읽은 결과가 빈 목록일 때만** 통째로 채택한다
+   * (글로벌 라이브러리 adoptGlobalsIfEmpty 와 같은 규칙). 같은 id·이름·폴더 전용 표식·배지 색을 그대로 둔다 — 폴더 기본
+   * 템플릿 지정·적용 기록이 id 로 가리키기 때문(라이브러리 백업 불러오기는 새 id·이름 기준 병합 — 그 흐름은 그대로).
+   *  - 하나라도 있으면 kept(보존). 읽기 실패(loadFailed)면 blocked(아무것도 쓰지 않음).
+   *  - 이미지는 엔트리가 참조하는 파일만, 받는 쪽에 같은 이름이 없을 때만 복사(덮지 않음). 백업에 없는 파일은 참조 그대로 둔다.
+   *  - 저장은 StoreFile 규칙(dirty → 지금 저장). 저장이 막히면(쓰기 충돌) 메모리를 비운 채로 되돌리고 blocked.
+   */
+  @action
+  async adoptFromFullBackupIfEmpty(settingsDir: string): Promise<FullBackupTemplateAdoptOutcome> {
+    let raw: string;
+    try {
+      if (!(await backend.existFile(settingsDir + '/' + PROJECT_TEMPLATES_FILE))) return { kind: 'none' };
+      raw = await backend.readFile(settingsDir + '/' + PROJECT_TEMPLATES_FILE);
+    } catch (e) {
+      return { kind: 'none' };
+    }
+    let parsed: IProjectTemplateStore | null = null;
+    try {
+      parsed = ProjectTemplateService.parseStore(raw);
+    } catch (e) {
+      parsed = null; // 손상 — 이 부분만 건너뛴다
+    }
+    const incoming = ProjectTemplateService.normalizeTemplates(parsed);
+    if (incoming.length === 0) return { kind: 'none' };
+    try {
+      await this.ensureLoaded();
+    } catch (e) {
+      return { kind: 'blocked' };
+    }
+    // 「비어 있음」은 정상으로 읽은 결과가 빈 경우만 — 읽기 실패의 빈 메모리 목록으로 판단하지 않는다
+    if (!this.loaded || this.store.loadFailed) return { kind: 'blocked' };
+    if (this.templates.length > 0) return { kind: 'kept' };
+    for (const entry of incoming) {
+      for (const token of collectTemplateImageTokens(entry)) {
+        const base = imageTokenBase(token);
+        if (!isSafeImageToken(base)) continue;
+        const dst = this.getImagePath(base);
+        const src = settingsDir + '/' + PROJECT_TEMPLATE_IMAGES_DIR + '/' + base;
+        try {
+          if (await backend.existFile(dst)) continue;
+          if (!(await backend.existFile(src))) continue;
+          await backend.copyFile(src, dst);
+        } catch (e) {
+          console.warn('전체 백업 프로젝트 템플릿 이미지 복사 실패:', base, e);
+        }
+      }
+    }
+    // 이미지 복사(await) 사이에 다른 창 알림으로 목록이 채워졌으면 덮지 않는다
+    if (this.templates.length > 0) return { kind: 'kept' };
+    this.templates = incoming;
+    this.scheduleSave();
+    const saved = await this.store.flush();
+    if (this.store.loadFailed) {
+      this.templates = [];
+      this.dispatchEvent(new CustomEvent('changed', {}));
+      return { kind: 'blocked' };
+    }
+    if (!saved) {
+      // 쓰기 오류 — 메모리에는 채택됨, dirty 가 남아 종료·백그라운드 전환 저장이 다시 시도한다
+      console.error('전체 백업 프로젝트 템플릿 저장 실패(다시 시도 예정)');
+    }
+    this.dispatchEvent(new CustomEvent('changed', {}));
+    return { kind: 'adopted', count: incoming.length };
   }
 
   // ---------- 이미지 (data URI 파일 — 글로벌 캐릭터 프리셋과 동일 패턴) ----------

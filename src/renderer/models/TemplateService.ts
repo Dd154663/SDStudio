@@ -15,8 +15,17 @@ import type { ProjectTemplateEntrySnapshot } from './ProjectTemplateService';
 import { askImportPolicy, notifyImportDone } from './importFlow';
 import { GlobalStoreBlockedError, StoreFile } from './storeFile';
 import { globalStoreDeps } from './globalStoreDeps';
+import {
+  planFullBackupTemplates,
+  type FullBackupIncomingProject,
+  type FullBackupRestoreMode,
+  type FullBackupTemplatePlanCounts,
+  type PreOverwriteDesignation,
+} from './fullBackupTemplatePlan';
 
-const SIDECAR_PATH = 'templates.json';
+/** 씬 템플릿 지정 목록 파일 이름(데이터 루트 직하) — 전체 백업이 같은 이름으로 담는다(2026-11-18 T1) */
+export const TEMPLATES_SIDECAR_FILE = 'templates.json';
+const SIDECAR_PATH = TEMPLATES_SIDECAR_FILE;
 // 사용자 안내용 이름(storeFile 알림)
 const TEMPLATES_STORE_LABEL = '템플릿 지정 목록';
 
@@ -28,6 +37,15 @@ export const TEMPLATE_STORE_TEXT = {
     return `숨겨져 있던 프로젝트 ${names.length}개를 다시 표시했습니다 — ${shown}${more}`;
   },
 } as const;
+
+/**
+ * 전체 백업 복원의 씬 템플릿 지정 반영 결과(restoreFromFullBackup).
+ * none = 반영할 것이 없음 · blocked = 지정 목록이 막혀 건너뜀(아무것도 쓰지 않음) · applied = 반영·저장함
+ */
+export type FullBackupTemplatesOutcome =
+  | { kind: 'none' }
+  | { kind: 'blocked' }
+  | { kind: 'applied'; counts: FullBackupTemplatePlanCounts };
 
 // 폴더 기본 템플릿 지정 (프로젝트 상속 v2, 2026-07-16 합의).
 // templateId = ProjectTemplateService 엔티티 id (불변 — 이름변경 캐스케이드 불필요).
@@ -803,6 +821,102 @@ export class TemplateService {
       if (isQuick) this.quickGenName = null;
     });
     await this.save();
+  }
+
+  // ===== 전체 백업 복원 (2026-11-18 T1) =====
+
+  /**
+   * 덮어쓰기 직전 이 프로젝트의 지정 상태 — 지정 정보가 없는 예전 백업으로 덮어쓸 때 되살릴 값(읽기 전용, 쓰지 않음).
+   * 지정 목록을 읽지 못했으면 null.
+   */
+  async designationOf(name: string): Promise<PreOverwriteDesignation | null> {
+    await this.ensureLoaded();
+    if (!this.loaded || this.store.loadFailed) return null;
+    return {
+      sceneTemplate: this.sceneNames.includes(name),
+      hidden: this.hiddenNames.includes(name),
+      quickGen: this.quickGenName === name,
+    };
+  }
+
+  /**
+   * 전체 백업의 지정 목록을 받는 쪽에 합친다 — 계획은 순수 함수(fullBackupTemplatePlan), 반영은 여기서 저장 1회.
+   * backupText = 백업 `__settings__/templates.json` 원문(없으면 null — 예전 백업). 손상·형식 불일치면 지정 정보 없음으로 본다.
+   * 받는 쪽 프로젝트·폴더·프로젝트 템플릿 id 는 호출 시점 값(프로젝트 템플릿 채택 뒤에 부른다).
+   * 진입부는 ready()(막혔으면 안내 토스트 후 blocked — 아무것도 쓰지 않음). 반영할 것이 없으면 읽지도 않고 none.
+   */
+  async restoreFromFullBackup(input: {
+    backupText: string | null;
+    mode: FullBackupRestoreMode;
+    incoming: FullBackupIncomingProject[];
+    preOverwrite: Record<string, PreOverwriteDesignation>;
+  }): Promise<FullBackupTemplatesOutcome> {
+    let backup: TemplatesSidecarData | null = null;
+    if (input.backupText !== null) {
+      try {
+        backup = parseTemplatesSidecar(input.backupText);
+      } catch (e) {
+        backup = null;
+      }
+      if (!backup) console.warn('전체 백업의 templates.json 을 읽지 못해 지정 정보 없이 복원합니다');
+    }
+    // 할 일이 없으면 지정 목록을 읽지도 않는다 — 백업에 지정 항목이 있거나, 예전 백업 덮어쓰기에서 되살릴 지정이 있을 때만
+    const hasPre = Object.values(input.preOverwrite).some((p) => p.sceneTemplate || p.quickGen);
+    const needsWork = backup ? countTemplatesSidecarItems(backup) > 0 : hasPre;
+    if (!needsWork) return { kind: 'none' };
+    if (!(await this.ready())) return { kind: 'blocked' };
+    let templateIds: string[] = [];
+    try {
+      await projectTemplateService.ensureLoaded();
+      if (!projectTemplateService.loadFailed) {
+        templateIds = projectTemplateService.list().map((t) => t.id);
+      }
+    } catch (e) {
+      templateIds = []; // 못 읽으면 폴더 기본 템플릿·적용 기록은 연결하지 않는다(고아 참조 금지)
+    }
+    const before: TemplatesSidecarData = {
+      sceneNames: this.sceneNames,
+      hiddenNames: this.hiddenNames,
+      quickGenName: this.quickGenName,
+      folderTemplates: this.folderTemplates,
+      templateApplications: this.templateApplications,
+    };
+    const plan = planFullBackupTemplates({
+      mode: input.mode,
+      backup,
+      current: before,
+      incoming: input.incoming,
+      preOverwrite: input.preOverwrite,
+      existingProjects: sessionService.list(),
+      existingFolders: sessionService.listFolders(),
+      templateIds,
+    });
+    if (!plan.changed) return { kind: 'none' };
+    runInAction(() => {
+      this.sceneNames = plan.next.sceneNames;
+      this.hiddenNames = plan.next.hiddenNames;
+      this.quickGenName = plan.next.quickGenName;
+      this.folderTemplates = plan.next.folderTemplates;
+      this.templateApplications = plan.next.templateApplications;
+    });
+    try {
+      await this.save();
+    } catch (e) {
+      // 메모리에는 반영됨 — dirty 가 남아 종료·백그라운드 전환 저장이 다시 시도한다
+      console.error('전체 백업 복원: 씬 템플릿 지정 저장 실패(다시 시도 예정):', e);
+    }
+    if (this.store.loadFailed) {
+      // 저장 직전 쓰기 충돌로 막혔다(다른 창이 파일을 만듦 등 — 안내는 StoreFile) — 보이는 것과 디스크가 어긋나지 않게 되돌린다
+      runInAction(() => {
+        this.sceneNames = before.sceneNames;
+        this.hiddenNames = before.hiddenNames;
+        this.quickGenName = before.quickGenName;
+        this.folderTemplates = before.folderTemplates;
+        this.templateApplications = before.templateApplications;
+      });
+      return { kind: 'blocked' };
+    }
+    return { kind: 'applied', counts: plan.counts };
   }
 
   // ===== 씬 템플릿 (여러 씬 묶음의 즉시 임포트) =====

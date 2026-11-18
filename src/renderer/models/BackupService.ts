@@ -11,10 +11,24 @@ import {
   projectSizeService,
   sessionService,
   taskQueueService,
+  templateService,
   trashService,
   workFlowService,
   zipService,
+  flushGlobalStoresNow,
 } from '.';
+import { TEMPLATES_SIDECAR_FILE } from './TemplateService';
+import type { FullBackupTemplatesOutcome } from './TemplateService';
+import {
+  PROJECT_TEMPLATES_FILE,
+  PROJECT_TEMPLATE_IMAGES_DIR,
+} from './ProjectTemplateService';
+import type { FullBackupTemplateAdoptOutcome } from './ProjectTemplateService';
+import {
+  fullBackupTemplateNote,
+  type FullBackupIncomingProject,
+  type PreOverwriteDesignation,
+} from './fullBackupTemplatePlan';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { Dialog, DialogItem } from '../componenets/ConfirmWindow';
@@ -121,7 +135,9 @@ import { UNDO_TEXT } from './undoService';
 
 // 전체 백업에 담는 전역 설정 파일. (백업엔 전부 담되, 설정 병합 복원 시
 // trash.json / folderOrder.json 은 의도적으로 제외 — 아래 mergeSettingsFromDir 참조)
-const FULL_BACKUP_SETTINGS_FILES = [
+// 씬 템플릿 지정 목록·프로젝트 템플릿은 2026-11-18 T1 에 추가(파일 추가만 — 구버전 복원은 모르는 이름을 읽지 않는다).
+// 함수로 둔다: 서비스 모듈의 이름 상수를 모듈 평가 시점이 아니라 쓸 때 읽게(순환 import 평가 순서와 무관하게).
+const fullBackupSettingsFiles = (): string[] => [
   'favorites.json',
   'bookmarks.json',
   'thumbnails.json',
@@ -132,9 +148,15 @@ const FULL_BACKUP_SETTINGS_FILES = [
   'global_presets.json',
   'global_pieces.json',
   'global_character_presets.json',
+  TEMPLATES_SIDECAR_FILE,
+  PROJECT_TEMPLATES_FILE,
 ];
-// 글로벌 프리셋/캐릭터가 참조하는 이미지 디렉터리 (플랫, 파일만)
-const FULL_BACKUP_SETTINGS_IMAGE_DIRS = ['global_vibes', 'global_char_images'];
+// 글로벌 프리셋/캐릭터·프로젝트 템플릿이 참조하는 이미지 디렉터리 (플랫, 파일만)
+const fullBackupSettingsImageDirs = (): string[] => [
+  'global_vibes',
+  'global_char_images',
+  PROJECT_TEMPLATE_IMAGES_DIR,
+];
 
 // 이 버전이 복원할 수 있는 매니페스트 version 상한. 현행 아카이브 포맷은
 // version 1 그대로이며(무변경), 이 상한 검사는 미래에 포맷이 바뀌어 version이
@@ -1026,6 +1048,13 @@ export class BackupService {
 
     // 전역 설정 (모든 모드 포함)
     appState.setProgressDialog({ text: '설정 수집중..', done: 0, total: 1 });
+    // 저장 대기 중인 편집(디바운스 2초 등)을 먼저 디스크에 — 아래는 디스크 파일을 그대로 담는다(2026-11-18 T1).
+    // 바뀐 것만 쓰고, 읽지 않은(프로젝트 템플릿 등)·읽기 실패로 막힌 저장소는 쓰지 않아 디스크 파일이 그대로 정본이다.
+    try {
+      await flushGlobalStoresNow();
+    } catch (e) {
+      console.error('전체 백업 전 글로벌 저장소 저장 실패(디스크 파일 그대로 담음):', e);
+    }
     const settingsEntries = await this.buildSettingsEntries();
     entries.push(...settingsEntries);
 
@@ -1085,14 +1114,14 @@ export class BackupService {
     { path: string; name: string }[]
   > {
     const entries: { path: string; name: string }[] = [];
-    for (const file of FULL_BACKUP_SETTINGS_FILES) {
+    for (const file of fullBackupSettingsFiles()) {
       try {
         if (await backend.existFile(file)) {
           entries.push({ path: file, name: '__settings__/' + file });
         }
       } catch (e) {}
     }
-    for (const dir of FULL_BACKUP_SETTINGS_IMAGE_DIRS) {
+    for (const dir of fullBackupSettingsImageDirs()) {
       // listFilesWithStats = 파일만 반환(디렉터리 제외) → zip이 디렉터리를 읽다 EISDIR 나는 것 방지
       let stats: any[] = [];
       try {
@@ -1257,6 +1286,9 @@ export class BackupService {
         let overwritten = 0;
         // 덮어쓰기에서 기존 프로젝트를 지우지 못해 건너뛴 이름(2026-10-02 S4)
         const overwriteBlocked: string[] = [];
+        // 씬 템플릿 지정 되살리기용(2026-11-18 T1): 실제로 들어온 프로젝트(원래 이름 → 최종 이름)와 덮어쓰기 전 지정 상태
+        const incoming: FullBackupIncomingProject[] = [];
+        const preOverwrite: Record<string, PreOverwriteDesignation> = {};
         for (const p of projects) {
           const origName = typeof p === 'string' ? p : p.name;
           const folder = typeof p === 'string' ? null : p.folder ?? null;
@@ -1266,6 +1298,7 @@ export class BackupService {
           }
           appState.setProgressDialog({ text: '프로젝트 불러오는 중..', done, total });
           let pname = origName;
+          let kind: FullBackupIncomingProject['kind'] = 'added';
           const exists = sessionService.list().includes(origName);
           if (exists) {
             if (policy === 'skip') {
@@ -1280,6 +1313,13 @@ export class BackupService {
               // 삭제가 확인(목록에서 사라짐)된 뒤에만 가져온다 — 다른 창 잠금·불러오기 실패로
               // 지워지지 않았는데 가져오면 살아 있는 프로젝트에 병합되고, 복사 실패 롤백이
               // 그 폴더를 지울 수 있다(2026-10-02 S4, models/fullBackupOverwrite.ts).
+              // 지우기 전 지정 상태를 떠 둔다(읽기만) — 지정 정보가 없는 예전 백업이면 이 상태로 되살린다(2026-11-18 T1)
+              let pre: PreOverwriteDesignation | null = null;
+              try {
+                pre = await templateService.designationOf(origName);
+              } catch (e) {
+                pre = null;
+              }
               const cleared = await clearForFullBackupOverwrite(origName, {
                 listNames: () => sessionService.list(),
                 beforeRemove: (name) => {
@@ -1300,6 +1340,8 @@ export class BackupService {
               }
               overwritten++;
               pname = origName;
+              kind = 'overwritten';
+              if (pre) preOverwrite[origName] = pre;
             } else {
               // rename: 빈 이름이 나올 때까지 (n) 부여
               let j = 2;
@@ -1307,6 +1349,7 @@ export class BackupService {
                 pname = `${origName} (${j})`;
                 j++;
               }
+              kind = 'renamed';
             }
           }
           try {
@@ -1314,6 +1357,7 @@ export class BackupService {
               root + '/' + origName,
               pname,
             );
+            incoming.push({ origName, finalName: pname, kind });
             if (folder && sessionService.listFolders().includes(folder)) {
               try {
                 await sessionService.moveToFolder(pname, folder);
@@ -1333,6 +1377,12 @@ export class BackupService {
         }
         appState.setProgressDialog({ text: '설정 병합중..', done: 0, total: 1 });
         await this.mergeSettingsFromDir(root + '/__settings__');
+        const templateNote = await this.restoreTemplatesFromDir(
+          root + '/__settings__',
+          mode,
+          incoming,
+          preOverwrite,
+        );
         appState.setProgressDialog(undefined);
         const extra: string[] = [];
         if (skipped > 0) extra.push(`${skipped}개 건너뜀`);
@@ -1349,13 +1399,23 @@ export class BackupService {
             (extra.length ? `\n(${extra.join(', ')})` : '') +
             (overwriteBlocked.length
               ? '\n' + FULL_BACKUP_OVERWRITE_TEXT.blockedDetail(overwriteBlocked)
-              : ''),
+              : '') +
+            templateNote.map((l) => '\n' + l).join(''),
         });
       } else {
         appState.setProgressDialog({ text: '설정 병합중..', done: 0, total: 1 });
         await this.mergeSettingsFromDir(root + '/__settings__');
+        const templateNote = await this.restoreTemplatesFromDir(
+          root + '/__settings__',
+          mode,
+          [],
+          {},
+        );
         appState.setProgressDialog(undefined);
-        appState.pushDialog({ type: 'yes-only', text: '설정을 병합했습니다.' });
+        appState.pushDialog({
+          type: 'yes-only',
+          text: '설정을 병합했습니다.' + templateNote.map((l) => '\n' + l).join(''),
+        });
       }
     } finally {
       try {
@@ -1495,6 +1555,50 @@ export class BackupService {
     await this.adoptGlobalsIfEmpty(dir);
 
     // trash.json, folderOrder.json: 설정 병합에서 의도적으로 제외
+  }
+
+  /**
+   * 프로젝트 템플릿(받는 쪽이 비어 있을 때만 통째 채택) → 씬 템플릿 지정·숨김·퀵 생성·폴더 기본 템플릿·적용 기록(받는 쪽에
+   * 합치기) 순서로 되살린다(2026-11-18 T1). 템플릿 id 실존 판단이 채택 뒤 목록을 쓰므로 순서를 바꾸지 않는다.
+   * 새 파일이 없는 예전 백업은 그 부분만 건너뛴다. 반환 = 완료 창에 덧붙일 줄(없으면 빈 배열). 던지지 않는다.
+   */
+  private async restoreTemplatesFromDir(
+    dir: string,
+    mode: 'full' | 'noimg' | 'settings',
+    incoming: FullBackupIncomingProject[],
+    preOverwrite: Record<string, PreOverwriteDesignation>,
+  ): Promise<string[]> {
+    let adopt: FullBackupTemplateAdoptOutcome = { kind: 'none' };
+    try {
+      adopt = await projectTemplateService.adoptFromFullBackupIfEmpty(dir);
+    } catch (e) {
+      console.error('전체 백업 프로젝트 템플릿 복원 실패:', e);
+    }
+    let backupText: string | null = null;
+    try {
+      if (await backend.existFile(dir + '/' + TEMPLATES_SIDECAR_FILE)) {
+        backupText = await backend.readFile(dir + '/' + TEMPLATES_SIDECAR_FILE);
+      }
+    } catch (e) {
+      backupText = null; // 못 읽으면 지정 정보 없는 예전 백업처럼(덮어쓴 프로젝트는 덮어쓰기 전 상태 유지)
+    }
+    let designation: FullBackupTemplatesOutcome = { kind: 'none' };
+    try {
+      designation = await templateService.restoreFromFullBackup({
+        backupText,
+        mode,
+        incoming,
+        preOverwrite,
+      });
+    } catch (e) {
+      console.error('전체 백업 씬 템플릿 지정 복원 실패:', e);
+    }
+    return fullBackupTemplateNote({
+      sceneTemplates: designation.kind === 'applied' ? designation.counts.sceneTemplates : 0,
+      projectTemplates: adopt.kind === 'adopted' ? adopt.count : 0,
+      designationSkipped: designation.kind === 'blocked',
+      projectTemplatesSkipped: adopt.kind === 'blocked',
+    });
   }
 
   private async adoptGlobalsIfEmpty(dir: string) {

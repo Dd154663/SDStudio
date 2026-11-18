@@ -16,6 +16,7 @@ import {
   templateService,
   imageHistoryService,
   projectTemplateService,
+  flushGlobalStoresNow,
 } from '.';
 import { reaction } from 'mobx';
 import { appState } from './AppService';
@@ -27,7 +28,7 @@ import { applyMobileV2Default, StorageDetectKind } from './mobileV2Default';
 import { setWorkspaceLayoutActive } from './storageLayout';
 import { WORKSPACE_ROOT } from './projectPaths';
 import type { Session } from './types';
-import { flushGlobalStores, installGlobalStoreHiddenFlush } from './globalStoreFlush';
+import { installGlobalStoreHiddenFlush } from './globalStoreFlush';
 import { GLOBAL_STORE_SYNC_KEYS } from './storeFile';
 
 // ── 명시적 부트 시퀀스 ──
@@ -404,21 +405,10 @@ export async function bootstrapApp(): Promise<void> {
   runMobilePermissionOnboarding().catch(() => {});
 }
 
-// 글로벌 저장소 다섯 개 + 씬 템플릿 지정 목록을 「바뀐 것만」 지금 저장한다 — 종료 저장과 백그라운드 전환(Android 보강 B)이 함께 쓴다.
+// 글로벌 저장소 다섯 개 + 씬 템플릿 지정 목록의 「바뀐 것만」 저장 = models/index 의 flushGlobalStoresNow(목록 단일 출처 —
+// 전체 백업도 같은 것을 쓴다, 2026-11-18 T1). 종료 저장과 백그라운드 전환(Android 보강 B)이 함께 쓴다.
 // 프로젝트 템플릿은 부팅 때 읽지 않고(필요 시 ensureLoaded) 종전엔 종료 저장도 없었다 — 2초 대기 중 편집이
 // 닫기로 사라지지 않게 함께 비운다. 바뀐 것이 없거나 읽지 않았으면 아무것도 쓰지 않는다(storeFile flush).
-function flushGlobalStoresNow(): Promise<void> {
-  return flushGlobalStores([
-    globalPresetService,
-    globalPieceService,
-    globalCharacterPresetService,
-    artistLibraryService,
-    projectTemplateService,
-    // 씬 템플릿 지정 목록(templates.json, 2026-11-18 T3) — 변경마다 즉시 저장하므로 평소엔 쓸 것이 없고,
-    // 즉시 저장이 실패해 dirty 가 남았을 때만 여기서 다시 시도한다
-    templateService,
-  ]);
-}
 
 // 앱 종료 시 저장되지 않은 편집을 마지막으로 저장한다.
 // (기존 models/index.ts 모듈 평가 시점 등록에서 이동 — 동작 동일)

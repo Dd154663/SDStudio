@@ -64,6 +64,7 @@ import { configureGlobalLibraryUndo } from './globalLibraryUndo';
 import { runProjectTrashDelete } from './projectDeleteFlow';
 import { physicalDirOf } from './storageLayout';
 import { getAppState } from './appStateRef';
+import { flushGlobalStores } from './globalStoreFlush';
 
 export const backend =
   window.electron != null ? new ElectornBackend() : new AndroidBackend();
@@ -206,6 +207,22 @@ export const globalPresetService = new GlobalPresetService();
 export const globalCharacterPresetService = new GlobalCharacterPresetService();
 
 export const artistLibraryService = new ArtistLibraryService();
+
+// 글로벌 저장소 다섯 개 + 씬 템플릿 지정 목록을 「바뀐 것만」 지금 저장한다 — 목록의 단일 출처(종료 저장·백그라운드 전환 =
+// bootstrap, 전체 백업 담기 직전 = BackupService, 2026-11-18 T1). 프로젝트 템플릿은 부팅 때 읽지 않으므로(필요 시 ensureLoaded)
+// 읽지 않았으면 쓰지 않고, 바뀐 것이 없거나 읽기 실패로 막힌 저장소도 디스크를 건드리지 않는다(storeFile flush).
+export function flushGlobalStoresNow(): Promise<void> {
+  return flushGlobalStores([
+    globalPresetService,
+    globalPieceService,
+    globalCharacterPresetService,
+    artistLibraryService,
+    projectTemplateService,
+    // 씬 템플릿 지정 목록(templates.json, 2026-11-18 T3) — 변경마다 즉시 저장하므로 평소엔 쓸 것이 없고,
+    // 즉시 저장이 실패해 dirty 가 남았을 때만 여기서 다시 시도한다
+    templateService,
+  ]);
+}
 
 // 백업/내보내기/가져오기 (AppService 에서 분리). 생성자 비용 없음.
 export const backupService = new BackupService();
