@@ -14,6 +14,8 @@ import { appState } from '../models/AppService';
 import { deleteConfirmText } from '../models/deleteFlowRules';
 import HelpIcon from './HelpIcon';
 import { setTemplateBadgeColorRecorded } from '../models/globalLibraryUndo';
+import { previewReapply, reapplyTemplateToProject, reapplyUndoState } from '../models/templateReapplyFlow';
+import { REAPPLY_TEXT, reapplyPreviewLines } from '../models/templateReapplyPreview';
 
 // 프로젝트 상속 v2 (2026-07-16 합의) — 폴더 기본 템플릿 / 수동 재적용 모달.
 // 2026-11-15 오버레이 묶음 C-2: 폴더 기본 템플릿 = size l(고정 760), aside 없음. 도구줄 = 탭 + [전역 템플릿에서 복사] +
@@ -204,7 +206,8 @@ export const FolderTemplateModal = observer(
             appState.pushDialog({
               type: 'confirm',
               danger: true,
-              text: `변경 내용을 상속 중인 자식 프로젝트 ${children.length}개에 덮어쓸까요? (템플릿에서 비어있는 영역은 건너뜁니다)`,
+              // 여러 프로젝트에 걸친 교체라 되돌리기 기록이 없다(2026-11-18) — 교체·되돌릴 수 없음을 문구로
+              text: REAPPLY_TEXT.propagateConfirm(children.length),
               callback: async () => {
                 await projectTemplateService.flushSave();
                 const failed: string[] = [];
@@ -356,8 +359,10 @@ export const FolderTemplateModal = observer(
 
 // ===== 템플릿 수동 재적용 모달 =====
 //
-// 템플릿의 프리셋·캐릭터 프리셋을 기존 프로젝트에 추가하고 선택한다(비파괴).
-// 씬·생성 이미지는 건드리지 않는다 (씬은 씬 템플릿 가져오기 기능이 담당).
+// 템플릿의 프리셋·캐릭터 프리셋·바이브/레퍼런스를 기존 프로젝트에 적용한다. 이 템플릿으로 이전에 적용한 적이 있으면 적용 기록에
+// 적힌 **이름**의 항목을 지우고 다시 만든다(교체 — 그 이름이면 사용자가 고친 것도 교체, 비파괴 아님). 씬·생성 이미지는 건드리지
+// 않는다(씬은 씬 템플릿 가져오기 기능이 담당). 대상이 지금 열린 프로젝트면 되돌리기(Ctrl+Z) 한 항목(2026-11-18,
+// templateReapplyFlow) — 창 본문이 교체될 이름과 되돌리기 가능 여부를 보여 준다(templateReapplyPreview).
 export const ReapplyTemplateModal = observer(
   ({
     target,
@@ -404,14 +409,25 @@ export const ReapplyTemplateModal = observer(
         : undefined;
     const hasAny = globals.length > 0 || !!folderLocalEntry;
     const entry = selected ? projectTemplateService.get(selected) : undefined;
+    // 교체될 이름·되돌리기 가능 여부(2026-11-18) — 미리보기를 못 만들면(읽기 전 등) 줄 없이
+    let previewLines: string[] = [];
+    if (entry) {
+      try {
+        const preview = previewReapply(entry.id, target);
+        if (preview) previewLines = reapplyPreviewLines(preview, reapplyUndoState(target));
+      } catch (e) {
+        previewLines = [];
+      }
+    }
 
     const apply = async () => {
       if (!selected || busy) return;
       setBusy(true);
       try {
-        await sessionService.applyProjectTemplateToSession(selected, target);
+        const { recorded } = await reapplyTemplateToProject(selected, target);
         appState.pushMessage(
-          `"${target}"에 템플릿 "${entry?.name ?? ''}" 구성을 적용했습니다.`,
+          `"${target}"에 템플릿 "${entry?.name ?? ''}" 구성을 적용했습니다.` +
+            (recorded ? ` ${REAPPLY_TEXT.undoable}` : ''),
         );
         onClose();
       } catch (e: any) {
@@ -450,13 +466,7 @@ export const ReapplyTemplateModal = observer(
         }
       >
         <div className="flex flex-col gap-4">
-          <p className="text-sm text-muted">
-            템플릿의 프리셋·캐릭터 프리셋·바이브/레퍼런스를 이 프로젝트에
-            적용합니다. 이전에 이 템플릿으로 적용된 구성은{' '}
-            <span className="font-medium text-default">새 구성으로 교체</span>
-            되고, 직접 만든 프리셋·씬·생성 이미지는 건드리지 않습니다. 템플릿에서
-            비어있는 영역은 건너뜁니다.
-          </p>
+          <p className="text-sm text-muted">{REAPPLY_TEXT.intro}</p>
           {!hasAny ? (
             <p className="text-sm text-default">
               만들어진 템플릿이 없습니다. 먼저 템플릿 관리에서 템플릿을
@@ -494,6 +504,16 @@ export const ReapplyTemplateModal = observer(
                   </span>
                 )}
               </div>
+              {previewLines.length > 0 && (
+                <div
+                  className="flex flex-col gap-1 text-sm text-default break-words"
+                  data-reapply-preview=""
+                >
+                  {previewLines.map((line, i) => (
+                    <p key={i}>{line}</p>
+                  ))}
+                </div>
+              )}
             </>
           )}
         </div>

@@ -159,6 +159,9 @@ const UNDO_MODULES = [
   'models/projectDeleteUndo.ts',
   'models/globalLibraryUndo.ts',
   'models/sceneImportUndo.ts',
+  // 2026-11-18 묶음 4-b: 글로벌 프리셋·글로벌 캐릭터 삭제, 템플릿 재적용 계측 모듈 추가
+  'models/globalLibraryDeleteUndo.ts',
+  'models/templateReapplyUndo.ts',
 ];
 
 const RULES: Rule[] = [

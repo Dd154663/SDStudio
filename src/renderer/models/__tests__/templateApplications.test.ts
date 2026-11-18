@@ -91,6 +91,20 @@ describe('templateApplications — 기록 CRUD', () => {
     expect(svc.getApplication('P', 'tplB')!.inherited).toBe(false);
   });
 
+  it('restoreApplication(재적용 되돌리기 2026-11-18): 이전 값으로 되돌리고, undefined 면 그 기록만 지운다', async () => {
+    const svc = new TemplateService();
+    await svc.recordApplication('P', 'tplA', rec({ vibePaths: ['new'] }));
+    await svc.recordApplication('P', 'tplB', rec());
+    expect(await svc.restoreApplication('P', 'tplA', rec({ vibePaths: ['old'] }))).toBe(true);
+    expect(svc.getApplication('P', 'tplA')).toEqual(rec({ vibePaths: ['old'] }));
+    expect(lastSaved().templateApplications['P']['tplA'].vibePaths).toEqual(['old']);
+    expect(await svc.restoreApplication('P', 'tplA', undefined)).toBe(true);
+    expect(svc.getApplication('P', 'tplA')).toBeUndefined();
+    expect(svc.getApplication('P', 'tplB')).toEqual(rec());
+    await svc.restoreApplication('P', 'tplB', undefined);
+    expect(lastSaved().templateApplications['P']).toBeUndefined();
+  });
+
   it('라운드트립: 저장 후 새 인스턴스에서 로드', async () => {
     const svc = new TemplateService();
     await svc.recordApplication('P', 'tplA', rec({ vibePaths: ['v1'] }));

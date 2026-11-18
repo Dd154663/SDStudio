@@ -39,6 +39,7 @@ import {
   setGlobalPresetDefaultRecorded,
   setGlobalPresetsDefaultRecorded,
 } from '../models/globalLibraryUndo';
+import { prepareGlobalDelete } from '../models/globalLibraryDeleteUndo';
 
 // 템플릿 관리(글로벌 프리셋 카드 선택)와 공유 — export
 export const GlobalVibeImage = observer(
@@ -510,14 +511,27 @@ export const GlobalPresetTab = observer(() => {
     }
   };
 
-  const handleDelete = (entry: IGlobalPresetEntry) => {
+  const handleDelete = async (entry: IGlobalPresetEntry) => {
+    // 휴지통은 없지만 되돌리기(Ctrl+Z)로 되살아난다(2026-11-18) — 이미지 내용을 확인 창 전에 보관해 두고, 보관 한도를 넘거나
+    // 기록할 수 없으면 종전 「영구 삭제」 문구. 어느 쪽이든 Enter 로는 확정되지 않는다(danger 'permanent')
+    let plan;
+    try {
+      plan = await prepareGlobalDelete('presets', [entry.id]);
+    } catch (e: any) {
+      appState.pushMessage(e.message || '삭제 실패');
+      return;
+    }
     appState.pushDialog({
       type: 'confirm',
-      // 휴지통이 없다 — 영구 삭제(Enter 무시, 2026-10-03 E1)
-      ...deleteConfirmText({ kind: 'globalPreset', name: entry.name, outcome: 'permanent' }),
+      ...deleteConfirmText({
+        kind: 'globalPreset',
+        name: entry.name,
+        outcome: plan.undoable ? 'undoable' : 'permanent',
+      }),
       callback: async () => {
         try {
-          await globalPresetService.delete(entry.id);
+          const r = await plan.run();
+          if (r.failed.length > 0) appState.pushMessage(r.failed[0].error || '삭제 실패');
         } catch (e: any) {
           appState.pushMessage(e.message || '삭제 실패');
         }
@@ -558,27 +572,29 @@ export const GlobalPresetTab = observer(() => {
     await appState.exportGlobalPresetToPng(entry);
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    // 선택 여러 건 = 되돌리기 한 항목(2026-11-18). 보관 한도를 넘으면 종전 「영구 삭제」 문구
+    let plan;
+    try {
+      plan = await prepareGlobalDelete('presets', ids);
+    } catch (e: any) {
+      appState.pushMessage(e.message || '삭제 실패');
+      return;
+    }
     appState.pushDialog({
       type: 'confirm',
       ...deleteConfirmText({
         kind: 'globalPreset',
-        count: selectedIds.size,
-        outcome: 'permanent',
+        count: ids.length,
+        outcome: plan.undoable ? 'undoable' : 'permanent',
       }),
       callback: async () => {
         // 실패를 삼키지 않는다 — 건수와 이름을 알린다(X13)
-        const ids = Array.from(selectedIds);
-        const failedNames: string[] = [];
-        for (const id of ids) {
-          try {
-            await globalPresetService.delete(id);
-          } catch (e) {
-            console.error('글로벌 프리셋 삭제 실패:', id, e);
-            failedNames.push(globalPresetService.get(id)?.name ?? id);
-          }
-        }
+        const r = await plan.run();
+        const failedNames = r.failed.map((f) => f.name);
+        for (const f of r.failed) console.error('글로벌 프리셋 삭제 실패:', f.id, f.error);
         exitMultiSelect();
         if (failedNames.length > 0) {
           appState.pushDialog({

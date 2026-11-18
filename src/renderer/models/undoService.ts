@@ -419,6 +419,20 @@ export const UNDO_TEXT = {
   exportPresetDuplicate: (name: string) => `내보내기 프리셋 복제: ${name}`,
   templateRename: (from: string, to: string) => `템플릿 이름 변경: ${from} → ${to}`,
   templateBadgeColor: (name: string) => `템플릿 배지 색 변경: ${name}`,
+  // 2026-11-18 글로벌 프리셋·글로벌 캐릭터 삭제(이미지 내용 보관 → 되돌리면 같은 파일명으로 다시 씀) — globalLibraryDeleteUndo.ts
+  globalPresetDelete: (names: readonly string[]) =>
+    names.length === 1 ? `글로벌 프리셋 삭제: ${names[0]}` : `글로벌 프리셋 ${names.length}개 삭제`,
+  globalCharacterDelete: (names: readonly string[]) =>
+    names.length === 1 ? `글로벌 캐릭터 삭제: ${names[0]}` : `글로벌 캐릭터 ${names.length}개 삭제`,
+  globalDeleteIdTaken: (name: string) =>
+    `"${name}"과(와) 같은 항목이 그사이 다른 곳에서 다시 만들어져 되살리지 않았습니다`,
+  globalDeleteImagesEvicted:
+    '이후 삭제가 많아 이 기록이 보관하던 이미지를 비웠습니다(메모리 보관 한도)',
+  globalStoreBlocked: '저장 파일을 읽지 못해 지금은 바꿀 수 없습니다(앱을 다시 시작해 주세요)',
+  // 2026-11-18 템플릿 재적용(현재 프로젝트) — templateReapplyUndo.ts
+  templateReapply: (name: string) => `템플릿 다시 적용: ${name}`,
+  templateApplicationChanged: '이 프로젝트의 템플릿 적용 기록이 그사이 바뀌었습니다',
+  templateApplicationBlocked: '템플릿 지정 목록(templates.json)을 저장할 수 없어 되돌리지 않았습니다',
   // 실패 이유(되돌릴 수 없습니다: …) — 대개 다른 창이 같은 저장소를 바꾼 경우(D15)
   globalCharacterGone: (name: string) => `글로벌 캐릭터 "${name}"이(가) 이미 없습니다`,
   globalCharacterChanged: (name: string) => `글로벌 캐릭터 "${name}"이(가) 그사이 바뀌었습니다`,

@@ -576,12 +576,12 @@ export function selectWorkflowRecorded(
 
 // ── 그림체 목록(추가·복제·삭제·순서·불러오기·글로벌→프로젝트) ───────────────
 
-interface PresetListSnap {
+export interface PresetListSnap {
   lists: Map<string, any[]>;
   sel: SelectedWorkflow | undefined;
 }
 
-function snapPresetLists(session: Session): PresetListSnap {
+export function snapPresetLists(session: Session): PresetListSnap {
   const lists = new Map<string, any[]>();
   for (const [type, list] of session.presets) lists.set(type, [...(list ?? [])]);
   return { lists, sel: cloneSel(session.selectedWorkflow) };
@@ -591,7 +591,7 @@ function sameRefs(a: readonly unknown[], b: readonly unknown[]): boolean {
   return a.length === b.length && a.every((x, i) => x === b[i]);
 }
 
-function samePresetLists(a: PresetListSnap, b: PresetListSnap): boolean {
+export function samePresetLists(a: PresetListSnap, b: PresetListSnap): boolean {
   if (!sameSel(a.sel, b.sel)) return false;
   const types = new Set([...a.lists.keys(), ...b.lists.keys()]);
   for (const t of types) if (!sameRefs(a.lists.get(t) ?? [], b.lists.get(t) ?? [])) return false;
@@ -608,7 +608,7 @@ function selectionValid(session: Session, sel: SelectedWorkflow | undefined): bo
  * to 에만 있는 객체(그 동작이 뺀 것)는 같은 객체를 to 의 순서대로 다시 넣는다. 둘 다에 있는 객체는 to 순서로, 기록 밖에서 생긴
  * 객체는 지금 상대 순서대로 뒤에 남긴다(지우지 않음). 다시 넣을 이름을 다른 그림체가 쓰면 그 객체만 넣지 않는다(실패 집계).
  */
-function applyPresetListDiff(session: Session, from: PresetListSnap, to: PresetListSnap): UndoOutcome | void {
+export function applyPresetListDiff(session: Session, from: PresetListSnap, to: PresetListSnap): UndoOutcome | void {
   let total = 0;
   let failed = 0;
   let firstError: string | undefined;
@@ -773,12 +773,12 @@ export const SHARED_CHARACTER_KEYS = [
   '_appliedPresetName',
 ] as const;
 
-interface CharacterStateSnap {
+export interface CharacterStateSnap {
   presets: [string, ICharacterPreset][];
   shareds: [string, Record<string, unknown>][];
 }
 
-function snapCharacterState(session: Session): CharacterStateSnap {
+export function snapCharacterState(session: Session): CharacterStateSnap {
   return {
     presets: Array.from(session.characterPresets.entries()).map(
       ([k, p]) => [k, undoDeepClone(p.toJSON())] as [string, ICharacterPreset],
@@ -791,7 +791,7 @@ function snapCharacterState(session: Session): CharacterStateSnap {
   };
 }
 
-function restoreCharacterState(session: Session, snap: CharacterStateSnap): void {
+export function restoreCharacterState(session: Session, snap: CharacterStateSnap): void {
   runInAction(() => {
     const cur = session.characterPresets;
     const next = new Map<string, CharacterPreset>();

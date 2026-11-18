@@ -648,6 +648,30 @@ export class TemplateService {
     await this.save();
   }
 
+  /**
+   * 템플릿 재적용 되돌리기 전용(templateReapplyUndo) — (project, templateId) 적용 기록 하나를 record 로 되돌린다.
+   * record 가 undefined 면 그 기록을 지운다(처음 적용을 되돌린 경우 — 그 프로젝트에 기록이 더 없으면 프로젝트 칸도 정리).
+   * 막혔으면(읽기 실패·쓰기 충돌) 아무것도 바꾸지 않고 false. 쓰기 오류는 던진다(종전 save 계약).
+   */
+  async restoreApplication(
+    project: string,
+    templateId: string,
+    record: ITemplateApplicationRecord | undefined,
+  ): Promise<boolean> {
+    if (!(await this.ready())) return false;
+    runInAction(() => {
+      const byTpl = { ...(this.templateApplications[project] ?? {}) };
+      if (record) byTpl[templateId] = record;
+      else delete byTpl[templateId];
+      const next = { ...this.templateApplications };
+      if (Object.keys(byTpl).length > 0) next[project] = byTpl;
+      else delete next[project];
+      this.templateApplications = next;
+    });
+    await this.save();
+    return !this.store.loadFailed;
+  }
+
   // 상속 끊기 — 이 프로젝트의 모든 적용 기록을 inherited=false 로 전환.
   // 이미 적용된 구성은 유지(전파·배지만 해제), 기록 자체는 남는다.
   async breakInheritance(project: string): Promise<void> {

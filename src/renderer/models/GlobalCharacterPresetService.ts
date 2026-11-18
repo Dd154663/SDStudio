@@ -799,6 +799,21 @@ export class GlobalCharacterPresetService extends EventTarget {
     this.dispatchEvent(new CustomEvent('changed', {}));
   }
 
+  /** 항목이 가리키는 이미지 파일 토큰(삭제 되돌리기가 내용을 보관할 대상) */
+  imageTokensOf(entry: IGlobalCharacterPresetEntry): string[] {
+    return this.collectImageTokens(entry.preset);
+  }
+
+  /** exceptId 가 아닌 항목이 쓰는 이미지 파일명(basename) 집합 — 지우거나 덮지 않기 위한 검사(2026-11-18) */
+  private imagesUsedByOthers(exceptId: string): Set<string> {
+    const out = new Set<string>();
+    for (const p of this.presets) {
+      if (p.id === exceptId) continue;
+      for (const t of this.collectImageTokens(p.preset)) out.add(t.split('/').pop()!);
+    }
+    return out;
+  }
+
   @action
   async delete(id: string) {
     this.store.assertWritable();
@@ -809,9 +824,78 @@ export class GlobalCharacterPresetService extends EventTarget {
     for (const r of entry.preset.characterReferences || []) imgs.push(r.path);
     if (entry.preset.representativeImage)
       imgs.push(entry.preset.representativeImage);
-    for (const f of imgs) await this.deleteImageData(f);
+    // 다른 항목(복제본 등)이 같은 파일을 쓰면 그 파일은 남긴다(덜 지우는 쪽)
+    const shared = this.imagesUsedByOthers(id);
+    for (const f of imgs) {
+      if (f && shared.has(f.split('/').pop()!)) continue;
+      await this.deleteImageData(f);
+    }
     this.presets = this.presets.filter((p) => p.id !== id);
     this.scheduleSave();
     this.dispatchEvent(new CustomEvent('changed', {}));
+  }
+
+  /**
+   * 삭제 되돌리기 전용(globalLibraryDeleteUndo) — 지운 항목을 같은 id·내용으로 at 자리에 되살린다.
+   * 이미지는 images(토큰 → data URI)의 내용을 같은 파일명으로 다시 쓴다 — 파일이 이미 있으면 덮지 않는다. 쓰다가 실패하면 이 호출이
+   * 쓴 파일을 거두고 던진다. 같은 id 가 이미 있으면 undefined(덮지 않음). 이름이 겹치면 「X (2)」.
+   * 폴더: 그사이 없어진 폴더면 미분류로(keepMissingFolder = 그 폴더가 이 삭제로만 사라진 파생 폴더 → 그대로 되살림).
+   */
+  @action
+  async restoreDeletedEntry(
+    entry: IGlobalCharacterPresetEntry,
+    at: number,
+    images: ReadonlyMap<string, string>,
+    keepMissingFolder = false,
+  ): Promise<IGlobalCharacterPresetEntry | undefined> {
+    this.store.assertWritable();
+    if (this.get(entry.id)) return undefined;
+    const written: string[] = [];
+    const undoWrites = async () => {
+      const keep = this.imagesUsedByOthers('');
+      for (const t of written) if (!keep.has(t.split('/').pop()!)) await this.deleteImageData(t);
+    };
+    try {
+      for (const token of new Set(this.collectImageTokens(entry.preset))) {
+        const data = images.get(token);
+        if (!data) continue;
+        const path = this.getImagePath(token);
+        let exists = false;
+        try {
+          exists = await backend.existFile(path);
+        } catch (e) {
+          exists = false;
+        }
+        if (exists) continue;
+        await backend.writeDataFile(path, data.includes(',') ? data.split(',')[1] : data);
+        written.push(token);
+      }
+    } catch (e) {
+      await undoWrites();
+      throw e;
+    }
+    // await 사이 다른 창 재로드로 같은 id 가 들어왔거나 막혔으면 방금 쓴 파일을 거두고 멈춘다
+    if (this.get(entry.id) || this.store.loadFailed) {
+      await undoWrites();
+      if (this.store.loadFailed) this.store.assertWritable();
+      return undefined;
+    }
+    const restored: IGlobalCharacterPresetEntry = JSON.parse(JSON.stringify(entry));
+    const other = this.getByName(restored.name);
+    if (other && other.id !== restored.id) {
+      restored.name = this.resolveNameCollision(restored.name);
+      restored.preset.name = restored.name;
+    }
+    const folder = restored.folder;
+    if (folder && !this.listFolders().includes(folder) && !keepMissingFolder) {
+      restored.folder = undefined;
+    }
+    if (restored.folder === undefined) delete restored.folder;
+    const arr = [...this.presets];
+    arr.splice(Math.max(0, Math.min(at, arr.length)), 0, restored);
+    this.presets = arr;
+    this.scheduleSave();
+    this.dispatchEvent(new CustomEvent('changed', {}));
+    return restored;
   }
 }

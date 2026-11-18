@@ -68,6 +68,7 @@ import {
   setGlobalCharacterFolderRecorded,
   setGlobalCharactersFolderRecorded,
 } from '../models/globalLibraryUndo';
+import { prepareGlobalDelete } from '../models/globalLibraryDeleteUndo';
 
 // ─── 캐릭터 프리셋 내보내기/불러오기 ─────────────────────────
 
@@ -782,38 +783,58 @@ export function useCharacterPresetPanel({
     }
   };
 
-  const handleDeleteGlobal = (entry: IGlobalCharacterPresetEntry) => {
+  const handleDeleteGlobal = async (entry: IGlobalCharacterPresetEntry) => {
+    // 되돌리기(Ctrl+Z)로 되살아난다(2026-11-18) — 첨부 이미지 내용을 확인 창 전에 보관. 보관 한도를 넘거나 기록할 수 없으면 영구 문구
+    let plan;
+    try {
+      plan = await prepareGlobalDelete('characters', [entry.id]);
+    } catch (e: any) {
+      appState.pushMessage(e?.message || '삭제하지 못했습니다');
+      return;
+    }
     appState.pushDialog({
       type: 'confirm',
       ...deleteConfirmText({
         kind: 'globalPreset',
         name: entry.name,
-        outcome: 'permanent',
+        outcome: plan.undoable ? 'undoable' : 'permanent',
         extra: GLOBAL_PRESET_DELETE_EXTRA,
       }),
       callback: async () => {
-        await globalCharacterPresetService.delete(entry.id);
+        const r = await plan.run();
+        if (r.failed.length > 0) appState.pushMessage(r.failed[0].error || '삭제하지 못했습니다');
       },
     });
   };
 
   // 선택 모드 일괄 삭제. 단건 삭제와 동일한 서비스 경로를 사용해 글로벌
   // 첨부 이미지 정리와 로컬 적용 상태 해제를 빠뜨리지 않는다.
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = async () => {
     const count = globalView
       ? selectedGlobalIds.size
       : selectedPresets.size;
     if (count === 0) return;
+    // 글로벌 선택 삭제 = 되돌리기 한 항목(2026-11-18). 이미지 내용을 확인 창 전에 보관(한도 초과·기록 불가면 영구 문구)
+    const globalIds = Array.from(selectedGlobalIds);
+    let plan: Awaited<ReturnType<typeof prepareGlobalDelete>> | undefined;
+    if (globalView) {
+      try {
+        plan = await prepareGlobalDelete('characters', globalIds);
+      } catch (e: any) {
+        appState.pushMessage(e?.message || '삭제하지 못했습니다');
+        return;
+      }
+    }
 
     appState.pushDialog({
       type: 'confirm',
-      // 글로벌·로컬 모두 휴지통 없이 바로 사라진다 — Enter 무시(2026-10-03 E1). 글로벌 = 첨부 파일까지 지우고 기록 없음 →
-      // 영구, 로컬 = editCharacterPresets 기록 → 되돌리기 가능(2026-11-15)
+      // 글로벌·로컬 모두 휴지통 없이 바로 사라진다 — Enter 무시(2026-10-03 E1). 글로벌 = 첨부 이미지 내용을 기록에 담아
+      // 되돌리기 가능(2026-11-18, 한도 초과면 영구), 로컬 = editCharacterPresets 기록 → 되돌리기 가능(2026-11-15)
       ...(globalView
         ? deleteConfirmText({
             kind: 'globalPreset',
             count,
-            outcome: 'permanent',
+            outcome: plan?.undoable ? 'undoable' : 'permanent',
             extra: GLOBAL_PRESET_DELETE_EXTRA,
           })
         : deleteConfirmText({
@@ -823,16 +844,10 @@ export function useCharacterPresetPanel({
             extra: '현재 프로젝트의 로컬 프리셋입니다.',
           })),
       callback: async () => {
-        if (globalView) {
-          const ids = Array.from(selectedGlobalIds);
-          const failed = new Set<string>();
-          for (const id of ids) {
-            try {
-              await globalCharacterPresetService.delete(id);
-            } catch (e) {
-              failed.add(id);
-            }
-          }
+        if (globalView && plan) {
+          const ids = globalIds;
+          const r = await plan.run();
+          const failed = new Set<string>(r.failed.map((f) => f.id));
           setSelectedGlobalIds(failed);
           if (failed.size > 0) {
             appState.pushMessage(

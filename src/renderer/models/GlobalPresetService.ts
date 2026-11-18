@@ -743,17 +743,81 @@ export class GlobalPresetService extends EventTarget {
     this.dispatchEvent(new CustomEvent('changed', {}));
   }
 
+  /** 다른 항목(보존분 포함)이 같은 대표 이미지 파일을 가리키는가 — 지우거나 덮지 않기 위한 검사(2026-11-18) */
+  private profileUsedByOthers(profile: string, exceptId: string): boolean {
+    const base = profile.split('/').pop();
+    const same = (p: unknown) => typeof p === 'string' && !!p && p.split('/').pop() === base;
+    return (
+      this.presets.some((p) => p.id !== exceptId && same(p.profile)) ||
+      this.heldEntries.some((h) => same(h.value?.profile))
+    );
+  }
+
+  /** 항목이 가리키는 이미지 파일 토큰(삭제 되돌리기가 내용을 보관할 대상) */
+  imageTokensOf(entry: IGlobalPresetEntry): string[] {
+    return entry.profile ? [entry.profile] : [];
+  }
+
   @action
   async delete(id: string): Promise<void> {
     this.store.assertWritable();
     const entry = this.get(id);
     if (!entry) return;
-    if (entry.profile) {
+    // 다른 항목이 같은 파일을 쓰면 파일은 남긴다(덜 지우는 쪽)
+    if (entry.profile && !this.profileUsedByOthers(entry.profile, id)) {
       await this.deleteProfileImage(entry.profile);
     }
     this.presets = this.presets.filter((p) => p.id !== id);
     this.scheduleSave();
     this.dispatchEvent(new CustomEvent('changed', {}));
+  }
+
+  /**
+   * 삭제 되돌리기 전용(globalLibraryDeleteUndo) — 지운 항목을 같은 id·내용으로 화면 목록 at 자리에 되살린다.
+   * 대표 이미지는 images(토큰 → data URI)의 내용을 같은 파일명으로 다시 쓴다 — 파일이 이미 있으면(다른 항목이 쓰는 중 등) 덮지 않는다.
+   * 같은 id 가 이미 있으면(다른 창이 다시 만듦) 아무것도 하지 않고 undefined. 이름이 같은 종류 안에서 겹치면 「X (2)」.
+   * 보존분(heldEntries)은 건드리지 않는다(저장 때 종전 규칙대로 끼워 넣는다).
+   */
+  @action
+  async restoreDeletedEntry(
+    entry: IGlobalPresetEntry,
+    at: number,
+    images: ReadonlyMap<string, string>,
+  ): Promise<IGlobalPresetEntry | undefined> {
+    this.store.assertWritable();
+    if (this.get(entry.id)) return undefined;
+    let written: string | undefined;
+    if (entry.profile) {
+      const data = images.get(entry.profile);
+      const path = this.getProfilePath(entry.profile);
+      let exists = false;
+      try {
+        exists = await backend.existFile(path);
+      } catch (e) {
+        exists = false;
+      }
+      if (data && !exists) {
+        await backend.writeDataFile(path, dataUriToBase64(data));
+        written = entry.profile;
+      }
+    }
+    // await 사이 다른 창 재로드로 같은 id 가 들어왔거나 막혔으면 방금 쓴 파일을 거두고 멈춘다(그 파일을 쓰는 항목이 없을 때만)
+    if (this.get(entry.id) || this.store.loadFailed) {
+      // 다시 들어온 같은 id 항목도 「쓰는 항목」으로 센다(제외 id 없음)
+      if (written && !this.profileUsedByOthers(written, '')) {
+        await this.deleteProfileImage(written);
+      }
+      if (this.store.loadFailed) this.store.assertWritable();
+      return undefined;
+    }
+    const restored: IGlobalPresetEntry = JSON.parse(JSON.stringify(entry));
+    restored.name = this.resolveNameCollision(restored.workflowType, restored.name);
+    const arr = [...this.presets];
+    arr.splice(Math.max(0, Math.min(at, arr.length)), 0, restored);
+    this.presets = arr;
+    this.scheduleSave();
+    this.dispatchEvent(new CustomEvent('changed', {}));
+    return restored;
   }
 
   @action
