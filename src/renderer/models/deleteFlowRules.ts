@@ -380,21 +380,33 @@ export const DELETE_RESULT_TEXT = {
     `프로젝트 "${shown}"을(를) "${newName}"(으)로 복원했습니다.`,
   /** 복원은 됐지만 즐겨찾기·북마크를 다시 붙이지 못함(2026-11-03 사이드카 보존 — 복원은 유지) */
   projectSidecarRestoreFailed: '즐겨찾기·북마크 일부는 되살리지 못했습니다.',
+  /** 복원은 됐지만 씬 템플릿 지정·적용 기록을 다시 붙이지 못함(2026-11-18 T2 — 지정 목록이 막힘 등, 복원은 유지) */
+  projectTemplateRestoreFailed: '템플릿 지정 일부는 되살리지 못했습니다.',
 } as const;
 
 /**
  * 휴지통 프로젝트 복원 결과 안내 한 줄(2026-11-03). shown = 휴지통 표시 이름(동명 번호 포함),
- * newName = 새 이름으로 복원했으면 그 이름, sidecarFailed = 사이드카 재적용에 실패한 항목이 있는가.
+ * newName = 새 이름으로 복원했으면 그 이름, sidecarFailed = 사이드카 재적용에 실패한 항목
+ * (ProjectRestoreOutcome.sidecarFailed — 'favorite'·'bookmark'·'template'). boolean 이면 종전처럼 즐겨찾기·북마크 문구.
  */
 export function projectRestoreResultText(
   shown: string,
   newName: string | undefined,
-  sidecarFailed: boolean,
+  sidecarFailed: boolean | readonly string[],
 ): string {
   const base = newName
     ? DELETE_RESULT_TEXT.projectRestoredAs(shown, newName)
     : DELETE_RESULT_TEXT.projectRestored(shown);
-  return sidecarFailed ? `${base} ${DELETE_RESULT_TEXT.projectSidecarRestoreFailed}` : base;
+  const parts: string[] = [];
+  if (typeof sidecarFailed === 'boolean') {
+    if (sidecarFailed) parts.push(DELETE_RESULT_TEXT.projectSidecarRestoreFailed);
+  } else {
+    if (sidecarFailed.some((p) => p !== 'template')) {
+      parts.push(DELETE_RESULT_TEXT.projectSidecarRestoreFailed);
+    }
+    if (sidecarFailed.includes('template')) parts.push(DELETE_RESULT_TEXT.projectTemplateRestoreFailed);
+  }
+  return parts.length > 0 ? `${base} ${parts.join(' ')}` : base;
 }
 
 /** 프로젝트 삭제 결과 안내 문구 — 실패면 failMessage 우선, 없으면 기본. */

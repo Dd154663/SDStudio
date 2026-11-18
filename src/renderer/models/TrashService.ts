@@ -31,6 +31,7 @@ import {
   sceneTrashBelongsTo,
   trashSlotCompareKey,
 } from './trashList';
+import { normalizeProjectTemplatePart, type ProjectTemplateTrashPart } from './templateTrashPart';
 
 // 신 배치의 소프트 삭제 파일명(project.json.deleted).
 const WORKSPACE_DELETED_FILE = PROJECT_JSON_FILE + '.deleted';
@@ -67,6 +68,11 @@ export interface ProjectSidecarSnapshot {
   imageBookmarks?: Record<string, string>;
   /** thumbnails.json 의 값(캐시 — 되살리지 못해도 무해) */
   thumbnail?: { scene: string; image: string };
+  /**
+   * templates.json 의 그 프로젝트 몫(2026-11-18 T2 — 씬 템플릿 지정·숨김·퀵 생성 지정·적용 기록). 삭제 때 templates.json 에서
+   * 이리로 옮기고 복원 때 최종 이름으로 되살린다. 없으면 예전 동작(지정이 templates.json 에 이름으로 남아 있음).
+   */
+  template?: ProjectTemplateTrashPart;
 }
 
 interface TrashProjectEntry {
@@ -112,7 +118,11 @@ export function normalizeProjectSidecar(raw: unknown): ProjectSidecarSnapshot | 
   if (th && typeof th === 'object' && typeof th.scene === 'string' && typeof th.image === 'string') {
     out.thumbnail = { scene: th.scene, image: th.image };
   }
-  if (!out.favorite && !out.sceneBookmark && !out.imageBookmarks && !out.thumbnail) return undefined;
+  const tpl = normalizeProjectTemplatePart(r.template);
+  if (tpl) out.template = tpl;
+  if (!out.favorite && !out.sceneBookmark && !out.imageBookmarks && !out.thumbnail && !out.template) {
+    return undefined;
+  }
   return out;
 }
 
@@ -1702,8 +1712,9 @@ export class TrashService extends EventTarget {
     delete this.data.projects[name];
     await this.saveTrash();
     // 템플릿 지정 해제 — 남겨두면 나중에 동명의 새 프로젝트가 만들어졌을 때
-    // 의도치 않게 템플릿으로 지정된 것처럼 보인다. (소프트 삭제는 지정을
-    // 유지해 복원 시 되살아난다 — list() 가 실존 프로젝트만 노출하므로 무해)
+    // 의도치 않게 템플릿으로 지정된 것처럼 보인다. (2026-11-18 T2 부터 소프트 삭제는 지정을
+    // 휴지통 기록의 사이드카 스냅숏으로 옮긴다 — 여기서 지우는 것은 예전 휴지통 기록의 몫과
+    // 지정 목록이 막혀 옮기지 못한 몫이다)
     try {
       await templateService.removeProject(name);
     } catch (e) {}

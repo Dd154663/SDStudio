@@ -20,6 +20,7 @@ import {
 import { IBatchPlanItem, resolveBatchName } from './batchCreatePlan';
 import type { TemplateProtectArea } from './TemplateService';
 import type { ProjectSidecarSnapshot } from './TrashService';
+import type { ProjectTemplateTrashPart } from './templateTrashPart';
 import { getAppState } from './appStateRef';
 import { FileEntry } from '../backend';
 import { dataUriToBase64 } from './ImageService';
@@ -72,8 +73,8 @@ import * as legacy from './legacy';
 
 const SESSION_SERVICE_INTERVAL = 5000;
 
-/** 복원 때 다시 붙이지 못한 사이드카 항목(썸네일은 캐시라 제외). */
-export type ProjectSidecarPart = 'favorite' | 'bookmark';
+/** 복원 때 다시 붙이지 못한 사이드카 항목(썸네일은 캐시라 제외). template = 씬 템플릿 지정·적용 기록(2026-11-18 T2) */
+export type ProjectSidecarPart = 'favorite' | 'bookmark' | 'template';
 
 /** `SessionService.restoreProjectFromTrash` 결과(2026-11-03 — 되돌리기 2차가 재사용). */
 export interface ProjectRestoreOutcome {
@@ -1652,8 +1653,30 @@ export class SessionService extends ResourceSyncService<Session> {
     if (keysToDelete.length > 0 || hadSceneBookmarks) {
       await this.saveBookmarks();
     }
-    // 휴지통에 삭제 시점 기록 (신 배치는 폴더별 시각도 함께) + 사이드카 스냅숏
-    await trashService.moveProjectToTrash(name, trashDir, sidecar);
+    // 템플릿 몫(2026-11-18 T2): 씬 템플릿 지정·숨김·퀵 생성 지정·적용 기록을 떠서(읽기만) 스냅숏에 싣는다. 지정 목록이 막혔으면
+    // (null) 싣지 않고 종전대로 templates.json 에 남긴다(두 벌 금지). 실패해도 삭제는 이미 끝났으므로 막지 않는다.
+    let templatePart: ProjectTemplateTrashPart | undefined;
+    try {
+      templatePart = (await templateService.captureProjectForTrash(name)) ?? undefined;
+    } catch (e) {
+      console.warn('삭제 프로젝트 템플릿 지정 스냅숏 실패(종전대로 지정 유지):', name, e);
+      templatePart = undefined;
+    }
+    const snap: ProjectSidecarSnapshot | undefined = templatePart
+      ? { ...(sidecar ?? { favorite: false }), template: templatePart }
+      : sidecar;
+    // 휴지통에 삭제 시점 기록 (신 배치는 폴더별 시각도 함께) + 사이드카 스냅숏. 여기서 실패하면(trash.json 미로드 등) 아래
+    // 지정 빼기를 하지 않는다 — 지정은 templates.json 에 그대로 남는다.
+    await trashService.moveProjectToTrash(name, trashDir, snap);
+    // 휴지통 기록에 실은 뒤에만 templates.json 에서 뺀다. 쓰기 오류면 메모리는 뺀 상태로 dirty 가 남아 나중에 다시 저장되고,
+    // 그 사이 앱이 끝나 양쪽에 남아도 복원은 같은 지정을 두 번 걸지 않는다(TemplateService.restoreProjectFromTrash).
+    if (templatePart) {
+      try {
+        await templateService.releaseProjectForTrash(name, templatePart);
+      } catch (e) {
+        console.error('삭제 프로젝트 템플릿 지정 빼기 저장 실패(다시 시도 예정):', name, e);
+      }
+    }
   }
 
   // 프로젝트 하나의 루트 사이드카 몫을 스냅숏으로(읽기만). 이미지 북마크 키는 `이름:` 접두를 뗀다.
@@ -1709,6 +1732,18 @@ export class SessionService extends ResourceSyncService<Session> {
   ): Promise<{ restored: boolean; failed: ProjectSidecarPart[] }> {
     const failed: ProjectSidecarPart[] = [];
     if (!snap) return { restored: false, failed };
+    // 템플릿 몫(2026-11-18 T2)을 먼저 — 아래 목록 재스캔(update) 전에 숨김이 걸려 있게. 지정 목록이 막혀 되살리지 못하면
+    // 복원은 그대로 두고 알린다(즐겨찾기·북마크와 같은 규칙 — 스냅숏은 이미 휴지통 기록에서 꺼냈으므로 프로젝트는 일반
+    // 프로젝트로 보인다: 덜 숨기는 쪽).
+    if (snap.template) {
+      try {
+        const r = await templateService.restoreProjectFromTrash(name, snap.template);
+        if (!r.ok) failed.push('template');
+      } catch (e) {
+        console.warn('복원 프로젝트 템플릿 지정 저장 실패:', name, e);
+        failed.push('template');
+      }
+    }
     if (snap.favorite && !this.favorites.has(name)) {
       this.favorites.add(name);
       try {

@@ -17,6 +17,10 @@ import { GlobalStoreBlockedError, StoreFile, GLOBAL_STORE_SYNC_KEYS } from './st
 import { canonicalJson, mergeByKey, mergeStringSet } from './storeMerge';
 import { globalStoreDeps } from './globalStoreDeps';
 import {
+  sanitizeProjectApplications,
+  type ProjectTemplateTrashPart,
+} from './templateTrashPart';
+import {
   planFullBackupTemplates,
   type FullBackupIncomingProject,
   type FullBackupRestoreMode,
@@ -116,36 +120,8 @@ function sanitizeApplications(
   if (!raw || typeof raw !== 'object') return out;
   for (const [project, byTpl] of Object.entries(raw as any)) {
     if (!project || !byTpl || typeof byTpl !== 'object') continue;
-    const inner: Record<string, ITemplateApplicationRecord> = {};
-    for (const [tplId, rec] of Object.entries(byTpl as any)) {
-      if (!tplId || !rec || typeof rec !== 'object') continue;
-      const r = rec as any;
-      // 보호 영역: 알려진 값만 통과 (빈 배열이면 필드 생략)
-      const protect = Array.isArray(r.protectAreas)
-        ? (r.protectAreas.filter(
-            (x: any) => x === 'characterPresets' || x === 'scenes',
-          ) as TemplateProtectArea[])
-        : [];
-      inner[tplId] = {
-        ...(protect.length > 0 ? { protectAreas: protect } : {}),
-        inherited: !!r.inherited,
-        presets: Array.isArray(r.presets)
-          ? r.presets.filter(
-              (p: any) =>
-                p && typeof p.type === 'string' && typeof p.name === 'string',
-            )
-          : [],
-        characterPresetNames: Array.isArray(r.characterPresetNames)
-          ? r.characterPresetNames.filter((n: any) => typeof n === 'string')
-          : [],
-        vibePaths: Array.isArray(r.vibePaths)
-          ? r.vibePaths.filter((n: any) => typeof n === 'string')
-          : [],
-        referencePaths: Array.isArray(r.referencePaths)
-          ? r.referencePaths.filter((n: any) => typeof n === 'string')
-          : [],
-      };
-    }
+    // 한 프로젝트 몫의 규칙은 휴지통 스냅숏(templateTrashPart)과 같은 함수 — 2026-11-18 T2
+    const inner = sanitizeProjectApplications(byTpl);
     if (Object.keys(inner).length > 0) out[project] = inner;
   }
   return out;
@@ -915,8 +891,8 @@ export class TemplateService {
 
   async removeProject(name: string): Promise<void> {
     if (!(await this.ready())) return; // 막혔으면 안내만(던지지 않음)
-    // 적용 기록 정리 (하드 삭제 시점 — 씬 템플릿 지정과 동일 취지: 소프트
-    // 삭제는 유지해 복원 시 되살아나고, 하드 삭제에서만 제거)
+    // 적용 기록 정리 (하드 삭제 시점). 2026-11-18 T2 부터 소프트 삭제는 지정·적용 기록을 휴지통 기록으로 옮기므로
+    // (takeProjectForTrash 계열) 여기서 지울 것은 그 전에 지운 예전 휴지통 기록의 몫과, 지정 목록이 막혀 옮기지 못한 몫뿐이다.
     await this.removeApplicationsOfProject(name);
     const isQuick = this.quickGenName === name;
     if (!this.isSceneTemplate(name) && !isQuick) return;
@@ -927,6 +903,131 @@ export class TemplateService {
       if (isQuick) this.quickGenName = null;
     });
     await this.save();
+  }
+
+  // ===== 휴지통 기록으로 옮기기 (2026-11-18 T2) =====
+  //
+  // 소프트 삭제(SessionService.delete)는 이 이름의 몫(씬 템플릿 지정·숨김·퀵 생성 지정·적용 기록)을 휴지통 기록의 사이드카
+  // 스냅숏으로 옮긴다 — 같은 이름으로 새로 만든 프로젝트가 숨겨지거나 옛 적용 기록을 물려받지 않게, 새 이름으로 복원해도 템플릿으로
+  // 돌아오게. 순서: captureProjectForTrash(읽기만) → 휴지통 기록 저장 → releaseProjectForTrash(templates.json 에서 빼기).
+  // 복원은 restoreProjectFromTrash(최종 이름). 지정 목록이 막혔으면 옮기지 않는다(종전대로 templates.json 에 남음 — 두 벌 금지).
+
+  /**
+   * 소프트 삭제 직전 이 이름의 템플릿 몫(읽기 전용 — 쓰지 않는다). 지정 목록을 읽지 못했거나 막혔으면 null(옮기지 않는다),
+   * 옮길 것이 없으면 undefined. 적용 기록은 사본(이후 메모리 변경과 분리).
+   */
+  async captureProjectForTrash(name: string): Promise<ProjectTemplateTrashPart | null | undefined> {
+    await this.ensureLoaded();
+    if (!this.loaded || this.store.loadFailed) return null;
+    const part: ProjectTemplateTrashPart = {};
+    if (this.sceneNames.includes(name)) part.sceneTemplate = true;
+    if (this.quickGenName === name) part.quickGen = true;
+    if ((part.sceneTemplate || part.quickGen) && this.hiddenNames.includes(name)) part.hidden = true;
+    const apps = this.templateApplications[name];
+    if (apps && Object.keys(apps).length > 0) {
+      part.applications = JSON.parse(JSON.stringify(apps));
+    }
+    if (!part.sceneTemplate && !part.quickGen && !part.applications) return undefined;
+    return part;
+  }
+
+  /**
+   * 휴지통 기록에 실은 뒤 그 몫을 templates.json 에서 뺀다(저장 1회). 판단은 ready() 의 await 뒤 현재 메모리로 — 뜬 것만 뺀다
+   * (그 사이 다른 창이 넣은 것은 스냅숏에 없으므로 남긴다). 단 숨김은 지정이 빠져 고아가 되면 함께 뺀다(덜 숨기는 쪽).
+   * 막혔으면 안내 후 조용히 반환(지정은 templates.json 에도 남는다 — 복원은 같은 지정을 두 번 걸어도 무해). 쓰기 오류는 던진다
+   * (메모리는 뺀 상태, dirty 가 남아 종료·백그라운드 전환 저장이 다시 시도).
+   */
+  async releaseProjectForTrash(name: string, part: ProjectTemplateTrashPart): Promise<void> {
+    if (!(await this.ready())) return;
+    const dropScene = !!part.sceneTemplate && this.sceneNames.includes(name);
+    const dropQuick = !!part.quickGen && this.quickGenName === name;
+    const nextScene = dropScene ? this.sceneNames.filter((n) => n !== name) : this.sceneNames;
+    const nextQuick = dropQuick ? null : this.quickGenName;
+    const stillDesignated = nextScene.includes(name) || nextQuick === name;
+    const dropHidden = this.hiddenNames.includes(name) && !stillDesignated;
+    const own = this.templateApplications[name];
+    const appIds = own ? Object.keys(part.applications ?? {}).filter((id) => id in own) : [];
+    if (!dropScene && !dropQuick && !dropHidden && appIds.length === 0) return;
+    runInAction(() => {
+      if (dropScene) this.sceneNames = nextScene;
+      if (dropQuick) this.quickGenName = null;
+      if (dropHidden) this.hiddenNames = this.hiddenNames.filter((n) => n !== name);
+      if (appIds.length > 0) {
+        const next = { ...this.templateApplications };
+        const inner = { ...(next[name] ?? {}) };
+        for (const id of appIds) delete inner[id];
+        if (Object.keys(inner).length > 0) next[name] = inner;
+        else delete next[name];
+        this.templateApplications = next;
+      }
+    });
+    await this.save();
+  }
+
+  /**
+   * 휴지통 복원 뒤 템플릿 몫을 최종 이름(name)으로 되살린다(SessionService.applyProjectSidecar). 이미 있는 것은 건드리지 않는다
+   * (여러 번 불러도 같다 — 지정이 templates.json 과 스냅숏 양쪽에 남은 경우 포함).
+   *  - 씬 템플릿: 지정(+ 숨김이었으면 숨김). 지정만 있던 구형 상태는 그대로 지정만.
+   *  - 퀵 생성: 지금 퀵 생성 지정이 비어 있을 때만 다시 지정하고 숨긴다(있으면 일반 프로젝트로 보이게 둔다).
+   *  - 적용 기록: 그 이름에 기록이 하나도 없을 때만, 가리키는 프로젝트 템플릿이 실제로 있는 것만.
+   * 반환 ok=false = 지정 목록이 막혀 되살리지 못함(저장 직전 쓰기 충돌 포함 — 넣은 값은 되돌린다) 또는 프로젝트 템플릿 목록을 읽지
+   * 못해 적용 기록을 확인하지 못함. 쓰기 오류는 던진다(메모리에는 반영됨 — dirty 가 남아 다시 저장).
+   */
+  async restoreProjectFromTrash(
+    name: string,
+    part: ProjectTemplateTrashPart,
+  ): Promise<{ ok: boolean }> {
+    // 복원 = 사용자 명시 작업 — 읽기 실패로 막혀 있으면 한 번 다시 읽는다(스냅숏은 이미 휴지통 기록에서 꺼냈다)
+    await this.reloadIfFailed();
+    if (!(await this.ready())) return { ok: false };
+    let appsUnverified = false;
+    let apps: Record<string, ITemplateApplicationRecord> | undefined;
+    if (part.applications && !this.templateApplications[name]) {
+      try {
+        await projectTemplateService.ensureLoaded();
+        if (projectTemplateService.loadFailed) {
+          appsUnverified = true;
+        } else {
+          const kept: Record<string, ITemplateApplicationRecord> = {};
+          for (const [id, rec] of Object.entries(part.applications)) {
+            if (projectTemplateService.get(id)) kept[id] = JSON.parse(JSON.stringify(rec));
+          }
+          if (Object.keys(kept).length > 0) apps = kept;
+        }
+      } catch (e) {
+        appsUnverified = true; // 못 읽으면 연결하지 않는다(고아 참조 금지)
+      }
+    }
+    // 이하 판단은 await 뒤 현재 메모리로
+    const addScene = !!part.sceneTemplate && !this.sceneNames.includes(name);
+    const setQuick = !!part.quickGen && this.quickGenName === null;
+    const wantHidden = (!!part.sceneTemplate && !!part.hidden) || setQuick;
+    const addHidden = wantHidden && !this.hiddenNames.includes(name);
+    const addApps = !!apps && !this.templateApplications[name];
+    if (!addScene && !setQuick && !addHidden && !addApps) return { ok: !appsUnverified };
+    runInAction(() => {
+      if (addScene) this.sceneNames = [...this.sceneNames, name];
+      if (setQuick) this.quickGenName = name;
+      if (addHidden) this.hiddenNames = [...this.hiddenNames, name];
+      if (addApps) this.templateApplications = { ...this.templateApplications, [name]: apps! };
+    });
+    await this.save();
+    if (this.store.loadFailed) {
+      // 저장 직전 쓰기 충돌로 막혔다(안내는 StoreFile) — 보이는 것과 디스크가 어긋나지 않게 이 복원이 넣은 것만 되돌린다
+      // (그 사이 다른 경로가 바꾼 값은 덮지 않는다 — restoreFromFullBackup 과 같은 취지)
+      runInAction(() => {
+        if (addScene) this.sceneNames = this.sceneNames.filter((n) => n !== name);
+        if (setQuick && this.quickGenName === name) this.quickGenName = null;
+        if (addHidden) this.hiddenNames = this.hiddenNames.filter((n) => n !== name);
+        if (addApps && this.templateApplications[name] && canonicalJson(this.templateApplications[name]) === canonicalJson(apps)) {
+          const next = { ...this.templateApplications };
+          delete next[name];
+          this.templateApplications = next;
+        }
+      });
+      return { ok: false };
+    }
+    return { ok: !appsUnverified };
   }
 
   // ===== 전체 백업 복원 (2026-11-18 T1) =====

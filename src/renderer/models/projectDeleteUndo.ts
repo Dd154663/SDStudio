@@ -130,7 +130,8 @@ async function restoreOrThrow(
   const list = trashed ?? (await ops.getDeletedProjects());
   if (!inTrash(list, name, dir)) throw new Error(UNDO_TEXT.projectNotInTrash(name));
   const r = await ops.restoreFromTrash(name, { dir });
-  if (r.sidecarFailed.length > 0) out.notices.push(UNDO_TEXT.projectSidecarNotRestored(r.name));
+  if (r.sidecarFailed.some((p) => p !== 'template')) out.notices.push(UNDO_TEXT.projectSidecarNotRestored(r.name));
+  if (r.sidecarFailed.includes('template')) out.notices.push(UNDO_TEXT.projectTemplateNotRestored(r.name));
   const now = ops.getFolderOf(r.name);
   if (folder !== null && now !== folder) out.notices.push(UNDO_TEXT.projectRestoredElsewhere(r.name, folderText(now)));
   return r;

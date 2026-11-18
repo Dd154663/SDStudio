@@ -385,6 +385,8 @@ export const UNDO_TEXT = {
   projectRestoredElsewhere: (name: string, folder: string) =>
     `원래 폴더가 없어 프로젝트 "${name}"은(는) ${folder}에 복원했습니다`,
   projectSidecarNotRestored: (name: string) => `프로젝트 "${name}"의 즐겨찾기·북마크 일부를 되살리지 못했습니다`,
+  // 2026-11-18 T2 — 씬 템플릿 지정·적용 기록(지정 목록이 막힘 등)
+  projectTemplateNotRestored: (name: string) => `프로젝트 "${name}"의 템플릿 지정 일부를 되살리지 못했습니다`,
   folderTemplatesNotRestored: (count: number) => `폴더 기본 템플릿 지정 ${count}개를 되살리지 못했습니다`,
   // 2차 묶음 4 P5 전역 라이브러리(파일 부작용 없는 작업만, 전역 스택) — globalLibraryUndo.ts. folder null = 미분류
   globalCharacterRename: (from: string, to: string) => `글로벌 캐릭터 이름 변경: ${from} → ${to}`,

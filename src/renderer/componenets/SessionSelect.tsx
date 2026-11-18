@@ -112,7 +112,7 @@ export function ProjectTrashView({ onClose }: { onClose: () => void }) {
         newName,
       });
       appState.pushMessage(
-        projectRestoreResultText(displayName(item), newName, result.sidecarFailed.length > 0),
+        projectRestoreResultText(displayName(item), newName, result.sidecarFailed),
       );
       await refresh();
     } catch (e: any) {
