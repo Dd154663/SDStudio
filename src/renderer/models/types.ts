@@ -25,6 +25,8 @@ import type { FocusedInpaintSpec } from './focusedInpaint';
 import { normalizeComboMode } from './comboMode';
 import { normalizeImageAccounts } from './boostMode';
 import type { ComboMode } from './comboMode';
+import { holdEntry, weaveHeld } from './heldEntries';
+import type { HeldEntry } from './heldEntries';
 
 export type PARR = string[];
 
@@ -526,6 +528,9 @@ export class Session implements Serealizable {
   // 저장 구조에는 의도적으로 넣지 않는다(프리셋 전환/글로벌화와 무관하게 유지, 사용자
   // 확정 2026-07-18). 조합 반영은 PromptService.createSDPrompts 단일 지점.
   @observable accessor extraPrompt: string = '';
+  // 이 버전이 모르는 워크플로 종류의 사전 세팅(2026-11-18 경로 14) — presets 키별 원본 JSON 과 원래 자리.
+  // 화면·편집 대상이 아니고(관찰 대상 아님), toJSON 이 같은 키의 원래 자리로 되돌려 쓴다(heldEntries.ts). 파일 형식 불변.
+  heldUnknownPresets: Map<string, HeldEntry[]> = new Map();
 
   constructor() {
     makeObservable(this);
@@ -750,11 +755,19 @@ export class Session implements Serealizable {
     session.version = json.version;
     session.id = json.id; // 있으면 유지(없으면 undefined → 로드 시 지연 발급)
     session.selectedWorkflow = json.selectedWorkflow;
+    // 모르는 종류(presetFromJSON → null)는 버리지 않고 원본 그대로 보존 — 저장 때 같은 키·같은 자리로 되돌려 쓴다(경로 14)
     session.presets = new Map(
-      Object.entries(json.presets).map(([key, value]) => [
-        key,
-        value.map((preset) => workFlowService.presetFromJSON(preset)).filter(Boolean),
-      ]),
+      Object.entries(json.presets).map(([key, value]) => {
+        const known: any[] = [];
+        const held: HeldEntry[] = [];
+        value.forEach((raw, i) => {
+          const preset = workFlowService.presetFromJSON(raw);
+          if (preset) known.push(preset);
+          else if (raw && typeof raw === 'object') held.push(holdEntry(i, raw));
+        });
+        if (held.length > 0) session.heldUnknownPresets.set(key, held);
+        return [key, known];
+      }),
     );
     session.inpaints = new Map(
       Object.entries(json.inpaints)
@@ -798,18 +811,29 @@ export class Session implements Serealizable {
     return Session.fromJSON(json);
   }
 
+  /** presets 직렬화 — 아는 사전 세팅 사이에 보존한 모르는 종류(heldUnknownPresets)를 원래 자리로 끼운다 */
+  private presetsToJSON(): Record<string, any[]> {
+    const out: Record<string, any[]> = {};
+    for (const [key, value] of this.presets.entries()) {
+      out[key] = weaveHeld(
+        value.map((preset) => preset.toJSON()),
+        this.heldUnknownPresets.get(key),
+      );
+    }
+    // 키 자체가 presets 에서 빠졌어도 보존분은 잃지 않는다(지금 코드에는 키를 지우는 경로가 없다 — 방어)
+    for (const [key, held] of this.heldUnknownPresets.entries()) {
+      if (!Object.prototype.hasOwnProperty.call(out, key)) out[key] = weaveHeld([], held);
+    }
+    return out;
+  }
+
   toJSON(): ISession {
     return {
       name: this.name,
       version: this.version,
       id: this.id,
       selectedWorkflow: this.selectedWorkflow,
-      presets: Object.fromEntries(
-        Array.from(this.presets.entries()).map(([key, value]) => [
-          key,
-          value.map((preset) => preset.toJSON()),
-        ]),
-      ),
+      presets: this.presetsToJSON(),
       inpaints: Object.fromEntries(
         Array.from(this.inpaints.entries()).map(([key, value]) => [
           key,

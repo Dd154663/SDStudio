@@ -33,6 +33,8 @@ import {
   copySceneAttachments,
   defaultSceneCopyDeps,
   sessionVariantAttachmentFiles,
+  sessionGenerationAttachmentFiles,
+  mergeAttachmentFiles,
   type SceneAttachmentCopyStats,
 } from './sceneCopyFlow';
 import {
@@ -1225,7 +1227,10 @@ export class SessionService extends ResourceSyncService<Session> {
             for (const f of files) {
               if (f.startsWith('.')) continue;
               try {
-                await backend.copyFile(projectPath(flatDir, origName, f), projectPath(flatDir, newName, f));
+                const dst = projectPath(flatDir, newName, f);
+                // cloneSessionShallow 가 이미 옮긴 첨부 파일(같은 원본·같은 이름)은 다시 쓰지 않는다(2026-11-18 경로 20)
+                if (await backend.existFile(dst)) continue;
+                await backend.copyFile(projectPath(flatDir, origName, f), dst);
                 totalImages++;
               } catch (e) {}
             }
@@ -2563,16 +2568,20 @@ export class SessionService extends ResourceSyncService<Session> {
   //  · true = 변형 씬을 생성 씬과 같은 규칙(game·round·imageMap·mains 비움, imageAccounts 제거)으로 남긴다. 변형 씬이
   //    가리키는 vibes·references 파일은 JSON 에 담지 않으므로 반드시 importSessionShallow(…, { attachmentsFrom }) 와
   //    짝으로 쓴다(= cloneSessionShallow). 앱 안 복제 전용 — 파일로 내보내는 경로에는 쓰지 않는다.
+  //  · opts.keepSharedVibes(2026-11-18, 경로 20) = 공용 설정의 바이브 목록을 비우지 않는다. 바이브 파일은 JSON 에 담지 않으므로
+  //    역시 importSessionShallow(…, { attachmentsFrom }) 와 짝으로만 쓴다(= cloneSessionShallow). 생략 = 종전 그대로 비운다.
   async exportSessionShallow(
     session: Session,
-    opts?: { includeVariants?: boolean },
+    opts?: { includeVariants?: boolean; keepSharedVibes?: boolean },
   ) {
     const sess: ISession = session.toJSON();
-    if (sess.presetShareds.SDImageGenEasy) {
-      sess.presetShareds.SDImageGenEasy.vibes = [];
-    }
-    if (sess.presetShareds.SDImageGen) {
-      sess.presetShareds.SDImageGen.vibes = [];
+    if (!opts?.keepSharedVibes) {
+      if (sess.presetShareds.SDImageGenEasy) {
+        sess.presetShareds.SDImageGenEasy.vibes = [];
+      }
+      if (sess.presetShareds.SDImageGen) {
+        sess.presetShareds.SDImageGen.vibes = [];
+      }
     }
     const stripImageState = (scene: { game?: unknown; round?: unknown; imageMap: string[]; mains: string[]; imageAccounts?: unknown }) => {
       scene.game = undefined;
@@ -2711,13 +2720,16 @@ export class SessionService extends ResourceSyncService<Session> {
   // (2026-11-16 사용자 판정 「생성 씬과 변형 씬은 기능상 동등」). 변형 씬 설정은 JSON 으로, 변형 씬이 가리키는
   // 첨부 파일(원본·마스크·바이브·인코딩 캐시·캐릭터 레퍼런스·세션 미러 원본)은 새 프로젝트를 등록하기 전에 같은 이름으로
   // 복사한다(sceneCopyFlow.copySceneAttachments 재사용 — 원본은 읽기·복사만). 이미지 파일 복사는 호출부(cloneFolder 「이미지 포함」).
+  // 2026-11-18(경로 20): 생성 쪽 첨부 파일도 함께 — 로컬 캐릭터 프리셋의 대표 이미지·바이브·캐릭터 레퍼런스, 공용 설정의 바이브·
+  // 캐릭터 레퍼런스(sceneCopyFlow.sessionGenerationAttachmentFiles). 공용 설정 바이브 목록도 비우지 않는다(keepSharedVibes).
   async cloneSessionShallow(source: Session, newName: string): Promise<void> {
-    const proj = await this.exportSessionShallow(source, { includeVariants: true });
+    const proj = await this.exportSessionShallow(source, { includeVariants: true, keepSharedVibes: true });
     await this.importSessionShallow(proj, newName, { attachmentsFrom: source });
   }
 
-  // opts.attachmentsFrom(선택): 주면 session JSON 의 변형 씬·미러 원본이 가리키는 첨부 파일을 그 프로젝트에서 새 프로젝트로
-  // 복사한다(createFrom 앞 — 새 프로젝트가 없는 파일을 가리키는 순간을 만들지 않는다). 생략 = 종전 그대로(파일 불러오기·템플릿 등).
+  // opts.attachmentsFrom(선택): 주면 session JSON 의 변형 씬·미러 원본·캐릭터 프리셋·공용 설정이 가리키는 첨부 파일을 그 프로젝트에서
+  // 새 프로젝트로 복사한다(createFrom 앞 — 새 프로젝트가 없는 파일을 가리키는 순간을 만들지 않는다). 같은 이름이 이미 있으면 건너뛰고,
+  // 원본에 없으면 경고 기록만. 생략 = 종전 그대로(파일 불러오기·템플릿 등).
   async importSessionShallow(
     session: ISession,
     name: string,
@@ -2770,14 +2782,17 @@ export class SessionService extends ResourceSyncService<Session> {
         defaultSceneCopyDeps(),
         opts.attachmentsFrom,
         target,
-        sessionVariantAttachmentFiles(session),
+        mergeAttachmentFiles(
+          sessionVariantAttachmentFiles(session),
+          sessionGenerationAttachmentFiles(session),
+        ),
         new Set<string>(),
         stats,
       );
       if (stats.missing > 0) {
         this.addSystemLog(
           'warn',
-          `"${name}" 복제: 변형 씬 첨부 파일 ${stats.missing}개를 원본에서 찾지 못했습니다(씬은 복제됨).`,
+          `"${name}" 복제: 첨부 파일(변형 씬·캐릭터 프리셋·바이브·레퍼런스) ${stats.missing}개를 원본에서 찾지 못했습니다(프로젝트는 복제됨).`,
         );
       }
     }

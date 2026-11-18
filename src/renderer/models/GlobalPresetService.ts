@@ -18,6 +18,8 @@ import type { ImportableMetadata } from './types';
 import { StoreFile, GLOBAL_STORE_SYNC_KEYS } from './storeFile';
 import { globalStoreDeps } from './globalStoreDeps';
 import { mergeById } from './storeMerge';
+import { holdEntry, weaveHeld } from './heldEntries';
+import type { HeldEntry } from './heldEntries';
 
 /**
  * 이미지 메타 → 그림체 프리셋의 상위·하위(SDStudio 구획 메타가 있으면 나눠 담고, 없으면 통합 → 상위).
@@ -85,7 +87,8 @@ export class GlobalPresetService extends EventTarget {
       serialize: () => {
         const store: IGlobalPresetStore = {
           version: GLOBAL_PRESETS_VERSION,
-          presets: this.presets,
+          // 지원하지 않는 종류의 항목(heldEntries)을 원래 자리로 되돌려 쓴다(2026-11-18 경로 14)
+          presets: weaveHeld(this.presets, this.heldEntries),
         };
         return JSON.stringify(store);
       },
@@ -105,16 +108,36 @@ export class GlobalPresetService extends EventTarget {
 
   // ---------- lifecycle ----------
 
-  /** 파일 내용 → 메모리 목록(load·다른 창 재로드·병합 기준이 같은 규칙을 쓴다) */
+  // 형식은 정상(id·name 문자열)인데 이 버전이 지원하지 않는 종류의 항목(2026-11-18 경로 14) — 화면 목록(presets)에는
+  // 넣지 않고 원본 그대로 보존했다가 저장 때 원래 자리로 되돌려 쓴다. 이 창은 보존분을 바꾸지 않으므로 다른 창 교체·병합 때는
+  // 언제나 파일(remote) 쪽 보존분이 정답이다. 관찰 대상 아님.
+  private heldEntries: HeldEntry[] = [];
+
+  /** 파일 내용 → 화면 목록 + 보존분(load·다른 창 재로드·병합 기준이 같은 규칙을 쓴다). 손상 항목은 종전대로 버린다 */
+  static splitEntries(data: IGlobalPresetStore | null): {
+    visible: IGlobalPresetEntry[];
+    held: HeldEntry[];
+  } {
+    const visible: IGlobalPresetEntry[] = [];
+    const held: HeldEntry[] = [];
+    if (!data || !Array.isArray(data.presets)) return { visible, held };
+    let index = 0; // 손상으로 버린 항목을 뺀 자리
+    for (const p of data.presets) {
+      if (!(p && typeof p.id === 'string' && typeof p.name === 'string')) continue;
+      if (SUPPORTED_GLOBAL_PRESET_TYPES.includes(p.workflowType)) visible.push(p);
+      else held.push(holdEntry(index, p));
+      index++;
+    }
+    return { visible, held };
+  }
+
   private static normalizeEntries(data: IGlobalPresetStore | null): IGlobalPresetEntry[] {
-    if (!data || !Array.isArray(data.presets)) return [];
-    return data.presets.filter(
-      (p) =>
-        p &&
-        typeof p.id === 'string' &&
-        typeof p.name === 'string' &&
-        SUPPORTED_GLOBAL_PRESET_TYPES.includes(p.workflowType),
-    );
+    return GlobalPresetService.splitEntries(data).visible;
+  }
+
+  /** 파일 내용의 보존분으로 바꾼다(load·교체·병합 공용) */
+  private adoptHeld(data: IGlobalPresetStore | null): void {
+    this.heldEntries = GlobalPresetService.splitEntries(data).held;
   }
 
   async load(): Promise<void> {
@@ -123,6 +146,7 @@ export class GlobalPresetService extends EventTarget {
     if (res.kind === 'io-failed') {
       // 읽기 실패 — 빈 목록으로 보이되 저장·변경은 막힌다. loaded=false 로 두어 다음 진입(피커·템플릿 관리 등)이 다시 읽게 한다.
       this.presets = [];
+      this.heldEntries = [];
       this.loaded = false;
       this.dispatchEvent(new CustomEvent('loaded', {}));
       return;
@@ -131,11 +155,13 @@ export class GlobalPresetService extends EventTarget {
     let sourceRaw: string | null = null;
     if (res.kind === 'ok' || res.kind === 'recovered') {
       this.presets = GlobalPresetService.normalizeEntries(res.data);
+      this.adoptHeld(res.data);
       loadedVersion = (res.data as any).version || 1;
       sourceRaw = res.raw;
     } else {
       // missing(신규) · corrupt-empty(손상본 보존됨) — 옮길 v1 데이터가 없으므로 통합 이관·저장을 하지 않는다
       this.presets = [];
+      this.heldEntries = [];
     }
     this.loaded = true;
     // v2 통합 마이그레이션: 이지/일반을 한 라이브러리로 보고 이름을 고유화한다.
@@ -166,6 +192,7 @@ export class GlobalPresetService extends EventTarget {
     const r = await this.store.reloadExternal({
       replace: (remote, raw) => {
         this.presets = GlobalPresetService.normalizeEntries(remote);
+        this.adoptHeld(remote);
         if (((remote as any).version || 1) < GLOBAL_PRESETS_VERSION) migrateRaw = raw;
       },
       merge: (remote, base, raw) => {
@@ -174,6 +201,8 @@ export class GlobalPresetService extends EventTarget {
           this.presets,
           GlobalPresetService.normalizeEntries(remote),
         );
+        // 보존분은 이 창이 바꾸지 않는다 — 파일(remote) 쪽이 정답
+        this.adoptHeld(remote);
         if (((remote as any).version || 1) < GLOBAL_PRESETS_VERSION) migrateRaw = raw;
       },
     });

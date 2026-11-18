@@ -170,6 +170,92 @@ export function sessionVariantAttachmentFiles(
   return out;
 }
 
+/**
+ * 프로젝트 얕은 복제가 새 프로젝트로 함께 옮길 생성 쪽 첨부 파일(순수 함수, 중복 제거 — 2026-11-18 프리셋 유실 조사 경로 20).
+ * = 로컬 캐릭터 프리셋(characterPresets)의 대표 이미지(representativeImage — vibes 폴더)·바이브(vibes[].path, 인코딩 캐시 포함)·
+ *   캐릭터 레퍼런스(characterReferences[].path)
+ * + 공용 설정(presetShareds — 워크플로 종류 무관)의 바이브·캐릭터 레퍼런스(적용 프리셋 유래 fromPreset 항목·꺼진 항목 포함).
+ * 이름은 읽는 쪽처럼 마지막 `/` 뒤만 쓴다. 손상 값(객체가 아님·문자열이 아님)은 건너뛴다.
+ */
+export function sessionGenerationAttachmentFiles(
+  json: { characterPresets?: unknown; presetShareds?: unknown } | null | undefined,
+): SceneAttachmentFiles {
+  const out: SceneAttachmentFiles = { vibes: [], encodedVibes: [], references: [] };
+  if (!json || typeof json !== 'object') return out;
+  const vibeSet = new Set<string>();
+  const encodedSet = new Set<string>();
+  const refSet = new Set<string>();
+  const addVibe = (name: string | undefined) => {
+    if (name && !vibeSet.has(name)) {
+      vibeSet.add(name);
+      out.vibes.push(name);
+    }
+  };
+  const addHolder = (holder: any) => {
+    if (!holder || typeof holder !== 'object') return;
+    for (const vibe of Array.isArray(holder.vibes) ? holder.vibes : []) {
+      const name = fileNameOf(vibe?.path);
+      if (!name) continue;
+      addVibe(name);
+      const info = vibe?.info;
+      if (typeof info === 'number' && Number.isFinite(info)) {
+        const k = `${name}&info=${info}`;
+        if (!encodedSet.has(k)) {
+          encodedSet.add(k);
+          out.encodedVibes.push({ name, info });
+        }
+      }
+    }
+    for (const ref of Array.isArray(holder.characterReferences) ? holder.characterReferences : []) {
+      const name = fileNameOf(ref?.path);
+      if (name && !refSet.has(name)) {
+        refSet.add(name);
+        out.references.push(name);
+      }
+    }
+  };
+  const valuesOf = (v: unknown): unknown[] =>
+    v && typeof v === 'object' && !Array.isArray(v) ? Object.values(v as Record<string, unknown>) : [];
+  for (const preset of valuesOf(json.characterPresets)) {
+    if (!preset || typeof preset !== 'object') continue;
+    addHolder(preset);
+    // 대표 이미지 = vibes 폴더 파일 이름(화면은 getVibeImagePath 로 읽는다). 편집기는 레퍼런스 path 를 그대로 고를 수도 있어
+    // 그 경우는 레퍼런스 복사로 이미 따라가므로 vibes 에서 다시 찾지 않는다(없는 파일 경고 방지).
+    const rep = fileNameOf((preset as any).representativeImage);
+    const refs: any[] = Array.isArray((preset as any).characterReferences) ? (preset as any).characterReferences : [];
+    if (rep && !refs.some((r) => fileNameOf(r?.path) === rep)) addVibe(rep);
+  }
+  for (const shared of valuesOf(json.presetShareds)) addHolder(shared);
+  return out;
+}
+
+/** 첨부 파일 목록 합치기(순서 유지, 중복 제거) */
+export function mergeAttachmentFiles(...lists: SceneAttachmentFiles[]): SceneAttachmentFiles {
+  const out: SceneAttachmentFiles = { vibes: [], encodedVibes: [], references: [] };
+  const vibeSet = new Set<string>();
+  const encodedSet = new Set<string>();
+  const refSet = new Set<string>();
+  for (const l of lists) {
+    for (const n of l.vibes) {
+      if (vibeSet.has(n)) continue;
+      vibeSet.add(n);
+      out.vibes.push(n);
+    }
+    for (const e of l.encodedVibes) {
+      const k = `${e.name}&info=${e.info}`;
+      if (encodedSet.has(k)) continue;
+      encodedSet.add(k);
+      out.encodedVibes.push(e);
+    }
+    for (const n of l.references) {
+      if (refSet.has(n)) continue;
+      refSet.add(n);
+      out.references.push(n);
+    }
+  }
+  return out;
+}
+
 export interface SceneCopyDeps {
   /** 복사 대상 후보(숨김 씬 템플릿 제외 — templateService.filterVisibleProjects(sessionService.list())) */
   listProjects(): string[];

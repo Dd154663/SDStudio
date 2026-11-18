@@ -1,4 +1,4 @@
-import { action, observable, makeObservable, reaction } from 'mobx';
+import { action, observable, makeObservable, reaction, runInAction } from 'mobx';
 import { v4 as uuidv4 } from 'uuid';
 import {
   CharacterPreset,
@@ -18,6 +18,11 @@ import {
 import { dataUriToBase64 } from './ImageService';
 import { queueWorkflow } from './TaskQueueService';
 import { appState } from './AppService';
+import {
+  AppliedCharacterRestorePoint,
+  captureAppliedCharacter,
+  restoreAppliedCharacter,
+} from './cyclingRestore';
 
 export type CyclingState = 'idle' | 'running' | 'paused' | 'completed';
 
@@ -50,6 +55,12 @@ export class CyclingSessionService {
   private projectFileMode: boolean = false;
   private stopHandler: (() => void) | null = null;
   private disposers: (() => void)[] = [];
+  // 「현재 프로젝트」 모드 되돌리기(2026-11-18 경로 12, cyclingRestore.ts) — 대상 프로젝트와 워크플로별 바꾸기 전 적용 캐릭터 상태.
+  // 끝나면(완료·취소·오류로 끝남) restoreAppliedState 가 한 번 되돌리고 비운다. 일시정지는 끝이 아니다.
+  private restoreTarget: Session | null = null;
+  private restorePoints: Map<string, AppliedCharacterRestorePoint> = new Map();
+  // 적용·예약 진행 중(runInPlacePreset 안) — 이 동안 취소되면 예약이 끝난 뒤 되돌린다(남은 씬이 원래 캐릭터로 예약되지 않게)
+  private inPlaceBusy = false;
 
   constructor() {
     makeObservable(this);
@@ -70,7 +81,8 @@ export class CyclingSessionService {
     if (!workflowType) return;
 
     // 기존 큐가 비어있지 않으면 경고
-    if (!taskQueueService.isEmpty()) {
+    // 직전 순차 생성이 아직 적용·예약 중(취소 직후)이면 그 되돌리기가 끝날 때까지 받지 않는다
+    if (!taskQueueService.isEmpty() || this.inPlaceBusy) {
       appState.pushMessage('기존 예약을 먼저 완료하거나 제거해주세요');
       return;
     }
@@ -80,6 +92,10 @@ export class CyclingSessionService {
     this.samples = samples;
     this.workflowType = workflowType;
     this.projectFileMode = options?.projectFileMode ?? false;
+    // 「현재 프로젝트」 모드만 원래 프로젝트의 적용 상태를 바꾼다 — 워크플로마다 처음 바꾸기 직전 상태를 잡는다(runInPlacePreset).
+    // 프로젝트 파일 모드는 복제한 새 프로젝트에 적용하므로 되돌릴 것이 없다.
+    this.restoreTarget = this.projectFileMode ? null : session;
+    this.restorePoints = new Map();
     this.presetQueue = [...items];
     this.totalPresets = items.length;
     this.completedPresets = 0;
@@ -153,17 +169,52 @@ export class CyclingSessionService {
 
   // 기존 동작: 현재 프로젝트 하나에 프리셋을 갈아끼우며 생성
   private async runInPlacePreset(desc: CyclingItem) {
-    if (!this.session) return;
-    let preset = desc.preset;
-    if (desc.kind === 'global' && desc.globalId) {
-      // 글로벌 이미지를 현재 세션에 실체화한 프리셋을 적용
-      preset = await globalCharacterPresetService.instantiateIntoSession(
-        this.session,
-        desc.globalId,
-      );
+    const session = this.session;
+    if (!session) return;
+    const scenes = this.scenes;
+    this.inPlaceBusy = true;
+    try {
+      let preset = desc.preset;
+      if (desc.kind === 'global' && desc.globalId) {
+        // 글로벌 이미지를 현재 세션에 실체화한 프리셋을 적용
+        preset = await globalCharacterPresetService.instantiateIntoSession(
+          session,
+          desc.globalId,
+        );
+        // 실체화를 기다리는 동안 취소됐으면 적용하지 않는다(되돌린 뒤 다시 바꿔 놓지 않게)
+        if (this.state !== 'running') return;
+      }
+      const workflowType = session.selectedWorkflow?.workflowType;
+      if (workflowType && this.restoreTarget === session && !this.restorePoints.has(workflowType)) {
+        this.restorePoints.set(workflowType, captureAppliedCharacter(session, workflowType));
+      }
+      this.applyPreset(preset, session);
+      const point = workflowType ? this.restorePoints.get(workflowType) : undefined;
+      if (point) point.lastApplied = preset.name;
+      await this.queueScenes(session, scenes);
+    } finally {
+      this.inPlaceBusy = false;
+      // 적용·예약 도중 끝났으면(취소 등) 예약을 마친 지금 되돌린다. 계속 진행 중·일시정지면 그대로.
+      if (this.state !== 'running' && this.state !== 'paused') this.restoreAppliedState();
     }
-    this.applyPreset(preset, this.session);
-    await this.queueScenes(this.session, this.scenes);
+  }
+
+  /**
+   * 순차 생성이 바꾼 적용 캐릭터 상태를 시작 전으로 되돌린다(완료·취소·오류로 끝날 때 한 번). 적용·예약 도중이면 미룬다
+   * (runInPlacePreset 의 finally 가 부른다). 예약된 작업은 입력이 이미 굳어 있어 되돌려도 남은 생성은 그대로다(cyclingRestore.ts).
+   * 대상 프로젝트가 더는 불러온 그 객체가 아니면(삭제·이름 변경 등) 건드리지 않는다.
+   */
+  private restoreAppliedState() {
+    if (this.inPlaceBusy) return;
+    const target = this.restoreTarget;
+    const points = this.restorePoints;
+    this.restoreTarget = null;
+    this.restorePoints = new Map();
+    if (!target || points.size === 0) return;
+    if (!sessionService.isLoaded(target.name) || sessionService.getFast(target.name) !== target) return;
+    runInAction(() => {
+      for (const point of points.values()) restoreAppliedCharacter(point);
+    });
   }
 
   // 프로젝트 파일 모드: 프리셋마다 현재 프로젝트를 복제해 새 프로젝트에 적용·생성
@@ -367,6 +418,9 @@ export class CyclingSessionService {
       dispose();
     }
     this.disposers = [];
+
+    // 끝(완료·취소) — 적용 캐릭터를 시작 전으로(적용·예약 도중이면 그 흐름이 끝난 뒤 runInPlacePreset 이 되돌린다)
+    this.restoreAppliedState();
 
     this.session = null;
     this.scenes = [];
