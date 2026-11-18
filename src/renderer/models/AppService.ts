@@ -320,6 +320,9 @@ export class AppState {
   // 프리셋 패널 버튼 하단 아이콘 행(config.uiPresetIconRow 미러). 기본 false = 현행
   // 세로 넓은 버튼. 소비는 PreSetEdtior.tsx(PresetRootRender), 로드는 App.tsx.
   @observable accessor uiPresetIconRow: boolean = false;
+  // PC 툴바 버튼 이름 표시(config.uiToolbarButtonNames 미러, 미설정 = 켬). 소비는 SceneQueueControl·ResultViewer
+  // (componenets/ToolbarButtonName.tsx), 로드는 App.tsx.
+  @observable accessor uiToolbarButtonNames: boolean = true;
   // 모바일 V2: 퀵 생성 탭이 하단 바 자리를 [생성][해상도]로 쓰는 동안 true(큐용 하단 바 숨김). models/mobileV2.ts
   @observable accessor mobileV2QuickBar: boolean = false;
   // 모바일 V2: 하단 시트 프롬프트가 열려 있는 동안 true. 드로어 손잡이·가장자리 스와이프가 물러난다(MobilePromptSheet).

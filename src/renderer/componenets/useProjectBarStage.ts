@@ -17,12 +17,12 @@ import {
   shareButtonsNeeds,
 } from '../models/projectBarStage';
 
-function px(v: string | null | undefined): number {
+export function px(v: string | null | undefined): number {
   const n = parseFloat(v ?? '');
   return Number.isFinite(n) ? n : 0;
 }
 
-function collectFlexItems(el: Element, out: Element[]) {
+export function collectFlexItems(el: Element, out: Element[]) {
   for (const child of Array.from(el.children)) {
     const cs = getComputedStyle(child);
     if (cs.display === 'none') continue;

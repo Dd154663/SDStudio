@@ -212,6 +212,8 @@ const BASE_SAVE = {
   uiThemePresets: undefined,
   quickMenu: undefined,
   uiMobileV2Parts: normalizeV2Parts(undefined),
+  // 버튼 이름 표시(2026-11-18) — 저장값이 없으면 켬으로 읽어 그대로 저장한다
+  uiToolbarButtonNames: true,
 };
 
 // ConfigScreen 은 8개 탭을 늘 함께 렌더해 한 번 그리는 데 수백 ms 가 든다 — 전체 병렬 실행 중 기본 5초 제한에
@@ -586,6 +588,15 @@ const PC_CASES: [string, Case][] = [
       change: () => click(input('cfgPresetIconRow')),
       expected: { uiPresetIconRow: true },
       after: () => expect(appState.uiPresetIconRow).toBe(true),
+    },
+  ],
+  [
+    '레이아웃 — 버튼 이름 표시 끄기',
+    {
+      tab: '레이아웃',
+      change: () => click(input('cfgToolbarButtonNames')),
+      expected: { uiToolbarButtonNames: false },
+      after: () => expect(appState.uiToolbarButtonNames).toBe(false),
     },
   ],
   [

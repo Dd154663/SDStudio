@@ -863,6 +863,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [uiLayoutTemplate, setUiLayoutTemplate] = useState(defaultLayoutTemplateId(isMobile));
   const [uiMobileV2Parts, setUiMobileV2Parts] = useState<MobileV2Parts>(normalizeV2Parts(undefined));
   const [uiPresetIconRow, setUiPresetIconRow] = useState(false);
+  const [uiToolbarButtonNames, setUiToolbarButtonNames] = useState(true);
   // 모던 해제 확인(② A 2차 피드백 후속 1): 모던 → 다른 템플릿 전환 시 "배치 초기화"에
   // 동의했는지. true 면 저장 시 버튼(툴바·동반)·레이아웃 배치를 기본값으로 되돌린다.
   const [modernExitReset, setModernExitReset] = useState(false);
@@ -927,6 +928,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     setUiLayoutTemplate(config.uiLayoutTemplate ?? defaultLayoutTemplateId(isMobile));
     setUiMobileV2Parts(normalizeV2Parts(config.uiMobileV2Parts));
     setUiPresetIconRow(config.uiPresetIconRow ?? false);
+    setUiToolbarButtonNames(config.uiToolbarButtonNames ?? true);
     setUiFloatViewMode(config.uiFloatViewMode ?? 'cover');
     setUiFont(config.uiFont ?? 'system');
     setUiClassicFinish(config.uiClassicFinish ?? false);
@@ -1115,6 +1117,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiLayoutTemplate: uiLayoutTemplate,
       uiMobileV2Parts: uiMobileV2Parts,
       uiPresetIconRow: uiPresetIconRow,
+      uiToolbarButtonNames: uiToolbarButtonNames,
       uiFloatViewMode: uiFloatViewMode,
       uiFont: uiFont,
       uiClassicFinish: uiClassicFinish,
@@ -1177,6 +1180,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     appState.uiLayoutTemplate = uiLayoutTemplate;
     appState.uiMobileV2Parts = uiMobileV2Parts;
     appState.uiPresetIconRow = uiPresetIconRow;
+    appState.uiToolbarButtonNames = uiToolbarButtonNames;
     appState.uiFloatViewMode = uiFloatViewMode;
     appState.uiFont = uiFont;
     appState.uiClassicFinish = uiClassicFinish;
@@ -1258,7 +1262,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'toolbar':
         return <ToolbarTab {...{ uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton }} />;
       case 'layout':
-        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose: requestClose }} />;
+        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbarButtonNames, setUiToolbarButtonNames, uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose: requestClose }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':
@@ -1303,6 +1307,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiLayoutTemplate !== (savedCfg.uiLayoutTemplate ?? defaultLayoutTemplateId(isMobile)) ||
       JSON.stringify(uiMobileV2Parts) !== JSON.stringify(normalizeV2Parts(savedCfg.uiMobileV2Parts)) ||
       uiPresetIconRow !== (savedCfg.uiPresetIconRow ?? false) ||
+      uiToolbarButtonNames !== (savedCfg.uiToolbarButtonNames ?? true) ||
       uiFloatViewMode !== (savedCfg.uiFloatViewMode ?? 'cover') ||
       uiFont !== (savedCfg.uiFont ?? 'system') ||
       uiClassicFinish !== (savedCfg.uiClassicFinish ?? false) ||

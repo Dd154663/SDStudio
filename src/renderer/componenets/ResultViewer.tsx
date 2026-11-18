@@ -55,6 +55,24 @@ import { useDrag, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
 import { reaction, set } from 'mobx';
 import Tooltip from './Tooltip';
+import { ButtonNameSlot, useButtonNameStage } from './ToolbarButtonName';
+
+// PC 이미지 그리드 머리줄 아이콘 버튼의 아래 이름(2026-11-18 버튼 이름 표시) — 이 머리줄 버튼은 툴바 레지스트리가
+// 없어 이 표가 단일 출처. 글자 버튼(이상형 월드컵·예약 추가·예약 제거·씬 편집)에는 이름을 달지 않는다.
+export const GRID_HEADER_NAMES = {
+  folder: '폴더',
+  selectMode: '선택',
+  favSelect: '즐겨찾기 선택',
+  download: '다운로드',
+  copy: '복사',
+  paste: '붙여넣기',
+  favToggle: '즐겨찾기',
+  duplicate: '복제',
+  copyToScene: '씬 복사',
+  delete: '삭제',
+  sample: '샘플 뽑기',
+  bookmark: '북마크',
+} as const;
 import {
   CharacterPrompt,
   ContextMenuType,
@@ -1825,6 +1843,15 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     // 모바일 V2(2026-09-26): 머리의 액션 버튼 줄 대신 하단 5칸 줄(+더보기 둘째 줄). 클래식·PC 마크업은 불변.
     const v2 = isV2('detail');
     const [v2More, setV2More] = useState(false);
+    // PC 머리줄 버튼 이름(환경설정 「버튼 이름 표시」, 기본 켬) — 머리줄이 한 줄에 다 들어갈 때만 보인다. 모바일은 없음.
+    const { rowRef: headerNamesRef, mode: headerNameMode } = useButtonNameStage(
+      !isMobile && !v2 && appState.uiToolbarButtonNames,
+    );
+    const hn = (key: keyof typeof GRID_HEADER_NAMES, node: React.ReactNode) => (
+      <ButtonNameSlot name={GRID_HEADER_NAMES[key]} mode={headerNameMode}>
+        {node}
+      </ButtonNameSlot>
+    );
     const [showImageCheatsheet, setShowImageCheatsheet] =
       useState<boolean>(false);
     const [tournament, setTournament] = useState<boolean>(false);
@@ -2690,9 +2717,16 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               </span>
             )}
           </div>
-          <div className="md:flex justify-between items-center mt-2 md:mt-4">
+          <div
+            ref={headerNamesRef as React.RefObject<HTMLDivElement>}
+            className="md:flex justify-between items-center mt-2 md:mt-4"
+          >
             {!v2 && (
-            <div className="flex gap-2 md:gap-3 flex-wrap">
+            <div
+              data-bn-row=""
+              data-bn-items=""
+              className={`flex gap-2 md:gap-3 flex-wrap${headerNameMode === 'show' ? ' items-start' : ''}`}
+            >
               <button
                 className={`round-button back-sky`}
                 onClick={() => setTournament(true)}
@@ -2728,131 +2762,149 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                   {!isMobile ? '씬 편집' : <ActionIcon id="edit" />}
                 </button>
               </Tooltip>
-              {!isMobile && (
-                <Tooltip content="폴더 열기">
+              {!isMobile && hn('folder', (
+                  <Tooltip content="폴더 열기">
+                    <button
+                      className={`round-button icon-only back-sky`}
+                      onClick={async () => {
+                        await backend.showFile(
+                          getResultDirectory(curSession!, scene),
+                        );
+                      }}
+                    >
+                      <FaFolderOpen />
+                    </button>
+                  </Tooltip>
+              ))}
+              {hn('selectMode', (
+                <Tooltip content="이미지 선택 모드">
+                  <button
+                    className={
+                      `round-button icon-only ` + (selectMode ? 'back-sky toggle-on' : 'back-gray')
+                    }
+                    aria-pressed={selectMode}
+                    data-viewer-toggle="select-mode"
+                    onClick={actToggleSelect}
+                  >
+                    <ActionIcon id="multi-select" />
+                  </button>
+                </Tooltip>
+              ))}
+              {isMainImage && hn('favSelect', (
+                  <Tooltip content="즐겨찾기 이미지 일괄 선택">
+                    <button
+                      className={`round-button icon-only back-yellow`}
+                      onClick={actSelectFavorites}
+                    >
+                      {/* 즐겨찾기 '선택' 헬퍼: 별+체크 배지로 토글 버튼(순수 별)과 구분 */}
+                      <span className="relative inline-flex items-center justify-center">
+                        <FaStar />
+                        <FaCheck className="absolute -right-1.5 -bottom-1 text-[9px]" />
+                      </span>
+                    </button>
+                  </Tooltip>
+              ))}
+              {hn('download', (
+                <Tooltip content="이미지 다운로드">
+                  <button
+                    className={`round-button icon-only back-green`}
+                    onClick={actDownload}
+                  >
+                    <FaDownload />
+                  </button>
+                </Tooltip>
+              ))}
+              {hn('copy', (
+                <Tooltip content="이미지 복사">
                   <button
                     className={`round-button icon-only back-sky`}
-                    onClick={async () => {
-                      await backend.showFile(
-                        getResultDirectory(curSession!, scene),
-                      );
-                    }}
+                    onClick={actCopyImages}
                   >
-                    <FaFolderOpen />
+                    <ActionIcon id="copy" />
                   </button>
                 </Tooltip>
-              )}
-              <Tooltip content="이미지 선택 모드">
-                <button
-                  className={
-                    `round-button icon-only ` + (selectMode ? 'back-sky toggle-on' : 'back-gray')
-                  }
-                  aria-pressed={selectMode}
-                  data-viewer-toggle="select-mode"
-                  onClick={actToggleSelect}
-                >
-                  <ActionIcon id="multi-select" />
-                </button>
-              </Tooltip>
-              {isMainImage && (
-                <Tooltip content="즐겨찾기 이미지 일괄 선택">
+              ))}
+              {hn('paste', (
+                <Tooltip content="이미지 붙여넣기">
                   <button
-                    className={`round-button icon-only back-yellow`}
-                    onClick={actSelectFavorites}
+                    className={`round-button icon-only ${appState.imageClipboard.length > 0 ? 'back-sky toggle-on' : 'back-gray'}`}
+                    data-viewer-toggle="paste"
+                    onClick={actPaste}
                   >
-                    {/* 즐겨찾기 '선택' 헬퍼: 별+체크 배지로 토글 버튼(순수 별)과 구분 */}
-                    <span className="relative inline-flex items-center justify-center">
-                      <FaStar />
-                      <FaCheck className="absolute -right-1.5 -bottom-1 text-[9px]" />
-                    </span>
+                    <FaPaste />
                   </button>
                 </Tooltip>
-              )}
-              <Tooltip content="이미지 다운로드">
-                <button
-                  className={`round-button icon-only back-green`}
-                  onClick={actDownload}
-                >
-                  <FaDownload />
-                </button>
-              </Tooltip>
-              <Tooltip content="이미지 복사">
-                <button
-                  className={`round-button icon-only back-sky`}
-                  onClick={actCopyImages}
-                >
-                  <ActionIcon id="copy" />
-                </button>
-              </Tooltip>
-              <Tooltip content="이미지 붙여넣기">
-                <button
-                  className={`round-button icon-only ${appState.imageClipboard.length > 0 ? 'back-sky toggle-on' : 'back-gray'}`}
-                  data-viewer-toggle="paste"
-                  onClick={actPaste}
-                >
-                  <FaPaste />
-                </button>
-              </Tooltip>
+              ))}
               {selectMode && selectedImages.current.size > 0 && (
                 <>
-                  <Tooltip content="선택 이미지 즐겨찾기 토글">
-                    <button
-                      className="round-button icon-only back-yellow"
-                      onClick={onToggleFavoriteSelected}
-                    >
-                      <FaStar />
-                    </button>
-                  </Tooltip>
-                  <Tooltip content="선택 이미지 복제">
-                    <button
-                      className="round-button icon-only back-sky"
-                      onClick={onDuplicateSelected}
-                    >
-                      <ActionIcon id="duplicate" />
-                    </button>
-                  </Tooltip>
-                  <Tooltip content="선택 이미지를 다른 씬으로 복사">
-                    <button
-                      className="round-button icon-only back-sky"
-                      onClick={onCopyToSceneSelected}
-                    >
-                      <FaShareSquare />
-                    </button>
-                  </Tooltip>
+                  {hn('favToggle', (
+                    <Tooltip content="선택 이미지 즐겨찾기 토글">
+                      <button
+                        className="round-button icon-only back-yellow"
+                        onClick={onToggleFavoriteSelected}
+                      >
+                        <FaStar />
+                      </button>
+                    </Tooltip>
+                  ))}
+                  {hn('duplicate', (
+                    <Tooltip content="선택 이미지 복제">
+                      <button
+                        className="round-button icon-only back-sky"
+                        onClick={onDuplicateSelected}
+                      >
+                        <ActionIcon id="duplicate" />
+                      </button>
+                    </Tooltip>
+                  ))}
+                  {hn('copyToScene', (
+                    <Tooltip content="선택 이미지를 다른 씬으로 복사">
+                      <button
+                        className="round-button icon-only back-sky"
+                        onClick={onCopyToSceneSelected}
+                      >
+                        <FaShareSquare />
+                      </button>
+                    </Tooltip>
+                  ))}
                 </>
               )}
-              <Tooltip
-                content={
-                  selectMode ? '선택한 이미지 삭제' : '이미지 삭제'
-                }
-              >
-                <button
-                  className={`round-button icon-only back-red`}
-                  aria-label={selectMode ? '선택한 이미지 삭제' : '이미지 삭제'}
-                  onClick={onDeleteButton}
+              {hn('delete', (
+                <Tooltip
+                  content={
+                    selectMode ? '선택한 이미지 삭제' : '이미지 삭제'
+                  }
                 >
-                  <FaTrash />
-                </button>
-              </Tooltip>
-              {onSampleExtract && (
-                <Tooltip content="샘플 뽑기 (시드 추출)">
                   <button
-                    className={`round-button icon-only back-sky`}
-                    onClick={actSampleExtract}
+                    className={`round-button icon-only back-red`}
+                    aria-label={selectMode ? '선택한 이미지 삭제' : '이미지 삭제'}
+                    onClick={onDeleteButton}
                   >
-                    <FaDice />
+                    <FaTrash />
                   </button>
                 </Tooltip>
-              )}
-              <Tooltip content="북마크된 이미지로 이동">
-                <button
-                  className={`round-button icon-only ${bookmarkedImageFilename ? 'back-orange toggle-on' : 'back-gray'}`}
-                  data-viewer-toggle="bookmark-jump"
-                  onClick={actGoBookmark}
-                >
-                  <ActionIcon id="bookmark-jump" />
-                </button>
-              </Tooltip>
+              ))}
+              {onSampleExtract && hn('sample', (
+                  <Tooltip content="샘플 뽑기 (시드 추출)">
+                    <button
+                      className={`round-button icon-only back-sky`}
+                      onClick={actSampleExtract}
+                    >
+                      <FaDice />
+                    </button>
+                  </Tooltip>
+              ))}
+              {hn('bookmark', (
+                <Tooltip content="북마크된 이미지로 이동">
+                  <button
+                    className={`round-button icon-only ${bookmarkedImageFilename ? 'back-orange toggle-on' : 'back-gray'}`}
+                    data-viewer-toggle="bookmark-jump"
+                    onClick={actGoBookmark}
+                  >
+                    <ActionIcon id="bookmark-jump" />
+                  </button>
+                </Tooltip>
+              ))}
             </div>
             )}
             <span className="flex ml-auto gap-1 md:gap-2 mt-2 md:mt-0">

@@ -188,6 +188,9 @@ export interface Config {
   // 최하단의 아이콘 한 줄로 정리한다(존재하는 버튼만 — 워크플로우별 상이).
   // 미설정/false = 현행 세로 넓은 버튼 그대로(롤백 안전). PC·모바일 공용.
   uiPresetIconRow?: boolean;
+  // PC 툴바 버튼 이름 표시(2026-11-18) — 씬 툴바·이미지 그리드 머리줄의 아이콘 버튼 아래 작은 이름.
+  // 미설정/true = 켬(기본, 저장값이 없던 기존 사용자도 켬), false = 끔(종전 아이콘만). 모바일은 값과 무관하게 이름 없음.
+  uiToolbarButtonNames?: boolean;
   // 동반 슬롯(L3-1 → E2) — 프리셋 에디터 "호스트 행" 옆에 붙일 전역(portable) 툴바 버튼.
   // 키 = hostKey(wfiElementKey 안정 키, 예 'characterPrompts'·'vibes'·'characterReferences'
   // ·'sampling-group'), 값 = 붙일 버튼 id 목록(uiLayout.ts portable 버튼 id, 예

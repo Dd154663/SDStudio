@@ -42,6 +42,8 @@ import SceneQuickPromptModal from './SceneQuickPromptModal';
 import { base64ToDataUri } from './BrushTool';
 import SceneSelector from './SceneSelector';
 import Tooltip from './Tooltip';
+import { ButtonNameSlot, useButtonNameStage } from './ToolbarButtonName';
+import { BUTTON_NAME_GAP_ICON_PX, BUTTON_NAME_GAP_LABEL_PX } from '../models/buttonNameStage';
 import { HScrollHintArrow, useHScrollHint } from './HScrollHint';
 import { ImageOptimizeMethod } from '../backend';
 import {
@@ -89,11 +91,13 @@ import {
 import { IMPORT_IMAGE_ACCEPT } from '../models/imageFormats';
 import { platform } from '../models/platform';
 import {
+  SCENE_TOOLBAR_MORE_LABEL,
   TOOLBAR_GROUP_OTHER,
   TOOLBAR_GROUP_OTHER_HINT,
   TOOLBAR_VIEW_MAIN,
   groupToolbarIds,
   resolveToolbarView,
+  sceneToolbarLabelOf,
 } from '../models/uiLayout';
 import { companionAssignedIds } from '../models/companionSlots';
 import ToolbarOverflowMenu from './ToolbarOverflowMenu';
@@ -2578,6 +2582,18 @@ const QueueControl = observer(
       },
       [toolbarRowDrop, toolbarScrollRef],
     );
+    // PC 씬 툴바 버튼 이름(2026-11-18, 아이콘 아래 작은 이름 — 환경설정 「버튼 이름 표시」, 기본 켬).
+    // PC 그룹 툴바의 아이콘 모드만(모바일·클래식 툴바·레거시 글자 설정은 종전 그대로). 이미지생성·이미지변형 탭 공용.
+    // 한 줄에 다 들어가면 이름 보임('show'), 아니면 이름 숨김('measure' — 지금 모습 + 측정용 숨은 이름).
+    const buttonNamesEnabled =
+      !isMobile &&
+      !appState.uiToolbar.classic &&
+      !appState.sceneToolbarLegacyText &&
+      appState.uiToolbarButtonNames &&
+      !!showPannel &&
+      !v2Layout;
+    const { rowRef: toolbarOuterRef, mode: buttonNameMode } =
+      useButtonNameStage(buttonNamesEnabled);
 
     const [bmRev, setBmRev] = useState(0);
     useEffect(() => {
@@ -3015,7 +3031,9 @@ const QueueControl = observer(
         index={toolbarLayout.inline.indexOf(id)}
         disabled={!!appState.uiToolbar.classic}
       >
-        {buttonNode(id)}
+        <ButtonNameSlot name={sceneToolbarLabelOf(id)} mode={buttonNameMode}>
+          {buttonNode(id)}
+        </ButtonNameSlot>
       </DraggableToolbarButton>
     );
     const toolbarSegments = groupedToolbar
@@ -3086,7 +3104,10 @@ const QueueControl = observer(
         {/* 씬 휴지통·아티스트 태깅 모달은 App.tsx 전역 오버레이로 이관(B군 승격) */}
         {panel}
         {!!showPannel && !v2Layout && (
-          <div className={`flex flex-none pb-1.5 flex-wrap${groupedToolbar ? ' items-end' : ''}`}>
+          <div
+            ref={toolbarOuterRef as React.RefObject<HTMLDivElement>}
+            className={`flex flex-none pb-1.5 flex-wrap${groupedToolbar ? ' items-end' : ''}`}
+          >
             {/* 모바일(비클래식): 줄바꿈 대신 가로 스크롤 — 어떤 기기 폭에서도 1줄 보장.
                 행 전체가 드롭 타깃(놓으면 인라인 고정) */}
             {/* 모바일: 스크롤바를 숨긴 행이라 가려진 버튼이 있을 때 양 끝에 옅은 화살표 힌트를 띄운다
@@ -3094,6 +3115,7 @@ const QueueControl = observer(
             <div className={mobileIcon ? 'relative min-w-0 max-w-full' : 'contents'}>
             <div
               ref={toolbarRowRef}
+              data-bn-row=""
               onScroll={mobileIcon ? updateToolbarScrollHint : undefined}
               className={`scene-toolbar-row flex ${
                 groupedToolbar
@@ -3103,13 +3125,14 @@ const QueueControl = observer(
                         ? 'flex-nowrap overflow-x-auto no-scrollbars min-w-0 max-w-full [&>*]:flex-none'
                         : 'flex-wrap'
                     }`
-              }${toolbarRowHighlightClass(toolbarDrag, toolbarRowOver)}`}
+              }${buttonNameMode === 'show' ? ' scene-toolbar-named' : ''}${toolbarRowHighlightClass(toolbarDrag, toolbarRowOver)}`}
             >
               {appState.sceneSelectionMode && (
                 <Tooltip content="현재 표시된 씬 모두 선택">
                   <button
                     // 그룹 툴바는 행 gap 이 없어(칸 간격은 구분선 칸이 맡음) 첫 칸과 12px 띄운다
-                    className={`round-button back-sky${groupedToolbar ? ' mr-3' : ''}`}
+                    // 이름 보임 단계에서는 이름 몫만큼 띄워 버튼 줄 높이에 맞춘다(tb-name-offset — 이 버튼은 「전체」 글자가 있어 이름 없음)
+                    className={`round-button back-sky${groupedToolbar ? ' mr-3 tb-name-offset' : ''}`}
                     onClick={() =>
                       appState.addScenesToSelection(
                         getFilteredScenes().map((scene) => scene.name),
@@ -3139,10 +3162,15 @@ const QueueControl = observer(
                       data-toolbar-group={seg.group}
                       className={`toolbar-group${si > 0 ? ' toolbar-group-sep' : ''}`}
                     >
-                      <div className="toolbar-group-caption text-muted" aria-hidden="true">
+                      <div className="toolbar-group-caption text-muted" aria-hidden="true" data-bn-caption="">
                         {seg.caption}
                       </div>
-                      <div className="toolbar-group-buttons">
+                      <div
+                        className="toolbar-group-buttons"
+                        data-bn-items=""
+                        data-bn-gap-icon={BUTTON_NAME_GAP_ICON_PX}
+                        data-bn-gap-label={BUTTON_NAME_GAP_LABEL_PX}
+                      >
                         {seg.ids.map(inlineToolbarButton)}
                       </div>
                     </div>
@@ -3168,6 +3196,7 @@ const QueueControl = observer(
                       positionClass="right-full"
                     />
                   )}
+                  <ButtonNameSlot name={SCENE_TOOLBAR_MORE_LABEL} mode={groupedToolbar ? buttonNameMode : undefined}>
                   <ToolbarMenuDropTarget group="scene" area="scene">
                     <Tooltip content="더보기">
                       <button
@@ -3183,6 +3212,7 @@ const QueueControl = observer(
                       </button>
                     </Tooltip>
                   </ToolbarMenuDropTarget>
+                  </ButtonNameSlot>
                   {/* PC 팝오버는 relative 앵커 안에서 렌더. 모바일 메뉴(ModalOverlay)는
                       sticky 가 만드는 스태킹 컨텍스트에 갇히면 씬 그리드에 덮이므로 바깥에서 렌더 */}
                   {!isMobile && (

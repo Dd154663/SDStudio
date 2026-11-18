@@ -310,6 +310,7 @@ export const App = observer(() => {
       appState.uiLayoutTemplate = conf.uiLayoutTemplate ?? defaultLayoutTemplateId(isMobile);
       appState.uiMobileV2Parts = conf.uiMobileV2Parts;
       appState.uiPresetIconRow = conf.uiPresetIconRow ?? false;
+      appState.uiToolbarButtonNames = conf.uiToolbarButtonNames ?? true;
       appState.genWidget = conf.genWidget ?? {};
       appState.uiLayoutSlots = conf.uiLayoutSlots ?? {};
       appState.uiFloatViewMode = conf.uiFloatViewMode ?? 'cover';

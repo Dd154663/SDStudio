@@ -340,7 +340,7 @@ const floatViewModes: {
   },
 ];
 
-const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbar, setUiToolbar, quickMenu, setQuickMenu, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
+const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbarButtonNames, setUiToolbarButtonNames, uiToolbar, setUiToolbar, quickMenu, setQuickMenu, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
   <div className="space-y-5">
     <div>
       <label className="block text-sm gray-label mb-1">화면 배치</label>
@@ -593,6 +593,24 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
           <p className="text-xs text-faint mt-1 ml-6">
             켜면 모든 버튼을 예전처럼 툴바에 나란히 표시합니다(⋯ 메뉴·개별 배치
             무시). 저장 시 반영됩니다.
+          </p>
+        </div>
+        {/* PC 툴바 버튼 이름(2026-11-18) — 씬 툴바·이미지 그리드 머리줄 아이콘 아래 작은 이름. 기본 켬, 저장 시 반영. */}
+        <div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="cfgToolbarButtonNames"
+              checked={!!uiToolbarButtonNames}
+              onChange={(e: any) => setUiToolbarButtonNames(e.target.checked)}
+            />
+            <label htmlFor="cfgToolbarButtonNames" className="text-sm gray-label">
+              버튼 이름 표시
+            </label>
+          </div>
+          <p className="text-xs text-faint mt-1 ml-6">
+            씬 툴바와 이미지 목록 위 아이콘 버튼 아래에 짧은 이름을 보입니다. 창이 좁으면
+            이름이 먼저 숨겨집니다. 저장 시 반영됩니다.
           </p>
         </div>
         <div>

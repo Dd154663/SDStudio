@@ -541,6 +541,53 @@ html.font-pretendard body {
   align-items: center;
   gap: 0.5rem;
 }
+/* PC 툴바 버튼 이름(2026-11-18, 아이콘 아래 작은 이름 — componenets/ToolbarButtonName.tsx). 씬 툴바·이미지 그리드 머리줄.
+   묶음 = [버튼 그대로][간격 3px][이름 11px 한 줄]. 버튼 크기·모양은 그대로, 이름은 버튼 칩 밖.
+   측정용 이름(.tb-name-measure)은 모습을 바꾸지 않게 겹친 채 숨긴다(폭만 잰다). */
+.tb-named {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.tb-named-body {
+  display: flex;
+  align-items: center;
+}
+.tb-name {
+  margin-top: 3px;
+  height: 12px;
+  font-size: 11px;
+  line-height: 12px;
+  white-space: nowrap;
+  user-select: none;
+  cursor: pointer;
+}
+.tb-name-measure {
+  position: absolute;
+  top: 0;
+  right: 0;
+  margin-top: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* 씬 툴바 이름 보임 단계(.scene-toolbar-named): 칸 안 간격 8 → 10px(models/buttonNameStage.ts 와 짝), 버튼 위쪽 맞춤
+   (이름 없는 글자형 버튼도 같은 줄), 구분선은 버튼 줄 가운데에 두려고 이름 몫(3+12px)만큼 올린다. */
+.scene-toolbar-named .toolbar-group-buttons {
+  gap: 10px;
+  align-items: flex-start;
+}
+.scene-toolbar-named .toolbar-group-sep::before {
+  bottom: 21px;
+}
+/* 이름 보임 단계에서는 그룹 캡션과 버튼 사이를 4px 띄운다(2026-11-19 사용자: 캡션이 버튼에 너무 붙음).
+   아래 이름(간격 3px)과 균형. 이름 숨김·설정 끔은 종전 그대로 0. */
+.scene-toolbar-named .toolbar-group-caption {
+  margin-bottom: 4px;
+}
+.scene-toolbar-named .tb-name-offset {
+  margin-bottom: 15px;
+}
 /* PC 프로젝트 바 버튼 바닥 선(2026-11-10 아이콘 직관화 묶음 1-b, 사용자 결정: 그룹·색 구분 없이 버튼마다 개별 선) —
    행(.pb-lines, SessionSelect PC 가로 바)의 직속 자식(드래그 래퍼) 아래에 같은 색 짧은 선. 양끝 4px 안쪽이라 이웃과
    16px 떨어져 하나로 이어 보이지 않는다. 프롬프트조각(.round-button 글자 버튼, 자기 모양)은 제외. */

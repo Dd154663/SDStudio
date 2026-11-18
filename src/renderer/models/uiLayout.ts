@@ -36,7 +36,10 @@ export interface ToolbarButtonMeta {
   // (overflow 버튼에 group 이 있어도 기본은 ⋯ 메뉴 그대로, 사용자가 툴바로 꺼낼 때만 그룹에 들어간다).
   // 'other' 는 레지스트리에 직접 적지 않는다 — group 이 없으면 저절로 「기타」.
   group?: Exclude<ToolbarButtonGroup, 'other'>;
-  // PC 프로젝트 바 영역(2026-11-10 아이콘 직관화 묶음 1-b, 「영역 바닥 선」). 프로젝트 바 인라인 버튼 아래 옅은 색 선의
+  // PC 씬 툴바 아이콘 아래 작은 이름(2026-11-18 버튼 이름 표시). 없으면 label 을 쓴다(sceneToolbarLabelOf) —
+  // label 이 프로젝트 바용으로 너무 긴 버튼(프롬프트조각 → 「조각」)과 label 이 없는 씬 버튼만 적는다.
+  // 둘 다 없는 버튼(글자형 WebP 변환)은 이름을 달지 않는다. 툴팁은 계속 name.
+  sceneLabel?: string;
 }
 
 
@@ -62,27 +65,27 @@ export const TOOLBAR_GROUP_OTHER_HINT = `더보기에서 꺼낸 버튼 중 그�
 
 // 씬 툴바 (이미지생성/이미지변형 탭 상단) — SceneQueueControl.tsx 가 사용
 export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
-  { id: 'add-scene', name: '씬 추가', tier: 'primary', group: 'create' },
-  { id: 'queue-add', name: '예약 추가', tier: 'primary', group: 'create' },
-  { id: 'export-images', name: '이미지 내보내기', tier: 'secondary', group: 'export' },
-  { id: 'quick-export', name: '빠른 내보내기', tier: 'primary', group: 'export' },
-  { id: 'batch-process', name: '대량 작업', tier: 'primary', group: 'create' },
-  { id: 'multi-select', name: '다중 선택', tier: 'primary', group: 'navigate' },
-  { id: 'change-resolution', name: '해상도 변경', tier: 'secondary', group: 'edit' },
+  { id: 'add-scene', name: '씬 추가', sceneLabel: '씬 추가', tier: 'primary', group: 'create' },
+  { id: 'queue-add', name: '예약 추가', sceneLabel: '예약', tier: 'primary', group: 'create' },
+  { id: 'export-images', name: '이미지 내보내기', sceneLabel: '내보내기', tier: 'secondary', group: 'export' },
+  { id: 'quick-export', name: '빠른 내보내기', sceneLabel: '빠른 내보내기', tier: 'primary', group: 'export' },
+  { id: 'batch-process', name: '대량 작업', sceneLabel: '대량 작업', tier: 'primary', group: 'create' },
+  { id: 'multi-select', name: '다중 선택', sceneLabel: '선택', tier: 'primary', group: 'navigate' },
+  { id: 'change-resolution', name: '해상도 변경', sceneLabel: '해상도', tier: 'secondary', group: 'edit' },
   // pcOnly 해제(2026-07-18): 모바일도 wasm libwebp 로 일괄 변환 지원(경고+취소 포함)
   // 그룹 없음(T5): 프로젝트 안 이미지를 바꾸는 저장 작업이라 「내보내기(앱→파일)」·「편집 도구」 어느 쪽에도 맞지 않는다.
   { id: 'webp-convert', name: 'WebP 변환', tier: 'overflow' },
   // 모바일 실사용 빈도가 높아 모바일만 인라인 (PC 는 기존대로 ⋯ 메뉴)
-  { id: 'import-image', name: '이미지 프롬프트 추출', tier: 'mobile-primary', v2Label: '프롬프트 추출', group: 'edit' },
+  { id: 'import-image', name: '이미지 프롬프트 추출', sceneLabel: '추출', tier: 'mobile-primary', v2Label: '프롬프트 추출', group: 'edit' },
   // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환
   { id: 'artist-tag', name: '아티스트 태깅', label: '작가 태깅', pcOnly: true, tier: 'overflow', portable: true, group: 'edit' },
-  { id: 'scene-search', name: '씬 검색', tier: 'primary', group: 'navigate' },
-  { id: 'scene-find', name: '씬 위치로 이동', tier: 'overflow', group: 'navigate' },
-  { id: 'image-review', name: '이미지 검수', tier: 'overflow', group: 'navigate' },
-  { id: 'artist-breakdown', name: '작가 분해', tier: 'overflow', group: 'edit' },
+  { id: 'scene-search', name: '씬 검색', sceneLabel: '검색', tier: 'primary', group: 'navigate' },
+  { id: 'scene-find', name: '씬 위치로 이동', sceneLabel: '위치 이동', tier: 'overflow', group: 'navigate' },
+  { id: 'image-review', name: '이미지 검수', sceneLabel: '검수', tier: 'overflow', group: 'navigate' },
+  { id: 'artist-breakdown', name: '작가 분해', sceneLabel: '작가 분해', tier: 'overflow', group: 'edit' },
   // 작가 태그 artist: 접두 전환(2026-09-26, 공통) — 긍정 프롬프트 칸 전체, 구획마다 있으면 떼고 없는 작가엔 붙임. SPEC_GUIDE 「작가 태그 접두 계약」
-  { id: 'artist-prefix-toggle', name: '작가 접두 전환', tier: 'overflow', v2Label: '접두 전환', group: 'edit' },
-  { id: 'bookmark-jump', name: '북마크된 씬으로 이동', tier: 'secondary', v2Label: '북마크 이동', group: 'navigate' },
+  { id: 'artist-prefix-toggle', name: '작가 접두 전환', sceneLabel: '접두 전환', tier: 'overflow', v2Label: '접두 전환', group: 'edit' },
+  { id: 'bookmark-jump', name: '북마크된 씬으로 이동', sceneLabel: '북마크', tier: 'secondary', v2Label: '북마크 이동', group: 'navigate' },
   // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환
   // 그룹 없음(T5): 휴지통 열기·삭제 이미지 비우기·단축키 도움말은 어느 그룹에도 맞지 않아 ⋯ 메뉴 유지.
   { id: 'scene-trash', name: '씬 휴지통', label: '씬 휴지통', tier: 'overflow', portable: true },
@@ -93,7 +96,7 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   // 일괄 삽입 독립 창(2026-11-14 A-3 사용자 결정) — 종전 찾기 및 변환 창의 탭을 떼어 냄. 「찾기·변환」 옆 같은 등급·그룹·portable
   // (증식 차단 규칙의 의도된 예외 — 기존 기능의 창 분리라 같은 자리를 받음). 단축키 없음.
   { id: 'batch-insert', name: '일괄 삽입', label: '일괄 삽입', tier: 'secondary', portable: true, v2Label: '일괄 삽입', group: 'navigate' },
-  { id: 'shortcut-help', name: '단축키 도움말', pcOnly: true, tier: 'overflow' },
+  { id: 'shortcut-help', name: '단축키 도움말', sceneLabel: '단축키', pcOnly: true, tier: 'overflow' },
   // 'undo'·'redo'(2026-11-01 U1 임시 ⋯ 메뉴 배치)는 2026-11-03 U6(D19)에서 제거 — 되돌리기/다시 실행은 하단 막대 위
   // 상시 버튼 바(componenets/UndoRedoBar.tsx)가 맡는다. 퀵 메뉴(globalActions GLOBAL_ACTIONS)의 같은 id 는 유지.
   // 저장된 배치에 남은 두 id 는 레지스트리에 없는 id 라 조용히 무시된다(resolveToolbar·resolveToolbarView·동반 슬롯 공통).
@@ -117,7 +120,7 @@ export const projectToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'backup-export', name: '프로젝트 백업/내보내기', label: '백업', tier: 'primary', portable: true },
   { id: 'delete-session', name: '프로젝트 삭제', label: '삭제', tier: 'primary', portable: true },
   { id: 'project-trash', name: '프로젝트 휴지통', label: '휴지통', tier: 'primary', portable: true },
-  { id: 'piece-editor', name: '프롬프트조각', label: '프롬프트조각', tier: 'primary', portable: true },
+  { id: 'piece-editor', name: '프롬프트조각', label: '프롬프트조각', sceneLabel: '조각', tier: 'primary', portable: true },
   // 새 창(멀티 윈도우 W6) — 데스크톱 전용(모바일 미노출). portable 로 크로스 영역 이동 허용.
   { id: 'new-window', name: '새 창', label: '새 창', pcOnly: true, tier: 'primary', portable: true },
 ];
@@ -222,6 +225,17 @@ export function toolbarLabelOf(id: string): string | undefined {
   for (const { registry } of TOOLBAR_VIEW_MAIN) {
     const found = registry.find((b) => b.id === id);
     if (found) return found.label;
+  }
+  return undefined;
+}
+
+// PC 씬 툴바 아이콘 아래 이름(2026-11-18 버튼 이름 표시) 조회 — sceneLabel 우선, 없으면 label(크로스 영역 portable 포함).
+// 없으면 undefined(그 버튼에는 이름을 달지 않는다). ⋯ 더보기는 레지스트리 밖이라 SCENE_TOOLBAR_MORE_LABEL.
+export const SCENE_TOOLBAR_MORE_LABEL = '더보기';
+export function sceneToolbarLabelOf(id: string): string | undefined {
+  for (const { registry } of TOOLBAR_VIEW_MAIN) {
+    const found = registry.find((b) => b.id === id);
+    if (found) return found.sceneLabel ?? found.label;
   }
   return undefined;
 }
