@@ -64,6 +64,43 @@ export function mergeById<T extends { id: string }>(base: T[], local: T[], remot
   return out;
 }
 
+/**
+ * 키 → 값 객체(씬 템플릿 지정 목록의 폴더 기본 템플릿·적용 기록 등)의 키 단위 3방향 병합(2026-11-18 T4).
+ * 규칙은 mergeById 와 같다(키 = id, 값 비교 = canonicalJson 동등성):
+ *  - 이 창이 추가(base 없음) → 이 창 값 / 다른 창이 추가(base·local 없음) → 받아들임
+ *  - 다른 창이 지움(base 있음·remote 없음) → local 이 base 와 같으면 지움, 고쳤으면 유지
+ *  - 이 창이 지움(base 있음·local 없음) → 지운 채 유지
+ *  - 양쪽에 있음 → local 이 base 와 같으면 remote, 다르면 local
+ * 키 순서 = local 순서 + 다른 창 추가분은 remote 순서로 뒤에. 입력 객체는 바꾸지 않는다.
+ */
+export function mergeByKey<V>(
+  base: Record<string, V>,
+  local: Record<string, V>,
+  remote: Record<string, V>,
+): Record<string, V> {
+  const has = (o: Record<string, V>, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+  const out: Record<string, V> = {};
+  for (const k of Object.keys(local)) {
+    const l = local[k];
+    if (!has(base, k)) {
+      out[k] = l; // 이 창이 추가(우연히 같은 키가 remote 에 있어도 이 창 것)
+      continue;
+    }
+    const localUnchanged = sameItem(l, base[k]);
+    if (!has(remote, k)) {
+      if (!localUnchanged) out[k] = l; // 다른 창이 지웠지만 이 창이 고쳤다 — 유지
+      continue;
+    }
+    out[k] = localUnchanged ? remote[k] : l;
+  }
+  for (const k of Object.keys(remote)) {
+    if (has(local, k)) continue;
+    if (has(base, k)) continue; // 이 창이 지움 — 지운 채 유지
+    out[k] = remote[k]; // 다른 창이 추가
+  }
+  return out;
+}
+
 /** 문자열 집합(폴더 레지스트리·태그 프리셋 등)의 3방향 병합. 결과에 중복은 없다 */
 export function mergeStringSet(base: string[], local: string[], remote: string[]): string[] {
   const baseSet = new Set(base);

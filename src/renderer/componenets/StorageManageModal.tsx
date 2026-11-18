@@ -45,6 +45,8 @@ const StorageManageModal = observer(
     onJump: (name: string) => void;
   }) => {
     const [names, setNames] = useState<string[]>([]);
+    // 숨김 목록이 바뀌면(다른 창 저장 재로드 등 — 2026-11-18 T4) 다시 거른다. observer 렌더에서 읽어 의존성으로 쓴다
+    const hiddenNames = templateService.hiddenNames;
 
     useEffect(() => {
       if (!isOpen) return;
@@ -58,7 +60,7 @@ const StorageManageModal = observer(
       } catch {
         setNames([]);
       }
-    }, [isOpen]);
+    }, [isOpen, hiddenNames]);
 
     const entries = projectSizeService.entries;
     const calced = names.filter((n) => entries[n]);

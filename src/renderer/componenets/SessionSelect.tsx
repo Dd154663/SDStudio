@@ -11,6 +11,7 @@ import { appState } from '../models/AppService';
 import { useBackLayer } from '../models/BackStackService';
 import { isV2, loadV2ShelfOpen, saveV2ShelfOpen } from '../models/mobileV2';
 import { observer } from 'mobx-react-lite';
+import { reaction } from 'mobx';
 import {
   TOOLBAR_VIEW_MAIN,
   MOBILE_PROJECT_TOPROW_IDS,
@@ -306,8 +307,11 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
     };
     onListUpdated();
     sessionService.addEventListener('listupdated', onListUpdated);
+    // 숨김 목록이 바뀌면(지정 목록 로드·다른 창 저장 재로드 — 2026-11-18 T4) 다시 거른다. listupdated 만 보면 낡은 목록을 든다
+    const disposeHidden = reaction(() => templateService.hiddenNames, onListUpdated);
     return () => {
       sessionService.removeEventListener('listupdated', onListUpdated);
+      disposeHidden();
     };
   }, []);
   const selectSession = (opt: Option<string>) => {

@@ -193,6 +193,9 @@ export async function bootstrapApp(): Promise<void> {
         await globalPresetService.reloadExternal();
       } else if (key === GLOBAL_STORE_SYNC_KEYS.projectTemplates) {
         await projectTemplateService.reloadExternal();
+      } else if (key === GLOBAL_STORE_SYNC_KEYS.sceneTemplates) {
+        // 씬 템플릿 지정 목록(2026-11-18 T4) — 같은 규칙(교체/필드별 병합, 재로드만으로는 쓰지 않음)
+        await templateService.reloadExternal();
       } else if (key === 'trash') {
         await trashService.reloadExternal();
       } else if (key === 'session-meta') {

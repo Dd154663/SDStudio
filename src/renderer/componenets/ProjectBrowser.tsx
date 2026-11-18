@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
+import { reaction } from 'mobx';
 import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck, FaPen, FaTimes, FaPalette, FaChevronDown, FaChevronRight, FaFolderPlus, FaWindowRestore } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
 import {
@@ -517,7 +518,12 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
     if (!isMobile) setTimeout(() => filterRef.current?.focus(), 100);
     const onUpdate = () => refresh();
     sessionService.addEventListener('listupdated', onUpdate);
-    return () => sessionService.removeEventListener('listupdated', onUpdate);
+    // 숨김 목록 변경(지정 목록 로드·다른 창 저장 재로드 — 2026-11-18 T4)에도 다시 거른다
+    const disposeHidden = reaction(() => templateService.hiddenNames, onUpdate);
+    return () => {
+      sessionService.removeEventListener('listupdated', onUpdate);
+      disposeHidden();
+    };
   }, [refresh]);
 
   // Ctrl+E로 닫기: 그리드는 검색창 자동 포커스 때문에 전역 단축키가 억제되므로

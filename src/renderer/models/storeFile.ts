@@ -55,6 +55,8 @@ export const GLOBAL_STORE_SYNC_KEYS = {
   globalPresets: 'global-presets',
   globalCharacterPresets: 'global-character-presets',
   projectTemplates: 'project-templates',
+  /** 씬 템플릿 지정 목록 templates.json(TemplateService, 2026-11-18 T4) */
+  sceneTemplates: 'scene-templates',
 } as const;
 
 export function storeSidePath(file: string, source: StoreRecoverySource): string {

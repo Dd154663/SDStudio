@@ -13,7 +13,8 @@ import type { GenericScene } from './types';
 import { stringifyExportJson } from './jsonExport';
 import type { ProjectTemplateEntrySnapshot } from './ProjectTemplateService';
 import { askImportPolicy, notifyImportDone } from './importFlow';
-import { GlobalStoreBlockedError, StoreFile } from './storeFile';
+import { GlobalStoreBlockedError, StoreFile, GLOBAL_STORE_SYNC_KEYS } from './storeFile';
+import { canonicalJson, mergeByKey, mergeStringSet } from './storeMerge';
 import { globalStoreDeps } from './globalStoreDeps';
 import {
   planFullBackupTemplates,
@@ -198,6 +199,46 @@ export function countTemplatesSidecarItems(d: TemplatesSidecarData): number {
   );
 }
 
+const EMPTY_TEMPLATES_SIDECAR: TemplatesSidecarData = {
+  sceneNames: [],
+  hiddenNames: [],
+  quickGenName: null,
+  folderTemplates: {},
+  templateApplications: {},
+};
+
+/**
+ * 여러 창 동기화(2026-11-18 T4)의 필드별 3방향 병합 — 이 창에 저장 안 된 변경(local)이 있을 때만 쓴다. 순수 함수.
+ * base = 이 창이 마지막으로 읽었거나 쓴 내용(null = 빈 목록), remote = 다른 창이 방금 저장한 내용.
+ *  - 지정·숨김: mergeStringSet / 폴더 기본 템플릿: 폴더 키 단위 / 적용 기록: 프로젝트 키 단위(한 프로젝트의 기록 묶음 = 한 항목)
+ *  - 퀵 생성 이름: 이 창이 기준에서 바꿨으면 이 창 값, 아니면 다른 창 값
+ *  - 결과에 고아 숨김(숨김에만 있고 지정도 퀵 생성도 아님)이 남으면 숨김에서 뺀다(덜 숨기는 쪽 — 어디에도 안 보이는 프로젝트 방지).
+ *    예: 이 창은 퀵 생성 이름을 바꾸고 다른 창은 옛 퀵 생성 이름을 숨김에 둔 경우. 병합 결과는 어차피 저장되므로 함께 나간다.
+ */
+export function mergeTemplatesSidecar(
+  base: TemplatesSidecarData | null,
+  local: TemplatesSidecarData,
+  remote: TemplatesSidecarData,
+): TemplatesSidecarData {
+  const b = base ?? EMPTY_TEMPLATES_SIDECAR;
+  const sceneNames = mergeStringSet(b.sceneNames, local.sceneNames, remote.sceneNames);
+  let hiddenNames = mergeStringSet(b.hiddenNames, local.hiddenNames, remote.hiddenNames);
+  const quickGenName =
+    local.quickGenName !== b.quickGenName ? local.quickGenName : remote.quickGenName;
+  hiddenNames = hiddenNames.filter((n) => sceneNames.includes(n) || n === quickGenName);
+  return {
+    sceneNames,
+    hiddenNames,
+    quickGenName,
+    folderTemplates: mergeByKey(b.folderTemplates, local.folderTemplates, remote.folderTemplates),
+    templateApplications: mergeByKey(
+      b.templateApplications,
+      local.templateApplications,
+      remote.templateApplications,
+    ),
+  };
+}
+
 /**
  * 템플릿 관련 사이드카(templates.json) 관리
  *
@@ -258,6 +299,15 @@ export class TemplateService {
       serialize: () => this.serialize(),
       // 디바운스 저장(schedule)은 쓰지 않는다 — StoreFile 내부 경로용 값
       saveDelayMs: 1000,
+      // 여러 창 동기화(2026-11-18 T4): 저장 성공 뒤 다른 창이 다시 읽게 알린다(bootstrap 수신부 → reloadExternal).
+      // 보낸 창은 main 이 제외한다. Android 는 창이 하나라 기본 구현이 no-op.
+      afterWrite: () => {
+        try {
+          backend.notifyGlobalStoreChanged(GLOBAL_STORE_SYNC_KEYS.sceneTemplates).catch(() => {});
+        } catch {
+          /* 알림 없는 backend(테스트 목 등) — 저장 자체는 끝났다 */
+        }
+      },
     },
     globalStoreDeps,
   );
@@ -307,6 +357,52 @@ export class TemplateService {
   /** 읽기 실패로 막혀 있으면 한 번 다시 읽는다(씬 템플릿 관리·폴더 기본 템플릿 창·퀵 생성 진입 때). 성공하면 차단이 풀린다 */
   async reloadIfFailed(): Promise<void> {
     if (this.store.loadFailed) await this.load();
+  }
+
+  /** 지금 메모리 내용(병합의 local·되돌리기 비교용) */
+  private currentData(): TemplatesSidecarData {
+    return {
+      sceneNames: this.sceneNames,
+      hiddenNames: this.hiddenNames,
+      quickGenName: this.quickGenName,
+      folderTemplates: this.folderTemplates,
+      templateApplications: this.templateApplications,
+    };
+  }
+
+  private applyData(d: TemplatesSidecarData): void {
+    runInAction(() => {
+      this.sceneNames = d.sceneNames;
+      this.hiddenNames = d.hiddenNames;
+      this.quickGenName = d.quickGenName;
+      this.folderTemplates = d.folderTemplates;
+      this.templateApplications = d.templateApplications;
+    });
+  }
+
+  /**
+   * 다른 창이 templates.json 을 저장했다는 알림으로 다시 읽는다(데스크톱 여러 창, 2026-11-18 T4 — 글로벌 저장소 묶음 2 와 같은 방식).
+   *  - 아직 읽지 않았으면 무동작(다음 ensureLoaded 가 최신본을 읽는다). 읽기 실패로 막힌 상태는 StoreFile 이 건너뛴다(reloadIfFailed 몫).
+   *  - 저장 안 된 변경이 없으면 디스크 내용으로 교체(즉시 저장 구조라 대부분 이 경로). **디스크에 쓰지 않는다** — 고아 숨김 자동 해제도
+   *    하지 않는다(알림 왕복 방지, 해제는 정상 로드에서만).
+   *  - 있으면(직전 저장 실패로 dirty) 필드별 3방향 병합(mergeTemplatesSidecar) — 저장 예약은 StoreFile 이 한다.
+   *  - 신규(없음) 상태였던 창은 여기서 파일을 읽어 정상 상태가 된다(다음 저장이 쓰기 충돌 차단에 걸리지 않음).
+   * 반영은 저장 줄 안의 동기 콜백 — 그 사이에 변경 메서드가 끼어들지 않는다.
+   */
+  async reloadExternal(): Promise<void> {
+    if (this.loading) {
+      try {
+        await this.loading;
+      } catch {
+        /* 로드 실패는 load 경로가 처리 */
+      }
+    }
+    if (!this.loaded) return;
+    await this.store.reloadExternal({
+      replace: (remote) => this.applyData(remote),
+      merge: (remote, base) => this.applyData(mergeTemplatesSidecar(base, this.currentData(), remote)),
+    });
+    this.syncBlocked();
   }
 
   private load(): Promise<void> {
@@ -490,8 +586,15 @@ export class TemplateService {
     return undefined;
   }
 
-  async setFolderTemplate(folder: string, templateId: string): Promise<void> {
+  async setFolderTemplate(
+    folder: string,
+    templateId: string,
+    opts?: { onlyIfEmpty?: boolean },
+  ): Promise<void> {
     if (!(await this.ready())) return; // 막혔으면 안내 토스트(종전 같은 취지의 메시지)
+    // 되돌리기 재부착(restoreFolderTemplates)은 비어 있는 폴더에만 — 판단을 ready() 의 await 뒤 현재 메모리로 한다
+    // (그 사이 다른 창 저장 재로드로 들어온 지정을 덮지 않게, 2026-11-18 T4)
+    if (opts?.onlyIfEmpty && this.folderTemplates[folder]) return;
     runInAction(() => {
       this.folderTemplates = {
         ...this.folderTemplates,
@@ -553,8 +656,11 @@ export class TemplateService {
     project: string,
     templateId: string,
     record: ITemplateApplicationRecord,
+    opts?: { onlyIfEmpty?: boolean },
   ): Promise<void> {
     if (!(await this.ready())) return; // 막혔으면 안내만(던지지 않음)
+    // setFolderTemplate 의 onlyIfEmpty 와 같은 취지(await 뒤 현재 메모리로 판단)
+    if (opts?.onlyIfEmpty && this.templateApplications[project]?.[templateId]) return;
     runInAction(() => {
       const byTpl = { ...(this.templateApplications[project] ?? {}) };
       byTpl[templateId] = record;
@@ -749,12 +855,12 @@ export class TemplateService {
         failed++;
         continue;
       }
-      await this.setFolderTemplate(a.folder, a.templateId);
+      await this.setFolderTemplate(a.folder, a.templateId, { onlyIfEmpty: true });
     }
     for (const app of snap.applications) {
       if (this.templateApplications[app.project]?.[app.templateId]) continue;
       if (!projectTemplateService.get(app.templateId)) continue;
-      await this.recordApplication(app.project, app.templateId, app.record);
+      await this.recordApplication(app.project, app.templateId, app.record, { onlyIfEmpty: true });
     }
     return { failed };
   }
@@ -906,13 +1012,20 @@ export class TemplateService {
       console.error('전체 백업 복원: 씬 템플릿 지정 저장 실패(다시 시도 예정):', e);
     }
     if (this.store.loadFailed) {
-      // 저장 직전 쓰기 충돌로 막혔다(다른 창이 파일을 만듦 등 — 안내는 StoreFile) — 보이는 것과 디스크가 어긋나지 않게 되돌린다
+      // 저장 직전 쓰기 충돌로 막혔다(다른 창이 파일을 만듦 등 — 안내는 StoreFile) — 보이는 것과 디스크가 어긋나지 않게 되돌린다.
+      // 저장 await 사이에 다른 경로(다른 창 저장 재로드 등)가 바꾼 필드는 덮지 않는다 — 이 복원이 넣은 값 그대로인 필드만(2026-11-18 T4)
+      // (observable 대입은 사본이 되므로 같은 객체 비교 대신 내용 비교)
+      const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
       runInAction(() => {
-        this.sceneNames = before.sceneNames;
-        this.hiddenNames = before.hiddenNames;
-        this.quickGenName = before.quickGenName;
-        this.folderTemplates = before.folderTemplates;
-        this.templateApplications = before.templateApplications;
+        if (same(this.sceneNames, plan.next.sceneNames)) this.sceneNames = before.sceneNames;
+        if (same(this.hiddenNames, plan.next.hiddenNames)) this.hiddenNames = before.hiddenNames;
+        if (this.quickGenName === plan.next.quickGenName) this.quickGenName = before.quickGenName;
+        if (same(this.folderTemplates, plan.next.folderTemplates)) {
+          this.folderTemplates = before.folderTemplates;
+        }
+        if (same(this.templateApplications, plan.next.templateApplications)) {
+          this.templateApplications = before.templateApplications;
+        }
       });
       return { kind: 'blocked' };
     }
@@ -1128,6 +1241,9 @@ export class TemplateService {
     const appState = getAppState();
     let migrated = 0;
     for (const name of pending) {
+      // 앞 항목의 await 사이에 다른 창 저장 재로드로 지정이 풀렸거나 이미 숨김이 됐으면 건너뛴다(2026-11-18 T4 —
+      // 처음에 뽑은 목록만 믿고 복제본을 만들지 않게)
+      if (!this.sceneNames.includes(name) || this.hiddenNames.includes(name)) continue;
       try {
         const src = await sessionService.get(name);
         if (!src) continue;
@@ -1312,19 +1428,29 @@ export class TemplateService {
     // 퀵 생성 탭 진입 = 명시적 진입점 — 읽기 실패로 막혀 있으면 여기서 한 번 다시 읽는다
     await this.reloadIfFailed();
     if (!(await this.ready())) return null; // 막혔으면 안내만(종전처럼 null)
-    // 미지정이면 사이드카를 새로 읽어 다른 창이 만든 지정을 먼저 흡수한다(읽기 전용 — 쓰지 않는다)
-    // (templates.json 은 창 간 브로드캐스트 미대상 — 중복 생성 방지)
+    // 미지정이면 다른 창이 만든 지정을 먼저 흡수한다 — 다른 창 저장 알림(T4)이 늦게 오거나 놓친 경우의 중복 생성(「퀵 생성 (2)」)
+    // 방지. 사이드카를 엿봐(읽기 전용) 퀵 생성 지정이 있을 때만 정식 외부 재로드(reloadExternal — 쓰지 않음)로 목록 전체를 받는다:
+    // 종전처럼 이름만 받으면 숨김 목록이 낡아 아래 자가 치유 저장이 「없음」 상태에서 쓰기 충돌로 막히거나 다른 창 지정을 덮었다.
+    // 지정이 없으면 종전대로(「없음」 오판 뒤에는 아래 confirmWritable 이 막는다).
     if (!this.quickGenName) {
+      let diskHasQuick = false;
       try {
         const raw = JSON.parse(await backend.readFile(SIDECAR_PATH));
-        if (typeof raw?.quickGenProject === 'string' && raw.quickGenProject) {
-          runInAction(() => {
-            this.quickGenName = raw.quickGenProject;
-          });
-        }
+        diskHasQuick = typeof raw?.quickGenProject === 'string' && !!raw.quickGenProject;
       } catch (e) {}
+      if (diskHasQuick) await this.reloadExternal();
     }
-    const cur = this.quickGenName;
+    let cur = this.quickGenName;
+    // 지정된 프로젝트가 이 창의 목록에 없으면(다른 창이 방금 만든 프로젝트 — 프로젝트 목록은 창 사이에 자동 갱신되지 않는다)
+    // 새로 만들기 전에 목록을 한 번 다시 읽는다. 기존 sessionService.update(flush + 목록 재스캔) 재사용.
+    if (cur && !sessionService.list().includes(cur)) {
+      try {
+        await sessionService.update();
+      } catch (e) {
+        console.warn('퀵 생성: 프로젝트 목록 다시 읽기 실패:', e);
+      }
+      cur = this.quickGenName;
+    }
     if (cur && sessionService.list().includes(cur)) {
       const s = await sessionService.get(cur);
       if (s) {
@@ -1341,6 +1467,12 @@ export class TemplateService {
     // 새로 만들기 전에 지정을 저장할 수 있는지 확인 — 「없음」 오판(Android) 뒤 「퀵 생성 (2)」를 만들고 저장해
     // 본 파일(지정 전체)을 덮던 경로를 막는다(쓰기 충돌 차단 + 안내, 프로젝트는 만들지 않음)
     if (!(await this.confirmWritable())) return null;
+    // 확인을 기다리는 사이 다른 창 저장 재로드로 쓸 수 있는 지정이 들어왔으면 그것을 쓴다(중복 생성 방지, 2026-11-18 T4)
+    const arrived = this.quickGenName;
+    if (arrived && arrived !== cur && sessionService.list().includes(arrived)) {
+      const s = await sessionService.get(arrived);
+      if (s) return s;
+    }
     // 새로 생성 — 이름 충돌 시 번호 부여
     let name = '퀵 생성';
     let i = 2;
@@ -1357,11 +1489,12 @@ export class TemplateService {
       return null;
     }
     runInAction(() => {
+      // 반영 직전의 현재 값(add 의 await 사이 재로드로 바뀌었을 수 있다) — 판단 때 본 값(cur)과 함께 숨김을 푼다(덜 숨기는 쪽)
       const old = this.quickGenName;
       // 소프트 삭제된 옛 전용 프로젝트가 복원되면 접근 불가 숨김 고아가 되므로
       // 재지정 시점에 옛 이름의 숨김을 함께 푼다(복원 시 일반 프로젝트로 보임).
       this.hiddenNames = [
-        ...this.hiddenNames.filter((n) => n !== old && n !== name),
+        ...this.hiddenNames.filter((n) => n !== old && n !== cur && n !== name),
         name,
       ];
       this.quickGenName = name;
