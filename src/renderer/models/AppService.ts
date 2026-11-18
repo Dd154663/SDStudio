@@ -22,6 +22,7 @@ import {
   zipService,
 } from '.';
 import { setAppState } from './appStateRef';
+import { createProjectFlow, defaultProjectCreateFlowDeps } from './projectCreateFlow';
 import { resolveToastKind, ToastKind } from './toastKind';
 import { confirmViaDialog } from './confirmKeys';
 import { NAME_INPUT_TEXT, nameErrorMessage, projectNameRules, promptName } from './nameInput';
@@ -609,36 +610,11 @@ export class AppState {
   }
 
   // 신규 프로젝트 생성 — 진입점(프로젝트 툴바 bar/sidebar 등)이 공유하는 전역 액션.
-  // 이름 입력 다이얼로그 + 템플릿 선택까지 여기서 처리한다 (SessionSelect 로컬에서 이관).
+  // 공용 흐름(models/projectCreateFlow.ts, 서랍·탐색 창과 같은 흐름) — 상단 버튼은 항상 미분류로 만들고
+  // 폴더 기본 템플릿을 적용하지 않는다(2026-11-18 사용자 결정).
   @action
   addSession() {
-    (async () => {
-      // 이름 규칙·중복은 입력 창 안에서 검사(models/nameInput — 실패해도 창 유지)
-      const inputValue = await promptName({
-        title: '신규 프로젝트 이름을 입력해주세요',
-        ...projectNameRules(sessionService),
-      });
-      if (!inputValue) return;
-      const tplId = await projectTemplateService.pickForCreate();
-      if (tplId === undefined) return; // 사용자가 템플릿 선택을 취소
-      try {
-        if (tplId) {
-          await sessionService.createSessionFromProjectTemplate(
-            tplId,
-            inputValue,
-          );
-        } else {
-          await sessionService.add(inputValue);
-        }
-        const newSession = (await sessionService.get(inputValue))!;
-        this.curSession = newSession;
-      } catch (e: any) {
-        this.pushMessage(
-          nameErrorMessage(e, 'project', inputValue, '프로젝트 생성에 실패했습니다.'),
-          'error',
-        );
-      }
-    })();
+    void createProjectFlow(defaultProjectCreateFlowDeps());
   }
 
   // 현재 프로젝트 삭제(휴지통으로 이동) — 전역 액션 (SessionSelect 로컬에서 이관).

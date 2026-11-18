@@ -70,6 +70,7 @@ import {
   defaultFolderFlowDeps,
   duplicateFolderFlow,
 } from '../models/folderFlow';
+import { createProjectFlow, defaultProjectCreateFlowDeps } from '../models/projectCreateFlow';
 // 프로젝트·폴더 작업 되돌리기 기록(2차 묶음 2 P1-a, 전역 스택) — 서비스 메서드와 1:1
 import {
   groupProjectFolderOps,
@@ -660,59 +661,10 @@ const ProjectDrawer = observer(() => {
     close();
   };
 
+  // 새 프로젝트 만들기 — 공용 흐름(models/projectCreateFlow.ts, 상단 버튼·탐색 창과 같은 흐름, 2026-11-18 M5 c)
   const createProject = async (folder: string | null) => {
-    // 이름 규칙·중복(어느 폴더에 있는지 포함)은 입력 창 안에서 검사(D2)
-    const name = await promptName({
-      title: folder
-        ? `"${folder}" 폴더에 새 프로젝트 이름`
-        : '신규 프로젝트 이름',
-      ...projectNameRules(sessionService),
-    });
-    if (!name) return;
-    // 폴더 기본 템플릿(조상 폴더 포함, 프로젝트 상속 v2)이 있으면 선택
-    // 다이얼로그를 건너뛰고 자동 적용한다.
-    const folderTpl = await templateService.resolveFolderTemplate(folder);
-    let tplId: string | null;
-    if (folderTpl) {
-      tplId = folderTpl.templateId;
-    } else {
-      const picked = await projectTemplateService.pickForCreate();
-      if (picked === undefined) return; // 사용자가 템플릿 선택을 취소
-      tplId = picked;
-    }
-    try {
-      if (tplId) {
-        // 폴더 자동 적용이면 상속 링크(♟)를 남긴다. 수동 선택은 inherited=false.
-        await sessionService.createSessionFromProjectTemplate(tplId, name, {
-          inherited: !!folderTpl,
-        });
-      } else {
-        await sessionService.add(name);
-      }
-      if (folder) {
-        try {
-          await sessionService.moveToFolder(name, folder);
-        } catch (e) {}
-      }
-      const session = await sessionService.get(name);
-      if (session) {
-        appState.curSession = session;
-        pushRecentProject(name);
-      }
-      if (folderTpl) {
-        const tplName =
-          projectTemplateService.get(folderTpl.templateId)?.name ?? '';
-        appState.pushMessage(
-          `폴더 기본 템플릿 "${tplName}"이(가) 적용되었습니다.`,
-        );
-      }
-      close();
-    } catch (e: any) {
-      appState.pushMessage(
-        nameErrorMessage(e, 'project', name, '프로젝트 생성에 실패했습니다.'),
-        'error',
-      );
-    }
+    const name = await createProjectFlow(defaultProjectCreateFlowDeps(), { folder });
+    if (name) close();
   };
 
   // 폴더 만들기·복제 — 공용 흐름(models/folderFlow.ts, 프로젝트 탐색 창과 같은 흐름, 2026-11-16 M5 a)

@@ -11,11 +11,6 @@ import {
   templateService,
 } from '../models';
 import { appState } from '../models/AppService';
-import {
-  nameErrorMessage,
-  projectNameRules,
-  promptName,
-} from '../models/nameInput';
 import { projectPath } from '../models/projectPaths';
 import { planFolderDeletePrompt } from '../models/folderDeleteFlow';
 import {
@@ -23,6 +18,7 @@ import {
   defaultFolderFlowDeps,
   duplicateFolderFlow,
 } from '../models/folderFlow';
+import { createProjectFlow, defaultProjectCreateFlowDeps } from '../models/projectCreateFlow';
 // 프로젝트·폴더 작업 되돌리기 기록(2차 묶음 2 P1-a, 전역 스택) — 서비스 메서드와 1:1
 import {
   moveProjectsToFolderRecorded,
@@ -43,28 +39,9 @@ import {
   withAlpha,
 } from './folderColors';
 
-const RECENT_KEY = 'sdstudio-recent-projects';
-const RECENT_MAX = 5;
-
-export function pushRecentProject(name: string) {
-  try {
-    const raw = localStorage.getItem(RECENT_KEY);
-    let list: string[] = raw ? JSON.parse(raw) : [];
-    list = list.filter((n) => n !== name);
-    list.unshift(name);
-    if (list.length > RECENT_MAX) list.length = RECENT_MAX;
-    localStorage.setItem(RECENT_KEY, JSON.stringify(list));
-  } catch {}
-}
-
-function getRecentProjects(): string[] {
-  try {
-    const raw = localStorage.getItem(RECENT_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
+// 최근 프로젝트 목록 — 단일 출처 models/recentProjects.ts(기존 import 호환을 위해 다시 내보낸다)
+import { getRecentProjects, pushRecentProject } from '../models/recentProjects';
+export { pushRecentProject };
 
 // 한글 + 숫자 혼합 자연 정렬
 const naturalCmp = (a: string, b: string) =>
@@ -595,54 +572,19 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
     refresh();
   }, [refresh]);
 
-  // A1: 현재 폴더 뷰에 새 프로젝트 생성 (폴더 뷰가 아니면 루트)
+  // 특정 폴더(없으면 미분류)에 새 프로젝트 생성 — 공용 흐름(models/projectCreateFlow.ts, 상단 버튼·서랍과 같은 흐름,
+  // 2026-11-18 M5 c). 만들면 기존 프로젝트를 골랐을 때처럼 열고 탐색 창을 닫는다.
+  const createProjectInFolder = useCallback(async (folder: string | null) => {
+    const name = await createProjectFlow(defaultProjectCreateFlowDeps(), { folder });
+    if (name) onClose();
+  }, [onClose]);
+
+  // A1: 현재 폴더 뷰에 새 프로젝트 생성 (폴더 뷰가 아니면 미분류)
   const createProjectInView = useCallback(async () => {
     const folder =
       view !== 'all' && view !== 'fav' && view !== 'unfiled' ? view : null;
-    // 이름 규칙·중복(어느 폴더에 있는지 포함)은 입력 창 안에서 검사(D2)
-    const name = await promptName({
-      title: folder ? `"${folder}" 폴더에 새 프로젝트 이름` : '신규 프로젝트 이름',
-      ...projectNameRules(sessionService),
-    });
-    if (!name) return;
-    try {
-      await sessionService.add(name);
-      if (folder) {
-        try {
-          await sessionService.moveToFolder(name, folder);
-        } catch (e) {}
-      }
-      refresh();
-      appState.pushMessage(`프로젝트 "${name}"을(를) 만들었습니다.`);
-    } catch (e: any) {
-      appState.pushMessage(
-        nameErrorMessage(e, 'project', name, '프로젝트 생성에 실패했습니다.'),
-        'error',
-      );
-    }
-  }, [view, refresh]);
-
-  // 특정 폴더에 새 프로젝트 생성 (메뉴/버튼 공용)
-  const createProjectInFolder = useCallback(async (folder: string) => {
-    const name = await promptName({
-      title: `"${folder}" 폴더에 새 프로젝트 이름`,
-      ...projectNameRules(sessionService),
-    });
-    if (!name) return;
-    try {
-      await sessionService.add(name);
-      try {
-        await sessionService.moveToFolder(name, folder);
-      } catch (e) {}
-      refresh();
-      appState.pushMessage(`프로젝트 "${name}"을(를) 만들었습니다.`);
-    } catch (e: any) {
-      appState.pushMessage(
-        nameErrorMessage(e, 'project', name, '프로젝트 생성에 실패했습니다.'),
-        'error',
-      );
-    }
-  }, [refresh]);
+    await createProjectInFolder(folder);
+  }, [view, createProjectInFolder]);
 
   // 모바일: 폴더마다 ⋮ 메뉴 (데스크톱은 인라인 버튼 유지)
   const openFolderMenu = async (f: string) => {
