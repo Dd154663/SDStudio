@@ -1499,6 +1499,296 @@ input[type='number']::-webkit-outer-spin-button {
   }
 }
 
+/* ── UI 정돈 시범(2026-11-19, 사용자 고른 시안 — 시범 범위: 환경설정 「커스텀」·「레이아웃」 탭, 프롬프트 문법 패널, 서랍 우클릭 목록) ──
+   색은 전부 --c-* 토큰(라이트·다크·트루다크·커스텀 테마 추종). 클래식 마감은 토큰만 바꾸므로 따로 손대지 않는다.
+   움직임은 0.15초 이내, 아래 prefers-reduced-motion 블록에서 모두 끈다. 앱 전체 버튼 클래스(.round-button 등)에는 넣지 않았다. */
+
+/* 묶음 상자(SettingControls.SettingGroup) — 옅은 테두리·둥근 모서리·작은 제목 */
+.setting-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 6px 8px;
+  border: 1px solid var(--c-line);
+  border-radius: 0.625rem;
+}
+.setting-group-title {
+  margin: 0 10px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--c-text-muted);
+}
+/* 묶음 안 체크 줄이 아닌 항목 — 체크 줄 글자와 같은 들여쓰기 */
+.setting-field {
+  padding: 4px 10px;
+}
+
+/* 체크 줄(SettingCheckRow) — <label> 전체가 누르는 영역. hover 배경은 .btn-ghost(병기) 그대로, 전환만 여기서. */
+.setting-check-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: start;
+  min-height: 36px; /* 모바일 누르는 높이 */
+  padding: 8px 10px;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+.setting-check-row[data-disabled] {
+  cursor: not-allowed;
+}
+.setting-check-row[data-disabled]:hover {
+  background-color: transparent;
+}
+/* 체크 상자 모양 — <input type="checkbox"> 그대로(id·키보드·낭독기 유지), 그리기만 바꾼다.
+   켜짐 = --c-focus-ring 바탕 + --c-surface 체크(.toggle-on 의 링·띠와 같은 짝 — 대비 라이트 5.93·다크 6.83 이상).
+   꺼짐 테두리 = --c-text-faint(입력 배경 위 3:1 이상). 체크 표시는 왼쪽에서 오른쪽으로 그려진다(clip-path). */
+.setting-check {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  border-radius: 5px;
+  border: 1.5px solid var(--c-text-faint);
+  background-color: var(--c-input-bg);
+  cursor: inherit;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    transform 100ms ease;
+}
+/* 체크 표시 = 테두리 두 변을 45도 돌린 모양. 2026-11-19 실기: data URL mask 로 그렸더니 mask 가 적용되지 않아 ::after 가
+   상자 전체를 --c-surface 로 덮어 「테두리만 있는 빈 상자」로 보였다(체크 안 보임) → 외부 자원 없이 그리는 방식으로 바꿈. */
+.setting-check::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 1.5px;
+  width: 5px;
+  height: 9.5px;
+  border: solid var(--c-surface);
+  border-width: 0 2.2px 2.2px 0;
+  border-radius: 1px;
+  transform: rotate(45deg) scale(0.4);
+  transform-origin: center;
+  opacity: 0;
+  transition:
+    transform 140ms ease-out,
+    opacity 100ms ease-out;
+}
+.setting-check:checked {
+  background-color: var(--c-focus-ring);
+  border-color: var(--c-focus-ring);
+}
+.setting-check:checked::after {
+  transform: rotate(45deg) scale(1);
+  opacity: 1;
+}
+.setting-check:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 2px;
+}
+.setting-check:disabled {
+  opacity: 0.5;
+}
+/* 누름 — 줄을 누르는 동안 체크 상자가 살짝 작아진다 */
+.setting-check-row:active:not([data-disabled]) .setting-check {
+  transform: scale(0.9);
+}
+
+/* 앱 모양 선택 칸 — 기본 모양 <select> 대신(다크에서 흰 바탕이던 것). 화살표는 글자색(currentColor) 그라데이션이라 테마를 따른다. */
+.app-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--c-input-bg);
+  color: var(--c-input-text);
+  border: 1px solid var(--c-line-strong);
+  border-radius: 0.375rem;
+  padding: 0.375rem 2rem 0.375rem 0.625rem;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 15px) calc(50% + 1px),
+    calc(100% - 10px) calc(50% + 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  transition: border-color 140ms ease;
+}
+.app-select:hover {
+  border-color: var(--c-text-faint);
+}
+.app-select:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 1px;
+}
+.app-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.app-select option {
+  background-color: var(--c-surface-2);
+  color: var(--c-text);
+}
+
+/* 순서 목록 아이콘 버튼(퀵 메뉴 구성 ▲▼✕ 대체) — 28px, hover 배경은 사전 세팅 행 버튼과 같은 옅은 덮개, 제거는 hover 때 위험색 */
+.setting-icon-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--c-text-muted);
+  cursor: pointer;
+}
+.setting-icon-btn:hover {
+  background-color: rgb(0 0 0 / 0.05);
+  color: var(--c-text);
+}
+:is(.dark) .setting-icon-btn:hover {
+  background-color: rgb(255 255 255 / 0.1);
+}
+.setting-icon-btn-danger:hover {
+  color: #dc2626; /* red-600 */
+}
+:is(.dark) .setting-icon-btn-danger:hover {
+  color: #f87171; /* red-400 */
+}
+.setting-icon-btn:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 1px;
+}
+
+/* 프롬프트 문법 패널(PromptSyntaxHelp) — 예시 칩은 편집 칸 배경(--c-input-bg) 위 .syntax-line·.syntax-* 그대로 */
+.prompt-syntax-help-btn {
+  border-radius: 9999px;
+  cursor: pointer;
+}
+.prompt-syntax-help-btn:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 2px;
+}
+.prompt-syntax-panel {
+  width: 460px;
+  max-width: calc(100vw - 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  background-color: var(--c-surface-2);
+  color: var(--c-text);
+  border: 1px solid var(--c-line-strong);
+  border-radius: 0.625rem;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
+}
+.prompt-syntax-caption {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--c-text-faint);
+}
+.prompt-syntax-row {
+  display: grid;
+  /* 예시 칸 = 가장 긴 예시({red|blue|green})가 잘리지 않는 폭(2026-11-19 실기: 132px 에서 말줄임) */
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  /* 줄 맞춤(2026-11-19 실기: 예시와 설명의 높이가 어긋남 — baseline 정렬이 칩의 overflow 때문에 칩 아래 끝을 기준으로 잡혔다).
+     두 칸을 같은 줄 높이(20px)로 두고 위에서 맞춘다: 예시는 20px 칸 안 세로 가운데, 설명은 첫 줄이 같은 20px. */
+  align-items: start;
+}
+.prompt-syntax-row > * {
+  line-height: 20px;
+}
+.prompt-syntax-row > :first-child {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+}
+@media (max-width: 480px) {
+  .prompt-syntax-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
+.prompt-syntax-chip {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  line-height: 18px; /* + 위아래 1px = 20px(줄 높이와 같게) */
+  padding: 1px 7px;
+  border-radius: 5px;
+  font-family: 'Noto Sans Mono', ui-monospace, Consolas, monospace;
+  font-size: 12.5px;
+  background-color: var(--c-input-bg);
+  color: var(--c-input-text);
+}
+.prompt-syntax-chip-label {
+  font-family: inherit;
+}
+.prompt-syntax-kbd {
+  line-height: 16px; /* + 테두리 1+2 = 19px — 20px 줄 안 가운데 */
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid var(--c-line-strong);
+  border-bottom-width: 2px;
+  font-family: 'Noto Sans Mono', ui-monospace, Consolas, monospace;
+  font-size: 11.5px;
+  background-color: var(--c-surface);
+  color: var(--c-text);
+}
+
+/* 누름 — 시범 범위 버튼(문법 (?)·순서 목록 아이콘 버튼)에만. 전환 속성을 한데 모아 둔다(색 전환 + 누름). */
+.ui-press {
+  transition-property: transform, background-color, color;
+  transition-duration: 120ms;
+  transition-timing-function: ease;
+}
+.ui-press:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+/* 메뉴·패널 열림 — 짧은 페이드 + 4px 이동(문법 패널·서랍 우클릭 목록) */
+.ui-pop-in {
+  animation: ui-pop-in 130ms ease-out both;
+}
+@keyframes ui-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-pop-in {
+    animation: none !important;
+  }
+  .ui-press,
+  .setting-check-row,
+  .setting-check,
+  .setting-check::after,
+  .app-select {
+    transition: none !important;
+  }
+  .ui-press:active,
+  .setting-check-row:active .setting-check {
+    transform: none !important;
+  }
+}
+
 /* 모바일 HSL 컬러 피커 슬라이더 (그라데이션 트랙 + 흰 썸) */
 .color-slider {
   -webkit-appearance: none;

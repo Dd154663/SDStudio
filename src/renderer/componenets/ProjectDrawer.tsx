@@ -54,6 +54,7 @@ import {
   queueProjectForGeneration,
 } from '../models/sceneQueueActions';
 import Tooltip from './Tooltip';
+import { themePortalRoot } from './themePortal';
 import {
   ContextMenuList,
   ContextMenuRow,
@@ -2391,7 +2392,7 @@ const ProjectDrawer = observer(() => {
               })}
             />
           ),
-          document.body,
+          themePortalRoot(), // 앱 테마 루트 안(다크 테마 색 토큰이 적용되게)
         )}
     </div>
   );

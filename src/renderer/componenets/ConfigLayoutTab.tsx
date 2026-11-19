@@ -29,10 +29,14 @@ import { observer } from 'mobx-react-lite';
 import { UI_ZOOM_PERCENT_OPTIONS, UI_ZOOM_TEXT, normalizeUiZoomPercent } from '../../shared/uiZoom';
 import { appState } from '../models/AppService';
 import {
+  FaChevronDown,
+  FaChevronUp,
   FaSlidersH,
+  FaTimes,
 } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
 import Tooltip from './Tooltip';
+import { SettingCheckRow, SettingField, SettingGroup } from './SettingControls';
 
 /* ── 탭: 툴바 버튼 구성 (테마 탭에서 분리 — 두 기능이 한 탭에 있으면 스크롤이 과도) ── */
 /* ── 퀵 메뉴 구성 (트랙2 ① P3) ── */
@@ -43,11 +47,14 @@ const QuickMenuEditor = ({
   onChange,
   showButton,
   setShowButton,
+  inGroup,
 }: {
   value: string[] | undefined;
   onChange: (v: string[] | undefined) => void;
   showButton: boolean;
   setShowButton: (v: boolean) => void;
+  // 묶음 상자(SettingGroup 「퀵 메뉴 구성」) 안 — 제목은 상자가 그린다(레이아웃 탭 PC). 모바일 툴바 탭은 종전처럼 자체 제목.
+  inGroup?: boolean;
 }) => {
   // 따라가는 액션(backup-import)까지 보이는 그대로 편집한다 — 「!id」 표식(빼 둔 따라가는 액션)은 목록에 안 보이게 끝에 둔다.
   const expanded = expandQuickMenu(value ?? DEFAULT_QUICK_MENU);
@@ -74,51 +81,59 @@ const QuickMenuEditor = ({
     commit([...next, ...markers]);
   };
   return (
-    <div>
-      <div className="text-sm font-semibold gray-label mb-1">퀵 메뉴 구성</div>
+    <div className={inGroup ? 'setting-field' : undefined}>
+      {!inGroup && <div className="text-sm font-semibold gray-label mb-1">퀵 메뉴 구성</div>}
       <p className="text-xs text-faint mb-2">
         우하단 ⚡ 버튼{isMobile ? '' : ' 또는 단축키(기본 Ctrl+K)'}로 여는 퀵
         메뉴에 담을 기능을 고릅니다. 위에서부터 나열 순서대로 표시됩니다.
       </p>
-      {/* ⚡ 플로팅 버튼 옵트인 (2026-07-18 피드백 — 기본 숨김) */}
-      <div className="flex items-center gap-2 mb-1">
-        <input
-          type="checkbox"
+      {/* ⚡ 플로팅 버튼 옵트인 (2026-07-18 피드백 — 기본 숨김). 줄 전체 누름(2026-11-19 SettingCheckRow) —
+          체크 줄 안쪽 여백만큼 바깥으로 당겨 위아래 글과 왼쪽 끝을 맞춘다. */}
+      <div className="-mx-2.5 mb-2">
+        <SettingCheckRow
           id="cfgQuickMenuButton"
           checked={showButton}
-          onChange={(e) => setShowButton(e.target.checked)}
+          onChange={setShowButton}
+          label={
+            <>
+              <ActionIcon id="quick-menu" className="inline-block mr-1 align-[-0.125em]" />
+              플로팅 버튼 표시
+            </>
+          }
+          description={
+            '끄면(기본) 화면의 퀵 메뉴 버튼이 숨겨집니다.' +
+            (isMobile
+              ? ' 모바일에서는 버튼이 유일한 진입점이므로 사용하려면 켜세요.'
+              : ' 버튼 없이도 단축키(기본 Ctrl+K)로 계속 열 수 있습니다.')
+          }
         />
-        <label htmlFor="cfgQuickMenuButton" className="text-sm gray-label">
-          <ActionIcon id="quick-menu" className="inline-block mr-1 align-[-0.125em]" />
-          플로팅 버튼 표시
-        </label>
       </div>
-      <p className="text-xs text-faint mb-2 ml-6">
-        끄면(기본) 화면의 퀵 메뉴 버튼이 숨겨집니다.
-        {isMobile
-          ? ' 모바일에서는 버튼이 유일한 진입점이므로 사용하려면 켜세요.'
-          : ' 버튼 없이도 단축키(기본 Ctrl+K)로 계속 열 수 있습니다.'}
-      </p>
-      <div className="rounded-md border line-color divide-y divide-[var(--c-line)] mb-2">
+      {/* 순서 목록(2026-11-19 UI 정돈 시범 ③): ▲▼✕ 글자 → 아이콘 버튼(.setting-icon-btn, 제거는 hover 때 위험색). 이름·동작 불변. */}
+      <div className="rounded-md border line-color divide-y divide-[var(--c-line)] mb-2" data-quick-menu-list="">
         {list.filter((id) => candidates.some((a) => a.id === id)).length === 0 && (
           <div className="text-xs text-muted p-2">비어 있음 — 아래에서 추가하세요</div>
         )}
         {list.map((id) =>
           candidates.some((a) => a.id === id) ? (
-            <div key={id} className="flex items-center gap-1 px-2 py-1">
+            <div key={id} className="flex items-center gap-1 pl-2.5 pr-1.5 py-1">
               <span className="flex-1 text-sm text-default truncate">{nameOf(id)}</span>
               <Tooltip content="위로">
-                <button className="btn-ghost rounded px-1.5 py-0.5 text-xs" onClick={() => move(id, -1)}>▲</button>
+                <button type="button" className="setting-icon-btn ui-press" onClick={() => move(id, -1)}>
+                  <FaChevronUp size={14} aria-hidden="true" />
+                </button>
               </Tooltip>
               <Tooltip content="아래로">
-                <button className="btn-ghost rounded px-1.5 py-0.5 text-xs" onClick={() => move(id, 1)}>▼</button>
+                <button type="button" className="setting-icon-btn ui-press" onClick={() => move(id, 1)}>
+                  <FaChevronDown size={14} aria-hidden="true" />
+                </button>
               </Tooltip>
               <button
-                className="btn-ghost rounded px-1.5 py-0.5 text-xs"
+                type="button"
+                className="setting-icon-btn setting-icon-btn-danger ui-press"
                 aria-label="제거"
                 onClick={() => commit(removeFromQuickMenu([...list, ...markers], id))}
               >
-                ✕
+                <FaTimes size={14} aria-hidden="true" />
               </button>
             </div>
           ) : null,
@@ -279,9 +294,10 @@ async function resetLayoutArrangement() {
 // 그 외 = 해당 호스트 행에 배정(assignCompanion). observer 라 appState.uiCompanionSlots 변경
 // 시 이 목록도 즉시 갱신되고, applyCompanionSlots 가 열려 있는 프리셋 에디터에도 함께 반영한다.
 // 슬롯 내 순서(같은 호스트 여러 버튼)는 배정 순 — 순서 조정은 E4 드래그 소관이라 여기선 없다.
+// 2026-11-19 UI 정돈 시범 ③: 구획 → 묶음 상자, 위치 select → 앱 모양 선택 칸(.app-select).
 const CompanionButtonsSection = observer(() => (
-  <div className="pt-3 border-t line-color">
-    <label className="block text-sm gray-label mb-1">동반 버튼</label>
+  <SettingGroup title="동반 버튼">
+   <SettingField>
     <p className="text-xs text-muted mb-2">
       행에 배치한 버튼은 툴바에서 그 위치로 이동합니다. 저장 없이 바로 적용됩니다.
     </p>
@@ -292,7 +308,8 @@ const CompanionButtonsSection = observer(() => (
           <div key={id} className="flex items-center gap-2">
             <span className="flex-1 min-w-0 truncate text-sm text-default">{name}</span>
             <select
-              className="flex-none w-36 rounded-md line-color shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+              className="app-select flex-none w-36 text-sm"
+              aria-label={`${name} 위치`}
               value={owner}
               onChange={(e) => {
                 const host = e.target.value;
@@ -313,7 +330,8 @@ const CompanionButtonsSection = observer(() => (
         );
       })}
     </div>
-  </div>
+   </SettingField>
+  </SettingGroup>
 ));
 
 // 창 배치(FloatView 노출 범위) 도안 — sky 사각형이 뷰어가 덮는 영역.
@@ -358,17 +376,19 @@ const floatViewModes: {
 ];
 
 const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbarButtonNames, setUiToolbarButtonNames, uiZoomPercent, setUiZoomPercent, uiToolbar, setUiToolbar, quickMenu, setQuickMenu, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
-  <div className="space-y-5">
-    <div>
-      <label className="block text-sm gray-label mb-1">화면 배치</label>
+  // 묶음 상자(2026-11-19 UI 정돈 시범 ③): 화면 배치 / 패널과 창 / (PC) PC 화면과 툴바 · 퀵 메뉴 구성 / (모바일) 동반 버튼.
+  // 항목·순서·문구·id·저장 방식은 그대로, 상자와 체크 줄(SettingCheckRow)·선택 칸(.app-select) 모양만 바꿨다. 한 열 유지.
+  <div className="space-y-4">
+   <SettingGroup title="화면 배치">
+    <SettingField>
       <p className="text-xs text-muted">
         작업 화면의 하단 바 위치를 바꿉니다. 누르고 <b>저장</b>하면 적용됩니다.
       </p>
-    </div>
+    </SettingField>
 
     {/* 편집 모드 진입점(PC 전용) — 실제 화면 위에서 버튼·패널 배치를 드래그로 조정.
         모바일은 클래식 강제라 비활성 + "PC 전용" 표시(위 템플릿 칩과 동일 패턴). */}
-    <div>
+    <SettingField>
       <button
         type="button"
         disabled={mobileMode}
@@ -398,9 +418,9 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
           </div>
         </div>
       </button>
-    </div>
+    </SettingField>
 
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+    <SettingField className="grid grid-cols-1 sm:grid-cols-2 gap-2">
       {/* 이 기기에서 고를 수 있는 템플릿을 먼저 보여준다(모바일에서 PC 전용 4종 아래로
           모바일 V2 가 밀리지 않게). 같은 그룹 안에서는 레지스트리 순서 유지. */}
       {[...layoutTemplates]
@@ -478,54 +498,49 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
           </button>
         );
       })}
-    </div>
+    </SettingField>
 
     {mobileMode && (
-      <p className="text-xs text-muted">
-        모바일에서는 클래식과 모바일 V2 중에서 고를 수 있습니다. 모바일 V2 는 선택 사항이며,
-        여기서 클래식을 다시 고르고 저장하면 언제든 이전 배치로 돌아갑니다.
-      </p>
+      <SettingField>
+        <p className="text-xs text-muted">
+          모바일에서는 클래식과 모바일 V2 중에서 고를 수 있습니다. 모바일 V2 는 선택 사항이며,
+          여기서 클래식을 다시 고르고 저장하면 언제든 이전 배치로 돌아갑니다.
+        </p>
+      </SettingField>
     )}
     {/* 모바일 V2 일부 적용(2026-09-27): 부위별 켬/끔. 끈 부위는 클래식 배치. 저장 시 적용. */}
     {mobileMode && uiLayoutTemplate === 'mobile-v2' && (
       <div className="pt-2" data-cfg-v2-parts="">
-        <div className="text-sm gray-label mb-1">모바일 V2 적용 범위</div>
+        <div className="text-sm gray-label mb-1 px-2.5">모바일 V2 적용 범위</div>
         {V2_PART_OPTIONS.map((p) => (
-          <div key={p.key} className="flex items-start gap-2 py-1">
-            <input
-              type="checkbox"
-              id={`cfgV2Part-${p.key}`}
-              className="mt-1"
-              checked={uiMobileV2Parts[p.key]}
-              onChange={(e: any) => setUiMobileV2Parts({ ...uiMobileV2Parts, [p.key]: e.target.checked })}
-            />
-            <label htmlFor={`cfgV2Part-${p.key}`} className="text-sm text-default">
-              {p.label}
-              <span className="block text-xs text-faint">{p.desc}</span>
-            </label>
-          </div>
+          <SettingCheckRow
+            key={p.key}
+            id={`cfgV2Part-${p.key}`}
+            checked={uiMobileV2Parts[p.key]}
+            onChange={(checked) => setUiMobileV2Parts({ ...uiMobileV2Parts, [p.key]: checked })}
+            label={p.label}
+            description={p.desc}
+          />
         ))}
-        <p className="text-xs text-faint mt-1">끈 부위는 클래식 배치로 그려집니다. 저장 시 적용.</p>
+        <p className="text-xs text-faint mt-1 px-2.5">끈 부위는 클래식 배치로 그려집니다. 저장 시 적용.</p>
       </div>
     )}
+   </SettingGroup>
 
     {/* 프리셋 패널 버튼 하단 아이콘 행(릴리스 준비 ② B) — 템플릿과 독립인 선택
         옵션(PC·모바일 공용, 저장 시 적용). */}
-    <div className="pt-3 border-t line-color">
-      <div className="flex items-center gap-2">
-        <input type="checkbox" id="cfgPresetIconRow" checked={uiPresetIconRow}
-          onChange={(e: any) => setUiPresetIconRow(e.target.checked)} />
-        <label htmlFor="cfgPresetIconRow" className="text-sm gray-label">프리셋 패널 버튼을 하단 아이콘 행으로 정리</label>
-      </div>
-      <p className="text-xs text-faint mt-1 ml-6">
-        캐릭터 프롬프트·샘플링/모델·바이브·캐릭터 레퍼런스 버튼을 패널 최하단의
-        아이콘 한 줄로 모아 프롬프트 공간을 넓힙니다.
-      </p>
-    </div>
+   <SettingGroup title="패널과 창">
+    <SettingCheckRow
+      id="cfgPresetIconRow"
+      checked={uiPresetIconRow}
+      onChange={setUiPresetIconRow}
+      label="프리셋 패널 버튼을 하단 아이콘 행으로 정리"
+      description="캐릭터 프롬프트·샘플링/모델·바이브·캐릭터 레퍼런스 버튼을 패널 최하단의 아이콘 한 줄로 모아 프롬프트 공간을 넓힙니다."
+    />
 
     {/* 창 배치 — FloatView(이미지 뷰어 등 큰 화면)가 덮는 영역. PC 전용
         (모바일은 좌우 패널이 없어 항상 중앙 영역과 동일). 저장 시 적용. */}
-    <div className="pt-3 border-t line-color">
+    <SettingField className="pt-2">
       <label className="block text-sm gray-label mb-1">창 배치</label>
       <p className="text-xs text-muted mb-2">
         씬 이미지 목록·뷰어처럼 화면을 덮는 창이 차지할 영역을 정합니다.
@@ -559,11 +574,11 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
           );
         })}
       </div>
-    </div>
+    </SettingField>
 
     {/* 직접 편집으로 옮긴 패널·생성 컨트롤 배치를 되돌리는 초기화(즉시 반영, 저장 불필요).
         슬롯/위젯 위치는 저장 흐름 밖이라 여기서 바로 config 에 쓴다. */}
-    <div className="pt-3 border-t line-color">
+    <SettingField className="pt-2">
       <button
         type="button"
         className="round-button back-gray btn-sm"
@@ -585,23 +600,25 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
         화면에서 직접 편집으로 옮긴 패널·생성 컨트롤 배치를 되돌립니다. 저장 없이
         즉시 적용됩니다.
       </p>
-    </div>
+    </SettingField>
+   </SettingGroup>
 
     {/* 툴바 전역 조작(② A 2차 피드백 후속 2 — 툴바 탭 흡수, PC 전용): 버튼별 배치
         select·동반 버튼 select 는 편집 모드 드래그(고정/⋯메뉴/숨김/동반 배정)가 전부
         대체해 제거. 남는 전역 조작 3종(클래식 토글·버튼 배치 초기화·퀵 메뉴 구성)만
         이관. 모바일은 편집 모드가 없어 기존 툴바 탭이 유지된다. */}
     {!mobileMode && (
-      <div className="pt-3 border-t line-color space-y-4">
+     <>
+      <SettingGroup title="PC 화면과 툴바">
         {/* PC 화면 배율(시험 기능, 2026-11-19 — shared/uiZoom.ts). Electron 창 배율로 글자·버튼·간격을 함께 줄인다.
             모바일은 항목 없음(이 블록 전체가 PC 전용). 저장 시 main 이 열린 모든 창에 반영. */}
-        <div>
+        <SettingField>
           <label htmlFor="cfgUiZoom" className="block text-sm gray-label">
             {UI_ZOOM_TEXT.label}
           </label>
           <select
             id="cfgUiZoom"
-            className="mt-1 block w-40 rounded-md line-color shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+            className="app-select mt-1 block w-40 sm:text-sm"
             value={uiZoomPercent}
             onChange={(e) => setUiZoomPercent(normalizeUiZoomPercent(e.target.value))}
           >
@@ -612,45 +629,23 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
             ))}
           </select>
           <p className="text-xs text-faint mt-1">{UI_ZOOM_TEXT.description}</p>
-        </div>
-        <div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="cfgClassicToolbar"
-              checked={!!uiToolbar.classic}
-              onChange={(e: any) =>
-                setUiToolbar({ ...uiToolbar, classic: e.target.checked || undefined })
-              }
-            />
-            <label htmlFor="cfgClassicToolbar" className="text-sm gray-label">
-              클래식 툴바 사용 (이전 배치로 되돌리기)
-            </label>
-          </div>
-          <p className="text-xs text-faint mt-1 ml-6">
-            켜면 모든 버튼을 예전처럼 툴바에 나란히 표시합니다(⋯ 메뉴·개별 배치
-            무시). 저장 시 반영됩니다.
-          </p>
-        </div>
+        </SettingField>
+        <SettingCheckRow
+          id="cfgClassicToolbar"
+          checked={!!uiToolbar.classic}
+          onChange={(checked) => setUiToolbar({ ...uiToolbar, classic: checked || undefined })}
+          label="클래식 툴바 사용 (이전 배치로 되돌리기)"
+          description="켜면 모든 버튼을 예전처럼 툴바에 나란히 표시합니다(⋯ 메뉴·개별 배치 무시). 저장 시 반영됩니다."
+        />
         {/* PC 툴바 버튼 이름(2026-11-18) — 씬 툴바·이미지 그리드 머리줄 아이콘 아래 작은 이름. 기본 켬, 저장 시 반영. */}
-        <div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="cfgToolbarButtonNames"
-              checked={!!uiToolbarButtonNames}
-              onChange={(e: any) => setUiToolbarButtonNames(e.target.checked)}
-            />
-            <label htmlFor="cfgToolbarButtonNames" className="text-sm gray-label">
-              버튼 이름 표시
-            </label>
-          </div>
-          <p className="text-xs text-faint mt-1 ml-6">
-            씬 툴바와 이미지 목록 위 아이콘 버튼 아래에 짧은 이름을 보입니다. 창이 좁으면
-            이름이 먼저 숨겨집니다. 저장 시 반영됩니다.
-          </p>
-        </div>
-        <div>
+        <SettingCheckRow
+          id="cfgToolbarButtonNames"
+          checked={!!uiToolbarButtonNames}
+          onChange={setUiToolbarButtonNames}
+          label="버튼 이름 표시"
+          description="씬 툴바와 이미지 목록 위 아이콘 버튼 아래에 짧은 이름을 보입니다. 창이 좁으면 이름이 먼저 숨겨집니다. 저장 시 반영됩니다."
+        />
+        <SettingField className="pt-2">
           <button
             type="button"
             className="round-button back-gray btn-sm"
@@ -662,9 +657,12 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
             화면에서 직접 편집으로 옮긴 버튼 배치(고정/⋯메뉴/숨김·순서)를 모두 기본
             배치로 되돌립니다. (저장 시 반영)
           </p>
-        </div>
-        <QuickMenuEditor value={quickMenu} onChange={setQuickMenu} showButton={quickMenuButton} setShowButton={setQuickMenuButton} />
-      </div>
+        </SettingField>
+      </SettingGroup>
+      <SettingGroup title="퀵 메뉴 구성">
+        <QuickMenuEditor inGroup value={quickMenu} onChange={setQuickMenu} showButton={quickMenuButton} setShowButton={setQuickMenuButton} />
+      </SettingGroup>
+     </>
     )}
 
     {/* 동반 버튼(E3) — portable 버튼을 프리셋 에디터 특정 행 옆으로 옮기는 위치 선택.

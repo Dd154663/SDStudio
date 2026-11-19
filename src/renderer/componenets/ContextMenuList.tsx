@@ -185,7 +185,8 @@ export function ContextMenuList({
       id={id}
       role="menu"
       aria-label={ariaLabel}
-      className="fixed z-[var(--z-context-menu)] flex flex-col min-w-[200px] max-w-[calc(100vw-8px)] max-h-[calc(100vh-8px)] overflow-y-auto p-1.5 bg-[var(--c-surface-2)] text-default rounded-lg shadow-xl border line-color select-none"
+      // ui-pop-in = 열릴 때 짧은 페이드 + 4px 이동(2026-11-19 UI 정돈 시범 ④, App.css — 움직임 줄이기에서 끔)
+      className="ui-pop-in fixed z-[var(--z-context-menu)] flex flex-col min-w-[200px] max-w-[calc(100vw-8px)] max-h-[calc(100vh-8px)] overflow-y-auto p-1.5 bg-[var(--c-surface-2)] text-default rounded-lg shadow-xl border line-color select-none"
       style={{ left: pos.left, top: pos.top }}
       onMouseDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}

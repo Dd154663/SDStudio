@@ -137,6 +137,7 @@ import { PresetReleaseButton } from './PresetReleaseButton';
 import { SHARE_BUTTONS_HYSTERESIS_PX } from '../models/projectBarStage';
 import { ResolutionPicker, resolutionValueToSize } from './ResolutionPicker';
 import HelpIcon from './HelpIcon';
+import { PromptSyntaxHelpButton } from './PromptSyntaxHelp';
 import {
   activatePresetSamplingFamily,
   samplingFamilyForModel,
@@ -162,21 +163,9 @@ import {
 import { editBaseCharacterOrder, editScenesFields } from '../models/sceneFieldUndo';
 import { UNDO_TEXT } from '../models/undoService';
 
-// 프롬프트 문법 도움말 (2026-07-18) — 상위 프롬프트 라벨 옆 (?) 아이콘.
-// 문법은 상위/하위/네거티브 공통이라 첫 프롬프트에만 1회 노출한다.
-// 근거: PromptService(조각 <그룹.조각>, ##주석## 제거, {a|b} 인라인 랜덤 expandInlineRandom, 줄바꿈=쉼표 — 5.3.0 9bd4bea),
-// highlightPrompt(가중치), PromptEditTextArea(자동완성 트리거, Ctrl+↑↓ 가중치 0.05), artistTags(artist: 접두, 2026-09-25).
-// 2026-09-27 사용자 지적으로 5.3.0 이후 문법을 추가.
-const PROMPT_SYNTAX_HELP = `프롬프트 문법
-• <그룹.조각> : 프롬프트 조각 삽입 (로컬 우선, 없으면 전역)
-• {강조} / [약화] : 중첩할수록 강해짐
-• 1.5::내용:: : 명시 가중치 (음수 가능, .6 처럼 0 생략 가능, 쉼표로 여러 태그 묶기 가능)
-• {a|b|c} : 생성마다 하나를 무작위로 고름 (| 가 없는 중괄호는 강조 그대로, 중첩 가능)
-• artist:이름 : 작가 태그 접두 (툴바 버튼으로 구획마다 붙이기·떼기 전환)
-• ##메모## : 주석 (생성 시 제외, 저장은 유지, 모바일은 키보드 위 칩 # 로 감싸기·풀기)
-• 줄바꿈 : 쉼표와 같은 구분자로 취급
-• 자동완성 : 입력 중 태그 추천, < 입력 시 조각 검색
-• 가중치 조절 : PC 는 커서 구획에서 Ctrl+↑/↓ (0.05 단위), 모바일은 키보드 위 칩`;
+// 프롬프트 문법 도움말 (2026-07-18) — 상위 프롬프트 라벨 옆 (?) 버튼. 문법은 상위/하위/네거티브 공통이라 첫 프롬프트에만 1회.
+// 2026-11-19 UI 정돈 시범 ①: 한 덩어리 툴팁 문자열 → 누르면 열려 떠 있는 패널(PromptSyntaxHelp.tsx,
+// 내용 데이터 models/promptSyntaxHelp.ts — 문법 근거 주석도 그쪽으로 옮김).
 
 const TRANSPARENT_BACKGROUND_HELP =
   '프롬프트 앞에 transparent background를 추가하고 투명 PNG를 요청합니다.';
@@ -277,6 +266,7 @@ export const EditorField = ({
   children,
   bold,
   hint,
+  help,
   foldKey,
   defaultFolded,
   foldedBadge,
@@ -291,6 +281,8 @@ export const EditorField = ({
   bold?: boolean;
   // (?) 도움말 아이콘 문구 — 라벨 오른쪽에 표시 (프롬프트 문법 안내 등)
   hint?: string;
+  // (?) 자리에 둘 요소(hint 대신) — 프롬프트 문법 설명 패널 버튼(2026-11-19)
+  help?: React.ReactNode;
   // 접기 지원: foldKey 지정 시 라벨 클릭으로 접기/펼치기 (localStorage 영속)
   foldKey?: string;
   defaultFolded?: boolean;
@@ -361,6 +353,7 @@ export const EditorField = ({
             <HelpIcon content={hint} />
           </span>
         )}
+        {help && <span className="ml-1.5 inline-flex items-center">{help}</span>}
         {folded && foldedBadge && (
           <span className="ml-1.5 text-xs text-sky-500 dark:text-sky-400">
             {foldedBadge}
@@ -2781,7 +2774,7 @@ const WFRInline = observer(({ element }: WFElementProps) => {
           foldLocked={v5mNegativeLocked}
           full={input.flex === 'flex-1'}
           // 문법 안내는 첫 프롬프트(상위)에만 1회 — 문법은 전 프롬프트 공통
-          hint={input.field === 'frontPrompt' ? PROMPT_SYNTAX_HELP : undefined}
+          help={input.field === 'frontPrompt' ? <PromptSyntaxHelpButton mobile={isMobile} /> : undefined}
           // 접기 (2026-07-18): 필드명 키로 워크플로우 공용 영속, 기본 펼침.
           // 접힌 채 내용이 있으면 배지로 표시해 보이지 않는 프롬프트를 방지.
           foldKey={input.flex === 'flex-1' ? input.field : undefined}
