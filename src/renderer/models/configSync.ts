@@ -131,6 +131,8 @@ export const CONFIG_SYNC_EXCLUDED = [
   'boostVariantTasks',
   'boostWarningDismissed',
   'syncFolder',
+  // PC 화면 배율(시험 기능) — 모니터·기기마다 맞는 값이 달라 기기별로 고른다.
+  'uiZoomPercent',
 ] as const;
 const EXCLUDED_TYPED: readonly (keyof Config)[] = CONFIG_SYNC_EXCLUDED;
 void EXCLUDED_TYPED;

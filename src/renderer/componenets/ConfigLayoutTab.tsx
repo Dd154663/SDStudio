@@ -26,6 +26,7 @@ import {
 } from '../models/companionSlots';
 import { applyCompanionSlots } from './CompanionDnd';
 import { observer } from 'mobx-react-lite';
+import { UI_ZOOM_PERCENT_OPTIONS, UI_ZOOM_TEXT, normalizeUiZoomPercent } from '../../shared/uiZoom';
 import { appState } from '../models/AppService';
 import {
   FaSlidersH,
@@ -356,7 +357,7 @@ const floatViewModes: {
   },
 ];
 
-const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbarButtonNames, setUiToolbarButtonNames, uiToolbar, setUiToolbar, quickMenu, setQuickMenu, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
+const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbarButtonNames, setUiToolbarButtonNames, uiZoomPercent, setUiZoomPercent, uiToolbar, setUiToolbar, quickMenu, setQuickMenu, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
   <div className="space-y-5">
     <div>
       <label className="block text-sm gray-label mb-1">화면 배치</label>
@@ -592,6 +593,26 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
         이관. 모바일은 편집 모드가 없어 기존 툴바 탭이 유지된다. */}
     {!mobileMode && (
       <div className="pt-3 border-t line-color space-y-4">
+        {/* PC 화면 배율(시험 기능, 2026-11-19 — shared/uiZoom.ts). Electron 창 배율로 글자·버튼·간격을 함께 줄인다.
+            모바일은 항목 없음(이 블록 전체가 PC 전용). 저장 시 main 이 열린 모든 창에 반영. */}
+        <div>
+          <label htmlFor="cfgUiZoom" className="block text-sm gray-label">
+            {UI_ZOOM_TEXT.label}
+          </label>
+          <select
+            id="cfgUiZoom"
+            className="mt-1 block w-40 rounded-md line-color shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+            value={uiZoomPercent}
+            onChange={(e) => setUiZoomPercent(normalizeUiZoomPercent(e.target.value))}
+          >
+            {UI_ZOOM_PERCENT_OPTIONS.map((p) => (
+              <option key={p} value={p}>
+                {UI_ZOOM_TEXT.option(p)}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-faint mt-1">{UI_ZOOM_TEXT.description}</p>
+        </div>
         <div>
           <div className="flex items-center gap-2">
             <input

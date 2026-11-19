@@ -90,6 +90,7 @@ import {
 } from '../models/boostMode';
 import { useBoostAccountLock } from './boostAccountLock';
 import Tooltip from './Tooltip';
+import { normalizeUiZoomPercent, uiZoomPercentForSave, UiZoomPercent } from '../../shared/uiZoom';
 
 // PC 에서 섹션 단위 2단 흐름(cfg-two-col)을 쓰는 탭 key — 칸이 많고 세로로만 쌓이던 탭(2026-11-11 오버레이 묶음 1).
 // 로그인(안내 박스)·레이아웃(템플릿 그림 고르기)·저장 경로(긴 경로)·드라이브·단축키(표)는 한 열 유지.
@@ -864,6 +865,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [uiMobileV2Parts, setUiMobileV2Parts] = useState<MobileV2Parts>(normalizeV2Parts(undefined));
   const [uiPresetIconRow, setUiPresetIconRow] = useState(false);
   const [uiToolbarButtonNames, setUiToolbarButtonNames] = useState(true);
+  // PC 화면 배율(시험 기능, 2026-11-19 — shared/uiZoom.ts). 모바일은 항목이 없고 저장값도 건드리지 않는다.
+  const [uiZoomPercent, setUiZoomPercent] = useState<UiZoomPercent>(100);
   // 모던 해제 확인(② A 2차 피드백 후속 1): 모던 → 다른 템플릿 전환 시 "배치 초기화"에
   // 동의했는지. true 면 저장 시 버튼(툴바·동반)·레이아웃 배치를 기본값으로 되돌린다.
   const [modernExitReset, setModernExitReset] = useState(false);
@@ -929,6 +932,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     setUiMobileV2Parts(normalizeV2Parts(config.uiMobileV2Parts));
     setUiPresetIconRow(config.uiPresetIconRow ?? false);
     setUiToolbarButtonNames(config.uiToolbarButtonNames ?? true);
+    setUiZoomPercent(normalizeUiZoomPercent(config.uiZoomPercent));
     setUiFloatViewMode(config.uiFloatViewMode ?? 'cover');
     setUiFont(config.uiFont ?? 'system');
     setUiClassicFinish(config.uiClassicFinish ?? false);
@@ -1118,6 +1122,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiMobileV2Parts: uiMobileV2Parts,
       uiPresetIconRow: uiPresetIconRow,
       uiToolbarButtonNames: uiToolbarButtonNames,
+      // 화면 배율: 100% 는 키를 비운다(= 기본). 모바일은 저장값을 그대로 둔다. 적용은 main 의 set-config 가 모든 창에.
+      uiZoomPercent: mobileMode ? old.uiZoomPercent : uiZoomPercentForSave(uiZoomPercent),
       uiFloatViewMode: uiFloatViewMode,
       uiFont: uiFont,
       uiClassicFinish: uiClassicFinish,
@@ -1262,7 +1268,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'toolbar':
         return <ToolbarTab {...{ uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton }} />;
       case 'layout':
-        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbarButtonNames, setUiToolbarButtonNames, uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose: requestClose }} />;
+        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbarButtonNames, setUiToolbarButtonNames, uiZoomPercent, setUiZoomPercent, uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose: requestClose }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':
@@ -1308,6 +1314,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       JSON.stringify(uiMobileV2Parts) !== JSON.stringify(normalizeV2Parts(savedCfg.uiMobileV2Parts)) ||
       uiPresetIconRow !== (savedCfg.uiPresetIconRow ?? false) ||
       uiToolbarButtonNames !== (savedCfg.uiToolbarButtonNames ?? true) ||
+      (!mobileMode && uiZoomPercent !== normalizeUiZoomPercent(savedCfg.uiZoomPercent)) ||
       uiFloatViewMode !== (savedCfg.uiFloatViewMode ?? 'cover') ||
       uiFont !== (savedCfg.uiFont ?? 'system') ||
       uiClassicFinish !== (savedCfg.uiClassicFinish ?? false) ||

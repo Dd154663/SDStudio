@@ -310,6 +310,14 @@ const radioByLabel = (scope: HTMLElement, text: string) => {
   if (!radio) throw new Error(`라디오 없음: ${text}`);
   return radio;
 };
+async function pickZoom(value: string) {
+  const select = input('cfgUiZoom') as unknown as HTMLSelectElement;
+  await act(async () => {
+    select.value = value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await flush();
+}
 async function save() {
   const before = backend.setConfig.mock.calls.length;
   await click(saveButton());
@@ -600,6 +608,14 @@ const PC_CASES: [string, Case][] = [
     },
   ],
   [
+    '레이아웃 — 화면 배율 80%(시험 기능)',
+    {
+      tab: '레이아웃',
+      change: () => pickZoom('80'),
+      expected: { uiZoomPercent: 80 },
+    },
+  ],
+  [
     '레이아웃 — 클래식 툴바',
     { tab: '레이아웃', change: () => click(input('cfgClassicToolbar')), expected: { uiToolbar: { classic: true } } },
   ],
@@ -700,6 +716,41 @@ test('4-PC 단축키: 바인딩 변경은 즉시 localStorage 저장 — 미저�
   expect(dirty()).toBe(false);
   expect(backend.setConfig).not.toHaveBeenCalled();
   expect(await save()).toEqual(BASE_SAVE);
+});
+
+// 화면 배율(시험 기능, 2026-11-19) — 100% 로 되돌리면 키를 비워 저장(= 기본), 모바일은 항목 없음·저장값 유지.
+test('4-PC 화면 배율: 저장된 90% 를 100% 로 되돌리면 키를 비워 저장한다', async () => {
+  store.config.uiZoomPercent = 90;
+  await open(false);
+  await selectTab('레이아웃');
+  expect(input('cfgUiZoom').value).toBe('90');
+  expect(dirty()).toBe(false);
+  await pickZoom('100');
+  expect(dirty()).toBe(true);
+  const arg = await save();
+  expect(arg.uiZoomPercent).toBeUndefined();
+  expect(arg).toEqual(BASE_SAVE);
+  expect('uiZoomPercent' in store.config).toBe(false);
+  expect(dirty()).toBe(false);
+});
+
+test('4-PC 화면 배율: 허용 밖 저장값은 100% 로 읽고 미저장 배지를 띄우지 않는다', async () => {
+  store.config.uiZoomPercent = 33;
+  await open(false);
+  await selectTab('레이아웃');
+  expect(input('cfgUiZoom').value).toBe('100');
+  expect(dirty()).toBe(false);
+});
+
+test('4-모바일 화면 배율: 항목이 보이지 않고 저장해도 저장값을 건드리지 않는다', async () => {
+  store.config.uiZoomPercent = 85;
+  await open(true);
+  await selectTab('레이아웃');
+  expect(container.querySelector('#cfgUiZoom')).toBeNull();
+  expect(container.textContent).not.toContain('화면 배율');
+  expect(dirty()).toBe(false);
+  const arg = await save();
+  expect(arg).toEqual({ ...BASE_SAVE, uiZoomPercent: 85 });
 });
 
 const MOBILE_CASES: [string, Case][] = [

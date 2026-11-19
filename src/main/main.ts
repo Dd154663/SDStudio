@@ -71,6 +71,7 @@ import { cleanupDriveDownload, downloadDriveFileForIpc } from './googleDrive/dow
 import { listBackupsForIpc, trashBackupFileForIpc } from './googleDrive/manage';
 import { DRIVE_AUTH_CHANNEL } from '../shared/googleDriveAuth';
 import { DRIVE_FILE_CHANNEL, isDriveWebUrl } from '../shared/googleDrive';
+import { uiZoomFactorOf } from '../shared/uiZoom';
 import {
   INSIDE_INSTALL_DIR_CODE,
   SaveLocationInsideInstall,
@@ -370,6 +371,20 @@ let config: Config = {};
 let configLoadFailure: { path: string; code: string } | null = null;
 
 // 창 컨트롤 IPC — 호출한 창(event.sender)에만 작용한다(멀티 윈도우 안전).
+// PC 화면 배율(시험 기능, 2026-11-19 — shared/uiZoom.ts). Chromium 은 배율을 출처별로 기억하므로
+// 문서를 읽을 때마다·설정을 저장할 때마다 현재 config 값으로 명시해 맞춘다(같은 값이면 그대로 둔다).
+function applyUiZoom(win: BrowserWindow) {
+  if (win.isDestroyed()) return;
+  const factor = uiZoomFactorOf(config.uiZoomPercent);
+  try {
+    if (Math.abs(win.webContents.getZoomFactor() - factor) > 1e-6) {
+      win.webContents.setZoomFactor(factor);
+    }
+  } catch (e) {
+    log.warn('applyUiZoom failed', e);
+  }
+}
+
 ipcMain.handle('window-minimize', (event) => {
   BrowserWindow.fromWebContents(event.sender)?.minimize();
 });
@@ -400,6 +415,8 @@ ipcMain.handle('set-config', async (event, newConfig) => {
   const tmpFile = path.join(DEFAULT_APP_DIR, uuidv4());
   await fs.writeFile(tmpFile, JSON.stringify(config), 'utf-8');
   await fs.rename(tmpFile, path.join(DEFAULT_APP_DIR, 'config.json'));
+  // 화면 배율(시험 기능): 저장한 창과 열려 있는 다른 창 모두에 바로 반영한다.
+  for (const w of BrowserWindow.getAllWindows()) applyUiZoom(w);
   // 전역 저장소 동기화(W6 P2): 설정 변경을 다른 창들에 알린다 — 각 창이
   // get-config 재조회+미러 재적용(config-changed 경로)으로 반영한다.
   broadcastGlobalStoreChanged(event.sender.id, 'config');
@@ -1984,6 +2001,9 @@ const createWindow = async (opts?: {
       // 미러 브로드캐스트(300ms 스로틀)가 수 초씩 지연된다. 위임 구조에서는
       // 사용자가 보조 창에서 작업하는 동안 호스트가 항상 배경이므로 필수.
       backgroundThrottling: false,
+      // 화면 배율(시험 기능): 첫 화면부터 설정 배율로 그려 100% 로 보였다 줄어드는 깜빡임을 줄인다.
+      // 출처별 기억값이 남아 있어도 아래 dom-ready 에서 현재 설정값으로 다시 맞춘다.
+      zoomFactor: uiZoomFactorOf(config.uiZoomPercent),
       preload: app.isPackaged
         ? path.join(__dirname, 'preload.js')
         : path.join(__dirname, '../../.erb/dll/preload.js'),
@@ -2109,6 +2129,9 @@ const createWindow = async (opts?: {
       return [];
     },
   });
+
+  // 화면 배율(시험 기능): 문서를 읽을 때마다(첫 로드·새로고침) 현재 설정값으로 명시한다.
+  win.webContents.on('dom-ready', () => applyUiZoom(win));
 
   win.loadURL(resolveHtmlPath('index.html'));
 
