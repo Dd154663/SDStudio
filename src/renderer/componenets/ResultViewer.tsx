@@ -126,7 +126,12 @@ import { extractPromptDataFromBase64 } from '../models/util';
 import { appState } from '../models/AppService';
 import { backStackService } from '../models/BackStackService';
 import { observer } from 'mobx-react-lite';
-import { DownloadDialog } from './DownloadDialog';
+import {
+  buildGridDownloadMenu,
+  GRID_DOWNLOAD_TEXT,
+  gridDownloadTargets,
+} from '../models/gridDownloadMenu';
+import { IMAGE_DOWNLOAD_TEXT } from '../models/ImageDownloadService';
 import { Session, GenericScene as GenericSceneType } from '../models/types';
 import { BOOST_TEXT } from '../models/boostMode';
 
@@ -1868,8 +1873,6 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     ];
     const [imageSize, setImageSize] = useState<number>(1);
     const [selectedTab, setSelectedTab] = useState<number>(0);
-    const [showDownloadDialog, setShowDownloadDialog] =
-      useState<boolean>(false);
     const tabNames =
       scene.type === 'scene'
         ? ['이미지', '즐겨찾기', '휴지통', '인페인트 씬']
@@ -2486,8 +2489,59 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       gallaryRef2.current?.refresh();
       forceUpdate({});
     };
-    const actDownload = () => {
-      setShowDownloadDialog(true);
+    // 다운로드 = 메시지형 선택 창(2026-11-19 개편 — 종전 독자 창 DownloadDialog 대체). 고르면 확인 없이 바로 저장,
+    // 여러 장은 진행 창. 플랫폼 분기(모바일 = 다운로드 폴더)는 imageDownloadService 한 곳.
+    const actDownload = async () => {
+      const selectedPaths = selectMode ? Array.from(selectedImages.current) : [];
+      const favoritePaths = isMainImage ? paths.filter((p) => isMainImage(p)) : [];
+      const menu = buildGridDownloadMenu({
+        sceneName: scene.name,
+        selectedCount: selectedPaths.length,
+        allCount: paths.length,
+        favoriteCount: favoritePaths.length,
+        canExport: true,
+        isMobile,
+        savePath: imageDownloadService.settings.lastSavePath,
+      });
+      if (!menu.hasImages) {
+        appState.pushMessage(GRID_DOWNLOAD_TEXT.empty);
+        return;
+      }
+      const choice = await appState.pushDialogAsync({
+        type: 'select',
+        text: menu.text,
+        items: menu.items,
+      });
+      if (!choice) return;
+      if (choice === 'export') {
+        // 기존 이미지 내보내기 흐름(형식·이름 규칙·프리셋)을 이 씬 하나로 한정
+        appState.exportPackage(scene.type, [scene]);
+        return;
+      }
+      if (choice === 'change-folder') {
+        const newPath = await imageDownloadService.changeSavePath();
+        if (newPath) appState.pushMessage(IMAGE_DOWNLOAD_TEXT.folderChanged(newPath));
+        return;
+      }
+      const targets = gridDownloadTargets(choice, {
+        selected: selectedPaths,
+        all: paths,
+        favorites: favoritePaths,
+      });
+      if (!targets || targets.length === 0) return;
+      const result = await imageDownloadService.downloadImages(
+        curSession!,
+        scene,
+        targets,
+        appState.getAppliedCharacterPreset(),
+        true,
+      );
+      if (selectMode && result.success > 0) {
+        selectedImages.current.clear();
+        setSelectMode(false);
+        gallaryRef.current?.refresh();
+        gallaryRef2.current?.refresh();
+      }
     };
     const actCopyImages = () => {
       if (selectMode && selectedImages.current.size > 0) {
@@ -2583,7 +2637,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                 ),
                 onTap: actSelectFavorites,
               }
-            : { key: 'download', name: '다운로드', icon: <ActionIcon id="download" />, onTap: actDownload },
+            : { key: 'download', name: '다운로드', icon: <ActionIcon id="download" />, onTap: () => void actDownload() },
           {
             key: 'bookmark',
             name: '북마크 이동',
@@ -2628,7 +2682,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           tierItem('queue-add', '예약 추가', 'back-green', <ActionIcon id="queue-add" />, () => void actQueueAdd()),
           tierItem('queue-remove', '예약 제거', 'back-gray', <ActionIcon id="queue-remove" />, actQueueRemove),
           tierItem('edit', '씬 편집', 'back-orange', <ActionIcon id="edit" />, () => onEdit(scene)),
-          tierItem('download', '다운로드', 'back-green', <ActionIcon id="download" />, actDownload),
+          tierItem('download', '다운로드', 'back-green', <ActionIcon id="download" />, () => void actDownload()),
           tierItem('copy', '복사', 'back-sky', <ActionIcon id="copy" />, actCopyImages),
           tierItem('paste', '붙여넣기', appState.imageClipboard.length > 0 ? 'back-sky' : 'back-gray', <FaPaste />, actPaste),
           ...(onSampleExtract ? [tierItem('sample', '샘플 뽑기', 'back-sky', <FaDice />, () => void actSampleExtract())] : []),
@@ -2637,7 +2691,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       : [];
     const gallerySelectTier: V2TierItem[] = v2
       ? [
-          tierItem('download', '다운로드', 'back-green', <ActionIcon id="download" />, actDownload),
+          tierItem('download', '다운로드', 'back-green', <ActionIcon id="download" />, () => void actDownload()),
           tierItem('copy', '복사', 'back-sky', <ActionIcon id="copy" />, actCopyImages),
           tierItem('duplicate', '복제', 'back-sky', <ActionIcon id="duplicate" />, () => void onDuplicateSelected(), selectedCount === 0),
           tierItem('copy-to', '다른 씬', 'back-sky', <FaShareSquare />, onCopyToSceneSelected, selectedCount === 0),
@@ -2808,7 +2862,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                 <Tooltip content="이미지 다운로드">
                   <button
                     className={`round-button icon-only back-green`}
-                    onClick={actDownload}
+                    onClick={() => void actDownload()}
                   >
                     <FaDownload />
                   </button>
@@ -2976,25 +3030,6 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                 initialSelectedIndex={selectedImageIndex}
               />
             </FloatView>
-          )}
-          {showDownloadDialog && (
-            <DownloadDialog
-              session={curSession!}
-              scene={scene}
-              imagePaths={
-                selectMode && selectedImages.current.size > 0
-                  ? Array.from(selectedImages.current)
-                  : paths
-              }
-              characterPreset={appState.getAppliedCharacterPreset()}
-              onClose={() => setShowDownloadDialog(false)}
-              onDownloadComplete={() => {
-                if (selectMode) {
-                  selectedImages.current.clear();
-                  setSelectMode(false);
-                }
-              }}
-            />
           )}
           <ImageGallery
             scene={scene}

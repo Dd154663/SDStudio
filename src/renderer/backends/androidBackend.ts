@@ -145,6 +145,14 @@ function getDirName(filePath: string): string {
   return parts.join('/');
 }
 
+// Download/ 바로 아래 한 단계 이름만 허용한다(구분자·「..」·빈 이름 거부 — Download/ 밖으로 나가지 않게).
+function assertDownloadsSubfolderName(name: string): void {
+  // 구분자가 없으면 「a..b」 같은 이름은 한 단계 이름이라 안전하다(정확히 「.」「..」만 거부).
+  if (!name || /[\\/\0]/.test(name) || name === '.' || name === '..') {
+    throw new Error('다운로드 폴더 이름이 올바르지 않습니다.');
+  }
+}
+
 class AndroidFetcher implements NovelAiFetcher {
   // 호출별 타임아웃(기본 120초)을 네이티브 OkHttp(read·write·call)에 넘긴다. 시간이 다 되거나
   // 큐 시도가 폐기되면 요청 id 로 네이티브 call.cancel() 을 불러 진행 중 요청을 끊는다.
@@ -961,18 +969,62 @@ export class AndroidBackend extends Backend {
     }
   }
 
-  async copyToDownloads(path: string): Promise<void> {
+  // 기기 Download/ 아래 한 단계 이름(폴더·파일)이 있는지(여러 장 다운로드의 씬 이름 폴더 중복 확인용).
+  async existInDownloads(name: string): Promise<boolean> {
+    assertDownloadsSubfolderName(name);
+    try {
+      await Filesystem.stat({
+        path: `Download/${name}`,
+        directory: Directory.ExternalStorage,
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async copyToDownloads(path: string, subfolder?: string): Promise<void> {
     // 파일 내용을 base64 문자열로 JS까지 왕복시키면 대용량 파일(원본 PNG 다수를 묶은
     // tar 등 수백 MB)에서 네이티브 힙 OOM으로 앱이 크래시하므로, 데이터를 브리지에
     // 태우지 않는 네이티브 파일 복사(Filesystem.copy)로 처리한다.
+    // subfolder(선택) = Download/<subfolder>/ 에 저장(여러 장 다운로드의 씬 이름 폴더). 생략 = 종전 그대로.
+    if (subfolder !== undefined) {
+      assertDownloadsSubfolderName(subfolder);
+      // 원본이 없으면 폴더를 만들기 전에 실패시킨다(빈 폴더를 남기지 않게).
+      await Filesystem.stat({ path: `${APP_DIR}/${path}`, directory: Directory.Documents });
+    }
+    const destDir = subfolder !== undefined ? `Download/${subfolder}` : 'Download';
     try {
       await Filesystem.mkdir({
-        path: 'Download',
+        path: destDir,
         directory: Directory.ExternalStorage,
+        recursive: true,
       });
     } catch (e) {}
-    const fileName = path.split('/').pop()!;
-    const destRel = 'Download/' + fileName;
+    let fileName = path.split('/').pop()!;
+    if (subfolder !== undefined) {
+      // 같은 폴더 안에서 다른 하위 경로의 같은 파일명이 겹치면 " (n)" 접미로 피한다(덮어쓰지 않음).
+      const dot = fileName.lastIndexOf('.');
+      const baseName = dot > 0 ? fileName.slice(0, dot) : fileName;
+      const extension = dot > 0 ? fileName.slice(dot) : '';
+      let n = 2;
+      while (true) {
+        try {
+          await Filesystem.stat({
+            path: `${destDir}/${fileName}`,
+            directory: Directory.ExternalStorage,
+          });
+        } catch (e) {
+          break;
+        }
+        if (n > 999) {
+          fileName = `${baseName} (${Date.now()})${extension}`;
+          break;
+        }
+        fileName = `${baseName} (${n++})${extension}`;
+      }
+    }
+    const destRel = `${destDir}/${fileName}`;
     await Filesystem.copy({
       from: `${APP_DIR}/${path}`,
       directory: Directory.Documents,
@@ -998,7 +1050,12 @@ export class AndroidBackend extends Backend {
         await ZipService.scanMedia({ path: absPath, mime });
       } catch (e) {}
     }
-    await ZipService.showDownloads({});
+    // 한 장 저장은 종전처럼 시스템 다운로드 화면을 연다. 여러 장(subfolder) 저장은 열지 않는다 — 장마다 열면
+    // 첫 장에서 앱이 뒤로 밀리고(이후 화면 열기는 백그라운드 제한에 걸려 실패로 집계될 수 있음) 사용자는 화면이
+    // 계속 바뀐다. 결과는 호출부(ImageDownloadService)가 폴더 이름과 함께 안내한다(2026-11-19).
+    if (subfolder === undefined) {
+      await ZipService.showDownloads({});
+    }
   }
 
   async zipFiles(files: FileEntry[], outPath: string): Promise<void> {

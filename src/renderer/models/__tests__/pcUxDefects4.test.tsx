@@ -100,7 +100,6 @@ describe('하드코딩 bg-{색}-500 잔존 = 제외 목록', () => {
     'componenets/CharacterPresetCards.tsx': 1, // 카드 이미지 위 순차 선택 체크
     'componenets/CharacterPresetEditor.tsx': 2, // 진행 막대 + 카드 이미지 위 선택 체크
     'componenets/ConfigLayoutTab.tsx': 8, // 배치 미리보기 도형
-    'componenets/DownloadDialog.tsx': 1, // 진행 막대
     'componenets/GlobalPresetPicker.tsx': 1, // 썸네일 위 기본 표시
     'componenets/GlobalPresetTab.tsx': 1, // 썸네일 위 기본 표시
     'componenets/MigrationGate.tsx': 2, // 진행 막대

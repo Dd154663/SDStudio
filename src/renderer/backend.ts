@@ -150,7 +150,11 @@ export abstract class Backend {
   abstract driveCleanupDownload(fileId: string): Promise<void>;
   // 폴더를 OS 파일 탐색기로 연다(내용물 표시). 데스크톱 전용 — 모바일은 no-op.
   abstract openPath(arg: string): Promise<void>;
-  abstract copyToDownloads(path: string): Promise<void>;
+  // 모바일: 기기 Download/ 로 원본 파일명 복사(+이미지 미디어스캔). subfolder(선택) = Download/<subfolder>/ 에
+  // 저장하고 같은 이름이 있으면 「 (n)」 접미(여러 장 다운로드의 씬 이름 폴더). 생략 = 종전 동작. PC 는 no-op.
+  abstract copyToDownloads(path: string, subfolder?: string): Promise<void>;
+  // 모바일: Download/ 바로 아래에 name(폴더·파일)이 있는지. PC 는 다운로드 폴더 개념이 없어 호출하지 않는다(false).
+  abstract existInDownloads(name: string): Promise<boolean>;
   abstract zipFiles(files: FileEntry[], outPath: string): Promise<void>;
   abstract unzipFiles(tarPath: string, outPath: string): Promise<void>;
   // 데이터 루트가 위치한 볼륨의 여유 공간(bytes). 조회 불가/미지원이면 null

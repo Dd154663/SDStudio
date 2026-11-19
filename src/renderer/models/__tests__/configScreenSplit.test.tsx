@@ -70,6 +70,12 @@ jest.mock('..', () => ({
   opusUsageService: usage,
   imageService: { cache: { cache: new Map() }, refreshBatch: jest.fn(async () => {}), getImageDir: () => '/img' },
   appUpdateNoticeService: { checkForUpdate: jest.fn(), dismissVersion: jest.fn(), current: '0.0.0' },
+  // 저장 경로 탭 「이미지 다운로드」 구획(2026-11-19) — 값은 서비스가 즉시 저장, 여기서는 표시만 본다
+  imageDownloadService: {
+    settings: { autoNumbering: true, overwriteExisting: false, includeTimestamp: false, lastSavePath: 'D:/Dl' },
+    changeSavePath: jest.fn(async () => undefined),
+    updateSettings: jest.fn(async () => {}),
+  },
 }));
 
 const dialogs: any[] = [];
@@ -199,6 +205,8 @@ const INITIAL_CONFIG = {
   uiCompanionSlots: { 'preset-row': ['vibe'] },
   modelVersion: 'v5',
   unrelatedKey: 'keep-me',
+  // 이미지 다운로드 설정(2026-11-19 저장 경로 탭으로 이전, 서비스가 즉시 저장) — 「저장」이 덮어쓰거나 지우지 않는다
+  downloadSettings: { autoNumbering: true, overwriteExisting: false, includeTimestamp: false, lastSavePath: 'D:/Dl', defaultPrefix: 'p' },
 };
 
 // 아무것도 바꾸지 않고 「저장」했을 때 setConfig 인자(현재 HEAD 동작 그대로).
@@ -505,7 +513,7 @@ const PC_TEXTS: Record<string, string[]> = {
   로그인: ['API 토큰으로 로그인', 'V5 할당량 기반 자동 순회', '부스트 모드 켜기'],
   테마: ['테마 템플릿', '내 프리셋'],
   레이아웃: ['화면 배치', '클래식 툴바 사용 (이전 배치로 되돌리기)', '퀵 메뉴 구성'],
-  '저장 경로': ['현재 저장경로', '선호 이미지 편집기', '로컬 배경 제거 모델 설치'],
+  '저장 경로': ['현재 저장경로', '선호 이미지 편집기', '로컬 배경 제거 모델 설치', '이미지 다운로드', 'D:/Dl', '다운로드 저장 폴더 변경'],
   드라이브: ['드라이브 탭(모킹)'],
   시스템: ['저장소 불안정 시 자동 저장 보호 (권장)', '작업 로그 보기', 'exports 폴더 정리'],
   커스텀: ['글꼴', '레거시 프로젝트 모드'],
@@ -539,6 +547,7 @@ test.each([
   // 플랫폼 전용 문구는 다른 플랫폼에 없다
   if (mobile) {
     expect(container.textContent).not.toContain('현재 저장경로');
+    expect(container.textContent).not.toContain('다운로드 저장 폴더 변경');
     expect(container.textContent).not.toContain('전역 (메인 화면)');
     expect(container.textContent).not.toContain('이미지 상세 창');
   } else {

@@ -383,8 +383,13 @@ export class ElectornBackend extends Backend {
     await invoke('open-path', arg);
   }
 
-  async copyToDownloads(path: string): Promise<void> {
+  async copyToDownloads(path: string, subfolder?: string): Promise<void> {
     return;
+  }
+
+  // PC 다운로드는 저장 폴더(writeDataFileAbsolute·existFileAbsolute)를 쓰므로 의도된 no-op.
+  async existInDownloads(name: string): Promise<boolean> {
+    return false;
   }
 
   async zipFiles(files: FileEntry[], outPath: string): Promise<void> {

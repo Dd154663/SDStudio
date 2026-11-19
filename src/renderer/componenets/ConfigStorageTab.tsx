@@ -9,6 +9,7 @@ import { StorageDiagnosticsSection } from './StorageDiagnostics';
 import { observer } from 'mobx-react-lite';
 import { SAVE_LOCATION_CHANGE_TEXT } from '../../shared/saveLocationChange';
 import { SaveLocationRestartButton } from './SaveLocationPendingBar';
+import { DownloadSettingsSection } from './DownloadSettingsSection';
 
 /* ── 탭 2: 이미지 편집 및 배경 제거 ── */
 const ImageEditTab = ({
@@ -153,6 +154,9 @@ const StorageTab = ({
         </button>
       )}
     </div>
+    <hr className="line-color" />
+    {/* 이미지 다운로드(저장 폴더·파일명 규칙) — 종전 다운로드 창에서 이전, 즉시 저장(2026-11-19) */}
+    <DownloadSettingsSection />
     {/* 드라이브 동기화 폴더(syncFolder)는 「드라이브」 탭의 「고급: 로컬 동기화 폴더」로 옮겼다(드라이브 API ⑤). */}
     <hr className="line-color" />
     <button className="btn w-full back-red py-2 rounded"

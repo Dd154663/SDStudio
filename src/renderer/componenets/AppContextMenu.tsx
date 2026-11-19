@@ -757,36 +757,13 @@ export const AppContextMenu = observer(() => {
   };
   const downloadImage = async (ctx: GallaryImageContextAlt) => {
     if (!ctx.scene) return;
-    if (isMobile) {
-      // 모바일은 폴더 선택 불가 → Download 폴더 복사 경로 (downloadSingleImage 미동작 버그 우회)
-      for (const p of ctx.path) {
-        await backend.copyToDownloads(p);
-      }
-      appState.pushMessage(
-        ctx.path.length > 1
-          ? `${ctx.path.length}장을 다운로드 폴더에 저장했습니다`
-          : '다운로드 폴더에 저장했습니다',
-      );
-      return;
-    }
-    const characterPreset = appState.getAppliedCharacterPreset();
-    if (ctx.path.length === 1) {
-      // 단일 이미지 다운로드
-      await imageDownloadService.downloadSingleImage(
-        appState.curSession!,
-        ctx.scene,
-        ctx.path[0],
-        characterPreset,
-      );
-    } else {
-      // 다중 이미지 다운로드
-      await imageDownloadService.downloadMultipleImages(
-        appState.curSession!,
-        ctx.scene,
-        ctx.path,
-        characterPreset,
-      );
-    }
+    // 플랫폼 분기(모바일 = 다운로드 폴더 복사, PC = 저장 폴더·파일명 규칙)는 서비스 한 곳(2026-11-19)
+    await imageDownloadService.downloadImages(
+      appState.curSession!,
+      ctx.scene,
+      ctx.path,
+      appState.getAppliedCharacterPreset(),
+    );
   };
   const upscaleImages = async (ctx: GallaryImageContextAlt) => {
     const session = appState.curSession;
@@ -931,26 +908,17 @@ export const AppContextMenu = observer(() => {
   // 히스토리는 타 프로젝트 항목이 있을 수 있어 curSession 대신 resolve()로 세션/씬을 얻는다.
   // (비활성 세션의 mains 토글 등도 ResourceSyncService가 자동 저장)
   const historyDownloadImage = async (ctx: HistoryImageContextAlt) => {
-    if (isMobile) {
-      // 모바일은 폴더 선택이 불가능해 downloadSingleImage가 동작하지 않음 —
-      // Download 폴더 복사(+미디어 스캔) 경로 사용
-      await backend.copyToDownloads(ctx.entry.path);
-      appState.pushMessage('다운로드 폴더에 저장했습니다');
-      return;
-    }
-    const resolved = await imageHistoryService.resolve(ctx.entry);
-    if (!resolved) return;
-    const { session, scene } = resolved;
-    const characterPreset =
-      session === appState.curSession
-        ? appState.getAppliedCharacterPreset()
-        : undefined;
-    await imageDownloadService.downloadSingleImage(
-      session,
-      scene,
-      ctx.entry.path,
-      characterPreset,
-    );
+    // 모바일은 서비스가 원본 씬을 찾지 않고 바로 다운로드 폴더로 복사한다(종전 동작 그대로)
+    await imageDownloadService.downloadHistoryImage(ctx.entry.path, async () => {
+      const resolved = await imageHistoryService.resolve(ctx.entry);
+      if (!resolved) return null;
+      const { session, scene } = resolved;
+      const characterPreset =
+        session === appState.curSession
+          ? appState.getAppliedCharacterPreset()
+          : undefined;
+      return { session, scene, characterPreset };
+    });
   };
   const historyDeleteImage = async (ctx: HistoryImageContextAlt) => {
     const resolved = await imageHistoryService.resolve(ctx.entry);
