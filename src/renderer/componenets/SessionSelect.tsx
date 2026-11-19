@@ -704,12 +704,13 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
           </>
         ) : (
           <>
-            <span className="hidden lg:inline whitespace-nowrap text-sub">
+            {/* PC: 라벨 14px·선택 버튼 32px(2026-11-19 PC 마감 — 종전 16px·34px) */}
+            <span className="hidden lg:inline whitespace-nowrap text-sub md:text-sm">
               프로젝트:{' '}
             </span>
             <Tooltip content="프로젝트 목록 열기 (폴더 드로어)">
               <button
-                className="flex-1 min-w-0 flex items-center gap-2 px-3 py-1.5 rounded-lg border border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-900/40 text-default hover:bg-sky-100 dark:hover:bg-sky-900/70 transition-colors"
+                className="flex-1 min-w-0 flex items-center gap-2 px-3 py-1.5 md:h-8 rounded-lg border border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-900/40 text-default hover:bg-sky-100 dark:hover:bg-sky-900/70 transition-colors"
                 onClick={() => {
                   appState.projectDrawerOpen = true;
                 }}

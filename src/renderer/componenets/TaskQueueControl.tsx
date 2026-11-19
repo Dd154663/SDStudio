@@ -379,12 +379,13 @@ const TaskQueueControl = observer(({}) => {
         </div>
       )}
       <div className="whitespace-nowrap">
-        <span className="sr-only md:not-sr-only whitespace-nowrap text-default">개수:</span>
+        {/* PC: 라벨 14px·칸 32px(2026-11-19 PC 마감 — 하단 바 버튼 높이와 같게, 종전 16px·36px) */}
+        <span className="sr-only md:not-sr-only whitespace-nowrap text-default md:text-sm">개수:</span>
         <input
           aria-label="생성 개수"
           min={1}
           max={99}
-          className={'ml-1 md:ml-2 p-1 w-10 md:w-16 text-center gray-input'}
+          className={'ml-1 md:ml-2 p-1 w-10 md:w-16 md:h-8 text-center gray-input'}
           type="number"
           value={appState.samples}
           onChange={(e: any) => {

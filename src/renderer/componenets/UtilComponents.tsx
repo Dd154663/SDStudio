@@ -235,7 +235,7 @@ export const TabComponent: React.FC<TabComponentProps> = ({
     <div className={`h-full flex flex-col px-1 md:p-2${v2 ? ' relative' : ''}`}>
       <div
         className={
-          'flex p-1 md:p-0 md:py-2 flex-none gap-2 items-center w-full mb-1 md:mb-0' +
+          'flex p-1 md:p-0 md:pb-2 flex-none gap-2 items-center w-full mb-1 md:mb-0' +
           // 하단 탭 바 배치에서는 모바일 상단 줄을 통째로 숨긴다(PC 스트립은 md 이상에서 그대로)
           (bottomTabs || (isMobile && mobileTabsHidden) ? ' hidden md:flex' : '')
         }

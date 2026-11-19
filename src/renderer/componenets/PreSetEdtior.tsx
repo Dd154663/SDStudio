@@ -1065,7 +1065,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
       </button>
       <Tooltip content="새 사전 세팅">
       <button
-        className={`icon-button flex-none`}
+        className={`icon-button flex-none md:h-8`}
         onClick={async () => {
           const name = await promptName({
             title: '사전 세팅 이름을 입력하세요',
@@ -1091,7 +1091,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
       {workflowType === 'SDImageGen' && (
         <Tooltip content="글로벌 프리셋을 프로젝트로 복사">
           <button
-            className={`icon-button flex-none`}
+            className={`icon-button flex-none md:h-8`}
             onClick={() => {
               appState.openGlobalPresetPicker('SDImageGen');
             }}
@@ -1102,7 +1102,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
       )}
       <Tooltip content="사전 세팅 일괄 삭제">
         <button
-          className={`icon-button flex-none`}
+          className={`icon-button flex-none md:h-8`}
           onClick={() => setBulkOpen(true)}
         >
           <ActionIcon id="delete" />
@@ -1927,12 +1927,13 @@ const NewSceneResolutionRow = observer(() => {
     });
   };
   return (
-    <div className="flex-none mt-2 flex items-center gap-2">
+    // PC: 위 여백 12px·컨트롤 32px(2026-11-19 PC 마감 — 패널의 다른 행과 같게, 종전 8px·34/28px)
+    <div className="flex-none mt-2 md:mt-3 flex items-center gap-2">
       <span className="flex-none gray-label">새 씬 해상도:</span>
       {/* 남는 폭을 피커가 채운다 — 값은 왼쪽, 화살표는 오른쪽 끝 */}
       <ResolutionPicker
         className="flex-1 min-w-0"
-        triggerClassName="w-full justify-between py-1.5"
+        triggerClassName="w-full justify-between py-1.5 md:h-8"
         value={value}
         onApply={(v) => {
           setNewSceneResolutionRecorded(curSession, v);
@@ -1940,7 +1941,7 @@ const NewSceneResolutionRow = observer(() => {
       />
       <Tooltip content="씬 탭의 모든 씬에 이 해상도를 일괄 적용합니다 (인페인트 씬 제외)">
         <button
-          className="round-button back-gray text-sm flex-none px-2.5 py-1 min-w-0"
+          className="round-button back-gray text-sm flex-none px-2.5 py-1 min-w-0 md:h-8"
           onClick={applyAll}
         >
           일괄 적용
@@ -3215,7 +3216,7 @@ const PresetTopCompanionRow = observer(() => {
   const editing = appState.editMode && !isMobile;
   if (companions.length === 0 && !editing) return <></>;
   return (
-    <StackFixed>
+    <StackFixed className="md:mt-3">
       <CompanionHostRow hostKey="preset-top">
         <div className="field-row flex items-center justify-center min-h-[2rem]">
           {companions.length === 0 && editing ? (
@@ -3291,12 +3292,14 @@ const PreSetEditor = observer(
       workflowType &&
       shared &&
       curSession.selectedWorkflow!.presetName && (
-        <VerticalStack className="p-2 md:p-3">
+        // PC 위 여백(2026-11-19 PC 마감): 패널 위 안쪽 여백을 0 으로 두고 맨 위 행의 위 여백(12px)만 남긴다 — 종전 12+12=24px.
+        // 맨 위에 올 수 있는 행(사전세팅선택·그 위 동반 행·레거시 작업모드)은 모두 md:mt-3 을 가진다.
+        <VerticalStack className="p-2 md:p-3 md:pt-0">
           {/* 사전세팅선택 위 동반 행(② A) — 배정 없으면 평상시 미렌더(현행 무변화) */}
           <PresetTopCompanionRow />
           {/* 작업모드 선택 — 레거시 작업모드에서만 노출(기본은 SDImageGen 고정, 행 제거로 공간 확보) */}
           {legacyWf && (
-            <StackFixed className="field-row flex gap-2 items-center">
+            <StackFixed className="field-row flex gap-2 items-center md:mt-3">
               <span className={'flex-none gray-label'}>작업모드: </span>
               <DropdownSelect
                 selectedOption={workflowType}

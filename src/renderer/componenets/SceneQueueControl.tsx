@@ -3106,7 +3106,11 @@ const QueueControl = observer(
         {!!showPannel && !v2Layout && (
           <div
             ref={toolbarOuterRef as React.RefObject<HTMLDivElement>}
-            className={`flex flex-none pb-1.5 flex-wrap${groupedToolbar ? ' items-end' : ''}`}
+            // 이름 보임 단계면 바깥 줄에도 scene-toolbar-named — 오른쪽 보기 설정 묶음(tb-name-offset)이
+            // 툴바 버튼 줄 높이에 맞도록 같은 보정 규칙(App.css .scene-toolbar-named .tb-name-offset)을 받는다.
+            className={`flex flex-none pb-1.5 flex-wrap${groupedToolbar ? ' items-end' : ''}${
+              buttonNameMode === 'show' ? ' scene-toolbar-named' : ''
+            }`}
           >
             {/* 모바일(비클래식): 줄바꿈 대신 가로 스크롤 — 어떤 기기 폭에서도 1줄 보장.
                 행 전체가 드롭 타깃(놓으면 인라인 고정) */}
@@ -3267,7 +3271,7 @@ const QueueControl = observer(
               />
             )}
             <ToolbarHideZone group="scene" />
-            <div className="ml-auto mr-2 hidden md:flex items-center gap-2">
+            <div className="ml-auto mr-2 hidden md:flex items-center gap-2 tb-name-offset">
               {!appState.classicSceneCard && (
                 <select
                   className="gray-input text-sm py-1 px-2"
@@ -3288,7 +3292,7 @@ const QueueControl = observer(
               )}
               <button
                 onClick={() => setCellSize((cellSize + 1) % 3)}
-                className="round-button back-gray"
+                className="round-button back-gray md:text-sm md:h-8"
               >
                 {cellSizes[cellSize]}
               </button>

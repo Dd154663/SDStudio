@@ -171,18 +171,25 @@ body {
 }
 
 /* 전역 커스텀 스크롤바 (Electron/Chromium) */
+/* PC 자리 14px·보이는 막대 8px(2026-11-19 PC 마감 — 종전 24·12, 9c4f241 에서 8 → 24 로 키웠던 것을 줄임).
+   PC 는 마우스를 올리면 막대가 10px 로 굵어진다(아래 min-width 768 블록). 모바일은 아래 767px 이하 블록 그대로. */
 ::-webkit-scrollbar {
-  width: 24px;
-  height: 24px;
+  width: 14px;
+  height: 14px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background-color: rgba(0, 0, 0, 0.25);
-  border-radius: 12px;
-  border: 6px solid transparent;
+  border-radius: 7px;
+  border: 3px solid transparent;
   background-clip: padding-box;
+}
+@media (min-width: 768px) {
+  ::-webkit-scrollbar-thumb:hover {
+    border-width: 2px;
+  }
 }
 ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(0, 0, 0, 0.45);
@@ -585,6 +592,8 @@ html.font-pretendard body {
 .scene-toolbar-named .toolbar-group-caption {
   margin-bottom: 4px;
 }
+/* 이름 없는 요소(「전체」 버튼·오른쪽 보기 설정 묶음)를 이름 몫(간격 3 + 이름 12 = 15px)만큼 올려 버튼 줄 높이에 맞춘다.
+   보기 설정 묶음은 행 밖(바깥 줄)이라 바깥 줄에도 .scene-toolbar-named 가 붙는다(SceneQueueControl). */
 .scene-toolbar-named .tb-name-offset {
   margin-bottom: 15px;
 }
