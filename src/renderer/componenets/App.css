@@ -1218,7 +1218,9 @@ input[type='number']::-webkit-outer-spin-button {
 }
 
 .syntax-comment {
-  color: #4b5563; /* gray-600 6.10 */
+  /* 주석은 본문보다 흐려 보여야 한다(2026-11-19 사용자 제보: 회색이 사라지고 기울임만 남음). 2026-11-15 D8 에서 대비를
+     올리다 다크의 주석색(gray-300)이 본문색(slate-300)과 같아졌다(대비 1.01). 본문과의 차이를 지키는 선에서 고른다. */
+  color: #5f6875; /* 입력 배경 대비 4.56 · 본문(검정)과 3.72 */
   font-style: italic;
   white-space: inherit;
   word-break: inherit;
@@ -1321,7 +1323,7 @@ input[type='number']::-webkit-outer-spin-button {
 
 /* 다크·트루다크 짝(D8) — 다크 입력 | 트루다크 입력 대비 */
 :is(.dark) .syntax-error { color: #fca5a5; } /* red-300 5.46 | 9.17 */
-:is(.dark) .syntax-comment { color: #d1d5db; } /* gray-300 7.03 | 11.8 */
+:is(.dark) .syntax-comment { color: #9ca3af; } /* gray-400 4.08 | 6.86 · 본문(slate-300)과 1.71 — 주석은 본문보다 흐리게 */
 :is(.dark) .syntax-wildcard { color: #38bdf8; } /* sky-400 4.83 | 8.12 */
 :is(.dark) .syntax-multi-wildcard { color: #4ade80; } /* green-400 5.94 | 9.99 */
 :is(.dark) .syntax-global-wildcard { color: #d8b4fe; } /* purple-300 5.86 | 9.85 */

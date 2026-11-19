@@ -65,7 +65,8 @@ describe('D7 입력 안내 문구', () => {
 describe('D8 프롬프트 문법 색', () => {
   const pairs: [string, string, string][] = [
     ['.syntax-error', '#b91c1c', '#fca5a5'],
-    ['.syntax-comment', '#4b5563', '#d1d5db'],
+    // 2026-11-19: 주석은 본문보다 흐려야 한다 — D8 값(#4b5563·#d1d5db)은 다크에서 본문색과 같아져(대비 1.01) 회색이 사라졌다.
+    ['.syntax-comment', '#5f6875', '#9ca3af'],
     ['.syntax-wildcard', '#0369a1', '#38bdf8'],
     ['.syntax-multi-wildcard', '#166534', '#4ade80'],
     ['.syntax-global-wildcard', '#7e22ce', '#d8b4fe'],
