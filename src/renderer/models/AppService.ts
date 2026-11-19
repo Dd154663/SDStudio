@@ -1384,7 +1384,8 @@ export class AppState {
 
 
   // ── 백업/내보내기/가져오기: BackupService 로 분리됨 (UI 호환 위임) ──
-  projectBackupMenu() { return backupService.projectBackupMenu(); }
+  projectImportMenu() { return backupService.projectImportMenu(); }
+  projectExportMenu() { return backupService.projectExportMenu(); }
   duplicateProject() { return backupService.duplicateProject(); }
   deleteFolderWithProjects(folder: string) { return backupService.deleteFolderWithProjects(folder); }
   folderBackupMenu(folder: string) { return backupService.folderBackupMenu(folder); }

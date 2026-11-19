@@ -27,7 +27,8 @@ jest.mock('../AppService', () => ({
     openProjectTrash: jest.fn(),
     openCharacterPresets: jest.fn(),
     openPieceEditor: jest.fn(),
-    projectBackupMenu: jest.fn(),
+    projectImportMenu: jest.fn(),
+    projectExportMenu: jest.fn(),
     openNewWindow: jest.fn(),
   },
 }));
@@ -46,7 +47,8 @@ const PROJECT_LABELS: Record<string, string> = {
   'add-session': '새 프로젝트',
   'character-presets': '캐릭터 프리셋',
   'scene-template': '씬 템플릿',
-  'backup-export': '백업',
+  'backup-import': '불러오기',
+  'backup-export': '내보내기',
   'delete-session': '삭제',
   'project-trash': '휴지통',
   'piece-editor': '프롬프트조각',
@@ -198,6 +200,7 @@ describe('렌더: 프로젝트 바 버튼 라벨', () => {
     'add-session',
     'character-presets',
     'scene-template',
+    'backup-import',
     'backup-export',
     'delete-session',
     'project-trash',
@@ -214,6 +217,8 @@ describe('렌더: 프로젝트 바 버튼 라벨', () => {
     expect(screen.getByRole('button', { name: '신규 프로젝트' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '프로젝트 휴지통' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '캐릭터 프리셋 관리' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '프로젝트 불러오기' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '프로젝트 내보내기' })).toBeTruthy();
     // 아이콘만이 아니므로 icon-only 클래스 없음
     expect(container.querySelector('.icon-only')).toBeNull();
   });
@@ -239,6 +244,19 @@ describe('렌더: 프로젝트 바 버튼 라벨', () => {
     side.unmount();
     const scene = renderIds(ids, { mobileIcon: false, variant: 'scene', labels: 'show' });
     expect(scene.container.querySelector('[data-pb-label]')).toBeNull();
+  });
+
+  test('불러오기·내보내기 버튼은 각자의 메뉴를 연다(프로젝트 바·씬 툴바 모두)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { appState } = require('../AppService');
+    for (const variant of ['project', 'scene'] as const) {
+      const r = renderIds(['backup-import', 'backup-export'], { mobileIcon: false, variant });
+      screen.getByRole('button', { name: '프로젝트 불러오기' }).click();
+      screen.getByRole('button', { name: '프로젝트 내보내기' }).click();
+      r.unmount();
+    }
+    expect(appState.projectImportMenu).toHaveBeenCalledTimes(2);
+    expect(appState.projectExportMenu).toHaveBeenCalledTimes(2);
   });
 
   test('프롬프트조각은 단계와 무관하게 종전 글자 버튼(글자 = 레지스트리 label)', () => {

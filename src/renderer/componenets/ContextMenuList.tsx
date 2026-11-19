@@ -28,7 +28,8 @@ export function compactMenuSeparators<T>(entries: MenuEntry<T>[]): MenuEntry<T>[
 export type ProjectDrawerMenuId =
   | 'new-window'
   | 'open-explorer'
-  | 'export-import'
+  | 'import'
+  | 'export'
   | 'clone'
   | 'rename'
   | 'make-scene-template'
@@ -38,6 +39,7 @@ export type ProjectDrawerMenuId =
   | 'delete';
 
 // 프로젝트 우클릭 순서(종전 가로 줄 순서 그대로). explorer = PC 만, inherited = 상속 적용이 있을 때만.
+// 2026-11-19 백업 메뉴 분할: 종전 「내보내기/불러오기」 한 줄 → 「불러오기」·「내보내기」 두 줄(같은 자리).
 export function projectDrawerMenu(opts: {
   explorer: boolean;
   inherited: boolean;
@@ -47,7 +49,8 @@ export function projectDrawerMenu(opts: {
     'new-window',
     ...(opts.explorer ? (['open-explorer'] as const) : []),
     S,
-    'export-import',
+    'import',
+    'export',
     'clone',
     'rename',
     S,

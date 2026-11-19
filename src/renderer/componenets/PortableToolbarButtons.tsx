@@ -240,17 +240,39 @@ export function portableToolbarButtons(
       () => appState.openNewWindow(),
       lab('new-window'),
     ),
-    // SessionSelect 로컬 맵에서 이관 — 홈(project)은 원본대로 icon-button(기본 크기),
-    // 씬으로 오면 씬 표준(배경형 18px+툴팁)으로 적응. 아이콘은 사전의 합성 아이콘(백업 본체+작은
-    // 내보내기 화살표, 2026-10-04) — 같은 메뉴를 여는 프로젝트 서랍·탐색 버튼과 같은 아이콘.
+    // 프로젝트 불러오기·내보내기(2026-11-19 백업 메뉴 분할 — 종전 「백업/내보내기」 한 버튼을 둘로).
+    // 홈(project)은 종전 backup-export 렌더 그대로 icon-button(기본 크기), 씬으로 오면 씬 표준(배경형 18px+툴팁)으로 적응.
+    // 아이콘은 사전의 합성 아이콘(백업 본체+작은 화살표 — 내보내기는 나가는, 불러오기는 들어오는 방향).
+    'backup-import':
+      variant === 'project' ? (
+        <Tooltip content="프로젝트 불러오기">
+          <button
+            className={`icon-button touch-hit relative mx-1${lab('backup-import')?.shown ? LABELED_BUTTON_CLASS : ''}`}
+            aria-label="프로젝트 불러오기"
+            onClick={() => {
+              appState.projectImportMenu();
+            }}
+          >
+            <ActionIcon id="backup-import" />
+            {lab('backup-import')?.node}
+          </button>
+        </Tooltip>
+      ) : (
+        iconButton(
+          variant,
+          '프로젝트 불러오기',
+          <ActionIcon id="backup-import" size={18} />,
+          () => appState.projectImportMenu(),
+        )
+      ),
     'backup-export':
       variant === 'project' ? (
-        <Tooltip content="프로젝트 백업/내보내기">
+        <Tooltip content="프로젝트 내보내기">
           <button
             className={`icon-button touch-hit relative mx-1${lab('backup-export')?.shown ? LABELED_BUTTON_CLASS : ''}`}
-            aria-label="프로젝트 백업/내보내기"
+            aria-label="프로젝트 내보내기"
             onClick={() => {
-              appState.projectBackupMenu();
+              appState.projectExportMenu();
             }}
           >
             <ActionIcon id="backup-export" />
@@ -260,9 +282,9 @@ export function portableToolbarButtons(
       ) : (
         iconButton(
           variant,
-          '프로젝트 백업/내보내기',
+          '프로젝트 내보내기',
           <ActionIcon id="backup-export" size={18} />,
-          () => appState.projectBackupMenu(),
+          () => appState.projectExportMenu(),
         )
       ),
     // SessionSelect 로컬 맵에서 이관 — 홈(project)은 원본대로 icon-button(무배경,

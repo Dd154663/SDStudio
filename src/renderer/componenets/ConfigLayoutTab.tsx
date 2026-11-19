@@ -6,7 +6,15 @@ import {
 } from '../models';
 import ToolbarLayoutEditor from './ToolbarLayoutEditor';
 import { projectToolbarRegistry, sceneToolbarRegistry, portableButtonMetas } from '../models/uiLayout';
-import { GLOBAL_ACTIONS, globalActionMeta, DEFAULT_QUICK_MENU } from '../models/globalActions';
+import {
+  GLOBAL_ACTIONS,
+  globalActionMeta,
+  DEFAULT_QUICK_MENU,
+  addToQuickMenu,
+  expandQuickMenu,
+  isQuickMenuRemovedMarker,
+  removeFromQuickMenu,
+} from '../models/globalActions';
 import { layoutTemplates } from '../models/layoutTemplates';
 import {
   assignCompanion,
@@ -40,7 +48,15 @@ const QuickMenuEditor = ({
   showButton: boolean;
   setShowButton: (v: boolean) => void;
 }) => {
-  const list = value ?? DEFAULT_QUICK_MENU;
+  // 따라가는 액션(backup-import)까지 보이는 그대로 편집한다 — 「!id」 표식(빼 둔 따라가는 액션)은 목록에 안 보이게 끝에 둔다.
+  const expanded = expandQuickMenu(value ?? DEFAULT_QUICK_MENU);
+  const markers = expanded.filter(isQuickMenuRemovedMarker);
+  const list = expanded.filter((id) => !isQuickMenuRemovedMarker(id));
+  const commit = (next: string[]) => {
+    const nextMarkers = next.filter(isQuickMenuRemovedMarker);
+    const ids = next.filter((id) => !isQuickMenuRemovedMarker(id));
+    onChange([...ids, ...nextMarkers]);
+  };
   const included = new Set(list);
   const candidates = GLOBAL_ACTIONS.filter((a) => {
     const m = globalActionMeta(a.id);
@@ -54,7 +70,7 @@ const QuickMenuEditor = ({
     const next = [...list];
     next.splice(idx, 1);
     next.splice(to, 0, id);
-    onChange(next);
+    commit([...next, ...markers]);
   };
   return (
     <div>
@@ -99,7 +115,7 @@ const QuickMenuEditor = ({
               <button
                 className="btn-ghost rounded px-1.5 py-0.5 text-xs"
                 aria-label="제거"
-                onClick={() => onChange(list.filter((x) => x !== id))}
+                onClick={() => commit(removeFromQuickMenu([...list, ...markers], id))}
               >
                 ✕
               </button>
@@ -114,7 +130,7 @@ const QuickMenuEditor = ({
             <button
               key={a.id}
               className="btn rounded-full border line-color px-2.5 py-1 text-xs text-default bg-[var(--c-input-bg)]"
-              onClick={() => onChange([...list, a.id])}
+              onClick={() => commit(addToQuickMenu([...list, ...markers], a.id))}
             >
               + {nameOf(a.id)}
             </button>

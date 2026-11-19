@@ -3,6 +3,7 @@ import {
   UiToolbarConfig,
 } from '../../main/config';
 import {
+  applyToolbarFollowers,
   groupToolbarIds,
   moveToolbarButton,
   TOOLBAR_GROUP_OTHER,
@@ -65,6 +66,8 @@ const ToolbarLayoutEditor = ({
             : ('default' as const);
     onChange(moveToolbarButton(registries, value, { id, toArea: home.area, slot }));
   };
+  // 표시 값 — 저장에 없는 따라가는 버튼(backup-import 등)은 짝의 값을 보인다(실제 렌더와 같은 해석, 저장 불변).
+  const shownButtons = applyToolbarFollowers(value)?.buttons;
 
   // PC 씬 툴바 그룹(2026-10-04 T5): 그룹이 있는 레지스트리는 PC 에서 그룹별 소제목으로 나눠 보여 준다
   // (표시만 — 저장 형식·배치 선택은 그대로). 모바일은 툴바에 그룹이 없으므로 종전 목록 그대로.
@@ -133,7 +136,7 @@ const ToolbarLayoutEditor = ({
                       </span>
                       <select
                         className="gray-input text-sm py-1 px-2 flex-none"
-                        value={value.buttons?.[b.id] ?? 'default'}
+                        value={shownButtons?.[b.id] ?? 'default'}
                         onChange={(e) =>
                           setPlacement(
                             b.id,

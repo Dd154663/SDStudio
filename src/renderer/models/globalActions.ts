@@ -10,8 +10,10 @@
 // 메서드의 세션 가드를 신뢰한다(이중 방어).
 import { appState } from './AppService';
 import {
+  insertToolbarFollowers,
   sceneToolbarRegistry,
   projectToolbarRegistry,
+  TOOLBAR_FOLLOWERS,
   ToolbarButtonMeta,
 } from './uiLayout';
 import { IMPORT_IMAGE_ACCEPT } from './imageFormats';
@@ -36,7 +38,9 @@ export const GLOBAL_ACTIONS: GlobalAction[] = [
   { id: 'piece-editor', run: () => appState.openPieceEditor(), available: hasSession },
   { id: 'find-replace', run: () => appState.openFindReplace(), available: hasSession },
   { id: 'batch-insert', run: () => appState.openBatchInsert(), available: hasSession },
-  { id: 'backup-export', run: () => appState.projectBackupMenu(), available: hasSession },
+  // 2026-11-19 백업 메뉴 분할 — 불러오기·내보내기 두 액션(저장된 구성의 backup-export 옆에 불러오기가 따라온다, expandQuickMenu)
+  { id: 'backup-import', run: () => appState.projectImportMenu(), available: hasSession },
+  { id: 'backup-export', run: () => appState.projectExportMenu(), available: hasSession },
   {
     id: 'empty-image-trash',
     run: () => appState.emptyProjectImageTrashWithConfirm(),
@@ -133,15 +137,45 @@ export const DEFAULT_QUICK_MENU: string[] = [
   'character-presets',
   'scene-template',
   'quick-export',
+  'backup-import',
   'backup-export',
 ];
 
-// 사용자 설정 → 표시할 액션 목록 해석(순수): 미등록 id 제거, (모바일) pcOnly 제거.
+// 따라가는 버튼(uiLayout TOOLBAR_FOLLOWERS, 2026-11-19 백업 메뉴 분할) — 저장된 구성에 새 액션(backup-import)이 없고
+// 짝(backup-export)이 있으면 짝 바로 앞에 있는 것으로 읽는다(가상 적용, 저장 불변 — 구버전은 모르는 id 를 건너뜀).
+// 사용자가 편집기에서 그 액션만 빼면 「!id」 표식을 남겨 다시 따라오지 않게 한다(표식도 구버전·해석 모두 건너뛰는 미등록 id).
+export const QUICK_MENU_REMOVED_PREFIX = '!';
+export const quickMenuRemovedMarker = (id: string) => QUICK_MENU_REMOVED_PREFIX + id;
+export const isQuickMenuRemovedMarker = (entry: string) =>
+  entry.startsWith(QUICK_MENU_REMOVED_PREFIX);
+
+export function expandQuickMenu(ids: readonly string[]): string[] {
+  return insertToolbarFollowers(ids, (id) => ids.includes(quickMenuRemovedMarker(id)));
+}
+
+// 편집기의 「빼기」(순수): 항목을 지우고, 따라가는 액션을 짝이 남은 채 뺐으면 표식을 남긴다. 입력은 expandQuickMenu 결과.
+export function removeFromQuickMenu(list: readonly string[], id: string): string[] {
+  const next = list.filter((x) => x !== id);
+  const follower = TOOLBAR_FOLLOWERS.find((f) => f.id === id);
+  const marker = quickMenuRemovedMarker(id);
+  if (follower && next.includes(follower.leader) && !next.includes(marker)) {
+    next.push(marker);
+  }
+  return next;
+}
+
+// 편집기의 「더하기」(순수): 빼 둔 표식을 지우고 끝에 붙인다. 입력은 expandQuickMenu 결과.
+export function addToQuickMenu(list: readonly string[], id: string): string[] {
+  const marker = quickMenuRemovedMarker(id);
+  return [...list.filter((x) => x !== id && x !== marker), id];
+}
+
+// 사용자 설정 → 표시할 액션 목록 해석(순수): 따라가는 액션 적용, 미등록 id(빼 둔 표식 포함) 제거, (모바일) pcOnly 제거.
 export function resolveQuickMenu(
   ids: string[] | undefined,
   isMobilePlatform: boolean,
 ): GlobalAction[] {
-  const list = ids ?? DEFAULT_QUICK_MENU;
+  const list = expandQuickMenu(ids ?? DEFAULT_QUICK_MENU);
   const out: GlobalAction[] = [];
   for (const id of list) {
     const action = globalActionById(id);

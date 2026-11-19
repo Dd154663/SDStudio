@@ -328,7 +328,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
   // 구성·배치는 TOOLBAR_VIEW_MAIN 의 'project' 영역 + resolveToolbarView 가 결정한다.
   // 프로젝트 버튼은 전부 portable(shared)로 승격됨 — 로컬 전용 노드는 없다.
   const toolbarButtons: Record<string, React.ReactNode> = {};
-  // portable 공유 버튼(add-session·delete-session·project-trash·backup-export·
+  // portable 공유 버튼(add-session·delete-session·project-trash·backup-import·backup-export·
   // character-presets·piece-editor) — 크로스 영역 렌더용.
   // 프로젝트 바는 모바일 아이콘 축약 개념이 없어 mobileIcon=false(현 렌더와 동일).
   // variant='project': 타 영역발 버튼도 프로젝트 바 표준(무배경 icon-button)으로 적응.

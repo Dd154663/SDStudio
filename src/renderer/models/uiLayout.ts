@@ -117,7 +117,11 @@ export const projectToolbarRegistry: ToolbarButtonMeta[] = [
   // 주 진입점으로 승격. 프로젝트 바 관례(전부 primary 인라인)를 따른다(§6 overflow
   // 기본 규칙은 "신규 버튼 증식" 차단용 — 이 건은 기존 버튼의 영역 이동+승격 확정).
   { id: 'scene-template', name: '씬 템플릿', label: '씬 템플릿', tier: 'primary', portable: true },
-  { id: 'backup-export', name: '프로젝트 백업/내보내기', label: '백업', tier: 'primary', portable: true },
+  // 2026-11-19 백업 메뉴 분할(사용자 결정): 종전 「백업/내보내기」 한 버튼(불러오기·내보내기·복제·이름·즐겨찾기 8개)을
+  // 불러오기·내보내기 두 버튼으로 나눴다. backup-export 는 id 그대로 뜻만 「내보내기」로 좁히고, backup-import 를 바로 앞에 둔다.
+  // 저장된 배치에 backup-import 가 없으면 backup-export 를 따라간다(TOOLBAR_FOLLOWERS — 아래 applyToolbarFollowers).
+  { id: 'backup-import', name: '프로젝트 불러오기', label: '불러오기', tier: 'primary', portable: true },
+  { id: 'backup-export', name: '프로젝트 내보내기', label: '내보내기', tier: 'primary', portable: true },
   { id: 'delete-session', name: '프로젝트 삭제', label: '삭제', tier: 'primary', portable: true },
   { id: 'project-trash', name: '프로젝트 휴지통', label: '휴지통', tier: 'primary', portable: true },
   { id: 'piece-editor', name: '프롬프트조각', label: '프롬프트조각', sceneLabel: '조각', tier: 'primary', portable: true },
@@ -132,6 +136,79 @@ export const projectToolbarRegistry: ToolbarButtonMeta[] = [
 // classic 은 이전 배치 100% 계약이라 제외).
 export const MOBILE_PROJECT_TOPROW_IDS = ['project-browser', 'project-trash'];
 
+// ── 따라가는 버튼(2026-11-19 백업 메뉴 분할) ────────────────────────────────
+// 한 버튼을 둘로 나눌 때 새로 생긴 쪽(id)은, 저장된 설정이 그 id 를 한 번도 적지 않았으면 짝(leader)을 따라간다:
+// leader 가 있는 목록(영역·inline/menu/hidden)마다 바로 앞에 끼우고, v1 buttons 값도 leader 것을 쓴다.
+// 그래서 사용자가 바꿔 둔 배치에서도 새 버튼이 숨거나 영역 끝으로 밀리지 않고 leader 옆(같은 상태)에 나온다.
+// 해석 단계의 가상 적용일 뿐 저장 파일은 고쳐 쓰지 않는다(구버전은 모르는 id 를 무시 — 롤백 안전).
+// 사용자가 버튼을 한 번이라도 옮기면 moveToolbarButton 이 전 영역 배열을 써서 그때부터는 저장된 자리가 우선이다.
+// 퀵 메뉴(globalActions)·동반 슬롯(companionSlots)도 같은 표를 쓴다.
+export const TOOLBAR_FOLLOWERS: readonly { id: string; leader: string }[] = [
+  { id: 'backup-import', leader: 'backup-export' },
+];
+
+// 목록 하나에 따라가기 적용: follower 가 목록에 없고 leader 가 있으면 leader 바로 앞에 끼운다(새 배열).
+// skip(follower) 이 참이면 그 follower 는 건너뛴다(호출부가 「이미 다른 곳에 명시됨·빼 두었음」을 판정).
+export function insertToolbarFollowers(
+  list: readonly string[],
+  skip?: (followerId: string) => boolean,
+): string[] {
+  let out = [...list];
+  for (const { id, leader } of TOOLBAR_FOLLOWERS) {
+    if (skip?.(id)) continue;
+    if (out.includes(id)) continue;
+    const at = out.indexOf(leader);
+    if (at === -1) continue;
+    out = [...out.slice(0, at), id, ...out.slice(at)];
+  }
+  return out;
+}
+
+// 툴바 설정(uiToolbar)에 따라가기 적용(순수, 원본 불변). follower 가 areas 배열 어디에도·buttons 에도 없을 때만.
+// classic 은 전 버튼 인라인이라 대상 아님.
+export function applyToolbarFollowers(
+  overrides: UiToolbarConfig | undefined,
+): UiToolbarConfig | undefined {
+  if (!overrides || overrides.classic) return overrides;
+  const mentioned = (id: string): boolean => {
+    if (overrides.buttons?.[id] !== undefined) return true;
+    for (const layout of Object.values(overrides.areas ?? {})) {
+      if (
+        layout?.inline?.includes(id) ||
+        layout?.menu?.includes(id) ||
+        layout?.hidden?.includes(id)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+  if (TOOLBAR_FOLLOWERS.every(({ id }) => mentioned(id))) return overrides;
+  const skip = mentioned;
+  let areas = overrides.areas;
+  if (areas) {
+    const next: Record<string, UiToolbarAreaLayout> = {};
+    for (const [area, layout] of Object.entries(areas)) {
+      const fill = (ids: string[] | undefined) =>
+        ids === undefined ? undefined : insertToolbarFollowers(ids, skip);
+      next[area] = {
+        ...layout,
+        ...(layout?.inline !== undefined ? { inline: fill(layout.inline) } : {}),
+        ...(layout?.menu !== undefined ? { menu: fill(layout.menu) } : {}),
+        ...(layout?.hidden !== undefined ? { hidden: fill(layout.hidden) } : {}),
+      };
+    }
+    areas = next;
+  }
+  let buttons = overrides.buttons;
+  for (const { id, leader } of TOOLBAR_FOLLOWERS) {
+    if (skip(id)) continue;
+    const lead = buttons?.[leader];
+    if (lead !== undefined) buttons = { ...buttons, [id]: lead };
+  }
+  return { ...overrides, areas, buttons };
+}
+
 // 레지스트리 + 사용자 설정 → 실제 배치를 해석하는 단일 출처(순수 함수).
 // - classic=true: 계층화 이전과 100% 동일 렌더 — 전 버튼을 레지스트리 순서로 인라인,
 //   buttons 오버라이드 무시. pcOnly 도 필터하지 않는다(기존 렌더는 pcOnly id 도 map 하고
@@ -142,9 +219,11 @@ export const MOBILE_PROJECT_TOPROW_IDS = ['project-browser', 'project-trash'];
 //   소스오브트루스.
 export function resolveToolbar(
   registry: ToolbarButtonMeta[],
-  overrides: UiToolbarConfig | undefined,
+  savedOverrides: UiToolbarConfig | undefined,
   isMobile: boolean,
 ): { inline: string[]; menu: string[] } {
+  // 따라가는 버튼(TOOLBAR_FOLLOWERS) — 저장에 없는 새 버튼은 짝의 v1 배치를 따른다(레지스트리에서 짝 바로 앞).
+  const overrides = applyToolbarFollowers(savedOverrides);
   if (overrides?.classic) {
     return { inline: registry.map((b) => b.id), menu: [] };
   }
@@ -328,9 +407,11 @@ export function resolveToolbarView(
 
 function resolveToolbarViewBase(
   registries: ToolbarRegistryEntry[],
-  overrides: UiToolbarConfig | undefined,
+  savedOverrides: UiToolbarConfig | undefined,
   isMobile: boolean,
 ): ToolbarAreaResolved[] {
+  // 따라가는 버튼(TOOLBAR_FOLLOWERS) — 저장에 없는 새 버튼을 짝이 있는 목록마다 바로 앞에(가상 적용, 저장 불변).
+  const overrides = applyToolbarFollowers(savedOverrides);
   // classic 은 크로스 무시하고 각자 홈에 전부 inline(v1 위임과 동일).
   if (overrides?.classic) {
     return registries.map(({ area, registry }) => {
@@ -458,8 +539,10 @@ export interface ToolbarMove {
 // pcOnly 도 포함(저장 데이터는 항상 PC 기준 전체 — 모바일 필터는 렌더 시점에만).
 function canonicalizeView(
   registries: ToolbarRegistryEntry[],
-  overrides: UiToolbarConfig | undefined,
+  savedOverrides: UiToolbarConfig | undefined,
 ): Map<string, { inline: string[]; menu: string[]; hidden: string[] }> {
+  // 따라가는 버튼 — 화면에 보이던 자리 그대로 전개해야 이동 뒤에도 새 버튼이 짝 옆에 남는다(이때부터 저장에 명시됨).
+  const overrides = applyToolbarFollowers(savedOverrides);
   // id → 홈 영역·meta(View 전역, 먼저 등장한 레지스트리가 홈).
   const homeByeId = new Map<string, string>();
   const metaByeId = new Map<string, ToolbarButtonMeta>();

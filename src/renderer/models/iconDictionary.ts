@@ -43,6 +43,7 @@ import {
   FaQuestion,
   FaRegCalendarPlus,
   FaRegCalendarTimes,
+  FaReply,
   FaSearch,
   FaShare,
   FaSlidersH,
@@ -109,8 +110,10 @@ function composeBadgeIcon(
   };
 }
 
-// 백업(FaFileArchive) + 55% 내보내기 화살표(FaShare) — 프로젝트 바 통합 버튼.
+// 백업(FaFileArchive) + 55% 내보내기 화살표(FaShare, 나가는 방향) — 프로젝트 내보내기(폴더 「내보내기/불러오기」 줄도 같은 아이콘).
 export const BackupExportIcon = composeBadgeIcon(FaFileArchive, FaShare, 0.55, 0.3, 0.15);
+// 백업(FaFileArchive) + 55% 불러오기 화살표(FaReply = FaShare 의 좌우 반대, 들어오는 방향) — 프로젝트 불러오기(2026-11-19 백업 메뉴 분할).
+export const BackupImportIcon = composeBadgeIcon(FaFileArchive, FaReply, 0.55, 0.3, 0.15);
 // 북마크(FaBookmark) + 58% 이동 화살표(FaShare) — 북마크된 씬으로 이동(지정·표시 bookmark 와 구분).
 export const BookmarkJumpIcon = composeBadgeIcon(FaBookmark, FaShare, 0.58, 0.32, 0.18);
 
@@ -145,7 +148,8 @@ export const ICON_DICTIONARY = {
   'add-session': FaPlus, // 신규 프로젝트
   'character-presets': FaUsers, // 캐릭터 프리셋 관리(여럿)
   'scene-template': FaFilm, // 씬 템플릿
-  'backup-export': BackupExportIcon, // 백업(압축)+내보내기 화살표 합성 — 프로젝트 바 통합 버튼
+  'backup-import': BackupImportIcon, // 프로젝트 불러오기 — 백업(압축)+들어오는 화살표 합성(backup-export 와 짝)
+  'backup-export': BackupExportIcon, // 프로젝트 내보내기 — 백업(압축)+나가는 화살표 합성(폴더 「내보내기/불러오기」 줄도 이 아이콘)
   'delete-session': FaFolderMinus, // 프로젝트(폴더) 삭제 — 일괄 삭제(FaTrash)와 한 행 혼동 방지로 구분
   'project-trash': FaTrashRestore, // 프로젝트 휴지통 열기
   'piece-editor': FaPuzzlePiece, // 프롬프트조각(자동완성의 조각 표시 포함)
@@ -204,6 +208,6 @@ export const EXCLUSIVE_ICONS: {
   { icon: FaCog, keys: ['preferences'], meaning: '환경설정' },
   { icon: FaHeart, keys: ['artist-favorite'], meaning: '작가 즐겨찾기' },
   // 단독 FaShare 는 share 전용 — 합성 아이콘 안의 작은 화살표만 예외:
-  // backup-export(BackupExportIcon)·bookmark-jump(BookmarkJumpIcon). 합성은 사전 값이 별도 컴포넌트라 이 규칙에 걸리지 않는다.
+  // backup-export(BackupExportIcon)·bookmark-jump(BookmarkJumpIcon). (backup-import 의 FaReply 는 다른 모양이라 해당 없음.) 합성은 사전 값이 별도 컴포넌트라 이 규칙에 걸리지 않는다.
   { icon: FaShare, keys: ['share'], meaning: '모바일 공유' },
 ];

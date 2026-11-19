@@ -859,7 +859,8 @@ const ProjectDrawer = observer(() => {
       type: 'select',
       text: `프로젝트 "${n}"`,
       items: [
-        { text: '📤 내보내기/불러오기', value: 'export' },
+        { text: '📥 불러오기', value: 'import' },
+        { text: '📤 내보내기', value: 'export' },
         { text: '📋 프로젝트 복제', value: 'clone' },
         { text: '🧩 씬 템플릿으로 만들기 (복제)', value: 'scene-template' },
         { text: '📥 템플릿 적용', value: 'reapply' },
@@ -872,7 +873,8 @@ const ProjectDrawer = observer(() => {
       ],
     });
     if (!v) return;
-    if (v === 'export') handleProjectExportImport(n);
+    if (v === 'import') handleProjectImport(n);
+    else if (v === 'export') handleProjectExport(n);
     else if (v === 'clone') handleProjectClone(n);
     else if (v === 'scene-template') handleProjectSceneTemplateCreate(n);
     else if (v === 'reapply') setReapplyFor(n);
@@ -1387,15 +1389,21 @@ const ProjectDrawer = observer(() => {
   });
 
   // 프로젝트 우클릭 툴바 핸들러
-  const handleProjectExportImport = async (name: string) => {
+  // 불러오기·내보내기(2026-11-19 백업 메뉴 분할): 그 프로젝트를 연 뒤 하단 바 버튼과 같은 메뉴를 띄운다.
+  // 불러오기 중 「파일 불러오기」는 연 프로젝트 안으로 씬·이미지 설정을 들일 수 있어(새 프로젝트로도 가능) 두 줄로 나눴다.
+  const openProjectThen = async (name: string, menu: () => void) => {
     const sess = await sessionService.get(name);
     if (!sess) {
       appState.pushMessage('프로젝트를 불러올 수 없습니다.');
       return;
     }
     appState.curSession = sess;
-    appState.projectBackupMenu();
+    menu();
   };
+  const handleProjectImport = (name: string) =>
+    openProjectThen(name, () => appState.projectImportMenu());
+  const handleProjectExport = (name: string) =>
+    openProjectThen(name, () => appState.projectExportMenu());
 
   const handleProjectClone = async (name: string) => {
     const sess = await sessionService.get(name);
@@ -2330,10 +2338,15 @@ const ProjectDrawer = observer(() => {
                     label: '파일 탐색기에서 열기',
                     onSelect: () => handleProjectOpenInExplorer(name),
                   },
-                  'export-import': {
+                  import: {
+                    icon: <ActionIcon id="backup-import" size={14} />,
+                    label: '불러오기',
+                    onSelect: () => handleProjectImport(name),
+                  },
+                  export: {
                     icon: <ActionIcon id="backup-export" size={14} />,
-                    label: '내보내기/불러오기',
-                    onSelect: () => handleProjectExportImport(name),
+                    label: '내보내기',
+                    onSelect: () => handleProjectExport(name),
                   },
                   clone: {
                     icon: <ActionIcon id="duplicate" size={14} />,

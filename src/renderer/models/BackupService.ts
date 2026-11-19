@@ -130,7 +130,6 @@ import {
   PROJECT_TEMPLATE_BACKUP,
 } from './projectTemplateBackup';
 import { beginPresetListRecord } from './presetUndo';
-import { toggleFavoriteRecorded } from './projectFolderUndo';
 import { UNDO_TEXT } from './undoService';
 
 // 전체 백업에 담는 전역 설정 파일. (백업엔 전부 담되, 설정 병합 복원 시
@@ -179,10 +178,13 @@ export interface LibraryImportOptions {
 type FolderSceneNames = { scene: string[]; inpaint: string[] };
 
 export class BackupService {
-  projectBackupMenu() {
+  // 프로젝트 불러오기·내보내기 메뉴(2026-11-19 백업 메뉴 분할 — 종전 projectBackupMenu 한 창의 8개를 둘로 나눔).
+  // 복제·이름 수정·즐겨찾기는 이 메뉴에서 뺐다(프로젝트 서랍의 우클릭 목록·⋮ 메뉴·행의 별이 같은 일을 한다).
+  // 항목 문구·값·동작 코드는 종전 그대로 옮겼다.
+  projectImportMenu() {
     appState.pushDialog({
       type: 'select',
-      text: '메뉴를 선택해주세요',
+      text: '불러올 것을 선택해주세요',
       items: [
         {
           text: '파일 불러오기',
@@ -196,6 +198,43 @@ export class BackupService {
           text: '📦 폴더 백업 불러오기',
           value: 'loadFolder',
         },
+      ],
+      callback: async (value) => {
+        if (value === 'load') {
+          const file = await getFirstFile();
+          appState.handleFile(file as any);
+        } else if (value === 'loadFolder') {
+          await this.folderBackupImport();
+        } else if (value === 'loadDeep') {
+          // 프로젝트 백업 불러오기(드라이브 동기화 ⑤): 파일 고르기 → 이름 확인/정책 선택 →
+          // (덮어쓰기면 확인 2회 → 임시 백업·휴지통 이관 절차) → 완료 안내.
+          // 드래그로 들어온 tar(handleTarImport)와 같은 흐름을 쓴다.
+          // PC 는 드라이브 동기화 폴더가 있으면 그 폴더에서, tar 만 보이게 연다(모바일 무시).
+          // Google 드라이브에 연결돼 있으면(PC) 먼저 출처를 묻는다(드라이브 API ③) — 드라이브면
+          // 백업 관리 창에서 골라 받은 tar 가 같은 handleTarImport 로 들어간다.
+          const source = await chooseImportSource('project');
+          if (source === 'cancelled') return;
+          if (source === 'drive') {
+            await importFromDrive('project');
+            return;
+          }
+          const syncFolder = await getSyncFolder();
+          const tarPath = await backend.selectFile({
+            ...(syncFolder ? { defaultPath: syncFolder } : {}),
+            filters: [{ name: '프로젝트 백업', extensions: ['tar'] }],
+          });
+          if (!tarPath) return;
+          await this.handleTarImport(tarPath);
+        }
+      },
+    });
+  }
+
+  projectExportMenu() {
+    appState.pushDialog({
+      type: 'select',
+      text: '내보낼 것을 선택해주세요',
+      items: [
         {
           text: '프로젝트 파일 내보내기 (이미지 미포함)',
           value: 'save',
@@ -204,22 +243,7 @@ export class BackupService {
           text: '프로젝트 백업 내보내기 (이미지 포함)',
           value: 'saveDeep',
         },
-        {
-          text: '📑 프로젝트 복제',
-          value: 'duplicate',
-        },
-        {
-          text: '✏️ 프로젝트 이름 수정',
-          value: 'rename',
-        },
-        {
-          text: appState.curSession && sessionService.isFavorite(appState.curSession.name)
-            ? '⭐ 즐겨찾기 해제'
-            : '⭐ 즐겨찾기 지정',
-          value: 'toggleFavorite',
-        },
       ],
-
       callback: async (value) => {
         if (value === 'save') {
           if (appState.curSession) {
@@ -265,69 +289,6 @@ export class BackupService {
             });
             appState.setProgressDialog(undefined);
           }
-        } else if (value === 'load') {
-          const file = await getFirstFile();
-          appState.handleFile(file as any);
-        } else if (value === 'loadFolder') {
-          await this.folderBackupImport();
-        } else if (value === 'duplicate') {
-          await this.duplicateProject();
-        } else if (value === 'rename') {
-          if (!appState.curSession) {
-            appState.pushMessage('프로젝트를 먼저 선택해주세요');
-            return;
-          }
-          // 현재 이름을 채워 연다 — 바꾸지 않고 확인하면 아무것도 하지 않는다(D2)
-          const session = appState.curSession;
-          const inputValue = await promptName({
-            title: '새로운 프로젝트 이름을 입력해주세요',
-            current: session.name,
-            ...projectNameRules(sessionService),
-          });
-          if (!inputValue) return;
-          // 창이 떠 있는 동안 다른 프로젝트로 바뀌었으면 적용하지 않는다
-          if (appState.curSession !== session) return;
-          const oldName = session.name;
-          try {
-            await sessionService.renameProject(oldName, inputValue);
-          } catch (e: any) {
-            appState.pushMessage(
-              nameErrorMessage(e, 'project', inputValue, '프로젝트 이름변경에 실패했습니다.'),
-              'error',
-            );
-            return;
-          }
-          session.name = inputValue;
-          appState.pushMessage('프로젝트 이름이 변경되었습니다.');
-        } else if (value === 'toggleFavorite') {
-          if (!appState.curSession) {
-            appState.pushMessage('프로젝트를 먼저 선택해주세요');
-            return;
-          }
-          // 되돌리기 전역 스택에 기록(2차 묶음 2 P1-a)
-          await toggleFavoriteRecorded(appState.curSession.name);
-          const isFav = sessionService.isFavorite(appState.curSession.name);
-          appState.pushMessage(isFav ? '즐겨찾기에 추가되었습니다' : '즐겨찾기가 해제되었습니다');
-        } else {
-          // 프로젝트 백업 불러오기(드라이브 동기화 ⑤): 파일 고르기 → 이름 확인/정책 선택 →
-          // (덮어쓰기면 확인 2회 → 임시 백업·휴지통 이관 절차) → 완료 안내.
-          // 드래그로 들어온 tar(handleTarImport)와 같은 흐름을 쓴다.
-          // PC 는 드라이브 동기화 폴더가 있으면 그 폴더에서, tar 만 보이게 연다(모바일 무시).
-          // Google 드라이브에 연결돼 있으면(PC) 먼저 출처를 묻는다(드라이브 API ③) — 드라이브면
-          // 백업 관리 창에서 골라 받은 tar 가 같은 handleTarImport 로 들어간다.
-          const source = await chooseImportSource('project');
-          if (source === 'cancelled') return;
-          if (source === 'drive') {
-            await importFromDrive('project');
-            return;
-          }
-          const syncFolder = await getSyncFolder();
-          const tarPath = await backend.selectFile({
-            ...(syncFolder ? { defaultPath: syncFolder } : {}),
-            filters: [{ name: '프로젝트 백업', extensions: ['tar'] }],
-          });
-          if (!tarPath) return;
-          await this.handleTarImport(tarPath);
         }
       },
     });

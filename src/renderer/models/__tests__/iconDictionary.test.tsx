@@ -12,11 +12,13 @@ import {
   FaHeart,
   FaPaintBrush,
   FaPlus,
+  FaReply,
   FaShare,
   FaStar,
 } from 'react-icons/fa';
 import {
   BackupExportIcon,
+  BackupImportIcon,
   BookmarkJumpIcon,
   EXCLUSIVE_ICONS,
   ICON_DICTIONARY,
@@ -91,6 +93,22 @@ describe('아이콘 의미 사전', () => {
     // 크기 미지정이면 em 기준
     const { container: c2 } = render(<BackupExportIcon />);
     expect(c2.querySelectorAll('svg')[1].getAttribute('width')).toBe('0.55em');
+  });
+
+  test('backup-import 는 같은 백업 본체에 들어오는 화살표(FaReply) 합성 — 내보내기와 다른 아이콘', () => {
+    expect(iconOf('backup-import')).toBe(BackupImportIcon);
+    expect(iconOf('backup-import')).not.toBe(BackupExportIcon);
+    expect(keysUsing(FaReply)).toEqual([]); // 단독 FaReply 키는 없다(합성 안에만)
+    const { container } = render(<BackupImportIcon size={18} />);
+    const svgs = container.firstElementChild!.querySelectorAll('svg');
+    expect(svgs).toHaveLength(2);
+    expect(svgs[0].getAttribute('width')).toBe('18');
+    expect(svgs[1].getAttribute('width')).toBe('10');
+    // 본체는 내보내기와 같은 FaFileArchive, 덧붙임만 다르다(그린 모양 비교)
+    const { container: exp } = render(<BackupExportIcon size={18} />);
+    const expSvgs = exp.firstElementChild!.querySelectorAll('svg');
+    expect(svgs[0].innerHTML).toBe(expSvgs[0].innerHTML);
+    expect(svgs[1].innerHTML).not.toBe(expSvgs[1].innerHTML);
   });
 
   test('bookmark-jump 는 합성 아이콘(책갈피 본체+58% 화살표) — 지정·표시 bookmark 와 별개', () => {

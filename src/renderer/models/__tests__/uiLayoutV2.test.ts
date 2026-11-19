@@ -64,7 +64,7 @@ describe('resolveToolbarView — areas 순서/폴백/필터', () => {
     const view = resolveToolbarView(registries, ov, false);
     const project = view.find((v) => v.area === PROJECT)!;
     // 명시한 앞 3개는 지정 순서, 나머지 미배치(project-browser, scene-template,
-    // backup-export, project-trash, new-window)는 tier 폴백으로 레지스트리 순서 append.
+    // backup-import, backup-export, project-trash, new-window)는 tier 폴백으로 레지스트리 순서 append.
     // (scene-template = 씬 툴바→프로젝트 바 이동, 씬 템플릿 개편 2026-07-18)
     expect(project.inline).toEqual([
       'piece-editor',
@@ -72,6 +72,7 @@ describe('resolveToolbarView — areas 순서/폴백/필터', () => {
       'delete-session',
       'project-browser',
       'scene-template',
+      'backup-import',
       'backup-export',
       'project-trash',
       'new-window',

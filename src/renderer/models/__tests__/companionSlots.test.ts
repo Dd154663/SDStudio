@@ -83,12 +83,12 @@ describe('resolveCompanionButtons — 규칙 단위 검증', () => {
   });
 
   it('③ 결과는 slots 배열 순서를 따르되 풀 밖은 걸러냄', () => {
-    // backup-export·piece-editor 는 portable 이라 순서대로 채택, not-allowed 는 버림.
+    // project-trash·piece-editor 는 portable 이라 순서대로 채택, not-allowed 는 버림.
     expect(
       resolveCompanionButtons('vibes', {
-        vibes: ['piece-editor', 'not-allowed', 'backup-export'],
+        vibes: ['piece-editor', 'not-allowed', 'project-trash'],
       }),
-    ).toEqual(['piece-editor', 'backup-export']);
+    ).toEqual(['piece-editor', 'project-trash']);
   });
 
   it('portable 전체가 어느 호스트에서도 허용 풀 — 풀 목록과 일치', () => {
@@ -118,11 +118,11 @@ describe('유일성(first-host-wins) — 한 버튼은 최대 한 호스트', ()
   it('companionAssignedIds — 전 호스트 배정 합집합(유일성·풀 반영)', () => {
     const slots = {
       characterPrompts: ['character-presets', 'add-scene'], // add-scene=풀 밖
-      vibes: ['backup-export', 'character-presets'], // character-presets 는 앞 호스트가 소유
+      vibes: ['project-trash', 'character-presets'], // character-presets 는 앞 호스트가 소유
       characterReferences: ['piece-editor'],
     };
     expect(companionAssignedIds(slots)).toEqual(
-      new Set(['character-presets', 'backup-export', 'piece-editor']),
+      new Set(['character-presets', 'project-trash', 'piece-editor']),
     );
   });
 
@@ -149,11 +149,11 @@ describe('assignCompanion — 라스트 윈(이동 의미론)', () => {
 
   it('같은 호스트의 다른 버튼과 공존(끝에 추가)', () => {
     const after = assignCompanion(
-      { vibes: ['backup-export'] },
+      { vibes: ['project-trash'] },
       'vibes',
       'piece-editor',
     );
-    expect(after).toEqual({ vibes: ['backup-export', 'piece-editor'] });
+    expect(after).toEqual({ vibes: ['project-trash', 'piece-editor'] });
   });
 
   it('빈 배열이 된 호스트는 정리(빈 객체 의미 유지)', () => {
@@ -170,75 +170,75 @@ describe('assignCompanion — 라스트 윈(이동 의미론)', () => {
 describe('assignCompanionAt — 위치 지정 배정(E4 드래그 순서 조정)', () => {
   it('anchor 없음 → 끝에 추가(assignCompanion 과 동일)', () => {
     const after = assignCompanionAt(
-      { vibes: ['backup-export'] },
+      { vibes: ['project-trash'] },
       'vibes',
       'piece-editor',
     );
-    expect(after).toEqual({ vibes: ['backup-export', 'piece-editor'] });
+    expect(after).toEqual({ vibes: ['project-trash', 'piece-editor'] });
   });
 
   it('같은 호스트 내 순서 조정 — 대상 버튼 앞(before)에 삽입', () => {
-    // piece-editor 를 backup-export 앞으로.
+    // piece-editor 를 project-trash 앞으로.
     const after = assignCompanionAt(
-      { vibes: ['backup-export', 'piece-editor'] },
+      { vibes: ['project-trash', 'piece-editor'] },
       'vibes',
       'piece-editor',
-      { id: 'backup-export', side: 'before' },
+      { id: 'project-trash', side: 'before' },
     );
-    expect(after).toEqual({ vibes: ['piece-editor', 'backup-export'] });
+    expect(after).toEqual({ vibes: ['piece-editor', 'project-trash'] });
   });
 
   it('같은 호스트 내 순서 조정 — 대상 버튼 뒤(after)에 삽입', () => {
     // character-presets 를 piece-editor 뒤로(맨 끝).
     const after = assignCompanionAt(
-      { vibes: ['character-presets', 'backup-export', 'piece-editor'] },
+      { vibes: ['character-presets', 'project-trash', 'piece-editor'] },
       'vibes',
       'character-presets',
       { id: 'piece-editor', side: 'after' },
     );
     expect(after).toEqual({
-      vibes: ['backup-export', 'piece-editor', 'character-presets'],
+      vibes: ['project-trash', 'piece-editor', 'character-presets'],
     });
   });
 
   it('다른 호스트로 위치 지정 재배정 — 이전 호스트 제거 + 대상 위치 삽입', () => {
     const before = {
       characterPrompts: ['character-presets'],
-      vibes: ['backup-export', 'piece-editor'],
+      vibes: ['project-trash', 'piece-editor'],
     };
     const after = assignCompanionAt(before, 'vibes', 'character-presets', {
       id: 'piece-editor',
       side: 'before',
     });
     expect(after).toEqual({
-      vibes: ['backup-export', 'character-presets', 'piece-editor'],
+      vibes: ['project-trash', 'character-presets', 'piece-editor'],
     });
     // 원본 불변.
     expect(before).toEqual({
       characterPrompts: ['character-presets'],
-      vibes: ['backup-export', 'piece-editor'],
+      vibes: ['project-trash', 'piece-editor'],
     });
   });
 
   it('anchor 가 대상 호스트에 없으면 끝에 붙인다', () => {
     const after = assignCompanionAt(
-      { vibes: ['backup-export'] },
+      { vibes: ['project-trash'] },
       'vibes',
       'piece-editor',
       { id: 'character-presets', side: 'before' },
     );
-    expect(after).toEqual({ vibes: ['backup-export', 'piece-editor'] });
+    expect(after).toEqual({ vibes: ['project-trash', 'piece-editor'] });
   });
 
   it('anchor 가 자기 자신이면 무시하고 끝(제자리 근처)에', () => {
     const after = assignCompanionAt(
-      { vibes: ['character-presets', 'backup-export'] },
+      { vibes: ['character-presets', 'project-trash'] },
       'vibes',
       'character-presets',
       { id: 'character-presets', side: 'before' },
     );
     // 제거 후 끝에 재삽입 → 순서만 뒤로.
-    expect(after).toEqual({ vibes: ['backup-export', 'character-presets'] });
+    expect(after).toEqual({ vibes: ['project-trash', 'character-presets'] });
   });
 });
 
@@ -255,15 +255,15 @@ describe('removeCompanion — 전 호스트에서 제거', () => {
     const after = removeCompanion(
       {
         characterPrompts: ['character-presets'],
-        vibes: ['character-presets', 'backup-export'],
+        vibes: ['character-presets', 'project-trash'],
       },
       'character-presets',
     );
-    expect(after).toEqual({ vibes: ['backup-export'] });
+    expect(after).toEqual({ vibes: ['project-trash'] });
   });
 
   it('없는 버튼 제거는 무해(그대로)', () => {
-    const after = removeCompanion({ vibes: ['backup-export'] }, 'character-presets');
-    expect(after).toEqual({ vibes: ['backup-export'] });
+    const after = removeCompanion({ vibes: ['project-trash'] }, 'character-presets');
+    expect(after).toEqual({ vibes: ['project-trash'] });
   });
 });
