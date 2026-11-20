@@ -12,7 +12,8 @@ import {
 } from '../models';
 import { appState } from '../models/AppService';
 import { deleteConfirmText } from '../models/deleteFlowRules';
-import HelpIcon from './HelpIcon';
+import { HelpPanelButton } from './HelpPanel';
+import { FOLDER_TEMPLATE_HELP, TEMPLATE_BADGE_HELP } from '../models/helpPanelTexts';
 import { setTemplateBadgeColorRecorded } from '../models/globalLibraryUndo';
 import { previewReapply, reapplyTemplateToProject, reapplyUndoState } from '../models/templateReapplyFlow';
 import { REAPPLY_TEXT, reapplyPreviewLines } from '../models/templateReapplyPreview';
@@ -266,13 +267,8 @@ export const FolderTemplateModal = observer(
             >
               <span className="text-sm text-muted flex-none inline-flex items-center gap-1.5">
                 배지 색 (♚/♟)
-                <HelpIcon
-                  content={
-                    '♚ = 이 폴더의 기본 템플릿(부모)\n' +
-                    '♟ = 그 템플릿을 상속받은 프로젝트\n' +
-                    '배지 색으로 어느 부모의 자식인지 구분합니다.'
-                  }
-                />
+                {/* 2026-11-20 그룹 1-b: 기호 설명 툴팁 → 「기호 칩 + 뜻」 짧은 패널(문구 = models/helpPanelTexts.ts) */}
+                <HelpPanelButton data={TEMPLATE_BADGE_HELP} width={320} exampleWidth={28} />
               </span>
               {FOLDER_COLORS.map((c) => {
                 const selected = entry.badgeColor === c;
@@ -330,12 +326,8 @@ export const FolderTemplateModal = observer(
         title={
           <span className="inline-flex items-center gap-1.5">
             {`폴더 기본 템플릿 — ${folder}`}
-            <HelpIcon
-              content={
-                '이 폴더(하위 폴더 포함)에서 새 프로젝트를 만들 때 아래 구성이 자동 적용됩니다.\n' +
-                '전역 템플릿을 복사해 온 뒤 이 폴더 전용으로 세부 조정할 수 있고(전역 원본에는 영향 없음), 아무것도 세팅하지 않고 닫으면 지정이 해제됩니다.'
-              }
-            />
+            {/* 2026-11-20 그룹 1-b: 2줄 툴팁 → 누르면 열리는 짧은 패널(문구 = models/helpPanelTexts.ts) */}
+            <HelpPanelButton data={FOLDER_TEMPLATE_HELP} width={400} />
           </span>
         }
         size="l"

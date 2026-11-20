@@ -48,7 +48,8 @@ import {
   GlobalCharacterPresetCard,
 } from './CharacterPresetCards';
 import { CharacterPresetInnerEditor } from './CharacterPresetInnerEditor';
-import HelpIcon from './HelpIcon';
+import { HelpPanelButton } from './HelpPanel';
+import { CHARACTER_PRESET_HELP } from '../models/helpPanelTexts';
 import { ListDragLockedHint, ListSearchBar } from './ListSearchBar';
 import { hasQuery, matchesQuery } from '../models/listSearch';
 import { deleteConfirmText } from '../models/deleteFlowRules';
@@ -1352,13 +1353,8 @@ export function useCharacterPresetPanel({
         </Tooltip>
       )}
       {/* 도움말은 행 맨 끝 고정 (버튼 사이 배치가 어색하다는 피드백) */}
-      <HelpIcon
-        content={
-          '캐릭터 프리셋은 캐릭터 프롬프트, 네거티브, 바이브, 레퍼런스의 묶음입니다.\n' +
-          '카드 버튼으로 현재 프로젝트에 적용/해제합니다 (여러 개 일괄 적용 가능).\n' +
-          '글로벌 프리셋은 모든 프로젝트에서 공유되며, 적용하면 현재 프로젝트로 사본이 들어갑니다.'
-        }
-      />
+      {/* 2026-11-20 그룹 1-b: 3줄 툴팁 → 누르면 열리는 짧은 패널(문구 = models/helpPanelTexts.ts) */}
+      <HelpPanelButton data={CHARACTER_PRESET_HELP} width={380} />
     </>
   );
 

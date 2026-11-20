@@ -10,7 +10,8 @@ import {
 import { renameScene } from '../models/SessionService';
 import ModalOverlay from './ModalOverlay';
 import { SceneSelectAside, useSceneSelection, variantKey } from './SceneSelectAside';
-import HelpIcon from './HelpIcon';
+import { HelpPanelButton } from './HelpPanel';
+import { FIND_REPLACE_HELP } from '../models/helpPanelTexts';
 import { FaSearch, FaExchangeAlt } from 'react-icons/fa';
 import type { InpaintScene } from '../models/types';
 import { variantComboMode } from '../models/comboMode';
@@ -333,15 +334,19 @@ interface PanelParts {
 
 const CLOSE_BUTTON = 'px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors';
 
+// 창 제목 + 창 전체 도움말 패널(2026-11-20 그룹 1-b — 종전 FIND_HELP 툴팁, 문구 = models/helpPanelTexts.ts).
+// 도움말이 창 전체를 설명하므로 제목 옆에 둔다(템플릿 관리·폴더 기본 템플릿 창과 같은 자리).
+// 「공백 검색」 옆에 있으면 그 옵션만의 도움말로 읽힌다(사용자 2026-11-20 실기 지적).
+const FIND_TITLE = (
+  <span className="inline-flex items-center gap-1.5">
+    찾기 및 변환
+    <HelpPanelButton data={FIND_REPLACE_HELP} exampleWidth={200} />
+  </span>
+);
+
 /* ═══════════════════════════════════════════════════════════════════
    찾기/변환 — 본문·바닥줄·상태 문구를 함께 돌려주는 훅
    ═══════════════════════════════════════════════════════════════════ */
-const FIND_HELP =
-  '선택한 씬의 텍스트를 검색하고 일괄 변환합니다.\n' +
-  '캐릭터 프리셋·글로벌 프리셋은 씬 선택과 무관하며, 해당 검색 범위를 끄면 제외됩니다.\n' +
-  "'씬 이름'/'프로젝트 이름' 범위의 변환은 실제 이름변경으로 실행되며, 동명 충돌 항목은 건너뜁니다.\n" +
-  '공백 검색: 검색어의 공백을 그대로 사용합니다(공백만 검색해 다른 문자로 일괄 변환 가능).';
-
 function useFindPanel(
   searchInputRef: React.RefObject<HTMLInputElement>,
   selectedScenes: Set<string>,
@@ -451,7 +456,6 @@ function useFindPanel(
             className="rounded line-color" />
           <span className="text-sm text-gray-700 dark:text-gray-300">공백 검색</span>
         </label>
-        <HelpIcon content={FIND_HELP} size={13} />
       </div>
 
       {/* 바꿀 말 — 결과가 있을 때만(종전과 같음). [모두 변환] 은 바닥줄 */}
@@ -552,7 +556,7 @@ const FindReplaceBody = observer(() => {
     <ModalOverlay
       isOpen={true}
       onClose={close}
-      title="찾기 및 변환"
+      title={FIND_TITLE}
       size="l"
       aside={<SceneSelectAside sel={sel} />}
       footerStart={find.status}

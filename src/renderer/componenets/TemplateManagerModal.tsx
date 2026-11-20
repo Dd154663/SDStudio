@@ -43,6 +43,8 @@ import {
 import { CharacterPreset, CharacterPrompt } from '../models/types';
 import { Sampling, NoiseSchedule, ModelVersion } from '../backends/imageGen';
 import HelpIcon from './HelpIcon';
+import { HelpPanelButton } from './HelpPanel';
+import { TEMPLATE_MANAGER_HELP } from '../models/helpPanelTexts';
 import { renameTemplateRecorded } from '../models/globalLibraryUndo';
 import { V5MediumNegativeNotice } from './PreSetEdtior';
 import { normalizeModelVersion } from '../backends/genVendors/naiModelCapabilities';
@@ -1987,13 +1989,8 @@ export const TemplateManagerModal = observer(
         title={
           <span className="inline-flex items-center gap-1.5">
             템플릿 관리
-            <HelpIcon
-              content={
-                '새 프로젝트를 만들 때 시작 구성(프리셋, 캐릭터, 바이브, 레퍼런스, 씬)을 미리 세팅하는 워크플로우입니다.\n' +
-                '모든 영역은 직접 편집할 수 있고, 복사해 오기는 설정을 1회 덮어쓰는 편의 기능입니다.\n' +
-                '프롬프트 수정은 바닥의 [저장] 버튼 또는 창을 닫을 때 저장되고, 그 외 변경(복사해 오기·캐릭터·씬)은 즉시 저장됩니다.'
-              }
-            />
+            {/* 도움말 패널(2026-11-20 그룹 1-b — 종전 3줄 툴팁). 문구 = models/helpPanelTexts.ts */}
+            <HelpPanelButton data={TEMPLATE_MANAGER_HELP} width={420} exampleWidth={110} />
           </span>
         }
         // xl(1280 고정, 2026-11-15 사용자 실기 피드백 — 작업 밀도가 높아 l 1000 은 좁음). 폴더 기본 템플릿은 l.

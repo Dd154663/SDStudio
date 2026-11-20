@@ -5,19 +5,11 @@
 // artistTags(artist: 접두), 모바일 키보드 위 칩(가중치·# 주석 칩).
 // 「.6 처럼 0 생략 가능」은 사용자 지시로 설명에서 뺐다(문법 자체는 그대로 동작).
 
-// 예시 칩의 한 조각 — cls 는 편집 칸 하이라이트(highlightPrompt)가 같은 글자에 붙이는 .syntax-* 클래스.
-export interface SyntaxPart {
-  text: string;
-  cls?: string;
-}
+// 예시 칩·줄·묶음 모양은 공용 도움말 패널(models/helpPanel.ts)과 같다 — 예전 이름을 그대로 남긴다.
+import type { HelpChip, HelpChipPart, HelpPanelData } from './helpPanel';
 
-export type SyntaxExample =
-  // 프롬프트에 그대로 적는 글자(고정폭 칩, 편집 칸과 같은 문법 색)
-  | { kind: 'code'; parts: SyntaxPart[] }
-  // 키 표시(PC 단축키)
-  | { kind: 'keys'; keys: string[] }
-  // 적는 글자가 아닌 이름(「줄바꿈」 등) — 칩 모양만, 고정폭 아님
-  | { kind: 'label'; text: string };
+export type SyntaxPart = HelpChipPart;
+export type SyntaxExample = HelpChip;
 
 export interface SyntaxHelpRow {
   id: string;
@@ -125,25 +117,10 @@ export function promptSyntaxHelpGroups(mobile: boolean): SyntaxHelpGroup[] {
   ];
 }
 
-// 앵커(버튼) 아래 왼쪽 맞춤으로 펼치고, 아래가 모자라면 위로(위가 더 넓을 때), 가로는 화면 안으로 당긴다.
-// 둘 다 모자라면 넓은 쪽에 붙이고 maxHeight 로 줄여 패널 안에서 스크롤한다. ContextMenuList.placeContextMenu 는
-// 누른 점 기준(위로 올릴 때 점 위에 붙임)이라 버튼을 가리게 돼 버튼 기준 계산을 따로 둔다.
-export function placeAnchoredPanel(
-  anchor: { left: number; top: number; bottom: number },
-  size: { width: number; height: number },
-  viewport: { width: number; height: number },
-  gap = 6,
-  margin = 8,
-): { left: number; top: number; maxHeight: number } {
-  const width = Math.min(size.width, viewport.width - margin * 2);
-  let left = anchor.left;
-  if (left + width > viewport.width - margin) left = viewport.width - margin - width;
-  if (left < margin) left = margin;
-  const below = viewport.height - margin - (anchor.bottom + gap);
-  const above = anchor.top - gap - margin;
-  if (size.height <= below || below >= above) {
-    return { left, top: anchor.bottom + gap, maxHeight: Math.max(0, below) };
-  }
-  const h = Math.min(size.height, above);
-  return { left, top: anchor.top - gap - h, maxHeight: Math.max(0, above) };
+// 패널 한 벌(제목 + 묶음) — 공용 HelpPanelButton 에 넘기는 모양.
+export function promptSyntaxHelpData(mobile: boolean): HelpPanelData {
+  return { title: PROMPT_SYNTAX_HELP_TEXT.title, groups: promptSyntaxHelpGroups(mobile) };
 }
+
+// 위치 계산은 공용 모듈로 옮겼다(2026-11-20 그룹 1-b) — 예전 import 경로 유지용 재export.
+export { placeAnchoredPanel } from './helpPanel';

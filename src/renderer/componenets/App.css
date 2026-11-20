@@ -1771,17 +1771,18 @@ input[type='number']::-webkit-outer-spin-button {
   outline-offset: 1px;
 }
 
-/* 프롬프트 문법 패널(PromptSyntaxHelp) — 예시 칩은 편집 칸 배경(--c-input-bg) 위 .syntax-line·.syntax-* 그대로 */
-.prompt-syntax-help-btn {
+/* 도움말 패널(HelpPanel — 문법 패널 PromptSyntaxHelp 와 긴 도움말 공용, 2026-11-20 그룹 1-b 에서 prompt-syntax-* 를 이 이름으로).
+   예시 칩은 편집 칸 배경(--c-input-bg) 위 .syntax-line·.syntax-* 그대로 */
+.help-panel-btn {
   border-radius: 9999px;
   cursor: pointer;
 }
-.prompt-syntax-help-btn:focus-visible {
+.help-panel-btn:focus-visible {
   outline: 2px solid var(--c-focus-ring);
   outline-offset: 2px;
 }
-.prompt-syntax-panel {
-  width: 460px;
+.help-panel {
+  width: 460px; /* 자리별로 style width 로 좁힐 수 있다(HelpPanelButton width) */
   max-width: calc(100vw - 16px);
   display: flex;
   flex-direction: column;
@@ -1795,36 +1796,43 @@ input[type='number']::-webkit-outer-spin-button {
   border-radius: 0.625rem;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
 }
-.prompt-syntax-caption {
+.help-panel-caption {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--c-text-faint);
 }
-.prompt-syntax-row {
+.help-panel-row {
   display: grid;
-  /* 예시 칸 = 가장 긴 예시({red|blue|green})가 잘리지 않는 폭(2026-11-19 실기: 132px 에서 말줄임) */
-  grid-template-columns: 150px minmax(0, 1fr);
+  /* 예시 칸 = 가장 긴 예시({red|blue|green})가 잘리지 않는 폭(2026-11-19 실기: 132px 에서 말줄임).
+     자리별로 --help-panel-example-w 로 바꾼다(HelpPanelButton exampleWidth). */
+  grid-template-columns: var(--help-panel-example-w, 150px) minmax(0, 1fr);
   gap: 12px;
   /* 줄 맞춤(2026-11-19 실기: 예시와 설명의 높이가 어긋남 — baseline 정렬이 칩의 overflow 때문에 칩 아래 끝을 기준으로 잡혔다).
      두 칸을 같은 줄 높이(20px)로 두고 위에서 맞춘다: 예시는 20px 칸 안 세로 가운데, 설명은 첫 줄이 같은 20px. */
   align-items: start;
 }
-.prompt-syntax-row > * {
+.help-panel-row > * {
   line-height: 20px;
 }
-.prompt-syntax-row > :first-child {
+.help-panel-row > .help-panel-examples {
   display: flex;
+  flex-wrap: wrap; /* 한 줄에 칩 여러 개(범위 이름 둘 등) — 칸이 모자라면 다음 줄로 */
   align-items: center;
+  gap: 4px;
   min-height: 20px;
 }
+/* 칩 없는 줄 — 설명이 줄 전체 폭 */
+.help-panel-row-full {
+  grid-template-columns: minmax(0, 1fr);
+}
 @media (max-width: 480px) {
-  .prompt-syntax-row {
+  .help-panel-row {
     grid-template-columns: minmax(0, 1fr);
     gap: 2px;
   }
 }
-.prompt-syntax-chip {
+.help-panel-chip {
   display: inline-block;
   max-width: 100%;
   white-space: nowrap;
@@ -1836,10 +1844,10 @@ input[type='number']::-webkit-outer-spin-button {
   background-color: var(--c-input-bg);
   color: var(--c-input-text);
 }
-.prompt-syntax-chip-label {
+.help-panel-chip-label {
   font-family: inherit;
 }
-.prompt-syntax-kbd {
+.help-panel-kbd {
   line-height: 16px; /* + 테두리 1+2 = 19px — 20px 줄 안 가운데 */
   padding: 0 5px;
   border-radius: 4px;

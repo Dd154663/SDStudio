@@ -138,7 +138,8 @@ describe('① 패널 열고 닫기', () => {
     expect(p.getAttribute('role')).toBe('dialog');
     expect(button().getAttribute('aria-controls')).toBe(p.id);
     expect(p.textContent).toContain('프롬프트 문법');
-    expect(p.querySelectorAll('[data-syntax-group]')).toHaveLength(4);
+    // 묶음 표식은 2026-11-20 그룹 1-b 공용 패널(HelpPanel)에서 data-syntax-group → data-help-group
+    expect(p.querySelectorAll('[data-help-group]')).toHaveLength(4);
     expect(p.querySelectorAll('kbd')).toHaveLength(3);
     expect(p.className).toContain('ui-pop-in');
     expect(backLayers).toHaveLength(1);

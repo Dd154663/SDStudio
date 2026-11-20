@@ -159,7 +159,7 @@ describe('소스 검사 — 10창의 등급(width·fullscreen 없음)', () => {
     ['아티스트 태깅', 'ArtistTagModal.tsx', 'title="아티스트 태깅"', 'l', 1],
     ['환경설정 불러오기 미리보기', 'ConfigSyncSection.tsx', 'title={CONFIG_SYNC_TEXT.previewTitle}', 's', 1],
     ['템플릿 적용', 'TemplateInheritModals.tsx', 'title={`템플릿 적용', 's', 1],
-    ['찾기 및 변환', 'FindReplaceDialog.tsx', 'title="찾기 및 변환"', 'l', 1],
+    ['찾기 및 변환', 'FindReplaceDialog.tsx', 'title={FIND_TITLE}', 'l', 1], // 2026-11-20 제목 옆 도움말(상수 FIND_TITLE)
     ['Google 드라이브 백업', 'DriveBackupManager.tsx', 'title={title}', 'm', 1],
   ];
   test.each(cases)('%s — %s 의 %s 여는 태그가 size="%s"', (_name, file, marker, size, n) => {
