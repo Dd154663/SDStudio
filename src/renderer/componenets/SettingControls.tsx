@@ -3,6 +3,7 @@
 //                      상자 하나가 한 단 안에서 쪼개지지 않는다.
 // · SettingCheckRow  = 체크 상자 한 줄. <label> 이 체크 상자·제목·설명을 감싸 글자를 눌러도 토글된다.
 //                      <input type="checkbox"> 와 id 는 그대로(모양만 .setting-check — appearance:none), 저장·키보드·낭독기 불변.
+// · SettingSwitchRow = 스위치 한 줄(누르는 즉시 저장되는 자리만, 2026-11-20). 글자 왼쪽·스위치 오른쪽 끝, input 은 role="switch".
 // · SettingField     = 체크 줄이 아닌 항목(글꼴 고르기·선택 칸·버튼)을 묶음 안에서 체크 줄과 같은 들여쓰기로 둔다.
 // 색·움직임은 App.css(.setting-*·.ui-press, prefers-reduced-motion 에서 끔). react 외 의존 없음.
 import { ReactNode } from 'react';
@@ -71,6 +72,57 @@ export function SettingCheckRow({
           <span className="block text-xs text-faint mt-0.5">{description}</span>
         )}
       </span>
+    </label>
+  );
+}
+
+// 스위치 줄(2026-11-20 UI 정돈 그룹 1-a, 목업 승인) — 누르는 즉시 저장되는 자리 전용(「저장」 반영 자리는 SettingCheckRow).
+// 글자(제목·설명)가 왼쪽, 스위치가 오른쪽 끝. 체크 줄과 같은 방식으로 <input type="checkbox" role="switch"> 를 그대로 두고
+// 그림만 바꾼다(.setting-switch — appearance:none 트랙 + ::after 손잡이) — id·checked·disabled·스페이스 키·낭독기 유지,
+// 엔터 키만 여기서 더한다(체크 상자는 기본으로 엔터에 반응하지 않음).
+export function SettingSwitchRow({
+  id,
+  checked,
+  onChange,
+  disabled,
+  label,
+  description,
+}: {
+  id: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  label: ReactNode;
+  description?: ReactNode;
+}) {
+  return (
+    <label
+      htmlFor={id}
+      data-setting-row={id}
+      data-disabled={disabled ? '' : undefined}
+      className="setting-switch-row btn-ghost"
+    >
+      <span className="min-w-0">
+        <span className={'text-sm gray-label' + (disabled ? ' opacity-50' : '')}>{label}</span>
+        {description && (
+          <span className="block text-xs text-faint mt-0.5">{description}</span>
+        )}
+      </span>
+      <input
+        type="checkbox"
+        role="switch"
+        id={id}
+        className="setting-switch"
+        checked={checked}
+        aria-checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          if (!disabled) onChange(!checked);
+        }}
+      />
     </label>
   );
 }

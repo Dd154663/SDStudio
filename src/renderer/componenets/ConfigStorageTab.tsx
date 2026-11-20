@@ -10,8 +10,11 @@ import { observer } from 'mobx-react-lite';
 import { SAVE_LOCATION_CHANGE_TEXT } from '../../shared/saveLocationChange';
 import { SaveLocationRestartButton } from './SaveLocationPendingBar';
 import { DownloadSettingsSection } from './DownloadSettingsSection';
+import { SettingCheckRow, SettingField, SettingGroup } from './SettingControls';
 
 /* ── 탭 2: 이미지 편집 및 배경 제거 ── */
+// 묶음 상자(2026-11-20 UI 정돈 그룹 1-a): 선호 이미지 편집기 / 배경 제거. 체크 = SettingCheckRow(「저장」 반영),
+// 선택 칸 = .app-select(종전 기본 모양은 다크에서 흰 바탕). 항목·순서·문구·id 그대로.
 const ImageEditTab = ({
   imageEditor, setImageEditor,
   useLocalBgRemoval, setUseLocalBgRemoval,
@@ -19,9 +22,9 @@ const ImageEditTab = ({
   useGPU, setUseGPU, quality, setQuality,
 }: any) => (
   <div className="space-y-4">
-    <div>
-      <label className="block text-sm font-semibold gray-label mb-1">선호 이미지 편집기</label>
-      <select className="mt-1 block w-full rounded-md line-color shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+    <SettingGroup title="선호 이미지 편집기">
+     <SettingField>
+      <select className="app-select block w-full sm:text-sm" aria-label="선호 이미지 편집기"
         value={imageEditor} onChange={(e) => setImageEditor(e.target.value)}>
         <option value="photoshop">포토샵</option>
         <option value="gimp">GIMP</option>
@@ -32,52 +35,60 @@ const ImageEditTab = ({
           리눅스에서는 GIMP만 지원됩니다 (PATH 의 gimp 실행).
         </p>
       )}
-    </div>
-    <hr className="line-color" />
-    <div className="flex items-center gap-2">
-      <input type="checkbox" id="cfgLocalBg" checked={useLocalBgRemoval}
+     </SettingField>
+    </SettingGroup>
+    <SettingGroup title="배경 제거">
+      <SettingCheckRow
+        id="cfgLocalBg"
+        checked={useLocalBgRemoval}
         disabled={!platform.supportsRemoveBg}
-        onChange={(e) => setUseLocalBgRemoval(e.target.checked)} />
-      <label htmlFor="cfgLocalBg" className="text-sm gray-label">로컬 배경 제거 모델 사용</label>
-    </div>
-    {!platform.supportsRemoveBg && (
-      <p className="text-xs text-muted">
-        이 플랫폼(리눅스)용 로컬 배경 제거 모델은 배포되지 않아 사용할 수
-        없습니다. 배경 제거는 NAI 서버 방식으로 동작합니다.
-      </p>
-    )}
-    {platform.supportsRemoveBg && !ready && (
-      <button className="btn w-full back-green py-2 rounded"
-        onClick={() => { if (!localAIService.downloading) localAIService.download(); }}>
-        {!localAIService.downloading
-          ? '로컬 배경 제거 모델 설치'
-          : stageTexts[stage] + ` (${(progress * 100).toFixed(2)}%)`}
-      </button>
-    )}
-    {ready && (
-      <>
-        <div className="flex items-center gap-2">
-          <input type="checkbox" id="cfgGpu" checked={useGPU}
-            onChange={(e) => setUseGPU(e.target.checked)} />
-          <label htmlFor="cfgGpu" className="text-sm gray-label">
-            배경 제거 시 GPU 사용{' '}
-            <a onClick={() => backend.openWebPage('https://developer.nvidia.com/cuda-11-8-0-download-archive')}
-              className="underline text-blue-500 cursor-pointer">(CUDA를 설치 해야함)</a>
-          </label>
-        </div>
-        <div>
-          <label className="block text-sm gray-label mb-1">배경 제거 퀄리티</label>
-          <select className="mt-1 block w-full rounded-md line-color shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-            value={quality} onChange={(e) => setQuality(e.target.value)}>
-            <option value="low">낮음</option>
-            <option value="normal">보통</option>
-            <option value="high">높음</option>
-            <option value="veryhigh">매우높음</option>
-            <option value="veryveryhigh">최고 (메모리 최소 8기가)</option>
-          </select>
-        </div>
-      </>
-    )}
+        onChange={setUseLocalBgRemoval}
+        label="로컬 배경 제거 모델 사용"
+        description={
+          !platform.supportsRemoveBg
+            ? '이 플랫폼(리눅스)용 로컬 배경 제거 모델은 배포되지 않아 사용할 수 없습니다. 배경 제거는 NAI 서버 방식으로 동작합니다.'
+            : undefined
+        }
+      />
+      {platform.supportsRemoveBg && !ready && (
+        <SettingField>
+          <button className="btn w-full back-green py-2 rounded"
+            onClick={() => { if (!localAIService.downloading) localAIService.download(); }}>
+            {!localAIService.downloading
+              ? '로컬 배경 제거 모델 설치'
+              : stageTexts[stage] + ` (${(progress * 100).toFixed(2)}%)`}
+          </button>
+        </SettingField>
+      )}
+      {ready && (
+        <>
+          {/* CUDA 안내 링크는 종전처럼 제목 안(링크를 눌러도 줄이 토글되는 것은 종전과 같음) */}
+          <SettingCheckRow
+            id="cfgGpu"
+            checked={useGPU}
+            onChange={setUseGPU}
+            label={
+              <>
+                배경 제거 시 GPU 사용{' '}
+                <a onClick={() => backend.openWebPage('https://developer.nvidia.com/cuda-11-8-0-download-archive')}
+                  className="underline text-blue-500 cursor-pointer">(CUDA를 설치 해야함)</a>
+              </>
+            }
+          />
+          <SettingField className="pt-1">
+            <label htmlFor="cfgBgQuality" className="block text-sm gray-label mb-1">배경 제거 퀄리티</label>
+            <select id="cfgBgQuality" className="app-select block w-full sm:text-sm"
+              value={quality} onChange={(e) => setQuality(e.target.value)}>
+              <option value="low">낮음</option>
+              <option value="normal">보통</option>
+              <option value="high">높음</option>
+              <option value="veryhigh">매우높음</option>
+              <option value="veryveryhigh">최고 (메모리 최소 8기가)</option>
+            </select>
+          </SettingField>
+        </>
+      )}
+    </SettingGroup>
   </div>
 );
 
@@ -104,6 +115,8 @@ const SaveLocationPendingNotice = observer(() => {
 });
 
 /* ── 탭 3: 이미지 및 데이터 저장경로 ── */
+// 묶음 상자(2026-11-20 UI 정돈 그룹 1-a): 현재 저장경로 / 기본 내보내기 폴더 / 이미지 다운로드(DownloadSettingsSection 이 스스로 그림) /
+// 이미지 캐시 / 폴더 변경 감지 / WebP 자동 변환 / 이미지 복구. 구분선(hr) 대신 상자, 항목·순서·문구·id 그대로.
 const StorageTab = ({
   saveLocation, dataRoot, selectFolder, clearImageCache,
   refreshImage, setRefreshImage,
@@ -111,8 +124,8 @@ const StorageTab = ({
   autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality,
 }: any) => (
   <div className="space-y-4">
-    <div>
-      <label className="block text-sm font-semibold gray-label mb-1">현재 저장경로</label>
+    <SettingGroup title="현재 저장경로">
+     <SettingField>
       <div className="text-sm text-muted bg-gray-100 dark:bg-slate-700 rounded px-3 py-2 break-all">
         {dataRoot || saveLocation || '경로 확인 중…'}
       </div>
@@ -124,25 +137,27 @@ const StorageTab = ({
             : saveLocation
             ? '사용자 지정 위치'
             : '기본 위치'}
-        <SaveLocationPendingNotice />
-    </div>
+      </div>
+      {/* 보류 안내는 한 번만(2026-11-20 — c5bbcbf 에서 상태 문구 안·밖 두 곳에 그려지던 것을 밖 한 곳으로) */}
       <SaveLocationPendingNotice />
-    </div>
-    <button className="btn w-full back-green py-2 rounded"
-      onClick={selectFolder}>
-      이미지 및 데이터 저장 위치 변경
-    </button>
-    <hr className="line-color" />
-    <div>
-      <label className="block text-sm font-semibold gray-label mb-1">기본 내보내기 폴더</label>
+     </SettingField>
+     <SettingField>
+      <button className="btn w-full back-green py-2 rounded"
+        onClick={selectFolder}>
+        이미지 및 데이터 저장 위치 변경
+      </button>
+     </SettingField>
+    </SettingGroup>
+    <SettingGroup title="기본 내보내기 폴더">
+     <SettingField>
       <p className="text-xs text-muted mb-2">
         내보내기 프리셋에 폴더가 지정되지 않았을 때 사용합니다. 비워 두면 OS 다운로드 폴더에 저장됩니다.
       </p>
       <div className="text-sm text-muted bg-gray-100 dark:bg-slate-700 rounded px-3 py-2 break-all">
         {defaultExportFolder || '미설정 (다운로드 폴더 사용)'}
       </div>
-    </div>
-    <div className="flex gap-2">
+     </SettingField>
+     <SettingField className="flex gap-2">
       <button className="btn flex-1 back-green py-2 rounded"
         onClick={selectDefaultExportFolder}>
         기본 내보내기 폴더 지정
@@ -153,53 +168,55 @@ const StorageTab = ({
           지우기
         </button>
       )}
-    </div>
-    <hr className="line-color" />
-    {/* 이미지 다운로드(저장 폴더·파일명 규칙) — 종전 다운로드 창에서 이전, 즉시 저장(2026-11-19) */}
+     </SettingField>
+    </SettingGroup>
+    {/* 이미지 다운로드(저장 폴더·파일명 규칙) — 종전 다운로드 창에서 이전, 즉시 저장(2026-11-19). 묶음 상자는 이 부품이 그린다. */}
     <DownloadSettingsSection />
     {/* 드라이브 동기화 폴더(syncFolder)는 「드라이브」 탭의 「고급: 로컬 동기화 폴더」로 옮겼다(드라이브 API ⑤). */}
-    <hr className="line-color" />
-    <button className="btn w-full back-red py-2 rounded"
-      onClick={clearImageCache}>
-      이미지 캐시 초기화
-    </button>
-    <hr className="line-color" />
-    <div className="flex items-center gap-2">
-      <input type="checkbox" id="cfgRefresh" checked={refreshImage}
-        onChange={(e) => setRefreshImage(e.target.checked)} />
-      <label htmlFor="cfgRefresh" className="text-sm gray-label">이미지 폴더 직접 편집 감지</label>
-    </div>
-    <hr className="line-color" />
-    <div className="flex items-center gap-2">
-      <input type="checkbox" id="cfgAutoWebp" checked={autoConvertWebp}
-        onChange={(e) => setAutoConvertWebp(e.target.checked)} />
-      <label htmlFor="cfgAutoWebp" className="text-sm gray-label">새로 생성되는 이미지를 WebP로 자동 변환</label>
-    </div>
-    <p className="text-xs text-muted">
-      생성 직후 PNG를 WebP로 재인코딩해 저장 용량을 줄입니다. 프롬프트
-      메타데이터와 NAI 인식(스텔스 워터마크)은 유지되며, 기존 이미지에는 영향이
-      없습니다. 변환에 실패하면 원본 PNG가 그대로 저장됩니다.
-    </p>
-    {autoConvertWebp && (
-      <div className="flex items-center gap-2">
-        <label htmlFor="cfgAutoWebpQ" className="text-sm gray-label">변환 품질 (1~100)</label>
-        <input
-          type="number"
-          id="cfgAutoWebpQ"
-          min={1}
-          max={100}
-          value={autoWebpQuality}
-          onChange={(e) => {
-            const v = parseInt(e.target.value);
-            setAutoWebpQuality(isNaN(v) ? 80 : Math.min(100, Math.max(1, v)));
-          }}
-          className="w-16 text-sm text-center border rounded px-1 py-1 back-gray"
-        />
-      </div>
-    )}
-    <hr className="line-color" />
-    <div>
-      <label className="block text-sm font-semibold gray-label mb-1">이미지 복구 (실험적 기능)</label>
+    <SettingGroup title="이미지 캐시">
+     <SettingField>
+      <button className="btn w-full back-red py-2 rounded"
+        onClick={clearImageCache}>
+        이미지 캐시 초기화
+      </button>
+     </SettingField>
+    </SettingGroup>
+    <SettingGroup title="폴더 변경 감지">
+      <SettingCheckRow
+        id="cfgRefresh"
+        checked={refreshImage}
+        onChange={setRefreshImage}
+        label="이미지 폴더 직접 편집 감지"
+      />
+    </SettingGroup>
+    <SettingGroup title="WebP 자동 변환">
+      <SettingCheckRow
+        id="cfgAutoWebp"
+        checked={autoConvertWebp}
+        onChange={setAutoConvertWebp}
+        label="새로 생성되는 이미지를 WebP로 자동 변환"
+        description="생성 직후 PNG를 WebP로 재인코딩해 저장 용량을 줄입니다. 프롬프트 메타데이터와 NAI 인식(스텔스 워터마크)은 유지되며, 기존 이미지에는 영향이 없습니다. 변환에 실패하면 원본 PNG가 그대로 저장됩니다."
+      />
+      {autoConvertWebp && (
+        <SettingField className="flex items-center gap-2">
+          <label htmlFor="cfgAutoWebpQ" className="text-sm gray-label">변환 품질 (1~100)</label>
+          <input
+            type="number"
+            id="cfgAutoWebpQ"
+            min={1}
+            max={100}
+            value={autoWebpQuality}
+            onChange={(e) => {
+              const v = parseInt(e.target.value);
+              setAutoWebpQuality(isNaN(v) ? 80 : Math.min(100, Math.max(1, v)));
+            }}
+            className="w-16 text-sm text-center border rounded px-1 py-1 back-gray"
+          />
+        </SettingField>
+      )}
+    </SettingGroup>
+    <SettingGroup title="이미지 복구 (실험적 기능)">
+     <SettingField>
       <p className="text-xs text-muted mb-2">
         이미지 파일은 존재하지만 프로그램에서 보이지 않는 경우, 파일시스템을 스캔하여 누락된 씬과 이미지를 재연결합니다.
       </p>
@@ -209,15 +226,16 @@ const StorageTab = ({
       >
         현재 프로젝트 이미지 복구
       </button>
-    </div>
+     </SettingField>
+    </SettingGroup>
   </div>
 );
 
-/* ── 탭: 저장경로 (저장경로 + 이미지 편집 병합, 2026-10-01 라벨 「저장/이미지」→「저장경로」) ── */
+/* ── 탭: 저장경로 (저장경로 + 이미지 편집 병합, 2026-10-01 라벨 「저장/이미지」→「저장경로」) ──
+   두 부분 사이 구분선은 묶음 상자로 대신한다(2026-11-20). */
 const StorageImageTab = (props: any) => (
   <div className="space-y-4">
     <StorageTab {...props} />
-    <hr className="line-color" />
     <ImageEditTab {...props} />
   </div>
 );

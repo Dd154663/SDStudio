@@ -1637,6 +1637,74 @@ input[type='number']::-webkit-outer-spin-button {
   transform: scale(0.9);
 }
 
+/* 스위치 줄(SettingSwitchRow, 2026-11-20 UI 정돈 그룹 1-a — 목업 승인) — 누르는 즉시 저장되는 자리 전용.
+   체크 줄과 같은 높이·여백·hover·비활성 규칙, 배치만 반대(글자 왼쪽 · 스위치 오른쪽 끝). */
+.setting-switch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+  align-items: start;
+  min-height: 36px;
+  padding: 8px 10px;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+.setting-switch-row[data-disabled] {
+  cursor: not-allowed;
+}
+.setting-switch-row[data-disabled]:hover {
+  background-color: transparent;
+}
+/* 스위치 = <input type="checkbox" role="switch"> 그대로 그리기만 바꾼다. 트랙 36×20 알약(꺼짐 --c-line-strong · 켜짐 --c-focus-ring),
+   손잡이 16px 원(안쪽 여백 2px, 켜지면 16px 오른쪽 — transform 140ms). 손잡이 색: 켜짐 --c-surface(체크 표시와 같은 짝),
+   꺼짐 라이트 --c-surface / 다크 --c-text-muted(다크 트랙 위에서 구멍처럼 보이지 않게). */
+.setting-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border-radius: 9999px;
+  background-color: var(--c-line-strong);
+  cursor: inherit;
+  transition: background-color 140ms ease;
+}
+.setting-switch::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background-color: var(--c-surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+  transition:
+    transform 140ms ease-out,
+    background-color 140ms ease;
+}
+:is(.dark) .setting-switch::after {
+  background-color: var(--c-text-muted);
+}
+.setting-switch:checked {
+  background-color: var(--c-focus-ring);
+}
+.setting-switch:checked::after,
+:is(.dark) .setting-switch:checked::after {
+  background-color: var(--c-surface);
+  transform: translateX(16px);
+}
+.setting-switch:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 2px;
+}
+.setting-switch:disabled {
+  opacity: 0.5;
+}
+
 /* 앱 모양 선택 칸 — 기본 모양 <select> 대신(다크에서 흰 바탕이던 것). 화살표는 글자색(currentColor) 그라데이션이라 테마를 따른다. */
 .app-select {
   appearance: none;
@@ -1816,6 +1884,9 @@ input[type='number']::-webkit-outer-spin-button {
   .setting-check-row,
   .setting-check,
   .setting-check::after,
+  .setting-switch-row,
+  .setting-switch,
+  .setting-switch::after,
   .app-select {
     transition: none !important;
   }

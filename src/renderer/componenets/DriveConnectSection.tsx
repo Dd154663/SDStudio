@@ -18,6 +18,7 @@ import { backend, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import { describeStatus, GOOGLE_DRIVE_TEXT } from '../models/googleDrive';
 import type { DriveAuthStatus } from '../../shared/googleDriveAuth';
+import { SettingField, SettingGroup } from './SettingControls';
 
 const btn = 'round-button h-8 text-sm';
 const tag = 'text-xs px-2 py-1 rounded-full whitespace-nowrap';
@@ -117,12 +118,11 @@ const DriveConnectSection = ({ onStatusChange }: Props) => {
     }
   };
 
+  // 묶음 상자(2026-11-20 UI 정돈 그룹 1-a) — 제목(sectionTitle)은 묶음 제목 한 번만, 첫 줄은 연결 상태 표시만.
   return (
-    <div className="space-y-2">
+   <SettingGroup title={GOOGLE_DRIVE_TEXT.sectionTitle}>
+    <SettingField className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="block text-sm font-semibold gray-label">
-          {GOOGLE_DRIVE_TEXT.sectionTitle}
-        </label>
         <span className={`${tag} ${view.tagClass}`}>{view.label}</span>
       </div>
       {view.detail && (
@@ -173,7 +173,8 @@ const DriveConnectSection = ({ onStatusChange }: Props) => {
           {isMobile ? GOOGLE_DRIVE_TEXT.storageNoteMobile : GOOGLE_DRIVE_TEXT.storageNote}
         </p>
       </div>
-    </div>
+    </SettingField>
+   </SettingGroup>
   );
 };
 

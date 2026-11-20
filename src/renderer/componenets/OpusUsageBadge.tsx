@@ -284,7 +284,8 @@ const OpusUsageBadge = observer(
                   </div>
                 )}
                 {switchError && <p role="alert" className="back-red rounded px-2 py-1.5 text-xs">{switchError}</p>}
-                <div className="border-t line-color pt-3">
+                {/* 스위치 줄의 안쪽 여백(10px)만큼 당겨 창의 다른 글자와 왼쪽을 맞춘다(2026-11-20) */}
+                <div className="border-t line-color pt-1.5 -mx-2.5">
                   <OpusUsageQuietToggle id="opusUsageQuietOverlay" />
                 </div>
                 <OpusUsageHelp />

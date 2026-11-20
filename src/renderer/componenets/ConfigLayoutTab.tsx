@@ -163,8 +163,9 @@ const QuickMenuEditor = ({
   );
 };
 
+// 모바일 「툴바」 탭 — 묶음 상자(2026-11-20 UI 정돈 그룹 1-a): 툴바 / 씬 툴바 / 프로젝트 바(ToolbarLayoutEditor 가 그림) / 퀵 메뉴 구성.
 const ToolbarTab = ({ uiToolbar, setUiToolbar, quickMenu, setQuickMenu, quickMenuButton, setQuickMenuButton }: any) => (
-  <div className="space-y-5">
+  <div className="space-y-4">
     <ToolbarLayoutEditor
       value={uiToolbar}
       onChange={setUiToolbar}
@@ -174,8 +175,9 @@ const ToolbarTab = ({ uiToolbar, setUiToolbar, quickMenu, setQuickMenu, quickMen
       ]}
       mobileMode={isMobile}
     />
-    <hr className="line-color" />
-    <QuickMenuEditor value={quickMenu} onChange={setQuickMenu} showButton={quickMenuButton} setShowButton={setQuickMenuButton} />
+    <SettingGroup title="퀵 메뉴 구성">
+      <QuickMenuEditor inGroup value={quickMenu} onChange={setQuickMenu} showButton={quickMenuButton} setShowButton={setQuickMenuButton} />
+    </SettingGroup>
   </div>
 );
 

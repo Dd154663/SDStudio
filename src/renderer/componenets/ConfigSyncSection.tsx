@@ -40,6 +40,7 @@ import {
   importTokenText,
 } from '../models/configSyncFlow';
 import ModalOverlay from './ModalOverlay';
+import { SettingCheckRow, SettingField, SettingGroup } from './SettingControls';
 
 interface Props {
   // 설정 화면에 저장 안 된 변경이 있는지(ConfigScreen dirty).
@@ -225,11 +226,10 @@ const ConfigSyncSection = ({ dirty, onConfigImported }: Props) => {
       }
     };
 
+  // 묶음 상자(2026-11-20 UI 정돈 그룹 1-a) — 제목(sectionTitle)은 묶음 제목 한 번만. 토큰 포함 체크 = 체크 줄(내보내기 옵션).
   return (
-    <div className="space-y-2">
-      <label className="block text-sm font-semibold gray-label">
-        {CONFIG_SYNC_TEXT.sectionTitle}
-      </label>
+   <SettingGroup title={CONFIG_SYNC_TEXT.sectionTitle}>
+    <SettingField className="space-y-2">
       <p className="text-xs text-muted">{CONFIG_SYNC_TEXT.sectionDescription}</p>
       {dirty && <p className="text-xs text-faint">{CONFIG_SYNC_TEXT.savedOnlyNote}</p>}
       <div className="flex flex-wrap gap-2">
@@ -240,20 +240,17 @@ const ConfigSyncSection = ({ dirty, onConfigImported }: Props) => {
           {CONFIG_SYNC_TEXT.importButton}
         </button>
       </div>
-      <div className="flex items-center gap-2 pt-1">
-        <input
-          type="checkbox"
-          id="cfgSyncIncludeToken"
-          checked={includeToken}
-          disabled={busy}
-          onChange={(e) => toggleToken(e.target.checked)}
-        />
-        <label htmlFor="cfgSyncIncludeToken" className="text-sm gray-label">
-          {CONFIG_SYNC_TEXT.tokenExportLabel}
-        </label>
-      </div>
-      <p className="text-xs text-faint ml-6">{CONFIG_SYNC_TEXT.tokenExportDescription}</p>
-      <div className="flex flex-wrap gap-2 pt-1">
+    </SettingField>
+    <SettingCheckRow
+      id="cfgSyncIncludeToken"
+      checked={includeToken}
+      disabled={busy}
+      onChange={(checked) => toggleToken(checked)}
+      label={CONFIG_SYNC_TEXT.tokenExportLabel}
+      description={CONFIG_SYNC_TEXT.tokenExportDescription}
+    />
+    <SettingField className="space-y-2">
+      <div className="flex flex-wrap gap-2">
         <button className={btn + ' back-gray'} disabled={busy} onClick={startTokenImport}>
           {CONFIG_SYNC_TEXT.tokenImportButton}
         </button>
@@ -277,7 +274,8 @@ const ConfigSyncSection = ({ dirty, onConfigImported }: Props) => {
           />
         </>
       )}
-    </div>
+    </SettingField>
+   </SettingGroup>
   );
 };
 
@@ -355,10 +353,11 @@ const ConfigImportPreviewModal = ({
                   (n === 0 ? ' opacity-60' : '')
                 }
               >
+                {/* 카드 모양은 그대로, 체크 모양만 시범 부품과 같게(.setting-check, 2026-11-20) */}
                 <input
                   type="checkbox"
                   id={id}
-                  className="mt-1"
+                  className="setting-check"
                   checked={!!enabled[d.group]}
                   disabled={n === 0}
                   onChange={(e) => setEnabled({ ...enabled, [d.group]: e.target.checked })}

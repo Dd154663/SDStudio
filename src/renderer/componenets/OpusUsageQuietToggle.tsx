@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { opusUsageService } from '../models';
 import { appState } from '../models/AppService';
 import { OPUS_USAGE_TEXT } from '../models/opusUsageRules';
+import { SettingSwitchRow } from './SettingControls';
 
 /**
  * 「할당량 경고 하지 않음」 토글(2026-10-25) — 환경설정 → 로그인 탭과 할당량 상세 창 양쪽에 같은 컴포넌트를 쓴다.
@@ -35,22 +36,15 @@ export default function OpusUsageQuietToggle({ id }: { id: string }) {
     }
   };
 
+  // 즉시 저장 자리라 스위치 줄(2026-11-20 UI 정돈 그룹 1-a) — 글자 왼쪽·스위치 오른쪽 끝. id·checked·disabled 는 input 그대로.
   return (
-    <div className="flex items-start gap-2">
-      <input
-        id={id}
-        type="checkbox"
-        className="mt-0.5 flex-none"
-        checked={opusUsageService.quiet}
-        disabled={busy || !opusUsageService.quietLoaded}
-        onChange={(e) => void change(e.target.checked)}
-      />
-      <label htmlFor={id} className="min-w-0 text-xs">
-        <span className="font-medium text-default">{OPUS_USAGE_TEXT.quietLabel}</span>
-        <span className="block text-muted leading-relaxed">
-          {OPUS_USAGE_TEXT.quietDescription}
-        </span>
-      </label>
-    </div>
+    <SettingSwitchRow
+      id={id}
+      checked={opusUsageService.quiet}
+      disabled={busy || !opusUsageService.quietLoaded}
+      onChange={(checked) => void change(checked)}
+      label={OPUS_USAGE_TEXT.quietLabel}
+      description={OPUS_USAGE_TEXT.quietDescription}
+    />
   );
 }

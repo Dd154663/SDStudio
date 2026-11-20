@@ -22,6 +22,7 @@ import type { DriveAuthStatus } from '../../shared/googleDriveAuth';
 import DriveConnectSection from './DriveConnectSection';
 import { DriveBackupList } from './DriveBackupManager';
 import ConfigSyncSection from './ConfigSyncSection';
+import { SettingField, SettingGroup } from './SettingControls';
 
 interface Props {
   // 이 탭이 지금 보이는지(설정 화면 activeTab).
@@ -73,27 +74,28 @@ const DriveSettingsTab = ({
   // 고급 구역: PC 만, 미지원이거나 연결 안 됐을 때만(연결 여부를 모르는 동안은 보류).
   const showAdvanced = !isMobile && (!supported || connected === false);
 
+  // 묶음 상자(2026-11-20 UI 정돈 그룹 1-a): Google 드라이브 연동(DriveConnectSection 이 그림) / Google 드라이브 백업 /
+  // 환경설정 내보내기·불러오기(ConfigSyncSection 이 그림). 구분선(hr) 대신 상자. ④ 접이식(details)은 감싸지 않는다.
   return (
     <div className="space-y-4">
       {/* ① 연결 */}
       {supported ? (
         <DriveConnectSection onStatusChange={onStatusChange} />
       ) : (
-        <div className="space-y-1">
-          <label className="block text-sm font-semibold gray-label">{T.sectionTitle}</label>
-          <p className="text-sm text-body break-words">{T.unsupported}</p>
-          {isMobile && (
-            <p className="text-xs text-muted break-words">{T.unsupportedHintMobile}</p>
-          )}
-        </div>
+        <SettingGroup title={T.sectionTitle}>
+          <SettingField className="space-y-1">
+            <p className="text-sm text-body break-words">{T.unsupported}</p>
+            {isMobile && (
+              <p className="text-xs text-muted break-words">{T.unsupportedHintMobile}</p>
+            )}
+          </SettingField>
+        </SettingGroup>
       )}
 
       {/* ② 백업 목록(관리 모드 인라인) */}
       {supported && !notConfigured && (
-        <>
-          <hr className="line-color" />
-          <div className="space-y-2">
-            <label className="block text-sm font-semibold gray-label">{T.managerTitle}</label>
+        <SettingGroup title={T.managerTitle}>
+          <SettingField className="space-y-2">
             {connected === true && (
               // 목록 높이 상한·안쪽 스크롤 없음(2026-11-15 C-1) — 환경설정 본문 스크롤 하나가 맡는다(PC·모바일 공통)
               <DriveBackupList
@@ -106,18 +108,17 @@ const DriveSettingsTab = ({
               <p className="text-sm text-muted break-words">{T.backupListDisconnected}</p>
             )}
             {connected === null && <p className="text-sm text-muted">{T.status.loading}</p>}
-          </div>
-        </>
+          </SettingField>
+        </SettingGroup>
       )}
 
       {/* ③ 환경설정 내보내기·불러오기 */}
-      <hr className="line-color" />
       <ConfigSyncSection dirty={dirty} onConfigImported={reloadConfig} />
 
-      {/* ④ 고급: 로컬 동기화 폴더(PC 전용, 연결 시 숨김 — 값은 보존). 문구 단일 출처 = driveSync.ts */}
+      {/* ④ 고급: 로컬 동기화 폴더(PC 전용, 연결 시 숨김 — 값은 보존). 문구 단일 출처 = driveSync.ts.
+          접이식이라 묶음 상자로 감싸지 않는다(제목으로 바꾸면 접힘이 사라짐). */}
       {showAdvanced && (
         <>
-          <hr className="line-color" />
           <details>
             <summary className="cursor-pointer select-none text-sm font-semibold gray-label">
               {DRIVE_SYNC_TEXT.settingAdvancedTitle}

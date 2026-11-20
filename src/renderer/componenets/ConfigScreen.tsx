@@ -90,6 +90,7 @@ import {
 } from '../models/boostMode';
 import { useBoostAccountLock } from './boostAccountLock';
 import Tooltip from './Tooltip';
+import { SettingCheckRow, SettingField, SettingGroup } from './SettingControls';
 import { normalizeUiZoomPercent, uiZoomPercentForSave, UiZoomPercent } from '../../shared/uiZoom';
 
 // PC 에서 섹션 단위 2단 흐름(cfg-two-col)을 쓰는 탭 key — 칸이 많고 세로로만 쌓이던 탭(2026-11-11 오버레이 묶음 1).
@@ -370,15 +371,17 @@ const LoginTab = ({
     }
   };
 
+  // 묶음 상자(2026-11-20 UI 정돈 그룹 1-a): API 토큰으로 로그인 / (상자 밖) 토큰 발급 방법 안내 / Opus 할당량 안내 / 여러 토큰 / 부스트 모드.
+  // 항목·순서·문구·id·저장 방식은 그대로, 구분선(hr) 대신 상자. 체크 = SettingCheckRow(「저장」 반영), 할당량 경고 = 스위치(즉시 저장).
+  // 「여러 토큰」 안의 자동 순회 하위 상자는 기존 상자 그대로 둔다(묶음 안에 묶음을 만들지 않음).
   return (
     <div className="space-y-5">
-      <div>
-        <label className="block text-sm font-semibold gray-label mb-2">
-          API 토큰으로 로그인
-        </label>
+      <SettingGroup title="API 토큰으로 로그인">
+       <SettingField>
         <div className="flex gap-2 mb-2">
           <input className="gray-input block flex-1" type="password"
             placeholder="API 토큰을 붙여넣으세요"
+            aria-label="API 토큰"
             value={accessToken} onChange={(e) => setAccessToken(e.target.value)} />
         </div>
         <div className="flex items-center">
@@ -399,9 +402,9 @@ const LoginTab = ({
             {switchLocked}
           </p>
         )}
-      </div>
-      <hr className="line-color" />
-      {/* 토큰 발급/로그인 가이드 */}
+       </SettingField>
+      </SettingGroup>
+      {/* 토큰 발급/로그인 가이드 — 안내문 상자라 묶음으로 감싸지 않는다 */}
       <div className="rounded-lg border line-color bg-gray-50 dark:bg-slate-700/40 p-4 text-sm text-body">
         <p className="font-medium mb-1">토큰 발급 방법</p>
         <ol className="list-decimal list-inside space-y-1 mb-3 leading-relaxed text-body">
@@ -426,22 +429,17 @@ const LoginTab = ({
         </ol>
       </div>
 
-      <hr className="line-color" />
-      <div className="space-y-2">
-        <p className="text-sm font-semibold gray-label">Opus 할당량 안내</p>
-        <div className="rounded-lg border line-color bg-[var(--c-surface-2)] p-3">
-          {/* 할당량 상세 창(상단 배지)의 토글과 같은 값 — 바꾸는 즉시 저장된다. */}
-          <OpusUsageQuietToggle id="cfgOpusUsageQuiet" />
-        </div>
-      </div>
+      <SettingGroup title="Opus 할당량 안내">
+        {/* 할당량 상세 창(상단 배지)의 토글과 같은 값 — 바꾸는 즉시 저장된다(스위치). 안쪽 상자는 묶음과 겹쳐 뺐다. */}
+        <OpusUsageQuietToggle id="cfgOpusUsageQuiet" />
+      </SettingGroup>
 
-      <hr className="line-color" />
-      <div className="space-y-3">
+      <SettingGroup title="여러 토큰">
+       <SettingField className="space-y-3">
         <div>
           <div className="flex items-center gap-2">
-            <p className="text-sm font-semibold gray-label">여러 토큰</p>
             <button
-              className="btn back-sky rounded px-3 py-1.5 text-xs ml-auto flex-none whitespace-nowrap"
+              className="btn back-sky rounded px-3 py-1.5 text-xs flex-none whitespace-nowrap"
               disabled={profileBusy || profiles.length === 0}
               onClick={checkProfileUsages}
             >
@@ -458,33 +456,32 @@ const LoginTab = ({
           표시되지 않지만, 공용 기기에서는 저장하지 마세요.
         </div>
         <div className="rounded-lg border line-color bg-[var(--c-surface-2)] p-3 space-y-3">
-          <div className="flex items-center gap-2">
-            <input
+          {/* 체크 줄의 안쪽 여백만큼 당겨 하위 상자 안 다른 글자와 체크 상자의 왼쪽을 맞춘다 */}
+          <div className="-mx-2.5">
+            <SettingCheckRow
               id="cfgMultiTokenAutoRotate"
-              type="checkbox"
               checked={multiTokenAutoRotate}
               disabled={!profilesReady || profiles.length < 2 || boostLock.rotationBlocked}
-              onChange={(e) => setMultiTokenAutoRotate(e.target.checked)}
+              onChange={setMultiTokenAutoRotate}
+              label="V5 할당량 기반 자동 순회"
+              description={
+                <>
+                  {boostLock.rotationBlocked && (
+                    <span className="block mb-1" data-boost-rotation-locked>
+                      {BOOST_TEXT.rotationLocked}
+                    </span>
+                  )}
+                  <span className="block">
+                    정상 Opus 토큰이 2개 이상 저장된 경우에만 동작합니다. 무료 할당량 대상
+                    V5 생성에서 한 장이 끝난 뒤 다음 장을 시작하기 전에 전환합니다.
+                  </span>
+                  <span className="block mt-1" data-opus-rotation-rule>
+                    {OPUS_USAGE_TEXT.rotationRule}
+                  </span>
+                </>
+              }
             />
-            <label
-              htmlFor="cfgMultiTokenAutoRotate"
-              className="text-sm font-medium text-default"
-            >
-              V5 할당량 기반 자동 순회
-            </label>
           </div>
-          {boostLock.rotationBlocked && (
-            <p className="text-xs text-muted" data-boost-rotation-locked>
-              {BOOST_TEXT.rotationLocked}
-            </p>
-          )}
-          <p className="text-xs text-muted">
-            정상 Opus 토큰이 2개 이상 저장된 경우에만 동작합니다. 무료 할당량 대상
-            V5 생성에서 한 장이 끝난 뒤 다음 장을 시작하기 전에 전환합니다.
-          </p>
-          <p className="text-xs text-muted" data-opus-rotation-rule>
-            {OPUS_USAGE_TEXT.rotationRule}
-          </p>
           <div className={multiTokenAutoRotate ? 'space-y-3' : 'space-y-3 opacity-50'}>
             <div>
               <label className="block text-xs text-body mb-1">
@@ -526,26 +523,17 @@ const LoginTab = ({
                 반복 전환을 막기 위해 경고 임계값보다 항상 5%p 이상 높게 유지됩니다.
               </p>
             </div>
-            <div className="border-t line-color pt-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <input
+            <div className="border-t line-color pt-2 space-y-2">
+              <div className="-mx-2.5">
+                <SettingCheckRow
                   id="cfgMultiTokenBalanceRotate"
-                  type="checkbox"
                   checked={multiTokenBalanceRotate}
                   disabled={!multiTokenAutoRotate}
-                  onChange={(e) => setMultiTokenBalanceRotate(e.target.checked)}
+                  onChange={setMultiTokenBalanceRotate}
+                  label="여유 할당량 균형 순회"
+                  description="느리게 회복된 다른 계정의 무료 할당량이 현재 계정보다 5%p 이상 여유로울 때 전환합니다. 후보 조회와 계정 전환은 최대 30분에 한 번만 수행합니다."
                 />
-                <label
-                  htmlFor="cfgMultiTokenBalanceRotate"
-                  className="text-xs font-medium text-default"
-                >
-                  여유 할당량 균형 순회
-                </label>
               </div>
-              <p className="text-xs text-muted">
-                느리게 회복된 다른 계정의 무료 할당량이 현재 계정보다 5%p 이상 여유로울 때 전환합니다.
-                후보 조회와 계정 전환은 최대 30분에 한 번만 수행합니다.
-              </p>
               <div className={multiTokenBalanceRotate ? '' : 'opacity-50'}>
                 <label className="block text-xs text-body mb-1">
                   균형 순회 여유 기준 — {multiTokenRotateBalance}% 이상
@@ -684,121 +672,115 @@ const LoginTab = ({
           </div>
         )}
         <OpusUsageHelp />
-      </div>
+       </SettingField>
+      </SettingGroup>
 
-      <hr className="line-color" />
       {/* 부스트 모드(B3, PC·모바일 공통) — 값은 다른 다중 토큰 설정처럼 「저장」 때 config 에 쓴다(경고 창의
-          「다시 보지 않음」만 즉시 저장). 판정·문구 단일 출처 models/boostMode.ts. */}
-      <div className="space-y-3" data-boost-settings>
-        <div>
-          <p className="text-sm font-semibold gray-label">{BOOST_TEXT.settingsTitle}</p>
-          <p className="text-xs text-muted mt-1">{BOOST_TEXT.settingsDescription}</p>
-        </div>
-        <div className="rounded-lg border line-color bg-[var(--c-surface-2)] p-3 space-y-3">
-          <div className="flex items-center gap-2">
-            <input
-              id="cfgBoostMode"
-              type="checkbox"
-              checked={boostOn}
-              disabled={boostBusy || (!boostOn && !!boostLock.boostBlocked)}
-              onChange={(e) => void toggleBoost(e.target.checked)}
-            />
-            <label htmlFor="cfgBoostMode" className="text-sm font-medium text-default">
-              {BOOST_TEXT.settingsToggle}
-            </label>
-          </div>
-          {boostLock.boostBlocked === 'rotation' && (
+          「다시 보지 않음」만 즉시 저장). 판정·문구 단일 출처 models/boostMode.ts.
+          묶음 상자(2026-11-20) — 종전 안쪽 상자는 묶음과 이중 테두리라 하나로 합쳤다. */}
+      <div data-boost-settings>
+       <SettingGroup title={BOOST_TEXT.settingsTitle}>
+        <SettingField>
+          <p className="text-xs text-muted">{BOOST_TEXT.settingsDescription}</p>
+        </SettingField>
+        <SettingCheckRow
+          id="cfgBoostMode"
+          checked={boostOn}
+          disabled={boostBusy || (!boostOn && !!boostLock.boostBlocked)}
+          onChange={(checked) => void toggleBoost(checked)}
+          label={BOOST_TEXT.settingsToggle}
+        />
+        {boostLock.boostBlocked === 'rotation' && (
+          <SettingField>
             <p className="text-xs text-muted" data-boost-locked="rotation">
               {BOOST_TEXT.boostLockedByRotation}
             </p>
-          )}
-          {profilesReady && profiles.length < 2 && (
+          </SettingField>
+        )}
+        {profilesReady && profiles.length < 2 && (
+          <SettingField>
             <p className="text-xs text-muted" data-boost-locked="profiles">
               {BOOST_TEXT.profilesRequired}
             </p>
-          )}
-          {(() => {
-            // 켤 수 없는 상태(토큰 부족·순회 켜짐)면 방식·범위도 고를 수 없다. 꺼져 있어도 고를 수는 있다(켜면 그 값으로).
-            const areaDisabled = !boostOn && !!boostLock.boostBlocked;
-            return (
-              <div
-                className={'space-y-3 ' + (boostOn ? '' : 'opacity-60')}
-                aria-disabled={areaDisabled || undefined}
-              >
-                <fieldset className="space-y-1.5" disabled={areaDisabled}>
-                  <legend className="text-xs font-medium text-body mb-1">
-                    {BOOST_TEXT.modeHeading}
-                  </legend>
-                  {(['replicate', 'split'] as BoostActiveMode[]).map((mode) => (
-                    <label key={mode} className="flex items-start gap-2 text-xs text-default cursor-pointer">
-                      <input
-                        type="radio"
-                        name="cfgBoostActiveMode"
-                        className="mt-0.5 flex-none"
-                        checked={boostModeChoice === mode}
-                        onChange={() => chooseBoostMode(mode)}
-                      />
-                      <span className="min-w-0">
-                        <span className="block">{BOOST_TEXT.modeLabel[mode]}</span>
-                        <span className="block text-muted">{BOOST_TEXT.modeHint[mode]}</span>
-                      </span>
-                    </label>
-                  ))}
-                </fieldset>
-                <fieldset className="space-y-1.5 border-t line-color pt-3" disabled={areaDisabled}>
-                  <legend className="text-xs font-medium text-body mb-1">
-                    {BOOST_TEXT.scopeHeading}
-                  </legend>
-                  {BOOST_ACCOUNT_SCOPES.map((scope) => (
-                    <label key={scope} className="flex items-start gap-2 text-xs text-default cursor-pointer">
-                      <input
-                        type="radio"
-                        name="cfgBoostScope"
-                        className="mt-0.5 flex-none"
-                        checked={boost.scope === scope}
-                        onChange={() =>
-                          setBoostSettings((cur: BoostSettings) => ({ ...cur, scope }))
-                        }
-                      />
-                      <span className="min-w-0">
-                        <span className="block">{BOOST_SCOPE_LABEL[scope]}</span>
-                        <span className="block text-muted">{BOOST_TEXT.scopeHint[scope]}</span>
-                      </span>
-                    </label>
-                  ))}
-                </fieldset>
-                <div className="border-t line-color pt-3 space-y-1">
-                  <div className="flex items-center gap-2">
+          </SettingField>
+        )}
+        {(() => {
+          // 켤 수 없는 상태(토큰 부족·순회 켜짐)면 방식·범위도 고를 수 없다. 꺼져 있어도 고를 수는 있다(켜면 그 값으로).
+          const areaDisabled = !boostOn && !!boostLock.boostBlocked;
+          return (
+            <div
+              className={'space-y-3 pt-1 ' + (boostOn ? '' : 'opacity-60')}
+              aria-disabled={areaDisabled || undefined}
+            >
+              <fieldset className="space-y-1.5 px-2.5" disabled={areaDisabled}>
+                <legend className="text-xs font-medium text-body mb-1">
+                  {BOOST_TEXT.modeHeading}
+                </legend>
+                {(['replicate', 'split'] as BoostActiveMode[]).map((mode) => (
+                  <label key={mode} className="flex items-start gap-2 text-xs text-default cursor-pointer">
                     <input
-                      id="cfgBoostVariantTasks"
-                      type="checkbox"
-                      checked={boost.variantTasks}
-                      disabled={areaDisabled}
-                      onChange={(e) =>
-                        setBoostSettings((cur: BoostSettings) => ({
-                          ...cur,
-                          variantTasks: e.target.checked,
-                        }))
+                      type="radio"
+                      name="cfgBoostActiveMode"
+                      className="mt-0.5 flex-none"
+                      checked={boostModeChoice === mode}
+                      onChange={() => chooseBoostMode(mode)}
+                    />
+                    <span className="min-w-0">
+                      <span className="block">{BOOST_TEXT.modeLabel[mode]}</span>
+                      <span className="block text-muted">{BOOST_TEXT.modeHint[mode]}</span>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+              <fieldset className="space-y-1.5 border-t line-color pt-3 px-2.5" disabled={areaDisabled}>
+                <legend className="text-xs font-medium text-body mb-1">
+                  {BOOST_TEXT.scopeHeading}
+                </legend>
+                {BOOST_ACCOUNT_SCOPES.map((scope) => (
+                  <label key={scope} className="flex items-start gap-2 text-xs text-default cursor-pointer">
+                    <input
+                      type="radio"
+                      name="cfgBoostScope"
+                      className="mt-0.5 flex-none"
+                      checked={boost.scope === scope}
+                      onChange={() =>
+                        setBoostSettings((cur: BoostSettings) => ({ ...cur, scope }))
                       }
                     />
-                    <label htmlFor="cfgBoostVariantTasks" className="text-xs font-medium text-default">
-                      {BOOST_TEXT.variantToggle}
-                    </label>
-                  </div>
-                  <p className="text-xs text-muted">{BOOST_TEXT.variantHint}</p>
-                </div>
-                <p className="text-xs text-body border-t line-color pt-3" data-boost-preview>
-                  {boostPreview === 'error'
-                    ? '참여 후보를 불러오지 못했습니다.'
-                    : boostPreview
-                      ? boostParticipantPreviewText(boostPreview)
-                      : '참여 후보를 불러오는 중…'}
-                </p>
+                    <span className="min-w-0">
+                      <span className="block">{BOOST_SCOPE_LABEL[scope]}</span>
+                      <span className="block text-muted">{BOOST_TEXT.scopeHint[scope]}</span>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+              <div className="border-t line-color pt-1">
+                <SettingCheckRow
+                  id="cfgBoostVariantTasks"
+                  checked={boost.variantTasks}
+                  disabled={areaDisabled}
+                  onChange={(checked) =>
+                    setBoostSettings((cur: BoostSettings) => ({
+                      ...cur,
+                      variantTasks: checked,
+                    }))
+                  }
+                  label={BOOST_TEXT.variantToggle}
+                  description={BOOST_TEXT.variantHint}
+                />
               </div>
-            );
-          })()}
-          {boostOn && multiAccountWarning}
-        </div>
+              <p className="text-xs text-body border-t line-color pt-3 px-2.5" data-boost-preview>
+                {boostPreview === 'error'
+                  ? '참여 후보를 불러오지 못했습니다.'
+                  : boostPreview
+                    ? boostParticipantPreviewText(boostPreview)
+                    : '참여 후보를 불러오는 중…'}
+              </p>
+            </div>
+          );
+        })()}
+        {boostOn && <SettingField>{multiAccountWarning}</SettingField>}
+       </SettingGroup>
       </div>
     </div>
   );

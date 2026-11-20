@@ -11,6 +11,8 @@ import { promptName } from '../models/nameInput';
 import { deleteConfirmText } from '../models/deleteFlowRules';
 import MobileColorPicker from './MobileColorPicker';
 import Tooltip from './Tooltip';
+import { FaTimes } from 'react-icons/fa';
+import { SettingCheckRow, SettingField, SettingGroup } from './SettingControls';
 
 /* ── 메인 ConfigScreen ── */
 // 색 한 칸 선택 UI: 데스크톱=네이티브 색 피커, 모바일=MobileColorPicker(상위에서 띄움).
@@ -153,12 +155,13 @@ const MyThemePresetChip = ({
         </span>
       </button>
       <Tooltip content="프리셋 삭제">
+        {/* 글자 ✕ 대신 아이콘(2026-11-20 UI 정돈 그룹 1-a) — 칩 버튼의 크기·색(labelColor)은 그대로 */}
         <button
-          className="clickable text-xs px-1 flex-none"
+          className="clickable text-xs px-1 flex-none inline-flex items-center"
           style={{ color: labelColor }}
           onClick={onDelete}
         >
-          ✕
+          <FaTimes size={12} aria-hidden="true" />
         </button>
       </Tooltip>
     </div>
@@ -245,9 +248,11 @@ const CustomizationTab = ({
         아래 미리보기로 즉시 확인하고, <b>저장</b>하면 앱 전체에 적용됩니다.
       </div>
 
+      {/* 묶음 상자(2026-11-20 UI 정돈 그룹 1-a): 기본 테마 / 테마 템플릿 / 내 프리셋 / 테마 / 버튼 색.
+          맨 위 안내 문단·미리보기(자체 상자)·맨 아래 [전체 초기화]는 상자로 감싸지 않는다. 항목·순서·문구는 그대로. */}
       {/* ── 기본 테마 (base 모드) ── */}
-      <div>
-        <label className="block text-sm gray-label mb-2">기본 테마</label>
+      <SettingGroup title="기본 테마">
+       <SettingField>
         <div className="flex flex-col gap-1.5">
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="radio" name="themeMode" checked={!whiteMode && !trueDark}
@@ -265,12 +270,12 @@ const CustomizationTab = ({
             <span className="text-sm gray-label">화이트 모드</span>
           </label>
         </div>
-      </div>
-      <hr className="line-color" />
+       </SettingField>
+      </SettingGroup>
 
       {/* ── 테마 템플릿 ── */}
-      <div>
-        <label className="block text-sm gray-label mb-1">테마 템플릿</label>
+      <SettingGroup title="테마 템플릿">
+       <SettingField>
         <p className="text-xs text-muted mb-2">
           누르면 아래 색 설정 전체가 템플릿 값으로 바뀝니다(기존 커스텀 색은 덮어씀).
           미리보기로 확인 후 <b>저장</b>해야 적용됩니다.
@@ -303,13 +308,13 @@ const CustomizationTab = ({
             </div>
           ))}
         </div>
-      </div>
-      <hr className="line-color" />
+       </SettingField>
+      </SettingGroup>
 
-      {/* ── 내 프리셋 (릴리스 준비 ③) ── */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className="text-sm gray-label">내 프리셋</label>
+      {/* ── 내 프리셋 (릴리스 준비 ③) ── 제목 줄에 붙어 있던 [현재 구성 저장]은 묶음 첫 줄로 */}
+      <SettingGroup title="내 프리셋">
+       <SettingField>
+        <div className="flex items-center mb-1">
           <button
             className="round-button back-sky btn-sm flex-none"
             onClick={saveCurrentAsPreset}
@@ -353,10 +358,10 @@ const CustomizationTab = ({
             ))}
           </div>
         )}
-      </div>
-      <hr className="line-color" />
+       </SettingField>
+      </SettingGroup>
 
-      {/* ── 실시간 미리보기 ── */}
+      {/* ── 실시간 미리보기 ── (자체 테두리 상자라 묶음으로 감싸지 않음 — 이중 테두리 방지) */}
       <div>
         <label className="block text-sm gray-label mb-2">미리보기</label>
         <div
@@ -413,8 +418,8 @@ const CustomizationTab = ({
       </div>
 
       {/* ── 테마(배경/입력/텍스트) ── */}
-      <div className="space-y-3">
-        <div className="text-sm font-semibold gray-label">테마</div>
+      <SettingGroup title="테마">
+       <SettingField className="space-y-3">
         <ColorField
           label="배경색"
           value={uiTheme.surface}
@@ -487,28 +492,24 @@ const CustomizationTab = ({
             )}
           </div>
         </div>
-      </div>
+       </SettingField>
+      </SettingGroup>
 
       {/* ── 버튼 색 ── */}
-      <div className="space-y-3">
-        <div className="text-sm font-semibold gray-label">버튼 색</div>
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            className="w-4 h-4"
-            checked={unify}
-            onChange={(e) => patch({ unifyButtons: e.target.checked })}
-          />
-          <span className="text-sm gray-label">
-            버튼 색 통합 — 강조 / 일반 / 위험 3색으로 단순화
-          </span>
-        </label>
-        <div className="text-xs text-faint">
-          {unify
-            ? '여러 색으로 흩어진 버튼을 3가지 역할 색으로 합칩니다. (삭제는 위험색 유지)'
-            : '색별로 따로 지정합니다. 미설정 시 기본 테마 색을 씁니다.'}
-        </div>
+      <SettingGroup title="버튼 색">
+        <SettingCheckRow
+          id="cfgUnifyButtons"
+          checked={unify}
+          onChange={(checked) => patch({ unifyButtons: checked })}
+          label="버튼 색 통합 — 강조 / 일반 / 위험 3색으로 단순화"
+          description={
+            unify
+              ? '여러 색으로 흩어진 버튼을 3가지 역할 색으로 합칩니다. (삭제는 위험색 유지)'
+              : '색별로 따로 지정합니다. 미설정 시 기본 테마 색을 씁니다.'
+          }
+        />
 
+       <SettingField>
         {unify ? (
           <div className="flex flex-col gap-2">
             <ColorField
@@ -572,7 +573,8 @@ const CustomizationTab = ({
             />
           </div>
         )}
-      </div>
+       </SettingField>
+      </SettingGroup>
 
       {isMobile && mobilePicker && (
         <MobileColorPicker
