@@ -168,7 +168,7 @@ const ProjectCard = ({
             onToggleFav();
           }}
         >
-          <FaStar className={isFav ? 'text-yellow-400' : 'text-gray-300 dark:text-slate-600'} size={15} />
+          <FaStar className={isFav ? 'text-yellow-400' : 'text-faint'} size={15} />
         </button>
         </Tooltip>
         <span className="text-[15px] text-default truncate flex-1">{name}</span>

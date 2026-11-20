@@ -25,7 +25,7 @@ import {
 import type { BatchInsertCounts, InsertPosition, InsertSlotTarget } from '../models/batchInsert';
 
 const PRIMARY_BUTTON =
-  'px-4 py-2 rounded-lg btn-solid-sky disabled:bg-gray-300 dark:disabled:bg-gray-600 text-sm font-medium transition-colors';
+  'px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors';
 const CLOSE_BUTTON = 'px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors';
 
 const BatchInsertBody = observer(() => {

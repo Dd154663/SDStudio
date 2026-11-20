@@ -441,7 +441,7 @@ function useFindPanel(
             className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
         </div>
         <button onClick={doSearch} disabled={!canSearch}
-          className="px-4 py-2 rounded-lg btn-solid-sky disabled:bg-gray-300 dark:disabled:bg-gray-600 text-sm font-medium transition-colors flex-none">검색</button>
+          className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors flex-none">검색</button>
       </div>
 
       <div className="flex items-center gap-2 -mt-2 flex-none">
@@ -522,7 +522,7 @@ function useFindPanel(
 
   const footer = (
     <button onClick={confirmReplaceAll} disabled={!hasResults}
-      className="px-4 py-2 rounded-lg btn-solid-orange disabled:bg-gray-300 dark:disabled:bg-gray-600 text-sm font-medium transition-colors">
+      className="px-4 py-2 rounded-lg btn-solid-orange text-sm font-medium transition-colors">
       모두 변환
     </button>
   );

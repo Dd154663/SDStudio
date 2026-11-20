@@ -5,6 +5,7 @@ import { Session } from '../models/types';
 import { addScenesToQueue, SceneQueueFilter } from '../models/sceneQueueActions';
 import { backStackService } from '../models/BackStackService';
 import Tooltip from './Tooltip';
+import { themePortalRoot } from './themePortal';
 
 // 툴바 overflow와 하단 도크에서도 잘리지 않도록 포털로 표시한다.
 export default function SceneQueueMenu({ children, session, type, selectedOnly }: {
@@ -90,6 +91,6 @@ export default function SceneQueueMenu({ children, session, type, selectedOnly }
       style={{ ...position, maxWidth: 'calc(100vw - 8px)' }}>
       <button type="button" className="btn-ghost text-left px-3 py-2" onClick={() => reserve('empty')}>빈 씬만 일괄 예약</button>
       <button type="button" className="btn-ghost text-left px-3 py-2" onClick={() => reserve('no-favorites')}>즐겨찾기 이미지 없는 씬만 예약</button>
-    </div>, document.body)}
+    </div>, themePortalRoot(anchor.current))}
   </span>;
 }

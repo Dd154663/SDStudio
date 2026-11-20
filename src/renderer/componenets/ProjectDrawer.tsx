@@ -259,7 +259,7 @@ const ProjectRow = observer(
                     ? 'text-yellow-400'
                     : active
                       ? 'text-sky-100'
-                      : 'text-gray-300 dark:text-slate-600'
+                      : 'text-faint'
                 }`}
               />
             </span>

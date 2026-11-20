@@ -14,6 +14,7 @@ import {
   FaPen,
   FaFileArchive,
   FaFileImport,
+  FaCheck,
   FaCheckSquare,
   FaSquare,
   FaGlobe,
@@ -476,9 +477,10 @@ export const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: st
                 const has = artist.tags.includes(t);
                 return (
                   <button key={t} disabled={has}
-                    className={'text-xs px-2.5 py-1 rounded-full border ' + (has ? 'line-color text-gray-300 dark:text-gray-600' : 'line-color text-muted hover:border-sky-500 hover:text-sky-500')}
+                    className={'text-xs px-2.5 py-1 rounded-full border ' + (has ? 'line-color text-faint' : 'line-color text-muted hover:border-sky-500 hover:text-sky-500')}
                     onClick={() => addArtistTagRecorded(artist.id, t)}>
-                    + {t}
+                    {/* 이미 추가된 태그는 색 말고도 체크 아이콘으로 구분(UI 정돈 그룹 1) — 「+」 자리에 체크 */}
+                    {has ? <FaCheck size={10} className="inline mr-1 align-[-1px]" aria-hidden="true" /> : '+ '}{t}
                   </button>
                 );
               })}

@@ -1824,7 +1824,8 @@ const PromptEditTextArea = observer(
                 onClick={() => {
                   if (!disabled) setFullScreen(!fullScreen);
                 }}
-                className="text-gray-500 hover:text-gray-600 dark:text-slate-400 dark:hover:text-slate-300 opacity-50 mr-1 mt-1"
+                // 색 = --c-icon-text, 평소 0.85·hover 1(UI 정돈 그룹 1 — 종전 gray-500/slate-400 에 opacity-50 이라 잘 안 보였다)
+                className="text-[var(--c-icon-text)] opacity-[0.85] hover:opacity-100 mr-1 mt-1"
               >
                 {!fullScreen ? <FaExpand></FaExpand> : <FaTimes></FaTimes>}
               </button>

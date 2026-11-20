@@ -13,6 +13,7 @@ import { isMobile } from '../models';
 import { Scrollbars } from 'react-custom-scrollbars-2';
 import { ActionIcon } from './ActionIcon';
 import { FloatView } from './FloatView';
+import { themePortalRoot } from './themePortal';
 import MobilePromptSheet from './MobilePromptSheet';
 import { V2MainRow } from './MobileV2Bars';
 import {
@@ -62,7 +63,9 @@ export const DropdownSelect = <T,>({
       options={options}
       onChange={handleChange}
       menuPlacement={menuPlacement}
-      menuPortalTarget={document.body}
+      // 목록은 앱 테마 루트 안에 그린다(body 면 .dark·커스텀 테마 변수를 못 받아 다크에서 흰 목록 — UI 정돈 그룹 1).
+      // 테마 루트는 #root 의 유일한 자식이라 문서 원점(0,0)에 있어, 기본 absolute 위치 계산(컨트롤 rect + pageYOffset)이 body 때와 같다.
+      menuPortalTarget={themePortalRoot()}
       styles={{ menuPortal: (base) => ({ ...base, zIndex: 'var(--z-tooltip)' }) }}
       isDisabled={disabled}
       isSearchable={!isMobile}

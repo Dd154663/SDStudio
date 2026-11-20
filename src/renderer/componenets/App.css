@@ -93,6 +93,9 @@
      커스텀 테마는 buildThemeVars 가 텍스트 패턴(밝음/어두움)에 맞춰 이 두 값을 고른다. */
   --c-link: #0369a1; /* sky-700 */
   --c-link-hover: #075985; /* sky-800 */
+  /* 덮개(마우스 올림·키보드 초점 항목 바탕, UI 정돈 그룹 1) — 아래 바탕 위에 얹는 반투명 막. 트루다크는 .dark 값,
+     커스텀 테마(uiTheme.buildThemeVars)·클래식 마감은 재정의하지 않는다. 지금은 드롭다운 옵션만 사용. */
+  --c-hover: rgb(0 0 0 / 0.05);
   /* 버튼 반경 토큰(2026-10-04 B1 ①, 같은 날 실기 피드백으로 범위 축소) — 색과 무관해 테마별 재정의 없음.
      --r-btn      = 글자·아이콘+글자 버튼(.round-button·.icon-button·확인 창 .r-btn) — 알약, 모던·클래식 공통.
      --r-btn-icon = 아이콘 하나짜리 버튼(.icon-only) — 모던 8px 둥근 사각, 클래식 마감·알약형 버튼 옵션은
@@ -128,6 +131,7 @@
   --c-focus-ring: rgb(56, 189, 248); /* sky-400 — 종전 포커스 링 색 그대로(트루다크도 이 값) */
   --c-link: #0ea5e9; /* sky-500 — 종전 그대로(surface 6.44·surface-2 5.28, 트루다크 7.14) */
   --c-link-hover: #0284c7; /* sky-600 — 종전 hover 그대로 */
+  --c-hover: rgb(255 255 255 / 0.1); /* 덮개 — 트루다크도 이 값 */
   /* 영역 바닥 선 — 다크 bg 토큰은 이미 25% 반투명이라 선명한 fg(teal·sky-400·gray-200)를 옅게 칠한다 */
 }
 .true-dark {
@@ -695,6 +699,13 @@ html.font-pretendard body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* 솔리드 버튼(.btn-solid-*)도 같은 비활성 표시(UI 정돈 그룹 1 — 종전엔 disabled 여도 평소 색).
+   :where 로 특이도를 낮춰 사용처가 따로 쓴 disabled:opacity-40 등 유틸이 그대로 이긴다.
+   비활성일 때 hover 로 진해지지 않게 하는 색 고정은 아래 .btn-solid-* 정의 바로 뒤. */
+:where([class*="btn-solid-"]):disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* .btn — 직사각 버튼 베이스(다이얼로그·설정 화면 언어).
    back-* py-2 rounded hover:brightness… 인라인 반복의 공용화.
@@ -716,6 +727,14 @@ html.font-pretendard body {
 .btn-solid-yellow { @apply bg-yellow-500 hover:bg-yellow-600 text-white; }
 .btn-solid-indigo { @apply bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white; }
 .btn-solid-purple { @apply bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600 text-white; }
+/* 비활성이면 hover 에도 평소 색 그대로(위 hover 규칙과 같은 특이도·뒤에 정의 — 라이트·다크 각각). */
+.btn-solid-sky:disabled { @apply bg-sky-600 dark:bg-sky-500; }
+.btn-solid-green:disabled { @apply bg-green-600 dark:bg-green-500; }
+.btn-solid-red:disabled { @apply bg-red-600 dark:bg-red-500; }
+.btn-solid-orange:disabled { @apply bg-orange-600 dark:bg-orange-500; }
+.btn-solid-yellow:disabled { @apply bg-yellow-500; }
+.btn-solid-indigo:disabled { @apply bg-indigo-600 dark:bg-indigo-500; }
+.btn-solid-purple:disabled { @apply bg-purple-600 dark:bg-purple-500; }
 
 /* .btn-ghost — 배경 없는 아이콘/텍스트 버튼의 hover 배경 공용화.
    패딩·라운딩(p-2 rounded-md 등)과 hover:text-* 액센트는 사용처에서 조합 */
@@ -895,17 +914,6 @@ html:not(.finish-classic) .tab-seg > .tab-seg-off:hover {
     @apply border-gray-500 hover:border-gray-500 dark:border-slate-400 dark:hover:border-slate-400 shadow-none;
   }
 
-  .my-react-select-container .my-react-select__menu {
-    @apply bg-[var(--c-input-bg)] border-2 border-[color:var(--c-line)];
-  }
-
-  .my-react-select-container .my-react-select__option {
-    @apply text-[var(--c-input-text)] bg-[var(--c-input-bg)] hover:bg-slate-200 dark:hover:bg-slate-800;
-  }
-  /* .my-react-select-container .my-react-select__option--is-focused {
-    @apply bg-neutral-200 dark:bg-neutral-800;
-  } */
-
   .my-react-select-container .my-react-select__indicator-separator {
     @apply bg-slate-400;
   }
@@ -915,6 +923,34 @@ html:not(.finish-classic) .tab-seg > .tab-seg-off:hover {
   .my-react-select-container .my-react-select__single-value {
     @apply text-[var(--c-input-text)];
   }
+}
+
+/* 펼친 목록(UI 정돈 그룹 1) — DropdownSelect 는 목록을 앱 테마 루트로 포털하므로(.my-react-select__menu-portal)
+   컨테이너 후손 선택자만으로는 걸리지 않는다. 포털 감싸개 후손을 함께 적는다. 두 클래스(0,2,0)라
+   react-select emotion 기본(한 클래스)보다 이기고, 옵션 상태 규칙은 :active 까지 적어 기본 파랑
+   (#2684FF·#DEEBFF·#B2D4FF)이 어떤 상태에서도 남지 않게 한다. 덮개 = --c-hover, 선택 = sky 토큰 쌍.
+   @layer components 밖에 둔다 — 층 안의 규칙은 Tailwind 가 소스에 클래스 글자가 있을 때만 남기는데,
+   __menu-portal·__option 은 react-select 가 실행 중에 만드는 이름이라 소스에 없다(층 안에 두면 빌드에서 빠질 수 있음). */
+.my-react-select__menu-portal .my-react-select__menu,
+.my-react-select-container .my-react-select__menu {
+  background-color: var(--c-input-bg);
+  border: 2px solid var(--c-line);
+  color: var(--c-input-text);
+}
+
+.my-react-select__menu .my-react-select__option {
+  background-color: var(--c-input-bg);
+  color: var(--c-input-text);
+}
+.my-react-select__menu .my-react-select__option:active,
+.my-react-select__menu .my-react-select__option.my-react-select__option--is-focused {
+  background-color: var(--c-hover);
+}
+.my-react-select__menu .my-react-select__option.my-react-select__option--is-selected,
+.my-react-select__menu .my-react-select__option.my-react-select__option--is-selected:active {
+  background-color: var(--c-sky-bg);
+  color: var(--c-sky-fg);
+  font-weight: 600;
 }
 
 .alert-window {
