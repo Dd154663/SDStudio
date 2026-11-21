@@ -99,6 +99,7 @@ import { queueNaiUpscale } from '../models/workflows/NaiUpscaleFlow';
 import { estimateNaiUpscaleCost } from '../backends/genVendors/naiUpscale';
 import { getImageDimensions } from './BrushTool';
 import { dataUriToBase64 } from '../models/ImageService';
+import { isImageCacheInvalidationFor } from '../models/imageCacheInvalidation';
 import {
   copyImagesRecorded,
   deleteImageFilesRecorded,
@@ -1162,32 +1163,40 @@ const ResultDetailView = observer(
     const [steps, setSteps] = useState<string>('');
     const [uc, setUc] = useState<string>('');
     const [_, forceUpdate] = useState<{}>({});
+    // 이미지 불러오기는 보고 있는 경로(문자열)와 다시 시도 번호에만 묶는다 — 생성 중 'updated' 로
+    // 목록 배열만 새로 만들어지면 같은 이미지를 다시 읽고 비우지 않는다(2026-11-21).
+    const currentImagePath = paths[selectedIndex];
+    // 요청 번호: 최신 요청이 아니면(다른 이미지로 넘어감·겹친 재요청·정리됨) 상태를 건드리지 않는다.
+    const imageRequestRef = useRef(0);
     useEffect(() => {
-      let cancelled = false;
+      const imagePath = currentImagePath;
+      if (!imagePath) return;
       const fetchImage = async () => {
-        if (!paths[selectedIndex]) return;
+        const requestId = ++imageRequestRef.current;
+        const isStale = () => imageRequestRef.current !== requestId;
         setImage(undefined);
         setImageLoadFailed(false);
         setUpscaleInfo(undefined);
         try {
-          let base64Image = await imageService.fetchImage(
-            paths[selectedIndex],
-          )!;
+          let base64Image = await imageService.fetchImage(imagePath);
+          if (isStale()) return;
           if (!base64Image) {
             throw new Error('이미지 파일을 찾을 수 없습니다.');
           }
-          if (cancelled) return;
           setImage(base64Image!);
           base64Image = dataUriToBase64(base64Image!);
-          const upscalePath = paths[selectedIndex];
+          const upscalePath = imagePath;
           void getImageDimensions(base64Image).then(({ width, height }) => {
+            if (isStale()) return;
             const cost = estimateNaiUpscaleCost(width, height);
-            if (!cancelled) setUpscaleInfo({ path: upscalePath, cost });
+            setUpscaleInfo({ path: upscalePath, cost });
           }).catch((e) => {
-            if (!cancelled) setUpscaleInfo({ path: upscalePath, error: e?.message ?? '이미지 확인 실패' });
+            if (isStale()) return;
+            setUpscaleInfo({ path: upscalePath, error: e?.message ?? '이미지 확인 실패' });
           });
           try {
             const job = await extractPromptDataFromBase64(base64Image);
+            if (isStale()) return;
             if (job) {
               const { prompt, seed, promptGuidance, sampling, steps, uc } = job;
               setMiddlePrompt(prompt);
@@ -1207,6 +1216,7 @@ const ResultDetailView = observer(
               setUc('');
             }
           } catch (e: any) {
+            if (isStale()) return;
             setMiddlePrompt('');
             setCharacterPrompts([]);
             setSeed('');
@@ -1215,9 +1225,9 @@ const ResultDetailView = observer(
             setSteps('');
             setUc('');
           }
-          setFilename(paths[selectedIndex].split('/').pop()!);
+          setFilename(imagePath.split('/').pop()!);
         } catch (e: any) {
-          if (cancelled) return;
+          if (isStale()) return;
           console.log(e);
           setImage(undefined);
           setImageLoadFailed(true);
@@ -1231,11 +1241,31 @@ const ResultDetailView = observer(
           setFilename('');
         }
       };
+      // 캐시 무효화는 보고 있는 이미지 것일 때만 다시 읽는다(detail 없으면 안전하게 다시 읽음).
+      const onImageInvalidated = (e: Event) => {
+        if (
+          !isImageCacheInvalidationFor(
+            (e as CustomEvent).detail,
+            imagePath,
+          )
+        )
+          return;
+        void fetchImage();
+      };
+      void fetchImage();
+      imageService.addEventListener('image-cache-invalidated', onImageInvalidated);
+      return () => {
+        imageRequestRef.current++;
+        imageService.removeEventListener('image-cache-invalidated', onImageInvalidated);
+      };
+    }, [currentImagePath, imageRetryRevision]);
+    useEffect(() => {
       const rerender = () => {
         forceUpdate({});
       };
-      fetchImage();
-      filenameRef.current = paths[selectedIndex].split('/').pop()!;
+      // 목록이 줄어드는 사이 경로가 비면 직전 파일 이름을 유지한다(refreshPaths 가 새 위치를 찾는 기준).
+      const currentFilename = paths[selectedIndex]?.split('/').pop();
+      if (currentFilename) filenameRef.current = currentFilename;
       const handleKeyDown = async (e: KeyboardEvent) => {
         // 입력 칸 포커스 중엔 전부, 확인 창이 열려 있으면 Delete/Backspace 무시(2026-11-01 U0-b E7)
         if (
@@ -1322,17 +1352,14 @@ const ResultDetailView = observer(
       window.addEventListener('keydown', handleKeyDown);
       window.addEventListener('shortcut-action', handleShortcut);
       sessionService.addEventListener('main-image-updated', rerender);
-      imageService.addEventListener('image-cache-invalidated', fetchImage);
       gameService.addEventListener('updated', refreshPaths);
       return () => {
-        cancelled = true;
         window.removeEventListener('keydown', handleKeyDown);
         window.removeEventListener('shortcut-action', handleShortcut);
         sessionService.removeEventListener('main-image-updated', rerender);
-        imageService.removeEventListener('image-cache-invalidated', fetchImage);
         gameService.removeEventListener('updated', refreshPaths);
       };
-    }, [selectedIndex, paths, imageRetryRevision]);
+    }, [selectedIndex, paths]);
 
     useEffect(() => {
       return () => {
