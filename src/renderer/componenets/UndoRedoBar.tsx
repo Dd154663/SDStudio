@@ -257,6 +257,14 @@ function translateYOf(el: HTMLElement): number {
   }
 }
 
+// 칠하기만 바꾸는 전환 속성(자리·크기·겹침 판정과 무관) — 이 속성의 transitionend 로는 바 자리를 다시 재지 않는다.
+// 전환 이벤트의 propertyName 은 개별 속성 이름(border-top-color 등). 이름이 없으면(합성 이벤트) 종전처럼 다시 잰다.
+const PAINT_ONLY_TRANSITION =
+  /^(filter|color|background-color|box-shadow|opacity|outline-color|border-(top|right|bottom|left)-color|border-color)$/;
+export function isPaintOnlyTransition(propertyName: string | undefined | null): boolean {
+  return !!propertyName && PAINT_ONLY_TRANSITION.test(propertyName);
+}
+
 export interface UndoAnchorPick {
   /** slot = 막대 자리에 포털 · sheet = 프롬프트 시트 위 fixed · corner = 클래식 프롬프트 창 구석에 포털 */
   kind: 'slot' | 'sheet' | 'corner';
@@ -522,15 +530,21 @@ const UndoRedoBar = observer(({ suppressed }: { suppressed?: boolean }) => {
     window.addEventListener('resize', schedule);
     const vv = window.visualViewport;
     vv?.addEventListener('resize', schedule);
-    // 시트 FLIP 전환이 끝나면 다시 잰다(전환 중에도 멈출 자리 기준으로 재지만, 가림 판정은 끝난 뒤가 정확)
-    document.addEventListener('transitionend', schedule, true);
+    // 시트 FLIP 전환이 끝나면 다시 잰다(전환 중에도 멈출 자리 기준으로 재지만, 가림 판정은 끝난 뒤가 정확).
+    // 칠하기 전용 속성(버튼 hover 색·밝기 등, 그룹 3-a 로 수백 곳)의 전환 끝은 자리·크기·가림 판정을 바꾸지 않으므로 무시 —
+    // 마우스를 움직일 때마다 측정(elementsFromPoint·조상 getComputedStyle)이 돌지 않게.
+    const onTransitionEnd = (e: Event) => {
+      if (isPaintOnlyTransition((e as TransitionEvent).propertyName)) return;
+      schedule();
+    };
+    document.addEventListener('transitionend', onTransitionEnd, true);
     return () => {
       if (frame != null) caf(frame);
       mo?.disconnect();
       ro?.disconnect();
       window.removeEventListener('resize', schedule);
       vv?.removeEventListener('resize', schedule);
-      document.removeEventListener('transitionend', schedule, true);
+      document.removeEventListener('transitionend', onTransitionEnd, true);
       rootStyle.removeProperty(UNDO_BAR_TOP_VAR);
     };
   }, [shown]);

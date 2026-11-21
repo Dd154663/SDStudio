@@ -123,8 +123,8 @@ describe('② contexify 우클릭 메뉴 — 테마 토큰', () => {
     expect(contexify).toMatch(/\.contexify_item-disabled > \.contexify_itemContent \{\s*color: var\(--contexify-disabledItem-color\);/);
     expect(contexify).toContain('--contexify-disabledItem-color: var(--c-text-faint);');
   });
-  test('움직임(키프레임·길이)은 그대로', () => {
-    expect(contexify).toContain('animation: contexify_fadeIn 0.3s ease;');
+  test('움직임: 앱이 쓰는 fade 는 그룹 3-a 에서 짧게(uiPolishGroup3a.test.ts), 쓰지 않는 scale 은 그대로', () => {
+    expect(contexify).toContain('animation: contexify_fadeIn var(--motion-base, 130ms) var(--motion-ease-out, ease-out);');
     expect(contexify).toContain('animation: contexify_scaleIn 0.3s;');
   });
   test('메뉴는 테마 루트 안에서 그려짐(AppContextMenu 가 [data-app-theme-root] 안, 라이브러리는 포털 없음)', () => {

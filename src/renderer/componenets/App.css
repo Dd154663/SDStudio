@@ -31,6 +31,14 @@
   --z-drag-ghost: 9999;   /* 드래그 고스트(커서 추종) — 최상위 */
 }
 
+/* ── 움직임 길이·이징 토큰(UI 정돈 그룹 3-a, 2026-11-21) ──
+   새로 넣는 움직임은 이 값만 쓴다(0.15초 이하). 규칙 모음·움직임 줄이기는 이 파일 맨 끝 「움직임 공용 규칙」. */
+:root {
+  --motion-fast: 120ms;   /* hover 색·밝기, 전체 화면 보기 페이드 */
+  --motion-base: 130ms;   /* 열림(우클릭 메뉴) — 시범 .ui-pop-in 과 같은 값. 창에는 쓰지 않는다 */
+  --motion-ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+
 /* ── 트루 다크 모드 오버라이드 ── */
 .true-dark.dark\:bg-slate-900,
 .true-dark .dark\:bg-slate-900 {
@@ -494,7 +502,8 @@ html.font-pretendard body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    transition: box-shadow 0.15s ease;
+    /* hover 밝기·바탕은 부드럽게(그룹 3-a), 누르는 순간은 즉시 — 파일 끝 「움직임 공용 규칙」의 :active 규칙 */
+    transition: filter var(--motion-fast) ease, background-color var(--motion-fast) ease, box-shadow 150ms ease;
   }
   .round-button:hover {
     box-shadow: inset 0 0 0 2px rgb(56, 189, 248);
@@ -706,6 +715,7 @@ html.font-pretendard body {
   .icon-button {
     @apply active:brightness-90 hover:brightness-95 select-none whitespace-nowrap p-1;
     border-radius: var(--r-btn);
+    transition: filter var(--motion-fast) ease, background-color var(--motion-fast) ease; /* 그룹 3-a — 누름은 즉시(파일 끝) */
   }
   .icon-button.icon-only {
     border-radius: var(--r-btn-icon);
@@ -1315,20 +1325,33 @@ html:not(.finish-classic) .input-ring.prompt-edit-ring:focus-within {
   display: none;
 }
 
-/* 토스트 등장: 아래에서 위로 올라오며 불투명도 증가 */
+/* 토스트 등장: 아래에서 위로 올라오며 불투명도 증가(그룹 3-a — 0.28s·14px → 0.15s·8px).
+   사라짐: 표시 시간이 끝나기 0.2초 전부터 지연된 둘째 애니메이션(toast-out)으로 흐려진다. 표시 시간 = AlertWindow.tsx 의
+   TOAST_DURATION(5000ms)이 토스트 요소에 --toast-duration 으로 넘긴 값 — 짝이므로 한쪽만 바꾸지 않는다(대체값 5000ms 도 같은 값).
+   언마운트는 종전 타이머 그대로, 수동 ✕ 닫기는 즉시. */
 @keyframes toast-rise {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
+@keyframes toast-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
 
 .toast-rise {
-  animation: toast-rise 0.28s ease-out;
+  animation:
+    toast-rise 0.15s var(--motion-ease-out),
+    toast-out 0.2s ease-in calc(var(--toast-duration, 5000ms) - 200ms) forwards;
 }
 
 .prompt-full {
@@ -1524,15 +1547,12 @@ input[type='number']::-webkit-outer-spin-button {
   overflow: hidden;
 }
 
+/* 그룹 3-a: 종전 이징이 transition-timing-function 으로 적혀 무효였다(애니메이션은 animation-timing-function) → 바로잡고
+   0.3s → 0.15s(react-window 가 스크롤마다 셀을 다시 붙여 매번 재생되므로 짧게). 모바일 끔은 아래 그대로. */
 .image-anime {
   animation-name: show;
-  transition-timing-function: cubic-bezier(
-    0.645,
-    0.045,
-    0.355,
-    1
-  ); /* easeInOutCubic */
-  animation-duration: 0.3s;
+  animation-timing-function: cubic-bezier(0.645, 0.045, 0.355, 1); /* easeInOutCubic */
+  animation-duration: 0.15s;
 }
 
 /* 모바일: 이미지 로드 애니메이션 비활성화 (성능 최적화) */
@@ -2383,4 +2403,51 @@ details > summary::before {
 }
 details[open] > summary::before {
   transform: translateY(-3px) rotate(45deg);
+}
+
+/* ── 움직임 공용 규칙(UI 정돈 그룹 3-a, 2026-11-21 — 조사 R4~R6·R10, 사용자 승인 원칙) ──
+   · 창(확인 창·일반 창·전체 화면 보기)은 열릴 때도 닫힐 때도 즉시 — 자주 열고 곧바로 작업에 들어가는 자리라
+     등장 페이드를 넣지 않는다(2026-11-21 사용자 결정: 넣었다가 뺌). 다시 넣지 않는다.
+   · opacity·transform 만. height·width·top·left·테두리 굵기 전환 금지. 길이는 :root 의 --motion-* 토큰(0.15초 이하).
+   · 넣지 않는 자리: 창 열림/닫힘·이미지 그리드 셀·씬 카드 추가/삭제/순서·생성 중 갱신 영역·사전 세팅 패널 접힘·
+     아코디언 높이·주 탭 본문·프롬프트 입력 칸/자동완성·진행 막대 채움·스피너. 공용 버튼에 누름 축소(scale)는 넣지 않는다(사용자 결정).
+   · 움직임 줄이기 = 이 파일 맨 끝 전역 블록 한 곳(1ms 방식). */
+
+/* 공용 칸·줄 hover 색·바탕 전환(R6) — 그룹 2 의 공용 클래스. @layer components 안이라 사용처의 transition-* 유틸이 이긴다.
+   .round-button·.icon-button 은 각 정의 자리(위)에 같은 값. .clickable 은 이미지·카드에도 붙어 넣지 않는다. */
+@layer components {
+  .seg-group > .seg-item,
+  .tab-line > .tab-line-item,
+  .add-slot,
+  .list-row-selected,
+  .hover-row {
+    transition-property: color, background-color;
+    transition-duration: var(--motion-fast);
+    transition-timing-function: ease;
+  }
+}
+/* 누르는 순간은 즉시 — 눌렀다는 반응(어두워짐·덮개)이 늦지 않게. 떼면 hover 상태로는 위 길이로 돌아간다. 축소(scale) 없음. */
+.round-button:active,
+.icon-button:active,
+.seg-group > .seg-item:active,
+.tab-line > .tab-line-item:active,
+.add-slot:active,
+.hover-row:active {
+  transition-duration: 0ms;
+}
+
+/* ── 움직임 줄이기 — 앱 전체 한 곳(R3, 조사 §5-2). OS 설정(prefers-reduced-motion)을 따르고 앱 안 스위치는 두지 않는다. ──
+   none 이 아니라 1ms: react-contexify 는 animationend 를 받아야 메뉴를 숨기고, 모바일 프롬프트 시트·되돌리기 바는
+   transitionend 를 기다린다. 반복 횟수 1 = 툴바 편집 흔들림(.toolbar-wiggle) 같은 무한 반복도 사실상 멈춘다.
+   예외(길이가 정보): 하단 작업 진행 막대(.progress-clip-animation — 인라인 animationDuration = 예상 생성 시간)·스피너(.animate-spin).
+   위 시범 블록·V2 밀기 안내의 줄이기 규칙은 테스트가 보므로 그대로 둔다(중복 무해). */
+@media (prefers-reduced-motion: reduce) {
+  *:not(.progress-clip-animation):not(.animate-spin),
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
 }

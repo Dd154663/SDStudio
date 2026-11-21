@@ -68,7 +68,7 @@
 .contexify .contexify_submenu {
   position: absolute;
   pointer-events: none;
-  transition: opacity 0.265s;
+  transition: opacity 0.12s; /* 그룹 3-a: 종전 0.265s */
   top: calc(-1 * var(--contexify-menu-negatePadding));
   left: 100%;
 }
@@ -182,10 +182,13 @@
   transform-origin: top left;
   animation: contexify_scaleOut 0.3s;
 }
+/* 앱 메뉴 5종이 쓰는 기본 fade(그룹 3-a): 들어옴 0.3s·10px → --motion-base(130ms)·ease-out·4px(시범 .ui-pop-in 과 맞춤),
+   나감 0.3s → 0.1s. 라이브러리가 animationend 를 받아야 메뉴를 숨기므로 animation 자체는 없애지 않는다(움직임 줄이기도 1ms).
+   쓰이지 않는 scale·flip·slide 는 손대지 않았다. */
 @keyframes contexify_fadeIn {
   0% {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -199,14 +202,14 @@
   }
   to {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(4px);
   }
 }
 .contexify_willEnter-fade {
-  animation: contexify_fadeIn 0.3s ease;
+  animation: contexify_fadeIn var(--motion-base, 130ms) var(--motion-ease-out, ease-out);
 }
 .contexify_willLeave-fade {
-  animation: contexify_fadeOut 0.3s ease;
+  animation: contexify_fadeOut 0.1s ease;
 }
 @keyframes contexify_flipInX {
   0% {

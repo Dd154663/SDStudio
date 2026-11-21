@@ -1,10 +1,14 @@
 import { observer } from 'mobx-react-lite';
 import { useEffect } from 'react';
+import type { CSSProperties } from 'react';
 import { FaCheckCircle, FaExclamationCircle, FaInfoCircle, FaTimes } from 'react-icons/fa';
 import { appState } from '../models/AppService';
 import type { ToastKind } from '../models/toastKind';
 
+// 표시 시간 — App.css .toast-rise 의 사라짐 페이드(toast-out, 끝나기 0.2초 전 시작)와 짝. 토스트 요소에 --toast-duration 으로
+// 넘겨 CSS 지연값이 이 상수 하나에서 정해진다(CSS 대체값 5000ms 도 같은 값 — 바꾸면 함께).
 const TOAST_DURATION = 5000;
+const TOAST_STYLE = { '--toast-duration': `${TOAST_DURATION}ms` } as CSSProperties;
 
 // 종류별 색(2026-10-03 U1·X7 — 예전엔 항상 빨강이라 성공 알림도 오류처럼 보였다).
 // error = 종전 빨강(토스트 리터럴 예외, SPEC §1). success·info = 상태색 토큰(back-green / back-gray).
@@ -38,6 +42,7 @@ const Toast = observer(
     return (
       <div
         className="toast-rise titlebar-no-drag mb-2 rounded-md r-popover shadow-xl bg-[var(--c-zone)] w-full pointer-events-auto overflow-hidden"
+        style={TOAST_STYLE}
         data-toast-kind={kind}
         role={kind === 'error' ? 'alert' : 'status'}
       >
