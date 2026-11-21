@@ -83,7 +83,7 @@ const QuickMenuEditor = ({
   return (
     <div className={inGroup ? 'setting-field' : undefined}>
       {!inGroup && <div className="text-sm font-semibold gray-label mb-1">퀵 메뉴 구성</div>}
-      <p className="text-xs text-faint mb-2">
+      <p className="text-xs text-muted mb-2">
         우하단 ⚡ 버튼{isMobile ? '' : ' 또는 단축키(기본 Ctrl+K)'}로 여는 퀵
         메뉴에 담을 기능을 고릅니다. 위에서부터 나열 순서대로 표시됩니다.
       </p>
@@ -524,7 +524,7 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
             description={p.desc}
           />
         ))}
-        <p className="text-xs text-faint mt-1 px-2.5">끈 부위는 클래식 배치로 그려집니다. 저장 시 적용.</p>
+        <p className="text-xs text-muted mt-1 px-2.5">끈 부위는 클래식 배치로 그려집니다. 저장 시 적용.</p>
       </div>
     )}
    </SettingGroup>
@@ -630,7 +630,7 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
               </option>
             ))}
           </select>
-          <p className="text-xs text-faint mt-1">{UI_ZOOM_TEXT.description}</p>
+          <p className="text-xs text-muted mt-1">{UI_ZOOM_TEXT.description}</p>
         </SettingField>
         <SettingCheckRow
           id="cfgClassicToolbar"

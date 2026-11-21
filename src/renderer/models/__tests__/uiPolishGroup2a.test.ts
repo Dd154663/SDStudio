@@ -30,7 +30,8 @@ describe('① 마우스 올림 덮개 --c-hover', () => {
       expect(src).not.toContain('hover:bg-gray-50');
       n += (src.match(/\bhover-row\b/g) || []).length;
     }
-    expect(n).toBe(11);
+    // 그룹 2-d: 조각 그룹 목록(PieceEditor)의 선택 안 된 줄도 .hover-row(종전 hover:bg-gray-100) — 12곳
+    expect(n).toBe(12);
   });
   test('선택 바탕이 있는 줄은 선택되지 않았을 때만 hover-row', () => {
     expect(read('ExportPresetManager.tsx')).toMatch(/: 'hover-row'/);

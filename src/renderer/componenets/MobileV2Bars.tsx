@@ -142,7 +142,7 @@ const V2Slot: React.FC<{ def: V2SlotDef }> = ({ def }) => {
       aria-label={swipe ? `${def.name} (위로 밀면 ${swipe.name})` : def.name}
       aria-expanded={def.expanded === undefined ? undefined : def.expanded}
       data-v2-slot={def.key}
-      className={`relative flex-1 basis-0 min-w-0 h-[46px] flex flex-col items-center justify-center gap-px px-0.5 rounded-[10px] clickable select-none disabled:opacity-40 ${tone}`}
+      className={`relative flex-1 basis-0 min-w-0 h-[46px] flex flex-col items-center justify-center gap-px px-0.5 rounded-[10px] clickable select-none disabled:opacity-50 ${tone}`}
       style={{
         touchAction: swipe ? 'none' : undefined,
         background: hint || def.expanded ? 'rgba(14,165,233,0.14)' : 'transparent',

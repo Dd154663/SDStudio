@@ -1,3 +1,4 @@
+import { EmptyState } from './EmptyState';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { createPortal } from 'react-dom';
@@ -350,11 +351,9 @@ const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
             className="max-w-full max-h-full object-contain rounded select-none"
           />
         ) : (
-          <div className="text-faint text-sm text-center px-6">
+          <EmptyState size="lg" className="px-6" hint="프롬프트를 입력하고 아래 버튼으로 바로 생성해보세요">
             아직 생성된 이미지가 없습니다
-            <br />
-            프롬프트를 입력하고 아래 버튼으로 바로 생성해보세요
-          </div>
+          </EmptyState>
         )}
         {busy && (
           <div

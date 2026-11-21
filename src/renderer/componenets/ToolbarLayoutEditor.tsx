@@ -118,7 +118,7 @@ const ToolbarLayoutEditor = ({
                   </div>
                 )}
                 {section.hint && (
-                  <p className="text-xs text-faint -mt-0.5 mb-1">{section.hint}</p>
+                  <p className="text-xs text-muted -mt-0.5 mb-1">{section.hint}</p>
                 )}
                 <div className="space-y-1">
                   {section.metas.map((b) => (
@@ -154,7 +154,7 @@ const ToolbarLayoutEditor = ({
         ))}
         <div>
           {!mobileMode && (
-            <p className="text-xs text-faint mb-2">
+            <p className="text-xs text-muted mb-2">
               PC 씬 툴바는 위 묶음 순서로 칸을 나눠 표시합니다. {TOOLBAR_GROUP_OTHER_HINT}
             </p>
           )}
@@ -164,7 +164,7 @@ const ToolbarLayoutEditor = ({
           >
             버튼 배치 초기화
           </button>
-          <p className="text-xs text-faint mt-1">
+          <p className="text-xs text-muted mt-1">
             위 개별 설정과 화면에서 직접 옮긴 버튼 순서까지 모두 기본 배치로
             되돌립니다. (저장 시 반영)
           </p>

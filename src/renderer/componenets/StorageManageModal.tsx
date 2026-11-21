@@ -1,3 +1,4 @@
+import { EmptyState } from './EmptyState';
 import React, { useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import ModalOverlay from './ModalOverlay';
@@ -216,9 +217,9 @@ const StorageManageModal = observer(
               );
             })}
             {names.length === 0 && (
-              <div className="text-sm text-faint text-center py-6">
+              <EmptyState className="py-6">
                 프로젝트가 없습니다.
-              </div>
+              </EmptyState>
             )}
           </div>
         </div>

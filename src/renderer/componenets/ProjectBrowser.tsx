@@ -1092,7 +1092,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
             })()}
             <button
               onClick={handleNewFolder}
-              className="btn-ghost flex items-center justify-center md:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none md:w-full border border-dashed line-color text-muted"
+              className="add-slot flex items-center justify-center md:justify-start gap-1.5 px-2.5 py-1.5 text-sm whitespace-nowrap flex-none md:w-full"
             >
               <FaPlus size={11} />
               <span>새 폴더</span>
@@ -1151,7 +1151,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                 <button
                   onClick={bulkMove}
                   disabled={selected.size === 0}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm btn-solid-sky disabled:opacity-40"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm btn-solid-sky"
                 >
                   <FaFolder size={12} /> 폴더로 이동
                 </button>

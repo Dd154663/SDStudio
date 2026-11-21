@@ -1,3 +1,5 @@
+import { EmptyState } from './EmptyState';
+import { ProgressBar } from './ProgressIndicators';
 import * as React from 'react';
 import { useEffect, useState, useMemo, useRef, useLayoutEffect } from 'react';
 import { observer } from 'mobx-react-lite';
@@ -1137,12 +1139,7 @@ export function useCharacterPresetPanel({
             {' '}({cyclingSessionService.completedPresets + 1}/{cyclingSessionService.totalPresets})
           </div>
           {/* 진행률 바 */}
-          <div className="w-full h-2 bg-[var(--c-surface)] rounded-full mb-3">
-            <div
-              className="h-full bg-sky-500 rounded-full transition-all"
-              style={{ width: `${(cyclingSessionService.completedPresets / cyclingSessionService.totalPresets) * 100}%` }}
-            />
-          </div>
+          <ProgressBar className="mb-3" percent={(cyclingSessionService.completedPresets / cyclingSessionService.totalPresets) * 100} />
           {/* 남은 프리셋 목록 */}
           {cyclingSessionService.remainingPresets.length > 0 && (
             <div className="text-xs text-muted mb-3">
@@ -1505,7 +1502,7 @@ export function useCharacterPresetPanel({
         />
       ) : (
         <button
-          className="btn-ghost flex items-center justify-center md:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap flex-none md:w-full border border-dashed line-color text-muted"
+          className="add-slot flex items-center justify-center md:justify-start gap-1.5 px-2.5 py-1.5 text-sm whitespace-nowrap flex-none md:w-full"
           onClick={() => {
             setNewFolderMode(true);
             setNewFolderValue('');
@@ -1567,19 +1564,16 @@ export function useCharacterPresetPanel({
         />
       ))}
       {listSearching && shownGlobalEntries.length === 0 && (
-        <div
-          className="col-span-full text-sm text-faint py-8 text-center"
-          data-list-no-hits=""
-        >
+        <EmptyState className="col-span-full py-8" data-list-no-hits="">
           검색 결과가 없습니다
-        </div>
+        </EmptyState>
       )}
       {!listSearching &&
         visibleGlobalEntries.length === 0 &&
         (cyclingMode || selectMode) && (
-          <div className="col-span-full text-sm text-faint py-8 text-center">
+          <EmptyState className="col-span-full py-8">
             이 폴더에 프리셋이 없습니다
-          </div>
+          </EmptyState>
         )}
     </div>
   );
@@ -1606,11 +1600,11 @@ export function useCharacterPresetPanel({
       {/* 새 프리셋 카드 (순회·선택 모드가 아닐 때만) */}
       {!cyclingMode && !selectMode && (
         <div
-          className="rounded-lg border-2 border-dashed line-color hover:border-sky-400 dark:hover:border-sky-500 cursor-pointer flex flex-col items-center justify-center aspect-[3/4] transition-colors group"
+          className="add-slot cursor-pointer flex flex-col items-center justify-center aspect-[3/4]"
           onClick={handleAddNew}
         >
-          <FaPlus className="text-2xl text-faint group-hover:text-sky-500 transition-colors mb-2" />
-          <span className="text-sm text-faint group-hover:text-sky-500 transition-colors">
+          <FaPlus className="text-2xl mb-2" />
+          <span className="text-sm">
             새 프리셋
           </span>
         </div>
@@ -1655,12 +1649,9 @@ export function useCharacterPresetPanel({
         </div>
       ))}
       {listSearching && shownPresets.length === 0 && (
-        <div
-          className="col-span-full text-sm text-faint py-8 text-center"
-          data-list-no-hits=""
-        >
+        <EmptyState className="col-span-full py-8" data-list-no-hits="">
           검색 결과가 없습니다
-        </div>
+        </EmptyState>
       )}
     </div>
   );

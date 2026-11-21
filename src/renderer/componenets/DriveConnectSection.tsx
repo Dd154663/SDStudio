@@ -21,7 +21,7 @@ import type { DriveAuthStatus } from '../../shared/googleDriveAuth';
 import { SettingField, SettingGroup } from './SettingControls';
 
 const btn = 'round-button h-8 text-sm';
-const tag = 'text-xs px-2 py-1 rounded-full whitespace-nowrap';
+const tag = 'round-tag round-tag-sm';
 
 interface Props {
   // 연결 상태가 바뀔 때(첫 조회·연결·해제·다른 창 방송) 알린다. 드라이브 탭의 인라인 목록·고급 구역 표시용.

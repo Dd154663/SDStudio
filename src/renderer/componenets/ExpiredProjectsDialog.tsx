@@ -144,7 +144,7 @@ const ExpiredProjectsDialog = observer(() => {
       className="fixed inset-0 flex items-center justify-center confirm-window"
     >
       <div className="flex flex-col m-4 p-4 rounded-md r-modal shadow-xl bg-[var(--c-zone)] text-default w-[28rem] max-h-[80vh]">
-        <div className="text-center text-default font-bold mb-2">
+        <div className="text-center text-base font-semibold text-default mb-2">
           만료된 프로젝트 정리
         </div>
         <div className="text-center text-sm text-default mb-3">
@@ -220,7 +220,7 @@ const ExpiredProjectsDialog = observer(() => {
             </div>
             <div className="flex gap-2">
               <button
-                className={DIALOG_DANGER_BTN + ' flex-1 disabled:opacity-40'}
+                className={DIALOG_DANGER_BTN + ' flex-1'}
                 disabled={deleting}
                 onClick={async () => {
                   const keys = pendingDelete;
@@ -231,7 +231,7 @@ const ExpiredProjectsDialog = observer(() => {
                 {deleting ? '삭제 중…' : pendingConfirm!.confirmText}
               </button>
               <button
-                className={DIALOG_SECONDARY_BTN + ' flex-1 disabled:opacity-40'}
+                className={DIALOG_SECONDARY_BTN + ' flex-1'}
                 disabled={deleting}
                 onClick={() => setPendingDelete(null)}
               >
@@ -243,7 +243,7 @@ const ExpiredProjectsDialog = observer(() => {
           /* Action buttons */
           <div className="flex flex-wrap gap-2 mt-2">
             <button
-              className={DIALOG_DANGER_BTN + ' flex-1 min-w-[6rem] disabled:opacity-40'}
+              className={DIALOG_DANGER_BTN + ' flex-1 min-w-[6rem]'}
               disabled={selected.size === 0}
               onClick={() => askDelete(selectedKeys)}
             >
@@ -256,7 +256,7 @@ const ExpiredProjectsDialog = observer(() => {
               모두 영구 삭제
             </button>
             <button
-              className={DIALOG_PRIMARY_BTN + ' flex-1 min-w-[6rem] disabled:opacity-40'}
+              className={DIALOG_PRIMARY_BTN + ' flex-1 min-w-[6rem]'}
               disabled={selected.size === 0}
               onClick={() => handleDefer(selectedKeys)}
             >

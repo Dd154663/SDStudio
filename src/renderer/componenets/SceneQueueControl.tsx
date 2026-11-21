@@ -1070,7 +1070,7 @@ export const SceneCell = observer(
                       <div className="absolute left-1 top-1 z-10 text-yellow-400 text-sm drop-shadow flex items-center gap-1">
                         <FaStar />
                         {scene.mains.length > 1 && (
-                          <span className="bg-black/70 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold leading-none">
+                          <span className="bg-black/70 text-white count-badge">
                             {scene.mains.length}
                           </span>
                         )}
@@ -1145,7 +1145,7 @@ export const SceneCell = observer(
                     <div className="absolute left-1 top-1 z-10 text-yellow-400 text-sm drop-shadow flex items-center gap-1">
                       <FaStar />
                       {scene.mains.length > 1 && (
-                        <span className="bg-black/70 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold leading-none">
+                        <span className="bg-black/70 text-white count-badge">
                           {scene.mains.length}
                         </span>
                       )}
@@ -3419,9 +3419,9 @@ const QueueControl = observer(
                     <button
                       type="button"
                       data-add-scene-card=""
-                      className={`${isMobile ? 'm-[5px]' : appState.classicSceneCard ? 'm-[10.5px]' : 'm-[8.5px]'} ${
-                        appState.classicSceneCard ? '' : 'rounded-lg '
-                      }border-2 border-dashed line-color bg-transparent flex flex-col items-center justify-center gap-1.5 text-sub clickable select-none`}
+                      className={`add-slot ${isMobile ? 'm-[5px]' : appState.classicSceneCard ? 'm-[10.5px]' : 'm-[8.5px]'} ${
+                        appState.classicSceneCard ? 'rounded-none ' : ''
+                      }flex flex-col items-center justify-center gap-1.5 cursor-pointer select-none`}
                       // 폭·높이 모두 칸에 맞춘다(같은 줄 씬 카드와 같은 높이). 혼자 줄에 놓이면 aspectRatio 가 높이를 정한다.
                       style={{ alignSelf: 'stretch', justifySelf: 'stretch', aspectRatio: '1 / 1.15' }}
                       onClick={addScene}

@@ -1,3 +1,4 @@
+import { EmptyState } from './EmptyState';
 import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import {
@@ -211,7 +212,7 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
   };
 
   const btnClass =
-    'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap disabled:opacity-40';
+    'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium btn-neutral text-body transition-colors whitespace-nowrap';
 
   // 크기 등급 M(2026-11-11 오버레이 묶음 1): 폭 720 고정·최소 높이 360 — 빈 목록에서도 창이 쪼그라들지 않는다.
   // 도구줄(만들기·복사·불러오기)은 toolbar 슬롯(스크롤 밖), 안내 문장은 본문 맨 위.
@@ -315,9 +316,9 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
           </button>
         </div>
       ) : templates.length === 0 ? (
-        <div className="text-sm text-faint text-center py-16">
+        <EmptyState className="py-16">
           씬 템플릿이 없습니다 — 위 버튼으로 만들어 보세요
-        </div>
+        </EmptyState>
       ) : (
         <div className="flex flex-col gap-1.5">
           {shownTemplates.map((name) =>

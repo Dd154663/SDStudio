@@ -7,6 +7,7 @@
 // 색은 전부 --c-* 토큰(App.css), 버튼은 back-*/btn-solid-* 캡슐 클래스만 사용해
 // 다크·화이트 양 테마 가독성을 보장한다(하드코딩 색 금지 — specGuard).
 
+import { ProgressBar, Spinner } from './ProgressIndicators';
 import { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { migrationService } from '../models/MigrationService';
@@ -38,12 +39,6 @@ export function GateShell({ children }: { children: React.ReactNode }) {
         {children}
       </div>
     </div>
-  );
-}
-
-function Spinner() {
-  return (
-    <div className="w-8 h-8 rounded-full border-2 border-[color:var(--c-line)] border-t-sky-500 animate-spin" />
   );
 }
 
@@ -173,14 +168,7 @@ const MigrationGate = observer(() => {
         {/* PC: 파일별 진행(zip-progress→exportProgress) 구독. Android: 단계 문구만. */}
         {!isMobile && ep && !ep.completed && (
           <div>
-            <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-sky-500 rounded-full transition-all"
-                style={{
-                  width: `${(ep.done / Math.max(ep.total, 1)) * 100}%`,
-                }}
-              />
-            </div>
+            <ProgressBar percent={(ep.done / Math.max(ep.total, 1)) * 100} />
             <div className="text-xs text-muted mt-1">
               {ep.done}/{ep.total}
             </div>
@@ -216,12 +204,7 @@ const MigrationGate = observer(() => {
           </div>
         )}
         <div>
-          <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-sky-500 rounded-full transition-all"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
+          <ProgressBar percent={pct} />
           <div className="text-xs text-muted mt-1">
             {cur}/{total}
           </div>

@@ -652,7 +652,7 @@ const UndoRedoBar = observer(({ suppressed }: { suppressed?: boolean }) => {
         <button
           type="button"
           data-undo-bar-button={dir}
-          className="icon-button touch-hit relative mx-1 inline-flex items-center justify-center disabled:opacity-40"
+          className="icon-button touch-hit relative mx-1 inline-flex items-center justify-center"
           aria-label={dir === 'undo' ? UNDO_TEXT.undoName : UNDO_TEXT.redoName}
           disabled={!enabled}
           onClick={() =>

@@ -4,6 +4,7 @@
 //    (2026-11-14 오버레이 묶음 B — 종전 sticky·음수 여백 머리를 대체, useTrashListPanel).
 //  · 정렬은 models/trashList.sortTrashNewestFirst(최근 삭제 순) — 프로젝트·씬 휴지통 공통.
 //  · 복원·영구 삭제·휴지통 비우기의 동작은 예전 그대로(TrashService 관문 경유).
+import { EmptyState } from './EmptyState';
 import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { FaTrash } from 'react-icons/fa';
@@ -144,11 +145,9 @@ export function useTrashListPanel({
     </div>
   );
   const body = empty ? (
-    <div className="text-center py-10">
-      <div className="text-faint text-lg">
-        {loading ? '불러오는 중…' : '휴지통이 비어있습니다'}
-      </div>
-    </div>
+    <EmptyState size="lg" className="py-10">
+      {loading ? '불러오는 중…' : '휴지통이 비어 있습니다'}
+    </EmptyState>
   ) : (
     <div className="flex flex-col gap-2" data-trash-list>
       {rows.map((row) => (

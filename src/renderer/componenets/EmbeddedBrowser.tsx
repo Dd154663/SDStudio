@@ -381,7 +381,7 @@ const DesktopBrowser: React.FC = () => {
       {/* 네비게이션 바 */}
       <div className="flex-none flex items-center gap-1 px-2 py-1 border-b line-color">
         <button
-          className="p-1.5 rounded btn-ghost disabled:opacity-30 text-gray-700 dark:text-gray-300"
+          className="p-1.5 rounded btn-ghost text-gray-700 dark:text-gray-300"
           disabled={!canGoBack}
           aria-label="뒤로"
           onClick={() => webviewRef.current?.goBack()}
@@ -389,7 +389,7 @@ const DesktopBrowser: React.FC = () => {
           <FaArrowLeft size={14} />
         </button>
         <button
-          className="p-1.5 rounded btn-ghost disabled:opacity-30 text-gray-700 dark:text-gray-300"
+          className="p-1.5 rounded btn-ghost text-gray-700 dark:text-gray-300"
           disabled={!canGoForward}
           aria-label="앞으로"
           onClick={() => webviewRef.current?.goForward()}

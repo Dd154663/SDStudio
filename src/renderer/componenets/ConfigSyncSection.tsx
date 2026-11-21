@@ -255,7 +255,7 @@ const ConfigSyncSection = ({ dirty, onConfigImported }: Props) => {
           {CONFIG_SYNC_TEXT.tokenImportButton}
         </button>
       </div>
-      <p className="text-xs text-faint">{CONFIG_SYNC_TEXT.tokenImportDescription}</p>
+      <p className="text-xs text-muted">{CONFIG_SYNC_TEXT.tokenImportDescription}</p>
       {isMobile && (
         <>
           <input
@@ -333,14 +333,14 @@ const ConfigImportPreviewModal = ({
       }
     >
       <div className="space-y-3">
-        <p className="text-xs text-muted break-words">
+        <p className="text-xs text-faint break-words">
           {CONFIG_SYNC_TEXT.previewSource(
             preview.parsed.platform,
             preview.parsed.appVersion,
             formatCreatedAt(preview.parsed.createdAt),
           )}
         </p>
-        <p className="text-xs text-faint">{CONFIG_SYNC_TEXT.previewHint}</p>
+        <p className="text-xs text-muted">{CONFIG_SYNC_TEXT.previewHint}</p>
         <div className="space-y-2">
           {preview.diff.map((d) => {
             const n = d.changed.length;

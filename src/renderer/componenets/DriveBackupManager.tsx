@@ -12,6 +12,7 @@
 // 모바일 폭(360): 행은 카드형(정보 줄 아래로 버튼 줄바꿈), 버튼은 .round-button 의 모바일
 // min-height 36px 로 터치 판정을 맞춘다.
 
+import { EmptyState } from './EmptyState';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { backend } from '../models';
@@ -37,7 +38,7 @@ import ModalOverlay from './ModalOverlay';
 type KindFilter = 'all' | DriveBackupItem['kind'];
 
 const btn = 'round-button h-8 text-sm px-3';
-const tag = 'text-xs px-2 py-0.5 rounded-full whitespace-nowrap';
+const tag = 'round-tag round-tag-sm';
 
 function errorReason(e: any): string {
   if (e?.code) return driveDownloadErrorText(e.code) + (e.detail ? ` (${e.detail})` : '');
@@ -168,7 +169,7 @@ export const DriveBackupList = ({
           </button>
         )}
       </div>
-      <p className="text-xs text-faint break-words">{pick ? T.pickHint : T.manageHint}</p>
+      <p className="text-xs text-muted break-words">{pick ? T.pickHint : T.manageHint}</p>
       {!pick && kindOptions.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-muted mr-1">{T.filterLabel}</span>
@@ -188,7 +189,7 @@ export const DriveBackupList = ({
       {error && <p className="text-sm text-red-500 whitespace-pre-line break-words">{error}</p>}
       {loading && !items && <p className="text-sm text-muted">{T.loading}</p>}
       {items && visible.length === 0 && !loading && (
-        <p className="text-sm text-muted py-4 text-center">{emptyText}</p>
+        <EmptyState className="py-4">{emptyText}</EmptyState>
       )}
       {visible.length > 0 && (
         <ul className={'space-y-2 ' + (listClassName || '')}>
@@ -214,7 +215,7 @@ export const DriveBackupList = ({
                     </span>
                     <span className="text-sm text-default break-all">{item.name}</span>
                   </div>
-                  <div className="text-xs text-muted mt-0.5 break-words">{meta}</div>
+                  <div className="text-xs text-faint mt-0.5 break-words">{meta}</div>
                 </div>
                 <div className="flex flex-none items-center gap-1.5">
                   {pick ? (

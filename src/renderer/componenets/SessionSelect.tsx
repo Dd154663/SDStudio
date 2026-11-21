@@ -525,7 +525,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
                   size={14}
                 />
                 {appState.appliedCharacterPresetNames.length > 1 && (
-                  <span className="absolute -top-1 -right-1 min-w-[1rem] h-4 px-0.5 rounded-full bg-green-700 text-white text-[11px] leading-4 text-center font-semibold">
+                  <span className="absolute -top-1 -right-1 bg-green-700 text-white count-badge">
                     {appState.appliedCharacterPresetNames.length}
                   </span>
                 )}
@@ -732,7 +732,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
       {/* 읽기 전용 미러 배지 — flex-none 으로 좁은 폭에서도 레이아웃을 밀지 않는다 */}
       {isMirrorCur && (
         <Tooltip content={mirrorTooltip}>
-          <span className="flex-none titlebar-no-drag inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 text-xs font-medium max-w-[9rem]">
+          <span className="flex-none titlebar-no-drag warn-badge max-w-[9rem]">
             <FaEye size={11} className="flex-none" />
             <span className="truncate">읽기 전용 미러</span>
           </span>

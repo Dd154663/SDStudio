@@ -1,3 +1,4 @@
+import { EmptyState } from './EmptyState';
 import { KBD_CHIP_RESERVE_PX } from './MobileKeyboardChip';
 import { PromptAutoExpandContext } from './PromptAutoExpand';
 import {
@@ -790,7 +791,7 @@ export const SlotPiece = observer(
           {/* 배지 색 bg-red-600(다크 red-500) 은 SPEC §1 의도적 예외(상태 강조 원색 text-white, 2026-11-16 묶음 4 로 라이트 600) — back-red 는 다크에서 반투명이라 아이콘 위 배지가 흐려진다 */}
           {characterBadge && (
             <span
-              className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/3 bg-red-600 text-white dark:bg-red-500 rounded-full w-4 h-4 flex items-center justify-center text-xs font-bold"
+              className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/3 bg-red-600 text-white dark:bg-red-500 count-badge"
               data-piece-char-badge={characterBadge.warn ? 'warn' : 'count'}
               aria-hidden
             >
@@ -1135,9 +1136,9 @@ const SceneCharacterPromptEditor = observer(({
           기본 순서를 바꾸면 역할 혼합을 사용하는 모든 씬의 대응 순서가 변경됩니다.
         </div>
         {baseCharacters.length === 0 ? (
-          <div className="py-2 text-sm text-muted text-center">
+          <EmptyState className="py-2">
             기본 캐릭터 프롬프트가 없습니다
-          </div>
+          </EmptyState>
         ) : (
           <div className="space-y-1.5 max-h-48 overflow-auto">
             {baseCharacters.map((character, index) => (
@@ -1373,7 +1374,7 @@ const SceneCharacterPromptEditor = observer(({
           <button
             type="button"
             data-scene-role-add=""
-            className="mt-3 w-full h-11 border-2 border-dashed line-color rounded-lg text-sm text-sub flex items-center justify-center gap-1"
+            className="add-slot mt-3 w-full h-11 text-sm flex items-center justify-center gap-1"
             onClick={addCharacter}
           >
             <FaPlus size={11} /> 캐릭터 추가
@@ -1692,7 +1693,7 @@ export const SlotEditor = observer(({ scene, big, characterContext }: SlotEditor
                     />
                   ))}
                   <button
-                    className="mx-2 mb-2 h-10 border-2 border-dashed line-color rounded-xl text-sm text-sub flex items-center justify-center gap-1"
+                    className="add-slot mx-2 mb-2 h-10 text-sm flex items-center justify-center gap-1"
                     style={{ width: 'calc(100% - 1rem)' }}
                     onClick={() =>
                       editSlots(scene, UNDO_TEXT.comboAddRow(slotsSceneName(scene)), () => {

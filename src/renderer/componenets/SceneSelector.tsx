@@ -159,7 +159,7 @@ const SceneSelector: React.FC<SceneSelectorProps> = ({
                   (selectedScenes.some(
                     (selected) => selected.name === scene.name,
                   )
-                    ? 'border-sky-500 dark:border-sky-500 bg-sky-200 dark:bg-slate-700'
+                    ? 'border-sky-500 dark:border-sky-500 list-row-selected'
                     : 'bg-[var(--c-surface-2)]  border-gray-400 dark:border-slate-400')
                 }
                 onClick={() => toggleSceneSelection(scene)}

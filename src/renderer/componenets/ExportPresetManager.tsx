@@ -1,3 +1,4 @@
+import { EmptyState } from './EmptyState';
 import ExportSettingsFields from './ExportSettingsFields';
 import { ExportFormState as FormState, emptyExportForm as emptyForm, presetToExportForm as presetToForm, exportFormProblems, exportFormToPreset } from '../models/exportSettings';
 import React, { useState, useEffect, useRef } from 'react';
@@ -259,7 +260,7 @@ const ExportPresetManager = observer(() => {
   const newPresetButton = (
     <button
       onClick={newPreset}
-      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-dashed line-color hover:border-sky-400 dark:hover:border-sky-500 text-muted hover:text-sky-500 transition-colors text-sm"
+      className="add-slot w-full flex items-center gap-2 px-3 py-2 text-sm"
     >
       <FaPlus size={14} />
       새 프리셋 추가
@@ -282,9 +283,9 @@ const ExportPresetManager = observer(() => {
   );
 
   const noHits = (
-    <div className="text-xs text-faint text-center py-6" data-list-no-hits="">
+    <EmptyState className="py-6" data-list-no-hits="">
       검색 결과가 없습니다
-    </div>
+    </EmptyState>
   );
 
   const presetRows = shownPresets.map(({ p, i }) => (
@@ -293,7 +294,7 @@ const ExportPresetManager = observer(() => {
       onClick={() => renamingIndex === null && selectPreset(i)}
       className={`px-3 py-2 cursor-pointer flex justify-between items-center gap-2 ${
         editingIndex === i
-          ? 'bg-sky-50 dark:bg-sky-900/30 border-l-2 border-sky-500'
+          ? 'list-row-selected'
           : 'hover-row'
       }`}
     >
@@ -443,7 +444,7 @@ const ExportPresetManager = observer(() => {
             {newPresetButton}
             {presets.length > 0 && searchBar}
             {presets.length === 0 ? (
-              <div className="text-xs text-faint text-center py-6">저장된 프리셋이 없습니다</div>
+              <EmptyState className="py-6">저장된 프리셋이 없습니다</EmptyState>
             ) : shownPresets.length === 0 ? (
               noHits
             ) : (

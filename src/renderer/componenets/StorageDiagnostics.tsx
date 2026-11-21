@@ -361,7 +361,7 @@ export const StorageDiagnosticsSection = observer(() => {
         때만 진행됩니다.
       </p>
       <button
-        className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors disabled:opacity-40"
+        className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
         disabled={running}
         onClick={run}
       >
@@ -446,7 +446,7 @@ export const StorageDiagnosticsSection = observer(() => {
                     </span>
                     {(b.hasBak || b.hasImages) && (
                       <button
-                        className="flex-none px-3 py-1 rounded-lg btn-solid-orange text-xs font-medium disabled:opacity-40"
+                        className="flex-none px-3 py-1 rounded-lg btn-solid-orange text-xs font-medium"
                         disabled={repairing}
                         onClick={() => repair(b)}
                       >

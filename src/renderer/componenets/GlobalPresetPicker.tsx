@@ -1,3 +1,4 @@
+import { EmptyState } from './EmptyState';
 import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import ModalOverlay from './ModalOverlay';
@@ -118,13 +119,13 @@ export const GlobalPresetPicker = observer(
             </p>
           )}
           {all.length === 0 ? (
-            <div className="text-sm text-muted py-6 text-center">
+            <EmptyState className="py-6">
               글로벌 프리셋이 없습니다.
-            </div>
+            </EmptyState>
           ) : visible.length === 0 ? (
-            <div className="text-sm text-muted py-6 text-center">
+            <EmptyState className="py-6">
               검색 결과가 없습니다.
-            </div>
+            </EmptyState>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {visible.map((p) => (

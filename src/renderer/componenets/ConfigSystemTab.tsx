@@ -121,7 +121,7 @@ const FolderCleanupSection = ({ folder, label, description }: { folder: string; 
           {loading ? '조회 중...' : loaded ? '새로고침' : '조회'}
         </button>
       </div>
-      {description && <div className="text-xs text-faint">{description}</div>}
+      {description && <div className="text-xs text-muted">{description}</div>}
       {loaded && (
         <>
           <div className="text-sm gray-label">
@@ -246,7 +246,7 @@ const LegacyCleanupSection = () => {
           {scanning ? '검사 중...' : scan ? '새로고침' : '검사'}
         </button>
       </div>
-      <p className="text-xs text-faint">
+      <p className="text-xs text-muted">
         마이그레이션 후 구 저장 폴더에 남은 항목(프로젝트에 속하지 않는 고아
         폴더·파일)을 정리합니다.
       </p>
@@ -376,7 +376,7 @@ export const ExampleVibeCleanupSection = () => {
           {scanning ? '검사 중...' : scan ? '새로고침' : '검사'}
         </button>
       </div>
-      <p className="text-xs text-faint">{EXAMPLE_VIBE_TEXT.description}</p>
+      <p className="text-xs text-muted">{EXAMPLE_VIBE_TEXT.description}</p>
       {scan && scan.projectsFailed.length > 0 && (
         <p className="text-xs text-orange-500 dark:text-orange-400" data-example-vibe-failed>
           프로젝트 {scan.projectsFailed.length}개는 읽지 못해 검사하지 않았습니다:{' '}
@@ -658,7 +658,7 @@ const SystemTab = ({
             className="flex-1 min-w-0" />
           <span className="text-sm gray-label w-14 text-right flex-none tabular-nums">±{formatDelaySeconds(requestDelayJitterMs)}</span>
         </div>
-        <p className="text-xs text-faint mt-1">
+        <p className="text-xs text-muted mt-1">
           {REQUEST_DELAY_TEXT.help}
         </p>
        </SettingField>
@@ -674,7 +674,7 @@ const SystemTab = ({
             className="flex-1 min-w-0" />
           <span className="text-sm gray-label w-14 text-right flex-none">{exportConcurrency}</span>
         </div>
-        <p className="text-xs text-faint mt-1">
+        <p className="text-xs text-muted mt-1">
           높을수록 내보내기가 빠르지만 CPU 사용량이 증가합니다.{isMobile ? ' 모바일은 1~2 권장.' : ''}
         </p>
         {!isMobile && runtimeDiag && (

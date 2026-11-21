@@ -1,3 +1,4 @@
+import { EmptyState } from './EmptyState';
 import {
   createRef,
   useContext,
@@ -803,7 +804,7 @@ const PieceEditor = observer(({ onClose }: { onClose: () => void }) => {
       <div className="flex-none p-3 border-b line-color">{scopeToggle}</div>
       <div ref={groupListScrollRef} className="flex-1 min-h-0 overflow-auto p-2 flex flex-col gap-0.5">
         {libraryOptions.length === 0 ? (
-          <div className="text-xs text-faint text-center py-6">조각그룹이 없습니다</div>
+          <EmptyState className="py-6">조각그룹이 없습니다</EmptyState>
         ) : (
           libraryOptions.map((opt) => {
             const selected = opt.value === selectedPieceLibrary;
@@ -816,10 +817,8 @@ const PieceEditor = observer(({ onClose }: { onClose: () => void }) => {
                 className={
                   'w-full text-left px-3 py-1.5 rounded-md text-sm flex items-center gap-2 transition-colors ' +
                   (selected
-                    ? scope === 'local'
-                      ? 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 font-semibold'
-                      : 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-semibold'
-                    : 'text-default hover:bg-gray-100 dark:hover:bg-slate-700/50')
+                    ? 'list-row-selected'
+                    : 'text-default hover-row')
                 }
               >
                 <span className="flex-1 min-w-0 truncate">{opt.label}</span>
@@ -948,9 +947,9 @@ const PieceEditor = observer(({ onClose }: { onClose: () => void }) => {
             />
           ))}
           {pieceSearching && shownPieces.length === 0 && (
-            <div className="text-sm text-faint text-center py-6" data-list-no-hits="">
+            <EmptyState className="py-6" data-list-no-hits="">
               검색 결과가 없습니다
-            </div>
+            </EmptyState>
           )}
           <Tooltip content="조각 추가">
             <button

@@ -201,7 +201,7 @@ describe('씬 휴지통 — size m·도구줄 머리·본문 목록만', () => {
     expect(toolbar?.textContent).toContain('0개 · 최근 삭제 순');
     expect(buttonByText(toolbar, '휴지통 비우기')?.disabled).toBe(true);
     expect(toolbar?.textContent).toContain('14');
-    expect(slot('body')?.textContent).toContain('휴지통이 비어있습니다');
+    expect(slot('body')?.textContent).toContain('휴지통이 비어 있습니다');
     expect(container.querySelector('[data-trash-list]')).toBeNull();
   });
 

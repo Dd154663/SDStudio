@@ -1,3 +1,4 @@
+import { EmptyState } from './EmptyState';
 import { observer } from 'mobx-react-lite';
 import { Scene, PromptPiece } from '../models/types';
 import { combinationPieceKey } from '../models/combinationSelection';
@@ -12,7 +13,7 @@ const CompactCombinationPieces = observer(({ scene, selected, onSelect }: {
 }) => (
   <div className="space-y-2">
     {scene.slots.length === 0 ? (
-      <div className="py-4 text-center text-sm text-muted">선택할 조각이 없습니다.</div>
+      <EmptyState className="py-4">선택할 조각이 없습니다.</EmptyState>
     ) : scene.slots.map((slot, columnIndex) => (
       <div key={columnIndex} className="rounded-md r-card border line-color p-2">
         <div className="mb-1.5 text-xs font-bold text-muted">열 {columnIndex + 1}</div>

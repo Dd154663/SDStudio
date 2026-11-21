@@ -1,3 +1,4 @@
+import { EmptyState } from './EmptyState';
 import * as React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
@@ -370,7 +371,7 @@ export const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: st
                 </div>
               ))}
               <Tooltip content="이미지 추가">
-                <button className="flex-none w-14 h-14 rounded border border-dashed line-color flex items-center justify-center text-faint hover:text-sky-500"
+                <button className="add-slot flex-none w-14 h-14 flex items-center justify-center"
                   aria-label="이미지 추가"
                   onClick={() => fileRef.current?.click()}>
                   <FaPlus />
@@ -379,7 +380,7 @@ export const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: st
               {/* 샘플 생성(2026-09-26): 현재 프리셋에서 다른 작가 태그를 빼고 이 작가만으로 1장 생성해 카드에 저장 */}
               <Tooltip content="현재 프리셋에서 다른 artist: 태그를 빼고 이 작가만으로 1장 생성해 카드에 저장">
                 <button
-                  className="flex-none w-14 h-14 rounded border border-dashed line-color flex flex-col items-center justify-center gap-0.5 text-faint hover:text-sky-500 disabled:opacity-40"
+                  className="add-slot flex-none w-14 h-14 flex flex-col items-center justify-center gap-0.5 disabled:opacity-50"
                   disabled={!appState.curSession}
                   data-artist-sample-generate=""
                   onClick={() => {
@@ -608,7 +609,7 @@ const ArtistCard = observer(({
 // ─── 그리드 끝 "새 작가 추가" 카드 ───
 const AddArtistCard = ({ onClick }: { onClick: () => void }) => (
   <button
-    className="flex-none w-[calc(50%-8px)] md:w-60 self-stretch min-h-[16rem] rounded-lg border-2 border-dashed line-color flex flex-col items-center justify-center text-faint hover:border-sky-400 hover:text-sky-500 transition-colors"
+    className="add-slot flex-none w-[calc(50%-8px)] md:w-60 self-stretch min-h-[16rem] flex flex-col items-center justify-center"
     onClick={onClick}
   >
     <FaPlus size={30} />
@@ -839,7 +840,7 @@ const ArtistLibraryTab = observer(() => {
       {/* 본문 */}
       <div className="flex-1 overflow-auto p-4">
         {total > 0 && list.length === 0 ? (
-          <div className="text-center text-faint py-10">검색 결과가 없습니다.</div>
+          <EmptyState size="lg" className="py-10">검색 결과가 없습니다.</EmptyState>
         ) : (
           <div className="flex flex-wrap gap-4 items-start">
             {list.map((a) => (

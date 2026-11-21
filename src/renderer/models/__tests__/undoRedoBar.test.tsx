@@ -174,7 +174,9 @@ describe('UndoRedoBar 표시·활성', () => {
     expect(bar()!.getAttribute('role')).toBe('toolbar');
     expect(btn('undo')!.disabled).toBe(true);
     expect(btn('redo')!.disabled).toBe(true);
-    expect(btn('undo')!.className).toContain('disabled:opacity-40');
+    // 흐리게 = 버튼 계열 공통 비활성 규칙(.icon-button:disabled 0.5 — UI 정돈 그룹 2-d 에서 자리별 opacity-40 을 지움)
+    expect(btn('undo')!.className).toContain('icon-button');
+    expect(btn('undo')!.className).not.toMatch(/disabled:opacity-/);
     expect(btn('undo')!.getAttribute('aria-label')).toBe('되돌리기');
     expect(btn('redo')!.getAttribute('aria-label')).toBe('다시 실행');
   });

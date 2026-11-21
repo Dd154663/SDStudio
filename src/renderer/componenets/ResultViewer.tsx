@@ -1,3 +1,5 @@
+import { EmptyState } from './EmptyState';
+import { Spinner } from './ProgressIndicators';
 import { canStartSelectionBox, imagePathsInSelectionBox } from '../models/dragSelection';
 import { parseRankCutoff, RANK_CUTOFF_INVALID_MESSAGE } from '../models/rankCutoff';
 import { isTextEntryFocused, shouldIgnoreViewerRawKey } from '../models/keyTargetGuard';
@@ -353,10 +355,9 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
 
   if (trashImages.length === 0 && !loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-center px-4">
-        <div className="text-faint text-lg">휴지통이 비어있습니다</div>
-        <div className="mt-2 text-xs text-faint break-keep">{retentionNotice}</div>
-      </div>
+      <EmptyState size="lg" className="h-full px-4" hint={<span className="break-keep">{retentionNotice}</span>}>
+        휴지통이 비어 있습니다
+      </EmptyState>
     );
   }
 
@@ -1083,10 +1084,9 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
           {Cell}
         </Grid>
         {filePaths.length === 0 && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-faint text-sm select-none pointer-events-none">
-            <span>{emptyText ?? '이미지가 없습니다'}</span>
-            {emptyHint && <span>{emptyHint}</span>}
-          </div>
+          <EmptyState size="lg" className="absolute inset-0 select-none pointer-events-none" hint={emptyHint || undefined}>
+            {emptyText ?? '이미지가 없습니다'}
+          </EmptyState>
         )}
         {dragBox && isDraggingRef.current && (
           <div
@@ -1736,7 +1736,7 @@ const ResultDetailView = observer(
           ) : (
             // 이미지 전환/로딩 중 빈 화면 깜빡임 대신 로딩 표시(부팅 스피너와 동일 스타일).
             <div className="w-full h-full flex items-center justify-center">
-              <div className="w-8 h-8 rounded-full border-2 border-[color:var(--c-line)] border-t-sky-500 animate-spin" />
+              <Spinner />
             </div>
           )}
           <div className={'absolute bottom-0 md:bottom-auto right-0 md:top-10 flex gap-3 p-4 w-full md:w-auto' + (v2 ? ' opacity-60' : '')}>

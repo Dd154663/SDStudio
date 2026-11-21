@@ -1,3 +1,4 @@
+import { ProgressBar, Spinner } from './ProgressIndicators';
 import './App.css';
 import { isWeightSpacingFixEnabled } from '../models/promptWeightSpacingFlow';
 import './contexify.css';
@@ -775,7 +776,7 @@ export const App = observer(() => {
               "서비스 준비 전 사용" 류 race 를 원천 차단한다 (완료 후 항상 열림) */}
           {!appState.bootReady ? (
             <div className="flex-1 h-full w-full flex flex-col items-center justify-center gap-3">
-              <div className="w-8 h-8 rounded-full border-2 border-[color:var(--c-line)] border-t-sky-500 animate-spin" />
+              <Spinner />
               <div className="text-sub text-sm whitespace-pre-line text-center px-6">
                 {appState.bootStatusMessage || 'SDStudio 시작 중…'}
               </div>
@@ -984,12 +985,7 @@ export const App = observer(() => {
                 <div className="text-sm font-medium text-default mb-1.5">
                   💾 {appState.exportProgress.text}
                 </div>
-                <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-sky-500 rounded-full transition-all"
-                    style={{ width: `${(appState.exportProgress.done / Math.max(appState.exportProgress.total, 1)) * 100}%` }}
-                  />
-                </div>
+                <ProgressBar percent={(appState.exportProgress.done / Math.max(appState.exportProgress.total, 1)) * 100} />
                 <div className="text-xs text-muted mt-1">
                   {appState.exportProgress.done}/{appState.exportProgress.total}
                 </div>

@@ -191,7 +191,7 @@ describe('국소 클래스 수정(묶음 1)', () => {
     expect(src).not.toContain('text-yellow-950');
   });
   test('D4·D12·D13', () => {
-    expect(read('SessionSelect.tsx')).toContain('bg-green-700 text-white text-[11px]');
+    expect(read('SessionSelect.tsx')).toContain('bg-green-700 text-white count-badge'); // 그룹 2-d: 11px 글자는 .count-badge 가 맡음
     expect(read('TaskQueueControl.tsx')).toContain('rounded-lg font-medium text-sm text-gray-700');
     expect(read('ResolutionPicker.tsx')).toContain('text-[11px] text-amber-700 dark:text-amber-500');
   });

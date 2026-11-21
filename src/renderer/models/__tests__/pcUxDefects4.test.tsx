@@ -94,15 +94,13 @@ describe('제외·보류 항목 불변', () => {
 describe('하드코딩 bg-{색}-500 잔존 = 제외 목록', () => {
   // 글자 없는 막대·점·미리보기 도형, 이미지 위 오버레이(체크·기본 표시·씬 카드 오버레이 버튼), 흰 글자 아닌 오류 상자.
   const EXPECTED: Record<string, number> = {
-    'componenets/App.tsx': 1, // 진행 막대
-    'componenets/ArtistTagModal.tsx': 1, // 진행 막대
-    'componenets/BatchCreateModal.tsx': 1, // 진행 막대
+    // 진행 막대 5곳(App·ArtistTagModal·BatchCreateModal·CharacterPresetEditor·MigrationGate 2)은 UI 정돈 그룹 2-d 에서
+    // 공용 ProgressBar(채움 --c-focus-ring 토큰)로 옮겨 리터럴이 빠짐.
     'componenets/CharacterPresetCards.tsx': 1, // 카드 이미지 위 순차 선택 체크
-    'componenets/CharacterPresetEditor.tsx': 2, // 진행 막대 + 카드 이미지 위 선택 체크
+    'componenets/CharacterPresetEditor.tsx': 1, // 카드 이미지 위 선택 체크
     'componenets/ConfigLayoutTab.tsx': 8, // 배치 미리보기 도형
     'componenets/GlobalPresetPicker.tsx': 1, // 썸네일 위 기본 표시
     'componenets/GlobalPresetTab.tsx': 1, // 썸네일 위 기본 표시
-    'componenets/MigrationGate.tsx': 2, // 진행 막대
     'componenets/ProjectBrowser.tsx': 1, // 썸네일 위 선택 체크
     'componenets/ResultViewer.tsx': 2, // 이미지 위 선택 덮개(반투명)
     'componenets/SceneEditor.tsx': 2, // 열 표시 점 + 미리보기 오류 상자(흰 글자 아님)
@@ -136,7 +134,7 @@ describe('하드코딩 bg-{색}-500 잔존 = 제외 목록', () => {
     // 그룹 2-c: 로컬/전역 전환은 택일 묶음 .seg-group — 전역 선택(.seg-on-purple) = 라이트 600·다크 500 보라(App.css 공용 클래스)
     expect(read('PieceEditor.tsx')).toContain("(scope === 'global' ? ' seg-on-purple' : '')");
     expect(read('App.css')).toContain('@apply bg-purple-600 dark:bg-purple-500 text-white;');
-    expect(read('SceneEditor.tsx')).toContain('bg-red-600 text-white dark:bg-red-500 rounded-full w-4 h-4');
+    expect(read('SceneEditor.tsx')).toContain('bg-red-600 text-white dark:bg-red-500 count-badge'); // 그룹 2-d: 개수 배지 모양 = .count-badge
     expect(read('TaskQueueControl.tsx')).toContain("'bg-sky-600 dark:bg-indigo-400' : 'bg-red-600 dark:bg-red-500'");
     // 그룹 2-a: 진행 창 막대의 다크 채움을 indigo-400 → 다른 진행 막대와 같은 하늘색 계열(sky-500, 흰 글자 다크 500 규칙)
     expect(read('ProgressWindow.tsx')).toContain('h-8 bg-sky-600 dark:bg-sky-500');

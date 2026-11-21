@@ -1,3 +1,4 @@
+import { ProgressBar } from './ProgressIndicators';
 import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { FaPlus, FaUserAlt } from 'react-icons/fa';
@@ -622,14 +623,7 @@ export const BatchCreatePanel = observer(
             목록 높이 상한 없음 — 창 본문 스크롤 하나가 맡는다(높이 규칙 우선순위). */}
         {running && progress && (
           <div className={sectionCls} data-batch-progress="">
-            <div className="w-full h-2 bg-[var(--c-surface-2)] rounded-full">
-              <div
-                className="h-full bg-purple-500 rounded-full transition-all"
-                style={{
-                  width: `${(progress.done / Math.max(1, progress.total)) * 100}%`,
-                }}
-              />
-            </div>
+            <ProgressBar percent={(progress.done / Math.max(1, progress.total)) * 100} />
             {progress.current && (
               <div className="text-xs text-muted truncate">
                 현재: {progress.current}

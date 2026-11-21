@@ -1,3 +1,4 @@
+import { ProgressBar } from './ProgressIndicators';
 import React, { useEffect, useState, useCallback } from 'react';
 import { observer } from 'mobx-react-lite';
 import ModalOverlay from './ModalOverlay';
@@ -227,12 +228,7 @@ const ModelInstallCard = observer(({ model }: { model: ArtistModelKey }) => {
         이 분석을 사용하려면 모델 설치가 필요합니다. (다운로드 {def.sizeText})
       </div>
       {busy && (
-        <div className="h-1.5 rounded bg-gray-200 dark:bg-slate-600 overflow-hidden">
-          <div
-            className="h-full bg-sky-500 transition-all"
-            style={{ width: `${artistTagService.downloadPercent}%` }}
-          />
-        </div>
+        <ProgressBar heightClass="h-1.5" percent={artistTagService.downloadPercent} />
       )}
       <button
         className="text-sm btn back-sky px-3 py-1.5 rounded disabled:opacity-50"

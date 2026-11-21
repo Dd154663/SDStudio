@@ -96,7 +96,7 @@ function ShortcutCheatsheet({ scope, onClose }: ShortcutCheatsheetProps) {
       className="fixed right-3 top-12 z-[var(--z-tooltip)] shadow-2xl rounded-lg r-modal border line-color bg-[var(--c-zone)] text-body text-xs min-w-[210px] select-none"
     >
       <div className="flex items-center justify-between px-3 py-2 border-b line-color">
-        <span className="font-bold text-sm text-default">단축키 도움말</span>
+        <span className="text-base font-semibold text-default">단축키 도움말</span>
         <button
           type="button"
           className={OVERLAY_CLOSE_BUTTON_CLASS}

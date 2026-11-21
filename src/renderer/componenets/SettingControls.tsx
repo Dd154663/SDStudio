@@ -69,7 +69,7 @@ export function SettingCheckRow({
         <span className={'text-sm gray-label' + (disabled ? ' opacity-50' : '')}>{label}</span>
         {note && <span className="ml-2 text-xs text-faint">{note}</span>}
         {description && (
-          <span className="block text-xs text-faint mt-0.5">{description}</span>
+          <span className="block text-xs text-muted mt-0.5">{description}</span>
         )}
       </span>
     </label>
@@ -105,7 +105,7 @@ export function SettingSwitchRow({
       <span className="min-w-0">
         <span className={'text-sm gray-label' + (disabled ? ' opacity-50' : '')}>{label}</span>
         {description && (
-          <span className="block text-xs text-faint mt-0.5">{description}</span>
+          <span className="block text-xs text-muted mt-0.5">{description}</span>
         )}
       </span>
       <input

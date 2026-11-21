@@ -5,6 +5,7 @@
 //   본문 = 삽입할 텍스트(태그 자동완성) + 위치 + 대상(모든 슬롯·열 n만·새 열), 바닥줄 = [적용][닫기], 왼쪽 = 상태 문구.
 // · 대상·되돌리기 규칙은 models/batchInsert.ts(이미지생성 씬·조합 변형 = slots, 단일 프롬프트 변형 = preset.prompt, [적용] 1회 = 1항목).
 // · 열려 있는 동안만 마운트(닫았다 열면 입력·선택 초기화).
+import { EmptyState } from './EmptyState';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { FaPlus } from 'react-icons/fa';
@@ -134,7 +135,7 @@ const BatchInsertBody = observer(() => {
   const close = () => appState.closeBatchInsert();
 
   const body = noScenes ? (
-    <div className="text-sm text-faint" data-batch-insert-panel="">씬이 없습니다.</div>
+    <EmptyState className="py-6" data-batch-insert-panel="">씬이 없습니다.</EmptyState>
   ) : (
     <div className="flex flex-col gap-4" data-batch-insert-panel="">
       {/* 삽입 텍스트 */}

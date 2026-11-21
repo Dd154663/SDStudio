@@ -53,7 +53,7 @@ const PersonalTab = ({
             );
           })}
         </div>
-        <p className="text-xs text-faint mt-1">
+        <p className="text-xs text-muted mt-1">
           앱 전체에 쓰이는 글꼴입니다. 저장하면 바로 적용됩니다.
         </p>
       </SettingField>

@@ -1,3 +1,4 @@
+import { EmptyState } from './EmptyState';
 import * as React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
@@ -339,10 +340,10 @@ const GenRow = observer(
     return (
       <div
         className={
-          'flex flex-col gap-2 p-3 border-2 rounded-lg mb-2 bg-[var(--c-surface-2)] ' +
+          'flex flex-col gap-2 p-3 border-2 rounded-lg mb-2 ' +
           (selected
-            ? 'border-sky-500 bg-sky-50 dark:bg-sky-900'
-            : 'line-color')
+            ? 'border-sky-500 list-row-selected font-normal'
+            : 'line-color bg-[var(--c-surface-2)]')
         }
       >
         {/* 1행: 기본 토글 + 이름 (전체 너비) */}
@@ -860,22 +861,25 @@ export const GlobalPresetTab = observer(() => {
       {/* 본문 */}
       <div className={isMobile ? 'flex-1 overflow-auto p-3' : 'flex-1 overflow-auto p-6'}>
         {total === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-muted">
-            <p className="mb-2 text-lg">글로벌 프리셋이 비어있습니다.</p>
-            <p className="text-sm">
-              세션 프리셋을 우클릭하여 "글로벌로 복사"하거나,
-            </p>
-            <p className="text-sm">
-              상단의 "PNG 불러오기" 버튼을 사용하세요.
-            </p>
-          </div>
+          <EmptyState
+            size="lg"
+            className="h-full"
+            hint={
+              <>
+                <p>세션 프리셋을 우클릭하여 "글로벌로 복사"하거나,</p>
+                <p>상단의 "PNG 불러오기" 버튼을 사용하세요.</p>
+              </>
+            }
+          >
+            글로벌 프리셋이 비어 있습니다.
+          </EmptyState>
         )}
 
         {/* 통합 카드 그리드 (이지/일반 구분 없음) */}
         {total > 0 && visible.length === 0 && (
-          <div className="text-center text-muted py-10">
+          <EmptyState size="lg" className="py-10">
             "{query}" 검색 결과가 없습니다.
-          </div>
+          </EmptyState>
         )}
         {visible.length > 0 && (
           <div className="flex flex-wrap gap-4">

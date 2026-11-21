@@ -1,3 +1,4 @@
+import { EmptyState } from './EmptyState';
 import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { v4 } from 'uuid';
@@ -1911,15 +1912,15 @@ export const TemplateManagerModal = observer(
       >
         <button
           onClick={createTemplate}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-dashed line-color hover:border-sky-400 dark:hover:border-sky-500 text-muted hover:text-sky-500 transition-colors text-sm"
+          className="add-slot w-full flex items-center gap-2 px-3 py-2 text-sm"
           data-template-new=""
         >
           <FaPlus size={12} />새 템플릿
         </button>
         {templates.length === 0 ? (
-          <div className="text-xs text-faint text-center py-6">
+          <EmptyState className="py-6">
             템플릿이 없습니다
-          </div>
+          </EmptyState>
         ) : (
           <div className="border line-color rounded-lg divide-y divide-[color:var(--c-line)] overflow-hidden">
             {templates.map((t) => {
@@ -1932,7 +1933,7 @@ export const TemplateManagerModal = observer(
                   onClick={() => setSelectedId(t.id)}
                   className={`px-3 py-2 cursor-pointer flex justify-between items-center gap-2 ${
                     selected
-                      ? 'bg-sky-50 dark:bg-sky-900/30 border-l-2 border-sky-500'
+                      ? 'list-row-selected'
                       : 'hover-row'
                   }`}
                 >
@@ -2017,7 +2018,7 @@ export const TemplateManagerModal = observer(
         bodyPadding={panel.charEditing && !isMobile ? 'none' : 'normal'}
       >
         {!entry ? (
-          <div className="text-sm text-default py-6 text-center">
+          <EmptyState size="lg" className="py-6">
             {isMobile ? (
               <>
                 템플릿이 없습니다. <b>+</b> 버튼으로 새 템플릿을 만들거나{' '}
@@ -2029,7 +2030,7 @@ export const TemplateManagerModal = observer(
               </>
             )}
             <b>[백업 불러오기]</b>로 백업 파일에서 불러와 주세요.
-          </div>
+          </EmptyState>
         ) : (
           panel.body
         )}

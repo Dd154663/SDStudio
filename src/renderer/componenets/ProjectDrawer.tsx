@@ -1,3 +1,4 @@
+import { EmptyState } from './EmptyState';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { observer } from 'mobx-react-lite';
@@ -323,7 +324,7 @@ const ProjectRow = observer(
             }
           >
             <span
-              className={`flex-none text-[11px] leading-none font-medium px-1.5 py-1 rounded-full ${
+              className={`flex-none count-badge ${
                 highlighted
                   ? 'bg-white/25 text-white'
                   : queueRunning
@@ -1631,7 +1632,7 @@ const ProjectDrawer = observer(() => {
             <button
               onClick={bulkMove}
               disabled={selected.size === 0}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm btn-solid-sky disabled:opacity-40"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm btn-solid-sky"
             >
               <FaFolder size={12} /> 이동
             </button>
@@ -1704,9 +1705,9 @@ const ProjectDrawer = observer(() => {
                 검색 결과 ({searchResults.length})
               </div>
               {searchResults.length === 0 ? (
-                <div className="text-sm text-faint text-center py-6">
+                <EmptyState className="py-6">
                   결과가 없습니다
-                </div>
+                </EmptyState>
               ) : (
                 searchResults.map((n) => (
                   <ProjectRow key={n} showFolder {...rowProps(n)} />

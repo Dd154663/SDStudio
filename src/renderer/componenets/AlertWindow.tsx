@@ -1,6 +1,6 @@
 import { observer } from 'mobx-react-lite';
 import { useEffect } from 'react';
-import { FaTimes } from 'react-icons/fa';
+import { FaCheckCircle, FaExclamationCircle, FaInfoCircle, FaTimes } from 'react-icons/fa';
 import { appState } from '../models/AppService';
 import type { ToastKind } from '../models/toastKind';
 
@@ -16,6 +16,13 @@ const TONE: Record<ToastKind, { layer: string; close: string }> = {
   info: { layer: 'back-gray', close: 'hover:bg-black/10 active:bg-black/20' },
 };
 
+// 종류 아이콘(UI 정돈 그룹 2-d) — 색만으로 종류를 가르지 않게 글자 앞에 작은 원형 아이콘. 색은 글자색(currentColor) 그대로.
+export const TOAST_ICON: Record<ToastKind, typeof FaInfoCircle> = {
+  error: FaExclamationCircle,
+  success: FaCheckCircle,
+  info: FaInfoCircle,
+};
+
 // 개별 토스트: 자기 자신의 자동 제거 타이머를 가진다(id 기준).
 // 표시되는 순간부터 항상 TOAST_DURATION 만큼 노출 → 전역 인터벌의 위상 문제로
 // "깜빡"하고 사라지던 버그 해결.
@@ -27,6 +34,7 @@ const Toast = observer(
     }, [id]);
 
     const tone = TONE[kind] ?? TONE.error;
+    const Icon = TOAST_ICON[kind] ?? TOAST_ICON.error;
     return (
       <div
         className="toast-rise titlebar-no-drag mb-2 rounded-md r-popover shadow-xl bg-[var(--c-zone)] w-full pointer-events-auto overflow-hidden"
@@ -38,7 +46,13 @@ const Toast = observer(
             'flex items-center justify-between gap-3 pl-4 pr-2 py-3 ' + tone.layer
           }
         >
-          <div className="flex-1 break-words">{text}</div>
+          {/* 아이콘은 첫 줄 높이(24px) 상자 안 가운데 — 여러 줄이어도 첫 줄 옆에 붙는다 */}
+          <div className="flex-1 min-w-0 flex items-start gap-2">
+            <span className="flex-none h-6 flex items-center" data-toast-icon={kind} aria-hidden>
+              <Icon size={15} />
+            </span>
+            <div className="flex-1 min-w-0 break-words">{text}</div>
+          </div>
           <button
             className={
               'flex-none p-2 rounded-md transition-colors ' + tone.close

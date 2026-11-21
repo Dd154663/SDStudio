@@ -1,3 +1,4 @@
+import { EmptyState } from './EmptyState';
 import React, { useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useContextMenu } from 'react-contexify';
@@ -144,9 +145,9 @@ const HistoryList = observer(() => {
 
   if (entries.length === 0) {
     return (
-      <div className="flex-1 p-4 text-xs text-faint text-center">
+      <EmptyState className="flex-1 p-4">
         아직 생성된 이미지가 없습니다
-      </div>
+      </EmptyState>
     );
   }
   return (

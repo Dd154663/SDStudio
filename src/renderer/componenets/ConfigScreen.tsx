@@ -519,7 +519,7 @@ const LoginTab = ({
                 }
                 className="w-full"
               />
-              <p className="text-xs text-faint mt-1">
+              <p className="text-xs text-muted mt-1">
                 반복 전환을 막기 위해 경고 임계값보다 항상 5%p 이상 높게 유지됩니다.
               </p>
             </div>
@@ -979,7 +979,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     return () => { appState.configScreenOpen = false; };
   }, []);
 
-  const roundTag = 'text-white text-xs px-2 py-1 rounded-full';
+  const roundTag = 'round-tag round-tag-sm';
 
   const [loggedIn, setLoggedIn] = useState(false);
   useEffect(() => {
@@ -1346,7 +1346,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
 
   // 미저장 변경 표시 (#17) — 배지는 안내, 닫기 확인은 위 requestClose 가 맡는다(2026-11-12 H3 A안).
   const dirtyBadgeClass =
-    'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap shadow-sm bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-900/80 dark:text-amber-200 dark:border-amber-600';
+    'warn-badge shadow-sm';
   const dirtyBadgeContent = (
     <>
       <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-300" />
@@ -1432,7 +1432,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
             흐름에 끼우면 열릴 때마다 내용이 밀리므로 absolute + pointer-events-none 로
             레이아웃·클릭에 영향 0. 안내 전용 — 닫기 확인은 requestClose(2026-11-12 H3 A안). */}
         {dirty && (
-          <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-10 pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap shadow-sm bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-900/80 dark:text-amber-200 dark:border-amber-600">
+          <div className={'absolute top-2.5 left-1/2 -translate-x-1/2 z-10 pointer-events-none ' + dirtyBadgeClass}>
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-300" />
             저장 안 된 변경
           </div>
