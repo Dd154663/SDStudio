@@ -226,7 +226,8 @@ const RULES: Rule[] = [
       'models/AppService.ts': 1,
       'models/ArtistLibraryService.ts': 1,
       // models/BackupService.ts: 0 — 2026-11-16 M5 묶음 b P8 3 → 2, 묶음 b-2 폴더 일괄 이미지 내보내기가 ExportPresetService 단계 함수를 써서 2 → 0
-      'models/BatchProcessService.ts': 2,
+      // 2026-11-21 WebP 변환 목적지 이름을 imageFormats.planWebpTargets 로 옮겨 2 → 1
+      'models/BatchProcessService.ts': 1,
       'models/ExportPresetService.ts': 3,
       'models/GlobalCharacterPresetService.ts': 3,
       'models/GlobalPresetService.ts': 2,

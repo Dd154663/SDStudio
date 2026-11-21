@@ -16,6 +16,7 @@ import {
   zipService,
 } from '.';
 import { platform } from './platform';
+import { planWebpTargets, pngPathToWebp } from './imageFormats';
 import { runPool } from './concurrency';
 import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService';
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
@@ -964,13 +965,21 @@ export class BatchProcessService {
       webp: string;
     }
     const tasks: WebpTask[] = [];
+    // 같은 이름의 WebP 가 이미 있어 새 이름을 받은 PNG(폴더 포함 경로) — 완료 알림에 개수를 알린다.
+    const renamed = new Set<string>();
+    let renamedDone = 0;
     for (const scene of selected) {
       const dir = imageService.getOutputDir(session, scene);
       const pngs = gameService
         .getOutputs(session, scene)
         .filter((c) => c.toLowerCase().endsWith('.png'));
+      // 목적지 이름은 폴더에 이미 있는 파일과 겹치지 않게 정한다 — 같은 이름의 WebP 가 있으면
+      // 덮지 않고 「이름 (2).webp」 로 저장(원본 WebP 보존, imageFormats.planWebpTargets).
+      const targets = planWebpTargets(pngs, imageService.getOutputs(session, scene));
       for (const png of pngs) {
-        tasks.push({ scene, dir, png, webp: png.replace(/\.png$/i, '.webp') });
+        const webp = targets.get(png)!;
+        if (webp.toLowerCase() !== pngPathToWebp(png).toLowerCase()) renamed.add(dir + '/' + png);
+        tasks.push({ scene, dir, png, webp });
       }
     }
     const total = tasks.length;
@@ -1030,6 +1039,7 @@ export class BatchProcessService {
       try {
         await backend.convertToWebp(dir + '/' + png, dir + '/' + webp, quality);
         renames.get(scene)!.set(png, webp);
+        if (renamed.has(dir + '/' + png)) renamedDone++;
         // 원본 PNG 제거(데스크톱=OS 휴지통 이동, 모바일=삭제 — trashFile 의미)
         await backend.trashFile(dir + '/' + png);
         await imageService.invalidateCache(dir + '/' + png);
@@ -1062,10 +1072,13 @@ export class BatchProcessService {
       selected.map((s) => gameService.refreshList(session, s)),
     );
     const success = done - fail - skipped;
+    const renamedNote = renamedDone
+      ? `\n같은 이름의 WebP가 이미 있던 ${renamedDone}개는 덮어쓰지 않고 새 이름(예: 이름 (2))으로 저장했습니다.`
+      : '';
     appState.pushMessage(
-      cancelled
+      (cancelled
         ? `WebP 변환 취소됨: ${success}개 변환 저장, ${skipped}개 중단${fail ? `, ${fail}개 실패(원본 유지)` : ''}`
-        : `WebP 변환 완료: ${success}개 성공${fail ? `, ${fail}개 실패(원본 유지)` : ''}`,
+        : `WebP 변환 완료: ${success}개 성공${fail ? `, ${fail}개 실패(원본 유지)` : ''}`) + renamedNote,
     );
   }
 }

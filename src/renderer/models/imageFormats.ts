@@ -52,6 +52,33 @@ export function pngPathToWebp(path: string): string {
   return path.replace(/\.png$/i, '.webp');
 }
 
+// WebP 일괄 변환의 목적지 이름 계획(PNG 이름 → 저장할 WebP 이름).
+// 같은 폴더에 같은 이름의 WebP 가 이미 있으면 덮지 않고 「이름 (2).webp」 처럼 비어 있는 이름을 준다
+// — WebP 를 외부 편집기로 고치면 편집기가 같은 이름의 PNG 를 옆에 저장할 수 있고, 그대로 변환하면
+// 원본 WebP 를 말없이 덮어쓴다(2026-11-21).
+// existing = 그 폴더에 지금 있는 파일 이름. 비교는 대소문자 무관(Windows·Android 공유 저장소 기준).
+export function planWebpTargets(
+  pngs: readonly string[],
+  existing: readonly string[],
+): Map<string, string> {
+  const key = (name: string) => name.toLowerCase();
+  const taken = new Set(existing.map(key));
+  const targets = new Map<string, string>();
+  for (const png of pngs) {
+    const base = pngPathToWebp(png);
+    const dot = base.lastIndexOf('.');
+    const stem = dot > 0 ? base.slice(0, dot) : base;
+    const ext = dot > 0 ? base.slice(dot) : '';
+    let candidate = base;
+    for (let n = 2; taken.has(key(candidate)); n++) {
+      candidate = `${stem} (${n})${ext}`;
+    }
+    taken.add(key(candidate));
+    targets.set(png, candidate);
+  }
+  return targets;
+}
+
 // 접두사 없는 raw base64 의 시그니처로 이미지 확장자를 추정한다(알 수 없으면 png).
 // 저장 시 올바른 확장자를 붙여야 표시·MIME 이 어긋나지 않는다.
 export function imageExtFromBase64(base64: string): string {
