@@ -160,7 +160,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
               type="checkbox"
               checked={!!form.applyCharacterAffix}
               onChange={(e) => setForm({ ...form, applyCharacterAffix: e.target.checked })}
-              className="w-4 h-4 accent-sky-500"
+              className="setting-check"
             />
             <span className="text-sm text-default">
               캐릭터 프리셋 접두사/접미사 적용
@@ -217,7 +217,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
                 type="checkbox"
                 checked={!!form.preserveStealth}
                 onChange={(e) => setForm({ ...form, preserveStealth: e.target.checked })}
-                className="w-4 h-4 accent-sky-500"
+                className="setting-check"
               />
               <span className="text-sm text-default">
                 NAI 스테가노그래피 보존 (NAI 인스펙터 인식 유지, 처리 느려짐)
@@ -242,7 +242,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
               type="checkbox"
               checked={!!form.autoConvertSeparator}
               onChange={(e) => setForm({ ...form, autoConvertSeparator: e.target.checked })}
-              className="w-4 h-4 accent-sky-500"
+              className="setting-check"
             />
             <span className="text-sm text-default">
               특수문자 묻지 않고 구분자로 자동 변환
@@ -280,7 +280,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
                   type="checkbox"
                   checked={!!form.useProjectRelativePath}
                   onChange={(e) => setForm({ ...form, useProjectRelativePath: e.target.checked })}
-                  className="w-4 h-4 accent-sky-500"
+                  className="setting-check"
                 />
                 <span className="text-sm text-default">
                   프로젝트 폴더 경로로 하위 폴더 생성

@@ -138,6 +138,7 @@ import { SHARE_BUTTONS_HYSTERESIS_PX } from '../models/projectBarStage';
 import { ResolutionPicker, resolutionValueToSize } from './ResolutionPicker';
 import HelpIcon from './HelpIcon';
 import { PromptSyntaxHelpButton } from './PromptSyntaxHelp';
+import { SettingField, SettingGroup, SettingSwitch, SettingSwitchRow } from './SettingControls';
 import {
   activatePresetSamplingFamily,
   samplingFamilyForModel,
@@ -937,7 +938,7 @@ const PreSetBulkManageModal = observer(
                   type="checkbox"
                   checked={selected.has(p.name)}
                   onChange={() => toggle(p.name)}
-                  className="rounded line-color"
+                  className="setting-check"
                 />
                 <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
                   {p.name}
@@ -1589,12 +1590,10 @@ const GlobalModelSettings = observer(() => {
     : effectiveUcPreset(modelVersion, ucPreset);
 
   return (
-    <div className="mt-4 pt-4 border-t line-color">
-      <div className="text-sm font-semibold text-muted mb-3">
-        모델 설정 (전역)
-      </div>
-      <div className="space-y-3">
-        <div>
+    // 묶음 상자(2026-11-20 UI 정돈 그룹 1-c) — 같은 항목·순서, 켬/끔 2개는 즉시 저장이라 스위치 줄.
+    // 그리는 곳 = 그룹 편집 창(ModalOverlay size m) 한 곳뿐 — 사전 세팅 패널 자체가 아니라 폭 여유가 있다.
+    <SettingGroup title="모델 설정 (전역)" className="mt-4">
+        <SettingField>
           <label className="text-sm gray-label mb-1 block">NAI 모델 버전</label>
           <DropdownSelect
             selectedOption={modelVersion}
@@ -1630,23 +1629,18 @@ const GlobalModelSettings = observer(() => {
               인페인트 모델로 처리됩니다.
             </div>
           )}
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="globalFurryMode"
-            checked={furryMode}
-            onChange={(e) => {
-              setFurryMode(e.target.checked);
-              saveConfig({ furryMode: e.target.checked });
-            }}
-          />
-          <label htmlFor="globalFurryMode" className="text-sm gray-label">
-            퍼리 모드 켜기
-          </label>
-        </div>
+        </SettingField>
+        <SettingSwitchRow
+          id="globalFurryMode"
+          checked={furryMode}
+          onChange={(checked) => {
+            setFurryMode(checked);
+            saveConfig({ furryMode: checked });
+          }}
+          label="퍼리 모드 켜기"
+        />
         {isV5ModelVersion(modelVersion) ? (
-          <div>
+          <SettingField>
             <label className="text-sm gray-label mb-1 block">품질 태그</label>
             <DropdownSelect
               selectedOption={qualityPreset}
@@ -1671,34 +1665,29 @@ const GlobalModelSettings = observer(() => {
                 {qualityPresetTextFor(modelVersion, qualityPreset)}
               </div>
             )}
-          </div>
+          </SettingField>
         ) : (
-          <div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="globalAddQuality"
-                checked={!disableQuality}
-                onChange={(e) => {
-                  setDisableQuality(!e.target.checked);
-                  saveConfig({ disableQuality: !e.target.checked });
-                }}
-              />
-              <label htmlFor="globalAddQuality" className="text-sm gray-label">
-                퀄리티 태그 추가 (Add Quality Tags)
-              </label>
-            </div>
-            {!disableQuality && (
-              <div className="text-xs text-faint mt-1 ml-6 break-all">
-                프롬프트 끝에 추가: {' '}
-                {qualityPresetTextFor(modelVersion, 'standard')}
-              </div>
-            )}
-          </div>
+          <SettingSwitchRow
+            id="globalAddQuality"
+            checked={!disableQuality}
+            onChange={(checked) => {
+              setDisableQuality(!checked);
+              saveConfig({ disableQuality: !checked });
+            }}
+            label="퀄리티 태그 추가 (Add Quality Tags)"
+            description={
+              !disableQuality ? (
+                <span className="break-all">
+                  프롬프트 끝에 추가: {' '}
+                  {qualityPresetTextFor(modelVersion, 'standard')}
+                </span>
+              ) : undefined
+            }
+          />
         )}
         {/* NAI 웹 패리티: Undesired Content Preset — 생성 시 네거티브 프롬프트
             앞에 모델별 프리셋 텍스트가 병합된다. 기본 '없음' = 기존 결과 무변화. */}
-        <div>
+        <SettingField>
           <label className="text-sm gray-label mb-1 block">
             네거티브 프리셋 (Undesired Content Preset)
           </label>
@@ -1724,9 +1713,8 @@ const GlobalModelSettings = observer(() => {
               {ucPresetTextFor(modelVersion, shownUcPreset)}
             </div>
           )}
-        </div>
-      </div>
-    </div>
+        </SettingField>
+    </SettingGroup>
   );
 });
 
@@ -1754,22 +1742,8 @@ const TransparentBackgroundMainRow = observer(
     if (!loaded || !isV5ModelVersion(modelVersion)) return null;
 
     return (
+      // 즉시 저장 켬/끔이 한 줄을 혼자 차지 → 글자·(?) 왼쪽, 스위치 오른쪽 끝(2026-11-20 그룹 1-c, field-row 줄 구조 유지)
       <div className="field-row pt-2 md:pt-3 flex gap-2 items-center">
-        <input
-          type="checkbox"
-          id="mainTransparentBackground"
-          checked={enabled}
-          onChange={async (e) => {
-            const checked = e.target.checked;
-            setEnabled(checked);
-            const config = await backend.getConfig();
-            await backend.setConfig({
-              ...config,
-              transparentBackground: checked,
-            });
-            sessionService.configChanged();
-          }}
-        />
         <label
           htmlFor="mainTransparentBackground"
           className="flex-none gray-label cursor-pointer"
@@ -1777,6 +1751,21 @@ const TransparentBackgroundMainRow = observer(
           투명 배경
         </label>
         <HelpIcon content={TRANSPARENT_BACKGROUND_HELP} />
+        <span className="ml-auto flex">
+          <SettingSwitch
+            id="mainTransparentBackground"
+            checked={enabled}
+            onChange={async (checked) => {
+              setEnabled(checked);
+              const config = await backend.getConfig();
+              await backend.setConfig({
+                ...config,
+                transparentBackground: checked,
+              });
+              sessionService.configChanged();
+            }}
+          />
+        </span>
       </div>
     );
   },
@@ -2364,18 +2353,20 @@ const CharacterPromptEditor = observer(
 
     return (
       <div className="w-full h-full overflow-hidden flex flex-col">
+        {/* 즉시 반영 켬/끔 한 줄 — 글자 왼쪽·스위치 오른쪽 끝(2026-11-20 그룹 1-c, 줄 여백 그대로) */}
         <div className="flex-none mx-3 mt-3 flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="useCoords"
-            checked={preset.useCoords ?? false}
-            onChange={(e) => {
-              setWorkflowField(appState.curSession, holders, 'preset', 'useCoords', e.target.checked, {
-                label: UNDO_TEXT.characterCoordsMode(owner),
-              });
-            }}
-          />
           <label htmlFor="useCoords" className="text-sm gray-label cursor-pointer">캐릭터 위치 지정 모드</label>
+          <span className="ml-auto flex">
+            <SettingSwitch
+              id="useCoords"
+              checked={preset.useCoords ?? false}
+              onChange={(checked) => {
+                setWorkflowField(appState.curSession, holders, 'preset', 'useCoords', checked, {
+                  label: UNDO_TEXT.characterCoordsMode(owner),
+                });
+              }}
+            />
+          </span>
         </div>
         {preset.useCoords && allChars.length > 0 && (
           <div className="flex-none mx-3 mt-2">
@@ -2844,13 +2835,16 @@ const WFRInline = observer(({ element }: WFElementProps) => {
       return <CharacterReferenceButton input={input} key={key} />;
     case 'bool':
       return (
+        // 즉시 반영 켬/끔 — field-row(라벨: 값) 줄 구조 그대로, 스위치는 줄 오른쪽 끝(2026-11-20 그룹 1-c)
         <InlineEditorField label={input.label}>
-          <input
-            key={key}
-            type="checkbox"
-            checked={getField()}
-            onChange={(e) => setField(e.target.checked)}
-          />
+          <span className="ml-auto flex">
+            <SettingSwitch
+              key={key}
+              ariaLabel={input.label}
+              checked={getField()}
+              onChange={(checked) => setField(checked)}
+            />
+          </span>
         </InlineEditorField>
       );
     case 'int': {

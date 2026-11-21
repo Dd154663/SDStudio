@@ -156,6 +156,7 @@ const ExpiredProjectsDialog = observer(() => {
         <label className="flex items-center gap-2 px-2 py-1 cursor-pointer text-default text-sm border-b line-color">
           <input
             type="checkbox"
+            className="setting-check"
             checked={allSelected}
             onChange={toggleAll}
           />
@@ -180,6 +181,7 @@ const ExpiredProjectsDialog = observer(() => {
               >
                 <input
                   type="checkbox"
+                  className="setting-check"
                   checked={selected.has(key)}
                   onChange={() => toggleSelect(key)}
                 />

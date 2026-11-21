@@ -20,6 +20,7 @@ import {
   FaGlobe,
   FaCompressArrowsAlt,
   FaMagic,
+  FaTimes,
 } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
 import { queueArtistSample } from '../models/sceneQueueActions';
@@ -452,7 +453,7 @@ export const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: st
               {artist.tags.map((t) => (
                 <span key={t} className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300">
                   {t}
-                  <button className="hover:text-red-500" aria-label={`태그 ${t} 삭제`} onClick={() => removeArtistTagRecorded(artist.id, t)}>×</button>
+                  <button className="hover:text-red-500" aria-label={`태그 ${t} 삭제`} onClick={() => removeArtistTagRecorded(artist.id, t)}><FaTimes size={10} className="block" /></button>
                 </span>
               ))}
             </div>
@@ -771,7 +772,7 @@ const ArtistLibraryTab = observer(() => {
           <input className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-sm text-default focus:outline-none focus:ring-2 focus:ring-sky-400"
             placeholder="작가 이름 · 태그로 검색…" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
-        <select className="gray-input text-sm" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)}>
+        <select className="app-select text-sm h-[2.375rem]" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)}>
           <option value="recent">최근순</option>
           <option value="name">이름순</option>
           <option value="favorite">즐겨찾기 우선</option>

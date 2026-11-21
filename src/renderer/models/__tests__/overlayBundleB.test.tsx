@@ -276,7 +276,11 @@ describe('프로젝트 저장 공간 관리 — size m·도구줄·안내는 본
     mockSize.entries = { 프로젝트A: { bytes: 10, at: Date.now() } };
     await renderStorage();
     const again = container.querySelector<HTMLButtonElement>('button[aria-label="다시 계산"]')!;
-    expect(again.textContent).toBe('↻');
+    // 2026-11-20 UI 정돈 그룹 1-c: 기호 글자 ↻ → 사전 refresh 아이콘(ActionIcon — 이 파일에서는 목으로 null) — 글자 기호는 없다
+    expect(again.textContent).toBe('');
+    expect(fs.readFileSync(path.join(__dirname, '../../componenets/StorageManageModal.tsx'), 'utf8')).toContain(
+      '<ActionIcon id="refresh"',
+    );
     // 설명은 Tooltip 이 띄운다 — title 을 겹쳐 두면 설명이 두 번 뜬다(2026-11-18 아이콘 설명 메우기)
     expect(again.hasAttribute('title')).toBe(false);
     const calc = container.querySelector<HTMLButtonElement>('button[aria-label="계산"]')!;

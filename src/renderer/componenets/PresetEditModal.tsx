@@ -164,6 +164,8 @@ export const PresetEditModal = observer(
 
     const numCls =
       'mt-1 w-full px-2 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default';
+    // 선택 칸 = .app-select(2026-11-20 UI 정돈 그룹 1-c) — 숫자 칸과 같은 높이(위아래 6px + 글자 20 + 테두리)
+    const selectCls = 'mt-1 w-full app-select';
 
     // 창은 공용 ModalOverlay(2026-11-14 오버레이 묶음 D, size m) — Esc·Android 뒤로 가기(같은 backStack 한 겹)와
     // 바깥 클릭(누름·뗌 모두 배경일 때만 — 프롬프트 글자를 드래그 선택하다 바깥에서 떼도 닫히지 않게)은 래퍼 내장.
@@ -294,7 +296,7 @@ export const PresetEditModal = observer(
               <select
                 value={sampling}
                 onChange={(e) => setSampling(e.target.value)}
-                className={numCls}
+                className={selectCls}
               >
                 {Object.values(Sampling).map((s) => (
                   <option key={s} value={s}>
@@ -308,7 +310,7 @@ export const PresetEditModal = observer(
               <select
                 value={noiseSchedule}
                 onChange={(e) => setNoiseSchedule(e.target.value)}
-                className={numCls}
+                className={selectCls}
               >
                 {Object.values(NoiseSchedule).map((s) => (
                   <option key={s} value={s}>

@@ -183,6 +183,7 @@ export const ComboPromptEditor = observer(
                   <input
                     type="checkbox"
                     data-combo-global-uc-toggle=""
+                    className="setting-check setting-check-sm"
                     checked={use}
                     disabled={v5mLocked}
                     onChange={(e) => setUseGlobalUc(e.target.checked)}

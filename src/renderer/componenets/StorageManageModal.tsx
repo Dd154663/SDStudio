@@ -9,6 +9,7 @@ import {
 import { appState } from '../models/AppService';
 import { platform } from '../models/platform';
 import Tooltip from './Tooltip';
+import { ActionIcon } from './ActionIcon';
 
 // 고용량 하이라이트 기준 (3GB)
 const HIGHLIGHT_BYTES = 3 * 1024 * 1024 * 1024;
@@ -192,7 +193,8 @@ const StorageManageModal = observer(
                       onClick={() => projectSizeService.calculate(n)}
                       aria-label={busy ? '계산 중' : e ? '다시 계산' : '계산'}
                     >
-                      {busy ? '...' : e ? '↻' : '계산'}
+                      {/* 「다시 계산」 = 사전 refresh 아이콘(2026-11-20 그룹 1-c, 종전 기호 글자 ↻) — 버튼 모양·이름표는 그대로 */}
+                      {busy ? '...' : e ? <ActionIcon id="refresh" size={14} className="block my-px" /> : '계산'}
                     </button>
                   </Tooltip>
                   {platform.supportsWebpConvert && (

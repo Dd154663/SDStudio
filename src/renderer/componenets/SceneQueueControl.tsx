@@ -3274,7 +3274,7 @@ const QueueControl = observer(
             <div className="ml-auto mr-2 hidden md:flex items-center gap-2 tb-name-offset">
               {!appState.classicSceneCard && (
                 <select
-                  className="gray-input text-sm py-1 px-2"
+                  className="app-select app-select-tight text-sm h-8"
                   value={curSession.sceneCardStyle?.[type] ?? 'portrait'}
                   onChange={(e) => {
                     curSession.sceneCardStyle = {

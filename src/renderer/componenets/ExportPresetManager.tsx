@@ -17,6 +17,7 @@ import { useGuardedClose } from './backdropClose';
 
 import { FaPlus, FaTrash, FaPen } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
+import { SettingCheckRow } from './SettingControls';
 
 const EXPORT_PRESET_OPS: ExportPresetOps<ExportPreset> = {
   load: () => appState.loadExportPresets(),
@@ -382,18 +383,20 @@ const ExportPresetManager = observer(() => {
 
       <ExportSettingsFields form={form} setForm={setForm} twoColumn={wide} />
       {/* ⚡ 빠른 export 기본 프리셋 지정 */}
-      <label className="flex items-center gap-2 cursor-pointer select-none">
-        <input
-          type="checkbox"
-          checked={form.isDefault}
-          onChange={(e) => setForm({ ...form, isDefault: e.target.checked })}
-          className="w-4 h-4 accent-sky-500"
+      {/* 체크 줄(2026-11-20 UI 정돈 그룹 1-c) — 줄 안쪽 여백(10px)만큼 당겨 위 칸들과 왼쪽을 맞춘다 */}
+      <div className="-mx-2.5 select-none">
+        <SettingCheckRow
+          id="exportPresetIsDefault"
+          checked={!!form.isDefault}
+          onChange={(checked) => setForm({ ...form, isDefault: checked })}
+          label={
+            <>
+              <ActionIcon id="quick-export" className="inline-block mr-1 align-[-0.125em]" />
+              빠른 내보내기 기본 프리셋으로 사용
+            </>
+          }
         />
-        <span className="text-sm text-gray-700 dark:text-gray-300">
-          <ActionIcon id="quick-export" className="inline-block mr-1 align-[-0.125em]" />
-          빠른 내보내기 기본 프리셋으로 사용
-        </span>
-      </label>
+      </div>
     </>
   );
 

@@ -151,7 +151,7 @@ export const SceneSelectAside = ({ sel }: { sel: SceneSelection }) => {
               (kinds[kind] ? 'back-sky' : 'text-muted')
             }
           >
-            <input type="checkbox" checked={kinds[kind]} onChange={() => toggleKind(kind)} className="rounded line-color" />
+            <input type="checkbox" checked={kinds[kind]} onChange={() => toggleKind(kind)} className="setting-check setting-check-sm" />
             <span>
               {label} {kindCounts[kind]}
             </span>
@@ -171,7 +171,7 @@ export const SceneSelectAside = ({ sel }: { sel: SceneSelection }) => {
           <label key={name}
             className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 rounded px-1 py-0.5">
             <input type="checkbox" checked={selectedScenes.has(name)} onChange={() => toggleScene(name)}
-              className="rounded line-color" />
+              className="setting-check" />
             <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{sceneKeyLabel(name)}</span>
           </label>
         ))}

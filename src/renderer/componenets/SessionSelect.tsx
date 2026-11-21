@@ -423,7 +423,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
               type="checkbox"
               checked={presetClearSel.has(name)}
               readOnly
-              className="flex-none rounded line-color pointer-events-none"
+              className="setting-check pointer-events-none"
             />
             <FaUserAlt
               className="flex-none text-green-600 dark:text-green-400"

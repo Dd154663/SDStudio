@@ -720,7 +720,7 @@ export const GlobalPresetTab = observer(() => {
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="h-8 px-1.5 text-sm rounded border line-color bg-[var(--c-input-bg)] text-default flex-none"
+              className="app-select app-select-tight h-8 text-sm flex-none"
             >
               <option value="recent">최근 수정순</option>
               <option value="name">이름순</option>
@@ -847,7 +847,7 @@ export const GlobalPresetTab = observer(() => {
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as any)}
-          className="px-2 py-2 text-base rounded border line-color bg-[var(--c-input-bg)] text-default"
+          className="app-select text-base h-[2.625rem]"
         >
           <option value="recent">최근 수정순</option>
           <option value="name">이름순</option>

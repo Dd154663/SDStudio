@@ -49,6 +49,7 @@ import {
 } from './CharacterPresetCards';
 import { CharacterPresetInnerEditor } from './CharacterPresetInnerEditor';
 import { HelpPanelButton } from './HelpPanel';
+import { SettingCheckRow } from './SettingControls';
 import { CHARACTER_PRESET_HELP } from '../models/helpPanelTexts';
 import { ListDragLockedHint, ListSearchBar } from './ListSearchBar';
 import { hasQuery, matchesQuery } from '../models/listSearch';
@@ -1734,7 +1735,7 @@ export function useCharacterPresetPanel({
             type="checkbox"
             checked={selectedScenes.has(scene.name)}
             onChange={() => toggleSceneSelection(scene.name)}
-            className="rounded line-color"
+            className="setting-check"
           />
           <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{scene.name}</span>
         </label>
@@ -1747,20 +1748,16 @@ export function useCharacterPresetPanel({
 
   // 프로젝트 파일 생성 모드 토글
   const projectFileToggle = (
-    <label className="flex items-start gap-2 mb-3 cursor-pointer select-none">
-      <input
-        type="checkbox"
+    // 체크 줄(2026-11-20 UI 정돈 그룹 1-c) — 실행 전 옵션이라 체크 상자. 줄 안쪽 여백(10px)만큼 당겨 주변 칸과 왼쪽을 맞춘다.
+    <div className="-mx-2.5 mb-1 select-none">
+      <SettingCheckRow
+        id="cyclingProjectFileMode"
         checked={projectFileMode}
-        onChange={(e) => setProjectFileMode(e.target.checked)}
-        className="mt-0.5 rounded line-color"
+        onChange={setProjectFileMode}
+        label={<span className="font-medium">프로젝트 파일 생성으로 동작</span>}
+        description="각 프리셋을 프리셋 이름의 새 프로젝트로 복제(이미지 미포함)해 생성합니다. 원본 프로젝트는 그대로 유지됩니다."
       />
-      <span className="text-sm text-gray-700 dark:text-gray-300">
-        <span className="font-medium">프로젝트 파일 생성으로 동작</span>
-        <span className="block text-xs text-muted">
-          각 프리셋을 프리셋 이름의 새 프로젝트로 복제(이미지 미포함)해 생성합니다. 원본 프로젝트는 그대로 유지됩니다.
-        </span>
-      </span>
-    </label>
+    </div>
   );
 
   const samplesInput = (

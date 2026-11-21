@@ -43,6 +43,7 @@ import {
 import { CharacterPreset, CharacterPrompt } from '../models/types';
 import { Sampling, NoiseSchedule, ModelVersion } from '../backends/imageGen';
 import HelpIcon from './HelpIcon';
+import { SettingField, SettingGroup } from './SettingControls';
 import { HelpPanelButton } from './HelpPanel';
 import { TEMPLATE_MANAGER_HELP } from '../models/helpPanelTexts';
 import { renameTemplateRecorded } from '../models/globalLibraryUndo';
@@ -102,6 +103,10 @@ const numCls =
   'mt-1 w-full px-2 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default';
 // 모델이 고정·미사용으로 두는 샘플링 칸(V5M 스텝·샘플러·CFG 리스케일, V5 계열 노이즈 스케줄) — 표시만 고정, 저장값은 보존
 const lockedCls = ' opacity-60 cursor-not-allowed';
+// 선택 칸(샘플링·노이즈 스케줄, 2026-11-20 UI 정돈 그룹 1-c) = .app-select. 숫자 칸(numCls)과 같은 높이(위아래 6px + 글자 20 + 테두리).
+// 잠금 표시는 .app-select:disabled 의 흐림(0.5)만 쓴다 — lockedCls 의 opacity-60 을 겹치면 0.3 까지 흐려진다.
+const selectCls = 'mt-1 w-full app-select';
+const selectLockedCls = ' cursor-not-allowed';
 // PC 두 열 본문의 열(2026-11-15 C-3b) — 열마다 세로 스크롤 하나(SPEC 높이 규칙 우선순위 (2)). 일괄 생성 패널(BatchCreateModal batchColCls)과 같은 값.
 const templateColCls =
   'flex-1 min-w-0 min-h-0 overflow-y-auto flex flex-col gap-4';
@@ -664,7 +669,11 @@ const TemplateWorkflowBody = observer(
               </div>
               {/* 샘플링 설정 (인라인 — 변경 즉시 저장). 2026-11-15 B안: 머리 알약으로 고칠 모델 계열을 고른다
                   — 앱 모델은 바꾸지 않고, 선택 계열의 값(samplingProfiles[계열])을 읽고 쓴다.
-                  모바일은 알약을 둘째 줄로(줄바꿈 허용, 가로 스크롤 없음). */}
+                  모바일은 알약을 둘째 줄로(줄바꿈 허용, 가로 스크롤 없음).
+                  2026-11-20 UI 정돈 그룹 1-c: 구획을 묶음 상자(SettingGroup 「샘플링」)로 — 제목은 상자 제목 한 번만이라
+                  머리 줄의 「샘플링」 글자는 뺐다(모바일 첫 줄 = 도움말만, PC = 알약 줄 끝 도움말 그대로). */}
+              <SettingGroup title="샘플링">
+              <SettingField>
               <div
                 className={
                   isMobile
@@ -673,12 +682,11 @@ const TemplateWorkflowBody = observer(
                 }
                 data-template-sampling-head={isMobile ? 'stacked' : 'row'}
               >
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-muted">샘플링</span>
-                  {isMobile && (
+                {isMobile && (
+                  <div className="flex items-center gap-2">
                     <HelpIcon content={TEMPLATE_SAMPLING_TEXT.familyHelp} size={13} />
-                  )}
-                </div>
+                  </div>
+                )}
                 <div
                   className="flex items-center gap-1 flex-wrap"
                   role="group"
@@ -709,6 +717,8 @@ const TemplateWorkflowBody = observer(
                   <HelpIcon content={TEMPLATE_SAMPLING_TEXT.familyHelp} size={13} />
                 )}
               </div>
+              </SettingField>
+              <SettingField>
               <div className="grid grid-cols-2 gap-3">
                 <label className="text-sm text-default">
                   스탭 수
@@ -790,7 +800,7 @@ const TemplateWorkflowBody = observer(
                         : undefined
                     }
                     className={
-                      numCls + (samplingLocks.fixedSampler !== undefined ? lockedCls : '')
+                      selectCls + (samplingLocks.fixedSampler !== undefined ? selectLockedCls : '')
                     }
                   >
                     {Object.values(Sampling).map((s) => (
@@ -814,8 +824,8 @@ const TemplateWorkflowBody = observer(
                     onChange={(e) => patchSampling('noiseSchedule', e.target.value)}
                     disabled={samplingLocks.forcedNoiseSchedule !== undefined}
                     className={
-                      numCls +
-                      (samplingLocks.forcedNoiseSchedule !== undefined ? lockedCls : '')
+                      selectCls +
+                      (samplingLocks.forcedNoiseSchedule !== undefined ? selectLockedCls : '')
                     }
                   >
                     {Object.values(NoiseSchedule).map((s) => (
@@ -833,11 +843,15 @@ const TemplateWorkflowBody = observer(
                   )}
                 </label>
               </div>
+              </SettingField>
               {samplingLocks.negativeUnused && (
+                <SettingField>
                 <div className="text-xs text-sub" data-template-v5m-notice="">
                   {V5_MEDIUM_TEXT.modelNotice}
                 </div>
+                </SettingField>
               )}
+              </SettingGroup>
             </div>
             );
             // 캐릭터 프리셋 목록 — 편집 탭 전용 (배치 탭은 이 자리에 캐릭터 축)
@@ -1816,7 +1830,7 @@ export const TemplateManagerModal = observer(
           data-template-select-row=""
         >
           <select
-            className="gray-input flex-1 min-w-[140px]"
+            className="app-select flex-1 min-w-[140px]"
             value={selectedId}
             onChange={(e) => setSelectedId(e.target.value)}
           >

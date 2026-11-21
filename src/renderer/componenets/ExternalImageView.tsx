@@ -459,7 +459,7 @@ export const ExternalImageView = observer(
             checked={checked}
             onChange={(e) => onChange(e.target.checked)}
             disabled={disabled}
-            className="w-4 h-4 accent-sky-500 flex-none"
+            className="setting-check"
           />
           <span className="font-semibold text-sm text-default flex-1">{label}</span>
           {right}
@@ -579,7 +579,7 @@ export const ExternalImageView = observer(
                   <div className="mb-4">
                     <label className="text-xs font-medium text-muted mb-1 block">적용할 프리셋</label>
                     <select
-                      className="gray-input text-sm py-1.5 px-2 w-full"
+                      className="app-select text-sm w-full"
                       value={target}
                       onChange={(e) => setTarget(e.target.value)}
                     >
@@ -648,7 +648,7 @@ export const ExternalImageView = observer(
                               type="checkbox"
                               checked={options.sceneMiddle}
                               onChange={(e) => setOpt('sceneMiddle', e.target.checked)}
-                              className="w-3.5 h-3.5 accent-sky-500"
+                              className="setting-check setting-check-sm"
                             />
                             씬 프롬프트도 「{normalScene.name}」 씬에 적용(조합을 생성 당시 한 조합으로 교체)
                           </label>
@@ -687,7 +687,7 @@ export const ExternalImageView = observer(
                             type="checkbox"
                             checked={options.charactersAppend}
                             onChange={(e) => setOpt('charactersAppend', e.target.checked)}
-                            className="w-3.5 h-3.5 accent-sky-500"
+                            className="setting-check setting-check-sm"
                           />
                           추가 모드
                         </label>
@@ -720,7 +720,7 @@ export const ExternalImageView = observer(
                             type="checkbox"
                             checked={options.vibesAppend}
                             onChange={(e) => setOpt('vibesAppend', e.target.checked)}
-                            className="w-3.5 h-3.5 accent-sky-500"
+                            className="setting-check setting-check-sm"
                           />
                           추가 모드
                         </label>

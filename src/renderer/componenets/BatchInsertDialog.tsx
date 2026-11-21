@@ -194,7 +194,7 @@ const BatchInsertBody = observer(() => {
               setSlotTarget(v === 'all' ? 'all' : v === 'new-column' ? 'new-column' : Number(v));
               setDone(null);
             }}
-            className="text-sm rounded border line-color bg-[var(--c-input-bg)] text-default px-2 py-1"
+            className="app-select text-sm"
           >
             <option value="all">모든 슬롯</option>
             {/* 「열 n만」「새 열」은 slots 가 있는 씬(이미지생성·조합 변형)에만 — 단일 프롬프트 변형만 고르면 비활성 */}

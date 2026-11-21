@@ -431,7 +431,7 @@ function useFindPanel(
         <span className="text-sm font-medium text-gray-700 dark:text-gray-300 flex-none">검색 범위:</span>
         {scopeBoxes.map(([scope, label]) => (
           <label key={scope} className="flex items-center gap-1.5 cursor-pointer">
-            <input type="checkbox" checked={scopes[scope]} onChange={() => toggleScope(scope)} className="rounded line-color" />
+            <input type="checkbox" checked={scopes[scope]} onChange={() => toggleScope(scope)} className="setting-check" />
             <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
           </label>
         ))}
@@ -453,7 +453,7 @@ function useFindPanel(
         <label className="flex items-center gap-1.5 cursor-pointer">
           <input type="checkbox" checked={wsSearch}
             onChange={() => { setWsSearch(!wsSearch); setSearched(false); setResults([]); setReplaceComplete(null); }}
-            className="rounded line-color" />
+            className="setting-check" />
           <span className="text-sm text-gray-700 dark:text-gray-300">공백 검색</span>
         </label>
       </div>

@@ -465,7 +465,9 @@ describe('템플릿 편집기 샘플링 알약', () => {
     expect(head.getAttribute('data-template-sampling-head')).toBe('stacked');
     expect(head.className).toContain('flex-col');
     const rows = Array.from(head.children);
-    expect(rows[0].textContent).toContain('샘플링');
+    // 2026-11-20 UI 정돈 그룹 1-c: 구획 제목 「샘플링」은 묶음 상자 제목 한 번만 — 머리 첫 줄은 도움말만 남는다
+    expect(head.closest('[data-setting-group="샘플링"]')).not.toBeNull();
+    expect(rows[0].querySelector('[data-help-icon]')).not.toBeNull();
     expect(rows[1].hasAttribute('data-template-sampling-family')).toBe(true);
     expect((rows[1] as HTMLElement).className).toContain('flex-wrap');
     expect((rows[1] as HTMLElement).className).not.toContain('overflow');

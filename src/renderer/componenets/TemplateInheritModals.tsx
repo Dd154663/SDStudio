@@ -471,7 +471,7 @@ export const ReapplyTemplateModal = observer(
                   템플릿
                 </label>
                 <select
-                  className="gray-input w-full"
+                  className="app-select w-full"
                   value={selected}
                   onChange={(e) => setSelected(e.target.value)}
                 >

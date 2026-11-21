@@ -71,7 +71,7 @@ export function ListSearchBar({
           onChange={(e) => sort.onChange(e.target.value)}
           aria-label={sort.ariaLabel ?? '정렬'}
           data-list-sort=""
-          className={`${h} px-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default flex-none`}
+          className={`app-select app-select-tight ${h} flex-none`}
         >
           {sort.options.map((o) => (
             <option key={o.value} value={o.value}>

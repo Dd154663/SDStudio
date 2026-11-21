@@ -4,6 +4,9 @@ import { observer } from 'mobx-react-lite';
 import {
   FaArrowLeft,
   FaCheck,
+  FaChevronDown,
+  FaChevronRight,
+  FaChevronUp,
   FaToggleOff,
   FaToggleOn,
   FaTrash,
@@ -282,10 +285,17 @@ export const CharacterPresetInnerEditor = observer(({
             />
             {selectableImages.length > 0 && (
               <button
-                className="text-xs text-sky-500 hover:text-sky-600 dark:text-sky-400 dark:hover:text-sky-300 text-left"
+                className="text-xs text-sky-500 hover:text-sky-600 dark:text-sky-400 dark:hover:text-sky-300 text-left inline-flex items-center gap-1"
+                aria-expanded={showRepImagePicker}
                 onClick={() => setShowRepImagePicker(!showRepImagePicker)}
               >
-                {showRepImagePicker ? '선택 닫기 ▲' : '바이브/레퍼런스에서 선택 ▼'}
+                {/* 기호 ▲/▼ → 셰브론 아이콘(2026-11-20 그룹 1-c), 문구 그대로 */}
+                {showRepImagePicker ? '선택 닫기' : '바이브/레퍼런스에서 선택'}
+                {showRepImagePicker ? (
+                  <FaChevronUp size={9} className="flex-none" aria-hidden="true" />
+                ) : (
+                  <FaChevronDown size={9} className="flex-none" aria-hidden="true" />
+                )}
               </button>
             )}
             {representativeImage && (
@@ -560,15 +570,18 @@ export const CharacterPresetInnerEditor = observer(({
   // 파일명 옵션 (옵셔널 섹션)
   const filenameSection = (
       <div className="mb-4 p-3 border line-color rounded-lg">
-        <div
-          className="flex items-center justify-between cursor-pointer"
+        {/* 접기 머리 = button + aria-expanded, 표시는 SceneEditor FoldHead 와 같은 셰브론(2026-11-20 그룹 1-c, 종전 div·▼/▶ 글자) */}
+        <button
+          type="button"
+          className="w-full flex items-center justify-between cursor-pointer text-left"
+          aria-expanded={showFilenameOptions}
           onClick={() => setShowFilenameOptions(!showFilenameOptions)}
         >
-          <div className="text-sm font-medium text-gray-700 dark:text-gray-300">파일명 옵션 (선택사항)</div>
-          <span className="text-sm text-muted">
-            {showFilenameOptions ? '▼' : '▶'}
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">파일명 옵션 (선택사항)</span>
+          <span className="text-muted" aria-hidden="true">
+            {showFilenameOptions ? <FaChevronDown size={10} className="block" /> : <FaChevronRight size={10} className="block" />}
           </span>
-        </div>
+        </button>
         {showFilenameOptions && (
           <div className="mt-3 space-y-3">
             <div>

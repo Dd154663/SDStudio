@@ -1632,6 +1632,21 @@ input[type='number']::-webkit-outer-spin-button {
 .setting-check:disabled {
   opacity: 0.5;
 }
+/* 작은 체크 상자(2026-11-20 UI 정돈 그룹 1-c) — 글자가 text-xs 이거나 칩·좁은 머리줄처럼 18px 가 줄 높이를 키우는 자리.
+   .setting-check 와 함께 붙인다(색·움직임은 그대로, 크기와 체크 표시만 같은 비율로 줄임). */
+.setting-check.setting-check-sm {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  border-radius: 4px;
+}
+.setting-check.setting-check-sm::after {
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border-width: 0 2px 2px 0;
+}
 /* 누름 — 줄을 누르는 동안 체크 상자가 살짝 작아진다 */
 .setting-check-row:active:not([data-disabled]) .setting-check {
   transform: scale(0.9);
@@ -1736,9 +1751,19 @@ input[type='number']::-webkit-outer-spin-button {
   opacity: 0.5;
   cursor: not-allowed;
 }
-.app-select option {
+.app-select option,
+.app-select optgroup {
   background-color: var(--c-surface-2);
   color: var(--c-text);
+}
+/* 고를 수 없는 항목(일괄 삽입 「열 n만」 등) — 위에서 글자색을 정했으므로 흐린 글자를 다시 준다 */
+.app-select option:disabled {
+  color: var(--c-text-faint);
+}
+/* 높이를 사용처가 정한 줄(h-7·h-8 — PC 32px 줄·목록 검색줄, 2026-11-20 그룹 1-c) — 위아래 여백만 0 으로(높이 안에서 글자 가운데) */
+.app-select.app-select-tight {
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 /* 순서 목록 아이콘 버튼(퀵 메뉴 구성 ▲▼✕ 대체) — 28px, hover 배경은 사전 세팅 행 버튼과 같은 옅은 덮개, 제거는 hover 때 위험색 */

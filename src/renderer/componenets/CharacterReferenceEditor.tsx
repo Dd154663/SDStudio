@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { v4 } from 'uuid';
-import { FaPortrait, FaTimes, FaToggleOff, FaToggleOn, FaTrash } from 'react-icons/fa';
+import { FaChevronDown, FaChevronRight, FaPortrait, FaTimes, FaToggleOff, FaToggleOn, FaTrash } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
 import { FileUploadBase64 } from './UtilComponents';
 import Tooltip from './Tooltip';
@@ -206,9 +206,16 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
             <div className="mx-2 mt-2 mb-1">
               <button
                 className="text-xs text-muted hover:text-gray-700 dark:hover:text-gray-200 flex items-center gap-1"
+                aria-expanded={showDefaults}
                 onClick={() => setShowDefaults(!showDefaults)}
               >
-                {showDefaults ? '▾' : '▸'} 새 레퍼런스 기본값 설정
+                {/* 접기 표시 = SceneEditor FoldHead 와 같은 셰브론(2026-11-20 그룹 1-c, 종전 ▾/▸ 글자) */}
+                {showDefaults ? (
+                  <FaChevronDown size={10} className="flex-none text-faint" aria-hidden="true" />
+                ) : (
+                  <FaChevronRight size={10} className="flex-none text-faint" aria-hidden="true" />
+                )}
+                새 레퍼런스 기본값 설정
               </button>
               {showDefaults && (
                 <div className="mt-2 p-3 bg-[var(--c-surface)] rounded-lg space-y-3 text-sm">

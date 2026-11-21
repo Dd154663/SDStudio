@@ -87,7 +87,7 @@ function DirectExportForm({ request }: { request: DirectExportRequest }) {
       {!form.autoConvertSeparator && detected.length > 0 && <fieldset className="border line-color rounded p-3">
         <legend className="text-sm text-muted">구분자로 변환할 문자</legend>
         <div className="flex flex-wrap gap-3">{detected.map((char) => <label key={char} className="flex items-center gap-1 text-default">
-          <input type="checkbox" checked={characters.includes(char)} onChange={(e) => setCharacters((current) => e.target.checked ? [...current, char] : current.filter((value) => value !== char))} />
+          <input type="checkbox" className="setting-check" checked={characters.includes(char)} onChange={(e) => setCharacters((current) => e.target.checked ? [...current, char] : current.filter((value) => value !== char))} />
           {char === ' ' ? '띄어쓰기' : char}
         </label>)}</div>
       </fieldset>}

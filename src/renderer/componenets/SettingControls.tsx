@@ -127,6 +127,45 @@ export function SettingSwitchRow({
   );
 }
 
+// 스위치 하나(줄 없이 — 2026-11-20 UI 정돈 그룹 1-c). 높이·여백이 정해진 줄(사전 세팅 패널 field-row 등)이나
+// 「라벨: [켬/끔] (?)」 처럼 다른 컨트롤과 한 줄에 섞인 자리에 그 줄 구조를 그대로 두고 끼운다.
+// SettingSwitchRow 와 같은 input(role="switch"·.setting-switch·엔터 키), 배치는 사용처가 정한다.
+// 주의: .setting-switch 의 margin 이 유틸(ml-auto 등)보다 뒤에 있어 이긴다 — 여백·밀어내기는 감싸개에 준다.
+export function SettingSwitch({
+  id,
+  checked,
+  onChange,
+  disabled,
+  ariaLabel,
+  className,
+}: {
+  id?: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  ariaLabel?: string;
+  className?: string;
+}) {
+  return (
+    <input
+      type="checkbox"
+      role="switch"
+      id={id}
+      className={'setting-switch' + (className ? ' ' + className : '')}
+      checked={checked}
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.checked)}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        if (!disabled) onChange(!checked);
+      }}
+    />
+  );
+}
+
 export function SettingField({
   children,
   className,

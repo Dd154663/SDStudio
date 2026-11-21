@@ -69,6 +69,8 @@ import {
   MdFindReplace,
   MdImageSearch,
   MdPostAdd,
+  MdRefresh,
+  MdSettingsBackupRestore,
 } from 'react-icons/md';
 
 // 합성 아이콘 — 본체 아이콘 우하단에 작은 덧붙임 아이콘(본체의 ratio 크기)을 겹친다.
@@ -186,6 +188,8 @@ export const ICON_DICTIONARY = {
   'gen-settings': FaSlidersH, // 생성 설정 적용·고급 설정
   'system-settings': FaMicrochip, // 환경설정 「시스템」 탭(요청 지연·쓰기 보호 등)
   drive: FaGoogleDrive, // Google 드라이브 — 구름 계열도 드라이브 전용
+  'reset-default': MdSettingsBackupRestore, // 설정 하나를 기본값으로 되돌림(단축키 「기본값으로」 등 — 전역 되돌리기 undo 와 다른 모양)
+  refresh: MdRefresh, // 다시 계산·다시 읽기(저장 공간 크기 등 — 순환 생성 FaSync·다시 실행 FaRedo 와 다른 모양)
 } satisfies Record<string, IconType>;
 
 export type IconId = keyof typeof ICON_DICTIONARY;

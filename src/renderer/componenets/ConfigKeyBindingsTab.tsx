@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { keyboardShortcutService, KeyboardShortcutService } from '../models/KeyboardShortcutService';
 import { useBackLayer } from '../models/BackStackService';
 import Tooltip from './Tooltip';
+import { ActionIcon } from './ActionIcon';
 
 /* ── 탭: 단축키 (PC only, 2026-10-01 라벨 「키 바인딩」→「단축키」) ── */
 const KeyBindingsTab = () => {
@@ -105,15 +106,17 @@ const KeyBindingsTab = () => {
         {recordingAction === action.id ? '취소' : '변경'}
       </button>
       <Tooltip content="기본값으로 초기화">
+        {/* 기호 글자 ↺ → 사전 reset-default 아이콘 버튼(2026-11-20 UI 정돈 그룹 1-c). 이름표는 Tooltip 이 붙인다. */}
         <button
-          className="text-xs px-1.5 py-1 rounded back-gray flex-shrink-0"
+          type="button"
+          className="setting-icon-btn ui-press"
           onClick={() => {
             keyboardShortcutService.resetBinding(action.id);
             setConflict(null);
             refreshBindings();
           }}
         >
-          ↺
+          <ActionIcon id="reset-default" size={16} />
         </button>
       </Tooltip>
     </div>

@@ -20,6 +20,7 @@ import {
   buildBatchCombinations,
   resolveBatchName,
 } from '../models/batchCreatePlan';
+import { SettingCheckRow } from './SettingControls';
 
 // 프로젝트 일괄 생성 패널 (배치 R3 — 2026-07-17 탭 통합 스펙).
 //
@@ -512,7 +513,7 @@ export const BatchCreatePanel = observer(
                     type="checkbox"
                     checked={selectedChars.has(e.id)}
                     onChange={() => toggleChar(e.id)}
-                    className="rounded line-color flex-none"
+                    className="setting-check"
                   />
                   <CharThumb entry={e} />
                   <span className="text-sm text-default truncate flex-1">
@@ -564,7 +565,7 @@ export const BatchCreatePanel = observer(
                     type="checkbox"
                     checked={selectedScenes.has(s)}
                     onChange={() => toggleScene(s)}
-                    className="rounded line-color flex-none"
+                    className="setting-check"
                   />
                   <span className="text-sm text-default truncate">{s}</span>
                 </label>
@@ -575,21 +576,22 @@ export const BatchCreatePanel = observer(
 
         {/* 폴더 규칙 (캐릭터 축 있을 때만 — R2 스펙 5항) */}
         {selectedChars.size > 0 && (
-          <label className="flex items-start gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
+          // 체크 줄(2026-11-20 UI 정돈 그룹 1-c) — 실행 전 옵션. 위아래 구획 상자(p-3)의 안쪽 글자와 줄 안쪽 여백(10px)이
+          // 거의 같은 자리라 당기지 않는다.
+          <div className="select-none">
+            <SettingCheckRow
+              id="batchSubfolderByChar"
               checked={subfolderByChar}
-              onChange={(e) => setSubfolderByChar(e.target.checked)}
-              className="mt-0.5 rounded line-color"
+              onChange={setSubfolderByChar}
+              label="캐릭터별 서브폴더로 묶기"
+              description={
+                <>
+                  {displayFolder}/&#123;캐릭터 프리셋 이름&#125; 아래에
+                  생성됩니다.
+                </>
+              }
             />
-            <span className="text-sm text-default">
-              캐릭터별 서브폴더로 묶기
-              <span className="block text-xs text-muted">
-                {displayFolder}/&#123;캐릭터 프리셋 이름&#125; 아래에
-                생성됩니다.
-              </span>
-            </span>
-          </label>
+          </div>
         )}
 
         {/* 미리보기 */}

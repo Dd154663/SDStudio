@@ -317,7 +317,7 @@ const ConfirmWindow = observer(() => {
                         type="checkbox"
                         checked={skipConfirm}
                         onChange={(e) => setSkipConfirm(e.target.checked)}
-                        className="w-4 h-4 rounded accent-sky-500"
+                        className="setting-check"
                       />
                       이번 세션에서 다시 묻지 않음
                     </label>
@@ -334,7 +334,7 @@ const ConfirmWindow = observer(() => {
                           setExtraChecked(e.target.checked);
                           curDialog.confirmCheck!.onChange(e.target.checked);
                         }}
-                        className="w-4 h-4 rounded accent-sky-500"
+                        className="setting-check"
                       />
                       {curDialog.confirmCheck.label}
                     </label>
@@ -534,7 +534,7 @@ const ConfirmWindow = observer(() => {
                             else next.delete(item.value);
                             setCheckedItems(next);
                           }}
-                          className="w-4 h-4 flex-shrink-0"
+                          className="setting-check"
                         />
                         <span
                           className={item.danger ? 'text-red-500 dark:text-red-400' : 'text-default'}

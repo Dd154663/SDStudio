@@ -30,6 +30,7 @@ import { migratePieceLibrary } from '../models/legacy';
 import { stringifyExportJson } from '../models/jsonExport';
 import { observer } from 'mobx-react-lite';
 import HelpIcon from './HelpIcon';
+import { SettingSwitch } from './SettingControls';
 import { ListDragLockedHint, ListSearchBar } from './ListSearchBar';
 import { hasQuery, matchesQuery } from '../models/listSearch';
 import {
@@ -215,12 +216,13 @@ export const PieceCell = observer(
         </div>
         <div className={'mt-1 gray-label'}>
           랜덤 줄 선택 모드:{' '}
-          <input
-            checked={piece.multi}
-            type="checkbox"
-            onChange={(e) => {
+          {/* 「라벨: [켬/끔] (?)」 한 줄 — 제자리에서 체크 대신 스위치 모양만(2026-11-20 그룹 1-c) */}
+          <SettingSwitch
+            checked={!!piece.multi}
+            ariaLabel="랜덤 줄 선택 모드"
+            className="align-middle"
+            onChange={(checked) => {
               if (!movePiece) return;
-              const checked = e.target.checked;
               editPieceLibrary(
                 appState.curSession,
                 curPieceLibrary,

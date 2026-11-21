@@ -754,18 +754,22 @@ export const SlotPiece = observer(
     const pieceControls = (
       <div className={wide ? 'ml-auto flex items-center gap-3 select-none' : 'flex gap-2 select-none'}>
         <label className="gray-label">활성화</label>
-        <input
-          type="checkbox"
-          className={wide ? 'relative touch-hit' : undefined}
-          checked={piece.enabled == undefined || piece.enabled}
-          onChange={(e) => {
-            if (!moveSlotPiece) return;
-            const checked = e.currentTarget.checked;
-            editSlots(scene, UNDO_TEXT.comboTogglePiece(slotsSceneName(scene)), () => {
-              piece.enabled = checked;
-            });
-          }}
-        />
+        {/* 체크 모양만 .setting-check(2026-11-20 그룹 1-c). 체크 표시가 ::after 를 쓰므로 판정 확장(touch-hit ::after)은
+            체크 상자를 감싼 label 로 옮겼다 — label 을 눌러도 같은 체크가 토글되어 누르는 영역은 그대로. */}
+        <label className={wide ? 'relative touch-hit inline-flex items-center' : 'inline-flex items-center'}>
+          <input
+            type="checkbox"
+            className="setting-check"
+            checked={piece.enabled == undefined || piece.enabled}
+            onChange={(e) => {
+              if (!moveSlotPiece) return;
+              const checked = e.currentTarget.checked;
+              editSlots(scene, UNDO_TEXT.comboTogglePiece(slotsSceneName(scene)), () => {
+                piece.enabled = checked;
+              });
+            }}
+          />
+        </label>
         <Tooltip
           content={
             characterBadge?.warn
