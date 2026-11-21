@@ -133,7 +133,8 @@ describe('하드코딩 bg-{색}-500 잔존 = 제외 목록', () => {
     expect(read('ProjectDrawer.tsx')).toContain("'bg-sky-600 text-white dark:bg-sky-500 shadow-sm'");
     expect(read('ProjectDrawer.tsx')).toContain("'bg-emerald-600 text-white dark:bg-emerald-500'");
     expect(read('CharacterPresetCards.tsx').match(/'bg-purple-600 text-white dark:bg-purple-500'/g)).toHaveLength(3);
-    expect(read('PieceEditor.tsx')).toContain("'bg-purple-600 text-white dark:bg-purple-400/25 dark:text-purple-300 font-bold'");
+    // 그룹 2-b: 로컬/전역 전환이 캐릭터 프리셋 관리와 같은 .tab-seg 모양 — 전역 선택 = 라이트 600·다크 500 보라
+    expect(read('PieceEditor.tsx')).toContain("'bg-purple-600 text-white dark:bg-purple-500' : 'back-llgray tab-seg-off'");
     expect(read('SceneEditor.tsx')).toContain('bg-red-600 text-white dark:bg-red-500 rounded-full w-4 h-4');
     expect(read('TaskQueueControl.tsx')).toContain("'bg-sky-600 dark:bg-indigo-400' : 'bg-red-600 dark:bg-red-500'");
     // 그룹 2-a: 진행 창 막대의 다크 채움을 indigo-400 → 다른 진행 막대와 같은 하늘색 계열(sky-500, 흰 글자 다크 500 규칙)

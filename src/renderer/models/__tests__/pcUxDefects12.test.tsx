@@ -105,7 +105,8 @@ describe('App.css 상태 표시(D10·S3·S2·D11·W1)', () => {
   test('포커스 링 토큰 --c-focus-ring — 라이트 sky-700, 다크 종전 sky-400, 공용 :focus-visible 가 토큰 사용', () => {
     expect(css).toMatch(/:root\s*\{[^}]*--c-focus-ring:\s*#0369a1/);
     expect(css).toMatch(/\.dark\s*\{[^}]*--c-focus-ring:\s*rgb\(56,\s*189,\s*248\)/);
-    expect(css).toMatch(/\.btn-link:focus-visible\s*\{\s*outline:\s*2px solid var\(--c-focus-ring\)/);
+    // 그룹 2-b: 공용 목록 끝에 솔리드 버튼([class*="btn-solid-"])이 더해짐 — .btn-link 다음 줄이 목록 끝
+    expect(css).toMatch(/\.btn-link:focus-visible,\s*\[class\*="btn-solid-"\]:focus-visible\s*\{\s*outline:\s*2px solid var\(--c-focus-ring\)/);
     expect(css).not.toMatch(/outline:\s*2px solid rgb\(56,\s*189,\s*248\)/);
   });
   test('.gray-input:focus-visible 링이 .gray-input 규칙 뒤에 있다', () => {
@@ -204,7 +205,8 @@ describe('국소 클래스 수정(묶음 1)', () => {
     const src = read('ConfirmWindow.tsx');
     expect(src).not.toMatch(/<label[^>]*\bmt-3\b/);
     expect(src).toContain("'flex items-center')");
-    expect(src).toContain('r-btn back-sky clickable disabled:opacity-50 disabled:cursor-not-allowed');
+    // 그룹 2-b: 확정 버튼 모양은 공용 상수(DIALOG_PRIMARY_BTN, 솔리드 알약) — 비활성 모양 병기는 그대로
+    expect(src).toContain("DIALOG_PRIMARY_BTN + ' disabled:opacity-50 disabled:cursor-not-allowed'");
   });
   test('T2 파일 이름 break-all · T3 조각 이름 말줄임+Tooltip', () => {
     expect(read('ResultViewer.tsx')).toContain('<span className="break-all">{filename}</span>');

@@ -96,6 +96,9 @@
   /* 덮개(마우스 올림·키보드 초점 항목 바탕, UI 정돈 그룹 1) — 아래 바탕 위에 얹는 반투명 막. 트루다크는 .dark 값,
      커스텀 테마(uiTheme.buildThemeVars)·클래식 마감은 재정의하지 않는다. 사용: 드롭다운 옵션·.btn-ghost·무배경 .icon-button·.hover-row·.setting-icon-btn·창 닫기 ✕(그룹 2-a). */
   --c-hover: rgb(0 0 0 / 0.05);
+  /* 카드 「여기에 놓기」 바탕(UI 정돈 그룹 2-b .card-drop-target) — 옅은 하늘 막. 라이트 sky-600 10%(솔리드 상태색 --c-sky-bg 를
+     그대로 쓰면 진한 하늘 면이 되므로 따로 둔다), 다크·트루다크 sky-400 16%. 커스텀 테마·클래식 마감은 재정의하지 않는다. */
+  --c-drop-bg: rgb(2 132 199 / 0.1);
   /* 버튼 반경 토큰(2026-10-04 B1 ①, 같은 날 실기 피드백으로 범위 축소) — 색과 무관해 테마별 재정의 없음.
      --r-btn      = 글자·아이콘+글자 버튼(.round-button·.icon-button·확인 창 .r-btn) — 알약, 모던·클래식 공통.
      --r-btn-icon = 아이콘 하나짜리 버튼(.icon-only) — 모던 8px 둥근 사각, 클래식 마감·알약형 버튼 옵션은
@@ -132,6 +135,7 @@
   --c-link: #0ea5e9; /* sky-500 — 종전 그대로(surface 6.44·surface-2 5.28, 트루다크 7.14) */
   --c-link-hover: #0284c7; /* sky-600 — 종전 hover 그대로 */
   --c-hover: rgb(255 255 255 / 0.1); /* 덮개 — 트루다크도 이 값 */
+  --c-drop-bg: rgb(56 189 248 / 0.16); /* 카드 놓을 자리 바탕 — 트루다크도 이 값 */
   /* 영역 바닥 선 — 다크 bg 토큰은 이미 25% 반투명이라 선명한 fg(teal·sky-400·gray-200)를 옅게 칠한다 */
 }
 .true-dark {
@@ -407,6 +411,34 @@ html.font-pretendard body {
 .dark .btn-neutral:hover {
   filter: brightness(1.15);
 }
+/* 창 확정·취소 버튼(ModalOverlay DIALOG_*_BTN, UI 정돈 그룹 2-b) — 누르는 동안 어둡게. 종전 확인 창 버튼의 .clickable
+   (active:brightness-75)이 주던 누름 표시를 솔리드·중립 버튼 모양에서도 잃지 않게(hover 색·밝기는 각 계열 그대로).
+   .dark .btn-neutral:hover 와 특이도가 같고 뒤에 있어 누르는 동안에는 이 값이 이긴다. 모바일 터치에도 보인다. */
+.dialog-btn:active:not(:disabled) {
+  filter: brightness(0.85);
+}
+/* 다크·트루다크의 확인 창 계열(.confirm-window — 확인 창·만료 프로젝트 창)은 거의 검은 배경막(0.8) 위에 뜨므로,
+   솔리드 500 확정 버튼(sky·red)이 너무 쨍해 눈이 부시다(2026-11-21 실기 지적). 이 창 안에서만 종전 확인 창과 같은
+   반투명 상태색(back-* 토큰 — 다크 25% 틴트 + 밝은 글자)으로 낮춘다. 모양(알약·크기)과 클래스 이름은 그대로,
+   라이트는 솔리드 600 그대로(back-* 라이트 값과 같음). hover 는 밝기만 살짝, 비활성도 같은 틴트. 일반 창 바닥줄은 불변. */
+.dark .confirm-window .dialog-btn.btn-solid-sky,
+.dark .confirm-window .dialog-btn.btn-solid-sky:hover,
+.dark .confirm-window .dialog-btn.btn-solid-sky:disabled {
+  background-color: var(--c-sky-bg);
+  color: var(--c-sky-fg);
+}
+.dark .confirm-window .dialog-btn.btn-solid-red,
+.dark .confirm-window .dialog-btn.btn-solid-red:hover,
+.dark .confirm-window .dialog-btn.btn-solid-red:disabled {
+  background-color: var(--c-red-bg);
+  color: var(--c-red-fg);
+}
+.dark .confirm-window .dialog-btn[class*='btn-solid-']:hover:not(:disabled) {
+  filter: brightness(1.2);
+}
+.dark .confirm-window .dialog-btn[class*='btn-solid-']:active:not(:disabled) {
+  filter: brightness(0.85);
+}
 
 .clickable {
   @apply active:brightness-75 hover:brightness-90 cursor-pointer select-none;
@@ -673,7 +705,8 @@ html.font-pretendard body {
 .btn-neutral:focus-visible,
 .btn:focus-visible,
 .btn-ghost:focus-visible,
-.btn-link:focus-visible {
+.btn-link:focus-visible,
+[class*="btn-solid-"]:focus-visible {
   outline: 2px solid var(--c-focus-ring);
   outline-offset: 1px;
 }
@@ -772,6 +805,48 @@ html.font-pretendard body {
 }
 .hover-row:active {
   background-color: var(--c-hover);
+}
+
+/* ── 카드 「선택됨」·「여기에 놓기」(UI 정돈 그룹 2-b, 목업 승인) ──
+   종전 둘 다 하늘 테두리·링이라 선택 모드에서 끌면 어느 것이 고른 카드이고 어느 것이 놓을 자리인지 섞였다.
+   · .card-selected = 2px --c-focus-ring 실선(outline — 크기 불변, offset -2px 라 2px 테두리 카드는 테두리 자리에, 테두리가
+     없거나 1px 인 카드는 안쪽 가장자리에 그려진다) + 오른쪽 위 원형 체크 표식(::after, 지름 20px, DOM 을 늘리지 않음).
+     이미 자기 선택 표시(체크 상자·체크 덮개·선택 덮개)가 있는 카드는 .card-check-none 을 같이 붙여 테두리만.
+     .card-selected-outside = 테두리 바깥에 그린다(씬 카드 — 즐겨찾기 노랑 테두리가 선택보다 앞서는 종전 우선순위 유지).
+   · .card-drop-target = 2px --c-focus-ring 점선 + 옅은 --c-drop-bg 막(background-image 라 카드 바탕색 유틸과 겹치지 않음).
+   @layer components 안 — 자리의 outline 유틸(씬 카드 키보드 초점 outline-4 등)이 이긴다. 드래그 판정·선택 로직은 자리 그대로.
+   ::after 는 pointer-events 없음(아래 오버레이 버튼 판정 불변). ::after 를 쓰는 .touch-hit·.setting-check 를 카드에 붙이지 않는다. */
+@layer components {
+  .card-selected {
+    outline: 2px solid var(--c-focus-ring);
+    outline-offset: -2px;
+  }
+  .card-selected.card-selected-outside {
+    outline-offset: 0;
+  }
+  .card-selected:not(.card-check-none)::after {
+    content: '\2713'; /* ✓ */
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 30;
+    width: 20px;
+    height: 20px;
+    border-radius: 9999px;
+    background-color: var(--c-focus-ring);
+    color: var(--c-surface);
+    box-shadow: 0 0 0 2px var(--c-surface);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 20px;
+    text-align: center;
+    pointer-events: none;
+  }
+  .card-drop-target {
+    outline: 2px dashed var(--c-focus-ring);
+    outline-offset: -2px;
+    background-image: linear-gradient(var(--c-drop-bg), var(--c-drop-bg));
+  }
 }
 
 /* .btn-link — 텍스트 링크형 버튼 */

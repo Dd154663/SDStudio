@@ -39,7 +39,7 @@ import {
   importConfigText,
   importTokenText,
 } from '../models/configSyncFlow';
-import ModalOverlay from './ModalOverlay';
+import ModalOverlay, { DIALOG_PRIMARY_BTN, DIALOG_SECONDARY_BTN } from './ModalOverlay';
 import { SettingCheckRow, SettingField, SettingGroup } from './SettingControls';
 
 interface Props {
@@ -316,7 +316,7 @@ const ConfigImportPreviewModal = ({
       footer={
         <>
           <button
-            className="px-4 py-2 rounded-lg btn-solid-sky disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+            className={DIALOG_PRIMARY_BTN + ' disabled:opacity-50 disabled:cursor-not-allowed'}
             disabled={previewCount === 0 || applying}
             onClick={apply}
           >
@@ -324,7 +324,7 @@ const ConfigImportPreviewModal = ({
             {previewCount > 0 ? ` (${previewCount})` : ''}
           </button>
           <button
-            className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+            className={DIALOG_SECONDARY_BTN}
             onClick={cancel}
           >
             {CONFIG_SYNC_TEXT.previewCancel}

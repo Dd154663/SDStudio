@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { ActionIcon } from './ActionIcon';
-import ModalOverlay from './ModalOverlay';
+import ModalOverlay, { DIALOG_DANGER_BTN, DIALOG_PRIMARY_BTN, DIALOG_SECONDARY_BTN } from './ModalOverlay';
 import { useTemplateWorkflowPanel } from './TemplateManagerModal';
 import { FOLDER_COLORS } from './folderColors';
 import {
@@ -308,7 +308,7 @@ export const FolderTemplateModal = observer(
         <>
           {controlsShown && (
             <button
-              className="px-4 py-2 rounded-lg btn-solid-red text-sm font-medium transition-colors"
+              className={DIALOG_DANGER_BTN}
               data-folder-template-clear=""
               onClick={clearDesignation}
             >
@@ -441,7 +441,7 @@ export const ReapplyTemplateModal = observer(
           <>
             {hasAny && (
               <button
-                className="px-4 py-2 rounded-lg btn-solid-sky disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+                className={DIALOG_PRIMARY_BTN + ' disabled:opacity-50 disabled:cursor-not-allowed'}
                 disabled={!selected || busy}
                 onClick={apply}
               >
@@ -449,7 +449,7 @@ export const ReapplyTemplateModal = observer(
               </button>
             )}
             <button
-              className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+              className={DIALOG_SECONDARY_BTN}
               onClick={onClose}
             >
               {hasAny ? '취소' : '닫기'}

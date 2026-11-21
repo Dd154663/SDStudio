@@ -43,7 +43,7 @@ import {
 import { ActionIcon } from './ActionIcon';
 import { useBackLayer } from '../models/BackStackService';
 import { useBackdropClose, useGuardedClose } from './backdropClose';
-import ModalOverlay, { scrollOverlayBodyToTop } from './ModalOverlay';
+import ModalOverlay, { scrollOverlayBodyToTop, DIALOG_PRIMARY_BTN, DIALOG_SECONDARY_BTN } from './ModalOverlay';
 import OpusUsageMeter, { OpusUsageHelp } from './OpusUsageMeter';
 import { useOpusUsage } from './OpusUsageBadge';
 import OpusUsageQuietToggle from './OpusUsageQuietToggle';
@@ -1396,11 +1396,11 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
         }
         footer={
           <>
-            <button className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors" onClick={handleSave}>
+            <button className={DIALOG_PRIMARY_BTN} onClick={handleSave}>
               저장
             </button>
             <button
-              className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+              className={DIALOG_SECONDARY_BTN}
               onClick={requestClose}
             >
               닫기

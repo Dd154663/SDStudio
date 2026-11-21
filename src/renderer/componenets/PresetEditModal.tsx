@@ -6,7 +6,7 @@ import { Sampling, NoiseSchedule } from '../backends/imageGen';
 import PromptEditTextArea from './PromptEditTextArea';
 import { FileUploadBase64 } from './UtilComponents';
 import { useGuardedClose } from './backdropClose';
-import ModalOverlay from './ModalOverlay';
+import ModalOverlay, { DIALOG_PRIMARY_BTN, DIALOG_SECONDARY_BTN } from './ModalOverlay';
 import { NAME_INPUT_TEXT } from '../models/nameInput';
 import type { NameKind } from '../models/nameInput';
 
@@ -184,14 +184,14 @@ export const PresetEditModal = observer(
           <>
             {/* [확인][취소] 순서(2026-10-03 D1) — 바닥 버튼 규격은 내보내기 프리셋 관리와 같음 */}
             <button
-              className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
+              className={DIALOG_PRIMARY_BTN}
               onClick={save}
               disabled={saving}
             >
               {saving ? '저장 중...' : '저장'}
             </button>
             <button
-              className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+              className={DIALOG_SECONDARY_BTN}
               onClick={requestClose}
             >
               취소

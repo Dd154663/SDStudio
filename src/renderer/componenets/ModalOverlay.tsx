@@ -65,6 +65,16 @@ export const OVERLAY_CLOSE_BUTTON_CLASS =
   'p-1 rounded hover:bg-[var(--c-hover)] text-muted transition-colors';
 export const OVERLAY_CLOSE_ICON_SIZE = 16;
 
+// 창의 확정·취소 버튼 모양(UI 정돈 그룹 2-b — 종전 세 모양: 일반 창 바닥줄 8px 사각·확인 창 알약 반투명·만료 창 4px 사각).
+// 확정 = 솔리드(btn-solid-*) 알약, 취소·닫기 = btn-neutral 알약. 반경은 .r-btn(모던 알약 · 클래식 마감은 병기한 rounded 4px),
+// 높이·글자는 종전 일반 창 바닥줄 값(px-4 py-2 text-sm). .dialog-btn = 누르는 동안 어둡게(App.css — 확인 창 clickable 의 누름 표시 대체).
+// 확정 색이 하늘·빨강이 아닌 자리(주황·초록·보라 등)는 DIALOG_SOLID_BTN 뒤에 btn-solid-{색} 을 호출부가 붙인다.
+// 배치용 유틸(flex-1·min-w-* 등)은 상수 뒤에 덧붙인다. 순서·문구·동작은 자리마다 그대로.
+export const DIALOG_SOLID_BTN = 'dialog-btn px-4 py-2 rounded r-btn text-sm font-medium transition-colors';
+export const DIALOG_PRIMARY_BTN = `${DIALOG_SOLID_BTN} btn-solid-sky`;
+export const DIALOG_DANGER_BTN = `${DIALOG_SOLID_BTN} btn-solid-red`;
+export const DIALOG_SECONDARY_BTN = 'dialog-btn px-4 py-2 rounded r-btn btn-neutral text-body text-sm transition-colors';
+
 const ModalOverlay = ({
   isOpen,
   onClose,

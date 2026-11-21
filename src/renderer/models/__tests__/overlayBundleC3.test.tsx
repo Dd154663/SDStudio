@@ -347,7 +347,8 @@ describe('C-3 안쪽 편집 — layout="frame"(PC)', () => {
     const bar = q('[data-overlay-footer-bar]', frame)!;
     expect(bar.className).toBe('flex-none flex items-center gap-2 px-5 py-3 border-t line-color');
     const save = buttonByText('프리셋 추가', bar);
-    expect(save.className).toBe('px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors');
+    // 그룹 2-b: 창 확정 버튼 공용 상수 DIALOG_PRIMARY_BTN(솔리드 알약 — r-btn, 클래식은 rounded 4px)
+    expect(save.className).toBe('dialog-btn px-4 py-2 rounded r-btn text-sm font-medium transition-colors btn-solid-sky');
     expect(buttonByText('취소', bar).className).toContain('btn-neutral text-body text-sm');
     expect(q('[data-modal-size]')!.getAttribute('data-modal-size')).toBe('xl');
   });

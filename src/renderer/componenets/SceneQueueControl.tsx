@@ -1004,9 +1004,9 @@ export const SceneCell = observer(
           id={`scene-cell-${scene.type}-${scene.name}`}
           className={`relative z-0 ${isMobile ? 'm-[5px]' : 'm-[10.5px]'} p-1 bg-[var(--c-surface-2)] border line-color ${
             isDragging ? 'opacity-0 no-touch ' : ''
-          }${isOver ? ' outline outline-sky-500' : ''}${
+          }${isOver ? ' card-drop-target' : ''}${
             isSelected
-              ? ' ring-2 ring-sky-500 bg-sky-50 dark:bg-sky-900/20'
+              ? ' card-selected card-check-none bg-sky-50 dark:bg-sky-900/20'
               : ''
           }${focusRing}`}
           style={style}
@@ -1096,14 +1096,12 @@ export const SceneCell = observer(
       <div
         id={`scene-cell-${scene.type}-${scene.name}`}
         className={`${disableHover ? '' : 'group '}relative z-0 ${isMobile ? 'm-[5px]' : 'm-[8.5px]'} p-1 rounded-lg bg-[var(--c-surface-2)] border-2 ${
-          currentPreviewIsFavorite
-            ? 'border-yellow-400 '
-            : isSelected
-              ? 'border-sky-500 '
-              : 'line-color '
+          // 즐겨찾기 노랑 테두리가 앞선다(종전 그대로). 선택 = 테두리 바깥 2px 실선(선택 덮개가 이미 있어 체크 표식 없음),
+          // 놓을 자리 = 점선(UI 정돈 그룹 2-b — 종전 둘 다 하늘 링)
+          currentPreviewIsFavorite ? 'border-yellow-400 ' : 'line-color '
         }${isDragging ? 'opacity-0 no-touch ' : ''}${
-          isOver ? ' ring-2 ring-sky-500' : ''
-        }${isSelected ? ' ring-2 ring-sky-400' : ''}${focusRing}`}
+          isOver ? ' card-drop-target' : ''
+        }${isSelected ? ' card-selected card-selected-outside card-check-none' : ''}${focusRing}`}
         style={style}
         ref={cardRef}
         onContextMenu={onContext}

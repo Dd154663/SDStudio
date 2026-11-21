@@ -10,7 +10,7 @@ import { deleteConfirmText } from '../models/deleteFlowRules';
 import { ExportPresetOps, saveExportPresetsRecorded } from '../models/globalLibraryUndo';
 import { UNDO_TEXT } from '../models/undoService';
 
-import ModalOverlay from './ModalOverlay';
+import ModalOverlay, { DIALOG_PRIMARY_BTN, DIALOG_SECONDARY_BTN } from './ModalOverlay';
 import { ListSearchBar } from './ListSearchBar';
 import { matchesQuery } from '../models/listSearch';
 import { useGuardedClose } from './backdropClose';
@@ -408,7 +408,7 @@ const ExportPresetManager = observer(() => {
         onClick={savePreset}
         aria-disabled={problems.length > 0 || undefined}
         className={
-          'px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors' +
+          DIALOG_PRIMARY_BTN +
           (problems.length > 0 ? ' opacity-50' : '')
         }
       >
@@ -416,7 +416,7 @@ const ExportPresetManager = observer(() => {
       </button>
       <button
         onClick={requestClose}
-        className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+        className={DIALOG_SECONDARY_BTN}
       >
         취소
       </button>

@@ -197,7 +197,8 @@ export const CharacterPresetCard = observer(({
       className={
         'group relative rounded-lg bg-[var(--c-surface-2)] border-2 overflow-hidden cursor-pointer transition-all hover:shadow-lg ' +
         (isDragging ? 'opacity-30 ' : '') +
-        (isOver ? 'border-sky-400 ring-2 ring-sky-400 ' : 'line-color ')
+        'line-color ' +
+        (isOver ? 'card-drop-target ' : '')
       }
     >
       {/* 이미지 영역 (탭/클릭 = 편집. 편집 버튼은 제거하고 카드 탭으로 통일) */}
@@ -484,9 +485,8 @@ export const GlobalCharacterPresetCard = observer(({
       className={
         'group relative rounded-lg bg-[var(--c-surface-2)] border-2 overflow-hidden transition-all hover:shadow-lg ' +
         (isDragging ? 'opacity-30 ' : '') +
-        (isOver
-          ? 'border-purple-400 ring-2 ring-purple-400 '
-          : 'border-purple-300 dark:border-purple-600 ')
+        'border-purple-300 dark:border-purple-600 ' +
+        (isOver ? 'card-drop-target ' : '')
       }
     >
       <div

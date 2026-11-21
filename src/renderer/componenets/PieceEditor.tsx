@@ -687,22 +687,31 @@ const PieceEditor = observer(({ onClose }: { onClose: () => void }) => {
   // 위 처리 함수 그대로 — 화면 자리만 옮겼다.
   const wide = !isMobile;
 
+  // 로컬/전역 전환 = 알약 묶음 .tab-seg(UI 정돈 그룹 2-b — 캐릭터 프리셋 관리의 로컬/글로벌 전환과 같은 모양, SPEC §2 탭 세그먼트:
+  // 미선택 back-llgray·rounded-lg 는 클래식 마감 복원용 병기). 선택 = 로컬 하늘·전역 보라(라이트 600·다크 500 선택 강조).
+  // 도움말 ? 는 알약 묶음 밖(같은 줄 오른쪽 — 자리 그대로).
   const scopeToggle = (
-    <div className={wide ? 'flex gap-1 items-center' : 'flex gap-1 mb-3'}>
-      <button
-        className={`btn ${wide ? 'flex-1 px-2' : 'px-4'} py-1.5 text-sm rounded-lg ${scope === 'local' ? 'back-sky font-bold' : 'back-llgray'}`}
-        aria-pressed={scope === 'local'}
-        onClick={() => setScope('local')}
+    <div className={wide ? 'flex gap-1 items-center' : 'flex gap-1 mb-3 items-center'}>
+      <div
+        className={wide ? 'tab-seg flex flex-1 min-w-0 gap-1' : 'tab-seg flex gap-1'}
+        role="group"
+        aria-label="조각 범위"
       >
-        로컬 조각
-      </button>
-      <button
-        className={`btn ${wide ? 'flex-1 px-2' : 'px-4'} py-1.5 text-sm rounded-lg ${scope === 'global' ? 'bg-purple-600 text-white dark:bg-purple-400/25 dark:text-purple-300 font-bold' : 'back-llgray'}`}
-        aria-pressed={scope === 'global'}
-        onClick={() => setScope('global')}
-      >
-        전역 조각
-      </button>
+        <button
+          className={`btn ${wide ? 'flex-1 px-2' : 'px-4'} py-1.5 text-sm rounded-lg ${scope === 'local' ? 'bg-sky-600 text-white dark:bg-sky-500' : 'back-llgray tab-seg-off'}`}
+          aria-pressed={scope === 'local'}
+          onClick={() => setScope('local')}
+        >
+          로컬 조각
+        </button>
+        <button
+          className={`btn ${wide ? 'flex-1 px-2' : 'px-4'} py-1.5 text-sm rounded-lg ${scope === 'global' ? 'bg-purple-600 text-white dark:bg-purple-500' : 'back-llgray tab-seg-off'}`}
+          aria-pressed={scope === 'global'}
+          onClick={() => setScope('global')}
+        >
+          전역 조각
+        </button>
+      </div>
       <span className="inline-flex items-center ml-1">
         <HelpIcon
           content={

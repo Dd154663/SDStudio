@@ -13,7 +13,7 @@ import {
   folderExportSceneTypes,
   FolderExportTarget,
 } from '../models/exportSettings';
-import ModalOverlay from './ModalOverlay';
+import ModalOverlay, { DIALOG_PRIMARY_BTN, DIALOG_SECONDARY_BTN } from './ModalOverlay';
 import ExportSettingsFields from './ExportSettingsFields';
 
 function DirectExportForm({ request }: { request: DirectExportRequest }) {
@@ -68,9 +68,9 @@ function DirectExportForm({ request }: { request: DirectExportRequest }) {
   // 2026-10-03 D1), footerStart = 빠진 칸 안내. s·m 창이라 PC·모바일 공통 바닥줄(규약 ⑧).
   const footer = <>
     <button type="button"
-      className={'px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors' + (problems.length > 0 ? ' opacity-50' : '')}
+      className={DIALOG_PRIMARY_BTN + (problems.length > 0 ? ' opacity-50' : '')}
       aria-disabled={problems.length > 0 || undefined} onClick={submit}>내보내기</button>
-    <button type="button" className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors" onClick={close}>취소</button>
+    <button type="button" className={DIALOG_SECONDARY_BTN} onClick={close}>취소</button>
   </>;
   const footerStart = problems.length > 0
     ? <span className="text-xs text-red-500 dark:text-red-400" data-direct-export-problems="">

@@ -22,7 +22,7 @@ import { EditableSliderValue } from './VibeEditor';
 import { PresetImageBackend, VibeImage } from './CharacterPresetCards';
 import { useBackLayer } from '../models/BackStackService';
 import { useGuardedClose } from './backdropClose';
-import { OverlayFooterBar } from './ModalOverlay';
+import { OverlayFooterBar, DIALOG_PRIMARY_BTN, DIALOG_SECONDARY_BTN } from './ModalOverlay';
 
 // CharacterPresetEditor.tsx 에서 분리된 프리셋 편집 폼.
 // ─── 편집 폼 ─────────────────────────────────────────────────
@@ -619,14 +619,14 @@ export const CharacterPresetInnerEditor = observer(({
   const saveBar = (
       <div className="flex gap-2 pt-2 border-t line-color">
         <button
-          className="flex-1 px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
+          className={DIALOG_PRIMARY_BTN + ' flex-1'}
           onClick={handleSave}
         >
           <FaCheck className="inline mr-1.5" size={11} />
           {isNew ? '프리셋 추가' : '프리셋 저장'}
         </button>
         <button
-          className="flex-1 px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+          className={DIALOG_SECONDARY_BTN + ' flex-1'}
           onClick={requestBackToList}
         >
           취소
@@ -675,14 +675,14 @@ export const CharacterPresetInnerEditor = observer(({
       </div>
       <OverlayFooterBar>
         <button
-          className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
+          className={DIALOG_PRIMARY_BTN}
           onClick={handleSave}
           data-preset-editor-save=""
         >
           {isNew ? '프리셋 추가' : '프리셋 저장'}
         </button>
         <button
-          className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+          className={DIALOG_SECONDARY_BTN}
           onClick={requestBackToList}
         >
           취소

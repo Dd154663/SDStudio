@@ -112,7 +112,8 @@ describe('④ 솔리드 버튼 비활성', () => {
     for (const f of ['BatchInsertDialog.tsx', 'FindReplaceDialog.tsx', 'PreSetEdtior.tsx']) {
       expect(read(f)).not.toMatch(/btn-solid-\w+ disabled:bg-gray-300 dark:disabled:bg-gray-600/);
     }
-    expect(read('BatchInsertDialog.tsx')).toContain("'px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors'");
+    // 그룹 2-b: 바닥줄 확정 버튼은 공용 상수(ModalOverlay DIALOG_PRIMARY_BTN)
+    expect(read('BatchInsertDialog.tsx')).toContain('const PRIMARY_BUTTON = DIALOG_PRIMARY_BTN;');
   });
 });
 

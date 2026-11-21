@@ -93,7 +93,7 @@ import {
 } from './PresetLayoutDnd';
 import { StackFixed, StackGrow, VerticalStack } from './LayoutComponents';
 import Tooltip from './Tooltip';
-import ModalOverlay from './ModalOverlay';
+import ModalOverlay, { DIALOG_DANGER_BTN, DIALOG_SECONDARY_BTN } from './ModalOverlay';
 import { ActionIcon } from './ActionIcon';
 import {
   getOrderedBaseCharacterPrompts,
@@ -588,9 +588,11 @@ const DraggablePresetCard = observer(({
       ref={ref}
       className={
         'h-full relative flex-none hover:brightness-95 active:brightness-90 cursor-pointer transition-opacity ' +
-        (isSelected ? 'border-2 border-sky-500' : 'border-2 line-color') +
+        // 선택 = 테두리 자리 2px 실선 + 체크 표식, 놓을 자리 = 점선(UI 정돈 그룹 2-b)
+        'border-2 line-color' +
+        (isSelected ? ' card-selected' : '') +
         (isDragging ? ' opacity-30' : '') +
-        (isOver ? ' ring-2 ring-sky-400' : '')
+        (isOver ? ' card-drop-target' : '')
       }
       onContextMenu={onContextMenu}
       onClick={onSelect}
@@ -885,13 +887,13 @@ const PreSetBulkManageModal = observer(
         <button
           onClick={doDelete}
           disabled={selected.size === 0}
-          className="px-4 py-2 rounded-lg btn-solid-red text-sm font-medium transition-colors"
+          className={DIALOG_DANGER_BTN}
         >
           선택 삭제
         </button>
         <button
           onClick={onClose}
-          className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+          className={DIALOG_SECONDARY_BTN}
         >
           닫기
         </button>

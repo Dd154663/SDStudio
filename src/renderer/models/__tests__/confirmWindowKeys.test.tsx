@@ -156,8 +156,8 @@ describe('내장 취소 단일화(D3)', () => {
       Array.from(document.querySelectorAll('.confirm-window button')).find(
         (b) => b.textContent === label,
       ) as HTMLButtonElement;
-    expect(btn('건너뛰기').className).toContain('back-sky');
-    expect(btn('덮어쓰기').className).toContain('back-red');
+    expect(btn('건너뛰기').className).toContain('btn-solid-sky'); // 그룹 2-b: 솔리드 알약(종전 back-sky)
+    expect(btn('덮어쓰기').className).toContain('btn-solid-red');
   });
 });
 
@@ -167,13 +167,13 @@ describe('ConfirmWindow 위험도 표시·Enter(D1)', () => {
 
   test('기본 confirm 은 중립 파랑, danger 면 빨강 — [확인][취소] 순서', async () => {
     await act(async () => push({ type: 'confirm', text: '진행?' }));
-    expect(confirmButton().className).toContain('back-sky');
+    expect(confirmButton().className).toContain('btn-solid-sky');
     expect(
       Array.from(document.querySelectorAll('.confirm-window button')).map((b) => b.textContent),
     ).toEqual(['확인', '취소']);
     await key(document.body, 'Escape');
     await act(async () => push({ type: 'confirm', text: '삭제?', danger: true }));
-    expect(confirmButton().className).toContain('back-red');
+    expect(confirmButton().className).toContain('btn-solid-red');
   });
 
   test("danger: 'permanent' 는 Enter 로 확정하지 않는다(창 유지, 아래로 새지 않음) — 버튼은 동작", async () => {
@@ -187,7 +187,7 @@ describe('ConfirmWindow 위험도 표시·Enter(D1)', () => {
         callback,
       }),
     );
-    expect(confirmButton().className).toContain('back-red');
+    expect(confirmButton().className).toContain('btn-solid-red');
     const leak = jest.fn();
     window.addEventListener('keydown', leak);
     await key(document.body, 'Enter');
@@ -206,7 +206,7 @@ describe('ConfirmWindow 위험도 표시·Enter(D1)', () => {
     await act(async () =>
       push({ type: 'confirm', text: 'Anlas 소비?', requireClick: true, callback }),
     );
-    expect(confirmButton().className).toContain('back-sky');
+    expect(confirmButton().className).toContain('btn-solid-sky');
     await key(document.body, 'Enter');
     expect(callback).not.toHaveBeenCalled();
     expect(state.dialogs.length).toBe(1);
@@ -468,7 +468,7 @@ describe('confirmCheck 선택 체크(2026-11-01 부스트 B3)', () => {
     expect(check().checked).toBe(true);
     await key(document.body, 'Enter');
     expect(state.dialogs.length).toBe(1);
-    expect(btn('켜기').className).toContain('back-red');
+    expect(btn('켜기').className).toContain('btn-solid-red');
     await act(async () => btn('켜기').click());
     await expect(p).resolves.toBe(true);
     expect(state.skipImageDeleteConfirm).toBe(false);

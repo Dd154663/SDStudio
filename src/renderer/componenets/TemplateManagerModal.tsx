@@ -16,7 +16,7 @@ import {
   FaChevronUp,
 } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
-import ModalOverlay from './ModalOverlay';
+import ModalOverlay, { DIALOG_PRIMARY_BTN } from './ModalOverlay';
 import Tooltip from './Tooltip';
 import PromptEditTextArea from './PromptEditTextArea';
 import { CharacterPresetInnerEditor } from './CharacterPresetInnerEditor';
@@ -1592,7 +1592,7 @@ export function useTemplateWorkflowPanel(
   if (show && tab === 'template') {
     footer = (
       <button
-        className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
+        className={DIALOG_PRIMARY_BTN}
         data-template-save=""
         onClick={() => {
           saveRef.current();

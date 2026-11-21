@@ -8,7 +8,7 @@ import {
   globalCharacterPresetService,
 } from '../models';
 import { renameScene } from '../models/SessionService';
-import ModalOverlay from './ModalOverlay';
+import ModalOverlay, { DIALOG_SECONDARY_BTN, DIALOG_SOLID_BTN } from './ModalOverlay';
 import { SceneSelectAside, useSceneSelection, variantKey } from './SceneSelectAside';
 import { HelpPanelButton } from './HelpPanel';
 import { FIND_REPLACE_HELP } from '../models/helpPanelTexts';
@@ -332,7 +332,7 @@ interface PanelParts {
   status: React.ReactNode;
 }
 
-const CLOSE_BUTTON = 'px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors';
+const CLOSE_BUTTON = DIALOG_SECONDARY_BTN;
 
 // 창 제목 + 창 전체 도움말 패널(2026-11-20 그룹 1-b — 종전 FIND_HELP 툴팁, 문구 = models/helpPanelTexts.ts).
 // 도움말이 창 전체를 설명하므로 제목 옆에 둔다(템플릿 관리·폴더 기본 템플릿 창과 같은 자리).
@@ -526,7 +526,7 @@ function useFindPanel(
 
   const footer = (
     <button onClick={confirmReplaceAll} disabled={!hasResults}
-      className="px-4 py-2 rounded-lg btn-solid-orange text-sm font-medium transition-colors">
+      className={DIALOG_SOLID_BTN + ' btn-solid-orange'}>
       모두 변환
     </button>
   );

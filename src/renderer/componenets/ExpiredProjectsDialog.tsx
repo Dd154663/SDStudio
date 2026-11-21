@@ -8,6 +8,7 @@ import { trashDuplicateOrdinals, trashDuplicateSuffix } from '../models/trashLis
 import { TrashNameBadge } from './TrashViews';
 import { deleteConfirmText } from '../models/deleteFlowRules';
 import { useBackLayer } from '../models/BackStackService';
+import { DIALOG_DANGER_BTN, DIALOG_PRIMARY_BTN, DIALOG_SECONDARY_BTN } from './ModalOverlay';
 
 // 항목 키: 신 배치는 휴지통 폴더(dir — 동명 구분용 내부 식별자, 화면에 내지 않음), 구 배치는 이름.
 type ExpiredItem = { name: string; deletedAt: number; dir?: string };
@@ -219,7 +220,7 @@ const ExpiredProjectsDialog = observer(() => {
             </div>
             <div className="flex gap-2">
               <button
-                className="flex-1 px-3 py-2 rounded back-red clickable text-sm disabled:opacity-40"
+                className={DIALOG_DANGER_BTN + ' flex-1 disabled:opacity-40'}
                 disabled={deleting}
                 onClick={async () => {
                   const keys = pendingDelete;
@@ -230,7 +231,7 @@ const ExpiredProjectsDialog = observer(() => {
                 {deleting ? '삭제 중…' : pendingConfirm!.confirmText}
               </button>
               <button
-                className="flex-1 px-3 py-2 rounded back-gray clickable text-sm disabled:opacity-40"
+                className={DIALOG_SECONDARY_BTN + ' flex-1 disabled:opacity-40'}
                 disabled={deleting}
                 onClick={() => setPendingDelete(null)}
               >
@@ -242,27 +243,27 @@ const ExpiredProjectsDialog = observer(() => {
           /* Action buttons */
           <div className="flex flex-wrap gap-2 mt-2">
             <button
-              className="flex-1 min-w-[6rem] px-3 py-2 rounded back-red clickable text-sm disabled:opacity-40"
+              className={DIALOG_DANGER_BTN + ' flex-1 min-w-[6rem] disabled:opacity-40'}
               disabled={selected.size === 0}
               onClick={() => askDelete(selectedKeys)}
             >
               선택 영구 삭제
             </button>
             <button
-              className="flex-1 min-w-[6rem] px-3 py-2 rounded back-red clickable text-sm"
+              className={DIALOG_DANGER_BTN + ' flex-1 min-w-[6rem]'}
               onClick={() => askDelete(allKeys)}
             >
               모두 영구 삭제
             </button>
             <button
-              className="flex-1 min-w-[6rem] px-3 py-2 rounded back-sky clickable text-sm disabled:opacity-40"
+              className={DIALOG_PRIMARY_BTN + ' flex-1 min-w-[6rem] disabled:opacity-40'}
               disabled={selected.size === 0}
               onClick={() => handleDefer(selectedKeys)}
             >
               선택 미루기
             </button>
             <button
-              className="flex-1 min-w-[6rem] px-3 py-2 rounded back-sky clickable text-sm"
+              className={DIALOG_PRIMARY_BTN + ' flex-1 min-w-[6rem]'}
               onClick={() => deferAll()}
             >
               모두 미루기

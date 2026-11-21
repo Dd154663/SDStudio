@@ -10,7 +10,7 @@ import { observer } from 'mobx-react-lite';
 import { FaPlus } from 'react-icons/fa';
 import { appState } from '../models/AppService';
 import { backend } from '../models';
-import ModalOverlay from './ModalOverlay';
+import ModalOverlay, { DIALOG_PRIMARY_BTN, DIALOG_SECONDARY_BTN } from './ModalOverlay';
 import { SceneSelectAside, useSceneSelection, variantKey } from './SceneSelectAside';
 import type { GenericScene } from '../models/types';
 import {
@@ -24,9 +24,8 @@ import {
 } from '../models/batchInsert';
 import type { BatchInsertCounts, InsertPosition, InsertSlotTarget } from '../models/batchInsert';
 
-const PRIMARY_BUTTON =
-  'px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors';
-const CLOSE_BUTTON = 'px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors';
+const PRIMARY_BUTTON = DIALOG_PRIMARY_BTN;
+const CLOSE_BUTTON = DIALOG_SECONDARY_BTN;
 
 const BatchInsertBody = observer(() => {
   const session = appState.curSession;

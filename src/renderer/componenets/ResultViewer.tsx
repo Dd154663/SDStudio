@@ -399,7 +399,7 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
                 key={item.filename}
                 className={
                   'relative cursor-pointer hover:brightness-95 active:brightness-90 ' +
-                  (isSelected ? 'ring-2 ring-sky-500' : '')
+                  (isSelected ? 'card-selected' : '')
                 }
                 style={{ width: cellSize, height: cellSize }}
                 onClick={() => toggleSelect(item.filename)}
@@ -679,7 +679,7 @@ const Cell = memo(
         className={
           'image-cell relative hover:brightness-95 active:brightness-90 bg-[var(--c-surface)] cursor-pointer ' +
           (isDragging ? 'opacity-0 no-touch' : '') +
-          (isOver ? ' border-2 border-sky-500' : '')
+          (isOver ? ' card-drop-target' : '')
         }
         draggable={!selectMode}
         onClick={() => {
@@ -3071,8 +3071,10 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             imagesSizes.map((size, index) => (
               <button
                 key={index}
-                className={`text-white w-8 h-8 hover:brightness-95 active:brightness-90 cursor-pointer
-          ${imageSize === index ? 'bg-gray-600' : 'bg-gray-400'}`}
+                // 색 = 상태 토큰(UI 정돈 그룹 2-b — 종전 text-white + bg-gray-600/400 고정이라 다크 짝이 없었다).
+                // 선택 = back-sky(--c-sky-bg/fg), 미선택 = back-gray(--c-gray-bg/fg). 자리·크기·평소 흐림은 그대로.
+                className={`w-8 h-8 hover:brightness-95 active:brightness-90 cursor-pointer
+          ${imageSize === index ? 'back-sky' : 'back-gray'}`}
                 onClick={() => {
                   setImageSize(index);
                 }}

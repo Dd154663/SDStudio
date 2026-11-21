@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { FaArrowLeft, FaArrowRight, FaRedo, FaStar, FaPlus, FaTrash } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
-import ModalOverlay from './ModalOverlay';
+import ModalOverlay, { DIALOG_PRIMARY_BTN, DIALOG_SECONDARY_BTN } from './ModalOverlay';
 import { useGuardedClose } from './backdropClose';
 import { appState } from '../models/AppService';
 import Tooltip from './Tooltip';
@@ -103,13 +103,13 @@ export const BookmarkDialog: React.FC<BookmarkDialogProps> = ({ mode, initialLab
         <>
           {/* [추가/저장][취소] 순서(2026-10-03 D1) — 바닥 버튼 규격은 내보내기 프리셋 관리와 같음 */}
           <button
-            className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
+            className={DIALOG_PRIMARY_BTN}
             onClick={confirm}
           >
             {mode === 'add' ? '추가' : '저장'}
           </button>
           <button
-            className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+            className={DIALOG_SECONDARY_BTN}
             onClick={requestClose}
           >
             취소

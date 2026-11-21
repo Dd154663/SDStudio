@@ -127,12 +127,10 @@ const EasyCard = observer(
       <div
         className={
           // 테두리 폭은 항상 border-2 로 고정(선택 시 크기 변화 방지).
-          // 선택 강조는 레이아웃에 영향 없는 안쪽 ring(ring-inset)으로 표현.
+          // 선택 강조는 레이아웃에 영향 없는 공용 .card-selected(테두리 자리 2px 실선 — UI 정돈 그룹 2-b, 체크 상자가 있어 표식 없음).
           // 모바일은 한 줄에 2개(50%-half gap), 데스크톱은 고정폭.
-          'relative flex-none w-[calc(50%-8px)] md:w-64 group rounded-lg overflow-hidden flex flex-col border-2 ' +
-          (selected
-            ? 'border-sky-500 ring-2 ring-inset ring-sky-500'
-            : 'line-color')
+          'relative flex-none w-[calc(50%-8px)] md:w-64 group rounded-lg overflow-hidden flex flex-col border-2 line-color' +
+          (selected ? ' card-selected card-check-none' : '')
         }
       >
         <div

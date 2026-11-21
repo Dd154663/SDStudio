@@ -38,7 +38,7 @@ import {
   scanExampleVibesNow,
 } from '../models/exampleVibeCleanupRuntime';
 import { formatBytes } from '../models/googleDrive';
-import ModalOverlay from './ModalOverlay';
+import ModalOverlay, { DIALOG_DANGER_BTN, DIALOG_PRIMARY_BTN, DIALOG_SECONDARY_BTN } from './ModalOverlay';
 import { SettingCheckRow, SettingField, SettingGroup } from './SettingControls';
 
 /* ── 폴더 정리 공통 컴포넌트 ── */
@@ -857,14 +857,14 @@ export const TaskLogSection = () => {
           <>
             {/* [다운로드][닫기] 순서(2026-10-03 D1) — 바닥 버튼 규격은 내보내기 프리셋 관리와 같음 */}
             <button
-              className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors"
+              className={DIALOG_PRIMARY_BTN}
               onClick={downloadLogs}
               disabled={logs.length === 0}
             >
               다운로드
             </button>
             <button
-              className="px-4 py-2 rounded-lg btn-neutral text-body text-sm transition-colors"
+              className={DIALOG_SECONDARY_BTN}
               onClick={() => setShowDialog(false)}
             >
               닫기
@@ -874,7 +874,7 @@ export const TaskLogSection = () => {
         footerStart={
           // 위험 보조 동작은 바닥줄 왼쪽(슬롯 규약) — 동작은 종전 그대로(확인 없음)
           <button
-            className="px-4 py-2 rounded-lg btn-solid-red text-sm font-medium transition-colors"
+            className={DIALOG_DANGER_BTN}
             onClick={() => taskQueueService.clearLogs()}
             disabled={logs.length === 0}
           >

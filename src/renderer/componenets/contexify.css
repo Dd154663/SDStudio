@@ -2,22 +2,31 @@
   --contexify-zIndex: var(--z-context-menu); /* 층위 사다리(App.css :root) 참조 — 컨텍스트 메뉴는 항상 위 */
   --contexify-menu-minWidth: 220px;
   --contexify-menu-padding: 6px;
-  --contexify-menu-radius: 6px;
-  --contexify-menu-bgColor: #fff;
-  --contexify-menu-shadow: 1px 2px 2px rgba(0, 0, 0, 0.1),
-    2px 4px 4px rgba(0, 0, 0, 0.1), 3px 6px 6px rgba(0, 0, 0, 0.1);
+  --contexify-menu-radius: 8px; /* 서랍 우클릭 목록(ContextMenuList rounded-lg)과 같은 모서리 */
   --contexify-menu-negatePadding: var(--contexify-menu-padding);
-  --contexify-separator-color: rgba(0, 0, 0, 0.2);
-  --contexify-separator-margin: 5px;
+  --contexify-separator-margin: 4px;
   --contexify-itemContent-padding: 6px;
   --contexify-activeItem-radius: 4px;
-  --contexify-item-color: #333;
-  --contexify-activeItem-color: #fff;
-  --contexify-activeItem-bgColor: #3498db;
-  --contexify-rightSlot-color: #6f6e77;
-  --contexify-activeRightSlot-color: #fff;
-  --contexify-arrow-color: #6f6e77;
-  --contexify-activeArrow-color: #fff;
+}
+/* 색은 테마 토큰(UI 정돈 그룹 2-b — 종전 흰 바탕·짙은 회색 글자·파란 hover 고정색이라 다크에서도 흰 메뉴였다).
+   서랍 우클릭 목록(ContextMenuList: 바탕 --c-surface-2·테두리 --c-line·줄 hover 덮개)과 같은 모양.
+   :root 가 아니라 .contexify 에 둔다 — var(--c-*) 는 선언한 요소에서 값이 정해지므로, :root 에 두면 테마 루트
+   ([data-app-theme-root] 의 .dark·커스텀 변수)가 아니라 문서 루트의 라이트 값으로 굳는다. 메뉴는 AppContextMenu 가
+   테마 루트 안(App.tsx 중앙 블록)에서 그린다(react-contexify 는 포털을 쓰지 않음).
+   hover·키보드 초점 = 덮개 --c-hover(글자색 유지), 비활성 = 흐린 글자. 열고 닫는 움직임은 아래 키프레임 그대로. */
+.contexify {
+  --contexify-menu-bgColor: var(--c-surface-2);
+  --contexify-menu-borderColor: var(--c-line);
+  --contexify-menu-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1); /* shadow-xl */
+  --contexify-separator-color: var(--c-line);
+  --contexify-item-color: var(--c-text-label);
+  --contexify-activeItem-color: var(--c-text-label);
+  --contexify-activeItem-bgColor: var(--c-hover);
+  --contexify-rightSlot-color: var(--c-text-muted);
+  --contexify-activeRightSlot-color: var(--c-text-muted);
+  --contexify-arrow-color: var(--c-text-muted);
+  --contexify-activeArrow-color: var(--c-text-label);
+  --contexify-disabledItem-color: var(--c-text-faint);
 }
 @keyframes contexify_feedback {
   0% {
@@ -36,6 +45,7 @@
   user-select: none;
   background-color: var(--contexify-menu-bgColor);
   box-sizing: border-box;
+  border: 1px solid var(--contexify-menu-borderColor);
   box-shadow: var(--contexify-menu-shadow);
   border-radius: var(--contexify-menu-radius);
   padding: var(--contexify-menu-padding);
@@ -128,7 +138,9 @@
 }
 .contexify_item-disabled {
   cursor: default;
-  opacity: 0.5;
+}
+.contexify_item-disabled > .contexify_itemContent {
+  color: var(--contexify-disabledItem-color); /* 흐린 글자(종전 opacity 0.5) */
 }
 .contexify_itemContent {
   padding: var(--contexify-itemContent-padding);
@@ -143,19 +155,7 @@
 .contexify_item-feedback {
   animation: contexify_feedback 0.12s both;
 }
-.contexify_theme-dark {
-  --contexify-menu-bgColor: rgba(40, 40, 40, 0.98);
-  --contexify-separator-color: #4c4c4c;
-  --contexify-item-color: #fff;
-}
-.contexify_theme-light {
-  --contexify-separator-color: #eee;
-  --contexify-item-color: #666;
-  --contexify-activeItem-color: #3498db;
-  --contexify-activeItem-bgColor: #e0eefd;
-  --contexify-activeRightSlot-color: #3498db;
-  --contexify-active-arrow-color: #3498db;
-}
+/* contexify_theme-dark·-light(라이브러리 기본 테마) 블록은 지웠다 — 앱은 theme prop 을 쓰지 않고 위 .contexify 토큰이 테마를 따른다. */
 @keyframes contexify_scaleIn {
   0% {
     opacity: 0;

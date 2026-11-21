@@ -140,7 +140,7 @@ const ProjectCard = ({
       style={isDragging ? { opacity: 0.4 } : undefined}
       className={`cursor-pointer rounded-lg border-2 overflow-hidden transition-all hover:brightness-95 active:brightness-90 ${
         isSelected
-          ? 'border-sky-500 ring-2 ring-sky-400'
+          ? 'line-color card-selected card-check-none'
           : isActive
             ? 'border-sky-500 ring-2 ring-sky-300'
             : isFav
@@ -326,7 +326,7 @@ const NavItem = ({
         ...(tint && !active ? { backgroundColor: withAlpha(tint, '26') } : {}),
       }}
       className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-[15px] whitespace-nowrap transition-colors flex-none md:w-full ${
-        dropping ? 'ring-2 ring-sky-400 ' : ''
+        dropping ? 'card-drop-target ' : ''
       }${
         active
           ? 'bg-sky-600 text-white dark:bg-sky-500'

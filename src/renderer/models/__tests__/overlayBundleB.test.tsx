@@ -181,7 +181,7 @@ describe('소스 검사 — 5창의 등급 m(width 없음)', () => {
     const footer = block.slice(block.indexOf('const footer = ('), block.indexOf('return (', block.indexOf('const footer = (')));
     expect(footer.indexOf('선택 삭제')).toBeGreaterThan(-1);
     expect(footer.indexOf('선택 삭제')).toBeLessThan(footer.indexOf('닫기'));
-    expect(footer).toContain('btn-solid-red');
+    expect(footer).toContain('DIALOG_DANGER_BTN'); // 그룹 2-b: 위험 확정 = 공용 상수(btn-solid-red 알약)
     expect(footer).toContain('disabled={selected.size === 0}');
     expect(footer).toContain('onClick={onClose}');
     expect(block.slice(block.indexOf('const footerStart'), block.indexOf('const footer = ('))).toContain('선택됨');
