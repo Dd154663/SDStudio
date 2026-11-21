@@ -3,6 +3,7 @@
 // 2 캐릭터 프리셋 관리 [순차 생성 모드][선택 모드] — 라벨이 상태와 무관하게 같고 「끄기」 없음, aria-pressed.
 // 3·4 글로벌 프리셋 카드·캐릭터 프리셋 카드 위 보조 버튼 = 공용 .card-overlay-btn(App.css 한 곳), 솔리드 색 없음
 //     (가운데 「프로젝트로 복사」 제외), 글로벌 프리셋 탭 PC 도구줄은 한 단계 작은 규격.
+// 5 버튼 색 정돈 2차 — 씬 카드 이미지 위 버튼·캐릭터 프리셋 선택 바·순차 생성 진행 버튼·글로벌 프리셋 줄 목록.
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -54,6 +55,15 @@ describe('3·4 카드 위 보조 버튼 = 공용 .card-overlay-btn', () => {
     expect(css).toContain('.card-overlay-btn.card-overlay-btn-on {');
   });
 
+  test('바탕은 불투명이다(반투명 검정은 어두운 이름 띠·사진 위에서 묻힘 — 2026-11-21 사용자 실기)', () => {
+    const css = read('App.css');
+    const start = css.indexOf('.card-overlay-btn {');
+    const end = css.indexOf('.card-overlay-btn:focus-visible');
+    const block = css.slice(start, end);
+    expect(block).toContain('background-color: #6b7280');
+    expect(block).not.toMatch(/background-color:\s*rgba\(/);
+  });
+
   test('글로벌 프리셋 카드 PC 하단 액션 바: 다섯 버튼 모두 공용 클래스, 삭제만 위험 변형, 기본 지정은 켜짐일 때만 on', () => {
     const src = read('GlobalPresetTab.tsx');
     const bar = between(src, '{/* PC: 하단 액션 바', '{/* 모바일 전용 액션 바');
@@ -87,6 +97,51 @@ describe('3·4 카드 위 보조 버튼 = 공용 .card-overlay-btn', () => {
     expect(buttons).toHaveLength(11);
     expect(buttons.every((b) => b.includes('card-overlay-btn'))).toBe(true);
     expect(buttons.filter((b) => b.includes('card-overlay-btn-danger'))).toHaveLength(2);
+  });
+});
+
+// 버튼 색 정돈 2차(2026-11-21): 한 자리에 솔리드는 주 동작 하나, 보조 = 중립, 삭제·중단 = 위험 표시.
+describe('5 버튼 색 정돈 2차', () => {
+  test('A 씬 카드 renderButtons: overlay 분기는 .card-overlay-btn(예약 추가만 솔리드 초록), 비-overlay 분기는 불변', () => {
+    const block = between(read('SceneQueueControl.tsx'), 'const renderButtons = (overlay?: boolean) => {', 'const focusRing =');
+    expect(block).not.toContain('bg-gray-500');
+    expect(block).not.toContain('bg-orange-500');
+    expect(block).not.toContain('bg-green-500');
+    expect(block).toContain("const green = overlay ? 'btn-solid-green' : 'back-green';");
+    expect(block).toContain("const gray = overlay ? 'card-overlay-btn' : 'back-gray';");
+    expect(block).toContain("const orange = overlay ? 'card-overlay-btn' : 'back-orange';");
+    expect(block).toMatch(/const bookmarkOn = overlay\s*\?\s*'card-overlay-btn card-overlay-btn-on'\s*:\s*'back-orange';/);
+    expect(block).toContain("${isBookmarked ? bookmarkOn + ' scene-btn-on' : gray}");
+  });
+
+  test('B 캐릭터 프리셋 선택 바: 노랑 없음, 솔리드는 「선택 적용」 하나(보기 색), 삭제 back-red', () => {
+    const bar = between(read('CharacterPresetEditor.tsx'), 'data-character-selection-bar=""', 'const cyclingSelectBar =');
+    expect(bar).not.toContain('btn-solid-yellow');
+    expect(bar).not.toContain('btn-solid-red');
+    expect(bar.match(/className=[^>]*btn-solid-/g)).toHaveLength(1);
+    expect(bar).toContain("${globalView ? 'btn-solid-purple' : 'btn-solid-sky'}");
+    expect(count(bar, 'btn-neutral text-body')).toBe(2); // 폴더로 이동·선택 해제
+    expect(bar).toContain('btn back-red');
+  });
+
+  test('C 순차 생성 진행 버튼: 작업 큐와 같은 규칙(재개 back-green·중단 back-red·일시정지 중립), 솔리드 없음', () => {
+    const block = between(read('CharacterPresetEditor.tsx'), '{/* 컨트롤 버튼', '// ─── 카드 그리드 모드');
+    expect(block).not.toContain('btn-solid-');
+    expect(block).toContain('btn-neutral text-body');
+    expect(block).toContain('btn back-green');
+    expect(block).toContain('btn back-red');
+    // 근거: 작업 큐 하단 바 생성 시작 back-green·생성 중지 back-red
+    const queue = read('TaskQueueControl.tsx');
+    expect(queue).toContain('round-button back-green px-2 h-8 lg:px-6');
+    expect(queue).toContain('round-button back-red px-2 h-8 lg:px-6');
+  });
+
+  test('D 글로벌 프리셋 줄 목록(GenRow): 솔리드 없음, 보조 back-gray·삭제 back-red', () => {
+    const row = between(read('GlobalPresetTab.tsx'), 'const GenRow = observer(', 'export const GlobalPresetTab');
+    expect(row).not.toContain('btn-solid-');
+    expect(count(row, 'icon-button back-gray p-3')).toBe(2);
+    expect(count(row, 'icon-button back-red p-3')).toBe(1);
+    expect(row).toContain('round-button back-sky text-base px-4 py-2'); // 「프로젝트로 복사」 그대로
   });
 });
 

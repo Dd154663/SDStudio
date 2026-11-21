@@ -1146,11 +1146,12 @@ export function useCharacterPresetPanel({
               남은 프리셋: {cyclingSessionService.remainingPresets.map((p) => p.name).join(', ')}
             </div>
           )}
-          {/* 컨트롤 버튼 */}
+          {/* 컨트롤 버튼 — 색은 작업 큐 하단 바(TaskQueueControl 생성 시작 back-green·생성 중지 back-red)와 같은 규칙
+              (2026-11-21 버튼 색 정돈 2차): 재개 = back-green, 중단 = back-red, 큐에 짝이 없는 일시정지 = 중립 btn-neutral. */}
           <div className="flex gap-2">
             {cyclingState === 'running' ? (
               <button
-                className="px-4 py-1.5 rounded-lg btn-solid-yellow text-sm font-medium transition-colors flex items-center gap-1.5"
+                className="px-4 py-1.5 rounded-lg btn-neutral text-body text-sm font-medium transition-colors flex items-center gap-1.5"
                 onClick={() => {
                   taskQueueService.stop();
                 }}
@@ -1160,7 +1161,7 @@ export function useCharacterPresetPanel({
               </button>
             ) : (
               <button
-                className="px-4 py-1.5 rounded-lg btn-solid-green text-sm font-medium transition-colors flex items-center gap-1.5"
+                className="px-4 py-1.5 rounded-lg btn back-green text-sm font-medium transition-colors flex items-center gap-1.5"
                 onClick={() => cyclingSessionService.resume()}
               >
                 <FaPlay size={10} />
@@ -1168,7 +1169,7 @@ export function useCharacterPresetPanel({
               </button>
             )}
             <button
-              className="px-4 py-1.5 rounded-lg btn-solid-red text-sm font-medium transition-colors flex items-center gap-1.5"
+              className="px-4 py-1.5 rounded-lg btn back-red text-sm font-medium transition-colors flex items-center gap-1.5"
               onClick={() => {
                 taskQueueService.stop();
                 cyclingSessionService.cancel();
@@ -1357,7 +1358,9 @@ export function useCharacterPresetPanel({
     </>
   );
 
-  // 일괄 선택 액션 바 — 다중 선택 후 일괄 적용(양 뷰) / 폴더 이동(글로벌). PC = 도구줄 둘째 줄, 모바일 = 본문 안
+  // 일괄 선택 액션 바 — 다중 선택 후 일괄 적용(양 뷰) / 폴더 이동(글로벌). PC = 도구줄 둘째 줄, 모바일 = 본문 안.
+  // 색(2026-11-21 버튼 색 정돈 2차): 주 동작 「선택 적용」만 보기 색 솔리드(로컬 하늘·글로벌 보라 — modeButtons 켜짐과 같음),
+  // 「폴더로 이동」「선택 해제」 중립 btn-neutral, 「선택 삭제」 위험 back-red(솔리드 아님).
   const selectionBar = (className: string) => (
     <div className={className} data-character-selection-bar="">
       <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -1372,7 +1375,7 @@ export function useCharacterPresetPanel({
       </button>
       <Tooltip content="선택한 프리셋을 캐릭터 프롬프트로 일괄 적용 (기존 적용에 추가)">
         <button
-          className="px-3 py-1 rounded-lg text-xs font-medium btn-solid-yellow"
+          className={`px-3 py-1 rounded-lg text-xs font-medium ${globalView ? 'btn-solid-purple' : 'btn-solid-sky'}`}
           disabled={
             (globalView ? selectedGlobalIds.size : selectedPresets.size) ===
             0
@@ -1385,7 +1388,7 @@ export function useCharacterPresetPanel({
       </Tooltip>
       {globalView && (
         <button
-          className="px-3 py-1 rounded-lg text-xs font-medium btn-solid-purple"
+          className="px-3 py-1 rounded-lg text-xs font-medium btn-neutral text-body"
           disabled={selectedGlobalIds.size === 0}
           onClick={bulkMoveToFolder}
         >
@@ -1406,7 +1409,7 @@ export function useCharacterPresetPanel({
         선택 해제
       </button>
       <button
-        className="px-3 py-1 rounded-lg text-xs font-medium btn-solid-red disabled:opacity-50"
+        className="px-3 py-1 rounded-lg text-xs font-medium btn back-red disabled:opacity-50"
         disabled={
           (globalView ? selectedGlobalIds.size : selectedPresets.size) === 0
         }

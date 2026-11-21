@@ -381,7 +381,7 @@ const GenRow = observer(
             {entry.name}
           </span>
         </div>
-        {/* 2행: 액션 버튼들 */}
+        {/* 2행: 액션 버튼들 — 주 동작 「프로젝트로 복사」만 색, 보조는 중립 back-gray·삭제 back-red(2026-11-21 버튼 색 정돈 2차) */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
             className="round-button back-sky text-base px-4 py-2 flex-1 md:flex-none"
@@ -393,7 +393,7 @@ const GenRow = observer(
           <div className="flex gap-2 md:ml-auto">
             <Tooltip content="이름 변경">
               <button
-                className="icon-button btn-solid-green p-3"
+                className="icon-button back-gray p-3"
                 onClick={onRename}
               >
                 <ActionIcon id="rename" size={16} />
@@ -401,7 +401,7 @@ const GenRow = observer(
             </Tooltip>
             <Tooltip content="PNG로 내보내기">
               <button
-                className="icon-button btn-solid-sky p-3"
+                className="icon-button back-gray p-3"
                 onClick={onExport}
               >
                 <ActionIcon id="export" size={16} />
@@ -409,7 +409,7 @@ const GenRow = observer(
             </Tooltip>
             <Tooltip content="삭제">
               <button
-                className="icon-button btn-solid-red p-3"
+                className="icon-button back-red p-3"
                 onClick={onDelete}
               >
                 <FaTrash size={16} />
