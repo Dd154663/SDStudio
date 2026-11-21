@@ -1376,7 +1376,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
                 className={
                   'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-left whitespace-nowrap transition-colors ' +
                   (activeTab === i
-                    ? 'bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400'
+                    ? 'bg-sky-50 dark:bg-sky-900/30 text-[color:var(--c-link)] dark:text-sky-400'
                     : 'text-muted hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-700/50')
                 }
                 onClick={() => selectTab(i)}
@@ -1441,7 +1441,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
         <div className="flex items-center justify-between px-3 md:px-5 py-3 border-b line-color flex-none">
           <h1 className="text-base font-semibold text-default">환경설정</h1>
           <button
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors"
+            className="p-1 rounded hover:bg-[var(--c-hover)] text-muted transition-colors"
             aria-label="닫기"
             onClick={requestClose}
           >
@@ -1471,7 +1471,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
                 className={
                   'flex flex-none items-center gap-1 px-2.5 py-2 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ' +
                   (activeTab === i
-                    ? 'border-sky-500 text-sky-600 dark:text-sky-400'
+                    ? 'border-sky-500 text-[color:var(--c-link)] dark:text-sky-400'
                     : 'border-transparent text-muted hover:text-gray-700 dark:hover:text-gray-200')
                 }
                 onClick={() => selectTab(i)}

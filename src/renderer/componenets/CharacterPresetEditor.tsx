@@ -268,7 +268,7 @@ const GlobalFolderRow = observer(
                 e.stopPropagation();
                 onEditCancel?.();
               }}
-              className="text-faint hover:text-gray-600 dark:hover:text-gray-200 px-0.5"
+              className="text-muted hover:text-gray-800 dark:hover:text-gray-200 px-0.5"
             >
               <FaTimes size={13} />
             </span>
@@ -1716,7 +1716,7 @@ export function useCharacterPresetPanel({
       placeholder="씬 이름 검색..."
       value={sceneFilter}
       onChange={(e) => setSceneFilter(e.target.value)}
-      className="w-full mb-1 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+      className="w-full mb-1 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
     />
   );
 
@@ -1730,7 +1730,7 @@ export function useCharacterPresetPanel({
       data-cycling-scene-list=""
     >
       {filteredScenes.map((scene) => (
-        <label key={scene.name} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 rounded px-1 py-0.5">
+        <label key={scene.name} className="flex items-center gap-2 cursor-pointer hover-row rounded px-1 py-0.5">
           <input
             type="checkbox"
             checked={selectedScenes.has(scene.name)}
@@ -1769,7 +1769,7 @@ export function useCharacterPresetPanel({
         max={100}
         value={cyclingSamples}
         onChange={(e) => setCyclingSamples(Math.max(1, parseInt(e.target.value) || 1))}
-        className="w-16 px-2 py-1 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+        className="w-16 px-2 py-1 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
       />
     </div>
   );

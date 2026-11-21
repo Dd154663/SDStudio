@@ -175,8 +175,8 @@ const ProjectRow = observer(
       return (
         <div className="flex items-center gap-1 pl-1.5 pr-1 py-1">
           <span
-            className="flex items-center justify-center w-7 h-7 rounded-md flex-none"
-            style={{ backgroundColor: '#e0f2fe' }}
+            // 바탕 = --c-surface(옆 이름 칸과 같은 바탕, UI 정돈 그룹 2-a — 종전 인라인 #e0f2fe 는 다크에서 밝은 하늘 네모로 튀었다)
+            className="flex items-center justify-center w-7 h-7 rounded-md flex-none bg-[var(--c-surface)]"
           >
             <FaStar size={12} className="text-yellow-400" />
           </span>
@@ -199,7 +199,7 @@ const ProjectRow = observer(
           <Tooltip content="취소">
             <button
               onClick={onEditCancel}
-              className="btn-ghost p-2 rounded-md flex-none text-faint"
+              className="btn-ghost p-2 rounded-md flex-none text-muted"
             >
               <FaTimes size={15} />
             </button>
@@ -1575,7 +1575,7 @@ const ProjectDrawer = observer(() => {
                   close();
                   appState.projectBrowserOpen = true;
                 }}
-                className="p-1.5 rounded-md hover:bg-gray-200 dark:hover:bg-slate-600 text-muted"
+                className="p-1.5 rounded-md hover:bg-[var(--c-hover)] text-muted"
               >
                 <FaThLarge size={15} />
               </button>
@@ -1589,7 +1589,7 @@ const ProjectDrawer = observer(() => {
               </button>
             )}
             <button
-              className="p-1.5 rounded-md hover:bg-gray-200 dark:hover:bg-slate-600 text-muted"
+              className="p-1.5 rounded-md hover:bg-[var(--c-hover)] text-muted"
               aria-label="닫기"
               onClick={close}
             >
@@ -1610,7 +1610,7 @@ const ProjectDrawer = observer(() => {
               placeholder="프로젝트 검색..."
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              className="w-full pl-9 pr-3 py-2.5 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="w-full pl-9 pr-3 py-2.5 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
             />
           </div>
         </div>
@@ -1878,7 +1878,7 @@ const ProjectDrawer = observer(() => {
                           <Tooltip content="취소">
                             <button
                               onClick={cancelRename}
-                              className="btn-ghost p-2 rounded-md flex-none text-faint"
+                              className="btn-ghost p-2 rounded-md flex-none text-muted"
                             >
                               <FaTimes size={15} />
                             </button>

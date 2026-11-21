@@ -181,7 +181,8 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = observer(({
             <div className="relative flex-none border-b line-color">
               {/* 전체 화면 보기의 닫기 = 좌상단 「뒤로」 ✕ 하나(모달은 우상단 — SPEC §5 닫기 규칙, 2026-10-03 E2-1) */}
               <button
-                className="text-default button"
+                // 위치·크기(.button 패딩·마진 5px)는 그대로, hover 덮개·키보드 포커스 링만(UI 정돈 그룹 2-a)
+                className="text-default button rounded hover:bg-[var(--c-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[color:var(--c-focus-ring)]"
                 aria-label="뒤로"
                 onClick={(e) => {
                   e.preventDefault();

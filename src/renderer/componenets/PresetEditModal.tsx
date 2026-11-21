@@ -204,7 +204,7 @@ export const PresetEditModal = observer(
           <div>
             <label className="text-sm font-medium mb-1 block">이름 *</label>
             <input
-              className="w-full px-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 text-default"
+              className="w-full px-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)] text-default"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />

@@ -403,7 +403,7 @@ export const ArtistDetailModal = observer(({ artistId, onClose }: { artistId: st
                 {(['v4_5', 'v5'] as ModelBaseFamily[]).map((f) => (
                   <button
                     key={f}
-                    className={'px-2 py-0.5 rounded-full border ' + (selected.family === f ? 'border-sky-500 text-sky-500 bg-sky-100 dark:bg-sky-900/40' : 'line-color text-muted hover:border-sky-400')}
+                    className={'px-2 py-0.5 rounded-full border ' + (selected.family === f ? 'border-sky-500 text-[color:var(--c-link)] bg-sky-100 dark:bg-sky-900/40' : 'line-color text-muted hover:border-sky-400')}
                     onClick={() => setArtistImageFamilyRecorded(artist.id, selected.id, selected.family === f ? undefined : f)}
                     title="이 샘플이 나온 모델 계열(다시 누르면 미지정)"
                   >
@@ -769,7 +769,7 @@ const ArtistLibraryTab = observer(() => {
       <div className="flex-none p-3 border-b line-color flex flex-wrap gap-2 items-center bg-[var(--c-surface)]">
         <div className="relative flex-1 min-w-[180px]">
           <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" size={13} />
-          <input className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-sm text-default focus:outline-none focus:ring-2 focus:ring-sky-400"
+          <input className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-sm text-default focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
             placeholder="작가 이름 · 태그로 검색…" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         <select className="app-select text-sm h-[2.375rem]" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)}>

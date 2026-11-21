@@ -147,7 +147,7 @@ export const ResolutionPicker = ({
             <div className="border-t line-color mt-1.5 pt-1.5 px-1 pb-0.5">
               <div className="flex items-center gap-1.5">
                 <input
-                  className="w-0 flex-1 px-2 py-1 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                  className="w-0 flex-1 px-2 py-1 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
                   inputMode="numeric"
                   placeholder="너비"
                   value={wText}
@@ -156,7 +156,7 @@ export const ResolutionPicker = ({
                 />
                 <span className="text-faint text-xs">x</span>
                 <input
-                  className="w-0 flex-1 px-2 py-1 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                  className="w-0 flex-1 px-2 py-1 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
                   inputMode="numeric"
                   placeholder="높이"
                   value={hText}

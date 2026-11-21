@@ -62,7 +62,7 @@ export function ListSearchBar({
           aria-label={placeholder}
           autoFocus={autoFocus}
           data-list-search=""
-          className={`flex-1 min-w-0 ${h} px-2.5 rounded border line-color bg-[var(--c-input-bg)] text-default focus:outline-none focus:ring-2 focus:ring-sky-400`}
+          className={`flex-1 min-w-0 ${h} px-2.5 rounded border line-color bg-[var(--c-input-bg)] text-default focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]`}
         />
       )}
       {sort && (

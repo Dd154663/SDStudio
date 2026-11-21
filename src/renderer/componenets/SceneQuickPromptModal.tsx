@@ -155,7 +155,7 @@ const SceneQuickPromptModal = observer(
               <span className="ml-auto flex-none flex items-center gap-0.5">
                 <Tooltip content={"조합 펼치기 (조각 " + pieceCount + "개)"}>
                   <button
-                    className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors"
+                    className="p-1.5 rounded hover:bg-[var(--c-hover)] text-muted transition-colors"
                     aria-label="조합 펼치기" aria-expanded={showPieces} onClick={() => setShowPieces(!showPieces)}
                   >
                     <FaPuzzlePiece size={14} />
@@ -166,7 +166,7 @@ const SceneQuickPromptModal = observer(
                 </Tooltip>
                 <Tooltip content="닫기 (ESC)">
                   <button
-                    className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors"
+                    className="p-1.5 rounded hover:bg-[var(--c-hover)] text-muted transition-colors"
                     onClick={onClose}
                   >
                     <FaTimes size={14} />

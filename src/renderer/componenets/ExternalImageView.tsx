@@ -493,7 +493,7 @@ export const ExternalImageView = observer(
               </p>
             </div>
             <button
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors"
+              className="p-1 rounded hover:bg-[var(--c-hover)] text-muted transition-colors"
               aria-label="닫기"
               onClick={onClose}
             >

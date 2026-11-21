@@ -94,7 +94,7 @@
   --c-link: #0369a1; /* sky-700 */
   --c-link-hover: #075985; /* sky-800 */
   /* 덮개(마우스 올림·키보드 초점 항목 바탕, UI 정돈 그룹 1) — 아래 바탕 위에 얹는 반투명 막. 트루다크는 .dark 값,
-     커스텀 테마(uiTheme.buildThemeVars)·클래식 마감은 재정의하지 않는다. 지금은 드롭다운 옵션만 사용. */
+     커스텀 테마(uiTheme.buildThemeVars)·클래식 마감은 재정의하지 않는다. 사용: 드롭다운 옵션·.btn-ghost·무배경 .icon-button·.hover-row·.setting-icon-btn·창 닫기 ✕(그룹 2-a). */
   --c-hover: rgb(0 0 0 / 0.05);
   /* 버튼 반경 토큰(2026-10-04 B1 ①, 같은 날 실기 피드백으로 범위 축소) — 색과 무관해 테마별 재정의 없음.
      --r-btn      = 글자·아이콘+글자 버튼(.round-button·.icon-button·확인 창 .r-btn) — 알약, 모던·클래식 공통.
@@ -739,7 +739,39 @@ html.font-pretendard body {
 /* .btn-ghost — 배경 없는 아이콘/텍스트 버튼의 hover 배경 공용화.
    패딩·라운딩(p-2 rounded-md 등)과 hover:text-* 액센트는 사용처에서 조합 */
 .btn-ghost {
-  @apply transition-colors hover:bg-gray-100 dark:hover:bg-slate-700;
+  @apply transition-colors;
+}
+/* 마우스를 올렸을 때 = 덮개 토큰 --c-hover(UI 정돈 그룹 2-a — 종전 gray-100/slate-700 은 흰 표면 위 1.10·창 배경 위에서는
+   오히려 밝아져 거의 안 보였다). 아래 바탕을 바꾸지 않고 반투명 막만 얹는다.
+   터치 화면(hover: none)에서는 누른 뒤 hover 바탕이 남지 않게 :hover 를 마우스 환경으로만 한정하고,
+   누르는 동안(:active)만 같은 덮개를 보인다. 아래 .icon-button·.hover-row 도 같은 방식. */
+@media (hover: hover) {
+  .btn-ghost:hover {
+    background-color: var(--c-hover);
+  }
+}
+.btn-ghost:active {
+  background-color: var(--c-hover);
+}
+
+/* 무배경 .icon-button 의 마우스 올림 덮개(그룹 2-a — 종전 brightness-95 는 투명 배경이라 아이콘 색만 5% 변해 안 보였다).
+   배경 색이 있는 아이콘 버튼(back-*·btn-solid-*·bg-* 유틸, hover:bg-* 를 직접 쓴 자리 포함)은 제외 — 종전 밝기 방식 그대로.
+   누름(active:brightness-90)도 종전 그대로. */
+@media (hover: hover) {
+  .icon-button:not([class*="back-"]):not([class*="btn-solid-"]):not([class*="bg-"]):hover {
+    background-color: var(--c-hover);
+  }
+}
+
+/* .hover-row — 목록 줄(체크 줄·결과 줄·선택 가능한 줄)의 마우스 올림 덮개(그룹 2-a, 종전 hover:bg-gray-50 dark:hover:bg-slate-700/50 11곳).
+   선택됨 바탕이 있는 줄은 사용처가 선택되지 않았을 때만 이 클래스를 붙인다(선택 바탕이 덮개에 가려지지 않게). */
+@media (hover: hover) {
+  .hover-row:hover {
+    background-color: var(--c-hover);
+  }
+}
+.hover-row:active {
+  background-color: var(--c-hover);
 }
 
 /* .btn-link — 텍스트 링크형 버튼 */
@@ -899,6 +931,12 @@ html:not(.finish-classic) .tab-seg > .tab-seg-off:hover {
    겹쳐 쓰지 말 것(box-shadow 상호 덮어씀 — 전체화면 프롬프트 에디터가 그 예외 사유). */
 .input-ring {
   box-shadow: inset 0 0 0 1px var(--c-input-ring);
+}
+/* 프롬프트 편집 칸이 입력 중일 때(UI 정돈 그룹 2-a) — 같은 1px 안쪽 링의 색만 --c-focus-ring 으로(굵기·레이아웃 불변).
+   여러 프롬프트 칸이 쌓인 화면에서 지금 어느 칸인지 캐럿만으로 알던 것을 보완. 전체 화면 편집은 .input-ring 이 없어
+   해당 없음(shadow-lg 와 겹침). 클래식 마감은 윤곽 링 자체가 없는 모양이라 그대로 둔다. */
+html:not(.finish-classic) .input-ring.prompt-edit-ring:focus-within {
+  box-shadow: inset 0 0 0 1px var(--c-focus-ring);
 }
 
 @layer components {
@@ -1575,7 +1613,8 @@ input[type='number']::-webkit-outer-spin-button {
 .setting-check-row[data-disabled] {
   cursor: not-allowed;
 }
-.setting-check-row[data-disabled]:hover {
+.setting-check-row[data-disabled]:hover,
+.setting-check-row[data-disabled]:active {
   background-color: transparent;
 }
 /* 체크 상자 모양 — <input type="checkbox"> 그대로(id·키보드·낭독기 유지), 그리기만 바꾼다.
@@ -1668,7 +1707,8 @@ input[type='number']::-webkit-outer-spin-button {
 .setting-switch-row[data-disabled] {
   cursor: not-allowed;
 }
-.setting-switch-row[data-disabled]:hover {
+.setting-switch-row[data-disabled]:hover,
+.setting-switch-row[data-disabled]:active {
   background-color: transparent;
 }
 /* 스위치 = <input type="checkbox" role="switch"> 그대로 그리기만 바꾼다. 트랙 36×20 알약(꺼짐 --c-line-strong · 켜짐 --c-focus-ring),
@@ -1779,11 +1819,8 @@ input[type='number']::-webkit-outer-spin-button {
   cursor: pointer;
 }
 .setting-icon-btn:hover {
-  background-color: rgb(0 0 0 / 0.05);
+  background-color: var(--c-hover); /* 덮개 토큰(그룹 2-a — 종전 같은 값 리터럴 라이트·다크 두 줄) */
   color: var(--c-text);
-}
-:is(.dark) .setting-icon-btn:hover {
-  background-color: rgb(255 255 255 / 0.1);
 }
 .setting-icon-btn-danger:hover {
   color: #dc2626; /* red-600 */

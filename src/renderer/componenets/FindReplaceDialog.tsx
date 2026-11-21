@@ -443,7 +443,7 @@ function useFindPanel(
           <input ref={searchInputRef} type="text" placeholder={wsSearch ? '검색어 입력 (공백 그대로 검색됨)...' : '검색어 입력...'} value={searchText}
             onChange={(e) => { setSearchText(e.target.value); setSearched(false); setReplaceComplete(null); }}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } }}
-            className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
+            className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]" />
         </div>
         <button onClick={doSearch} disabled={!canSearch}
           className="px-4 py-2 rounded-lg btn-solid-sky text-sm font-medium transition-colors flex-none">검색</button>
@@ -471,7 +471,7 @@ function useFindPanel(
               e.preventDefault();
               confirmReplaceAll();
             }}
-            className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
+            className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]" />
         </div>
       )}
 
@@ -488,7 +488,7 @@ function useFindPanel(
           data-find-results=""
         >
           {results.map((r, i) => (
-            <div key={i} className="px-3 py-2 hover:bg-gray-50 dark:hover:bg-slate-700/50 flex flex-col gap-0.5">
+            <div key={i} className="px-3 py-2 hover-row flex flex-col gap-0.5">
               <span className="text-xs font-medium text-sky-600 dark:text-sky-400">{r.location}</span>
               <HighlightMatch text={r.getText()} query={searchText} />
             </div>

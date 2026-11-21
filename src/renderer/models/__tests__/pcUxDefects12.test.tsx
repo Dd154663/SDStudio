@@ -167,7 +167,7 @@ describe('아이콘 토글 켜짐 표시(S2)', () => {
 describe('닫기 ✕ 공용 모양(C2·S1)', () => {
   test('ModalOverlay 가 상수를 export 하고 머리줄 ✕ 가 그 상수를 쓴다', () => {
     const mo = read('ModalOverlay.tsx');
-    expect(mo).toMatch(/export const OVERLAY_CLOSE_BUTTON_CLASS =\s*'p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors'/);
+    expect(mo).toMatch(/export const OVERLAY_CLOSE_BUTTON_CLASS =\s*'p-1 rounded hover:bg-\[var\(--c-hover\)\] text-muted transition-colors'/); // 그룹 2-a: hover = 덮개 토큰
     expect(mo).toContain('export const OVERLAY_CLOSE_ICON_SIZE = 16');
     expect(mo).toContain('className={OVERLAY_CLOSE_BUTTON_CLASS}');
   });

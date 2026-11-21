@@ -189,7 +189,7 @@ const ProjectCard = ({
         )}
         <Tooltip content="폴더로 이동">
         <button
-          className="flex-none text-faint hover:text-gray-700 dark:hover:text-gray-200 px-0.5"
+          className="flex-none text-muted hover:text-gray-800 dark:hover:text-gray-200 px-0.5"
           onClick={(e) => {
             e.stopPropagation();
             onMove();
@@ -304,7 +304,7 @@ const NavItem = ({
             e.stopPropagation();
             onEditCancel?.();
           }}
-          className="text-faint hover:text-gray-600 dark:hover:text-gray-200 px-0.5"
+          className="text-muted hover:text-gray-800 dark:hover:text-gray-200 px-0.5"
         >
           <FaTimes size={13} />
         </span>
@@ -1110,7 +1110,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
               placeholder="프로젝트 검색..."
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
             />
           </div>
 

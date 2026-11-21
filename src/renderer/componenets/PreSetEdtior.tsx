@@ -913,7 +913,7 @@ const PreSetBulkManageModal = observer(
             placeholder="이름으로 검색..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="w-full px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+            className="w-full px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
           />
           <div className="flex items-center justify-between">
             <button
@@ -932,7 +932,7 @@ const PreSetBulkManageModal = observer(
             {filtered.map((p) => (
               <label
                 key={p.name}
-                className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 rounded px-1 py-0.5"
+                className="flex items-center gap-2 cursor-pointer hover-row rounded px-1 py-0.5"
               >
                 <input
                   type="checkbox"
@@ -964,8 +964,8 @@ const PreSetBulkManageModal = observer(
 // 시각 모바일 28·PC 24px·hover/active 옅은 배경. touch-hit 는 positioned 필요 → relative.
 const PRESET_ROW_BTN =
   'relative touch-hit icon-button icon-only flex-none inline-flex items-center justify-center ' +
-  'w-7 h-7 md:w-6 md:h-6 transition-colors hover:bg-black/5 active:bg-black/10 ' +
-  'dark:hover:bg-white/10 dark:active:bg-white/20';
+  'w-7 h-7 md:w-6 md:h-6 transition-colors hover:bg-[var(--c-hover)] active:bg-black/10 ' +
+  'dark:active:bg-white/20';
 const PRESET_ROW_ICON = 'w-4 h-4 md:w-3.5 md:h-3.5';
 
 const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {

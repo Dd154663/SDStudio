@@ -902,7 +902,7 @@ const PromptAutoComplete = ({
       <div
         ref={tagsRef.current[index]}
         className={
-          'hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer ' +
+          'hover:bg-[var(--c-hover)] cursor-pointer ' +
           (index === selectedTag
             ? 'flex items-center p-1 bg-black/10 dark:bg-white/15'
             : 'flex items-center p-1')
@@ -1810,8 +1810,9 @@ const PromptEditTextArea = observer(
             bgColor +
             (!fullScreen
               ? // input-ring: 인라인 입력 창 윤곽(B1). 전체화면은 shadow-lg 와 box-shadow 가
-                // 겹치므로 제외(그림자가 경계 역할).
-                ' input-ring overflow-hidden h-full relative rounded-md'
+                // 겹치므로 제외(그림자가 경계 역할). prompt-edit-ring: 입력 중(:focus-within)이면 같은 1px 링이
+                // --c-focus-ring 색으로 바뀐다(UI 정돈 그룹 2-a, App.css — 굵기·레이아웃 불변).
+                ' input-ring prompt-edit-ring overflow-hidden h-full relative rounded-md'
               : ' left-0 m-4 p-2 overflow-hidden fixed z-[var(--z-prompt-popup)] h-96 prompt-full rounded-lg') +
             (extraClassName ? ' ' + extraClassName : '')
           }

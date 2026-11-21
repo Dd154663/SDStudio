@@ -507,7 +507,7 @@ export const BatchCreatePanel = observer(
               {visibleChars.map((e) => (
                 <label
                   key={e.id}
-                  className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 rounded px-1 py-0.5"
+                  className="flex items-center gap-2 cursor-pointer hover-row rounded px-1 py-0.5"
                 >
                   <input
                     type="checkbox"
@@ -559,7 +559,7 @@ export const BatchCreatePanel = observer(
               {sceneTemplates.map((s) => (
                 <label
                   key={s}
-                  className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 rounded px-1 py-0.5"
+                  className="flex items-center gap-2 cursor-pointer hover-row rounded px-1 py-0.5"
                 >
                   <input
                     type="checkbox"

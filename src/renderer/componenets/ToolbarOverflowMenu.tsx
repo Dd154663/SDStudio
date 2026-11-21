@@ -174,7 +174,7 @@ const MenuRow = ({
       onTouchEnd={onTouchEndOrCancel}
       onTouchCancel={onTouchEndOrCancel}
       className={
-        'flex items-center gap-3 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-black/5 dark:hover:bg-white/10' +
+        'flex items-center gap-3 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-[var(--c-hover)]' +
         (isDragging ? ' opacity-30' : '') +
         // 재배열 삽입 위치 표시 — 커서 쪽(위/아래) 보더 강조.
         (isOverRow

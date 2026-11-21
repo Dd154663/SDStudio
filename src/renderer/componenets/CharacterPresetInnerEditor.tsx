@@ -253,7 +253,7 @@ export const CharacterPresetInnerEditor = observer(({
       <div className="mb-4">
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">프리셋 이름 *</label>
         <input
-          className="w-full px-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+          className="w-full px-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -588,7 +588,7 @@ export const CharacterPresetInnerEditor = observer(({
               <label className="text-sm text-muted mb-1 block">파일명 접두사:</label>
               <input
                 type="text"
-                className="w-full px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="w-full px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
                 value={filenamePrefix}
                 onChange={(e) => setFilenamePrefix(e.target.value)}
                 placeholder="예: 캐릭터이름"
@@ -598,7 +598,7 @@ export const CharacterPresetInnerEditor = observer(({
               <label className="text-sm text-muted mb-1 block">파일명 접미사:</label>
               <input
                 type="text"
-                className="w-full px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="w-full px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
                 value={filenameSuffix}
                 onChange={(e) => setFilenameSuffix(e.target.value)}
                 placeholder="예: 표정"

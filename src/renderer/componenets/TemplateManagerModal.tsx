@@ -94,7 +94,7 @@ const rowCls =
   'flex items-center gap-2 px-2 py-1.5 rounded-md bg-[var(--c-surface-2)] border line-color';
 const addBtnCls =
   'px-2 py-1 rounded-md text-xs btn-neutral text-body whitespace-nowrap';
-const iconBtnCls = 'btn-ghost p-1.5 rounded-md text-faint';
+const iconBtnCls = 'btn-ghost p-1.5 rounded-md text-muted'; // 아이콘만 버튼 = muted(SPEC §2 R2, 그룹 2-a)
 // 백업/복원(드라이브 동기화 ④) — 글로벌 프리셋 탭 모바일 툴바 버튼과 같은 모양(작은 알약)
 const backupBtnCls =
   'round-button back-gray h-8 px-3 text-sm flex items-center gap-1.5';
@@ -1933,7 +1933,7 @@ export const TemplateManagerModal = observer(
                   className={`px-3 py-2 cursor-pointer flex justify-between items-center gap-2 ${
                     selected
                       ? 'bg-sky-50 dark:bg-sky-900/30 border-l-2 border-sky-500'
-                      : 'hover:bg-gray-50 dark:hover:bg-slate-700/50'
+                      : 'hover-row'
                   }`}
                 >
                   <span className="min-w-0 text-sm font-medium text-default truncate">

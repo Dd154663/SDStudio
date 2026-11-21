@@ -24,7 +24,7 @@ export const ProjectStrip = observer(({ side }: { side: PanelSide }) => {
           (side === 'left' ? 'zone-gap-r ' : 'zone-gap-l ') +
           'flex-none w-7 h-full flex flex-col items-center py-3 gap-2 ' +
           'bg-[var(--c-surface-2)] line-color text-body ' +
-          'hover:bg-black/5 dark:hover:bg-white/10 transition-colors ' +
+          'hover:bg-[var(--c-hover)] transition-colors ' +
           borderSide
         }
         onClick={() => {
@@ -62,7 +62,7 @@ const ProjectSideBar = observer(({ side }: { side: PanelSide }) => {
       {/* 드로어 열기 존 */}
       <Tooltip content="프로젝트 목록 열기">
         <button
-          className="w-full flex flex-col items-center gap-1 py-3 border-b line-color text-body hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+          className="w-full flex flex-col items-center gap-1 py-3 border-b line-color text-body hover:bg-[var(--c-hover)] transition-colors"
           onClick={() => {
             appState.projectDrawerOpen = true;
           }}

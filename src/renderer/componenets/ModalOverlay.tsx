@@ -58,10 +58,11 @@ interface ModalOverlayProps {
 const OVERLAY_FOOTER_BAR_CLASS = 'flex-none flex items-center gap-2 px-5 py-3 border-t line-color';
 
 // 창 닫기 ✕ 모양 — 래퍼 머리줄 ✕ 와 직접 만든 창·패널(이미지 검수·단축키 도움말·작업 목록)의 ✕ 가 같은 클래스·아이콘
-// 크기를 쓴다(단일 출처, 2026-11-15 PC UX 결함 C2). 다크 hover 짝(dark:hover:bg-slate-600)을 포함 — 작업 목록 ✕ 가
-// 다크에서 hover 시 사라지던 결함(S1)을 같이 없앤다. 래퍼 DOM 은 종전과 같다.
+// 크기를 쓴다(단일 출처, 2026-11-15 PC UX 결함 C2). hover 바탕은 덮개 토큰 --c-hover(UI 정돈 그룹 2-a — 종전 gray-200 은
+// 창 배경 위에서 거의 안 보였다. 라이트·다크 짝을 토큰이 처리해 작업 목록 ✕ 가 다크 hover 에서 사라지던 결함 S1 도 계속 없음).
+// 래퍼 DOM 은 종전과 같다.
 export const OVERLAY_CLOSE_BUTTON_CLASS =
-  'p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-600 text-muted transition-colors';
+  'p-1 rounded hover:bg-[var(--c-hover)] text-muted transition-colors';
 export const OVERLAY_CLOSE_ICON_SIZE = 16;
 
 const ModalOverlay = ({

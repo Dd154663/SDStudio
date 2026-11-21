@@ -136,7 +136,8 @@ describe('하드코딩 bg-{색}-500 잔존 = 제외 목록', () => {
     expect(read('PieceEditor.tsx')).toContain("'bg-purple-600 text-white dark:bg-purple-400/25 dark:text-purple-300 font-bold'");
     expect(read('SceneEditor.tsx')).toContain('bg-red-600 text-white dark:bg-red-500 rounded-full w-4 h-4');
     expect(read('TaskQueueControl.tsx')).toContain("'bg-sky-600 dark:bg-indigo-400' : 'bg-red-600 dark:bg-red-500'");
-    expect(read('ProgressWindow.tsx')).toContain('h-8 bg-sky-600 dark:bg-indigo-400');
+    // 그룹 2-a: 진행 창 막대의 다크 채움을 indigo-400 → 다른 진행 막대와 같은 하늘색 계열(sky-500, 흰 글자 다크 500 규칙)
+    expect(read('ProgressWindow.tsx')).toContain('h-8 bg-sky-600 dark:bg-sky-500');
   });
 });
 

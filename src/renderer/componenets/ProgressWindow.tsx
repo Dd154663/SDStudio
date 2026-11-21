@@ -32,7 +32,7 @@ const ProgressWindow = ({ dialog }: Props) => {
             {dialog.countText ?? `${dialog.done}/${dialog.total}`}
           </div>
           <div
-            className="absolute top-0 left-0 h-8 bg-sky-600 dark:bg-indigo-400"
+            className="absolute top-0 left-0 h-8 bg-sky-600 dark:bg-sky-500"
             style={{
               width: ((dialog.done / dialog.total) * 100).toString() + '%',
             }}

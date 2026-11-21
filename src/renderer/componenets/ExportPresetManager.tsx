@@ -294,7 +294,7 @@ const ExportPresetManager = observer(() => {
       className={`px-3 py-2 cursor-pointer flex justify-between items-center gap-2 ${
         editingIndex === i
           ? 'bg-sky-50 dark:bg-sky-900/30 border-l-2 border-sky-500'
-          : 'hover:bg-gray-50 dark:hover:bg-slate-700/50'
+          : 'hover-row'
       }`}
     >
       {renamingIndex === i ? (
@@ -310,7 +310,7 @@ const ExportPresetManager = observer(() => {
             if (e.key === 'Enter') commitRename();
             else if (e.key === 'Escape') cancelRename();
           }}
-          className="flex-1 min-w-0 px-2 py-1 rounded border border-sky-400 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+          className="flex-1 min-w-0 px-2 py-1 rounded border border-sky-400 bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
         />
       ) : (
         <div className="min-w-0 text-sm font-medium text-default truncate flex items-center gap-1">
@@ -375,7 +375,7 @@ const ExportPresetManager = observer(() => {
           placeholder="프리셋 이름"
           aria-invalid={problems.includes('이름') || undefined}
           className={
-            'flex-1 min-w-0 px-3 py-1.5 rounded border bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 ' +
+            'flex-1 min-w-0 px-3 py-1.5 rounded border bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)] ' +
             (wide && problems.includes('이름') ? 'border-red-400 dark:border-red-500' : 'line-color')
           }
         />

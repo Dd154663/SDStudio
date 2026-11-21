@@ -339,7 +339,7 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
                     if (e.key === 'Enter') commitRename();
                     else if (e.key === 'Escape') setEditing(null);
                   }}
-                  className="flex-1 min-w-0 px-2 py-1 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                  className="flex-1 min-w-0 px-2 py-1 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
                 />
                 <Tooltip content="확인">
                   <button
@@ -362,7 +362,7 @@ const SceneTemplateManager = observer(({ onClose }: { onClose: () => void }) => 
               <div
                 key={name}
                 onClick={() => openTemplate(name)}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border line-color cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border line-color cursor-pointer hover-row transition-colors"
               >
                 <FaFilm
                   size={13}

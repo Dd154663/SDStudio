@@ -715,7 +715,7 @@ export const GlobalPresetTab = observer(() => {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="프리셋 검색..."
-              className="flex-1 min-w-0 h-8 px-2.5 text-sm rounded border line-color bg-[var(--c-input-bg)] text-default focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="flex-1 min-w-0 h-8 px-2.5 text-sm rounded border line-color bg-[var(--c-input-bg)] text-default focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
             />
             <select
               value={sortBy}
@@ -841,7 +841,7 @@ export const GlobalPresetTab = observer(() => {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="프리셋 검색..."
-          className="px-3 py-2 text-base rounded border line-color bg-[var(--c-input-bg)] text-default focus:outline-none focus:ring-2 focus:ring-sky-400 w-44"
+          className="px-3 py-2 text-base rounded border line-color bg-[var(--c-input-bg)] text-default focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)] w-44"
         />
         {/* 정렬 */}
         <select

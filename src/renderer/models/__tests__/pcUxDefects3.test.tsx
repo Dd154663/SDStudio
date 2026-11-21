@@ -118,6 +118,13 @@ describe('R2 작은 아이콘 버튼 — 아이콘 14px 이상, 흐린 색 미�
     expect(read('ExportPresetManager.tsx')).not.toMatch(/p-1\.5 rounded text-faint/);
     expect(read('SceneTemplateManager.tsx')).not.toContain('btn-ghost p-2 rounded-md text-faint');
     expect(read('ProjectDrawer.tsx')).not.toContain('btn-ghost p-2 rounded-md text-faint');
+    // 그룹 2-a: 사이에 flex-none 등이 끼인 자리도 잡는다(종전 고정 문자열은 ProjectDrawer 취소 ✕ 두 곳을 놓쳤다)
+    for (const f of ['ProjectDrawer.tsx', 'SceneTemplateManager.tsx', 'TemplateManagerModal.tsx']) {
+      expect(read(f)).not.toMatch(/btn-ghost[^"'`]*\btext-faint\b/);
+    }
+    expect(read('TemplateManagerModal.tsx')).toMatch(/const iconBtnCls = 'btn-ghost p-1\.5 rounded-md text-muted';/);
+    expect(read('CharacterPresetEditor.tsx')).not.toMatch(/text-faint hover:text-gray-\d+ dark:hover:text-gray-200 px-0\.5/);
+    expect(read('ProjectBrowser.tsx')).not.toMatch(/text-faint hover:text-gray-\d+ dark:hover:text-gray-200 px-0\.5/);
     expect(read('ProjectBrowser.tsx')).toContain('className="flex-none text-muted hover:text-sky-500 px-0.5"');
     const al = read('ArtistLibraryTab.tsx');
     expect(al).toContain('<button className="text-muted hover:text-red-500" aria-label={`태그 프리셋 ${t} 삭제`}');

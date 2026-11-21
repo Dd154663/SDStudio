@@ -149,7 +149,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
                 value={form.prefix}
                 onChange={(e) => setForm({ ...form, prefix: e.target.value })}
                 placeholder="캐릭터 이름"
-                className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
               />
             </FieldRow>
           )}
@@ -186,7 +186,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
                 value={form.imageSize}
                 onChange={(e) => setForm({ ...form, imageSize: Number(e.target.value) })}
                 placeholder="1024"
-                className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
               />
               <span className="text-xs text-faint">px</span>
             </FieldRow>
@@ -204,7 +204,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
                   setForm({ ...form, quality: e.target.value === '' ? '' : Number(e.target.value) })
                 }
                 placeholder={form.opt === 'avif' ? '50' : '80'}
-                className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                className="flex-1 min-w-0 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
               />
               <span className="text-xs text-faint">1~100</span>
             </FieldRow>
@@ -232,7 +232,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
               value={form.separator}
               onChange={(e) => setForm({ ...form, separator: e.target.value })}
               placeholder="비워두면 구분자 없음"
-              className="flex-1 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="flex-1 px-3 py-1.5 rounded border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]"
             />
           </FieldRow>
 
@@ -261,7 +261,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
               <div className="flex gap-2">
                 <button
                   onClick={selectTargetFolder}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded border line-color text-sm text-body hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded border line-color text-sm text-body hover-row transition-colors"
                 >
                   <FaFolderOpen size={12} />
                   폴더 선택
@@ -269,7 +269,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
                 {form.targetFolder && (
                   <button
                     onClick={() => setForm({ ...form, targetFolder: '' })}
-                    className="px-3 py-1.5 rounded border line-color text-sm text-muted hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors"
+                    className="px-3 py-1.5 rounded border line-color text-sm text-muted hover-row transition-colors"
                   >
                     지우기
                   </button>

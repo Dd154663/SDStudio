@@ -147,7 +147,7 @@ const BatchInsertBody = observer(() => {
             onChange={(e) => handleInsertInput(e.target.value)}
             onKeyDown={handleInsertKeyDown}
             onBlur={() => setTimeout(closeAc, 150)}
-            className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
+            className="w-full pl-9 pr-3 py-2 rounded-lg border line-color bg-[var(--c-input-bg)] text-default text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)]" />
           {acTags.length > 0 && (
             <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-[var(--c-zone)] border line-color rounded-lg shadow-lg overflow-hidden">
               {acTags.map((tag, i) => (
@@ -156,7 +156,7 @@ const BatchInsertBody = observer(() => {
                   className={`px-3 py-1.5 text-sm cursor-pointer flex justify-between ${
                     i === acSelected
                       ? 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/10'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-[var(--c-hover)]'
                   }`}>
                   <span className="truncate">{tag.word}</span>
                   {tag.count != null && <span className="text-xs text-faint ml-2 flex-none">{tag.count}</span>}
