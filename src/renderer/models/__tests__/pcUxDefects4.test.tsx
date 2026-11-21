@@ -86,8 +86,9 @@ describe('제외·보류 항목 불변', () => {
     const src = read('SceneQueueControl.tsx');
     expect(src.match(/bg-yellow-400 dark:bg-indigo-400[^"]*text-white/g)).toHaveLength(2);
   });
-  test('카드 원형 버튼의 노랑(캐릭터 프롬프트 적용)은 btn-solid-yellow 그대로', () => {
-    expect(read('CharacterPresetCards.tsx').match(/btn-solid-yellow/g)).toHaveLength(2);
+  // 2026-11-21 카드 위 버튼 색 정돈: 카드 원형 버튼은 솔리드 색(노랑 포함)을 쓰지 않고 이미지 위 중립 .card-overlay-btn 로 바뀜.
+  test('카드 원형 버튼(캐릭터 프롬프트 적용 포함)은 btn-solid-yellow 없이 .card-overlay-btn', () => {
+    expect(read('CharacterPresetCards.tsx').match(/btn-solid-yellow/g)).toBeNull();
   });
 });
 
@@ -144,7 +145,7 @@ describe('하드코딩 bg-{색}-500 잔존 = 제외 목록', () => {
 describe('R2 잔여 — 캐릭터 프리셋 카드 위 원형 버튼 아이콘 14', () => {
   test('w-8 h-8 원형 버튼 안 아이콘은 모두 size 14', () => {
     const src = read('CharacterPresetCards.tsx');
-    const buttons = src.match(/className="w-8 h-8 rounded-full btn-solid-[a-z]+[^"]*"[\s\S]*?<\/button>/g) ?? [];
+    const buttons = src.match(/className="w-8 h-8 rounded-full card-overlay-btn[^"]*"[\s\S]*?<\/button>/g) ?? [];
     expect(buttons.length).toBe(11);
     for (const b of buttons) {
       const sizes = [...b.matchAll(/size=\{(\d+)\}/g)].map((m) => Number(m[1]));

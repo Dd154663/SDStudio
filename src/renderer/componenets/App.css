@@ -812,6 +812,46 @@ html.font-pretendard body {
 .btn-solid-indigo:disabled { @apply bg-indigo-600 dark:bg-indigo-500; }
 .btn-solid-purple:disabled { @apply bg-purple-600 dark:bg-purple-500; }
 
+/* .card-overlay-btn — 카드 이미지 위에 뜨는 보조 버튼의 중립 모양(2026-11-21, 글로벌 프리셋 카드 하단 액션 바·
+   캐릭터 프리셋 카드 위 원형 버튼 줄 공용). 종전 btn-solid-* 다섯~여섯 색이 이미지 위에 나란히 떠 너무 쨍했다.
+   SPEC §1 「이미지 위 오버레이(text-white·bg-black/xx)」 예외 — 바탕이 사진이라 테마와 무관하게 같은 값(라이트·다크·트루다크·
+   커스텀 공통, 토큰 아님). 어두운 반투명 바탕 + 흰 아이콘: 흰 사진 위에서도 바탕 ≈ #737373(흰 글자 4.7).
+   - .card-overlay-btn-danger = 마우스를 올렸을 때만 빨강(위험 표시, red-600 — 흰 글자 4.83). 평소엔 중립.
+   - .card-overlay-btn-on = 켜짐 상태 표시(기본으로 지정됨) 주황(orange-600 — 흰 글자 3.56, btn-solid-orange 라이트와 같은 값).
+   형상(크기·반경·그림자)은 사용처 유틸. 새 움직임 없음 — 종전 버튼들과 같은 바탕색 전환만. */
+.card-overlay-btn {
+  background-color: rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+  transition: background-color var(--motion-fast) ease;
+}
+@media (hover: hover) {
+  .card-overlay-btn:hover {
+    background-color: rgba(0, 0, 0, 0.75);
+  }
+  .card-overlay-btn.card-overlay-btn-danger:hover {
+    background-color: #dc2626; /* red-600 */
+  }
+  .card-overlay-btn.card-overlay-btn-on:hover {
+    background-color: #c2410c; /* orange-700 */
+  }
+}
+.card-overlay-btn:active {
+  background-color: rgba(0, 0, 0, 0.75);
+}
+.card-overlay-btn.card-overlay-btn-danger:active {
+  background-color: #dc2626;
+}
+.card-overlay-btn.card-overlay-btn-on {
+  background-color: #ea580c; /* orange-600 */
+}
+.card-overlay-btn.card-overlay-btn-on:active {
+  background-color: #c2410c;
+}
+.card-overlay-btn:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 1px;
+}
+
 /* .btn-ghost — 배경 없는 아이콘/텍스트 버튼의 hover 배경 공용화.
    패딩·라운딩(p-2 rounded-md 등)과 hover:text-* 액센트는 사용처에서 조합 */
 .btn-ghost {

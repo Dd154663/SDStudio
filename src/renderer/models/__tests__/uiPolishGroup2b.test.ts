@@ -185,7 +185,7 @@ describe('④ 로컬/글로벌 전환 — 한 모양(그룹 2-c 부터 .seg-grou
   test('캐릭터 프리셋 관리(PC aside): seg-group seg-fill, 로컬 seg-on·글로벌 seg-on-purple, aria-pressed 유지', () => {
     const src = read('CharacterPresetEditor.tsx');
     const start = src.indexOf('const asideViewToggle = (');
-    const block = src.slice(start, src.indexOf('// [순차 생성 모드][선택]', start));
+    const block = src.slice(start, src.indexOf('// [순차 생성 모드][선택 모드]', start));
     expect(block).toContain('className="seg-group seg-fill flex"');
     expect(block).not.toContain('tab-seg');
     expect(block).toContain("(!globalView ? ' seg-on' : '')");

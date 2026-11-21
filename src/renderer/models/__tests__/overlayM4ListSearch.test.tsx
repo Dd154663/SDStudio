@@ -447,7 +447,7 @@ describe('① 캐릭터 프리셋 관리 — 이름 검색', () => {
 
   test('「전체 선택」은 보이는 항목만 — 숨은 선택은 유지', async () => {
     await act(async () => root.render(<CharacterPresetEditor />));
-    await act(async () => Simulate.click(buttonByText('선택')));
+    await act(async () => Simulate.click(buttonByText('선택 모드')));
     await typeIn(search(), 'bob');
     await act(async () => Simulate.click(buttonByText('전체 선택')));
     expect(container.textContent).toContain('1개 선택');

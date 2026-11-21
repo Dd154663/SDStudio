@@ -1414,8 +1414,14 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
             </button>
           </>
         }
+        // 본문 여백은 스크롤 영역(본문 슬롯)이 아니라 안쪽 감싸기가 맡는다(2026-11-21) — 여백이 스크롤 영역에 있으면
+        // 단축키 탭의 붙박이 그룹 머리(sticky top-0)가 그 여백만큼(20px) 내려와 붙고 위 틈으로 목록 줄이 비쳤다.
+        // 처음 모양·여백은 p-5 그대로(SPEC 「오버레이 창 크기 체계」 bodyPadding='none' = 붙박이 머리용).
+        bodyPadding="none"
       >
-        {tabPanels}
+        <div className="p-5" data-cfg-body-pad="">
+          {tabPanels}
+        </div>
       </ModalOverlay>
     );
   }

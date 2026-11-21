@@ -1225,11 +1225,13 @@ export function useCharacterPresetPanel({
     </div>
   );
 
-  // [순차 생성 모드][선택]
+  // [순차 생성 모드][선택 모드] — 라벨은 켜짐·꺼짐 같음(2026-11-21 — 종전 「… 끄기」로 글자가 늘어 윗줄이 밀림).
+  // 상태는 색(켜짐 = 솔리드 하늘/보라)과 aria-pressed 로 구분한다.
   const modeButtons = (
     <>
       {(globalView ? globalEntries.length >= 2 : presets.length >= 2) && (
         <button
+          aria-pressed={cyclingMode}
           className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
             cyclingMode
               ? (globalView ? 'bg-purple-600 text-white dark:bg-purple-500' : 'bg-sky-600 text-white dark:bg-sky-500')
@@ -1238,12 +1240,13 @@ export function useCharacterPresetPanel({
           onClick={() => cyclingMode ? exitCyclingMode() : enterCyclingMode()}
         >
           <FaSync size={11} />
-          {cyclingMode ? '순차 생성 모드 끄기' : '순차 생성 모드'}
+          순차 생성 모드
         </button>
       )}
       {/* 일괄 선택 → 일괄 적용(양 뷰) / 폴더 이동(글로벌) — 순차 생성과 배타 */}
       {(globalView ? globalEntries.length > 0 : presets.length > 0) && (
         <button
+          aria-pressed={selectMode}
           className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
             selectMode
               ? globalView
@@ -1254,7 +1257,7 @@ export function useCharacterPresetPanel({
           onClick={() => (selectMode ? exitSelectMode() : enterSelectMode())}
         >
           <FaCheckSquare size={11} />
-          {selectMode ? '선택 모드 끄기' : '선택'}
+          선택 모드
         </button>
       )}
     </>
@@ -1890,7 +1893,7 @@ export function useCharacterPresetPanel({
     </div>
   );
 
-  // toolbar: 왼쪽 [순차 생성 모드][선택] + 이름 검색(스크롤해도 남게), 오른쪽 파일 버튼·도움말. 선택 모드면 둘째 줄 = 선택 바.
+  // toolbar: 왼쪽 [순차 생성 모드][선택 모드] + 이름 검색(스크롤해도 남게), 오른쪽 파일 버튼·도움말. 선택 모드면 둘째 줄 = 선택 바.
   const showSearch = globalView ? globalEntries.length > 0 : presets.length > 0;
   const toolbar = (
     <div className="w-full flex flex-col gap-2" data-character-preset-toolbar="">

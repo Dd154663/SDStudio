@@ -232,12 +232,13 @@ export const CharacterPresetCard = observer(({
           </div>
         </div>
       </div>
-      {/* 액션 버튼 (PC: 호버 시 표시, 모바일: 항상 표시, 순차 생성 모드: 숨김) */}
+      {/* 액션 버튼 (PC: 호버 시 표시, 모바일: 항상 표시, 순차 생성 모드: 숨김). 이미지 위 중립 모양 .card-overlay-btn 하나 —
+          삭제만 올렸을 때 빨강(2026-11-21, 종전 하늘·노랑·주황·보라·빨강 솔리드). 글로벌 카드와 같은 규칙. */}
       {!hideActions && <div className="absolute top-0 left-0 right-0 flex justify-center items-center gap-1 z-20 py-1.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">
         {isEasyMode && (
           <Tooltip content="이지모드 적용">
             <button
-              className="w-8 h-8 rounded-full btn-solid-sky flex items-center justify-center shadow-lg transition-colors"
+              className="w-8 h-8 rounded-full card-overlay-btn flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onApplyEasy(); }}
             >
               <FaFont size={14} />
@@ -246,7 +247,7 @@ export const CharacterPresetCard = observer(({
         )}
         <Tooltip content="캐릭터 프롬프트 적용">
           <button
-            className="w-8 h-8 rounded-full btn-solid-yellow flex items-center justify-center shadow-lg transition-colors"
+            className="w-8 h-8 rounded-full card-overlay-btn flex items-center justify-center shadow-lg transition-colors"
             onClick={(e) => { e.stopPropagation(); onApplyCharacter(); }}
           >
             <FaUserAlt size={14} />
@@ -254,7 +255,7 @@ export const CharacterPresetCard = observer(({
         </Tooltip>
         <Tooltip content="복제">
           <button
-            className="w-8 h-8 rounded-full btn-solid-orange flex items-center justify-center shadow-lg transition-colors"
+            className="w-8 h-8 rounded-full card-overlay-btn flex items-center justify-center shadow-lg transition-colors"
             onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
           >
             <ActionIcon id="duplicate" size={14} />
@@ -263,7 +264,7 @@ export const CharacterPresetCard = observer(({
         {onCopyToGlobal && (
           <Tooltip content="글로벌로 복사">
             <button
-              className="w-8 h-8 rounded-full btn-solid-purple flex items-center justify-center shadow-lg transition-colors"
+              className="w-8 h-8 rounded-full card-overlay-btn flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onCopyToGlobal(); }}
             >
               <ActionIcon id="copy-to-global" size={14} />
@@ -272,7 +273,7 @@ export const CharacterPresetCard = observer(({
         )}
         <Tooltip content="삭제">
           <button
-            className="w-8 h-8 rounded-full btn-solid-red flex items-center justify-center shadow-lg transition-colors"
+            className="w-8 h-8 rounded-full card-overlay-btn card-overlay-btn-danger flex items-center justify-center shadow-lg transition-colors"
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
           >
             <FaTrash size={14} />
@@ -537,11 +538,12 @@ export const GlobalCharacterPresetCard = observer(({
             {entry.folder && ` · 📁${entry.folder}`}
           </div>
         </div>
+        {/* 액션 버튼 — 로컬 카드와 같은 규칙: 이미지 위 중립 .card-overlay-btn, 삭제만 올렸을 때 빨강(2026-11-21) */}
         <div className={`absolute top-0 left-0 right-0 flex flex-wrap justify-center items-center gap-1 z-20 py-1.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200 ${cyclingMode ? 'hidden' : ''}`}>
           {isEasyMode && (
             <Tooltip content="프로젝트로 복사해 이지모드 적용">
               <button
-                className="w-8 h-8 rounded-full btn-solid-sky flex items-center justify-center shadow-lg transition-colors"
+                className="w-8 h-8 rounded-full card-overlay-btn flex items-center justify-center shadow-lg transition-colors"
                 onClick={(e) => { e.stopPropagation(); onApplyEasy(); }}
               >
                 <FaFont size={14} />
@@ -550,7 +552,7 @@ export const GlobalCharacterPresetCard = observer(({
           )}
           <Tooltip content="프로젝트로 복사해 캐릭터 프롬프트 적용">
             <button
-              className="w-8 h-8 rounded-full btn-solid-yellow flex items-center justify-center shadow-lg transition-colors"
+              className="w-8 h-8 rounded-full card-overlay-btn flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onApplyCharacter(); }}
             >
               <FaUserAlt size={14} />
@@ -558,7 +560,7 @@ export const GlobalCharacterPresetCard = observer(({
           </Tooltip>
           <Tooltip content="프로젝트로 복사">
             <button
-              className="w-8 h-8 rounded-full btn-solid-purple flex items-center justify-center shadow-lg transition-colors"
+              className="w-8 h-8 rounded-full card-overlay-btn flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onLoad(); }}
             >
               <ActionIcon id="copy-to-project" size={14} />
@@ -566,7 +568,7 @@ export const GlobalCharacterPresetCard = observer(({
           </Tooltip>
           <Tooltip content="복제">
             <button
-              className="w-8 h-8 rounded-full btn-solid-orange flex items-center justify-center shadow-lg transition-colors"
+              className="w-8 h-8 rounded-full card-overlay-btn flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
             >
               <ActionIcon id="duplicate" size={14} />
@@ -575,7 +577,7 @@ export const GlobalCharacterPresetCard = observer(({
           {onMoveToFolder && (
             <Tooltip content="폴더로 이동">
               <button
-                className="w-8 h-8 rounded-full btn-solid-indigo flex items-center justify-center shadow-lg transition-colors"
+                className="w-8 h-8 rounded-full card-overlay-btn flex items-center justify-center shadow-lg transition-colors"
                 onClick={(e) => { e.stopPropagation(); onMoveToFolder(); }}
               >
                 <FaFolder size={14} />
@@ -584,7 +586,7 @@ export const GlobalCharacterPresetCard = observer(({
           )}
           <Tooltip content="삭제">
             <button
-              className="w-8 h-8 rounded-full btn-solid-red flex items-center justify-center shadow-lg transition-colors"
+              className="w-8 h-8 rounded-full card-overlay-btn card-overlay-btn-danger flex items-center justify-center shadow-lg transition-colors"
               onClick={(e) => { e.stopPropagation(); onDelete(); }}
             >
               <FaTrash size={14} />

@@ -124,7 +124,8 @@ const KeyBindingsTab = () => {
 
   return (
     // 높이 상한·안쪽 스크롤 없음(2026-11-15 C-1, SPEC 「높이 규칙 우선순위」) — 환경설정 본문 스크롤 하나가 맡는다.
-    // 그룹 머리 sticky 는 본문 스크롤 기준으로 붙는다.
+    // 그룹 머리 sticky 는 본문 스크롤 기준으로 붙는다. 본문 슬롯은 여백 없음(ConfigScreen bodyPadding='none' +
+    // 안쪽 p-5 감싸기)이라 top-0 = 스크롤 영역 맨 위(2026-11-21 — 종전엔 본문 p-5 만큼 내려와 위 틈으로 목록이 비쳤다).
     <div className="flex flex-col">
       <div className="text-sm text-muted mb-2 flex-none">
         "변경" 클릭 후 키 조합 입력. Esc로 취소. 그룹 내부에서만 키 충돌

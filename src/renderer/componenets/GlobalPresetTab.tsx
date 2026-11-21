@@ -193,23 +193,25 @@ const EasyCard = observer(
               프로젝트로 복사
             </button>
           )}
-          {/* PC: 하단 액션 바 (솔리드 색·확대·균등 배치 — 씬 카드 스타일) */}
+          {/* PC: 하단 액션 바 (균등 배치 — 씬 카드 스타일). 보조 버튼은 이미지 위 중립 모양 .card-overlay-btn 하나(2026-11-21 —
+              종전 주황·초록·남색·하늘·빨강 솔리드 다섯 색). 기본 지정은 켜졌을 때만 주황(.card-overlay-btn-on), 삭제는 올렸을 때만 빨강. */}
           {!multiSelectMode && !isMobile && (
             <div className="absolute bottom-0 left-0 right-0 z-20 flex justify-center items-center gap-2 py-2.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
               <Tooltip content={entry.isDefault ? '기본 해제' : '기본으로 지정'}>
                 <button
-                  className="icon-button btn-solid-orange p-3 !rounded-lg shadow-lg"
+                  aria-pressed={entry.isDefault}
+                  className={'card-overlay-btn p-3 rounded-lg shadow-lg' + (entry.isDefault ? ' card-overlay-btn-on' : '')}
                   onClick={(e) => {
                     e.stopPropagation();
                     onToggleDefault();
                   }}
                 >
-                  <ActionIcon id="pin-default" size={18} className={entry.isDefault ? undefined : 'opacity-50'} />
+                  <ActionIcon id="pin-default" size={18} />
                 </button>
               </Tooltip>
               <Tooltip content="이름 변경">
                 <button
-                  className="icon-button btn-solid-green p-3 !rounded-lg shadow-lg"
+                  className="card-overlay-btn p-3 rounded-lg shadow-lg"
                   onClick={(e) => {
                     e.stopPropagation();
                     onRename();
@@ -220,7 +222,7 @@ const EasyCard = observer(
               </Tooltip>
               <Tooltip content="편집 (프롬프트·설정·대표 이미지)">
                 <button
-                  className="icon-button btn-solid-indigo p-3 !rounded-lg shadow-lg"
+                  className="card-overlay-btn p-3 rounded-lg shadow-lg"
                   onClick={(e) => {
                     e.stopPropagation();
                     onEdit();
@@ -231,7 +233,7 @@ const EasyCard = observer(
               </Tooltip>
               <Tooltip content="PNG로 내보내기">
                 <button
-                  className="icon-button btn-solid-sky p-3 !rounded-lg shadow-lg"
+                  className="card-overlay-btn p-3 rounded-lg shadow-lg"
                   onClick={(e) => {
                     e.stopPropagation();
                     onExport();
@@ -242,7 +244,7 @@ const EasyCard = observer(
               </Tooltip>
               <Tooltip content="삭제">
                 <button
-                  className="icon-button btn-solid-red p-3 !rounded-lg shadow-lg"
+                  className="card-overlay-btn card-overlay-btn-danger p-3 rounded-lg shadow-lg"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDelete();
@@ -255,7 +257,8 @@ const EasyCard = observer(
           )}
         </div>
 
-        {/* 모바일 전용 액션 바 (항상 노출, 좁은 카드라 다단 배치 + 큰 터치 타깃) */}
+        {/* 모바일 전용 액션 바 (항상 노출, 좁은 카드라 다단 배치 + 큰 터치 타깃). 카드 아래 표면 위라 이미지 위 모양이 아니라
+            중립 back-gray·삭제 back-red·기본 지정은 켜졌을 때만 back-orange(2026-11-21 — 종전 솔리드 다섯 색). */}
         {!multiSelectMode && isMobile && (
           <div className="flex flex-col gap-1.5 p-2 bg-[var(--c-surface)] border-t line-color">
             <button
@@ -267,15 +270,16 @@ const EasyCard = observer(
             <div className="grid grid-cols-3 gap-1.5">
               <Tooltip content={entry.isDefault ? '기본 해제' : '기본으로 지정'}>
                 <button
-                  className="icon-button btn-solid-orange py-2.5 flex items-center justify-center"
+                  aria-pressed={entry.isDefault}
+                  className={'icon-button py-2.5 flex items-center justify-center ' + (entry.isDefault ? 'back-orange' : 'back-gray')}
                   onClick={onToggleDefault}
                 >
-                  <ActionIcon id="pin-default" size={18} className={entry.isDefault ? undefined : 'opacity-50'} />
+                  <ActionIcon id="pin-default" size={18} />
                 </button>
               </Tooltip>
               <Tooltip content="이름 변경">
                 <button
-                  className="icon-button btn-solid-green py-2.5 flex items-center justify-center"
+                  className="icon-button back-gray py-2.5 flex items-center justify-center"
                   onClick={onRename}
                 >
                   <ActionIcon id="rename" size={18} />
@@ -283,7 +287,7 @@ const EasyCard = observer(
               </Tooltip>
               <Tooltip content="편집">
                 <button
-                  className="icon-button btn-solid-indigo py-2.5 flex items-center justify-center"
+                  className="icon-button back-gray py-2.5 flex items-center justify-center"
                   onClick={onEdit}
                 >
                   <ActionIcon id="edit" size={18} />
@@ -291,7 +295,7 @@ const EasyCard = observer(
               </Tooltip>
               <Tooltip content="내보내기">
                 <button
-                  className="icon-button btn-solid-sky py-2.5 flex items-center justify-center"
+                  className="icon-button back-gray py-2.5 flex items-center justify-center"
                   onClick={onExport}
                 >
                   <ActionIcon id="export" size={18} />
@@ -299,7 +303,7 @@ const EasyCard = observer(
               </Tooltip>
               <Tooltip content="삭제">
                 <button
-                  className="icon-button btn-solid-red py-2.5 flex items-center justify-center"
+                  className="icon-button back-red py-2.5 flex items-center justify-center"
                   onClick={onDelete}
                 >
                   <FaTrash size={18} />
@@ -747,14 +751,16 @@ export const GlobalPresetTab = observer(() => {
           />
         </div>
       )}
+      {/* PC 상단 도구줄 규격(2026-11-21) = 작가 라이브러리 탭·캐릭터 프리셋 관리와 같게 — 버튼 text-sm·좌우 12·위아래 6(높이 32)·아이콘 14,
+          검색 칸·정렬은 h-8 text-sm(공용 ListSearchBar 와 같은 높이), 개수 text-xs, 간격 gap-2. 종전엔 글자·아이콘이 한 단계 컸다. */}
       {!isMobile && (
-      <div className="flex-none p-3 border-b line-color flex flex-wrap gap-3 items-center bg-[var(--c-surface)]">
+      <div className="flex-none p-3 border-b line-color flex flex-wrap gap-2 items-center bg-[var(--c-surface)]" data-global-preset-toolbar="">
         <Tooltip content="글로벌 프리셋 이미지뿐 아니라, 프롬프트 메타데이터가 있는 PNG도 그림체 프리셋으로 불러옵니다.">
           <button
-            className="round-button back-sky flex items-center gap-2 px-4 py-2 text-base"
+            className="round-button back-sky flex items-center gap-1.5 px-3 py-1.5 text-sm"
             onClick={() => fileInputRef.current?.click()}
           >
-            <ActionIcon id="import" size={18} />
+            <ActionIcon id="import" size={14} />
             <span>PNG 불러오기</span>
           </button>
         </Tooltip>
@@ -771,25 +777,25 @@ export const GlobalPresetTab = observer(() => {
         />
         <Tooltip content="글로벌 프리셋 전체를 tar 파일로 백업">
           <button
-            className="round-button back-gray flex items-center gap-2 px-4 py-2 text-base"
+            className="round-button back-gray flex items-center gap-1.5 px-3 py-1.5 text-sm"
             onClick={() => appState.globalPresetBackupExport()}
           >
-            <FaFileArchive size={16} />
+            <FaFileArchive size={14} />
             <span>백업</span>
           </button>
         </Tooltip>
         <Tooltip content="백업 파일에서 글로벌 프리셋 불러오기 (동명 처리 선택)">
           <button
-            className="round-button back-gray flex items-center gap-2 px-4 py-2 text-base"
+            className="round-button back-gray flex items-center gap-1.5 px-3 py-1.5 text-sm"
             onClick={() => appState.globalPresetBackupImport()}
           >
-            <FaFileImport size={16} />
+            <FaFileImport size={14} />
             <span>백업 불러오기</span>
           </button>
         </Tooltip>
         <button
           className={
-            'round-button px-4 py-2 text-base ' +
+            'round-button px-3 py-1.5 text-sm ' +
             (multiSelectMode ? 'back-orange' : 'back-gray')
           }
           onClick={() => {
@@ -804,28 +810,28 @@ export const GlobalPresetTab = observer(() => {
         {multiSelectMode && (
           <>
             <button
-              className="round-button back-sky px-4 py-2 text-base"
+              className="round-button back-sky px-3 py-1.5 text-sm"
               disabled={selectedIds.size === 0}
               onClick={handleBulkImportToSession}
             >
               프로젝트로 일괄 복사
             </button>
             <button
-              className="round-button back-orange px-4 py-2 text-base"
+              className="round-button back-orange px-3 py-1.5 text-sm"
               disabled={selectedIds.size === 0}
               onClick={() => handleBulkSetDefault(true)}
             >
               일괄 기본 지정
             </button>
             <button
-              className="round-button back-gray px-4 py-2 text-base"
+              className="round-button back-gray px-3 py-1.5 text-sm"
               disabled={selectedIds.size === 0}
               onClick={() => handleBulkSetDefault(false)}
             >
               일괄 기본 해제
             </button>
             <button
-              className="round-button back-red px-4 py-2 text-base"
+              className="round-button back-red px-3 py-1.5 text-sm"
               disabled={selectedIds.size === 0}
               onClick={handleBulkDelete}
             >
@@ -840,19 +846,19 @@ export const GlobalPresetTab = observer(() => {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="프리셋 검색..."
-          className="px-3 py-2 text-base rounded border line-color bg-[var(--c-input-bg)] text-default focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)] w-44"
+          className="h-8 px-2.5 text-sm rounded border line-color bg-[var(--c-input-bg)] text-default focus:outline-none focus:ring-2 focus:ring-[color:var(--c-focus-ring)] w-44"
         />
         {/* 정렬 */}
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as any)}
-          className="app-select text-base h-[2.625rem]"
+          className="app-select app-select-tight h-8 text-sm"
         >
           <option value="recent">최근 수정순</option>
           <option value="name">이름순</option>
           <option value="default">기본 우선</option>
         </select>
-        <div className="text-sm text-muted whitespace-nowrap">
+        <div className="text-xs text-muted whitespace-nowrap tabular-nums">
           {q ? `검색 ${visible.length} / 총 ${total}개` : `총 ${total}개`}
         </div>
       </div>

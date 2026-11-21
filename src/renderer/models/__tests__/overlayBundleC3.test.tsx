@@ -260,13 +260,13 @@ describe('C-3 캐릭터 프리셋 관리 — 등급·슬롯(PC)', () => {
     await openWindow();
     const tb = slot('toolbar')!;
     expect(buttonByText('순차 생성 모드', tb)).toBeTruthy();
-    expect(buttonByText('선택', tb)).toBeTruthy();
+    expect(buttonByText('선택 모드', tb)).toBeTruthy();
     // 2026-11-16 M5 묶음 b R1: 프로젝트 전체 파일 = 「백업」/「백업 불러오기」
     expect(tb.textContent).toContain('백업');
     expect(tb.textContent).toContain('백업 불러오기');
     expect(q('[data-list-search]', tb)).not.toBeNull();
     expect(q('[data-character-selection-bar]')).toBeNull();
-    await click(buttonByText('선택', tb));
+    await click(buttonByText('선택 모드', tb));
     const bar = q('[data-character-selection-bar]', slot('toolbar')!)!;
     expect(bar).not.toBeNull();
     expect(bar.textContent).toContain('0개');
@@ -286,7 +286,7 @@ describe('C-3 캐릭터 프리셋 관리 — 등급·슬롯(PC)', () => {
     expect(q('[data-character-grid="global"]', body)).not.toBeNull();
     expect(q('[data-list-search]', body)).toBeNull();
     expect(q('[data-character-view-toggle]', body)).toBeNull();
-    expect(buttonByText('선택', body)).toBeUndefined();
+    expect(buttonByText('선택 모드', body)).toBeUndefined();
     const root0 = q('[data-character-preset-body]', body)!;
     expect(root0.style.minHeight).toBe('');
   });
@@ -316,7 +316,7 @@ describe('C-3 캐릭터 프리셋 관리 — 등급·슬롯(PC)', () => {
     await click(buttonByText('전체 선택', cards));
     expect(q('[data-cycling-summary]')!.textContent).toBe('프리셋 3개 × 씬 0개 · 샘플 10장');
     // 끄면 바닥줄이 사라진다
-    await click(buttonByText('순차 생성 모드 끄기', slot('toolbar')!));
+    await click(buttonByText('순차 생성 모드', slot('toolbar')!));
     expect(slot('footer')).toBeNull();
     expect(q('[data-cycling-columns]')).toBeNull();
   });
