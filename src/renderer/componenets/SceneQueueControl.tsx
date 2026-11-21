@@ -863,14 +863,12 @@ export const SceneCell = observer(
       const btnClass = overlay
         ? 'round-button scene-btn'
         : 'round-button scene-btn';
-      // overlay(PC 호버, 이미지 위) = 주 동작 「예약 추가」만 솔리드 초록, 나머지는 이미지 위 중립 .card-overlay-btn,
-      // 북마크 켜짐만 .card-overlay-btn-on(2026-11-21 버튼 색 정돈 2차). 비-overlay(카드 아래 줄 — 모바일·구 디자인)는 불변.
-      const green = overlay ? 'btn-solid-green' : 'back-green';
-      const gray = overlay ? 'card-overlay-btn' : 'back-gray';
-      const orange = overlay ? 'card-overlay-btn' : 'back-orange';
-      const bookmarkOn = overlay
-        ? 'card-overlay-btn card-overlay-btn-on'
-        : 'back-orange';
+      // overlay(PC 호버, 이미지 위) 네 버튼의 색은 종전 그대로 둔다 — 2026-11-21 「한 자리에 주 동작 하나만 색」 정돈을
+      // 여기에도 적용했다가 같은 날 되돌림(사용자: 매우 자주 보던 버튼이라 바뀌면 혼란). 다른 카드의 .card-overlay-btn 규칙을
+      // 이 네 버튼에 다시 적용하지 않는다.
+      const green = overlay ? 'bg-green-500 text-white' : 'back-green';
+      const gray = overlay ? 'bg-gray-500 text-white' : 'back-gray';
+      const orange = overlay ? 'bg-orange-500 text-white' : 'back-orange';
       return (
         <>
           <Tooltip content="예약 추가">
@@ -908,7 +906,7 @@ export const SceneCell = observer(
           </Tooltip>
           <Tooltip content="씬 북마크">
             <button
-              className={`${btnClass} ${isBookmarked ? bookmarkOn + ' scene-btn-on' : gray}`}
+              className={`${btnClass} ${isBookmarked ? orange + ' scene-btn-on' : gray}`}
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleBookmark?.();

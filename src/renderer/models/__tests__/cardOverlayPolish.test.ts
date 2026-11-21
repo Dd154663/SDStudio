@@ -102,16 +102,18 @@ describe('3·4 카드 위 보조 버튼 = 공용 .card-overlay-btn', () => {
 
 // 버튼 색 정돈 2차(2026-11-21): 한 자리에 솔리드는 주 동작 하나, 보조 = 중립, 삭제·중단 = 위험 표시.
 describe('5 버튼 색 정돈 2차', () => {
-  test('A 씬 카드 renderButtons: overlay 분기는 .card-overlay-btn(예약 추가만 솔리드 초록), 비-overlay 분기는 불변', () => {
+  test('A 씬 카드 renderButtons: 이미지 위 네 버튼은 종전 색 그대로(정돈 대상에서 제외 — 사용자 판단으로 되돌림)', () => {
     const block = between(read('SceneQueueControl.tsx'), 'const renderButtons = (overlay?: boolean) => {', 'const focusRing =');
-    expect(block).not.toContain('bg-gray-500');
-    expect(block).not.toContain('bg-orange-500');
-    expect(block).not.toContain('bg-green-500');
-    expect(block).toContain("const green = overlay ? 'btn-solid-green' : 'back-green';");
-    expect(block).toContain("const gray = overlay ? 'card-overlay-btn' : 'back-gray';");
-    expect(block).toContain("const orange = overlay ? 'card-overlay-btn' : 'back-orange';");
-    expect(block).toMatch(/const bookmarkOn = overlay\s*\?\s*'card-overlay-btn card-overlay-btn-on'\s*:\s*'back-orange';/);
-    expect(block).toContain("${isBookmarked ? bookmarkOn + ' scene-btn-on' : gray}");
+    expect(block).toContain("const green = overlay ? 'bg-green-500 text-white' : 'back-green';");
+    expect(block).toContain("const gray = overlay ? 'bg-gray-500 text-white' : 'back-gray';");
+    expect(block).toContain("const orange = overlay ? 'bg-orange-500 text-white' : 'back-orange';");
+    expect(block).toContain("${isBookmarked ? orange + ' scene-btn-on' : gray}");
+    // 다른 카드의 공용 중립 모양을 씬 카드 버튼에 쓰지 않는다
+    const code = block
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('//'))
+      .join('\n');
+    expect(code).not.toContain('card-overlay-btn');
   });
 
   test('B 캐릭터 프리셋 선택 바: 노랑 없음, 솔리드는 「선택 적용」 하나(보기 색), 삭제 back-red', () => {

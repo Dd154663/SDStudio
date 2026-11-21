@@ -105,8 +105,7 @@ describe('하드코딩 bg-{색}-500 잔존 = 제외 목록', () => {
     'componenets/ProjectBrowser.tsx': 1, // 썸네일 위 선택 체크
     'componenets/ResultViewer.tsx': 2, // 이미지 위 선택 덮개(반투명)
     'componenets/SceneEditor.tsx': 2, // 열 표시 점 + 미리보기 오류 상자(흰 글자 아님)
-    // SceneQueueControl 2건(씬 카드 이미지 위 오버레이 버튼 초록·주황)은 2026-11-21 버튼 색 정돈 2차에서
-    // .btn-solid-green·.card-overlay-btn 으로 정리 → 0.
+    'componenets/SceneQueueControl.tsx': 2, // 씬 카드 이미지 위 오버레이 버튼(초록·주황) — 2026-11-21 정돈했다가 사용자 판단으로 되돌림
     'componenets/StorageManageModal.tsx': 2, // 사용량 막대
   };
   const RE = /(^|[^:a-z-])bg-(sky|green|red|orange|purple|indigo|emerald|blue|teal)-500(?![/0-9])/g;
