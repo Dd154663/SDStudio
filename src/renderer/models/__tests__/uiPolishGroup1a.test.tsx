@@ -271,7 +271,7 @@ describe('⑥ 탭별 묶음 구성(소스 검사)', () => {
     const storageTab = storage.slice(storage.indexOf('const StorageTab'), storage.indexOf('const StorageImageTab'));
     const imageTab = storage.slice(storage.indexOf('const ImageEditTab'), storage.indexOf('const SaveLocationPendingNotice'));
     expect([...titles(storageTab.slice(0, storageTab.indexOf('<DownloadSettingsSection'))), ...titles(dl), ...titles(storageTab.slice(storageTab.indexOf('<DownloadSettingsSection'))), ...titles(imageTab)]).toEqual([
-      '현재 저장경로', '기본 내보내기 폴더', '이미지 다운로드', '이미지 캐시', '폴더 변경 감지', 'WebP 자동 변환',
+      '현재 저장경로', '기본 내보내기 폴더', '이미지 다운로드', '이미지 캐시', '외부 편집 반영', 'WebP 자동 변환',
       '이미지 복구 (실험적 기능)', '선호 이미지 편집기', '배경 제거',
     ]);
     for (const id of ['cfgLocalBg', 'cfgGpu', 'cfgRefresh', 'cfgAutoWebp']) {

@@ -116,7 +116,7 @@ const SaveLocationPendingNotice = observer(() => {
 
 /* ── 탭 3: 이미지 및 데이터 저장경로 ── */
 // 묶음 상자(2026-11-20 UI 정돈 그룹 1-a): 현재 저장경로 / 기본 내보내기 폴더 / 이미지 다운로드(DownloadSettingsSection 이 스스로 그림) /
-// 이미지 캐시 / 폴더 변경 감지 / WebP 자동 변환 / 이미지 복구. 구분선(hr) 대신 상자, 항목·순서·문구·id 그대로.
+// 이미지 캐시 / 외부 편집 반영(종전 「폴더 변경 감지」, 2026-11-21 문구 정정) / WebP 자동 변환 / 이미지 복구. 구분선(hr) 대신 상자, 항목·순서·문구·id 그대로.
 const StorageTab = ({
   saveLocation, dataRoot, selectFolder, clearImageCache,
   refreshImage, setRefreshImage,
@@ -181,12 +181,14 @@ const StorageTab = ({
       </button>
      </SettingField>
     </SettingGroup>
-    <SettingGroup title="폴더 변경 감지">
+    {/* 설정 키는 refreshImage 그대로 — 실제로는 이미 있던 이미지의 내용 변경만 반영(main image-changed → invalidateCache) */}
+    <SettingGroup title="외부 편집 반영">
       <SettingCheckRow
         id="cfgRefresh"
         checked={refreshImage}
         onChange={setRefreshImage}
-        label="이미지 폴더 직접 편집 감지"
+        label="밖에서 고친 이미지 자동 반영"
+        description="탐색기나 외부 편집기로 이미 있는 이미지를 고쳐 저장하면 화면에 다시 반영합니다. 파일을 넣거나 지우거나 이름을 바꾼 것, 폴더를 옮긴 것은 감지하지 않습니다. 켜거나 끈 뒤 앱을 다시 시작해야 적용됩니다."
       />
     </SettingGroup>
     <SettingGroup title="WebP 자동 변환">

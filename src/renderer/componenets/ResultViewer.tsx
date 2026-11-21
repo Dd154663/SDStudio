@@ -99,7 +99,10 @@ import { queueNaiUpscale } from '../models/workflows/NaiUpscaleFlow';
 import { estimateNaiUpscaleCost } from '../backends/genVendors/naiUpscale';
 import { getImageDimensions } from './BrushTool';
 import { dataUriToBase64 } from '../models/ImageService';
-import { isImageCacheInvalidationFor } from '../models/imageCacheInvalidation';
+import {
+  isImageCacheInvalidationFor,
+  pickInvalidatedEntries,
+} from '../models/imageCacheInvalidation';
 import {
   copyImagesRecorded,
   deleteImageFilesRecorded,
@@ -537,16 +540,26 @@ const Cell = memo(
       // 늦게 도착한 이전 요청이 새 셀 내용 위에 덮어써 잔상이 남지 않도록
       // 언마운트/의존성 변경 시 진행 중 요청 결과를 버린다.
       let cancelled = false;
-      const refreshImage = async () => {
+      // 같은 칸에서 다시 읽기가 겹치면(무효화 직후 선택 토글 등) 마지막 요청의 결과만 반영한다 —
+      // 무효화 전에 시작한 요청이 늦게 와 새 썸네일을 옛 그림으로 덮지 않게(2026-11-21).
+      // 다시 읽는 동안 이전 그림을 그대로 두므로 칸이 비었다 뜨지 않는다.
+      let requestSeq = 0;
+      // keepOnError = 무효화로 다시 읽을 때 — 파일이 막 옮겨져(WebP 변환·휴지통 이동) 읽기에 실패하면 목록이
+      // 갱신될 때까지 이전 그림을 둔다(일괄 변환 중 칸이 비어 보이지 않게).
+      const refreshImage = async (opts?: { keepOnError?: boolean }) => {
+        const seq = ++requestSeq;
         try {
           const base64Image = await imageService.fetchImageSmall(
             path,
             imageSize,
           )!;
-          if (cancelled) return;
+          if (cancelled || seq !== requestSeq) return;
+          // 원본이 이미 없으면 fetchImageSmall 은 던지지 않고 null 을 준다 — 이것도 「읽기 실패」로 본다.
+          if (!base64Image && opts?.keepOnError) return;
           setImage(base64Image!);
         } catch (e: any) {
-          if (cancelled) return;
+          if (cancelled || seq !== requestSeq) return;
+          if (opts?.keepOnError) return;
           setImage(undefined);
         }
         forceUpdate({});
@@ -841,7 +854,9 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
     const { curSession } = appState;
     const [containerWidth, setContainerWidth] = useState(0);
     const [containerHeight, setContainerHeight] = useState(0);
-    const refreshImageFuncs = useRef(new Map<string, () => void>());
+    const refreshImageFuncs = useRef(
+      new Map<string, (opts?: { keepOnError?: boolean }) => void>(),
+    );
     const draggedIndex = useRef<number | null>(null);
     const hoveredIndexRef = useRef<number | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -880,6 +895,23 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
       getColumnCount: () => columnCount,
       getItemCount: () => filePaths.length,
     }));
+
+    // 썸네일 무효화(밖에서 고친 이미지·WebP 변환·삭제 등) → 지금 그려진 칸 중 그 경로의 칸만 다시 읽는다(2026-11-21).
+    // 리스너는 그리드에 하나(칸마다 달지 않음). 등록되지 않은 경로는 Map 조회만 하고 끝나며,
+    // detail 에 경로가 없으면 아무것도 하지 않는다(전체 칸 다시 읽기 없음). 경로 비교 = imageCacheInvalidation.ts.
+    useEffect(() => {
+      const onInvalidated = (e: Event) => {
+        const refreshes = pickInvalidatedEntries(
+          refreshImageFuncs.current,
+          (e as CustomEvent).detail,
+        );
+        for (const refresh of refreshes) refresh({ keepOnError: true });
+      };
+      imageService.addEventListener('image-cache-invalidated', onInvalidated);
+      return () => {
+        imageService.removeEventListener('image-cache-invalidated', onInvalidated);
+      };
+    }, []);
 
     useEffect(() => {
       const resizeObserver = new ResizeObserver((entries) => {

@@ -16,6 +16,7 @@ import path from 'path';
 import { copyFileUnlessSame } from './copyFileUnlessSame';
 import { openExportDirectory } from './openExportDirectory';
 import { writeImageZip } from './writeImageZip';
+import { createImageChangeDetector, isRootGoneEvent } from './imageFolderWatch';
 import {
   app,
   BrowserWindow,
@@ -2379,7 +2380,53 @@ async function initFolder() {
       }
     } catch (e) {}
   }
-  if (config.refreshImage) {
+  if (config.refreshImage && os.platform() === 'win32') {
+    // Windows: chokidar 3.6 은 파일마다 fs.watch 를 걸어 큰 저장 폴더에서 시작이 수십 초 멈추고,
+    // 폴더마다 핸들을 잡아 하위 폴더가 있는 폴더의 이름 변경을 EPERM 으로 막는다.
+    // recursive fs.watch 한 개로 감시하고, 폴더·새 파일에도 오는 알림은
+    // imageFolderWatch 의 판별기로 걸러 「기존 이미지가 바뀜」만 알린다.
+    const detector = createImageChangeDetector({
+      isFile: (rel) =>
+        fs.stat(path.join(APP_DIR, rel)).then(
+          (s: { isFile(): boolean }) => s.isFile(),
+          () => false,
+        ),
+      // 저장 경로 전역 감시 — 어느 창이 볼지 알 수 없으니 전 창 브로드캐스트.
+      emit: (rel) => broadcast('image-changed', rel),
+    });
+    let watcher: any = null;
+    const stopImageFolderWatch = (reason: string, err?: unknown) => {
+      if (!watcher) return;
+      const w = watcher;
+      watcher = null;
+      try {
+        w.close();
+      } catch (e) {}
+      detector.dispose();
+      if (err !== undefined) log.warn(`저장 경로 전역 감시 중지(${reason}):`, err);
+      else log.warn(`저장 경로 전역 감시 중지(${reason})`);
+    };
+    try {
+      watcher = fsSync.watch(
+        APP_DIR,
+        { recursive: true, persistent: true },
+        (eventType: string, filename: string | null) => {
+          if (!watcher) return;
+          if (isRootGoneEvent(filename)) {
+            // 감시 루트 자체가 사라짐 — 닫을 때까지 알림이 쏟아지므로 닫고 다시 열지 않는다.
+            stopImageFolderWatch('저장 폴더가 사라짐');
+            return;
+          }
+          detector.onRawEvent(eventType, filename);
+        },
+      );
+      watcher.on('error', (e: unknown) => stopImageFolderWatch('감시 오류', e));
+    } catch (e) {
+      watcher = null;
+      detector.dispose();
+      log.warn('저장 경로 전역 감시 시작 실패:', e);
+    }
+  } else if (config.refreshImage) {
     const handle = chokidar.watch(APP_DIR, {
       persistent: true,
       ignoreInitial: true,

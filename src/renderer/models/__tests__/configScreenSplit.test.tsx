@@ -628,7 +628,7 @@ const PC_CASES: [string, Case][] = [
     '레이아웃 — 클래식 툴바',
     { tab: '레이아웃', change: () => click(input('cfgClassicToolbar')), expected: { uiToolbar: { classic: true } } },
   ],
-  ['저장경로 — 폴더 직접 편집 감지', { tab: '저장 경로', change: () => click(input('cfgRefresh')), expected: { refreshImage: true } }],
+  ['저장경로 — 밖에서 고친 이미지 자동 반영', { tab: '저장 경로', change: () => click(input('cfgRefresh')), expected: { refreshImage: true } }],
   [
     '저장경로 — 이미지 편집기',
     {

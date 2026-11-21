@@ -1,5 +1,6 @@
 import { MobileV2Parts, normalizeV2Parts } from '../models/mobileV2';
 import { isWeightSpacingFixEnabled } from '../models/promptWeightSpacingFlow';
+import { collectProjectFastcacheDirs } from '../models/imageCacheClear';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { HScrollHintArrow, useHScrollHint } from './HScrollHint';
 import {
@@ -1006,9 +1007,15 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const clearImageCache = async () => {
     if (!curSession) return;
     appState.pushMessage('이미지 캐시 초기화 시작');
-    for (const scene of Object.values(curSession.scenes)) {
+    // 이미지생성 씬·변형 씬의 <이미지 폴더>/fastcache 만(목록 단일 출처 models/imageCacheClear.ts, 2026-11-21 —
+    // 종전엔 Map 인 scenes 를 Object.values 로 훑어 디스크 썸네일을 하나도 지우지 못했다).
+    const session = curSession;
+    const dirs = collectProjectFastcacheDirs(session, (scene) =>
+      imageService.getOutputDir(session, scene),
+    );
+    for (const dir of dirs) {
       try {
-        await backend.deleteDir(imageService.getImageDir(curSession, scene) + '/fastcache');
+        await backend.deleteDir(dir);
       } catch (e) {}
     }
     imageService.cache.cache.clear();
