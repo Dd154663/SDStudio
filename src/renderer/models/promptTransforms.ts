@@ -9,7 +9,11 @@ import {
   PROMPT_WEIGHT_NUMBER_SOURCE,
 } from './promptWeightSyntax';
 // ##주석## 범위 — PromptService.stripPromptComments 와 같은 단일 출처(여러 줄 허용, 짝 없는 단일 ## 는 리터럴).
-import { PromptCommentRange, promptCommentRanges } from './promptCommentSyntax';
+import {
+  PromptCommentRange,
+  promptCommentBoundsAt,
+  promptCommentRanges,
+} from './promptCommentSyntax';
 
 export type { PromptCommentRange };
 
@@ -68,21 +72,10 @@ function weightSegmentOf(
   selectionStart: number,
 ): CaretSegment | undefined {
   const caret = clamp(selectionStart, 0, text.length);
-  let lo = 0;
-  let hi = text.length;
-  for (const r of promptCommentRanges(text)) {
-    if (caret === r.start + 1 || caret === r.end - 1) return undefined;
-    if (r.start + 2 <= caret && caret <= r.end - 2) {
-      lo = r.start + 2;
-      hi = r.end - 2;
-      break;
-    }
-    if (r.end <= caret) lo = r.end;
-    else if (caret <= r.start) {
-      hi = r.start;
-      break;
-    }
-  }
+  // 주석 경계 규칙은 자동완성 단어(autocompleteWordRangeAt)와 공유하는 promptCommentBoundsAt 단일 출처.
+  const bounds = promptCommentBoundsAt(text, caret);
+  if (!bounds) return undefined;
+  const { lo, hi } = bounds;
   if (lo === 0 && hi === text.length) return caretSegmentOf(text, caret);
   const inner = caretSegmentOf(text.slice(lo, hi), caret - lo);
   return {

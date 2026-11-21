@@ -54,6 +54,8 @@ import {
 } from '../models/promptEditorFocus';
 import {
   autocompleteTagCategory,
+  autocompleteWordAt,
+  replaceAutocompleteWordAt,
   trimAutocompleteWord,
 } from '../models/promptAutocomplete';
 import { PROMPT_WEIGHT_OPEN_AT_START_RE } from '../models/promptWeightSyntax';
@@ -357,51 +359,29 @@ class CursorMemorizeEditor {
   }
 
   getCurWord(start: number) {
-    let curText = this.domText;
-    let startIdx = start;
-    while (startIdx > 0 && !',\n'.includes(curText[startIdx - 1])) {
-      startIdx--;
-    }
-    if (appState.fullWordAutoComplete) {
-      // 콤마 사이 전체 단어 모드
-      let endIdx = start;
-      while (endIdx < curText.length && !',\n'.includes(curText[endIdx])) {
-        endIdx++;
-      }
-      return curText.substring(startIdx, endIdx).trim();
-    }
-    // 기본: 커서 왼쪽만
-    return curText.substring(startIdx, start).trim();
+    // 단어 경계(쉼표·줄바꿈·##주석## 경계)와 기본/전체 단어 모드는 promptAutocomplete 단일 출처 — 모바일 편집기와 같은 규칙.
+    return autocompleteWordAt(
+      this.domText,
+      start,
+      appState.fullWordAutoComplete,
+    );
   }
 
   setCurWord(word: string) {
     mutex.runExclusive(async () => {
       const [start, end] = this.getCaretPosition();
-      let curText = this.domText;
-      let startIdx = start;
-      while (startIdx > 0 && !',\n'.includes(curText[startIdx - 1])) {
-        startIdx--;
-      }
-      if (appState.fullWordAutoComplete) {
-        // 전체 단어 모드: 커서 오른쪽도 포함하여 교체
-        var endIdx = start;
-        while (endIdx < curText.length && !',\n'.includes(curText[endIdx])) {
-          endIdx++;
-        }
-      } else {
-        // 기본 모드: 커서 왼쪽만 교체 (오른쪽 텍스트 보존)
-        var endIdx = start;
-      }
-      if (startIdx !== 0 && curText[startIdx - 1] !== '\n') word = ' ' + word;
-      this.updateCurText(
-        curText.substring(0, startIdx) + word + curText.substring(endIdx),
+      // 기본 모드는 커서 왼쪽만, 전체 단어 모드는 커서 오른쪽도 포함해 교체. `##` 두 글자 사이면 아무것도 하지 않음.
+      const replaced = replaceAutocompleteWordAt(
+        this.domText,
+        start,
+        word,
+        appState.fullWordAutoComplete,
       );
-      this.updateDOM(this.curText, startIdx, false);
+      if (!replaced) return;
+      this.updateCurText(replaced.text);
+      this.updateDOM(this.curText, replaced.start, false);
       this.compositionBuffer = [];
-      await this.setCaretPosition([
-        startIdx + word.length,
-        startIdx + word.length,
-      ]);
+      await this.setCaretPosition([replaced.caret, replaced.caret]);
     });
   }
 
@@ -1231,22 +1211,13 @@ const NativeEditTextArea = observer(
       const containerRef = useRef<any>(null);
       const isAutoComplete = useRef(false);
 
-      const getCurWord = () => {
-        let start = textareaRef.current.selectionStart;
-        const curText = textareaRef.current.value;
-        let startIdx = start;
-        while (startIdx > 0 && !',\n'.includes(curText[startIdx - 1])) {
-          startIdx--;
-        }
-        if (appState.fullWordAutoComplete) {
-          let endIdx = start;
-          while (endIdx < curText.length && !',\n'.includes(curText[endIdx])) {
-            endIdx++;
-          }
-          return curText.substring(startIdx, endIdx).trim();
-        }
-        return curText.substring(startIdx, start).trim();
-      };
+      // 단어 경계(쉼표·줄바꿈·##주석## 경계)는 promptAutocomplete 단일 출처 — PC 편집기와 같은 규칙.
+      const getCurWord = () =>
+        autocompleteWordAt(
+          textareaRef.current.value,
+          textareaRef.current.selectionStart,
+          appState.fullWordAutoComplete,
+        );
 
       const renderText = () => {
         const text = textareaRef.current.value;
@@ -1393,28 +1364,18 @@ const NativeEditTextArea = observer(
           isAutoComplete.current = true;
         },
         setCurWord: (word: string) => {
-          const start = textareaRef.current.selectionStart;
-          let curText = textareaRef.current.value;
-          let startIdx = start;
-          while (startIdx > 0 && !',\n'.includes(curText[startIdx - 1])) {
-            startIdx--;
-          }
-          let endIdx: number;
-          if (appState.fullWordAutoComplete) {
-            endIdx = start;
-            while (endIdx < curText.length && !',\n'.includes(curText[endIdx])) {
-              endIdx++;
-            }
-          } else {
-            endIdx = start;
-          }
-          if (startIdx !== 0 && curText[startIdx - 1] !== '\n')
-            word = ' ' + word;
-          const newText =
-            curText.substring(0, startIdx) + word + curText.substring(endIdx);
+          // 기본 모드는 커서 왼쪽만, 전체 단어 모드는 커서 오른쪽도 포함해 교체. `##` 두 글자 사이면 아무것도 하지 않음.
+          const replaced = replaceAutocompleteWordAt(
+            textareaRef.current.value,
+            textareaRef.current.selectionStart,
+            word,
+            appState.fullWordAutoComplete,
+          );
+          if (!replaced) return;
+          const newText = replaced.text;
           textareaRef.current.value = newText;
           onUpdated(newText);
-          textareaRef.current.selectionEnd = startIdx + word.length;
+          textareaRef.current.selectionEnd = replaced.caret;
           highlightRef.current.innerHTML =
             highlight(newText, '', false) + '<span></span><br>';
           pushHistory();

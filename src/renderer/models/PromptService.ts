@@ -13,6 +13,7 @@ import {
 import { resolveSceneCharacterPrompts } from './sceneCharacterPrompts';
 import { variantComboMode } from './comboMode';
 import {
+  promptCommentRanges,
   splitMultiPieceLines,
   stripPromptComments,
 } from './promptCommentSyntax';
@@ -766,27 +767,30 @@ export const highlightPrompt = (
   text: string,
   lineHighlight: boolean = false,
 ) => {
-  // 주석 범위 수집 (원본 text 기준 절대 오프셋)
-  const commentRanges: Array<[number, number]> = [];
-  const commentRegex = /##[\s\S]*?##/g;
-  let commentMatch: RegExpExecArray | null;
-  while ((commentMatch = commentRegex.exec(text)) !== null) {
-    commentRanges.push([
-      commentMatch.index,
-      commentMatch.index + commentMatch[0].length,
-    ]);
+  // 주석 범위 — 단일 출처 promptCommentRanges(원문 기준 절대 오프셋, 앞에서부터·겹치지 않음).
+  const commentRanges = promptCommentRanges(text);
+  // 가중치·괄호 계산용 글: 주석을 같은 길이의 공백으로 가린다(오프셋 불변, 2026-11-21).
+  // 생성은 주석을 걷은 뒤 해석하므로 주석 안의 `2::`·`{` 가 바깥 글자의 색을 바꾸지 않게 한다.
+  // 가중치 범위가 주석을 가로지르는 `1.3::aaa ##메모## bbb::` 는 그대로 한 범위. 주석이 없으면 원문 그대로.
+  let maskedText = text;
+  if (commentRanges.length > 0) {
+    let built = '';
+    let prev = 0;
+    for (const r of commentRanges) {
+      built += text.slice(prev, r.start) + ' '.repeat(r.end - r.start);
+      prev = r.end;
+    }
+    maskedText = built + text.slice(prev);
   }
-  const overlapsComment = (wordStart: number, wordEnd: number): boolean =>
-    commentRanges.some(([s, e]) => s < wordEnd && e > wordStart);
 
   // ── 가중치 하이라이트용: 각 문자 위치의 bracket depth 계산 ──
   // {}: +1 depth, []: -1 depth per pair
-  const weightDepth = new Int8Array(text.length); // 양수=강조, 음수=약화
+  const weightDepth = new Int8Array(maskedText.length); // 양수=강조, 음수=약화
   {
     let curly = 0;  // {} depth
     let square = 0; // [] depth
-    for (let i = 0; i < text.length; i++) {
-      const c = text[i];
+    for (let i = 0; i < maskedText.length; i++) {
+      const c = maskedText[i];
       if (c === '{') curly++;
       else if (c === '}') curly = Math.max(0, curly - 1);
       else if (c === '[') square++;
@@ -799,17 +803,18 @@ export const highlightPrompt = (
   // 숫자 표기는 promptWeightSyntax 단일 출처 — .6:: 도 0.6(1 미만 색)으로 본다(2026-10-02 I2, 예전엔 6 으로 읽어 강조 색).
   const ewRegex = makeExplicitWeightRangeRegex();
   let ewMatch: RegExpExecArray | null;
-  while ((ewMatch = ewRegex.exec(text)) !== null) {
+  while ((ewMatch = ewRegex.exec(maskedText)) !== null) {
     explicitWeightRanges.push({
       start: ewMatch.index,
       end: ewMatch.index + ewMatch[0].length,
       weight: parsePromptWeightNumber(ewMatch[1]),
     });
   }
-  /** 해당 offset 범위의 가중치 상태 반환: 'emphasis' | 'deemphasis' | 'negative' | null */
+  /**
+   * 해당 offset 범위의 가중치 상태 반환: 'emphasis' | 'deemphasis' | 'negative' | null
+   * 주석 글자에는 부르지 않는다(주석은 아래에서 syntax-comment 로 따로 그림).
+   */
   const getWeightClass = (wordStart: number, wordEnd: number): string | null => {
-    // 주석 영역 내부면 가중치 무시
-    if (overlapsComment(wordStart, wordEnd)) return null;
     // (number)::tag:: 명시적 가중치 우선 (overlap 판정 — 앞뒤 공백 포함 가능)
     for (const ew of explicitWeightRanges) {
       if (ew.start < wordEnd && ew.end > wordStart) {
@@ -822,13 +827,13 @@ export const highlightPrompt = (
     // bracket depth 기반 (단어 첫 비공백 문자 위치)
     let samplePos = wordStart;
     for (let i = wordStart; i < wordEnd; i++) {
-      const c = text[i];
+      const c = maskedText[i];
       if (c !== ' ' && c !== '{' && c !== '}' && c !== '[' && c !== ']') {
         samplePos = i;
         break;
       }
     }
-    if (samplePos < text.length) {
+    if (samplePos < maskedText.length) {
       const depth = weightDepth[samplePos];
       if (depth > 0) return 'syntax-weight-emphasis';
       if (depth < 0) return 'syntax-weight-deemphasis';
@@ -836,162 +841,175 @@ export const highlightPrompt = (
     return null;
   };
 
-  // 괄호 검사는 주석 영역을 공백으로 대체한 텍스트에서 수행
-  // (주석 내부 괄호가 오류로 집계되지 않도록)
-  const parenCheckText = commentRanges.length === 0
-    ? text
-    : text.split('').map((c, i) =>
-        commentRanges.some(([s, e]) => i >= s && i < e) ? ' ' : c,
-      ).join('');
-  let [parenFine, lastPos] = parenCheck(parenCheckText);
+  // 괄호 검사도 주석을 가린 글에서 수행(주석 내부 괄호가 오류로 집계되지 않도록)
+  let [parenFine, lastPos] = parenCheck(maskedText);
+
+  /** 엔티티 이스케이프(전부). 주석 글자와, 주석과 같은 구획의 조각에 쓴다. */
+  const escapeAllHtml = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  /**
+   * 주석이 없는 단어 하나(쉼표 구획, 또는 구획 안 주석 사이 조각)를 그린다. wordStart = 원문 절대 위치.
+   * escapeAll = 주석과 같은 구획의 조각(종전 주석 분기처럼 &·<·> 를 전부 이스케이프).
+   * 주석 없는 구획은 종전 그대로 첫 `<`·`>` 만 바꾼다(주석 없는 프롬프트의 출력 불변).
+   */
+  const renderWord = (
+    word: string,
+    wordStart: number,
+    escapeAll: boolean = false,
+  ): string => {
+    const esc = escapeAll
+      ? escapeAllHtml
+      : (s: string) => s.replace('<', '&lt;').replace('>', '&gt');
+    const classNames = [];
+    let leftTrimPos = 0;
+    while (leftTrimPos < word.length && isWhitespace(word[leftTrimPos])) {
+      leftTrimPos++;
+    }
+    let rightTrimPos = word.length - 1;
+    while (rightTrimPos >= 0 && isWhitespace(word[rightTrimPos])) {
+      rightTrimPos--;
+    }
+    if (leftTrimPos > rightTrimPos) {
+      let res = ``;
+      res += ' '.repeat(word.length) + '';
+      return res;
+    }
+    if (
+      !parenFine &&
+      wordStart <= lastPos &&
+      lastPos < wordStart + word.length
+    ) {
+      const left = esc(word.substring(0, lastPos - wordStart));
+      const mid = esc(word[lastPos - wordStart]);
+      const right = esc(word.substring(lastPos - wordStart + 1, word.length));
+      word = `${left}<span class="syntax-error">${mid}</span>${right}`;
+      let res = `<span class="syntax-word">`;
+      res += word + '</span>';
+      return res;
+    }
+    let js = '';
+    let pword = word.substring(leftTrimPos, rightTrimPos + 1);
+    if (pword === '|') {
+      classNames.push('syntax-split');
+      if (!isMobile)
+        js =
+          'onmousemove="window.promptService.showPromptTooltip(\'' +
+          pword +
+          '\', event)" onmouseout="window.promptService.clearPromptTooltip()"';
+    }
+    // 가중치 하이라이트 (배경색만, 폰트 변경 없음)
+    const wClass = getWeightClass(wordStart + leftTrimPos, wordStart + rightTrimPos + 1);
+    if (wClass) {
+      classNames.push(wClass);
+    }
+    if (pword.startsWith('[') && pword.endsWith(']')) {
+      classNames.push('syntax-weak');
+    }
+    if (pword.startsWith('{') && pword.endsWith('}')) {
+      classNames.push('syntax-strong');
+    }
+
+    if (pword.startsWith('<') && pword.endsWith('>')) {
+      try {
+        promptService.tryExpandPiece(pword, session);
+        const isGlobal = promptService.isGlobal(pword, session);
+        if (promptService.isMulti(pword, session))
+          classNames.push(isGlobal ? 'syntax-global-multi-wildcard' : 'syntax-multi-wildcard');
+        else
+          classNames.push(isGlobal ? 'syntax-global-wildcard' : 'syntax-wildcard');
+
+        js =
+          'onmousemove="window.promptService.showPromptTooltip(\'' +
+          pword +
+          '\', event)" onmouseout="window.promptService.clearPromptTooltip()"';
+      } catch (e: any) {
+        classNames.push('syntax-error');
+      }
+    }
+    pword = esc(pword);
+    const leading = word.substring(0, leftTrimPos);
+    const trailing = word.substring(rightTrimPos + 1, word.length);
+    // 가중치 범위 내 공백은 하이라이트에 포함 (연속된 시각 피드백)
+    const leadingInWeight = wClass && leftTrimPos > 0 && getWeightClass(wordStart, wordStart + leftTrimPos) !== null;
+    let res: string;
+    if (classNames.length === 0) {
+      res = `${leading}${pword}${trailing}`;
+    } else if (leadingInWeight) {
+      res = `<span ${js} class="${classNames.join(' ')}">${leading}${pword}</span>${trailing}`;
+    } else {
+      res = `${leading}<span ${js} class="${classNames.join(' ')}">${pword}</span>${trailing}`;
+    }
+    return res;
+  };
+
+  const renderComment = (s: string) =>
+    '<span class="syntax-comment">' + escapeAllHtml(s) + '</span>';
+
+  // 원문 절대 위치. 단어는 글자 수만큼, 쉼표는 1, 줄 끝 줄바꿈은 1 씩 나아간다.
   let offset = 0;
+  // 주석 범위 커서 — 단어·쉼표를 앞에서부터 처리하므로 범위 목록을 한 번만 훑는다(글자마다 검사하지 않음).
+  let nextComment = 0;
+  const skipCommentsBefore = (pos: number) => {
+    while (
+      nextComment < commentRanges.length &&
+      commentRanges[nextComment].end <= pos
+    ) {
+      nextComment++;
+    }
+  };
   const words = text
     .split('\n')
     .map((x) => {
-      const word = x
+      const line = x
         .split(/([,])/)
-        .map((word: string, index) => {
-          if (word === '\n') {
-            return word;
-          }
+        .map((word: string) => {
           if (word === ',') {
-            // 콤마가 주석 영역 내부면 주석 스타일
-            const isInComment = overlapsComment(offset, offset + 1);
-            offset += 0; // 기존 로직과 맞춤 (콤마는 offset 증가 안 함 — 다음 단어의 +1에 포함)
-            if (isInComment) {
+            // 쉼표는 자기 위치로 판정(종전에는 한 글자 뒤를 봤음)
+            const pos = offset;
+            offset += 1;
+            skipCommentsBefore(pos);
+            const c = commentRanges[nextComment];
+            if (c && c.start <= pos) {
+              // 콤마가 주석 영역 내부면 주석 스타일
               return '<span class="syntax-comment">,</span>';
             }
             // 콤마가 가중치 영역 내부면 가중치 배경 적용
-            const commaWeight = getWeightClass(offset, offset + 1);
+            const commaWeight = getWeightClass(pos, pos + 1);
             if (commaWeight) {
               return `<span class="${commaWeight}">,</span>`;
             }
             return word;
           }
-          // 단어가 주석 영역과 겹치면 주석 부분만 정확히 주석 스타일 적용
           const wordStart = offset;
           const wordEnd = offset + word.length;
-          if (overlapsComment(wordStart, wordEnd)) {
-            let result = '';
-            let i = 0;
-            while (i < word.length) {
-              const absPos = wordStart + i;
-              const inComment = commentRanges.some(([s, e]) => absPos >= s && absPos < e);
-              let j = i + 1;
-              while (j < word.length) {
-                const nextInComment = commentRanges.some(([s, e]) => (wordStart + j) >= s && (wordStart + j) < e);
-                if (nextInComment !== inComment) break;
-                j++;
-              }
-              const segment = word.slice(i, j)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;');
-              if (inComment) {
-                result += `<span class="syntax-comment">${segment}</span>`;
-              } else {
-                result += segment;
-              }
-              i = j;
-            }
-            offset += word.length + 1;
-            return result;
+          offset = wordEnd;
+          skipCommentsBefore(wordStart);
+          const first = commentRanges[nextComment];
+          if (!first || first.start >= wordEnd) {
+            return renderWord(word, wordStart);
           }
-          const classNames = [];
-          let leftTrimPos = 0;
-          while (leftTrimPos < word.length && isWhitespace(word[leftTrimPos])) {
-            leftTrimPos++;
-          }
-          let rightTrimPos = word.length - 1;
-          while (rightTrimPos >= 0 && isWhitespace(word[rightTrimPos])) {
-            rightTrimPos--;
-          }
-          if (leftTrimPos > rightTrimPos) {
-            let res = ``;
-            res += ' '.repeat(word.length) + '';
-            offset += word.length + 1;
-            return res;
-          }
-          if (
-            !parenFine &&
-            offset <= lastPos &&
-            lastPos < offset + word.length
-          ) {
-            const originalWordLength = word.length;
-            const left = word
-              .substring(0, lastPos - offset)
-              .replace('<', '&lt;')
-              .replace('>', '&gt');
-            const mid = word[lastPos - offset]
-              .replace('<', '&lt;')
-              .replace('>', '&gt');
-            const right = word
-              .substring(lastPos - offset + 1, word.length)
-              .replace('<', '&lt;')
-              .replace('>', '&gt');
-            word = `${left}<span class="syntax-error">${mid}</span>${right}`;
-            let res = `<span class="syntax-word">`;
-            res += word + '</span>';
-            offset += originalWordLength + 1;
-            return res;
-          }
-          let js = '';
-          let pword = word.substring(leftTrimPos, rightTrimPos + 1);
-          if (pword === '|') {
-            classNames.push('syntax-split');
-            if (!isMobile)
-              js =
-                'onmousemove="window.promptService.showPromptTooltip(\'' +
-                pword +
-                '\', event)" onmouseout="window.promptService.clearPromptTooltip()"';
-          }
-          // 가중치 하이라이트 (배경색만, 폰트 변경 없음)
-          const wClass = getWeightClass(wordStart + leftTrimPos, wordStart + rightTrimPos + 1);
-          if (wClass) {
-            classNames.push(wClass);
-          }
-          if (pword.startsWith('[') && pword.endsWith(']')) {
-            classNames.push('syntax-weak');
-          }
-          if (pword.startsWith('{') && pword.endsWith('}')) {
-            classNames.push('syntax-strong');
-          }
-
-          if (pword.startsWith('<') && pword.endsWith('>')) {
-            try {
-              promptService.tryExpandPiece(pword, session);
-              const isGlobal = promptService.isGlobal(pword, session);
-              if (promptService.isMulti(pword, session))
-                classNames.push(isGlobal ? 'syntax-global-multi-wildcard' : 'syntax-multi-wildcard');
-              else
-                classNames.push(isGlobal ? 'syntax-global-wildcard' : 'syntax-wildcard');
-
-              js =
-                'onmousemove="window.promptService.showPromptTooltip(\'' +
-                pword +
-                '\', event)" onmouseout="window.promptService.clearPromptTooltip()"';
-            } catch (e: any) {
-              classNames.push('syntax-error');
+          // 구획 안에 주석이 있으면 주석 경계에서 나눈다 — 주석은 주석 색, 그 밖의 조각은 보통 단어와 같은 처리.
+          let result = '';
+          let i = wordStart;
+          let k = nextComment;
+          while (i < wordEnd) {
+            const c = commentRanges[k];
+            if (c && c.start <= i) {
+              const e = Math.min(c.end, wordEnd);
+              result += renderComment(text.slice(i, e));
+              i = e;
+              if (c.end <= wordEnd) k++;
+            } else {
+              const e = c ? Math.min(c.start, wordEnd) : wordEnd;
+              result += renderWord(text.slice(i, e), i, true);
+              i = e;
             }
           }
-          pword = pword.replace('<', '&lt;').replace('>', '&gt');
-          const leading = word.substring(0, leftTrimPos);
-          const trailing = word.substring(rightTrimPos + 1, word.length);
-          // 가중치 범위 내 공백은 하이라이트에 포함 (연속된 시각 피드백)
-          const leadingInWeight = wClass && leftTrimPos > 0 && getWeightClass(wordStart, wordStart + leftTrimPos) !== null;
-          let res: string;
-          if (classNames.length === 0) {
-            res = `${leading}${pword}${trailing}`;
-          } else if (leadingInWeight) {
-            res = `<span ${js} class="${classNames.join(' ')}">${leading}${pword}</span>${trailing}`;
-          } else {
-            res = `${leading}<span ${js} class="${classNames.join(' ')}">${pword}</span>${trailing}`;
-          }
-          offset += word.length + 1;
-          return res;
+          return result;
         })
         .join('');
-      return '<span class="syntax-line">' + word + '</span>';
+      offset += 1; // 줄 끝 줄바꿈
+      return '<span class="syntax-line">' + line + '</span>';
     })
     .join('\n');
   return `${words}`;

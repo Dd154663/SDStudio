@@ -25,6 +25,45 @@ export function promptCommentRanges(text: string): PromptCommentRange[] {
   return ranges;
 }
 
+/** 커서가 속한 「주석 경계 안 구간」. */
+export interface PromptCommentBounds {
+  /** 구간 시작(앞 주석의 닫는 `##` 바로 뒤, 주석 안이면 여는 `##` 바로 뒤, 없으면 0). */
+  lo: number;
+  /** 구간 끝(다음 주석의 여는 `##`, 주석 안이면 닫는 `##`, 없으면 글 끝). */
+  hi: number;
+  /** 커서가 주석 내용 안이면 true. */
+  inComment: boolean;
+}
+
+/**
+ * 커서 위치의 주석 경계 구간 — 가중치 구획(promptTransforms.weightSegmentOf)과
+ * 자동완성 단어(promptAutocomplete.autocompleteWordRangeAt)가 같은 규칙을 쓴다(2026-11-21).
+ * - 커서가 주석 밖(여는 `##` 바로 앞·닫는 `##` 바로 뒤 포함)이면 앞 주석 끝 ~ 다음 주석 시작.
+ * - 커서가 주석 안(여는 `##` 바로 뒤 ~ 닫는 `##` 바로 앞 포함)이면 그 주석 내용.
+ * - 커서가 `##` 표식 두 글자 사이면 undefined.
+ * caret 은 0 ~ text.length 로 맞춰 넘긴다. ranges 를 이미 구했으면 넘겨 다시 계산하지 않는다.
+ */
+export function promptCommentBoundsAt(
+  text: string,
+  caret: number,
+  ranges: PromptCommentRange[] = promptCommentRanges(text),
+): PromptCommentBounds | undefined {
+  let lo = 0;
+  let hi = text.length;
+  for (const r of ranges) {
+    if (caret === r.start + 1 || caret === r.end - 1) return undefined;
+    if (r.start + 2 <= caret && caret <= r.end - 2) {
+      return { lo: r.start + 2, hi: r.end - 2, inComment: true };
+    }
+    if (r.end <= caret) lo = r.end;
+    else if (caret <= r.start) {
+      hi = r.start;
+      break;
+    }
+  }
+  return { lo, hi, inComment: false };
+}
+
 /**
  * ##주석## 블록 제거.
  * - 여러 줄, 콤마 포함 가능 (non-greedy)
