@@ -195,7 +195,7 @@ export const CharacterPresetCard = observer(({
     <div
       ref={ref}
       className={
-        'group relative rounded-lg bg-[var(--c-surface-2)] border-2 overflow-hidden cursor-pointer transition-all hover:shadow-lg ' +
+        'group relative rounded-lg bg-[var(--c-surface-2)] border-2 overflow-hidden cursor-pointer transition-[box-shadow,opacity] hover:shadow-lg ' +
         (isDragging ? 'opacity-30 ' : '') +
         'line-color ' +
         (isOver ? 'card-drop-target ' : '')
@@ -483,7 +483,7 @@ export const GlobalCharacterPresetCard = observer(({
     <div
       ref={ref}
       className={
-        'group relative rounded-lg bg-[var(--c-surface-2)] border-2 overflow-hidden transition-all hover:shadow-lg ' +
+        'group relative rounded-lg bg-[var(--c-surface-2)] border-2 overflow-hidden transition-[box-shadow,opacity] hover:shadow-lg ' +
         (isDragging ? 'opacity-30 ' : '') +
         'border-purple-300 dark:border-purple-600 ' +
         (isOver ? 'card-drop-target ' : '')

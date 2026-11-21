@@ -8,7 +8,6 @@ import {
   FaFolder,
   FaStar,
   FaPlus,
-  FaChevronDown,
   FaChevronRight,
   FaChevronLeft,
   FaPalette,
@@ -1729,17 +1728,13 @@ const ProjectDrawer = observer(() => {
                     onClick={() => toggleFolder('__favorites__')}
                     className="btn w-full flex items-center gap-2 pl-1.5 pr-2 py-2.5 rounded-md text-[15px] font-semibold text-body"
                   >
-                    {expanded.has('__favorites__') ? (
-                      <FaChevronDown
-                        size={12}
-                        className="flex-none text-faint"
-                      />
-                    ) : (
-                      <FaChevronRight
-                        size={12}
-                        className="flex-none text-faint"
-                      />
-                    )}
+                    <FaChevronRight
+                      size={12}
+                      className={
+                        'flex-none text-faint transition-transform' +
+                        (expanded.has('__favorites__') ? ' rotate-90' : '')
+                      }
+                    />
                     <span
                       className="flex items-center justify-center w-7 h-7 rounded-md flex-none"
                       style={{ backgroundColor: withAlpha('#facc15', '26') }}
@@ -1914,17 +1909,13 @@ const ProjectDrawer = observer(() => {
                             }}
                             className="flex-1 flex items-center gap-2 px-1 py-2.5 text-[15px] font-semibold text-body min-w-0"
                           >
-                            {isOpen ? (
-                              <FaChevronDown
-                                size={12}
-                                className="flex-none text-faint"
-                              />
-                            ) : (
-                              <FaChevronRight
-                                size={12}
-                                className="flex-none text-faint"
-                              />
-                            )}
+                            <FaChevronRight
+                              size={12}
+                              className={
+                                'flex-none text-faint transition-transform' +
+                                (isOpen ? ' rotate-90' : '')
+                              }
+                            />
                             <span
                               className="flex items-center justify-center w-7 h-7 rounded-md flex-none"
                               style={{
@@ -2155,17 +2146,13 @@ const ProjectDrawer = observer(() => {
                       onClick={() => toggleFolder('__unfiled__')}
                       className="w-full flex items-center gap-2 pl-1.5 pr-2 py-2.5 text-[15px] font-semibold text-body"
                     >
-                      {expanded.has('__unfiled__') ? (
-                        <FaChevronDown
-                          size={11}
-                          className="flex-none text-faint"
-                        />
-                      ) : (
-                        <FaChevronRight
-                          size={11}
-                          className="flex-none text-faint"
-                        />
-                      )}
+                      <FaChevronRight
+                        size={11}
+                        className={
+                          'flex-none text-faint transition-transform' +
+                          (expanded.has('__unfiled__') ? ' rotate-90' : '')
+                        }
+                      />
                       <span
                         className="flex items-center justify-center w-7 h-7 rounded-md flex-none"
                         style={{ backgroundColor: withAlpha('#94a3b8', '26') }}

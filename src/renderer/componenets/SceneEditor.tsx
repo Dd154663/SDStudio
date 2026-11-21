@@ -33,7 +33,6 @@ import {
   FaArrowDown,
   FaGripVertical,
   FaLock,
-  FaChevronDown,
   FaChevronRight,
 } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
@@ -238,7 +237,7 @@ const FoldHead = ({ open, label, onToggle }: { open: boolean; label: string; onT
     aria-expanded={open}
     onClick={onToggle}
   >
-    {open ? <FaChevronDown size={10} className="flex-none text-faint" /> : <FaChevronRight size={10} className="flex-none text-faint" />}
+    <FaChevronRight size={10} className={'flex-none text-faint transition-transform' + (open ? ' rotate-90' : '')} />
     <span className="truncate">{label}</span>
   </button>
 );
@@ -1250,7 +1249,7 @@ const SceneCharacterPromptEditor = observer(({
                   if (draggingRoleIndex !== null) moveRole(draggingRoleIndex, index);
                   setDraggingRoleIndex(null);
                 }}
-                className={`border rounded-lg ${isMobile ? 'p-3' : 'p-4'} transition-all ${
+                className={`border rounded-lg ${isMobile ? 'p-3' : 'p-4'} transition-[border-color,background-color,opacity] ${
                   character.enabled !== false
                     ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
                     : 'line-color opacity-60'

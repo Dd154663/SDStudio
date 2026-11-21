@@ -20,7 +20,6 @@ import {
   FaSlidersH,
   FaToggleOn,
   FaToggleOff,
-  FaChevronDown,
   FaChevronRight,
   FaArrowUp,
   FaArrowDown,
@@ -340,11 +339,10 @@ export const EditorField = ({
         >
           {foldable && (
             <span className="inline-block mr-1 text-faint align-middle">
-              {folded ? (
-                <FaChevronRight size={9} />
-              ) : (
-                <FaChevronDown size={9} />
-              )}
+              <FaChevronRight
+                size={9}
+                className={'transition-transform' + (folded ? '' : ' rotate-90')}
+              />
             </span>
           )}
           {bold ? <b>{label}</b> : label}

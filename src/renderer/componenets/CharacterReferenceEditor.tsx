@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { v4 } from 'uuid';
-import { FaChevronDown, FaChevronRight, FaPortrait, FaTimes, FaToggleOff, FaToggleOn, FaTrash } from 'react-icons/fa';
+import { FaChevronRight, FaPortrait, FaTimes, FaToggleOff, FaToggleOn, FaTrash } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
 import { FileUploadBase64 } from './UtilComponents';
 import Tooltip from './Tooltip';
@@ -210,11 +210,11 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                 onClick={() => setShowDefaults(!showDefaults)}
               >
                 {/* 접기 표시 = SceneEditor FoldHead 와 같은 셰브론(2026-11-20 그룹 1-c, 종전 ▾/▸ 글자) */}
-                {showDefaults ? (
-                  <FaChevronDown size={10} className="flex-none text-faint" aria-hidden="true" />
-                ) : (
-                  <FaChevronRight size={10} className="flex-none text-faint" aria-hidden="true" />
-                )}
+                <FaChevronRight
+                  size={10}
+                  className={'flex-none text-faint transition-transform' + (showDefaults ? ' rotate-90' : '')}
+                  aria-hidden="true"
+                />
                 새 레퍼런스 기본값 설정
               </button>
               {showDefaults && (

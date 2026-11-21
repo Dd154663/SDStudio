@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import { reaction } from 'mobx';
-import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck, FaPen, FaTimes, FaPalette, FaChevronDown, FaChevronRight, FaFolderPlus, FaWindowRestore } from 'react-icons/fa';
+import { FaStar, FaSearch, FaFolder, FaPlus, FaEllipsisV, FaCheck, FaPen, FaTimes, FaPalette, FaChevronRight, FaFolderPlus, FaWindowRestore } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
 import {
   sessionService,
@@ -138,7 +138,7 @@ const ProjectCard = ({
       onDragStart={onDragStart ? (e: React.DragEvent) => { e.stopPropagation(); onDragStart(e); } : undefined}
       onDragEnd={onDragEnd ? (e: React.DragEvent) => { e.stopPropagation(); onDragEnd(e); } : undefined}
       style={isDragging ? { opacity: 0.4 } : undefined}
-      className={`cursor-pointer rounded-lg border-2 overflow-hidden transition-all hover:brightness-95 active:brightness-90 ${
+      className={`cursor-pointer rounded-lg border-2 overflow-hidden transition-[filter,border-color,box-shadow,opacity] hover:brightness-95 active:brightness-90 ${
         isSelected
           ? 'line-color card-selected card-check-none'
           : isActive
@@ -969,7 +969,7 @@ const ProjectBrowser = observer(({ onClose }: { onClose: () => void }) => {
                   icon={
                     hasChildren ? (
                       <span className="flex items-center gap-0.5">
-                        {isOpen ? <FaChevronDown size={10} className="flex-none text-faint" /> : <FaChevronRight size={10} className="flex-none text-faint" />}
+                        <FaChevronRight size={10} className={'flex-none text-faint transition-transform' + (isOpen ? ' rotate-90' : '')} />
                         <FaFolder size={14} style={{ color: folderColor }} />
                       </span>
                     ) : (

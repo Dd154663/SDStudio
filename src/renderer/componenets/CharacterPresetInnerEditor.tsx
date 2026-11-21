@@ -579,7 +579,7 @@ export const CharacterPresetInnerEditor = observer(({
         >
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">파일명 옵션 (선택사항)</span>
           <span className="text-muted" aria-hidden="true">
-            {showFilenameOptions ? <FaChevronDown size={10} className="block" /> : <FaChevronRight size={10} className="block" />}
+            <FaChevronRight size={10} className={'block transition-transform' + (showFilenameOptions ? ' rotate-90' : '')} />
           </span>
         </button>
         {showFilenameOptions && (

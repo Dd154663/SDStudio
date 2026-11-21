@@ -219,6 +219,6 @@ describe('⑤ 이미지 그리드 크기 단추', () => {
     expect(src).toContain("${imageSize === index ? 'back-sky' : 'back-gray'}");
     expect(src).not.toContain("imageSize === index ? 'bg-gray-600' : 'bg-gray-400'");
     expect(src).toContain('className={`w-8 h-8 hover:brightness-95 active:brightness-90 cursor-pointer');
-    expect(src).toContain('right-0 opacity-30 hover:opacity-100 transition-all flex');
+    expect(src).toContain('right-0 opacity-30 hover:opacity-100 transition-opacity flex'); // 그룹 3-b: transition-all → transition-opacity
   });
 });

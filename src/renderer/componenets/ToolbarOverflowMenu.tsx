@@ -176,11 +176,11 @@ const MenuRow = ({
       className={
         'flex items-center gap-3 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-[var(--c-hover)]' +
         (isDragging ? ' opacity-30' : '') +
-        // 재배열 삽입 위치 표시 — 커서 쪽(위/아래) 보더 강조.
+        // 재배열 삽입 위치 표시 — 커서 쪽(위/아래) 한 변 강조(크기 불변 안쪽 선, App.css .drop-mark-*, 그룹 3-b).
         (isOverRow
           ? insertAbove
-            ? ' border-t-2 border-sky-400'
-            : ' border-b-2 border-sky-400'
+            ? ' drop-mark-top'
+            : ' drop-mark-bottom'
           : '')
       }
       onClick={(e) => {

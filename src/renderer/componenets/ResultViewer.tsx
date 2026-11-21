@@ -3062,7 +3062,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           </div>
         )}
         <div
-          className="absolute gap-1 m-2 bottom-0 bg-[var(--c-surface-2)] p-1 right-0 opacity-30 hover:opacity-100 transition-all flex"
+          className="absolute gap-1 m-2 bottom-0 bg-[var(--c-surface-2)] p-1 right-0 opacity-30 hover:opacity-100 transition-opacity flex"
           // V2: 하단 줄(52px) 위로 올린다(가려지지 않게)
           style={v2 ? { bottom: V2_GALLERY_BAR_PX } : undefined}
         >

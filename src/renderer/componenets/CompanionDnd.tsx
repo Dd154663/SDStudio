@@ -176,11 +176,12 @@ const CompanionButtonSlotInner = observer(
     }, [preview]);
     drag(dropInsert(wrapRef));
 
-    // 삽입 위치 표시 — 커서 쪽(좌/우) 보더 강조(툴바/프리셋 행과 같은 sky 시각 언어).
+    // 삽입 위치 표시 — 커서 쪽(좌/우) 한 변 강조(툴바/프리셋 행과 같은 시각 언어).
+    // 크기 불변 안쪽 선(App.css .drop-mark-*, 그룹 3-b — 종전 테두리 굵기는 2px 출렁임).
     const insertClass = isOverInsert
       ? insertBefore
-        ? ' border-l-2 border-sky-400 rounded-l'
-        : ' border-r-2 border-sky-400 rounded-r'
+        ? ' drop-mark-left'
+        : ' drop-mark-right'
       : '';
     return (
       <div

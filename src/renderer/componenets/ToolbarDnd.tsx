@@ -344,16 +344,16 @@ export const DraggableToolbarButton = observer(
     const active = useToolbarDragActive(group);
     const armed = toolbarDragUi.armed === group;
     const armedSelf = armed && toolbarDragUi.armedId === id;
-    // 삽입 위치 표시 — 커서 쪽 보더 강조(기존 하이라이트 색조 sky 계열과 일관).
-    // 세로 스택은 위/아래 보더로.
+    // 삽입 위치 표시 — 커서 쪽 한 변 강조. 세로 스택은 위/아래 변으로.
+    // 크기 불변 안쪽 선(App.css .drop-mark-*, 그룹 3-b — 종전 테두리 굵기는 2px 출렁임).
     const insertClass = isOverInsert
       ? orientation === 'v'
         ? insertBefore
-          ? ' border-t-2 border-sky-400 rounded-t'
-          : ' border-b-2 border-sky-400 rounded-b'
+          ? ' drop-mark-top'
+          : ' drop-mark-bottom'
         : insertBefore
-          ? ' border-l-2 border-sky-400 rounded-l'
-          : ' border-r-2 border-sky-400 rounded-r'
+          ? ' drop-mark-left'
+          : ' drop-mark-right'
       : '';
     return (
       <div

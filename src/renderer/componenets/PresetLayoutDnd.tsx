@@ -167,11 +167,12 @@ export const DraggablePresetRow = observer(
     drag(handleRef);
     preview(drop(wrapRef));
 
-    // 삽입 위치 표시 — 커서 쪽 보더 강조(툴바 세로 스택과 동일한 sky 시각 언어).
+    // 삽입 위치 표시 — 커서 쪽 한 변 강조(툴바 세로 스택과 동일한 시각 언어).
+    // 크기 불변 안쪽 선(App.css .drop-mark-*, 그룹 3-b — 종전 테두리 굵기는 2px 출렁임).
     const insertClass = isOverInsert
       ? insertBefore
-        ? ' border-t-2 border-sky-400'
-        : ' border-b-2 border-sky-400'
+        ? ' drop-mark-top'
+        : ' drop-mark-bottom'
       : '';
 
     // 빈 행은 flex-none 칩으로 축소 — 성장(flex-1)은 실제 콘텐츠가 있을 때만.

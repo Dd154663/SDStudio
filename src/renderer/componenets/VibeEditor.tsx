@@ -164,7 +164,7 @@ export const EditableSliderValue = ({
 
   return (
     <div
-      className="w-11 flex-none text-lg text-center back-lllgray cursor-pointer hover:ring-2 hover:ring-sky-400 rounded transition-all"
+      className="w-11 flex-none text-lg text-center back-lllgray cursor-pointer hover:ring-2 hover:ring-sky-400 rounded transition-shadow"
       onClick={startEditing}
       title="클릭하여 직접 입력"
     >

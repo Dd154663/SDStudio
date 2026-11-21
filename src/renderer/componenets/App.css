@@ -2436,6 +2436,39 @@ details[open] > summary::before {
   transition-duration: 0ms;
 }
 
+/* 끌어 놓을 자리 표시(그룹 3-b, 조사 R11) — 툴바 편집·더보기 메뉴 줄·사전 세팅 배치·동반 버튼의 「여기에 놓임」.
+   종전 border-t-2 등은 테두리가 생기며 요소가 2px 커졌다 줄었다(출렁임). 안쪽 그림자 한 변으로 그려 크기를 바꾸지 않는다.
+   ::after 덮개(pointer-events 없음)에 그려 자식의 바탕에 가리지 않게 한다. 전환 없음 — 즉시 나타나고 즉시 사라진다.
+   @layer 밖 — 사용처는 리터럴 클래스('drop-mark-top' 등)로 쓴다. 카드의 놓을 자리는 .card-drop-target(outline)이 따로 맡는다. */
+.drop-mark-top,
+.drop-mark-bottom,
+.drop-mark-left,
+.drop-mark-right {
+  position: relative;
+}
+.drop-mark-top::after,
+.drop-mark-bottom::after,
+.drop-mark-left::after,
+.drop-mark-right::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.drop-mark-top::after {
+  box-shadow: inset 0 2px 0 var(--c-focus-ring);
+}
+.drop-mark-bottom::after {
+  box-shadow: inset 0 -2px 0 var(--c-focus-ring);
+}
+.drop-mark-left::after {
+  box-shadow: inset 2px 0 0 var(--c-focus-ring);
+}
+.drop-mark-right::after {
+  box-shadow: inset -2px 0 0 var(--c-focus-ring);
+}
+
 /* ── 움직임 줄이기 — 앱 전체 한 곳(R3, 조사 §5-2). OS 설정(prefers-reduced-motion)을 따르고 앱 안 스위치는 두지 않는다. ──
    none 이 아니라 1ms: react-contexify 는 animationend 를 받아야 메뉴를 숨기고, 모바일 프롬프트 시트·되돌리기 바는
    transitionend 를 기다린다. 반복 횟수 1 = 툴바 편집 흔들림(.toolbar-wiggle) 같은 무한 반복도 사실상 멈춘다.

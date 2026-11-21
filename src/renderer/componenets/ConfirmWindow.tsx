@@ -11,7 +11,7 @@ import {
 import { isImeComposing } from '../models/escapeGate';
 import { observer } from 'mobx-react-lite';
 import { DIALOG_DANGER_BTN, DIALOG_PRIMARY_BTN, DIALOG_SECONDARY_BTN } from './ModalOverlay';
-import { FaChevronDown, FaChevronRight } from 'react-icons/fa';
+import { FaChevronRight } from 'react-icons/fa';
 import {
   groupPreview,
   loadOpenGroups,
@@ -437,11 +437,10 @@ const ConfirmWindow = observer(() => {
                               }}
                             >
                               <span className="flex-none text-faint">
-                                {open ? (
-                                  <FaChevronDown size={10} />
-                                ) : (
-                                  <FaChevronRight size={10} />
-                                )}
+                                <FaChevronRight
+                                  size={10}
+                                  className={'transition-transform' + (open ? ' rotate-90' : '')}
+                                />
                               </span>
                               <span className="flex-1 min-w-0">
                                 <span className="block text-default font-semibold">
