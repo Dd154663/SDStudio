@@ -490,10 +490,14 @@ const createSDI2IHandler = (type: string) => {
       uc: preset.uc,
       characterPrompts: expanded
         ? expanded.characterPrompts.map((p) => ({ ...p }))
-        : (preset.characterPrompts || []).map((p: CharacterPrompt) => ({
-            ...p,
-            prompt: { type: 'text', text: p.prompt || '' },
-          })),
+        : // 꺼 둔 캐릭터(enabled === false)는 뺀다 — 이미지생성 잡(buildSDImageGenJob)·조합 전개(variantCombo)와 같은 규칙.
+          // enabled 가 없는 옛 데이터는 켠 것으로 본다. 프리셋 객체는 바꾸지 않는다(사본만 만든다).
+          (preset.characterPrompts || [])
+            .filter((p: CharacterPrompt) => p.enabled !== false)
+            .map((p: CharacterPrompt) => ({
+              ...p,
+              prompt: { type: 'text', text: p.prompt || '' },
+            })),
       useCoords: preset.useCoords,
       legacyPromptConditioning: preset.legacyPromptConditioning,
       normalizeStrength: preset.normalizeStrength,

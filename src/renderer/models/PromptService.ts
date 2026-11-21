@@ -13,6 +13,10 @@ import {
 import { resolveSceneCharacterPrompts } from './sceneCharacterPrompts';
 import { variantComboMode } from './comboMode';
 import {
+  splitMultiPieceLines,
+  stripPromptComments,
+} from './promptCommentSyntax';
+import {
   makeExplicitWeightRangeRegex,
   parsePromptWeightNumber,
 } from './promptWeightSyntax';
@@ -21,15 +25,8 @@ export function cleanPARR(parr: PARR): PARR {
   return parr.map((p) => p.trim());
 }
 
-/**
- * ##주석## 블록 제거.
- * - 여러 줄, 콤마 포함 가능 (non-greedy)
- * - 짝이 맞지 않는 단일 `##` 는 리터럴로 유지
- * - API 송신 직전에만 제거. 저장 데이터는 원문 유지.
- */
-export function stripPromptComments(str: string): string {
-  return str.replace(/##[\s\S]*?##/g, '');
-}
+// ##주석## 규칙의 단일 출처는 promptCommentSyntax(2026-11-21) — 기존 import 경로(PromptService.stripPromptComments)는 유지.
+export { stripPromptComments };
 
 export function toPARR(str: string) {
   return cleanPARR(
@@ -295,7 +292,8 @@ export class PromptService extends EventTarget {
       try {
         if (this.isMulti(word, session)) {
           const expanded = this.tryExpandPiece(word, session, scene);
-          const lines = expanded.split(/\r\n?|\n/);
+          // 후보 줄 = 주석 밖 줄바꿈으로 나누고 주석뿐인 줄은 뺀 것(splitMultiPieceLines — 툴팁 미리보기와 같은 함수).
+          const lines = splitMultiPieceLines(expanded);
           const randNode: PromptRandomNode = {
             type: 'random',
             options: [],
@@ -313,7 +311,8 @@ export class PromptService extends EventTarget {
             }
             randNode.options.push(newNode);
           }
-          res.children.push(randNode);
+          // 후보가 하나도 없으면(모든 줄이 주석) 랜덤 노드를 넣지 않는다.
+          if (randNode.options.length > 0) res.children.push(randNode);
         } else {
           let newp = toPARR(this.tryExpandPiece(word, session, scene));
           for (const p of newp) {
@@ -343,7 +342,7 @@ export class PromptService extends EventTarget {
         if (this.isMulti(piece, window.curSession!)) {
           txt =
             '이 중 한 줄 랜덤 선택:\n' +
-            expanded.split(/\r\n?|\n/).slice(0, 32).join('\n');
+            splitMultiPieceLines(expanded).slice(0, 32).join('\n');
         } else {
           txt = expanded;
         }

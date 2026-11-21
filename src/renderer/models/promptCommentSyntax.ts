@@ -1,0 +1,74 @@
+// 프롬프트 ##주석## 범위 규칙의 단일 출처(2026-11-21).
+//  · 짝이 맞는 `##…##`(여러 줄·쉼표 포함 가능, 가장 가까운 닫는 `##` 까지). 짝 없는 `##` 하나는 글자 그대로.
+//  · NAI 전송 직전 제거(PromptService.stripPromptComments), 주석 토글·가중치 조절의 범위 계산(promptTransforms),
+//    랜덤 조각 줄 나누기(splitMultiPieceLines)가 모두 이 규칙을 쓴다.
+//  · 다른 모델 모듈을 import 하지 않는다(PromptService ↔ promptTransforms 사이의 import 순환 방지).
+//  · 저장 데이터는 원문 유지 — 이 모듈은 사본 문자열만 만든다.
+
+const PROMPT_COMMENT_SOURCE = String.raw`##[\s\S]*?##`;
+
+export interface PromptCommentRange {
+  /** 여는 `##` 의 시작 위치. */
+  start: number;
+  /** 닫는 `##` 바로 뒤 위치. */
+  end: number;
+}
+
+/** 짝이 맞는 주석들의 범위(앞에서부터, 겹치지 않음). */
+export function promptCommentRanges(text: string): PromptCommentRange[] {
+  const ranges: PromptCommentRange[] = [];
+  const re = new RegExp(PROMPT_COMMENT_SOURCE, 'g');
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    ranges.push({ start: match.index, end: match.index + match[0].length });
+  }
+  return ranges;
+}
+
+/**
+ * ##주석## 블록 제거.
+ * - 여러 줄, 콤마 포함 가능 (non-greedy)
+ * - 짝이 맞지 않는 단일 `##` 는 리터럴로 유지
+ * - API 송신 직전에만 제거. 저장 데이터는 원문 유지.
+ */
+export function stripPromptComments(str: string): string {
+  return str.replace(new RegExp(PROMPT_COMMENT_SOURCE, 'g'), '');
+}
+
+/**
+ * 랜덤 조각(「이 중 한 줄 랜덤 선택」)의 후보 줄 — 생성(parseWord)과 미리보기(툴팁)가 같은 결과를 쓴다.
+ * - 줄은 짝이 맞는 주석 **밖**의 줄바꿈(CRLF·CR·LF)에서만 나눈다(여러 줄 주석은 한 덩어리로 걷힌다).
+ * - 각 줄은 주석을 걷은 글자. 주석이 있던 줄이 걷은 뒤 공백·쉼표만 남으면 후보에서 뺀다.
+ * - 주석 없이 일부러 비운 줄은 후보로 남긴다(「아무것도 안 넣기」 선택지 — 종전 동작).
+ */
+export function splitMultiPieceLines(text: string): string[] {
+  const ranges = promptCommentRanges(text);
+  const lines: string[] = [];
+  let current = '';
+  let hadComment = false;
+  const flush = () => {
+    if (!(hadComment && current.replace(/[\s,]/g, '') === '')) lines.push(current);
+    current = '';
+    hadComment = false;
+  };
+  let r = 0;
+  let i = 0;
+  while (i < text.length) {
+    if (r < ranges.length && i === ranges[r].start) {
+      hadComment = true;
+      i = ranges[r].end;
+      r++;
+      continue;
+    }
+    const ch = text[i];
+    if (ch === '\r' || ch === '\n') {
+      flush();
+      i += ch === '\r' && text[i + 1] === '\n' ? 2 : 1;
+      continue;
+    }
+    current += ch;
+    i++;
+  }
+  flush();
+  return lines;
+}

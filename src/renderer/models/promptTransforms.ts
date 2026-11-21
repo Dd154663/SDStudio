@@ -8,6 +8,10 @@ import {
   parsePromptWeightNumber,
   PROMPT_WEIGHT_NUMBER_SOURCE,
 } from './promptWeightSyntax';
+// ##주석## 범위 — PromptService.stripPromptComments 와 같은 단일 출처(여러 줄 허용, 짝 없는 단일 ## 는 리터럴).
+import { PromptCommentRange, promptCommentRanges } from './promptCommentSyntax';
+
+export type { PromptCommentRange };
 
 export interface PromptWeightAdjustment {
   text: string;
@@ -52,12 +56,48 @@ function caretSegmentOf(text: string, selectionStart: number): CaretSegment {
   return { segmentStart, segmentEnd, segment, leading, trailing, core };
 }
 
+/**
+ * 가중치 조절·표시용 구획 — ##주석## 표식을 절대 감싸지 않는다(2026-11-21).
+ * - 커서가 주석 밖(여는 `##` 바로 앞·닫는 `##` 바로 뒤 포함)이면 앞 주석 끝 ~ 다음 주석 시작 사이에서만 쉼표 구획.
+ * - 커서가 주석 안(여는 `##` 바로 뒤 ~ 닫는 `##` 바로 앞 포함)이면 그 주석 내용 안에서만 쉼표 구획.
+ * - 커서가 `##` 표식 두 글자 사이면 undefined.
+ * 주석 토글은 이 함수가 아니라 caretSegmentOf 를 그대로 쓴다(종전 동작 유지).
+ */
+function weightSegmentOf(
+  text: string,
+  selectionStart: number,
+): CaretSegment | undefined {
+  const caret = clamp(selectionStart, 0, text.length);
+  let lo = 0;
+  let hi = text.length;
+  for (const r of promptCommentRanges(text)) {
+    if (caret === r.start + 1 || caret === r.end - 1) return undefined;
+    if (r.start + 2 <= caret && caret <= r.end - 2) {
+      lo = r.start + 2;
+      hi = r.end - 2;
+      break;
+    }
+    if (r.end <= caret) lo = r.end;
+    else if (caret <= r.start) {
+      hi = r.start;
+      break;
+    }
+  }
+  if (lo === 0 && hi === text.length) return caretSegmentOf(text, caret);
+  const inner = caretSegmentOf(text.slice(lo, hi), caret - lo);
+  return {
+    ...inner,
+    segmentStart: inner.segmentStart + lo,
+    segmentEnd: inner.segmentEnd + lo,
+  };
+}
+
 /** 커서 구획의 현재 가중치(모바일 칩 표시용). 빈 구획이면 undefined. */
 export function getPromptWeightAtSelection(
   text: string,
   selectionStart: number,
 ): PromptWeightInfo | undefined {
-  const { core } = caretSegmentOf(text, selectionStart);
+  const { core } = weightSegmentOf(text, selectionStart) ?? { core: '' };
   if (!core) return undefined;
   const weighted = core.match(WEIGHTED_PROMPT_RE);
   return {
@@ -94,9 +134,10 @@ export function adjustPromptWeightAtSelection(
 ): PromptWeightAdjustment | undefined {
   if (!Number.isFinite(delta) || delta === 0) return undefined;
 
+  const caretSegment = weightSegmentOf(text, selectionStart);
+  if (!caretSegment?.core) return undefined;
   const { segmentStart, segmentEnd, segment, leading, trailing, core } =
-    caretSegmentOf(text, selectionStart);
-  if (!core) return undefined;
+    caretSegment;
 
   const weighted = core.match(WEIGHTED_PROMPT_RE);
   const wrappedInner = weighted?.[2] ?? core;
@@ -133,26 +174,6 @@ export function adjustPromptWeightAtSelection(
     selectionStart: mapPosition(selectionStart),
     selectionEnd: mapPosition(selectionEnd),
   };
-}
-
-// ##주석## 범위 — PromptService.stripPromptComments·하이라이트와 같은 규칙(여러 줄 허용, 짝 없는 단일 ## 는 리터럴).
-const PROMPT_COMMENT_RE = /##[\s\S]*?##/g;
-
-export interface PromptCommentRange {
-  /** 여는 `##` 의 시작 위치. */
-  start: number;
-  /** 닫는 `##` 바로 뒤 위치. */
-  end: number;
-}
-
-function promptCommentRanges(text: string): PromptCommentRange[] {
-  const ranges: PromptCommentRange[] = [];
-  const re = new RegExp(PROMPT_COMMENT_RE.source, 'g');
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(text)) !== null) {
-    ranges.push({ start: match.index, end: match.index + match[0].length });
-  }
-  return ranges;
 }
 
 /**

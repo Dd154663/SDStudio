@@ -327,6 +327,38 @@ describe('핸들러 — 잡의 샘플링 = 메인 사전 세팅', () => {
   });
 });
 
+describe('핸들러 — 단일 프롬프트의 꺼 둔 캐릭터(결함 A)', () => {
+  const inpaintScene = { name: 'scene', type: 'inpaint' } as any;
+  const chars = () => [
+    { prompt: 'on', uc: 'u-on', enabled: true, position: { x: 0.1, y: 0.2 } },
+    { prompt: 'off', uc: 'u-off', enabled: false, position: { x: 0.5, y: 0.5 } },
+    { prompt: 'legacy', uc: 'u-legacy', position: { x: 0.9, y: 0.7 } },
+  ];
+
+  test.each([
+    ['I2I', SDI2IDef, 'RAW'],
+    ['인페인트', SDInpaintDef, 'RAW'],
+    ['미러', SDMirrorDef, 'RAW'],
+  ] as [string, any, string][])('%s: 꺼 둔 캐릭터는 잡에서 빠지고 켜 둔 것·enabled 없는 옛 데이터는 들어감', async (_n, def, image) => {
+    const preset = new WFWorkFlow(def).buildPreset();
+    Object.assign(preset, { image, mask: '', prompt: 'p', useCoords: true, characterPrompts: chars() });
+    const before = JSON.parse(JSON.stringify(preset.characterPrompts));
+    await def.handler(mainSession(), inpaintScene, { type: 'text', text: '' }, [], preset, undefined, 1);
+    const job = jobs()[0];
+    expect(job.characterPrompts.map((c: any) => c.prompt)).toEqual([
+      { type: 'text', text: 'on' },
+      { type: 'text', text: 'legacy' },
+    ]);
+    expect(job.characterPrompts.map((c: any) => [c.uc, c.position])).toEqual([
+      ['u-on', { x: 0.1, y: 0.2 }],
+      ['u-legacy', { x: 0.9, y: 0.7 }],
+    ]);
+    expect(job.useCoords).toBe(true);
+    // 저장 데이터(씬 프리셋) 무변경
+    expect(JSON.parse(JSON.stringify(preset.characterPrompts))).toEqual(before);
+  });
+});
+
 describe('예약 경로 — 단일·조합 모드(shared/snapshot)·미러·이미지 변형 메뉴', () => {
   const piece = (prompt: string) =>
     PromptPiece.fromJSON({ prompt, characterPrompts: [], id: prompt, enabled: true } as any);
