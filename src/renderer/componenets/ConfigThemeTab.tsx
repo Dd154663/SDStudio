@@ -470,18 +470,21 @@ const CustomizationTab = ({
         <div>
           <label className="block text-sm gray-label mb-2">텍스트 패턴</label>
           <div className="flex flex-wrap gap-2">
-            <button
-              className={`round-button btn-sm ${uiTheme.textPattern === 'light' ? 'back-sky' : 'back-gray'}`}
-              onClick={() => patch({ textPattern: 'light' })}
-            >
-              밝은 배경용 (검은 텍스트)
-            </button>
-            <button
-              className={`round-button btn-sm ${uiTheme.textPattern === 'dark' ? 'back-sky' : 'back-gray'}`}
-              onClick={() => patch({ textPattern: 'dark' })}
-            >
-              어두운 배경용 (흰 텍스트)
-            </button>
+            {/* 택일 묶음 .seg-group(UI 정돈 그룹 2-c). 「초기화」는 묶음 밖 별도 버튼 그대로 */}
+            <div className="seg-group inline-flex">
+              <button
+                className={`seg-item text-xs${uiTheme.textPattern === 'light' ? ' seg-on' : ''}`}
+                onClick={() => patch({ textPattern: 'light' })}
+              >
+                밝은 배경용 (검은 텍스트)
+              </button>
+              <button
+                className={`seg-item text-xs${uiTheme.textPattern === 'dark' ? ' seg-on' : ''}`}
+                onClick={() => patch({ textPattern: 'dark' })}
+              >
+                어두운 배경용 (흰 텍스트)
+              </button>
+            </div>
             {uiTheme.textPattern && (
               <button
                 className="round-button back-gray btn-sm"

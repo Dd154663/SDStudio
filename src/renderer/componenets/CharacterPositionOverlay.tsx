@@ -327,14 +327,15 @@ export const CharacterPositionOverlay = ({
       </div>
       {/* 아래 줄 */}
       <div className="flex-none flex items-center gap-2 px-3 py-2" data-char-pos-bar="">
-        <div className="tab-seg flex gap-0.5 flex-none">
+        {/* 보조선 택일 묶음 .seg-group(UI 정돈 그룹 2-c) — 칸 32px(모바일 36px) */}
+        <div className="seg-group flex flex-none">
           {POSITION_GUIDES.map((g) => (
             <button
               key={g.key}
               type="button"
               data-char-pos-guide-btn={g.key}
               aria-pressed={guide === g.key}
-              className={`round-button h-8 text-xs px-2.5 ${guide === g.key ? 'back-sky' : 'back-llgray tab-seg-off'}`}
+              className={'seg-item text-xs whitespace-nowrap' + (guide === g.key ? ' seg-on' : '')}
               onClick={() => {
                 setGuide(g.key);
                 saveGuide(g.key);

@@ -687,25 +687,25 @@ const PieceEditor = observer(({ onClose }: { onClose: () => void }) => {
   // 위 처리 함수 그대로 — 화면 자리만 옮겼다.
   const wide = !isMobile;
 
-  // 로컬/전역 전환 = 알약 묶음 .tab-seg(UI 정돈 그룹 2-b — 캐릭터 프리셋 관리의 로컬/글로벌 전환과 같은 모양, SPEC §2 탭 세그먼트:
-  // 미선택 back-llgray·rounded-lg 는 클래식 마감 복원용 병기). 선택 = 로컬 하늘·전역 보라(라이트 600·다크 500 선택 강조).
-  // 도움말 ? 는 알약 묶음 밖(같은 줄 오른쪽 — 자리 그대로).
+  // 로컬/전역 전환 = 택일 묶음 .seg-group(UI 정돈 그룹 2-c — 캐릭터 프리셋 관리의 로컬/글로벌 전환과 같은 모양).
+  // 선택 = 로컬 .seg-on(하늘)·전역 .seg-on-purple(솔리드 보라). PC 는 칸이 줄 폭을 나눠 채움(.seg-fill).
+  // 도움말 ? 는 묶음 밖(같은 줄 오른쪽 — 자리 그대로).
   const scopeToggle = (
     <div className={wide ? 'flex gap-1 items-center' : 'flex gap-1 mb-3 items-center'}>
       <div
-        className={wide ? 'tab-seg flex flex-1 min-w-0 gap-1' : 'tab-seg flex gap-1'}
+        className={wide ? 'seg-group seg-fill flex flex-1 min-w-0' : 'seg-group inline-flex'}
         role="group"
         aria-label="조각 범위"
       >
         <button
-          className={`btn ${wide ? 'flex-1 px-2' : 'px-4'} py-1.5 text-sm rounded-lg ${scope === 'local' ? 'bg-sky-600 text-white dark:bg-sky-500' : 'back-llgray tab-seg-off'}`}
+          className={'seg-item text-sm' + (scope === 'local' ? ' seg-on' : '')}
           aria-pressed={scope === 'local'}
           onClick={() => setScope('local')}
         >
           로컬 조각
         </button>
         <button
-          className={`btn ${wide ? 'flex-1 px-2' : 'px-4'} py-1.5 text-sm rounded-lg ${scope === 'global' ? 'bg-purple-600 text-white dark:bg-purple-500' : 'back-llgray tab-seg-off'}`}
+          className={'seg-item text-sm' + (scope === 'global' ? ' seg-on-purple' : '')}
           aria-pressed={scope === 'global'}
           onClick={() => setScope('global')}
         >

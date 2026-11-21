@@ -224,7 +224,8 @@ describe('국소 클래스 수정(묶음 1)', () => {
     ]);
   });
   test('S5 상호작용 클래스 병기', () => {
-    expect(read('PieceEditor.tsx').match(/className=\{`btn \$\{wide/g)).toHaveLength(2);
+    // UI 정돈 그룹 2-c: 로컬/전역 전환 두 버튼은 택일 칸 .seg-item(올림·누름·포커스 표시를 공용 클래스가 가짐)
+    expect(read('PieceEditor.tsx').match(/className=\{'seg-item text-sm' \+ \(scope === /g)).toHaveLength(2);
     expect(read('ProjectDrawer.tsx')).toContain('className="btn w-full flex items-center gap-2 pl-1.5 pr-2 py-2.5 rounded-md');
     expect(read('PreSetEdtior.tsx')).toContain('className="btn-link flex items-center gap-2 text-xs mt-1 relative touch-hit"');
     expect(read('SceneEditor.tsx')).toContain('className="btn-link flex items-center gap-2 text-xs relative touch-hit"');

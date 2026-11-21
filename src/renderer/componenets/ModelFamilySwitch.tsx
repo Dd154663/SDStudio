@@ -99,13 +99,12 @@ export default function ModelFamilySwitch({
       </button>
     );
   }
-  const btn = compact
-    ? 'btn touch-hit relative h-7 min-w-[34px] rounded-none px-2 text-sm'
-    : 'btn h-9 min-w-[48px] rounded-none px-3 text-base';
+  // 택일 묶음 .seg-group(UI 정돈 그룹 2-c, App.css) — 칸 높이 compact 28px(.seg-sm, .touch-hit 판정 36px)·전체형 36px(.seg-lg, 종전 h-9 그대로)
+  const btn = compact ? 'seg-item touch-hit relative text-sm' : 'seg-item text-base';
   return (
     <div
       className={
-        'flex items-center overflow-hidden rounded-md border line-color bg-[var(--c-input-bg)]' +
+        'seg-group flex ' + (compact ? 'seg-sm' : 'seg-lg') +
         (className ? ' ' + className : '')
       }
       role="group"
@@ -118,7 +117,7 @@ export default function ModelFamilySwitch({
           <button
             key={f}
             type="button"
-            className={`${btn} ${selected ? 'back-sky' : 'btn-ghost text-default'}`}
+            className={btn + (selected ? ' seg-on' : '')}
             aria-pressed={selected}
             aria-label={`NAI 모델 ${FAMILY_NAME[f]}`}
             disabled={switching}

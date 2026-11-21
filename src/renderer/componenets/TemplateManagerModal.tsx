@@ -687,8 +687,9 @@ const TemplateWorkflowBody = observer(
                     <HelpIcon content={TEMPLATE_SAMPLING_TEXT.familyHelp} size={13} />
                   </div>
                 )}
+                {/* 택일 묶음 .seg-group(UI 정돈 그룹 2-c — 종전 작은 알약 칩). 칩 자리라 작은 칸(.seg-sm 28px). */}
                 <div
-                  className="flex items-center gap-1 flex-wrap"
+                  className="seg-group seg-sm inline-flex flex-wrap"
                   role="group"
                   aria-label="샘플링 값을 고칠 모델 계열"
                   data-template-sampling-family={samplingFamily}
@@ -700,8 +701,7 @@ const TemplateWorkflowBody = observer(
                         key={f}
                         type="button"
                         className={
-                          'btn text-xs px-2 py-0.5 rounded-full ' +
-                          (selected ? 'back-sky' : 'btn-ghost text-default')
+                          'seg-item text-xs' + (selected ? ' seg-on' : '')
                         }
                         data-family={f}
                         aria-pressed={selected}
@@ -1546,9 +1546,10 @@ export function useTemplateWorkflowPanel(
 
   const show = !!templateId && !charEditing;
 
-  // 탭 머리 — tab-seg 마커 계약 (SPEC_GUIDE §2, back-llgray/rounded-md 는 클래식 마감 복원용 병기)
+  // 탭 머리 = 작업 탭(본문이 템플릿 편집 ↔ 일괄 생성으로 통째로 바뀜) — 밑줄 탭 .tab-line(UI 정돈 그룹 2-c).
+  // 창 도구줄에 이미 아래 테두리가 있어 줄 아래 가는 선은 빼고(.tab-line-bare) 도구줄 높이에 맞춰 32px(.tab-line-compact).
   const tabs = show ? (
-    <div className="tab-seg flex gap-2" data-template-tabs="">
+    <div className="tab-line tab-line-bare tab-line-compact flex" data-template-tabs="">
       {(
         [
           ['template', '템플릿'],
@@ -1558,8 +1559,7 @@ export function useTemplateWorkflowPanel(
         <button
           key={key}
           className={
-            'active:brightness-90 hover:brightness-95 select-none h-8 px-4 text-sm rounded-md transition-colors ' +
-            (tab === key ? 'back-sky' : 'back-llgray tab-seg-off')
+            'tab-line-item text-sm' + (tab === key ? ' tab-line-on' : '')
           }
           aria-pressed={tab === key}
           onClick={() => selectTab(key)}

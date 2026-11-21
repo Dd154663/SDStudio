@@ -898,7 +898,9 @@ html:not(.finish-classic) .r-btn {
 /* ── 탭 세그먼트(E) ── TabComponent 탭 헤더를 하나의 라운딩 컨테이너로 묶고
    선택 탭만 채움 알약(back-sky 유지), 미선택은 배경 없는 텍스트로(세그먼티드 컨트롤).
    새 마감에서만 적용 — 클래식 마감이면 기존 개별 알약(back-llgray·rounded-md·gap-2) 그대로.
-   컨테이너/미선택 마커(.tab-seg/.tab-seg-off)는 TabComponent(UtilComponents.tsx)가 부여. */
+   컨테이너/미선택 마커(.tab-seg/.tab-seg-off)는 TabComponent(UtilComponents.tsx)가 부여.
+   2026-11-21 UI 정돈 그룹 2-c 부터 남은 사용처 = 모바일 주 탭(아이콘 탭, SPEC §6-5)뿐 — PC 글자 탭은 아래 .tab-line,
+   값 고르기 묶음은 .seg-group 으로 옮겼다. 아래 md 이상 규칙은 모바일 아이콘 탭이 md:hidden 이라 현재 그려지는 곳이 없다. */
 html:not(.finish-classic) .tab-seg {
   background-color: var(--c-input-bg);
   border-radius: 9999px;
@@ -924,6 +926,134 @@ html:not(.finish-classic) .tab-seg > .tab-seg-off {
 }
 html:not(.finish-classic) .tab-seg > .tab-seg-off:hover {
   color: var(--c-text);
+}
+
+/* ── 작업 탭 = 밑줄 탭 · 택일 버튼 = 붙은 사각 묶음(UI 정돈 그룹 2-c, 2026-11-21 목업 승인) ──
+   두 역할이 같은 알약 묶음(.tab-seg)이라 「화면을 바꾸는 탭」과 「값 하나 고르기」가 구분되지 않던 것을 나눈다.
+   @layer components 안 — 컨테이너의 display·폭은 사용처 유틸(hidden md:flex·flex·w-full)이 이기게 하고, 칸 규칙은
+   자식 선택자(특이도 0,2,0)라 칸에 남은 유틸보다 이긴다. 마감(모던·클래식) 공통 — 클래식 전용 복원은 없다.
+   · .tab-line(줄) > .tab-line-item(탭) / 고른 탭 .tab-line-on: 글자만. 고른 탭 = --c-text·700 + 아래 3px --c-focus-ring,
+     나머지 = --c-text-faint·500(올리면 --c-text-label). 줄 아래 1px --c-line(고른 탭의 굵은 선이 그 위에 겹친다 —
+     둘 다 inset 그림자라 높이를 더하지 않는다). 탭 높이 36px(.tab-line-compact = 32px), 탭 사이 4px, 좌우 여백 12px.
+     .tab-line-bare = 줄 아래 가는 선 없음(이미 아래 테두리가 있는 창 도구줄 자리).
+   · .seg-group(묶음) > .seg-item(칸) / 고른 칸 .seg-on(--c-sky-bg·--c-sky-fg·600) 또는 뜻이 다른 선택 .seg-on-purple(솔리드
+     보라 + 흰 글자 — 그룹 2-b 의 「글로벌·전역」 값 그대로). 1px --c-line-strong 테두리·칸 구분선, 모서리 7px, 바탕 --c-input-bg.
+     칸 높이(테두리 안쪽) = 기본 32px · .seg-lg 36px(제목 줄 모델 전환 — 종전 h-9 그대로) · .seg-sm 28px(좁은 머리줄·칩 자리,
+     칸 최소 34px·좌우 8px — 모바일 시트 손잡이 줄의 compact 모델 전환 폭 유지). 모바일(767px 이하)은 .seg-sm 이 아니면
+     칸 최소 높이 36px(종전 .round-button 최소 36 자리보다 줄이지 않는다). .seg-fill = 줄 폭을 칸이 나눠 채움.
+     글자 크기는 사용처 유틸(text-xs·text-sm·text-base) 그대로. */
+@layer components {
+  .tab-line {
+    align-items: stretch;
+    gap: 4px;
+    box-shadow: inset 0 -1px 0 var(--c-line);
+  }
+  .tab-line.tab-line-bare {
+    box-shadow: none;
+  }
+  .tab-line > .tab-line-item {
+    flex: none;
+    white-space: nowrap;
+    height: 2.25rem; /* 36px — 줄 전체 높이 = 이 값(종전 .tab-seg 3px 홈 + 36px 탭 = 42px 보다 작다) */
+    padding: 0 12px;
+    border-radius: 0;
+    background-color: transparent;
+    color: var(--c-text-faint);
+    font-weight: 500;
+    user-select: none;
+    cursor: pointer;
+  }
+  .tab-line.tab-line-compact > .tab-line-item {
+    height: 2rem;
+  }
+  .tab-line > .tab-line-item.tab-line-on {
+    color: var(--c-text);
+    font-weight: 700;
+    box-shadow: inset 0 -3px 0 var(--c-focus-ring);
+  }
+  @media (hover: hover) {
+    .tab-line > .tab-line-item:not(.tab-line-on):hover {
+      color: var(--c-text-label);
+    }
+  }
+  .tab-line > .tab-line-item:focus-visible {
+    outline: 2px solid var(--c-focus-ring);
+    outline-offset: -2px;
+  }
+
+  .seg-group {
+    align-items: stretch;
+    max-width: 100%;
+    border: 1px solid var(--c-line-strong);
+    border-radius: 7px;
+    background-color: var(--c-input-bg);
+    overflow: hidden;
+  }
+  .seg-group > .seg-item {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 44px;
+    min-height: 2rem; /* 32px — PC 한 줄 컨트롤 규약 */
+    margin: 0;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 0;
+    background-color: transparent;
+    color: var(--c-text-label);
+    user-select: none;
+    cursor: pointer;
+  }
+  .seg-group > .seg-item + .seg-item {
+    border-left: 1px solid var(--c-line-strong);
+  }
+  .seg-group.seg-lg > .seg-item {
+    min-height: 2.25rem; /* 36px */
+    min-width: 48px; /* 제목 줄 모델 전환의 종전 칸 폭 그대로 */
+  }
+  .seg-group.seg-sm > .seg-item {
+    min-height: 1.75rem; /* 28px */
+    min-width: 34px;
+    padding: 0 8px;
+  }
+  @media (max-width: 767px) {
+    .seg-group:not(.seg-sm) > .seg-item {
+      min-height: 36px;
+    }
+  }
+  .seg-group.seg-fill {
+    width: 100%;
+  }
+  .seg-group.seg-fill > .seg-item {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .seg-group > .seg-item.seg-on {
+    background-color: var(--c-sky-bg);
+    color: var(--c-sky-fg);
+    font-weight: 600;
+  }
+  .seg-group > .seg-item.seg-on-purple {
+    @apply bg-purple-600 dark:bg-purple-500 text-white;
+    font-weight: 600;
+  }
+  @media (hover: hover) {
+    .seg-group > .seg-item:not(.seg-on):not(.seg-on-purple):not(:disabled):hover {
+      background-color: var(--c-hover);
+    }
+  }
+  .seg-group > .seg-item:not(.seg-on):not(.seg-on-purple):not(:disabled):active {
+    background-color: var(--c-hover);
+  }
+  .seg-group > .seg-item:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .seg-group > .seg-item:focus-visible {
+    outline: 2px solid var(--c-focus-ring);
+    outline-offset: -2px;
+  }
 }
 
 /* ── 구역 카드화(D) ── 메인 도크 행(프리셋·중앙·히스토리·프로젝트 레일)을 캔버스

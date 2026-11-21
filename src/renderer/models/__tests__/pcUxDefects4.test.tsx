@@ -133,8 +133,9 @@ describe('하드코딩 bg-{색}-500 잔존 = 제외 목록', () => {
     expect(read('ProjectDrawer.tsx')).toContain("'bg-sky-600 text-white dark:bg-sky-500 shadow-sm'");
     expect(read('ProjectDrawer.tsx')).toContain("'bg-emerald-600 text-white dark:bg-emerald-500'");
     expect(read('CharacterPresetCards.tsx').match(/'bg-purple-600 text-white dark:bg-purple-500'/g)).toHaveLength(3);
-    // 그룹 2-b: 로컬/전역 전환이 캐릭터 프리셋 관리와 같은 .tab-seg 모양 — 전역 선택 = 라이트 600·다크 500 보라
-    expect(read('PieceEditor.tsx')).toContain("'bg-purple-600 text-white dark:bg-purple-500' : 'back-llgray tab-seg-off'");
+    // 그룹 2-c: 로컬/전역 전환은 택일 묶음 .seg-group — 전역 선택(.seg-on-purple) = 라이트 600·다크 500 보라(App.css 공용 클래스)
+    expect(read('PieceEditor.tsx')).toContain("(scope === 'global' ? ' seg-on-purple' : '')");
+    expect(read('App.css')).toContain('@apply bg-purple-600 dark:bg-purple-500 text-white;');
     expect(read('SceneEditor.tsx')).toContain('bg-red-600 text-white dark:bg-red-500 rounded-full w-4 h-4');
     expect(read('TaskQueueControl.tsx')).toContain("'bg-sky-600 dark:bg-indigo-400' : 'bg-red-600 dark:bg-red-500'");
     // 그룹 2-a: 진행 창 막대의 다크 채움을 indigo-400 → 다른 진행 막대와 같은 하늘색 계열(sky-500, 흰 글자 다크 500 규칙)

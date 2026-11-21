@@ -1039,9 +1039,7 @@ const SceneCharacterPromptEditor = observer(({
   ) => (
     <button
       type="button"
-      className={`btn rounded px-3 py-1.5 text-sm ${
-        mode === value ? 'btn-solid-sky' : 'btn-neutral'
-      }`}
+      className={'seg-item text-sm' + (mode === value ? ' seg-on' : '')}
       onClick={() => setMode(value)}
     >
       {label}
@@ -1059,7 +1057,8 @@ const SceneCharacterPromptEditor = observer(({
       {isMobile ? (
         // 모바일 압축 머리(2026-09-26): 제목 없음(탭이 제목), 모드 세그먼트 한 줄 + ? 도움말 + 활성 수
         <div className="flex-none flex items-center gap-2 mb-2" data-scene-roles-head="">
-          <div className="tab-seg flex-1 min-w-0 flex gap-0.5">
+          {/* 택일 묶음 .seg-group(UI 정돈 그룹 2-c) — 칸이 줄 폭을 나눠 채움(.seg-fill), 모바일 칸 높이 36px */}
+          <div className="seg-group seg-fill flex flex-1 min-w-0">
             {(
               [
                 ['base', '기본만'],
@@ -1070,7 +1069,7 @@ const SceneCharacterPromptEditor = observer(({
               <button
                 key={value}
                 type="button"
-                className={`round-button flex-1 basis-0 min-w-0 h-8 text-sm ${mode === value ? 'back-sky' : 'back-llgray tab-seg-off'}`}
+                className={'seg-item text-sm whitespace-nowrap' + (mode === value ? ' seg-on' : '')}
                 aria-pressed={mode === value}
                 onClick={() => setMode(value)}
               >
@@ -1096,7 +1095,8 @@ const SceneCharacterPromptEditor = observer(({
             <FaUser className="inline mr-2" />
             씬 전용 캐릭터 프롬프트
           </div>
-          <div className="flex items-center gap-1 flex-wrap justify-end">
+          {/* 택일 묶음 .seg-group(UI 정돈 그룹 2-c — 종전 떨어진 솔리드/중립 버튼 셋) */}
+          <div className="seg-group inline-flex">
             {modeButton('base', '기본만')}
             {modeButton('mix', '역할 혼합')}
             {modeButton('scene', '씬 전용')}

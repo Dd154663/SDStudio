@@ -180,15 +180,16 @@ describe('③ 카드 「선택됨」·「여기에 놓기」', () => {
   });
 });
 
-describe('④ 로컬/글로벌 전환 — .tab-seg 한 모양', () => {
-  test('캐릭터 프리셋 관리(PC aside): tab-seg + 미선택 back-llgray tab-seg-off, 로컬 하늘·글로벌 보라, aria-pressed 유지', () => {
+// 그룹 2-c(2026-11-21): 두 자리 모두 택일 묶음 .seg-group 으로 옮김 — 같은 모양이라는 이 검사의 뜻은 그대로(값만 새 클래스).
+describe('④ 로컬/글로벌 전환 — 한 모양(그룹 2-c 부터 .seg-group)', () => {
+  test('캐릭터 프리셋 관리(PC aside): seg-group seg-fill, 로컬 seg-on·글로벌 seg-on-purple, aria-pressed 유지', () => {
     const src = read('CharacterPresetEditor.tsx');
     const start = src.indexOf('const asideViewToggle = (');
     const block = src.slice(start, src.indexOf('// [순차 생성 모드][선택]', start));
-    expect(block).toContain('className="tab-seg flex gap-1"');
-    expect(count(block, "'back-llgray tab-seg-off'")).toBe(2);
-    expect(block).toContain("!globalView ? 'bg-sky-600 text-white dark:bg-sky-500'");
-    expect(block).toContain("globalView ? 'bg-purple-600 text-white dark:bg-purple-500'");
+    expect(block).toContain('className="seg-group seg-fill flex"');
+    expect(block).not.toContain('tab-seg');
+    expect(block).toContain("(!globalView ? ' seg-on' : '')");
+    expect(block).toContain("(globalView ? ' seg-on-purple' : '')");
     expect(count(block, 'aria-pressed=')).toBe(2);
     expect(block).toContain('로컬');
     expect(block).toContain('글로벌');
@@ -196,13 +197,16 @@ describe('④ 로컬/글로벌 전환 — .tab-seg 한 모양', () => {
     expect(src).toContain('const mobileViewToggle = (');
     expect(src).toContain("? 'bg-purple-600 text-white dark:bg-purple-500'\n          : 'btn-neutral text-body'");
   });
-  test('프롬프트조각: tab-seg + 같은 선택 색(전역 = 보라 600·다크 500), 문구 「전역」 그대로, 도움말은 묶음 밖', () => {
+  test('프롬프트조각: seg-group + 같은 선택 표시(전역 = seg-on-purple), 문구 「전역」 그대로, 도움말은 묶음 밖', () => {
     const src = read('PieceEditor.tsx');
     const start = src.indexOf('const scopeToggle = (');
     const block = src.slice(start, src.indexOf('const scopeNotice', start));
-    expect(block).toContain("'tab-seg flex flex-1 min-w-0 gap-1' : 'tab-seg flex gap-1'");
-    expect(block).toContain("scope === 'local' ? 'bg-sky-600 text-white dark:bg-sky-500' : 'back-llgray tab-seg-off'");
-    expect(block).toContain("scope === 'global' ? 'bg-purple-600 text-white dark:bg-purple-500' : 'back-llgray tab-seg-off'");
+    expect(block).toContain("'seg-group seg-fill flex flex-1 min-w-0' : 'seg-group inline-flex'");
+    expect(block).toContain("(scope === 'local' ? ' seg-on' : '')");
+    expect(block).toContain("(scope === 'global' ? ' seg-on-purple' : '')");
+    expect(block).not.toContain('tab-seg');
+    // 보라 값은 공용 클래스가 그룹 2-b 값 그대로 담는다
+    expect(css).toMatch(/\.seg-group > \.seg-item\.seg-on-purple \{\s*@apply bg-purple-600 dark:bg-purple-500 text-white;/);
     expect(block).not.toContain('purple-400/25');
     expect(block).toContain('전역 조각');
     expect(block.indexOf('</div>\n      <span className="inline-flex items-center ml-1">')).toBeGreaterThan(-1);

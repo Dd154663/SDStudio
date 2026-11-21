@@ -780,12 +780,13 @@ const ArtistLibraryTab = observer(() => {
         <button className={'round-button px-3 py-2 text-sm ' + (favOnly ? 'back-orange' : 'back-gray')} onClick={() => setFavOnly((v) => !v)}>
           <FaHeart className="inline mr-1" size={12} />즐겨찾기
         </button>
-        {/* 모델 계열 보기: 카드의 대표 이미지·장수가 그 계열 샘플 기준이 된다 */}
-        <div className="flex rounded-lg border line-color overflow-hidden text-sm" role="group" aria-label="모델 계열 보기" data-artist-family-view={familyView}>
+        {/* 모델 계열 보기: 카드의 대표 이미지·장수가 그 계열 샘플 기준이 된다.
+            택일 묶음 .seg-group(UI 정돈 그룹 2-c — 종전 선택·미선택이 둘 다 채운 색) — 같은 줄 버튼(py-2)과 높이를 맞춰 36px(.seg-lg) */}
+        <div className="seg-group seg-lg flex text-sm" role="group" aria-label="모델 계열 보기" data-artist-family-view={familyView}>
           {(['all', 'v4_5', 'v5'] as FamilyView[]).map((v) => (
             <button
               key={v}
-              className={'px-3 py-2 ' + (familyView === v ? 'back-sky' : 'back-gray')}
+              className={'seg-item' + (familyView === v ? ' seg-on' : '')}
               onClick={() => setFamilyView(v)}
               aria-pressed={familyView === v}
             >

@@ -36,15 +36,23 @@ describe('2 제목 줄은 종전 크기 유지(되돌림)', () => {
     expect(b).toMatch(/min-height: 36px;/);
     expect(b).toMatch(/font-size: 16px;/);
   });
-  test('모델 전환(전체형) h-9·text-base · 모바일 compact 그대로', () => {
+  // UI 정돈 그룹 2-c: 모델 전환도 공용 택일 묶음 .seg-group — 크기는 크기 수식 클래스가 종전 값을 그대로 담는다
+  // (전체형 .seg-lg = 칸 36px·최소 48px = 종전 h-9·min-w-[48px], compact .seg-sm = 28px·최소 34px = 종전 h-7·min-w-[34px]).
+  test('모델 전환(전체형) 36px·text-base · 모바일 compact 그대로', () => {
     const src = read('ModelFamilySwitch.tsx');
-    expect(src).toContain("'btn h-9 min-w-[48px] rounded-none px-3 text-base'");
-    expect(src).toContain("'btn touch-hit relative h-7 min-w-[34px] rounded-none px-2 text-sm'");
+    expect(src).toContain("const btn = compact ? 'seg-item touch-hit relative text-sm' : 'seg-item text-base';");
+    expect(src).toContain("'seg-group flex ' + (compact ? 'seg-sm' : 'seg-lg')");
+    expect(block('.seg-group.seg-lg > .seg-item')).toMatch(/min-height: 2\.25rem;[\s\S]*min-width: 48px;/);
+    expect(block('.seg-group.seg-sm > .seg-item')).toMatch(/min-height: 1\.75rem;[\s\S]*min-width: 34px;/);
   });
 });
 
 test('3 주 탭 줄 위 여백 0(카드 안쪽 8px 만)', () => {
-  expect(read('UtilComponents.tsx')).toContain("'flex p-1 md:p-0 md:pb-2 flex-none gap-2 items-center w-full mb-1 md:mb-0'");
+  const src = read('UtilComponents.tsx');
+  expect(src).toContain("'flex p-1 md:p-0 md:pb-2 flex-none gap-2 items-center w-full mb-1 md:mb-0'");
+  // 그룹 2-c: PC 탭 줄 = 밑줄 탭(.tab-line) — 줄 높이 36px(종전 홈 3px + 탭 36px 보다 낮음) + 아래 8px
+  expect(src).toContain('className="tab-line md:flex w-full max-w-full min-w-0 overflow-x-auto no-scrollbar hidden"');
+  expect(block('.tab-line > .tab-line-item')).toMatch(/height: 2\.25rem;/);
 });
 
 describe('4 하단 바 32px·라벨 14px', () => {

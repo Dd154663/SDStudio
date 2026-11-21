@@ -131,8 +131,9 @@ const WdModelToggle = observer(
   }) => {
     const wdKey = artistTagService.wdModel;
     return (
+      // 택일 묶음 .seg-group(UI 정돈 그룹 2-c) — 좁은 자리라 작은 칸(.seg-sm 28px), stretch = 칸이 줄 폭을 나눠 채움(.seg-fill)
       <div
-        className="flex rounded-md overflow-hidden border line-color"
+        className={'seg-group seg-sm flex' + (stretch ? ' seg-fill' : '')}
         data-wd-model-toggle=""
       >
         {(
@@ -144,11 +145,7 @@ const WdModelToggle = observer(
           <button
             key={m.key}
             className={
-              'px-2.5 py-1 text-xs transition-colors ' +
-              (stretch ? 'flex-1 ' : '') +
-              (wdKey === m.key
-                ? 'bg-sky-600 text-white dark:bg-sky-500'
-                : 'bg-transparent text-muted hover:bg-gray-100 dark:hover:bg-slate-700')
+              'seg-item text-xs' + (wdKey === m.key ? ' seg-on' : '')
             }
             onClick={() => {
               if (wdKey !== m.key) {

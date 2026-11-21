@@ -1205,16 +1205,13 @@ export function useCharacterPresetPanel({
   );
 
   // 로컬/글로벌 분할 버튼(PC aside 맨 위 — 선례 프롬프트조각 aside 의 로컬/전역 전환).
-  // 알약 묶음 .tab-seg(UI 정돈 그룹 2-b — 프롬프트조각 전환과 같은 모양, SPEC §2 탭 세그먼트: 미선택 back-llgray·rounded-lg 는
-  // 클래식 마감 복원용 병기). 선택 표시 = 로컬 하늘·글로벌 보라(뜻 구분, 라이트 600·다크 500 선택 강조). .tab-seg 는
-  // width:fit-content 라 aside 전체 폭은 인라인으로.
+  // 택일 묶음 .seg-group(UI 정돈 그룹 2-c — 프롬프트조각 전환과 같은 모양). 선택 표시 = 로컬 .seg-on(하늘)·
+  // 글로벌 .seg-on-purple(솔리드 보라 — 뜻 구분). aside 전체 폭은 .seg-fill 로 칸이 나눠 채운다.
   const asideViewToggle = (
-    <div className="tab-seg flex gap-1" style={{ width: '100%' }} role="group" aria-label="프리셋 보기" data-character-view-toggle="">
+    <div className="seg-group seg-fill flex" role="group" aria-label="프리셋 보기" data-character-view-toggle="">
       <button
         aria-pressed={!globalView}
-        className={`btn flex-1 px-2 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
-          !globalView ? 'bg-sky-600 text-white dark:bg-sky-500' : 'back-llgray tab-seg-off'
-        }`}
+        className={'seg-item text-sm' + (!globalView ? ' seg-on' : '')}
         onClick={() => switchView(false)}
       >
         <FaUsers size={12} />
@@ -1222,9 +1219,7 @@ export function useCharacterPresetPanel({
       </button>
       <button
         aria-pressed={globalView}
-        className={`btn flex-1 px-2 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
-          globalView ? 'bg-purple-600 text-white dark:bg-purple-500' : 'back-llgray tab-seg-off'
-        }`}
+        className={'seg-item text-sm' + (globalView ? ' seg-on-purple' : '')}
         onClick={() => switchView(true)}
       >
         <FaGlobe size={12} />
