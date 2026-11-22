@@ -114,7 +114,8 @@ const UC_PRESETS: Record<ModelVersion, Partial<Record<UcPresetKey, string>>> = {
   },
 };
 
-const UC_LABELS: Record<UcPresetKey, string> = {
+// 이미지 상세 보기의 「UC 프리셋」 줄도 이 이름표를 쓴다(models/imageDetailInfo, 2026-11-22)
+export const UC_LABELS: Record<UcPresetKey, string> = {
   heavy: '강함 (Heavy)',
   light: '약함 (Light)',
   humanFocus: '인물 중심 (Human Focus)',

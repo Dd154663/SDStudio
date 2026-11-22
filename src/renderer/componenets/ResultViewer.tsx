@@ -38,6 +38,7 @@ import {
   FaChevronUp,
   FaExchangeAlt,
   FaSearchPlus,
+  FaReply,
   FaTrophy,
 } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
@@ -46,7 +47,16 @@ import { V2MainRow, V2TierRows, type V2SlotDef, type V2TierItem } from './Mobile
 import { UndoBarSlot, UNDO_ANCHOR_ATTR } from './UndoBarSlot';
 import { PromptHighlighter } from './SceneEditor';
 import QueueControl from './SceneQueueControl';
-import { FloatView } from './FloatView';
+import { FloatView, useFloatViewHeaderSlot } from './FloatView';
+import { createPortal } from 'react-dom';
+import { ImageDetailInfo } from './ImageDetailInfo';
+import { fitFrame } from './CharacterPositionOverlay';
+import {
+  base64ByteLength,
+  buildImageDetailInfo,
+  detailRankOf,
+} from '../models/imageDetailInfo';
+import { imageExtFromBase64 } from '../models/imageFormats';
 import memoizeOne from 'memoize-one';
 import {
   FaPaste,
@@ -78,9 +88,9 @@ export const GRID_HEADER_NAMES = {
   viewOrder: '보기 순서',
 } as const;
 import {
-  CharacterPrompt,
   ContextMenuType,
   GenericScene,
+  ImportableMetadata,
   Scene,
   SelectedWorkflow,
 } from '../models/types';
@@ -1163,7 +1173,35 @@ interface ResultDetailViewButton {
   text: string | ((path: string) => string);
   className: string;
   onClick: (scene: GenericScene, path: string, close: () => void) => void;
+  // PC 넓은 폭 버튼 줄의 묶음·색 판정(2026-11-22, SceneQueueControl 이 채움) — 'favorite'·'inpaint'·'copy-to-original'·'variant'.
+  // 모바일 V2 는 종전처럼 라벨 글자로 칸을 나누고 className 색을 쓴다(이 필드를 읽지 않음).
+  id?: string;
+  /** 켜짐 상태(즐겨찾기) — 라벨을 고정한 PC 버튼 줄이 색·aria-pressed 로 보인다 */
+  isOn?: (path: string) => boolean;
 }
+
+// 이미지 상세 보기의 PC 넓은 폭 배치 판정(Tailwind md = 768px 과 같은 기준, 플랫폼이 아니라 폭)
+const DETAIL_WIDE_QUERY = '(min-width: 768px)';
+function useDetailWide(): boolean {
+  const get = () =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia(DETAIL_WIDE_QUERY).matches
+      : false;
+  const [wide, setWide] = useState(get);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    const mq = window.matchMedia(DETAIL_WIDE_QUERY);
+    const on = () => setWide(mq.matches);
+    on();
+    mq.addEventListener?.('change', on);
+    return () => mq.removeEventListener?.('change', on);
+  }, []);
+  return wide;
+}
+/** 상세 PC 넓은 폭 — 이미지 칸이 차지할 수 있는 본문 폭 비율 상한(가로로 긴 이미지) */
+const DETAIL_IMAGE_MAX_RATIO = 0.6;
+/** 처음 연 이미지의 크기를 알기 전 이미지 칸 비율(가로/세로) — 흔한 세로 832×1216 */
+const DETAIL_FALLBACK_RATIO = 832 / 1216;
 
 interface ResultDetailViewProps {
   scene: GenericScene;
@@ -1209,15 +1247,15 @@ const ResultDetailView = observer(
     const watchedImages = useRef(new Set<string>());
     // 모바일 좌우 스와이프로 이미지 전환. 시작 좌표를 저장해 끝점과 비교한다.
     const touchStart = useRef<{ x: number; y: number } | null>(null);
-    const [middlePrompt, setMiddlePrompt] = useState<string>('');
-    const [characterPrompts, setCharacterPrompts] = useState<CharacterPrompt[]>(
-      [],
-    );
-    const [seed, setSeed] = useState<string>('');
-    const [scale, setScale] = useState<string>('');
-    const [sampler, setSampler] = useState<string>('');
-    const [steps, setSteps] = useState<string>('');
-    const [uc, setUc] = useState<string>('');
+    // 정보 칸 원료(2026-11-22 개편): 읽어 낸 job 한 벌 + 파일 사실(바이트 수·형식). 참조 이미지 base64 는 job 안 한 벌뿐 —
+    // 다른 상태로 복사하지 않는다. 다음 이미지를 다 읽을 때까지 직전 값을 그대로 둔다(예전 문자열 상태와 같은 동작).
+    const [meta, setMeta] = useState<{
+      path: string;
+      job?: ImportableMetadata;
+      bytes?: number;
+      format?: string;
+      failed?: boolean;
+    }>();
     const [_, forceUpdate] = useState<{}>({});
     // 이미지 불러오기는 보고 있는 경로(문자열)와 다시 시도 번호에만 묶는다 — 생성 중 'updated' 로
     // 목록 배열만 새로 만들어지면 같은 이미지를 다시 읽고 비우지 않는다(2026-11-21).
@@ -1253,36 +1291,19 @@ const ResultDetailView = observer(
             if (isStale()) return;
             setUpscaleInfo({ path: upscalePath, error: e?.message ?? '이미지 확인 실패' });
           });
+          // 파일 사실 — 이미 읽은 base64 로 싸게(전용 stat API 없음): 바이트 수·실제 형식(머리 바이트)
+          const fileFacts = {
+            path: imagePath,
+            bytes: base64ByteLength(base64Image),
+            format: imageExtFromBase64(base64Image),
+          };
           try {
             const job = await extractPromptDataFromBase64(base64Image);
             if (isStale()) return;
-            if (job) {
-              const { prompt, seed, promptGuidance, sampling, steps, uc } = job;
-              setMiddlePrompt(prompt);
-              setCharacterPrompts(job.characterPrompts);
-              setSeed(seed?.toString() ?? '');
-              setScale(promptGuidance.toString());
-              setSampler(sampling);
-              setSteps(steps.toString());
-              setUc(uc);
-            } else {
-              setMiddlePrompt('');
-              setCharacterPrompts([]);
-              setSeed('');
-              setScale('');
-              setSampler('');
-              setSteps('');
-              setUc('');
-            }
+            setMeta({ ...fileFacts, job: job ?? undefined });
           } catch (e: any) {
             if (isStale()) return;
-            setMiddlePrompt('');
-            setCharacterPrompts([]);
-            setSeed('');
-            setScale('');
-            setSampler('');
-            setSteps('');
-            setUc('');
+            setMeta(fileFacts);
           }
           setFilename(imagePath.split('/').pop()!);
         } catch (e: any) {
@@ -1290,13 +1311,7 @@ const ResultDetailView = observer(
           console.log(e);
           setImage(undefined);
           setImageLoadFailed(true);
-          setMiddlePrompt('');
-          setCharacterPrompts([]);
-          setSeed('');
-          setScale('');
-          setSampler('');
-          setSteps('');
-          setUc('');
+          setMeta({ path: imagePath, failed: true });
           setFilename('');
         }
       };
@@ -1432,6 +1447,28 @@ const ResultDetailView = observer(
     // 모바일 V2(2026-09-26): 넓은 버튼 묶음 대신 이미지 아래 [자세한 정보 손잡이][하단 6칸 줄]. 클래식·PC 마크업은 불변.
     const v2 = isV2('grid');
     const [v2More, setV2More] = useState(false);
+    // PC 넓은 폭 배치(2026-11-22 개편): 머리줄(씬 이름·n/전체·순위·←→) + 버튼 줄 + [정보 칸 | 이미지 칸]. 좁은 폭·V2 는 종전 배치.
+    const isWide = useDetailWide();
+    const wideLayout = !v2 && isWide;
+    const headerSlotEl = useFloatViewHeaderSlot();
+    const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null);
+    const [bodySize, setBodySize] = useState({ width: 0, height: 0 });
+    useEffect(() => {
+      if (!bodyEl) return undefined;
+      const ro = new ResizeObserver((entries) => {
+        const r = entries[0]?.contentRect;
+        if (r) setBodySize({ width: r.width, height: r.height });
+      });
+      ro.observe(bodyEl);
+      return () => ro.disconnect();
+    }, [bodyEl]);
+    // 이미지 칸 비율(가로/세로) — 새 이미지의 크기를 알 때까지 직전 값을 유지해 넘길 때 칸 폭이 출렁이지 않게 한다.
+    const [displayRatio, setDisplayRatio] = useState<number>();
+    useEffect(() => {
+      if (imageSize && imageSize.path === currentImagePath && imageSize.height > 0) {
+        setDisplayRatio(imageSize.width / imageSize.height);
+      }
+    }, [imageSize, currentImagePath]);
     const { show, hideAll } = useContextMenu({
       id: ContextMenuType.Image,
     });
@@ -1496,6 +1533,15 @@ const ResultDetailView = observer(
     const upscaleLabel = upscalePreparing
       ? '예약 중…'
       : `업스케일 ×2 · ${upscaleInfo?.path === paths[selectedIndex] && upscaleInfo.cost ? `${upscaleInfo.cost} Anlas` : upscaleInfo?.error ? '미지원' : '…'}`;
+    // PC 넓은 폭 버튼 줄(2026-11-22 사용자): 버튼 글자에서 Anlas 숫자를 빼고 툴팁으로 옮긴다(줄 폭을 아이콘에 씀).
+    const upscaleCost =
+      upscaleInfo?.path === paths[selectedIndex] && upscaleInfo.cost ? upscaleInfo.cost : undefined;
+    const upscaleWideLabel = upscalePreparing ? '예약 중…' : upscaleInfo?.error ? '업스케일 미지원' : '업스케일 ×2';
+    const upscaleWideTitle =
+      upscaleInfo?.error ??
+      (upscaleCost !== undefined
+        ? `가로·세로 2배 · 원본 유지 · ${upscaleCost} Anlas 사용`
+        : upscaleTitle);
     const actUpscale = async () => {
       const path = paths[selectedIndex];
       const session = curSession;
@@ -1515,79 +1561,63 @@ const ResultDetailView = observer(
       String(typeof b.text === 'function' ? b.text(paths[selectedIndex]) : b.text);
     const runPlugin = (b: any) => b.onClick(scene, paths[selectedIndex], onClose);
 
-    const infoFields = (
-      <>
-            <div className="max-w-full mb-2 text-sub">
-              <span className="gray-label">파일이름: </span>
-              <span className="break-all">{filename}</span>
-            </div>
-            {/* 부스트 다중 계정 실행으로 만든 이미지만 — 만든 계정(프로필 이름, D8 앱 내부 표식). 메타·내보내기에는 없음. */}
-            {scene.imageAccounts?.[filename] && (
-              <div className="max-w-full mb-2 text-sub" data-image-account>
-                <span className="gray-label">{BOOST_TEXT.accountLabel}: </span>
-                <span>{scene.imageAccounts[filename]}</span>
-              </div>
-            )}
-            <div className="w-full mb-2">
-              <div className="gray-label">프롬프트 </div>
-              <PromptHighlighter
-                text={middlePrompt}
-                className="w-full h-24 overflow-auto"
-              />
-            </div>
-            <div className="w-full mb-2">
-              <div className="gray-label">네거티브 프롬프트 </div>
-              <PromptHighlighter
-                text={uc}
-                className="w-full h-24 overflow-auto"
-              />
-            </div>
-            {characterPrompts.map((prompt, index) => (
-              <div
-                key={index}
-                className="w-full mb-4 border line-color rounded-md r-card p-3"
-              >
-                <div className="gray-label">캐릭터 프롬프트 </div>
-                <PromptHighlighter
-                  text={prompt.prompt}
-                  className="w-full h-24 overflow-auto"
-                />
-                <div className="gray-label">네거티브 프롬프트 </div>
-                <PromptHighlighter
-                  text={prompt.uc}
-                  className="w-full h-24 overflow-auto"
-                />
-              </div>
-            ))}
-            {/* 시드 · 해상도 두 열(2026-11-22) — 칸이 좁으면(11rem×2 미만) 한 열로 접힌다. 해상도 = 실제 파일 픽셀 크기 */}
-            <div className="w-full grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-x-4" data-detail-seed-resolution="">
-              <div className="mb-2 text-sub min-w-0">
-                <span className="gray-label">시드: </span>
-                {seed}
-              </div>
-              <div className="mb-2 text-sub min-w-0">
-                <span className="gray-label">해상도: </span>
-                <span className="tabular-nums">
-                  {imageSize && imageSize.path === currentImagePath
-                    ? `${imageSize.width} × ${imageSize.height}`
-                    : '-'}
-                </span>
-              </div>
-            </div>
-            <div className="w-full mb-2 text-sub">
-              <span className="gray-label">프롬프트 가이던스: </span>
-              {scale}
-            </div>
-            <div className="w-full mb-2 text-sub">
-              <span className="gray-label">샘플러: </span>
-              {sampler}
-            </div>
-            <div className="w-full mb-2 text-sub">
-              <span className="gray-label">스텝: </span>
-              {steps}
-            </div>
-      </>
-    );
+    // 「이미지 편집」(PC) — 넓은 폭 버튼 줄·좁은 폭 버튼 벽 공용
+    const actEditImage = async () => {
+      const editPath = paths[selectedIndex];
+      // 열기 실패(사용자 지정 실행 파일 없음 등)는 알림 한 줄, 감시는 시작하지 않는다(2026-11-22)
+      try {
+        await backend.openImageEditor(editPath);
+      } catch (e: any) {
+        appState.pushMessage(e?.message || '이미지 편집기를 열지 못했습니다.', 'error');
+        return;
+      }
+      watchedImages.current.add(editPath);
+      backend.watchImage(editPath);
+    };
+    // 「다운로드」(PC) — 파일명 규칙 저장(단축키 save-image 와 같은 경로)
+    const actSaveImage = async () => {
+      await imageDownloadService.downloadSingleImage(
+        curSession!,
+        scene,
+        paths[selectedIndex],
+        appState.getAppliedCharacterPreset(),
+      );
+    };
+    const goPrev = () => setSelectedIndex((selectedIndex - 1 + paths.length) % paths.length);
+    const goNext = () => setSelectedIndex((selectedIndex + 1) % paths.length);
+
+    // 넘겨받은 버튼(SceneQueueControl) — PC 줄·좁은 폭 벽은 id 로 묶음·색을 정한다. 넘겨받은 className 색은 V2 만 쓴다.
+    // 색 원칙(그리드 머리 줄과 같음): 회색 기본, 즐겨찾기는 켜졌을 때만 노랑(+toggle-on·aria-pressed), 다운로드 초록·삭제 빨강.
+    const pluginOn = (b: ResultDetailViewButton) => !!b.isOn?.(paths[selectedIndex]);
+    const pluginTone = (b: ResultDetailViewButton) =>
+      b.id === 'favorite' ? (pluginOn(b) ? 'back-yellow toggle-on' : 'back-gray') : 'back-gray';
+    const KNOWN_PLUGIN_IDS = ['favorite', 'inpaint', 'variant', 'copy-to-original'];
+    const pluginsOf = (id: string) => buttons.filter((b) => b.id === id);
+    const pluginOthers = buttons.filter((b) => !b.id || !KNOWN_PLUGIN_IDS.includes(b.id));
+
+    // 정보 칸 내용(PC·좁은 폭·V2 공용, models/imageDetailInfo) — 다음 이미지를 다 읽을 때까지 직전 값을 보인다
+    const metaFilename = meta ? meta.path.split('/').pop() ?? '' : '';
+    const detailInfo = meta
+      ? buildImageDetailInfo(meta.job, {
+          filename: metaFilename,
+          pixel: imageSize && imageSize.path === meta.path ? imageSize : undefined,
+          format: meta.format,
+          bytes: meta.bytes,
+          account: scene.imageAccounts?.[metaFilename],
+          accountLabel: BOOST_TEXT.accountLabel,
+          sourceScene: scene.type === 'inpaint' ? (scene as any).sceneRef : undefined,
+          workflowTitle: (t) => workFlowService.getDef(t)?.title,
+        })
+      : undefined;
+    const renderInfo = (twoColumns: boolean) =>
+      detailInfo ? (
+        <ImageDetailInfo
+          info={detailInfo}
+          job={meta?.job}
+          twoColumns={twoColumns}
+          loadFailed={meta?.failed}
+        />
+      ) : null;
 
     // 모바일 V2 하단 6칸 줄(2026-09-26 사용자 결정): 다운로드·삭제·설정 불러오기·즐겨찾기·인페인트+더보기.
     // 즐겨찾기·인페인트는 SceneQueueControl 이 넘기는 plugin 버튼(text 로 식별), 나머지 plugin 은 더보기로.
@@ -1658,49 +1688,273 @@ const ResultDetailView = observer(
         ]
       : [];
 
+    // PC 넓은 폭 이미지 칸 크기 — 본문 높이에 이미지 비율로 맞춘 폭(가로로 긴 이미지는 본문 폭의 60% 상한, fitFrame 재사용)
+    const imageFit = wideLayout
+      ? fitFrame(
+          bodySize.width * DETAIL_IMAGE_MAX_RATIO,
+          bodySize.height,
+          displayRatio ?? DETAIL_FALLBACK_RATIO,
+        )
+      : undefined;
+    // 이미지 요소 하나(넓은 폭·좁은 폭·V2 공용) — 우클릭 메뉴·끌어서 밖으로 놓기·불러오는 중·실패 표시 그대로.
+    // 넓은 폭은 그려진 크기 그대로의 상자라 체크무늬가 이미지 뒤에만 깔린다(바깥은 화면 바탕).
+    const imageContent = image ? (
+      <img
+        src={image}
+        draggable={false}
+        // PC: 끌어서 다른 프로그램에 원본 파일로 놓기(2026-11-22, 모바일은 속성 없음)
+        {...imageDragOutProps(paths[selectedIndex])}
+        onContextMenu={(e) => {
+          show({
+            event: e,
+            props: {
+              ctx: {
+                type: 'image',
+                path: paths[selectedIndex],
+                scene: scene,
+                starable: true,
+              },
+            },
+          });
+        }}
+        onLoad={(e) => {
+          const el = e.currentTarget;
+          if (el.naturalWidth > 0 && el.naturalHeight > 0) {
+            setDisplayRatio(el.naturalWidth / el.naturalHeight);
+          }
+        }}
+        className={imageFit ? 'block flex-none object-contain bg-checkboard' : 'w-full h-full object-contain bg-checkboard'}
+        style={imageFit ? { width: imageFit.width, height: imageFit.height } : undefined}
+      />
+    ) : imageLoadFailed ? (
+      <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-muted">
+        <span>이미지를 불러오지 못했습니다.</span>
+        <button
+          className="round-button back-sky"
+          onClick={async () => {
+            const path = paths[selectedIndex];
+            if (path) {
+              await imageService.invalidateCache(path).catch(() => {});
+            }
+            await imageService.refresh(curSession!, scene).catch(() => {});
+            setImageRetryRevision((v) => v + 1);
+          }}
+        >
+          다시 시도
+        </button>
+      </div>
+    ) : (
+      // 이미지 전환/로딩 중 빈 화면 깜빡임 대신 로딩 표시(부팅 스피너와 동일 스타일).
+      <div className="w-full h-full flex items-center justify-center">
+        <Spinner />
+      </div>
+    );
+    // 좌우 스와이프로 이미지를 넘기는 영역 — 가장자리 드로어 스와이프에 양보받는다(edgeSwipe.ts).
+    const swipeProps = {
+      'data-edge-swipe-ignore': '',
+      onTouchStart: (e: React.TouchEvent) => {
+        if (e.touches.length !== 1) {
+          touchStart.current = null;
+          return;
+        }
+        touchStart.current = {
+          x: e.touches[0].clientX,
+          y: e.touches[0].clientY,
+        };
+      },
+      onTouchEnd: (e: React.TouchEvent) => {
+        const start = touchStart.current;
+        touchStart.current = null;
+        if (!start || paths.length < 2) return;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - start.x;
+        const dy = t.clientY - start.y;
+        // 명확한 가로 스와이프만 처리(세로 스크롤/핀치와 충돌 방지):
+        // 이동 50px 이상 + 가로가 세로보다 우세할 때.
+        if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+        if (dx < 0) goNext();
+        else goPrev();
+      },
+    };
+
+    if (wideLayout) {
+      const rank = detailRankOf(scene.game, currentFilename ?? '');
+      // FloatView 머리줄(✕ 오른쪽)에 그려 넣는 내용 — 씬 이름 · n / 전체 · 순위, 오른쪽 끝 이전/다음
+      const headerContent = (
+        <div className="flex items-center gap-3 w-full min-w-0 pr-2" data-detail-header="">
+          <span className="min-w-0 truncate font-semibold text-default" title={scene.name}>
+            {scene.name}
+          </span>
+          <span className="flex-none text-sub tabular-nums">
+            {selectedIndex + 1} / {paths.length}
+          </span>
+          {rank !== undefined && (
+            <span className="flex-none text-sub" data-detail-rank="">
+              순위 {rank}등
+            </span>
+          )}
+          <div className="ml-auto flex-none flex gap-2">
+            <button className="round-button icon-only back-gray" onClick={goPrev} aria-label="이전 이미지" title="이전 이미지">
+              <FaArrowLeft />
+            </button>
+            <button className="round-button icon-only back-gray" onClick={goNext} aria-label="다음 이미지" title="다음 이미지">
+              <FaArrowRight />
+            </button>
+          </div>
+        </div>
+      );
+      const groupSep = <span aria-hidden="true" className="self-stretch w-px my-1 bg-[var(--c-line)]" />;
+      // 버튼마다 앞에 참고 아이콘(2026-11-22 사용자 「가시성」) — 사전(ActionIcon) 우선, 없으면 같은 기능에 이미 쓰는 아이콘
+      // (업스케일 = 우클릭 메뉴의 FaSearchPlus, 파일 위치 = FaFolderOpen, 이미지 변형 = V2 줄의 FaExchangeAlt,
+      // 원본 씬으로 이미지 복사 = 되돌려 보내는 화살표 FaReply).
+      const pluginIcon = (b: ResultDetailViewButton) =>
+        b.id === 'inpaint' ? (
+          <ActionIcon id="inpaint" className="mr-1" />
+        ) : b.id === 'variant' ? (
+          <FaExchangeAlt className="mr-1" />
+        ) : b.id === 'copy-to-original' ? (
+          <FaReply className="mr-1" />
+        ) : null;
+      const pluginBtn = (b: ResultDetailViewButton, i: number) => (
+        <button
+          key={`${b.id ?? 'plugin'}-${i}`}
+          className={`round-button ${pluginTone(b)}`}
+          onClick={() => runPlugin(b)}
+        >
+          {pluginIcon(b)}
+          {pluginLabel(b)}
+        </button>
+      );
+      return (
+        <div className="z-10 bg-[var(--c-surface)] w-full h-full flex flex-col overflow-hidden" data-detail-layout="wide">
+          {headerSlotEl ? (
+            createPortal(headerContent, headerSlotEl)
+          ) : (
+            <div className="flex-none px-3 py-1 border-b line-color">{headerContent}</div>
+          )}
+          {/* 버튼 줄 = 세 묶음(구분선·묶음 이름). 좁아지면 줄 바뀜. 동작·조건·확인 창은 좁은 폭 버튼 벽과 같은 act* */}
+          <div className="flex-none flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 border-b line-color" data-detail-buttons="">
+            <div className="flex flex-wrap items-center gap-2" data-detail-button-group="image">
+              {pluginsOf('favorite').map((b, i) => (
+                <button
+                  key={`favorite-${i}`}
+                  className={`round-button ${pluginTone(b)}`}
+                  aria-pressed={pluginOn(b)}
+                  onClick={() => runPlugin(b)}
+                >
+                  <ActionIcon id="favorite" className="mr-1" />
+                  즐겨찾기
+                </button>
+              ))}
+              <button
+                className={`round-button ${isImageBm ? 'back-orange' : 'back-gray'}`}
+                onClick={actToggleBookmark}
+              >
+                <ActionIcon id="bookmark" className="mr-1" />
+                {isImageBm ? '북마크 해제' : '북마크'}
+              </button>
+              {!isMobile ? (
+                <button className="round-button back-green" onClick={actSaveImage}>
+                  <FaDownload className="mr-1" />
+                  다운로드
+                </button>
+              ) : (
+                <button className="round-button back-green" onClick={actDownloadFile}>
+                  <FaDownload className="mr-1" />
+                  파일 다운로드
+                </button>
+              )}
+              <button className="round-button back-red" onClick={actDeleteFile}>
+                <ActionIcon id="delete" className="mr-1" />
+                삭제
+              </button>
+            </div>
+            {groupSep}
+            <div className="flex flex-wrap items-center gap-2" data-detail-button-group="use">
+              <span className="text-xs text-faint">이 이미지로</span>
+              {pluginsOf('inpaint').map(pluginBtn)}
+              {pluginsOf('variant').map(pluginBtn)}
+              <button
+                className="round-button back-gray"
+                title={upscaleWideTitle}
+                disabled={upscaleDisabled}
+                onClick={actUpscale}
+                data-detail-upscale=""
+              >
+                <FaSearchPlus className="mr-1" />
+                {upscaleWideLabel}
+              </button>
+              <button className="round-button back-gray" onClick={actLoadSettings}>
+                <ActionIcon id="gen-settings" className="mr-1" />
+                생성 설정 적용
+              </button>
+              {pluginsOf('copy-to-original').map(pluginBtn)}
+              {pluginOthers.map(pluginBtn)}
+            </div>
+            {groupSep}
+            <div className="flex flex-wrap items-center gap-2" data-detail-button-group="file">
+              <span className="text-xs text-faint">파일</span>
+              {!isMobile && (
+                <button className="round-button back-gray" onClick={actDownloadFile}>
+                  <FaFolderOpen className="mr-1" />
+                  파일 위치 열기
+                </button>
+              )}
+              {!isMobile && (
+                <button className="round-button back-gray" onClick={actEditImage}>
+                  <ActionIcon id="edit" className="mr-1" />
+                  이미지 편집
+                </button>
+              )}
+              <button className="round-button back-gray" onClick={actCopyImage}>
+                <ActionIcon id="copy" className="mr-1" />
+                이미지 복사
+              </button>
+            </div>
+          </div>
+          {/* 본문 = [정보 칸(남는 폭, 칸 안만 세로 스크롤) | 이미지 칸(이미지 비율 폭)] */}
+          <div ref={setBodyEl} className="flex-1 min-h-0 flex">
+            <div className="flex-1 min-w-0 overflow-y-auto p-4 border-r line-color" data-detail-info-pane="">
+              {renderInfo(true)}
+            </div>
+            <div
+              className="flex-none h-full flex items-center justify-center overflow-hidden"
+              style={{ width: imageFit?.width }}
+              data-detail-image-pane=""
+              {...swipeProps}
+            >
+              {imageContent}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="z-10 bg-[var(--c-surface)] w-full h-full flex overflow-auto flex-col md:flex-row">
         {!v2 && (
         <div className="flex-none md:w-1/3 p-2 md:p-4 overflow-y-auto">
+          {/* 좁은 폭 버튼 벽 — 자리·순서·라벨 그대로, 색만 그리드 머리 줄 원칙(회색 기본·다운로드 초록·삭제 빨강·즐겨찾기 켜짐 노랑) */}
           <div className="flex gap-2 md:gap-3 mb-2 md:mb-6 flex-wrap w-full">
             {!isMobile && (
               <button
                 className={`round-button back-green`}
-                onClick={async () => {
-                  // 다운로드 다이얼로그 열기
-                  await imageDownloadService.downloadSingleImage(
-                    curSession!,
-                    scene,
-                    paths[selectedIndex],
-                    appState.getAppliedCharacterPreset(),
-                  );
-                }}
+                onClick={actSaveImage}
               >
                 <FaDownload className="mr-1" />
                 다운로드
               </button>
             )}
             <button
-              className={`round-button back-sky`}
+              className={`round-button back-gray`}
               onClick={actDownloadFile}
             >
               {!isMobile ? '파일 위치 열기' : '파일 다운로드'}
             </button>
             {!isMobile && (
               <button
-                className={`round-button back-sky`}
-                onClick={async () => {
-                  const editPath = paths[selectedIndex];
-                  // 열기 실패(사용자 지정 실행 파일 없음 등)는 알림 한 줄, 감시는 시작하지 않는다(2026-11-22)
-                  try {
-                    await backend.openImageEditor(editPath);
-                  } catch (e: any) {
-                    appState.pushMessage(e?.message || '이미지 편집기를 열지 못했습니다.', 'error');
-                    return;
-                  }
-                  watchedImages.current.add(editPath);
-                  backend.watchImage(editPath);
-                }}
+                className={`round-button back-gray`}
+                onClick={actEditImage}
               >
                 이미지 편집
               </button>
@@ -1719,20 +1973,20 @@ const ResultDetailView = observer(
               {isImageBm ? '북마크 해제' : '북마크'}
             </button>
             <button
-              className={`round-button back-sky`}
+              className={`round-button back-gray`}
               onClick={actCopyImage}
             >
               <ActionIcon id="copy" className="mr-1" />
               이미지 복사
             </button>
             <button
-              className="round-button back-sky"
+              className="round-button back-gray"
               onClick={actLoadSettings}
             >
               생성 설정 적용
             </button>
             <button
-              className="round-button back-sky"
+              className="round-button back-gray"
               title={upscaleTitle}
               disabled={upscaleDisabled}
               onClick={actUpscale}
@@ -1742,7 +1996,8 @@ const ResultDetailView = observer(
             {buttons.map((button, index) => (
               <button
                 key={index}
-                className={`round-button ${button.className}`}
+                className={`round-button ${pluginTone(button)}`}
+                aria-pressed={button.id === 'favorite' ? pluginOn(button) : undefined}
                 onClick={() => {
                   button.onClick(scene, paths[selectedIndex], onClose);
                 }}
@@ -1764,104 +2019,26 @@ const ResultDetailView = observer(
               'mt-2 md:mt-0 md:block ' + (showPrompt ? 'block' : 'hidden')
             }
           >
-            {infoFields}
+            {renderInfo(false)}
           </div>
         </div>
         )}
         <div
           className={v2 ? 'flex-1 overflow-auto relative min-h-0' : 'flex-1 overflow-auto'}
-          // 좌우 스와이프로 이미지를 넘기는 영역 — 가장자리 드로어 스와이프에 양보받는다(edgeSwipe.ts).
-          data-edge-swipe-ignore=""
-          onTouchStart={(e) => {
-            if (e.touches.length !== 1) {
-              touchStart.current = null;
-              return;
-            }
-            touchStart.current = {
-              x: e.touches[0].clientX,
-              y: e.touches[0].clientY,
-            };
-          }}
-          onTouchEnd={(e) => {
-            const start = touchStart.current;
-            touchStart.current = null;
-            if (!start || paths.length < 2) return;
-            const t = e.changedTouches[0];
-            const dx = t.clientX - start.x;
-            const dy = t.clientY - start.y;
-            // 명확한 가로 스와이프만 처리(세로 스크롤/핀치와 충돌 방지):
-            // 이동 50px 이상 + 가로가 세로보다 우세할 때.
-            if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-            if (dx < 0) {
-              setSelectedIndex((selectedIndex + 1) % paths.length);
-            } else {
-              setSelectedIndex(
-                (selectedIndex - 1 + paths.length) % paths.length,
-              );
-            }
-          }}
+          {...swipeProps}
         >
-          {image ? (
-            <img
-              src={image}
-              draggable={false}
-              // PC: 끌어서 다른 프로그램에 원본 파일로 놓기(2026-11-22, 모바일은 속성 없음)
-              {...imageDragOutProps(paths[selectedIndex])}
-              onContextMenu={(e) => {
-                show({
-                  event: e,
-                  props: {
-                    ctx: {
-                      type: 'image',
-                      path: paths[selectedIndex],
-                      scene: scene,
-                      starable: true,
-                    },
-                  },
-                });
-              }}
-              className="w-full h-full object-contain bg-checkboard"
-            />
-          ) : imageLoadFailed ? (
-            <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-muted">
-              <span>이미지를 불러오지 못했습니다.</span>
-              <button
-                className="round-button back-sky"
-                onClick={async () => {
-                  const path = paths[selectedIndex];
-                  if (path) {
-                    await imageService.invalidateCache(path).catch(() => {});
-                  }
-                  await imageService.refresh(curSession!, scene).catch(() => {});
-                  setImageRetryRevision((v) => v + 1);
-                }}
-              >
-                다시 시도
-              </button>
-            </div>
-          ) : (
-            // 이미지 전환/로딩 중 빈 화면 깜빡임 대신 로딩 표시(부팅 스피너와 동일 스타일).
-            <div className="w-full h-full flex items-center justify-center">
-              <Spinner />
-            </div>
-          )}
+          {imageContent}
           <div className={'absolute bottom-0 md:bottom-auto right-0 md:top-10 flex gap-3 p-4 w-full md:w-auto' + (v2 ? ' opacity-60' : '')}>
             <button
               className={`round-button icon-only  ml-0 md:ml-auto h-10 md:h-8 w-20 md:w-auto bg-[var(--c-input-bg)] text-body mr-auto md:mr-0 text-xl md:text-base`}
-              onClick={() => {
-                setSelectedIndex(
-                  (selectedIndex - 1 + paths.length) % paths.length,
-                );
-              }}
+              onClick={goPrev}
               aria-label="이전 이미지"
             >
               <FaArrowLeft />
             </button>
             <button
               className={`round-button icon-only h-10 md:h-8 w-20 md:w-auto bg-[var(--c-input-bg)] text-xl text-body md:text-base`}
-              onClick={() => {
-                setSelectedIndex((selectedIndex + 1) % paths.length);
-              }}
+              onClick={goNext}
               aria-label="다음 이미지"
             >
               <FaArrowRight />
@@ -1896,7 +2073,7 @@ const ResultDetailView = observer(
             </div>
             {showPrompt && (
               <div data-v2-detail-info="" className="flex-none overflow-auto px-3 py-2 bg-[var(--c-zone)] text-sm" style={{ maxHeight: '45%' }}>
-                {infoFields}
+                {renderInfo(false)}
               </div>
             )}
             <div className="relative flex-none" data-v2-detail-bar="">
@@ -3223,6 +3400,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               priority={1}
               // 이미지 상세 — 전역 되돌리기 단축키 허용(D9, 바깥 이미지 그리드 창도 허용이라 함께 통과)
               allowUndo
+              // 머리줄 내용 자리 — PC 넓은 폭 상세가 씬 이름·n/전체·순위·이전/다음을 그려 넣는다(좁은 폭·V2 는 쓰지 않음)
+              headerSlot
               onEscape={() => setSelectedImageIndex(undefined)}
             >
               <ResultDetailView

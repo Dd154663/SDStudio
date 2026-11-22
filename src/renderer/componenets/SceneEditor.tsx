@@ -51,6 +51,8 @@ import { CharacterPositionOverlay } from './CharacterPositionOverlay';
 import { isValidNaiSeed, MAX_NAI_SEED, SEED_INPUT_TEXT } from '../models/sceneSeedGroups';
 import { PositionBackground, resolvePositionBackground } from '../models/characterPositionBackground';
 import { isV2 } from '../models/mobileV2';
+import { SCENE_ROLES_LEFT_COL_PX, sceneRolesPcLayout } from '../models/sceneRolesLayout';
+import HelpIcon from './HelpIcon';
 import { v4 as uuidv4 } from 'uuid';
 import { useDrag, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
@@ -950,6 +952,23 @@ const SceneCharacterPromptEditor = observer(({
   const [draggingBaseIndex, setDraggingBaseIndex] = useState<number | null>(null);
   const [draggingRoleIndex, setDraggingRoleIndex] = useState<number | null>(null);
 
+  // PC 배치 판정용 탭 뿌리 폭(2026-11-22 두 열 개편) — 창 폭이 아니라 이 탭 영역 폭. 0(숨은 탭·테스트 환경)은 무시.
+  const pcRootRef = useRef<HTMLDivElement>(null);
+  const [pcRootWidth, setPcRootWidth] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (isMobile) return undefined;
+    const el = pcRootRef.current;
+    if (!el) return undefined;
+    const measure = () => {
+      const w = el.getBoundingClientRect().width;
+      if (w > 0) setPcRootWidth(Math.round(w));
+    };
+    measure();
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, []);
+
   // 되돌리기(U2b): 역할 배열(sceneCharacterPrompts) 통째 — 추가·삭제·켜기·순서 = 한 동작 1항목, 글자 = 편집기를 떠날 때 1항목,
   // 위치 = 위치 지정 창에서 누름~뗌 1항목. 세션은 동작 시점의 curSession.
   const editRoles = (label: string, mutate: () => void) =>
@@ -1075,10 +1094,290 @@ const SceneCharacterPromptEditor = observer(({
       : mode === 'mix'
         ? '같은 번호의 기본 캐릭터에 씬 역할의 동작·네거티브·좌표를 자동으로 합칩니다.'
         : '메인 직접입력 캐릭터를 씬 전용 캐릭터로 대체합니다. 적용된 캐릭터 프리셋은 유지됩니다.';
-  return (
-    <div className={isMobile ? 'flex flex-col h-full px-3 py-2 overflow-hidden' : 'flex flex-col h-full p-4 overflow-hidden'}>
+  // ── 공용 조각(PC·모바일이 같은 DOM 을 쓰는 것) ──
+
+  // 기본 캐릭터 한 행(읽기 전용, 순서만 변경 — 끌기 손잡이는 PC 만)
+  const baseRow = (character: CharacterPrompt, index: number) => (
+    <div
+      key={character.id}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={() => {
+        if (draggingBaseIndex !== null) moveBase(draggingBaseIndex, index);
+        setDraggingBaseIndex(null);
+      }}
+      className="flex items-center gap-2 rounded border line-color bg-[var(--c-surface)] px-2 py-1.5"
+    >
+      {!isMobile && (
+        <span
+          draggable
+          onDragStart={() => setDraggingBaseIndex(index)}
+          onDragEnd={() => setDraggingBaseIndex(null)}
+          className="text-faint flex-none cursor-grab"
+        >
+          <FaGripVertical />
+        </span>
+      )}
+      <CharacterNumberDot index={index} />
+      <div className="min-w-0 flex-1">
+        <div className="text-xs text-default truncate">
+          {character.prompt || '(비어 있음)'}
+        </div>
+        <CharacterPresetLine name={character.fromPreset} />
+      </div>
+      <Tooltip content="위로">
+        <button
+          type="button"
+          className="icon-button back-gray w-7 h-7"
+          disabled={index === 0}
+          onClick={() => moveBase(index, index - 1)}
+        >
+          <FaArrowUp size={14} />
+        </button>
+      </Tooltip>
+      <Tooltip content="아래로">
+        <button
+          type="button"
+          className="icon-button back-gray w-7 h-7"
+          disabled={index === baseCharacters.length - 1}
+          onClick={() => moveBase(index, index + 1)}
+        >
+          <FaArrowDown size={14} />
+        </button>
+      </Tooltip>
+    </div>
+  );
+
+  // 역할 켜기/끄기 — 라벨은 두 상태가 같다(SPEC 켜짐·꺼짐 토글 규칙, 2026-11-22): 상태는 색·아이콘 + aria-pressed.
+  // 종전 「활성화」↔「비활성화」로 글자 폭이 바뀌어 줄이 밀렸다.
+  const roleToggle = (character: CharacterPrompt) => {
+    const on = character.enabled !== false;
+    return (
+      <button
+        type="button"
+        className={`round-button h-7 px-3 text-sm flex-none ${on ? 'back-sky' : 'back-gray'}`}
+        aria-pressed={on}
+        data-scene-role-toggle=""
+        onClick={() => toggleCharacter(character.id)}
+      >
+        {on ? <FaToggleOn className="mr-1" /> : <FaToggleOff className="mr-1" />}
+        활성화
+      </button>
+    );
+  };
+
+  // 역할 카드 오른쪽 위 [↑][↓][삭제] — 삭제는 확인 없이 즉시(되돌리기로 복구). 모양은 템플릿 관리 캐릭터 카드와 같은 icon-button back-red.
+  const roleOrderButtons = (character: CharacterPrompt, index: number) => (
+    <div className="flex items-center gap-1">
+      <Tooltip content="위로">
+        <button
+          type="button"
+          className="icon-button back-gray w-7 h-7"
+          disabled={index === 0}
+          onClick={() => moveRole(index, index - 1)}
+        >
+          <FaArrowUp size={14} />
+        </button>
+      </Tooltip>
+      <Tooltip content="아래로">
+        <button
+          type="button"
+          className="icon-button back-gray w-7 h-7"
+          disabled={index === characters.length - 1}
+          onClick={() => moveRole(index, index + 1)}
+        >
+          <FaArrowDown size={14} />
+        </button>
+      </Tooltip>
+      <Tooltip content="캐릭터 삭제">
+        <button
+          className="icon-button back-red"
+          aria-label="캐릭터 삭제"
+          onClick={() => removeCharacter(character.id)}
+        >
+          <FaTrash />
+        </button>
+      </Tooltip>
+    </div>
+  );
+
+  const roleMixLine = (index: number) =>
+    baseCharacters[index] ? `기본 캐릭터 ${index + 1}에 자동 혼합` : '대기 중 · 대응 기본 캐릭터 없음';
+
+  // 위치 줄 — 누르면 그 캐릭터가 선택된 상태로 위치 지정 창이 열린다(2026-09-26, PC·모바일 공통).
+  // PC 는 카드 머리 줄에 짧게(2026-11-22 R-8), 모바일은 카드 맨 아래 종전 문구 그대로.
+  const rolePositionButton = (character: CharacterPrompt, index: number, label: string) => (
+    <button
+      type="button"
+      className="btn-link flex items-center gap-2 text-xs relative touch-hit"
+      onClick={() => openPositionOverlay(character.id)}
+    >
+      <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: sceneCharColors[index % sceneCharColors.length] }} />
+      {label}
+    </button>
+  );
+  const positionText = (character: CharacterPrompt) =>
+    `(${(character.position?.x ?? 0.5).toFixed(2)}, ${(character.position?.y ?? 0.5).toFixed(2)})`;
+
+  // 역할 카드 한 장. 카드 틀(테두리·켜짐 색·끌어 놓기)은 PC·모바일 공통, 안쪽 배치만 갈린다.
+  const roleCard = (character: CharacterPrompt, index: number, sideBySide: boolean) => (
+    <div
+      key={character.id}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={() => {
+        if (draggingRoleIndex !== null) moveRole(draggingRoleIndex, index);
+        setDraggingRoleIndex(null);
+      }}
+      className={`border rounded-lg ${isMobile ? 'p-3' : 'p-4'} transition-[border-color,background-color,opacity] ${
+        character.enabled !== false
+          ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
+          : 'line-color opacity-60'
+      }`}
+      data-scene-role={index + 1}
+    >
       {isMobile ? (
-        // 모바일 압축 머리(2026-09-26): 제목 없음(탭이 제목), 모드 세그먼트 한 줄 + ? 도움말 + 활성 수
+        <>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <CharacterNumberDot index={index} small />
+              <div className="min-w-0">
+                <div className="font-medium text-default">씬 캐릭터 역할 {index + 1}</div>
+                {mode === 'mix' && (
+                  <div className="text-xs text-muted">{roleMixLine(index)}</div>
+                )}
+              </div>
+              {roleToggle(character)}
+            </div>
+            {roleOrderButtons(character, index)}
+          </div>
+
+          <div className="mb-2">
+            <label className="block text-sm font-medium mb-1 gray-label">
+              역할 프롬프트
+            </label>
+            <div className="h-16">
+              <PromptEditTextArea
+                value={character.prompt}
+                onChange={(value) => updateCharacterText(character.id, 'prompt', value)}
+              />
+            </div>
+          </div>
+
+          <div className="mb-2">
+            <label className="block text-sm font-medium mb-1 gray-label">
+              역할 네거티브 프롬프트
+            </label>
+            <div className="h-16">
+              <PromptEditTextArea
+                value={character.uc}
+                onChange={(value) => updateCharacterText(character.id, 'uc', value)}
+              />
+            </div>
+          </div>
+
+          {rolePositionButton(character, index, `위치: ${positionText(character)} · 위치 지정 창에서 조정`)}
+        </>
+      ) : (
+        <>
+          {/* PC 머리 줄(2026-11-22): 끌기·번호·이름·켜기·(혼합 보조 줄)·위치 / 오른쪽 끝 ↑↓삭제. 좁으면 줄바꿈. */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2" data-scene-role-head="">
+            <span
+              draggable
+              onDragStart={() => setDraggingRoleIndex(index)}
+              onDragEnd={() => setDraggingRoleIndex(null)}
+              className="text-faint cursor-grab flex-none"
+            >
+              <FaGripVertical />
+            </span>
+            <CharacterNumberDot index={index} small />
+            <span className="font-medium text-default flex-none">역할 {index + 1}</span>
+            {roleToggle(character)}
+            {mode === 'mix' && (
+              <span className="text-xs text-muted">{roleMixLine(index)}</span>
+            )}
+            <Tooltip content="위치 지정 창에서 조정">
+              {rolePositionButton(character, index, `위치 ${positionText(character)}`)}
+            </Tooltip>
+            <div className="ml-auto">{roleOrderButtons(character, index)}</div>
+          </div>
+
+          {/* 프롬프트(넓게)·네거티브(좁게) 나란히 3:2 — 카드가 좁으면 위아래(R-2). 두 칸 모두 프롬프트 칸 표준
+              (비어도 3줄 min-h-20, 약 6줄 max-h-40 까지 자란 뒤 칸 안 스크롤 — 캐릭터 프리셋·템플릿 편집기와 같은 감싸기). */}
+          <div
+            className={sideBySide ? 'grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-3' : 'flex flex-col gap-2'}
+            data-scene-role-fields={sideBySide ? 'row' : 'stack'}
+          >
+            <div className="min-w-0">
+              <label className="block text-sm font-medium mb-1 gray-label">
+                역할 프롬프트
+              </label>
+              <div className="flex flex-col min-h-20 max-h-40" data-scene-role-box="prompt">
+                <PromptEditTextArea
+                  className="flex-1 min-h-0"
+                  value={character.prompt}
+                  onChange={(value) => updateCharacterText(character.id, 'prompt', value)}
+                />
+              </div>
+            </div>
+            <div className="min-w-0">
+              <label className="block text-sm font-medium mb-1 gray-label">
+                역할 네거티브 프롬프트
+              </label>
+              <div className="flex flex-col min-h-20 max-h-40" data-scene-role-box="uc">
+                <PromptEditTextArea
+                  className="flex-1 min-h-0"
+                  value={character.uc}
+                  onChange={(value) => updateCharacterText(character.id, 'uc', value)}
+                />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  // 캐릭터 추가 = 역할 목록 끝 점선 칸(.add-slot). PC·모바일 같은 요소(2026-11-22 R-3 — PC 바닥 전 폭 초록 버튼 대체).
+  const addRoleSlot = (
+    // 캐릭터 추가 = 목록 끝 점선 카드(새 씬 카드와 같은 언어)
+    <button
+      type="button"
+      data-scene-role-add=""
+      className="add-slot mt-3 w-full h-11 text-sm flex items-center justify-center gap-1"
+      onClick={addCharacter}
+    >
+      <FaPlus size={11} /> 캐릭터 추가
+    </button>
+  );
+
+  const positionOverlay = posOverlay && (
+    <ModalOverlay isOpen onClose={closePositionOverlay} title="캐릭터 위치 지정" size="full">
+      <CharacterPositionOverlay
+        markers={characters.map((c, i) => ({
+          id: c.id,
+          label: c.prompt,
+          color: sceneCharColors[i % sceneCharColors.length],
+          position: c.position ?? { x: 0.5, y: 0.5 },
+          enabled: c.enabled !== false,
+        }))}
+        onMove={(id, position) => updateCharacter(id, { position })}
+        onMoveStart={beginPositionDrag}
+        onMoveEnd={endPositionDrag}
+        onDone={closePositionOverlay}
+        initialSelectedId={posOverlay.selectedId}
+        backgroundPath={posOverlay.bg.path}
+        fallbackAspect={posOverlay.bg.aspect}
+        caption={posOverlay.bg.caption}
+      />
+    </ModalOverlay>
+  );
+
+  const coordsOffNotice = '메인 패널의 「캐릭터 위치 지정 모드」가 꺼져 있어 좌표는 전송되지 않습니다';
+
+  if (isMobile) {
+    // 모바일 배치(2026-09-26, SPEC §6-5) — 2026-11-22 PC 개편에서 바꾸지 않음(토글 라벨 고정만 공통 적용).
+    return (
+      <div className="flex flex-col h-full px-3 py-2 overflow-hidden">
+        {/* 모바일 압축 머리(2026-09-26): 제목 없음(탭이 제목), 모드 세그먼트 한 줄 + ? 도움말 + 활성 수 */}
         <div className="flex-none flex items-center gap-2 mb-2" data-scene-roles-head="">
           {/* 택일 묶음 .seg-group(UI 정돈 그룹 2-c) — 칸이 줄 폭을 나눠 채움(.seg-fill), 모바일 칸 높이 36px */}
           <div className="seg-group seg-fill flex flex-1 min-w-0">
@@ -1111,300 +1410,65 @@ const SceneCharacterPromptEditor = observer(({
             </span>
           )}
         </div>
-      ) : (
-      <div className="flex-none mb-4">
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-lg font-medium text-default">
-            <FaUser className="inline mr-2" />
-            씬 전용 캐릭터 프롬프트
-          </div>
-          {/* 택일 묶음 .seg-group(UI 정돈 그룹 2-c — 종전 떨어진 솔리드/중립 버튼 셋) */}
-          <div className="seg-group inline-flex">
-            {modeButton('base', '기본만')}
-            {modeButton('mix', '역할 혼합')}
-            {modeButton('scene', '씬 전용')}
-          </div>
-        </div>
-        <div className="text-sm text-muted">
-          {mode === 'base' && '메인 패널의 기본 캐릭터 프롬프트만 사용합니다.'}
-          {mode === 'mix' &&
-            '같은 번호의 기본 캐릭터에 씬 역할의 동작·네거티브·좌표를 자동으로 합칩니다.'}
-          {mode === 'scene' &&
-            '메인 직접입력 캐릭터를 씬 전용 캐릭터로 대체합니다. 적용된 캐릭터 프리셋은 유지됩니다.'}
-        </div>
-        {characters.length > 0 && (
-          <div className="mt-2 text-sm">
-            <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
-              {enabledCount}/{characters.length} 캐릭터 활성화
-            </span>
-          </div>
-        )}
-      </div>
-      )}
 
-      {isMobile && (
         <FoldHead open={!foldBase} label="기본 캐릭터 프롬프트 (읽기 전용 · 순서 변경)" onToggle={() => toggleFold('base')} />
-      )}
-      {(!isMobile || !foldBase) && (
-      <div className="flex-none mb-3 rounded-lg r-card border line-color bg-[var(--c-surface-2)] p-3">
-        <div className="flex items-center justify-between gap-2 mb-2">
-          <div className="text-sm font-bold text-default flex items-center gap-1.5">
-            <FaLock className="text-muted" />
-            기본 캐릭터 프롬프트
-          </div>
-          <span className="text-xs text-muted">내용 읽기 전용 · 순서 변경 가능</span>
-        </div>
-        <div className="text-xs text-muted mb-2">
-          기본 순서를 바꾸면 역할 혼합을 사용하는 모든 씬의 대응 순서가 변경됩니다.
-        </div>
-        {baseCharacters.length === 0 ? (
-          <EmptyState className="py-2">
-            기본 캐릭터 프롬프트가 없습니다
-          </EmptyState>
-        ) : (
-          <div className="space-y-1.5 max-h-48 overflow-auto">
-            {baseCharacters.map((character, index) => (
-              <div
-                key={character.id}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => {
-                  if (draggingBaseIndex !== null) moveBase(draggingBaseIndex, index);
-                  setDraggingBaseIndex(null);
-                }}
-                className="flex items-center gap-2 rounded border line-color bg-[var(--c-surface)] px-2 py-1.5"
-              >
-                {!isMobile && (
-                  <span
-                    draggable
-                    onDragStart={() => setDraggingBaseIndex(index)}
-                    onDragEnd={() => setDraggingBaseIndex(null)}
-                    className="text-faint flex-none cursor-grab"
-                  >
-                    <FaGripVertical />
-                  </span>
-                )}
-                <CharacterNumberDot index={index} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs text-default truncate">
-                    {character.prompt || '(비어 있음)'}
-                  </div>
-                  <CharacterPresetLine name={character.fromPreset} />
-                </div>
-                <Tooltip content="위로">
-                  <button
-                    type="button"
-                    className="icon-button back-gray w-7 h-7"
-                    disabled={index === 0}
-                    onClick={() => moveBase(index, index - 1)}
-                  >
-                    <FaArrowUp size={14} />
-                  </button>
-                </Tooltip>
-                <Tooltip content="아래로">
-                  <button
-                    type="button"
-                    className="icon-button back-gray w-7 h-7"
-                    disabled={index === baseCharacters.length - 1}
-                    onClick={() => moveBase(index, index + 1)}
-                  >
-                    <FaArrowDown size={14} />
-                  </button>
-                </Tooltip>
+        {!foldBase && (
+          <div className="flex-none mb-3 rounded-lg r-card border line-color bg-[var(--c-surface-2)] p-3">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="text-sm font-bold text-default flex items-center gap-1.5">
+                <FaLock className="text-muted" />
+                기본 캐릭터 프롬프트
               </div>
-            ))}
+              <span className="text-xs text-muted">내용 읽기 전용 · 순서 변경 가능</span>
+            </div>
+            <div className="text-xs text-muted mb-2">
+              기본 순서를 바꾸면 역할 혼합을 사용하는 모든 씬의 대응 순서가 변경됩니다.
+            </div>
+            {baseCharacters.length === 0 ? (
+              <EmptyState className="py-2">
+                기본 캐릭터 프롬프트가 없습니다
+              </EmptyState>
+            ) : (
+              <div className="space-y-1.5 max-h-48 overflow-auto">
+                {baseCharacters.map(baseRow)}
+              </div>
+            )}
           </div>
         )}
-      </div>
-      )}
 
-      {/* 캐릭터 위치 지정 창(2026-09-26): 카드의 위치 줄에서도 열 수 있다. */}
-      {characters.length > 0 && (
-        <div className={isMobile ? 'flex-none mb-2 flex items-center gap-2' : 'flex-none mb-3 flex items-center gap-2'}>
-          <button
-            type="button"
-            className="round-button back-sky h-8 text-sm"
-            data-char-pos-open=""
-            onClick={() => openPositionOverlay()}
-          >
-            위치 지정 창 열기
-          </button>
-          {!preset?.useCoords && (
-            <span className="text-xs text-faint min-w-0 truncate">메인 패널의 「캐릭터 위치 지정 모드」가 꺼져 있어 좌표는 전송되지 않습니다</span>
+        {/* 캐릭터 위치 지정 창(2026-09-26): 카드의 위치 줄에서도 열 수 있다. */}
+        {characters.length > 0 && (
+          <div className="flex-none mb-2 flex items-center gap-2">
+            <button
+              type="button"
+              className="round-button back-sky h-8 text-sm"
+              data-char-pos-open=""
+              onClick={() => openPositionOverlay()}
+            >
+              위치 지정 창 열기
+            </button>
+            {!preset?.useCoords && (
+              <span className="text-xs text-faint min-w-0 truncate">{coordsOffNotice}</span>
+            )}
+          </div>
+        )}
+        {positionOverlay}
+
+        <div className="flex-1 overflow-auto">
+          {characters.length === 0 ? (
+            <div className="text-center text-muted py-8">
+              <FaUser className="text-4xl mx-auto mb-2 opacity-50" />
+              <div>캐릭터 프롬프트가 없습니다</div>
+              <div className="text-sm mt-1">아래 버튼을 눌러 캐릭터를 추가하세요</div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {characters.map((character, index) => roleCard(character, index, false))}
+            </div>
           )}
+          {addRoleSlot}
         </div>
-      )}
-      {posOverlay && (
-        <ModalOverlay isOpen onClose={closePositionOverlay} title="캐릭터 위치 지정" size="full">
-          <CharacterPositionOverlay
-            markers={characters.map((c, i) => ({
-              id: c.id,
-              label: c.prompt,
-              color: sceneCharColors[i % sceneCharColors.length],
-              position: c.position ?? { x: 0.5, y: 0.5 },
-              enabled: c.enabled !== false,
-            }))}
-            onMove={(id, position) => updateCharacter(id, { position })}
-            onMoveStart={beginPositionDrag}
-            onMoveEnd={endPositionDrag}
-            onDone={closePositionOverlay}
-            initialSelectedId={posOverlay.selectedId}
-            backgroundPath={posOverlay.bg.path}
-            fallbackAspect={posOverlay.bg.aspect}
-            caption={posOverlay.bg.caption}
-          />
-        </ModalOverlay>
-      )}
 
-      <div className="flex-1 overflow-auto">
-        {characters.length === 0 ? (
-          <div className="text-center text-muted py-8">
-            <FaUser className="text-4xl mx-auto mb-2 opacity-50" />
-            <div>캐릭터 프롬프트가 없습니다</div>
-            <div className="text-sm mt-1">아래 버튼을 눌러 캐릭터를 추가하세요</div>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {characters.map((character, index) => (
-              <div
-                key={character.id}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => {
-                  if (draggingRoleIndex !== null) moveRole(draggingRoleIndex, index);
-                  setDraggingRoleIndex(null);
-                }}
-                className={`border rounded-lg ${isMobile ? 'p-3' : 'p-4'} transition-[border-color,background-color,opacity] ${
-                  character.enabled !== false
-                    ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
-                    : 'line-color opacity-60'
-                }`}
-                data-scene-role={index + 1}
-              >
-                <div className={`flex items-center justify-between ${isMobile ? 'mb-2' : 'mb-3'}`}>
-                  <div className="flex items-center gap-2">
-                    {!isMobile && (
-                      <span
-                        draggable
-                        onDragStart={() => setDraggingRoleIndex(index)}
-                        onDragEnd={() => setDraggingRoleIndex(null)}
-                        className="text-faint cursor-grab"
-                      >
-                        <FaGripVertical />
-                      </span>
-                    )}
-                    <CharacterNumberDot index={index} small />
-                    <div className="min-w-0">
-                      <div className="font-medium text-default">씬 캐릭터 역할 {index + 1}</div>
-                      {mode === 'mix' && (
-                        <div className="text-xs text-muted">
-                          {baseCharacters[index]
-                            ? `기본 캐릭터 ${index + 1}에 자동 혼합`
-                            : '대기 중 · 대응 기본 캐릭터 없음'}
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      className={`round-button h-7 px-3 text-sm ${
-                        character.enabled !== false ? 'back-sky' : 'back-gray'
-                      }`}
-                      onClick={() => toggleCharacter(character.id)}
-                    >
-                      {character.enabled !== false ? (
-                        <>
-                          <FaToggleOn className="mr-1" />
-                          활성화
-                        </>
-                      ) : (
-                        <>
-                          <FaToggleOff className="mr-1" />
-                          비활성화
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Tooltip content="위로">
-                      <button
-                        type="button"
-                        className="icon-button back-gray w-7 h-7"
-                        disabled={index === 0}
-                        onClick={() => moveRole(index, index - 1)}
-                      >
-                        <FaArrowUp size={14} />
-                      </button>
-                    </Tooltip>
-                    <Tooltip content="아래로">
-                      <button
-                        type="button"
-                        className="icon-button back-gray w-7 h-7"
-                        disabled={index === characters.length - 1}
-                        onClick={() => moveRole(index, index + 1)}
-                      >
-                        <FaArrowDown size={14} />
-                      </button>
-                    </Tooltip>
-                    <Tooltip content="캐릭터 삭제">
-                      <button
-                        className="icon-button back-red"
-                        aria-label="캐릭터 삭제"
-                        onClick={() => removeCharacter(character.id)}
-                      >
-                        <FaTrash />
-                      </button>
-                    </Tooltip>
-                  </div>
-                </div>
-
-                <div className={isMobile ? 'mb-2' : 'mb-3'}>
-                  <label className="block text-sm font-medium mb-1 gray-label">
-                    역할 프롬프트
-                  </label>
-                  <div className={isMobile ? 'h-16' : undefined}>
-                    <PromptEditTextArea
-                      value={character.prompt}
-                      onChange={(value) => updateCharacterText(character.id, 'prompt', value)}
-                    />
-                  </div>
-                </div>
-
-                <div className={isMobile ? 'mb-2' : 'mb-3'}>
-                  <label className="block text-sm font-medium mb-1 gray-label">
-                    역할 네거티브 프롬프트
-                  </label>
-                  <div className={isMobile ? 'h-16' : undefined}>
-                    <PromptEditTextArea
-                      value={character.uc}
-                      onChange={(value) => updateCharacterText(character.id, 'uc', value)}
-                    />
-                  </div>
-                </div>
-
-                {/* 위치 줄을 누르면 그 캐릭터가 선택된 상태로 위치 지정 창이 열린다(2026-09-26, PC·모바일 공통) */}
-                <button
-                  type="button"
-                  className="btn-link flex items-center gap-2 text-xs relative touch-hit"
-                  onClick={() => openPositionOverlay(character.id)}
-                >
-                  <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: sceneCharColors[index % sceneCharColors.length] }} />
-                  위치: ({(character.position?.x ?? 0.5).toFixed(2)}, {(character.position?.y ?? 0.5).toFixed(2)}) · 위치 지정 창에서 조정
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        {isMobile && (
-          // 캐릭터 추가 = 목록 끝 점선 카드(새 씬 카드와 같은 언어)
-          <button
-            type="button"
-            data-scene-role-add=""
-            className="add-slot mt-3 w-full h-11 text-sm flex items-center justify-center gap-1"
-            onClick={addCharacter}
-          >
-            <FaPlus size={11} /> 캐릭터 추가
-          </button>
-        )}
-      </div>
-
-      {isMobile ? (
         <div className="flex-none">
           <FoldHead open={!foldNeg} label="씬 전용 캐릭터 공통 네거티브 프롬프트" onToggle={() => toggleFold('neg')} />
           {!foldNeg && (
@@ -1416,30 +1480,117 @@ const SceneCharacterPromptEditor = observer(({
             </div>
           )}
         </div>
-      ) : (
-      <div className="flex-none mt-4 pt-4 border-t">
-        <div className="flex gap-2">
-          <button
-            className="round-button back-green h-8 flex-1"
-            onClick={addCharacter}
-          >
-            <FaPlus className="mr-2" />
-            캐릭터 추가
-          </button>
+      </div>
+    );
+  }
+
+  // ── PC 배치(2026-11-22 공간 개편 「안 가」 — 두 열) ──
+  // 왼쪽 좁은 열(고정 폭) = 가끔 보는 것: 방식 택일·설명·활성 수·공통 네거티브·기본 캐릭터 목록·위치 지정 창 열기.
+  // 오른쪽 넓은 열 = 역할 카드 목록 + 끝 점선 추가 칸 — 이 열만 세로 스크롤. 기본 캐릭터 목록은 왼쪽 열의 남는 높이를 받고 안에서 스크롤.
+  // 탭 영역 폭이 좁으면(sceneRolesPcLayout) 왼쪽 열 내용을 위에 쌓는 한 열 — 위 묶음은 높이 상한(45%) 안에서 통째로 스크롤.
+  const pcLayout = sceneRolesPcLayout(pcRootWidth);
+  const { twoCol } = pcLayout;
+  return (
+    <div
+      ref={pcRootRef}
+      className={twoCol ? 'flex flex-row gap-4 h-full p-4 overflow-hidden' : 'flex flex-col gap-3 h-full p-4 overflow-hidden'}
+      data-scene-roles-layout={twoCol ? 'two-col' : 'one-col'}
+    >
+      <div
+        className={twoCol ? 'flex-none flex flex-col gap-3 min-h-0 overflow-y-auto' : 'flex-none flex flex-col gap-3 max-h-[45%] overflow-y-auto'}
+        style={twoCol ? { width: SCENE_ROLES_LEFT_COL_PX } : undefined}
+        data-scene-roles-col="side"
+      >
+        {/* 방식 택일(큰 제목 「씬 전용 캐릭터 프롬프트」는 탭 이름과 겹쳐 제거, R-5) */}
+        <div className="flex-none" data-scene-roles-mode="">
+          {/* 택일 묶음 .seg-group(UI 정돈 그룹 2-c — 종전 떨어진 솔리드/중립 버튼 셋) */}
+          <div className="seg-group inline-flex">
+            {modeButton('base', '기본만')}
+            {modeButton('mix', '역할 혼합')}
+            {modeButton('scene', '씬 전용')}
+          </div>
+          <div className="mt-1.5 text-xs text-muted">{modeDesc}</div>
+          {characters.length > 0 && (
+            <div className="mt-1 text-xs text-green-600 dark:text-green-300">
+              {enabledCount}/{characters.length} 활성
+            </div>
+          )}
         </div>
 
-        {/* 씬 전용 캐릭터 네거티브 프롬프트 (전체) */}
-        <div className="mt-4">
-          <label className="block text-sm font-medium mb-1 gray-label">
-            씬 전용 캐릭터 공통 네거티브 프롬프트
+        {/* 공통 네거티브(생성 때 메인 네거티브 뒤에 붙음) — 칸 높이는 프롬프트 칸 표준 */}
+        <div className="flex-none rounded-lg r-card border line-color bg-[var(--c-surface-2)] p-3" data-scene-roles-common-neg="">
+          <label className="block text-sm font-bold text-default mb-2">
+            공통 네거티브 프롬프트
           </label>
-          <PromptEditTextArea
-            value={scene.sceneCharacterUC || ''}
-            onChange={setCharacterUC}
-          />
+          <div className="flex flex-col min-h-20 max-h-40" data-scene-role-box="common-uc">
+            <PromptEditTextArea
+              className="flex-1 min-h-0"
+              value={scene.sceneCharacterUC || ''}
+              onChange={setCharacterUC}
+            />
+          </div>
         </div>
+
+        {/* 기본 캐릭터(읽기 전용, 순서 변경 ↑↓·끌기) — 두 열이면 남는 높이를 받고 넘치면 카드 안 스크롤(R-4) */}
+        <div
+          className={
+            (twoCol && baseCharacters.length > 0 ? 'flex-1 min-h-[120px] flex flex-col' : 'flex-none') +
+            ' rounded-lg r-card border line-color bg-[var(--c-surface-2)] p-3'
+          }
+          data-scene-roles-base=""
+        >
+          <div className="flex-none flex items-center justify-between gap-2 mb-2">
+            <div className="text-sm font-bold text-default flex items-center gap-1.5">
+              <FaLock className="text-muted" />
+              기본 캐릭터
+              <HelpIcon
+                size={13}
+                content="메인 패널의 기본 캐릭터 프롬프트입니다. 내용은 여기서 고칠 수 없고 순서만 바꿀 수 있습니다. 기본 순서를 바꾸면 역할 혼합을 사용하는 모든 씬의 대응 순서가 변경됩니다."
+              />
+            </div>
+            <span className="text-xs text-muted">읽기 전용 · 순서 변경</span>
+          </div>
+          {baseCharacters.length === 0 ? (
+            <div className="text-xs text-muted">기본 캐릭터 프롬프트가 없습니다</div>
+          ) : (
+            <div
+              className={twoCol ? 'space-y-1.5 flex-1 min-h-0 overflow-auto' : 'space-y-1.5'}
+              data-scene-roles-base-list=""
+            >
+              {baseCharacters.map(baseRow)}
+            </div>
+          )}
+        </div>
+
+        {/* 캐릭터 위치 지정 창(2026-09-26): 카드 머리 줄의 「위치 (x, y)」에서도 열 수 있다. */}
+        {characters.length > 0 && (
+          <div className="flex-none flex flex-col items-start gap-1">
+            <button
+              type="button"
+              className="round-button back-sky h-8 text-sm"
+              data-char-pos-open=""
+              onClick={() => openPositionOverlay()}
+            >
+              위치 지정 창 열기
+            </button>
+            {!preset?.useCoords && (
+              <span className="text-xs text-faint">{coordsOffNotice}</span>
+            )}
+          </div>
+        )}
       </div>
-      )}
+      {positionOverlay}
+
+      <div className="flex-1 min-w-0 min-h-0 overflow-y-auto pr-1" data-scene-roles-col="list">
+        {characters.length === 0 ? (
+          <div className="text-sm text-muted">씬 캐릭터 역할이 없습니다. 아래 칸을 눌러 추가하세요.</div>
+        ) : (
+          <div className="space-y-3">
+            {characters.map((character, index) => roleCard(character, index, pcLayout.sideBySide))}
+          </div>
+        )}
+        {addRoleSlot}
+      </div>
     </div>
   );
 });

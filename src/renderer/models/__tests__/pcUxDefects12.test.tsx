@@ -209,7 +209,8 @@ describe('국소 클래스 수정(묶음 1)', () => {
     expect(src).toContain("DIALOG_PRIMARY_BTN + ' disabled:opacity-50 disabled:cursor-not-allowed'");
   });
   test('T2 파일 이름 break-all · T3 조각 이름 말줄임+Tooltip', () => {
-    expect(read('ResultViewer.tsx')).toContain('<span className="break-all">{filename}</span>');
+    // 2026-11-22 상세 보기 개편: 파일 이름 줄은 정보 칸 컴포넌트(ImageDetailInfo)의 「파일」 묶음으로 옮겨 감
+    expect(read('ImageDetailInfo.tsx')).toContain('<span className="break-all">{r.value}</span>');
     const pe = read('PieceEditor.tsx');
     expect(pe).toMatch(/<Tooltip content=\{piece\.name\}>\s*<div\s+className="font-bold text-default min-w-0 truncate"/);
   });

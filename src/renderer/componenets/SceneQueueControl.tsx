@@ -2061,7 +2061,10 @@ const QueueControl = observer(
 
     const cellSizes = ['스몰뷰', '미디엄뷰', '라지뷰'];
 
+    // id = 이미지 상세 PC 버튼 줄의 묶음·색 판정용(2026-11-22) — 라벨·className 은 모바일 V2·좁은 폭이 그대로 쓴다
     const favButton = {
+      id: 'favorite',
+      isOn: (path: string) => isMainImage(path),
       text: (path: string) => {
         return isMainImage(path) ? '즐겨찾기 해제' : '즐겨찾기 지정';
       },
@@ -2200,6 +2203,7 @@ const QueueControl = observer(
         ? [
             favButton,
             {
+              id: 'inpaint',
               text: '인페인팅 씬 생성',
               className: 'back-green',
               onClick: async (
@@ -2214,6 +2218,7 @@ const QueueControl = observer(
         : [
             favButton,
             {
+              id: 'inpaint',
               text: '해당 이미지로 인페인트',
               className: 'back-orange',
               onClick: async (
@@ -2227,6 +2232,7 @@ const QueueControl = observer(
               },
             },
             {
+              id: 'copy-to-original',
               text: '원본 씬으로 이미지 복사',
               className: 'back-green',
               onClick: async (
@@ -2284,6 +2290,7 @@ const QueueControl = observer(
             },
           ];
     buttons.push({
+      id: 'variant',
       text: '이미지 변형',
       className: 'back-gray',
       // @ts-ignore

@@ -110,12 +110,10 @@ describe('ResultDetailView — 해상도 칸', () => {
   const start = src.indexOf('const ResultDetailView = observer(');
   const view = src.slice(start);
 
-  test('시드와 해상도가 한 줄 두 열(좁으면 한 열), 값은 tabular-nums·모르면 「-」', () => {
-    const row = view.slice(view.indexOf('data-detail-seed-resolution'), view.indexOf('프롬프트 가이던스: '));
-    expect(view).toContain('grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-x-4');
-    expect(row.indexOf('시드: ')).toBeLessThan(row.indexOf('해상도: '));
-    expect(row).toContain('<span className="tabular-nums">');
-    expect(row).toMatch(/imageSize && imageSize\.path === currentImagePath\s*\? `\$\{imageSize\.width\} × \$\{imageSize\.height\}`\s*: '-'/);
+  // 2026-11-22 상세 보기 개편: 해상도는 정보 칸의 요약 칩(메타 없으면 파일 묶음)으로 옮김 — 표기·숨김은 imageDetailInfo.test.ts.
+  // 여기서는 「실제 파일 픽셀 측정값을, 보고 있는 정보와 같은 경로일 때만」 넘기는지만 고정한다.
+  test('해상도 = 실제 파일 픽셀 측정값(경로가 같을 때만 넘김, 모르면 칸 없음)', () => {
+    expect(view).toMatch(/pixel: imageSize && imageSize\.path === meta\.path \? imageSize : undefined,/);
   });
 
   test('불러오기마다 비우고, 측정값은 최신 요청일 때만(getImageDimensions 재사용)', () => {
@@ -124,7 +122,8 @@ describe('ResultDetailView — 해상도 칸', () => {
     expect(load).toMatch(/\.then\(\(\{ width, height \}\) => \{\n\s*if \(isStale\(\)\) return;[\s\S]*?setImageSize\(\{ path: upscalePath, width, height \}\);/);
   });
 
-  test('PC·모바일 V2 모두 같은 infoFields 를 쓴다', () => {
-    expect((view.match(/\{infoFields\}/g) || []).length).toBe(2);
+  test('PC 넓은 폭(2단 허용)·좁은 폭·모바일 V2 모두 같은 정보 칸(renderInfo)을 쓴다', () => {
+    expect((view.match(/\{renderInfo\(true\)\}/g) || []).length).toBe(1);
+    expect((view.match(/\{renderInfo\(false\)\}/g) || []).length).toBe(2);
   });
 });

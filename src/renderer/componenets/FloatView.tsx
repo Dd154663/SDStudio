@@ -38,6 +38,10 @@ interface FloatView {
   // 되돌리기 버튼 바 구석 자리(2026-11-04 설계 E) — 참이면 머리줄 오른쪽 빈 곳에 UndoCornerSlot 을 두어, 이 창이 보이는 동안
   // 바가 하단 대신 그 구석에 임시로 놓인다. 하단에 여유가 없는 클래식 모바일 프롬프트 편집 창만 켠다.
   undoCorner?: boolean;
+  // 머리줄 내용 자리(2026-11-22 이미지 상세 보기 개편) — 참이면 ✕ 오른쪽 머리줄 전체에 빈 자리를 두고, 이 창의 내용이
+  // useFloatViewHeaderSlot() 으로 그 요소를 받아 포털로 그려 넣는다(제목·이전/다음 등). 자리는 absolute 라 머리줄의 높이·
+  // ✕ 위치는 그대로이고, 자리를 쓰지 않는 창(거짓)은 마크업이 예전과 같다. undoCorner 와 함께 켜지 않는다(같은 오른쪽 끝).
+  headerSlot?: boolean;
   onEscape?: () => void;
   // 미저장 가드(2026-10-03 E2-3) — 참이면 ✕·Esc·뒤로 가기로 닫을 때 「버리고 닫을까요?」를 묻는다
   dirty?: () => boolean;
@@ -53,6 +57,62 @@ interface FloatViewContextProps {
 const FloatViewContext = createContext<FloatViewContextProps | undefined>(
   undefined,
 );
+
+// 머리줄 내용 자리(headerSlot) 요소 — 그 창의 내용 안에서만 값이 있다(자리를 켜지 않은 창·마운트 직전은 null).
+const FloatViewHeaderSlotContext = createContext<HTMLElement | null>(null);
+export const useFloatViewHeaderSlot = (): HTMLElement | null =>
+  useContext(FloatViewHeaderSlotContext);
+
+// 뷰 판 하나(덮개 안 absolute 판). 머리줄 자리 요소를 상태로 들고 내용에 컨텍스트로 건넨다 — 마크업은 headerSlot 이
+// 거짓이면 예전 그대로(Provider 는 DOM 을 만들지 않는다).
+const FloatViewPane = ({
+  view,
+  onClose,
+}: {
+  view: FloatView;
+  onClose: () => void;
+}) => {
+  const [headerSlotEl, setHeaderSlotEl] = useState<HTMLElement | null>(null);
+  return (
+    <div
+      className="bg-[var(--c-surface)] h-full w-full"
+      style={{ position: 'absolute', zIndex: view.id }}
+    >
+      <div className="flex flex-col h-full w-full">
+        {/* relative: 되돌리기 버튼 바 구석 자리(undoCorner)·머리줄 내용 자리(headerSlot)의 기준 */}
+        <div className="relative flex-none border-b line-color">
+          {/* 전체 화면 보기의 닫기 = 좌상단 「뒤로」 ✕ 하나(모달은 우상단 — SPEC §5 닫기 규칙, 2026-10-03 E2-1) */}
+          <button
+            // 위치·크기(.button 패딩·마진 5px)는 그대로, hover 덮개·키보드 포커스 링만(UI 정돈 그룹 2-a)
+            className="text-default button rounded hover:bg-[var(--c-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[color:var(--c-focus-ring)]"
+            aria-label="뒤로"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onClose();
+            }}
+          >
+            <FaTimes size={20} />
+          </button>
+          {view.undoCorner && <UndoCornerSlot />}
+          {/* ✕(마진 포함 40px) 오른쪽부터 끝까지 — 높이는 머리줄 그대로 */}
+          {view.headerSlot && (
+            <div
+              ref={setHeaderSlotEl}
+              data-float-view-header-slot=""
+              className="absolute inset-y-0 left-11 right-0 flex items-center min-w-0"
+            />
+          )}
+        </div>
+        <div className="flex-1 overflow-hidden">
+          <FloatViewHeaderSlotContext.Provider value={view.headerSlot ? headerSlotEl : null}>
+            {view.component}
+          </FloatViewHeaderSlotContext.Provider>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const useFloatView = (): FloatViewContextProps => {
   const context = useContext(FloatViewContext);
@@ -171,32 +231,7 @@ export const FloatViewProvider: React.FC<FloatViewProviderProps> = observer(({
       }
     >
       {views.map((view) => (
-        <div
-          key={view.id}
-          className="bg-[var(--c-surface)] h-full w-full"
-          style={{ position: 'absolute', zIndex: view.id }}
-        >
-          <div className="flex flex-col h-full w-full">
-            {/* relative: 되돌리기 버튼 바 구석 자리(undoCorner)의 기준 */}
-            <div className="relative flex-none border-b line-color">
-              {/* 전체 화면 보기의 닫기 = 좌상단 「뒤로」 ✕ 하나(모달은 우상단 — SPEC §5 닫기 규칙, 2026-10-03 E2-1) */}
-              <button
-                // 위치·크기(.button 패딩·마진 5px)는 그대로, hover 덮개·키보드 포커스 링만(UI 정돈 그룹 2-a)
-                className="text-default button rounded hover:bg-[var(--c-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[color:var(--c-focus-ring)]"
-                aria-label="뒤로"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  closeTopView();
-                }}
-              >
-                <FaTimes size={20} />
-              </button>
-              {view.undoCorner && <UndoCornerSlot />}
-            </div>
-            <div className="flex-1 overflow-hidden">{view.component}</div>
-          </div>
-        </div>
+        <FloatViewPane key={view.id} view={view} onClose={closeTopView} />
       ))}
     </div>
   );
@@ -225,6 +260,7 @@ interface FloatViewProps {
   ownsGenControl?: boolean;
   allowUndo?: boolean;
   undoCorner?: boolean;
+  headerSlot?: boolean;
   onEscape?: () => void;
   dirty?: () => boolean;
 }
@@ -232,7 +268,7 @@ interface FloatViewProps {
 let viewId = 0;
 
 export const FloatView: React.FC<FloatViewProps> = memo(
-  ({ children, priority, showToolbar, ownsGenControl, allowUndo, undoCorner, onEscape, dirty }) => {
+  ({ children, priority, showToolbar, ownsGenControl, allowUndo, undoCorner, headerSlot, onEscape, dirty }) => {
     const { registerView, unregisterView, updateView } = useFloatView();
     const id = useRef(++viewId);
     const mounted = useRef(false);
@@ -248,6 +284,7 @@ export const FloatView: React.FC<FloatViewProps> = memo(
         ownsGenControl,
         allowUndo,
         undoCorner,
+        headerSlot,
       };
       registerView(view);
       mounted.current = true;
