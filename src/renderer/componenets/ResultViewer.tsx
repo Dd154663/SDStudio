@@ -2850,6 +2850,43 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
         ]
       : [];
 
+    // 이미지·즐겨찾기·휴지통·인페인트 씬 탭 — 모양 두 벌(순서·이름·동작은 같음).
+    // 종전 알약 탭: 모바일 V2 가 그대로 쓴다(2026-11-22 범위 밖).
+    const renderPillTabs = () => (
+      <span className="flex ml-auto gap-1 md:gap-2 mt-2 md:mt-0">
+        {tabNames.map((tabName, index) => (
+          <button
+            key={tabName}
+            className={
+              `round-button ` +
+              (selectedTab === index ? 'back-sky' : 'back-llgray')
+            }
+            onClick={() => setSelectedTab(index)}
+          >
+            {tabName}
+          </button>
+        ))}
+      </span>
+    );
+    // 작업 탭 = 밑줄 탭 .tab-line(SPEC §2 「작업 탭과 택일 버튼은 다른 모양」, PC 주 탭 TabComponent 와 같은 마크업).
+    // 머리 영역 아래 테두리(border-b)가 줄 아래 선 노릇을 하므로 .tab-line-bare, 아래 안쪽 여백만큼 내려 그 선 위에 앉힌다.
+    // 좁은 폭은 줄바꿈 대신 가로 스크롤(TabComponent 와 같은 기법).
+    const renderLineTabs = () => (
+      <div className="tab-line tab-line-bare flex max-w-full min-w-0 overflow-x-auto no-scrollbar -mb-2 md:-mb-4">
+        {tabNames.map((tabName, index) => (
+          <button
+            key={tabName}
+            className={
+              'tab-line-item text-sm' + (selectedTab === index ? ' tab-line-on' : '')
+            }
+            onClick={() => setSelectedTab(index)}
+          >
+            {tabName}
+          </button>
+        ))}
+      </div>
+    );
+
     return (
       <div className="w-full h-full flex flex-col">
         {!isMobile && showImageCheatsheet && !tournament && (
@@ -2921,18 +2958,26 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               </span>
             )}
           </div>
+          {/* 탭 줄 위치(2026-11-22 사용자 결정 「탭은 버튼 줄 아래로」): PC·모바일 클래식은 버튼 줄과 탭이 다른 줄 —
+              바깥 줄이 flex 가 아니라 이름 표시 판정(measureButtonNames)의 가용 폭 = 머리 영역 폭 전체(탭 폭을 빼지 않음).
+              모바일 V2 는 버튼 줄이 없고 종전 바깥 줄·알약 탭 그대로(renderPillTabs). */}
           <div
             ref={headerNamesRef as React.RefObject<HTMLDivElement>}
-            className="md:flex justify-between items-center mt-2 md:mt-4"
+            className={v2 ? 'md:flex justify-between items-center mt-2 md:mt-4' : 'mt-2 md:mt-4'}
           >
             {!v2 && (
             <div
               data-bn-row=""
               data-bn-items=""
+              data-grid-header-buttons=""
               className={`flex gap-2 md:gap-3 flex-wrap${headerNameMode === 'show' ? ' items-start' : ''}`}
             >
+              {/* 머리 줄 색(2026-11-22 사용자 결정 「색을 차분하게」): 아이콘 버튼은 중립 회색(back-gray)이 기본.
+                  지금 색조를 남기는 것 = 즐겨찾기 선택·즐겨찾기 토글(노랑)·다운로드(초록)·삭제(빨강),
+                  씬 카드에서 익숙한 글자 버튼 = 예약 추가(초록)·예약 제거(회색)·씬 편집(주황) 종전 그대로.
+                  상태 표시(선택 모드·붙여넣기 가능·북마크 있음·보기 순서가 기본 아님)는 켜졌을 때만 .toggle-on 색. */}
               <button
-                className={`round-button back-sky`}
+                className={`round-button back-gray`}
                 onClick={() => setTournament(true)}
               >
                 이상형 월드컵
@@ -2969,7 +3014,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               {!isMobile && hn('folder', (
                   <Tooltip content="폴더 열기">
                     <button
-                      className={`round-button icon-only back-sky`}
+                      className={`round-button icon-only back-gray`}
                       onClick={async () => {
                         await backend.showFile(
                           getResultDirectory(curSession!, scene),
@@ -3021,7 +3066,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               {hn('copy', (
                 <Tooltip content="이미지 복사">
                   <button
-                    className={`round-button icon-only back-sky`}
+                    className={`round-button icon-only back-gray`}
                     onClick={actCopyImages}
                   >
                     <ActionIcon id="copy" />
@@ -3054,7 +3099,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                   {hn('duplicate', (
                     <Tooltip content="선택 이미지 복제">
                       <button
-                        className="round-button icon-only back-sky"
+                        className="round-button icon-only back-gray"
                         onClick={onDuplicateSelected}
                       >
                         <ActionIcon id="duplicate" />
@@ -3064,7 +3109,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                   {hn('copyToScene', (
                     <Tooltip content="선택 이미지를 다른 씬으로 복사">
                       <button
-                        className="round-button icon-only back-sky"
+                        className="round-button icon-only back-gray"
                         onClick={onCopyToSceneSelected}
                       >
                         <FaShareSquare />
@@ -3091,7 +3136,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               {onSampleExtract && hn('sample', (
                   <Tooltip content="샘플 뽑기 (시드 추출)">
                     <button
-                      className={`round-button icon-only back-sky`}
+                      className={`round-button icon-only back-gray`}
                       onClick={actSampleExtract}
                     >
                       <FaDice />
@@ -3125,19 +3170,14 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               ))}
             </div>
             )}
-            <span className="flex ml-auto gap-1 md:gap-2 mt-2 md:mt-0">
-              {tabNames.map((tabName, index) => (
-                <button
-                  className={
-                    `round-button ` +
-                    (selectedTab === index ? 'back-sky' : 'back-llgray')
-                  }
-                  onClick={() => setSelectedTab(index)}
-                >
-                  {tabName}
-                </button>
-              ))}
-            </span>
+            {v2 ? (
+              renderPillTabs()
+            ) : (
+              // 버튼 줄 아래 자기 줄(머리 영역의 마지막 줄). 탭 모양을 알약으로 되돌릴 때는 이 한 곳만 renderPillTabs() 로.
+              <div data-grid-tabs="" className="mt-2 md:mt-3">
+                {renderLineTabs()}
+              </div>
+            )}
           </div>
         </div>
         <div className={v2 ? 'flex-1 pt-2 relative min-h-0 overflow-hidden' : 'flex-1 pt-2 relative h-full overflow-hidden'}>
