@@ -41,6 +41,10 @@ import {
   setGlobalPresetsDefaultRecorded,
 } from '../models/globalLibraryUndo';
 import { prepareGlobalDelete } from '../models/globalLibraryDeleteUndo';
+import {
+  GLOBAL_PRESET_PNG_TEXT,
+  runGlobalPresetPngExport,
+} from '../models/globalPresetPngExport';
 
 // 템플릿 관리(글로벌 프리셋 카드 선택)와 공유 — export
 export const GlobalVibeImage = observer(
@@ -657,6 +661,16 @@ export const GlobalPresetTab = observer(() => {
     exitMultiSelect();
   };
 
+  // 고른 프리셋을 PNG 로 한 번에(2026-11-22) — 플랫폼 분기·진행 창·결과 안내는 models/globalPresetPngExport 한 곳
+  const handleBulkExportPng = async () => {
+    if (selectedIds.size === 0) return;
+    const targets = Array.from(selectedIds)
+      .map((id) => allPresets.find((p) => p.id === id))
+      .filter((p): p is IGlobalPresetEntry => !!p)
+      .map((p) => ({ id: p.id, name: p.name }));
+    await runGlobalPresetPngExport(targets);
+  };
+
   const handleBulkSetDefault = async (value: boolean) => {
     if (selectedIds.size === 0) return;
     // 한 동작 = 되돌리기 한 항목(2차 묶음 4 P5) — 개별 오류는 종전처럼 삼킨다
@@ -733,6 +747,8 @@ export const GlobalPresetTab = observer(() => {
           {multiSelectMode && (
             <div className="flex items-center gap-1.5">
               <button type="button" className="round-button back-sky h-8 flex-1 min-w-0 px-1 text-xs" disabled={selectedIds.size === 0} onClick={handleBulkImportToSession}>프로젝트로 복사</button>
+              {/* 좁은 줄(다섯 칸)이라 글자는 「내보내기」 — 이름은 aria-label 로 */}
+              <button type="button" className="round-button back-gray h-8 flex-1 min-w-0 px-1 text-xs" aria-label={GLOBAL_PRESET_PNG_TEXT.buttonLabel} data-gp-bulk-export-png="" disabled={selectedIds.size === 0} onClick={handleBulkExportPng}>내보내기</button>
               <button type="button" className="round-button back-orange h-8 flex-1 min-w-0 px-1 text-xs" disabled={selectedIds.size === 0} onClick={() => handleBulkSetDefault(true)}>기본 지정</button>
               <button type="button" className="round-button back-gray h-8 flex-1 min-w-0 px-1 text-xs" disabled={selectedIds.size === 0} onClick={() => handleBulkSetDefault(false)}>기본 해제</button>
               <button type="button" className="round-button back-red h-8 flex-1 min-w-0 px-1 text-xs" disabled={selectedIds.size === 0} onClick={handleBulkDelete}>삭제</button>
@@ -815,6 +831,14 @@ export const GlobalPresetTab = observer(() => {
               onClick={handleBulkImportToSession}
             >
               프로젝트로 일괄 복사
+            </button>
+            <button
+              className="round-button back-gray px-3 py-1.5 text-sm"
+              data-gp-bulk-export-png=""
+              disabled={selectedIds.size === 0}
+              onClick={handleBulkExportPng}
+            >
+              {GLOBAL_PRESET_PNG_TEXT.buttonLabel}
             </button>
             <button
               className="round-button back-orange px-3 py-1.5 text-sm"

@@ -55,7 +55,7 @@ import {
 import { toPARR } from '../models/PromptService';
 import { appState } from '../models/AppService';
 import { promptName, suggestFolderCopyName, validateName } from '../models/nameInput';
-import { deleteConfirmText } from '../models/deleteFlowRules';
+import { confirmPresetDelete } from '../models/presetDeleteConfirm';
 import { observer } from 'mobx-react-lite';
 import {
   WFAbstractVar,
@@ -852,29 +852,26 @@ const PreSetBulkManageModal = observer(
         appState.pushMessage('최소 1개의 사전 세팅은 남겨야 합니다');
         return;
       }
-      appState.pushDialog({
-        type: 'confirm',
-        // 파일을 지우지 않고 editPresetList 기록 — 되돌리기 가능(2026-11-15)
-        ...deleteConfirmText({ kind: 'preset', count: selected.size, outcome: 'undoable' }),
-        callback: () => {
-          const names = Array.from(selected);
-          const curName = curSession.selectedWorkflow?.presetName;
-          // 삭제 + 선택 재설정 = 1항목(되돌리면 같은 객체를 원래 자리로 — 파일은 지우지 않으므로 그대로, U3b)
-          editPresetList(curSession, UNDO_TEXT.presetRemove(names), () => {
-            for (const name of names) {
-              curSession.removePreset(workflowType, name);
-            }
-            // 현재 선택 중인 사전 세팅이 삭제되었으면 첫 항목으로 재설정
-            if (curName && names.includes(curName)) {
-              const remaining = curSession.presets.get(workflowType)!;
-              curSession.selectedWorkflow = {
-                workflowType,
-                presetName: remaining.length > 0 ? remaining[0].name : undefined,
-              };
-            }
-          });
-          setSelected(new Set());
-        },
+      // 파일을 지우지 않고 editPresetList 기록 — 되돌리기 가능(2026-11-15).
+      // 「이번 세션에서 다시 묻지 않음」은 이미지 삭제처럼 개수와 무관하게 적용(2026-11-22)
+      confirmPresetDelete({ kind: 'preset', count: selected.size }, () => {
+        const names = Array.from(selected);
+        const curName = curSession.selectedWorkflow?.presetName;
+        // 삭제 + 선택 재설정 = 1항목(되돌리면 같은 객체를 원래 자리로 — 파일은 지우지 않으므로 그대로, U3b)
+        editPresetList(curSession, UNDO_TEXT.presetRemove(names), () => {
+          for (const name of names) {
+            curSession.removePreset(workflowType, name);
+          }
+          // 현재 선택 중인 사전 세팅이 삭제되었으면 첫 항목으로 재설정
+          if (curName && names.includes(curName)) {
+            const remaining = curSession.presets.get(workflowType)!;
+            curSession.selectedWorkflow = {
+              workflowType,
+              presetName: remaining.length > 0 ? remaining[0].name : undefined,
+            };
+          }
+        });
+        setSelected(new Set());
       });
     };
 
@@ -1234,24 +1231,16 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
                       );
                       return;
                     }
-                    appState.pushDialog({
-                      type: 'confirm',
-                      // 휴지통이 없다 — 이름을 보이고 Enter 무시. 버튼 툴팁(「그림체 삭제」)과 같은 라벨.
-                      // editPresetList 기록으로 되돌리기 가능(2026-11-15)
-                      ...deleteConfirmText({
-                        kind: 'style',
-                        name: option.name,
-                        outcome: 'undoable',
-                      }),
-                      callback: () => {
-                        editPresetList(curSession, UNDO_TEXT.presetRemove([option.name]), () => {
-                          curSession!.removePreset(workflowType, option.name);
-                          curSession!.selectedWorkflow = {
-                            workflowType: workflowType,
-                            presetName: undefined,
-                          };
-                        });
-                      },
+                    // 휴지통이 없다 — 이름을 보이고 Enter 무시. 버튼 툴팁(「그림체 삭제」)과 같은 라벨.
+                    // editPresetList 기록으로 되돌리기 가능(2026-11-15). 「이번 세션에서 다시 묻지 않음」(2026-11-22)
+                    confirmPresetDelete({ kind: 'style', name: option.name }, () => {
+                      editPresetList(curSession, UNDO_TEXT.presetRemove([option.name]), () => {
+                        curSession!.removePreset(workflowType, option.name);
+                        curSession!.selectedWorkflow = {
+                          workflowType: workflowType,
+                          presetName: undefined,
+                        };
+                      });
                     });
                   }}
                   className={PRESET_ROW_BTN}

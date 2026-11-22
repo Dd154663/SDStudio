@@ -18,10 +18,18 @@ import { appState } from '../models/AppService';
 import { queueQuickScene } from '../models/sceneQueueActions';
 import { ContextMenuType, Scene, Session } from '../models/types';
 import { ResolutionPicker } from './ResolutionPicker';
+import {
+  getQuickGenCount,
+  SAMPLE_COUNT_MAX,
+  SAMPLE_COUNT_MIN,
+  setQuickGenCount,
+} from '../models/sampleCount';
 
 // 퀵 모드 탭 — NAI 공식 웹풍의 즉시 생성 화면.
 // 중앙에 최신 생성 이미지를 크게 표시하고, 생성 버튼 하나로
-// 클릭=즉시 1장 / 롱프레스=자동(반복) / 생성 중 재클릭=취소 동작을 제공한다.
+// 클릭=즉시 N장 / 롱프레스=N장씩 자동(반복) / 생성 중 재클릭=취소 동작을 제공한다.
+// N = 버튼 옆 장수 입력(퀵 생성 전용 — 일반 생성 개수(appState 의 samples)와 별개, 2026-11-22). 값은 해상도와 같이
+// 퀵 생성 전용 프로젝트의 default 씬에 저장된다(models/sampleCount — 없으면 1).
 // 프롬프트/파라미터는 기존 좌측 패널(모바일: 프롬프트 열기)을 그대로 사용.
 //
 // 개편(2026-07-18 합의): 씬/결과물은 현재 프로젝트의 default 씬이 아니라
@@ -202,7 +210,7 @@ const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
         try {
           if (!quickSession) throw new Error('퀵 생성 프로젝트가 없습니다');
           const scene = ensureDefaultScene(quickSession);
-          await queueQuickScene(curSession, quickSession, scene, 1);
+          await queueQuickScene(curSession, quickSession, scene, getQuickGenCount(scene));
           taskQueueService.run();
         } catch (e: any) {
           autoRef.current = false;
@@ -237,7 +245,7 @@ const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
     if (!guardCycling()) return;
     try {
       const scene = ensureDefaultScene(quickSession!);
-      await queueQuickScene(curSession, quickSession!, scene, 1);
+      await queueQuickScene(curSession, quickSession!, scene, getQuickGenCount(scene));
       taskQueueService.run();
     } catch (e: any) {
       appState.pushMessage(`프롬프트 에러: ${e.message}`);
@@ -329,8 +337,8 @@ const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
   // 64px 보정)는 공용 ResolutionPicker 로 추출됨 — 프리셋 패널과 공유.
   const quickScene = quickSession?.scenes.get(DEFAULT_SCENE);
 
-  // 씬 확보 후 변경 적용 + 저장 (퀵 씬은 curSession 밖이라 markDirty 명시 필요)
-  const applyResolution = (fn: (scene: Scene) => void) => {
+  // 씬 확보 후 변경 적용 + 저장 (해상도·장수 — 퀵 씬은 curSession 밖이라 markDirty 명시 필요)
+  const applyQuickScene = (fn: (scene: Scene) => void) => {
     if (!quickSession) return;
     const scene = ensureDefaultScene(quickSession);
     fn(scene);
@@ -391,6 +399,24 @@ const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
               ? `생성 중${progressText ? ' ' + progressText : ''} — 탭하여 취소`
               : '생성 (길게 눌러 자동)'}
         </button>
+        {/* 장수 — 일반 생성 개수 입력과 같은 칸·같은 판정(models/sampleCount), 값은 퀵 생성 전용 */}
+        <div className="flex-none flex items-center whitespace-nowrap">
+          <span className="sr-only md:not-sr-only whitespace-nowrap text-default md:text-sm">장수:</span>
+          <input
+            aria-label="퀵 생성 장수"
+            data-quick-gen-count=""
+            min={SAMPLE_COUNT_MIN}
+            max={SAMPLE_COUNT_MAX}
+            className={'ml-1 md:ml-2 p-1 w-10 md:w-16 md:h-8 text-center gray-input'}
+            type="number"
+            disabled={!quickSession}
+            value={getQuickGenCount(quickScene)}
+            onChange={(e: any) => {
+              const raw = e.currentTarget.value;
+              applyQuickScene((scene) => setQuickGenCount(scene, raw));
+            }}
+          />
+        </div>
         {/* 해상도 표시 + 드롭다운 (공용 ResolutionPicker — 위로 열리는 패널) */}
         <ResolutionPicker
           className="flex-none"
@@ -406,7 +432,7 @@ const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
               : undefined
           }
           onApply={(v) =>
-            applyResolution((scene) => {
+            applyQuickScene((scene) => {
               scene.resolution = v.resolution;
               if (v.resolution === 'custom') {
                 scene.resolutionWidth = v.width;

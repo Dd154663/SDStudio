@@ -901,7 +901,17 @@ export class GlobalPresetService extends EventTarget {
     return preset;
   }
 
+  /** 한 장 내보내기 = PNG 만들기(buildExportPng) + 파일로 쓰기. 여러 장 내보내기(globalPresetPngExport)도 같은 PNG 를 쓴다. */
   async exportToPng(id: string, outPath: string): Promise<void> {
+    const newPng = await this.buildExportPng(id);
+    await backend.writeDataFile(outPath, newPng);
+  }
+
+  /**
+   * 내보내기 PNG(base64) 만들기 — 대표 이미지(없거나 PNG 가 아니면 이름 글자 그림) + 장식 + 프리셋 JSON 삽입.
+   * 저장소의 내용·순서·저장 표시는 바꾸지 않는다(읽기만).
+   */
+  async buildExportPng(id: string): Promise<string> {
     const entry = this.get(id);
     if (!entry) throw new Error('프리셋을 찾을 수 없습니다');
 
@@ -934,7 +944,6 @@ export class GlobalPresetService extends EventTarget {
       'global',
       entry.name,
     );
-    const newPng = embedJSONInPNG(decoratedPng, jsonForPng);
-    await backend.writeDataFile(outPath, newPng);
+    return embedJSONInPNG(decoratedPng, jsonForPng);
   }
 }

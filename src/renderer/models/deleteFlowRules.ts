@@ -238,6 +238,23 @@ export function showImageDeleteSkipOption(count: number): boolean {
   return count >= 1;
 }
 
+/** 확인 창의 「이번 세션에서 다시 묻지 않음」 라벨 — 이미지 삭제(showSkipConfirm)·그림체 삭제(confirmCheck) 공용. */
+export const SKIP_DELETE_CONFIRM_LABEL = '이번 세션에서 다시 묻지 않음';
+
+// ── 그림체(사전 세팅) 삭제 확인 건너뛰기(2026-11-22) ──
+//
+// 이미지 삭제의 「이번 세션에서 다시 묻지 않음」과 같은 방식·같은 범위(개수 무관 — 줄 버튼·우클릭 단건과 일괄 삭제 창 모두).
+// 플래그는 그림체 전용 appState.skipPresetDeleteConfirm(실행 동안만, 저장하지 않음) — 이미지 플래그와 섞지 않는다.
+// 「마지막 사전 세팅은 삭제할 수 없습니다」 같은 차단은 확인 전에 그대로 하고, 건너뛸 때도 같은 삭제 경로를 탄다.
+
+/** 그림체 삭제 확인 창을 건너뛰어도 되는가 — 이번 실행에서 체크하고 확인한 적이 있고 지울 것이 1개 이상이면. */
+export function shouldSkipPresetDeleteConfirm(
+  skipSetting: boolean,
+  count: number,
+): boolean {
+  return !!skipSetting && count >= 1;
+}
+
 /** 선택한 이미지 삭제 확인 문구 — deleteConfirmText 로 위임(2026-10-03 E1). */
 export function selectedImagesDeleteText(
   count: number,

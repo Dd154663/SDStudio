@@ -153,7 +153,7 @@ describe('3(c) 글로벌 프리셋 탭 PC 도구줄 규격', () => {
     expect(bar).not.toContain('text-base');
     expect(bar).not.toContain('px-4 py-2');
     expect(bar).not.toContain('h-[2.625rem]');
-    expect(count(bar, 'px-3 py-1.5 text-sm')).toBe(8);
+    expect(count(bar, 'px-3 py-1.5 text-sm')).toBe(9); // 2026-11-22 멀티선택 「PNG로 내보내기」 추가로 8 → 9
     expect(bar).not.toMatch(/size=\{1[68]\}/);
   });
   test('검색 칸·정렬 h-8 text-sm, 개수 text-xs', () => {

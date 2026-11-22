@@ -9,6 +9,7 @@ import {
   withoutCancelLikeItems,
 } from '../models/confirmKeys';
 import { isImeComposing } from '../models/escapeGate';
+import { SKIP_DELETE_CONFIRM_LABEL } from '../models/deleteFlowRules';
 import { observer } from 'mobx-react-lite';
 import { DIALOG_DANGER_BTN, DIALOG_PRIMARY_BTN, DIALOG_SECONDARY_BTN } from './ModalOverlay';
 import { FaChevronRight } from 'react-icons/fa';
@@ -320,7 +321,7 @@ const ConfirmWindow = observer(() => {
                         onChange={(e) => setSkipConfirm(e.target.checked)}
                         className="setting-check"
                       />
-                      이번 세션에서 다시 묻지 않음
+                      {SKIP_DELETE_CONFIRM_LABEL}
                     </label>
                   )}
                   {curDialog.confirmCheck && (
