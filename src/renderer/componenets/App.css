@@ -1646,6 +1646,10 @@ input[type='number']::-webkit-outer-spin-button {
      올리다 다크의 주석색(gray-300)이 본문색(slate-300)과 같아졌다(대비 1.01). 본문과의 차이를 지키는 선에서 고른다. */
   color: #5f6875; /* 입력 배경 대비 4.56 · 본문(검정)과 3.72 */
   font-style: italic;
+  /* 취소선(2026-11-22 사용자 — 「꺼 둔 것」이라는 뜻을 한눈에). 선 색은 글자색을 따른다(다크도 자동).
+     바탕색은 넣지 않는다 — 가중치 강조 바탕과 겹쳐 번잡해짐. */
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
   white-space: inherit;
   word-break: inherit;
 }
@@ -1681,6 +1685,26 @@ input[type='number']::-webkit-outer-spin-button {
 
 :is(.dark) .syntax-weight-negative {
   background-color: rgba(107, 114, 128, 0.3);
+}
+
+/* 「이 칸에서 찾기·바꾸기」 일치 표시(2026-11-22, models/promptFindDom.ts — CSS Custom Highlight API, 색칠 HTML 은 그대로).
+   노랑 = 모든 일치, 주황 = 현재 자리. 가중치 바탕(빨강·파랑·회색 옅은 막)·선택 덮개(파랑)와 겹쳐도 구분되는 색.
+   ::highlight() 안의 var() 는 Chromium 버전에 따라 원래 요소의 사용자 속성을 받지 못해(Electron 26 = Chromium 116)
+   토큰 대신 기존 강조색 값(yellow-400·orange-500/400)을 쓰고 다크는 .dark 로 나눈다. 현재 자리는 글자를 짙게 고정해
+   양 테마에서 읽히게 한다(주황 바탕 대비 6.4 이상). 트루다크·커스텀 테마는 다크/라이트 값을 따른다. */
+::highlight(sdstudio-find-match) {
+  background-color: rgb(250 204 21 / 0.45);
+}
+::highlight(sdstudio-find-current) {
+  background-color: rgb(249 115 22 / 0.85);
+  color: #111827;
+}
+.dark ::highlight(sdstudio-find-match) {
+  background-color: rgb(250 204 21 / 0.35);
+}
+.dark ::highlight(sdstudio-find-current) {
+  background-color: rgb(251 146 60 / 0.9);
+  color: #111827;
 }
 
 .syntax-strong {

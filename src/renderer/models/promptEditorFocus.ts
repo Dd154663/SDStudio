@@ -1,10 +1,15 @@
 import type { PromptWeightInfo } from './promptTransforms';
+import type { PromptFindTarget } from './promptFind';
 
 /**
  * 포커스된 프롬프트 편집기 등록소(2026-09-26, 모바일 가중치 퀵 조정 칩).
  * 키보드 위 칩(MobileKeyboardChip)은 편집기 트리 밖(App)에 있어 ref 를 직접 잡을 수 없다.
  * 편집기(NativeEditTextArea)가 포커스를 얻을 때 자기 조작 핸들을 올리고 잃을 때 내린다.
  * 의존성 없음 — 어디서든 import 가능.
+ *
+ * 「이 칸에서 찾기」(2026-11-22): 칩이 찾기 모드인 동안 포커스는 칩의 입력 칸으로 가지만 대상 편집기는 그대로여야 한다.
+ * 칩이 pinFocusedPromptEditor 로 핸들을 붙잡으면 그동안 blur 의 clearFocusedPromptEditor 는 그 핸들을 지우지 않는다.
+ * 편집기가 사라질 때(언마운트)는 disposeFocusedPromptEditor — 붙잡혀 있어도 지우고 구독자(칩)에게 알린다.
  */
 export interface FocusedPromptEditor {
   /** 편집 중인 실제 입력 요소. 칩은 document.activeElement 와 같을 때만 이 핸들을 쓴다. */
@@ -17,19 +22,54 @@ export interface FocusedPromptEditor {
   toggleComment(): void;
   /** 커서가 주석 안인지(promptTransforms.getPromptCommentAtSelection, 칩 # 버튼 활성 표시용). */
   isCaretInComment(): boolean;
+  /** 이 칸에서 찾기·바꾸기 손잡이(없으면 칩에 돋보기를 띄우지 않는다). */
+  find?: PromptFindTarget;
+  /** 이 칸이 편집을 끝냈는지 다시 확인하게 한다(찾기 모드를 편집기 밖에서 끝냈을 때 — 가중치 공백 확인 등). */
+  leave?(): void;
 }
 
 let focused: FocusedPromptEditor | null = null;
+let pinned: FocusedPromptEditor | null = null;
+const disposeListeners = new Set<(editor: FocusedPromptEditor) => void>();
 
 export function setFocusedPromptEditor(editor: FocusedPromptEditor): void {
   focused = editor;
 }
 
-/** 같은 핸들일 때만 내린다(다른 편집기가 먼저 포커스를 가져간 경우를 덮어쓰지 않게). */
+/** 같은 핸들일 때만 내린다(다른 편집기가 먼저 포커스를 가져간 경우를 덮어쓰지 않게). 붙잡힌 핸들은 내리지 않는다. */
 export function clearFocusedPromptEditor(editor: FocusedPromptEditor): void {
-  if (focused === editor) focused = null;
+  if (focused === editor && pinned !== editor) focused = null;
 }
 
 export function getFocusedPromptEditor(): FocusedPromptEditor | null {
   return focused;
+}
+
+/** 핸들을 붙잡는다(찾기 모드 동안). 돌려준 함수로 놓는다. */
+export function pinFocusedPromptEditor(editor: FocusedPromptEditor): () => void {
+  pinned = editor;
+  focused = editor;
+  return () => {
+    if (pinned === editor) pinned = null;
+  };
+}
+
+/** 편집기가 사라질 때 — 붙잡혀 있어도 내리고 구독자에게 알린다. */
+export function disposeFocusedPromptEditor(editor: FocusedPromptEditor): void {
+  if (pinned === editor) pinned = null;
+  if (focused === editor) focused = null;
+  disposeListeners.forEach((fn) => {
+    try {
+      fn(editor);
+    } catch {}
+  });
+}
+
+export function subscribePromptEditorDispose(
+  fn: (editor: FocusedPromptEditor) => void,
+): () => void {
+  disposeListeners.add(fn);
+  return () => {
+    disposeListeners.delete(fn);
+  };
 }

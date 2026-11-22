@@ -18,6 +18,7 @@ import {
   FaBox,
   FaDatabase,
   FaExpand,
+  FaSearch,
   FaTag,
   FaTimes,
   FaUndo,
@@ -30,7 +31,10 @@ import { isMobile, backend, artistLibraryService, sessionService } from '../mode
 import { isTextEntryElement } from '../models/keyTargetGuard';
 import { holdSceneFieldEdit } from '../models/sceneFieldUndo';
 import { offerWeightSpacing } from '../models/promptWeightSpacingFlow';
-import { backStackService } from '../models/BackStackService';
+import { backStackService, useBackLayer } from '../models/BackStackService';
+import type { PromptFindEditResult, PromptFindTarget } from '../models/promptFind';
+import { promptOffsetToDomPoint } from '../models/promptFindDom';
+import { PromptFindBar, usePromptFind } from './PromptFindBar';
 import {
   artistNameOfSegment,
   makeArtistLookup,
@@ -50,6 +54,7 @@ import {
 import type { PromptWeightAdjustment } from '../models/promptTransforms';
 import {
   clearFocusedPromptEditor,
+  disposeFocusedPromptEditor,
   setFocusedPromptEditor,
   type FocusedPromptEditor,
 } from '../models/promptEditorFocus';
@@ -245,43 +250,11 @@ class CursorMemorizeEditor {
     await new Promise((resolve) => requestAnimationFrame(resolve));
     const selection = window.getSelection()!;
     const range = document.createRange();
-    let foundNode = undefined;
-    for (let i = 0; i < 2; i++) {
-      let offset = 0;
-      const nodeIterator = document.createNodeIterator(
-        this.editor,
-        NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
-        null,
-      );
-      let currentNode;
-      while ((currentNode = nodeIterator.nextNode())) {
-        if (currentNode.nodeName === 'BR') {
-          if (offset === pos[i]) {
-            if (i === 0) {
-              range.setStart(currentNode, pos[i] - offset);
-            } else {
-              range.setEnd(currentNode, pos[i] - offset);
-              foundNode = currentNode;
-            }
-            break;
-          }
-          offset += 1;
-        }
-        if (currentNode.nodeType === 3) {
-          let nodeLength = currentNode.textContent!.length;
-          if (offset + nodeLength >= pos[i]) {
-            if (i === 0) {
-              range.setStart(currentNode, pos[i] - offset);
-            } else {
-              range.setEnd(currentNode, pos[i] - offset);
-              foundNode = currentNode;
-            }
-            break;
-          }
-          offset += nodeLength;
-        }
-      }
-    }
+    // 오프셋 → DOM 점 규칙(텍스트 노드 글자 수·<br> 1)은 models/promptFindDom 단일 출처 — 「이 칸에서 찾기」 표시와 같다.
+    const startPoint = promptOffsetToDomPoint(this.editor, pos[0]);
+    if (startPoint) range.setStart(startPoint.node, startPoint.offset);
+    const endPoint = promptOffsetToDomPoint(this.editor, pos[1]);
+    if (endPoint) range.setEnd(endPoint.node, endPoint.offset);
 
     selection.removeAllRanges();
     selection.addRange(range);
@@ -311,11 +284,12 @@ class CursorMemorizeEditor {
     this.updateDOM(this.curText, 0, false);
   }
 
-  pushHistory() {
+  // cursorPos = 기록할 캐럿(편집기에 선택이 없을 때 — 검색 줄에서 바꾸기). 없으면 지금 선택.
+  pushHistory(cursorPos?: number[]) {
     if (this.historyBuf.length > MAX_HISTORY_SIZE) {
       this.historyBuf.shift();
     }
-    let pos = this.getCaretPosition();
+    let pos = cursorPos ?? this.getCaretPosition();
     let text = this.curText;
     if (this.compositionBuffer.length > 0) {
       text =
@@ -325,10 +299,46 @@ class CursorMemorizeEditor {
     }
     this.historyBuf.push({
       text,
-      cursorPos: this.getCaretPosition(),
+      cursorPos: cursorPos ?? this.getCaretPosition(),
       compositionBuffer: this.compositionBuffer,
     });
     this.redoBuf.clear();
+  }
+
+  /** 편집기에 선택이 있으면 그 오프셋, 없으면 마지막으로 둔 캐럿(없으면 [0, 0]). */
+  getSelectionOffsets(): [number, number] {
+    const selection = window.getSelection();
+    if (
+      selection &&
+      selection.rangeCount > 0 &&
+      this.editor.contains(selection.getRangeAt(0).commonAncestorContainer)
+    ) {
+      const [s, e] = this.getCaretPosition();
+      return [s, e];
+    }
+    const prev = this.previousRange;
+    if (Array.isArray(prev) && prev.length >= 2) return [prev[0], prev[1]];
+    return [0, 0];
+  }
+
+  /**
+   * 「이 칸에서 찾기」 바꾸기(2026-11-22) — 지금 글자로 compute 를 돌려 한 번의 기록으로 적용한다.
+   * 순서는 가중치 조절·주석 토글과 같다(조합 중 한글 확정 → 히스토리(바꾸기 전) → 값 → DOM). 포커스는 검색 줄에 그대로
+   * 두므로 window 선택을 옮기지 않고(setCaretPosition 을 부르지 않음) 둘 캐럿만 기억한다 — 검색 줄을 닫을 때 그 자리로.
+   * 호출부가 mutex 안에서 부른다.
+   */
+  applyFindEdit(
+    compute: (text: string) => PromptFindEditResult | null,
+  ): string | null {
+    if (this.compositionBuffer.length) this.flushCompositon(this.previousRange);
+    const result = compute(this.curText);
+    if (!result || result.text === this.curText) return null;
+    this.pushHistory([result.caret[0], result.caret[0]]);
+    this.compositionBuffer = [];
+    this.updateCurText(result.text);
+    this.updateDOM(result.text, result.caret[0], false);
+    this.previousRange = [result.caret[0], result.caret[1]];
+    return result.text;
   }
 
   async adjustWeight(delta: number) {
@@ -1051,6 +1061,8 @@ interface EditTextAreaProps {
   onFocus: () => void;
   onBlur: () => void;
   closeAutoComplete: () => void;
+  /** 찾기 모드를 편집기 밖에서 끝냈을 때 「칸을 떠났는가」 다시 확인(모바일 칩 — 가중치 공백 확인 등). */
+  onExternalLeave?: () => void;
 }
 
 interface EditTextAreaRef {
@@ -1063,6 +1075,8 @@ interface EditTextAreaRef {
   /** 커서 구획의 가중치를 delta 만큼 조절(PC 휠·모바일 키보드 위 칩 공통). */
   adjustWeight(delta: number): void;
   undo(): void;
+  /** 「이 칸에서 찾기·바꾸기」 손잡이(같은 인스턴스 동안 같은 객체). */
+  getFindTarget(): PromptFindTarget;
 }
 
 const EmulatedEditTextArea = observer(
@@ -1087,6 +1101,36 @@ const EmulatedEditTextArea = observer(
       const containerRef = useRef<any>(null);
       const clipboardRef = useRef<any>(null);
       const editorModelRef = useRef<any>(null);
+      const disabledRef = useLatest(disabled);
+      // 「이 칸에서 찾기」 손잡이 — 인스턴스 동안 같은 객체(검색 줄 훅의 의존성).
+      const findTargetRef = useRef<PromptFindTarget | null>(null);
+      if (!findTargetRef.current) {
+        findTargetRef.current = {
+          getText: () => editorModelRef.current?.curText ?? '',
+          getSelection: () =>
+            editorModelRef.current?.getSelectionOffsets() ?? [0, 0],
+          isReadOnly: () => !!disabledRef.current,
+          applyFindEdit: async (compute) => {
+            const m = editorModelRef.current as CursorMemorizeEditor | null;
+            if (!m || disabledRef.current) return null;
+            let res: string | null = null;
+            await mutex.runExclusive(async () => {
+              res = m.applyFindEdit(compute);
+            });
+            return res;
+          },
+          getHighlightRoot: () => editorRef.current,
+          getScrollContainer: () => containerRef.current,
+          focusAt: (start, end) => {
+            const m = editorModelRef.current as CursorMemorizeEditor | null;
+            if (!m) return;
+            mutex.runExclusive(async () => {
+              if (!disabledRef.current) m.editor.focus();
+              await m.setCaretPosition([start, end]);
+            });
+          },
+        };
+      }
 
       useEffect(() => {
         if (!editorRef.current) return;
@@ -1193,6 +1237,7 @@ const EmulatedEditTextArea = observer(
         undo() {
           editorModelRef.current.handleKeyDown({ key: 'z', metaKey: true });
         },
+        getFindTarget: () => findTargetRef.current!,
       }));
 
       useEffect(() => {
@@ -1245,12 +1290,16 @@ const NativeEditTextArea = observer(
         closeAutoComplete,
         onFocus,
         onBlur,
+        onExternalLeave,
       }: EditTextAreaProps,
       ref,
     ) => {
       const textareaRef = useRef<any>(null);
       const highlightRef = useRef<any>(null);
       const containerRef = useRef<any>(null);
+      const scrollRef = useRef<HTMLDivElement | null>(null);
+      const disabledRef = useLatest(disabled);
+      const leaveRef = useLatest(onExternalLeave);
       const isAutoComplete = useRef(false);
 
       // 단어 경계(쉼표·줄바꿈·##주석## 경계)는 promptAutocomplete 단일 출처 — PC 편집기와 같은 규칙.
@@ -1339,6 +1388,46 @@ const NativeEditTextArea = observer(
         }
       };
 
+      // 「이 칸에서 찾기」 손잡이(2026-11-22, 키보드 위 칩의 찾기 모드). 바꾸기 순서는 applyCaretEdit 와 같다
+      // (값·커서 → onUpdated → 색칠 → 히스토리). 색칠은 자동완성을 띄우지 않는 쪽(updateAutoComplete=false)으로,
+      // 포커스는 칩의 입력 칸에 그대로 둔다.
+      const findTargetRef = useRef<PromptFindTarget | null>(null);
+      if (!findTargetRef.current) {
+        findTargetRef.current = {
+          getText: () => textareaRef.current?.value ?? '',
+          getSelection: () => {
+            const ta = textareaRef.current;
+            if (!ta) return [0, 0];
+            return [ta.selectionStart ?? 0, ta.selectionEnd ?? 0];
+          },
+          isReadOnly: () => !!disabledRef.current,
+          applyFindEdit: (compute) => {
+            const ta = textareaRef.current;
+            if (!ta || disabledRef.current) return null;
+            const result = compute(ta.value);
+            if (!result || result.text === ta.value) return null;
+            ta.value = result.text;
+            ta.selectionStart = result.caret[0];
+            ta.selectionEnd = result.caret[1];
+            onUpdated(result.text);
+            highlightRef.current.innerHTML =
+              highlight(result.text, '', false) + '<span></span><br>';
+            pushHistory();
+            return result.text;
+          },
+          getHighlightRoot: () => highlightRef.current,
+          getScrollContainer: () => scrollRef.current,
+          focusAt: (start, end) => {
+            const ta = textareaRef.current;
+            if (!ta) return;
+            ta.focus();
+            try {
+              ta.setSelectionRange(start, end);
+            } catch {}
+          },
+        };
+      }
+
       useEffect(() => {
         if (!textareaRef.current || !highlightRef.current) return;
         const handleInput = () => {
@@ -1366,6 +1455,8 @@ const NativeEditTextArea = observer(
               textareaRef.current.value,
               textareaRef.current.selectionStart ?? 0,
             ),
+          find: findTargetRef.current!,
+          leave: () => leaveRef.current?.(),
         };
         const registerFocus = () => setFocusedPromptEditor(focusHandle);
         const unregisterFocus = () => clearFocusedPromptEditor(focusHandle);
@@ -1388,13 +1479,15 @@ const NativeEditTextArea = observer(
         window.addEventListener('mousedown', handleWindowMouseDown);
         return () => {
           window.removeEventListener('mousedown', handleWindowMouseDown);
+          // 언마운트 — 칩이 찾기 모드로 붙잡고 있어도 내리고 알린다(칩이 찾기 모드를 닫는다).
+          // 언마운트 때는 ref 가 먼저 비워지므로 아래 조기 반환보다 앞에서 부른다.
+          disposeFocusedPromptEditor(focusHandle);
           if (!textareaRef.current) return;
           textareaRef.current.removeEventListener('input', handleInput);
           textareaRef.current.removeEventListener('focus', onFocus);
           textareaRef.current.removeEventListener('blur', onBlur);
           textareaRef.current.removeEventListener('focus', registerFocus);
           textareaRef.current.removeEventListener('blur', unregisterFocus);
-          unregisterFocus();
         };
       }, []);
 
@@ -1441,6 +1534,7 @@ const NativeEditTextArea = observer(
         undo() {
           doUndo();
         },
+        getFindTarget: () => findTargetRef.current!,
       }));
 
       useEffect(() => {
@@ -1457,7 +1551,7 @@ const NativeEditTextArea = observer(
       }, [value]);
 
       return (
-        <div className="w-full h-full overflow-auto">
+        <div ref={scrollRef} className="w-full h-full overflow-auto">
           <div ref={containerRef} className="native-text-area-container">
             <div
               ref={highlightRef}
@@ -1639,6 +1733,56 @@ const PromptEditTextArea = observer(
       setId((id) => id + 1);
     };
 
+    // 「이 칸에서 찾기·바꾸기」(2026-11-22) — PC 는 아이콘 줄 돋보기 + 칸 밖에 뜨는 검색 줄(PromptFindBar),
+    // 모바일은 키보드 위 칩(MobileKeyboardChip)의 찾기 모드. 키보드 단축키는 만들지 않는다(사용자 결정).
+    // 닫힘: ✕·돋보기 다시 누름·검색 줄 입력 칸 Esc(닫기 관문 맨 위 층) = 편집기로 포커스 복귀,
+    // 검색 줄과 이 칸 밖 pointerdown·포커스 이동 = 포커스는 건드리지 않음. 한 번에 한 칸만(다른 칸 돋보기 = 밖 누름).
+    const [findOpen, setFindOpen] = useState(false);
+    const findOpenRef = useRef(false);
+    const findBarRef = useRef<HTMLDivElement | null>(null);
+    const findTarget =
+      !isMobile && findOpen ? editorRef.current?.getFindTarget() ?? null : null;
+    const finder = usePromptFind(findTarget, findOpen && !isMobile);
+    const finderRef = useRef(finder);
+    finderRef.current = finder;
+    const closeFind = (focusEditor: boolean) => {
+      if (!findOpenRef.current) return;
+      findOpenRef.current = false;
+      setFindOpen(false);
+      if (focusEditor) finderRef.current.focusBack();
+    };
+    const openFind = () => {
+      closeAutoComplete();
+      findOpenRef.current = true;
+      setFindOpen(true);
+    };
+    useBackLayer(findOpen, () => closeFind(true));
+    useEffect(() => {
+      if (!findOpen) return undefined;
+      const inside = (t: EventTarget | null) => {
+        const n = t as Node | null;
+        if (!n) return false;
+        return !!(
+          rootRef.current?.contains(n) || findBarRef.current?.contains(n)
+        );
+      };
+      const onDown = (e: Event) => {
+        if (!inside(e.target)) closeFind(false);
+      };
+      const onFocusIn = (e: Event) => {
+        if (!inside(e.target)) closeFind(false);
+      };
+      window.addEventListener('pointerdown', onDown, true);
+      window.addEventListener('mousedown', onDown, true);
+      document.addEventListener('focusin', onFocusIn);
+      return () => {
+        window.removeEventListener('pointerdown', onDown, true);
+        window.removeEventListener('mousedown', onDown, true);
+        document.removeEventListener('focusin', onFocusIn);
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [findOpen]);
+
     const onUpArrow = () => {
       if (tagsRef.current.length === 0) return;
       setSelectedTag(
@@ -1730,6 +1874,15 @@ const PromptEditTextArea = observer(
         const active = document.activeElement;
         // 같은 편집기 안의 다른 입력 요소로 옮겼거나 창 전환(포커스 유지)이면 아직 편집 중.
         if (root && active && root.contains(active) && isTextEntryElement(active)) {
+          release();
+          return;
+        }
+        // 이 칸의 「찾기·바꾸기」 검색 줄(PC)·키보드 위 칩 찾기 모드(모바일)로 옮긴 것도 같은 편집기 안(2026-11-22).
+        if (
+          active &&
+          typeof (active as Element).closest === 'function' &&
+          (active as Element).closest('[data-prompt-find-bar]')
+        ) {
           release();
           return;
         }
@@ -1837,6 +1990,32 @@ const PromptEditTextArea = observer(
         >
           <div className="absolute right-0 top-0 z-10 flex items-center gap-1">
             {caretArtist && !accessorySlot && artistButton(caretArtist, 'mt-1')}
+            {!isMobile && (
+              <Tooltip content="이 칸에서 찾기">
+                <button
+                  type="button"
+                  data-prompt-find-toggle
+                  aria-label="이 칸에서 찾기"
+                  aria-pressed={findOpen}
+                  // 편집기의 선택·포커스를 지킨다(고른 글자를 찾는 말로 넣기 위해). 비활성 칸에서도 열린다(찾기만).
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (findOpenRef.current) closeFind(true);
+                    else openFind();
+                  }}
+                  // 크게 편집 버튼과 같은 색 규칙, 열려 있는 동안은 켜짐 색(--c-focus-ring)
+                  className={
+                    (findOpen
+                      ? 'text-[color:var(--c-focus-ring)] opacity-100'
+                      : 'text-[var(--c-icon-text)] opacity-[0.85] hover:opacity-100') +
+                    ' mt-1'
+                  }
+                >
+                  <FaSearch></FaSearch>
+                </button>
+              </Tooltip>
+            )}
             <Tooltip content={!fullScreen ? '크게 편집' : '크게 편집 닫기'}>
               <button
                 aria-label={!fullScreen ? '크게 편집' : '크게 편집 닫기'}
@@ -1865,6 +2044,7 @@ const PromptEditTextArea = observer(
             closeAutoComplete={closeAutoComplete}
             onFocus={onFoucs}
             onBlur={onBlur}
+            onExternalLeave={onTextBlur}
           />
           {isMobile && fullScreen && (
             <div className="absolute right-0 bottom-0 z-10 p-1 active:brightness-90">
@@ -1889,6 +2069,18 @@ const PromptEditTextArea = observer(
           selectedTag={selectedTag}
           onSelectTag={onSelectTag}
         />
+        {findOpen && !isMobile && (
+          <PromptFindBar
+            ref={findBarRef}
+            finder={finder}
+            anchor={rootRef.current}
+            layoutKey={fullScreen}
+            onClose={() => closeFind(true)}
+            onLeave={(e) => {
+              if (isTextEntryElement(e.target as Element)) onTextBlur();
+            }}
+          />
+        )}
         {fullScreen && (
           <div
             className="fixed bg-black opacity-15 w-screen h-screen top-0 left-0 z-[var(--z-prompt-back)]"

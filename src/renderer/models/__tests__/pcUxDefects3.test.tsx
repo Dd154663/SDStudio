@@ -84,6 +84,12 @@ describe('D8 프롬프트 문법 색', () => {
       expect(b).not.toMatch(/#ff8e38|#0ea5e9|#22c55e|#a855f7|#c084fc/);
     }
   });
+  test('주석은 취소선(2026-11-22), 바탕색은 넣지 않는다', () => {
+    const b = block('.syntax-comment');
+    expect(b).toMatch(/text-decoration:\s*line-through/);
+    expect(b).toMatch(/font-style:\s*italic/);
+    expect(b).not.toMatch(/background(-color)?:/);
+  });
   test('굵기 800 유지', () => {
     expect(block('.syntax-wildcard')).toMatch(/font-weight:\s*800/);
     expect(block('.syntax-split')).toMatch(/font-weight:\s*800/);

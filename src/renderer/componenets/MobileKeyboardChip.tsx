@@ -1,12 +1,25 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { FaCaretLeft, FaCaretRight, FaSearch } from 'react-icons/fa';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  FaCaretLeft,
+  FaCaretRight,
+  FaChevronDown,
+  FaChevronUp,
+  FaSearch,
+} from 'react-icons/fa';
 import { buildDanbooruSearchUrl } from '../models/util';
-import { getFocusedPromptEditor } from '../models/promptEditorFocus';
+import {
+  getFocusedPromptEditor,
+  pinFocusedPromptEditor,
+  subscribePromptEditorDispose,
+  type FocusedPromptEditor,
+} from '../models/promptEditorFocus';
 import {
   formatPromptWeightLabel,
   PROMPT_WEIGHT_STEP,
 } from '../models/promptTransforms';
 import { setKeyboardChipVisible } from '../models/keyboardChipState';
+import { useBackLayer } from '../models/BackStackService';
+import { promptFindEnterKey, usePromptFind } from './PromptFindBar';
 
 /**
  * 모바일 키보드 위 칩(2026-09-26). 화면 하단 중앙, 키보드 바로 위(visualViewport)에 하나만 뜬다.
@@ -18,6 +31,12 @@ import { setKeyboardChipVisible } from '../models/keyboardChipState';
  *    [+] 오른쪽 [#] = 커서 기준 ##주석## 토글(2026-10-03, 주석 안이면 풀기·밖이면 구획을 감싸기, 주석 안이면 활성 표시).
  *    [#] 는 구분선으로 [+] 와 분리(2026-10-03 실기 피드백 — 오터치 방지, [+]~[#] 간격 약 17px).
  * 칩 전체는 pointerdown 기본 동작을 막아 편집기 포커스·선택을 유지한다(키보드가 내려가지 않게).
+ *  · 찾기 모드(2026-11-22 「이 칸에서 찾기·바꾸기」): 조정 칩 끝(구분선 뒤)의 돋보기 — 커서가 빈 구획이라 조정 칩이 없을 때도
+ *    칸에 글자가 있으면 돋보기만 있는 작은 칩. 누르면 칩 내용이 검색 창(1줄 찾기·개수·▲▼·Aa·돌아가기 / 2줄 바꿀 말·바꾸기·모두,
+ *    읽기 전용 칸은 1줄)으로 바뀐다. 이때는 칩의 입력 칸이 포커스를 받고(입력 칸만 pointerdown 기본 동작을 막지 않음),
+ *    등록소의 핸들을 붙잡아(pinFocusedPromptEditor) 대상 편집기를 계속 기억한다. 규칙은 PC 검색 줄과 같은 usePromptFind.
+ *    닫힘 = 돌아가기(조정 줄로, 포커스는 편집기) · 대상 편집기와 칩 밖 누름 · 키보드 내려감 · 편집기 언마운트 · 뒤로 가기(닫기 관문).
+ *    Danbooru 검색 칩에는 돋보기를 넣지 않는다(돋보기 아이콘이 둘이 됨).
  */
 export const KBD_CHIP_HOLD_MS = 350;
 export const KBD_CHIP_REPEAT_MS = 100;
@@ -30,8 +49,26 @@ export const KBD_CHIP_RESERVE_PX = 56;
 
 type ChipState =
   | { mode: 'search'; text: string }
-  | { mode: 'adjust'; name: string; weight: number; inComment: boolean }
+  | {
+      mode: 'adjust';
+      name: string;
+      weight: number;
+      inComment: boolean;
+      canFind: boolean;
+    }
+  // 커서가 빈 구획이지만 칸에 글자가 있음 — 돋보기만 있는 작은 칩(찾기 모드로 들어갈 길을 남긴다)
+  | { mode: 'find-entry' }
   | null;
+
+/** 찾기 모드에 들어간 뒤 이 시간 동안은 키보드 높이 변화로 닫지 않는다(포커스가 칩 입력 칸으로 옮겨 가는 사이의 흔들림). */
+const FIND_KEYBOARD_SETTLE_MS = 600;
+/** 보이는 화면 높이가 찾기 모드에 들어갈 때보다 이만큼 커지면 키보드가 내려간 것으로 본다. */
+const FIND_KEYBOARD_DOWN_PX = 120;
+
+function visibleHeight(): number {
+  const vv = window.visualViewport;
+  return vv ? vv.height : window.innerHeight;
+}
 
 function keyboardOffset(): number {
   // visualViewport 로 키보드 높이를 인식해 키보드 바로 위에 배치(없으면 화면 하단).
@@ -66,13 +103,16 @@ function readState(): ChipState {
   const editor = getFocusedPromptEditor();
   if (!editor || editor.element !== el) return null;
   const weight = editor.getCaretWeight();
-  return weight
-    ? {
-        mode: 'adjust',
-        name: weight.inner,
-        weight: weight.weight,
-        inComment: editor.isCaretInComment(),
-      }
+  if (weight)
+    return {
+      mode: 'adjust',
+      name: weight.inner,
+      weight: weight.weight,
+      inComment: editor.isCaretInComment(),
+      canFind: !!editor.find,
+    };
+  return editor.find && (el!.value || '').length > 0
+    ? { mode: 'find-entry' }
     : null;
 }
 
@@ -88,10 +128,120 @@ export default function MobileKeyboardChip({
   const dragRef = useRef<{ x: number; acc: number } | null>(null);
   const commentPressRef = useRef(false);
 
+  // 찾기 모드 — 대상 편집기 핸들(등록소에서 붙잡음)과 들어갈 때의 보이는 높이·시각.
+  const [find, setFind] = useState<{
+    target: FocusedPromptEditor;
+    startHeight: number;
+    at: number;
+  } | null>(null);
+  const findRef = useRef(find);
+  findRef.current = find;
+  const unpinRef = useRef<(() => void) | null>(null);
+  const chipRef = useRef<HTMLDivElement | null>(null);
+  const queryRef = useRef<HTMLInputElement | null>(null);
+  const finder = usePromptFind(find?.target.find ?? null, !!find, {
+    // 현재 자리가 칩(두 줄이라 조정 줄보다 높음)과 키보드에 가리지 않게 — 칩 윗변이 아래 경계.
+    bottomLimit: () => chipRef.current?.getBoundingClientRect().top,
+  });
+  const finderRef = useRef(finder);
+  finderRef.current = finder;
+
+  const closeFind = (opts: { focus: boolean }) => {
+    const cur = findRef.current;
+    if (!cur) return;
+    findRef.current = null;
+    unpinRef.current?.();
+    unpinRef.current = null;
+    setFind(null);
+    if (opts.focus) {
+      // 조정 줄로 돌아가게 캐럿은 접어서 둔다(범위를 고르면 Danbooru 검색 칩이 된다).
+      finderRef.current.focusBack(true);
+    } else {
+      try {
+        cur.target.leave?.();
+      } catch {}
+    }
+    window.setTimeout(() => {
+      setState(readState());
+      setBottom(keyboardOffset());
+    }, 0);
+  };
+  const closeFindRef = useRef(closeFind);
+  closeFindRef.current = closeFind;
+
+  const enterFind = () => {
+    const editor = getFocusedPromptEditor();
+    if (!editor || !editor.find || editor.element !== document.activeElement)
+      return;
+    unpinRef.current?.();
+    unpinRef.current = pinFocusedPromptEditor(editor);
+    const next = { target: editor, startHeight: visibleHeight(), at: Date.now() };
+    findRef.current = next;
+    setFind(next);
+  };
+
   const refresh = () => {
     setState(readState());
     setBottom(keyboardOffset());
+    const f = findRef.current;
+    if (
+      f &&
+      Date.now() - f.at > FIND_KEYBOARD_SETTLE_MS &&
+      visibleHeight() > f.startHeight + FIND_KEYBOARD_DOWN_PX
+    ) {
+      closeFindRef.current({ focus: false });
+    }
   };
+
+  // 찾기 모드: 검색 입력에 포커스(같은 사용자 동작 안에서 — 키보드가 내려가지 않게 layout effect).
+  useLayoutEffect(() => {
+    if (!find) return;
+    const el = queryRef.current;
+    if (!el) return;
+    el.focus();
+    try {
+      el.select();
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!find, finder.openId]);
+
+  // 찾기 모드: 대상 편집기와 칩 밖을 누르면 닫는다(포커스는 건드리지 않음). 편집기가 사라지면 닫는다.
+  useEffect(() => {
+    if (!find) return undefined;
+    const onDown = (e: Event) => {
+      const n = e.target as Node | null;
+      if (!n) return;
+      if (chipRef.current?.contains(n)) return;
+      const scroll = find.target.find?.getScrollContainer();
+      if (find.target.element.contains(n) || scroll?.contains(n)) return;
+      closeFindRef.current({ focus: false });
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    const offDispose = subscribePromptEditorDispose((editor) => {
+      if (findRef.current?.target === editor) {
+        // 편집기가 이미 없으니 「칸을 떠남」 확인은 부르지 않는다.
+        findRef.current = null;
+        unpinRef.current?.();
+        unpinRef.current = null;
+        setFind(null);
+      }
+    });
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      offDispose();
+    };
+  }, [find]);
+
+  useEffect(
+    () => () => {
+      unpinRef.current?.();
+      unpinRef.current = null;
+    },
+    [],
+  );
+
+  // Android 뒤로 가기·외장 키보드 Esc = 찾기 모드만 닫는다(닫기 관문 맨 위 층). 키보드를 다시 올리지 않게 포커스는 그대로.
+  useBackLayer(!!find, () => closeFind({ focus: false }));
 
   useEffect(() => {
     // 롱프레스로 텍스트를 선택하면 자동 검색하지 않고(네이티브 복사/붙여넣기 메뉴 보존) 명시적으로 탭할 때만 검색한다.
@@ -123,8 +273,8 @@ export default function MobileKeyboardChip({
 
   // 칩 표시 여부를 관찰 상자로 알린다 — 되돌리기 버튼 바(UndoRedoBar)가 칩이 떠 있는 동안 숨는다.
   useEffect(() => {
-    setKeyboardChipVisible(!!state);
-  }, [state]);
+    setKeyboardChipVisible(!!state || !!find);
+  }, [state, find]);
   useEffect(() => () => setKeyboardChipVisible(false), []);
 
   const step = (delta: number) => {
@@ -201,9 +351,143 @@ export default function MobileKeyboardChip({
     setScrubbing(false);
   };
 
-  if (!state) return null;
   const base =
     'fixed z-[var(--z-kbd-action)] left-1/2 -translate-x-1/2 flex items-center rounded-xl bg-gray-900/95 text-gray-50 text-sm font-medium border border-white/10 shadow-xl backdrop-blur-sm whitespace-nowrap select-none max-w-[94vw]';
+  const btnShape =
+    'relative touch-hit flex-none w-8 h-[30px] rounded-lg leading-none';
+  const stepBtn = btnShape + ' bg-white/10 active:bg-white/20 text-lg';
+  const onBtn = 'bg-sky-500/80 active:bg-sky-500 text-white';
+  const offBtn = 'bg-white/10 active:bg-white/20';
+  const magnifier = (pressed: boolean, onTap: () => void) => (
+    <button
+      type="button"
+      aria-label="이 칸에서 찾기"
+      aria-pressed={pressed}
+      data-kbd-chip-find
+      className={
+        btnShape + ' flex items-center justify-center ' + (pressed ? onBtn : offBtn)
+      }
+      onClick={onTap}
+    >
+      <FaSearch size={12} />
+    </button>
+  );
+
+  if (find) {
+    const fieldCls =
+      'flex-1 min-w-0 h-[30px] rounded-lg bg-white/10 px-2 text-sm font-normal text-gray-50 placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-[color:var(--c-focus-ring)] select-text';
+    return (
+      <div
+        ref={chipRef}
+        data-kbd-chip="find"
+        data-prompt-find-bar
+        role="search"
+        aria-label="이 칸에서 찾기"
+        className={base + ' flex-col items-stretch gap-1 p-1.5 w-[94vw] sm:w-[26rem]'}
+        style={{ bottom }}
+        // 입력 칸은 포커스를 받아야 하므로 막지 않는다. 버튼은 막아 입력 칸 포커스(키보드)를 지킨다.
+        onPointerDown={(e) => {
+          const t = e.target as HTMLElement | null;
+          if (t && typeof t.closest === 'function' && t.closest('input')) return;
+          e.preventDefault();
+        }}
+      >
+        <div className="flex items-center gap-1">
+          <input
+            ref={queryRef}
+            type="text"
+            data-kbd-chip-find-query
+            className={fieldCls}
+            placeholder="이 칸에서 찾기"
+            aria-label="찾을 말"
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            value={finder.query}
+            onChange={(e) => finder.setQuery(e.target.value)}
+            onKeyDown={(e) =>
+              promptFindEnterKey(e, (shift) => (shift ? finder.prev() : finder.next()))
+            }
+          />
+          <span
+            role="status"
+            aria-live="polite"
+            data-kbd-chip-find-count
+            className="flex-none min-w-[2.75rem] text-center text-xs font-normal tabular-nums text-gray-300"
+          >
+            {finder.countLabel}
+          </span>
+          <button
+            type="button"
+            aria-label="이전 일치"
+            className={btnShape + ' flex items-center justify-center ' + offBtn}
+            onClick={finder.prev}
+          >
+            <FaChevronUp size={11} />
+          </button>
+          <button
+            type="button"
+            aria-label="다음 일치"
+            className={btnShape + ' flex items-center justify-center ' + offBtn}
+            onClick={finder.next}
+          >
+            <FaChevronDown size={11} />
+          </button>
+          <button
+            type="button"
+            aria-label="대소문자 구분"
+            aria-pressed={finder.caseSensitive}
+            data-kbd-chip-find-case
+            className={btnShape + ' text-xs font-semibold ' + (finder.caseSensitive ? onBtn : offBtn)}
+            onClick={finder.toggleCase}
+          >
+            Aa
+          </button>
+          {magnifier(true, () => closeFind({ focus: true }))}
+        </div>
+        {!finder.readOnly && (
+          <div className="flex items-center gap-1" data-kbd-chip-find-replace-row>
+            <input
+              type="text"
+              data-kbd-chip-find-replacement
+              className={fieldCls}
+              placeholder="바꿀 말"
+              aria-label="바꿀 말"
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              value={finder.replacement}
+              onChange={(e) => finder.setReplacement(e.target.value)}
+              onKeyDown={(e) =>
+                promptFindEnterKey(e, () => {
+                  void finder.replaceOne();
+                })
+              }
+            />
+            <button
+              type="button"
+              className={btnShape + ' w-auto px-2.5 text-xs disabled:opacity-50 ' + offBtn}
+              disabled={finder.index < 0}
+              onClick={() => void finder.replaceOne()}
+            >
+              바꾸기
+            </button>
+            <button
+              type="button"
+              aria-label="모두 바꾸기"
+              className={btnShape + ' w-auto px-2.5 text-xs disabled:opacity-50 ' + offBtn}
+              disabled={finder.matches.length === 0}
+              onClick={() => void finder.replaceAll()}
+            >
+              모두
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (!state) return null;
 
   if (state.mode === 'search') {
     return (
@@ -244,10 +528,20 @@ export default function MobileKeyboardChip({
     );
   }
 
+  if (state.mode === 'find-entry') {
+    return (
+      <div
+        data-kbd-chip="find-entry"
+        className={base + ' px-1.5 py-1'}
+        style={{ bottom }}
+        onPointerDown={(e) => e.preventDefault()}
+      >
+        {magnifier(false, enterFind)}
+      </div>
+    );
+  }
+
   const label = formatPromptWeightLabel(state.weight);
-  const btnShape =
-    'relative touch-hit flex-none w-8 h-[30px] rounded-lg leading-none';
-  const stepBtn = btnShape + ' bg-white/10 active:bg-white/20 text-lg';
   return (
     <div
       data-kbd-chip="adjust"
@@ -335,6 +629,16 @@ export default function MobileKeyboardChip({
       >
         #
       </button>
+      {state.canFind && (
+        <>
+          <span
+            aria-hidden
+            data-kbd-chip-divider
+            className="flex-none self-center h-5 mx-0.5 border-l border-white/15"
+          />
+          {magnifier(false, enterFind)}
+        </>
+      )}
     </div>
   );
 }

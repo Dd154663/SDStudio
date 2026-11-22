@@ -121,6 +121,12 @@ export function promptSyntaxHelpGroups(mobile: boolean): SyntaxHelpGroup[] {
                 example: { kind: 'keys', keys: ['Ctrl', '3'] },
                 desc: '주석 켜기/끄기. 고른 글자, 없으면 커서가 있는 구획',
               } as SyntaxHelpRow,
+              // 2026-11-22 — 칸 오른쪽 위 돋보기(PromptEditTextArea → PromptFindBar). 단축키는 없다(사용자 결정).
+              {
+                id: 'find-in-field',
+                example: { kind: 'label', text: '돋보기' },
+                desc: '칸 오른쪽 위 돋보기로 이 칸에서 찾기·바꾸기',
+              } as SyntaxHelpRow,
             ]),
       ],
     },

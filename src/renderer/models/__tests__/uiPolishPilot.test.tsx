@@ -63,11 +63,11 @@ afterEach(async () => {
 const render = (el: React.ReactElement) => act(async () => root.render(el));
 
 describe('① 문법 설명 데이터', () => {
-  test('묶음 넷(세기·넣기·적어 두기·입력 보조)과 줄 수 3·3·2·2(PC 는 Ctrl+3 주석 줄로 3)', () => {
+  test('묶음 넷(세기·넣기·적어 두기·입력 보조)과 줄 수 3·3·2·2(PC 는 Ctrl+3 주석 줄·돋보기 찾기 줄로 4)', () => {
     for (const mobile of [false, true]) {
       const groups = promptSyntaxHelpGroups(mobile);
       expect(groups.map((g) => g.title)).toEqual(['세기', '넣기', '적어 두기', '입력 보조']);
-      expect(groups.map((g) => g.rows.length)).toEqual([3, 3, 2, mobile ? 2 : 3]);
+      expect(groups.map((g) => g.rows.length)).toEqual([3, 3, 2, mobile ? 2 : 4]);
     }
   });
   test('PC 입력 보조 끝줄 = Ctrl 3 주석 켜기/끄기(2026-11-22)', () => {
