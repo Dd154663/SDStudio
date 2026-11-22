@@ -98,8 +98,13 @@ const ExportPresetManager = observer(() => {
     const type = appState.lastExportType || 'scene';
     const session = appState.lastExportSession;
     const selected = appState.lastExportSelected;
+    // 그리드 「선택한 이미지 내보내기」에서 왔으면 고른 이미지 대상으로 다시 연다(씬 전체로 바뀌지 않게)
+    const picked = appState.lastExportPicked;
     setTimeout(() => {
-      if (session && appState.curSession === session) appState.exportPackage(type, selected);
+      if (session && appState.curSession === session) {
+        if (picked) appState.exportPackage(type, selected, picked);
+        else appState.exportPackage(type, selected);
+      }
     }, 100);
   };
 

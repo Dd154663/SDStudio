@@ -1510,6 +1510,11 @@ export class AndroidBackend extends Backend {
     return;
   }
 
+  // 이미지를 끌어서 다른 프로그램에 놓기는 PC 전용(2026-11-22) — 모바일은 의도된 no-op(렌더러 헬퍼도 속성을 붙이지 않는다).
+  async startImageDragOut(imagePath: string): Promise<boolean> {
+    return false;
+  }
+
   async watchImage(inputPath: string): Promise<void> {
     return;
   }

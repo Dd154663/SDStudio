@@ -22,6 +22,15 @@ export function outputImageExtOf(path: string): string {
   return (OUTPUT_IMAGE_EXTS as readonly string[]).includes(ext) ? ext : PNG_IMAGE_EXT;
 }
 
+// 앱 밖으로 끌어 놓을 수 있는 이미지 파일 확장자(PC 「끌어서 다른 프로그램에 놓기」, 2026-11-22).
+// main 프로세스(src/main/imageDragOut.ts)가 렌더러가 보낸 경로를 확인할 때 쓴다 — 생성 이미지(png·webp)와
+// 사용자가 넣은 jpg/jpeg. 대소문자 무관.
+export const DRAG_OUT_IMAGE_EXTS = [PNG_IMAGE_EXT, 'webp', 'jpg', 'jpeg'] as const;
+export function isDragOutImageFile(filename: string): boolean {
+  const lower = filename.toLowerCase();
+  return DRAG_OUT_IMAGE_EXTS.some((ext) => lower.endsWith('.' + ext));
+}
+
 // 이미 손실 압축 최적화된 포맷. export 최적화 시 재인코딩하면 이중 손실(화질 저하).
 export const OPTIMIZED_IMAGE_EXTS = ['webp', 'avif'] as const;
 export function isOptimizedImageFile(filename: string): boolean {

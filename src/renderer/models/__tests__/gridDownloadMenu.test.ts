@@ -11,7 +11,7 @@ const base = {
   savePath: undefined as string | undefined,
 };
 
-test('PC 전부 있을 때: 선택 → 전체 → 즐겨찾기 → 내보내기 → 저장 폴더 순서와 문구', () => {
+test('PC 전부 있을 때: 선택 → 전체 → 즐겨찾기 → 선택 내보내기 → 내보내기 → 저장 폴더 순서와 문구', () => {
   const menu = buildGridDownloadMenu({ ...base, selectedCount: 2, allCount: 10, favoriteCount: 3, savePath: 'D:\\Out' });
   expect(menu.text).toBe('"씬 A" 이미지 다운로드');
   expect(menu.hasImages).toBe(true);
@@ -19,6 +19,7 @@ test('PC 전부 있을 때: 선택 → 전체 → 즐겨찾기 → 내보내기 
     { text: '선택한 이미지 (2장)', value: 'selected' },
     { text: '전체 이미지 (10장)', value: 'all' },
     { text: '즐겨찾기만 (3장)', value: 'favorites' },
+    { text: '선택한 이미지 내보내기… (2장)', value: 'export-selected' },
     { text: '이 씬 내보내기…', value: 'export' },
     { text: '저장 폴더 바꾸기 (현재: D:\\Out)', value: 'change-folder' },
   ]);
@@ -32,7 +33,7 @@ test('0장 항목은 숨기고, 저장 폴더가 없으면 「미지정」', () 
 
 test('모바일은 저장 폴더 항목이 없다', () => {
   const menu = buildGridDownloadMenu({ ...base, isMobile: true, selectedCount: 1, allCount: 4, favoriteCount: 1 });
-  expect(menu.items.map((i) => i.value)).toEqual(['selected', 'all', 'favorites', 'export']);
+  expect(menu.items.map((i) => i.value)).toEqual(['selected', 'all', 'favorites', 'export-selected', 'export']);
 });
 
 test('내보내기를 넣지 않으면 그 항목만 빠진다', () => {
@@ -54,4 +55,11 @@ test('고른 항목 → 대상 경로', () => {
   expect(gridDownloadTargets('export', paths)).toBeUndefined();
   expect(gridDownloadTargets('change-folder', paths)).toBeUndefined();
   expect(gridDownloadTargets(undefined, paths)).toBeUndefined();
+});
+
+test('선택 내보내기는 고른 것이 있을 때만(선택 다운로드와 같은 조건), 내보내기를 빼면 함께 빠진다', () => {
+  expect(buildGridDownloadMenu({ ...base, allCount: 3 }).items.map((i) => i.value)).not.toContain('export-selected');
+  expect(buildGridDownloadMenu({ ...base, allCount: 3, selectedCount: 1, canExport: false, isMobile: true }).items.map((i) => i.value))
+    .toEqual(['selected', 'all']);
+  expect(gridDownloadTargets('export-selected', { selected: ['s'], all: [], favorites: [] })).toBeUndefined();
 });

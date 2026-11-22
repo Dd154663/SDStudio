@@ -114,3 +114,21 @@ test('preset form rejects a name used by another preset but allows saving itself
   act(() => click('수정 저장'));
   expect(state.saveExportPresets).toHaveBeenCalledTimes(1);
 });
+
+// 2026-11-22 이미지 그리드 「선택한 이미지 내보내기」: 대상 = 고른 이미지 — 장수 안내, 「이미지 범위」 칸·즐겨찾기 안내 없음
+test('picked-image direct export shows the image count and hides the image range field', async () => {
+  state.directExportRequest = { projectName: 'project', sceneNames: ['a b'], scope: 'images', imageCount: 3, resolve };
+  await act(async () => root.render(<DirectExportDialog />));
+  expect(container.textContent).toContain('project · 선택한 이미지 3장');
+  expect(container.textContent).not.toContain('대상 씬');
+  expect(container.textContent).not.toContain('이미지 범위');
+  expect(container.textContent).not.toContain('즐겨찾기가 없는 씬');
+  expect(container.textContent).toContain('원본 이미지는 변경하지 않습니다.');
+});
+
+test('scene direct export still shows the scene count, image range field and favorite note', async () => {
+  await act(async () => root.render(<DirectExportDialog />));
+  expect(container.textContent).toContain('project · 대상 씬 1개');
+  expect(container.textContent).toContain('이미지 범위');
+  expect(container.textContent).toContain('즐겨찾기가 없는 씬은 첫 이미지를 사용합니다. 원본 이미지는 변경하지 않습니다.');
+});

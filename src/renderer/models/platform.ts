@@ -67,6 +67,11 @@ export const platform = {
   // 「선호 이미지 편집기 → 사용자 지정」(실행 파일 .exe 직접 지정, 2026-11-22) — Windows 데스크톱만.
   // mac·linux·모바일은 선택지·「실행 파일 선택」 버튼이 나오지 않는다(main 도 win32 에서만 실행).
   supportsCustomImageEditor: isWindows,
+  // 이미지를 끌어서 다른 프로그램(탐색기·메신저 등)에 파일로 놓기(2026-11-22) — Electron webContents.startDrag 라
+  // 데스크톱만. 모바일은 헬퍼(models/imageDragOut.ts)가 아무 속성도 붙이지 않는다.
+  supportsImageDragOut: !isMobile,
+  // macOS 데스크톱 여부 — 그리드 칸의 「보조 키 + 끌기」 키 선택(mac = Option, 그 밖 = Ctrl)에 쓴다.
+  isMac: !isMobile && window.navigator.platform.startsWith('Mac'),
 };
 
 // 이미지 크기 최적화 방법 선택 옵션.

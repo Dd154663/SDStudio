@@ -15,6 +15,7 @@ import {
 } from '../models/exportSettings';
 import ModalOverlay, { DIALOG_PRIMARY_BTN, DIALOG_SECONDARY_BTN } from './ModalOverlay';
 import ExportSettingsFields from './ExportSettingsFields';
+import { PICKED_EXPORT_TEXT } from '../models/pickedImageExport';
 
 function DirectExportForm({ request }: { request: DirectExportRequest }) {
   const [form, setForm] = useState(emptyExportForm);
@@ -47,7 +48,9 @@ function DirectExportForm({ request }: { request: DirectExportRequest }) {
   // 폴더 범위는 「대상」 선택과 무관하게 두 종류 개수를 모두 보여 규모를 알 수 있게(2026-11-17 b-3)
   const summary = scope === 'folder'
     ? `폴더 "${request.projectName}" · 프로젝트 ${request.projectCount ?? 0}개 · 생성 씬 ${request.sceneNames.length}개 · 변형 씬 ${request.variantSceneNames?.length ?? 0}개`
-    : `${request.projectName} · 대상 씬 ${request.sceneNames.length}개`;
+    : scope === 'images'
+      ? PICKED_EXPORT_TEXT.summary(request.projectName, request.imageCount ?? 0)
+      : `${request.projectName} · 대상 씬 ${request.sceneNames.length}개`;
   // 빠진·잘못된 칸(2026-11-12 정비 M1): 비활성만 하던 [내보내기]를 내보내기 프리셋 관리와 같이 —
   // 버튼은 막지 않고 누르면 칸 이름 토스트, 바닥줄 왼쪽 한 줄 안내.
   const problems = exportFormProblems(form, false);
@@ -91,7 +94,9 @@ function DirectExportForm({ request }: { request: DirectExportRequest }) {
           {char === ' ' ? '띄어쓰기' : char}
         </label>)}</div>
       </fieldset>}
-      <div className="text-xs text-muted">즐겨찾기가 없는 씬은 첫 이미지를 사용합니다. 원본 이미지는 변경하지 않습니다.</div>
+      <div className="text-xs text-muted">{scope === 'images'
+        ? PICKED_EXPORT_TEXT.note
+        : '즐겨찾기가 없는 씬은 첫 이미지를 사용합니다. 원본 이미지는 변경하지 않습니다.'}</div>
     </div>
   </ModalOverlay>;
 }

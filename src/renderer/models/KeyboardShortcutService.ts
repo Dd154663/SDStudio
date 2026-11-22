@@ -1,6 +1,7 @@
 import { appState } from './AppService';
 import { isMobile } from '.';
 import { isTextEntryFocused } from './keyTargetGuard';
+import { historyPreviewState } from './historyPreview';
 
 export interface ShortcutAction {
   id: string;
@@ -87,6 +88,11 @@ export interface ShortcutGateState {
   findReplaceOpen: boolean;
   /** 일괄 삽입 창(찾기 및 변환과 같은 억제 — 없으면 닫힘으로 본다) */
   batchInsertOpen?: boolean;
+  /**
+   * 히스토리 큰 미리 보기가 떠 있음(2026-11-22 — 없으면 닫힘으로 본다). 화면을 덮는 창이라 아래 화면의
+   * 단축키(삭제·이미지/씬 이동 등)가 보이지 않는 곳에서 동작하지 않게 막는다. 되돌리기·다시 실행만 통과.
+   */
+  historyPreviewOpen?: boolean;
 }
 
 /** 이 액션이 지금 통과할 수 있는가(입력 칸 포커스 억제는 호출 전에 따로 본다) */
@@ -94,6 +100,10 @@ export function isShortcutActionActive(
   action: ShortcutAction,
   st: ShortcutGateState,
 ): boolean {
+  if (st.historyPreviewOpen) {
+    // 미리 보기에서 누른 즐겨찾기 전환을 Ctrl+Z 로 되돌릴 수 있게 되돌리기·다시 실행만 남긴다(나머지 조건은 아래에서 그대로 본다)
+    if (!(action.category === 'global' && action.allowInFloatView === true)) return false;
+  }
   if (action.category === 'image-grid') {
     return st.imageGridFocusable && st.dialogCount === 0;
   }
@@ -293,6 +303,7 @@ export class KeyboardShortcutService {
       pieceEditorOpen: appState.pieceEditorOpen,
       findReplaceOpen: appState.findReplaceOpen,
       batchInsertOpen: appState.batchInsertOpen,
+      historyPreviewOpen: historyPreviewState.entryId !== null,
     };
     for (const actionId of actionIds) {
       const action = this.getActionDef(actionId);

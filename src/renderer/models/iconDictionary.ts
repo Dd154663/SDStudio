@@ -47,6 +47,7 @@ import {
   FaSearch,
   FaShare,
   FaSlidersH,
+  FaSortAmountDown,
   FaStar,
   FaSwatchbook,
   FaTags,
@@ -190,6 +191,7 @@ export const ICON_DICTIONARY = {
   drive: FaGoogleDrive, // Google 드라이브 — 구름 계열도 드라이브 전용
   'reset-default': MdSettingsBackupRestore, // 설정 하나를 기본값으로 되돌림(단축키 「기본값으로」 등 — 전역 되돌리기 undo 와 다른 모양)
   refresh: MdRefresh, // 다시 계산·다시 읽기(저장 공간 크기 등 — 순환 생성 FaSync·다시 실행 FaRedo 와 다른 모양)
+  'image-view-order': FaSortAmountDown, // 이미지 그리드 「보기 순서」 고르기(기본 순서·즐겨찾기 먼저 — 데이터는 바꾸지 않는 보기 설정)
 } satisfies Record<string, IconType>;
 
 export type IconId = keyof typeof ICON_DICTIONARY;

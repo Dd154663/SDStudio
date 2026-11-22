@@ -19,6 +19,11 @@ import { writeImageZip } from './writeImageZip';
 import { createImageChangeDetector, isRootGoneEvent } from './imageFolderWatch';
 import { launchCustomImageEditor } from './customImageEditor';
 import {
+  buildDragOutIcon,
+  IMAGE_DRAG_OUT_CHANNEL,
+  resolveDragOutFile,
+} from './imageDragOut';
+import {
   app,
   BrowserWindow,
   shell,
@@ -1468,6 +1473,32 @@ ipcMain.handle('read-binary-file', async (event, filePath) => {
 ipcMain.handle('copy-image-to-clipboard', async (event, imagePath) => {
   const image = nativeImage.createFromPath(APP_DIR + '/' + imagePath);
   clipboard.writeImage(image);
+});
+
+// 이미지를 끌어서 다른 프로그램에 파일로 놓기(PC, 2026-11-22) — 렌더러가 dragstart 를 막고 보낸 저장소 상대 경로를
+// 확인(데이터 루트 안·실제 일반 파일·이미지 확장자 — imageDragOut.ts)한 뒤 OS 파일 끌기를 시작한다. 하나라도
+// 어긋나면 아무것도 하지 않는다(false). Windows 는 startDrag 가 놓을 때까지 돌아오지 않으므로 반환 = 끌기 끝.
+ipcMain.handle(IMAGE_DRAG_OUT_CHANNEL, async (event, relPath) => {
+  const file = resolveDragOutFile(APP_DIR, relPath, {
+    isFile: (p) => {
+      try {
+        return fsSync.statSync(p).isFile();
+      } catch {
+        return false;
+      }
+    },
+  });
+  if (!file) return false;
+  const icon = await buildDragOutIcon(file, {
+    fromPath: (p) => nativeImage.createFromPath(p),
+    fromBuffer: (b) => nativeImage.createFromBuffer(b),
+    thumbnailPng: (p, size) =>
+      sharp(p).resize(size, size, { fit: 'inside' }).png().toBuffer(),
+    fallbackPath: getAssetPath('icon.png'),
+  });
+  if (!icon || event.sender.isDestroyed()) return false;
+  event.sender.startDrag({ file, icon });
+  return true;
 });
 
 const util = require('util');

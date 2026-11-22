@@ -1,6 +1,7 @@
 import { EmptyState } from './EmptyState';
 import { Spinner } from './ProgressIndicators';
 import { canStartSelectionBox, imagePathsInSelectionBox } from '../models/dragSelection';
+import { imageDragOutProps } from '../models/imageDragOut';
 import { parseRankCutoff, RANK_CUTOFF_INVALID_MESSAGE } from '../models/rankCutoff';
 import { isTextEntryFocused, shouldIgnoreViewerRawKey } from '../models/keyTargetGuard';
 import React, {
@@ -74,6 +75,7 @@ export const GRID_HEADER_NAMES = {
   delete: '삭제',
   sample: '샘플 뽑기',
   bookmark: '북마크',
+  viewOrder: '보기 순서',
 } as const;
 import {
   CharacterPrompt,
@@ -138,6 +140,14 @@ import {
   gridDownloadTargets,
 } from '../models/gridDownloadMenu';
 import { IMAGE_DOWNLOAD_TEXT } from '../models/ImageDownloadService';
+import { pickFileNames } from '../models/pickedImageExport';
+import {
+  applyImageViewOrder,
+  buildImageViewOrderMenu,
+  canReorderInViewOrder,
+  IMAGE_VIEW_ORDER_TEXT,
+  normalizeImageViewOrder,
+} from '../models/imageOrderSort';
 import { Session, GenericScene as GenericSceneType } from '../models/types';
 import { BOOST_TEXT } from '../models/boostMode';
 
@@ -452,6 +462,9 @@ interface ImageGalleryProps {
   onClearSelection?: () => void;
   emptyText?: string;
   emptyHint?: string;
+  // 끌어서 순서 바꾸기 허용(보기 순서가 「기본 순서」일 때만 — imageOrderSort.canReorderInViewOrder). 없으면 허용.
+  // 보조 키를 누른 채 끌어 다른 프로그램에 놓기(imageDragOutProps)는 이 값과 무관하게 그대로.
+  reorderable?: boolean;
 }
 
 interface ImageGalleryRef {
@@ -523,6 +536,7 @@ const Cell = memo(
       onCellEnter,
       onCellLeave,
       selectMode,
+      reorderable,
     } = data as any;
 
     const { curSession } = appState;
@@ -603,7 +617,8 @@ const Cell = memo(
       () => ({
         type: 'image',
         item: { scene, path, cellSize, imageSize, index },
-        canDrag: () => !selectMode && index < filePaths.length,
+        // 「즐겨찾기 먼저」 등 기본 순서가 아닌 보기에서는 순서 바꾸기 끌기를 시작하지 않는다(reorderable=false).
+        canDrag: () => !selectMode && reorderable !== false && index < filePaths.length,
         collect: (monitor) => {
           const diff = monitor.getDifferenceFromInitialOffset();
           if (diff) {
@@ -617,13 +632,13 @@ const Cell = memo(
           };
         },
       }),
-      [path, imageSize, index, selectMode],
+      [path, imageSize, index, selectMode, reorderable],
     );
 
     const [{ isOver }, drop] = useDrop(
       () => ({
         accept: 'image',
-        canDrop: () => index < filePaths.length,
+        canDrop: () => reorderable !== false && index < filePaths.length,
         collect: (monitor) => {
           if (monitor.isOver()) {
             return {
@@ -679,7 +694,7 @@ const Cell = memo(
           }
         },
       }),
-      [path, imageSize, index],
+      [path, imageSize, index, reorderable],
     );
 
     useEffect(() => {
@@ -697,6 +712,9 @@ const Cell = memo(
           (isOver ? ' card-drop-target' : '')
         }
         draggable={!selectMode}
+        // PC: 보조 키(Windows Ctrl·mac Option)를 누른 채 끌면 다른 프로그램에 원본 파일로 놓기(2026-11-22).
+        // 보조 키 없이 끌면 헬퍼가 아무것도 하지 않아 아래 react-dnd 순서 바꾸기가 그대로 동작한다.
+        {...imageDragOutProps(path, { modifier: true })}
         onClick={() => {
           if (path) {
             if (onSelected) {
@@ -809,6 +827,7 @@ const createItemData = memoizeOne(
     onCellEnter,
     onCellLeave,
     selectMode,
+    reorderable,
   ) => {
     return {
       scene,
@@ -826,6 +845,7 @@ const createItemData = memoizeOne(
       onCellEnter,
       onCellLeave,
       selectMode,
+      reorderable,
     };
   },
 );
@@ -848,6 +868,7 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
       onClearSelection,
       emptyText,
       emptyHint,
+      reorderable,
     },
     ref,
   ) => {
@@ -1104,6 +1125,7 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
             onCellEnter,
             onCellLeave,
             selectMode,
+            reorderable !== false,
           )}
           // 셀 키를 위치가 아닌 이미지 경로 기준으로 — 목록이 바뀌면 셀이
           // 언마운트되어 이전 이미지 state(잔상)가 재사용되지 않는다.
@@ -1783,6 +1805,8 @@ const ResultDetailView = observer(
             <img
               src={image}
               draggable={false}
+              // PC: 끌어서 다른 프로그램에 원본 파일로 놓기(2026-11-22, 모바일은 속성 없음)
+              {...imageDragOutProps(paths[selectedIndex])}
               onContextMenu={(e) => {
                 show({
                   event: e,
@@ -1999,11 +2023,29 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       };
     }, [tournament]);
 
-    const paths = gameService
-      .getOutputs(curSession!, scene)
-      .map(
-        (path) => imageService.getOutputDir(curSession!, scene) + '/' + path,
+    // 보기 순서(2026-11-22, 앱 전체 하나 — appState.imageViewOrder): 표시 순서를 정하는 단 한 곳.
+    // 그리드 칸(이미지·즐겨찾기 탭)·상세 보기 이전/다음(getPaths)·키보드 이동·선택·다운로드 대상 순서가 모두 이것을 쓴다.
+    // 보기 설정일 뿐 — scene.imageMap·game·mains 는 읽기만 한다(되돌리기 기록 없음).
+    // 「n등 이하 삭제」는 순위 기준이라 이것 대신 GameService 순서를 그대로 쓴다(onDeleteImages).
+    const viewOrder = normalizeImageViewOrder(appState.imageViewOrder);
+    const viewPaths = () =>
+      applyImageViewOrder(
+        gameService
+          .getOutputs(curSession!, scene)
+          .map((path) => imageService.getOutputDir(curSession!, scene) + '/' + path),
+        scene.mains,
+        normalizeImageViewOrder(appState.imageViewOrder),
       );
+    const paths = viewPaths();
+    const reorderable = canReorderInViewOrder(viewOrder);
+    // 즐겨찾기 먼저 보기에서는 즐겨찾기 전환이 곧 자리 이동 — 이 컴포넌트는 observer 가 아니라 mains 변화에 다시 그린다.
+    useEffect(() => {
+      if (viewOrder === 'default') return undefined;
+      return reaction(
+        () => scene.mains.join('\n'),
+        () => forceUpdate({}),
+      );
+    }, [viewOrder, scene]);
     // 히스토리 → 특정 이미지 포커스: 그리드를 해당 이미지 위치로 스크롤
     useEffect(() => {
       if (!focusFilename) return;
@@ -2274,11 +2316,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     };
 
     const getPaths = () => {
-      const paths = gameService
-        .getOutputs(curSession!, scene)
-        .map(
-          (path) => imageService.getOutputDir(curSession!, scene) + '/' + path,
-        );
+      // 상세 보기 이전/다음도 그리드와 같은 보기 순서(viewPaths)
+      const paths = viewPaths();
       return selectedTab === 0
         ? paths
         : paths.filter((path) => isMainImage && isMainImage(path));
@@ -2600,6 +2639,11 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
         appState.exportPackage(scene.type, [scene]);
         return;
       }
+      if (choice === 'export-selected') {
+        // 같은 내보내기 흐름에 고른 이미지만(프리셋 이미지 범위 무시, 이름 겹침은 번호로 구분 — ExportPresetService)
+        appState.exportPackage(scene.type, [scene], { scene, files: pickFileNames(selectedPaths) });
+        return;
+      }
       if (choice === 'change-folder') {
         const newPath = await imageDownloadService.changeSavePath();
         if (newPath) appState.pushMessage(IMAGE_DOWNLOAD_TEXT.folderChanged(newPath));
@@ -2683,6 +2727,23 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       } else {
         appState.pushMessage('북마크된 이미지를 찾을 수 없습니다.');
       }
+    };
+    // 「보기 순서」 택일(2026-11-22) — 보여 주는 순서만 고르는 앱 전체 보기 설정(appState.setImageViewOrder, localStorage).
+    // 데이터(imageMap·game·mains)를 쓰지 않고 되돌리기 기록도 없다. 이미지 장수와 무관하게 고를 수 있다.
+    const viewOrderOn = viewOrder !== 'default';
+    const actChooseViewOrder = async () => {
+      const menu = buildImageViewOrderMenu(viewOrder);
+      const choice = await appState.pushDialogAsync({
+        type: 'select',
+        text: menu.text,
+        items: menu.items,
+      });
+      if (!choice) return;
+      const next = normalizeImageViewOrder(choice);
+      if (next === normalizeImageViewOrder(appState.imageViewOrder)) return;
+      appState.setImageViewOrder(next);
+      setFocusedImageIndex(null);
+      forceUpdate({});
     };
 
     // 모바일 V2 하단 줄(2026-09-26 사용자 결정): 평소=선택·삭제·즐겨찾기(일괄 선택)·북마크(+더보기),
@@ -2769,6 +2830,13 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           tierItem('paste', '붙여넣기', appState.imageClipboard.length > 0 ? 'back-sky' : 'back-gray', <FaPaste />, actPaste),
           ...(onSampleExtract ? [tierItem('sample', '샘플 뽑기', 'back-sky', <FaDice />, () => void actSampleExtract())] : []),
           tierItem('tournament', '월드컵', 'back-sky', <FaTrophy />, () => setTournament(true)),
+          tierItem(
+            'view-order',
+            GRID_HEADER_NAMES.viewOrder,
+            viewOrderOn ? 'back-sky toggle-on' : 'back-gray',
+            <ActionIcon id="image-view-order" />,
+            () => void actChooseViewOrder(),
+          ),
         ]
       : [];
     const gallerySelectTier: V2TierItem[] = v2
@@ -3041,6 +3109,20 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                   </button>
                 </Tooltip>
               ))}
+              {hn('viewOrder', (
+                <Tooltip content={IMAGE_VIEW_ORDER_TEXT.tooltip(viewOrder)}>
+                  {/* 고르는 창을 여는 버튼 — 「상태 있음」 표시만(.toggle-on, aria-pressed 없음 — SPEC §2 토글 규칙) */}
+                  <button
+                    className={`round-button icon-only ${viewOrderOn ? 'back-sky toggle-on' : 'back-gray'}`}
+                    aria-label={IMAGE_VIEW_ORDER_TEXT.tooltip(viewOrder)}
+                    aria-haspopup="dialog"
+                    data-viewer-toggle="view-order"
+                    onClick={() => void actChooseViewOrder()}
+                  >
+                    <ActionIcon id="image-view-order" />
+                  </button>
+                </Tooltip>
+              ))}
             </div>
             )}
             <span className="flex ml-auto gap-1 md:gap-2 mt-2 md:mt-0">
@@ -3074,6 +3156,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             focusedIndex={selectedTab === 0 ? focusedImageIndex : null}
             onSelectedImagesChange={onSelectedImagesChange}
             onClearSelection={onClearSelection}
+            reorderable={reorderable}
             emptyText="아직 생성된 이미지가 없습니다"
             emptyHint="씬을 예약하면 생성된 이미지가 여기에 표시됩니다"
           />
@@ -3128,6 +3211,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             focusedIndex={selectedTab === 1 ? focusedImageIndex : null}
             onSelectedImagesChange={onSelectedImagesChange}
             onClearSelection={onClearSelection}
+            reorderable={reorderable}
             emptyText="즐겨찾기한 이미지가 없습니다"
             emptyHint="이미지에 ★(즐겨찾기)를 지정하면 여기에 모입니다"
           />

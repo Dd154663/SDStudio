@@ -16,6 +16,7 @@ import ProjectDrawer, { ProjectDrawerHandle } from './ProjectDrawer';
 import ProjectSideBar, { ProjectStrip } from './ProjectSideBar';
 import ProjectBrowser from './ProjectBrowser';
 import { ImageHistoryPanel, ImageHistoryDrawer, ImageHistoryHandle } from './ImageHistory';
+import { HistoryImagePreview } from './HistoryImagePreview';
 import QuickModeTab from './QuickModeTab';
 import PreSetEditor from './PreSetEdtior';
 import SceneQueuControl, { SceneCell } from './SceneQueueControl';
@@ -86,6 +87,7 @@ import { openStoragePermissionSettings } from '../models/storagePermissionGate';
 import { keyboardShortcutService } from '../models/KeyboardShortcutService';
 import { buildDanbooruSearchUrl } from '../models/util';
 import { isImportImageMime } from '../models/imageFormats';
+import { isImageDragOutActive } from '../models/imageDragOut';
 import { buildThemeVars } from '../models/uiTheme';
 import { AppContextMenu } from './AppContextMenu';
 import MobileKeyboardChip from './MobileKeyboardChip';
@@ -491,6 +493,8 @@ export const App = observer(() => {
 
     const handleDragEnter = (event: any) => {
       event.preventDefault();
+      // 앱 안에서 「밖으로 끌기」 중인 이미지(models/imageDragOut.ts)는 앱 창 위를 지나가도 불러오기 안내를 띄우지 않는다
+      if (isImageDragOutActive()) return;
       dragCounter.current++;
       if (dragCounter.current === 1) {
         // 모달 오버레이가 열려 있으면 메타데이터 드래그 안내를 표시하지 않음
@@ -523,6 +527,8 @@ export const App = observer(() => {
       setDragOverlay(null);
       // 모달 오버레이가 열려 있으면 메타데이터 처리도 차단
       if (appState.modalOverlayCount > 0) return;
+      // 앱에서 끌어 나가던 이미지를 다시 앱 창에 놓은 경우 — 메타데이터 불러오기를 하지 않는다
+      if (isImageDragOutActive()) return;
       const file = event.dataTransfer.files[0];
       if (file) {
         appState.handleFile(file);
@@ -876,6 +882,8 @@ export const App = observer(() => {
                 <ProjectDrawer />
                 {isMobile && <ImageHistoryDrawer />}
                 {isMobile && <ImageHistoryHandle />}
+                {/* 히스토리 큰 미리 보기(PC·모바일 공용, 드로어 DOM 밖에 한 번) */}
+                <HistoryImagePreview />
                 {/* 모바일은 레이아웃과 무관하게 좌측 손잡이+가장자리 스와이프(히스토리 손잡이의 좌우 반전) */}
                 {isMobile && <ProjectDrawerHandle />}
                 {appState.projectBrowserOpen && (

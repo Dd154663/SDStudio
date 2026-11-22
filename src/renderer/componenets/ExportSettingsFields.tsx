@@ -97,8 +97,8 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
             </FieldRow>
           )}
 
-          {/* 이미지 범위 */}
-          <FieldRow label="이미지 범위 *" stacked={twoColumn}>
+          {/* 이미지 범위(고른 이미지 내보내기 scope 'images' 는 숨김 — 대상이 정해져 있다) */}
+          {shown('menu') && <FieldRow label="이미지 범위 *" stacked={twoColumn}>
             <div className="flex-1 min-w-0">
               <DropdownSelect
                 selectedOption={form.menu}
@@ -106,7 +106,7 @@ export default function ExportSettingsFields({ form, setForm, direct = false, tw
                 onSelect={(o: any) => setForm({ ...form, menu: o.value })}
               />
             </div>
-          </FieldRow>
+          </FieldRow>}
 
           {/* 파일명 형식 */}
           <FieldRow label="파일명 형식 *" stacked={twoColumn}>

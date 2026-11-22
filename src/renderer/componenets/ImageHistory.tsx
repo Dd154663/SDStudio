@@ -5,6 +5,7 @@ import { useContextMenu } from 'react-contexify';
 import {
   FaChevronLeft,
   FaChevronRight,
+  FaRegStar,
   FaSquare,
   FaStar,
   FaThLarge,
@@ -15,6 +16,8 @@ import { GenerationHistoryEntry } from '../models/ImageHistoryService';
 import { appState } from '../models/AppService';
 import { resolveLayout } from '../models/layoutTemplates';
 import { backStackService } from '../models/BackStackService';
+import { historyEntryCaption, openHistoryPreview } from '../models/historyPreview';
+import { imageDragOutProps } from '../models/imageDragOut';
 import { ContextMenuType, GenericScene } from '../models/types';
 import Tooltip from './Tooltip';
 import { toolbarDragUi } from './ToolbarDnd';
@@ -75,7 +78,7 @@ const HistoryImageCell = observer(
 
     return (
       <div
-        className="flex flex-col cursor-pointer select-none hover:brightness-95 active:brightness-90"
+        className="group flex flex-col cursor-pointer select-none hover:brightness-95 active:brightness-90"
         onClick={onClick}
         onContextMenu={(e) => {
           show({
@@ -95,6 +98,8 @@ const HistoryImageCell = observer(
             <img
               src={image}
               draggable={false}
+              // PC: 끌어서 다른 프로그램에 원본 파일로 놓기(2026-11-22, 모바일은 속성 없음 — draggable false 그대로)
+              {...imageDragOutProps(entry.path)}
               className="w-full h-full object-cover"
               onLoad={(e) => {
                 const im = e.currentTarget;
@@ -104,10 +109,35 @@ const HistoryImageCell = observer(
               }}
             />
           )}
-          {isFav && (
-            <div className="absolute left-0 top-0 z-10 text-yellow-400 m-1">
-              <FaStar size={12} />
-            </div>
+          {/* 즐겨찾기 별 버튼(2026-11-22 — 칸 누름은 큰 미리 보기). 즐겨찾기면 항상 노란 별,
+              아니면 PC 는 칸에 올렸을 때만·모바일(hover 없음)은 항상 옅게. 누름은 칸으로 전파하지 않는다. */}
+          {/* 원본 씬을 찾은 뒤에만(못 찾으면 즐겨찾기 대상이 없다) */}
+          {!!scene && (
+            <button
+              className={
+                'absolute left-0 top-0 z-10 m-1 rounded-full card-overlay-btn flex items-center justify-center shadow ' +
+                (isMobile ? 'w-7 h-7 touch-hit ' : 'w-6 h-6 ') +
+                (isFav
+                  ? ''
+                  : isMobile
+                    ? 'opacity-60'
+                    : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100')
+              }
+              aria-label={isFav ? '즐겨찾기 해제' : '즐겨찾기'}
+              title={isFav ? '즐겨찾기 해제' : '즐겨찾기'}
+              aria-pressed={isFav}
+              data-history-fav-btn=""
+              onClick={(e) => {
+                e.stopPropagation();
+                imageHistoryService.toggleFavorite(entry);
+              }}
+            >
+              {isFav ? (
+                <FaStar size={14} className="text-yellow-400" />
+              ) : (
+                <FaRegStar size={14} />
+              )}
+            </button>
           )}
         </div>
         <div className="text-[11px] text-muted truncate text-center leading-tight mt-0.5 mb-1">
@@ -138,9 +168,10 @@ const HistoryList = observer(() => {
   const entries = imageHistoryService.entries;
   const cols = appState.historyColumns;
 
-  // 탭/클릭 = 즐겨찾기 토글 (씬 이동·그리드 열기는 우클릭/롱프레스 메뉴 전담)
+  // 탭/클릭 = 큰 미리 보기(2026-11-22, 종전 즐겨찾기 토글 — 별 버튼으로 옮김).
+  // 씬 이동·그리드 열기는 우클릭/롱프레스 메뉴와 미리 보기의 「이미지 그리드에서 보기」.
   const onClickEntry = (entry: GenerationHistoryEntry) => {
-    imageHistoryService.toggleFavorite(entry);
+    openHistoryPreview(entry.id);
   };
 
   if (entries.length === 0) {
@@ -161,11 +192,7 @@ const HistoryList = observer(() => {
         <HistoryImageCell
           key={entry.id}
           entry={entry}
-          caption={
-            entry.sessionName !== appState.curSession?.name
-              ? `${entry.sessionName}/${entry.sceneName}`
-              : entry.sceneName
-          }
+          caption={historyEntryCaption(entry, appState.curSession?.name)}
           onClick={() => onClickEntry(entry)}
         />
       ))}

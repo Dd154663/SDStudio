@@ -24,6 +24,17 @@ import {
   SAMPLE_COUNT_MIN,
   setQuickGenCount,
 } from '../models/sampleCount';
+import { FaChevronLeft, FaChevronRight } from 'react-icons/fa';
+import {
+  currentQuickView,
+  QUICK_VIEW_FOLLOW_LATEST,
+  QuickViewState,
+  reconcileQuickView,
+  stepQuickNewer,
+  stepQuickOlder,
+} from '../models/quickResultBrowse';
+// PC: 큰 이미지를 끌어서 다른 프로그램에 파일로 놓기(공용 헬퍼 — 모바일은 빈 객체)
+import { imageDragOutProps } from '../models/imageDragOut';
 
 // 퀵 모드 탭 — NAI 공식 웹풍의 즉시 생성 화면.
 // 중앙에 최신 생성 이미지를 크게 표시하고, 생성 버튼 하나로
@@ -36,8 +47,29 @@ import {
 // **퀵 생성 전용 숨김 프로젝트**(templateService.ensureQuickGenProject)의
 // default 씬을 쓴다 — 어느 프로젝트에서 접근해도 결과물이 한 폴더에 쌓인다.
 // 프롬프트/프리셋 해석만 현재 프로젝트 기준(queueQuickScene 이 분리 처리).
+//
+// 최근 결과 넘겨 보기(2026-11-22): 큰 이미지 양옆에 이전(오른쪽)·더 최신(왼쪽) 이미지가 카드 더미처럼 비치고,
+// 더미(+ 화살표)를 누르면 한 장씩 넘긴다. 어느 이미지를 보여 줄지는 models/quickResultBrowse 규칙만 쓴다
+// (최신 따라가기 / 넘기면 경로로 기억 / 삭제되면 이웃). 키보드 단축키·스와이프·전환 움직임은 일부러 없다.
 
 const DEFAULT_SCENE = 'default';
+
+// 더미 모양(좁은 화면 / md 이상). 카드는 큰 이미지 뒤에서 바깥으로 STEP 씩 비어져 나오고 뒤로 갈수록 작고 어둡다.
+// 칸 폭 = 큰 이미지 바깥에 비워 두는 여백(누르는 영역) — 좁은 화면은 카드 1장만 비치게 해서 큰 이미지를 우선한다.
+const STACK_SIDE_PX = { narrow: 28, wide: 88 };
+const STACK_STEP_PX = { narrow: 12, wide: 16 };
+const STACK_CARD_SCALE = [0.86, 0.74, 0.62]; // 가까운 것부터 큰 이미지 높이 대비
+const STACK_CARD_BRIGHTNESS = [0.8, 0.65, 0.5];
+const STACK_THUMB_SIZE = 400;
+// 가운데 영역 폭이 이보다 좁으면 좁은 모양(모바일·PC 에서 양옆 패널로 좁아진 경우 모두)
+const NARROW_AREA_PX = 560;
+
+interface Box {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
 
 // default 씬 확보 — 없으면 씬 추가 버튼과 동일한 최소 스펙으로 생성
 function ensureDefaultScene(session: Session): Scene {
@@ -79,7 +111,9 @@ const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
   const curSession = appState.curSession!;
   // 퀵 생성 전용 프로젝트 — 마운트 시 확보(없으면 자동 생성). 로드 전엔 null.
   const [quickSession, setQuickSession] = useState<Session | null>(null);
-  const [latestPath, setLatestPath] = useState<string | undefined>(undefined);
+  // 결과 경로 목록(앞이 최신)과 보는 위치(최신 따라가기 / 경로로 기억 — models/quickResultBrowse)
+  const [paths, setPaths] = useState<string[]>([]);
+  const [viewState, setViewState] = useState<QuickViewState>(QUICK_VIEW_FOLLOW_LATEST);
   const [image, setImage] = useState<string | undefined>(undefined);
   const [running, setRunning] = useState(taskQueueService.isRunning());
   const [sceneStats, setSceneStats] = useState({ done: 0, total: 0 });
@@ -99,21 +133,24 @@ const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
     };
   }, []);
 
-  // ── 최신 이미지 경로 유지 (전용 프로젝트 default 씬의 가장 최근 생성작) ──
+  // ── 결과 목록 유지 (전용 프로젝트 default 씬, 앞이 최신) ──
+  // 목록이 바뀔 때마다 보는 위치를 맞춘다: 따라가기면 새 최신, 넘겨 보는 중이면 같은 경로 유지, 지워졌으면 이웃.
   const refreshLatest = useCallback(() => {
     if (!quickSession) return;
     const scene = quickSession.scenes.get(DEFAULT_SCENE);
-    if (!scene) {
-      setLatestPath(undefined);
-      return;
+    let next: string[] = [];
+    if (scene) {
+      const dir = imageService.getOutputDir(quickSession, scene);
+      next = gameService.getOutputs(quickSession, scene).map((f) => dir + '/' + f);
     }
-    const outputs = gameService.getOutputs(quickSession, scene);
-    setLatestPath(
-      outputs.length
-        ? imageService.getOutputDir(quickSession, scene) + '/' + outputs[0]
-        : undefined,
-    );
+    setPaths(next);
+    setViewState((s) => reconcileQuickView(next, s));
   }, [quickSession]);
+
+  // 탭을 떠나거나 프로젝트를 바꾸면 최신으로 돌아간다(보던 위치는 저장하지 않음)
+  useEffect(() => {
+    setViewState(QUICK_VIEW_FOLLOW_LATEST);
+  }, [isActive, curSession?.name]);
 
   useEffect(() => {
     if (!quickSession) return;
@@ -129,7 +166,8 @@ const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
         d.sceneType === 'scene' &&
         d.sceneName === DEFAULT_SCENE
       ) {
-        setLatestPath(d.path);
+        // 목록에서 다시 읽는다(바로 뒤 'updated' 와 중복이지만 무해). 넘겨 보는 중이면 보던 이미지는 그대로.
+        refreshLatest();
       }
     };
     const onUpdated = () => refreshLatest();
@@ -152,15 +190,21 @@ const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
     };
   }, [quickSession, refreshLatest]);
 
+  // 지금 보여 줄 것(큰 이미지·양옆 더미·위치 표시) — 규칙은 models/quickResultBrowse
+  const view = currentQuickView(paths, viewState);
+  const shownPath = view.path;
+  const goOlder = () => setViewState((s) => stepQuickOlder(paths, s));
+  const goNewer = () => setViewState((s) => stepQuickNewer(paths, s));
+
   // 고해상 이미지 로드 (중앙 대형 표시용)
   useEffect(() => {
     let canceled = false;
-    if (!latestPath) {
+    if (!shownPath) {
       setImage(undefined);
       return;
     }
     imageService
-      .fetchImage(latestPath)
+      .fetchImage(shownPath)
       .then((b64) => {
         if (!canceled) setImage(b64 ?? undefined);
       })
@@ -168,7 +212,73 @@ const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
     return () => {
       canceled = true;
     };
-  }, [latestPath]);
+  }, [shownPath]);
+
+  // 더미 카드 썸네일(기존 작은 이미지 경로). 지금 비치는 카드만 남기고, 이미 받은 것은 다시 받지 않는다.
+  const stackPaths = [...view.newer, ...view.older];
+  const stackKey = stackPaths.join('\n');
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let canceled = false;
+    const want = stackKey ? stackKey.split('\n') : [];
+    setThumbs((prev) => {
+      const kept: Record<string, string> = {};
+      for (const p of want) if (prev[p]) kept[p] = prev[p];
+      return kept;
+    });
+    for (const p of want) {
+      imageService
+        .fetchImageSmall(p, STACK_THUMB_SIZE)
+        .then((b64) => {
+          if (canceled || !b64) return;
+          setThumbs((prev) => (prev[p] === b64 ? prev : { ...prev, [p]: b64 }));
+        })
+        .catch(() => {});
+    }
+    return () => {
+      canceled = true;
+    };
+  }, [stackKey]);
+
+  // 큰 이미지의 실제 자리(더미를 그 가장자리에 붙이기 위해) + 가운데 영역 폭(좁은 모양 판정).
+  // 큰 이미지 표시 방식(max-w/max-h·object-contain)은 종전 그대로 두고 자리만 잰다.
+  const areaRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [imgBox, setImgBox] = useState<Box | null>(null);
+  const [areaWidth, setAreaWidth] = useState(0);
+  const measure = useCallback(() => {
+    const area = areaRef.current;
+    const img = imgRef.current;
+    if (area) setAreaWidth((w) => (w === area.clientWidth ? w : area.clientWidth));
+    if (!img || !img.offsetWidth) {
+      setImgBox((b) => (b ? null : b));
+      return;
+    }
+    const next = {
+      left: img.offsetLeft,
+      top: img.offsetTop,
+      width: img.offsetWidth,
+      height: img.offsetHeight,
+    };
+    setImgBox((b) =>
+      b &&
+      b.left === next.left &&
+      b.top === next.top &&
+      b.width === next.width &&
+      b.height === next.height
+        ? b
+        : next,
+    );
+  }, []);
+  const hasBrowse = paths.length > 1;
+  useEffect(() => {
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => measure());
+    if (areaRef.current) ro.observe(areaRef.current);
+    if (imgRef.current) ro.observe(imgRef.current);
+    return () => ro.disconnect();
+  }, [measure, image, hasBrowse]);
 
   // ── 큐 상태 구독 (이벤트 기반 — TaskProgressBar 패턴) ──
   useEffect(() => {
@@ -311,16 +421,17 @@ const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
   const { show: showImageMenu } = useContextMenu({
     id: ContextMenuType.HistoryImage,
   });
+  // 메뉴는 지금 크게 보이는 이미지 기준(넘겨 보는 중이면 그 이미지)
   const onImageContext = (e: React.MouseEvent) => {
-    if (!latestPath || !quickSession) return;
+    if (!shownPath || !quickSession) return;
     e.preventDefault();
     const entry = {
-      id: latestPath,
+      id: shownPath,
       sessionName: quickSession.name,
       sceneType: 'scene' as const,
       sceneName: DEFAULT_SCENE,
-      filename: latestPath.split('/').pop()!,
-      path: latestPath,
+      filename: shownPath.split('/').pop()!,
+      path: shownPath,
       createdAt: 0,
     };
     showImageMenu({
@@ -331,6 +442,84 @@ const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
 
   const progressText =
     sceneStats.total > 0 ? `${sceneStats.done}/${sceneStats.total}` : '';
+
+  // ── 양옆 더미(오른쪽 = 더 이전, 왼쪽 = 더 최신 — 좌우 대칭) ──
+  // 칸 하나가 통째로 버튼(큰 이미지 높이 × 칸 폭 — 터치 영역 충분). 카드는 큰 이미지 뒤(z 아래)에서
+  // 가장자리 바깥으로 STEP 씩 비어져 나오고, 화살표는 더미 바깥 끝. 더 넘길 것이 없는 쪽은 그리지 않는다.
+  const narrow = areaWidth > 0 && areaWidth < NARROW_AREA_PX;
+  const sideW = narrow ? STACK_SIDE_PX.narrow : STACK_SIDE_PX.wide;
+  const step = narrow ? STACK_STEP_PX.narrow : STACK_STEP_PX.wide;
+  const arrowSize = narrow ? 24 : 28;
+  const renderStack = (side: 'left' | 'right') => {
+    const items = side === 'right' ? view.older : view.newer;
+    if (!items.length || !imgBox || !image) return null;
+    const cards = items.slice(0, narrow ? 1 : STACK_CARD_SCALE.length);
+    const cardW = Math.max(step * 4, Math.min(imgBox.width * 0.5, 160));
+    const arrowAt = Math.min(step * cards.length + 6, sideW - arrowSize - 2);
+    const label = side === 'right' ? '이전 이미지 보기' : '더 최신 이미지 보기';
+    return (
+      <button
+        type="button"
+        aria-label={label}
+        title={label}
+        data-quick-stack={side}
+        className="absolute z-0 select-none rounded focus:outline-none focus-visible:ring-2 focus:ring-[color:var(--c-focus-ring)]"
+        style={{
+          left: side === 'right' ? imgBox.left + imgBox.width : imgBox.left - sideW,
+          top: imgBox.top,
+          width: sideW,
+          height: imgBox.height,
+        }}
+        onClick={side === 'right' ? goOlder : goNewer}
+        onContextMenu={(e) => {
+          // 더미 위 우클릭·롱프레스는 메뉴 없음(메뉴는 큰 이미지 기준)
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+      >
+        {cards.map((p, k) => {
+          const h = imgBox.height * STACK_CARD_SCALE[k];
+          const out = step * (k + 1); // 큰 이미지 가장자리 바깥으로 비어져 나온 폭
+          return (
+            <span
+              key={p}
+              className="absolute block overflow-hidden rounded border line-color pointer-events-none"
+              style={{
+                top: (imgBox.height - h) / 2,
+                height: h,
+                width: cardW,
+                [side === 'right' ? 'left' : 'right']: out - cardW,
+                zIndex: STACK_CARD_SCALE.length - k,
+                backgroundColor: 'var(--c-surface-2)',
+                filter: `brightness(${STACK_CARD_BRIGHTNESS[k]})`,
+              }}
+            >
+              {thumbs[p] && (
+                <img
+                  src={thumbs[p]}
+                  alt=""
+                  draggable={false}
+                  className="w-full h-full object-cover select-none"
+                />
+              )}
+            </span>
+          );
+        })}
+        <span
+          className="absolute card-overlay-btn rounded-full shadow-lg flex items-center justify-center"
+          style={{
+            top: (imgBox.height - arrowSize) / 2,
+            [side === 'right' ? 'left' : 'right']: arrowAt,
+            width: arrowSize,
+            height: arrowSize,
+            zIndex: STACK_CARD_SCALE.length + 1,
+          }}
+        >
+          {side === 'right' ? <FaChevronRight size={narrow ? 11 : 13} /> : <FaChevronLeft size={narrow ? 11 : 13} />}
+        </span>
+      </button>
+    );
+  };
 
   // ── 해상도 컨트롤 (2026-07-18 피드백) ──
   // 하단에 퀵 씬의 해상도를 노출한다. 피커 UI(프리셋/직접 입력/Anlas confirm/
@@ -347,25 +536,47 @@ const QuickModeTab = observer(({ isActive = true }: { isActive?: boolean }) => {
 
   return (
     <div className="h-full w-full flex flex-col">
-      {/* 중앙 대형 이미지 — 클릭 무동작, 우클릭/롱프레스로 메뉴 */}
+      {/* 중앙 대형 이미지 — 클릭 무동작, 우클릭/롱프레스로 메뉴. 넘길 것이 있으면 양옆에 더미 칸 폭만큼 여백. */}
       <div
+        ref={areaRef}
         className="flex-1 min-h-0 relative flex items-center justify-center p-2"
+        style={hasBrowse && image ? { paddingLeft: sideW, paddingRight: sideW } : undefined}
         onContextMenu={onImageContext}
       >
         {image ? (
           <img
+            ref={imgRef}
+            data-quick-main-image=""
             src={image}
+            onLoad={measure}
             draggable={false}
-            className="max-w-full max-h-full object-contain rounded select-none"
+            {...imageDragOutProps(shownPath)}
+            className="relative z-[1] max-w-full max-h-full object-contain rounded select-none"
           />
         ) : (
           <EmptyState size="lg" className="px-6" hint="프롬프트를 입력하고 아래 버튼으로 바로 생성해보세요">
             아직 생성된 이미지가 없습니다
           </EmptyState>
         )}
+        {renderStack('left')}
+        {renderStack('right')}
+        {/* 몇 번째를 보는지(최신이면 없음) — 큰 이미지 위쪽 가운데 */}
+        {image && imgBox && view.label && (
+          <div
+            data-quick-view-position=""
+            className="absolute z-[2] -translate-x-1/2 px-2 py-0.5 rounded-full border line-color pointer-events-none"
+            style={{
+              top: imgBox.top + 8,
+              left: imgBox.left + imgBox.width / 2,
+              backgroundColor: 'var(--c-surface-2)',
+            }}
+          >
+            <span className="text-body text-xs tabular-nums">{view.label}</span>
+          </div>
+        )}
         {busy && (
           <div
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full border line-color"
+            className="absolute z-[2] bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full border line-color"
             style={{ backgroundColor: 'var(--c-surface-2)' }}
           >
             <span className="text-body text-xs">

@@ -655,6 +655,11 @@ export class ElectornBackend extends Backend {
     await invoke('copy-image-to-clipboard', imagePath);
   }
 
+  // 이미지 끌어서 놓기(2026-11-22) — main 이 경로를 확인한 뒤 webContents.startDrag. 반환 = 끌기를 시작했는지.
+  async startImageDragOut(imagePath: string): Promise<boolean> {
+    return (await invoke('start-image-drag-out', imagePath)) === true;
+  }
+
   // 새 창 열기(멀티 윈도우 W6) — main 이 보조 창을 캐스케이드 위치로 생성한다.
   // projectName 이 있으면 새 창이 부팅 후 그 프로젝트를 연다("새 창에서 열기").
   async openNewWindow(projectName?: string): Promise<void> {

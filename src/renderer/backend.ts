@@ -224,6 +224,11 @@ export abstract class Backend {
   abstract loadModel(modelPath: string): Promise<void>;
   abstract extractZip(zipPath: string, outPath: string): Promise<void>;
   abstract copyImageToClipboard(imagePath: string): Promise<void>;
+  // 이미지를 끌어서 다른 프로그램에 파일로 놓기(2026-11-22). 렌더러가 dragstart 를 preventDefault 한 직후 부른다.
+  // PC = main 이 경로를 확인(데이터 루트 안·실제 파일·이미지 확장자)한 뒤 OS 파일 끌기 시작, 확인 실패면 아무것도
+  // 하지 않고 false. Windows 는 놓을 때까지 기다렸다 돌아온다. Android = 의도된 no-op(false — 앱 밖 끌기 없음).
+  // 렌더러는 직접 부르지 말고 models/imageDragOut.ts 의 imageDragOutProps 를 쓴다.
+  abstract startImageDragOut(imagePath: string): Promise<boolean>;
   abstract spawnLocalAI(): Promise<void>;
   abstract isLocalAIRunning(): Promise<boolean>;
   // `/user/data` 조회 — 같은 토큰이면 10초 안의 직전 결과를 재사용하고 동시 호출은 합친다

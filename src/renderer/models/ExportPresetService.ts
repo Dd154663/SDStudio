@@ -79,6 +79,12 @@ import {
 import type { FilenamePattern } from './exportPresetUtils';
 import { isOptimizedImageFile } from './imageFormats';
 import { decoratePresetExportImage } from './presetExportDecoration';
+import {
+  dedupeExportNames,
+  PICKED_EXPORT_TEXT,
+  pickedOutputs,
+} from './pickedImageExport';
+import type { ExportImagePick } from './pickedImageExport';
 
 /** 내보낼 이미지 한 장 — path = 앱 데이터 기준 원본(또는 tmp/ 변환본), name = 결과 안 상대 이름 */
 export interface ExportImageItem {
@@ -96,6 +102,8 @@ export interface ExportImageListOptions {
   filenamePattern: FilenamePattern | undefined;
   /** 캐릭터 프리셋 파일명 접두/접미사. null = 붙이지 않음(토글 off) */
   characterAffix: CharacterFilenameAffix | null;
+  /** 고른 이미지만(그리드 「선택한 이미지 내보내기」) — 그 씬의 고른 파일만, fav 무시. 다른 씬은 넣지 않는다 */
+  picked?: ExportImagePick<GenericScene>;
 }
 
 /** optimizeExportImages 옵션 */
@@ -256,6 +264,9 @@ export class ExportPresetService {
     type: 'scene' | 'inpaint',
     selected?: GenericScene[],
     presetOverride?: ExportPreset,
+    // 이미지 그리드 「선택한 이미지 내보내기」(2026-11-22): 주면 대상 = 그 씬의 고른 이미지만(프리셋 이미지 범위 무시),
+    // 생략하면 종전 씬 단위 내보내기 그대로.
+    picked?: ExportImagePick<GenericScene>,
   ) {
     const session = appState.curSession;
     if (!session) return;
@@ -265,6 +276,8 @@ export class ExportPresetService {
     appState.lastExportType = type;
     appState.lastExportSelected = selected;
     appState.lastExportSession = session;
+    // 프리셋 관리 창을 닫으면 이 대상으로 선택 창을 다시 연다 — 고른 이미지도 함께 기억(씬 전체로 바뀌지 않게)
+    appState.lastExportPicked = picked ? { scene: picked.scene, files: [...picked.files] } : undefined;
     const scenes = selected;
     // 단계 함수(buildExportImageList → optimizeExportImages → deliverExportImages)는 폴더 일괄 이미지 내보내기와 공용
     const exportImpl = async (
@@ -277,7 +290,13 @@ export class ExportPresetService {
         charsToReplace,
         // 캐릭터 프리셋 파일명 옵션 적용 (토글 off 면 접두/접미사 미적용)
         characterAffix: run.applyCharacterAffix ? characterAffix : null,
+        ...(picked ? { picked } : {}),
       });
+      if (picked && paths.length === 0) {
+        // 고른 이미지가 그사이 모두 지워졌다
+        appState.pushMessage(PICKED_EXPORT_TEXT.empty);
+        return;
+      }
       if (run.opt !== 'original') {
         const optimized = await this.optimizeExportImages(paths, run);
         if (!optimized) return;
@@ -288,6 +307,8 @@ export class ExportPresetService {
           return;
         }
       }
+      // 고른 이미지는 최종 이름(확장자 확정 뒤)이 겹치면 번호를 붙여 구분 — 덮어쓰지 않는다
+      if (picked) paths = dedupeExportNames(paths, run.separator);
       await this.deliverExportImages(paths, {
         outputMode: run.outputMode,
         targetFolder,
@@ -333,7 +354,7 @@ export class ExportPresetService {
 
     const choice = await appState.pushDialogAsync({
       type: 'select',
-      text: '내보내기 방법을 선택해주세요',
+      text: picked ? PICKED_EXPORT_TEXT.chooser(picked.files.length) : '내보내기 방법을 선택해주세요',
       items: presetItems,
     });
     if (!choice) return;
@@ -353,6 +374,7 @@ export class ExportPresetService {
     const result = await this.requestDirectExport({
       projectName: session.name,
       sceneNames: selected!.map((scene) => scene.name),
+      ...(picked ? { scope: 'images' as const, imageCount: picked.files.length } : {}),
     });
     if (result) await runPreset(result.preset, new Set(result.charsToReplace));
   }
@@ -470,7 +492,9 @@ export class ExportPresetService {
         imageMap[x] = true;
       });
       const images = [];
-      if (fav) {
+      if (o.picked) {
+        if (scene === o.picked.scene) images.push(...pickedOutputs(cands, o.picked.files));
+      } else if (fav) {
         if (scene.mains.length) {
           for (const main of scene.mains) {
             if (imageMap[main]) images.push(main);

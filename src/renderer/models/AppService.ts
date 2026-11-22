@@ -40,6 +40,7 @@ import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { isOutputImageFile, isImportImageMime } from './imageFormats';
 import { projectPath } from './projectPaths';
+import { ImageViewOrder, readImageViewOrder, writeImageViewOrder } from './imageOrderSort';
 import { V2_SHEET_CLOSE_EVENT } from './uiEvents';
 import { ARTIST_LIBRARY_TAB_ACTION } from './ArtistLibraryService';
 import { Dialog, DialogItem } from '../componenets/ConfirmWindow';
@@ -399,6 +400,8 @@ export class AppState {
   lastExportType: 'scene' | 'inpaint' = 'scene';
   lastExportSelected?: GenericScene[];
   lastExportSession?: Session;
+  /** 마지막 내보내기가 그리드 「선택한 이미지 내보내기」였으면 그 고른 이미지(씬 단위 내보내기면 undefined) */
+  lastExportPicked?: import('./pickedImageExport').ExportImagePick<GenericScene>;
 
   // 모달 오버레이 카운터 (열린 ModalOverlay 수 추적)
   @observable accessor modalOverlayCount: number = 0;
@@ -930,6 +933,18 @@ export class AppState {
     localStorage.setItem('sdstudio-history-columns', String(this.historyColumns));
   }
 
+  // 이미지 그리드 보기 순서(2026-11-22) — 앱 전체 하나, 히스토리 열 수와 같은 localStorage 화면 보기 설정.
+  // 보여 주는 순서만 바꾸고 데이터는 쓰지 않는다(models/imageOrderSort.ts).
+  @observable accessor imageViewOrder: ImageViewOrder = readImageViewOrder(
+    typeof localStorage === 'undefined' ? undefined : localStorage,
+  );
+
+  @action
+  setImageViewOrder(mode: ImageViewOrder) {
+    this.imageViewOrder = mode;
+    writeImageViewOrder(typeof localStorage === 'undefined' ? undefined : localStorage, mode);
+  }
+
   // 모바일 우측 히스토리 드로어 (비영속)
   @observable accessor historyDrawerOpen: boolean = false;
 
@@ -1435,7 +1450,16 @@ export class AppState {
   saveExportPresets(presets: ExportPreset[]) { return exportPresetService.saveExportPresets(presets); }
   subscribeExportPresets(fn: (presets: ExportPreset[]) => void) { return exportPresetService.subscribeExportPresets(fn); }
   detectSpecialCharsFromNames(sceneNames: string[], separator: string, autoConvert = false) { return exportPresetService.detectSpecialCharsFromNames(sceneNames, separator, autoConvert); }
-  exportPackage(type: 'scene' | 'inpaint', selected?: GenericScene[]) { return exportPresetService.exportPackage(type, selected); }
+  exportPackage(
+    type: 'scene' | 'inpaint',
+    selected?: GenericScene[],
+    picked?: import('./pickedImageExport').ExportImagePick<GenericScene>,
+  ) {
+    // picked 생략 = 종전 씬 단위 내보내기 그대로(인자 개수도 종전과 같게 넘긴다)
+    return picked
+      ? exportPresetService.exportPackage(type, selected, undefined, picked)
+      : exportPresetService.exportPackage(type, selected);
+  }
   requestDirectExport(info: Omit<import('./exportSettings').DirectExportRequest, 'resolve'>) { return exportPresetService.requestDirectExport(info); }
   quickExportPackage(type: 'scene' | 'inpaint', selected?: GenericScene[]) { return exportPresetService.quickExportPackage(type, selected); }
   exportPreset(session: Session, preset: any) { return exportPresetService.exportPreset(session, preset); }

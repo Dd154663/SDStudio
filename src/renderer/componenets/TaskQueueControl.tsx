@@ -16,6 +16,9 @@ import { REQUEST_DELAY_TEXT } from '../models/requestTiming';
 import { BOOST_TEXT } from '../models/boostMode';
 import { parseSampleCount, SAMPLE_COUNT_MAX, SAMPLE_COUNT_MIN } from '../models/sampleCount';
 
+/** 예약 없이 「생성 시작」을 눌렀을 때의 안내(2026-11-22) — 자동으로 예약하지 않고 알리기만 한다 */
+export const QUEUE_EMPTY_NOTICE = '예약된 작업이 없습니다. 생성할 씬을 먼저 예약해 주세요';
+
 interface ProgressBarProps {
   duration: number;
   isError: boolean;
@@ -450,6 +453,11 @@ const TaskQueueControl = observer(({}) => {
           aria-label="생성 시작"
           onClick={() => {
             (async () => {
+              // 예약이 없으면 조용히 끝나던 것을 안내로(2026-11-22 — 자동 예약은 하지 않는다: Anlas 가 나가는 동작)
+              if (taskQueueService.isEmpty()) {
+                appState.pushMessage(QUEUE_EMPTY_NOTICE);
+                return;
+              }
               const costs = taskQueueService.calculateCost();
               const message = costs
                 .map((x) => `${x.text} (씬: ${x.scene})`)

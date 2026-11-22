@@ -85,7 +85,8 @@ export interface DirectExportResult {
  * 직접 내보내기 창의 범위(2026-11-16 M5 묶음 b P8). 'project' = 프로젝트 이미지 내보내기(종전),
  * 'folder' = 폴더 일괄 이미지 내보내기 — 종전 연속 질문 6~7개를 같은 폼 한 창으로.
  */
-export type DirectExportScope = 'project' | 'folder';
+// 'images' = 이미지 그리드 「선택한 이미지 내보내기」(2026-11-22) — 대상이 고른 이미지로 정해져 「이미지 범위」 칸을 숨긴다.
+export type DirectExportScope = 'project' | 'folder' | 'images';
 
 export interface DirectExportRequest {
   /** scope 'folder' 이면 폴더 이름 */
@@ -98,6 +99,8 @@ export interface DirectExportRequest {
   scope?: DirectExportScope;
   /** scope 'folder' 일 때 폴더 안 프로젝트 수(머리 안내용) */
   projectCount?: number;
+  /** scope 'images' 일 때 고른 이미지 장수(머리 안내용) */
+  imageCount?: number;
   resolve: (result?: DirectExportResult) => void;
 }
 
@@ -114,7 +117,11 @@ export type ExportFieldKey =
  */
 export const FOLDER_EXPORT_UNUSED_FIELDS: readonly ExportFieldKey[] = [];
 
+/** 고른 이미지 내보내기(scope 'images')가 숨기는 칸 — 대상이 이미 정해져 이미지 범위(즐겨찾기만/전체)를 쓰지 않는다 */
+export const PICKED_EXPORT_UNUSED_FIELDS: readonly ExportFieldKey[] = ['menu'];
+
 export function isExportFieldShown(key: ExportFieldKey, scope: DirectExportScope = 'project'): boolean {
+  if (scope === 'images') return !PICKED_EXPORT_UNUSED_FIELDS.includes(key);
   return scope !== 'folder' || !FOLDER_EXPORT_UNUSED_FIELDS.includes(key);
 }
 
