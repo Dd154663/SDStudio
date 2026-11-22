@@ -1181,6 +1181,8 @@ const ResultDetailView = observer(
     const [imageLoadFailed, setImageLoadFailed] = useState(false);
     const [upscalePreparing, setUpscalePreparing] = useState(false);
     const [upscaleInfo, setUpscaleInfo] = useState<{ path: string; cost?: number; error?: string }>();
+    // 보고 있는 이미지 파일의 실제 픽셀 크기(상세 정보 「해상도」) — 불러오기 effect 의 getImageDimensions 값
+    const [imageSize, setImageSize] = useState<{ path: string; width: number; height: number }>();
     const [imageRetryRevision, setImageRetryRevision] = useState(0);
     const watchedImages = useRef(new Set<string>());
     // 모바일 좌우 스와이프로 이미지 전환. 시작 좌표를 저장해 끝점과 비교한다.
@@ -1209,6 +1211,7 @@ const ResultDetailView = observer(
         setImage(undefined);
         setImageLoadFailed(false);
         setUpscaleInfo(undefined);
+        setImageSize(undefined);
         try {
           let base64Image = await imageService.fetchImage(imagePath);
           if (isStale()) return;
@@ -1220,6 +1223,8 @@ const ResultDetailView = observer(
           const upscalePath = imagePath;
           void getImageDimensions(base64Image).then(({ width, height }) => {
             if (isStale()) return;
+            // 해상도 칸(시드 옆)도 같은 측정값을 쓴다 — 경로를 함께 담아 넘긴 뒤 이전 값이 남지 않게
+            setImageSize({ path: upscalePath, width, height });
             const cost = estimateNaiUpscaleCost(width, height);
             setUpscaleInfo({ path: upscalePath, cost });
           }).catch((e) => {
@@ -1532,9 +1537,20 @@ const ResultDetailView = observer(
                 />
               </div>
             ))}
-            <div className="w-full mb-2 text-sub">
-              <span className="gray-label">시드: </span>
-              {seed}
+            {/* 시드 · 해상도 두 열(2026-11-22) — 칸이 좁으면(11rem×2 미만) 한 열로 접힌다. 해상도 = 실제 파일 픽셀 크기 */}
+            <div className="w-full grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-x-4" data-detail-seed-resolution="">
+              <div className="mb-2 text-sub min-w-0">
+                <span className="gray-label">시드: </span>
+                {seed}
+              </div>
+              <div className="mb-2 text-sub min-w-0">
+                <span className="gray-label">해상도: </span>
+                <span className="tabular-nums">
+                  {imageSize && imageSize.path === currentImagePath
+                    ? `${imageSize.width} × ${imageSize.height}`
+                    : '-'}
+                </span>
+              </div>
             </div>
             <div className="w-full mb-2 text-sub">
               <span className="gray-label">프롬프트 가이던스: </span>

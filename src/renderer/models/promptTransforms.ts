@@ -196,38 +196,92 @@ export function getPromptCommentAtSelection(
  * - 아니면 커서 쉼표 구획의 core(앞뒤 공백 제외, 가중치 래퍼 포함)를 `##core##` 로 감싼다.
  *   빈 구획이거나, 감싸면 다른 주석의 짝이 바뀌는 경우(core 안의 `##`, 다른 곳의 짝 없는 `##` 등)는 undefined.
  * 가중치는 건드리지 않는다. 저장 데이터·NAI 전송 처리(stripPromptComments)는 그대로.
+ *
+ * options.useSelectedText(PC·외장 키보드 Ctrl+3, 2026-11-22): 선택 범위가 있으면 **고른 범위 그대로**
+ * (앞뒤 공백은 주석 밖)를 감싼다. 고른 범위가 이미 있는 주석 하나의 안쪽이거나 그 주석과 같으면 그 주석을 푼다.
+ * 감싸면 다른 주석의 짝이 바뀌는 경우는 같은 검사로 거부. 선택 범위가 없으면 종전 경로(모바일 칩과 같음).
  */
 export function togglePromptCommentAtSelection(
   text: string,
   selectionStart: number,
   selectionEnd: number,
+  options?: { useSelectedText?: boolean },
 ): PromptWeightAdjustment | undefined {
+  if (options?.useSelectedText && selectionStart !== selectionEnd) {
+    return togglePromptCommentOnRange(text, selectionStart, selectionEnd);
+  }
   const comment = getPromptCommentAtSelection(text, selectionStart);
   if (comment) {
-    const { start, end } = comment;
-    const innerEnd = end - 4;
-    const mapPosition = (position: number) => {
-      const p = clamp(position, 0, text.length);
-      if (p <= start) return p;
-      if (p <= start + 2) return start;
-      if (p <= end - 2) return p - 2;
-      if (p <= end) return innerEnd;
-      return p - 4;
-    };
-    return {
-      text:
-        text.slice(0, start) +
-        text.slice(start + 2, end - 2) +
-        text.slice(end),
-      selectionStart: mapPosition(selectionStart),
-      selectionEnd: mapPosition(selectionEnd),
-    };
+    return unwrapPromptComment(text, comment, selectionStart, selectionEnd);
   }
 
   const { segmentStart, leading, core } = caretSegmentOf(text, selectionStart);
   if (!core) return undefined;
   const coreStart = segmentStart + leading.length;
   const coreEnd = coreStart + core.length;
+  return wrapPromptComment(text, coreStart, coreEnd, selectionStart, selectionEnd);
+}
+
+/** 고른 범위 그대로 주석 토글(useSelectedText 경로). */
+function togglePromptCommentOnRange(
+  text: string,
+  selectionStart: number,
+  selectionEnd: number,
+): PromptWeightAdjustment | undefined {
+  const lo = clamp(Math.min(selectionStart, selectionEnd), 0, text.length);
+  const hi = clamp(Math.max(selectionStart, selectionEnd), 0, text.length);
+  const picked = text.slice(lo, hi);
+  const lead = picked.match(/^\s*/)?.[0].length ?? 0;
+  const trail = picked.match(/\s*$/)?.[0].length ?? 0;
+  if (lead >= picked.length) return undefined; // 공백만 고름
+  const coreStart = lo + lead;
+  const coreEnd = hi - trail;
+  // 고른 범위(공백 뺀)가 이미 있는 주석 하나의 안쪽이거나 그 주석과 같으면 그 주석을 푼다.
+  const inside = promptCommentRanges(text).find(
+    (r) => r.start <= coreStart && coreEnd <= r.end,
+  );
+  if (inside) {
+    return unwrapPromptComment(text, inside, selectionStart, selectionEnd);
+  }
+  return wrapPromptComment(text, coreStart, coreEnd, selectionStart, selectionEnd);
+}
+
+/** 주석 하나의 여는·닫는 `##` 만 지운다(안쪽 보존). */
+function unwrapPromptComment(
+  text: string,
+  comment: PromptCommentRange,
+  selectionStart: number,
+  selectionEnd: number,
+): PromptWeightAdjustment {
+  const { start, end } = comment;
+  const innerEnd = end - 4;
+  const mapPosition = (position: number) => {
+    const p = clamp(position, 0, text.length);
+    if (p <= start) return p;
+    if (p <= start + 2) return start;
+    if (p <= end - 2) return p - 2;
+    if (p <= end) return innerEnd;
+    return p - 4;
+  };
+  return {
+    text:
+      text.slice(0, start) +
+      text.slice(start + 2, end - 2) +
+      text.slice(end),
+    selectionStart: mapPosition(selectionStart),
+    selectionEnd: mapPosition(selectionEnd),
+  };
+}
+
+/** [coreStart, coreEnd) 를 `##…##` 로 감싼다. 다른 주석의 짝이 바뀌면 undefined. */
+function wrapPromptComment(
+  text: string,
+  coreStart: number,
+  coreEnd: number,
+  selectionStart: number,
+  selectionEnd: number,
+): PromptWeightAdjustment | undefined {
+  const core = text.slice(coreStart, coreEnd);
   const next =
     text.slice(0, coreStart) + '##' + core + '##' + text.slice(coreEnd);
 
@@ -260,6 +314,26 @@ export function togglePromptCommentAtSelection(
     selectionStart: mapPosition(selectionStart),
     selectionEnd: mapPosition(selectionEnd),
   };
+}
+
+/** 주석 토글 단축키 판정(편집기 안 Ctrl+3, 2026-11-22) — PC·모바일(외장 키보드) 편집기 공용. */
+export function isPromptCommentToggleKey(e: {
+  ctrlKey?: boolean;
+  altKey?: boolean;
+  shiftKey?: boolean;
+  metaKey?: boolean;
+  isComposing?: boolean;
+  keyCode?: number;
+  code?: string;
+  key?: string;
+  /** React 합성 이벤트는 isComposing 을 원본 이벤트에만 둔다. */
+  nativeEvent?: { isComposing?: boolean };
+}): boolean {
+  if (!e.ctrlKey || e.altKey || e.shiftKey || e.metaKey) return false;
+  if (e.isComposing || e.nativeEvent?.isComposing || e.keyCode === 229) {
+    return false;
+  }
+  return e.code === 'Digit3' || e.key === '3';
 }
 
 export interface ArtistPromptSources {

@@ -191,6 +191,7 @@ export const UNDO_TEXT = {
   comboMovePiece: (name: string) => `조합 셀 이동: ${name}`,
   comboTogglePiece: (name: string) => `조합 셀 활성화 변경: ${name}`,
   comboRenamePiece: (name: string) => `조합 셀 이름 변경: ${name}`,
+  comboDuplicatePiece: (name: string) => `조합 셀 복제: ${name}`,
   comboPiecePrompt: (name: string) => `조합 셀 프롬프트 편집: ${name}`,
   comboPieceCharacter: (name: string) => `조각 캐릭터 프롬프트 변경: ${name}`,
   comboQuickToggle: (name: string) => `조합 퀵 토글: ${name}`,

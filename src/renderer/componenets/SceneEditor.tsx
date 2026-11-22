@@ -87,6 +87,7 @@ import {
   touchSceneFieldEdit,
 } from '../models/sceneFieldUndo';
 import { UNDO_TEXT } from '../models/undoService';
+import { planSlotPieceDuplicate } from '../models/comboPieceDuplicate';
 import { isSceneEditorFocusTarget } from '../models/sceneEditorFocus';
 import {
   Scene,
@@ -714,6 +715,14 @@ export const SlotPiece = observer(
       }
       setEditingName(false);
     };
+    // 조각 복제 — 같은 열 바로 다음 자리, 새 id·같은 내용, 이름 있으면 「X 복사본」(planSlotPieceDuplicate). 되돌리기 1항목.
+    const duplicatePiece = () => {
+      const plan = planSlotPieceDuplicate(scene.slots, piece, uuidv4());
+      if (!plan) return;
+      editSlots(scene, UNDO_TEXT.comboDuplicatePiece(slotsSceneName(scene)), () => {
+        scene.slots[plan.slotIndex].splice(plan.insertAt, 0, PromptPiece.fromJSON(plan.json));
+      });
+    };
     const [{ isDragging }, drag, preview] = useDrag(
       () => ({
         type: 'slot',
@@ -752,7 +761,7 @@ export const SlotPiece = observer(
     }, [preview]);
 
     const pieceControls = (
-      <div className={wide ? 'ml-auto flex items-center gap-3 select-none' : 'flex gap-2 select-none'}>
+      <div className={wide ? 'ml-auto flex-none flex items-center gap-3 select-none' : 'flex gap-2 select-none'}>
         <label className="gray-label">활성화</label>
         {/* 체크 모양만 .setting-check(2026-11-20 그룹 1-c). 체크 표시가 ::after 를 쓰므로 판정 확장(touch-hit ::after)은
             체크 상자를 감싼 label 로 옮겼다 — label 을 눌러도 같은 체크가 토글되어 누르는 영역은 그대로. */}
@@ -797,6 +806,20 @@ export const SlotPiece = observer(
               {characterBadge.text}
             </span>
           )}
+        </button>
+        </Tooltip>
+        {/* 조각 복제(2026-11-22) — 같은 열 바로 다음 자리에 사본. 색 = 중립(--c-icon-text), 위험색은 삭제만. */}
+        <Tooltip content="조각 복제">
+        <button
+          className={'active:brightness-90 hover:brightness-95 text-[var(--c-icon-text)]' + (wide ? ' relative touch-hit' : '')}
+          aria-label="조각 복제"
+          data-slot-piece-duplicate=""
+          onClick={() => {
+            if (!moveSlotPiece) return;
+            duplicatePiece();
+          }}
+        >
+          <ActionIcon id="duplicate" size={20} />
         </button>
         </Tooltip>
         <Tooltip content="셀 삭제">
@@ -859,7 +882,7 @@ export const SlotPiece = observer(
             />
           ) : (
             <button
-              className="btn-ghost flex items-center gap-1 px-1 py-0.5 rounded text-xs text-muted max-w-full"
+              className="btn-ghost flex items-center gap-1 px-1 py-0.5 rounded text-xs text-muted max-w-full min-w-0"
               title="셀 이름 편집"
               onClick={() => {
                 if (!moveSlotPiece) return;

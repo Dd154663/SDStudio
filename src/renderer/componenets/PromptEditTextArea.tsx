@@ -44,6 +44,7 @@ import {
   adjustPromptWeightAtSelection,
   getPromptCommentAtSelection,
   getPromptWeightAtSelection,
+  isPromptCommentToggleKey,
   togglePromptCommentAtSelection,
 } from '../models/promptTransforms';
 import type { PromptWeightAdjustment } from '../models/promptTransforms';
@@ -358,6 +359,36 @@ class CursorMemorizeEditor {
     return true;
   }
 
+  /** 편집기 밖(EmulatedEditTextArea)이 넣어 주는 자동완성 닫기. */
+  closeAutoComplete?: () => void;
+
+  /**
+   * Ctrl+3 주석 켜기/끄기(2026-11-22) — 고른 범위가 있으면 그 범위 그대로, 없으면 모바일 칩과 같은 커서 구획.
+   * 적용 순서는 adjustWeight 와 같다(히스토리 → 값 → DOM → 캐럿). 조합 중이던 한글은 먼저 확정해 잃지 않는다.
+   */
+  async toggleComment() {
+    const selection = window.getSelection();
+    if (
+      !selection ||
+      selection.rangeCount === 0 ||
+      !this.editor.contains(selection.getRangeAt(0).commonAncestorContainer)
+    ) {
+      return false;
+    }
+    if (this.compositionBuffer.length) this.flushCompositon(this.previousRange);
+    const [start, end] = this.getCaretPosition();
+    const toggled = togglePromptCommentAtSelection(this.curText, start, end, {
+      useSelectedText: true,
+    });
+    if (!toggled) return false;
+    this.pushHistory();
+    this.compositionBuffer = [];
+    this.updateCurText(toggled.text);
+    this.updateDOM(toggled.text, toggled.selectionStart, false);
+    await this.setCaretPosition([toggled.selectionStart, toggled.selectionEnd]);
+    return true;
+  }
+
   getCurWord(start: number) {
     // 단어 경계(쉼표·줄바꿈·##주석## 경계)와 기본/전체 단어 모드는 promptAutocomplete 단일 출처 — 모바일 편집기와 같은 규칙.
     return autocompleteWordAt(
@@ -495,6 +526,16 @@ class CursorMemorizeEditor {
   }
 
   async handleKeyDown(e: any) {
+    // Ctrl+3 주석 토글 — 이벤트는 여기서 바로(동기) 소비해 전역 단축키(탭 3)·브라우저 기본 동작과 겹치지 않게 한다.
+    if (isPromptCommentToggleKey(e)) {
+      e.preventDefault?.();
+      e.stopPropagation?.();
+      this.closeAutoComplete?.();
+      await mutex.runExclusive(async () => {
+        await this.toggleComment();
+      });
+      return;
+    }
     await mutex.runExclusive(async () => {
       const koreanRegex = /[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/g;
       const selection = window.getSelection()!;
@@ -1063,6 +1104,7 @@ const EmulatedEditTextArea = observer(
           onEsc,
         );
         editorModelRef.current = editor;
+        editor.closeAutoComplete = closeAutoComplete;
         editor.syncValue(value);
         const handleKeyDown = (e: any) => editor.handleKeyDown(e);
         editorRef.current.addEventListener('keydown', handleKeyDown);
@@ -1433,6 +1475,21 @@ const NativeEditTextArea = observer(
                 adjustWeight(e.deltaY < 0 ? 0.05 : -0.05);
               }}
               onKeyDown={(e: any) => {
+                // 외장 키보드 Ctrl+3 주석 토글(2026-11-22) — 고른 범위 그대로. 키보드 위 # 칩(toggleComment)은 종전 인자 그대로.
+                if (isPromptCommentToggleKey(e)) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  closeAutoComplete();
+                  applyCaretEdit(
+                    togglePromptCommentAtSelection(
+                      textareaRef.current.value,
+                      textareaRef.current.selectionStart,
+                      textareaRef.current.selectionEnd,
+                      { useSelectedText: true },
+                    ),
+                  );
+                  return;
+                }
                 if (
                   e.ctrlKey &&
                   (e.key === 'ArrowUp' || e.key === 'ArrowDown')

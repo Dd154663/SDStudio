@@ -63,12 +63,18 @@ afterEach(async () => {
 const render = (el: React.ReactElement) => act(async () => root.render(el));
 
 describe('① 문법 설명 데이터', () => {
-  test('묶음 넷(세기·넣기·적어 두기·입력 보조)과 줄 수 3·3·2·2', () => {
+  test('묶음 넷(세기·넣기·적어 두기·입력 보조)과 줄 수 3·3·2·2(PC 는 Ctrl+3 주석 줄로 3)', () => {
     for (const mobile of [false, true]) {
       const groups = promptSyntaxHelpGroups(mobile);
       expect(groups.map((g) => g.title)).toEqual(['세기', '넣기', '적어 두기', '입력 보조']);
-      expect(groups.map((g) => g.rows.length)).toEqual([3, 3, 2, 2]);
+      expect(groups.map((g) => g.rows.length)).toEqual([3, 3, 2, mobile ? 2 : 3]);
     }
+  });
+  test('PC 입력 보조 끝줄 = Ctrl 3 주석 켜기/끄기(2026-11-22)', () => {
+    const row = promptSyntaxHelpGroups(false)[3].rows[2];
+    expect(row.id).toBe('comment-keys');
+    expect(row.example).toEqual({ kind: 'keys', keys: ['Ctrl', '3'] });
+    expect(row.desc).toBe('주석 켜기/끄기. 고른 글자, 없으면 커서가 있는 구획');
   });
   test('예시 칩은 편집 칸과 같은 문법 클래스', () => {
     const rows = promptSyntaxHelpGroups(false).flatMap((g) => g.rows);
@@ -140,7 +146,8 @@ describe('① 패널 열고 닫기', () => {
     expect(p.textContent).toContain('프롬프트 문법');
     // 묶음 표식은 2026-11-20 그룹 1-b 공용 패널(HelpPanel)에서 data-syntax-group → data-help-group
     expect(p.querySelectorAll('[data-help-group]')).toHaveLength(4);
-    expect(p.querySelectorAll('kbd')).toHaveLength(3);
+    // Ctrl ↑ ↓ + Ctrl 3(2026-11-22 주석 줄)
+    expect(p.querySelectorAll('kbd')).toHaveLength(5);
     expect(p.className).toContain('ui-pop-in');
     expect(backLayers).toHaveLength(1);
     await act(async () => button().click());

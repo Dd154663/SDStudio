@@ -101,17 +101,27 @@ export function promptSyntaxHelpGroups(mobile: boolean): SyntaxHelpGroup[] {
           example: code({ text: '<' }),
           desc: '조각 검색. 태그는 입력 중에 자동으로 추천',
         },
-        mobile
-          ? {
-              id: 'mobile-chips',
-              example: { kind: 'label', text: '키보드 칩' },
-              desc: '키보드 위 칩으로 세기 조절, # 칩으로 주석 감싸기와 풀기',
-            }
-          : {
-              id: 'weight-keys',
-              example: { kind: 'keys', keys: ['Ctrl', '↑', '↓'] },
-              desc: '커서가 있는 구획의 세기를 0.05 씩',
-            },
+        ...(mobile
+          ? [
+              {
+                id: 'mobile-chips',
+                example: { kind: 'label', text: '키보드 칩' },
+                desc: '키보드 위 칩으로 세기 조절, # 칩으로 주석 감싸기와 풀기',
+              } as SyntaxHelpRow,
+            ]
+          : [
+              {
+                id: 'weight-keys',
+                example: { kind: 'keys', keys: ['Ctrl', '↑', '↓'] },
+                desc: '커서가 있는 구획의 세기를 0.05 씩',
+              } as SyntaxHelpRow,
+              // 2026-11-22 — 편집기 안 Ctrl+3(PromptEditTextArea, promptTransforms.isPromptCommentToggleKey).
+              {
+                id: 'comment-keys',
+                example: { kind: 'keys', keys: ['Ctrl', '3'] },
+                desc: '주석 켜기/끄기. 고른 글자, 없으면 커서가 있는 구획',
+              } as SyntaxHelpRow,
+            ]),
       ],
     },
   ];

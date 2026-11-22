@@ -819,6 +819,36 @@ export const AppContextMenu = observer(() => {
       appState.pushMessage(e.message || '파일 탐색기 열기에 실패했습니다.');
     }
   };
+  // 이미지 편집(외부 편집기, PC 전용 — 메뉴 항목도 !isMobile 게이트, 2026-11-22). 상세 보기 「이미지 편집」 버튼과 같은
+  // 동작(편집기 열기 → 감시 시작). 열기 실패는 알림 한 줄.
+  const openImageInEditor = async (path: string | undefined) => {
+    if (!path) return;
+    try {
+      await backend.openImageEditor(path);
+    } catch (e: any) {
+      appState.pushMessage(e?.message || '이미지 편집기를 열지 못했습니다.', 'error');
+      return;
+    }
+    backend.watchImage(path).catch(() => {});
+  };
+  // 생성 설정 적용(PC·모바일, 2026-11-22) — 상세 보기 「생성 설정 적용」과 같은 창(ExternalImageView, appState.openExternalImage).
+  const openImageSettings = async (path: string | undefined, scene?: GenericScene) => {
+    if (!path) return;
+    let image: string | null | undefined;
+    try {
+      image = await imageService.fetchImage(path);
+    } catch {
+      image = undefined;
+    }
+    if (!image) {
+      appState.pushMessage('이미지를 읽지 못했습니다.', 'error');
+      return;
+    }
+    appState.openExternalImage(dataUriToBase64(image), scene);
+  };
+  // 그리드에서 고른 이미지 메뉴(여러 장일 수 있음)는 한 장일 때만 이 두 항목을 보인다.
+  const singleGalleryPath = ({ props }: any): boolean =>
+    Array.isArray(props?.ctx?.path) && props.ctx.path.length === 1;
   const handleImageItemClick = ({ id, props }: any) => {
     const ctx2: GallaryImageContextAlt = {
       ...props.ctx,
@@ -845,6 +875,10 @@ export const AppContextMenu = observer(() => {
       saveImageToArtistLibrary(ctx2);
     } else if (id === 'reveal') {
       revealImageInExplorer(ctx2.path[0]);
+    } else if (id === 'image-edit') {
+      openImageInEditor(ctx2.path[0]);
+    } else if (id === 'image-settings') {
+      openImageSettings(ctx2.path[0], ctx2.scene);
     }
   };
   const handleImageItemClick2 = ({ id, props }: any) => {
@@ -870,6 +904,10 @@ export const AppContextMenu = observer(() => {
       saveImageToArtistLibrary(props.ctx);
     } else if (id === 'reveal') {
       revealImageInExplorer(props.ctx.path?.[0]);
+    } else if (id === 'image-edit') {
+      if (props.ctx.path?.length === 1) openImageInEditor(props.ctx.path[0]);
+    } else if (id === 'image-settings') {
+      if (props.ctx.path?.length === 1) openImageSettings(props.ctx.path[0], props.ctx.scene);
     }
   };
   const exportStyle = async (ctx: StyleContextAlt) => {
@@ -961,7 +999,22 @@ export const AppContextMenu = observer(() => {
       historyDeleteImage(ctx);
     } else if (id === 'reveal') {
       revealImageInExplorer(ctx.entry.path);
+    } else if (id === 'image-edit') {
+      openImageInEditor(ctx.entry.path);
+    } else if (id === 'image-settings') {
+      historyImageSettings(ctx);
     }
+  };
+  // 히스토리 항목은 다른 프로젝트 것일 수 있다 — 씬 맥락은 지금 프로젝트의 씬일 때만 넘긴다(창의 적용 대상 = 지금 프로젝트).
+  const historyImageSettings = async (ctx: HistoryImageContextAlt) => {
+    let scene: GenericScene | undefined;
+    try {
+      const resolved = await imageHistoryService.resolve(ctx.entry);
+      if (resolved && resolved.session === appState.curSession) scene = resolved.scene;
+    } catch {
+      scene = undefined;
+    }
+    await openImageSettings(ctx.entry.path, scene);
   };
   const handleStyleItemClick = ({ id, props }: any) => {
     if (id === 'export') {
@@ -1122,6 +1175,15 @@ export const AppContextMenu = observer(() => {
             <MenuItemLabel icon={<FaFolderOpen size={I} />}>파일 탐색기에서 열기</MenuItemLabel>
           </Item>
         )}
+        {/* 이미지 편집(PC)·생성 설정 적용 — 한 장만 골랐을 때만(2026-11-22) */}
+        {!isMobile && (
+          <Item id="image-edit" onClick={handleImageItemClick2} hidden={(p) => !singleGalleryPath(p)}>
+            <MenuItemLabel icon={<ActionIcon id="edit" size={I} />}>이미지 편집</MenuItemLabel>
+          </Item>
+        )}
+        <Item id="image-settings" onClick={handleImageItemClick2} hidden={(p) => !singleGalleryPath(p)}>
+          <MenuItemLabel icon={<ActionIcon id="gen-settings" size={I} />}>생성 설정 적용</MenuItemLabel>
+        </Item>
         <Separator />
         <Item id="save-global" onClick={handleImageItemClick2}>
           <MenuItemLabel icon={<ActionIcon id="copy-to-global" size={I} />}>글로벌 프리셋으로 복사</MenuItemLabel>
@@ -1156,6 +1218,14 @@ export const AppContextMenu = observer(() => {
             <MenuItemLabel icon={<FaFolderOpen size={I} />}>파일 탐색기에서 열기</MenuItemLabel>
           </Item>
         )}
+        {!isMobile && (
+          <Item id="image-edit" onClick={handleImageItemClick}>
+            <MenuItemLabel icon={<ActionIcon id="edit" size={I} />}>이미지 편집</MenuItemLabel>
+          </Item>
+        )}
+        <Item id="image-settings" onClick={handleImageItemClick}>
+          <MenuItemLabel icon={<ActionIcon id="gen-settings" size={I} />}>생성 설정 적용</MenuItemLabel>
+        </Item>
         <Separator />
         <Item id="save-global" onClick={handleImageItemClick}>
           <MenuItemLabel icon={<ActionIcon id="copy-to-global" size={I} />}>글로벌 프리셋으로 복사</MenuItemLabel>
@@ -1187,6 +1257,14 @@ export const AppContextMenu = observer(() => {
             <MenuItemLabel icon={<FaFolderOpen size={I} />}>파일 탐색기에서 열기</MenuItemLabel>
           </Item>
         )}
+        {!isMobile && (
+          <Item id="image-edit" onClick={handleHistoryItemClick}>
+            <MenuItemLabel icon={<ActionIcon id="edit" size={I} />}>이미지 편집</MenuItemLabel>
+          </Item>
+        )}
+        <Item id="image-settings" onClick={handleHistoryItemClick}>
+          <MenuItemLabel icon={<ActionIcon id="gen-settings" size={I} />}>생성 설정 적용</MenuItemLabel>
+        </Item>
         <Separator />
         <Item id="delete" onClick={handleHistoryItemClick}>
           <MenuItemLabel icon={<ActionIcon id="delete" size={I} />}>해당 이미지 삭제</MenuItemLabel>
