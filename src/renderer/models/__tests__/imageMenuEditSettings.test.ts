@@ -56,6 +56,55 @@ describe('AppContextMenu — 이미지 메뉴 세 종에 두 항목', () => {
   });
 });
 
+describe('AppContextMenu — 히스토리 이미지 메뉴 「글로벌 프리셋으로 복사」(2026-11-22)', () => {
+  const src = read('AppContextMenu.tsx');
+  const menuOf = (type: string) => {
+    const s = src.indexOf(`<Menu id={ContextMenuType.${type}}`);
+    return src.slice(s, src.indexOf('</Menu>', s));
+  };
+  const LABEL = '<MenuItemLabel icon={<ActionIcon id="copy-to-global" size={I} />}>글로벌 프리셋으로 복사</MenuItemLabel>';
+
+  test('그리드·이미지 메뉴와 같은 이름·아이콘, 게이트 없음(PC·모바일), 자리 = 「생성 설정 적용」 뒤 구분선 다음·삭제 앞', () => {
+    const grid = menuOf('GallaryImage');
+    expect(grid).toContain(LABEL);
+    const menu = menuOf('HistoryImage');
+    const item = menu.indexOf('<Item id="save-global" onClick={handleHistoryItemClick}>');
+    expect(item).toBeGreaterThan(0);
+    expect(menu).toContain(LABEL);
+    expect(menu.slice(item - 200, item)).not.toMatch(/isMobile/);
+    const settings = menu.indexOf('<Item id="image-settings"');
+    const between = menu.slice(settings, item);
+    expect(between).toContain('<Separator />');
+    expect(item).toBeLessThan(menu.indexOf('<Item id="delete"'));
+    // 그리드에서도 「생성 설정 적용」 다음 구분선 뒤
+    expect(grid.indexOf('<Item id="image-settings"')).toBeLessThan(grid.indexOf('<Item id="save-global"'));
+  });
+
+  test('동작 = 그리드 메뉴와 같은 saveImageAsGlobalPreset(→ appState.saveImageAsGlobalPreset)', () => {
+    const handler = src.slice(src.indexOf('const handleHistoryItemClick'), src.indexOf('const historyImageSettings'));
+    expect(handler).toMatch(/id === 'save-global'\) \{[\s\S]*?saveImageAsGlobalPreset\(\{ path: ctx\.entry\.path \}\);/);
+    const grid = src.slice(src.indexOf('const handleImageItemClick2'), src.indexOf('const exportStyle'));
+    expect(grid).toContain('saveImageAsGlobalPreset(props.ctx);');
+    const fn = src.slice(src.indexOf('const saveImageAsGlobalPreset'), src.indexOf('const saveImageToArtistLibrary'));
+    expect(fn).toContain('await appState.saveImageAsGlobalPreset(path);');
+    expect(fn).toMatch(/Array\.isArray\(ctx\.path\) \? ctx\.path\[0\] : ctx\.path/);
+  });
+});
+
+describe('「이미지 편집」 호출부 — 실패는 알림, 감시는 성공했을 때만(2026-11-22)', () => {
+  test.each([
+    ['ResultViewer.tsx', 'await backend.openImageEditor(editPath);', 'backend.watchImage(editPath);'],
+    ['PreSetEdtior.tsx', 'await backend.openImageEditor(path);', 'backend.watchImage(path);'],
+  ])('%s', (file, open, watch) => {
+    const src = read(file);
+    const at = src.indexOf(open);
+    expect(at).toBeGreaterThan(0);
+    const block = src.slice(src.lastIndexOf('try {', at), src.indexOf(watch, at) + watch.length);
+    expect(block).toMatch(/\} catch \(e: any\) \{\n\s*appState\.pushMessage\(e\?\.message \|\| '이미지 편집기를 열지 못했습니다\.', 'error'\);\n\s*return;\n\s*\}/);
+    expect(block.indexOf('return;')).toBeLessThan(block.indexOf(watch));
+  });
+});
+
 describe('ResultDetailView — 해상도 칸', () => {
   const src = read('ResultViewer.tsx');
   const start = src.indexOf('const ResultDetailView = observer(');

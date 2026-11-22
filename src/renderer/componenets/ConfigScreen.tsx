@@ -56,7 +56,8 @@ import DriveSettingsTab from './DriveSettingsTab';
 import KeyBindingsTab from './ConfigKeyBindingsTab';
 import PersonalTab from './ConfigPersonalTab';
 import SystemTab from './ConfigSystemTab';
-import StorageImageTab, { RecoveryTab } from './ConfigStorageTab';
+import StorageImageTab, { CUSTOM_IMAGE_EDITOR_TEXT, RecoveryTab, resolveImageEditorChoice } from './ConfigStorageTab';
+import { platform } from '../models/platform';
 import CustomizationTab from './ConfigThemeTab';
 import LayoutTab, { ToolbarTab } from './ConfigLayoutTab';
 import type {
@@ -811,6 +812,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
 
   // state
   const [imageEditor, setImageEditor] = useState('');
+  // 「사용자 지정」 편집기 실행 파일(Windows 전용, 2026-11-22) — 다른 편집기를 골라도 값은 지우지 않는다.
+  const [customImageEditorPath, setCustomImageEditorPath] = useState('');
   const [useGPU, setUseGPU] = useState(false);
   const [whiteMode, setWhiteMode] = useState(false);
   const [requestDelayMs, setRequestDelayMs] = useState(REQUEST_DELAY_DEFAULT_MS);
@@ -848,6 +851,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   const [uiMobileV2Parts, setUiMobileV2Parts] = useState<MobileV2Parts>(normalizeV2Parts(undefined));
   const [uiPresetIconRow, setUiPresetIconRow] = useState(false);
   const [uiToolbarButtonNames, setUiToolbarButtonNames] = useState(true);
+  // 시작 시 씬 단축키 도움말 표시(2026-11-22, PC 전용 줄, 기본 끔 — 사용자 결정). 모바일은 줄이 없고 저장값을 건드리지 않는다.
+  const [showShortcutHelpOnStartup, setShowShortcutHelpOnStartup] = useState(false);
   // PC 화면 배율(시험 기능, 2026-11-19 — shared/uiZoom.ts). 모바일은 항목이 없고 저장값도 건드리지 않는다.
   const [uiZoomPercent, setUiZoomPercent] = useState<UiZoomPercent>(100);
   // 모던 해제 확인(② A 2차 피드백 후속 1): 모던 → 다른 템플릿 전환 시 "배치 초기화"에
@@ -880,7 +885,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       .getDataRoot()
       .catch(() => config.saveLocation ?? '');
     setWhiteMode(config.whiteMode ?? false);
-    setImageEditor(config.imageEditor ?? 'photoshop');
+    setImageEditor(resolveImageEditorChoice(config.imageEditor));
+    setCustomImageEditorPath(config.customImageEditorPath ?? '');
     setUseGPU(config.useCUDA ?? false);
     setQuality(config.removeBgQuality ?? 'normal');
     setRefreshImage(config.refreshImage ?? false);
@@ -915,6 +921,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     setUiMobileV2Parts(normalizeV2Parts(config.uiMobileV2Parts));
     setUiPresetIconRow(config.uiPresetIconRow ?? false);
     setUiToolbarButtonNames(config.uiToolbarButtonNames ?? true);
+    setShowShortcutHelpOnStartup(config.showShortcutHelpOnStartup === true);
     setUiZoomPercent(normalizeUiZoomPercent(config.uiZoomPercent));
     setUiFloatViewMode(config.uiFloatViewMode ?? 'cover');
     setUiFont(config.uiFont ?? 'system');
@@ -1059,9 +1066,30 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     setSyncFolder(folder);
   };
 
+  // 「사용자 지정」 편집기 실행 파일 고르기(Windows 전용 — 버튼도 그때만 보인다). 기존 파일 고르기 창(select-file)에
+  // .exe 필터만 건다. 다른 플랫폼에서는 부르지 않는다(Android 문서 선택기는 .exe 를 거를 수 없다).
+  const selectCustomImageEditor = async () => {
+    if (!platform.supportsCustomImageEditor) return;
+    let picked: string | undefined;
+    try {
+      picked = await backend.selectFile({
+        filters: [{ name: CUSTOM_IMAGE_EDITOR_TEXT.pickerFilterName, extensions: ['exe'] }],
+      });
+    } catch {
+      return;
+    }
+    if (!picked) return;
+    setCustomImageEditorPath(picked);
+  };
+
   const stageTexts = ['모델 다운로드 중...', '모델 가중치 다운로드 중...', '모델 압축 푸는 중...'];
 
   const handleSave = async () => {
+    // 「사용자 지정」인데 실행 파일이 비어 있으면 저장하지 않는다(편집기를 열 때마다 실패하지 않게).
+    if (imageEditor === 'custom' && !customImageEditorPath.trim()) {
+      appState.pushMessage(CUSTOM_IMAGE_EDITOR_TEXT.pathMissing, 'error');
+      return;
+    }
     const old = await backend.getConfig();
     // 짧은 지연 경고(T3): 권장 최소값(REQUEST_DELAY_WARNING_BELOW_MS) 미만으로 바꿔 저장하면 저장 전에 묻는다. 선택형 확인 창 —
     // [이해했습니다]=저장, [다시 알리지 않음]=저장+표식, 취소·Esc·뒤로 가기=저장하지 않음.
@@ -1081,6 +1109,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     const config: Config = {
       ...old,
       imageEditor: imageEditor as ImageEditor,
+      customImageEditorPath: customImageEditorPath || undefined,
       useCUDA: useGPU,
       modelType: 'quality',
       removeBgQuality: quality as RemoveBgQuality,
@@ -1111,6 +1140,10 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       uiMobileV2Parts: uiMobileV2Parts,
       uiPresetIconRow: uiPresetIconRow,
       uiToolbarButtonNames: uiToolbarButtonNames,
+      // 시작 시 단축키 도움말: 끔 = 키를 비운다(= 기본). 모바일은 줄이 없어 저장값을 그대로 둔다.
+      showShortcutHelpOnStartup: mobileMode
+        ? old.showShortcutHelpOnStartup
+        : showShortcutHelpOnStartup || undefined,
       // 화면 배율: 100% 는 키를 비운다(= 기본). 모바일은 저장값을 그대로 둔다. 적용은 main 의 set-config 가 모든 창에.
       uiZoomPercent: mobileMode ? old.uiZoomPercent : uiZoomPercentForSave(uiZoomPercent),
       uiFloatViewMode: uiFloatViewMode,
@@ -1226,10 +1259,11 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
     // 모바일은 편집 모드가 없어 기존 select UI 가 유일한 수단이라 탭을 유지한다.
     ...(mobileMode ? [{ key: 'toolbar', label: '툴바', icon: <FaThLarge size={14} /> }] : []),
     { key: 'layout', label: '레이아웃', icon: <FaColumns size={14} /> },
-    ...(!mobileMode ? [{ key: 'storage', label: '저장 경로', icon: <FaFolder size={14} /> }] : []),
+    ...(!mobileMode ? [{ key: 'storage', label: '저장·이미지', icon: <FaFolder size={14} /> }] : []),
     // 드라이브(드라이브 API ⑤, PC·모바일 공통): Google 드라이브 연동·백업 목록·환경설정 내보내기/불러오기·
     // (PC) 고급 로컬 동기화 폴더. 라벨 축약·좁은 탭 여백은 PC 가로 탭 8개를 672 폭에 넣으려던 것(2026-10-01) —
-    // 2026-11-11 오버레이 묶음 1 에서 PC 는 왼쪽 세로 탭(180px)이 되어 「저장경로」를 「저장 경로」로 풀었다.
+    // 2026-11-11 오버레이 묶음 1 에서 PC 는 왼쪽 세로 탭(180px)이 되어 「저장경로」를 「저장 경로」로 풀었고,
+    // 2026-11-22 「저장·이미지」로 바꿨다(사용자 — 저장 위치 말고도 내보내기·다운로드·캐시·편집기·WebP·복구를 다뤄 이름이 좁았다).
     // 「커스텀」(구 개인 설정)·「단축키」(구 키 바인딩)는 축약이 아니라 이름 자체를 바꾼 결정이라 그대로 둔다.
     { key: 'drive', label: '드라이브', icon: <FaGoogleDrive size={14} /> },
     { key: 'system', label: '시스템', icon: <ActionIcon id="system-settings" size={14} /> },
@@ -1245,7 +1279,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'login':
         return <LoginTab {...{ accessToken, setAccessToken, loggedIn, loginWithToken, roundTag, multiTokenAutoRotate, setMultiTokenAutoRotate, multiTokenRotateWarning, setMultiTokenRotateWarning, multiTokenRotateTarget, setMultiTokenRotateTarget, multiTokenBalanceRotate, setMultiTokenBalanceRotate, multiTokenRotateBalance, setMultiTokenRotateBalance, boostSettings, setBoostSettings, boostModeChoice, setBoostModeChoice }} />;
       case 'storage':
-        return <StorageImageTab {...{ saveLocation, dataRoot, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
+        return <StorageImageTab {...{ saveLocation, dataRoot, selectFolder, clearImageCache, refreshImage, setRefreshImage, defaultExportFolder, setDefaultExportFolder, selectDefaultExportFolder, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality, imageEditor, setImageEditor, customImageEditorPath, selectCustomImageEditor, useLocalBgRemoval, setUseLocalBgRemoval, ready, stage, progress, stageTexts, useGPU, setUseGPU, quality, setQuality }} />;
       case 'system':
         return <SystemTab {...{ requestDelayMs, setRequestDelayMs, requestDelayJitterMs, setRequestDelayJitterMs, storageWriteGuard, setStorageWriteGuard, exportConcurrency, setExportConcurrency, autoConvertWebp, setAutoConvertWebp, autoWebpQuality, setAutoWebpQuality }} />;
       case 'drive':
@@ -1257,7 +1291,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       case 'toolbar':
         return <ToolbarTab {...{ uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton }} />;
       case 'layout':
-        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbarButtonNames, setUiToolbarButtonNames, uiZoomPercent, setUiZoomPercent, uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose: requestClose }} />;
+        return <LayoutTab {...{ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbarButtonNames, setUiToolbarButtonNames, showShortcutHelpOnStartup, setShowShortcutHelpOnStartup, uiZoomPercent, setUiZoomPercent, uiToolbar, setUiToolbar, quickMenu: quickMenuCfg, setQuickMenu: setQuickMenuCfg, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose: requestClose }} />;
       case 'recovery':
         return <RecoveryTab />;
       case 'keybindings':
@@ -1271,7 +1305,8 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
   // saveLocation 은 선택 즉시 저장되므로 제외. 객체(uiTheme/uiToolbar)는 JSON 직렬화 비교.
   const dirty =
     savedCfg != null &&
-    (imageEditor !== (savedCfg.imageEditor ?? 'photoshop') ||
+    (imageEditor !== resolveImageEditorChoice(savedCfg.imageEditor) ||
+      (customImageEditorPath || '') !== (savedCfg.customImageEditorPath ?? '') ||
       useGPU !== (savedCfg.useCUDA ?? false) ||
       quality !== (savedCfg.removeBgQuality ?? 'normal') ||
       refreshImage !== (savedCfg.refreshImage ?? false) ||
@@ -1303,6 +1338,7 @@ const ConfigScreen = observer(({ onSave, onClose }: ConfigScreenProps) => {
       JSON.stringify(uiMobileV2Parts) !== JSON.stringify(normalizeV2Parts(savedCfg.uiMobileV2Parts)) ||
       uiPresetIconRow !== (savedCfg.uiPresetIconRow ?? false) ||
       uiToolbarButtonNames !== (savedCfg.uiToolbarButtonNames ?? true) ||
+      (!mobileMode && showShortcutHelpOnStartup !== (savedCfg.showShortcutHelpOnStartup === true)) ||
       (!mobileMode && uiZoomPercent !== normalizeUiZoomPercent(savedCfg.uiZoomPercent)) ||
       uiFloatViewMode !== (savedCfg.uiFloatViewMode ?? 'cover') ||
       uiFont !== (savedCfg.uiFont ?? 'system') ||

@@ -1003,6 +1003,9 @@ export const AppContextMenu = observer(() => {
       openImageInEditor(ctx.entry.path);
     } else if (id === 'image-settings') {
       historyImageSettings(ctx);
+    } else if (id === 'save-global') {
+      // 그리드·이미지 메뉴와 같은 함수(appState.saveImageAsGlobalPreset 경유)
+      saveImageAsGlobalPreset({ path: ctx.entry.path });
     }
   };
   // 히스토리 항목은 다른 프로젝트 것일 수 있다 — 씬 맥락은 지금 프로젝트의 씬일 때만 넘긴다(창의 적용 대상 = 지금 프로젝트).
@@ -1264,6 +1267,11 @@ export const AppContextMenu = observer(() => {
         )}
         <Item id="image-settings" onClick={handleHistoryItemClick}>
           <MenuItemLabel icon={<ActionIcon id="gen-settings" size={I} />}>생성 설정 적용</MenuItemLabel>
+        </Item>
+        <Separator />
+        {/* 그리드·이미지 메뉴와 같은 항목·자리(「생성 설정 적용」 뒤 구분선 다음, 2026-11-22). PC·모바일 공통 */}
+        <Item id="save-global" onClick={handleHistoryItemClick}>
+          <MenuItemLabel icon={<ActionIcon id="copy-to-global" size={I} />}>글로벌 프리셋으로 복사</MenuItemLabel>
         </Item>
         <Separator />
         <Item id="delete" onClick={handleHistoryItemClick}>

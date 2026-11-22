@@ -12,11 +12,31 @@ import { SaveLocationRestartButton } from './SaveLocationPendingBar';
 import { DownloadSettingsSection } from './DownloadSettingsSection';
 import { SettingCheckRow, SettingField, SettingGroup } from './SettingControls';
 
+/* 「사용자 지정」 이미지 편집기(Windows 전용, 2026-11-22) — 문구·화면 값 해석 단일 출처(ConfigScreen 이 load·dirty 에 쓴다). */
+export const CUSTOM_IMAGE_EDITOR_TEXT = {
+  option: '사용자 지정',
+  pathMissing: '이미지 편집기의 실행 파일(.exe)을 선택해 주세요.',
+  pickButton: '실행 파일 선택',
+  pickerFilterName: '실행 파일',
+};
+
+// 저장값 → 화면에 보일 선택지. 'custom' 인데 지원하지 않는 플랫폼(mac·linux·모바일)이면 기본값(포토샵)으로 보인다.
+export function resolveImageEditorChoice(
+  value: string | undefined,
+  supportsCustom: boolean = platform.supportsCustomImageEditor,
+): string {
+  const v = value ?? 'photoshop';
+  if (v === 'custom' && !supportsCustom) return 'photoshop';
+  return v;
+}
+
 /* ── 탭 2: 이미지 편집 및 배경 제거 ── */
 // 묶음 상자(2026-11-20 UI 정돈 그룹 1-a): 선호 이미지 편집기 / 배경 제거. 체크 = SettingCheckRow(「저장」 반영),
 // 선택 칸 = .app-select(종전 기본 모양은 다크에서 흰 바탕). 항목·순서·문구·id 그대로.
+// 「사용자 지정」(2026-11-22, Windows 전용): 고르면 아래에 지금 경로(없으면 안내)와 「실행 파일 선택」 버튼.
 const ImageEditTab = ({
   imageEditor, setImageEditor,
+  customImageEditorPath, selectCustomImageEditor,
   useLocalBgRemoval, setUseLocalBgRemoval,
   ready, stage, progress, stageTexts,
   useGPU, setUseGPU, quality, setQuality,
@@ -29,6 +49,9 @@ const ImageEditTab = ({
         <option value="photoshop">포토샵</option>
         <option value="gimp">GIMP</option>
         <option value="mspaint">그림판</option>
+        {platform.supportsCustomImageEditor && (
+          <option value="custom">{CUSTOM_IMAGE_EDITOR_TEXT.option}</option>
+        )}
       </select>
       {platform.isLinux && (
         <p className="text-xs text-muted mt-1">
@@ -36,6 +59,18 @@ const ImageEditTab = ({
         </p>
       )}
      </SettingField>
+     {platform.supportsCustomImageEditor && imageEditor === 'custom' && (
+      <SettingField>
+       <div data-custom-image-editor-path
+         className="text-sm text-muted bg-gray-100 dark:bg-slate-700 rounded px-3 py-2 break-all">
+         {customImageEditorPath || CUSTOM_IMAGE_EDITOR_TEXT.pathMissing}
+       </div>
+       <button type="button" className="btn w-full back-green py-2 rounded mt-2"
+         onClick={selectCustomImageEditor}>
+         {CUSTOM_IMAGE_EDITOR_TEXT.pickButton}
+       </button>
+      </SettingField>
+     )}
     </SettingGroup>
     <SettingGroup title="배경 제거">
       <SettingCheckRow

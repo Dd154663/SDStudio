@@ -1668,9 +1668,16 @@ const ResultDetailView = observer(
               <button
                 className={`round-button back-sky`}
                 onClick={async () => {
-                  await backend.openImageEditor(paths[selectedIndex]);
-                  watchedImages.current.add(paths[selectedIndex]);
-                  backend.watchImage(paths[selectedIndex]);
+                  const editPath = paths[selectedIndex];
+                  // 열기 실패(사용자 지정 실행 파일 없음 등)는 알림 한 줄, 감시는 시작하지 않는다(2026-11-22)
+                  try {
+                    await backend.openImageEditor(editPath);
+                  } catch (e: any) {
+                    appState.pushMessage(e?.message || '이미지 편집기를 열지 못했습니다.', 'error');
+                    return;
+                  }
+                  watchedImages.current.add(editPath);
+                  backend.watchImage(editPath);
                 }}
               >
                 이미지 편집

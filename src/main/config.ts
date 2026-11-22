@@ -4,7 +4,9 @@ import {
   ModelVersion,
 } from '../renderer/backends/imageGen';
 
-export type ImageEditor = 'photoshop' | 'gimp' | 'mspaint';
+// 'custom' = 사용자가 고른 실행 파일(customImageEditorPath, Windows 전용 — 2026-11-22). 구버전은 모르는 값이라
+// 목록 밖 값으로 보고 포토샵부터 찾는다(롤백 안전). 다른 플랫폼의 main 도 'custom' 이면 기존 목록으로 연다.
+export type ImageEditor = 'photoshop' | 'gimp' | 'mspaint' | 'custom';
 
 export type ModelType = 'fast' | 'quality';
 
@@ -31,6 +33,10 @@ export interface ImageSaveSettings {
 
 export interface Config {
   imageEditor?: ImageEditor;
+  /** 「사용자 지정」 이미지 편집기의 실행 파일 절대 경로(.exe, Windows 전용, 2026-11-22). imageEditor 가 'custom' 일
+   *  때만 쓰고, 다른 편집기를 골라도 지우지 않는다(다시 고를 때 그대로). 기기마다 다른 경로라 환경설정
+   *  내보내기·동기화 제외(configSync CONFIG_SYNC_EXCLUDED). 실행 검사는 main/customImageEditor.ts. */
+  customImageEditorPath?: string;
   modelType?: ModelType;
   removeBgQuality?: RemoveBgQuality;
   useLocalBgRemoval?: boolean;
@@ -191,6 +197,9 @@ export interface Config {
   // PC 툴바 버튼 이름 표시(2026-11-18) — 씬 툴바·이미지 그리드 머리줄의 아이콘 버튼 아래 작은 이름.
   // 미설정/true = 켬(기본, 저장값이 없던 기존 사용자도 켬), false = 끔(종전 아이콘만). 모바일은 값과 무관하게 이름 없음.
   uiToolbarButtonNames?: boolean;
+  // 시작 시 씬 단축키 도움말 패널 표시(2026-11-22, PC 전용) — 미설정/false = 닫힌 채 시작(기본), true = 열린 채 시작.
+  // 앱이 시작해 설정을 처음 읽을 때 한 번만 반영한다(models/shortcutHelpStartup.ts). 실행 중 여닫음은 저장하지 않는다.
+  showShortcutHelpOnStartup?: boolean;
   // PC 화면 배율(시험 기능, 2026-11-19) — 100·95·90·85·80·75(%). 미설정·허용 밖 값 = 100%(종전 그대로).
   // main 이 Electron 창 배율로 적용(창 생성·문서 로드·set-config 때). Android 는 읽지 않는다. 기기별 값이라
   // 환경설정 내보내기 제외(configSync CONFIG_SYNC_EXCLUDED). 허용 목록·정규화 단일 출처 shared/uiZoom.ts.

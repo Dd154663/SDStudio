@@ -419,7 +419,9 @@ export class AppState {
   @observable accessor resultViewerOpen: boolean = false;
   @observable accessor imageGridFocusable: boolean = false;
   @observable accessor configScreenOpen: boolean = false;
-  @observable accessor showSceneCheatsheet: boolean = true;
+  // 씬 단축키 도움말 패널(PC). 닫힌 채 시작하고, config.showShortcutHelpOnStartup 이 켜져 있으면 시작 때 한 번만
+  // 연다(App.tsx → models/shortcutHelpStartup.ts, 2026-11-22). 실행 중 여닫음은 저장하지 않는다.
+  @observable accessor showSceneCheatsheet: boolean = false;
   @observable accessor showTournamentCheatsheet: boolean = true;
 
   @action

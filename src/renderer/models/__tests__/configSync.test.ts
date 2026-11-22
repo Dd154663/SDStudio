@@ -77,6 +77,41 @@ describe('화이트리스트', () => {
     );
   });
 
+  // 2026-11-22: 사용자 지정 이미지 편집기 경로(기기별) = 제외, 시작 시 단축키 도움말(취향) = UI 배치 군
+  it('사용자 지정 편집기 경로는 제외(내보내기·불러오기 모두), 시작 시 단축키 도움말은 layout 군 불리언', () => {
+    expect(CONFIG_SYNC_EXCLUDED).toContain('customImageEditorPath');
+    expect(CONFIG_SYNC_EXCLUDED).toContain('imageEditor');
+    const file = buildConfigExport(
+      { ...fullConfig, imageEditor: 'custom', customImageEditorPath: 'C:\\Tools\\Clip Studio\\CLIPStudioPaint.exe', showShortcutHelpOnStartup: true },
+      META,
+    );
+    const text = JSON.stringify(file);
+    expect(text).not.toContain('CLIPStudioPaint');
+    expect(text).not.toContain('"customImageEditorPath"');
+    expect(file.groups.layout.showShortcutHelpOnStartup).toBe(true);
+    expect(buildConfigExport({}, META).groups.layout.showShortcutHelpOnStartup).toBeNull();
+    // 받는 쪽: 파일에 경로가 들어 있어도 무시, 도움말 값은 불리언만 받는다
+    const parsed = parseConfigImport({
+      type: 'sdstudio-config',
+      version: 1,
+      groups: {
+        layout: { showShortcutHelpOnStartup: true, customImageEditorPath: 'C:\\x.exe' },
+        editing: { customImageEditorPath: 'C:\\x.exe' },
+      },
+    });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.value.groups.layout).toEqual({ showShortcutHelpOnStartup: true });
+    expect(parsed.value.groups.editing).toEqual({});
+    const applied = applyConfigGroups({ customImageEditorPath: 'D:\\mine.exe' }, parsed.value.groups, { layout: true, editing: true });
+    expect(applied.customImageEditorPath).toBe('D:\\mine.exe');
+    expect(applied.showShortcutHelpOnStartup).toBe(true);
+    const bad = parseConfigImport({ type: 'sdstudio-config', version: 1, groups: { layout: { showShortcutHelpOnStartup: 'yes' } } });
+    expect(bad.ok && bad.value.groups.layout).toEqual({});
+    // 없음 = false 로 비교(변경 없음)
+    expect(diffConfigGroups({}, { layout: { showShortcutHelpOnStartup: false } }).find((d) => d.group === 'layout')!.changed).toEqual([]);
+  });
+
   it('내보낸 값은 원본과 참조를 공유하지 않는다', () => {
     const file = buildConfigExport(fullConfig, META);
     (file.groups.theme.uiTheme as any).surface = '#ffffff';

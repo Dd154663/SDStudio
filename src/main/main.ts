@@ -17,6 +17,7 @@ import { copyFileUnlessSame } from './copyFileUnlessSame';
 import { openExportDirectory } from './openExportDirectory';
 import { writeImageZip } from './writeImageZip';
 import { createImageChangeDetector, isRootGoneEvent } from './imageFolderWatch';
+import { launchCustomImageEditor } from './customImageEditor';
 import {
   app,
   BrowserWindow,
@@ -1481,6 +1482,12 @@ const os = require('os');
 
 async function openImageEditor(inputPath: string) {
   const editor = config.imageEditor ?? 'photoshop';
+  // 「사용자 지정」(Windows 전용, 2026-11-22): 고른 .exe 하나만 셸 없이 실행한다. 검사·실행 실패는 오류로
+  // 렌더러에 돌려준다(다른 편집기로 넘어가지 않음). win32 가 아니면 아래 기존 목록(포토샵 먼저)으로.
+  if (editor === 'custom' && os.platform() === 'win32') {
+    await launchCustomImageEditor(config.customImageEditorPath, path.resolve(inputPath));
+    return;
+  }
   const homeDir = os.homedir();
   const gimpBaseDirCand1 = path.join(homeDir, 'AppData', 'Local', 'Programs');
   const gimpBaseDirCand2 = 'C:\\Program Files';
@@ -1543,9 +1550,13 @@ async function openImageEditor(inputPath: string) {
     return null;
   }
 
-  const editorsToTry = ['photoshop', 'gimp', 'mspaint'];
-  editorsToTry.splice(editorsToTry.indexOf(editor), 1);
-  editorsToTry.unshift(editor);
+  const editorsToTry: string[] = ['photoshop', 'gimp', 'mspaint'];
+  // 목록에 있는 값일 때만 앞으로 옮긴다(없는 값이면 indexOf = -1 이라 splice 가 마지막 원소를 지우던 문제).
+  const editorIdx = editorsToTry.indexOf(editor);
+  if (editorIdx > 0) {
+    editorsToTry.splice(editorIdx, 1);
+    editorsToTry.unshift(editor);
+  }
   const runProgram = async (program: string) => {
     // mac 만 앱 번들을 open -a 로 열고, win/linux 는 실행 파일 직접 실행.
     const command =

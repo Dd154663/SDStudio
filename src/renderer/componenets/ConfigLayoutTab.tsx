@@ -377,7 +377,7 @@ const floatViewModes: {
   },
 ];
 
-const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbarButtonNames, setUiToolbarButtonNames, uiZoomPercent, setUiZoomPercent, uiToolbar, setUiToolbar, quickMenu, setQuickMenu, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
+const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, setUiMobileV2Parts, setModernExitReset, uiPresetIconRow, setUiPresetIconRow, uiToolbarButtonNames, setUiToolbarButtonNames, showShortcutHelpOnStartup, setShowShortcutHelpOnStartup, uiZoomPercent, setUiZoomPercent, uiToolbar, setUiToolbar, quickMenu, setQuickMenu, quickMenuButton, setQuickMenuButton, uiFloatViewMode, setUiFloatViewMode, mobileMode, onClose }: any) => (
   // 묶음 상자(2026-11-19 UI 정돈 시범 ③): 화면 배치 / 패널과 창 / (PC) PC 화면과 툴바 · 퀵 메뉴 구성 / (모바일) 동반 버튼.
   // 항목·순서·문구·id·저장 방식은 그대로, 상자와 체크 줄(SettingCheckRow)·선택 칸(.app-select) 모양만 바꿨다. 한 열 유지.
   <div className="space-y-4">
@@ -646,6 +646,15 @@ const LayoutTab = ({ uiLayoutTemplate, setUiLayoutTemplate, uiMobileV2Parts, set
           onChange={setUiToolbarButtonNames}
           label="버튼 이름 표시"
           description="씬 툴바와 이미지 목록 위 아이콘 버튼 아래에 짧은 이름을 보입니다. 창이 좁으면 이름이 먼저 숨겨집니다. 저장 시 반영됩니다."
+        />
+        {/* 시작 시 씬 단축키 도움말(2026-11-22, 기본 끔 — 사용자 결정). 도움말 패널이 PC 전용이라 이 블록(PC 전용) 안.
+            설정은 「시작할 때 열지」만 정한다 — 실행 중 여닫음(H 키·버튼)은 저장하지 않는다(models/shortcutHelpStartup.ts). */}
+        <SettingCheckRow
+          id="cfgShortcutHelpOnStartup"
+          checked={!!showShortcutHelpOnStartup}
+          onChange={setShowShortcutHelpOnStartup}
+          label="시작 시 단축키 도움말 표시"
+          description="다음 실행부터 적용됩니다. 꺼 두어도 씬 툴바의 「단축키 도움말」 버튼(기본 위치는 ⋯ 메뉴)이나 H 키로 언제든 열 수 있습니다."
         />
         <SettingField className="pt-2">
           <button

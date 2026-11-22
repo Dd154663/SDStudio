@@ -5,6 +5,8 @@ import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 
 let mockMobile = false;
+// 「사용자 지정」 이미지 편집기(Windows 전용, 2026-11-22) — 기본 false(종전 테스트는 Windows 가 아닌 것으로 본다)
+let mockWindows = false;
 
 // 가짜 config 저장소 — getConfig/setConfig 는 깊은 복사로 주고받아 실제 파일처럼 동작한다.
 const store: { config: Record<string, any> } = { config: {} };
@@ -16,6 +18,7 @@ const backend = {
   }),
   getDataRoot: jest.fn(async () => '/data-root'),
   selectDir: jest.fn(async (): Promise<string | undefined> => undefined),
+  selectFile: jest.fn(async (_o?: any): Promise<string | undefined> => undefined),
   checkWritable: jest.fn(async (_folder: string) => ({ ok: true as boolean, code: undefined as string | undefined })),
   listFilesWithStats: jest.fn(async () => []),
   getRuntimeDiag: jest.fn(async () => ({ cpus: 8, uvThreadpool: 8 })),
@@ -116,6 +119,7 @@ jest.mock('../platform', () => {
       if (key === 'isLinux') return false;
       if (key === 'supportsRemoveBg') return !mockMobile;
       if (key === 'maxImageConcurrency') return mockMobile ? 2 : 8;
+      if (key === 'supportsCustomImageEditor') return mockWindows && !mockMobile;
       return target[key];
     },
   });
@@ -228,8 +232,8 @@ const BASE_SAVE = {
 // 걸리지 않도록 여유를 둔다(실제 소요는 케이스당 0.2~1.2초).
 jest.setTimeout(20000);
 
-// PC 는 왼쪽 세로 탭(2026-11-11 오버레이 묶음 1) — 「저장경로」 축약을 「저장 경로」로 풀었다(모바일엔 이 탭 없음).
-const PC_TABS = ['로그인', '테마', '레이아웃', '저장 경로', '드라이브', '시스템', '커스텀', '단축키'];
+// PC 는 왼쪽 세로 탭(2026-11-11 오버레이 묶음 1) — 「저장경로」 축약을 「저장 경로」로 풀었고 2026-11-22 「저장·이미지」로 바꿨다(모바일엔 이 탭 없음).
+const PC_TABS = ['로그인', '테마', '레이아웃', '저장·이미지', '드라이브', '시스템', '커스텀', '단축키'];
 const MOBILE_TABS = ['로그인', '테마', '툴바', '레이아웃', '드라이브', '시스템', '커스텀', '복구'];
 const DIRTY_BADGE = '저장 안 된 변경';
 
@@ -249,6 +253,7 @@ beforeAll(() => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockMobile = false;
+  mockWindows = false;
   store.config = clone(INITIAL_CONFIG);
   dialogs.length = 0;
   driveProps.current = undefined;
@@ -513,7 +518,7 @@ const PC_TEXTS: Record<string, string[]> = {
   로그인: ['API 토큰으로 로그인', 'V5 할당량 기반 자동 순회', '부스트 모드 켜기'],
   테마: ['테마 템플릿', '내 프리셋'],
   레이아웃: ['화면 배치', '클래식 툴바 사용 (이전 배치로 되돌리기)', '퀵 메뉴 구성'],
-  '저장 경로': ['현재 저장경로', '선호 이미지 편집기', '로컬 배경 제거 모델 설치', '이미지 다운로드', 'D:/Dl', '다운로드 저장 폴더 변경'],
+  '저장·이미지': ['현재 저장경로', '선호 이미지 편집기', '로컬 배경 제거 모델 설치', '이미지 다운로드', 'D:/Dl', '다운로드 저장 폴더 변경'],
   드라이브: ['드라이브 탭(모킹)'],
   시스템: ['저장소 불안정 시 자동 저장 보호 (권장)', '작업 로그 보기', 'exports 폴더 정리'],
   커스텀: ['글꼴', '레거시 프로젝트 모드'],
@@ -628,11 +633,11 @@ const PC_CASES: [string, Case][] = [
     '레이아웃 — 클래식 툴바',
     { tab: '레이아웃', change: () => click(input('cfgClassicToolbar')), expected: { uiToolbar: { classic: true } } },
   ],
-  ['저장경로 — 밖에서 고친 이미지 자동 반영', { tab: '저장 경로', change: () => click(input('cfgRefresh')), expected: { refreshImage: true } }],
+  ['저장경로 — 밖에서 고친 이미지 자동 반영', { tab: '저장·이미지', change: () => click(input('cfgRefresh')), expected: { refreshImage: true } }],
   [
     '저장경로 — 이미지 편집기',
     {
-      tab: '저장 경로',
+      tab: '저장·이미지',
       change: async (p) => {
         const select = Array.from(p.querySelectorAll('select')).find((s) => s.querySelector('option[value="mspaint"]'))!;
         await act(async () => {
@@ -827,7 +832,7 @@ test('5: 할당량 경고 하지 않음·부스트 다시 보지 않음·레이�
 
   // ④ 저장 위치 변경(저장경로 탭) — 즉시 저장, 미저장 비교 대상 아님
   //    (2026-11-04: 하위 폴더 포함 쓰기 검사 → 선택 창 「나중에 재시작」 → 저장+보류 상태)
-  const storage = await selectTab('저장 경로');
+  const storage = await selectTab('저장·이미지');
   appState.pushDialogAsync.mockImplementationOnce(async () => 'restart-later');
   await click(buttonByText(storage, '이미지 및 데이터 저장 위치 변경'));
   expect(backend.checkWritable).toHaveBeenCalledWith('/new-data', { dataSubdirs: true });
@@ -886,6 +891,132 @@ test('6-모바일: 탭을 바꾸면 옛 창의 스크롤 영역이 맨 위로 �
   body.scrollTop = 180;
   await selectTab('레이아웃');
   expect(body.scrollTop).toBe(0);
+});
+
+// ─── 7. 「사용자 지정」 이미지 편집기(Windows 전용, 2026-11-22) ───
+
+const editorSelect = () =>
+  container.querySelector<HTMLSelectElement>('select[aria-label="선호 이미지 편집기"]')!;
+async function pickEditor(value: string) {
+  await act(async () => {
+    editorSelect().value = value;
+    editorSelect().dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await flush();
+}
+const pickExeButton = () =>
+  Array.from(container.querySelectorAll('button')).find((b) => (b.textContent ?? '').trim() === '실행 파일 선택');
+const CUSTOM_HINT = '이미지 편집기의 실행 파일(.exe)을 선택해 주세요.';
+
+test('7-Windows: 「사용자 지정」 선택지가 있고, 고르면 안내·「실행 파일 선택」 → .exe 필터로 고른 경로를 저장', async () => {
+  mockWindows = true;
+  await open(false);
+  await selectTab('저장·이미지');
+  expect(Array.from(editorSelect().options).map((o) => [o.value, o.textContent])).toEqual([
+    ['photoshop', '포토샵'],
+    ['gimp', 'GIMP'],
+    ['mspaint', '그림판'],
+    ['custom', '사용자 지정'],
+  ]);
+  expect(pickExeButton()).toBeUndefined();
+  await pickEditor('custom');
+  expect(dirty()).toBe(true);
+  expect(container.querySelector('[data-custom-image-editor-path]')!.textContent).toBe(CUSTOM_HINT);
+  // 비어 있으면 저장을 막고 알린다
+  await click(saveButton());
+  expect(backend.setConfig).not.toHaveBeenCalled();
+  expect(appState.pushMessage).toHaveBeenCalledWith(CUSTOM_HINT, 'error');
+  expect(onSave).not.toHaveBeenCalled();
+  // 고르기 = 기존 select-file 에 .exe 필터만
+  const exe = 'C:\\Program Files\\CELSYS\\CLIP STUDIO PAINT\\CLIPStudioPaint.exe';
+  backend.selectFile.mockResolvedValueOnce(exe);
+  await click(pickExeButton()!);
+  expect(backend.selectFile).toHaveBeenCalledWith({ filters: [{ name: '실행 파일', extensions: ['exe'] }] });
+  expect(container.querySelector('[data-custom-image-editor-path]')!.textContent).toBe(exe);
+  const arg = await save();
+  expect(arg).toEqual({ ...BASE_SAVE, imageEditor: 'custom', customImageEditorPath: exe });
+  expect(dirty()).toBe(false);
+  // 경로만 바꿔도 「바뀐 것이 있음」
+  backend.selectFile.mockResolvedValueOnce('D:\\Apps\\Krita\\krita.exe');
+  await click(pickExeButton()!);
+  expect(dirty()).toBe(true);
+  // 고르기 취소 = 그대로
+  backend.selectFile.mockResolvedValueOnce(undefined);
+  await click(pickExeButton()!);
+  expect(container.querySelector('[data-custom-image-editor-path]')!.textContent).toBe('D:\\Apps\\Krita\\krita.exe');
+});
+
+test('7-Windows: 다른 편집기로 바꿔도 경로는 남고, 저장된 custom 은 그대로 보인다', async () => {
+  mockWindows = true;
+  store.config = { ...clone(INITIAL_CONFIG), imageEditor: 'custom', customImageEditorPath: 'C:\\A\\b.exe' };
+  await open(false);
+  await selectTab('저장·이미지');
+  expect(editorSelect().value).toBe('custom');
+  expect(dirty()).toBe(false);
+  await pickEditor('gimp');
+  expect(pickExeButton()).toBeUndefined();
+  const arg = await save();
+  expect(arg.imageEditor).toBe('gimp');
+  expect(arg.customImageEditorPath).toBe('C:\\A\\b.exe');
+});
+
+test.each([
+  ['mac·linux(PC, Windows 아님)', false],
+  ['모바일', true],
+] as const)('7-%s: 선택지·버튼이 없고, 저장값 custom 은 포토샵으로 보이며 미저장 배지가 뜨지 않는다', async (_n, mobile) => {
+  mockWindows = false;
+  store.config = { ...clone(INITIAL_CONFIG), imageEditor: 'custom', customImageEditorPath: 'C:\\A\\b.exe' };
+  await open(mobile);
+  expect(container.querySelector('option[value="custom"]')).toBeNull();
+  expect(container.querySelector('[data-custom-image-editor-path]')).toBeNull();
+  expect(pickExeButton()).toBeUndefined();
+  if (!mobile) {
+    await selectTab('저장·이미지');
+    expect(editorSelect().value).toBe('photoshop');
+  }
+  expect(dirty()).toBe(false);
+  const arg = await save();
+  // 화면 값(포토샵)으로 저장, 경로는 건드리지 않는다
+  expect(arg.imageEditor).toBe('photoshop');
+  expect(arg.customImageEditorPath).toBe('C:\\A\\b.exe');
+});
+
+test('7-Windows 모바일 플래그: 모바일이면 Windows 판정과 무관하게 선택지가 없다', async () => {
+  mockWindows = true;
+  await open(true);
+  expect(container.querySelector('option[value="custom"]')).toBeNull();
+});
+
+// ─── 8. 시작 시 단축키 도움말 표시(2026-11-22, 기본 끔, PC 전용 줄) ───
+
+test('8-PC: 레이아웃 탭 「PC 화면과 툴바」에 체크 줄(기본 끔), 켜고 저장하면 true, 끄면 키를 비운다', async () => {
+  await open(false);
+  const panel = await selectTab('레이아웃');
+  const row = input('cfgShortcutHelpOnStartup');
+  expect(row.checked).toBe(false);
+  expect(row.closest('[data-setting-group]')!.getAttribute('data-setting-group')).toBe('PC 화면과 툴바');
+  const label = row.closest('label')!.textContent ?? '';
+  expect(label).toContain('시작 시 단축키 도움말 표시');
+  expect(label).toContain('다음 실행부터 적용됩니다.');
+  expect(panel.contains(row)).toBe(true);
+  await click(row);
+  expect(dirty()).toBe(true);
+  expect(await save()).toEqual({ ...BASE_SAVE, showShortcutHelpOnStartup: true });
+  expect(dirty()).toBe(false);
+  await click(input('cfgShortcutHelpOnStartup'));
+  expect(dirty()).toBe(true);
+  const off = await save();
+  expect(off.showShortcutHelpOnStartup).toBeUndefined();
+  expect('showShortcutHelpOnStartup' in store.config).toBe(false);
+});
+
+test('8-모바일: 줄이 없고, 저장해도 저장값을 건드리지 않는다', async () => {
+  store.config.showShortcutHelpOnStartup = true;
+  await open(true);
+  expect(container.querySelector('#cfgShortcutHelpOnStartup')).toBeNull();
+  expect(container.textContent).not.toContain('시작 시 단축키 도움말 표시');
+  expect(dirty()).toBe(false);
+  expect(await save()).toEqual({ ...BASE_SAVE, showShortcutHelpOnStartup: true });
 });
 
 test('6-테마: 템플릿 격자는 2단 안(PC)에서 1열 규칙 대상, 알약 줄은 flex-wrap·알약은 min-w-0', async () => {

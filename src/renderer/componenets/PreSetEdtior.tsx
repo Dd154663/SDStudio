@@ -222,10 +222,16 @@ const ImageSelect = observer(({ input }: { input: WFIInlineInput }) => {
       {!isMobile && (
         <button
           className={`round-button back-sky`}
-          onClick={() => {
+          onClick={async () => {
             if (!getField()) return;
             const path = imageService.getVibeImagePath(curSession!, getField());
-            backend.openImageEditor(path);
+            // 열기 실패는 알림 한 줄, 감시는 시작하지 않는다(2026-11-22 — 사용자 지정 편집기 검사 실패 등)
+            try {
+              await backend.openImageEditor(path);
+            } catch (e: any) {
+              appState.pushMessage(e?.message || '이미지 편집기를 열지 못했습니다.', 'error');
+              return;
+            }
             backend.watchImage(path);
           }}
         >

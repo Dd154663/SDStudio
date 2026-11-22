@@ -535,7 +535,13 @@ export class ElectornBackend extends Backend {
   }
 
   async openImageEditor(inputPath: string): Promise<void> {
-    await invoke('open-image-editor', inputPath);
+    try {
+      await invoke('open-image-editor', inputPath);
+    } catch (e: any) {
+      // main 이 던진 문구만 남긴다(「Error invoking remote method '…': Error: 」 접두 제거 — 알림 한 줄용, 2026-11-22)
+      const raw = String(e?.message ?? e);
+      throw new Error(raw.replace(/^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/, ''));
+    }
   }
 
   async watchImage(inputPath: string): Promise<void> {

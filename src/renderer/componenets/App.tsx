@@ -1,6 +1,7 @@
 import { ProgressBar, Spinner } from './ProgressIndicators';
 import './App.css';
 import { isWeightSpacingFixEnabled } from '../models/promptWeightSpacingFlow';
+import { createStartupShortcutHelpApplier } from '../models/shortcutHelpStartup';
 import './contexify.css';
 import {
   Component,
@@ -133,6 +134,11 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     return this.props.children;
   }
 }
+
+// 「시작 시 단축키 도움말 표시」 — 이 창(렌더러)에서 설정을 처음 읽을 때 한 번만 반영(2026-11-22).
+const applyStartupShortcutHelp = createStartupShortcutHelpApplier(() => {
+  appState.showSceneCheatsheet = true;
+});
 
 const DnDPreview = () => {
   const preview = usePreview();
@@ -312,6 +318,8 @@ export const App = observer(() => {
       appState.uiMobileV2Parts = conf.uiMobileV2Parts;
       appState.uiPresetIconRow = conf.uiPresetIconRow ?? false;
       appState.uiToolbarButtonNames = conf.uiToolbarButtonNames ?? true;
+      // 시작 시 단축키 도움말 — 첫 읽기 때 한 번만(config-changed 로 다시 읽어도 사용자가 연 패널을 닫지 않음)
+      applyStartupShortcutHelp(conf);
       appState.genWidget = conf.genWidget ?? {};
       appState.uiLayoutSlots = conf.uiLayoutSlots ?? {};
       appState.uiFloatViewMode = conf.uiFloatViewMode ?? 'cover';

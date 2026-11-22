@@ -289,7 +289,7 @@ describe('③ 레이아웃 탭 묶음·선택 칸·순서 목록', () => {
     expect(groupsOf()).toEqual([
       { title: '화면 배치', ids: [] },
       { title: '패널과 창', ids: ['cfgPresetIconRow'] },
-      { title: 'PC 화면과 툴바', ids: ['cfgUiZoom', 'cfgClassicToolbar', 'cfgToolbarButtonNames'] },
+      { title: 'PC 화면과 툴바', ids: ['cfgUiZoom', 'cfgClassicToolbar', 'cfgToolbarButtonNames', 'cfgShortcutHelpOnStartup'] },
       { title: '퀵 메뉴 구성', ids: ['cfgQuickMenuButton'] },
     ]);
     // 묶음 상자 안에서는 퀵 메뉴 자체 제목을 다시 그리지 않는다
