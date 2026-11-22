@@ -70,6 +70,8 @@ import {
 import { appState } from './AppService';
 import type { ExportPreset } from './AppService';
 import { stringifyExportJson } from './jsonExport';
+import { buildBackupDoneText, BACKUP_EXPORT_TEXT } from './backupExportSummary';
+import { isNotifiedExportTransferError } from '../backends/verifiedExportCopy';
 import {
   DEFAULT_FOLDER_EXPORT_TARGET,
   exportRunOptionsFromPreset,
@@ -131,6 +133,19 @@ import {
 } from './projectTemplateBackup';
 import { beginPresetListRecord } from './presetUndo';
 import { UNDO_TEXT } from './undoService';
+import {
+  BACKUP_IMPORT_TEXT,
+  detectBackupKind,
+  planBackupRoute,
+  type BackupDetection,
+  type BackupImportEntry,
+} from './backupKind';
+import {
+  countBackupLibraryItems,
+  fullBackupResultText,
+  type FullBackupLibraryKind,
+  type FullBackupLibraryOutcome,
+} from './fullBackupResult';
 
 // 전체 백업에 담는 전역 설정 파일. (백업엔 전부 담되, 설정 병합 복원 시
 // trash.json / folderOrder.json 은 의도적으로 제외 — 아래 mergeSettingsFromDir 참조)
@@ -474,19 +489,32 @@ export class BackupService {
       color: sessionService.getFolderColor(folder) || null,
       projects: [],
     };
+    // 저장 대기 중인 프로젝트 편집을 먼저 디스크에(아래는 디스크 project.json 을 그대로 담는다 — 3-7).
+    await this.flushProjectsBeforeBackup(names);
     let done = 0;
+    // 빠진 것 알리기(P3): 읽지 못해 빠진 프로젝트 / 이미지 폴더 목록을 읽지 못한 프로젝트
+    const skipped: string[] = [];
+    const imagesUnread: string[] = [];
     for (const name of names) {
       try {
         const session = await sessionService.get(name);
         if (session) {
+          let listFailed = false;
           const projEntries = await sessionService.buildSessionDeepEntries(
             session,
             name + '/',
+            { onListError: () => (listFailed = true) },
           );
           entries.push(...projEntries);
           manifest.projects.push(name);
+          if (listFailed) imagesUnread.push(name);
+        } else {
+          skipped.push(name);
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('폴더 백업: 프로젝트를 읽지 못해 건너뜀:', name, e);
+        skipped.push(name);
+      }
       appState.setProgressDialog({ text: '폴더 백업 생성중..', done: ++done, total: names.length });
     }
     if (manifest.projects.length === 0) {
@@ -509,43 +537,97 @@ export class BackupService {
       return;
     }
     appState.setProgressDialog(undefined);
-    appState.pushDialog({
-      type: 'yes-only',
-      text: `폴더 "${folder}" 백업이 완료되었습니다. (${manifest.projects.length}개 프로젝트)`,
-    });
-    await backend.publishExport(outPath);
+    // 완료 창은 옮기기(다운로드 폴더)가 끝난 뒤에 — 옮기기 실패를 「완료」 뒤에 묻지 않는다(P1).
+    await this.publishThenShowDone(
+      outPath,
+      buildBackupDoneText({
+        kind: 'folder',
+        folder,
+        includedCount: manifest.projects.length,
+        skipped,
+        imagesUnread,
+      }),
+    );
   }
 
   // 불러오기: 폴더 백업 아카이브를 선택 → 매니페스트 인식 → 폴더 새로 만들고 프로젝트 전체 복원.
   // 폴더 탭 / 프로젝트 메뉴 등 어디서나 호출 가능.
+  // 2026-11-22: 한 번 풀어 종류를 가린다(models/backupKind.ts) — 전체·프로젝트 백업이면 안내 한 줄 뒤 그 흐름으로.
   async folderBackupImport() {
     const tarPath = await backend.selectFile();
     if (!tarPath) return;
-    appState.setProgressDialog({ text: '폴더 백업을 불러오는 중입니다...', done: 0, total: 1 });
+    const ex = await this.extractBackupArchive(tarPath, '폴더 백업을 불러오는 중입니다...');
+    if (!ex) return;
+    await this.routeExtractedBackup('folder', tarPath, ex.tmpRoot, ex.detection);
+  }
 
-    const root = 'tmp/' + v4();
+  // ===== 백업 tar 불러오기 공용(2026-11-22 백업 불러오기 견고화, models/backupKind.ts) =====
+  // 백업 tar 를 받는 모든 경로(전체 백업 불러오기·handleTarImport·폴더 백업 불러오기·폴더 메뉴의 프로젝트 백업 불러오기·
+  // 라이브러리 백업의 형식 불일치)가 이 둘을 쓴다: 한 번 풀기 → 종류 판정 → 종류에 맞는 기존 흐름.
+
+  private async removeTmpDir(dir: string) {
     try {
-      await backend.unzipFiles(tarPath, root);
-    } catch (e: any) {
-      appState.setProgressDialog(undefined);
-      appState.pushMessage('압축 해제에 실패했습니다.');
-      return;
-    }
+      await backend.deleteDir(dir);
+    } catch (e) {}
+  }
 
-    // 매니페스트 파싱 — 폴더 백업 파일인지 인식
-    const manifest = await this.readFolderBackupManifest(root);
-    if (!manifest) {
+  // 풀기(한 번) → 종류 판정. 풀기 실패면 그 임시 폴더를 지우고 안내한 뒤 null.
+  private async extractBackupArchive(
+    tarPath: string,
+    progressText: string,
+  ): Promise<{ tmpRoot: string; detection: BackupDetection } | null> {
+    appState.setProgressDialog({ text: progressText, done: 0, total: 1 });
+    const tmpRoot = 'tmp/' + v4();
+    try {
+      await backend.unzipFiles(tarPath, tmpRoot);
+    } catch (e) {
+      console.error('백업 파일 풀기 실패:', e);
       appState.setProgressDialog(undefined);
-      try { await backend.deleteDir(root); } catch (e) {}
-      appState.pushMessage('폴더 백업 파일이 아닙니다.');
+      await this.removeTmpDir(tmpRoot);
+      appState.pushMessage(BACKUP_IMPORT_TEXT.unzipFailed);
+      return null;
+    }
+    const detection = await detectBackupKind(tmpRoot, backend);
+    appState.setProgressDialog(undefined);
+    return { tmpRoot, detection };
+  }
+
+  // 판정 결과를 종류에 맞는 기존 흐름으로 넘긴다. tmpRoot(푼 임시 폴더 — 한 겹 벗겼으면 detection.root 의 바깥)는
+  // 넘긴 흐름이 끝날 때 지우고, 여기서 끝낼 때(알 수 없음·새 버전)도 지운다. 매니페스트 version 검사는 종전 그대로.
+  // project = 프로젝트 백업을 받는 방식이 다른 경로(폴더 메뉴 — 이름을 먼저 받음)만 넘긴다. 없으면 공용 프로젝트 흐름.
+  private async routeExtractedBackup(
+    entry: BackupImportEntry,
+    tarPath: string,
+    tmpRoot: string,
+    d: BackupDetection,
+    opts: { project?: (root: string, cleanupDir: string) => Promise<void> } = {},
+  ): Promise<void> {
+    const plan = planBackupRoute(entry, d.kind);
+    if (plan.action === 'unknown') {
+      await this.removeTmpDir(tmpRoot);
+      appState.pushMessage(BACKUP_IMPORT_TEXT.unknownKind);
       return;
     }
-    if (!this.guardManifestVersion(manifest)) {
-      appState.setProgressDialog(undefined);
-      try { await backend.deleteDir(root); } catch (e) {}
+    if ((d.kind === 'full' || d.kind === 'folder') && !this.guardManifestVersion(d.manifest)) {
+      await this.removeTmpDir(tmpRoot);
       return;
     }
-    await this.restoreFolderBackupFromDir(root, manifest);
+    if (plan.notice) appState.pushMessage(plan.notice);
+    try {
+      if (d.kind === 'full') {
+        await this.continueFullBackupImport(d.root, d.manifest, tmpRoot);
+      } else if (d.kind === 'folder') {
+        await this.restoreFolderBackupFromDir(d.root, d.manifest, tmpRoot);
+      } else if (opts.project) {
+        await opts.project(d.root, tmpRoot);
+      } else {
+        await this.importProjectBackupFromDir(d.root, fileStemOf(tarPath), tmpRoot);
+      }
+    } catch (e) {
+      // 각 흐름은 스스로 정리하지만, 예상 밖 예외로 빠져나와도 임시 폴더를 남기지 않는다
+      await this.removeTmpDir(tmpRoot);
+      throw e;
+    }
   }
 
   // 매니페스트 version 상한 검사 — 초과 시 안내 메시지를 띄우고 false.
@@ -561,27 +643,12 @@ export class BackupService {
     return true;
   }
 
-  // 추출된 디렉터리에서 폴더 백업 매니페스트를 읽고 유효성 검증. 폴더 백업이 아니면 null.
-  private async readFolderBackupManifest(root: string): Promise<any | null> {
-    let manifest: any = null;
-    try {
-      manifest = JSON.parse(await backend.readFile(root + '/_folder.json'));
-    } catch (e) {
-      return null;
-    }
-    if (
-      !manifest ||
-      manifest.type !== 'sdstudio-folder-backup' ||
-      !Array.isArray(manifest.projects)
-    ) {
-      return null;
-    }
-    return manifest;
-  }
+  // (폴더 백업 매니페스트 판정은 2026-11-22 부터 models/backupKind.isFolderBackupManifest — 같은 기준)
 
   // 이미 추출된 디렉터리(root)와 매니페스트로 폴더와 하위 프로젝트를 복원한다.
   // (folderBackupImport / 드래그&드롭 임포트가 공용으로 사용)
-  private async restoreFolderBackupFromDir(root: string, manifest: any) {
+  // cleanupDir = 끝날 때 지울 임시 폴더(한 겹 벗긴 경우 root 의 바깥, 2026-11-22). 기본 root.
+  private async restoreFolderBackupFromDir(root: string, manifest: any, cleanupDir: string = root) {
     appState.setProgressDialog({ text: '폴더 백업을 불러오는 중입니다...', done: 0, total: 1 });
 
     // 폴더 이름 결정 (충돌 시 번호 부여)
@@ -600,7 +667,7 @@ export class BackupService {
       await sessionService.createFolder(folderName);
     } catch (e: any) {
       appState.setProgressDialog(undefined);
-      try { await backend.deleteDir(root); } catch (e2) {}
+      try { await backend.deleteDir(cleanupDir); } catch (e2) {}
       appState.pushMessage(e.message || '폴더 생성에 실패했습니다.');
       return;
     }
@@ -629,7 +696,7 @@ export class BackupService {
       }
       done++;
     }
-    try { await backend.deleteDir(root); } catch (e) {}
+    try { await backend.deleteDir(cleanupDir); } catch (e) {}
 
     appState.setProgressDialog(undefined);
     appState.pushDialog({
@@ -728,8 +795,10 @@ export class BackupService {
     try {
       await backend.unzipFiles(tarPath, root);
     } catch (e) {
+      console.error('라이브러리 백업 풀기 실패:', e);
       appState.setProgressDialog(undefined);
-      appState.pushMessage('압축 해제에 실패했습니다.');
+      await this.removeTmpDir(root); // 풀다 만 임시 폴더를 남기지 않는다(2026-11-22)
+      appState.pushMessage(BACKUP_IMPORT_TEXT.unzipFailed);
       return;
     }
     let manifest: any = null;
@@ -743,6 +812,12 @@ export class BackupService {
       } catch (e) {}
     };
     if (!manifest || manifest.type !== opts.manifestType) {
+      // 이 라이브러리 백업이 아니어도 전체·폴더·프로젝트 백업이면 안내 한 줄 뒤 그 흐름으로(같은 임시 폴더, 2026-11-22)
+      const detection = await detectBackupKind(root, backend);
+      if (detection.kind !== 'unknown') {
+        await this.routeExtractedBackup('library', tarPath, root, detection);
+        return;
+      }
       await cleanup();
       appState.pushMessage(`${opts.label} 백업 파일이 아닙니다.`);
       return;
@@ -971,6 +1046,9 @@ export class BackupService {
 
     const entries: { path: string; name: string }[] = [];
     const projects: { name: string; folder: string | null }[] = [];
+    // 빠진 것 알리기(P3): 읽지 못해 빠진 프로젝트 / 이미지 폴더 목록을 읽지 못한 프로젝트
+    const skipped: string[] = [];
+    const imagesUnread: string[] = [];
 
     if (mode !== 'settings') {
       appState.setProgressDialog({
@@ -978,14 +1056,24 @@ export class BackupService {
         done: 0,
         total: allNames.length,
       });
+      // 저장 대기 중인 프로젝트 편집을 먼저 디스크에(아래는 디스크 project.json 을 그대로 담는다 — 3-7).
+      await this.flushProjectsBeforeBackup(allNames);
       let done = 0;
       for (const name of allNames) {
         try {
           const session = await sessionService.get(name);
           if (session) {
+            let listFailed = false;
             let projEntries = await sessionService.buildSessionDeepEntries(
               session,
               name + '/',
+              {
+                // 이미지 제외 모드는 생성 이미지(outs/inpaints) 목록 실패를 셀 필요가 없다(담지 않음).
+                onListError: (kind) => {
+                  if (mode === 'noimg' && (kind === 'outs' || kind === 'inpaints')) return;
+                  listFailed = true;
+                },
+              },
             );
             if (mode === 'noimg') {
               // 생성 이미지(outs/inpaints)만 제외. vibe/참조/인페인트 원본·마스크는 유지.
@@ -997,8 +1085,14 @@ export class BackupService {
             }
             entries.push(...projEntries);
             projects.push({ name, folder: sessionService.getFolderOf(name) });
+            if (listFailed) imagesUnread.push(name);
+          } else {
+            skipped.push(name);
           }
-        } catch (e) {}
+        } catch (e) {
+          console.error('전체 백업: 프로젝트를 읽지 못해 건너뜀:', name, e);
+          skipped.push(name);
+        }
         appState.setProgressDialog({
           text: '백업 생성중..',
           done: ++done,
@@ -1056,18 +1150,60 @@ export class BackupService {
       return;
     }
     appState.setProgressDialog(undefined);
-    appState.pushDialog({
-      type: 'yes-only',
-      text:
-        mode === 'settings'
-          ? '설정 백업이 완료되었습니다.'
-          : `전체 백업이 완료되었습니다. (${projects.length}개 프로젝트${
-              mode === 'noimg' ? ', 이미지 제외' : ''
-            })`,
-    });
+    // 완료 창은 옮기기(다운로드 폴더)가 끝난 뒤에 — 예전에는 먼저 띄우고 옮기기 오류를 삼켰다(P1).
+    await this.publishThenShowDone(
+      outPath,
+      buildBackupDoneText({
+        kind: 'full',
+        mode,
+        includedCount: projects.length,
+        skipped,
+        imagesUnread,
+      }),
+    );
+  }
+
+  // 백업 담기 직전, 저장 대기 중인 프로젝트 편집을 디스크에 반영한다(2026-11-22 호환 3-7).
+  // 대상 = 저장 대기(dirty) + 지금 열린 프로젝트만 — 바뀌지 않은 프로젝트는 다시 쓰지 않는다
+  // (앱 종료 flush 와 같은 범위). 쓰기는 flushProjectNow(= writeResource 단일 지점·손실 가드 +
+  // persistService.flushPath)로만, withLock 은 잡지 않는다. 실패는 담기를 막지 않는다(디스크 파일 그대로 — 종전과 같음).
+  private async flushProjectsBeforeBackup(names: string[]) {
+    const wanted = new Set(names);
+    const targets = new Set<string>();
+    try {
+      for (const n of sessionService.dirtyNames()) if (wanted.has(n)) targets.add(n);
+      const cur = appState.curSession?.name;
+      if (cur && wanted.has(cur) && sessionService.isLoaded(cur)) targets.add(cur);
+    } catch (e) {
+      return;
+    }
+    for (const n of targets) {
+      try {
+        await sessionService.flushProjectNow(n);
+      } catch (e) {
+        console.error('백업 전 프로젝트 저장 실패(디스크 파일 그대로 담음):', n, e);
+      }
+    }
+  }
+
+  // 내보내기 산출물을 다운로드 폴더(또는 플랫폼의 기본 목적지)로 옮긴 뒤 완료 창을 띄운다.
+  // 옮기기 실패: Android 의 크기 확인 실패는 backend 가 이미 창으로 알렸으므로 다시 알리지 않는다.
+  // 그 밖의 오류는 사유를 알린다. 어느 쪽이든 백업 내용 안내(빠진 것 등)는 띄우지 않는다 —
+  // 파일이 사용자 손에 닿지 않았으므로 다시 만들 때 다시 보게 된다.
+  private async publishThenShowDone(outPath: string, doneText: string) {
     try {
       await backend.publishExport(outPath);
-    } catch (e) {}
+    } catch (e: any) {
+      if (!isNotifiedExportTransferError(e)) {
+        console.error('백업 파일 옮기기 실패:', e);
+        appState.pushDialog({
+          type: 'yes-only',
+          text: BACKUP_EXPORT_TEXT.moveFailed(e?.message ? String(e.message) : ''),
+        });
+      }
+      return;
+    }
+    appState.pushDialog({ type: 'yes-only', text: doneText });
   }
 
   // 전역 설정 파일 + 글로벌 이미지 디렉터리를 __settings__/ 네임스페이스 엔트리로.
@@ -1101,40 +1237,19 @@ export class BackupService {
     return entries;
   }
 
+  // 2026-11-22: 한 번 풀어 종류를 가린다(models/backupKind.ts) — 폴더·프로젝트 백업이면 안내 한 줄 뒤 그 흐름으로.
+  // 전체 백업은 어느 경로로 들어오든 아래 continueFullBackupImport 의 확인 단계를 거친다.
   async fullBackupImport() {
     const tarPath = await backend.selectFile();
     if (!tarPath) return;
-    appState.setProgressDialog({
-      text: '백업을 확인하는 중입니다...',
-      done: 0,
-      total: 1,
-    });
-    const root = 'tmp/' + v4();
-    try {
-      await backend.unzipFiles(tarPath, root);
-    } catch (e: any) {
-      appState.setProgressDialog(undefined);
-      appState.pushMessage('압축 해제에 실패했습니다.');
-      return;
-    }
-    let manifest: any = null;
-    try {
-      manifest = JSON.parse(await backend.readFile(root + '/_backup.json'));
-    } catch (e) {}
-    appState.setProgressDialog(undefined);
-    if (!manifest || manifest.type !== 'sdstudio-full-backup') {
-      try {
-        await backend.deleteDir(root);
-      } catch (e) {}
-      appState.pushMessage('전체 백업 파일이 아닙니다.');
-      return;
-    }
-    if (!this.guardManifestVersion(manifest)) {
-      try {
-        await backend.deleteDir(root);
-      } catch (e) {}
-      return;
-    }
+    const ex = await this.extractBackupArchive(tarPath, '백업을 확인하는 중입니다...');
+    if (!ex) return;
+    await this.routeExtractedBackup('full', tarPath, ex.tmpRoot, ex.detection);
+  }
+
+  // 판정·version 검사를 마친 전체 백업(root = 매니페스트가 있는 뿌리)의 확인 창·정책 선택 → 복원.
+  // cleanupDir = 끝날 때 지울 임시 폴더(한 겹 벗긴 경우 root 의 바깥). 기본 root.
+  private async continueFullBackupImport(root: string, manifest: any, cleanupDir: string = root) {
     const mode: 'full' | 'noimg' | 'settings' =
       manifest.mode === 'settings'
         ? 'settings'
@@ -1146,7 +1261,7 @@ export class BackupService {
       : 0;
     const cleanup = async () => {
       try {
-        await backend.deleteDir(root);
+        await backend.deleteDir(cleanupDir);
       } catch (e) {}
     };
 
@@ -1160,7 +1275,7 @@ export class BackupService {
         await cleanup();
         return;
       }
-      await this.restoreFullBackupFromDir(root, manifest, mode, 'rename');
+      await this.restoreFullBackupFromDir(root, manifest, mode, 'rename', cleanupDir);
       return;
     }
 
@@ -1209,7 +1324,7 @@ export class BackupService {
       }
     }
 
-    await this.restoreFullBackupFromDir(root, manifest, mode, policy);
+    await this.restoreFullBackupFromDir(root, manifest, mode, policy, cleanupDir);
   }
 
   private async restoreFullBackupFromDir(
@@ -1217,6 +1332,7 @@ export class BackupService {
     manifest: any,
     mode: 'full' | 'noimg' | 'settings',
     policy: 'rename' | 'skip' | 'overwrite',
+    cleanupDir: string = root,
   ) {
     try {
       if (mode !== 'settings') {
@@ -1247,6 +1363,9 @@ export class BackupService {
         let overwritten = 0;
         // 덮어쓰기에서 기존 프로젝트를 지우지 못해 건너뛴 이름(2026-10-02 S4)
         const overwriteBlocked: string[] = [];
+        // 가져오기 실패한 이름 — 덮어쓰기에서 지운 뒤 실패한 것은 따로(2026-11-22 결과 창 안내. 지우는 순서는 그대로)
+        const failed: string[] = [];
+        const overwriteFailed: string[] = [];
         // 씬 템플릿 지정 되살리기용(2026-11-18 T1): 실제로 들어온 프로젝트(원래 이름 → 최종 이름)와 덮어쓰기 전 지정 상태
         const incoming: FullBackupIncomingProject[] = [];
         const preOverwrite: Record<string, PreOverwriteDesignation> = {};
@@ -1299,7 +1418,7 @@ export class BackupService {
                 done++;
                 continue;
               }
-              overwritten++;
+              // 「덮어씀」은 가져오기까지 성공한 것만 센다(아래, 2026-11-22)
               pname = origName;
               kind = 'overwritten';
               if (pre) preOverwrite[origName] = pre;
@@ -1325,8 +1444,11 @@ export class BackupService {
               } catch (e) {}
             }
             restored++;
+            if (kind === 'overwritten') overwritten++;
           } catch (e) {
             console.error('백업 프로젝트 복원 실패:', origName, e);
+            if (kind === 'overwritten') overwriteFailed.push(origName);
+            else failed.push(origName);
           }
           done++;
         }
@@ -1337,36 +1459,37 @@ export class BackupService {
           } catch (e) {}
         }
         appState.setProgressDialog({ text: '설정 병합중..', done: 0, total: 1 });
-        await this.mergeSettingsFromDir(root + '/__settings__');
-        const templateNote = await this.restoreTemplatesFromDir(
+        const merged = await this.mergeSettingsFromDir(
+          root + '/__settings__',
+          incoming.filter((p) => p.kind === 'renamed').map((p) => p.origName),
+        );
+        const templates = await this.restoreTemplatesFromDir(
           root + '/__settings__',
           mode,
           incoming,
           preOverwrite,
         );
         appState.setProgressDialog(undefined);
-        const extra: string[] = [];
-        if (skipped > 0) extra.push(`${skipped}개 건너뜀`);
-        if (overwritten > 0) extra.push(`${overwritten}개 덮어씀`);
-        if (overwriteBlocked.length > 0) {
-          extra.push(
-            FULL_BACKUP_OVERWRITE_TEXT.blockedCount(overwriteBlocked.length),
-          );
-        }
         appState.pushDialog({
           type: 'yes-only',
-          text:
-            `${restored}/${total}개 프로젝트와 설정을 불러왔습니다.` +
-            (extra.length ? `\n(${extra.join(', ')})` : '') +
-            (overwriteBlocked.length
-              ? '\n' + FULL_BACKUP_OVERWRITE_TEXT.blockedDetail(overwriteBlocked)
-              : '') +
-            templateNote.map((l) => '\n' + l).join(''),
+          text: fullBackupResultText({
+            settingsOnly: false,
+            total,
+            restored,
+            skipped,
+            overwritten,
+            overwriteBlocked,
+            failed,
+            overwriteFailed,
+            renamedWithMarks: merged.renamedWithMarks,
+            libraries: [...merged.libraries, ...templates.libraries],
+            templateNote: templates.note,
+          }),
         });
       } else {
         appState.setProgressDialog({ text: '설정 병합중..', done: 0, total: 1 });
-        await this.mergeSettingsFromDir(root + '/__settings__');
-        const templateNote = await this.restoreTemplatesFromDir(
+        const merged = await this.mergeSettingsFromDir(root + '/__settings__', []);
+        const templates = await this.restoreTemplatesFromDir(
           root + '/__settings__',
           mode,
           [],
@@ -1375,19 +1498,38 @@ export class BackupService {
         appState.setProgressDialog(undefined);
         appState.pushDialog({
           type: 'yes-only',
-          text: '설정을 병합했습니다.' + templateNote.map((l) => '\n' + l).join(''),
+          text: fullBackupResultText({
+            settingsOnly: true,
+            total: 0,
+            restored: 0,
+            skipped: 0,
+            overwritten: 0,
+            overwriteBlocked: [],
+            failed: [],
+            overwriteFailed: [],
+            renamedWithMarks: 0,
+            libraries: [...merged.libraries, ...templates.libraries],
+            templateNote: templates.note,
+          }),
         });
       }
     } finally {
       try {
-        await backend.deleteDir(root);
+        await backend.deleteDir(cleanupDir);
       } catch (e) {}
     }
   }
 
   // 설정 병합: 디스크 실데이터가 진실. 현재 값을 덮어쓰지 않고(union/fill),
   // 실재하지 않는 프로젝트/폴더 참조는 버린다(prune). trash.json/folderOrder는 제외.
-  private async mergeSettingsFromDir(dir: string) {
+  // 반환(2026-11-22 결과 창 안내 — 병합 동작은 그대로):
+  //  · libraries = 글로벌 라이브러리 받음/받지 않음(adoptGlobalsIfEmpty)
+  //  · renamedWithMarks = renamedOrigNames(새 이름 「이름 (2)」로 들어온 프로젝트의 백업 쪽 원래 이름) 중 백업에
+  //    즐겨찾기·썸네일·북마크 표시가 있던 수 — 이 병합은 원래 이름 기준이라 새 이름 쪽으로는 옮겨지지 않는다(조사 P8)
+  private async mergeSettingsFromDir(
+    dir: string,
+    renamedOrigNames: readonly string[] = [],
+  ): Promise<{ libraries: FullBackupLibraryOutcome[]; renamedWithMarks: number }> {
     const readJson = async (name: string): Promise<any | null> => {
       try {
         return JSON.parse(await backend.readFile(dir + '/' + name));
@@ -1397,11 +1539,17 @@ export class BackupService {
     };
     const existingProjects = new Set(sessionService.list());
     const existingFolders = new Set(sessionService.listFolders());
+    const renamed = new Set(renamedOrigNames);
+    const marked = new Set<string>();
+    const markIfRenamed = (proj: unknown) => {
+      if (typeof proj === 'string' && renamed.has(proj)) marked.add(proj);
+    };
 
     // 즐겨찾기: 존재하는 프로젝트만 union
     try {
       const fav = await readJson('favorites.json');
       if (Array.isArray(fav)) {
+        fav.forEach(markIfRenamed);
         let changed = false;
         for (const n of fav) {
           if (existingProjects.has(n) && !sessionService.favorites.has(n)) {
@@ -1454,6 +1602,7 @@ export class BackupService {
       const th = await readJson('thumbnails.json');
       if (th && typeof th === 'object') {
         for (const [proj, ref] of Object.entries(th as any)) {
+          if (ref) markIfRenamed(proj);
           if (
             existingProjects.has(proj) &&
             ref &&
@@ -1477,6 +1626,7 @@ export class BackupService {
       if (bm && typeof bm === 'object') {
         const scenes = bm.scenes || {};
         for (const [proj, b] of Object.entries(scenes as any)) {
+          if (b) markIfRenamed(proj);
           if (
             existingProjects.has(proj) &&
             b &&
@@ -1496,6 +1646,7 @@ export class BackupService {
           if (idx < 0) continue;
           const proj = key.substring(0, idx);
           const scene = key.substring(idx + 1);
+          if (filename) markIfRenamed(proj);
           if (
             existingProjects.has(proj) &&
             filename &&
@@ -1513,22 +1664,24 @@ export class BackupService {
 
     // 글로벌 라이브러리: 현재 비어 있을 때만 통째 채택(이미지 포함).
     // 채워져 있으면 보존(깊은 id-병합은 후속 작업).
-    await this.adoptGlobalsIfEmpty(dir);
+    const libraries = await this.adoptGlobalsIfEmpty(dir);
 
     // trash.json, folderOrder.json: 설정 병합에서 의도적으로 제외
+    return { libraries, renamedWithMarks: marked.size };
   }
 
   /**
    * 프로젝트 템플릿(받는 쪽이 비어 있을 때만 통째 채택) → 씬 템플릿 지정·숨김·퀵 생성·폴더 기본 템플릿·적용 기록(받는 쪽에
    * 합치기) 순서로 되살린다(2026-11-18 T1). 템플릿 id 실존 판단이 채택 뒤 목록을 쓰므로 순서를 바꾸지 않는다.
-   * 새 파일이 없는 예전 백업은 그 부분만 건너뛴다. 반환 = 완료 창에 덧붙일 줄(없으면 빈 배열). 던지지 않는다.
+   * 새 파일이 없는 예전 백업은 그 부분만 건너뛴다. 반환 note = 완료 창에 덧붙일 줄(없으면 빈 배열), libraries = 받는 쪽에
+   * 이미 있어 받지 않은 프로젝트 템플릿(2026-11-22 — 받음·막힘은 note 가 알린다). 던지지 않는다.
    */
   private async restoreTemplatesFromDir(
     dir: string,
     mode: 'full' | 'noimg' | 'settings',
     incoming: FullBackupIncomingProject[],
     preOverwrite: Record<string, PreOverwriteDesignation>,
-  ): Promise<string[]> {
+  ): Promise<{ note: string[]; libraries: FullBackupLibraryOutcome[] }> {
     let adopt: FullBackupTemplateAdoptOutcome = { kind: 'none' };
     try {
       adopt = await projectTemplateService.adoptFromFullBackupIfEmpty(dir);
@@ -1554,12 +1707,15 @@ export class BackupService {
     } catch (e) {
       console.error('전체 백업 씬 템플릿 지정 복원 실패:', e);
     }
-    return fullBackupTemplateNote({
+    const note = fullBackupTemplateNote({
       sceneTemplates: designation.kind === 'applied' ? designation.counts.sceneTemplates : 0,
       projectTemplates: adopt.kind === 'adopted' ? adopt.count : 0,
       designationSkipped: designation.kind === 'blocked',
       projectTemplatesSkipped: adopt.kind === 'blocked',
     });
+    const libraries: FullBackupLibraryOutcome[] =
+      adopt.kind === 'kept' ? [{ kind: 'projectTemplates', result: 'kept', count: adopt.count }] : [];
+    return { note, libraries };
   }
 
   private async adoptGlobalsIfEmpty(dir: string) {
@@ -1583,50 +1739,70 @@ export class BackupService {
         } catch (e) {}
       }
     };
-    // 글로벌 프리셋 — 「비어 있음」이 읽기 실패 때문이면(loadFailed) 본 파일을 덮지 않는다(storeFile 묶음 1)
-    try {
-      if (
-        !globalPresetService.loadFailed &&
-        globalPresetService.list().length === 0 &&
-        (await backend.existFile(dir + '/global_presets.json'))
-      ) {
-        await copyImages('global_vibes');
-        await backend.copyFile(
-          dir + '/global_presets.json',
-          'global_presets.json',
-        );
-        await globalPresetService.load();
+    // 채택 규칙은 종전 그대로(받는 쪽이 정상으로 읽은 빈 목록일 때만 통째로 — 「비어 있음」이 읽기 실패 때문이면(loadFailed)
+    // 본 파일을 덮지 않는다, storeFile 묶음 1). 2026-11-22: 결과 창 안내용으로 종류별 결과와 백업 쪽 항목 수를 돌려준다
+    // (백업에 그 파일이 없으면 결과 없음).
+    const outcomes: FullBackupLibraryOutcome[] = [];
+    const adoptOne = async (o: {
+      kind: Exclude<FullBackupLibraryKind, 'projectTemplates'>;
+      file: string;
+      imagesDir?: string;
+      loadFailed: () => boolean;
+      isEmpty: () => boolean;
+      load: () => Promise<void>;
+    }) => {
+      let count: number | undefined;
+      try {
+        if (!(await backend.existFile(dir + '/' + o.file))) return;
+        try {
+          count = countBackupLibraryItems(o.kind, await backend.readFile(dir + '/' + o.file));
+        } catch (e) {
+          count = undefined;
+        }
+        if (o.loadFailed()) {
+          outcomes.push({ kind: o.kind, result: 'blocked', count });
+          return;
+        }
+        if (!o.isEmpty()) {
+          outcomes.push({ kind: o.kind, result: 'kept', count });
+          return;
+        }
+        if (o.imagesDir) await copyImages(o.imagesDir);
+        await backend.copyFile(dir + '/' + o.file, o.file);
+        await o.load();
+        outcomes.push({ kind: o.kind, result: 'adopted', count });
+      } catch (e) {
+        console.error('전체 백업 글로벌 라이브러리 받기 실패:', o.file, e);
+        outcomes.push({ kind: o.kind, result: 'error', count });
       }
-    } catch (e) {}
+    };
+    // 글로벌 프리셋
+    await adoptOne({
+      kind: 'globalPresets',
+      file: 'global_presets.json',
+      imagesDir: 'global_vibes',
+      loadFailed: () => globalPresetService.loadFailed,
+      isEmpty: () => globalPresetService.list().length === 0,
+      load: () => globalPresetService.load(),
+    });
     // 글로벌 프롬프트 조각
-    try {
-      if (
-        !globalPieceService.loadFailed &&
-        globalPieceService.library.size === 0 &&
-        (await backend.existFile(dir + '/global_pieces.json'))
-      ) {
-        await backend.copyFile(
-          dir + '/global_pieces.json',
-          'global_pieces.json',
-        );
-        await globalPieceService.load();
-      }
-    } catch (e) {}
+    await adoptOne({
+      kind: 'globalPieces',
+      file: 'global_pieces.json',
+      loadFailed: () => globalPieceService.loadFailed,
+      isEmpty: () => globalPieceService.library.size === 0,
+      load: () => globalPieceService.load(),
+    });
     // 글로벌 캐릭터 프리셋
-    try {
-      if (
-        !globalCharacterPresetService.loadFailed &&
-        globalCharacterPresetService.presets.length === 0 &&
-        (await backend.existFile(dir + '/global_character_presets.json'))
-      ) {
-        await copyImages('global_char_images');
-        await backend.copyFile(
-          dir + '/global_character_presets.json',
-          'global_character_presets.json',
-        );
-        await globalCharacterPresetService.load();
-      }
-    } catch (e) {}
+    await adoptOne({
+      kind: 'globalCharacterPresets',
+      file: 'global_character_presets.json',
+      imagesDir: 'global_char_images',
+      loadFailed: () => globalCharacterPresetService.loadFailed,
+      isEmpty: () => globalCharacterPresetService.presets.length === 0,
+      load: () => globalCharacterPresetService.load(),
+    });
+    return outcomes;
   }
 
   async folderImportDeep(folder: string) {
@@ -1637,19 +1813,31 @@ export class BackupService {
     if (!inputValue) return;
     const tarPath = await backend.selectFile();
     if (!tarPath) return;
-    appState.setProgressDialog({ text: '프로젝트 백업을 불러오는 중입니다...', done: 0, total: 1 });
-    try {
-      await sessionService.importSessionDeep(tarPath, inputValue);
-    } catch (e: any) {
-      appState.setProgressDialog(undefined);
-      appState.pushMessage(nameErrorMessage(e, 'project', inputValue), 'error');
-      return;
-    }
-    try {
-      await sessionService.moveToFolder(inputValue, folder);
-    } catch (e) {}
-    appState.setProgressDialog(undefined);
-    appState.pushDialog({ type: 'yes-only', text: `"${folder}" 폴더로 백업을 불러왔습니다.` });
+    // 2026-11-22: 한 번 풀어 종류를 가린다(models/backupKind.ts). 프로젝트 백업이면 종전처럼 받은 이름으로 이 폴더에,
+    // 폴더·전체 백업이면 안내 한 줄 뒤 그 흐름으로(받은 이름은 쓰지 않음), 알 수 없으면 원시 오류 대신 안내.
+    const progressText = '프로젝트 백업을 불러오는 중입니다...';
+    const ex = await this.extractBackupArchive(tarPath, progressText);
+    if (!ex) return;
+    await this.routeExtractedBackup('folderDeep', tarPath, ex.tmpRoot, ex.detection, {
+      project: async (root, cleanupDir) => {
+        appState.setProgressDialog({ text: progressText, done: 0, total: 1 });
+        try {
+          await sessionService.importSessionDeepFromDir(root, inputValue);
+        } catch (e: any) {
+          appState.setProgressDialog(undefined);
+          appState.pushMessage(nameErrorMessage(e, 'project', inputValue), 'error');
+          return;
+        } finally {
+          // 복사 방식이므로 성공/실패와 무관하게 임시 추출물을 정리한다(종전 importSessionDeep 과 같음)
+          await this.removeTmpDir(cleanupDir);
+        }
+        try {
+          await sessionService.moveToFolder(inputValue, folder);
+        } catch (e) {}
+        appState.setProgressDialog(undefined);
+        appState.pushDialog({ type: 'yes-only', text: `"${folder}" 폴더로 백업을 불러왔습니다.` });
+      },
+    });
   }
 
   // 파일 불러오기: 가져온 직후 새로 생긴 프로젝트(들)를 폴더로 이동
@@ -1876,53 +2064,24 @@ export class BackupService {
    * - 프리셋이 없으면 기존대로 externalImage (프롬프트 추출 뷰)
    */
   async handleTarImport(tarPath: string): Promise<void> {
-    // tar 내용을 한 번 추출해 폴더 백업 / 프로젝트 백업을 정확히 구분한다.
-    // (드래그&드롭으로 들어온 tar 가 폴더 백업일 수도, 프로젝트 백업일 수도 있음)
-    const root = 'tmp/' + v4();
-    appState.setProgressDialog({ text: '백업 파일을 확인하는 중...', done: 0, total: 1 });
-    try {
-      await backend.unzipFiles(tarPath, root);
-    } catch (e: any) {
-      appState.setProgressDialog(undefined);
-      appState.pushMessage('압축 해제에 실패했습니다.');
-      return;
-    }
-    appState.setProgressDialog(undefined);
-
-    // 1) 폴더 백업 (_folder.json 매니페스트) → 폴더째 복원
-    const manifest = await this.readFolderBackupManifest(root);
-    if (manifest) {
-      if (!this.guardManifestVersion(manifest)) {
-        try { await backend.deleteDir(root); } catch (e) {}
-        return;
-      }
-      await this.restoreFolderBackupFromDir(root, manifest);
-      return;
-    }
-
-    // 2) 프로젝트 백업 (project.json 존재) → 단일 프로젝트로 복원
-    let isProject = false;
-    try {
-      isProject = await backend.existFile(root + '/project.json');
-    } catch (e) {}
-    if (!isProject) {
-      try { await backend.deleteDir(root); } catch (e) {}
-      appState.pushMessage('인식할 수 없는 백업 파일입니다.');
-      return;
-    }
-
-    await this.importProjectBackupFromDir(root, fileStemOf(tarPath));
+    // tar 내용을 한 번 추출해 백업 종류를 정확히 구분한다(models/backupKind.ts, 2026-11-22 — 전체 백업 추가).
+    // (드래그&드롭·프로젝트 백업 불러오기·드라이브로 들어온 tar 가 폴더·프로젝트·전체 백업 어느 것일 수도 있음)
+    // 전체 백업이면 안내 한 줄 뒤 「전체 백업 불러오기」와 같은 확인 창·선택지로 이어진다.
+    const ex = await this.extractBackupArchive(tarPath, '백업 파일을 확인하는 중...');
+    if (!ex) return;
+    await this.routeExtractedBackup('tar', tarPath, ex.tmpRoot, ex.detection);
   }
 
   // 압축 해제된 프로젝트 백업(root/project.json + 이미지 6루트)을 §0 순서로 불러온다
-  // (드라이브 동기화 ⑤). root 는 이 함수가 끝날 때 항상 정리한다.
+  // (드라이브 동기화 ⑤). cleanupDir(기본 root — 한 겹 벗긴 경우 그 바깥)는 이 함수가 끝날 때 항상 정리한다.
   private async importProjectBackupFromDir(
     root: string,
     fileStem?: string,
+    cleanupDir: string = root,
   ): Promise<void> {
     const cleanup = async () => {
       try {
-        await backend.deleteDir(root);
+        await backend.deleteDir(cleanupDir);
       } catch (e) {}
     };
     let json: any;

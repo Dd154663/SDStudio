@@ -2621,14 +2621,21 @@ export class SessionService extends ResourceSyncService<Session> {
 
   // 프로젝트 깊은 백업에 포함할 파일 엔트리 목록을 만든다.
   // prefix를 주면 아카이브 내부 경로 앞에 붙는다 (폴더 백업에서 프로젝트별 네임스페이스용).
+  // opts.onListError: 이미지 폴더 목록 읽기가 실제 오류(「폴더 없음」은 backend 가 [] 로 돌려줘 해당 없음)로
+  // 실패했을 때 알려 준다 — 전체·폴더 백업 완료 창의 「이미지가 빠졌을 수 있음」 안내용(2026-11-22 P3).
+  // 반환값·「오류면 0장」 동작은 그대로다(다른 호출부 영향 없음).
   async buildSessionDeepEntries(
     session: Session,
     prefix: string = '',
+    opts: { onListError?: (kind: string, error: unknown) => void } = {},
   ): Promise<FileEntry[]> {
-    const ignoreError = async (f: Promise<any>) => {
+    const ignoreError = async (f: Promise<any>, kind: string = '') => {
       try {
         return await f;
       } catch (e) {
+        try {
+          opts.onListError?.(kind, e);
+        } catch (e2) {}
         return [];
       }
     };
@@ -2645,17 +2652,17 @@ export class SessionService extends ResourceSyncService<Session> {
       // 씬별 이미지 (병렬)
       Promise.all(sceneNames.map(async (name) => ({
         name,
-        files: await ignoreError(backend.listFiles(projectPath('outs', session.name, name))),
+        files: await ignoreError(backend.listFiles(projectPath('outs', session.name, name)), 'outs'),
       }))),
       // 인페인트별 이미지 (병렬)
       Promise.all(inpaintNames.map(async (name) => ({
         name,
-        files: await ignoreError(backend.listFiles(projectPath('inpaints', session.name, name))),
+        files: await ignoreError(backend.listFiles(projectPath('inpaints', session.name, name)), 'inpaints'),
       }))),
-      ignoreError(backend.listFiles(projectPath('inpaint_orgs', session.name))),
-      ignoreError(backend.listFiles(projectPath('inpaint_masks', session.name))),
-      ignoreError(backend.listFiles(projectPath('vibes', session.name))),
-      ignoreError(backend.listFiles(projectPath('references', session.name))),
+      ignoreError(backend.listFiles(projectPath('inpaint_orgs', session.name)), 'inpaint_orgs'),
+      ignoreError(backend.listFiles(projectPath('inpaint_masks', session.name)), 'inpaint_masks'),
+      ignoreError(backend.listFiles(projectPath('vibes', session.name)), 'vibes'),
+      ignoreError(backend.listFiles(projectPath('references', session.name)), 'references'),
     ]);
 
     for (const { name, files } of sceneResults) {

@@ -47,8 +47,8 @@ export const PROJECT_TEMPLATE_IMAGES_DIR = 'project_template_images';
 export type FullBackupTemplateAdoptOutcome =
   /** 백업에 프로젝트 템플릿이 없음(예전 백업·빈 목록·손상) */
   | { kind: 'none' }
-  /** 받는 쪽에 이미 있어 그대로 둠 */
-  | { kind: 'kept' }
+  /** 받는 쪽에 이미 있어 그대로 둠(count = 백업 쪽 항목 수 — 결과 창 안내용, 2026-11-22) */
+  | { kind: 'kept'; count: number }
   /** 받는 쪽 파일을 읽지 못했거나 저장이 막혀 건너뜀 */
   | { kind: 'blocked' }
   | { kind: 'adopted'; count: number };
@@ -674,7 +674,7 @@ export class ProjectTemplateService extends EventTarget {
     }
     // 「비어 있음」은 정상으로 읽은 결과가 빈 경우만 — 읽기 실패의 빈 메모리 목록으로 판단하지 않는다
     if (!this.loaded || this.store.loadFailed) return { kind: 'blocked' };
-    if (this.templates.length > 0) return { kind: 'kept' };
+    if (this.templates.length > 0) return { kind: 'kept', count: incoming.length };
     for (const entry of incoming) {
       for (const token of collectTemplateImageTokens(entry)) {
         const base = imageTokenBase(token);
@@ -691,7 +691,7 @@ export class ProjectTemplateService extends EventTarget {
       }
     }
     // 이미지 복사(await) 사이에 다른 창 알림으로 목록이 채워졌으면 덮지 않는다
-    if (this.templates.length > 0) return { kind: 'kept' };
+    if (this.templates.length > 0) return { kind: 'kept', count: incoming.length };
     this.templates = incoming;
     this.scheduleSave();
     const saved = await this.store.flush();

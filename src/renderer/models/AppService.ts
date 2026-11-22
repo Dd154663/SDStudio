@@ -40,6 +40,7 @@ import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { isOutputImageFile, isImportImageMime } from './imageFormats';
 import { projectPath } from './projectPaths';
+import { isTarFileName } from './backupKind';
 import { withCompanionDefaults } from './companionSlots';
 import { ImageViewOrder, readImageViewOrder, writeImageViewOrder } from './imageOrderSort';
 import { V2_SHEET_CLOSE_EVENT } from './uiEvents';
@@ -1090,8 +1091,9 @@ export class AppState {
   }
 
   handleFile(file: File) {
-    if (file.name.endsWith('.tar')) {
-      // tar 파일 — 프로젝트 백업 불러오기
+    // 확장자는 대소문자를 가리지 않는다(.TAR·.Tar — 2026-11-22). 확장자가 없거나 다른 파일을 백업으로 추정해 풀지는 않는다.
+    if (isTarFileName(file.name)) {
+      // tar 파일 — 백업 불러오기(전체·폴더·프로젝트 백업을 handleTarImport 가 가린다)
       const filePath = (file as any).path;
       if (!filePath) {
         this.pushMessage('tar 파일 경로를 가져올 수 없습니다');
