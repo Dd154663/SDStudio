@@ -13,6 +13,7 @@ import { ActionIcon } from './ActionIcon';
 import { appState } from '../models/AppService';
 import { CompanionButtonSlot } from './CompanionDnd';
 import { toolbarLabelOf } from '../models/uiLayout';
+import { PRESET_SELECT_PIECE_SHORT_LABEL } from '../models/presetSelectRow';
 
 // 렌더 컨텍스트: variant = 이 버튼이 실제로 표시되는 영역(스타일 적응 기준).
 // mobileIcon = 씬 툴바의 모바일 아이콘 축약 여부(현재 이관 버튼은 미사용이나 계약 유지).
@@ -31,6 +32,9 @@ export interface PortableButtonsContext {
   // 'measure' = 모습은 아이콘만(②·③ 단계)이고 폭 측정용 보이지 않는 글자만 둔다. 없으면 종전 렌더 그대로
   // (⋯ 메뉴 행·모바일·사이드 바·동반 슬롯).
   labels?: 'show' | 'measure';
+  // 동반 슬롯의 글자 버튼(2026-11-22, PC 사전세팅선택 행의 프롬프트조각) — iconOnly 가 아닐 때 글자 버튼을 그 행 높이(32px)·
+  // 글자 14px 로 맞추고 행 gap 이 간격을 맡아 ml-1 을 뺀다. 다른 버튼은 영향 없음(글자 버튼은 프롬프트조각뿐).
+  companionLabel?: boolean;
 }
 
 // 프로젝트 바 글자 단계의 버튼 클래스 덧붙임 — 높이는 그대로(아이콘 18px + p-1), 오른쪽만 pr-2 로 숨통.
@@ -341,13 +345,26 @@ export function portableToolbarButtons(
       <button
         className={
           'round-button back-green flex items-center gap-1' +
-          (variant === 'project' ? ' ml-1' : '')
+          (ctx.companionLabel
+            ? ' flex-none h-8 md:text-sm'
+            : variant === 'project'
+              ? ' ml-1'
+              : '')
         }
+        data-companion-label={ctx.companionLabel ? '' : undefined}
+        // 사전세팅선택 행(companionLabel)은 짧은 「조각」만 보이므로 전체 이름을 툴팁·접근성 이름으로
+        title={ctx.companionLabel ? toolbarLabelOf('piece-editor') ?? '프롬프트조각' : undefined}
+        aria-label={ctx.companionLabel ? toolbarLabelOf('piece-editor') ?? '프롬프트조각' : undefined}
         onClick={() => appState.openPieceEditor()}
       >
         <ActionIcon id="piece-editor" size={18} />
-        {/* 라벨 도입 전부터 글자 버튼 — 단계와 무관하게 같은 모습(글자 = 레지스트리 label 단일 출처) */}
-        <span className="hidden md:inline">{toolbarLabelOf('piece-editor') ?? '프롬프트조각'}</span>
+        {ctx.companionLabel ? (
+          // PC 사전세팅선택 행: 짧은 글자 「조각」(2026-11-22 사용자 — 기본 패널 폭에서도 글자가 보이게)
+          <span>{PRESET_SELECT_PIECE_SHORT_LABEL}</span>
+        ) : (
+          /* 라벨 도입 전부터 글자 버튼 — 단계와 무관하게 같은 모습(글자 = 레지스트리 label 단일 출처) */
+          <span className="hidden md:inline">{toolbarLabelOf('piece-editor') ?? '프롬프트조각'}</span>
+        )}
       </button>
     ),
   };
@@ -364,16 +381,21 @@ export function portableToolbarButtons(
 // 미지정 호출은 기존과 동일(감싸지 않음) — 시그니처 확장은 옵셔널이라 하위 호환.
 // variant(옵셔널, 기본 'companion'): 호스트 행의 이웃 버튼 스타일에 적응 — 사전세팅선택
 // 행처럼 무배경 icon-button 이 표준인 행은 'project' 로 무배경 적응(④ 실기 보정).
+// opts.labeled(2026-11-22): 글자 버튼(프롬프트조각)을 아이콘+이름 그대로 낸다 — PC 사전세팅선택 행에서 자리가 될 때만
+// (호출부가 행 폭으로 판정, models/presetSelectRow.ts). 없으면 종전대로 아이콘+툴팁.
 export function renderCompanionButtons(
   ids: string[],
   hostKey?: string,
   variant: 'companion' | 'project' = 'companion',
+  opts?: { labeled?: boolean },
 ): ReactNode[] {
   if (ids.length === 0) return [];
+  const labeled = !!opts?.labeled;
   const nodes = portableToolbarButtons({
     mobileIcon: false,
     variant,
-    iconOnly: true, // piece-editor 텍스트 축약(툴팁 대체)
+    iconOnly: !labeled, // piece-editor 텍스트 축약(툴팁 대체) — labeled 면 글자 버튼
+    companionLabel: labeled || undefined,
   });
   return ids
     .map((id) => {

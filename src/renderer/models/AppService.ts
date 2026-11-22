@@ -40,6 +40,7 @@ import type { GlobalPresetType, IGlobalPresetEntry } from './GlobalPresetService
 import { SUPPORTED_GLOBAL_PRESET_TYPES } from './GlobalPresetService';
 import { isOutputImageFile, isImportImageMime } from './imageFormats';
 import { projectPath } from './projectPaths';
+import { withCompanionDefaults } from './companionSlots';
 import { ImageViewOrder, readImageViewOrder, writeImageViewOrder } from './imageOrderSort';
 import { V2_SHEET_CLOSE_EVENT } from './uiEvents';
 import { ARTIST_LIBRARY_TAB_ACTION } from './ArtistLibraryService';
@@ -311,6 +312,21 @@ export class AppState {
   // 화이트리스트·해석은 resolveCompanionButtons(companionSlots.ts) 단일 출처. 로드는
   // App.tsx. (쓰기 API 는 L3-3 ConfigScreen 소관 — 이번 단계는 읽기 배선만.)
   @observable accessor uiCompanionSlots: Record<string, string[]> = {};
+  // 화면이 읽는 동반 슬롯 = 저장값 + PC 기본 동반 배치(프롬프트조각 → 사전세팅선택 행, 2026-11-22).
+  // 화면 해석(호스트 행 버튼·툴바 제외 집합)은 이것을 읽는다. 편집(assign/removeCompanion)의 입력과 쓰기는 저장값
+  // uiCompanionSlots — 기본 배치는 가상 적용이라 사용자가 그 버튼(프롬프트조각)을 직접 옮길 때만 저장에 적힌다
+  // (withCompanionDefaults). 프리셋 패널을 접어 둔 동안은 호스트 행이 없으므로 기본 배치를 쉬어 툴바에 남긴다.
+  get companionSlotsView(): Record<string, string[]> {
+    return (
+      withCompanionDefaults(this.uiCompanionSlots, {
+        isMobile,
+        template: this.uiLayoutTemplate,
+        toolbar: this.uiToolbar,
+        legacyWorkflowMode: this.legacyWorkflowMode,
+        presetPanelHidden: this.leftPanelCollapsed,
+      }) ?? {}
+    );
+  }
 
   // 레이아웃 템플릿 id(config.uiLayoutTemplate 미러). 기본 'classic'.
   // 배치 해석은 resolveLayout(layoutTemplates.ts) 단일 출처.

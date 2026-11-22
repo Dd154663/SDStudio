@@ -23,6 +23,7 @@
 //   슬롯에 배정된 버튼은 파생적으로 툴바 표면에서 사라진다(소비자가 companionAssignedIds
 //   를 resolveToolbarView 제외 집합으로 전달 — uiToolbar 데이터 자체는 불변).
 
+import type { UiToolbarConfig } from '../../main/config';
 import {
   insertToolbarFollowers,
   portableButtonIds,
@@ -116,6 +117,59 @@ export function withCompanionFollowers(
       COMPANION_HOSTS.includes(k) && Array.isArray(v)
         ? insertToolbarFollowers(v, skip)
         : v;
+  }
+  return out;
+}
+
+/**
+ * PC 기본 동반 배치(2026-11-22 사용자 결정) — 저장된 배치가 이 버튼을 한 번도 적지 않았으면 이 호스트 끝에 놓인 것으로
+ *   읽는다(가상 적용, 저장 불변 — 따라가는 버튼과 같은 방식). 프롬프트조각은 맨 아래 툴바 대신 사전세팅선택 행이 기본 자리.
+ *   「적은 적 있음」 = 동반 슬롯 어느 키(툴바 유지 표 COMPANION_KEPT_IN_TOOLBAR_KEY 포함)에 있거나, 툴바에서 그 버튼을
+ *   직접 옮겨 uiToolbar.buttons 에 자리가 적혀 있음(moveToolbarButton 은 옮긴 버튼만 buttons 에 적는다).
+ *   적용하지 않는 경우(종전 그대로): 모바일(클래식·V2 — 슬롯을 쓰지 않음) · 모던 사이드바(템플릿 기본 배치
+ *   MODERN_COMPANION_DEFAULTS 가 따로 있음) · 클래식 툴바(「이전 배치로 되돌리기」) · 레거시 작업모드(이지 모드 등
+ *   사전세팅선택 행이 없는 작업모드가 있어 툴바에서 빠지면 버튼이 양쪽에서 사라진다 — 작업모드 행을 호스트에서 뺀 이유와 같음) ·
+ *   프리셋 패널을 접어 둔 동안(presetPanelHidden — 호스트 행이 화면에 없다. 펴면 다시 행으로).
+ *   저장: 해석 단계의 가상 적용일 뿐 편집 함수(assign/removeCompanion)의 입력은 저장값이다 — 다른 버튼을 옮겨도 기본 배치는
+ *   저장에 옮겨 적히지 않고, 그 버튼 자체를 옮길 때만 적힌다(removeCompanion 은 툴바 유지 표에). 구버전은 저장이 그대로라 무영향.
+ */
+export const COMPANION_DEFAULT_PLACEMENTS: readonly { id: string; host: string }[] = [
+  { id: 'piece-editor', host: 'preset-select' },
+];
+
+export interface CompanionDefaultContext {
+  isMobile: boolean;
+  template?: string;
+  toolbar?: UiToolbarConfig;
+  legacyWorkflowMode?: boolean;
+  presetPanelHidden?: boolean;
+}
+
+/** 기본 동반 배치가 적용되는 환경인지(버튼별 「적은 적 있음」 판정 전 단계). */
+export function companionDefaultsActive(ctx: CompanionDefaultContext): boolean {
+  return (
+    !ctx.isMobile &&
+    ctx.template !== 'modern' &&
+    !ctx.toolbar?.classic &&
+    !ctx.legacyWorkflowMode &&
+    !ctx.presetPanelHidden
+  );
+}
+
+/** 저장된 슬롯 → 기본 동반 배치를 적용한 슬롯(순수, 원본 불변). 적용할 것이 없으면 입력 그대로. */
+export function withCompanionDefaults(
+  slots: Record<string, string[]> | undefined,
+  ctx: CompanionDefaultContext,
+): Record<string, string[]> | undefined {
+  if (!companionDefaultsActive(ctx)) return slots;
+  const pending = COMPANION_DEFAULT_PLACEMENTS.filter(
+    ({ id }) =>
+      !followerMentioned(slots ?? {}, id) && ctx.toolbar?.buttons?.[id] === undefined,
+  );
+  if (pending.length === 0) return slots;
+  const out: Record<string, string[]> = { ...(slots ?? {}) };
+  for (const { id, host } of pending) {
+    out[host] = [...(out[host] ?? []), id];
   }
   return out;
 }
@@ -267,8 +321,10 @@ export function removeCompanion(
   const leaderInSlot =
     !!follower &&
     COMPANION_HOSTS.some((h) => (next[h] ?? []).includes(follower.leader));
+  // 기본 동반 배치 버튼(프롬프트조각)도 빼면 툴바 유지 표에 적는다 — 적지 않으면 「한 번도 적지 않음」으로 읽혀 기본 자리로 되돌아간다.
+  const hasDefaultPlacement = COMPANION_DEFAULT_PLACEMENTS.some((d) => d.id === buttonId);
   if (
-    leaderInSlot &&
+    (leaderInSlot || hasDefaultPlacement) &&
     !(next[COMPANION_KEPT_IN_TOOLBAR_KEY] ?? []).includes(buttonId)
   ) {
     next[COMPANION_KEPT_IN_TOOLBAR_KEY] = [

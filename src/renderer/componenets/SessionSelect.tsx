@@ -359,7 +359,7 @@ const SessionSelect = observer(({ variant = 'bar', side = 'left', mobileLead }: 
     TOOLBAR_VIEW_MAIN,
     appState.uiToolbar,
     isMobile,
-    companionAssignedIds(appState.uiCompanionSlots),
+    companionAssignedIds(appState.companionSlotsView),
   );
   const projectAreaResolved = projectView.find((a) => a.area === 'project');
   const toolbarLayout = {

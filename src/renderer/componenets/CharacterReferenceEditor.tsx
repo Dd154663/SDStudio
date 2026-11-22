@@ -531,7 +531,7 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
   // 옆에 붙일 portable 버튼. 빈 배열이면 슬롯 없음 = 현행 렌더 100% 동일(회귀 기준).
   // hostKey 를 renderCompanionButtons/CompanionHostRow 에 넘겨 편집모드(PC) 드래그(E4)를 붙인다.
   const hostKey = wfiElementKey(input) ?? input.field;
-  const companionIds = resolveCompanionButtons(hostKey, appState.uiCompanionSlots);
+  const companionIds = resolveCompanionButtons(hostKey, appState.companionSlotsView);
   const companions = renderCompanionButtons(companionIds, hostKey);
   const hasCompanions = companions.length > 0;
 

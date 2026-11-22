@@ -3003,7 +3003,7 @@ const QueueControl = observer(
       TOOLBAR_VIEW_MAIN,
       appState.uiToolbar,
       isMobile,
-      companionAssignedIds(appState.uiCompanionSlots),
+      companionAssignedIds(appState.companionSlotsView),
     );
     const sceneArea = sceneView.find((a) => a.area === 'scene');
     const toolbarLayout = {

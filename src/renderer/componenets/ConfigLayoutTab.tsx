@@ -257,6 +257,9 @@ const LayoutWireframe = ({
 // 대상: 패널 좌/우(history·preset·project) + 생성 컨트롤 슬롯(uiLayoutSlots) + 분리형
 // 위젯 위치(genWidget) + 동반 슬롯(uiCompanionSlots — ② A 실기 피드백 3). 동반 슬롯의
 // "기본값"은 템플릿 의존: 모던이면 모던 기본 배치, 그 외에는 배정 없음(전부 툴바 복귀).
+// 배정 없음({})이면 PC 기본 동반 배치(프롬프트조각 → 사전세팅선택 행, companionSlots COMPANION_DEFAULT_PLACEMENTS)가
+// 다시 가상 적용된다 — 툴바 유지 표(_toolbar)도 함께 비워지므로. 단 툴바에서 그 버튼을 직접 옮긴 기록(uiToolbar.buttons)은
+// 툴바 쪽 「버튼 배치 초기화」 소관이라 여기서 지우지 않는다(그 기록이 있으면 툴바 자리 유지).
 // 모던 해제 후 흩어진 버튼을 일괄 복귀시키는 유일한 수단이라 여기 포함한다.
 // 선택한 템플릿(uiLayoutTemplate)은 사용자가 명시적으로 고른 값이라 건드리지 않는다.
 // 이 필드들은 ConfigScreen 저장 흐름 밖(편집 모드/드래그가 즉시 반영)이라 여기서도
@@ -305,7 +308,7 @@ const CompanionButtonsSection = observer(() => (
     </p>
     <div className="space-y-2">
       {portableButtonMetas().map(({ id, name }) => {
-        const owner = companionOwnerOf(id, appState.uiCompanionSlots) ?? '';
+        const owner = companionOwnerOf(id, appState.companionSlotsView) ?? '';
         return (
           <div key={id} className="flex items-center gap-2">
             <span className="flex-1 min-w-0 truncate text-sm text-default">{name}</span>

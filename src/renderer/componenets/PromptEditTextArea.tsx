@@ -9,6 +9,7 @@ import { createContext,
   useContext,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -35,6 +36,7 @@ import { backStackService, useBackLayer } from '../models/BackStackService';
 import type { PromptFindEditResult, PromptFindTarget } from '../models/promptFind';
 import { promptOffsetToDomPoint } from '../models/promptFindDom';
 import { PromptFindBar, usePromptFind } from './PromptFindBar';
+import { fitsPromptIconStack } from '../models/promptEditIcons';
 import {
   artistNameOfSegment,
   makeArtistLookup,
@@ -1251,8 +1253,9 @@ const EmulatedEditTextArea = observer(
         <>
           <div ref={containerRef} className="overflow-auto h-full">
             <div
+              // pr = 오른쪽 아이콘 띠(아이콘 1em + mr-1)만큼 글자 금지 여백 — 세로로 쌓인 아이콘이 글자를 가리지 않게(2026-11-22, PC 전용 편집기)
               className={
-                'w-full min-h-full focus:outline-0 whitespace-pre-wrap align-middle'
+                'w-full min-h-full focus:outline-0 whitespace-pre-wrap align-middle pr-[calc(1em+0.5rem)]'
               }
               ref={editorRef}
               contentEditable={disabled ? 'false' : 'true'}
@@ -1686,6 +1689,34 @@ const PromptEditTextArea = observer(
     // 접두가 있으면 즉시, 없으면 태그 DB 조회(캐시). 입력·클릭·키·selectionchange 뒤 150ms 디바운스.
     const [caretArtist, setCaretArtist] = useState<string | null>(null);
     const rootRef = useRef<HTMLDivElement | null>(null);
+    // PC 아이콘 세로 쌓기(2026-11-22, models/promptEditIcons.ts): 오른쪽 띠에 위에서부터 [크게 편집][돋보기][작가].
+    // 칸 높이가 모자라면 그 칸만 종전 가로 배치. 글자 여백은 두 배치 모두 같아서 전환해도 글자가 다시 줄바꿈되지 않는다.
+    const iconBoxRef = useRef<HTMLDivElement | null>(null);
+    const [iconStack, setIconStack] = useState(true);
+    const iconCount = 2 + (caretArtist && !accessorySlot ? 1 : 0);
+    useLayoutEffect(() => {
+      if (isMobile) return undefined;
+      const root = rootRef.current;
+      const box = iconBoxRef.current;
+      if (!root || !box) return undefined;
+      const measure = () => {
+        const expand = box.querySelector(
+          '[data-prompt-expand-toggle]',
+        ) as HTMLElement | null;
+        setIconStack(
+          fitsPromptIconStack(
+            root.clientHeight,
+            expand ? expand.offsetHeight : 0,
+            iconCount,
+          ),
+        );
+      };
+      measure();
+      if (typeof ResizeObserver === 'undefined') return undefined;
+      const ro = new ResizeObserver(measure);
+      ro.observe(root);
+      return () => ro.disconnect();
+    }, [iconCount, fullScreen]);
     const caretTimer = useRef<number | null>(null);
     const caretSeq = useRef(0);
     const refreshCaretArtist = () => {
@@ -1936,6 +1967,23 @@ const PromptEditTextArea = observer(
         <span className="truncate">{name}</span>
       </button>
     );
+    // PC 세로 쌓기 때의 작가 버튼 — 이름 알약 대신 아이콘 하나(오른쪽 띠 폭 안에 들어가게). 이름은 title·aria-label 로.
+    const artistStackButton = (name: string) => (
+      <button
+        type="button"
+        data-caret-artist-btn
+        title={`작가 라이브러리에서 「${name}」 열기`}
+        aria-label={`작가 라이브러리에서 ${name} 열기`}
+        className="text-link opacity-90 hover:opacity-100 mr-1"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.stopPropagation();
+          appState.openArtistInLibrary(name);
+        }}
+      >
+        <ActionIcon id="artist" />
+      </button>
+    );
     useEffect(() => {
       if (!accessorySlot) return undefined;
       accessorySlot(caretArtist ? artistButton(caretArtist, '') : null);
@@ -1948,6 +1996,23 @@ const PromptEditTextArea = observer(
     // 테마 커스터마이징이 그대로 반영되도록 한다(그림자만 추가).
     let bgColor = 'bg-[var(--c-input-bg)]';
     if (fullScreen) bgColor = 'bg-[var(--c-input-bg)] shadow-lg';
+
+    // 「크게 편집」 버튼 — PC·모바일 아이콘 줄 공용(PC 세로 쌓기에서는 맨 위).
+    const expandButton = (
+      <Tooltip content={!fullScreen ? '크게 편집' : '크게 편집 닫기'}>
+        <button
+          data-prompt-expand-toggle
+          aria-label={!fullScreen ? '크게 편집' : '크게 편집 닫기'}
+          onClick={() => {
+            if (!disabled) setFullScreen(!fullScreen);
+          }}
+          // 색 = --c-icon-text, 평소 0.85·hover 1(UI 정돈 그룹 1 — 종전 gray-500/slate-400 에 opacity-50 이라 잘 안 보였다)
+          className="text-[var(--c-icon-text)] opacity-[0.85] hover:opacity-100 mr-1 mt-1"
+        >
+          {!fullScreen ? <FaExpand></FaExpand> : <FaTimes></FaTimes>}
+        </button>
+      </Tooltip>
+    );
 
     return (
       <>
@@ -1988,9 +2053,26 @@ const PromptEditTextArea = observer(
             (extraClassName ? ' ' + extraClassName : '')
           }
         >
-          <div className="absolute right-0 top-0 z-10 flex items-center gap-1">
-            {caretArtist && !accessorySlot && artistButton(caretArtist, 'mt-1')}
-            {!isMobile && (
+          {isMobile ? (
+            // 모바일: 종전 가로 줄 그대로 [작가][크게 편집](돋보기는 키보드 위 칩에 있다)
+            <div className="absolute right-0 top-0 z-10 flex items-center gap-1">
+              {caretArtist && !accessorySlot && artistButton(caretArtist, 'mt-1')}
+              {expandButton}
+            </div>
+          ) : (
+            // PC: 오른쪽 띠에 세로로 [크게 편집][돋보기][작가](DOM 순서도 이 순서). 칸이 낮으면 이 칸만
+            // flex-row-reverse 로 종전 가로 모습 [작가][돋보기][크게 편집]. leading-none = 아이콘 높이를 1em 으로 줄여 낮은 칸에서도 쌓이게.
+            <div
+              ref={iconBoxRef}
+              data-prompt-icon-column={iconStack ? 'stack' : 'row'}
+              className={
+                'absolute right-0 top-0 z-10 flex leading-none ' +
+                (iconStack
+                  ? 'flex-col items-center gap-0.5'
+                  : 'flex-row-reverse items-center gap-1')
+              }
+            >
+              {expandButton}
               <Tooltip content="이 칸에서 찾기">
                 <button
                   type="button"
@@ -2009,26 +2091,20 @@ const PromptEditTextArea = observer(
                     (findOpen
                       ? 'text-[color:var(--c-focus-ring)] opacity-100'
                       : 'text-[var(--c-icon-text)] opacity-[0.85] hover:opacity-100') +
-                    ' mt-1'
+                    // 세로 = 크게 편집과 같은 띠(mr-1), 가로 = 종전(mt-1)
+                    (iconStack ? ' mr-1' : ' mt-1')
                   }
                 >
                   <FaSearch></FaSearch>
                 </button>
               </Tooltip>
-            )}
-            <Tooltip content={!fullScreen ? '크게 편집' : '크게 편집 닫기'}>
-              <button
-                aria-label={!fullScreen ? '크게 편집' : '크게 편집 닫기'}
-                onClick={() => {
-                  if (!disabled) setFullScreen(!fullScreen);
-                }}
-                // 색 = --c-icon-text, 평소 0.85·hover 1(UI 정돈 그룹 1 — 종전 gray-500/slate-400 에 opacity-50 이라 잘 안 보였다)
-                className="text-[var(--c-icon-text)] opacity-[0.85] hover:opacity-100 mr-1 mt-1"
-              >
-                {!fullScreen ? <FaExpand></FaExpand> : <FaTimes></FaTimes>}
-              </button>
-            </Tooltip>
-          </div>
+              {caretArtist &&
+                !accessorySlot &&
+                (iconStack
+                  ? artistStackButton(caretArtist)
+                  : artistButton(caretArtist, 'mt-1'))}
+            </div>
+          )}
           <EditTextAreaImpl
             ref={editorRef}
             value={value}

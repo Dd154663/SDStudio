@@ -140,6 +140,7 @@ export async function applyToolbarMoveFromCompanion(
   move: ToolbarMove,
 ): Promise<void> {
   const nextToolbar = moveToolbarButton(TOOLBAR_VIEW_MAIN, appState.uiToolbar, move);
+  // 기본 동반 배치 버튼(프롬프트조각)을 빼면 removeCompanion 이 툴바 유지 표에 적는다(다시 기본 자리로 돌아가지 않게).
   const nextSlots = removeCompanion(appState.uiCompanionSlots, move.id);
   appState.uiToolbar = nextToolbar;
   appState.uiCompanionSlots = nextSlots;

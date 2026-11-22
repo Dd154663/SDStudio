@@ -25,6 +25,7 @@ import {
   FaArrowDown,
   FaLock,
   FaCheck,
+  FaChevronDown,
 } from 'react-icons/fa';
 import { FloatView } from './FloatView';
 import { CharacterPositionOverlay, PositionMarker } from './CharacterPositionOverlay';
@@ -81,6 +82,7 @@ import {
   presetRowLabel,
 } from '../models/presetLayout';
 import { resolveCompanionButtons } from '../models/companionSlots';
+import { presetSelectAriaLabel, presetSelectPieceLabeled } from '../models/presetSelectRow';
 import { mainSamplingSummary, readMainSampling } from '../models/variantSampling';
 import { SEED_INPUT_TEXT } from '../models/sceneSeedGroups';
 import { renderCompanionButtons } from './PortableToolbarButtons';
@@ -975,7 +977,7 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
   const curSession = appState.curSession!;
   const [isOpen, setIsOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
-  const containerRef = React.useRef<HTMLDivElement>(null);
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
   const presets = curSession.presets.get(workflowType)!;
   const { preset } = useContext(WFElementContext)!;
   useEffect(() => {
@@ -1024,42 +1026,91 @@ const PreSetSelect = observer(({ workflowType }: { workflowType: string }) => {
   // CompanionHostRow 가 fragment 라 렌더 무변화.
   const companionIds = resolveCompanionButtons(
     'preset-select',
-    appState.uiCompanionSlots,
+    appState.companionSlotsView,
   );
+  // PC 행 폭(2026-11-22) — 프롬프트조각을 아이콘+이름으로 보일 자리가 있는지(models/presetSelectRow.ts).
+  // 편집 모드 전환 때 CompanionHostRow 가 감싸기를 바꿔 행 div 가 새로 붙으므로 콜백 ref 로 요소를 따라간다.
+  const [rowEl, setRowEl] = useState<HTMLDivElement | null>(null);
+  const bindRow = React.useCallback((el: HTMLDivElement | null) => {
+    containerRef.current = el;
+    setRowEl(el);
+  }, []);
+  const [rowWidth, setRowWidth] = useState<number | null>(null);
+  React.useLayoutEffect(() => {
+    if (isMobile || !rowEl) return;
+    setRowWidth(rowEl.clientWidth);
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setRowWidth(rowEl.clientWidth));
+    ro.observe(rowEl);
+    return () => ro.disconnect();
+  }, [rowEl]);
+  const pieceLabeled =
+    !isMobile &&
+    companionIds.includes('piece-editor') &&
+    presetSelectPieceLabeled(rowWidth, companionIds.length - 1);
   // variant 'project': 이 행의 이웃 버튼(+·글로벌 복사·🗑)이 무배경 icon-button 이라 동반 버튼도
   // 무배경으로 적응(배경형 companion 스타일은 이 행에서 이질적 — 실기 보정).
+  // 프롬프트조각은 PC 에서 자리가 되면 아이콘+이름 글자 버튼(맨 아래 툴바에서 보던 모습, 행 높이 32px), 좁으면 아이콘+툴팁.
   const companions =
     companionIds.length > 0
-      ? renderCompanionButtons(companionIds, 'preset-select', 'project')
+      ? renderCompanionButtons(companionIds, 'preset-select', 'project', {
+          labeled: pieceLabeled,
+        })
       : [];
   return (
     <CompanionHostRow hostKey="preset-select">
     {/* 묶음 2(2026-11-10) 초안의 「두 줄 + 글자 라벨」은 실기에서 기각(사용자: 드롭다운에 붙은 한 줄이 대칭을 맞춰 줌)
         → 종전 한 줄 유지. 바뀐 것은 ＋ 의 툴팁뿐. 라벨은 하단 아이콘 행·해제 버튼에만. */}
     <div
-      ref={containerRef}
+      ref={bindRow}
       className="field-row flex gap-2 mt-2 md:mt-3 items-center relative"
+      data-preset-select-row=""
     >
-      {/* 동반 버튼이 붙으면 라벨을 숨겨 자리를 내준다(실기 보정) */}
-      {companions.length === 0 && (
+      {/* 모바일: 동반 버튼이 붙으면 라벨을 숨겨 자리를 내준다(실기 보정).
+          PC(2026-11-22 사용자 결정): 라벨 없음 — 선택 칸이 드롭다운 모양이라 글자 없이 뜻이 통하고 그만큼 칸이 넓어진다. */}
+      {isMobile && companions.length === 0 && (
         <div className="flex-none gray-label">사전세팅선택:</div>
       )}
       {/* flex-1 min-w-0 + truncate: 이름이 길어도 행 폭을 밀어내지 않고 말줄임 —
           우측 +·글로벌 복사·🗑 버튼이 밖으로 밀려 못 누르게 되던 문제 방지.
           min-w-0 필수: .round-button 의 min-width 를 덮는다(2026-10-04 B1 부터 .round-button 은
           @layer components 라 유틸이 이긴다 — 예전의 ! 우회 불필요).
-          span 쪽 min-w-0 도 필수(플렉스 아이템 기본 min-width:auto 로는 truncate 미발동). */}
-      <button
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-        className="round-button back-gray h-8 flex-1 min-w-0 overflow-hidden"
-        onClick={() => setIsOpen((open) => !open)}
-      >
-        <span className="min-w-0 truncate">
-          {curSession.selectedWorkflow?.presetName}
-        </span>
-      </button>
+          span 쪽 min-w-0 도 필수(플렉스 아이템 기본 min-width:auto 로는 truncate 미발동).
+          PC(2026-11-22): 알약 대신 둥근 사각 드롭다운 칸 — 앱 선택 칸(.app-select)과 같은 계열(입력 바탕 --c-input-bg·
+          1px --c-line-strong 테두리·6px 모서리·마우스 올림 때 테두리 --c-text-faint), 이름 왼쪽 정렬·말줄임, 오른쪽 끝 ▾. */}
+      {isMobile ? (
+        <button
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+          className="round-button back-gray h-8 flex-1 min-w-0 overflow-hidden"
+          onClick={() => setIsOpen((open) => !open)}
+        >
+          <span className="min-w-0 truncate">
+            {curSession.selectedWorkflow?.presetName}
+          </span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+          aria-label={presetSelectAriaLabel(curSession.selectedWorkflow?.presetName)}
+          data-preset-select-box=""
+          className="preset-select-box flex-1 min-w-0 h-8 flex items-center gap-2 pl-2.5 pr-2 rounded-md border border-[color:var(--c-line-strong)] bg-[var(--c-input-bg)] text-[var(--c-input-text)] text-sm cursor-pointer select-none"
+          onClick={() => setIsOpen((open) => !open)}
+        >
+          <span className="flex-1 min-w-0 truncate text-left">
+            {curSession.selectedWorkflow?.presetName}
+          </span>
+          <FaChevronDown
+            size={12}
+            className="flex-none text-faint"
+            aria-hidden="true"
+            data-preset-select-chevron=""
+          />
+        </button>
+      )}
       <Tooltip content="새 사전 세팅">
       <button
         className={`icon-button flex-none md:h-8`}
@@ -1780,7 +1831,7 @@ const WFRGroup = observer(({ element }: WFElementProps) => {
   // hostKey 를 renderCompanionButtons/CompanionHostRow 에 넘겨 편집모드(PC) 드래그(E4)를
   // 붙인다 — 편집모드 밖은 CompanionHostRow 가 fragment 라 렌더 무변화.
   const hostKey = wfiElementKey(element) ?? grp.label;
-  const companionIds = resolveCompanionButtons(hostKey, appState.uiCompanionSlots);
+  const companionIds = resolveCompanionButtons(hostKey, appState.companionSlotsView);
   const companions = renderCompanionButtons(companionIds, hostKey);
   const hasCompanions = companions.length > 0;
   // 하단 아이콘 행(uiPresetIconRow) 안 — 아이콘 압축 형태. 동반 버튼은 그대로 이웃.
@@ -2595,7 +2646,7 @@ export const CharacterButton = observer(({ input }: { input: WFIInlineInput }) =
   // 붙일 portable 버튼 목록. 빈 배열이면 슬롯 없음 = 현행 렌더 100% 동일(회귀 기준).
   // hostKey 를 renderCompanionButtons/CompanionHostRow 에 넘겨 편집모드(PC) 드래그(E4)를 붙인다.
   const hostKey = wfiElementKey(input) ?? input.field;
-  const companionIds = resolveCompanionButtons(hostKey, appState.uiCompanionSlots);
+  const companionIds = resolveCompanionButtons(hostKey, appState.companionSlotsView);
   const companions =
     companionIds.length > 0 ? renderCompanionButtons(companionIds, hostKey) : [];
   const hasCompanions = companions.length > 0;
@@ -3189,7 +3240,7 @@ interface Props {
 // 행 자체를 렌더하지 않는다(현행 무변화). PC 편집모드에선 빈 상태도 드롭 안내와 함께
 // 노출해 드래그 배정 타깃을 제공한다.
 const PresetTopCompanionRow = observer(() => {
-  const ids = resolveCompanionButtons('preset-top', appState.uiCompanionSlots);
+  const ids = resolveCompanionButtons('preset-top', appState.companionSlotsView);
   // 모던 행 스타일(② A 실기 피드백 3·2차 1 + 재검증 2026-07-18): 무배경
   // icon-button('project' 적응)을 탭 세그먼트(tab-seg)풍 알약 컨테이너로 묶어
   // 중앙 배치 — 낱개로 떠 있으면 어색하다는 피드백, 탭 헤더와 같은 그룹 문법 사용.

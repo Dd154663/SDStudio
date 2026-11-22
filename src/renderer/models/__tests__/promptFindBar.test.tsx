@@ -72,15 +72,15 @@ function open(toggle: HTMLButtonElement) {
 }
 
 describe('이 칸에서 찾기·바꾸기(PC 검색 줄)', () => {
-  test('돋보기는 「크게 편집」 바로 왼쪽, 누르면 검색 줄이 열리고 검색 입력에 포커스', () => {
+  test('돋보기는 「크게 편집」 바로 아래(세로 쌓기), 누르면 검색 줄이 열리고 검색 입력에 포커스', () => {
     const { toggle, container } = setup();
     const expand = container.querySelector('[aria-label="크게 편집"]')!;
     expect(toggle.getAttribute('aria-label')).toBe('이 칸에서 찾기');
     expect(toggle.getAttribute('aria-pressed')).toBe('false');
-    // 같은 아이콘 줄 안에서 돋보기가 앞(왼쪽)
+    // 같은 아이콘 줄 안에서 돋보기가 크게 편집 다음(세로 쌓기 = 아래, 2026-11-22)
     const row = expand.closest('div')!;
     const buttons = Array.from(row.querySelectorAll('button'));
-    expect(buttons.indexOf(toggle)).toBe(buttons.indexOf(expand as HTMLButtonElement) - 1);
+    expect(buttons.indexOf(toggle)).toBe(buttons.indexOf(expand as HTMLButtonElement) + 1);
     expect(bar()).toBeNull();
     open(toggle);
     expect(bar()).not.toBeNull();
