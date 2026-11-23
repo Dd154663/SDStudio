@@ -159,8 +159,9 @@ import {
   GRID_DOWNLOAD_TEXT,
   gridDownloadTargets,
 } from '../models/gridDownloadMenu';
-import { IMAGE_DOWNLOAD_TEXT } from '../models/ImageDownloadService';
+import { IMAGE_DOWNLOAD_TEXT, type DownloadTargetOptions } from '../models/ImageDownloadService';
 import { pickFileNames } from '../models/pickedImageExport';
+import GridDownloadPicker from './GridDownloadPicker';
 import {
   applyImageViewOrder,
   buildImageViewOrderMenu,
@@ -2233,6 +2234,11 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     >(undefined);
     const gallaryRef = useRef<ImageGalleryRef>(null);
     const gallaryRef2 = useRef<ImageGalleryRef>(null);
+    // 「번호로 골라서 다운로드」 창(2026-11-23) — 연 때의 그리드 순서 목록·처음 켤 경로. 열려 있는 동안 그리드 단축키는 쉰다.
+    const [downloadPick, setDownloadPick] = useState<
+      { paths: string[]; preselected: string[] } | undefined
+    >(undefined);
+    const pickerOpen = downloadPick != null;
     // 모바일 = 종전 S/M/L 단추(기억하지 않음 — 그리드를 다시 열면 M). PC = 이미지 크기 슬라이더(2026-11-23,
     // appState.imageGridSizePercent — 앱 전체 하나로 기억). 25%·50%·75% = S·M·L, 규칙은 models/sizeSlider.ts.
     const imagesSizes = [
@@ -2613,13 +2619,14 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     // image-grid 카테고리 활성화 조건 동기화
     // 탭 전환 단축키(Ctrl+1/2/3/4)는 모든 탭에서 동작해야 하므로 selectedTab을 조건에서 제외.
     // 그리드 조작(방향키/즐겨찾기/북마크/삭제/상세 보기)은 핸들러 내부에서 selectedTab 가드 적용.
+    // 번호 고르기 창이 열려 있으면 상세 보기처럼 그리드 단축키를 끈다(창 아래 그리드에서 삭제·이동이 일어나지 않게)
     useEffect(() => {
-      const active = !isMobile && selectedImageIndex == null;
+      const active = !isMobile && selectedImageIndex == null && !pickerOpen;
       appState.imageGridFocusable = active;
       return () => {
         appState.imageGridFocusable = false;
       };
-    }, [selectedImageIndex]);
+    }, [selectedImageIndex, pickerOpen]);
 
     // 탭 변경 시 포커스 리셋
     useEffect(() => {
@@ -2777,6 +2784,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
         if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
         if (isMobile) return;
         if (selectedImageIndex != null) return; // 상세 보기 열림
+        if (pickerOpen) return; // 번호 고르기 창 열림
         if (selectedTab !== 0 && selectedTab !== 1) return;
         if (!selectMode || focusedImageIndex == null) return;
         const el = document.activeElement;
@@ -2803,7 +2811,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       };
       window.addEventListener('keydown', handler);
       return () => window.removeEventListener('keydown', handler);
-    }, [selectMode, focusedImageIndex, activePaths, selectedTab, selectedImageIndex]);
+    }, [selectMode, focusedImageIndex, activePaths, selectedTab, selectedImageIndex, pickerOpen]);
 
     // H로 이미지 그리드 전용 단축키 도움말 토글.
     // 토너먼트/상세 보기 중에는 각자의 도움말이 우선하므로 무시한다.
@@ -2812,7 +2820,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
         if (e.key !== 'h' && e.key !== 'H') return;
         if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
         if (isMobile) return;
-        if (tournament || selectedImageIndex != null) return;
+        if (tournament || selectedImageIndex != null || pickerOpen) return;
         const el = document.activeElement;
         if (el) {
           const tag = el.tagName.toLowerCase();
@@ -2829,7 +2837,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       };
       window.addEventListener('keydown', handler, true);
       return () => window.removeEventListener('keydown', handler, true);
-    }, [tournament, selectedImageIndex]);
+    }, [tournament, selectedImageIndex, pickerOpen]);
 
     let emoji = '';
     let title = '';
@@ -2886,6 +2894,32 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     };
     // 다운로드 = 메시지형 선택 창(2026-11-19 개편 — 종전 독자 창 DownloadDialog 대체). 고르면 확인 없이 바로 저장,
     // 여러 장은 진행 창. 플랫폼 분기(모바일 = 다운로드 폴더)는 imageDownloadService 한 곳.
+    // 선택 창의 「선택한 이미지」·「전체」·「즐겨찾기만」과 번호 고르기 창의 [N장 다운로드]가 모두 이 함수로 저장한다.
+    // opts.savePath = 번호 고르기 창에서 바꾼 이번에만 쓰는 저장 폴더(설정 불변). 선택 창 경로는 주지 않는다(종전 그대로).
+    const downloadGridPaths = async (targets: string[], opts?: DownloadTargetOptions) => {
+      if (targets.length === 0) return;
+      const result = await imageDownloadService.downloadImages(
+        curSession!,
+        scene,
+        targets,
+        appState.getAppliedCharacterPreset(),
+        true,
+        opts,
+      );
+      if (selectMode && result.success > 0) {
+        selectedImages.current.clear();
+        setSelectMode(false);
+        gallaryRef.current?.refresh();
+        gallaryRef2.current?.refresh();
+      }
+    };
+    // 고른 이미지만 기존 내보내기 흐름으로(선택 창 「선택한 이미지만 프리셋으로 내보내기」와 번호 고르기 창이 공유)
+    const exportGridPaths = (targets: string[]) => {
+      if (targets.length === 0) return;
+      // 같은 내보내기 흐름에 고른 이미지만(프리셋 이미지 범위 무시, 이름 겹침은 번호로 구분 — ExportPresetService)
+      appState.exportPackage(scene.type, [scene], { scene, files: pickFileNames(targets) });
+    };
+    const GRID_CAN_EXPORT = true;
     const actDownload = async () => {
       const selectedPaths = selectMode ? Array.from(selectedImages.current) : [];
       const favoritePaths = isMainImage ? paths.filter((p) => isMainImage(p)) : [];
@@ -2894,7 +2928,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
         selectedCount: selectedPaths.length,
         allCount: paths.length,
         favoriteCount: favoritePaths.length,
-        canExport: true,
+        canExport: GRID_CAN_EXPORT,
         isMobile,
         savePath: imageDownloadService.settings.lastSavePath,
       });
@@ -2914,8 +2948,12 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
         return;
       }
       if (choice === 'export-selected') {
-        // 같은 내보내기 흐름에 고른 이미지만(프리셋 이미지 범위 무시, 이름 겹침은 번호로 구분 — ExportPresetService)
-        appState.exportPackage(scene.type, [scene], { scene, files: pickFileNames(selectedPaths) });
+        exportGridPaths(selectedPaths);
+        return;
+      }
+      if (choice === 'pick') {
+        // 번호 고르기 창 — 번호 = 지금 그리드 보기 순서(paths = viewPaths()), 선택 모드에서 고른 것이 있으면 그것만 켜고 시작
+        setDownloadPick({ paths, preselected: selectedPaths });
         return;
       }
       if (choice === 'change-folder') {
@@ -2929,19 +2967,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
         favorites: favoritePaths,
       });
       if (!targets || targets.length === 0) return;
-      const result = await imageDownloadService.downloadImages(
-        curSession!,
-        scene,
-        targets,
-        appState.getAppliedCharacterPreset(),
-        true,
-      );
-      if (selectMode && result.success > 0) {
-        selectedImages.current.clear();
-        setSelectMode(false);
-        gallaryRef.current?.refresh();
-        gallaryRef2.current?.refresh();
-      }
+      await downloadGridPaths(targets);
     };
     const actCopyImages = () => {
       if (selectMode && selectedImages.current.size > 0) {
@@ -3167,6 +3193,26 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           <ShortcutCheatsheet
             scope="image-grid"
             onClose={() => setShowImageCheatsheet(false)}
+          />
+        )}
+        {downloadPick && (
+          <GridDownloadPicker
+            sceneName={scene.name}
+            paths={downloadPick.paths}
+            preselected={downloadPick.preselected}
+            isFavorite={isMainImage}
+            canExport={GRID_CAN_EXPORT}
+            scene={scene}
+            characterPreset={appState.getAppliedCharacterPreset()}
+            onDownload={(targets, opts) => {
+              setDownloadPick(undefined);
+              void downloadGridPaths(targets, opts);
+            }}
+            onExport={(targets) => {
+              setDownloadPick(undefined);
+              exportGridPaths(targets);
+            }}
+            onClose={() => setDownloadPick(undefined)}
           />
         )}
         {tournament && (

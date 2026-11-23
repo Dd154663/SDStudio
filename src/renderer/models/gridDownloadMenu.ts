@@ -5,6 +5,7 @@ export type GridDownloadChoice =
   | 'selected'
   | 'all'
   | 'favorites'
+  | 'pick'
   | 'export'
   | 'export-selected'
   | 'change-folder';
@@ -17,7 +18,7 @@ export interface GridDownloadMenuInput {
   allCount: number;
   /** 즐겨찾기 이미지 장수 */
   favoriteCount: number;
-  /** 「이 씬 내보내기…」 항목을 넣을지 */
+  /** 「프리셋으로 내보내기…」 항목을 넣을지(번호 고르기 창의 같은 버튼도 이 값을 따른다) */
   canExport: boolean;
   /** PC 만 「저장 폴더 바꾸기」 */
   isMobile: boolean;
@@ -30,9 +31,12 @@ export const GRID_DOWNLOAD_TEXT = {
   selected: (n: number) => `선택한 이미지 (${n}장)`,
   all: (n: number) => `전체 이미지 (${n}장)`,
   favorites: (n: number) => `즐겨찾기만 (${n}장)`,
-  exportScene: '이 씬 내보내기…',
+  // 2026-11-23 사용자: 「이 씬 내보내기」는 헷갈려 → 「프리셋으로 내보내기」(흐름은 프리셋 선택 창 — 그 안에 직접 설정도 있음)
+  exportScene: '프리셋으로 내보내기…',
   // 고른 이미지만 기존 내보내기 흐름(프리셋·직접 설정)으로(2026-11-22) — 선택 다운로드와 같은 조건에서만 보인다
-  exportSelected: (n: number) => `선택한 이미지 내보내기… (${n}장)`,
+  exportSelected: (n: number) => `선택한 이미지만 프리셋으로 내보내기… (${n}장)`,
+  // 번호 버튼으로 골라서 다운로드(2026-11-23 — 옛 DownloadDialog 의 번호 고르기 되살림, 창 = GridDownloadPicker)
+  pick: '번호로 골라서 다운로드…',
   changeFolder: (path?: string) => `저장 폴더 바꾸기 (현재: ${path || '미지정'})`,
   empty: '다운로드할 이미지가 없습니다.',
 };
@@ -44,7 +48,9 @@ export interface GridDownloadMenu {
   hasImages: boolean;
 }
 
-/** 조건에 맞는 항목만, 선택 → 전체 → 즐겨찾기 → 선택 내보내기 → 씬 내보내기 → (PC) 저장 폴더 순서 */
+/**
+ * 조건에 맞는 항목만, 선택 → 전체 → 즐겨찾기 → 번호로 고르기(2장 이상) → 선택 내보내기 → 씬 내보내기 → (PC) 저장 폴더 순서
+ */
 export function buildGridDownloadMenu(input: GridDownloadMenuInput): GridDownloadMenu {
   const items: GridDownloadMenu['items'] = [];
   if (input.selectedCount > 0) {
@@ -57,6 +63,10 @@ export function buildGridDownloadMenu(input: GridDownloadMenuInput): GridDownloa
     items.push({ text: GRID_DOWNLOAD_TEXT.favorites(input.favoriteCount), value: 'favorites' });
   }
   const hasImages = items.length > 0;
+  // 한 장뿐이면 고를 것이 없다 — 2장 이상일 때만
+  if (input.allCount >= 2) {
+    items.push({ text: GRID_DOWNLOAD_TEXT.pick, value: 'pick' });
+  }
   if (input.canExport && input.selectedCount > 0) {
     items.push({ text: GRID_DOWNLOAD_TEXT.exportSelected(input.selectedCount), value: 'export-selected' });
   }
@@ -69,7 +79,7 @@ export function buildGridDownloadMenu(input: GridDownloadMenuInput): GridDownloa
   return { text: GRID_DOWNLOAD_TEXT.title(input.sceneName), items, hasImages };
 }
 
-/** 고른 항목의 다운로드 대상 경로(내보내기·저장 폴더 바꾸기는 undefined) */
+/** 고른 항목의 다운로드 대상 경로(번호 고르기·내보내기·저장 폴더 바꾸기는 undefined) */
 export function gridDownloadTargets(
   choice: string | undefined,
   paths: { selected: string[]; all: string[]; favorites: string[] },
