@@ -111,7 +111,7 @@ function deferred() {
 const currentImage = () => container.querySelector('img')?.getAttribute('src');
 async function renderCard(active = true, extra: any = {}) {
   await act(async () => root.render(<SceneCell scene={scene} curSession={session} getImage={getImage}
-    cellSize={0} sceneIndex={0} isActive={active} {...extra} />));
+    sceneIndex={0} isActive={active} {...extra} />));
 }
 beforeEach(() => {
   (global as any).IS_REACT_ACT_ENVIRONMENT = true;

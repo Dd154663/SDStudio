@@ -44,6 +44,13 @@ import { isTarFileName } from './backupKind';
 import { withCompanionDefaults } from './companionSlots';
 import { ImageViewOrder, readImageViewOrder, writeImageViewOrder } from './imageOrderSort';
 import { readImageDetailInfoOpen, writeImageDetailInfoOpen } from './imageDetailInfoOpen';
+import {
+  IMAGE_GRID_SIZE_STORAGE_KEY,
+  SCENE_CARD_SIZE_STORAGE_KEY,
+  normalizeSizePercent,
+  readSizePercent,
+  writeSizePercent,
+} from './sizeSlider';
 import { V2_SHEET_CLOSE_EVENT } from './uiEvents';
 import { ARTIST_LIBRARY_TAB_ACTION } from './ArtistLibraryService';
 import { Dialog, DialogItem } from '../componenets/ConfirmWindow';
@@ -973,6 +980,31 @@ export class AppState {
   setImageDetailInfoOpen(open: boolean) {
     this.imageDetailInfoOpen = open;
     writeImageDetailInfoOpen(typeof localStorage === 'undefined' ? undefined : localStorage, open);
+  }
+
+  // 크기 슬라이더(2026-11-23 사용자 결정) — 0~100%, 50 = 종전 미디엄. 각각 앱 전체 하나, 보기 순서와 같은 localStorage 화면 보기 설정
+  // (config.json·환경설정 내보내기 아님). 씬 카드 = 이미지생성·이미지변형 탭 공용(PC), 이미지 그리드 = PC 만(모바일 S/M/L 은 기억 안 함).
+  // % → 실제 크기 규칙은 models/sizeSlider.ts.
+  @observable accessor sceneCardSizePercent: number = readSizePercent(
+    typeof localStorage === 'undefined' ? undefined : localStorage,
+    SCENE_CARD_SIZE_STORAGE_KEY,
+  );
+
+  @action
+  setSceneCardSizePercent(percent: number) {
+    this.sceneCardSizePercent = normalizeSizePercent(percent);
+    writeSizePercent(typeof localStorage === 'undefined' ? undefined : localStorage, SCENE_CARD_SIZE_STORAGE_KEY, this.sceneCardSizePercent);
+  }
+
+  @observable accessor imageGridSizePercent: number = readSizePercent(
+    typeof localStorage === 'undefined' ? undefined : localStorage,
+    IMAGE_GRID_SIZE_STORAGE_KEY,
+  );
+
+  @action
+  setImageGridSizePercent(percent: number) {
+    this.imageGridSizePercent = normalizeSizePercent(percent);
+    writeSizePercent(typeof localStorage === 'undefined' ? undefined : localStorage, IMAGE_GRID_SIZE_STORAGE_KEY, this.imageGridSizePercent);
   }
 
   // 모바일 우측 히스토리 드로어 (비영속)

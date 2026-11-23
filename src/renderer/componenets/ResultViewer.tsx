@@ -14,6 +14,7 @@ import React, {
   memo,
   useImperativeHandle,
   forwardRef,
+  useLayoutEffect,
 } from 'react';
 import {
   FixedSizeGrid as Grid,
@@ -71,6 +72,13 @@ import { getEmptyImage } from 'react-dnd-html5-backend';
 import { reaction, set } from 'mobx';
 import Tooltip from './Tooltip';
 import { ButtonNameSlot, useButtonNameStage } from './ToolbarButtonName';
+import SizeSlider from './SizeSlider';
+import {
+  SIZE_SLIDER_TEXT,
+  imageGridCellPx,
+  imageGridThumbPx,
+  normalizeSizePercent,
+} from '../models/sizeSlider';
 
 // PC 이미지 그리드 머리줄 아이콘 버튼의 아래 이름(2026-11-18 버튼 이름 표시) — 이 머리줄 버튼은 툴바 레지스트리가
 // 없어 이 표가 단일 출처. 글자 버튼(이상형 월드컵·예약 추가·예약 제거·씬 편집)에는 이름을 달지 않는다.
@@ -168,10 +176,13 @@ import { BOOST_TEXT } from '../models/boostMode';
 interface TrashImageViewProps {
   session: Session;
   scene: GenericSceneType;
+  /** 칸 크기(PC = 이미지 크기 슬라이더의 연속 값, 모바일 = S/M/L 단계 값) */
   imageSize: number;
+  /** 받아 올 썸네일 크기(단계 값 200·400·500 — 끄는 동안 바뀌지 않게, models/sizeSlider imageGridThumbPx) */
+  thumbSize: number;
 }
 
-const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
+const TrashImageView = ({ session, scene, imageSize, thumbSize }: TrashImageViewProps) => {
   const [trashImages, setTrashImages] = useState<
     { filename: string; deletedAt: number }[]
   >([]);
@@ -220,7 +231,7 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
         try {
           const thumb = await imageService.fetchImageSmall(
             path,
-            isMobile ? 200 : Math.min(imageSize, 400),
+            isMobile ? 200 : Math.min(thumbSize, 400),
           );
           if (generation !== thumbnailLoadGenerationRef.current) break;
           if (thumb) newThumbs[item.filename] = thumb;
@@ -246,7 +257,7 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
         thumbnailLoadGenerationRef.current++;
       }
     };
-  }, [trashImages, session, scene, imageSize]);
+  }, [trashImages, session, scene, thumbSize]);
 
   // 삭제/복원 전에 진행 중인 썸네일 한 장만 마치고 다음 리사이즈를 중단한다.
   // Android에서 삭제 루프와 썸네일 루프가 같은 mutex를 번갈아 잡는 현상을 방지한다.
@@ -460,7 +471,10 @@ const TrashImageView = ({ session, scene, imageSize }: TrashImageViewProps) => {
 interface ImageGalleryProps {
   scene: GenericScene;
   filePaths: string[];
+  /** 칸 크기(PC = 이미지 크기 슬라이더의 연속 값, 모바일 = S/M/L 단계 값 200·400·500) */
   imageSize: number;
+  /** 받아 올 썸네일 크기 — 단계 값(models/sizeSlider imageGridThumbPx). 없으면 imageSize(모바일은 같은 값) */
+  thumbSize?: number;
   onSelected?: (index: number) => void;
   isMainImage?: (path: string) => boolean;
   onFilenameChange?: (src: string, dst: string) => void;
@@ -616,9 +630,11 @@ const Cell = memo(
 
     const isMain = !!(isMainImage && path && isMainImage(path));
     const isBookmarked = !!(path && bookmarkedImagePath === path);
-    let cellSize = isMobile ? imageSize / 2.5 : imageSize;
+    // imageSize = 받아 오는 썸네일 크기(PC 는 단계 값으로 올림 — models/sizeSlider imageGridThumbPx). PC 칸 크기는 그리드가 정한
+    // 칸 폭(style.width = 이미지 크기 슬라이더의 연속 값)을 그대로 쓴다. 모바일은 종전 그대로(단계 값 / 2.5, 500 = 화면 폭).
+    let cellSize = isMobile ? imageSize / 2.5 : (style.width as number);
     if (isMobile && imageSize === 500) {
-      cellSize = style.width;
+      cellSize = style.width as number;
     }
 
     const { show, hideAll } = useContextMenu({
@@ -644,7 +660,7 @@ const Cell = memo(
           };
         },
       }),
-      [path, imageSize, index, selectMode, reorderable],
+      [path, imageSize, cellSize, index, selectMode, reorderable],
     );
 
     const [{ isOver }, drop] = useDrop(
@@ -868,6 +884,7 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
       scene,
       isHidden,
       imageSize,
+      thumbSize,
       filePaths,
       isMainImage,
       onSelected,
@@ -966,8 +983,35 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
       rowHeight = containerWidth - 10;
     }
     const columnCount = Math.max(1, Math.floor(containerWidth / columnWidth));
-    // preload 4 pages
+    // 받아 오는 썸네일 크기 = 단계 값(PC 슬라이더를 끄는 동안 바뀌지 않음 → 칸이 다시 읽지 않는다)
+    const fetchSize = thumbSize ?? imageSize;
+    // preload 4 pages — 단계(200·400·500)별, 범위 밖은 양 끝 단계
     const overcountCounts = isMobile ? [4, 2, 1] : [32, 16, 8];
+    const overscanTier = Math.min(
+      overcountCounts.length - 1,
+      Math.max(0, Math.ceil(fetchSize / 200) - 1),
+    );
+
+    // 크기 슬라이더로 칸 크기가 바뀌면(2026-11-23) 보던 자리를 지킨다 — 화면 맨 위 칸(줄 안 위치 비율 포함)이
+    // 새 칸 크기에서도 맨 위에 오도록 스크롤을 옮긴다. 픽셀 스크롤 값을 그대로 두면 엉뚱한 줄로 튄다.
+    const scrollTopRef = useRef(0);
+    const prevGridMetricsRef = useRef<{ rowHeight: number; columnCount: number } | null>(null);
+    useLayoutEffect(() => {
+      const prev = prevGridMetricsRef.current;
+      prevGridMetricsRef.current = { rowHeight, columnCount };
+      // 모바일(S/M/L 단추)은 종전 그대로 — 손대지 않는다
+      if (isMobile || !prev || prev.rowHeight === rowHeight || prev.rowHeight <= 0 || rowHeight <= 0) return;
+      const top = scrollTopRef.current;
+      if (top <= 0 || !gridRef.current) return;
+      const firstIndex = Math.floor(top / prev.rowHeight) * prev.columnCount;
+      const withinRow = (top % prev.rowHeight) / prev.rowHeight;
+      const nextTop = Math.max(
+        0,
+        Math.round((Math.floor(firstIndex / columnCount) + withinRow) * rowHeight),
+      );
+      scrollTopRef.current = nextTop;
+      gridRef.current.scrollTo({ scrollTop: nextTop });
+    }, [rowHeight, columnCount]);
 
     const onCellEnter = useCallback((index: number) => {
       hoveredIndexRef.current = index;
@@ -1130,7 +1174,7 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
             draggedIndex,
             isMainImage,
             onFilenameChange,
-            imageSize,
+            fetchSize,
             selectedImages,
             bookmarkedImagePath,
             focusedIndex ?? null,
@@ -1146,7 +1190,10 @@ const ImageGallery = forwardRef<ImageGalleryRef, ImageGalleryProps>(
             return data.filePaths[idx] ?? `empty-${rowIndex}:${columnIndex}`;
           }}
           outerElementType={CustomScrollbarsVirtualGrid}
-          overscanRowCount={overcountCounts[Math.ceil(imageSize / 200) - 1]}
+          overscanRowCount={overcountCounts[overscanTier]}
+          onScroll={({ scrollTop }: { scrollTop: number }) => {
+            scrollTopRef.current = scrollTop;
+          }}
         >
           {Cell}
         </Grid>
@@ -2186,12 +2233,25 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     >(undefined);
     const gallaryRef = useRef<ImageGalleryRef>(null);
     const gallaryRef2 = useRef<ImageGalleryRef>(null);
+    // 모바일 = 종전 S/M/L 단추(기억하지 않음 — 그리드를 다시 열면 M). PC = 이미지 크기 슬라이더(2026-11-23,
+    // appState.imageGridSizePercent — 앱 전체 하나로 기억). 25%·50%·75% = S·M·L, 규칙은 models/sizeSlider.ts.
     const imagesSizes = [
       { name: 'S', size: 200 },
       { name: 'M', size: 400 },
       { name: 'L', size: 500 },
     ];
     const [imageSize, setImageSize] = useState<number>(1);
+    // 이 컴포넌트는 observer 가 아니라 값을 자기 상태로도 들고 있는다(슬라이더가 화면 그리기마다 최대 한 번 알림)
+    const [gridSizePercent, setGridSizePercent] = useState<number>(() =>
+      normalizeSizePercent(appState.imageGridSizePercent),
+    );
+    const onGridSizePercent = (percent: number) => {
+      setGridSizePercent(percent);
+      appState.setImageGridSizePercent(percent);
+    };
+    // 칸 크기(연속 값)와 받아 올 썸네일 크기(단계 값으로 올림 — 끄는 동안 새 썸네일 파일이 생기거나 칸이 깜빡이지 않게)
+    const gridCellSize = isMobile ? imagesSizes[imageSize].size : imageGridCellPx(gridSizePercent);
+    const gridThumbSize = isMobile ? gridCellSize : imageGridThumbPx(gridCellSize);
     const [selectedTab, setSelectedTab] = useState<number>(0);
     const tabNames =
       scene.type === 'scene'
@@ -3401,7 +3461,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             ref={gallaryRef}
             isMainImage={isMainImage}
             filePaths={paths}
-            imageSize={imagesSizes[imageSize].size}
+            imageSize={gridCellSize}
+            thumbSize={gridThumbSize}
             isHidden={selectedTab !== 0}
             selectedImages={selectedImages.current}
             onSelected={onSelected}
@@ -3418,7 +3479,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             <TrashImageView
               session={curSession!}
               scene={scene}
-              imageSize={imagesSizes[imageSize].size}
+              imageSize={gridCellSize}
+              thumbSize={gridThumbSize}
             />
           )}
           <QueueControl
@@ -3459,7 +3521,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             onFilenameChange={onFilenameChange}
             isMainImage={isMainImage}
             filePaths={paths.filter((path) => isMainImage && isMainImage(path))}
-            imageSize={imagesSizes[imageSize].size}
+            imageSize={gridCellSize}
+            thumbSize={gridThumbSize}
             selectedImages={selectedImages.current}
             isHidden={selectedTab !== 1}
             onSelected={onSelected}
@@ -3488,8 +3551,17 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           // V2: 하단 줄(52px) 위로 올린다(가려지지 않게)
           style={v2 ? { bottom: V2_GALLERY_BAR_PX } : undefined}
         >
+          {/* PC = 이미지 크기 슬라이더(2026-11-23 사용자 결정, 종전 S/M/L 자리·평소 흐림 그대로) / 모바일 = 종전 S/M/L 단추 */}
+          {selectedTab !== 2 && selectedTab !== 3 && !isMobile && (
+            <SizeSlider
+              label={SIZE_SLIDER_TEXT.imageGrid}
+              value={gridSizePercent}
+              onChange={onGridSizePercent}
+            />
+          )}
           {selectedTab !== 2 &&
             selectedTab !== 3 &&
+            isMobile &&
             imagesSizes.map((size, index) => (
               <button
                 key={index}

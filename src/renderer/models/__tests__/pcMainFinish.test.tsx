@@ -69,8 +69,10 @@ describe('4 하단 바 32px·라벨 14px', () => {
   });
 });
 
-test('5 「미디엄뷰」 버튼 14px·32px', () => {
-  expect(read('SceneQueueControl.tsx')).toContain('className="round-button back-gray md:text-sm md:h-8"');
+// 2026-11-23 사용자 결정: 「미디엄뷰」 순환 버튼 → 씬 카드 크기 슬라이더(같은 자리). 한 줄 컨트롤 32px 기준은 슬라이더 높이(h-8)로 잇는다.
+test('5 씬 카드 크기 슬라이더 32px(종전 「미디엄뷰」 버튼 자리)', () => {
+  expect(read('SceneQueueControl.tsx')).toContain('<SceneCardSizeControl />');
+  expect(read('SizeSlider.tsx')).toContain("className={'flex-none w-28 h-8 cursor-pointer '");
 });
 
 describe('6·7·10 사전 세팅 패널', () => {

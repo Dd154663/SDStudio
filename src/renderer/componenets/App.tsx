@@ -152,7 +152,7 @@ const DnDPreview = () => {
   style['transformOrigin'] = 'center';
   let res: any = null;
   if (itemType === 'scene') {
-    const { scene, curSession, getImage, cellSize, cardWidth, selectedSceneNames } = item as any;
+    const { scene, curSession, getImage, fixedCardHeightPx, cardWidth, selectedSceneNames } = item as any;
     const sceneStyle = cardWidth
       ? { ...style, width: cardWidth + 'px' }
       : style;
@@ -163,7 +163,7 @@ const DnDPreview = () => {
           scene={scene}
           curSession={curSession}
           getImage={getImage}
-          cellSize={cellSize}
+          fixedCardHeightPx={fixedCardHeightPx}
           style={sceneStyle}
         />
         {count > 1 && (

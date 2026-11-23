@@ -4,6 +4,7 @@ import SceneQueueMenu from './SceneQueueMenu';
 import {
   Fragment,
   ReactNode,
+  forwardRef,
   memo,
   useContext,
   useEffect,
@@ -44,6 +45,14 @@ import SceneSelector from './SceneSelector';
 import Tooltip from './Tooltip';
 import { ButtonNameSlot, useButtonNameStage } from './ToolbarButtonName';
 import SceneTotalsBadge from './SceneTotalsBadge';
+import SizeSlider from './SizeSlider';
+import {
+  SCENE_CARD_FIXED_HEIGHT_VAR,
+  SIZE_SLIDER_TEXT,
+  effectiveSceneCardPercent,
+  sceneCardFixedHeightPx,
+  sceneCardMinWidthPx,
+} from '../models/sizeSlider';
 import { BUTTON_NAME_GAP_ICON_PX, BUTTON_NAME_GAP_LABEL_PX } from '../models/buttonNameStage';
 import { HScrollHintArrow, useHScrollHint } from './HScrollHint';
 import { ImageOptimizeMethod } from '../backend';
@@ -458,7 +467,9 @@ interface SceneCellProps {
   sceneIndex?: number;
   isActive?: boolean;
   curSession: Session;
-  cellSize: number;
+  // 「높이 고정」 카드의 이미지 칸 높이(px) — 끌기 미리 보기(App.tsx)처럼 씬 목록 그리드 밖에서 그릴 때만 준다.
+  // 그리드 안에서는 그리드가 CSS 변수(SCENE_CARD_FIXED_HEIGHT_VAR)로 넘겨 크기 슬라이더를 끄는 동안 카드가 다시 그려지지 않는다(2026-11-23).
+  fixedCardHeightPx?: number;
   getImage: (scene: GenericScene) => Promise<string | null>;
   setDisplayScene?: (scene: GenericScene) => void;
   setEditingScene?: (scene: GenericScene) => void;
@@ -486,7 +497,7 @@ export const SceneCell = observer(
     moveScenes,
     setEditingScene,
     curSession,
-    cellSize,
+    fixedCardHeightPx,
     style,
     isBookmarked,
     onToggleBookmark,
@@ -525,16 +536,18 @@ export const SceneCell = observer(
     const aspectClass = aspectMap[cardStyle];
     // 모바일: 반응형 그리드(QueueControl 의 gridTemplateColumns)가 열 폭을 정하므로 카드는
     // 셀을 채우는 정사각형이다(과거 w-36 h-36 고정 → 오른쪽 빈 띠·폭 불변 문제, 2026-09-20).
-    const cellSizes = isMobile
-      ? ['w-full aspect-square', 'w-full aspect-square', 'w-full aspect-square']
+    // PC 「높이 고정」 = 크기 슬라이더의 연속 높이(2026-11-23, 종전 h-48·h-64·h-96 세 단계 — models/sizeSlider.ts).
+    // 높이는 씬 목록 그리드가 CSS 변수로 넘기고, 그리드 밖(끌기 미리 보기)은 fixedCardHeightPx 로 카드 자신에 둔다.
+    const imageCellClass = isMobile
+      ? 'w-full aspect-square'
       : aspectClass
-        ? [
-            `w-full ${aspectClass}`,
-            `w-full ${aspectClass}`,
-            `w-full ${aspectClass}`,
-          ]
-        : ['w-full h-48', 'w-full h-64', 'w-full h-96'];
-    const cellSizes3 = ['', '', ''];
+        ? `w-full ${aspectClass}`
+        : // Tailwind 가 소스 글자로 클래스를 찾으므로 변수 이름을 그대로 적는다(= SCENE_CARD_FIXED_HEIGHT_VAR, 검사 sizeSlider)
+          'w-full h-[var(--scene-card-fixed-h)]';
+    const ownFixedHeightStyle =
+      fixedCardHeightPx != null
+        ? ({ [SCENE_CARD_FIXED_HEIGHT_VAR]: `${fixedCardHeightPx}px` } as React.CSSProperties)
+        : undefined;
 
     const outputs = gameService.getOutputs(curSession!, scene);
     const totalImages = outputs.length;
@@ -660,6 +673,13 @@ export const SceneCell = observer(
         type: 'scene',
         item: () => {
           const cardWidth = cardElRef.current?.offsetWidth;
+          // 「높이 고정」 높이 — 끌기 시작 때 그리드가 넘긴 값을 읽어 미리 보기 카드에 그대로 준다
+          const fixedHeightRaw = cardElRef.current
+            ? parseFloat(
+                getComputedStyle(cardElRef.current).getPropertyValue(SCENE_CARD_FIXED_HEIGHT_VAR),
+              )
+            : NaN;
+          const fixedCardHeightPx = Number.isFinite(fixedHeightRaw) ? fixedHeightRaw : undefined;
           const isSelected = isSceneSelected(
             { names: appState.selectedScenes, type: appState.selectedScenesType },
             scene,
@@ -672,7 +692,7 @@ export const SceneCell = observer(
             curIndex,
             getImage,
             curSession,
-            cellSize,
+            fixedCardHeightPx,
             cardWidth,
             selectedSceneNames,
           };
@@ -698,7 +718,7 @@ export const SceneCell = observer(
           }
         },
       }),
-      [curIndex, scene, cellSize],
+      [curIndex, scene],
     );
 
     useEffect(() => {
@@ -1013,7 +1033,7 @@ export const SceneCell = observer(
               ? ' card-selected card-check-none bg-sky-50 dark:bg-sky-900/20'
               : ''
           }${focusRing}`}
-          style={style}
+          style={ownFixedHeightStyle ? { ...ownFixedHeightStyle, ...style } : style}
           ref={cardRef}
           onContextMenu={onContext}
           onMouseEnter={() => {
@@ -1034,7 +1054,7 @@ export const SceneCell = observer(
             onClick={onClickCard}
           >
             <div
-              className={`p-2 flex text-lg text-default ${cellSizes3[cellSize]}`}
+              className="p-2 flex text-lg text-default"
             >
               <div className="truncate flex-1">
                 {isBookmarked && (
@@ -1057,7 +1077,7 @@ export const SceneCell = observer(
               {seedGroupBadge}
               {combinationQuickToggle}
               <div
-                className={`relative image-cell overflow-hidden ${cellSizes[cellSize]}`}
+                className={`relative image-cell overflow-hidden ${imageCellClass}`}
               >
                 {(previewImage || image) && (
                   <div className="relative w-full h-full">
@@ -1106,7 +1126,7 @@ export const SceneCell = observer(
         }${isDragging ? 'opacity-0 no-touch ' : ''}${
           isOver ? ' card-drop-target' : ''
         }${isSelected ? ' card-selected card-selected-outside card-check-none' : ''}${focusRing}`}
-        style={style}
+        style={ownFixedHeightStyle ? { ...ownFixedHeightStyle, ...style } : style}
         ref={cardRef}
         onContextMenu={onContext}
         onMouseEnter={() => {
@@ -1134,9 +1154,7 @@ export const SceneCell = observer(
             {seedGroupBadge}
             {combinationQuickToggle}
             <div
-              className={`relative image-cell overflow-hidden rounded-md ${
-                cellSizes[cellSize]
-              }`}
+              className={`relative image-cell overflow-hidden rounded-md ${imageCellClass}`}
             >
               {(previewImage || image) && (
                 <div className="relative w-full h-full">
@@ -1202,6 +1220,52 @@ export const SceneCell = observer(
 );
 
 // 씬 휴지통 목록은 componenets/TrashViews.tsx 의 SceneTrashView 로 이전(2026-10-02 T1).
+
+// 씬 카드 크기 슬라이더(2026-11-23) — PC 씬 도구줄 보기 설정 묶음의 카드 모양 칸 오른쪽. 이미지생성·이미지변형 탭 공용 값.
+const SceneCardSizeControl = observer(() => (
+  <SizeSlider
+    label={SIZE_SLIDER_TEXT.sceneCard}
+    value={appState.sceneCardSizePercent}
+    onChange={(v) => appState.setSceneCardSizePercent(v)}
+  />
+));
+
+// 씬 목록 그리드 상자(2026-11-23) — 크기 슬라이더 값을 여기서만 읽는다(observer). 끄는 동안 이 상자의 style 만 바뀌고
+// children(카드 목록)은 부모가 만든 같은 요소라 다시 그려지지 않는다.
+// · 열 최소 폭 = sceneCardMinWidthPx, 「높이 고정」 카드 높이 = CSS 변수(SCENE_CARD_FIXED_HEIGHT_VAR)로 카드에 넘김.
+// · 패널 없는 목록(이미지 그리드 안 「인페인트 씬」 탭)은 75% 이상(종전 늘 라지뷰) — effectiveSceneCardPercent.
+// · 모바일은 반응형 그리드 그대로(최소 트랙 min(9rem, 50%), 크기 조절 없음).
+const SceneCardGrid = observer(
+  forwardRef<HTMLDivElement, { hasPanel: boolean; children: ReactNode }>(({ hasPanel, children }, ref) => {
+    const percent = effectiveSceneCardPercent(appState.sceneCardSizePercent, hasPanel);
+    // 모바일도 CSS grid(2026-09-20): 최소 트랙이 min(9rem, 50%) 라 아무리 좁아도 2열이
+    // 확보되고, 넓으면 열이 늘며, 1fr 로 폭을 채워 좌우 대칭이 된다.
+    const gridMinTrack = isMobile ? 'min(9rem, 50%)' : `${sceneCardMinWidthPx(percent)}px`;
+    return (
+      <div
+        ref={ref}
+        className="overflow-auto w-full content-start relative"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(auto-fill, minmax(${gridMinTrack}, 1fr))`,
+          alignItems: 'start',
+          alignContent: 'start',
+          ...(isMobile
+            ? // 모바일은 스크롤바(8px)가 레이아웃 폭을 차지해 오른쪽 여백만 커진다 →
+              // 양쪽에 같은 자리를 잡아 카드 열을 화면 중앙에 맞춘다.
+              { scrollbarGutter: 'stable both-edges' }
+            : ({ [SCENE_CARD_FIXED_HEIGHT_VAR]: `${sceneCardFixedHeightPx(percent)}px` } as React.CSSProperties)),
+          // 되돌리기 버튼 바(UndoRedoBar)가 하단 막대 위로 바 높이만큼 격자 아래 끝을 덮는다 → 스크롤 바닥에
+          // 같은 높이의 여백을 두어 끝까지 내리면 마지막 줄 카드가 바 위로 올라오게(PC·모바일 공통, 상시).
+          // 패딩은 스크롤 영역 안 끝에만 붙으므로 선택 상자 좌표(toGridContentXY = 위·왼쪽 기준+스크롤)는 불변.
+          paddingBottom: UNDO_BAR_HEIGHT_PX,
+        }}
+      >
+        {children}
+      </div>
+    );
+  }),
+);
 
 interface QueueControlProps {
   type: 'scene' | 'inpaint';
@@ -1269,7 +1333,6 @@ const QueueControl = observer(
         { equals: (a, b) => a[0] === b[0] && a[1] === b[1] },
       );
     }, [type, editingScene, displayScene, curSession]);
-    const [cellSize, setCellSize] = useState(1);
     const [focusedSceneIndex, setFocusedSceneIndex] = useState<number | null>(
       null,
     );
@@ -2059,8 +2122,6 @@ const QueueControl = observer(
       if (!imgPath) throw new Error('No image available');
       return await imageService.fetchVibeImage(curSession!, imgPath);
     };
-
-    const cellSizes = ['스몰뷰', '미디엄뷰', '라지뷰'];
 
     // id = 이미지 상세 PC 버튼 줄의 묶음·색 판정용(2026-11-22) — 라벨·className 은 모바일 V2·좁은 폭이 그대로 쓴다
     const favButton = {
@@ -3305,12 +3366,9 @@ const QueueControl = observer(
                   <option value="fixedHeight">높이 고정</option>
                 </select>
               )}
-              <button
-                onClick={() => setCellSize((cellSize + 1) % 3)}
-                className="round-button back-gray md:text-sm md:h-8"
-              >
-                {cellSizes[cellSize]}
-              </button>
+              {/* 씬 카드 크기 슬라이더(2026-11-23 — 종전 「스몰뷰/미디엄뷰/라지뷰」 순환 버튼 자리). 값을 읽는 곳을 이 작은
+                  observer 로 가둬 끄는 동안 QueueControl 전체가 다시 그려지지 않게 한다. */}
+              <SceneCardSizeControl />
             </div>
           </div>
         )}
@@ -3346,46 +3404,14 @@ const QueueControl = observer(
         )}
         <div className="flex flex-1 overflow-hidden">
           {(() => {
-            const effectiveCellSize = showPannel || isMobile ? cellSize : 2;
-            const minWidths = ['180px', '240px', '320px'];
-            // 모바일도 CSS grid(2026-09-20): 최소 트랙이 min(9rem, 50%) 라 아무리 좁아도 2열이
-            // 확보되고, 넓으면 열이 늘며, 1fr 로 폭을 채워 좌우 대칭이 된다.
-            const useGrid = true;
-            const gridMinTrack = isMobile
-              ? 'min(9rem, 50%)'
-              : minWidths[effectiveCellSize];
+            // 열 최소 폭·「높이 고정」 높이 = 씬 카드 크기 슬라이더(appState.sceneCardSizePercent) — SceneCardGrid 가 읽는다.
+            // 그 값을 여기(QueueControl)서 읽지 않아 끄는 동안 이 컴포넌트와 카드 목록이 다시 그려지지 않는다.
             const renderedScenes = getFilteredScenes();
             const sceneIndices = new Map(
               curSession.getScenes(type).map((scene, index) => [scene, index]),
             );
             return (
-              <div
-                ref={gridContainerRef}
-                className={
-                  useGrid
-                    ? 'overflow-auto w-full content-start relative'
-                    : 'flex flex-wrap overflow-auto justify-start items-start content-start relative'
-                }
-                style={
-                  useGrid
-                    ? {
-                        display: 'grid',
-                        gridTemplateColumns: `repeat(auto-fill, minmax(${gridMinTrack}, 1fr))`,
-                        alignItems: 'start',
-                        alignContent: 'start',
-                        // 모바일은 스크롤바(8px)가 레이아웃 폭을 차지해 오른쪽 여백만 커진다 →
-                        // 양쪽에 같은 자리를 잡아 카드 열을 화면 중앙에 맞춘다.
-                        ...(isMobile
-                          ? { scrollbarGutter: 'stable both-edges' }
-                          : {}),
-                        // 되돌리기 버튼 바(UndoRedoBar)가 하단 막대 위로 바 높이만큼 격자 아래 끝을 덮는다 → 스크롤 바닥에
-                        // 같은 높이의 여백을 두어 끝까지 내리면 마지막 줄 카드가 바 위로 올라오게(PC·모바일 공통, 상시).
-                        // 패딩은 스크롤 영역 안 끝에만 붙으므로 선택 상자 좌표(toGridContentXY = 위·왼쪽 기준+스크롤)는 불변.
-                        paddingBottom: UNDO_BAR_HEIGHT_PX,
-                      }
-                    : { paddingBottom: UNDO_BAR_HEIGHT_PX }
-                }
-              >
+              <SceneCardGrid ref={gridContainerRef} hasPanel={!!showPannel}>
                 {dragBox && isDraggingRef.current && !mainDragSurface && (
                   <div
                     className="absolute bg-sky-500/30 border-2 border-sky-500 rounded pointer-events-none z-50"
@@ -3399,7 +3425,6 @@ const QueueControl = observer(
                 )}
                 {renderedScenes.map((scene, sceneIdx) => (
                   <SceneCell
-                    cellSize={effectiveCellSize}
                     key={scene.name}
                     scene={scene}
                     sceneIndex={sceneIndices.get(scene)}
@@ -3461,7 +3486,7 @@ const QueueControl = observer(
                     )}
                   </div>
                 )}
-              </div>
+              </SceneCardGrid>
             );
           })()}
         </div>

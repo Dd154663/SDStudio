@@ -213,7 +213,8 @@ describe('④ 로컬/글로벌 전환 — 한 모양(그룹 2-c 부터 .seg-grou
   });
 });
 
-describe('⑤ 이미지 그리드 크기 단추', () => {
+// 2026-11-23: PC 는 이미지 크기 슬라이더로 바뀜(검사 sizeSlider) — 이 단추는 모바일 전용으로 남고 색·크기·평소 흐림은 그대로.
+describe('⑤ 이미지 그리드 크기 단추(모바일)', () => {
   test('색 = 상태 토큰(back-sky 선택·back-gray 미선택), 자리·크기·평소 흐림은 그대로', () => {
     const src = read('ResultViewer.tsx');
     expect(src).toContain("${imageSize === index ? 'back-sky' : 'back-gray'}");
