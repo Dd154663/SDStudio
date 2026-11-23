@@ -93,6 +93,11 @@ import {
   isPresetAnchorKey,
 } from './PresetLayoutDnd';
 import { StackFixed, StackGrow, VerticalStack } from './LayoutComponents';
+import {
+  PromptBoxResizeContext,
+  PromptBoxResizeStore,
+  ResizablePromptBody,
+} from './PromptBoxResize';
 import Tooltip from './Tooltip';
 import ModalOverlay, { DIALOG_DANGER_BTN, DIALOG_SECONDARY_BTN } from './ModalOverlay';
 import { ActionIcon } from './ActionIcon';
@@ -315,6 +320,10 @@ export const EditorField = ({
   // 편집기 부속 버튼(작가 라이브러리 열기) 자리 — 라벨 줄 오른쪽 끝. 편집기 안 우상단에 두면 첫 줄 프롬프트를
   // 가려 수정을 방해한다(2026-09-26 사용자 실기기 지적). PromptEditTextArea 가 컨텍스트로 노드를 보낸다.
   const [accessory, setAccessory] = useState<React.ReactNode>(null);
+  // PC 메인 패널 칸 높이 비율(2026-11-23) — 공급자가 있을 때(메인 패널·PC)만, 자라는 칸(full)·접힘 키가 있는 칸만.
+  // 키는 접힘 키(필드명)를 같이 쓴다. 공급자 없는 곳(inner 편집기·모바일)은 아래 종전 본문 마크업 그대로.
+  const promptResize = useContext(PromptBoxResizeContext);
+  const resizeKey = promptResize && full && foldKey ? foldKey : undefined;
   const toggle = () => {
     if (foldLocked) return;
     if (controlled) {
@@ -380,13 +389,20 @@ export const EditorField = ({
           </span>
         )}
       </div>
-      {!folded && (
-        <div className={full ? 'flex-1 min-h-0' : 'flex-none mt-3'}>
-          <PromptAccessorySlotContext.Provider value={setAccessory}>
-            {children}
-          </PromptAccessorySlotContext.Provider>
-        </div>
-      )}
+      {!folded &&
+        (resizeKey ? (
+          <ResizablePromptBody store={promptResize!} boxKey={resizeKey}>
+            <PromptAccessorySlotContext.Provider value={setAccessory}>
+              {children}
+            </PromptAccessorySlotContext.Provider>
+          </ResizablePromptBody>
+        ) : (
+          <div className={full ? 'flex-1 min-h-0' : 'flex-none mt-3'}>
+            <PromptAccessorySlotContext.Provider value={setAccessory}>
+              {children}
+            </PromptAccessorySlotContext.Provider>
+          </div>
+        ))}
     </>
   );
 };
@@ -1914,6 +1930,20 @@ function presetRowGrows(el: WFIElement): boolean {
   return false;
 }
 
+// 편집모드 래퍼가 따를 칸 높이 비율 키(2026-11-23) — EditorField 의 접힘 키와 같은 값(인라인 프롬프트 = 필드명,
+// 추가 프롬프트 = 'extraPrompt'). 그 밖(중간 자리표시는 접힘 키가 없어 비율 대상 아님)은 undefined.
+function presetRowWeightKey(el: WFIElement): string | undefined {
+  let cur: WFIElement = el;
+  while (cur.type === 'ifIn' || cur.type === 'sceneOnly') {
+    cur = (cur as WFIIfIn | WFISceneOnly).element;
+  }
+  if (cur.type === 'extraPrompt') return 'extraPrompt';
+  if (cur.type === 'inline' && (cur as WFIInlineInput).flex === 'flex-1') {
+    return (cur as WFIInlineInput).field;
+  }
+  return undefined;
+}
+
 // 새 씬 기본 해상도 행 (2026-07-18) — 프리셋 패널 워크플로우 스택 바로 아래(시드 아래) 고정.
 // 여기서 고른 해상도는 세션(newSceneResolution)에 저장되어 [씬 추가]로 새로 만드는
 // 씬에만 적용된다(기존 씬 무영향). 우측 버튼 = 씬 탭의 모든 씬에 현재 해상도 일괄 적용.
@@ -2044,6 +2074,8 @@ const PresetRootRender = observer(
     // 래퍼는 모드와 무관하게 항상 있어야 한다(진입·해제가 트리를 바꾸면 포커스된 칸이 재마운트되어 포커스를 잃음).
     const focus = useContext(PresetFocusContext);
     const focusKey = focus?.key ?? null;
+    // 칸 높이 비율(메인 패널·PC만 공급) — 편집모드 래퍼에서만 읽는다(평소 경로는 읽지 않아 다시 그리기 없음)
+    const promptResize = useContext(PromptBoxResizeContext);
     const renderEl = (x: WFIElement) => {
       const k = wfiElementKey(x) ?? '';
       if (!focus) return <WFRenderElement key={k} element={x} />;
@@ -2183,6 +2215,8 @@ const PresetRootRender = observer(
               elementKey={key}
               order={order}
               grow={presetRowGrows(x)}
+              // 칸 높이 비율 유지 — 펼친 프롬프트 칸이면 래퍼(flex-1)의 grow 를 그 칸 가중치로(메인 패널만, 그 밖 undefined = 종전)
+              growWeight={promptResize?.expandedWeightOf(presetRowWeightKey(x))}
               label={presetRowLabel(x)}
             >
               <WFRenderElement element={x} />
@@ -2973,6 +3007,9 @@ interface ImplProps {
   // 루트 스택 슬롯 키 계약(L1-3): innerEditor 렌더면 true → `${type}@inner`.
   // 미지정(false) = 일반 editor. 순서 오버라이드 슬롯 구분에만 쓰인다.
   inner?: boolean;
+  // PC 메인 화면 왼쪽 패널만 true(2026-11-23) — 펼친 프롬프트 칸 사이 높이 비율 손잡이. 같은 PreSetEditor 를 쓰는
+  // 씬 편집 창(general)·모바일 편집 창은 넘기지 않는다(종전 그대로). 모바일은 넘겨도 꺼진다.
+  promptResize?: boolean;
   getMiddlePrompt?: () => string;
   onMiddlePromptChange?: (txt: string) => void;
   getCharacterMiddlePrompt?: (index: number) => string;
@@ -2991,6 +3028,7 @@ export const PreSetEditorImpl = observer(
     meta,
     middlePromptMode,
     inner,
+    promptResize,
     getMiddlePrompt,
     onMiddlePromptChange,
     getCharacterMiddlePrompt,
@@ -2999,6 +3037,10 @@ export const PreSetEditorImpl = observer(
     customSlots,
     fieldHeaderEnds,
   }: ImplProps) => {
+    // 칸 높이 비율 저장소 — 메인 패널(일반 editor·PC)에서만 만든다. null 이면 공급자 없음 = 종전 렌더.
+    const [promptResizeStore] = useState(() =>
+      promptResize && !inner && !isMobile ? new PromptBoxResizeStore() : null,
+    );
     const [editVibe, setEditVibe] = useState<WFIInlineInput | undefined>(
       undefined,
     );
@@ -3119,16 +3161,19 @@ export const PreSetEditorImpl = observer(
               />
             )}
             {!editVibe && !editCharacters && !editCharacterReference && (
-              <PresetRootRender
-                element={rootElement}
-                slotKey={rootSlotKey}
-                // 하단 아이콘 행은 프리셋 패널(general)만 — inner(씬 에디터 등 내장
-                // 편집기)는 오버레이 문맥이라 현행 세로 버튼 유지.
-                iconRow={!inner && appState.uiPresetIconRow}
-                // 새 씬 해상도 행도 프리셋 패널(general)만 — inner 는 개별 씬 편집
-                // 문맥이라 새 씬 기본값 컨트롤이 어울리지 않는다.
-                belowBody={!inner ? <NewSceneResolutionRow /> : undefined}
-              />
+              // 칸 높이 비율 공급자는 본문(루트 스택)에만 — 샘플링 설정 창 등 다른 자리로 번지지 않게
+              <PromptBoxResizeContext.Provider value={promptResizeStore}>
+                <PresetRootRender
+                  element={rootElement}
+                  slotKey={rootSlotKey}
+                  // 하단 아이콘 행은 프리셋 패널(general)만 — inner(씬 에디터 등 내장
+                  // 편집기)는 오버레이 문맥이라 현행 세로 버튼 유지.
+                  iconRow={!inner && appState.uiPresetIconRow}
+                  // 새 씬 해상도 행도 프리셋 패널(general)만 — inner 는 개별 씬 편집
+                  // 문맥이라 새 씬 기본값 컨트롤이 어울리지 않는다.
+                  belowBody={!inner ? <NewSceneResolutionRow /> : undefined}
+                />
+              </PromptBoxResizeContext.Provider>
             )}
           </WFGroupContext.Provider>
           {/* 샘플링/모델 설정 오버레이 */}
@@ -3229,6 +3274,8 @@ export const InnerPreSetEditor = observer(
 interface Props {
   meta?: any;
   middlePromptMode: boolean;
+  // PC 메인 화면 왼쪽 패널(App)만 true — 프롬프트 칸 사이 높이 비율 손잡이(2026-11-23). 씬 편집 창·모바일 편집 창은 넘기지 않는다.
+  promptResize?: boolean;
   getMiddlePrompt?: () => string;
   onMiddlePromptChange?: (txt: string) => void;
   getCharacterMiddlePrompt?: (index: number) => string;
@@ -3275,6 +3322,7 @@ const PreSetEditor = observer(
     getCharacterMiddlePrompt,
     onCharacterMiddlePromptChange,
     meta,
+    promptResize,
   }: Props) => {
     const [_, rerender] = useState<{}>({});
     const curSession = appState.curSession!;
@@ -3357,6 +3405,7 @@ const PreSetEditor = observer(
               )!
             }
             middlePromptMode={middlePromptMode}
+            promptResize={promptResize}
             element={workFlowService.getGeneralEditor(workflowType)}
             getMiddlePrompt={getMiddlePrompt}
             onMiddlePromptChange={onMiddlePromptChange}

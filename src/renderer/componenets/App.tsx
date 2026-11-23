@@ -719,6 +719,8 @@ export const App = observer(() => {
             <PreSetEditor
               key={appState.curSession.name}
               middlePromptMode={false}
+              // 펼친 프롬프트 칸 사이 높이 비율 손잡이 — 이 PC 왼쪽 패널만(2026-11-23)
+              promptResize
             />
           </div>
         </div>

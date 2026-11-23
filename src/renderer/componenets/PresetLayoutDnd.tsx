@@ -83,6 +83,7 @@ export const DraggablePresetRow = observer(
     elementKey,
     order,
     grow,
+    growWeight,
     label,
     children,
   }: {
@@ -90,6 +91,9 @@ export const DraggablePresetRow = observer(
     elementKey: string;
     order: string[];
     grow: boolean;
+    // 메인 패널 프롬프트 칸 높이 비율(2026-11-23, models/promptBoxWeights) — 펼친 프롬프트 칸이면 그 가중치.
+    // flex-1 로 자랄 때만 grow 값으로 쓴다(편집모드에서도 칸 비율 유지). 없으면 종전 flex-1 그대로.
+    growWeight?: number;
     label: string;
     children: ReactNode;
   }) => {
@@ -177,10 +181,13 @@ export const DraggablePresetRow = observer(
 
     // 빈 행은 flex-none 칩으로 축소 — 성장(flex-1)은 실제 콘텐츠가 있을 때만.
     const growClass = isEmpty ? 'flex-none' : grow ? 'flex-1' : 'flex-none';
+    const weightStyle =
+      !isEmpty && grow && growWeight !== undefined ? { flexGrow: growWeight } : undefined;
 
     return (
       <div
         ref={wrapRef}
+        style={weightStyle}
         className={
           'relative flex flex-col min-h-0 ' +
           growClass +
