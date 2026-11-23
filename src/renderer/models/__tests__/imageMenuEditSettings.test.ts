@@ -122,8 +122,10 @@ describe('ResultDetailView — 해상도 칸', () => {
     expect(load).toMatch(/\.then\(\(\{ width, height \}\) => \{\n\s*if \(isStale\(\)\) return;[\s\S]*?setImageSize\(\{ path: upscalePath, width, height \}\);/);
   });
 
-  test('PC 넓은 폭(2단 허용)·좁은 폭·모바일 V2 모두 같은 정보 칸(renderInfo)을 쓴다', () => {
-    expect((view.match(/\{renderInfo\(true\)\}/g) || []).length).toBe(1);
-    expect((view.match(/\{renderInfo\(false\)\}/g) || []).length).toBe(2);
+  test('PC 넓은 폭(프롬프트 열·상세 열)·좁은 폭·모바일 V2 모두 같은 정보 칸(renderInfo)을 쓴다', () => {
+    // 2026-11-23 열 배치: PC 는 프롬프트 열('prompt', 합치면 'all')·상세 열('detail'), 좁은 폭·V2 는 한 열 전부('all')
+    expect((view.match(/\{renderInfo\(wideCols\.merged \? 'all' : 'prompt'\)\}/g) || []).length).toBe(1);
+    expect((view.match(/\{renderInfo\('detail'\)\}/g) || []).length).toBe(1);
+    expect((view.match(/\{renderInfo\('all'\)\}/g) || []).length).toBe(2);
   });
 });

@@ -40,6 +40,7 @@ import {
   FaSearchPlus,
   FaReply,
   FaTrophy,
+  FaInfoCircle,
 } from 'react-icons/fa';
 import { ActionIcon } from './ActionIcon';
 import { isV2, V2_SHEET_PEEK_PX } from '../models/mobileV2';
@@ -49,13 +50,14 @@ import { PromptHighlighter } from './SceneEditor';
 import QueueControl from './SceneQueueControl';
 import { FloatView, useFloatViewHeaderSlot } from './FloatView';
 import { createPortal } from 'react-dom';
-import { ImageDetailInfo } from './ImageDetailInfo';
+import { ImageDetailInfo, type ImageDetailInfoPart } from './ImageDetailInfo';
 import { fitFrame } from './CharacterPositionOverlay';
 import {
   base64ByteLength,
   buildImageDetailInfo,
   detailRankOf,
 } from '../models/imageDetailInfo';
+import { detailWideColumns, IMAGE_DETAIL_INFO_TEXT } from '../models/imageDetailInfoOpen';
 import { imageExtFromBase64 } from '../models/imageFormats';
 import memoizeOne from 'memoize-one';
 import {
@@ -1198,8 +1200,11 @@ function useDetailWide(): boolean {
   }, []);
   return wide;
 }
-/** 상세 PC 넓은 폭 — 이미지 칸이 차지할 수 있는 본문 폭 비율 상한(가로로 긴 이미지) */
-const DETAIL_IMAGE_MAX_RATIO = 0.6;
+// 이미지 정보 여닫힘(2026-11-23 사용자 결정) — 앱 전체 하나로 기억(appState.imageDetailInfoOpen, localStorage), 기본 접힘.
+// PC 넓은 폭·좁은 폭 클래식·모바일 V2 가 같은 값을 쓴다(종전 useState(false) — 매번 접힘으로 시작하던 것을 대신함).
+function useImageDetailInfoOpen(): [boolean, (open: boolean) => void] {
+  return [appState.imageDetailInfoOpen, (open: boolean) => appState.setImageDetailInfoOpen(open)];
+}
 /** 처음 연 이미지의 크기를 알기 전 이미지 칸 비율(가로/세로) — 흔한 세로 832×1216 */
 const DETAIL_FALLBACK_RATIO = 832 / 1216;
 
@@ -1443,11 +1448,11 @@ const ResultDetailView = observer(
       };
     });
 
-    const [showPrompt, setShowPrompt] = useState<boolean>(false);
+    const [showPrompt, setShowPrompt] = useImageDetailInfoOpen();
     // 모바일 V2(2026-09-26): 넓은 버튼 묶음 대신 이미지 아래 [자세한 정보 손잡이][하단 6칸 줄]. 클래식·PC 마크업은 불변.
     const v2 = isV2('grid');
     const [v2More, setV2More] = useState(false);
-    // PC 넓은 폭 배치(2026-11-22 개편): 머리줄(씬 이름·n/전체·순위·←→) + 버튼 줄 + [정보 칸 | 이미지 칸]. 좁은 폭·V2 는 종전 배치.
+    // PC 넓은 폭 배치(2026-11-22 개편): 머리줄(씬 이름·n/전체·순위·←→) + 버튼 줄 + [프롬프트 열 | (펼침) 상세 열 | 이미지 영역](2026-11-23). 좁은 폭·V2 는 종전 배치.
     const isWide = useDetailWide();
     const wideLayout = !v2 && isWide;
     const headerSlotEl = useFloatViewHeaderSlot();
@@ -1609,12 +1614,13 @@ const ResultDetailView = observer(
           workflowTitle: (t) => workFlowService.getDef(t)?.title,
         })
       : undefined;
-    const renderInfo = (twoColumns: boolean) =>
+    // part: 'all' = 한 열 전부(좁은 폭·V2·PC 합침), 'prompt'/'detail' = PC 넓은 폭의 프롬프트 열/상세 열
+    const renderInfo = (part: ImageDetailInfoPart) =>
       detailInfo ? (
         <ImageDetailInfo
           info={detailInfo}
           job={meta?.job}
-          twoColumns={twoColumns}
+          part={part}
           loadFailed={meta?.failed}
         />
       ) : null;
@@ -1688,13 +1694,11 @@ const ResultDetailView = observer(
         ]
       : [];
 
-    // PC 넓은 폭 이미지 칸 크기 — 본문 높이에 이미지 비율로 맞춘 폭(가로로 긴 이미지는 본문 폭의 60% 상한, fitFrame 재사용)
+    // PC 넓은 폭 열 폭(2026-11-23) — [프롬프트 열(항상, 같은 폭) | 상세 열(펼침에서만) | 이미지 영역(남는 폭)].
+    // 이미지는 이미지 영역 × 본문 높이 안에서 비율대로 맞춰(fitFrame 재사용) 영역 가운데에 놓는다.
+    const wideCols = detailWideColumns(bodySize.width, showPrompt);
     const imageFit = wideLayout
-      ? fitFrame(
-          bodySize.width * DETAIL_IMAGE_MAX_RATIO,
-          bodySize.height,
-          displayRatio ?? DETAIL_FALLBACK_RATIO,
-        )
+      ? fitFrame(wideCols.image, bodySize.height, displayRatio ?? DETAIL_FALLBACK_RATIO)
       : undefined;
     // 이미지 요소 하나(넓은 폭·좁은 폭·V2 공용) — 우클릭 메뉴·끌어서 밖으로 놓기·불러오는 중·실패 표시 그대로.
     // 넓은 폭은 그려진 크기 그대로의 상자라 체크무늬가 이미지 뒤에만 깔린다(바깥은 화면 바탕).
@@ -1912,14 +1916,47 @@ const ResultDetailView = observer(
               </button>
             </div>
           </div>
-          {/* 본문 = [정보 칸(남는 폭, 칸 안만 세로 스크롤) | 이미지 칸(이미지 비율 폭)] */}
-          <div ref={setBodyEl} className="flex-1 min-h-0 flex">
-            <div className="flex-1 min-w-0 overflow-y-auto p-4 border-r line-color" data-detail-info-pane="">
-              {renderInfo(true)}
-            </div>
+          {/* 본문 = 접힘 [프롬프트 열 | 이미지 영역] / 펼침 [프롬프트 열 | 상세 열 | 이미지 영역]. 열은 고정 폭·열 안만 세로 스크롤,
+              이미지 영역은 남는 폭 전부(이미지는 가운데). 본문이 좁아 합치면 상세 묶음을 프롬프트 열에 이어 붙인다(한 열). */}
+          <div ref={setBodyEl} className="flex-1 min-h-0 flex" data-detail-info-open={showPrompt ? 'true' : 'false'}>
             <div
-              className="flex-none h-full flex items-center justify-center overflow-hidden"
-              style={{ width: imageFit?.width }}
+              className="flex-none min-w-0 flex flex-col border-r line-color"
+              style={{ width: wideCols.prompt }}
+              data-detail-info-pane=""
+            >
+              {/* 열 머리(스크롤 밖 고정): 「상세 정보」 여닫기 — 정보를 읽는 자리(왼쪽 열) 바로 위에 둔다(2026-11-23 사용자:
+                  머리 줄 오른쪽 끝에 있으면 왼쪽 정보에 시선이 끌려 못 볼 위험). 버튼은 열의 오른쪽 가장자리 = 상세 열이
+                  펼쳐지는 경계. 이름은 두 상태에서 같고 상태는 색 + aria-pressed + 화살표 방향(› 펼치기 / ‹ 접기). */}
+              <div className="flex-none flex items-center gap-2 px-4 pt-3 pb-1" data-detail-info-head="">
+                <span className="min-w-0 truncate text-sm font-semibold gray-label">이미지 정보</span>
+                <button
+                  className={`ml-auto flex-none round-button h-7 px-3 text-sm ${showPrompt ? 'back-sky toggle-on' : 'back-gray'}`}
+                  onClick={() => setShowPrompt(!showPrompt)}
+                  aria-pressed={showPrompt}
+                  aria-label={IMAGE_DETAIL_INFO_TEXT.wideToggle}
+                  title={IMAGE_DETAIL_INFO_TEXT.wideToggle}
+                  data-detail-info-toggle=""
+                >
+                  <FaInfoCircle className="mr-1" />
+                  {IMAGE_DETAIL_INFO_TEXT.wideToggle}
+                  {showPrompt ? <FaChevronLeft className="ml-1" size={11} /> : <FaChevronRight className="ml-1" size={11} />}
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-2">
+                {renderInfo(wideCols.merged ? 'all' : 'prompt')}
+              </div>
+            </div>
+            {wideCols.side > 0 && (
+              <div
+                className="flex-none min-w-0 overflow-y-auto p-4 border-r line-color"
+                style={{ width: wideCols.side }}
+                data-detail-side-pane=""
+              >
+                {renderInfo('detail')}
+              </div>
+            )}
+            <div
+              className="flex-1 min-w-0 h-full flex items-center justify-center overflow-hidden"
               data-detail-image-pane=""
               {...swipeProps}
             >
@@ -2019,7 +2056,7 @@ const ResultDetailView = observer(
               'mt-2 md:mt-0 md:block ' + (showPrompt ? 'block' : 'hidden')
             }
           >
-            {renderInfo(false)}
+            {renderInfo('all')}
           </div>
         </div>
         )}
@@ -2073,7 +2110,7 @@ const ResultDetailView = observer(
             </div>
             {showPrompt && (
               <div data-v2-detail-info="" className="flex-none overflow-auto px-3 py-2 bg-[var(--c-zone)] text-sm" style={{ maxHeight: '45%' }}>
-                {renderInfo(false)}
+                {renderInfo('all')}
               </div>
             )}
             <div className="relative flex-none" data-v2-detail-bar="">

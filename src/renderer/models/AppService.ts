@@ -43,6 +43,7 @@ import { projectPath } from './projectPaths';
 import { isTarFileName } from './backupKind';
 import { withCompanionDefaults } from './companionSlots';
 import { ImageViewOrder, readImageViewOrder, writeImageViewOrder } from './imageOrderSort';
+import { readImageDetailInfoOpen, writeImageDetailInfoOpen } from './imageDetailInfoOpen';
 import { V2_SHEET_CLOSE_EVENT } from './uiEvents';
 import { ARTIST_LIBRARY_TAB_ACTION } from './ArtistLibraryService';
 import { Dialog, DialogItem } from '../componenets/ConfirmWindow';
@@ -960,6 +961,18 @@ export class AppState {
   setImageViewOrder(mode: ImageViewOrder) {
     this.imageViewOrder = mode;
     writeImageViewOrder(typeof localStorage === 'undefined' ? undefined : localStorage, mode);
+  }
+
+  // 이미지 상세 보기 「이미지 정보」 펼침(2026-11-23 사용자 결정) — 앱 전체 하나, 보기 순서와 같은 localStorage 화면 보기 설정.
+  // 기본 접힘. PC 넓은 폭·좁은 폭 클래식·모바일 V2 가 같은 값을 쓴다(models/imageDetailInfoOpen.ts).
+  @observable accessor imageDetailInfoOpen: boolean = readImageDetailInfoOpen(
+    typeof localStorage === 'undefined' ? undefined : localStorage,
+  );
+
+  @action
+  setImageDetailInfoOpen(open: boolean) {
+    this.imageDetailInfoOpen = open;
+    writeImageDetailInfoOpen(typeof localStorage === 'undefined' ? undefined : localStorage, open);
   }
 
   // 모바일 우측 히스토리 드로어 (비영속)

@@ -1,11 +1,11 @@
 // 이미지 상세 보기의 「정보 칸」(2026-11-22 상세 보기 개편). 내용 규칙은 models/imageDetailInfo(순수 함수)가 정하고,
 // 여기서는 그리기만 한다. PC 넓은 폭·좁은 폭 클래식·모바일 V2 시트가 같은 컴포넌트를 쓴다(내용 공용).
-// · 2단: twoColumns 가 참이고 이 칸 자체의 폭이 TWO_COLUMN_MIN_PX 이상일 때만(화면 폭이 아니라 칸 폭 기준).
-//   왼 단 = 프롬프트·네거티브·캐릭터, 오른 단 = 생성 설정·참조 이미지·파일·프롬프트 구획. 좁으면 1단으로 같은 순서.
+// · part(2026-11-23 열 배치): 'prompt' = 요약 칩·안내·프롬프트·네거티브·캐릭터(PC 프롬프트 열),
+//   'detail' = 생성 설정·참조 이미지·파일·프롬프트 구획(PC 상세 열), 'all'(기본) = 한 열에 같은 순서로 전부
+//   (좁은 폭 클래식·V2·PC 에서 본문이 좁아 합친 경우). 묶음 내용·순서·숨김은 models/imageDetailInfo 그대로.
 // · 스크롤은 바깥(정보 칸)이 맡는다 — 이 컴포넌트는 세로 스크롤을 만들지 않는다(프롬프트 상자의 상한 넘침만 상자 안 스크롤).
 // · 복사 = navigator.clipboard.writeText + 기존 토스트(작가 라이브러리의 「프롬프트 복사」와 같은 방식).
-import React, { useEffect, useRef, useState } from 'react';
-import ResizeObserver from 'resize-observer-polyfill';
+import React, { useState } from 'react';
 import { FaChevronRight } from 'react-icons/fa';
 import { PromptHighlighter } from './SceneEditor';
 import { ActionIcon } from './ActionIcon';
@@ -17,9 +17,8 @@ import {
   type DetailRow,
   type ImageDetailInfoModel,
 } from '../models/imageDetailInfo';
+import { detailPromptChips } from '../models/imageDetailInfoOpen';
 
-/** 2단으로 나누는 칸 폭 기준(px) — 한 단이 약 310px(프롬프트 상자가 읽을 만한 폭) 이상일 때 */
-export const TWO_COLUMN_MIN_PX = 640;
 /** 프롬프트 상자 — 내용만큼 자라고 상한(max-h-60 = 240px)을 넘으면 상자 안 스크롤 */
 export const DETAIL_PROMPT_BOX = 'w-full max-h-60 overflow-auto p-2 rounded-md text-sm';
 
@@ -99,29 +98,21 @@ export interface ImageDetailInfoProps {
   info: ImageDetailInfoModel;
   /** 참조 이미지 작은 그림용(메타에 든 base64 를 그대로 읽는다 — 복사본을 만들지 않음) */
   job?: ImportableMetadata;
-  /** 칸 폭이 넉넉하면 2단(PC 넓은 폭만 참) */
-  twoColumns?: boolean;
+  /** 어느 쪽을 그릴지 — 'prompt'(PC 프롬프트 열)·'detail'(PC 상세 열)·'all'(한 열 전부, 기본) */
+  part?: ImageDetailInfoPart;
   /** 이미지 읽기 실패 — 「생성 정보가 없습니다」 안내를 띄우지 않는다(정보가 없는 게 아니라 못 읽은 것) */
   loadFailed?: boolean;
 }
 
-export const ImageDetailInfo = ({ info, job, twoColumns, loadFailed }: ImageDetailInfoProps) => {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [wide, setWide] = useState(false);
+export type ImageDetailInfoPart = 'all' | 'prompt' | 'detail';
+
+export const ImageDetailInfo = ({ info, job, part = 'all', loadFailed }: ImageDetailInfoProps) => {
   const [partsOpen, setPartsOpen] = useState(false);
-  useEffect(() => {
-    const el = rootRef.current;
-    if (!twoColumns || !el) {
-      setWide(false);
-      return undefined;
-    }
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width ?? el.clientWidth;
-      setWide(w >= TWO_COLUMN_MIN_PX);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [twoColumns]);
+  const showPromptSide = part !== 'detail';
+  const showDetailSide = part !== 'prompt';
+  // 프롬프트 열만 그릴 때는 메타가 없어도 해상도 칩을 올린다(상세 열이 접혀 있어도 해상도가 보이게).
+  // 한 열 전부('all')는 종전대로 — 해상도는 파일 묶음에 있다.
+  const chips = part === 'prompt' ? detailPromptChips(info) : info.chips;
 
   const left: React.ReactNode[] = [];
   const right: React.ReactNode[] = [];
@@ -264,10 +255,10 @@ export const ImageDetailInfo = ({ info, job, twoColumns, loadFailed }: ImageDeta
   }
 
   return (
-    <div ref={rootRef} className="w-full min-w-0 flex flex-col gap-3" data-detail-info="">
-      {info.chips.length > 0 && (
+    <div className="w-full min-w-0 flex flex-col gap-3" data-detail-info={part}>
+      {showPromptSide && chips.length > 0 && (
         <div className="flex flex-wrap gap-1.5" data-detail-chips="">
-          {info.chips.map((c) => {
+          {chips.map((c) => {
             const body = (
               <>
                 <span className="text-faint">{c.label}</span>
@@ -296,22 +287,15 @@ export const ImageDetailInfo = ({ info, job, twoColumns, loadFailed }: ImageDeta
           })}
         </div>
       )}
-      {!info.hasMeta && !loadFailed && (
+      {showPromptSide && !info.hasMeta && !loadFailed && (
         <div className="text-sub text-sm" data-detail-no-meta="">
           {DETAIL_INFO_TEXT.noMeta}
         </div>
       )}
-      {wide && left.length > 0 && right.length > 0 ? (
-        <div className="grid grid-cols-2 gap-4 items-start">
-          <div className="flex flex-col gap-3 min-w-0">{left}</div>
-          <div className="flex flex-col gap-3 min-w-0">{right}</div>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3 min-w-0">
-          {left}
-          {right}
-        </div>
-      )}
+      <div className="flex flex-col gap-3 min-w-0">
+        {showPromptSide && left}
+        {showDetailSide && right}
+      </div>
     </div>
   );
 };
