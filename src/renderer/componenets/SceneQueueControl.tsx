@@ -43,6 +43,7 @@ import { base64ToDataUri } from './BrushTool';
 import SceneSelector from './SceneSelector';
 import Tooltip from './Tooltip';
 import { ButtonNameSlot, useButtonNameStage } from './ToolbarButtonName';
+import SceneTotalsBadge from './SceneTotalsBadge';
 import { BUTTON_NAME_GAP_ICON_PX, BUTTON_NAME_GAP_LABEL_PX } from '../models/buttonNameStage';
 import { HScrollHintArrow, useHScrollHint } from './HScrollHint';
 import { ImageOptimizeMethod } from '../backend';
@@ -3279,7 +3280,13 @@ const QueueControl = observer(
               />
             )}
             <ToolbarHideZone group="scene" />
-            <div className="ml-auto mr-2 hidden md:flex items-center gap-2 tb-name-offset">
+            {/* relative + data-scene-totals-anchor = 합계 표시(SceneTotalsBadge)가 이 묶음 왼쪽 바깥에 absolute 로 뜨는 기준.
+                합계 표시는 flex 항목이 아니라 묶음 폭·버튼 이름 판정·줄바꿈에 들어가지 않는다(2026-11-23). */}
+            <div
+              className="relative ml-auto mr-2 hidden md:flex items-center gap-2 tb-name-offset"
+              data-scene-totals-anchor=""
+            >
+              {!isMobile && <SceneTotalsBadge session={curSession} type={type} />}
               {!appState.classicSceneCard && (
                 <select
                   className="app-select app-select-tight text-sm h-8"

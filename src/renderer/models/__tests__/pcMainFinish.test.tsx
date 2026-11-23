@@ -21,7 +21,8 @@ describe('1 보기 설정 묶음 — 이름 보임 단계에서 버튼 줄 높�
     expect(src).toMatch(/buttonNameMode === 'show' \? ' scene-toolbar-named' : ''\s*\}`\}\s*>/);
   });
   test('보기 설정 묶음은 tb-name-offset(이름 몫 15px 보정을 같은 규칙에서 받음)', () => {
-    expect(src).toContain('className="ml-auto mr-2 hidden md:flex items-center gap-2 tb-name-offset"');
+    // relative = 합계 표시(SceneTotalsBadge, 2026-11-23)의 absolute 기준
+    expect(src).toContain('className="relative ml-auto mr-2 hidden md:flex items-center gap-2 tb-name-offset"');
     expect(block('.scene-toolbar-named .tb-name-offset')).toMatch(/margin-bottom: 15px;/);
     // 이름 몫 = 간격 3 + 이름 12
     expect(block('.tb-name')).toMatch(/margin-top: 3px;[\s\S]*height: 12px;/);
