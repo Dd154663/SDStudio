@@ -22,8 +22,8 @@ import { josaEulReul, NAME_KIND_LABEL, type NameKind } from './nameInput';
 //  · 휴지통은 없지만 되돌리기(Ctrl+Z)로 되살아나는 삭제('undoable', 2026-11-15): 「{대상}을(를) 삭제할까요? /
 //    되돌리기(Ctrl+Z)로 되살릴 수 있습니다.」 [삭제] · danger 'permanent'(빨강 + Enter 무시 — 사용자 결정: 영구 삭제와
 //    같게). 파일(이미지·폴더)을 지우지 않고 되돌리기 기록(*Recorded·edit*·begin…commit)이 있는 삭제만 이 갈래.
-//    예외(2026-11-18): 글로벌 프리셋·글로벌 캐릭터 삭제는 파일을 지우되 이미지 내용을 기록에 담아 되돌릴 때 다시 쓴다
-//    (globalLibraryDeleteUndo.prepareGlobalDelete 가 undoable 일 때만 — 보관 한도 초과·기록 불가면 'permanent').
+//    글로벌 프리셋·글로벌 캐릭터 삭제는 2026-11-24 부터 휴지통 갈래(`{ trashDays: GLOBAL_LIBRARY_TRASH_DAYS }`,
+//    models/globalLibraryTrash.ts) — 같은 저장소 파일 안 휴지통으로 옮기고 이미지는 영구 삭제 때만 지운다.
 //  · 대상: 단건 「{종류} "{이름}"」(이름 없으면 「이 {종류}」), 복수 「{종류} {count}개」(이미지 장·작가 명).
 //  · extra: 본문 끝에 덧붙일 줄(첨부 이미지도 함께 삭제됨·모든 프로젝트에 영향 등).
 

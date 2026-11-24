@@ -73,6 +73,8 @@ import {
   setGlobalCharactersFolderRecorded,
 } from '../models/globalLibraryUndo';
 import { prepareGlobalDelete } from '../models/globalLibraryDeleteUndo';
+import { GLOBAL_LIBRARY_TRASH_DAYS } from '../models/globalLibraryTrash';
+import { GlobalLibraryTrashButton } from './GlobalLibraryTrashView';
 
 // ─── 캐릭터 프리셋 내보내기/불러오기 ─────────────────────────
 
@@ -637,8 +639,8 @@ export function useCharacterPresetPanel({
     setEditGlobalId(null);
   };
 
-  // 글로벌 프리셋 삭제 확인 창의 덧붙임 줄 — 단건·여러 개 공통
-  const GLOBAL_PRESET_DELETE_EXTRA = '첨부 이미지도 함께 삭제되며, 모든 프로젝트에 영향을 줍니다.';
+  // 글로벌 프리셋 삭제 확인 창의 덧붙임 줄 — 단건·여러 개 공통(2026-11-24 휴지통: 첨부 이미지는 영구 삭제 때 지워진다)
+  const GLOBAL_PRESET_DELETE_EXTRA = '모든 프로젝트에 영향을 줍니다. 첨부 이미지는 휴지통에서 영구 삭제할 때 함께 지워집니다.';
 
   const handleDelete = (preset: CharacterPreset) => {
     appState.pushDialog({
@@ -788,7 +790,7 @@ export function useCharacterPresetPanel({
   };
 
   const handleDeleteGlobal = async (entry: IGlobalCharacterPresetEntry) => {
-    // 되돌리기(Ctrl+Z)로 되살아난다(2026-11-18) — 첨부 이미지 내용을 확인 창 전에 보관. 보관 한도를 넘거나 기록할 수 없으면 영구 문구
+    // 삭제 = 글로벌 보기의 휴지통으로 이동(2026-11-24, 30일 보관). 되돌리기(Ctrl+Z) = 휴지통에서 복원
     let plan;
     try {
       plan = await prepareGlobalDelete('characters', [entry.id]);
@@ -801,7 +803,7 @@ export function useCharacterPresetPanel({
       ...deleteConfirmText({
         kind: 'globalPreset',
         name: entry.name,
-        outcome: plan.undoable ? 'undoable' : 'permanent',
+        outcome: { trashDays: GLOBAL_LIBRARY_TRASH_DAYS },
         extra: GLOBAL_PRESET_DELETE_EXTRA,
       }),
       callback: async () => {
@@ -818,7 +820,7 @@ export function useCharacterPresetPanel({
       ? selectedGlobalIds.size
       : selectedPresets.size;
     if (count === 0) return;
-    // 글로벌 선택 삭제 = 되돌리기 한 항목(2026-11-18). 이미지 내용을 확인 창 전에 보관(한도 초과·기록 불가면 영구 문구)
+    // 글로벌 선택 삭제 = 되돌리기 한 항목(2026-11-18) · 2026-11-24 부터 휴지통으로(크기와 관계없이)
     const globalIds = Array.from(selectedGlobalIds);
     let plan: Awaited<ReturnType<typeof prepareGlobalDelete>> | undefined;
     if (globalView) {
@@ -832,13 +834,13 @@ export function useCharacterPresetPanel({
 
     appState.pushDialog({
       type: 'confirm',
-      // 글로벌·로컬 모두 휴지통 없이 바로 사라진다 — Enter 무시(2026-10-03 E1). 글로벌 = 첨부 이미지 내용을 기록에 담아
-      // 되돌리기 가능(2026-11-18, 한도 초과면 영구), 로컬 = editCharacterPresets 기록 → 되돌리기 가능(2026-11-15)
+      // 글로벌 = 휴지통 갈래(2026-11-24, danger true — Enter 확인). 로컬 = 휴지통 없이 바로 사라지되
+      // editCharacterPresets 기록 → 되돌리기 가능(2026-11-15, Enter 무시)
       ...(globalView
         ? deleteConfirmText({
             kind: 'globalPreset',
             count,
-            outcome: plan?.undoable ? 'undoable' : 'permanent',
+            outcome: { trashDays: GLOBAL_LIBRARY_TRASH_DAYS },
             extra: GLOBAL_PRESET_DELETE_EXTRA,
           })
         : deleteConfirmText({
@@ -858,7 +860,7 @@ export function useCharacterPresetPanel({
               `${ids.length - failed.size}개를 삭제하고 ${failed.size}개는 삭제하지 못했습니다`,
             );
           } else {
-            appState.pushMessage(`${ids.length}개 글로벌 프리셋을 삭제했습니다`);
+            appState.pushMessage(`${ids.length}개 글로벌 프리셋을 휴지통으로 옮겼습니다`);
           }
           return;
         }
@@ -1351,6 +1353,14 @@ export function useCharacterPresetPanel({
             />
           </label>
         </Tooltip>
+      )}
+      {/* 휴지통 (N)(2026-11-24) — 글로벌 보기에서만. 지운 글로벌 캐릭터 프리셋 30일 보관·복원·영구 삭제 */}
+      {globalView && (
+        <GlobalLibraryTrashButton
+          kind="characters"
+          iconSize={11}
+          className="px-3 py-1.5 rounded-lg text-sm btn-neutral text-body transition-colors flex items-center gap-1.5 whitespace-nowrap"
+        />
       )}
       {/* 도움말은 행 맨 끝 고정 (버튼 사이 배치가 어색하다는 피드백) */}
       {/* 2026-11-20 그룹 1-b: 3줄 툴팁 → 누르면 열리는 짧은 패널(문구 = models/helpPanelTexts.ts) */}

@@ -16,6 +16,7 @@
 // AppService 를 정적 import 하지 않는다(서비스 모듈 순환 방지 — appStateRef 게이트 사용).
 
 import { getAppState } from './appStateRef';
+import { GLOBAL_LIBRARY_TRASH_DAYS } from './globalLibraryTrash';
 
 // 기존 라이브러리 복원(askLibraryBackupPolicy)과 같은 값 — 직렬화되지 않는 호출 인자.
 export type ImportPolicy = 'rename' | 'skip' | 'overwrite';
@@ -75,6 +76,8 @@ export const IMPORT_FLOW_TEXT = {
     keepId: '같은 id 로 내용만 갱신',
     // 임시 백업 파일 저장 후 휴지통 이관 — 프로젝트(드라이브 동기화 ⑤). 영구 삭제하지 않는다.
     trashWithBackup: '임시 백업 파일로 저장된 뒤 휴지통으로 이관',
+    // 휴지통으로 옮긴 뒤 새 항목으로 추가 — 글로벌 프리셋(2026-11-24 휴지통). 영구 삭제하지 않는다.
+    trashReplaced: `휴지통으로 옮겨진 뒤(${GLOBAL_LIBRARY_TRASH_DAYS}일 보관) 불러온 내용으로 교체`,
   },
   summary: (s: ImportSummary) =>
     `추가 ${s.added} · 갱신 ${s.updated} · 건너뜀 ${s.skipped}`,

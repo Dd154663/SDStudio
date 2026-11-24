@@ -420,15 +420,15 @@ export const UNDO_TEXT = {
   exportPresetDuplicate: (name: string) => `내보내기 프리셋 복제: ${name}`,
   templateRename: (from: string, to: string) => `템플릿 이름 변경: ${from} → ${to}`,
   templateBadgeColor: (name: string) => `템플릿 배지 색 변경: ${name}`,
-  // 2026-11-18 글로벌 프리셋·글로벌 캐릭터 삭제(이미지 내용 보관 → 되돌리면 같은 파일명으로 다시 씀) — globalLibraryDeleteUndo.ts
+  // 2026-11-18 글로벌 프리셋·글로벌 캐릭터 삭제 — globalLibraryDeleteUndo.ts. 2026-11-24 부터 삭제 = 휴지통 이동, 되돌림 = 휴지통에서 복원
   globalPresetDelete: (names: readonly string[]) =>
     names.length === 1 ? `글로벌 프리셋 삭제: ${names[0]}` : `글로벌 프리셋 ${names.length}개 삭제`,
   globalCharacterDelete: (names: readonly string[]) =>
     names.length === 1 ? `글로벌 캐릭터 삭제: ${names[0]}` : `글로벌 캐릭터 ${names.length}개 삭제`,
   globalDeleteIdTaken: (name: string) =>
     `"${name}"과(와) 같은 항목이 그사이 다른 곳에서 다시 만들어져 되살리지 않았습니다`,
-  globalDeleteImagesEvicted:
-    '이후 삭제가 많아 이 기록이 보관하던 이미지를 비웠습니다(메모리 보관 한도)',
+  globalDeleteTrashGone: (name: string) =>
+    `"${name}"이(가) 휴지통에 없습니다(그사이 영구 삭제되었거나 다른 곳에서 복원되었습니다)`,
   globalStoreBlocked: '저장 파일을 읽지 못해 지금은 바꿀 수 없습니다(앱을 다시 시작해 주세요)',
   // 2026-11-18 템플릿 재적용(현재 프로젝트) — templateReapplyUndo.ts
   templateReapply: (name: string) => `템플릿 다시 적용: ${name}`,

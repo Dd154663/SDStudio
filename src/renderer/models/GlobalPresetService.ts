@@ -20,6 +20,19 @@ import { globalStoreDeps } from './globalStoreDeps';
 import { mergeById } from './storeMerge';
 import { holdEntry, weaveHeld } from './heldEntries';
 import type { HeldEntry } from './heldEntries';
+import {
+  dropListedFromTrash,
+  isTrashExpired,
+  makeTrashItem,
+  mergeTrash,
+  splitTrashField,
+  unreferencedTokens,
+} from './globalLibraryTrash';
+import type {
+  GlobalTrashItem,
+  GlobalTrashPurgeResult,
+  GlobalTrashRestoreOutcome,
+} from './globalLibraryTrash';
 
 /**
  * 이미지 메타 → 그림체 프리셋의 상위·하위(SDStudio 구획 메타가 있으면 나눠 담고, 없으면 통합 → 상위).
@@ -63,13 +76,19 @@ export interface IGlobalPresetEntry {
   preset: any; // preset.toJSON() minus profile
 }
 
+export type IGlobalPresetTrashItem = GlobalTrashItem<IGlobalPresetEntry>;
+
 export interface IGlobalPresetStore {
   version: number;
   presets: IGlobalPresetEntry[];
+  // 휴지통(2026-11-24, 선택 필드 — globalLibraryTrash.ts). 비어 있으면 쓰지 않는다. 버전은 그대로.
+  trash?: IGlobalPresetTrashItem[];
 }
 
 export class GlobalPresetService extends EventTarget {
   @observable accessor presets: IGlobalPresetEntry[] = [];
+  /** 휴지통(같은 저장소 파일의 trash 필드) — 목록에서 지운 항목 원본 + 삭제 시각 */
+  @observable accessor trash: IGlobalPresetTrashItem[] = [];
   @observable accessor loaded: boolean = false;
 
   // 로드 판정·저장·사본 회전(storeFile.ts 단일 출처, 2026-11-17 묶음 1). 형식은 종전 그대로.
@@ -83,13 +102,17 @@ export class GlobalPresetService extends EventTarget {
           ? (json as IGlobalPresetStore)
           : null;
       },
-      countItems: (s) => s.presets.length,
+      // 휴지통 항목도 센다 — 휴지통만 남은 파일도 첫 저장 전에 .bak1 로 남긴다
+      countItems: (s) => s.presets.length + (Array.isArray(s.trash) ? s.trash.length : 0),
       serialize: () => {
         const store: IGlobalPresetStore = {
           version: GLOBAL_PRESETS_VERSION,
           // 지원하지 않는 종류의 항목(heldEntries)을 원래 자리로 되돌려 쓴다(2026-11-18 경로 14)
           presets: weaveHeld(this.presets, this.heldEntries),
         };
+        // 휴지통은 비어 있으면 쓰지 않는다(지금까지의 파일 형식과 같게). 보존분(모르는 종류)도 원래 자리로
+        const trash = weaveHeld(this.trash, this.trashHeld);
+        if (trash.length > 0) store.trash = trash;
         return JSON.stringify(store);
       },
       saveDelayMs: 2000,
@@ -112,6 +135,37 @@ export class GlobalPresetService extends EventTarget {
   // 넣지 않고 원본 그대로 보존했다가 저장 때 원래 자리로 되돌려 쓴다. 이 창은 보존분을 바꾸지 않으므로 다른 창 교체·병합 때는
   // 언제나 파일(remote) 쪽 보존분이 정답이다. 관찰 대상 아님.
   private heldEntries: HeldEntry[] = [];
+  // 휴지통의 보존분(이 버전이 모르는 종류의 항목) — heldEntries 와 같은 규칙(파일 쪽이 정답, 이 창은 바꾸지 않음)
+  private trashHeld: HeldEntry[] = [];
+  // 이 세션에서 본 파일을 정상(ok)으로 읽었는가 — 만료 정리는 이때만(사본 복구·읽기 실패·없음이면 하지 않음)
+  private trashReadOk = false;
+
+  /** 파일의 trash 필드 → 화면 휴지통 + 보존분(손상 칸은 버림, 모르는 종류는 보존) */
+  static splitTrash(data: IGlobalPresetStore | null): {
+    items: IGlobalPresetTrashItem[];
+    held: HeldEntry[];
+  } {
+    return splitTrashField<IGlobalPresetEntry>(
+      data ? (data as any).trash : undefined,
+      (e) => !!e && typeof e.id === 'string' && typeof e.name === 'string',
+      Date.now(),
+      (e) => SUPPORTED_GLOBAL_PRESET_TYPES.includes(e.workflowType),
+    );
+  }
+
+  /** 파일 내용의 휴지통·휴지통 보존분으로 바꾼다(load·교체 공용). 목록과 겹치는 id 는 목록 우선 */
+  private adoptTrash(data: IGlobalPresetStore | null): void {
+    const t = GlobalPresetService.splitTrash(data);
+    this.trash = dropListedFromTrash(t.items, this.listedIds());
+    this.trashHeld = t.held;
+  }
+
+  /** 목록(보존분 포함)에 있는 id — 휴지통과 겹치면 목록 우선 */
+  private listedIds(): string[] {
+    const ids = this.presets.map((p) => p.id);
+    for (const h of this.heldEntries) if (typeof h.value?.id === 'string') ids.push(h.value.id);
+    return ids;
+  }
 
   /** 파일 내용 → 화면 목록 + 보존분(load·다른 창 재로드·병합 기준이 같은 규칙을 쓴다). 손상 항목은 종전대로 버린다 */
   static splitEntries(data: IGlobalPresetStore | null): {
@@ -147,6 +201,9 @@ export class GlobalPresetService extends EventTarget {
       // 읽기 실패 — 빈 목록으로 보이되 저장·변경은 막힌다. loaded=false 로 두어 다음 진입(피커·템플릿 관리 등)이 다시 읽게 한다.
       this.presets = [];
       this.heldEntries = [];
+      this.trash = [];
+      this.trashHeld = [];
+      this.trashReadOk = false;
       this.loaded = false;
       this.dispatchEvent(new CustomEvent('loaded', {}));
       return;
@@ -156,13 +213,17 @@ export class GlobalPresetService extends EventTarget {
     if (res.kind === 'ok' || res.kind === 'recovered') {
       this.presets = GlobalPresetService.normalizeEntries(res.data);
       this.adoptHeld(res.data);
+      this.adoptTrash(res.data);
       loadedVersion = (res.data as any).version || 1;
       sourceRaw = res.raw;
     } else {
       // missing(신규) · corrupt-empty(손상본 보존됨) — 옮길 v1 데이터가 없으므로 통합 이관·저장을 하지 않는다
       this.presets = [];
       this.heldEntries = [];
+      this.trash = [];
+      this.trashHeld = [];
     }
+    this.trashReadOk = res.kind === 'ok';
     this.loaded = true;
     // v2 통합 마이그레이션: 이지/일반을 한 라이브러리로 보고 이름을 고유화한다.
     // (멱등 — 한 번 v2로 저장되면 다시 실행되지 않음). 실제로 v1 데이터를 읽었을 때만.
@@ -193,6 +254,8 @@ export class GlobalPresetService extends EventTarget {
       replace: (remote, raw) => {
         this.presets = GlobalPresetService.normalizeEntries(remote);
         this.adoptHeld(remote);
+        this.adoptTrash(remote);
+        this.trashReadOk = true;
         if (((remote as any).version || 1) < GLOBAL_PRESETS_VERSION) migrateRaw = raw;
       },
       merge: (remote, base, raw) => {
@@ -203,6 +266,14 @@ export class GlobalPresetService extends EventTarget {
         );
         // 보존분은 이 창이 바꾸지 않는다 — 파일(remote) 쪽이 정답
         this.adoptHeld(remote);
+        // 휴지통도 항목(id) 단위 3방향 병합 → 목록과 겹치는 id 는 휴지통 쪽을 버린다(목록 우선 — 되살아난 것을 다시 지우지 않게)
+        const remoteTrash = GlobalPresetService.splitTrash(remote);
+        this.trash = dropListedFromTrash(
+          mergeTrash(GlobalPresetService.splitTrash(base).items, this.trash, remoteTrash.items),
+          this.listedIds(),
+        );
+        this.trashHeld = remoteTrash.held;
+        this.trashReadOk = true;
         if (((remote as any).version || 1) < GLOBAL_PRESETS_VERSION) migrateRaw = raw;
       },
     });
@@ -609,9 +680,20 @@ export class GlobalPresetService extends EventTarget {
   // ---------- 백업 / 복원 ----------
 
   // 백업 tar에 담을 엔트리(글로벌 프리셋 JSON + 프로필 이미지) 목록.
+  // 항목 단위 백업은 목록만 담는다(휴지통 제외, 2026-11-24): 휴지통이 비어 있으면 종전대로 본 파일 그대로, 있으면
+  // 휴지통 필드를 뺀 같은 형식의 임시 파일(tmp/ — 매니페스트와 같은 1회성 쓰기)을 담는다. 이미지도 목록 항목 것만.
   async buildBackupEntries(): Promise<{ path: string; name: string }[]> {
+    let storePath = GLOBAL_PRESETS_FILE;
+    if (this.trash.length > 0 || this.trashHeld.length > 0) {
+      const listOnly: IGlobalPresetStore = {
+        version: GLOBAL_PRESETS_VERSION,
+        presets: weaveHeld(this.presets, this.heldEntries),
+      };
+      storePath = 'tmp/' + uuidv4() + '.json';
+      await backend.writeFile(storePath, JSON.stringify(listOnly));
+    }
     const entries: { path: string; name: string }[] = [
-      { path: GLOBAL_PRESETS_FILE, name: 'global_presets.json' },
+      { path: storePath, name: 'global_presets.json' },
     ];
     for (const e of this.presets) {
       if (!e.profile) continue;
@@ -655,7 +737,8 @@ export class GlobalPresetService extends EventTarget {
           continue;
         }
         if (policy === 'overwrite') {
-          await this.delete(existing.id); // 엔트리 + 프로필 이미지 제거
+          // 기존 항목은 휴지통으로(2026-11-24 — 종전 = 항목 + 대표 이미지 영구 삭제). 휴지통에서 되살릴 수 있다
+          await this.delete(existing.id);
           overwritten++;
         } else {
           let i = 2;
@@ -743,81 +826,129 @@ export class GlobalPresetService extends EventTarget {
     this.dispatchEvent(new CustomEvent('changed', {}));
   }
 
-  /** 다른 항목(보존분 포함)이 같은 대표 이미지 파일을 가리키는가 — 지우거나 덮지 않기 위한 검사(2026-11-18) */
-  private profileUsedByOthers(profile: string, exceptId: string): boolean {
-    const base = profile.split('/').pop();
-    const same = (p: unknown) => typeof p === 'string' && !!p && p.split('/').pop() === base;
-    return (
-      this.presets.some((p) => p.id !== exceptId && same(p.profile)) ||
-      this.heldEntries.some((h) => same(h.value?.profile))
-    );
+  // ---------- 휴지통(2026-11-24, globalLibraryTrash.ts) ----------
+
+  /** 목록·휴지통·두 보존분이 가리키는 대표 이미지 파일 토큰 — 영구 삭제가 이 밖의 파일만 지운다 */
+  private referencedProfiles(): string[] {
+    const out: string[] = [];
+    const add = (p: unknown) => {
+      if (typeof p === 'string' && p) out.push(p);
+    };
+    for (const p of this.presets) add(p.profile);
+    for (const t of this.trash) add(t.entry?.profile);
+    for (const h of this.heldEntries) add(h.value?.profile);
+    for (const h of this.trashHeld) add(h.value?.entry?.profile);
+    return out;
   }
 
-  /** 항목이 가리키는 이미지 파일 토큰(삭제 되돌리기가 내용을 보관할 대상) */
-  imageTokensOf(entry: IGlobalPresetEntry): string[] {
-    return entry.profile ? [entry.profile] : [];
+  getTrashItem(id: string): IGlobalPresetTrashItem | undefined {
+    return this.trash.find((t) => t.entry.id === id);
   }
 
+  /**
+   * 삭제 = 휴지통으로 이동(2026-11-24). 항목 원본을 같은 파일의 휴지통 목록으로 옮긴다 — 목록에서 빼기와 휴지통에 넣기는
+   * 한 번의 저장으로 나간다(scheduleSave 하나). 대표 이미지 파일은 지우지 않는다(영구 삭제·만료 때만).
+   */
   @action
   async delete(id: string): Promise<void> {
     this.store.assertWritable();
     const entry = this.get(id);
     if (!entry) return;
-    // 다른 항목이 같은 파일을 쓰면 파일은 남긴다(덜 지우는 쪽)
-    if (entry.profile && !this.profileUsedByOthers(entry.profile, id)) {
-      await this.deleteProfileImage(entry.profile);
-    }
+    const item = makeTrashItem(entry, Date.now());
     this.presets = this.presets.filter((p) => p.id !== id);
+    // 같은 id 가 휴지통에 남아 있으면(드묾) 새로 넣는 쪽만 남긴다
+    this.trash = [...this.trash.filter((t) => t.entry.id !== id), item];
     this.scheduleSave();
     this.dispatchEvent(new CustomEvent('changed', {}));
   }
 
   /**
-   * 삭제 되돌리기 전용(globalLibraryDeleteUndo) — 지운 항목을 같은 id·내용으로 화면 목록 at 자리에 되살린다.
-   * 대표 이미지는 images(토큰 → data URI)의 내용을 같은 파일명으로 다시 쓴다 — 파일이 이미 있으면(다른 항목이 쓰는 중 등) 덮지 않는다.
-   * 같은 id 가 이미 있으면(다른 창이 다시 만듦) 아무것도 하지 않고 undefined. 이름이 같은 종류 안에서 겹치면 「X (2)」.
-   * 보존분(heldEntries)은 건드리지 않는다(저장 때 종전 규칙대로 끼워 넣는다).
+   * 휴지통 → 목록. at = 넣을 자리(없으면 끝 — 되돌리기는 원래 자리). 같은 종류 안에서 이름이 겹치면 「X (2)」.
+   * 대표 이미지 파일이 없으면(다른 경로로 지워짐) 항목은 복원하되 이미지 없음 상태로 두고 missingImages 로 알린다.
+   * 같은 id 가 목록에 있으면 아무것도 하지 않는다(id-taken). 휴지통에 없으면 not-in-trash.
    */
   @action
-  async restoreDeletedEntry(
-    entry: IGlobalPresetEntry,
-    at: number,
-    images: ReadonlyMap<string, string>,
-  ): Promise<IGlobalPresetEntry | undefined> {
+  async restoreFromTrash(id: string, at?: number): Promise<GlobalTrashRestoreOutcome<IGlobalPresetEntry>> {
     this.store.assertWritable();
-    if (this.get(entry.id)) return undefined;
-    let written: string | undefined;
-    if (entry.profile) {
-      const data = images.get(entry.profile);
-      const path = this.getProfilePath(entry.profile);
+    if (this.get(id)) return { kind: 'id-taken' };
+    const first = this.getTrashItem(id);
+    if (!first) return { kind: 'not-in-trash' };
+    let missingImages = 0;
+    if (first.entry.profile) {
       let exists = false;
       try {
-        exists = await backend.existFile(path);
+        exists = await backend.existFile(this.getProfilePath(first.entry.profile));
       } catch (e) {
         exists = false;
       }
-      if (data && !exists) {
-        await backend.writeDataFile(path, dataUriToBase64(data));
-        written = entry.profile;
-      }
+      if (!exists) missingImages = 1;
     }
-    // await 사이 다른 창 재로드로 같은 id 가 들어왔거나 막혔으면 방금 쓴 파일을 거두고 멈춘다(그 파일을 쓰는 항목이 없을 때만)
-    if (this.get(entry.id) || this.store.loadFailed) {
-      // 다시 들어온 같은 id 항목도 「쓰는 항목」으로 센다(제외 id 없음)
-      if (written && !this.profileUsedByOthers(written, '')) {
-        await this.deleteProfileImage(written);
-      }
-      if (this.store.loadFailed) this.store.assertWritable();
-      return undefined;
-    }
-    const restored: IGlobalPresetEntry = JSON.parse(JSON.stringify(entry));
+    // await 사이 다른 창 재로드·막힘이 있었으면 지금 상태로 다시 판단한다
+    this.store.assertWritable();
+    if (this.get(id)) return { kind: 'id-taken' };
+    const item = this.getTrashItem(id);
+    if (!item) return { kind: 'not-in-trash' };
+    const restored: IGlobalPresetEntry = JSON.parse(JSON.stringify(item.entry));
+    const original = restored.name;
     restored.name = this.resolveNameCollision(restored.workflowType, restored.name);
     const arr = [...this.presets];
-    arr.splice(Math.max(0, Math.min(at, arr.length)), 0, restored);
+    arr.splice(at === undefined ? arr.length : Math.max(0, Math.min(at, arr.length)), 0, restored);
     this.presets = arr;
+    this.trash = this.trash.filter((t) => t !== item);
     this.scheduleSave();
     this.dispatchEvent(new CustomEvent('changed', {}));
-    return restored;
+    return {
+      kind: 'restored',
+      entry: restored,
+      ...(restored.name !== original ? { renamedFrom: original } : {}),
+      missingImages,
+    };
+  }
+
+  /** 휴지통에서 골라 영구 삭제(ids) */
+  async purgeFromTrash(ids: Iterable<string>): Promise<GlobalTrashPurgeResult> {
+    const set = new Set(ids);
+    return this.dropTrashItems((t) => set.has(t.entry.id));
+  }
+
+  /** 휴지통 비우기 */
+  async emptyTrash(): Promise<GlobalTrashPurgeResult> {
+    return this.dropTrashItems(() => true);
+  }
+
+  /**
+   * 보관 기한(30일)이 지난 휴지통 항목을 조용히 영구 삭제. 이 세션에서 본 파일을 정상으로 읽었을 때만 —
+   * 읽기 실패·저장 차단·사본 복구·아직 안 읽음이면 아무것도 지우지 않는다(0).
+   */
+  async purgeExpiredTrash(now: number = Date.now()): Promise<number> {
+    if (!this.loaded || this.store.loadFailed || !this.trashReadOk) return 0;
+    if (!this.trash.some((t) => isTrashExpired(t, now))) return 0;
+    const r = await this.dropTrashItems((t) => isTrashExpired(t, now));
+    return r.removed;
+  }
+
+  /**
+   * 휴지통에서 빼고 → 지금 저장(dirty 를 세운 뒤 저장 줄에서) → 저장이 끝났을 때만, 뺀 항목의 이미지 중 목록·휴지통·보존분
+   * 어디에서도 참조하지 않는 파일을 지운다(다른 항목이 같은 파일을 쓰면 남김 — 덜 지우는 쪽). 저장 실패면 파일은 그대로.
+   */
+  private async dropTrashItems(pick: (t: IGlobalPresetTrashItem) => boolean): Promise<GlobalTrashPurgeResult> {
+    this.store.assertWritable();
+    const removed = this.trash.filter(pick);
+    if (removed.length === 0) return { removed: 0, filesDeleted: 0, saved: true };
+    const gone = new Set(removed);
+    this.trash = this.trash.filter((t) => !gone.has(t));
+    this.store.markDirty();
+    this.dispatchEvent(new CustomEvent('changed', {}));
+    const saved = await this.store.saveNow();
+    if (!saved) return { removed: removed.length, filesDeleted: 0, saved: false };
+    // 저장 뒤의 지금 상태로 참조를 센다(그사이 다른 창이 같은 파일을 쓰는 항목을 들여왔어도 남게)
+    const candidates = removed.map((t) => t.entry.profile).filter((p): p is string => !!p);
+    let filesDeleted = 0;
+    for (const token of unreferencedTokens(candidates, this.referencedProfiles())) {
+      await this.deleteProfileImage(token);
+      filesDeleted++;
+    }
+    return { removed: removed.length, filesDeleted, saved: true };
   }
 
   @action

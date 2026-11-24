@@ -30,6 +30,7 @@ import { WORKSPACE_ROOT } from './projectPaths';
 import type { Session } from './types';
 import { installGlobalStoreHiddenFlush } from './globalStoreFlush';
 import { GLOBAL_STORE_SYNC_KEYS } from './storeFile';
+import { GLOBAL_LIBRARY_TRASH_CLEANUP_DELAY_MS } from './globalLibraryTrash';
 
 // ── 명시적 부트 시퀀스 ──
 // 앱의 모든 비동기 초기화가 여기서 "정해진 순서"로 일어난다.
@@ -388,6 +389,20 @@ export async function bootstrapApp(): Promise<void> {
     templateService.migrateSceneTemplatesToHidden().catch((e) => {
       console.error('씬 템플릿 숨김 이관 실패:', e);
     });
+  }
+  // 글로벌 프리셋·글로벌 캐릭터 휴지통 만료 정리(2026-11-24, 30일) — 기존 휴지통 자동 정리(TrashService.autoCleanup)처럼
+  // 시작 10초 뒤 조용히. 생성 호스트(주) 창에서만(여러 창 중복 정리 방지 — 다른 창은 저장 알림으로 받는다).
+  // 각 서비스가 저장소를 이 세션에서 정상으로 읽은 경우에만 지운다(읽기 실패·저장 차단·사본 복구면 무동작).
+  // 프로젝트 저장 경로(withLock·persist 큐)와는 무관한 글로벌 저장소 저장 줄(storeFile)만 쓴다.
+  if (taskQueueService.isGenerationHost) {
+    setTimeout(() => {
+      globalPresetService.purgeExpiredTrash().catch((e) => {
+        console.error('글로벌 프리셋 휴지통 만료 정리 실패:', e);
+      });
+      globalCharacterPresetService.purgeExpiredTrash().catch((e) => {
+        console.error('글로벌 캐릭터 프리셋 휴지통 만료 정리 실패:', e);
+      });
+    }, GLOBAL_LIBRARY_TRASH_CLEANUP_DELAY_MS);
   }
   // 기존 TOKEN.txt를 빈 다중 토큰 목록에 먼저 복사한 뒤 로그인 검증을 시작한다.
   // 복사는 원본 토큰을 바꾸지 않으며 실패해도 기존 로그인 검증은 계속한다.

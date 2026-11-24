@@ -893,6 +893,8 @@ export class BackupService {
       incomingNames: (root) =>
         readBackupNames(root + '/global_presets.json', 'presets'),
       existingNames: () => globalPresetService.presets.map((p) => p.name),
+      // 덮어쓰기의 기존 항목은 휴지통으로(2026-11-24 — 종전 「영구 삭제된 뒤 교체」)
+      protection: IMPORT_FLOW_TEXT.protection.trashReplaced,
       restore: (root, policy) =>
         globalPresetService.restoreFromBackupDir(root, policy),
     });
@@ -1782,7 +1784,8 @@ export class BackupService {
       file: 'global_presets.json',
       imagesDir: 'global_vibes',
       loadFailed: () => globalPresetService.loadFailed,
-      isEmpty: () => globalPresetService.list().length === 0,
+      // 휴지통에 남은 항목이 있으면 비어 있지 않다(2026-11-24) — 파일을 통째로 받으면 지금 휴지통이 지워진다
+      isEmpty: () => globalPresetService.list().length === 0 && globalPresetService.trash.length === 0,
       load: () => globalPresetService.load(),
     });
     // 글로벌 프롬프트 조각
@@ -1799,7 +1802,10 @@ export class BackupService {
       file: 'global_character_presets.json',
       imagesDir: 'global_char_images',
       loadFailed: () => globalCharacterPresetService.loadFailed,
-      isEmpty: () => globalCharacterPresetService.presets.length === 0,
+      // 휴지통에 남은 항목이 있으면 비어 있지 않다(2026-11-24)
+      isEmpty: () =>
+        globalCharacterPresetService.presets.length === 0 &&
+        globalCharacterPresetService.trash.length === 0,
       load: () => globalCharacterPresetService.load(),
     });
     return outcomes;

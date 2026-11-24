@@ -41,6 +41,8 @@ import {
   setGlobalPresetsDefaultRecorded,
 } from '../models/globalLibraryUndo';
 import { prepareGlobalDelete } from '../models/globalLibraryDeleteUndo';
+import { GLOBAL_LIBRARY_TRASH_DAYS } from '../models/globalLibraryTrash';
+import { GlobalLibraryTrashButton } from './GlobalLibraryTrashView';
 import {
   GLOBAL_PRESET_PNG_TEXT,
   runGlobalPresetPngExport,
@@ -525,8 +527,8 @@ export const GlobalPresetTab = observer(() => {
   };
 
   const handleDelete = async (entry: IGlobalPresetEntry) => {
-    // 휴지통은 없지만 되돌리기(Ctrl+Z)로 되살아난다(2026-11-18) — 이미지 내용을 확인 창 전에 보관해 두고, 보관 한도를 넘거나
-    // 기록할 수 없으면 종전 「영구 삭제」 문구. 어느 쪽이든 Enter 로는 확정되지 않는다(danger 'permanent')
+    // 삭제 = 이 탭의 휴지통으로 이동(2026-11-24, 30일 보관 — 이미지 파일은 영구 삭제 때만 지움). 되돌리기(Ctrl+Z) = 휴지통에서 복원.
+    // 휴지통 갈래 문구·위험도(danger true)는 deleteConfirmText 의 trashDays 규칙 그대로
     let plan;
     try {
       plan = await prepareGlobalDelete('presets', [entry.id]);
@@ -539,7 +541,7 @@ export const GlobalPresetTab = observer(() => {
       ...deleteConfirmText({
         kind: 'globalPreset',
         name: entry.name,
-        outcome: plan.undoable ? 'undoable' : 'permanent',
+        outcome: { trashDays: GLOBAL_LIBRARY_TRASH_DAYS },
       }),
       callback: async () => {
         try {
@@ -588,7 +590,7 @@ export const GlobalPresetTab = observer(() => {
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
     const ids = Array.from(selectedIds);
-    // 선택 여러 건 = 되돌리기 한 항목(2026-11-18). 보관 한도를 넘으면 종전 「영구 삭제」 문구
+    // 선택 여러 건 = 되돌리기 한 항목(2026-11-18). 2026-11-24 부터 크기와 관계없이 전부 휴지통으로(종전 16MB 초과 영구 갈래 없음)
     let plan;
     try {
       plan = await prepareGlobalDelete('presets', ids);
@@ -601,7 +603,7 @@ export const GlobalPresetTab = observer(() => {
       ...deleteConfirmText({
         kind: 'globalPreset',
         count: ids.length,
-        outcome: plan.undoable ? 'undoable' : 'permanent',
+        outcome: { trashDays: GLOBAL_LIBRARY_TRASH_DAYS },
       }),
       callback: async () => {
         // 실패를 삼키지 않는다 — 건수와 이름을 알린다(X13)
@@ -617,7 +619,7 @@ export const GlobalPresetTab = observer(() => {
               `삭제하지 못한 프리셋: ${failedNamesLine(failedNames)}`,
           });
         } else {
-          appState.pushMessage(`글로벌 프리셋 ${ids.length}개를 삭제했습니다.`);
+          appState.pushMessage(`글로벌 프리셋 ${ids.length}개를 휴지통으로 옮겼습니다.`);
         }
       },
     });
@@ -708,6 +710,12 @@ export const GlobalPresetTab = observer(() => {
                 <FaFileImport size={14} />
               </button>
             </Tooltip>
+            {/* 휴지통(2026-11-24) — 좁은 줄이라 아이콘 + 개수만 */}
+            <GlobalLibraryTrashButton
+              kind="presets"
+              compact
+              className="round-button back-gray h-8 min-w-0 px-2 text-sm flex items-center justify-center gap-1"
+            />
             <Tooltip content={multiSelectMode ? '멀티선택 취소' : '멀티선택 모드'}>
               <button
                 type="button"
@@ -809,6 +817,11 @@ export const GlobalPresetTab = observer(() => {
             <span>백업 불러오기</span>
           </button>
         </Tooltip>
+        {/* 휴지통 (N)(2026-11-24) — 지운 글로벌 프리셋 30일 보관·복원·영구 삭제 */}
+        <GlobalLibraryTrashButton
+          kind="presets"
+          className="round-button back-gray flex items-center gap-1.5 px-3 py-1.5 text-sm"
+        />
         <button
           className={
             'round-button px-3 py-1.5 text-sm ' +

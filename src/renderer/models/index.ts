@@ -283,16 +283,15 @@ configureGlobalLibraryUndo({
   },
 });
 
-// 글로벌 프리셋·글로벌 캐릭터 삭제 되돌리기(2026-11-18, 전역 스택) — 읽기·삭제·되살리기는 서비스 공개 메서드
+// 글로벌 프리셋·글로벌 캐릭터 삭제 되돌리기(2026-11-18, 전역 스택) — 삭제(= 휴지통 이동)·휴지통 복원은 서비스 공개 메서드(2026-11-24)
 configureGlobalLibraryDeleteUndo({
   presets: {
     isBlocked: () => globalPresetService.loadFailed,
     list: () => globalPresetService.list(),
     get: (id) => globalPresetService.get(id),
-    imageTokens: (e) => globalPresetService.imageTokensOf(e),
-    fetchImage: (token) => globalPresetService.fetchProfileImage(token),
     delete: (id) => globalPresetService.delete(id),
-    restoreDeleted: (e, at, images) => globalPresetService.restoreDeletedEntry(e, at, images),
+    inTrash: (id) => !!globalPresetService.getTrashItem(id),
+    restoreFromTrash: (id, at) => globalPresetService.restoreFromTrash(id, at),
     label: (names) => UNDO_TEXT.globalPresetDelete(names),
     gone: (name) => UNDO_TEXT.globalPresetGone(name),
     changed: (name) => UNDO_TEXT.globalPresetChanged(name),
@@ -301,12 +300,11 @@ configureGlobalLibraryDeleteUndo({
     isBlocked: () => globalCharacterPresetService.loadFailed,
     list: () => globalCharacterPresetService.list(),
     get: (id) => globalCharacterPresetService.get(id),
-    imageTokens: (e) => globalCharacterPresetService.imageTokensOf(e),
-    fetchImage: (token) => globalCharacterPresetService.fetchImageData(token),
     delete: (id) => globalCharacterPresetService.delete(id),
+    inTrash: (id) => !!globalCharacterPresetService.getTrashItem(id),
     captureMeta: (e, deleting) => globalCharacterMetaOf(globalCharacterPresetService, e, deleting),
-    restoreDeleted: (e, at, images, meta) =>
-      globalCharacterPresetService.restoreDeletedEntry(e, at, images, !!meta?.keepMissingFolder),
+    restoreFromTrash: (id, at, meta) =>
+      globalCharacterPresetService.restoreFromTrash(id, at, !!meta?.keepMissingFolder),
     label: (names) => UNDO_TEXT.globalCharacterDelete(names),
     gone: (name) => UNDO_TEXT.globalCharacterGone(name),
     changed: (name) => UNDO_TEXT.globalCharacterChanged(name),
