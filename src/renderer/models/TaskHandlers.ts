@@ -27,8 +27,10 @@ import {
   effectiveNaiSteps,
   isOpusFreeEligible,
   isV5ModelVersion,
+  naiCapabilitiesOf,
   normalizeModelVersion,
 } from '../backends/genVendors/naiModelCapabilities';
+import { referencesForModel } from '../backends/genVendors/naiReference';
 import { appState } from './AppService';
 import {
   AbstractJob,
@@ -302,7 +304,6 @@ class GenerateImageTaskHandler implements TaskHandler {
       task.params.generationSnapshot?.modelVersion ?? fallbackModelVersion,
     );
     const isV5 = isV5ModelVersion(version);
-    const isV4 = version === ModelVersion.V4 || version === ModelVersion.V4Curated;
     const resol = job.overrideResolution ? job.overrideResolution : (scene.resolution as Resolution);
     let size = lowerResolution(resol as any, scene.resolutionWidth, scene.resolutionHeight);
     const focus = this.type === 'inpaint' ? activeFocusSpec(task) : undefined;
@@ -310,10 +311,8 @@ class GenerateImageTaskHandler implements TaskHandler {
       const req = focusedRequestSize(focus, size.width || Infinity, size.height || Infinity);
       if (req) size = { width: req.width, height: req.height };
     }
-    const hasCharacterReference =
-      !isV4 &&
-      !isV5 &&
-      (job.characterReferences ?? []).some((ref: any) => ref?.enabled !== false && !!ref?.path);
+    // 실제로 보낼 레퍼런스(모델 능력·켜짐·경로·보낼 종류) — handleTask·calculateCost 와 같은 함수.
+    const hasCharacterReference = referencesForModel(job.characterReferences, version).length > 0;
     return {
       kind: this.type,
       fast: this.fast,
@@ -360,9 +359,11 @@ class GenerateImageTaskHandler implements TaskHandler {
     const worker = ctx?.worker;
     const accountToken = worker && !worker.isDefault ? worker.token ?? '' : undefined;
     const onDefaultAccount = accountToken === undefined;
-    // 다른 계정 워커 + V5: V5 는 바이브를 요청에서 버리므로 인코딩·불러오기 자체를 건너뛴다(활성 계정 토큰 사용 방지).
-    const skipVibes =
-      !onDefaultAccount && isV5ModelVersion(config.modelVersion ?? ModelVersion.V4_5);
+    // 이 작업의 모델과 그 능력(바이브·레퍼런스 판정은 능력표 — naiModelCapabilities).
+    const curModelVersion = normalizeModelVersion(config.modelVersion);
+    const modelCaps = naiCapabilitiesOf(curModelVersion);
+    // 바이브를 받지 않는 모델(V5 계열)은 계정과 무관하게 인코딩·불러오기 자체를 건너뛴다(헛 인코딩·활성 계정 토큰 사용 방지).
+    const skipVibes = !modelCaps.supportsVibeTransfer;
 
     // 세션이 변경되면 캐시 초기화
     const currentSessionName = task.params.session.name;
@@ -452,27 +453,32 @@ class GenerateImageTaskHandler implements TaskHandler {
     );
 
     // 캐릭터 레퍼런스 이미지 처리 - 캐싱 적용
+    // 이 모델로 실제 보낼 것만 읽고 손질한다(지원하지 않는 모델이면 파일을 읽지도 않음). 손질 방식은 능력표 —
+    // 'letterbox'(V4.5: 저장된 검정 여백 그대로 JPEG 재인코딩) / 'bucket'(V5: 여백을 잘라 V5 크기 표에 맞춤).
     let references: CharacterReference[] = [];
-    if (job.characterReferences?.length) {
-      // Filter only enabled references before fetching images
-      const enabledReferences = job.characterReferences.filter(
-        (ref) => ref.enabled !== false && ref.path,
-      );
+    const sendReferences = referencesForModel(job.characterReferences, curModelVersion);
+    if (sendReferences.length) {
+      const preprocess = modelCaps.referencePreprocess;
+      const toRequest = (ref: (typeof sendReferences)[number], image: string): CharacterReference => ({
+        image,
+        info: ref.info,
+        strength: ref.strength ?? 0.6,
+        fidelity: ref.fidelity ?? 1.0,
+        referenceType: ref.referenceType || 'character',
+        description: ref.referenceType || 'character',
+        ...(typeof ref.preferSameOutfit === 'boolean'
+          ? { preferSameOutfit: ref.preferSameOutfit }
+          : {}),
+      });
       const allReferences = await Promise.all(
-        enabledReferences.map(async (ref): Promise<CharacterReference | null> => {
-          const cacheKey = ref.path;
+        sendReferences.map(async (ref): Promise<CharacterReference | null> => {
+          // 한 실행 안에서 모델이 다른 작업이 섞일 수 있어 손질 방식까지 키에 넣는다.
+          const cacheKey = `${ref.path}|${preprocess}`;
 
           // 캐시에서 먼저 확인
           if (run.cachedReferences!.has(cacheKey)) {
             const cached = run.cachedReferences!.get(cacheKey)!;
-            return {
-              image: cached.image,
-              info: ref.info,
-              strength: ref.strength ?? 0.6,
-              fidelity: ref.fidelity ?? 1.0,
-              referenceType: ref.referenceType || 'character',
-              description: ref.referenceType || 'character',
-            };
+            return toRequest(ref, cached.image);
           }
 
           try {
@@ -493,28 +499,23 @@ class GenerateImageTaskHandler implements TaskHandler {
             // 이미 저장 시점에 JPEG로 저장된 경우 재인코딩해도 사실상 무손실에 가깝고,
             // 기존에 RGBA PNG로 저장된 레거시 레퍼런스도 이 단계에서 변환되어 호환됨.
             // 참고: sunanakgo/NAIS2 processCharacterImage, DNT-LAB/NAIA _letterbox
-            const base64Image = await imageService.reencodeReferenceForApi(
-              rawBase64,
-            );
-
-            // 캐시에 저장
-            run.cachedReferences!.set(cacheKey, {
-              image: base64Image,
-              info: ref.info,
-              strength: ref.strength ?? 0.6,
-              fidelity: ref.fidelity ?? 1.0,
-              referenceType: ref.referenceType || 'character',
-              description: ref.referenceType || 'character',
+            const base64Image = await imageService.prepareReferenceForApi(rawBase64, {
+              preprocess,
+              srcWidth: ref.srcWidth,
+              srcHeight: ref.srcHeight,
             });
 
-            return {
-              image: base64Image,
-              info: ref.info,
-              strength: ref.strength ?? 0.6,
-              fidelity: ref.fidelity ?? 1.0,
-              referenceType: ref.referenceType || 'character',
-              description: ref.referenceType || 'character',
-            };
+            const built = toRequest(ref, base64Image);
+            // 캐시에 저장
+            run.cachedReferences!.set(cacheKey, {
+              image: built.image,
+              info: built.info,
+              strength: built.strength,
+              fidelity: built.fidelity,
+              referenceType: built.referenceType,
+              description: built.description,
+            });
+            return built;
           } catch (e) {
             console.warn(`Error fetching reference image ${ref.path}:`, e);
             return null;
@@ -531,17 +532,16 @@ class GenerateImageTaskHandler implements TaskHandler {
       ? job.overrideResolution
       : (task.params.scene!.resolution as Resolution);
 
-    // 모델 버전에 따른 바이브/캐릭터 레퍼런스 필터링
-    const curModelVersion = normalizeModelVersion(config.modelVersion);
-    const isV4 = curModelVersion === ModelVersion.V4 || curModelVersion === ModelVersion.V4Curated;
+    // 모델 버전에 따른 바이브/캐릭터 레퍼런스 필터링(능력표 기준, 저장값은 보존하고 요청에서만 제거)
     const isV4_5 = curModelVersion === ModelVersion.V4_5 || curModelVersion === ModelVersion.V4_5Curated;
     const isV5 = isV5ModelVersion(curModelVersion);
 
-    // V4와 V5는 Precise/Character Reference 미지원 → 저장값은 보존하고 요청에서만 제거
-    const finalReferences = isV4 || isV5 ? [] : references;
+    // 레퍼런스를 받지 않는 모델(V4·V4 Curated·V5 Medium)은 위 referencesForModel 이 이미 비웠다.
+    const finalReferences = modelCaps.supportsCharacterReference ? references : [];
     // v4.5: 캐릭터 레퍼런스가 있으면 바이브 비활성화
-    // V5는 Vibe Transfer 미지원 → 요청에서만 제거
-    const finalVibes = isV5 || (isV4_5 && finalReferences.length > 0) ? [] : vibes;
+    // 바이브를 받지 않는 모델(V5 계열)은 요청에서만 제거
+    const finalVibes =
+      !modelCaps.supportsVibeTransfer || (isV4_5 && finalReferences.length > 0) ? [] : vibes;
 
     const arg: ImageGenInput = {
       prompt: prompt,
@@ -904,6 +904,17 @@ class GenerateImageTaskHandler implements TaskHandler {
       res.push({
         scene: name,
         text: '스탭 수 28개 초과',
+      });
+    }
+    // 캐릭터 레퍼런스는 1장당 Anlas 를 쓴다(V4.5·V5 Full·Curated) — 실제로 보낼 것만(handleTask 와 같은 함수).
+    const referenceCount = referencesForModel(
+      job.characterReferences,
+      normalizeModelVersion(costVersion),
+    ).length;
+    if (referenceCount > 0) {
+      res.push({
+        scene: name,
+        text: `캐릭터 레퍼런스 ${referenceCount}장 (1장당 5 Anlas)`,
       });
     }
     const resolution = job.overrideResolution

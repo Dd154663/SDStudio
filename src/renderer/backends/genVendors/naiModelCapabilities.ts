@@ -13,7 +13,18 @@ export interface NaiModelCapabilities {
   maxCharacterPrompts?: number;
   promptTokenLimit?: number;
   supportsVibeTransfer: boolean;
+  /** 캐릭터(정밀) 레퍼런스 — 화면 잠금·작업 조립·요청·비용 판정이 모두 이 값을 읽는다(2026-11-25). */
   supportsCharacterReference: boolean;
+  /** 레퍼런스 Fidelity(secondary strength) 지원 — 없으면 secondary 는 항상 0, 화면에서 Fidelity 줄을 숨긴다. */
+  referenceFidelity: boolean;
+  /** 레퍼런스 Strength 상한. */
+  referenceStrengthMax: number;
+  /** 레퍼런스 종류 「의상(costume)」·「같은 의상 선호」 지원. */
+  supportsOutfitReference: boolean;
+  /** 보낼 때 레퍼런스 이미지 손질 — 'letterbox' = 저장된 검정 여백 그대로, 'bucket' = 여백을 잘라 V5 크기 표에 맞춤. */
+  referencePreprocess: 'letterbox' | 'bucket';
+  /** 인페인트(infill) 요청에도 레퍼런스를 실을 수 있는가. */
+  supportsReferenceWithInpaint: boolean;
   supportsVarietyPlus: boolean;
   supportsTransparentBackground: boolean;
   forcedNoiseSchedule?: NoiseSchedule;
@@ -59,11 +70,20 @@ export const V5_SAMPLERS: readonly Sampling[] = [
   Sampling.KDPMPPSDE,
 ];
 
-const legacyCapabilities = (): NaiModelCapabilities => ({
+const legacyCapabilities = (
+  supportsCharacterReference: boolean,
+): NaiModelCapabilities => ({
   paramsVersion: 3,
   supportedSamplers: LEGACY_SAMPLERS,
   supportsVibeTransfer: true,
-  supportsCharacterReference: true,
+  // V4·V4 Curated 는 정밀 레퍼런스 미지원(종전에도 작업 조립에서 버렸다 — 표를 사실에 맞춤).
+  supportsCharacterReference,
+  referenceFidelity: true,
+  // 공식 웹의 V4.5 상한은 1 이지만 이 앱 슬라이더의 기존 범위(2)를 이번에는 바꾸지 않는다.
+  referenceStrengthMax: 2,
+  supportsOutfitReference: false,
+  referencePreprocess: 'letterbox',
+  supportsReferenceWithInpaint: true,
   supportsVarietyPlus: true,
   supportsTransparentBackground: false,
 });
@@ -78,7 +98,13 @@ const v5Capabilities = (
   maxCharacterPrompts: 32,
   promptTokenLimit,
   supportsVibeTransfer: false,
-  supportsCharacterReference: false,
+  // 공식 웹과 같게 V5 Full(High)·Curated 에서 정밀 레퍼런스를 연다(Medium 은 아래에서 끈다).
+  supportsCharacterReference: true,
+  referenceFidelity: false,
+  referenceStrengthMax: 5,
+  supportsOutfitReference: true,
+  referencePreprocess: 'bucket',
+  supportsReferenceWithInpaint: false,
   supportsVarietyPlus: false,
   supportsTransparentBackground: true,
   forcedNoiseSchedule: NoiseSchedule.Karras,
@@ -104,7 +130,12 @@ export const NAI_MODEL_SPECS: Readonly<Record<ModelVersion, NaiModelSpec>> = {
     version: ModelVersion.V5Medium,
     generationModelId: 'nai-diffusion-5-full-medium',
     inpaintModelId: 'nai-diffusion-5-full-medium-inpainting',
-    capabilities: { ...v5Capabilities(1471), supportsCfgRescale: false },
+    // 공식 웹도 「Precise Reference needs High effort」 로 막는다 — 레퍼런스만 끄고 나머지는 물려받는다.
+    capabilities: {
+      ...v5Capabilities(1471),
+      supportsCfgRescale: false,
+      supportsCharacterReference: false,
+    },
     fixedSettings: V5_MEDIUM_FIXED_SETTINGS,
   },
   [ModelVersion.V5Curated]: {
@@ -118,25 +149,25 @@ export const NAI_MODEL_SPECS: Readonly<Record<ModelVersion, NaiModelSpec>> = {
     version: ModelVersion.V4_5,
     generationModelId: 'nai-diffusion-4-5-full',
     inpaintModelId: 'nai-diffusion-4-5-full-inpainting',
-    capabilities: legacyCapabilities(),
+    capabilities: legacyCapabilities(true),
   },
   [ModelVersion.V4_5Curated]: {
     version: ModelVersion.V4_5Curated,
     generationModelId: 'nai-diffusion-4-5-curated',
     inpaintModelId: 'nai-diffusion-4-5-curated-inpainting',
-    capabilities: legacyCapabilities(),
+    capabilities: legacyCapabilities(true),
   },
   [ModelVersion.V4]: {
     version: ModelVersion.V4,
     generationModelId: 'nai-diffusion-4-full',
     inpaintModelId: 'nai-diffusion-4-full-inpainting',
-    capabilities: legacyCapabilities(),
+    capabilities: legacyCapabilities(false),
   },
   [ModelVersion.V4Curated]: {
     version: ModelVersion.V4Curated,
     generationModelId: 'nai-diffusion-4-curated-preview',
     inpaintModelId: 'nai-diffusion-4-curated-inpainting',
-    capabilities: legacyCapabilities(),
+    capabilities: legacyCapabilities(false),
   },
 };
 
@@ -162,6 +193,20 @@ export function isV5ModelVersion(version: ModelVersion | undefined): boolean {
     version === ModelVersion.V5Medium ||
     version === ModelVersion.V5Curated
   );
+}
+
+/** 모델 능력(모르는 값·없음은 normalizeModelVersion 과 같은 폴백). */
+export function naiCapabilitiesOf(version: unknown): NaiModelCapabilities {
+  return getNaiModelSpec(normalizeModelVersion(version)).capabilities;
+}
+
+/** 캐릭터 레퍼런스 잠금 사유 — 'v4' = V4·V4 Curated, 'v5-medium' = V5 Medium, undefined = 지원. */
+export function naiReferenceBlockReason(
+  version: unknown,
+): 'v4' | 'v5-medium' | undefined {
+  const v = normalizeModelVersion(version);
+  if (getNaiModelSpec(v).capabilities.supportsCharacterReference) return undefined;
+  return v === ModelVersion.V5Medium ? 'v5-medium' : 'v4';
 }
 
 const KNOWN_MODEL_VERSIONS: ReadonlySet<string> = new Set(Object.values(ModelVersion));

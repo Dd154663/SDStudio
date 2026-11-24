@@ -55,6 +55,8 @@ Copy-Item dev\mock-nai\scenario.json dev\mock-nai\scenario.local.json
 | `anlasPerImage` | Anlas 로 생성할 때 1장당 차감 | 20 |
 
 V5 Full Medium(`nai-diffusion-5-full-medium`·`-inpainting`, 2026-11-06)은 위 두 값을 「High 23스텝」 비용으로 보고 ÷1.75 로 차감합니다(Anlas 는 올림·최소 2, % 는 소수 둘째 자리). 생성 로그 줄 끝에 받은 `steps`·`sampler`·`cfg_rescale` 유무·`tag_hint_uc_preset`·네거티브(앞 60자)를 남깁니다.
+
+캐릭터(정밀) 레퍼런스(`director_reference_*`, 2026-11-25)가 오면 장수·종류(`base_caption`)·strength·secondary 를 한 줄로 남기고, 응답 Comment 에 이미지 배열을 뺀 네 배열을 되돌립니다. 1장당 5 Anlas 를 더 차감하고, V5 Medium 모델로 레퍼런스가 오면 400(공식 웹의 차단 흉내).
 | `failEvery` | N번째 생성 시도마다 500(0 = 끔) | 0 |
 | `rateLimit429Every` | N번째 생성 시도마다 429(0 = 끔) | 0 |
 | `conflict409Every` | N번째 생성 시도마다 409 「Concurrent generation is locked」(0 = 끔) | 0 |

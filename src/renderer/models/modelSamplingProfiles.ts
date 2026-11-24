@@ -216,7 +216,7 @@ export const V5_MEDIUM_TEXT = {
   cfgRescaleUnsupported: 'V5M(Medium)에서는 CFG 리스케일이 쓰이지 않습니다',
   ucPresetFixed: 'V5M(Medium)에서는 네거티브 프리셋이 강함(Heavy)으로 고정됩니다',
   modelNotice:
-    'V5M(Medium Effort)은 스텝 14·Euler Ancestral·네거티브 프리셋 Heavy 로 고정되고, 입력한 네거티브는 쓰이지 않습니다. 비용은 V5 Full 보다 적습니다.',
+    'V5M(Medium Effort)은 스텝 14·Euler Ancestral·네거티브 프리셋 Heavy 로 고정되고, 입력한 네거티브는 쓰이지 않습니다. 캐릭터 레퍼런스는 Medium 에서 지원하지 않습니다. 비용은 V5 Full 보다 적습니다.',
   variantSummary: (guidance: string) =>
     `V5M 고정 · 스텝 14 · 가이던스 ${guidance} · 샘플러 k_euler_ancestral`,
 } as const;

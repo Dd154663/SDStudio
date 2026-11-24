@@ -11,7 +11,8 @@ import { imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import { WFIInlineInput, wfiElementKey } from '../models/workflows/WorkFlow';
 import { ModelVersion } from '../backends/imageGen';
-import { isV5ModelVersion } from '../backends/genVendors/naiModelCapabilities';
+import { naiCapabilitiesOf } from '../backends/genVendors/naiModelCapabilities';
+import { referencesForModel } from '../backends/genVendors/naiReference';
 import { WFElementContext, PresetIconRowContext } from './wfElementContext';
 import { PresetIconRowLabelContext, StackedLabel, stackedButtonClass } from './PresetPanelLabel';
 import { presetIconRowLabelOf } from '../models/presetPanelLabels';
@@ -483,15 +484,17 @@ export const VibeButton = observer(({ input }: { input: WFIInlineInput }) => {
   };
 
   // v4.5에서 캐릭터 레퍼런스에 이미지가 있으면 바이브 잠금
+  // 실제로 보낼 레퍼런스 기준(작업 조립 TaskHandlers 와 같은 referencesForModel — 이 모델에 안 가는 의상 항목은 셈하지 않음).
   const hasCharacterReferences = (() => {
     const refs = shared?.characterReferences;
     if (!refs || !Array.isArray(refs)) return false;
-    return refs.some((ref: ReferenceItem) => ref.enabled !== false && ref.path);
+    return referencesForModel(refs as ReferenceItem[], modelVersion).length > 0;
   })();
   const isV4_5 = modelVersion === ModelVersion.V4_5 || modelVersion === ModelVersion.V4_5Curated;
-  const isV5 = isV5ModelVersion(modelVersion);
-  const locked = isV5 || (isV4_5 && hasCharacterReferences);
-  const lockedLabel = isV5
+  // 바이브를 받지 않는 모델(V5 계열) — 능력표 기준.
+  const noVibe = !naiCapabilitiesOf(modelVersion).supportsVibeTransfer;
+  const locked = noVibe || (isV4_5 && hasCharacterReferences);
+  const lockedLabel = noVibe
     ? '바이브 이미지 설정 (V5 미지원)'
     : '바이브 이미지 설정 (캐릭터 레퍼런스 사용 중)';
 

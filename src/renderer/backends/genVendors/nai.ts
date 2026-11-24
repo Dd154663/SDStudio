@@ -10,7 +10,9 @@ import {
   EncodeVibeImageInput,
   LoginValidity,
   OpusUsageStatus,
+  CharacterReference,
 } from '../imageGen';
+import { clampReferenceStrength, naiReferenceCaption } from './naiReference';
 
 import JSZip from 'jszip';
 import { estimateNaiUpscaleCost, NAI_UPSCALE_MODEL } from './naiUpscale';
@@ -404,7 +406,7 @@ export class NovelAiImageGenService implements ImageGenService {
     if (isV5 && action === 'infill') {
       body.parameters.add_original_image = addOriginalImage;
     }
-    if (!isV5 && params.vibes.length) {
+    if (modelSpec.capabilities.supportsVibeTransfer && params.vibes.length) {
       body.parameters.reference_image_multiple = params.vibes.map(
         (v) => v.image,
       );
@@ -423,26 +425,45 @@ export class NovelAiImageGenService implements ImageGenService {
       }
     }
     // Filter out references with empty or invalid image data to prevent 500 errors
-    const validCharacterReferences = params.characterReferences?.filter(
-      (ref) => ref.image && ref.image.length > 0,
-    );
-    if (!isV5 && validCharacterReferences?.length) {
+    // 능력표 기준(2026-11-25): 레퍼런스를 받지 않는 모델(V4·V5 Medium)·마스크와 함께 받지 않는 모델의 인페인트(V5)는
+    // 싣지 않는다. 항목마다 종류를 이 모델의 base_caption 으로 바꾸고, 보내지 않는 종류(의상 미지원 모델의 costume)는 뺀다.
+    const caps = modelSpec.capabilities;
+    const referencesAllowed =
+      caps.supportsCharacterReference &&
+      !(action === 'infill' && !caps.supportsReferenceWithInpaint);
+    const sentCharacterReferences = referencesAllowed
+      ? (params.characterReferences ?? [])
+          .filter((ref) => ref.image && ref.image.length > 0)
+          .map((ref) => ({
+            ref,
+            caption: naiReferenceCaption(ref.referenceType, ref.preferSameOutfit, caps),
+          }))
+          .filter(
+            (x): x is { ref: CharacterReference; caption: string } => x.caption !== null,
+          )
+      : [];
+    if (sentCharacterReferences.length) {
       body.parameters.director_reference_images = [];
       body.parameters.director_reference_descriptions = [];
       body.parameters.director_reference_strength_values = [];
       body.parameters.director_reference_secondary_strength_values = [];
       body.parameters.director_reference_information_extracted = [];
-      for (const ref of validCharacterReferences) {
+      for (const { ref, caption } of sentCharacterReferences) {
         body.parameters.director_reference_images.push(ref.image);
         body.parameters.director_reference_descriptions.push({
           caption: {
-            base_caption: ref.referenceType || 'character',
+            base_caption: caption,
             char_captions: [],
           },
-          legacy_uc: params.legacyPromptConditioning,
+          legacy_uc: isV5 ? false : params.legacyPromptConditioning,
         });
-        body.parameters.director_reference_strength_values.push(ref.strength ?? 0.6);
-        body.parameters.director_reference_secondary_strength_values.push(1 - (ref.fidelity ?? 1));
+        body.parameters.director_reference_strength_values.push(
+          clampReferenceStrength(ref.strength ?? 0.6, caps),
+        );
+        // Fidelity 가 없는 모델(V5)은 secondary 를 항상 0 으로.
+        body.parameters.director_reference_secondary_strength_values.push(
+          caps.referenceFidelity ? 1 - (ref.fidelity ?? 1) : 0,
+        );
         body.parameters.director_reference_information_extracted.push(ref.info);
       }
     }
@@ -485,7 +506,8 @@ export class NovelAiImageGenService implements ImageGenService {
     // 파라미터를 동시에 보내면 서버가 깨진 결과물을 생성함.
     // 참고: DNT-LAB/NAIA_novel_ai_entrypoint 의 _apply_character_reference
     // (params.pop("skip_cfg_above_sigma", None))
-    const hasValidCharRef = (validCharacterReferences?.length ?? 0) > 0;
+    // 실제로 요청에 실린 레퍼런스 기준.
+    const hasValidCharRef = sentCharacterReferences.length > 0;
     if (!isV5 && params.varietyPlus && !hasValidCharRef) {
       let sigmaCoef: number;
       switch (config.modelVersion) {

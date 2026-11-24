@@ -10,12 +10,22 @@ import { ReferenceItem } from '../models/types';
 import { imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import { WFIInlineInput, wfiElementKey } from '../models/workflows/WorkFlow';
-import { ModelVersion } from '../backends/imageGen';
-import { isV5ModelVersion } from '../backends/genVendors/naiModelCapabilities';
+import { effectiveSameOutfit } from '../backends/genVendors/naiReference';
+import {
+  newReferenceType,
+  REFERENCE_EDITOR_TEXT,
+  referenceEditorSpec,
+  referenceLockText,
+  referenceTypeLabel,
+  referenceTypeOptions,
+  showCostumeUnsupported,
+  showSameOutfitToggle,
+} from '../models/referenceEditorSpec';
 import { WFElementContext, PresetIconRowContext } from './wfElementContext';
 import { PresetIconRowLabelContext, StackedLabel, stackedButtonClass } from './PresetPanelLabel';
 import { presetIconRowLabelOf } from '../models/presetPanelLabels';
 import { EditableSliderValue, VibeImage, useNarrowContainer } from './VibeEditor';
+import { ReferenceStrengthSlider } from './ReferenceStrengthSlider';
 import { resolveCompanionButtons } from '../models/companionSlots';
 import { renderCompanionButtons } from './PortableToolbarButtons';
 import { CompanionHostRow } from './CompanionDnd';
@@ -42,14 +52,16 @@ export function getRefDefaults() {
     strength: parseFloat(localStorage.getItem(REF_DEFAULT_STRENGTH_KEY) || '0.6'),
     fidelity: parseFloat(localStorage.getItem(REF_DEFAULT_FIDELITY_KEY) || '1.0'),
     referenceType: (localStorage.getItem(REF_DEFAULT_TYPE_KEY) || 'character') as
-      'character' | 'style' | 'character&style',
+      'character' | 'style' | 'character&style' | 'costume',
   };
 }
 
 export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferenceEditorProps) => {
   const { curSession } = appState;
-  const { preset, shared, editCharacterReference, setEditCharacterReference, meta } =
+  const { preset, shared, editCharacterReference, setEditCharacterReference, meta, modelVersion } =
     useContext(WFElementContext)!;
+  // 현재 모델의 레퍼런스 규칙(상한·Fidelity·의상) — 세 편집기 공용 referenceEditorSpec.
+  const refSpec = referenceEditorSpec(modelVersion);
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
   // 패널 폭 적응 — 좁으면 항목을 세로 배치(이미지 위/컨트롤 아래)로 전환
@@ -100,16 +112,20 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
     );
   const referenceChange = async (reference: string) => {
     if (!reference) return;
-    const path = await imageService.storeReferenceImage(curSession!, reference);
+    // 사용자가 원본을 직접 넣는 경로 — 원본 크기를 항목에 적어 V5 로 보낼 때 여백을 정확히 자른다.
+    const stored = await imageService.storeReferenceImageWithSize(curSession!, reference);
     const defaults = getRefDefaults();
     editField(UNDO_TEXT.referenceAdd, () => {
       getField().push(
         ReferenceItem.fromJSON({
-          path: path,
+          path: stored.path,
           info: 1.0,
           strength: defaults.strength,
           fidelity: defaults.fidelity,
-          referenceType: defaults.referenceType,
+          referenceType: newReferenceType(refSpec, defaults.referenceType),
+          ...(stored.srcWidth > 0 && stored.srcHeight > 0
+            ? { srcWidth: stored.srcWidth, srcHeight: stored.srcHeight }
+            : {}),
         }),
       );
     });
@@ -221,15 +237,14 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                 <div className="mt-2 p-3 bg-[var(--c-surface)] rounded-lg space-y-3 text-sm">
                   <div className="flex items-center gap-2">
                     <span className="gray-label w-20 flex-none">Strength:</span>
-                    <input
-                      type="range"
-                      className="flex-1 min-w-0"
-                      min="0" max="2" step="0.01"
+                    <ReferenceStrengthSlider
                       value={refDefaults.strength}
-                      onChange={(e) => updateDefault(REF_DEFAULT_STRENGTH_KEY, e.target.value)}
+                      max={refSpec.strengthMax}
+                      onChange={(v) => updateDefault(REF_DEFAULT_STRENGTH_KEY, String(v))}
                     />
                     <span className="w-10 text-center text-default">{refDefaults.strength.toFixed(2)}</span>
                   </div>
+                  {refSpec.showFidelity && (
                   <div className="flex items-center gap-2">
                     <span className="gray-label w-20 flex-none">Fidelity:</span>
                     <input
@@ -241,9 +256,10 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                     />
                     <span className="w-10 text-center text-default">{refDefaults.fidelity.toFixed(2)}</span>
                   </div>
+                  )}
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="gray-label w-20 flex-none">유형:</span>
-                    {(['character', 'style', 'character&style'] as const).map((t) => (
+                    {referenceTypeOptions(refSpec, refDefaults.referenceType).map((t) => (
                       <label key={t} className="flex items-center gap-1 cursor-pointer">
                         <input
                           type="radio"
@@ -252,7 +268,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                           onChange={() => updateDefault(REF_DEFAULT_TYPE_KEY, t)}
                           className="accent-sky-500"
                         />
-                        <span className="text-default">{t}</span>
+                        <span className="text-default">{referenceTypeLabel(t)}</span>
                       </label>
                     ))}
                   </div>
@@ -344,28 +360,23 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                     <div
                       className={`flex flex-1 gap-1 min-w-0 ${narrow ? 'w-full' : 'md:w-auto w-full'}`}
                     >
-                      <input
-                        className="flex-1 min-w-0"
-                        type="range"
-                        step="0.01"
-                        min="0"
-                        max="2"
+                      <ReferenceStrengthSlider
                         value={reference.strength}
+                        max={refSpec.strengthMax}
                         onPointerDown={startSlide}
-                        onChange={(e) => {
-                          setItemValue(reference, 'strength', parseFloat(e.target.value));
-                        }}
+                        onChange={(v) => setItemValue(reference, 'strength', v)}
                         disabled={disabled}
                       />
                       <EditableSliderValue
                         value={reference.strength}
                         min={0}
-                        max={2}
+                        max={refSpec.strengthMax}
                         onChange={(v) => setItemValue(reference, 'strength', v)}
                         disabled={disabled}
                       />
                     </div>
                   </div>
+                  {refSpec.showFidelity && (
                   <div
                     className={`flex w-full items-center ${narrow ? 'flex-col' : 'md:flex-row flex-col'}`}
                   >
@@ -399,52 +410,49 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                       />
                     </div>
                   </div>
+                  )}
                   <div className="flex w-full md:flex-row flex-col items-center mt-2">
                     <div className="flex gap-4 items-center flex-wrap">
-                      <label className="flex gap-1 items-center cursor-pointer">
-                        <input
-                          type="radio"
-                          name={`refType-${reference.path}`}
-                          checked={reference.referenceType === 'character'}
-                          onChange={() => {
-                            editField(UNDO_TEXT.referenceValue, () => {
-                              reference.referenceType = 'character';
-                            });
-                          }}
-                          disabled={disabled}
-                        />
-                        <span className="gray-label">캐릭터</span>
-                      </label>
-                      <label className="flex gap-1 items-center cursor-pointer">
-                        <input
-                          type="radio"
-                          name={`refType-${reference.path}`}
-                          checked={reference.referenceType === 'style'}
-                          onChange={() => {
-                            editField(UNDO_TEXT.referenceValue, () => {
-                              reference.referenceType = 'style';
-                            });
-                          }}
-                          disabled={disabled}
-                        />
-                        <span className="gray-label">스타일</span>
-                      </label>
-                      <label className="flex gap-1 items-center cursor-pointer">
-                        <input
-                          type="radio"
-                          name={`refType-${reference.path}`}
-                          checked={reference.referenceType === 'character&style'}
-                          onChange={() => {
-                            editField(UNDO_TEXT.referenceValue, () => {
-                              reference.referenceType = 'character&style';
-                            });
-                          }}
-                          disabled={disabled}
-                        />
-                        <span className="gray-label">캐릭터+스타일</span>
-                      </label>
+                      {referenceTypeOptions(refSpec, reference.referenceType).map((t) => (
+                        <label key={t} className="flex gap-1 items-center cursor-pointer">
+                          <input
+                            type="radio"
+                            name={`refType-${reference.path}`}
+                            checked={reference.referenceType === t}
+                            onChange={() => {
+                              editField(UNDO_TEXT.referenceValue, () => {
+                                reference.referenceType = t;
+                                // 종류를 바꾸면 「같은 의상 선호」 명시 값을 지워 그 종류의 기본으로
+                                reference.preferSameOutfit = undefined;
+                              });
+                            }}
+                            disabled={disabled}
+                          />
+                          <span className="gray-label">{referenceTypeLabel(t)}</span>
+                        </label>
+                      ))}
+                      {showSameOutfitToggle(refSpec, reference.referenceType) && (
+                        <label className="flex gap-1 items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="setting-check setting-check-sm"
+                            checked={!!effectiveSameOutfit(reference.referenceType, reference.preferSameOutfit)}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              editField(UNDO_TEXT.referenceValue, () => {
+                                reference.preferSameOutfit = checked;
+                              });
+                            }}
+                            disabled={disabled}
+                          />
+                          <span className="gray-label">{REFERENCE_EDITOR_TEXT.sameOutfit}</span>
+                        </label>
+                      )}
                     </div>
                   </div>
+                  {showCostumeUnsupported(refSpec, reference.referenceType) && (
+                    <div className="text-xs text-muted">{REFERENCE_EDITOR_TEXT.costumeUnsupported}</div>
+                  )}
                 </div>
               </div>
             ))}
@@ -490,13 +498,11 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
     return meta![input.field] || [];
   };
 
-  // v4 모델은 캐릭터 레퍼런스 미지원
-  const isV4 = modelVersion === ModelVersion.V4 || modelVersion === ModelVersion.V4Curated;
-  const isV5 = isV5ModelVersion(modelVersion);
-  const locked = isV4 || isV5;
-  const lockedLabel = isV5
-    ? '캐릭터 레퍼런스 (V5 미지원)'
-    : '캐릭터 레퍼런스 (V4 모델 미지원)';
+  // 캐릭터 레퍼런스를 받지 않는 모델(V4·V4 Curated·V5 Medium)은 잠근다 — 사유는 능력표(naiReferenceBlockReason).
+  const blockReason = referenceEditorSpec(modelVersion).blockReason;
+  const locked = blockReason !== undefined;
+  const lockText = referenceLockText(blockReason);
+  const lockedLabel = lockText.label;
 
   const onClick = () => {
     if (locked) return;
@@ -542,7 +548,7 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
       <CompanionHostRow hostKey={hostKey}>
         <Tooltip
           content={
-            locked ? lockedLabel : '캐릭터 레퍼런스 설정 열기'
+            locked ? lockText.tooltip : '캐릭터 레퍼런스 설정 열기'
           }
         >
           <button
@@ -576,6 +582,7 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
               className={`round-button h-8 flex-1 flex ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
               onClick={onClick}
               disabled={locked}
+              title={locked ? lockText.tooltip : undefined}
             >
               <div className="flex-1">
                 {locked ? lockedLabel : '캐릭터 레퍼런스 설정 열기'}
@@ -588,6 +595,7 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
             className={`round-button h-8 w-full flex mt-2 md:mt-3 ${locked ? 'back-llgray opacity-50 cursor-not-allowed' : 'back-gray'}`}
             onClick={onClick}
             disabled={locked}
+            title={locked ? lockText.tooltip : undefined}
           >
             <div className="flex-1">
               {locked ? lockedLabel : '캐릭터 레퍼런스 설정 열기'}
@@ -596,11 +604,14 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
         )
       )}
       {editCharacterReference == undefined && field.length > 0 && (
-        <div className={'w-full flex items-center mt-2 md:mt-3' + (locked ? ' opacity-50' : '')}>
+        <div
+          className={'w-full flex items-center mt-2 md:mt-3' + (locked ? ' opacity-50' : '')}
+          title={locked ? lockText.tooltip : undefined}
+        >
           <div className={'flex-none mr-2 gray-label'}>
             레퍼런스 설정:
             {locked ? (
-              <span className="ml-1 text-xs text-red-400">(v4 미지원)</span>
+              <span className="ml-1 text-xs text-red-400">{lockText.inline}</span>
             ) : (
               <span className="ml-1 text-xs text-sky-500">
                 ({enabledRefs.length}/{field.length} 활성화)
@@ -622,7 +633,7 @@ export const CharacterReferenceButton = observer(({ input }: { input: WFIInlineI
                 className={'flex-1 h-14 rounded-xl bg-[var(--c-surface)] flex items-center justify-center text-muted' + (locked ? '' : ' cursor-pointer hover:brightness-95 active:brightness-90')}
                 onClick={handleImageClick}
               >
-                {locked ? (isV5 ? 'V5 모델 미지원' : 'V4 모델 미지원') : enabledRefs.length === 0 ? '활성화된 이미지 없음' : '이미지 없음'}
+                {locked ? lockText.thumbnail : enabledRefs.length === 0 ? '활성화된 이미지 없음' : '이미지 없음'}
               </div>
             )}
             {!locked && (

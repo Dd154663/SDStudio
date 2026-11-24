@@ -57,6 +57,9 @@ const CRC_TABLE = (() => {
 const V5_MEDIUM_MODEL = /^nai-diffusion-5-full-medium(-inpainting)?$/;
 const V5_MEDIUM_COST_DIVISOR = 1.75;
 
+/** 캐릭터(정밀) 레퍼런스 1장당 Anlas(흉내). */
+const REFERENCE_ANLAS_PER_IMAGE = 5;
+
 function isV5MediumModel(model) {
   return V5_MEDIUM_MODEL.test(String(model || ''));
 }
@@ -453,7 +456,7 @@ function createMockServer(options = {}) {
    *   차감 뒤 둘 다 0 이면 isNegative=true. 그 밖(미구독·isNegative)은 Anlas.
    * - V5 아님: Opus 구독 + 1MP 이하 + 28스텝 이하 = 무료(차감 없음), 아니면 Anlas.
    */
-  function charge(account, state, model, width, height, steps) {
+  function charge(account, state, model, width, height, steps, refCount = 0) {
     const isV5 = /^nai-diffusion-5/.test(String(model || ''));
     const before = `free ${state.percent}% / boost ${state.purchasedPercent}% / anlas ${state.anlas}`;
     let useAnlas;
@@ -479,9 +482,19 @@ function createMockServer(options = {}) {
       }
       state.anlas -= cost;
     }
+    // 캐릭터(정밀) 레퍼런스 흉내: 1장당 REFERENCE_ANLAS_PER_IMAGE Anlas 를 더 쓴다(무료분과 별개).
+    let refNote = '';
+    if (refCount > 0) {
+      const refCost = refCount * REFERENCE_ANLAS_PER_IMAGE;
+      if (state.anlas < refCost) {
+        return { ok: false, status: 402, message: 'Not enough Anlas to perform this action.' };
+      }
+      state.anlas -= refCost;
+      refNote = ` [레퍼런스 ${refCount}장 Anlas -${refCost}]`;
+    }
     const after = `free ${state.percent}% / boost ${state.purchasedPercent}% / anlas ${state.anlas}`;
     const medium = isV5MediumModel(model) ? ' [V5 Medium ÷1.75]' : '';
-    return { ok: true, note: (useAnlas ? `Anlas -${anlasCost} (${before} → ${after})` : `${before} → ${after}${state.isNegative ? ' [isNegative]' : ''}`) + medium };
+    return { ok: true, note: (useAnlas ? `Anlas -${anlasCost} (${before} → ${after})` : `${before} → ${after}${state.isNegative ? ' [isNegative]' : ''}`) + medium + refNote };
   }
 
   function stamp() {
@@ -541,7 +554,19 @@ function createMockServer(options = {}) {
         const height = clampSize(params.height, 1216);
         const seed = params.seed ?? 0;
         const steps = params.steps ?? 28;
-        const result = charge(live, state, body.model, width, height, steps);
+        // 캐릭터(정밀) 레퍼런스(2026-11-25): 장수·종류·strength 를 한 줄로 남기고, 이미지 배열을 뺀 네 배열을 Comment 로 되돌린다.
+        const refImages = Array.isArray(params.director_reference_images) ? params.director_reference_images : [];
+        const refCount = refImages.length;
+        if (refCount > 0) {
+          const kinds = (params.director_reference_descriptions || []).map((d) => d?.caption?.base_caption ?? '?');
+          log(`[${stamp()}] ${who} 레퍼런스 ${refCount}장 종류=${kinds.join(',')} strength=${JSON.stringify(params.director_reference_strength_values ?? [])} secondary=${JSON.stringify(params.director_reference_secondary_strength_values ?? [])}`);
+          if (isV5MediumModel(body.model)) {
+            // 공식 웹도 V5 Medium 에서는 정밀 레퍼런스를 막는다(「Precise Reference needs High effort」).
+            logLine(who, req.method, req.url, 400, 'V5 Medium + 레퍼런스');
+            return sendError(res, 400, 'mock: Precise Reference needs High effort');
+          }
+        }
+        const result = charge(live, state, body.model, width, height, steps, refCount);
         if (!result.ok) {
           logLine(who, req.method, req.url, result.status, `Anlas 부족(${state.anlas})`);
           return sendError(res, result.status, result.message);
@@ -563,6 +588,14 @@ function createMockServer(options = {}) {
           v4_negative_prompt: params.v4_negative_prompt,
           request_type: body.action === 'infill' ? 'NativeInfillingRequest' : body.action === 'img2img' ? 'Img2ImgRequest' : 'PromptGenerateRequest',
           mock_account: live.name,
+          ...(refCount > 0
+            ? {
+                director_reference_descriptions: params.director_reference_descriptions,
+                director_reference_strength_values: params.director_reference_strength_values,
+                director_reference_secondary_strength_values: params.director_reference_secondary_strength_values,
+                director_reference_information_extracted: params.director_reference_information_extracted,
+              }
+            : {}),
         };
         const png = makePng(width, height, rgb, seed, [
           ['Title', 'NovelAI generated image'],

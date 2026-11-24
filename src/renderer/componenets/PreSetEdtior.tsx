@@ -1676,7 +1676,7 @@ const GlobalModelSettings = observer(() => {
           />
           {isV5ModelVersion(modelVersion) && (
             <div className="text-xs text-faint mt-1">
-              V5에서는 Karras가 고정되며 Vibe·캐릭터 레퍼런스·Variety+·DDIM은
+              V5에서는 Karras가 고정되며 Vibe·Variety+·DDIM은
               생성 요청에서 안전하게 제외됩니다.
             </div>
           )}

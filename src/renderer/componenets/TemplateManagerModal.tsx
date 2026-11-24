@@ -21,10 +21,21 @@ import ModalOverlay, { DIALOG_PRIMARY_BTN } from './ModalOverlay';
 import Tooltip from './Tooltip';
 import PromptEditTextArea from './PromptEditTextArea';
 import { CharacterPresetInnerEditor } from './CharacterPresetInnerEditor';
-import { PresetImageBackend, VibeImage } from './CharacterPresetCards';
+import { PresetImageBackend, storeWithSourceSize, VibeImage } from './CharacterPresetCards';
+import { getImageDimensions } from './BrushTool';
+import { effectiveSameOutfit } from '../backends/genVendors/naiReference';
+import {
+  REFERENCE_EDITOR_TEXT,
+  referenceEditorSpec,
+  referenceTypeLabel,
+  referenceTypeOptions,
+  showCostumeUnsupported,
+  showSameOutfitToggle,
+} from '../models/referenceEditorSpec';
 import { BatchCreatePanel, BatchCreateController } from './BatchCreateModal';
 import { GlobalPresetPicker } from './GlobalPresetPicker';
 import { EditableSliderValue } from './VibeEditor';
+import { ReferenceStrengthSlider } from './ReferenceStrengthSlider';
 import { FileUploadBase64 } from './UtilComponents';
 import {
   backend,
@@ -82,7 +93,8 @@ import {
 // 템플릿 이미지 디렉터리 기반 캐릭터 편집기 백엔드
 const templateImageBackend: PresetImageBackend = {
   storeVibe: (b) => projectTemplateService.storeImageForEditor(b),
-  storeReference: (b) => projectTemplateService.storeImageForEditor(b),
+  storeReference: (b) =>
+    storeWithSourceSize((x) => projectTemplateService.storeImageForEditor(x), b),
   vibePath: (t) => projectTemplateService.getImagePath(t),
   referencePath: (t) => projectTemplateService.getImagePath(t),
 };
@@ -204,6 +216,8 @@ const TemplateWorkflowBody = observer(
     const samplingFamily: ModelSamplingFamily =
       pickedFamily ?? initialTemplateSamplingFamily(entry?.preset, globalModel);
     const samplingLocks = templateSamplingLocks(samplingFamily);
+    // 캐릭터 레퍼런스 편집 규칙 — 템플릿을 적용한 뒤 생성은 전역 모델로 가므로 전역 모델 기준(referenceEditorSpec).
+    const refSpec = referenceEditorSpec(globalModel);
 
     const asStr =(v: any) => (typeof v === 'string' ? v : '');
 
@@ -1169,8 +1183,18 @@ const TemplateWorkflowBody = observer(
                 disabled={false}
                 onFileSelect={(b64: string) => {
                   if (b64)
-                    projectTemplateService
-                      .addCharacterReference(entry.id, b64)
+                    // 원본을 직접 넣는 경로 — 원본 크기를 항목에 적는다(V5 로 보낼 때 여백 자르기).
+                    getImageDimensions(b64)
+                      .catch(() => undefined)
+                      .then((size) =>
+                        projectTemplateService.addCharacterReference(
+                          entry.id,
+                          b64,
+                          size && size.width > 0 && size.height > 0
+                            ? { srcWidth: size.width, srcHeight: size.height }
+                            : undefined,
+                        ),
+                      )
                       .catch((e: any) =>
                         appState.pushMessage(e.message || '추가에 실패했습니다.'),
                       );
@@ -1242,25 +1266,21 @@ const TemplateWorkflowBody = observer(
                         Strength:
                       </div>
                       <div className="flex flex-1 md:w-auto w-full gap-1">
-                        <input
-                          className="flex-1 min-w-0"
-                          type="range"
-                          step="0.01"
-                          min="0"
-                          max="2"
+                        <ReferenceStrengthSlider
                           value={r.strength}
-                          onChange={(e) =>
+                          max={refSpec.strengthMax}
+                          onChange={(val) =>
                             projectTemplateService.updateCharacterReference(
                               entry.id,
                               i,
-                              { strength: parseFloat(e.target.value) },
+                              { strength: val },
                             )
                           }
                         />
                         <EditableSliderValue
                           value={r.strength}
                           min={0}
-                          max={2}
+                          max={refSpec.strengthMax}
                           onChange={(val: number) =>
                             projectTemplateService.updateCharacterReference(
                               entry.id,
@@ -1271,7 +1291,8 @@ const TemplateWorkflowBody = observer(
                         />
                       </div>
                     </div>
-                    {/* Fidelity */}
+                    {/* Fidelity — 모델이 받지 않으면 숨김(저장값은 그대로) */}
+                    {refSpec.showFidelity && (
                     <div className="flex w-full items-center md:flex-row flex-col">
                       <div className="whitespace-nowrap flex-none mr-auto md:mr-2 gray-label">
                         Fidelity:
@@ -1306,9 +1327,10 @@ const TemplateWorkflowBody = observer(
                         />
                       </div>
                     </div>
+                    )}
                     {/* 레퍼런스 타입 */}
                     <div className="flex items-center gap-4 flex-wrap">
-                      {(['character', 'style', 'character&style'] as const).map(
+                      {referenceTypeOptions(refSpec, r.referenceType).map(
                         (t) => (
                           <label
                             key={t}
@@ -1322,22 +1344,37 @@ const TemplateWorkflowBody = observer(
                                 projectTemplateService.updateCharacterReference(
                                   entry.id,
                                   i,
-                                  { referenceType: t },
+                                  // 종류를 바꾸면 「같은 의상 선호」 명시 값을 지워 그 종류의 기본으로
+                                  { referenceType: t, preferSameOutfit: undefined },
                                 )
                               }
                               className="accent-sky-500"
                             />
-                            <span className="gray-label">
-                              {t === 'character'
-                                ? '캐릭터'
-                                : t === 'style'
-                                  ? '스타일'
-                                  : '캐릭터+스타일'}
-                            </span>
+                            <span className="gray-label">{referenceTypeLabel(t)}</span>
                           </label>
                         ),
                       )}
+                      {showSameOutfitToggle(refSpec, r.referenceType) && (
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!effectiveSameOutfit(r.referenceType, r.preferSameOutfit)}
+                            onChange={(e) =>
+                              projectTemplateService.updateCharacterReference(
+                                entry.id,
+                                i,
+                                { preferSameOutfit: e.target.checked },
+                              )
+                            }
+                            className="setting-check setting-check-sm"
+                          />
+                          <span className="gray-label">{REFERENCE_EDITOR_TEXT.sameOutfit}</span>
+                        </label>
+                      )}
                     </div>
+                    {showCostumeUnsupported(refSpec, r.referenceType) && (
+                      <div className="text-xs text-muted">{REFERENCE_EDITOR_TEXT.costumeUnsupported}</div>
+                    )}
                   </div>
                 </div>
               ))}

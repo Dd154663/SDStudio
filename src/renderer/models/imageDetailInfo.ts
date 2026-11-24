@@ -14,6 +14,7 @@ import {
   type UcPresetKey,
 } from '../backends/genVendors/naiQualityPresets';
 import { outputTimestampOf } from './imageOrderSort';
+import { REFERENCE_EDITOR_TEXT, referenceTypeLabel } from './referenceEditorSpec';
 import { formatBytes } from './googleDrive';
 
 export interface DetailRow {
@@ -96,11 +97,6 @@ export const DETAIL_INFO_TEXT = {
   autoPosition: '자동(AI 선택)',
 } as const;
 
-const REFERENCE_TYPE_LABELS: Record<string, string> = {
-  character: '캐릭터',
-  style: '스타일',
-  'character&style': '캐릭터·스타일',
-};
 
 const UNKNOWN_MODEL = '알 수 없음';
 
@@ -265,7 +261,10 @@ export function buildImageDetailInfo(
     index,
     hasImage: isImageBase64(job.referenceImageData?.[index]),
     text: [
-      REFERENCE_TYPE_LABELS[r.referenceType] ?? r.referenceType,
+      referenceTypeLabel(r.referenceType),
+      // 「같은 의상 선호」 — 값이 있을 때만(V5 메타의 _mainoutfit·_anyoutfit 에서 읽은 명시 값).
+      typeof r.preferSameOutfit === 'boolean' &&
+        `${REFERENCE_EDITOR_TEXT.sameOutfit} ${r.preferSameOutfit ? '켬' : '끔'}`,
       fixed2(r.strength) && `강도 ${fixed2(r.strength)}`,
       fixed2(r.fidelity) && `충실도 ${fixed2(r.fidelity)}`,
     ]

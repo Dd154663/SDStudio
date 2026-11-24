@@ -1126,9 +1126,19 @@ export interface IReferenceItem {
   info: number;
   strength: number;
   fidelity: number;
-  referenceType: 'character' | 'style' | 'character&style';
+  /** 'costume'(의상) = V5 전용(2026-11-25). 의상을 지원하지 않는 모델에는 보내지 않는다. */
+  referenceType: 'character' | 'style' | 'character&style' | 'costume';
   enabled?: boolean;
   fromPreset?: string;
+  /** 「같은 의상 선호」 명시 값(V5). 없음 = 그 종류의 기본(캐릭터 꺼짐·캐릭터+스타일 켜짐). */
+  preferSameOutfit?: boolean;
+  /** 레퍼런스로 넣은 원본 그림 크기(저장 파일은 검정 여백이 붙은 규격 캔버스) — V5 로 보낼 때 여백을 정확히 자르는 데 쓴다. */
+  srcWidth?: number;
+  srcHeight?: number;
+}
+
+function isPositiveSize(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0;
 }
 
 export class ReferenceItem implements IReferenceItem {
@@ -1136,9 +1146,12 @@ export class ReferenceItem implements IReferenceItem {
   @observable accessor info: number = 1.0;
   @observable accessor strength: number = 0.6;
   @observable accessor fidelity: number = 1.0;
-  @observable accessor referenceType: 'character' | 'style' | 'character&style' = 'character';
+  @observable accessor referenceType: 'character' | 'style' | 'character&style' | 'costume' = 'character';
   @observable accessor enabled: boolean = true;
   @observable accessor fromPreset: string | undefined = undefined;
+  @observable accessor preferSameOutfit: boolean | undefined = undefined;
+  @observable accessor srcWidth: number | undefined = undefined;
+  @observable accessor srcHeight: number | undefined = undefined;
 
   static fromJSON(json: IReferenceItem): ReferenceItem {
     const item = new ReferenceItem();
@@ -1150,12 +1163,17 @@ export class ReferenceItem implements IReferenceItem {
       item.referenceType = json.referenceType || 'character';
       item.enabled = json.enabled ?? true;
       item.fromPreset = json.fromPreset;
+      if (typeof json.preferSameOutfit === 'boolean') item.preferSameOutfit = json.preferSameOutfit;
+      if (isPositiveSize(json.srcWidth) && isPositiveSize(json.srcHeight)) {
+        item.srcWidth = json.srcWidth;
+        item.srcHeight = json.srcHeight;
+      }
     }
     return item;
   }
 
   toJSON(): IReferenceItem {
-    return {
+    const json: IReferenceItem = {
       path: this.path,
       info: this.info,
       strength: this.strength,
@@ -1164,6 +1182,13 @@ export class ReferenceItem implements IReferenceItem {
       enabled: this.enabled,
       fromPreset: this.fromPreset,
     };
+    // 새 선택 필드는 값이 있을 때만 키를 낸다(값이 없으면 종전 JSON 과 완전히 같게).
+    if (typeof this.preferSameOutfit === 'boolean') json.preferSameOutfit = this.preferSameOutfit;
+    if (isPositiveSize(this.srcWidth) && isPositiveSize(this.srcHeight)) {
+      json.srcWidth = this.srcWidth;
+      json.srcHeight = this.srcHeight;
+    }
+    return json;
   }
 }
 

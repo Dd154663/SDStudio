@@ -6,6 +6,7 @@ import {
 import { ModelVersion } from '../backends/imageGen';
 import { modelVersionFromNaiSource } from '../backends/genVendors/naiModelCapabilities';
 import { stripUcPreset } from '../backends/genVendors/naiQualityPresets';
+import { parseNaiReferenceCaption } from '../backends/genVendors/naiReference';
 
 export function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -336,7 +337,8 @@ export function parseCommentToJob(
       strength,
       fidelity: refFidelities[i] ?? 1,
       info: refInfos[i] ?? 1,
-      referenceType: (refDescs[i]?.caption?.base_caption || 'character') as 'character' | 'style' | 'character&style',
+      // base_caption → 종류 + 「같은 의상 선호」(V5 의 _mainoutfit·_anyoutfit 변형 포함, 모르는 값 = character)
+      ...parseNaiReferenceCaption(refDescs[i]?.caption?.base_caption),
       enabled: true,
     }));
 

@@ -400,6 +400,8 @@ export const ExternalImageView = observer(
               item.fidelity = ref.fidelity;
               item.info = ref.info;
               item.referenceType = ref.referenceType;
+              // 「같은 의상 선호」 명시 값(V5 메타). 원본 크기는 적지 않는다 — 이미 가공된 그림이라 보낼 때 탐지에 맡긴다.
+              if (typeof ref.preferSameOutfit === 'boolean') item.preferSameOutfit = ref.preferSameOutfit;
               item.enabled = true;
               newRefs.push(item);
             }

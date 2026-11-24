@@ -78,7 +78,7 @@ export interface BoostJobFacts {
   width: number;
   height: number;
   steps: number;
-  /** 요청에 실릴 캐릭터 레퍼런스가 있는가(V4·V5 는 요청에서 빠지므로 false). */
+  /** 요청에 실릴 캐릭터 레퍼런스가 있는가(naiReference.referencesForModel — V4·V5 Medium 은 요청에서 빠지므로 false). */
   hasCharacterReference: boolean;
 }
 

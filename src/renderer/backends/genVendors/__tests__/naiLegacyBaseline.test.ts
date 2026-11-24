@@ -174,7 +174,7 @@ describe('NovelAI V5 도입 전 V4.5 요청 기준선', () => {
 });
 
 describe('NovelAI V5 최소 요청', () => {
-  test('V5 Full은 params 4와 할당량 플래그를 쓰고 미지원 필드를 보내지 않는다', async () => {
+  test('V5 Full은 params 4와 할당량 플래그를 쓰고 미지원 필드(바이브)를 보내지 않는다 — 레퍼런스는 보낸다(2026-11-25)', async () => {
     const { service, fetchArrayBuffer } = makeService();
     const input = makeInput();
     input.sampling = Sampling.DDIM;
@@ -219,7 +219,8 @@ describe('NovelAI V5 최소 요청', () => {
       },
     });
     expect(body.parameters).not.toHaveProperty('reference_image_multiple');
-    expect(body.parameters).not.toHaveProperty('director_reference_images');
+    expect(body.parameters.director_reference_images).toEqual(['ref']);
+    expect(body.parameters.skip_cfg_above_sigma).toBeNull();
     expect(body.parameters).not.toHaveProperty('controlnet_strength');
     expect(body.parameters).not.toHaveProperty('dynamic_thresholding');
     expect(body.parameters).not.toHaveProperty('autoSmea');

@@ -1052,6 +1052,8 @@ export class ProjectTemplateService extends EventTarget {
   async addCharacterReference(
     templateId: string,
     base64: string,
+    // 넣은 원본 그림 크기(편집기가 잰 값) — 있으면 항목에 적어 V5 로 보낼 때 여백을 정확히 자른다.
+    sourceSize?: { srcWidth: number; srcHeight: number },
   ): Promise<void> {
     this.store.assertWritable();
     const entry = this.get(templateId);
@@ -1064,6 +1066,7 @@ export class ProjectTemplateService extends EventTarget {
       fidelity: 1.0,
       referenceType: 'character',
       enabled: true,
+      ...(sourceSize ? { srcWidth: sourceSize.srcWidth, srcHeight: sourceSize.srcHeight } : {}),
     };
     entry.characterReferences = [...(entry.characterReferences || []), item];
     this.touch(entry);

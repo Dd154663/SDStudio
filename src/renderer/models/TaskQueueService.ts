@@ -273,6 +273,7 @@ export interface TaskQueueRun {
   // (T3b) 긴 휴식 카운터는 run 이 아니라 서비스 수준(TaskQueueService.longBreakRemaining)이다.
   // 캐싱된 데이터 - 동일 세션/씬에서 재사용
   cachedVibes?: Map<string, { image: string; info: number; strength: number }>;
+  // 키 = `경로|손질 방식`(한 실행 안에서 모델이 다른 작업이 섞일 수 있음). 쓰는 값은 손질된 image 뿐 — 나머지는 매번 항목에서 다시 싣는다.
   cachedReferences?: Map<string, { image: string; info: number; strength: number; fidelity: number; referenceType: string; description: string }>;
   lastSessionName?: string;
 }

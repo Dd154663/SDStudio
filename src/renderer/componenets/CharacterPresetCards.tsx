@@ -17,26 +17,47 @@ import { CharacterPreset } from '../models/types';
 import { imageService, globalCharacterPresetService } from '../models';
 import { appState } from '../models/AppService';
 import type { IGlobalCharacterPresetEntry } from '../models/GlobalCharacterPresetService';
+import { getImageDimensions } from './BrushTool';
 
 // CharacterPresetEditor.tsx 에서 분리된 카드/이미지 표시 계열.
 // 프리셋 편집기의 이미지 저장/표시 백엔드 (로컬=세션 디렉터리, 글로벌=글로벌 디렉터리)
+/** 레퍼런스 저장 결과 — 원본 크기(못 읽으면 없음)는 항목의 srcWidth·srcHeight 로 적는다(V5 로 보낼 때 여백 자르기). */
+export interface StoredReference {
+  path: string;
+  srcWidth?: number;
+  srcHeight?: number;
+}
+
+/** 원본을 그대로 보관하는 저장소(글로벌·템플릿)용 — 저장한 뒤 원본 크기를 잰다. */
+export async function storeWithSourceSize(
+  store: (base64: string) => Promise<string>,
+  base64: string,
+): Promise<StoredReference> {
+  const path = await store(base64);
+  const size = await getImageDimensions(base64).catch(() => undefined);
+  return size && size.width > 0 && size.height > 0
+    ? { path, srcWidth: size.width, srcHeight: size.height }
+    : { path };
+}
+
 export interface PresetImageBackend {
   storeVibe: (base64: string) => Promise<string>;
-  storeReference: (base64: string) => Promise<string>;
+  storeReference: (base64: string) => Promise<StoredReference>;
   vibePath: (token: string) => string;
   referencePath: (token: string) => string;
 }
 
 export const makeSessionImageBackend = (session: any): PresetImageBackend => ({
   storeVibe: (b) => imageService.storeVibeImage(session, b),
-  storeReference: (b) => imageService.storeReferenceImage(session, b),
+  storeReference: (b) => imageService.storeReferenceImageWithSize(session, b),
   vibePath: (t) => imageService.getVibeImagePath(session, t),
   referencePath: (t) => imageService.getReferenceImagePath(session, t),
 });
 
 export const globalImageBackend: PresetImageBackend = {
   storeVibe: (b) => globalCharacterPresetService.storeVibeForEditor(b),
-  storeReference: (b) => globalCharacterPresetService.storeReferenceForEditor(b),
+  storeReference: (b) =>
+    storeWithSourceSize((x) => globalCharacterPresetService.storeReferenceForEditor(x), b),
   vibePath: (t) => globalCharacterPresetService.getImagePath(t),
   referencePath: (t) => globalCharacterPresetService.getImagePath(t),
 };

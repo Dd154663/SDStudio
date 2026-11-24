@@ -110,7 +110,9 @@ export interface CharacterReference {
   strength: number;
   fidelity: number;
   description: string;
-  referenceType: 'character' | 'style' | 'character&style';
+  referenceType: 'character' | 'style' | 'character&style' | 'costume';
+  /** 「같은 의상 선호」 명시 값(V5) — 요청 base_caption 변환은 naiReference.naiReferenceCaption. */
+  preferSameOutfit?: boolean;
 }
 
 export interface ImageSize {

@@ -24,6 +24,8 @@ jest.mock('../index', () => ({
   },
   backend: {},
   imageService: {},
+  // 캐릭터 프리셋 편집기의 전역 모델 훅(useGlobalModelVersion)이 config-changed 를 구독한다
+  sessionService: { addEventListener: jest.fn(), removeEventListener: jest.fn() },
   cyclingSessionService: { state: 'idle', start: jest.fn() },
   taskQueueService: { isGenerationHost: true },
   templateService: { importSceneTemplate: jest.fn(async () => null) },

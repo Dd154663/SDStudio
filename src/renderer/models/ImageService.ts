@@ -21,6 +21,14 @@ import {
   ProjectImageRoot,
 } from './projectPaths';
 import { v4 } from 'uuid';
+import {
+  detectLetterboxRect,
+  insetLetterboxRect,
+  isReferenceCanvasSize,
+  letterboxContentRect,
+  planReferenceBucket,
+  Rect,
+} from '../backends/genVendors/naiReference';
 
 export const supportedImageSizes = [200, 400, 500];
 const imageDirList = [...PROJECT_SCENE_IMAGE_ROOTS];
@@ -652,9 +660,16 @@ export class ImageService extends EventTarget {
   }
 
   async normalizeReferenceImage(data: string): Promise<string> {
+    return (await this.normalizeReferenceImageWithSize(data)).data;
+  }
+
+  /** normalizeReferenceImage + 읽은 원본 크기(못 읽으면 0). */
+  async normalizeReferenceImageWithSize(
+    data: string,
+  ): Promise<{ data: string; srcWidth: number; srcHeight: number }> {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    if (!ctx) return data;
+    if (!ctx) return { data, srcWidth: 0, srcHeight: 0 };
     const img = new Image();
     img.src = base64ToDataUri(data);
     await new Promise((resolve, reject) => {
@@ -678,7 +693,79 @@ export class ImageService extends EventTarget {
     // NAI Precise Reference 스펙: 3채널 RGB 필요. HTML Canvas는 항상 RGBA이므로
     // alpha 채널을 포함하지 않는 JPEG 0.95로 인코딩하여 RGBA→RGB 변환.
     // 참고: sunanakgo/NAIS2 processCharacterImage, DNT-LAB/NAIA _letterbox
-    return canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
+    return {
+      data: canvas.toDataURL('image/jpeg', 0.95).split(',')[1],
+      srcWidth: img.width,
+      srcHeight: img.height,
+    };
+  }
+
+  /**
+   * 레퍼런스를 보낼 모델에 맞게 손질(2026-11-25).
+   * 'letterbox' = reencodeReferenceForApi 그대로(V4.5 — 저장된 검정 여백 유지).
+   * 'bucket' = 저장 캔버스의 검정 여백을 잘라 낸 내용을 V5 크기 표의 칸에 덮도록 그려 가운데를 잘라 냄(V5).
+   *   원본 크기 기록이 있으면 그 값으로 정확히, 없으면 검정 띠를 탐지해 자른다. 실패하면 'letterbox' 결과.
+   */
+  async prepareReferenceForApi(
+    data: string,
+    opts: { preprocess: 'letterbox' | 'bucket'; srcWidth?: number; srcHeight?: number },
+  ): Promise<string> {
+    if (opts.preprocess !== 'bucket') return this.reencodeReferenceForApi(data);
+    try {
+      const img = new Image();
+      img.src = base64ToDataUri(data);
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+      const cw = img.width;
+      const ch = img.height;
+      let rect: Rect = { x: 0, y: 0, w: cw, h: ch };
+      if (isReferenceCanvasSize(cw, ch)) {
+        if (opts.srcWidth && opts.srcHeight && opts.srcWidth > 0 && opts.srcHeight > 0) {
+          rect = insetLetterboxRect(
+            letterboxContentRect(cw, ch, opts.srcWidth, opts.srcHeight),
+            cw,
+            ch,
+            1,
+          );
+        } else {
+          const probe = document.createElement('canvas');
+          probe.width = cw;
+          probe.height = ch;
+          const pctx = probe.getContext('2d');
+          if (!pctx) throw new Error('canvas 2d context 없음');
+          pctx.fillStyle = 'black';
+          pctx.fillRect(0, 0, cw, ch);
+          pctx.drawImage(img, 0, 0);
+          rect = detectLetterboxRect(pctx.getImageData(0, 0, cw, ch).data, cw, ch);
+        }
+      }
+      const plan = planReferenceBucket(rect.w, rect.h);
+      const canvas = document.createElement('canvas');
+      canvas.width = plan.width;
+      canvas.height = plan.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('canvas 2d context 없음');
+      ctx.fillStyle = 'black';
+      ctx.fillRect(0, 0, plan.width, plan.height);
+      // 내용 영역(rect)을 resizeWidth×resizeHeight 로 늘이거나 줄여 (-left, -top) 에 그리면 가운데가 잘려 들어간다.
+      ctx.drawImage(
+        img,
+        rect.x,
+        rect.y,
+        rect.w,
+        rect.h,
+        -plan.left,
+        -plan.top,
+        plan.resizeWidth,
+        plan.resizeHeight,
+      );
+      return canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
+    } catch (e) {
+      console.warn('Failed to prepare V5 reference image, falling back to letterbox:', e);
+      return this.reencodeReferenceForApi(data);
+    }
   }
 
   /**
@@ -798,10 +885,22 @@ export class ImageService extends EventTarget {
   }
 
   async storeReferenceImage(session: Session, data: string) {
-    const resized = await this.normalizeReferenceImage(data);
+    return (await this.storeReferenceImageWithSize(session, data)).path;
+  }
+
+  /**
+   * 원본 그림을 레퍼런스로 저장하고 읽은 원본 크기를 함께 돌려준다(못 읽으면 0) — 사용자가 원본을 직접 넣는 경로만
+   * 항목에 srcWidth·srcHeight 로 적는다(이미 저장된 레퍼런스 파일을 다시 저장하는 경로는 원 항목 값을 옮긴다).
+   */
+  async storeReferenceImageWithSize(
+    session: Session,
+    data: string,
+  ): Promise<{ path: string; srcWidth: number; srcHeight: number }> {
+    const { data: resized, srcWidth, srcHeight } =
+      await this.normalizeReferenceImageWithSize(data);
     const path = imageService.getReferenceDir(session) + '/' + v4() + '.png';
     await backend.writeDataFile(path, resized);
-    return path.split('/').pop()!;
+    return { path: path.split('/').pop()!, srcWidth, srcHeight };
   }
 
   getVibeImagePath(session: Session, name: string) {

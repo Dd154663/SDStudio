@@ -18,7 +18,19 @@ import { appState } from '../models/AppService';
 import { FileUploadBase64 } from './UtilComponents';
 import PromptEditTextArea from './PromptEditTextArea';
 import { getRefDefaults } from './CharacterReferenceEditor';
+import { useGlobalModelVersion } from './useGlobalModelVersion';
+import { effectiveSameOutfit } from '../backends/genVendors/naiReference';
+import {
+  newReferenceType,
+  REFERENCE_EDITOR_TEXT,
+  referenceEditorSpec,
+  referenceTypeLabel,
+  referenceTypeOptions,
+  showCostumeUnsupported,
+  showSameOutfitToggle,
+} from '../models/referenceEditorSpec';
 import { EditableSliderValue } from './VibeEditor';
+import { ReferenceStrengthSlider } from './ReferenceStrengthSlider';
 import { PresetImageBackend, VibeImage } from './CharacterPresetCards';
 import { useBackLayer } from '../models/BackStackService';
 import { useGuardedClose } from './backdropClose';
@@ -56,6 +68,8 @@ export const CharacterPresetInnerEditor = observer(({
   dirtyRef,
   layout = 'inline',
 }: CharacterPresetInnerEditorProps) => {
+  // 레퍼런스 편집 규칙(상한·Fidelity·의상) — 전역 생성 모델 기준(세 편집기 공용 referenceEditorSpec).
+  const refSpec = referenceEditorSpec(useGlobalModelVersion());
   const [name, setName] = useState(preset.name);
   const [characterPrompt, setCharacterPrompt] = useState(preset.characterPrompt);
   const [characterUC, setCharacterUC] = useState(preset.characterUC);
@@ -114,14 +128,18 @@ export const CharacterPresetInnerEditor = observer(({
   // 캐릭터 레퍼런스 이미지 추가
   const handleReferenceChange = async (reference: string) => {
     if (!reference) return;
-    const path = await imageBackend.storeReference(reference);
+    // 사용자가 원본을 직접 넣는 경로 — 원본 크기를 항목에 적는다.
+    const stored = await imageBackend.storeReference(reference);
     const defaults = getRefDefaults();
     const newRef = ReferenceItem.fromJSON({
-      path: path,
+      path: stored.path,
       info: 1.0,
       strength: defaults.strength,
       fidelity: defaults.fidelity,
-      referenceType: defaults.referenceType,
+      referenceType: newReferenceType(refSpec, defaults.referenceType),
+      ...(stored.srcWidth && stored.srcHeight
+        ? { srcWidth: stored.srcWidth, srcHeight: stored.srcHeight }
+        : {}),
     }) as ReferenceItem;
     setCharacterReferences((prev) => [...prev, newRef]);
   };
@@ -190,6 +208,8 @@ export const CharacterPresetInnerEditor = observer(({
       const updated = [...prev];
       const ref = ReferenceItem.fromJSON(updated[index].toJSON());
       (ref as any)[field] = value;
+      // 종류를 바꾸면 「같은 의상 선호」 명시 값을 지워 그 종류의 기본으로
+      if (field === 'referenceType') ref.preferSameOutfit = undefined;
       updated[index] = ref;
       return updated;
     });
@@ -526,14 +546,16 @@ export const CharacterPresetInnerEditor = observer(({
               <div className="flex w-full items-center md:flex-row flex-col">
                 <div className="whitespace-nowrap flex-none mr-auto md:mr-2 gray-label">Strength:</div>
                 <div className="flex flex-1 md:w-auto w-full gap-1">
-                  <input className="flex-1 min-w-0" type="range" step="0.01" min="0" max="2"
+                  <ReferenceStrengthSlider
                     value={ref.strength}
-                    onChange={(e) => updateRefField(index, 'strength', parseFloat(e.target.value))}
+                    max={refSpec.strengthMax}
+                    onChange={(v) => updateRefField(index, 'strength', v)}
                   />
-                  <EditableSliderValue value={ref.strength} min={0} max={2} onChange={(v) => updateRefField(index, 'strength', v)} />
+                  <EditableSliderValue value={ref.strength} min={0} max={refSpec.strengthMax} onChange={(v) => updateRefField(index, 'strength', v)} />
                 </div>
               </div>
-              {/* Fidelity */}
+              {/* Fidelity — 모델이 받지 않으면 숨김(저장값은 그대로) */}
+              {refSpec.showFidelity && (
               <div className="flex w-full items-center md:flex-row flex-col">
                 <div className="whitespace-nowrap flex-none mr-auto md:mr-2 gray-label">Fidelity:</div>
                 <div className="flex flex-1 md:w-auto w-full gap-1">
@@ -544,9 +566,10 @@ export const CharacterPresetInnerEditor = observer(({
                   <EditableSliderValue value={ref.fidelity} min={0} max={2} onChange={(v) => updateRefField(index, 'fidelity', v)} />
                 </div>
               </div>
+              )}
               {/* 레퍼런스 타입 */}
               <div className="flex items-center gap-4 flex-wrap">
-                {(['character', 'style', 'character&style'] as const).map((t) => (
+                {referenceTypeOptions(refSpec, ref.referenceType).map((t) => (
                   <label key={t} className="flex items-center gap-1 cursor-pointer">
                     <input
                       type="radio"
@@ -555,12 +578,24 @@ export const CharacterPresetInnerEditor = observer(({
                       onChange={() => updateRefField(index, 'referenceType', t)}
                       className="accent-sky-500"
                     />
-                    <span className="gray-label">
-                      {t === 'character' ? '캐릭터' : t === 'style' ? '스타일' : '캐릭터+스타일'}
-                    </span>
+                    <span className="gray-label">{referenceTypeLabel(t)}</span>
                   </label>
                 ))}
+                {showSameOutfitToggle(refSpec, ref.referenceType) && (
+                  <label className="flex items-center gap-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!effectiveSameOutfit(ref.referenceType, ref.preferSameOutfit)}
+                      onChange={(e) => updateRefField(index, 'preferSameOutfit', e.target.checked)}
+                      className="setting-check setting-check-sm"
+                    />
+                    <span className="gray-label">{REFERENCE_EDITOR_TEXT.sameOutfit}</span>
+                  </label>
+                )}
               </div>
+              {showCostumeUnsupported(refSpec, ref.referenceType) && (
+                <div className="text-xs text-muted">{REFERENCE_EDITOR_TEXT.costumeUnsupported}</div>
+              )}
             </div>
           </div>
         ))}

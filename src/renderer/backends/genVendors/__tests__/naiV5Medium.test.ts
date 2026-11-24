@@ -116,7 +116,10 @@ describe('V5 Medium 능력표·모델 ID', () => {
       maxPromptGuidance: 10,
       maxCharacterPrompts: 32,
       supportsVibeTransfer: false,
+      // 공식 웹도 Medium 에서는 정밀 레퍼런스를 막는다 — 나머지 레퍼런스 능력은 V5 Full 에서 물려받음
       supportsCharacterReference: false,
+      referenceFidelity: false,
+      referenceStrengthMax: 5,
       supportsVarietyPlus: false,
       supportsTransparentBackground: true,
       forcedNoiseSchedule: NoiseSchedule.Karras,

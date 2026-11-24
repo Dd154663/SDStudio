@@ -133,7 +133,18 @@ export function workflowOwnerName(kind: WorkflowFieldType, holders: WorkflowHold
 // ── 값 되살리기 ───────────────────────────────────────────────────────────
 
 const VIBE_KEYS = ['path', 'info', 'strength', 'fromPreset'] as const;
-const REFERENCE_KEYS = ['path', 'info', 'strength', 'fidelity', 'referenceType', 'enabled', 'fromPreset'] as const;
+const REFERENCE_KEYS = [
+  'path',
+  'info',
+  'strength',
+  'fidelity',
+  'referenceType',
+  'enabled',
+  'fromPreset',
+  'preferSameOutfit',
+  'srcWidth',
+  'srcHeight',
+] as const;
 
 /**
  * 바이브·레퍼런스 배열 되살리기 — 사본(평범한 JSON)으로 새 배열을 만들되 지금 배열에 같은 경로의 항목 객체가 있으면 그 객체에
