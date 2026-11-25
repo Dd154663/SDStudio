@@ -31,6 +31,8 @@ import {
 } from '../backends/genVendors/naiReference';
 
 export const supportedImageSizes = [200, 400, 500];
+/** 레퍼런스·바이브 편집기 썸네일(VibeImage)이 요청하는 크기 — primePickerThumbnail 이 같은 키를 쓴다 */
+export const PICKER_THUMBNAIL_SIZE = 400;
 const imageDirList = [...PROJECT_SCENE_IMAGE_ROOTS];
 const maskDirList = [...PROJECT_SCENE_MASK_ROOTS];
 
@@ -863,12 +865,14 @@ export class ImageService extends EventTarget {
   // primeCache: 방금 쓴 PNG(base64)를 읽기 캐시에 바로 넣는다. 미러 일괄 예약처럼
   // 쓰자마자 같은 파일을 다시 읽는 경로(씬 카드 표시·예약 핸들러)의 디스크 왕복을
   // 없앤다 — 넣는 값은 readDataFile 이 돌려줄 data URI 와 같은 모양(2026-10-02 P1).
-  async storeVibeImage(session: Session, data: string, primeCache = false) {
+  // primeThumbnail: 편집기에서 사용자가 직접 올린 경우 — 올린 직후 썸네일이 바로 보이게(primePickerThumbnail).
+  async storeVibeImage(session: Session, data: string, primeCache = false, primeThumbnail = false) {
     const path = imageService.getVibesDir(session) + '/' + v4() + '.png';
     await backend.writeDataFile(path, data);
     if (primeCache) {
       this.cache.set(path, `data:image/${PNG_IMAGE_EXT};base64,${data}`);
     }
+    if (primeThumbnail) this.primePickerThumbnail(path, data);
     return path.split('/').pop()!;
   }
 
@@ -900,7 +904,22 @@ export class ImageService extends EventTarget {
       await this.normalizeReferenceImageWithSize(data);
     const path = imageService.getReferenceDir(session) + '/' + v4() + '.png';
     await backend.writeDataFile(path, resized);
+    this.primePickerThumbnail(path, resized);
     return { path: path.split('/').pop()!, srcWidth, srcHeight };
+  }
+
+  /**
+   * 방금 올린 레퍼런스·바이브 이미지를 편집기 썸네일(VibeImage — fetchImageSmall(path, PICKER_THUMBNAIL_SIZE))의
+   * 읽기 캐시에 바로 넣는다(2026-11-25). 그러면 올린 직후의 첫 표시가 썸네일 생성(파일 읽기 → 리사이즈 → 인코딩 → 쓰기)을
+   * 기다리지 않는다 — 모바일에서 올린 직후 「NO IMAGE」로 남던 증상을 원인과 무관하게 피한다.
+   * 캐시에는 원본 크기 그림이 썸네일 자리 키로 들어가며, 캐시에서 밀려난 뒤에는 종전처럼 썸네일 파일을 만들어 쓴다.
+   */
+  primePickerThumbnail(path: string, base64: string) {
+    if (!base64) return;
+    this.cache.set(
+      this.getSmallImagePath(path, PICKER_THUMBNAIL_SIZE),
+      `data:image/${PNG_IMAGE_EXT};base64,${base64}`,
+    );
   }
 
   getVibeImagePath(session: Session, name: string) {

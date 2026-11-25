@@ -222,7 +222,8 @@ export const VibeEditor = observer(({ disabled }: VibeEditorProps) => {
     );
   const vibeChange = async (vibe: string) => {
     if (!vibe) return;
-    const path = await imageService.storeVibeImage(curSession!, vibe);
+    // 사용자가 직접 올린 그림 — 올린 직후 썸네일이 바로 보이게 캐시에 넣는다(모바일 「NO IMAGE」)
+    const path = await imageService.storeVibeImage(curSession!, vibe, false, true);
     editField(UNDO_TEXT.vibeAdd, () => {
       getField().push(
         VibeItem.fromJSON({ path: path, info: 1.0, strength: 0.6 }),

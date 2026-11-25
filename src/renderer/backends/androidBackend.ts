@@ -30,6 +30,7 @@ import { Buffer } from 'buffer';
 import { v4 as uuidv4 } from 'uuid';
 import Pica from 'pica';
 import { loadImageElement } from './loadImageElement';
+import { fileUriToPath } from './fileUriToPath';
 import { NovelAiFetcher, NovelAiImageGenService } from './genVendors/nai';
 import { createNaiApiError } from './genVendors/naiErrors';
 import { assertDeletableDirPath } from './dataPathGuard';
@@ -647,7 +648,7 @@ export class AndroidBackend extends Backend {
     if (mime) {
       try {
         await ZipService.scanMedia({
-          path: uriRes.uri.replace(/^file:\/\//, ''),
+          path: fileUriToPath(uriRes.uri),
           mime,
         });
       } catch (e) {}
@@ -1106,7 +1107,7 @@ export class AndroidBackend extends Backend {
           path: destRel,
           directory: Directory.ExternalStorage,
         });
-        const absPath = uriRes.uri.replace(/^file:\/\//, '');
+        const absPath = fileUriToPath(uriRes.uri);
         await ZipService.scanMedia({ path: absPath, mime });
       } catch (e) {}
     }
@@ -1546,21 +1547,26 @@ export class AndroidBackend extends Backend {
       unsharpThreshold: 1,
     });
 
-    let outputBlob: any;
+    // 인코딩은 toDataURL(그 자리에서 동기)로 한다(2026-11-25). canvas.toBlob 은 브라우저가 「한가할 때」 처리하는 작업이라
+    // 화면이 멈춰 있으면(파일 선택기에서 막 돌아온 직후 등) 다음 화면 갱신이나 제한 시간까지 밀린다 — 올린 직후
+    // 썸네일이 「NO IMAGE」로 남고 화면을 건드려야 나오던 증상의 남은 원인 후보. 형식·품질은 종전과 같다
+    // (지원하지 않는 형식은 종전 toBlob 처럼 PNG 로 나온다).
+    let outputDataUrl: string;
     if (input.optimize === ImageOptimizeMethod.AVIF) {
-      outputBlob = await pica.toBlob(outputCanvas, 'image/avif', 0.5);
+      outputDataUrl = outputCanvas.toDataURL('image/avif', 0.5);
     } else if (input.optimize === ImageOptimizeMethod.LOSSY) {
-      outputBlob = await pica.toBlob(outputCanvas, 'image/webp', 0.8);
+      outputDataUrl = outputCanvas.toDataURL('image/webp', 0.8);
     } else {
-      outputBlob = await pica.toBlob(outputCanvas, 'image/png', 0.9);
+      outputDataUrl = outputCanvas.toDataURL('image/png', 0.9);
     }
-
-    const arrayBuffer = await outputBlob.arrayBuffer();
-    const outputBuffer = Buffer.from(arrayBuffer);
+    const comma = outputDataUrl.indexOf(',');
+    if (comma < 0 || comma === outputDataUrl.length - 1) {
+      throw new Error('썸네일을 인코딩하지 못했습니다.');
+    }
 
     await Filesystem.writeFile({
       path: outputPath,
-      data: outputBuffer.toString('base64'),
+      data: outputDataUrl.slice(comma + 1),
       directory: Directory.Documents,
     });
   }

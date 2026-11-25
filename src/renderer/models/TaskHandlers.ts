@@ -30,10 +30,7 @@ import {
   naiCapabilitiesOf,
   normalizeModelVersion,
 } from '../backends/genVendors/naiModelCapabilities';
-import {
-  NAI_REFERENCE_ANLAS_PER_IMAGE,
-  referencesForModel,
-} from '../backends/genVendors/naiReference';
+import { referencesForModel } from '../backends/genVendors/naiReference';
 import { appState } from './AppService';
 import {
   AbstractJob,
@@ -909,23 +906,8 @@ class GenerateImageTaskHandler implements TaskHandler {
         text: '스탭 수 28개 초과',
       });
     }
-    // 캐릭터 레퍼런스는 1장당 Anlas 를 쓴다(V4.5·V5 Full·Curated) — 실제로 보낼 것만(handleTask 와 같은 함수).
-    // 남은 장 수로 예상 소모(anlas)를 함께 낸다 — 시작 확인은 합계가 기준을 넘을 때만(models/startCostConfirm).
-    const referenceCount = referencesForModel(
-      job.characterReferences,
-      normalizeModelVersion(costVersion),
-    ).length;
-    if (referenceCount > 0) {
-      const remaining = Math.max(
-        0,
-        (Number(task.total) || 0) - (Number(task.done) || 0) - (Number(task.skipped) || 0),
-      );
-      res.push({
-        scene: name,
-        text: `캐릭터 레퍼런스 ${referenceCount}장 (1장당 ${NAI_REFERENCE_ANLAS_PER_IMAGE} Anlas)`,
-        anlas: referenceCount * NAI_REFERENCE_ANLAS_PER_IMAGE * remaining,
-      });
-    }
+    // 캐릭터 레퍼런스는 여기서 「유료 세팅」으로 세지 않는다(2026-11-25 사용자 결정 — 레퍼런스에는 원래 시작 확인이
+    // 없었고, v5.8.0 에서 넣은 것은 경험 회귀). 장당 소모는 상단 Anlas 배지의 「-n」으로만 알린다(naiReference.referenceAnlasPerImage).
     const resolution = job.overrideResolution
       ? job.overrideResolution
       : task.params.scene.resolution;

@@ -84,7 +84,8 @@ export const DEFAULT_CAPTURE_OPTIONS: CaptureOptions = {
   columns: CAPTURE_COLUMNS_DEFAULT,
   cellSize: CAPTURE_CELL_SIZE_DEFAULT,
   fit: 'cover',
-  format: 'jpeg',
+  // 기본 PNG(2026-11-25 사용자 — 글자·선이 뭉개지지 않게). JPEG 는 고르면 기억된다.
+  format: 'png',
   randomCount: CAPTURE_RANDOM_COUNT_DEFAULT,
 };
 

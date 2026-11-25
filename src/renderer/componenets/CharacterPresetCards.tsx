@@ -48,7 +48,7 @@ export interface PresetImageBackend {
 }
 
 export const makeSessionImageBackend = (session: any): PresetImageBackend => ({
-  storeVibe: (b) => imageService.storeVibeImage(session, b),
+  storeVibe: (b) => imageService.storeVibeImage(session, b, false, true),
   storeReference: (b) => imageService.storeReferenceImageWithSize(session, b),
   vibePath: (t) => imageService.getVibeImagePath(session, t),
   referencePath: (t) => imageService.getReferenceImagePath(session, t),

@@ -316,7 +316,7 @@ describe('옵션 정리·기억', () => {
     expect(normalizeCaptureOptions({ columns: 7, format: 'png', cellSize: 768 })).toMatchObject({ columns: 7, format: 'png', cellSize: 768 });
   });
 
-  test('기본값: 대표 1장·빠르게·이름/간격/빈 씬 끔·4장·보통 384·잘라 채움·JPEG', () => {
+  test('기본값: 대표 1장·빠르게·이름/간격/빈 씬 끔·4장·보통 384·잘라 채움·PNG', () => {
     expect(DEFAULT_CAPTURE_OPTIONS).toEqual({
       perScene: 'main',
       quality: 'fast',
@@ -326,7 +326,7 @@ describe('옵션 정리·기억', () => {
       columns: 4,
       cellSize: 384,
       fit: 'cover',
-      format: 'jpeg',
+      format: 'png',
       randomCount: 20,
     });
     expect(CAPTURE_IMAGE_FORMATS.jpeg).toMatchObject({ mime: 'image/jpeg', ext: 'jpg', quality: 0.9 });

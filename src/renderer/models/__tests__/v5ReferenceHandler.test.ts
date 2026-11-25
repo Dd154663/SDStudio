@@ -224,14 +224,7 @@ describe('handleTask 레퍼런스 조립', () => {
   });
 });
 
-describe('예약 비용 판정·유료 세팅 항목', () => {
-  // genTask 는 done 0 · total 1 — 예상 소모 = 레퍼런스 수 × 5 × 남은 1장
-  const refItem = (n: number) => ({
-    scene: 'scene',
-    text: `캐릭터 레퍼런스 ${n}장 (1장당 5 Anlas)`,
-    anlas: n * 5,
-  });
-
+describe('예약 비용 판정', () => {
   test.each([
     [ModelVersion.V5, true],
     [ModelVersion.V5Curated, true],
@@ -242,22 +235,9 @@ describe('예약 비용 판정·유료 세팅 항목', () => {
     expect((handler() as any).boostFacts(genTask(version)).hasCharacterReference).toBe(expected);
   });
 
-  test('V5 Full·Curated: 켜진 레퍼런스 수(의상 포함)', () => {
-    expect(handler().calculateCost(genTask(ModelVersion.V5))).toEqual([refItem(2)]);
-    expect(handler().calculateCost(genTask(ModelVersion.V5Curated))).toEqual([refItem(2)]);
-  });
-
-  test('V4.5: 의상 제외', () => {
-    expect(handler().calculateCost(genTask(ModelVersion.V4_5))).toEqual([refItem(1)]);
-  });
-
-  test('모델 스냅숏이 없으면 V4.5 로 본다', () => {
-    expect(handler().calculateCost(genTask(undefined))).toEqual([refItem(1)]);
-  });
-
-  test('V5 Medium·V4·꺼진 항목만: 항목 없음', () => {
-    expect(handler().calculateCost(genTask(ModelVersion.V5Medium))).toEqual([]);
-    expect(handler().calculateCost(genTask(ModelVersion.V4))).toEqual([]);
-    expect(handler().calculateCost(genTask(ModelVersion.V5, [REFS[2]]))).toEqual([]);
+  test('레퍼런스는 생성 시작의 유료 세팅 항목을 내지 않는다(모든 모델 — 2026-11-25 사용자 결정)', () => {
+    for (const v of [ModelVersion.V5, ModelVersion.V5Curated, ModelVersion.V4_5, ModelVersion.V5Medium, ModelVersion.V4, undefined]) {
+      expect(handler().calculateCost(genTask(v as any))).toEqual([]);
+    }
   });
 });

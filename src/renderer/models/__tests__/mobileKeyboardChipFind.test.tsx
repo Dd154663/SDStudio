@@ -1,5 +1,9 @@
 import { act, fireEvent, render } from '@testing-library/react';
-import MobileKeyboardChip from '../../componenets/MobileKeyboardChip';
+import MobileKeyboardChip, {
+  caretChipAllowed,
+  chipKeyboardUp,
+  resetChipKeyboardTrack,
+} from '../../componenets/MobileKeyboardChip';
 import {
   disposeFocusedPromptEditor,
   getFocusedPromptEditor,
@@ -68,8 +72,25 @@ async function focusEditor(caret: number) {
 
 const chip = () => document.querySelector('[data-kbd-chip]');
 
+// 화면 높이(키보드가 뜨면 줄어드는 기기를 흉내) — 커서만 있는 칩은 키보드가 올라와 있을 때만 뜬다(2026-11-25).
+function setScreenHeight(h: number) {
+  Object.defineProperty(window, 'innerHeight', { value: h, configurable: true, writable: true });
+}
+/** 키보드가 올라온 상태로 만든다(가장 큰 높이 800 을 본 뒤 500 으로 줄어듦) */
+function keyboardUp() {
+  setScreenHeight(800);
+  chipKeyboardUp();
+  setScreenHeight(500);
+}
+/** 키보드가 내려간 상태 */
+function keyboardDown() {
+  setScreenHeight(800);
+}
+
 beforeEach(() => {
   weight = { inner: 'cat', weight: 1 };
+  resetChipKeyboardTrack();
+  keyboardUp();
 });
 afterEach(() => {
   if (handle) disposeFocusedPromptEditor(handle);
@@ -173,5 +194,74 @@ describe('모바일 키보드 위 칩 — 이 칸에서 찾기', () => {
       disposeFocusedPromptEditor(handle);
     });
     expect(document.querySelector('[data-kbd-chip="find"]')).toBeNull();
+  });
+});
+
+describe('모바일 키보드 위 칩 — 커서만 있는 칩은 키보드가 올라와 있을 때만(2026-11-25)', () => {
+  test('판정: 키보드가 올라와 있거나 「크게 편집」 창 안', () => {
+    expect(caretChipAllowed(true, false)).toBe(true);
+    expect(caretChipAllowed(false, true)).toBe(true);
+    expect(caretChipAllowed(false, false)).toBe(false);
+  });
+
+  test('키보드 판정: 가장 큰 높이보다 120 넘게 줄면 올라온 것, 폭이 바뀌면 기준을 다시 잡는다', () => {
+    resetChipKeyboardTrack();
+    setScreenHeight(800);
+    expect(chipKeyboardUp()).toBe(false);
+    setScreenHeight(700);
+    expect(chipKeyboardUp()).toBe(false);
+    setScreenHeight(500);
+    expect(chipKeyboardUp()).toBe(true);
+    setScreenHeight(800);
+    expect(chipKeyboardUp()).toBe(false);
+    // 회전(폭 변화) — 낮아진 높이가 새 기준이 된다
+    const width = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { value: width + 300, configurable: true, writable: true });
+    setScreenHeight(400);
+    expect(chipKeyboardUp()).toBe(false);
+    Object.defineProperty(window, 'innerWidth', { value: width, configurable: true, writable: true });
+  });
+
+  test('포커스는 남았지만 키보드가 내려가면 조정 칩이 사라지고, 다시 올라오면 돌아온다', async () => {
+    makeEditor('cat, dog');
+    render(<MobileKeyboardChip onSearch={() => {}} />);
+    await focusEditor(1);
+    expect(chip()!.getAttribute('data-kbd-chip')).toBe('adjust');
+    // 뒤로 가기로 키보드만 내려감(포커스·커서는 그대로) — 화면 높이가 돌아오며 resize
+    await act(async () => {
+      keyboardDown();
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(document.activeElement).toBe(ta);
+    expect(chip()).toBeNull();
+    // 다시 칸을 눌러 키보드가 올라옴
+    await act(async () => {
+      setScreenHeight(500);
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(chip()!.getAttribute('data-kbd-chip')).toBe('adjust');
+  });
+
+  test('「크게 편집」 창(.prompt-full) 안의 칸은 키보드가 내려가 있어도 칩이 보인다', async () => {
+    makeEditor('cat, dog');
+    ta.parentElement!.classList.add('prompt-full');
+    render(<MobileKeyboardChip onSearch={() => {}} />);
+    await act(async () => {
+      keyboardDown();
+    });
+    await focusEditor(1);
+    expect(chip()!.getAttribute('data-kbd-chip')).toBe('adjust');
+  });
+
+  test('범위를 골랐을 때의 검색 칩은 키보드와 무관하다', async () => {
+    makeEditor('cat, dog');
+    render(<MobileKeyboardChip onSearch={() => {}} />);
+    await act(async () => {
+      keyboardDown();
+      ta.focus();
+      ta.setSelectionRange(0, 3);
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+    expect(chip()!.getAttribute('data-kbd-chip')).toBe('search');
   });
 });

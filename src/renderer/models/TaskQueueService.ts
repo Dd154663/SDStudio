@@ -286,11 +286,6 @@ export interface TaskInfo {
 export interface CostItem {
   scene: string;
   text: string;
-  /**
-   * 이 예약의 남은 장을 모두 만들 때 쓸 것으로 계산된 Anlas(지금은 캐릭터 레퍼런스만 계산할 수 있다).
-   * 값이 있는 항목은 줄마다 묻지 않고 합계가 기준을 넘을 때만 확인한다(models/startCostConfirm).
-   */
-  anlas?: number;
 }
 
 // 큐가 한 번의 시도마다 핸들러에 넘기는 문맥(2026-10-03 갈래 T2, requestTiming). 구 호출부·

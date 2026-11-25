@@ -70,6 +70,38 @@ function visibleHeight(): number {
   return vv ? vv.height : window.innerHeight;
 }
 
+/**
+ * 화면 키보드가 올라와 있는가(2026-11-25) — 이 앱의 Android 는 키보드가 뜨면 화면 높이 자체가 줄어든다(집중 모드
+ * PromptFocusShell 과 같은 판정). 같은 폭에서 본 가장 큰 보이는 높이보다 KBD_CHIP_KEYBOARD_SHRINK_PX 넘게 줄면 올라온 것으로 본다.
+ * 폭이 바뀌면(회전) 기준을 다시 잡는다. 칩이 화면을 다시 읽을 때마다 부른다.
+ */
+export const KBD_CHIP_KEYBOARD_SHRINK_PX = 120;
+const keyboardTrack = { width: 0, maxHeight: 0 };
+export function chipKeyboardUp(): boolean {
+  const h = visibleHeight();
+  const w = window.innerWidth;
+  if (w !== keyboardTrack.width) {
+    keyboardTrack.width = w;
+    keyboardTrack.maxHeight = 0;
+  }
+  keyboardTrack.maxHeight = Math.max(keyboardTrack.maxHeight, h);
+  return keyboardTrack.maxHeight - h > KBD_CHIP_KEYBOARD_SHRINK_PX;
+}
+/** 테스트용 — 키보드 판정의 기준 높이를 비운다 */
+export function resetChipKeyboardTrack(): void {
+  keyboardTrack.width = 0;
+  keyboardTrack.maxHeight = 0;
+}
+
+/**
+ * 커서만 있을 때 뜨는 칩(가중치 조정 줄·돋보기)을 보여도 되는가(2026-11-25 사용자 제보).
+ * 뒤로 가기로 키보드를 내려 집중 모드를 나와도 포커스는 칸에 남아, 칩이 화면 맨 아래에 남아서 하단 탭을 가렸다.
+ * → 키보드가 올라와 있거나(집중해서 쓰는 중) 「크게 편집」 창 안일 때만 보인다. 범위를 골랐을 때의 검색 칩은 그대로다.
+ */
+export function caretChipAllowed(keyboardUp: boolean, inExpandedEditor: boolean): boolean {
+  return keyboardUp || inExpandedEditor;
+}
+
 function keyboardOffset(): number {
   // visualViewport 로 키보드 높이를 인식해 키보드 바로 위에 배치(없으면 화면 하단).
   const vv = window.visualViewport;
@@ -102,6 +134,8 @@ function readState(): ChipState {
   }
   const editor = getFocusedPromptEditor();
   if (!editor || editor.element !== el) return null;
+  // 커서만 있는 칩은 키보드가 올라와 있거나 「크게 편집」 창(.prompt-full) 안일 때만
+  if (!caretChipAllowed(chipKeyboardUp(), !!el!.closest?.('.prompt-full'))) return null;
   const weight = editor.getCaretWeight();
   if (weight)
     return {
@@ -258,7 +292,12 @@ export default function MobileKeyboardChip({
     const vv = window.visualViewport;
     vv?.addEventListener('resize', update);
     vv?.addEventListener('scroll', update);
+    // 화면 높이 자체가 바뀌는 기기(키보드가 화면을 줄임)에서 키보드가 내려간 순간을 잡는다
+    window.addEventListener('resize', update);
+    // 키보드 판정의 기준 높이를 지금(키보드 없는 상태로 보는) 높이로 잡아 둔다
+    chipKeyboardUp();
     return () => {
+      window.removeEventListener('resize', update);
       document.removeEventListener('selectionchange', update);
       document.removeEventListener('contextmenu', update);
       document.removeEventListener('touchend', update);
