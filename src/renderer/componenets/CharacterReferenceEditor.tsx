@@ -10,17 +10,19 @@ import { ReferenceItem } from '../models/types';
 import { imageService, isMobile } from '../models';
 import { appState } from '../models/AppService';
 import { WFIInlineInput, wfiElementKey } from '../models/workflows/WorkFlow';
-import { effectiveSameOutfit } from '../backends/genVendors/naiReference';
 import {
-  newReferenceType,
   REFERENCE_EDITOR_TEXT,
   referenceEditorSpec,
   referenceLockText,
-  referenceTypeLabel,
-  referenceTypeOptions,
   showCostumeUnsupported,
-  showSameOutfitToggle,
 } from '../models/referenceEditorSpec';
+import {
+  REFERENCE_DEFAULTS_FAMILY_LABEL,
+  readReferenceDefaults,
+  referenceDefaultsFamily,
+  writeReferenceDefault,
+} from '../models/referenceDefaults';
+import { ReferenceTypeControl } from './ReferenceTypeControl';
 import { WFElementContext, PresetIconRowContext } from './wfElementContext';
 import { PresetIconRowLabelContext, StackedLabel, stackedButtonClass } from './PresetPanelLabel';
 import { presetIconRowLabelOf } from '../models/presetPanelLabels';
@@ -42,20 +44,6 @@ interface CharacterReferenceEditorProps {
   disabled: boolean;
 }
 
-// 레퍼런스 기본값 localStorage 키
-const REF_DEFAULT_STRENGTH_KEY = 'sdstudio-ref-default-strength';
-const REF_DEFAULT_FIDELITY_KEY = 'sdstudio-ref-default-fidelity';
-const REF_DEFAULT_TYPE_KEY = 'sdstudio-ref-default-type';
-
-export function getRefDefaults() {
-  return {
-    strength: parseFloat(localStorage.getItem(REF_DEFAULT_STRENGTH_KEY) || '0.6'),
-    fidelity: parseFloat(localStorage.getItem(REF_DEFAULT_FIDELITY_KEY) || '1.0'),
-    referenceType: (localStorage.getItem(REF_DEFAULT_TYPE_KEY) || 'character') as
-      'character' | 'style' | 'character&style' | 'costume',
-  };
-}
-
 export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferenceEditorProps) => {
   const { curSession } = appState;
   const { preset, shared, editCharacterReference, setEditCharacterReference, meta, modelVersion } =
@@ -67,13 +55,19 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
   // 패널 폭 적응 — 좁으면 항목을 세로 배치(이미지 위/컨트롤 아래)로 전환
   const narrow = useNarrowContainer(containerRef, editCharacterReference);
   const [showDefaults, setShowDefaults] = useState(false);
-  const [refDefaults, setRefDefaults] = useState(getRefDefaults);
+  // 새 레퍼런스 기본값 = 현재 모델 계열(V4.5 / V5)의 값만 보이고 고친다 — models/referenceDefaults 단일 출처.
+  const defaultsFamily = referenceDefaultsFamily(modelVersion);
+  const [defaultsTick, setDefaultsTick] = useState(0);
+  const refDefaults = React.useMemo(
+    () => readReferenceDefaults(defaultsFamily),
+    [defaultsFamily, defaultsTick],
+  );
   // shared 필드의 fromPreset 항목 = 캐릭터 프리셋 귀속(개별 삭제 대신 프리셋 단위 해제 — W4)
   const isPresetActive = editCharacterReference?.fieldType === 'shared';
 
-  const updateDefault = (key: string, value: string) => {
-    localStorage.setItem(key, value);
-    setRefDefaults(getRefDefaults());
+  const updateDefault = (field: 'strength' | 'fidelity' | 'referenceType', value: number | string) => {
+    writeReferenceDefault(defaultsFamily, field, value);
+    setDefaultsTick((t) => t + 1);
   };
 
   const getField = () => {
@@ -114,7 +108,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
     if (!reference) return;
     // 사용자가 원본을 직접 넣는 경로 — 원본 크기를 항목에 적어 V5 로 보낼 때 여백을 정확히 자른다.
     const stored = await imageService.storeReferenceImageWithSize(curSession!, reference);
-    const defaults = getRefDefaults();
+    const defaults = readReferenceDefaults(referenceDefaultsFamily(modelVersion));
     editField(UNDO_TEXT.referenceAdd, () => {
       getField().push(
         ReferenceItem.fromJSON({
@@ -122,7 +116,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
           info: 1.0,
           strength: defaults.strength,
           fidelity: defaults.fidelity,
-          referenceType: newReferenceType(refSpec, defaults.referenceType),
+          referenceType: defaults.referenceType,
           ...(stored.srcWidth > 0 && stored.srcHeight > 0
             ? { srcWidth: stored.srcWidth, srcHeight: stored.srcHeight }
             : {}),
@@ -231,7 +225,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                   className={'flex-none text-faint transition-transform' + (showDefaults ? ' rotate-90' : '')}
                   aria-hidden="true"
                 />
-                새 레퍼런스 기본값 설정
+                새 레퍼런스 기본값 설정 ({REFERENCE_DEFAULTS_FAMILY_LABEL[defaultsFamily]})
               </button>
               {showDefaults && (
                 <div className="mt-2 p-3 bg-[var(--c-surface)] rounded-lg space-y-3 text-sm">
@@ -240,7 +234,7 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                     <ReferenceStrengthSlider
                       value={refDefaults.strength}
                       max={refSpec.strengthMax}
-                      onChange={(v) => updateDefault(REF_DEFAULT_STRENGTH_KEY, String(v))}
+                      onChange={(v) => updateDefault('strength', v)}
                     />
                     <span className="w-10 text-center text-default">{refDefaults.strength.toFixed(2)}</span>
                   </div>
@@ -252,26 +246,18 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                       className="flex-1 min-w-0"
                       min="0" max="2" step="0.01"
                       value={refDefaults.fidelity}
-                      onChange={(e) => updateDefault(REF_DEFAULT_FIDELITY_KEY, e.target.value)}
+                      onChange={(e) => updateDefault('fidelity', parseFloat(e.target.value))}
                     />
                     <span className="w-10 text-center text-default">{refDefaults.fidelity.toFixed(2)}</span>
                   </div>
                   )}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="gray-label w-20 flex-none">유형:</span>
-                    {referenceTypeOptions(refSpec, refDefaults.referenceType).map((t) => (
-                      <label key={t} className="flex items-center gap-1 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="ref-default-type"
-                          checked={refDefaults.referenceType === t}
-                          onChange={() => updateDefault(REF_DEFAULT_TYPE_KEY, t)}
-                          className="accent-sky-500"
-                        />
-                        <span className="text-default">{referenceTypeLabel(t)}</span>
-                      </label>
-                    ))}
-                  </div>
+                  <ReferenceTypeControl
+                    typeOnly
+                    type={refDefaults.referenceType}
+                    spec={refSpec}
+                    labelClassName="gray-label w-20 flex-none"
+                    onTypeChange={(t) => updateDefault('referenceType', t)}
+                  />
                 </div>
               )}
             </div>
@@ -411,45 +397,25 @@ export const CharacterReferenceEditor = observer(({ disabled }: CharacterReferen
                     </div>
                   </div>
                   )}
-                  <div className="flex w-full md:flex-row flex-col items-center mt-2">
-                    <div className="flex gap-4 items-center flex-wrap">
-                      {referenceTypeOptions(refSpec, reference.referenceType).map((t) => (
-                        <label key={t} className="flex gap-1 items-center cursor-pointer">
-                          <input
-                            type="radio"
-                            name={`refType-${reference.path}`}
-                            checked={reference.referenceType === t}
-                            onChange={() => {
-                              editField(UNDO_TEXT.referenceValue, () => {
-                                reference.referenceType = t;
-                                // 종류를 바꾸면 「같은 의상 선호」 명시 값을 지워 그 종류의 기본으로
-                                reference.preferSameOutfit = undefined;
-                              });
-                            }}
-                            disabled={disabled}
-                          />
-                          <span className="gray-label">{referenceTypeLabel(t)}</span>
-                        </label>
-                      ))}
-                      {showSameOutfitToggle(refSpec, reference.referenceType) && (
-                        <label className="flex gap-1 items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            className="setting-check setting-check-sm"
-                            checked={!!effectiveSameOutfit(reference.referenceType, reference.preferSameOutfit)}
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              editField(UNDO_TEXT.referenceValue, () => {
-                                reference.preferSameOutfit = checked;
-                              });
-                            }}
-                            disabled={disabled}
-                          />
-                          <span className="gray-label">{REFERENCE_EDITOR_TEXT.sameOutfit}</span>
-                        </label>
-                      )}
-                    </div>
-                  </div>
+                  <ReferenceTypeControl
+                    className="mt-2"
+                    type={reference.referenceType}
+                    preferSameOutfit={reference.preferSameOutfit}
+                    spec={refSpec}
+                    disabled={disabled}
+                    onTypeChange={(t) => {
+                      editField(UNDO_TEXT.referenceValue, () => {
+                        reference.referenceType = t;
+                        // 종류를 바꾸면 「같은 의상 선호」 명시 값을 지워 그 종류의 기본으로
+                        reference.preferSameOutfit = undefined;
+                      });
+                    }}
+                    onSameOutfitChange={(checked) => {
+                      editField(UNDO_TEXT.referenceValue, () => {
+                        reference.preferSameOutfit = checked;
+                      });
+                    }}
+                  />
                   {showCostumeUnsupported(refSpec, reference.referenceType) && (
                     <div className="text-xs text-muted">{REFERENCE_EDITOR_TEXT.costumeUnsupported}</div>
                   )}

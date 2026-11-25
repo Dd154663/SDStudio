@@ -225,7 +225,12 @@ describe('handleTask 레퍼런스 조립', () => {
 });
 
 describe('예약 비용 판정·유료 세팅 항목', () => {
-  const refItem = (n: number) => ({ scene: 'scene', text: `캐릭터 레퍼런스 ${n}장 (1장당 5 Anlas)` });
+  // genTask 는 done 0 · total 1 — 예상 소모 = 레퍼런스 수 × 5 × 남은 1장
+  const refItem = (n: number) => ({
+    scene: 'scene',
+    text: `캐릭터 레퍼런스 ${n}장 (1장당 5 Anlas)`,
+    anlas: n * 5,
+  });
 
   test.each([
     [ModelVersion.V5, true],

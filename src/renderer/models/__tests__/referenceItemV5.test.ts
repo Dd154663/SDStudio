@@ -10,7 +10,6 @@ import { ReferenceItem } from '../types';
 import { restoreWorkflowValue } from '../presetUndo';
 import { ModelVersion } from '../../backends/imageGen';
 import {
-  newReferenceType,
   REFERENCE_TYPE_LABELS,
   referenceEditorSpec,
   referenceLockText,
@@ -86,8 +85,6 @@ describe('referenceEditorSpec', () => {
     expect(referenceTypeOptions(s, 'costume')).toEqual(['character', 'style', 'character&style', 'costume']);
     expect(showCostumeUnsupported(s, 'costume')).toBe(true);
     expect(showSameOutfitToggle(s, 'character')).toBe(false);
-    expect(newReferenceType(s, 'costume')).toBe('character');
-    expect(newReferenceType(s, 'style')).toBe('style');
   });
 
   test.each([ModelVersion.V5, ModelVersion.V5Curated])('%s: 상한 5·Fidelity 숨김·의상', (v) => {
@@ -99,7 +96,6 @@ describe('referenceEditorSpec', () => {
     expect(showSameOutfitToggle(s, 'style')).toBe(false);
     expect(showSameOutfitToggle(s, 'costume')).toBe(false);
     expect(showCostumeUnsupported(s, 'costume')).toBe(false);
-    expect(newReferenceType(s, 'costume')).toBe('costume');
   });
 
   test('잠금: V4·V5 Medium', () => {

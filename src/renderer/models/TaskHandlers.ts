@@ -30,7 +30,10 @@ import {
   naiCapabilitiesOf,
   normalizeModelVersion,
 } from '../backends/genVendors/naiModelCapabilities';
-import { referencesForModel } from '../backends/genVendors/naiReference';
+import {
+  NAI_REFERENCE_ANLAS_PER_IMAGE,
+  referencesForModel,
+} from '../backends/genVendors/naiReference';
 import { appState } from './AppService';
 import {
   AbstractJob,
@@ -907,14 +910,20 @@ class GenerateImageTaskHandler implements TaskHandler {
       });
     }
     // 캐릭터 레퍼런스는 1장당 Anlas 를 쓴다(V4.5·V5 Full·Curated) — 실제로 보낼 것만(handleTask 와 같은 함수).
+    // 남은 장 수로 예상 소모(anlas)를 함께 낸다 — 시작 확인은 합계가 기준을 넘을 때만(models/startCostConfirm).
     const referenceCount = referencesForModel(
       job.characterReferences,
       normalizeModelVersion(costVersion),
     ).length;
     if (referenceCount > 0) {
+      const remaining = Math.max(
+        0,
+        (Number(task.total) || 0) - (Number(task.done) || 0) - (Number(task.skipped) || 0),
+      );
       res.push({
         scene: name,
-        text: `캐릭터 레퍼런스 ${referenceCount}장 (1장당 5 Anlas)`,
+        text: `캐릭터 레퍼런스 ${referenceCount}장 (1장당 ${NAI_REFERENCE_ANLAS_PER_IMAGE} Anlas)`,
+        anlas: referenceCount * NAI_REFERENCE_ANLAS_PER_IMAGE * remaining,
       });
     }
     const resolution = job.overrideResolution

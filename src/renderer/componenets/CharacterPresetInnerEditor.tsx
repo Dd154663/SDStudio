@@ -17,18 +17,14 @@ import { CharacterPreset, ReferenceItem, VibeItem } from '../models/types';
 import { appState } from '../models/AppService';
 import { FileUploadBase64 } from './UtilComponents';
 import PromptEditTextArea from './PromptEditTextArea';
-import { getRefDefaults } from './CharacterReferenceEditor';
 import { useGlobalModelVersion } from './useGlobalModelVersion';
-import { effectiveSameOutfit } from '../backends/genVendors/naiReference';
 import {
-  newReferenceType,
   REFERENCE_EDITOR_TEXT,
   referenceEditorSpec,
-  referenceTypeLabel,
-  referenceTypeOptions,
   showCostumeUnsupported,
-  showSameOutfitToggle,
 } from '../models/referenceEditorSpec';
+import { referenceDefaultsFor } from '../models/referenceDefaults';
+import { ReferenceTypeControl } from './ReferenceTypeControl';
 import { EditableSliderValue } from './VibeEditor';
 import { ReferenceStrengthSlider } from './ReferenceStrengthSlider';
 import { PresetImageBackend, VibeImage } from './CharacterPresetCards';
@@ -69,7 +65,8 @@ export const CharacterPresetInnerEditor = observer(({
   layout = 'inline',
 }: CharacterPresetInnerEditorProps) => {
   // 레퍼런스 편집 규칙(상한·Fidelity·의상) — 전역 생성 모델 기준(세 편집기 공용 referenceEditorSpec).
-  const refSpec = referenceEditorSpec(useGlobalModelVersion());
+  const globalModelVersion = useGlobalModelVersion();
+  const refSpec = referenceEditorSpec(globalModelVersion);
   const [name, setName] = useState(preset.name);
   const [characterPrompt, setCharacterPrompt] = useState(preset.characterPrompt);
   const [characterUC, setCharacterUC] = useState(preset.characterUC);
@@ -130,13 +127,13 @@ export const CharacterPresetInnerEditor = observer(({
     if (!reference) return;
     // 사용자가 원본을 직접 넣는 경로 — 원본 크기를 항목에 적는다.
     const stored = await imageBackend.storeReference(reference);
-    const defaults = getRefDefaults();
+    const defaults = referenceDefaultsFor(globalModelVersion);
     const newRef = ReferenceItem.fromJSON({
       path: stored.path,
       info: 1.0,
       strength: defaults.strength,
       fidelity: defaults.fidelity,
-      referenceType: newReferenceType(refSpec, defaults.referenceType),
+      referenceType: defaults.referenceType,
       ...(stored.srcWidth && stored.srcHeight
         ? { srcWidth: stored.srcWidth, srcHeight: stored.srcHeight }
         : {}),
@@ -568,31 +565,13 @@ export const CharacterPresetInnerEditor = observer(({
               </div>
               )}
               {/* 레퍼런스 타입 */}
-              <div className="flex items-center gap-4 flex-wrap">
-                {referenceTypeOptions(refSpec, ref.referenceType).map((t) => (
-                  <label key={t} className="flex items-center gap-1 cursor-pointer">
-                    <input
-                      type="radio"
-                      name={`refType-edit-${index}`}
-                      checked={ref.referenceType === t}
-                      onChange={() => updateRefField(index, 'referenceType', t)}
-                      className="accent-sky-500"
-                    />
-                    <span className="gray-label">{referenceTypeLabel(t)}</span>
-                  </label>
-                ))}
-                {showSameOutfitToggle(refSpec, ref.referenceType) && (
-                  <label className="flex items-center gap-1 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!effectiveSameOutfit(ref.referenceType, ref.preferSameOutfit)}
-                      onChange={(e) => updateRefField(index, 'preferSameOutfit', e.target.checked)}
-                      className="setting-check setting-check-sm"
-                    />
-                    <span className="gray-label">{REFERENCE_EDITOR_TEXT.sameOutfit}</span>
-                  </label>
-                )}
-              </div>
+              <ReferenceTypeControl
+                type={ref.referenceType}
+                preferSameOutfit={ref.preferSameOutfit}
+                spec={refSpec}
+                onTypeChange={(t) => updateRefField(index, 'referenceType', t)}
+                onSameOutfitChange={(checked) => updateRefField(index, 'preferSameOutfit', checked)}
+              />
               {showCostumeUnsupported(refSpec, ref.referenceType) && (
                 <div className="text-xs text-muted">{REFERENCE_EDITOR_TEXT.costumeUnsupported}</div>
               )}

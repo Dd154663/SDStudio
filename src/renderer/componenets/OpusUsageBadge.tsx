@@ -29,8 +29,11 @@ const OpusUsageBadge = observer(
     credits,
     warningPercent = 10,
     inline = false,
+    spend = 0,
   }: {
     credits?: number;
+    // 장당 Anlas 소모(캐릭터 레퍼런스, 2026-11-25) — 0 보다 크면 잔량 옆에 「-n」.
+    spend?: number;
     warningPercent?: number;
     // 모바일 상단 바 1줄째용 일렬 표기: [Anlas | 할당량]+하단 3px 막대, 라운드 사각형 높이 28px.
     // 세로 3단 알약(49×36)은 선택기(34px)보다 높고 칸이 빡빡해 목업 비교 후 교체(2026-09-20).
@@ -166,7 +169,7 @@ const OpusUsageBadge = observer(
         <button
           ref={buttonRef}
           className={`btn titlebar-no-drag overflow-hidden text-center tabular-nums ${mobile ? (inline ? 'relative inline-flex items-stretch align-middle rounded-lg h-7 !p-0 text-xs leading-[25px] whitespace-nowrap' : 'round-tag inline-grid leading-none align-middle !p-0') : `account-status-control account-quota-control back-${view.tone}`}`}
-          aria-label={`${mobile ? `Anlas ${credits}, ` : ''}${usage.status?.opusSubscribed === false ? 'Opus 미구독' : `Opus 생성 할당량 ${view.text}${view.purchased > 0 ? `(무료 ${view.free}% + 추가 충전 ${view.purchased}%)` : ''}`}, 상세 보기`}
+          aria-label={`${mobile ? `Anlas ${credits}${spend > 0 ? `, 이미지 1장마다 ${spend} Anlas` : ''}, ` : ''}${usage.status?.opusSubscribed === false ? 'Opus 미구독' : `Opus 생성 할당량 ${view.text}${view.purchased > 0 ? `(무료 ${view.free}% + 추가 충전 ${view.purchased}%)` : ''}`}, 상세 보기`}
           aria-haspopup="dialog"
           aria-expanded={open}
           title={usage.status?.opusSubscribed === false ? 'Opus 미구독 · 무료 할당량 대상 아님' : view.purchased > 0 ? `Opus 생성 할당량 · 무료 ${view.free}% + 추가 충전 ${view.purchased}%` : 'Opus 무료 생성 할당량'}
@@ -177,6 +180,7 @@ const OpusUsageBadge = observer(
               className={`back-yellow ${inline ? 'px-[7px]' : 'px-2 text-xs leading-4'}`}
             >
               {credits}
+              {spend > 0 && <span className="opacity-80 ml-1" data-reference-spend="">-{spend}</span>}
             </span>
           )}
           <span

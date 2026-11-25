@@ -113,6 +113,17 @@ export function referencesForModel<T extends ReferenceLike>(
   );
 }
 
+/** 캐릭터 레퍼런스 1장이 생성 이미지 1장마다 쓰는 Anlas(NovelAI 공지 — V4.5·V5 같음). */
+export const NAI_REFERENCE_ANLAS_PER_IMAGE = 5;
+
+/** 이 모델로 생성 이미지 1장을 만들 때 레퍼런스가 쓰는 Anlas(실제로 보낼 레퍼런스 수 × 5). */
+export function referenceAnlasPerImage(
+  refs: readonly ReferenceLike[] | undefined | null,
+  version: ModelVersion | unknown,
+): number {
+  return NAI_REFERENCE_ANLAS_PER_IMAGE * referencesForModel(refs, version).length;
+}
+
 export function clampReferenceStrength(
   strength: number,
   caps: Pick<NaiModelCapabilities, 'referenceStrengthMax'>,

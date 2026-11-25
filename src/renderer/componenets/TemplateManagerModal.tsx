@@ -23,15 +23,12 @@ import PromptEditTextArea from './PromptEditTextArea';
 import { CharacterPresetInnerEditor } from './CharacterPresetInnerEditor';
 import { PresetImageBackend, storeWithSourceSize, VibeImage } from './CharacterPresetCards';
 import { getImageDimensions } from './BrushTool';
-import { effectiveSameOutfit } from '../backends/genVendors/naiReference';
 import {
   REFERENCE_EDITOR_TEXT,
   referenceEditorSpec,
-  referenceTypeLabel,
-  referenceTypeOptions,
   showCostumeUnsupported,
-  showSameOutfitToggle,
 } from '../models/referenceEditorSpec';
+import { ReferenceTypeControl } from './ReferenceTypeControl';
 import { BatchCreatePanel, BatchCreateController } from './BatchCreateModal';
 import { GlobalPresetPicker } from './GlobalPresetPicker';
 import { EditableSliderValue } from './VibeEditor';
@@ -1329,49 +1326,26 @@ const TemplateWorkflowBody = observer(
                     </div>
                     )}
                     {/* 레퍼런스 타입 */}
-                    <div className="flex items-center gap-4 flex-wrap">
-                      {referenceTypeOptions(refSpec, r.referenceType).map(
-                        (t) => (
-                          <label
-                            key={t}
-                            className="flex items-center gap-1 cursor-pointer"
-                          >
-                            <input
-                              type="radio"
-                              name={`tpl-refType-${entry.id}-${i}`}
-                              checked={r.referenceType === t}
-                              onChange={() =>
-                                projectTemplateService.updateCharacterReference(
-                                  entry.id,
-                                  i,
-                                  // 종류를 바꾸면 「같은 의상 선호」 명시 값을 지워 그 종류의 기본으로
-                                  { referenceType: t, preferSameOutfit: undefined },
-                                )
-                              }
-                              className="accent-sky-500"
-                            />
-                            <span className="gray-label">{referenceTypeLabel(t)}</span>
-                          </label>
-                        ),
-                      )}
-                      {showSameOutfitToggle(refSpec, r.referenceType) && (
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!!effectiveSameOutfit(r.referenceType, r.preferSameOutfit)}
-                            onChange={(e) =>
-                              projectTemplateService.updateCharacterReference(
-                                entry.id,
-                                i,
-                                { preferSameOutfit: e.target.checked },
-                              )
-                            }
-                            className="setting-check setting-check-sm"
-                          />
-                          <span className="gray-label">{REFERENCE_EDITOR_TEXT.sameOutfit}</span>
-                        </label>
-                      )}
-                    </div>
+                    <ReferenceTypeControl
+                      type={r.referenceType}
+                      preferSameOutfit={r.preferSameOutfit}
+                      spec={refSpec}
+                      onTypeChange={(t) =>
+                        projectTemplateService.updateCharacterReference(
+                          entry.id,
+                          i,
+                          // 종류를 바꾸면 「같은 의상 선호」 명시 값을 지워 그 종류의 기본으로
+                          { referenceType: t, preferSameOutfit: undefined },
+                        )
+                      }
+                      onSameOutfitChange={(checked) =>
+                        projectTemplateService.updateCharacterReference(
+                          entry.id,
+                          i,
+                          { preferSameOutfit: checked },
+                        )
+                      }
+                    />
                     {showCostumeUnsupported(refSpec, r.referenceType) && (
                       <div className="text-xs text-muted">{REFERENCE_EDITOR_TEXT.costumeUnsupported}</div>
                     )}

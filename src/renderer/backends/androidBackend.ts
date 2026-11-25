@@ -29,6 +29,7 @@ import {
 import { Buffer } from 'buffer';
 import { v4 as uuidv4 } from 'uuid';
 import Pica from 'pica';
+import { loadImageElement } from './loadImageElement';
 import { NovelAiFetcher, NovelAiImageGenService } from './genVendors/nai';
 import { createNaiApiError } from './genVendors/naiErrors';
 import { assertDeletableDirPath } from './dataPathGuard';
@@ -1517,9 +1518,8 @@ export class AndroidBackend extends Backend {
       directory: Directory.Documents,
     });
 
-    const img = new Image();
-    img.src = `data:image/png;base64,${data}`;
-    await img.decode();
+    // decode() 대신 load 대기 — decode() 는 다음 화면 프레임까지 풀리지 않아 썸네일이 「NO IMAGE」로 멈췄다(loadImageElement 주석).
+    const img = await loadImageElement(`data:image/png;base64,${data}`);
 
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d')!;

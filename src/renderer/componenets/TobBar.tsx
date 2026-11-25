@@ -21,8 +21,27 @@ import OpusUsageBadge from './OpusUsageBadge';
 import { normalizeTokenRotateWarning } from '../models/tokenAutoRotation';
 import ModelFamilySwitch from './ModelFamilySwitch';
 import Tooltip from './Tooltip';
+import { useGlobalModelVersion } from './useGlobalModelVersion';
+import {
+  NAI_REFERENCE_ANLAS_PER_IMAGE,
+  referenceAnlasPerImage,
+} from '../backends/genVendors/naiReference';
 
 const TobBar = observer(() => {
+  // 장당 Anlas 소모(2026-11-25): 지금 프로젝트의 이미지생성 공용 설정에 켜져 있고 현재 모델로 실제 보낼
+  // 캐릭터 레퍼런스 수 × 5. 0 이면 표시하지 않는다. 판정은 작업 조립과 같은 referencesForModel.
+  const globalModelVersion = useGlobalModelVersion();
+  const costSession = appState.curSession;
+  const costWorkflow = costSession?.selectedWorkflow?.workflowType;
+  const costReferences = costWorkflow
+    ? costSession?.presetShareds?.get(costWorkflow)?.characterReferences
+    : undefined;
+  const referenceSpend = loginService.loggedIn
+    ? referenceAnlasPerImage(costReferences, globalModelVersion)
+    : 0;
+  const referenceSpendTitle = referenceSpend
+    ? `캐릭터 레퍼런스 ${referenceSpend / NAI_REFERENCE_ANLAS_PER_IMAGE}장 사용 중 · 이미지 1장마다 ${referenceSpend} Anlas`
+    : undefined;
   // 컴팩트 템플릿(PC)은 하단바가 없어 세션(프로젝트) 선택을 상단바로 올린다.
   // 모바일은 resolveLayout 이 항상 classic 강제 → 기존 인라인 표시(md:hidden) 동작 무변화.
   const resolved = resolveLayout(appState.uiLayoutTemplate, isMobile);
@@ -149,7 +168,7 @@ const TobBar = observer(() => {
   const mobileAccountBadge = !loggedIn ? (
     <span className="round-tag back-red text-sm !px-2 !py-1">로그인필요</span>
   ) : (
-    <OpusUsageBadge credits={credits} warningPercent={warningPercent} inline />
+    <OpusUsageBadge credits={credits} warningPercent={warningPercent} inline spend={referenceSpend} />
   );
 
   return (
@@ -179,9 +198,17 @@ const TobBar = observer(() => {
         ) : (
           <>
             {/* tabular-nums: 잔량이 줄어도 자릿수 폭이 고정돼 출렁이지 않게 */}
-            <span className="account-status-control back-yellow tabular-nums text-sm gap-1.5" aria-label={`Anlas ${credits}`}>
+            <span
+              className="account-status-control back-yellow tabular-nums text-sm gap-1.5"
+              aria-label={`Anlas ${credits}` + (referenceSpendTitle ? `, ${referenceSpendTitle}` : '')}
+              title={referenceSpendTitle}
+            >
               <FaCoins size={15} aria-hidden="true" />
               <span>{credits}</span>
+              {/* 장당 소모(캐릭터 레퍼런스) — 있을 때만 */}
+              {referenceSpend > 0 && (
+                <span className="opacity-80" data-reference-spend="">-{referenceSpend}</span>
+              )}
             </span>
             <OpusUsageBadge warningPercent={warningPercent} />
           </>
@@ -213,7 +240,7 @@ const TobBar = observer(() => {
           {!loggedIn ? (
             <span className="round-tag back-red text-sm !px-3 !py-1">로그인필요</span>
           ) : (
-            <OpusUsageBadge credits={credits} warningPercent={warningPercent} />
+            <OpusUsageBadge credits={credits} warningPercent={warningPercent} spend={referenceSpend} />
           )}
         </div>
       ) : isMobile ? null : (

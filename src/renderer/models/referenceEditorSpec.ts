@@ -75,18 +75,6 @@ export function showSameOutfitToggle(
   return spec.outfit && (type === 'character' || type === 'character&style');
 }
 
-/** 새 레퍼런스의 종류 — 저장된 기본 종류가 의상인데 모델이 의상을 지원하지 않으면 캐릭터. */
-export function newReferenceType(
-  spec: Pick<ReferenceEditorSpec, 'outfit'>,
-  defaultType: string | undefined,
-): ReferenceType {
-  const t = (defaultType || 'character') as ReferenceType;
-  if (!(REFERENCE_TYPE_LABELS as Record<string, string>)[t]) return 'character';
-  if (t === 'costume' && !spec.outfit) return 'character';
-  return t;
-}
-
-
 /** 잠긴 레퍼런스 버튼 문구(사유별). */
 export function referenceLockText(reason: 'v4' | 'v5-medium' | undefined): {
   label: string;

@@ -15,6 +15,7 @@ import { addScenesToQueue } from '../models/sceneQueueActions';
 import { REQUEST_DELAY_TEXT } from '../models/requestTiming';
 import { BOOST_TEXT } from '../models/boostMode';
 import { parseSampleCount, SAMPLE_COUNT_MAX, SAMPLE_COUNT_MIN } from '../models/sampleCount';
+import { planStartCostConfirm } from '../models/startCostConfirm';
 
 /** 예약 없이 「생성 시작」을 눌렀을 때의 안내(2026-11-22) — 자동으로 예약하지 않고 알리기만 한다 */
 export const QUEUE_EMPTY_NOTICE = '예약된 작업이 없습니다. 생성할 씬을 먼저 예약해 주세요';
@@ -458,18 +459,13 @@ const TaskQueueControl = observer(({}) => {
                 appState.pushMessage(QUEUE_EMPTY_NOTICE);
                 return;
               }
-              const costs = taskQueueService.calculateCost();
-              const message = costs
-                .map((x) => `${x.text} (씬: ${x.scene})`)
-                .slice(0, 10)
-                .join('\n');
-              if (costs.length > 0) {
+              // 스텝·해상도 항목은 있으면 항상, 캐릭터 레퍼런스는 예약 전체 예상 소모가 기준을 넘을 때만 묻는다
+              // (models/startCostConfirm — 2026-11-25).
+              const plan = planStartCostConfirm(taskQueueService.calculateCost());
+              if (plan.confirm) {
                 appState.pushDialog({
                   type: 'confirm',
-                  text:
-                    'Anlas를 소모하는 유료 세팅입니다. 계속합니까?' +
-                    '\n' +
-                    message,
+                  text: plan.text,
                   callback: () => {
                     taskQueueService.run();
                   },
