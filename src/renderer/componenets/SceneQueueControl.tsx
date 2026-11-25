@@ -105,6 +105,22 @@ import {
   workflowUsesImageResolution,
 } from '../models/inpaintResolution';
 import { IMPORT_IMAGE_ACCEPT } from '../models/imageFormats';
+import CaptureDialog from './CaptureDialog';
+import {
+  buildSceneCaptureContent,
+  captureSceneHasContent,
+  pickRandomSubset,
+  captureAspectForCardStyle,
+  captureFileStem,
+  CaptureOptions,
+  CapturePlan,
+  CaptureSceneScope,
+  CAPTURE_TEXT,
+  defaultCaptureSceneScope,
+  planCapture,
+  rectsOverlap,
+} from '../models/captureSheet';
+import { captureSceneData, capturePixelLimit, runCaptureSheet } from '../models/captureSheetRun';
 import { platform } from '../models/platform';
 import {
   SCENE_TOOLBAR_MORE_LABEL,
@@ -1371,6 +1387,8 @@ const QueueControl = observer(
     );
     const gridContainerRef = useRef<HTMLDivElement>(null);
     const [sceneSearchQuery, setSceneSearchQuery] = useState('');
+    // 「캡처」 창(2026-11-25) — 열린 동안 = 연 순간 계산해 고정한 「보이는 씬」 이름(탭 순서)
+    const [captureOpen, setCaptureOpen] = useState<{ visible: string[] } | undefined>(undefined);
     const [showSceneSearch, setShowSceneSearch] = useState(false);
     // 모바일 V2(선택형 배치): 씬 툴바 줄 대신 하단 메인 줄, 검색·프롬프트조각은 상단 슬롯, 프롬프트 도구는 시트 슬롯으로 보낸다.
     // 메인 탭의 씬 목록에만 적용한다(이미지 상세 안의 파생 목록=filterFunc 는 클래식 그대로). models/mobileV2.ts
@@ -2834,6 +2852,68 @@ const QueueControl = observer(
     // PC 씬 툴바 그룹(2026-10-04 T5, 2-D 그룹 캡션) — 모바일·클래식 툴바는 그룹 없이 종전 그대로.
     // 레거시 글자 설정(sceneToolbarLegacyText)은 버튼만 글자로 바꾸고 그룹·캡션은 유지한다.
     const groupedToolbar = !isMobile && !appState.uiToolbar.classic;
+    // 「캡처」(2026-11-25) — 아래 toolbarButtons 맵(렌더 중 바로 만들어짐)이 값으로 읽으므로 **그보다 먼저** 선언한다.
+    // 「보이는 씬」은 버튼을 누른 순간 격자 스크롤 상자에 조금이라도 걸친 카드 — 창을 열 때 한 번 계산해 고정한다.
+    const openCapture = () => {
+      const grid = gridContainerRef.current;
+      const visible: string[] = [];
+      if (grid) {
+        const g = grid.getBoundingClientRect();
+        const box = { x: g.left, y: g.top, w: g.width, h: g.height };
+        for (const s of getFilteredScenes()) {
+          const el = document.getElementById(`scene-cell-${type}-${s.name}`);
+          if (!el) continue;
+          const r = el.getBoundingClientRect();
+          if (rectsOverlap(box, { x: r.left, y: r.top, w: r.width, h: r.height })) visible.push(s.name);
+        }
+      }
+      setCaptureOpen({ visible });
+    };
+    // 범위 → 씬 목록. 지금 목록 = 검색으로 걸러진 목록(getFilteredScenes), 선택한 씬 = 이 탭의 선택(탭 순서),
+    // 보이는 씬 = 연 순간 고정한 이름들(목록 순서). 데이터는 읽기만 한다.
+    const captureScenesFor = (scope: string): GenericScene[] => {
+      if (scope === 'selected') {
+        if (appState.selectedScenesType !== type) return [];
+        return curSession
+          .getScenes(type)
+          .filter((x) => !filterFunc || filterFunc(x))
+          .filter((s) => appState.selectedScenes.has(s.name));
+      }
+      if (scope === 'visible') {
+        const names = new Set(captureOpen?.visible ?? []);
+        return getFilteredScenes().filter((s) => names.has(s.name));
+      }
+      return getFilteredScenes();
+    };
+    const capturePlanFor = (scope: string, opts: CaptureOptions) => {
+      let data = captureScenesFor(scope).map((s) => captureSceneData(curSession, s));
+      if (scope === 'random') {
+        // 랜덤 씬 = 지금 목록에서 무작위로 고름(빈 씬 포함이 꺼져 있으면 담을 이미지가 있는 씬만 후보)
+        const pool = opts.includeEmpty ? data : data.filter((s) => captureSceneHasContent(s, opts.perScene));
+        data = pickRandomSubset(pool, opts.randomCount);
+      }
+      return planCapture(
+        buildSceneCaptureContent(data, opts),
+        opts,
+        captureAspectForCardStyle(curSession.sceneCardStyle?.[type]),
+        capturePixelLimit(),
+      );
+    };
+    const runCapture = (scope: string, opts: CaptureOptions, plan: CapturePlan) => {
+      setCaptureOpen(undefined);
+      // 랜덤 씬은 실행하는 순간 다시 뽑는다(요약의 장수·줄 수는 같은 규칙이라 그대로)
+      const finalPlan = scope === 'random' ? capturePlanFor(scope, opts) : plan;
+      void runCaptureSheet(curSession, finalPlan, opts, captureFileStem(curSession.name, new Date()));
+    };
+    const captureCounts: Record<CaptureSceneScope, number> | undefined = captureOpen
+      ? {
+          list: captureScenesFor('list').length,
+          selected: captureScenesFor('selected').length,
+          visible: captureScenesFor('visible').length,
+          // 랜덤 씬의 후보 수(지금 목록) — 창이 고를 씬 수와 비교해 칸 글자를 만든다
+          random: captureScenesFor('list').length,
+        }
+      : undefined;
     const toolbarButtons: Record<string, ReactNode> = {
       'add-scene': (
         <Tooltip content="씬 추가">
@@ -3010,6 +3090,16 @@ const QueueControl = observer(
             onClick={pickImportImage}
           >
             <ActionIcon id="import-image" size={18} />
+          </button>
+        </Tooltip>
+      ),
+      'scene-capture': (
+        <Tooltip content={CAPTURE_TEXT.tooltip}>
+          <button
+            className={`round-button${iconMode ? ' icon-only' : ''} back-gray`}
+            onClick={openCapture}
+          >
+            {iconMode ? <ActionIcon id="scene-capture" size={18} /> : CAPTURE_TEXT.button}
           </button>
         </Tooltip>
       ),
@@ -3217,6 +3307,22 @@ const QueueControl = observer(
               getImage={getImage}
             />
           </FloatView>
+        )}
+        {captureOpen && captureCounts && (
+          <CaptureDialog
+            title={CAPTURE_TEXT.sceneTitle}
+            variant="scenes"
+            scopes={(['list', 'selected', 'visible', 'random'] as const).map((k) => ({
+              key: k,
+              label: CAPTURE_TEXT.sceneScope[k],
+              count: captureCounts[k],
+              randomPool: k === 'random',
+            }))}
+            initialScope={defaultCaptureSceneScope(captureCounts)}
+            plan={capturePlanFor}
+            onRun={runCapture}
+            onClose={() => setCaptureOpen(undefined)}
+          />
         )}
         {resultViewer}
         {imageReview && (

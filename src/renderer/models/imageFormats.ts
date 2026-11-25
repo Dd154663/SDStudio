@@ -88,6 +88,14 @@ export function planWebpTargets(
   return targets;
 }
 
+// 「캡처」(여러 장을 한 장으로 모아 내보내기, 2026-11-25)의 결과 파일 형식 — 캔버스 인코딩 MIME·품질·확장자.
+// JPEG 가 기본(결과가 커도 파일이 작다), PNG 는 무손실. quality 는 canvas.toDataURL 의 둘째 인자(PNG 는 쓰지 않음).
+export const CAPTURE_IMAGE_FORMATS = {
+  jpeg: { mime: 'image/jpeg', ext: 'jpg', quality: 0.9 as number | undefined },
+  png: { mime: 'image/png', ext: PNG_IMAGE_EXT, quality: undefined as number | undefined },
+} as const;
+export type CaptureImageFormat = keyof typeof CAPTURE_IMAGE_FORMATS;
+
 // 접두사 없는 raw base64 의 시그니처로 이미지 확장자를 추정한다(알 수 없으면 png).
 // 저장 시 올바른 확장자를 붙여야 표시·MIME 이 어긋나지 않는다.
 export function imageExtFromBase64(base64: string): string {

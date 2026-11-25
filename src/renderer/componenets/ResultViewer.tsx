@@ -81,6 +81,20 @@ import {
   imageGridThumbPx,
   normalizeSizePercent,
 } from '../models/sizeSlider';
+import CaptureDialog from './CaptureDialog';
+import {
+  buildGridCaptureContent,
+  captureAspectForSize,
+  captureFileStem,
+  CaptureGridScope,
+  CaptureOptions,
+  CapturePlan,
+  CAPTURE_TEXT,
+  defaultCaptureGridScope,
+  planCapture,
+} from '../models/captureSheet';
+import { capturePixelLimit, runCaptureSheet } from '../models/captureSheetRun';
+import { resolutionMap } from '../backends/imageGen';
 
 // PC 이미지 그리드 머리줄 아이콘 버튼의 아래 이름(2026-11-18 버튼 이름 표시) — 이 머리줄 버튼은 툴바 레지스트리가
 // 없어 이 표가 단일 출처. 글자 버튼(이상형 월드컵·예약 추가·예약 제거)에는 이름을 달지 않는다.
@@ -90,6 +104,7 @@ export const GRID_HEADER_NAMES = {
   selectMode: '선택',
   favSelect: '즐겨찾기 선택',
   download: '다운로드',
+  capture: '캡처',
   copy: '복사',
   paste: '붙여넣기',
   favToggle: '즐겨찾기',
@@ -100,6 +115,15 @@ export const GRID_HEADER_NAMES = {
   bookmark: '북마크',
   viewOrder: '보기 순서',
 } as const;
+
+// 「캡처」 칸 비율 = 그 씬의 해상도(커스텀이면 너비·높이) — 모르면 3:4(captureAspectForSize)
+function captureAspectForScene(scene: GenericScene): number {
+  if (scene.resolution === 'custom') {
+    return captureAspectForSize(scene.resolutionWidth, scene.resolutionHeight);
+  }
+  const size = (resolutionMap as Record<string, { width: number; height: number } | undefined>)[scene.resolution];
+  return captureAspectForSize(size?.width, size?.height);
+}
 import {
   ContextMenuType,
   GenericScene,
@@ -2234,6 +2258,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     const [showImageCheatsheet, setShowImageCheatsheet] =
       useState<boolean>(false);
     const [tournament, setTournament] = useState<boolean>(false);
+    // 「캡처」 창(2026-11-25) — 열린 동안 = 연 순간의 선택·즐겨찾기·탭 목록(그리드 보기 순서)
+    const [captureLists, setCaptureLists] = useState<Record<CaptureGridScope, string[]> | undefined>(undefined);
     const selectedImages = useRef(new Set<string>());
     const [selectedImageIndex, setSelectedImageIndex] = useState<
       number | undefined
@@ -2244,7 +2270,8 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     const [downloadPick, setDownloadPick] = useState<
       { paths: string[]; preselected: string[] } | undefined
     >(undefined);
-    const pickerOpen = downloadPick != null;
+    // 번호 고르기 창·캡처 창이 열려 있는 동안 그리드 단축키는 쉰다
+    const pickerOpen = downloadPick != null || captureLists != null;
     // 모바일 = 종전 S/M/L 단추(기억하지 않음 — 그리드를 다시 열면 M). PC = 이미지 크기 슬라이더(2026-11-23,
     // appState.imageGridSizePercent — 앱 전체 하나로 기억). 25%·50%·75% = S·M·L, 규칙은 models/sizeSlider.ts.
     const imagesSizes = [
@@ -2980,6 +3007,27 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       if (!targets || targets.length === 0) return;
       await downloadGridPaths(targets);
     };
+    // 「캡처」(2026-11-25) — 아래 머리줄·V2 더보기 줄(렌더 중 만들어짐)이 값으로 읽으므로 그보다 먼저 선언한다.
+    // 범위 목록은 연 순간 고정: 선택한 이미지 · 즐겨찾기 · 지금 탭의 전체(이미지 탭 = 보기 순서 전체, 즐겨찾기 탭 = 즐겨찾기).
+    // 휴지통·인페인트 씬 탭에서는 버튼을 끈다(담을 그리드 목록이 아님).
+    const captureDisabled = selectedTab === 2 || selectedTab === 3;
+    const actCapture = () => {
+      if (captureDisabled) return;
+      const favorites = isMainImage ? paths.filter((p) => isMainImage(p)) : [];
+      const selected = selectMode ? paths.filter((p) => selectedImages.current.has(p)) : [];
+      setCaptureLists({ selected, favorites, all: selectedTab === 1 ? favorites : paths });
+    };
+    const captureGridPlan = (scope: string, opts: CaptureOptions) =>
+      planCapture(
+        buildGridCaptureContent(captureLists?.[scope as CaptureGridScope] ?? [], scene.name, opts.showNames),
+        opts,
+        captureAspectForScene(scene),
+        capturePixelLimit(),
+      );
+    const runGridCapture = (_scope: string, opts: CaptureOptions, plan: CapturePlan) => {
+      setCaptureLists(undefined);
+      void runCaptureSheet(curSession!, plan, opts, captureFileStem(curSession!.name, new Date(), scene.name));
+    };
     const actCopyImages = () => {
       if (selectMode && selectedImages.current.size > 0) {
         const selected = [...selectedImages.current];
@@ -3136,6 +3184,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
           tierItem('queue-add', '예약 추가', 'back-green', <ActionIcon id="queue-add" />, () => void actQueueAdd()),
           tierItem('queue-remove', '예약 제거', 'back-gray', <ActionIcon id="queue-remove" />, actQueueRemove),
           tierItem('download', '다운로드', 'back-green', <ActionIcon id="download" />, () => void actDownload()),
+          tierItem('capture', CAPTURE_TEXT.button, 'back-gray', <ActionIcon id="scene-capture" />, actCapture, captureDisabled),
           tierItem('copy', '복사', 'back-sky', <ActionIcon id="copy" />, actCopyImages),
           tierItem('paste', '붙여넣기', appState.imageClipboard.length > 0 ? 'back-sky' : 'back-gray', <FaPaste />, actPaste),
           ...(onSampleExtract ? [tierItem('sample', '샘플 뽑기', 'back-sky', <FaDice />, () => void actSampleExtract())] : []),
@@ -3152,6 +3201,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     const gallerySelectTier: V2TierItem[] = v2
       ? [
           tierItem('download', '다운로드', 'back-green', <ActionIcon id="download" />, () => void actDownload()),
+          tierItem('capture', CAPTURE_TEXT.button, 'back-gray', <ActionIcon id="scene-capture" />, actCapture, captureDisabled),
           tierItem('copy', '복사', 'back-sky', <ActionIcon id="copy" />, actCopyImages),
           tierItem('duplicate', '복제', 'back-sky', <ActionIcon id="duplicate" />, () => void onDuplicateSelected(), selectedCount === 0),
           tierItem('copy-to', '다른 씬', 'back-sky', <FaShareSquare />, onCopyToSceneSelected, selectedCount === 0),
@@ -3223,6 +3273,25 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               exportGridPaths(targets);
             }}
             onClose={() => setDownloadPick(undefined)}
+          />
+        )}
+        {captureLists && (
+          <CaptureDialog
+            title={CAPTURE_TEXT.gridTitle(scene.name)}
+            variant="grid"
+            scopes={(['selected', 'favorites', 'all'] as const).map((k) => ({
+              key: k,
+              label: CAPTURE_TEXT.gridScope[k],
+              count: captureLists[k].length,
+            }))}
+            initialScope={defaultCaptureGridScope({
+              selected: captureLists.selected.length,
+              favorites: captureLists.favorites.length,
+              all: captureLists.all.length,
+            })}
+            plan={captureGridPlan}
+            onRun={runGridCapture}
+            onClose={() => setCaptureLists(undefined)}
           />
         )}
         {tournament && (
@@ -3344,6 +3413,19 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                     onClick={() => void actDownload()}
                   >
                     <FaDownload />
+                  </button>
+                </Tooltip>
+              ))}
+              {hn('capture', (
+                <Tooltip content={CAPTURE_TEXT.tooltip}>
+                  <button
+                    className={`round-button icon-only back-gray`}
+                    aria-label={CAPTURE_TEXT.tooltip}
+                    disabled={captureDisabled}
+                    onClick={actCapture}
+                    data-grid-capture=""
+                  >
+                    <ActionIcon id="scene-capture" />
                   </button>
                 </Tooltip>
               ))}

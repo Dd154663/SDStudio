@@ -85,6 +85,9 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   { id: 'artist-breakdown', name: '작가 분해', sceneLabel: '작가 분해', tier: 'overflow', group: 'edit' },
   // 작가 태그 artist: 접두 전환(2026-09-26, 공통) — 긍정 프롬프트 칸 전체, 구획마다 있으면 떼고 없는 작가엔 붙임. SPEC_GUIDE 「작가 태그 접두 계약」
   { id: 'artist-prefix-toggle', name: '작가 접두 전환', sceneLabel: '접두 전환', tier: 'overflow', v2Label: '접두 전환', group: 'edit' },
+  // 캡처(2026-11-25) — 이미지 여러 장을 한 장으로 모아 내보내기(componenets/CaptureDialog.tsx). 새 기능 버튼 = 기본 ⋯(증식 차단 규칙),
+  // 꺼내면 편집 도구 칸. 두 탭 공용(이미지변형 탭은 카드가 보여 주는 입력 이미지를 대표로).
+  { id: 'scene-capture', name: '캡처', sceneLabel: '캡처', tier: 'overflow', group: 'edit' },
   { id: 'bookmark-jump', name: '북마크된 씬으로 이동', sceneLabel: '북마크', tier: 'secondary', v2Label: '북마크 이동', group: 'navigate' },
   // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환
   // 그룹 없음(T5): 휴지통 열기·삭제 이미지 비우기·단축키 도움말은 어느 그룹에도 맞지 않아 ⋯ 메뉴 유지.

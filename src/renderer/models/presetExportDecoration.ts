@@ -41,7 +41,8 @@ function loadPng(base64: string): Promise<HTMLImageElement> {
   });
 }
 
-function fitText(
+// 폭에 맞춰 말줄임(이분 탐색) — 「캡처」 이름 띠(captureSheetRender.ts)도 쓴다.
+export function fitText(
   ctx: CanvasRenderingContext2D,
   text: string,
   maxWidth: number,

@@ -47,6 +47,7 @@ describe('이름 문구 단일 출처', () => {
       'scene-trash': '씬 휴지통',
       'empty-image-trash': '삭제 비우기',
       'shortcut-help': '단축키',
+      'scene-capture': '캡처',
       // 프로젝트 바에서 옮겨 온 버튼은 기존 label
       'add-session': '새 프로젝트',
       'project-trash': '휴지통',
@@ -76,6 +77,7 @@ describe('이름 문구 단일 출처', () => {
       ['selectMode', '선택'],
       ['favSelect', '즐겨찾기 선택'],
       ['download', '다운로드'],
+      ['capture', '캡처'],
       ['copy', '복사'],
       ['paste', '붙여넣기'],
       ['favToggle', '즐겨찾기'],

@@ -17,6 +17,7 @@ import {
   FaBookmark,
   FaBroom,
   FaBrush,
+  FaCamera,
   FaCheckSquare,
   FaClipboardCheck,
   FaClone,
@@ -143,6 +144,7 @@ export const ICON_DICTIONARY = {
   'find-replace': MdFindReplace, // 찾기 및 변환(돋보기+순환 화살표)
   'batch-insert': MdPostAdd, // 일괄 삽입(문서에 더하기 — 선택한 씬 프롬프트에 태그 넣기, 씬 추가 FaPlus 와 구분)
   'shortcut-help': FaQuestion, // 단축키 도움말
+  'scene-capture': FaCamera, // 캡처 — 여러 장을 한 장의 이미지로 모아 저장(사진기 = 「한 장 찍기」. 이미지 그리드 머리줄 「캡처」도 이 키)
   undo: FaUndo, // 되돌리기(전역 스택 — 편집기·붓 자체 되돌리기 버튼도 같은 모양)
   redo: FaRedo, // 다시 실행
   'drag-handle': FaGripVertical, // 끌기 손잡이(점 6개 ⋮⋮ — 되돌리기 버튼 바 좌우 이동 등, 누르면 바로 끌기)

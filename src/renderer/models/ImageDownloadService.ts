@@ -30,7 +30,14 @@ export const IMAGE_DOWNLOAD_TEXT = {
   folderNotChosen: '저장 폴더를 고르지 않아 다운로드하지 않았습니다',
   folderChanged: (path: string) => `저장 폴더를 바꿨습니다: ${path}`,
   progress: '이미지 다운로드 중...',
+  /** 앱이 만든 이미지 한 장(캡처 등) — saveGeneratedImage */
+  generatedSavedPc: (filename: string) => `이미지가 저장되었습니다: ${filename}`,
+  generatedSavedMobile: (filename: string) => `다운로드 폴더에 저장했습니다: ${filename}`,
+  generatedFailed: (msg: string) => `이미지 저장 실패: ${msg}`,
 };
+
+/** 모바일 「다운로드」 폴더에서 같은 이름을 피하는 번호 상한(넘으면 시각 접미) */
+const GENERATED_UNIQUE_MAX = 999;
 
 /**
  * 이번 다운로드에만 쓰는 저장 폴더(2026-11-23 번호 고르기 창). savePath 가 있으면 PC 는 설정의 저장 폴더(lastSavePath)
@@ -732,6 +739,55 @@ export class ImageDownloadService {
       imagePath,
       target.characterPreset,
     );
+  }
+
+  /**
+   * 앱이 새로 만든 이미지 한 장(프로젝트 안 파일이 아닌 base64 — 「캡처」 등) 저장(2026-11-25).
+   * stem = 확장자 없는 파일 이름(금지 문자는 여기서 sanitizeFilename), ext = 확장자(imageFormats 의 값).
+   * PC = 다운로드와 같은 저장 폴더(lastSavePath, 없으면 폴더 선택 — 고르지 않으면 안내 후 중단), 같은 이름이 있으면 「이름_1」.
+   * 모바일 = exports/ 에 잠깐 쓰고 기기 「다운로드」 폴더로 복사(갤러리 등록) 뒤 임시 파일 삭제, 같은 이름이 있으면 「이름_2」.
+   * 결과 안내는 여기서 띄운다. 반환 = 저장한 파일 이름(실패·폴더 미선택 = undefined).
+   */
+  async saveGeneratedImage(base64: string, stem: string, ext: string): Promise<string | undefined> {
+    const base = sanitizeFilename(stem);
+    if (platform.isMobile) {
+      let filename = `${base}.${ext}`;
+      try {
+        for (let n = 2; n <= GENERATED_UNIQUE_MAX && (await backend.existInDownloads(filename)); n++) {
+          filename = `${base}_${n}.${ext}`;
+        }
+        if (await backend.existInDownloads(filename)) filename = `${base}_${Date.now()}.${ext}`;
+        const staging = `exports/${filename}`;
+        await backend.writeDataFile(staging, base64);
+        try {
+          await backend.copyToDownloads(staging);
+        } finally {
+          try {
+            await backend.deleteFile(staging);
+          } catch (e) {
+            /* 임시 파일 정리 실패는 저장 결과를 바꾸지 않는다 */
+          }
+        }
+        appState.pushMessage(IMAGE_DOWNLOAD_TEXT.generatedSavedMobile(filename));
+        return filename;
+      } catch (e: any) {
+        console.error('Failed to save generated image:', e);
+        appState.pushMessage(IMAGE_DOWNLOAD_TEXT.generatedFailed(e?.message || String(e)));
+        return undefined;
+      }
+    }
+    try {
+      const savePath = await this.ensureSavePath();
+      if (!savePath) return undefined;
+      const filename = await getUniqueFilename(savePath, base, ext, true);
+      await backend.writeDataFileAbsolute(`${savePath}/${filename}`, base64);
+      appState.pushMessage(IMAGE_DOWNLOAD_TEXT.generatedSavedPc(filename));
+      return filename;
+    } catch (e: any) {
+      console.error('Failed to save generated image:', e);
+      appState.pushMessage(IMAGE_DOWNLOAD_TEXT.generatedFailed(e?.message || String(e)));
+      return undefined;
+    }
   }
 
   /** 저장 폴더를 고를 수 있는 플랫폼인지(PC = true, 모바일 = 기기 「다운로드」 폴더 고정이라 false) */
