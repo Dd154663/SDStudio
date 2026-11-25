@@ -1,7 +1,8 @@
 // 이미지 그리드 머리 영역(2026-11-22 사용자 결정) — 소스 계약.
 // ① 탭(이미지·즐겨찾기·휴지통·인페인트 씬)은 버튼 줄과 다른 자기 줄, 모양 = 밑줄 탭 .tab-line (모바일 V2 는 종전 알약 그대로)
-// ② 색을 차분하게: 즐겨찾기 계열 노랑·다운로드 초록·삭제 빨강 + 글자 버튼 예약 추가 초록·예약 제거 회색·씬 편집 주황만 색,
+// ② 색을 차분하게: 즐겨찾기 계열 노랑·다운로드 초록·삭제 빨강 + 글자 버튼 예약 추가 초록·예약 제거 회색만 색,
 //    나머지는 회색. 상태 표시(선택 모드·붙여넣기·북마크·보기 순서)는 켜졌을 때만 .toggle-on 색.
+// ③ (2026-11-25) 「씬 편집」 글자 버튼은 머리줄 [이미지 | 편집] 택일로 옮겨 버튼 줄에서 빠짐 — sceneModeSwitch.test.
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -40,8 +41,9 @@ describe('탭 줄 = 버튼 줄 아래 자기 줄', () => {
   });
 
   test('PC·클래식 바깥 줄은 flex 가 아님(이름 표시 판정의 가용 폭에서 탭을 빼지 않음), V2 는 종전 그대로', () => {
+    // 제목 줄이 머리줄로 올라가(2026-11-25) 바깥 줄이 머리 영역 첫 줄 — 위 여백(mt)은 없앴다
     expect(src).toContain(
-      "className={v2 ? 'md:flex justify-between items-center mt-2 md:mt-4' : 'mt-2 md:mt-4'}",
+      "className={v2 ? 'md:flex justify-between items-center' : undefined}",
     );
     expect(src).toMatch(/\{v2 \? \(\s*renderPillTabs\(\)\s*\) : \(/);
   });
@@ -89,14 +91,17 @@ describe('머리 줄 색 = 회색 기본 + 지정 색만', () => {
     expect(slot(key)).toContain(expr);
   });
 
-  test('글자 버튼: 이상형 월드컵 회색, 예약 추가 초록·예약 제거 회색·씬 편집 주황 종전 그대로', () => {
+  test('글자 버튼: 이상형 월드컵 회색, 예약 추가 초록·예약 제거 회색 종전 그대로, 씬 편집은 빠짐', () => {
     const block = buttonsBlock();
     expect(block).toMatch(/className=\{`round-button back-gray`\}\s*onClick=\{\(\) => setTournament\(true\)\}/);
     expect(block).toContain("className={`round-button${isMobile ? ' icon-only' : ''} back-green`}");
     expect(block).toContain("className={`round-button${isMobile ? ' icon-only' : ''} back-gray`}");
-    expect(block).toContain("className={`round-button${isMobile ? ' icon-only' : ''} back-orange`}");
+    // 「씬 편집」(주황) = 머리줄 [이미지 | 편집] 택일로 옮김(2026-11-25)
+    expect(block).not.toContain("className={`round-button${isMobile ? ' icon-only' : ''} back-orange`}");
+    expect(block).not.toContain('onEdit(scene)');
   });
 
+  // orange 는 북마크 있음(back-orange toggle-on) 상태 표시가 남아 집합에 그대로 있다
   test('버튼 줄의 하늘색은 .toggle-on 상태 표시에만', () => {
     const block = buttonsBlock();
     expect(block).not.toMatch(/back-sky(?! toggle-on)/);

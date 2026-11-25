@@ -106,6 +106,7 @@ const SEG_SITES: [string, string][] = [
   ['CharacterPresetEditor.tsx', 'className="seg-group seg-fill flex" role="group" aria-label="프리셋 보기"'],
   ['PieceEditor.tsx', "'seg-group seg-fill flex flex-1 min-w-0' : 'seg-group inline-flex'"],
   ['ConfigThemeTab.tsx', '<div className="seg-group inline-flex">'],
+  ['SceneModeHeader.tsx', 'className="seg-group seg-sm flex flex-none"'],
 ];
 
 describe('자리 분류표 — 각 자리가 맞는 클래스를 쓴다', () => {

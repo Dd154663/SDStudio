@@ -247,9 +247,11 @@ describe('배선 소스 계약', () => {
     // ✕·구석 자리 마크업은 그대로
     expect(src).toContain('{view.undoCorner && <UndoCornerSlot />}');
     expect(src).toContain('aria-label="뒤로"');
-    // 이 자리를 켜는 곳은 이미지 상세 하나
+    // ResultViewer 안에서 이 자리를 켜는 곳은 이미지 상세 하나. 그리드·씬 편집 창(일반·변형) 세 판은 SceneQueueControl 에서
+    // 켠다(2026-11-25 씬 화면 머리 — sceneModeSwitch.test)
     const rv = read('ResultViewer.tsx');
     expect(rv.match(/^\s*headerSlot$/gm)).toHaveLength(1);
+    expect(read('SceneQueueControl.tsx').match(/^\s*headerSlot$/gm)).toHaveLength(3);
   });
 
   test('넓은 폭만 머리줄 포털·버튼 세 묶음, 모바일 V2 의 넘겨받은 버튼 판정은 라벨 정규식 그대로', () => {

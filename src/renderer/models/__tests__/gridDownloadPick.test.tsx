@@ -331,7 +331,8 @@ describe('선택 창 연결(ResultViewer)', () => {
     expect(src).toMatch(/choice === 'export-selected'\) \{\s*exportGridPaths\(selectedPaths\);/);
   });
   test('창이 열려 있는 동안 그리드 단축키를 끈다', () => {
-    expect(src).toContain('const active = !isMobile && selectedImageIndex == null && !pickerOpen;');
+    // 판정은 models/sceneModeSwitch imageGridShortcutsActive 로 옮김(2026-11-25 — 위에 쌓인 씬 편집 창도 함께 봄)
+    expect(src).toMatch(/imageGridShortcutsActive\(\{\s*isMobile,\s*detailOpen: selectedImageIndex != null,\s*pickerOpen,/);
     expect(src).toContain('if (pickerOpen) return; // 번호 고르기 창 열림');
     expect(src).toContain('if (tournament || selectedImageIndex != null || pickerOpen) return;');
   });

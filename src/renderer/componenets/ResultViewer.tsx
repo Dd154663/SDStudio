@@ -50,6 +50,8 @@ import { UndoBarSlot, UNDO_ANCHOR_ATTR } from './UndoBarSlot';
 import { PromptHighlighter } from './SceneEditor';
 import QueueControl from './SceneQueueControl';
 import { FloatView, useFloatViewHeaderSlot } from './FloatView';
+import { SceneModeHeaderPortal } from './SceneModeHeader';
+import { imageGridShortcutsActive } from '../models/sceneModeSwitch';
 import { createPortal } from 'react-dom';
 import { ImageDetailInfo, type ImageDetailInfoPart } from './ImageDetailInfo';
 import { fitFrame } from './CharacterPositionOverlay';
@@ -81,7 +83,8 @@ import {
 } from '../models/sizeSlider';
 
 // PC 이미지 그리드 머리줄 아이콘 버튼의 아래 이름(2026-11-18 버튼 이름 표시) — 이 머리줄 버튼은 툴바 레지스트리가
-// 없어 이 표가 단일 출처. 글자 버튼(이상형 월드컵·예약 추가·예약 제거·씬 편집)에는 이름을 달지 않는다.
+// 없어 이 표가 단일 출처. 글자 버튼(이상형 월드컵·예약 추가·예약 제거)에는 이름을 달지 않는다.
+// (「씬 편집」 버튼은 2026-11-25 머리줄 [이미지 | 편집] 택일로 옮겨 빠짐)
 export const GRID_HEADER_NAMES = {
   folder: '폴더',
   selectMode: '선택',
@@ -2193,6 +2196,8 @@ interface ResultViewerProps {
     hasNext: boolean;
     go: (delta: number) => void;
   };
+  // 위에 씬 편집 창이 쌓여 있음(2026-11-25 씬 화면 모드 전환) — 참이면 그리드 단축키를 끈다(보이지 않는 그리드에서 일어나지 않게)
+  coveredByEditor?: boolean;
 }
 
 const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
@@ -2207,6 +2212,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       onSampleExtract,
       focusFilename,
       sceneNav,
+      coveredByEditor = false,
     }: ResultViewerProps,
     ref,
   ) => {
@@ -2620,13 +2626,19 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     // 탭 전환 단축키(Ctrl+1/2/3/4)는 모든 탭에서 동작해야 하므로 selectedTab을 조건에서 제외.
     // 그리드 조작(방향키/즐겨찾기/북마크/삭제/상세 보기)은 핸들러 내부에서 selectedTab 가드 적용.
     // 번호 고르기 창이 열려 있으면 상세 보기처럼 그리드 단축키를 끈다(창 아래 그리드에서 삭제·이동이 일어나지 않게)
+    // 위에 씬 편집 창이 쌓여 있어도 끈다(2026-11-25 — 판정 단일 출처 models/sceneModeSwitch imageGridShortcutsActive)
     useEffect(() => {
-      const active = !isMobile && selectedImageIndex == null && !pickerOpen;
+      const active = imageGridShortcutsActive({
+        isMobile,
+        detailOpen: selectedImageIndex != null,
+        pickerOpen,
+        coveredByEditor,
+      });
       appState.imageGridFocusable = active;
       return () => {
         appState.imageGridFocusable = false;
       };
-    }, [selectedImageIndex, pickerOpen]);
+    }, [selectedImageIndex, pickerOpen, coveredByEditor]);
 
     // 탭 변경 시 포커스 리셋
     useEffect(() => {
@@ -2839,11 +2851,10 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       return () => window.removeEventListener('keydown', handler, true);
     }, [tournament, selectedImageIndex, pickerOpen]);
 
+    // 씬 종류 아이콘(머리줄 씬 화면 머리) — 변형 씬 = 워크플로 이모지
     let emoji = '';
-    let title = '';
     if (scene.type === 'inpaint') {
       emoji = workFlowService.getDef(scene.workflowType)?.emoji ?? '';
-      title = workFlowService.getDef(scene.workflowType)?.title ?? '';
     }
 
     // 액션 동작(클래식 머리 버튼과 V2 하단 줄이 공유)
@@ -3124,7 +3135,6 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       ? [
           tierItem('queue-add', '예약 추가', 'back-green', <ActionIcon id="queue-add" />, () => void actQueueAdd()),
           tierItem('queue-remove', '예약 제거', 'back-gray', <ActionIcon id="queue-remove" />, actQueueRemove),
-          tierItem('edit', '씬 편집', 'back-orange', <ActionIcon id="edit" />, () => onEdit(scene)),
           tierItem('download', '다운로드', 'back-green', <ActionIcon id="download" />, () => void actDownload()),
           tierItem('copy', '복사', 'back-sky', <ActionIcon id="copy" />, actCopyImages),
           tierItem('paste', '붙여넣기', appState.imageClipboard.length > 0 ? 'back-sky' : 'back-gray', <FaPaste />, actPaste),
@@ -3228,62 +3238,26 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             />
           </FloatView>
         )}
+        {/* 씬 화면 머리(2026-11-25 사용자 스케치): 종전 제목 줄(씬 종류·이름 문구와 이전/다음 씬)은
+            FloatView 머리줄(✕ 오른쪽 headerSlot)로 올라갔다 — 씬 종류 아이콘 + 이름 · [이미지 | 편집] · 이전/다음 씬.
+            [편집] = 종전 「씬 편집」 버튼과 같은 onEdit(편집 창이 위에 쌓임). 공용 내용 SceneModeHeader. */}
+        <SceneModeHeaderPortal
+          kindIcon={scene.type === 'inpaint' ? emoji : '🖼️'}
+          name={scene.name}
+          mode="images"
+          onMode={(m) => {
+            if (m === 'edit') onEdit(scene);
+          }}
+          selectMode={selectMode}
+          sceneNav={sceneNav}
+        />
         <div className="flex-none p-2 md:p-4 border-b line-color">
-          <div className="mb-2 md:mb-4 flex items-center">
-            <span className="font-bold text-lg md:text-2xl text-default">
-              {selectMode ? (
-                <span className="inline-flex items-center gap-1">
-                  이미지 선택 모드 ON
-                </span>
-              ) : !isMobile ? (
-                scene.type === 'inpaint' ? (
-                  <span className="inline-flex items-center gap-1">
-                    {emoji} {title} 씬 {scene.name}의 생성된 이미지
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1">
-                    🖼️ 일반 씬 {scene.name}의 생성된 이미지
-                  </span>
-                )
-              ) : scene.type === 'inpaint' ? (
-                <span className="inline-flex items-center gap-1">
-                  {emoji} {title} 씬 {scene.name}
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1">
-                  🖼️ 일반 씬 {scene.name}
-                </span>
-              )}
-            </span>
-            {sceneNav && (
-              <span className="ml-auto flex-none inline-flex items-center gap-1 md:gap-2 pl-2">
-                <Tooltip content="이전 씬 그리드 (Ctrl+←)">
-                  <button
-                    className={`round-button icon-only back-gray ${!sceneNav.hasPrev ? 'opacity-40' : ''}`}
-                    disabled={!sceneNav.hasPrev}
-                    onClick={() => sceneNav.go(-1)}
-                  >
-                    <FaChevronLeft />
-                  </button>
-                </Tooltip>
-                <Tooltip content="다음 씬 그리드 (Ctrl+→)">
-                  <button
-                    className={`round-button icon-only back-gray ${!sceneNav.hasNext ? 'opacity-40' : ''}`}
-                    disabled={!sceneNav.hasNext}
-                    onClick={() => sceneNav.go(1)}
-                  >
-                    <FaChevronRight />
-                  </button>
-                </Tooltip>
-              </span>
-            )}
-          </div>
           {/* 탭 줄 위치(2026-11-22 사용자 결정 「탭은 버튼 줄 아래로」): PC·모바일 클래식은 버튼 줄과 탭이 다른 줄 —
               바깥 줄이 flex 가 아니라 이름 표시 판정(measureButtonNames)의 가용 폭 = 머리 영역 폭 전체(탭 폭을 빼지 않음).
               모바일 V2 는 버튼 줄이 없고 종전 바깥 줄·알약 탭 그대로(renderPillTabs). */}
           <div
             ref={headerNamesRef as React.RefObject<HTMLDivElement>}
-            className={v2 ? 'md:flex justify-between items-center mt-2 md:mt-4' : 'mt-2 md:mt-4'}
+            className={v2 ? 'md:flex justify-between items-center' : undefined}
           >
             {!v2 && (
             <div
@@ -3294,7 +3268,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
             >
               {/* 머리 줄 색(2026-11-22 사용자 결정 「색을 차분하게」): 아이콘 버튼은 중립 회색(back-gray)이 기본.
                   지금 색조를 남기는 것 = 즐겨찾기 선택·즐겨찾기 토글(노랑)·다운로드(초록)·삭제(빨강),
-                  씬 카드에서 익숙한 글자 버튼 = 예약 추가(초록)·예약 제거(회색)·씬 편집(주황) 종전 그대로.
+                  씬 카드에서 익숙한 글자 버튼 = 예약 추가(초록)·예약 제거(회색) 종전 그대로(씬 편집은 머리줄 택일로 — 2026-11-25).
                   상태 표시(선택 모드·붙여넣기 가능·북마크 있음·보기 순서가 기본 아님)는 켜졌을 때만 .toggle-on 색. */}
               <button
                 className={`round-button back-gray`}
@@ -3319,16 +3293,6 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
                   }}
                 >
                   {!isMobile ? '예약 제거' : <ActionIcon id="queue-remove" />}
-                </button>
-              </Tooltip>
-              <Tooltip content="씬 편집">
-                <button
-                  className={`round-button${isMobile ? ' icon-only' : ''} back-orange`}
-                  onClick={() => {
-                    onEdit(scene);
-                  }}
-                >
-                  {!isMobile ? '씬 편집' : <ActionIcon id="edit" />}
                 </button>
               </Tooltip>
               {!isMobile && hn('folder', (

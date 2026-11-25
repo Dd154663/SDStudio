@@ -32,6 +32,12 @@ import { v4 } from 'uuid';
 import { observer } from 'mobx-react-lite';
 import { reaction } from 'mobx';
 import { FloatView } from './FloatView';
+import { SceneModeHeaderPortal } from './SceneModeHeader';
+import {
+  planCloseEditor,
+  planShowImages,
+  type SceneScreenState,
+} from '../models/sceneModeSwitch';
 import ModalOverlay from './ModalOverlay';
 import SceneEditor from './SceneEditor';
 import Tournament from './Tournament';
@@ -1276,6 +1282,25 @@ interface QueueControlProps {
   className?: string;
 }
 
+// 씬 편집 창(일반 씬·변형 씬) 머리줄의 씬 화면 머리(2026-11-25) — observer 라 편집 중 이름이 바뀌면 머리 이름도 따라간다.
+// 종류 아이콘은 그리드 제목과 같은 규칙(일반 씬 🖼️ / 변형 씬 = 워크플로 이모지).
+const EditorSceneModeHeader = observer(
+  ({ scene, onImages }: { scene: GenericScene; onImages: () => void }) => (
+    <SceneModeHeaderPortal
+      kindIcon={
+        scene.type === 'inpaint'
+          ? (workFlowService.getDef(scene.workflowType)?.emoji ?? '')
+          : '🖼️'
+      }
+      name={scene.name}
+      mode="edit"
+      onMode={(m) => {
+        if (m === 'images') onImages();
+      }}
+    />
+  ),
+);
+
 const QueueControl = observer(
   ({ type, isActive = true, className, showPannel, filterFunc, onClose }: QueueControlProps) => {
     const curSession = appState.curSession!;
@@ -1301,6 +1326,14 @@ const QueueControl = observer(
     const [displayScene, setDisplayScene] = useState<GenericScene | undefined>(
       undefined,
     );
+    // 씬 화면 모드 전환(2026-11-25): 판정은 models/sceneModeSwitch, 여기는 그 결과를 state 에 옮긴다.
+    // 편집 창 FloatView 의 onEscape·머리 콜백은 panel useMemo 안에서 만들어지므로(deps 에 displayScene 없음) 지금 값을 ref 로 읽는다 —
+    // 그래야 「아래에 같은 씬의 그리드가 있는가」가 낡은 값으로 판정되지 않는다.
+    const sceneScreenRef = useRef<SceneScreenState<GenericScene>>({
+      gridScene: undefined,
+      editScene: undefined,
+    });
+    sceneScreenRef.current = { gridScene: displayScene, editScene: editingScene };
     const [imageReview, setImageReview] = useState<
       { startScene?: GenericScene } | undefined
     >(undefined);
@@ -2423,11 +2456,17 @@ const QueueControl = observer(
             )}
             {editingScene && (
               // 씬 편집 창 — 전역 되돌리기 단축키 허용(D9). 인페인트 편집 창은 붓 Ctrl+Z 전용이라 붙이지 않는다(D10)
+              // 머리줄 = 씬 화면 머리(headerSlot, 2026-11-25) — ✕·Esc·뒤로는 closeSceneEditor(아래 같은 씬 그리드도 함께)
               <FloatView
                 priority={2}
                 allowUndo
-                onEscape={() => setEditingScene(undefined)}
+                headerSlot
+                onEscape={closeSceneEditor}
               >
+                <EditorSceneModeHeader
+                  scene={editingScene}
+                  onImages={showSceneImages}
+                />
                 <SceneEditor
                   scene={editingScene as Scene}
                   initialTab={editingSceneTab}
@@ -2463,14 +2502,22 @@ const QueueControl = observer(
             </FloatView>
           )}
           {(editingScene || adding) && (
+            // 변형 씬 편집 창도 같은 머리(모드 행동 동등성) — 새 변형 씬 추가(adding)는 그리드가 없는 경로라 머리 내용 없음
             <FloatView
               priority={2}
               ownsGenControl
+              headerSlot
               onEscape={() => {
-                setEditingScene(undefined);
+                closeSceneEditor();
                 setAdding(false);
               }}
             >
+              {editingScene && !adding && (
+                <EditorSceneModeHeader
+                  scene={editingScene}
+                  onImages={showSceneImages}
+                />
+              )}
               <InPaintEditor
                 editingScene={editingScene as InpaintScene}
                 onConfirm={() => {
@@ -2489,6 +2536,31 @@ const QueueControl = observer(
 
     const onEdit = async (scene: GenericScene) => {
       setEditingScene(scene);
+    };
+
+    // 그리드 닫기(✕·Esc·뒤로, 편집 창 닫기가 함께 닫을 때) — 종전 그리드 onEscape 와 같은 정리
+    const closeGridOf = (scene: GenericScene) => {
+      gameService.refreshList(curSession!, scene);
+      setDisplayScene(undefined);
+      setDisplayFocus(undefined);
+    };
+    // 편집 창 ✕·Esc·뒤로 — 아래 같은 씬의 그리드도 닫을지는 planCloseEditor(EDITOR_CLOSE_CLOSES_GRID) 한 곳이 정한다
+    const closeSceneEditor = () => {
+      const st = sceneScreenRef.current;
+      const { closesGrid } = planCloseEditor(st);
+      setEditingScene(undefined);
+      if (closesGrid && st.gridScene) closeGridOf(st.gridScene);
+    };
+    // 편집 창 [이미지] — 아래에 같은 씬의 그리드가 있으면 편집 창만 닫고, 없으면 같은 틱에 그 씬의 그리드를 연다(쌓임 2단 이하)
+    const showSceneImages = () => {
+      const st = sceneScreenRef.current;
+      const { next, gridReplaced } = planShowImages(st);
+      if (gridReplaced) {
+        if (st.gridScene) gameService.refreshList(curSession!, st.gridScene);
+        setDisplayFocus(undefined);
+        setDisplayScene(next.gridScene);
+      }
+      setEditingScene(undefined);
     };
 
     const isMainImage = (path: string) => {
@@ -2531,11 +2603,9 @@ const QueueControl = observer(
             showToolbar
             // 이미지 그리드(그 안의 이미지 상세도 허용 창) — 전역 되돌리기 단축키 허용(D9)
             allowUndo
-            onEscape={() => {
-              gameService.refreshList(curSession!, displayScene);
-              setDisplayScene(undefined);
-              setDisplayFocus(undefined);
-            }}
+            // 머리줄 = 씬 화면 머리(씬 이름 · [이미지 | 편집] · 이전/다음 씬 — ResultViewer 가 포털로 그림, 2026-11-25)
+            headerSlot
+            onEscape={() => closeGridOf(displayScene)}
           >
             <ResultViewer
               ref={resultViewerRef}
@@ -2546,6 +2616,8 @@ const QueueControl = observer(
                 hasNext: navIdx >= 0 && navIdx < navScenes.length - 1,
                 go: goScene,
               }}
+              // 위에 씬 편집 창이 쌓여 있는 동안 그리드 단축키를 끈다(2026-11-25)
+              coveredByEditor={!!editingScene}
               isMainImage={isMainImage}
               onFilenameChange={onFilenameChange}
               onEdit={onEdit}
@@ -2619,7 +2691,7 @@ const QueueControl = observer(
         );
       }
       return <></>;
-    }, [displayScene, displayFocus, getFilteredScenes]);
+    }, [displayScene, displayFocus, getFilteredScenes, editingScene]);
 
     const [sceneSelector, setSceneSelector] = useState<
       SceneSelectorItem | undefined

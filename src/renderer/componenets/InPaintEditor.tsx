@@ -101,6 +101,7 @@ import {
   presetSupportsFocus,
   reconcileFocusRect,
 } from '../models/focusedInpaintEditor';
+import { trackPendingMaskSave, waitPendingMaskSave } from '../models/inpaintMaskSave';
 
 interface Props {
   editingScene: InpaintScene;
@@ -476,6 +477,7 @@ const InPaintEditor = observer(
       }
       setImage('');
       setMask(undefined);
+      let disposed = false;
       async function loadImage() {
         try {
           const data = await imageService.fetchVibeImage(
@@ -488,13 +490,16 @@ const InPaintEditor = observer(
         }
       }
       async function loadMask() {
+        // 앞서 닫힌 같은 씬 편집 창의 마스크 저장(언마운트 때 비동기)이 끝난 뒤 읽는다 — 옛 마스크·빈 마스크로 시작하지 않게(2026-11-25)
+        await waitPendingMaskSave(editingScene);
+        if (disposed) return;
         if (!editingScene.preset.mask) return;
         try {
           const data = await imageService.fetchVibeImage(
             curSession!,
             editingScene.preset.mask,
           );
-          if (data) setMask(dataUriToBase64(data));
+          if (data && !disposed) setMask(dataUriToBase64(data));
         } catch (e) {}
       }
       const dispose = reaction(
@@ -512,6 +517,7 @@ const InPaintEditor = observer(
       else setBrushing(false);
       imageService.addEventListener('image-cache-invalidated', loadImage);
       return () => {
+        disposed = true;
         imageService.removeEventListener('image-cache-invalidated', loadImage);
         dispose();
       };
@@ -654,12 +660,19 @@ const InPaintEditor = observer(
         const scene = editingScene;
         const session = curSession;
         if (def?.hasMask && session && mask) {
+          // 다시 여는 창이 이 저장을 기다릴 수 있게 적어 둔다(models/inpaintMaskSave)
           if (!scene.preset.mask) {
-            imageService.storeVibeImage(session, mask).then((path) => {
-              scene.preset.mask = path;
-            });
+            trackPendingMaskSave(
+              scene,
+              imageService.storeVibeImage(session, mask).then((path) => {
+                scene.preset.mask = path;
+              }),
+            );
           } else {
-            imageService.writeVibeImage(session, scene.preset.mask, mask);
+            trackPendingMaskSave(
+              scene,
+              imageService.writeVibeImage(session, scene.preset.mask, mask),
+            );
           }
         }
       };
