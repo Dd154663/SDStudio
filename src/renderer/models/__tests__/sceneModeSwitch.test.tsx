@@ -226,6 +226,18 @@ describe('배선 소스 계약', () => {
     expect(sq).toContain('sceneScreenRef.current = { gridScene: displayScene, editScene: editingScene };');
   });
 
+  test('닫기·전환 함수는 그것을 값으로 읽는 panel useMemo 보다 먼저 선언된다(선언 전 접근 오류 방지)', () => {
+    // panel useMemo 는 렌더 중 바로 실행되며 onEscape={closeSceneEditor}·onImages={showSceneImages} 를 값으로 읽는다.
+    // 선언이 뒤에 있으면 편집 창을 여는 순간 「Cannot access before initialization」 — 타입 검사·빌드는 잡지 못한다(2026-11-25 실기 발견).
+    const panelAt = sq.indexOf('const panel = useMemo(');
+    expect(panelAt).toBeGreaterThan(0);
+    for (const name of ['closeGridOf', 'closeSceneEditor', 'showSceneImages']) {
+      const at = sq.indexOf(`const ${name} = `);
+      expect(at).toBeGreaterThan(0);
+      expect(at).toBeLessThan(panelAt);
+    }
+  });
+
   test('그리드: 머리줄 포털로 씬 화면 머리, 종전 제목 줄·「씬 편집」 버튼 없음', () => {
     expect(rv).toContain('<SceneModeHeaderPortal');
     expect(rv).not.toContain('의 생성된 이미지');

@@ -2432,6 +2432,33 @@ const QueueControl = observer(
       },
     });
 
+    // 아래 세 함수는 panel useMemo(렌더 중 바로 실행됨)가 값으로 읽으므로 **그보다 먼저** 선언한다 —
+    // 뒤에 두면 편집 창을 여는 순간 「Cannot access before initialization」(2026-11-25 실기에서 발견).
+    // 그리드 닫기(✕·Esc·뒤로, 편집 창 닫기가 함께 닫을 때) — 종전 그리드 onEscape 와 같은 정리
+    const closeGridOf = (scene: GenericScene) => {
+      gameService.refreshList(curSession!, scene);
+      setDisplayScene(undefined);
+      setDisplayFocus(undefined);
+    };
+    // 편집 창 ✕·Esc·뒤로 — 아래 같은 씬의 그리드도 닫을지는 planCloseEditor(EDITOR_CLOSE_CLOSES_GRID) 한 곳이 정한다
+    const closeSceneEditor = () => {
+      const st = sceneScreenRef.current;
+      const { closesGrid } = planCloseEditor(st);
+      setEditingScene(undefined);
+      if (closesGrid && st.gridScene) closeGridOf(st.gridScene);
+    };
+    // 편집 창 [이미지] — 아래에 같은 씬의 그리드가 있으면 편집 창만 닫고, 없으면 같은 틱에 그 씬의 그리드를 연다(쌓임 2단 이하)
+    const showSceneImages = () => {
+      const st = sceneScreenRef.current;
+      const { next, gridReplaced } = planShowImages(st);
+      if (gridReplaced) {
+        if (st.gridScene) gameService.refreshList(curSession!, st.gridScene);
+        setDisplayFocus(undefined);
+        setDisplayScene(next.gridScene);
+      }
+      setEditingScene(undefined);
+    };
+
     const [adding, setAdding] = useState<boolean>(false);
     const panel = useMemo(() => {
       if (type === 'scene') {
@@ -2536,31 +2563,6 @@ const QueueControl = observer(
 
     const onEdit = async (scene: GenericScene) => {
       setEditingScene(scene);
-    };
-
-    // 그리드 닫기(✕·Esc·뒤로, 편집 창 닫기가 함께 닫을 때) — 종전 그리드 onEscape 와 같은 정리
-    const closeGridOf = (scene: GenericScene) => {
-      gameService.refreshList(curSession!, scene);
-      setDisplayScene(undefined);
-      setDisplayFocus(undefined);
-    };
-    // 편집 창 ✕·Esc·뒤로 — 아래 같은 씬의 그리드도 닫을지는 planCloseEditor(EDITOR_CLOSE_CLOSES_GRID) 한 곳이 정한다
-    const closeSceneEditor = () => {
-      const st = sceneScreenRef.current;
-      const { closesGrid } = planCloseEditor(st);
-      setEditingScene(undefined);
-      if (closesGrid && st.gridScene) closeGridOf(st.gridScene);
-    };
-    // 편집 창 [이미지] — 아래에 같은 씬의 그리드가 있으면 편집 창만 닫고, 없으면 같은 틱에 그 씬의 그리드를 연다(쌓임 2단 이하)
-    const showSceneImages = () => {
-      const st = sceneScreenRef.current;
-      const { next, gridReplaced } = planShowImages(st);
-      if (gridReplaced) {
-        if (st.gridScene) gameService.refreshList(curSession!, st.gridScene);
-        setDisplayFocus(undefined);
-        setDisplayScene(next.gridScene);
-      }
-      setEditingScene(undefined);
     };
 
     const isMainImage = (path: string) => {
