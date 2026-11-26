@@ -468,8 +468,14 @@ describe('가로 줄(2026-11-26 2차)', () => {
     const head = host.querySelector<HTMLElement>('[data-scene-image-cell="head"]')!;
     expect(head.className).toContain('sticky');
     expect(head.className).toContain('left-0');
-    expect(head.className).toContain('z-10');
+    // 지나가는 칸의 별(z-10)이 첫 칸 위로 비치지 않게: 첫 칸은 그보다 높은 z-20, 이미지 상자는 겹침을 안에 가둠(isolate)
+    // — 2026-11-26 모바일 실기 제보(가로로 넘기면 숨은 칸의 즐겨찾기 버튼이 첫 칸 위에 겹쳐 보임)
+    expect(head.className).toContain('z-20');
+    expect(head.className).not.toContain('z-10');
     expect(head.className).toContain('bg-[var(--c-surface)]');
+    const imgCell = host.querySelector<HTMLElement>('[data-scene-image-cell="img"]')!;
+    expect(imgCell.querySelector<HTMLElement>('[data-scene-image-box]')!.className).toContain('isolate');
+    expect(imgCell.querySelector<HTMLElement>('[data-scene-image-fav-btn]')!.className).toContain('z-10');
     expect(host.querySelector<HTMLElement>('[data-scene-image-cell="img"]')!.className).not.toContain('sticky');
     // 첫 칸이 즐겨찾기여도 테두리는 하늘색, 즐겨찾기는 그림 안쪽 노란 테두리
     const box = host.querySelector<HTMLElement>('[data-scene-head="A"]')!;

@@ -439,7 +439,9 @@ const SceneImageCellView = observer(
     <div style={outer} className={className} data-scene-image-cell="img">
       <div
         data-scene-image-box=""
-        className="group/scene-img relative w-full cursor-pointer hover:brightness-95 active:brightness-90 rounded-md bg-[var(--c-surface)]"
+        // isolate = 칸 안 겹침(별 z-10·이어짐 표시)을 이 상자 안에 가둔다 — 가로 줄에서 고정된 첫 칸 뒤로 지나갈 때
+        // 별만 첫 칸 위로 비치던 문제(2026-11-26 모바일 실기). 상자째로 첫 칸 아래에 깔린다.
+        className="group/scene-img isolate relative w-full cursor-pointer hover:brightness-95 active:brightness-90 rounded-md bg-[var(--c-surface)]"
         style={boxStyle}
         onClick={() => data.onOpenImage(scene, cell.filename)}
         onContextMenu={(e) => imageMenu(e, path, cell.filename)}
@@ -476,7 +478,8 @@ const GridCell = observer(({ columnIndex, rowIndex, style, data }: GridChildComp
 });
 
 /** 가로 줄 첫 칸의 고정 — 바탕은 씬 목록 바탕(App 루트 --c-surface)과 같게 불투명, 뒤로 지나가는 이미지 위 */
-const ROW_HEAD_STICKY = 'sticky left-0 z-10 bg-[var(--c-surface)]';
+// z-20 = 칸 안에서 쓰는 가장 높은 겹침 값(별 z-10)보다 위 — 지나가는 칸의 어떤 덧그림도 첫 칸 위로 올라오지 않게
+const ROW_HEAD_STICKY = 'sticky left-0 z-20 bg-[var(--c-surface)]';
 
 /** 가로 줄 하나(= 씬 하나) — 줄 안은 평범한 가로 스크롤, 칸은 가상화하지 않음 */
 const SceneRow = observer(({ index, style, data }: ListChildComponentProps<RowsData>) => {
