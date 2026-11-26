@@ -81,6 +81,7 @@ import {
   imageGridThumbPx,
   normalizeSizePercent,
 } from '../models/sizeSlider';
+import { directDetailCloseTarget, directDetailStartIndex } from '../models/sceneImageView';
 import CaptureDialog from './CaptureDialog';
 import {
   buildGridCaptureContent,
@@ -2222,6 +2223,9 @@ interface ResultViewerProps {
   };
   // 위에 씬 편집 창이 쌓여 있음(2026-11-25 씬 화면 모드 전환) — 참이면 그리드 단축키를 끈다(보이지 않는 그리드에서 일어나지 않게)
   coveredByEditor?: boolean;
+  // 「상세 보기로 바로 열기」(2026-11-26 씬 목록 이미지 뷰의 이미지 칸): 있으면 처음부터 focusFilename 의 상세 보기로 열고,
+  // 그 상세 보기를 닫으면(✕·Esc·뒤로·마지막 이미지 삭제) 이것을 불러 뷰어 전체를 닫는다. 그 이미지를 못 찾으면 종전처럼 그리드.
+  onDirectDetailClose?: () => void;
 }
 
 const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
@@ -2237,6 +2241,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
       focusFilename,
       sceneNav,
       coveredByEditor = false,
+      onDirectDetailClose,
     }: ResultViewerProps,
     ref,
   ) => {
@@ -2261,9 +2266,31 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     // 「캡처」 창(2026-11-25) — 열린 동안 = 연 순간의 선택·즐겨찾기·탭 목록(그리드 보기 순서)
     const [captureLists, setCaptureLists] = useState<Record<CaptureGridScope, string[]> | undefined>(undefined);
     const selectedImages = useRef(new Set<string>());
+    // 「상세 보기로 바로 열기」의 처음 인덱스(마운트 때 한 번) — 결과 목록은 첫 렌더에 동기로 있으므로(gameService.getOutputs)
+    // 상세 보기 상태의 초기값으로 넣어 그리드가 먼저 보이지 않게 한다. 아래 viewPaths 와 같은 순서(그리드 「이미지」 탭 = getPaths 탭 0).
+    // viewPaths 는 이보다 뒤에 선언되므로(선언 순서) 여기서는 같은 식을 직접 쓴다.
+    const [directStartIndex] = useState<number | undefined>(() =>
+      directDetailStartIndex(!!onDirectDetailClose, focusFilename, () =>
+        applyImageViewOrder(
+          gameService
+            .getOutputs(curSession!, scene)
+            .map((p) => imageService.getOutputDir(curSession!, scene) + '/' + p),
+          scene.mains,
+          normalizeImageViewOrder(appState.imageViewOrder),
+        ),
+      ),
+    );
+    const startedDirect = directStartIndex != null;
     const [selectedImageIndex, setSelectedImageIndex] = useState<
       number | undefined
-    >(undefined);
+    >(directStartIndex);
+    // 상세 보기 닫기(✕·Esc·뒤로·마지막 이미지를 지워 스스로 닫힘·플러그인 버튼의 close) — 바로 열기면 뷰어 전체, 아니면 그리드로
+    const closeDetail = () => {
+      if (directDetailCloseTarget(startedDirect, !!onDirectDetailClose) === 'viewer') onDirectDetailClose!();
+      else setSelectedImageIndex(undefined);
+    };
+    // 바로 열기로 시작한 동안은 그리드를 그리지 않는다(상세 보기 창이 등록되기 전 한 순간에도 그리드가 비치지 않게 — 자리는 유지)
+    const hideGridForDirect = startedDirect && !!onDirectDetailClose;
     const gallaryRef = useRef<ImageGalleryRef>(null);
     const gallaryRef2 = useRef<ImageGalleryRef>(null);
     // 「번호로 골라서 다운로드」 창(2026-11-23) — 연 때의 그리드 순서 목록·처음 켤 경로. 열려 있는 동안 그리드 단축키는 쉰다.
@@ -3248,7 +3275,7 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
     );
 
     return (
-      <div className="w-full h-full flex flex-col">
+      <div className={'w-full h-full flex flex-col' + (hideGridForDirect ? ' invisible' : '')}>
         {!isMobile && showImageCheatsheet && !tournament && (
           <ShortcutCheatsheet
             scope="image-grid"
@@ -3593,13 +3620,11 @@ const ResultViewer = forwardRef<ResultVieweRef, ResultViewerProps>(
               allowUndo
               // 머리줄 내용 자리 — PC 넓은 폭 상세가 씬 이름·n/전체·순위·이전/다음을 그려 넣는다(좁은 폭·V2 는 쓰지 않음)
               headerSlot
-              onEscape={() => setSelectedImageIndex(undefined)}
+              onEscape={closeDetail}
             >
               <ResultDetailView
                 buttons={buttons}
-                onClose={() => {
-                  setSelectedImageIndex(undefined);
-                }}
+                onClose={closeDetail}
                 scene={scene}
                 getPaths={getPaths}
                 initialSelectedIndex={selectedImageIndex}

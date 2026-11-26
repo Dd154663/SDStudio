@@ -129,3 +129,29 @@ describe('ResultDetailView — 해상도 칸', () => {
     expect((view.match(/\{renderInfo\('all'\)\}/g) || []).length).toBe(2);
   });
 });
+
+describe('AppContextMenu — 그리드 이미지 메뉴 「이미지 그리드에서 보기」(2026-11-26 씬 목록 이미지 뷰)', () => {
+  const src = read('AppContextMenu.tsx');
+  const menuOf = (type: string) => {
+    const s = src.indexOf(`<Menu id={ContextMenuType.${type}}`);
+    return src.slice(s, src.indexOf('</Menu>', s));
+  };
+  const LABEL = '<MenuItemLabel>이미지 그리드에서 보기</MenuItemLabel>';
+
+  test('글자는 히스토리 메뉴와 같고, ctx.openGrid 가 있을 때만(이미지 뷰에서 연 메뉴) 보이며 자리는 위쪽', () => {
+    const grid = menuOf('GallaryImage');
+    expect(menuOf('HistoryImage')).toContain(LABEL);
+    expect(grid).toContain(LABEL);
+    expect(grid).toContain(
+      `<Item id="open-grid" onClick={handleImageItemClick2} hidden={(p) => typeof p?.props?.ctx?.openGrid !== 'function'}>`,
+    );
+    expect(grid.indexOf('<Item id="open-grid"')).toBeLessThan(grid.indexOf('<Item id="download"'));
+    // 다른 이미지 메뉴(Image)에는 없다
+    expect(menuOf('Image')).not.toContain('id="open-grid"');
+  });
+
+  test('고르면 ctx.openGrid() — 그 화면이 넘긴 그리드 열기', () => {
+    const handler = src.slice(src.indexOf('const handleImageItemClick2'), src.indexOf('const exportStyle'));
+    expect(handler).toMatch(/if \(id === 'open-grid'\) \{[\s\S]*?props\.ctx\.openGrid\?\.\(\);/);
+  });
+});

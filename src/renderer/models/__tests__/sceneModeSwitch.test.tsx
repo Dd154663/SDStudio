@@ -221,7 +221,7 @@ describe('배선 소스 계약', () => {
     expect(sq).toMatch(/onEscape=\{\(\) => \{\s*closeSceneEditor\(\);\s*setAdding\(false\);/);
     expect(sq.match(/<EditorSceneModeHeader/g)).toHaveLength(2);
     expect(sq).toContain('coveredByEditor={!!editingScene}');
-    expect(sq).toContain('}, [displayScene, displayFocus, getFilteredScenes, editingScene]);');
+    expect(sq).toContain('}, [displayScene, displayFocus, getFilteredScenes, editingScene, displayDirect]);');
     // 판정은 ref 로 지금 값을 읽는다(panel useMemo 의 낡은 displayScene 방지)
     expect(sq).toContain('sceneScreenRef.current = { gridScene: displayScene, editScene: editingScene };');
   });

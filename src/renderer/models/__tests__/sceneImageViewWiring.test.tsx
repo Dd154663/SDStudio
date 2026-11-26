@@ -13,7 +13,11 @@ const mockQueue = Object.assign(new EventTarget(), {
   removeAllTasks: jest.fn(),
   removeTasksFromScene: jest.fn(),
 });
-const mockGame = Object.assign(new EventTarget(), { getOutputs: jest.fn(() => [] as string[]) });
+const mockGame = Object.assign(new EventTarget(), {
+  getOutputs: jest.fn(() => [] as string[]),
+  // 뷰어 닫기(closeGridOf)·이전/다음 씬이 부른다
+  refreshList: jest.fn(),
+});
 const mockImages = Object.assign(new EventTarget(), {
   fetchImageSmall: jest.fn(async () => 'img'),
   fetchVibeImage: jest.fn(async () => 'img'),
@@ -78,6 +82,12 @@ jest.mock('../sceneQueueActions', () => ({
   queueScene: jest.fn(async () => {}),
   addScenesToQueue: jest.fn(),
   addSceneToQueue: (...a: any[]) => (mockAddSceneToQueue as any)(...a),
+}));
+// 칸 왼쪽 위 별 = 그리드의 별과 같은 되돌리기 기록 길(toggleImageFavorite) — 부름만 본다
+const mockToggleFav = jest.fn();
+jest.mock('../imageStateUndo', () => ({
+  ...jest.requireActual('../imageStateUndo'),
+  toggleImageFavorite: (...a: any[]) => mockToggleFav(...a),
 }));
 jest.mock('../util', () => ({}));
 jest.mock('../workflows/SDWorkFlow', () => ({}));
@@ -366,11 +376,12 @@ describe('이미지 뷰(씬 별로)', () => {
     expect(visible.count).toBe(1);
   });
 
-  test('칸 동작: 이미지 = 그 씬 그리드를 그 이미지로, 씬 메뉴 = 씬 카드 우클릭과 같은 메뉴', async () => {
+  test('칸 동작: 이미지 = 그 씬 뷰어를 그 이미지의 상세 보기로 바로, 씬 메뉴 = 씬 카드 우클릭과 같은 메뉴', async () => {
     await renderList();
     await act(async () => mockView.props.onOpenImage(scenes[1], '1700000000001.png'));
     expect(host.querySelector('[data-viewer="s2"]')).not.toBeNull();
     expect(mockViewer.props.focusFilename).toBe('1700000000001.png');
+    expect(typeof mockViewer.props.onDirectDetailClose).toBe('function');
     const ev = { clientX: 1, clientY: 2 } as any;
     await act(async () => mockView.props.onSceneMenu(scenes[0], ev));
     expect(mockState.contextSceneType).toBe('scene');
@@ -396,5 +407,90 @@ describe('이미지 뷰(씬 별로)', () => {
     expect(mockState.pushDialogAsync).toHaveBeenCalledWith(expect.objectContaining({ type: 'select' }));
     expect(host.querySelector('#scene-cell-scene-s1')).not.toBeNull();
     expect(host.querySelector('[data-mock-image-view]')).toBeNull();
+  });
+});
+
+describe('이미지 칸 = 상세 보기로 바로, 그리드는 이미지 메뉴로(2026-11-26)', () => {
+  beforeEach(() => setSceneViewMode('scene', 'byScene'));
+  const F = '1700000000001.png';
+  const viewerOpen = (name: string) => !!host.querySelector(`[data-viewer="${name}"]`);
+
+  test('이미지 칸 → 바로 열기(닫기 콜백 있음), 그 콜백 = 뷰어 전체 닫기 → 다시 열면 플래그 없이', async () => {
+    await renderList();
+    await act(async () => mockView.props.onOpenImage(scenes[0], F));
+    expect(viewerOpen('s1')).toBe(true);
+    expect(mockViewer.props.focusFilename).toBe(F);
+    expect(typeof mockViewer.props.onDirectDetailClose).toBe('function');
+    await act(async () => mockViewer.props.onDirectDetailClose());
+    expect(host.querySelector('[data-viewer]')).toBeNull();
+    // 같은 씬을 더보기 칸으로 다시 열면 그리드(플래그가 새지 않음)
+    await act(async () => mockView.props.onOpenScene(scenes[0]));
+    expect(viewerOpen('s1')).toBe(true);
+    expect(mockViewer.props.onDirectDetailClose).toBeUndefined();
+  });
+
+  test('이미지 메뉴 「이미지 그리드에서 보기」(onOpenGrid) = 그 씬 그리드를 그 이미지 위치로, 플래그 없음', async () => {
+    await renderList();
+    await act(async () => mockView.props.onOpenGrid(scenes[1], F));
+    expect(viewerOpen('s2')).toBe(true);
+    expect(mockViewer.props.focusFilename).toBe(F);
+    expect(mockViewer.props.onDirectDetailClose).toBeUndefined();
+  });
+
+  test('바로 열었다가 다른 길로 닫혀도(close-result-viewer) 플래그가 풀려, 같은 씬·같은 이미지를 그리드로 열면 그리드', async () => {
+    await renderList();
+    await act(async () => mockView.props.onOpenImage(scenes[0], F));
+    expect(typeof mockViewer.props.onDirectDetailClose).toBe('function');
+    await act(async () => {
+      mockSessions.dispatchEvent(new CustomEvent('close-result-viewer'));
+    });
+    expect(host.querySelector('[data-viewer]')).toBeNull();
+    // 히스토리 「이미지 그리드에서 보기」(open-result-viewer) — 같은 씬·같은 파일이어도 그리드
+    await act(async () => {
+      mockSessions.dispatchEvent(
+        new CustomEvent('open-result-viewer', { detail: { sceneType: 'scene', sceneName: 's1', filename: F } }),
+      );
+    });
+    expect(viewerOpen('s1')).toBe(true);
+    expect(mockViewer.props.focusFilename).toBe(F);
+    expect(mockViewer.props.onDirectDetailClose).toBeUndefined();
+  });
+
+  test('바로 연 상세 보기 위로 히스토리 「이미지 그리드에서 보기」가 오면 닫기 콜백을 거둔다(닫으면 그리드로)', async () => {
+    await renderList();
+    await act(async () => mockView.props.onOpenImage(scenes[0], F));
+    expect(typeof mockViewer.props.onDirectDetailClose).toBe('function');
+    await act(async () => {
+      mockSessions.dispatchEvent(
+        new CustomEvent('open-result-viewer', { detail: { sceneType: 'scene', sceneName: 's1', filename: F } }),
+      );
+    });
+    expect(viewerOpen('s1')).toBe(true);
+    expect(mockViewer.props.onDirectDetailClose).toBeUndefined();
+  });
+
+  test('바로 연 채 이전/다음 씬으로 옮기면 그 씬은 그리드(초점 없음·플래그 없음)', async () => {
+    await renderList();
+    await act(async () => mockView.props.onOpenImage(scenes[0], F));
+    await act(async () => mockViewer.props.sceneNav.go(1));
+    expect(viewerOpen('s2')).toBe(true);
+    expect(mockViewer.props.focusFilename).toBeUndefined();
+    expect(mockViewer.props.onDirectDetailClose).toBeUndefined();
+  });
+
+  test('별 = 그리드의 별과 같은 기록 길(toggleImageFavorite(지금 프로젝트, 씬, 파일)), 뷰어는 열리지 않음', async () => {
+    await renderList();
+    await act(async () => mockView.props.onToggleFavorite(scenes[1], F));
+    expect(mockToggleFav).toHaveBeenCalledWith(mockState.curSession, scenes[1], F);
+    expect(host.querySelector('[data-viewer]')).toBeNull();
+  });
+
+  test('씬 카드 보기의 단축키 길(Enter)은 종전대로 그리드 — 플래그 없음', async () => {
+    setSceneViewMode('scene', 'cards');
+    await renderList();
+    await shortcut('scene-right');
+    await shortcut('scene-open-images');
+    expect(viewerOpen('s1')).toBe(true);
+    expect(mockViewer.props.onDirectDetailClose).toBeUndefined();
   });
 });

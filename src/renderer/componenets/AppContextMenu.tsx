@@ -884,7 +884,10 @@ export const AppContextMenu = observer(() => {
     }
   };
   const handleImageItemClick2 = ({ id, props }: any) => {
-    if (id === 'duplicate') {
+    if (id === 'open-grid') {
+      // 씬 목록 이미지 뷰에서 연 메뉴만 이 항목이 보인다(ctx.openGrid 가 있을 때 — 아래 Menu 의 hidden)
+      props.ctx.openGrid?.();
+    } else if (id === 'duplicate') {
       duplicateImage(props.ctx);
     } else if (id === 'copy') {
       copyImage(props.ctx);
@@ -1144,6 +1147,12 @@ export const AppContextMenu = observer(() => {
         </Item>
       </Menu>
       <Menu id={ContextMenuType.GallaryImage} onVisibilityChange={contextMenuBackLayer(ContextMenuType.GallaryImage)}>
+        {/* 씬 목록 이미지 뷰에서 연 메뉴에만(2026-11-26 — 칸 누름이 상세 보기로 바뀌어 그리드 열기가 이리로). 글자는 히스토리 메뉴와 같게,
+            자리도 히스토리처럼 위쪽. 그리드 안에서 연 같은 메뉴에는 ctx.openGrid 가 없어 가려진다 */}
+        <Item id="open-grid" onClick={handleImageItemClick2} hidden={(p) => typeof p?.props?.ctx?.openGrid !== 'function'}>
+          {/* 같은 기능의 아이콘이 없다 → 빈 칸(히스토리 메뉴와 같음) */}
+          <MenuItemLabel>이미지 그리드에서 보기</MenuItemLabel>
+        </Item>
         <Item id="download" onClick={handleImageItemClick2}>
           <MenuItemLabel icon={<ActionIcon id="download" size={I} />}>이미지 다운로드</MenuItemLabel>
         </Item>

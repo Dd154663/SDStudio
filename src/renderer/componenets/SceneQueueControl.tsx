@@ -1346,6 +1346,14 @@ const QueueControl = observer(
     const [displayFocus, setDisplayFocus] = useState<string | undefined>(
       undefined,
     );
+    // 이미지 뷰의 이미지 칸에서 연 「상세 보기로 바로 열기」(2026-11-26) — 열린 뷰어의 씬·초점이 이것과 같을 때만 뷰어에 넘긴다.
+    // 그래서 다른 진입점(씬 카드·더보기·히스토리·단축키)이 씬이나 초점을 바꾸면 저절로 효력이 없고, 뷰어가 닫히면 아래 효과가 비운다.
+    const [displayDirect, setDisplayDirect] = useState<
+      { scene: GenericScene; filename: string } | undefined
+    >(undefined);
+    useEffect(() => {
+      if (displayDirect && displayDirect.scene !== displayScene) setDisplayDirect(undefined);
+    }, [displayScene, displayDirect]);
     // 열린 씬 편집 창(일반 씬)·이미지 그리드의 씬이 프로젝트에서 빠지면 그 창을 닫는다(2026-11-01 되돌리기 U2a) —
     // 두 창은 안에서 되돌리기 단축키가 동작하므로(D9) 그 씬의 생성을 되돌리면 휴지통으로 간 씬 객체를 계속 편집하게 된다.
     // 이름이 아니라 객체로 확인한다(이름 변경 도중 잠깐 키와 이름이 어긋나도 닫지 않게).
@@ -1498,6 +1506,8 @@ const QueueControl = observer(
             ? curSession!.scenes.get(sceneName)
             : curSession!.inpaints.get(sceneName);
         if (!scene) return;
+        // 히스토리 「이미지 그리드에서 보기」는 늘 그리드 — 이미지 뷰에서 바로 연 상세 보기 표시를 푼다(같은 씬·같은 이미지여도)
+        setDisplayDirect(undefined);
         setDisplayFocus(filename);
         setDisplayScene(scene);
       };
@@ -2638,6 +2648,9 @@ const QueueControl = observer(
           setDisplayFocus(undefined);
           setDisplayScene(next);
         };
+        // 「상세 보기로 바로 열기」 — 지금 뷰어의 씬·초점이 이미지 뷰 칸에서 연 그것일 때만(닫으면 뷰어 전체를 닫고 표시를 푼다)
+        const direct =
+          !!displayDirect && displayDirect.scene === displayScene && displayDirect.filename === displayFocus;
         return (
           <FloatView
             // 씬 고유 key: 열린 채 다른 씬으로 바뀔 때 리마운트시켜 마운트 refresh·탭 상태를 초기화
@@ -2661,6 +2674,14 @@ const QueueControl = observer(
               }}
               // 위에 씬 편집 창이 쌓여 있는 동안 그리드 단축키를 끈다(2026-11-25)
               coveredByEditor={!!editingScene}
+              onDirectDetailClose={
+                direct
+                  ? () => {
+                      setDisplayDirect(undefined);
+                      closeGridOf(displayScene);
+                    }
+                  : undefined
+              }
               isMainImage={isMainImage}
               onFilenameChange={onFilenameChange}
               onEdit={onEdit}
@@ -2734,7 +2755,7 @@ const QueueControl = observer(
         );
       }
       return <></>;
-    }, [displayScene, displayFocus, getFilteredScenes, editingScene]);
+    }, [displayScene, displayFocus, getFilteredScenes, editingScene, displayDirect]);
 
     const [sceneSelector, setSceneSelector] = useState<
       SceneSelectorItem | undefined
@@ -2952,11 +2973,21 @@ const QueueControl = observer(
       if (!choice) return;
       setSceneViewMode(type, normalizeSceneViewMode(choice));
     };
-    // 이미지 뷰 칸의 동작 — 이미지 = 그 씬의 이미지 그리드를 그 이미지 위치로, 씬 = 씬 카드 우클릭과 같은 씬 메뉴
+    // 이미지 뷰 칸의 동작 — 이미지 = 그 씬의 이미지 상세 보기를 그 이미지로 바로(2026-11-26, 닫으면 씬 목록으로),
+    // 이미지 메뉴 「이미지 그리드에서 보기」 = 그 씬의 이미지 그리드를 그 이미지 위치로(종전 칸 누름), 씬 = 씬 카드 우클릭과 같은 씬 메뉴
     const openImageFromView = (scene: GenericScene, filename: string) => {
+      setDisplayDirect({ scene, filename });
       setDisplayFocus(filename);
       setDisplayScene(scene);
     };
+    const openGridFromView = (scene: GenericScene, filename: string) => {
+      setDisplayDirect(undefined);
+      setDisplayFocus(filename);
+      setDisplayScene(scene);
+    };
+    // 칸 왼쪽 위 별 — 그리드·상세 보기의 별과 같은 되돌리기 기록 길(models/imageStateUndo)
+    const toggleFavoriteFromView = (scene: GenericScene, filename: string) =>
+      toggleImageFavorite(curSession!, scene, filename);
     const openSceneFromView = (scene: GenericScene) => {
       setDisplayFocus(undefined);
       setDisplayScene(scene);
@@ -3675,6 +3706,8 @@ const QueueControl = observer(
               containerRef={gridContainerRef}
               searching={!!sceneSearchQuery.trim()}
               onOpenImage={openImageFromView}
+              onOpenGrid={openGridFromView}
+              onToggleFavorite={toggleFavoriteFromView}
               onOpenScene={openSceneFromView}
               onSceneMenu={openSceneMenuFromView}
               bookmarkedScene={sceneBookmark?.name}

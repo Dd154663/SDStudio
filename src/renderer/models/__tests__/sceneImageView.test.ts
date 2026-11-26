@@ -1,7 +1,11 @@
 // 씬 목록 이미지 뷰 1차(2026-11-26) — 순수 규칙: 최근 순 정렬, 씬 별로 칸 배열(상한·더보기·빈 씬·변형 첫 칸), 씬 → 칸 인덱스,
 // 보이는 범위 → 씬 집합, 기억값 정리, 탭 종류별 분리, 메모, 칸 크기, 「씬으로 이동」 등록소.
+import fs from 'fs';
+import path from 'path';
 import {
   buildBySceneCells,
+  directDetailCloseTarget,
+  directDetailStartIndex,
   buildRecentCells,
   buildSceneRows,
   buildSceneImageLayout,
@@ -408,5 +412,53 @@ describe('「씬으로 이동」 등록소', () => {
     expect(getSceneRevealer('scene')).toBe(r2);
     off2();
     expect(getSceneRevealer('scene')).toBeUndefined();
+  });
+});
+
+// ===== 이미지 칸 누름 = 상세 보기로 바로(2026-11-26) — ResultViewer 「바로 열기」의 판단 =====
+describe('상세 보기로 바로 열기', () => {
+  const paths = ['outs/s/A/3.png', 'outs/s/A/1.png', 'outs/s/A/2.png'];
+
+  test('처음 인덱스 = 그리드 순서 목록에서 그 파일의 자리', () => {
+    expect(directDetailStartIndex(true, '1.png', () => paths)).toBe(1);
+    expect(directDetailStartIndex(true, '3.png', () => paths)).toBe(0);
+  });
+
+  test('바로 열기가 아니거나 파일 이름이 없거나 못 찾으면(그 사이 삭제) undefined = 종전처럼 그리드', () => {
+    const read = jest.fn(() => paths);
+    expect(directDetailStartIndex(false, '1.png', read)).toBeUndefined();
+    expect(directDetailStartIndex(true, undefined, read)).toBeUndefined();
+    // 바로 열기가 아니면 목록을 읽지도 않는다
+    expect(read).not.toHaveBeenCalled();
+    expect(directDetailStartIndex(true, 'gone.png', () => paths)).toBeUndefined();
+    // 이름 일부만 같은 파일과 헷갈리지 않는다(경로 끝 「/이름」)
+    expect(directDetailStartIndex(true, '.png', () => paths)).toBeUndefined();
+  });
+
+  test('닫기 = 바로 열어 시작했고 닫기 콜백이 있으면 뷰어 전체, 아니면 그리드', () => {
+    expect(directDetailCloseTarget(true, true)).toBe('viewer');
+    expect(directDetailCloseTarget(true, false)).toBe('grid');
+    expect(directDetailCloseTarget(false, true)).toBe('grid');
+    expect(directDetailCloseTarget(false, false)).toBe('grid');
+  });
+
+  test('ResultViewer 연결(소스): 초기값으로 상세 보기, 닫기 세 길이 closeDetail, 바로 열기 동안 그리드 숨김, 선언 순서', () => {
+    const rv = fs
+      .readFileSync(path.join(__dirname, '../../componenets/ResultViewer.tsx'), 'utf8')
+      .replace(/\r\n/g, '\n');
+    // 상세 보기 상태의 초기값 = 바로 열기 처음 인덱스(첫 렌더부터 상세 보기 — 그리드가 먼저 보이지 않음)
+    expect(rv).toMatch(/const \[selectedImageIndex, setSelectedImageIndex\] = useState<\s*number \| undefined\s*>\(directStartIndex\);/);
+    expect(rv).toContain('directDetailStartIndex(!!onDirectDetailClose, focusFilename,');
+    // FloatView 닫기(✕·Esc·뒤로)와 상세 보기 스스로 닫기(마지막 이미지 삭제·플러그인 close)가 같은 closeDetail
+    expect(rv).toContain('onEscape={closeDetail}');
+    expect(rv).toContain('onClose={closeDetail}');
+    expect(rv).toContain("if (directDetailCloseTarget(startedDirect, !!onDirectDetailClose) === 'viewer') onDirectDetailClose!();");
+    expect(rv).toContain("(hideGridForDirect ? ' invisible' : '')");
+    // 선언 순서: 바로 열기 계산 → 상세 보기 상태 → closeDetail 이 그것을 JSX 보다 앞에서 선언
+    const at = (s: string) => rv.indexOf(s);
+    expect(at('const [directStartIndex]')).toBeGreaterThan(0);
+    expect(at('const [directStartIndex]')).toBeLessThan(at('const [selectedImageIndex, setSelectedImageIndex]'));
+    expect(at('const closeDetail = ')).toBeLessThan(at('onEscape={closeDetail}'));
+    expect(at('const hideGridForDirect')).toBeLessThan(at("(hideGridForDirect ? ' invisible' : '')"));
   });
 });

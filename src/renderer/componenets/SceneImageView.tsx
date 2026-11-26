@@ -5,7 +5,10 @@
 //   첫 칸은 줄 왼쪽에 고정(sticky), 줄의 가로 스크롤 위치는 씬 이름별로 메모리에만 기억해 줄이 다시 그려질 때 되살린다.
 //   모바일은 줄의 가로 막대를 숨기는 대신 가려진 칸이 있는 쪽에 옅은 화살표(공용 HScrollHint — 환경설정 탭 바와 같은 것).
 // · 칸 그리기는 격자·줄 공용 부품(SceneImageCellView) 하나.
-// · 이미지 칸 누름 = 그 씬의 이미지 그리드를 그 이미지 위치로(onOpenImage), 우클릭/길게 누르기 = 이미지 그리드의 이미지 메뉴(GallaryImage).
+// · 이미지 칸 누름 = 그 씬의 이미지 상세 보기를 그 이미지로 바로(onOpenImage — 2026-11-26 사용자: 히스토리와 일관),
+//   우클릭/길게 누르기 = 이미지 그리드의 이미지 메뉴(GallaryImage) + 이 화면에서만 「이미지 그리드에서 보기」(ctx.openGrid → onOpenGrid).
+// · 결과 이미지 칸(이미지 칸·생성 탭 첫 칸) 왼쪽 위 = 즐겨찾기 별(히스토리 칸의 별과 같은 모양·규칙 — PC 는 칸에 올렸을 때만,
+//   모바일은 항상 옅게, 즐겨찾기면 늘 노란 별). 누름 = onToggleFavorite(그리드의 별과 같은 되돌리기 기록 길).
 // · 씬 첫 칸의 이름 띠(빈 첫 칸은 칸 전체) 누름·우클릭 = 씬 메뉴(onSceneMenu). 더보기 칸 = 그 씬의 이미지 그리드(onOpenScene).
 // · 숨은 탭(isActive 거짓)에서는 구독·격자를 쉰다(바깥 상자만 남겨 「보이는 탭」 판정 ref 를 유지).
 // · 씬 첫 칸(PC)에 마우스를 올리면 씬 카드와 같은 네 버튼(예약 추가·예약 제거·씬 편집·씬 북마크)이 뜬다(2026-11-26).
@@ -22,6 +25,7 @@ import React, {
 } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useContextMenu } from 'react-contexify';
+import { FaRegStar, FaStar } from 'react-icons/fa';
 import {
   FixedSizeGrid,
   FixedSizeList,
@@ -101,7 +105,12 @@ export interface SceneImageViewProps {
   containerRef: React.RefObject<HTMLDivElement>;
   /** 검색 중(빈 목록 문구) */
   searching: boolean;
+  /** 이미지 칸 누름 = 그 이미지의 상세 보기로 바로 */
   onOpenImage: (scene: GenericScene, filename: string) => void;
+  /** 이미지 메뉴 「이미지 그리드에서 보기」 = 그 씬의 이미지 그리드를 그 이미지 위치로 */
+  onOpenGrid: (scene: GenericScene, filename: string) => void;
+  /** 칸 왼쪽 위 별 = 즐겨찾기 반전(되돌리기 기록 길은 부르는 쪽이) */
+  onToggleFavorite: (scene: GenericScene, filename: string) => void;
   onOpenScene: (scene: GenericScene) => void;
   onSceneMenu: (scene: GenericScene, e: React.MouseEvent) => void;
   /** 북마크된 씬 이름(없으면 undefined) — 첫 칸의 북마크 버튼·이름 띠 표시 */
@@ -131,6 +140,8 @@ interface CellData {
   session: Session;
   scenesByName: Map<string, GenericScene>;
   onOpenImage: SceneImageViewProps['onOpenImage'];
+  onOpenGrid: SceneImageViewProps['onOpenGrid'];
+  onToggleFavorite: SceneImageViewProps['onToggleFavorite'];
   onOpenScene: SceneImageViewProps['onOpenScene'];
   onSceneMenu: SceneImageViewProps['onSceneMenu'];
   bookmarkedScene?: string;
@@ -256,14 +267,49 @@ const HeadSceneButtons = ({ scene, bookmarked, data }: { scene: GenericScene; bo
   );
 };
 
-/** 앞줄에서 이어진 씬의 줄 첫 칸 — 씬 이름을 작게 다시 적는다(누를 수 없는 표시) */
+/** 앞줄에서 이어진 씬의 줄 첫 칸 — 씬 이름을 작게 다시 적는다(누를 수 없는 표시). 왼쪽 위는 즐겨찾기 별 자리라 왼쪽 아래 */
 const ContinuedTag = ({ name }: { name: string }) => (
   <div
     data-scene-group-continued=""
-    className="absolute top-1 left-1 z-[5] max-w-[85%] truncate rounded px-1.5 text-[11px] leading-[18px] text-white/90 bg-black/55 pointer-events-none select-none"
+    className="absolute bottom-1 left-1 z-[5] max-w-[85%] truncate rounded px-1.5 text-[11px] leading-[18px] text-white/90 bg-black/55 pointer-events-none select-none"
   >
     {name}
   </div>
+);
+
+/**
+ * 결과 이미지 칸 왼쪽 위의 즐겨찾기 별(2026-11-26) — 히스토리 칸의 별 버튼(ImageHistory data-history-fav-btn)과 같은 모양·규칙.
+ * 즐겨찾기면 항상 노란 별, 아니면 PC 는 그 칸(이름 붙인 그룹 hoverGroup)에 올렸을 때만·모바일(hover 없음)은 항상 옅게.
+ * 누름은 칸으로 번지지 않는다(칸 누름 = 상세 보기).
+ * hoverGroup 은 Tailwind 가 글자 그대로 찾아야 해서 클래스 전체를 넘긴다(group-hover/scene-img:opacity-100 등).
+ */
+const FavStarButton = ({
+  isFav,
+  hoverClass,
+  onToggle,
+}: {
+  isFav: boolean;
+  hoverClass: string;
+  onToggle: () => void;
+}) => (
+  <button
+    type="button"
+    className={
+      'absolute left-0 top-0 z-10 m-1 rounded-full card-overlay-btn flex items-center justify-center shadow ' +
+      (isMobile ? 'w-7 h-7 touch-hit ' : 'w-6 h-6 ') +
+      (isFav ? '' : isMobile ? 'opacity-60' : `opacity-0 ${hoverClass} focus-visible:opacity-100`)
+    }
+    aria-label={isFav ? '즐겨찾기 해제' : '즐겨찾기'}
+    title={isFav ? '즐겨찾기 해제' : '즐겨찾기'}
+    aria-pressed={isFav}
+    data-scene-image-fav-btn=""
+    onClick={(e) => {
+      e.stopPropagation();
+      onToggle();
+    }}
+  >
+    {isFav ? <FaStar size={14} className="text-yellow-400" /> : <FaRegStar size={14} />}
+  </button>
 );
 
 /** 썸네일 한 장(가상 칸 안). path 가 없으면 빈 자리 */
@@ -305,11 +351,14 @@ const SceneImageCellView = observer(
   if (!scene) return null;
   const outer = { ...style, padding: SCENE_IMAGE_CELL_PAD };
   const outputDir = imageService.getOutputDir(data.session, scene);
-  const imageMenu = (e: React.MouseEvent, path: string) => {
+  // openGrid = 이 화면에서 연 메뉴에만 있는 「이미지 그리드에서 보기」(그리드 안에서 연 같은 메뉴에는 없음 — AppContextMenu 가 이것으로 가린다)
+  const imageMenu = (e: React.MouseEvent, path: string, filename: string) => {
     e.preventDefault();
     show({
       event: e,
-      props: { ctx: { type: 'gallary_image', path: [path], scene, starable: true } },
+      props: {
+        ctx: { type: 'gallary_image', path: [path], scene, starable: true, openGrid: () => data.onOpenGrid(scene, filename) },
+      },
     });
   };
   const boxStyle: React.CSSProperties = { height: data.imageHeight };
@@ -362,13 +411,21 @@ const SceneImageCellView = observer(
               e.preventDefault();
               data.onSceneMenu(scene, e);
             } else {
-              imageMenu(e, `${outputDir}/${cell.filename}`);
+              imageMenu(e, `${outputDir}/${cell.filename}`, cell.filename);
             }
           }}
         >
           <div className={`w-full h-full${empty ? '' : ' cursor-pointer'}`}>
             <CellPicture path={picturePath} thumb={data.thumb} favorite={isFav} />
           </div>
+          {/* 별 = 결과 이미지가 그림인 첫 칸(생성 탭)만 — 변형 탭의 입력 원본·빈 첫 칸에는 없다 */}
+          {!!cell.filename && (
+            <FavStarButton
+              isFav={isFav}
+              hoverClass="group-hover/scene-head:opacity-100"
+              onToggle={() => data.onToggleFavorite(scene, cell.filename!)}
+            />
+          )}
           <SceneNameStrip scene={scene} total={cell.total} bookmarked={bookmarked} onSceneMenu={data.onSceneMenu} />
           {!isMobile && <HeadSceneButtons scene={scene} bookmarked={bookmarked} data={data} />}
         </div>
@@ -382,13 +439,18 @@ const SceneImageCellView = observer(
     <div style={outer} className={className} data-scene-image-cell="img">
       <div
         data-scene-image-box=""
-        className="relative w-full cursor-pointer hover:brightness-95 active:brightness-90 rounded-md bg-[var(--c-surface)]"
+        className="group/scene-img relative w-full cursor-pointer hover:brightness-95 active:brightness-90 rounded-md bg-[var(--c-surface)]"
         style={boxStyle}
         onClick={() => data.onOpenImage(scene, cell.filename)}
-        onContextMenu={(e) => imageMenu(e, path)}
+        onContextMenu={(e) => imageMenu(e, path, cell.filename)}
       >
         {continued}
         <CellPicture path={path} thumb={data.thumb} favorite={isFav} />
+        <FavStarButton
+          isFav={isFav}
+          hoverClass="group-hover/scene-img:opacity-100"
+          onToggle={() => data.onToggleFavorite(scene, cell.filename)}
+        />
       </div>
       {data.caption > 0 && (
         <div className="text-xs text-sub truncate px-0.5 select-none" style={{ height: data.caption, lineHeight: `${data.caption}px` }} data-scene-image-caption="">
@@ -592,6 +654,8 @@ const SceneImageViewInner = observer(
     const handlers = useMemo(
       () => ({
         onOpenImage: (s: GenericScene, f: string) => handlersRef.current.onOpenImage(s, f),
+        onOpenGrid: (s: GenericScene, f: string) => handlersRef.current.onOpenGrid(s, f),
+        onToggleFavorite: (s: GenericScene, f: string) => handlersRef.current.onToggleFavorite(s, f),
         onOpenScene: (s: GenericScene) => handlersRef.current.onOpenScene(s),
         onSceneMenu: (s: GenericScene, e: React.MouseEvent) => handlersRef.current.onSceneMenu(s, e),
         onQueueAdd: (s: GenericScene) => handlersRef.current.onQueueAdd(s),

@@ -1,6 +1,7 @@
 // 씬 목록 이미지 뷰 1차(2026-11-26) — 실제로 그려 보는 렌더 검사: 두 방식의 격자, 첫 칸 테두리·이름, 더보기 카드,
 // 빈 첫 칸, 이미지 칸 누름 → 그리드 열기 콜백, 이름 띠 → 씬 메뉴, 우클릭 → 이미지 메뉴, 빈 프로젝트, 숨은 탭 구독 끊기,
 // 첫 칸의 호버 버튼 넷(씬 카드와 같은 동작), 줄이 바뀔 때 씬 이름 다시 적기.
+// 2026-11-26: 이미지 칸 누름 = 상세 보기로 바로(onOpenImage), 그리드 열기는 이미지 메뉴(ctx.openGrid), 칸 왼쪽 위 즐겨찾기 별.
 import React, { act, createRef } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { observable, runInAction } from 'mobx';
@@ -61,6 +62,8 @@ const mkScene = (name: string, type: 'scene' | 'inpaint' = 'scene', extra: any =
 
 const handlers = () => ({
   onOpenImage: jest.fn(),
+  onOpenGrid: jest.fn(),
+  onToggleFavorite: jest.fn(),
   onOpenScene: jest.fn(),
   onSceneMenu: jest.fn(),
   onQueueAdd: jest.fn(),
@@ -135,7 +138,7 @@ describe('씬 별로', () => {
     expect(cells('head-empty')[0].textContent).toContain('Empty');
   });
 
-  test('이미지 칸 누름 = 그 씬 그리드를 그 이미지로, 첫 칸 그림 누름도 같음, 더보기 = 그 씬 그리드', async () => {
+  test('이미지 칸 누름 = 그 이미지 상세 보기(onOpenImage), 첫 칸 그림 누름도 같음, 더보기 = 그 씬 그리드', async () => {
     const h = handlers();
     const a = mkScene('A');
     mockOutputs.A = Array.from({ length: 10 }, (_, i) => T(i));
@@ -171,20 +174,37 @@ describe('씬 별로', () => {
     });
     expect(mockShow).toHaveBeenCalledWith(
       expect.objectContaining({
-        props: { ctx: { type: 'gallary_image', path: [`outs/scene/A/${T(1)}`], scene: a, starable: true } },
+        props: {
+          ctx: {
+            type: 'gallary_image',
+            path: [`outs/scene/A/${T(1)}`],
+            scene: a,
+            starable: true,
+            openGrid: expect.any(Function),
+          },
+        },
       }),
     );
+    // 이 화면에서 연 메뉴에만 「이미지 그리드에서 보기」 — 고르면 그 씬 그리드를 그 이미지 위치로(onOpenGrid)
+    mockShow.mock.calls.at(-1)[0].props.ctx.openGrid();
+    expect(h.onOpenGrid).toHaveBeenCalledWith(a, T(1));
+    expect(h.onOpenImage).not.toHaveBeenCalled();
   });
 
-  test('즐겨찾기 이미지 = 노란 테두리(별 버튼 없음)', async () => {
+  test('즐겨찾기 이미지 = 노란 테두리 + 늘 보이는 노란 별(칸 테두리는 그대로)', async () => {
     const a = mkScene('A', 'scene', { mains: [T(1)] });
     mockOutputs.A = [T(1), T(2)];
     await render({ type: 'scene', mode: 'byScene', scenes: [a], ...handlers() });
     expect(cells('img')[0].querySelector('img')!.className).toContain('border-yellow-400');
     expect(host.querySelector('[data-scene-head="A"]')!.className).not.toContain('border-yellow-400');
-    // 버튼은 첫 칸의 호버 버튼 넷뿐(이미지 칸에 별 버튼 없음)
-    expect(host.querySelectorAll('button').length).toBe(4);
-    expect(cells('img')[0].querySelectorAll('button').length).toBe(0);
+    // 버튼 = 첫 칸의 호버 버튼 넷 + 별 둘(첫 칸 그림·이미지 칸)
+    expect(host.querySelectorAll('button').length).toBe(6);
+    const star = cells('img')[0].querySelector<HTMLButtonElement>('[data-scene-image-fav-btn]')!;
+    expect(cells('img')[0].querySelectorAll('button').length).toBe(1);
+    expect(star.getAttribute('aria-label')).toBe('즐겨찾기 해제');
+    expect(star.getAttribute('aria-pressed')).toBe('true');
+    expect(star.className).not.toContain('opacity-0');
+    expect(star.querySelector('svg')!.getAttribute('class')).toContain('text-yellow-400');
   });
 
   test('변형 탭: 첫 칸 = 입력 원본(썸네일 읽기), 결과가 이어짐, 입력 그림 누름 = 그 씬 그리드·우클릭 = 씬 메뉴', async () => {
@@ -400,7 +420,9 @@ describe('씬 별로 — 첫 칸의 호버 버튼 넷(PC, 씬 카드와 같은 �
     mockOutputs.A = [T(1)];
     await render({ type: 'scene', mode: 'recent', scenes: [a], ...handlers() });
     expect(host.querySelector('[data-scene-head-buttons]')).toBeNull();
-    expect(host.querySelectorAll('button').length).toBe(0);
+    // 버튼은 이미지 칸의 즐겨찾기 별뿐
+    expect(host.querySelectorAll('button').length).toBe(1);
+    expect(host.querySelectorAll('[data-scene-image-fav-btn]').length).toBe(1);
   });
 });
 
@@ -479,9 +501,19 @@ describe('가로 줄(2026-11-26 2차)', () => {
     });
     expect(mockShow).toHaveBeenCalledWith(
       expect.objectContaining({
-        props: { ctx: { type: 'gallary_image', path: [`outs/scene/A/${T(4)}`], scene: a, starable: true } },
+        props: {
+          ctx: {
+            type: 'gallary_image',
+            path: [`outs/scene/A/${T(4)}`],
+            scene: a,
+            starable: true,
+            openGrid: expect.any(Function),
+          },
+        },
       }),
     );
+    mockShow.mock.calls.at(-1)[0].props.ctx.openGrid();
+    expect(h.onOpenGrid).toHaveBeenCalledWith(a, T(4));
   });
 
   test('첫 칸 호버 버튼 넷(PC) — 같은 순서·콜백, 북마크 표시', async () => {
@@ -596,5 +628,102 @@ describe('가로 줄(2026-11-26 2차)', () => {
     expect(host.querySelector('[data-scene-view-row-cap]')).toBeNull();
     expect(host.querySelector<HTMLInputElement>('[data-scene-view-cap] input')!.value).toBe('8');
     await act(async () => setSceneViewMode('scene', 'cards'));
+  });
+});
+
+describe('즐겨찾기 별(2026-11-26 — 히스토리 칸의 별과 같은 모양·규칙)', () => {
+  const starIn = (el: Element) => el.querySelector<HTMLButtonElement>('[data-scene-image-fav-btn]');
+
+  test('대상 = 이미지 칸 전부 + 생성 탭 첫 칸, 빈 첫 칸·더보기에는 없음', async () => {
+    setSceneViewCap(3);
+    const a = mkScene('A');
+    const empty = mkScene('Empty');
+    mockOutputs.A = [T(1), T(2), T(3), T(4), T(5)];
+    await render({ type: 'scene', mode: 'byScene', scenes: [a, empty], ...handlers() });
+    expect(cells('img').map((c) => !!starIn(c))).toEqual([true, true]);
+    expect(starIn(cells('head')[0])).not.toBeNull();
+    expect(starIn(cells('head-empty')[0])).toBeNull();
+    expect(starIn(cells('more')[0])).toBeNull();
+  });
+
+  test('변형 탭 첫 칸(입력 원본)에는 없고 결과 이미지 칸에는 있다(모드 동등)', async () => {
+    const v = mkScene('V', 'inpaint', { preset: { image: 'src.png' } });
+    mockOutputs.V = [T(1)];
+    await render({ type: 'inpaint', mode: 'byScene', scenes: [v], ...handlers() });
+    expect(starIn(cells('head')[0])).toBeNull();
+    expect(starIn(cells('img')[0])).not.toBeNull();
+  });
+
+  test('PC: 히스토리와 같은 모양, 즐겨찾기가 아니면 그 칸에 올렸을 때만(이름 붙인 그룹), 키보드 포커스 때도 보임', async () => {
+    const a = mkScene('A');
+    mockOutputs.A = [T(1), T(2)];
+    await render({ type: 'scene', mode: 'byScene', scenes: [a], ...handlers() });
+    const img = starIn(cells('img')[0])!;
+    for (const c of ['absolute', 'left-0', 'top-0', 'z-10', 'm-1', 'rounded-full', 'card-overlay-btn', 'shadow', 'w-6', 'h-6'])
+      expect(img.className.split(' ')).toContain(c);
+    expect(img.className).not.toContain('touch-hit');
+    expect(img.className).toContain('opacity-0');
+    expect(img.className).toContain('group-hover/scene-img:opacity-100');
+    expect(img.className).toContain('focus-visible:opacity-100');
+    // 바깥의 다른 .group 에 반응하지 않게 이름 붙인 그룹만
+    expect(img.className).not.toMatch(/(^| )group-hover:/);
+    expect(cells('img')[0].querySelector('[data-scene-image-box]')!.className).toContain('group/scene-img');
+    expect(img.getAttribute('aria-label')).toBe('즐겨찾기');
+    expect(img.getAttribute('title')).toBe('즐겨찾기');
+    expect(img.getAttribute('aria-pressed')).toBe('false');
+    const head = starIn(cells('head')[0])!;
+    expect(head.className).toContain('group-hover/scene-head:opacity-100');
+  });
+
+  test('누름 = onToggleFavorite(그 씬·그 파일)만 — 칸 누름(상세 보기)·씬 메뉴로 번지지 않음', async () => {
+    const h = handlers();
+    const a = mkScene('A');
+    mockOutputs.A = [T(1), T(2)];
+    await render({ type: 'scene', mode: 'byScene', scenes: [a], ...h });
+    await act(async () => starIn(cells('img')[0])!.click());
+    expect(h.onToggleFavorite).toHaveBeenCalledWith(a, T(1));
+    await act(async () => starIn(cells('head')[0])!.click());
+    expect(h.onToggleFavorite).toHaveBeenLastCalledWith(a, T(2));
+    expect(h.onOpenImage).not.toHaveBeenCalled();
+    expect(h.onOpenScene).not.toHaveBeenCalled();
+    expect(h.onSceneMenu).not.toHaveBeenCalled();
+  });
+
+  test('즐겨찾기 상태가 바뀌면 별도 바로 바뀐다(observer)', async () => {
+    const a = mkScene('A');
+    mockOutputs.A = [T(1), T(2)];
+    await render({ type: 'scene', mode: 'byScene', scenes: [a], ...handlers() });
+    expect(starIn(cells('img')[0])!.getAttribute('aria-pressed')).toBe('false');
+    await act(async () => {
+      runInAction(() => a.mains.push(T(1)));
+    });
+    expect(starIn(cells('img')[0])!.getAttribute('aria-pressed')).toBe('true');
+    expect(starIn(cells('img')[0])!.className).not.toContain('opacity-0');
+  });
+
+  test('가로 줄·최근 순에도 같은 별', async () => {
+    const h = handlers();
+    const a = mkScene('A');
+    mockOutputs.A = [T(1), T(2)];
+    await render({ type: 'scene', mode: 'rows', scenes: [a], ...h });
+    expect(starIn(cells('img')[0])).not.toBeNull();
+    expect(starIn(cells('head')[0])).not.toBeNull();
+    await render({ type: 'scene', mode: 'recent', scenes: [a], ...h });
+    await act(async () => starIn(cells('img')[1])!.click());
+    expect(h.onToggleFavorite).toHaveBeenCalledWith(a, T(1));
+    expect(h.onOpenImage).not.toHaveBeenCalled();
+  });
+
+  test('씬 별로의 이어진 줄 표시(씬 이름)는 별과 겹치지 않게 칸 왼쪽 아래', async () => {
+    const a = mkScene('A');
+    mockOutputs.A = Array.from({ length: 12 }, (_, i) => T(i));
+    await render({ type: 'scene', mode: 'byScene', scenes: [a], ...handlers() });
+    const tag = host.querySelector<HTMLElement>('[data-scene-group-continued]')!;
+    expect(tag).not.toBeNull();
+    expect(tag.textContent).toBe('A');
+    expect(tag.className).toContain('bottom-1');
+    expect(tag.className).toContain('left-1');
+    expect(tag.className).not.toContain('top-1');
+    expect(tag.className).toContain('pointer-events-none');
   });
 });

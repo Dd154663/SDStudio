@@ -914,6 +914,8 @@ export interface GallaryImageContextAlt {
   path: string[];
   scene?: GenericScene;
   starable?: boolean;
+  /** 씬 목록 이미지 뷰에서 연 메뉴에만 — 「이미지 그리드에서 보기」(그 씬의 그리드를 그 이미지 위치로, 2026-11-26) */
+  openGrid?: () => void;
 }
 
 export interface SceneContextAlt {

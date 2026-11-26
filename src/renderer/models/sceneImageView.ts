@@ -581,3 +581,31 @@ export function registerSceneRevealer(tab: SceneViewTab, revealer: SceneRevealer
 export function getSceneRevealer(tab: SceneViewTab): SceneRevealer | undefined {
   return revealers.get(tab);
 }
+
+// ===== 이미지 칸 누름 = 상세 보기로 바로(2026-11-26) =====
+// 이미지 뷰의 이미지 칸을 누르면 그 씬의 이미지 뷰어(ResultViewer)를 「상세 보기로 바로 열기」로 띄운다 —
+// 처음 렌더부터 상세 보기가 그 이미지로 열리고(그리드가 먼저 보이지 않게), 그 상세 보기를 닫으면 뷰어 전체가 닫혀 씬 목록으로 돌아온다.
+// 그리드 탭에서 평소처럼 연 상세 보기·다른 진입점(씬 카드·더보기·히스토리·단축키)은 종전 그대로 그리드.
+
+/**
+ * 「바로 열기」의 처음 상세 보기 인덱스 — 바로 열기가 아니거나, 파일 이름이 없거나, 지금 그리드 순서 목록에 그 이미지가 없으면
+ * undefined(= 종전처럼 그리드를 그 이미지 위치로). paths 는 그리드 「이미지」 탭의 보기 순서 목록(경로 끝이 /파일 이름).
+ */
+export function directDetailStartIndex(
+  direct: boolean,
+  filename: string | undefined,
+  paths: () => readonly string[],
+): number | undefined {
+  if (!direct || !filename) return undefined;
+  const idx = paths().findIndex((p) => p.endsWith('/' + filename));
+  return idx >= 0 ? idx : undefined;
+}
+
+/**
+ * 상세 보기를 닫을 때 갈 곳 — 'viewer' = 뷰어 전체 닫기(바로 열어 시작했고 부르는 쪽이 아직 그 뜻을 유지할 때),
+ * 'grid' = 종전처럼 그리드로. 바로 열기 중에 다른 길(히스토리 「이미지 그리드에서 보기」 등)이 같은 뷰어의 초점을 바꿔
+ * 부르는 쪽이 닫기 콜백을 거두면 그리드로 돌아간다.
+ */
+export function directDetailCloseTarget(startedDirect: boolean, canCloseViewer: boolean): 'viewer' | 'grid' {
+  return startedDirect && canCloseViewer ? 'viewer' : 'grid';
+}

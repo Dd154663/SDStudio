@@ -37,6 +37,8 @@ const mkScene = (name: string) =>
   observable({ name, type: 'scene', mains: [] as string[], workflowType: 'SDI2I', preset: { image: undefined as any } });
 const handlers = () => ({
   onOpenImage: jest.fn(),
+  onOpenGrid: jest.fn(),
+  onToggleFavorite: jest.fn(),
   onOpenScene: jest.fn(),
   onSceneMenu: jest.fn(),
   onQueueAdd: jest.fn(),
@@ -132,4 +134,23 @@ test('모바일 가로 줄: 넘치는 줄만 오른쪽 화살표, 넘기면 왼�
     scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
   });
   expect(hintOf('Wide')!.dataset.sceneRowHint).toBe('L');
+});
+
+// 즐겨찾기 별(2026-11-26) — 모바일(hover 없음)은 항상 옅게 보이고 손가락 크기(히스토리 칸의 별과 같은 규칙)
+test('모바일 즐겨찾기 별: 항상 옅게(opacity-60), 크게(w-7 h-7 touch-hit), 즐겨찾기면 진하게', async () => {
+  mockOutputs.Short = [T(1), T(2)];
+  const s = mkScene('Short');
+  s.mains.push(T(1));
+  await render([s]);
+  const stars = Array.from(rowOf('Short').querySelectorAll<HTMLButtonElement>('[data-scene-image-fav-btn]'));
+  // 첫 칸(T2, 즐겨찾기 아님) + 이미지 칸(T1, 즐겨찾기)
+  expect(stars.map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+  for (const b of stars) {
+    expect(b.className).toContain('w-7 h-7 touch-hit');
+    expect(b.className).not.toContain('w-6');
+    expect(b.className).not.toContain('group-hover');
+    expect(b.className).not.toContain('opacity-0');
+  }
+  expect(stars[0].className).toContain('opacity-60');
+  expect(stars[1].className).not.toContain('opacity-60');
 });
