@@ -3,6 +3,8 @@
 import {
   buildBySceneCells,
   buildRecentCells,
+  buildSceneRows,
+  buildSceneImageLayout,
   buildSceneViewModeMenu,
   createSceneImageLayoutMemo,
   getSceneRevealer,
@@ -11,21 +13,30 @@ import {
   normalizeSceneViewMode,
   normalizeSceneViewModes,
   readSceneViewCap,
+  normalizeSceneViewRowCap,
   readSceneViewModes,
+  readSceneViewRowCap,
   registerSceneRevealer,
   sceneCellIndex,
   sceneImageGridMetrics,
+  sceneImageRowMetrics,
+  sceneRowIndex,
   scenesInCellRange,
+  scenesInRowRange,
   sceneViewModeOf,
   sceneViewState,
   SCENE_VIEW_CAP_DEFAULT,
   SCENE_VIEW_CAP_STORAGE_KEY,
   SCENE_VIEW_MODE_STORAGE_KEY,
+  SCENE_VIEW_ROW_CAP_DEFAULT,
+  SCENE_VIEW_ROW_CAP_STORAGE_KEY,
   setSceneViewCap,
   setSceneViewMode,
+  setSceneViewRowCap,
   sortedNewestOf,
   visibleCellRange,
   writeSceneViewModes,
+  writeSceneViewRowCap,
 } from '../sceneImageView';
 
 const T = (n: number) => `${1700000000000 + n}.png`; // 13자리 ms 이름
@@ -137,6 +148,102 @@ describe('씬 별로 칸 배열', () => {
   });
 });
 
+describe('가로 줄', () => {
+  const outs = (n: number) => Array.from({ length: n }, (_, i) => T(i));
+  test('씬마다 한 줄(빈 씬 포함), 줄의 칸 = 씬 별로의 그 씬 칸과 같음(상한만 다름)', () => {
+    const sources = [
+      { name: 'A', outputs: outs(5) },
+      { name: 'Empty', outputs: [] },
+      { name: 'B', outputs: outs(2) },
+    ];
+    const layout = buildSceneRows(sources, 3, 'scene');
+    expect(layout.rows!.map((r) => r.scene)).toEqual(['A', 'Empty', 'B']);
+    expect(layout.rows![0].cells).toEqual([
+      { kind: 'head', scene: 'A', filename: T(4), total: 5 },
+      { kind: 'img', scene: 'A', filename: T(3) },
+      { kind: 'img', scene: 'A', filename: T(2) },
+      { kind: 'more', scene: 'A', remaining: 2 },
+    ]);
+    expect(layout.rows![1].cells).toEqual([{ kind: 'head', scene: 'Empty', filename: undefined, total: 0 }]);
+    expect(layout.rows![2].cells.map((c) => c.kind)).toEqual(['head', 'img']);
+    // 같은 상한이면 칸을 이어 붙인 것이 씬 별로와 같다(규칙 재사용)
+    expect(layout.cells).toEqual(buildBySceneCells(sources, 3, 'scene').cells);
+    expect(layout.cells).toEqual(layout.rows!.flatMap((r) => r.cells));
+  });
+  test('가로 줄 상한은 2~50 — 씬 별로 상한(최대 30)보다 많이 담을 수 있다, 기본 20', () => {
+    const big = [{ name: 'A', outputs: outs(60) }];
+    const r40 = buildSceneRows(big, 40, 'scene').rows![0].cells;
+    expect(r40.length).toBe(41);
+    expect(r40[40]).toEqual({ kind: 'more', scene: 'A', remaining: 20 });
+    const r99 = buildSceneRows(big, 99, 'scene').rows![0].cells;
+    expect(r99.length).toBe(51);
+    expect(buildSceneRows(big, SCENE_VIEW_ROW_CAP_DEFAULT, 'scene').rows![0].cells.length).toBe(21);
+    // buildSceneImageLayout 의 rows 길도 같은 규칙
+    expect(buildSceneImageLayout('rows', big, 40, 'scene').rows![0].cells.length).toBe(41);
+  });
+  test('변형 탭: 첫 칸 = 입력 원본, 결과는 상한−1 장', () => {
+    const layout = buildSceneRows([{ name: 'V', outputs: outs(5), input: 'src.png' }], 3, 'inpaint');
+    expect(layout.rows![0].cells).toEqual([
+      { kind: 'head', scene: 'V', input: 'src.png', total: 5 },
+      { kind: 'img', scene: 'V', filename: T(4) },
+      { kind: 'img', scene: 'V', filename: T(3) },
+      { kind: 'more', scene: 'V', remaining: 3 },
+    ]);
+  });
+  test('씬 → 줄 인덱스(이미지 없는 씬도 줄이 있음, 목록에 없으면 −1), 다른 방식에서는 −1', () => {
+    const layout = buildSceneRows(
+      [
+        { name: 'A', outputs: [T(1)] },
+        { name: 'Empty', outputs: [] },
+        { name: 'B', outputs: [T(2)] },
+      ],
+      20,
+      'scene',
+    );
+    expect(sceneRowIndex(layout, 'A')).toBe(0);
+    expect(sceneRowIndex(layout, 'Empty')).toBe(1);
+    expect(sceneRowIndex(layout, 'B')).toBe(2);
+    expect(sceneRowIndex(layout, 'Nope')).toBe(-1);
+    expect(sceneRowIndex(buildBySceneCells([{ name: 'A', outputs: [] }], 8, 'scene'), 'A')).toBe(-1);
+  });
+  test('보이는 줄 범위 → 씬(줄 순서), 범위는 배열 안으로 잘림', () => {
+    const { rows } = buildSceneRows(
+      ['A', 'B', 'C', 'D'].map((name) => ({ name, outputs: [] })),
+      20,
+      'scene',
+    );
+    expect(scenesInRowRange(rows!, 1, 2)).toEqual(['B', 'C']);
+    expect(scenesInRowRange(rows!, -3, 99)).toEqual(['A', 'B', 'C', 'D']);
+    expect(scenesInRowRange(rows!, 5, 9)).toEqual([]);
+  });
+  test('메모: 가로 줄 상한이 바뀌면 다시, 같으면 직전 결과', () => {
+    const memo = createSceneImageLayoutMemo();
+    const a = outs(30);
+    const first = memo('rows', [{ name: 'A', outputs: a }], 20, 'scene');
+    expect(memo('rows', [{ name: 'A', outputs: a }], 20, 'scene')).toBe(first);
+    expect(memo('rows', [{ name: 'A', outputs: a }], 25, 'scene')).not.toBe(first);
+    // 같은 상한이라도 방식이 다르면 다시
+    expect(memo('byScene', [{ name: 'A', outputs: a }], 25, 'scene').rows).toBeUndefined();
+  });
+  test('줄 크기: PC = 씬 별로 격자와 같은 열 폭·그림 높이 + 가로 막대 14px, 모바일 = 폭/3.3 정사각·막대 몫 없음', () => {
+    const grid = sceneImageGridMetrics({ width: 1000, mobile: false, percent: 50, cardStyle: 'portrait', caption: 0 });
+    const pc = sceneImageRowMetrics({ width: 1000, mobile: false, percent: 50, cardStyle: 'portrait' });
+    expect(pc.cellWidth).toBe(grid.columnWidth);
+    expect(pc.imageHeight).toBe(grid.imageHeight);
+    expect(pc.cellHeight).toBe(grid.imageHeight + 6);
+    expect(pc.rowHeight).toBe(grid.imageHeight + 6 + 14);
+    expect(pc.thumb).toBe(grid.thumb);
+    const sq = sceneImageRowMetrics({ width: 1000, mobile: false, percent: 50, cardStyle: 'square' });
+    expect(sq.imageHeight).toBe(244);
+    const mob = sceneImageRowMetrics({ width: 360, mobile: true, percent: 50, cardStyle: 'portrait' });
+    expect(mob.cellWidth).toBe(Math.floor(360 / 3.3));
+    expect(mob.imageHeight).toBe(mob.cellWidth - 6);
+    expect(mob.cellHeight).toBe(mob.cellWidth);
+    expect(mob.rowHeight).toBe(mob.cellHeight);
+    expect(mob.thumb).toBe(400);
+  });
+});
+
 describe('보이는 범위 → 씬', () => {
   test('줄 범위 → 칸 범위', () => {
     expect(visibleCellRange(2, 3, 4)).toEqual([8, 15]);
@@ -160,7 +267,9 @@ describe('보이는 범위 → 씬', () => {
 
 describe('기억값', () => {
   test('보기 방식: 모르는 값·깨진 JSON 은 cards, 탭 종류별로 따로', () => {
-    expect(normalizeSceneViewMode('rows')).toBe('cards');
+    expect(normalizeSceneViewMode('rows')).toBe('rows');
+    expect(normalizeSceneViewMode('columns')).toBe('cards');
+    expect(normalizeSceneViewModes('{"scene":"rows","inpaint":"byScene"}')).toEqual({ scene: 'rows', inpaint: 'byScene' });
     expect(normalizeSceneViewMode(3)).toBe('cards');
     expect(normalizeSceneViewModes('{"scene":"recent","inpaint":"nope"}')).toEqual({ scene: 'recent', inpaint: 'cards' });
     expect(normalizeSceneViewModes('{broken')).toEqual({ scene: 'cards', inpaint: 'cards' });
@@ -200,10 +309,44 @@ describe('기억값', () => {
     setSceneViewMode('inpaint', 'cards');
     setSceneViewCap(8);
   });
-  test('선택 창 내용 — 지금 고른 쪽 앞에 ✓, 가로 줄은 아직 없다', () => {
+  test('선택 창 내용 — 지금 고른 쪽 앞에 ✓, 순서 = 씬 카드·씬 별로·가로 줄·최근 순', () => {
     const menu = buildSceneViewModeMenu('byScene');
-    expect(menu.items.map((i) => i.text)).toEqual(['씬 카드', '✓ 씬 별로', '최근 순']);
-    expect(menu.items.map((i) => i.value)).toEqual(['cards', 'byScene', 'recent']);
+    expect(menu.items.map((i) => i.text)).toEqual(['씬 카드', '✓ 씬 별로', '가로 줄', '최근 순']);
+    expect(menu.items.map((i) => i.value)).toEqual(['cards', 'byScene', 'rows', 'recent']);
+    expect(buildSceneViewModeMenu('rows').items.map((i) => i.text)).toEqual(['씬 카드', '씬 별로', '✓ 가로 줄', '최근 순']);
+  });
+  test('가로 줄 상한: 기본 20, 범위 2~50, 소수 반올림, 새 키에 기억 — 씬 별로 상한과 독립', () => {
+    expect(SCENE_VIEW_ROW_CAP_DEFAULT).toBe(20);
+    expect(SCENE_VIEW_ROW_CAP_STORAGE_KEY).toBe('sdstudio-scene-view-row-cap');
+    expect(SCENE_VIEW_ROW_CAP_STORAGE_KEY).not.toBe(SCENE_VIEW_CAP_STORAGE_KEY);
+    expect(normalizeSceneViewRowCap('abc')).toBe(20);
+    expect(normalizeSceneViewRowCap(undefined)).toBe(20);
+    expect(normalizeSceneViewRowCap(1)).toBe(2);
+    expect(normalizeSceneViewRowCap(99)).toBe(50);
+    expect(normalizeSceneViewRowCap(40)).toBe(40);
+    expect(normalizeSceneViewRowCap(7.5)).toBe(8);
+    const st = memStorage();
+    expect(readSceneViewRowCap(st)).toBe(20);
+    st.setItem(SCENE_VIEW_CAP_STORAGE_KEY, '5');
+    // 씬 별로 상한 키는 가로 줄 상한에 영향 없음
+    expect(readSceneViewRowCap(st)).toBe(20);
+    writeSceneViewRowCap(st, 77);
+    expect(st.m.get(SCENE_VIEW_ROW_CAP_STORAGE_KEY)).toBe('50');
+    expect(st.m.get(SCENE_VIEW_CAP_STORAGE_KEY)).toBe('5');
+    expect(readSceneViewRowCap(st)).toBe(50);
+    const broken = { getItem: () => { throw new Error('x'); }, setItem: () => { throw new Error('x'); } };
+    expect(readSceneViewRowCap(broken)).toBe(20);
+    expect(() => writeSceneViewRowCap(broken, 3)).not.toThrow();
+    // 관찰 상태 — 서로 독립
+    const capBefore = sceneViewState.cap;
+    setSceneViewRowCap(45);
+    expect(sceneViewState.rowCap).toBe(45);
+    expect(sceneViewState.cap).toBe(capBefore);
+    expect(localStorage.getItem(SCENE_VIEW_ROW_CAP_STORAGE_KEY)).toBe('45');
+    setSceneViewCap(12);
+    expect(sceneViewState.rowCap).toBe(45);
+    setSceneViewCap(8);
+    setSceneViewRowCap(20);
   });
 });
 

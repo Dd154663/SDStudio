@@ -3668,7 +3668,7 @@ const QueueControl = observer(
             <SceneImageView
               ref={imageViewRef}
               type={type}
-              mode={sceneViewMode as 'byScene' | 'recent'}
+              mode={sceneViewMode as 'byScene' | 'rows' | 'recent'}
               session={curSession}
               scenes={getFilteredScenes()}
               isActive={isActive}

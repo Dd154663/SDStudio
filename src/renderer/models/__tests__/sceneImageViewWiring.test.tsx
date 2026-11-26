@@ -251,6 +251,37 @@ describe('씬 카드 보기(기본) = 종전 그대로', () => {
   });
 });
 
+describe('이미지 뷰(가로 줄)', () => {
+  beforeEach(() => setSceneViewMode('scene', 'rows'));
+
+  test('카드 대신 이미지 뷰(mode = rows), 지금 목록을 넘김, 선택 버튼 비활성, 등록소는 이미지 뷰', async () => {
+    runInAction(() => {
+      mockState.sceneSelectionMode = true;
+    });
+    await renderList();
+    expect(host.querySelector('[data-mock-image-view="rows"]')).not.toBeNull();
+    expect(host.querySelector('[id^="scene-cell-"]')).toBeNull();
+    expect(mockView.props.mode).toBe('rows');
+    expect(mockView.props.scenes.map((s: any) => s.name)).toEqual(['s1', 's2']);
+    expect(buttonOf('multi-select').disabled).toBe(true);
+    expect(mockState.sceneSelectionMode).toBe(false);
+    const r = getSceneRevealer('scene')!;
+    expect(r.isImageView()).toBe(true);
+    expect(r.reveal('s2')).toBe(true);
+    expect(mockHandle.scrollToScene).toHaveBeenCalledWith('s2');
+  });
+
+  test('「보기 방식」 선택 창에 가로 줄이 있고 고르면 바뀐다', async () => {
+    setSceneViewMode('scene', 'cards');
+    await renderList();
+    mockState.pushDialogAsync.mockResolvedValueOnce('rows');
+    await act(async () => buttonOf('scene-view-mode').click());
+    const arg = (mockState.pushDialogAsync as jest.Mock).mock.calls.at(-1)[0];
+    expect(arg.items.map((i: any) => i.text)).toEqual(['✓ 씬 카드', '씬 별로', '가로 줄', '최근 순']);
+    expect(host.querySelector('[data-mock-image-view="rows"]')).not.toBeNull();
+  });
+});
+
 describe('이미지 뷰(씬 별로)', () => {
   beforeEach(() => setSceneViewMode('scene', 'byScene'));
 

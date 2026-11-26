@@ -48,6 +48,7 @@ import {
   sceneViewState,
   setSceneViewCap,
   setSceneViewMode,
+  setSceneViewRowCap,
   sceneContinuesRow,
 } from '../sceneImageView';
 
@@ -292,12 +293,13 @@ describe('빈 프로젝트·검색·숨은 탭·갱신', () => {
 });
 
 describe('PC 보기 방식 드롭다운', () => {
-  test('세 방식, 씬 별로일 때만 씬당 장수 입력, 탭 종류별 값', async () => {
+  test('네 방식, 씬 별로일 때만 씬당 장수 입력, 탭 종류별 값', async () => {
     await act(async () => root.render(<SceneViewModeControl type="inpaint" />));
     const select = host.querySelector<HTMLSelectElement>('select')!;
     expect(select.className).toContain('app-select app-select-tight');
-    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['씬 카드', '씬 별로', '최근 순']);
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['씬 카드', '씬 별로', '가로 줄', '최근 순']);
     expect(host.querySelector('[data-scene-view-cap]')).toBeNull();
+    expect(host.querySelector('[data-scene-view-row-cap]')).toBeNull();
     await act(async () => setSceneViewMode('inpaint', 'byScene'));
     expect(host.querySelector('[data-scene-view-cap]')!.textContent).toContain('씬당');
     expect(host.querySelector<HTMLInputElement>('[data-scene-view-cap] input')!.value).toBe('8');
@@ -399,5 +401,200 @@ describe('씬 별로 — 첫 칸의 호버 버튼 넷(PC, 씬 카드와 같은 �
     await render({ type: 'scene', mode: 'recent', scenes: [a], ...handlers() });
     expect(host.querySelector('[data-scene-head-buttons]')).toBeNull();
     expect(host.querySelectorAll('button').length).toBe(0);
+  });
+});
+
+describe('가로 줄(2026-11-26 2차)', () => {
+  const rowsOf = () => Array.from(host.querySelectorAll<HTMLElement>('[data-scene-image-row]'));
+  const kindsIn = (row: HTMLElement) =>
+    Array.from(row.querySelectorAll<HTMLElement>('[data-scene-image-cell]')).map((c) => c.dataset.sceneImageCell);
+  // 그리기 전에 되돌린다(afterEach 에서 바꾸면 해제 전 목록이 act 밖에서 다시 그려진다)
+  beforeEach(() => setSceneViewRowCap(20));
+  afterAll(() => setSceneViewRowCap(20));
+
+  test('씬마다 줄 하나(빈 씬 포함), 줄 안 칸 순서 = 첫 칸 → 이미지 최신순 → 더보기, 줄 안은 가로 스크롤', async () => {
+    setSceneViewRowCap(3);
+    const a = mkScene('A');
+    const empty = mkScene('Empty');
+    const b = mkScene('B');
+    mockOutputs.A = [T(1), T(2), T(3), T(4), T(5)];
+    mockOutputs.B = [T(9)];
+    await render({ type: 'scene', mode: 'rows', scenes: [a, empty, b], ...handlers() });
+    expect(host.querySelector('[data-scene-image-view="rows"]')).not.toBeNull();
+    expect(rowsOf().map((r) => r.dataset.sceneImageRow)).toEqual(['A', 'Empty', 'B']);
+    expect(kindsIn(rowsOf()[0])).toEqual(['head', 'img', 'img', 'more']);
+    expect(kindsIn(rowsOf()[1])).toEqual(['head-empty']);
+    expect(kindsIn(rowsOf()[2])).toEqual(['head']);
+    const imgs = Array.from(rowsOf()[0].querySelectorAll('[data-scene-image-cell="img"] img')).map((x) => x.getAttribute('src'));
+    expect(imgs).toEqual([`data:small400,outs/scene/A/${T(4)}`, `data:small400,outs/scene/A/${T(3)}`]);
+    expect(rowsOf()[0].querySelector('[data-scene-image-cell="more"]')!.textContent).toContain('+2');
+    const scroller = rowsOf()[0].querySelector<HTMLElement>('[data-scene-row-scroll]')!;
+    expect(scroller.className).toContain('overflow-x-auto');
+    // PC 는 가로 막대를 숨기지 않는다(줄 높이에 막대 몫을 더함)
+    expect(scroller.className).not.toContain('no-scrollbar');
+    // 줄 안 칸은 같은 고정 폭
+    const widths = Array.from(rowsOf()[0].querySelectorAll<HTMLElement>('[data-scene-image-cell]')).map((c) => c.style.width);
+    expect(new Set(widths).size).toBe(1);
+    // 씬 별로 전용 「이어진 줄」 표시는 없다
+    expect(host.querySelector('[data-scene-group-continued]')).toBeNull();
+  });
+
+  test('첫 칸은 줄 왼쪽에 고정(sticky) + 불투명 바탕 + z-index, 다른 칸은 고정이 아님, 첫 칸 테두리 색 고정', async () => {
+    const a = mkScene('A', 'scene', { mains: [T(2)] });
+    mockOutputs.A = [T(1), T(2)];
+    await render({ type: 'scene', mode: 'rows', scenes: [a], ...handlers() });
+    const head = host.querySelector<HTMLElement>('[data-scene-image-cell="head"]')!;
+    expect(head.className).toContain('sticky');
+    expect(head.className).toContain('left-0');
+    expect(head.className).toContain('z-10');
+    expect(head.className).toContain('bg-[var(--c-surface)]');
+    expect(host.querySelector<HTMLElement>('[data-scene-image-cell="img"]')!.className).not.toContain('sticky');
+    // 첫 칸이 즐겨찾기여도 테두리는 하늘색, 즐겨찾기는 그림 안쪽 노란 테두리
+    const box = host.querySelector<HTMLElement>('[data-scene-head="A"]')!;
+    expect(box.className).toContain('border-[var(--c-sky-bg)]');
+    expect(box.className).not.toContain('border-yellow-400');
+    expect(box.querySelector('img')!.className).toContain('border-yellow-400');
+  });
+
+  test('칸 동작 = 씬 별로와 같음: 이미지 누름·첫 칸 누름 = 열기, 이름 띠 = 씬 메뉴, 우클릭 = 이미지 메뉴, 더보기 = 그 씬 그리드', async () => {
+    setSceneViewRowCap(3);
+    const h = handlers();
+    const a = mkScene('A');
+    const empty = mkScene('Empty');
+    mockOutputs.A = Array.from({ length: 6 }, (_, i) => T(i));
+    await render({ type: 'scene', mode: 'rows', scenes: [a, empty], ...h });
+    await act(async () => cells('img')[0].querySelector<HTMLElement>('[data-scene-image-box]')!.click());
+    expect(h.onOpenImage).toHaveBeenCalledWith(a, T(4));
+    await act(async () => host.querySelector<HTMLElement>('[data-scene-head="A"]')!.click());
+    expect(h.onOpenImage).toHaveBeenLastCalledWith(a, T(5));
+    await act(async () => cells('more')[0].querySelector('button')!.click());
+    expect(h.onOpenScene).toHaveBeenCalledWith(a);
+    expect(h.onSceneMenu).not.toHaveBeenCalled();
+    await act(async () => host.querySelector<HTMLElement>('[data-scene-head="A"] [data-scene-name-strip]')!.click());
+    expect(h.onSceneMenu).toHaveBeenCalledWith(a, expect.anything());
+    await act(async () => host.querySelector<HTMLElement>('[data-scene-head="Empty"]')!.click());
+    expect(h.onSceneMenu).toHaveBeenLastCalledWith(empty, expect.anything());
+    await act(async () => {
+      cells('img')[0].querySelector('[data-scene-image-box]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    });
+    expect(mockShow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        props: { ctx: { type: 'gallary_image', path: [`outs/scene/A/${T(4)}`], scene: a, starable: true } },
+      }),
+    );
+  });
+
+  test('첫 칸 호버 버튼 넷(PC) — 같은 순서·콜백, 북마크 표시', async () => {
+    const h = handlers();
+    const a = mkScene('A');
+    const b = mkScene('B');
+    mockOutputs.A = [T(1)];
+    await render({ type: 'scene', mode: 'rows', scenes: [a, b], bookmarkedScene: 'B', ...h });
+    const bs = Array.from(host.querySelectorAll<HTMLButtonElement>('[data-scene-head="A"] [data-scene-head-buttons] button'));
+    expect(bs.map((x) => x.getAttribute('aria-label'))).toEqual(['예약 추가', '예약 제거', '씬 편집', '씬 북마크']);
+    await act(async () => bs[0].click());
+    expect(h.onQueueAdd).toHaveBeenCalledWith(a);
+    await act(async () => bs[1].click());
+    expect(h.onQueueRemove).toHaveBeenCalledWith(a);
+    await act(async () => bs[2].click());
+    expect(h.onEditScene).toHaveBeenCalledWith(a);
+    await act(async () => bs[3].click());
+    expect(h.onToggleBookmark).toHaveBeenCalledWith(a);
+    expect(h.onOpenImage).not.toHaveBeenCalled();
+    expect(h.onSceneMenu).not.toHaveBeenCalled();
+    expect(host.querySelector('[data-scene-head="B"] [data-scene-name-strip] [aria-label="북마크됨"]')).not.toBeNull();
+    expect(host.querySelector('[data-scene-head="A"] [data-scene-name-strip] [aria-label="북마크됨"]')).toBeNull();
+  });
+
+  test('변형 탭: 줄 첫 칸 = 입력 원본, 상한−1 장 결과', async () => {
+    setSceneViewRowCap(2);
+    const v = mkScene('V', 'inpaint', { preset: { image: 'src.png' } });
+    mockOutputs.V = [T(1), T(2)];
+    await render({ type: 'inpaint', mode: 'rows', scenes: [v], ...handlers() });
+    expect(kindsIn(rowsOf()[0])).toEqual(['head', 'img', 'more']);
+    expect(host.querySelector('[data-scene-head="V"] img')!.getAttribute('src')).toBe('data:small400,vibes/src.png');
+  });
+
+  test('씬으로 이동 = 그 씬의 줄(이미지 없는 씬도 참, 목록에 없으면 거짓) / 보이는 씬 = 보이는 줄의 씬', async () => {
+    const a = mkScene('A');
+    const empty = mkScene('Empty');
+    const b = mkScene('B');
+    mockOutputs.A = [T(1)];
+    mockOutputs.B = [T(2)];
+    const { ref } = await render({ type: 'scene', mode: 'rows', scenes: [a, empty, b], ...handlers() });
+    // 기본 크기 800×600, 줄 높이 361(그림 341 + 여백 6 + 가로 막대 14) → 처음 보이는 줄 = A·Empty
+    expect(ref.current!.visibleSceneNames()).toEqual(['A', 'Empty']);
+    let ok = false;
+    await act(async () => {
+      ok = ref.current!.scrollToScene('Empty');
+    });
+    expect(ok).toBe(true);
+    await act(async () => {
+      ok = ref.current!.scrollToScene('B');
+    });
+    expect(ok).toBe(true);
+    expect(ref.current!.visibleSceneNames()).toEqual(['Empty', 'B']);
+    await act(async () => {
+      ok = ref.current!.scrollToScene('Nope');
+    });
+    expect(ok).toBe(false);
+  });
+
+  test('줄의 가로 스크롤 위치는 씬별로 기억해 줄이 다시 그려질 때 되살린다', async () => {
+    const a = mkScene('A');
+    mockOutputs.A = Array.from({ length: 10 }, (_, i) => T(i));
+    await render({ type: 'scene', mode: 'rows', scenes: [a], ...handlers() });
+    const scroller = () => host.querySelector<HTMLElement>('[data-scene-image-row="A"] [data-scene-row-scroll]')!;
+    await act(async () => {
+      scroller().scrollLeft = 120;
+      scroller().dispatchEvent(new Event('scroll'));
+    });
+    // 썸네일 무효화 = 줄째 다시 그림(새 DOM) → 기억값으로 복원
+    const before = scroller();
+    await act(async () => {
+      mockImages.dispatchEvent(new Event('image-cache-invalidated'));
+    });
+    expect(scroller()).not.toBe(before);
+    expect(scroller().scrollLeft).toBe(120);
+  });
+
+  test('숨은 탭은 구독·목록을 쉼(바깥 상자는 남음)', async () => {
+    const a = mkScene('A');
+    mockOutputs.A = [T(1)];
+    await render({ type: 'scene', mode: 'rows', scenes: [a], ...handlers() });
+    expect(mockGame.count('updated')).toBe(1);
+    expect(rowsOf().length).toBe(1);
+    const { containerRef } = await render({ type: 'scene', mode: 'rows', scenes: [a], isActive: false, ...handlers() });
+    expect(mockGame.count('updated')).toBe(0);
+    expect(mockImages.count('image-cache-invalidated')).toBe(0);
+    expect(rowsOf().length).toBe(0);
+    expect(host.querySelector('[data-scene-image-view="rows"]')).not.toBeNull();
+    expect(containerRef.current).not.toBeNull();
+  });
+
+  test('씬이 없으면 안내', async () => {
+    await render({ type: 'scene', mode: 'rows', scenes: [], ...handlers() });
+    expect(host.textContent).toContain('아직 씬이 없습니다');
+    expect(rowsOf().length).toBe(0);
+  });
+
+  test('드롭다운: 가로 줄일 때는 줄당 장수 입력(가로 줄 상한에 묶임, 씬 별로 입력은 없음)', async () => {
+    await act(async () => root.render(<SceneViewModeControl type="scene" />));
+    await act(async () => setSceneViewMode('scene', 'rows'));
+    expect(host.querySelector<HTMLSelectElement>('select')!.value).toBe('rows');
+    expect(host.querySelector('[data-scene-view-cap]')).toBeNull();
+    const label = host.querySelector('[data-scene-view-row-cap]')!;
+    expect(label.textContent).toContain('줄당');
+    const input = label.querySelector<HTMLInputElement>('input')!;
+    expect(input.value).toBe('20');
+    expect(input.max).toBe('50');
+    expect(input.getAttribute('aria-label')).toBe('가로 줄마다 보여 줄 이미지 수');
+    await act(async () => setSceneViewRowCap(33));
+    expect(input.value).toBe('33');
+    expect(sceneViewState.cap).toBe(8);
+    await act(async () => setSceneViewMode('scene', 'byScene'));
+    expect(host.querySelector('[data-scene-view-row-cap]')).toBeNull();
+    expect(host.querySelector<HTMLInputElement>('[data-scene-view-cap] input')!.value).toBe('8');
+    await act(async () => setSceneViewMode('scene', 'cards'));
   });
 });
