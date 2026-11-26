@@ -3,6 +3,7 @@
 // · 씬 별로·최근 순 = 가상 격자(react-window FixedSizeGrid, 모든 칸 같은 크기) — 화면에 보이는 칸만 그린다.
 // · 가로 줄 = 가상 세로 목록(FixedSizeList, 한 줄 = 씬 하나), 줄 안은 평범한 가로 스크롤(줄 안 칸은 가상화하지 않음).
 //   첫 칸은 줄 왼쪽에 고정(sticky), 줄의 가로 스크롤 위치는 씬 이름별로 메모리에만 기억해 줄이 다시 그려질 때 되살린다.
+//   모바일은 줄의 가로 막대를 숨기는 대신 가려진 칸이 있는 쪽에 옅은 화살표(공용 HScrollHint — 환경설정 탭 바와 같은 것).
 // · 칸 그리기는 격자·줄 공용 부품(SceneImageCellView) 하나.
 // · 이미지 칸 누름 = 그 씬의 이미지 그리드를 그 이미지 위치로(onOpenImage), 우클릭/길게 누르기 = 이미지 그리드의 이미지 메뉴(GallaryImage).
 // · 씬 첫 칸의 이름 띠(빈 첫 칸은 칸 전체) 누름·우클릭 = 씬 메뉴(onSceneMenu). 더보기 칸 = 그 씬의 이미지 그리드(onOpenScene).
@@ -69,6 +70,7 @@ import { ContextMenuType, GenericScene, Session } from '../models/types';
 import { ActionIcon } from './ActionIcon';
 import { EmptyState } from './EmptyState';
 import { useElementSize, useProgressiveImage } from './historyHooks';
+import { HScrollHintArrow, useHScrollHint } from './HScrollHint';
 import Tooltip from './Tooltip';
 import { UNDO_BAR_HEIGHT_PX } from './UndoBarSlot';
 
@@ -417,8 +419,13 @@ const ROW_HEAD_STICKY = 'sticky left-0 z-10 bg-[var(--c-surface)]';
 /** 가로 줄 하나(= 씬 하나) — 줄 안은 평범한 가로 스크롤, 칸은 가상화하지 않음 */
 const SceneRow = observer(({ index, style, data }: ListChildComponentProps<RowsData>) => {
   const row = data.rows[index];
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // 스크롤 요소 ref 는 가로 스크롤 힌트 훅의 것을 함께 쓴다(가로 위치 복원도 이 ref)
+  const { ref: scrollRef, hint, onScroll: updateHint } = useHScrollHint<HTMLDivElement>();
   const sceneName = row?.scene;
+  const cellStyle = useMemo<React.CSSProperties>(
+    () => ({ flex: 'none', width: data.cellWidth, height: data.cellHeight }),
+    [data.cellWidth, data.cellHeight],
+  );
   // 세로 스크롤로 줄이 다시 그려질 때 기억해 둔 가로 위치를 되살린다(그리기 전에 — 깜빡임 없이)
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -427,7 +434,6 @@ const SceneRow = observer(({ index, style, data }: ListChildComponentProps<RowsD
     if (x) el.scrollLeft = x;
   }, [sceneName, data.scrollMemo]);
   if (!row) return null;
-  const cellStyle: React.CSSProperties = { flex: 'none', width: data.cellWidth, height: data.cellHeight };
   return (
     <div style={style} data-scene-image-row={row.scene}>
       <div
@@ -437,6 +443,7 @@ const SceneRow = observer(({ index, style, data }: ListChildComponentProps<RowsD
         data-scene-row-scroll=""
         onScroll={(e) => {
           data.scrollMemo.set(row.scene, e.currentTarget.scrollLeft);
+          updateHint();
         }}
       >
         {row.cells.map((cell) => (
@@ -449,6 +456,17 @@ const SceneRow = observer(({ index, style, data }: ListChildComponentProps<RowsD
           />
         ))}
       </div>
+      {/* 모바일: 가려진 칸이 있는 쪽에 옅은 화살표(표시 전용). 왼쪽 화살표는 고정된 첫 칸의 오른쪽에 붙인다 */}
+      {isMobile && (hint.left || hint.right) && (
+        <div
+          className="absolute top-0 bottom-0 right-0 z-10 pointer-events-none"
+          style={{ left: data.cellWidth }}
+          data-scene-row-hint={`${hint.left ? 'L' : ''}${hint.right ? 'R' : ''}`}
+        >
+          {hint.left && <HScrollHintArrow side="left" surface="var(--c-surface)" />}
+          {hint.right && <HScrollHintArrow side="right" surface="var(--c-surface)" />}
+        </div>
+      )}
     </div>
   );
 });
