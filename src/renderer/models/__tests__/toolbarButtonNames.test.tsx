@@ -48,6 +48,7 @@ describe('이름 문구 단일 출처', () => {
       'empty-image-trash': '삭제 비우기',
       'shortcut-help': '단축키',
       'scene-capture': '캡처',
+      'scene-view-mode': '보기 방식',
       // 프로젝트 바에서 옮겨 온 버튼은 기존 label
       'add-session': '새 프로젝트',
       'project-trash': '휴지통',

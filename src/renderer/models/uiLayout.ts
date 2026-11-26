@@ -88,6 +88,9 @@ export const sceneToolbarRegistry: ToolbarButtonMeta[] = [
   // 캡처(2026-11-25) — 이미지 여러 장을 한 장으로 모아 내보내기(componenets/CaptureDialog.tsx). 새 기능 버튼 = 기본 ⋯(증식 차단 규칙),
   // 꺼내면 편집 도구 칸. 두 탭 공용(이미지변형 탭은 카드가 보여 주는 입력 이미지를 대표로).
   { id: 'scene-capture', name: '캡처', sceneLabel: '캡처', tier: 'overflow', group: 'edit' },
+  // 보기 방식(2026-11-26 이미지 뷰 — models/sceneImageView): 씬 카드 / 씬 별로 / 최근 순을 고르는 작은 선택 창. 새 기능 버튼 = 기본 ⋯.
+  // PC 는 보기 설정 묶음의 드롭다운이 주 자리(이 버튼은 좁은 폭·모바일용 — 레지스트리에 「모바일 전용」 표시가 없어 PC ⋯ 에도 보인다).
+  { id: 'scene-view-mode', name: '보기 방식', sceneLabel: '보기 방식', tier: 'overflow', group: 'navigate' },
   { id: 'bookmark-jump', name: '북마크된 씬으로 이동', sceneLabel: '북마크', tier: 'secondary', v2Label: '북마크 이동', group: 'navigate' },
   // B군 승격(퀵 메뉴 P2, 2026-07-18): 로컬 모달 → appState 전역 오버레이 — portable 전환
   // 그룹 없음(T5): 휴지통 열기·삭제 이미지 비우기·단축키 도움말은 어느 그룹에도 맞지 않아 ⋯ 메뉴 유지.

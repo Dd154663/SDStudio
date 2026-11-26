@@ -4,6 +4,7 @@ import { toggleImageFavorite } from './imageStateUndo';
 import { persistService } from './PersistenceService';
 import { projectPath } from './projectPaths';
 import { getAppState } from './appStateRef';
+import { getSceneRevealer, SceneRevealer } from './sceneImageView';
 import { GenericScene, Session } from './types';
 
 // 최근 생성 이미지 히스토리 (우측 사이드바용).
@@ -278,8 +279,30 @@ export class ImageHistoryService {
       // 타 프로젝트 항목 → 프로젝트 전환 (ProjectDrawer.selectProject와 동일 패턴)
       appState.curSession = session;
     }
-    const cell = await this.waitForSceneCell(entry.sceneType, entry.sceneName);
-    if (!cell) return;
+    const target = await this.waitForSceneCell(entry.sceneType, entry.sceneName);
+    if (!target) return;
+    if ('revealer' in target) {
+      // 이미지 뷰(2026-11-26): 가상 격자라 화면 밖 씬의 칸은 DOM 에 없다 → 칸 인덱스로 스크롤(models/sceneImageView 등록소).
+      // 그 씬의 칸이 없으면(최근 순의 이미지 없는 씬) 스크롤 없이 다음 단계(그리드 열기)로 간다.
+      if (!opts.openGrid) {
+        sessionService.dispatchEvent(new CustomEvent('close-result-viewer'));
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      target.revealer.reveal(entry.sceneName);
+      if (opts.openGrid) {
+        sessionService.dispatchEvent(
+          new CustomEvent('open-result-viewer', {
+            detail: {
+              sceneType: entry.sceneType,
+              sceneName: entry.sceneName,
+              filename: entry.filename,
+            },
+          }),
+        );
+      }
+      return;
+    }
+    const cell = target.cell;
     if (opts.openGrid) {
       sessionService.dispatchEvent(
         new CustomEvent('open-result-viewer', {
@@ -302,11 +325,12 @@ export class ImageHistoryService {
   // 해당 씬 셀이 "보이는" 상태가 될 때까지 탭 전환을 재발신하며 대기.
   // 매 틱 재발신하는 이유: 프로젝트 전환 시 TabComponent가 리마운트(key=세션명)되어
   // 리스너 등록 전 dispatch가 유실될 수 있음 — 탭 전환은 멱등이라 반복해도 무해.
+  // 이미지 뷰(2026-11-26): 그 탭의 메인 목록이 이미지 뷰면 카드 DOM 대신 「격자가 보이는 탭에 그려졌는가」를 기다린다.
   private waitForSceneCell(
     type: 'scene' | 'inpaint',
     name: string,
     timeoutMs = 2500,
-  ): Promise<HTMLElement | null> {
+  ): Promise<{ cell: HTMLElement } | { revealer: SceneRevealer } | null> {
     const tabAction = type === 'scene' ? 'tab-1' : 'tab-2';
     const deadline = Date.now() + timeoutMs;
     return new Promise((resolve) => {
@@ -316,10 +340,18 @@ export class ImageHistoryService {
             detail: { action: tabAction },
           }),
         );
-        const el = document.getElementById(`scene-cell-${type}-${name}`);
-        if (el && el.offsetParent !== null) {
-          resolve(el);
-          return;
+        const revealer = getSceneRevealer(type);
+        if (revealer && revealer.isImageView()) {
+          if (revealer.isReady()) {
+            resolve({ revealer });
+            return;
+          }
+        } else {
+          const el = document.getElementById(`scene-cell-${type}-${name}`);
+          if (el && el.offsetParent !== null) {
+            resolve({ cell: el });
+            return;
+          }
         }
         if (Date.now() > deadline) {
           resolve(null);
