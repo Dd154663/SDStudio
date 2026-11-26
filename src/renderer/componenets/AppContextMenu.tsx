@@ -1,3 +1,4 @@
+import { closeHistoryView } from '../models/historyView';
 import { observer } from 'mobx-react-lite';
 import { getSnapshot } from 'mobx-state-tree';
 import { Item, Menu, Separator } from 'react-contexify';
@@ -983,10 +984,10 @@ export const AppContextMenu = observer(() => {
   };
   const handleHistoryItemClick = ({ id, props }: any) => {
     const ctx = props.ctx as HistoryImageContextAlt;
-    if (id === 'goto-scene') {
-      imageHistoryService.navigateTo(ctx.entry, { openGrid: false });
-    } else if (id === 'open-grid') {
-      imageHistoryService.navigateTo(ctx.entry, { openGrid: true });
+    if (id === 'goto-scene' || id === 'open-grid') {
+      // 히스토리 「크게 보기」 창에서 연 메뉴면 그 창을 먼저 닫는다(씬 목록·그리드가 그 창에 가려지거나 그리드 단축키가 막히지 않게 — 패널 메뉴면 아무 일 없음)
+      closeHistoryView();
+      imageHistoryService.navigateTo(ctx.entry, { openGrid: id === 'open-grid' });
     } else if (id === 'fav') {
       imageHistoryService.toggleFavorite(ctx.entry);
     } else if (id === 'download') {

@@ -87,6 +87,31 @@ describe('이미지 히스토리 — 세션당 상한 + 영속화', () => {
     expect(svc.entries.filter((e) => e.sessionName === 'B').length).toBe(5);
   });
 
+  it('한도 = 200(2026-11-26 히스토리 확대 1단계)', () => {
+    expect(HISTORY_LIMIT).toBe(200);
+  });
+
+  it('로드: 한도보다 많은 파일은 최신 200장만 — 형식은 그대로(version 1·같은 필드)', async () => {
+    mockProjects.push('A');
+    files['history.json'] = JSON.stringify({
+      version: 1,
+      entries: Array.from({ length: 250 }, (_, i) => ({ ...entry('A', i), createdAt: i })),
+    });
+    const svc = new ImageHistoryService();
+    await svc.ensureLoaded();
+    expect(svc.entries.length).toBe(200);
+    expect(svc.entries[0].filename).toBe('249.png');
+    expect(svc.entries[199].filename).toBe('50.png');
+    svc.push(entry('A', 999));
+    await flushSave();
+    const saved = JSON.parse(files['history.json']);
+    expect(saved.version).toBe(1);
+    expect(saved.entries).toHaveLength(200);
+    expect(Object.keys(saved.entries[0]).sort()).toEqual(
+      ['createdAt', 'filename', 'path', 'sceneName', 'sceneType', 'sessionName'],
+    );
+  });
+
   it('저장/로드 라운드트립 (디바운스 저장)', async () => {
     const svc = new ImageHistoryService();
     await svc.ensureLoaded();

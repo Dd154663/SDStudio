@@ -17,6 +17,7 @@ import ProjectSideBar, { ProjectStrip } from './ProjectSideBar';
 import ProjectBrowser from './ProjectBrowser';
 import { ImageHistoryPanel, ImageHistoryDrawer, ImageHistoryHandle } from './ImageHistory';
 import { HistoryImagePreview } from './HistoryImagePreview';
+import { HistoryView } from './HistoryView';
 import QuickModeTab from './QuickModeTab';
 import PreSetEditor from './PreSetEdtior';
 import SceneQueuControl, { SceneCell } from './SceneQueueControl';
@@ -886,6 +887,8 @@ export const App = observer(() => {
                 {isMobile && <ImageHistoryHandle />}
                 {/* 히스토리 큰 미리 보기(PC·모바일 공용, 드로어 DOM 밖에 한 번) */}
                 <HistoryImagePreview />
+                {/* 히스토리 「크게 보기」(2026-11-26 — FloatView, 열림 상태는 앱 전체 하나라 한 번만 마운트) */}
+                <HistoryView />
                 {/* 모바일은 레이아웃과 무관하게 좌측 손잡이+가장자리 스와이프(히스토리 손잡이의 좌우 반전) */}
                 {isMobile && <ProjectDrawerHandle />}
                 {appState.projectBrowserOpen && (

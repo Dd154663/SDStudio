@@ -270,13 +270,39 @@ describe('히스토리 칸', () => {
     await flush();
   };
 
-  test('칸을 누르면 미리 보기가 열리고 즐겨찾기는 바뀌지 않는다', async () => {
+  test('칸을 누르면 미리 보기가 열리고(넘겨 보기 범위 = 히스토리 전체) 즐겨찾기는 바뀌지 않는다', async () => {
     await mount();
-    const cells = container.querySelectorAll('.grid > div');
+    // 2026-11-26: 목록은 가상 격자(react-window) — 칸은 data-history-cell 로 찾는다
+    const cells = container.querySelectorAll('[data-history-cell]');
     expect(cells).toHaveLength(3);
     click(cells[1]);
     expect(historyPreviewState.entryId).toBe('outs/b.png');
+    expect(historyPreviewState.scopeIds).toBeNull();
     expect(mockSvc.toggleFavorite).not.toHaveBeenCalled();
+  });
+
+  test('가상화: 200장이어도 화면에 보이는 칸만 그린다', async () => {
+    runInAction(() => {
+      mockHistory.entries = Array.from({ length: 200 }, (_, i) => entry(`outs/x${i}.png`));
+    });
+    await mount();
+    const n = container.querySelectorAll('[data-history-cell]').length;
+    expect(n).toBeGreaterThan(0);
+    expect(n).toBeLessThan(40);
+    // 보이는 칸만 썸네일·프로젝트 읽기를 한다
+    expect(mockSvc.resolveQuiet.mock.calls.length).toBe(n);
+    expect(mockFetchSmall.mock.calls.length).toBe(n);
+  });
+
+  test('머리줄 「크게 보기」 버튼 = 크게 보기 창 열림', async () => {
+    const { historyViewState, closeHistoryView } = jest.requireActual('../historyView');
+    await mount();
+    const b = q('[data-history-view-open]')!;
+    expect(b.getAttribute('aria-label')).toBe('크게 보기');
+    expect(b.className).toContain('icon-button');
+    click(b);
+    expect(historyViewState.open).toBe(true);
+    act(() => closeHistoryView());
   });
 
   test('별 버튼 = 즐겨찾기 전환만(미리 보기 안 열림), 즐겨찾기면 항상 보이고 아니면 PC 는 올렸을 때만', async () => {
@@ -339,8 +365,18 @@ describe('키보드', () => {
 describe('소스 계약', () => {
   const COMP = path.resolve(__dirname, '../../componenets');
   const read = (f: string) => fs.readFileSync(path.join(COMP, f), 'utf8');
-  test('미리 보기는 App 에 한 번 마운트', () => {
+  test('미리 보기·크게 보기는 App 에 한 번 마운트', () => {
     expect(read('App.tsx').match(/<HistoryImagePreview \/>/g)).toHaveLength(1);
+    expect(read('App.tsx').match(/<HistoryView \/>/g)).toHaveLength(1);
+  });
+  test('뷰어에는 우클릭 메뉴가 없다(기존 결정 유지)', () => {
+    const src = read('HistoryImagePreview.tsx');
+    expect(src).not.toMatch(/onContextMenu|useContextMenu/);
+  });
+  test('목록은 가상화(react-window)이고 entries.map 으로 전부 그리지 않는다', () => {
+    const src = read('ImageHistory.tsx');
+    expect(src).toContain('VariableSizeGrid');
+    expect(src).not.toMatch(/entries\.map\(/);
   });
   test('칸 클릭은 더 이상 즐겨찾기를 바로 바꾸지 않는다', () => {
     const src = read('ImageHistory.tsx');

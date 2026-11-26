@@ -13,7 +13,7 @@ import { GenericScene, Session } from './types';
 // 영속화 (2026-07-18 개편): 종전에는 메모리 기반(앱 재시작 시 초기화)이었으나,
 // history.json 사이드카에 저장해 다음 실행에서 복원한다. 보관 상한은 종전과
 // 같은 **전체 최근 HISTORY_LIMIT장** (세션당 상한안은 프로젝트가 많을 때 목록
-// ×30 부하 우려로 사용자 결정으로 기각 — 재제안 시 참고).
+// ×30 부하 우려로 사용자 결정으로 기각 — 재제안 시 참고. 2026-11-26 상한 200).
 // 항목은 경로 문자열 메타뿐이라 파일이 작고(썸네일은 fastcache 재사용),
 // 사라진 파일/씬은 기존 자가 정리(prune·셀 로드 실패·클릭 검증)가 걷어낸다.
 
@@ -27,7 +27,10 @@ export interface GenerationHistoryEntry {
   createdAt: number;
 }
 
-export const HISTORY_LIMIT = 30;
+// 2026-11-26 사용자 결정(히스토리 확대 1단계): 30 → 200. 목록은 화면에 보이는 칸만 그린다(react-window —
+// ImageHistory.tsx HistoryList). history.json 형식은 그대로(항목 수만 늘어남). 구버전이 200장짜리 파일을 읽으면
+// 최신 30장만 남기고, 다음 저장 때 파일도 30장으로 줄어든다(오래된 170장 메타만 잃음 — 이미지 무손실).
+export const HISTORY_LIMIT = 200;
 
 const SIDECAR_PATH = 'history.json';
 

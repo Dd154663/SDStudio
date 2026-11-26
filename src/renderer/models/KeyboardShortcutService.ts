@@ -2,6 +2,7 @@ import { appState } from './AppService';
 import { isMobile } from '.';
 import { isTextEntryFocused } from './keyTargetGuard';
 import { historyPreviewState } from './historyPreview';
+import { historyViewState } from './historyView';
 
 export interface ShortcutAction {
   id: string;
@@ -91,6 +92,7 @@ export interface ShortcutGateState {
   /**
    * 히스토리 큰 미리 보기가 떠 있음(2026-11-22 — 없으면 닫힘으로 본다). 화면을 덮는 창이라 아래 화면의
    * 단축키(삭제·이미지/씬 이동 등)가 보이지 않는 곳에서 동작하지 않게 막는다. 되돌리기·다시 실행만 통과.
+   * 히스토리 「크게 보기」 창(2026-11-26)이 떠 있을 때도 참.
    */
   historyPreviewOpen?: boolean;
 }
@@ -303,7 +305,8 @@ export class KeyboardShortcutService {
       pieceEditorOpen: appState.pieceEditorOpen,
       findReplaceOpen: appState.findReplaceOpen,
       batchInsertOpen: appState.batchInsertOpen,
-      historyPreviewOpen: historyPreviewState.entryId !== null,
+      // 히스토리 「크게 보기」 창도 같은 규칙(2026-11-26) — 화면을 덮는 창 아래의 그리드·씬 단축키가 보이지 않는 곳에서 동작하지 않게
+      historyPreviewOpen: historyPreviewState.entryId !== null || historyViewState.open,
     };
     for (const actionId of actionIds) {
       const action = this.getActionDef(actionId);

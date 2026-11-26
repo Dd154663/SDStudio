@@ -1,10 +1,12 @@
 import { EmptyState } from './EmptyState';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useContextMenu } from 'react-contexify';
+import { GridChildComponentProps, VariableSizeGrid } from 'react-window';
 import {
   FaChevronLeft,
   FaChevronRight,
+  FaExpand,
   FaRegStar,
   FaSquare,
   FaStar,
@@ -17,10 +19,21 @@ import { appState } from '../models/AppService';
 import { resolveLayout } from '../models/layoutTemplates';
 import { backStackService } from '../models/BackStackService';
 import { historyEntryCaption, openHistoryPreview } from '../models/historyPreview';
+import { HISTORY_VIEW_TEXT, openHistoryView } from '../models/historyView';
+import {
+  adjustScrollForResize,
+  aspectChanged,
+  HISTORY_LIST_CAPTION,
+  HISTORY_LIST_GAP,
+  HISTORY_LIST_PAD,
+  historyListCellWidth,
+  historyListRowHeight,
+} from '../models/historyLayout';
 import { imageDragOutProps } from '../models/imageDragOut';
 import { ContextMenuType, GenericScene } from '../models/types';
 import Tooltip from './Tooltip';
 import { toolbarDragUi } from './ToolbarDnd';
+import { historyAspectMemo, useElementSize } from './historyHooks';
 import {
   EDGE_SWIPE_ZONE,
   shouldIgnoreEdgeSwipeAt,
@@ -31,20 +44,30 @@ import {
 // PC: 우측 밀어내기(push) 패널 — 펼치면 중앙 영역이 그만큼 줄어듦.
 // 모바일: 우측 오버레이 드로어 (ProjectDrawer의 우측 미러).
 
-const HistoryImageCell = observer(
+export const HistoryImageCell = observer(
   ({
     entry,
     caption,
     onClick,
+    thumbSize = 400,
+    square = false,
+    onAspect,
   }: {
     entry: GenerationHistoryEntry;
     caption: string;
     onClick: () => void;
+    /** 받아 올 썸네일 크기 — 단계 값(200·400·500)만. 기본 400(패널·서랍) */
+    thumbSize?: number;
+    /** 크게 보기 격자: 정사각 칸에 이미지 전체를 담는다(object-contain). 거짓이면 칸 모양 = 이미지 비율(종전 그대로) */
+    square?: boolean;
+    /** 이미지 비율을 잰 뒤 알림(가상 목록이 줄 높이를 고친다) — 이전 값(모르면 undefined)과 새 값 */
+    onAspect?: (prev: number | undefined, next: number) => void;
   }) => {
     const [image, setImage] = useState<string | undefined>(undefined);
     // 출력 해상도 비율 반영용 (로드 전엔 1:1 자리표시) — 히스토리 엔트리에는
-    // 해상도 메타가 없어 이미지 실측(naturalWidth/Height)으로 얻는다
-    const [ratio, setRatio] = useState<number | undefined>(undefined);
+    // 해상도 메타가 없어 이미지 실측(naturalWidth/Height)으로 얻는다. 한 번 잰 값은 historyAspectMemo 에 남아
+    // 가상 목록이 칸을 다시 그려도(스크롤로 나갔다 들어옴) 1:1 에서 다시 튀지 않는다.
+    const [ratio, setRatio] = useState<number | undefined>(() => historyAspectMemo.get(entry.path));
     // 즐겨찾기 표시용 scene (mobx 노드 — mains 변경 시 observer가 자동 갱신)
     const [scene, setScene] = useState<GenericScene | undefined>(undefined);
     const { show } = useContextMenu({ id: ContextMenuType.HistoryImage });
@@ -54,7 +77,7 @@ const HistoryImageCell = observer(
       (async () => {
         try {
           // 400px 썸네일: fastcache 사전 생성 크기라 추가 비용 없음 (200은 1열/고DPI에서 열화)
-          const base64 = await imageService.fetchImageSmall(entry.path, 400);
+          const base64 = await imageService.fetchImageSmall(entry.path, thumbSize);
           if (canceled) return;
           if (!base64) {
             // 파일이 사라진 항목은 히스토리에서 제거
@@ -66,19 +89,21 @@ const HistoryImageCell = observer(
           if (!canceled) imageHistoryService.remove(entry.id);
         }
       })();
+      // 보이는 칸만 마운트되므로(가상 목록) 다른 프로젝트의 프로젝트 읽기도 보이는 칸에서만 일어난다
       imageHistoryService.resolveQuiet(entry).then((r) => {
         if (!canceled && r) setScene(r.scene);
       });
       return () => {
         canceled = true;
       };
-    }, [entry.path]);
+    }, [entry.path, thumbSize]);
 
     const isFav = !!scene && scene.mains.includes(entry.filename);
 
     return (
       <div
         className="group flex flex-col cursor-pointer select-none hover:brightness-95 active:brightness-90"
+        data-history-cell=""
         onClick={onClick}
         onContextMenu={(e) => {
           show({
@@ -92,7 +117,7 @@ const HistoryImageCell = observer(
             'relative w-full rounded overflow-hidden bg-[var(--c-input-bg)] flex items-center justify-center' +
             (isFav ? ' border-2 border-yellow-400' : '')
           }
-          style={{ aspectRatio: ratio ?? 1 }}
+          style={{ aspectRatio: square ? 1 : ratio ?? 1 }}
         >
           {image && (
             <img
@@ -100,11 +125,15 @@ const HistoryImageCell = observer(
               draggable={false}
               // PC: 끌어서 다른 프로그램에 원본 파일로 놓기(2026-11-22, 모바일은 속성 없음 — draggable false 그대로)
               {...imageDragOutProps(entry.path)}
-              className="w-full h-full object-cover"
+              className={'w-full h-full ' + (square ? 'object-contain' : 'object-cover')}
               onLoad={(e) => {
                 const im = e.currentTarget;
                 if (im.naturalWidth > 0 && im.naturalHeight > 0) {
-                  setRatio(im.naturalWidth / im.naturalHeight);
+                  const next = im.naturalWidth / im.naturalHeight;
+                  const prev = historyAspectMemo.get(entry.path);
+                  historyAspectMemo.set(entry.path, next);
+                  setRatio(next);
+                  onAspect?.(prev, next);
                 }
               }}
             />
@@ -163,39 +192,144 @@ const HistoryColumnsToggle = observer(() => {
   );
 });
 
-// PC/모바일 공용 목록 (1열/2열 그리드 토글, 최신순)
+// PC/모바일 공용 「크게 보기」 버튼(머리줄, 2026-11-26) — 열 수 토글과 같은 회색 아이콘 버튼. 히스토리 전체를 화면 가득 연다.
+// 모바일은 서랍을 닫고 연다(서랍 층이 크게 보기 창보다 위라 가리지 않게 — 뒤로 가기 순서도 뷰어 → 크게 보기만 남는다).
+const HistoryViewOpenButton = () => (
+  <Tooltip content={HISTORY_VIEW_TEXT.open}>
+    <button
+      className="icon-button"
+      aria-label={HISTORY_VIEW_TEXT.open}
+      data-history-view-open=""
+      onClick={() => {
+        if (appState.historyDrawerOpen) appState.historyDrawerOpen = false;
+        openHistoryView();
+      }}
+    >
+      <FaExpand size={13} />
+    </button>
+  </Tooltip>
+);
+
+/** 패널·서랍 목록이 0 크기로 재일 때(배치 전·테스트 환경) 쓰는 크기 */
+const HISTORY_LIST_FALLBACK = { width: 300, height: 600 };
+
+interface HistoryListData {
+  entries: readonly GenerationHistoryEntry[];
+  cols: number;
+  cellWidth: number;
+  curSessionName: string | undefined;
+  onAspect: (index: number, prev: number | undefined, next: number) => void;
+}
+
+// 가상 격자의 칸 하나 — 바깥 여백(HISTORY_LIST_PAD)만큼 밀어 그린다. 빈 칸(홀수 개의 마지막 줄)은 그리지 않는다.
+const HistoryListGridCell = ({
+  columnIndex,
+  rowIndex,
+  style,
+  data,
+}: GridChildComponentProps<HistoryListData>) => {
+  const index = rowIndex * data.cols + columnIndex;
+  const entry = data.entries[index];
+  if (!entry) return null;
+  return (
+    <div
+      style={{
+        ...style,
+        left: (style.left as number) + HISTORY_LIST_PAD,
+        top: (style.top as number) + HISTORY_LIST_PAD,
+        width: data.cellWidth,
+      }}
+    >
+      <HistoryImageCell
+        entry={entry}
+        caption={historyEntryCaption(entry, data.curSessionName)}
+        // 탭/클릭 = 큰 미리 보기(2026-11-22, 종전 즐겨찾기 토글 — 별 버튼으로 옮김). 넘겨 보기 범위 = 히스토리 전체.
+        // 씬 이동·그리드 열기는 우클릭/롱프레스 메뉴와 미리 보기의 「이미지 그리드에서 보기」.
+        onClick={() => openHistoryPreview(entry.id)}
+        onAspect={(prev, next) => data.onAspect(index, prev, next)}
+      />
+    </div>
+  );
+};
+
+// PC/모바일 공용 목록 (1열/2열 그리드 토글, 최신순). 2026-11-26: 화면에 보이는 칸만 그린다(react-window VariableSizeGrid —
+// 칸 모양이 이미지 비율이라 줄 높이 = 그 줄에서 가장 높은 칸). 열 수·칸 모양·씬 이름·별 버튼·메뉴·끌어내기는 종전 그대로.
 const HistoryList = observer(() => {
   const entries = imageHistoryService.entries;
   const cols = appState.historyColumns;
+  const curSessionName = appState.curSession?.name;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<VariableSizeGrid<HistoryListData>>(null);
+  const scrollTopRef = useRef(0);
+  const size = useElementSize(containerRef, HISTORY_LIST_FALLBACK);
+  // PC 는 세로 스크롤 막대 폭만큼 비운다(가로 스크롤이 생기지 않게). 모바일 WebView 는 겹쳐 그리는 막대
+  const cellWidth = historyListCellWidth(size.width, cols, isMobile ? 0 : 10);
+  const rowCount = Math.ceil(entries.length / cols);
 
-  // 탭/클릭 = 큰 미리 보기(2026-11-22, 종전 즐겨찾기 토글 — 별 버튼으로 옮김).
-  // 씬 이동·그리드 열기는 우클릭/롱프레스 메뉴와 미리 보기의 「이미지 그리드에서 보기」.
-  const onClickEntry = (entry: GenerationHistoryEntry) => {
-    openHistoryPreview(entry.id);
+  // 줄 높이 — 아래 Grid 와 onAspect 가 값으로 읽으므로 먼저 선언(선언 순서 주의). override = 특정 칸의 비율을 바꿔 잼
+  const rowHeightOf = (row: number, override?: { index: number; aspect: number }): number => {
+    const aspects: number[] = [];
+    for (let c = 0; c < cols; c++) {
+      const i = row * cols + c;
+      const e = entries[i];
+      if (!e) continue;
+      aspects.push(override && override.index === i ? override.aspect : historyAspectMemo.get(e.path) ?? 1);
+    }
+    return historyListRowHeight(cellWidth, aspects);
   };
 
-  if (entries.length === 0) {
-    return (
-      <EmptyState className="flex-1 p-4">
-        아직 생성된 이미지가 없습니다
-      </EmptyState>
-    );
-  }
+  // 목록·열 수·칸 너비가 바뀌면 줄 높이 기억을 처음부터 다시
+  useLayoutEffect(() => {
+    gridRef.current?.resetAfterIndices({ columnIndex: 0, rowIndex: 0, shouldForceUpdate: true });
+  }, [entries, cols, cellWidth]);
+
+  // 칸이 비율을 잰 뒤 — 그 줄부터 높이를 다시 재고, 보던 위치보다 위의 줄이 바뀌었으면 스크롤을 그만큼 옮긴다
+  const onAspect = (index: number, prev: number | undefined, next: number) => {
+    const grid = gridRef.current;
+    if (!grid || !aspectChanged(prev ?? 1, next)) return;
+    const row = Math.floor(index / cols);
+    let top = 0;
+    for (let r = 0; r < row; r++) top += rowHeightOf(r);
+    const oldH = rowHeightOf(row, { index, aspect: prev ?? 1 });
+    const newH = rowHeightOf(row);
+    grid.resetAfterRowIndex(row, true);
+    const nextTop = adjustScrollForResize(scrollTopRef.current, top, oldH, newH);
+    if (nextTop !== scrollTopRef.current) {
+      scrollTopRef.current = nextTop;
+      grid.scrollTo({ scrollTop: nextTop });
+    }
+  };
+
+  // 바깥 상자는 비었을 때도 그린다 — 크기 측정(useElementSize)이 처음 마운트한 요소를 계속 본다
   return (
-    <div
-      className={
-        'flex-1 overflow-y-auto p-2 grid gap-1.5 content-start ' +
-        (cols === 2 ? 'grid-cols-2' : 'grid-cols-1')
-      }
-    >
-      {entries.map((entry) => (
-        <HistoryImageCell
-          key={entry.id}
-          entry={entry}
-          caption={historyEntryCaption(entry, appState.curSession?.name)}
-          onClick={() => onClickEntry(entry)}
-        />
-      ))}
+    <div ref={containerRef} className="flex-1 min-h-0" data-history-list="">
+      {entries.length === 0 ? (
+        <EmptyState className="p-4">
+          아직 생성된 이미지가 없습니다
+        </EmptyState>
+      ) : (
+      <VariableSizeGrid<HistoryListData>
+        ref={gridRef}
+        columnCount={cols}
+        columnWidth={(c) => (c < cols - 1 ? cellWidth + HISTORY_LIST_GAP : cellWidth)}
+        rowCount={rowCount}
+        rowHeight={(r) => rowHeightOf(r)}
+        estimatedRowHeight={cellWidth + HISTORY_LIST_CAPTION + HISTORY_LIST_GAP}
+        width={size.width}
+        height={size.height}
+        overscanRowCount={isMobile ? 2 : 4}
+        style={{ overflowX: 'hidden' }}
+        itemData={{ entries, cols, cellWidth, curSessionName, onAspect }}
+        itemKey={({ columnIndex, rowIndex, data }) =>
+          data.entries[rowIndex * data.cols + columnIndex]?.id ?? `empty-${rowIndex}:${columnIndex}`
+        }
+        onScroll={({ scrollTop }) => {
+          scrollTopRef.current = scrollTop;
+        }}
+      >
+        {HistoryListGridCell}
+      </VariableSizeGrid>
+      )}
     </div>
   );
 });
@@ -289,7 +423,10 @@ export const ImageHistoryPanel = observer(() => {
         >
           <div className="flex-none px-3 py-2 border-b line-color flex items-center justify-between">
             <span className="text-sm font-semibold gray-label">히스토리</span>
-            <HistoryColumnsToggle />
+            <div className="flex items-center gap-1">
+              <HistoryViewOpenButton />
+              <HistoryColumnsToggle />
+            </div>
           </div>
           <HistoryList />
         </div>
@@ -471,6 +608,7 @@ export const ImageHistoryDrawer = observer(() => {
         <div className="flex items-center justify-between px-4 py-3 border-b line-color flex-none">
           <h2 className="text-lg font-semibold text-default">히스토리</h2>
           <div className="flex items-center gap-3">
+            <HistoryViewOpenButton />
             <HistoryColumnsToggle />
             <button
               className="icon-button"
