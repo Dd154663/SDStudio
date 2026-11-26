@@ -335,6 +335,35 @@ export const queueArtistBreakdown = async (session: Session) => {
   }
 };
 
+// 씬 하나를 큐에 예약 추가 — 씬 카드의 [예약 추가] 버튼과 이미지 뷰 「씬 별로」 첫 칸의 같은 버튼이 함께 쓴다(2026-11-26).
+// 누락 프롬프트조각이 있으면 생성 여부를 확인한다.
+export const addSceneToQueue = async (session: Session, scene: GenericScene) => {
+  try {
+    const missing = promptService.findMissingPieces(session, scene);
+    if (missing.length > 0) {
+      const list = missing
+        .map((m) => `<${m.library}.${m.piece}>`)
+        .join(', ');
+      appState.pushDialog({
+        type: 'confirm',
+        text: `존재하지 않는 프롬프트조각이 발견되었습니다:\n${list}\n\n로컬 프롬프트조각으로 새로 만들까요?\n(빈 조각이 생성되며, 내용은 직접 채워주세요)`,
+        callback: async () => {
+          createMissingPiecesForSession(session, missing);
+          try {
+            await queueScene(session, scene, appState.samples);
+          } catch (e: any) {
+            appState.pushMessage(`프롬프트 에러: ${e.message}`);
+          }
+        },
+      });
+      return;
+    }
+    await queueScene(session, scene, appState.samples);
+  } catch (e: any) {
+    appState.pushMessage(`프롬프트 에러: ${e.message}`);
+  }
+};
+
 // 모든(또는 선택한) 씬을 큐에 예약 추가. 누락 프롬프트조각이 있으면 생성 여부를 확인한다.
 export type SceneQueueFilter = 'all' | 'empty' | 'no-favorites';
 

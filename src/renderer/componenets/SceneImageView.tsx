@@ -4,7 +4,8 @@
 // · 이미지 칸 누름 = 그 씬의 이미지 그리드를 그 이미지 위치로(onOpenImage), 우클릭/길게 누르기 = 이미지 그리드의 이미지 메뉴(GallaryImage).
 // · 씬 첫 칸의 이름 띠(빈 첫 칸은 칸 전체) 누름·우클릭 = 씬 메뉴(onSceneMenu). 더보기 칸 = 그 씬의 이미지 그리드(onOpenScene).
 // · 숨은 탭(isActive 거짓)에서는 구독·격자를 쉰다(바깥 상자만 남겨 「보이는 탭」 판정 ref 를 유지).
-// · 등장 움직임 없음. 색은 --c-* 토큰·기존 클래스만.
+// · 씬 첫 칸(PC)에 마우스를 올리면 씬 카드와 같은 네 버튼(예약 추가·예약 제거·씬 편집·씬 북마크)이 뜬다(2026-11-26).
+// · 등장 움직임 없음(첫 칸의 네 버튼만 씬 카드와 같은 나타남). 색은 --c-* 토큰·기존 클래스만.
 import React, {
   forwardRef,
   useCallback,
@@ -30,6 +31,7 @@ import {
   SceneImageViewMode,
   SCENE_IMAGE_CAPTION,
   SCENE_IMAGE_CELL_PAD,
+  sceneContinuesRow,
   SCENE_VIEW_CAP_MAX,
   SCENE_VIEW_CAP_MIN,
   SCENE_VIEW_MODES,
@@ -45,8 +47,10 @@ import {
   visibleCellRange,
 } from '../models/sceneImageView';
 import { ContextMenuType, GenericScene, Session } from '../models/types';
+import { ActionIcon } from './ActionIcon';
 import { EmptyState } from './EmptyState';
 import { useElementSize, useProgressiveImage } from './historyHooks';
+import Tooltip from './Tooltip';
 import { UNDO_BAR_HEIGHT_PX } from './UndoBarSlot';
 
 /** 격자가 0 크기로 재일 때(배치 전·테스트 환경) 쓰는 크기 */
@@ -77,6 +81,13 @@ export interface SceneImageViewProps {
   onOpenImage: (scene: GenericScene, filename: string) => void;
   onOpenScene: (scene: GenericScene) => void;
   onSceneMenu: (scene: GenericScene, e: React.MouseEvent) => void;
+  /** 북마크된 씬 이름(없으면 undefined) — 첫 칸의 북마크 버튼·이름 띠 표시 */
+  bookmarkedScene?: string;
+  /** 씬 첫 칸의 호버 버튼 넷(PC) — 씬 카드의 네 버튼과 같은 동작 */
+  onQueueAdd: (scene: GenericScene) => void;
+  onQueueRemove: (scene: GenericScene) => void;
+  onEditScene: (scene: GenericScene) => void;
+  onToggleBookmark: (scene: GenericScene) => void;
 }
 
 /** 변형 씬의 입력 원본 이름(지금 변형 카드가 보여 주는 것 — 미러면 프로젝트 미러 이미지) */
@@ -101,11 +112,26 @@ interface GridData {
   onOpenImage: SceneImageViewProps['onOpenImage'];
   onOpenScene: SceneImageViewProps['onOpenScene'];
   onSceneMenu: SceneImageViewProps['onSceneMenu'];
+  bookmarkedScene?: string;
+  onQueueAdd: SceneImageViewProps['onQueueAdd'];
+  onQueueRemove: SceneImageViewProps['onQueueRemove'];
+  onEditScene: SceneImageViewProps['onEditScene'];
+  onToggleBookmark: SceneImageViewProps['onToggleBookmark'];
 }
 
 /** 이름 띠 — 씬 카드와 같은 모양(아래 검정 그라데이션 + 흰 글자). 누름·우클릭 = 씬 메뉴 */
 const SceneNameStrip = observer(
-  ({ scene, total, onSceneMenu }: { scene: GenericScene; total: number; onSceneMenu: GridData['onSceneMenu'] }) => {
+  ({
+    scene,
+    total,
+    bookmarked,
+    onSceneMenu,
+  }: {
+    scene: GenericScene;
+    total: number;
+    bookmarked?: boolean;
+    onSceneMenu: GridData['onSceneMenu'];
+  }) => {
     const emoji = scene.type === 'inpaint' ? (workFlowService.getDef(scene.workflowType)?.emoji ?? '') : '';
     return (
       <div
@@ -125,6 +151,13 @@ const SceneNameStrip = observer(
       >
         <div className="flex items-center text-sm text-white">
           <div className="truncate flex-1 font-medium drop-shadow">
+            {bookmarked && (
+              <ActionIcon
+                id="bookmark"
+                className="inline-block text-orange-500 mr-0.5 align-[-0.125em]"
+                aria-label="북마크됨"
+              />
+            )}
             {emoji}
             {scene.name}
           </div>
@@ -133,6 +166,67 @@ const SceneNameStrip = observer(
       </div>
     );
   },
+);
+
+/**
+ * 씬 첫 칸의 호버 버튼 넷(PC 전용, 2026-11-26 사용자 요청) — 씬 카드의 이미지 위 네 버튼과 같은 순서·색·아이콘·동작.
+ * 색은 씬 카드와 같게 둔다(「한 자리에 주 동작 하나만 색」·.card-overlay-btn 정돈 대상이 아님 — SceneQueueControl renderButtons 주석).
+ * 줄 자체는 눌림을 받지 않는다(버튼 사이로 이름 띠가 눌리게). 버튼 위 우클릭 = 씬 메뉴.
+ */
+const HeadSceneButtons = ({ scene, bookmarked, data }: { scene: GenericScene; bookmarked: boolean; data: GridData }) => {
+  const stop = (fn: (s: GenericScene) => void) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    fn(scene);
+  };
+  const btn = 'round-button scene-btn pointer-events-auto';
+  const gray = 'bg-gray-500 text-white';
+  const orange = 'bg-orange-500 text-white';
+  return (
+    <div
+      data-scene-head-buttons=""
+      className="absolute bottom-0 left-0 right-0 flex justify-center items-center gap-1.5 z-20 py-2 opacity-0 group-hover/scene-head:opacity-100 transition-opacity duration-200 pointer-events-none"
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        data.onSceneMenu(scene, e);
+      }}
+    >
+      <Tooltip content="예약 추가">
+        <button type="button" className={`${btn} bg-green-500 text-white`} onClick={stop(data.onQueueAdd)}>
+          <ActionIcon id="queue-add" />
+        </button>
+      </Tooltip>
+      <Tooltip content="예약 제거">
+        <button type="button" className={`${btn} ${gray}`} onClick={stop(data.onQueueRemove)}>
+          <ActionIcon id="queue-remove" />
+        </button>
+      </Tooltip>
+      <Tooltip content="씬 편집">
+        <button type="button" className={`${btn} ${orange}`} onClick={stop(data.onEditScene)}>
+          <ActionIcon id="edit" />
+        </button>
+      </Tooltip>
+      <Tooltip content="씬 북마크">
+        <button
+          type="button"
+          className={`${btn} ${bookmarked ? orange + ' scene-btn-on' : gray}`}
+          onClick={stop(data.onToggleBookmark)}
+        >
+          <ActionIcon id="bookmark" />
+        </button>
+      </Tooltip>
+    </div>
+  );
+};
+
+/** 앞줄에서 이어진 씬의 줄 첫 칸 — 씬 이름을 작게 다시 적는다(누를 수 없는 표시) */
+const ContinuedTag = ({ name }: { name: string }) => (
+  <div
+    data-scene-group-continued=""
+    className="absolute top-1 left-1 z-[5] max-w-[85%] truncate rounded px-1.5 text-[11px] leading-[18px] text-white/90 bg-black/55 pointer-events-none select-none"
+  >
+    {name}
+  </div>
 );
 
 /** 썸네일 한 장(가상 칸 안). path 가 없으면 빈 자리 */
@@ -166,10 +260,17 @@ const GridCell = observer(({ columnIndex, rowIndex, style, data }: GridChildComp
     });
   };
   const boxStyle: React.CSSProperties = { height: data.imageHeight };
+  // 「씬 별로」에서 씬이 다음 줄로 이어지면 그 줄 첫 칸에 씬 이름을 다시 적는다(최근 순은 칸 아래 이름이 있음)
+  const continued =
+    data.mode === 'byScene' && sceneContinuesRow(data.cells, index, data.columnCount) ? (
+      <ContinuedTag name={scene.name} />
+    ) : null;
 
   if (cell.kind === 'more') {
     return (
       <div style={{ ...style, padding: SCENE_IMAGE_CELL_PAD }} data-scene-image-cell="more">
+        <div className="relative">
+          {continued}
         <button
           type="button"
           aria-label={SCENE_VIEW_TEXT.moreAria(scene.name, cell.remaining)}
@@ -180,6 +281,7 @@ const GridCell = observer(({ columnIndex, rowIndex, style, data }: GridChildComp
           <span className="text-2xl leading-none">…</span>
           <span className="text-sm tabular-nums">{SCENE_VIEW_TEXT.more(cell.remaining)}</span>
         </button>
+        </div>
       </div>
     );
   }
@@ -192,12 +294,14 @@ const GridCell = observer(({ columnIndex, rowIndex, style, data }: GridChildComp
         ? imageService.getVibeImagePath(data.session, cell.input)
         : undefined;
     const empty = !picturePath;
+    const bookmarked = data.bookmarkedScene === scene.name;
     return (
       <div style={{ ...style, padding: SCENE_IMAGE_CELL_PAD }} data-scene-image-cell={empty ? 'head-empty' : 'head'}>
         <div
-          className={`relative w-full overflow-hidden rounded-lg border-2 bg-[var(--c-surface-2)] ${
-            isFav ? 'border-yellow-400' : 'border-[var(--c-sky-bg)]'
-          }${empty ? ' cursor-pointer' : ''}`}
+          // 첫 칸의 테두리는 늘 같은 색(즐겨찾기 노랑으로 바뀌면 씬의 시작 표시가 묻힌다) — 즐겨찾기는 그림 안쪽 테두리로
+          className={`group/scene-head relative w-full overflow-hidden rounded-lg border-2 bg-[var(--c-surface-2)] border-[var(--c-sky-bg)]${
+            empty ? ' cursor-pointer' : ''
+          }`}
           style={boxStyle}
           data-scene-head={scene.name}
           onClick={(e) => {
@@ -215,9 +319,10 @@ const GridCell = observer(({ columnIndex, rowIndex, style, data }: GridChildComp
           }}
         >
           <div className={`w-full h-full${empty ? '' : ' cursor-pointer'}`}>
-            <CellPicture path={picturePath} thumb={data.thumb} />
+            <CellPicture path={picturePath} thumb={data.thumb} favorite={isFav} />
           </div>
-          <SceneNameStrip scene={scene} total={cell.total} onSceneMenu={data.onSceneMenu} />
+          <SceneNameStrip scene={scene} total={cell.total} bookmarked={bookmarked} onSceneMenu={data.onSceneMenu} />
+          {!isMobile && <HeadSceneButtons scene={scene} bookmarked={bookmarked} data={data} />}
         </div>
       </div>
     );
@@ -228,11 +333,13 @@ const GridCell = observer(({ columnIndex, rowIndex, style, data }: GridChildComp
   return (
     <div style={{ ...style, padding: SCENE_IMAGE_CELL_PAD }} data-scene-image-cell="img">
       <div
-        className="w-full cursor-pointer hover:brightness-95 active:brightness-90 rounded-md bg-[var(--c-surface)]"
+        data-scene-image-box=""
+        className="relative w-full cursor-pointer hover:brightness-95 active:brightness-90 rounded-md bg-[var(--c-surface)]"
         style={boxStyle}
         onClick={() => data.onOpenImage(scene, cell.filename)}
         onContextMenu={(e) => imageMenu(e, path)}
       >
+        {continued}
         <CellPicture path={path} thumb={data.thumb} favorite={isFav} />
       </div>
       {data.caption > 0 && (
@@ -255,7 +362,7 @@ const InnerWithUndoGap = forwardRef<HTMLDivElement, { style: React.CSSProperties
 
 const SceneImageViewInner = observer(
   forwardRef<SceneImageViewHandle, SceneImageViewProps>((props, ref) => {
-    const { type, mode, session, scenes, isActive, containerRef, searching } = props;
+    const { type, mode, session, scenes, isActive, containerRef, searching, bookmarkedScene } = props;
     const size = useElementSize(containerRef, SCENE_IMAGE_VIEW_FALLBACK);
     const gridRef = useRef<FixedSizeGrid<GridData>>(null);
     const memoRef = useRef(createSceneImageLayoutMemo());
@@ -348,6 +455,10 @@ const SceneImageViewInner = observer(
         onOpenImage: (s: GenericScene, f: string) => handlersRef.current.onOpenImage(s, f),
         onOpenScene: (s: GenericScene) => handlersRef.current.onOpenScene(s),
         onSceneMenu: (s: GenericScene, e: React.MouseEvent) => handlersRef.current.onSceneMenu(s, e),
+        onQueueAdd: (s: GenericScene) => handlersRef.current.onQueueAdd(s),
+        onQueueRemove: (s: GenericScene) => handlersRef.current.onQueueRemove(s),
+        onEditScene: (s: GenericScene) => handlersRef.current.onEditScene(s),
+        onToggleBookmark: (s: GenericScene) => handlersRef.current.onToggleBookmark(s),
       }),
       [],
     );
@@ -361,9 +472,10 @@ const SceneImageViewInner = observer(
         mode,
         session,
         scenesByName,
+        bookmarkedScene,
         ...handlers,
       }),
-      [layout, metrics.columnCount, metrics.thumb, metrics.imageHeight, caption, mode, session, scenesByName, handlers],
+      [layout, metrics.columnCount, metrics.thumb, metrics.imageHeight, caption, mode, session, scenesByName, bookmarkedScene, handlers],
     );
 
     let empty: React.ReactNode = null;

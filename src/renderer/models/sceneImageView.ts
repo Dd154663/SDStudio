@@ -339,6 +339,20 @@ export function visibleCellRange(rowStart: number, rowStop: number, columnCount:
 
 /** 칸 안쪽 여백(칸 사이 = 2배) */
 export const SCENE_IMAGE_CELL_PAD = 3;
+
+/**
+ * 「씬 별로」에서 이 칸이 앞줄에서 이어진 씬의 줄 첫 칸인가(2026-11-26 — 어느 씬의 이미지인지 구분).
+ * 참이면 그 칸에 씬 이름을 작게 다시 적는다. 씬의 첫 칸은 이름 띠가 있으므로 거짓.
+ */
+export function sceneContinuesRow(
+  cells: readonly SceneImageCell[],
+  index: number,
+  columnCount: number,
+): boolean {
+  const cell = cells[index];
+  if (!cell || cell.kind === 'head') return false;
+  return columnCount > 0 && index % columnCount === 0;
+}
 /** 「최근 순」 칸 아래 씬 이름 줄 높이 */
 export const SCENE_IMAGE_CAPTION = 20;
 /** 모바일 최소 트랙 = 씬 카드 격자와 같은 min(9rem, 50%) */

@@ -11,6 +11,7 @@ const mockQueue = Object.assign(new EventTarget(), {
   statsTasksFromScene: jest.fn(() => ({ total: 0, done: 0 })),
   run: jest.fn(),
   removeAllTasks: jest.fn(),
+  removeTasksFromScene: jest.fn(),
 });
 const mockGame = Object.assign(new EventTarget(), { getOutputs: jest.fn(() => [] as string[]) });
 const mockImages = Object.assign(new EventTarget(), {
@@ -72,7 +73,12 @@ jest.mock('../AppService', () => ({ appState: mockState }));
 jest.mock('../types', () => ({ ContextMenuType: { Scene: 'scene', Image: 'image', GallaryImage: 'gallary_image' } }));
 jest.mock('../ImageService', () => ({ toggleImageMain: jest.fn(), getMainImage: jest.fn(async () => 'img') }));
 jest.mock('../TaskQueueService', () => ({}));
-jest.mock('../sceneQueueActions', () => ({ queueScene: jest.fn(async () => {}), addScenesToQueue: jest.fn() }));
+const mockAddSceneToQueue = jest.fn(async () => {});
+jest.mock('../sceneQueueActions', () => ({
+  queueScene: jest.fn(async () => {}),
+  addScenesToQueue: jest.fn(),
+  addSceneToQueue: (...a: any[]) => (mockAddSceneToQueue as any)(...a),
+}));
 jest.mock('../util', () => ({}));
 jest.mock('../workflows/SDWorkFlow', () => ({}));
 jest.mock('../workflows/OneTimeFlows', () => ({ oneTimeFlows: [], oneTimeFlowMap: new Map() }));
@@ -338,6 +344,18 @@ describe('이미지 뷰(씬 별로)', () => {
     await act(async () => mockView.props.onSceneMenu(scenes[0], ev));
     expect(mockState.contextSceneType).toBe('scene');
     expect(mockShowMenu).toHaveBeenCalledWith({ event: ev, props: { ctx: { type: 'scene', scene: scenes[0] } } });
+  });
+
+  test('첫 칸의 호버 버튼 넷: 예약 추가·제거는 씬 카드와 같은 길, 북마크된 씬 이름을 넘김', async () => {
+    mockBookmark.value = { type: 'scene', name: 's2' };
+    await renderList();
+    expect(mockView.props.bookmarkedScene).toBe('s2');
+    await act(async () => mockView.props.onQueueAdd(scenes[0]));
+    expect(mockAddSceneToQueue).toHaveBeenCalledWith(mockState.curSession, scenes[0]);
+    await act(async () => mockView.props.onQueueRemove(scenes[1]));
+    expect(mockQueue.removeTasksFromScene).toHaveBeenCalledWith(scenes[1]);
+    expect(typeof mockView.props.onEditScene).toBe('function');
+    expect(typeof mockView.props.onToggleBookmark).toBe('function');
   });
 
   test('「보기 방식」 버튼 = 선택 창 → 고른 방식으로 바뀜(카드로 돌아가기)', async () => {

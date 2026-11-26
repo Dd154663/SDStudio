@@ -83,8 +83,8 @@ import { copyImageToOriginalRecorded } from '../models/deleteUndo';
 import { setImageFavorites, toggleImageFavorite } from '../models/imageStateUndo';
 import { queueWorkflow } from '../models/TaskQueueService';
 import {
+  addSceneToQueue,
   addScenesToQueue,
-  createMissingPiecesForSession,
   queueArtistBreakdown,
   applyArtistPrefixBatch,
   queueScene,
@@ -802,32 +802,8 @@ export const SceneCell = observer(
       [moveScene],
     );
 
-    const addToQueue = async (scene: GenericScene) => {
-      try {
-        const missing = promptService.findMissingPieces(curSession, scene);
-        if (missing.length > 0) {
-          const list = missing
-            .map((m) => `<${m.library}.${m.piece}>`)
-            .join(', ');
-          appState.pushDialog({
-            type: 'confirm',
-            text: `존재하지 않는 프롬프트조각이 발견되었습니다:\n${list}\n\n로컬 프롬프트조각으로 새로 만들까요?\n(빈 조각이 생성되며, 내용은 직접 채워주세요)`,
-            callback: async () => {
-              createMissingPiecesForSession(curSession, missing);
-              try {
-                await queueScene(curSession, scene, appState.samples);
-              } catch (e: any) {
-                appState.pushMessage(`프롬프트 에러: ${e.message}`);
-              }
-            },
-          });
-          return;
-        }
-        await queueScene(curSession, scene, appState.samples);
-      } catch (e: any) {
-        appState.pushMessage(`프롬프트 에러: ${e.message}`);
-      }
-    };
+    // 씬 하나 예약 추가(누락 조각 확인 포함) — 이미지 뷰 첫 칸의 같은 버튼과 공용(models/sceneQueueActions)
+    const addToQueue = (scene: GenericScene) => addSceneToQueue(curSession, scene);
 
     const [_, rerender] = useState<{}>({});
 
@@ -2989,6 +2965,13 @@ const QueueControl = observer(
       appState.contextSceneType = scene.type;
       showSceneContextMenu({ event: e, props: { ctx: { type: 'scene', scene } } });
     };
+    // 「씬 별로」 첫 칸의 호버 버튼 넷(PC) — 씬 카드의 네 버튼과 같은 동작
+    const queueAddFromView = (scene: GenericScene) => void addSceneToQueue(curSession, scene);
+    const queueRemoveFromView = (scene: GenericScene) => taskQueueService.removeTasksFromScene(scene);
+    const editSceneFromView = (scene: GenericScene) => setEditingScene(scene);
+    const toggleBookmarkFromView = (scene: GenericScene) =>
+      // 절대값 + 되돌리기 기록(U2a) — 씬 카드와 같은 길
+      void toggleSceneBookmarkRecorded(curSession, scene);
     const toolbarButtons: Record<string, ReactNode> = {
       'add-scene': (
         <Tooltip content="씬 추가">
@@ -3694,6 +3677,11 @@ const QueueControl = observer(
               onOpenImage={openImageFromView}
               onOpenScene={openSceneFromView}
               onSceneMenu={openSceneMenuFromView}
+              bookmarkedScene={sceneBookmark?.name}
+              onQueueAdd={queueAddFromView}
+              onQueueRemove={queueRemoveFromView}
+              onEditScene={editSceneFromView}
+              onToggleBookmark={toggleBookmarkFromView}
             />
           ) : (() => {
             // 열 최소 폭·「높이 고정」 높이 = 씬 카드 크기 슬라이더(appState.sceneCardSizePercent) — SceneCardGrid 가 읽는다.
